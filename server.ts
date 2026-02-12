@@ -68,6 +68,9 @@ app.prepare().then(() => {
         return;
       }
 
+      /** branchName에서 window/tab 이름을 파생한다 */
+      const windowName = task.branchName?.replace(/\//g, "-") || "";
+
       if (task.sshHost) {
         const sshHosts = await parseSSHConfig();
         const hostConfig = sshHosts.find((h) => h.host === task.sshHost);
@@ -82,11 +85,12 @@ app.prepare().then(() => {
           task.sshHost,
           task.sessionType,
           task.sessionName,
+          windowName,
           ws,
           hostConfig
         );
       } else {
-        await attachLocalSession(taskId, task.sessionType, task.sessionName, ws);
+        await attachLocalSession(taskId, task.sessionType, task.sessionName, windowName, ws);
       }
     } catch (error) {
       console.error("터미널 연결 오류:", error);

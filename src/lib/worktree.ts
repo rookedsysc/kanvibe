@@ -8,8 +8,8 @@ interface WorktreeSession {
 }
 
 /**
- * git worktree를 생성하고 tmux/zellij 세션을 시작한다.
- * sshHost가 지정되면 원격에서 실행한다.
+ * git worktree를 생성하고 메인 세션에 tmux window / zellij tab을 추가한다.
+ * 메인 세션이 없으면 자동 생성한다. sshHost가 지정되면 원격에서 실행한다.
  */
 export async function createWorktreeWithSession(
   projectPath: string,
@@ -21,7 +21,8 @@ export async function createWorktreeWithSession(
   const projectName = path.basename(projectPath);
   const worktreeBase = path.posix.join(path.dirname(projectPath), `${projectName}__worktrees`);
   const worktreePath = path.posix.join(worktreeBase, branchName.replace(/\//g, "-"));
-  const sessionName = `${projectName}-${branchName.replace(/\//g, "-")}`;
+  const sessionName = projectName;
+  const windowName = branchName.replace(/\//g, "-");
 
   await execGit(
     `git -C "${projectPath}" worktree add "${worktreePath}" -b "${branchName}" "${baseBranch}"`,
@@ -29,13 +30,33 @@ export async function createWorktreeWithSession(
   );
 
   if (sessionType === SessionType.TMUX) {
+    /** 메인 tmux 세션이 없으면 자동 생성한다 */
     await execGit(
-      `tmux new-session -d -s "${sessionName}" -c "${worktreePath}"`,
+      `tmux has-session -t "${sessionName}" 2>/dev/null || tmux new-session -d -s "${sessionName}"`,
+      sshHost
+    );
+    /** 메인 세션에 worktree 디렉토리로 이동하는 window를 추가한다 */
+    await execGit(
+      `tmux new-window -t "${sessionName}" -n "${windowName}" -c "${worktreePath}"`,
       sshHost
     );
   } else {
+    /** 메인 zellij 세션이 없으면 백그라운드로 생성한다 */
+    try {
+      await execGit(
+        `zellij list-sessions 2>/dev/null | grep -q "^${sessionName}$"`,
+        sshHost
+      );
+    } catch {
+      await execGit(
+        `cd "${worktreePath}" && zellij --session "${sessionName}" &`,
+        sshHost
+      );
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+    }
+    /** 메인 세션에 worktree 디렉토리의 tab을 추가한다 */
     await execGit(
-      `cd "${worktreePath}" && zellij --session "${sessionName}" &`,
+      `zellij action --session "${sessionName}" new-tab --name "${windowName}" --cwd "${worktreePath}"`,
       sshHost
     );
   }
@@ -44,7 +65,7 @@ export async function createWorktreeWithSession(
 }
 
 /**
- * worktree와 tmux/zellij 세션을 삭제한다.
+ * worktree와 메인 세션의 tmux window / zellij tab을 삭제한다.
  * sshHost가 지정되면 원격에서 실행한다.
  */
 export async function removeWorktreeAndSession(
@@ -54,14 +75,21 @@ export async function removeWorktreeAndSession(
   sessionName: string,
   sshHost?: string | null
 ): Promise<void> {
+  const windowName = branchName.replace(/\//g, "-");
+
   try {
     if (sessionType === SessionType.TMUX) {
-      await execGit(`tmux kill-session -t "${sessionName}"`, sshHost);
+      /** 메인 세션에서 해당 window만 종료한다 */
+      await execGit(`tmux kill-window -t "${sessionName}:${windowName}"`, sshHost);
     } else {
-      await execGit(`zellij delete-session "${sessionName}"`, sshHost);
+      /** 메인 세션에서 해당 tab으로 이동 후 닫는다 */
+      await execGit(
+        `zellij action --session "${sessionName}" go-to-tab-name "${windowName}" && zellij action --session "${sessionName}" close-tab`,
+        sshHost
+      );
     }
   } catch {
-    // 세션이 이미 종료된 경우 무시
+    // window/tab이 이미 종료된 경우 무시
   }
 
   try {
@@ -82,19 +110,21 @@ export async function removeWorktreeAndSession(
   }
 }
 
-/** 활성 세션 목록을 반환한다 */
-export async function listActiveSessions(
+/** 메인 세션 내의 활성 window/tab 목록을 반환한다 */
+export async function listActiveWindows(
   sessionType: SessionType,
+  mainSession: string,
   sshHost?: string | null
 ): Promise<string[]> {
   try {
     if (sessionType === SessionType.TMUX) {
       const output = await execGit(
-        "tmux list-sessions -F '#{session_name}'",
+        `tmux list-windows -t "${mainSession}" -F '#{window_name}'`,
         sshHost
       );
       return output.split("\n").filter(Boolean);
     } else {
+      /** zellij는 외부에서 탭 목록을 조회할 수 없으므로 세션 목록을 반환한다 */
       const output = await execGit("zellij list-sessions", sshHost);
       return output.split("\n").filter(Boolean);
     }
@@ -103,12 +133,13 @@ export async function listActiveSessions(
   }
 }
 
-/** 세션이 활성 상태인지 확인한다 */
-export async function isSessionAlive(
+/** window/tab이 활성 상태인지 확인한다 */
+export async function isWindowAlive(
   sessionType: SessionType,
-  sessionName: string,
+  mainSession: string,
+  windowName: string,
   sshHost?: string | null
 ): Promise<boolean> {
-  const sessions = await listActiveSessions(sessionType, sshHost);
-  return sessions.some((s) => s.includes(sessionName));
+  const windows = await listActiveWindows(sessionType, mainSession, sshHost);
+  return windows.some((w) => w.includes(windowName));
 }
