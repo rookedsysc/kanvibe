@@ -72,6 +72,7 @@
     "errors": "错误",
     "errorsSuffix": "个",
     "registeredCount": "已注册 {count} 个项目",
+    "worktreeTasksRegistered": "{count}个worktree已注册为TODO",
     "noNewProjects": "没有新项目可注册。",
     "noGitRepos": "未找到 git 仓库。",
     "scanPathRequired": "请输入要扫描的目录路径。",

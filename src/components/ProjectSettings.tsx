@@ -49,10 +49,17 @@ export default function ProjectSettings({
       );
       setScanResult(result);
 
+      const messages: string[] = [];
+
       if (result.registered.length > 0) {
-        setSuccessMessage(
-          t("registeredCount", { count: result.registered.length })
-        );
+        messages.push(t("registeredCount", { count: result.registered.length }));
+      }
+      if (result.worktreeTasks.length > 0) {
+        messages.push(t("worktreeTasksRegistered", { count: result.worktreeTasks.length }));
+      }
+
+      if (messages.length > 0) {
+        setSuccessMessage(messages.join(" / "));
       } else if (result.skipped.length > 0) {
         setSuccessMessage(t("noNewProjects"));
       } else {
