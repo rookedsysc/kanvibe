@@ -54,6 +54,11 @@ export default function Board({ initialTasks, sshHosts, projects }: BoardProps) 
     setIsMounted(true);
   }, []);
 
+  /** 서버 revalidation 후 initialTasks가 변경되면 로컬 state에 반영한다 */
+  useEffect(() => {
+    setTasks(initialTasks);
+  }, [initialTasks]);
+
   const handleDragEnd = useCallback(
     (result: DropResult) => {
       const { source, destination, draggableId } = result;
