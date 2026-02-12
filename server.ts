@@ -11,54 +11,54 @@ import { parseSSHConfig } from "@/lib/sshConfig";
 const dev = process.env.NODE_ENV !== "production";
 const hostname = "0.0.0.0";
 const port = parseInt(process.env.PORT || "4885", 10);
+const wsPort = port + 10000;
 
-const app = next({ dev, hostname, port });
+/**
+ * Next.js에 httpServer를 전달하여 HMR WebSocket 등 내부 기능이
+ * 커스텀 서버를 통해 동작하도록 한다.
+ */
+const server = createServer();
+const app = next({ dev, hostname, port, httpServer: server });
 const handle = app.getRequestHandler();
 
 app.prepare().then(() => {
   /**
-   * Next.js가 getRequestHandler 내부에서 자동으로 upgrade 핸들러를 등록하지 못하게 차단한다.
-   * 대신 getUpgradeHandler()로 직접 라우팅하여 이중 등록을 방지한다.
+   * Next.js HTTP 요청 핸들러 등록.
+   * 페이지, API, HMR 등 모든 HTTP 요청을 Next.js에 위임한다.
    */
-  // @ts-expect-error didWebSocketSetup은 내부 프로퍼티
-  app.didWebSocketSetup = true;
-
-  const nextUpgrade = app.getUpgradeHandler();
-
-  const server = createServer((req, res) => {
+  server.on("request", (req, res) => {
     const parsedUrl = parse(req.url!, true);
     handle(req, res, parsedUrl);
   });
 
-  const wss = new WebSocketServer({ noServer: true });
+  /**
+   * 터미널 WebSocket 전용 서버.
+   * Next.js 16 Turbopack이 같은 포트의 WebSocket upgrade를 내부적으로 가로채므로
+   * 별도 포트(PORT + 1)에서 독립 운영한다.
+   */
+  const wsHttpServer = createServer();
+  const wss = new WebSocketServer({ server: wsHttpServer });
 
-  server.on("upgrade", (request, socket, head) => {
+  wss.on("connection", async (ws: WebSocket, request) => {
     const { pathname } = parse(request.url || "");
+    const taskIdMatch = pathname?.match(/^\/api\/terminal\/([a-f0-9-]+)$/);
 
-    /** 터미널 WebSocket만 직접 처리, 나머지(HMR 등)는 Next.js에 위임 */
-    const terminalMatch = pathname?.match(/^\/api\/terminal\/([a-f0-9-]+)$/);
-    if (!terminalMatch) {
-      nextUpgrade(request, socket, head);
+    if (!taskIdMatch) {
+      ws.close(1008, "잘못된 경로");
       return;
     }
 
+    const taskId = taskIdMatch[1];
     const cookieHeader = request.headers.cookie || "";
     const isAuthed = validateSessionFromCookie(cookieHeader);
-    console.log(`[WS] 터미널 연결 요청: taskId=${terminalMatch[1]}, auth=${isAuthed}`);
+    console.log(`[WS] 터미널 연결 요청: taskId=${taskId}, auth=${isAuthed}`);
 
     if (!isAuthed) {
       console.log("[WS] 인증 실패 — 쿠키:", cookieHeader ? "있음" : "없음");
-      socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
-      socket.destroy();
+      ws.close(1008, "인증 실패");
       return;
     }
 
-    wss.handleUpgrade(request, socket, head, (ws) => {
-      wss.emit("connection", ws, request, terminalMatch[1]);
-    });
-  });
-
-  wss.on("connection", async (ws: WebSocket, _request: unknown, taskId: string) => {
     try {
       const repo = await getTaskRepository();
       const task = await repo.findOneBy({ id: taskId });
@@ -96,5 +96,9 @@ app.prepare().then(() => {
 
   server.listen(port, hostname, () => {
     console.log(`> KanVibe 서버 시작: http://${hostname}:${port}`);
+  });
+
+  wsHttpServer.listen(wsPort, hostname, () => {
+    console.log(`> 터미널 WebSocket 서버: ws://${hostname}:${wsPort}`);
   });
 });
