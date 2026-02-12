@@ -38,10 +38,10 @@ export async function getDataSource(): Promise<DataSource> {
  */
 export async function getTaskRepository(): Promise<Repository<KanbanTask>> {
   const ds = await getDataSource();
-  return ds.getRepository(KanbanTask);
+  return ds.getRepository("KanbanTask") as Repository<KanbanTask>;
 }
 
 export async function getProjectRepository(): Promise<Repository<Project>> {
   const ds = await getDataSource();
-  return ds.getRepository(Project);
+  return ds.getRepository("Project") as Repository<Project>;
 }
