@@ -40,8 +40,8 @@ export default async function TaskDetailPage({ params }: TaskDetailPageProps) {
   }
 
   return (
-    <div className="min-h-screen">
-      <header className="flex items-center gap-4 px-6 py-4 border-b border-border-default bg-bg-surface">
+    <div className="h-screen flex flex-col">
+      <header className="flex items-center gap-4 px-6 py-4 border-b border-border-default bg-bg-surface shrink-0">
         <Link
           href="/"
           className="text-text-secondary hover:text-text-primary transition-colors"
@@ -50,8 +50,8 @@ export default async function TaskDetailPage({ params }: TaskDetailPageProps) {
         </Link>
       </header>
 
-      <main className="max-w-4xl mx-auto p-6">
-        <div className="flex items-start justify-between mb-6">
+      <main className="flex-1 flex flex-col min-h-0 p-4">
+        <div className="flex items-start justify-between mb-4 shrink-0">
           <div>
             <div className="flex items-center gap-3 mb-2">
               <h1 className="text-2xl font-bold text-text-primary">
@@ -110,11 +110,13 @@ export default async function TaskDetailPage({ params }: TaskDetailPageProps) {
         </div>
 
         {hasTerminal ? (
-          <div>
-            <h2 className="text-lg font-semibold mb-3 text-text-primary">
+          <div className="flex-1 flex flex-col min-h-0">
+            <h2 className="text-lg font-semibold mb-3 text-text-primary shrink-0">
               {t("terminal")}
             </h2>
-            <TerminalLoader taskId={task.id} />
+            <div className="flex-1 min-h-0">
+              <TerminalLoader taskId={task.id} />
+            </div>
           </div>
         ) : (
           <div className="text-center py-20 text-text-muted border border-dashed border-border-default rounded-xl">
