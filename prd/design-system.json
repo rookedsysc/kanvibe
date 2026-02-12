@@ -83,6 +83,14 @@
         "surfaceRaised": "{white}",
         "overlay": "rgba(0, 0, 0, 0.5)"
       },
+      "terminal": {
+        "chrome": "#1e1e1e",
+        "body": "#0a0a0a",
+        "text": "#9ca3af",
+        "trafficClose": "#ff5f56",
+        "trafficMinimize": "#ffbd2e",
+        "trafficMaximize": "#27c93f"
+      },
       "text": {
         "primary": "#202124",
         "secondary": "#5F6368",
@@ -179,7 +187,8 @@
       "tag": "{full}",
       "modal": "{xl}",
       "dropdown": "{lg}",
-      "contextMenu": "{lg}"
+      "contextMenu": "{lg}",
+      "terminalWindow": "{lg}"
     }
   },
   "shadows": {
@@ -212,6 +221,11 @@
     "kanbanBoard": {
       "columnMinWidth": "280px",
       "columnMaxWidth": "350px"
+    },
+    "taskDetail": {
+      "type": "two-panel",
+      "sidebarWidth": "320px",
+      "terminalMinHeight": "400px"
     },
     "breakpoints": {
       "mobile": "640px",
