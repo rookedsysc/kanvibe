@@ -1,10 +1,14 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { exec } from "child_process";
+import { promisify } from "util";
 import { getTaskRepository } from "@/lib/database";
 import { KanbanTask, TaskStatus, SessionType } from "@/entities/KanbanTask";
 import { createWorktreeWithSession, removeWorktreeAndSession } from "@/lib/worktree";
 import { getProjectRepository } from "@/lib/database";
+
+const execAsync = promisify(exec);
 
 export type TasksByStatus = Record<TaskStatus, KanbanTask[]>;
 
@@ -213,4 +217,40 @@ export async function reorderTasks(
 
   await Promise.all(updates);
   revalidatePath("/");
+}
+
+/**
+ * 작업의 브랜치에 연결된 PR URL을 조회하여 DB에 저장한다.
+ * `gh pr list` CLI를 사용하며, PR이 없으면 null을 유지한다.
+ */
+export async function fetchAndSavePrUrl(taskId: string): Promise<string | null> {
+  const repo = await getTaskRepository();
+  const task = await repo.findOneBy({ id: taskId });
+  if (!task?.branchName) return null;
+
+  let repoPath: string | null = null;
+  if (task.projectId) {
+    const projectRepo = await getProjectRepository();
+    const project = await projectRepo.findOneBy({ id: task.projectId });
+    if (project) repoPath = project.repoPath;
+  }
+
+  try {
+    const cwd = repoPath ?? process.cwd();
+    const { stdout } = await execAsync(
+      `gh pr list --head "${task.branchName}" --json url -q ".[0].url"`,
+      { cwd }
+    );
+    const prUrl = stdout.trim();
+
+    if (prUrl) {
+      task.prUrl = prUrl;
+      await repo.save(task);
+      return prUrl;
+    }
+  } catch (error) {
+    console.error("PR URL 조회 실패:", error);
+  }
+
+  return null;
 }

@@ -99,6 +99,8 @@
   --color-tag-branch-text: var(--gray-700);
   --color-tag-neutral-bg: var(--gray-100);
   --color-tag-neutral-text: var(--gray-600);
+  --color-tag-pr-bg: #ddf4ff;
+  --color-tag-pr-text: #0969da;
 
   /* Terminal Chrome */
   --color-terminal-chrome: #1e1e1e;
@@ -178,6 +180,8 @@
   --color-tag-branch-text: var(--color-tag-branch-text);
   --color-tag-neutral-bg: var(--color-tag-neutral-bg);
   --color-tag-neutral-text: var(--color-tag-neutral-text);
+  --color-tag-pr-bg: var(--color-tag-pr-bg);
+  --color-tag-pr-text: var(--color-tag-pr-text);
 
   /* Terminal Chrome */
   --color-terminal-chrome: var(--color-terminal-chrome);

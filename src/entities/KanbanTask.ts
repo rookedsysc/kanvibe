@@ -68,6 +68,9 @@ export class KanbanTask {
   @Column({ name: "base_branch", type: "varchar", length: 255, nullable: true })
   baseBranch!: string | null;
 
+  @Column({ name: "pr_url", type: "varchar", length: 500, nullable: true })
+  prUrl!: string | null;
+
   @Column({ name: "display_order", type: "int", default: 0 })
   displayOrder!: number;
 

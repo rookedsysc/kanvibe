@@ -97,6 +97,7 @@
     "sshHost": "SSH Host",
     "createdAt": "Created",
     "updatedAt": "Updated",
+    "prLink": "PR Link",
     "actions": "Change Status",
     "deleteConfirm": "Are you sure you want to delete this task?"
   }

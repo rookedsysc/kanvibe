@@ -97,6 +97,7 @@
     "sshHost": "SSH 主机",
     "createdAt": "创建时间",
     "updatedAt": "更新时间",
+    "prLink": "PR 链接",
     "actions": "状态变更",
     "deleteConfirm": "确定要删除此任务吗？"
   }
