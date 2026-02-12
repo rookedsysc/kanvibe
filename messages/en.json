@@ -31,12 +31,8 @@
     }
   },
   "task": {
-    "titleLabel": "Title",
-    "titlePlaceholder": "Task title",
-    "titleRequired": "Title *",
     "descriptionLabel": "Description",
     "descriptionPlaceholder": "Task description (optional)",
-    "createWithSession": "Create with Branch + Session",
     "project": "Project",
     "projectSelect": "Select project",
     "baseBranch": "Base branch",

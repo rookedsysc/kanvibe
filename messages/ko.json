@@ -31,16 +31,12 @@
     }
   },
   "task": {
-    "titleLabel": "제목",
-    "titlePlaceholder": "작업 제목",
-    "titleRequired": "제목 *",
     "descriptionLabel": "설명",
     "descriptionPlaceholder": "작업 설명 (선택)",
-    "createWithSession": "Branch + 세션과 함께 생성",
     "project": "프로젝트",
     "projectSelect": "프로젝트 선택",
     "baseBranch": "베이스 브랜치",
-    "branchName": "Branch 이름",
+    "branchName": "브랜치 이름",
     "branchPlaceholder": "feat/my-feature",
     "sessionType": "세션 타입",
     "sshHost": "SSH 호스트 (선택)",

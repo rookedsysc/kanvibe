@@ -54,7 +54,7 @@ export async function createTask(input: CreateTaskInput): Promise<KanbanTask> {
   const repo = await getTaskRepository();
 
   const task = repo.create({
-    title: input.title,
+    title: input.title || input.branchName || "Untitled",
     description: input.description || null,
     branchName: input.branchName || null,
     baseBranch: input.baseBranch || null,

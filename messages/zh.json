@@ -31,12 +31,8 @@
     }
   },
   "task": {
-    "titleLabel": "标题",
-    "titlePlaceholder": "任务标题",
-    "titleRequired": "标题 *",
     "descriptionLabel": "描述",
     "descriptionPlaceholder": "任务描述（可选）",
-    "createWithSession": "同时创建 Branch + 会话",
     "project": "项目",
     "projectSelect": "选择项目",
     "baseBranch": "基础分支",

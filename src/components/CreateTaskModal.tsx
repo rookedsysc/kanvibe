@@ -23,7 +23,6 @@ export default function CreateTaskModal({
   const t = useTranslations("task");
   const tc = useTranslations("common");
   const [isPending, startTransition] = useTransition();
-  const [isWithSession, setIsWithSession] = useState(false);
   const [selectedProjectId, setSelectedProjectId] = useState("");
   const [branches, setBranches] = useState<string[]>([]);
   const [baseBranch, setBaseBranch] = useState("");
@@ -48,15 +47,18 @@ export default function CreateTaskModal({
   if (!isOpen) return null;
 
   function handleSubmit(formData: FormData) {
+    const branchName = formData.get("branchName") as string;
+    if (!branchName || !selectedProjectId) return;
+
     startTransition(async () => {
       await createTask({
-        title: formData.get("title") as string,
+        title: branchName,
         description: (formData.get("description") as string) || undefined,
-        branchName: (formData.get("branchName") as string) || undefined,
+        branchName,
         baseBranch: baseBranch || undefined,
         sessionType: (formData.get("sessionType") as SessionType) || undefined,
         sshHost: (formData.get("sshHost") as string) || undefined,
-        projectId: selectedProjectId || undefined,
+        projectId: selectedProjectId,
       });
       onClose();
     });
@@ -72,13 +74,55 @@ export default function CreateTaskModal({
         <form action={handleSubmit} className="space-y-4">
           <div>
             <label className="block text-sm text-text-secondary mb-1">
-              {t("titleRequired")}
+              {t("project")} *
             </label>
-            <input
-              name="title"
+            <select
+              value={selectedProjectId}
+              onChange={(e) => setSelectedProjectId(e.target.value)}
               required
               className="w-full px-3 py-2 bg-bg-page border border-border-default rounded-md text-text-primary focus:outline-none focus:border-brand-primary transition-colors"
-              placeholder={t("titlePlaceholder")}
+            >
+              <option value="">{t("projectSelect")}</option>
+              {projects.map((project) => (
+                <option key={project.id} value={project.id}>
+                  {project.name}
+                  {project.sshHost ? ` (${project.sshHost})` : ""}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {selectedProjectId && (
+            <div>
+              <label className="block text-sm text-text-secondary mb-1">
+                {t("baseBranch")}
+              </label>
+              <select
+                value={baseBranch}
+                onChange={(e) => setBaseBranch(e.target.value)}
+                className="w-full px-3 py-2 bg-bg-page border border-border-default rounded-md text-text-primary focus:outline-none focus:border-brand-primary font-mono transition-colors"
+              >
+                {branches.map((branch) => (
+                  <option key={branch} value={branch}>
+                    {branch}
+                  </option>
+                ))}
+                {branches.length === 0 && baseBranch && (
+                  <option value={baseBranch}>{baseBranch}</option>
+                )}
+              </select>
+            </div>
+          )}
+
+          <div>
+            <label className="block text-sm text-text-secondary mb-1">
+              {t("branchName")} *
+            </label>
+            <input
+              name="branchName"
+              required
+              className="w-full px-3 py-2 bg-bg-page border border-border-default rounded-md text-text-primary focus:outline-none focus:border-brand-primary font-mono transition-colors"
+              placeholder={t("branchPlaceholder")}
             />
           </div>
 
@@ -95,104 +139,17 @@ export default function CreateTaskModal({
           </div>
 
           <div>
-            <label className="flex items-center gap-2 text-sm text-text-secondary cursor-pointer">
-              <input
-                type="checkbox"
-                checked={isWithSession}
-                onChange={(e) => setIsWithSession(e.target.checked)}
-                className="rounded"
-              />
-              {t("createWithSession")}
+            <label className="block text-sm text-text-secondary mb-1">
+              {t("sessionType")}
             </label>
+            <select
+              name="sessionType"
+              className="w-full px-3 py-2 bg-bg-page border border-border-default rounded-md text-text-primary focus:outline-none focus:border-brand-primary transition-colors"
+            >
+              <option value="tmux">tmux</option>
+              <option value="zellij">zellij</option>
+            </select>
           </div>
-
-          {isWithSession && (
-            <>
-              <div>
-                <label className="block text-sm text-text-secondary mb-1">
-                  {t("project")}
-                </label>
-                <select
-                  value={selectedProjectId}
-                  onChange={(e) => setSelectedProjectId(e.target.value)}
-                  className="w-full px-3 py-2 bg-bg-page border border-border-default rounded-md text-text-primary focus:outline-none focus:border-brand-primary transition-colors"
-                >
-                  <option value="">{t("projectSelect")}</option>
-                  {projects.map((project) => (
-                    <option key={project.id} value={project.id}>
-                      {project.name}
-                      {project.sshHost ? ` (${project.sshHost})` : ""}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {selectedProjectId && (
-                <div>
-                  <label className="block text-sm text-text-secondary mb-1">
-                    {t("baseBranch")}
-                  </label>
-                  <select
-                    value={baseBranch}
-                    onChange={(e) => setBaseBranch(e.target.value)}
-                    className="w-full px-3 py-2 bg-bg-page border border-border-default rounded-md text-text-primary focus:outline-none focus:border-brand-primary font-mono transition-colors"
-                  >
-                    {branches.map((branch) => (
-                      <option key={branch} value={branch}>
-                        {branch}
-                      </option>
-                    ))}
-                    {branches.length === 0 && baseBranch && (
-                      <option value={baseBranch}>{baseBranch}</option>
-                    )}
-                  </select>
-                </div>
-              )}
-
-              <div>
-                <label className="block text-sm text-text-secondary mb-1">
-                  {t("branchName")}
-                </label>
-                <input
-                  name="branchName"
-                  className="w-full px-3 py-2 bg-bg-page border border-border-default rounded-md text-text-primary focus:outline-none focus:border-brand-primary font-mono transition-colors"
-                  placeholder={t("branchPlaceholder")}
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm text-text-secondary mb-1">
-                  {t("sessionType")}
-                </label>
-                <select
-                  name="sessionType"
-                  className="w-full px-3 py-2 bg-bg-page border border-border-default rounded-md text-text-primary focus:outline-none focus:border-brand-primary transition-colors"
-                >
-                  <option value="tmux">tmux</option>
-                  <option value="zellij">zellij</option>
-                </select>
-              </div>
-
-              {!selectedProjectId && sshHosts.length > 0 && (
-                <div>
-                  <label className="block text-sm text-text-secondary mb-1">
-                    {t("sshHost")}
-                  </label>
-                  <select
-                    name="sshHost"
-                    className="w-full px-3 py-2 bg-bg-page border border-border-default rounded-md text-text-primary focus:outline-none focus:border-brand-primary transition-colors"
-                  >
-                    <option value="">{tc("local")}</option>
-                    {sshHosts.map((host) => (
-                      <option key={host} value={host}>
-                        {host}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              )}
-            </>
-          )}
 
           <div className="flex justify-end gap-3 pt-2">
             <button
@@ -204,7 +161,7 @@ export default function CreateTaskModal({
             </button>
             <button
               type="submit"
-              disabled={isPending}
+              disabled={isPending || !selectedProjectId}
               className="px-4 py-2 text-sm bg-brand-primary hover:bg-brand-hover disabled:opacity-50 text-text-inverse rounded-md font-medium transition-colors"
             >
               {isPending ? tc("creating") : tc("create")}
