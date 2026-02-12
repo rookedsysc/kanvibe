@@ -1,4 +1,4 @@
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { getTranslations } from "next-intl/server";
 import {
   getTaskById,
@@ -13,7 +13,7 @@ import { Link } from "@/i18n/navigation";
 export const dynamicConfig = "force-dynamic";
 
 interface TaskDetailPageProps {
-  params: Promise<{ id: string }>;
+  params: Promise<{ locale: string; id: string }>;
 }
 
 const STATUS_TRANSITIONS: { status: TaskStatus; labelKey: string }[] = [
@@ -31,7 +31,7 @@ const AGENT_TAG_STYLES: Record<string, string> = {
 };
 
 export default async function TaskDetailPage({ params }: TaskDetailPageProps) {
-  const { id } = await params;
+  const { locale, id } = await params;
   const task = await getTaskById(id);
   const t = await getTranslations("taskDetail");
 
@@ -48,6 +48,7 @@ export default async function TaskDetailPage({ params }: TaskDetailPageProps) {
   async function handleDelete() {
     "use server";
     await deleteTask(id);
+    redirect(`/${locale}`);
   }
 
   const agentTagStyle = task.agentType
