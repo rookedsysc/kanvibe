@@ -3,7 +3,10 @@
 import { revalidatePath } from "next/cache";
 import { getProjectRepository } from "@/lib/database";
 import { Project } from "@/entities/Project";
-import { validateGitRepo, getDefaultBranch, listBranches, scanGitRepos } from "@/lib/gitOperations";
+import { validateGitRepo, getDefaultBranch, listBranches, scanGitRepos, listWorktrees } from "@/lib/gitOperations";
+import { getTaskRepository } from "@/lib/database";
+import { TaskStatus, SessionType } from "@/entities/KanbanTask";
+import { isWindowAlive } from "@/lib/worktree";
 import path from "path";
 
 /** TypeORM 엔티티를 직렬화 가능한 plain object로 변환한다 */
@@ -79,6 +82,7 @@ export interface ScanResult {
   registered: string[];
   skipped: string[];
   errors: string[];
+  worktreeTasks: string[];
 }
 
 /**
@@ -89,7 +93,7 @@ export async function scanAndRegisterProjects(
   rootPath: string,
   sshHost?: string
 ): Promise<ScanResult> {
-  const result: ScanResult = { registered: [], skipped: [], errors: [] };
+  const result: ScanResult = { registered: [], skipped: [], errors: [], worktreeTasks: [] };
 
   const repoPaths = await scanGitRepos(rootPath, sshHost || null);
   if (repoPaths.length === 0) {
@@ -151,6 +155,52 @@ export async function scanAndRegisterProjects(
     } catch (error) {
       result.errors.push(
         `${repoPath}: ${error instanceof Error ? error.message : "등록 실패"}`
+      );
+    }
+  }
+
+  /** 등록된 모든 프로젝트의 worktree를 스캔하여 미등록 브랜치를 TODO task로 생성한다 */
+  const allProjects = await repo.find();
+  const taskRepo = await getTaskRepository();
+
+  for (const project of allProjects) {
+    try {
+      const worktrees = await listWorktrees(project.repoPath, project.sshHost);
+
+      for (const wt of worktrees) {
+        if (wt.isBare || !wt.branch) continue;
+
+        const existingTask = await taskRepo.findOneBy({ branchName: wt.branch });
+        if (existingTask) continue;
+
+        /** tmux 세션에 동일한 session-window가 있으면 연결 정보를 설정한다 */
+        const sessionName = path.basename(project.repoPath);
+        const windowName = wt.branch.replace(/\//g, "-");
+        const hasWindow = await isWindowAlive(
+          SessionType.TMUX,
+          sessionName,
+          windowName,
+          project.sshHost
+        );
+
+        const task = taskRepo.create({
+          title: wt.branch,
+          branchName: wt.branch,
+          worktreePath: wt.path,
+          projectId: project.id,
+          status: hasWindow ? TaskStatus.PROGRESS : TaskStatus.TODO,
+          ...(hasWindow && {
+            sessionType: SessionType.TMUX,
+            sessionName,
+            sshHost: project.sshHost,
+          }),
+        });
+        await taskRepo.save(task);
+        result.worktreeTasks.push(wt.branch);
+      }
+    } catch (error) {
+      result.errors.push(
+        `${project.name} worktree 스캔 실패: ${error instanceof Error ? error.message : "알 수 없는 오류"}`
       );
     }
   }

@@ -161,4 +161,53 @@ export async function scanGitRepos(
   }
 }
 
+export interface WorktreeInfo {
+  path: string;
+  branch: string;
+  isBare: boolean;
+}
+
+/** 프로젝트의 git worktree 목록을 조회한다 (bare worktree 포함) */
+export async function listWorktrees(
+  repoPath: string,
+  sshHost?: string | null
+): Promise<WorktreeInfo[]> {
+  try {
+    const output = await execGit(
+      `git -C "${repoPath}" worktree list --porcelain`,
+      sshHost
+    );
+
+    if (!output) return [];
+
+    const worktrees: WorktreeInfo[] = [];
+    const blocks = output.split("\n\n").filter(Boolean);
+
+    for (const block of blocks) {
+      const lines = block.split("\n");
+      let worktreePath = "";
+      let branch = "";
+      let isBare = false;
+
+      for (const line of lines) {
+        if (line.startsWith("worktree ")) {
+          worktreePath = line.replace("worktree ", "");
+        } else if (line.startsWith("branch ")) {
+          branch = line.replace("branch refs/heads/", "");
+        } else if (line === "bare") {
+          isBare = true;
+        }
+      }
+
+      if (worktreePath) {
+        worktrees.push({ path: worktreePath, branch, isBare });
+      }
+    }
+
+    return worktrees;
+  } catch {
+    return [];
+  }
+}
+
 export { execGit };

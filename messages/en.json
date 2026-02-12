@@ -72,6 +72,7 @@
     "errors": "Errors",
     "errorsSuffix": "",
     "registeredCount": "{count} projects registered",
+    "worktreeTasksRegistered": "{count} worktrees registered as TODO",
     "noNewProjects": "No new projects to register.",
     "noGitRepos": "No git repositories found.",
     "scanPathRequired": "Please enter the directory path to scan.",
