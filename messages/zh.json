@@ -35,6 +35,7 @@
     "descriptionPlaceholder": "任务描述（可选）",
     "project": "项目",
     "projectSelect": "选择项目",
+    "projectSearch": "搜索项目...",
     "baseBranch": "基础分支",
     "branchName": "分支名称",
     "branchPlaceholder": "feat/my-feature",

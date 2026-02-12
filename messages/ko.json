@@ -35,6 +35,7 @@
     "descriptionPlaceholder": "작업 설명 (선택)",
     "project": "프로젝트",
     "projectSelect": "프로젝트 선택",
+    "projectSearch": "프로젝트 검색...",
     "baseBranch": "베이스 브랜치",
     "branchName": "브랜치 이름",
     "branchPlaceholder": "feat/my-feature",

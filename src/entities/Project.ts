@@ -27,6 +27,9 @@ export class Project {
   @Column({ name: "ssh_host", type: "varchar", length: 255, nullable: true })
   sshHost!: string | null;
 
+  @Column({ name: "is_worktree", type: "boolean", default: false })
+  isWorktree!: boolean;
+
   @CreateDateColumn({ name: "created_at" })
   createdAt!: Date;
 }

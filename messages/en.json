@@ -35,6 +35,7 @@
     "descriptionPlaceholder": "Task description (optional)",
     "project": "Project",
     "projectSelect": "Select project",
+    "projectSearch": "Search project...",
     "baseBranch": "Base branch",
     "branchName": "Branch name",
     "branchPlaceholder": "feat/my-feature",
