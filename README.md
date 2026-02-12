@@ -22,12 +22,9 @@ cp .env.example .env
 
 | 변수 | 설명 | 기본값 |
 |------|------|--------|
-| `DATABASE_URL` | PostgreSQL 접속 URL | `postgresql://kanvibe:kanvibe@localhost:5432/kanvibe` |
+| `PORT` | 웹 서버 포트 번호 | `4885` |
 | `KANVIBE_USER` | 로그인 사용자명 | `admin` |
 | `KANVIBE_PASSWORD` | 로그인 비밀번호 | (필수 변경) |
-| `KANVIBE_API_TOKEN` | Hook API 인증 토큰 | (필수 변경) |
-| `KANVIBE_SESSION_SECRET` | 세션 암호화 시크릿 | (필수 변경) |
-| `GIT_REPO_PATH` | git 저장소 경로 (worktree 생성 기준) | `.` |
 
 ### Docker Compose 실행
 
@@ -35,7 +32,7 @@ cp .env.example .env
 docker compose up -d
 ```
 
-브라우저에서 `http://localhost:3000` 접속.
+브라우저에서 `http://localhost:4885` 접속.
 
 ### 로컬 개발
 
@@ -53,8 +50,7 @@ npm run dev
 ### 작업 시작
 
 ```bash
-curl -X POST http://localhost:3000/api/hooks/start \
-  -H "Authorization: Bearer YOUR_API_TOKEN" \
+curl -X POST http://localhost:4885/api/hooks/start \
   -H "Content-Type: application/json" \
   -d '{
     "title": "feature/user-auth 구현",
@@ -67,8 +63,7 @@ curl -X POST http://localhost:3000/api/hooks/start \
 ### 작업 업데이트
 
 ```bash
-curl -X POST http://localhost:3000/api/hooks/update \
-  -H "Authorization: Bearer YOUR_API_TOKEN" \
+curl -X POST http://localhost:4885/api/hooks/update \
   -H "Content-Type: application/json" \
   -d '{
     "id": "task-uuid",
@@ -80,8 +75,7 @@ curl -X POST http://localhost:3000/api/hooks/update \
 ### 작업 완료
 
 ```bash
-curl -X POST http://localhost:3000/api/hooks/complete \
-  -H "Authorization: Bearer YOUR_API_TOKEN" \
+curl -X POST http://localhost:4885/api/hooks/complete \
   -H "Content-Type: application/json" \
   -d '{ "id": "task-uuid" }'
 ```
@@ -96,7 +90,7 @@ curl -X POST http://localhost:3000/api/hooks/complete \
     "PreToolUse": [
       {
         "matcher": "Bash",
-        "command": "curl -s -X POST http://YOUR_KANVIBE_HOST:3000/api/hooks/start -H 'Authorization: Bearer YOUR_TOKEN' -H 'Content-Type: application/json' -d '{\"title\": \"Claude Code 작업\", \"agentType\": \"claude\"}'"
+        "command": "curl -s -X POST http://YOUR_KANVIBE_HOST:4885/api/hooks/start -H 'Content-Type: application/json' -d '{\"title\": \"Claude Code 작업\", \"agentType\": \"claude\"}'"
       }
     ]
   }

@@ -9,7 +9,7 @@ const SESSION_COOKIE = "kanvibe_session";
  * Turbopack 워커와 메인 프로세스 간 상태 공유 문제를 우회한다.
  */
 function getSecret(): string {
-  return process.env.KANVIBE_SESSION_SECRET || process.env.KANVIBE_PASSWORD || "kanvibe-default-secret";
+  return process.env.KANVIBE_PASSWORD || "kanvibe-default-secret";
 }
 
 /** 토큰에 HMAC 서명을 붙여 반환한다 */
@@ -76,14 +76,6 @@ export function validateSessionFromCookie(cookieHeader: string): boolean {
   if (!match) return false;
   return verifySignedToken(decodeURIComponent(match[1])) !== null;
 }
-
-/** Hook API용 Bearer 토큰을 검증한다 */
-export function validateApiToken(authHeader: string | null): boolean {
-  if (!authHeader?.startsWith("Bearer ")) return false;
-  const token = authHeader.slice(7);
-  return token === process.env.KANVIBE_API_TOKEN;
-}
-
 /** 세션 쿠키를 제거한다 */
 export async function destroySession(): Promise<void> {
   const cookieStore = await cookies();

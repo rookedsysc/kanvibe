@@ -14,7 +14,7 @@ const globalForDb = globalThis as unknown as {
 function createDataSource(): DataSource {
   return new DataSource({
     type: "postgres",
-    url: process.env.DATABASE_URL,
+    url: "postgresql://kanvibe:kanvibe@localhost:5432/kanvibe",
     entities: [KanbanTask, Project],
     synchronize: true,
     logging: process.env.NODE_ENV !== "production",

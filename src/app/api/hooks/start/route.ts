@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import { validateApiToken } from "@/lib/auth";
 import { getTaskRepository } from "@/lib/database";
 import { KanbanTask, TaskStatus, SessionType } from "@/entities/KanbanTask";
 import { createWorktreeWithSession } from "@/lib/worktree";
@@ -10,14 +9,6 @@ import { getProjectRepository } from "@/lib/database";
  * AI 에이전트가 작업을 시작할 때 호출하여 progress 카드를 자동 생성한다.
  */
 export async function POST(request: NextRequest) {
-  const authHeader = request.headers.get("authorization");
-  if (!validateApiToken(authHeader)) {
-    return NextResponse.json(
-      { success: false, error: "인증 실패" },
-      { status: 401 }
-    );
-  }
-
   try {
     const body = await request.json();
     const { title, branchName, agentType, sessionType, sshHost, projectId, baseBranch } = body;
