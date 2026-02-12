@@ -7,6 +7,10 @@
     "build": "next build",
     "start": "node boot.js",
     "lint": "eslint",
+    "typeorm": "tsx node_modules/typeorm/cli.js -d src/lib/typeorm-cli.config.ts",
+    "migration:generate": "npm run typeorm migration:generate",
+    "migration:run": "npm run typeorm migration:run",
+    "migration:revert": "npm run typeorm migration:revert",
     "postinstall": "chmod +x node_modules/node-pty/prebuilds/darwin-arm64/spawn-helper 2>/dev/null || true"
   },
   "dependencies": {

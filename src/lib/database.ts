@@ -1,7 +1,8 @@
 import "reflect-metadata";
-import { DataSource, type Repository } from "typeorm";
+import { DataSource, type ObjectLiteral, type Repository } from "typeorm";
 import { KanbanTask } from "@/entities/KanbanTask";
 import { Project } from "@/entities/Project";
+import { InitialSchema1770854400000 } from "@/migrations/1770854400000-InitialSchema";
 
 /**
  * TypeORM DataSource 싱글턴.
@@ -16,7 +17,8 @@ function createDataSource(): DataSource {
     type: "postgres",
     url: "postgresql://kanvibe:kanvibe@localhost:5432/kanvibe",
     entities: [KanbanTask, Project],
-    synchronize: true,
+    migrations: [InitialSchema1770854400000],
+    synchronize: false,
     logging: process.env.NODE_ENV !== "production",
   });
 }
@@ -33,15 +35,28 @@ export async function getDataSource(): Promise<DataSource> {
 }
 
 /**
- * KanbanTask 리포지토리를 반환한다.
- * 엔티티 이름 문자열로 조회하여 tsx/cjs와 Turbopack 간 모듈 인스턴스 차이를 우회한다.
+ * 테이블 이름으로 엔티티 메타데이터를 찾아 리포지토리를 반환한다.
+ * 프로덕션 빌드에서 SWC가 클래스명을 minify하면 문자열 조회("KanbanTask")가 실패하고,
+ * tsx/cjs와 Turbopack 간 모듈 인스턴스가 다르면 클래스 참조 조회도 실패한다.
+ * 테이블 이름은 @Entity 데코레이터의 문자열 리터럴이므로 양쪽 모두에서 안전하다.
  */
+function getRepositoryByTable<T extends ObjectLiteral>(ds: DataSource, tableName: string): Repository<T> {
+  const metadata = ds.entityMetadatas.find((m) => m.tableName === tableName);
+  if (!metadata) {
+    const available = ds.entityMetadatas.map((m) => m.tableName).join(", ");
+    throw new Error(
+      `Entity metadata not found for table "${tableName}". Available tables: [${available}]`,
+    );
+  }
+  return ds.getRepository(metadata.target) as Repository<T>;
+}
+
 export async function getTaskRepository(): Promise<Repository<KanbanTask>> {
   const ds = await getDataSource();
-  return ds.getRepository("KanbanTask") as Repository<KanbanTask>;
+  return getRepositoryByTable<KanbanTask>(ds, "kanban_tasks");
 }
 
 export async function getProjectRepository(): Promise<Repository<Project>> {
   const ds = await getDataSource();
-  return ds.getRepository("Project") as Repository<Project>;
+  return getRepositoryByTable<Project>(ds, "projects");
 }

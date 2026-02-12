@@ -35,6 +35,48 @@ Google 브랜드 컬러 (#4285F4, #EA4335, #FBBC05, #34A853) 기반 + 블랙&화
 2. `src/app/globals.css`의 `:root`에 CSS 변수 추가
 3. `@theme inline` 블록에 Tailwind 등록
 
+## Database Migration
+
+TypeORM migration 기반 스키마 관리. `synchronize`는 비활성화되어 있으며, 모든 스키마 변경은 migration으로 수행한다.
+
+### 파일 구조
+
+- `src/lib/typeorm-cli.config.ts` — CLI 전용 DataSource 설정 (migration generate/run/revert)
+- `src/lib/database.ts` — 앱 런타임 DataSource 설정 (`migrationsRun: true`로 자동 실행)
+- `src/migrations/*.ts` — 마이그레이션 파일 (타임스탬프 기반 정렬)
+
+### 스키마 변경 시
+
+1. `src/entities/`에서 엔티티 수정
+2. `npm run migration:generate -- src/migrations/DescriptiveName` 실행 (DB 실행 상태 필요)
+3. 생성된 마이그레이션 파일의 SQL 검토
+4. `src/lib/database.ts`의 `migrations` 배열에 새 마이그레이션 클래스 import 추가
+5. `npm run migration:run`으로 적용
+
+### 주요 명령어
+
+```bash
+# 엔티티 변경 기반 마이그레이션 생성
+npm run migration:generate -- src/migrations/AddColumnName
+
+# 마이그레이션 실행
+npm run migration:run
+
+# 마지막 마이그레이션 롤백
+npm run migration:revert
+```
+
+### 주의사항
+
+- `synchronize: true` 사용 금지 (프로덕션 데이터 손실 위험)
+- 마이그레이션 파일은 생성 후 수정하지 않는다 (이미 실행된 환경과 불일치 발생)
+- 새 마이그레이션 생성 시 반드시 `database.ts`의 `migrations` 배열에 추가한다
+- 기존 DB 전환: `migrations` 테이블에 초기 마이그레이션 레코드를 수동 삽입한다
+
+```sql
+INSERT INTO migrations (timestamp, name) VALUES (1770854400000, 'InitialSchema1770854400000');
+```
+
 ## 국제화 (i18n)
 
 next-intl 기반. 지원 언어: 한국어(ko), 영어(en), 중국어(zh). 기본 언어: ko.

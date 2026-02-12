@@ -29,6 +29,14 @@
 - Pages: `src/app/[locale]/page.tsx`, `src/app/[locale]/login/page.tsx`, `src/app/[locale]/task/[id]/page.tsx`
 - Components: `src/components/Board.tsx` (main), Column, TaskCard, CreateTaskModal, BranchTaskModal, ProjectSettings, TaskContextMenu, TaskStatusBadge, Terminal, TerminalLoader
 
+## Database Migration
+- TypeORM migration 기반 스키마 관리 (`synchronize: false`)
+- CLI 설정: `src/lib/typeorm-cli.config.ts` (tsx 기반, 상대 경로 사용)
+- 앱 설정: `src/lib/database.ts` (`migrationsRun: true`로 자동 실행)
+- 마이그레이션 파일: `src/migrations/*.ts`
+- 새 마이그레이션 생성 시 `database.ts`의 `migrations` 배열에 import 추가 필수
+- 스크립트: `migration:generate`, `migration:run`, `migration:revert`
+
 ## Conventions
 - Korean comments (CODE_PRINCIPLES.md)
 - UTF-8 heredoc for Korean content files (FILE_WRITE_PRINCIPLES.md)
