@@ -10,5 +10,9 @@ interface TerminalLoaderProps {
 
 /** xterm.js는 SSR 불가이므로 Client Component에서 dynamic import한다 */
 export default function TerminalLoader({ taskId }: TerminalLoaderProps) {
-  return <Terminal taskId={taskId} />;
+  return (
+    <div className="h-full">
+      <Terminal taskId={taskId} />
+    </div>
+  );
 }
