@@ -53,7 +53,11 @@ export async function attachLocalSession(
     cols: 120,
     rows: 30,
     cwd: process.env.HOME || "/",
-    env: process.env as Record<string, string>,
+    env: {
+      ...process.env,
+      LANG: process.env.LANG || "en_US.UTF-8",
+      LC_ALL: process.env.LC_ALL || "en_US.UTF-8",
+    } as Record<string, string>,
   });
 
   activeTerminals.set(taskId, { pty: ptyProcess, ws });
