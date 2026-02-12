@@ -203,3 +203,14 @@ body {
   color: var(--color-text-primary);
   font-family: var(--font-sans);
 }
+
+/* xterm 터미널이 컨테이너를 꽉 채우도록 강제 */
+.xterm {
+  height: 100%;
+}
+.xterm-viewport {
+  height: 100% !important;
+}
+.xterm-screen {
+  height: 100%;
+}

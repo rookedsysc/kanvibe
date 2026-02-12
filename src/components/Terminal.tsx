@@ -39,7 +39,9 @@ export default function Terminal({ taskId }: TerminalProps) {
     term.loadAddon(fitAddon);
     term.loadAddon(new WebLinksAddon());
     term.open(terminalRef.current);
-    fitAddon.fit();
+
+    /** 레이아웃 계산 완료 후 초기 fit 실행 */
+    requestAnimationFrame(() => fitAddon.fit());
 
     xtermRef.current = term;
 
@@ -87,11 +89,12 @@ export default function Terminal({ taskId }: TerminalProps) {
       }
     });
 
-    const handleWindowResize = () => fitAddon.fit();
-    window.addEventListener("resize", handleWindowResize);
+    /** 컨테이너 크기 변경을 직접 감지하여 터미널 재적용 */
+    const resizeObserver = new ResizeObserver(() => fitAddon.fit());
+    resizeObserver.observe(terminalRef.current);
 
     return () => {
-      window.removeEventListener("resize", handleWindowResize);
+      resizeObserver.disconnect();
       ws.close();
       term.dispose();
     };
