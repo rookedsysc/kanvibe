@@ -18,9 +18,10 @@ export async function createWorktreeWithSession(
   sessionType: SessionType,
   sshHost?: string | null
 ): Promise<WorktreeSession> {
-  const worktreeDir = `kanvibe-${branchName.replace(/\//g, "-")}`;
-  const worktreePath = path.posix.join(path.dirname(projectPath), worktreeDir);
-  const sessionName = `kanvibe-${branchName.replace(/\//g, "-")}`;
+  const projectName = path.basename(projectPath);
+  const worktreeBase = path.posix.join(path.dirname(projectPath), `${projectName}__worktrees`);
+  const worktreePath = path.posix.join(worktreeBase, branchName.replace(/\//g, "-"));
+  const sessionName = `${projectName}-${branchName.replace(/\//g, "-")}`;
 
   await execGit(
     `git -C "${projectPath}" worktree add "${worktreePath}" -b "${branchName}" "${baseBranch}"`,
