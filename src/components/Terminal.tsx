@@ -25,6 +25,7 @@ export default function Terminal({ taskId }: TerminalProps) {
     const { Unicode11Addon } = await import("@xterm/addon-unicode11");
 
     const term = new Terminal({
+      allowProposedApi: true,
       cursorBlink: true,
       fontSize: 14,
       fontFamily: "'Geist Mono', 'Fira Code', monospace",
