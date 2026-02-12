@@ -83,12 +83,21 @@
   },
   "taskDetail": {
     "backToBoard": "返回看板",
-    "moveToTodo": "移至待办",
-    "moveToProgress": "移至进行中",
-    "moveToReview": "移至审核",
-    "moveToDone": "移至完成",
+    "moveToTodo": "待办",
+    "moveToProgress": "进行中",
+    "moveToReview": "审核",
+    "moveToDone": "完成",
     "delete": "删除",
     "terminal": "终端",
-    "noTerminal": "此任务没有关联的终端会话。"
+    "noTerminal": "此任务没有关联的终端会话。",
+    "info": "任务信息",
+    "branch": "分支",
+    "agent": "代理",
+    "session": "会话",
+    "sshHost": "SSH 主机",
+    "createdAt": "创建时间",
+    "updatedAt": "更新时间",
+    "actions": "状态变更",
+    "deleteConfirm": "确定要删除此任务吗？"
   }
 }

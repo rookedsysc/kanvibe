@@ -1,6 +1,10 @@
 import { notFound } from "next/navigation";
 import { getTranslations } from "next-intl/server";
-import { getTaskById, updateTaskStatus, deleteTask } from "@/app/actions/kanban";
+import {
+  getTaskById,
+  updateTaskStatus,
+  deleteTask,
+} from "@/app/actions/kanban";
 import { TaskStatus } from "@/entities/KanbanTask";
 import TaskStatusBadge from "@/components/TaskStatusBadge";
 import TerminalLoader from "@/components/TerminalLoader";
@@ -12,6 +16,20 @@ interface TaskDetailPageProps {
   params: Promise<{ id: string }>;
 }
 
+const STATUS_TRANSITIONS: { status: TaskStatus; labelKey: string }[] = [
+  { status: TaskStatus.TODO, labelKey: "moveToTodo" },
+  { status: TaskStatus.PROGRESS, labelKey: "moveToProgress" },
+  { status: TaskStatus.REVIEW, labelKey: "moveToReview" },
+  { status: TaskStatus.DONE, labelKey: "moveToDone" },
+];
+
+/** 에이전트 타입별 태그 스타일 매핑 */
+const AGENT_TAG_STYLES: Record<string, string> = {
+  claude: "bg-tag-claude-bg text-tag-claude-text",
+  gemini: "bg-tag-gemini-bg text-tag-gemini-text",
+  codex: "bg-tag-codex-bg text-tag-codex-text",
+};
+
 export default async function TaskDetailPage({ params }: TaskDetailPageProps) {
   const { id } = await params;
   const task = await getTaskById(id);
@@ -20,13 +38,6 @@ export default async function TaskDetailPage({ params }: TaskDetailPageProps) {
   if (!task) notFound();
 
   const hasTerminal = task.sessionType && task.sessionName;
-
-  const STATUS_TRANSITIONS: { status: TaskStatus; labelKey: string }[] = [
-    { status: TaskStatus.TODO, labelKey: "moveToTodo" },
-    { status: TaskStatus.PROGRESS, labelKey: "moveToProgress" },
-    { status: TaskStatus.REVIEW, labelKey: "moveToReview" },
-    { status: TaskStatus.DONE, labelKey: "moveToDone" },
-  ];
 
   async function handleStatusChange(formData: FormData) {
     "use server";
@@ -39,91 +50,178 @@ export default async function TaskDetailPage({ params }: TaskDetailPageProps) {
     await deleteTask(id);
   }
 
+  const agentTagStyle = task.agentType
+    ? AGENT_TAG_STYLES[task.agentType] ?? "bg-tag-neutral-bg text-tag-neutral-text"
+    : null;
+
   return (
-    <div className="h-screen flex flex-col">
-      <header className="flex items-center gap-4 px-6 py-4 border-b border-border-default bg-bg-surface shrink-0">
+    <div className="h-screen flex flex-col bg-bg-page">
+      {/* 헤더 */}
+      <header className="flex items-center justify-between px-6 py-3 border-b border-border-default bg-bg-surface shrink-0">
         <Link
           href="/"
-          className="text-text-secondary hover:text-text-primary transition-colors"
+          className="flex items-center gap-2 text-sm text-text-secondary hover:text-text-primary transition-colors"
         >
-          &larr; {t("backToBoard")}
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 16 16"
+            fill="none"
+            className="shrink-0"
+          >
+            <path
+              d="M10 12L6 8L10 4"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+          {t("backToBoard")}
         </Link>
+
+        <div className="flex items-center gap-2">
+          <form action={handleDelete}>
+            <button
+              type="submit"
+              className="px-3 py-1.5 text-xs bg-red-50 hover:bg-red-100 text-status-error rounded-md transition-colors"
+            >
+              {t("delete")}
+            </button>
+          </form>
+        </div>
       </header>
 
-      <main className="flex-1 flex flex-col min-h-0 p-4">
-        <div className="flex items-start justify-between mb-4 shrink-0">
-          <div>
-            <div className="flex items-center gap-3 mb-2">
-              <h1 className="text-2xl font-bold text-text-primary">
-                {task.title}
-              </h1>
+      {/* 메인 콘텐츠: 사이드바 + 터미널 2패널 */}
+      <div className="flex-1 flex flex-col lg:flex-row min-h-0 p-4 gap-4">
+        {/* 사이드바 - 작업 정보 */}
+        <aside className="lg:w-80 shrink-0 flex flex-col gap-4 lg:overflow-y-auto">
+          {/* 제목 + 상태 카드 */}
+          <div className="bg-bg-surface rounded-lg p-5 shadow-sm border border-border-default">
+            <div className="flex items-center gap-2 mb-3">
               <TaskStatusBadge status={task.status} />
             </div>
-
+            <h1 className="text-xl font-bold text-text-primary leading-tight">
+              {task.title}
+            </h1>
             {task.description && (
-              <p className="text-text-secondary mt-2">{task.description}</p>
+              <p className="text-sm text-text-secondary mt-3 leading-relaxed">
+                {task.description}
+              </p>
             )}
+          </div>
 
-            <div className="flex flex-wrap gap-3 mt-4 text-sm text-text-secondary">
+          {/* 메타데이터 카드 */}
+          <div className="bg-bg-surface rounded-lg p-5 shadow-sm border border-border-default">
+            <h3 className="text-xs font-semibold text-text-muted uppercase tracking-wider mb-4">
+              {t("info")}
+            </h3>
+            <dl className="space-y-3">
               {task.branchName && (
-                <span className="font-mono bg-tag-branch-bg text-tag-branch-text px-2 py-1 rounded-md">
-                  {task.branchName}
-                </span>
+                <div className="flex items-start justify-between gap-2">
+                  <dt className="text-xs text-text-muted shrink-0">
+                    {t("branch")}
+                  </dt>
+                  <dd className="text-xs font-mono bg-tag-branch-bg text-tag-branch-text px-2 py-0.5 rounded text-right truncate max-w-[180px]">
+                    {task.branchName}
+                  </dd>
+                </div>
               )}
               {task.agentType && (
-                <span>Agent: {task.agentType}</span>
+                <div className="flex items-center justify-between gap-2">
+                  <dt className="text-xs text-text-muted">{t("agent")}</dt>
+                  <dd
+                    className={`text-xs px-2 py-0.5 rounded-full font-medium ${agentTagStyle}`}
+                  >
+                    {task.agentType}
+                  </dd>
+                </div>
               )}
               {task.sessionType && (
-                <span>Session: {task.sessionType}</span>
+                <div className="flex items-center justify-between gap-2">
+                  <dt className="text-xs text-text-muted">{t("session")}</dt>
+                  <dd className="text-xs bg-tag-session-bg text-tag-session-text px-2 py-0.5 rounded-full">
+                    {task.sessionType}
+                  </dd>
+                </div>
               )}
-              {task.sshHost && <span>SSH: {task.sshHost}</span>}
-            </div>
+              {task.sshHost && (
+                <div className="flex items-center justify-between gap-2">
+                  <dt className="text-xs text-text-muted">{t("sshHost")}</dt>
+                  <dd className="text-xs font-mono bg-tag-ssh-bg text-tag-ssh-text px-2 py-0.5 rounded">
+                    {task.sshHost}
+                  </dd>
+                </div>
+              )}
+              <div className="border-t border-border-subtle pt-3 mt-3">
+                <div className="flex items-center justify-between gap-2 mb-2">
+                  <dt className="text-xs text-text-muted">{t("createdAt")}</dt>
+                  <dd className="text-xs text-text-secondary">
+                    {new Date(task.createdAt).toLocaleDateString()}
+                  </dd>
+                </div>
+                <div className="flex items-center justify-between gap-2">
+                  <dt className="text-xs text-text-muted">{t("updatedAt")}</dt>
+                  <dd className="text-xs text-text-secondary">
+                    {new Date(task.updatedAt).toLocaleDateString()}
+                  </dd>
+                </div>
+              </div>
+            </dl>
           </div>
 
-          <div className="flex items-center gap-2">
-            {STATUS_TRANSITIONS.filter(
-              (transition) => transition.status !== task.status
-            ).map((transition) => (
-              <form key={transition.status} action={handleStatusChange}>
-                <input
-                  type="hidden"
-                  name="status"
-                  value={transition.status}
-                />
-                <button
-                  type="submit"
-                  className="px-3 py-1.5 text-xs bg-bg-surface border border-border-default hover:border-border-strong text-text-secondary rounded-md transition-colors"
-                >
-                  {t(transition.labelKey)}
-                </button>
-              </form>
-            ))}
-            <form action={handleDelete}>
-              <button
-                type="submit"
-                className="px-3 py-1.5 text-xs bg-red-50 hover:bg-red-100 text-status-error rounded-md transition-colors"
-              >
-                {t("delete")}
-              </button>
-            </form>
-          </div>
-        </div>
-
-        {hasTerminal ? (
-          <div className="flex-1 flex flex-col min-h-0">
-            <h2 className="text-lg font-semibold mb-3 text-text-primary shrink-0">
-              {t("terminal")}
-            </h2>
-            <div className="flex-1 min-h-0">
-              <TerminalLoader taskId={task.id} />
+          {/* 상태 변경 카드 */}
+          <div className="bg-bg-surface rounded-lg p-5 shadow-sm border border-border-default">
+            <h3 className="text-xs font-semibold text-text-muted uppercase tracking-wider mb-3">
+              {t("actions")}
+            </h3>
+            <div className="flex flex-wrap gap-2">
+              {STATUS_TRANSITIONS.filter(
+                (transition) => transition.status !== task.status
+              ).map((transition) => (
+                <form key={transition.status} action={handleStatusChange}>
+                  <input
+                    type="hidden"
+                    name="status"
+                    value={transition.status}
+                  />
+                  <button
+                    type="submit"
+                    className="px-3 py-1.5 text-xs bg-bg-page border border-border-default hover:border-brand-primary hover:text-text-brand text-text-secondary rounded-md transition-colors"
+                  >
+                    {t(transition.labelKey)}
+                  </button>
+                </form>
+              ))}
             </div>
           </div>
-        ) : (
-          <div className="text-center py-20 text-text-muted border border-dashed border-border-default rounded-xl">
-            {t("noTerminal")}
-          </div>
-        )}
-      </main>
+        </aside>
+
+        {/* 터미널 영역 */}
+        <main className="flex-1 flex flex-col min-h-0 min-w-0">
+          {hasTerminal ? (
+            <div className="flex-1 flex flex-col min-h-0 rounded-lg overflow-hidden shadow-md">
+              {/* macOS 스타일 윈도우 크롬 */}
+              <div className="bg-terminal-chrome flex items-center gap-2 px-4 py-2.5 shrink-0">
+                <span className="w-3 h-3 rounded-full bg-traffic-close" />
+                <span className="w-3 h-3 rounded-full bg-traffic-minimize" />
+                <span className="w-3 h-3 rounded-full bg-traffic-maximize" />
+                <span className="ml-3 text-xs text-terminal-text font-mono truncate">
+                  {task.sessionName ?? t("terminal")}
+                </span>
+              </div>
+              {/* 터미널 본체 */}
+              <div className="flex-1 min-h-0 bg-terminal-bg">
+                <TerminalLoader taskId={task.id} />
+              </div>
+            </div>
+          ) : (
+            <div className="flex-1 flex items-center justify-center border border-dashed border-border-default rounded-lg bg-bg-surface">
+              <p className="text-text-muted text-sm">{t("noTerminal")}</p>
+            </div>
+          )}
+        </main>
+      </div>
     </div>
   );
 }

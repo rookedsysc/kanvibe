@@ -83,12 +83,21 @@
   },
   "taskDetail": {
     "backToBoard": "보드로 돌아가기",
-    "moveToTodo": "Todo로 이동",
-    "moveToProgress": "Progress로 이동",
-    "moveToReview": "Review로 이동",
-    "moveToDone": "Done으로 이동",
+    "moveToTodo": "Todo",
+    "moveToProgress": "Progress",
+    "moveToReview": "Review",
+    "moveToDone": "Done",
     "delete": "삭제",
     "terminal": "터미널",
-    "noTerminal": "이 작업에는 연결된 터미널 세션이 없습니다."
+    "noTerminal": "이 작업에는 연결된 터미널 세션이 없습니다.",
+    "info": "작업 정보",
+    "branch": "브랜치",
+    "agent": "에이전트",
+    "session": "세션",
+    "sshHost": "SSH 호스트",
+    "createdAt": "생성일",
+    "updatedAt": "수정일",
+    "actions": "상태 변경",
+    "deleteConfirm": "이 작업을 삭제하시겠습니까?"
   }
 }

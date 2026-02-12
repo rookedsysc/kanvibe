@@ -83,12 +83,21 @@
   },
   "taskDetail": {
     "backToBoard": "Back to Board",
-    "moveToTodo": "Move to Todo",
-    "moveToProgress": "Move to Progress",
-    "moveToReview": "Move to Review",
-    "moveToDone": "Move to Done",
+    "moveToTodo": "Todo",
+    "moveToProgress": "Progress",
+    "moveToReview": "Review",
+    "moveToDone": "Done",
     "delete": "Delete",
     "terminal": "Terminal",
-    "noTerminal": "No terminal session connected to this task."
+    "noTerminal": "No terminal session connected to this task.",
+    "info": "Task Info",
+    "branch": "Branch",
+    "agent": "Agent",
+    "session": "Session",
+    "sshHost": "SSH Host",
+    "createdAt": "Created",
+    "updatedAt": "Updated",
+    "actions": "Change Status",
+    "deleteConfirm": "Are you sure you want to delete this task?"
   }
 }
