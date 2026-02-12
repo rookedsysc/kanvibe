@@ -4,6 +4,7 @@ import {
   getTaskById,
   updateTaskStatus,
   deleteTask,
+  fetchAndSavePrUrl,
 } from "@/app/actions/kanban";
 import { TaskStatus } from "@/entities/KanbanTask";
 import TaskStatusBadge from "@/components/TaskStatusBadge";
@@ -36,6 +37,12 @@ export default async function TaskDetailPage({ params }: TaskDetailPageProps) {
   const t = await getTranslations("taskDetail");
 
   if (!task) notFound();
+
+  /* 브랜치가 있고 PR URL이 아직 없으면 자동 조회 */
+  if (task.branchName && !task.prUrl) {
+    const prUrl = await fetchAndSavePrUrl(task.id);
+    if (prUrl) task.prUrl = prUrl;
+  }
 
   const hasTerminal = task.sessionType && task.sessionName;
 
@@ -125,6 +132,27 @@ export default async function TaskDetailPage({ params }: TaskDetailPageProps) {
                   </dt>
                   <dd className="text-xs font-mono bg-tag-branch-bg text-tag-branch-text px-2 py-0.5 rounded text-right truncate max-w-[180px]">
                     {task.branchName}
+                  </dd>
+                </div>
+              )}
+              {task.prUrl && (
+                <div className="flex items-center justify-between gap-2">
+                  <dt className="text-xs text-text-muted">{t("prLink")}</dt>
+                  <dd>
+                    <a
+                      href={task.prUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 text-xs bg-tag-pr-bg text-tag-pr-text px-2 py-0.5 rounded hover:opacity-80 transition-opacity"
+                    >
+                      <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
+                        <path d="M7.177 3.073L9.573.677A.25.25 0 0110 .854v4.792a.25.25 0 01-.427.177L7.177 3.427a.25.25 0 010-.354zM3.75 2.5a.75.75 0 100 1.5.75.75 0 000-1.5zm-2.25.75a2.25 2.25 0 113 2.122v5.256a2.251 2.251 0 11-1.5 0V5.372A2.25 2.25 0 011.5 3.25zM11 2.5h-1V4h1a1 1 0 011 1v5.628a2.251 2.251 0 101.5 0V5A2.5 2.5 0 0011 2.5zm1 10.25a.75.75 0 111.5 0 .75.75 0 01-1.5 0zM3.75 12a.75.75 0 100 1.5.75.75 0 000-1.5z"/>
+                      </svg>
+                      PR
+                      <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+                        <path d="M4 12L12 4M12 4H6M12 4v6" strokeLinecap="round" strokeLinejoin="round"/>
+                      </svg>
+                    </a>
                   </dd>
                 </div>
               )}

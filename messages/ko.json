@@ -97,6 +97,7 @@
     "sshHost": "SSH 호스트",
     "createdAt": "생성일",
     "updatedAt": "수정일",
+    "prLink": "PR 링크",
     "actions": "상태 변경",
     "deleteConfirm": "이 작업을 삭제하시겠습니까?"
   }
