@@ -110,6 +110,14 @@
   --color-traffic-minimize: #ffbd2e;
   --color-traffic-maximize: #27c93f;
 
+  /* Terminal Chrome */
+  --color-terminal-chrome: #1e1e1e;
+  --color-terminal-bg: #0a0a0a;
+  --color-terminal-text: #9ca3af;
+  --color-traffic-close: #ff5f56;
+  --color-traffic-minimize: #ffbd2e;
+  --color-traffic-maximize: #27c93f;
+
   /* Shadows */
   --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.05);
   --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.08), 0 1px 2px rgba(0, 0, 0, 0.04);
@@ -182,6 +190,14 @@
   --color-tag-neutral-text: var(--color-tag-neutral-text);
   --color-tag-pr-bg: var(--color-tag-pr-bg);
   --color-tag-pr-text: var(--color-tag-pr-text);
+
+  /* Terminal Chrome */
+  --color-terminal-chrome: var(--color-terminal-chrome);
+  --color-terminal-bg: var(--color-terminal-bg);
+  --color-terminal-text: var(--color-terminal-text);
+  --color-traffic-close: var(--color-traffic-close);
+  --color-traffic-minimize: var(--color-traffic-minimize);
+  --color-traffic-maximize: var(--color-traffic-maximize);
 
   /* Terminal Chrome */
   --color-terminal-chrome: var(--color-terminal-chrome);
