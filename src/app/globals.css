@@ -95,6 +95,8 @@
   --color-tag-session-text: var(--blue-600);
   --color-tag-ssh-bg: var(--green-50);
   --color-tag-ssh-text: var(--green-600);
+  --color-tag-project-bg: var(--yellow-50);
+  --color-tag-project-text: var(--gray-800);
   --color-tag-branch-bg: var(--gray-100);
   --color-tag-branch-text: var(--gray-700);
   --color-tag-neutral-bg: var(--gray-100);
@@ -184,6 +186,8 @@
   --color-tag-session-text: var(--color-tag-session-text);
   --color-tag-ssh-bg: var(--color-tag-ssh-bg);
   --color-tag-ssh-text: var(--color-tag-ssh-text);
+  --color-tag-project-bg: var(--color-tag-project-bg);
+  --color-tag-project-text: var(--color-tag-project-text);
   --color-tag-branch-bg: var(--color-tag-branch-bg);
   --color-tag-branch-text: var(--color-tag-branch-text);
   --color-tag-neutral-bg: var(--color-tag-neutral-bg);

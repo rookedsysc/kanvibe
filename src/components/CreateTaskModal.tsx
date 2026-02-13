@@ -12,6 +12,7 @@ interface CreateTaskModalProps {
   onClose: () => void;
   sshHosts: string[];
   projects: Project[];
+  defaultProjectId?: string;
 }
 
 export default function CreateTaskModal({
@@ -19,11 +20,12 @@ export default function CreateTaskModal({
   onClose,
   sshHosts,
   projects,
+  defaultProjectId,
 }: CreateTaskModalProps) {
   const t = useTranslations("task");
   const tc = useTranslations("common");
   const [isPending, startTransition] = useTransition();
-  const [selectedProjectId, setSelectedProjectId] = useState("");
+  const [selectedProjectId, setSelectedProjectId] = useState(defaultProjectId || "");
   const [branches, setBranches] = useState<string[]>([]);
   const [baseBranch, setBaseBranch] = useState("");
 
@@ -33,6 +35,13 @@ export default function CreateTaskModal({
   const [highlightedIndex, setHighlightedIndex] = useState(-1);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  /** 모달이 열릴 때 필터에서 선택된 프로젝트를 자동 설정한다 */
+  useEffect(() => {
+    if (isOpen && defaultProjectId) {
+      setSelectedProjectId(defaultProjectId);
+    }
+  }, [isOpen, defaultProjectId]);
 
   /** worktree가 아닌 프로젝트만 필터링한다 */
   const availableProjects = projects.filter((p) => !p.isWorktree);

@@ -23,6 +23,7 @@
   "board": {
     "title": "KanVibe",
     "newTask": "+ 새 작업",
+    "allProjects": "전체 프로젝트",
     "columns": {
       "todo": "Todo",
       "progress": "Progress",

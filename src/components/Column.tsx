@@ -10,9 +10,10 @@ interface ColumnProps {
   label: string;
   colorClass: string;
   onContextMenu: (e: React.MouseEvent, task: KanbanTask) => void;
+  projectNameMap: Record<string, string>;
 }
 
-export default function Column({ status, tasks, label, colorClass, onContextMenu }: ColumnProps) {
+export default function Column({ status, tasks, label, colorClass, onContextMenu, projectNameMap }: ColumnProps) {
   return (
     <div className="flex-1 min-w-[280px] max-w-[350px]">
       <div className="flex items-center gap-2 mb-3 px-2">
@@ -35,7 +36,13 @@ export default function Column({ status, tasks, label, colorClass, onContextMenu
             }`}
           >
             {tasks.map((task, index) => (
-              <TaskCard key={task.id} task={task} index={index} onContextMenu={onContextMenu} />
+              <TaskCard
+                key={task.id}
+                task={task}
+                index={index}
+                onContextMenu={onContextMenu}
+                projectName={task.projectId ? projectNameMap[task.projectId] : undefined}
+              />
             ))}
             {provided.placeholder}
           </div>

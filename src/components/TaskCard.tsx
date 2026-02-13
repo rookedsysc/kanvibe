@@ -8,6 +8,7 @@ interface TaskCardProps {
   task: KanbanTask;
   index: number;
   onContextMenu: (e: React.MouseEvent, task: KanbanTask) => void;
+  projectName?: string;
 }
 
 const agentTagColors: Record<string, string> = {
@@ -16,7 +17,7 @@ const agentTagColors: Record<string, string> = {
   codex: "bg-tag-codex-bg text-tag-codex-text",
 };
 
-export default function TaskCard({ task, index, onContextMenu }: TaskCardProps) {
+export default function TaskCard({ task, index, onContextMenu, projectName }: TaskCardProps) {
   return (
     <Draggable draggableId={task.id} index={index}>
       {(provided, snapshot) => (
@@ -37,6 +38,12 @@ export default function TaskCard({ task, index, onContextMenu }: TaskCardProps) 
             </h3>
 
             <div className="flex items-center gap-2 mt-2 flex-wrap">
+              {projectName && (
+                <span className="text-xs px-2 py-0.5 rounded-full bg-tag-project-bg text-tag-project-text font-medium truncate max-w-[120px]">
+                  {projectName}
+                </span>
+              )}
+
               {task.branchName && (
                 <span className="text-xs px-2 py-0.5 rounded-full bg-tag-branch-bg text-tag-branch-text font-mono truncate max-w-[140px]">
                   {task.branchName}

@@ -23,6 +23,7 @@
   "board": {
     "title": "KanVibe",
     "newTask": "+ 新任务",
+    "allProjects": "所有项目",
     "columns": {
       "todo": "待办",
       "progress": "进行中",
