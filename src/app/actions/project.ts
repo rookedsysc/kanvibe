@@ -1,10 +1,9 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { getProjectRepository } from "@/lib/database";
+import { getProjectRepository, getTaskRepository } from "@/lib/database";
 import { Project } from "@/entities/Project";
 import { validateGitRepo, getDefaultBranch, listBranches, scanGitRepos, listWorktrees } from "@/lib/gitOperations";
-import { getTaskRepository } from "@/lib/database";
 import { TaskStatus, SessionType } from "@/entities/KanbanTask";
 import { isWindowAlive } from "@/lib/worktree";
 import path from "path";
@@ -12,6 +11,18 @@ import path from "path";
 /** TypeORM 엔티티를 직렬화 가능한 plain object로 변환한다 */
 function serialize<T>(data: T): T {
   return JSON.parse(JSON.stringify(data));
+}
+
+/** 프로젝트의 메인 브랜치를 TODO 태스크로 생성한다 */
+async function createDefaultBranchTask(project: Project): Promise<void> {
+  const taskRepo = await getTaskRepository();
+  const task = taskRepo.create({
+    title: project.name,
+    status: TaskStatus.TODO,
+    projectId: project.id,
+    baseBranch: project.defaultBranch,
+  });
+  await taskRepo.save(task);
 }
 
 /** 등록된 모든 프로젝트를 반환한다 */
@@ -63,6 +74,7 @@ export async function registerProject(
   });
 
   const saved = await repo.save(project);
+  await createDefaultBranchTask(saved);
   revalidatePath("/");
   return { success: true, project: serialize(saved) };
 }
@@ -149,7 +161,8 @@ export async function scanAndRegisterProjects(
         sshHost: sshHost || null,
       });
 
-      await repo.save(project);
+      const saved = await repo.save(project);
+      await createDefaultBranchTask(saved);
       existingPaths.add(pathKey);
       result.registered.push(projectName);
     } catch (error) {
