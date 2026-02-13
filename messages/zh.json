@@ -81,7 +81,15 @@
     "noProjects": "没有已注册的项目。",
     "defaultBranch": "默认分支",
     "deleteProject": "删除",
-    "deleteConfirm": "确定要删除 \"{name}\" 吗？"
+    "deleteConfirm": "确定要删除 \"{name}\" 吗？",
+    "hooksInstalled": "Hooks 已安装",
+    "hooksNotInstalled": "未安装 Hooks",
+    "installHooks": "安装 Hooks",
+    "reinstallHooks": "重新安装",
+    "installingHooks": "安装中...",
+    "hooksInstallSuccess": "Claude Code hooks 安装完成",
+    "hooksInstallFailed": "Hooks 安装失败: {error}",
+    "hooksRemoteNotSupported": "远程"
   },
   "taskDetail": {
     "backToBoard": "返回看板",

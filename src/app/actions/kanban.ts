@@ -7,6 +7,7 @@ import { getTaskRepository } from "@/lib/database";
 import { KanbanTask, TaskStatus, SessionType } from "@/entities/KanbanTask";
 import { createWorktreeWithSession, removeWorktreeAndSession } from "@/lib/worktree";
 import { getProjectRepository } from "@/lib/database";
+import { setupClaudeHooks } from "@/lib/claudeHooksSetup";
 
 const execAsync = promisify(exec);
 
@@ -86,6 +87,12 @@ export async function createTask(input: CreateTaskInput): Promise<KanbanTask> {
         task.sessionName = session.sessionName;
         task.sshHost = project.sshHost;
         task.status = TaskStatus.PROGRESS;
+
+        /** 로컬 worktree에 Claude Code hooks를 자동 설정한다 */
+        if (!project.sshHost && session.worktreePath) {
+          const kanvibeUrl = `http://localhost:${process.env.PORT || 4885}`;
+          await setupClaudeHooks(session.worktreePath, project.name, kanvibeUrl);
+        }
       }
     } catch (error) {
       console.error("Worktree/세션 생성 실패:", error);
@@ -197,6 +204,16 @@ export async function branchFromTask(
   task.worktreePath = session.worktreePath;
   task.sshHost = project.sshHost;
   task.status = TaskStatus.PROGRESS;
+
+  /** 로컬 worktree에 Claude Code hooks를 자동 설정한다 */
+  if (!project.sshHost && session.worktreePath) {
+    try {
+      const kanvibeUrl = `http://localhost:${process.env.PORT || 4885}`;
+      await setupClaudeHooks(session.worktreePath, project.name, kanvibeUrl);
+    } catch (error) {
+      console.error("Claude hooks 설정 실패:", error);
+    }
+  }
 
   const saved = await repo.save(task);
   revalidatePath("/");

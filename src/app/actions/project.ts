@@ -6,6 +6,7 @@ import { Project } from "@/entities/Project";
 import { validateGitRepo, getDefaultBranch, listBranches, scanGitRepos, listWorktrees } from "@/lib/gitOperations";
 import { TaskStatus, SessionType } from "@/entities/KanbanTask";
 import { isWindowAlive, formatWindowName } from "@/lib/worktree";
+import { setupClaudeHooks, getClaudeHooksStatus, type ClaudeHooksStatus } from "@/lib/claudeHooksSetup";
 import path from "path";
 
 /** TypeORM 엔티티를 직렬화 가능한 plain object로 변환한다 */
@@ -95,6 +96,7 @@ export interface ScanResult {
   skipped: string[];
   errors: string[];
   worktreeTasks: string[];
+  hooksSetup: string[];
 }
 
 /**
@@ -105,7 +107,7 @@ export async function scanAndRegisterProjects(
   rootPath: string,
   sshHost?: string
 ): Promise<ScanResult> {
-  const result: ScanResult = { registered: [], skipped: [], errors: [], worktreeTasks: [] };
+  const result: ScanResult = { registered: [], skipped: [], errors: [], worktreeTasks: [], hooksSetup: [] };
 
   const repoPaths = await scanGitRepos(rootPath, sshHost || null);
   if (repoPaths.length === 0) {
@@ -165,6 +167,19 @@ export async function scanAndRegisterProjects(
       await createDefaultBranchTask(saved);
       existingPaths.add(pathKey);
       result.registered.push(projectName);
+
+      /** 로컬 repo에 Claude Code hooks를 자동 설정한다 */
+      if (!sshHost) {
+        try {
+          const kanvibeUrl = `http://localhost:${process.env.PORT || 4885}`;
+          await setupClaudeHooks(repoPath, projectName, kanvibeUrl);
+          result.hooksSetup.push(projectName);
+        } catch (hookError) {
+          result.errors.push(
+            `${projectName} hooks 설정 실패: ${hookError instanceof Error ? hookError.message : "알 수 없는 오류"}`
+          );
+        }
+      }
     } catch (error) {
       result.errors.push(
         `${repoPath}: ${error instanceof Error ? error.message : "등록 실패"}`
@@ -229,4 +244,36 @@ export async function getProjectBranches(projectId: string): Promise<string[]> {
   if (!project) return [];
 
   return listBranches(project.repoPath, project.sshHost);
+}
+
+/** 프로젝트의 Claude Code hooks 설치 상태를 조회한다 */
+export async function getProjectHooksStatus(
+  projectId: string
+): Promise<ClaudeHooksStatus | null> {
+  const repo = await getProjectRepository();
+  const project = await repo.findOneBy({ id: projectId });
+  if (!project || project.sshHost) return null;
+
+  return getClaudeHooksStatus(project.repoPath);
+}
+
+/** 프로젝트에 Claude Code hooks를 설치한다 */
+export async function installProjectHooks(
+  projectId: string
+): Promise<{ success: boolean; error?: string }> {
+  const repo = await getProjectRepository();
+  const project = await repo.findOneBy({ id: projectId });
+  if (!project) return { success: false, error: "프로젝트를 찾을 수 없습니다." };
+  if (project.sshHost) return { success: false, error: "SSH 원격 프로젝트는 지원하지 않습니다." };
+
+  try {
+    const kanvibeUrl = `http://localhost:${process.env.PORT || 4885}`;
+    await setupClaudeHooks(project.repoPath, project.name, kanvibeUrl);
+    return { success: true };
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "hooks 설정 실패",
+    };
+  }
 }

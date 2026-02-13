@@ -81,7 +81,15 @@
     "noProjects": "등록된 프로젝트가 없습니다.",
     "defaultBranch": "기본 브랜치",
     "deleteProject": "삭제",
-    "deleteConfirm": "\"{name}\" 프로젝트를 삭제하시겠습니까?"
+    "deleteConfirm": "\"{name}\" 프로젝트를 삭제하시겠습니까?",
+    "hooksInstalled": "Hooks 설치됨",
+    "hooksNotInstalled": "Hooks 미설치",
+    "installHooks": "Hooks 설치",
+    "reinstallHooks": "재설치",
+    "installingHooks": "설치 중...",
+    "hooksInstallSuccess": "Claude Code hooks 설치 완료",
+    "hooksInstallFailed": "Hooks 설치 실패: {error}",
+    "hooksRemoteNotSupported": "원격"
   },
   "taskDetail": {
     "backToBoard": "보드로 돌아가기",
