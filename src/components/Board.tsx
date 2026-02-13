@@ -5,6 +5,7 @@ import { useTranslations } from "next-intl";
 import { DragDropContext, type DropResult } from "@hello-pangea/dnd";
 import Column from "./Column";
 import CreateTaskModal from "./CreateTaskModal";
+import ProjectSelector from "./ProjectSelector";
 import ProjectSettings from "./ProjectSettings";
 import TaskContextMenu from "./TaskContextMenu";
 import BranchTaskModal from "./BranchTaskModal";
@@ -281,19 +282,17 @@ export default function Board({ initialTasks, sshHosts, projects }: BoardProps) 
       <header className="flex items-center justify-between px-6 py-4 border-b border-border-default bg-bg-surface">
         <div className="flex items-center gap-4">
           <h1 className="text-xl font-bold text-text-primary">{t("title")}</h1>
-          <select
-            value={selectedProjectId}
-            onChange={(e) => setSelectedProjectId(e.target.value)}
-            className="px-3 py-1.5 text-sm bg-bg-page border border-border-default rounded-md text-text-primary focus:outline-none focus:border-brand-primary transition-colors"
-          >
-            <option value="">{t("allProjects")}</option>
-            {filterableProjects.map((project) => (
-              <option key={project.id} value={project.id}>
-                {project.name}
-                {project.sshHost ? ` (${project.sshHost})` : ""}
-              </option>
-            ))}
-          </select>
+          <div className="w-56">
+            <ProjectSelector
+              projects={filterableProjects}
+              selectedProjectId={selectedProjectId}
+              onSelect={setSelectedProjectId}
+              placeholder={t("allProjects")}
+              searchPlaceholder={tt("projectSearch")}
+              allOption={{ label: t("allProjects") }}
+              compact
+            />
+          </div>
         </div>
         <div className="flex items-center gap-3">
           <button
