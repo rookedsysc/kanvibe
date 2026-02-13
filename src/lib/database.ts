@@ -4,6 +4,7 @@ import { KanbanTask } from "@/entities/KanbanTask";
 import { Project } from "@/entities/Project";
 import { InitialSchema1770854400000 } from "@/migrations/1770854400000-InitialSchema";
 import { AddPrUrlToKanbanTasks1770854400001 } from "@/migrations/1770854400001-AddPrUrlToKanbanTasks";
+import { AddIsWorktreeToProjects1770854400002 } from "@/migrations/1770854400002-AddIsWorktreeToProjects";
 
 /**
  * TypeORM DataSource 싱글턴.
@@ -18,7 +19,7 @@ function createDataSource(): DataSource {
     type: "postgres",
     url: "postgresql://kanvibe:kanvibe@localhost:5432/kanvibe",
     entities: [KanbanTask, Project],
-    migrations: [InitialSchema1770854400000, AddPrUrlToKanbanTasks1770854400001],
+    migrations: [InitialSchema1770854400000, AddPrUrlToKanbanTasks1770854400001, AddIsWorktreeToProjects1770854400002],
     synchronize: false,
     logging: process.env.NODE_ENV !== "production",
   });
