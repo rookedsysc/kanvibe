@@ -6,6 +6,7 @@ import { WebSocketServer, type WebSocket } from "ws";
 import { validateSessionFromCookie } from "@/lib/auth";
 import { getTaskRepository } from "@/lib/database";
 import { attachLocalSession, attachRemoteSession } from "@/lib/terminal";
+import { formatWindowName } from "@/lib/worktree";
 import { parseSSHConfig } from "@/lib/sshConfig";
 
 const dev = process.env.NODE_ENV !== "production";
@@ -69,7 +70,7 @@ app.prepare().then(() => {
       }
 
       /** branchName에서 window/tab 이름을 파생한다 */
-      const windowName = task.branchName?.replace(/\//g, "-") || "";
+      const windowName = task.branchName ? formatWindowName(task.branchName) : "";
 
       if (task.sshHost) {
         const sshHosts = await parseSSHConfig();

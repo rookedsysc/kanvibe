@@ -6,7 +6,7 @@ import { Project } from "@/entities/Project";
 import { validateGitRepo, getDefaultBranch, listBranches, scanGitRepos, listWorktrees } from "@/lib/gitOperations";
 import { getTaskRepository } from "@/lib/database";
 import { TaskStatus, SessionType } from "@/entities/KanbanTask";
-import { isWindowAlive } from "@/lib/worktree";
+import { isWindowAlive, formatWindowName } from "@/lib/worktree";
 import path from "path";
 
 /** TypeORM 엔티티를 직렬화 가능한 plain object로 변환한다 */
@@ -175,7 +175,7 @@ export async function scanAndRegisterProjects(
 
         /** tmux 세션에 동일한 session-window가 있으면 연결 정보를 설정한다 */
         const sessionName = path.basename(project.repoPath);
-        const windowName = wt.branch.replace(/\//g, "-");
+        const windowName = formatWindowName(wt.branch);
         const hasWindow = await isWindowAlive(
           SessionType.TMUX,
           sessionName,
