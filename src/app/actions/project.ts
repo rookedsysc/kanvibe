@@ -1,11 +1,12 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { IsNull } from "typeorm";
 import { getProjectRepository, getTaskRepository } from "@/lib/database";
 import { Project } from "@/entities/Project";
 import { validateGitRepo, getDefaultBranch, listBranches, scanGitRepos, listWorktrees } from "@/lib/gitOperations";
 import { TaskStatus, SessionType } from "@/entities/KanbanTask";
-import { isWindowAlive, formatWindowName } from "@/lib/worktree";
+import { isWindowAlive, formatWindowName, createSessionWithoutWorktree } from "@/lib/worktree";
 import { setupClaudeHooks, getClaudeHooksStatus, type ClaudeHooksStatus } from "@/lib/claudeHooksSetup";
 import path from "path";
 
@@ -14,7 +15,7 @@ function serialize<T>(data: T): T {
   return JSON.parse(JSON.stringify(data));
 }
 
-/** 프로젝트의 메인 브랜치를 TODO 태스크로 생성한다 */
+/** 프로젝트의 메인 브랜치 태스크를 생성하고 tmux 세션을 자동 연결한다 */
 async function createDefaultBranchTask(project: Project): Promise<void> {
   const taskRepo = await getTaskRepository();
   const task = taskRepo.create({
@@ -23,6 +24,24 @@ async function createDefaultBranchTask(project: Project): Promise<void> {
     projectId: project.id,
     baseBranch: project.defaultBranch,
   });
+
+  try {
+    const session = await createSessionWithoutWorktree(
+      project.repoPath,
+      project.defaultBranch,
+      SessionType.TMUX,
+      project.sshHost,
+      project.repoPath,
+    );
+    task.sessionType = SessionType.TMUX;
+    task.sessionName = session.sessionName;
+    task.worktreePath = project.repoPath;
+    task.sshHost = project.sshHost;
+    task.status = TaskStatus.PROGRESS;
+  } catch (error) {
+    console.error("메인 브랜치 tmux 세션 생성 실패:", error);
+  }
+
   await taskRepo.save(task);
 }
 
@@ -230,6 +249,37 @@ export async function scanAndRegisterProjects(
       result.errors.push(
         `${project.name} worktree 스캔 실패: ${error instanceof Error ? error.message : "알 수 없는 오류"}`
       );
+    }
+
+    /** 메인 브랜치 태스크에 활성 tmux 세션이 있으면 자동 연결한다 */
+    try {
+      const mainBranchTask = await taskRepo.findOneBy({
+        projectId: project.id,
+        baseBranch: project.defaultBranch,
+        branchName: IsNull(),
+      });
+
+      if (mainBranchTask && !mainBranchTask.sessionType) {
+        const sessionName = path.basename(project.repoPath);
+        const windowName = formatWindowName(project.defaultBranch);
+        const hasWindow = await isWindowAlive(
+          SessionType.TMUX,
+          sessionName,
+          windowName,
+          project.sshHost,
+        );
+
+        if (hasWindow) {
+          mainBranchTask.sessionType = SessionType.TMUX;
+          mainBranchTask.sessionName = sessionName;
+          mainBranchTask.worktreePath = project.repoPath;
+          mainBranchTask.sshHost = project.sshHost;
+          mainBranchTask.status = TaskStatus.PROGRESS;
+          await taskRepo.save(mainBranchTask);
+        }
+      }
+    } catch (error) {
+      console.error(`${project.name} 메인 브랜치 세션 감지 실패:`, error);
     }
   }
 
