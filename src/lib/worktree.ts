@@ -107,10 +107,14 @@ export async function removeWorktreeAndSession(
   }
 
   try {
-    const worktreeDir = `kanvibe-${branchName.replace(/\//g, "-")}`;
-    const worktreePath = path.posix.join(
+    const projectName = path.basename(projectPath);
+    const worktreeBase = path.posix.join(
       path.dirname(projectPath),
-      worktreeDir,
+      `${projectName}__worktrees`,
+    );
+    const worktreePath = path.posix.join(
+      worktreeBase,
+      branchName.replace(/\//g, "-"),
     );
     await execGit(
       `git -C "${projectPath}" worktree remove "${worktreePath}" --force`,
