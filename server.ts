@@ -69,8 +69,9 @@ app.prepare().then(() => {
         return;
       }
 
-      /** branchName에서 window/tab 이름을 파생한다 */
-      const windowName = task.branchName ? formatWindowName(task.branchName) : "";
+      /** branchName 또는 baseBranch에서 window/tab 이름을 파생한다 */
+      const derivedBranch = task.branchName || task.baseBranch;
+      const windowName = derivedBranch ? formatWindowName(derivedBranch) : "";
 
       if (task.sshHost) {
         const sshHosts = await parseSSHConfig();

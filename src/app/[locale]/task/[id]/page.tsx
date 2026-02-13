@@ -9,6 +9,7 @@ import {
 import { TaskStatus } from "@/entities/KanbanTask";
 import TaskStatusBadge from "@/components/TaskStatusBadge";
 import TerminalLoader from "@/components/TerminalLoader";
+import ConnectTerminalForm from "@/components/ConnectTerminalForm";
 import { Link } from "@/i18n/navigation";
 
 export const dynamicConfig = "force-dynamic";
@@ -246,7 +247,11 @@ export default async function TaskDetailPage({ params }: TaskDetailPageProps) {
             </div>
           ) : (
             <div className="flex-1 flex items-center justify-center border border-dashed border-border-default rounded-lg bg-bg-surface">
-              <p className="text-text-muted text-sm">{t("noTerminal")}</p>
+              {task.projectId ? (
+                <ConnectTerminalForm taskId={task.id} />
+              ) : (
+                <p className="text-text-muted text-sm">{t("noTerminal")}</p>
+              )}
             </div>
           )}
         </main>

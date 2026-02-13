@@ -76,6 +76,78 @@ export async function createWorktreeWithSession(
 }
 
 /**
+ * 기존 디렉토리에 tmux window / zellij tab을 생성한다.
+ * worktree를 생성하지 않고, 지정된 작업 디렉토리를 사용한다.
+ */
+export async function createSessionWithoutWorktree(
+  projectPath: string,
+  branchName: string,
+  sessionType: SessionType,
+  sshHost?: string | null,
+  workingDir?: string,
+): Promise<{ sessionName: string }> {
+  const sessionName = path.basename(projectPath);
+  const windowName = formatWindowName(branchName);
+  const cwd = workingDir || projectPath;
+
+  if (sessionType === SessionType.TMUX) {
+    await execGit(
+      `tmux has-session -t "${sessionName}" 2>/dev/null || tmux new-session -d -s "${sessionName}"`,
+      sshHost,
+    );
+    await execGit(
+      `tmux new-window -t "${sessionName}" -n "${windowName}" -c "${cwd}"`,
+      sshHost,
+    );
+  } else {
+    try {
+      await execGit(
+        `zellij list-sessions 2>/dev/null | grep -q "^${sessionName}$"`,
+        sshHost,
+      );
+    } catch {
+      await execGit(
+        `cd "${cwd}" && zellij --session "${sessionName}" &`,
+        sshHost,
+      );
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+    }
+    await execGit(
+      `zellij action --session "${sessionName}" new-tab --name "${windowName}" --cwd "${cwd}"`,
+      sshHost,
+    );
+  }
+
+  return { sessionName };
+}
+
+/** tmux window / zellij tab만 제거한다. worktree와 브랜치는 삭제하지 않는다 */
+export async function removeSessionOnly(
+  sessionType: SessionType,
+  sessionName: string,
+  branchName: string,
+  sshHost?: string | null,
+): Promise<void> {
+  const windowName = formatWindowName(branchName);
+
+  try {
+    if (sessionType === SessionType.TMUX) {
+      await execGit(
+        `tmux kill-window -t "${sessionName}:${windowName}"`,
+        sshHost,
+      );
+    } else {
+      await execGit(
+        `zellij action --session "${sessionName}" go-to-tab-name "${windowName}" && zellij action --session "${sessionName}" close-tab`,
+        sshHost,
+      );
+    }
+  } catch {
+    // window/tab이 이미 종료된 경우 무시
+  }
+}
+
+/**
  * worktree와 메인 세션의 tmux window / zellij tab을 삭제한다.
  * sshHost가 지정되면 원격에서 실행한다.
  */
