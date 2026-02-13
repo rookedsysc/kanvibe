@@ -14,16 +14,16 @@ npm install
 echo "[1.5/6] spawn-helper 권한 복구..."
 chmod +x node_modules/node-pty/prebuilds/darwin-arm64/spawn-helper 2>/dev/null || true
 
-# PostgreSQL Docker 컨테이너 시작
-echo "[2/6] PostgreSQL 시작..."
-docker compose up -d db
-
-# DB 준비 대기
-echo "[3/6] DB 준비 대기..."
-until docker compose exec db pg_isready -U kanvibe -q 2>/dev/null; do
-  sleep 1
-done
-echo "       DB 준비 완료"
+# # PostgreSQL Docker 컨테이너 시작
+# echo "[2/6] PostgreSQL 시작..."
+# docker compose up -d db
+#
+# # DB 준비 대기
+# echo "[3/6] DB 준비 대기..."
+# until docker compose exec db pg_isready -U kanvibe -q 2>/dev/null; do
+#   sleep 1
+# done
+# echo "       DB 준비 완료"
 
 # DB 마이그레이션 실행
 echo "[4/6] DB 마이그레이션 실행..."
