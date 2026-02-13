@@ -9,6 +9,15 @@ import { attachLocalSession, attachRemoteSession } from "@/lib/terminal";
 import { formatWindowName } from "@/lib/worktree";
 import { parseSSHConfig } from "@/lib/sshConfig";
 
+/**
+ * node-pty의 ThreadSafeFunction 콜백이 실패하면 C++ 레벨에서
+ * Napi::Error를 throw하므로 프로세스가 abort된다.
+ * uncaughtException 핸들러로 가능한 범위의 에러를 로깅하고 프로세스 유지를 시도한다.
+ */
+process.on("uncaughtException", (error) => {
+  console.error("[uncaughtException]", error);
+});
+
 const dev = process.env.NODE_ENV !== "production";
 const hostname = "0.0.0.0";
 const port = parseInt(process.env.PORT || "4885", 10);

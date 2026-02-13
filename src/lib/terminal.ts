@@ -1,4 +1,5 @@
 import type { WebSocket } from "ws";
+import { execSync } from "child_process";
 import { SessionType } from "@/entities/KanbanTask";
 
 /**
@@ -12,6 +13,32 @@ interface TerminalEntry {
 
 const activeTerminals = new Map<string, TerminalEntry>();
 
+/** tmux 세션에 해당 window가 존재하는지 확인한다 */
+function isTmuxWindowAlive(sessionName: string, windowName: string): boolean {
+  try {
+    const output = execSync(
+      `tmux list-windows -t "${sessionName}" -F "#{window_name}"`,
+      { encoding: "utf-8", timeout: 3000 },
+    );
+    return output.split("\n").some((w) => w.trim() === windowName);
+  } catch {
+    return false;
+  }
+}
+
+/** zellij 세션이 존재하는지 확인한다 */
+function isZellijSessionAlive(sessionName: string): boolean {
+  try {
+    const output = execSync("zellij list-sessions", {
+      encoding: "utf-8",
+      timeout: 3000,
+    });
+    return output.split("\n").some((s) => s.trim().startsWith(sessionName));
+  } catch {
+    return false;
+  }
+}
+
 /** 로컬 tmux window / zellij tab에 attach하여 WebSocket과 연결한다 */
 export async function attachLocalSession(
   taskId: string,
@@ -20,6 +47,24 @@ export async function attachLocalSession(
   windowName: string,
   ws: WebSocket
 ): Promise<void> {
+  /** 동일 taskId로 이미 활성 터미널이 있으면 먼저 정리한다 */
+  if (activeTerminals.has(taskId)) {
+    detachSession(taskId);
+  }
+
+  /** 세션/window 존재 여부를 사전 검증하여 불필요한 native spawn을 방지한다 */
+  if (sessionType === SessionType.TMUX) {
+    if (!isTmuxWindowAlive(sessionName, windowName)) {
+      console.error(`[터미널] tmux window를 찾을 수 없음: ${sessionName}:${windowName}`);
+      ws.close(1008, "tmux window를 찾을 수 없습니다.");
+      return;
+    }
+  } else if (!isZellijSessionAlive(sessionName)) {
+    console.error(`[터미널] zellij 세션을 찾을 수 없음: ${sessionName}`);
+    ws.close(1008, "zellij 세션을 찾을 수 없습니다.");
+    return;
+  }
+
   const pty = await import("node-pty");
 
   const shell =
@@ -48,17 +93,24 @@ export async function attachLocalSession(
     }
   }
 
-  const ptyProcess = pty.spawn(shell, args, {
-    name: "xterm-256color",
-    cols: 120,
-    rows: 30,
-    cwd: process.env.HOME || "/",
-    env: {
-      ...process.env,
-      LANG: process.env.LANG || "en_US.UTF-8",
-      LC_ALL: process.env.LC_ALL || "en_US.UTF-8",
-    } as Record<string, string>,
-  });
+  let ptyProcess: import("node-pty").IPty;
+  try {
+    ptyProcess = pty.spawn(shell, args, {
+      name: "xterm-256color",
+      cols: 120,
+      rows: 30,
+      cwd: process.env.HOME || "/",
+      env: {
+        ...process.env,
+        LANG: process.env.LANG || "en_US.UTF-8",
+        LC_ALL: process.env.LC_ALL || "en_US.UTF-8",
+      } as Record<string, string>,
+    });
+  } catch (error) {
+    console.error("[터미널] PTY spawn 실패:", error);
+    ws.close(1011, "터미널 프로세스 생성 실패");
+    return;
+  }
 
   activeTerminals.set(taskId, { pty: ptyProcess, ws });
 
