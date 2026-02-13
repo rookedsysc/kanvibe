@@ -126,16 +126,6 @@ export default async function TaskDetailPage({ params }: TaskDetailPageProps) {
               {t("info")}
             </h3>
             <dl className="space-y-3">
-              {task.branchName && (
-                <div className="flex items-start justify-between gap-2">
-                  <dt className="text-xs text-text-muted shrink-0">
-                    {t("branch")}
-                  </dt>
-                  <dd className="text-xs font-mono bg-tag-branch-bg text-tag-branch-text px-2 py-0.5 rounded text-right truncate max-w-[180px]">
-                    {task.branchName}
-                  </dd>
-                </div>
-              )}
               {task.prUrl && (
                 <div className="flex items-center justify-between gap-2">
                   <dt className="text-xs text-text-muted">{t("prLink")}</dt>
