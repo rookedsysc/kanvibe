@@ -10,6 +10,10 @@ echo "=== KanVibe 시작 ==="
 echo "[1/6] 의존성 설치..."
 npm install
 
+# node-pty spawn-helper 실행 권한 복구
+echo "[1.5/6] spawn-helper 권한 복구..."
+chmod +x node_modules/node-pty/prebuilds/darwin-arm64/spawn-helper 2>/dev/null || true
+
 # PostgreSQL Docker 컨테이너 시작
 echo "[2/6] PostgreSQL 시작..."
 docker compose up -d db
