@@ -5,7 +5,7 @@ import { exec } from "child_process";
 import { promisify } from "util";
 import { getTaskRepository } from "@/lib/database";
 import { KanbanTask, TaskStatus, SessionType } from "@/entities/KanbanTask";
-import { createWorktreeWithSession, removeWorktreeAndSession } from "@/lib/worktree";
+import { createWorktreeWithSession, removeWorktreeAndSession, createSessionWithoutWorktree, removeSessionOnly } from "@/lib/worktree";
 import { getProjectRepository } from "@/lib/database";
 import { setupClaudeHooks } from "@/lib/claudeHooksSetup";
 
@@ -143,24 +143,37 @@ export async function deleteTask(taskId: string): Promise<boolean> {
   const task = await repo.findOneBy({ id: taskId });
   if (!task) return false;
 
-  if (task.branchName && task.sessionType && task.sessionName) {
+  if (task.sessionType && task.sessionName) {
     try {
-      let projectPath = process.cwd();
+      let project = null;
       if (task.projectId) {
         const projectRepo = await getProjectRepository();
-        const project = await projectRepo.findOneBy({ id: task.projectId });
-        if (project) projectPath = project.repoPath;
+        project = await projectRepo.findOneBy({ id: task.projectId });
       }
 
-      await removeWorktreeAndSession(
-        projectPath,
-        task.branchName,
-        task.sessionType,
-        task.sessionName,
-        task.sshHost
-      );
+      const isProjectRoot = project && task.worktreePath === project.repoPath;
+      const derivedBranch = task.branchName || task.baseBranch;
+
+      if (task.branchName && !isProjectRoot) {
+        /** worktree 브랜치: worktree + 세션 + 브랜치 모두 정리 */
+        await removeWorktreeAndSession(
+          project?.repoPath || process.cwd(),
+          task.branchName,
+          task.sessionType,
+          task.sessionName,
+          task.sshHost
+        );
+      } else if (derivedBranch) {
+        /** 프로젝트 루트 브랜치: window/tab만 제거 (worktree/브랜치 삭제 안 함) */
+        await removeSessionOnly(
+          task.sessionType,
+          task.sessionName,
+          derivedBranch,
+          task.sshHost
+        );
+      }
     } catch (error) {
-      console.error("Worktree/세션 정리 실패:", error);
+      console.error("세션 정리 실패:", error);
     }
   }
 
@@ -219,6 +232,52 @@ export async function branchFromTask(
   revalidatePath("/");
   revalidatePath(`/task/${taskId}`);
   return serialize(saved);
+}
+
+/**
+ * 세션이 없는 태스크에 터미널 세션을 연결한다.
+ * worktree를 생성하지 않고 기존 디렉토리(프로젝트 루트 또는 worktree 경로)에 window/tab을 생성한다.
+ */
+export async function connectTerminalSession(
+  taskId: string,
+  sessionType: SessionType
+): Promise<KanbanTask | null> {
+  const repo = await getTaskRepository();
+  const task = await repo.findOneBy({ id: taskId });
+  if (!task || !task.projectId) return null;
+
+  const branchForWindow = task.branchName || task.baseBranch;
+  if (!branchForWindow) return null;
+
+  const projectRepo = await getProjectRepository();
+  const project = await projectRepo.findOneBy({ id: task.projectId });
+  if (!project) return null;
+
+  const workingDir = task.worktreePath || project.repoPath;
+
+  try {
+    const session = await createSessionWithoutWorktree(
+      project.repoPath,
+      branchForWindow,
+      sessionType,
+      project.sshHost,
+      workingDir,
+    );
+
+    task.sessionType = sessionType;
+    task.sessionName = session.sessionName;
+    task.worktreePath = workingDir;
+    task.sshHost = project.sshHost;
+    task.status = TaskStatus.PROGRESS;
+
+    const saved = await repo.save(task);
+    revalidatePath("/");
+    revalidatePath(`/task/${taskId}`);
+    return serialize(saved);
+  } catch (error) {
+    console.error("터미널 세션 생성 실패:", error);
+    return null;
+  }
 }
 
 /** 컬럼 내 작업 순서를 변경한다 */
