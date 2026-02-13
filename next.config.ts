@@ -5,7 +5,6 @@ const withNextIntl = createNextIntlPlugin("./src/i18n/request.ts");
 
 const nextConfig: NextConfig = {
   serverExternalPackages: ["typeorm", "reflect-metadata", "node-pty", "ssh2"],
-  allowedDevOrigins: ["*"],
 };
 
 export default withNextIntl(nextConfig);

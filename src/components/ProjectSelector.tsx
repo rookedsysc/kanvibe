@@ -139,17 +139,19 @@ export default function ProjectSelector({
         value={isOpen ? searchQuery : selectedDisplayText}
         onChange={(e) => {
           setSearchQuery(e.target.value);
-          setHighlightedIndex(-1);
+          setHighlightedIndex(0);
         }}
         onFocus={() => {
-          setSearchQuery("");
+          const selected = projects.find((p) => p.id === selectedProjectId);
+          setSearchQuery(selected ? selected.name : "");
           setIsOpen(true);
-          setHighlightedIndex(-1);
+          setHighlightedIndex(0);
+          requestAnimationFrame(() => inputRef.current?.select());
         }}
         onKeyDown={handleKeyDown}
         placeholder={isOpen ? searchPlaceholder : placeholder}
-        className={`w-full bg-bg-page border border-border-default rounded-md text-text-primary focus:outline-none focus:border-brand-primary transition-colors cursor-pointer ${
-          compact ? "px-3 py-1.5 text-sm" : "px-3 py-2"
+        className={`w-full px-3 bg-bg-page border border-border-default rounded-md text-text-primary focus:outline-none focus:border-brand-primary transition-colors cursor-pointer ${
+          compact ? "py-1.5 text-sm" : "py-2"
         }`}
       />
       {isOpen && (
