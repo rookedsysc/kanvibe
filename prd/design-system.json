@@ -126,7 +126,8 @@
       "ssh": { "background": "{green.50}", "text": "{green.600}" },
       "project": { "background": "{yellow.50}", "text": "{gray.800}" },
       "branch": { "background": "{gray.100}", "text": "{gray.700}" },
-      "neutral": { "background": "{gray.100}", "text": "{gray.600}" }
+      "neutral": { "background": "{gray.100}", "text": "{gray.600}" },
+      "base": { "background": "#EDE7F6", "text": "#5E35B1" }
     }
   },
   "typography": {

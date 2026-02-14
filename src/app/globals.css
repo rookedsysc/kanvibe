@@ -103,6 +103,8 @@
   --color-tag-neutral-text: var(--gray-600);
   --color-tag-pr-bg: #ddf4ff;
   --color-tag-pr-text: #0969da;
+  --color-tag-base-bg: #EDE7F6;
+  --color-tag-base-text: #5E35B1;
 
   /* Terminal Chrome */
   --color-terminal-chrome: #1e1e1e;
@@ -194,6 +196,8 @@
   --color-tag-neutral-text: var(--color-tag-neutral-text);
   --color-tag-pr-bg: var(--color-tag-pr-bg);
   --color-tag-pr-text: var(--color-tag-pr-text);
+  --color-tag-base-bg: var(--color-tag-base-bg);
+  --color-tag-base-text: var(--color-tag-base-text);
 
   /* Terminal Chrome */
   --color-terminal-chrome: var(--color-terminal-chrome);

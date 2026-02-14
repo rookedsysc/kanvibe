@@ -50,6 +50,12 @@ export default function TaskCard({ task, index, onContextMenu, projectName }: Ta
                 </span>
               )}
 
+              {!task.branchName && task.baseBranch && (
+                <span className="text-xs px-2 py-0.5 rounded-full bg-tag-base-bg text-tag-base-text font-medium">
+                  Base Project
+                </span>
+              )}
+
               {task.prUrl && (
                 <span
                   role="link"

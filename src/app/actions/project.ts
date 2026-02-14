@@ -217,6 +217,9 @@ export async function scanAndRegisterProjects(
       for (const wt of worktrees) {
         if (wt.isBare || !wt.branch) continue;
 
+        /** 메인 작업 디렉토리(프로젝트 루트)는 기본 브랜치 태스크와 중복되므로 건너뛴다 */
+        if (wt.path === project.repoPath) continue;
+
         const existingTask = await taskRepo.findOneBy({ branchName: wt.branch });
         if (existingTask) continue;
 
