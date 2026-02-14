@@ -19,6 +19,26 @@ export default function Terminal({ taskId }: TerminalProps) {
   const connect = useCallback(async () => {
     if (!terminalRef.current) return;
 
+    /** Nerd Font 웹폰트를 document.fonts에 등록하고 완전히 로드될 때까지 대기. xterm.js는 글리프 폭을 동기적으로 측정하므로 폰트가 완전히 준비된 후에 터미널을 open 해야 한다 */
+    const nerdFontFamily = "GeistMono Nerd Font Mono";
+    const fontFamily = `'${nerdFontFamily}', monospace`;
+    const cdnBase =
+      "https://cdn.jsdelivr.net/gh/mshaugh/nerdfont-webfonts@v3.3.0/build/fonts";
+    const regular = new FontFace(
+      nerdFontFamily,
+      `url(${cdnBase}/GeistMonoNerdFontMono-Regular.woff2)`,
+      { weight: "400" }
+    );
+    const bold = new FontFace(
+      nerdFontFamily,
+      `url(${cdnBase}/GeistMonoNerdFontMono-Bold.woff2)`,
+      { weight: "700" }
+    );
+    document.fonts.add(regular);
+    document.fonts.add(bold);
+    await document.fonts.ready;
+    await Promise.all([regular.load(), bold.load()]);
+
     const { Terminal } = await import("@xterm/xterm");
     const { FitAddon } = await import("@xterm/addon-fit");
     const { WebLinksAddon } = await import("@xterm/addon-web-links");
@@ -28,7 +48,7 @@ export default function Terminal({ taskId }: TerminalProps) {
       allowProposedApi: true,
       cursorBlink: true,
       fontSize: 14,
-      fontFamily: "'Geist Mono', 'Fira Code', monospace",
+      fontFamily,
       theme: {
         background: "#0a0a0a",
         foreground: "#e4e4e7",
@@ -44,7 +64,10 @@ export default function Terminal({ taskId }: TerminalProps) {
     term.unicode.activeVersion = "11";
     term.open(terminalRef.current);
 
-    /** 레이아웃 계산 완료 후 초기 fit 실행 */
+    /** 웹폰트 로드 완료 후 fontFamily를 재설정하여 xterm.js 글리프 캐시를 강제 갱신 */
+    term.options.fontFamily = "monospace";
+    term.options.fontFamily = fontFamily;
+
     requestAnimationFrame(() => fitAddon.fit());
 
     xtermRef.current = term;
