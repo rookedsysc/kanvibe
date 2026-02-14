@@ -42,7 +42,6 @@ export default function Terminal({ taskId }: TerminalProps) {
     const { Terminal } = await import("@xterm/xterm");
     const { FitAddon } = await import("@xterm/addon-fit");
     const { WebLinksAddon } = await import("@xterm/addon-web-links");
-    const { Unicode11Addon } = await import("@xterm/addon-unicode11");
 
     const term = new Terminal({
       allowProposedApi: true,
@@ -60,8 +59,6 @@ export default function Terminal({ taskId }: TerminalProps) {
     const fitAddon = new FitAddon();
     term.loadAddon(fitAddon);
     term.loadAddon(new WebLinksAddon());
-    term.loadAddon(new Unicode11Addon());
-    term.unicode.activeVersion = "11";
     term.open(terminalRef.current);
 
     /** 웹폰트 로드 완료 후 fontFamily를 재설정하여 xterm.js 글리프 캐시를 강제 갱신 */
