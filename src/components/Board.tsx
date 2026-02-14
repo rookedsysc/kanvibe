@@ -88,7 +88,7 @@ export default function Board({ initialTasks, sshHosts, projects }: BoardProps) 
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isBranchModalOpen, setIsBranchModalOpen] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
-  const [selectedProjectId, setSelectedProjectId] = useState("");
+  const [selectedProjectIds, setSelectedProjectIds] = useState<string[]>([]);
 
   /** projectId → 표시할 프로젝트 이름 매핑. worktree 프로젝트는 메인 프로젝트 이름으로 resolve한다 */
   const projectNameMap = useMemo(() => {
@@ -125,22 +125,24 @@ export default function Board({ initialTasks, sshHosts, projects }: BoardProps) 
 
   /** 선택된 프로젝트 + worktree 프로젝트 ID 집합. null이면 전체 표시 */
   const projectFilterSet = useMemo(() => {
-    if (!selectedProjectId) return null;
-
-    const mainProject = projects.find((p) => p.id === selectedProjectId);
-    if (!mainProject) return null;
+    if (selectedProjectIds.length === 0) return null;
 
     const matchingIds = new Set<string>();
-    matchingIds.add(mainProject.id);
 
-    for (const p of projects) {
-      if (p.repoPath.startsWith(mainProject.repoPath + "__worktrees")) {
-        matchingIds.add(p.id);
+    for (const id of selectedProjectIds) {
+      const mainProject = projects.find((p) => p.id === id);
+      if (!mainProject) continue;
+
+      matchingIds.add(mainProject.id);
+      for (const p of projects) {
+        if (p.repoPath.startsWith(mainProject.repoPath + "__worktrees")) {
+          matchingIds.add(p.id);
+        }
       }
     }
 
-    return matchingIds;
-  }, [selectedProjectId, projects]);
+    return matchingIds.size > 0 ? matchingIds : null;
+  }, [selectedProjectIds, projects]);
 
   /** 프로젝트 필터가 적용된 태스크 목록 */
   const filteredTasks = useMemo(() => {
@@ -176,19 +178,32 @@ export default function Board({ initialTasks, sshHosts, projects }: BoardProps) 
   /** localStorage에서 저장된 필터를 복원한다 */
   useEffect(() => {
     const stored = localStorage.getItem(FILTER_STORAGE_KEY);
-    if (stored && projects.some((p) => p.id === stored)) {
-      setSelectedProjectId(stored);
+    if (!stored) return;
+
+    try {
+      const parsed = JSON.parse(stored);
+      if (Array.isArray(parsed)) {
+        const validIds = parsed.filter((id: string) =>
+          projects.some((p) => p.id === id)
+        );
+        if (validIds.length > 0) setSelectedProjectIds(validIds);
+      }
+    } catch {
+      /** 이전 단일 선택 포맷 호환: plain string */
+      if (projects.some((p) => p.id === stored)) {
+        setSelectedProjectIds([stored]);
+      }
     }
   }, [projects]);
 
   /** 필터 변경 시 localStorage에 저장한다 */
   useEffect(() => {
-    if (selectedProjectId) {
-      localStorage.setItem(FILTER_STORAGE_KEY, selectedProjectId);
+    if (selectedProjectIds.length > 0) {
+      localStorage.setItem(FILTER_STORAGE_KEY, JSON.stringify(selectedProjectIds));
     } else {
       localStorage.removeItem(FILTER_STORAGE_KEY);
     }
-  }, [selectedProjectId]);
+  }, [selectedProjectIds]);
 
   /** 서버 revalidation 후 initialTasks가 변경되면 로컬 state에 반영한다 */
   useEffect(() => {
@@ -282,14 +297,14 @@ export default function Board({ initialTasks, sshHosts, projects }: BoardProps) 
       <header className="flex items-center justify-between px-6 py-4 border-b border-border-default bg-bg-surface">
         <h1 className="text-xl font-bold text-text-primary">{t("title")}</h1>
         <div className="flex items-center gap-3">
-          <div className="w-56">
+          <div className="w-64">
             <ProjectSelector
+              multiple
               projects={filterableProjects}
-              selectedProjectId={selectedProjectId}
-              onSelect={setSelectedProjectId}
+              selectedProjectIds={selectedProjectIds}
+              onSelectionChange={setSelectedProjectIds}
               placeholder={t("allProjects")}
               searchPlaceholder={tt("projectSearch")}
-              allOption={{ label: t("allProjects") }}
               compact
             />
           </div>
@@ -356,7 +371,7 @@ export default function Board({ initialTasks, sshHosts, projects }: BoardProps) 
         onClose={() => setIsModalOpen(false)}
         sshHosts={sshHosts}
         projects={projects}
-        defaultProjectId={selectedProjectId}
+        defaultProjectId={selectedProjectIds[0] || ""}
       />
 
       <ProjectSettings
