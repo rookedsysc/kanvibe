@@ -32,7 +32,7 @@ export default async function LocaleLayout({ children, params }: Props) {
 
   return (
     <html lang={locale}>
-      <body className={`${inter.variable} font-sans bg-bg-page text-text-primary antialiased`}>
+      <body suppressHydrationWarning className={`${inter.variable} font-sans bg-bg-page text-text-primary antialiased`}>
         <NextIntlClientProvider messages={messages}>
           {children}
         </NextIntlClientProvider>
