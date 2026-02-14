@@ -14,10 +14,17 @@ const globalForDb = globalThis as unknown as {
   dataSource: DataSource | undefined;
 };
 
+function buildDatabaseUrl(): string {
+  const user = process.env.KANVIBE_USER || "admin";
+  const password = process.env.KANVIBE_PASSWORD || "changeme";
+  const port = parseInt(process.env.PORT || "4885", 10) + 1;
+  return `postgresql://${user}:${password}@localhost:${port}/kanvibe`;
+}
+
 function createDataSource(): DataSource {
   return new DataSource({
     type: "postgres",
-    url: "postgresql://kanvibe:kanvibe@localhost:5432/kanvibe",
+    url: process.env.DATABASE_URL ?? buildDatabaseUrl(),
     entities: [KanbanTask, Project],
     migrations: [InitialSchema1770854400000, AddPrUrlToKanbanTasks1770854400001, AddIsWorktreeToProjects1770854400002],
     synchronize: false,

@@ -16,6 +16,18 @@ if (existsSync(envPath)) {
   }
 }
 
+/** PORT로부터 DB_PORT를 자동 계산하고 .env에 동기화한다 (PORT + 1) */
+if (!process.env.DB_PORT) {
+  process.env.DB_PORT = String(parseInt(process.env.PORT || "4885", 10) + 1);
+}
+if (existsSync(envPath)) {
+  const envContent = readFileSync(envPath, "utf-8");
+  if (!envContent.match(/^DB_PORT=/m)) {
+    const { writeFileSync } = require("node:fs");
+    writeFileSync(envPath, envContent.trimEnd() + "\nDB_PORT=" + process.env.DB_PORT + "\n");
+  }
+}
+
 const { AsyncLocalStorage } = require("node:async_hooks");
 globalThis.AsyncLocalStorage = AsyncLocalStorage;
 require("tsx/cjs");

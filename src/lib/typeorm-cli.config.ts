@@ -8,9 +8,16 @@ import { Project } from "../entities/Project";
  * migration:generate, migration:run, migration:revert 명령에서 사용한다.
  * Next.js path alias(@/*)가 CLI에서 동작하지 않으므로 상대 경로를 사용한다.
  */
+function buildDatabaseUrl(): string {
+  const user = process.env.KANVIBE_USER || "admin";
+  const password = process.env.KANVIBE_PASSWORD || "changeme";
+  const port = parseInt(process.env.PORT || "4885", 10) + 1;
+  return `postgresql://${user}:${password}@localhost:${port}/kanvibe`;
+}
+
 export default new DataSource({
   type: "postgres",
-  url: process.env.DATABASE_URL ?? "postgresql://kanvibe:kanvibe@localhost:5432/kanvibe",
+  url: process.env.DATABASE_URL ?? buildDatabaseUrl(),
   entities: [KanbanTask, Project],
   migrations: ["src/migrations/*.ts"],
   synchronize: false,

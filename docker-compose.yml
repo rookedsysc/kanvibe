@@ -2,15 +2,15 @@ services:
   db:
     image: postgres:16-alpine
     environment:
-      - POSTGRES_USER=kanvibe
-      - POSTGRES_PASSWORD=kanvibe
+      - POSTGRES_USER=${KANVIBE_USER:-admin}
+      - POSTGRES_PASSWORD=${KANVIBE_PASSWORD:-changeme}
       - POSTGRES_DB=kanvibe
     volumes:
       - pgdata:/var/lib/postgresql/data
     ports:
-      - "5432:5432"
+      - "${DB_PORT:-4886}:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U kanvibe"]
+      test: ["CMD-SHELL", "pg_isready -U ${KANVIBE_USER:-admin} -d kanvibe"]
       interval: 5s
       timeout: 5s
       retries: 5
