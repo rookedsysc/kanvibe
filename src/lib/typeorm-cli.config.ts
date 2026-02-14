@@ -9,8 +9,8 @@ import { Project } from "../entities/Project";
  * Next.js path alias(@/*)가 CLI에서 동작하지 않으므로 상대 경로를 사용한다.
  */
 function buildDatabaseUrl(): string {
-  const user = process.env.KANVIBE_USER || "admin";
-  const password = process.env.KANVIBE_PASSWORD || "changeme";
+  const user = encodeURIComponent(process.env.KANVIBE_USER || "admin");
+  const password = encodeURIComponent(process.env.KANVIBE_PASSWORD || "changeme");
   const port = parseInt(process.env.PORT || "4885", 10) + 1;
   return `postgresql://${user}:${password}@localhost:${port}/kanvibe`;
 }
