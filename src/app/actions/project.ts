@@ -19,7 +19,8 @@ function serialize<T>(data: T): T {
 async function createDefaultBranchTask(project: Project): Promise<void> {
   const taskRepo = await getTaskRepository();
   const task = taskRepo.create({
-    title: project.name,
+    title: project.defaultBranch,
+    branchName: project.defaultBranch,
     status: TaskStatus.TODO,
     projectId: project.id,
     baseBranch: project.defaultBranch,
