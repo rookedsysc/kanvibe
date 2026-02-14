@@ -295,8 +295,8 @@ export default function Board({ initialTasks, sshHosts, projects }: BoardProps) 
   return (
     <div className="min-h-screen">
       <header className="flex items-center justify-between px-6 py-4 border-b border-border-default bg-bg-surface">
-        <div className="flex items-center gap-4">
-          <h1 className="text-xl font-bold text-text-primary">{t("title")}</h1>
+        <h1 className="text-xl font-bold text-text-primary">{t("title")}</h1>
+        <div className="flex items-center gap-3">
           <div className="w-64">
             <ProjectSelector
               multiple
@@ -308,8 +308,6 @@ export default function Board({ initialTasks, sshHosts, projects }: BoardProps) 
               compact
             />
           </div>
-        </div>
-        <div className="flex items-center gap-3">
           <button
             onClick={() => setIsModalOpen(true)}
             className="px-4 py-1.5 text-sm bg-brand-primary hover:bg-brand-hover text-text-inverse rounded-md font-medium transition-colors"
