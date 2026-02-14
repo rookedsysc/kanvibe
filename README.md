@@ -47,7 +47,23 @@ npm run dev
 
 ## Hook API (Claude Code 연동)
 
-### 작업 시작
+### 동작 흐름
+
+```
+사용자가 prompt 입력 (UserPromptSubmit)
+  → kanvibe-prompt-hook.sh 실행
+  → POST /api/hooks/status { branchName, projectName, status: "progress" }
+  → Kanban 보드에서 작업이 PROGRESS로 이동
+
+AI 응답 완료 (Stop)
+  → kanvibe-stop-hook.sh 실행
+  → POST /api/hooks/status { branchName, projectName, status: "review" }
+  → Kanban 보드에서 작업이 REVIEW로 이동
+```
+
+### API 엔드포인트
+
+#### 작업 생성 — `POST /api/hooks/start`
 
 ```bash
 curl -X POST http://localhost:4885/api/hooks/start \
@@ -56,41 +72,99 @@ curl -X POST http://localhost:4885/api/hooks/start \
     "title": "feature/user-auth 구현",
     "branchName": "feature/user-auth",
     "agentType": "claude",
-    "sessionType": "tmux"
+    "sessionType": "tmux",
+    "projectId": "project-uuid"
   }'
 ```
 
-### 작업 업데이트
+#### 상태 변경 — `POST /api/hooks/status`
+
+`branchName` + `projectName`으로 작업을 식별하여 상태를 변경한다.
 
 ```bash
-curl -X POST http://localhost:4885/api/hooks/update \
+curl -X POST http://localhost:4885/api/hooks/status \
   -H "Content-Type: application/json" \
   -d '{
-    "id": "task-uuid",
-    "status": "review",
-    "description": "JWT 인증 구현 완료, 리뷰 대기"
+    "branchName": "feature/user-auth",
+    "projectName": "kanvibe",
+    "status": "review"
   }'
 ```
 
-### 작업 완료
+| 파라미터 | 타입 | 설명 |
+|----------|------|------|
+| `branchName` | string | git 브랜치 이름 |
+| `projectName` | string | KanVibe에 등록된 프로젝트 이름 |
+| `status` | string | `todo`, `progress`, `review`, `done` 중 하나 |
+
+### Claude Code Hooks 설정
+
+#### 자동 설정 (권장)
+
+KanVibe 웹 UI의 **프로젝트 설정 > 디렉토리 스캔**으로 프로젝트를 등록하면, 탐지된 로컬 git 저장소의 `.claude/` 폴더에 hooks가 자동으로 설치된다.
+
+자동 설치되는 파일:
+- `.claude/hooks/kanvibe-prompt-hook.sh` — prompt 입력 시 PROGRESS 전환
+- `.claude/hooks/kanvibe-stop-hook.sh` — AI 응답 완료 시 REVIEW 전환
+- `.claude/settings.json` — hooks 이벤트 등록 (기존 설정이 있으면 병합)
+
+#### 수동 설정
+
+1. 프로젝트 루트에 `.claude/hooks/` 디렉토리를 생성한다.
+
+2. `kanvibe-prompt-hook.sh`를 작성한다:
 
 ```bash
-curl -X POST http://localhost:4885/api/hooks/complete \
+#!/bin/bash
+KANVIBE_URL="http://localhost:4885"
+PROJECT_NAME="your-project-name"
+
+BRANCH_NAME=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)
+if [ -z "$BRANCH_NAME" ] || [ "$BRANCH_NAME" = "HEAD" ]; then
+  exit 0
+fi
+
+curl -s -X POST "${KANVIBE_URL}/api/hooks/status" \
   -H "Content-Type: application/json" \
-  -d '{ "id": "task-uuid" }'
+  -d "{\"branchName\": \"${BRANCH_NAME}\", \"projectName\": \"${PROJECT_NAME}\", \"status\": \"progress\"}" \
+  > /dev/null 2>&1
+
+exit 0
 ```
 
-### Claude Code hooks 설정 예시
+3. `kanvibe-stop-hook.sh`를 작성한다 (status를 `"review"`로 변경).
 
-`.claude/hooks.json`:
+4. 실행 권한을 부여한다:
+
+```bash
+chmod +x .claude/hooks/kanvibe-*.sh
+```
+
+5. `.claude/settings.json`에 hooks를 등록한다:
 
 ```json
 {
   "hooks": {
-    "PreToolUse": [
+    "UserPromptSubmit": [
       {
-        "matcher": "Bash",
-        "command": "curl -s -X POST http://YOUR_KANVIBE_HOST:4885/api/hooks/start -H 'Content-Type: application/json' -d '{\"title\": \"Claude Code 작업\", \"agentType\": \"claude\"}'"
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/hooks/kanvibe-prompt-hook.sh",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/hooks/kanvibe-stop-hook.sh",
+            "timeout": 10
+          }
+        ]
       }
     ]
   }
@@ -99,7 +173,7 @@ curl -X POST http://localhost:4885/api/hooks/complete \
 
 ## 기술 스택
 
-- **Frontend/Backend**: Next.js 15 (App Router, Server Actions, Custom Server)
+- **Frontend/Backend**: Next.js 16 (App Router, Server Actions, Custom Server)
 - **Database**: PostgreSQL 16 + TypeORM
 - **Terminal**: xterm.js + WebSocket + node-pty
 - **SSH**: ssh2 (Node.js)
@@ -113,7 +187,7 @@ curl -X POST http://localhost:4885/api/hooks/complete \
 src/
 ├── app/
 │   ├── actions/       # Server Actions (auth, kanban CRUD)
-│   ├── api/hooks/     # Hook REST API (start, update, complete)
+│   ├── api/hooks/     # Hook REST API (start, status)
 │   ├── login/         # 로그인 페이지
 │   ├── task/[id]/     # 작업 상세 + 터미널 페이지
 │   ├── layout.tsx     # 루트 레이아웃

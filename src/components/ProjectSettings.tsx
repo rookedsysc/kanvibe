@@ -1,13 +1,16 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useTransition, useEffect, useCallback } from "react";
 import { useTranslations } from "next-intl";
 import {
   deleteProject,
   scanAndRegisterProjects,
+  getProjectHooksStatus,
+  installProjectHooks,
   type ScanResult,
 } from "@/app/actions/project";
 import type { Project } from "@/entities/Project";
+import type { ClaudeHooksStatus } from "@/lib/claudeHooksSetup";
 
 interface ProjectSettingsProps {
   isOpen: boolean;
@@ -28,6 +31,23 @@ export default function ProjectSettings({
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [scanResult, setScanResult] = useState<ScanResult | null>(null);
+  const [hooksStatusMap, setHooksStatusMap] = useState<Record<string, ClaudeHooksStatus | null>>({});
+
+  const loadHooksStatus = useCallback(async () => {
+    const statusEntries = await Promise.all(
+      projects.map(async (p) => {
+        const status = await getProjectHooksStatus(p.id);
+        return [p.id, status] as const;
+      })
+    );
+    setHooksStatusMap(Object.fromEntries(statusEntries));
+  }, [projects]);
+
+  useEffect(() => {
+    if (isOpen && projects.length > 0) {
+      loadHooksStatus();
+    }
+  }, [isOpen, projects, loadHooksStatus]);
 
   if (!isOpen) return null;
 
@@ -64,6 +84,18 @@ export default function ProjectSettings({
         setSuccessMessage(t("noNewProjects"));
       } else {
         setError(t("noGitRepos"));
+      }
+    });
+  }
+
+  function handleInstallHooks(projectId: string) {
+    startTransition(async () => {
+      const result = await installProjectHooks(projectId);
+      if (result.success) {
+        setSuccessMessage(t("hooksInstallSuccess"));
+        await loadHooksStatus();
+      } else {
+        setError(t("hooksInstallFailed", { error: result.error || "unknown" }));
       }
     });
   }
@@ -165,36 +197,70 @@ export default function ProjectSettings({
             </p>
           ) : (
             <ul className="space-y-2">
-              {projects.map((project) => (
-                <li
-                  key={project.id}
-                  className="flex items-center justify-between p-2 bg-bg-page rounded-md"
-                >
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium text-text-primary truncate">
-                      {project.name}
-                    </p>
-                    <p className="text-xs text-text-muted font-mono truncate">
-                      {project.sshHost && (
-                        <span className="text-tag-ssh-text">
-                          {project.sshHost}:
-                        </span>
-                      )}
-                      {project.repoPath}
-                    </p>
-                    <p className="text-xs text-text-muted">
-                      {t("defaultBranch")}: {project.defaultBranch}
-                    </p>
-                  </div>
-                  <button
-                    onClick={() => handleDelete(project.id, project.name)}
-                    disabled={isPending}
-                    className="ml-2 text-xs text-status-error hover:opacity-80 shrink-0"
+              {projects.map((project) => {
+                const hooksStatus = hooksStatusMap[project.id];
+
+                return (
+                  <li
+                    key={project.id}
+                    className="p-2 bg-bg-page rounded-md"
                   >
-                    {t("deleteProject")}
-                  </button>
-                </li>
-              ))}
+                    <div className="flex items-center justify-between">
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-text-primary truncate">
+                          {project.name}
+                        </p>
+                        <p className="text-xs text-text-muted font-mono truncate">
+                          {project.sshHost && (
+                            <span className="text-tag-ssh-text">
+                              {project.sshHost}:
+                            </span>
+                          )}
+                          {project.repoPath}
+                        </p>
+                        <p className="text-xs text-text-muted">
+                          {t("defaultBranch")}: {project.defaultBranch}
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => handleDelete(project.id, project.name)}
+                        disabled={isPending}
+                        className="ml-2 text-xs text-status-error hover:opacity-80 shrink-0"
+                      >
+                        {t("deleteProject")}
+                      </button>
+                    </div>
+                    <div className="flex items-center gap-2 mt-1.5">
+                      {project.sshHost ? (
+                        <span className="text-[10px] px-1.5 py-0.5 bg-bg-surface border border-border-default rounded text-text-muted">
+                          {t("hooksRemoteNotSupported")}
+                        </span>
+                      ) : hooksStatus?.installed ? (
+                        <>
+                          <span className="text-[10px] px-1.5 py-0.5 bg-status-done/15 text-status-done rounded">
+                            {t("hooksInstalled")}
+                          </span>
+                          <button
+                            onClick={() => handleInstallHooks(project.id)}
+                            disabled={isPending}
+                            className="text-[10px] text-text-muted hover:text-text-primary transition-colors"
+                          >
+                            {t("reinstallHooks")}
+                          </button>
+                        </>
+                      ) : (
+                        <button
+                          onClick={() => handleInstallHooks(project.id)}
+                          disabled={isPending}
+                          className="text-[10px] px-1.5 py-0.5 bg-brand-primary/10 text-brand-primary hover:bg-brand-primary/20 rounded transition-colors"
+                        >
+                          {isPending ? t("installingHooks") : t("installHooks")}
+                        </button>
+                      )}
+                    </div>
+                  </li>
+                );
+              })}
             </ul>
           )}
         </div>

@@ -37,16 +37,16 @@ export default function TaskCard({ task, index, onContextMenu, projectName }: Ta
               {task.title}
             </h3>
 
+            {task.description && (
+              <p className="text-xs text-text-secondary mt-1 line-clamp-2 leading-relaxed">
+                {task.description}
+              </p>
+            )}
+
             <div className="flex items-center gap-2 mt-2 flex-wrap">
               {projectName && (
                 <span className="text-xs px-2 py-0.5 rounded-full bg-tag-project-bg text-tag-project-text font-medium truncate max-w-[120px]">
                   {projectName}
-                </span>
-              )}
-
-              {task.branchName && (
-                <span className="text-xs px-2 py-0.5 rounded-full bg-tag-branch-bg text-tag-branch-text font-mono truncate max-w-[140px]">
-                  {task.branchName}
                 </span>
               )}
 

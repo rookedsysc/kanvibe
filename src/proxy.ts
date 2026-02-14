@@ -8,10 +8,10 @@ const intlMiddleware = createMiddleware(routing);
 const PUBLIC_PATHS = ["/login"];
 
 /**
- * locale 라우팅과 인증을 결합한 미들웨어.
+ * locale 라우팅과 인증을 결합한 프록시.
  * next-intl이 locale을 처리한 뒤, 공개 경로가 아니면 세션 쿠키를 확인한다.
  */
-export function middleware(request: NextRequest) {
+export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   const isApiPath = pathname.startsWith("/api/");

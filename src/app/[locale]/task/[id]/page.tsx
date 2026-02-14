@@ -9,6 +9,7 @@ import {
 import { TaskStatus } from "@/entities/KanbanTask";
 import TaskStatusBadge from "@/components/TaskStatusBadge";
 import TerminalLoader from "@/components/TerminalLoader";
+import ConnectTerminalForm from "@/components/ConnectTerminalForm";
 import { Link } from "@/i18n/navigation";
 
 export const dynamicConfig = "force-dynamic";
@@ -125,16 +126,6 @@ export default async function TaskDetailPage({ params }: TaskDetailPageProps) {
               {t("info")}
             </h3>
             <dl className="space-y-3">
-              {task.branchName && (
-                <div className="flex items-start justify-between gap-2">
-                  <dt className="text-xs text-text-muted shrink-0">
-                    {t("branch")}
-                  </dt>
-                  <dd className="text-xs font-mono bg-tag-branch-bg text-tag-branch-text px-2 py-0.5 rounded text-right truncate max-w-[180px]">
-                    {task.branchName}
-                  </dd>
-                </div>
-              )}
               {task.prUrl && (
                 <div className="flex items-center justify-between gap-2">
                   <dt className="text-xs text-text-muted">{t("prLink")}</dt>
@@ -246,7 +237,11 @@ export default async function TaskDetailPage({ params }: TaskDetailPageProps) {
             </div>
           ) : (
             <div className="flex-1 flex items-center justify-center border border-dashed border-border-default rounded-lg bg-bg-surface">
-              <p className="text-text-muted text-sm">{t("noTerminal")}</p>
+              {task.projectId ? (
+                <ConnectTerminalForm taskId={task.id} />
+              ) : (
+                <p className="text-text-muted text-sm">{t("noTerminal")}</p>
+              )}
             </div>
           )}
         </main>

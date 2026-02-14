@@ -82,7 +82,15 @@
     "noProjects": "No registered projects.",
     "defaultBranch": "Default branch",
     "deleteProject": "Delete",
-    "deleteConfirm": "Are you sure you want to delete \"{name}\"?"
+    "deleteConfirm": "Are you sure you want to delete \"{name}\"?",
+    "hooksInstalled": "Hooks Installed",
+    "hooksNotInstalled": "No Hooks",
+    "installHooks": "Install Hooks",
+    "reinstallHooks": "Reinstall",
+    "installingHooks": "Installing...",
+    "hooksInstallSuccess": "Claude Code hooks installed",
+    "hooksInstallFailed": "Hooks installation failed: {error}",
+    "hooksRemoteNotSupported": "Remote"
   },
   "taskDetail": {
     "backToBoard": "Back to Board",
@@ -93,6 +101,10 @@
     "delete": "Delete",
     "terminal": "Terminal",
     "noTerminal": "No terminal session connected to this task.",
+    "connectTerminal": "Connect Terminal",
+    "connecting": "Connecting...",
+    "selectSessionType": "Session type",
+    "connectFailed": "Failed to create terminal session. Check server logs.",
     "info": "Task Info",
     "branch": "Branch",
     "agent": "Agent",
