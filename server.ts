@@ -50,8 +50,8 @@ app.prepare().then(() => {
   const wss = new WebSocketServer({ server: wsHttpServer });
 
   wss.on("connection", async (ws: WebSocket, request) => {
-    const { pathname } = parse(request.url || "");
-    const taskIdMatch = pathname?.match(/^\/api\/terminal\/([a-f0-9-]+)$/);
+    const parsed = parse(request.url || "", true);
+    const taskIdMatch = parsed.pathname?.match(/^\/api\/terminal\/([a-f0-9-]+)$/);
 
     if (!taskIdMatch) {
       ws.close(1008, "잘못된 경로");
@@ -59,6 +59,8 @@ app.prepare().then(() => {
     }
 
     const taskId = taskIdMatch[1];
+    const initialCols = parseInt(parsed.query.cols as string, 10) || 120;
+    const initialRows = parseInt(parsed.query.rows as string, 10) || 30;
     const cookieHeader = request.headers.cookie || "";
     const isAuthed = validateSessionFromCookie(cookieHeader);
     console.log(`[WS] 터미널 연결 요청: taskId=${taskId}, auth=${isAuthed}`);
@@ -98,10 +100,12 @@ app.prepare().then(() => {
           task.sessionName,
           windowName,
           ws,
-          hostConfig
+          hostConfig,
+          initialCols,
+          initialRows
         );
       } else {
-        await attachLocalSession(taskId, task.sessionType, task.sessionName, windowName, ws, task.worktreePath);
+        await attachLocalSession(taskId, task.sessionType, task.sessionName, windowName, ws, task.worktreePath, initialCols, initialRows);
       }
     } catch (error) {
       console.error("터미널 연결 오류:", error);

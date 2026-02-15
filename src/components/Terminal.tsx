@@ -67,14 +67,20 @@ export default function Terminal({ taskId }: TerminalProps) {
     term.options.fontFamily = "monospace";
     term.options.fontFamily = fontFamily;
 
-    requestAnimationFrame(() => fitAddon.fit());
+    /** 브라우저 레이아웃 완료 후 fit하여 정확한 크기를 측정한 뒤 WebSocket을 연결한다 */
+    await new Promise<void>((resolve) =>
+      requestAnimationFrame(() => {
+        fitAddon.fit();
+        resolve();
+      })
+    );
 
     xtermRef.current = term;
 
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     const wsHost = window.location.hostname;
     const wsPort = parseInt(window.location.port || "4885", 10) + 10000;
-    const wsUrl = `${protocol}//${wsHost}:${wsPort}/api/terminal/${taskId}`;
+    const wsUrl = `${protocol}//${wsHost}:${wsPort}/api/terminal/${taskId}?cols=${term.cols}&rows=${term.rows}`;
     const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
 

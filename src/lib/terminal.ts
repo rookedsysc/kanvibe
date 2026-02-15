@@ -47,7 +47,12 @@ export async function attachLocalSession(
   windowName: string,
   ws: WebSocket,
   cwd?: string | null,
+  cols?: number,
+  rows?: number,
 ): Promise<void> {
+  const initialCols = cols ?? 120;
+  const initialRows = rows ?? 30;
+
   /** 동일 taskId로 이미 활성 터미널이 있으면 먼저 정리한다 */
   if (activeTerminals.has(taskId)) {
     detachSession(taskId);
@@ -119,8 +124,8 @@ export async function attachLocalSession(
   try {
     ptyProcess = pty.spawn(shell, args, {
       name: "xterm-256color",
-      cols: 120,
-      rows: 30,
+      cols: initialCols,
+      rows: initialRows,
       cwd: process.env.HOME || "/",
       env: {
         ...process.env,
@@ -178,8 +183,13 @@ export async function attachRemoteSession(
   sessionName: string,
   windowName: string,
   ws: WebSocket,
-  sshConfig: { hostname: string; port: number; username: string; privateKeyPath: string }
+  sshConfig: { hostname: string; port: number; username: string; privateKeyPath: string },
+  cols?: number,
+  rows?: number,
 ): Promise<void> {
+  const initialCols = cols ?? 120;
+  const initialRows = rows ?? 30;
+
   const { Client } = await import("ssh2");
   const fs = await import("fs");
 
@@ -192,7 +202,7 @@ export async function attachRemoteSession(
         ? `tmux attach-session -t "${sessionName}:${windowName}"`
         : `zellij action --session "${sessionName}" go-to-tab-name "${windowName}" 2>/dev/null; zellij attach "${sessionName}"`;
 
-    conn.shell({ term: "xterm-256color", cols: 120, rows: 30 }, (err, stream) => {
+    conn.shell({ term: "xterm-256color", cols: initialCols, rows: initialRows }, (err, stream) => {
       if (err) {
         ws.close(1011, "SSH shell 오류");
         conn.end();
