@@ -55,6 +55,16 @@ npm run dev
   → POST /api/hooks/status { branchName, projectName, status: "progress" }
   → Kanban 보드에서 작업이 PROGRESS로 이동
 
+AI가 사용자에게 질문 (PreToolUse: AskUserQuestion)
+  → kanvibe-question-hook.sh 실행
+  → POST /api/hooks/status { branchName, projectName, status: "review" }
+  → Kanban 보드에서 작업이 REVIEW로 이동
+
+사용자가 질문에 답변 (PostToolUse: AskUserQuestion)
+  → kanvibe-prompt-hook.sh 실행
+  → POST /api/hooks/status { branchName, projectName, status: "progress" }
+  → Kanban 보드에서 작업이 PROGRESS로 이동
+
 AI 응답 완료 (Stop)
   → kanvibe-stop-hook.sh 실행
   → POST /api/hooks/status { branchName, projectName, status: "review" }
@@ -105,6 +115,7 @@ KanVibe 웹 UI의 **프로젝트 설정 > 디렉토리 스캔**으로 프로젝�
 
 자동 설치되는 파일:
 - `.claude/hooks/kanvibe-prompt-hook.sh` — prompt 입력 시 PROGRESS 전환
+- `.claude/hooks/kanvibe-question-hook.sh` — AI 질문 시 REVIEW 전환
 - `.claude/hooks/kanvibe-stop-hook.sh` — AI 응답 완료 시 REVIEW 전환
 - `.claude/settings.json` — hooks 이벤트 등록 (기존 설정이 있으면 병합)
 
@@ -147,6 +158,30 @@ chmod +x .claude/hooks/kanvibe-*.sh
   "hooks": {
     "UserPromptSubmit": [
       {
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/hooks/kanvibe-prompt-hook.sh",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "AskUserQuestion",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/hooks/kanvibe-question-hook.sh",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "AskUserQuestion",
         "hooks": [
           {
             "type": "command",
