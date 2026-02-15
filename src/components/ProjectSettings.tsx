@@ -12,6 +12,7 @@ import {
 import { Link } from "@/i18n/navigation";
 import type { Project } from "@/entities/Project";
 import type { ClaudeHooksStatus } from "@/lib/claudeHooksSetup";
+import FolderSearchInput from "@/components/FolderSearchInput";
 
 interface ProjectSettingsProps {
   isOpen: boolean;
@@ -33,6 +34,7 @@ export default function ProjectSettings({
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [scanResult, setScanResult] = useState<ScanResult | null>(null);
   const [hooksStatusMap, setHooksStatusMap] = useState<Record<string, ClaudeHooksStatus | null>>({});
+  const [scanSshHost, setScanSshHost] = useState("");
 
   const loadHooksStatus = useCallback(async () => {
     const statusEntries = await Promise.all(
@@ -130,16 +132,11 @@ export default function ProjectSettings({
           </h3>
 
           <form action={handleScan} className="space-y-3">
-            <input
-              name="scanPath"
-              required
-              placeholder={t("scanPathPlaceholder")}
-              className="w-full px-3 py-1.5 text-sm bg-bg-page border border-border-default rounded-md text-text-primary focus:outline-none focus:border-brand-primary font-mono transition-colors"
-            />
-
             {sshHosts.length > 0 && (
               <select
                 name="scanSshHost"
+                value={scanSshHost}
+                onChange={(e) => setScanSshHost(e.target.value)}
                 className="w-full px-3 py-1.5 text-sm bg-bg-page border border-border-default rounded-md text-text-primary focus:outline-none focus:border-brand-primary transition-colors"
               >
                 <option value="">{tc("local")}</option>
@@ -150,6 +147,12 @@ export default function ProjectSettings({
                 ))}
               </select>
             )}
+
+            <FolderSearchInput
+              name="scanPath"
+              sshHost={scanSshHost || undefined}
+              onSelect={() => {}}
+            />
 
             <button
               type="submit"
