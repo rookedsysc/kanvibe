@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useTransition } from "react";
 import { useTranslations } from "next-intl";
+import { useRouter } from "@/i18n/navigation";
 import { createTask } from "@/app/actions/kanban";
 import { getProjectBranches } from "@/app/actions/project";
 import { SessionType } from "@/entities/KanbanTask";
@@ -25,6 +26,7 @@ export default function CreateTaskModal({
 }: CreateTaskModalProps) {
   const t = useTranslations("task");
   const tc = useTranslations("common");
+  const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [selectedProjectId, setSelectedProjectId] = useState(defaultProjectId || "");
   const [branches, setBranches] = useState<string[]>([]);
@@ -64,7 +66,7 @@ export default function CreateTaskModal({
     if (!branchName || !selectedProjectId) return;
 
     startTransition(async () => {
-      await createTask({
+      const created = await createTask({
         title: branchName,
         description: (formData.get("description") as string) || undefined,
         branchName,
@@ -74,6 +76,7 @@ export default function CreateTaskModal({
         projectId: selectedProjectId,
       });
       onClose();
+      router.push(`/task/${created.id}`);
     });
   }
 
