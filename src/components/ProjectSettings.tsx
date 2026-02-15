@@ -123,6 +123,18 @@ export default function ProjectSettings({
           </button>
         </div>
 
+        {/* Pane 레이아웃 설정 링크 */}
+        <div className="p-4 border-b border-border-default">
+          <Link
+            href="/pane-layout"
+            prefetch={false}
+            className="flex items-center justify-between w-full px-3 py-2 text-sm bg-bg-page border border-border-default rounded-md text-text-primary hover:border-brand-primary transition-colors"
+          >
+            <span>{t("paneLayoutLink")}</span>
+            <span className="text-text-muted">&rarr;</span>
+          </Link>
+        </div>
+
         {/* 디렉토리 스캔 등록 */}
         <div className="p-4 border-b border-border-default">
           <h3 className="text-xs text-text-muted uppercase tracking-wide mb-3">
@@ -184,18 +196,6 @@ export default function ProjectSettings({
           {successMessage && (
             <p className="text-xs text-status-success mt-2">{successMessage}</p>
           )}
-        </div>
-
-        {/* Pane 레이아웃 설정 링크 */}
-        <div className="p-4 border-b border-border-default">
-          <Link
-            href="/pane-layout"
-            prefetch={false}
-            className="flex items-center justify-between w-full px-3 py-2 text-sm bg-bg-page border border-border-default rounded-md text-text-primary hover:border-brand-primary transition-colors"
-          >
-            <span>{t("paneLayoutLink")}</span>
-            <span className="text-text-muted">&rarr;</span>
-          </Link>
         </div>
 
         {/* 등록된 프로젝트 목록 */}
