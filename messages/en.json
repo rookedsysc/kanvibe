@@ -91,7 +91,12 @@
     "hooksInstallSuccess": "Claude Code hooks installed",
     "hooksInstallFailed": "Hooks installation failed: {error}",
     "hooksRemoteNotSupported": "Remote",
-    "paneLayoutLink": "Pane Layout Settings"
+    "paneLayoutLink": "Pane Layout Settings",
+    "searchFolderPlaceholder": "Type to search folders...",
+    "loadingFolders": "Searching folders...",
+    "noFoldersFound": "No matching folders found.",
+    "folderCount": "{count} folders",
+    "folderNavHint": "↑↓ Navigate · Tab Drill down · Enter Select · Backspace Go up · Esc Close"
   },
   "paneLayout": {
     "title": "Pane Layout Settings",

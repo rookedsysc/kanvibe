@@ -4,10 +4,11 @@ import { revalidatePath } from "next/cache";
 import { IsNull } from "typeorm";
 import { getProjectRepository, getTaskRepository } from "@/lib/database";
 import { Project } from "@/entities/Project";
-import { validateGitRepo, getDefaultBranch, listBranches, scanGitRepos, listWorktrees } from "@/lib/gitOperations";
+import { validateGitRepo, getDefaultBranch, listBranches, scanGitRepos, listWorktrees, execGit } from "@/lib/gitOperations";
 import { TaskStatus, SessionType } from "@/entities/KanbanTask";
 import { isWindowAlive, formatWindowName, createSessionWithoutWorktree } from "@/lib/worktree";
 import { setupClaudeHooks, getClaudeHooksStatus, type ClaudeHooksStatus } from "@/lib/claudeHooksSetup";
+import { homedir } from "os";
 import path from "path";
 
 /** TypeORM 엔티티를 직렬화 가능한 plain object로 변환한다 */
@@ -289,6 +290,33 @@ export async function scanAndRegisterProjects(
 
   revalidatePath("/[locale]", "page");
   return result;
+}
+
+/** 지정 디렉토리의 직속 하위 디렉토리 이름 목록을 반환한다 (fzf drill-down 탐색용) */
+export async function listSubdirectories(
+  parentPath: string,
+  sshHost?: string
+): Promise<string[]> {
+  const resolvedPath = parentPath.startsWith("~")
+    ? parentPath.replace(/^~/, homedir())
+    : parentPath;
+
+  try {
+    const output = await execGit(
+      `find "${resolvedPath}" -maxdepth 1 -mindepth 1 -type d 2>/dev/null | sort`,
+      sshHost || null
+    );
+
+    if (!output) return [];
+
+    return output
+      .split("\n")
+      .filter(Boolean)
+      .map((dir) => path.basename(dir))
+      .filter((name) => !name.startsWith("."));
+  } catch {
+    return [];
+  }
 }
 
 /** 프로젝트의 브랜치 목록을 반환한다 */

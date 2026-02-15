@@ -75,7 +75,7 @@ async function execRemote(sshHost: string, command: string): Promise<string> {
 }
 
 /** 로컬 또는 SSH에서 명령을 실행한다. sshHost가 null이면 로컬 실행 */
-async function execGit(command: string, sshHost?: string | null): Promise<string> {
+export async function execGit(command: string, sshHost?: string | null): Promise<string> {
   if (sshHost) {
     return execRemote(sshHost, command);
   }
@@ -209,5 +209,3 @@ export async function listWorktrees(
     return [];
   }
 }
-
-export { execGit };

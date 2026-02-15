@@ -91,7 +91,12 @@
     "hooksInstallSuccess": "Claude Code hooks 설치 완료",
     "hooksInstallFailed": "Hooks 설치 실패: {error}",
     "hooksRemoteNotSupported": "원격",
-    "paneLayoutLink": "Pane 레이아웃 설정"
+    "paneLayoutLink": "Pane 레이아웃 설정",
+    "searchFolderPlaceholder": "폴더명을 입력하여 검색...",
+    "loadingFolders": "폴더 검색 중...",
+    "noFoldersFound": "일치하는 폴더가 없습니다.",
+    "folderCount": "{count}개의 폴더",
+    "folderNavHint": "↑↓ 이동 · Tab 하위 폴더 · Enter 선택 · Backspace 상위 폴더 · Esc 닫기"
   },
   "paneLayout": {
     "title": "Pane 레이아웃 설정",

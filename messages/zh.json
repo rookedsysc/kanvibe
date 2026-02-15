@@ -91,7 +91,12 @@
     "hooksInstallSuccess": "Claude Code hooks 安装完成",
     "hooksInstallFailed": "Hooks 安装失败: {error}",
     "hooksRemoteNotSupported": "远程",
-    "paneLayoutLink": "面板布局设置"
+    "paneLayoutLink": "面板布局设置",
+    "searchFolderPlaceholder": "输入文件夹名称搜索...",
+    "loadingFolders": "正在搜索文件夹...",
+    "noFoldersFound": "未找到匹配的文件夹。",
+    "folderCount": "{count} 个文件夹",
+    "folderNavHint": "↑↓ 导航 · Tab 进入子文件夹 · Enter 选择 · Backspace 返回上级 · Esc 关闭"
   },
   "paneLayout": {
     "title": "面板布局设置",
