@@ -2,9 +2,11 @@ import "reflect-metadata";
 import { DataSource, type ObjectLiteral, type Repository } from "typeorm";
 import { KanbanTask } from "@/entities/KanbanTask";
 import { Project } from "@/entities/Project";
+import { PaneLayoutConfig } from "@/entities/PaneLayoutConfig";
 import { InitialSchema1770854400000 } from "@/migrations/1770854400000-InitialSchema";
 import { AddPrUrlToKanbanTasks1770854400001 } from "@/migrations/1770854400001-AddPrUrlToKanbanTasks";
 import { AddIsWorktreeToProjects1770854400002 } from "@/migrations/1770854400002-AddIsWorktreeToProjects";
+import { AddPaneLayoutConfig1771048256887 } from "@/migrations/1771048256887-AddPaneLayoutConfig";
 
 /**
  * TypeORM DataSource 싱글턴.
@@ -25,8 +27,8 @@ function createDataSource(): DataSource {
   return new DataSource({
     type: "postgres",
     url: process.env.DATABASE_URL ?? buildDatabaseUrl(),
-    entities: [KanbanTask, Project],
-    migrations: [InitialSchema1770854400000, AddPrUrlToKanbanTasks1770854400001, AddIsWorktreeToProjects1770854400002],
+    entities: [KanbanTask, Project, PaneLayoutConfig],
+    migrations: [InitialSchema1770854400000, AddPrUrlToKanbanTasks1770854400001, AddIsWorktreeToProjects1770854400002, AddPaneLayoutConfig1771048256887],
     synchronize: false,
     logging: process.env.NODE_ENV !== "production",
   });
@@ -68,4 +70,9 @@ export async function getTaskRepository(): Promise<Repository<KanbanTask>> {
 export async function getProjectRepository(): Promise<Repository<Project>> {
   const ds = await getDataSource();
   return getRepositoryByTable<Project>(ds, "projects");
+}
+
+export async function getPaneLayoutConfigRepository(): Promise<Repository<PaneLayoutConfig>> {
+  const ds = await getDataSource();
+  return getRepositoryByTable<PaneLayoutConfig>(ds, "pane_layout_configs");
 }

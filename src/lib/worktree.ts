@@ -1,6 +1,8 @@
 import path from "path";
 import { SessionType } from "@/entities/KanbanTask";
+import { PaneLayoutType, type PaneCommand } from "@/entities/PaneLayoutConfig";
 import { execGit } from "@/lib/gitOperations";
+import { getEffectivePaneLayout } from "@/app/actions/paneLayout";
 
 interface WorktreeSession {
   worktreePath: string;
@@ -13,8 +15,89 @@ export function formatWindowName(branchName: string): string {
 }
 
 /**
+ * tmux window에 pane 레이아웃을 적용하고 각 pane에 시작 명령어를 실행한다.
+ * 분할 실패 시에도 기본 window는 유지된다 (graceful fallback).
+ */
+async function applyPaneLayout(
+  sessionName: string,
+  windowName: string,
+  layoutType: PaneLayoutType,
+  panes: PaneCommand[],
+  worktreePath: string,
+): Promise<void> {
+  const target = `"${sessionName}":"${windowName}"`;
+
+  /** 레이아웃 타입에 따른 tmux split 명령어 시퀀스 */
+  const splitCommands: Record<PaneLayoutType, string[]> = {
+    [PaneLayoutType.SINGLE]: [],
+    [PaneLayoutType.HORIZONTAL_2]: [
+      `tmux split-window -v -t ${target} -c "${worktreePath}"`,
+    ],
+    [PaneLayoutType.VERTICAL_2]: [
+      `tmux split-window -h -t ${target} -c "${worktreePath}"`,
+    ],
+    [PaneLayoutType.LEFT_RIGHT_TB]: [
+      `tmux split-window -h -t ${target} -c "${worktreePath}"`,
+      `tmux split-window -v -t ${target}.1 -c "${worktreePath}"`,
+    ],
+    [PaneLayoutType.LEFT_TB_RIGHT]: [
+      `tmux split-window -h -t ${target} -c "${worktreePath}"`,
+      `tmux split-window -v -t ${target}.0 -c "${worktreePath}"`,
+    ],
+    [PaneLayoutType.QUAD]: [
+      `tmux split-window -h -t ${target} -c "${worktreePath}"`,
+      `tmux split-window -v -t ${target}.0 -c "${worktreePath}"`,
+      `tmux split-window -v -t ${target}.2 -c "${worktreePath}"`,
+    ],
+  };
+
+  const commands = splitCommands[layoutType];
+  for (const cmd of commands) {
+    await execGit(cmd);
+  }
+
+  /** 각 pane에 시작 명령어 전송 */
+  for (const pane of panes) {
+    if (pane.command.trim()) {
+      await execGit(
+        `tmux send-keys -t ${target}.${pane.position} "${pane.command}" Enter`,
+      );
+    }
+  }
+}
+
+/**
+ * pane 레이아웃을 백그라운드에서 적용한다.
+ * task 생성 흐름을 차단하지 않으며, 실패해도 기본 window는 유지된다.
+ */
+function applyPaneLayoutAsync(
+  sessionName: string,
+  windowName: string,
+  worktreePath: string,
+  projectId?: string,
+): void {
+  (async () => {
+    try {
+      const layoutConfig = await getEffectivePaneLayout(projectId);
+      if (layoutConfig && layoutConfig.layoutType !== PaneLayoutType.SINGLE) {
+        await applyPaneLayout(
+          sessionName,
+          windowName,
+          layoutConfig.layoutType as PaneLayoutType,
+          layoutConfig.panes,
+          worktreePath,
+        );
+      }
+    } catch (error) {
+      console.error("Pane 레이아웃 적용 실패 (기본 window 유지):", error);
+    }
+  })();
+}
+
+/**
  * git worktree를 생성하고 메인 세션에 tmux window / zellij tab을 추가한다.
  * 메인 세션이 없으면 자동 생성한다. sshHost가 지정되면 원격에서 실행한다.
+ * tmux인 경우 projectId를 기반으로 pane 레이아웃 설정을 적용한다.
  */
 export async function createWorktreeWithSession(
   projectPath: string,
@@ -22,6 +105,7 @@ export async function createWorktreeWithSession(
   baseBranch: string,
   sessionType: SessionType,
   sshHost?: string | null,
+  projectId?: string | null,
 ): Promise<WorktreeSession> {
   const projectName = path.basename(projectPath);
   const worktreeBase = path.posix.join(
@@ -51,6 +135,11 @@ export async function createWorktreeWithSession(
       `tmux new-window -t "${sessionName}" -n "${windowName}" -c "${worktreePath}"`,
       sshHost,
     );
+
+    /** 로컬 tmux인 경우 pane 레이아웃을 백그라운드로 적용 (task 생성을 차단하지 않음) */
+    if (!sshHost) {
+      applyPaneLayoutAsync(sessionName, windowName, worktreePath, projectId ?? undefined);
+    }
   } else {
     /** 메인 zellij 세션이 없으면 백그라운드로 생성한다 */
     try {

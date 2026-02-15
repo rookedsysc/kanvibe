@@ -18,7 +18,7 @@ function isTmuxWindowAlive(sessionName: string, windowName: string): boolean {
   try {
     const output = execSync(
       `tmux list-windows -t "${sessionName}" -F "#{window_name}"`,
-      { encoding: "utf-8", timeout: 3000 },
+      { encoding: "utf-8", timeout: 5000 },
     );
     return output.split("\n").some((w) => w.trim() === windowName);
   } catch {
