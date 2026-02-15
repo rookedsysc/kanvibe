@@ -330,3 +330,37 @@ export async function installProjectHooks(
     };
   }
 }
+
+/** 태스크의 worktree 또는 프로젝트 경로에서 Claude Code hooks 상태를 조회한다 */
+export async function getTaskHooksStatus(
+  taskId: string
+): Promise<ClaudeHooksStatus | null> {
+  const taskRepo = await getTaskRepository();
+  const task = await taskRepo.findOne({ where: { id: taskId }, relations: ["project"] });
+  if (!task?.project || task.project.sshHost) return null;
+
+  const targetPath = task.worktreePath || task.project.repoPath;
+  return getClaudeHooksStatus(targetPath);
+}
+
+/** 태스크의 worktree 또는 프로젝트 경로에 Claude Code hooks를 설치한다 */
+export async function installTaskHooks(
+  taskId: string
+): Promise<{ success: boolean; error?: string }> {
+  const taskRepo = await getTaskRepository();
+  const task = await taskRepo.findOne({ where: { id: taskId }, relations: ["project"] });
+  if (!task?.project) return { success: false, error: "프로젝트를 찾을 수 없습니다." };
+  if (task.project.sshHost) return { success: false, error: "SSH 원격 프로젝트는 지원하지 않습니다." };
+
+  try {
+    const kanvibeUrl = `http://localhost:${process.env.PORT || 4885}`;
+    const targetPath = task.worktreePath || task.project.repoPath;
+    await setupClaudeHooks(targetPath, task.project.name, kanvibeUrl);
+    return { success: true };
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "hooks 설정 실패",
+    };
+  }
+}

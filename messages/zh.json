@@ -157,6 +157,14 @@
     "updatedAt": "更新时间",
     "prLink": "PR 链接",
     "actions": "状态变更",
-    "deleteConfirm": "确定要删除此任务吗？"
+    "deleteConfirm": "确定要删除此任务吗？",
+    "hooksStatus": "Hooks 状态",
+    "hooksInstalled": "已安装",
+    "hooksNotInstalled": "未安装",
+    "installHooks": "安装 Hooks",
+    "installingHooks": "安装中...",
+    "hooksInstallSuccess": "Hooks 安装完成",
+    "hooksInstallFailed": "Hooks 安装失败",
+    "hooksRemoteNotSupported": "不支持远程项目"
   }
 }
