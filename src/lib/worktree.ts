@@ -11,7 +11,7 @@ interface WorktreeSession {
 
 /** branchName을 tmux window / zellij tab 이름으로 변환한다 */
 export function formatWindowName(branchName: string): string {
-  return ` branchName.replace(/\//g, "-")`;
+  return ` ${branchName.replace(/\//g, "-")}`;
 }
 
 /**
