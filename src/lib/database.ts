@@ -17,7 +17,7 @@ const globalForDb = globalThis as unknown as {
 function buildDatabaseUrl(): string {
   const user = encodeURIComponent(process.env.KANVIBE_USER || "admin");
   const password = encodeURIComponent(process.env.KANVIBE_PASSWORD || "changeme");
-  const port = parseInt(process.env.PORT || "4885", 10) + 1;
+  const port = process.env.DB_PORT || "4886";
   return `postgresql://${user}:${password}@localhost:${port}/kanvibe`;
 }
 
