@@ -1,7 +1,6 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { IsNull } from "typeorm";
 import { getProjectRepository, getTaskRepository } from "@/lib/database";
 import { Project } from "@/entities/Project";
 import { validateGitRepo, getDefaultBranch, listBranches, scanGitRepos, listWorktrees } from "@/lib/gitOperations";
@@ -260,7 +259,7 @@ export async function scanAndRegisterProjects(
       const mainBranchTask = await taskRepo.findOneBy({
         projectId: project.id,
         baseBranch: project.defaultBranch,
-        branchName: IsNull(),
+        branchName: project.defaultBranch,
       });
 
       if (mainBranchTask && !mainBranchTask.sessionType) {

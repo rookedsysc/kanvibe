@@ -20,7 +20,7 @@ function isTmuxWindowAlive(sessionName: string, windowName: string): boolean {
       `tmux list-windows -t "${sessionName}" -F "#{window_name}"`,
       { encoding: "utf-8", timeout: 5000 },
     );
-    return output.split("\n").some((w) => w.trim() === windowName);
+    return output.split("\n").some((w) => w.trimEnd() === windowName);
   } catch {
     return false;
   }
@@ -45,19 +45,32 @@ export async function attachLocalSession(
   sessionType: SessionType,
   sessionName: string,
   windowName: string,
-  ws: WebSocket
+  ws: WebSocket,
+  cwd?: string | null,
 ): Promise<void> {
   /** 동일 taskId로 이미 활성 터미널이 있으면 먼저 정리한다 */
   if (activeTerminals.has(taskId)) {
     detachSession(taskId);
   }
 
-  /** 세션/window 존재 여부를 사전 검증하여 불필요한 native spawn을 방지한다 */
+  /** tmux window가 없으면 세션과 window를 자동 생성한다 */
   if (sessionType === SessionType.TMUX) {
     if (!isTmuxWindowAlive(sessionName, windowName)) {
-      console.error(`[터미널] tmux window를 찾을 수 없음: ${sessionName}:${windowName}`);
-      ws.close(1008, "tmux window를 찾을 수 없습니다.");
-      return;
+      try {
+        const dir = cwd || process.env.HOME || "/";
+        execSync(
+          `tmux has-session -t "${sessionName}" 2>/dev/null || tmux new-session -d -s "${sessionName}"`,
+          { timeout: 5000 },
+        );
+        execSync(
+          `tmux new-window -t "${sessionName}" -n "${windowName}" -c "${dir}"`,
+          { timeout: 5000 },
+        );
+      } catch (error) {
+        console.error(`[터미널] tmux 세션/window 자동 생성 실패:`, error);
+        ws.close(1008, "tmux 세션 생성에 실패했습니다.");
+        return;
+      }
     }
   } else if (!isZellijSessionAlive(sessionName)) {
     console.error(`[터미널] zellij 세션을 찾을 수 없음: ${sessionName}`);

@@ -101,7 +101,7 @@ app.prepare().then(() => {
           hostConfig
         );
       } else {
-        await attachLocalSession(taskId, task.sessionType, task.sessionName, windowName, ws);
+        await attachLocalSession(taskId, task.sessionType, task.sessionName, windowName, ws, task.worktreePath);
       }
     } catch (error) {
       console.error("터미널 연결 오류:", error);
