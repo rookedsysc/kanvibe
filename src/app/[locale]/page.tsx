@@ -6,13 +6,15 @@ import { getAvailableHosts } from "@/lib/sshConfig";
 export const dynamic = "force-dynamic";
 
 export default async function HomePage() {
-  const tasks = await getTasksByStatus();
+  const { tasks, doneTotal, doneLimit } = await getTasksByStatus();
   const sshHosts = await getAvailableHosts();
   const projects = await getAllProjects();
 
   return (
     <Board
       initialTasks={tasks}
+      initialDoneTotal={doneTotal}
+      initialDoneLimit={doneLimit}
       sshHosts={sshHosts}
       projects={projects}
     />

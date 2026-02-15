@@ -9,7 +9,7 @@ import ProjectSelector from "./ProjectSelector";
 import ProjectSettings from "./ProjectSettings";
 import TaskContextMenu from "./TaskContextMenu";
 import BranchTaskModal from "./BranchTaskModal";
-import { updateTaskStatus, reorderTasks, deleteTask } from "@/app/actions/kanban";
+import { updateTaskStatus, reorderTasks, deleteTask, getMoreDoneTasks } from "@/app/actions/kanban";
 import type { TasksByStatus } from "@/app/actions/kanban";
 import { TaskStatus, type KanbanTask } from "@/entities/KanbanTask";
 import type { Project } from "@/entities/Project";
@@ -17,6 +17,8 @@ import { logoutAction } from "@/app/actions/auth";
 
 interface BoardProps {
   initialTasks: TasksByStatus;
+  initialDoneTotal: number;
+  initialDoneLimit: number;
   sshHosts: string[];
   projects: Project[];
 }
@@ -79,7 +81,7 @@ function insertAtFilteredIndex(
   return arr;
 }
 
-export default function Board({ initialTasks, sshHosts, projects }: BoardProps) {
+export default function Board({ initialTasks, initialDoneTotal, initialDoneLimit, sshHosts, projects }: BoardProps) {
   const t = useTranslations("board");
   const tt = useTranslations("task");
   const tc = useTranslations("common");
@@ -89,6 +91,9 @@ export default function Board({ initialTasks, sshHosts, projects }: BoardProps) 
   const [isBranchModalOpen, setIsBranchModalOpen] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
   const [selectedProjectIds, setSelectedProjectIds] = useState<string[]>([]);
+  const [doneTotal, setDoneTotal] = useState(initialDoneTotal);
+  const [doneOffset, setDoneOffset] = useState(initialDoneLimit);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
 
   /** projectId → 표시할 프로젝트 이름 매핑. worktree 프로젝트는 메인 프로젝트 이름으로 resolve한다 */
   const projectNameMap = useMemo(() => {
@@ -208,7 +213,25 @@ export default function Board({ initialTasks, sshHosts, projects }: BoardProps) 
   /** 서버 revalidation 후 initialTasks가 변경되면 로컬 state에 반영한다 */
   useEffect(() => {
     setTasks(initialTasks);
-  }, [initialTasks]);
+    setDoneTotal(initialDoneTotal);
+    setDoneOffset(initialDoneLimit);
+  }, [initialTasks, initialDoneTotal, initialDoneLimit]);
+
+  const handleLoadMoreDone = useCallback(async () => {
+    if (isLoadingMore) return;
+    setIsLoadingMore(true);
+    try {
+      const result = await getMoreDoneTasks(doneOffset);
+      setTasks((prev) => ({
+        ...prev,
+        [TaskStatus.DONE]: [...prev[TaskStatus.DONE], ...result.tasks],
+      }));
+      setDoneOffset((prev) => prev + result.tasks.length);
+      setDoneTotal(result.doneTotal);
+    } finally {
+      setIsLoadingMore(false);
+    }
+  }, [doneOffset, isLoadingMore]);
 
   const handleDragEnd = useCallback(
     (result: DropResult) => {
@@ -258,6 +281,15 @@ export default function Board({ initialTasks, sshHosts, projects }: BoardProps) 
             destination.index,
             projectFilterSet
           );
+
+          if (destStatus === TaskStatus.DONE) {
+            setDoneTotal((prev) => prev + 1);
+            setDoneOffset((prev) => prev + 1);
+          }
+          if (sourceStatus === TaskStatus.DONE) {
+            setDoneTotal((prev) => prev - 1);
+            setDoneOffset((prev) => prev - 1);
+          }
 
           updateTaskStatus(draggableId, destStatus);
         }
@@ -345,6 +377,12 @@ export default function Board({ initialTasks, sshHosts, projects }: BoardProps) 
                   colorClass={col.colorClass}
                   onContextMenu={handleContextMenu}
                   projectNameMap={projectNameMap}
+                  {...(col.status === TaskStatus.DONE && {
+                    totalCount: doneTotal,
+                    hasMore: doneOffset < doneTotal,
+                    onLoadMore: handleLoadMoreDone,
+                    isLoadingMore,
+                  })}
                 />
               ))}
             </div>

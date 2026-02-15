@@ -29,7 +29,9 @@
       "progress": "Progress",
       "review": "Review",
       "done": "Done"
-    }
+    },
+    "loadMore": "Load More",
+    "loadingMore": "Loading..."
   },
   "task": {
     "descriptionLabel": "Description",

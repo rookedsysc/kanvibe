@@ -29,7 +29,9 @@
       "progress": "进行中",
       "review": "审核",
       "done": "完成"
-    }
+    },
+    "loadMore": "加载更多",
+    "loadingMore": "加载中..."
   },
   "task": {
     "descriptionLabel": "描述",

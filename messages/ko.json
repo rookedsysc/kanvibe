@@ -29,7 +29,9 @@
       "progress": "Progress",
       "review": "Review",
       "done": "Done"
-    }
+    },
+    "loadMore": "더 보기",
+    "loadingMore": "불러오는 중..."
   },
   "task": {
     "descriptionLabel": "설명",

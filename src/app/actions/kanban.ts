@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { exec } from "child_process";
 import { promisify } from "util";
+import { Not } from "typeorm";
 import { getTaskRepository } from "@/lib/database";
 import { KanbanTask, TaskStatus, SessionType } from "@/entities/KanbanTask";
 import { createWorktreeWithSession, removeWorktreeAndSession, createSessionWithoutWorktree, removeSessionOnly } from "@/lib/worktree";
@@ -13,28 +14,68 @@ const execAsync = promisify(exec);
 
 export type TasksByStatus = Record<TaskStatus, KanbanTask[]>;
 
+export interface TasksByStatusWithMeta {
+  tasks: TasksByStatus;
+  doneTotal: number;
+  doneLimit: number;
+}
+
+export interface LoadMoreDoneResponse {
+  tasks: KanbanTask[];
+  doneTotal: number;
+}
+
+const DONE_PAGE_SIZE = 20;
+
 /** TypeORM 엔티티를 직렬화 가능한 plain object로 변환한다 */
 function serialize<T>(data: T): T {
   return JSON.parse(JSON.stringify(data));
 }
 
-/** 모든 작업을 상태별로 그룹핑하여 반환한다 */
-export async function getTasksByStatus(): Promise<TasksByStatus> {
+/** 모든 작업을 상태별로 그룹핑하여 반환한다. Done 컬럼은 첫 페이지만 로드한다 */
+export async function getTasksByStatus(): Promise<TasksByStatusWithMeta> {
   const repo = await getTaskRepository();
-  const tasks = await repo.find({ order: { displayOrder: "ASC", createdAt: "ASC" } });
+
+  const nonDoneTasks = await repo.find({
+    where: { status: Not(TaskStatus.DONE) },
+    order: { displayOrder: "ASC", createdAt: "ASC" },
+  });
+
+  const [doneTasks, doneTotal] = await repo.findAndCount({
+    where: { status: TaskStatus.DONE },
+    order: { displayOrder: "ASC", createdAt: "ASC" },
+    take: DONE_PAGE_SIZE,
+  });
 
   const grouped: TasksByStatus = {
     [TaskStatus.TODO]: [],
     [TaskStatus.PROGRESS]: [],
     [TaskStatus.REVIEW]: [],
-    [TaskStatus.DONE]: [],
+    [TaskStatus.DONE]: doneTasks,
   };
 
-  for (const task of tasks) {
+  for (const task of nonDoneTasks) {
     grouped[task.status].push(task);
   }
 
-  return serialize(grouped);
+  return serialize({ tasks: grouped, doneTotal, doneLimit: DONE_PAGE_SIZE });
+}
+
+/** Done 태스크를 추가 로드한다 */
+export async function getMoreDoneTasks(
+  offset: number,
+  limit: number = DONE_PAGE_SIZE
+): Promise<LoadMoreDoneResponse> {
+  const repo = await getTaskRepository();
+
+  const [tasks, doneTotal] = await repo.findAndCount({
+    where: { status: TaskStatus.DONE },
+    order: { displayOrder: "ASC", createdAt: "ASC" },
+    skip: offset,
+    take: limit,
+  });
+
+  return serialize({ tasks, doneTotal });
 }
 
 /** 단일 작업을 ID로 조회한다 */
