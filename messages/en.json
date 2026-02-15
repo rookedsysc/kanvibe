@@ -157,6 +157,14 @@
     "updatedAt": "Updated",
     "prLink": "PR Link",
     "actions": "Change Status",
-    "deleteConfirm": "Are you sure you want to delete this task?"
+    "deleteConfirm": "Are you sure you want to delete this task?",
+    "hooksStatus": "Hooks Status",
+    "hooksInstalled": "Installed",
+    "hooksNotInstalled": "Not Installed",
+    "installHooks": "Install Hooks",
+    "installingHooks": "Installing...",
+    "hooksInstallSuccess": "Hooks installed successfully",
+    "hooksInstallFailed": "Hooks installation failed",
+    "hooksRemoteNotSupported": "Remote projects are not supported"
   }
 }

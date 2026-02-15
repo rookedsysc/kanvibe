@@ -12,6 +12,8 @@ import TaskStatusBadge from "@/components/TaskStatusBadge";
 import TerminalLoader from "@/components/TerminalLoader";
 import ConnectTerminalForm from "@/components/ConnectTerminalForm";
 import DeleteTaskButton from "@/components/DeleteTaskButton";
+import HooksStatusCard from "@/components/HooksStatusCard";
+import { getTaskHooksStatus } from "@/app/actions/project";
 import { Link } from "@/i18n/navigation";
 
 export const dynamicConfig = "force-dynamic";
@@ -48,6 +50,7 @@ export default async function TaskDetailPage({ params }: TaskDetailPageProps) {
   }
 
   const hasTerminal = task.sessionType && task.sessionName;
+  const hooksStatus = task.projectId ? await getTaskHooksStatus(id) : null;
 
   async function handleStatusChange(formData: FormData) {
     "use server";
@@ -210,6 +213,15 @@ export default async function TaskDetailPage({ params }: TaskDetailPageProps) {
               ))}
             </div>
           </div>
+
+          {/* Hooks 상태 카드 */}
+          {task.projectId && (
+            <HooksStatusCard
+              taskId={task.id}
+              initialStatus={hooksStatus}
+              isRemote={!!task.sshHost}
+            />
+          )}
         </aside>
 
         {/* 터미널 영역 */}
