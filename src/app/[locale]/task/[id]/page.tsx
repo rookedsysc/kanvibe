@@ -1,4 +1,5 @@
-import { notFound, redirect } from "next/navigation";
+import { notFound } from "next/navigation";
+import { redirect } from "@/i18n/navigation";
 import { getTranslations } from "next-intl/server";
 import {
   getTaskById,
@@ -10,6 +11,7 @@ import { TaskStatus } from "@/entities/KanbanTask";
 import TaskStatusBadge from "@/components/TaskStatusBadge";
 import TerminalLoader from "@/components/TerminalLoader";
 import ConnectTerminalForm from "@/components/ConnectTerminalForm";
+import DeleteTaskButton from "@/components/DeleteTaskButton";
 import { Link } from "@/i18n/navigation";
 
 export const dynamicConfig = "force-dynamic";
@@ -56,7 +58,7 @@ export default async function TaskDetailPage({ params }: TaskDetailPageProps) {
   async function handleDelete() {
     "use server";
     await deleteTask(id);
-    redirect(`/${locale}`);
+    redirect({ href: "/", locale });
   }
 
   const agentTagStyle = task.agentType
@@ -90,14 +92,7 @@ export default async function TaskDetailPage({ params }: TaskDetailPageProps) {
         </Link>
 
         <div className="flex items-center gap-2">
-          <form action={handleDelete}>
-            <button
-              type="submit"
-              className="px-3 py-1.5 text-xs bg-red-50 hover:bg-red-100 text-status-error rounded-md transition-colors"
-            >
-              {t("delete")}
-            </button>
-          </form>
+          <DeleteTaskButton deleteAction={handleDelete} />
         </div>
       </header>
 
