@@ -81,7 +81,8 @@ export async function createTask(input: CreateTaskInput): Promise<KanbanTask> {
           input.branchName,
           baseBranch,
           input.sessionType,
-          project.sshHost
+          project.sshHost,
+          input.projectId
         );
         task.worktreePath = session.worktreePath;
         task.sessionName = session.sessionName;
@@ -100,7 +101,7 @@ export async function createTask(input: CreateTaskInput): Promise<KanbanTask> {
   }
 
   const saved = await repo.save(task);
-  revalidatePath("/");
+  revalidatePath("/[locale]", "page");
   return serialize(saved);
 }
 
@@ -115,7 +116,7 @@ export async function updateTaskStatus(
 
   task.status = newStatus;
   const saved = await repo.save(task);
-  revalidatePath("/");
+  revalidatePath("/[locale]", "page");
   return serialize(saved);
 }
 
@@ -132,8 +133,8 @@ export async function updateTask(
   if (updates.description !== undefined) task.description = updates.description;
 
   const saved = await repo.save(task);
-  revalidatePath("/");
-  revalidatePath(`/task/${taskId}`);
+  revalidatePath("/[locale]", "page");
+  revalidatePath("/[locale]/task/[id]", "page");
   return serialize(saved);
 }
 
@@ -178,7 +179,7 @@ export async function deleteTask(taskId: string): Promise<boolean> {
   }
 
   await repo.remove(task);
-  revalidatePath("/");
+  revalidatePath("/[locale]", "page");
   return true;
 }
 
@@ -206,7 +207,8 @@ export async function branchFromTask(
     branchName,
     baseBranch,
     sessionType,
-    project.sshHost
+    project.sshHost,
+    projectId
   );
 
   task.projectId = projectId;
@@ -229,8 +231,8 @@ export async function branchFromTask(
   }
 
   const saved = await repo.save(task);
-  revalidatePath("/");
-  revalidatePath(`/task/${taskId}`);
+  revalidatePath("/[locale]", "page");
+  revalidatePath("/[locale]/task/[id]", "page");
   return serialize(saved);
 }
 
@@ -271,8 +273,8 @@ export async function connectTerminalSession(
     task.status = TaskStatus.PROGRESS;
 
     const saved = await repo.save(task);
-    revalidatePath("/");
-    revalidatePath(`/task/${taskId}`);
+    revalidatePath("/[locale]", "page");
+    revalidatePath("/[locale]/task/[id]", "page");
     return serialize(saved);
   } catch (error) {
     console.error("터미널 세션 생성 실패:", error);
@@ -292,7 +294,7 @@ export async function reorderTasks(
   );
 
   await Promise.all(updates);
-  revalidatePath("/");
+  revalidatePath("/[locale]", "page");
 }
 
 /**

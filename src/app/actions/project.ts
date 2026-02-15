@@ -96,7 +96,7 @@ export async function registerProject(
 
   const saved = await repo.save(project);
   await createDefaultBranchTask(saved);
-  revalidatePath("/");
+  revalidatePath("/[locale]", "page");
   return { success: true, project: serialize(saved) };
 }
 
@@ -107,7 +107,7 @@ export async function deleteProject(projectId: string): Promise<boolean> {
   if (!project) return false;
 
   await repo.remove(project);
-  revalidatePath("/");
+  revalidatePath("/[locale]", "page");
   return true;
 }
 
@@ -287,7 +287,7 @@ export async function scanAndRegisterProjects(
     }
   }
 
-  revalidatePath("/");
+  revalidatePath("/[locale]", "page");
   return result;
 }
 
