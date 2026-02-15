@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "node boot.js",
     "lint": "eslint",
-    "db:up": "DB_PORT=$(($(grep '^PORT=' .env | cut -d= -f2) + 1)) docker compose up -d",
+    "db:up": "docker compose up -d",
     "db:down": "docker compose down",
     "typeorm": "export $(grep -v '^#' .env | grep -v '^$' | xargs) && tsx node_modules/typeorm/cli.js -d src/lib/typeorm-cli.config.ts",
     "migration:generate": "npm run typeorm migration:generate",

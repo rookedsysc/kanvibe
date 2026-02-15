@@ -4,6 +4,11 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$SCRIPT_DIR"
 
+# .env 파일에서 환경변수 로드
+if [ -f .env ]; then
+  export $(grep -v '^#' .env | grep -v '^$' | xargs)
+fi
+
 echo "=== KanVibe 시작 ==="
 
 # 의존성 설치
@@ -20,7 +25,7 @@ docker compose up -d db
 
 # DB 준비 대기
 echo "[3/6] DB 준비 대기..."
-until docker compose exec db pg_isready -U kanvibe -q 2>/dev/null; do
+until docker compose exec db pg_isready -U "${KANVIBE_USER:-admin}" -q 2>/dev/null; do
   sleep 1
 done
 echo "       DB 준비 완료"
