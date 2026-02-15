@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getTaskRepository, getProjectRepository } from "@/lib/database";
 import { TaskStatus } from "@/entities/KanbanTask";
+import { cleanupTaskResources } from "@/app/actions/kanban";
 
 const STATUS_MAP: Record<string, TaskStatus> = {
   todo: TaskStatus.TODO,
@@ -54,6 +55,14 @@ export async function POST(request: NextRequest) {
         { success: false, error: `작업을 찾을 수 없습니다: ${projectName}/${branchName}` },
         { status: 404 }
       );
+    }
+
+    if (taskStatus === TaskStatus.DONE) {
+      await cleanupTaskResources(task);
+      task.sessionType = null;
+      task.sessionName = null;
+      task.worktreePath = null;
+      task.sshHost = null;
     }
 
     task.status = taskStatus;

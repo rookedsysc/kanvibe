@@ -215,6 +215,37 @@ export async function createSessionWithoutWorktree(
   return { sessionName };
 }
 
+/** worktree와 브랜치를 삭제한다. 세션은 건드리지 않는다 */
+export async function removeWorktreeAndBranch(
+  projectPath: string,
+  branchName: string,
+  sshHost?: string | null,
+): Promise<void> {
+  try {
+    const projectName = path.basename(projectPath);
+    const worktreeBase = path.posix.join(
+      path.dirname(projectPath),
+      `${projectName}__worktrees`,
+    );
+    const worktreePath = path.posix.join(
+      worktreeBase,
+      branchName.replace(/\//g, "-"),
+    );
+    await execGit(
+      `git -C "${projectPath}" worktree remove "${worktreePath}" --force`,
+      sshHost,
+    );
+  } catch {
+    // worktree가 이미 삭제된 경우 무시
+  }
+
+  try {
+    await execGit(`git -C "${projectPath}" branch -D "${branchName}"`, sshHost);
+  } catch {
+    // 브랜치가 이미 삭제된 경우 무시
+  }
+}
+
 /** tmux window / zellij tab만 제거한다. worktree와 브랜치는 삭제하지 않는다 */
 export async function removeSessionOnly(
   sessionType: SessionType,
@@ -252,49 +283,8 @@ export async function removeWorktreeAndSession(
   sessionName: string,
   sshHost?: string | null,
 ): Promise<void> {
-  const windowName = formatWindowName(branchName);
-
-  try {
-    if (sessionType === SessionType.TMUX) {
-      /** 메인 세션에서 해당 window만 종료한다 */
-      await execGit(
-        `tmux kill-window -t "${sessionName}:${windowName}"`,
-        sshHost,
-      );
-    } else {
-      /** 메인 세션에서 해당 tab으로 이동 후 닫는다 */
-      await execGit(
-        `zellij action --session "${sessionName}" go-to-tab-name "${windowName}" && zellij action --session "${sessionName}" close-tab`,
-        sshHost,
-      );
-    }
-  } catch {
-    // window/tab이 이미 종료된 경우 무시
-  }
-
-  try {
-    const projectName = path.basename(projectPath);
-    const worktreeBase = path.posix.join(
-      path.dirname(projectPath),
-      `${projectName}__worktrees`,
-    );
-    const worktreePath = path.posix.join(
-      worktreeBase,
-      branchName.replace(/\//g, "-"),
-    );
-    await execGit(
-      `git -C "${projectPath}" worktree remove "${worktreePath}" --force`,
-      sshHost,
-    );
-  } catch {
-    // worktree가 이미 삭제된 경우 무시
-  }
-
-  try {
-    await execGit(`git -C "${projectPath}" branch -D "${branchName}"`, sshHost);
-  } catch {
-    // 브랜치가 이미 삭제된 경우 무시
-  }
+  await removeSessionOnly(sessionType, sessionName, branchName, sshHost);
+  await removeWorktreeAndBranch(projectPath, branchName, sshHost);
 }
 
 /** 메인 세션 내의 활성 window/tab 목록을 반환한다 */

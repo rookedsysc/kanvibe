@@ -6,7 +6,7 @@ import { promisify } from "util";
 import { Not } from "typeorm";
 import { getTaskRepository } from "@/lib/database";
 import { KanbanTask, TaskStatus, SessionType } from "@/entities/KanbanTask";
-import { createWorktreeWithSession, removeWorktreeAndSession, createSessionWithoutWorktree, removeSessionOnly } from "@/lib/worktree";
+import { createWorktreeWithSession, removeWorktreeAndSession, removeWorktreeAndBranch, createSessionWithoutWorktree, removeSessionOnly } from "@/lib/worktree";
 import { getProjectRepository } from "@/lib/database";
 import { setupClaudeHooks } from "@/lib/claudeHooksSetup";
 
@@ -155,6 +155,14 @@ export async function updateTaskStatus(
   const task = await repo.findOneBy({ id: taskId });
   if (!task) return null;
 
+  if (newStatus === TaskStatus.DONE) {
+    await cleanupTaskResources(task);
+    task.sessionType = null;
+    task.sessionName = null;
+    task.worktreePath = null;
+    task.sshHost = null;
+  }
+
   task.status = newStatus;
   const saved = await repo.save(task);
   revalidatePath("/[locale]", "page");
@@ -179,34 +187,21 @@ export async function updateTask(
   return serialize(saved);
 }
 
-/** 작업을 삭제한다. worktree와 세션이 있으면 함께 정리한다 */
-export async function deleteTask(taskId: string): Promise<boolean> {
-  const repo = await getTaskRepository();
-  const task = await repo.findOneBy({ id: taskId });
-  if (!task) return false;
+/** 작업에 연결된 worktree, 세션, 브랜치를 정리한다. task 레코드는 삭제하지 않는다 */
+export async function cleanupTaskResources(task: KanbanTask): Promise<void> {
+  let project = null;
+  if (task.projectId) {
+    const projectRepo = await getProjectRepository();
+    project = await projectRepo.findOneBy({ id: task.projectId });
+  }
 
+  const isProjectRoot = project && task.worktreePath === project.repoPath;
+  const derivedBranch = task.branchName || task.baseBranch;
+
+  /** 세션(window/tab) 정리 */
   if (task.sessionType && task.sessionName) {
     try {
-      let project = null;
-      if (task.projectId) {
-        const projectRepo = await getProjectRepository();
-        project = await projectRepo.findOneBy({ id: task.projectId });
-      }
-
-      const isProjectRoot = project && task.worktreePath === project.repoPath;
-      const derivedBranch = task.branchName || task.baseBranch;
-
-      if (task.branchName && !isProjectRoot) {
-        /** worktree 브랜치: worktree + 세션 + 브랜치 모두 정리 */
-        await removeWorktreeAndSession(
-          project?.repoPath || process.cwd(),
-          task.branchName,
-          task.sessionType,
-          task.sessionName,
-          task.sshHost
-        );
-      } else if (derivedBranch) {
-        /** 프로젝트 루트 브랜치: window/tab만 제거 (worktree/브랜치 삭제 안 함) */
+      if (derivedBranch) {
         await removeSessionOnly(
           task.sessionType,
           task.sessionName,
@@ -218,6 +213,28 @@ export async function deleteTask(taskId: string): Promise<boolean> {
       console.error("세션 정리 실패:", error);
     }
   }
+
+  /** worktree + 브랜치 정리 (프로젝트 루트 브랜치 제외) */
+  if (task.branchName && !isProjectRoot) {
+    try {
+      await removeWorktreeAndBranch(
+        project?.repoPath || process.cwd(),
+        task.branchName,
+        task.sshHost
+      );
+    } catch (error) {
+      console.error("worktree/브랜치 정리 실패:", error);
+    }
+  }
+}
+
+/** 작업을 삭제한다. worktree와 세션이 있으면 함께 정리한다 */
+export async function deleteTask(taskId: string): Promise<boolean> {
+  const repo = await getTaskRepository();
+  const task = await repo.findOneBy({ id: taskId });
+  if (!task) return false;
+
+  await cleanupTaskResources(task);
 
   await repo.remove(task);
   revalidatePath("/[locale]", "page");
