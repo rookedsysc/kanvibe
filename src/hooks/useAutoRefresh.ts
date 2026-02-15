@@ -1,0 +1,66 @@
+"use client";
+
+import { useEffect, useRef } from "react";
+import { useRouter } from "@/i18n/navigation";
+
+const RECONNECT_DELAY_MS = 3000;
+
+/**
+ * WebSocket을 통한 보드 자동 새로고침 + 뒤로가기 시 최신 데이터 로드.
+ * 보드 페이지에서 호출하면 Hook API 변경 사항이 실시간으로 반영된다.
+ */
+export function useAutoRefresh() {
+  const router = useRouter();
+  const wsRef = useRef<WebSocket | null>(null);
+  const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    function connect() {
+      const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+      const port = parseInt(window.location.port || "4885", 10) + 10000;
+      const wsUrl = `${protocol}//${window.location.hostname}:${port}/api/board/events`;
+
+      const ws = new WebSocket(wsUrl);
+      wsRef.current = ws;
+
+      ws.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (data.type === "board-updated") {
+            router.refresh();
+          }
+        } catch {
+          /* 파싱 실패 무시 */
+        }
+      };
+
+      ws.onclose = () => {
+        wsRef.current = null;
+        reconnectTimerRef.current = setTimeout(connect, RECONNECT_DELAY_MS);
+      };
+
+      ws.onerror = () => {
+        ws.close();
+      };
+    }
+
+    connect();
+
+    return () => {
+      if (reconnectTimerRef.current) {
+        clearTimeout(reconnectTimerRef.current);
+      }
+      wsRef.current?.close();
+    };
+  }, [router]);
+
+  /** 뒤로가기(popstate) 시 최신 데이터를 로드한다 */
+  useEffect(() => {
+    function handlePopState() {
+      router.refresh();
+    }
+
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, [router]);
+}

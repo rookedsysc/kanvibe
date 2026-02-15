@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { getTaskRepository, getProjectRepository } from "@/lib/database";
 import { TaskStatus } from "@/entities/KanbanTask";
 import { cleanupTaskResources } from "@/app/actions/kanban";
+import { revalidatePath } from "next/cache";
+import { broadcastBoardUpdate } from "@/lib/boardNotifier";
 
 const STATUS_MAP: Record<string, TaskStatus> = {
   todo: TaskStatus.TODO,
@@ -67,6 +69,8 @@ export async function POST(request: NextRequest) {
 
     task.status = taskStatus;
     const saved = await taskRepo.save(task);
+    revalidatePath("/[locale]", "page");
+    broadcastBoardUpdate();
 
     return NextResponse.json({
       success: true,

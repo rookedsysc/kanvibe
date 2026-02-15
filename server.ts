@@ -8,6 +8,7 @@ import { getTaskRepository } from "@/lib/database";
 import { attachLocalSession, attachRemoteSession } from "@/lib/terminal";
 import { formatWindowName } from "@/lib/worktree";
 import { parseSSHConfig } from "@/lib/sshConfig";
+import { addBoardClient, removeBoardClient } from "@/lib/boardNotifier";
 
 /**
  * node-pty의 ThreadSafeFunction 콜백이 실패하면 C++ 레벨에서
@@ -51,6 +52,20 @@ app.prepare().then(() => {
 
   wss.on("connection", async (ws: WebSocket, request) => {
     const parsed = parse(request.url || "", true);
+    const cookieHeader = request.headers.cookie || "";
+
+    /** 보드 알림 WebSocket: 연결된 클라이언트에 변경 사항을 broadcast한다 */
+    if (parsed.pathname === "/api/board/events") {
+      const isAuthed = validateSessionFromCookie(cookieHeader);
+      if (!isAuthed) {
+        ws.close(1008, "인증 실패");
+        return;
+      }
+      addBoardClient(ws);
+      ws.on("close", () => removeBoardClient(ws));
+      return;
+    }
+
     const taskIdMatch = parsed.pathname?.match(/^\/api\/terminal\/([a-f0-9-]+)$/);
 
     if (!taskIdMatch) {
@@ -61,7 +76,6 @@ app.prepare().then(() => {
     const taskId = taskIdMatch[1];
     const initialCols = parseInt(parsed.query.cols as string, 10) || 120;
     const initialRows = parseInt(parsed.query.rows as string, 10) || 30;
-    const cookieHeader = request.headers.cookie || "";
     const isAuthed = validateSessionFromCookie(cookieHeader);
     console.log(`[WS] 터미널 연결 요청: taskId=${taskId}, auth=${isAuthed}`);
 

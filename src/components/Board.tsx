@@ -14,6 +14,7 @@ import type { TasksByStatus } from "@/app/actions/kanban";
 import { TaskStatus, type KanbanTask } from "@/entities/KanbanTask";
 import type { Project } from "@/entities/Project";
 import { logoutAction } from "@/app/actions/auth";
+import { useAutoRefresh } from "@/hooks/useAutoRefresh";
 
 interface BoardProps {
   initialTasks: TasksByStatus;
@@ -82,6 +83,7 @@ function insertAtFilteredIndex(
 }
 
 export default function Board({ initialTasks, initialDoneTotal, initialDoneLimit, sshHosts, projects }: BoardProps) {
+  useAutoRefresh();
   const t = useTranslations("board");
   const tt = useTranslations("task");
   const tc = useTranslations("common");

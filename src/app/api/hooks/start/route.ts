@@ -3,6 +3,8 @@ import { getTaskRepository } from "@/lib/database";
 import { KanbanTask, TaskStatus, SessionType } from "@/entities/KanbanTask";
 import { createWorktreeWithSession } from "@/lib/worktree";
 import { getProjectRepository } from "@/lib/database";
+import { revalidatePath } from "next/cache";
+import { broadcastBoardUpdate } from "@/lib/boardNotifier";
 
 /**
  * Hook API: 작업 시작.
@@ -58,6 +60,8 @@ export async function POST(request: NextRequest) {
     }
 
     const saved = await repo.save(task);
+    revalidatePath("/[locale]", "page");
+    broadcastBoardUpdate();
 
     return NextResponse.json({
       success: true,
