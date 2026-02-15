@@ -27,7 +27,7 @@ export default function TaskCard({ task, index, onContextMenu, projectName }: Ta
             {...provided.draggableProps}
             {...provided.dragHandleProps}
             onContextMenu={(e) => onContextMenu(e, task)}
-            className={`p-3 mb-2 rounded-lg border transition-all cursor-pointer ${
+            className={`p-3 mb-2 rounded-lg border transition-colors transition-shadow cursor-pointer ${
               snapshot.isDragging
                 ? "bg-bg-surface border-brand-primary shadow-md"
                 : "bg-bg-surface border-border-default hover:border-border-strong hover:shadow-sm"

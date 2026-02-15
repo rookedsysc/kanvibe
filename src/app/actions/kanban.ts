@@ -141,6 +141,14 @@ export async function createTask(input: CreateTaskInput): Promise<KanbanTask> {
     }
   }
 
+  /** 해당 status 컬럼의 마지막 순서로 배치한다 */
+  const maxResult = await repo
+    .createQueryBuilder("t")
+    .select("MAX(t.displayOrder)", "max")
+    .where("t.status = :status", { status: task.status })
+    .getRawOne();
+  task.displayOrder = (maxResult?.max ?? -1) + 1;
+
   const saved = await repo.save(task);
   revalidatePath("/[locale]", "page");
   return serialize(saved);
@@ -335,7 +343,23 @@ export async function reorderTasks(
   );
 
   await Promise.all(updates);
-  revalidatePath("/[locale]", "page");
+}
+
+/** 드래그로 태스크를 다른 컬럼으로 이동할 때 사용한다. revalidation 없이 DB만 갱신한다 */
+export async function moveTaskToColumn(
+  taskId: string,
+  newStatus: TaskStatus,
+  destOrderedIds: string[]
+): Promise<void> {
+  const repo = await getTaskRepository();
+
+  await repo.update(taskId, { status: newStatus });
+
+  const reorderUpdates = destOrderedIds.map((id, index) =>
+    repo.update(id, { displayOrder: index })
+  );
+
+  await Promise.all(reorderUpdates);
 }
 
 /**

@@ -9,7 +9,7 @@ import ProjectSelector from "./ProjectSelector";
 import ProjectSettings from "./ProjectSettings";
 import TaskContextMenu from "./TaskContextMenu";
 import BranchTaskModal from "./BranchTaskModal";
-import { updateTaskStatus, reorderTasks, deleteTask, getMoreDoneTasks } from "@/app/actions/kanban";
+import { reorderTasks, deleteTask, getMoreDoneTasks, moveTaskToColumn } from "@/app/actions/kanban";
 import type { TasksByStatus } from "@/app/actions/kanban";
 import { TaskStatus, type KanbanTask } from "@/entities/KanbanTask";
 import type { Project } from "@/entities/Project";
@@ -291,7 +291,17 @@ export default function Board({ initialTasks, initialDoneTotal, initialDoneLimit
             setDoneOffset((prev) => prev - 1);
           }
 
-          updateTaskStatus(draggableId, destStatus);
+          /** 상태 변경 + 목적지 컬럼 순서를 한 번에 DB에 반영한다 (revalidation 없음) */
+          const destReorderIds = (
+            projectFilterSet
+              ? updated[destStatus].filter(
+                  (task) =>
+                    task.projectId && projectFilterSet.has(task.projectId)
+                )
+              : updated[destStatus]
+          ).map((task) => task.id);
+
+          moveTaskToColumn(draggableId, destStatus, destReorderIds);
         }
 
         return updated;
