@@ -409,7 +409,7 @@ export default function Board({ initialTasks, initialDoneTotal, initialDoneLimit
         onClose={() => setIsModalOpen(false)}
         sshHosts={sshHosts}
         projects={projects}
-        defaultProjectId={selectedProjectIds[0] || ""}
+        defaultProjectId={selectedProjectIds.length === 1 ? selectedProjectIds[0] : ""}
       />
 
       <ProjectSettings
