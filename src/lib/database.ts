@@ -7,6 +7,7 @@ import { InitialSchema1770854400000 } from "@/migrations/1770854400000-InitialSc
 import { AddPrUrlToKanbanTasks1770854400001 } from "@/migrations/1770854400001-AddPrUrlToKanbanTasks";
 import { AddIsWorktreeToProjects1770854400002 } from "@/migrations/1770854400002-AddIsWorktreeToProjects";
 import { AddPaneLayoutConfig1771048256887 } from "@/migrations/1771048256887-AddPaneLayoutConfig";
+import { AssignDisplayOrder1771166346785 } from "@/migrations/1771166346785-AssignDisplayOrder";
 
 /**
  * TypeORM DataSource 싱글턴.
@@ -28,7 +29,7 @@ function createDataSource(): DataSource {
     type: "postgres",
     url: process.env.DATABASE_URL ?? buildDatabaseUrl(),
     entities: [KanbanTask, Project, PaneLayoutConfig],
-    migrations: [InitialSchema1770854400000, AddPrUrlToKanbanTasks1770854400001, AddIsWorktreeToProjects1770854400002, AddPaneLayoutConfig1771048256887],
+    migrations: [InitialSchema1770854400000, AddPrUrlToKanbanTasks1770854400001, AddIsWorktreeToProjects1770854400002, AddPaneLayoutConfig1771048256887, AssignDisplayOrder1771166346785],
     synchronize: false,
     logging: process.env.NODE_ENV !== "production",
   });
