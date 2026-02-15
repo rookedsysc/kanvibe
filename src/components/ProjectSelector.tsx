@@ -58,7 +58,6 @@ export default function ProjectSelector(props: ProjectSelectorProps) {
   const isComposingRef = useRef(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
-  const triggerInputRef = useRef<HTMLInputElement>(null);
 
   const filteredProjects = searchQuery
     ? projects.filter((p) =>
@@ -95,12 +94,12 @@ export default function ProjectSelector(props: ProjectSelectorProps) {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  /** 멀티 선택 드롭다운이 열리면 검색 input에 포커스한다 */
+  /** 드롭다운이 열리면 검색 input에 포커스한다 */
   useEffect(() => {
-    if (isOpen && isMultiple && searchInputRef.current) {
+    if (isOpen && searchInputRef.current) {
       searchInputRef.current.focus();
     }
-  }, [isOpen, isMultiple]);
+  }, [isOpen]);
 
   const handleToggle = useCallback(
     (projectId: string) => {
@@ -379,83 +378,109 @@ export default function ProjectSelector(props: ProjectSelectorProps) {
         setIsOpen(false);
         setSearchQuery("");
         setHighlightedIndex(-1);
-        triggerInputRef.current?.blur();
         break;
     }
   };
 
   return (
-    <div ref={containerRef} className="relative">
-      <input
-        ref={triggerInputRef}
-        type="text"
-        value={isOpen ? searchQuery : singleDisplayText}
-        onCompositionStart={handleCompositionStart}
-        onCompositionEnd={handleCompositionEnd}
-        onChange={handleSearchInput}
-        onFocus={() => {
-          const selected = projects.find((p) => p.id === selectedProjectId);
-          setSearchQuery(selected ? selected.name : "");
-          setIsOpen(true);
-          setHighlightedIndex(0);
-          requestAnimationFrame(() => triggerInputRef.current?.select());
-        }}
-        onKeyDown={handleSingleKeyDown}
-        placeholder={isOpen ? searchPlaceholder : placeholder}
-        className={`w-full bg-bg-page border border-border-default rounded-md text-text-primary focus:outline-none focus:border-brand-primary transition-colors cursor-pointer ${
-          compact ? "px-3 py-1.5 text-sm" : "px-3 py-2"
-        }`}
-      />
+    <div
+      ref={containerRef}
+      className="relative"
+      onKeyDown={handleSingleKeyDown}
+    >
+      {/* 트리거: 선택된 프로젝트명 또는 placeholder */}
+      <div
+        onClick={() => setIsOpen(!isOpen)}
+        className={`w-full px-2 bg-bg-page border rounded-md text-text-primary cursor-pointer flex items-center gap-1 ${
+          compact ? "py-1 min-h-[34px]" : "py-1.5 min-h-[38px]"
+        } ${isOpen ? "border-brand-primary" : "border-border-default"}`}
+      >
+        {singleDisplayText ? (
+          <span className="text-sm px-1 truncate">{singleDisplayText}</span>
+        ) : (
+          <span className="text-text-muted text-sm px-1">{placeholder}</span>
+        )}
+        <svg
+          className="ml-auto flex-shrink-0 text-text-muted"
+          width="12"
+          height="12"
+          viewBox="0 0 12 12"
+          fill="none"
+        >
+          <path
+            d="M3 5L6 8L9 5"
+            stroke="currentColor"
+            strokeWidth="1.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      </div>
+
       {isOpen && (
-        <ul className="absolute z-50 mt-1 w-full max-h-48 overflow-y-auto bg-bg-surface border border-border-default rounded-md shadow-md">
-          {showAllOption && (
-            <li
-              onMouseDown={(e) => {
-                e.preventDefault();
-                handleSelectAll();
-              }}
-              onMouseEnter={() => setHighlightedIndex(0)}
-              className={`px-3 py-2 text-sm cursor-pointer transition-colors ${
-                highlightedIndex === 0
-                  ? "bg-brand-primary/10 text-text-primary"
-                  : "text-text-primary hover:bg-bg-page"
-              } ${!selectedProjectId ? "font-medium" : ""}`}
-            >
-              {allOption!.label}
-            </li>
-          )}
-          {filteredProjects.length === 0 && !showAllOption ? (
-            <li className="px-3 py-2 text-sm text-text-muted">
-              {placeholder}
-            </li>
-          ) : (
-            filteredProjects.map((project, index) => {
-              const itemIndex = showAllOption ? index + 1 : index;
-              return (
-                <li
-                  key={project.id}
-                  onMouseDown={(e) => {
-                    e.preventDefault();
-                    handleToggle(project.id);
-                  }}
-                  onMouseEnter={() => setHighlightedIndex(itemIndex)}
-                  className={`px-3 py-2 text-sm cursor-pointer transition-colors ${
-                    itemIndex === highlightedIndex
-                      ? "bg-brand-primary/10 text-text-primary"
-                      : "text-text-primary hover:bg-bg-page"
-                  } ${project.id === selectedProjectId ? "font-medium" : ""}`}
-                >
-                  {project.name}
-                  {project.sshHost && (
-                    <span className="text-text-muted ml-1">
-                      ({project.sshHost})
-                    </span>
-                  )}
-                </li>
-              );
-            })
-          )}
-        </ul>
+        <div className="absolute z-50 mt-1 w-full bg-bg-surface border border-border-default rounded-md shadow-md">
+          <div className="p-2 border-b border-border-default">
+            <input
+              ref={searchInputRef}
+              type="text"
+              value={searchQuery}
+              onCompositionStart={handleCompositionStart}
+              onCompositionEnd={handleCompositionEnd}
+              onChange={handleSearchInput}
+              placeholder={searchPlaceholder}
+              className="w-full px-2 py-1 text-sm bg-bg-page border border-border-default rounded text-text-primary focus:outline-none focus:border-brand-primary"
+            />
+          </div>
+          <ul className="max-h-48 overflow-y-auto">
+            {showAllOption && (
+              <li
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  handleSelectAll();
+                }}
+                onMouseEnter={() => setHighlightedIndex(0)}
+                className={`px-3 py-2 text-sm cursor-pointer transition-colors ${
+                  highlightedIndex === 0
+                    ? "bg-brand-primary/10 text-text-primary"
+                    : "text-text-primary hover:bg-bg-page"
+                } ${!selectedProjectId ? "font-medium" : ""}`}
+              >
+                {allOption!.label}
+              </li>
+            )}
+            {filteredProjects.length === 0 && !showAllOption ? (
+              <li className="px-3 py-2 text-sm text-text-muted">
+                {placeholder}
+              </li>
+            ) : (
+              filteredProjects.map((project, index) => {
+                const itemIndex = showAllOption ? index + 1 : index;
+                return (
+                  <li
+                    key={project.id}
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      handleToggle(project.id);
+                    }}
+                    onMouseEnter={() => setHighlightedIndex(itemIndex)}
+                    className={`px-3 py-2 text-sm cursor-pointer transition-colors ${
+                      itemIndex === highlightedIndex
+                        ? "bg-brand-primary/10 text-text-primary"
+                        : "text-text-primary hover:bg-bg-page"
+                    } ${project.id === selectedProjectId ? "font-medium" : ""}`}
+                  >
+                    {project.name}
+                    {project.sshHost && (
+                      <span className="text-text-muted ml-1">
+                        ({project.sshHost})
+                      </span>
+                    )}
+                  </li>
+                );
+              })
+            )}
+          </ul>
+        </div>
       )}
     </div>
   );
