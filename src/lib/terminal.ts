@@ -65,6 +65,15 @@ export async function attachLocalSession(
     return;
   }
 
+  /** 웹 터미널 크기가 다른 클라이언트에 제한되지 않도록 최근 활성 클라이언트 기준으로 설정 */
+  if (sessionType === SessionType.TMUX) {
+    try {
+      execSync("tmux set-option -g window-size latest", { stdio: "ignore" });
+    } catch {
+      // tmux 구버전에서는 window-size 옵션이 없을 수 있음
+    }
+  }
+
   const pty = await import("node-pty");
 
   const shell =

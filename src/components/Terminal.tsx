@@ -20,18 +20,18 @@ export default function Terminal({ taskId }: TerminalProps) {
     if (!terminalRef.current) return;
 
     /** Nerd Font 웹폰트를 document.fonts에 등록하고 완전히 로드될 때까지 대기. xterm.js는 글리프 폭을 동기적으로 측정하므로 폰트가 완전히 준비된 후에 터미널을 open 해야 한다 */
-    const nerdFontFamily = "GeistMono Nerd Font Mono";
+    const nerdFontFamily = "JetBrainsMono Nerd Font Mono";
     const fontFamily = `'${nerdFontFamily}', monospace`;
     const cdnBase =
       "https://cdn.jsdelivr.net/gh/mshaugh/nerdfont-webfonts@v3.3.0/build/fonts";
     const regular = new FontFace(
       nerdFontFamily,
-      `url(${cdnBase}/GeistMonoNerdFontMono-Regular.woff2)`,
+      `url(${cdnBase}/JetBrainsMonoNerdFontMono-Regular.woff2)`,
       { weight: "400" }
     );
     const bold = new FontFace(
       nerdFontFamily,
-      `url(${cdnBase}/GeistMonoNerdFontMono-Bold.woff2)`,
+      `url(${cdnBase}/JetBrainsMonoNerdFontMono-Bold.woff2)`,
       { weight: "700" }
     );
     document.fonts.add(regular);
@@ -48,6 +48,8 @@ export default function Terminal({ taskId }: TerminalProps) {
       cursorBlink: true,
       fontSize: 14,
       fontFamily,
+      /** 셀 경계를 넘치는 Nerd Font 글리프를 자동 축소하여 pane 구분선 정렬 유지 */
+      rescaleOverlappingGlyphs: true,
       theme: {
         background: "#0a0a0a",
         foreground: "#e4e4e7",
