@@ -22,6 +22,7 @@ interface BoardProps {
   initialDoneLimit: number;
   sshHosts: string[];
   projects: Project[];
+  sidebarDefaultCollapsed: boolean;
 }
 
 const COLUMNS: { status: TaskStatus; labelKey: string; colorClass: string }[] = [
@@ -82,7 +83,7 @@ function insertAtFilteredIndex(
   return arr;
 }
 
-export default function Board({ initialTasks, initialDoneTotal, initialDoneLimit, sshHosts, projects }: BoardProps) {
+export default function Board({ initialTasks, initialDoneTotal, initialDoneLimit, sshHosts, projects, sidebarDefaultCollapsed }: BoardProps) {
   useAutoRefresh();
   const t = useTranslations("board");
   const tt = useTranslations("task");
@@ -429,6 +430,7 @@ export default function Board({ initialTasks, initialDoneTotal, initialDoneLimit
         onClose={() => setIsSettingsOpen(false)}
         projects={projects}
         sshHosts={sshHosts}
+        sidebarDefaultCollapsed={sidebarDefaultCollapsed}
       />
 
       {contextMenu.isOpen && contextMenu.task && (

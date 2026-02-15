@@ -9,6 +9,7 @@ import {
   installProjectHooks,
   type ScanResult,
 } from "@/app/actions/project";
+import { setSidebarDefaultCollapsed } from "@/app/actions/appSettings";
 import { Link } from "@/i18n/navigation";
 import type { Project } from "@/entities/Project";
 import type { ClaudeHooksStatus } from "@/lib/claudeHooksSetup";
@@ -19,6 +20,7 @@ interface ProjectSettingsProps {
   onClose: () => void;
   projects: Project[];
   sshHosts: string[];
+  sidebarDefaultCollapsed: boolean;
 }
 
 export default function ProjectSettings({
@@ -26,6 +28,7 @@ export default function ProjectSettings({
   onClose,
   projects,
   sshHosts,
+  sidebarDefaultCollapsed,
 }: ProjectSettingsProps) {
   const t = useTranslations("settings");
   const tc = useTranslations("common");
@@ -135,6 +138,39 @@ export default function ProjectSettings({
             <span>{t("paneLayoutLink")}</span>
             <span className="text-text-muted">&rarr;</span>
           </Link>
+        </div>
+
+        {/* 상세 페이지 설정 */}
+        <div className="p-4 border-b border-border-default">
+          <h3 className="text-xs text-text-muted uppercase tracking-wide mb-3">
+            {t("detailPageSection")}
+          </h3>
+          <label className="flex items-center justify-between cursor-pointer">
+            <div>
+              <span className="text-sm text-text-primary">{t("sidebarDefaultCollapsed")}</span>
+              <p className="text-xs text-text-muted mt-0.5">{t("sidebarDefaultCollapsedDescription")}</p>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={sidebarDefaultCollapsed}
+              onClick={() => {
+                startTransition(async () => {
+                  await setSidebarDefaultCollapsed(!sidebarDefaultCollapsed);
+                });
+              }}
+              disabled={isPending}
+              className={`relative inline-flex h-5 w-9 shrink-0 rounded-full border-2 border-transparent transition-colors ${
+                sidebarDefaultCollapsed ? "bg-brand-primary" : "bg-border-default"
+              }`}
+            >
+              <span
+                className={`pointer-events-none inline-block h-4 w-4 rounded-full bg-white shadow transition-transform ${
+                  sidebarDefaultCollapsed ? "translate-x-4" : "translate-x-0"
+                }`}
+              />
+            </button>
+          </label>
         </div>
 
         {/* 디렉토리 스캔 등록 */}

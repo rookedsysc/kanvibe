@@ -3,6 +3,7 @@ import { DataSource } from "typeorm";
 import { KanbanTask } from "../entities/KanbanTask";
 import { Project } from "../entities/Project";
 import { PaneLayoutConfig } from "../entities/PaneLayoutConfig";
+import { AppSettings } from "../entities/AppSettings";
 
 /**
  * TypeORM CLI 전용 DataSource 설정.
@@ -19,7 +20,7 @@ function buildDatabaseUrl(): string {
 export default new DataSource({
   type: "postgres",
   url: process.env.DATABASE_URL ?? buildDatabaseUrl(),
-  entities: [KanbanTask, Project, PaneLayoutConfig],
+  entities: [KanbanTask, Project, PaneLayoutConfig, AppSettings],
   migrations: ["src/migrations/*.ts"],
   synchronize: false,
   logging: true,

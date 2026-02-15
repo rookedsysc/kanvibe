@@ -98,7 +98,10 @@
     "loadingFolders": "폴더 검색 중...",
     "noFoldersFound": "일치하는 폴더가 없습니다.",
     "folderCount": "{count}개의 폴더",
-    "folderNavHint": "↑↓ 이동 · Tab 하위 폴더 · Enter 선택 · Backspace 상위 폴더 · Esc 닫기"
+    "folderNavHint": "↑↓ 이동 · Tab 하위 폴더 · Enter 선택 · Backspace 상위 폴더 · Esc 닫기",
+    "detailPageSection": "상세 페이지",
+    "sidebarDefaultCollapsed": "사이드바 기본 접기",
+    "sidebarDefaultCollapsedDescription": "상세 페이지 진입 시 왼쪽 사이드바를 접은 상태로 시작합니다."
   },
   "paneLayout": {
     "title": "Pane 레이아웃 설정",
@@ -170,6 +173,10 @@
     "installingHooks": "설치 중...",
     "hooksInstallSuccess": "Hooks 설치 완료",
     "hooksInstallFailed": "Hooks 설치 실패",
-    "hooksRemoteNotSupported": "원격 프로젝트는 지원하지 않습니다"
+    "hooksRemoteNotSupported": "원격 프로젝트는 지원하지 않습니다",
+    "collapseSidebar": "사이드바 접기",
+    "expandSidebar": "사이드바 펼치기",
+    "sidebarTooltip": "설정에서 기본 접힘 상태를 변경할 수 있습니다",
+    "dismissHint": "다시 보지 않기"
   }
 }

@@ -98,7 +98,10 @@
     "loadingFolders": "Searching folders...",
     "noFoldersFound": "No matching folders found.",
     "folderCount": "{count} folders",
-    "folderNavHint": "↑↓ Navigate · Tab Drill down · Enter Select · Backspace Go up · Esc Close"
+    "folderNavHint": "↑↓ Navigate · Tab Drill down · Enter Select · Backspace Go up · Esc Close",
+    "detailPageSection": "Detail Page",
+    "sidebarDefaultCollapsed": "Collapse sidebar by default",
+    "sidebarDefaultCollapsedDescription": "Start with the left sidebar collapsed when entering the detail page."
   },
   "paneLayout": {
     "title": "Pane Layout Settings",
@@ -170,6 +173,10 @@
     "installingHooks": "Installing...",
     "hooksInstallSuccess": "Hooks installed successfully",
     "hooksInstallFailed": "Hooks installation failed",
-    "hooksRemoteNotSupported": "Remote projects are not supported"
+    "hooksRemoteNotSupported": "Remote projects are not supported",
+    "collapseSidebar": "Collapse sidebar",
+    "expandSidebar": "Expand sidebar",
+    "sidebarTooltip": "You can change the default state in Settings",
+    "dismissHint": "Don't show again"
   }
 }

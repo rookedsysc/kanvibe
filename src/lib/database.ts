@@ -3,11 +3,13 @@ import { DataSource, type ObjectLiteral, type Repository } from "typeorm";
 import { KanbanTask } from "@/entities/KanbanTask";
 import { Project } from "@/entities/Project";
 import { PaneLayoutConfig } from "@/entities/PaneLayoutConfig";
+import { AppSettings } from "@/entities/AppSettings";
 import { InitialSchema1770854400000 } from "@/migrations/1770854400000-InitialSchema";
 import { AddPrUrlToKanbanTasks1770854400001 } from "@/migrations/1770854400001-AddPrUrlToKanbanTasks";
 import { AddIsWorktreeToProjects1770854400002 } from "@/migrations/1770854400002-AddIsWorktreeToProjects";
 import { AddPaneLayoutConfig1771048256887 } from "@/migrations/1771048256887-AddPaneLayoutConfig";
 import { AssignDisplayOrder1771166346785 } from "@/migrations/1771166346785-AssignDisplayOrder";
+import { AddAppSettings1771166907165 } from "@/migrations/1771166907165-AddAppSettings";
 
 /**
  * TypeORM DataSource 싱글턴.
@@ -28,8 +30,8 @@ function createDataSource(): DataSource {
   return new DataSource({
     type: "postgres",
     url: process.env.DATABASE_URL ?? buildDatabaseUrl(),
-    entities: [KanbanTask, Project, PaneLayoutConfig],
-    migrations: [InitialSchema1770854400000, AddPrUrlToKanbanTasks1770854400001, AddIsWorktreeToProjects1770854400002, AddPaneLayoutConfig1771048256887, AssignDisplayOrder1771166346785],
+    entities: [KanbanTask, Project, PaneLayoutConfig, AppSettings],
+    migrations: [InitialSchema1770854400000, AddPrUrlToKanbanTasks1770854400001, AddIsWorktreeToProjects1770854400002, AddPaneLayoutConfig1771048256887, AssignDisplayOrder1771166346785, AddAppSettings1771166907165],
     synchronize: false,
     logging: process.env.NODE_ENV !== "production",
   });
@@ -76,4 +78,9 @@ export async function getProjectRepository(): Promise<Repository<Project>> {
 export async function getPaneLayoutConfigRepository(): Promise<Repository<PaneLayoutConfig>> {
   const ds = await getDataSource();
   return getRepositoryByTable<PaneLayoutConfig>(ds, "pane_layout_configs");
+}
+
+export async function getAppSettingsRepository(): Promise<Repository<AppSettings>> {
+  const ds = await getDataSource();
+  return getRepositoryByTable<AppSettings>(ds, "app_settings");
 }

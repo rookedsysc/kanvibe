@@ -98,7 +98,10 @@
     "loadingFolders": "正在搜索文件夹...",
     "noFoldersFound": "未找到匹配的文件夹。",
     "folderCount": "{count} 个文件夹",
-    "folderNavHint": "↑↓ 导航 · Tab 进入子文件夹 · Enter 选择 · Backspace 返回上级 · Esc 关闭"
+    "folderNavHint": "↑↓ 导航 · Tab 进入子文件夹 · Enter 选择 · Backspace 返回上级 · Esc 关闭",
+    "detailPageSection": "详情页",
+    "sidebarDefaultCollapsed": "默认折叠侧栏",
+    "sidebarDefaultCollapsedDescription": "进入详情页时左侧栏默认折叠。"
   },
   "paneLayout": {
     "title": "面板布局设置",
@@ -170,6 +173,10 @@
     "installingHooks": "安装中...",
     "hooksInstallSuccess": "Hooks 安装完成",
     "hooksInstallFailed": "Hooks 安装失败",
-    "hooksRemoteNotSupported": "不支持远程项目"
+    "hooksRemoteNotSupported": "不支持远程项目",
+    "collapseSidebar": "折叠侧栏",
+    "expandSidebar": "展开侧栏",
+    "sidebarTooltip": "可以在设置中更改默认折叠状态",
+    "dismissHint": "不再显示"
   }
 }
