@@ -108,6 +108,7 @@
       "status": {
         "todo": "{gray.500}",
         "progress": "{yellow.500}",
+        "pending": "#8B5CF6",
         "review": "{blue.500}",
         "done": "{green.500}",
         "success": "{green.500}",

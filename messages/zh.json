@@ -27,6 +27,7 @@
     "columns": {
       "todo": "待办",
       "progress": "进行中",
+      "pending": "待决定",
       "review": "审核",
       "done": "完成"
     },

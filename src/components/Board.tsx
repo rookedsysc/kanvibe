@@ -28,6 +28,7 @@ interface BoardProps {
 const COLUMNS: { status: TaskStatus; labelKey: string; colorClass: string }[] = [
   { status: TaskStatus.TODO, labelKey: "todo", colorClass: "bg-status-todo" },
   { status: TaskStatus.PROGRESS, labelKey: "progress", colorClass: "bg-status-progress" },
+  { status: TaskStatus.PENDING, labelKey: "pending", colorClass: "bg-status-pending" },
   { status: TaskStatus.REVIEW, labelKey: "review", colorClass: "bg-status-review" },
   { status: TaskStatus.DONE, labelKey: "done", colorClass: "bg-status-done" },
 ];
@@ -159,6 +160,7 @@ export default function Board({ initialTasks, initialDoneTotal, initialDoneLimit
     const filtered: TasksByStatus = {
       [TaskStatus.TODO]: [],
       [TaskStatus.PROGRESS]: [],
+      [TaskStatus.PENDING]: [],
       [TaskStatus.REVIEW]: [],
       [TaskStatus.DONE]: [],
     };

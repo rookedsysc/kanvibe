@@ -13,6 +13,7 @@ import { Project } from "./Project";
 export enum TaskStatus {
   TODO = "todo",
   PROGRESS = "progress",
+  PENDING = "pending",
   REVIEW = "review",
   DONE = "done",
 }

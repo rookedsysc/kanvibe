@@ -27,6 +27,7 @@
     "columns": {
       "todo": "Todo",
       "progress": "Progress",
+      "pending": "Pending",
       "review": "Review",
       "done": "Done"
     },

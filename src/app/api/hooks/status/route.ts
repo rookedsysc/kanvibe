@@ -8,6 +8,7 @@ import { broadcastBoardUpdate } from "@/lib/boardNotifier";
 const STATUS_MAP: Record<string, TaskStatus> = {
   todo: TaskStatus.TODO,
   progress: TaskStatus.PROGRESS,
+  pending: TaskStatus.PENDING,
   review: TaskStatus.REVIEW,
   done: TaskStatus.DONE,
 };
