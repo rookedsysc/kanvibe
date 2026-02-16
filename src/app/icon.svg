@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
+  <title>KanVibe Logo</title>
+  <defs>
+    <linearGradient id="kg" x1="0" y1="0" x2="512" y2="512" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#7C6BF0"/>
+      <stop offset="50%" stop-color="#4B9BE0"/>
+      <stop offset="100%" stop-color="#1DD4A4"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Piece 1: Top-left rounded rectangle -->
+  <rect x="40" y="40" width="180" height="188" rx="30" fill="url(#kg)"/>
+
+  <!-- Terminal ">" chevron (white) -->
+  <polyline
+    points="95,95 150,134 95,173"
+    stroke="white" stroke-width="16"
+    stroke-linecap="round" stroke-linejoin="round"
+    fill="none"/>
+
+  <!-- Piece 2: Bottom-left triangle (rounded corners, r=14) -->
+  <path d="M54,246 L206,246 Q220,246 211,257 L49,461 Q40,472 40,458 L40,260 Q40,246 54,246 Z" fill="url(#kg)"/>
+
+  <!-- Piece 3: Upper-right triangle (rounded corners, r=14) -->
+  <path d="M252,40 L458,40 Q472,40 461,49 L249,219 Q238,228 238,214 L238,54 Q238,40 252,40 Z" fill="url(#kg)"/>
+
+  <!-- Piece 4: Lower-right triangle (rounded corners, r=14) -->
+  <path d="M248,256 L462,462 Q472,472 458,472 L252,472 Q238,472 238,458 L238,260 Q238,246 248,256 Z" fill="url(#kg)"/>
+</svg>
