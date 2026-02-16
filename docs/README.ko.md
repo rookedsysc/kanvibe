@@ -6,6 +6,7 @@
 
 AI 코딩 에이전트(Claude Code 등)의 작업을 실시간으로 관리하는 웹 기반 터미널 칸반 보드.
 브라우저에서 tmux/zellij 세션을 직접 모니터링하며, 드래그 앤 드롭 칸반 보드로 작업 진행 상황을 추적합니다.
+[Claude Code Hooks](#claude-code-hooks---자동-상태-추적) 기반 자동 상태 트래킹을 지원하여 수동 업데이트가 필요 없습니다.
 
 [![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-FFDD00?style=for-the-badge&logo=buy-me-a-coffee&logoColor=black)](https://buymeacoffee.com/rookedsysc)
 
@@ -18,6 +19,19 @@ AI 코딩 에이전트(Claude Code 등)의 작업을 실시간으로 관리하�
 <div align="center">
 
 [![Demo Video](https://img.youtube.com/vi/PBST0RIqlAA/maxresdefault.jpg)](https://www.youtube.com/watch?v=PBST0RIqlAA)
+
+*이미지를 클릭하면 YouTube에서 데모 영상을 볼 수 있습니다*
+
+<table>
+  <tr>
+    <td><img src="./images/kanvibe1.png" alt="칸반 보드" width="100%"></td>
+    <td><img src="./images/kanvibe2.png" alt="태스크 상세 & 터미널" width="100%"></td>
+  </tr>
+  <tr>
+    <td align="center"><em>칸반 보드</em></td>
+    <td align="center"><em>태스크 상세 & 터미널</em></td>
+  </tr>
+</table>
 
 </div>
 

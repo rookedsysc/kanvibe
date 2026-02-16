@@ -6,6 +6,7 @@
 
 A web-based terminal Kanban board for managing AI coding agent (Claude Code, etc.) tasks in real-time.
 Monitor tmux/zellij sessions directly in your browser while tracking task progress on a drag & drop Kanban board.
+Automatically track task status via [Claude Code Hooks](#claude-code-hooks---automatic-status-tracking) — no manual updates needed.
 
 [![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-FFDD00?style=for-the-badge&logo=buy-me-a-coffee&logoColor=black)](https://buymeacoffee.com/rookedsysc)
 
@@ -18,6 +19,19 @@ Monitor tmux/zellij sessions directly in your browser while tracking task progre
 <div align="center">
 
 [![Demo Video](https://img.youtube.com/vi/PBST0RIqlAA/maxresdefault.jpg)](https://www.youtube.com/watch?v=PBST0RIqlAA)
+
+*Click the image above to watch the demo on YouTube*
+
+<table>
+  <tr>
+    <td><img src="./docs/images/kanvibe1.png" alt="Kanban Board" width="100%"></td>
+    <td><img src="./docs/images/kanvibe2.png" alt="Task Detail & Terminal" width="100%"></td>
+  </tr>
+  <tr>
+    <td align="center"><em>Kanban Board</em></td>
+    <td align="center"><em>Task Detail & Terminal</em></td>
+  </tr>
+</table>
 
 </div>
 

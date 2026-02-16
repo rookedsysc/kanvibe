@@ -6,6 +6,7 @@
 
 用于实时管理 AI 编程代理（Claude Code 等）任务的基于 Web 的终端看板。
 在浏览器中直接监控 tmux/zellij 会话，同时通过拖放看板追踪任务进度。
+通过 [Claude Code Hooks](#claude-code-hooks---自动状态追踪) 自动追踪任务状态，无需手动更新。
 
 [![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-FFDD00?style=for-the-badge&logo=buy-me-a-coffee&logoColor=black)](https://buymeacoffee.com/rookedsysc)
 
@@ -18,6 +19,19 @@
 <div align="center">
 
 [![Demo Video](https://img.youtube.com/vi/PBST0RIqlAA/maxresdefault.jpg)](https://www.youtube.com/watch?v=PBST0RIqlAA)
+
+*点击上方图片在 YouTube 上观看演示视频*
+
+<table>
+  <tr>
+    <td><img src="./images/kanvibe1.png" alt="看板" width="100%"></td>
+    <td><img src="./images/kanvibe2.png" alt="任务详情 & 终端" width="100%"></td>
+  </tr>
+  <tr>
+    <td align="center"><em>看板</em></td>
+    <td align="center"><em>任务详情 & 终端</em></td>
+  </tr>
+</table>
 
 </div>
 
