@@ -15,10 +15,22 @@ function serialize<T>(data: T): T {
   return JSON.parse(JSON.stringify(data));
 }
 
-/** 프로젝트의 메인 브랜치 태스크를 생성하고 tmux 세션을 자동 연결한다 */
+/** 프로젝트의 메인 브랜치 태스크를 생성하고 tmux 세션을 자동 연결한다. 동일 branchName이 이미 존재하면 프로젝트를 연결한다. */
 async function createDefaultBranchTask(project: Project): Promise<void> {
   const taskRepo = await getTaskRepository();
-  const task = taskRepo.create({
+
+  /** 동일 branchName의 기존 태스크가 있으면 프로젝트를 연결하고, 없으면 새로 생성한다 */
+  let task = await taskRepo.findOneBy({ branchName: project.defaultBranch });
+  if (task) {
+    if (!task.projectId) {
+      task.projectId = project.id;
+      task.baseBranch = project.defaultBranch;
+      await taskRepo.save(task);
+    }
+    return;
+  }
+
+  task = taskRepo.create({
     title: project.defaultBranch,
     branchName: project.defaultBranch,
     status: TaskStatus.TODO,
@@ -184,9 +196,15 @@ export async function scanAndRegisterProjects(
       });
 
       const saved = await repo.save(project);
-      await createDefaultBranchTask(saved);
       existingPaths.add(pathKey);
       result.registered.push(projectName);
+
+      /** 기본 브랜치 태스크 생성 실패는 프로젝트 등록 결과에 영향을 주지 않는다 */
+      try {
+        await createDefaultBranchTask(saved);
+      } catch (taskError) {
+        console.error(`${projectName} 기본 브랜치 태스크 생성 실패:`, taskError);
+      }
 
       /** 로컬 repo에 Claude Code hooks를 자동 설정한다 */
       if (!sshHost) {
@@ -222,7 +240,16 @@ export async function scanAndRegisterProjects(
         if (wt.path === project.repoPath) continue;
 
         const existingTask = await taskRepo.findOneBy({ branchName: wt.branch });
-        if (existingTask) continue;
+        if (existingTask) {
+          /** orphan 태스크(projectId가 없는)를 현재 프로젝트에 연결한다 */
+          if (!existingTask.projectId) {
+            existingTask.projectId = project.id;
+            existingTask.worktreePath = wt.path;
+            await taskRepo.save(existingTask);
+            result.worktreeTasks.push(wt.branch);
+          }
+          continue;
+        }
 
         /** tmux 세션에 동일한 session-window가 있으면 연결 정보를 설정한다 */
         const sessionName = path.basename(project.repoPath);
