@@ -13,7 +13,7 @@ echo "=== KanVibe 시작 ==="
 
 # 의존성 설치
 echo "[1/6] 의존성 설치..."
-npm install
+pnpm install
 
 # node-pty spawn-helper 실행 권한 복구
 echo "[1.5/6] spawn-helper 권한 복구..."
@@ -32,13 +32,13 @@ echo "       DB 준비 완료"
 
 # DB 마이그레이션 실행
 echo "[4/6] DB 마이그레이션 실행..."
-npm run migration:run
+pnpm migration:run
 
 # Next.js 빌드
 echo "[5/6] Next.js 빌드..."
 export NODE_ENV=production
-npm run build
+pnpm build
 
 # 앱 시작 (production 모드로 실행하여 auto reload 비활성화)
 echo "[6/6] KanVibe 서버 시작..."
-exec npm run start
+exec pnpm start
