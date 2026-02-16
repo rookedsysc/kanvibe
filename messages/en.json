@@ -123,7 +123,7 @@
     "layoutLeftTBRight": "Left T/B + Right",
     "layoutQuad": "Quad",
     "paneCommand": "Pane {position} Command",
-    "commandPlaceholder": "Startup command (e.g., npm run dev)",
+    "commandPlaceholder": "Startup command (e.g., pnpm dev)",
     "paneTop": "Top",
     "paneBottom": "Bottom",
     "paneLeft": "Left",

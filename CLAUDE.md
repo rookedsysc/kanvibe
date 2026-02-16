@@ -48,22 +48,22 @@ TypeORM migration 기반 스키마 관리. `synchronize`는 비활성화되어 �
 ### 스키마 변경 시
 
 1. `src/entities/`에서 엔티티 수정
-2. `npm run migration:generate -- src/migrations/DescriptiveName` 실행 (DB 실행 상태 필요)
+2. `pnpm migration:generate -- src/migrations/DescriptiveName` 실행 (DB 실행 상태 필요)
 3. 생성된 마이그레이션 파일의 SQL 검토
 4. `src/lib/database.ts`의 `migrations` 배열에 새 마이그레이션 클래스 import 추가
-5. `npm run migration:run`으로 적용
+5. `pnpm migration:run`으로 적용
 
 ### 주요 명령어
 
 ```bash
 # 엔티티 변경 기반 마이그레이션 생성
-npm run migration:generate -- src/migrations/AddColumnName
+pnpm migration:generate -- src/migrations/AddColumnName
 
 # 마이그레이션 실행
-npm run migration:run
+pnpm migration:run
 
 # 마지막 마이그레이션 롤백
-npm run migration:revert
+pnpm migration:revert
 ```
 
 ### 주의사항

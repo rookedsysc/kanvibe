@@ -123,7 +123,7 @@
     "layoutLeftTBRight": "左上下 + 右",
     "layoutQuad": "四分割",
     "paneCommand": "面板 {position} 命令",
-    "commandPlaceholder": "启动命令（例如：npm run dev）",
+    "commandPlaceholder": "启动命令（例如：pnpm dev）",
     "paneTop": "上方",
     "paneBottom": "下方",
     "paneLeft": "左侧",

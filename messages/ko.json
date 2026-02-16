@@ -123,7 +123,7 @@
     "layoutLeftTBRight": "좌상하 + 우",
     "layoutQuad": "4분할",
     "paneCommand": "Pane {position} 명령어",
-    "commandPlaceholder": "시작 명령어 (예: npm run dev)",
+    "commandPlaceholder": "시작 명령어 (예: pnpm dev)",
     "paneTop": "상단",
     "paneBottom": "하단",
     "paneLeft": "좌측",

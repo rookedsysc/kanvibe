@@ -41,8 +41,8 @@ docker compose up -d
 docker compose up db -d
 
 # 개발 서버 실행
-npm install
-npm run dev
+pnpm install
+pnpm dev
 ```
 
 ## Hook API (Claude Code 연동)
