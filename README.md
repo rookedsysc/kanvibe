@@ -17,7 +17,7 @@ Monitor tmux/zellij sessions directly in your browser while tracking task progre
 
 <div align="center">
 
-<video src="./demo.mov" width="100%" autoplay loop muted playsinline></video>
+[![Demo Video](https://img.youtube.com/vi/PBST0RIqlAA/maxresdefault.jpg)](https://www.youtube.com/watch?v=PBST0RIqlAA)
 
 </div>
 
