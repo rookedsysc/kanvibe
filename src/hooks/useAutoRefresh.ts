@@ -5,6 +5,9 @@ import { useRouter } from "@/i18n/navigation";
 
 const RECONNECT_DELAY_MS = 3000;
 
+/** Board 컴포넌트가 이전에 마운트된 적이 있는지 추적하는 모듈 레벨 플래그 */
+let boardHasMountedBefore = false;
+
 /**
  * WebSocket을 통한 보드 자동 새로고침 + 뒤로가기 시 최신 데이터 로드.
  * 보드 페이지에서 호출하면 Hook API 변경 사항이 실시간으로 반영된다.
@@ -13,6 +16,14 @@ export function useAutoRefresh() {
   const router = useRouter();
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  /** 뒤로가기 등으로 Board가 재마운트되면 라우터 캐시를 무효화하여 최신 데이터를 로드한다 */
+  useEffect(() => {
+    if (boardHasMountedBefore) {
+      router.refresh();
+    }
+    boardHasMountedBefore = true;
+  }, [router]);
 
   useEffect(() => {
     function connect() {
@@ -52,15 +63,5 @@ export function useAutoRefresh() {
       }
       wsRef.current?.close();
     };
-  }, [router]);
-
-  /** 뒤로가기(popstate) 시 최신 데이터를 로드한다 */
-  useEffect(() => {
-    function handlePopState() {
-      router.refresh();
-    }
-
-    window.addEventListener("popstate", handlePopState);
-    return () => window.removeEventListener("popstate", handlePopState);
   }, [router]);
 }
