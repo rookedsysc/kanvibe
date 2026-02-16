@@ -77,6 +77,39 @@ pnpm migration:revert
 INSERT INTO migrations (timestamp, name) VALUES (1770854400000, 'InitialSchema1770854400000');
 ```
 
+## Testing
+
+Vitest + @testing-library/react 기반. Given-When-Then 패턴을 사용한다.
+
+### 테스트 실행
+
+```bash
+pnpm test          # 전체 테스트 실행
+pnpm test:watch    # watch 모드
+```
+
+### 테스트 작성 규칙
+
+- 테스트 케이스명(`it`/`describe`)은 **영어**로 작성한다
+- `should ...` 패턴을 사용한다: `it("should call router.refresh() on remount")`
+- Given-When-Then 주석으로 섹션을 구분한다
+- 테스트 파일 위치: `src/**/__tests__/*.test.ts`
+
+### 예시
+
+```typescript
+it("should not call router.refresh() on first mount", async () => {
+  // Given
+  const { useAutoRefresh } = await import("@/hooks/useAutoRefresh");
+
+  // When
+  renderHook(() => useAutoRefresh());
+
+  // Then
+  expect(mockRefresh).not.toHaveBeenCalled();
+});
+```
+
 ## 국제화 (i18n)
 
 next-intl 기반. 지원 언어: 한국어(ko), 영어(en), 중국어(zh). 기본 언어: ko.
