@@ -22,7 +22,12 @@
 
 **▶ [在 YouTube 上观看演示](https://www.youtube.com/watch?v=8JTrvd3T_Z0)**
 
-<img src="./images/kanvibe2.png" alt="任务详情 & 终端" width="80%">
+<table>
+  <tr>
+    <td><img src="./images/kanvibe1.png" alt="看板" width="100%"></td>
+    <td><img src="./images/kanvibe2.png" alt="任务详情 & 终端" width="100%"></td>
+  </tr>
+</table>
 
 </div>
 

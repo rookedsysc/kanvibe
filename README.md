@@ -22,7 +22,12 @@ Automatically track task status via [Claude Code Hooks](#claude-code-hooks---aut
 
 **▶ [Watch Demo on YouTube](https://www.youtube.com/watch?v=8JTrvd3T_Z0)**
 
-<img src="./docs/images/kanvibe2.png" alt="Task Detail & Terminal" width="80%">
+<table>
+  <tr>
+    <td><img src="./docs/images/kanvibe1.png" alt="Kanban Board" width="100%"></td>
+    <td><img src="./docs/images/kanvibe2.png" alt="Task Detail & Terminal" width="100%"></td>
+  </tr>
+</table>
 
 </div>
 
