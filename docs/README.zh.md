@@ -59,9 +59,9 @@ bash start.sh
 
 ### 3. 在看板中工作
 
-在 4 个列之间拖放任务：**TODO** → **PROGRESS** → **REVIEW** → **DONE**
+任务通过 5 个状态进行管理：**TODO** → **PROGRESS** → **PENDING** → **REVIEW** → **DONE**
 
-当任务移至 **DONE** 时，分支、worktree 和终端会话会自动清理。
+通过拖放更改状态，或通过 [Claude Code Hooks](#claude-code-hooks---自动状态追踪) 自动转换。当任务移至 **DONE** 时，分支、worktree 和终端会话会**自动删除**。
 
 ### 4. 选择面板布局
 
@@ -83,7 +83,7 @@ bash start.sh
 ## 功能
 
 ### 看板
-- 4 列拖放看板（TODO / PROGRESS / REVIEW / DONE）
+- 5 状态任务管理（TODO / PROGRESS / PENDING / REVIEW / DONE）
 - 自定义任务排序
 - 多项目筛选
 - Done 列分页
@@ -101,13 +101,22 @@ bash start.sh
 - Nerd Font 渲染支持
 
 ### Claude Code Hooks - 自动状态追踪
-KanVibe 与 **Claude Code Hooks** 集成，自动追踪任务状态：
+KanVibe 与 **Claude Code Hooks** 集成，自动追踪任务状态。任务通过 5 个状态进行管理：
+
+| 状态 | 说明 |
+|------|------|
+| **TODO** | 任务创建时的初始状态 |
+| **PROGRESS** | AI 正在处理任务 |
+| **PENDING** | AI 向用户提出追问，等待用户回复 |
+| **REVIEW** | AI 已完成工作，等待审查 |
+| **DONE** | 任务完成 — 分支、worktree、终端会话会**自动删除** |
 
 ```
-用户发送提示词     → 任务移至 PROGRESS
-AI 提问           → 任务移至 PENDING
-用户回答          → 任务移至 PROGRESS
-AI 完成响应       → 任务移至 REVIEW
+用户发送提示词            → 任务移至 PROGRESS
+AI 追问 (AskUser)        → 任务自动转为 PENDING
+用户回答                  → 任务恢复为 PROGRESS
+AI 完成响应               → 任务移至 REVIEW
+任务移至 DONE             → 分支 + worktree + 终端会话自动删除
 ```
 
 通过 KanVibe 目录扫描注册项目时，Hook 会**自动安装**。Hook 脚本放置在项目的 `.claude/hooks/` 目录中。

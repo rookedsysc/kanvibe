@@ -59,9 +59,9 @@ bash start.sh
 
 ### 3. 칸반 보드에서 작업
 
-4개 컬럼 간 드래그 앤 드롭: **TODO** → **PROGRESS** → **REVIEW** → **DONE**
+5단계 상태로 태스크를 관리합니다: **TODO** → **PROGRESS** → **PENDING** → **REVIEW** → **DONE**
 
-태스크가 **DONE**으로 이동하면 브랜치, worktree, 터미널 세션이 자동으로 정리됩니다.
+드래그 앤 드롭으로 상태를 변경하거나, [Claude Code Hooks](#claude-code-hooks---자동-상태-추적)를 통해 자동으로 전환됩니다. 태스크가 **DONE**으로 이동하면 브랜치, worktree, 터미널 세션이 **자동으로 삭제**됩니다.
 
 ### 4. Pane 레이아웃 선택
 
@@ -83,7 +83,7 @@ bash start.sh
 ## 기능
 
 ### 칸반 보드
-- 4컬럼 드래그 앤 드롭 (TODO / PROGRESS / REVIEW / DONE)
+- 5단계 상태 관리 (TODO / PROGRESS / PENDING / REVIEW / DONE)
 - 사용자 정의 태스크 정렬
 - 다중 프로젝트 필터링
 - Done 컬럼 페이지네이션
@@ -101,13 +101,22 @@ bash start.sh
 - Nerd Font 렌더링 지원
 
 ### Claude Code Hooks - 자동 상태 추적
-KanVibe는 **Claude Code Hooks**와 연동하여 태스크 상태를 자동 추적합니다:
+KanVibe는 **Claude Code Hooks**와 연동하여 태스크 상태를 자동 추적합니다. 태스크는 5가지 상태로 관리됩니다:
+
+| 상태 | 설명 |
+|------|------|
+| **TODO** | 생성된 태스크의 초기 상태 |
+| **PROGRESS** | AI가 작업 중인 상태 |
+| **PENDING** | AI가 사용자에게 재질문하여 답변 대기 중인 상태 |
+| **REVIEW** | AI 작업이 완료되어 리뷰 대기 중인 상태 |
+| **DONE** | 작업 완료 — 브랜치, worktree, 터미널 세션이 **자동 삭제**됩니다 |
 
 ```
 사용자가 프롬프트 전송   → 태스크가 PROGRESS로 이동
-AI가 질문               → 태스크가 PENDING으로 이동
-사용자가 답변           → 태스크가 PROGRESS로 이동
+AI가 재질문 (AskUser)   → 태스크가 PENDING으로 자동 전환
+사용자가 답변           → 태스크가 PROGRESS로 복귀
 AI 응답 완료            → 태스크가 REVIEW로 이동
+태스크를 DONE으로 이동   → 브랜치 + worktree + 터미널 세션 자동 삭제
 ```
 
 프로젝트를 KanVibe 디렉토리 스캔으로 등록하면 Hook이 **자동 설치**됩니다. Hook 스크립트는 프로젝트의 `.claude/hooks/` 디렉토리에 배치됩니다.

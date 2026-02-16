@@ -59,9 +59,9 @@ Add a TODO task from the Kanban board. When creating a task with a branch name, 
 
 ### 3. Work with the Kanban Board
 
-Drag and drop tasks across 4 columns: **TODO** → **PROGRESS** → **REVIEW** → **DONE**
+Tasks are managed through 5 statuses: **TODO** → **PROGRESS** → **PENDING** → **REVIEW** → **DONE**
 
-When a task moves to **DONE**, its branch, worktree, and terminal session are automatically cleaned up.
+Change statuses via drag & drop, or let [Claude Code Hooks](#claude-code-hooks---automatic-status-tracking) transition them automatically. When a task moves to **DONE**, its branch, worktree, and terminal session are **automatically deleted**.
 
 ### 4. Select Pane Layouts
 
@@ -83,7 +83,7 @@ Each pane can run a custom command (e.g., `vim`, `htop`, `lazygit`, test runner,
 ## Features
 
 ### Kanban Board
-- 4-column drag & drop board (TODO / PROGRESS / REVIEW / DONE)
+- 5-status task management (TODO / PROGRESS / PENDING / REVIEW / DONE)
 - Custom task ordering with drag & drop
 - Multi-project filtering
 - Done column pagination
@@ -101,13 +101,22 @@ Each pane can run a custom command (e.g., `vim`, `htop`, `lazygit`, test runner,
 - Nerd Font rendering support
 
 ### Claude Code Hooks - Automatic Status Tracking
-KanVibe integrates with **Claude Code Hooks** to automatically track task status:
+KanVibe integrates with **Claude Code Hooks** to automatically track task status. Tasks are managed through 5 statuses:
+
+| Status | Description |
+|--------|-------------|
+| **TODO** | Initial state when a task is created |
+| **PROGRESS** | AI is actively working on the task |
+| **PENDING** | AI asked a follow-up question; waiting for user response |
+| **REVIEW** | AI has finished; awaiting review |
+| **DONE** | Task complete — branch, worktree, and terminal session are **automatically deleted** |
 
 ```
-User sends prompt     → Task moves to PROGRESS
-AI asks a question    → Task moves to PENDING
-User answers          → Task moves to PROGRESS
-AI finishes response  → Task moves to REVIEW
+User sends prompt        → Task moves to PROGRESS
+AI asks question (AskUser) → Task auto-transitions to PENDING
+User answers             → Task returns to PROGRESS
+AI finishes response     → Task moves to REVIEW
+Task moved to DONE       → Branch + worktree + terminal session auto-deleted
 ```
 
 Hooks are **auto-installed** when you register a project through KanVibe's directory scan. Hook scripts are placed in your project's `.claude/hooks/` directory.
