@@ -130,11 +130,15 @@ export async function createWorktreeWithSession(
       `tmux has-session -t "${sessionName}" 2>/dev/null || tmux new-session -d -s "${sessionName}"`,
       sshHost,
     );
-    /** 메인 세션에 worktree 디렉토리로 이동하는 window를 추가한다 */
-    await execGit(
-      `tmux new-window -t "${sessionName}" -n "${windowName}" -c "${worktreePath}"`,
-      sshHost,
-    );
+
+    /** 동일 이름의 window가 이미 존재하면 중복 생성하지 않는다 (tmux는 이름 중복 시 select 불가) */
+    const hasWindow = await isWindowAlive(sessionType, sessionName, windowName, sshHost);
+    if (!hasWindow) {
+      await execGit(
+        `tmux new-window -t "${sessionName}" -n "${windowName}" -c "${worktreePath}"`,
+        sshHost,
+      );
+    }
 
     /** 로컬 tmux인 경우 pane 레이아웃을 백그라운드로 적용 (task 생성을 차단하지 않음) */
     if (!sshHost) {
@@ -189,10 +193,15 @@ export async function createSessionWithoutWorktree(
       `tmux has-session -t "${sessionName}" 2>/dev/null || tmux new-session -d -s "${sessionName}"`,
       sshHost,
     );
-    await execGit(
-      `tmux new-window -t "${sessionName}" -n "${windowName}" -c "${cwd}"`,
-      sshHost,
-    );
+
+    /** 동일 이름의 window가 이미 존재하면 중복 생성하지 않는다 (tmux는 이름 중복 시 select 불가) */
+    const hasWindow = await isWindowAlive(sessionType, sessionName, windowName, sshHost);
+    if (!hasWindow) {
+      await execGit(
+        `tmux new-window -t "${sessionName}" -n "${windowName}" -c "${cwd}"`,
+        sshHost,
+      );
+    }
   } else {
     try {
       await execGit(

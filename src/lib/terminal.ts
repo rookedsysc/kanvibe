@@ -26,6 +26,23 @@ function isTmuxWindowAlive(sessionName: string, windowName: string): boolean {
   }
 }
 
+/** tmux window의 이름으로 인덱스를 조회한다. 중복 이름이 있어도 첫 번째 매치를 반환한다 */
+function getTmuxWindowIndex(sessionName: string, windowName: string): string | null {
+  try {
+    const output = execSync(
+      `tmux list-windows -t "${sessionName}" -F "#{window_name}\t#{window_index}"`,
+      { encoding: "utf-8", timeout: 5000 },
+    );
+    for (const line of output.split("\n")) {
+      const [name, index] = line.split("\t");
+      if (name?.trimEnd() === windowName && index) return index;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 /** zellij 세션이 존재하는지 확인한다 */
 function isZellijSessionAlive(sessionName: string): boolean {
   try {
@@ -67,10 +84,13 @@ export async function attachLocalSession(
           `tmux has-session -t "${sessionName}" 2>/dev/null || tmux new-session -d -s "${sessionName}"`,
           { timeout: 5000 },
         );
-        execSync(
-          `tmux new-window -t "${sessionName}" -n "${windowName}" -c "${dir}"`,
-          { timeout: 5000 },
-        );
+        /** 중복 방지: 다시 확인 후 없을 때만 생성한다 */
+        if (!isTmuxWindowAlive(sessionName, windowName)) {
+          execSync(
+            `tmux new-window -t "${sessionName}" -n "${windowName}" -c "${dir}"`,
+            { timeout: 5000 },
+          );
+        }
       } catch (error) {
         console.error(`[터미널] tmux 세션/window 자동 생성 실패:`, error);
         ws.close(1008, "tmux 세션 생성에 실패했습니다.");
@@ -99,11 +119,15 @@ export async function attachLocalSession(
       ? "tmux"
       : "zellij";
 
-  /** tmux는 session:window 형식으로 특정 window에 직접 연결한다 */
-  const args =
-    sessionType === SessionType.TMUX
-      ? ["attach-session", "-t", `${sessionName}:${windowName}`]
-      : ["attach", sessionName];
+  /** tmux는 session:windowIndex 형식으로 특정 window에 직접 연결한다. 이름 중복 시에도 안전하도록 인덱스를 사용한다 */
+  let args: string[];
+  if (sessionType === SessionType.TMUX) {
+    const windowIndex = getTmuxWindowIndex(sessionName, windowName);
+    const target = windowIndex ? `${sessionName}:${windowIndex}` : `${sessionName}:${windowName}`;
+    args = ["attach-session", "-t", target];
+  } else {
+    args = ["attach", sessionName];
+  }
 
   /**
    * zellij는 attach 전에 해당 tab으로 이동해야 한다.
