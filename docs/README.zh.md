@@ -37,6 +37,18 @@
 
 ---
 
+## 前置要求
+
+| 依赖 | 版本 | 安装 |
+|------|------|------|
+| [Node.js](https://nodejs.org/) | >= 22 | [下载](https://nodejs.org/en/download/) |
+| [tmux](https://github.com/tmux/tmux) 或 [zellij](https://github.com/zellij-org/zellij) | 最新 | `brew install tmux` / `apt install tmux` |
+| [Docker](https://www.docker.com/) | 最新 | [下载](https://docs.docker.com/get-docker/) |
+
+> Docker 通过 Docker Compose 运行 PostgreSQL 数据库。
+
+---
+
 ## 快速开始
 
 ### 1. 配置环境变量

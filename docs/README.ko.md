@@ -37,6 +37,18 @@ AI 코딩 에이전트(Claude Code 등)의 작업을 실시간으로 관리하�
 
 ---
 
+## 사전 요구사항
+
+| 의존성 | 버전 | 설치 |
+|--------|------|------|
+| [Node.js](https://nodejs.org/) | >= 22 | [다운로드](https://nodejs.org/en/download/) |
+| [tmux](https://github.com/tmux/tmux) 또는 [zellij](https://github.com/zellij-org/zellij) | 최신 | `brew install tmux` / `apt install tmux` |
+| [Docker](https://www.docker.com/) | 최신 | [다운로드](https://docs.docker.com/get-docker/) |
+
+> Docker는 Docker Compose를 통해 PostgreSQL 데이터베이스를 실행하는 데 사용됩니다.
+
+---
+
 ## 빠른 시작
 
 ### 1. 환경변수 설정

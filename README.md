@@ -37,6 +37,18 @@ Automatically track task status via [Claude Code Hooks](#claude-code-hooks---aut
 
 ---
 
+## Prerequisites
+
+| Dependency | Version | Install |
+|------------|---------|---------|
+| [Node.js](https://nodejs.org/) | >= 22 | [Download](https://nodejs.org/en/download/) |
+| [tmux](https://github.com/tmux/tmux) or [zellij](https://github.com/zellij-org/zellij) | latest | `brew install tmux` / `apt install tmux` |
+| [Docker](https://www.docker.com/) | latest | [Download](https://docs.docker.com/get-docker/) |
+
+> Docker is used to run the PostgreSQL database via Docker Compose.
+
+---
+
 ## Quick Start
 
 ### 1. Configure Environment
