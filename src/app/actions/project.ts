@@ -5,6 +5,7 @@ import { getProjectRepository, getTaskRepository } from "@/lib/database";
 import { Project } from "@/entities/Project";
 import { validateGitRepo, getDefaultBranch, listBranches, scanGitRepos, listWorktrees, execGit } from "@/lib/gitOperations";
 import { TaskStatus, SessionType } from "@/entities/KanbanTask";
+import { IsNull } from "typeorm";
 import { isWindowAlive, formatWindowName, createSessionWithoutWorktree } from "@/lib/worktree";
 import { setupClaudeHooks, getClaudeHooksStatus, type ClaudeHooksStatus } from "@/lib/claudeHooksSetup";
 import { homedir } from "os";
@@ -15,22 +16,24 @@ function serialize<T>(data: T): T {
   return JSON.parse(JSON.stringify(data));
 }
 
-/** 프로젝트의 메인 브랜치 태스크를 생성하고 tmux 세션을 자동 연결한다. 동일 branchName이 이미 존재하면 프로젝트를 연결한다. */
+/** 프로젝트의 메인 브랜치 태스크를 생성하고 tmux 세션을 자동 연결한다 */
 async function createDefaultBranchTask(project: Project): Promise<void> {
   const taskRepo = await getTaskRepository();
 
-  /** 동일 branchName의 기존 태스크가 있으면 프로젝트를 연결하고, 없으면 새로 생성한다 */
-  let task = await taskRepo.findOneBy({ branchName: project.defaultBranch });
-  if (task) {
-    if (!task.projectId) {
-      task.projectId = project.id;
-      task.baseBranch = project.defaultBranch;
-      await taskRepo.save(task);
-    }
+  /** 해당 프로젝트에 이미 기본 브랜치 태스크가 있으면 생성하지 않는다 */
+  const existing = await taskRepo.findOneBy({ branchName: project.defaultBranch, projectId: project.id });
+  if (existing) return;
+
+  /** orphan 태스크(projectId 없음)가 있으면 현재 프로젝트에 연결한다 */
+  const orphan = await taskRepo.findOneBy({ branchName: project.defaultBranch, projectId: IsNull() });
+  if (orphan) {
+    orphan.projectId = project.id;
+    orphan.baseBranch = project.defaultBranch;
+    await taskRepo.save(orphan);
     return;
   }
 
-  task = taskRepo.create({
+  const task = taskRepo.create({
     title: project.defaultBranch,
     branchName: project.defaultBranch,
     status: TaskStatus.TODO,
@@ -239,15 +242,17 @@ export async function scanAndRegisterProjects(
         /** 메인 작업 디렉토리(프로젝트 루트)는 기본 브랜치 태스크와 중복되므로 건너뛴다 */
         if (wt.path === project.repoPath) continue;
 
-        const existingTask = await taskRepo.findOneBy({ branchName: wt.branch });
-        if (existingTask) {
-          /** orphan 태스크(projectId가 없는)를 현재 프로젝트에 연결한다 */
-          if (!existingTask.projectId) {
-            existingTask.projectId = project.id;
-            existingTask.worktreePath = wt.path;
-            await taskRepo.save(existingTask);
-            result.worktreeTasks.push(wt.branch);
-          }
+        /** 해당 프로젝트에 이미 동일 브랜치 태스크가 있으면 건너뛴다 */
+        const existingTask = await taskRepo.findOneBy({ branchName: wt.branch, projectId: project.id });
+        if (existingTask) continue;
+
+        /** orphan 태스크(projectId 없음)가 있으면 현재 프로젝트에 연결한다 */
+        const orphanTask = await taskRepo.findOneBy({ branchName: wt.branch, projectId: IsNull() });
+        if (orphanTask) {
+          orphanTask.projectId = project.id;
+          orphanTask.worktreePath = wt.path;
+          await taskRepo.save(orphanTask);
+          result.worktreeTasks.push(wt.branch);
           continue;
         }
 

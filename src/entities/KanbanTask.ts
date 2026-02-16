@@ -41,7 +41,7 @@ export class KanbanTask {
   @Column({ type: "enum", enum: TaskStatus, default: TaskStatus.TODO })
   status!: TaskStatus;
 
-  @Column({ name: "branch_name", type: "varchar", length: 255, nullable: true, unique: true })
+  @Column({ name: "branch_name", type: "varchar", length: 255, nullable: true })
   branchName!: string | null;
 
   @Column({ name: "worktree_path", type: "varchar", length: 500, nullable: true })
