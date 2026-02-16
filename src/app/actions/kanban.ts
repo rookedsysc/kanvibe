@@ -371,7 +371,21 @@ export async function moveTaskToColumn(
 ): Promise<void> {
   const repo = await getTaskRepository();
 
-  await repo.update(taskId, { status: newStatus });
+  if (newStatus === TaskStatus.DONE) {
+    const task = await repo.findOneBy({ id: taskId });
+    if (task) {
+      await cleanupTaskResources(task);
+      await repo.update(taskId, {
+        status: newStatus,
+        sessionType: null,
+        sessionName: null,
+        worktreePath: null,
+        sshHost: null,
+      });
+    }
+  } else {
+    await repo.update(taskId, { status: newStatus });
+  }
 
   const reorderUpdates = destOrderedIds.map((id, index) =>
     repo.update(id, { displayOrder: index })
