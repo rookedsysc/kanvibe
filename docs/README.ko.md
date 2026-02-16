@@ -15,6 +15,12 @@ AI 코딩 에이전트(Claude Code 등)의 작업을 실시간으로 관리하�
 
 </div>
 
+<div align="center">
+
+<video src="../demo.mov" width="100%" autoplay loop muted playsinline></video>
+
+</div>
+
 ---
 
 ## 빠른 시작

@@ -15,6 +15,12 @@
 
 </div>
 
+<div align="center">
+
+<video src="../demo.mov" width="100%" autoplay loop muted playsinline></video>
+
+</div>
+
 ---
 
 ## 快速开始
