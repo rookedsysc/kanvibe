@@ -42,17 +42,6 @@ bash start.sh
 
 在浏览器中打开 `http://localhost:4885`。
 
-### 3. 本地开发
-
-```bash
-# 仅启动 PostgreSQL
-docker compose up db -d
-
-# 安装依赖并启动开发服务器
-pnpm install
-pnpm dev
-```
-
 ---
 
 ## 使用流程

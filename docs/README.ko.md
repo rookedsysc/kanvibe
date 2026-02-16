@@ -42,17 +42,6 @@ bash start.sh
 
 브라우저에서 `http://localhost:4885` 접속.
 
-### 3. 로컬 개발
-
-```bash
-# PostgreSQL만 실행
-docker compose up db -d
-
-# 의존성 설치 & 개발 서버 실행
-pnpm install
-pnpm dev
-```
-
 ---
 
 ## 사용 흐름

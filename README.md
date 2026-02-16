@@ -42,17 +42,6 @@ This single command handles everything: dependency installation, PostgreSQL star
 
 Open `http://localhost:4885` in your browser.
 
-### 3. Local Development
-
-```bash
-# Start PostgreSQL only
-docker compose up db -d
-
-# 개발 서버 실행
-pnpm install
-pnpm dev
-```
-
 ---
 
 ## Usage Flow
