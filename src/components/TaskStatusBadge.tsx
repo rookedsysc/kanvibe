@@ -13,6 +13,10 @@ const statusConfig: Record<TaskStatus, { label: string; className: string }> = {
     label: "Progress",
     className: "bg-yellow-50 text-status-progress",
   },
+  [TaskStatus.PENDING]: {
+    label: "Pending",
+    className: "bg-purple-50 text-status-pending",
+  },
   [TaskStatus.REVIEW]: {
     label: "Review",
     className: "bg-blue-50 text-status-review",

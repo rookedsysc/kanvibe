@@ -54,7 +54,7 @@ function generateQuestionHookScript(kanvibeUrl: string, projectName: string): st
   return `#!/bin/bash
 
 # KanVibe Claude Code Hook: PreToolUse (AskUserQuestion)
-# Claude가 사용자에게 질문할 때 현재 브랜치의 작업을 REVIEW로 변경한다.
+# Claude가 사용자에게 질문할 때 현재 브랜치의 작업을 PENDING으로 변경한다.
 
 KANVIBE_URL="${kanvibeUrl}"
 PROJECT_NAME="${projectName}"
@@ -66,7 +66,7 @@ fi
 
 curl -s -X POST "\${KANVIBE_URL}/api/hooks/status" \\
   -H "Content-Type: application/json" \\
-  -d "{\\"branchName\\": \\"\${BRANCH_NAME}\\", \\"projectName\\": \\"\${PROJECT_NAME}\\", \\"status\\": \\"review\\"}" \\
+  -d "{\\"branchName\\": \\"\${BRANCH_NAME}\\", \\"projectName\\": \\"\${PROJECT_NAME}\\", \\"status\\": \\"pending\\"}" \\
   > /dev/null 2>&1
 
 exit 0

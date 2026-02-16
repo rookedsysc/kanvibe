@@ -50,6 +50,7 @@ export async function getTasksByStatus(): Promise<TasksByStatusWithMeta> {
   const grouped: TasksByStatus = {
     [TaskStatus.TODO]: [],
     [TaskStatus.PROGRESS]: [],
+    [TaskStatus.PENDING]: [],
     [TaskStatus.REVIEW]: [],
     [TaskStatus.DONE]: doneTasks,
   };

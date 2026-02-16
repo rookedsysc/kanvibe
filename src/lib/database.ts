@@ -10,6 +10,7 @@ import { AddIsWorktreeToProjects1770854400002 } from "@/migrations/1770854400002
 import { AddPaneLayoutConfig1771048256887 } from "@/migrations/1771048256887-AddPaneLayoutConfig";
 import { AssignDisplayOrder1771166346785 } from "@/migrations/1771166346785-AssignDisplayOrder";
 import { AddAppSettings1771166907165 } from "@/migrations/1771166907165-AddAppSettings";
+import { AddPendingStatus1771171200000 } from "@/migrations/1771171200000-AddPendingStatus";
 
 /**
  * TypeORM DataSource 싱글턴.
@@ -31,7 +32,7 @@ function createDataSource(): DataSource {
     type: "postgres",
     url: process.env.DATABASE_URL ?? buildDatabaseUrl(),
     entities: [KanbanTask, Project, PaneLayoutConfig, AppSettings],
-    migrations: [InitialSchema1770854400000, AddPrUrlToKanbanTasks1770854400001, AddIsWorktreeToProjects1770854400002, AddPaneLayoutConfig1771048256887, AssignDisplayOrder1771166346785, AddAppSettings1771166907165],
+    migrations: [InitialSchema1770854400000, AddPrUrlToKanbanTasks1770854400001, AddIsWorktreeToProjects1770854400002, AddPaneLayoutConfig1771048256887, AssignDisplayOrder1771166346785, AddAppSettings1771166907165, AddPendingStatus1771171200000],
     synchronize: false,
     logging: process.env.NODE_ENV !== "production",
   });
