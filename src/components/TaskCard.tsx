@@ -9,6 +9,7 @@ interface TaskCardProps {
   index: number;
   onContextMenu: (e: React.MouseEvent, task: KanbanTask) => void;
   projectName?: string;
+  isBaseProject?: boolean;
 }
 
 const agentTagColors: Record<string, string> = {
@@ -17,7 +18,7 @@ const agentTagColors: Record<string, string> = {
   codex: "bg-tag-codex-bg text-tag-codex-text",
 };
 
-export default function TaskCard({ task, index, onContextMenu, projectName }: TaskCardProps) {
+export default function TaskCard({ task, index, onContextMenu, projectName, isBaseProject }: TaskCardProps) {
   return (
     <Draggable draggableId={task.id} index={index}>
       {(provided, snapshot) => (
@@ -27,12 +28,19 @@ export default function TaskCard({ task, index, onContextMenu, projectName }: Ta
             {...provided.draggableProps}
             {...provided.dragHandleProps}
             onContextMenu={(e) => onContextMenu(e, task)}
-            className={`p-3 mb-2 rounded-lg border transition-colors transition-shadow cursor-pointer ${
+            className={`relative overflow-hidden p-3 mb-2 rounded-lg border transition-colors transition-shadow cursor-pointer ${
               snapshot.isDragging
                 ? "bg-bg-surface border-brand-primary shadow-md"
                 : "bg-bg-surface border-border-default hover:border-border-strong hover:shadow-sm"
             }`}
           >
+            {/* Base 프로젝트 리본 배지 */}
+            {isBaseProject && (
+              <div className="absolute -right-7 top-2.5 rotate-45 bg-tag-base-bg text-tag-base-text text-[10px] font-bold px-7 py-0.5 pointer-events-none select-none">
+                Base
+              </div>
+            )}
+
             <h3 className="text-sm font-medium text-text-primary truncate">
               {task.title}
             </h3>
@@ -47,12 +55,6 @@ export default function TaskCard({ task, index, onContextMenu, projectName }: Ta
               {projectName && (
                 <span className="text-xs px-2 py-0.5 rounded-full bg-tag-project-bg text-tag-project-text font-medium truncate max-w-[120px]">
                   {projectName}
-                </span>
-              )}
-
-              {!task.branchName && task.baseBranch && (
-                <span className="text-xs px-2 py-0.5 rounded-full bg-tag-base-bg text-tag-base-text font-medium">
-                  Base Project
                 </span>
               )}
 

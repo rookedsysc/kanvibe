@@ -82,7 +82,7 @@ export async function getMoreDoneTasks(
 /** 단일 작업을 ID로 조회한다 */
 export async function getTaskById(taskId: string): Promise<KanbanTask | null> {
   const repo = await getTaskRepository();
-  const task = await repo.findOneBy({ id: taskId });
+  const task = await repo.findOne({ where: { id: taskId }, relations: ["project"] });
   return task ? serialize(task) : null;
 }
 

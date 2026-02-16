@@ -104,8 +104,8 @@
   --color-tag-neutral-text: var(--gray-600);
   --color-tag-pr-bg: #ddf4ff;
   --color-tag-pr-text: #0969da;
-  --color-tag-base-bg: #EDE7F6;
-  --color-tag-base-text: #5E35B1;
+  --color-tag-base-bg: #202632;
+  --color-tag-base-text: #FFFFFF;
 
   /* Terminal Chrome */
   --color-terminal-chrome: #1e1e1e;

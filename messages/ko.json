@@ -165,6 +165,8 @@
     "createdAt": "생성일",
     "updatedAt": "수정일",
     "prLink": "PR 링크",
+    "project": "프로젝트",
+    "baseProject": "Base",
     "actions": "상태 변경",
     "deleteConfirm": "이 작업을 삭제하시겠습니까?",
     "hooksStatus": "Hooks 상태",

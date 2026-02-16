@@ -49,6 +49,7 @@ export default function Column({ status, tasks, label, colorClass, onContextMenu
                 index={index}
                 onContextMenu={onContextMenu}
                 projectName={task.projectId ? projectNameMap[task.projectId] : undefined}
+                isBaseProject={!!task.worktreePath && !task.worktreePath.includes("__worktrees")}
               />
             ))}
             {provided.placeholder}
