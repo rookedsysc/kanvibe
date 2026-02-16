@@ -18,20 +18,11 @@ AI 코딩 에이전트(Claude Code 등)의 작업을 실시간으로 관리하�
 
 <div align="center">
 
-[![Demo Video](https://img.youtube.com/vi/PBST0RIqlAA/maxresdefault.jpg)](https://www.youtube.com/watch?v=PBST0RIqlAA)
+[![▶ YouTube에서 데모 보기](https://img.youtube.com/vi/8JTrvd3T_Z0/maxresdefault.jpg)](https://www.youtube.com/watch?v=8JTrvd3T_Z0)
 
-*이미지를 클릭하면 YouTube에서 데모 영상을 볼 수 있습니다*
+**▶ [YouTube에서 데모 보기](https://www.youtube.com/watch?v=8JTrvd3T_Z0)**
 
-<table>
-  <tr>
-    <td><img src="./images/kanvibe1.png" alt="칸반 보드" width="100%"></td>
-    <td><img src="./images/kanvibe2.png" alt="태스크 상세 & 터미널" width="100%"></td>
-  </tr>
-  <tr>
-    <td align="center"><em>칸반 보드</em></td>
-    <td align="center"><em>태스크 상세 & 터미널</em></td>
-  </tr>
-</table>
+<img src="./images/kanvibe2.png" alt="태스크 상세 & 터미널" width="80%">
 
 </div>
 

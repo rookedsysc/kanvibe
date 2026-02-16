@@ -18,20 +18,11 @@
 
 <div align="center">
 
-[![Demo Video](https://img.youtube.com/vi/PBST0RIqlAA/maxresdefault.jpg)](https://www.youtube.com/watch?v=PBST0RIqlAA)
+[![▶ 在 YouTube 上观看演示](https://img.youtube.com/vi/8JTrvd3T_Z0/maxresdefault.jpg)](https://www.youtube.com/watch?v=8JTrvd3T_Z0)
 
-*点击上方图片在 YouTube 上观看演示视频*
+**▶ [在 YouTube 上观看演示](https://www.youtube.com/watch?v=8JTrvd3T_Z0)**
 
-<table>
-  <tr>
-    <td><img src="./images/kanvibe1.png" alt="看板" width="100%"></td>
-    <td><img src="./images/kanvibe2.png" alt="任务详情 & 终端" width="100%"></td>
-  </tr>
-  <tr>
-    <td align="center"><em>看板</em></td>
-    <td align="center"><em>任务详情 & 终端</em></td>
-  </tr>
-</table>
+<img src="./images/kanvibe2.png" alt="任务详情 & 终端" width="80%">
 
 </div>
 

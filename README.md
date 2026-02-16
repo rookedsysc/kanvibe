@@ -18,20 +18,11 @@ Automatically track task status via [Claude Code Hooks](#claude-code-hooks---aut
 
 <div align="center">
 
-[![Demo Video](https://img.youtube.com/vi/PBST0RIqlAA/maxresdefault.jpg)](https://www.youtube.com/watch?v=PBST0RIqlAA)
+[![▶ Watch Demo on YouTube](https://img.youtube.com/vi/8JTrvd3T_Z0/maxresdefault.jpg)](https://www.youtube.com/watch?v=8JTrvd3T_Z0)
 
-*Click the image above to watch the demo on YouTube*
+**▶ [Watch Demo on YouTube](https://www.youtube.com/watch?v=8JTrvd3T_Z0)**
 
-<table>
-  <tr>
-    <td><img src="./docs/images/kanvibe1.png" alt="Kanban Board" width="100%"></td>
-    <td><img src="./docs/images/kanvibe2.png" alt="Task Detail & Terminal" width="100%"></td>
-  </tr>
-  <tr>
-    <td align="center"><em>Kanban Board</em></td>
-    <td align="center"><em>Task Detail & Terminal</em></td>
-  </tr>
-</table>
+<img src="./docs/images/kanvibe2.png" alt="Task Detail & Terminal" width="80%">
 
 </div>
 
