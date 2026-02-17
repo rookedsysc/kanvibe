@@ -19,8 +19,9 @@ self.addEventListener('notificationclick', (event) => {
     return;
   }
 
-  // redirect URL 생성
-  const redirectUrl = \`/\${locale}/task/\${taskId}\`;
+  // 절대 URL로 redirect URL 생성 (clients.openWindow은 절대 경로 필요)
+  const relativePath = \`/\${locale}/task/\${taskId}\`;
+  const absoluteUrl = new URL(relativePath, self.location.origin).href;
 
   // 기존 창이 있으면 포커스, 없으면 새 창 열기
   event.waitUntil(
@@ -31,9 +32,9 @@ self.addEventListener('notificationclick', (event) => {
           return client.focus();
         }
       }
-      // 없으면 새 창 열기
+      // 없으면 새 창 열기 (절대 URL 사용)
       if (clients.openWindow) {
-        return clients.openWindow(redirectUrl);
+        return clients.openWindow(absoluteUrl);
       }
     })
   );
