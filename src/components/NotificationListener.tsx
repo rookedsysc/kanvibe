@@ -44,7 +44,7 @@ export default function NotificationListener({
             });
           }
 
-          if (registration.controller) {
+          if (registration.active) {
             console.log("[Notification] Service Worker is active");
           } else {
             console.log("[Notification] Waiting for Service Worker to activate...");
