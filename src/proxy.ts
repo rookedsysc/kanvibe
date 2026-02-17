@@ -14,6 +14,11 @@ const PUBLIC_PATHS = ["/login"];
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
+  // Service Worker 스크립트는 인증 없이 접근 가능해야 함
+  if (pathname === "/sw.js") {
+    return NextResponse.next();
+  }
+
   const isApiPath = pathname.startsWith("/api/");
   if (isApiPath) {
     return NextResponse.next();
@@ -42,5 +47,13 @@ export function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|icon|api/hooks|.*\\.(?:png|jpg|jpeg|svg|gif|ico|webp)$).*)"],
+  matcher: [
+    // 모든 경로를 매칭하되, 다음 파일들은 제외:
+    // - 정적 자산 (_next/static, _next/image)
+    // - 파비콘 및 아이콘
+    // - Service Worker 스크립트 (sw.js)
+    // - API 훅
+    // - 이미지 파일들 (.png, .jpg, 등)
+    "/((?!_next/static|_next/image|favicon\\.ico|icon|sw\\.js|api/hooks|.*\\.(?:png|jpg|jpeg|svg|gif|ico|webp)$).*)"
+  ],
 };

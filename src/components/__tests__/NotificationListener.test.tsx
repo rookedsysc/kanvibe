@@ -11,6 +11,10 @@ vi.mock("@/hooks/useTaskNotification", () => ({
   }),
 }));
 
+vi.mock("@/i18n/navigation", () => ({
+  usePathname: () => "/ko/board",
+}));
+
 /** WebSocket 목 클래스. 인스턴스를 추적하여 테스트에서 메시지 수신을 시뮬레이션한다 */
 class MockWebSocket {
   static instances: MockWebSocket[] = [];
@@ -25,6 +29,14 @@ class MockWebSocket {
 }
 
 vi.stubGlobal("WebSocket", MockWebSocket);
+
+// Mock Service Worker registration
+Object.defineProperty(global.navigator, "serviceWorker", {
+  value: {
+    register: vi.fn().mockResolvedValue({}),
+  },
+  configurable: true,
+});
 
 /** 테스트용 기본 props (전체 상태 알림 활성화) */
 const defaultProps = {
@@ -57,6 +69,7 @@ describe("NotificationListener", () => {
       taskTitle: "테스트",
       description: null,
       newStatus: "review",
+      taskId: "task-123",
     };
 
     // When
@@ -66,9 +79,12 @@ describe("NotificationListener", () => {
       } as MessageEvent);
     });
 
-    // Then — type 필드는 destructuring에서 제외되어 전달되지 않음
-    const { type: _, ...expectedPayload } = wsMessage;
-    expect(mockNotifyTaskStatusChanged).toHaveBeenCalledWith(expectedPayload);
+    // Then — type 필드는 destructuring에서 제외되고, locale은 NotificationListener에서 추가됨
+    const { type: _, ...wsPayload } = wsMessage;
+    expect(mockNotifyTaskStatusChanged).toHaveBeenCalledWith({
+      ...wsPayload,
+      locale: "ko",
+    });
   });
 
   it("should not call notifyTaskStatusChanged for board-updated messages", async () => {

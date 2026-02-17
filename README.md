@@ -172,11 +172,14 @@ Claude Code and Gemini CLI hooks are **auto-installed** when you register a proj
 
 #### Browser Notifications
 
-When a task status changes via Claude Code Hooks, KanVibe sends a **browser notification** with the project name, branch name, and new status. Notifications work on any KanVibe page — you don't need to keep the board open. Allow notifications in your browser when prompted.
+Task status changes via AI Agent Hooks trigger **browser notifications** with project, branch, and status. **Click to jump directly to the task detail page.**
 
-You can configure notifications in **Project Settings**:
-- **Global toggle** — Enable or disable all notifications
-- **Status filter** — Choose which statuses (Progress, Pending, Review) trigger notifications
+- **Real-time alerts** — Instant notifications for task status changes
+- **Background mode** — Notifications work even when KanVibe is not focused
+- **Smart navigation** — Click notification → task detail page (with correct language)
+- **Configurable** — Enable/disable per project and filter by status (PROGRESS, PENDING, REVIEW, DONE)
+
+Setup: Browser will prompt for permission on first visit. Configure filters in **Project Settings** → **Notifications**.
 
 #### Hook API Endpoints
 

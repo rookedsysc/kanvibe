@@ -43,6 +43,7 @@ export interface TaskStatusChangedPayload {
   taskTitle: string;
   description: string | null;
   newStatus: string;
+  taskId: string;
 }
 
 /** hooks 경유 상태 변경 시 task 상세 정보를 포함하여 브로드캐스트한다 */

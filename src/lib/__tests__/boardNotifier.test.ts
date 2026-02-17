@@ -41,6 +41,7 @@ describe("boardNotifier", () => {
       taskTitle: "테스트 작업",
       description: "설명",
       newStatus: "review",
+      taskId: "task-123",
     };
 
     // When
@@ -67,12 +68,14 @@ describe("boardNotifier", () => {
       taskTitle: "작업",
       description: null,
       newStatus: "done",
+      taskId: "task-456",
     });
 
     // Then
     const body = JSON.parse(mockFetch.mock.calls[0][1].body);
     expect(body.description).toBeNull();
     expect(body.type).toBe("task-status-changed");
+    expect(body.taskId).toBe("task-456");
   });
 
   it("should silently catch fetch errors", async () => {

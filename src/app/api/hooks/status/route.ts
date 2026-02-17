@@ -78,6 +78,7 @@ export async function POST(request: NextRequest) {
       taskTitle: saved.title,
       description: saved.description,
       newStatus: taskStatus,
+      taskId: saved.id,
     });
 
     return NextResponse.json({
