@@ -162,6 +162,14 @@ AfterAgent（代理完成）       → REVIEW
 | Claude Code | `.claude/hooks/` | `.claude/settings.json` |
 | Gemini CLI | `.gemini/hooks/` | `.gemini/settings.json` |
 
+#### 浏览器通知
+
+当任务状态通过 Claude Code Hooks 发生变化时，KanVibe 会发送**浏览器通知**，显示项目名称、分支名称和新状态。无需保持看板页面打开——在 KanVibe 的任何页面都可以收到通知。首次访问时请允许浏览器通知权限。
+
+可以在**项目设置**中配置通知：
+- **全局开关** — 启用或禁用所有通知
+- **状态筛选** — 选择哪些状态（Progress、Pending、Review）触发通知
+
 #### Hook API 端点
 
 | 端点 | 方法 | 说明 |

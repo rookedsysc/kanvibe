@@ -162,6 +162,14 @@ AfterAgent (에이전트 완료)   → REVIEW
 | Claude Code | `.claude/hooks/` | `.claude/settings.json` |
 | Gemini CLI | `.gemini/hooks/` | `.gemini/settings.json` |
 
+#### 브라우저 알림
+
+Claude Code Hooks를 통해 태스크 상태가 변경되면 **브라우저 알림**으로 프로젝트명, 브랜치명, 변경된 상태를 표시합니다. 보드 페이지를 열어두지 않아도 KanVibe의 어떤 페이지에서든 알림을 받을 수 있습니다. 최초 접속 시 브라우저 알림 권한을 허용해 주세요.
+
+**프로젝트 설정**에서 알림을 세부 조정할 수 있습니다:
+- **전역 토글** — 모든 알림 활성화/비활성화
+- **상태 필터** — Progress, Pending, Review 중 원하는 상태 변경만 알림 수신
+
 #### Hook API 엔드포인트
 
 | 엔드포인트 | 메서드 | 설명 |
