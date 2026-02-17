@@ -120,11 +120,11 @@ export default async function TaskDetailPage({ params }: TaskDetailPageProps) {
             {t("info")}
           </h3>
           <dl className="space-y-3">
-            {task.project && !task.project.repoPath?.includes("__worktrees") && (
+            {task.project && (
               <div className="flex items-center justify-between gap-2">
                 <dt className="text-xs text-text-muted">{t("project")}</dt>
-                <dd className="text-xs px-2 py-0.5 rounded-full font-medium bg-tag-base-bg text-tag-base-text">
-                  {t("baseProject")}
+                <dd className="text-xs px-2 py-0.5 rounded-full font-medium bg-tag-project-bg text-tag-project-text truncate max-w-[160px]">
+                  {task.project.name}
                 </dd>
               </div>
             )}
