@@ -17,6 +17,7 @@ interface CreateTaskModalProps {
   sshHosts: string[];
   projects: Project[];
   defaultProjectId?: string;
+  defaultBaseBranch?: string;
 }
 
 export default function CreateTaskModal({
@@ -25,6 +26,7 @@ export default function CreateTaskModal({
   sshHosts,
   projects,
   defaultProjectId,
+  defaultBaseBranch,
 }: CreateTaskModalProps) {
   const t = useTranslations("task");
   const tc = useTranslations("common");
@@ -54,13 +56,17 @@ export default function CreateTaskModal({
 
     const selectedProject = projects.find((p) => p.id === selectedProjectId);
     if (selectedProject) {
-      setBaseBranch(selectedProject.defaultBranch);
+      setBaseBranch(defaultBaseBranch || selectedProject.defaultBranch);
     }
 
     getProjectBranches(selectedProjectId).then((result) => {
       setBranches(result);
+      /** defaultBaseBranch가 브랜치 목록에 없으면 옵션에 추가한다 */
+      if (defaultBaseBranch && !result.includes(defaultBaseBranch)) {
+        setBranches((prev) => [defaultBaseBranch, ...prev]);
+      }
     });
-  }, [selectedProjectId, projects]);
+  }, [selectedProjectId, projects, defaultBaseBranch]);
 
   if (!isOpen) return null;
 

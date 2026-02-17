@@ -96,6 +96,10 @@ export default function Board({ initialTasks, initialDoneTotal, initialDoneLimit
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isBranchModalOpen, setIsBranchModalOpen] = useState(false);
+  const [branchTodoDefaults, setBranchTodoDefaults] = useState<{
+    baseBranch: string;
+    projectId: string;
+  } | null>(null);
   const [isMounted, setIsMounted] = useState(false);
   const [selectedProjectIds, setSelectedProjectIds] = useState<string[]>([]);
   const [doneTotal, setDoneTotal] = useState(initialDoneTotal);
@@ -373,6 +377,18 @@ export default function Board({ initialTasks, initialDoneTotal, initialDoneLimit
     setContextMenu((prev) => ({ ...prev, isOpen: false }));
   }, []);
 
+  /** 우클릭한 태스크의 브랜치를 base로 새 TODO를 생성하는 모달을 연다 */
+  const handleCreateBranchTodo = useCallback(() => {
+    if (contextMenu.task?.branchName && contextMenu.task?.projectId) {
+      setBranchTodoDefaults({
+        baseBranch: contextMenu.task.branchName,
+        projectId: contextMenu.task.projectId,
+      });
+      setIsModalOpen(true);
+    }
+    setContextMenu((prev) => ({ ...prev, isOpen: false }));
+  }, [contextMenu.task]);
+
   const handleDeleteFromCard = useCallback(() => {
     if (contextMenu.task && confirm(tt("deleteConfirm"))) {
       deleteTask(contextMenu.task.id);
@@ -465,10 +481,14 @@ export default function Board({ initialTasks, initialDoneTotal, initialDoneLimit
 
       <CreateTaskModal
         isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
+        onClose={() => {
+          setIsModalOpen(false);
+          setBranchTodoDefaults(null);
+        }}
         sshHosts={sshHosts}
         projects={projects}
-        defaultProjectId={selectedProjectIds.length === 1 ? selectedProjectIds[0] : ""}
+        defaultProjectId={branchTodoDefaults?.projectId || (selectedProjectIds.length === 1 ? selectedProjectIds[0] : "")}
+        defaultBaseBranch={branchTodoDefaults?.baseBranch}
       />
 
       <ProjectSettings
@@ -486,6 +506,7 @@ export default function Board({ initialTasks, initialDoneTotal, initialDoneLimit
           y={contextMenu.y}
           onClose={handleCloseContextMenu}
           onBranch={handleBranchFromCard}
+          onCreateBranchTodo={handleCreateBranchTodo}
           onDelete={handleDeleteFromCard}
           hasBranch={!!contextMenu.task.branchName}
         />

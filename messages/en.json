@@ -75,6 +75,7 @@
   },
   "contextMenu": {
     "branchOff": "Branch off",
+    "createBranchTodo": "Create branch TODO",
     "delete": "Delete"
   },
   "settings": {

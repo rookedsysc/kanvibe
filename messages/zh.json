@@ -75,6 +75,7 @@
   },
   "contextMenu": {
     "branchOff": "创建分支",
+    "createBranchTodo": "创建分支TODO",
     "delete": "删除"
   },
   "settings": {
