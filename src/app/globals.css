@@ -107,6 +107,14 @@
   --color-tag-base-bg: #202632;
   --color-tag-base-text: #FFFFFF;
 
+  /* Semantic: Priority */
+  --color-priority-low-bg: var(--blue-50);
+  --color-priority-low-text: var(--blue-600);
+  --color-priority-medium-bg: #FFF3E0;
+  --color-priority-medium-text: #E65100;
+  --color-priority-high-bg: var(--red-50);
+  --color-priority-high-text: var(--red-600);
+
   /* Terminal Chrome */
   --color-terminal-chrome: #1e1e1e;
   --color-terminal-bg: #0a0a0a;
@@ -200,6 +208,14 @@
   --color-tag-pr-text: var(--color-tag-pr-text);
   --color-tag-base-bg: var(--color-tag-base-bg);
   --color-tag-base-text: var(--color-tag-base-text);
+
+  /* Priority */
+  --color-priority-low-bg: var(--color-priority-low-bg);
+  --color-priority-low-text: var(--color-priority-low-text);
+  --color-priority-medium-bg: var(--color-priority-medium-bg);
+  --color-priority-medium-text: var(--color-priority-medium-text);
+  --color-priority-high-bg: var(--color-priority-high-bg);
+  --color-priority-high-text: var(--color-priority-high-text);
 
   /* Terminal Chrome */
   --color-terminal-chrome: var(--color-terminal-chrome);

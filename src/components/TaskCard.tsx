@@ -3,6 +3,7 @@
 import { Draggable } from "@hello-pangea/dnd";
 import { Link } from "@/i18n/navigation";
 import type { KanbanTask } from "@/entities/KanbanTask";
+import { TaskPriority } from "@/entities/TaskPriority";
 
 interface TaskCardProps {
   task: KanbanTask;
@@ -16,6 +17,12 @@ const agentTagColors: Record<string, string> = {
   claude: "bg-tag-claude-bg text-tag-claude-text",
   gemini: "bg-tag-gemini-bg text-tag-gemini-text",
   codex: "bg-tag-codex-bg text-tag-codex-text",
+};
+
+const priorityConfig: Record<TaskPriority, { label: string; colorClass: string }> = {
+  [TaskPriority.LOW]: { label: "!", colorClass: "bg-priority-low-bg text-priority-low-text" },
+  [TaskPriority.MEDIUM]: { label: "!!", colorClass: "bg-priority-medium-bg text-priority-medium-text" },
+  [TaskPriority.HIGH]: { label: "!!!", colorClass: "bg-priority-high-bg text-priority-high-text" },
 };
 
 export default function TaskCard({ task, index, onContextMenu, projectName, isBaseProject }: TaskCardProps) {
@@ -94,6 +101,14 @@ export default function TaskCard({ task, index, onContextMenu, projectName, isBa
               {task.sshHost && (
                 <span className="text-xs px-2 py-0.5 rounded-full bg-tag-ssh-bg text-tag-ssh-text">
                   {task.sshHost}
+                </span>
+              )}
+
+              {task.priority && (
+                <span
+                  className={`ml-auto text-xs font-bold px-2 py-0.5 rounded-full ${priorityConfig[task.priority].colorClass}`}
+                >
+                  {priorityConfig[task.priority].label}
                 </span>
               )}
             </div>

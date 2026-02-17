@@ -46,7 +46,12 @@
     "sessionType": "Session type",
     "sshHost": "SSH Host (optional)",
     "createTitle": "Create New Task",
-    "deleteConfirm": "Are you sure you want to delete this task?"
+    "deleteConfirm": "Are you sure you want to delete this task?",
+    "priority": "Priority",
+    "priorityLow": "!",
+    "priorityMedium": "!!",
+    "priorityHigh": "!!!",
+    "priorityNone": "None"
   },
   "branch": {
     "title": "Branch Off",
@@ -177,6 +182,7 @@
     "hooksInstallSuccess": "Hooks installed successfully",
     "hooksInstallFailed": "Hooks installation failed",
     "hooksRemoteNotSupported": "Remote projects are not supported",
+    "priority": "Priority",
     "collapseSidebar": "Collapse sidebar",
     "expandSidebar": "Expand sidebar",
     "sidebarTooltip": "You can change the default state in Settings",

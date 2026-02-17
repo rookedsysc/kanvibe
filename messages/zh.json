@@ -46,7 +46,12 @@
     "sessionType": "会话类型",
     "sshHost": "SSH 主机（可选）",
     "createTitle": "创建新任务",
-    "deleteConfirm": "确定要删除此任务吗？"
+    "deleteConfirm": "确定要删除此任务吗？",
+    "priority": "优先级",
+    "priorityLow": "!",
+    "priorityMedium": "!!",
+    "priorityHigh": "!!!",
+    "priorityNone": "无"
   },
   "branch": {
     "title": "创建分支",
@@ -177,6 +182,7 @@
     "hooksInstallSuccess": "Hooks 安装完成",
     "hooksInstallFailed": "Hooks 安装失败",
     "hooksRemoteNotSupported": "不支持远程项目",
+    "priority": "优先级",
     "collapseSidebar": "折叠侧栏",
     "expandSidebar": "展开侧栏",
     "sidebarTooltip": "可以在设置中更改默认折叠状态",

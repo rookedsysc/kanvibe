@@ -6,6 +6,7 @@ import { promisify } from "util";
 import { Not } from "typeorm";
 import { getTaskRepository } from "@/lib/database";
 import { KanbanTask, TaskStatus, SessionType } from "@/entities/KanbanTask";
+import { TaskPriority } from "@/entities/TaskPriority";
 import { createWorktreeWithSession, removeWorktreeAndSession, removeWorktreeAndBranch, createSessionWithoutWorktree, removeSessionOnly } from "@/lib/worktree";
 import { getProjectRepository } from "@/lib/database";
 import { setupClaudeHooks } from "@/lib/claudeHooksSetup";
@@ -94,6 +95,7 @@ export interface CreateTaskInput {
   sessionType?: SessionType;
   sshHost?: string;
   projectId?: string;
+  priority?: TaskPriority;
 }
 
 /** 새 작업을 생성한다. branchName + projectId가 있으면 worktree와 세션도 함께 생성한다 */
@@ -108,6 +110,7 @@ export async function createTask(input: CreateTaskInput): Promise<KanbanTask> {
     sessionType: input.sessionType || null,
     sshHost: input.sshHost || null,
     projectId: input.projectId || null,
+    priority: input.priority || null,
     status: TaskStatus.TODO,
   });
 
@@ -181,7 +184,7 @@ export async function updateTaskStatus(
 /** 작업의 정보를 부분 업데이트한다 */
 export async function updateTask(
   taskId: string,
-  updates: Partial<Pick<KanbanTask, "title" | "description">>
+  updates: Partial<Pick<KanbanTask, "title" | "description" | "priority">>
 ): Promise<KanbanTask | null> {
   const repo = await getTaskRepository();
   const task = await repo.findOneBy({ id: taskId });
@@ -189,6 +192,7 @@ export async function updateTask(
 
   if (updates.title !== undefined) task.title = updates.title;
   if (updates.description !== undefined) task.description = updates.description;
+  if (updates.priority !== undefined) task.priority = updates.priority;
 
   const saved = await repo.save(task);
   revalidatePath("/[locale]", "page");

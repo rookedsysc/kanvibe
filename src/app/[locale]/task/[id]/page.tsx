@@ -8,7 +8,9 @@ import {
   fetchAndSavePrUrl,
 } from "@/app/actions/kanban";
 import { TaskStatus } from "@/entities/KanbanTask";
+import { TaskPriority } from "@/entities/TaskPriority";
 import TaskStatusBadge from "@/components/TaskStatusBadge";
+import PriorityEditor from "@/components/PriorityEditor";
 import TerminalLoader from "@/components/TerminalLoader";
 import ConnectTerminalForm from "@/components/ConnectTerminalForm";
 import DeleteTaskButton from "@/components/DeleteTaskButton";
@@ -128,6 +130,12 @@ export default async function TaskDetailPage({ params }: TaskDetailPageProps) {
                 </dd>
               </div>
             )}
+            <div className="flex items-center justify-between gap-2">
+              <dt className="text-xs text-text-muted">{t("priority")}</dt>
+              <dd>
+                <PriorityEditor taskId={task.id} currentPriority={task.priority} />
+              </dd>
+            </div>
             {task.prUrl && (
               <div className="flex items-center justify-between gap-2">
                 <dt className="text-xs text-text-muted">{t("prLink")}</dt>

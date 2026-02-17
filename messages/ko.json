@@ -46,7 +46,12 @@
     "sessionType": "세션 타입",
     "sshHost": "SSH 호스트 (선택)",
     "createTitle": "새 작업 생성",
-    "deleteConfirm": "이 작업을 삭제하시겠습니까?"
+    "deleteConfirm": "이 작업을 삭제하시겠습니까?",
+    "priority": "우선순위",
+    "priorityLow": "!",
+    "priorityMedium": "!!",
+    "priorityHigh": "!!!",
+    "priorityNone": "없음"
   },
   "branch": {
     "title": "브랜치 분기",
@@ -177,6 +182,7 @@
     "hooksInstallSuccess": "Hooks 설치 완료",
     "hooksInstallFailed": "Hooks 설치 실패",
     "hooksRemoteNotSupported": "원격 프로젝트는 지원하지 않습니다",
+    "priority": "우선순위",
     "collapseSidebar": "사이드바 접기",
     "expandSidebar": "사이드바 펼치기",
     "sidebarTooltip": "설정에서 기본 접힘 상태를 변경할 수 있습니다",

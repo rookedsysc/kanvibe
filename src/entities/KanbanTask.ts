@@ -9,6 +9,7 @@ import {
   JoinColumn,
 } from "typeorm";
 import { Project } from "./Project";
+import { TaskPriority } from "./TaskPriority";
 
 export enum TaskStatus {
   TODO = "todo",
@@ -71,6 +72,9 @@ export class KanbanTask {
 
   @Column({ name: "pr_url", type: "varchar", length: 500, nullable: true })
   prUrl!: string | null;
+
+  @Column({ type: "enum", enum: TaskPriority, nullable: true, default: null })
+  priority!: TaskPriority | null;
 
   @Column({ name: "display_order", type: "int", default: 0 })
   displayOrder!: number;
