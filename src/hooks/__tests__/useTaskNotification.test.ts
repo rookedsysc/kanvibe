@@ -3,19 +3,32 @@ import { renderHook, cleanup, act } from "@testing-library/react";
 
 // --- Mocks ---
 
-const mockNotification = vi.fn();
+const mockShowNotification = vi.fn().mockResolvedValue(undefined);
 
-vi.stubGlobal("Notification", Object.assign(mockNotification, {
-  permission: "granted",
-  requestPermission: vi.fn().mockResolvedValue("granted"),
-}));
+const mockServiceWorkerRegistration = {
+  showNotification: mockShowNotification,
+  active: { state: "activated" },
+  installing: null,
+  waiting: null,
+  controller: null,
+  scope: "http://localhost:3000/",
+};
+
+const mockGetRegistration = vi.fn().mockResolvedValue(mockServiceWorkerRegistration);
+
+Object.defineProperty(global.navigator, "serviceWorker", {
+  value: {
+    getRegistration: mockGetRegistration,
+  },
+  configurable: true,
+});
 
 describe("useTaskNotification", () => {
   beforeEach(() => {
     vi.resetModules();
-    mockNotification.mockClear();
-    (Notification as unknown as { permission: string }).permission = "granted";
-    (Notification.requestPermission as ReturnType<typeof vi.fn>).mockResolvedValue("granted");
+    mockShowNotification.mockClear();
+    mockGetRegistration.mockClear();
+    mockGetRegistration.mockResolvedValue(mockServiceWorkerRegistration);
   });
 
   afterEach(() => {
@@ -23,14 +36,14 @@ describe("useTaskNotification", () => {
     vi.restoreAllMocks();
   });
 
-  it("should create notification with correct title and body when permission is granted", async () => {
+  it("should call showNotification with correct title and body when registered", async () => {
     // Given
     const { useTaskNotification } = await import("@/hooks/useTaskNotification");
     const { result } = renderHook(() => useTaskNotification());
 
     // When
-    act(() => {
-      result.current.notifyTaskStatusChanged({
+    await act(async () => {
+      await result.current.notifyTaskStatusChanged({
         projectName: "kanvibe",
         branchName: "feat/login",
         taskTitle: "로그인 구현",
@@ -42,7 +55,7 @@ describe("useTaskNotification", () => {
     });
 
     // Then
-    expect(mockNotification).toHaveBeenCalledWith(
+    expect(mockShowNotification).toHaveBeenCalledWith(
       "kanvibe — feat/login",
       {
         body: "로그인 구현: review로 변경\nOAuth 연동",
@@ -58,8 +71,8 @@ describe("useTaskNotification", () => {
     const { result } = renderHook(() => useTaskNotification());
 
     // When
-    act(() => {
-      result.current.notifyTaskStatusChanged({
+    await act(async () => {
+      await result.current.notifyTaskStatusChanged({
         projectName: "kanvibe",
         branchName: "feat/test",
         taskTitle: "테스트 작업",
@@ -71,7 +84,7 @@ describe("useTaskNotification", () => {
     });
 
     // Then
-    expect(mockNotification).toHaveBeenCalledWith(
+    expect(mockShowNotification).toHaveBeenCalledWith(
       "kanvibe — feat/test",
       {
         body: "테스트 작업: progress로 변경",
@@ -81,15 +94,15 @@ describe("useTaskNotification", () => {
     );
   });
 
-  it("should not create notification when permission is denied", async () => {
+  it("should handle case when service worker registration is null", async () => {
     // Given
-    (Notification as unknown as { permission: string }).permission = "denied";
+    mockGetRegistration.mockResolvedValue(null);
     const { useTaskNotification } = await import("@/hooks/useTaskNotification");
     const { result } = renderHook(() => useTaskNotification());
 
     // When
-    act(() => {
-      result.current.notifyTaskStatusChanged({
+    await act(async () => {
+      await result.current.notifyTaskStatusChanged({
         projectName: "kanvibe",
         branchName: "feat/test",
         taskTitle: "테스트",
@@ -101,18 +114,26 @@ describe("useTaskNotification", () => {
     });
 
     // Then
-    expect(mockNotification).not.toHaveBeenCalled();
+    expect(mockShowNotification).not.toHaveBeenCalled();
   });
 
   it("should request permission when permission is default", async () => {
-    // Given
-    (Notification as unknown as { permission: string }).permission = "default";
+    // Given - Notification permission setup
+    const mockRequestPermission = vi.fn().mockResolvedValue("granted");
+    Object.defineProperty(global, "Notification", {
+      value: {
+        permission: "default",
+        requestPermission: mockRequestPermission,
+      },
+      configurable: true,
+    });
+
     const { useTaskNotification } = await import("@/hooks/useTaskNotification");
 
     // When
     renderHook(() => useTaskNotification());
 
     // Then
-    expect(Notification.requestPermission).toHaveBeenCalled();
+    expect(mockRequestPermission).toHaveBeenCalled();
   });
 });
