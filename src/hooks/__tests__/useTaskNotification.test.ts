@@ -16,6 +16,18 @@ const mockServiceWorkerRegistration = {
 
 const mockGetRegistration = vi.fn().mockResolvedValue(mockServiceWorkerRegistration);
 
+// Notification 글로벌 설정
+const mockRequestPermission = vi.fn().mockResolvedValue("granted");
+Object.defineProperty(global, "Notification", {
+  value: {
+    permission: "granted",
+    requestPermission: mockRequestPermission,
+  },
+  configurable: true,
+  writable: true,
+});
+
+// ServiceWorker 글로벌 설정
 Object.defineProperty(global.navigator, "serviceWorker", {
   value: {
     getRegistration: mockGetRegistration,
@@ -25,21 +37,36 @@ Object.defineProperty(global.navigator, "serviceWorker", {
 
 describe("useTaskNotification", () => {
   beforeEach(() => {
-    vi.resetModules();
     mockShowNotification.mockClear();
     mockGetRegistration.mockClear();
+    mockRequestPermission.mockClear();
+
+    // Notification permission 리셋
+    Object.defineProperty(global, "Notification", {
+      value: {
+        permission: "granted",
+        requestPermission: mockRequestPermission,
+      },
+      configurable: true,
+      writable: true,
+    });
+
+    // getRegistration 리셋
     mockGetRegistration.mockResolvedValue(mockServiceWorkerRegistration);
   });
 
   afterEach(() => {
     cleanup();
-    vi.restoreAllMocks();
+    vi.clearAllMocks();
   });
 
   it("should call showNotification with correct title and body when registered", async () => {
     // Given
     const { useTaskNotification } = await import("@/hooks/useTaskNotification");
     const { result } = renderHook(() => useTaskNotification());
+
+    // 충분한 시간을 줌 (useEffect 실행)
+    await new Promise((resolve) => setTimeout(resolve, 10));
 
     // When
     await act(async () => {
@@ -69,6 +96,9 @@ describe("useTaskNotification", () => {
     // Given
     const { useTaskNotification } = await import("@/hooks/useTaskNotification");
     const { result } = renderHook(() => useTaskNotification());
+
+    // 충분한 시간을 줌 (useEffect 실행)
+    await new Promise((resolve) => setTimeout(resolve, 10));
 
     // When
     await act(async () => {
@@ -100,6 +130,8 @@ describe("useTaskNotification", () => {
     const { useTaskNotification } = await import("@/hooks/useTaskNotification");
     const { result } = renderHook(() => useTaskNotification());
 
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
     // When
     await act(async () => {
       await result.current.notifyTaskStatusChanged({
@@ -118,20 +150,22 @@ describe("useTaskNotification", () => {
   });
 
   it("should request permission when permission is default", async () => {
-    // Given - Notification permission setup
-    const mockRequestPermission = vi.fn().mockResolvedValue("granted");
+    // Given
     Object.defineProperty(global, "Notification", {
       value: {
         permission: "default",
         requestPermission: mockRequestPermission,
       },
       configurable: true,
+      writable: true,
     });
 
     const { useTaskNotification } = await import("@/hooks/useTaskNotification");
 
     // When
     renderHook(() => useTaskNotification());
+
+    await new Promise((resolve) => setTimeout(resolve, 10));
 
     // Then
     expect(mockRequestPermission).toHaveBeenCalled();
