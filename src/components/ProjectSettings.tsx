@@ -9,6 +9,8 @@ import {
   installProjectHooks,
   getProjectGeminiHooksStatus,
   installProjectGeminiHooks,
+  getProjectCodexHooksStatus,
+  installProjectCodexHooks,
   type ScanResult,
 } from "@/app/actions/project";
 import { setSidebarDefaultCollapsed } from "@/app/actions/appSettings";
@@ -16,6 +18,7 @@ import { Link } from "@/i18n/navigation";
 import type { Project } from "@/entities/Project";
 import type { ClaudeHooksStatus } from "@/lib/claudeHooksSetup";
 import type { GeminiHooksStatus } from "@/lib/geminiHooksSetup";
+import type { CodexHooksStatus } from "@/lib/codexHooksSetup";
 import FolderSearchInput from "@/components/FolderSearchInput";
 
 interface ProjectSettingsProps {
@@ -41,10 +44,11 @@ export default function ProjectSettings({
   const [scanResult, setScanResult] = useState<ScanResult | null>(null);
   const [hooksStatusMap, setHooksStatusMap] = useState<Record<string, ClaudeHooksStatus | null>>({});
   const [geminiHooksStatusMap, setGeminiHooksStatusMap] = useState<Record<string, GeminiHooksStatus | null>>({});
+  const [codexHooksStatusMap, setCodexHooksStatusMap] = useState<Record<string, CodexHooksStatus | null>>({});
   const [scanSshHost, setScanSshHost] = useState("");
 
   const loadHooksStatus = useCallback(async () => {
-    const [claudeEntries, geminiEntries] = await Promise.all([
+    const [claudeEntries, geminiEntries, codexEntries] = await Promise.all([
       Promise.all(
         projects.map(async (p) => {
           const status = await getProjectHooksStatus(p.id);
@@ -57,9 +61,16 @@ export default function ProjectSettings({
           return [p.id, status] as const;
         })
       ),
+      Promise.all(
+        projects.map(async (p) => {
+          const status = await getProjectCodexHooksStatus(p.id);
+          return [p.id, status] as const;
+        })
+      ),
     ]);
     setHooksStatusMap(Object.fromEntries(claudeEntries));
     setGeminiHooksStatusMap(Object.fromEntries(geminiEntries));
+    setCodexHooksStatusMap(Object.fromEntries(codexEntries));
   }, [projects]);
 
   useEffect(() => {
@@ -124,6 +135,18 @@ export default function ProjectSettings({
       const result = await installProjectGeminiHooks(projectId);
       if (result.success) {
         setSuccessMessage(t("geminiHooksInstallSuccess"));
+        await loadHooksStatus();
+      } else {
+        setError(t("hooksInstallFailed", { error: result.error || "unknown" }));
+      }
+    });
+  }
+
+  function handleInstallCodexHooks(projectId: string) {
+    startTransition(async () => {
+      const result = await installProjectCodexHooks(projectId);
+      if (result.success) {
+        setSuccessMessage(t("codexHooksInstallSuccess"));
         await loadHooksStatus();
       } else {
         setError(t("hooksInstallFailed", { error: result.error || "unknown" }));
@@ -277,6 +300,7 @@ export default function ProjectSettings({
               {projects.map((project) => {
                 const claudeHooksStatus = hooksStatusMap[project.id];
                 const geminiHooksStatus = geminiHooksStatusMap[project.id];
+                const codexHooksStatus = codexHooksStatusMap[project.id];
 
                 return (
                   <li
@@ -360,6 +384,30 @@ export default function ProjectSettings({
                               className="text-[10px] px-1.5 py-0.5 bg-brand-primary/10 text-brand-primary hover:bg-brand-primary/20 rounded transition-colors"
                             >
                               {isPending ? t("installingHooks") : `Gemini ${t("installHooks")}`}
+                            </button>
+                          )}
+
+                          {/* Codex Hooks */}
+                          {codexHooksStatus?.installed ? (
+                            <>
+                              <span className="text-[10px] px-1.5 py-0.5 bg-status-done/15 text-status-done rounded">
+                                Codex {t("hooksInstalled")}
+                              </span>
+                              <button
+                                onClick={() => handleInstallCodexHooks(project.id)}
+                                disabled={isPending}
+                                className="text-[10px] text-text-muted hover:text-text-primary transition-colors"
+                              >
+                                {t("reinstallHooks")}
+                              </button>
+                            </>
+                          ) : (
+                            <button
+                              onClick={() => handleInstallCodexHooks(project.id)}
+                              disabled={isPending}
+                              className="text-[10px] px-1.5 py-0.5 bg-brand-primary/10 text-brand-primary hover:bg-brand-primary/20 rounded transition-colors"
+                            >
+                              {isPending ? t("installingHooks") : `Codex ${t("installHooks")}`}
                             </button>
                           )}
                         </>
