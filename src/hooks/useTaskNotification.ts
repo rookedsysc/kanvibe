@@ -8,6 +8,8 @@ export interface TaskStatusNotification {
   taskTitle: string;
   description: string | null;
   newStatus: string;
+  taskId: string;
+  locale: string;
 }
 
 /** hooks 경유 task 상태 변경 시 Browser Notification을 발송하는 훅 */
@@ -36,7 +38,14 @@ export function useTaskNotification() {
         bodyParts.push(payload.description);
       }
 
-      new Notification(title, { body: bodyParts.join("\n") });
+      new Notification(title, {
+        body: bodyParts.join("\n"),
+        icon: "/kanvibe-logo.svg",
+        data: {
+          taskId: payload.taskId,
+          locale: payload.locale,
+        },
+      });
     },
     []
   );

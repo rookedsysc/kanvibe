@@ -36,13 +36,19 @@ describe("useTaskNotification", () => {
         taskTitle: "로그인 구현",
         description: "OAuth 연동",
         newStatus: "review",
+        taskId: "task-123",
+        locale: "ko",
       });
     });
 
     // Then
     expect(mockNotification).toHaveBeenCalledWith(
       "kanvibe — feat/login",
-      { body: "로그인 구현: review로 변경\nOAuth 연동" }
+      {
+        body: "로그인 구현: review로 변경\nOAuth 연동",
+        icon: "/kanvibe-logo.svg",
+        data: { taskId: "task-123", locale: "ko" },
+      }
     );
   });
 
@@ -59,13 +65,19 @@ describe("useTaskNotification", () => {
         taskTitle: "테스트 작업",
         description: null,
         newStatus: "progress",
+        taskId: "task-456",
+        locale: "en",
       });
     });
 
     // Then
     expect(mockNotification).toHaveBeenCalledWith(
       "kanvibe — feat/test",
-      { body: "테스트 작업: progress로 변경" }
+      {
+        body: "테스트 작업: progress로 변경",
+        icon: "/kanvibe-logo.svg",
+        data: { taskId: "task-456", locale: "en" },
+      }
     );
   });
 
@@ -83,6 +95,8 @@ describe("useTaskNotification", () => {
         taskTitle: "테스트",
         description: null,
         newStatus: "done",
+        taskId: "task-789",
+        locale: "zh",
       });
     });
 
