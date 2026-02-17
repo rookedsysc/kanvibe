@@ -55,7 +55,7 @@ export default async function TaskDetailPage({ params }: TaskDetailPageProps) {
   }
 
   const hasTerminal = task.sessionType && task.sessionName;
-  const hooksStatus = task.projectId ? await getTaskHooksStatus(id) : null;
+  const claudeHooksStatus = task.projectId ? await getTaskHooksStatus(id) : null;
   const geminiHooksStatus = task.projectId ? await getTaskGeminiHooksStatus(id) : null;
   const sidebarDefaultCollapsed = await getSidebarDefaultCollapsed();
   const sidebarHintDismissed = await getSidebarHintDismissed();
@@ -246,7 +246,7 @@ export default async function TaskDetailPage({ params }: TaskDetailPageProps) {
         {task.projectId && (
           <HooksStatusCard
             taskId={task.id}
-            initialClaudeStatus={hooksStatus}
+            initialClaudeStatus={claudeHooksStatus}
             initialGeminiStatus={geminiHooksStatus}
             isRemote={!!task.sshHost}
           />
