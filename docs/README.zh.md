@@ -4,9 +4,9 @@
 
 **AI 代理任务管理看板**
 
-用于实时管理 AI 编程代理（Claude Code 等）任务的基于 Web 的终端看板。
+用于实时管理 AI 编程代理（Claude Code、Gemini CLI 等）任务的基于 Web 的终端看板。
 在浏览器中直接监控 tmux/zellij 会话，同时通过拖放看板追踪任务进度。
-通过 [Claude Code Hooks](#claude-code-hooks---自动状态追踪) 自动追踪任务状态，无需手动更新。
+通过 [AI 代理 Hooks](#ai-代理-hooks---自动状态追踪) 自动追踪任务状态，无需手动更新。
 
 [![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-FFDD00?style=for-the-badge&logo=buy-me-a-coffee&logoColor=black)](https://buymeacoffee.com/rookedsysc)
 
@@ -89,7 +89,7 @@ bash start.sh
 
 任务通过 5 个状态进行管理：**TODO** → **PROGRESS** → **PENDING** → **REVIEW** → **DONE**
 
-通过拖放更改状态，或通过 [Claude Code Hooks](#claude-code-hooks---自动状态追踪) 自动转换。当任务移至 **DONE** 时，分支、worktree 和终端会话会**自动删除**。
+通过拖放更改状态，或通过 [AI 代理 Hooks](#ai-代理-hooks---自动状态追踪) 自动转换。当任务移至 **DONE** 时，分支、worktree 和终端会话会**自动删除**。
 
 ### 4. 选择面板布局
 
@@ -128,26 +128,39 @@ bash start.sh
 - SSH 远程终端支持（读取 `~/.ssh/config`）
 - Nerd Font 渲染支持
 
-### Claude Code Hooks - 自动状态追踪
-KanVibe 与 **Claude Code Hooks** 集成，自动追踪任务状态。任务通过 5 个状态进行管理：
+### AI 代理 Hooks - 自动状态追踪
+KanVibe 与 **Claude Code Hooks** 和 **Gemini CLI Hooks** 集成，自动追踪任务状态。任务通过 5 个状态进行管理：
 
 | 状态 | 说明 |
 |------|------|
 | **TODO** | 任务创建时的初始状态 |
 | **PROGRESS** | AI 正在处理任务 |
-| **PENDING** | AI 向用户提出追问，等待用户回复 |
+| **PENDING** | AI 向用户提出追问，等待用户回复（仅 Claude Code 支持） |
 | **REVIEW** | AI 已完成工作，等待审查 |
 | **DONE** | 任务完成 — 分支、worktree、终端会话会**自动删除** |
 
+#### Claude Code
 ```
-用户发送提示词            → 任务移至 PROGRESS
-AI 追问 (AskUser)        → 任务自动转为 PENDING
-用户回答                  → 任务恢复为 PROGRESS
-AI 完成响应               → 任务移至 REVIEW
-任务移至 DONE             → 分支 + worktree + 终端会话自动删除
+用户发送提示词              → PROGRESS
+AI 追问 (AskUser)          → PENDING
+用户回答                    → PROGRESS
+AI 完成响应                 → REVIEW
 ```
 
-通过 KanVibe 目录扫描注册项目时，Hook 会**自动安装**。Hook 脚本放置在项目的 `.claude/hooks/` 目录中。
+#### Gemini CLI
+```
+BeforeAgent（用户提示词）    → PROGRESS
+AfterAgent（代理完成）       → REVIEW
+```
+
+> Gemini CLI 没有与 Claude Code 的 `AskUserQuestion` 对应的事件，因此不支持 PENDING 状态。
+
+通过 KanVibe 目录扫描注册项目时，两个代理的 Hook 都会**自动安装**。也可以在项目设置或任务详情页面中单独安装。
+
+| 代理 | Hook 目录 | 配置文件 |
+|------|----------|---------|
+| Claude Code | `.claude/hooks/` | `.claude/settings.json` |
+| Gemini CLI | `.gemini/hooks/` | `.gemini/settings.json` |
 
 #### Hook API 端点
 

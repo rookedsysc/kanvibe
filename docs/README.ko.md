@@ -4,9 +4,9 @@
 
 **AI 에이전트 작업 관리 칸반 보드**
 
-AI 코딩 에이전트(Claude Code 등)의 작업을 실시간으로 관리하는 웹 기반 터미널 칸반 보드.
+AI 코딩 에이전트(Claude Code, Gemini CLI 등)의 작업을 실시간으로 관리하는 웹 기반 터미널 칸반 보드.
 브라우저에서 tmux/zellij 세션을 직접 모니터링하며, 드래그 앤 드롭 칸반 보드로 작업 진행 상황을 추적합니다.
-[Claude Code Hooks](#claude-code-hooks---자동-상태-추적) 기반 자동 상태 트래킹을 지원하여 수동 업데이트가 필요 없습니다.
+[AI 에이전트 Hooks](#ai-에이전트-hooks---자동-상태-추적) 기반 자동 상태 트래킹을 지원하여 수동 업데이트가 필요 없습니다.
 
 [![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-FFDD00?style=for-the-badge&logo=buy-me-a-coffee&logoColor=black)](https://buymeacoffee.com/rookedsysc)
 
@@ -89,7 +89,7 @@ bash start.sh
 
 5단계 상태로 태스크를 관리합니다: **TODO** → **PROGRESS** → **PENDING** → **REVIEW** → **DONE**
 
-드래그 앤 드롭으로 상태를 변경하거나, [Claude Code Hooks](#claude-code-hooks---자동-상태-추적)를 통해 자동으로 전환됩니다. 태스크가 **DONE**으로 이동하면 브랜치, worktree, 터미널 세션이 **자동으로 삭제**됩니다.
+드래그 앤 드롭으로 상태를 변경하거나, [AI 에이전트 Hooks](#ai-에이전트-hooks---자동-상태-추적)를 통해 자동으로 전환됩니다. 태스크가 **DONE**으로 이동하면 브랜치, worktree, 터미널 세션이 **자동으로 삭제**됩니다.
 
 ### 4. Pane 레이아웃 선택
 
@@ -128,26 +128,39 @@ bash start.sh
 - SSH 원격 터미널 지원 (`~/.ssh/config` 읽기)
 - Nerd Font 렌더링 지원
 
-### Claude Code Hooks - 자동 상태 추적
-KanVibe는 **Claude Code Hooks**와 연동하여 태스크 상태를 자동 추적합니다. 태스크는 5가지 상태로 관리됩니다:
+### AI 에이전트 Hooks - 자동 상태 추적
+KanVibe는 **Claude Code Hooks** 및 **Gemini CLI Hooks**와 연동하여 태스크 상태를 자동 추적합니다. 태스크는 5가지 상태로 관리됩니다:
 
 | 상태 | 설명 |
 |------|------|
 | **TODO** | 생성된 태스크의 초기 상태 |
 | **PROGRESS** | AI가 작업 중인 상태 |
-| **PENDING** | AI가 사용자에게 재질문하여 답변 대기 중인 상태 |
+| **PENDING** | AI가 사용자에게 재질문하여 답변 대기 중인 상태 (Claude Code만 지원) |
 | **REVIEW** | AI 작업이 완료되어 리뷰 대기 중인 상태 |
 | **DONE** | 작업 완료 — 브랜치, worktree, 터미널 세션이 **자동 삭제**됩니다 |
 
+#### Claude Code
 ```
-사용자가 프롬프트 전송   → 태스크가 PROGRESS로 이동
-AI가 재질문 (AskUser)   → 태스크가 PENDING으로 자동 전환
-사용자가 답변           → 태스크가 PROGRESS로 복귀
-AI 응답 완료            → 태스크가 REVIEW로 이동
-태스크를 DONE으로 이동   → 브랜치 + worktree + 터미널 세션 자동 삭제
+사용자가 프롬프트 전송     → PROGRESS
+AI가 재질문 (AskUser)     → PENDING
+사용자가 답변             → PROGRESS
+AI 응답 완료              → REVIEW
 ```
 
-프로젝트를 KanVibe 디렉토리 스캔으로 등록하면 Hook이 **자동 설치**됩니다. Hook 스크립트는 프로젝트의 `.claude/hooks/` 디렉토리에 배치됩니다.
+#### Gemini CLI
+```
+BeforeAgent (사용자 프롬프트) → PROGRESS
+AfterAgent (에이전트 완료)   → REVIEW
+```
+
+> Gemini CLI에는 Claude Code의 `AskUserQuestion`에 대응하는 이벤트가 없어 PENDING 상태는 지원되지 않습니다.
+
+프로젝트를 KanVibe 디렉토리 스캔으로 등록하면 두 에이전트의 Hook이 모두 **자동 설치**됩니다. 프로젝트 설정이나 태스크 상세 페이지에서 개별 설치도 가능합니다.
+
+| 에이전트 | Hook 디렉토리 | 설정 파일 |
+|---------|-------------|----------|
+| Claude Code | `.claude/hooks/` | `.claude/settings.json` |
+| Gemini CLI | `.gemini/hooks/` | `.gemini/settings.json` |
 
 #### Hook API 엔드포인트
 

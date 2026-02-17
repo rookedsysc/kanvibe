@@ -4,9 +4,9 @@
 
 **AI Agent Task Management Kanban Board**
 
-A web-based terminal Kanban board for managing AI coding agent (Claude Code, etc.) tasks in real-time.
+A web-based terminal Kanban board for managing AI coding agent (Claude Code, Gemini CLI, etc.) tasks in real-time.
 Monitor tmux/zellij sessions directly in your browser while tracking task progress on a drag & drop Kanban board.
-Automatically track task status via [Claude Code Hooks](#claude-code-hooks---automatic-status-tracking) — no manual updates needed.
+Automatically track task status via [AI Agent Hooks](#ai-agent-hooks---automatic-status-tracking) — no manual updates needed.
 
 [![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-FFDD00?style=for-the-badge&logo=buy-me-a-coffee&logoColor=black)](https://buymeacoffee.com/rookedsysc)
 
@@ -89,7 +89,7 @@ Add a TODO task from the Kanban board. When creating a task with a branch name, 
 
 Tasks are managed through 5 statuses: **TODO** → **PROGRESS** → **PENDING** → **REVIEW** → **DONE**
 
-Change statuses via drag & drop, or let [Claude Code Hooks](#claude-code-hooks---automatic-status-tracking) transition them automatically. When a task moves to **DONE**, its branch, worktree, and terminal session are **automatically deleted**.
+Change statuses via drag & drop, or let [AI Agent Hooks](#ai-agent-hooks---automatic-status-tracking) transition them automatically. When a task moves to **DONE**, its branch, worktree, and terminal session are **automatically deleted**.
 
 ### 4. Select Pane Layouts
 
@@ -128,26 +128,39 @@ Each pane can run a custom command (e.g., `vim`, `htop`, `lazygit`, test runner,
 - SSH remote terminal support (reads `~/.ssh/config`)
 - Nerd Font rendering support
 
-### Claude Code Hooks - Automatic Status Tracking
-KanVibe integrates with **Claude Code Hooks** to automatically track task status. Tasks are managed through 5 statuses:
+### AI Agent Hooks - Automatic Status Tracking
+KanVibe integrates with **Claude Code Hooks** and **Gemini CLI Hooks** to automatically track task status. Tasks are managed through 5 statuses:
 
 | Status | Description |
 |--------|-------------|
 | **TODO** | Initial state when a task is created |
 | **PROGRESS** | AI is actively working on the task |
-| **PENDING** | AI asked a follow-up question; waiting for user response |
+| **PENDING** | AI asked a follow-up question; waiting for user response (Claude Code only) |
 | **REVIEW** | AI has finished; awaiting review |
 | **DONE** | Task complete — branch, worktree, and terminal session are **automatically deleted** |
 
+#### Claude Code
 ```
-User sends prompt        → Task moves to PROGRESS
-AI asks question (AskUser) → Task auto-transitions to PENDING
-User answers             → Task returns to PROGRESS
-AI finishes response     → Task moves to REVIEW
-Task moved to DONE       → Branch + worktree + terminal session auto-deleted
+User sends prompt          → PROGRESS
+AI asks question (AskUser) → PENDING
+User answers               → PROGRESS
+AI finishes response       → REVIEW
 ```
 
-Hooks are **auto-installed** when you register a project through KanVibe's directory scan. Hook scripts are placed in your project's `.claude/hooks/` directory.
+#### Gemini CLI
+```
+BeforeAgent (user prompt)  → PROGRESS
+AfterAgent (agent done)    → REVIEW
+```
+
+> Gemini CLI does not have an equivalent to Claude Code's `AskUserQuestion`, so the PENDING state is not available.
+
+Both hooks are **auto-installed** when you register a project through KanVibe's directory scan. You can also install them individually from the project settings or task detail page.
+
+| Agent | Hook Directory | Config File |
+|-------|---------------|-------------|
+| Claude Code | `.claude/hooks/` | `.claude/settings.json` |
+| Gemini CLI | `.gemini/hooks/` | `.gemini/settings.json` |
 
 #### Hook API Endpoints
 
