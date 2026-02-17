@@ -189,6 +189,14 @@
     "actions": "상태 변경",
     "deleteConfirm": "이 작업을 삭제하시겠습니까?",
     "hooksStatus": "Hooks 상태",
+    "hooksStatusDialog": {
+      "title": "Hooks 상태",
+      "installed": "설치됨",
+      "notInstalled": "미설치",
+      "install": "Hooks 설치",
+      "reinstall": "재설치",
+      "close": "닫기"
+    },
     "hooksInstalled": "설치됨",
     "hooksNotInstalled": "미설치",
     "installHooks": "Hooks 설치",

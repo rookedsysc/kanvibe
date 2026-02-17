@@ -152,15 +152,13 @@ export default async function TaskDetailPage({ params }: TaskDetailPageProps) {
         </div>
 
         {/* Hooks 상태 카드 */}
-        {task.projectId && (
-          <HooksStatusCard
-            taskId={task.id}
-            initialClaudeStatus={claudeHooksStatus}
-            initialGeminiStatus={geminiHooksStatus}
-            initialCodexStatus={codexHooksStatus}
-            isRemote={!!task.sshHost}
-          />
-        )}
+        <HooksStatusCard
+          taskId={task.id}
+          initialClaudeStatus={claudeHooksStatus}
+          initialGeminiStatus={geminiHooksStatus}
+          initialCodexStatus={codexHooksStatus}
+          isRemote={!!task.sshHost}
+        />
       </CollapsibleSidebar>
 
       {/* 터미널 영역 */}

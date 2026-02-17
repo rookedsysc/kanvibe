@@ -189,6 +189,14 @@
     "actions": "Change Status",
     "deleteConfirm": "Are you sure you want to delete this task?",
     "hooksStatus": "Hooks Status",
+    "hooksStatusDialog": {
+      "title": "Hooks Status",
+      "installed": "Installed",
+      "notInstalled": "Not Installed",
+      "install": "Install Hooks",
+      "reinstall": "Reinstall",
+      "close": "Close"
+    },
     "hooksInstalled": "Installed",
     "hooksNotInstalled": "Not Installed",
     "installHooks": "Install Hooks",

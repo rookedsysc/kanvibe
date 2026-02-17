@@ -189,6 +189,14 @@
     "actions": "状态变更",
     "deleteConfirm": "确定要删除此任务吗？",
     "hooksStatus": "Hooks 状态",
+    "hooksStatusDialog": {
+      "title": "Hooks 状态",
+      "installed": "已安装",
+      "notInstalled": "未安装",
+      "install": "安装 Hooks",
+      "reinstall": "重新安装",
+      "close": "关闭"
+    },
     "hooksInstalled": "已安装",
     "hooksNotInstalled": "未安装",
     "installHooks": "安装 Hooks",
