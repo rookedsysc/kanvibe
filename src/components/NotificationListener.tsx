@@ -12,20 +12,6 @@ interface NotificationListenerProps {
 }
 
 /** 모든 페이지에서 WebSocket을 통해 task 상태 변경 알림을 수신하는 컴포넌트 */
-"use client";
-
-import { useEffect, useRef } from "react";
-import { usePathname } from "@/i18n/navigation";
-import { useTaskNotification } from "@/hooks/useTaskNotification";
-
-const RECONNECT_DELAY_MS = 3000;
-
-interface NotificationListenerProps {
-  isNotificationEnabled: boolean;
-  enabledStatuses: string[];
-}
-
-/** 모든 페이지에서 WebSocket을 통해 task 상태 변경 알림을 수신하는 컴포넌트 */
 export default function NotificationListener({
   isNotificationEnabled,
   enabledStatuses,
@@ -49,7 +35,7 @@ export default function NotificationListener({
         .register("/sw.js", { scope: "/" })
         .then((registration) => {
           console.log("[Notification] Service Worker registered:", registration);
-          
+
           // Service Worker 상태 모니터링
           if (registration.installing) {
             console.log("[Notification] Service Worker installing...");
@@ -57,7 +43,7 @@ export default function NotificationListener({
               console.log("[Notification] Service Worker state changed:", registration.installing?.state);
             });
           }
-          
+
           if (registration.controller) {
             console.log("[Notification] Service Worker is active");
           } else {
