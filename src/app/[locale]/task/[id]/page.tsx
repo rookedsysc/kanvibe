@@ -17,7 +17,7 @@ import DeleteTaskButton from "@/components/DeleteTaskButton";
 import DoneStatusButton from "@/components/DoneStatusButton";
 import HooksStatusCard from "@/components/HooksStatusCard";
 import CollapsibleSidebar from "@/components/CollapsibleSidebar";
-import { getTaskHooksStatus } from "@/app/actions/project";
+import { getTaskHooksStatus, getTaskGeminiHooksStatus } from "@/app/actions/project";
 import { getSidebarDefaultCollapsed, getSidebarHintDismissed, getDoneAlertDismissed } from "@/app/actions/appSettings";
 import { Link } from "@/i18n/navigation";
 
@@ -56,6 +56,7 @@ export default async function TaskDetailPage({ params }: TaskDetailPageProps) {
 
   const hasTerminal = task.sessionType && task.sessionName;
   const hooksStatus = task.projectId ? await getTaskHooksStatus(id) : null;
+  const geminiHooksStatus = task.projectId ? await getTaskGeminiHooksStatus(id) : null;
   const sidebarDefaultCollapsed = await getSidebarDefaultCollapsed();
   const sidebarHintDismissed = await getSidebarHintDismissed();
   const doneAlertDismissed = await getDoneAlertDismissed();
@@ -245,7 +246,8 @@ export default async function TaskDetailPage({ params }: TaskDetailPageProps) {
         {task.projectId && (
           <HooksStatusCard
             taskId={task.id}
-            initialStatus={hooksStatus}
+            initialClaudeStatus={hooksStatus}
+            initialGeminiStatus={geminiHooksStatus}
             isRemote={!!task.sshHost}
           />
         )}
