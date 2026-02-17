@@ -164,11 +164,35 @@ Both hooks are **auto-installed** when you register a project through KanVibe's 
 
 #### Browser Notifications
 
-When a task status changes via Claude Code Hooks, KanVibe sends a **browser notification** with the project name, branch name, and new status. Notifications work on any KanVibe page — you don't need to keep the board open. Allow notifications in your browser when prompted.
+When a task status changes via Claude Code Hooks, KanVibe sends a **browser notification** with the project name, branch name, and new status. Notifications work on any KanVibe page — you don't need to keep the board open.
 
-You can configure notifications in **Project Settings**:
-- **Global toggle** — Enable or disable all notifications
-- **Status filter** — Choose which statuses (Progress, Pending, Review) trigger notifications
+##### Features
+- **Real-time alerts** — Get notified instantly when task status changes (Progress, Pending, Review, Done)
+- **Works in background** — Receive notifications even if KanVibe tab is not focused
+- **Smart navigation** — Click notification to jump directly to the task detail page
+- **Per-status filtering** — Choose which statuses trigger notifications
+
+##### Setup & Configuration
+
+1. **Enable notifications in your browser**
+   - When you first visit KanVibe, your browser will prompt for notification permission
+   - Click "Allow" to receive notifications
+   - You can change this anytime in browser settings (Privacy & Security → Notifications)
+
+2. **Configure in Project Settings**
+   - **Global toggle** — Enable or disable all notifications per project
+   - **Status filter** — Choose which statuses trigger notifications:
+     - `PROGRESS` — Task is being worked on
+     - `PENDING` — AI is waiting for user response (Claude Code only)
+     - `REVIEW` — Task is done, awaiting review
+     - `DONE` — Task completed
+
+##### Usage
+
+- **Desktop notifications** appear as system notifications (macOS, Windows, Linux)
+- **Click to navigate** — Click any notification to open the task detail page
+- **Auto-dismiss** — Notifications auto-close after a few seconds
+- **Muted** — Disable notifications in settings without removing browser permission
 
 #### Hook API Endpoints
 
