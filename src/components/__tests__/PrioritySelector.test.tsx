@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, type Mock } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import PrioritySelector from "../PrioritySelector";
 import { TaskPriority } from "@/entities/TaskPriority";
@@ -16,10 +16,10 @@ vi.mock("next-intl", () => ({
 }));
 
 describe("PrioritySelector", () => {
-  let onChange: ReturnType<typeof vi.fn>;
+  let onChange: Mock<(priority: TaskPriority | null) => void>;
 
   beforeEach(() => {
-    onChange = vi.fn();
+    onChange = vi.fn<(priority: TaskPriority | null) => void>();
   });
 
   it("should render all 4 priority options", () => {
