@@ -4,7 +4,7 @@
 
 **AI 代理任务管理看板**
 
-用于实时管理 AI 编程代理（Claude Code、Gemini CLI 等）任务的基于 Web 的终端看板。
+用于实时管理 AI 编程代理（Claude Code、Gemini CLI、Codex CLI 等）任务的基于 Web 的终端看板。
 在浏览器中直接监控 tmux/zellij 会话，同时通过拖放看板追踪任务进度。
 通过 [AI 代理 Hooks](#ai-代理-hooks---自动状态追踪) 自动追踪任务状态，无需手动更新。
 
@@ -129,7 +129,7 @@ bash start.sh
 - Nerd Font 渲染支持
 
 ### AI 代理 Hooks - 自动状态追踪
-KanVibe 与 **Claude Code Hooks** 和 **Gemini CLI Hooks** 集成，自动追踪任务状态。任务通过 5 个状态进行管理：
+KanVibe 与 **Claude Code Hooks**、**Gemini CLI Hooks** 和 **Codex CLI** 集成，自动追踪任务状态。任务通过 5 个状态进行管理：
 
 | 状态 | 说明 |
 |------|------|
@@ -155,12 +155,20 @@ AfterAgent（代理完成）       → REVIEW
 
 > Gemini CLI 没有与 Claude Code 的 `AskUserQuestion` 对应的事件，因此不支持 PENDING 状态。
 
-通过 KanVibe 目录扫描注册项目时，两个代理的 Hook 都会**自动安装**。也可以在项目设置或任务详情页面中单独安装。
+#### Codex CLI（部分支持）
+```
+agent-turn-complete（代理完成） → REVIEW
+```
+
+> Codex CLI 目前仅支持 `notify` 配置的 `agent-turn-complete` 事件。PROGRESS 和 PENDING 转换尚不可用。OpenAI 正在[设计 hooks 系统](https://github.com/openai/codex/discussions/2150)，发布后将添加完整支持。
+
+通过 KanVibe 目录扫描注册项目时，Claude Code 和 Gemini CLI 的 Hook 会**自动安装**。也可以在项目设置或任务详情页面中单独安装。Codex CLI 需要手动配置。
 
 | 代理 | Hook 目录 | 配置文件 |
 |------|----------|---------|
 | Claude Code | `.claude/hooks/` | `.claude/settings.json` |
 | Gemini CLI | `.gemini/hooks/` | `.gemini/settings.json` |
+| Codex CLI | `.codex/hooks/` | `.codex/config.toml` |
 
 #### Hook API 端点
 

@@ -4,7 +4,7 @@
 
 **AI Agent Task Management Kanban Board**
 
-A web-based terminal Kanban board for managing AI coding agent (Claude Code, Gemini CLI, etc.) tasks in real-time.
+A web-based terminal Kanban board for managing AI coding agent (Claude Code, Gemini CLI, Codex CLI, etc.) tasks in real-time.
 Monitor tmux/zellij sessions directly in your browser while tracking task progress on a drag & drop Kanban board.
 Automatically track task status via [AI Agent Hooks](#ai-agent-hooks---automatic-status-tracking) — no manual updates needed.
 
@@ -129,7 +129,7 @@ Each pane can run a custom command (e.g., `vim`, `htop`, `lazygit`, test runner,
 - Nerd Font rendering support
 
 ### AI Agent Hooks - Automatic Status Tracking
-KanVibe integrates with **Claude Code Hooks** and **Gemini CLI Hooks** to automatically track task status. Tasks are managed through 5 statuses:
+KanVibe integrates with **Claude Code Hooks**, **Gemini CLI Hooks**, and **Codex CLI** to automatically track task status. Tasks are managed through 5 statuses:
 
 | Status | Description |
 |--------|-------------|
@@ -155,12 +155,20 @@ AfterAgent (agent done)    → REVIEW
 
 > Gemini CLI does not have an equivalent to Claude Code's `AskUserQuestion`, so the PENDING state is not available.
 
-Both hooks are **auto-installed** when you register a project through KanVibe's directory scan. You can also install them individually from the project settings or task detail page.
+#### Codex CLI (Partial Support)
+```
+agent-turn-complete (agent done) → REVIEW
+```
+
+> Codex CLI currently only supports the `agent-turn-complete` notification event via the `notify` config. PROGRESS and PENDING transitions are not yet available. OpenAI is [actively designing a hooks system](https://github.com/openai/codex/discussions/2150) — full support will be added when it ships.
+
+Claude Code and Gemini CLI hooks are **auto-installed** when you register a project through KanVibe's directory scan. You can also install them individually from the project settings or task detail page. Codex CLI requires manual configuration.
 
 | Agent | Hook Directory | Config File |
 |-------|---------------|-------------|
 | Claude Code | `.claude/hooks/` | `.claude/settings.json` |
 | Gemini CLI | `.gemini/hooks/` | `.gemini/settings.json` |
+| Codex CLI | `.codex/hooks/` | `.codex/config.toml` |
 
 #### Hook API Endpoints
 

@@ -4,7 +4,7 @@
 
 **AI 에이전트 작업 관리 칸반 보드**
 
-AI 코딩 에이전트(Claude Code, Gemini CLI 등)의 작업을 실시간으로 관리하는 웹 기반 터미널 칸반 보드.
+AI 코딩 에이전트(Claude Code, Gemini CLI, Codex CLI 등)의 작업을 실시간으로 관리하는 웹 기반 터미널 칸반 보드.
 브라우저에서 tmux/zellij 세션을 직접 모니터링하며, 드래그 앤 드롭 칸반 보드로 작업 진행 상황을 추적합니다.
 [AI 에이전트 Hooks](#ai-에이전트-hooks---자동-상태-추적) 기반 자동 상태 트래킹을 지원하여 수동 업데이트가 필요 없습니다.
 
@@ -129,7 +129,7 @@ bash start.sh
 - Nerd Font 렌더링 지원
 
 ### AI 에이전트 Hooks - 자동 상태 추적
-KanVibe는 **Claude Code Hooks** 및 **Gemini CLI Hooks**와 연동하여 태스크 상태를 자동 추적합니다. 태스크는 5가지 상태로 관리됩니다:
+KanVibe는 **Claude Code Hooks**, **Gemini CLI Hooks**, **Codex CLI**와 연동하여 태스크 상태를 자동 추적합니다. 태스크는 5가지 상태로 관리됩니다:
 
 | 상태 | 설명 |
 |------|------|
@@ -155,12 +155,20 @@ AfterAgent (에이전트 완료)   → REVIEW
 
 > Gemini CLI에는 Claude Code의 `AskUserQuestion`에 대응하는 이벤트가 없어 PENDING 상태는 지원되지 않습니다.
 
-프로젝트를 KanVibe 디렉토리 스캔으로 등록하면 두 에이전트의 Hook이 모두 **자동 설치**됩니다. 프로젝트 설정이나 태스크 상세 페이지에서 개별 설치도 가능합니다.
+#### Codex CLI (부분 지원)
+```
+agent-turn-complete (에이전트 완료) → REVIEW
+```
+
+> Codex CLI는 현재 `notify` 설정의 `agent-turn-complete` 이벤트만 지원합니다. PROGRESS, PENDING 전환은 아직 불가합니다. OpenAI가 [hooks 시스템을 설계 중](https://github.com/openai/codex/discussions/2150)이며, 출시되면 전체 지원을 추가할 예정입니다.
+
+Claude Code와 Gemini CLI Hook은 KanVibe 디렉토리 스캔으로 프로젝트를 등록하면 **자동 설치**됩니다. 프로젝트 설정이나 태스크 상세 페이지에서 개별 설치도 가능합니다. Codex CLI는 수동 설정이 필요합니다.
 
 | 에이전트 | Hook 디렉토리 | 설정 파일 |
 |---------|-------------|----------|
 | Claude Code | `.claude/hooks/` | `.claude/settings.json` |
 | Gemini CLI | `.gemini/hooks/` | `.gemini/settings.json` |
+| Codex CLI | `.codex/hooks/` | `.codex/config.toml` |
 
 #### Hook API 엔드포인트
 
