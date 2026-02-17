@@ -65,6 +65,9 @@ export default async function TaskDetailPage({ params }: TaskDetailPageProps) {
     "use server";
     const newStatus = formData.get("status") as TaskStatus;
     await updateTaskStatus(id, newStatus);
+    if (newStatus === TaskStatus.DONE) {
+      redirect({ href: "/", locale });
+    }
   }
 
   async function handleDelete() {
