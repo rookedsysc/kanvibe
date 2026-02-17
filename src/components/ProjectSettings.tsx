@@ -11,12 +11,23 @@ import {
   installProjectGeminiHooks,
   type ScanResult,
 } from "@/app/actions/project";
-import { setSidebarDefaultCollapsed } from "@/app/actions/appSettings";
+import {
+  setSidebarDefaultCollapsed,
+  setNotificationEnabled,
+  setNotificationStatuses,
+} from "@/app/actions/appSettings";
 import { Link } from "@/i18n/navigation";
 import type { Project } from "@/entities/Project";
 import type { ClaudeHooksStatus } from "@/lib/claudeHooksSetup";
 import type { GeminiHooksStatus } from "@/lib/geminiHooksSetup";
 import FolderSearchInput from "@/components/FolderSearchInput";
+
+/** 알림 대상 상태 목록 (사용자가 직접 설정하는 todo/done은 제외) */
+const STATUS_OPTIONS = [
+  { value: "progress", labelKey: "progress" },
+  { value: "pending", labelKey: "pending" },
+  { value: "review", labelKey: "review" },
+] as const;
 
 interface ProjectSettingsProps {
   isOpen: boolean;
@@ -24,6 +35,7 @@ interface ProjectSettingsProps {
   projects: Project[];
   sshHosts: string[];
   sidebarDefaultCollapsed: boolean;
+  notificationSettings: { isEnabled: boolean; enabledStatuses: string[] };
 }
 
 export default function ProjectSettings({
@@ -32,10 +44,13 @@ export default function ProjectSettings({
   projects,
   sshHosts,
   sidebarDefaultCollapsed,
+  notificationSettings,
 }: ProjectSettingsProps) {
   const t = useTranslations("settings");
   const tc = useTranslations("common");
+  const tb = useTranslations("board.columns");
   const [isPending, startTransition] = useTransition();
+  const [isNotificationPending, startNotificationTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [scanResult, setScanResult] = useState<ScanResult | null>(null);
@@ -196,6 +211,76 @@ export default function ProjectSettings({
               />
             </button>
           </label>
+        </div>
+
+        {/* 알림 설정 */}
+        <div className="p-4 border-b border-border-default">
+          <h3 className="text-xs text-text-muted uppercase tracking-wide mb-3">
+            {t("notificationSection")}
+          </h3>
+
+          {/* 전역 토글 */}
+          <label className="flex items-center justify-between cursor-pointer">
+            <div>
+              <span className="text-sm text-text-primary">{t("notificationEnabled")}</span>
+              <p className="text-xs text-text-muted mt-0.5">{t("notificationEnabledDescription")}</p>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={notificationSettings.isEnabled}
+              onClick={() => {
+                startNotificationTransition(async () => {
+                  await setNotificationEnabled(!notificationSettings.isEnabled);
+                });
+              }}
+              disabled={isNotificationPending}
+              className={`relative inline-flex h-5 w-9 shrink-0 rounded-full border-2 border-transparent transition-colors ${
+                notificationSettings.isEnabled ? "bg-brand-primary" : "bg-border-default"
+              }`}
+            >
+              <span
+                className={`pointer-events-none inline-block h-4 w-4 rounded-full bg-white shadow transition-transform ${
+                  notificationSettings.isEnabled ? "translate-x-4" : "translate-x-0"
+                }`}
+              />
+            </button>
+          </label>
+
+          {/* 상태별 필터 — 칩 토글 */}
+          <div className={`mt-4 ${!notificationSettings.isEnabled ? "opacity-40 pointer-events-none" : ""}`}>
+            <div className="mb-2">
+              <span className="text-sm text-text-primary">{t("notificationStatusFilter")}</span>
+              <p className="text-xs text-text-muted mt-0.5">{t("notificationStatusFilterDescription")}</p>
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {STATUS_OPTIONS.map(({ value, labelKey }) => {
+                const isSelected = notificationSettings.enabledStatuses.includes(value);
+                return (
+                  <button
+                    key={value}
+                    type="button"
+                    disabled={isNotificationPending}
+                    onClick={() => {
+                      const nextStatuses = isSelected
+                        ? notificationSettings.enabledStatuses.filter((s) => s !== value)
+                        : [...notificationSettings.enabledStatuses, value];
+                      startNotificationTransition(async () => {
+                        await setNotificationStatuses(nextStatuses);
+                      });
+                    }}
+                    className={`px-2.5 py-1 text-xs rounded-full border transition-colors ${
+                      isSelected
+                        ? "bg-brand-primary/15 border-brand-primary text-brand-primary"
+                        : "bg-bg-page border-border-default text-text-muted hover:border-border-strong"
+                    }`}
+                  >
+                    {tb(labelKey)}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
         </div>
 
         {/* 디렉토리 스캔 등록 */}

@@ -115,7 +115,12 @@
     "folderNavHint": "↑↓ 导航 · Tab 进入子文件夹 · Enter 选择 · Backspace 返回上级 · Esc 关闭",
     "detailPageSection": "详情页",
     "sidebarDefaultCollapsed": "默认折叠侧栏",
-    "sidebarDefaultCollapsedDescription": "进入详情页时左侧栏默认折叠。"
+    "sidebarDefaultCollapsedDescription": "进入详情页时左侧栏默认折叠。",
+    "notificationSection": "通知",
+    "notificationEnabled": "浏览器通知",
+    "notificationEnabledDescription": "任务状态变更时接收浏览器通知。",
+    "notificationStatusFilter": "通知状态",
+    "notificationStatusFilterDescription": "仅在任务变更为所选状态时接收通知。"
   },
   "paneLayout": {
     "title": "面板布局设置",

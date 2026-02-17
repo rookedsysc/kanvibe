@@ -115,7 +115,12 @@
     "folderNavHint": "↑↓ Navigate · Tab Drill down · Enter Select · Backspace Go up · Esc Close",
     "detailPageSection": "Detail Page",
     "sidebarDefaultCollapsed": "Collapse sidebar by default",
-    "sidebarDefaultCollapsedDescription": "Start with the left sidebar collapsed when entering the detail page."
+    "sidebarDefaultCollapsedDescription": "Start with the left sidebar collapsed when entering the detail page.",
+    "notificationSection": "Notifications",
+    "notificationEnabled": "Browser notifications",
+    "notificationEnabledDescription": "Receive browser notifications when task status changes.",
+    "notificationStatusFilter": "Notify for statuses",
+    "notificationStatusFilterDescription": "Only receive notifications when tasks change to selected statuses."
   },
   "paneLayout": {
     "title": "Pane Layout Settings",

@@ -115,7 +115,12 @@
     "folderNavHint": "↑↓ 이동 · Tab 하위 폴더 · Enter 선택 · Backspace 상위 폴더 · Esc 닫기",
     "detailPageSection": "상세 페이지",
     "sidebarDefaultCollapsed": "사이드바 기본 접기",
-    "sidebarDefaultCollapsedDescription": "상세 페이지 진입 시 왼쪽 사이드바를 접은 상태로 시작합니다."
+    "sidebarDefaultCollapsedDescription": "상세 페이지 진입 시 왼쪽 사이드바를 접은 상태로 시작합니다.",
+    "notificationSection": "알림",
+    "notificationEnabled": "브라우저 알림",
+    "notificationEnabledDescription": "작업 상태 변경 시 브라우저 알림을 받습니다.",
+    "notificationStatusFilter": "알림 받을 상태",
+    "notificationStatusFilterDescription": "선택한 상태로 변경될 때만 알림을 받습니다."
   },
   "paneLayout": {
     "title": "Pane 레이아웃 설정",
