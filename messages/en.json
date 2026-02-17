@@ -203,5 +203,9 @@
     "expandSidebar": "Expand sidebar",
     "sidebarTooltip": "You can change the default state in Settings",
     "dismissHint": "Don't show again"
+  },
+  "projectBranchTasks": {
+    "title": "Project Tasks",
+    "noTasks": "No tasks in this project"
   }
 }

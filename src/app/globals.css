@@ -96,8 +96,8 @@
   --color-tag-session-text: var(--blue-600);
   --color-tag-ssh-bg: var(--green-50);
   --color-tag-ssh-text: var(--green-600);
-  --color-tag-project-bg: var(--yellow-50);
-  --color-tag-project-text: var(--gray-800);
+  --color-tag-project-bg: #202632;
+  --color-tag-project-text: #FFFFFF;
   --color-tag-branch-bg: var(--gray-100);
   --color-tag-branch-text: var(--gray-700);
   --color-tag-neutral-bg: var(--gray-100);

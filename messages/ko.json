@@ -203,5 +203,9 @@
     "expandSidebar": "사이드바 펼치기",
     "sidebarTooltip": "설정에서 기본 접힘 상태를 변경할 수 있습니다",
     "dismissHint": "다시 보지 않기"
+  },
+  "projectBranchTasks": {
+    "title": "프로젝트 작업",
+    "noTasks": "이 프로젝트에는 작업이 없습니다"
   }
 }

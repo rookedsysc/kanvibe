@@ -203,5 +203,9 @@
     "expandSidebar": "展开侧栏",
     "sidebarTooltip": "可以在设置中更改默认折叠状态",
     "dismissHint": "不再显示"
+  },
+  "projectBranchTasks": {
+    "title": "项目任务",
+    "noTasks": "此项目中没有任务"
   }
 }

@@ -125,7 +125,7 @@
       },
       "session": { "background": "{blue.50}", "text": "{blue.600}" },
       "ssh": { "background": "{green.50}", "text": "{green.600}" },
-      "project": { "background": "{yellow.50}", "text": "{gray.800}" },
+      "project": { "background": "#202632", "text": "{white}" },
       "branch": { "background": "{gray.100}", "text": "{gray.700}" },
       "neutral": { "background": "{gray.100}", "text": "{gray.600}" },
       "base": { "background": "#EDE7F6", "text": "#5E35B1" }
