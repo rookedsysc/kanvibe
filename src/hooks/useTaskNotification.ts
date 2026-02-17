@@ -29,7 +29,7 @@ export function useTaskNotification() {
   }, []);
 
   const notifyTaskStatusChanged = useCallback(
-    (payload: TaskStatusNotification) => {
+    async (payload: TaskStatusNotification) => {
       if (!isPermissionGranted.current) return;
 
       const title = `${payload.projectName} — ${payload.branchName}`;
@@ -38,14 +38,23 @@ export function useTaskNotification() {
         bodyParts.push(payload.description);
       }
 
-      new Notification(title, {
-        body: bodyParts.join("\n"),
-        icon: "/kanvibe-logo.svg",
-        data: {
-          taskId: payload.taskId,
-          locale: payload.locale,
-        },
-      });
+      // Service Worker의 notificationclick 이벤트를 수신하려면
+      // ServiceWorkerRegistration.showNotification()을 사용해야 함
+      try {
+        const registration = await navigator.serviceWorker.getRegistration();
+        if (registration) {
+          registration.showNotification(title, {
+            body: bodyParts.join("\n"),
+            icon: "/kanvibe-logo.svg",
+            data: {
+              taskId: payload.taskId,
+              locale: payload.locale,
+            },
+          });
+        }
+      } catch (err) {
+        console.error("[Notification] Failed to show notification:", err);
+      }
     },
     []
   );
