@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { redirect } from "@/i18n/navigation";
 import { getTranslations } from "next-intl/server";
@@ -22,6 +23,21 @@ import { getSidebarDefaultCollapsed, getSidebarHintDismissed, getDoneAlertDismis
 import { Link } from "@/i18n/navigation";
 
 export const dynamicConfig = "force-dynamic";
+
+/** 브라우저 탭 제목을 "{branchName} - {projectName}" 형식으로 동적 생성 */
+export async function generateMetadata({
+  params,
+}: TaskDetailPageProps): Promise<Metadata> {
+  const { id } = await params;
+  const task = await getTaskById(id);
+
+  if (!task) return { title: "KanVibe" };
+
+  const parts = [task.branchName, task.project?.name].filter(Boolean);
+  const title = parts.length > 0 ? parts.join(" - ") : "KanVibe";
+
+  return { title };
+}
 
 interface TaskDetailPageProps {
   params: Promise<{ locale: string; id: string }>;
