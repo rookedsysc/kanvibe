@@ -8,7 +8,7 @@ import { getTaskRepository } from "@/lib/database";
 import { attachLocalSession, attachRemoteSession } from "@/lib/terminal";
 import { formatWindowName } from "@/lib/worktree";
 import { parseSSHConfig } from "@/lib/sshConfig";
-import { addBoardClient, removeBoardClient } from "@/lib/boardNotifier";
+import { addBoardClient, removeBoardClient, getBoardClients } from "@/lib/boardNotifier";
 
 /**
  * node-pty의 ThreadSafeFunction 콜백이 실패하면 C++ 레벨에서
@@ -38,6 +38,22 @@ app.prepare().then(() => {
    * 페이지, API, HMR 등 모든 HTTP 요청을 Next.js에 위임한다.
    */
   server.on("request", (req, res) => {
+    /** 내부 broadcast 요청은 Next.js를 거치지 않고 직접 WS 클라이언트에 전달한다 */
+    if (req.url === "/_internal/broadcast" && req.method === "POST") {
+      let body = "";
+      req.on("data", (chunk: Buffer) => (body += chunk));
+      req.on("end", () => {
+        for (const client of getBoardClients()) {
+          if (client.readyState === client.OPEN) {
+            client.send(body);
+          }
+        }
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: true }));
+      });
+      return;
+    }
+
     const parsedUrl = parse(req.url!, true);
     handle(req, res, parsedUrl);
   });

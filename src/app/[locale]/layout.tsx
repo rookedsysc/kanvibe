@@ -4,6 +4,8 @@ import { setRequestLocale, getMessages } from "next-intl/server";
 import { notFound } from "next/navigation";
 import { Inter } from "next/font/google";
 import { routing } from "@/i18n/routing";
+import NotificationListener from "@/components/NotificationListener";
+import { getNotificationSettings } from "@/app/actions/appSettings";
 import "../globals.css";
 
 const inter = Inter({
@@ -28,12 +30,19 @@ export default async function LocaleLayout({ children, params }: Props) {
   }
 
   setRequestLocale(locale);
-  const messages = await getMessages();
+  const [messages, notificationSettings] = await Promise.all([
+    getMessages(),
+    getNotificationSettings(),
+  ]);
 
   return (
     <html lang={locale}>
       <body suppressHydrationWarning className={`${inter.variable} font-sans bg-bg-page text-text-primary antialiased`}>
         <NextIntlClientProvider messages={messages}>
+          <NotificationListener
+            isNotificationEnabled={notificationSettings.isEnabled}
+            enabledStatuses={notificationSettings.enabledStatuses}
+          />
           {children}
         </NextIntlClientProvider>
       </body>

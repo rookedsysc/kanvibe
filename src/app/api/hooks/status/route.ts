@@ -3,7 +3,7 @@ import { getTaskRepository, getProjectRepository } from "@/lib/database";
 import { TaskStatus } from "@/entities/KanbanTask";
 import { cleanupTaskResources } from "@/app/actions/kanban";
 import { revalidatePath } from "next/cache";
-import { broadcastBoardUpdate } from "@/lib/boardNotifier";
+import { broadcastBoardUpdate, broadcastTaskStatusChanged } from "@/lib/boardNotifier";
 
 const STATUS_MAP: Record<string, TaskStatus> = {
   todo: TaskStatus.TODO,
@@ -72,6 +72,13 @@ export async function POST(request: NextRequest) {
     const saved = await taskRepo.save(task);
     revalidatePath("/[locale]", "page");
     broadcastBoardUpdate();
+    broadcastTaskStatusChanged({
+      projectName,
+      branchName,
+      taskTitle: saved.title,
+      description: saved.description,
+      newStatus: taskStatus,
+    });
 
     return NextResponse.json({
       success: true,
