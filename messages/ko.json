@@ -10,7 +10,14 @@
     "local": "로컬",
     "settings": "설정",
     "logout": "로그아웃",
-    "loading": "로딩 중..."
+    "loading": "로딩 중...",
+    "doneAlert": {
+      "title": "Done 이동 경고",
+      "message": "Done으로 이동하면 worktree, branch, tmux session이 삭제됩니다.",
+      "dontAskAgain": "다시 묻지 않기",
+      "confirm": "이동",
+      "cancel": "취소"
+    }
   },
   "login": {
     "username": "사용자 이름",

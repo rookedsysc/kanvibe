@@ -1,7 +1,7 @@
 import Board from "@/components/Board";
 import { getTasksByStatus } from "@/app/actions/kanban";
 import { getAllProjects } from "@/app/actions/project";
-import { getSidebarDefaultCollapsed } from "@/app/actions/appSettings";
+import { getSidebarDefaultCollapsed, getDoneAlertDismissed } from "@/app/actions/appSettings";
 import { getAvailableHosts } from "@/lib/sshConfig";
 
 export const dynamic = "force-dynamic";
@@ -11,6 +11,7 @@ export default async function HomePage() {
   const sshHosts = await getAvailableHosts();
   const projects = await getAllProjects();
   const sidebarDefaultCollapsed = await getSidebarDefaultCollapsed();
+  const doneAlertDismissed = await getDoneAlertDismissed();
 
   return (
     <Board
@@ -20,6 +21,7 @@ export default async function HomePage() {
       sshHosts={sshHosts}
       projects={projects}
       sidebarDefaultCollapsed={sidebarDefaultCollapsed}
+      doneAlertDismissed={doneAlertDismissed}
     />
   );
 }

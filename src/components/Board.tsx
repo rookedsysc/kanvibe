@@ -9,6 +9,7 @@ import ProjectSelector from "./ProjectSelector";
 import ProjectSettings from "./ProjectSettings";
 import TaskContextMenu from "./TaskContextMenu";
 import BranchTaskModal from "./BranchTaskModal";
+import DoneConfirmDialog from "./DoneConfirmDialog";
 import { reorderTasks, deleteTask, getMoreDoneTasks, moveTaskToColumn } from "@/app/actions/kanban";
 import type { TasksByStatus } from "@/app/actions/kanban";
 import { TaskStatus, type KanbanTask } from "@/entities/KanbanTask";
@@ -23,6 +24,7 @@ interface BoardProps {
   sshHosts: string[];
   projects: Project[];
   sidebarDefaultCollapsed: boolean;
+  doneAlertDismissed: boolean;
 }
 
 const COLUMNS: { status: TaskStatus; labelKey: string; colorClass: string }[] = [
@@ -84,7 +86,7 @@ function insertAtFilteredIndex(
   return arr;
 }
 
-export default function Board({ initialTasks, initialDoneTotal, initialDoneLimit, sshHosts, projects, sidebarDefaultCollapsed }: BoardProps) {
+export default function Board({ initialTasks, initialDoneTotal, initialDoneLimit, sshHosts, projects, sidebarDefaultCollapsed, doneAlertDismissed }: BoardProps) {
   useAutoRefresh();
   const t = useTranslations("board");
   const tt = useTranslations("task");
@@ -98,6 +100,8 @@ export default function Board({ initialTasks, initialDoneTotal, initialDoneLimit
   const [doneTotal, setDoneTotal] = useState(initialDoneTotal);
   const [doneOffset, setDoneOffset] = useState(initialDoneLimit);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [isDoneAlertDismissed, setIsDoneAlertDismissed] = useState(doneAlertDismissed);
+  const [pendingDoneResult, setPendingDoneResult] = useState<DropResult | null>(null);
 
   /** projectId → 표시할 프로젝트 이름 매핑. worktree 프로젝트는 메인 프로젝트 이름으로 resolve한다 */
   const projectNameMap = useMemo(() => {
@@ -238,7 +242,8 @@ export default function Board({ initialTasks, initialDoneTotal, initialDoneLimit
     }
   }, [doneOffset, isLoadingMore]);
 
-  const handleDragEnd = useCallback(
+  /** 드래그 결과를 받아 state 업데이트 + DB 반영을 수행한다 */
+  const executeDragMove = useCallback(
     (result: DropResult) => {
       const { source, destination, draggableId } = result;
       if (!destination) return;
@@ -314,6 +319,41 @@ export default function Board({ initialTasks, initialDoneTotal, initialDoneLimit
     },
     [projectFilterSet]
   );
+
+  const handleDragEnd = useCallback(
+    (result: DropResult) => {
+      const { source, destination, draggableId } = result;
+      if (!destination) return;
+
+      const sourceStatus = source.droppableId as TaskStatus;
+      const destStatus = destination.droppableId as TaskStatus;
+
+      /** Done 이동 시 리소스 삭제 경고 (dismissed 아닌 경우만) */
+      if (destStatus === TaskStatus.DONE && sourceStatus !== destStatus && !isDoneAlertDismissed) {
+        const task = tasks[sourceStatus].find((task) => task.id === draggableId);
+        const hasCleanableResources = task && (task.branchName || task.sessionType);
+        if (hasCleanableResources) {
+          setPendingDoneResult(result);
+          return;
+        }
+      }
+
+      executeDragMove(result);
+    },
+    [tasks, isDoneAlertDismissed, executeDragMove]
+  );
+
+  const handleDoneConfirm = useCallback(() => {
+    if (pendingDoneResult) {
+      executeDragMove(pendingDoneResult);
+      setIsDoneAlertDismissed(true);
+    }
+    setPendingDoneResult(null);
+  }, [pendingDoneResult, executeDragMove]);
+
+  const handleDoneCancel = useCallback(() => {
+    setPendingDoneResult(null);
+  }, []);
 
   const handleContextMenu = useCallback(
     (e: React.MouseEvent, task: KanbanTask) => {
@@ -459,6 +499,12 @@ export default function Board({ initialTasks, initialDoneTotal, initialDoneLimit
           }}
         />
       )}
+
+      <DoneConfirmDialog
+        isOpen={!!pendingDoneResult}
+        onConfirm={handleDoneConfirm}
+        onCancel={handleDoneCancel}
+      />
     </div>
   );
 }

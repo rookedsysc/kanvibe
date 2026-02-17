@@ -10,7 +10,14 @@
     "local": "本地",
     "settings": "设置",
     "logout": "退出登录",
-    "loading": "加载中..."
+    "loading": "加载中...",
+    "doneAlert": {
+      "title": "移动到完成",
+      "message": "移动到完成状态将删除 worktree、branch 和 tmux session。",
+      "dontAskAgain": "不再提示",
+      "confirm": "移动",
+      "cancel": "取消"
+    }
   },
   "login": {
     "username": "用户名",

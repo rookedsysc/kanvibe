@@ -12,10 +12,11 @@ import TaskStatusBadge from "@/components/TaskStatusBadge";
 import TerminalLoader from "@/components/TerminalLoader";
 import ConnectTerminalForm from "@/components/ConnectTerminalForm";
 import DeleteTaskButton from "@/components/DeleteTaskButton";
+import DoneStatusButton from "@/components/DoneStatusButton";
 import HooksStatusCard from "@/components/HooksStatusCard";
 import CollapsibleSidebar from "@/components/CollapsibleSidebar";
 import { getTaskHooksStatus } from "@/app/actions/project";
-import { getSidebarDefaultCollapsed, getSidebarHintDismissed } from "@/app/actions/appSettings";
+import { getSidebarDefaultCollapsed, getSidebarHintDismissed, getDoneAlertDismissed } from "@/app/actions/appSettings";
 import { Link } from "@/i18n/navigation";
 
 export const dynamicConfig = "force-dynamic";
@@ -55,6 +56,7 @@ export default async function TaskDetailPage({ params }: TaskDetailPageProps) {
   const hooksStatus = task.projectId ? await getTaskHooksStatus(id) : null;
   const sidebarDefaultCollapsed = await getSidebarDefaultCollapsed();
   const sidebarHintDismissed = await getSidebarHintDismissed();
+  const doneAlertDismissed = await getDoneAlertDismissed();
 
   async function handleStatusChange(formData: FormData) {
     "use server";
@@ -200,21 +202,31 @@ export default async function TaskDetailPage({ params }: TaskDetailPageProps) {
           <div className="flex flex-wrap gap-2">
             {STATUS_TRANSITIONS.filter(
               (transition) => transition.status !== task.status
-            ).map((transition) => (
-              <form key={transition.status} action={handleStatusChange}>
-                <input
-                  type="hidden"
-                  name="status"
-                  value={transition.status}
+            ).map((transition) =>
+              transition.status === TaskStatus.DONE ? (
+                <DoneStatusButton
+                  key={transition.status}
+                  statusChangeAction={handleStatusChange}
+                  label={t(transition.labelKey)}
+                  hasCleanableResources={!!(task.branchName || task.sessionType)}
+                  doneAlertDismissed={doneAlertDismissed}
                 />
-                <button
-                  type="submit"
-                  className="px-3 py-1.5 text-xs bg-bg-page border border-border-default hover:border-brand-primary hover:text-text-brand text-text-secondary rounded-md transition-colors"
-                >
-                  {t(transition.labelKey)}
-                </button>
-              </form>
-            ))}
+              ) : (
+                <form key={transition.status} action={handleStatusChange}>
+                  <input
+                    type="hidden"
+                    name="status"
+                    value={transition.status}
+                  />
+                  <button
+                    type="submit"
+                    className="px-3 py-1.5 text-xs bg-bg-page border border-border-default hover:border-brand-primary hover:text-text-brand text-text-secondary rounded-md transition-colors"
+                  >
+                    {t(transition.labelKey)}
+                  </button>
+                </form>
+              )
+            )}
           </div>
           <div className="mt-3 pt-3 border-t border-border-subtle">
             <DeleteTaskButton deleteAction={handleDelete} />

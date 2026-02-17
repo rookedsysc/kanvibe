@@ -57,3 +57,16 @@ export async function getSidebarHintDismissed(): Promise<boolean> {
 export async function dismissSidebarHint(): Promise<void> {
   await setAppSetting(SIDEBAR_HINT_DISMISSED_KEY, "true");
 }
+
+const DONE_ALERT_DISMISSED_KEY = "done_alert_dismissed";
+
+/** Done 이동 경고 다시 묻지 않기 여부를 조회한다 */
+export async function getDoneAlertDismissed(): Promise<boolean> {
+  const value = await getAppSetting(DONE_ALERT_DISMISSED_KEY);
+  return value === "true";
+}
+
+/** Done 이동 경고를 다시 묻지 않기로 설정한다 */
+export async function dismissDoneAlert(): Promise<void> {
+  await setAppSetting(DONE_ALERT_DISMISSED_KEY, "true");
+}

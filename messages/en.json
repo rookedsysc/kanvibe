@@ -10,7 +10,14 @@
     "local": "Local",
     "settings": "Settings",
     "logout": "Logout",
-    "loading": "Loading..."
+    "loading": "Loading...",
+    "doneAlert": {
+      "title": "Move to Done",
+      "message": "Moving to Done will delete the worktree, branch, and tmux session.",
+      "dontAskAgain": "Don't ask again",
+      "confirm": "Move",
+      "cancel": "Cancel"
+    }
   },
   "login": {
     "username": "Username",
