@@ -6,12 +6,24 @@ export const runtime = "nodejs";
 export async function GET() {
   const swCode = `
 // Service Worker: 브라우저 알림 클릭 핸들러
+console.log('[SW] Service Worker script loaded');
+
+self.addEventListener('install', (event) => {
+  console.log('[SW] Service Worker installing...');
+  self.skipWaiting();
+});
+
+self.addEventListener('activate', (event) => {
+  console.log('[SW] Service Worker activating...');
+  event.waitUntil(clients.claim());
+});
+
 self.addEventListener('notificationclick', (event) => {
-  // 알림 데이터에서 taskId 추출
+  console.log('[SW] Notification clicked:', event.notification.data);
+  
   const taskId = event.notification.data?.taskId;
   const locale = event.notification.data?.locale || 'ko';
 
-  // 알림 닫기
   event.notification.close();
 
   if (!taskId) {
@@ -19,32 +31,50 @@ self.addEventListener('notificationclick', (event) => {
     return;
   }
 
-  // 절대 URL로 redirect URL 생성 (clients.openWindow은 절대 경로 필요)
   const relativePath = \`/\${locale}/task/\${taskId}\`;
-  const absoluteUrl = new URL(relativePath, self.location.origin).href;
+  
+  try {
+    const absoluteUrl = new URL(relativePath, self.location.origin).href;
+    console.log('[SW] Opening URL:', absoluteUrl);
 
-  // 기존 창이 있으면 포커스, 없으면 새 창 열기
-  event.waitUntil(
-    clients.matchAll({ type: 'window' }).then((clientList) => {
-      // 이미 열려있는 같은 URL의 창이 있으면 포커스
-      for (const client of clientList) {
-        if (client.url.includes(\`/task/\${taskId}\`) && 'focus' in client) {
-          return client.focus();
+    event.waitUntil(
+      clients.matchAll({ type: 'window' }).then((clientList) => {
+        console.log('[SW] Found', clientList.length, 'open windows');
+        
+        // 이미 열려있는 같은 URL의 창이 있으면 포커스
+        for (const client of clientList) {
+          if (client.url.includes(\`/task/\${taskId}\`)) {
+            console.log('[SW] Found matching window, focusing:', client.url);
+            return client.focus();
+          }
         }
-      }
-      // 없으면 새 창 열기 (절대 URL 사용)
-      if (clients.openWindow) {
-        return clients.openWindow(absoluteUrl);
-      }
-    })
-  );
+        
+        // 없으면 새 창 열기
+        console.log('[SW] No matching window, opening new one');
+        return clients.openWindow(absoluteUrl).then((result) => {
+          if (result) {
+            console.log('[SW] Window opened successfully:', result.url);
+          } else {
+            console.error('[SW] Failed to open window (result is null)');
+          }
+          return result;
+        }).catch((err) => {
+          console.error('[SW] Error opening window:', err);
+        });
+      }).catch((err) => {
+        console.error('[SW] Error matching clients:', err);
+      })
+    );
+  } catch (err) {
+    console.error('[SW] Error in notification click handler:', err);
+  }
 });
 `;
 
   return new Response(swCode, {
     headers: {
       "Content-Type": "application/javascript",
-      "Cache-Control": "public, max-age=3600",
+      "Cache-Control": "public, max-age=0",
     },
   });
 }
