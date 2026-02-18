@@ -11,8 +11,8 @@ vi.mock("@/hooks/useTaskNotification", () => ({
   }),
 }));
 
-vi.mock("@/i18n/navigation", () => ({
-  usePathname: () => "/ko/board",
+vi.mock("next-intl", () => ({
+  useLocale: () => "ko",
 }));
 
 /** WebSocket 목 클래스. 인스턴스를 추적하여 테스트에서 메시지 수신을 시뮬레이션한다 */
