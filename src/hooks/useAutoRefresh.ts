@@ -28,7 +28,9 @@ export function useAutoRefresh() {
   useEffect(() => {
     function connect() {
       const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-      const port = parseInt(window.location.port || "4885", 10) + 10000;
+      const port = process.env.NEXT_PUBLIC_WS_PORT
+        ? parseInt(process.env.NEXT_PUBLIC_WS_PORT, 10)
+        : parseInt(window.location.port || "4885", 10) + 2;
       const wsUrl = `${protocol}//${window.location.hostname}:${port}/api/board/events`;
 
       const ws = new WebSocket(wsUrl);

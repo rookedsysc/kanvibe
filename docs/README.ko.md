@@ -56,6 +56,7 @@ cp .env.example .env
 | 변수 | 설명 | 기본값 |
 |------|------|--------|
 | `PORT` | 웹 서버 포트 | `4885` |
+| `WS_PORT` | WebSocket 서버 포트 | `4887` (`PORT + 2`) |
 | `DB_PORT` | PostgreSQL 포트 | `4886` |
 | `KANVIBE_USER` | 로그인 사용자명 | `admin` |
 | `KANVIBE_PASSWORD` | 로그인 비밀번호 | `changeme` (변경 필수!) |

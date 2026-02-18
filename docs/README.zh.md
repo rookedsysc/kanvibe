@@ -56,6 +56,7 @@ cp .env.example .env
 | 变量 | 说明 | 默认值 |
 |------|------|--------|
 | `PORT` | Web 服务器端口 | `4885` |
+| `WS_PORT` | WebSocket 服务器端口 | `4887` (`PORT + 2`) |
 | `DB_PORT` | PostgreSQL 端口 | `4886` |
 | `KANVIBE_USER` | 登录用户名 | `admin` |
 | `KANVIBE_PASSWORD` | 登录密码 | `changeme`（请修改！） |

@@ -22,7 +22,7 @@ process.on("uncaughtException", (error) => {
 const dev = process.env.NODE_ENV !== "production";
 const hostname = "0.0.0.0";
 const port = parseInt(process.env.PORT || "4885", 10);
-const wsPort = port + 10000;
+const wsPort = parseInt(process.env.WS_PORT || String(port + 2), 10);
 
 /**
  * Next.js에 httpServer를 전달하여 HMR WebSocket 등 내부 기능이

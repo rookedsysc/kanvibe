@@ -56,6 +56,7 @@ cp .env.example .env
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `PORT` | Web server port | `4885` |
+| `WS_PORT` | WebSocket server port | `4887` (`PORT + 2`) |
 | `DB_PORT` | PostgreSQL port | `4886` |
 | `KANVIBE_USER` | Login username | `admin` |
 | `KANVIBE_PASSWORD` | Login password | `changeme` (change this!) |
