@@ -105,6 +105,10 @@ msg() {
     en:install_prompt)  text="Install $1?" ;;
     zh:install_prompt)  text="是否安装 $1?" ;;
 
+    ko:install_all_prompt) text="누락된 필수 의존성을 모두 설치합니다" ;;
+    en:install_all_prompt) text="Installing all missing required dependencies" ;;
+    zh:install_all_prompt) text="安装所有缺少的必需依赖项" ;;
+
     ko:yn)              text="[Y/n]" ;;
     en:yn)              text="[Y/n]" ;;
     zh:yn)              text="[Y/n]" ;;
@@ -643,17 +647,34 @@ install_single_dep() {
 install_missing_deps() {
   local has_failure=0
 
-  # 필수 의존성 설치 (프롬프트 없이 자동 설치)
-  for entry in "${MISSING_REQUIRED[@]}"; do
-    local name="${entry%%|*}"
-    local method="${entry##*|}"
+  # 필수 의존성 일괄 설치 확인
+  if [ "${#MISSING_REQUIRED[@]}" -gt 0 ]; then
     echo ""
-    if ! install_single_dep "$name" "$method" "true"; then
-      has_failure=1
-    fi
-  done
+    local names=""
+    for entry in "${MISSING_REQUIRED[@]}"; do
+      local name="${entry%%|*}"
+      names="${names:+$names, }$name"
+    done
+    printf "  ${ARROW} $(msg install_all_prompt) (${names}) $(msg yn) "
+    read -r answer
+    case "$answer" in
+      [Nn]*)
+        printf "\n  ${CROSS} $(msg deps_missing)\n\n"
+        exit 1
+        ;;
+    esac
 
-  # 선택 의존성 설치 (프롬프트 표시)
+    for entry in "${MISSING_REQUIRED[@]}"; do
+      local name="${entry%%|*}"
+      local method="${entry##*|}"
+      echo ""
+      if ! install_single_dep "$name" "$method" "true"; then
+        has_failure=1
+      fi
+    done
+  fi
+
+  # 선택 의존성 설치 (개별 프롬프트 표시)
   for entry in "${MISSING_OPTIONAL[@]}"; do
     local name="${entry%%|*}"
     local method="${entry##*|}"
