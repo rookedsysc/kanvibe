@@ -13,6 +13,8 @@ import { AddAppSettings1771166907165 } from "@/migrations/1771166907165-AddAppSe
 import { AddPendingStatus1771171200000 } from "@/migrations/1771171200000-AddPendingStatus";
 import { RemoveBranchNameUnique1771257600000 } from "@/migrations/1771257600000-RemoveBranchNameUnique";
 import { AddPriorityToKanbanTasks1771344000000 } from "@/migrations/1771344000000-AddPriorityToKanbanTasks";
+import { AddColorIndexToProjects1771343199455 } from "@/migrations/1771343199455-AddColorIndexToProjects";
+import { ReplaceColorIndexWithColor1771388085809 } from "@/migrations/1771388085809-ReplaceColorIndexWithColor";
 
 /**
  * TypeORM DataSource 싱글턴.
@@ -34,7 +36,7 @@ function createDataSource(): DataSource {
     type: "postgres",
     url: process.env.DATABASE_URL ?? buildDatabaseUrl(),
     entities: [KanbanTask, Project, PaneLayoutConfig, AppSettings],
-    migrations: [InitialSchema1770854400000, AddPrUrlToKanbanTasks1770854400001, AddIsWorktreeToProjects1770854400002, AddPaneLayoutConfig1771048256887, AssignDisplayOrder1771166346785, AddAppSettings1771166907165, AddPendingStatus1771171200000, RemoveBranchNameUnique1771257600000, AddPriorityToKanbanTasks1771344000000],
+    migrations: [InitialSchema1770854400000, AddPrUrlToKanbanTasks1770854400001, AddIsWorktreeToProjects1770854400002, AddPaneLayoutConfig1771048256887, AssignDisplayOrder1771166346785, AddAppSettings1771166907165, AddPendingStatus1771171200000, RemoveBranchNameUnique1771257600000, AddPriorityToKanbanTasks1771344000000, AddColorIndexToProjects1771343199455, ReplaceColorIndexWithColor1771388085809],
     synchronize: false,
     logging: process.env.NODE_ENV !== "production",
   });

@@ -1,8 +1,13 @@
 "use client";
 
+import { Fragment, useMemo } from "react";
 import { useTranslations } from "next-intl";
 import { Droppable } from "@hello-pangea/dnd";
 import TaskCard from "./TaskCard";
+import ProjectTaskGroup, {
+  buildBranchTree,
+  type BranchTreeNode,
+} from "./ProjectTaskGroup";
 import type { KanbanTask, TaskStatus } from "@/entities/KanbanTask";
 
 interface ColumnProps {
@@ -12,14 +17,152 @@ interface ColumnProps {
   colorClass: string;
   onContextMenu: (e: React.MouseEvent, task: KanbanTask) => void;
   projectNameMap: Record<string, string>;
+  projectColorMap: Record<string, string>;
+  projectDefaultBranchMap: Record<string, string>;
   totalCount?: number;
   hasMore?: boolean;
   onLoadMore?: () => void;
   isLoadingMore?: boolean;
 }
 
-export default function Column({ status, tasks, label, colorClass, onContextMenu, projectNameMap, totalCount, hasMore, onLoadMore, isLoadingMore }: ColumnProps) {
+interface TaskGroup {
+  projectName: string | null;
+  tasks: KanbanTask[];
+  treeInfo: Map<string, BranchTreeNode>;
+  hasBranchRelations: boolean;
+  /** 그룹 내 기본 브랜치(defaultBranch) 태스크가 없으면 true → 자식 전용 그룹 */
+  isChildGroup: boolean;
+}
+
+/** 태스크 배열을 프로젝트별 연속 그룹으로 분할한다. DnD 순서를 유지하며 같은 프로젝트가 인접하면 하나의 그룹으로 묶는다 */
+function buildContiguousGroups(
+  tasks: KanbanTask[],
+  projectNameMap: Record<string, string>,
+  projectDefaultBranchMap: Record<string, string>,
+): TaskGroup[] {
+  const groups: TaskGroup[] = [];
+  let current: { name: string | null; tasks: KanbanTask[] } | null = null;
+
+  for (const task of tasks) {
+    const name = task.projectId
+      ? (projectNameMap[task.projectId] ?? null)
+      : null;
+
+    if (current && current.name === name) {
+      current.tasks.push(task);
+    } else {
+      if (current) groups.push(finalizeGroup(current, projectDefaultBranchMap));
+      current = { name, tasks: [task] };
+    }
+  }
+  if (current) groups.push(finalizeGroup(current, projectDefaultBranchMap));
+
+  return groups;
+}
+
+function finalizeGroup(
+  raw: { name: string | null; tasks: KanbanTask[] },
+  projectDefaultBranchMap: Record<string, string>,
+): TaskGroup {
+  if (!raw.name) {
+    return {
+      projectName: null,
+      tasks: raw.tasks,
+      treeInfo: new Map(),
+      hasBranchRelations: false,
+      isChildGroup: false,
+    };
+  }
+
+  /** DnD 인덱스 호환성을 위해 원래 순서를 유지하고 트리 정보만 추출한다 */
+  const { treeInfo } = buildBranchTree(raw.tasks);
+  const hasBranchRelations = Array.from(treeInfo.values()).some(
+    (info) => info.depth > 0 || info.hasChildren,
+  );
+
+  /** 그룹 내에 기본 브랜치 태스크가 있는지 확인 */
+  const hasDefaultBranch = raw.tasks.some((t) => {
+    const defaultBranch = t.projectId
+      ? projectDefaultBranchMap[t.projectId]
+      : undefined;
+    return defaultBranch && t.branchName === defaultBranch;
+  });
+
+  return {
+    projectName: raw.name,
+    tasks: raw.tasks,
+    treeInfo,
+    hasBranchRelations,
+    isChildGroup: !hasDefaultBranch,
+  };
+}
+
+/** 브랜치 연결 화살표: 자식 태스크 앞에 표시되는 L자형 커넥터 */
+function BranchConnector({ depth }: { depth: number }) {
+  return (
+    <div
+      className="flex items-center gap-1 py-0.5 pointer-events-none"
+      style={{ paddingLeft: `${(depth - 1) * 16 + 8}px` }}
+    >
+      <svg
+        width="16"
+        height="12"
+        viewBox="0 0 16 12"
+        className="text-group-line shrink-0"
+        aria-hidden="true"
+      >
+        <path
+          d="M2 0 V8 H12"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+        <path
+          d="M10 5 L13 8 L10 11"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
+    </div>
+  );
+}
+
+export default function Column({
+  status,
+  tasks,
+  label,
+  colorClass,
+  onContextMenu,
+  projectNameMap,
+  projectColorMap,
+  projectDefaultBranchMap,
+  totalCount,
+  hasMore,
+  onLoadMore,
+  isLoadingMore,
+}: ColumnProps) {
   const t = useTranslations("board");
+
+  const groups = useMemo(
+    () => buildContiguousGroups(tasks, projectNameMap, projectDefaultBranchMap),
+    [tasks, projectNameMap, projectDefaultBranchMap],
+  );
+
+  /** 그룹 간 연속적인 DnD 인덱스를 부여하기 위한 시작 인덱스 배열 */
+  const groupStartIndices = useMemo(() => {
+    const indices: number[] = [];
+    let offset = 0;
+    for (const group of groups) {
+      indices.push(offset);
+      offset += group.tasks.length;
+    }
+    return indices;
+  }, [groups]);
 
   return (
     <div className="flex-1 min-w-[280px] max-w-[350px]">
@@ -28,7 +171,9 @@ export default function Column({ status, tasks, label, colorClass, onContextMenu
         <h2 className="text-sm font-semibold text-text-secondary uppercase tracking-wide">
           {label}
         </h2>
-        <span className="text-xs text-text-muted ml-auto">{totalCount ?? tasks.length}</span>
+        <span className="text-xs text-text-muted ml-auto">
+          {totalCount ?? tasks.length}
+        </span>
       </div>
 
       <Droppable droppableId={status}>
@@ -42,16 +187,73 @@ export default function Column({ status, tasks, label, colorClass, onContextMenu
                 : "bg-transparent"
             }`}
           >
-            {tasks.map((task, index) => (
-              <TaskCard
-                key={task.id}
-                task={task}
-                index={index}
-                onContextMenu={onContextMenu}
-                projectName={task.projectId ? projectNameMap[task.projectId] : undefined}
-                isBaseProject={!!task.worktreePath && !task.worktreePath.includes("__worktrees")}
-              />
-            ))}
+            {groups.map((group, groupIdx) => {
+              const startIndex = groupStartIndices[groupIdx];
+
+              /** 프로젝트 없는 태스크: 그룹 래퍼 없이 직접 렌더링 */
+              if (!group.projectName) {
+                return (
+                  <Fragment key={`ungrouped-${groupIdx}`}>
+                    {group.tasks.map((task, localIdx) => (
+                      <TaskCard
+                        key={task.id}
+                        task={task}
+                        index={startIndex + localIdx}
+                        onContextMenu={onContextMenu}
+                        projectName={undefined}
+                        isBaseProject={
+                          !!task.worktreePath &&
+                          !task.worktreePath.includes("__worktrees")
+                        }
+                      />
+                    ))}
+                  </Fragment>
+                );
+              }
+
+              const color = projectColorMap[group.projectName] ?? "#93C5FD";
+
+              return (
+                <ProjectTaskGroup
+                  key={`${group.projectName}-${groupIdx}`}
+                  projectName={group.projectName}
+                  color={color}
+                  hasBranchRelations={group.hasBranchRelations}
+                  isChildGroup={group.isChildGroup}
+                >
+                  {group.tasks.map((task, localIdx) => {
+                    const treeNode = group.treeInfo.get(task.id);
+                    const isTreeChild = treeNode && treeNode.depth > 0;
+
+                    return (
+                      <div key={task.id}>
+                        {isTreeChild && (
+                          <BranchConnector depth={treeNode!.depth} />
+                        )}
+                        <div
+                          style={
+                            isTreeChild
+                              ? { paddingLeft: `${treeNode!.depth * 16}px` }
+                              : undefined
+                          }
+                        >
+                          <TaskCard
+                            task={task}
+                            index={startIndex + localIdx}
+                            onContextMenu={onContextMenu}
+                            projectName={undefined}
+                            isBaseProject={
+                              !!task.worktreePath &&
+                              !task.worktreePath.includes("__worktrees")
+                            }
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </ProjectTaskGroup>
+              );
+            })}
             {provided.placeholder}
             {hasMore && onLoadMore && (
               <button

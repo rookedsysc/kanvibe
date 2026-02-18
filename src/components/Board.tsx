@@ -96,6 +96,10 @@ export default function Board({ initialTasks, initialDoneTotal, initialDoneLimit
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isBranchModalOpen, setIsBranchModalOpen] = useState(false);
+  const [branchTodoDefaults, setBranchTodoDefaults] = useState<{
+    baseBranch: string;
+    projectId: string;
+  } | null>(null);
   const [isMounted, setIsMounted] = useState(false);
   const [selectedProjectIds, setSelectedProjectIds] = useState<string[]>([]);
   const [doneTotal, setDoneTotal] = useState(initialDoneTotal);
@@ -129,6 +133,54 @@ export default function Board({ initialTasks, initialDoneTotal, initialDoneLimit
     }
 
     return nameMap;
+  }, [projects]);
+
+  /** 프로젝트명 → hex 색상 매핑. DB color 우선, 없으면 해시 기반 프리셋 할당 */
+  const projectColorMap = useMemo(() => {
+    const PRESET_COLORS = [
+      "#F9A8D4", "#93C5FD", "#86EFAC", "#C4B5FD",
+      "#FDBA74", "#FDE047", "#5EEAD4", "#A5B4FC",
+    ];
+    const colorMap: Record<string, string> = {};
+
+    const uniqueNames = new Set(Object.values(projectNameMap));
+    for (const name of uniqueNames) {
+      const mainProject = projects.find(
+        (p) => p.name === name && !extractMainRepoPath(p.repoPath)
+      );
+      if (mainProject?.color) {
+        colorMap[name] = mainProject.color;
+      } else {
+        let hash = 0;
+        for (let i = 0; i < name.length; i++) {
+          hash = (hash * 31 + name.charCodeAt(i)) | 0;
+        }
+        colorMap[name] = PRESET_COLORS[((hash % 8) + 8) % 8];
+      }
+    }
+    return colorMap;
+  }, [projectNameMap, projects]);
+
+  /** projectId → defaultBranch 매핑. worktree 프로젝트는 메인 프로젝트의 defaultBranch를 상속 */
+  const projectDefaultBranchMap = useMemo(() => {
+    const branchMap: Record<string, string> = {};
+    const pathToBranch: Record<string, string> = {};
+
+    for (const project of projects) {
+      const mainPath = extractMainRepoPath(project.repoPath);
+      if (!mainPath) {
+        pathToBranch[project.repoPath] = project.defaultBranch;
+      }
+    }
+
+    for (const project of projects) {
+      const mainPath = extractMainRepoPath(project.repoPath);
+      branchMap[project.id] = mainPath
+        ? (pathToBranch[mainPath] ?? project.defaultBranch)
+        : project.defaultBranch;
+    }
+
+    return branchMap;
   }, [projects]);
 
   /** 필터 드롭다운에 표시할 메인 프로젝트 목록 (worktree 제외) */
@@ -373,6 +425,18 @@ export default function Board({ initialTasks, initialDoneTotal, initialDoneLimit
     setContextMenu((prev) => ({ ...prev, isOpen: false }));
   }, []);
 
+  /** 우클릭한 태스크의 브랜치를 base로 새 TODO를 생성하는 모달을 연다 */
+  const handleCreateBranchTodo = useCallback(() => {
+    if (contextMenu.task?.branchName && contextMenu.task?.projectId) {
+      setBranchTodoDefaults({
+        baseBranch: contextMenu.task.branchName,
+        projectId: contextMenu.task.projectId,
+      });
+      setIsModalOpen(true);
+    }
+    setContextMenu((prev) => ({ ...prev, isOpen: false }));
+  }, [contextMenu.task]);
+
   const handleDeleteFromCard = useCallback(() => {
     if (contextMenu.task && confirm(tt("deleteConfirm"))) {
       deleteTask(contextMenu.task.id);
@@ -436,6 +500,8 @@ export default function Board({ initialTasks, initialDoneTotal, initialDoneLimit
                   colorClass={col.colorClass}
                   onContextMenu={handleContextMenu}
                   projectNameMap={projectNameMap}
+                  projectColorMap={projectColorMap}
+                  projectDefaultBranchMap={projectDefaultBranchMap}
                   {...(col.status === TaskStatus.DONE && {
                     totalCount: doneTotal,
                     hasMore: doneOffset < doneTotal,
@@ -465,10 +531,14 @@ export default function Board({ initialTasks, initialDoneTotal, initialDoneLimit
 
       <CreateTaskModal
         isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
+        onClose={() => {
+          setIsModalOpen(false);
+          setBranchTodoDefaults(null);
+        }}
         sshHosts={sshHosts}
         projects={projects}
-        defaultProjectId={selectedProjectIds.length === 1 ? selectedProjectIds[0] : ""}
+        defaultProjectId={branchTodoDefaults?.projectId || (selectedProjectIds.length === 1 ? selectedProjectIds[0] : "")}
+        defaultBaseBranch={branchTodoDefaults?.baseBranch}
       />
 
       <ProjectSettings
@@ -486,6 +556,7 @@ export default function Board({ initialTasks, initialDoneTotal, initialDoneLimit
           y={contextMenu.y}
           onClose={handleCloseContextMenu}
           onBranch={handleBranchFromCard}
+          onCreateBranchTodo={handleCreateBranchTodo}
           onDelete={handleDeleteFromCard}
           hasBranch={!!contextMenu.task.branchName}
         />

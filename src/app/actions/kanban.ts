@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { exec } from "child_process";
 import { promisify } from "util";
-import { Not } from "typeorm";
+import { Not, Like } from "typeorm";
 import { getTaskRepository } from "@/lib/database";
 import { KanbanTask, TaskStatus, SessionType } from "@/entities/KanbanTask";
 import { TaskPriority } from "@/entities/TaskPriority";
@@ -198,6 +198,37 @@ export async function updateTask(
   revalidatePath("/[locale]", "page");
   revalidatePath("/[locale]/task/[id]", "page");
   return serialize(saved);
+}
+
+/** 프로젝트의 color(hex)를 변경하고, 같은 repo의 worktree 프로젝트에도 동일하게 반영한다 */
+export async function updateProjectColor(
+  projectId: string,
+  color: string
+): Promise<void> {
+  const repo = await getProjectRepository();
+  const project = await repo.findOneBy({ id: projectId });
+  if (!project) return;
+
+  project.color = color;
+  await repo.save(project);
+
+  // worktree 프로젝트들의 color도 함께 업데이트한다
+  const mainRepoPath = project.repoPath.includes("__worktrees")
+    ? project.repoPath.split("__worktrees")[0]
+    : project.repoPath;
+
+  const relatedProjects = await repo.find({
+    where: { repoPath: Like(`${mainRepoPath}%`) },
+  });
+
+  for (const related of relatedProjects) {
+    if (related.id === projectId) continue;
+    related.color = color;
+    await repo.save(related);
+  }
+
+  revalidatePath("/[locale]", "page");
+  revalidatePath("/[locale]/task/[id]", "page");
 }
 
 /** 작업에 연결된 worktree, 세션, 브랜치를 정리한다. task 레코드는 삭제하지 않는다 */

@@ -129,6 +129,17 @@
       "branch": { "background": "{gray.100}", "text": "{gray.700}" },
       "neutral": { "background": "{gray.100}", "text": "{gray.600}" },
       "base": { "background": "#EDE7F6", "text": "#5E35B1" }
+    },
+    "projectGroup": {
+      "0": { "border": "#F9A8D4", "background": "#FDF2F8" },
+      "1": { "border": "#93C5FD", "background": "#EFF6FF" },
+      "2": { "border": "#86EFAC", "background": "#F0FDF4" },
+      "3": { "border": "#C4B5FD", "background": "#F5F3FF" },
+      "4": { "border": "#FDBA74", "background": "#FFF7ED" },
+      "5": { "border": "#FDE047", "background": "#FEFCE8" },
+      "6": { "border": "#5EEAD4", "background": "#F0FDFA" },
+      "7": { "border": "#A5B4FC", "background": "#EEF2FF" },
+      "line": "{gray.400}"
     }
   },
   "typography": {

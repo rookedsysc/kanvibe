@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { usePathname } from "@/i18n/navigation";
+import { useLocale } from "next-intl";
 import { useTaskNotification } from "@/hooks/useTaskNotification";
 
 const RECONNECT_DELAY_MS = 3000;
@@ -17,16 +17,13 @@ export default function NotificationListener({
   enabledStatuses,
 }: NotificationListenerProps) {
   const { notifyTaskStatusChanged } = useTaskNotification();
-  const pathname = usePathname();
+  const locale = useLocale();
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   /** useEffect 내 stale closure 방지용 ref */
   const settingsRef = useRef({ isNotificationEnabled, enabledStatuses });
   settingsRef.current = { isNotificationEnabled, enabledStatuses };
-
-  // pathname에서 locale 추출: /[locale]/...
-  const locale = pathname.split("/")[1] || "ko";
 
   // Service Worker 등록
   useEffect(() => {

@@ -75,6 +75,7 @@
   },
   "contextMenu": {
     "branchOff": "Branch off",
+    "createBranchTodo": "Create branch TODO",
     "delete": "Delete"
   },
   "settings": {
@@ -186,6 +187,7 @@
     "prLink": "PR Link",
     "project": "Project",
     "baseProject": "Base",
+    "projectColor": "Project Color",
     "actions": "Change Status",
     "deleteConfirm": "Are you sure you want to delete this task?",
     "hooksStatus": "Hooks Status",

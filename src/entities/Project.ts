@@ -30,6 +30,9 @@ export class Project {
   @Column({ name: "is_worktree", type: "boolean", default: false })
   isWorktree!: boolean;
 
+  @Column({ name: "color", type: "varchar", length: 7, nullable: true, default: null })
+  color!: string | null;
+
   @CreateDateColumn({ name: "created_at" })
   createdAt!: Date;
 }
