@@ -794,8 +794,8 @@ cmd_start() {
   # 1. pnpm install
   step 1 $total "$(msg step_deps)"
   start_log
-  if ! pnpm install --reporter=silent >> "$LOG_FILE" 2>&1; then
-    pnpm install >> "$LOG_FILE" 2>&1 || true
+  if ! pnpm install --reporter=append-only >> "$LOG_FILE" 2>&1; then
+    pnpm install --reporter=append-only >> "$LOG_FILE" 2>&1 || true
   fi
   stop_log
   step_done 1 $total "$(msg step_deps)"
