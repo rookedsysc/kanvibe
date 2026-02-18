@@ -21,6 +21,7 @@
 # misc
 .DS_Store
 *.pem
+.kanvibe.pid
 
 # debug
 npm-debug.log*
