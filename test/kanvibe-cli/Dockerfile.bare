@@ -21,6 +21,7 @@ RUN apt-get update && apt-get install -y \
     git \
     curl \
     sudo \
+    vim \
     locales \
     ca-certificates \
     gnupg \
@@ -35,7 +36,7 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
-COPY kanvibe.sh .
-COPY .env.example .env
+RUN git clone https://github.com/rookedsysc/kanvibe .
+RUN cp .env.example .env
 
 CMD ["bash"]
