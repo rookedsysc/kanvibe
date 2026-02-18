@@ -118,6 +118,26 @@ msg() {
     en:optional_label)  text="optional" ;;
     zh:optional_label)  text="可选" ;;
 
+    ko:tmux_conf_prompt) text="tmux 추천 설정을 설치하시겠습니까? (마우스 스크롤, 세션 복원 등)" ;;
+    en:tmux_conf_prompt) text="Install recommended tmux config? (mouse scroll, session restore, etc.)" ;;
+    zh:tmux_conf_prompt) text="是否安装推荐的 tmux 配置？（鼠标滚动、会话恢复等）" ;;
+
+    ko:tmux_conf_installed) text="tmux 설정 파일이 설치되었습니다 (~/.tmux.conf)" ;;
+    en:tmux_conf_installed) text="tmux config installed (~/.tmux.conf)" ;;
+    zh:tmux_conf_installed) text="tmux 配置已安装 (~/.tmux.conf)" ;;
+
+    ko:tmux_conf_skip) text="tmux 설정 설치를 건너뜁니다" ;;
+    en:tmux_conf_skip) text="Skipping tmux config installation" ;;
+    zh:tmux_conf_skip) text="跳过 tmux 配置安装" ;;
+
+    ko:tmux_conf_backup) text="기존 ~/.tmux.conf를 ~/.tmux.conf.bak으로 백업했습니다" ;;
+    en:tmux_conf_backup) text="Backed up existing ~/.tmux.conf to ~/.tmux.conf.bak" ;;
+    zh:tmux_conf_backup) text="已将现有 ~/.tmux.conf 备份为 ~/.tmux.conf.bak" ;;
+
+    ko:tmux_tpm_installed) text="TPM (Tmux Plugin Manager) 설치 완료" ;;
+    en:tmux_tpm_installed) text="TPM (Tmux Plugin Manager) installed" ;;
+    zh:tmux_tpm_installed) text="TPM（Tmux 插件管理器）已安装" ;;
+
     # ── start 단계 ──
     ko:starting)        text="KanVibe 시작" ;;
     en:starting)        text="Starting KanVibe" ;;
@@ -324,8 +344,10 @@ check_deps() {
     fi
   fi
 
-  # 선택 의존성
-  check_single_dep "zellij"   "zellij" "optional" ""       "brew install zellij" || true
+  # 선택 의존성 — tmux가 이미 있으면 zellij 설치 프롬프트 생략
+  if ! command -v tmux &>/dev/null; then
+    check_single_dep "zellij"   "zellij" "optional" ""       "brew install zellij" || true
+  fi
 
   echo ""
 }
@@ -432,6 +454,50 @@ install_missing_deps() {
   fi
 }
 
+# ── tmux 설정 파일 설치 ──────────────────────────────────────
+TMUX_CONF_URL="https://raw.githubusercontent.com/rookedsysc/dotfiles/master/configs/tmux/.tmux.conf"
+
+setup_tmux_conf() {
+  # tmux가 없으면 스킵
+  command -v tmux &>/dev/null || return 0
+  # 이미 .tmux.conf가 있으면 스킵
+  [ -f "$HOME/.tmux.conf" ] && return 0
+
+  echo ""
+  printf "  ${ARROW} $(msg tmux_conf_prompt) $(msg yn) "
+  read -r answer
+  case "$answer" in
+    [Nn]*)
+      printf "  ${DIM}  $(msg tmux_conf_skip)${NC}\n"
+      return 0
+      ;;
+  esac
+
+  # 기존 파일 백업
+  if [ -f "$HOME/.tmux.conf" ]; then
+    cp "$HOME/.tmux.conf" "$HOME/.tmux.conf.bak"
+    printf "  ${WARN} $(msg tmux_conf_backup)\n"
+  fi
+
+  # 설정 파일 다운로드
+  if command -v curl &>/dev/null; then
+    curl -fsSL "$TMUX_CONF_URL" -o "$HOME/.tmux.conf"
+  elif command -v wget &>/dev/null; then
+    wget -qO "$HOME/.tmux.conf" "$TMUX_CONF_URL"
+  else
+    printf "  ${CROSS} curl/wget not found\n"
+    return 1
+  fi
+
+  # TPM 설치
+  if [ ! -d "$HOME/.tmux/plugins/tpm" ]; then
+    git clone https://github.com/tmux-plugins/tpm "$HOME/.tmux/plugins/tpm" 2>/dev/null
+    printf "  ${CHECK} $(msg tmux_tpm_installed)\n"
+  fi
+
+  printf "  ${CHECK} $(msg tmux_conf_installed)\n"
+}
+
 # ── start 커맨드 ─────────────────────────────────────────────
 cmd_start() {
   print_header
@@ -458,6 +524,9 @@ cmd_start() {
   else
     printf "  ${CHECK} $(msg all_deps_ok)\n"
   fi
+
+  # tmux 설정 파일 설치 (최초 1회)
+  setup_tmux_conf
 
   local total=6
   printf "\n  ${BOLD}═══ $(msg starting) ═══${NC}\n\n"
