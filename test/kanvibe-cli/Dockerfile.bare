@@ -1,0 +1,28 @@
+# KanVibe CLI 의존성 누락 테스트용 Docker 이미지
+# 최소 Ubuntu 환경에서 의존성 체크 UI가 올바르게 동작하는지 확인한다.
+#
+# 빌드:
+#   docker build -t kanvibe-cli-bare -f test/kanvibe-cli/Dockerfile.bare .
+#
+# 실행:
+#   docker run --rm -it kanvibe-cli-bare bash kanvibe.sh
+#   docker run --rm -it -e LANG=ko_KR.UTF-8 kanvibe-cli-bare bash kanvibe.sh
+#   docker run --rm -it -e LANG=zh_CN.UTF-8 kanvibe-cli-bare bash kanvibe.sh
+
+FROM ubuntu:24.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV LANG=en_US.UTF-8
+
+# 최소 패키지만 설치 (git만 있고 나머지 없음)
+RUN apt-get update && apt-get install -y \
+    git \
+    locales \
+    && locale-gen en_US.UTF-8 ko_KR.UTF-8 zh_CN.UTF-8 \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+COPY kanvibe.sh .
+COPY .env.example .env
+
+CMD ["bash"]
