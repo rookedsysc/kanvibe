@@ -35,11 +35,17 @@ Automatically track task status via [AI Agent Hooks](#ai-agent-hooks---automatic
 
 ## Prerequisites
 
-| Dependency | Version | Install |
-|------------|---------|---------|
-| [Node.js](https://nodejs.org/) | >= 22 | [Download](https://nodejs.org/en/download/) |
-| [tmux](https://github.com/tmux/tmux) or [zellij](https://github.com/zellij-org/zellij) | latest | `brew install tmux` / `apt install tmux` |
-| [Docker](https://www.docker.com/) | latest | [Download](https://docs.docker.com/get-docker/) |
+The `kanvibe` CLI script automatically checks and installs missing dependencies. You can also install them manually:
+
+| Dependency | Version | Required | Install |
+|------------|---------|----------|---------|
+| [Node.js](https://nodejs.org/) | >= 24 | Yes | `brew install node` |
+| [pnpm](https://pnpm.io/) | latest | Yes | `corepack enable && corepack prepare pnpm@latest --activate` |
+| [Docker](https://www.docker.com/) | latest | Yes | `brew install --cask docker` |
+| [git](https://git-scm.com/) | latest | Yes | `brew install git` |
+| [tmux](https://github.com/tmux/tmux) | latest | Yes | `brew install tmux` |
+| [gh](https://cli.github.com/) | latest | Yes | `brew install gh` (requires `gh auth login`) |
+| [zellij](https://github.com/zellij-org/zellij) | latest | No | `brew install zellij` |
 
 > Docker is used to run the PostgreSQL database via Docker Compose.
 
@@ -63,10 +69,16 @@ cp .env.example .env
 ### 2. Run
 
 ```bash
-bash start.sh
+bash kanvibe.sh start
 ```
 
-This single command handles everything: dependency installation, PostgreSQL startup, database migration, build, and server launch.
+This command checks dependencies (with i18n install prompts), installs packages, starts PostgreSQL, runs migrations, builds, and launches the server.
+
+```bash
+bash kanvibe.sh stop
+```
+
+Stops the KanVibe server and PostgreSQL container.
 
 Open `http://localhost:4885` in your browser.
 

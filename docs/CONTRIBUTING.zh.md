@@ -1,6 +1,6 @@
 # KanVibe 贡献指南
 
-[EN](./CONTRIBUTING.md) | [KO](./CONTRIBUTING.ko.md)
+[EN](../CONTRIBUTING.md) | [KO](./CONTRIBUTING.ko.md)
 
 感谢您对 KanVibe 的关注！本指南将帮助您开始贡献。
 

@@ -35,11 +35,17 @@
 
 ## 前置要求
 
-| 依赖 | 版本 | 安装 |
-|------|------|------|
-| [Node.js](https://nodejs.org/) | >= 22 | [下载](https://nodejs.org/en/download/) |
-| [tmux](https://github.com/tmux/tmux) 或 [zellij](https://github.com/zellij-org/zellij) | 最新 | `brew install tmux` / `apt install tmux` |
-| [Docker](https://www.docker.com/) | 最新 | [下载](https://docs.docker.com/get-docker/) |
+`kanvibe` CLI 脚本会自动检查并安装缺失的依赖项。也可以手动安装：
+
+| 依赖 | 版本 | 必需 | 安装 |
+|------|------|------|------|
+| [Node.js](https://nodejs.org/) | >= 24 | Yes | `brew install node` |
+| [pnpm](https://pnpm.io/) | 最新 | Yes | `corepack enable && corepack prepare pnpm@latest --activate` |
+| [Docker](https://www.docker.com/) | 最新 | Yes | `brew install --cask docker` |
+| [git](https://git-scm.com/) | 最新 | Yes | `brew install git` |
+| [tmux](https://github.com/tmux/tmux) | 最新 | Yes | `brew install tmux` |
+| [gh](https://cli.github.com/) | 最新 | Yes | `brew install gh`（需要 `gh auth login`） |
+| [zellij](https://github.com/zellij-org/zellij) | 最新 | No | `brew install zellij` |
 
 > Docker 通过 Docker Compose 运行 PostgreSQL 数据库。
 
@@ -63,10 +69,16 @@ cp .env.example .env
 ### 2. 运行
 
 ```bash
-bash start.sh
+bash kanvibe.sh start
 ```
 
-这一个命令会处理所有事情：依赖安装、PostgreSQL 启动、数据库迁移、构建和服务器启动。
+此命令会检查依赖项（带有 i18n 安装提示）、安装包、启动 PostgreSQL、运行迁移、构建并启动服务器。
+
+```bash
+bash kanvibe.sh stop
+```
+
+停止 KanVibe 服务器和 PostgreSQL 容器。
 
 在浏览器中打开 `http://localhost:4885`。
 

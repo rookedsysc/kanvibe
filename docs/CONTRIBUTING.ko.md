@@ -1,6 +1,6 @@
 # KanVibe 기여 가이드
 
-[EN](./CONTRIBUTING.md) | [ZH](./CONTRIBUTING.zh.md)
+[EN](../CONTRIBUTING.md) | [ZH](./CONTRIBUTING.zh.md)
 
 KanVibe에 관심을 가져주셔서 감사합니다! 이 가이드가 시작하는 데 도움이 될 것입니다.
 

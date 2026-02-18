@@ -35,11 +35,17 @@ AI 코딩 에이전트(Claude Code, Gemini CLI, Codex CLI 등)의 작업을 실�
 
 ## 사전 요구사항
 
-| 의존성 | 버전 | 설치 |
-|--------|------|------|
-| [Node.js](https://nodejs.org/) | >= 22 | [다운로드](https://nodejs.org/en/download/) |
-| [tmux](https://github.com/tmux/tmux) 또는 [zellij](https://github.com/zellij-org/zellij) | 최신 | `brew install tmux` / `apt install tmux` |
-| [Docker](https://www.docker.com/) | 최신 | [다운로드](https://docs.docker.com/get-docker/) |
+`kanvibe` CLI 스크립트가 누락된 의존성을 자동으로 확인하고 설치합니다. 수동 설치도 가능합니다:
+
+| 의존성 | 버전 | 필수 | 설치 |
+|--------|------|------|------|
+| [Node.js](https://nodejs.org/) | >= 24 | Yes | `brew install node` |
+| [pnpm](https://pnpm.io/) | 최신 | Yes | `corepack enable && corepack prepare pnpm@latest --activate` |
+| [Docker](https://www.docker.com/) | 최신 | Yes | `brew install --cask docker` |
+| [git](https://git-scm.com/) | 최신 | Yes | `brew install git` |
+| [tmux](https://github.com/tmux/tmux) | 최신 | Yes | `brew install tmux` |
+| [gh](https://cli.github.com/) | 최신 | Yes | `brew install gh` (`gh auth login` 필요) |
+| [zellij](https://github.com/zellij-org/zellij) | 최신 | No | `brew install zellij` |
 
 > Docker는 Docker Compose를 통해 PostgreSQL 데이터베이스를 실행하는 데 사용됩니다.
 
@@ -63,10 +69,16 @@ cp .env.example .env
 ### 2. 실행
 
 ```bash
-bash start.sh
+bash kanvibe.sh start
 ```
 
-이 명령어 하나로 의존성 설치, PostgreSQL 시작, 데이터베이스 마이그레이션, 빌드, 서버 실행까지 모두 처리됩니다.
+의존성 체크(i18n 설치 프롬프트 포함), 패키지 설치, PostgreSQL 시작, 마이그레이션, 빌드, 서버 실행까지 모두 처리됩니다.
+
+```bash
+bash kanvibe.sh stop
+```
+
+KanVibe 서버와 PostgreSQL 컨테이너를 종료합니다.
 
 브라우저에서 `http://localhost:4885` 접속.
 
