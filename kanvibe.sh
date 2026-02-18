@@ -110,6 +110,10 @@ msg() {
     en:brew_missing)    text="Homebrew is not installed. Please install from https://brew.sh" ;;
     zh:brew_missing)    text="未安装 Homebrew。请从 https://brew.sh 安装。" ;;
 
+    ko:gh_not_authed)   text="gh가 인증되지 않았습니다. 'gh auth login'을 실행해주세요.\n         인증 없이는 PR URL 자동 감지 및 gh 기반 커밋 기능을 사용할 수 없습니다." ;;
+    en:gh_not_authed)   text="gh is not authenticated. Please run 'gh auth login'.\n         Without authentication, PR URL detection and gh-based commit features won't work." ;;
+    zh:gh_not_authed)   text="gh 未认证。请运行 'gh auth login'。\n         未认证将无法使用 PR URL 自动检测和基于 gh 的提交功能。" ;;
+
     ko:optional_label)  text="선택" ;;
     en:optional_label)  text="optional" ;;
     zh:optional_label)  text="可选" ;;
@@ -289,10 +293,19 @@ check_deps() {
   check_single_dep "Docker"   "docker" "required" ""       "brew install --cask docker" || true
   check_single_dep "git"      "git"    "required" ""       "brew install git"  || true
   check_single_dep "tmux"     "tmux"   "required" ""       "brew install tmux" || true
+  check_single_dep "gh"       "gh"     "required" ""       "brew install gh"   || true
+
+  # gh 인증 상태 체크
+  if command -v gh &>/dev/null; then
+    if gh auth status &>/dev/null; then
+      printf "  ${CHECK} gh auth ${DIM}(authenticated)${NC}\n"
+    else
+      printf "  ${WARN} $(msg gh_not_authed)\n"
+    fi
+  fi
 
   # 선택 의존성
   check_single_dep "zellij"   "zellij" "optional" ""       "brew install zellij" || true
-  check_single_dep "gh"       "gh"     "optional" ""       "brew install gh"     || true
 
   echo ""
 }
@@ -383,6 +396,7 @@ install_missing_deps() {
     check_single_dep "Docker"   "docker" "required" ""       "" || true
     check_single_dep "git"      "git"    "required" ""       "" || true
     check_single_dep "tmux"     "tmux"   "required" ""       "" || true
+    check_single_dep "gh"       "gh"     "required" ""       "" || true
 
     if [ "${#MISSING_REQUIRED[@]}" -gt 0 ]; then
       echo ""
