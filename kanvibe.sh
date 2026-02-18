@@ -353,14 +353,20 @@ install_single_dep() {
   printf "  ${ARROW} $(msg installing "$name")\n"
 
   if [ "$method" = "corepack_pnpm" ]; then
-    # pnpm은 corepack으로 설치
-    if corepack enable && corepack prepare pnpm@latest --activate 2>/dev/null; then
+    # pnpm 설치: corepack 우선, 없으면 npm 글로벌 설치로 fallback
+    if command -v corepack &>/dev/null; then
+      if corepack enable && corepack prepare pnpm@latest --activate 2>/dev/null; then
+        printf "  ${CHECK} $(msg install_ok "$name")\n"
+        return 0
+      fi
+    fi
+    # corepack 없거나 실패 시 npm으로 설치
+    if command -v npm &>/dev/null && npm install -g pnpm 2>/dev/null; then
       printf "  ${CHECK} $(msg install_ok "$name")\n"
       return 0
-    else
-      printf "  ${CROSS} $(msg install_fail "$name")\n"
-      return 1
     fi
+    printf "  ${CROSS} $(msg install_fail "$name")\n"
+    return 1
   fi
 
   # Homebrew 기반 설치
