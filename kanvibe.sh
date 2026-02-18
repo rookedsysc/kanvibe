@@ -427,7 +427,7 @@ check_deps() {
   MISSING_OPTIONAL=()
 
   # 필수 의존성 (PKG_MANAGER에 따라 install_method 분기)
-  local node_method docker_method git_method tmux_method gh_method
+  local node_method docker_method git_method tmux_method gh_method make_method
   case "$PKG_MANAGER" in
     brew)
       node_method="brew install node"
@@ -435,6 +435,7 @@ check_deps() {
       git_method="brew install git"
       tmux_method="brew install tmux"
       gh_method="brew install gh"
+      make_method="xcode-select --install"
       ;;
     apt)
       node_method="install_node_apt"
@@ -442,6 +443,7 @@ check_deps() {
       git_method="apt_install git"
       tmux_method="apt_install tmux"
       gh_method="install_gh_apt"
+      make_method="apt_install build-essential python3"
       ;;
     *)
       node_method="pkg_mgr_missing"
@@ -449,6 +451,7 @@ check_deps() {
       git_method="pkg_mgr_missing"
       tmux_method="pkg_mgr_missing"
       gh_method="pkg_mgr_missing"
+      make_method="pkg_mgr_missing"
       ;;
   esac
 
@@ -458,6 +461,7 @@ check_deps() {
   check_single_dep "git"      "git"    "required" ""       "$git_method"    || true
   check_single_dep "tmux"     "tmux"   "required" ""       "$tmux_method"   || true
   check_single_dep "gh"       "gh"     "required" ""       "$gh_method"     || true
+  check_single_dep "make"     "make"   "required" ""       "$make_method"   || true
 
   # gh 인증 상태 체크
   if command -v gh &>/dev/null; then
@@ -700,6 +704,7 @@ install_missing_deps() {
     check_single_dep "git"      "git"    "required" ""       "" || true
     check_single_dep "tmux"     "tmux"   "required" ""       "" || true
     check_single_dep "gh"       "gh"     "required" ""       "" || true
+    check_single_dep "make"     "make"   "required" ""       "" || true
 
     if [ "${#MISSING_REQUIRED[@]}" -gt 0 ]; then
       echo ""
@@ -789,7 +794,9 @@ cmd_start() {
   # 1. pnpm install
   step 1 $total "$(msg step_deps)"
   start_log
-  pnpm install --reporter=silent >> "$LOG_FILE" 2>&1 || pnpm install >> "$LOG_FILE" 2>&1
+  if ! pnpm install --reporter=silent >> "$LOG_FILE" 2>&1; then
+    pnpm install >> "$LOG_FILE" 2>&1 || true
+  fi
   stop_log
   step_done 1 $total "$(msg step_deps)"
 
@@ -828,7 +835,7 @@ cmd_start() {
   # 4. 마이그레이션
   step 4 $total "$(msg step_migrate)"
   start_log
-  pnpm migration:run >> "$LOG_FILE" 2>&1
+  pnpm migration:run >> "$LOG_FILE" 2>&1 || true
   stop_log
   step_done 4 $total "$(msg step_migrate)"
 
@@ -836,7 +843,7 @@ cmd_start() {
   step 5 $total "$(msg step_build)"
   export NODE_ENV=production
   start_log
-  pnpm build >> "$LOG_FILE" 2>&1
+  pnpm build >> "$LOG_FILE" 2>&1 || { stop_log; printf "  ${CROSS} $(msg step_build) failed\n\n"; exit 1; }
   stop_log
   step_done 5 $total "$(msg step_build)"
 
