@@ -79,7 +79,9 @@ export default function Terminal({ taskId }: TerminalProps) {
 
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     const wsHost = window.location.hostname;
-    const wsPort = parseInt(window.location.port || "4885", 10) + 10000;
+    const wsPort = process.env.NEXT_PUBLIC_WS_PORT
+      ? parseInt(process.env.NEXT_PUBLIC_WS_PORT, 10)
+      : parseInt(window.location.port || "4885", 10) + 2;
     const wsUrl = `${protocol}//${wsHost}:${wsPort}/api/terminal/${taskId}?cols=${term.cols}&rows=${term.rows}`;
     const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
@@ -125,7 +127,16 @@ export default function Terminal({ taskId }: TerminalProps) {
     const resizeObserver = new ResizeObserver(() => fitAddon.fit());
     resizeObserver.observe(terminalRef.current);
 
+    /** 탭 전환 시 해당 태스크의 세션으로 자동 포커스 */
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible" && ws.readyState === WebSocket.OPEN) {
+        ws.send("\x01" + JSON.stringify({ type: "focus" }));
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
     return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
       resizeObserver.disconnect();
       ws.close();
       term.dispose();

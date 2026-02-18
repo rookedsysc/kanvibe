@@ -8,7 +8,10 @@ import { SessionType } from "@/entities/KanbanTask";
  */
 interface TerminalEntry {
   pty: import("node-pty").IPty;
-  ws: WebSocket;
+  clients: Set<WebSocket>;
+  sessionType: SessionType;
+  sessionName: string;
+  windowName: string;
 }
 
 const activeTerminals = new Map<string, TerminalEntry>();
@@ -70,9 +73,37 @@ export async function attachLocalSession(
   const initialCols = cols ?? 120;
   const initialRows = rows ?? 30;
 
-  /** 동일 taskId로 이미 활성 터미널이 있으면 먼저 정리한다 */
-  if (activeTerminals.has(taskId)) {
-    detachSession(taskId);
+  /** 동일 taskId로 이미 활성 PTY가 있으면 기존 PTY를 공유한다 */
+  const existing = activeTerminals.get(taskId);
+  if (existing) {
+    existing.clients.add(ws);
+
+    ws.on("message", (message) => {
+      const data = message.toString();
+      if (data.startsWith("\x01")) {
+        try {
+          const parsed = JSON.parse(data.slice(1));
+          if (parsed.type === "resize" && parsed.cols && parsed.rows) {
+            existing.pty.resize(parsed.cols, parsed.rows);
+          } else if (parsed.type === "focus") {
+            focusSession(taskId);
+          }
+        } catch {
+          existing.pty.write(data);
+        }
+        return;
+      }
+      existing.pty.write(data);
+    });
+
+    ws.on("close", () => {
+      existing.clients.delete(ws);
+      if (existing.clients.size === 0) {
+        detachSession(taskId);
+      }
+    });
+
+    return;
   }
 
   /** tmux window가 없으면 세션과 window를 자동 생성한다 */
@@ -163,11 +194,14 @@ export async function attachLocalSession(
     return;
   }
 
-  activeTerminals.set(taskId, { pty: ptyProcess, ws });
+  const entry: TerminalEntry = { pty: ptyProcess, clients: new Set([ws]), sessionType, sessionName, windowName };
+  activeTerminals.set(taskId, entry);
 
   ptyProcess.onData((data) => {
-    if (ws.readyState === ws.OPEN) {
-      ws.send(data);
+    for (const client of entry.clients) {
+      if (client.readyState === client.OPEN) {
+        client.send(data);
+      }
     }
   });
 
@@ -183,6 +217,8 @@ export async function attachLocalSession(
         const parsed = JSON.parse(data.slice(1));
         if (parsed.type === "resize" && parsed.cols && parsed.rows) {
           ptyProcess.resize(parsed.cols, parsed.rows);
+        } else if (parsed.type === "focus") {
+          focusSession(taskId);
         }
       } catch {
         // 파싱 실패 시 일반 입력으로 처리
@@ -195,7 +231,10 @@ export async function attachLocalSession(
   });
 
   ws.on("close", () => {
-    detachSession(taskId);
+    entry.clients.delete(ws);
+    if (entry.clients.size === 0) {
+      detachSession(taskId);
+    }
   });
 }
 
@@ -286,7 +325,30 @@ export async function attachRemoteSession(
   });
 }
 
-/** 터미널 세션을 분리하고 PTY 프로세스를 종료한다 */
+/** 탭 전환 시 해당 태스크의 tmux window / zellij tab으로 포커스를 이동한다 */
+export function focusSession(taskId: string): void {
+  const entry = activeTerminals.get(taskId);
+  if (!entry) return;
+
+  try {
+    if (entry.sessionType === SessionType.TMUX) {
+      const windowIndex = getTmuxWindowIndex(entry.sessionName, entry.windowName);
+      const target = windowIndex
+        ? `${entry.sessionName}:${windowIndex}`
+        : `${entry.sessionName}:${entry.windowName}`;
+      execSync(`tmux select-window -t "${target}"`, { timeout: 3000, stdio: "ignore" });
+    } else {
+      execSync(
+        `zellij action --session "${entry.sessionName}" go-to-tab-name "${entry.windowName}"`,
+        { timeout: 3000, stdio: "ignore" },
+      );
+    }
+  } catch {
+    // focus 실패 시 무시 (세션이 종료되었을 수 있음)
+  }
+}
+
+/** 터미널 세션을 분리하고 PTY 프로세스를 종료한다. 모든 연결된 클라이언트를 닫는다 */
 export function detachSession(taskId: string): void {
   const entry = activeTerminals.get(taskId);
   if (!entry) return;
@@ -297,9 +359,12 @@ export function detachSession(taskId: string): void {
     // 이미 종료된 경우 무시
   }
 
-  if (entry.ws.readyState === entry.ws.OPEN) {
-    entry.ws.close();
+  for (const client of entry.clients) {
+    if (client.readyState === client.OPEN) {
+      client.close();
+    }
   }
+  entry.clients.clear();
 
   activeTerminals.delete(taskId);
 }
