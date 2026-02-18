@@ -32,7 +32,10 @@ export default async function LocaleLayout({ children, params }: Props) {
   setRequestLocale(locale);
   const [messages, notificationSettings] = await Promise.all([
     getMessages(),
-    getNotificationSettings(),
+    getNotificationSettings().catch(() => ({
+      isEnabled: true,
+      enabledStatuses: ["progress", "pending", "review"],
+    })),
   ]);
 
   return (
