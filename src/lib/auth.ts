@@ -1,5 +1,5 @@
+import { createHmac, randomUUID, timingSafeEqual } from "crypto";
 import { cookies } from "next/headers";
-import { randomUUID, createHmac, timingSafeEqual } from "crypto";
 
 const SESSION_COOKIE = "kanvibe_session";
 
@@ -25,20 +25,25 @@ function verifySignedToken(signedToken: string): string | null {
 
   const token = signedToken.slice(0, dotIndex);
   const providedSig = signedToken.slice(dotIndex + 1);
-  const expectedSig = createHmac("sha256", getSecret()).update(token).digest("hex");
+  const expectedSig = createHmac("sha256", getSecret())
+    .update(token)
+    .digest("hex");
 
   if (providedSig.length !== expectedSig.length) return null;
 
   const isValid = timingSafeEqual(
     Buffer.from(providedSig),
-    Buffer.from(expectedSig)
+    Buffer.from(expectedSig),
   );
 
   return isValid ? token : null;
 }
 
 /** env에 설정된 자격 증명과 비교하여 로그인을 검증한다 */
-export function validateCredentials(username: string, password: string): boolean {
+export function validateCredentials(
+  username: string,
+  password: string,
+): boolean {
   return (
     username === process.env.KANVIBE_USER &&
     password === process.env.KANVIBE_PASSWORD
