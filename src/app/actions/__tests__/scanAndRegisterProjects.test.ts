@@ -35,7 +35,7 @@ vi.mock("@/lib/gitOperations", () => ({
 vi.mock("@/lib/worktree", () => ({
   isWindowAlive: vi.fn().mockResolvedValue(false),
   formatWindowName: vi.fn((name: string) => name),
-  createSessionWithoutWorktree: vi.fn(),
+  createSessionWithoutWorktree: vi.fn().mockResolvedValue({ sessionName: "test-session" }),
 }));
 
 vi.mock("@/lib/claudeHooksSetup", () => ({
