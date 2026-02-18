@@ -186,6 +186,7 @@
     "prLink": "PR 链接",
     "project": "项目",
     "baseProject": "Base",
+    "projectColor": "项目颜色",
     "actions": "状态变更",
     "deleteConfirm": "确定要删除此任务吗？",
     "hooksStatus": "Hooks 状态",

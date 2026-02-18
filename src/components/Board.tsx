@@ -131,6 +131,54 @@ export default function Board({ initialTasks, initialDoneTotal, initialDoneLimit
     return nameMap;
   }, [projects]);
 
+  /** 프로젝트명 → hex 색상 매핑. DB color 우선, 없으면 해시 기반 프리셋 할당 */
+  const projectColorMap = useMemo(() => {
+    const PRESET_COLORS = [
+      "#F9A8D4", "#93C5FD", "#86EFAC", "#C4B5FD",
+      "#FDBA74", "#FDE047", "#5EEAD4", "#A5B4FC",
+    ];
+    const colorMap: Record<string, string> = {};
+
+    const uniqueNames = new Set(Object.values(projectNameMap));
+    for (const name of uniqueNames) {
+      const mainProject = projects.find(
+        (p) => p.name === name && !extractMainRepoPath(p.repoPath)
+      );
+      if (mainProject?.color) {
+        colorMap[name] = mainProject.color;
+      } else {
+        let hash = 0;
+        for (let i = 0; i < name.length; i++) {
+          hash = (hash * 31 + name.charCodeAt(i)) | 0;
+        }
+        colorMap[name] = PRESET_COLORS[((hash % 8) + 8) % 8];
+      }
+    }
+    return colorMap;
+  }, [projectNameMap, projects]);
+
+  /** projectId → defaultBranch 매핑. worktree 프로젝트는 메인 프로젝트의 defaultBranch를 상속 */
+  const projectDefaultBranchMap = useMemo(() => {
+    const branchMap: Record<string, string> = {};
+    const pathToBranch: Record<string, string> = {};
+
+    for (const project of projects) {
+      const mainPath = extractMainRepoPath(project.repoPath);
+      if (!mainPath) {
+        pathToBranch[project.repoPath] = project.defaultBranch;
+      }
+    }
+
+    for (const project of projects) {
+      const mainPath = extractMainRepoPath(project.repoPath);
+      branchMap[project.id] = mainPath
+        ? (pathToBranch[mainPath] ?? project.defaultBranch)
+        : project.defaultBranch;
+    }
+
+    return branchMap;
+  }, [projects]);
+
   /** 필터 드롭다운에 표시할 메인 프로젝트 목록 (worktree 제외) */
   const filterableProjects = useMemo(
     () => projects.filter((p) => !p.isWorktree),
@@ -436,6 +484,8 @@ export default function Board({ initialTasks, initialDoneTotal, initialDoneLimit
                   colorClass={col.colorClass}
                   onContextMenu={handleContextMenu}
                   projectNameMap={projectNameMap}
+                  projectColorMap={projectColorMap}
+                  projectDefaultBranchMap={projectDefaultBranchMap}
                   {...(col.status === TaskStatus.DONE && {
                     totalCount: doneTotal,
                     hasMore: doneOffset < doneTotal,

@@ -3,6 +3,7 @@
 import { useTranslations } from "next-intl";
 import type { KanbanTask } from "@/entities/KanbanTask";
 import PriorityEditor from "@/components/PriorityEditor";
+import ProjectColorEditor from "@/components/ProjectColorEditor";
 
 interface TaskDetailInfoCardProps {
   task: KanbanTask;
@@ -24,12 +25,23 @@ export default function TaskDetailInfoCard({
         </h3>
         <dl className="space-y-3">
           {task.project && (
-            <div className="flex items-center justify-between gap-2">
-              <dt className="text-xs text-text-muted">{t("project")}</dt>
-              <dd className="text-xs px-2 py-0.5 rounded-full font-medium bg-tag-project-bg text-tag-project-text truncate max-w-[160px]">
-                {task.project.name}
-              </dd>
-            </div>
+            <>
+              <div className="flex items-center justify-between gap-2">
+                <dt className="text-xs text-text-muted">{t("project")}</dt>
+                <dd className="text-xs px-2 py-0.5 rounded-full font-medium bg-tag-project-bg text-tag-project-text truncate max-w-[160px]">
+                  {task.project.name}
+                </dd>
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <dt className="text-xs text-text-muted">{t("projectColor")}</dt>
+                <dd>
+                  <ProjectColorEditor
+                    projectId={task.project.id}
+                    currentColor={task.project.color}
+                  />
+                </dd>
+              </div>
+            </>
           )}
           <div className="flex items-center justify-between gap-2">
             <dt className="text-xs text-text-muted">{t("priority")}</dt>

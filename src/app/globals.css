@@ -107,6 +107,25 @@
   --color-tag-base-bg: #202632;
   --color-tag-base-text: #FFFFFF;
 
+  /* Semantic: Project Group (pastel) */
+  --color-group-0-border: #F9A8D4;
+  --color-group-0-bg: #FDF2F8;
+  --color-group-1-border: #93C5FD;
+  --color-group-1-bg: #EFF6FF;
+  --color-group-2-border: #86EFAC;
+  --color-group-2-bg: #F0FDF4;
+  --color-group-3-border: #C4B5FD;
+  --color-group-3-bg: #F5F3FF;
+  --color-group-4-border: #FDBA74;
+  --color-group-4-bg: #FFF7ED;
+  --color-group-5-border: #FDE047;
+  --color-group-5-bg: #FEFCE8;
+  --color-group-6-border: #5EEAD4;
+  --color-group-6-bg: #F0FDFA;
+  --color-group-7-border: #A5B4FC;
+  --color-group-7-bg: #EEF2FF;
+  --color-group-line: var(--gray-400);
+
   /* Semantic: Priority */
   --color-priority-low-bg: var(--blue-50);
   --color-priority-low-text: var(--blue-600);
@@ -216,6 +235,25 @@
   --color-priority-medium-text: var(--color-priority-medium-text);
   --color-priority-high-bg: var(--color-priority-high-bg);
   --color-priority-high-text: var(--color-priority-high-text);
+
+  /* Project Group (pastel) */
+  --color-group-0-border: var(--color-group-0-border);
+  --color-group-0-bg: var(--color-group-0-bg);
+  --color-group-1-border: var(--color-group-1-border);
+  --color-group-1-bg: var(--color-group-1-bg);
+  --color-group-2-border: var(--color-group-2-border);
+  --color-group-2-bg: var(--color-group-2-bg);
+  --color-group-3-border: var(--color-group-3-border);
+  --color-group-3-bg: var(--color-group-3-bg);
+  --color-group-4-border: var(--color-group-4-border);
+  --color-group-4-bg: var(--color-group-4-bg);
+  --color-group-5-border: var(--color-group-5-border);
+  --color-group-5-bg: var(--color-group-5-bg);
+  --color-group-6-border: var(--color-group-6-border);
+  --color-group-6-bg: var(--color-group-6-bg);
+  --color-group-7-border: var(--color-group-7-border);
+  --color-group-7-bg: var(--color-group-7-bg);
+  --color-group-line: var(--color-group-line);
 
   /* Terminal Chrome */
   --color-terminal-chrome: var(--color-terminal-chrome);

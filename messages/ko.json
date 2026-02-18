@@ -186,6 +186,7 @@
     "prLink": "PR 링크",
     "project": "프로젝트",
     "baseProject": "Base",
+    "projectColor": "프로젝트 색상",
     "actions": "상태 변경",
     "deleteConfirm": "이 작업을 삭제하시겠습니까?",
     "hooksStatus": "Hooks 상태",
