@@ -285,34 +285,65 @@ step_done() {
   printf "  ${CHECK} ${DIM}[%d/%d]${NC} %b\n" "$current" "$total" "$message"
 }
 
-# ── 로딩 애니메이션 (. .. ...) ────────────────────────────────
-DOTS_PID=""
+# ── 로그 스크롤 표시 (마지막 3줄) ─────────────────────────────
+LOG_FILE=""
+LOG_COUNT_FILE=""
+LOG_TAIL_PID=""
+LOG_MAX_WIDTH=$(( $(tput cols 2>/dev/null || echo 100) - 6 ))
 
-start_dots() {
+start_log() {
+  LOG_FILE=$(mktemp /tmp/kanvibe_log.XXXXXX)
+  LOG_COUNT_FILE="${LOG_FILE}.count"
+  echo "0" > "$LOG_COUNT_FILE"
   (
     trap 'exit 0' TERM INT
+    local prev_size=0
+    local displayed=0
     while true; do
-      printf "\r    .  "
-      sleep 0.3
-      printf "\r    .. "
-      sleep 0.3
-      printf "\r    ..."
+      local cur_size
+      cur_size=$(wc -c < "$LOG_FILE" 2>/dev/null || echo 0)
+      cur_size=${cur_size// /}
+      if [ "$cur_size" != "$prev_size" ]; then
+        if [ "$displayed" -gt 0 ]; then
+          printf "\033[${displayed}A\033[J"
+        fi
+        displayed=0
+        while IFS= read -r line; do
+          printf "    \033[2m%.*s\033[0m\n" "$LOG_MAX_WIDTH" "$line"
+          displayed=$((displayed + 1))
+        done < <(tail -3 "$LOG_FILE" 2>/dev/null)
+        echo "$displayed" > "$LOG_COUNT_FILE"
+        prev_size=$cur_size
+      fi
       sleep 0.3
     done
   ) &
-  DOTS_PID=$!
+  LOG_TAIL_PID=$!
 }
 
-stop_dots() {
-  if [ -n "${DOTS_PID:-}" ]; then
-    kill "$DOTS_PID" 2>/dev/null
-    wait "$DOTS_PID" 2>/dev/null || true
-    printf "\r       \r"
-    DOTS_PID=""
+stop_log() {
+  if [ -n "${LOG_TAIL_PID:-}" ]; then
+    kill "$LOG_TAIL_PID" 2>/dev/null
+    wait "$LOG_TAIL_PID" 2>/dev/null || true
+    LOG_TAIL_PID=""
+  fi
+  if [ -n "${LOG_COUNT_FILE:-}" ] && [ -f "$LOG_COUNT_FILE" ]; then
+    local count
+    count=$(cat "$LOG_COUNT_FILE" 2>/dev/null || echo 0)
+    count=${count// /}
+    if [ "$count" -gt 0 ]; then
+      printf "\033[${count}A\033[J"
+    fi
+    rm -f "$LOG_COUNT_FILE"
+    LOG_COUNT_FILE=""
+  fi
+  if [ -n "${LOG_FILE:-}" ]; then
+    rm -f "$LOG_FILE"
+    LOG_FILE=""
   fi
 }
 
-trap 'stop_dots' EXIT
+trap 'stop_log' EXIT
 
 # ── .env 로드 ────────────────────────────────────────────────
 load_env() {
@@ -520,6 +551,7 @@ install_zellij_binary() {
 install_single_dep() {
   local name="$1"
   local method="$2"
+  local skip_confirm="${3:-false}"
 
   # Node.js 없으면 pnpm 설치 스킵
   if [ "$name" = "pnpm" ] && ! command -v node &>/dev/null; then
@@ -527,17 +559,19 @@ install_single_dep() {
     return 1
   fi
 
-  if ! confirm_install "$name"; then
-    printf "  ${DIM}  $(msg install_skip "$name")${NC}\n"
-    return 1
+  if [ "$skip_confirm" != "true" ]; then
+    if ! confirm_install "$name"; then
+      printf "  ${DIM}  $(msg install_skip "$name")${NC}\n"
+      return 1
+    fi
   fi
 
   printf "  ${ARROW} $(msg installing "$name")\n"
-  start_dots
+  start_log
 
   # 패키지 매니저 없음
   if [ "$method" = "pkg_mgr_missing" ]; then
-    stop_dots
+    stop_log
     printf "  ${CROSS} $(msg pkg_mgr_missing)\n"
     return 1
   fi
@@ -545,18 +579,18 @@ install_single_dep() {
   # pnpm: corepack → npm fallback
   if [ "$method" = "corepack_pnpm" ]; then
     if command -v corepack &>/dev/null; then
-      if corepack enable && corepack prepare pnpm@latest --activate > /dev/null 2>&1; then
-        stop_dots
+      if corepack enable >> "$LOG_FILE" 2>&1 && corepack prepare pnpm@latest --activate >> "$LOG_FILE" 2>&1; then
+        stop_log
         printf "  ${CHECK} $(msg install_ok "$name")\n"
         return 0
       fi
     fi
-    if command -v npm &>/dev/null && npm install -g pnpm > /dev/null 2>&1; then
-      stop_dots
+    if command -v npm &>/dev/null && npm install -g pnpm >> "$LOG_FILE" 2>&1; then
+      stop_log
       printf "  ${CHECK} $(msg install_ok "$name")\n"
       return 0
     fi
-    stop_dots
+    stop_log
     printf "  ${CROSS} $(msg install_fail "$name")\n"
     return 1
   fi
@@ -564,12 +598,12 @@ install_single_dep() {
   # Linux apt 전용 설치 함수
   if [ "$method" = "install_node_apt" ] || [ "$method" = "install_docker_apt" ] || \
      [ "$method" = "install_gh_apt" ] || [ "$method" = "install_zellij_binary" ]; then
-    if $method > /dev/null 2>&1; then
-      stop_dots
+    if $method >> "$LOG_FILE" 2>&1; then
+      stop_log
       printf "  ${CHECK} $(msg install_ok "$name")\n"
       return 0
     else
-      stop_dots
+      stop_log
       printf "  ${CROSS} $(msg install_fail "$name")\n"
       return 1
     fi
@@ -577,12 +611,12 @@ install_single_dep() {
 
   # apt_install (단순 패키지)
   if [[ "$method" == apt_install\ * ]]; then
-    if eval "$method" > /dev/null 2>&1; then
-      stop_dots
+    if eval "$method" >> "$LOG_FILE" 2>&1; then
+      stop_log
       printf "  ${CHECK} $(msg install_ok "$name")\n"
       return 0
     else
-      stop_dots
+      stop_log
       printf "  ${CROSS} $(msg install_fail "$name")\n"
       return 1
     fi
@@ -590,17 +624,17 @@ install_single_dep() {
 
   # Homebrew 기반 설치
   if ! command -v brew &>/dev/null; then
-    stop_dots
+    stop_log
     printf "  ${CROSS} $(msg brew_missing)\n"
     return 1
   fi
 
-  if eval "$method" > /dev/null 2>&1; then
-    stop_dots
+  if eval "$method" >> "$LOG_FILE" 2>&1; then
+    stop_log
     printf "  ${CHECK} $(msg install_ok "$name")\n"
     return 0
   else
-    stop_dots
+    stop_log
     printf "  ${CROSS} $(msg install_fail "$name")\n"
     return 1
   fi
@@ -609,17 +643,17 @@ install_single_dep() {
 install_missing_deps() {
   local has_failure=0
 
-  # 필수 의존성 설치
+  # 필수 의존성 설치 (프롬프트 없이 자동 설치)
   for entry in "${MISSING_REQUIRED[@]}"; do
     local name="${entry%%|*}"
     local method="${entry##*|}"
     echo ""
-    if ! install_single_dep "$name" "$method"; then
+    if ! install_single_dep "$name" "$method" "true"; then
       has_failure=1
     fi
   done
 
-  # 선택 의존성 설치
+  # 선택 의존성 설치 (프롬프트 표시)
   for entry in "${MISSING_OPTIONAL[@]}"; do
     local name="${entry%%|*}"
     local method="${entry##*|}"
@@ -733,9 +767,9 @@ cmd_start() {
 
   # 1. pnpm install
   step 1 $total "$(msg step_deps)"
-  start_dots
-  pnpm install --reporter=silent > /dev/null 2>&1 || pnpm install > /dev/null 2>&1
-  stop_dots
+  start_log
+  pnpm install --reporter=silent >> "$LOG_FILE" 2>&1 || pnpm install >> "$LOG_FILE" 2>&1
+  stop_log
   step_done 1 $total "$(msg step_deps)"
 
   # 2. PostgreSQL 시작
@@ -744,44 +778,45 @@ cmd_start() {
     printf "\n  ${CROSS} $(msg docker_not_running)\n\n"
     exit 1
   fi
-  start_dots
-  if ! docker compose up -d db > /dev/null 2>&1; then
-    stop_dots
+  start_log
+  if ! docker compose up -d db >> "$LOG_FILE" 2>&1; then
+    stop_log
     printf "  ${CROSS} $(msg step_db_fail)\n\n"
     exit 1
   fi
-  stop_dots
+  stop_log
   step_done 2 $total "$(msg step_db)"
 
   # 3. DB 대기 (최대 30초)
   step 3 $total "$(msg step_db_wait)"
-  start_dots
+  start_log
   local db_wait=0
   until docker compose exec db pg_isready -U "${KANVIBE_USER:-admin}" -q 2>/dev/null; do
     sleep 1
     db_wait=$((db_wait + 1))
+    echo "Waiting for DB... (${db_wait}s)" >> "$LOG_FILE"
     if [ "$db_wait" -ge 30 ]; then
-      stop_dots
+      stop_log
       printf "  ${CROSS} $(msg step_db_timeout "30")\n\n"
       exit 1
     fi
   done
-  stop_dots
+  stop_log
   step_done 3 $total "$(msg step_db_ready)"
 
   # 4. 마이그레이션
   step 4 $total "$(msg step_migrate)"
-  start_dots
-  pnpm migration:run > /dev/null 2>&1
-  stop_dots
+  start_log
+  pnpm migration:run >> "$LOG_FILE" 2>&1
+  stop_log
   step_done 4 $total "$(msg step_migrate)"
 
   # 5. Next.js 빌드
   step 5 $total "$(msg step_build)"
   export NODE_ENV=production
-  start_dots
-  pnpm build > /dev/null 2>&1
-  stop_dots
+  start_log
+  pnpm build >> "$LOG_FILE" 2>&1
+  stop_log
   step_done 5 $total "$(msg step_build)"
 
   # 6. 서버 시작 — 실행 모드 선택
