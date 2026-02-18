@@ -6,6 +6,36 @@
 
 - Docker Desktop 실행 중
 
+## Docker 이미지 빌드
+
+```bash
+# 모든 의존성 설치된 환경
+docker build -t kanvibe-cli-test -f test/kanvibe-cli/Dockerfile .
+
+# 의존성 누락 환경 (최소 Ubuntu)
+docker build -t kanvibe-cli-bare -f test/kanvibe-cli/Dockerfile.bare .
+```
+
+## 컨테이너 접속
+
+```bash
+# 풀 환경 컨테이너에 bash로 접속
+docker run --rm -it kanvibe-cli-test bash
+
+# bare 환경 컨테이너에 bash로 접속
+docker run --rm -it kanvibe-cli-bare bash
+
+# Docker 소켓 마운트 + 포트 매핑으로 접속 (풀 통합 테스트)
+docker run --rm -it \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -p 4885:4885 \
+  kanvibe-cli-test bash
+```
+
+컨테이너 내부에서 자유롭게 `bash kanvibe.sh start`, `bash kanvibe.sh stop` 등을 실행할 수 있다.
+
+---
+
 ## 테스트 시나리오
 
 ### 1. 의존성 누락 환경 테스트 (Dockerfile.bare)
@@ -13,9 +43,6 @@
 의존성이 대부분 없는 클린 Ubuntu에서 체크 UI가 올바르게 동작하는지 확인.
 
 ```bash
-# 빌드
-docker build -t kanvibe-cli-bare -f test/kanvibe-cli/Dockerfile.bare .
-
 # 영어 (기본)
 docker run --rm -it kanvibe-cli-bare bash kanvibe.sh
 
@@ -32,7 +59,7 @@ docker run --rm -it kanvibe-cli-bare bash kanvibe.sh start
 **확인 사항:**
 - [ ] usage 메시지가 로케일에 맞게 출력되는가
 - [ ] git만 ✓, 나머지(Node.js, pnpm, Docker, tmux, gh)는 ✗로 표시되는가
-- [ ] zellij가 `!` (optional)로 표시되는가
+- [ ] tmux가 없으므로 zellij가 `!` (optional)로 표시되는가
 - [ ] start 시 필수 의존성 누락 에러로 종료되는가
 
 ---
@@ -42,9 +69,6 @@ docker run --rm -it kanvibe-cli-bare bash kanvibe.sh start
 모든 필수 의존성이 설치된 환경에서 체크 UI 확인.
 
 ```bash
-# 빌드
-docker build -t kanvibe-cli-test -f test/kanvibe-cli/Dockerfile .
-
 # 의존성 체크 확인
 docker run --rm -it kanvibe-cli-test bash kanvibe.sh
 
@@ -55,8 +79,9 @@ docker run --rm -it kanvibe-cli-test bash kanvibe.sh start
 **확인 사항:**
 - [ ] 모든 필수 의존성이 ✓로 표시되는가
 - [ ] gh auth 미인증 경고가 표시되는가
-- [ ] zellij가 ✗ (optional)로 표시되는가
+- [ ] tmux가 설치되어 있으므로 zellij 체크가 출력되지 않는가
 - [ ] "모든 의존성이 준비되었습니다" 메시지가 출력되는가
+- [ ] tmux 추천 설정 설치 프롬프트가 나타나는가 (~/.tmux.conf 없는 경우)
 
 ---
 
@@ -65,9 +90,6 @@ docker run --rm -it kanvibe-cli-test bash kanvibe.sh start
 호스트 Docker 소켓을 마운트하여 실제 PostgreSQL 컨테이너를 띄우고 전체 start/stop 플로우를 테스트.
 
 ```bash
-# 빌드
-docker build -t kanvibe-cli-test -f test/kanvibe-cli/Dockerfile .
-
 # start (포그라운드 모드 — 1 선택)
 docker run --rm -it \
   -v /var/run/docker.sock:/var/run/docker.sock \
@@ -97,8 +119,6 @@ docker run --rm -it \
 모든 로케일에서 메시지가 올바르게 출력되는지 한번에 확인.
 
 ```bash
-docker build -t kanvibe-cli-bare -f test/kanvibe-cli/Dockerfile.bare .
-
 # 3개 로케일 순회 테스트
 for lang in en_US.UTF-8 ko_KR.UTF-8 zh_CN.UTF-8; do
   echo "=== $lang ==="
@@ -127,10 +147,43 @@ docker run --rm -it kanvibe-cli-test bash kanvibe.sh stop
 
 ---
 
-## 정리
-
-테스트 후 Docker 이미지 삭제:
+### 6. tmux 설정 설치 테스트
 
 ```bash
+# 컨테이너 접속 후 수동 테스트
+docker run --rm -it kanvibe-cli-test bash
+
+# 컨테이너 내부에서:
+ls ~/.tmux.conf           # 파일 없음 확인
+bash kanvibe.sh start     # tmux 설정 설치 프롬프트에서 Y 선택
+# Ctrl+C로 중단 후 확인
+cat ~/.tmux.conf          # 설정 파일 다운로드 확인
+ls ~/.tmux/plugins/tpm/   # TPM 설치 확인
+```
+
+**확인 사항:**
+- [ ] ~/.tmux.conf가 없을 때 설치 프롬프트가 나타나는가
+- [ ] Y 선택 시 설정 파일이 다운로드되는가
+- [ ] TPM이 ~/.tmux/plugins/tpm에 설치되는가
+- [ ] N 선택 시 건너뛰는가
+- [ ] 이미 ~/.tmux.conf가 있으면 프롬프트가 나타나지 않는가
+
+---
+
+## 정리
+
+```bash
+# 테스트 이미지 삭제
 docker rmi kanvibe-cli-test kanvibe-cli-bare 2>/dev/null
+
+# 통합 테스트에서 생성된 PostgreSQL 컨테이너 정리 (혹시 남아있는 경우)
+docker ps -a --filter "name=kanvibe" --format "{{.ID}}" | xargs -r docker rm -f
+
+# 관련 볼륨 정리
+docker volume ls --filter "name=kanvibe" --format "{{.Name}}" | xargs -r docker volume rm
+
+# 전체 한번에 정리 (이미지 + 컨테이너 + 볼륨)
+docker ps -a --filter "name=kanvibe" --format "{{.ID}}" | xargs -r docker rm -f && \
+docker rmi kanvibe-cli-test kanvibe-cli-bare 2>/dev/null && \
+docker volume ls --filter "name=kanvibe" --format "{{.Name}}" | xargs -r docker volume rm
 ```

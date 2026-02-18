@@ -31,8 +31,8 @@ RUN apt-get update && apt-get install -y \
     && locale-gen en_US.UTF-8 ko_KR.UTF-8 zh_CN.UTF-8 \
     && rm -rf /var/lib/apt/lists/*
 
-# Node.js 24 설치
-RUN curl -fsSL https://deb.nodesource.com/setup_24.x | bash - \
+# Node.js 22 설치
+RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
     && apt-get install -y nodejs \
     && rm -rf /var/lib/apt/lists/*
 
