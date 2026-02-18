@@ -48,9 +48,9 @@ msg() {
     en:title)           text="KanVibe" ;;
     zh:title)           text="KanVibe" ;;
 
-    ko:usage)           text="사용법: bash kanvibe {start|stop}" ;;
-    en:usage)           text="Usage: bash kanvibe {start|stop}" ;;
-    zh:usage)           text="用法: bash kanvibe {start|stop}" ;;
+    ko:usage)           text="사용법: bash kanvibe.sh {start|stop}" ;;
+    en:usage)           text="Usage: bash kanvibe.sh {start|stop}" ;;
+    zh:usage)           text="用法: bash kanvibe.sh {start|stop}" ;;
 
     ko:unknown_cmd)     text="알 수 없는 명령: $1" ;;
     en:unknown_cmd)     text="Unknown command: $1" ;;
@@ -175,6 +175,26 @@ msg() {
     ko:not_running)     text="KanVibe가 실행 중이 아닙니다" ;;
     en:not_running)     text="KanVibe is not running" ;;
     zh:not_running)     text="KanVibe 未在运行" ;;
+
+    ko:run_mode_prompt) text="실행 모드를 선택하세요:" ;;
+    en:run_mode_prompt) text="Select run mode:" ;;
+    zh:run_mode_prompt) text="选择运行模式:" ;;
+
+    ko:run_fg)          text="포그라운드 (터미널에 직접 출력, Ctrl+C로 종료)" ;;
+    en:run_fg)          text="Foreground (output to terminal, Ctrl+C to stop)" ;;
+    zh:run_fg)          text="前台运行 (输出到终端, Ctrl+C 停止)" ;;
+
+    ko:run_bg)          text="백그라운드 (터미널 닫아도 서버 유지)" ;;
+    en:run_bg)          text="Background (server keeps running after terminal closes)" ;;
+    zh:run_bg)          text="后台运行 (关闭终端后服务器继续运行)" ;;
+
+    ko:run_bg_started)  text="KanVibe가 백그라운드에서 시작되었습니다 (PID: $1)" ;;
+    en:run_bg_started)  text="KanVibe started in background (PID: $1)" ;;
+    zh:run_bg_started)  text="KanVibe 已在后台启动 (PID: $1)" ;;
+
+    ko:run_bg_log)      text="로그: $1" ;;
+    en:run_bg_log)      text="Log: $1" ;;
+    zh:run_bg_log)      text="日志: $1" ;;
 
     ko:done)            text="완료" ;;
     en:done)            text="Done" ;;
@@ -464,15 +484,37 @@ cmd_start() {
   pnpm build 2>&1 | tail -3
   step_done 5 $total "$(msg step_build)"
 
-  # 6. 서버 시작
+  # 6. 서버 시작 — 실행 모드 선택
   step 6 $total "$(msg step_server)"
   echo ""
+  printf "  $(msg run_mode_prompt)\n"
+  printf "    ${BOLD}1)${NC} $(msg run_fg)\n"
+  printf "    ${BOLD}2)${NC} $(msg run_bg)\n"
+  printf "  ${ARROW} [1/2] "
+  read -r run_mode
 
-  # 백그라운드가 아닌 포그라운드 실행 (PID 기록 후 exec)
-  pnpm start &
-  local app_pid=$!
-  echo "$app_pid" > "$PID_FILE"
-  wait "$app_pid"
+  local LOG_FILE="$SCRIPT_DIR/logs/kanvibe.log"
+
+  case "${run_mode:-1}" in
+    2)
+      # 백그라운드 실행
+      mkdir -p "$SCRIPT_DIR/logs"
+      nohup pnpm start > "$LOG_FILE" 2>&1 &
+      local app_pid=$!
+      echo "$app_pid" > "$PID_FILE"
+      echo ""
+      printf "  ${CHECK} $(msg run_bg_started "$app_pid")\n"
+      printf "  ${DIM}  $(msg run_bg_log "$LOG_FILE")${NC}\n"
+      printf "  ${DIM}  bash kanvibe.sh stop${NC}\n\n"
+      ;;
+    *)
+      # 포그라운드 실행
+      pnpm start &
+      local app_pid=$!
+      echo "$app_pid" > "$PID_FILE"
+      wait "$app_pid"
+      ;;
+  esac
 }
 
 # ── stop 커맨드 ──────────────────────────────────────────────
