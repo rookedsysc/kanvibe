@@ -75,6 +75,7 @@
   },
   "contextMenu": {
     "branchOff": "브랜치 분기",
+    "createBranchTodo": "브랜치 기반 TODO 생성",
     "delete": "삭제"
   },
   "settings": {

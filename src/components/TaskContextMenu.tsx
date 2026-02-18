@@ -8,6 +8,7 @@ interface TaskContextMenuProps {
   y: number;
   onClose: () => void;
   onBranch: () => void;
+  onCreateBranchTodo: () => void;
   onDelete: () => void;
   hasBranch: boolean;
 }
@@ -18,6 +19,7 @@ export default function TaskContextMenu({
   y,
   onClose,
   onBranch,
+  onCreateBranchTodo,
   onDelete,
   hasBranch,
 }: TaskContextMenuProps) {
@@ -47,6 +49,14 @@ export default function TaskContextMenu({
           className="w-full text-left px-4 py-2 text-sm text-text-primary hover:bg-bg-page transition-colors"
         >
           {t("branchOff")}
+        </button>
+      )}
+      {hasBranch && (
+        <button
+          onClick={onCreateBranchTodo}
+          className="w-full text-left px-4 py-2 text-sm text-text-primary hover:bg-bg-page transition-colors"
+        >
+          {t("createBranchTodo")}
         </button>
       )}
       <button
