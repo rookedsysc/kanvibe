@@ -308,7 +308,7 @@ check_deps() {
   MISSING_OPTIONAL=()
 
   # 필수 의존성
-  check_single_dep "Node.js"  "node"   "required" "24.0.0" "brew install node" || true
+  check_single_dep "Node.js"  "node"   "required" "22.0.0" "brew install node" || true
   check_single_dep "pnpm"     "pnpm"   "required" ""       "corepack_pnpm"     || true
   check_single_dep "Docker"   "docker" "required" ""       "brew install --cask docker" || true
   check_single_dep "git"      "git"    "required" ""       "brew install git"  || true
@@ -411,7 +411,7 @@ install_missing_deps() {
   # 필수 의존성이 있었으면 재확인
   if [ "${#MISSING_REQUIRED[@]}" -gt 0 ]; then
     MISSING_REQUIRED=()
-    check_single_dep "Node.js"  "node"   "required" "24.0.0" "" || true
+    check_single_dep "Node.js"  "node"   "required" "22.0.0" "" || true
     check_single_dep "pnpm"     "pnpm"   "required" ""       "" || true
     check_single_dep "Docker"   "docker" "required" ""       "" || true
     check_single_dep "git"      "git"    "required" ""       "" || true

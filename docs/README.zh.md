@@ -39,7 +39,7 @@
 
 | 依赖 | 版本 | 必需 | 安装 |
 |------|------|------|------|
-| [Node.js](https://nodejs.org/) | >= 24 | Yes | `brew install node` |
+| [Node.js](https://nodejs.org/) | >= 22 | Yes | `brew install node` |
 | [pnpm](https://pnpm.io/) | 最新 | Yes | `corepack enable && corepack prepare pnpm@latest --activate` |
 | [Docker](https://www.docker.com/) | 最新 | Yes | `brew install --cask docker` |
 | [git](https://git-scm.com/) | 最新 | Yes | `brew install git` |
