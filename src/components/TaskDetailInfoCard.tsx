@@ -3,16 +3,19 @@
 import { useTranslations } from "next-intl";
 import type { KanbanTask } from "@/entities/KanbanTask";
 import PriorityEditor from "@/components/PriorityEditor";
+import { Link } from "@/i18n/navigation";
 import ProjectColorEditor from "@/components/ProjectColorEditor";
 
 interface TaskDetailInfoCardProps {
   task: KanbanTask;
   agentTagStyle: string | null;
+  baseBranchTaskId: string | null;
 }
 
 export default function TaskDetailInfoCard({
   task,
   agentTagStyle,
+  baseBranchTaskId,
 }: TaskDetailInfoCardProps) {
   const t = useTranslations("taskDetail");
 
@@ -28,8 +31,30 @@ export default function TaskDetailInfoCard({
             <>
               <div className="flex items-center justify-between gap-2">
                 <dt className="text-xs text-text-muted">{t("project")}</dt>
-                <dd className="text-xs px-2 py-0.5 rounded-full font-medium bg-tag-project-bg text-tag-project-text truncate max-w-[160px]">
-                  {task.project.name}
+                <dd className="flex items-center gap-1">
+                  <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-tag-project-bg text-tag-project-text truncate max-w-[140px]">
+                    {task.project.name}
+                  </span>
+                  <Link
+                    href={baseBranchTaskId ? `/task/${baseBranchTaskId}` : "/"}
+                    className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-bg-page border border-border-default hover:border-brand-primary hover:text-text-brand text-text-muted transition-colors"
+                    title={task.baseBranch ?? task.project.name}
+                  >
+                    <svg
+                      width="10"
+                      height="10"
+                      viewBox="0 0 16 16"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                    >
+                      <path
+                        d="M6 4L10 8L6 12"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    </svg>
+                  </Link>
                 </dd>
               </div>
               <div className="flex items-center justify-between gap-2">
