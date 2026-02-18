@@ -182,6 +182,18 @@ msg() {
     en:step_db_ready)   text="DB is ready" ;;
     zh:step_db_ready)   text="数据库已就绪" ;;
 
+    ko:docker_not_running) text="Docker 데몬이 실행되고 있지 않습니다. Docker Desktop을 시작하거나 'sudo systemctl start docker'를 실행하세요." ;;
+    en:docker_not_running) text="Docker daemon is not running. Start Docker Desktop or run 'sudo systemctl start docker'." ;;
+    zh:docker_not_running) text="Docker 守护进程未运行。请启动 Docker Desktop 或运行 'sudo systemctl start docker'。" ;;
+
+    ko:step_db_fail)    text="DB 컨테이너 시작 실패" ;;
+    en:step_db_fail)    text="Failed to start DB container" ;;
+    zh:step_db_fail)    text="启动数据库容器失败" ;;
+
+    ko:step_db_timeout) text="DB가 ${1}초 내에 준비되지 않았습니다" ;;
+    en:step_db_timeout) text="DB did not become ready within ${1}s" ;;
+    zh:step_db_timeout) text="数据库在 ${1} 秒内未准备就绪" ;;
+
     ko:step_migrate)    text="DB 마이그레이션 실행" ;;
     en:step_migrate)    text="Running DB migrations" ;;
     zh:step_migrate)    text="执行数据库迁移" ;;
@@ -272,6 +284,35 @@ step_done() {
   local message="$3"
   printf "  ${CHECK} ${DIM}[%d/%d]${NC} %b\n" "$current" "$total" "$message"
 }
+
+# ── 로딩 애니메이션 (. .. ...) ────────────────────────────────
+DOTS_PID=""
+
+start_dots() {
+  (
+    trap 'exit 0' TERM INT
+    while true; do
+      printf "\r    .  "
+      sleep 0.3
+      printf "\r    .. "
+      sleep 0.3
+      printf "\r    ..."
+      sleep 0.3
+    done
+  ) &
+  DOTS_PID=$!
+}
+
+stop_dots() {
+  if [ -n "${DOTS_PID:-}" ]; then
+    kill "$DOTS_PID" 2>/dev/null
+    wait "$DOTS_PID" 2>/dev/null || true
+    printf "\r       \r"
+    DOTS_PID=""
+  fi
+}
+
+trap 'stop_dots' EXIT
 
 # ── .env 로드 ────────────────────────────────────────────────
 load_env() {
@@ -492,9 +533,11 @@ install_single_dep() {
   fi
 
   printf "  ${ARROW} $(msg installing "$name")\n"
+  start_dots
 
   # 패키지 매니저 없음
   if [ "$method" = "pkg_mgr_missing" ]; then
+    stop_dots
     printf "  ${CROSS} $(msg pkg_mgr_missing)\n"
     return 1
   fi
@@ -502,15 +545,18 @@ install_single_dep() {
   # pnpm: corepack → npm fallback
   if [ "$method" = "corepack_pnpm" ]; then
     if command -v corepack &>/dev/null; then
-      if corepack enable && corepack prepare pnpm@latest --activate 2>/dev/null; then
+      if corepack enable && corepack prepare pnpm@latest --activate > /dev/null 2>&1; then
+        stop_dots
         printf "  ${CHECK} $(msg install_ok "$name")\n"
         return 0
       fi
     fi
-    if command -v npm &>/dev/null && npm install -g pnpm 2>/dev/null; then
+    if command -v npm &>/dev/null && npm install -g pnpm > /dev/null 2>&1; then
+      stop_dots
       printf "  ${CHECK} $(msg install_ok "$name")\n"
       return 0
     fi
+    stop_dots
     printf "  ${CROSS} $(msg install_fail "$name")\n"
     return 1
   fi
@@ -518,10 +564,12 @@ install_single_dep() {
   # Linux apt 전용 설치 함수
   if [ "$method" = "install_node_apt" ] || [ "$method" = "install_docker_apt" ] || \
      [ "$method" = "install_gh_apt" ] || [ "$method" = "install_zellij_binary" ]; then
-    if $method 2>&1 | tail -3; then
+    if $method > /dev/null 2>&1; then
+      stop_dots
       printf "  ${CHECK} $(msg install_ok "$name")\n"
       return 0
     else
+      stop_dots
       printf "  ${CROSS} $(msg install_fail "$name")\n"
       return 1
     fi
@@ -529,10 +577,12 @@ install_single_dep() {
 
   # apt_install (단순 패키지)
   if [[ "$method" == apt_install\ * ]]; then
-    if eval "$method" 2>&1 | tail -3; then
+    if eval "$method" > /dev/null 2>&1; then
+      stop_dots
       printf "  ${CHECK} $(msg install_ok "$name")\n"
       return 0
     else
+      stop_dots
       printf "  ${CROSS} $(msg install_fail "$name")\n"
       return 1
     fi
@@ -540,14 +590,17 @@ install_single_dep() {
 
   # Homebrew 기반 설치
   if ! command -v brew &>/dev/null; then
+    stop_dots
     printf "  ${CROSS} $(msg brew_missing)\n"
     return 1
   fi
 
-  if eval "$method" 2>/dev/null; then
+  if eval "$method" > /dev/null 2>&1; then
+    stop_dots
     printf "  ${CHECK} $(msg install_ok "$name")\n"
     return 0
   else
+    stop_dots
     printf "  ${CROSS} $(msg install_fail "$name")\n"
     return 1
   fi
@@ -680,30 +733,55 @@ cmd_start() {
 
   # 1. pnpm install
   step 1 $total "$(msg step_deps)"
-  pnpm install --reporter=silent 2>&1 | tail -1 || pnpm install
+  start_dots
+  pnpm install --reporter=silent > /dev/null 2>&1 || pnpm install > /dev/null 2>&1
+  stop_dots
   step_done 1 $total "$(msg step_deps)"
 
   # 2. PostgreSQL 시작
   step 2 $total "$(msg step_db)"
-  docker compose up -d db 2>&1 | tail -1
+  if ! docker info > /dev/null 2>&1; then
+    printf "\n  ${CROSS} $(msg docker_not_running)\n\n"
+    exit 1
+  fi
+  start_dots
+  if ! docker compose up -d db > /dev/null 2>&1; then
+    stop_dots
+    printf "  ${CROSS} $(msg step_db_fail)\n\n"
+    exit 1
+  fi
+  stop_dots
   step_done 2 $total "$(msg step_db)"
 
-  # 3. DB 대기
+  # 3. DB 대기 (최대 30초)
   step 3 $total "$(msg step_db_wait)"
+  start_dots
+  local db_wait=0
   until docker compose exec db pg_isready -U "${KANVIBE_USER:-admin}" -q 2>/dev/null; do
     sleep 1
+    db_wait=$((db_wait + 1))
+    if [ "$db_wait" -ge 30 ]; then
+      stop_dots
+      printf "  ${CROSS} $(msg step_db_timeout "30")\n\n"
+      exit 1
+    fi
   done
+  stop_dots
   step_done 3 $total "$(msg step_db_ready)"
 
   # 4. 마이그레이션
   step 4 $total "$(msg step_migrate)"
-  pnpm migration:run 2>&1 | tail -3
+  start_dots
+  pnpm migration:run > /dev/null 2>&1
+  stop_dots
   step_done 4 $total "$(msg step_migrate)"
 
   # 5. Next.js 빌드
   step 5 $total "$(msg step_build)"
   export NODE_ENV=production
-  pnpm build 2>&1 | tail -3
+  start_dots
+  pnpm build > /dev/null 2>&1
+  stop_dots
   step_done 5 $total "$(msg step_build)"
 
   # 6. 서버 시작 — 실행 모드 선택
