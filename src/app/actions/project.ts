@@ -255,6 +255,7 @@ export async function scanAndRegisterProjects(
         if (orphanTask) {
           orphanTask.projectId = project.id;
           orphanTask.worktreePath = wt.path;
+          orphanTask.baseBranch = orphanTask.baseBranch || project.defaultBranch;
           await taskRepo.save(orphanTask);
           result.worktreeTasks.push(wt.branch);
           continue;
@@ -275,6 +276,7 @@ export async function scanAndRegisterProjects(
           branchName: wt.branch,
           worktreePath: wt.path,
           projectId: project.id,
+          baseBranch: project.defaultBranch,
           status: hasWindow ? TaskStatus.PROGRESS : TaskStatus.TODO,
           ...(hasWindow && {
             sessionType: SessionType.TMUX,

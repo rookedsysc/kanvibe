@@ -50,6 +50,7 @@ export async function POST(request: NextRequest) {
             project.sshHost,
             projectId
           );
+          task.baseBranch = base;
           task.worktreePath = session.worktreePath;
           task.sessionName = session.sessionName;
           task.sshHost = project.sshHost;
