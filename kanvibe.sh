@@ -255,6 +255,18 @@ msg() {
     en:run_bg_log)      text="Log: $1" ;;
     zh:run_bg_log)      text="日志: $1" ;;
 
+    ko:access_url)      text="접속: ${BOLD}http://localhost:$1${NC}" ;;
+    en:access_url)      text="Access: ${BOLD}http://localhost:$1${NC}" ;;
+    zh:access_url)      text="访问: ${BOLD}http://localhost:$1${NC}" ;;
+
+    ko:stop_hint)       text="종료: bash kanvibe.sh stop" ;;
+    en:stop_hint)       text="Stop: bash kanvibe.sh stop" ;;
+    zh:stop_hint)       text="停止: bash kanvibe.sh stop" ;;
+
+    ko:env_copied)      text=".env.example → .env 복사 완료" ;;
+    en:env_copied)      text="Copied .env.example → .env" ;;
+    zh:env_copied)      text="已复制 .env.example → .env" ;;
+
     ko:done)            text="완료" ;;
     en:done)            text="Done" ;;
     zh:done)            text="完成" ;;
@@ -351,6 +363,10 @@ trap 'stop_log' EXIT
 
 # ── .env 로드 ────────────────────────────────────────────────
 load_env() {
+  if [ ! -f .env ] && [ -f .env.example ]; then
+    cp .env.example .env
+    printf "  ${CHECK} $(msg env_copied)\n"
+  fi
   if [ -f .env ]; then
     export $(grep -v '^#' .env | grep -v '^$' | xargs)
   fi
@@ -376,14 +392,21 @@ check_single_dep() {
   local install_method="$5"  # brew install 명령
 
   if ! command -v "$cmd" &>/dev/null; then
-    if [ "$required" = "required" ]; then
-      printf "  ${CROSS} %b\n" "$(msg dep_missing "$name")"
-      MISSING_REQUIRED+=("$name|$install_method")
-    else
-      printf "  ${WARN} %b ${DIM}($(msg optional_label))${NC}\n" "$(msg dep_missing "$name")"
-      MISSING_OPTIONAL+=("$name|$install_method")
+    # macOS: Docker Desktop이 설치됐지만 CLI가 PATH에 없는 경우 처리
+    if [ "$cmd" = "docker" ] && [ -d "/Applications/Docker.app/Contents/Resources/bin" ]; then
+      export PATH="/Applications/Docker.app/Contents/Resources/bin:$PATH"
     fi
-    return 1
+
+    if ! command -v "$cmd" &>/dev/null; then
+      if [ "$required" = "required" ]; then
+        printf "  ${CROSS} %b\n" "$(msg dep_missing "$name")"
+        MISSING_REQUIRED+=("$name|$install_method")
+      else
+        printf "  ${WARN} %b ${DIM}($(msg optional_label))${NC}\n" "$(msg dep_missing "$name")"
+        MISSING_OPTIONAL+=("$name|$install_method")
+      fi
+      return 1
+    fi
   fi
 
   # 버전 체크
@@ -431,7 +454,7 @@ check_deps() {
   case "$PKG_MANAGER" in
     brew)
       node_method="brew install node"
-      docker_method="brew install --cask docker"
+      docker_method="install_docker_mac"
       git_method="brew install git"
       tmux_method="brew install tmux"
       gh_method="brew install gh"
@@ -511,18 +534,73 @@ install_node_apt() {
 }
 
 install_docker_apt() {
-  # Docker 공식 repo
+  # Docker 공식 apt 레포지토리 설정 (https://docs.docker.com/engine/install/ubuntu/)
   $SUDO apt-get update -qq
-  $SUDO apt-get install -y ca-certificates curl gnupg
+  $SUDO apt-get install -y ca-certificates curl
   $SUDO install -m 0755 -d /etc/apt/keyrings
-  curl -fsSL https://download.docker.com/linux/ubuntu/gpg | $SUDO gpg --dearmor -o /etc/apt/keyrings/docker.gpg 2>/dev/null
-  $SUDO chmod a+r /etc/apt/keyrings/docker.gpg
-  echo \
-    "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
-    $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
-    $SUDO tee /etc/apt/sources.list.d/docker.list > /dev/null
+  $SUDO curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+  $SUDO chmod a+r /etc/apt/keyrings/docker.asc
+  # DEB822 형식으로 레포지토리 추가
+  $SUDO tee /etc/apt/sources.list.d/docker.sources > /dev/null <<DKEOF
+Types: deb
+URIs: https://download.docker.com/linux/ubuntu
+Suites: $(. /etc/os-release && echo "${UBUNTU_CODENAME:-$VERSION_CODENAME}")
+Components: stable
+Signed-By: /etc/apt/keyrings/docker.asc
+DKEOF
   $SUDO apt-get update -qq
-  $SUDO apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+  $SUDO apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+}
+
+install_docker_mac() {
+  # Docker Desktop 공식 .dmg 다운로드 및 설치
+  # https://docs.docker.com/desktop/setup/install/mac-install/
+  if [ -d "/Applications/Docker.app" ]; then
+    echo "Docker Desktop already installed at /Applications/Docker.app"
+    return 0
+  fi
+
+  local arch
+  arch=$(uname -m)
+  local dmg_url
+  case "$arch" in
+    arm64)  dmg_url="https://desktop.docker.com/mac/main/arm64/Docker.dmg" ;;
+    x86_64) dmg_url="https://desktop.docker.com/mac/main/amd64/Docker.dmg" ;;
+    *) echo "Unsupported architecture: $arch"; return 1 ;;
+  esac
+
+  local tmpdir
+  tmpdir=$(mktemp -d)
+  local dmg_path="$tmpdir/Docker.dmg"
+
+  echo "Downloading Docker Desktop..."
+  curl -fSL "$dmg_url" -o "$dmg_path"
+
+  echo "Installing Docker Desktop..."
+  sudo hdiutil attach "$dmg_path" -nobrowse -quiet
+  sudo /Volumes/Docker/Docker.app/Contents/MacOS/install --accept-license --user="$(whoami)"
+  sudo hdiutil detach /Volumes/Docker -quiet
+  rm -rf "$tmpdir"
+
+  # Docker Desktop을 열어 CLI 심링크 초기화
+  open -a Docker 2>/dev/null || true
+
+  # docker CLI가 PATH에 잡힐 때까지 대기 (최대 30초)
+  local waited=0
+  while ! command -v docker &>/dev/null && [ "$waited" -lt 30 ]; do
+    sleep 1
+    waited=$((waited + 1))
+  done
+
+  # 그래도 안 되면 Docker.app 내부 바이너리 확인
+  if ! command -v docker &>/dev/null; then
+    local docker_bin="/Applications/Docker.app/Contents/Resources/bin"
+    if [ -d "$docker_bin" ]; then
+      export PATH="$docker_bin:$PATH"
+    fi
+  fi
+
+  command -v docker &>/dev/null
 }
 
 install_gh_apt() {
@@ -605,7 +683,8 @@ install_single_dep() {
 
   # Linux apt 전용 설치 함수
   if [ "$method" = "install_node_apt" ] || [ "$method" = "install_docker_apt" ] || \
-     [ "$method" = "install_gh_apt" ] || [ "$method" = "install_zellij_binary" ]; then
+     [ "$method" = "install_gh_apt" ] || [ "$method" = "install_zellij_binary" ] || \
+     [ "$method" = "install_docker_mac" ]; then
     if $method >> "$LOG_FILE" 2>&1; then
       stop_log
       printf "  ${CHECK} $(msg install_ok "$name")\n"
@@ -857,6 +936,7 @@ cmd_start() {
   read -r run_mode
 
   local LOG_FILE="$SCRIPT_DIR/logs/kanvibe.log"
+  local app_port="${PORT:-3000}"
 
   case "${run_mode:-1}" in
     2)
@@ -867,11 +947,14 @@ cmd_start() {
       echo "$app_pid" > "$PID_FILE"
       echo ""
       printf "  ${CHECK} $(msg run_bg_started "$app_pid")\n"
+      printf "  ${ARROW} $(msg access_url "$app_port")\n"
       printf "  ${DIM}  $(msg run_bg_log "$LOG_FILE")${NC}\n"
-      printf "  ${DIM}  bash kanvibe.sh stop${NC}\n\n"
+      printf "  ${DIM}  $(msg stop_hint)${NC}\n\n"
       ;;
     *)
       # 포그라운드 실행
+      echo ""
+      printf "  ${ARROW} $(msg access_url "$app_port")\n\n"
       pnpm start &
       local app_pid=$!
       echo "$app_pid" > "$PID_FILE"
