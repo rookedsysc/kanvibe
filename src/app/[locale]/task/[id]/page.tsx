@@ -4,6 +4,7 @@ import { redirect } from "@/i18n/navigation";
 import { getTranslations } from "next-intl/server";
 import {
   getTaskById,
+  getTaskIdByProjectAndBranch,
   updateTaskStatus,
   deleteTask,
   fetchAndSavePrUrl,
@@ -70,6 +71,13 @@ export default async function TaskDetailPage({ params }: TaskDetailPageProps) {
     if (prUrl) task.prUrl = prUrl;
   }
 
+  /* baseBranch가 없으면 "main"을 기본값으로 사용하고, 자기 자신은 제외 */
+  const baseBranchName = task.baseBranch ?? "main";
+  const foundTaskId = task.projectId
+    ? await getTaskIdByProjectAndBranch(task.projectId, baseBranchName)
+    : null;
+  const baseBranchTaskId = foundTaskId !== task.id ? foundTaskId : null;
+
   const hasTerminal = task.sessionType && task.sessionName;
   const claudeHooksStatus = task.projectId ? await getTaskHooksStatus(id) : null;
   const geminiHooksStatus = task.projectId ? await getTaskGeminiHooksStatus(id) : null;
@@ -126,7 +134,7 @@ export default async function TaskDetailPage({ params }: TaskDetailPageProps) {
 
         <TaskDetailTitleCard task={task} />
 
-        <TaskDetailInfoCard task={task} agentTagStyle={agentTagStyle} />
+        <TaskDetailInfoCard task={task} agentTagStyle={agentTagStyle} baseBranchTaskId={baseBranchTaskId} />
 
         {/* 상태 변경 + 네비게이션 카드 */}
         <div className="bg-bg-surface rounded-lg p-5 shadow-sm border border-border-default">

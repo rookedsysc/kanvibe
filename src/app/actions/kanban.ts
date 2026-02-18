@@ -87,6 +87,19 @@ export async function getTaskById(taskId: string): Promise<KanbanTask | null> {
   return task ? serialize(task) : null;
 }
 
+/** 같은 프로젝트 내에서 branchName이 일치하는 태스크 ID를 조회 */
+export async function getTaskIdByProjectAndBranch(
+  projectId: string,
+  branchName: string,
+): Promise<string | null> {
+  const repo = await getTaskRepository();
+  const task = await repo.findOne({
+    where: { projectId, branchName },
+    select: ["id"],
+  });
+  return task?.id ?? null;
+}
+
 export interface CreateTaskInput {
   title: string;
   description?: string;

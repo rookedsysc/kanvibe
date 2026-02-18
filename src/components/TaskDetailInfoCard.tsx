@@ -9,11 +9,13 @@ import ProjectColorEditor from "@/components/ProjectColorEditor";
 interface TaskDetailInfoCardProps {
   task: KanbanTask;
   agentTagStyle: string | null;
+  baseBranchTaskId: string | null;
 }
 
 export default function TaskDetailInfoCard({
   task,
   agentTagStyle,
+  baseBranchTaskId,
 }: TaskDetailInfoCardProps) {
   const t = useTranslations("taskDetail");
 
@@ -34,15 +36,9 @@ export default function TaskDetailInfoCard({
                     {task.project.name}
                   </span>
                   <Link
-                    href="/"
-                    onClick={() => {
-                      localStorage.setItem(
-                        "kanvibe:projectFilter",
-                        JSON.stringify([task.project!.id])
-                      );
-                    }}
+                    href={baseBranchTaskId ? `/task/${baseBranchTaskId}` : "/"}
                     className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-bg-page border border-border-default hover:border-brand-primary hover:text-text-brand text-text-muted transition-colors"
-                    title={task.project.name}
+                    title={task.baseBranch ?? task.project.name}
                   >
                     <svg
                       width="10"
