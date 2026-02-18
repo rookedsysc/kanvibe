@@ -36,6 +36,25 @@ detect_locale() {
 
 LOCALE=$(detect_locale)
 
+# ── OS / 패키지 매니저 감지 ───────────────────────────────────
+detect_pkg_manager() {
+  case "$(uname -s)" in
+    Darwin) echo "brew" ;;
+    Linux)
+      if command -v apt-get &>/dev/null; then echo "apt"
+      else echo "unknown"
+      fi ;;
+    *) echo "unknown" ;;
+  esac
+}
+PKG_MANAGER=$(detect_pkg_manager)
+
+# sudo 필요 여부 감지
+SUDO=""
+if [ "$(id -u)" -ne 0 ] && command -v sudo &>/dev/null; then
+  SUDO="sudo"
+fi
+
 # ── i18n 메시지 ─────────────────────────────────────────────
 msg() {
   local key="$1"
@@ -109,6 +128,10 @@ msg() {
     ko:brew_missing)    text="Homebrew가 설치되어 있지 않습니다. https://brew.sh 에서 설치해주세요." ;;
     en:brew_missing)    text="Homebrew is not installed. Please install from https://brew.sh" ;;
     zh:brew_missing)    text="未安装 Homebrew。请从 https://brew.sh 安装。" ;;
+
+    ko:pkg_mgr_missing) text="지원되는 패키지 매니저를 찾을 수 없습니다 (brew 또는 apt-get)" ;;
+    en:pkg_mgr_missing) text="No supported package manager found (brew or apt-get)" ;;
+    zh:pkg_mgr_missing) text="未找到受支持的包管理器 (brew 或 apt-get)" ;;
 
     ko:gh_not_authed)   text="gh가 인증되지 않았습니다. 'gh auth login'을 실행해주세요.\n         인증 없이는 PR URL 자동 감지 및 gh 기반 커밋 기능을 사용할 수 없습니다." ;;
     en:gh_not_authed)   text="gh is not authenticated. Please run 'gh auth login'.\n         Without authentication, PR URL detection and gh-based commit features won't work." ;;
@@ -327,13 +350,38 @@ check_deps() {
   MISSING_REQUIRED=()
   MISSING_OPTIONAL=()
 
-  # 필수 의존성
-  check_single_dep "Node.js"  "node"   "required" "22.0.0" "brew install node" || true
-  check_single_dep "pnpm"     "pnpm"   "required" ""       "corepack_pnpm"     || true
-  check_single_dep "Docker"   "docker" "required" ""       "brew install --cask docker" || true
-  check_single_dep "git"      "git"    "required" ""       "brew install git"  || true
-  check_single_dep "tmux"     "tmux"   "required" ""       "brew install tmux" || true
-  check_single_dep "gh"       "gh"     "required" ""       "brew install gh"   || true
+  # 필수 의존성 (PKG_MANAGER에 따라 install_method 분기)
+  local node_method docker_method git_method tmux_method gh_method
+  case "$PKG_MANAGER" in
+    brew)
+      node_method="brew install node"
+      docker_method="brew install --cask docker"
+      git_method="brew install git"
+      tmux_method="brew install tmux"
+      gh_method="brew install gh"
+      ;;
+    apt)
+      node_method="install_node_apt"
+      docker_method="install_docker_apt"
+      git_method="apt_install git"
+      tmux_method="apt_install tmux"
+      gh_method="install_gh_apt"
+      ;;
+    *)
+      node_method="pkg_mgr_missing"
+      docker_method="pkg_mgr_missing"
+      git_method="pkg_mgr_missing"
+      tmux_method="pkg_mgr_missing"
+      gh_method="pkg_mgr_missing"
+      ;;
+  esac
+
+  check_single_dep "Node.js"  "node"   "required" "22.0.0" "$node_method"   || true
+  check_single_dep "pnpm"     "pnpm"   "required" ""       "corepack_pnpm"  || true
+  check_single_dep "Docker"   "docker" "required" ""       "$docker_method" || true
+  check_single_dep "git"      "git"    "required" ""       "$git_method"    || true
+  check_single_dep "tmux"     "tmux"   "required" ""       "$tmux_method"   || true
+  check_single_dep "gh"       "gh"     "required" ""       "$gh_method"     || true
 
   # gh 인증 상태 체크
   if command -v gh &>/dev/null; then
@@ -346,7 +394,13 @@ check_deps() {
 
   # 선택 의존성 — tmux가 이미 있으면 zellij 설치 프롬프트 생략
   if ! command -v tmux &>/dev/null; then
-    check_single_dep "zellij"   "zellij" "optional" ""       "brew install zellij" || true
+    local zellij_method
+    case "$PKG_MANAGER" in
+      brew) zellij_method="brew install zellij" ;;
+      apt)  zellij_method="install_zellij_binary" ;;
+      *)    zellij_method="pkg_mgr_missing" ;;
+    esac
+    check_single_dep "zellij"   "zellij" "optional" ""       "$zellij_method" || true
   fi
 
   echo ""
@@ -363,9 +417,74 @@ confirm_install() {
   esac
 }
 
+## ── Linux (apt) 설치 헬퍼 ──────────────────────────────────
+apt_install() {
+  $SUDO apt-get update -qq && $SUDO apt-get install -y "$@"
+}
+
+install_node_apt() {
+  # NodeSource 22.x LTS
+  $SUDO apt-get update -qq
+  $SUDO apt-get install -y ca-certificates curl gnupg
+  curl -fsSL https://deb.nodesource.com/setup_22.x | $SUDO bash -
+  $SUDO apt-get install -y nodejs
+}
+
+install_docker_apt() {
+  # Docker 공식 repo
+  $SUDO apt-get update -qq
+  $SUDO apt-get install -y ca-certificates curl gnupg
+  $SUDO install -m 0755 -d /etc/apt/keyrings
+  curl -fsSL https://download.docker.com/linux/ubuntu/gpg | $SUDO gpg --dearmor -o /etc/apt/keyrings/docker.gpg 2>/dev/null
+  $SUDO chmod a+r /etc/apt/keyrings/docker.gpg
+  echo \
+    "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
+    $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
+    $SUDO tee /etc/apt/sources.list.d/docker.list > /dev/null
+  $SUDO apt-get update -qq
+  $SUDO apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+}
+
+install_gh_apt() {
+  # GitHub CLI 공식 repo
+  $SUDO apt-get update -qq
+  $SUDO apt-get install -y curl
+  curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | $SUDO dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg 2>/dev/null
+  $SUDO chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg
+  echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | \
+    $SUDO tee /etc/apt/sources.list.d/github-cli.list > /dev/null
+  $SUDO apt-get update -qq
+  $SUDO apt-get install -y gh
+}
+
+install_zellij_binary() {
+  # GitHub 릴리즈에서 바이너리 다운로드
+  local arch
+  arch=$(uname -m)
+  case "$arch" in
+    x86_64)  arch="x86_64" ;;
+    aarch64) arch="aarch64" ;;
+    *) printf "  ${CROSS} Unsupported architecture: $arch\n"; return 1 ;;
+  esac
+  local url="https://github.com/zellij-org/zellij/releases/latest/download/zellij-${arch}-unknown-linux-musl.tar.gz"
+  local tmpdir
+  tmpdir=$(mktemp -d)
+  curl -fsSL "$url" -o "$tmpdir/zellij.tar.gz"
+  tar -xzf "$tmpdir/zellij.tar.gz" -C "$tmpdir"
+  $SUDO install -m 0755 "$tmpdir/zellij" /usr/local/bin/zellij
+  rm -rf "$tmpdir"
+}
+
+## ── 의존성 설치 (공통) ────────────────────────────────────────
 install_single_dep() {
   local name="$1"
   local method="$2"
+
+  # Node.js 없으면 pnpm 설치 스킵
+  if [ "$name" = "pnpm" ] && ! command -v node &>/dev/null; then
+    printf "  ${CROSS} $(msg install_fail "$name") (Node.js required)\n"
+    return 1
+  fi
 
   if ! confirm_install "$name"; then
     printf "  ${DIM}  $(msg install_skip "$name")${NC}\n"
@@ -374,21 +493,49 @@ install_single_dep() {
 
   printf "  ${ARROW} $(msg installing "$name")\n"
 
+  # 패키지 매니저 없음
+  if [ "$method" = "pkg_mgr_missing" ]; then
+    printf "  ${CROSS} $(msg pkg_mgr_missing)\n"
+    return 1
+  fi
+
+  # pnpm: corepack → npm fallback
   if [ "$method" = "corepack_pnpm" ]; then
-    # pnpm 설치: corepack 우선, 없으면 npm 글로벌 설치로 fallback
     if command -v corepack &>/dev/null; then
       if corepack enable && corepack prepare pnpm@latest --activate 2>/dev/null; then
         printf "  ${CHECK} $(msg install_ok "$name")\n"
         return 0
       fi
     fi
-    # corepack 없거나 실패 시 npm으로 설치
     if command -v npm &>/dev/null && npm install -g pnpm 2>/dev/null; then
       printf "  ${CHECK} $(msg install_ok "$name")\n"
       return 0
     fi
     printf "  ${CROSS} $(msg install_fail "$name")\n"
     return 1
+  fi
+
+  # Linux apt 전용 설치 함수
+  if [ "$method" = "install_node_apt" ] || [ "$method" = "install_docker_apt" ] || \
+     [ "$method" = "install_gh_apt" ] || [ "$method" = "install_zellij_binary" ]; then
+    if $method 2>&1 | tail -3; then
+      printf "  ${CHECK} $(msg install_ok "$name")\n"
+      return 0
+    else
+      printf "  ${CROSS} $(msg install_fail "$name")\n"
+      return 1
+    fi
+  fi
+
+  # apt_install (단순 패키지)
+  if [[ "$method" == apt_install\ * ]]; then
+    if eval "$method" 2>&1 | tail -3; then
+      printf "  ${CHECK} $(msg install_ok "$name")\n"
+      return 0
+    else
+      printf "  ${CROSS} $(msg install_fail "$name")\n"
+      return 1
+    fi
   fi
 
   # Homebrew 기반 설치
