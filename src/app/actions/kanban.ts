@@ -145,7 +145,6 @@ export async function createTask(input: CreateTaskInput): Promise<KanbanTask> {
         task.worktreePath = session.worktreePath;
         task.sessionName = session.sessionName;
         task.sshHost = project.sshHost;
-        task.status = TaskStatus.PROGRESS;
 
         /** 로컬 worktree에 Claude Code hooks를 자동 설정한다 */
         if (!project.sshHost && session.worktreePath) {
