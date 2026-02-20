@@ -28,6 +28,19 @@ function isTmuxSessionAlive(sessionName: string): boolean {
   }
 }
 
+/** tmux 세션에 해당 window가 존재하는지 확인한다 */
+function isTmuxWindowAlive(sessionName: string, windowName: string): boolean {
+  try {
+    const output = execSync(
+      `tmux list-windows -t "${sessionName}" -F "#{window_name}"`,
+      { encoding: "utf-8", timeout: 5000 },
+    );
+    return output.split("\n").some((w) => w.trimEnd() === windowName);
+  } catch {
+    return false;
+  }
+}
+
 /** zellij 세션이 존재하는지 확인한다 */
 function isZellijSessionAlive(sessionName: string): boolean {
   try {
@@ -92,18 +105,48 @@ export async function attachLocalSession(
    */
   const isLegacySharedSession = !sessionName.includes("/");
 
-  /** 세션이 없으면 자동 생성한다 */
+  /** 세션(및 레거시 형식일 때 window)이 없으면 자동 생성한다 */
   if (sessionType === SessionType.TMUX) {
-    if (!isTmuxSessionAlive(sessionName)) {
-      try {
-        const dir = cwd || process.env.HOME || "/";
-        execSync(`tmux new-session -d -s "${sessionName}" -c "${dir}"`, {
-          timeout: 5000,
-        });
-      } catch (error) {
-        console.error(`[터미널] tmux 세션 자동 생성 실패:`, error);
-        ws.close(1008, "tmux 세션 생성에 실패했습니다.");
-        return;
+    const dir = cwd || process.env.HOME || "/";
+
+    if (isLegacySharedSession) {
+      /** 레거시: 공유 세션이 없으면 세션+window를 함께 생성, 세션만 있고 window가 없으면 window만 추가한다 */
+      if (!isTmuxSessionAlive(sessionName)) {
+        try {
+          const windowArg = windowName ? `-n "${windowName}"` : "";
+          execSync(
+            `tmux new-session -d -s "${sessionName}" ${windowArg} -c "${dir}"`,
+            { timeout: 5000 },
+          );
+        } catch (error) {
+          console.error(`[터미널] tmux 세션 자동 생성 실패:`, error);
+          ws.close(1008, "tmux 세션 생성에 실패했습니다.");
+          return;
+        }
+      } else if (windowName && !isTmuxWindowAlive(sessionName, windowName)) {
+        try {
+          execSync(
+            `tmux new-window -t "${sessionName}" -n "${windowName}" -c "${dir}"`,
+            { timeout: 5000 },
+          );
+        } catch (error) {
+          console.error(`[터미널] tmux window 자동 생성 실패:`, error);
+          ws.close(1008, "tmux window 생성에 실패했습니다.");
+          return;
+        }
+      }
+    } else {
+      /** 신규: 독립 세션이 없으면 생성한다 */
+      if (!isTmuxSessionAlive(sessionName)) {
+        try {
+          execSync(`tmux new-session -d -s "${sessionName}" -c "${dir}"`, {
+            timeout: 5000,
+          });
+        } catch (error) {
+          console.error(`[터미널] tmux 세션 자동 생성 실패:`, error);
+          ws.close(1008, "tmux 세션 생성에 실패했습니다.");
+          return;
+        }
       }
     }
   } else if (!isZellijSessionAlive(sessionName)) {
@@ -241,10 +284,28 @@ export async function attachRemoteSession(
         ? `${sessionName}:${windowName}`
         : sessionName;
 
-    const command =
-      sessionType === SessionType.TMUX
-        ? `tmux attach-session -t "${tmuxTarget}"`
-        : `zellij attach "${sessionName}"`;
+    /**
+     * 레거시 형식일 때는 세션/window 자동 생성 후 attach하고,
+     * 신규 형식일 때는 세션 자동 생성 후 attach한다.
+     */
+    let command: string;
+    if (sessionType === SessionType.TMUX) {
+      if (isLegacySharedSession && windowName) {
+        const escapedWindow = windowName.replace(/"/g, '\\"');
+        command = [
+          `tmux has-session -t "${sessionName}" 2>/dev/null || tmux new-session -d -s "${sessionName}" -n "${escapedWindow}"`,
+          `tmux list-windows -t "${sessionName}" -F '#{window_name}' | grep -qxF '${windowName}' || tmux new-window -t "${sessionName}" -n "${escapedWindow}"`,
+          `tmux attach-session -t "${tmuxTarget}"`,
+        ].join("; ");
+      } else {
+        command = [
+          `tmux has-session -t "${sessionName}" 2>/dev/null || tmux new-session -d -s "${sessionName}"`,
+          `tmux attach-session -t "${tmuxTarget}"`,
+        ].join("; ");
+      }
+    } else {
+      command = `zellij attach "${sessionName}"`;
+    }
 
     conn.shell(
       { term: "xterm-256color", cols: initialCols, rows: initialRows },
