@@ -188,6 +188,7 @@
     "project": "Project",
     "baseProject": "Base",
     "projectColor": "Project Color",
+    "addDescription": "Add description",
     "actions": "Change Status",
     "deleteConfirm": "Are you sure you want to delete this task?",
     "hooksStatus": "Hooks Status",
