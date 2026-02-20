@@ -6,7 +6,6 @@ import { WebSocketServer, type WebSocket } from "ws";
 import { validateSessionFromCookie } from "@/lib/auth";
 import { getTaskRepository } from "@/lib/database";
 import { attachLocalSession, attachRemoteSession } from "@/lib/terminal";
-import { formatWindowName } from "@/lib/worktree";
 import { parseSSHConfig } from "@/lib/sshConfig";
 import { addBoardClient, removeBoardClient, getBoardClients } from "@/lib/boardNotifier";
 
@@ -110,9 +109,9 @@ app.prepare().then(() => {
         return;
       }
 
-      /** branchName 또는 baseBranch에서 window/tab 이름을 파생한다 */
+      /** 구 형식 sessionName("/"없음)에서는 branchName으로 window를 특정해야 한다 */
       const derivedBranch = task.branchName || task.baseBranch;
-      const windowName = derivedBranch ? formatWindowName(derivedBranch) : "";
+      const windowName = derivedBranch ? ` ${derivedBranch.replace(/\//g, "-")}` : "";
 
       if (task.sshHost) {
         const sshHosts = await parseSSHConfig();
