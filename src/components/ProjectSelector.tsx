@@ -3,6 +3,8 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import type { Project } from "@/entities/Project";
 
+const MAX_VISIBLE_CHIPS = 2;
+
 type BaseProps = {
   projects: Project[];
   placeholder?: string;
@@ -207,31 +209,38 @@ export default function ProjectSelector(props: ProjectSelectorProps) {
         className="relative"
         onKeyDown={handleMultiKeyDown}
       >
-        {/* 트리거: 선택된 프로젝트 칩 또는 placeholder */}
+        {/* 트리거: 선택된 프로젝트 칩 또는 placeholder. 칩은 최대 2개까지 표시하고 나머지는 "+N" 배지로 축약한다 */}
         <div
           onClick={() => setIsOpen(!isOpen)}
-          className={`w-full px-2 bg-bg-page border rounded-md text-text-primary cursor-pointer flex items-center gap-1 flex-wrap ${
+          className={`w-full px-2 bg-bg-page border rounded-md text-text-primary cursor-pointer flex items-center gap-1 overflow-hidden ${
             compact ? "py-1 min-h-[34px]" : "py-1.5 min-h-[38px]"
           } ${isOpen ? "border-brand-primary" : "border-border-default"}`}
         >
           {selectedProjects.length === 0 ? (
             <span className="text-text-muted text-sm px-1">{placeholder}</span>
           ) : (
-            selectedProjects.map((p) => (
-              <span
-                key={p.id}
-                className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-xs bg-brand-primary/10 text-brand-primary rounded font-medium max-w-[120px]"
-              >
-                <span className="truncate">{p.name}</span>
-                <button
-                  type="button"
-                  onMouseDown={(e) => removeChip(p.id, e)}
-                  className="ml-0.5 hover:text-status-error flex-shrink-0 leading-none"
+            <>
+              {selectedProjects.slice(0, MAX_VISIBLE_CHIPS).map((p) => (
+                <span
+                  key={p.id}
+                  className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-xs bg-brand-primary/10 text-brand-primary rounded font-medium max-w-[120px] flex-shrink-0"
                 >
-                  &times;
-                </button>
-              </span>
-            ))
+                  <span className="truncate">{p.name}</span>
+                  <button
+                    type="button"
+                    onMouseDown={(e) => removeChip(p.id, e)}
+                    className="ml-0.5 hover:text-status-error flex-shrink-0 leading-none"
+                  >
+                    &times;
+                  </button>
+                </span>
+              ))}
+              {selectedProjects.length > MAX_VISIBLE_CHIPS && (
+                <span className="inline-flex items-center px-1.5 py-0.5 text-xs bg-brand-primary/10 text-brand-primary rounded font-medium flex-shrink-0">
+                  +{selectedProjects.length - MAX_VISIBLE_CHIPS}
+                </span>
+              )}
+            </>
           )}
           <svg
             className="ml-auto flex-shrink-0 text-text-muted"
