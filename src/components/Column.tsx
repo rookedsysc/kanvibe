@@ -6,7 +6,6 @@ import { Droppable } from "@hello-pangea/dnd";
 import TaskCard from "./TaskCard";
 import ProjectTaskGroup, {
   buildBranchTree,
-  type BranchTreeNode,
 } from "./ProjectTaskGroup";
 import type { KanbanTask, TaskStatus } from "@/entities/KanbanTask";
 
@@ -28,7 +27,6 @@ interface ColumnProps {
 interface TaskGroup {
   projectName: string | null;
   tasks: KanbanTask[];
-  treeInfo: Map<string, BranchTreeNode>;
   hasBranchRelations: boolean;
   /** 그룹 내 기본 브랜치(defaultBranch) 태스크가 없으면 true → 자식 전용 그룹 */
   isChildGroup: boolean;
@@ -68,7 +66,6 @@ function finalizeGroup(
     return {
       projectName: null,
       tasks: raw.tasks,
-      treeInfo: new Map(),
       hasBranchRelations: false,
       isChildGroup: false,
     };
@@ -91,46 +88,11 @@ function finalizeGroup(
   return {
     projectName: raw.name,
     tasks: raw.tasks,
-    treeInfo,
     hasBranchRelations,
     isChildGroup: !hasDefaultBranch,
   };
 }
 
-/** 브랜치 연결 화살표: 자식 태스크 앞에 표시되는 L자형 커넥터 */
-function BranchConnector({ depth }: { depth: number }) {
-  return (
-    <div
-      className="flex items-center gap-1 py-0.5 pointer-events-none"
-      style={{ paddingLeft: `${(depth - 1) * 16 + 8}px` }}
-    >
-      <svg
-        width="16"
-        height="12"
-        viewBox="0 0 16 12"
-        className="text-group-line shrink-0"
-        aria-hidden="true"
-      >
-        <path
-          d="M2 0 V8 H12"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.5"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-        <path
-          d="M10 5 L13 8 L10 11"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.5"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-      </svg>
-    </div>
-  );
-}
 
 export default function Column({
   status,
@@ -221,36 +183,19 @@ export default function Column({
                   hasBranchRelations={group.hasBranchRelations}
                   isChildGroup={group.isChildGroup}
                 >
-                  {group.tasks.map((task, localIdx) => {
-                    const treeNode = group.treeInfo.get(task.id);
-                    const isTreeChild = treeNode && treeNode.depth > 0;
-
-                    return (
-                      <div key={task.id}>
-                        {isTreeChild && (
-                          <BranchConnector depth={treeNode!.depth} />
-                        )}
-                        <div
-                          style={
-                            isTreeChild
-                              ? { paddingLeft: `${treeNode!.depth * 16}px` }
-                              : undefined
-                          }
-                        >
-                          <TaskCard
-                            task={task}
-                            index={startIndex + localIdx}
-                            onContextMenu={onContextMenu}
-                            projectName={undefined}
-                            isBaseProject={
-                              !!task.worktreePath &&
-                              !task.worktreePath.includes("__worktrees")
-                            }
-                          />
-                        </div>
-                      </div>
-                    );
-                  })}
+                  {group.tasks.map((task, localIdx) => (
+                    <TaskCard
+                      key={task.id}
+                      task={task}
+                      index={startIndex + localIdx}
+                      onContextMenu={onContextMenu}
+                      projectName={undefined}
+                      isBaseProject={
+                        !!task.worktreePath &&
+                        !task.worktreePath.includes("__worktrees")
+                      }
+                    />
+                  ))}
                 </ProjectTaskGroup>
               );
             })}
