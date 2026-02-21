@@ -10,8 +10,8 @@ interface WorktreeSession {
 }
 
 /** branchName을 세션 이름으로 변환한다. `/`를 `-`로 치환한다 */
-export function formatSessionName(branchName: string): string {
-  return branchName.replace(/\//g, "-");
+export function formatSessionName(projectName: string, branchName: string): string {
+  return `${projectName}-${branchName}`.replace(/\//g, "-");
 }
 
 /** zellij 세션 이름을 소켓 경로 108바이트 제한에 맞게 truncate한다 */
@@ -121,7 +121,7 @@ export async function createWorktreeWithSession(
     worktreeBase,
     branchName.replace(/\//g, "-"),
   );
-  const sessionName = formatSessionName(branchName);
+  const sessionName = formatSessionName(projectName, branchName);
 
   await execGit(
     `git -C "${projectPath}" worktree add "${worktreePath}" -b "${branchName}" "${baseBranch}"`,
@@ -175,7 +175,8 @@ export async function createSessionWithoutWorktree(
   sshHost?: string | null,
   workingDir?: string,
 ): Promise<{ sessionName: string }> {
-  const sessionName = formatSessionName(branchName);
+  const projectName = path.basename(projectPath);
+  const sessionName = formatSessionName(projectName, branchName);
   const cwd = workingDir || projectPath;
 
   if (sessionType === SessionType.TMUX) {
