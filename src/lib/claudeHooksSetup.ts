@@ -1,5 +1,6 @@
 import { readFile, writeFile, mkdir, chmod, access } from "fs/promises";
 import path from "path";
+import { addAiToolPatternsToGitExclude } from "@/lib/gitExclude";
 
 /** UserPromptSubmit hook bash 스크립트를 생성한다 */
 function generatePromptHookScript(kanvibeUrl: string, projectName: string): string {
@@ -201,6 +202,12 @@ export async function setupClaudeHooks(
   }
 
   await writeFile(settingsPath, JSON.stringify(settings, null, 2) + "\n", "utf-8");
+
+  try {
+    await addAiToolPatternsToGitExclude(repoPath);
+  } catch (error) {
+    console.error("git exclude 패턴 추가 실패:", error);
+  }
 }
 
 export interface ClaudeHooksStatus {

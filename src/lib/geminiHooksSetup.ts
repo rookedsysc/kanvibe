@@ -1,5 +1,6 @@
 import { readFile, writeFile, mkdir, chmod, access } from "fs/promises";
 import path from "path";
+import { addAiToolPatternsToGitExclude } from "@/lib/gitExclude";
 
 /**
  * Gemini CLI hooks는 stdout에 반드시 JSON만 출력해야 한다.
@@ -164,6 +165,12 @@ export async function setupGeminiHooks(
   }
 
   await writeFile(settingsPath, JSON.stringify(settings, null, 2) + "\n", "utf-8");
+
+  try {
+    await addAiToolPatternsToGitExclude(repoPath);
+  } catch (error) {
+    console.error("git exclude 패턴 추가 실패:", error);
+  }
 }
 
 export interface GeminiHooksStatus {
