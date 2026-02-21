@@ -5,7 +5,6 @@ import type { KanbanTask } from "@/entities/KanbanTask";
 import PriorityEditor from "@/components/PriorityEditor";
 import { Link } from "@/i18n/navigation";
 import ProjectColorEditor from "@/components/ProjectColorEditor";
-import { computeProjectColor } from "@/lib/projectColor";
 
 interface TaskDetailInfoCardProps {
   task: KanbanTask;
@@ -33,10 +32,7 @@ export default function TaskDetailInfoCard({
               <div className="flex items-center justify-between gap-2">
                 <dt className="text-xs text-text-muted">{t("project")}</dt>
                 <dd className="flex items-center gap-1">
-                  <span
-                    className="text-xs px-2 py-0.5 rounded-full font-medium text-white truncate max-w-[140px]"
-                    style={{ backgroundColor: task.project.color || computeProjectColor(task.project.name) }}
-                  >
+                  <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-tag-project-bg text-tag-project-text truncate max-w-[140px]">
                     {task.project.name}
                   </span>
                   <Link
