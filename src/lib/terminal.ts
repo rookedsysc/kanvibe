@@ -11,38 +11,17 @@ interface TerminalEntry {
   clients: Set<WebSocket>;
   sessionType: SessionType;
   sessionName: string;
-  windowName: string;
 }
 
 const activeTerminals = new Map<string, TerminalEntry>();
 
-/** tmux 세션에 해당 window가 존재하는지 확인한다 */
-function isTmuxWindowAlive(sessionName: string, windowName: string): boolean {
+/** tmux 세션이 존재하는지 확인한다 */
+function isTmuxSessionAlive(sessionName: string): boolean {
   try {
-    const output = execSync(
-      `tmux list-windows -t "${sessionName}" -F "#{window_name}"`,
-      { encoding: "utf-8", timeout: 5000 },
-    );
-    return output.split("\n").some((w) => w.trimEnd() === windowName);
+    execSync(`tmux has-session -t "${sessionName}" 2>/dev/null`, { timeout: 3000 });
+    return true;
   } catch {
     return false;
-  }
-}
-
-/** tmux window의 이름으로 인덱스를 조회한다. 중복 이름이 있어도 첫 번째 매치를 반환한다 */
-function getTmuxWindowIndex(sessionName: string, windowName: string): string | null {
-  try {
-    const output = execSync(
-      `tmux list-windows -t "${sessionName}" -F "#{window_name}\t#{window_index}"`,
-      { encoding: "utf-8", timeout: 5000 },
-    );
-    for (const line of output.split("\n")) {
-      const [name, index] = line.split("\t");
-      if (name?.trimEnd() === windowName && index) return index;
-    }
-    return null;
-  } catch {
-    return null;
   }
 }
 
@@ -59,12 +38,11 @@ function isZellijSessionAlive(sessionName: string): boolean {
   }
 }
 
-/** 로컬 tmux window / zellij tab에 attach하여 WebSocket과 연결한다 */
+/** 로컬 tmux / zellij 세션에 attach하여 WebSocket과 연결한다 */
 export async function attachLocalSession(
   taskId: string,
   sessionType: SessionType,
   sessionName: string,
-  windowName: string,
   ws: WebSocket,
   cwd?: string | null,
   cols?: number,
@@ -106,32 +84,37 @@ export async function attachLocalSession(
     return;
   }
 
-  /** tmux window가 없으면 세션과 window를 자동 생성한다 */
+  /** 세션이 없으면 자동 생성한다 */
   if (sessionType === SessionType.TMUX) {
-    if (!isTmuxWindowAlive(sessionName, windowName)) {
+    if (!isTmuxSessionAlive(sessionName)) {
       try {
         const dir = cwd || process.env.HOME || "/";
         execSync(
-          `tmux has-session -t "${sessionName}" 2>/dev/null || tmux new-session -d -s "${sessionName}"`,
+          `tmux new-session -d -s "${sessionName}" -c "${dir}"`,
           { timeout: 5000 },
         );
-        /** 중복 방지: 다시 확인 후 없을 때만 생성한다 */
-        if (!isTmuxWindowAlive(sessionName, windowName)) {
-          execSync(
-            `tmux new-window -t "${sessionName}" -n "${windowName}" -c "${dir}"`,
-            { timeout: 5000 },
-          );
-        }
       } catch (error) {
-        console.error(`[터미널] tmux 세션/window 자동 생성 실패:`, error);
+        console.error(`[터미널] tmux 세션 자동 생성 실패:`, error);
         ws.close(1008, "tmux 세션 생성에 실패했습니다.");
         return;
       }
     }
-  } else if (!isZellijSessionAlive(sessionName)) {
-    console.error(`[터미널] zellij 세션을 찾을 수 없음: ${sessionName}`);
-    ws.close(1008, "zellij 세션을 찾을 수 없습니다.");
-    return;
+  } else {
+    if (!isZellijSessionAlive(sessionName)) {
+      try {
+        const dir = cwd || process.env.HOME || "/";
+        execSync(
+          `cd "${dir}" && zellij --session "${sessionName}" &`,
+          { timeout: 5000, shell: "/bin/sh" },
+        );
+        /** zellij 초기화 대기 */
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+      } catch (error) {
+        console.error(`[터미널] zellij 세션 자동 생성 실패:`, error);
+        ws.close(1008, "zellij 세션 생성에 실패했습니다.");
+        return;
+      }
+    }
   }
 
   /** 웹 터미널 크기가 다른 클라이언트에 제한되지 않도록 최근 활성 클라이언트 기준으로 설정 */
@@ -150,30 +133,11 @@ export async function attachLocalSession(
       ? "tmux"
       : "zellij";
 
-  /** tmux는 session:windowIndex 형식으로 특정 window에 직접 연결한다. 이름 중복 시에도 안전하도록 인덱스를 사용한다 */
-  let args: string[];
-  if (sessionType === SessionType.TMUX) {
-    const windowIndex = getTmuxWindowIndex(sessionName, windowName);
-    const target = windowIndex ? `${sessionName}:${windowIndex}` : `${sessionName}:${windowName}`;
-    args = ["attach-session", "-t", target];
-  } else {
-    args = ["attach", sessionName];
-  }
-
-  /**
-   * zellij는 attach 전에 해당 tab으로 이동해야 한다.
-   * go-to-tab-name 액션으로 대상 tab을 선택한다.
-   */
-  if (sessionType === SessionType.ZELLIJ) {
-    const { exec } = await import("child_process");
-    const { promisify } = await import("util");
-    const execAsync = promisify(exec);
-    try {
-      await execAsync(`zellij action --session "${sessionName}" go-to-tab-name "${windowName}"`);
-    } catch {
-      // tab 이동 실패 시 기본 탭으로 attach
-    }
-  }
+  /** 세션에 직접 attach한다 */
+  const args: string[] =
+    sessionType === SessionType.TMUX
+      ? ["attach-session", "-t", sessionName]
+      : ["attach", sessionName];
 
   let ptyProcess: import("node-pty").IPty;
   try {
@@ -194,7 +158,7 @@ export async function attachLocalSession(
     return;
   }
 
-  const entry: TerminalEntry = { pty: ptyProcess, clients: new Set([ws]), sessionType, sessionName, windowName };
+  const entry: TerminalEntry = { pty: ptyProcess, clients: new Set([ws]), sessionType, sessionName };
   activeTerminals.set(taskId, entry);
 
   ptyProcess.onData((data) => {
@@ -238,13 +202,12 @@ export async function attachLocalSession(
   });
 }
 
-/** SSH를 통해 원격 tmux window / zellij tab에 attach하여 WebSocket과 연결한다 */
+/** SSH를 통해 원격 세션에 attach하여 WebSocket과 연결한다 */
 export async function attachRemoteSession(
   taskId: string,
   sshHost: string,
   sessionType: SessionType,
   sessionName: string,
-  windowName: string,
   ws: WebSocket,
   sshConfig: { hostname: string; port: number; username: string; privateKeyPath: string },
   cols?: number,
@@ -259,11 +222,11 @@ export async function attachRemoteSession(
   const conn = new Client();
 
   conn.on("ready", () => {
-    /** tmux는 session:window 타겟으로, zellij는 tab 이동 후 attach한다 */
+    /** 세션에 직접 attach한다 */
     const command =
       sessionType === SessionType.TMUX
-        ? `tmux attach-session -t "${sessionName}:${windowName}"`
-        : `zellij action --session "${sessionName}" go-to-tab-name "${windowName}" 2>/dev/null; zellij attach "${sessionName}"`;
+        ? `tmux attach-session -t "${sessionName}"`
+        : `zellij attach "${sessionName}"`;
 
     conn.shell({ term: "xterm-256color", cols: initialCols, rows: initialRows }, (err, stream) => {
       if (err) {
@@ -325,24 +288,16 @@ export async function attachRemoteSession(
   });
 }
 
-/** 탭 전환 시 해당 태스크의 tmux window / zellij tab으로 포커스를 이동한다 */
+/** 탭 전환 시 해당 태스크의 세션으로 포커스를 이동한다 */
 export function focusSession(taskId: string): void {
   const entry = activeTerminals.get(taskId);
   if (!entry) return;
 
   try {
     if (entry.sessionType === SessionType.TMUX) {
-      const windowIndex = getTmuxWindowIndex(entry.sessionName, entry.windowName);
-      const target = windowIndex
-        ? `${entry.sessionName}:${windowIndex}`
-        : `${entry.sessionName}:${entry.windowName}`;
-      execSync(`tmux select-window -t "${target}"`, { timeout: 3000, stdio: "ignore" });
-    } else {
-      execSync(
-        `zellij action --session "${entry.sessionName}" go-to-tab-name "${entry.windowName}"`,
-        { timeout: 3000, stdio: "ignore" },
-      );
+      execSync(`tmux switch-client -t "${entry.sessionName}"`, { timeout: 3000, stdio: "ignore" });
     }
+    // zellij는 외부에서 세션 전환이 불가능하므로 무시
   } catch {
     // focus 실패 시 무시 (세션이 종료되었을 수 있음)
   }

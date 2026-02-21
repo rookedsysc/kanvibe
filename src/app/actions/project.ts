@@ -6,7 +6,7 @@ import { Project } from "@/entities/Project";
 import { validateGitRepo, getDefaultBranch, listBranches, scanGitRepos, listWorktrees, execGit } from "@/lib/gitOperations";
 import { TaskStatus, SessionType } from "@/entities/KanbanTask";
 import { IsNull } from "typeorm";
-import { isWindowAlive, formatWindowName, createSessionWithoutWorktree } from "@/lib/worktree";
+import { isSessionAlive, formatSessionName, createSessionWithoutWorktree } from "@/lib/worktree";
 import { setupClaudeHooks, getClaudeHooksStatus, type ClaudeHooksStatus } from "@/lib/claudeHooksSetup";
 import { setupGeminiHooks, getGeminiHooksStatus, type GeminiHooksStatus } from "@/lib/geminiHooksSetup";
 import { setupCodexHooks, getCodexHooksStatus, type CodexHooksStatus } from "@/lib/codexHooksSetup";
@@ -261,13 +261,11 @@ export async function scanAndRegisterProjects(
           continue;
         }
 
-        /** tmux 세션에 동일한 session-window가 있으면 연결 정보를 설정한다 */
-        const sessionName = path.basename(project.repoPath);
-        const windowName = formatWindowName(wt.branch);
-        const hasWindow = await isWindowAlive(
+        /** 브랜치명 기반 독립 세션이 존재하면 연결 정보를 설정한다 */
+        const sessionName = formatSessionName(wt.branch);
+        const hasSession = await isSessionAlive(
           SessionType.TMUX,
           sessionName,
-          windowName,
           project.sshHost
         );
 
@@ -277,8 +275,8 @@ export async function scanAndRegisterProjects(
           worktreePath: wt.path,
           projectId: project.id,
           baseBranch: project.defaultBranch,
-          status: hasWindow ? TaskStatus.PROGRESS : TaskStatus.TODO,
-          ...(hasWindow && {
+          status: hasSession ? TaskStatus.PROGRESS : TaskStatus.TODO,
+          ...(hasSession && {
             sessionType: SessionType.TMUX,
             sessionName,
             sshHost: project.sshHost,
@@ -302,16 +300,14 @@ export async function scanAndRegisterProjects(
       });
 
       if (mainBranchTask && !mainBranchTask.sessionType) {
-        const sessionName = path.basename(project.repoPath);
-        const windowName = formatWindowName(project.defaultBranch);
-        const hasWindow = await isWindowAlive(
+        const sessionName = formatSessionName(project.defaultBranch);
+        const hasSession = await isSessionAlive(
           SessionType.TMUX,
           sessionName,
-          windowName,
           project.sshHost,
         );
 
-        if (hasWindow) {
+        if (hasSession) {
           mainBranchTask.sessionType = SessionType.TMUX;
           mainBranchTask.sessionName = sessionName;
           mainBranchTask.worktreePath = project.repoPath;
