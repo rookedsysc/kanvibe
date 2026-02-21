@@ -10,12 +10,14 @@ interface TaskDetailInfoCardProps {
   task: KanbanTask;
   agentTagStyle: string | null;
   baseBranchTaskId: string | null;
+  diffFileCount?: number;
 }
 
 export default function TaskDetailInfoCard({
   task,
   agentTagStyle,
   baseBranchTaskId,
+  diffFileCount,
 }: TaskDetailInfoCardProps) {
   const t = useTranslations("taskDetail");
 
@@ -41,6 +43,7 @@ export default function TaskDetailInfoCard({
                     href={baseBranchTaskId ? `/task/${baseBranchTaskId}` : "/"}
                     className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-tag-project-bg hover:opacity-80 text-white transition-opacity"
                     title={task.baseBranch ?? task.project.name}
+                    data-testid="shortcut-link"
                   >
                     <svg
                       width="10"
@@ -114,6 +117,28 @@ export default function TaskDetailInfoCard({
                     />
                   </svg>
                 </a>
+              </dd>
+            </div>
+          )}
+          {task.branchName && (
+            <div className="flex items-center justify-between gap-2">
+              <dt className="text-xs text-text-muted">{t("diffFiles")}</dt>
+              <dd>
+                <Link
+                  href={`/task/${task.id}/diff`}
+                  className="inline-flex items-center gap-1.5 text-xs bg-tag-branch-bg text-tag-branch-text px-2 py-0.5 rounded hover:opacity-80 transition-opacity"
+                  title={t("viewDiff")}
+                >
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="6" cy="6" r="2.5" />
+                    <circle cx="18" cy="18" r="2.5" />
+                    <path d="M6 8.5v4c0 2 1.5 3.5 3.5 3.5H14" />
+                    <path d="M15 13l3 3-3 3" />
+                  </svg>
+                  {diffFileCount !== undefined && diffFileCount > 0 && (
+                    <span className="font-medium">{t("diffFileCount", { count: diffFileCount })}</span>
+                  )}
+                </Link>
               </dd>
             </div>
           )}

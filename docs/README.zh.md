@@ -209,6 +209,22 @@ AI 代理 Hooks 触发的任务状态变更会发送**浏览器通知**，显示
 | `/api/hooks/start` | POST | 创建新任务 |
 | `/api/hooks/status` | POST | 通过 `branchName` + `projectName` 更新任务状态 |
 
+### GitHub 风格 Diff 视图
+
+在浏览器中使用 GitHub 风格的 diff 查看器直接审查代码变更。点击任务详情页面上的 **Diff** 徽章，即可查看与 base 分支相比的所有修改文件。
+
+<table>
+  <tr>
+    <td width="30%"><img src="./images/diff-view-button.png" alt="任务详情中的 Diff 徽章" width="100%"></td>
+    <td width="70%"><img src="./images/diff-view.png" alt="Diff 视图页面" width="100%"></td>
+  </tr>
+</table>
+
+- 显示变更文件数量的文件树侧边栏
+- 基于 Monaco Editor 的内联 diff 查看器
+- 可在浏览器中直接修改的编辑模式
+- 复选框追踪已查看的文件
+
 ### 面板布局编辑器
 - 6 种布局预设（Single、Horizontal 2、Vertical 2、Left+Right TB、Left TB+Right、Quad）
 - 每个面板自定义命令配置

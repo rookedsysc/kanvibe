@@ -219,10 +219,35 @@
     "collapseSidebar": "사이드바 접기",
     "expandSidebar": "사이드바 펼치기",
     "sidebarTooltip": "설정에서 기본 접힘 상태를 변경할 수 있습니다",
-    "dismissHint": "다시 보지 않기"
+    "dismissHint": "다시 보지 않기",
+    "viewDiff": "Diff 보기",
+    "diffFiles": "변경 파일",
+    "diffFileCount": "{count}개"
   },
   "projectBranchTasks": {
     "title": "프로젝트 작업",
     "noTasks": "이 프로젝트에는 작업이 없습니다"
+  },
+  "diffView": {
+    "title": "코드 변경 사항",
+    "backToTask": "작업으로 돌아가기",
+    "changedFiles": "변경된 파일",
+    "noChanges": "변경 사항이 없습니다",
+    "editMode": "편집 모드",
+    "diffMode": "비교 모드",
+    "save": "저장",
+    "saving": "저장 중...",
+    "saved": "저장 완료",
+    "saveError": "저장 실패",
+    "noBranch": "브랜치가 연결되지 않았습니다",
+    "noWorktree": "워크트리 경로가 설정되지 않았습니다",
+    "added": "추가",
+    "modified": "수정",
+    "deleted": "삭제",
+    "renamed": "이름 변경",
+    "viewDiff": "Diff 보기",
+    "fileCount": "{count}개 파일 변경",
+    "viewed": "확인 완료",
+    "markViewed": "확인"
   }
 }

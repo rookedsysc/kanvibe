@@ -219,10 +219,35 @@
     "collapseSidebar": "折叠侧栏",
     "expandSidebar": "展开侧栏",
     "sidebarTooltip": "可以在设置中更改默认折叠状态",
-    "dismissHint": "不再显示"
+    "dismissHint": "不再显示",
+    "viewDiff": "查看差异",
+    "diffFiles": "变更文件",
+    "diffFileCount": "{count}个"
   },
   "projectBranchTasks": {
     "title": "项目任务",
     "noTasks": "此项目中没有任务"
+  },
+  "diffView": {
+    "title": "代码变更",
+    "backToTask": "返回任务",
+    "changedFiles": "已更改的文件",
+    "noChanges": "没有变更",
+    "editMode": "编辑模式",
+    "diffMode": "对比模式",
+    "save": "保存",
+    "saving": "保存中...",
+    "saved": "保存成功",
+    "saveError": "保存失败",
+    "noBranch": "未连接分支",
+    "noWorktree": "未设置工作树路径",
+    "added": "新增",
+    "modified": "修改",
+    "deleted": "删除",
+    "renamed": "重命名",
+    "viewDiff": "查看差异",
+    "fileCount": "已更改 {count} 个文件",
+    "viewed": "已查看",
+    "markViewed": "查看"
   }
 }

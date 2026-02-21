@@ -23,8 +23,8 @@ vi.mock("next-intl", () => ({
 }));
 
 vi.mock("@/i18n/navigation", () => ({
-  Link: ({ children, href, title, ...props }: { children: React.ReactNode; href: string; title?: string }) => (
-    <a href={href} title={title} data-testid="shortcut-link" {...props}>{children}</a>
+  Link: ({ children, href, title, ...props }: Record<string, unknown>) => (
+    <a href={href as string} title={title as string} {...props}>{children as React.ReactNode}</a>
   ),
 }));
 
