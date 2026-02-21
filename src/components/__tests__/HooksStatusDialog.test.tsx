@@ -8,16 +8,19 @@ const {
   mockInstallTaskHooks,
   mockInstallTaskGeminiHooks,
   mockInstallTaskCodexHooks,
+  mockInstallTaskOpenCodeHooks,
 } = vi.hoisted(() => ({
   mockInstallTaskHooks: vi.fn(),
   mockInstallTaskGeminiHooks: vi.fn(),
   mockInstallTaskCodexHooks: vi.fn(),
+  mockInstallTaskOpenCodeHooks: vi.fn(),
 }));
 
 vi.mock("@/app/actions/project", () => ({
   installTaskHooks: mockInstallTaskHooks,
   installTaskGeminiHooks: mockInstallTaskGeminiHooks,
   installTaskCodexHooks: mockInstallTaskCodexHooks,
+  installTaskOpenCodeHooks: mockInstallTaskOpenCodeHooks,
 }));
 
 /** useTranslations mock은 key를 그대로 반환한다 */
@@ -51,6 +54,7 @@ describe("HooksStatusDialog", () => {
       claudeStatus: null,
       geminiStatus: null,
       codexStatus: null,
+      openCodeStatus: null,
       isRemote: false,
     };
 
@@ -70,6 +74,7 @@ describe("HooksStatusDialog", () => {
       claudeStatus: null,
       geminiStatus: null,
       codexStatus: null,
+      openCodeStatus: null,
       isRemote: false,
     };
 
@@ -90,6 +95,7 @@ describe("HooksStatusDialog", () => {
       claudeStatus: null,
       geminiStatus: null,
       codexStatus: null,
+      openCodeStatus: null,
       isRemote: true,
     };
 
@@ -111,6 +117,7 @@ describe("HooksStatusDialog", () => {
       claudeStatus: null,
       geminiStatus: null,
       codexStatus: null,
+      openCodeStatus: null,
       isRemote: false,
     };
 
@@ -133,6 +140,7 @@ describe("HooksStatusDialog", () => {
       claudeStatus: null,
       geminiStatus: null,
       codexStatus: null,
+      openCodeStatus: null,
       isRemote: false,
     };
 
@@ -157,6 +165,7 @@ describe("HooksStatusDialog", () => {
       claudeStatus: null,
       geminiStatus: null,
       codexStatus: null,
+      openCodeStatus: null,
       isRemote: false,
     };
 
@@ -181,6 +190,7 @@ describe("HooksStatusDialog", () => {
       claudeStatus: null,
       geminiStatus: null,
       codexStatus: null,
+      openCodeStatus: null,
       isRemote: false,
     };
 
@@ -205,6 +215,7 @@ describe("HooksStatusDialog", () => {
       claudeStatus: { installed: true, hasPromptHook: true, hasStopHook: true, hasQuestionHook: true, hasSettingsEntry: true },
       geminiStatus: null,
       codexStatus: null,
+      openCodeStatus: null,
       isRemote: false,
     };
 
@@ -229,6 +240,7 @@ describe("HooksStatusDialog", () => {
       claudeStatus: { installed: true, hasPromptHook: true, hasStopHook: true, hasQuestionHook: true, hasSettingsEntry: true },
       geminiStatus: null,
       codexStatus: null,
+      openCodeStatus: null,
       isRemote: false,
     };
 
@@ -253,6 +265,7 @@ describe("HooksStatusDialog", () => {
       claudeStatus: { installed: true, hasPromptHook: true, hasStopHook: true, hasQuestionHook: true, hasSettingsEntry: true },
       geminiStatus: { installed: true, hasPromptHook: true, hasStopHook: true, hasSettingsEntry: true },
       codexStatus: null,
+      openCodeStatus: null,
       isRemote: false,
     };
 
@@ -277,6 +290,7 @@ describe("HooksStatusDialog", () => {
       claudeStatus: { installed: true, hasPromptHook: true, hasStopHook: true, hasQuestionHook: true, hasSettingsEntry: true },
       geminiStatus: { installed: true, hasPromptHook: true, hasStopHook: true, hasSettingsEntry: true },
       codexStatus: null,
+      openCodeStatus: null,
       isRemote: false,
     };
 
@@ -291,6 +305,56 @@ describe("HooksStatusDialog", () => {
     });
   });
 
+  it("should call installTaskOpenCodeHooks when OpenCode install button is clicked", async () => {
+    // Given
+    mockInstallTaskOpenCodeHooks.mockResolvedValue({ success: true });
+    const props = {
+      isOpen: true,
+      onClose: vi.fn(),
+      taskId: "task-1",
+      claudeStatus: { installed: true, hasPromptHook: true, hasStopHook: true, hasQuestionHook: true, hasSettingsEntry: true },
+      geminiStatus: { installed: true, hasPromptHook: true, hasStopHook: true, hasSettingsEntry: true },
+      codexStatus: { installed: true, hasNotifyHook: true, hasConfigEntry: true },
+      openCodeStatus: null,
+      isRemote: false,
+    };
+
+    // When
+    renderDialog(props);
+    const installButtons = screen.getAllByText("installHooks");
+    fireEvent.click(installButtons[3]);
+
+    // Then
+    await waitFor(() => {
+      expect(mockInstallTaskOpenCodeHooks).toHaveBeenCalledWith("task-1");
+    });
+  });
+
+  it("should show OpenCode success message when OpenCode hooks installation succeeds", async () => {
+    // Given
+    mockInstallTaskOpenCodeHooks.mockResolvedValue({ success: true });
+    const props = {
+      isOpen: true,
+      onClose: vi.fn(),
+      taskId: "task-1",
+      claudeStatus: { installed: true, hasPromptHook: true, hasStopHook: true, hasQuestionHook: true, hasSettingsEntry: true },
+      geminiStatus: { installed: true, hasPromptHook: true, hasStopHook: true, hasSettingsEntry: true },
+      codexStatus: { installed: true, hasNotifyHook: true, hasConfigEntry: true },
+      openCodeStatus: null,
+      isRemote: false,
+    };
+
+    // When
+    renderDialog(props);
+    const installButtons = screen.getAllByText("installHooks");
+    fireEvent.click(installButtons[3]);
+
+    // Then
+    await waitFor(() => {
+      expect(screen.getByText("openCodeHooksInstallSuccess")).toBeTruthy();
+    });
+  });
+
   it("should show installed status when hook is already installed", () => {
     // Given
     const props = {
@@ -300,6 +364,7 @@ describe("HooksStatusDialog", () => {
       claudeStatus: { installed: true, hasPromptHook: true, hasStopHook: true, hasQuestionHook: true, hasSettingsEntry: true },
       geminiStatus: null,
       codexStatus: null,
+      openCodeStatus: null,
       isRemote: false,
     };
 
@@ -327,6 +392,7 @@ describe("HooksStatusDialog", () => {
       claudeStatus: null,
       geminiStatus: null,
       codexStatus: null,
+      openCodeStatus: null,
       isRemote: false,
     };
 

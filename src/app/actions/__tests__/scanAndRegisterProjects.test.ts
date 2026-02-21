@@ -53,6 +53,11 @@ vi.mock("@/lib/codexHooksSetup", () => ({
   getCodexHooksStatus: vi.fn(),
 }));
 
+vi.mock("@/lib/openCodeHooksSetup", () => ({
+  setupOpenCodeHooks: vi.fn().mockResolvedValue(undefined),
+  getOpenCodeHooksStatus: vi.fn(),
+}));
+
 vi.mock("next/cache", () => ({
   revalidatePath: vi.fn(),
 }));

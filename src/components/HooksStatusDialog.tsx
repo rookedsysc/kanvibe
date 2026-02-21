@@ -6,10 +6,12 @@ import {
   installTaskHooks,
   installTaskGeminiHooks,
   installTaskCodexHooks,
+  installTaskOpenCodeHooks,
 } from "@/app/actions/project";
 import type { ClaudeHooksStatus } from "@/lib/claudeHooksSetup";
 import type { GeminiHooksStatus } from "@/lib/geminiHooksSetup";
 import type { CodexHooksStatus } from "@/lib/codexHooksSetup";
+import type { OpenCodeHooksStatus } from "@/lib/openCodeHooksSetup";
 
 interface HooksStatusDialogProps {
   isOpen: boolean;
@@ -18,6 +20,7 @@ interface HooksStatusDialogProps {
   claudeStatus: ClaudeHooksStatus | null;
   geminiStatus: GeminiHooksStatus | null;
   codexStatus: CodexHooksStatus | null;
+  openCodeStatus: OpenCodeHooksStatus | null;
   isRemote: boolean;
 }
 
@@ -28,6 +31,7 @@ export default function HooksStatusDialog({
   claudeStatus,
   geminiStatus,
   codexStatus,
+  openCodeStatus,
   isRemote,
 }: HooksStatusDialogProps) {
   const t = useTranslations("taskDetail");
@@ -35,6 +39,7 @@ export default function HooksStatusDialog({
   const [localClaudeStatus, setLocalClaudeStatus] = useState(claudeStatus);
   const [localGeminiStatus, setLocalGeminiStatus] = useState(geminiStatus);
   const [localCodexStatus, setLocalCodexStatus] = useState(codexStatus);
+  const [localOpenCodeStatus, setLocalOpenCodeStatus] = useState(openCodeStatus);
   const [message, setMessage] = useState<{
     type: "success" | "error";
     text: string;
@@ -75,6 +80,19 @@ export default function HooksStatusDialog({
       if (result.success) {
         setLocalCodexStatus({ installed: true, hasNotifyHook: true, hasConfigEntry: true });
         setMessage({ type: "success", text: t("codexHooksInstallSuccess") });
+      } else {
+        setMessage({ type: "error", text: t("hooksInstallFailed") });
+      }
+    });
+  }
+
+  function handleInstallOpenCode() {
+    setMessage(null);
+    startTransition(async () => {
+      const result = await installTaskOpenCodeHooks(taskId);
+      if (result.success) {
+        setLocalOpenCodeStatus({ installed: true, hasPlugin: true });
+        setMessage({ type: "success", text: t("openCodeHooksInstallSuccess") });
       } else {
         setMessage({ type: "error", text: t("hooksInstallFailed") });
       }
@@ -197,6 +215,42 @@ export default function HooksStatusDialog({
                 </span>
                 <button
                   onClick={handleInstallCodex}
+                  disabled={isPending}
+                  className="px-3 py-1.5 text-xs bg-brand-primary hover:bg-brand-hover text-text-inverse rounded-md transition-colors disabled:opacity-50"
+                >
+                  {isPending ? t("installingHooks") : t("installHooks")}
+                </button>
+              </>
+            )}
+          </div>
+
+          {/* OpenCode Hooks */}
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-xs text-text-secondary font-medium">OpenCode</span>
+            {isRemote ? (
+              <span className="text-xs px-2 py-0.5 bg-bg-page border border-border-default rounded text-text-muted">
+                {t("hooksRemoteNotSupported")}
+              </span>
+            ) : localOpenCodeStatus?.installed ? (
+              <>
+                <span className="text-xs px-2 py-0.5 bg-status-done/15 text-status-done rounded">
+                  {t("hooksInstalled")}
+                </span>
+                <button
+                  onClick={handleInstallOpenCode}
+                  disabled={isPending}
+                  className="px-3 py-1.5 text-xs bg-bg-page border border-border-default hover:border-brand-primary hover:text-text-brand text-text-secondary rounded-md transition-colors disabled:opacity-50"
+                >
+                  {isPending ? t("installingHooks") : t("installHooks")}
+                </button>
+              </>
+            ) : (
+              <>
+                <span className="text-xs px-2 py-0.5 bg-status-error/15 text-status-error rounded">
+                  {t("hooksNotInstalled")}
+                </span>
+                <button
+                  onClick={handleInstallOpenCode}
                   disabled={isPending}
                   className="px-3 py-1.5 text-xs bg-brand-primary hover:bg-brand-hover text-text-inverse rounded-md transition-colors disabled:opacity-50"
                 >

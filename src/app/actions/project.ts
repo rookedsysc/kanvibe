@@ -10,6 +10,7 @@ import { isSessionAlive, formatSessionName, createSessionWithoutWorktree } from 
 import { setupClaudeHooks, getClaudeHooksStatus, type ClaudeHooksStatus } from "@/lib/claudeHooksSetup";
 import { setupGeminiHooks, getGeminiHooksStatus, type GeminiHooksStatus } from "@/lib/geminiHooksSetup";
 import { setupCodexHooks, getCodexHooksStatus, type CodexHooksStatus } from "@/lib/codexHooksSetup";
+import { setupOpenCodeHooks, getOpenCodeHooksStatus, type OpenCodeHooksStatus } from "@/lib/openCodeHooksSetup";
 import { homedir } from "os";
 import path from "path";
 import { computeProjectColor } from "@/lib/projectColor";
@@ -221,6 +222,7 @@ export async function scanAndRegisterProjects(
           await setupClaudeHooks(repoPath, projectName, kanvibeUrl);
           await setupGeminiHooks(repoPath, projectName, kanvibeUrl);
           await setupCodexHooks(repoPath, projectName, kanvibeUrl);
+          await setupOpenCodeHooks(repoPath, projectName, kanvibeUrl);
           result.hooksSetup.push(projectName);
         } catch (hookError) {
           result.errors.push(
@@ -556,4 +558,63 @@ export async function installTaskCodexHooks(
       error: error instanceof Error ? error.message : "hooks 설정 실패",
     };
   }
+}
+
+/** 프로젝트 repo에 OpenCode hooks를 설치한다 */
+export async function installProjectOpenCodeHooks(
+  projectId: string
+): Promise<{ success: boolean; error?: string }> {
+  const projectRepo = await getProjectRepository();
+  const project = await projectRepo.findOneBy({ id: projectId });
+  if (!project) return { success: false, error: "Project not found" };
+
+  try {
+    const kanvibeUrl = `http://localhost:${process.env.PORT || 4885}`;
+    await setupOpenCodeHooks(project.repoPath, project.name, kanvibeUrl);
+    return { success: true };
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Unknown error",
+    };
+  }
+}
+
+/** 태스크의 worktree 또는 프로젝트 경로에 OpenCode hooks를 설치한다 */
+export async function installTaskOpenCodeHooks(
+  taskId: string
+): Promise<{ success: boolean; error?: string }> {
+  const taskRepo = await getTaskRepository();
+  const task = await taskRepo.findOne({
+    where: { id: taskId },
+    relations: ["project"],
+  });
+  if (!task?.project) return { success: false, error: "Task or project not found" };
+
+  try {
+    const kanvibeUrl = `http://localhost:${process.env.PORT || 4885}`;
+    const targetPath = task.worktreePath || task.project.repoPath;
+    await setupOpenCodeHooks(targetPath, task.project.name, kanvibeUrl);
+    return { success: true };
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Unknown error",
+    };
+  }
+}
+
+/** 태스크의 OpenCode hooks 설치 상태를 조회한다 */
+export async function getTaskOpenCodeHooksStatus(
+  taskId: string
+): Promise<OpenCodeHooksStatus | null> {
+  const taskRepo = await getTaskRepository();
+  const task = await taskRepo.findOne({
+    where: { id: taskId },
+    relations: ["project"],
+  });
+  if (!task?.project) return null;
+
+  const targetPath = task.worktreePath || task.project.repoPath;
+  return getOpenCodeHooksStatus(targetPath);
 }

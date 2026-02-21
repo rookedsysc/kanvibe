@@ -10,6 +10,9 @@ import { TaskPriority } from "@/entities/TaskPriority";
 import { createWorktreeWithSession, removeWorktreeAndSession, removeWorktreeAndBranch, createSessionWithoutWorktree, removeSessionOnly } from "@/lib/worktree";
 import { getProjectRepository } from "@/lib/database";
 import { setupClaudeHooks } from "@/lib/claudeHooksSetup";
+import { setupGeminiHooks } from "@/lib/geminiHooksSetup";
+import { setupCodexHooks } from "@/lib/codexHooksSetup";
+import { setupOpenCodeHooks } from "@/lib/openCodeHooksSetup";
 
 const execAsync = promisify(exec);
 
@@ -146,10 +149,15 @@ export async function createTask(input: CreateTaskInput): Promise<KanbanTask> {
         task.sessionName = session.sessionName;
         task.sshHost = project.sshHost;
 
-        /** 로컬 worktree에 Claude Code hooks를 자동 설정한다 */
+        /** 로컬 worktree에 모든 AI 에이전트 hooks를 자동 설정한다 */
         if (!project.sshHost && session.worktreePath) {
           const kanvibeUrl = `http://localhost:${process.env.PORT || 4885}`;
-          await setupClaudeHooks(session.worktreePath, project.name, kanvibeUrl);
+          await Promise.allSettled([
+            setupClaudeHooks(session.worktreePath, project.name, kanvibeUrl),
+            setupGeminiHooks(session.worktreePath, project.name, kanvibeUrl),
+            setupCodexHooks(session.worktreePath, project.name, kanvibeUrl),
+            setupOpenCodeHooks(session.worktreePath, project.name, kanvibeUrl),
+          ]);
         }
       }
     } catch (error) {
@@ -330,13 +338,18 @@ export async function branchFromTask(
   task.sshHost = project.sshHost;
   task.status = TaskStatus.PROGRESS;
 
-  /** 로컬 worktree에 Claude Code hooks를 자동 설정한다 */
+  /** 로컬 worktree에 모든 AI 에이전트 hooks를 자동 설정한다 */
   if (!project.sshHost && session.worktreePath) {
     try {
       const kanvibeUrl = `http://localhost:${process.env.PORT || 4885}`;
-      await setupClaudeHooks(session.worktreePath, project.name, kanvibeUrl);
+      await Promise.allSettled([
+        setupClaudeHooks(session.worktreePath, project.name, kanvibeUrl),
+        setupGeminiHooks(session.worktreePath, project.name, kanvibeUrl),
+        setupCodexHooks(session.worktreePath, project.name, kanvibeUrl),
+        setupOpenCodeHooks(session.worktreePath, project.name, kanvibeUrl),
+      ]);
     } catch (error) {
-      console.error("Claude hooks 설정 실패:", error);
+      console.error("Hooks 설정 실패:", error);
     }
   }
 
