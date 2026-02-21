@@ -127,7 +127,10 @@
     "notificationEnabled": "浏览器通知",
     "notificationEnabledDescription": "任务状态变更时接收浏览器通知。",
     "notificationStatusFilter": "通知状态",
-    "notificationStatusFilterDescription": "仅在任务变更为所选状态时接收通知。"
+    "notificationStatusFilterDescription": "仅在任务变更为所选状态时接收通知。",
+    "taskCreationSection": "任务创建",
+    "defaultSessionType": "默认会话类型",
+    "defaultSessionTypeDescription": "创建新任务时默认选择的会话类型。"
   },
   "paneLayout": {
     "title": "面板布局设置",

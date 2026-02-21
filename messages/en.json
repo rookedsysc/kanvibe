@@ -127,7 +127,10 @@
     "notificationEnabled": "Browser notifications",
     "notificationEnabledDescription": "Receive browser notifications when task status changes.",
     "notificationStatusFilter": "Notify for statuses",
-    "notificationStatusFilterDescription": "Only receive notifications when tasks change to selected statuses."
+    "notificationStatusFilterDescription": "Only receive notifications when tasks change to selected statuses.",
+    "taskCreationSection": "Task Creation",
+    "defaultSessionType": "Default session type",
+    "defaultSessionTypeDescription": "The default session type selected when creating a new task."
   },
   "paneLayout": {
     "title": "Pane Layout Settings",
