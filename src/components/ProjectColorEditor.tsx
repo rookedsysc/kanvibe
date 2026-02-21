@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "@/i18n/navigation";
 import { HexColorPicker, HexColorInput } from "react-colorful";
 import { updateProjectColor } from "@/app/actions/kanban";
+import { computeProjectColor } from "@/lib/projectColor";
 
 const PRESET_COLORS = [
   "#F9A8D4", "#93C5FD", "#86EFAC", "#C4B5FD",
@@ -12,18 +13,20 @@ const PRESET_COLORS = [
 
 interface ProjectColorEditorProps {
   projectId: string;
+  projectName: string;
   currentColor: string | null;
 }
 
-export default function ProjectColorEditor({ projectId, currentColor }: ProjectColorEditorProps) {
+export default function ProjectColorEditor({ projectId, projectName, currentColor }: ProjectColorEditorProps) {
   const [isPending, startTransition] = useTransition();
   const router = useRouter();
   const [isOpen, setIsOpen] = useState(false);
-  const [color, setColor] = useState(currentColor || PRESET_COLORS[0]);
+  const fallbackColor = currentColor || computeProjectColor(projectName);
+  const [color, setColor] = useState(fallbackColor);
 
   function handleOpen() {
     /** 팝오버를 열 때 최신 prop 값으로 동기화한다 */
-    setColor(currentColor || PRESET_COLORS[0]);
+    setColor(currentColor || computeProjectColor(projectName));
     setIsOpen(true);
   }
 
