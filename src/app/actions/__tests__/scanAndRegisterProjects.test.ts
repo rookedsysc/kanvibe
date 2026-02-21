@@ -34,7 +34,7 @@ vi.mock("@/lib/gitOperations", () => ({
 
 vi.mock("@/lib/worktree", () => ({
   isSessionAlive: vi.fn().mockResolvedValue(false),
-  formatSessionName: vi.fn((name: string) => name.replace(/\//g, "-")),
+  formatSessionName: vi.fn((projectName: string, branchName: string) => `${projectName}-${branchName}`.replace(/\//g, "-")),
   createSessionWithoutWorktree: vi.fn().mockResolvedValue({ sessionName: "test-session" }),
 }));
 

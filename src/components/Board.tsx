@@ -16,6 +16,7 @@ import { TaskStatus, type KanbanTask } from "@/entities/KanbanTask";
 import type { Project } from "@/entities/Project";
 import { logoutAction } from "@/app/actions/auth";
 import { useAutoRefresh } from "@/hooks/useAutoRefresh";
+import { useProjectFilterParams } from "@/hooks/useProjectFilterParams";
 import { computeProjectColor } from "@/lib/projectColor";
 
 interface BoardProps {
@@ -36,8 +37,6 @@ const COLUMNS: { status: TaskStatus; labelKey: string; colorClass: string }[] = 
   { status: TaskStatus.REVIEW, labelKey: "review", colorClass: "bg-status-review" },
   { status: TaskStatus.DONE, labelKey: "done", colorClass: "bg-status-done" },
 ];
-
-const FILTER_STORAGE_KEY = "kanvibe:projectFilter";
 
 interface ContextMenuState {
   isOpen: boolean;
@@ -102,7 +101,9 @@ export default function Board({ initialTasks, initialDoneTotal, initialDoneLimit
     projectId: string;
   } | null>(null);
   const [isMounted, setIsMounted] = useState(false);
-  const [selectedProjectIds, setSelectedProjectIds] = useState<string[]>([]);
+  const [selectedProjectIds, setSelectedProjectIds] = useProjectFilterParams(
+    projects.map((p) => p.id),
+  );
   const [doneTotal, setDoneTotal] = useState(initialDoneTotal);
   const [doneOffset, setDoneOffset] = useState(initialDoneLimit);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
@@ -234,36 +235,6 @@ export default function Board({ initialTasks, initialDoneTotal, initialDoneLimit
   useEffect(() => {
     setIsMounted(true);
   }, []);
-
-  /** localStorage에서 저장된 필터를 복원한다 */
-  useEffect(() => {
-    const stored = localStorage.getItem(FILTER_STORAGE_KEY);
-    if (!stored) return;
-
-    try {
-      const parsed = JSON.parse(stored);
-      if (Array.isArray(parsed)) {
-        const validIds = parsed.filter((id: string) =>
-          projects.some((p) => p.id === id)
-        );
-        if (validIds.length > 0) setSelectedProjectIds(validIds);
-      }
-    } catch {
-      /** 이전 단일 선택 포맷 호환: plain string */
-      if (projects.some((p) => p.id === stored)) {
-        setSelectedProjectIds([stored]);
-      }
-    }
-  }, [projects]);
-
-  /** 필터 변경 시 localStorage에 저장한다 */
-  useEffect(() => {
-    if (selectedProjectIds.length > 0) {
-      localStorage.setItem(FILTER_STORAGE_KEY, JSON.stringify(selectedProjectIds));
-    } else {
-      localStorage.removeItem(FILTER_STORAGE_KEY);
-    }
-  }, [selectedProjectIds]);
 
   /** 서버 revalidation 후 initialTasks가 변경되면 로컬 state에 반영한다 */
   useEffect(() => {

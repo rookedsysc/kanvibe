@@ -32,7 +32,7 @@ describe("computeProjectColor", () => {
     // When
     const colors = names.map(computeProjectColor);
 
-    // Then - 최소 2가지 이상 다른 색상이 나와야 한다
+    // Then
     const uniqueColors = new Set(colors);
     expect(uniqueColors.size).toBeGreaterThanOrEqual(2);
   });
@@ -68,5 +68,19 @@ describe("computeProjectColor", () => {
 
     // Then
     expect(color).toMatch(/^#[0-9A-Fa-f]{6}$/);
+  });
+
+  it("should handle single character names", () => {
+    // Given
+    const presetColors = [
+      "#F9A8D4", "#93C5FD", "#86EFAC", "#C4B5FD",
+      "#FDBA74", "#FDE047", "#5EEAD4", "#A5B4FC",
+    ];
+
+    // When
+    const result = computeProjectColor("a");
+
+    // Then
+    expect(presetColors).toContain(result);
   });
 });
