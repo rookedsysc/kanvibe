@@ -200,6 +200,22 @@ Setup: Browser will prompt for permission on first visit. Configure filters in *
 | `/api/hooks/start` | POST | Create a new task |
 | `/api/hooks/status` | POST | Update task status by `branchName` + `projectName` |
 
+### GitHub-style Diff View
+
+Review code changes directly in the browser with a GitHub-style diff viewer. Click the **Diff** badge on the task detail page to see all modified files compared to the base branch.
+
+<table>
+  <tr>
+    <td width="30%"><img src="./docs/images/diff-view-button.png" alt="Diff Badge on Task Detail" width="100%"></td>
+    <td width="70%"><img src="./docs/images/diff-view.png" alt="Diff View Page" width="100%"></td>
+  </tr>
+</table>
+
+- File tree sidebar with changed file count
+- Inline diff viewer powered by Monaco Editor
+- Edit mode for quick fixes directly in the browser
+- Viewed file tracking with checkboxes
+
 ### Pane Layout Editor
 - 6 layout presets (Single, Horizontal 2, Vertical 2, Left+Right TB, Left TB+Right, Quad)
 - Per-pane custom command configuration

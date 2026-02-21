@@ -200,6 +200,22 @@ AI 에이전트 Hooks를 통한 태스크 상태 변경이 **브라우저 알림
 | `/api/hooks/start` | POST | 새 태스크 생성 |
 | `/api/hooks/status` | POST | `branchName` + `projectName`으로 태스크 상태 변경 |
 
+### GitHub 스타일 Diff 뷰
+
+브라우저에서 GitHub 스타일의 diff 뷰어로 코드 변경사항을 바로 확인할 수 있습니다. 태스크 상세 페이지의 **Diff** 뱃지를 클릭하면 base 브랜치 대비 변경된 모든 파일을 확인할 수 있습니다.
+
+<table>
+  <tr>
+    <td width="30%"><img src="./images/diff-view-button.png" alt="태스크 상세의 Diff 뱃지" width="100%"></td>
+    <td width="70%"><img src="./images/diff-view.png" alt="Diff 뷰 페이지" width="100%"></td>
+  </tr>
+</table>
+
+- 변경 파일 수가 표시되는 파일 트리 사이드바
+- Monaco Editor 기반 인라인 diff 뷰어
+- 브라우저에서 바로 수정 가능한 에딧 모드
+- 체크박스로 확인한 파일 추적
+
 ### Pane 레이아웃 에디터
 - 6가지 레이아웃 프리셋 (Single, Horizontal 2, Vertical 2, Left+Right TB, Left TB+Right, Quad)
 - pane별 커스텀 명령어 설정
