@@ -1,5 +1,6 @@
 import { writeFile, mkdir, access, readFile } from "fs/promises";
 import path from "path";
+import { addAiToolPatternsToGitExclude } from "@/lib/gitExclude";
 
 /**
  * OpenCode는 `.opencode/plugins/` 디렉토리에 TypeScript 플러그인을 배치하여 hooks를 등록한다.
@@ -82,6 +83,12 @@ export async function setupOpenCodeHooks(
 
   const pluginPath = path.join(pluginsDir, PLUGIN_FILE_NAME);
   await writeFile(pluginPath, generatePluginScript(kanvibeUrl, projectName), "utf-8");
+
+  try {
+    await addAiToolPatternsToGitExclude(repoPath);
+  } catch (error) {
+    console.error("git exclude 패턴 추가 실패:", error);
+  }
 }
 
 export interface OpenCodeHooksStatus {
