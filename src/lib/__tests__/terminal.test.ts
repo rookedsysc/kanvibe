@@ -41,13 +41,13 @@ function findExecSyncCall(pattern: string): string | undefined {
     .find((cmd) => cmd.includes(pattern));
 }
 
-describe("attachLocalSession — tmux 자동 생성 분기", () => {
+describe("attachLocalSession — tmux 세션 자동 생성", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.resetModules();
   });
 
-  it("should create session with named window when legacy session does not exist", async () => {
+  it("should create session when tmux session does not exist", async () => {
     // Given
     const { attachLocalSession } = await import("@/lib/terminal");
     mockExecSync.mockImplementation((cmd: string) => {
@@ -61,8 +61,7 @@ describe("attachLocalSession — tmux 자동 생성 분기", () => {
     await attachLocalSession(
       "task-1",
       SessionType.TMUX,
-      "kanvibe",
-      " main",
+      "feat-login",
       createMockWs(),
       "/workspace",
     );
@@ -70,90 +69,52 @@ describe("attachLocalSession — tmux 자동 생성 분기", () => {
     // Then
     const newSessionCmd = findExecSyncCall("new-session");
     expect(newSessionCmd).toBeDefined();
-    expect(newSessionCmd).toContain('-s "kanvibe"');
-    expect(newSessionCmd).toContain('-n " main"');
+    expect(newSessionCmd).toContain('-s "feat-login"');
     expect(newSessionCmd).toContain('-c "/workspace"');
   });
 
-  it("should create window only when legacy session exists but window does not", async () => {
+  it("should skip session creation when tmux session already exists", async () => {
     // Given
     const { attachLocalSession } = await import("@/lib/terminal");
-    mockExecSync.mockImplementation((cmd: string) => {
-      if (typeof cmd === "string" && cmd.includes("has-session")) return "";
-      if (typeof cmd === "string" && cmd.includes("list-windows")) return "other-window\n";
-      return "";
-    });
+    mockExecSync.mockReturnValue("");
 
     // When
     await attachLocalSession(
       "task-2",
       SessionType.TMUX,
-      "kanvibe",
-      " main",
+      "feat-login",
       createMockWs(),
       "/workspace",
     );
 
     // Then
-    const newWindowCmd = findExecSyncCall("new-window");
-    expect(newWindowCmd).toBeDefined();
-    expect(newWindowCmd).toContain('-t "kanvibe"');
-    expect(newWindowCmd).toContain('-n " main"');
     expect(findExecSyncCall("new-session")).toBeUndefined();
   });
 
-  it("should skip creation when legacy session and window both exist", async () => {
+  it("should attach directly to session without window targeting", async () => {
     // Given
     const { attachLocalSession } = await import("@/lib/terminal");
-    mockExecSync.mockImplementation((cmd: string) => {
-      if (typeof cmd === "string" && cmd.includes("has-session")) return "";
-      if (typeof cmd === "string" && cmd.includes("list-windows")) return " main\n";
-      return "";
-    });
+    const nodePty = await import("node-pty");
+    mockExecSync.mockReturnValue("");
 
     // When
     await attachLocalSession(
       "task-3",
       SessionType.TMUX,
-      "kanvibe",
-      " main",
+      "feat-login",
       createMockWs(),
       "/workspace",
     );
 
     // Then
-    expect(findExecSyncCall("new-session")).toBeUndefined();
-    expect(findExecSyncCall("new-window")).toBeUndefined();
-  });
-
-  it("should create independent session without window for new format", async () => {
-    // Given
-    const { attachLocalSession } = await import("@/lib/terminal");
-    mockExecSync.mockImplementation((cmd: string) => {
-      if (typeof cmd === "string" && cmd.includes("has-session")) {
-        throw new Error("session not found");
-      }
-      return "";
-    });
-
-    // When
-    await attachLocalSession(
-      "task-4",
-      SessionType.TMUX,
-      "kanvibe/feat-login",
-      " feat-login",
-      createMockWs(),
-      "/workspace",
+    expect(nodePty.spawn).toHaveBeenCalledWith(
+      "tmux",
+      ["attach-session", "-t", "feat-login"],
+      expect.any(Object),
     );
-
-    // Then
-    const newSessionCmd = findExecSyncCall("new-session");
-    expect(newSessionCmd).toBeDefined();
-    expect(newSessionCmd).toContain('-s "kanvibe/feat-login"');
-    expect(newSessionCmd).not.toContain("-n ");
   });
 
-  it("should close ws when legacy session creation fails", async () => {
+  it("should close ws when session creation fails", async () => {
     // Given
     const { attachLocalSession } = await import("@/lib/terminal");
     const ws = createMockWs();
@@ -169,10 +130,9 @@ describe("attachLocalSession — tmux 자동 생성 분기", () => {
 
     // When
     await attachLocalSession(
-      "task-5",
+      "task-4",
       SessionType.TMUX,
-      "kanvibe",
-      " main",
+      "feat-login",
       ws,
       "/workspace",
     );

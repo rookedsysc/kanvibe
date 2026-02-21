@@ -264,9 +264,8 @@ export async function scanAndRegisterProjects(
           continue;
         }
 
-        /** 해당 브랜치의 독립 tmux 세션이 활성 상태이면 연결 정보를 설정한다 */
-        const projectName = path.basename(project.repoPath);
-        const sessionName = formatSessionName(projectName, wt.branch);
+        /** 브랜치명 기반 독립 세션이 존재하면 연결 정보를 설정한다 */
+        const sessionName = formatSessionName(wt.branch);
         const hasSession = await isSessionAlive(
           SessionType.TMUX,
           sessionName,
@@ -304,8 +303,7 @@ export async function scanAndRegisterProjects(
       });
 
       if (mainBranchTask && !mainBranchTask.sessionType) {
-        const projectName = path.basename(project.repoPath);
-        const sessionName = formatSessionName(projectName, project.defaultBranch);
+        const sessionName = formatSessionName(project.defaultBranch);
         const hasSession = await isSessionAlive(
           SessionType.TMUX,
           sessionName,

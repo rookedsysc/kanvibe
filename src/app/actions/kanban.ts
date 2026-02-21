@@ -252,19 +252,15 @@ export async function cleanupTaskResources(task: KanbanTask): Promise<void> {
   }
 
   const isProjectRoot = project && task.worktreePath === project.repoPath;
-  const derivedBranch = task.branchName || task.baseBranch;
 
-  /** 세션(window/tab) 정리 */
+  /** 브랜치별 독립 세션 정리 */
   if (task.sessionType && task.sessionName) {
     try {
-      if (derivedBranch) {
-        await removeSessionOnly(
-          task.sessionType,
-          task.sessionName,
-          derivedBranch,
-          task.sshHost
-        );
-      }
+      await removeSessionOnly(
+        task.sessionType,
+        task.sessionName,
+        task.sshHost
+      );
     } catch (error) {
       console.error("세션 정리 실패:", error);
     }
@@ -362,8 +358,8 @@ export async function connectTerminalSession(
   const task = await repo.findOneBy({ id: taskId });
   if (!task || !task.projectId) return null;
 
-  const branchForWindow = task.branchName || task.baseBranch;
-  if (!branchForWindow) return null;
+  const branchForSession = task.branchName || task.baseBranch;
+  if (!branchForSession) return null;
 
   const projectRepo = await getProjectRepository();
   const project = await projectRepo.findOneBy({ id: task.projectId });
@@ -374,7 +370,7 @@ export async function connectTerminalSession(
   try {
     const session = await createSessionWithoutWorktree(
       project.repoPath,
-      branchForWindow,
+      branchForSession,
       sessionType,
       project.sshHost,
       workingDir,

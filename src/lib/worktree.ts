@@ -9,9 +9,9 @@ interface WorktreeSession {
   sessionName: string;
 }
 
-/** projectName과 branchName을 조합하여 독립 세션 이름을 생성한다 */
-export function formatSessionName(projectName: string, branchName: string): string {
-  return `${projectName}/${branchName.replace(/\//g, "-")}`;
+/** branchName을 세션 이름으로 변환한다. `/`를 `-`로 치환한다 */
+export function formatSessionName(branchName: string): string {
+  return branchName.replace(/\//g, "-");
 }
 
 /** zellij 세션 이름을 소켓 경로 108바이트 제한에 맞게 truncate한다 */
@@ -23,7 +23,7 @@ export function sanitizeZellijSessionName(sessionName: string): string {
 
 
 /**
- * tmux window에 pane 레이아웃을 적용하고 각 pane에 시작 명령어를 실행한다.
+ * tmux 세션에 pane 레이아웃을 적용하고 각 pane에 시작 명령어를 실행한다.
  * 분할 실패 시에도 기본 window는 유지된다 (graceful fallback).
  */
 async function applyPaneLayout(
@@ -32,7 +32,7 @@ async function applyPaneLayout(
   panes: PaneCommand[],
   worktreePath: string,
 ): Promise<void> {
-  const target = `"${sessionName}"`;
+  const target = `"${sessionName}":0`;
 
   /** 레이아웃 타입에 따른 tmux split 명령어 시퀀스 */
   const splitCommands: Record<PaneLayoutType, string[]> = {
@@ -100,8 +100,8 @@ function applyPaneLayoutAsync(
 }
 
 /**
- * git worktree를 생성하고 메인 세션에 tmux window / zellij tab을 추가한다.
- * 메인 세션이 없으면 자동 생성한다. sshHost가 지정되면 원격에서 실행한다.
+ * git worktree를 생성하고 브랜치별 독립 세션을 생성한다.
+ * 세션이 없으면 자동 생성한다. sshHost가 지정되면 원격에서 실행한다.
  * tmux인 경우 projectId를 기반으로 pane 레이아웃 설정을 적용한다.
  */
 export async function createWorktreeWithSession(
@@ -121,7 +121,7 @@ export async function createWorktreeWithSession(
     worktreeBase,
     branchName.replace(/\//g, "-"),
   );
-  const rawSessionName = formatSessionName(projectName, branchName);
+  const sessionName = formatSessionName(branchName);
 
   await execGit(
     `git -C "${projectPath}" worktree add "${worktreePath}" -b "${branchName}" "${baseBranch}"`,
@@ -129,9 +129,7 @@ export async function createWorktreeWithSession(
   );
 
   if (sessionType === SessionType.TMUX) {
-    const sessionName = rawSessionName;
-
-    /** 동일 이름의 세션이 이미 존재하면 중복 생성하지 않는다 */
+    /** 동일 이름의 세션이 없을 때만 생성한다 */
     const hasSession = await isSessionAlive(sessionType, sessionName, sshHost);
     if (!hasSession) {
       await execGit(
@@ -151,24 +149,23 @@ export async function createWorktreeWithSession(
 
     return { worktreePath, sessionName };
   } else {
-    const sessionName = sanitizeZellijSessionName(rawSessionName);
-
-    /** 동일 이름의 세션이 이미 존재하면 중복 생성하지 않는다 */
-    const hasSession = await isSessionAlive(sessionType, sessionName, sshHost);
+    /** 동일 이름의 zellij 세션이 없을 때만 생성한다 */
+    const zellijSessionName = sanitizeZellijSessionName(sessionName);
+    const hasSession = await isSessionAlive(sessionType, zellijSessionName, sshHost);
     if (!hasSession) {
       await execGit(
-        `cd "${worktreePath}" && zellij --session "${sessionName}" &`,
+        `cd "${worktreePath}" && zellij --session "${zellijSessionName}" &`,
         sshHost,
       );
       await new Promise((resolve) => setTimeout(resolve, 2000));
     }
 
-    return { worktreePath, sessionName };
+    return { worktreePath, sessionName: zellijSessionName };
   }
 }
 
 /**
- * 기존 디렉토리에 tmux window / zellij tab을 생성한다.
+ * 기존 디렉토리에 브랜치별 독립 세션을 생성한다.
  * worktree를 생성하지 않고, 지정된 작업 디렉토리를 사용한다.
  */
 export async function createSessionWithoutWorktree(
@@ -178,14 +175,10 @@ export async function createSessionWithoutWorktree(
   sshHost?: string | null,
   workingDir?: string,
 ): Promise<{ sessionName: string }> {
-  const projectName = path.basename(projectPath);
-  const rawSessionName = formatSessionName(projectName, branchName);
+  const sessionName = formatSessionName(branchName);
   const cwd = workingDir || projectPath;
 
   if (sessionType === SessionType.TMUX) {
-    const sessionName = rawSessionName;
-
-    /** 동일 이름의 세션이 이미 존재하면 중복 생성하지 않는다 */
     const hasSession = await isSessionAlive(sessionType, sessionName, sshHost);
     if (!hasSession) {
       await execGit(
@@ -196,19 +189,17 @@ export async function createSessionWithoutWorktree(
 
     return { sessionName };
   } else {
-    const sessionName = sanitizeZellijSessionName(rawSessionName);
-
-    /** 동일 이름의 세션이 이미 존재하면 중복 생성하지 않는다 */
-    const hasSession = await isSessionAlive(sessionType, sessionName, sshHost);
+    const zellijSessionName = sanitizeZellijSessionName(sessionName);
+    const hasSession = await isSessionAlive(sessionType, zellijSessionName, sshHost);
     if (!hasSession) {
       await execGit(
-        `cd "${cwd}" && zellij --session "${sessionName}" &`,
+        `cd "${cwd}" && zellij --session "${zellijSessionName}" &`,
         sshHost,
       );
       await new Promise((resolve) => setTimeout(resolve, 2000));
     }
 
-    return { sessionName };
+    return { sessionName: zellijSessionName };
   }
 }
 
@@ -243,53 +234,31 @@ export async function removeWorktreeAndBranch(
   }
 }
 
-/** tmux 세션 / zellij 세션을 제거한다. worktree와 브랜치는 삭제하지 않는다 */
+/** 브랜치별 독립 세션을 종료한다. worktree와 브랜치는 삭제하지 않는다 */
 export async function removeSessionOnly(
   sessionType: SessionType,
   sessionName: string,
-  branchName: string,
   sshHost?: string | null,
 ): Promise<void> {
   try {
-    /**
-     * sessionName에 "/"가 포함되면 신규 독립 세션 형식(projectName/branchName)이므로 세션을 삭제한다.
-     * "/"가 없으면 구 형식(공유 세션)이므로 해당 window/tab만 삭제하여 다른 브랜치에 영향을 주지 않는다.
-     */
-    const isLegacySharedSession = !sessionName.includes("/");
-
     if (sessionType === SessionType.TMUX) {
-      if (isLegacySharedSession) {
-        const windowName = ` ${branchName.replace(/\//g, "-")}`;
-        await execGit(
-          `tmux kill-window -t "${sessionName}:${windowName}"`,
-          sshHost,
-        );
-      } else {
-        await execGit(
-          `tmux kill-session -t "${sessionName}"`,
-          sshHost,
-        );
-      }
+      await execGit(
+        `tmux kill-session -t "${sessionName}"`,
+        sshHost,
+      );
     } else {
-      if (isLegacySharedSession) {
-        await execGit(
-          `zellij action --session "${sessionName}" go-to-tab-name " ${branchName.replace(/\//g, "-")}" && zellij action --session "${sessionName}" close-tab`,
-          sshHost,
-        );
-      } else {
-        await execGit(
-          `zellij kill-session "${sessionName}"`,
-          sshHost,
-        );
-      }
+      await execGit(
+        `zellij kill-session "${sessionName}" 2>/dev/null || zellij delete-session "${sessionName}" 2>/dev/null`,
+        sshHost,
+      );
     }
   } catch {
-    // 세션/window가 이미 종료된 경우 무시
+    // 세션이 이미 종료된 경우 무시
   }
 }
 
 /**
- * worktree와 tmux/zellij 세션을 삭제한다.
+ * worktree와 브랜치별 독립 세션을 삭제한다.
  * sshHost가 지정되면 원격에서 실행한다.
  */
 export async function removeWorktreeAndSession(
@@ -299,7 +268,7 @@ export async function removeWorktreeAndSession(
   sessionName: string,
   sshHost?: string | null,
 ): Promise<void> {
-  await removeSessionOnly(sessionType, sessionName, branchName, sshHost);
+  await removeSessionOnly(sessionType, sessionName, sshHost);
   await removeWorktreeAndBranch(projectPath, branchName, sshHost);
 }
 
@@ -324,7 +293,7 @@ export async function listActiveSessions(
   }
 }
 
-/** tmux/zellij 세션이 활성 상태인지 확인한다 */
+/** 세션이 활성 상태인지 확인한다 */
 export async function isSessionAlive(
   sessionType: SessionType,
   sessionName: string,
@@ -332,14 +301,11 @@ export async function isSessionAlive(
 ): Promise<boolean> {
   try {
     if (sessionType === SessionType.TMUX) {
-      await execGit(
-        `tmux has-session -t "${sessionName}" 2>/dev/null`,
-        sshHost,
-      );
+      await execGit(`tmux has-session -t "${sessionName}" 2>/dev/null`, sshHost);
       return true;
     } else {
       const output = await execGit("zellij list-sessions", sshHost);
-      return output.split("\n").some((s) => s.trim() === sessionName);
+      return output.split("\n").some((s) => s.trim().startsWith(sessionName));
     }
   } catch {
     return false;

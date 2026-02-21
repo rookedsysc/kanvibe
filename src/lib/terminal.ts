@@ -11,7 +11,6 @@ interface TerminalEntry {
   clients: Set<WebSocket>;
   sessionType: SessionType;
   sessionName: string;
-  windowName: string;
 }
 
 const activeTerminals = new Map<string, TerminalEntry>();
@@ -19,23 +18,8 @@ const activeTerminals = new Map<string, TerminalEntry>();
 /** tmux 세션이 존재하는지 확인한다 */
 function isTmuxSessionAlive(sessionName: string): boolean {
   try {
-    execSync(`tmux has-session -t "${sessionName}" 2>/dev/null`, {
-      timeout: 5000,
-    });
+    execSync(`tmux has-session -t "${sessionName}" 2>/dev/null`, { timeout: 3000 });
     return true;
-  } catch {
-    return false;
-  }
-}
-
-/** tmux 세션에 해당 window가 존재하는지 확인한다 */
-function isTmuxWindowAlive(sessionName: string, windowName: string): boolean {
-  try {
-    const output = execSync(
-      `tmux list-windows -t "${sessionName}" -F "#{window_name}"`,
-      { encoding: "utf-8", timeout: 5000 },
-    );
-    return output.split("\n").some((w) => w.trimEnd() === windowName);
   } catch {
     return false;
   }
@@ -54,12 +38,11 @@ function isZellijSessionAlive(sessionName: string): boolean {
   }
 }
 
-/** 로컬 tmux window / zellij tab에 attach하여 WebSocket과 연결한다 */
+/** 로컬 tmux / zellij 세션에 attach하여 WebSocket과 연결한다 */
 export async function attachLocalSession(
   taskId: string,
   sessionType: SessionType,
   sessionName: string,
-  windowName: string,
   ws: WebSocket,
   cwd?: string | null,
   cols?: number,
@@ -99,60 +82,37 @@ export async function attachLocalSession(
     return;
   }
 
-  /**
-   * sessionName에 "/"가 포함되면 신규 독립 세션 형식(projectName/branchName),
-   * 없으면 구 형식(공유 세션 + window)이다.
-   */
-  const isLegacySharedSession = !sessionName.includes("/");
-
-  /** 세션(및 레거시 형식일 때 window)이 없으면 자동 생성한다 */
+  /** 세션이 없으면 자동 생성한다 */
   if (sessionType === SessionType.TMUX) {
-    const dir = cwd || process.env.HOME || "/";
-
-    if (isLegacySharedSession) {
-      /** 레거시: 공유 세션이 없으면 세션+window를 함께 생성, 세션만 있고 window가 없으면 window만 추가한다 */
-      if (!isTmuxSessionAlive(sessionName)) {
-        try {
-          const windowArg = windowName ? `-n "${windowName}"` : "";
-          execSync(
-            `tmux new-session -d -s "${sessionName}" ${windowArg} -c "${dir}"`,
-            { timeout: 5000 },
-          );
-        } catch (error) {
-          console.error(`[터미널] tmux 세션 자동 생성 실패:`, error);
-          ws.close(1008, "tmux 세션 생성에 실패했습니다.");
-          return;
-        }
-      } else if (windowName && !isTmuxWindowAlive(sessionName, windowName)) {
-        try {
-          execSync(
-            `tmux new-window -t "${sessionName}" -n "${windowName}" -c "${dir}"`,
-            { timeout: 5000 },
-          );
-        } catch (error) {
-          console.error(`[터미널] tmux window 자동 생성 실패:`, error);
-          ws.close(1008, "tmux window 생성에 실패했습니다.");
-          return;
-        }
-      }
-    } else {
-      /** 신규: 독립 세션이 없으면 생성한다 */
-      if (!isTmuxSessionAlive(sessionName)) {
-        try {
-          execSync(`tmux new-session -d -s "${sessionName}" -c "${dir}"`, {
-            timeout: 5000,
-          });
-        } catch (error) {
-          console.error(`[터미널] tmux 세션 자동 생성 실패:`, error);
-          ws.close(1008, "tmux 세션 생성에 실패했습니다.");
-          return;
-        }
+    if (!isTmuxSessionAlive(sessionName)) {
+      try {
+        const dir = cwd || process.env.HOME || "/";
+        execSync(
+          `tmux new-session -d -s "${sessionName}" -c "${dir}"`,
+          { timeout: 5000 },
+        );
+      } catch (error) {
+        console.error(`[터미널] tmux 세션 자동 생성 실패:`, error);
+        ws.close(1008, "tmux 세션 생성에 실패했습니다.");
+        return;
       }
     }
-  } else if (!isZellijSessionAlive(sessionName)) {
-    console.error(`[터미널] zellij 세션을 찾을 수 없음: ${sessionName}`);
-    ws.close(1008, "zellij 세션을 찾을 수 없습니다.");
-    return;
+  } else {
+    if (!isZellijSessionAlive(sessionName)) {
+      try {
+        const dir = cwd || process.env.HOME || "/";
+        execSync(
+          `cd "${dir}" && zellij --session "${sessionName}" &`,
+          { timeout: 5000, shell: "/bin/sh" },
+        );
+        /** zellij 초기화 대기 */
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+      } catch (error) {
+        console.error(`[터미널] zellij 세션 자동 생성 실패:`, error);
+        ws.close(1008, "zellij 세션 생성에 실패했습니다.");
+        return;
+      }
+    }
   }
 
   /** 웹 터미널 크기가 다른 클라이언트에 제한되지 않도록 최근 활성 클라이언트 기준으로 설정 */
@@ -166,20 +126,15 @@ export async function attachLocalSession(
 
   const pty = await import("node-pty");
 
-  const shell = sessionType === SessionType.TMUX ? "tmux" : "zellij";
+  const shell =
+    sessionType === SessionType.TMUX
+      ? "tmux"
+      : "zellij";
 
-  /**
-   * 구 형식(공유 세션)이면 특정 window를 타겟으로 attach하고,
-   * 신규 형식(독립 세션)이면 세션 전체에 직접 attach한다.
-   */
-  const tmuxTarget =
-    isLegacySharedSession && windowName
-      ? `${sessionName}:${windowName}`
-      : sessionName;
-
+  /** 세션에 직접 attach한다 */
   const args: string[] =
     sessionType === SessionType.TMUX
-      ? ["attach-session", "-t", tmuxTarget]
+      ? ["attach-session", "-t", sessionName]
       : ["attach", sessionName];
 
   let ptyProcess: import("node-pty").IPty;
@@ -201,13 +156,7 @@ export async function attachLocalSession(
     return;
   }
 
-  const entry: TerminalEntry = {
-    pty: ptyProcess,
-    clients: new Set([ws]),
-    sessionType,
-    sessionName,
-    windowName,
-  };
+  const entry: TerminalEntry = { pty: ptyProcess, clients: new Set([ws]), sessionType, sessionName };
   activeTerminals.set(taskId, entry);
 
   ptyProcess.onData((data) => {
@@ -248,13 +197,12 @@ export async function attachLocalSession(
   });
 }
 
-/** SSH를 통해 원격 tmux window / zellij tab에 attach하여 WebSocket과 연결한다 */
+/** SSH를 통해 원격 세션에 attach하여 WebSocket과 연결한다 */
 export async function attachRemoteSession(
   taskId: string,
   sshHost: string,
   sessionType: SessionType,
   sessionName: string,
-  windowName: string,
   ws: WebSocket,
   sshConfig: {
     hostname: string;
@@ -274,35 +222,13 @@ export async function attachRemoteSession(
   const conn = new Client();
 
   conn.on("ready", () => {
-    /**
-     * 구 형식(공유 세션)이면 특정 window를 타겟으로 attach하고,
-     * 신규 형식(독립 세션)이면 세션 전체에 직접 attach한다.
-     */
-    const isLegacySharedSession = !sessionName.includes("/");
-    const tmuxTarget =
-      isLegacySharedSession && windowName
-        ? `${sessionName}:${windowName}`
-        : sessionName;
-
-    /**
-     * 레거시 형식일 때는 세션/window 자동 생성 후 attach하고,
-     * 신규 형식일 때는 세션 자동 생성 후 attach한다.
-     */
+    /** 세션에 직접 attach한다 */
     let command: string;
     if (sessionType === SessionType.TMUX) {
-      if (isLegacySharedSession && windowName) {
-        const escapedWindow = windowName.replace(/"/g, '\\"');
-        command = [
-          `tmux has-session -t "${sessionName}" 2>/dev/null || tmux new-session -d -s "${sessionName}" -n "${escapedWindow}"`,
-          `tmux list-windows -t "${sessionName}" -F '#{window_name}' | grep -qxF '${windowName}' || tmux new-window -t "${sessionName}" -n "${escapedWindow}"`,
-          `tmux attach-session -t "${tmuxTarget}"`,
-        ].join("; ");
-      } else {
-        command = [
-          `tmux has-session -t "${sessionName}" 2>/dev/null || tmux new-session -d -s "${sessionName}"`,
-          `tmux attach-session -t "${tmuxTarget}"`,
-        ].join("; ");
-      }
+      command = [
+        `tmux has-session -t "${sessionName}" 2>/dev/null || tmux new-session -d -s "${sessionName}"`,
+        `tmux attach-session -t "${sessionName}"`,
+      ].join("; ");
     } else {
       command = `zellij attach "${sessionName}"`;
     }
@@ -368,6 +294,21 @@ export async function attachRemoteSession(
     username: sshConfig.username,
     privateKey: fs.readFileSync(sshConfig.privateKeyPath),
   });
+}
+
+/** 탭 전환 시 해당 태스크의 세션으로 포커스를 이동한다 */
+export function focusSession(taskId: string): void {
+  const entry = activeTerminals.get(taskId);
+  if (!entry) return;
+
+  try {
+    if (entry.sessionType === SessionType.TMUX) {
+      execSync(`tmux switch-client -t "${entry.sessionName}"`, { timeout: 3000, stdio: "ignore" });
+    }
+    // zellij는 외부에서 세션 전환이 불가능하므로 무시
+  } catch {
+    // focus 실패 시 무시 (세션이 종료되었을 수 있음)
+  }
 }
 
 /** 터미널 세션을 분리하고 PTY 프로세스를 종료한다. 모든 연결된 클라이언트를 닫는다 */

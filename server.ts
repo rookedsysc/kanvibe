@@ -109,10 +109,6 @@ app.prepare().then(() => {
         return;
       }
 
-      /** 구 형식 sessionName("/"없음)에서는 branchName으로 window를 특정해야 한다 */
-      const derivedBranch = task.branchName || task.baseBranch;
-      const windowName = derivedBranch ? ` ${derivedBranch.replace(/\//g, "-")}` : "";
-
       if (task.sshHost) {
         const sshHosts = await parseSSHConfig();
         const hostConfig = sshHosts.find((h) => h.host === task.sshHost);
@@ -127,14 +123,13 @@ app.prepare().then(() => {
           task.sshHost,
           task.sessionType,
           task.sessionName,
-          windowName,
           ws,
           hostConfig,
           initialCols,
           initialRows
         );
       } else {
-        await attachLocalSession(taskId, task.sessionType, task.sessionName, windowName, ws, task.worktreePath, initialCols, initialRows);
+        await attachLocalSession(taskId, task.sessionType, task.sessionName, ws, task.worktreePath, initialCols, initialRows);
       }
     } catch (error) {
       console.error("터미널 연결 오류:", error);
