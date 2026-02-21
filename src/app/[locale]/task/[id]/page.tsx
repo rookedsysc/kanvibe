@@ -132,7 +132,7 @@ export default async function TaskDetailPage({ params }: TaskDetailPageProps) {
           {t("backToBoard")}
         </Link>
 
-        <TaskDetailTitleCard task={task} />
+        <TaskDetailTitleCard task={task} taskId={task.id} />
 
         <TaskDetailInfoCard task={task} agentTagStyle={agentTagStyle} baseBranchTaskId={baseBranchTaskId} />
 
