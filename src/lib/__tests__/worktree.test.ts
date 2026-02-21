@@ -19,49 +19,48 @@ vi.mock("@/app/actions/paneLayout", () => ({
 }));
 
 describe("formatSessionName", () => {
-  it("should replace slashes with hyphens", async () => {
+  it("should format as projectName-branchName with slashes replaced", async () => {
     // Given
     const { formatSessionName } = await import("@/lib/worktree");
 
     // When
-    const result = formatSessionName("feat/something");
+    const result = formatSessionName("kanvibe", "feat/something");
 
     // Then
-    expect(result).toBe("feat-something");
+    expect(result).toBe("kanvibe-feat-something");
   });
 
-  it("should handle multiple slashes", async () => {
+  it("should handle multiple slashes in branch name", async () => {
     // Given
     const { formatSessionName } = await import("@/lib/worktree");
 
     // When
-    const result = formatSessionName("feat/ui/button");
+    const result = formatSessionName("kanvibe", "feat/ui/button");
 
     // Then
-    expect(result).toBe("feat-ui-button");
+    expect(result).toBe("kanvibe-feat-ui-button");
   });
 
-  it("should return the same string when no slashes exist", async () => {
+  it("should handle branch name without slashes", async () => {
     // Given
     const { formatSessionName } = await import("@/lib/worktree");
 
     // When
-    const result = formatSessionName("main");
+    const result = formatSessionName("kanvibe", "main");
 
     // Then
-    expect(result).toBe("main");
+    expect(result).toBe("kanvibe-main");
   });
 
-  it("should not add leading space unlike the old formatWindowName", async () => {
+  it("should replace slashes in project name as well", async () => {
     // Given
     const { formatSessionName } = await import("@/lib/worktree");
 
     // When
-    const result = formatSessionName("feat/test");
+    const result = formatSessionName("parent/project", "feat/test");
 
     // Then
-    expect(result).not.toMatch(/^\s/);
-    expect(result).toBe("feat-test");
+    expect(result).toBe("parent-project-feat-test");
   });
 });
 
@@ -240,7 +239,7 @@ describe("createSessionWithoutWorktree", () => {
     );
 
     // Then
-    expect(result.sessionName).toBe("feat-my-feature");
+    expect(result.sessionName).toBe("path-feat-my-feature");
   });
 
   it("should create tmux session with working directory when session does not exist", async () => {
@@ -259,7 +258,7 @@ describe("createSessionWithoutWorktree", () => {
 
     // Then
     expect(mockExecGit).toHaveBeenCalledWith(
-      'tmux new-session -d -s "feat-test" -c "/custom/dir"',
+      'tmux new-session -d -s "path-feat-test" -c "/custom/dir"',
       null,
     );
   });
@@ -280,7 +279,7 @@ describe("createSessionWithoutWorktree", () => {
     /** isSessionAlive → has-session 호출 1회만 발생, new-session은 호출되지 않는다 */
     expect(mockExecGit).toHaveBeenCalledTimes(1);
     expect(mockExecGit).toHaveBeenCalledWith(
-      'tmux has-session -t "main" 2>/dev/null',
+      'tmux has-session -t "path-main" 2>/dev/null',
       undefined,
     );
   });
