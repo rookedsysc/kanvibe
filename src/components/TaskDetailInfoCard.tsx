@@ -5,7 +5,6 @@ import type { KanbanTask } from "@/entities/KanbanTask";
 import PriorityEditor from "@/components/PriorityEditor";
 import { Link } from "@/i18n/navigation";
 import ProjectColorEditor from "@/components/ProjectColorEditor";
-import { computeProjectColor } from "@/lib/projectColor";
 
 interface TaskDetailInfoCardProps {
   task: KanbanTask;
@@ -34,14 +33,13 @@ export default function TaskDetailInfoCard({
                 <dt className="text-xs text-text-muted">{t("project")}</dt>
                 <dd className="flex items-center gap-1">
                   <span
-                    className="text-xs px-2 py-0.5 rounded-full font-medium text-white truncate max-w-[140px]"
-                    style={{ backgroundColor: task.project.color || computeProjectColor(task.project.name) }}
+                    className="text-xs px-2 py-0.5 rounded-full font-medium text-white truncate max-w-[140px] bg-tag-project-bg"
                   >
                     {task.project.name}
                   </span>
                   <Link
                     href={baseBranchTaskId ? `/task/${baseBranchTaskId}` : "/"}
-                    className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-bg-page border border-border-default hover:border-brand-primary hover:text-text-brand text-text-muted transition-colors"
+                    className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-tag-project-bg hover:opacity-80 text-white transition-opacity"
                     title={task.baseBranch ?? task.project.name}
                   >
                     <svg
