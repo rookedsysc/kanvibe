@@ -69,7 +69,9 @@ cp .env.example .env
 ### 2. 실행
 
 ```bash
-bash kanvibe.sh start
+bash kanvibe.sh start          # 인터랙티브 모드 선택 (포그라운드/백그라운드)
+bash kanvibe.sh start --fg     # 포그라운드 (터미널에 직접 출력, Ctrl+C로 종료)
+bash kanvibe.sh start --bg     # 백그라운드 (터미널 닫아도 서버 유지)
 ```
 
 의존성 체크(i18n 설치 프롬프트 포함), 패키지 설치, PostgreSQL 시작, 마이그레이션, 빌드, 서버 실행까지 모두 처리됩니다.
