@@ -80,7 +80,7 @@ export default function TaskDetailTitleCard({ task, taskId }: TaskDetailTitleCar
           {task.branchName && task.projectId && (
             <button
               onClick={() => setShowBranchTasksModal(true)}
-              className="flex-shrink-0 w-6 h-6 rounded-full bg-brand-primary hover:opacity-80 text-white flex items-center justify-center transition-opacity"
+              className="flex-shrink-0 w-6 h-6 rounded-full bg-tag-project-bg hover:opacity-80 text-white flex items-center justify-center transition-opacity"
               aria-label="View other tasks in this project"
               title="다른 작업 보기"
             >
