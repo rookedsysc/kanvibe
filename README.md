@@ -141,7 +141,7 @@ Each pane can run a custom command (e.g., `vim`, `htop`, `lazygit`, test runner,
 - Nerd Font rendering support
 
 ### AI Agent Hooks - Automatic Status Tracking
-KanVibe integrates with **Claude Code Hooks**, **Gemini CLI Hooks**, and **Codex CLI** to automatically track task status. Tasks are managed through 5 statuses:
+KanVibe integrates with **Claude Code Hooks**, **Gemini CLI Hooks**, **Codex CLI**, and **OpenCode** to automatically track task status. Tasks are managed through 5 statuses:
 
 | Status | Description |
 |--------|-------------|
@@ -174,13 +174,22 @@ agent-turn-complete (agent done) → REVIEW
 
 > Codex CLI currently only supports the `agent-turn-complete` notification event via the `notify` config. PROGRESS and PENDING transitions are not yet available. OpenAI is [actively designing a hooks system](https://github.com/openai/codex/discussions/2150) — full support will be added when it ships.
 
-Claude Code and Gemini CLI hooks are **auto-installed** when you register a project through KanVibe's directory scan. You can also install them individually from the project settings or task detail page. Codex CLI requires manual configuration.
+#### OpenCode
+```
+User sends message (chat.message) → PROGRESS
+Session idle (session.idle)       → REVIEW
+```
+
+OpenCode uses its own [plugin system](https://opencode.ai/docs/plugins/) instead of shell-script hooks. KanVibe generates a TypeScript plugin at `.opencode/plugins/kanvibe-plugin.ts` that subscribes to OpenCode's native event hooks (`chat.message` and `session.idle`) via the `@opencode-ai/plugin` SDK. This means status updates are handled in-process without spawning external shell commands.
+
+All agent hooks are **auto-installed** when you register a project through KanVibe's directory scan or create a task with a worktree. You can also install them individually from the task detail page.
 
 | Agent | Hook Directory | Config File |
 |-------|---------------|-------------|
 | Claude Code | `.claude/hooks/` | `.claude/settings.json` |
 | Gemini CLI | `.gemini/hooks/` | `.gemini/settings.json` |
 | Codex CLI | `.codex/hooks/` | `.codex/config.toml` |
+| OpenCode | `.opencode/plugins/` | Plugin auto-discovery |
 
 #### Browser Notifications
 

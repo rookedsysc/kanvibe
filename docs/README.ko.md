@@ -141,7 +141,7 @@ KanVibe 서버와 PostgreSQL 컨테이너를 종료합니다.
 - Nerd Font 렌더링 지원
 
 ### AI 에이전트 Hooks - 자동 상태 추적
-KanVibe는 **Claude Code Hooks**, **Gemini CLI Hooks**, **Codex CLI**와 연동하여 태스크 상태를 자동 추적합니다. 태스크는 5가지 상태로 관리됩니다:
+KanVibe는 **Claude Code Hooks**, **Gemini CLI Hooks**, **Codex CLI**, **OpenCode**와 연동하여 태스크 상태를 자동 추적합니다. 태스크는 5가지 상태로 관리됩니다:
 
 | 상태 | 설명 |
 |------|------|
@@ -174,13 +174,22 @@ agent-turn-complete (에이전트 완료) → REVIEW
 
 > Codex CLI는 현재 `notify` 설정의 `agent-turn-complete` 이벤트만 지원합니다. PROGRESS, PENDING 전환은 아직 불가합니다. OpenAI가 [hooks 시스템을 설계 중](https://github.com/openai/codex/discussions/2150)이며, 출시되면 전체 지원을 추가할 예정입니다.
 
-Claude Code와 Gemini CLI Hook은 KanVibe 디렉토리 스캔으로 프로젝트를 등록하면 **자동 설치**됩니다. 프로젝트 설정이나 태스크 상세 페이지에서 개별 설치도 가능합니다. Codex CLI는 수동 설정이 필요합니다.
+#### OpenCode
+```
+사용자 메시지 전송 (chat.message) → PROGRESS
+세션 대기 (session.idle)         → REVIEW
+```
+
+OpenCode는 셸 스크립트 hooks 대신 자체 [플러그인 시스템](https://opencode.ai/docs/plugins/)을 사용합니다. KanVibe는 `.opencode/plugins/kanvibe-plugin.ts`에 TypeScript 플러그인을 생성하여 `@opencode-ai/plugin` SDK를 통해 OpenCode의 네이티브 이벤트 hooks(`chat.message`, `session.idle`)를 구독합니다. 외부 셸 명령을 실행하지 않고 프로세스 내에서 상태 업데이트를 처리합니다.
+
+모든 에이전트 Hook은 KanVibe 디렉토리 스캔으로 프로젝트를 등록하거나 worktree와 함께 태스크를 생성하면 **자동 설치**됩니다. 태스크 상세 페이지에서 개별 설치도 가능합니다.
 
 | 에이전트 | Hook 디렉토리 | 설정 파일 |
 |---------|-------------|----------|
 | Claude Code | `.claude/hooks/` | `.claude/settings.json` |
 | Gemini CLI | `.gemini/hooks/` | `.gemini/settings.json` |
 | Codex CLI | `.codex/hooks/` | `.codex/config.toml` |
+| OpenCode | `.opencode/plugins/` | 플러그인 자동 탐색 |
 
 #### 브라우저 알림
 

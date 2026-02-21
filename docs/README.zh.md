@@ -141,7 +141,7 @@ bash kanvibe.sh stop
 - Nerd Font 渲染支持
 
 ### AI 代理 Hooks - 自动状态追踪
-KanVibe 与 **Claude Code Hooks**、**Gemini CLI Hooks** 和 **Codex CLI** 集成，自动追踪任务状态。任务通过 5 个状态进行管理：
+KanVibe 与 **Claude Code Hooks**、**Gemini CLI Hooks**、**Codex CLI** 和 **OpenCode** 集成，自动追踪任务状态。任务通过 5 个状态进行管理：
 
 | 状态 | 说明 |
 |------|------|
@@ -174,13 +174,22 @@ agent-turn-complete（代理完成） → REVIEW
 
 > Codex CLI 目前仅支持 `notify` 配置的 `agent-turn-complete` 事件。PROGRESS 和 PENDING 转换尚不可用。OpenAI 正在[设计 hooks 系统](https://github.com/openai/codex/discussions/2150)，发布后将添加完整支持。
 
-通过 KanVibe 目录扫描注册项目时，Claude Code 和 Gemini CLI 的 Hook 会**自动安装**。也可以在项目设置或任务详情页面中单独安装。Codex CLI 需要手动配置。
+#### OpenCode
+```
+用户发送消息 (chat.message)  → PROGRESS
+会话空闲 (session.idle)      → REVIEW
+```
+
+OpenCode 使用自己的[插件系统](https://opencode.ai/docs/plugins/)，而非 shell 脚本 hooks。KanVibe 在 `.opencode/plugins/kanvibe-plugin.ts` 生成 TypeScript 插件，通过 `@opencode-ai/plugin` SDK 订阅 OpenCode 的原生事件 hooks（`chat.message` 和 `session.idle`）。状态更新在进程内处理，无需启动外部 shell 命令。
+
+通过 KanVibe 目录扫描注册项目或创建带有 worktree 的任务时，所有代理 Hook 会**自动安装**。也可以在任务详情页面中单独安装。
 
 | 代理 | Hook 目录 | 配置文件 |
 |------|----------|---------|
 | Claude Code | `.claude/hooks/` | `.claude/settings.json` |
 | Gemini CLI | `.gemini/hooks/` | `.gemini/settings.json` |
 | Codex CLI | `.codex/hooks/` | `.codex/config.toml` |
+| OpenCode | `.opencode/plugins/` | 插件自动发现 |
 
 #### 浏览器通知
 
