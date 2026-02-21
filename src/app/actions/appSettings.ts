@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { getAppSettingsRepository } from "@/lib/database";
+import { SessionType } from "@/entities/KanbanTask";
 
 const SIDEBAR_COLLAPSED_KEY = "sidebar_default_collapsed";
 const SIDEBAR_HINT_DISMISSED_KEY = "sidebar_hint_dismissed";
@@ -114,13 +115,13 @@ export async function setNotificationStatuses(statuses: string[]): Promise<void>
 const DEFAULT_SESSION_TYPE_KEY = "default_session_type";
 
 /** 기본 세션 타입을 조회한다. 미설정 시 "tmux"를 반환한다 */
-export async function getDefaultSessionType(): Promise<string> {
+export async function getDefaultSessionType(): Promise<SessionType> {
   const value = await getAppSetting(DEFAULT_SESSION_TYPE_KEY);
-  return value || "tmux";
+  return value === SessionType.ZELLIJ ? SessionType.ZELLIJ : SessionType.TMUX;
 }
 
 /** 기본 세션 타입을 저장한다 */
-export async function setDefaultSessionType(sessionType: string): Promise<void> {
+export async function setDefaultSessionType(sessionType: SessionType): Promise<void> {
   await setAppSetting(DEFAULT_SESSION_TYPE_KEY, sessionType);
   revalidatePath("/");
 }

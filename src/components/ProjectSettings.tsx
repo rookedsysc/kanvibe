@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useTranslations } from "next-intl";
 import {
   deleteProject,
@@ -32,6 +32,7 @@ interface ProjectSettingsProps {
   sshHosts: string[];
   sidebarDefaultCollapsed: boolean;
   defaultSessionType: SessionType;
+  onDefaultSessionTypeChange?: (sessionType: SessionType) => void;
   notificationSettings: { isEnabled: boolean; enabledStatuses: string[] };
 }
 
@@ -42,6 +43,7 @@ export default function ProjectSettings({
   sshHosts,
   sidebarDefaultCollapsed,
   defaultSessionType,
+  onDefaultSessionTypeChange,
   notificationSettings,
 }: ProjectSettingsProps) {
   const t = useTranslations("settings");
@@ -53,6 +55,12 @@ export default function ProjectSettings({
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [scanResult, setScanResult] = useState<ScanResult | null>(null);
   const [scanSshHost, setScanSshHost] = useState("");
+  const [selectedDefaultSessionType, setSelectedDefaultSessionType] = useState(defaultSessionType);
+
+  useEffect(() => {
+    setSelectedDefaultSessionType(defaultSessionType);
+  }, [defaultSessionType]);
+
   if (!isOpen) return null;
 
   function handleScan(formData: FormData) {
@@ -170,10 +178,13 @@ export default function ProjectSettings({
               <p className="text-xs text-text-muted mt-0.5">{t("defaultSessionTypeDescription")}</p>
             </div>
             <select
-              value={defaultSessionType}
+              value={selectedDefaultSessionType}
               onChange={(e) => {
+                const nextSessionType = e.target.value as SessionType;
+                setSelectedDefaultSessionType(nextSessionType);
                 startTransition(async () => {
-                  await setDefaultSessionType(e.target.value);
+                  await setDefaultSessionType(nextSessionType);
+                  onDefaultSessionTypeChange?.(nextSessionType);
                 });
               }}
               disabled={isPending}

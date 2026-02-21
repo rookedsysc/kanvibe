@@ -12,7 +12,7 @@ import BranchTaskModal from "./BranchTaskModal";
 import DoneConfirmDialog from "./DoneConfirmDialog";
 import { reorderTasks, deleteTask, getMoreDoneTasks, moveTaskToColumn } from "@/app/actions/kanban";
 import type { TasksByStatus } from "@/app/actions/kanban";
-import { TaskStatus, type KanbanTask } from "@/entities/KanbanTask";
+import { SessionType, TaskStatus, type KanbanTask } from "@/entities/KanbanTask";
 import type { Project } from "@/entities/Project";
 import { logoutAction } from "@/app/actions/auth";
 import { useAutoRefresh } from "@/hooks/useAutoRefresh";
@@ -28,7 +28,7 @@ interface BoardProps {
   sidebarDefaultCollapsed: boolean;
   doneAlertDismissed: boolean;
   notificationSettings: { isEnabled: boolean; enabledStatuses: string[] };
-  defaultSessionType: string;
+  defaultSessionType: SessionType;
 }
 
 const COLUMNS: { status: TaskStatus; labelKey: string; colorClass: string }[] = [
@@ -110,6 +110,7 @@ export default function Board({ initialTasks, initialDoneTotal, initialDoneLimit
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [isDoneAlertDismissed, setIsDoneAlertDismissed] = useState(doneAlertDismissed);
   const [pendingDoneResult, setPendingDoneResult] = useState<DropResult | null>(null);
+  const [currentDefaultSessionType, setCurrentDefaultSessionType] = useState<SessionType>(defaultSessionType);
 
   /** projectId → 표시할 프로젝트 이름 매핑. worktree 프로젝트는 메인 프로젝트 이름으로 resolve한다 */
   const projectNameMap = useMemo(() => {
@@ -243,6 +244,10 @@ export default function Board({ initialTasks, initialDoneTotal, initialDoneLimit
     setDoneTotal(initialDoneTotal);
     setDoneOffset(initialDoneLimit);
   }, [initialTasks, initialDoneTotal, initialDoneLimit]);
+
+  useEffect(() => {
+    setCurrentDefaultSessionType(defaultSessionType);
+  }, [defaultSessionType]);
 
   const handleLoadMoreDone = useCallback(async () => {
     if (isLoadingMore) return;
@@ -507,7 +512,7 @@ export default function Board({ initialTasks, initialDoneTotal, initialDoneLimit
         projects={projects}
         defaultProjectId={branchTodoDefaults?.projectId || (selectedProjectIds.length === 1 ? selectedProjectIds[0] : "")}
         defaultBaseBranch={branchTodoDefaults?.baseBranch}
-        defaultSessionType={defaultSessionType}
+        defaultSessionType={currentDefaultSessionType}
       />
 
       <ProjectSettings
@@ -516,7 +521,10 @@ export default function Board({ initialTasks, initialDoneTotal, initialDoneLimit
         projects={projects}
         sshHosts={sshHosts}
         sidebarDefaultCollapsed={sidebarDefaultCollapsed}
-        defaultSessionType={defaultSessionType}
+        defaultSessionType={currentDefaultSessionType}
+        onDefaultSessionTypeChange={(sessionType) => {
+          setCurrentDefaultSessionType(sessionType);
+        }}
         notificationSettings={notificationSettings}
       />
 
@@ -536,7 +544,7 @@ export default function Board({ initialTasks, initialDoneTotal, initialDoneLimit
         <BranchTaskModal
           task={contextMenu.task}
           projects={projects}
-          defaultSessionType={defaultSessionType}
+          defaultSessionType={currentDefaultSessionType}
           onClose={() => {
             setIsBranchModalOpen(false);
             handleCloseContextMenu();
