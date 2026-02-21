@@ -82,22 +82,53 @@ export async function execGit(command: string, sshHost?: string | null): Promise
   return execLocal(command);
 }
 
-/** git 저장소의 브랜치 목록을 반환한다 (로컬 + 원격 추적 브랜치) */
+/** remote origin의 최신 브랜치 정보를 가져온다. 네트워크 실패 시 silent fail */
+export async function fetchOrigin(
+  repoPath: string,
+  sshHost?: string | null
+): Promise<void> {
+  try {
+    await execGit(`git -C "${repoPath}" fetch --prune`, sshHost);
+  } catch {
+    /* 네트워크 실패 시에도 로컬 브랜치 목록은 정상 제공해야 하므로 무시한다 */
+  }
+}
+
+/**
+ * git 저장소의 브랜치 목록을 반환한다.
+ * remote origin을 먼저 fetch하여 최신 상태를 반영하며,
+ * 로컬에 없는 remote-only 브랜치는 `origin/` prefix를 유지한다.
+ */
 export async function listBranches(
   repoPath: string,
   sshHost?: string | null
 ): Promise<string[]> {
+  await fetchOrigin(repoPath, sshHost);
+
   const output = await execGit(
     `git -C "${repoPath}" branch -a --format='%(refname:short)'`,
     sshHost
   );
 
-  return output
-    .split("\n")
-    .filter(Boolean)
+  const allBranches = output.split("\n").filter(Boolean);
+
+  const localBranches = new Set(
+    allBranches.filter((b) => !b.startsWith("origin/"))
+  );
+
+  const remoteBranches = allBranches
+    .filter((b) => b.startsWith("origin/"))
     .map((b) => b.replace(/^origin\//, ""))
-    .filter((b) => b !== "HEAD")
-    .filter((value, index, self) => self.indexOf(value) === index);
+    .filter((b) => b !== "HEAD");
+
+  /** remote-only 브랜치는 origin/ prefix를 유지하여 git ref resolution이 정확히 동작하도록 한다 */
+  const remoteOnlyBranches = remoteBranches
+    .filter((b) => !localBranches.has(b))
+    .map((b) => `origin/${b}`);
+
+  return [...localBranches, ...remoteOnlyBranches].filter(
+    (value, index, self) => self.indexOf(value) === index
+  );
 }
 
 /** 경로가 유효한 git 저장소인지 확인한다 */
