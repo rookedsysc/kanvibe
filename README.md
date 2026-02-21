@@ -69,7 +69,9 @@ cp .env.example .env
 ### 2. Run
 
 ```bash
-bash kanvibe.sh start
+bash kanvibe.sh start          # Interactive mode selection (foreground/background)
+bash kanvibe.sh start --fg     # Foreground (output to terminal, Ctrl+C to stop)
+bash kanvibe.sh start --bg     # Background (server keeps running after terminal closes)
 ```
 
 This command checks dependencies (with i18n install prompts), installs packages, starts PostgreSQL, runs migrations, builds, and launches the server.

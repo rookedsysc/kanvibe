@@ -69,7 +69,9 @@ cp .env.example .env
 ### 2. 运行
 
 ```bash
-bash kanvibe.sh start
+bash kanvibe.sh start          # 交互式模式选择（前台/后台）
+bash kanvibe.sh start --fg     # 前台运行（输出到终端，Ctrl+C 停止）
+bash kanvibe.sh start --bg     # 后台运行（关闭终端后服务器继续运行）
 ```
 
 此命令会检查依赖项（带有 i18n 安装提示）、安装包、启动 PostgreSQL、运行迁移、构建并启动服务器。

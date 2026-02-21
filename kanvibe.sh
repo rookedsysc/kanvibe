@@ -67,9 +67,9 @@ msg() {
     en:title)           text="KanVibe" ;;
     zh:title)           text="KanVibe" ;;
 
-    ko:usage)           text="사용법: bash kanvibe.sh {start|stop}" ;;
-    en:usage)           text="Usage: bash kanvibe.sh {start|stop}" ;;
-    zh:usage)           text="用法: bash kanvibe.sh {start|stop}" ;;
+    ko:usage)           text="사용법: bash kanvibe.sh {start [--fg|--bg]|stop}" ;;
+    en:usage)           text="Usage: bash kanvibe.sh {start [--fg|--bg]|stop}" ;;
+    zh:usage)           text="用法: bash kanvibe.sh {start [--fg|--bg]|stop}" ;;
 
     ko:unknown_cmd)     text="알 수 없는 명령: $1" ;;
     en:unknown_cmd)     text="Unknown command: $1" ;;
@@ -850,6 +850,7 @@ setup_tmux_conf() {
 
 # ── start 커맨드 ─────────────────────────────────────────────
 cmd_start() {
+  local mode_flag="${1:-}"
   print_header
   load_env
 
@@ -939,12 +940,20 @@ cmd_start() {
 
   # 6. 서버 시작 — 실행 모드 선택
   step 6 $total "$(msg step_server)"
-  echo ""
-  printf "  $(msg run_mode_prompt)\n"
-  printf "    ${BOLD}1)${NC} $(msg run_fg)\n"
-  printf "    ${BOLD}2)${NC} $(msg run_bg)\n"
-  printf "  ${ARROW} [1/2] "
-  read -r run_mode
+
+  local run_mode=""
+  case "$mode_flag" in
+    --fg) run_mode="1" ;;
+    --bg) run_mode="2" ;;
+    *)
+      echo ""
+      printf "  $(msg run_mode_prompt)\n"
+      printf "    ${BOLD}1)${NC} $(msg run_fg)\n"
+      printf "    ${BOLD}2)${NC} $(msg run_bg)\n"
+      printf "  ${ARROW} [1/2] "
+      read -r run_mode
+      ;;
+  esac
 
   local LOG_FILE="$SCRIPT_DIR/logs/kanvibe.log"
   local app_port="${PORT:-3000}"
@@ -1018,13 +1027,15 @@ cmd_stop() {
 
 # ── 메인 ─────────────────────────────────────────────────────
 case "${1:-}" in
-  start) cmd_start ;;
+  start) cmd_start "${2:-}" ;;
   stop)  cmd_stop ;;
   *)
     print_header
     printf "  $(msg usage)\n\n"
-    printf "  ${BOLD}start${NC}   $(msg starting)\n"
-    printf "  ${BOLD}stop${NC}    $(msg stopping)\n\n"
+    printf "  ${BOLD}start${NC}          $(msg starting)\n"
+    printf "  ${BOLD}start --fg${NC}    $(msg run_fg)\n"
+    printf "  ${BOLD}start --bg${NC}    $(msg run_bg)\n"
+    printf "  ${BOLD}stop${NC}           $(msg stopping)\n\n"
     exit 1
     ;;
 esac
