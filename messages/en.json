@@ -217,10 +217,35 @@
     "collapseSidebar": "Collapse sidebar",
     "expandSidebar": "Expand sidebar",
     "sidebarTooltip": "You can change the default state in Settings",
-    "dismissHint": "Don't show again"
+    "dismissHint": "Don't show again",
+    "viewDiff": "View Diff",
+    "diffFiles": "Diff",
+    "diffFileCount": "{count}"
   },
   "projectBranchTasks": {
     "title": "Project Tasks",
     "noTasks": "No tasks in this project"
+  },
+  "diffView": {
+    "title": "Code Changes",
+    "backToTask": "Back to Task",
+    "changedFiles": "Changed Files",
+    "noChanges": "No changes found",
+    "editMode": "Edit Mode",
+    "diffMode": "Diff Mode",
+    "save": "Save",
+    "saving": "Saving...",
+    "saved": "Saved",
+    "saveError": "Save failed",
+    "noBranch": "No branch connected",
+    "noWorktree": "Worktree path is not set",
+    "added": "Added",
+    "modified": "Modified",
+    "deleted": "Deleted",
+    "renamed": "Renamed",
+    "viewDiff": "View Diff",
+    "fileCount": "{count} files changed",
+    "viewed": "Viewed",
+    "markViewed": "Viewed"
   }
 }

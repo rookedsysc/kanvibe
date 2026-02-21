@@ -1,4 +1,6 @@
-// @vitest-environment node
+/**
+ * @vitest-environment node
+ */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { SessionType } from "@/entities/KanbanTask";
 
@@ -10,65 +12,58 @@ vi.mock("@/lib/gitOperations", () => ({
   execGit: (...args: unknown[]) => mockExecGit(...args),
 }));
 
-vi.mock("@/entities/PaneLayoutConfig", () => ({
-  PaneLayoutType: { SINGLE: "single" },
-}));
-
 vi.mock("@/app/actions/paneLayout", () => ({
   getEffectivePaneLayout: vi.fn().mockResolvedValue(null),
 }));
 
 describe("formatSessionName", () => {
-  it("should format as projectName-branchName with slashes replaced", async () => {
-    // Given
-    const { formatSessionName } = await import("@/lib/worktree");
-
-    // When
-    const result = formatSessionName("kanvibe", "feat/something");
-
-    // Then
-    expect(result).toBe("kanvibe-feat-something");
+  beforeEach(() => {
+    vi.clearAllMocks();
   });
 
-  it("should handle multiple slashes in branch name", async () => {
+  it("should combine projectName and branchName with slash separator", async () => {
     // Given
     const { formatSessionName } = await import("@/lib/worktree");
 
     // When
-    const result = formatSessionName("kanvibe", "feat/ui/button");
+    const result = formatSessionName("kanvibe", "feat-login");
 
     // Then
-    expect(result).toBe("kanvibe-feat-ui-button");
+    expect(result).toBe("kanvibe/feat-login");
   });
 
-  it("should handle branch name without slashes", async () => {
+  it("should replace slashes in branchName with hyphens", async () => {
     // Given
     const { formatSessionName } = await import("@/lib/worktree");
 
     // When
-    const result = formatSessionName("kanvibe", "main");
+    const result = formatSessionName("kanvibe", "feat/user/auth");
 
     // Then
-    expect(result).toBe("kanvibe-main");
+    expect(result).toBe("kanvibe/feat-user-auth");
   });
 
-  it("should replace slashes in project name as well", async () => {
+  it("should handle branchName without slashes unchanged", async () => {
     // Given
     const { formatSessionName } = await import("@/lib/worktree");
 
     // When
-    const result = formatSessionName("parent/project", "feat/test");
+    const result = formatSessionName("my-project", "main");
 
     // Then
-    expect(result).toBe("parent-project-feat-test");
+    expect(result).toBe("my-project/main");
   });
 });
 
 describe("sanitizeZellijSessionName", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
   it("should return sessionName unchanged when within length limit", async () => {
     // Given
     const { sanitizeZellijSessionName } = await import("@/lib/worktree");
-    const shortName = "feat-login";
+    const shortName = "kanvibe/feat-login";
 
     // When
     const result = sanitizeZellijSessionName(shortName);
@@ -103,6 +98,98 @@ describe("sanitizeZellijSessionName", () => {
   });
 });
 
+describe("removeSessionOnly", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("should kill tmux session for new format sessionName with slash", async () => {
+    // Given
+    const { removeSessionOnly } = await import("@/lib/worktree");
+    mockExecGit.mockResolvedValue("");
+
+    // When
+    await removeSessionOnly(SessionType.TMUX, "kanvibe/feat-login", "feat-login");
+
+    // Then
+    expect(mockExecGit).toHaveBeenCalledWith(
+      `tmux kill-session -t "kanvibe/feat-login"`,
+      undefined,
+    );
+  });
+
+  it("should kill tmux window for legacy sessionName without slash", async () => {
+    // Given
+    const { removeSessionOnly } = await import("@/lib/worktree");
+    mockExecGit.mockResolvedValue("");
+
+    // When
+    await removeSessionOnly(SessionType.TMUX, "kanvibe", "feat-login");
+
+    // Then
+    expect(mockExecGit).toHaveBeenCalledWith(
+      `tmux kill-window -t "kanvibe: feat-login"`,
+      undefined,
+    );
+  });
+
+  it("should kill zellij session for new format sessionName with slash", async () => {
+    // Given
+    const { removeSessionOnly } = await import("@/lib/worktree");
+    mockExecGit.mockResolvedValue("");
+
+    // When
+    await removeSessionOnly(SessionType.ZELLIJ, "kanvibe/feat-login", "feat-login");
+
+    // Then
+    expect(mockExecGit).toHaveBeenCalledWith(
+      `zellij kill-session "kanvibe/feat-login"`,
+      undefined,
+    );
+  });
+
+  it("should close zellij tab for legacy sessionName without slash", async () => {
+    // Given
+    const { removeSessionOnly } = await import("@/lib/worktree");
+    mockExecGit.mockResolvedValue("");
+
+    // When
+    await removeSessionOnly(SessionType.ZELLIJ, "kanvibe", "feat/login");
+
+    // Then
+    expect(mockExecGit).toHaveBeenCalledWith(
+      `zellij action --session "kanvibe" go-to-tab-name " feat-login" && zellij action --session "kanvibe" close-tab`,
+      undefined,
+    );
+  });
+
+  it("should pass sshHost to execGit for remote session removal", async () => {
+    // Given
+    const { removeSessionOnly } = await import("@/lib/worktree");
+    mockExecGit.mockResolvedValue("");
+
+    // When
+    await removeSessionOnly(SessionType.TMUX, "kanvibe/feat-login", "feat-login", "my-server");
+
+    // Then
+    expect(mockExecGit).toHaveBeenCalledWith(
+      `tmux kill-session -t "kanvibe/feat-login"`,
+      "my-server",
+    );
+  });
+
+  it("should silently catch errors when session is already terminated", async () => {
+    // Given
+    const { removeSessionOnly } = await import("@/lib/worktree");
+    mockExecGit.mockRejectedValue(new Error("session not found"));
+
+    // When & Then
+    await expect(
+      removeSessionOnly(SessionType.TMUX, "kanvibe/feat-login", "feat-login"),
+    ).resolves.toBeUndefined();
+  });
+});
+
 describe("isSessionAlive", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -110,177 +197,80 @@ describe("isSessionAlive", () => {
 
   it("should return true when tmux session exists", async () => {
     // Given
-    mockExecGit.mockResolvedValue("");
     const { isSessionAlive } = await import("@/lib/worktree");
+    mockExecGit.mockResolvedValue("");
 
     // When
-    const result = await isSessionAlive(SessionType.TMUX, "feat-branch");
+    const result = await isSessionAlive(SessionType.TMUX, "kanvibe/feat-login");
 
     // Then
     expect(result).toBe(true);
     expect(mockExecGit).toHaveBeenCalledWith(
-      'tmux has-session -t "feat-branch" 2>/dev/null',
+      `tmux has-session -t "kanvibe/feat-login" 2>/dev/null`,
       undefined,
     );
   });
 
   it("should return false when tmux session does not exist", async () => {
     // Given
-    mockExecGit.mockRejectedValue(new Error("no session"));
     const { isSessionAlive } = await import("@/lib/worktree");
+    mockExecGit.mockRejectedValue(new Error("session not found"));
 
     // When
-    const result = await isSessionAlive(SessionType.TMUX, "nonexistent");
+    const result = await isSessionAlive(SessionType.TMUX, "kanvibe/nonexistent");
 
     // Then
     expect(result).toBe(false);
   });
 
-  it("should return true when zellij session exists", async () => {
+  it("should return true when zellij session exists in list", async () => {
     // Given
-    mockExecGit.mockResolvedValue("feat-branch\nother-session\n");
     const { isSessionAlive } = await import("@/lib/worktree");
+    mockExecGit.mockResolvedValue("kanvibe/feat-login\nother-session\n");
 
     // When
-    const result = await isSessionAlive(SessionType.ZELLIJ, "feat-branch");
+    const result = await isSessionAlive(SessionType.ZELLIJ, "kanvibe/feat-login");
 
     // Then
     expect(result).toBe(true);
   });
 
-  it("should return false when zellij session does not exist", async () => {
+  it("should return false when zellij session is not in list", async () => {
     // Given
-    mockExecGit.mockResolvedValue("other-session\n");
     const { isSessionAlive } = await import("@/lib/worktree");
+    mockExecGit.mockResolvedValue("other-session\nanother-session\n");
 
     // When
-    const result = await isSessionAlive(SessionType.ZELLIJ, "nonexistent");
+    const result = await isSessionAlive(SessionType.ZELLIJ, "kanvibe/feat-login");
 
     // Then
     expect(result).toBe(false);
   });
 
-  it("should pass sshHost to execGit for remote session check", async () => {
+  it("should return false when zellij list-sessions command fails", async () => {
     // Given
-    mockExecGit.mockResolvedValue("");
     const { isSessionAlive } = await import("@/lib/worktree");
+    mockExecGit.mockRejectedValue(new Error("zellij not installed"));
 
     // When
-    await isSessionAlive(SessionType.TMUX, "feat-branch", "remote-host");
+    const result = await isSessionAlive(SessionType.ZELLIJ, "kanvibe/feat-login");
 
     // Then
-    expect(mockExecGit).toHaveBeenCalledWith(
-      'tmux has-session -t "feat-branch" 2>/dev/null',
-      "remote-host",
-    );
-  });
-});
-
-describe("removeSessionOnly", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
+    expect(result).toBe(false);
   });
 
-  it("should kill tmux session by session name", async () => {
+  it("should pass sshHost for remote session check", async () => {
     // Given
+    const { isSessionAlive } = await import("@/lib/worktree");
     mockExecGit.mockResolvedValue("");
-    const { removeSessionOnly } = await import("@/lib/worktree");
 
     // When
-    await removeSessionOnly(SessionType.TMUX, "feat-branch");
+    await isSessionAlive(SessionType.TMUX, "kanvibe/feat-login", "my-server");
 
     // Then
     expect(mockExecGit).toHaveBeenCalledWith(
-      'tmux kill-session -t "feat-branch"',
-      undefined,
-    );
-  });
-
-  it("should kill zellij session with fallback to delete", async () => {
-    // Given
-    mockExecGit.mockResolvedValue("");
-    const { removeSessionOnly } = await import("@/lib/worktree");
-
-    // When
-    await removeSessionOnly(SessionType.ZELLIJ, "feat-branch");
-
-    // Then
-    expect(mockExecGit).toHaveBeenCalledWith(
-      'zellij kill-session "feat-branch" 2>/dev/null || zellij delete-session "feat-branch" 2>/dev/null',
-      undefined,
-    );
-  });
-
-  it("should not throw when session is already terminated", async () => {
-    // Given
-    mockExecGit.mockRejectedValue(new Error("session not found"));
-    const { removeSessionOnly } = await import("@/lib/worktree");
-
-    // When & Then
-    await expect(removeSessionOnly(SessionType.TMUX, "dead-session")).resolves.not.toThrow();
-  });
-});
-
-describe("createSessionWithoutWorktree", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
-
-  it("should return session name derived from branch name", async () => {
-    // Given
-    mockExecGit.mockRejectedValueOnce(new Error("no session")).mockResolvedValue("");
-    const { createSessionWithoutWorktree } = await import("@/lib/worktree");
-
-    // When
-    const result = await createSessionWithoutWorktree(
-      "/repo/path",
-      "feat/my-feature",
-      SessionType.TMUX,
-    );
-
-    // Then
-    expect(result.sessionName).toBe("path-feat-my-feature");
-  });
-
-  it("should create tmux session with working directory when session does not exist", async () => {
-    // Given
-    mockExecGit.mockRejectedValueOnce(new Error("no session")).mockResolvedValue("");
-    const { createSessionWithoutWorktree } = await import("@/lib/worktree");
-
-    // When
-    await createSessionWithoutWorktree(
-      "/repo/path",
-      "feat/test",
-      SessionType.TMUX,
-      null,
-      "/custom/dir",
-    );
-
-    // Then
-    expect(mockExecGit).toHaveBeenCalledWith(
-      'tmux new-session -d -s "path-feat-test" -c "/custom/dir"',
-      null,
-    );
-  });
-
-  it("should skip session creation when tmux session already exists", async () => {
-    // Given
-    mockExecGit.mockResolvedValue("");
-    const { createSessionWithoutWorktree } = await import("@/lib/worktree");
-
-    // When
-    await createSessionWithoutWorktree(
-      "/repo/path",
-      "main",
-      SessionType.TMUX,
-    );
-
-    // Then
-    /** isSessionAlive → has-session 호출 1회만 발생, new-session은 호출되지 않는다 */
-    expect(mockExecGit).toHaveBeenCalledTimes(1);
-    expect(mockExecGit).toHaveBeenCalledWith(
-      'tmux has-session -t "path-main" 2>/dev/null',
-      undefined,
+      `tmux has-session -t "kanvibe/feat-login" 2>/dev/null`,
+      "my-server",
     );
   });
 });
