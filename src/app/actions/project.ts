@@ -12,6 +12,7 @@ import { setupGeminiHooks, getGeminiHooksStatus, type GeminiHooksStatus } from "
 import { setupCodexHooks, getCodexHooksStatus, type CodexHooksStatus } from "@/lib/codexHooksSetup";
 import { homedir } from "os";
 import path from "path";
+import { computeProjectColor } from "@/lib/projectColor";
 
 /** TypeORM 엔티티를 직렬화 가능한 plain object로 변환한다 */
 function serialize<T>(data: T): T {
@@ -109,6 +110,7 @@ export async function registerProject(
     repoPath,
     defaultBranch,
     sshHost: sshHost || null,
+    color: computeProjectColor(name),
   });
 
   const saved = await repo.save(project);
@@ -198,6 +200,7 @@ export async function scanAndRegisterProjects(
         repoPath,
         defaultBranch,
         sshHost: sshHost || null,
+        color: computeProjectColor(projectName),
       });
 
       const saved = await repo.save(project);
