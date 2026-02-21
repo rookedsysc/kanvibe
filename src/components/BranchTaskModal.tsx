@@ -6,6 +6,7 @@ import { branchFromTask } from "@/app/actions/kanban";
 import { getProjectBranches } from "@/app/actions/project";
 import { SessionType, type KanbanTask } from "@/entities/KanbanTask";
 import type { Project } from "@/entities/Project";
+import BranchSearchInput from "./BranchSearchInput";
 
 interface BranchTaskModalProps {
   task: KanbanTask;
@@ -109,20 +110,11 @@ export default function BranchTaskModal({
             <label className="block text-sm text-text-secondary mb-1">
               {t("baseBranch")}
             </label>
-            <select
+            <BranchSearchInput
+              branches={branches.length > 0 ? branches : baseBranch ? [baseBranch] : []}
               value={baseBranch}
-              onChange={(e) => setBaseBranch(e.target.value)}
-              className="w-full px-3 py-2 bg-bg-page border border-border-default rounded-md text-text-primary focus:outline-none focus:border-brand-primary font-mono transition-colors"
-            >
-              {branches.map((branch) => (
-                <option key={branch} value={branch}>
-                  {branch}
-                </option>
-              ))}
-              {branches.length === 0 && baseBranch && (
-                <option value={baseBranch}>{baseBranch}</option>
-              )}
-            </select>
+              onChange={setBaseBranch}
+            />
           </div>
 
           <div>

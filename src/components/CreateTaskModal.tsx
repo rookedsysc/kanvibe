@@ -10,6 +10,7 @@ import { TaskPriority } from "@/entities/TaskPriority";
 import type { Project } from "@/entities/Project";
 import ProjectSelector from "./ProjectSelector";
 import PrioritySelector from "./PrioritySelector";
+import BranchSearchInput from "./BranchSearchInput";
 
 interface CreateTaskModalProps {
   isOpen: boolean;
@@ -116,20 +117,11 @@ export default function CreateTaskModal({
               <label className="block text-sm text-text-secondary mb-1">
                 {t("baseBranch")}
               </label>
-              <select
+              <BranchSearchInput
+                branches={branches.length > 0 ? branches : baseBranch ? [baseBranch] : []}
                 value={baseBranch}
-                onChange={(e) => setBaseBranch(e.target.value)}
-                className="w-full px-3 py-2 bg-bg-page border border-border-default rounded-md text-text-primary focus:outline-none focus:border-brand-primary font-mono transition-colors"
-              >
-                {branches.map((branch) => (
-                  <option key={branch} value={branch}>
-                    {branch}
-                  </option>
-                ))}
-                {branches.length === 0 && baseBranch && (
-                  <option value={baseBranch}>{baseBranch}</option>
-                )}
-              </select>
+                onChange={setBaseBranch}
+              />
             </div>
           )}
 
