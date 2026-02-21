@@ -16,6 +16,7 @@ import { TaskStatus, type KanbanTask } from "@/entities/KanbanTask";
 import type { Project } from "@/entities/Project";
 import { logoutAction } from "@/app/actions/auth";
 import { useAutoRefresh } from "@/hooks/useAutoRefresh";
+import { computeProjectColor } from "@/lib/projectColor";
 
 interface BoardProps {
   initialTasks: TasksByStatus;
@@ -137,10 +138,6 @@ export default function Board({ initialTasks, initialDoneTotal, initialDoneLimit
 
   /** 프로젝트명 → hex 색상 매핑. DB color 우선, 없으면 해시 기반 프리셋 할당 */
   const projectColorMap = useMemo(() => {
-    const PRESET_COLORS = [
-      "#F9A8D4", "#93C5FD", "#86EFAC", "#C4B5FD",
-      "#FDBA74", "#FDE047", "#5EEAD4", "#A5B4FC",
-    ];
     const colorMap: Record<string, string> = {};
 
     const uniqueNames = new Set(Object.values(projectNameMap));
@@ -151,11 +148,7 @@ export default function Board({ initialTasks, initialDoneTotal, initialDoneLimit
       if (mainProject?.color) {
         colorMap[name] = mainProject.color;
       } else {
-        let hash = 0;
-        for (let i = 0; i < name.length; i++) {
-          hash = (hash * 31 + name.charCodeAt(i)) | 0;
-        }
-        colorMap[name] = PRESET_COLORS[((hash % 8) + 8) % 8];
+        colorMap[name] = computeProjectColor(name);
       }
     }
     return colorMap;
