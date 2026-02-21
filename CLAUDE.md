@@ -84,8 +84,8 @@ Vitest + @testing-library/react 기반. Given-When-Then 패턴을 사용한다.
 ### 테스트 실행
 
 ```bash
-pnpm test          # 전체 테스트 실행
-pnpm test:watch    # watch 모드
+NODE_ENV=test pnpm test          # 전체 테스트 실행
+NODE_ENV=test pnpm test:watch    # watch 모드
 ```
 
 ### 테스트 작성 규칙
