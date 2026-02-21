@@ -1,6 +1,6 @@
-import type { WebSocket } from "ws";
-import { execSync } from "child_process";
 import { SessionType } from "@/entities/KanbanTask";
+import { execSync } from "child_process";
+import type { WebSocket } from "ws";
 
 /**
  * 활성 터미널 세션을 관리하는 레지스트리.
@@ -63,8 +63,6 @@ export async function attachLocalSession(
           const parsed = JSON.parse(data.slice(1));
           if (parsed.type === "resize" && parsed.cols && parsed.rows) {
             existing.pty.resize(parsed.cols, parsed.rows);
-          } else if (parsed.type === "focus") {
-            focusSession(taskId);
           }
         } catch {
           existing.pty.write(data);
@@ -181,11 +179,8 @@ export async function attachLocalSession(
         const parsed = JSON.parse(data.slice(1));
         if (parsed.type === "resize" && parsed.cols && parsed.rows) {
           ptyProcess.resize(parsed.cols, parsed.rows);
-        } else if (parsed.type === "focus") {
-          focusSession(taskId);
         }
       } catch {
-        // 파싱 실패 시 일반 입력으로 처리
         ptyProcess.write(data);
       }
       return;
@@ -209,7 +204,12 @@ export async function attachRemoteSession(
   sessionType: SessionType,
   sessionName: string,
   ws: WebSocket,
-  sshConfig: { hostname: string; port: number; username: string; privateKeyPath: string },
+  sshConfig: {
+    hostname: string;
+    port: number;
+    username: string;
+    privateKeyPath: string;
+  },
   cols?: number,
   rows?: number,
 ): Promise<void> {
@@ -223,56 +223,64 @@ export async function attachRemoteSession(
 
   conn.on("ready", () => {
     /** 세션에 직접 attach한다 */
-    const command =
-      sessionType === SessionType.TMUX
-        ? `tmux attach-session -t "${sessionName}"`
-        : `zellij attach "${sessionName}"`;
+    let command: string;
+    if (sessionType === SessionType.TMUX) {
+      command = [
+        `tmux has-session -t "${sessionName}" 2>/dev/null || tmux new-session -d -s "${sessionName}"`,
+        `tmux attach-session -t "${sessionName}"`,
+      ].join("; ");
+    } else {
+      command = `zellij attach "${sessionName}"`;
+    }
 
-    conn.shell({ term: "xterm-256color", cols: initialCols, rows: initialRows }, (err, stream) => {
-      if (err) {
-        ws.close(1011, "SSH shell 오류");
-        conn.end();
-        return;
-      }
-
-      stream.write(command + "\n");
-
-      stream.on("data", (data: Buffer) => {
-        if (ws.readyState === ws.OPEN) {
-          ws.send(data);
-        }
-      });
-
-      stream.on("close", () => {
-        ws.close();
-        conn.end();
-        activeTerminals.delete(taskId);
-      });
-
-      ws.on("message", (message) => {
-        const data = message.toString();
-
-        if (data.startsWith("\x01")) {
-          try {
-            const parsed = JSON.parse(data.slice(1));
-            if (parsed.type === "resize" && parsed.cols && parsed.rows) {
-              stream.setWindow(parsed.rows, parsed.cols, 0, 0);
-            }
-          } catch {
-            stream.write(data);
-          }
+    conn.shell(
+      { term: "xterm-256color", cols: initialCols, rows: initialRows },
+      (err, stream) => {
+        if (err) {
+          ws.close(1011, "SSH shell 오류");
+          conn.end();
           return;
         }
 
-        stream.write(data);
-      });
+        stream.write(command + "\n");
 
-      ws.on("close", () => {
-        stream.close();
-        conn.end();
-        activeTerminals.delete(taskId);
-      });
-    });
+        stream.on("data", (data: Buffer) => {
+          if (ws.readyState === ws.OPEN) {
+            ws.send(data);
+          }
+        });
+
+        stream.on("close", () => {
+          ws.close();
+          conn.end();
+          activeTerminals.delete(taskId);
+        });
+
+        ws.on("message", (message) => {
+          const data = message.toString();
+
+          if (data.startsWith("\x01")) {
+            try {
+              const parsed = JSON.parse(data.slice(1));
+              if (parsed.type === "resize" && parsed.cols && parsed.rows) {
+                stream.setWindow(parsed.rows, parsed.cols, 0, 0);
+              }
+            } catch {
+              stream.write(data);
+            }
+            return;
+          }
+
+          stream.write(data);
+        });
+
+        ws.on("close", () => {
+          stream.close();
+          conn.end();
+          activeTerminals.delete(taskId);
+        });
+      },
+    );
   });
 
   conn.on("error", (err) => {

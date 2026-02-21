@@ -65,6 +65,45 @@ describe("formatSessionName", () => {
   });
 });
 
+describe("sanitizeZellijSessionName", () => {
+  it("should return sessionName unchanged when within length limit", async () => {
+    // Given
+    const { sanitizeZellijSessionName } = await import("@/lib/worktree");
+    const shortName = "feat-login";
+
+    // When
+    const result = sanitizeZellijSessionName(shortName);
+
+    // Then
+    expect(result).toBe(shortName);
+  });
+
+  it("should truncate sessionName exceeding 60 characters", async () => {
+    // Given
+    const { sanitizeZellijSessionName } = await import("@/lib/worktree");
+    const longName = "a".repeat(80);
+
+    // When
+    const result = sanitizeZellijSessionName(longName);
+
+    // Then
+    expect(result).toHaveLength(60);
+    expect(result).toBe("a".repeat(60));
+  });
+
+  it("should return exact 60-char sessionName unchanged", async () => {
+    // Given
+    const { sanitizeZellijSessionName } = await import("@/lib/worktree");
+    const exactName = "x".repeat(60);
+
+    // When
+    const result = sanitizeZellijSessionName(exactName);
+
+    // Then
+    expect(result).toBe(exactName);
+  });
+});
+
 describe("isSessionAlive", () => {
   beforeEach(() => {
     vi.clearAllMocks();

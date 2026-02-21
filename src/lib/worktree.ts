@@ -14,6 +14,14 @@ export function formatSessionName(branchName: string): string {
   return branchName.replace(/\//g, "-");
 }
 
+/** zellij 세션 이름을 소켓 경로 108바이트 제한에 맞게 truncate한다 */
+const ZELLIJ_SESSION_NAME_MAX_LENGTH = 60;
+export function sanitizeZellijSessionName(sessionName: string): string {
+  if (sessionName.length <= ZELLIJ_SESSION_NAME_MAX_LENGTH) return sessionName;
+  return sessionName.slice(0, ZELLIJ_SESSION_NAME_MAX_LENGTH);
+}
+
+
 /**
  * tmux 세션에 pane 레이아웃을 적용하고 각 pane에 시작 명령어를 실행한다.
  * 분할 실패 시에도 기본 window는 유지된다 (graceful fallback).
@@ -138,19 +146,22 @@ export async function createWorktreeWithSession(
         projectId ?? undefined,
       );
     }
+
+    return { worktreePath, sessionName };
   } else {
     /** 동일 이름의 zellij 세션이 없을 때만 생성한다 */
-    const hasSession = await isSessionAlive(sessionType, sessionName, sshHost);
+    const zellijSessionName = sanitizeZellijSessionName(sessionName);
+    const hasSession = await isSessionAlive(sessionType, zellijSessionName, sshHost);
     if (!hasSession) {
       await execGit(
-        `cd "${worktreePath}" && zellij --session "${sessionName}" &`,
+        `cd "${worktreePath}" && zellij --session "${zellijSessionName}" &`,
         sshHost,
       );
       await new Promise((resolve) => setTimeout(resolve, 2000));
     }
-  }
 
-  return { worktreePath, sessionName };
+    return { worktreePath, sessionName: zellijSessionName };
+  }
 }
 
 /**
@@ -175,18 +186,21 @@ export async function createSessionWithoutWorktree(
         sshHost,
       );
     }
+
+    return { sessionName };
   } else {
-    const hasSession = await isSessionAlive(sessionType, sessionName, sshHost);
+    const zellijSessionName = sanitizeZellijSessionName(sessionName);
+    const hasSession = await isSessionAlive(sessionType, zellijSessionName, sshHost);
     if (!hasSession) {
       await execGit(
-        `cd "${cwd}" && zellij --session "${sessionName}" &`,
+        `cd "${cwd}" && zellij --session "${zellijSessionName}" &`,
         sshHost,
       );
       await new Promise((resolve) => setTimeout(resolve, 2000));
     }
-  }
 
-  return { sessionName };
+    return { sessionName: zellijSessionName };
+  }
 }
 
 /** worktree와 브랜치를 삭제한다. 세션은 건드리지 않는다 */
@@ -256,6 +270,27 @@ export async function removeWorktreeAndSession(
 ): Promise<void> {
   await removeSessionOnly(sessionType, sessionName, sshHost);
   await removeWorktreeAndBranch(projectPath, branchName, sshHost);
+}
+
+/** 활성 tmux/zellij 세션 이름 목록을 반환한다 */
+export async function listActiveSessions(
+  sessionType: SessionType,
+  sshHost?: string | null,
+): Promise<string[]> {
+  try {
+    if (sessionType === SessionType.TMUX) {
+      const output = await execGit(
+        `tmux list-sessions -F '#{session_name}'`,
+        sshHost,
+      );
+      return output.split("\n").filter(Boolean);
+    } else {
+      const output = await execGit("zellij list-sessions", sshHost);
+      return output.split("\n").filter(Boolean);
+    }
+  } catch {
+    return [];
+  }
 }
 
 /** 세션이 활성 상태인지 확인한다 */
