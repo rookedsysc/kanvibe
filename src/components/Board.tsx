@@ -28,6 +28,7 @@ interface BoardProps {
   sidebarDefaultCollapsed: boolean;
   doneAlertDismissed: boolean;
   notificationSettings: { isEnabled: boolean; enabledStatuses: string[] };
+  defaultSessionType: string;
 }
 
 const COLUMNS: { status: TaskStatus; labelKey: string; colorClass: string }[] = [
@@ -87,7 +88,7 @@ function insertAtFilteredIndex(
   return arr;
 }
 
-export default function Board({ initialTasks, initialDoneTotal, initialDoneLimit, sshHosts, projects, sidebarDefaultCollapsed, doneAlertDismissed, notificationSettings }: BoardProps) {
+export default function Board({ initialTasks, initialDoneTotal, initialDoneLimit, sshHosts, projects, sidebarDefaultCollapsed, doneAlertDismissed, notificationSettings, defaultSessionType }: BoardProps) {
   useAutoRefresh();
   const t = useTranslations("board");
   const tt = useTranslations("task");
@@ -506,6 +507,7 @@ export default function Board({ initialTasks, initialDoneTotal, initialDoneLimit
         projects={projects}
         defaultProjectId={branchTodoDefaults?.projectId || (selectedProjectIds.length === 1 ? selectedProjectIds[0] : "")}
         defaultBaseBranch={branchTodoDefaults?.baseBranch}
+        defaultSessionType={defaultSessionType}
       />
 
       <ProjectSettings
@@ -514,6 +516,7 @@ export default function Board({ initialTasks, initialDoneTotal, initialDoneLimit
         projects={projects}
         sshHosts={sshHosts}
         sidebarDefaultCollapsed={sidebarDefaultCollapsed}
+        defaultSessionType={defaultSessionType}
         notificationSettings={notificationSettings}
       />
 
@@ -533,6 +536,7 @@ export default function Board({ initialTasks, initialDoneTotal, initialDoneLimit
         <BranchTaskModal
           task={contextMenu.task}
           projects={projects}
+          defaultSessionType={defaultSessionType}
           onClose={() => {
             setIsBranchModalOpen(false);
             handleCloseContextMenu();

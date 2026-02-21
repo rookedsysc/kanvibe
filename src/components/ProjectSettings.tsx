@@ -11,7 +11,9 @@ import {
   setSidebarDefaultCollapsed,
   setNotificationEnabled,
   setNotificationStatuses,
+  setDefaultSessionType,
 } from "@/app/actions/appSettings";
+import { SessionType } from "@/entities/KanbanTask";
 import { Link } from "@/i18n/navigation";
 import type { Project } from "@/entities/Project";
 import FolderSearchInput from "@/components/FolderSearchInput";
@@ -29,6 +31,7 @@ interface ProjectSettingsProps {
   projects: Project[];
   sshHosts: string[];
   sidebarDefaultCollapsed: boolean;
+  defaultSessionType: SessionType;
   notificationSettings: { isEnabled: boolean; enabledStatuses: string[] };
 }
 
@@ -38,6 +41,7 @@ export default function ProjectSettings({
   projects,
   sshHosts,
   sidebarDefaultCollapsed,
+  defaultSessionType,
   notificationSettings,
 }: ProjectSettingsProps) {
   const t = useTranslations("settings");
@@ -153,6 +157,32 @@ export default function ProjectSettings({
               />
             </button>
           </label>
+        </div>
+
+        {/* 작업 생성 설정 */}
+        <div className="p-4 border-b border-border-default">
+          <h3 className="text-xs text-text-muted uppercase tracking-wide mb-3">
+            {t("taskCreationSection")}
+          </h3>
+          <div className="flex items-center justify-between">
+            <div>
+              <span className="text-sm text-text-primary">{t("defaultSessionType")}</span>
+              <p className="text-xs text-text-muted mt-0.5">{t("defaultSessionTypeDescription")}</p>
+            </div>
+            <select
+              value={defaultSessionType}
+              onChange={(e) => {
+                startTransition(async () => {
+                  await setDefaultSessionType(e.target.value);
+                });
+              }}
+              disabled={isPending}
+              className="px-2 py-1 text-sm bg-bg-page border border-border-default rounded-md text-text-primary focus:outline-none focus:border-brand-primary transition-colors"
+            >
+              <option value="tmux">tmux</option>
+              <option value="zellij">zellij</option>
+            </select>
+          </div>
         </div>
 
         {/* 알림 설정 */}

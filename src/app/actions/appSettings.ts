@@ -110,3 +110,17 @@ export async function setNotificationStatuses(statuses: string[]): Promise<void>
   await setAppSetting(NOTIFICATION_STATUSES_KEY, JSON.stringify(statuses));
   revalidatePath("/");
 }
+
+const DEFAULT_SESSION_TYPE_KEY = "default_session_type";
+
+/** 기본 세션 타입을 조회한다. 미설정 시 "tmux"를 반환한다 */
+export async function getDefaultSessionType(): Promise<string> {
+  const value = await getAppSetting(DEFAULT_SESSION_TYPE_KEY);
+  return value || "tmux";
+}
+
+/** 기본 세션 타입을 저장한다 */
+export async function setDefaultSessionType(sessionType: string): Promise<void> {
+  await setAppSetting(DEFAULT_SESSION_TYPE_KEY, sessionType);
+  revalidatePath("/");
+}

@@ -11,6 +11,7 @@ import BranchSearchInput from "./BranchSearchInput";
 interface BranchTaskModalProps {
   task: KanbanTask;
   projects: Project[];
+  defaultSessionType?: string;
   onClose: () => void;
 }
 
@@ -18,6 +19,7 @@ interface BranchTaskModalProps {
 export default function BranchTaskModal({
   task,
   projects,
+  defaultSessionType,
   onClose,
 }: BranchTaskModalProps) {
   const t = useTranslations("branch");
@@ -30,7 +32,7 @@ export default function BranchTaskModal({
   const [baseBranch, setBaseBranch] = useState("");
   const [branchName, setBranchName] = useState("");
   const [sessionType, setSessionType] = useState<SessionType>(
-    SessionType.TMUX
+    (defaultSessionType as SessionType) || SessionType.TMUX
   );
   const [error, setError] = useState<string | null>(null);
 
