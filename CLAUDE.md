@@ -137,6 +137,14 @@ next-intl 기반. 지원 언어: 한국어(ko), 영어(en), 중국어(zh). 기�
 2. `messages/en.json`, `messages/zh.json`에 동일 키로 번역 추가
 3. 컴포넌트에서 `t("key")` 또는 `t("namespace.key")`로 사용
 
+## Git Convention
+
+All git-related text must be written in **English**:
+- Commit messages
+- PR titles and descriptions
+- Issue titles and descriptions
+- Branch names
+
 ## 문서 업데이트 규칙
 
 사용자 대면 동작에 영향을 주는 변경 시 아래 문서를 함께 업데이트한다. 세 언어 버전은 항상 동시에 수정한다.
