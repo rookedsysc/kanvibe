@@ -24,8 +24,8 @@ AI 코딩 에이전트(Claude Code, Gemini CLI, Codex CLI 등)의 작업을 실�
 
 <table>
   <tr>
-    <td width="50%"><img src="./images/kanvibe1.png" alt="칸반 보드" width="100%"></td>
-    <td width="50%"><img src="./images/kanvibe2.png" alt="태스크 상세 & 터미널" width="100%"></td>
+    <td width="50%"><img src="./images/detail-page.png" alt="칸반 보드" width="100%"></td>
+    <td width="50%"><img src="./images/detail-page.png" alt="태스크 상세 & 터미널" width="100%"></td>
   </tr>
 </table>
 

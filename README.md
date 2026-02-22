@@ -24,8 +24,8 @@ Automatically track task status via [AI Agent Hooks](#ai-agent-hooks---automatic
 
 <table>
   <tr>
-    <td width="50%"><img src="./docs/images/kanvibe1.png" alt="Kanban Board" width="100%"></td>
-    <td width="50%"><img src="./docs/images/kanvibe2.png" alt="Task Detail & Terminal" width="100%"></td>
+    <td width="50%"><img src="./docs/images/detail-page.png" alt="Kanban Board" width="100%"></td>
+    <td width="50%"><img src="./docs/images/detail-page.png" alt="Task Detail & Terminal" width="100%"></td>
   </tr>
 </table>
 
