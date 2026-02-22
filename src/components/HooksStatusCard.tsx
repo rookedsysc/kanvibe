@@ -6,14 +6,12 @@ import HooksStatusDialog from "@/components/HooksStatusDialog";
 import type { ClaudeHooksStatus } from "@/lib/claudeHooksSetup";
 import type { GeminiHooksStatus } from "@/lib/geminiHooksSetup";
 import type { CodexHooksStatus } from "@/lib/codexHooksSetup";
-import type { OpenCodeHooksStatus } from "@/lib/openCodeHooksSetup";
 
 interface HooksStatusCardProps {
   taskId: string;
   initialClaudeStatus: ClaudeHooksStatus | null;
   initialGeminiStatus: GeminiHooksStatus | null;
   initialCodexStatus: CodexHooksStatus | null;
-  initialOpenCodeStatus: OpenCodeHooksStatus | null;
   isRemote: boolean;
 }
 
@@ -22,22 +20,20 @@ export default function HooksStatusCard({
   initialClaudeStatus,
   initialGeminiStatus,
   initialCodexStatus,
-  initialOpenCodeStatus,
   isRemote,
 }: HooksStatusCardProps) {
   const t = useTranslations("taskDetail");
   const [claudeStatus, setClaudeStatus] = useState(initialClaudeStatus);
   const [geminiStatus, setGeminiStatus] = useState(initialGeminiStatus);
   const [codexStatus, setCodexStatus] = useState(initialCodexStatus);
-  const [openCodeStatus, setOpenCodeStatus] = useState(initialOpenCodeStatus);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
 
   // 신호등 상태 계산
   const getOverallStatus = () => {
-    const installed = [claudeStatus?.installed, geminiStatus?.installed, codexStatus?.installed, openCodeStatus?.installed];
+    const installed = [claudeStatus?.installed, geminiStatus?.installed, codexStatus?.installed];
     const installedCount = installed.filter((x) => x === true).length;
 
-    if (installedCount === 4) return { icon: "🟢", label: "All OK" };
+    if (installedCount === 3) return { icon: "🟢", label: "All OK" };
     if (installedCount === 0) return { icon: "🔴", label: "Not Installed" };
     return { icon: "🟡", label: "Partial" };
   };
@@ -73,7 +69,6 @@ export default function HooksStatusCard({
           claudeStatus={claudeStatus}
           geminiStatus={geminiStatus}
           codexStatus={codexStatus}
-          openCodeStatus={openCodeStatus}
           isRemote={isRemote}
         />
       )}

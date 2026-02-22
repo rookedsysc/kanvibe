@@ -48,10 +48,6 @@
     "projectSelect": "Select project",
     "projectSearch": "Search project...",
     "baseBranch": "Base branch",
-    "branchSearchPlaceholder": "Type to search branches...",
-    "noBranchesFound": "No matching branches found.",
-    "branchCount": "{count} branches",
-    "branchNavHint": "↑↓ Navigate · Enter Select · Esc Close",
     "branchName": "Branch name",
     "branchPlaceholder": "feat/my-feature",
     "sessionType": "Session type",
@@ -111,7 +107,6 @@
     "hooksInstallSuccess": "Claude Code hooks installed",
     "geminiHooksInstallSuccess": "Gemini CLI hooks installed",
     "codexHooksInstallSuccess": "Codex CLI hooks installed",
-    "openCodeHooksInstallSuccess": "OpenCode hooks installed",
     "hooksInstallFailed": "Hooks installation failed: {error}",
     "hooksRemoteNotSupported": "Remote",
     "paneLayoutLink": "Pane Layout Settings",
@@ -127,10 +122,7 @@
     "notificationEnabled": "Browser notifications",
     "notificationEnabledDescription": "Receive browser notifications when task status changes.",
     "notificationStatusFilter": "Notify for statuses",
-    "notificationStatusFilterDescription": "Only receive notifications when tasks change to selected statuses.",
-    "taskCreationSection": "Task Creation",
-    "defaultSessionType": "Default session type",
-    "defaultSessionTypeDescription": "The default session type selected when creating a new task."
+    "notificationStatusFilterDescription": "Only receive notifications when tasks change to selected statuses."
   },
   "paneLayout": {
     "title": "Pane Layout Settings",
@@ -196,7 +188,6 @@
     "project": "Project",
     "baseProject": "Base",
     "projectColor": "Project Color",
-    "addDescription": "Add description",
     "actions": "Change Status",
     "deleteConfirm": "Are you sure you want to delete this task?",
     "hooksStatus": "Hooks Status",
@@ -215,42 +206,16 @@
     "hooksInstallSuccess": "Hooks installed successfully",
     "geminiHooksInstallSuccess": "Gemini CLI hooks installed",
     "codexHooksInstallSuccess": "Codex CLI hooks installed",
-    "openCodeHooksInstallSuccess": "OpenCode hooks installed",
     "hooksInstallFailed": "Hooks installation failed",
     "hooksRemoteNotSupported": "Remote projects are not supported",
     "priority": "Priority",
     "collapseSidebar": "Collapse sidebar",
     "expandSidebar": "Expand sidebar",
     "sidebarTooltip": "You can change the default state in Settings",
-    "dismissHint": "Don't show again",
-    "viewDiff": "View Diff",
-    "diffFiles": "Diff",
-    "diffFileCount": "{count}"
+    "dismissHint": "Don't show again"
   },
   "projectBranchTasks": {
     "title": "Project Tasks",
     "noTasks": "No tasks in this project"
-  },
-  "diffView": {
-    "title": "Code Changes",
-    "backToTask": "Back to Task",
-    "changedFiles": "Changed Files",
-    "noChanges": "No changes found",
-    "editMode": "Edit Mode",
-    "diffMode": "Diff Mode",
-    "save": "Save",
-    "saving": "Saving...",
-    "saved": "Saved",
-    "saveError": "Save failed",
-    "noBranch": "No branch connected",
-    "noWorktree": "Worktree path is not set",
-    "added": "Added",
-    "modified": "Modified",
-    "deleted": "Deleted",
-    "renamed": "Renamed",
-    "viewDiff": "View Diff",
-    "fileCount": "{count} files changed",
-    "viewed": "Viewed",
-    "markViewed": "Viewed"
   }
 }

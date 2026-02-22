@@ -33,8 +33,8 @@ vi.mock("@/lib/gitOperations", () => ({
 }));
 
 vi.mock("@/lib/worktree", () => ({
-  isSessionAlive: vi.fn().mockResolvedValue(false),
-  formatSessionName: vi.fn((projectName: string, branchName: string) => `${projectName}-${branchName}`.replace(/\//g, "-")),
+  isWindowAlive: vi.fn().mockResolvedValue(false),
+  formatWindowName: vi.fn((name: string) => name),
   createSessionWithoutWorktree: vi.fn().mockResolvedValue({ sessionName: "test-session" }),
 }));
 
@@ -51,11 +51,6 @@ vi.mock("@/lib/geminiHooksSetup", () => ({
 vi.mock("@/lib/codexHooksSetup", () => ({
   setupCodexHooks: vi.fn().mockResolvedValue(undefined),
   getCodexHooksStatus: vi.fn(),
-}));
-
-vi.mock("@/lib/openCodeHooksSetup", () => ({
-  setupOpenCodeHooks: vi.fn().mockResolvedValue(undefined),
-  getOpenCodeHooksStatus: vi.fn(),
 }));
 
 vi.mock("next/cache", () => ({

@@ -19,9 +19,8 @@ import HooksStatusCard from "@/components/HooksStatusCard";
 import CollapsibleSidebar from "@/components/CollapsibleSidebar";
 import TaskDetailTitleCard from "@/components/TaskDetailTitleCard";
 import TaskDetailInfoCard from "@/components/TaskDetailInfoCard";
-import { getTaskHooksStatus, getTaskGeminiHooksStatus, getTaskCodexHooksStatus, getTaskOpenCodeHooksStatus } from "@/app/actions/project";
+import { getTaskHooksStatus, getTaskGeminiHooksStatus, getTaskCodexHooksStatus } from "@/app/actions/project";
 import { getSidebarDefaultCollapsed, getSidebarHintDismissed, getDoneAlertDismissed } from "@/app/actions/appSettings";
-import { getGitDiffFiles } from "@/app/actions/diff";
 import { Link } from "@/i18n/navigation";
 
 export const dynamicConfig = "force-dynamic";
@@ -80,11 +79,9 @@ export default async function TaskDetailPage({ params }: TaskDetailPageProps) {
   const baseBranchTaskId = foundTaskId !== task.id ? foundTaskId : null;
 
   const hasTerminal = task.sessionType && task.sessionName;
-  const diffFiles = task.branchName ? await getGitDiffFiles(id) : [];
   const claudeHooksStatus = task.projectId ? await getTaskHooksStatus(id) : null;
   const geminiHooksStatus = task.projectId ? await getTaskGeminiHooksStatus(id) : null;
   const codexHooksStatus = task.projectId ? await getTaskCodexHooksStatus(id) : null;
-  const openCodeHooksStatus = task.projectId ? await getTaskOpenCodeHooksStatus(id) : null;
   const sidebarDefaultCollapsed = await getSidebarDefaultCollapsed();
   const sidebarHintDismissed = await getSidebarHintDismissed();
   const doneAlertDismissed = await getDoneAlertDismissed();
@@ -135,9 +132,9 @@ export default async function TaskDetailPage({ params }: TaskDetailPageProps) {
           {t("backToBoard")}
         </Link>
 
-        <TaskDetailTitleCard task={task} taskId={task.id} />
+        <TaskDetailTitleCard task={task} />
 
-        <TaskDetailInfoCard task={task} agentTagStyle={agentTagStyle} baseBranchTaskId={baseBranchTaskId} diffFileCount={diffFiles.length} />
+        <TaskDetailInfoCard task={task} agentTagStyle={agentTagStyle} baseBranchTaskId={baseBranchTaskId} />
 
         {/* 상태 변경 + 네비게이션 카드 */}
         <div className="bg-bg-surface rounded-lg p-5 shadow-sm border border-border-default">
@@ -184,7 +181,6 @@ export default async function TaskDetailPage({ params }: TaskDetailPageProps) {
           initialClaudeStatus={claudeHooksStatus}
           initialGeminiStatus={geminiHooksStatus}
           initialCodexStatus={codexHooksStatus}
-          initialOpenCodeStatus={openCodeHooksStatus}
           isRemote={!!task.sshHost}
         />
       </CollapsibleSidebar>

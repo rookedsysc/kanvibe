@@ -39,9 +39,6 @@
     "**/*.mts"
   ],
   "exclude": [
-    "node_modules",
-    "playwright.config.ts",
-    "vitest.config.ts",
-    "tests"
+    "node_modules"
   ]
 }

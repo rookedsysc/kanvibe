@@ -6,6 +6,7 @@ import { WebSocketServer, type WebSocket } from "ws";
 import { validateSessionFromCookie } from "@/lib/auth";
 import { getTaskRepository } from "@/lib/database";
 import { attachLocalSession, attachRemoteSession } from "@/lib/terminal";
+import { formatWindowName } from "@/lib/worktree";
 import { parseSSHConfig } from "@/lib/sshConfig";
 import { addBoardClient, removeBoardClient, getBoardClients } from "@/lib/boardNotifier";
 
@@ -109,6 +110,10 @@ app.prepare().then(() => {
         return;
       }
 
+      /** branchName 또는 baseBranch에서 window/tab 이름을 파생한다 */
+      const derivedBranch = task.branchName || task.baseBranch;
+      const windowName = derivedBranch ? formatWindowName(derivedBranch) : "";
+
       if (task.sshHost) {
         const sshHosts = await parseSSHConfig();
         const hostConfig = sshHosts.find((h) => h.host === task.sshHost);
@@ -123,13 +128,14 @@ app.prepare().then(() => {
           task.sshHost,
           task.sessionType,
           task.sessionName,
+          windowName,
           ws,
           hostConfig,
           initialCols,
           initialRows
         );
       } else {
-        await attachLocalSession(taskId, task.sessionType, task.sessionName, ws, task.worktreePath, initialCols, initialRows);
+        await attachLocalSession(taskId, task.sessionType, task.sessionName, windowName, ws, task.worktreePath, initialCols, initialRows);
       }
     } catch (error) {
       console.error("터미널 연결 오류:", error);

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useState, useTransition } from "react";
 import { useTranslations } from "next-intl";
 import {
   deleteProject,
@@ -11,9 +11,7 @@ import {
   setSidebarDefaultCollapsed,
   setNotificationEnabled,
   setNotificationStatuses,
-  setDefaultSessionType,
 } from "@/app/actions/appSettings";
-import { SessionType } from "@/entities/KanbanTask";
 import { Link } from "@/i18n/navigation";
 import type { Project } from "@/entities/Project";
 import FolderSearchInput from "@/components/FolderSearchInput";
@@ -31,8 +29,6 @@ interface ProjectSettingsProps {
   projects: Project[];
   sshHosts: string[];
   sidebarDefaultCollapsed: boolean;
-  defaultSessionType: SessionType;
-  onDefaultSessionTypeChange?: (sessionType: SessionType) => void;
   notificationSettings: { isEnabled: boolean; enabledStatuses: string[] };
 }
 
@@ -42,8 +38,6 @@ export default function ProjectSettings({
   projects,
   sshHosts,
   sidebarDefaultCollapsed,
-  defaultSessionType,
-  onDefaultSessionTypeChange,
   notificationSettings,
 }: ProjectSettingsProps) {
   const t = useTranslations("settings");
@@ -55,12 +49,6 @@ export default function ProjectSettings({
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [scanResult, setScanResult] = useState<ScanResult | null>(null);
   const [scanSshHost, setScanSshHost] = useState("");
-  const [selectedDefaultSessionType, setSelectedDefaultSessionType] = useState(defaultSessionType);
-
-  useEffect(() => {
-    setSelectedDefaultSessionType(defaultSessionType);
-  }, [defaultSessionType]);
-
   if (!isOpen) return null;
 
   function handleScan(formData: FormData) {
@@ -165,35 +153,6 @@ export default function ProjectSettings({
               />
             </button>
           </label>
-        </div>
-
-        {/* 작업 생성 설정 */}
-        <div className="p-4 border-b border-border-default">
-          <h3 className="text-xs text-text-muted uppercase tracking-wide mb-3">
-            {t("taskCreationSection")}
-          </h3>
-          <div className="flex items-center justify-between">
-            <div>
-              <span className="text-sm text-text-primary">{t("defaultSessionType")}</span>
-              <p className="text-xs text-text-muted mt-0.5">{t("defaultSessionTypeDescription")}</p>
-            </div>
-            <select
-              value={selectedDefaultSessionType}
-              onChange={(e) => {
-                const nextSessionType = e.target.value as SessionType;
-                setSelectedDefaultSessionType(nextSessionType);
-                startTransition(async () => {
-                  await setDefaultSessionType(nextSessionType);
-                  onDefaultSessionTypeChange?.(nextSessionType);
-                });
-              }}
-              disabled={isPending}
-              className="px-2 py-1 text-sm bg-bg-page border border-border-default rounded-md text-text-primary focus:outline-none focus:border-brand-primary transition-colors"
-            >
-              <option value="tmux">tmux</option>
-              <option value="zellij">zellij</option>
-            </select>
-          </div>
         </div>
 
         {/* 알림 설정 */}

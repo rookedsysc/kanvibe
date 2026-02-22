@@ -69,9 +69,7 @@ cp .env.example .env
 ### 2. 실행
 
 ```bash
-bash kanvibe.sh start          # 인터랙티브 모드 선택 (포그라운드/백그라운드)
-bash kanvibe.sh start --fg     # 포그라운드 (터미널에 직접 출력, Ctrl+C로 종료)
-bash kanvibe.sh start --bg     # 백그라운드 (터미널 닫아도 서버 유지)
+bash kanvibe.sh start
 ```
 
 의존성 체크(i18n 설치 프롬프트 포함), 패키지 설치, PostgreSQL 시작, 마이그레이션, 빌드, 서버 실행까지 모두 처리됩니다.
@@ -143,7 +141,7 @@ KanVibe 서버와 PostgreSQL 컨테이너를 종료합니다.
 - Nerd Font 렌더링 지원
 
 ### AI 에이전트 Hooks - 자동 상태 추적
-KanVibe는 **Claude Code Hooks**, **Gemini CLI Hooks**, **Codex CLI**, **OpenCode**와 연동하여 태스크 상태를 자동 추적합니다. 태스크는 5가지 상태로 관리됩니다:
+KanVibe는 **Claude Code Hooks**, **Gemini CLI Hooks**, **Codex CLI**와 연동하여 태스크 상태를 자동 추적합니다. 태스크는 5가지 상태로 관리됩니다:
 
 | 상태 | 설명 |
 |------|------|
@@ -176,24 +174,13 @@ agent-turn-complete (에이전트 완료) → REVIEW
 
 > Codex CLI는 현재 `notify` 설정의 `agent-turn-complete` 이벤트만 지원합니다. PROGRESS, PENDING 전환은 아직 불가합니다. OpenAI가 [hooks 시스템을 설계 중](https://github.com/openai/codex/discussions/2150)이며, 출시되면 전체 지원을 추가할 예정입니다.
 
-#### OpenCode
-```
-사용자 메시지 전송 (message.updated, role=user) → PROGRESS
-AI 질문 대기 (question.asked)                   → PENDING
-사용자 질문 답변 (question.replied)              → PROGRESS
-세션 대기 (session.idle)                        → REVIEW
-```
-
-OpenCode는 셸 스크립트 hooks 대신 자체 [플러그인 시스템](https://opencode.ai/docs/plugins/)을 사용합니다. KanVibe는 `.opencode/plugins/kanvibe-plugin.ts`에 TypeScript 플러그인을 생성하여 `@opencode-ai/plugin` SDK를 통해 OpenCode의 네이티브 이벤트 hooks(`message.updated`, `question.asked`, `question.replied`, `session.idle`)를 구독합니다. 외부 셸 명령을 실행하지 않고 프로세스 내에서 상태 업데이트를 처리합니다.
-
-모든 에이전트 Hook은 KanVibe 디렉토리 스캔으로 프로젝트를 등록하거나 worktree와 함께 태스크를 생성하면 **자동 설치**됩니다. 태스크 상세 페이지에서 개별 설치도 가능합니다.
+Claude Code와 Gemini CLI Hook은 KanVibe 디렉토리 스캔으로 프로젝트를 등록하면 **자동 설치**됩니다. 프로젝트 설정이나 태스크 상세 페이지에서 개별 설치도 가능합니다. Codex CLI는 수동 설정이 필요합니다.
 
 | 에이전트 | Hook 디렉토리 | 설정 파일 |
 |---------|-------------|----------|
 | Claude Code | `.claude/hooks/` | `.claude/settings.json` |
 | Gemini CLI | `.gemini/hooks/` | `.gemini/settings.json` |
 | Codex CLI | `.codex/hooks/` | `.codex/config.toml` |
-| OpenCode | `.opencode/plugins/` | 플러그인 자동 탐색 |
 
 #### 브라우저 알림
 
@@ -212,22 +199,6 @@ AI 에이전트 Hooks를 통한 태스크 상태 변경이 **브라우저 알림
 |-----------|--------|------|
 | `/api/hooks/start` | POST | 새 태스크 생성 |
 | `/api/hooks/status` | POST | `branchName` + `projectName`으로 태스크 상태 변경 |
-
-### GitHub 스타일 Diff 뷰
-
-브라우저에서 GitHub 스타일의 diff 뷰어로 코드 변경사항을 바로 확인할 수 있습니다. 태스크 상세 페이지의 **Diff** 뱃지를 클릭하면 base 브랜치 대비 변경된 모든 파일을 확인할 수 있습니다.
-
-<table>
-  <tr>
-    <td width="30%"><img src="./images/diff-view-button.png" alt="태스크 상세의 Diff 뱃지" width="100%"></td>
-    <td width="70%"><img src="./images/diff-view.png" alt="Diff 뷰 페이지" width="100%"></td>
-  </tr>
-</table>
-
-- 변경 파일 수가 표시되는 파일 트리 사이드바
-- Monaco Editor 기반 인라인 diff 뷰어
-- 브라우저에서 바로 수정 가능한 에딧 모드
-- 체크박스로 확인한 파일 추적
 
 ### Pane 레이아웃 에디터
 - 6가지 레이아웃 프리셋 (Single, Horizontal 2, Vertical 2, Left+Right TB, Left TB+Right, Quad)

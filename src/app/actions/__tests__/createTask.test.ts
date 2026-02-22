@@ -42,18 +42,6 @@ vi.mock("@/lib/claudeHooksSetup", () => ({
   setupClaudeHooks: vi.fn().mockResolvedValue(undefined),
 }));
 
-vi.mock("@/lib/geminiHooksSetup", () => ({
-  setupGeminiHooks: vi.fn().mockResolvedValue(undefined),
-}));
-
-vi.mock("@/lib/codexHooksSetup", () => ({
-  setupCodexHooks: vi.fn().mockResolvedValue(undefined),
-}));
-
-vi.mock("@/lib/openCodeHooksSetup", () => ({
-  setupOpenCodeHooks: vi.fn().mockResolvedValue(undefined),
-}));
-
 vi.mock("next/cache", () => ({
   revalidatePath: vi.fn(),
 }));
