@@ -58,6 +58,7 @@ describe("HooksStatusCard", () => {
       initialClaudeStatus: null,
       initialGeminiStatus: null,
       initialCodexStatus: null,
+      initialOpenCodeStatus: null,
       isRemote: true,
     };
 
@@ -77,6 +78,7 @@ describe("HooksStatusCard", () => {
       initialClaudeStatus: null,
       initialGeminiStatus: null,
       initialCodexStatus: null,
+      initialOpenCodeStatus: null,
       isRemote: false,
     };
 
@@ -94,6 +96,7 @@ describe("HooksStatusCard", () => {
       initialClaudeStatus: { installed: true, hasPromptHook: true, hasStopHook: true, hasQuestionHook: true, hasSettingsEntry: true },
       initialGeminiStatus: { installed: true, hasPromptHook: true, hasStopHook: true, hasSettingsEntry: true },
       initialCodexStatus: { installed: true, hasNotifyHook: true, hasConfigEntry: true },
+      initialOpenCodeStatus: { installed: true, hasPlugin: true },
       isRemote: false,
     };
 
@@ -111,6 +114,7 @@ describe("HooksStatusCard", () => {
       initialClaudeStatus: null,
       initialGeminiStatus: null,
       initialCodexStatus: null,
+      initialOpenCodeStatus: null,
       isRemote: false,
     };
 
@@ -128,6 +132,7 @@ describe("HooksStatusCard", () => {
       initialClaudeStatus: { installed: true, hasPromptHook: true, hasStopHook: true, hasQuestionHook: true, hasSettingsEntry: true },
       initialGeminiStatus: null,
       initialCodexStatus: null,
+      initialOpenCodeStatus: null,
       isRemote: false,
     };
 
@@ -145,6 +150,7 @@ describe("HooksStatusCard", () => {
       initialClaudeStatus: null,
       initialGeminiStatus: null,
       initialCodexStatus: null,
+      initialOpenCodeStatus: null,
       isRemote: false,
     };
 
@@ -164,6 +170,7 @@ describe("HooksStatusCard", () => {
       initialClaudeStatus: null,
       initialGeminiStatus: null,
       initialCodexStatus: null,
+      initialOpenCodeStatus: null,
       isRemote: false,
     };
 
@@ -188,6 +195,7 @@ describe("HooksStatusCard", () => {
       initialClaudeStatus: null,
       initialGeminiStatus: null,
       initialCodexStatus: null,
+      initialOpenCodeStatus: null,
       isRemote: false,
     };
 
@@ -208,6 +216,7 @@ describe("HooksStatusCard", () => {
       initialClaudeStatus: null,
       initialGeminiStatus: null,
       initialCodexStatus: null,
+      initialOpenCodeStatus: null,
       isRemote: true,
     };
 
@@ -227,6 +236,7 @@ describe("HooksStatusCard", () => {
       initialClaudeStatus: null,
       initialGeminiStatus: null,
       initialCodexStatus: null,
+      initialOpenCodeStatus: null,
       isRemote: true,
     };
 
@@ -244,6 +254,7 @@ describe("HooksStatusCard", () => {
       initialClaudeStatus: null,
       initialGeminiStatus: null,
       initialCodexStatus: null,
+      initialOpenCodeStatus: null,
       isRemote: false,
     };
 

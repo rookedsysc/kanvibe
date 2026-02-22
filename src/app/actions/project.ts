@@ -6,12 +6,14 @@ import { Project } from "@/entities/Project";
 import { validateGitRepo, getDefaultBranch, listBranches, scanGitRepos, listWorktrees, execGit } from "@/lib/gitOperations";
 import { TaskStatus, SessionType } from "@/entities/KanbanTask";
 import { IsNull } from "typeorm";
-import { isWindowAlive, formatWindowName, createSessionWithoutWorktree } from "@/lib/worktree";
+import { isSessionAlive, formatSessionName, createSessionWithoutWorktree } from "@/lib/worktree";
 import { setupClaudeHooks, getClaudeHooksStatus, type ClaudeHooksStatus } from "@/lib/claudeHooksSetup";
 import { setupGeminiHooks, getGeminiHooksStatus, type GeminiHooksStatus } from "@/lib/geminiHooksSetup";
 import { setupCodexHooks, getCodexHooksStatus, type CodexHooksStatus } from "@/lib/codexHooksSetup";
+import { setupOpenCodeHooks, getOpenCodeHooksStatus, type OpenCodeHooksStatus } from "@/lib/openCodeHooksSetup";
 import { homedir } from "os";
 import path from "path";
+import { computeProjectColor } from "@/lib/projectColor";
 
 /** TypeORM 엔티티를 직렬화 가능한 plain object로 변환한다 */
 function serialize<T>(data: T): T {
@@ -109,6 +111,7 @@ export async function registerProject(
     repoPath,
     defaultBranch,
     sshHost: sshHost || null,
+    color: computeProjectColor(name),
   });
 
   const saved = await repo.save(project);
@@ -198,6 +201,7 @@ export async function scanAndRegisterProjects(
         repoPath,
         defaultBranch,
         sshHost: sshHost || null,
+        color: computeProjectColor(projectName),
       });
 
       const saved = await repo.save(project);
@@ -218,6 +222,7 @@ export async function scanAndRegisterProjects(
           await setupClaudeHooks(repoPath, projectName, kanvibeUrl);
           await setupGeminiHooks(repoPath, projectName, kanvibeUrl);
           await setupCodexHooks(repoPath, projectName, kanvibeUrl);
+          await setupOpenCodeHooks(repoPath, projectName, kanvibeUrl);
           result.hooksSetup.push(projectName);
         } catch (hookError) {
           result.errors.push(
@@ -261,13 +266,11 @@ export async function scanAndRegisterProjects(
           continue;
         }
 
-        /** tmux 세션에 동일한 session-window가 있으면 연결 정보를 설정한다 */
-        const sessionName = path.basename(project.repoPath);
-        const windowName = formatWindowName(wt.branch);
-        const hasWindow = await isWindowAlive(
+        /** 브랜치명 기반 독립 세션이 존재하면 연결 정보를 설정한다 */
+        const sessionName = formatSessionName(path.basename(project.repoPath), wt.branch);
+        const hasSession = await isSessionAlive(
           SessionType.TMUX,
           sessionName,
-          windowName,
           project.sshHost
         );
 
@@ -277,8 +280,8 @@ export async function scanAndRegisterProjects(
           worktreePath: wt.path,
           projectId: project.id,
           baseBranch: project.defaultBranch,
-          status: hasWindow ? TaskStatus.PROGRESS : TaskStatus.TODO,
-          ...(hasWindow && {
+          status: hasSession ? TaskStatus.PROGRESS : TaskStatus.TODO,
+          ...(hasSession && {
             sessionType: SessionType.TMUX,
             sessionName,
             sshHost: project.sshHost,
@@ -302,16 +305,14 @@ export async function scanAndRegisterProjects(
       });
 
       if (mainBranchTask && !mainBranchTask.sessionType) {
-        const sessionName = path.basename(project.repoPath);
-        const windowName = formatWindowName(project.defaultBranch);
-        const hasWindow = await isWindowAlive(
+        const sessionName = formatSessionName(path.basename(project.repoPath), project.defaultBranch);
+        const hasSession = await isSessionAlive(
           SessionType.TMUX,
           sessionName,
-          windowName,
           project.sshHost,
         );
 
-        if (hasWindow) {
+        if (hasSession) {
           mainBranchTask.sessionType = SessionType.TMUX;
           mainBranchTask.sessionName = sessionName;
           mainBranchTask.worktreePath = project.repoPath;
@@ -557,4 +558,63 @@ export async function installTaskCodexHooks(
       error: error instanceof Error ? error.message : "hooks 설정 실패",
     };
   }
+}
+
+/** 프로젝트 repo에 OpenCode hooks를 설치한다 */
+export async function installProjectOpenCodeHooks(
+  projectId: string
+): Promise<{ success: boolean; error?: string }> {
+  const projectRepo = await getProjectRepository();
+  const project = await projectRepo.findOneBy({ id: projectId });
+  if (!project) return { success: false, error: "Project not found" };
+
+  try {
+    const kanvibeUrl = `http://localhost:${process.env.PORT || 4885}`;
+    await setupOpenCodeHooks(project.repoPath, project.name, kanvibeUrl);
+    return { success: true };
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Unknown error",
+    };
+  }
+}
+
+/** 태스크의 worktree 또는 프로젝트 경로에 OpenCode hooks를 설치한다 */
+export async function installTaskOpenCodeHooks(
+  taskId: string
+): Promise<{ success: boolean; error?: string }> {
+  const taskRepo = await getTaskRepository();
+  const task = await taskRepo.findOne({
+    where: { id: taskId },
+    relations: ["project"],
+  });
+  if (!task?.project) return { success: false, error: "Task or project not found" };
+
+  try {
+    const kanvibeUrl = `http://localhost:${process.env.PORT || 4885}`;
+    const targetPath = task.worktreePath || task.project.repoPath;
+    await setupOpenCodeHooks(targetPath, task.project.name, kanvibeUrl);
+    return { success: true };
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Unknown error",
+    };
+  }
+}
+
+/** 태스크의 OpenCode hooks 설치 상태를 조회한다 */
+export async function getTaskOpenCodeHooksStatus(
+  taskId: string
+): Promise<OpenCodeHooksStatus | null> {
+  const taskRepo = await getTaskRepository();
+  const task = await taskRepo.findOne({
+    where: { id: taskId },
+    relations: ["project"],
+  });
+  if (!task?.project) return null;
+
+  const targetPath = task.worktreePath || task.project.repoPath;
+  return getOpenCodeHooksStatus(targetPath);
 }

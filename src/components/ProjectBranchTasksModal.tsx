@@ -153,7 +153,7 @@ export default function ProjectBranchTasksModal({
                           </button>
                           <button
                             onClick={() => handleTaskClick(task.id)}
-                            className="flex-shrink-0 w-6 h-6 rounded-full bg-tag-project-bg hover:opacity-80 text-tag-project-text flex items-center justify-center transition-opacity"
+                            className="flex-shrink-0 w-6 h-6 rounded-full bg-tag-project-bg hover:opacity-80 text-white flex items-center justify-center transition-opacity"
                             aria-label="Open task"
                             title={task.title}
                           >

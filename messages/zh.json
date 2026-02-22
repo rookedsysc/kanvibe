@@ -48,6 +48,10 @@
     "projectSelect": "选择项目",
     "projectSearch": "搜索项目...",
     "baseBranch": "基础分支",
+    "branchSearchPlaceholder": "输入分支名称搜索...",
+    "noBranchesFound": "未找到匹配的分支。",
+    "branchCount": "{count} 个分支",
+    "branchNavHint": "↑↓ 导航 · Enter 选择 · Esc 关闭",
     "branchName": "分支名称",
     "branchPlaceholder": "feat/my-feature",
     "sessionType": "会话类型",
@@ -107,6 +111,7 @@
     "hooksInstallSuccess": "Claude Code hooks 安装完成",
     "geminiHooksInstallSuccess": "Gemini CLI hooks 安装完成",
     "codexHooksInstallSuccess": "Codex CLI hooks 安装完成",
+    "openCodeHooksInstallSuccess": "OpenCode hooks 安装完成",
     "hooksInstallFailed": "Hooks 安装失败: {error}",
     "hooksRemoteNotSupported": "远程",
     "paneLayoutLink": "面板布局设置",
@@ -122,7 +127,10 @@
     "notificationEnabled": "浏览器通知",
     "notificationEnabledDescription": "任务状态变更时接收浏览器通知。",
     "notificationStatusFilter": "通知状态",
-    "notificationStatusFilterDescription": "仅在任务变更为所选状态时接收通知。"
+    "notificationStatusFilterDescription": "仅在任务变更为所选状态时接收通知。",
+    "taskCreationSection": "任务创建",
+    "defaultSessionType": "默认会话类型",
+    "defaultSessionTypeDescription": "创建新任务时默认选择的会话类型。"
   },
   "paneLayout": {
     "title": "面板布局设置",
@@ -188,6 +196,7 @@
     "project": "项目",
     "baseProject": "Base",
     "projectColor": "项目颜色",
+    "addDescription": "添加描述",
     "actions": "状态变更",
     "deleteConfirm": "确定要删除此任务吗？",
     "hooksStatus": "Hooks 状态",
@@ -206,16 +215,42 @@
     "hooksInstallSuccess": "Hooks 安装完成",
     "geminiHooksInstallSuccess": "Gemini CLI hooks 安装完成",
     "codexHooksInstallSuccess": "Codex CLI hooks 安装完成",
+    "openCodeHooksInstallSuccess": "OpenCode hooks 安装完成",
     "hooksInstallFailed": "Hooks 安装失败",
     "hooksRemoteNotSupported": "不支持远程项目",
     "priority": "优先级",
     "collapseSidebar": "折叠侧栏",
     "expandSidebar": "展开侧栏",
     "sidebarTooltip": "可以在设置中更改默认折叠状态",
-    "dismissHint": "不再显示"
+    "dismissHint": "不再显示",
+    "viewDiff": "查看差异",
+    "diffFiles": "变更文件",
+    "diffFileCount": "{count}个"
   },
   "projectBranchTasks": {
     "title": "项目任务",
     "noTasks": "此项目中没有任务"
+  },
+  "diffView": {
+    "title": "代码变更",
+    "backToTask": "返回任务",
+    "changedFiles": "已更改的文件",
+    "noChanges": "没有变更",
+    "editMode": "编辑模式",
+    "diffMode": "对比模式",
+    "save": "保存",
+    "saving": "保存中...",
+    "saved": "保存成功",
+    "saveError": "保存失败",
+    "noBranch": "未连接分支",
+    "noWorktree": "未设置工作树路径",
+    "added": "新增",
+    "modified": "修改",
+    "deleted": "删除",
+    "renamed": "重命名",
+    "viewDiff": "查看差异",
+    "fileCount": "已更改 {count} 个文件",
+    "viewed": "已查看",
+    "markViewed": "查看"
   }
 }

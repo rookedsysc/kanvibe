@@ -4,8 +4,8 @@
 # Codex 응답이 완료되면 현재 브랜치의 작업을 REVIEW로 변경한다.
 # Codex notify 스크립트는 첫 번째 인자로 JSON payload를 받는다.
 
-KANVIBE_URL="http://localhost:4885"
-PROJECT_NAME="kanvibe"
+KANVIBE_URL="http://localhost:7777"
+PROJECT_NAME="kanvibe_dev"
 
 JSON_PAYLOAD="$1"
 

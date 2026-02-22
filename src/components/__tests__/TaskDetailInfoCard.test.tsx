@@ -23,8 +23,8 @@ vi.mock("next-intl", () => ({
 }));
 
 vi.mock("@/i18n/navigation", () => ({
-  Link: ({ children, href, title, ...props }: { children: React.ReactNode; href: string; title?: string }) => (
-    <a href={href} title={title} data-testid="shortcut-link" {...props}>{children}</a>
+  Link: ({ children, href, title, ...props }: Record<string, unknown>) => (
+    <a href={href as string} title={title as string} {...props}>{children as React.ReactNode}</a>
   ),
 }));
 
@@ -142,5 +142,55 @@ describe("TaskDetailInfoCard - Project Shortcut Navigation", () => {
 
     // Then
     expect(screen.queryByTestId("shortcut-link")).toBeNull();
+  });
+});
+
+describe("TaskDetailInfoCard - Project Badge Color", () => {
+  it("should use fixed bg-tag-project-bg class instead of inline backgroundColor", () => {
+    // Given
+    const task = createTask({
+      project: {
+        id: "project-1",
+        name: "kanvibe",
+        repoPath: "/path/to/repo",
+        defaultBranch: "main",
+        sshHost: null,
+        isWorktree: false,
+        color: "#FF0000",
+        createdAt: new Date(),
+      },
+    });
+
+    // When
+    render(
+      <TaskDetailInfoCard
+        task={task}
+        agentTagStyle={null}
+        baseBranchTaskId={null}
+      />
+    );
+
+    // Then - 프로젝트 배지가 인라인 스타일 없이 고정 클래스를 사용해야 한다
+    const badge = screen.getByText("kanvibe");
+    expect(badge.className).toContain("bg-tag-project-bg");
+    expect(badge.getAttribute("style")).toBeNull();
+  });
+
+  it("should render shortcut link with bg-tag-project-bg class", () => {
+    // Given
+    const task = createTask();
+
+    // When
+    render(
+      <TaskDetailInfoCard
+        task={task}
+        agentTagStyle={null}
+        baseBranchTaskId="main-task-123"
+      />
+    );
+
+    // Then
+    const shortcutLink = screen.getByTestId("shortcut-link");
+    expect(shortcutLink.className).toContain("bg-tag-project-bg");
   });
 });

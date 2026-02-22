@@ -12,10 +12,12 @@ import BranchTaskModal from "./BranchTaskModal";
 import DoneConfirmDialog from "./DoneConfirmDialog";
 import { reorderTasks, deleteTask, getMoreDoneTasks, moveTaskToColumn } from "@/app/actions/kanban";
 import type { TasksByStatus } from "@/app/actions/kanban";
-import { TaskStatus, type KanbanTask } from "@/entities/KanbanTask";
+import { SessionType, TaskStatus, type KanbanTask } from "@/entities/KanbanTask";
 import type { Project } from "@/entities/Project";
 import { logoutAction } from "@/app/actions/auth";
 import { useAutoRefresh } from "@/hooks/useAutoRefresh";
+import { useProjectFilterParams } from "@/hooks/useProjectFilterParams";
+import { computeProjectColor } from "@/lib/projectColor";
 
 interface BoardProps {
   initialTasks: TasksByStatus;
@@ -26,6 +28,7 @@ interface BoardProps {
   sidebarDefaultCollapsed: boolean;
   doneAlertDismissed: boolean;
   notificationSettings: { isEnabled: boolean; enabledStatuses: string[] };
+  defaultSessionType: SessionType;
 }
 
 const COLUMNS: { status: TaskStatus; labelKey: string; colorClass: string }[] = [
@@ -35,8 +38,6 @@ const COLUMNS: { status: TaskStatus; labelKey: string; colorClass: string }[] = 
   { status: TaskStatus.REVIEW, labelKey: "review", colorClass: "bg-status-review" },
   { status: TaskStatus.DONE, labelKey: "done", colorClass: "bg-status-done" },
 ];
-
-const FILTER_STORAGE_KEY = "kanvibe:projectFilter";
 
 interface ContextMenuState {
   isOpen: boolean;
@@ -87,7 +88,7 @@ function insertAtFilteredIndex(
   return arr;
 }
 
-export default function Board({ initialTasks, initialDoneTotal, initialDoneLimit, sshHosts, projects, sidebarDefaultCollapsed, doneAlertDismissed, notificationSettings }: BoardProps) {
+export default function Board({ initialTasks, initialDoneTotal, initialDoneLimit, sshHosts, projects, sidebarDefaultCollapsed, doneAlertDismissed, notificationSettings, defaultSessionType }: BoardProps) {
   useAutoRefresh();
   const t = useTranslations("board");
   const tt = useTranslations("task");
@@ -101,12 +102,15 @@ export default function Board({ initialTasks, initialDoneTotal, initialDoneLimit
     projectId: string;
   } | null>(null);
   const [isMounted, setIsMounted] = useState(false);
-  const [selectedProjectIds, setSelectedProjectIds] = useState<string[]>([]);
+  const [selectedProjectIds, setSelectedProjectIds] = useProjectFilterParams(
+    projects.map((p) => p.id),
+  );
   const [doneTotal, setDoneTotal] = useState(initialDoneTotal);
   const [doneOffset, setDoneOffset] = useState(initialDoneLimit);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [isDoneAlertDismissed, setIsDoneAlertDismissed] = useState(doneAlertDismissed);
   const [pendingDoneResult, setPendingDoneResult] = useState<DropResult | null>(null);
+  const [currentDefaultSessionType, setCurrentDefaultSessionType] = useState<SessionType>(defaultSessionType);
 
   /** projectId → 표시할 프로젝트 이름 매핑. worktree 프로젝트는 메인 프로젝트 이름으로 resolve한다 */
   const projectNameMap = useMemo(() => {
@@ -137,10 +141,6 @@ export default function Board({ initialTasks, initialDoneTotal, initialDoneLimit
 
   /** 프로젝트명 → hex 색상 매핑. DB color 우선, 없으면 해시 기반 프리셋 할당 */
   const projectColorMap = useMemo(() => {
-    const PRESET_COLORS = [
-      "#F9A8D4", "#93C5FD", "#86EFAC", "#C4B5FD",
-      "#FDBA74", "#FDE047", "#5EEAD4", "#A5B4FC",
-    ];
     const colorMap: Record<string, string> = {};
 
     const uniqueNames = new Set(Object.values(projectNameMap));
@@ -151,11 +151,7 @@ export default function Board({ initialTasks, initialDoneTotal, initialDoneLimit
       if (mainProject?.color) {
         colorMap[name] = mainProject.color;
       } else {
-        let hash = 0;
-        for (let i = 0; i < name.length; i++) {
-          hash = (hash * 31 + name.charCodeAt(i)) | 0;
-        }
-        colorMap[name] = PRESET_COLORS[((hash % 8) + 8) % 8];
+        colorMap[name] = computeProjectColor(name);
       }
     }
     return colorMap;
@@ -242,42 +238,16 @@ export default function Board({ initialTasks, initialDoneTotal, initialDoneLimit
     setIsMounted(true);
   }, []);
 
-  /** localStorage에서 저장된 필터를 복원한다 */
-  useEffect(() => {
-    const stored = localStorage.getItem(FILTER_STORAGE_KEY);
-    if (!stored) return;
-
-    try {
-      const parsed = JSON.parse(stored);
-      if (Array.isArray(parsed)) {
-        const validIds = parsed.filter((id: string) =>
-          projects.some((p) => p.id === id)
-        );
-        if (validIds.length > 0) setSelectedProjectIds(validIds);
-      }
-    } catch {
-      /** 이전 단일 선택 포맷 호환: plain string */
-      if (projects.some((p) => p.id === stored)) {
-        setSelectedProjectIds([stored]);
-      }
-    }
-  }, [projects]);
-
-  /** 필터 변경 시 localStorage에 저장한다 */
-  useEffect(() => {
-    if (selectedProjectIds.length > 0) {
-      localStorage.setItem(FILTER_STORAGE_KEY, JSON.stringify(selectedProjectIds));
-    } else {
-      localStorage.removeItem(FILTER_STORAGE_KEY);
-    }
-  }, [selectedProjectIds]);
-
   /** 서버 revalidation 후 initialTasks가 변경되면 로컬 state에 반영한다 */
   useEffect(() => {
     setTasks(initialTasks);
     setDoneTotal(initialDoneTotal);
     setDoneOffset(initialDoneLimit);
   }, [initialTasks, initialDoneTotal, initialDoneLimit]);
+
+  useEffect(() => {
+    setCurrentDefaultSessionType(defaultSessionType);
+  }, [defaultSessionType]);
 
   const handleLoadMoreDone = useCallback(async () => {
     if (isLoadingMore) return;
@@ -542,6 +512,7 @@ export default function Board({ initialTasks, initialDoneTotal, initialDoneLimit
         projects={projects}
         defaultProjectId={branchTodoDefaults?.projectId || (selectedProjectIds.length === 1 ? selectedProjectIds[0] : "")}
         defaultBaseBranch={branchTodoDefaults?.baseBranch}
+        defaultSessionType={currentDefaultSessionType}
       />
 
       <ProjectSettings
@@ -550,6 +521,10 @@ export default function Board({ initialTasks, initialDoneTotal, initialDoneLimit
         projects={projects}
         sshHosts={sshHosts}
         sidebarDefaultCollapsed={sidebarDefaultCollapsed}
+        defaultSessionType={currentDefaultSessionType}
+        onDefaultSessionTypeChange={(sessionType) => {
+          setCurrentDefaultSessionType(sessionType);
+        }}
         notificationSettings={notificationSettings}
       />
 
@@ -569,6 +544,7 @@ export default function Board({ initialTasks, initialDoneTotal, initialDoneLimit
         <BranchTaskModal
           task={contextMenu.task}
           projects={projects}
+          defaultSessionType={currentDefaultSessionType}
           onClose={() => {
             setIsBranchModalOpen(false);
             handleCloseContextMenu();

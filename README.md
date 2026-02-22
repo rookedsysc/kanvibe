@@ -69,7 +69,9 @@ cp .env.example .env
 ### 2. Run
 
 ```bash
-bash kanvibe.sh start
+bash kanvibe.sh start          # Interactive mode selection (foreground/background)
+bash kanvibe.sh start --fg     # Foreground (output to terminal, Ctrl+C to stop)
+bash kanvibe.sh start --bg     # Background (server keeps running after terminal closes)
 ```
 
 This command checks dependencies (with i18n install prompts), installs packages, starts PostgreSQL, runs migrations, builds, and launches the server.
@@ -141,7 +143,7 @@ Each pane can run a custom command (e.g., `vim`, `htop`, `lazygit`, test runner,
 - Nerd Font rendering support
 
 ### AI Agent Hooks - Automatic Status Tracking
-KanVibe integrates with **Claude Code Hooks**, **Gemini CLI Hooks**, and **Codex CLI** to automatically track task status. Tasks are managed through 5 statuses:
+KanVibe integrates with **Claude Code Hooks**, **Gemini CLI Hooks**, **Codex CLI**, and **OpenCode** to automatically track task status. Tasks are managed through 5 statuses:
 
 | Status | Description |
 |--------|-------------|
@@ -174,13 +176,24 @@ agent-turn-complete (agent done) → REVIEW
 
 > Codex CLI currently only supports the `agent-turn-complete` notification event via the `notify` config. PROGRESS and PENDING transitions are not yet available. OpenAI is [actively designing a hooks system](https://github.com/openai/codex/discussions/2150) — full support will be added when it ships.
 
-Claude Code and Gemini CLI hooks are **auto-installed** when you register a project through KanVibe's directory scan. You can also install them individually from the project settings or task detail page. Codex CLI requires manual configuration.
+#### OpenCode
+```
+User sends message (message.updated, role=user) → PROGRESS
+AI asks a question (question.asked)             → PENDING
+User answers question (question.replied)        → PROGRESS
+Session idle (session.idle)                     → REVIEW
+```
+
+OpenCode uses its own [plugin system](https://opencode.ai/docs/plugins/) instead of shell-script hooks. KanVibe generates a TypeScript plugin at `.opencode/plugins/kanvibe-plugin.ts` that subscribes to OpenCode's native event hooks (`message.updated`, `question.asked`, `question.replied`, and `session.idle`) via the `@opencode-ai/plugin` SDK. This means status updates are handled in-process without spawning external shell commands.
+
+All agent hooks are **auto-installed** when you register a project through KanVibe's directory scan or create a task with a worktree. You can also install them individually from the task detail page.
 
 | Agent | Hook Directory | Config File |
 |-------|---------------|-------------|
 | Claude Code | `.claude/hooks/` | `.claude/settings.json` |
 | Gemini CLI | `.gemini/hooks/` | `.gemini/settings.json` |
 | Codex CLI | `.codex/hooks/` | `.codex/config.toml` |
+| OpenCode | `.opencode/plugins/` | Plugin auto-discovery |
 
 #### Browser Notifications
 
@@ -199,6 +212,22 @@ Setup: Browser will prompt for permission on first visit. Configure filters in *
 |----------|--------|-------------|
 | `/api/hooks/start` | POST | Create a new task |
 | `/api/hooks/status` | POST | Update task status by `branchName` + `projectName` |
+
+### GitHub-style Diff View
+
+Review code changes directly in the browser with a GitHub-style diff viewer. Click the **Diff** badge on the task detail page to see all modified files compared to the base branch.
+
+<table>
+  <tr>
+    <td width="30%"><img src="./docs/images/diff-view-button.png" alt="Diff Badge on Task Detail" width="100%"></td>
+    <td width="70%"><img src="./docs/images/diff-view.png" alt="Diff View Page" width="100%"></td>
+  </tr>
+</table>
+
+- File tree sidebar with changed file count
+- Inline diff viewer powered by Monaco Editor
+- Edit mode for quick fixes directly in the browser
+- Viewed file tracking with checkboxes
 
 ### Pane Layout Editor
 - 6 layout presets (Single, Horizontal 2, Vertical 2, Left+Right TB, Left TB+Right, Quad)

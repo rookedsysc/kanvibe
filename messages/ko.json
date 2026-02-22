@@ -48,6 +48,10 @@
     "projectSelect": "프로젝트 선택",
     "projectSearch": "프로젝트 검색...",
     "baseBranch": "베이스 브랜치",
+    "branchSearchPlaceholder": "브랜치명을 입력하여 검색...",
+    "noBranchesFound": "일치하는 브랜치가 없습니다.",
+    "branchCount": "{count}개의 브랜치",
+    "branchNavHint": "↑↓ 이동 · Enter 선택 · Esc 닫기",
     "branchName": "브랜치 이름",
     "branchPlaceholder": "feat/my-feature",
     "sessionType": "세션 타입",
@@ -107,6 +111,7 @@
     "hooksInstallSuccess": "Claude Code hooks 설치 완료",
     "geminiHooksInstallSuccess": "Gemini CLI hooks 설치 완료",
     "codexHooksInstallSuccess": "Codex CLI hooks 설치 완료",
+    "openCodeHooksInstallSuccess": "OpenCode hooks 설치 완료",
     "hooksInstallFailed": "Hooks 설치 실패: {error}",
     "hooksRemoteNotSupported": "원격",
     "paneLayoutLink": "Pane 레이아웃 설정",
@@ -122,7 +127,10 @@
     "notificationEnabled": "브라우저 알림",
     "notificationEnabledDescription": "작업 상태 변경 시 브라우저 알림을 받습니다.",
     "notificationStatusFilter": "알림 받을 상태",
-    "notificationStatusFilterDescription": "선택한 상태로 변경될 때만 알림을 받습니다."
+    "notificationStatusFilterDescription": "선택한 상태로 변경될 때만 알림을 받습니다.",
+    "taskCreationSection": "작업 생성",
+    "defaultSessionType": "기본 세션 타입",
+    "defaultSessionTypeDescription": "새 작업 생성 시 기본으로 선택되는 세션 타입입니다."
   },
   "paneLayout": {
     "title": "Pane 레이아웃 설정",
@@ -188,6 +196,7 @@
     "project": "프로젝트",
     "baseProject": "Base",
     "projectColor": "프로젝트 색상",
+    "addDescription": "설명 추가",
     "actions": "상태 변경",
     "deleteConfirm": "이 작업을 삭제하시겠습니까?",
     "hooksStatus": "Hooks 상태",
@@ -206,16 +215,42 @@
     "hooksInstallSuccess": "Hooks 설치 완료",
     "geminiHooksInstallSuccess": "Gemini CLI hooks 설치 완료",
     "codexHooksInstallSuccess": "Codex CLI hooks 설치 완료",
+    "openCodeHooksInstallSuccess": "OpenCode hooks 설치 완료",
     "hooksInstallFailed": "Hooks 설치 실패",
     "hooksRemoteNotSupported": "원격 프로젝트는 지원하지 않습니다",
     "priority": "우선순위",
     "collapseSidebar": "사이드바 접기",
     "expandSidebar": "사이드바 펼치기",
     "sidebarTooltip": "설정에서 기본 접힘 상태를 변경할 수 있습니다",
-    "dismissHint": "다시 보지 않기"
+    "dismissHint": "다시 보지 않기",
+    "viewDiff": "Diff 보기",
+    "diffFiles": "변경 파일",
+    "diffFileCount": "{count}개"
   },
   "projectBranchTasks": {
     "title": "프로젝트 작업",
     "noTasks": "이 프로젝트에는 작업이 없습니다"
+  },
+  "diffView": {
+    "title": "코드 변경 사항",
+    "backToTask": "작업으로 돌아가기",
+    "changedFiles": "변경된 파일",
+    "noChanges": "변경 사항이 없습니다",
+    "editMode": "편집 모드",
+    "diffMode": "비교 모드",
+    "save": "저장",
+    "saving": "저장 중...",
+    "saved": "저장 완료",
+    "saveError": "저장 실패",
+    "noBranch": "브랜치가 연결되지 않았습니다",
+    "noWorktree": "워크트리 경로가 설정되지 않았습니다",
+    "added": "추가",
+    "modified": "수정",
+    "deleted": "삭제",
+    "renamed": "이름 변경",
+    "viewDiff": "Diff 보기",
+    "fileCount": "{count}개 파일 변경",
+    "viewed": "확인 완료",
+    "markViewed": "확인"
   }
 }

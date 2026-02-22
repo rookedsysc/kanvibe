@@ -29,6 +29,10 @@ Tailwind 클래스에서 CSS 변수 토큰을 직접 사용한다:
 
 Google 브랜드 컬러 (#4285F4, #EA4335, #FBBC05, #34A853) 기반 + 블랙&화이트 라이트 테마.
 
+### 네비게이션 원형 버튼 및 프로젝트 배지 색상 규칙
+
+태스크 상세 페이지의 원형(>) 네비게이션 버튼과 프로젝트 배지는 항상 **Project Tag Color**(`bg-tag-project-bg`, #202632)를 사용한다. 프로젝트별 동적 색상으로 변경하지 않는다. 해당 요소: `TaskDetailTitleCard`의 "다른 작업 보기" 버튼, `ProjectBranchTasksModal`의 작업 이동 버튼, `TaskDetailInfoCard`의 프로젝트 배지 및 이동 버튼.
+
 ### 새 토큰 추가 시
 
 1. `prd/design-system.json`에 토큰 정의
@@ -132,6 +136,14 @@ next-intl 기반. 지원 언어: 한국어(ko), 영어(en), 중국어(zh). 기�
 1. `messages/ko.json`에 한국어 키/값 추가
 2. `messages/en.json`, `messages/zh.json`에 동일 키로 번역 추가
 3. 컴포넌트에서 `t("key")` 또는 `t("namespace.key")`로 사용
+
+## Git Convention
+
+All git-related text must be written in **English**:
+- Commit messages
+- PR titles and descriptions
+- Issue titles and descriptions
+- Branch names
 
 ## 문서 업데이트 규칙
 

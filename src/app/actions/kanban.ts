@@ -10,6 +10,9 @@ import { TaskPriority } from "@/entities/TaskPriority";
 import { createWorktreeWithSession, removeWorktreeAndSession, removeWorktreeAndBranch, createSessionWithoutWorktree, removeSessionOnly } from "@/lib/worktree";
 import { getProjectRepository } from "@/lib/database";
 import { setupClaudeHooks } from "@/lib/claudeHooksSetup";
+import { setupGeminiHooks } from "@/lib/geminiHooksSetup";
+import { setupCodexHooks } from "@/lib/codexHooksSetup";
+import { setupOpenCodeHooks } from "@/lib/openCodeHooksSetup";
 
 const execAsync = promisify(exec);
 
@@ -146,10 +149,15 @@ export async function createTask(input: CreateTaskInput): Promise<KanbanTask> {
         task.sessionName = session.sessionName;
         task.sshHost = project.sshHost;
 
-        /** 로컬 worktree에 Claude Code hooks를 자동 설정한다 */
+        /** 로컬 worktree에 모든 AI 에이전트 hooks를 자동 설정한다 */
         if (!project.sshHost && session.worktreePath) {
           const kanvibeUrl = `http://localhost:${process.env.PORT || 4885}`;
-          await setupClaudeHooks(session.worktreePath, project.name, kanvibeUrl);
+          await Promise.allSettled([
+            setupClaudeHooks(session.worktreePath, project.name, kanvibeUrl),
+            setupGeminiHooks(session.worktreePath, project.name, kanvibeUrl),
+            setupCodexHooks(session.worktreePath, project.name, kanvibeUrl),
+            setupOpenCodeHooks(session.worktreePath, project.name, kanvibeUrl),
+          ]);
         }
       }
     } catch (error) {
@@ -252,19 +260,15 @@ export async function cleanupTaskResources(task: KanbanTask): Promise<void> {
   }
 
   const isProjectRoot = project && task.worktreePath === project.repoPath;
-  const derivedBranch = task.branchName || task.baseBranch;
 
-  /** 세션(window/tab) 정리 */
+  /** 브랜치별 독립 세션 정리 */
   if (task.sessionType && task.sessionName) {
     try {
-      if (derivedBranch) {
-        await removeSessionOnly(
-          task.sessionType,
-          task.sessionName,
-          derivedBranch,
-          task.sshHost
-        );
-      }
+      await removeSessionOnly(
+        task.sessionType,
+        task.sessionName,
+        task.sshHost
+      );
     } catch (error) {
       console.error("세션 정리 실패:", error);
     }
@@ -334,13 +338,18 @@ export async function branchFromTask(
   task.sshHost = project.sshHost;
   task.status = TaskStatus.PROGRESS;
 
-  /** 로컬 worktree에 Claude Code hooks를 자동 설정한다 */
+  /** 로컬 worktree에 모든 AI 에이전트 hooks를 자동 설정한다 */
   if (!project.sshHost && session.worktreePath) {
     try {
       const kanvibeUrl = `http://localhost:${process.env.PORT || 4885}`;
-      await setupClaudeHooks(session.worktreePath, project.name, kanvibeUrl);
+      await Promise.allSettled([
+        setupClaudeHooks(session.worktreePath, project.name, kanvibeUrl),
+        setupGeminiHooks(session.worktreePath, project.name, kanvibeUrl),
+        setupCodexHooks(session.worktreePath, project.name, kanvibeUrl),
+        setupOpenCodeHooks(session.worktreePath, project.name, kanvibeUrl),
+      ]);
     } catch (error) {
-      console.error("Claude hooks 설정 실패:", error);
+      console.error("Hooks 설정 실패:", error);
     }
   }
 
@@ -362,8 +371,8 @@ export async function connectTerminalSession(
   const task = await repo.findOneBy({ id: taskId });
   if (!task || !task.projectId) return null;
 
-  const branchForWindow = task.branchName || task.baseBranch;
-  if (!branchForWindow) return null;
+  const branchForSession = task.branchName || task.baseBranch;
+  if (!branchForSession) return null;
 
   const projectRepo = await getProjectRepository();
   const project = await projectRepo.findOneBy({ id: task.projectId });
@@ -374,7 +383,7 @@ export async function connectTerminalSession(
   try {
     const session = await createSessionWithoutWorktree(
       project.repoPath,
-      branchForWindow,
+      branchForSession,
       sessionType,
       project.sshHost,
       workingDir,
