@@ -127,7 +127,10 @@
     "notificationEnabled": "브라우저 알림",
     "notificationEnabledDescription": "작업 상태 변경 시 브라우저 알림을 받습니다.",
     "notificationStatusFilter": "알림 받을 상태",
-    "notificationStatusFilterDescription": "선택한 상태로 변경될 때만 알림을 받습니다."
+    "notificationStatusFilterDescription": "선택한 상태로 변경될 때만 알림을 받습니다.",
+    "taskCreationSection": "작업 생성",
+    "defaultSessionType": "기본 세션 타입",
+    "defaultSessionTypeDescription": "새 작업 생성 시 기본으로 선택되는 세션 타입입니다."
   },
   "paneLayout": {
     "title": "Pane 레이아웃 설정",

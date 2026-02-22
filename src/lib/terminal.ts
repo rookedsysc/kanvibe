@@ -1,4 +1,7 @@
+import path from "path";
+import { existsSync } from "fs";
 import { SessionType } from "@/entities/KanbanTask";
+import { ZELLIJ_LAYOUT_FILENAME } from "@/lib/worktree";
 import { execSync } from "child_process";
 import type { WebSocket } from "ws";
 
@@ -82,7 +85,12 @@ export async function attachLocalSession(
     return;
   }
 
-  /** 세션이 없으면 자동 생성한다 */
+  /**
+   * tmux: 세션이 없으면 execSync으로 detached 세션을 먼저 생성한다 (TTY 불필요).
+   * zellij: TTY 없이 실행 불가하므로, node-pty가 PTY를 제공하며 세션 생성을 처리한다.
+   */
+  let zellijNeedsCreation = false;
+
   if (sessionType === SessionType.TMUX) {
     if (!isTmuxSessionAlive(sessionName)) {
       try {
@@ -98,21 +106,8 @@ export async function attachLocalSession(
       }
     }
   } else {
-    if (!isZellijSessionAlive(sessionName)) {
-      try {
-        const dir = cwd || process.env.HOME || "/";
-        execSync(
-          `cd "${dir}" && zellij --session "${sessionName}" &`,
-          { timeout: 5000, shell: "/bin/sh" },
-        );
-        /** zellij 초기화 대기 */
-        await new Promise((resolve) => setTimeout(resolve, 2000));
-      } catch (error) {
-        console.error(`[터미널] zellij 세션 자동 생성 실패:`, error);
-        ws.close(1008, "zellij 세션 생성에 실패했습니다.");
-        return;
-      }
-    }
+    zellijNeedsCreation = !isZellijSessionAlive(sessionName);
+    console.log(`[터미널] zellij sessionName="${sessionName}", needsCreation=${zellijNeedsCreation}, cwd=${cwd}`);
   }
 
   /** 웹 터미널 크기가 다른 클라이언트에 제한되지 않도록 최근 활성 클라이언트 기준으로 설정 */
@@ -126,16 +121,35 @@ export async function attachLocalSession(
 
   const pty = await import("node-pty");
 
-  const shell =
-    sessionType === SessionType.TMUX
-      ? "tmux"
-      : "zellij";
+  let shell: string;
+  let args: string[];
+  let ptyCwd: string;
 
-  /** 세션에 직접 attach한다 */
-  const args: string[] =
-    sessionType === SessionType.TMUX
-      ? ["attach-session", "-t", sessionName]
-      : ["attach", sessionName];
+  if (sessionType === SessionType.TMUX) {
+    shell = "tmux";
+    args = ["attach-session", "-t", sessionName];
+    ptyCwd = process.env.HOME || "/";
+  } else if (zellijNeedsCreation) {
+    /** 세션이 없으면 --session으로 생성과 attach를 동시에 처리한다 */
+    shell = "zellij";
+    args = ["--session", sessionName];
+    ptyCwd = cwd || process.env.HOME || "/";
+
+    /** worktree 디렉토리에 KDL 레이아웃 파일이 있으면 새 세션 생성 시 적용한다 */
+    if (cwd) {
+      const layoutFile = path.join(cwd, ZELLIJ_LAYOUT_FILENAME);
+      if (existsSync(layoutFile)) {
+        args.push("--new-session-with-layout", layoutFile);
+      }
+    }
+  } else {
+    /** 기존 세션에 attach한다 */
+    shell = "zellij";
+    args = ["attach", sessionName];
+    ptyCwd = process.env.HOME || "/";
+  }
+
+  console.log(`[터미널] PTY spawn: shell=${shell}, args=${JSON.stringify(args)}, cwd=${ptyCwd}`);
 
   let ptyProcess: import("node-pty").IPty;
   try {
@@ -143,7 +157,7 @@ export async function attachLocalSession(
       name: "xterm-256color",
       cols: initialCols,
       rows: initialRows,
-      cwd: process.env.HOME || "/",
+      cwd: ptyCwd,
       env: {
         ...process.env,
         LANG: process.env.LANG || "en_US.UTF-8",

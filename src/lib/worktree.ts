@@ -1,4 +1,5 @@
 import path from "path";
+import { writeFile } from "fs/promises";
 import { SessionType } from "@/entities/KanbanTask";
 import { PaneLayoutType, type PaneCommand } from "@/entities/PaneLayoutConfig";
 import { execGit } from "@/lib/gitOperations";
@@ -73,6 +74,118 @@ async function applyPaneLayout(
   }
 }
 
+/** KDL 문자열 내 특수문자를 이스케이프한다 */
+function escapeKdl(value: string): string {
+  return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+}
+
+/**
+ * PaneLayoutType과 PaneCommand[]를 기반으로 Zellij KDL 레이아웃 문자열을 생성한다.
+ * 세션 생성 시 --layout 플래그로 전달하여 pane 분할과 명령어 실행을 원자적으로 처리한다.
+ */
+export function generateZellijLayoutKdl(
+  layoutType: PaneLayoutType,
+  panes: PaneCommand[],
+  worktreePath: string,
+): string {
+  const paneMap = new Map(panes.map((p) => [p.position, p.command]));
+  const cwdEscaped = escapeKdl(worktreePath);
+
+  /** position에 해당하는 pane의 KDL 노드를 생성한다 */
+  function renderPane(position: number, indent: string): string {
+    const command = paneMap.get(position)?.trim();
+    if (!command) {
+      return `${indent}pane cwd="${cwdEscaped}"`;
+    }
+    return [
+      `${indent}pane command="bash" {`,
+      `${indent}    args "-c" "${escapeKdl(command)}"`,
+      `${indent}    cwd "${cwdEscaped}"`,
+      `${indent}}`,
+    ].join("\n");
+  }
+
+  switch (layoutType) {
+    case PaneLayoutType.SINGLE:
+      return ["layout {", renderPane(0, "    "), "}"].join("\n");
+
+    case PaneLayoutType.HORIZONTAL_2:
+      return [
+        "layout {",
+        renderPane(0, "    "),
+        renderPane(1, "    "),
+        "}",
+      ].join("\n");
+
+    case PaneLayoutType.VERTICAL_2:
+      return [
+        "layout {",
+        '    pane split_direction="vertical" {',
+        renderPane(0, "        "),
+        renderPane(1, "        "),
+        "    }",
+        "}",
+      ].join("\n");
+
+    case PaneLayoutType.LEFT_RIGHT_TB:
+      return [
+        "layout {",
+        '    pane split_direction="vertical" {',
+        renderPane(0, "        "),
+        "        pane {",
+        renderPane(1, "            "),
+        renderPane(2, "            "),
+        "        }",
+        "    }",
+        "}",
+      ].join("\n");
+
+    case PaneLayoutType.LEFT_TB_RIGHT:
+      return [
+        "layout {",
+        '    pane split_direction="vertical" {',
+        "        pane {",
+        renderPane(0, "            "),
+        renderPane(1, "            "),
+        "        }",
+        renderPane(2, "        "),
+        "    }",
+        "}",
+      ].join("\n");
+
+    case PaneLayoutType.QUAD:
+      return [
+        "layout {",
+        '    pane split_direction="vertical" {',
+        "        pane {",
+        renderPane(0, "            "),
+        renderPane(2, "            "),
+        "        }",
+        "        pane {",
+        renderPane(1, "            "),
+        renderPane(3, "            "),
+        "        }",
+        "    }",
+        "}",
+      ].join("\n");
+  }
+}
+
+/** Zellij KDL 레이아웃 파일의 기본 파일명 */
+export const ZELLIJ_LAYOUT_FILENAME = ".zellij-layout.kdl";
+
+/**
+ * KDL 레이아웃 파일을 worktree 디렉토리에 저장한다.
+ * 터미널 연결 시 node-pty가 이 파일을 --layout 플래그로 사용한다.
+ */
+async function writeLayoutToWorktree(
+  worktreePath: string,
+  kdlContent: string,
+): Promise<void> {
+  const layoutPath = path.join(worktreePath, ZELLIJ_LAYOUT_FILENAME);
+  await writeFile(layoutPath, kdlContent, "utf-8");
+}
+
 /**
  * pane 레이아웃을 백그라운드에서 적용한다.
  * task 생성 흐름을 차단하지 않으며, 실패해도 기본 window는 유지된다.
@@ -102,7 +215,7 @@ function applyPaneLayoutAsync(
 /**
  * git worktree를 생성하고 브랜치별 독립 세션을 생성한다.
  * 세션이 없으면 자동 생성한다. sshHost가 지정되면 원격에서 실행한다.
- * tmux인 경우 projectId를 기반으로 pane 레이아웃 설정을 적용한다.
+ * 로컬 세션인 경우 projectId를 기반으로 pane 레이아웃 설정을 적용한다.
  */
 export async function createWorktreeWithSession(
   projectPath: string,
@@ -149,15 +262,28 @@ export async function createWorktreeWithSession(
 
     return { worktreePath, sessionName };
   } else {
-    /** 동일 이름의 zellij 세션이 없을 때만 생성한다 */
+    /**
+     * Zellij는 TTY 없이 실행 불가하므로 서버에서 세션을 직접 시작하지 않는다.
+     * 세션 이름과 레이아웃 파일만 준비하고, 실제 세션 생성은
+     * 터미널 연결 시 node-pty가 PTY를 제공하며 처리한다.
+     */
     const zellijSessionName = sanitizeZellijSessionName(sessionName);
-    const hasSession = await isSessionAlive(sessionType, zellijSessionName, sshHost);
-    if (!hasSession) {
-      await execGit(
-        `cd "${worktreePath}" && zellij --session "${zellijSessionName}" &`,
-        sshHost,
-      );
-      await new Promise((resolve) => setTimeout(resolve, 2000));
+
+    /** 로컬 세션인 경우 KDL 레이아웃 파일을 worktree 디렉토리에 저장한다 */
+    if (!sshHost) {
+      try {
+        const layoutConfig = await getEffectivePaneLayout(projectId ?? undefined);
+        if (layoutConfig && layoutConfig.layoutType !== PaneLayoutType.SINGLE) {
+          const kdl = generateZellijLayoutKdl(
+            layoutConfig.layoutType as PaneLayoutType,
+            layoutConfig.panes,
+            worktreePath,
+          );
+          await writeLayoutToWorktree(worktreePath, kdl);
+        }
+      } catch (error) {
+        console.error("Zellij 레이아웃 파일 생성 실패 (레이아웃 없이 세션 생성 예정):", error);
+      }
     }
 
     return { worktreePath, sessionName: zellijSessionName };
@@ -190,16 +316,11 @@ export async function createSessionWithoutWorktree(
 
     return { sessionName };
   } else {
+    /**
+     * Zellij는 TTY 없이 실행 불가하므로 세션 이름만 반환한다.
+     * 실제 세션 생성은 터미널 연결 시 node-pty가 처리한다.
+     */
     const zellijSessionName = sanitizeZellijSessionName(sessionName);
-    const hasSession = await isSessionAlive(sessionType, zellijSessionName, sshHost);
-    if (!hasSession) {
-      await execGit(
-        `cd "${cwd}" && zellij --session "${zellijSessionName}" &`,
-        sshHost,
-      );
-      await new Promise((resolve) => setTimeout(resolve, 2000));
-    }
-
     return { sessionName: zellijSessionName };
   }
 }
