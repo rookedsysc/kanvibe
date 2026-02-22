@@ -178,11 +178,13 @@ agent-turn-complete（代理完成） → REVIEW
 
 #### OpenCode
 ```
-用户发送消息 (chat.message)  → PROGRESS
-会话空闲 (session.idle)      → REVIEW
+用户发送消息 (message.updated, role=user) → PROGRESS
+AI 提问等待 (question.asked)              → PENDING
+用户回答问题 (question.replied)           → PROGRESS
+会话空闲 (session.idle)                   → REVIEW
 ```
 
-OpenCode 使用自己的[插件系统](https://opencode.ai/docs/plugins/)，而非 shell 脚本 hooks。KanVibe 在 `.opencode/plugins/kanvibe-plugin.ts` 生成 TypeScript 插件，通过 `@opencode-ai/plugin` SDK 订阅 OpenCode 的原生事件 hooks（`chat.message` 和 `session.idle`）。状态更新在进程内处理，无需启动外部 shell 命令。
+OpenCode 使用自己的[插件系统](https://opencode.ai/docs/plugins/)，而非 shell 脚本 hooks。KanVibe 在 `.opencode/plugins/kanvibe-plugin.ts` 生成 TypeScript 插件，通过 `@opencode-ai/plugin` SDK 订阅 OpenCode 的原生事件 hooks（`message.updated`、`question.asked`、`question.replied` 和 `session.idle`）。状态更新在进程内处理，无需启动外部 shell 命令。
 
 通过 KanVibe 目录扫描注册项目或创建带有 worktree 的任务时，所有代理 Hook 会**自动安装**。也可以在任务详情页面中单独安装。
 

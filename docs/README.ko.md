@@ -178,11 +178,13 @@ agent-turn-complete (에이전트 완료) → REVIEW
 
 #### OpenCode
 ```
-사용자 메시지 전송 (chat.message) → PROGRESS
-세션 대기 (session.idle)         → REVIEW
+사용자 메시지 전송 (message.updated, role=user) → PROGRESS
+AI 질문 대기 (question.asked)                   → PENDING
+사용자 질문 답변 (question.replied)              → PROGRESS
+세션 대기 (session.idle)                        → REVIEW
 ```
 
-OpenCode는 셸 스크립트 hooks 대신 자체 [플러그인 시스템](https://opencode.ai/docs/plugins/)을 사용합니다. KanVibe는 `.opencode/plugins/kanvibe-plugin.ts`에 TypeScript 플러그인을 생성하여 `@opencode-ai/plugin` SDK를 통해 OpenCode의 네이티브 이벤트 hooks(`chat.message`, `session.idle`)를 구독합니다. 외부 셸 명령을 실행하지 않고 프로세스 내에서 상태 업데이트를 처리합니다.
+OpenCode는 셸 스크립트 hooks 대신 자체 [플러그인 시스템](https://opencode.ai/docs/plugins/)을 사용합니다. KanVibe는 `.opencode/plugins/kanvibe-plugin.ts`에 TypeScript 플러그인을 생성하여 `@opencode-ai/plugin` SDK를 통해 OpenCode의 네이티브 이벤트 hooks(`message.updated`, `question.asked`, `question.replied`, `session.idle`)를 구독합니다. 외부 셸 명령을 실행하지 않고 프로세스 내에서 상태 업데이트를 처리합니다.
 
 모든 에이전트 Hook은 KanVibe 디렉토리 스캔으로 프로젝트를 등록하거나 worktree와 함께 태스크를 생성하면 **자동 설치**됩니다. 태스크 상세 페이지에서 개별 설치도 가능합니다.
 
