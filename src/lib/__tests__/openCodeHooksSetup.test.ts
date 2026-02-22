@@ -43,6 +43,40 @@ describe("openCodeHooksSetup", () => {
       expect(pluginContent).toContain("/api/hooks/status");
     });
 
+    it("should generate plugin with all event handlers for status tracking", async () => {
+      // Given
+      const repoPath = tempDir;
+
+      // When
+      await setupOpenCodeHooks(repoPath, "test-project", "http://localhost:3000");
+
+      // Then
+      const pluginPath = join(repoPath, ".opencode", "plugins", "kanvibe-plugin.ts");
+      const pluginContent = await readFile(pluginPath, "utf-8");
+
+      expect(pluginContent).toContain('"message.updated"');
+      expect(pluginContent).toContain('"question.asked"');
+      expect(pluginContent).toContain('"question.replied"');
+      expect(pluginContent).toContain('"session.idle"');
+    });
+
+    it("should map event types to correct statuses", async () => {
+      // Given
+      const repoPath = tempDir;
+
+      // When
+      await setupOpenCodeHooks(repoPath, "test-project", "http://localhost:3000");
+
+      // Then
+      const pluginPath = join(repoPath, ".opencode", "plugins", "kanvibe-plugin.ts");
+      const pluginContent = await readFile(pluginPath, "utf-8");
+
+      expect(pluginContent).toMatch(/message\.updated[\s\S]*?role[\s\S]*?user[\s\S]*?progress/);
+      expect(pluginContent).toMatch(/question\.asked[\s\S]*?pending/);
+      expect(pluginContent).toMatch(/question\.replied[\s\S]*?progress/);
+      expect(pluginContent).toMatch(/session\.idle[\s\S]*?review/);
+    });
+
     it("should not fail when called twice (overwrites existing plugin)", async () => {
       // Given
       const repoPath = tempDir;

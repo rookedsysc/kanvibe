@@ -178,11 +178,13 @@ agent-turn-complete (agent done) → REVIEW
 
 #### OpenCode
 ```
-User sends message (chat.message) → PROGRESS
-Session idle (session.idle)       → REVIEW
+User sends message (message.updated, role=user) → PROGRESS
+AI asks a question (question.asked)             → PENDING
+User answers question (question.replied)        → PROGRESS
+Session idle (session.idle)                     → REVIEW
 ```
 
-OpenCode uses its own [plugin system](https://opencode.ai/docs/plugins/) instead of shell-script hooks. KanVibe generates a TypeScript plugin at `.opencode/plugins/kanvibe-plugin.ts` that subscribes to OpenCode's native event hooks (`chat.message` and `session.idle`) via the `@opencode-ai/plugin` SDK. This means status updates are handled in-process without spawning external shell commands.
+OpenCode uses its own [plugin system](https://opencode.ai/docs/plugins/) instead of shell-script hooks. KanVibe generates a TypeScript plugin at `.opencode/plugins/kanvibe-plugin.ts` that subscribes to OpenCode's native event hooks (`message.updated`, `question.asked`, `question.replied`, and `session.idle`) via the `@opencode-ai/plugin` SDK. This means status updates are handled in-process without spawning external shell commands.
 
 All agent hooks are **auto-installed** when you register a project through KanVibe's directory scan or create a task with a worktree. You can also install them individually from the task detail page.
 

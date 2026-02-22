@@ -4,7 +4,7 @@ import { addAiToolPatternsToGitExclude } from "@/lib/gitExclude";
 
 /**
  * OpenCode는 `.opencode/plugins/` 디렉토리에 TypeScript 플러그인을 배치하여 hooks를 등록한다.
- * session.idle 이벤트 수신 시 KanVibe API로 review 상태를, chat.message 수신 시 progress 상태를 전송한다.
+ * message.updated(user) → progress, question.asked → pending, question.replied → progress, session.idle → review 상태를 전송한다.
  */
 
 const PLUGIN_FILE_NAME = "kanvibe-plugin.ts";
@@ -16,7 +16,8 @@ function generatePluginScript(kanvibeUrl: string, projectName: string): string {
 
 /**
  * KanVibe OpenCode Plugin
- * session.idle → review, chat.message → progress 상태 변경
+ * message.updated(user) → progress, question.asked → pending,
+ * question.replied → progress, session.idle → review 상태 변경
  */
 export const KanvibePlugin: Plugin = async ({ $ }) => {
   const KANVIBE_URL = "${kanvibeUrl}";
@@ -49,10 +50,19 @@ export const KanvibePlugin: Plugin = async ({ $ }) => {
   }
 
   return {
-    "chat.message": async () => {
-      await updateStatus("progress");
-    },
     event: async ({ event }) => {
+      if (event.type === "message.updated") {
+        const message = (event as any).properties?.message;
+        if (message?.role === "user") {
+          await updateStatus("progress");
+        }
+      }
+      if (event.type === "question.asked") {
+        await updateStatus("pending");
+      }
+      if (event.type === "question.replied") {
+        await updateStatus("progress");
+      }
       if (event.type === "session.idle") {
         await updateStatus("review");
       }
