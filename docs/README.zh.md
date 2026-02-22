@@ -24,8 +24,8 @@
 
 <table>
   <tr>
-    <td width="50%"><img src="./images/kanvibe1.png" alt="看板" width="100%"></td>
-    <td width="50%"><img src="./images/kanvibe2.png" alt="任务详情 & 终端" width="100%"></td>
+    <td width="50%"><img src="./images/detail-page.png" alt="看板" width="100%"></td>
+    <td width="50%"><img src="./images/detail-page.png" alt="任务详情 & 终端" width="100%"></td>
   </tr>
 </table>
 
