@@ -2,8 +2,7 @@
 
 import { useState, useEffect, useTransition } from "react";
 import { useTranslations } from "next-intl";
-import { branchFromTask } from "@/app/actions/kanban";
-import { getProjectBranches } from "@/app/actions/project";
+import { ipcKanban, ipcProject } from "@/lib/ipc";
 import { SessionType, type KanbanTask } from "@/entities/KanbanTask";
 import type { Project } from "@/entities/Project";
 import BranchSearchInput from "./BranchSearchInput";
@@ -44,7 +43,7 @@ export default function BranchTaskModal({
       setBaseBranch(selectedProject.defaultBranch);
     }
 
-    getProjectBranches(selectedProjectId).then((result) => {
+    ipcProject.getBranches(selectedProjectId).then((result) => {
       setBranches(result);
     });
   }, [selectedProjectId, projects]);
@@ -60,7 +59,7 @@ export default function BranchTaskModal({
 
     startTransition(async () => {
       try {
-        await branchFromTask(
+        await ipcKanban.branchFromTask(
           task.id,
           selectedProjectId,
           baseBranch,

@@ -1,9 +1,19 @@
 import path from "path";
 import { writeFile } from "fs/promises";
 import { SessionType } from "@/entities/KanbanTask";
-import { PaneLayoutType, type PaneCommand } from "@/entities/PaneLayoutConfig";
+import { PaneLayoutConfig, PaneLayoutType, type PaneCommand } from "@/entities/PaneLayoutConfig";
 import { execGit } from "@/lib/gitOperations";
-import { getEffectivePaneLayout } from "@/app/actions/paneLayout";
+import { getPaneLayoutConfigRepository } from "../../main/database";
+
+/** 프로젝트에 적용될 실제 pane 레이아웃 조회 (프로젝트 → 글로벌 fallback) */
+async function getEffectivePaneLayout(projectId?: string): Promise<PaneLayoutConfig | null> {
+  const repo = getPaneLayoutConfigRepository();
+  if (projectId) {
+    const projectConfig = await repo.findOne({ where: { projectId } });
+    if (projectConfig) return projectConfig;
+  }
+  return repo.findOne({ where: { isGlobal: true } });
+}
 
 interface WorktreeSession {
   worktreePath: string;

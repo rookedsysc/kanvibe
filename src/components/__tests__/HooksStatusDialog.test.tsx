@@ -16,11 +16,13 @@ const {
   mockInstallTaskOpenCodeHooks: vi.fn(),
 }));
 
-vi.mock("@/app/actions/project", () => ({
-  installTaskHooks: mockInstallTaskHooks,
-  installTaskGeminiHooks: mockInstallTaskGeminiHooks,
-  installTaskCodexHooks: mockInstallTaskCodexHooks,
-  installTaskOpenCodeHooks: mockInstallTaskOpenCodeHooks,
+vi.mock("@/lib/ipc", () => ({
+  ipcProject: {
+    installTaskHooks: mockInstallTaskHooks,
+    installTaskGeminiHooks: mockInstallTaskGeminiHooks,
+    installTaskCodexHooks: mockInstallTaskCodexHooks,
+    installTaskOpenCodeHooks: mockInstallTaskOpenCodeHooks,
+  },
 }));
 
 /** useTranslations mock은 key를 그대로 반환한다 */

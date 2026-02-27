@@ -3,7 +3,7 @@
 import { useTransition } from "react";
 import { useRouter } from "@/i18n/navigation";
 import { TaskPriority } from "@/entities/TaskPriority";
-import { updateTask } from "@/app/actions/kanban";
+import { ipcKanban } from "@/lib/ipc";
 import PrioritySelector from "./PrioritySelector";
 
 interface PriorityEditorProps {
@@ -17,7 +17,7 @@ export default function PriorityEditor({ taskId, currentPriority }: PriorityEdit
 
   function handleChange(priority: TaskPriority | null) {
     startTransition(async () => {
-      await updateTask(taskId, { priority });
+      await ipcKanban.updateTask(taskId, { priority });
       router.refresh();
     });
   }

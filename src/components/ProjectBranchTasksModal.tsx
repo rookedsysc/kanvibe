@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useTranslations } from "next-intl";
 import { useRouter } from "@/i18n/navigation";
-import { getTasksByStatus } from "@/app/actions/kanban";
+import { ipcKanban } from "@/lib/ipc";
 import { TaskStatus } from "@/entities/KanbanTask";
 import type { KanbanTask } from "@/entities/KanbanTask";
 
@@ -40,7 +40,7 @@ export default function ProjectBranchTasksModal({
   useEffect(() => {
     (async () => {
       try {
-        const result = await getTasksByStatus();
+        const result = await ipcKanban.getTasksByStatus();
         // 같은 projectId로 필터링
         const filtered: typeof tasksByStatus = {
           [TaskStatus.TODO]: [],

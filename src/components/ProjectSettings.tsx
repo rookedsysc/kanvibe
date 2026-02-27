@@ -2,17 +2,7 @@
 
 import { useEffect, useState, useTransition } from "react";
 import { useTranslations } from "next-intl";
-import {
-  deleteProject,
-  scanAndRegisterProjects,
-  type ScanResult,
-} from "@/app/actions/project";
-import {
-  setSidebarDefaultCollapsed,
-  setNotificationEnabled,
-  setNotificationStatuses,
-  setDefaultSessionType,
-} from "@/app/actions/appSettings";
+import { ipcProject, ipcSettings, type ScanResult } from "@/lib/ipc";
 import { SessionType } from "@/entities/KanbanTask";
 import { Link } from "@/i18n/navigation";
 import type { Project } from "@/entities/Project";
@@ -75,7 +65,7 @@ export default function ProjectSettings({
     }
 
     startTransition(async () => {
-      const result = await scanAndRegisterProjects(
+      const result = await ipcProject.scanAndRegister(
         scanPath,
         (formData.get("scanSshHost") as string) || undefined
       );
@@ -104,7 +94,7 @@ export default function ProjectSettings({
     if (!confirm(t("deleteConfirm", { name: projectName }))) return;
 
     startTransition(async () => {
-      await deleteProject(projectId);
+      await ipcProject.delete(projectId);
     });
   }
 
@@ -150,7 +140,7 @@ export default function ProjectSettings({
               aria-checked={sidebarDefaultCollapsed}
               onClick={() => {
                 startTransition(async () => {
-                  await setSidebarDefaultCollapsed(!sidebarDefaultCollapsed);
+                  await ipcSettings.setSidebarDefaultCollapsed(!sidebarDefaultCollapsed);
                 });
               }}
               disabled={isPending}
@@ -183,7 +173,7 @@ export default function ProjectSettings({
                 const nextSessionType = e.target.value as SessionType;
                 setSelectedDefaultSessionType(nextSessionType);
                 startTransition(async () => {
-                  await setDefaultSessionType(nextSessionType);
+                  await ipcSettings.setDefaultSessionType(nextSessionType);
                   onDefaultSessionTypeChange?.(nextSessionType);
                 });
               }}
@@ -214,7 +204,7 @@ export default function ProjectSettings({
               aria-checked={notificationSettings.isEnabled}
               onClick={() => {
                 startNotificationTransition(async () => {
-                  await setNotificationEnabled(!notificationSettings.isEnabled);
+                  await ipcSettings.setNotificationEnabled(!notificationSettings.isEnabled);
                 });
               }}
               disabled={isNotificationPending}
@@ -249,7 +239,7 @@ export default function ProjectSettings({
                         ? notificationSettings.enabledStatuses.filter((s) => s !== value)
                         : [...notificationSettings.enabledStatuses, value];
                       startNotificationTransition(async () => {
-                        await setNotificationStatuses(nextStatuses);
+                        await ipcSettings.setNotificationStatuses(nextStatuses);
                       });
                     }}
                     className={`px-2.5 py-1 text-xs rounded-full border transition-colors ${

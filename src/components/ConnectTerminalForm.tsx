@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useTranslations } from "next-intl";
-import { connectTerminalSession } from "@/app/actions/kanban";
+import { ipcKanban } from "@/lib/ipc";
 import { SessionType } from "@/entities/KanbanTask";
 
 interface ConnectTerminalFormProps {
@@ -19,7 +19,7 @@ export default function ConnectTerminalForm({ taskId }: ConnectTerminalFormProps
     const sessionType = formData.get("sessionType") as SessionType;
     setError(null);
     startTransition(async () => {
-      const result = await connectTerminalSession(taskId, sessionType);
+      const result = await ipcKanban.connectTerminalSession(taskId, sessionType);
       if (!result) {
         setError(t("connectFailed"));
       }

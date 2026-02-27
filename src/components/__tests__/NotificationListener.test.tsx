@@ -1,7 +1,22 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, cleanup, act } from "@testing-library/react";
+import { render, cleanup, act, waitFor } from "@testing-library/react";
 
 // --- Mocks ---
+
+const mockGetNotificationSettings = vi.fn().mockResolvedValue({
+  isEnabled: true,
+  enabledStatuses: ["todo", "progress", "pending", "review", "done"],
+});
+const mockGetWsPort = vi.fn().mockResolvedValue(12345);
+
+vi.mock("@/lib/ipc", () => ({
+  ipcSettings: {
+    getNotificationSettings: (...args: unknown[]) => mockGetNotificationSettings(...args),
+  },
+  ipcApp: {
+    getWsPort: (...args: unknown[]) => mockGetWsPort(...args),
+  },
+}));
 
 const mockNotifyTaskStatusChanged = vi.fn();
 
@@ -38,16 +53,22 @@ Object.defineProperty(global.navigator, "serviceWorker", {
   configurable: true,
 });
 
-/** 테스트용 기본 props (전체 상태 알림 활성화) */
-const defaultProps = {
-  isNotificationEnabled: true,
-  enabledStatuses: ["todo", "progress", "pending", "review", "done"],
-};
+/** 비동기 IPC 호출(getWsPort)이 완료되어 WebSocket이 생성될 때까지 대기한다 */
+async function waitForWebSocket() {
+  await waitFor(() => {
+    expect(MockWebSocket.instances.length).toBeGreaterThan(0);
+  });
+}
 
 describe("NotificationListener", () => {
   beforeEach(() => {
     vi.resetModules();
     mockNotifyTaskStatusChanged.mockClear();
+    mockGetNotificationSettings.mockResolvedValue({
+      isEnabled: true,
+      enabledStatuses: ["todo", "progress", "pending", "review", "done"],
+    });
+    mockGetWsPort.mockResolvedValue(12345);
     MockWebSocket.instances = [];
   });
 
@@ -59,7 +80,8 @@ describe("NotificationListener", () => {
   it("should call notifyTaskStatusChanged when receiving task-status-changed message", async () => {
     // Given
     const { default: NotificationListener } = await import("@/components/NotificationListener");
-    render(<NotificationListener {...defaultProps} />);
+    render(<NotificationListener />);
+    await waitForWebSocket();
     const ws = MockWebSocket.instances[0];
 
     const wsMessage = {
@@ -90,7 +112,8 @@ describe("NotificationListener", () => {
   it("should not call notifyTaskStatusChanged for board-updated messages", async () => {
     // Given
     const { default: NotificationListener } = await import("@/components/NotificationListener");
-    render(<NotificationListener {...defaultProps} />);
+    render(<NotificationListener />);
+    await waitForWebSocket();
     const ws = MockWebSocket.instances[0];
 
     // When
@@ -108,15 +131,18 @@ describe("NotificationListener", () => {
     // Given
     vi.useFakeTimers();
     const { default: NotificationListener } = await import("@/components/NotificationListener");
-    render(<NotificationListener {...defaultProps} />);
+    await act(async () => {
+      render(<NotificationListener />);
+      await vi.advanceTimersByTimeAsync(0);
+    });
     expect(MockWebSocket.instances).toHaveLength(1);
 
     // When
     act(() => {
       MockWebSocket.instances[0].onclose?.();
     });
-    act(() => {
-      vi.advanceTimersByTime(3000);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(3000);
     });
 
     // Then
@@ -128,7 +154,8 @@ describe("NotificationListener", () => {
   it("should close WebSocket connection on unmount", async () => {
     // Given
     const { default: NotificationListener } = await import("@/components/NotificationListener");
-    const { unmount } = render(<NotificationListener {...defaultProps} />);
+    const { unmount } = render(<NotificationListener />);
+    await waitForWebSocket();
     const ws = MockWebSocket.instances[0];
 
     // When
@@ -140,10 +167,13 @@ describe("NotificationListener", () => {
 
   it("should not notify when isNotificationEnabled is false", async () => {
     // Given
+    mockGetNotificationSettings.mockResolvedValue({
+      isEnabled: false,
+      enabledStatuses: ["progress", "review"],
+    });
     const { default: NotificationListener } = await import("@/components/NotificationListener");
-    render(
-      <NotificationListener isNotificationEnabled={false} enabledStatuses={["progress", "review"]} />
-    );
+    render(<NotificationListener />);
+    await waitForWebSocket();
     const ws = MockWebSocket.instances[0];
 
     // When
@@ -166,10 +196,13 @@ describe("NotificationListener", () => {
 
   it("should not notify when newStatus is not in enabledStatuses", async () => {
     // Given
+    mockGetNotificationSettings.mockResolvedValue({
+      isEnabled: true,
+      enabledStatuses: ["progress", "review"],
+    });
     const { default: NotificationListener } = await import("@/components/NotificationListener");
-    render(
-      <NotificationListener isNotificationEnabled={true} enabledStatuses={["progress", "review"]} />
-    );
+    render(<NotificationListener />);
+    await waitForWebSocket();
     const ws = MockWebSocket.instances[0];
 
     // When
@@ -195,7 +228,7 @@ describe("NotificationListener", () => {
     const { default: NotificationListener } = await import("@/components/NotificationListener");
 
     // When
-    const { container } = render(<NotificationListener {...defaultProps} />);
+    const { container } = render(<NotificationListener />);
 
     // Then
     expect(container.innerHTML).toBe("");

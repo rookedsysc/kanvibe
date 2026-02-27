@@ -4,10 +4,6 @@ import userEvent from "@testing-library/user-event";
 
 // --- Mocks ---
 
-vi.mock("@/app/actions/appSettings", () => ({
-  dismissDoneAlert: vi.fn().mockResolvedValue(undefined),
-}));
-
 vi.mock("next-intl", () => ({
   useTranslations: () => (key: string) => {
     const messages: Record<string, string> = {
@@ -24,10 +20,10 @@ vi.mock("next-intl", () => ({
 import DoneStatusButton from "../DoneStatusButton";
 
 describe("DoneStatusButton", () => {
-  const mockAction = vi.fn().mockResolvedValue(undefined);
+  const mockStatusChange = vi.fn();
 
   const defaultProps = {
-    statusChangeAction: mockAction,
+    onStatusChange: mockStatusChange,
     label: "Done",
     hasCleanableResources: true,
     doneAlertDismissed: false,
@@ -60,6 +56,7 @@ describe("DoneStatusButton", () => {
     // Then
     expect(screen.getByText("Move to Done")).toBeTruthy();
     expect(screen.getByText("Moving to Done will delete resources.")).toBeTruthy();
+    expect(mockStatusChange).not.toHaveBeenCalled();
   });
 
   it("should not show confirm dialog when doneAlertDismissed is true", async () => {
@@ -72,6 +69,7 @@ describe("DoneStatusButton", () => {
 
     // Then
     expect(screen.queryByText("Move to Done")).toBeNull();
+    expect(mockStatusChange).toHaveBeenCalledOnce();
   });
 
   it("should not show confirm dialog when hasCleanableResources is false", async () => {
@@ -84,9 +82,10 @@ describe("DoneStatusButton", () => {
 
     // Then
     expect(screen.queryByText("Move to Done")).toBeNull();
+    expect(mockStatusChange).toHaveBeenCalledOnce();
   });
 
-  it("should close dialog and submit form when confirmed", async () => {
+  it("should close dialog and call onStatusChange when confirmed", async () => {
     // Given
     const user = userEvent.setup();
     render(<DoneStatusButton {...defaultProps} />);
@@ -98,9 +97,10 @@ describe("DoneStatusButton", () => {
 
     // Then
     expect(screen.queryByText("Move to Done")).toBeNull();
+    expect(mockStatusChange).toHaveBeenCalledOnce();
   });
 
-  it("should close dialog without submitting when cancelled", async () => {
+  it("should close dialog without calling onStatusChange when cancelled", async () => {
     // Given
     const user = userEvent.setup();
     render(<DoneStatusButton {...defaultProps} />);
@@ -112,15 +112,6 @@ describe("DoneStatusButton", () => {
 
     // Then
     expect(screen.queryByText("Move to Done")).toBeNull();
-  });
-
-  it("should include hidden status input with value 'done'", () => {
-    // Given & When
-    render(<DoneStatusButton {...defaultProps} />);
-
-    // Then
-    const hiddenInput = document.querySelector("input[type='hidden'][name='status']") as HTMLInputElement;
-    expect(hiddenInput).toBeTruthy();
-    expect(hiddenInput.value).toBe("done");
+    expect(mockStatusChange).not.toHaveBeenCalled();
   });
 });

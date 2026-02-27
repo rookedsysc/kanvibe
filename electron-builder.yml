@@ -1,0 +1,43 @@
+appId: com.kanvibe.app
+productName: KanVibe
+directories:
+  output: dist
+  buildResources: resources
+files:
+  - from: .
+    filter:
+      - package.json
+      - electron
+      - out
+      - node_modules
+asar: true
+asarUnpack:
+  - "node_modules/better-sqlite3/**"
+  - "node_modules/node-pty/**"
+  - "node_modules/ssh2/**"
+mac:
+  target:
+    - dmg
+    - zip
+  category: public.app-category.developer-tools
+  hardenedRuntime: true
+  gatekeeperAssess: false
+dmg:
+  contents:
+    - x: 130
+      y: 220
+    - x: 410
+      y: 220
+      type: link
+      path: /Applications
+win:
+  target:
+    - nsis
+  artifactName: "${productName}-Setup-${version}.${ext}"
+linux:
+  target:
+    - AppImage
+    - deb
+  category: Development
+publish:
+  provider: github

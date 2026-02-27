@@ -3,7 +3,7 @@
 import { useState, useTransition, useRef, useEffect, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { useTranslations } from "next-intl";
-import { dismissSidebarHint } from "@/app/actions/appSettings";
+import { ipcSettings } from "@/lib/ipc";
 
 interface CollapsibleSidebarProps {
   defaultCollapsed: boolean;
@@ -75,7 +75,7 @@ function ToggleButtonWithHint({
 
   function handleDismiss() {
     startTransition(async () => {
-      await dismissSidebarHint();
+      await ipcSettings.dismissSidebarHint();
       onDismissHint();
     });
   }

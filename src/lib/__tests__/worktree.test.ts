@@ -11,11 +11,12 @@ vi.mock("@/lib/gitOperations", () => ({
   execGit: (...args: unknown[]) => mockExecGit(...args),
 }));
 
-const mockGetEffectivePaneLayout = vi.fn();
+const mockFindOne = vi.fn();
 
-vi.mock("@/app/actions/paneLayout", () => ({
-  getEffectivePaneLayout: (...args: unknown[]) =>
-    mockGetEffectivePaneLayout(...args),
+vi.mock("../../../main/database", () => ({
+  getPaneLayoutConfigRepository: () => ({
+    findOne: (...args: unknown[]) => mockFindOne(...args),
+  }),
 }));
 
 const mockWriteFile = vi.fn().mockResolvedValue(undefined);
@@ -498,7 +499,7 @@ describe("createWorktreeWithSession — Zellij KDL layout file persistence", () 
 
   it("should write layout file to worktree directory without starting zellij", async () => {
     // Given
-    mockGetEffectivePaneLayout.mockResolvedValue({
+    mockFindOne.mockResolvedValue({
       layoutType: PaneLayoutType.VERTICAL_2,
       panes: [
         { position: 0, command: "pnpm dev" },
@@ -534,7 +535,7 @@ describe("createWorktreeWithSession — Zellij KDL layout file persistence", () 
 
   it("should not write layout file for SINGLE layout type", async () => {
     // Given
-    mockGetEffectivePaneLayout.mockResolvedValue({
+    mockFindOne.mockResolvedValue({
       layoutType: PaneLayoutType.SINGLE,
       panes: [{ position: 0, command: "echo hello" }],
     });
@@ -557,7 +558,7 @@ describe("createWorktreeWithSession — Zellij KDL layout file persistence", () 
 
   it("should not write layout file for remote Zellij sessions", async () => {
     // Given
-    mockGetEffectivePaneLayout.mockResolvedValue({
+    mockFindOne.mockResolvedValue({
       layoutType: PaneLayoutType.VERTICAL_2,
       panes: [
         { position: 0, command: "pnpm dev" },
@@ -579,12 +580,12 @@ describe("createWorktreeWithSession — Zellij KDL layout file persistence", () 
 
     // Then
     expect(mockWriteFile).not.toHaveBeenCalled();
-    expect(mockGetEffectivePaneLayout).not.toHaveBeenCalled();
+    expect(mockFindOne).not.toHaveBeenCalled();
   });
 
-  it("should fallback gracefully when getEffectivePaneLayout fails", async () => {
+  it("should fallback gracefully when getPaneLayoutConfigRepository.findOne fails", async () => {
     // Given
-    mockGetEffectivePaneLayout.mockRejectedValue(new Error("DB error"));
+    mockFindOne.mockRejectedValue(new Error("DB error"));
 
     const { createWorktreeWithSession } = await import("@/lib/worktree");
 
@@ -606,7 +607,7 @@ describe("createWorktreeWithSession — Zellij KDL layout file persistence", () 
 
   it("should write KDL layout with 3-pane configuration to worktree", async () => {
     // Given
-    mockGetEffectivePaneLayout.mockResolvedValue({
+    mockFindOne.mockResolvedValue({
       layoutType: PaneLayoutType.LEFT_RIGHT_TB,
       panes: [
         { position: 0, command: "claude --dangerously-skip-permissions" },
@@ -637,7 +638,7 @@ describe("createWorktreeWithSession — Zellij KDL layout file persistence", () 
 
   it("should write KDL layout with 4-pane QUAD configuration to worktree", async () => {
     // Given
-    mockGetEffectivePaneLayout.mockResolvedValue({
+    mockFindOne.mockResolvedValue({
       layoutType: PaneLayoutType.QUAD,
       panes: [
         { position: 0, command: "cmd0" },

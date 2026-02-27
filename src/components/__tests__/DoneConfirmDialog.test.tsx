@@ -6,8 +6,10 @@ import userEvent from "@testing-library/user-event";
 
 const mockDismissDoneAlert = vi.fn().mockResolvedValue(undefined);
 
-vi.mock("@/app/actions/appSettings", () => ({
-  dismissDoneAlert: (...args: unknown[]) => mockDismissDoneAlert(...args),
+vi.mock("@/lib/ipc", () => ({
+  ipcSettings: {
+    dismissDoneAlert: (...args: unknown[]) => mockDismissDoneAlert(...args),
+  },
 }));
 
 vi.mock("next-intl", () => ({
