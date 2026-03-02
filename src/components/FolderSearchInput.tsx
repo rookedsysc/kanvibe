@@ -44,7 +44,8 @@ export default function FolderSearchInput({
     try {
       const result = await ipcProject.listSubdirectories(dirPath, sshHost);
       setDirectories(result);
-    } catch {
+    } catch (error) {
+      console.error("[FolderSearchInput] listSubdirectories failed:", error);
       setDirectories([]);
     } finally {
       setIsLoading(false);

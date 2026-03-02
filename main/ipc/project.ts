@@ -409,7 +409,8 @@ export function registerProjectHandlers(): void {
           .filter(Boolean)
           .map((dir) => path.basename(dir))
           .filter((name) => !name.startsWith("."));
-      } catch {
+      } catch (error) {
+        console.error("[listSubdirectories] error:", error);
         return [];
       }
     },

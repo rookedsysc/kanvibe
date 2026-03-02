@@ -12,8 +12,29 @@ import type { GeminiHooksStatus } from "@/lib/geminiHooksSetup";
 import type { CodexHooksStatus } from "@/lib/codexHooksSetup";
 import type { OpenCodeHooksStatus } from "@/lib/openCodeHooksSetup";
 
-/** 타입 안전한 IPC invoke 래퍼 */
-function invoke<T>(channel: string, ...args: unknown[]): Promise<T> {
+/** window.ipc가 준비될 때까지 대기한다 (preload 로드 타이밍 이슈 방어) */
+function waitForIpc(): Promise<void> {
+  if (typeof window !== "undefined" && window.ipc) return Promise.resolve();
+  if (typeof window === "undefined") return Promise.reject(new Error("SSR 환경"));
+
+  return new Promise((resolve, reject) => {
+    let elapsed = 0;
+    const interval = setInterval(() => {
+      elapsed += 50;
+      if (window.ipc) {
+        clearInterval(interval);
+        resolve();
+      } else if (elapsed >= 3000) {
+        clearInterval(interval);
+        reject(new Error("window.ipc 초기화 타임아웃 (3초)"));
+      }
+    }, 50);
+  });
+}
+
+/** 타입 안전한 IPC invoke 래퍼. preload 로드 전이면 대기 후 재시도한다 */
+async function invoke<T>(channel: string, ...args: unknown[]): Promise<T> {
+  await waitForIpc();
   return window.ipc.invoke(channel, ...args) as Promise<T>;
 }
 

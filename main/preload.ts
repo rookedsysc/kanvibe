@@ -23,5 +23,6 @@ const handler = {
 };
 
 contextBridge.exposeInMainWorld("ipc", handler);
+console.log("[preload] window.ipc exposed successfully");
 
 export type IpcHandler = typeof handler;
