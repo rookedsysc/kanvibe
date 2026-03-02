@@ -47,6 +47,12 @@ if (isProd) {
   const mainWindow = createWindow("main", {
     width: 1400,
     height: 900,
+    titleBarStyle: "hiddenInset",
+    titleBarOverlay: {
+      color: "#F8F9FA",
+      symbolColor: "#1F2937",
+      height: 36,
+    },
     webPreferences: {
       preload: preloadPath,
       sandbox: false,
