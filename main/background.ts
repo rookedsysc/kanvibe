@@ -1,5 +1,5 @@
 import path from "path";
-import { app, ipcMain } from "electron";
+import { app, ipcMain, nativeTheme } from "electron";
 import serve from "electron-serve";
 import { createWindow } from "./helpers/create-window";
 import { setupDatabase } from "./database";
@@ -22,6 +22,9 @@ if (isProd) {
 
 (async () => {
   await app.whenReady();
+
+  /** 앱 테마를 라이트 모드로 고정하여 타이틀 바 색상을 통일한다 */
+  nativeTheme.themeSource = "light";
 
   /** DB 초기화를 윈도우 생성 전에 수행한다 */
   await setupDatabase();
@@ -47,12 +50,7 @@ if (isProd) {
   const mainWindow = createWindow("main", {
     width: 1400,
     height: 900,
-    titleBarStyle: "hiddenInset",
-    titleBarOverlay: {
-      color: "#F8F9FA",
-      symbolColor: "#1F2937",
-      height: 36,
-    },
+    backgroundColor: "#F8F9FA",
     webPreferences: {
       preload: preloadPath,
       sandbox: false,
