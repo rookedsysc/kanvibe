@@ -12,7 +12,7 @@ import { startTerminalServer } from "./ipc/terminal";
 import { startHooksServer } from "./ipc/hooks";
 import { setupAutoUpdater } from "./updater";
 
-const isProd = process.env.NODE_ENV === "production";
+const isProd = app.isPackaged;
 
 if (isProd) {
   serve({ directory: "out" });
@@ -42,11 +42,13 @@ if (isProd) {
   startHooksServer(hooksPort);
 
   /** 메인 윈도우를 생성한다 */
+  const preloadPath = path.join(__dirname, "preload.js");
+
   const mainWindow = createWindow("main", {
     width: 1400,
     height: 900,
     webPreferences: {
-      preload: path.join(__dirname, "preload.js"),
+      preload: preloadPath,
       sandbox: false,
     },
   });

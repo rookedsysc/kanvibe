@@ -31,9 +31,6 @@ async function buildMain() {
     external: nativeExternals,
     sourcemap: true,
     tsconfig: path.join(rootDir, "tsconfig.json"),
-    define: {
-      "process.env.NODE_ENV": '"production"',
-    },
   });
 
   /** preload.ts를 번들링한다 */
