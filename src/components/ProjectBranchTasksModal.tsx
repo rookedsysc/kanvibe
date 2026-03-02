@@ -66,7 +66,7 @@ export default function ProjectBranchTasksModal({
   }, [projectId]);
 
   const handleTaskClick = (taskId: string) => {
-    router.push(`/task/${taskId}`);
+    router.push(`/task?id=${taskId}`);
     onClose();
   };
 

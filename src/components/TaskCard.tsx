@@ -29,7 +29,7 @@ export default function TaskCard({ task, index, onContextMenu, projectName, isBa
   return (
     <Draggable draggableId={task.id} index={index}>
       {(provided, snapshot) => (
-        <Link href={`/task/${task.id}`}>
+        <Link href={`/task?id=${task.id}`}>
           <div
             ref={provided.innerRef}
             {...provided.draggableProps}

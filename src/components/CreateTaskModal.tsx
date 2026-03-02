@@ -88,7 +88,7 @@ export default function CreateTaskModal({
         priority: priority || undefined,
       });
       onClose();
-      router.push(`/task/${created.id}`);
+      router.push(`/task?id=${created.id}`);
     });
   }
 

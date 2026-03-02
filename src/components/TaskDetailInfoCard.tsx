@@ -40,7 +40,7 @@ export default function TaskDetailInfoCard({
                     {task.project.name}
                   </span>
                   <Link
-                    href={baseBranchTaskId ? `/task/${baseBranchTaskId}` : "/"}
+                    href={baseBranchTaskId ? `/task?id=${baseBranchTaskId}` : "/"}
                     className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-tag-project-bg hover:opacity-80 text-white transition-opacity"
                     title={task.baseBranch ?? task.project.name}
                     data-testid="shortcut-link"
@@ -125,7 +125,7 @@ export default function TaskDetailInfoCard({
               <dt className="text-xs text-text-muted">{t("diffFiles")}</dt>
               <dd>
                 <Link
-                  href={`/task/${task.id}/diff`}
+                  href={`/task/diff?id=${task.id}`}
                   className="inline-flex items-center gap-1.5 text-xs bg-tag-branch-bg text-tag-branch-text px-2 py-0.5 rounded hover:opacity-80 transition-opacity"
                   title={t("viewDiff")}
                 >
