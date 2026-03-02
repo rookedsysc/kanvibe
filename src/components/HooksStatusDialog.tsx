@@ -2,12 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useTranslations } from "next-intl";
-import {
-  installTaskHooks,
-  installTaskGeminiHooks,
-  installTaskCodexHooks,
-  installTaskOpenCodeHooks,
-} from "@/app/actions/project";
+import { ipcProject } from "@/lib/ipc";
 import type { ClaudeHooksStatus } from "@/lib/claudeHooksSetup";
 import type { GeminiHooksStatus } from "@/lib/geminiHooksSetup";
 import type { CodexHooksStatus } from "@/lib/codexHooksSetup";
@@ -50,8 +45,8 @@ export default function HooksStatusDialog({
   function handleInstallClaude() {
     setMessage(null);
     startTransition(async () => {
-      const result = await installTaskHooks(taskId);
-      if (result.success) {
+      const { success } = await ipcProject.installTaskHooks(taskId);
+      if (success) {
         setLocalClaudeStatus({ installed: true, hasPromptHook: true, hasStopHook: true, hasQuestionHook: true, hasSettingsEntry: true });
         setMessage({ type: "success", text: t("hooksInstallSuccess") });
       } else {
@@ -63,8 +58,8 @@ export default function HooksStatusDialog({
   function handleInstallGemini() {
     setMessage(null);
     startTransition(async () => {
-      const result = await installTaskGeminiHooks(taskId);
-      if (result.success) {
+      const { success } = await ipcProject.installTaskGeminiHooks(taskId);
+      if (success) {
         setLocalGeminiStatus({ installed: true, hasPromptHook: true, hasStopHook: true, hasSettingsEntry: true });
         setMessage({ type: "success", text: t("geminiHooksInstallSuccess") });
       } else {
@@ -76,8 +71,8 @@ export default function HooksStatusDialog({
   function handleInstallCodex() {
     setMessage(null);
     startTransition(async () => {
-      const result = await installTaskCodexHooks(taskId);
-      if (result.success) {
+      const { success } = await ipcProject.installTaskCodexHooks(taskId);
+      if (success) {
         setLocalCodexStatus({ installed: true, hasNotifyHook: true, hasConfigEntry: true });
         setMessage({ type: "success", text: t("codexHooksInstallSuccess") });
       } else {
@@ -89,8 +84,8 @@ export default function HooksStatusDialog({
   function handleInstallOpenCode() {
     setMessage(null);
     startTransition(async () => {
-      const result = await installTaskOpenCodeHooks(taskId);
-      if (result.success) {
+      const { success } = await ipcProject.installTaskOpenCodeHooks(taskId);
+      if (success) {
         setLocalOpenCodeStatus({ installed: true, hasPlugin: true });
         setMessage({ type: "success", text: t("openCodeHooksInstallSuccess") });
       } else {

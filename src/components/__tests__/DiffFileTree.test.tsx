@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import DiffFileTree from "@/components/DiffFileTree";
-import type { DiffFile } from "@/app/actions/diff";
+import type { DiffFile } from "@/lib/ipc";
 
 vi.mock("next-intl", () => ({
   useTranslations: () => (key: string) => key,

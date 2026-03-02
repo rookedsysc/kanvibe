@@ -10,11 +10,9 @@ import ProjectSettings from "./ProjectSettings";
 import TaskContextMenu from "./TaskContextMenu";
 import BranchTaskModal from "./BranchTaskModal";
 import DoneConfirmDialog from "./DoneConfirmDialog";
-import { reorderTasks, deleteTask, getMoreDoneTasks, moveTaskToColumn } from "@/app/actions/kanban";
-import type { TasksByStatus } from "@/app/actions/kanban";
+import { ipcKanban, type TasksByStatus } from "@/lib/ipc";
 import { SessionType, TaskStatus, type KanbanTask } from "@/entities/KanbanTask";
 import type { Project } from "@/entities/Project";
-import { logoutAction } from "@/app/actions/auth";
 import { useAutoRefresh } from "@/hooks/useAutoRefresh";
 import { useProjectFilterParams } from "@/hooks/useProjectFilterParams";
 import { computeProjectColor } from "@/lib/projectColor";
@@ -253,7 +251,7 @@ export default function Board({ initialTasks, initialDoneTotal, initialDoneLimit
     if (isLoadingMore) return;
     setIsLoadingMore(true);
     try {
-      const result = await getMoreDoneTasks(doneOffset);
+      const result = await ipcKanban.getMoreDoneTasks(doneOffset);
       setTasks((prev) => ({
         ...prev,
         [TaskStatus.DONE]: [...prev[TaskStatus.DONE], ...result.tasks],
@@ -304,7 +302,7 @@ export default function Board({ initialTasks, initialDoneTotal, initialDoneLimit
               : updated[sourceStatus]
           ).map((task) => task.id);
 
-          reorderTasks(sourceStatus, reorderIds);
+          ipcKanban.reorderTasks(sourceStatus, reorderIds);
         } else {
           updated[sourceStatus] = newSource;
           const updatedTask: KanbanTask = { ...movedTask, status: destStatus };
@@ -334,7 +332,7 @@ export default function Board({ initialTasks, initialDoneTotal, initialDoneLimit
               : updated[destStatus]
           ).map((task) => task.id);
 
-          moveTaskToColumn(draggableId, destStatus, destReorderIds);
+          ipcKanban.moveTaskToColumn(draggableId, destStatus, destReorderIds);
         }
 
         return updated;
@@ -409,7 +407,7 @@ export default function Board({ initialTasks, initialDoneTotal, initialDoneLimit
 
   const handleDeleteFromCard = useCallback(() => {
     if (contextMenu.task && confirm(tt("deleteConfirm"))) {
-      deleteTask(contextMenu.task.id);
+      ipcKanban.deleteTask(contextMenu.task.id);
     }
     handleCloseContextMenu();
   }, [contextMenu.task, handleCloseContextMenu, tt]);
@@ -449,14 +447,6 @@ export default function Board({ initialTasks, initialDoneTotal, initialDoneLimit
               <circle cx="12" cy="12" r="3"/>
             </svg>
           </button>
-          <form action={logoutAction}>
-            <button
-              type="submit"
-              className="px-3 py-1.5 text-sm text-text-muted hover:text-text-primary transition-colors"
-            >
-              {tc("logout")}
-            </button>
-          </form>
         </div>
       </header>
 

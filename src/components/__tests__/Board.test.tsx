@@ -3,7 +3,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import Board from "../Board";
 import { SessionType, TaskStatus } from "@/entities/KanbanTask";
 import type { Project } from "@/entities/Project";
-import type { TasksByStatus } from "@/app/actions/kanban";
+import type { TasksByStatus } from "@/lib/ipc";
 
 vi.mock("next-intl", () => ({
   useTranslations: () => (key: string) => key,
@@ -20,9 +20,6 @@ vi.mock("@/app/actions/kanban", () => ({
   moveTaskToColumn: vi.fn(),
 }));
 
-vi.mock("@/app/actions/auth", () => ({
-  logoutAction: vi.fn(),
-}));
 
 vi.mock("@/hooks/useAutoRefresh", () => ({
   useAutoRefresh: vi.fn(),

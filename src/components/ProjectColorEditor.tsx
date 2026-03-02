@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "@/i18n/navigation";
 import { HexColorPicker, HexColorInput } from "react-colorful";
-import { updateProjectColor } from "@/app/actions/kanban";
+import { ipcKanban } from "@/lib/ipc";
 import { computeProjectColor } from "@/lib/projectColor";
 
 const PRESET_COLORS = [
@@ -33,7 +33,7 @@ export default function ProjectColorEditor({ projectId, projectName, currentColo
   function handleApply(hex: string) {
     setColor(hex);
     startTransition(async () => {
-      await updateProjectColor(projectId, hex);
+      await ipcKanban.updateProjectColor(projectId, hex);
       router.refresh();
     });
   }

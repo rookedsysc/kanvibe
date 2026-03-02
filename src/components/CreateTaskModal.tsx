@@ -3,8 +3,7 @@
 import { useState, useEffect, useTransition } from "react";
 import { useTranslations } from "next-intl";
 import { useRouter } from "@/i18n/navigation";
-import { createTask } from "@/app/actions/kanban";
-import { getProjectBranches } from "@/app/actions/project";
+import { ipcKanban, ipcProject } from "@/lib/ipc";
 import { SessionType } from "@/entities/KanbanTask";
 import { TaskPriority } from "@/entities/TaskPriority";
 import type { Project } from "@/entities/Project";
@@ -62,7 +61,7 @@ export default function CreateTaskModal({
       setBaseBranch(defaultBaseBranch || selectedProject.defaultBranch);
     }
 
-    getProjectBranches(selectedProjectId).then((result) => {
+    ipcProject.getBranches(selectedProjectId).then((result) => {
       setBranches(result);
       /** defaultBaseBranch가 브랜치 목록에 없으면 옵션에 추가한다 */
       if (defaultBaseBranch && !result.includes(defaultBaseBranch)) {
@@ -78,7 +77,7 @@ export default function CreateTaskModal({
     if (!branchName || !selectedProjectId) return;
 
     startTransition(async () => {
-      const created = await createTask({
+      const created = await ipcKanban.createTask({
         title: branchName,
         description: (formData.get("description") as string) || undefined,
         branchName,
@@ -89,7 +88,7 @@ export default function CreateTaskModal({
         priority: priority || undefined,
       });
       onClose();
-      router.push(`/task/${created.id}`);
+      router.push(`/task?id=${created.id}`);
     });
   }
 

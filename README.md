@@ -4,8 +4,8 @@
 
 **AI Agent Task Management Kanban Board**
 
-A web-based terminal Kanban board for managing AI coding agent (Claude Code, Gemini CLI, Codex CLI, etc.) tasks in real-time.
-Monitor tmux/zellij sessions directly in your browser while tracking task progress on a drag & drop Kanban board.
+A desktop Kanban board for managing AI coding agent (Claude Code, Gemini CLI, Codex CLI, etc.) tasks in real-time.
+Monitor tmux/zellij sessions with an embedded terminal while tracking task progress on a drag & drop Kanban board.
 Automatically track task status via [AI Agent Hooks](#ai-agent-hooks---automatic-status-tracking) — no manual updates needed.
 
 [![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-FFDD00?style=for-the-badge&logo=buy-me-a-coffee&logoColor=black)](https://buymeacoffee.com/rookedsysc)
@@ -35,54 +35,98 @@ Automatically track task status via [AI Agent Hooks](#ai-agent-hooks---automatic
 
 ## Prerequisites
 
-The `kanvibe` CLI script automatically checks and installs missing dependencies. You can also install them manually:
-
 | Dependency | Version | Required | Install |
 |------------|---------|----------|---------|
 | [Node.js](https://nodejs.org/) | >= 22 | Yes | `brew install node` |
 | [pnpm](https://pnpm.io/) | latest | Yes | `corepack enable && corepack prepare pnpm@latest --activate` |
-| [Docker](https://www.docker.com/) | latest | Yes | `brew install --cask docker` |
 | [git](https://git-scm.com/) | latest | Yes | `brew install git` |
 | [tmux](https://github.com/tmux/tmux) | latest | Yes | `brew install tmux` |
 | [gh](https://cli.github.com/) | latest | Yes | `brew install gh` (requires `gh auth login`) |
 | [zellij](https://github.com/zellij-org/zellij) | latest | No | `brew install zellij` |
 
-> Docker is used to run the PostgreSQL database via Docker Compose.
+---
+
+## Quick Start (Development)
+
+```bash
+pnpm install
+pnpm dev
+```
+
+This starts the Next.js dev server on port 8888, then launches the Electron window connected to it. DevTools open automatically.
+
+The SQLite database is created at the Electron `userData` path with `(development)` suffix to keep it separate from production data.
 
 ---
 
-## Quick Start
+## Build & Package
 
-### 1. Configure Environment
-
-```bash
-cp .env.example .env
-```
-
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `PORT` | Web server port | `4885` |
-| `DB_PORT` | PostgreSQL port | `4886` |
-| `KANVIBE_USER` | Login username | `admin` |
-| `KANVIBE_PASSWORD` | Login password | `changeme` (change this!) |
-
-### 2. Run
+### Build only (no installer)
 
 ```bash
-bash kanvibe.sh start          # Interactive mode selection (foreground/background)
-bash kanvibe.sh start --fg     # Foreground (output to terminal, Ctrl+C to stop)
-bash kanvibe.sh start --bg     # Background (server keeps running after terminal closes)
+pnpm build
 ```
 
-This command checks dependencies (with i18n install prompts), installs packages, starts PostgreSQL, runs migrations, builds, and launches the server.
+This runs two steps:
+1. `next build` — exports the Next.js app as static HTML to `out/`
+2. `node scripts/build-main.mjs` — bundles the Electron main/preload TypeScript via esbuild to `electron/`
+
+### Package as installer
 
 ```bash
-bash kanvibe.sh stop
+pnpm pack
 ```
 
-Stops the KanVibe server and PostgreSQL container.
+Runs `pnpm build` then `electron-builder` to produce platform-specific installers. Output goes to `dist/`.
 
-Open `http://localhost:4885` in your browser.
+| Platform | Formats | Notes |
+|----------|---------|-------|
+| macOS | `.dmg`, `.zip` | Hardened runtime enabled |
+| Windows | `.exe` (NSIS) | — |
+| Linux | `.AppImage`, `.deb` | — |
+
+> To build for the current platform only, run `pnpm pack` as-is. Cross-platform builds may require additional configuration.
+
+---
+
+## Project Structure
+
+```
+main/                   # Electron main process
+├── background.ts       # App entry point (window creation, IPC setup)
+├── preload.ts          # Preload script (contextBridge)
+├── database.ts         # SQLite (better-sqlite3) + TypeORM setup
+├── updater.ts          # electron-updater auto-update
+├── helpers/
+│   └── create-window.ts
+└── ipc/                # IPC handlers (kanban, project, diff, hooks, terminal, etc.)
+src/                    # Next.js renderer (App Router)
+├── app/                # Pages & layouts
+├── components/         # React components
+├── entities/           # TypeORM entities
+├── migrations/         # SQLite migrations
+└── lib/                # Shared utilities
+scripts/
+└── build-main.mjs      # esbuild bundler for Electron main process
+electron-builder.yml     # electron-builder config
+```
+
+### Database
+
+SQLite (via `better-sqlite3`) is used as the embedded database. No external database server is needed.
+
+- **Development**: `<userData> (development)/kanvibe.dev.sqlite`
+- **Production**: `<userData>/kanvibe.sqlite`
+
+WAL mode is enabled for concurrent read performance. Migrations run automatically on app start.
+
+### Ports
+
+| Port | Service | Description |
+|------|---------|-------------|
+| `8888` | Next.js dev server | Renderer in development mode |
+| `4885` | Hooks HTTP server | AI agent hook endpoints (`POST /api/hooks/start`, `POST /api/hooks/status`) |
+| `4884` | Terminal WebSocket | xterm.js terminal connections |
 
 ---
 
@@ -129,7 +173,7 @@ Each pane can run a custom command (e.g., `vim`, `htop`, `lazygit`, test runner,
 - Custom task ordering with drag & drop
 - Multi-project filtering
 - Done column pagination
-- Real-time WebSocket updates
+- IPC-based real-time updates
 
 ### Git Worktree Integration
 - Automatic git worktree creation when a branch-based task is created
@@ -138,7 +182,7 @@ Each pane can run a custom command (e.g., `vim`, `htop`, `lazygit`, test runner,
 
 ### Terminal Sessions (tmux / zellij)
 - **tmux** and **zellij** are both supported as terminal multiplexers
-- Browser-based terminal via xterm.js + WebSocket
+- Embedded terminal via xterm.js + WebSocket
 - SSH remote terminal support (reads `~/.ssh/config`)
 - Nerd Font rendering support
 
@@ -244,14 +288,16 @@ Review code changes directly in the browser with a GitHub-style diff viewer. Cli
 
 | Category | Technology |
 |----------|------------|
-| Frontend/Backend | Next.js 16 (App Router) + React 19 + TypeScript |
-| Database | PostgreSQL 16 + TypeORM |
+| Desktop | Electron 40 |
+| Renderer | Next.js 16 (App Router) + React 19 + TypeScript |
+| Database | SQLite (better-sqlite3) + TypeORM |
 | Styling | Tailwind CSS v4 |
 | Terminal | xterm.js + WebSocket + node-pty |
 | SSH | ssh2 (Node.js) |
 | Drag & Drop | @hello-pangea/dnd |
 | i18n | next-intl |
-| Container | Docker Compose |
+| Build | esbuild + electron-builder |
+| Auto Update | electron-updater (GitHub Releases) |
 
 ---
 

@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import DiffPageClient from "@/components/DiffPageClient";
-import type { DiffFile } from "@/app/actions/diff";
+import type { DiffFile } from "@/lib/ipc";
 
 // --- Mocks ---
 
@@ -9,11 +9,17 @@ const mockGetOriginalFileContent = vi.fn();
 const mockGetFileContent = vi.fn();
 const mockSaveFileContent = vi.fn();
 
-vi.mock("@/app/actions/diff", () => ({
-  getOriginalFileContent: (...args: unknown[]) => mockGetOriginalFileContent(...args),
-  getFileContent: (...args: unknown[]) => mockGetFileContent(...args),
-  saveFileContent: (...args: unknown[]) => mockSaveFileContent(...args),
-}));
+vi.mock("@/lib/ipc", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/ipc")>();
+  return {
+    ...actual,
+    ipcDiff: {
+      getOriginalFileContent: (...args: unknown[]) => mockGetOriginalFileContent(...args),
+      getFileContent: (...args: unknown[]) => mockGetFileContent(...args),
+      saveFileContent: (...args: unknown[]) => mockSaveFileContent(...args),
+    },
+  };
+});
 
 vi.mock("next-intl", () => ({
   useTranslations: () => (key: string) => key,

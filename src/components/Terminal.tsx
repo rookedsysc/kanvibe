@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useCallback } from "react";
 import "@xterm/xterm/css/xterm.css";
+import { ipcApp } from "@/lib/ipc";
 
 interface TerminalProps {
   taskId: string;
@@ -77,10 +78,8 @@ export default function Terminal({ taskId }: TerminalProps) {
 
     xtermRef.current = term;
 
-    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const wsHost = window.location.hostname;
-    const wsPort = parseInt(window.location.port || "4885", 10) - 1;
-    const wsUrl = `${protocol}//${wsHost}:${wsPort}/api/terminal/${taskId}?cols=${term.cols}&rows=${term.rows}`;
+    const wsPort = await ipcApp.getWsPort();
+    const wsUrl = `ws://127.0.0.1:${wsPort}/api/terminal/${taskId}?cols=${term.cols}&rows=${term.rows}`;
     const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
 

@@ -4,7 +4,7 @@ import { useState, useRef, useEffect, useTransition } from "react";
 import { useRouter } from "@/i18n/navigation";
 import { useTranslations } from "next-intl";
 import type { KanbanTask } from "@/entities/KanbanTask";
-import { updateTask } from "@/app/actions/kanban";
+import { ipcKanban } from "@/lib/ipc";
 import TaskStatusBadge from "@/components/TaskStatusBadge";
 import ProjectBranchTasksModal from "@/components/ProjectBranchTasksModal";
 
@@ -51,7 +51,7 @@ export default function TaskDetailTitleCard({ task, taskId }: TaskDetailTitleCar
     }
 
     startTransition(async () => {
-      await updateTask(taskId, { description: newDescription });
+      await ipcKanban.updateTask(taskId, { description: newDescription });
       setIsEditing(false);
       router.refresh();
     });

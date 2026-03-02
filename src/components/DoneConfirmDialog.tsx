@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useTranslations } from "next-intl";
-import { dismissDoneAlert } from "@/app/actions/appSettings";
+import { ipcSettings } from "@/lib/ipc";
 
 interface DoneConfirmDialogProps {
   isOpen: boolean;
@@ -25,7 +25,7 @@ export default function DoneConfirmDialog({
   function handleConfirm() {
     if (dontAskAgain) {
       startTransition(async () => {
-        await dismissDoneAlert();
+        await ipcSettings.dismissDoneAlert();
         onConfirm();
       });
     } else {

@@ -31,16 +31,17 @@ vi.mock("@/components/FolderSearchInput", () => ({
   default: () => <div data-testid="folder-search-input" />,
 }));
 
-vi.mock("@/app/actions/project", () => ({
-  deleteProject: vi.fn().mockResolvedValue(undefined),
-  scanAndRegisterProjects: vi.fn().mockResolvedValue({ registered: [], skipped: [], errors: [], worktreeTasks: [] }),
-}));
-
-vi.mock("@/app/actions/appSettings", () => ({
-  setSidebarDefaultCollapsed: vi.fn().mockResolvedValue(undefined),
-  setNotificationEnabled: vi.fn().mockResolvedValue(undefined),
-  setNotificationStatuses: vi.fn().mockResolvedValue(undefined),
-  setDefaultSessionType: (...args: unknown[]) => mockSetDefaultSessionType(...args),
+vi.mock("@/lib/ipc", () => ({
+  ipcProject: {
+    delete: vi.fn().mockResolvedValue(undefined),
+    scanAndRegister: vi.fn().mockResolvedValue({ registered: [], skipped: [], errors: [], worktreeTasks: [], hooksSetup: [] }),
+  },
+  ipcSettings: {
+    setSidebarDefaultCollapsed: vi.fn().mockResolvedValue(undefined),
+    setNotificationEnabled: vi.fn().mockResolvedValue(undefined),
+    setNotificationStatuses: vi.fn().mockResolvedValue(undefined),
+    setDefaultSessionType: (...args: unknown[]) => mockSetDefaultSessionType(...args),
+  },
 }));
 
 function createProject(): Project {

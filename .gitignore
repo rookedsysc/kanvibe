@@ -18,6 +18,10 @@
 # production
 /build
 
+# electron
+/electron
+/dist
+
 # misc
 .DS_Store
 *.pem
@@ -40,3 +44,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# ai
+.claude/plan

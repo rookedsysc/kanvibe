@@ -7,7 +7,7 @@ import {
   type PaneCommand,
   type PaneLayoutConfig,
 } from "@/entities/PaneLayoutConfig";
-import { savePaneLayout, deletePaneLayout } from "@/app/actions/paneLayout";
+import { ipcPaneLayout } from "@/lib/ipc";
 
 interface PaneLayoutEditorProps {
   projectId?: string;
@@ -135,7 +135,7 @@ export default function PaneLayoutEditor({
 
     startTransition(async () => {
       try {
-        await savePaneLayout({
+        await ipcPaneLayout.save({
           layoutType,
           panes,
           projectId: isGlobal ? null : projectId,
@@ -154,7 +154,7 @@ export default function PaneLayoutEditor({
 
     startTransition(async () => {
       try {
-        await deletePaneLayout(initialConfig.id);
+        await ipcPaneLayout.delete(initialConfig.id);
         setLayoutType(PaneLayoutType.SINGLE);
         setPaneCommands([""]);
         setMessage({ type: "success", text: t("deleteSuccess") });

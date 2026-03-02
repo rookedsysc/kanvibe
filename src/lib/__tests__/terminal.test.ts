@@ -38,6 +38,13 @@ vi.mock("node-pty", () => ({
   })),
 }));
 
+/** worktree.ts가 main/database에서 Electron 의존 모듈을 import하므로 mock 처리한다 */
+vi.mock("../../../main/database", () => ({
+  getPaneLayoutConfigRepository: () => ({
+    findOne: vi.fn().mockResolvedValue(null),
+  }),
+}));
+
 function createMockWs() {
   return {
     readyState: 1,

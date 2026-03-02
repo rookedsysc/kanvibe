@@ -3,12 +3,7 @@
 import { useState, useCallback, useMemo, useRef, useEffect } from "react";
 import dynamic from "next/dynamic";
 import { useTranslations } from "next-intl";
-import type { DiffFile } from "@/app/actions/diff";
-import {
-  getOriginalFileContent,
-  getFileContent,
-  saveFileContent,
-} from "@/app/actions/diff";
+import { ipcDiff, type DiffFile } from "@/lib/ipc";
 import DiffFileTree from "./DiffFileTree";
 
 /** Monaco 에디터는 SSR 미지원이므로 dynamic import한다 */
@@ -99,8 +94,8 @@ export default function DiffPageClient({ taskId, files }: DiffPageClientProps) {
       setFileContent({ original: "", modified: "", loading: true });
 
       const [original, modified] = await Promise.all([
-        getOriginalFileContent(taskId, filePath),
-        getFileContent(taskId, filePath),
+        ipcDiff.getOriginalFileContent(taskId, filePath),
+        ipcDiff.getFileContent(taskId, filePath),
       ]);
 
       setFileContent({ original, modified, loading: false });
@@ -118,7 +113,7 @@ export default function DiffPageClient({ taskId, files }: DiffPageClientProps) {
   const handleSave = useCallback(
     async (content: string) => {
       if (!selectedFile) return;
-      const result = await saveFileContent(taskId, selectedFile, content);
+      const result = await ipcDiff.saveFileContent(taskId, selectedFile, content);
       if (!result.success) {
         throw new Error(result.error);
       }

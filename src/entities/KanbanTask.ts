@@ -39,7 +39,7 @@ export class KanbanTask {
   @Column({ type: "text", nullable: true })
   description!: string | null;
 
-  @Column({ type: "enum", enum: TaskStatus, default: TaskStatus.TODO })
+  @Column({ type: "simple-enum", enum: TaskStatus, default: TaskStatus.TODO })
   status!: TaskStatus;
 
   @Column({ name: "branch_name", type: "varchar", length: 255, nullable: true })
@@ -48,7 +48,7 @@ export class KanbanTask {
   @Column({ name: "worktree_path", type: "varchar", length: 500, nullable: true })
   worktreePath!: string | null;
 
-  @Column({ name: "session_type", type: "enum", enum: SessionType, nullable: true })
+  @Column({ name: "session_type", type: "simple-enum", enum: SessionType, nullable: true })
   sessionType!: SessionType | null;
 
   @Column({ name: "session_name", type: "varchar", length: 255, nullable: true })
@@ -64,7 +64,7 @@ export class KanbanTask {
   @JoinColumn({ name: "project_id" })
   project!: Project | null;
 
-  @Column({ name: "project_id", type: "uuid", nullable: true })
+  @Column({ name: "project_id", type: "varchar", nullable: true })
   projectId!: string | null;
 
   @Column({ name: "base_branch", type: "varchar", length: 255, nullable: true })
@@ -73,7 +73,7 @@ export class KanbanTask {
   @Column({ name: "pr_url", type: "varchar", length: 500, nullable: true })
   prUrl!: string | null;
 
-  @Column({ type: "enum", enum: TaskPriority, nullable: true, default: null })
+  @Column({ type: "simple-enum", enum: TaskPriority, nullable: true, default: null })
   priority!: TaskPriority | null;
 
   @Column({ name: "display_order", type: "int", default: 0 })

@@ -29,8 +29,10 @@ vi.mock("next-intl", () => ({
   },
 }));
 
-vi.mock("@/app/actions/kanban", () => ({
-  updateTask: (...args: unknown[]) => mockUpdateTask(...args),
+vi.mock("@/lib/ipc", () => ({
+  ipcKanban: {
+    updateTask: (...args: unknown[]) => mockUpdateTask(...args),
+  },
 }));
 
 describe("PriorityEditor", () => {
