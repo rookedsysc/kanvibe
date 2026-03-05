@@ -1,5 +1,5 @@
 import { createHmac, randomUUID, timingSafeEqual } from "crypto";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 
 const SESSION_COOKIE = "kanvibe_session";
 
@@ -50,15 +50,23 @@ export function validateCredentials(
   );
 }
 
+/** 요청 프로토콜이 HTTPS인지 확인한다 (리버스 프록시 헤더도 고려) */
+async function isSecureRequest(): Promise<boolean> {
+  const headerStore = await headers();
+  const proto = headerStore.get("x-forwarded-proto");
+  return proto === "https";
+}
+
 /** 새 세션 토큰을 생성하고 서명된 쿠키에 설정한다 */
 export async function createSession(): Promise<string> {
   const token = randomUUID();
   const signed = signToken(token);
 
+  const useSecure = await isSecureRequest();
   const cookieStore = await cookies();
   cookieStore.set(SESSION_COOKIE, signed, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
+    secure: useSecure,
     sameSite: "lax",
     path: "/",
     maxAge: 60 * 60 * 24 * 7,
