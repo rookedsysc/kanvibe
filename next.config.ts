@@ -4,7 +4,7 @@ import createNextIntlPlugin from "next-intl/plugin";
 const withNextIntl = createNextIntlPlugin("./src/i18n/request.ts");
 
 const nextConfig: NextConfig = {
-  serverExternalPackages: ["typeorm", "reflect-metadata", "node-pty", "ssh2"],
+  serverExternalPackages: ["typeorm", "reflect-metadata", "node-pty", "ssh2", "better-sqlite3"],
 };
 
 export default withNextIntl(nextConfig);

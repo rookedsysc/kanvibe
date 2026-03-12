@@ -1,6 +1,3 @@
-import { access } from "fs/promises";
-import { execFile } from "child_process";
-import { promisify } from "util";
 import { homedir } from "os";
 import path from "path";
 import {
@@ -13,9 +10,9 @@ import {
   toIsoString,
   truncateText,
 } from "@/lib/aiSessions/shared";
+import { getSqliteConnection, querySqlite } from "@/lib/sqliteConnectionPool";
 import type { AggregatedAiMessage, AiSessionDetailReaderResult, AiSessionReaderContext, AiSessionReaderResult } from "@/lib/aiSessions/types";
 
-const execFileAsync = promisify(execFile);
 const OPENCODE_DB_PATH = path.join(homedir(), ".local", "share", "opencode", "opencode.db");
 const OPEN_CODE_QUERY_LIMIT = 120;
 const DEFAULT_DETAIL_LIMIT = 20;
@@ -30,30 +27,26 @@ interface OpenCodeSessionRow {
   first_user_part?: string | null;
 }
 
-interface OpenCodeMessageRoleRow {
-  id: string;
-  data: string;
-}
-
-interface OpenCodePartRow {
+interface OpenCodeDetailRow {
+  session_id: string;
+  directory: string;
+  title: string | null;
   message_id: string;
-  data: string;
+  part_data: string;
   time_created: number;
-}
-
-interface OpenCodeCountRow {
-  count: number;
+  message_data: string;
+  total_count: number;
 }
 
 export async function readOpenCodeSessions(context: AiSessionReaderContext): Promise<AiSessionReaderResult> {
-  const dbExists = await access(OPENCODE_DB_PATH).then(() => true).catch(() => false);
-  if (!dbExists) {
+  const db = getSqliteConnection(OPENCODE_DB_PATH);
+  if (!db) {
     return createReaderResult("opencode", { available: false, reason: "OpenCode database not found" });
   }
 
   let rows: OpenCodeSessionRow[];
   try {
-    rows = await querySqliteJson<OpenCodeSessionRow>(
+    rows = querySqlite<OpenCodeSessionRow>(db,
       `SELECT
         s.id,
         s.directory,
@@ -114,49 +107,55 @@ export async function readOpenCodeSessionDetail(
   cursor?: string | null,
   limit = DEFAULT_DETAIL_LIMIT
 ): Promise<AiSessionDetailReaderResult | null> {
-  const rows = await querySqliteJson<OpenCodeSessionRow>(
-    `SELECT id, directory, title, time_created, time_updated FROM session WHERE id = '${escapeSql(sessionId)}' LIMIT 1;`
-  );
-  const row = rows[0];
-  if (!row) return null;
-  if (!determineMatchScope(row.directory, context)) return null;
-
   const offset = cursor ? Number.parseInt(cursor, 10) : 0;
   const safeOffset = Number.isNaN(offset) ? 0 : offset;
+  const sid = escapeSql(sessionId);
 
-  const [messageRows, partRows, countRows] = await Promise.all([
-    querySqliteJson<OpenCodeMessageRoleRow>(`SELECT id, data FROM message WHERE session_id = '${escapeSql(sessionId)}';`),
-    querySqliteJson<OpenCodePartRow>(
-      `SELECT message_id, data, time_created FROM part WHERE session_id = '${escapeSql(sessionId)}' ORDER BY time_created ASC LIMIT ${limit} OFFSET ${safeOffset};`
-    ),
-    querySqliteJson<OpenCodeCountRow>(`SELECT COUNT(*) as count FROM part WHERE session_id = '${escapeSql(sessionId)}';`),
-  ]);
+  const db = getSqliteConnection(OPENCODE_DB_PATH);
+  if (!db) return null;
 
-  const roleByMessageId = new Map<string, string>();
-  for (const message of messageRows) {
-    const parsed = safeJsonParse<Record<string, unknown>>(message.data);
-    const role = typeof parsed?.role === "string" ? parsed.role : null;
-    if (role) roleByMessageId.set(message.id, role);
-  }
+  const detailRows = querySqlite<OpenCodeDetailRow>(db,
+    `SELECT
+      s.id AS session_id,
+      s.directory,
+      s.title,
+      p.message_id,
+      p.data AS part_data,
+      p.time_created,
+      m.data AS message_data,
+      (SELECT COUNT(*) FROM part WHERE session_id = '${sid}') AS total_count
+    FROM session s
+    JOIN part p ON p.session_id = s.id
+    JOIN message m ON m.id = p.message_id
+    WHERE s.id = '${sid}'
+    ORDER BY p.time_created ASC
+    LIMIT ${limit} OFFSET ${safeOffset};`
+  );
 
-  const messages: AggregatedAiMessage[] = partRows
-    .map((part) => {
-      const role = resolveOpenCodeRole(roleByMessageId.get(part.message_id));
-      const text = extractOpenCodePartText(part.data);
-      return makePreviewMessage(role, part.time_created, text);
+  if (detailRows.length === 0) return null;
+
+  const firstRow = detailRows[0];
+  if (!determineMatchScope(firstRow.directory, context)) return null;
+
+  const messages: AggregatedAiMessage[] = detailRows
+    .map((row) => {
+      const parsedMessage = safeJsonParse<Record<string, unknown>>(row.message_data);
+      const role = resolveOpenCodeRole(typeof parsedMessage?.role === "string" ? parsedMessage.role : undefined);
+      const text = extractOpenCodePartText(row.part_data);
+      return makePreviewMessage(role, row.time_created, text);
     })
     .filter((value): value is AggregatedAiMessage => Boolean(value));
 
-  const totalCount = countRows[0]?.count ?? messages.length;
+  const totalCount = firstRow.total_count;
   const nextCursor = safeOffset + messages.length < totalCount ? String(safeOffset + messages.length) : null;
   const firstUserPrompt = messages.find((message) => message.role === "user")?.fullText ?? null;
 
   return createSessionDetail({
     sessionId,
     provider: "opencode",
-    title: row.title ?? (firstUserPrompt ? truncateText(firstUserPrompt, 80) : null),
-    matchedPath: row.directory,
-    sourceRef: row.id,
+    title: firstRow.title ?? (firstUserPrompt ? truncateText(firstUserPrompt, 80) : null),
+    matchedPath: firstRow.directory,
+    sourceRef: firstRow.session_id,
     messages,
     nextCursor,
   });
@@ -183,12 +182,6 @@ function resolveOpenCodeRole(role: string | undefined): "user" | "assistant" | "
   if (role === "user") return "user";
   if (role === "assistant") return "assistant";
   return "unknown";
-}
-
-async function querySqliteJson<T>(sql: string): Promise<T[]> {
-  const { stdout } = await execFileAsync("sqlite3", ["-json", OPENCODE_DB_PATH, sql], { maxBuffer: 10 * 1024 * 1024 });
-  if (!stdout.trim()) return [];
-  return JSON.parse(stdout) as T[];
 }
 
 function escapeSql(value: string): string {
