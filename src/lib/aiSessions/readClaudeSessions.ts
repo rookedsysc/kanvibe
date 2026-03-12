@@ -7,6 +7,7 @@ import {
   determineMatchScope,
   extractPlainText,
   getCachedOrParse,
+  getCachedOrParseHead,
   getCandidatePaths,
   makePreviewMessage,
   paginateItems,
@@ -128,8 +129,8 @@ async function parseClaudeSessionFromFile(
     return first?.session ?? null;
   };
 
-  const headEvents = await getCachedOrParse(
-    filePath + ":head",
+  const headEvents = await getCachedOrParseHead(
+    filePath,
     () => readJsonLinesHead(filePath, 60)
   );
 

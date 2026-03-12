@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 import { getTaskAiSessionDetail, getTaskAiSessions } from "@/app/actions/project";
 import type {
@@ -35,6 +35,7 @@ export default function AiSessionsDialog({ taskId, isOpen, onClose, data }: AiSe
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
   const [sessionsError, setSessionsError] = useState<string | null>(null);
+  const latestDetailRequestId = useRef<string | null>(null);
 
   useEffect(() => {
     setSessionsData(data);
@@ -47,6 +48,7 @@ export default function AiSessionsDialog({ taskId, isOpen, onClose, data }: AiSe
       setSessionsData(data);
       setSessionsError(null);
       setIsSessionsLoading(false);
+      setIsDetailLoading(false);
       return;
     }
 
@@ -148,6 +150,7 @@ export default function AiSessionsDialog({ taskId, isOpen, onClose, data }: AiSe
                     taskId,
                     includeRepoSessions,
                     session,
+                    latestDetailRequestId,
                     setSelectedSessionId,
                     setDetail,
                     setIsDetailLoading,
@@ -217,6 +220,7 @@ async function loadSessionDetail({
   taskId,
   includeRepoSessions,
   session,
+  latestDetailRequestId,
   setSelectedSessionId,
   setDetail,
   setIsDetailLoading,
@@ -226,12 +230,15 @@ async function loadSessionDetail({
   taskId: string;
   includeRepoSessions: boolean;
   session: AggregatedAiSession;
+  latestDetailRequestId: React.MutableRefObject<string | null>;
   setSelectedSessionId: (sessionId: string) => void;
   setDetail: (value: AggregatedAiSessionDetail | null) => void;
   setIsDetailLoading: (value: boolean) => void;
   setDetailError: (value: string | null) => void;
   errorMessage: string;
 }): Promise<void> {
+  const expectedId = session.id;
+  latestDetailRequestId.current = expectedId;
   setSelectedSessionId(session.id);
   setIsDetailLoading(true);
   setDetail(null);
@@ -247,6 +254,9 @@ async function loadSessionDetail({
       DETAIL_PAGE_SIZE,
       includeRepoSessions
     );
+
+    if (latestDetailRequestId.current !== expectedId) return;
+
     if (!result) {
       setDetail(null);
       setDetailError(errorMessage);
@@ -255,10 +265,13 @@ async function loadSessionDetail({
 
     setDetail(result);
   } catch {
+    if (latestDetailRequestId.current !== expectedId) return;
     setDetail(null);
     setDetailError(errorMessage);
   } finally {
-    setIsDetailLoading(false);
+    if (latestDetailRequestId.current === expectedId) {
+      setIsDetailLoading(false);
+    }
   }
 }
 

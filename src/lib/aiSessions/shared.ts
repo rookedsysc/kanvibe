@@ -271,8 +271,20 @@ interface FileParseCache<T> {
   result: T;
 }
 
-/** filePath → { mtime, result } 형태로 파싱 결과를 캐시한다 */
+const FILE_PARSE_CACHE_MAX = 200;
+
+/** filePath → { mtime, result } 형태로 파싱 결과를 캐시한다. 최대 FILE_PARSE_CACHE_MAX개 항목을 유지하고 초과 시 가장 오래된 항목을 제거한다. */
 const fileParseCache = new Map<string, FileParseCache<unknown>>();
+
+/** 앞 N줄 파싱 결과 전용 캐시. 실제 파일 경로를 키로 사용하되 전체 캐시와 분리 관리한다. */
+const headParseCache = new Map<string, FileParseCache<unknown>>();
+
+function evictOldestIfNeeded(cache: Map<string, unknown>): void {
+  if (cache.size >= FILE_PARSE_CACHE_MAX) {
+    const oldestKey = cache.keys().next().value;
+    if (oldestKey !== undefined) cache.delete(oldestKey);
+  }
+}
 
 /**
  * 파일의 mtime을 확인해 캐시가 유효하면 캐시를 반환하고, 변경됐으면 parseFn을 실행해 결과를 캐시한다.
@@ -289,7 +301,28 @@ export async function getCachedOrParse<T>(filePath: string, parseFn: () => Promi
   }
 
   const result = await parseFn();
+  evictOldestIfNeeded(fileParseCache);
   fileParseCache.set(filePath, { mtime, result });
+  return result;
+}
+
+/**
+ * 파일 앞 N줄 파싱 결과를 mtime 기반으로 캐시한다. getCachedOrParse와 달리 실제 파일 경로만 키로 사용해 stat() 오류를 방지한다.
+ * @param filePath 대상 파일 경로 (가상 suffix 없이 실제 경로)
+ * @param parseFn 캐시 miss 시 실행할 파싱 함수
+ */
+export async function getCachedOrParseHead<T>(filePath: string, parseFn: () => Promise<T>): Promise<T> {
+  const fileStat = await stat(filePath);
+  const mtime = fileStat.mtimeMs;
+
+  const cached = headParseCache.get(filePath) as FileParseCache<T> | undefined;
+  if (cached && cached.mtime === mtime) {
+    return cached.result;
+  }
+
+  const result = await parseFn();
+  evictOldestIfNeeded(headParseCache);
+  headParseCache.set(filePath, { mtime, result });
   return result;
 }
 

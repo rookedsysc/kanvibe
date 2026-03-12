@@ -11,7 +11,10 @@ const connectionPool = new Map<string, Database.Database>();
  * @returns 읽기 전용 Database 인스턴스, 파일이 없으면 null
  */
 export function getSqliteConnection(dbPath: string): Database.Database | null {
-  if (!existsSync(dbPath)) return null;
+  if (!existsSync(dbPath)) {
+    connectionPool.delete(dbPath);
+    return null;
+  }
 
   const existing = connectionPool.get(dbPath);
   if (existing) return existing;
