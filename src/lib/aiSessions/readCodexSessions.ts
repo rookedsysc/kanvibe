@@ -6,6 +6,7 @@ import {
   createSessionDetail,
   determineMatchScope,
   extractPlainText,
+  getCachedOrParse,
   listFilesRecursively,
   makePreviewMessage,
   paginateItems,
@@ -32,12 +33,11 @@ export async function readCodexSessions(context: AiSessionReaderContext): Promis
   }
 
   const rolloutFiles = await listFilesRecursively(CODEX_SESSIONS_DIR, (filePath) => filePath.endsWith(".jsonl"));
-  const sessions: AggregatedAiSession[] = [];
 
-  for (const filePath of rolloutFiles) {
-    const session = await parseCodexSessionSummary(filePath, context);
-    if (session) sessions.push(session);
-  }
+  const results = await Promise.all(
+    rolloutFiles.map((filePath) => parseCodexSessionSummary(filePath, context))
+  );
+  const sessions = results.filter((s): s is AggregatedAiSession => s !== null);
 
   return createReaderResult("codex", {
     sessions,
@@ -65,7 +65,7 @@ export async function readCodexSessionDetail(
 }
 
 async function parseCodexSessionSummary(filePath: string, context: AiSessionReaderContext): Promise<AggregatedAiSession | null> {
-  const events = await readJsonLines(filePath);
+  const events = await getCachedOrParse(filePath, () => readJsonLines(filePath));
 
   let sessionId: string | null = null;
   let matchedPath: string | null = null;
@@ -129,7 +129,7 @@ async function parseCodexSessionDetail(
   cursor?: string | null,
   limit = DEFAULT_DETAIL_LIMIT
 ): Promise<AiSessionDetailReaderResult | null> {
-  const events = await readJsonLines(filePath);
+  const events = await getCachedOrParse(filePath, () => readJsonLines(filePath));
   let matchedPath: string | null = null;
   let title: string | null = null;
   const messages: AggregatedAiMessage[] = [];

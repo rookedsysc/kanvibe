@@ -6,10 +6,12 @@ import {
   createSessionDetail,
   determineMatchScope,
   extractPlainText,
+  getCachedOrParse,
   getCandidatePaths,
   makePreviewMessage,
   paginateItems,
   readJsonLines,
+  readJsonLinesHead,
   toIsoString,
   truncateText,
 } from "@/lib/aiSessions/shared";
@@ -52,16 +54,12 @@ export async function readClaudeSessions(context: AiSessionReaderContext): Promi
     return createReaderResult("claude", { sessions: [], reason: "No Claude project session files matched this task" });
   }
 
-  const sessions = new Map<string, ClaudeSessionAccumulator>();
-  for (const filePath of projectFiles) {
-    const events = await readJsonLines(filePath);
-    for (const rawEvent of events) {
-      consumeClaudeListEvent(sessions, rawEvent as ClaudeProjectEvent, context, filePath);
-    }
-  }
+  const results = await Promise.all(
+    projectFiles.map((filePath) => parseClaudeSessionFromFile(filePath, context))
+  );
 
   return createReaderResult("claude", {
-    sessions: Array.from(sessions.values()).map(({ session }) => session),
+    sessions: results.filter((s): s is AggregatedAiSession => s !== null),
   });
 }
 
@@ -80,7 +78,7 @@ export async function readClaudeSessionDetail(
   const messages: AggregatedAiMessage[] = [];
 
   for (const filePath of projectFiles) {
-    const events = await readJsonLines(filePath);
+    const events = await getCachedOrParse(filePath, () => readJsonLines(filePath));
     for (const rawEvent of events) {
       const event = rawEvent as ClaudeProjectEvent;
       if (event.sessionId !== sessionId) continue;
@@ -114,6 +112,32 @@ export async function readClaudeSessionDetail(
     messages: paginated.items,
     nextCursor: paginated.nextCursor,
   });
+}
+
+/** 단일 JSONL 파일에서 세션 메타데이터를 추출한다. 앞 60줄로 충분하면 조기 종료한다. */
+async function parseClaudeSessionFromFile(
+  filePath: string,
+  context: AiSessionReaderContext
+): Promise<AggregatedAiSession | null> {
+  const parseEvents = async (events: unknown[]): Promise<AggregatedAiSession | null> => {
+    const accumulator = new Map<string, ClaudeSessionAccumulator>();
+    for (const rawEvent of events) {
+      consumeClaudeListEvent(accumulator, rawEvent as ClaudeProjectEvent, context, filePath);
+    }
+    const first = Array.from(accumulator.values())[0];
+    return first?.session ?? null;
+  };
+
+  const headEvents = await getCachedOrParse(
+    filePath + ":head",
+    () => readJsonLinesHead(filePath, 60)
+  );
+
+  const headResult = await parseEvents(headEvents);
+  if (headResult?.firstUserPrompt) return headResult;
+
+  const allEvents = await getCachedOrParse(filePath, () => readJsonLines(filePath));
+  return parseEvents(allEvents);
 }
 
 async function findProjectFiles(context: AiSessionReaderContext): Promise<string[]> {

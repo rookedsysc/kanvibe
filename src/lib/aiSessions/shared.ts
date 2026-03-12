@@ -1,4 +1,6 @@
-import { readdir, readFile } from "fs/promises";
+import { createReadStream } from "fs";
+import { readdir, readFile, stat } from "fs/promises";
+import { createInterface } from "readline";
 import path from "path";
 import type {
   AggregatedAiMessage,
@@ -262,4 +264,61 @@ export function paginateItems<T>(items: T[], cursor: string | null | undefined, 
     items: pageItems,
     nextCursor: nextOffset < items.length ? String(nextOffset) : null,
   };
+}
+
+interface FileParseCache<T> {
+  mtime: number;
+  result: T;
+}
+
+/** filePath → { mtime, result } 형태로 파싱 결과를 캐시한다 */
+const fileParseCache = new Map<string, FileParseCache<unknown>>();
+
+/**
+ * 파일의 mtime을 확인해 캐시가 유효하면 캐시를 반환하고, 변경됐으면 parseFn을 실행해 결과를 캐시한다.
+ * @param filePath 대상 파일 경로
+ * @param parseFn 캐시 miss 시 실행할 파싱 함수
+ */
+export async function getCachedOrParse<T>(filePath: string, parseFn: () => Promise<T>): Promise<T> {
+  const fileStat = await stat(filePath);
+  const mtime = fileStat.mtimeMs;
+
+  const cached = fileParseCache.get(filePath) as FileParseCache<T> | undefined;
+  if (cached && cached.mtime === mtime) {
+    return cached.result;
+  }
+
+  const result = await parseFn();
+  fileParseCache.set(filePath, { mtime, result });
+  return result;
+}
+
+/**
+ * JSONL 파일의 앞 maxLines줄만 읽어 파싱한 결과를 반환한다.
+ * 대용량 파일에서 세션 메타데이터만 필요할 때 전체 로드를 피하기 위해 사용한다.
+ * @param filePath JSONL 파일 경로
+ * @param maxLines 읽을 최대 줄 수
+ */
+export function readJsonLinesHead(filePath: string, maxLines: number): Promise<unknown[]> {
+  return new Promise((resolve, reject) => {
+    const results: unknown[] = [];
+    const stream = createReadStream(filePath, { encoding: "utf-8" });
+    const rl = createInterface({ input: stream, crlfDelay: Infinity });
+
+    rl.on("line", (line) => {
+      const trimmed = line.trim();
+      if (trimmed) {
+        const parsed = safeJsonParse(trimmed);
+        if (parsed !== null) results.push(parsed);
+      }
+      if (results.length >= maxLines) {
+        rl.close();
+        stream.destroy();
+      }
+    });
+
+    rl.on("close", () => resolve(results));
+    rl.on("error", reject);
+    stream.on("error", reject);
+  });
 }
