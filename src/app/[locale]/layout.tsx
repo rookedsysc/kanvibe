@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { NextIntlClientProvider, hasLocale } from "next-intl";
 import { setRequestLocale, getMessages } from "next-intl/server";
 import { notFound } from "next/navigation";
@@ -13,9 +13,22 @@ const inter = Inter({
   subsets: ["latin"],
 });
 
+export const viewport: Viewport = {
+  themeColor: "#FFFFFF",
+};
+
 export const metadata: Metadata = {
   title: "KanVibe",
   description: "AI Agent Task Management Kanban",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+    title: "KanVibe",
+  },
+  icons: {
+    icon: "/icons/icon-192x192.png",
+    apple: "/icons/icon-192x192.png",
+  },
 };
 
 type Props = {

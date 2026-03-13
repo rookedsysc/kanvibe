@@ -52,8 +52,9 @@ export const config = {
     // - 정적 자산 (_next/static, _next/image)
     // - 파비콘 및 아이콘
     // - Service Worker 스크립트 (sw.js)
+    // - PWA 매니페스트 (manifest.webmanifest)
     // - API 훅
     // - 이미지 파일들 (.png, .jpg, 등)
-    "/((?!_next/static|_next/image|favicon\\.ico|icon|sw\\.js|api/hooks|.*\\.(?:png|jpg|jpeg|svg|gif|ico|webp)$).*)"
+    "/((?!_next/static|_next/image|favicon\\.ico|icon|sw\\.js|manifest\\.webmanifest|api/hooks|.*\\.(?:png|jpg|jpeg|svg|gif|ico|webp)$).*)"
   ],
 };

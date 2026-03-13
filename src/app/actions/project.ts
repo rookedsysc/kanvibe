@@ -11,6 +11,8 @@ import { setupClaudeHooks, getClaudeHooksStatus, type ClaudeHooksStatus } from "
 import { setupGeminiHooks, getGeminiHooksStatus, type GeminiHooksStatus } from "@/lib/geminiHooksSetup";
 import { setupCodexHooks, getCodexHooksStatus, type CodexHooksStatus } from "@/lib/codexHooksSetup";
 import { setupOpenCodeHooks, getOpenCodeHooksStatus, type OpenCodeHooksStatus } from "@/lib/openCodeHooksSetup";
+import { aggregateAiSessions, getAiSessionDetail } from "@/lib/aiSessions/aggregateAiSessions";
+import type { AggregatedAiSessionDetail, AggregatedAiSessionsResult, AiSessionProvider } from "@/lib/aiSessions/types";
 import { homedir } from "os";
 import path from "path";
 import { computeProjectColor } from "@/lib/projectColor";
@@ -617,4 +619,74 @@ export async function getTaskOpenCodeHooksStatus(
 
   const targetPath = task.worktreePath || task.project.repoPath;
   return getOpenCodeHooksStatus(targetPath);
+}
+
+/** 태스크와 연결된 로컬 AI 세션들을 집계한다 */
+export async function getTaskAiSessions(taskId: string, includeRepoSessions = false): Promise<AggregatedAiSessionsResult> {
+  const taskRepo = await getTaskRepository();
+  const task = await taskRepo.findOne({
+    where: { id: taskId },
+    relations: ["project"],
+  });
+
+  if (!task?.project) {
+    return {
+      isRemote: false,
+      targetPath: null,
+      repoPath: null,
+      sessions: [],
+      sources: [],
+    };
+  }
+
+  const targetPath = task.worktreePath || task.project.repoPath;
+  if (task.project.sshHost) {
+    return {
+      isRemote: true,
+      targetPath,
+      repoPath: task.project.repoPath,
+      sessions: [],
+      sources: [],
+    };
+  }
+
+  return aggregateAiSessions({
+    worktreePath: targetPath,
+    repoPath: task.project.repoPath,
+    includeRepoSessions,
+  });
+}
+
+export async function getTaskAiSessionDetail(
+  taskId: string,
+  provider: AiSessionProvider,
+  sessionId: string,
+  sourceRef?: string | null,
+  cursor?: string | null,
+  limit = 20,
+  includeRepoSessions = false
+): Promise<AggregatedAiSessionDetail | null> {
+  const taskRepo = await getTaskRepository();
+  const task = await taskRepo.findOne({
+    where: { id: taskId },
+    relations: ["project"],
+  });
+
+  if (!task?.project || task.project.sshHost) {
+    return null;
+  }
+
+  const targetPath = task.worktreePath || task.project.repoPath;
+  return getAiSessionDetail(
+    {
+      worktreePath: targetPath,
+      repoPath: task.project.repoPath,
+      includeRepoSessions,
+    },
+    provider,
+    sessionId,
+    sourceRef,
+    cursor,
+    limit
+  );
 }

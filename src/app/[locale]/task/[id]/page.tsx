@@ -10,16 +10,16 @@ import {
   fetchAndSavePrUrl,
 } from "@/app/actions/kanban";
 import { TaskStatus } from "@/entities/KanbanTask";
-import { TaskPriority } from "@/entities/TaskPriority";
 import TerminalLoader from "@/components/TerminalLoader";
 import ConnectTerminalForm from "@/components/ConnectTerminalForm";
 import DeleteTaskButton from "@/components/DeleteTaskButton";
 import DoneStatusButton from "@/components/DoneStatusButton";
+import AiSessionsCard from "@/components/AiSessionsCard";
 import HooksStatusCard from "@/components/HooksStatusCard";
 import CollapsibleSidebar from "@/components/CollapsibleSidebar";
 import TaskDetailTitleCard from "@/components/TaskDetailTitleCard";
 import TaskDetailInfoCard from "@/components/TaskDetailInfoCard";
-import { getTaskHooksStatus, getTaskGeminiHooksStatus, getTaskCodexHooksStatus, getTaskOpenCodeHooksStatus } from "@/app/actions/project";
+import { getTaskHooksStatus, getTaskGeminiHooksStatus, getTaskCodexHooksStatus, getTaskOpenCodeHooksStatus, getTaskAiSessions } from "@/app/actions/project";
 import { getSidebarDefaultCollapsed, getSidebarHintDismissed, getDoneAlertDismissed } from "@/app/actions/appSettings";
 import { getGitDiffFiles } from "@/app/actions/diff";
 import { Link } from "@/i18n/navigation";
@@ -85,6 +85,9 @@ export default async function TaskDetailPage({ params }: TaskDetailPageProps) {
   const geminiHooksStatus = task.projectId ? await getTaskGeminiHooksStatus(id) : null;
   const codexHooksStatus = task.projectId ? await getTaskCodexHooksStatus(id) : null;
   const openCodeHooksStatus = task.projectId ? await getTaskOpenCodeHooksStatus(id) : null;
+  const aiSessions = task.projectId
+    ? await getTaskAiSessions(id)
+    : { isRemote: false, targetPath: null, repoPath: null, sessions: [], sources: [] };
   const sidebarDefaultCollapsed = await getSidebarDefaultCollapsed();
   const sidebarHintDismissed = await getSidebarHintDismissed();
   const doneAlertDismissed = await getDoneAlertDismissed();
@@ -187,6 +190,8 @@ export default async function TaskDetailPage({ params }: TaskDetailPageProps) {
           initialOpenCodeStatus={openCodeHooksStatus}
           isRemote={!!task.sshHost}
         />
+
+        <AiSessionsCard taskId={task.id} data={aiSessions} />
       </CollapsibleSidebar>
 
       {/* 터미널 영역 */}

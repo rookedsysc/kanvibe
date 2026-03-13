@@ -18,6 +18,8 @@ self.addEventListener('activate', (event) => {
   event.waitUntil(clients.claim());
 });
 
+self.addEventListener('fetch', () => {});
+
 self.addEventListener('notificationclick', (event) => {
   console.log('[SW] Notification clicked:', event.notification.data);
   
