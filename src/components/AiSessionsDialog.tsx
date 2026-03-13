@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import * as Switch from "@radix-ui/react-switch";
 import { useTranslations } from "next-intl";
 import { getTaskAiSessionDetail, getTaskAiSessions } from "@/app/actions/project";
 import type {
@@ -408,26 +409,24 @@ function CompactScopeToggle({ checked, onChange }: { checked: boolean; onChange:
   const t = useTranslations("taskDetail");
 
   return (
-    <button
-      type="button"
-      onClick={() => onChange(!checked)}
-      className={`inline-flex shrink-0 items-center gap-2 self-start whitespace-nowrap rounded-full border px-3 py-1.5 text-xs font-medium transition-colors sm:self-center ${
+    <label
+      className={`inline-flex shrink-0 cursor-pointer items-center gap-2 self-start whitespace-nowrap rounded-full border px-3 py-1.5 text-xs font-medium transition-colors sm:self-center ${
         checked
           ? "border-brand-primary bg-brand-primary/10 text-brand-primary"
           : "border-border-default bg-bg-page text-text-secondary hover:border-brand-primary hover:text-text-primary"
       }`}
-      aria-pressed={checked}
       title={t("aiSessions.includeRepoHint")}
     >
-      <span
-        className={`relative h-4 w-7 rounded-full transition-colors ${checked ? "bg-brand-primary" : "bg-border-default"}`}
+      <Switch.Root
+        checked={checked}
+        onCheckedChange={onChange}
+        aria-label={t("aiSessions.includeRepoToggleShort")}
+        className={`relative h-4 w-7 rounded-full outline-none transition-colors ${checked ? "bg-brand-primary" : "bg-border-default"}`}
       >
-        <span
-          className={`absolute top-0.5 h-3 w-3 rounded-full bg-white transition-transform ${checked ? "translate-x-3.5" : "translate-x-0.5"}`}
-        />
-      </span>
+        <Switch.Thumb className="block h-3 w-3 translate-x-0.5 rounded-full bg-white shadow-sm transition-transform duration-100 will-change-transform data-[state=checked]:translate-x-3.5" />
+      </Switch.Root>
       <span>{t("aiSessions.includeRepoToggleShort")}</span>
-    </button>
+    </label>
   );
 }
 

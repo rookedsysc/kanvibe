@@ -243,7 +243,7 @@ describe("AiSessionsDialog", () => {
     );
 
     expect(mockGetTaskAiSessions).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole("button", { name: /repo included/i }));
+    fireEvent.click(screen.getByRole("switch", { name: /repo included/i }));
 
     await waitFor(() => {
       expect(mockGetTaskAiSessions).toHaveBeenCalledWith("task-1", true);
