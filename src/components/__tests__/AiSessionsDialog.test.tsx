@@ -22,9 +22,9 @@ const messages = {
     aiSessions: {
       title: "AI Sessions",
       description: "Browse local AI conversation history related to this task.",
-      includeRepoToggle: "Include same repo sessions",
-      includeRepoToggleShort: "Repo included",
-      includeRepoHint: "Show current worktree sessions by default, and include base repo sessions only when needed.",
+      includeRepoToggle: "Include main branch sessions",
+      includeRepoToggleShort: "+ main",
+      includeRepoHint: "Shows only the current worktree sessions by default; include main branch sessions when needed.",
       providerFilterEmpty: "Select AI filters",
       providerSearchPlaceholder: "Search AI",
       noProviderMatch: "No matching AI providers.",
@@ -243,7 +243,7 @@ describe("AiSessionsDialog", () => {
     );
 
     expect(mockGetTaskAiSessions).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole("switch", { name: /repo included/i }));
+    fireEvent.click(screen.getByRole("switch", { name: /\+ main/i }));
 
     await waitFor(() => {
       expect(mockGetTaskAiSessions).toHaveBeenCalledWith("task-1", true);

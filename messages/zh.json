@@ -221,9 +221,9 @@
     "aiSessions": {
       "title": "AI 会话",
       "description": "查看与当前任务关联的本地 AI 对话记录。",
-      "includeRepoToggle": "包含同一仓库的会话",
-      "includeRepoToggleShort": "包含 Repo",
-      "includeRepoHint": "默认只显示当前 worktree 的会话，只有在需要时才包含基础仓库会话。",
+      "includeRepoToggle": "包含 main 分支会话",
+      "includeRepoToggleShort": "+ main",
+      "includeRepoHint": "默认只显示当前 worktree 的会话，只有在需要时才包含 main 分支会话。",
       "providerFilterEmpty": "选择 AI 筛选",
       "providerSearchPlaceholder": "搜索 AI",
       "noProviderMatch": "没有匹配的 AI 提供方。",
