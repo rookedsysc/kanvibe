@@ -443,21 +443,21 @@ function SessionList({ sessions, selectedSessionId, onSelect }: { sessions: Aggr
             key={`${session.provider}-${session.id}`}
             onClick={() => onSelect(session)}
             className={[
-              "w-full rounded-lg border p-3 text-left transition-colors",
+              "w-full overflow-hidden rounded-lg border p-3 text-left transition-colors",
               isSelected ? "border-brand-primary bg-bg-surface" : "border-border-default bg-bg-surface hover:border-brand-primary",
             ].join(" ")}
           >
-            <div className="flex items-center justify-between gap-2">
-              <div className="flex items-center gap-2">
+            <div className="flex min-w-0 items-center justify-between gap-2">
+              <div className="flex min-w-0 items-center gap-2">
                 <ProviderBadge provider={session.provider} />
-                <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${session.matchScope === "repo" ? "bg-brand-primary/10 text-brand-primary" : "bg-bg-page text-text-muted border border-border-default"}`}>
+                <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium ${session.matchScope === "repo" ? "bg-brand-primary/10 text-brand-primary" : "bg-bg-page text-text-muted border border-border-default"}`}>
                   {session.matchScope}
                 </span>
               </div>
-              <span className="text-xs text-text-muted">{formatDate(session.updatedAt ?? session.startedAt)}</span>
+              <span className="shrink-0 text-xs text-text-muted">{formatDate(session.updatedAt ?? session.startedAt)}</span>
             </div>
-            <p className="mt-2 text-sm font-medium text-text-primary">{session.title ?? t("aiSessions.untitled")}</p>
-            <p className="mt-1 text-xs text-text-secondary">{getSessionSubtitle(session, t)}</p>
+            <p className="mt-2 line-clamp-2 break-words text-sm font-medium text-text-primary">{session.title ?? t("aiSessions.untitled")}</p>
+            <p className="mt-1 line-clamp-3 break-all text-xs text-text-secondary">{getSessionSubtitle(session, t)}</p>
           </button>
         );
       })}

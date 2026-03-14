@@ -251,6 +251,49 @@ describe("AiSessionsDialog", () => {
     expect(await screen.findByText("Repo session")).toBeTruthy();
   });
 
+  it("should keep long session text constrained inside the card", () => {
+    const longTitle = "# AGENTS.md instructions for /home/rookedsysc/Documents/techtaurant/techtaurant-be__worktrees/feat-user-ban";
+    const longSubtitle =
+      "# AGENTS.md instructions for /home/rookedsysc/Documents/techtaurant/techtaurant-be__worktrees/feat-user-ban <INSTRUCTIONS> ## Default Context @.claude/core/FLAGS.md @.claude/core/CODE_PRINCIPLES.md";
+
+    const data: AggregatedAiSessionsResult = {
+      isRemote: false,
+      targetPath: "/repo/worktree",
+      repoPath: "/repo",
+      sessions: [
+        {
+          id: "codex-1",
+          provider: "codex",
+          title: longTitle,
+          firstUserPrompt: longSubtitle,
+          updatedAt: "2026-03-13T10:48:12.000Z",
+          startedAt: "2026-03-13T10:40:00.000Z",
+          matchedPath: "/repo/worktree",
+          matchScope: "worktree",
+          messageCount: 1,
+        },
+      ],
+      sources: [{ provider: "codex", available: true, sessionCount: 1, reason: null }],
+    };
+
+    render(
+      <IntlProvider locale="en" messages={messages}>
+        <AiSessionsDialog taskId="task-1" isOpen onClose={() => {}} data={data} />
+      </IntlProvider>
+    );
+
+    const card = screen.getByRole("button", { name: new RegExp(longTitle.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")) });
+    expect(card.className).toContain("overflow-hidden");
+
+    const title = screen.getByText(longTitle);
+    expect(title.className).toContain("line-clamp-2");
+    expect(title.className).toContain("break-words");
+
+    const subtitle = screen.getByText(longSubtitle);
+    expect(subtitle.className).toContain("line-clamp-3");
+    expect(subtitle.className).toContain("break-all");
+  });
+
   it("should expand truncated messages when show more is clicked", async () => {
     mockGetTaskAiSessionDetail.mockResolvedValue({
       sessionId: "claude-1",
