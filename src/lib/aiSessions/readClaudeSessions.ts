@@ -13,6 +13,7 @@ import {
   paginateItems,
   readJsonLines,
   readJsonLinesHead,
+  sortMessagesDescending,
   toIsoString,
   truncateText,
 } from "@/lib/aiSessions/shared";
@@ -103,7 +104,7 @@ export async function readClaudeSessionDetail(
 
   if (!matchedPath && messages.length === 0) return null;
 
-  const paginated = paginateItems(messages, cursor, limit);
+  const paginated = paginateItems(sortMessagesDescending(messages), cursor, limit);
   return createSessionDetail({
     sessionId,
     provider: "claude",

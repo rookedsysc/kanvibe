@@ -370,7 +370,7 @@ describe("AiSessionsDialog", () => {
         title: "Claude session",
         matchedPath: "/repo",
         messages: [
-          { role: "assistant", timestamp: "2026-03-11T09:00:00.000Z", text: "First page", fullText: "First page", isTruncated: false },
+          { role: "assistant", timestamp: "2026-03-11T09:01:00.000Z", text: "Newest page", fullText: "Newest page", isTruncated: false },
         ],
         nextCursor: "1",
       } satisfies AggregatedAiSessionDetail)
@@ -380,7 +380,7 @@ describe("AiSessionsDialog", () => {
         title: "Claude session",
         matchedPath: "/repo",
         messages: [
-          { role: "assistant", timestamp: "2026-03-11T09:01:00.000Z", text: "Second page", fullText: "Second page", isTruncated: false },
+          { role: "assistant", timestamp: "2026-03-11T09:00:00.000Z", text: "Older page", fullText: "Older page", isTruncated: false },
         ],
         nextCursor: null,
       } satisfies AggregatedAiSessionDetail);
@@ -412,10 +412,13 @@ describe("AiSessionsDialog", () => {
     );
 
     fireEvent.click(screen.getByText("Claude session"));
-    await screen.findByText("First page");
+    await screen.findByText("Newest page");
     fireEvent.click(screen.getByRole("button", { name: "Load more" }));
 
-    await screen.findByText("Second page");
+    await screen.findByText("Older page");
+    const previewMessages = screen.getAllByText(/page$/i);
+    expect(previewMessages[0]?.textContent).toBe("Newest page");
+    expect(previewMessages[1]?.textContent).toBe("Older page");
     expect(mockGetTaskAiSessionDetail).toHaveBeenNthCalledWith(2, "task-1", "claude", "claude-1", null, "1", 20, false);
   });
 
