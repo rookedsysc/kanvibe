@@ -59,6 +59,18 @@ export function sortSessionsDescending(sessions: AggregatedAiSession[]): Aggrega
   });
 }
 
+export function sortMessagesDescending(messages: AggregatedAiMessage[]): AggregatedAiMessage[] {
+  return [...messages].sort((left, right) => {
+    const leftValue = Date.parse(left.timestamp ?? "");
+    const rightValue = Date.parse(right.timestamp ?? "");
+
+    if (Number.isNaN(leftValue) && Number.isNaN(rightValue)) return 0;
+    if (Number.isNaN(leftValue)) return 1;
+    if (Number.isNaN(rightValue)) return -1;
+    return rightValue - leftValue;
+  });
+}
+
 export function limitPreviewMessages(messages: AggregatedAiMessage[]): AggregatedAiMessage[] {
   return messages.slice(0, MAX_PREVIEW_MESSAGES);
 }

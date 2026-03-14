@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import * as Switch from "@radix-ui/react-switch";
 import { useTranslations } from "next-intl";
 import { getTaskAiSessionDetail, getTaskAiSessions } from "@/app/actions/project";
 import type {
@@ -408,26 +409,24 @@ function CompactScopeToggle({ checked, onChange }: { checked: boolean; onChange:
   const t = useTranslations("taskDetail");
 
   return (
-    <button
-      type="button"
-      onClick={() => onChange(!checked)}
-      className={`inline-flex shrink-0 items-center gap-2 self-start whitespace-nowrap rounded-full border px-3 py-1.5 text-xs font-medium transition-colors sm:self-center ${
+    <label
+      className={`inline-flex shrink-0 cursor-pointer items-center gap-2 self-start whitespace-nowrap rounded-full border px-3 py-1.5 text-xs font-medium transition-colors sm:self-center ${
         checked
           ? "border-brand-primary bg-brand-primary/10 text-brand-primary"
           : "border-border-default bg-bg-page text-text-secondary hover:border-brand-primary hover:text-text-primary"
       }`}
-      aria-pressed={checked}
       title={t("aiSessions.includeRepoHint")}
     >
-      <span
-        className={`relative h-4 w-7 rounded-full transition-colors ${checked ? "bg-brand-primary" : "bg-border-default"}`}
+      <Switch.Root
+        checked={checked}
+        onCheckedChange={onChange}
+        aria-label={t("aiSessions.includeRepoToggleShort")}
+        className={`relative h-4 w-7 rounded-full outline-none transition-colors ${checked ? "bg-brand-primary" : "bg-border-default"}`}
       >
-        <span
-          className={`absolute top-0.5 h-3 w-3 rounded-full bg-white transition-transform ${checked ? "translate-x-3.5" : "translate-x-0.5"}`}
-        />
-      </span>
+        <Switch.Thumb className="block h-3 w-3 translate-x-0.5 rounded-full bg-white shadow-sm transition-transform duration-100 will-change-transform data-[state=checked]:translate-x-3.5" />
+      </Switch.Root>
       <span>{t("aiSessions.includeRepoToggleShort")}</span>
-    </button>
+    </label>
   );
 }
 
@@ -444,21 +443,21 @@ function SessionList({ sessions, selectedSessionId, onSelect }: { sessions: Aggr
             key={`${session.provider}-${session.id}`}
             onClick={() => onSelect(session)}
             className={[
-              "w-full rounded-lg border p-3 text-left transition-colors",
+              "w-full overflow-hidden rounded-lg border p-3 text-left transition-colors",
               isSelected ? "border-brand-primary bg-bg-surface" : "border-border-default bg-bg-surface hover:border-brand-primary",
             ].join(" ")}
           >
-            <div className="flex items-center justify-between gap-2">
-              <div className="flex items-center gap-2">
+            <div className="flex min-w-0 items-center justify-between gap-2">
+              <div className="flex min-w-0 items-center gap-2">
                 <ProviderBadge provider={session.provider} />
-                <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${session.matchScope === "repo" ? "bg-brand-primary/10 text-brand-primary" : "bg-bg-page text-text-muted border border-border-default"}`}>
+                <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium ${session.matchScope === "repo" ? "bg-brand-primary/10 text-brand-primary" : "bg-bg-page text-text-muted border border-border-default"}`}>
                   {session.matchScope}
                 </span>
               </div>
-              <span className="text-xs text-text-muted">{formatDate(session.updatedAt ?? session.startedAt)}</span>
+              <span className="shrink-0 text-xs text-text-muted">{formatDate(session.updatedAt ?? session.startedAt)}</span>
             </div>
-            <p className="mt-2 text-sm font-medium text-text-primary">{session.title ?? t("aiSessions.untitled")}</p>
-            <p className="mt-1 text-xs text-text-secondary">{getSessionSubtitle(session, t)}</p>
+            <p className="mt-2 line-clamp-2 break-words text-sm font-medium text-text-primary">{session.title ?? t("aiSessions.untitled")}</p>
+            <p className="mt-1 line-clamp-3 break-all text-xs text-text-secondary">{getSessionSubtitle(session, t)}</p>
           </button>
         );
       })}

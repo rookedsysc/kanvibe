@@ -22,9 +22,9 @@ const messages = {
     aiSessions: {
       title: "AI Sessions",
       description: "Browse local AI conversation history related to this task.",
-      includeRepoToggle: "Include same repo sessions",
-      includeRepoToggleShort: "Repo included",
-      includeRepoHint: "Show current worktree sessions by default, and include base repo sessions only when needed.",
+      includeRepoToggle: "Include main branch sessions",
+      includeRepoToggleShort: "+ main",
+      includeRepoHint: "Shows only the current worktree sessions by default; include main branch sessions when needed.",
       providerFilterEmpty: "Select AI filters",
       providerSearchPlaceholder: "Search AI",
       noProviderMatch: "No matching AI providers.",
@@ -243,12 +243,55 @@ describe("AiSessionsDialog", () => {
     );
 
     expect(mockGetTaskAiSessions).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole("button", { name: /repo included/i }));
+    fireEvent.click(screen.getByRole("switch", { name: /\+ main/i }));
 
     await waitFor(() => {
       expect(mockGetTaskAiSessions).toHaveBeenCalledWith("task-1", true);
     });
     expect(await screen.findByText("Repo session")).toBeTruthy();
+  });
+
+  it("should keep long session text constrained inside the card", () => {
+    const longTitle = "# AGENTS.md instructions for /home/rookedsysc/Documents/techtaurant/techtaurant-be__worktrees/feat-user-ban";
+    const longSubtitle =
+      "# AGENTS.md instructions for /home/rookedsysc/Documents/techtaurant/techtaurant-be__worktrees/feat-user-ban <INSTRUCTIONS> ## Default Context @.claude/core/FLAGS.md @.claude/core/CODE_PRINCIPLES.md";
+
+    const data: AggregatedAiSessionsResult = {
+      isRemote: false,
+      targetPath: "/repo/worktree",
+      repoPath: "/repo",
+      sessions: [
+        {
+          id: "codex-1",
+          provider: "codex",
+          title: longTitle,
+          firstUserPrompt: longSubtitle,
+          updatedAt: "2026-03-13T10:48:12.000Z",
+          startedAt: "2026-03-13T10:40:00.000Z",
+          matchedPath: "/repo/worktree",
+          matchScope: "worktree",
+          messageCount: 1,
+        },
+      ],
+      sources: [{ provider: "codex", available: true, sessionCount: 1, reason: null }],
+    };
+
+    render(
+      <IntlProvider locale="en" messages={messages}>
+        <AiSessionsDialog taskId="task-1" isOpen onClose={() => {}} data={data} />
+      </IntlProvider>
+    );
+
+    const card = screen.getByRole("button", { name: new RegExp(longTitle.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")) });
+    expect(card.className).toContain("overflow-hidden");
+
+    const title = screen.getByText(longTitle);
+    expect(title.className).toContain("line-clamp-2");
+    expect(title.className).toContain("break-words");
+
+    const subtitle = screen.getByText(longSubtitle);
+    expect(subtitle.className).toContain("line-clamp-3");
+    expect(subtitle.className).toContain("break-all");
   });
 
   it("should expand truncated messages when show more is clicked", async () => {
@@ -370,7 +413,7 @@ describe("AiSessionsDialog", () => {
         title: "Claude session",
         matchedPath: "/repo",
         messages: [
-          { role: "assistant", timestamp: "2026-03-11T09:00:00.000Z", text: "First page", fullText: "First page", isTruncated: false },
+          { role: "assistant", timestamp: "2026-03-11T09:01:00.000Z", text: "Newest page", fullText: "Newest page", isTruncated: false },
         ],
         nextCursor: "1",
       } satisfies AggregatedAiSessionDetail)
@@ -380,7 +423,7 @@ describe("AiSessionsDialog", () => {
         title: "Claude session",
         matchedPath: "/repo",
         messages: [
-          { role: "assistant", timestamp: "2026-03-11T09:01:00.000Z", text: "Second page", fullText: "Second page", isTruncated: false },
+          { role: "assistant", timestamp: "2026-03-11T09:00:00.000Z", text: "Older page", fullText: "Older page", isTruncated: false },
         ],
         nextCursor: null,
       } satisfies AggregatedAiSessionDetail);
@@ -412,10 +455,13 @@ describe("AiSessionsDialog", () => {
     );
 
     fireEvent.click(screen.getByText("Claude session"));
-    await screen.findByText("First page");
+    await screen.findByText("Newest page");
     fireEvent.click(screen.getByRole("button", { name: "Load more" }));
 
-    await screen.findByText("Second page");
+    await screen.findByText("Older page");
+    const previewMessages = screen.getAllByText(/page$/i);
+    expect(previewMessages[0]?.textContent).toBe("Newest page");
+    expect(previewMessages[1]?.textContent).toBe("Older page");
     expect(mockGetTaskAiSessionDetail).toHaveBeenNthCalledWith(2, "task-1", "claude", "claude-1", null, "1", 20, false);
   });
 

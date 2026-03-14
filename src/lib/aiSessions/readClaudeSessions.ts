@@ -13,6 +13,7 @@ import {
   paginateItems,
   readJsonLines,
   readJsonLinesHead,
+  sortMessagesDescending,
   toIsoString,
   truncateText,
 } from "@/lib/aiSessions/shared";
@@ -103,7 +104,7 @@ export async function readClaudeSessionDetail(
 
   if (!matchedPath && messages.length === 0) return null;
 
-  const paginated = paginateItems(messages, cursor, limit);
+  const paginated = paginateItems(sortMessagesDescending(messages), cursor, limit);
   return createSessionDetail({
     sessionId,
     provider: "claude",
@@ -162,8 +163,9 @@ async function findProjectFiles(context: AiSessionReaderContext): Promise<string
   return files;
 }
 
+/** Claude Code는 프로젝트 디렉토리 이름을 생성할 때 경로 구분자(/)와 언더스코어(_) 모두 하이픈(-)으로 치환한다 */
 function toClaudeProjectDirName(targetPath: string): string {
-  return path.resolve(targetPath).replaceAll(path.sep, "-");
+  return path.resolve(targetPath).replaceAll(path.sep, "-").replaceAll("_", "-");
 }
 
 function consumeClaudeListEvent(

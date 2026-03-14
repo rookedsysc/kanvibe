@@ -11,6 +11,7 @@ import {
   makePreviewMessage,
   paginateItems,
   readJsonLines,
+  sortMessagesDescending,
   toIsoString,
   truncateText,
 } from "@/lib/aiSessions/shared";
@@ -164,7 +165,7 @@ async function parseCodexSessionDetail(
   }
 
   if (!matchedPath) return null;
-  const paginated = paginateItems(messages, cursor, limit);
+  const paginated = paginateItems(sortMessagesDescending(messages), cursor, limit);
   return createSessionDetail({
     sessionId,
     provider: "codex",

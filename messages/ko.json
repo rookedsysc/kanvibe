@@ -221,9 +221,9 @@
     "aiSessions": {
       "title": "AI 세션",
       "description": "현재 작업과 연결된 로컬 AI 대화 이력을 확인합니다.",
-      "includeRepoToggle": "같은 저장소 전체 세션 포함",
-      "includeRepoToggleShort": "Repo 포함",
-      "includeRepoHint": "기본은 현재 worktree 세션만 보여주고, 필요할 때만 base repo 세션까지 포함합니다.",
+      "includeRepoToggle": "main branch 세션 포함",
+      "includeRepoToggleShort": "main 포함",
+      "includeRepoHint": "기본은 현재 worktree 세션만 보여주고, 필요할 때만 main branch 세션까지 포함합니다.",
       "providerFilterEmpty": "AI 필터 선택",
       "providerSearchPlaceholder": "AI 검색",
       "noProviderMatch": "일치하는 AI가 없습니다.",

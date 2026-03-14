@@ -7,6 +7,7 @@ import {
   extractPlainText,
   makePreviewMessage,
   safeJsonParse,
+  sortMessagesDescending,
   toIsoString,
   truncateText,
 } from "@/lib/aiSessions/shared";
@@ -137,14 +138,14 @@ export async function readOpenCodeSessionDetail(
   const firstRow = detailRows[0];
   if (!determineMatchScope(firstRow.directory, context)) return null;
 
-  const messages: AggregatedAiMessage[] = detailRows
+  const messages = sortMessagesDescending(detailRows
     .map((row) => {
       const parsedMessage = safeJsonParse<Record<string, unknown>>(row.message_data);
       const role = resolveOpenCodeRole(typeof parsedMessage?.role === "string" ? parsedMessage.role : undefined);
       const text = extractOpenCodePartText(row.part_data);
       return makePreviewMessage(role, row.time_created, text);
     })
-    .filter((value): value is AggregatedAiMessage => Boolean(value));
+    .filter((value): value is AggregatedAiMessage => Boolean(value)));
 
   const totalCount = firstRow.total_count;
   const nextCursor = safeOffset + messages.length < totalCount ? String(safeOffset + messages.length) : null;
