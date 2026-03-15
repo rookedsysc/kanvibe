@@ -222,7 +222,7 @@ describe("NotificationListener", () => {
     expect(mockNotifyTaskStatusChanged).not.toHaveBeenCalled();
   });
 
-  it("should not notify missing target when requestedStatus is not in enabledStatuses", async () => {
+  it("should notify missing target even when requestedStatus is not in enabledStatuses", async () => {
     // Given
     const { default: NotificationListener } = await import("@/components/NotificationListener");
     render(
@@ -244,7 +244,13 @@ describe("NotificationListener", () => {
     });
 
     // Then
-    expect(mockNotifyHookStatusTargetMissing).not.toHaveBeenCalled();
+    expect(mockNotifyHookStatusTargetMissing).toHaveBeenCalledWith({
+      projectName: "case-study",
+      branchName: "feat/test",
+      requestedStatus: "pending",
+      reason: "project-not-found",
+      locale: "ko",
+    });
   });
 
   it("should render nothing", async () => {

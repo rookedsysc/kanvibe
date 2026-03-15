@@ -33,6 +33,7 @@ vi.mock("@/lib/boardNotifier", () => ({
 
 describe("POST /api/hooks/status", () => {
   beforeEach(() => {
+    vi.resetModules();
     vi.clearAllMocks();
   });
 

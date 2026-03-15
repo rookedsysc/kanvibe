@@ -76,9 +76,8 @@ export default function NotificationListener({
           }
 
           if (data.type === "hook-status-target-missing") {
-            const { isNotificationEnabled: isEnabled, enabledStatuses: statuses } = settingsRef.current;
+            const { isNotificationEnabled: isEnabled } = settingsRef.current;
             if (!isEnabled) return;
-            if (!statuses.includes(data.requestedStatus)) return;
 
             const { projectName, branchName, requestedStatus, reason } = data;
             notifyHookStatusTargetMissing({
