@@ -211,7 +211,7 @@ AI 代理 Hooks 触发的任务状态变更会发送**浏览器通知**，显示
 | 端点 | 方法 | 说明 |
 |------|------|------|
 | `/api/hooks/start` | POST | 创建新任务 |
-| `/api/hooks/status` | POST | 通过 `branchName` + `projectName` 更新任务状态 |
+| `/api/hooks/status` | POST | 通过 `branchName` + `projectName` 更新任务状态；如果目标不存在，则只发送浏览器通知并保持 `404` 响应，不会修改状态 |
 
 ### GitHub 风格 Diff 视图
 

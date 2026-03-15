@@ -3,7 +3,11 @@ import { getTaskRepository, getProjectRepository } from "@/lib/database";
 import { TaskStatus } from "@/entities/KanbanTask";
 import { cleanupTaskResources } from "@/app/actions/kanban";
 import { revalidatePath } from "next/cache";
-import { broadcastBoardUpdate, broadcastTaskStatusChanged } from "@/lib/boardNotifier";
+import {
+  broadcastBoardUpdate,
+  broadcastHookStatusTargetMissing,
+  broadcastTaskStatusChanged,
+} from "@/lib/boardNotifier";
 
 const STATUS_MAP: Record<string, TaskStatus> = {
   todo: TaskStatus.TODO,
@@ -41,6 +45,13 @@ export async function POST(request: NextRequest) {
     const project = await projectRepo.findOneBy({ name: projectName });
 
     if (!project) {
+      broadcastHookStatusTargetMissing({
+        projectName,
+        branchName,
+        requestedStatus: taskStatus,
+        reason: "project-not-found",
+      });
+
       return NextResponse.json(
         { success: false, error: `프로젝트를 찾을 수 없습니다: ${projectName}` },
         { status: 404 }
@@ -54,6 +65,13 @@ export async function POST(request: NextRequest) {
     });
 
     if (!task) {
+      broadcastHookStatusTargetMissing({
+        projectName,
+        branchName,
+        requestedStatus: taskStatus,
+        reason: "task-not-found",
+      });
+
       return NextResponse.json(
         { success: false, error: `작업을 찾을 수 없습니다: ${projectName}/${branchName}` },
         { status: 404 }

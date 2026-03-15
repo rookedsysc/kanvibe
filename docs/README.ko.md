@@ -211,7 +211,7 @@ AI 에이전트 Hooks를 통한 태스크 상태 변경이 **브라우저 알림
 | 엔드포인트 | 메서드 | 설명 |
 |-----------|--------|------|
 | `/api/hooks/start` | POST | 새 태스크 생성 |
-| `/api/hooks/status` | POST | `branchName` + `projectName`으로 태스크 상태 변경 |
+| `/api/hooks/status` | POST | `branchName` + `projectName`으로 태스크 상태를 변경하며, 대상을 못 찾으면 상태는 바꾸지 않고 브라우저 알림만 보낸 뒤 `404`를 반환 |
 
 ### GitHub 스타일 Diff 뷰
 
