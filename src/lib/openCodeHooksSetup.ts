@@ -49,8 +49,11 @@ export const KanvibePlugin: Plugin = async ({ $, client }) => {
     }
   }
 
+  const sessionCache = new Map<string, boolean>();
+
   async function isMainSession(sessionID: string | undefined): Promise<boolean> {
     if (!sessionID) return false;
+    if (sessionCache.has(sessionID)) return sessionCache.get(sessionID)!;
 
     try {
       const result = await client.session.get({
@@ -59,7 +62,10 @@ export const KanvibePlugin: Plugin = async ({ $, client }) => {
 
       if (result.error) return false;
 
-      return !result.data.parentID;
+      const isMain = !result.data?.parentID;
+      sessionCache.set(sessionID, isMain);
+
+      return isMain;
     } catch {
       return false;
     }
