@@ -19,7 +19,7 @@ function generatePluginScript(kanvibeUrl: string, projectName: string): string {
  * message.updated(user) → progress, question.asked → pending,
  * question.replied → progress, session.idle → review 상태 변경
  */
-export const KanvibePlugin: Plugin = async ({ $ }) => {
+export const KanvibePlugin: Plugin = async ({ $, client }) => {
   const KANVIBE_URL = "${kanvibeUrl}";
   const PROJECT_NAME = "${projectName}";
 
@@ -49,21 +49,51 @@ export const KanvibePlugin: Plugin = async ({ $ }) => {
     }
   }
 
+  async function isMainSession(sessionID: string | undefined): Promise<boolean> {
+    if (!sessionID) return false;
+
+    try {
+      const result = await client.session.get({
+        path: { id: sessionID },
+      });
+
+      if (result.error) return false;
+
+      return !result.data.parentID;
+    } catch {
+      return false;
+    }
+  }
+
   return {
     event: async ({ event }) => {
       if (event.type === "message.updated") {
-        const message = (event as any).properties?.message;
-        if (message?.role === "user") {
+        const message =
+          (event as any).properties?.info ?? (event as any).properties?.message;
+
+        if (message?.role === "user" && (await isMainSession(message.sessionID))) {
           await updateStatus("progress");
         }
       }
       if (event.type === "question.asked") {
+        if (!(await isMainSession(event.properties.sessionID))) {
+          return;
+        }
+
         await updateStatus("pending");
       }
       if (event.type === "question.replied") {
+        if (!(await isMainSession(event.properties.sessionID))) {
+          return;
+        }
+
         await updateStatus("progress");
       }
       if (event.type === "session.idle") {
+        if (!(await isMainSession(event.properties.sessionID))) {
+          return;
+        }
+
         await updateStatus("review");
       }
     },

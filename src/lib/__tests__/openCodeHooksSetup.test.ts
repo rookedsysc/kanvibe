@@ -77,6 +77,25 @@ describe("openCodeHooksSetup", () => {
       expect(pluginContent).toMatch(/session\.idle[\s\S]*?review/);
     });
 
+    it("should filter subagent sessions before updating statuses", async () => {
+      // Given
+      const repoPath = tempDir;
+
+      // When
+      await setupOpenCodeHooks(repoPath, "test-project", "http://localhost:3000");
+
+      // Then
+      const pluginPath = join(repoPath, ".opencode", "plugins", "kanvibe-plugin.ts");
+      const pluginContent = await readFile(pluginPath, "utf-8");
+
+      expect(pluginContent).toContain("client.session.get");
+      expect(pluginContent).toContain("result.data.parentID");
+      expect(pluginContent).toContain("properties?.info ?? (event as any).properties?.message");
+      expect(pluginContent).toMatch(/question\.asked[\s\S]*?isMainSession\(event\.properties\.sessionID\)/);
+      expect(pluginContent).toMatch(/question\.replied[\s\S]*?isMainSession\(event\.properties\.sessionID\)/);
+      expect(pluginContent).toMatch(/session\.idle[\s\S]*?isMainSession\(event\.properties\.sessionID\)/);
+    });
+
     it("should not fail when called twice (overwrites existing plugin)", async () => {
       // Given
       const repoPath = tempDir;
