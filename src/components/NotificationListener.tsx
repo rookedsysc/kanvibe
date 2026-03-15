@@ -88,6 +88,7 @@ export default function NotificationListener({
               reason,
               locale,
             });
+            return;
           }
         } catch {
           /* 파싱 실패 무시 */
