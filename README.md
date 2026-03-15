@@ -211,7 +211,7 @@ Setup: Browser will prompt for permission on first visit. Configure filters in *
 | Endpoint | Method | Description |
 |----------|--------|-------------|
 | `/api/hooks/start` | POST | Create a new task |
-| `/api/hooks/status` | POST | Update task status by `branchName` + `projectName` |
+| `/api/hooks/status` | POST | Update task status by `branchName` + `projectName`; if the target is missing, KanVibe still sends a browser notification and returns `404` without changing status |
 
 ### GitHub-style Diff View
 

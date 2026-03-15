@@ -46,7 +46,19 @@ export interface TaskStatusChangedPayload {
   taskId: string;
 }
 
+export interface HookStatusTargetMissingPayload {
+  projectName: string;
+  branchName: string;
+  requestedStatus: string;
+  reason: "project-not-found" | "task-not-found";
+}
+
 /** hooks 경유 상태 변경 시 task 상세 정보를 포함하여 브로드캐스트한다 */
 export function broadcastTaskStatusChanged(payload: TaskStatusChangedPayload) {
   sendBroadcast(JSON.stringify({ type: "task-status-changed", ...payload }));
+}
+
+/** hooks 대상 조회 실패 시 미매칭 상황을 브로드캐스트한다 */
+export function broadcastHookStatusTargetMissing(payload: HookStatusTargetMissingPayload) {
+  sendBroadcast(JSON.stringify({ type: "hook-status-target-missing", ...payload }));
 }

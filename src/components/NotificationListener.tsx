@@ -16,7 +16,7 @@ export default function NotificationListener({
   isNotificationEnabled,
   enabledStatuses,
 }: NotificationListenerProps) {
-  const { notifyTaskStatusChanged } = useTaskNotification();
+  const { notifyTaskStatusChanged, notifyHookStatusTargetMissing } = useTaskNotification();
   const locale = useLocale();
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -72,6 +72,22 @@ export default function NotificationListener({
 
             const { projectName, branchName, taskTitle, description, newStatus, taskId } = data;
             notifyTaskStatusChanged({ projectName, branchName, taskTitle, description, newStatus, taskId, locale });
+            return;
+          }
+
+          if (data.type === "hook-status-target-missing") {
+            const { isNotificationEnabled: isEnabled, enabledStatuses: statuses } = settingsRef.current;
+            if (!isEnabled) return;
+            if (!statuses.includes(data.requestedStatus)) return;
+
+            const { projectName, branchName, requestedStatus, reason } = data;
+            notifyHookStatusTargetMissing({
+              projectName,
+              branchName,
+              requestedStatus,
+              reason,
+              locale,
+            });
           }
         } catch {
           /* 파싱 실패 무시 */
@@ -96,7 +112,7 @@ export default function NotificationListener({
       }
       wsRef.current?.close();
     };
-  }, [notifyTaskStatusChanged]);
+  }, [notifyHookStatusTargetMissing, notifyTaskStatusChanged]);
 
   return null;
 }

@@ -78,6 +78,29 @@ describe("boardNotifier", () => {
     expect(body.taskId).toBe("task-456");
   });
 
+  it("should send hook-status-target-missing message with payload via internal broadcast endpoint", async () => {
+    // Given
+    const { broadcastHookStatusTargetMissing } = await import("@/lib/boardNotifier");
+    const payload = {
+      projectName: "case-study",
+      branchName: "feat/test",
+      requestedStatus: "review",
+      reason: "task-not-found" as const,
+    };
+
+    // When
+    broadcastHookStatusTargetMissing(payload);
+
+    // Then
+    expect(mockFetch).toHaveBeenCalledWith(
+      expect.stringContaining("/_internal/broadcast"),
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ type: "hook-status-target-missing", ...payload }),
+      })
+    );
+  });
+
   it("should silently catch fetch errors", async () => {
     // Given
     mockFetch.mockRejectedValueOnce(new Error("Connection refused"));

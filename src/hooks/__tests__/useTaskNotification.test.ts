@@ -149,6 +149,32 @@ describe("useTaskNotification", () => {
     expect(mockShowNotification).not.toHaveBeenCalled();
   });
 
+  it("should show missing target notification without taskId when hook target is missing", async () => {
+    // Given
+    const { useTaskNotification } = await import("@/hooks/useTaskNotification");
+    const { result } = renderHook(() => useTaskNotification());
+
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    // When
+    await act(async () => {
+      await result.current.notifyHookStatusTargetMissing({
+        projectName: "case-study",
+        branchName: "feat/test",
+        requestedStatus: "review",
+        reason: "task-not-found",
+        locale: "ko",
+      });
+    });
+
+    // Then
+    expect(mockShowNotification).toHaveBeenCalledWith("case-study — feat/test", {
+      body: "review 상태로 변경하지 못했습니다.\n브랜치에 연결된 작업을 찾지 못했습니다.",
+      icon: "/kanvibe-logo.svg",
+      data: { locale: "ko" },
+    });
+  });
+
   it("should request permission when permission is default", async () => {
     // Given
     Object.defineProperty(global, "Notification", {

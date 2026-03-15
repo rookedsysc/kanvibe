@@ -4,10 +4,12 @@ import { render, cleanup, act } from "@testing-library/react";
 // --- Mocks ---
 
 const mockNotifyTaskStatusChanged = vi.fn();
+const mockNotifyHookStatusTargetMissing = vi.fn();
 
 vi.mock("@/hooks/useTaskNotification", () => ({
   useTaskNotification: () => ({
     notifyTaskStatusChanged: mockNotifyTaskStatusChanged,
+    notifyHookStatusTargetMissing: mockNotifyHookStatusTargetMissing,
   }),
 }));
 
@@ -48,6 +50,7 @@ describe("NotificationListener", () => {
   beforeEach(() => {
     vi.resetModules();
     mockNotifyTaskStatusChanged.mockClear();
+    mockNotifyHookStatusTargetMissing.mockClear();
     MockWebSocket.instances = [];
   });
 
@@ -102,6 +105,35 @@ describe("NotificationListener", () => {
 
     // Then
     expect(mockNotifyTaskStatusChanged).not.toHaveBeenCalled();
+  });
+
+  it("should call notifyHookStatusTargetMissing when receiving hook-status-target-missing message", async () => {
+    // Given
+    const { default: NotificationListener } = await import("@/components/NotificationListener");
+    render(<NotificationListener {...defaultProps} />);
+    const ws = MockWebSocket.instances[0];
+
+    const wsMessage = {
+      type: "hook-status-target-missing",
+      projectName: "case-study",
+      branchName: "feat/test",
+      requestedStatus: "review",
+      reason: "task-not-found",
+    };
+
+    // When
+    act(() => {
+      ws.onmessage?.({
+        data: JSON.stringify(wsMessage),
+      } as MessageEvent);
+    });
+
+    // Then
+    const { type: _, ...wsPayload } = wsMessage;
+    expect(mockNotifyHookStatusTargetMissing).toHaveBeenCalledWith({
+      ...wsPayload,
+      locale: "ko",
+    });
   });
 
   it("should attempt reconnection after WebSocket close", async () => {
@@ -188,6 +220,31 @@ describe("NotificationListener", () => {
 
     // Then
     expect(mockNotifyTaskStatusChanged).not.toHaveBeenCalled();
+  });
+
+  it("should not notify missing target when requestedStatus is not in enabledStatuses", async () => {
+    // Given
+    const { default: NotificationListener } = await import("@/components/NotificationListener");
+    render(
+      <NotificationListener isNotificationEnabled={true} enabledStatuses={["progress", "review"]} />
+    );
+    const ws = MockWebSocket.instances[0];
+
+    // When
+    act(() => {
+      ws.onmessage?.({
+        data: JSON.stringify({
+          type: "hook-status-target-missing",
+          projectName: "case-study",
+          branchName: "feat/test",
+          requestedStatus: "pending",
+          reason: "project-not-found",
+        }),
+      } as MessageEvent);
+    });
+
+    // Then
+    expect(mockNotifyHookStatusTargetMissing).not.toHaveBeenCalled();
   });
 
   it("should render nothing", async () => {

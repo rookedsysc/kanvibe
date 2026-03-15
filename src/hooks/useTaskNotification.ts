@@ -12,6 +12,14 @@ export interface TaskStatusNotification {
   locale: string;
 }
 
+export interface HookStatusTargetMissingNotification {
+  projectName: string;
+  branchName: string;
+  requestedStatus: string;
+  reason: "project-not-found" | "task-not-found";
+  locale: string;
+}
+
 /** hooks 경유 task 상태 변경 시 Browser Notification을 발송하는 훅 */
 export function useTaskNotification() {
   const isPermissionGranted = useRef(false);
@@ -59,5 +67,33 @@ export function useTaskNotification() {
     []
   );
 
-  return { notifyTaskStatusChanged };
+  const notifyHookStatusTargetMissing = useCallback(
+    async (payload: HookStatusTargetMissingNotification) => {
+      if (!isPermissionGranted.current) return;
+
+      const title = `${payload.projectName} — ${payload.branchName}`;
+      const reasonMessage =
+        payload.reason === "project-not-found"
+          ? "프로젝트를 찾지 못했습니다."
+          : "브랜치에 연결된 작업을 찾지 못했습니다.";
+
+      try {
+        const registration = await navigator.serviceWorker.getRegistration();
+        if (registration) {
+          registration.showNotification(title, {
+            body: `${payload.requestedStatus} 상태로 변경하지 못했습니다.\n${reasonMessage}`,
+            icon: "/kanvibe-logo.svg",
+            data: {
+              locale: payload.locale,
+            },
+          });
+        }
+      } catch (err) {
+        console.error("[Notification] Failed to show missing target notification:", err);
+      }
+    },
+    []
+  );
+
+  return { notifyTaskStatusChanged, notifyHookStatusTargetMissing };
 }
