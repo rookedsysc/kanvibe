@@ -60,8 +60,19 @@ export async function readClaudeSessions(context: AiSessionReaderContext): Promi
     projectFiles.map((filePath) => parseClaudeSessionFromFile(filePath, context))
   );
 
+  let sessions = results.filter((s): s is AggregatedAiSession => s !== null);
+
+  if (context.query) {
+    const q = context.query.toLowerCase();
+    sessions = sessions.filter((s) =>
+      s.title?.toLowerCase().includes(q) ||
+      s.firstUserPrompt?.toLowerCase().includes(q) ||
+      s.matchedPath?.toLowerCase().includes(q)
+    );
+  }
+
   return createReaderResult("claude", {
-    sessions: results.filter((s): s is AggregatedAiSession => s !== null),
+    sessions,
   });
 }
 
@@ -90,7 +101,15 @@ export async function readClaudeSessionDetail(
       }
 
       const role = resolveClaudeRole(event);
+      if (context.roles && context.roles.length > 0 && !context.roles.includes(role)) {
+        continue;
+      }
+
       const text = extractPlainText(event.message?.content);
+      if (context.query && text && !text.toLowerCase().includes(context.query.toLowerCase())) {
+        continue;
+      }
+
       if (role === "user" && text && !title) {
         title = truncateText(text, 80);
       }
@@ -179,9 +198,10 @@ function consumeClaudeListEvent(
   const matchScope = determineMatchScope(cwd, context);
   if (!sessionId || !cwd || !matchScope) return;
 
-  const accumulator = getOrCreateClaudeSession(sessions, sessionId, cwd, matchScope, event.timestamp, sourceRef);
   const role = resolveClaudeRole(event);
   const text = extractPlainText(event.message?.content);
+
+  const accumulator = getOrCreateClaudeSession(sessions, sessionId, cwd, matchScope, event.timestamp, sourceRef);
 
   if (role === "user" && text && !accumulator.session.firstUserPrompt) {
     accumulator.session.firstUserPrompt = text;
@@ -195,6 +215,20 @@ function consumeClaudeListEvent(
   const normalizedTimestamp = toIsoString(event.timestamp);
   if (normalizedTimestamp) {
     accumulator.session.updatedAt = normalizedTimestamp;
+  }
+
+  // 필터링 적용 (세션 제목이나 첫 프롬프트에 검색어가 없으면 제거 대기)
+  if (context.query) {
+    const q = context.query.toLowerCase();
+    const hasMatch =
+      (accumulator.session.title?.toLowerCase().includes(q)) ||
+      (accumulator.session.firstUserPrompt?.toLowerCase().includes(q)) ||
+      (accumulator.session.matchedPath?.toLowerCase().includes(q));
+
+    if (!hasMatch) {
+      // 나중에 취합할 때 걸러내기 위해 마킹하거나, 아예 생성하지 않아야 함.
+      // 여기서는 목록을 모으는 중이므로, 모든 이벤트가 처리된 후 최종적으로 필터링하는 것이 안전함.
+    }
   }
 }
 

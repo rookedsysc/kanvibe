@@ -38,7 +38,16 @@ export async function readCodexSessions(context: AiSessionReaderContext): Promis
   const results = await Promise.all(
     rolloutFiles.map((filePath) => parseCodexSessionSummary(filePath, context))
   );
-  const sessions = results.filter((s): s is AggregatedAiSession => s !== null);
+  let sessions = results.filter((s): s is AggregatedAiSession => s !== null);
+
+  if (context.query) {
+    const q = context.query.toLowerCase();
+    sessions = sessions.filter((s) =>
+      s.title?.toLowerCase().includes(q) ||
+      s.firstUserPrompt?.toLowerCase().includes(q) ||
+      s.matchedPath?.toLowerCase().includes(q)
+    );
+  }
 
   return createReaderResult("codex", {
     sessions,
@@ -153,8 +162,16 @@ async function parseCodexSessionDetail(
     if (payload.type !== "message") continue;
 
     const role = payload.role === "user" || payload.role === "assistant" ? payload.role : "unknown";
+    if (context.roles && context.roles.length > 0 && !context.roles.includes(role)) {
+      continue;
+    }
+
     const text = extractPlainText(payload.content);
     if (!text) continue;
+
+    if (context.query && !text.toLowerCase().includes(context.query.toLowerCase())) {
+      continue;
+    }
 
     if (role === "user" && !title) {
       title = truncateText(text, 80);

@@ -93,6 +93,13 @@ export async function readOpenCodeSessions(context: AiSessionReaderContext): Pro
         messageCount: row.part_count ?? 0,
         sourceRef: row.id,
       };
+    })
+    .filter((s) => {
+      if (!context.query) return true;
+      const q = context.query.toLowerCase();
+      return s.title?.toLowerCase().includes(q) ||
+             s.firstUserPrompt?.toLowerCase().includes(q) ||
+             s.matchedPath?.toLowerCase().includes(q);
     });
 
   return createReaderResult("opencode", {
@@ -108,14 +115,13 @@ export async function readOpenCodeSessionDetail(
   cursor?: string | null,
   limit = DEFAULT_DETAIL_LIMIT
 ): Promise<AiSessionDetailReaderResult | null> {
-  const offset = cursor ? Number.parseInt(cursor, 10) : 0;
-  const safeOffset = Number.isNaN(offset) ? 0 : offset;
   const sid = escapeSql(sessionId);
 
   const db = getSqliteConnection(OPENCODE_DB_PATH);
   if (!db) return null;
 
-  const detailRows = querySqlite<OpenCodeDetailRow>(db,
+  // 전체 메시지를 가져와서 서버에서 필터링 후 페이징 (SQLite JSON 필터링이 복잡하므로)
+  const allRows = querySqlite<OpenCodeDetailRow>(db,
     `SELECT
       s.id AS session_id,
       s.directory,
@@ -123,33 +129,39 @@ export async function readOpenCodeSessionDetail(
       p.message_id,
       p.data AS part_data,
       p.time_created,
-      m.data AS message_data,
-      (SELECT COUNT(*) FROM part WHERE session_id = '${sid}') AS total_count
+      m.data AS message_data
     FROM session s
     JOIN part p ON p.session_id = s.id
     JOIN message m ON m.id = p.message_id
     WHERE s.id = '${sid}'
-    ORDER BY p.time_created ASC
-    LIMIT ${limit} OFFSET ${safeOffset};`
+    ORDER BY p.time_created ASC;`
   );
 
-  if (detailRows.length === 0) return null;
+  if (allRows.length === 0) return null;
 
-  const firstRow = detailRows[0];
+  const firstRow = allRows[0];
   if (!determineMatchScope(firstRow.directory, context)) return null;
 
-  const messages = sortMessagesDescending(detailRows
+  const filteredMessages = allRows
     .map((row) => {
       const parsedMessage = safeJsonParse<Record<string, unknown>>(row.message_data);
       const role = resolveOpenCodeRole(typeof parsedMessage?.role === "string" ? parsedMessage.role : undefined);
       const text = extractOpenCodePartText(row.part_data);
+
+      if (context.roles && context.roles.length > 0 && !context.roles.includes(role)) return null;
+      if (context.query && !text.toLowerCase().includes(context.query.toLowerCase())) return null;
+
       return makePreviewMessage(role, row.time_created, text);
     })
-    .filter((value): value is AggregatedAiMessage => Boolean(value)));
+    .filter((value): value is AggregatedAiMessage => Boolean(value));
 
-  const totalCount = firstRow.total_count;
-  const nextCursor = safeOffset + messages.length < totalCount ? String(safeOffset + messages.length) : null;
-  const firstUserPrompt = messages.find((message) => message.role === "user")?.fullText ?? null;
+  const sorted = sortMessagesDescending(filteredMessages);
+  const offset = cursor ? Number.parseInt(cursor, 10) : 0;
+  const safeOffset = Number.isNaN(offset) ? 0 : offset;
+  const pageItems = sorted.slice(safeOffset, safeOffset + limit);
+  const nextCursor = (safeOffset + pageItems.length < sorted.length) ? String(safeOffset + pageItems.length) : null;
+
+  const firstUserPrompt = sorted.find((message) => message.role === "user")?.fullText ?? null;
 
   return createSessionDetail({
     sessionId,
@@ -157,7 +169,7 @@ export async function readOpenCodeSessionDetail(
     title: firstRow.title ?? (firstUserPrompt ? truncateText(firstUserPrompt, 80) : null),
     matchedPath: firstRow.directory,
     sourceRef: firstRow.session_id,
-    messages,
+    messages: pageItems,
     nextCursor,
   });
 }

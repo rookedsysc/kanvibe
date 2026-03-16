@@ -54,6 +54,8 @@ export interface AiSessionReaderContext {
   worktreePath: string | null;
   repoPath: string | null;
   includeRepoSessions?: boolean;
+  query?: string;
+  roles?: AiMessageRole[];
 }
 
 export interface AiSessionReaderResult {
