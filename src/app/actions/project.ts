@@ -12,7 +12,7 @@ import { setupGeminiHooks, getGeminiHooksStatus, type GeminiHooksStatus } from "
 import { setupCodexHooks, getCodexHooksStatus, type CodexHooksStatus } from "@/lib/codexHooksSetup";
 import { setupOpenCodeHooks, getOpenCodeHooksStatus, type OpenCodeHooksStatus } from "@/lib/openCodeHooksSetup";
 import { aggregateAiSessions, getAiSessionDetail } from "@/lib/aiSessions/aggregateAiSessions";
-import type { AggregatedAiSessionDetail, AggregatedAiSessionsResult, AiSessionProvider } from "@/lib/aiSessions/types";
+import type { AggregatedAiSessionDetail, AggregatedAiSessionsResult, AiMessageRole, AiSessionProvider } from "@/lib/aiSessions/types";
 import { homedir } from "os";
 import path from "path";
 import { computeProjectColor } from "@/lib/projectColor";
@@ -622,7 +622,11 @@ export async function getTaskOpenCodeHooksStatus(
 }
 
 /** 태스크와 연결된 로컬 AI 세션들을 집계한다 */
-export async function getTaskAiSessions(taskId: string, includeRepoSessions = false): Promise<AggregatedAiSessionsResult> {
+export async function getTaskAiSessions(
+  taskId: string,
+  includeRepoSessions = false,
+  query?: string
+): Promise<AggregatedAiSessionsResult> {
   const taskRepo = await getTaskRepository();
   const task = await taskRepo.findOne({
     where: { id: taskId },
@@ -654,6 +658,7 @@ export async function getTaskAiSessions(taskId: string, includeRepoSessions = fa
     worktreePath: targetPath,
     repoPath: task.project.repoPath,
     includeRepoSessions,
+    query,
   });
 }
 
@@ -664,7 +669,9 @@ export async function getTaskAiSessionDetail(
   sourceRef?: string | null,
   cursor?: string | null,
   limit = 20,
-  includeRepoSessions = false
+  includeRepoSessions = false,
+  query?: string,
+  roles?: AiMessageRole[]
 ): Promise<AggregatedAiSessionDetail | null> {
   const taskRepo = await getTaskRepository();
   const task = await taskRepo.findOne({
@@ -682,6 +689,8 @@ export async function getTaskAiSessionDetail(
       worktreePath: targetPath,
       repoPath: task.project.repoPath,
       includeRepoSessions,
+      query,
+      roles,
     },
     provider,
     sessionId,

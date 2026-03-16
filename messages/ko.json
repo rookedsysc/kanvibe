@@ -249,6 +249,12 @@
       "sessionsError": "세션 목록을 불러오지 못했습니다.",
       "showMore": "전체 보기",
       "showLess": "접기",
+      "searchPlaceholder": "세션 검색...",
+      "messageSearchPlaceholder": "메시지 검색...",
+      "filterAll": "전체",
+      "filterUser": "사용자",
+      "filterAssistant": "AI",
+      "noMessageMatch": "검색 조건과 일치하는 메시지가 없습니다.",
       "messages": "메시지 {count}개",
       "providers": {
         "all": "전체",

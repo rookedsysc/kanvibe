@@ -249,6 +249,12 @@
       "sessionsError": "Failed to load session list.",
       "showMore": "Show more",
       "showLess": "Show less",
+      "searchPlaceholder": "Search sessions...",
+      "messageSearchPlaceholder": "Search messages...",
+      "filterAll": "All",
+      "filterUser": "User",
+      "filterAssistant": "AI",
+      "noMessageMatch": "No messages match your search criteria.",
       "messages": "{count} messages",
       "providers": {
         "all": "All",

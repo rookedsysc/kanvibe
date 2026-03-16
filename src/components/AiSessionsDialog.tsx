@@ -4,6 +4,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import * as Switch from "@radix-ui/react-switch";
 import { useTranslations } from "next-intl";
 import { getTaskAiSessionDetail, getTaskAiSessions } from "@/app/actions/project";
+import { fuzzyMatch } from "@/utils/fuzzySearch";
 import type {
   AggregatedAiMessage,
   AggregatedAiSession,
@@ -11,6 +12,7 @@ import type {
   AggregatedAiSessionsResult,
   AiSessionProvider,
   AiSessionSourceStatus,
+  AiMessageRole,
 } from "@/lib/aiSessions/types";
 
 interface AiSessionsDialogProps {
@@ -28,6 +30,9 @@ export default function AiSessionsDialog({ taskId, isOpen, onClose, data }: AiSe
   const t = useTranslations("taskDetail");
   const [includeRepoSessions, setIncludeRepoSessions] = useState(false);
   const [selectedProviders, setSelectedProviders] = useState<AiSessionProvider[]>(PROVIDERS);
+  const [sessionSearchQuery, setSessionSearchQuery] = useState("");
+  const [messageSearchQuery, setMessageSearchQuery] = useState("");
+  const [selectedRoles, setSelectedRoles] = useState<AiMessageRole[]>(["user", "assistant"]);
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
   const [sessionsData, setSessionsData] = useState<AggregatedAiSessionsResult>(data);
   const [isSessionsLoading, setIsSessionsLoading] = useState(false);
@@ -42,21 +47,18 @@ export default function AiSessionsDialog({ taskId, isOpen, onClose, data }: AiSe
     setSessionsData(data);
   }, [data]);
 
+  // 세션 목록 로드 (검색어 포함)
   useEffect(() => {
     if (!isOpen) {
       setIncludeRepoSessions(false);
       setSelectedProviders(PROVIDERS);
+      setSessionSearchQuery("");
+      setMessageSearchQuery("");
+      setSelectedRoles(["user", "assistant"]);
       setSessionsData(data);
       setSessionsError(null);
       setIsSessionsLoading(false);
       setIsDetailLoading(false);
-      return;
-    }
-
-    if (!includeRepoSessions) {
-      setSessionsData(data);
-      setSessionsError(null);
-      setIsSessionsLoading(false);
       return;
     }
 
@@ -67,7 +69,7 @@ export default function AiSessionsDialog({ taskId, isOpen, onClose, data }: AiSe
       setSessionsError(null);
 
       try {
-        const result = await getTaskAiSessions(taskId, true);
+        const result = await getTaskAiSessions(taskId, includeRepoSessions, sessionSearchQuery);
         if (!cancelled) {
           setSessionsData(result);
         }
@@ -82,12 +84,50 @@ export default function AiSessionsDialog({ taskId, isOpen, onClose, data }: AiSe
       }
     }
 
-    void loadSessions();
+    const timer = setTimeout(() => {
+      void loadSessions();
+    }, 300); // 디바운스 적용
 
     return () => {
       cancelled = true;
+      clearTimeout(timer);
     };
-  }, [data, includeRepoSessions, isOpen, t, taskId]);
+  }, [includeRepoSessions, isOpen, t, taskId, sessionSearchQuery, data]);
+
+  // 상세 로드 (검색어 및 역할 필터 포함)
+  useEffect(() => {
+    if (!isOpen || !selectedSessionId) return;
+
+    const selectedSession = sessionsData.sessions.find((s) => s.id === selectedSessionId);
+    if (!selectedSession) return;
+
+    let cancelled = false;
+
+    async function reloadDetail() {
+      await loadSessionDetail({
+        taskId,
+        includeRepoSessions,
+        session: selectedSession!,
+        latestDetailRequestId,
+        setSelectedSessionId,
+        setDetail,
+        setIsDetailLoading,
+        setDetailError,
+        errorMessage: t("aiSessions.detailError"),
+        query: messageSearchQuery,
+        roles: selectedRoles,
+      });
+    }
+
+    const timer = setTimeout(() => {
+      void reloadDetail();
+    }, 300);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [messageSearchQuery, selectedRoles, selectedSessionId, taskId, includeRepoSessions, isOpen, t]);
 
   const providerCounts = useMemo(() => buildProviderCounts(sessionsData.sources), [sessionsData.sources]);
 
@@ -96,17 +136,14 @@ export default function AiSessionsDialog({ taskId, isOpen, onClose, data }: AiSe
     return sessionsData.sessions.filter((session) => selectedProviders.includes(session.provider));
   }, [selectedProviders, sessionsData.sessions]);
 
-  const activeSessionId = filteredSessions.some((session) => session.id === selectedSessionId)
-    ? selectedSessionId
-    : null;
-  const selectedSession = filteredSessions.find((session) => session.id === activeSessionId) ?? null;
+  const selectedSession = filteredSessions.find((session) => session.id === selectedSessionId) ?? null;
 
   useEffect(() => {
-    if (!isOpen || !selectedSession) {
+    if (!isOpen || !selectedSessionId) {
       setDetail(null);
       setDetailError(null);
     }
-  }, [isOpen, selectedSession]);
+  }, [isOpen, selectedSessionId]);
 
   if (!isOpen) return null;
 
@@ -125,12 +162,52 @@ export default function AiSessionsDialog({ taskId, isOpen, onClose, data }: AiSe
 
         <div className="space-y-4 px-6 py-5">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <ProviderMultiSelectFilter
-              selectedProviders={selectedProviders}
-              onChange={setSelectedProviders}
-              providerCounts={providerCounts}
-            />
-            <CompactScopeToggle checked={includeRepoSessions} onChange={setIncludeRepoSessions} />
+            <div className="flex flex-1 flex-col gap-3 sm:flex-row sm:items-center">
+              <ProviderMultiSelectFilter
+                selectedProviders={selectedProviders}
+                onChange={setSelectedProviders}
+                providerCounts={providerCounts}
+              />
+              <div className="relative min-w-0 flex-1 sm:max-w-[280px]">
+                <input
+                  type="text"
+                  value={sessionSearchQuery}
+                  onChange={(e) => setSessionSearchQuery(e.target.value)}
+                  placeholder={t("aiSessions.searchPlaceholder")}
+                  className="w-full rounded-md border border-border-default bg-bg-page px-3 py-2 pl-9 text-sm text-text-primary focus:border-brand-primary focus:outline-none"
+                />
+                <svg className="absolute left-3 top-2.5 text-text-muted" width="16" height="16" viewBox="0 0 16 16" fill="none">
+                  <path d="M14.5 14.5L11 11M12.5 7C12.5 10.0376 10.0376 12.5 7 12.5C3.96243 12.5 1.5 10.0376 1.5 7C1.5 3.96243 3.96243 1.5 7 1.5C10.0376 1.5 12.5 3.96243 12.5 7Z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              <div className="flex shrink-0 items-center gap-1 rounded-md border border-border-default bg-bg-page p-1">
+                <button
+                  onClick={() => {
+                    const role = "user";
+                    setSelectedRoles(selectedRoles.includes(role) ? selectedRoles.filter((r) => r !== role) : [...selectedRoles, role]);
+                  }}
+                  className={`rounded px-2 py-1 text-[10px] font-medium transition-colors ${
+                    selectedRoles.includes("user") ? "bg-brand-primary text-text-inverse" : "text-text-muted hover:bg-bg-surface"
+                  }`}
+                >
+                  {t("aiSessions.filterUser")}
+                </button>
+                <button
+                  onClick={() => {
+                    const role = "assistant";
+                    setSelectedRoles(selectedRoles.includes(role) ? selectedRoles.filter((r) => r !== role) : [...selectedRoles, role]);
+                  }}
+                  className={`rounded px-2 py-1 text-[10px] font-medium transition-colors ${
+                    selectedRoles.includes("assistant") ? "bg-brand-primary text-text-inverse" : "text-text-muted hover:bg-bg-surface"
+                  }`}
+                >
+                  {t("aiSessions.filterAssistant")}
+                </button>
+              </div>
+              <CompactScopeToggle checked={includeRepoSessions} onChange={setIncludeRepoSessions} />
+            </div>
           </div>
 
           {sessionsData.isRemote ? (
@@ -139,34 +216,52 @@ export default function AiSessionsDialog({ taskId, isOpen, onClose, data }: AiSe
             <EmptyState text={t("aiSessions.loadingSessions")} />
           ) : sessionsError ? (
             <EmptyState text={sessionsError} />
-          ) : filteredSessions.length === 0 ? (
+          ) : filteredSessions.length === 0 && !sessionSearchQuery ? (
             <EmptyState text={t("aiSessions.empty")} />
           ) : (
             <div className="grid gap-4 lg:grid-cols-[320px_minmax(0,1fr)]">
-              <SessionList
-                sessions={filteredSessions}
-                selectedSessionId={selectedSession?.id ?? null}
-                onSelect={(session) => {
-                  void loadSessionDetail({
-                    taskId,
-                    includeRepoSessions,
-                    session,
-                    latestDetailRequestId,
-                    setSelectedSessionId,
-                    setDetail,
-                    setIsDetailLoading,
-                    setDetailError,
-                    errorMessage: t("aiSessions.detailError"),
-                  });
-                }}
-              />
+              <div className="flex flex-col gap-2 overflow-hidden">
+                <SessionList
+                  sessions={filteredSessions}
+                  selectedSessionId={selectedSession?.id ?? null}
+                  onSelect={(session) => {
+                    void loadSessionDetail({
+                      taskId,
+                      includeRepoSessions,
+                      session,
+                      latestDetailRequestId,
+                      setSelectedSessionId,
+                      setDetail,
+                      setIsDetailLoading,
+                      setDetailError,
+                      errorMessage: t("aiSessions.detailError"),
+                    });
+                  }}
+                />
+              </div>
               <SessionPreview
                 session={selectedSession}
                 detail={detail}
+                messages={detail?.messages ?? []}
                 isLoading={isDetailLoading}
                 isLoadingMore={isLoadingMore}
                 error={detailError}
-                onLoadMore={() => handleLoadMore(taskId, detail, includeRepoSessions, setDetail, setIsLoadingMore, setDetailError, t)}
+                searchQuery={messageSearchQuery}
+                setSearchQuery={setMessageSearchQuery}
+                selectedRoles={selectedRoles}
+                onLoadMore={() =>
+                  handleLoadMore(
+                    taskId,
+                    detail,
+                    includeRepoSessions,
+                    setDetail,
+                    setIsLoadingMore,
+                    setDetailError,
+                    t,
+                    messageSearchQuery,
+                    selectedRoles
+                  )
+                }
               />
             </div>
           )}
@@ -183,7 +278,9 @@ async function handleLoadMore(
   setDetail: (value: AggregatedAiSessionDetail | ((current: AggregatedAiSessionDetail | null) => AggregatedAiSessionDetail | null) | null) => void,
   setIsLoadingMore: (value: boolean) => void,
   setDetailError: (value: string | null) => void,
-  t: ReturnType<typeof useTranslations>
+  t: ReturnType<typeof useTranslations>,
+  query?: string,
+  roles?: AiMessageRole[]
 ): Promise<void> {
   if (!detail?.nextCursor) return;
 
@@ -198,7 +295,9 @@ async function handleLoadMore(
       detail.sourceRef ?? null,
       detail.nextCursor,
       DETAIL_PAGE_SIZE,
-      includeRepoSessions
+      includeRepoSessions,
+      query,
+      roles
     );
     if (!nextPage) return;
 
@@ -227,6 +326,8 @@ async function loadSessionDetail({
   setIsDetailLoading,
   setDetailError,
   errorMessage,
+  query,
+  roles,
 }: {
   taskId: string;
   includeRepoSessions: boolean;
@@ -237,6 +338,8 @@ async function loadSessionDetail({
   setIsDetailLoading: (value: boolean) => void;
   setDetailError: (value: string | null) => void;
   errorMessage: string;
+  query?: string;
+  roles?: AiMessageRole[];
 }): Promise<void> {
   const expectedId = session.id;
   latestDetailRequestId.current = expectedId;
@@ -253,7 +356,9 @@ async function loadSessionDetail({
       session.sourceRef ?? null,
       null,
       DETAIL_PAGE_SIZE,
-      includeRepoSessions
+      includeRepoSessions,
+      query,
+      roles
     );
 
     if (latestDetailRequestId.current !== expectedId) return;
@@ -320,7 +425,7 @@ function ProviderMultiSelectFilter({
   const remainingCount = selectedProviders.length - visibleProviders.length;
 
   return (
-    <div ref={containerRef} className="relative min-w-0 flex-1 sm:min-w-[300px] sm:max-w-[420px]">
+    <div ref={containerRef} className="relative min-w-0 flex-1 sm:min-w-[200px] sm:max-w-[300px]">
       <button
         type="button"
         onClick={() => setIsOpen((previous) => !previous)}
@@ -468,16 +573,24 @@ function SessionList({ sessions, selectedSessionId, onSelect }: { sessions: Aggr
 function SessionPreview({
   session,
   detail,
+  messages,
   isLoading,
   isLoadingMore,
   error,
+  searchQuery,
+  setSearchQuery,
+  selectedRoles,
   onLoadMore,
 }: {
   session: AggregatedAiSession | null;
   detail: AggregatedAiSessionDetail | null;
+  messages: AggregatedAiMessage[];
   isLoading: boolean;
   isLoadingMore: boolean;
   error: string | null;
+  searchQuery: string;
+  setSearchQuery: (query: string) => void;
+  selectedRoles: AiMessageRole[];
   onLoadMore: () => void;
 }) {
   const t = useTranslations("taskDetail");
@@ -485,22 +598,40 @@ function SessionPreview({
   if (!session) return <EmptyState text={t("aiSessions.selectSession")} />;
 
   return (
-    <div className="max-h-[440px] overflow-y-auto rounded-lg border border-border-default bg-bg-page p-4">
-      <div className="border-b border-border-subtle pb-3">
-        <div className="flex items-center gap-2">
-          <ProviderBadge provider={session.provider} />
-          <span className="text-xs text-text-muted">{session.id}</span>
+    <div className="flex max-h-[440px] flex-col overflow-hidden rounded-lg border border-border-default bg-bg-page">
+      <div className="border-b border-border-subtle bg-bg-surface p-4 pb-3">
+        <div className="flex items-center justify-between gap-4">
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2">
+              <ProviderBadge provider={session.provider} />
+              <span className="truncate text-xs text-text-muted">{session.id}</span>
+            </div>
+            <p className="mt-2 truncate text-sm font-medium text-text-primary">{session.title}</p>
+          </div>
         </div>
-        <p className="mt-2 text-sm font-medium text-text-primary">{session.title}</p>
-        {session.matchedPath ? <p className="mt-1 text-xs text-text-muted">{session.matchedPath}</p> : null}
+
+        <div className="relative mt-3">
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder={t("aiSessions.messageSearchPlaceholder")}
+            className="w-full rounded-md border border-border-default bg-bg-page px-3 py-1.5 pl-8 text-xs text-text-primary focus:border-brand-primary focus:outline-none"
+          />
+          <svg className="absolute left-2.5 top-2 text-text-muted" width="14" height="14" viewBox="0 0 16 16" fill="none">
+            <path d="M14.5 14.5L11 11M12.5 7C12.5 10.0376 10.0376 12.5 7 12.5C3.96243 12.5 1.5 10.0376 1.5 7C1.5 3.96243 3.96243 1.5 7 1.5C10.0376 1.5 12.5 3.96243 12.5 7Z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </div>
       </div>
 
-      <div className="mt-4 space-y-3">
+      <div className="flex-1 space-y-3 overflow-y-auto p-4">
         {isLoading ? <LoadingDetailState session={session} /> : null}
         {!isLoading && error ? <EmptyState text={error} compact /> : null}
-        {!isLoading && !error && detail && detail.messages.length === 0 ? <EmptyState text={t("aiSessions.noPreview")} compact /> : null}
-        {!isLoading && !error && detail
-          ? detail.messages.map((message, index) => (
+        {!isLoading && !error && messages.length === 0 ? (
+          <EmptyState text={searchQuery || selectedRoles.length < 2 ? t("aiSessions.noMessageMatch") : t("aiSessions.noPreview")} compact />
+        ) : null}
+        {!isLoading && !error && messages.length > 0
+          ? messages.map((message, index) => (
               <PreviewMessageCard key={`${message.role}-${index}-${message.timestamp ?? index}`} index={index} message={message} />
             ))
           : null}
