@@ -4,7 +4,8 @@ import { addAiToolPatternsToGitExclude } from "@/lib/gitExclude";
 
 /**
  * OpenCode는 `.opencode/plugins/` 디렉토리에 TypeScript 플러그인을 배치하여 hooks를 등록한다.
- * message.updated(user) → progress, question.asked → pending, question.replied → progress, session.idle → review 상태를 전송한다.
+ * message.updated(user) → progress, question.asked → pending, question.replied → progress,
+ * assistant 완료 message.updated 또는 session.idle → review 상태를 전송한다.
  */
 
 const PLUGIN_FILE_NAME = "kanvibe-plugin.ts";
@@ -17,11 +18,65 @@ function generatePluginScript(kanvibeUrl: string, projectName: string): string {
 /**
  * KanVibe OpenCode Plugin
  * message.updated(user) → progress, question.asked → pending,
- * question.replied → progress, session.idle → review 상태 변경
+ * question.replied → progress, assistant 완료 message.updated 또는 session.idle → review 상태 변경
  */
 export const KanvibePlugin: Plugin = async ({ $, client }) => {
   const KANVIBE_URL = "${kanvibeUrl}";
   const PROJECT_NAME = "${projectName}";
+
+  type OpenCodeMessage = {
+    role?: string;
+    sessionID?: string;
+    sessionId?: string;
+    stopReason?: string | null;
+    stop_reason?: string | null;
+    completedAt?: string | number | null;
+    completed?: boolean;
+    isComplete?: boolean;
+    isCompleted?: boolean;
+    status?: string;
+  };
+
+  type OpenCodeEvent = {
+    type?: string;
+    properties?: {
+      sessionID?: string;
+      sessionId?: string;
+      message?: OpenCodeMessage;
+      info?: OpenCodeMessage;
+    };
+  };
+
+  function getSessionID(event: OpenCodeEvent): string | undefined {
+    return (
+      event?.properties?.sessionID ??
+      event?.properties?.sessionId ??
+      event?.properties?.message?.sessionID ??
+      event?.properties?.message?.sessionId ??
+      event?.properties?.info?.sessionID ??
+      event?.properties?.info?.sessionId
+    );
+  }
+
+  function getMessage(event: OpenCodeEvent): OpenCodeMessage | undefined {
+    return event?.properties?.info ?? event?.properties?.message;
+  }
+
+  function isAssistantMessageCompleted(message: OpenCodeMessage | undefined): boolean {
+    if (message?.role !== "assistant") {
+      return false;
+    }
+
+    return Boolean(
+      message?.stopReason ??
+        message?.stop_reason ??
+        message?.completedAt ??
+        message?.completed ??
+        message?.isComplete ??
+        message?.isCompleted ??
+        message?.status === "completed"
+    );
+  }
 
   async function getBranchName(): Promise<string | null> {
     try {
@@ -73,33 +128,38 @@ export const KanvibePlugin: Plugin = async ({ $, client }) => {
 
   return {
     event: async ({ event }) => {
-      if (event.type === "message.updated") {
-        const message =
-          (event as any).properties?.info ?? (event as any).properties?.message;
+      const eventPayload = event as OpenCodeEvent;
+      const eventType = eventPayload.type;
+      const sessionID = getSessionID(eventPayload);
+      const message = getMessage(eventPayload);
 
-        if (message?.role === "user" && (await isMainSession(message.sessionID))) {
+      if (!(await isMainSession(sessionID))) {
+        return;
+      }
+
+      if (eventType === "message.updated") {
+        if (message?.role === "user") {
           await updateStatus("progress");
-        }
-      }
-      if (event.type === "question.asked") {
-        if (!(await isMainSession(event.properties.sessionID))) {
           return;
         }
 
+        if (isAssistantMessageCompleted(message)) {
+          await updateStatus("review");
+        }
+        return;
+      }
+
+      if (eventType === "question.asked") {
         await updateStatus("pending");
+        return;
       }
-      if (event.type === "question.replied") {
-        if (!(await isMainSession(event.properties.sessionID))) {
-          return;
-        }
 
+      if (eventType === "question.replied") {
         await updateStatus("progress");
+        return;
       }
-      if (event.type === "session.idle") {
-        if (!(await isMainSession(event.properties.sessionID))) {
-          return;
-        }
 
+      if (eventType === "session.idle") {
         await updateStatus("review");
       }
     },

@@ -72,6 +72,7 @@ describe("openCodeHooksSetup", () => {
       const pluginContent = await readFile(pluginPath, "utf-8");
 
       expect(pluginContent).toMatch(/message\.updated[\s\S]*?role[\s\S]*?user[\s\S]*?progress/);
+      expect(pluginContent).toMatch(/message\.updated[\s\S]*?isAssistantMessageCompleted\(message\)[\s\S]*?review/);
       expect(pluginContent).toMatch(/question\.asked[\s\S]*?pending/);
       expect(pluginContent).toMatch(/question\.replied[\s\S]*?progress/);
       expect(pluginContent).toMatch(/session\.idle[\s\S]*?review/);
@@ -93,11 +94,36 @@ describe("openCodeHooksSetup", () => {
       expect(pluginContent).toContain("sessionCache.has(sessionID)");
       expect(pluginContent).toContain("sessionCache.set(sessionID, isMain)");
       expect(pluginContent).toContain("result.data?.parentID");
-      expect(pluginContent).toContain("properties?.info ?? (event as any).properties?.message");
-      expect(pluginContent).toMatch(/message\.updated[\s\S]*?isMainSession\(message\.sessionID\)/);
-      expect(pluginContent).toMatch(/question\.asked[\s\S]*?isMainSession\(event\.properties\.sessionID\)/);
-      expect(pluginContent).toMatch(/question\.replied[\s\S]*?isMainSession\(event\.properties\.sessionID\)/);
-      expect(pluginContent).toMatch(/session\.idle[\s\S]*?isMainSession\(event\.properties\.sessionID\)/);
+      expect(pluginContent).toContain("type OpenCodeEvent = {");
+      expect(pluginContent).toContain("type OpenCodeMessage = {");
+      expect(pluginContent).toContain("function getSessionID(event: OpenCodeEvent): string | undefined");
+      expect(pluginContent).toContain("function getMessage(event: OpenCodeEvent): OpenCodeMessage | undefined");
+      expect(pluginContent).toContain("event?.properties?.sessionId ??");
+      expect(pluginContent).toContain("event?.properties?.info?.sessionId");
+      expect(pluginContent).toContain("event?.properties?.info ?? event?.properties?.message");
+      expect(pluginContent).toContain("const eventPayload = event as OpenCodeEvent");
+      expect(pluginContent).toContain("const sessionID = getSessionID(eventPayload)");
+      expect(pluginContent).toContain("const message = getMessage(eventPayload)");
+      expect(pluginContent).toMatch(/if \(!\(await isMainSession\(sessionID\)\)\) \{/);
+    });
+
+    it("should generate assistant completion detection for review status", async () => {
+      // Given
+      const repoPath = tempDir;
+
+      // When
+      await setupOpenCodeHooks(repoPath, "test-project", "http://localhost:3000");
+
+      // Then
+      const pluginPath = join(repoPath, ".opencode", "plugins", "kanvibe-plugin.ts");
+      const pluginContent = await readFile(pluginPath, "utf-8");
+
+      expect(pluginContent).toContain("function isAssistantMessageCompleted(message: OpenCodeMessage | undefined): boolean");
+      expect(pluginContent).toContain('message?.stopReason ??');
+      expect(pluginContent).toContain('message?.stop_reason ??');
+      expect(pluginContent).toContain('message?.completedAt ??');
+      expect(pluginContent).toContain('message?.status === \"completed\"');
+      expect(pluginContent).toContain("if (isAssistantMessageCompleted(message)) {");
     });
 
     it("should not fail when called twice (overwrites existing plugin)", async () => {
