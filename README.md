@@ -4,8 +4,8 @@
 
 **AI Agent Task Management Kanban Board**
 
-A web-based terminal Kanban board for managing AI coding agent (Claude Code, Gemini CLI, Codex CLI, etc.) tasks in real-time.
-Monitor tmux/zellij sessions directly in your browser while tracking task progress on a drag & drop Kanban board.
+A Tauri-based terminal Kanban board for managing AI coding agent (Claude Code, Gemini CLI, Codex CLI, etc.) tasks in real-time.
+Monitor tmux/zellij sessions directly in the desktop app while tracking task progress on a drag & drop Kanban board.
 Automatically track task status via [AI Agent Hooks](#ai-agent-hooks---automatic-status-tracking) — no manual updates needed.
 
 [![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-FFDD00?style=for-the-badge&logo=buy-me-a-coffee&logoColor=black)](https://buymeacoffee.com/rookedsysc)
@@ -41,13 +41,12 @@ The `kanvibe` CLI script automatically checks and installs missing dependencies.
 |------------|---------|----------|---------|
 | [Node.js](https://nodejs.org/) | >= 22 | Yes | `brew install node` |
 | [pnpm](https://pnpm.io/) | latest | Yes | `corepack enable && corepack prepare pnpm@latest --activate` |
-| [Docker](https://www.docker.com/) | latest | Yes | `brew install --cask docker` |
 | [git](https://git-scm.com/) | latest | Yes | `brew install git` |
 | [tmux](https://github.com/tmux/tmux) | latest | Yes | `brew install tmux` |
 | [gh](https://cli.github.com/) | latest | Yes | `brew install gh` (requires `gh auth login`) |
 | [zellij](https://github.com/zellij-org/zellij) | latest | No | `brew install zellij` |
 
-> Docker is used to run the PostgreSQL database via Docker Compose.
+KanVibe now uses a local SQLite database. By default it is stored at `~/.kanvibe/kanvibe.sqlite`.
 
 ---
 
@@ -62,27 +61,26 @@ cp .env.example .env
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `PORT` | Web server port | `4885` |
-| `DB_PORT` | PostgreSQL port | `4886` |
+| `KANVIBE_DB_PATH` | SQLite database file path | `~/.kanvibe/kanvibe.sqlite` |
 | `KANVIBE_USER` | Login username | `admin` |
 | `KANVIBE_PASSWORD` | Login password | `changeme` (change this!) |
 
 ### 2. Run
 
 ```bash
-bash kanvibe.sh start          # Interactive mode selection (foreground/background)
-bash kanvibe.sh start --fg     # Foreground (output to terminal, Ctrl+C to stop)
-bash kanvibe.sh start --bg     # Background (server keeps running after terminal closes)
+pnpm install
+pnpm dev
 ```
 
-This command checks dependencies (with i18n install prompts), installs packages, starts PostgreSQL, runs migrations, builds, and launches the server.
+This launches the Tauri desktop app and starts the internal runtime automatically.
+
+### 3. Run QA verification
 
 ```bash
-bash kanvibe.sh stop
+pnpm desktop:qa
 ```
 
-Stops the KanVibe server and PostgreSQL container.
-
-Open `http://localhost:4885` in your browser.
+This runs type checks, tests, and the desktop production build in one pass.
 
 ---
 
@@ -129,7 +127,7 @@ Each pane can run a custom command (e.g., `vim`, `htop`, `lazygit`, test runner,
 - Custom task ordering with drag & drop
 - Multi-project filtering
 - Done column pagination
-- Real-time WebSocket updates
+- Real-time in-app updates
 
 ### Git Worktree Integration
 - Automatic git worktree creation when a branch-based task is created
@@ -138,7 +136,7 @@ Each pane can run a custom command (e.g., `vim`, `htop`, `lazygit`, test runner,
 
 ### Terminal Sessions (tmux / zellij)
 - **tmux** and **zellij** are both supported as terminal multiplexers
-- Browser-based terminal via xterm.js + WebSocket
+- Desktop-integrated terminal via xterm.js + local session bridge
 - SSH remote terminal support (reads `~/.ssh/config`)
 - Nerd Font rendering support
 
@@ -197,25 +195,25 @@ All agent hooks are **auto-installed** when you register a project through KanVi
 
 #### Browser Notifications
 
-Task status changes via AI Agent Hooks trigger **browser notifications** with project, branch, and status. **Click to jump directly to the task detail page.**
+Task status changes via AI Agent Hooks trigger **desktop notifications** with project, branch, and status. **Click to jump directly to the task detail page.**
 
 - **Real-time alerts** — Instant notifications for task status changes
 - **Background mode** — Notifications work even when KanVibe is not focused
 - **Smart navigation** — Click notification → task detail page (with correct language)
 - **Configurable** — Enable/disable per project and filter by status (PROGRESS, PENDING, REVIEW, DONE)
 
-Setup: Browser will prompt for permission on first visit. Configure filters in **Project Settings** → **Notifications**.
+Setup: Configure filters in **Project Settings** → **Notifications**.
 
 #### Hook API Endpoints
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
 | `/api/hooks/start` | POST | Create a new task |
-| `/api/hooks/status` | POST | Update task status by `branchName` + `projectName`; if the target is missing, KanVibe still sends a browser notification and returns `404` without changing status |
+| `/api/hooks/status` | POST | Update task status by `branchName` + `projectName`; if the target is missing, KanVibe still sends a desktop notification and returns `404` without changing status |
 
 ### GitHub-style Diff View
 
-Review code changes directly in the browser with a GitHub-style diff viewer. Click the **Diff** badge on the task detail page to see all modified files compared to the base branch.
+Review code changes directly in the desktop app with a GitHub-style diff viewer. Click the **Diff** badge on the task detail page to see all modified files compared to the base branch.
 
 <table>
   <tr>
@@ -226,7 +224,7 @@ Review code changes directly in the browser with a GitHub-style diff viewer. Cli
 
 - File tree sidebar with changed file count
 - Inline diff viewer powered by Monaco Editor
-- Edit mode for quick fixes directly in the browser
+- Edit mode for quick fixes directly in the desktop app
 - Viewed file tracking with checkboxes
 
 ### Pane Layout Editor
@@ -236,7 +234,7 @@ Review code changes directly in the browser with a GitHub-style diff viewer. Cli
 
 ### Internationalization (i18n)
 - Supported languages: Korean (ko), English (en), Chinese (zh)
-- Powered by next-intl
+- Static desktop copy during Rust/Tauri migration
 
 ---
 
@@ -244,14 +242,13 @@ Review code changes directly in the browser with a GitHub-style diff viewer. Cli
 
 | Category | Technology |
 |----------|------------|
-| Frontend/Backend | Next.js 16 (App Router) + React 19 + TypeScript |
-| Database | PostgreSQL 16 + TypeORM |
+| Frontend/Backend | Tauri v2 + Rust |
+| Database | SQLite + TypeORM |
 | Styling | Tailwind CSS v4 |
-| Terminal | xterm.js + WebSocket + node-pty |
+| Terminal | xterm.js + local session bridge + node-pty |
 | SSH | ssh2 (Node.js) |
 | Drag & Drop | @hello-pangea/dnd |
-| i18n | next-intl |
-| Container | Docker Compose |
+| i18n | Desktop static copy |
 
 ---
 

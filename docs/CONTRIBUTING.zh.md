@@ -12,7 +12,7 @@
 
 - Node.js 20+（参见 `.nvmrc`）
 - pnpm
-- Docker（用于 PostgreSQL）
+- Rust toolchain
 - tmux 或 zellij（用于终端功能）
 
 ### 开始
@@ -25,20 +25,12 @@ cd kanvibe
 # 复制环境变量
 cp .env.example .env
 
-# 启动 PostgreSQL
-docker compose up db -d
-
 # 安装依赖
 pnpm install
 
-# 运行数据库迁移
-pnpm migration:run
-
-# 启动开发服务器
+# 启动桌面应用
 pnpm dev
 ```
-
-在浏览器中打开 `http://localhost:4885`。
 
 ---
 
@@ -59,7 +51,7 @@ pnpm dev
    - TypeScript 严格模式
    - Tailwind CSS v4 + 设计令牌（CSS 变量）
    - next-intl 处理所有面向用户的字符串
-   - TypeORM 迁移进行模式更改
+   - SQLite + TypeORM 本地持久化
 
 ### PR 流程
 

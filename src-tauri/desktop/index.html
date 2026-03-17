@@ -1,0 +1,814 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>KanVibe Desktop</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg-0: #efe7d3;
+        --bg-1: #f7f3e7;
+        --bg-2: #fcfbf7;
+        --surface: rgba(255, 255, 255, 0.82);
+        --surface-strong: rgba(255, 255, 255, 0.94);
+        --surface-border: rgba(24, 24, 24, 0.08);
+        --text-0: #121212;
+        --text-1: #605b52;
+        --accent-0: #0f766e;
+        --accent-1: #b45309;
+        --todo: #475569;
+        --progress: #0f766e;
+        --pending: #b45309;
+        --review: #2563eb;
+        --done: #16a34a;
+        --shadow: 0 30px 80px rgba(0, 0, 0, 0.14);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        font-family: "IBM Plex Sans", "Noto Sans KR", sans-serif;
+        color: var(--text-0);
+        background:
+          radial-gradient(circle at top left, rgba(15, 118, 110, 0.15), transparent 28%),
+          radial-gradient(circle at bottom right, rgba(180, 83, 9, 0.14), transparent 26%),
+          linear-gradient(180deg, var(--bg-0), var(--bg-1) 34%, var(--bg-2));
+        padding: 24px;
+      }
+
+      .shell {
+        max-width: 1420px;
+        margin: 0 auto;
+        display: grid;
+        gap: 20px;
+      }
+
+      .hero,
+      .panel,
+      .column {
+        border: 1px solid var(--surface-border);
+        background: var(--surface);
+        backdrop-filter: blur(16px);
+        box-shadow: var(--shadow);
+      }
+
+      .hero {
+        border-radius: 32px;
+        padding: 28px;
+        display: grid;
+        gap: 20px;
+      }
+
+      .hero-top {
+        display: flex;
+        justify-content: space-between;
+        align-items: start;
+        gap: 16px;
+      }
+
+      h1 {
+        margin: 0;
+        font-size: clamp(2.4rem, 5vw, 4.8rem);
+        line-height: 0.95;
+        letter-spacing: -0.06em;
+      }
+
+      .eyebrow {
+        margin: 0 0 10px;
+        color: var(--accent-0);
+        font-size: 0.8rem;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+      }
+
+      .hero-copy {
+        max-width: 680px;
+        margin: 10px 0 0;
+        color: var(--text-1);
+        line-height: 1.6;
+      }
+
+      .pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        padding: 10px 14px;
+        border-radius: 999px;
+        background: var(--surface-strong);
+        border: 1px solid rgba(0, 0, 0, 0.07);
+        white-space: nowrap;
+      }
+
+      .dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        background: var(--accent-0);
+        box-shadow: 0 0 0 rgba(15, 118, 110, 0.4);
+        animation: pulse 1.6s infinite;
+      }
+
+      .meta-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 14px;
+      }
+
+      .panel {
+        border-radius: 24px;
+        padding: 18px 20px;
+      }
+
+      .panel-label {
+        margin: 0 0 8px;
+        color: var(--text-1);
+        font-size: 0.84rem;
+        text-transform: uppercase;
+        letter-spacing: 0.12em;
+      }
+
+      .panel strong {
+        font-size: 1.12rem;
+      }
+
+      .board {
+        display: grid;
+        grid-template-columns: repeat(5, minmax(0, 1fr));
+        gap: 16px;
+      }
+
+      .column {
+        border-radius: 24px;
+        padding: 16px;
+        min-height: 300px;
+      }
+
+      .column h2 {
+        margin: 0;
+        font-size: 0.95rem;
+        text-transform: uppercase;
+        letter-spacing: 0.12em;
+      }
+
+      .column-count {
+        margin-top: 6px;
+        color: var(--text-1);
+        font-size: 0.88rem;
+      }
+
+      .task-list {
+        display: grid;
+        gap: 12px;
+        margin-top: 14px;
+      }
+
+      .task-card {
+        background: var(--surface-strong);
+        border: 1px solid rgba(0, 0, 0, 0.06);
+        border-radius: 18px;
+        padding: 14px;
+      }
+
+      .task-card h3 {
+        margin: 0;
+        font-size: 1rem;
+        line-height: 1.35;
+      }
+
+      .task-meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 10px;
+      }
+
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        padding: 5px 9px;
+        border-radius: 999px;
+        font-size: 0.75rem;
+        background: rgba(0, 0, 0, 0.05);
+        color: var(--text-1);
+      }
+
+      .projects {
+        display: grid;
+        gap: 10px;
+      }
+
+      .panel-grid {
+        display: grid;
+        grid-template-columns: 1.2fr 0.8fr;
+        gap: 16px;
+      }
+
+      .stack {
+        display: grid;
+        gap: 16px;
+      }
+
+      .control-row {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+        align-items: center;
+      }
+
+      input,
+      select,
+      button {
+        font: inherit;
+      }
+
+      .input,
+      .select {
+        width: 100%;
+        padding: 12px 14px;
+        border-radius: 14px;
+        border: 1px solid rgba(0, 0, 0, 0.08);
+        background: rgba(255, 255, 255, 0.92);
+      }
+
+      .button {
+        border: 0;
+        border-radius: 14px;
+        padding: 11px 16px;
+        background: linear-gradient(135deg, var(--accent-0), #0d9488);
+        color: white;
+        cursor: pointer;
+      }
+
+      .button.secondary {
+        background: rgba(0, 0, 0, 0.06);
+        color: var(--text-0);
+      }
+
+      .button.danger {
+        background: rgba(220, 38, 38, 0.12);
+        color: #991b1b;
+      }
+
+      .setting-row {
+        display: flex;
+        justify-content: space-between;
+        gap: 16px;
+        align-items: center;
+        padding: 10px 0;
+        border-top: 1px solid rgba(0, 0, 0, 0.06);
+      }
+
+      .setting-row:first-child {
+        border-top: 0;
+        padding-top: 0;
+      }
+
+      .muted {
+        color: var(--text-1);
+        font-size: 0.9rem;
+      }
+
+      .tools-list {
+        display: grid;
+        gap: 10px;
+      }
+
+      .tool-item {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+      }
+
+      .project-row {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        align-items: center;
+        border-top: 1px solid rgba(0, 0, 0, 0.06);
+        padding-top: 10px;
+      }
+
+      .project-row:first-child {
+        border-top: 0;
+        padding-top: 0;
+      }
+
+      .project-name {
+        font-weight: 600;
+      }
+
+      .project-path {
+        color: var(--text-1);
+        font-size: 0.85rem;
+        margin-top: 4px;
+      }
+
+      .empty {
+        padding: 18px;
+        border-radius: 18px;
+        border: 1px dashed rgba(0, 0, 0, 0.12);
+        color: var(--text-1);
+        text-align: center;
+      }
+
+      .error {
+        display: none;
+        color: #8f2b20;
+        background: rgba(220, 38, 38, 0.08);
+        border: 1px solid rgba(220, 38, 38, 0.12);
+      }
+
+      body.is-error .error {
+        display: block;
+      }
+
+      code {
+        font-family: "IBM Plex Mono", monospace;
+        font-size: 0.88em;
+      }
+
+      @keyframes pulse {
+        0% { box-shadow: 0 0 0 0 rgba(15, 118, 110, 0.35); }
+        70% { box-shadow: 0 0 0 12px rgba(15, 118, 110, 0); }
+        100% { box-shadow: 0 0 0 0 rgba(15, 118, 110, 0); }
+      }
+
+      @media (max-width: 1100px) {
+        .panel-grid {
+          grid-template-columns: 1fr;
+        }
+
+        .board {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .meta-grid {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      @media (max-width: 720px) {
+        body {
+          padding: 16px;
+        }
+
+        .board {
+          grid-template-columns: 1fr;
+        }
+
+        .hero-top {
+          flex-direction: column;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="shell">
+      <section class="hero">
+        <div class="hero-top">
+          <div>
+            <p class="eyebrow">Rust Backend Migration</p>
+            <h1>KanVibe Desktop</h1>
+            <p class="hero-copy">
+              This window is now hosted directly by Tauri. The desktop shell reads board data
+              from SQLite through Rust commands instead of redirecting to a local Node server.
+            </p>
+          </div>
+          <div class="pill">
+            <span class="dot"></span>
+            <strong id="runtime-pill">Loading runtime status...</strong>
+          </div>
+        </div>
+
+        <div class="meta-grid">
+          <article class="panel">
+            <p class="panel-label">Runtime</p>
+            <strong id="runtime-mode">Tauri</strong>
+          </article>
+          <article class="panel">
+            <p class="panel-label">Database</p>
+            <strong id="database-path">Resolving...</strong>
+          </article>
+          <article class="panel error" id="error-panel">
+            <p class="panel-label">Issue</p>
+            <strong id="error-text">Unknown error</strong>
+          </article>
+        </div>
+      </section>
+
+      <section class="panel">
+        <p class="panel-label">Projects</p>
+        <div class="projects" id="projects-list"></div>
+      </section>
+
+      <section class="panel-grid">
+        <section class="panel stack">
+          <div>
+            <p class="panel-label">Project Scan</p>
+            <div class="control-row">
+              <input class="input" id="scan-root" placeholder="~/workspace" value="~/" />
+              <button class="button" id="scan-button">Scan and register</button>
+            </div>
+            <p class="muted" id="scan-result">Choose a local root directory to import git repositories.</p>
+          </div>
+
+          <div>
+            <p class="panel-label">Settings</p>
+            <div class="setting-row">
+              <div>
+                <strong>Sidebar default collapsed</strong>
+                <div class="muted">Persisted directly by Rust in SQLite.</div>
+              </div>
+              <input type="checkbox" id="sidebar-collapsed" />
+            </div>
+            <div class="setting-row">
+              <div>
+                <strong>Notifications enabled</strong>
+                <div class="muted">Stored in local app settings.</div>
+              </div>
+              <input type="checkbox" id="notifications-enabled" />
+            </div>
+            <div class="setting-row">
+              <div>
+                <strong>Default session type</strong>
+                <div class="muted">Used for new worktree sessions.</div>
+              </div>
+              <select class="select" id="default-session-type" style="max-width: 140px;">
+                <option value="tmux">tmux</option>
+                <option value="zellij">zellij</option>
+              </select>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel stack">
+          <div>
+            <p class="panel-label">Runtime Tools</p>
+            <div class="tools-list" id="runtime-tools"></div>
+          </div>
+          <div>
+            <p class="panel-label">SSH Hosts</p>
+            <div class="projects" id="ssh-hosts-list"></div>
+          </div>
+        </section>
+      </section>
+
+      <section class="panel-grid">
+        <section class="panel stack">
+          <div>
+            <p class="panel-label">Worktree Session</p>
+            <div class="stack">
+              <select class="select" id="worktree-project"></select>
+              <div class="control-row">
+                <select class="select" id="worktree-base-branch"></select>
+                <input class="input" id="worktree-branch-name" placeholder="feature/rust-migration" />
+              </div>
+              <div class="control-row">
+                <select class="select" id="worktree-session-type" style="max-width: 160px;">
+                  <option value="tmux">tmux</option>
+                  <option value="zellij">zellij</option>
+                </select>
+                <button class="button" id="worktree-create-button">Create worktree + session</button>
+              </div>
+              <p class="muted" id="worktree-result">Select a registered project to manage branches and sessions.</p>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel stack">
+          <div>
+            <p class="panel-label">Worktrees</p>
+            <div class="projects" id="worktrees-list"></div>
+          </div>
+          <div>
+            <p class="panel-label">Terminal Sessions</p>
+            <div class="projects" id="terminal-sessions-list"></div>
+          </div>
+        </section>
+      </section>
+
+      <section class="board" id="board-columns"></section>
+    </div>
+
+    <script>
+      const STATUS_ORDER = ["todo", "progress", "pending", "review", "done"];
+      const STATUS_LABELS = {
+        todo: "Todo",
+        progress: "Progress",
+        pending: "Pending",
+        review: "Review",
+        done: "Done",
+      };
+
+      const tauriInvoke = window.__TAURI__?.core?.invoke;
+      let currentProjects = [];
+
+      function createColumn(status, tasks) {
+        const column = document.createElement("section");
+        column.className = "column";
+        column.innerHTML = `
+          <h2>${STATUS_LABELS[status]}</h2>
+          <div class="column-count">${tasks.length} task${tasks.length === 1 ? "" : "s"}</div>
+          <div class="task-list"></div>
+        `;
+
+        const list = column.querySelector(".task-list");
+        if (!tasks.length) {
+          list.innerHTML = `<div class="empty">No tasks in ${STATUS_LABELS[status]}.</div>`;
+          return column;
+        }
+
+        tasks.forEach((task) => {
+          const card = document.createElement("article");
+          card.className = "task-card";
+          const meta = [];
+
+          if (task.projectName) meta.push(`<span class="badge">${task.projectName}</span>`);
+          if (task.branchName) meta.push(`<span class="badge">${task.branchName}</span>`);
+          if (task.sessionType) meta.push(`<span class="badge">${task.sessionType}</span>`);
+          if (task.priority) meta.push(`<span class="badge">${task.priority}</span>`);
+
+          card.innerHTML = `
+            <h3>${task.title}</h3>
+            <div class="task-meta">${meta.join("") || `<span class="badge">No metadata</span>`}</div>
+          `;
+          list.appendChild(card);
+        });
+
+        return column;
+      }
+
+      function renderProjects(projects) {
+        currentProjects = projects;
+        const container = document.getElementById("projects-list");
+        container.innerHTML = "";
+
+        if (!projects.length) {
+          container.innerHTML = `<div class="empty">No projects registered yet.</div>`;
+          return;
+        }
+
+        projects.forEach((project) => {
+          const row = document.createElement("div");
+          row.className = "project-row";
+          row.innerHTML = `
+            <div>
+              <div class="project-name">${project.name}</div>
+              <div class="project-path"><code>${project.repoPath}</code></div>
+            </div>
+            <div class="control-row">
+              <span class="badge">${project.defaultBranch}</span>
+              <button class="button danger" data-project-id="${project.id}">Delete</button>
+            </div>
+          `;
+          row.querySelector("button")?.addEventListener("click", async () => {
+            await tauriInvoke("delete_project", { projectId: project.id });
+            await bootstrap();
+          });
+          container.appendChild(row);
+        });
+      }
+
+      async function refreshWorktreePanel() {
+        const projectSelect = document.getElementById("worktree-project");
+        const selectedProject = currentProjects.find((project) => project.id === projectSelect.value);
+        const worktreesList = document.getElementById("worktrees-list");
+        const terminalSessionsList = document.getElementById("terminal-sessions-list");
+        const baseBranchSelect = document.getElementById("worktree-base-branch");
+
+        if (!selectedProject) {
+          worktreesList.innerHTML = `<div class="empty">No project selected.</div>`;
+          terminalSessionsList.innerHTML = `<div class="empty">No project selected.</div>`;
+          baseBranchSelect.innerHTML = `<option value="main">main</option>`;
+          return;
+        }
+
+        try {
+          const [branches, worktrees, tmuxSessions, zellijSessions] = await Promise.all([
+            tauriInvoke("list_git_branches", { projectPath: selectedProject.repoPath }),
+            tauriInvoke("list_worktrees", { projectPath: selectedProject.repoPath }),
+            tauriInvoke("list_terminal_sessions", { sessionType: "tmux" }).catch(() => []),
+            tauriInvoke("list_terminal_sessions", { sessionType: "zellij" }).catch(() => []),
+          ]);
+
+          baseBranchSelect.innerHTML = (branches || [])
+            .map((branch) => `<option value="${branch}">${branch}</option>`)
+            .join("") || `<option value="${selectedProject.defaultBranch}">${selectedProject.defaultBranch}</option>`;
+          baseBranchSelect.value = selectedProject.defaultBranch || baseBranchSelect.value;
+
+          worktreesList.innerHTML = (worktrees || []).length
+            ? worktrees
+                .map(
+                  (worktree) => `<div class="project-row"><div><div class="project-name">${worktree.branch || "detached"}</div><div class="project-path"><code>${worktree.path}</code></div></div></div>`
+                )
+                .join("")
+            : `<div class="empty">No worktrees created yet.</div>`;
+
+          const sessions = [...(tmuxSessions || []), ...(zellijSessions || [])];
+          terminalSessionsList.innerHTML = sessions.length
+            ? sessions
+                .map(
+                  (session) => `<div class="project-row"><div class="project-name">${session.name}</div><span class="badge">${session.sessionType}</span></div>`
+                )
+                .join("")
+            : `<div class="empty">No tmux/zellij sessions detected.</div>`;
+        } catch (error) {
+          worktreesList.innerHTML = `<div class="empty">${error?.message || String(error)}</div>`;
+          terminalSessionsList.innerHTML = `<div class="empty">Unable to read terminal sessions.</div>`;
+        }
+      }
+
+      function bindWorktreePanel(defaultSessionType) {
+        const projectSelect = document.getElementById("worktree-project");
+        const branchInput = document.getElementById("worktree-branch-name");
+        const baseBranchSelect = document.getElementById("worktree-base-branch");
+        const sessionTypeSelect = document.getElementById("worktree-session-type");
+        const createButton = document.getElementById("worktree-create-button");
+        const result = document.getElementById("worktree-result");
+
+        projectSelect.innerHTML = currentProjects.length
+          ? currentProjects
+              .map((project) => `<option value="${project.id}">${project.name}</option>`)
+              .join("")
+          : `<option value="">No projects</option>`;
+
+        sessionTypeSelect.value = defaultSessionType || "tmux";
+        projectSelect.onchange = () => void refreshWorktreePanel();
+
+        createButton.onclick = async () => {
+          const selectedProject = currentProjects.find((project) => project.id === projectSelect.value);
+          if (!selectedProject) {
+            result.textContent = "Choose a project first.";
+            return;
+          }
+          if (!branchInput.value.trim()) {
+            result.textContent = "Enter a new branch name.";
+            return;
+          }
+
+          createButton.disabled = true;
+          result.textContent = "Creating worktree session...";
+          try {
+            const response = await tauriInvoke("create_worktree_session", {
+              request: {
+                projectPath: selectedProject.repoPath,
+                branchName: branchInput.value.trim(),
+                baseBranch: baseBranchSelect.value,
+                sessionType: sessionTypeSelect.value,
+              },
+            });
+            result.textContent = `Created ${response.sessionName} at ${response.worktreePath}`;
+            branchInput.value = "";
+            await refreshWorktreePanel();
+          } catch (error) {
+            result.textContent = error?.message || String(error);
+          } finally {
+            createButton.disabled = false;
+          }
+        };
+
+        void refreshWorktreePanel();
+      }
+
+      function renderRuntimeTools(toolStatus) {
+        const container = document.getElementById("runtime-tools");
+        const entries = [
+          ["git", toolStatus.gitAvailable],
+          ["tmux", toolStatus.tmuxAvailable],
+          ["zellij", toolStatus.zellijAvailable],
+          ["ssh", toolStatus.sshAvailable],
+          ["gh", toolStatus.ghAvailable],
+        ];
+        container.innerHTML = entries
+          .map(
+            ([name, enabled]) => `
+              <div class="tool-item">
+                <strong>${name}</strong>
+                <span class="badge">${enabled ? "ready" : "missing"}</span>
+              </div>
+            `
+          )
+          .join("");
+      }
+
+      function renderSshHosts(hosts) {
+        const container = document.getElementById("ssh-hosts-list");
+        if (!hosts.length) {
+          container.innerHTML = `<div class="empty">No SSH hosts found in ~/.ssh/config.</div>`;
+          return;
+        }
+
+        container.innerHTML = hosts
+          .map((host) => `<div class="project-row"><div class="project-name">${host}</div></div>`)
+          .join("");
+      }
+
+      function bindSettings(snapshot) {
+        const sidebarToggle = document.getElementById("sidebar-collapsed");
+        const notificationsToggle = document.getElementById("notifications-enabled");
+        const sessionTypeSelect = document.getElementById("default-session-type");
+
+        sidebarToggle.checked = !!snapshot.sidebarDefaultCollapsed;
+        notificationsToggle.checked = !!snapshot.notificationSettings?.isEnabled;
+        sessionTypeSelect.value = snapshot.defaultSessionType || "tmux";
+
+        sidebarToggle.onchange = async () => {
+          await tauriInvoke("update_app_settings", {
+            patch: { sidebarDefaultCollapsed: sidebarToggle.checked },
+          });
+        };
+
+        notificationsToggle.onchange = async () => {
+          await tauriInvoke("update_app_settings", {
+            patch: { notificationEnabled: notificationsToggle.checked },
+          });
+        };
+
+        sessionTypeSelect.onchange = async () => {
+          await tauriInvoke("update_app_settings", {
+            patch: { defaultSessionType: sessionTypeSelect.value },
+          });
+        };
+      }
+
+      function bindProjectScan() {
+        const scanButton = document.getElementById("scan-button");
+        const scanRoot = document.getElementById("scan-root");
+        const scanResult = document.getElementById("scan-result");
+
+        scanButton.onclick = async () => {
+          scanButton.disabled = true;
+          scanResult.textContent = "Scanning repositories...";
+          try {
+            const result = await tauriInvoke("register_projects_from_scan", {
+              rootPath: scanRoot.value.trim(),
+            });
+            scanResult.textContent = `Registered ${result.registered.length} project(s), skipped ${result.skipped.length}.`;
+            await bootstrap();
+          } catch (error) {
+            scanResult.textContent = error?.message || String(error);
+          } finally {
+            scanButton.disabled = false;
+          }
+        };
+      }
+
+      function renderBoard(tasks) {
+        const columns = document.getElementById("board-columns");
+        columns.innerHTML = "";
+
+        STATUS_ORDER.forEach((status) => {
+          const groupedTasks = tasks.filter((task) => task.status === status);
+          columns.appendChild(createColumn(status, groupedTasks));
+        });
+      }
+
+      function setError(message) {
+        document.body.classList.add("is-error");
+        document.getElementById("error-text").textContent = message;
+        document.getElementById("runtime-pill").textContent = "Rust backend needs attention";
+      }
+
+      async function bootstrap() {
+        if (!tauriInvoke) {
+          setError("Tauri IPC bridge is unavailable.");
+          return;
+        }
+
+        try {
+          const [backendStatus, boardSnapshot, appSettings, runtimeTools, sshHosts] = await Promise.all([
+            tauriInvoke("get_backend_status"),
+            tauriInvoke("get_board_snapshot"),
+            tauriInvoke("get_app_settings_snapshot"),
+            tauriInvoke("get_runtime_tool_status"),
+            tauriInvoke("get_available_ssh_hosts"),
+          ]);
+
+          document.getElementById("runtime-pill").textContent = `${backendStatus.runtime} · ${backendStatus.migrationStage}`;
+          document.getElementById("runtime-mode").textContent = backendStatus.nodeRuntimeRequired
+            ? "Hybrid migration stage"
+            : "Pure Rust backend";
+          document.getElementById("database-path").textContent = boardSnapshot.databasePath;
+
+          renderProjects(boardSnapshot.projects || []);
+          renderBoard(boardSnapshot.tasks || []);
+          bindSettings(appSettings || {});
+          renderRuntimeTools(runtimeTools || {});
+          renderSshHosts(sshHosts || []);
+          bindProjectScan();
+          bindWorktreePanel(appSettings?.defaultSessionType);
+        } catch (error) {
+          console.error(error);
+          setError(error?.message || String(error));
+        }
+      }
+
+      void bootstrap();
+    </script>
+  </body>
+</html>

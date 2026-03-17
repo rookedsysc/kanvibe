@@ -12,7 +12,7 @@ KanVibe에 관심을 가져주셔서 감사합니다! 이 가이드가 시작하
 
 - Node.js 20+ (`.nvmrc` 참조)
 - pnpm
-- Docker (PostgreSQL용)
+- Rust toolchain
 - tmux 또는 zellij (터미널 기능용)
 
 ### 시작하기
@@ -25,20 +25,12 @@ cd kanvibe
 # 환경변수 복사
 cp .env.example .env
 
-# PostgreSQL 시작
-docker compose up db -d
-
 # 의존성 설치
 pnpm install
 
-# 데이터베이스 마이그레이션 실행
-pnpm migration:run
-
-# 개발 서버 시작
+# 데스크톱 앱 실행
 pnpm dev
 ```
-
-브라우저에서 `http://localhost:4885` 접속.
 
 ---
 
@@ -59,7 +51,7 @@ pnpm dev
    - TypeScript strict 모드
    - Tailwind CSS v4 + 디자인 토큰 (CSS 변수)
    - next-intl로 모든 사용자 텍스트 처리
-   - TypeORM migration으로 스키마 변경
+   - SQLite + TypeORM 기반 로컬 영속화
 
 ### PR 프로세스
 

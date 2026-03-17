@@ -23,6 +23,8 @@
 *.pem
 .kanvibe.pid
 /logs
+/data
+/src-tauri/target
 
 # debug
 npm-debug.log*

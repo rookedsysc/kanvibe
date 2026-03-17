@@ -12,7 +12,7 @@ Thank you for your interest in contributing to KanVibe! This guide will help you
 
 - Node.js 20+ (see `.nvmrc`)
 - pnpm
-- Docker (for PostgreSQL)
+- Rust toolchain
 - tmux or zellij (for terminal features)
 
 ### Getting Started
@@ -25,20 +25,12 @@ cd kanvibe
 # Copy environment variables
 cp .env.example .env
 
-# Start PostgreSQL
-docker compose up db -d
-
 # Install dependencies
 pnpm install
 
-# Run database migrations
-pnpm migration:run
-
-# Start development server
+# Start the desktop app
 pnpm dev
 ```
-
-Open `http://localhost:4885` in your browser.
 
 ---
 
@@ -59,7 +51,7 @@ Open `http://localhost:4885` in your browser.
    - TypeScript strict mode
    - Tailwind CSS v4 with design tokens (CSS variables)
    - next-intl for all user-facing strings
-   - TypeORM migrations for schema changes
+   - SQLite + TypeORM for local persistence
 
 ### PR Process
 
