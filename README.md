@@ -46,7 +46,7 @@ The `kanvibe` CLI script automatically checks and installs missing dependencies.
 | [gh](https://cli.github.com/) | latest | Yes | `brew install gh` (requires `gh auth login`) |
 | [zellij](https://github.com/zellij-org/zellij) | latest | No | `brew install zellij` |
 
-KanVibe now uses a local SQLite database. By default it is stored at `~/.kanvibe/kanvibe.sqlite`.
+KanVibe now uses a local SQLite database. By default it is stored in the Tauri app data directory, and `KANVIBE_DB_PATH` is only an optional override.
 
 ---
 
@@ -61,7 +61,7 @@ cp .env.example .env
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `PORT` | Web server port | `4885` |
-| `KANVIBE_DB_PATH` | SQLite database file path | `~/.kanvibe/kanvibe.sqlite` |
+| `KANVIBE_DB_PATH` | Optional SQLite database file path override | Tauri app data dir |
 | `KANVIBE_USER` | Login username | `admin` |
 | `KANVIBE_PASSWORD` | Login password | `changeme` (change this!) |
 

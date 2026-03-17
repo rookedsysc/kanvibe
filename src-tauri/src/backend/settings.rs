@@ -1,5 +1,6 @@
 use rusqlite::{params, OptionalExtension};
 use serde::{Deserialize, Serialize};
+use tauri::AppHandle;
 
 use super::db::open_database;
 
@@ -57,8 +58,8 @@ fn upsert_setting(connection: &rusqlite::Connection, key: &str, value: &str) -> 
 }
 
 #[tauri::command]
-pub fn get_app_settings_snapshot() -> Result<AppSettingsSnapshot, String> {
-    let (connection, _) = open_database()?;
+pub fn get_app_settings_snapshot(app_handle: AppHandle) -> Result<AppSettingsSnapshot, String> {
+    let (connection, _) = open_database(&app_handle)?;
     let sidebar_default_collapsed = get_setting(&connection, SIDEBAR_COLLAPSED_KEY)?
         .map(|value| value == "true")
         .unwrap_or(false);
@@ -82,8 +83,11 @@ pub fn get_app_settings_snapshot() -> Result<AppSettingsSnapshot, String> {
 }
 
 #[tauri::command]
-pub fn update_app_settings(patch: AppSettingsPatch) -> Result<AppSettingsSnapshot, String> {
-    let (connection, _) = open_database()?;
+pub fn update_app_settings(
+    app_handle: AppHandle,
+    patch: AppSettingsPatch,
+) -> Result<AppSettingsSnapshot, String> {
+    let (connection, _) = open_database(&app_handle)?;
 
     if let Some(value) = patch.sidebar_default_collapsed {
         upsert_setting(
@@ -109,5 +113,5 @@ pub fn update_app_settings(patch: AppSettingsPatch) -> Result<AppSettingsSnapsho
     }
 
     drop(connection);
-    get_app_settings_snapshot()
+    get_app_settings_snapshot(app_handle)
 }

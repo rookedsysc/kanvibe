@@ -2,7 +2,19 @@
 
 [KO](./docs/CONTRIBUTING.ko.md) | [ZH](./docs/CONTRIBUTING.zh.md)
 
-Thank you for your interest in contributing to KanVibe! This guide will help you get started.
+Thank you for your interest in contributing to KanVibe.
+
+---
+
+## Current Architecture
+
+KanVibe now runs as a desktop-only Tauri application.
+
+- Active runtime: Tauri v2 + Rust backend
+- Desktop UI host: `src-tauri/desktop/index.html`
+- Rust entry point: `src-tauri/src/main.rs`
+- Local persistence: SQLite via `rusqlite`
+- No active Next.js or Node web runtime path
 
 ---
 
@@ -10,10 +22,11 @@ Thank you for your interest in contributing to KanVibe! This guide will help you
 
 ### Prerequisites
 
-- Node.js 20+ (see `.nvmrc`)
+- Node.js 22+
 - pnpm
-- Rust toolchain
-- tmux or zellij (for terminal features)
+- Rust toolchain (`rustup`, `cargo`)
+- GTK/WebKit runtime dependencies required by Tauri on your OS
+- tmux or zellij if you want to verify terminal/worktree flows locally
 
 ### Getting Started
 
@@ -25,12 +38,82 @@ cd kanvibe
 # Copy environment variables
 cp .env.example .env
 
-# Install dependencies
+# Install JS-side tooling
 pnpm install
 
-# Start the desktop app
+# Start the desktop app in development mode
 pnpm dev
 ```
+
+### Useful Commands
+
+```bash
+pnpm dev            # Run the Tauri desktop app in development mode
+pnpm check          # cargo check for src-tauri
+pnpm test           # cargo test for src-tauri
+pnpm lint           # cargo fmt --check
+pnpm build          # Build the desktop release binary
+pnpm desktop:qa     # check + test + build in one pass
+```
+
+---
+
+## Desktop Development Workflow
+
+When working on the app, prefer this loop:
+
+1. Update Rust backend code under `src-tauri/src/`
+2. Update desktop UI shell under `src-tauri/desktop/index.html` if needed
+3. Run `pnpm check`
+4. Run `pnpm test`
+5. Launch with `pnpm dev` and verify the flow manually
+
+### Runtime Notes
+
+- Tauri serves the local desktop assets defined by `frontendDist` in `src-tauri/tauri.conf.json`
+- The active UI talks to Rust through `window.__TAURI__.core.invoke(...)`
+- SQLite schema bootstrapping currently lives in `src-tauri/src/backend/db.rs`
+
+---
+
+## Build and Release
+
+### Local Release Build
+
+```bash
+pnpm build
+```
+
+Current release output:
+
+- Binary: `src-tauri/target/release/kanvibe-desktop`
+
+### Runtime Verification
+
+After building, verify that the desktop binary launches.
+
+```bash
+./src-tauri/target/release/kanvibe-desktop
+```
+
+For headless Linux environments, a Broadway-based smoke test is acceptable:
+
+```bash
+broadwayd :7 >/tmp/kanvibe-broadway.log 2>&1 &
+GDK_BACKEND=broadway BROADWAY_DISPLAY=:7 timeout 8s ./src-tauri/target/release/kanvibe-desktop
+```
+
+If the process stays alive until timeout, treat that as a successful launch smoke test.
+
+### Packaging and Distribution
+
+At the moment, `src-tauri/tauri.conf.json` has `bundle.active` set to `false`, so the default release flow produces a desktop binary only.
+
+If you want installers or OS-native bundles:
+
+1. Enable bundling in `src-tauri/tauri.conf.json`
+2. Configure bundle targets and signing as needed for your platform
+3. Run `pnpm build` again
 
 ---
 
@@ -38,104 +121,67 @@ pnpm dev
 
 ### Before Submitting
 
-1. **All checks must pass:**
-   ```bash
-   pnpm build    # Build must succeed
-   pnpm check    # Type check must pass
-   pnpm test     # Tests must pass
-   ```
+1. All checks must pass:
 
-2. **Include a working screenshot or GIF** demonstrating your change. PRs without visual proof of functionality will not be merged.
+```bash
+pnpm check
+pnpm test
+pnpm build
+```
 
-3. **Follow the existing code style.** The project uses:
-   - TypeScript strict mode
-   - Tailwind CSS v4 with design tokens (CSS variables)
-   - next-intl for all user-facing strings
-   - SQLite + TypeORM for local persistence
+2. If you changed visible desktop behavior, attach a screenshot or GIF.
+3. Keep changes aligned with the desktop-only Tauri/Rust architecture.
 
 ### PR Process
 
 1. Fork the repository
-2. Create a feature branch from `main`
+2. Create a branch from `dev`
 3. Make your changes
-4. Run all checks (`pnpm build && pnpm check && pnpm test`)
-5. Commit with [Conventional Commits](https://www.conventionalcommits.org/) format
-6. Push and create a Pull Request
-7. Attach a screenshot/GIF of the working feature
+4. Run `pnpm desktop:qa`
+5. Verify the desktop app with `pnpm dev` or a release launch check
+6. Commit with Conventional Commits
+7. Push and open a Pull Request
 
 ### Commit Message Format
 
-```
+```text
 feat(scope): add new feature
 fix(scope): fix specific bug
 docs: update documentation
-refactor(scope): code restructuring
+refactor(scope): restructure code
 ```
-
----
-
-## Internationalization (i18n)
-
-All user-facing strings must be translated. When adding or modifying UI text:
-
-1. Add the key/value to `messages/ko.json`
-2. Add translations to `messages/en.json` and `messages/zh.json`
-3. Use `t("key")` in components via `useTranslations` or `getTranslations`
 
 ---
 
 ## Database Changes
 
-All schema changes go through TypeORM migrations:
+KanVibe no longer uses TypeORM migrations in the active runtime.
 
-```bash
-# Generate migration from entity changes
-pnpm migration:generate -- src/migrations/DescriptiveName
+When changing persistence behavior:
 
-# Run migrations
-pnpm migration:run
-```
+1. Update schema creation logic in `src-tauri/src/backend/db.rs`
+2. Update the Rust commands that read or write the affected tables
+3. Rebuild and validate existing local data behavior carefully
 
-Never use `synchronize: true`. See `CLAUDE.md` for detailed migration workflow.
+Because the app uses local SQLite, backward compatibility matters. Avoid destructive schema changes unless they are explicitly planned.
 
 ---
 
 ## Documentation Updates
 
-When making changes that affect user-facing behavior, update the corresponding documentation:
+When changing user-facing or contributor-facing behavior, update the related docs together:
 
 | Changed | Update |
 |---------|--------|
-| Features or UI | `README.md`, `docs/README.ko.md`, `docs/README.zh.md` |
-| Contributing process | `docs/CONTRIBUTING.md`, `docs/CONTRIBUTING.ko.md`, `docs/CONTRIBUTING.zh.md` |
+| Desktop behavior or workflow | `README.md`, `docs/README.ko.md`, `docs/README.zh.md` |
+| Contributing or release flow | `CONTRIBUTING.md`, `docs/CONTRIBUTING.ko.md`, `docs/CONTRIBUTING.zh.md` |
 | Environment variables | `.env.example` + all README files |
-| Hook API | All README files (Hook API section) |
+| Tauri build or release process | README + all contributing guides |
 
-All three language versions (EN, KO, ZH) must be updated together.
-
----
-
-## Next Steps & Roadmap
-
-### Gemini Hooks / Codex Hooks Support (In Development)
-
-Currently, KanVibe supports **Claude Code Hooks** for automatic status tracking. Support for **Gemini Hooks** and **Codex Hooks** is planned and under development.
-
-If you have ideas for a better approach or architecture for multi-agent hook support, please open a [Discussion](https://github.com/rookedsysc/kanvibe/discussions) first. We'd love to collaborate on finding the best direction before implementation begins.
-
-### Token Usage Dashboard
-
-The next major feature goal is a **token usage tracking dashboard** - monitoring AI agent token consumption across tasks and sessions.
-
-### How to Propose New Features
-
-For significant changes or new features:
-1. Open a [Discussion](https://github.com/rookedsysc/kanvibe/discussions) to share your idea
-2. Get feedback from the community and maintainers
-3. Once the direction is agreed upon, create an Issue and submit a PR
+Keep EN, KO, and ZH versions aligned.
 
 ---
 
 ## License
 
-By contributing to KanVibe, you agree that your contributions will be licensed under the [AGPL-3.0 License](../LICENSE).
+By contributing to KanVibe, you agree that your contributions will be licensed under the [AGPL-3.0 License](./LICENSE).

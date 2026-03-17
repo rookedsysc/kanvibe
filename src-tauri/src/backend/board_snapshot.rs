@@ -1,5 +1,6 @@
 use rusqlite::{Connection, Row};
 use serde::Serialize;
+use tauri::AppHandle;
 
 use super::db::open_database;
 
@@ -74,8 +75,8 @@ fn table_exists(connection: &Connection, table_name: &str) -> Result<bool, Strin
 }
 
 #[tauri::command]
-pub fn get_board_snapshot() -> Result<BoardSnapshot, String> {
-    let (connection, database_path) = open_database()?;
+pub fn get_board_snapshot(app_handle: AppHandle) -> Result<BoardSnapshot, String> {
+    let (connection, database_path) = open_database(&app_handle)?;
 
     let has_projects = table_exists(&connection, "projects")?;
     let has_tasks = table_exists(&connection, "kanban_tasks")?;

@@ -46,7 +46,7 @@ KanVibe는 Tauri 데스크톱 앱으로 실행됩니다. 필요한 의존성은 
 | [gh](https://cli.github.com/) | 최신 | Yes | `brew install gh` (`gh auth login` 필요) |
 | [zellij](https://github.com/zellij-org/zellij) | 최신 | No | `brew install zellij` |
 
-KanVibe는 이제 로컬 SQLite 데이터베이스를 사용합니다. 기본 경로는 `~/.kanvibe/kanvibe.sqlite` 입니다.
+KanVibe는 이제 로컬 SQLite 데이터베이스를 사용합니다. 기본 경로는 Tauri 앱 데이터 디렉토리이며, `KANVIBE_DB_PATH`는 선택적인 override 용도입니다.
 
 ---
 
@@ -61,7 +61,7 @@ cp .env.example .env
 | 변수 | 설명 | 기본값 |
 |------|------|--------|
 | `PORT` | 웹 서버 포트 | `4885` |
-| `KANVIBE_DB_PATH` | SQLite 데이터베이스 파일 경로 | `~/.kanvibe/kanvibe.sqlite` |
+| `KANVIBE_DB_PATH` | SQLite 데이터베이스 파일 경로 override (선택) | Tauri 앱 데이터 디렉토리 |
 | `KANVIBE_USER` | 로그인 사용자명 | `admin` |
 | `KANVIBE_PASSWORD` | 로그인 비밀번호 | `changeme` (변경 필수!) |
 

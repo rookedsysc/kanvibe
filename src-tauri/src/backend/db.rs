@@ -1,16 +1,17 @@
 use std::{env, fs, path::PathBuf};
 
 use rusqlite::Connection;
+use tauri::{AppHandle, Manager};
 
-const DEFAULT_DATABASE_DIRECTORY: &str = ".kanvibe";
 const DEFAULT_DATABASE_FILE: &str = "kanvibe.sqlite";
 
-pub fn resolve_database_path() -> Result<PathBuf, String> {
+pub fn resolve_database_path(app_handle: &AppHandle) -> Result<PathBuf, String> {
     let configured_path = env::var("KANVIBE_DB_PATH").unwrap_or_default();
     let database_path = if configured_path.trim().is_empty() {
-        let home_directory = env::var("HOME").map_err(|_| "HOME is not set".to_string())?;
-        PathBuf::from(home_directory)
-            .join(DEFAULT_DATABASE_DIRECTORY)
+        app_handle
+            .path()
+            .app_data_dir()
+            .map_err(|error| format!("app data directory resolve failed: {error}"))?
             .join(DEFAULT_DATABASE_FILE)
     } else {
         PathBuf::from(configured_path)
@@ -28,8 +29,8 @@ pub fn resolve_database_path() -> Result<PathBuf, String> {
     Ok(database_path)
 }
 
-pub fn open_database() -> Result<(Connection, String), String> {
-    let database_path = resolve_database_path()?;
+pub fn open_database(app_handle: &AppHandle) -> Result<(Connection, String), String> {
+    let database_path = resolve_database_path(app_handle)?;
     let connection =
         Connection::open(&database_path).map_err(|error| format!("sqlite open failed: {error}"))?;
     ensure_schema(&connection)?;

@@ -46,7 +46,7 @@ KanVibe 现在作为 Tauri 桌面应用运行。所需依赖如下：
 | [gh](https://cli.github.com/) | 最新 | Yes | `brew install gh`（需要 `gh auth login`） |
 | [zellij](https://github.com/zellij-org/zellij) | 最新 | No | `brew install zellij` |
 
-KanVibe 现在使用本地 SQLite 数据库，默认路径为 `~/.kanvibe/kanvibe.sqlite`。
+KanVibe 现在使用本地 SQLite 数据库。默认位置是 Tauri 应用数据目录，`KANVIBE_DB_PATH` 仅作为可选覆盖项使用。
 
 ---
 
@@ -61,7 +61,7 @@ cp .env.example .env
 | 变量 | 说明 | 默认值 |
 |------|------|--------|
 | `PORT` | Web 服务器端口 | `4885` |
-| `KANVIBE_DB_PATH` | SQLite 数据库文件路径 | `~/.kanvibe/kanvibe.sqlite` |
+| `KANVIBE_DB_PATH` | SQLite 数据库文件路径覆盖项（可选） | Tauri 应用数据目录 |
 | `KANVIBE_USER` | 登录用户名 | `admin` |
 | `KANVIBE_PASSWORD` | 登录密码 | `changeme`（请修改！） |
 

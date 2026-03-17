@@ -7,6 +7,7 @@ use std::{
 use rand::RngCore;
 use rusqlite::{params, OptionalExtension};
 use serde::Serialize;
+use tauri::AppHandle;
 use walkdir::WalkDir;
 
 use super::{board_snapshot::BoardProjectSummary, db::open_database};
@@ -102,8 +103,8 @@ pub fn scan_git_repositories(root_path: String) -> Result<Vec<String>, String> {
 }
 
 #[tauri::command]
-pub fn list_projects() -> Result<Vec<BoardProjectSummary>, String> {
-    let (connection, _) = open_database()?;
+pub fn list_projects(app_handle: AppHandle) -> Result<Vec<BoardProjectSummary>, String> {
+    let (connection, _) = open_database(&app_handle)?;
     let mut statement = connection
         .prepare(
             "SELECT id, name, repo_path, default_branch, color
@@ -129,9 +130,12 @@ pub fn list_projects() -> Result<Vec<BoardProjectSummary>, String> {
 }
 
 #[tauri::command]
-pub fn register_projects_from_scan(root_path: String) -> Result<ProjectRegistrationResult, String> {
+pub fn register_projects_from_scan(
+    app_handle: AppHandle,
+    root_path: String,
+) -> Result<ProjectRegistrationResult, String> {
     let candidates = scan_git_repositories(root_path)?;
-    let (connection, _) = open_database()?;
+    let (connection, _) = open_database(&app_handle)?;
     let mut registered = Vec::new();
     let mut skipped = Vec::new();
 
@@ -195,8 +199,8 @@ pub fn register_projects_from_scan(root_path: String) -> Result<ProjectRegistrat
 }
 
 #[tauri::command]
-pub fn delete_project(project_id: String) -> Result<(), String> {
-    let (connection, _) = open_database()?;
+pub fn delete_project(app_handle: AppHandle, project_id: String) -> Result<(), String> {
+    let (connection, _) = open_database(&app_handle)?;
     connection
         .execute("DELETE FROM projects WHERE id = ?1", [project_id])
         .map_err(|error| format!("project delete failed: {error}"))?;
