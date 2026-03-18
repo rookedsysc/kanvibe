@@ -41,13 +41,12 @@ The `kanvibe` CLI script automatically checks and installs missing dependencies.
 |------------|---------|----------|---------|
 | [Node.js](https://nodejs.org/) | >= 22 | Yes | `brew install node` |
 | [pnpm](https://pnpm.io/) | latest | Yes | `corepack enable && corepack prepare pnpm@latest --activate` |
-| [Docker](https://www.docker.com/) | latest | Yes | `brew install --cask docker` |
 | [git](https://git-scm.com/) | latest | Yes | `brew install git` |
 | [tmux](https://github.com/tmux/tmux) | latest | Yes | `brew install tmux` |
 | [gh](https://cli.github.com/) | latest | Yes | `brew install gh` (requires `gh auth login`) |
 | [zellij](https://github.com/zellij-org/zellij) | latest | No | `brew install zellij` |
 
-> Docker is used to run the PostgreSQL database via Docker Compose.
+> KanVibe now uses an embedded SQLite database. Docker is no longer required.
 
 ---
 
@@ -62,7 +61,6 @@ cp .env.example .env
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `PORT` | Web server port | `4885` |
-| `DB_PORT` | PostgreSQL port | `4886` |
 | `KANVIBE_USER` | Login username | `admin` |
 | `KANVIBE_PASSWORD` | Login password | `changeme` (change this!) |
 
@@ -74,15 +72,27 @@ bash kanvibe.sh start --fg     # Foreground (output to terminal, Ctrl+C to stop)
 bash kanvibe.sh start --bg     # Background (server keeps running after terminal closes)
 ```
 
-This command checks dependencies (with i18n install prompts), installs packages, starts PostgreSQL, runs migrations, builds, and launches the server.
+This command checks dependencies (with i18n install prompts), installs packages, prepares the embedded SQLite database, builds, and launches the server.
 
 ```bash
 bash kanvibe.sh stop
 ```
 
-Stops the KanVibe server and PostgreSQL container.
+Stops the KanVibe server.
 
 Open `http://localhost:4885` in your browser.
+
+### Desktop App Build (DMG / Homebrew-ready)
+
+```bash
+pnpm dist
+```
+
+This builds the Next.js app, generates the bundled seed database, and packages a desktop app through Electron Builder.
+
+- macOS output: `dist/*.dmg`, `dist/*.zip`
+- Homebrew distribution: use the generated DMG artifact in a custom Homebrew Cask tap
+- Homebrew template: `distribution/homebrew/kanvibe.rb.template`
 
 ---
 
@@ -245,13 +255,13 @@ Review code changes directly in the browser with a GitHub-style diff viewer. Cli
 | Category | Technology |
 |----------|------------|
 | Frontend/Backend | Next.js 16 (App Router) + React 19 + TypeScript |
-| Database | PostgreSQL 16 + TypeORM |
+| Database | SQLite + TypeORM + better-sqlite3 |
 | Styling | Tailwind CSS v4 |
 | Terminal | xterm.js + WebSocket + node-pty |
 | SSH | ssh2 (Node.js) |
 | Drag & Drop | @hello-pangea/dnd |
 | i18n | next-intl |
-| Container | Docker Compose |
+| Desktop Packaging | Electron + Electron Builder |
 
 ---
 

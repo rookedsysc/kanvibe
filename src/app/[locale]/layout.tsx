@@ -13,6 +13,8 @@ const inter = Inter({
   subsets: ["latin"],
 });
 
+export const dynamic = "force-dynamic";
+
 export const viewport: Viewport = {
   themeColor: "#FFFFFF",
 };
@@ -64,8 +66,4 @@ export default async function LocaleLayout({ children, params }: Props) {
       </body>
     </html>
   );
-}
-
-export function generateStaticParams() {
-  return routing.locales.map((locale) => ({ locale }));
 }

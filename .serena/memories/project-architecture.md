@@ -1,44 +1,29 @@
-# KanVibe Project Architecture
-
 ## Tech Stack
-- Next.js 16 (App Router) + React 19 + TypeScript 5
-- Tailwind CSS v4 (CSS Variables + @theme inline in globals.css)
-- next-intl for i18n (ko, en, zh) with locale-based routing (/[locale]/...)
-- TypeORM + PostgreSQL
-- @hello-pangea/dnd for drag & drop
+- Next.js 16 + React 19 + TypeScript
+- Embedded SQLite via TypeORM + better-sqlite3
+- Electron + Electron Builder for desktop packaging
+- next-intl, xterm.js, node-pty, ssh2
 
-## Design System
-- Tokens defined in `prd/design-system.json`
-- CSS variables in `src/app/globals.css` (:root + @theme inline)
-- Google brand colors (#4285F4, #EA4335, #FBBC05, #34A853) + black & white base
-- Light theme only
-- Naming: `--color-{category}-{name}` (brand, bg, text, border, status, tag)
-- Tailwind classes: `bg-bg-page`, `text-text-primary`, `border-border-default`, `bg-status-todo`, `bg-tag-claude-bg`
+## Runtime Architecture
+- `boot.js` loads `.env`, registers `tsx`, then boots `server.ts`
+- `server.ts` runs Next custom HTTP server + separate WebSocket server for terminals and board notifications
+- Desktop entrypoint: `electron/main.js` boots the internal server, waits for `http://127.0.0.1:${PORT}/ko/login`, then opens BrowserWindow
+- Electron sets `KANVIBE_APP_DATA_DIR` and `KANVIBE_SEED_DB_PATH` so runtime DB lives under Electron `userData`
 
-## i18n Structure
-- `src/i18n/routing.ts` — locale config (ko default)
-- `src/i18n/request.ts` — server message loading
-- `src/i18n/navigation.ts` — locale-aware Link, redirect, usePathname, useRouter
-- `messages/{locale}.json` — translation files
-- Client: `useTranslations("namespace")`, Server: `getTranslations("namespace")`
-- Middleware: combined locale routing + auth check in `src/middleware.ts`
+## Database
+- `src/lib/database.ts` uses TypeORM `better-sqlite3`
+- `src/lib/databasePaths.ts` resolves runtime DB path and copies bundled seed DB if available
+- `src/lib/sqliteSchema.ts` idempotently bootstraps tables/columns/indexes for SQLite
+- `scripts/build-seed-db.ts` generates `resources/database/app.seed.db`
+- `pnpm db:prepare` rebuilds the bundled seed DB
 
-## Key Files
-- Root layout: `src/app/layout.tsx` (thin wrapper, passes children through)
-- Locale layout: `src/app/[locale]/layout.tsx` (NextIntlClientProvider, Inter font, globals.css)
-- Pages: `src/app/[locale]/page.tsx`, `src/app/[locale]/login/page.tsx`, `src/app/[locale]/task/[id]/page.tsx`
-- Components: `src/components/Board.tsx` (main), Column, TaskCard, CreateTaskModal, BranchTaskModal, ProjectSettings, TaskContextMenu, TaskStatusBadge, Terminal, TerminalLoader
+## Packaging
+- `electron-builder.yml` packages `.next`, `src`, `server.ts`, `boot.js`, `electron/`, public assets, messages
+- `asar: false` is currently used so the custom Next server can read packaged files directly
+- `pnpm dist:dir` succeeded on Linux and produced `dist/linux-unpacked/`
+- `pnpm dist` is configured for macOS DMG/ZIP builds; actual DMG creation requires macOS host
 
-## Database Migration
-- TypeORM migration 기반 스키마 관리 (`synchronize: false`)
-- CLI 설정: `src/lib/typeorm-cli.config.ts` (tsx 기반, 상대 경로 사용)
-- 앱 설정: `src/lib/database.ts` (`migrationsRun: true`로 자동 실행)
-- 마이그레이션 파일: `src/migrations/*.ts`
-- 새 마이그레이션 생성 시 `database.ts`의 `migrations` 배열에 import 추가 필수
-- 스크립트: `migration:generate`, `migration:run`, `migration:revert`
-
-## Conventions
-- Korean comments (CODE_PRINCIPLES.md)
-- UTF-8 heredoc for Korean content files (FILE_WRITE_PRINCIPLES.md)
-- `@/*` path alias → `./src/*`
-- "use client" directive for client components
+## Notes
+- Browser notifications + hooks remain on the existing localhost HTTP/WebSocket flow
+- Login defaults now fall back to `admin` / `changeme` if env vars are absent, which is important for packaged desktop use
+- One unrelated user change remains in `.codex/hooks/kanvibe-notify-hook.sh`; do not overwrite it unintentionally

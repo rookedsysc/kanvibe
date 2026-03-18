@@ -43,6 +43,10 @@ const messages = {
       loadingMore: "Loading more...",
       detailError: "Failed to load session details.",
       sessionsError: "Failed to load session list.",
+      searchPlaceholder: "Search sessions...",
+      messageSearchPlaceholder: "Search messages...",
+      filterUser: "User",
+      filterAssistant: "AI",
       showMore: "Show more",
       messages: "{count} messages",
       providers: {

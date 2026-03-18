@@ -9,7 +9,15 @@ const SESSION_COOKIE = "kanvibe_session";
  * Turbopack 워커와 메인 프로세스 간 상태 공유 문제를 우회한다.
  */
 function getSecret(): string {
-  return process.env.KANVIBE_PASSWORD || "kanvibe-default-secret";
+  return process.env.KANVIBE_PASSWORD || "changeme";
+}
+
+function getConfiguredUsername(): string {
+  return process.env.KANVIBE_USER || "admin";
+}
+
+function getConfiguredPassword(): string {
+  return process.env.KANVIBE_PASSWORD || "changeme";
 }
 
 /** 토큰에 HMAC 서명을 붙여 반환한다 */
@@ -45,8 +53,8 @@ export function validateCredentials(
   password: string,
 ): boolean {
   return (
-    username === process.env.KANVIBE_USER &&
-    password === process.env.KANVIBE_PASSWORD
+    username === getConfiguredUsername() &&
+    password === getConfiguredPassword()
   );
 }
 

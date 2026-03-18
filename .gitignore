@@ -17,12 +17,15 @@
 
 # production
 /build
+/dist
 
 # misc
 .DS_Store
 *.pem
 .kanvibe.pid
 /logs
+/.kanvibe/
+/resources/database/app.seed.db
 
 # debug
 npm-debug.log*

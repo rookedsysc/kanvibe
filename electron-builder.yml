@@ -1,0 +1,31 @@
+appId: com.kanvibe.desktop
+productName: KanVibe
+asar: false
+
+directories:
+  output: dist
+  buildResources: resources
+
+files:
+  - boot.js
+  - electron/**/*
+  - messages/**/*
+  - next.config.ts
+  - package.json
+  - public/**/*
+  - server.ts
+  - src/**/*
+  - .next/**/*
+
+extraResources:
+  - from: resources/database
+    to: database
+    filter:
+      - app.seed.db
+
+mac:
+  target:
+    - dmg
+    - zip
+
+publish: null
