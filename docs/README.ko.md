@@ -39,7 +39,7 @@ AI 코딩 에이전트(Claude Code, Gemini CLI, Codex CLI 등)의 작업을 실�
 
 | 의존성 | 버전 | 필수 | 설치 |
 |--------|------|------|------|
-| [Node.js](https://nodejs.org/) | >= 22 | Yes | `brew install node` |
+| [Node.js](https://nodejs.org/) | 24.x | Yes | `brew install node@24` |
 | [pnpm](https://pnpm.io/) | 최신 | Yes | `corepack enable && corepack prepare pnpm@latest --activate` |
 | [git](https://git-scm.com/) | 최신 | Yes | `brew install git` |
 | [tmux](https://github.com/tmux/tmux) | 최신 | Yes | `brew install tmux` |

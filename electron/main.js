@@ -6,6 +6,12 @@ const { app, BrowserWindow, session } = require("electron");
 const PORT = process.env.PORT || "4885";
 const DEFAULT_LOCALE = process.env.KANVIBE_LOCALE || "ko";
 
+if (process.platform === "linux") {
+  app.disableHardwareAcceleration();
+  app.commandLine.appendSwitch("disable-gpu");
+  app.commandLine.appendSwitch("no-sandbox");
+}
+
 let mainWindow = null;
 let serverBootstrapped = false;
 

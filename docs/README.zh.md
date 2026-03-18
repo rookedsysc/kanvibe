@@ -39,7 +39,7 @@
 
 | 依赖 | 版本 | 必需 | 安装 |
 |------|------|------|------|
-| [Node.js](https://nodejs.org/) | >= 22 | Yes | `brew install node` |
+| [Node.js](https://nodejs.org/) | 24.x | Yes | `brew install node@24` |
 | [pnpm](https://pnpm.io/) | 最新 | Yes | `corepack enable && corepack prepare pnpm@latest --activate` |
 | [git](https://git-scm.com/) | 最新 | Yes | `brew install git` |
 | [tmux](https://github.com/tmux/tmux) | 最新 | Yes | `brew install tmux` |

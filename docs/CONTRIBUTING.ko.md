@@ -10,7 +10,7 @@ KanVibe에 관심을 가져주셔서 감사합니다! 이 가이드가 시작하
 
 ### 사전 요구사항
 
-- Node.js 20+ (`.nvmrc` 참조)
+- Node.js 24.x (`.nvmrc` 참조)
 - pnpm
 - tmux 또는 zellij (터미널 기능용)
 

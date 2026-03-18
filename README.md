@@ -39,7 +39,7 @@ The `kanvibe` CLI script automatically checks and installs missing dependencies.
 
 | Dependency | Version | Required | Install |
 |------------|---------|----------|---------|
-| [Node.js](https://nodejs.org/) | >= 22 | Yes | `brew install node` |
+| [Node.js](https://nodejs.org/) | 24.x | Yes | `brew install node@24` |
 | [pnpm](https://pnpm.io/) | latest | Yes | `corepack enable && corepack prepare pnpm@latest --activate` |
 | [git](https://git-scm.com/) | latest | Yes | `brew install git` |
 | [tmux](https://github.com/tmux/tmux) | latest | Yes | `brew install tmux` |

@@ -10,7 +10,7 @@ Thank you for your interest in contributing to KanVibe! This guide will help you
 
 ### Prerequisites
 
-- Node.js 20+ (see `.nvmrc`)
+- Node.js 24.x (see `.nvmrc`)
 - pnpm
 - tmux or zellij (for terminal features)
 

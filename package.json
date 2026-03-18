@@ -4,6 +4,9 @@
   "private": true,
   "description": "AI agent task management Kanban board with embedded SQLite desktop packaging.",
   "author": "rookedsysc",
+  "engines": {
+    "node": "24.x"
+  },
   "main": "electron/main.js",
   "scripts": {
     "dev": "node boot.js",
@@ -15,6 +18,7 @@
     "dist:dir": "pnpm db:prepare && pnpm build && electron-builder --dir",
     "lint": "eslint",
     "check": "tsc --noEmit",
+    "test:e2e:login": "bash -lc 'for port in 4884 4885; do fuser -k \"$port\"/tcp 2>/dev/null || true; done; rm -f .next/dev/lock; playwright test tests/e2e/login.spec.js'",
     "test": "vitest run",
     "test:watch": "vitest",
     "postinstall": "chmod +x node_modules/node-pty/prebuilds/darwin-arm64/spawn-helper 2>/dev/null || true"
@@ -56,6 +60,7 @@
     "ws": "^8.19.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.58.2",
     "@tailwindcss/postcss": "^4",
     "@testing-library/react": "^16.3.2",
     "@testing-library/user-event": "^14.6.1",
