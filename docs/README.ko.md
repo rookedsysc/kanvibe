@@ -94,6 +94,15 @@ pnpm dist
 - Homebrew 배포: 생성된 DMG를 커스텀 Homebrew Cask tap에 연결하면 됩니다.
 - Homebrew 템플릿: `distribution/homebrew/kanvibe.rb.template`
 
+### 네이티브 모듈 복구
+
+macOS에서 `better-sqlite3` `NODE_MODULE_VERSION` 불일치가 발생하면, KanVibe는 시작 전에 자동 재빌드를 시도합니다.
+
+- 브라우저/서버 런타임: `pnpm rebuild better-sqlite3`
+- 데스크톱 런타임: `pnpm exec electron-builder install-app-deps`
+
+위 명령은 반드시 Node 24.x에서 실행하세요.
+
 ---
 
 ## 사용 흐름

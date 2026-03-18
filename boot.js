@@ -18,5 +18,6 @@ if (existsSync(envPath)) {
 
 const { AsyncLocalStorage } = require("node:async_hooks");
 globalThis.AsyncLocalStorage = AsyncLocalStorage;
+require("./scripts/ensure-native-runtime.cjs");
 require("tsx/cjs");
 require("./server.ts");

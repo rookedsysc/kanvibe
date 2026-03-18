@@ -94,6 +94,15 @@ This builds the Next.js app, generates the bundled seed database, and packages a
 - Homebrew distribution: use the generated DMG artifact in a custom Homebrew Cask tap
 - Homebrew template: `distribution/homebrew/kanvibe.rb.template`
 
+### Native Module Recovery
+
+If macOS shows a `better-sqlite3` `NODE_MODULE_VERSION` mismatch, KanVibe now attempts an automatic rebuild before startup.
+
+- browser/server runtime: `pnpm rebuild better-sqlite3`
+- desktop runtime: `pnpm exec electron-builder install-app-deps`
+
+Always run these commands under Node 24.x.
+
 ---
 
 ## Usage Flow

@@ -9,6 +9,10 @@
   },
   "main": "electron/main.js",
   "scripts": {
+    "predev": "node scripts/ensure-native-runtime.cjs",
+    "predb:prepare": "node scripts/ensure-native-runtime.cjs",
+    "prestart": "node scripts/ensure-native-runtime.cjs",
+    "predesktop:dev": "node scripts/ensure-native-runtime.cjs --electron",
     "dev": "node boot.js",
     "build": "next build",
     "start": "node boot.js",
