@@ -18,6 +18,10 @@ if (process.platform === "linux") {
 let mainWindow = null;
 let serverBootstrapped = false;
 
+function getDefaultUrl() {
+  return `http://127.0.0.1:${PORT}/${DEFAULT_LOCALE}/login`;
+}
+
 function getTitleBarOptions() {
   if (process.platform === "darwin") {
     return {
@@ -77,6 +81,24 @@ function attachWindowHandlers(browserWindow) {
   browserWindow.webContents.on("did-create-window", (childWindow) => {
     attachWindowHandlers(childWindow);
   });
+
+  browserWindow.webContents.on("before-input-event", (event, input) => {
+    const isNewWindowShortcut =
+      input.type === "keyDown" &&
+      !input.isAutoRepeat &&
+      !input.alt &&
+      (input.control || input.meta) &&
+      input.key.toLowerCase() === "n";
+
+    if (!isNewWindowShortcut) {
+      return;
+    }
+
+    event.preventDefault();
+
+    const currentUrl = browserWindow.webContents.getURL() || getDefaultUrl();
+    void createAppWindow(currentUrl);
+  });
 }
 
 async function waitForServer(url, retries = 80) {
@@ -127,20 +149,28 @@ function bootstrapInternalServer() {
   serverBootstrapped = true;
 }
 
-async function createMainWindow() {
+async function createAppWindow(targetUrl = getDefaultUrl()) {
   bootstrapInternalServer();
 
-  const startUrl = `http://127.0.0.1:${PORT}/${DEFAULT_LOCALE}/login`;
-  await waitForServer(startUrl);
+  await waitForServer(targetUrl);
 
-  mainWindow = new BrowserWindow(createBrowserWindowOptions());
-  attachWindowHandlers(mainWindow);
+  const browserWindow = new BrowserWindow(createBrowserWindowOptions());
+  mainWindow = browserWindow;
+  attachWindowHandlers(browserWindow);
 
-  await mainWindow.loadURL(startUrl);
+  await browserWindow.loadURL(targetUrl);
 
-  mainWindow.on("closed", () => {
-    mainWindow = null;
+  browserWindow.on("closed", () => {
+    if (mainWindow === browserWindow) {
+      mainWindow = null;
+    }
   });
+
+  return browserWindow;
+}
+
+async function createMainWindow() {
+  return createAppWindow();
 }
 
 app.whenReady().then(async () => {
