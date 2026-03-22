@@ -27,6 +27,10 @@ export default function NotificationListener({
 
   // Service Worker 등록
   useEffect(() => {
+    if (window.kanvibeDesktop?.isDesktop) {
+      return;
+    }
+
     if ("serviceWorker" in navigator && typeof window !== "undefined") {
       navigator.serviceWorker
         .register("/sw.js", { scope: "/" })

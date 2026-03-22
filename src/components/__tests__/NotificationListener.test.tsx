@@ -257,4 +257,26 @@ describe("NotificationListener", () => {
     // Then
     expect(container.innerHTML).toBe("");
   });
+
+  it("should skip service worker registration on desktop", async () => {
+    const registerSpy = vi.fn().mockResolvedValue({});
+    Object.defineProperty(global.navigator, "serviceWorker", {
+      value: {
+        register: registerSpy,
+      },
+      configurable: true,
+    });
+
+    window.kanvibeDesktop = {
+      isDesktop: true,
+      showNotification: vi.fn().mockResolvedValue(true),
+    };
+
+    const { default: NotificationListener } = await import("@/components/NotificationListener");
+    render(<NotificationListener {...defaultProps} />);
+
+    expect(registerSpy).not.toHaveBeenCalled();
+
+    delete window.kanvibeDesktop;
+  });
 });
