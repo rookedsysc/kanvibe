@@ -3,11 +3,12 @@
 const { execFileSync } = require("node:child_process");
 
 const REQUIRED_NODE_MAJOR = 24;
-const isElectronRuntime = Boolean(process.versions.electron) || process.argv.includes("--electron");
+const isRunningInsideElectron = Boolean(process.versions.electron);
+const isElectronTarget = isRunningInsideElectron || process.argv.includes("--electron");
 const hasAttemptedRebuild = process.env.KANVIBE_NATIVE_REBUILD_ATTEMPTED === "1";
 
 function isPackagedElectronRuntime() {
-  return isElectronRuntime && !process.defaultApp;
+  return isRunningInsideElectron && !process.defaultApp;
 }
 
 function getNodeMajor() {
@@ -38,13 +39,25 @@ function loadBetterSqlite3() {
   return require("better-sqlite3");
 }
 
+function verifyBetterSqlite3Binding() {
+  const BetterSqlite3 = loadBetterSqlite3();
+  const database = new BetterSqlite3(":memory:");
+
+  try {
+    database.pragma("journal_mode = WAL");
+    database.prepare("SELECT 1").get();
+  } finally {
+    database.close();
+  }
+}
+
 function rebuildNativeDependency() {
   const env = {
     ...process.env,
     KANVIBE_NATIVE_REBUILD_ATTEMPTED: "1",
   };
 
-  if (isElectronRuntime) {
+  if (isElectronTarget) {
     if (isPackagedElectronRuntime()) {
       throw new Error("better-sqlite3 ABI mismatch in packaged Electron runtime");
     }
@@ -67,7 +80,7 @@ function rebuildNativeDependency() {
 function printRebuildFailureGuidance(error) {
   console.error("[kanvibe] better-sqlite3 is still not loadable after an automatic rebuild attempt.");
   console.error(String(error?.stack || error?.message || error));
-  if (isElectronRuntime) {
+  if (isElectronTarget) {
     if (isPackagedElectronRuntime()) {
       console.error("[kanvibe] This packaged app cannot rebuild native modules on the end-user machine.");
       console.error("[kanvibe] Reinstall or re-download a release built for this Electron version and platform.");
@@ -82,13 +95,13 @@ function printRebuildFailureGuidance(error) {
 }
 
 function main() {
-  if (!isElectronRuntime && getNodeMajor() !== REQUIRED_NODE_MAJOR) {
+  if (!isRunningInsideElectron && getNodeMajor() !== REQUIRED_NODE_MAJOR) {
     printNodeVersionGuidance();
     process.exit(1);
   }
 
   try {
-    loadBetterSqlite3();
+    verifyBetterSqlite3Binding();
   } catch (error) {
     if (!isNativeModuleMismatch(error)) {
       throw error;
@@ -107,7 +120,7 @@ function main() {
     }
 
     try {
-      loadBetterSqlite3();
+      verifyBetterSqlite3Binding();
     } catch (retryError) {
       printRebuildFailureGuidance(retryError);
       process.exit(1);
