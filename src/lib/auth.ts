@@ -1,7 +1,30 @@
-import { createHmac, randomUUID, timingSafeEqual } from "crypto";
+import fs from "node:fs";
+import path from "node:path";
+import { createHmac, randomBytes, randomUUID, timingSafeEqual } from "crypto";
 import { cookies, headers } from "next/headers";
+import { ensureKanvibeDataDirectory } from "@/lib/databasePaths";
 
 const SESSION_COOKIE = "kanvibe_session";
+const SESSION_SECRET_FILE_NAME = "session-secret";
+
+function getSessionSecretFilePath(): string {
+  return path.join(ensureKanvibeDataDirectory(), SESSION_SECRET_FILE_NAME);
+}
+
+function readPersistedSessionSecret(): string | null {
+  const sessionSecretPath = getSessionSecretFilePath();
+  if (!fs.existsSync(sessionSecretPath)) {
+    return null;
+  }
+
+  const persistedSecret = fs.readFileSync(sessionSecretPath, "utf8").trim();
+  return persistedSecret || null;
+}
+
+function persistSessionSecret(sessionSecret: string): void {
+  const sessionSecretPath = getSessionSecretFilePath();
+  fs.writeFileSync(sessionSecretPath, `${sessionSecret}\n`, { mode: 0o600 });
+}
 
 /**
  * HMAC 서명 비밀키.
@@ -9,7 +32,19 @@ const SESSION_COOKIE = "kanvibe_session";
  * Turbopack 워커와 메인 프로세스 간 상태 공유 문제를 우회한다.
  */
 function getSecret(): string {
-  return process.env.KANVIBE_PASSWORD || "changeme";
+  const configuredSessionSecret = process.env.KANVIBE_SESSION_SECRET?.trim();
+  if (configuredSessionSecret) {
+    return configuredSessionSecret;
+  }
+
+  const persistedSecret = readPersistedSessionSecret();
+  if (persistedSecret) {
+    return persistedSecret;
+  }
+
+  const generatedSecret = randomBytes(32).toString("hex");
+  persistSessionSecret(generatedSecret);
+  return generatedSecret;
 }
 
 function getConfiguredUsername(): string {

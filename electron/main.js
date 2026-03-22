@@ -5,11 +5,14 @@ const { app, BrowserWindow, session } = require("electron");
 
 const PORT = process.env.PORT || "4885";
 const DEFAULT_LOCALE = process.env.KANVIBE_LOCALE || "ko";
+const isHeadlessLinuxRuntime = !process.env.DISPLAY && !process.env.WAYLAND_DISPLAY;
 
 if (process.platform === "linux") {
   app.disableHardwareAcceleration();
   app.commandLine.appendSwitch("disable-gpu");
-  app.commandLine.appendSwitch("no-sandbox");
+  if (process.env.CI || isHeadlessLinuxRuntime) {
+    app.commandLine.appendSwitch("no-sandbox");
+  }
 }
 
 let mainWindow = null;

@@ -2,8 +2,12 @@ import fs from "node:fs";
 import path from "node:path";
 import Database from "better-sqlite3";
 
+function quoteSqliteIdentifier(identifier: string): string {
+  return `"${identifier.replaceAll("\"", "\"\"")}"`;
+}
+
 function getColumnNames(database: Database.Database, tableName: string): Set<string> {
-  const rows = database.prepare(`PRAGMA table_info(${tableName})`).all() as Array<{ name: string }>;
+  const rows = database.prepare(`PRAGMA table_info(${quoteSqliteIdentifier(tableName)})`).all() as Array<{ name: string }>;
   return new Set(rows.map((row) => row.name));
 }
 
@@ -13,7 +17,7 @@ function ensureColumn(database: Database.Database, tableName: string, columnName
     return;
   }
 
-  database.exec(`ALTER TABLE ${tableName} ADD COLUMN ${definition}`);
+  database.exec(`ALTER TABLE ${quoteSqliteIdentifier(tableName)} ADD COLUMN ${definition}`);
 }
 
 function ensureBaseTables(database: Database.Database): void {

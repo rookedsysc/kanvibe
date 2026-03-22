@@ -69,7 +69,6 @@ export default function AiSessionsDialog({ taskId, isOpen, onClose, data }: AiSe
     setSessionsData(createEmptySessionsResult(data));
   }, [data]);
 
-  const safeSessionsData = sessionsData ?? createEmptySessionsResult(data);
   const sessionSearchPlaceholder = translateOptional(t, "aiSessions.searchPlaceholder", "Search sessions...");
   const messageSearchPlaceholder = translateOptional(t, "aiSessions.messageSearchPlaceholder", "Search messages...");
   const filterUserLabel = translateOptional(t, "aiSessions.filterUser", translateOptional(t, "aiSessions.roles.user", "User"));
@@ -128,10 +127,8 @@ export default function AiSessionsDialog({ taskId, isOpen, onClose, data }: AiSe
   useEffect(() => {
     if (!isOpen || !selectedSessionId) return;
 
-    const selectedSession = safeSessionsData.sessions.find((s) => s.id === selectedSessionId);
+    const selectedSession = sessionsData.sessions.find((s) => s.id === selectedSessionId);
     if (!selectedSession) return;
-
-    let cancelled = false;
 
     async function reloadDetail() {
       await loadSessionDetail({
@@ -154,17 +151,16 @@ export default function AiSessionsDialog({ taskId, isOpen, onClose, data }: AiSe
     }, 300);
 
     return () => {
-      cancelled = true;
       clearTimeout(timer);
     };
-  }, [messageSearchQuery, selectedRoles, selectedSessionId, taskId, includeRepoSessions, isOpen, t]);
+  }, [messageSearchQuery, selectedRoles, selectedSessionId, sessionsData, taskId, includeRepoSessions, isOpen, t]);
 
-  const providerCounts = useMemo(() => buildProviderCounts(safeSessionsData.sources), [safeSessionsData.sources]);
+  const providerCounts = useMemo(() => buildProviderCounts(sessionsData.sources), [sessionsData.sources]);
 
   const filteredSessions = useMemo(() => {
     if (selectedProviders.length === 0) return [];
-    return safeSessionsData.sessions.filter((session) => selectedProviders.includes(session.provider));
-  }, [selectedProviders, safeSessionsData.sessions]);
+    return sessionsData.sessions.filter((session) => selectedProviders.includes(session.provider));
+  }, [selectedProviders, sessionsData.sessions]);
 
   const selectedSession = filteredSessions.find((session) => session.id === selectedSessionId) ?? null;
 
@@ -240,7 +236,7 @@ export default function AiSessionsDialog({ taskId, isOpen, onClose, data }: AiSe
             </div>
           </div>
 
-          {safeSessionsData.isRemote ? (
+          {sessionsData.isRemote ? (
             <EmptyState text={t("aiSessions.remoteUnsupported")} />
           ) : isSessionsLoading ? (
             <EmptyState text={t("aiSessions.loadingSessions")} />

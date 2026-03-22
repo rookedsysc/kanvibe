@@ -6,6 +6,10 @@ const REQUIRED_NODE_MAJOR = 24;
 const isElectronRuntime = Boolean(process.versions.electron) || process.argv.includes("--electron");
 const hasAttemptedRebuild = process.env.KANVIBE_NATIVE_REBUILD_ATTEMPTED === "1";
 
+function isPackagedElectronRuntime() {
+  return isElectronRuntime && !process.defaultApp;
+}
+
 function getNodeMajor() {
   return Number.parseInt(process.versions.node.split(".")[0] || "0", 10);
 }
@@ -41,6 +45,10 @@ function rebuildNativeDependency() {
   };
 
   if (isElectronRuntime) {
+    if (isPackagedElectronRuntime()) {
+      throw new Error("better-sqlite3 ABI mismatch in packaged Electron runtime");
+    }
+
     console.warn("[kanvibe] Detected Electron native ABI mismatch. Rebuilding app dependencies for Electron...");
     execFileSync("pnpm", ["exec", "electron-builder", "install-app-deps"], {
       stdio: "inherit",
@@ -60,6 +68,12 @@ function printRebuildFailureGuidance(error) {
   console.error("[kanvibe] better-sqlite3 is still not loadable after an automatic rebuild attempt.");
   console.error(String(error?.stack || error?.message || error));
   if (isElectronRuntime) {
+    if (isPackagedElectronRuntime()) {
+      console.error("[kanvibe] This packaged app cannot rebuild native modules on the end-user machine.");
+      console.error("[kanvibe] Reinstall or re-download a release built for this Electron version and platform.");
+      return;
+    }
+
     console.error("[kanvibe] Try running `pnpm exec electron-builder install-app-deps` and launch the desktop app again.");
     return;
   }
@@ -85,7 +99,12 @@ function main() {
       process.exit(1);
     }
 
-    rebuildNativeDependency();
+    try {
+      rebuildNativeDependency();
+    } catch (rebuildError) {
+      printRebuildFailureGuidance(rebuildError);
+      process.exit(1);
+    }
 
     try {
       loadBetterSqlite3();
