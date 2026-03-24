@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import Board from "../Board";
+import { reorderTasks } from "@/app/actions/kanban";
 import { SessionType, TaskStatus } from "@/entities/KanbanTask";
 import type { Project } from "@/entities/Project";
 import type { TasksByStatus } from "@/app/actions/kanban";
@@ -10,7 +11,23 @@ vi.mock("next-intl", () => ({
 }));
 
 vi.mock("@hello-pangea/dnd", () => ({
-  DragDropContext: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  DragDropContext: ({ children, onDragEnd }: { children: React.ReactNode; onDragEnd?: (result: unknown) => void }) => (
+    <div>
+      <button
+        type="button"
+        onClick={() =>
+          onDragEnd?.({
+            draggableId: "task-1",
+            source: { droppableId: TaskStatus.TODO, index: 0 },
+            destination: { droppableId: TaskStatus.TODO, index: 0 },
+          })
+        }
+      >
+        trigger-drag-end
+      </button>
+      {children}
+    </div>
+  ),
 }));
 
 vi.mock("@/app/actions/kanban", () => ({
@@ -96,6 +113,37 @@ function createEmptyTasks(): TasksByStatus {
   };
 }
 
+function createTasksWithTodo(): TasksByStatus {
+  return {
+    [TaskStatus.TODO]: [
+      {
+        id: "task-1",
+        title: "Test Task",
+        description: null,
+        status: TaskStatus.TODO,
+        branchName: null,
+        worktreePath: null,
+        sessionType: null,
+        sessionName: null,
+        sshHost: null,
+        agentType: null,
+        project: null,
+        projectId: "project-1",
+        baseBranch: null,
+        prUrl: null,
+        priority: null,
+        displayOrder: 0,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+    ],
+    [TaskStatus.PROGRESS]: [],
+    [TaskStatus.PENDING]: [],
+    [TaskStatus.REVIEW]: [],
+    [TaskStatus.DONE]: [],
+  };
+}
+
 describe("Board defaultSessionType sync", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -148,6 +196,28 @@ describe("Board defaultSessionType sync", () => {
     // Then
     await waitFor(() => {
       expect(screen.getByTestId("create-task-default-session").textContent).toBe(SessionType.ZELLIJ);
+    });
+  });
+
+  it("드래그 종료 시 reorder action을 이벤트 이후에 호출한다", async () => {
+    render(
+      <Board
+        initialTasks={createTasksWithTodo()}
+        initialDoneTotal={0}
+        initialDoneLimit={20}
+        sshHosts={[]}
+        projects={[createProject()]}
+        sidebarDefaultCollapsed={false}
+        doneAlertDismissed={false}
+        notificationSettings={{ isEnabled: true, enabledStatuses: ["progress", "pending", "review"] }}
+        defaultSessionType={SessionType.TMUX}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "trigger-drag-end" }));
+
+    await waitFor(() => {
+      expect(reorderTasks).toHaveBeenCalledWith(TaskStatus.TODO, ["task-1"]);
     });
   });
 });
