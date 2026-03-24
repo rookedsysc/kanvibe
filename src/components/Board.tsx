@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect, useMemo } from "react";
+import { useState, useCallback, useEffect, useMemo, useTransition } from "react";
 import { useTranslations } from "next-intl";
 import { DragDropContext, type DropResult } from "@hello-pangea/dnd";
 import Column from "./Column";
@@ -88,6 +88,95 @@ function insertAtFilteredIndex(
   return arr;
 }
 
+interface DragMovePlan {
+  updatedTasks: TasksByStatus;
+  doneTotalDelta: number;
+  doneOffsetDelta: number;
+  persistence:
+    | { type: "reorder"; status: TaskStatus; orderedIds: string[] }
+    | { type: "move"; taskId: string; status: TaskStatus; orderedIds: string[] };
+}
+
+function buildDragMovePlan(
+  currentTasks: TasksByStatus,
+  result: DropResult,
+  projectFilterSet: Set<string> | null,
+): DragMovePlan | null {
+  const { source, destination, draggableId } = result;
+  if (!destination) return null;
+
+  const sourceStatus = source.droppableId as TaskStatus;
+  const destStatus = destination.droppableId as TaskStatus;
+  const updated: TasksByStatus = { ...currentTasks };
+
+  const taskIndex = updated[sourceStatus].findIndex((task) => task.id === draggableId);
+  if (taskIndex === -1) return null;
+
+  const movedTask = updated[sourceStatus][taskIndex];
+  const newSource = updated[sourceStatus].filter((task) => task.id !== draggableId);
+
+  if (sourceStatus === destStatus) {
+    updated[sourceStatus] = insertAtFilteredIndex(
+      newSource,
+      movedTask,
+      destination.index,
+      projectFilterSet,
+    );
+
+    const orderedIds = (
+      projectFilterSet
+        ? updated[sourceStatus].filter(
+            (task) => task.projectId && projectFilterSet.has(task.projectId),
+          )
+        : updated[sourceStatus]
+    ).map((task) => task.id);
+
+    return {
+      updatedTasks: updated,
+      doneTotalDelta: 0,
+      doneOffsetDelta: 0,
+      persistence: {
+        type: "reorder",
+        status: sourceStatus,
+        orderedIds,
+      },
+    };
+  }
+
+  updated[sourceStatus] = newSource;
+  const updatedTask: KanbanTask = { ...movedTask, status: destStatus };
+  updated[destStatus] = insertAtFilteredIndex(
+    updated[destStatus],
+    updatedTask,
+    destination.index,
+    projectFilterSet,
+  );
+
+  const orderedIds = (
+    projectFilterSet
+      ? updated[destStatus].filter(
+          (task) => task.projectId && projectFilterSet.has(task.projectId),
+        )
+      : updated[destStatus]
+  ).map((task) => task.id);
+
+  return {
+    updatedTasks: updated,
+    doneTotalDelta:
+      (destStatus === TaskStatus.DONE ? 1 : 0) -
+      (sourceStatus === TaskStatus.DONE ? 1 : 0),
+    doneOffsetDelta:
+      (destStatus === TaskStatus.DONE ? 1 : 0) -
+      (sourceStatus === TaskStatus.DONE ? 1 : 0),
+    persistence: {
+      type: "move",
+      taskId: draggableId,
+      status: destStatus,
+      orderedIds,
+    },
+  };
+}
+
 export default function Board({ initialTasks, initialDoneTotal, initialDoneLimit, sshHosts, projects, sidebarDefaultCollapsed, doneAlertDismissed, notificationSettings, defaultSessionType }: BoardProps) {
   useAutoRefresh();
   const t = useTranslations("board");
@@ -111,6 +200,7 @@ export default function Board({ initialTasks, initialDoneTotal, initialDoneLimit
   const [isDoneAlertDismissed, setIsDoneAlertDismissed] = useState(doneAlertDismissed);
   const [pendingDoneResult, setPendingDoneResult] = useState<DropResult | null>(null);
   const [currentDefaultSessionType, setCurrentDefaultSessionType] = useState<SessionType>(defaultSessionType);
+  const [, startDragPersistenceTransition] = useTransition();
 
   /** projectId → 표시할 프로젝트 이름 매핑. worktree 프로젝트는 메인 프로젝트 이름으로 resolve한다 */
   const projectNameMap = useMemo(() => {
@@ -268,79 +358,33 @@ export default function Board({ initialTasks, initialDoneTotal, initialDoneLimit
   /** 드래그 결과를 받아 state 업데이트 + DB 반영을 수행한다 */
   const executeDragMove = useCallback(
     (result: DropResult) => {
-      const { source, destination, draggableId } = result;
-      if (!destination) return;
+      const plan = buildDragMovePlan(tasks, result, projectFilterSet);
+      if (!plan) return;
 
-      const sourceStatus = source.droppableId as TaskStatus;
-      const destStatus = destination.droppableId as TaskStatus;
+      setTasks(plan.updatedTasks);
 
-      setTasks((prev) => {
-        const updated = { ...prev };
+      if (plan.doneTotalDelta !== 0) {
+        setDoneTotal((prev) => prev + plan.doneTotalDelta);
+      }
 
-        const taskIndex = updated[sourceStatus].findIndex(
-          (task) => task.id === draggableId
-        );
-        if (taskIndex === -1) return prev;
+      if (plan.doneOffsetDelta !== 0) {
+        setDoneOffset((prev) => prev + plan.doneOffsetDelta);
+      }
 
-        const movedTask = updated[sourceStatus][taskIndex];
-        const newSource = updated[sourceStatus].filter(
-          (task) => task.id !== draggableId
-        );
-
-        if (sourceStatus === destStatus) {
-          updated[sourceStatus] = insertAtFilteredIndex(
-            newSource,
-            movedTask,
-            destination.index,
-            projectFilterSet
-          );
-
-          const reorderIds = (
-            projectFilterSet
-              ? updated[sourceStatus].filter(
-                  (task) =>
-                    task.projectId && projectFilterSet.has(task.projectId)
-                )
-              : updated[sourceStatus]
-          ).map((task) => task.id);
-
-          reorderTasks(sourceStatus, reorderIds);
-        } else {
-          updated[sourceStatus] = newSource;
-          const updatedTask: KanbanTask = { ...movedTask, status: destStatus };
-          updated[destStatus] = insertAtFilteredIndex(
-            updated[destStatus],
-            updatedTask,
-            destination.index,
-            projectFilterSet
-          );
-
-          if (destStatus === TaskStatus.DONE) {
-            setDoneTotal((prev) => prev + 1);
-            setDoneOffset((prev) => prev + 1);
-          }
-          if (sourceStatus === TaskStatus.DONE) {
-            setDoneTotal((prev) => prev - 1);
-            setDoneOffset((prev) => prev - 1);
-          }
-
-          /** 상태 변경 + 목적지 컬럼 순서를 한 번에 DB에 반영한다 (revalidation 없음) */
-          const destReorderIds = (
-            projectFilterSet
-              ? updated[destStatus].filter(
-                  (task) =>
-                    task.projectId && projectFilterSet.has(task.projectId)
-                )
-              : updated[destStatus]
-          ).map((task) => task.id);
-
-          moveTaskToColumn(draggableId, destStatus, destReorderIds);
+      startDragPersistenceTransition(async () => {
+        if (plan.persistence.type === "reorder") {
+          await reorderTasks(plan.persistence.status, plan.persistence.orderedIds);
+          return;
         }
 
-        return updated;
+        await moveTaskToColumn(
+          plan.persistence.taskId,
+          plan.persistence.status,
+          plan.persistence.orderedIds,
+        );
       });
     },
-    [projectFilterSet]
+    [projectFilterSet, startDragPersistenceTransition, tasks]
   );
 
   const handleDragEnd = useCallback(

@@ -1,7 +1,7 @@
 const http = require("node:http");
 const path = require("node:path");
 const process = require("node:process");
-const { app, BrowserWindow, session } = require("electron");
+const { app, BrowserWindow, session, shell } = require("electron");
 
 const PORT = process.env.PORT || "4885";
 const DEFAULT_LOCALE = process.env.KANVIBE_LOCALE || "ko";
@@ -17,6 +17,89 @@ if (process.platform === "linux") {
 
 let mainWindow = null;
 let serverBootstrapped = false;
+
+function getDefaultUrl() {
+  return `http://127.0.0.1:${PORT}/${DEFAULT_LOCALE}/login`;
+}
+
+function getTitleBarOptions() {
+  if (process.platform === "darwin") {
+    return {
+      titleBarStyle: "hiddenInset",
+    };
+  }
+
+  return {
+    titleBarStyle: "hidden",
+    titleBarOverlay: {
+      color: "#ffffff",
+      symbolColor: "#111827",
+      height: 40,
+    },
+  };
+}
+
+function createBrowserWindowOptions() {
+  return {
+    width: 1600,
+    height: 1000,
+    minWidth: 1200,
+    minHeight: 800,
+    backgroundColor: "#ffffff",
+    autoHideMenuBar: true,
+    ...getTitleBarOptions(),
+    webPreferences: {
+      preload: path.join(__dirname, "preload.js"),
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
+  };
+}
+
+function isKanvibeUrl(targetUrl) {
+  try {
+    const parsedUrl = new URL(targetUrl);
+    return parsedUrl.origin === `http://127.0.0.1:${PORT}`;
+  } catch {
+    return false;
+  }
+}
+
+function attachWindowHandlers(browserWindow) {
+  browserWindow.webContents.setWindowOpenHandler(({ url }) => {
+    if (isKanvibeUrl(url)) {
+      return {
+        action: "allow",
+        overrideBrowserWindowOptions: createBrowserWindowOptions(),
+      };
+    }
+
+    void shell.openExternal(url);
+    return { action: "deny" };
+  });
+
+  browserWindow.webContents.on("did-create-window", (childWindow) => {
+    attachWindowHandlers(childWindow);
+  });
+
+  browserWindow.webContents.on("before-input-event", (event, input) => {
+    const isNewWindowShortcut =
+      input.type === "keyDown" &&
+      !input.isAutoRepeat &&
+      !input.alt &&
+      (input.control || input.meta) &&
+      input.key.toLowerCase() === "n";
+
+    if (!isNewWindowShortcut) {
+      return;
+    }
+
+    event.preventDefault();
+
+    const currentUrl = browserWindow.webContents.getURL() || getDefaultUrl();
+    void createAppWindow(currentUrl);
+  });
+}
 
 async function waitForServer(url, retries = 80) {
   for (let attempt = 0; attempt < retries; attempt += 1) {
@@ -66,31 +149,28 @@ function bootstrapInternalServer() {
   serverBootstrapped = true;
 }
 
-async function createMainWindow() {
+async function createAppWindow(targetUrl = getDefaultUrl()) {
   bootstrapInternalServer();
 
-  const startUrl = `http://127.0.0.1:${PORT}/${DEFAULT_LOCALE}/login`;
-  await waitForServer(startUrl);
+  await waitForServer(targetUrl);
 
-  mainWindow = new BrowserWindow({
-    width: 1600,
-    height: 1000,
-    minWidth: 1200,
-    minHeight: 800,
-    backgroundColor: "#ffffff",
-    autoHideMenuBar: true,
-    webPreferences: {
-      preload: path.join(__dirname, "preload.js"),
-      contextIsolation: true,
-      nodeIntegration: false,
-    },
+  const browserWindow = new BrowserWindow(createBrowserWindowOptions());
+  mainWindow = browserWindow;
+  attachWindowHandlers(browserWindow);
+
+  await browserWindow.loadURL(targetUrl);
+
+  browserWindow.on("closed", () => {
+    if (mainWindow === browserWindow) {
+      mainWindow = null;
+    }
   });
 
-  await mainWindow.loadURL(startUrl);
+  return browserWindow;
+}
 
-  mainWindow.on("closed", () => {
-    mainWindow = null;
-  });
+async function createMainWindow() {
+  return createAppWindow();
 }
 
 app.whenReady().then(async () => {
