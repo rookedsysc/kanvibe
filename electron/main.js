@@ -1,7 +1,7 @@
 const http = require("node:http");
 const path = require("node:path");
 const process = require("node:process");
-const { app, BrowserWindow, session, shell } = require("electron");
+const { app, BrowserWindow, ipcMain, Notification, session, shell } = require("electron");
 
 const PORT = process.env.PORT || "4885";
 const DEFAULT_LOCALE = process.env.KANVIBE_LOCALE || "ko";
@@ -18,8 +18,12 @@ if (process.platform === "linux") {
 let mainWindow = null;
 let serverBootstrapped = false;
 
+function getServerBaseUrl() {
+  return `http://127.0.0.1:${PORT}`;
+}
+
 function getDefaultUrl() {
-  return `http://127.0.0.1:${PORT}/${DEFAULT_LOCALE}/login`;
+  return `${getServerBaseUrl()}/${DEFAULT_LOCALE}/login`;
 }
 
 function getTitleBarOptions() {
@@ -59,10 +63,65 @@ function createBrowserWindowOptions() {
 function isKanvibeUrl(targetUrl) {
   try {
     const parsedUrl = new URL(targetUrl);
-    return parsedUrl.origin === `http://127.0.0.1:${PORT}`;
+    return parsedUrl.origin === getServerBaseUrl();
   } catch {
     return false;
   }
+}
+
+function getNotificationIconPath() {
+  return path.join(app.getAppPath(), "public", "icons", "icon-192x192.png");
+}
+
+async function focusMainWindow(relativePath) {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    await createMainWindow();
+  }
+
+  if (!mainWindow) {
+    return;
+  }
+
+  if (mainWindow.isMinimized()) {
+    mainWindow.restore();
+  }
+
+  mainWindow.show();
+  mainWindow.focus();
+
+  if (!relativePath) {
+    return;
+  }
+
+  const targetUrl = new URL(relativePath, getServerBaseUrl()).href;
+  if (mainWindow.webContents.getURL() !== targetUrl) {
+    await mainWindow.loadURL(targetUrl);
+  }
+}
+
+function registerNotificationHandlers() {
+  ipcMain.handle("kanvibe:show-notification", async (_event, payload) => {
+    if (!Notification.isSupported()) {
+      return false;
+    }
+
+    const notification = new Notification({
+      title: payload.title,
+      body: payload.body,
+      icon: getNotificationIconPath(),
+    });
+
+    notification.on("click", () => {
+      const relativePath = payload.taskId
+        ? `/${payload.locale || DEFAULT_LOCALE}/task/${payload.taskId}`
+        : `/${payload.locale || DEFAULT_LOCALE}`;
+
+      void focusMainWindow(relativePath);
+    });
+
+    notification.show();
+    return true;
+  });
 }
 
 function attachWindowHandlers(browserWindow) {
@@ -177,6 +236,8 @@ app.whenReady().then(async () => {
   session.defaultSession.setPermissionRequestHandler((_webContents, permission, callback) => {
     callback(permission === "notifications");
   });
+
+  registerNotificationHandlers();
 
   await createMainWindow();
 
