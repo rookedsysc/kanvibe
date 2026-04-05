@@ -11,5 +11,5 @@ export function useAutoRefresh() {
       router.refresh();
     }
     boardHasMountedBefore = true;
-  }, [router]);
+  }, [router.refresh]);
 }

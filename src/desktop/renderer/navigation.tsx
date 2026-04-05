@@ -1,4 +1,4 @@
-import type { AnchorHTMLAttributes, PropsWithChildren } from "react";
+import { useMemo, type AnchorHTMLAttributes, type PropsWithChildren } from "react";
 import { Link as RouterLink, useLocation, useNavigate } from "react-router-dom";
 import { DEFAULT_LOCALE, SUPPORTED_LOCALES, getSafeLocale, type SupportedLocale } from "@/desktop/renderer/utils/locales";
 import { triggerDesktopRefresh } from "@/desktop/renderer/utils/refresh";
@@ -50,11 +50,14 @@ export function useRouter() {
   const location = useLocation();
   const currentLocale = getLocaleFromPathname(location.pathname);
 
-  return {
-    push: (href: string) => navigate(localizeHref(href, currentLocale)),
-    replace: (href: string) => navigate(localizeHref(href, currentLocale), { replace: true }),
-    refresh: () => triggerDesktopRefresh(),
-  };
+  return useMemo(
+    () => ({
+      push: (href: string) => navigate(localizeHref(href, currentLocale)),
+      replace: (href: string) => navigate(localizeHref(href, currentLocale), { replace: true }),
+      refresh: () => triggerDesktopRefresh(),
+    }),
+    [currentLocale, navigate],
+  );
 }
 
 export function redirect(input: { href: string; locale?: string } | string) {
