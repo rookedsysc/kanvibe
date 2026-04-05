@@ -4,6 +4,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { useTranslations } from "next-intl";
 import { fuzzyMatch, type FuzzyMatch } from "@/utils/fuzzySearch";
 import HighlightedText from "@/components/HighlightedText";
+import { listSubdirectories } from "@/app/actions/project";
 
 interface FolderSearchInputProps {
   onSelect: (path: string) => void;
@@ -37,14 +38,11 @@ export default function FolderSearchInput({
   const parentPath = lastSlash > 0 ? inputValue.substring(0, lastSlash) : "~";
   const searchTerm = lastSlash >= 0 ? inputValue.substring(lastSlash + 1) : "";
 
-  /** 지정 경로의 하위 디렉토리를 API에서 가져온다 */
+  /** 지정 경로의 하위 디렉토리를 런타임에서 가져온다 */
   const fetchDirectories = useCallback(async (dirPath: string) => {
     setIsLoading(true);
     try {
-      const params = new URLSearchParams({ path: dirPath });
-      if (sshHost) params.set("sshHost", sshHost);
-      const res = await fetch(`/api/directories?${params}`);
-      const result: string[] = await res.json();
+      const result = await listSubdirectories(dirPath, sshHost);
       setDirectories(result);
     } catch {
       setDirectories([]);

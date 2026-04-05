@@ -1,0 +1,21 @@
+import type { DesktopServiceNamespace } from "@/desktop/main/serviceRegistry";
+import type { BoardEventPayload } from "@/lib/boardNotifier";
+
+declare global {
+  interface Window {
+    kanvibeDesktop: {
+      isDesktop: boolean;
+      invoke: (namespace: DesktopServiceNamespace, method: string, args: unknown[]) => Promise<unknown>;
+      onBoardEvent: (listener: (event: BoardEventPayload) => void) => () => void;
+      openTerminal: (taskId: string, cols: number, rows: number) => Promise<{ ok: boolean; error?: string }>;
+      writeTerminal: (taskId: string, data: string) => void;
+      resizeTerminal: (taskId: string, cols: number, rows: number) => void;
+      focusTerminal: (taskId: string) => void;
+      closeTerminal: (taskId: string) => void;
+      onTerminalData: (listener: (event: { taskId: string; data: string }) => void) => () => void;
+      onTerminalClose: (listener: (event: { taskId: string; reason: string | null }) => void) => () => void;
+    };
+  }
+}
+
+export {};

@@ -12,9 +12,9 @@
     "predev": "node scripts/ensure-native-runtime.cjs",
     "predb:prepare": "node scripts/ensure-native-runtime.cjs",
     "prestart": "node scripts/ensure-native-runtime.cjs",
-    "dev": "node boot.js",
-    "build": "next build",
-    "start": "node boot.js",
+    "dev": "node scripts/run-desktop-dev.cjs",
+    "build": "vite build",
+    "start": "node scripts/run-desktop-start.cjs",
     "desktop:dev": "node scripts/run-desktop-dev.cjs",
     "db:prepare": "tsx scripts/build-seed-db.ts",
     "dist": "pnpm db:prepare && pnpm build && electron-builder --mac dmg zip",
@@ -55,6 +55,7 @@
     "react": "19.2.3",
     "react-colorful": "^5.6.1",
     "react-dom": "19.2.3",
+    "react-router-dom": "^7.9.4",
     "reflect-metadata": "^0.2.2",
     "ssh2": "^1.17.0",
     "tsx": "^4.21.0",
@@ -82,6 +83,7 @@
     "jsdom": "^28.1.0",
     "tailwindcss": "^4",
     "typescript": "5.9.3",
+    "vite": "^7.1.10",
     "vitest": "^4.0.18"
   }
 }

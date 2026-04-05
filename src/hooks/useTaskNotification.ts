@@ -49,6 +49,21 @@ export interface HookStatusTargetMissingNotification {
   locale: string;
 }
 
+function showDesktopNotification(title: string, options: NotificationOptions) {
+  if (typeof navigator !== "undefined" && "serviceWorker" in navigator) {
+    return navigator.serviceWorker.getRegistration().then((registration) => {
+      if (registration) {
+        return registration.showNotification(title, options);
+      }
+
+      new Notification(title, options);
+    });
+  }
+
+  new Notification(title, options);
+  return Promise.resolve();
+}
+
 /** hooks 경유 task 상태 변경 시 Browser Notification을 발송하는 훅 */
 export function useTaskNotification() {
   const isPermissionGranted = useRef(false);
@@ -76,20 +91,15 @@ export function useTaskNotification() {
         bodyParts.push(payload.description);
       }
 
-      // Service Worker의 notificationclick 이벤트를 수신하려면
-      // ServiceWorkerRegistration.showNotification()을 사용해야 함
       try {
-        const registration = await navigator.serviceWorker.getRegistration();
-        if (registration) {
-          registration.showNotification(title, {
-            body: bodyParts.join("\n"),
-            icon: "/kanvibe-logo.svg",
-            data: {
-              taskId: payload.taskId,
-              locale: payload.locale,
-            },
-          });
-        }
+        await showDesktopNotification(title, {
+          body: bodyParts.join("\n"),
+          icon: "/kanvibe-logo.svg",
+          data: {
+            taskId: payload.taskId,
+            locale: payload.locale,
+          },
+        });
       } catch (err) {
         console.error("[Notification] Failed to show notification:", err);
       }
@@ -109,16 +119,13 @@ export function useTaskNotification() {
           : messages.taskNotFound;
 
       try {
-        const registration = await navigator.serviceWorker.getRegistration();
-        if (registration) {
-          registration.showNotification(title, {
-            body: `${messages.formatMissingStatus(payload.requestedStatus)}\n${reasonMessage}`,
-            icon: "/kanvibe-logo.svg",
-            data: {
-              locale: payload.locale,
-            },
-          });
-        }
+        await showDesktopNotification(title, {
+          body: `${messages.formatMissingStatus(payload.requestedStatus)}\n${reasonMessage}`,
+          icon: "/kanvibe-logo.svg",
+          data: {
+            locale: payload.locale,
+          },
+        });
       } catch (err) {
         console.error("[Notification] Failed to show missing target notification:", err);
       }
