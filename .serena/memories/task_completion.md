@@ -1,0 +1,1 @@
+After code changes, run the narrowest relevant verification first, then project-level checks as needed: typically `pnpm test` for unit/integration coverage, `pnpm check` for TypeScript, and `pnpm lint` when touched code may affect lint rules. Use Node 24.x because package.json engines require it; Node 25 currently emits warnings and may skip native rebuild steps.
