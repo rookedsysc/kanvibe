@@ -121,7 +121,7 @@ describe("TaskCard - Priority Badge", () => {
     expect(badge.className).toContain("ml-auto");
   });
 
-  it("should open task detail in a new window on desktop", async () => {
+  it("should keep task detail navigation in the same window on desktop", async () => {
     const task = createTask();
     const openSpy = vi.spyOn(window, "open").mockImplementation(() => null);
 
@@ -129,9 +129,12 @@ describe("TaskCard - Priority Badge", () => {
 
     render(<TaskCard task={task} index={0} onContextMenu={onContextMenu} />);
 
-    fireEvent.click(screen.getByRole("link"));
+    const link = screen.getByRole("link");
 
-    expect(openSpy).toHaveBeenCalledWith("/ko/task/task-1", "_blank", "noopener");
+    fireEvent.click(link);
+
+    expect(link.getAttribute("href")).toBe("/task/task-1");
+    expect(openSpy).not.toHaveBeenCalled();
 
     openSpy.mockRestore();
     delete window.kanvibeDesktop;
