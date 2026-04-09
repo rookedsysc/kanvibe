@@ -4,7 +4,8 @@ import { addAiToolPatternsToGitExclude } from "@/lib/gitExclude";
 
 /**
  * OpenCode는 `.opencode/plugins/` 디렉토리에 TypeScript 플러그인을 배치하여 hooks를 등록한다.
- * message.updated(user) → progress, question.asked → pending, question.replied → progress, session.idle → review 상태를 전송한다.
+ * message.updated(user) → progress, question.asked → pending,
+ * question.replied → progress, session.idle → review, session.deleted → done 상태를 전송한다.
  */
 
 const PLUGIN_FILE_NAME = "kanvibe-plugin.ts";
@@ -17,7 +18,7 @@ function generatePluginScript(kanvibeUrl: string, projectName: string): string {
 /**
  * KanVibe OpenCode Plugin
  * message.updated(user) → progress, question.asked → pending,
- * question.replied → progress, session.idle → review 상태 변경
+ * question.replied → progress, session.idle → review, session.deleted → done 상태 변경
  */
 export const KanvibePlugin: Plugin = async ({ $, client }) => {
   const KANVIBE_URL = "${kanvibeUrl}";
@@ -51,8 +52,40 @@ export const KanvibePlugin: Plugin = async ({ $, client }) => {
 
   const sessionCache = new Map<string, boolean>();
 
-  async function isMainSession(sessionID: string | undefined): Promise<boolean> {
+  function getSessionID(source: any): string | undefined {
+    return (
+      source?.sessionID ??
+      source?.sessionId ??
+      source?.id ??
+      source?.session?.id ??
+      source?.info?.sessionID ??
+      source?.info?.sessionId ??
+      source?.info?.id
+    );
+  }
+
+  function getParentSessionID(source: any): string | null | undefined {
+    return (
+      source?.parentID ??
+      source?.parentId ??
+      source?.session?.parentID ??
+      source?.session?.parentId ??
+      source?.info?.parentID ??
+      source?.info?.parentId
+    );
+  }
+
+  async function isMainSession(source: any): Promise<boolean> {
+    const sessionID = getSessionID(source);
     if (!sessionID) return false;
+
+    const parentSessionID = getParentSessionID(source);
+    if (parentSessionID !== undefined) {
+      const isMain = !parentSessionID;
+      sessionCache.set(sessionID, isMain);
+      return isMain;
+    }
+
     if (sessionCache.has(sessionID)) return sessionCache.get(sessionID)!;
 
     try {
@@ -67,7 +100,7 @@ export const KanvibePlugin: Plugin = async ({ $, client }) => {
 
       return isMain;
     } catch {
-      return false;
+      return sessionCache.get(sessionID) ?? false;
     }
   }
 
@@ -77,30 +110,37 @@ export const KanvibePlugin: Plugin = async ({ $, client }) => {
         const message =
           (event as any).properties?.info ?? (event as any).properties?.message;
 
-        if (message?.role === "user" && (await isMainSession(message.sessionID))) {
+        if (message?.role === "user" && (await isMainSession(message))) {
           await updateStatus("progress");
         }
       }
       if (event.type === "question.asked") {
-        if (!(await isMainSession(event.properties.sessionID))) {
+        if (!(await isMainSession(event.properties))) {
           return;
         }
 
         await updateStatus("pending");
       }
       if (event.type === "question.replied") {
-        if (!(await isMainSession(event.properties.sessionID))) {
+        if (!(await isMainSession(event.properties))) {
           return;
         }
 
         await updateStatus("progress");
       }
       if (event.type === "session.idle") {
-        if (!(await isMainSession(event.properties.sessionID))) {
+        if (!(await isMainSession(event.properties))) {
           return;
         }
 
         await updateStatus("review");
+      }
+      if (event.type === "session.deleted") {
+        if (!(await isMainSession(event.properties))) {
+          return;
+        }
+
+        await updateStatus("done");
       }
     },
   };
