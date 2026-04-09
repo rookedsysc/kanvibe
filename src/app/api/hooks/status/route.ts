@@ -18,17 +18,17 @@ const STATUS_MAP: Record<string, TaskStatus> = {
 };
 
 /**
- * Hook API: branchName + projectName 기반 작업 상태 업데이트.
+ * Hook API: branchName + projectId 기반 작업 상태 업데이트.
  * Claude Code hooks에서 호출하여 현재 브랜치의 작업 상태를 자동 변경한다.
  */
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { branchName, projectName, status } = body;
+    const { branchName, projectId, status } = body;
 
-    if (!branchName || !projectName || !status) {
+    if (!branchName || !projectId || !status) {
       return NextResponse.json(
-        { success: false, error: "branchName, projectName, status는 필수입니다." },
+        { success: false, error: "branchName, projectId, status는 필수입니다." },
         { status: 400 }
       );
     }
@@ -42,18 +42,18 @@ export async function POST(request: NextRequest) {
     }
 
     const projectRepo = await getProjectRepository();
-    const project = await projectRepo.findOneBy({ name: projectName });
+    const project = await projectRepo.findOneBy({ id: projectId });
 
     if (!project) {
       broadcastHookStatusTargetMissing({
-        projectName,
+        projectName: projectId,
         branchName,
         requestedStatus: taskStatus,
         reason: "project-not-found",
       });
 
       return NextResponse.json(
-        { success: false, error: `프로젝트를 찾을 수 없습니다: ${projectName}` },
+        { success: false, error: `프로젝트를 찾을 수 없습니다: ${projectId}` },
         { status: 404 }
       );
     }
@@ -61,19 +61,19 @@ export async function POST(request: NextRequest) {
     const taskRepo = await getTaskRepository();
     const task = await taskRepo.findOneBy({
       branchName,
-      projectId: project.id,
+      projectId,
     });
 
     if (!task) {
       broadcastHookStatusTargetMissing({
-        projectName,
+        projectName: project.name,
         branchName,
         requestedStatus: taskStatus,
         reason: "task-not-found",
       });
 
       return NextResponse.json(
-        { success: false, error: `작업을 찾을 수 없습니다: ${projectName}/${branchName}` },
+        { success: false, error: `작업을 찾을 수 없습니다: ${project.name}/${branchName}` },
         { status: 404 }
       );
     }
@@ -91,7 +91,7 @@ export async function POST(request: NextRequest) {
     revalidatePath("/[locale]", "page");
     broadcastBoardUpdate();
     broadcastTaskStatusChanged({
-      projectName,
+      projectName: project.name,
       branchName,
       taskTitle: saved.title,
       description: saved.description,
@@ -101,7 +101,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      data: { id: saved.id, status: saved.status, branchName, projectName },
+      data: { id: saved.id, status: saved.status, branchName, projectId },
     });
   } catch (error) {
     console.error("Hook status 오류:", error);

@@ -9,12 +9,13 @@
   },
   "main": "electron/main.js",
   "scripts": {
-    "predev": "node scripts/ensure-native-runtime.cjs",
+    "predev": "node scripts/ensure-native-runtime.cjs --electron",
     "predb:prepare": "node scripts/ensure-native-runtime.cjs",
-    "prestart": "node scripts/ensure-native-runtime.cjs",
-    "dev": "node boot.js",
-    "build": "next build",
-    "start": "node boot.js",
+    "predesktop:dev": "node scripts/ensure-native-runtime.cjs --electron",
+    "prestart": "node scripts/ensure-native-runtime.cjs --electron",
+    "dev": "node scripts/run-desktop-dev.cjs",
+    "build": "vite build",
+    "start": "node scripts/run-desktop-start.cjs",
     "desktop:dev": "node scripts/run-desktop-dev.cjs",
     "db:prepare": "tsx scripts/build-seed-db.ts",
     "dist": "pnpm db:prepare && pnpm build && electron-builder --mac dmg zip",
@@ -24,7 +25,7 @@
     "test:e2e:login": "bash -lc 'for port in 4884 4885; do fuser -k \"$port\"/tcp 2>/dev/null || true; done; rm -f .next/dev/lock; playwright test tests/e2e/login.spec.js'",
     "test": "vitest run",
     "test:watch": "vitest",
-    "postinstall": "chmod +x node_modules/node-pty/prebuilds/darwin-arm64/spawn-helper 2>/dev/null || true"
+    "postinstall": "node scripts/postinstall.cjs"
   },
   "pnpm": {
     "onlyBuiltDependencies": [
@@ -55,6 +56,7 @@
     "react": "19.2.3",
     "react-colorful": "^5.6.1",
     "react-dom": "19.2.3",
+    "react-router-dom": "^7.9.4",
     "reflect-metadata": "^0.2.2",
     "ssh2": "^1.17.0",
     "tsx": "^4.21.0",
@@ -82,6 +84,7 @@
     "jsdom": "^28.1.0",
     "tailwindcss": "^4",
     "typescript": "5.9.3",
+    "vite": "^7.1.10",
     "vitest": "^4.0.18"
   }
 }

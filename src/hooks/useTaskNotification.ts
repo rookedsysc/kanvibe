@@ -65,7 +65,7 @@ async function showNotificationViaDesktopBridge(title: string, body: string, dat
     return false;
   }
 
-  await window.kanvibeDesktop?.showNotification({
+  await window.kanvibeDesktop?.showNotification?.({
     title,
     body,
     taskId: data.taskId,
@@ -91,6 +91,24 @@ async function showNotificationViaServiceWorker(title: string, body: string, dat
     data,
   });
 
+  return true;
+}
+
+async function showNotificationViaBrowser(title: string, body: string, data: BrowserNotificationData) {
+  const isServiceWorkerNotificationShown = await showNotificationViaServiceWorker(title, body, data);
+  if (isServiceWorkerNotificationShown) {
+    return true;
+  }
+
+  if (typeof Notification === "undefined") {
+    return false;
+  }
+
+  new Notification(title, {
+    body,
+    icon: NOTIFICATION_ICON_PATH,
+    data,
+  });
   return true;
 }
 
@@ -137,7 +155,7 @@ export function useTaskNotification() {
 
         const isDesktopNotificationShown = await showNotificationViaDesktopBridge(title, body, data);
         if (!isDesktopNotificationShown) {
-          await showNotificationViaServiceWorker(title, body, data);
+          await showNotificationViaBrowser(title, body, data);
         }
       } catch (err) {
         console.error("[Notification] Failed to show notification:", err);
@@ -165,7 +183,7 @@ export function useTaskNotification() {
 
         const isDesktopNotificationShown = await showNotificationViaDesktopBridge(title, body, data);
         if (!isDesktopNotificationShown) {
-          await showNotificationViaServiceWorker(title, body, data);
+          await showNotificationViaBrowser(title, body, data);
         }
       } catch (err) {
         console.error("[Notification] Failed to show missing target notification:", err);

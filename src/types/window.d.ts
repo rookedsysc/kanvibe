@@ -1,5 +1,3 @@
 interface Window {
-  kanvibeDesktop?: {
-    isDesktop?: boolean;
-  };
+  kanvibeDesktop?: KanvibeDesktopApi;
 }

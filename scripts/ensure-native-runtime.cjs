@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 const { execFileSync } = require("node:child_process");
+const path = require("node:path");
 
 const REQUIRED_NODE_MAJOR = 24;
 const isRunningInsideElectron = Boolean(process.versions.electron);
@@ -39,7 +40,7 @@ function loadBetterSqlite3() {
   return require("better-sqlite3");
 }
 
-function verifyBetterSqlite3Binding() {
+function verifyNodeBetterSqlite3Binding() {
   const BetterSqlite3 = loadBetterSqlite3();
   const database = new BetterSqlite3(":memory:");
 
@@ -49,6 +50,22 @@ function verifyBetterSqlite3Binding() {
   } finally {
     database.close();
   }
+}
+
+function verifyElectronBetterSqlite3Binding() {
+  execFileSync("pnpm", ["exec", "electron", path.join(__dirname, "verify-electron-better-sqlite3.cjs")], {
+    stdio: "inherit",
+    env: process.env,
+  });
+}
+
+function verifyBetterSqlite3Binding() {
+  if (isElectronTarget && !isRunningInsideElectron) {
+    verifyElectronBetterSqlite3Binding();
+    return;
+  }
+
+  verifyNodeBetterSqlite3Binding();
 }
 
 function rebuildNativeDependency() {
@@ -62,8 +79,8 @@ function rebuildNativeDependency() {
       throw new Error("better-sqlite3 ABI mismatch in packaged Electron runtime");
     }
 
-    console.warn("[kanvibe] Detected Electron native ABI mismatch. Rebuilding app dependencies for Electron...");
-    execFileSync("pnpm", ["exec", "electron-builder", "install-app-deps"], {
+    console.warn("[kanvibe] Detected Electron native ABI mismatch. Rebuilding better-sqlite3 for Electron from source...");
+    execFileSync("pnpm", ["exec", "electron-rebuild", "-f", "--build-from-source", "-w", "better-sqlite3"], {
       stdio: "inherit",
       env,
     });
@@ -87,7 +104,7 @@ function printRebuildFailureGuidance(error) {
       return;
     }
 
-    console.error("[kanvibe] Try running `pnpm exec electron-builder install-app-deps` and launch the desktop app again.");
+    console.error("[kanvibe] Try running `pnpm exec electron-rebuild -f --build-from-source -w better-sqlite3` and launch the desktop app again.");
     return;
   }
 

@@ -7,16 +7,13 @@ directories:
   buildResources: resources
 
 files:
-  - boot.js
+  - build/renderer/**/*
   - electron/**/*
   - messages/**/*
-  - next.config.ts
   - package.json
   - public/**/*
-  - server.ts
   - tsconfig.json
   - src/**/*
-  - .next/**/*
 
 extraResources:
   - from: resources/database

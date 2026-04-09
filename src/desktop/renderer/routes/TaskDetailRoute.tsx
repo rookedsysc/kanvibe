@@ -1,0 +1,227 @@
+import { useEffect, useMemo, useState } from "react";
+import { useTranslations } from "next-intl";
+import { useParams } from "react-router-dom";
+import AiSessionsCard from "@/components/AiSessionsCard";
+import CollapsibleSidebar from "@/components/CollapsibleSidebar";
+import ConnectTerminalForm from "@/components/ConnectTerminalForm";
+import DeleteTaskButton from "@/components/DeleteTaskButton";
+import DoneStatusButton from "@/components/DoneStatusButton";
+import HooksStatusCard from "@/components/HooksStatusCard";
+import TaskDetailInfoCard from "@/components/TaskDetailInfoCard";
+import TaskDetailTitleCard from "@/components/TaskDetailTitleCard";
+import { Link, useRouter } from "@/desktop/renderer/navigation";
+import { getDoneAlertDismissed, getSidebarDefaultCollapsed, getSidebarHintDismissed } from "@/desktop/renderer/actions/appSettings";
+import { getGitDiffFiles } from "@/desktop/renderer/actions/diff";
+import { deleteTask, fetchAndSavePrUrl, getTaskById, getTaskIdByProjectAndBranch, updateTaskStatus } from "@/desktop/renderer/actions/kanban";
+import {
+  getTaskAiSessions,
+  getTaskCodexHooksStatus,
+  getTaskGeminiHooksStatus,
+  getTaskHooksStatus,
+  getTaskOpenCodeHooksStatus,
+} from "@/desktop/renderer/actions/project";
+import TerminalLoader from "@/desktop/renderer/components/TerminalLoader";
+import { useRefreshSignal } from "@/desktop/renderer/utils/refresh";
+import { TaskStatus } from "@/entities/KanbanTask";
+
+const STATUS_TRANSITIONS = [
+  { status: TaskStatus.TODO, labelKey: "moveToTodo" },
+  { status: TaskStatus.PROGRESS, labelKey: "moveToProgress" },
+  { status: TaskStatus.REVIEW, labelKey: "moveToReview" },
+  { status: TaskStatus.DONE, labelKey: "moveToDone" },
+] as const;
+
+const AGENT_TAG_STYLES: Record<string, string> = {
+  claude: "bg-tag-claude-bg text-tag-claude-text",
+  gemini: "bg-tag-gemini-bg text-tag-gemini-text",
+  codex: "bg-tag-codex-bg text-tag-codex-text",
+};
+
+interface TaskDetailState {
+  task: NonNullable<Awaited<ReturnType<typeof getTaskById>>>;
+  baseBranchTaskId: string | null;
+  diffFiles: Awaited<ReturnType<typeof getGitDiffFiles>>;
+  claudeHooksStatus: Awaited<ReturnType<typeof getTaskHooksStatus>>;
+  geminiHooksStatus: Awaited<ReturnType<typeof getTaskGeminiHooksStatus>>;
+  codexHooksStatus: Awaited<ReturnType<typeof getTaskCodexHooksStatus>>;
+  openCodeHooksStatus: Awaited<ReturnType<typeof getTaskOpenCodeHooksStatus>>;
+  aiSessions: Awaited<ReturnType<typeof getTaskAiSessions>>;
+  sidebarDefaultCollapsed: boolean;
+  sidebarHintDismissed: boolean;
+  doneAlertDismissed: boolean;
+}
+
+export default function TaskDetailRoute() {
+  const { id = "" } = useParams();
+  const router = useRouter();
+  const t = useTranslations("taskDetail");
+  const refreshSignal = useRefreshSignal();
+  const [state, setState] = useState<TaskDetailState | null | undefined>(undefined);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      const task = await getTaskById(id);
+      if (!task) {
+        if (!cancelled) {
+          setState(null);
+        }
+        return;
+      }
+
+      if (task.branchName && !task.prUrl) {
+        const prUrl = await fetchAndSavePrUrl(task.id);
+        if (prUrl) {
+          task.prUrl = prUrl;
+        }
+      }
+
+      const baseBranchName = task.baseBranch ?? "main";
+      const foundTaskId = task.projectId ? await getTaskIdByProjectAndBranch(task.projectId, baseBranchName) : null;
+      const baseBranchTaskId = foundTaskId !== task.id ? foundTaskId : null;
+      const diffFiles = task.branchName ? await getGitDiffFiles(id) : [];
+      const [claudeHooksStatus, geminiHooksStatus, codexHooksStatus, openCodeHooksStatus, aiSessions, sidebarDefaultCollapsed, sidebarHintDismissed, doneAlertDismissed] = await Promise.all([
+        task.projectId ? getTaskHooksStatus(id) : Promise.resolve(null),
+        task.projectId ? getTaskGeminiHooksStatus(id) : Promise.resolve(null),
+        task.projectId ? getTaskCodexHooksStatus(id) : Promise.resolve(null),
+        task.projectId ? getTaskOpenCodeHooksStatus(id) : Promise.resolve(null),
+        task.projectId ? getTaskAiSessions(id) : Promise.resolve({ isRemote: false, targetPath: null, repoPath: null, sessions: [], sources: [] }),
+        getSidebarDefaultCollapsed(),
+        getSidebarHintDismissed(),
+        getDoneAlertDismissed(),
+      ]);
+
+      if (!cancelled) {
+        document.title = [task.branchName, task.project?.name].filter(Boolean).join(" - ") || "KanVibe";
+        setState({
+          task,
+          baseBranchTaskId,
+          diffFiles,
+          claudeHooksStatus,
+          geminiHooksStatus,
+          codexHooksStatus,
+          openCodeHooksStatus,
+          aiSessions,
+          sidebarDefaultCollapsed,
+          sidebarHintDismissed,
+          doneAlertDismissed,
+        });
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [id, refreshSignal]);
+
+  const agentTagStyle = useMemo(
+    () => (state?.task.agentType ? AGENT_TAG_STYLES[state.task.agentType] ?? "bg-tag-neutral-bg text-tag-neutral-text" : null),
+    [state?.task.agentType],
+  );
+
+  if (state === undefined) {
+    return <div className="min-h-screen flex items-center justify-center bg-bg-page text-text-muted">Loading...</div>;
+  }
+
+  if (state === null) {
+    return <div className="min-h-screen flex items-center justify-center bg-bg-page text-text-muted">Task not found.</div>;
+  }
+
+  const hasTerminal = !!(state.task.sessionType && state.task.sessionName);
+
+  async function handleStatusChange(formData: FormData) {
+    const newStatus = formData.get("status") as TaskStatus;
+    await updateTaskStatus(id, newStatus);
+    if (newStatus === TaskStatus.DONE) {
+      router.push("/");
+      return;
+    }
+    router.refresh();
+  }
+
+  async function handleDelete() {
+    await deleteTask(id);
+    router.push("/");
+  }
+
+  return (
+    <div className="h-screen flex flex-col lg:flex-row bg-bg-page p-4 gap-4">
+      <CollapsibleSidebar defaultCollapsed={state.sidebarDefaultCollapsed} showHint={!state.sidebarHintDismissed}>
+        <Link href="/" className="flex items-center gap-2 text-sm text-text-secondary hover:text-text-primary transition-colors">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" className="shrink-0">
+            <path d="M10 12L6 8L10 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+          {t("backToBoard")}
+        </Link>
+
+        <TaskDetailTitleCard task={state.task} taskId={state.task.id} />
+
+        <TaskDetailInfoCard
+          task={state.task}
+          agentTagStyle={agentTagStyle}
+          baseBranchTaskId={state.baseBranchTaskId}
+          diffFileCount={state.diffFiles.length}
+        />
+
+        <div className="bg-bg-surface rounded-lg p-5 shadow-sm border border-border-default">
+          <h3 className="text-xs font-semibold text-text-muted uppercase tracking-wider mb-3">{t("actions")}</h3>
+          <div className="flex flex-wrap gap-2">
+            {STATUS_TRANSITIONS.filter((transition) => transition.status !== state.task.status).map((transition) => (
+              transition.status === TaskStatus.DONE ? (
+                <DoneStatusButton
+                  key={transition.status}
+                  statusChangeAction={handleStatusChange}
+                  label={t(transition.labelKey)}
+                  hasCleanableResources={!!(state.task.branchName || state.task.sessionType)}
+                  doneAlertDismissed={state.doneAlertDismissed}
+                />
+              ) : (
+                <form key={transition.status} action={handleStatusChange}>
+                  <input type="hidden" name="status" value={transition.status} />
+                  <button type="submit" className="px-3 py-1.5 text-xs bg-bg-page border border-border-default hover:border-brand-primary hover:text-text-brand text-text-secondary rounded-md transition-colors">
+                    {t(transition.labelKey)}
+                  </button>
+                </form>
+              )
+            ))}
+          </div>
+          <div className="mt-3 pt-3 border-t border-border-subtle">
+            <DeleteTaskButton deleteAction={handleDelete} />
+          </div>
+        </div>
+
+        <HooksStatusCard
+          taskId={state.task.id}
+          initialClaudeStatus={state.claudeHooksStatus}
+          initialGeminiStatus={state.geminiHooksStatus}
+          initialCodexStatus={state.codexHooksStatus}
+          initialOpenCodeStatus={state.openCodeHooksStatus}
+          isRemote={!!state.task.sshHost}
+        />
+
+        <AiSessionsCard taskId={state.task.id} data={state.aiSessions} />
+      </CollapsibleSidebar>
+
+      <main className="flex-1 flex flex-col min-h-0 min-w-0">
+        {hasTerminal ? (
+          <div className="flex-1 flex flex-col min-h-0 rounded-lg overflow-hidden shadow-md">
+            <div className="bg-terminal-chrome flex items-center gap-2 px-4 py-2.5 shrink-0">
+              <span className="w-3 h-3 rounded-full bg-traffic-close" />
+              <span className="w-3 h-3 rounded-full bg-traffic-minimize" />
+              <span className="w-3 h-3 rounded-full bg-traffic-maximize" />
+              <span className="ml-3 text-xs text-terminal-text font-mono truncate">{state.task.sessionName ?? t("terminal")}</span>
+            </div>
+            <div className="flex-1 min-h-0 bg-terminal-bg">
+              <TerminalLoader taskId={state.task.id} />
+            </div>
+          </div>
+        ) : (
+          <div className="flex-1 flex items-center justify-center border border-dashed border-border-default rounded-lg bg-bg-surface">
+            {state.task.projectId ? <ConnectTerminalForm taskId={state.task.id} /> : <p className="text-text-muted text-sm">{t("noTerminal")}</p>}
+          </div>
+        )}
+      </main>
+    </div>
+  );
+}

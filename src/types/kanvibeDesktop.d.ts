@@ -7,7 +7,8 @@ interface KanvibeDesktopNotificationPayload {
 
 interface KanvibeDesktopApi {
   isDesktop: boolean;
-  showNotification: (payload: KanvibeDesktopNotificationPayload) => Promise<boolean>;
+  showNotification?: (payload: KanvibeDesktopNotificationPayload) => Promise<boolean>;
+  [key: string]: any;
 }
 
 interface Window {

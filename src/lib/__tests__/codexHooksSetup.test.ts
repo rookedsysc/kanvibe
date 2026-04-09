@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { mkdtemp, rm } from "fs/promises";
+import { mkdtemp, readFile, rm } from "fs/promises";
 import { join } from "path";
 import { tmpdir } from "os";
 import { setupCodexHooks, getCodexHooksStatus } from "../codexHooksSetup";
@@ -21,7 +21,7 @@ describe("codexHooksSetup", () => {
       const repoPath = tempDir;
 
       // When
-      await setupCodexHooks(repoPath, "test-project", "http://localhost:3000");
+      await setupCodexHooks(repoPath, "project-1", "http://localhost:3000");
 
       // Then
       const status = await getCodexHooksStatus(repoPath);
@@ -33,11 +33,15 @@ describe("codexHooksSetup", () => {
       const repoPath = tempDir;
 
       // When
-      await setupCodexHooks(repoPath, "test-project", "http://localhost:3000");
+      await setupCodexHooks(repoPath, "project-1", "http://localhost:3000");
 
       // Then
       const status = await getCodexHooksStatus(repoPath);
       expect(status.hasConfigEntry).toBe(true);
+
+      const hookContent = await readFile(join(repoPath, ".codex", "hooks", "kanvibe-notify-hook.sh"), "utf-8");
+      expect(hookContent).toContain("PROJECT_ID=\"project-1\"");
+      expect(hookContent).toContain("projectId");
     });
 
     it("should mark as installed when both hook and config exist", async () => {
@@ -45,7 +49,7 @@ describe("codexHooksSetup", () => {
       const repoPath = tempDir;
 
       // When
-      await setupCodexHooks(repoPath, "test-project", "http://localhost:3000");
+      await setupCodexHooks(repoPath, "project-1", "http://localhost:3000");
 
       // Then
       const status = await getCodexHooksStatus(repoPath);
@@ -55,10 +59,10 @@ describe("codexHooksSetup", () => {
     it("should not add duplicate notify entry", async () => {
       // Given
       const repoPath = tempDir;
-      await setupCodexHooks(repoPath, "test-project", "http://localhost:3000");
+      await setupCodexHooks(repoPath, "project-1", "http://localhost:3000");
 
       // When - setup again
-      await setupCodexHooks(repoPath, "test-project", "http://localhost:3000");
+      await setupCodexHooks(repoPath, "project-1", "http://localhost:3000");
 
       // Then - should still be installed
       const status = await getCodexHooksStatus(repoPath);
@@ -83,7 +87,7 @@ describe("codexHooksSetup", () => {
     it("should detect installed status correctly", async () => {
       // Given
       const repoPath = tempDir;
-      await setupCodexHooks(repoPath, "test-project", "http://localhost:3000");
+      await setupCodexHooks(repoPath, "project-1", "http://localhost:3000");
 
       // When
       const status = await getCodexHooksStatus(repoPath);
