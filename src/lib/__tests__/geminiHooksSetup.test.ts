@@ -20,11 +20,11 @@ describe("geminiHooksSetup", () => {
     it("should create hook scripts and settings.json in .gemini directory", async () => {
       // Given
       const repoPath = tmpDir;
-      const projectName = "test-project";
+      const projectId = "project-1";
       const kanvibeUrl = "http://localhost:4885";
 
       // When
-      await setupGeminiHooks(repoPath, projectName, kanvibeUrl);
+      await setupGeminiHooks(repoPath, projectId, kanvibeUrl);
 
       // Then
       const promptScript = await readFile(
@@ -42,7 +42,8 @@ describe("geminiHooksSetup", () => {
       expect(promptScript).toContain("#!/bin/bash");
       expect(promptScript).toContain("BeforeAgent");
       expect(promptScript).toContain(kanvibeUrl);
-      expect(promptScript).toContain(projectName);
+      expect(promptScript).toContain(projectId);
+      expect(promptScript).toContain("projectId");
       expect(promptScript).toContain("echo '{}'");
 
       expect(stopScript).toContain("#!/bin/bash");
@@ -87,7 +88,7 @@ describe("geminiHooksSetup", () => {
       );
 
       // When
-      await setupGeminiHooks(tmpDir, "test-project", "http://localhost:4885");
+      await setupGeminiHooks(tmpDir, "project-1", "http://localhost:4885");
 
       // Then
       const settings = JSON.parse(
@@ -106,10 +107,10 @@ describe("geminiHooksSetup", () => {
 
     it("should not duplicate hooks when called multiple times", async () => {
       // Given
-      await setupGeminiHooks(tmpDir, "test-project", "http://localhost:4885");
+      await setupGeminiHooks(tmpDir, "project-1", "http://localhost:4885");
 
       // When
-      await setupGeminiHooks(tmpDir, "test-project", "http://localhost:4885");
+      await setupGeminiHooks(tmpDir, "project-1", "http://localhost:4885");
 
       // Then
       const settings = JSON.parse(
@@ -127,7 +128,7 @@ describe("geminiHooksSetup", () => {
   describe("getGeminiHooksStatus", () => {
     it("should return installed: true after setupGeminiHooks", async () => {
       // Given
-      await setupGeminiHooks(tmpDir, "test-project", "http://localhost:4885");
+      await setupGeminiHooks(tmpDir, "project-1", "http://localhost:4885");
 
       // When
       const status = await getGeminiHooksStatus(tmpDir);
