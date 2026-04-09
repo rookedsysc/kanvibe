@@ -33,7 +33,7 @@ function ensureSupportedNodeVersion() {
 
 function installElectronNativeDependencies() {
   console.warn("[kanvibe] Rebuilding native dependencies for the Electron runtime...");
-  execFileSync("pnpm", ["exec", "electron-builder", "install-app-deps"], {
+  execFileSync("pnpm", ["exec", "electron-rebuild", "-f", "--build-from-source", "-w", "better-sqlite3"], {
     stdio: "inherit",
     env: process.env,
   });

@@ -9,9 +9,10 @@
   },
   "main": "electron/main.js",
   "scripts": {
-    "predev": "node scripts/ensure-native-runtime.cjs",
+    "predev": "node scripts/ensure-native-runtime.cjs --electron",
     "predb:prepare": "node scripts/ensure-native-runtime.cjs",
-    "prestart": "node scripts/ensure-native-runtime.cjs",
+    "predesktop:dev": "node scripts/ensure-native-runtime.cjs --electron",
+    "prestart": "node scripts/ensure-native-runtime.cjs --electron",
     "dev": "node scripts/run-desktop-dev.cjs",
     "build": "vite build",
     "start": "node scripts/run-desktop-start.cjs",
@@ -24,7 +25,7 @@
     "test:e2e:login": "bash -lc 'for port in 4884 4885; do fuser -k \"$port\"/tcp 2>/dev/null || true; done; rm -f .next/dev/lock; playwright test tests/e2e/login.spec.js'",
     "test": "vitest run",
     "test:watch": "vitest",
-    "postinstall": "chmod +x node_modules/node-pty/prebuilds/darwin-arm64/spawn-helper 2>/dev/null || true"
+    "postinstall": "node scripts/postinstall.cjs"
   },
   "pnpm": {
     "onlyBuiltDependencies": [
