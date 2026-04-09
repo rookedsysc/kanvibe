@@ -45,7 +45,7 @@ describe("POST /api/hooks/status", () => {
       method: "POST",
       body: JSON.stringify({
         branchName: "feat/missing-project",
-        projectName: "case-study",
+        projectId: "project-1",
         status: "review",
       }),
     });
@@ -60,10 +60,10 @@ describe("POST /api/hooks/status", () => {
     expect(response.status).toBe(404);
     expect(body).toEqual({
       success: false,
-      error: "프로젝트를 찾을 수 없습니다: case-study",
+      error: "프로젝트를 찾을 수 없습니다: project-1",
     });
     expect(mockBroadcastHookStatusTargetMissing).toHaveBeenCalledWith({
-      projectName: "case-study",
+      projectName: "project-1",
       branchName: "feat/missing-project",
       requestedStatus: "review",
       reason: "project-not-found",
@@ -85,7 +85,7 @@ describe("POST /api/hooks/status", () => {
       method: "POST",
       body: JSON.stringify({
         branchName: "feat/missing-task",
-        projectName: "case-study",
+        projectId: "project-1",
         status: "review",
       }),
     });
@@ -111,5 +111,61 @@ describe("POST /api/hooks/status", () => {
     expect(mockTaskSave).not.toHaveBeenCalled();
     expect(mockBroadcastBoardUpdate).not.toHaveBeenCalled();
     expect(mockBroadcastTaskStatusChanged).not.toHaveBeenCalled();
+  });
+
+  it("should update task status by projectId and broadcast project name from database", async () => {
+    // Given
+    mockProjectFindOneBy.mockResolvedValue({
+      id: "project-1",
+      name: "case-study",
+    });
+    mockTaskFindOneBy.mockResolvedValue({
+      id: "task-1",
+      title: "feat/existing-task",
+      description: "desc",
+      status: "todo",
+      branchName: "feat/existing-task",
+      projectId: "project-1",
+    });
+    mockTaskSave.mockImplementation(async (task) => task);
+
+    const request = new Request("http://localhost:4885/api/hooks/status", {
+      method: "POST",
+      body: JSON.stringify({
+        branchName: "feat/existing-task",
+        projectId: "project-1",
+        status: "review",
+      }),
+    });
+
+    const { POST } = await import("@/app/api/hooks/status/route");
+
+    // When
+    const response = await POST(request as never);
+    const body = await response.json();
+
+    // Then
+    expect(response.status).toBe(200);
+    expect(mockTaskFindOneBy).toHaveBeenCalledWith({
+      branchName: "feat/existing-task",
+      projectId: "project-1",
+    });
+    expect(mockBroadcastTaskStatusChanged).toHaveBeenCalledWith({
+      projectName: "case-study",
+      branchName: "feat/existing-task",
+      taskTitle: "feat/existing-task",
+      description: "desc",
+      newStatus: "review",
+      taskId: "task-1",
+    });
+    expect(body).toEqual({
+      success: true,
+      data: {
+        id: "task-1",
+        status: "review",
+        branchName: "feat/existing-task",
+        projectId: "project-1",
+      },
+    });
   });
 });

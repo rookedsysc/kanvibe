@@ -21,7 +21,7 @@ describe("openCodeHooksSetup", () => {
       const repoPath = tempDir;
 
       // When
-      await setupOpenCodeHooks(repoPath, "test-project", "http://localhost:3000");
+      await setupOpenCodeHooks(repoPath, "project-1", "http://localhost:3000");
 
       // Then
       const status = await getOpenCodeHooksStatus(repoPath);
@@ -33,7 +33,7 @@ describe("openCodeHooksSetup", () => {
       const repoPath = tempDir;
 
       // When
-      await setupOpenCodeHooks(repoPath, "test-project", "http://localhost:3000");
+      await setupOpenCodeHooks(repoPath, "project-1", "http://localhost:3000");
 
       // Then
       const pluginPath = join(repoPath, ".opencode", "plugins", "kanvibe-plugin.ts");
@@ -41,6 +41,8 @@ describe("openCodeHooksSetup", () => {
 
       expect(pluginContent).toContain("KanvibePlugin");
       expect(pluginContent).toContain("/api/hooks/status");
+      expect(pluginContent).toContain('const PROJECT_ID = "project-1";');
+      expect(pluginContent).toContain("projectId: PROJECT_ID");
     });
 
     it("should generate plugin with all event handlers for status tracking", async () => {
@@ -48,7 +50,7 @@ describe("openCodeHooksSetup", () => {
       const repoPath = tempDir;
 
       // When
-      await setupOpenCodeHooks(repoPath, "test-project", "http://localhost:3000");
+      await setupOpenCodeHooks(repoPath, "project-1", "http://localhost:3000");
 
       // Then
       const pluginPath = join(repoPath, ".opencode", "plugins", "kanvibe-plugin.ts");
@@ -65,7 +67,7 @@ describe("openCodeHooksSetup", () => {
       const repoPath = tempDir;
 
       // When
-      await setupOpenCodeHooks(repoPath, "test-project", "http://localhost:3000");
+      await setupOpenCodeHooks(repoPath, "project-1", "http://localhost:3000");
 
       // Then
       const pluginPath = join(repoPath, ".opencode", "plugins", "kanvibe-plugin.ts");
@@ -82,7 +84,7 @@ describe("openCodeHooksSetup", () => {
       const repoPath = tempDir;
 
       // When
-      await setupOpenCodeHooks(repoPath, "test-project", "http://localhost:3000");
+      await setupOpenCodeHooks(repoPath, "project-1", "http://localhost:3000");
 
       // Then
       const pluginPath = join(repoPath, ".opencode", "plugins", "kanvibe-plugin.ts");
@@ -103,10 +105,10 @@ describe("openCodeHooksSetup", () => {
     it("should not fail when called twice (overwrites existing plugin)", async () => {
       // Given
       const repoPath = tempDir;
-      await setupOpenCodeHooks(repoPath, "test-project", "http://localhost:3000");
+      await setupOpenCodeHooks(repoPath, "project-1", "http://localhost:3000");
 
       // When - setup again
-      await setupOpenCodeHooks(repoPath, "test-project", "http://localhost:3000");
+      await setupOpenCodeHooks(repoPath, "project-1", "http://localhost:3000");
 
       // Then - should still be installed correctly
       const status = await getOpenCodeHooksStatus(repoPath);
@@ -118,7 +120,7 @@ describe("openCodeHooksSetup", () => {
     it("should return installed: true after setup", async () => {
       // Given
       const repoPath = tempDir;
-      await setupOpenCodeHooks(repoPath, "test-project", "http://localhost:3000");
+      await setupOpenCodeHooks(repoPath, "project-1", "http://localhost:3000");
 
       // When
       const status = await getOpenCodeHooksStatus(repoPath);

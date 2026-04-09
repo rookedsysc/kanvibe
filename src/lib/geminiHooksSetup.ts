@@ -8,7 +8,7 @@ import { addAiToolPatternsToGitExclude } from "@/lib/gitExclude";
  */
 
 /** BeforeAgent hook bash 스크립트를 생성한다 */
-function generatePromptHookScript(kanvibeUrl: string, projectName: string): string {
+function generatePromptHookScript(kanvibeUrl: string, projectId: string): string {
   return `#!/bin/bash
 
 # KanVibe Gemini CLI Hook: BeforeAgent
@@ -16,7 +16,7 @@ function generatePromptHookScript(kanvibeUrl: string, projectName: string): stri
 # Gemini CLI hooks는 stdout에 JSON만 출력해야 한다.
 
 KANVIBE_URL="${kanvibeUrl}"
-PROJECT_NAME="${projectName}"
+PROJECT_ID="${projectId}"
 
 BRANCH_NAME=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)
 if [ -z "$BRANCH_NAME" ] || [ "$BRANCH_NAME" = "HEAD" ]; then
@@ -26,7 +26,7 @@ fi
 
 curl -s -X POST "\${KANVIBE_URL}/api/hooks/status" \\
   -H "Content-Type: application/json" \\
-  -d "{\\"branchName\\": \\"\${BRANCH_NAME}\\", \\"projectName\\": \\"\${PROJECT_NAME}\\", \\"status\\": \\"progress\\"}" \\
+  -d "{\\"branchName\\": \\"\${BRANCH_NAME}\\", \\"projectId\\": \\"\${PROJECT_ID}\\", \\"status\\": \\"progress\\"}" \\
   > /dev/null 2>&1
 
 echo '{}'
@@ -35,7 +35,7 @@ exit 0
 }
 
 /** AfterAgent hook bash 스크립트를 생성한다 */
-function generateStopHookScript(kanvibeUrl: string, projectName: string): string {
+function generateStopHookScript(kanvibeUrl: string, projectId: string): string {
   return `#!/bin/bash
 
 # KanVibe Gemini CLI Hook: AfterAgent
@@ -43,7 +43,7 @@ function generateStopHookScript(kanvibeUrl: string, projectName: string): string
 # Gemini CLI hooks는 stdout에 JSON만 출력해야 한다.
 
 KANVIBE_URL="${kanvibeUrl}"
-PROJECT_NAME="${projectName}"
+PROJECT_ID="${projectId}"
 
 BRANCH_NAME=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)
 if [ -z "$BRANCH_NAME" ] || [ "$BRANCH_NAME" = "HEAD" ]; then
@@ -53,7 +53,7 @@ fi
 
 curl -s -X POST "\${KANVIBE_URL}/api/hooks/status" \\
   -H "Content-Type: application/json" \\
-  -d "{\\"branchName\\": \\"\${BRANCH_NAME}\\", \\"projectName\\": \\"\${PROJECT_NAME}\\", \\"status\\": \\"review\\"}" \\
+  -d "{\\"branchName\\": \\"\${BRANCH_NAME}\\", \\"projectId\\": \\"\${PROJECT_ID}\\", \\"status\\": \\"review\\"}" \\
   > /dev/null 2>&1
 
 echo '{}'
@@ -104,7 +104,7 @@ function hasKanvibeHook(hookEntries: unknown[], scriptName: string): boolean {
  */
 export async function setupGeminiHooks(
   repoPath: string,
-  projectName: string,
+  projectId: string,
   kanvibeUrl: string
 ): Promise<void> {
   const geminiDir = path.join(repoPath, ".gemini");
@@ -116,8 +116,8 @@ export async function setupGeminiHooks(
   const promptScriptPath = path.join(hooksDir, "kanvibe-prompt-hook.sh");
   const stopScriptPath = path.join(hooksDir, "kanvibe-stop-hook.sh");
 
-  await writeFile(promptScriptPath, generatePromptHookScript(kanvibeUrl, projectName), "utf-8");
-  await writeFile(stopScriptPath, generateStopHookScript(kanvibeUrl, projectName), "utf-8");
+  await writeFile(promptScriptPath, generatePromptHookScript(kanvibeUrl, projectId), "utf-8");
+  await writeFile(stopScriptPath, generateStopHookScript(kanvibeUrl, projectId), "utf-8");
   await chmod(promptScriptPath, 0o755);
   await chmod(stopScriptPath, 0o755);
 

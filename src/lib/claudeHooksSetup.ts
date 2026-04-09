@@ -3,14 +3,14 @@ import path from "path";
 import { addAiToolPatternsToGitExclude } from "@/lib/gitExclude";
 
 /** UserPromptSubmit hook bash 스크립트를 생성한다 */
-function generatePromptHookScript(kanvibeUrl: string, projectName: string): string {
+function generatePromptHookScript(kanvibeUrl: string, projectId: string): string {
   return `#!/bin/bash
 
 # KanVibe Claude Code Hook: UserPromptSubmit
 # 사용자가 prompt를 입력하면 현재 브랜치의 작업을 PROGRESS로 변경한다.
 
 KANVIBE_URL="${kanvibeUrl}"
-PROJECT_NAME="${projectName}"
+PROJECT_ID="${projectId}"
 
 BRANCH_NAME=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)
 if [ -z "$BRANCH_NAME" ] || [ "$BRANCH_NAME" = "HEAD" ]; then
@@ -19,7 +19,7 @@ fi
 
 curl -s -X POST "\${KANVIBE_URL}/api/hooks/status" \\
   -H "Content-Type: application/json" \\
-  -d "{\\"branchName\\": \\"\${BRANCH_NAME}\\", \\"projectName\\": \\"\${PROJECT_NAME}\\", \\"status\\": \\"progress\\"}" \\
+  -d "{\\"branchName\\": \\"\${BRANCH_NAME}\\", \\"projectId\\": \\"\${PROJECT_ID}\\", \\"status\\": \\"progress\\"}" \\
   > /dev/null 2>&1
 
 exit 0
@@ -27,14 +27,14 @@ exit 0
 }
 
 /** Stop hook bash 스크립트를 생성한다 */
-function generateStopHookScript(kanvibeUrl: string, projectName: string): string {
+function generateStopHookScript(kanvibeUrl: string, projectId: string): string {
   return `#!/bin/bash
 
 # KanVibe Claude Code Hook: Stop
 # AI 응답이 완료되면 현재 브랜치의 작업을 REVIEW로 변경한다.
 
 KANVIBE_URL="${kanvibeUrl}"
-PROJECT_NAME="${projectName}"
+PROJECT_ID="${projectId}"
 
 BRANCH_NAME=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)
 if [ -z "$BRANCH_NAME" ] || [ "$BRANCH_NAME" = "HEAD" ]; then
@@ -43,7 +43,7 @@ fi
 
 curl -s -X POST "\${KANVIBE_URL}/api/hooks/status" \\
   -H "Content-Type: application/json" \\
-  -d "{\\"branchName\\": \\"\${BRANCH_NAME}\\", \\"projectName\\": \\"\${PROJECT_NAME}\\", \\"status\\": \\"review\\"}" \\
+  -d "{\\"branchName\\": \\"\${BRANCH_NAME}\\", \\"projectId\\": \\"\${PROJECT_ID}\\", \\"status\\": \\"review\\"}" \\
   > /dev/null 2>&1
 
 exit 0
@@ -51,14 +51,14 @@ exit 0
 }
 
 /** PreToolUse(AskUserQuestion) hook bash 스크립트를 생성한다 */
-function generateQuestionHookScript(kanvibeUrl: string, projectName: string): string {
+function generateQuestionHookScript(kanvibeUrl: string, projectId: string): string {
   return `#!/bin/bash
 
 # KanVibe Claude Code Hook: PreToolUse (AskUserQuestion)
 # Claude가 사용자에게 질문할 때 현재 브랜치의 작업을 PENDING으로 변경한다.
 
 KANVIBE_URL="${kanvibeUrl}"
-PROJECT_NAME="${projectName}"
+PROJECT_ID="${projectId}"
 
 BRANCH_NAME=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)
 if [ -z "$BRANCH_NAME" ] || [ "$BRANCH_NAME" = "HEAD" ]; then
@@ -67,7 +67,7 @@ fi
 
 curl -s -X POST "\${KANVIBE_URL}/api/hooks/status" \\
   -H "Content-Type: application/json" \\
-  -d "{\\"branchName\\": \\"\${BRANCH_NAME}\\", \\"projectName\\": \\"\${PROJECT_NAME}\\", \\"status\\": \\"pending\\"}" \\
+  -d "{\\"branchName\\": \\"\${BRANCH_NAME}\\", \\"projectId\\": \\"\${PROJECT_ID}\\", \\"status\\": \\"pending\\"}" \\
   > /dev/null 2>&1
 
 exit 0
@@ -112,7 +112,7 @@ function hasKanvibeHook(hookEntries: unknown[], scriptName: string): boolean {
  */
 export async function setupClaudeHooks(
   repoPath: string,
-  projectName: string,
+  projectId: string,
   kanvibeUrl: string
 ): Promise<void> {
   const claudeDir = path.join(repoPath, ".claude");
@@ -125,9 +125,9 @@ export async function setupClaudeHooks(
   const stopScriptPath = path.join(hooksDir, "kanvibe-stop-hook.sh");
   const questionScriptPath = path.join(hooksDir, "kanvibe-question-hook.sh");
 
-  await writeFile(promptScriptPath, generatePromptHookScript(kanvibeUrl, projectName), "utf-8");
-  await writeFile(stopScriptPath, generateStopHookScript(kanvibeUrl, projectName), "utf-8");
-  await writeFile(questionScriptPath, generateQuestionHookScript(kanvibeUrl, projectName), "utf-8");
+  await writeFile(promptScriptPath, generatePromptHookScript(kanvibeUrl, projectId), "utf-8");
+  await writeFile(stopScriptPath, generateStopHookScript(kanvibeUrl, projectId), "utf-8");
+  await writeFile(questionScriptPath, generateQuestionHookScript(kanvibeUrl, projectId), "utf-8");
   await chmod(promptScriptPath, 0o755);
   await chmod(stopScriptPath, 0o755);
   await chmod(questionScriptPath, 0o755);

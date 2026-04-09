@@ -221,10 +221,10 @@ export async function scanAndRegisterProjects(
       if (!sshHost) {
         try {
           const kanvibeUrl = `http://localhost:${process.env.PORT || 4885}`;
-          await setupClaudeHooks(repoPath, projectName, kanvibeUrl);
-          await setupGeminiHooks(repoPath, projectName, kanvibeUrl);
-          await setupCodexHooks(repoPath, projectName, kanvibeUrl);
-          await setupOpenCodeHooks(repoPath, projectName, kanvibeUrl);
+          await setupClaudeHooks(repoPath, saved.id, kanvibeUrl);
+          await setupGeminiHooks(repoPath, saved.id, kanvibeUrl);
+          await setupCodexHooks(repoPath, saved.id, kanvibeUrl);
+          await setupOpenCodeHooks(repoPath, saved.id, kanvibeUrl);
           result.hooksSetup.push(projectName);
         } catch (hookError) {
           result.errors.push(
@@ -390,7 +390,7 @@ export async function installProjectHooks(
 
   try {
     const kanvibeUrl = `http://localhost:${process.env.PORT || 4885}`;
-    await setupClaudeHooks(project.repoPath, project.name, kanvibeUrl);
+    await setupClaudeHooks(project.repoPath, project.id, kanvibeUrl);
     return { success: true };
   } catch (error) {
     return {
@@ -424,7 +424,7 @@ export async function installTaskHooks(
   try {
     const kanvibeUrl = `http://localhost:${process.env.PORT || 4885}`;
     const targetPath = task.worktreePath || task.project.repoPath;
-    await setupClaudeHooks(targetPath, task.project.name, kanvibeUrl);
+    await setupClaudeHooks(targetPath, task.project.id, kanvibeUrl);
     return { success: true };
   } catch (error) {
     return {
@@ -456,7 +456,7 @@ export async function installProjectGeminiHooks(
 
   try {
     const kanvibeUrl = `http://localhost:${process.env.PORT || 4885}`;
-    await setupGeminiHooks(project.repoPath, project.name, kanvibeUrl);
+    await setupGeminiHooks(project.repoPath, project.id, kanvibeUrl);
     return { success: true };
   } catch (error) {
     return {
@@ -490,7 +490,7 @@ export async function installTaskGeminiHooks(
   try {
     const kanvibeUrl = `http://localhost:${process.env.PORT || 4885}`;
     const targetPath = task.worktreePath || task.project.repoPath;
-    await setupGeminiHooks(targetPath, task.project.name, kanvibeUrl);
+    await setupGeminiHooks(targetPath, task.project.id, kanvibeUrl);
     return { success: true };
   } catch (error) {
     return {
@@ -520,7 +520,7 @@ export async function installProjectCodexHooks(
 
   try {
     const kanvibeUrl = `http://localhost:${process.env.PORT || 4885}`;
-    await setupCodexHooks(project.repoPath, project.name, kanvibeUrl);
+    await setupCodexHooks(project.repoPath, project.id, kanvibeUrl);
     return { success: true };
   } catch (error) {
     return {
@@ -552,7 +552,7 @@ export async function installTaskCodexHooks(
   try {
     const kanvibeUrl = `http://localhost:${process.env.PORT || 4885}`;
     const targetPath = task.worktreePath || task.project.repoPath;
-    await setupCodexHooks(targetPath, task.project.name, kanvibeUrl);
+    await setupCodexHooks(targetPath, task.project.id, kanvibeUrl);
     return { success: true };
   } catch (error) {
     return {
@@ -572,7 +572,7 @@ export async function installProjectOpenCodeHooks(
 
   try {
     const kanvibeUrl = `http://localhost:${process.env.PORT || 4885}`;
-    await setupOpenCodeHooks(project.repoPath, project.name, kanvibeUrl);
+    await setupOpenCodeHooks(project.repoPath, project.id, kanvibeUrl);
     return { success: true };
   } catch (error) {
     return {
@@ -596,7 +596,7 @@ export async function installTaskOpenCodeHooks(
   try {
     const kanvibeUrl = `http://localhost:${process.env.PORT || 4885}`;
     const targetPath = task.worktreePath || task.project.repoPath;
-    await setupOpenCodeHooks(targetPath, task.project.name, kanvibeUrl);
+    await setupOpenCodeHooks(targetPath, task.project.id, kanvibeUrl);
     return { success: true };
   } catch (error) {
     return {
