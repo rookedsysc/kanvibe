@@ -5,5 +5,5 @@ export function invokeDesktop<T>(
   method: string,
   ...args: unknown[]
 ): Promise<T> {
-  return window.kanvibeDesktop.invoke(namespace, method, args) as Promise<T>;
+  return window.kanvibeDesktop!.invoke(namespace, method, args) as Promise<T>;
 }

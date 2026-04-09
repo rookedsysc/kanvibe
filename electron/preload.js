@@ -41,4 +41,7 @@ contextBridge.exposeInMainWorld("kanvibeDesktop", {
       ipcRenderer.removeListener("kanvibe:terminal-close", handler);
     };
   },
+  showNotification(payload) {
+    return ipcRenderer.invoke("kanvibe:show-notification", payload);
+  },
 });

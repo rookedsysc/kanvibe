@@ -4,6 +4,8 @@ import { useEffect, useCallback, useRef } from "react";
 
 type NotificationLocale = "ko" | "en" | "zh";
 
+const NOTIFICATION_ICON_PATH = "/icons/icon-192x192.png";
+
 const NOTIFICATION_MESSAGES = {
   ko: {
     formatStatusChanged: (taskTitle: string, newStatus: string) => `${taskTitle}: ${newStatus}로 변경`,
@@ -49,19 +51,65 @@ export interface HookStatusTargetMissingNotification {
   locale: string;
 }
 
-function showDesktopNotification(title: string, options: NotificationOptions) {
-  if (typeof navigator !== "undefined" && "serviceWorker" in navigator) {
-    return navigator.serviceWorker.getRegistration().then((registration) => {
-      if (registration) {
-        return registration.showNotification(title, options);
-      }
+interface BrowserNotificationData {
+  taskId?: string;
+  locale: string;
+}
 
-      new Notification(title, options);
-    });
+function isDesktopNotificationAvailable() {
+  return typeof window !== "undefined" && window.kanvibeDesktop?.isDesktop === true;
+}
+
+async function showNotificationViaDesktopBridge(title: string, body: string, data: BrowserNotificationData) {
+  if (!isDesktopNotificationAvailable()) {
+    return false;
   }
 
-  new Notification(title, options);
-  return Promise.resolve();
+  await window.kanvibeDesktop?.showNotification?.({
+    title,
+    body,
+    taskId: data.taskId,
+    locale: data.locale,
+  });
+
+  return true;
+}
+
+async function showNotificationViaServiceWorker(title: string, body: string, data: BrowserNotificationData) {
+  if (!("serviceWorker" in navigator)) {
+    return false;
+  }
+
+  const registration = await navigator.serviceWorker.getRegistration();
+  if (!registration) {
+    return false;
+  }
+
+  await registration.showNotification(title, {
+    body,
+    icon: NOTIFICATION_ICON_PATH,
+    data,
+  });
+
+  return true;
+}
+
+async function showNotificationViaBrowser(title: string, body: string, data: BrowserNotificationData) {
+  const isServiceWorkerNotificationShown = await showNotificationViaServiceWorker(title, body, data);
+  if (isServiceWorkerNotificationShown) {
+    return true;
+  }
+
+  if (typeof Notification === "undefined") {
+    return false;
+  }
+
+  new Notification(title, {
+    body,
+    icon: NOTIFICATION_ICON_PATH,
+    data,
+  });
+  return true;
 }
 
 /** hooks 경유 task 상태 변경 시 Browser Notification을 발송하는 훅 */
@@ -69,7 +117,14 @@ export function useTaskNotification() {
   const isPermissionGranted = useRef(false);
 
   useEffect(() => {
-    if (typeof window === "undefined" || !("Notification" in window)) return;
+    if (typeof window === "undefined") return;
+
+    if (isDesktopNotificationAvailable()) {
+      isPermissionGranted.current = true;
+      return;
+    }
+
+    if (!("Notification" in window)) return;
 
     if (Notification.permission === "granted") {
       isPermissionGranted.current = true;
@@ -92,14 +147,16 @@ export function useTaskNotification() {
       }
 
       try {
-        await showDesktopNotification(title, {
-          body: bodyParts.join("\n"),
-          icon: "/kanvibe-logo.svg",
-          data: {
-            taskId: payload.taskId,
-            locale: payload.locale,
-          },
-        });
+        const body = bodyParts.join("\n");
+        const data = {
+          taskId: payload.taskId,
+          locale: payload.locale,
+        };
+
+        const isDesktopNotificationShown = await showNotificationViaDesktopBridge(title, body, data);
+        if (!isDesktopNotificationShown) {
+          await showNotificationViaBrowser(title, body, data);
+        }
       } catch (err) {
         console.error("[Notification] Failed to show notification:", err);
       }
@@ -119,13 +176,15 @@ export function useTaskNotification() {
           : messages.taskNotFound;
 
       try {
-        await showDesktopNotification(title, {
-          body: `${messages.formatMissingStatus(payload.requestedStatus)}\n${reasonMessage}`,
-          icon: "/kanvibe-logo.svg",
-          data: {
-            locale: payload.locale,
-          },
-        });
+        const body = `${messages.formatMissingStatus(payload.requestedStatus)}\n${reasonMessage}`;
+        const data = {
+          locale: payload.locale,
+        };
+
+        const isDesktopNotificationShown = await showNotificationViaDesktopBridge(title, body, data);
+        if (!isDesktopNotificationShown) {
+          await showNotificationViaBrowser(title, body, data);
+        }
       } catch (err) {
         console.error("[Notification] Failed to show missing target notification:", err);
       }

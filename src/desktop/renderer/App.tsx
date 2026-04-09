@@ -74,7 +74,7 @@ export default function App() {
     const handleSessionChanged = () => reloadSession();
     window.addEventListener("kanvibe:session-changed", handleSessionChanged);
 
-    const unsubscribeBoardEvents = window.kanvibeDesktop.onBoardEvent((event) => {
+    const unsubscribeBoardEvents = window.kanvibeDesktop!.onBoardEvent((event: any) => {
       if (event.type === "board-updated") {
         triggerDesktopRefresh();
       }

@@ -1,6 +1,8 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { Draggable } from "@hello-pangea/dnd";
+import { useLocale } from "next-intl";
 import { Link } from "@/i18n/navigation";
 import type { KanbanTask } from "@/entities/KanbanTask";
 import { TaskPriority } from "@/entities/TaskPriority";
@@ -26,10 +28,27 @@ const priorityConfig: Record<TaskPriority, { label: string; colorClass: string }
 };
 
 export default function TaskCard({ task, index, onContextMenu, projectName, isBaseProject }: TaskCardProps) {
+  const locale = useLocale();
+  const [isDesktop, setIsDesktop] = useState(false);
+
+  useEffect(() => {
+    setIsDesktop(Boolean(window.kanvibeDesktop?.isDesktop));
+  }, []);
+
+  const taskDetailPath = `/${locale}/task/${task.id}`;
+
   return (
     <Draggable draggableId={task.id} index={index}>
       {(provided, snapshot) => (
-        <Link href={`/task/${task.id}`}>
+        <Link
+          href={`/task/${task.id}`}
+          onClick={(event) => {
+            if (!isDesktop) return;
+
+            event.preventDefault();
+            window.open(taskDetailPath, "_blank", "noopener");
+          }}
+        >
           <div
             ref={provided.innerRef}
             {...provided.draggableProps}

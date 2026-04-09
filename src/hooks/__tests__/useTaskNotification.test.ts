@@ -15,6 +15,7 @@ const mockServiceWorkerRegistration = {
 };
 
 const mockGetRegistration = vi.fn().mockResolvedValue(mockServiceWorkerRegistration);
+const mockDesktopShowNotification = vi.fn().mockResolvedValue(true);
 
 // Notification 글로벌 설정
 const mockRequestPermission = vi.fn().mockResolvedValue("granted");
@@ -40,6 +41,9 @@ describe("useTaskNotification", () => {
     mockShowNotification.mockClear();
     mockGetRegistration.mockClear();
     mockRequestPermission.mockClear();
+    mockDesktopShowNotification.mockClear();
+
+    delete window.kanvibeDesktop;
 
     // Notification permission 리셋
     Object.defineProperty(global, "Notification", {
@@ -221,5 +225,37 @@ describe("useTaskNotification", () => {
 
     // Then
     expect(mockRequestPermission).toHaveBeenCalled();
+  });
+
+  it("should use Electron native notification bridge on desktop", async () => {
+    window.kanvibeDesktop = {
+      isDesktop: true,
+      showNotification: mockDesktopShowNotification,
+    };
+
+    const { useTaskNotification } = await import("@/hooks/useTaskNotification");
+    const { result } = renderHook(() => useTaskNotification());
+
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    await act(async () => {
+      await result.current.notifyTaskStatusChanged({
+        projectName: "kanvibe",
+        branchName: "feat/electron",
+        taskTitle: "네이티브 알림",
+        description: "OS 알림 테스트",
+        newStatus: "review",
+        taskId: "task-desktop",
+        locale: "ko",
+      });
+    });
+
+    expect(mockDesktopShowNotification).toHaveBeenCalledWith({
+      title: "kanvibe — feat/electron",
+      body: "네이티브 알림: review로 변경\nOS 알림 테스트",
+      taskId: "task-desktop",
+      locale: "ko",
+    });
+    expect(mockShowNotification).not.toHaveBeenCalled();
   });
 });

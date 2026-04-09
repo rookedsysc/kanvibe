@@ -2,10 +2,12 @@ const fs = require("node:fs");
 const http = require("node:http");
 const path = require("node:path");
 const process = require("node:process");
-const { app, BrowserWindow, ipcMain, session } = require("electron");
+const { pathToFileURL } = require("node:url");
+const { app, BrowserWindow, ipcMain, Notification, session, shell } = require("electron");
 
 require("tsx/cjs");
 
+const DEFAULT_LOCALE = "ko";
 const RENDERER_DEV_URL = process.env.KANVIBE_RENDERER_URL || null;
 const HOOK_SERVER_HOST = process.env.KANVIBE_HOOK_HOST || "127.0.0.1";
 const HOOK_SERVER_PORT = Number.parseInt(process.env.PORT || "4885", 10);
@@ -44,7 +46,169 @@ function getRendererEntryPath() {
   return path.join(appRoot, "build", "renderer", "index.html");
 }
 
-async function waitForUrl(url, retries = 80) {
+function getDefaultRoute() {
+  return `/${DEFAULT_LOCALE}/login`;
+}
+
+function getRendererNavigationUrl(target = getDefaultRoute()) {
+  if (target.startsWith("http://") || target.startsWith("https://") || target.startsWith("file://")) {
+    return target;
+  }
+
+  const normalizedTarget = target.startsWith("/") ? target : `/${target}`;
+
+  if (RENDERER_DEV_URL) {
+    const rendererUrl = new URL(RENDERER_DEV_URL);
+    rendererUrl.hash = normalizedTarget;
+    return rendererUrl.href;
+  }
+
+  return `${pathToFileURL(getRendererEntryPath()).href}#${normalizedTarget}`;
+}
+
+function getTitleBarOptions() {
+  if (process.platform === "darwin") {
+    return {
+      titleBarStyle: "hiddenInset",
+    };
+  }
+
+  return {
+    titleBarStyle: "hidden",
+    titleBarOverlay: {
+      color: "#ffffff",
+      symbolColor: "#111827",
+      height: 40,
+    },
+  };
+}
+
+function createBrowserWindowOptions() {
+  return {
+    width: 1600,
+    height: 1000,
+    minWidth: 1200,
+    minHeight: 800,
+    backgroundColor: "#ffffff",
+    autoHideMenuBar: true,
+    ...getTitleBarOptions(),
+    webPreferences: {
+      preload: path.join(__dirname, "preload.js"),
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
+  };
+}
+
+function isKanvibeUrl(targetUrl) {
+  if (targetUrl.startsWith("file://")) {
+    return true;
+  }
+
+  if (!RENDERER_DEV_URL) {
+    return false;
+  }
+
+  try {
+    const parsedUrl = new URL(targetUrl);
+    return parsedUrl.origin === new URL(RENDERER_DEV_URL).origin;
+  } catch {
+    return false;
+  }
+}
+
+function getNotificationIconPath() {
+  return path.join(app.getAppPath(), "public", "icons", "icon-192x192.png");
+}
+
+async function focusMainWindow(relativePath) {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    await createMainWindow();
+  }
+
+  if (!mainWindow) {
+    return;
+  }
+
+  if (mainWindow.isMinimized()) {
+    mainWindow.restore();
+  }
+
+  mainWindow.show();
+  mainWindow.focus();
+
+  if (!relativePath) {
+    return;
+  }
+
+  const targetUrl = getRendererNavigationUrl(relativePath);
+  if (mainWindow.webContents.getURL() !== targetUrl) {
+    await mainWindow.loadURL(targetUrl);
+  }
+}
+
+function registerNotificationHandlers() {
+  ipcMain.handle("kanvibe:show-notification", async (_event, payload) => {
+    if (!Notification.isSupported()) {
+      return false;
+    }
+
+    const notification = new Notification({
+      title: payload.title,
+      body: payload.body,
+      icon: getNotificationIconPath(),
+    });
+
+    notification.on("click", () => {
+      const relativePath = payload.taskId
+        ? `/${payload.locale || DEFAULT_LOCALE}/task/${payload.taskId}`
+        : `/${payload.locale || DEFAULT_LOCALE}`;
+
+      void focusMainWindow(relativePath);
+    });
+
+    notification.show();
+    return true;
+  });
+}
+
+function attachWindowHandlers(browserWindow) {
+  browserWindow.webContents.setWindowOpenHandler(({ url }) => {
+    if (isKanvibeUrl(url)) {
+      return {
+        action: "allow",
+        overrideBrowserWindowOptions: createBrowserWindowOptions(),
+      };
+    }
+
+    void shell.openExternal(url);
+    return { action: "deny" };
+  });
+
+  browserWindow.webContents.on("did-create-window", (childWindow) => {
+    attachWindowHandlers(childWindow);
+  });
+
+  browserWindow.webContents.on("before-input-event", (event, input) => {
+    const isNewWindowShortcut =
+      input.type === "keyDown" &&
+      !input.isAutoRepeat &&
+      !input.alt &&
+      (input.control || input.meta) &&
+      input.key.toLowerCase() === "n";
+
+    if (!isNewWindowShortcut) {
+      return;
+    }
+
+    event.preventDefault();
+
+    const currentUrl = browserWindow.webContents.getURL() || getRendererNavigationUrl();
+    void createAppWindow(currentUrl);
+  });
+}
+
+async function waitForServer(url, retries = 80) {
   for (let attempt = 0; attempt < retries; attempt += 1) {
     const isReady = await new Promise((resolve) => {
       const request = http.get(url, (response) => {
@@ -138,41 +302,37 @@ function startHookServer() {
   hookServer = createHookServer({ host: HOOK_SERVER_HOST, port: HOOK_SERVER_PORT });
 }
 
-async function loadRenderer(window) {
+async function loadRenderer(window, targetUrl = getRendererNavigationUrl()) {
   if (RENDERER_DEV_URL) {
-    await waitForUrl(RENDERER_DEV_URL);
-    await window.loadURL(RENDERER_DEV_URL);
-    return;
+    await waitForServer(RENDERER_DEV_URL);
+  } else {
+    const rendererEntryPath = getRendererEntryPath();
+    if (!fs.existsSync(rendererEntryPath)) {
+      throw new Error(`Renderer build not found: ${rendererEntryPath}`);
+    }
   }
 
-  const rendererEntryPath = getRendererEntryPath();
-  if (!fs.existsSync(rendererEntryPath)) {
-    throw new Error(`Renderer build not found: ${rendererEntryPath}`);
-  }
+  await window.loadURL(targetUrl);
+}
 
-  await window.loadFile(rendererEntryPath);
+async function createAppWindow(target = getRendererNavigationUrl()) {
+  const browserWindow = new BrowserWindow(createBrowserWindowOptions());
+  mainWindow = browserWindow;
+  attachWindowHandlers(browserWindow);
+
+  await loadRenderer(browserWindow, getRendererNavigationUrl(target));
+
+  browserWindow.on("closed", () => {
+    if (mainWindow === browserWindow) {
+      mainWindow = null;
+    }
+  });
+
+  return browserWindow;
 }
 
 async function createMainWindow() {
-  mainWindow = new BrowserWindow({
-    width: 1600,
-    height: 1000,
-    minWidth: 1200,
-    minHeight: 800,
-    backgroundColor: "#ffffff",
-    autoHideMenuBar: true,
-    webPreferences: {
-      preload: path.join(__dirname, "preload.js"),
-      contextIsolation: true,
-      nodeIntegration: false,
-    },
-  });
-
-  await loadRenderer(mainWindow);
-
-  mainWindow.on("closed", () => {
-    mainWindow = null;
-  });
+  return createAppWindow();
 }
 
 app.whenReady().then(async () => {
@@ -184,6 +344,7 @@ app.whenReady().then(async () => {
   registerDesktopHandlers();
   const unsubscribeBoardEvents = registerBoardEventForwarding();
   startHookServer();
+  registerNotificationHandlers();
 
   await createMainWindow();
 

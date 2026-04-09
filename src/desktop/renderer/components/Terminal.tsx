@@ -57,40 +57,40 @@ export default function Terminal({ taskId }: TerminalProps) {
       });
     });
 
-    const terminalReady = await window.kanvibeDesktop.openTerminal(taskId, terminal.cols, terminal.rows);
+    const terminalReady = await window.kanvibeDesktop!.openTerminal(taskId, terminal.cols, terminal.rows);
     if (!terminalReady.ok) {
       terminal.writeln(`\r\n\x1b[31m${terminalReady.error || "터미널 연결 실패"}\x1b[0m`);
     }
 
-    const unsubscribeData = window.kanvibeDesktop.onTerminalData((event) => {
+    const unsubscribeData = window.kanvibeDesktop!.onTerminalData((event: any) => {
       if (event.taskId === taskId) {
         terminal.write(event.data);
       }
     });
 
-    const unsubscribeClose = window.kanvibeDesktop.onTerminalClose((event) => {
+    const unsubscribeClose = window.kanvibeDesktop!.onTerminalClose((event: any) => {
       if (event.taskId === taskId) {
         terminal.writeln(`\r\n\x1b[31m${event.reason || "연결이 종료되었습니다."}\x1b[0m`);
       }
     });
 
     terminal.onData((data) => {
-      window.kanvibeDesktop.writeTerminal(taskId, data);
+      window.kanvibeDesktop!.writeTerminal(taskId, data);
     });
 
     terminal.onResize(({ cols, rows }) => {
-      window.kanvibeDesktop.resizeTerminal(taskId, cols, rows);
+      window.kanvibeDesktop!.resizeTerminal(taskId, cols, rows);
     });
 
     const resizeObserver = new ResizeObserver(() => {
       fitAddon.fit();
-      window.kanvibeDesktop.resizeTerminal(taskId, terminal.cols, terminal.rows);
+      window.kanvibeDesktop!.resizeTerminal(taskId, terminal.cols, terminal.rows);
     });
     resizeObserver.observe(containerRef.current);
 
     const handleVisibilityChange = () => {
       if (document.visibilityState === "visible") {
-        window.kanvibeDesktop.focusTerminal(taskId);
+        window.kanvibeDesktop!.focusTerminal(taskId);
       }
     };
 
@@ -101,7 +101,7 @@ export default function Terminal({ taskId }: TerminalProps) {
       resizeObserver.disconnect();
       unsubscribeData();
       unsubscribeClose();
-      window.kanvibeDesktop.closeTerminal(taskId);
+      window.kanvibeDesktop!.closeTerminal(taskId);
       terminal.dispose();
     };
   }, [taskId]);

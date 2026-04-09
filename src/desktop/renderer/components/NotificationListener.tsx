@@ -22,7 +22,7 @@ export default function NotificationListener() {
   }, [refreshSignal]);
 
   useEffect(() => {
-    return window.kanvibeDesktop.onBoardEvent((event) => {
+    return window.kanvibeDesktop!.onBoardEvent((event: any) => {
       if (!settings.isEnabled) {
         return;
       }
