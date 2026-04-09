@@ -60,6 +60,7 @@ describe("openCodeHooksSetup", () => {
       expect(pluginContent).toContain('"question.asked"');
       expect(pluginContent).toContain('"question.replied"');
       expect(pluginContent).toContain('"session.idle"');
+      expect(pluginContent).toContain('"session.deleted"');
     });
 
     it("should map event types to correct statuses", async () => {
@@ -77,6 +78,7 @@ describe("openCodeHooksSetup", () => {
       expect(pluginContent).toMatch(/question\.asked[\s\S]*?pending/);
       expect(pluginContent).toMatch(/question\.replied[\s\S]*?progress/);
       expect(pluginContent).toMatch(/session\.idle[\s\S]*?review/);
+      expect(pluginContent).toMatch(/session\.deleted[\s\S]*?done/);
     });
 
     it("should filter subagent sessions before updating statuses", async () => {
@@ -91,15 +93,19 @@ describe("openCodeHooksSetup", () => {
       const pluginContent = await readFile(pluginPath, "utf-8");
 
       expect(pluginContent).toContain("const sessionCache = new Map<string, boolean>()");
+      expect(pluginContent).toContain("function getSessionID(source: any): string | undefined");
+      expect(pluginContent).toContain("function getParentSessionID(source: any): string | null | undefined");
       expect(pluginContent).toContain("client.session.get");
       expect(pluginContent).toContain("sessionCache.has(sessionID)");
       expect(pluginContent).toContain("sessionCache.set(sessionID, isMain)");
       expect(pluginContent).toContain("result.data?.parentID");
       expect(pluginContent).toContain("properties?.info ?? (event as any).properties?.message");
-      expect(pluginContent).toMatch(/message\.updated[\s\S]*?isMainSession\(message\.sessionID\)/);
-      expect(pluginContent).toMatch(/question\.asked[\s\S]*?isMainSession\(event\.properties\.sessionID\)/);
-      expect(pluginContent).toMatch(/question\.replied[\s\S]*?isMainSession\(event\.properties\.sessionID\)/);
-      expect(pluginContent).toMatch(/session\.idle[\s\S]*?isMainSession\(event\.properties\.sessionID\)/);
+      expect(pluginContent).toContain("return sessionCache.get(sessionID) ?? false");
+      expect(pluginContent).toMatch(/message\.updated[\s\S]*?isMainSession\(message\)/);
+      expect(pluginContent).toMatch(/question\.asked[\s\S]*?isMainSession\(event\.properties\)/);
+      expect(pluginContent).toMatch(/question\.replied[\s\S]*?isMainSession\(event\.properties\)/);
+      expect(pluginContent).toMatch(/session\.idle[\s\S]*?isMainSession\(event\.properties\)/);
+      expect(pluginContent).toMatch(/session\.deleted[\s\S]*?isMainSession\(event\.properties\)/);
     });
 
     it("should not fail when called twice (overwrites existing plugin)", async () => {
