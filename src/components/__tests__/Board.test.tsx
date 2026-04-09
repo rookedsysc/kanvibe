@@ -6,6 +6,13 @@ import { SessionType, TaskStatus } from "@/entities/KanbanTask";
 import type { Project } from "@/entities/Project";
 import type { TasksByStatus } from "@/app/actions/kanban";
 
+function mockNavigatorPlatform(platform: string) {
+  Object.defineProperty(window.navigator, "platform", {
+    configurable: true,
+    value: platform,
+  });
+}
+
 vi.mock("next-intl", () => ({
   useTranslations: () => (key: string) => key,
 }));
@@ -147,6 +154,8 @@ function createTasksWithTodo(): TasksByStatus {
 describe("Board defaultSessionType sync", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    delete window.kanvibeDesktop;
+    mockNavigatorPlatform("Linux x86_64");
   });
 
   it("defaultSessionType prop이 변경되면 내부 상태와 하위 컴포넌트가 동기화된다", async () => {
@@ -218,6 +227,29 @@ describe("Board defaultSessionType sync", () => {
 
     await waitFor(() => {
       expect(reorderTasks).toHaveBeenCalledWith(TaskStatus.TODO, ["task-1"]);
+    });
+  });
+
+  it("맥 데스크톱 앱에서는 헤더 상단에 추가 여백을 준다", async () => {
+    window.kanvibeDesktop = { isDesktop: true };
+    mockNavigatorPlatform("MacIntel");
+
+    const { container } = render(
+      <Board
+        initialTasks={createEmptyTasks()}
+        initialDoneTotal={0}
+        initialDoneLimit={20}
+        sshHosts={[]}
+        projects={[createProject()]}
+        sidebarDefaultCollapsed={false}
+        doneAlertDismissed={false}
+        notificationSettings={{ isEnabled: true, enabledStatuses: ["progress", "pending", "review"] }}
+        defaultSessionType={SessionType.TMUX}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(container.querySelector("header")?.className).toContain("pt-10");
     });
   });
 });
