@@ -200,6 +200,7 @@ export default function Board({ initialTasks, initialDoneTotal, initialDoneLimit
   const [isDoneAlertDismissed, setIsDoneAlertDismissed] = useState(doneAlertDismissed);
   const [pendingDoneResult, setPendingDoneResult] = useState<DropResult | null>(null);
   const [currentDefaultSessionType, setCurrentDefaultSessionType] = useState<SessionType>(defaultSessionType);
+  const [needsMacDesktopHeaderOffset, setNeedsMacDesktopHeaderOffset] = useState(false);
   const [, startDragPersistenceTransition] = useTransition();
 
   /** projectId → 표시할 프로젝트 이름 매핑. worktree 프로젝트는 메인 프로젝트 이름으로 resolve한다 */
@@ -339,6 +340,12 @@ export default function Board({ initialTasks, initialDoneTotal, initialDoneLimit
     setCurrentDefaultSessionType(defaultSessionType);
   }, [defaultSessionType]);
 
+  useEffect(() => {
+    const isDesktopApp = window.kanvibeDesktop?.isDesktop === true;
+    const isMacDesktop = navigator.userAgent.includes("Mac") || navigator.platform.toLowerCase().includes("mac");
+    setNeedsMacDesktopHeaderOffset(isDesktopApp && isMacDesktop);
+  }, []);
+
   const handleLoadMoreDone = useCallback(async () => {
     if (isLoadingMore) return;
     setIsLoadingMore(true);
@@ -460,7 +467,9 @@ export default function Board({ initialTasks, initialDoneTotal, initialDoneLimit
 
   return (
     <div className="min-h-screen">
-      <header className="flex items-center justify-between px-6 py-4 border-b border-border-default bg-bg-surface">
+      <header
+        className={`flex items-center justify-between px-6 pb-4 border-b border-border-default bg-bg-surface ${needsMacDesktopHeaderOffset ? "pt-10" : "pt-4"}`}
+      >
         <div className="flex items-center gap-2">
           <img src="/kanvibe-logo.svg" alt="KanVibe" className="h-6 w-6" />
           <h1 className="text-xl font-bold text-text-primary">{t("title")}</h1>
