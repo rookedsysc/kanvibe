@@ -151,10 +151,10 @@ export async function createTask(input: CreateTaskInput): Promise<KanbanTask> {
         if (!project.sshHost && session.worktreePath) {
           const kanvibeUrl = "http://localhost:9736";
           await Promise.allSettled([
-            setupClaudeHooks(session.worktreePath, project.name, kanvibeUrl),
-            setupGeminiHooks(session.worktreePath, project.name, kanvibeUrl),
-            setupCodexHooks(session.worktreePath, project.name, kanvibeUrl),
-            setupOpenCodeHooks(session.worktreePath, project.name, kanvibeUrl),
+            setupClaudeHooks(session.worktreePath, project.id, kanvibeUrl),
+            setupGeminiHooks(session.worktreePath, project.id, kanvibeUrl),
+            setupCodexHooks(session.worktreePath, project.id, kanvibeUrl),
+            setupOpenCodeHooks(session.worktreePath, project.id, kanvibeUrl),
           ]);
         }
       }
@@ -337,10 +337,10 @@ export async function branchFromTask(
     try {
       const kanvibeUrl = "http://localhost:9736";
       await Promise.allSettled([
-        setupClaudeHooks(session.worktreePath, project.name, kanvibeUrl),
-        setupGeminiHooks(session.worktreePath, project.name, kanvibeUrl),
-        setupCodexHooks(session.worktreePath, project.name, kanvibeUrl),
-        setupOpenCodeHooks(session.worktreePath, project.name, kanvibeUrl),
+        setupClaudeHooks(session.worktreePath, project.id, kanvibeUrl),
+        setupGeminiHooks(session.worktreePath, project.id, kanvibeUrl),
+        setupCodexHooks(session.worktreePath, project.id, kanvibeUrl),
+        setupOpenCodeHooks(session.worktreePath, project.id, kanvibeUrl),
       ]);
     } catch (error) {
       console.error("Hooks 설정 실패:", error);

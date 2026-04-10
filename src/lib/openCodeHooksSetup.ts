@@ -12,7 +12,7 @@ const PLUGIN_FILE_NAME = "kanvibe-plugin.ts";
 const PLUGIN_DIR_NAME = "plugins";
 
 /** OpenCode plugin TypeScript 파일 내용을 생성한다 */
-function generatePluginScript(kanvibeUrl: string, projectName: string): string {
+function generatePluginScript(kanvibeUrl: string, projectId: string): string {
   return `import type { Plugin } from "@opencode-ai/plugin";
 
 /**
@@ -22,7 +22,7 @@ function generatePluginScript(kanvibeUrl: string, projectName: string): string {
  */
 export const KanvibePlugin: Plugin = async ({ $, client }) => {
   const KANVIBE_URL = "${kanvibeUrl}";
-  const PROJECT_NAME = "${projectName}";
+  const PROJECT_ID = "${projectId}";
 
   async function getBranchName(): Promise<string | null> {
     try {
@@ -43,7 +43,7 @@ export const KanvibePlugin: Plugin = async ({ $, client }) => {
       await fetch(\`\${KANVIBE_URL}/api/hooks/status\`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ branchName, projectName: PROJECT_NAME, status }),
+        body: JSON.stringify({ branchName, projectId: PROJECT_ID, status }),
       });
     } catch {
       /* 네트워크 에러 무시 */
@@ -159,7 +159,7 @@ function hasKanvibePlugin(pluginContent: string): boolean {
  */
 export async function setupOpenCodeHooks(
   repoPath: string,
-  projectName: string,
+  projectId: string,
   kanvibeUrl: string
 ): Promise<void> {
   const openCodeDir = path.join(repoPath, ".opencode");
@@ -168,7 +168,7 @@ export async function setupOpenCodeHooks(
   await mkdir(pluginsDir, { recursive: true });
 
   const pluginPath = path.join(pluginsDir, PLUGIN_FILE_NAME);
-  await writeFile(pluginPath, generatePluginScript(kanvibeUrl, projectName), "utf-8");
+  await writeFile(pluginPath, generatePluginScript(kanvibeUrl, projectId), "utf-8");
 
   try {
     await addAiToolPatternsToGitExclude(repoPath);

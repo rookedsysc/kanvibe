@@ -41,8 +41,8 @@ describe("openCodeHooksSetup", () => {
 
       expect(pluginContent).toContain("KanvibePlugin");
       expect(pluginContent).toContain("/api/hooks/status");
-      expect(pluginContent).toContain('const PROJECT_NAME = "project-1";');
-      expect(pluginContent).toContain("projectName: PROJECT_NAME");
+      expect(pluginContent).toContain('const PROJECT_ID = "project-1";');
+      expect(pluginContent).toContain("projectId: PROJECT_ID");
     });
 
     it("should generate plugin with all event handlers for status tracking", async () => {

@@ -20,11 +20,11 @@ describe("geminiHooksSetup", () => {
     it("should create hook scripts and settings.json in .gemini directory", async () => {
       // Given
       const repoPath = tmpDir;
-      const projectName = "project-1";
+      const projectId = "project-1";
       const kanvibeUrl = "http://localhost:9736";
 
       // When
-      await setupGeminiHooks(repoPath, projectName, kanvibeUrl);
+      await setupGeminiHooks(repoPath, projectId, kanvibeUrl);
 
       // Then
       const promptScript = await readFile(
@@ -42,8 +42,8 @@ describe("geminiHooksSetup", () => {
       expect(promptScript).toContain("#!/bin/bash");
       expect(promptScript).toContain("BeforeAgent");
       expect(promptScript).toContain(kanvibeUrl);
-      expect(promptScript).toContain(projectName);
-      expect(promptScript).toContain("projectName");
+      expect(promptScript).toContain(projectId);
+      expect(promptScript).toContain("projectId");
       expect(promptScript).toContain("echo '{}'");
 
       expect(stopScript).toContain("#!/bin/bash");
