@@ -3,7 +3,7 @@
 import { useTranslations } from "next-intl";
 import type { KanbanTask } from "@/entities/KanbanTask";
 import PriorityEditor from "@/components/PriorityEditor";
-import { Link } from "@/i18n/navigation";
+import { Link } from "@/desktop/renderer/navigation";
 import ProjectColorEditor from "@/components/ProjectColorEditor";
 
 interface TaskDetailInfoCardProps {

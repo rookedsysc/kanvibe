@@ -1,9 +1,9 @@
 "use client";
 
 import { useTransition } from "react";
-import { useRouter } from "@/i18n/navigation";
+import { useRouter } from "@/desktop/renderer/navigation";
 import { TaskPriority } from "@/entities/TaskPriority";
-import { updateTask } from "@/app/actions/kanban";
+import { updateTask } from "@/desktop/renderer/actions/kanban";
 import PrioritySelector from "./PrioritySelector";
 
 interface PriorityEditorProps {

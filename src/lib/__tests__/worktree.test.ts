@@ -13,7 +13,7 @@ vi.mock("@/lib/gitOperations", () => ({
 
 const mockGetEffectivePaneLayout = vi.fn();
 
-vi.mock("@/app/actions/paneLayout", () => ({
+vi.mock("@/desktop/main/services/paneLayoutService", () => ({
   getEffectivePaneLayout: (...args: unknown[]) =>
     mockGetEffectivePaneLayout(...args),
 }));

@@ -17,7 +17,7 @@ vi.mock("@hello-pangea/dnd", () => ({
     ),
 }));
 
-vi.mock("@/i18n/navigation", () => ({
+vi.mock("@/desktop/renderer/navigation", () => ({
   Link: ({ children, ...props }: { children: React.ReactNode; href: string }) => (
     <a {...props}>{children}</a>
   ),

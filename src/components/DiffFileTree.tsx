@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import type { DiffFile } from "@/app/actions/diff";
+import type { DiffFile } from "@/desktop/renderer/actions/diff";
 
 interface DiffFileTreeProps {
   files: DiffFile[];

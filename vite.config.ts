@@ -17,15 +17,6 @@ export default defineConfig({
   },
   resolve: {
     alias: [
-      { find: "@/app/actions/auth", replacement: resolvePath("./src/desktop/renderer/actions/auth.ts") },
-      { find: "@/app/actions/kanban", replacement: resolvePath("./src/desktop/renderer/actions/kanban.ts") },
-      { find: "@/app/actions/project", replacement: resolvePath("./src/desktop/renderer/actions/project.ts") },
-      { find: "@/app/actions/appSettings", replacement: resolvePath("./src/desktop/renderer/actions/appSettings.ts") },
-      { find: "@/app/actions/diff", replacement: resolvePath("./src/desktop/renderer/actions/diff.ts") },
-      { find: "@/app/actions/paneLayout", replacement: resolvePath("./src/desktop/renderer/actions/paneLayout.ts") },
-      { find: "@/i18n/navigation", replacement: resolvePath("./src/desktop/renderer/navigation.tsx") },
-      { find: "@/hooks/useAutoRefresh", replacement: resolvePath("./src/desktop/renderer/hooks/useAutoRefresh.ts") },
-      { find: "@/hooks/useProjectFilterParams", replacement: resolvePath("./src/desktop/renderer/hooks/useProjectFilterParams.ts") },
       { find: "@", replacement: resolvePath("./src") },
     ],
   },

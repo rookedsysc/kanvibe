@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 
 // --- Mocks ---
 
-vi.mock("@/app/actions/appSettings", () => ({
+vi.mock("@/desktop/renderer/actions/appSettings", () => ({
   dismissDoneAlert: vi.fn().mockResolvedValue(undefined),
 }));
 

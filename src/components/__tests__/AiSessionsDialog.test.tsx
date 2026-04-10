@@ -9,7 +9,7 @@ const { mockGetTaskAiSessionDetail, mockGetTaskAiSessions } = vi.hoisted(() => (
   mockGetTaskAiSessions: vi.fn(),
 }));
 
-vi.mock("@/app/actions/project", () => ({
+vi.mock("@/desktop/renderer/actions/project", () => ({
   getTaskAiSessionDetail: mockGetTaskAiSessionDetail,
   getTaskAiSessions: mockGetTaskAiSessions,
 }));

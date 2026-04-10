@@ -1,10 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import Board from "../Board";
-import { reorderTasks } from "@/app/actions/kanban";
+import { reorderTasks } from "@/desktop/renderer/actions/kanban";
 import { SessionType, TaskStatus } from "@/entities/KanbanTask";
 import type { Project } from "@/entities/Project";
-import type { TasksByStatus } from "@/app/actions/kanban";
+import type { TasksByStatus } from "@/desktop/renderer/actions/kanban";
 
 function mockNavigatorPlatform(platform: string) {
   Object.defineProperty(window.navigator, "platform", {
@@ -37,22 +37,22 @@ vi.mock("@hello-pangea/dnd", () => ({
   ),
 }));
 
-vi.mock("@/app/actions/kanban", () => ({
+vi.mock("@/desktop/renderer/actions/kanban", () => ({
   reorderTasks: vi.fn(),
   deleteTask: vi.fn(),
   getMoreDoneTasks: vi.fn().mockResolvedValue({ tasks: [], doneTotal: 0 }),
   moveTaskToColumn: vi.fn(),
 }));
 
-vi.mock("@/app/actions/auth", () => ({
+vi.mock("@/desktop/renderer/actions/auth", () => ({
   logoutAction: vi.fn(),
 }));
 
-vi.mock("@/hooks/useAutoRefresh", () => ({
+vi.mock("@/desktop/renderer/hooks/useAutoRefresh", () => ({
   useAutoRefresh: vi.fn(),
 }));
 
-vi.mock("@/hooks/useProjectFilterParams", () => ({
+vi.mock("@/desktop/renderer/hooks/useProjectFilterParams", () => ({
   useProjectFilterParams: vi.fn().mockReturnValue([[], vi.fn()]),
 }));
 

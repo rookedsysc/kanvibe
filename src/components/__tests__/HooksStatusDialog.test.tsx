@@ -16,7 +16,7 @@ const {
   mockInstallTaskOpenCodeHooks: vi.fn(),
 }));
 
-vi.mock("@/app/actions/project", () => ({
+vi.mock("@/desktop/renderer/actions/project", () => ({
   installTaskHooks: mockInstallTaskHooks,
   installTaskGeminiHooks: mockInstallTaskGeminiHooks,
   installTaskCodexHooks: mockInstallTaskCodexHooks,

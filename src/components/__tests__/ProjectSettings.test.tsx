@@ -10,7 +10,7 @@ vi.mock("next-intl", () => ({
   useTranslations: () => (key: string) => key,
 }));
 
-vi.mock("@/i18n/navigation", () => ({
+vi.mock("@/desktop/renderer/navigation", () => ({
   Link: ({
     children,
     href,
@@ -31,12 +31,12 @@ vi.mock("@/components/FolderSearchInput", () => ({
   default: () => <div data-testid="folder-search-input" />,
 }));
 
-vi.mock("@/app/actions/project", () => ({
+vi.mock("@/desktop/renderer/actions/project", () => ({
   deleteProject: vi.fn().mockResolvedValue(undefined),
   scanAndRegisterProjects: vi.fn().mockResolvedValue({ registered: [], skipped: [], errors: [], worktreeTasks: [] }),
 }));
 
-vi.mock("@/app/actions/appSettings", () => ({
+vi.mock("@/desktop/renderer/actions/appSettings", () => ({
   setSidebarDefaultCollapsed: vi.fn().mockResolvedValue(undefined),
   setNotificationEnabled: vi.fn().mockResolvedValue(undefined),
   setNotificationStatuses: vi.fn().mockResolvedValue(undefined),

@@ -3,7 +3,7 @@
 import { useState, useTransition, useRef, useEffect, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { useTranslations } from "next-intl";
-import { dismissSidebarHint } from "@/app/actions/appSettings";
+import { dismissSidebarHint } from "@/desktop/renderer/actions/appSettings";
 
 interface CollapsibleSidebarProps {
   defaultCollapsed: boolean;
