@@ -9,8 +9,8 @@ require("tsx/cjs");
 
 const DEFAULT_LOCALE = "ko";
 const RENDERER_DEV_URL = process.env.KANVIBE_RENDERER_URL || null;
-const HOOK_SERVER_HOST = process.env.KANVIBE_HOOK_HOST || "127.0.0.1";
-const HOOK_SERVER_PORT = Number.parseInt(process.env.PORT || "4885", 10);
+const HOOK_SERVER_HOST = "localhost";
+const HOOK_SERVER_PORT = 9736;
 
 const isHeadlessLinuxRuntime = !process.env.DISPLAY && !process.env.WAYLAND_DISPLAY;
 

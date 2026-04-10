@@ -24,8 +24,26 @@ export interface HookStartInput {
 
 export interface HookStatusInput {
   branchName: string;
-  projectName: string;
+  projectId?: string;
+  projectName?: string;
   status: string;
+}
+
+async function findProjectForHook(input: HookStatusInput) {
+  const projectRepo = await getProjectRepository();
+
+  if (input.projectName) {
+    return projectRepo.findOneBy({ name: input.projectName });
+  }
+
+  if (!input.projectId) {
+    return null;
+  }
+
+  return (
+    (await projectRepo.findOneBy({ id: input.projectId })) ??
+    projectRepo.findOneBy({ name: input.projectId })
+  );
 }
 
 export async function startHookTask(input: HookStartInput) {
@@ -84,10 +102,12 @@ export async function startHookTask(input: HookStartInput) {
 }
 
 export async function updateHookTaskStatus(input: HookStatusInput) {
-  if (!input.branchName || !input.projectName || !input.status) {
+  const projectLookupValue = input.projectName || input.projectId;
+
+  if (!input.branchName || !projectLookupValue || !input.status) {
     return {
       success: false,
-      error: "branchName, projectName, status는 필수입니다.",
+      error: "branchName, projectName 또는 projectId, status는 필수입니다.",
       status: 400,
     };
   }
@@ -101,12 +121,11 @@ export async function updateHookTaskStatus(input: HookStatusInput) {
     };
   }
 
-  const projectRepo = await getProjectRepository();
-  const project = await projectRepo.findOneBy({ name: input.projectName });
+  const project = await findProjectForHook(input);
 
   if (!project) {
     broadcastHookStatusTargetMissing({
-      projectName: input.projectName,
+      projectName: projectLookupValue,
       branchName: input.branchName,
       requestedStatus: taskStatus,
       reason: "project-not-found",
@@ -114,7 +133,7 @@ export async function updateHookTaskStatus(input: HookStatusInput) {
 
     return {
       success: false,
-      error: `프로젝트를 찾을 수 없습니다: ${input.projectName}`,
+      error: `프로젝트를 찾을 수 없습니다: ${projectLookupValue}`,
       status: 404,
     };
   }
@@ -127,7 +146,7 @@ export async function updateHookTaskStatus(input: HookStatusInput) {
 
   if (!task) {
     broadcastHookStatusTargetMissing({
-      projectName: input.projectName,
+      projectName: project.name,
       branchName: input.branchName,
       requestedStatus: taskStatus,
       reason: "task-not-found",
@@ -135,7 +154,7 @@ export async function updateHookTaskStatus(input: HookStatusInput) {
 
     return {
       success: false,
-      error: `작업을 찾을 수 없습니다: ${input.projectName}/${input.branchName}`,
+      error: `작업을 찾을 수 없습니다: ${project.name}/${input.branchName}`,
       status: 404,
     };
   }
@@ -153,7 +172,7 @@ export async function updateHookTaskStatus(input: HookStatusInput) {
 
   broadcastBoardUpdate();
   broadcastTaskStatusChanged({
-    projectName: input.projectName,
+    projectName: project.name,
     branchName: input.branchName,
     taskTitle: saved.title,
     description: saved.description,
@@ -167,7 +186,7 @@ export async function updateHookTaskStatus(input: HookStatusInput) {
       id: saved.id,
       status: saved.status,
       branchName: input.branchName,
-      projectName: input.projectName,
+      projectName: project.name,
     },
   };
 }

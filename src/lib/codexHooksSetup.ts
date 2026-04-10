@@ -8,7 +8,7 @@ import { addAiToolPatternsToGitExclude } from "@/lib/gitExclude";
  */
 
 /** notify hook bash 스크립트를 생성한다 (agent-turn-complete → REVIEW) */
-function generateNotifyHookScript(kanvibeUrl: string, projectId: string): string {
+function generateNotifyHookScript(kanvibeUrl: string, projectName: string): string {
   return `#!/bin/bash
 
 # KanVibe Codex CLI Hook: notify (agent-turn-complete)
@@ -16,7 +16,7 @@ function generateNotifyHookScript(kanvibeUrl: string, projectId: string): string
 # Codex notify 스크립트는 첫 번째 인자로 JSON payload를 받는다.
 
 KANVIBE_URL="${kanvibeUrl}"
-PROJECT_ID="${projectId}"
+PROJECT_NAME="${projectName}"
 
 JSON_PAYLOAD="$1"
 
@@ -33,7 +33,7 @@ fi
 
 curl -s -X POST "\${KANVIBE_URL}/api/hooks/status" \\
   -H "Content-Type: application/json" \\
-  -d "{\\"branchName\\": \\"\${BRANCH_NAME}\\", \\"projectId\\": \\"\${PROJECT_ID}\\", \\"status\\": \\"review\\"}" \\
+  -d "{\\"branchName\\": \\"\${BRANCH_NAME}\\", \\"projectName\\": \\"\${PROJECT_NAME}\\", \\"status\\": \\"review\\"}" \\
   > /dev/null 2>&1
 
 exit 0
@@ -63,7 +63,7 @@ function hasKanvibeNotify(configContent: string): boolean {
  */
 export async function setupCodexHooks(
   repoPath: string,
-  projectId: string,
+  projectName: string,
   kanvibeUrl: string
 ): Promise<void> {
   const codexDir = path.join(repoPath, ".codex");
@@ -73,7 +73,7 @@ export async function setupCodexHooks(
   await mkdir(hooksDir, { recursive: true });
 
   const notifyScriptPath = path.join(hooksDir, HOOK_SCRIPT_NAME);
-  await writeFile(notifyScriptPath, generateNotifyHookScript(kanvibeUrl, projectId), "utf-8");
+  await writeFile(notifyScriptPath, generateNotifyHookScript(kanvibeUrl, projectName), "utf-8");
   await chmod(notifyScriptPath, 0o755);
 
   const configContent = await readConfigToml(configPath);

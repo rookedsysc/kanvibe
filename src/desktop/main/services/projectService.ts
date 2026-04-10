@@ -223,7 +223,7 @@ export async function scanAndRegisterProjects(
       /** 로컬 repo에 Claude Code / Gemini CLI / Codex CLI hooks를 자동 설정한다 */
       if (!sshHost) {
         try {
-          const kanvibeUrl = `http://localhost:${process.env.PORT || 4885}`;
+          const kanvibeUrl = "http://localhost:9736";
           await setupClaudeHooks(repoPath, projectName, kanvibeUrl);
           await setupGeminiHooks(repoPath, projectName, kanvibeUrl);
           await setupCodexHooks(repoPath, projectName, kanvibeUrl);
@@ -392,7 +392,7 @@ export async function installProjectHooks(
   if (project.sshHost) return { success: false, error: "SSH 원격 프로젝트는 지원하지 않습니다." };
 
   try {
-    const kanvibeUrl = `http://localhost:${process.env.PORT || 4885}`;
+    const kanvibeUrl = "http://localhost:9736";
     await setupClaudeHooks(project.repoPath, project.name, kanvibeUrl);
     return { success: true };
   } catch (error) {
@@ -425,7 +425,7 @@ export async function installTaskHooks(
   if (task.project.sshHost) return { success: false, error: "SSH 원격 프로젝트는 지원하지 않습니다." };
 
   try {
-    const kanvibeUrl = `http://localhost:${process.env.PORT || 4885}`;
+    const kanvibeUrl = "http://localhost:9736";
     const targetPath = task.worktreePath || task.project.repoPath;
     await setupClaudeHooks(targetPath, task.project.name, kanvibeUrl);
     return { success: true };
@@ -458,7 +458,7 @@ export async function installProjectGeminiHooks(
   if (project.sshHost) return { success: false, error: "SSH 원격 프로젝트는 지원하지 않습니다." };
 
   try {
-    const kanvibeUrl = `http://localhost:${process.env.PORT || 4885}`;
+    const kanvibeUrl = "http://localhost:9736";
     await setupGeminiHooks(project.repoPath, project.name, kanvibeUrl);
     return { success: true };
   } catch (error) {
@@ -491,7 +491,7 @@ export async function installTaskGeminiHooks(
   if (task.project.sshHost) return { success: false, error: "SSH 원격 프로젝트는 지원하지 않습니다." };
 
   try {
-    const kanvibeUrl = `http://localhost:${process.env.PORT || 4885}`;
+    const kanvibeUrl = "http://localhost:9736";
     const targetPath = task.worktreePath || task.project.repoPath;
     await setupGeminiHooks(targetPath, task.project.name, kanvibeUrl);
     return { success: true };
@@ -522,7 +522,7 @@ export async function installProjectCodexHooks(
   if (project.sshHost) return { success: false, error: "SSH 원격 프로젝트는 지원하지 않습니다." };
 
   try {
-    const kanvibeUrl = `http://localhost:${process.env.PORT || 4885}`;
+    const kanvibeUrl = "http://localhost:9736";
     await setupCodexHooks(project.repoPath, project.name, kanvibeUrl);
     return { success: true };
   } catch (error) {
@@ -553,7 +553,7 @@ export async function installTaskCodexHooks(
   if (task.project.sshHost) return { success: false, error: "SSH 원격 프로젝트는 지원하지 않습니다." };
 
   try {
-    const kanvibeUrl = `http://localhost:${process.env.PORT || 4885}`;
+    const kanvibeUrl = "http://localhost:9736";
     const targetPath = task.worktreePath || task.project.repoPath;
     await setupCodexHooks(targetPath, task.project.name, kanvibeUrl);
     return { success: true };
@@ -574,7 +574,7 @@ export async function installProjectOpenCodeHooks(
   if (!project) return { success: false, error: "Project not found" };
 
   try {
-    const kanvibeUrl = `http://localhost:${process.env.PORT || 4885}`;
+    const kanvibeUrl = "http://localhost:9736";
     await setupOpenCodeHooks(project.repoPath, project.name, kanvibeUrl);
     return { success: true };
   } catch (error) {
@@ -597,7 +597,7 @@ export async function installTaskOpenCodeHooks(
   if (!task?.project) return { success: false, error: "Task or project not found" };
 
   try {
-    const kanvibeUrl = `http://localhost:${process.env.PORT || 4885}`;
+    const kanvibeUrl = "http://localhost:9736";
     const targetPath = task.worktreePath || task.project.repoPath;
     await setupOpenCodeHooks(targetPath, task.project.name, kanvibeUrl);
     return { success: true };

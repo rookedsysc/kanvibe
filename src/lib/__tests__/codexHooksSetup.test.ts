@@ -40,8 +40,8 @@ describe("codexHooksSetup", () => {
       expect(status.hasConfigEntry).toBe(true);
 
       const hookContent = await readFile(join(repoPath, ".codex", "hooks", "kanvibe-notify-hook.sh"), "utf-8");
-      expect(hookContent).toContain("PROJECT_ID=\"project-1\"");
-      expect(hookContent).toContain("projectId");
+      expect(hookContent).toContain("PROJECT_NAME=\"project-1\"");
+      expect(hookContent).toContain("projectName");
     });
 
     it("should mark as installed when both hook and config exist", async () => {

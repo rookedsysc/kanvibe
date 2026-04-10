@@ -149,7 +149,7 @@ export async function createTask(input: CreateTaskInput): Promise<KanbanTask> {
 
         /** 로컬 worktree에 모든 AI 에이전트 hooks를 자동 설정한다 */
         if (!project.sshHost && session.worktreePath) {
-          const kanvibeUrl = `http://localhost:${process.env.PORT || 4885}`;
+          const kanvibeUrl = "http://localhost:9736";
           await Promise.allSettled([
             setupClaudeHooks(session.worktreePath, project.name, kanvibeUrl),
             setupGeminiHooks(session.worktreePath, project.name, kanvibeUrl),
@@ -335,7 +335,7 @@ export async function branchFromTask(
   /** 로컬 worktree에 모든 AI 에이전트 hooks를 자동 설정한다 */
   if (!project.sshHost && session.worktreePath) {
     try {
-      const kanvibeUrl = `http://localhost:${process.env.PORT || 4885}`;
+      const kanvibeUrl = "http://localhost:9736";
       await Promise.allSettled([
         setupClaudeHooks(session.worktreePath, project.name, kanvibeUrl),
         setupGeminiHooks(session.worktreePath, project.name, kanvibeUrl),
