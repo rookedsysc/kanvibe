@@ -3,7 +3,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import * as Switch from "@radix-ui/react-switch";
 import { useTranslations } from "next-intl";
-import { getTaskAiSessionDetail, getTaskAiSessions } from "@/app/actions/project";
+import { getTaskAiSessionDetail, getTaskAiSessions } from "@/desktop/renderer/actions/project";
 import { fuzzyMatch } from "@/utils/fuzzySearch";
 import type {
   AggregatedAiMessage,

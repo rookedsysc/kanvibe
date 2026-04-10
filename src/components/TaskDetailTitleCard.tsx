@@ -1,10 +1,10 @@
 "use client";
 
 import { useState, useRef, useEffect, useTransition } from "react";
-import { useRouter } from "@/i18n/navigation";
+import { useRouter } from "@/desktop/renderer/navigation";
 import { useTranslations } from "next-intl";
 import type { KanbanTask } from "@/entities/KanbanTask";
-import { updateTask } from "@/app/actions/kanban";
+import { updateTask } from "@/desktop/renderer/actions/kanban";
 import TaskStatusBadge from "@/components/TaskStatusBadge";
 import ProjectBranchTasksModal from "@/components/ProjectBranchTasksModal";
 

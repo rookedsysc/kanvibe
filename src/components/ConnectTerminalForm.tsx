@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useTranslations } from "next-intl";
-import { connectTerminalSession } from "@/app/actions/kanban";
+import { connectTerminalSession } from "@/desktop/renderer/actions/kanban";
 import { SessionType } from "@/entities/KanbanTask";
 
 interface ConnectTerminalFormProps {

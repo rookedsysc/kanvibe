@@ -3,7 +3,7 @@ import { writeFile } from "fs/promises";
 import { SessionType } from "@/entities/KanbanTask";
 import { PaneLayoutType, type PaneCommand } from "@/entities/PaneLayoutConfig";
 import { execGit } from "@/lib/gitOperations";
-import { getEffectivePaneLayout } from "@/app/actions/paneLayout";
+import { getEffectivePaneLayout } from "@/desktop/main/services/paneLayoutService";
 
 interface WorktreeSession {
   worktreePath: string;

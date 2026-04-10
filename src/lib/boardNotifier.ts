@@ -1,13 +1,5 @@
 import { EventEmitter } from "node:events";
 
-function getInternalBroadcastUrl() {
-  const port = process.env.PORT || "4885";
-  const configuredHost = process.env.KANVIBE_HOST;
-  const host = configuredHost && configuredHost !== "0.0.0.0" ? configuredHost : "127.0.0.1";
-
-  return `http://${host}:${port}/_internal/broadcast`;
-}
-
 export interface BoardUpdatedPayload {
   type: "board-updated";
 }
@@ -34,25 +26,6 @@ export type BoardEventPayload =
   | ({ type: "hook-status-target-missing" } & HookStatusTargetMissingPayload);
 
 const boardEventEmitter = new EventEmitter();
-interface LegacyBoardClient {
-  readyState: number;
-  OPEN: number;
-  send: (message: string) => void;
-}
-
-const legacyBoardClients = new Set<LegacyBoardClient>();
-
-export function addBoardClient(client: LegacyBoardClient) {
-  legacyBoardClients.add(client);
-}
-
-export function removeBoardClient(client: LegacyBoardClient) {
-  legacyBoardClients.delete(client);
-}
-
-export function getBoardClients(): Set<LegacyBoardClient> {
-  return legacyBoardClients;
-}
 
 export function subscribeToBoardEvents(
   listener: (payload: BoardEventPayload) => void,
@@ -65,16 +38,6 @@ export function subscribeToBoardEvents(
 
 function emitBoardEvent(payload: BoardEventPayload) {
   boardEventEmitter.emit("event", payload);
-
-  fetch(getInternalBroadcastUrl(), {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(payload),
-  }).catch(() => {
-    // 보드 업데이트 전파는 실패해도 호출부를 깨뜨리지 않는다.
-  });
 }
 
 /** 연결된 모든 데스크톱 렌더러에 업데이트 알림을 전송한다 */

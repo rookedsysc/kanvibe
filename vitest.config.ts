@@ -12,7 +12,6 @@ export default defineConfig({
     globals: true,
     exclude: [
       "dist/**",
-      ".next/**",
       ".tooling/**",
       ".opencode/**",
       ".claude/**",

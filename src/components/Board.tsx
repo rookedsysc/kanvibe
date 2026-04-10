@@ -10,13 +10,13 @@ import ProjectSettings from "./ProjectSettings";
 import TaskContextMenu from "./TaskContextMenu";
 import BranchTaskModal from "./BranchTaskModal";
 import DoneConfirmDialog from "./DoneConfirmDialog";
-import { reorderTasks, deleteTask, getMoreDoneTasks, moveTaskToColumn } from "@/app/actions/kanban";
-import type { TasksByStatus } from "@/app/actions/kanban";
+import { reorderTasks, deleteTask, getMoreDoneTasks, moveTaskToColumn } from "@/desktop/renderer/actions/kanban";
+import type { TasksByStatus } from "@/desktop/renderer/actions/kanban";
 import { SessionType, TaskStatus, type KanbanTask } from "@/entities/KanbanTask";
 import type { Project } from "@/entities/Project";
-import { logoutAction } from "@/app/actions/auth";
-import { useAutoRefresh } from "@/hooks/useAutoRefresh";
-import { useProjectFilterParams } from "@/hooks/useProjectFilterParams";
+import { logoutAction } from "@/desktop/renderer/actions/auth";
+import { useAutoRefresh } from "@/desktop/renderer/hooks/useAutoRefresh";
+import { useProjectFilterParams } from "@/desktop/renderer/hooks/useProjectFilterParams";
 import { computeProjectColor } from "@/lib/projectColor";
 
 interface BoardProps {

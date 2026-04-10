@@ -6,7 +6,7 @@ import { TaskPriority } from "@/entities/TaskPriority";
 const mockRefresh = vi.fn();
 const mockUpdateTask = vi.fn().mockResolvedValue({});
 
-vi.mock("@/i18n/navigation", () => ({
+vi.mock("@/desktop/renderer/navigation", () => ({
   useRouter: () => ({
     refresh: mockRefresh,
     push: vi.fn(),
@@ -29,7 +29,7 @@ vi.mock("next-intl", () => ({
   },
 }));
 
-vi.mock("@/app/actions/kanban", () => ({
+vi.mock("@/desktop/renderer/actions/kanban", () => ({
   updateTask: (...args: unknown[]) => mockUpdateTask(...args),
 }));
 

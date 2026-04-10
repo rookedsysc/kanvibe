@@ -7,7 +7,7 @@ import {
   installTaskGeminiHooks,
   installTaskCodexHooks,
   installTaskOpenCodeHooks,
-} from "@/app/actions/project";
+} from "@/desktop/renderer/actions/project";
 import type { ClaudeHooksStatus } from "@/lib/claudeHooksSetup";
 import type { GeminiHooksStatus } from "@/lib/geminiHooksSetup";
 import type { CodexHooksStatus } from "@/lib/codexHooksSetup";

@@ -6,15 +6,15 @@ import {
   deleteProject,
   scanAndRegisterProjects,
   type ScanResult,
-} from "@/app/actions/project";
+} from "@/desktop/renderer/actions/project";
 import {
   setSidebarDefaultCollapsed,
   setNotificationEnabled,
   setNotificationStatuses,
   setDefaultSessionType,
-} from "@/app/actions/appSettings";
+} from "@/desktop/renderer/actions/appSettings";
 import { SessionType } from "@/entities/KanbanTask";
-import { Link } from "@/i18n/navigation";
+import { Link } from "@/desktop/renderer/navigation";
 import type { Project } from "@/entities/Project";
 import FolderSearchInput from "@/components/FolderSearchInput";
 

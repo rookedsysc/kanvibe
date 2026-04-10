@@ -2,9 +2,9 @@
 
 import { useState, useEffect, useTransition } from "react";
 import { useTranslations } from "next-intl";
-import { useRouter } from "@/i18n/navigation";
-import { createTask } from "@/app/actions/kanban";
-import { getProjectBranches } from "@/app/actions/project";
+import { useRouter } from "@/desktop/renderer/navigation";
+import { createTask } from "@/desktop/renderer/actions/kanban";
+import { getProjectBranches } from "@/desktop/renderer/actions/project";
 import { SessionType } from "@/entities/KanbanTask";
 import { TaskPriority } from "@/entities/TaskPriority";
 import type { Project } from "@/entities/Project";

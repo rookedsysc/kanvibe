@@ -1,9 +1,9 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { useRouter } from "@/i18n/navigation";
+import { useRouter } from "@/desktop/renderer/navigation";
 import { HexColorPicker, HexColorInput } from "react-colorful";
-import { updateProjectColor } from "@/app/actions/kanban";
+import { updateProjectColor } from "@/desktop/renderer/actions/kanban";
 import { computeProjectColor } from "@/lib/projectColor";
 
 const PRESET_COLORS = [

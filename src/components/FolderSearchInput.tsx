@@ -4,7 +4,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { useTranslations } from "next-intl";
 import { fuzzyMatch, type FuzzyMatch } from "@/utils/fuzzySearch";
 import HighlightedText from "@/components/HighlightedText";
-import { listSubdirectories } from "@/app/actions/project";
+import { listSubdirectories } from "@/desktop/renderer/actions/project";
 
 interface FolderSearchInputProps {
   onSelect: (path: string) => void;

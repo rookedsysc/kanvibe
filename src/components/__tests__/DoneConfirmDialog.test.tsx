@@ -6,7 +6,7 @@ import userEvent from "@testing-library/user-event";
 
 const mockDismissDoneAlert = vi.fn().mockResolvedValue(undefined);
 
-vi.mock("@/app/actions/appSettings", () => ({
+vi.mock("@/desktop/renderer/actions/appSettings", () => ({
   dismissDoneAlert: (...args: unknown[]) => mockDismissDoneAlert(...args),
 }));
 

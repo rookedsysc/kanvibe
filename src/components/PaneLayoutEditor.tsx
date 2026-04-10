@@ -7,7 +7,7 @@ import {
   type PaneCommand,
   type PaneLayoutConfig,
 } from "@/entities/PaneLayoutConfig";
-import { savePaneLayout, deletePaneLayout } from "@/app/actions/paneLayout";
+import { savePaneLayout, deletePaneLayout } from "@/desktop/renderer/actions/paneLayout";
 
 interface PaneLayoutEditorProps {
   projectId?: string;
