@@ -1,1 +1,0 @@
-Use Node 24.x. Common commands: `pnpm install` to install deps, `pnpm test` for Vitest, `pnpm test:watch` for watch mode, `pnpm lint` for ESLint, `pnpm check` for TypeScript typecheck, `pnpm build` for web build, `pnpm dev` or `pnpm desktop:dev` for development, `bash kanvibe.sh start --fg` to run the app with setup, and `pnpm test:e2e:login` for the login Playwright spec.
