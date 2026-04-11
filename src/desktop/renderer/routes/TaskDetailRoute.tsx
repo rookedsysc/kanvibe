@@ -57,6 +57,13 @@ export default function TaskDetailRoute() {
   const t = useTranslations("taskDetail");
   const refreshSignal = useRefreshSignal();
   const [state, setState] = useState<TaskDetailState | null | undefined>(undefined);
+  const [needsMacDesktopHeaderOffset, setNeedsMacDesktopHeaderOffset] = useState(false);
+
+  useEffect(() => {
+    const isDesktopApp = window.kanvibeDesktop?.isDesktop === true;
+    const isMacDesktop = navigator.userAgent.includes("Mac") || navigator.platform.toLowerCase().includes("mac");
+    setNeedsMacDesktopHeaderOffset(isDesktopApp && isMacDesktop);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -148,59 +155,61 @@ export default function TaskDetailRoute() {
   return (
     <div className="h-screen flex flex-col lg:flex-row bg-bg-page p-4 gap-4">
       <CollapsibleSidebar defaultCollapsed={state.sidebarDefaultCollapsed} showHint={!state.sidebarHintDismissed}>
-        <Link href="/" className="flex items-center gap-2 text-sm text-text-secondary hover:text-text-primary transition-colors">
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" className="shrink-0">
-            <path d="M10 12L6 8L10 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-          {t("backToBoard")}
-        </Link>
+        <div className={`flex flex-col gap-4 ${needsMacDesktopHeaderOffset ? "pt-10" : ""}`}>
+          <Link href="/" className="flex items-center gap-2 text-sm text-text-secondary hover:text-text-primary transition-colors">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" className="shrink-0">
+              <path d="M10 12L6 8L10 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+            {t("backToBoard")}
+          </Link>
 
-        <TaskDetailTitleCard task={state.task} taskId={state.task.id} />
+          <TaskDetailTitleCard task={state.task} taskId={state.task.id} />
 
-        <TaskDetailInfoCard
-          task={state.task}
-          agentTagStyle={agentTagStyle}
-          baseBranchTaskId={state.baseBranchTaskId}
-          diffFileCount={state.diffFiles.length}
-        />
+          <TaskDetailInfoCard
+            task={state.task}
+            agentTagStyle={agentTagStyle}
+            baseBranchTaskId={state.baseBranchTaskId}
+            diffFileCount={state.diffFiles.length}
+          />
 
-        <div className="bg-bg-surface rounded-lg p-5 shadow-sm border border-border-default">
-          <h3 className="text-xs font-semibold text-text-muted uppercase tracking-wider mb-3">{t("actions")}</h3>
-          <div className="flex flex-wrap gap-2">
-            {STATUS_TRANSITIONS.filter((transition) => transition.status !== state.task.status).map((transition) => (
-              transition.status === TaskStatus.DONE ? (
-                <DoneStatusButton
-                  key={transition.status}
-                  statusChangeAction={handleStatusChange}
-                  label={t(transition.labelKey)}
-                  hasCleanableResources={!!(state.task.branchName || state.task.sessionType)}
-                  doneAlertDismissed={state.doneAlertDismissed}
-                />
-              ) : (
-                <form key={transition.status} action={handleStatusChange}>
-                  <input type="hidden" name="status" value={transition.status} />
-                  <button type="submit" className="px-3 py-1.5 text-xs bg-bg-page border border-border-default hover:border-brand-primary hover:text-text-brand text-text-secondary rounded-md transition-colors">
-                    {t(transition.labelKey)}
-                  </button>
-                </form>
-              )
-            ))}
+          <div className="bg-bg-surface rounded-lg p-5 shadow-sm border border-border-default">
+            <h3 className="text-xs font-semibold text-text-muted uppercase tracking-wider mb-3">{t("actions")}</h3>
+            <div className="flex flex-wrap gap-2">
+              {STATUS_TRANSITIONS.filter((transition) => transition.status !== state.task.status).map((transition) => (
+                transition.status === TaskStatus.DONE ? (
+                  <DoneStatusButton
+                    key={transition.status}
+                    statusChangeAction={handleStatusChange}
+                    label={t(transition.labelKey)}
+                    hasCleanableResources={!!(state.task.branchName || state.task.sessionType)}
+                    doneAlertDismissed={state.doneAlertDismissed}
+                  />
+                ) : (
+                  <form key={transition.status} action={handleStatusChange}>
+                    <input type="hidden" name="status" value={transition.status} />
+                    <button type="submit" className="px-3 py-1.5 text-xs bg-bg-page border border-border-default hover:border-brand-primary hover:text-text-brand text-text-secondary rounded-md transition-colors">
+                      {t(transition.labelKey)}
+                    </button>
+                  </form>
+                )
+              ))}
+            </div>
+            <div className="mt-3 pt-3 border-t border-border-subtle">
+              <DeleteTaskButton deleteAction={handleDelete} />
+            </div>
           </div>
-          <div className="mt-3 pt-3 border-t border-border-subtle">
-            <DeleteTaskButton deleteAction={handleDelete} />
-          </div>
+
+          <HooksStatusCard
+            taskId={state.task.id}
+            initialClaudeStatus={state.claudeHooksStatus}
+            initialGeminiStatus={state.geminiHooksStatus}
+            initialCodexStatus={state.codexHooksStatus}
+            initialOpenCodeStatus={state.openCodeHooksStatus}
+            isRemote={!!state.task.sshHost}
+          />
+
+          <AiSessionsCard taskId={state.task.id} data={state.aiSessions} />
         </div>
-
-        <HooksStatusCard
-          taskId={state.task.id}
-          initialClaudeStatus={state.claudeHooksStatus}
-          initialGeminiStatus={state.geminiHooksStatus}
-          initialCodexStatus={state.codexHooksStatus}
-          initialOpenCodeStatus={state.openCodeHooksStatus}
-          isRemote={!!state.task.sshHost}
-        />
-
-        <AiSessionsCard taskId={state.task.id} data={state.aiSessions} />
       </CollapsibleSidebar>
 
       <main className="flex-1 flex flex-col min-h-0 min-w-0">
