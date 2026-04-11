@@ -10,20 +10,17 @@ const NOTIFICATION_MESSAGES = {
   ko: {
     formatStatusChanged: (taskTitle: string, newStatus: string) => `${taskTitle}: ${newStatus}로 변경`,
     formatMissingStatus: (requestedStatus: string) => `${requestedStatus} 상태로 변경하지 못했습니다.`,
-    projectNotFound: "프로젝트를 찾지 못했습니다.",
-    taskNotFound: "브랜치에 연결된 작업을 찾지 못했습니다.",
+    taskNotFound: "연결된 작업을 찾지 못했습니다.",
   },
   en: {
     formatStatusChanged: (taskTitle: string, newStatus: string) => `${taskTitle}: changed to ${newStatus}`,
     formatMissingStatus: (requestedStatus: string) => `Failed to change status to ${requestedStatus}.`,
-    projectNotFound: "Project was not found.",
-    taskNotFound: "No task linked to this branch was found.",
+    taskNotFound: "No matching task was found.",
   },
   zh: {
     formatStatusChanged: (taskTitle: string, newStatus: string) => `${taskTitle}: 已变更为${newStatus}`,
     formatMissingStatus: (requestedStatus: string) => `未能变更为 ${requestedStatus} 状态。`,
-    projectNotFound: "未找到项目。",
-    taskNotFound: "未找到与该分支关联的任务。",
+    taskNotFound: "未找到匹配的任务。",
   },
 } as const;
 
@@ -44,10 +41,9 @@ export interface TaskStatusNotification {
 }
 
 export interface HookStatusTargetMissingNotification {
-  projectName: string;
-  branchName: string;
+  taskId: string;
   requestedStatus: string;
-  reason: "project-not-found" | "task-not-found";
+  reason: "task-not-found";
   locale: string;
 }
 
@@ -169,11 +165,8 @@ export function useTaskNotification() {
       if (!isPermissionGranted.current) return;
 
       const messages = NOTIFICATION_MESSAGES[getNotificationLocale(payload.locale)];
-      const title = `${payload.projectName} — ${payload.branchName}`;
-      const reasonMessage =
-        payload.reason === "project-not-found"
-          ? messages.projectNotFound
-          : messages.taskNotFound;
+      const title = `Hook target missing — ${payload.taskId}`;
+      const reasonMessage = messages.taskNotFound;
 
       try {
         const body = `${messages.formatMissingStatus(payload.requestedStatus)}\n${reasonMessage}`;

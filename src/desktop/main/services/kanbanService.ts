@@ -128,6 +128,9 @@ export async function createTask(input: CreateTaskInput): Promise<KanbanTask> {
     status: TaskStatus.TODO,
   });
 
+  let hookTargetPath: string | null = null;
+  let shouldInstallHooks = false;
+
   if (input.branchName && input.sessionType && input.projectId) {
     try {
       const projectRepo = await getProjectRepository();
@@ -146,24 +149,14 @@ export async function createTask(input: CreateTaskInput): Promise<KanbanTask> {
         task.worktreePath = session.worktreePath;
         task.sessionName = session.sessionName;
         task.sshHost = project.sshHost;
-
-        /** 로컬 worktree에 모든 AI 에이전트 hooks를 자동 설정한다 */
-        if (!project.sshHost && session.worktreePath) {
-          const kanvibeUrl = `http://localhost:${process.env.PORT || 4885}`;
-          await Promise.allSettled([
-            setupClaudeHooks(session.worktreePath, project.name, kanvibeUrl),
-            setupGeminiHooks(session.worktreePath, project.name, kanvibeUrl),
-            setupCodexHooks(session.worktreePath, project.name, kanvibeUrl),
-            setupOpenCodeHooks(session.worktreePath, project.name, kanvibeUrl),
-          ]);
-        }
+        hookTargetPath = session.worktreePath;
+        shouldInstallHooks = !project.sshHost && Boolean(session.worktreePath);
       }
     } catch (error) {
       console.error("Worktree/세션 생성 실패:", error);
     }
   }
 
-  /** 해당 status 컬럼의 마지막 순서로 배치한다 */
   const maxResult = await repo
     .createQueryBuilder("t")
     .select("MAX(t.displayOrder)", "max")
@@ -172,6 +165,17 @@ export async function createTask(input: CreateTaskInput): Promise<KanbanTask> {
   task.displayOrder = (maxResult?.max ?? -1) + 1;
 
   const saved = await repo.save(task);
+
+  if (shouldInstallHooks && hookTargetPath) {
+    const kanvibeUrl = "http://localhost:9736";
+    await Promise.allSettled([
+      setupClaudeHooks(hookTargetPath, saved.id, kanvibeUrl),
+      setupGeminiHooks(hookTargetPath, saved.id, kanvibeUrl),
+      setupCodexHooks(hookTargetPath, saved.id, kanvibeUrl),
+      setupOpenCodeHooks(hookTargetPath, saved.id, kanvibeUrl),
+    ]);
+  }
+
   broadcastBoardUpdate();
   return serialize(saved);
 }
@@ -332,22 +336,22 @@ export async function branchFromTask(
   task.sshHost = project.sshHost;
   task.status = TaskStatus.PROGRESS;
 
-  /** 로컬 worktree에 모든 AI 에이전트 hooks를 자동 설정한다 */
+  const saved = await repo.save(task);
+
   if (!project.sshHost && session.worktreePath) {
     try {
-      const kanvibeUrl = `http://localhost:${process.env.PORT || 4885}`;
+      const kanvibeUrl = "http://localhost:9736";
       await Promise.allSettled([
-        setupClaudeHooks(session.worktreePath, project.name, kanvibeUrl),
-        setupGeminiHooks(session.worktreePath, project.name, kanvibeUrl),
-        setupCodexHooks(session.worktreePath, project.name, kanvibeUrl),
-        setupOpenCodeHooks(session.worktreePath, project.name, kanvibeUrl),
+        setupClaudeHooks(session.worktreePath, saved.id, kanvibeUrl),
+        setupGeminiHooks(session.worktreePath, saved.id, kanvibeUrl),
+        setupCodexHooks(session.worktreePath, saved.id, kanvibeUrl),
+        setupOpenCodeHooks(session.worktreePath, saved.id, kanvibeUrl),
       ]);
     } catch (error) {
       console.error("Hooks 설정 실패:", error);
     }
   }
 
-  const saved = await repo.save(task);
   broadcastBoardUpdate();
   return serialize(saved);
 }

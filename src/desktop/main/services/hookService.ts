@@ -23,8 +23,7 @@ export interface HookStartInput {
 }
 
 export interface HookStatusInput {
-  branchName: string;
-  projectName: string;
+  taskId: string;
   status: string;
 }
 
@@ -84,10 +83,10 @@ export async function startHookTask(input: HookStartInput) {
 }
 
 export async function updateHookTaskStatus(input: HookStatusInput) {
-  if (!input.branchName || !input.projectName || !input.status) {
+  if (!input.taskId || !input.status) {
     return {
       success: false,
-      error: "branchName, projectName, status는 필수입니다.",
+      error: "taskId, status는 필수입니다.",
       status: 400,
     };
   }
@@ -101,44 +100,27 @@ export async function updateHookTaskStatus(input: HookStatusInput) {
     };
   }
 
-  const projectRepo = await getProjectRepository();
-  const project = await projectRepo.findOneBy({ name: input.projectName });
-
-  if (!project) {
-    broadcastHookStatusTargetMissing({
-      projectName: input.projectName,
-      branchName: input.branchName,
-      requestedStatus: taskStatus,
-      reason: "project-not-found",
-    });
-
-    return {
-      success: false,
-      error: `프로젝트를 찾을 수 없습니다: ${input.projectName}`,
-      status: 404,
-    };
-  }
-
   const taskRepo = await getTaskRepository();
-  const task = await taskRepo.findOneBy({
-    branchName: input.branchName,
-    projectId: project.id,
+  const task = await taskRepo.findOne({
+    where: { id: input.taskId },
+    relations: ["project"],
   });
 
   if (!task) {
     broadcastHookStatusTargetMissing({
-      projectName: input.projectName,
-      branchName: input.branchName,
+      taskId: input.taskId,
       requestedStatus: taskStatus,
       reason: "task-not-found",
     });
 
     return {
       success: false,
-      error: `작업을 찾을 수 없습니다: ${input.projectName}/${input.branchName}`,
+      error: `작업을 찾을 수 없습니다: ${input.taskId}`,
       status: 404,
     };
   }
+
+  const projectName = task.project?.name || task.projectId || "Unknown project";
 
   if (taskStatus === TaskStatus.DONE) {
     await cleanupTaskResources(task);
@@ -153,8 +135,8 @@ export async function updateHookTaskStatus(input: HookStatusInput) {
 
   broadcastBoardUpdate();
   broadcastTaskStatusChanged({
-    projectName: input.projectName,
-    branchName: input.branchName,
+    projectName,
+    branchName: task.branchName || "",
     taskTitle: saved.title,
     description: saved.description,
     newStatus: taskStatus,
@@ -166,8 +148,8 @@ export async function updateHookTaskStatus(input: HookStatusInput) {
     data: {
       id: saved.id,
       status: saved.status,
-      branchName: input.branchName,
-      projectName: input.projectName,
+      branchName: saved.branchName,
+      projectName,
     },
   };
 }

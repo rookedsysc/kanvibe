@@ -8,15 +8,15 @@ import { addAiToolPatternsToGitExclude } from "@/lib/gitExclude";
  */
 
 /** notify hook bash 스크립트를 생성한다 (agent-turn-complete → REVIEW) */
-function generateNotifyHookScript(kanvibeUrl: string, projectId: string): string {
+function generateNotifyHookScript(kanvibeUrl: string, taskId: string): string {
   return `#!/bin/bash
 
 # KanVibe Codex CLI Hook: notify (agent-turn-complete)
-# Codex 응답이 완료되면 현재 브랜치의 작업을 REVIEW로 변경한다.
+# Codex 응답이 완료되면 현재 task를 REVIEW로 변경한다.
 # Codex notify 스크립트는 첫 번째 인자로 JSON payload를 받는다.
 
 KANVIBE_URL="${kanvibeUrl}"
-PROJECT_ID="${projectId}"
+TASK_ID="${taskId}"
 
 JSON_PAYLOAD="$1"
 
@@ -26,14 +26,9 @@ if [ "$EVENT_TYPE" != "agent-turn-complete" ]; then
   exit 0
 fi
 
-BRANCH_NAME=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)
-if [ -z "$BRANCH_NAME" ] || [ "$BRANCH_NAME" = "HEAD" ]; then
-  exit 0
-fi
-
 curl -s -X POST "\${KANVIBE_URL}/api/hooks/status" \\
   -H "Content-Type: application/json" \\
-  -d "{\\"branchName\\": \\"\${BRANCH_NAME}\\", \\"projectId\\": \\"\${PROJECT_ID}\\", \\"status\\": \\"review\\"}" \\
+  -d "{\\"taskId\\": \\\"\${TASK_ID}\\\", \\\"status\\\": \\\"review\\\"}" \\
   > /dev/null 2>&1
 
 exit 0
@@ -63,7 +58,7 @@ function hasKanvibeNotify(configContent: string): boolean {
  */
 export async function setupCodexHooks(
   repoPath: string,
-  projectId: string,
+  taskId: string,
   kanvibeUrl: string
 ): Promise<void> {
   const codexDir = path.join(repoPath, ".codex");
@@ -73,7 +68,7 @@ export async function setupCodexHooks(
   await mkdir(hooksDir, { recursive: true });
 
   const notifyScriptPath = path.join(hooksDir, HOOK_SCRIPT_NAME);
-  await writeFile(notifyScriptPath, generateNotifyHookScript(kanvibeUrl, projectId), "utf-8");
+  await writeFile(notifyScriptPath, generateNotifyHookScript(kanvibeUrl, taskId), "utf-8");
   await chmod(notifyScriptPath, 0o755);
 
   const configContent = await readConfigToml(configPath);
@@ -84,7 +79,6 @@ export async function setupCodexHooks(
     if (configContent.trim().length === 0) {
       await writeFile(configPath, notifyLine, "utf-8");
     } else {
-      /** 기존 notify 설정이 있으면 교체, 없으면 추가한다 */
       if (/^notify\s*=/m.test(configContent)) {
         const updated = configContent.replace(/^notify\s*=.*$/m, `notify = [".codex/hooks/${HOOK_SCRIPT_NAME}"]`);
         await writeFile(configPath, updated, "utf-8");

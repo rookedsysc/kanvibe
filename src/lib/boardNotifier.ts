@@ -14,10 +14,9 @@ export interface TaskStatusChangedPayload {
 }
 
 export interface HookStatusTargetMissingPayload {
-  projectName: string;
-  branchName: string;
+  taskId: string;
   requestedStatus: string;
-  reason: "project-not-found" | "task-not-found";
+  reason: "task-not-found";
 }
 
 export type BoardEventPayload =
