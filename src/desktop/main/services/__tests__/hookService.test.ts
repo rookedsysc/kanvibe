@@ -19,6 +19,7 @@ const mocks = vi.hoisted(() => ({
     findOneBy: vi.fn(),
   },
   taskRepo: {
+    findOne: vi.fn(),
     findOneBy: vi.fn(),
     save: vi.fn(),
     create: vi.fn(),
@@ -59,7 +60,7 @@ describe("hookService.updateHookTaskStatus", () => {
     vi.clearAllMocks();
   });
 
-  it("projectId로 작업 상태를 변경한다", async () => {
+  it("taskId로 작업 상태를 변경한다", async () => {
     const { updateHookTaskStatus } = await import("@/desktop/main/services/hookService");
     const project = { id: "project-1", name: "kanvibe" };
     const task = {
@@ -68,27 +69,24 @@ describe("hookService.updateHookTaskStatus", () => {
       description: "debug electron hook",
       branchName: "fix-electron-notification",
       projectId: project.id,
+      project,
       status: TaskStatus.PROGRESS,
       sessionType: null,
       sessionName: null,
       worktreePath: null,
       sshHost: null,
     };
-
-    mocks.projectRepo.findOneBy.mockResolvedValue(project);
-    mocks.taskRepo.findOneBy.mockResolvedValue(task);
+    mocks.taskRepo.findOne.mockResolvedValue(task);
     mocks.taskRepo.save.mockImplementation(async (value) => value);
 
     const result = await updateHookTaskStatus({
-      branchName: task.branchName,
-      projectId: project.id,
+      taskId: task.id,
       status: TaskStatus.REVIEW,
     });
 
-    expect(mocks.projectRepo.findOneBy).toHaveBeenCalledWith({ id: project.id });
-    expect(mocks.taskRepo.findOneBy).toHaveBeenCalledWith({
-      branchName: task.branchName,
-      projectId: project.id,
+    expect(mocks.taskRepo.findOne).toHaveBeenCalledWith({
+      where: { id: task.id },
+      relations: ["project"],
     });
     expect(mocks.broadcastTaskStatusChanged).toHaveBeenCalledWith({
       projectName: project.name,
@@ -109,17 +107,16 @@ describe("hookService.updateHookTaskStatus", () => {
     });
   });
 
-  it("project 식별자가 없으면 400을 반환한다", async () => {
+  it("task 식별자가 없으면 400을 반환한다", async () => {
     const { updateHookTaskStatus } = await import("@/desktop/main/services/hookService");
     const result = await updateHookTaskStatus({
-      branchName: "fix-electron-notification",
-      projectId: "",
+      taskId: "",
       status: TaskStatus.REVIEW,
     });
 
     expect(result).toEqual({
       success: false,
-      error: "branchName, projectId, status는 필수입니다.",
+      error: "taskId, status는 필수입니다.",
       status: 400,
     });
   });

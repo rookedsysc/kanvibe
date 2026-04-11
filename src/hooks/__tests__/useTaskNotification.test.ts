@@ -153,7 +153,7 @@ describe("useTaskNotification", () => {
     expect(mockShowNotification).not.toHaveBeenCalled();
   });
 
-  it("should show missing target notification without taskId when hook target is missing", async () => {
+  it("should show missing target notification when hook target is missing", async () => {
     // Given
     const { useTaskNotification } = await import("@/hooks/useTaskNotification");
     const { result } = renderHook(() => useTaskNotification());
@@ -163,8 +163,7 @@ describe("useTaskNotification", () => {
     // When
     await act(async () => {
       await result.current.notifyHookStatusTargetMissing({
-        projectName: "case-study",
-        branchName: "feat/test",
+        taskId: "task-404",
         requestedStatus: "review",
         reason: "task-not-found",
         locale: "ko",
@@ -172,8 +171,8 @@ describe("useTaskNotification", () => {
     });
 
     // Then
-    expect(mockShowNotification).toHaveBeenCalledWith("case-study — feat/test", {
-      body: "review 상태로 변경하지 못했습니다.\n브랜치에 연결된 작업을 찾지 못했습니다.",
+    expect(mockShowNotification).toHaveBeenCalledWith("Hook target missing — task-404", {
+      body: "review 상태로 변경하지 못했습니다.\n연결된 작업을 찾지 못했습니다.",
       icon: "/icons/icon-192x192.png",
       data: { locale: "ko" },
     });
@@ -189,17 +188,16 @@ describe("useTaskNotification", () => {
     // When
     await act(async () => {
       await result.current.notifyHookStatusTargetMissing({
-        projectName: "case-study",
-        branchName: "feat/test",
+        taskId: "task-404",
         requestedStatus: "review",
-        reason: "project-not-found",
+        reason: "task-not-found",
         locale: "en",
       });
     });
 
     // Then
-    expect(mockShowNotification).toHaveBeenCalledWith("case-study — feat/test", {
-      body: "Failed to change status to review.\nProject was not found.",
+    expect(mockShowNotification).toHaveBeenCalledWith("Hook target missing — task-404", {
+      body: "Failed to change status to review.\nNo matching task was found.",
       icon: "/icons/icon-192x192.png",
       data: { locale: "en" },
     });

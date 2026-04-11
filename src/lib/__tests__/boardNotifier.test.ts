@@ -56,8 +56,7 @@ describe("boardNotifier", () => {
   it("should deliver hook-status-target-missing message with payload to subscribers", async () => {
     const { broadcastHookStatusTargetMissing, subscribeToBoardEvents } = await import("@/lib/boardNotifier");
     const payload = {
-      projectName: "case-study",
-      branchName: "feat/test",
+      taskId: "task-404",
       requestedStatus: "review",
       reason: "task-not-found" as const,
     };

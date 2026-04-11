@@ -8,25 +8,19 @@ import { addAiToolPatternsToGitExclude } from "@/lib/gitExclude";
  */
 
 /** BeforeAgent hook bash 스크립트를 생성한다 */
-function generatePromptHookScript(kanvibeUrl: string, projectId: string): string {
+function generatePromptHookScript(kanvibeUrl: string, taskId: string): string {
   return `#!/bin/bash
 
 # KanVibe Gemini CLI Hook: BeforeAgent
-# 사용자가 prompt를 입력하면 현재 브랜치의 작업을 PROGRESS로 변경한다.
+# 사용자가 prompt를 입력하면 현재 task를 PROGRESS로 변경한다.
 # Gemini CLI hooks는 stdout에 JSON만 출력해야 한다.
 
 KANVIBE_URL="${kanvibeUrl}"
-PROJECT_ID="${projectId}"
-
-BRANCH_NAME=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)
-if [ -z "$BRANCH_NAME" ] || [ "$BRANCH_NAME" = "HEAD" ]; then
-  echo '{}'
-  exit 0
-fi
+TASK_ID="${taskId}"
 
 curl -s -X POST "\${KANVIBE_URL}/api/hooks/status" \\
   -H "Content-Type: application/json" \\
-  -d "{\\"branchName\\": \\"\${BRANCH_NAME}\\", \\"projectId\\": \\"\${PROJECT_ID}\\", \\"status\\": \\"progress\\"}" \\
+  -d "{\\"taskId\\": \\\"\${TASK_ID}\\\", \\\"status\\\": \\\"progress\\\"}" \\
   > /dev/null 2>&1
 
 echo '{}'
@@ -35,25 +29,19 @@ exit 0
 }
 
 /** AfterAgent hook bash 스크립트를 생성한다 */
-function generateStopHookScript(kanvibeUrl: string, projectId: string): string {
+function generateStopHookScript(kanvibeUrl: string, taskId: string): string {
   return `#!/bin/bash
 
 # KanVibe Gemini CLI Hook: AfterAgent
-# AI 응답이 완료되면 현재 브랜치의 작업을 REVIEW로 변경한다.
+# AI 응답이 완료되면 현재 task를 REVIEW로 변경한다.
 # Gemini CLI hooks는 stdout에 JSON만 출력해야 한다.
 
 KANVIBE_URL="${kanvibeUrl}"
-PROJECT_ID="${projectId}"
-
-BRANCH_NAME=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)
-if [ -z "$BRANCH_NAME" ] || [ "$BRANCH_NAME" = "HEAD" ]; then
-  echo '{}'
-  exit 0
-fi
+TASK_ID="${taskId}"
 
 curl -s -X POST "\${KANVIBE_URL}/api/hooks/status" \\
   -H "Content-Type: application/json" \\
-  -d "{\\"branchName\\": \\"\${BRANCH_NAME}\\", \\"projectId\\": \\"\${PROJECT_ID}\\", \\"status\\": \\"review\\"}" \\
+  -d "{\\"taskId\\": \\\"\${TASK_ID}\\\", \\\"status\\\": \\\"review\\\"}" \\
   > /dev/null 2>&1
 
 echo '{}'
@@ -104,7 +92,7 @@ function hasKanvibeHook(hookEntries: unknown[], scriptName: string): boolean {
  */
 export async function setupGeminiHooks(
   repoPath: string,
-  projectId: string,
+  taskId: string,
   kanvibeUrl: string
 ): Promise<void> {
   const geminiDir = path.join(repoPath, ".gemini");
@@ -116,8 +104,8 @@ export async function setupGeminiHooks(
   const promptScriptPath = path.join(hooksDir, "kanvibe-prompt-hook.sh");
   const stopScriptPath = path.join(hooksDir, "kanvibe-stop-hook.sh");
 
-  await writeFile(promptScriptPath, generatePromptHookScript(kanvibeUrl, projectId), "utf-8");
-  await writeFile(stopScriptPath, generateStopHookScript(kanvibeUrl, projectId), "utf-8");
+  await writeFile(promptScriptPath, generatePromptHookScript(kanvibeUrl, taskId), "utf-8");
+  await writeFile(stopScriptPath, generateStopHookScript(kanvibeUrl, taskId), "utf-8");
   await chmod(promptScriptPath, 0o755);
   await chmod(stopScriptPath, 0o755);
 
@@ -136,11 +124,9 @@ export async function setupGeminiHooks(
       matcher: "*",
       hooks: [
         {
-          name: "kanvibe-prompt",
           type: "command",
-          command: "$GEMINI_PROJECT_DIR/.gemini/hooks/kanvibe-prompt-hook.sh",
-          timeout: 5000,
-          description: "KanVibe: 작업 시작 시 status를 progress로 변경",
+          command: '"$GEMINI_PROJECT_DIR"/.gemini/hooks/kanvibe-prompt-hook.sh',
+          timeout: 10000,
         },
       ],
     });
@@ -154,11 +140,9 @@ export async function setupGeminiHooks(
       matcher: "*",
       hooks: [
         {
-          name: "kanvibe-stop",
           type: "command",
-          command: "$GEMINI_PROJECT_DIR/.gemini/hooks/kanvibe-stop-hook.sh",
-          timeout: 5000,
-          description: "KanVibe: 작업 완료 시 status를 review로 변경",
+          command: '"$GEMINI_PROJECT_DIR"/.gemini/hooks/kanvibe-stop-hook.sh',
+          timeout: 10000,
         },
       ],
     });
