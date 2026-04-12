@@ -288,6 +288,17 @@ body {
   font-family: var(--font-sans);
 }
 
+.desktop-window-drag-region {
+  -webkit-app-region: drag;
+  app-region: drag;
+  user-select: none;
+}
+
+.desktop-window-no-drag {
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+
 /* xterm 터미널이 컨테이너를 꽉 채우도록 강제 */
 .xterm {
   height: 100%;
