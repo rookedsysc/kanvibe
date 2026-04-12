@@ -44,4 +44,20 @@ contextBridge.exposeInMainWorld("kanvibeDesktop", {
   showNotification(payload) {
     return ipcRenderer.invoke("kanvibe:show-notification", payload);
   },
+  listNotifications() {
+    return ipcRenderer.invoke("kanvibe:notifications-list");
+  },
+  markNotificationRead(notificationId) {
+    return ipcRenderer.invoke("kanvibe:notifications-mark-read", notificationId);
+  },
+  markAllNotificationsRead() {
+    return ipcRenderer.invoke("kanvibe:notifications-mark-all-read");
+  },
+  onNotificationsChanged(listener) {
+    const handler = () => listener();
+    ipcRenderer.on("kanvibe:notifications-changed", handler);
+    return () => {
+      ipcRenderer.removeListener("kanvibe:notifications-changed", handler);
+    };
+  },
 });

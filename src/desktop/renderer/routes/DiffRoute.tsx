@@ -10,7 +10,7 @@ import { useRefreshSignal } from "@/desktop/renderer/utils/refresh";
 export default function DiffRoute() {
   const { id = "" } = useParams();
   const t = useTranslations("diffView");
-  const refreshSignal = useRefreshSignal();
+  const refreshSignal = useRefreshSignal(["all", "diff"]);
   const [state, setState] = useState<{ task: Awaited<ReturnType<typeof getTaskById>>; files: Awaited<ReturnType<typeof getGitDiffFiles>> } | null>(null);
 
   useEffect(() => {

@@ -9,6 +9,11 @@
     "confirm": "Confirm",
     "local": "Local",
     "settings": "Settings",
+    "notifications": "Notifications",
+    "markAllRead": "Mark all read",
+    "noNotifications": "No notifications yet.",
+    "allCaughtUp": "All caught up.",
+    "unreadCount": "{count} unread",
     "logout": "Logout",
     "loading": "Loading...",
     "doneAlert": {

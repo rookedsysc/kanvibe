@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useCallback, useRef } from "react";
+import type { DesktopNotificationPayload } from "@/desktop/shared/notifications";
 
 type NotificationLocale = "ko" | "en" | "zh";
 
@@ -52,21 +53,30 @@ interface BrowserNotificationData {
   locale: string;
 }
 
+interface DesktopBridgeNotificationData extends BrowserNotificationData {
+  relativePath?: string;
+  dedupeKey?: string;
+}
+
 function isDesktopNotificationAvailable() {
   return typeof window !== "undefined" && window.kanvibeDesktop?.isDesktop === true;
 }
 
-async function showNotificationViaDesktopBridge(title: string, body: string, data: BrowserNotificationData) {
+async function showNotificationViaDesktopBridge(title: string, body: string, data: DesktopBridgeNotificationData) {
   if (!isDesktopNotificationAvailable()) {
     return false;
   }
 
-  await window.kanvibeDesktop?.showNotification?.({
+  const payload: DesktopNotificationPayload = {
     title,
     body,
     taskId: data.taskId,
     locale: data.locale,
-  });
+    relativePath: data.relativePath,
+    dedupeKey: data.dedupeKey,
+  };
+
+  await window.kanvibeDesktop?.showNotification?.(payload);
 
   return true;
 }
@@ -149,7 +159,11 @@ export function useTaskNotification() {
           locale: payload.locale,
         };
 
-        const isDesktopNotificationShown = await showNotificationViaDesktopBridge(title, body, data);
+        const isDesktopNotificationShown = await showNotificationViaDesktopBridge(title, body, {
+          ...data,
+          relativePath: `/${payload.locale}/task/${payload.taskId}`,
+          dedupeKey: `task-status:${payload.taskId}:${payload.newStatus}`,
+        });
         if (!isDesktopNotificationShown) {
           await showNotificationViaBrowser(title, body, data);
         }
@@ -174,7 +188,11 @@ export function useTaskNotification() {
           locale: payload.locale,
         };
 
-        const isDesktopNotificationShown = await showNotificationViaDesktopBridge(title, body, data);
+        const isDesktopNotificationShown = await showNotificationViaDesktopBridge(title, body, {
+          ...data,
+          relativePath: `/${payload.locale}`,
+          dedupeKey: `hook-missing:${payload.taskId}:${payload.requestedStatus}:${payload.reason}`,
+        });
         if (!isDesktopNotificationShown) {
           await showNotificationViaBrowser(title, body, data);
         }
