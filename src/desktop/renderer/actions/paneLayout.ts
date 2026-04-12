@@ -11,7 +11,7 @@ export interface SavePaneLayoutInput {
 
 async function invokeAndRefresh<T>(method: string, ...args: unknown[]): Promise<T> {
   const result = await invokeDesktop<T>("paneLayout", method, ...args);
-  triggerDesktopRefresh();
+  triggerDesktopRefresh("pane-layout");
   return result;
 }
 

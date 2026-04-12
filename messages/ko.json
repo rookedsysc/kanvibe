@@ -9,6 +9,11 @@
     "confirm": "확인",
     "local": "로컬",
     "settings": "설정",
+    "notifications": "알림",
+    "markAllRead": "모두 읽음 처리",
+    "noNotifications": "아직 알림이 없습니다.",
+    "allCaughtUp": "모든 알림을 확인했습니다.",
+    "unreadCount": "읽지 않음 {count}개",
     "logout": "로그아웃",
     "loading": "로딩 중...",
     "doneAlert": {

@@ -7,7 +7,7 @@ import { useRefreshSignal } from "@/desktop/renderer/utils/refresh";
 export default function NotificationListener() {
   const { notifyTaskStatusChanged, notifyHookStatusTargetMissing } = useTaskNotification();
   const locale = useLocale();
-  const refreshSignal = useRefreshSignal();
+  const refreshSignal = useRefreshSignal(["all", "settings"]);
   const [settings, setSettings] = useState({
     isEnabled: true,
     enabledStatuses: ["progress", "pending", "review"],

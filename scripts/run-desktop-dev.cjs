@@ -31,14 +31,6 @@ function ensureSupportedNodeVersion() {
   process.exit(1);
 }
 
-function installElectronNativeDependencies() {
-  console.warn("[kanvibe] Rebuilding native dependencies for the Electron runtime...");
-  execFileSync("pnpm", ["exec", "electron-rebuild", "-f", "--build-from-source", "-w", "better-sqlite3"], {
-    stdio: "inherit",
-    env: process.env,
-  });
-}
-
 function installProjectDependencies() {
   console.warn("[kanvibe] Installing project dependencies because better-sqlite3 is missing...");
   execFileSync("pnpm", ["install"], {
@@ -106,8 +98,6 @@ async function main() {
   if (!hasBetterSqlite3Installed()) {
     installProjectDependencies();
   }
-
-  installElectronNativeDependencies();
 
   const viteProcess = spawnViteServer();
 

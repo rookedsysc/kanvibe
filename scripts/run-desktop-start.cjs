@@ -6,6 +6,7 @@ const path = require("node:path");
 
 const REQUIRED_NODE_MAJOR = 24;
 const RENDERER_ENTRY_PATH = path.join(process.cwd(), "build", "renderer", "index.html");
+const MAIN_ENTRY_PATH = path.join(process.cwd(), "build", "main", "src", "desktop", "main", "serviceRegistry.js");
 
 function getNodeMajor() {
   return Number.parseInt(process.versions.node.split(".")[0] || "0", 10);
@@ -32,14 +33,6 @@ function ensureSupportedNodeVersion() {
   process.exit(1);
 }
 
-function installElectronNativeDependencies() {
-  console.warn("[kanvibe] Rebuilding native dependencies for the Electron runtime...");
-  execFileSync("pnpm", ["exec", "electron-rebuild", "-f", "--build-from-source", "-w", "better-sqlite3"], {
-    stdio: "inherit",
-    env: process.env,
-  });
-}
-
 function installProjectDependencies() {
   console.warn("[kanvibe] Installing project dependencies because better-sqlite3 is missing...");
   execFileSync("pnpm", ["install"], {
@@ -48,12 +41,12 @@ function installProjectDependencies() {
   });
 }
 
-function ensureRendererBuild() {
-  if (existsSync(RENDERER_ENTRY_PATH)) {
+function ensureAppBuild() {
+  if (existsSync(RENDERER_ENTRY_PATH) && existsSync(MAIN_ENTRY_PATH)) {
     return;
   }
 
-  console.warn("[kanvibe] Renderer build not found. Running `pnpm build` first...");
+  console.warn("[kanvibe] Desktop build not found. Running `pnpm build` first...");
   execFileSync("pnpm", ["build"], {
     stdio: "inherit",
     env: process.env,
@@ -67,8 +60,7 @@ function main() {
     installProjectDependencies();
   }
 
-  installElectronNativeDependencies();
-  ensureRendererBuild();
+  ensureAppBuild();
 
   const child = spawn("pnpm", ["exec", "electron", "."], {
     stdio: "inherit",

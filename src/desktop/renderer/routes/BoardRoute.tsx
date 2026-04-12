@@ -16,7 +16,7 @@ interface BoardData {
 }
 
 export default function BoardRoute() {
-  const refreshSignal = useRefreshSignal();
+  const refreshSignal = useRefreshSignal(["all", "board"]);
   const [data, setData] = useState<BoardData | null>(null);
 
   useEffect(() => {

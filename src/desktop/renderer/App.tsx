@@ -33,9 +33,17 @@ function LocaleShell({ sessionLoading }: { sessionLoading: boolean }) {
   );
 }
 
-function ProtectedRoute({ isAuthenticated, children }: { isAuthenticated: boolean; children: ReactNode }) {
+function RouteLoadingFallback() {
+  return <div className="min-h-screen flex items-center justify-center bg-bg-page text-text-muted">Loading...</div>;
+}
+
+function ProtectedRoute({ isAuthenticated, sessionLoading, children }: { isAuthenticated: boolean; sessionLoading: boolean; children: ReactNode }) {
   const { locale } = useParams();
   const safeLocale = getSafeLocale(locale);
+
+  if (sessionLoading) {
+    return <RouteLoadingFallback />;
+  }
 
   if (!isAuthenticated) {
     return <Navigate to={`/${safeLocale}/login`} replace />;
@@ -44,9 +52,13 @@ function ProtectedRoute({ isAuthenticated, children }: { isAuthenticated: boolea
   return <>{children}</>;
 }
 
-function AnonymousRoute({ isAuthenticated, children }: { isAuthenticated: boolean; children: ReactNode }) {
+function AnonymousRoute({ isAuthenticated, sessionLoading, children }: { isAuthenticated: boolean; sessionLoading: boolean; children: ReactNode }) {
   const { locale } = useParams();
   const safeLocale = getSafeLocale(locale);
+
+  if (sessionLoading) {
+    return <RouteLoadingFallback />;
+  }
 
   if (isAuthenticated) {
     return <Navigate to={`/${safeLocale}`} replace />;
@@ -76,7 +88,7 @@ export default function App() {
 
     const unsubscribeBoardEvents = window.kanvibeDesktop!.onBoardEvent((event: any) => {
       if (event.type === "board-updated") {
-        triggerDesktopRefresh();
+        triggerDesktopRefresh("board");
       }
     });
 
@@ -95,11 +107,11 @@ export default function App() {
       <Routes>
         <Route path="/" element={<Navigate to={`/${DEFAULT_LOCALE}${isAuthenticated ? "" : "/login"}`} replace />} />
         <Route path="/:locale" element={<LocaleShell sessionLoading={sessionLoading} />}>
-          <Route index element={sessionLoading ? <div className="min-h-screen flex items-center justify-center bg-bg-page text-text-muted">Loading...</div> : <ProtectedRoute isAuthenticated={isAuthenticated}><BoardRoute /></ProtectedRoute>} />
-          <Route path="login" element={sessionLoading ? <div className="min-h-screen flex items-center justify-center bg-bg-page text-text-muted">Loading...</div> : <AnonymousRoute isAuthenticated={isAuthenticated}><LoginForm /></AnonymousRoute>} />
-          <Route path="pane-layout" element={<ProtectedRoute isAuthenticated={isAuthenticated}><PaneLayoutRoute /></ProtectedRoute>} />
-          <Route path="task/:id" element={<ProtectedRoute isAuthenticated={isAuthenticated}><TaskDetailRoute /></ProtectedRoute>} />
-          <Route path="task/:id/diff" element={<ProtectedRoute isAuthenticated={isAuthenticated}><DiffRoute /></ProtectedRoute>} />
+          <Route index element={<ProtectedRoute isAuthenticated={isAuthenticated} sessionLoading={sessionLoading}><BoardRoute /></ProtectedRoute>} />
+          <Route path="login" element={<AnonymousRoute isAuthenticated={isAuthenticated} sessionLoading={sessionLoading}><LoginForm /></AnonymousRoute>} />
+          <Route path="pane-layout" element={<ProtectedRoute isAuthenticated={isAuthenticated} sessionLoading={sessionLoading}><PaneLayoutRoute /></ProtectedRoute>} />
+          <Route path="task/:id" element={<ProtectedRoute isAuthenticated={isAuthenticated} sessionLoading={sessionLoading}><TaskDetailRoute /></ProtectedRoute>} />
+          <Route path="task/:id/diff" element={<ProtectedRoute isAuthenticated={isAuthenticated} sessionLoading={sessionLoading}><DiffRoute /></ProtectedRoute>} />
         </Route>
       </Routes>
     </HashRouter>

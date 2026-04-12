@@ -8,12 +8,12 @@ directories:
 
 files:
   - build/renderer/**/*
+  - build/main/**/*
   - electron/**/*
   - messages/**/*
   - package.json
   - public/**/*
   - tsconfig.json
-  - src/**/*
 
 extraResources:
   - from: resources/database

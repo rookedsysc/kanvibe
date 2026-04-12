@@ -7,6 +7,7 @@ import ConnectTerminalForm from "@/components/ConnectTerminalForm";
 import DeleteTaskButton from "@/components/DeleteTaskButton";
 import DoneStatusButton from "@/components/DoneStatusButton";
 import HooksStatusCard from "@/components/HooksStatusCard";
+import NotificationCenterButton from "@/components/NotificationCenterButton";
 import TaskDetailInfoCard from "@/components/TaskDetailInfoCard";
 import TaskDetailTitleCard from "@/components/TaskDetailTitleCard";
 import { Link, useRouter } from "@/desktop/renderer/navigation";
@@ -51,11 +52,32 @@ interface TaskDetailState {
   doneAlertDismissed: boolean;
 }
 
+const EMPTY_AI_SESSIONS: Awaited<ReturnType<typeof getTaskAiSessions>> = {
+  isRemote: false,
+  targetPath: null,
+  repoPath: null,
+  sessions: [],
+  sources: [],
+};
+
+const DEFAULT_DETAIL_STATE: Omit<TaskDetailState, "task"> = {
+  baseBranchTaskId: null,
+  diffFiles: [],
+  claudeHooksStatus: null,
+  geminiHooksStatus: null,
+  codexHooksStatus: null,
+  openCodeHooksStatus: null,
+  aiSessions: EMPTY_AI_SESSIONS,
+  sidebarDefaultCollapsed: false,
+  sidebarHintDismissed: false,
+  doneAlertDismissed: false,
+};
+
 export default function TaskDetailRoute() {
   const { id = "" } = useParams();
   const router = useRouter();
   const t = useTranslations("taskDetail");
-  const refreshSignal = useRefreshSignal();
+  const refreshSignal = useRefreshSignal(["all", "task-detail"]);
   const [state, setState] = useState<TaskDetailState | null | undefined>(undefined);
 
   useEffect(() => {
@@ -70,44 +92,70 @@ export default function TaskDetailRoute() {
         return;
       }
 
-      if (task.branchName && !task.prUrl) {
-        const prUrl = await fetchAndSavePrUrl(task.id);
-        if (prUrl) {
-          task.prUrl = prUrl;
-        }
+      if (cancelled) {
+        return;
       }
 
-      const baseBranchName = task.baseBranch ?? "main";
-      const foundTaskId = task.projectId ? await getTaskIdByProjectAndBranch(task.projectId, baseBranchName) : null;
-      const baseBranchTaskId = foundTaskId !== task.id ? foundTaskId : null;
-      const diffFiles = task.branchName ? await getGitDiffFiles(id) : [];
-      const [claudeHooksStatus, geminiHooksStatus, codexHooksStatus, openCodeHooksStatus, aiSessions, sidebarDefaultCollapsed, sidebarHintDismissed, doneAlertDismissed] = await Promise.all([
-        task.projectId ? getTaskHooksStatus(id) : Promise.resolve(null),
-        task.projectId ? getTaskGeminiHooksStatus(id) : Promise.resolve(null),
-        task.projectId ? getTaskCodexHooksStatus(id) : Promise.resolve(null),
-        task.projectId ? getTaskOpenCodeHooksStatus(id) : Promise.resolve(null),
-        task.projectId ? getTaskAiSessions(id) : Promise.resolve({ isRemote: false, targetPath: null, repoPath: null, sessions: [], sources: [] }),
-        getSidebarDefaultCollapsed(),
-        getSidebarHintDismissed(),
-        getDoneAlertDismissed(),
-      ]);
+      document.title = [task.branchName, task.project?.name].filter(Boolean).join(" - ") || "KanVibe";
+      setState({
+        task,
+        ...DEFAULT_DETAIL_STATE,
+      });
 
-      if (!cancelled) {
-        document.title = [task.branchName, task.project?.name].filter(Boolean).join(" - ") || "KanVibe";
-        setState({
-          task,
-          baseBranchTaskId,
-          diffFiles,
-          claudeHooksStatus,
-          geminiHooksStatus,
-          codexHooksStatus,
-          openCodeHooksStatus,
-          aiSessions,
-          sidebarDefaultCollapsed,
-          sidebarHintDismissed,
-          doneAlertDismissed,
+      if (task.branchName && !task.prUrl) {
+        void fetchAndSavePrUrl(task.id).then((prUrl) => {
+          if (!prUrl || cancelled) {
+            return;
+          }
+
+          setState((current) => current && current.task.id === task.id
+            ? {
+                ...current,
+                task: {
+                  ...current.task,
+                  prUrl,
+                },
+              }
+            : current);
         });
       }
+
+      void (async () => {
+        const baseBranchName = task.baseBranch ?? "main";
+        const foundTaskId = task.projectId ? await getTaskIdByProjectAndBranch(task.projectId, baseBranchName) : null;
+        const baseBranchTaskId = foundTaskId !== task.id ? foundTaskId : null;
+        const diffFiles = task.branchName ? await getGitDiffFiles(id) : [];
+        const [claudeHooksStatus, geminiHooksStatus, codexHooksStatus, openCodeHooksStatus, aiSessions, sidebarDefaultCollapsed, sidebarHintDismissed, doneAlertDismissed] = await Promise.all([
+          task.projectId ? getTaskHooksStatus(id) : Promise.resolve(null),
+          task.projectId ? getTaskGeminiHooksStatus(id) : Promise.resolve(null),
+          task.projectId ? getTaskCodexHooksStatus(id) : Promise.resolve(null),
+          task.projectId ? getTaskOpenCodeHooksStatus(id) : Promise.resolve(null),
+          task.projectId ? getTaskAiSessions(id) : Promise.resolve(EMPTY_AI_SESSIONS),
+          getSidebarDefaultCollapsed(),
+          getSidebarHintDismissed(),
+          getDoneAlertDismissed(),
+        ]);
+
+        if (cancelled) {
+          return;
+        }
+
+        setState((current) => current && current.task.id === task.id
+          ? {
+              ...current,
+              baseBranchTaskId,
+              diffFiles,
+              claudeHooksStatus,
+              geminiHooksStatus,
+              codexHooksStatus,
+              openCodeHooksStatus,
+              aiSessions,
+              sidebarDefaultCollapsed,
+              sidebarHintDismissed,
+              doneAlertDismissed,
+            }
+          : current);
+      })();
     })();
 
     return () => {
@@ -132,12 +180,23 @@ export default function TaskDetailRoute() {
 
   async function handleStatusChange(formData: FormData) {
     const newStatus = formData.get("status") as TaskStatus;
-    await updateTaskStatus(id, newStatus);
+    const updatedTask = await updateTaskStatus(id, newStatus);
     if (newStatus === TaskStatus.DONE) {
       router.push("/");
       return;
     }
-    router.refresh();
+
+    if (updatedTask) {
+      setState((current) => current
+        ? {
+            ...current,
+            task: {
+              ...current.task,
+              ...updatedTask,
+            },
+          }
+        : current);
+    }
   }
 
   async function handleDelete() {
@@ -148,12 +207,15 @@ export default function TaskDetailRoute() {
   return (
     <div className="h-screen flex flex-col lg:flex-row bg-bg-page p-4 gap-4">
       <CollapsibleSidebar defaultCollapsed={state.sidebarDefaultCollapsed} showHint={!state.sidebarHintDismissed}>
-        <Link href="/" className="flex items-center gap-2 text-sm text-text-secondary hover:text-text-primary transition-colors">
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" className="shrink-0">
-            <path d="M10 12L6 8L10 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-          {t("backToBoard")}
-        </Link>
+        <div className="flex items-center justify-between gap-3">
+          <Link href="/" className="flex items-center gap-2 text-sm text-text-secondary hover:text-text-primary transition-colors">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" className="shrink-0">
+              <path d="M10 12L6 8L10 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+            {t("backToBoard")}
+          </Link>
+          {!hasTerminal ? <NotificationCenterButton buttonClassName="hover:bg-bg-page" /> : null}
+        </div>
 
         <TaskDetailTitleCard task={state.task} taskId={state.task.id} />
 
@@ -211,6 +273,9 @@ export default function TaskDetailRoute() {
               <span className="w-3 h-3 rounded-full bg-traffic-minimize" />
               <span className="w-3 h-3 rounded-full bg-traffic-maximize" />
               <span className="ml-3 text-xs text-terminal-text font-mono truncate">{state.task.sessionName ?? t("terminal")}</span>
+              <div className="ml-auto">
+                <NotificationCenterButton buttonClassName="text-terminal-text hover:text-white hover:bg-white/10" panelClassName="mt-3" />
+              </div>
             </div>
             <div className="flex-1 min-h-0 bg-terminal-bg">
               <TerminalLoader taskId={state.task.id} />

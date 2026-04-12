@@ -88,7 +88,7 @@ bash kanvibe.sh stop
 pnpm dist
 ```
 
-该命令会构建 Next.js 应用、生成随包附带的 seed DB，并通过 Electron Builder 打包桌面应用。
+该命令会构建 renderer bundle，将桌面 main process 编译到 `build/main`，生成随包附带的 seed DB，并通过 Electron Builder 打包桌面应用。
 
 - macOS 输出：`dist/*.dmg`、`dist/*.zip`
 - Homebrew 分发：将生成的 DMG 产物接入自定义 Homebrew Cask tap 即可
@@ -96,10 +96,12 @@ pnpm dist
 
 ### 原生模块恢复
 
-如果 macOS 上出现 `better-sqlite3` 的 `NODE_MODULE_VERSION` 不匹配，KanVibe 现在会在启动前自动尝试重建。
+如果 macOS 上出现 `better-sqlite3` 的 `NODE_MODULE_VERSION` 不匹配，KanVibe 现在会在启动前先验证绑定，并在可能时自动尝试重建。
 
 - 浏览器/服务器运行时：`pnpm rebuild better-sqlite3`
-- 桌面运行时：`pnpm exec electron-builder install-app-deps`
+- 桌面运行时：`pnpm exec electron-rebuild -f --build-from-source -w better-sqlite3`
+
+对于本地桌面运行，`pnpm start` 和 `pnpm dev` 会在 Electron 启动前先执行这项兼容性检查。
 
 请务必在 Node 24.x 下执行这些命令。
 
