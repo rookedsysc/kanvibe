@@ -9,6 +9,11 @@
     "confirm": "确认",
     "local": "本地",
     "settings": "设置",
+    "notifications": "通知",
+    "markAllRead": "全部标记已读",
+    "noNotifications": "暂无通知。",
+    "allCaughtUp": "已全部查看。",
+    "unreadCount": "未读 {count} 条",
     "logout": "退出登录",
     "loading": "加载中...",
     "doneAlert": {

@@ -5,6 +5,7 @@ import { useTranslations } from "next-intl";
 import { DragDropContext, type DropResult } from "@hello-pangea/dnd";
 import Column from "./Column";
 import CreateTaskModal from "./CreateTaskModal";
+import NotificationCenterButton from "./NotificationCenterButton";
 import ProjectSelector from "./ProjectSelector";
 import ProjectSettings from "./ProjectSettings";
 import TaskContextMenu from "./TaskContextMenu";
@@ -502,6 +503,7 @@ export default function Board({ initialTasks, initialDoneTotal, initialDoneLimit
               <circle cx="12" cy="12" r="3"/>
             </svg>
           </button>
+          <NotificationCenterButton buttonClassName="hover:bg-bg-page" />
           <form action={logoutAction}>
             <button
               type="submit"

@@ -88,7 +88,7 @@ KanVibe 서버를 종료합니다.
 pnpm dist
 ```
 
-이 명령은 Next.js 앱을 빌드하고, 번들 seed DB를 생성한 뒤 Electron Builder로 데스크톱 앱을 패키징합니다.
+이 명령은 renderer 번들을 빌드하고, 데스크톱 main process를 `build/main`으로 컴파일하고, 번들 seed DB를 생성한 뒤 Electron Builder로 데스크톱 앱을 패키징합니다.
 
 - macOS 산출물: `dist/*.dmg`, `dist/*.zip`
 - Homebrew 배포: 생성된 DMG를 커스텀 Homebrew Cask tap에 연결하면 됩니다.
@@ -96,10 +96,12 @@ pnpm dist
 
 ### 네이티브 모듈 복구
 
-macOS에서 `better-sqlite3` `NODE_MODULE_VERSION` 불일치가 발생하면, KanVibe는 시작 전에 자동 재빌드를 시도합니다.
+macOS에서 `better-sqlite3` `NODE_MODULE_VERSION` 불일치가 발생하면, KanVibe는 시작 전에 바인딩을 검증하고 가능하면 자동 재빌드를 시도합니다.
 
 - 브라우저/서버 런타임: `pnpm rebuild better-sqlite3`
-- 데스크톱 런타임: `pnpm exec electron-builder install-app-deps`
+- 데스크톱 런타임: `pnpm exec electron-rebuild -f --build-from-source -w better-sqlite3`
+
+로컬 데스크톱 실행에서는 `pnpm start`, `pnpm dev`가 Electron 실행 전에 이 호환성 검사를 이미 수행합니다.
 
 위 명령은 반드시 Node 24.x에서 실행하세요.
 

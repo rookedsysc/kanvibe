@@ -3,6 +3,22 @@ import { Link as RouterLink, useLocation, useNavigate } from "react-router-dom";
 import { DEFAULT_LOCALE, SUPPORTED_LOCALES, getSafeLocale, type SupportedLocale } from "@/desktop/renderer/utils/locales";
 import { triggerDesktopRefresh } from "@/desktop/renderer/utils/refresh";
 
+function getRefreshScope(pathname: string) {
+  if (pathname.includes("/task/") && pathname.endsWith("/diff")) {
+    return "diff" as const;
+  }
+
+  if (pathname.includes("/task/")) {
+    return "task-detail" as const;
+  }
+
+  if (pathname.endsWith("/pane-layout")) {
+    return "pane-layout" as const;
+  }
+
+  return "board" as const;
+}
+
 function getLocaleFromPathname(pathname: string): SupportedLocale {
   const firstSegment = pathname.split("/").filter(Boolean)[0];
   return getSafeLocale(firstSegment);
@@ -54,9 +70,9 @@ export function useRouter() {
     () => ({
       push: (href: string) => navigate(localizeHref(href, currentLocale)),
       replace: (href: string) => navigate(localizeHref(href, currentLocale), { replace: true }),
-      refresh: () => triggerDesktopRefresh(),
+      refresh: () => triggerDesktopRefresh(getRefreshScope(location.pathname)),
     }),
-    [currentLocale, navigate],
+    [currentLocale, location.pathname, navigate],
   );
 }
 

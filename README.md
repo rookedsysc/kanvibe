@@ -88,7 +88,7 @@ Open `http://localhost:4885` in your browser.
 pnpm dist
 ```
 
-This builds the Next.js app, generates the bundled seed database, and packages a desktop app through Electron Builder.
+This builds the renderer bundle, compiles the desktop main process into `build/main`, generates the bundled seed database, and packages a desktop app through Electron Builder.
 
 - macOS output: `dist/*.dmg`, `dist/*.zip`
 - Homebrew distribution: use the generated DMG artifact in a custom Homebrew Cask tap
@@ -96,10 +96,12 @@ This builds the Next.js app, generates the bundled seed database, and packages a
 
 ### Native Module Recovery
 
-If macOS shows a `better-sqlite3` `NODE_MODULE_VERSION` mismatch, KanVibe now attempts an automatic rebuild before startup.
+If macOS shows a `better-sqlite3` `NODE_MODULE_VERSION` mismatch, KanVibe now verifies the binding before startup and attempts an automatic rebuild when possible.
 
 - browser/server runtime: `pnpm rebuild better-sqlite3`
-- desktop runtime: `pnpm exec electron-builder install-app-deps`
+- desktop runtime: `pnpm exec electron-rebuild -f --build-from-source -w better-sqlite3`
+
+For local desktop runs, `pnpm start` and `pnpm dev` already perform this compatibility check before Electron launches.
 
 Always run these commands under Node 24.x.
 

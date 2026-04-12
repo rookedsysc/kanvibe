@@ -1,6 +1,14 @@
 const http = require("node:http");
 const path = require("node:path");
 
+function getHookServiceModulePath() {
+  if (process.env.KANVIBE_RENDERER_URL) {
+    return path.join(process.cwd(), "src", "desktop", "main", "services", "hookService.ts");
+  }
+
+  return path.join(process.cwd(), "build", "main", "src", "desktop", "main", "services", "hookService.js");
+}
+
 function readJsonBody(request) {
   return new Promise((resolve, reject) => {
     let body = "";
@@ -33,7 +41,7 @@ function isAuthorized(request) {
 }
 
 function createHookServer({ host, port }) {
-  const hookService = require(path.join(process.cwd(), "src", "desktop", "main", "services", "hookService.ts"));
+  const hookService = require(getHookServiceModulePath());
 
   const server = http.createServer(async (request, response) => {
     if ((request.url === "/api/hooks/start" || request.url === "/api/hooks/status") && !isAuthorized(request)) {

@@ -1,7 +1,7 @@
 "use client";
 
 import { useTranslations } from "next-intl";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import HooksStatusDialog from "@/components/HooksStatusDialog";
 import type { ClaudeHooksStatus } from "@/lib/claudeHooksSetup";
 import type { GeminiHooksStatus } from "@/lib/geminiHooksSetup";
@@ -31,6 +31,22 @@ export default function HooksStatusCard({
   const [codexStatus, setCodexStatus] = useState(initialCodexStatus);
   const [openCodeStatus, setOpenCodeStatus] = useState(initialOpenCodeStatus);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+
+  useEffect(() => {
+    setClaudeStatus(initialClaudeStatus);
+  }, [initialClaudeStatus]);
+
+  useEffect(() => {
+    setGeminiStatus(initialGeminiStatus);
+  }, [initialGeminiStatus]);
+
+  useEffect(() => {
+    setCodexStatus(initialCodexStatus);
+  }, [initialCodexStatus]);
+
+  useEffect(() => {
+    setOpenCodeStatus(initialOpenCodeStatus);
+  }, [initialOpenCodeStatus]);
 
   // 신호등 상태 계산
   const getOverallStatus = () => {

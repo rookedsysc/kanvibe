@@ -1,19 +1,24 @@
 const fs = require("node:fs");
 const http = require("node:http");
+const Module = require("node:module");
 const path = require("node:path");
 const process = require("node:process");
 const crypto = require("node:crypto");
 const { pathToFileURL } = require("node:url");
 const { app, BrowserWindow, ipcMain, Notification, session, shell } = require("electron");
 
-require("tsx/cjs");
-
 const DEFAULT_LOCALE = "ko";
 const RENDERER_DEV_URL = process.env.KANVIBE_RENDERER_URL || null;
 const HOOK_SERVER_HOST = "0.0.0.0";
 const HOOK_SERVER_PORT = 9736;
+const SHOULD_USE_SOURCE_MODULES = Boolean(RENDERER_DEV_URL);
+const originalResolveFilename = Module._resolveFilename;
 
 const isHeadlessLinuxRuntime = !process.env.DISPLAY && !process.env.WAYLAND_DISPLAY;
+
+if (SHOULD_USE_SOURCE_MODULES) {
+  require("tsx/cjs");
+}
 
 if (process.platform === "linux") {
   app.disableHardwareAcceleration();
@@ -25,6 +30,41 @@ if (process.platform === "linux") {
 
 let mainWindow = null;
 let hookServer = null;
+
+function broadcastNotificationsChanged() {
+  for (const window of BrowserWindow.getAllWindows()) {
+    if (!window.isDestroyed()) {
+      window.webContents.send("kanvibe:notifications-changed");
+    }
+  }
+}
+
+function getBuildMainRoot() {
+  return path.join(app.getAppPath(), "build", "main", "src");
+}
+
+function getRuntimeModulePath(relativePath) {
+  if (SHOULD_USE_SOURCE_MODULES) {
+    return path.join(app.getAppPath(), relativePath);
+  }
+
+  return path.join(app.getAppPath(), "build", "main", relativePath.replace(/\.ts$/, ".js"));
+}
+
+function registerRuntimeAliases() {
+  if (SHOULD_USE_SOURCE_MODULES || Module._resolveFilename !== originalResolveFilename) {
+    return;
+  }
+
+  Module._resolveFilename = function resolveWithBuildAliases(request, parent, isMain, options) {
+    if (request.startsWith("@/")) {
+      const aliasedRequest = path.join(getBuildMainRoot(), request.slice(2));
+      return originalResolveFilename.call(this, aliasedRequest, parent, isMain, options);
+    }
+
+    return originalResolveFilename.call(this, request, parent, isMain, options);
+  };
+}
 
 function ensureRuntimeEnvironment() {
   const appRoot = app.getAppPath();
@@ -150,27 +190,49 @@ async function focusMainWindow(relativePath) {
 }
 
 function registerNotificationHandlers() {
+  const { createNotification, listNotifications, markAllNotificationsRead, markNotificationRead } = require(getRuntimeModulePath(path.join("src", "desktop", "main", "notificationStore.ts")));
+
   ipcMain.handle("kanvibe:show-notification", async (_event, payload) => {
-    if (!Notification.isSupported()) {
-      return false;
+    const { created, notification: appNotification } = await createNotification(payload);
+
+    if (created) {
+      broadcastNotificationsChanged();
+    }
+
+    if (!created || !Notification.isSupported()) {
+      return created;
     }
 
     const notification = new Notification({
-      title: payload.title,
-      body: payload.body,
+      title: appNotification.title,
+      body: appNotification.body,
       icon: getNotificationIconPath(),
     });
 
     notification.on("click", () => {
-      const relativePath = payload.taskId
-        ? `/${payload.locale || DEFAULT_LOCALE}/task/${payload.taskId}`
-        : `/${payload.locale || DEFAULT_LOCALE}`;
-
-      void focusMainWindow(relativePath);
+      void markNotificationRead(appNotification.id).then(() => {
+        broadcastNotificationsChanged();
+      });
+      void focusMainWindow(appNotification.relativePath);
     });
 
     notification.show();
     return true;
+  });
+
+  ipcMain.handle("kanvibe:notifications-list", async () => {
+    return listNotifications();
+  });
+
+  ipcMain.handle("kanvibe:notifications-mark-read", async (_event, notificationId) => {
+    const notification = await markNotificationRead(notificationId);
+    broadcastNotificationsChanged();
+    return notification;
+  });
+
+  ipcMain.handle("kanvibe:notifications-mark-all-read", async () => {
+    await markAllNotificationsRead();
+    broadcastNotificationsChanged();
   });
 }
 
@@ -236,7 +298,7 @@ async function waitForServer(url, retries = 80) {
 }
 
 function registerDesktopHandlers() {
-  const { desktopServices } = require(path.join(app.getAppPath(), "src", "desktop", "main", "serviceRegistry.ts"));
+  const { desktopServices } = require(getRuntimeModulePath(path.join("src", "desktop", "main", "serviceRegistry.ts")));
   const {
     openTerminal,
     writeTerminal,
@@ -244,7 +306,7 @@ function registerDesktopHandlers() {
     focusTerminal,
     closeTerminal,
     closeWindowTerminals,
-  } = require(path.join(app.getAppPath(), "src", "desktop", "main", "terminalBridge.ts"));
+  } = require(getRuntimeModulePath(path.join("src", "desktop", "main", "terminalBridge.ts")));
 
   ipcMain.handle("kanvibe:invoke", async (_event, namespace, method, args) => {
     const service = desktopServices[namespace];
@@ -288,7 +350,7 @@ function registerDesktopHandlers() {
 }
 
 function registerBoardEventForwarding() {
-  const { subscribeToBoardEvents } = require(path.join(app.getAppPath(), "src", "lib", "boardNotifier.ts"));
+  const { subscribeToBoardEvents } = require(getRuntimeModulePath(path.join("src", "lib", "boardNotifier.ts")));
 
   return subscribeToBoardEvents((payload) => {
     for (const window of BrowserWindow.getAllWindows()) {
@@ -339,6 +401,7 @@ async function createMainWindow() {
 
 app.whenReady().then(async () => {
   ensureRuntimeEnvironment();
+  registerRuntimeAliases();
   session.defaultSession.setPermissionRequestHandler((_webContents, permission, callback) => {
     callback(permission === "notifications");
   });

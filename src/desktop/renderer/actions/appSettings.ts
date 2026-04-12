@@ -4,7 +4,7 @@ import { triggerDesktopRefresh } from "@/desktop/renderer/utils/refresh";
 
 async function invokeAndRefresh<T>(method: string, ...args: unknown[]): Promise<T> {
   const result = await invokeDesktop<T>("appSettings", method, ...args);
-  triggerDesktopRefresh();
+  triggerDesktopRefresh("settings");
   return result;
 }
 

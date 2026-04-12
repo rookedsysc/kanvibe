@@ -15,7 +15,7 @@ interface PaneLayoutState {
 
 export default function PaneLayoutRoute() {
   const t = useTranslations("paneLayout");
-  const refreshSignal = useRefreshSignal();
+  const refreshSignal = useRefreshSignal(["all", "pane-layout"]);
   const [state, setState] = useState<PaneLayoutState | null>(null);
 
   useEffect(() => {
