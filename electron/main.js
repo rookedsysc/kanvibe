@@ -2,6 +2,7 @@ const fs = require("node:fs");
 const http = require("node:http");
 const path = require("node:path");
 const process = require("node:process");
+const crypto = require("node:crypto");
 const { pathToFileURL } = require("node:url");
 const { app, BrowserWindow, ipcMain, Notification, session, shell } = require("electron");
 
@@ -9,7 +10,7 @@ require("tsx/cjs");
 
 const DEFAULT_LOCALE = "ko";
 const RENDERER_DEV_URL = process.env.KANVIBE_RENDERER_URL || null;
-const HOOK_SERVER_HOST = "localhost";
+const HOOK_SERVER_HOST = "0.0.0.0";
 const HOOK_SERVER_PORT = 9736;
 
 const isHeadlessLinuxRuntime = !process.env.DISPLAY && !process.env.WAYLAND_DISPLAY;
@@ -30,6 +31,7 @@ function ensureRuntimeEnvironment() {
   process.chdir(appRoot);
   process.env.KANVIBE_DESKTOP = "true";
   process.env.KANVIBE_HOST = HOOK_SERVER_HOST;
+  process.env.KANVIBE_HOOK_TOKEN = process.env.KANVIBE_HOOK_TOKEN || crypto.randomUUID();
   process.env.PORT = String(HOOK_SERVER_PORT);
   process.env.KANVIBE_APP_DATA_DIR = app.getPath("userData");
   process.env.KANVIBE_SEED_DB_PATH = app.isPackaged
