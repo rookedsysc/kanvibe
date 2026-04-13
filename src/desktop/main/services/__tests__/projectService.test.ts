@@ -140,4 +140,20 @@ describe("projectService.listSubdirectories", () => {
     );
     expect(result).toEqual(["projects"]);
   });
+
+  it("원격 틸드 경로는 원격 HOME 기준으로 스캔한다", async () => {
+    // Given
+    mocks.execGit.mockResolvedValue("/home/remote/projects\n");
+    const { listSubdirectories } = await import("@/desktop/main/services/projectService");
+
+    // When
+    const result = await listSubdirectories("~/projects", "remote-host");
+
+    // Then
+    expect(mocks.execGit).toHaveBeenCalledWith(
+      'find "$HOME/projects" -maxdepth 1 -mindepth 1 -type d 2>/dev/null | sort',
+      "remote-host",
+    );
+    expect(result).toEqual(["projects"]);
+  });
 });
