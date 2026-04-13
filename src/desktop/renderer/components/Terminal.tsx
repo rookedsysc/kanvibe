@@ -5,8 +5,24 @@ interface TerminalProps {
   taskId: string;
 }
 
+interface TerminalDataEvent {
+  taskId: string;
+  data: string;
+}
+
+interface TerminalCloseEvent {
+  taskId: string;
+  reason: string | null;
+}
+
 export default function Terminal({ taskId }: TerminalProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const xtermRef = useRef<import("@xterm/xterm").Terminal | null>(null);
+
+  const focusTerminal = useCallback(() => {
+    xtermRef.current?.focus();
+    window.kanvibeDesktop?.focusTerminal(taskId);
+  }, [taskId]);
 
   const connect = useCallback(async () => {
     if (!containerRef.current) {
@@ -47,6 +63,7 @@ export default function Terminal({ taskId }: TerminalProps) {
     terminal.loadAddon(fitAddon);
     terminal.loadAddon(new WebLinksAddon());
     terminal.open(containerRef.current);
+    xtermRef.current = terminal;
     terminal.options.fontFamily = "monospace";
     terminal.options.fontFamily = fontFamily;
 
@@ -62,13 +79,15 @@ export default function Terminal({ taskId }: TerminalProps) {
       terminal.writeln(`\r\n\x1b[31m${terminalReady.error || "터미널 연결 실패"}\x1b[0m`);
     }
 
-    const unsubscribeData = window.kanvibeDesktop!.onTerminalData((event: any) => {
+    focusTerminal();
+
+    const unsubscribeData = window.kanvibeDesktop!.onTerminalData((event: TerminalDataEvent) => {
       if (event.taskId === taskId) {
         terminal.write(event.data);
       }
     });
 
-    const unsubscribeClose = window.kanvibeDesktop!.onTerminalClose((event: any) => {
+    const unsubscribeClose = window.kanvibeDesktop!.onTerminalClose((event: TerminalCloseEvent) => {
       if (event.taskId === taskId) {
         terminal.writeln(`\r\n\x1b[31m${event.reason || "연결이 종료되었습니다."}\x1b[0m`);
       }
@@ -90,21 +109,29 @@ export default function Terminal({ taskId }: TerminalProps) {
 
     const handleVisibilityChange = () => {
       if (document.visibilityState === "visible") {
-        window.kanvibeDesktop!.focusTerminal(taskId);
+        focusTerminal();
       }
     };
 
     document.addEventListener("visibilitychange", handleVisibilityChange);
 
+    const handlePointerDown = () => {
+      focusTerminal();
+    };
+
+    containerRef.current.addEventListener("pointerdown", handlePointerDown);
+
     return () => {
       document.removeEventListener("visibilitychange", handleVisibilityChange);
+      containerRef.current?.removeEventListener("pointerdown", handlePointerDown);
       resizeObserver.disconnect();
       unsubscribeData();
       unsubscribeClose();
       window.kanvibeDesktop!.closeTerminal(taskId);
+      xtermRef.current = null;
       terminal.dispose();
     };
-  }, [taskId]);
+  }, [focusTerminal, taskId]);
 
   useEffect(() => {
     let cleanup: (() => void) | undefined;
