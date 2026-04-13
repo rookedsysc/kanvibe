@@ -10,6 +10,38 @@ export interface SSHHostConfig {
   privateKeyPath: string;
 }
 
+export function getSSHDestination(config: Pick<SSHHostConfig, "hostname" | "username">): string {
+  return `${config.username}@${config.hostname}`;
+}
+
+export function buildSSHArgs(
+  config: Pick<SSHHostConfig, "hostname" | "port" | "username" | "privateKeyPath">,
+  options?: {
+    forceTty?: boolean;
+    disableTty?: boolean;
+  },
+): string[] {
+  const args = [
+    "-i",
+    config.privateKeyPath,
+    "-p",
+    String(config.port),
+    "-o",
+    "BatchMode=yes",
+    "-o",
+    "IdentitiesOnly=yes",
+  ];
+
+  if (options?.forceTty) {
+    args.push("-tt");
+  } else if (options?.disableTty) {
+    args.push("-T");
+  }
+
+  args.push(getSSHDestination(config));
+  return args;
+}
+
 /**
  * ~/.ssh/config 파일을 파싱하여 호스트 목록을 반환한다.
  * Host, HostName, User, IdentityFile, Port 필드를 추출한다.
