@@ -269,7 +269,7 @@ AI 代理 Hooks 触发的任务状态变更会发送**浏览器通知**，显示
 | 数据库 | SQLite + TypeORM + better-sqlite3 |
 | 样式 | Tailwind CSS v4 |
 | 终端 | xterm.js + WebSocket + node-pty |
-| SSH | ssh2 (Node.js) |
+| SSH | system ssh binary |
 | 拖放 | @hello-pangea/dnd |
 | 国际化 | next-intl |
 | 桌面打包 | Electron + Electron Builder |

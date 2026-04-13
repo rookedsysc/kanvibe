@@ -293,3 +293,50 @@ describe("attachLocalSession — zellij 세션 생성 및 레이아웃 적용", 
     );
   });
 });
+
+describe("attachRemoteSession — ssh 바이너리 기반 연결", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.resetModules();
+  });
+
+  it("should spawn ssh with tty options for remote tmux attach", async () => {
+    // Given
+    const { attachRemoteSession } = await import("@/lib/terminal");
+    const nodePty = await import("node-pty");
+
+    // When
+    await attachRemoteSession(
+      "task-r1",
+      "remote-host",
+      SessionType.TMUX,
+      "remote-session",
+      createMockWs(),
+      {
+        hostname: "example.com",
+        port: 2202,
+        username: "tester",
+        privateKeyPath: "/tmp/test-key",
+      },
+    );
+
+    // Then
+    expect(nodePty.spawn).toHaveBeenCalledWith(
+      "ssh",
+      [
+        "-i",
+        "/tmp/test-key",
+        "-p",
+        "2202",
+        "-o",
+        "BatchMode=yes",
+        "-o",
+        "IdentitiesOnly=yes",
+        "-tt",
+        "tester@example.com",
+        expect.stringContaining('tmux has-session -t "remote-session"'),
+      ],
+      expect.objectContaining({ cwd: expect.any(String) }),
+    );
+  });
+});

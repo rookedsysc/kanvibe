@@ -1,10 +1,12 @@
-import { exec } from "child_process";
+import { exec, execFile } from "child_process";
 import { promisify } from "util";
 import { readFile } from "fs/promises";
 import { homedir } from "os";
 import path from "path";
+import { buildSSHArgs, type SSHHostConfig } from "@/lib/sshConfig";
 
 const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
 
 /** 로컬에서 셸 명령을 실행하고 stdout을 반환한다 */
 async function execLocal(command: string): Promise<string> {
@@ -14,7 +16,6 @@ async function execLocal(command: string): Promise<string> {
 
 /** SSH를 통해 원격에서 명령을 실행하고 stdout을 반환한다 */
 async function execRemote(sshHost: string, command: string): Promise<string> {
-  const { Client } = await import("ssh2");
   const { parseSSHConfig } = await import("@/lib/sshConfig");
 
   const configs = await parseSSHConfig();
@@ -24,54 +25,37 @@ async function execRemote(sshHost: string, command: string): Promise<string> {
     throw new Error(`SSH 호스트를 찾을 수 없습니다: ${sshHost}`);
   }
 
-  return new Promise((resolve, reject) => {
-    const conn = new Client();
+  const sshArgs = [
+    ...buildSSHArgs(hostConfig, { disableTty: true }),
+    buildRemoteShellCommand(command),
+  ];
 
-    conn.on("ready", () => {
-      conn.exec(command, (err, stream) => {
-        if (err) {
-          conn.end();
-          return reject(err);
-        }
-
-        let output = "";
-        let errorOutput = "";
-
-        stream.on("data", (data: Buffer) => {
-          output += data.toString();
-        });
-
-        stream.stderr.on("data", (data: Buffer) => {
-          errorOutput += data.toString();
-        });
-
-        stream.on("close", (code: number) => {
-          conn.end();
-          if (code !== 0) {
-            reject(new Error(`SSH 명령 실패 (exit ${code}): ${errorOutput}`));
-          } else {
-            resolve(output.trim());
-          }
-        });
-      });
+  try {
+    const { stdout } = await execFileAsync("ssh", sshArgs, {
+      maxBuffer: 10 * 1024 * 1024,
     });
+    return stdout.trim();
+  } catch (error) {
+    throw normalizeSSHExecError(error, sshHost);
+  }
+}
 
-    conn.on("error", reject);
+function buildRemoteShellCommand(command: string): string {
+  return `sh -lc ${quoteForPosixShell(command)}`;
+}
 
-    let privateKey: Buffer;
-    try {
-      privateKey = require("fs").readFileSync(hostConfig.privateKeyPath);
-    } catch {
-      return reject(new Error(`SSH 키를 읽을 수 없습니다: ${hostConfig.privateKeyPath}`));
-    }
+function quoteForPosixShell(value: string): string {
+  return `'${value.replace(/'/g, `'"'"'`)}'`;
+}
 
-    conn.connect({
-      host: hostConfig.hostname,
-      port: hostConfig.port,
-      username: hostConfig.username,
-      privateKey,
-    });
-  });
+function normalizeSSHExecError(error: unknown, sshHost: string): Error {
+  if (error && typeof error === "object" && "stderr" in error) {
+    const stderr = String((error as { stderr?: string }).stderr || "").trim();
+    const message = stderr || (error instanceof Error ? error.message : "SSH 명령 실패");
+    return new Error(`${sshHost} 원격 명령 실패: ${message}`);
+  }
+
+  return error instanceof Error ? error : new Error(`${sshHost} 원격 명령 실패`);
 }
 
 export function resolvePathForShell(targetPath: string, sshHost?: string | null): string {
