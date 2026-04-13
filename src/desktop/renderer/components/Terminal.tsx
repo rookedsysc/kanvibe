@@ -15,6 +15,18 @@ interface TerminalCloseEvent {
   reason: string | null;
 }
 
+interface XTermSelectionService {
+  shouldForceSelection: (event: MouseEvent) => boolean;
+}
+
+interface XTermCore {
+  _selectionService?: XTermSelectionService;
+}
+
+interface XTermWithCore {
+  _core?: XTermCore;
+}
+
 export default function Terminal({ taskId }: TerminalProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const xtermRef = useRef<import("@xterm/xterm").Terminal | null>(null);
@@ -66,6 +78,16 @@ export default function Terminal({ taskId }: TerminalProps) {
     terminal.loadAddon(new WebLinksAddon());
     terminal.open(containerRef.current);
     xtermRef.current = terminal;
+
+    if (isMac) {
+      const terminalCore = terminal as unknown as XTermWithCore;
+      const selectionService = terminalCore._core?._selectionService;
+      if (selectionService) {
+        const defaultShouldForceSelection = selectionService.shouldForceSelection.bind(selectionService);
+        selectionService.shouldForceSelection = (event: MouseEvent) => event.shiftKey || defaultShouldForceSelection(event);
+      }
+    }
+
     terminal.options.fontFamily = "monospace";
     terminal.options.fontFamily = fontFamily;
 
@@ -121,47 +143,11 @@ export default function Terminal({ taskId }: TerminalProps) {
       focusTerminal();
     };
 
-    const handleMouseDownCapture = (event: MouseEvent) => {
-      if (!isMac || !event.isTrusted || event.button !== 0 || !event.shiftKey || event.altKey) {
-        return;
-      }
-
-      const eventTarget = event.target instanceof EventTarget ? event.target : containerRef.current;
-      if (!eventTarget) {
-        return;
-      }
-
-      event.preventDefault();
-      event.stopPropagation();
-
-      const remappedEvent = new MouseEvent("mousedown", {
-        bubbles: true,
-        cancelable: true,
-        composed: true,
-        button: event.button,
-        buttons: event.buttons,
-        clientX: event.clientX,
-        clientY: event.clientY,
-        screenX: event.screenX,
-        screenY: event.screenY,
-        ctrlKey: event.ctrlKey,
-        metaKey: event.metaKey,
-        shiftKey: false,
-        altKey: true,
-        detail: event.detail,
-      });
-
-      focusTerminal();
-      eventTarget.dispatchEvent(remappedEvent);
-    };
-
     containerRef.current.addEventListener("pointerdown", handlePointerDown);
-    containerRef.current.addEventListener("mousedown", handleMouseDownCapture, true);
 
     return () => {
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       containerRef.current?.removeEventListener("pointerdown", handlePointerDown);
-      containerRef.current?.removeEventListener("mousedown", handleMouseDownCapture, true);
       resizeObserver.disconnect();
       unsubscribeData();
       unsubscribeClose();
