@@ -405,10 +405,6 @@ export async function listSubdirectories(
     : parentPath;
 
   try {
-    if (sshHost) {
-      await ensureDefaultRemoteSessionDependency(sshHost);
-    }
-
     const output = await execGit(
       `find "${resolvedPath}" -maxdepth 1 -mindepth 1 -type d 2>/dev/null | sort`,
       sshHost || null
