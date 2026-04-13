@@ -19,6 +19,19 @@ import { getDefaultSessionType } from "@/desktop/main/services/appSettingsServic
 import { ensureRemoteSessionDependency } from "@/lib/remoteSessionDependency";
 import { installKanvibeHooks } from "@/lib/kanvibeHooksInstaller";
 
+function resolveDirectorySearchPath(targetPath: string, sshHost?: string): string {
+  if (!targetPath.startsWith("~")) {
+    return `"${targetPath}"`;
+  }
+
+  if (sshHost) {
+    const suffix = targetPath.slice(1);
+    return `"$HOME${suffix}"`;
+  }
+
+  return `"${targetPath.replace(/^~/, homedir())}"`;
+}
+
 /** TypeORM 엔티티를 직렬화 가능한 plain object로 변환한다 */
 function serialize<T>(data: T): T {
   return JSON.parse(JSON.stringify(data));
@@ -400,13 +413,11 @@ export async function listSubdirectories(
   parentPath: string,
   sshHost?: string
 ): Promise<string[]> {
-  const resolvedPath = parentPath.startsWith("~")
-    ? parentPath.replace(/^~/, homedir())
-    : parentPath;
+  const resolvedPath = resolveDirectorySearchPath(parentPath, sshHost);
 
   try {
     const output = await execGit(
-      `find "${resolvedPath}" -maxdepth 1 -mindepth 1 -type d 2>/dev/null | sort`,
+      `find ${resolvedPath} -maxdepth 1 -mindepth 1 -type d 2>/dev/null | sort`,
       sshHost || null
     );
 

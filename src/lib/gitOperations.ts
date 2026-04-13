@@ -74,6 +74,19 @@ async function execRemote(sshHost: string, command: string): Promise<string> {
   });
 }
 
+export function resolvePathForShell(targetPath: string, sshHost?: string | null): string {
+  if (!targetPath.startsWith("~")) {
+    return `"${targetPath}"`;
+  }
+
+  if (sshHost) {
+    const suffix = targetPath.slice(1);
+    return `"$HOME${suffix}"`;
+  }
+
+  return `"${targetPath.replace(/^~/, homedir())}"`;
+}
+
 /** 로컬 또는 SSH에서 명령을 실행한다. sshHost가 null이면 로컬 실행 */
 export async function execGit(command: string, sshHost?: string | null): Promise<string> {
   if (sshHost) {
@@ -171,13 +184,11 @@ export async function scanGitRepos(
   rootPath: string,
   sshHost?: string | null
 ): Promise<string[]> {
-  const resolvedPath = rootPath.startsWith("~")
-    ? rootPath.replace(/^~/, homedir())
-    : rootPath;
+  const resolvedPath = resolvePathForShell(rootPath, sshHost);
 
   try {
     const output = await execGit(
-      `find "${resolvedPath}" -maxdepth 4 -name ".git" -type d 2>/dev/null`,
+      `find ${resolvedPath} -maxdepth 4 -name ".git" -type d 2>/dev/null`,
       sshHost
     );
 
