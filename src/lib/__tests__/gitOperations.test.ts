@@ -89,7 +89,7 @@ describe("gitOperations.resolvePathForShell", () => {
         "-o",
         "IdentitiesOnly=yes",
         "-T",
-        "tester@example.com",
+        "remote-host",
         "sh -lc 'pwd'",
       ],
       expect.objectContaining({ maxBuffer: 10 * 1024 * 1024 }),

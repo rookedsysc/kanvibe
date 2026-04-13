@@ -306,18 +306,19 @@ describe("attachRemoteSession — ssh 바이너리 기반 연결", () => {
     const nodePty = await import("node-pty");
 
     // When
-    await attachRemoteSession(
-      "task-r1",
-      "remote-host",
-      SessionType.TMUX,
-      "remote-session",
-      createMockWs(),
-      {
-        hostname: "example.com",
-        port: 2202,
-        username: "tester",
-        privateKeyPath: "/tmp/test-key",
-      },
+      await attachRemoteSession(
+        "task-r1",
+        "remote-host",
+        SessionType.TMUX,
+        "remote-session",
+        createMockWs(),
+        {
+          host: "remote-host",
+          hostname: "example.com",
+          port: 2202,
+          username: "tester",
+          privateKeyPath: "/tmp/test-key",
+        },
     );
 
     // Then
@@ -333,7 +334,7 @@ describe("attachRemoteSession — ssh 바이너리 기반 연결", () => {
         "-o",
         "IdentitiesOnly=yes",
         "-tt",
-        "tester@example.com",
+        "remote-host",
         expect.stringContaining('tmux has-session -t "remote-session"'),
       ],
       expect.objectContaining({ cwd: expect.any(String) }),

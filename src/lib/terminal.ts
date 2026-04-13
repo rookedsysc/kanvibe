@@ -220,6 +220,7 @@ export async function attachRemoteSession(
   sessionName: string,
   ws: WebSocket,
   sshConfig: {
+    host: string;
     hostname: string;
     port: number;
     username: string;

@@ -15,7 +15,7 @@ export default new DataSource({
   database: getRuntimeDatabasePath(),
   entities: [KanbanTask, Project, PaneLayoutConfig, AppSettings],
   synchronize: false,
-  logging: true,
+  logging: process.env.TYPEORM_LOGGING === "true",
   prepareDatabase: (database) => {
     database.pragma("journal_mode = WAL");
     database.pragma("foreign_keys = ON");
