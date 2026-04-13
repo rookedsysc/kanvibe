@@ -414,12 +414,10 @@ export async function listSubdirectories(
   sshHost?: string
 ): Promise<string[]> {
   const resolvedPath = resolveDirectorySearchPath(parentPath, sshHost);
+  const command = `find ${resolvedPath} -maxdepth 1 -mindepth 1 -type d 2>/dev/null | sort`;
 
   try {
-    const output = await execGit(
-      `find ${resolvedPath} -maxdepth 1 -mindepth 1 -type d 2>/dev/null | sort`,
-      sshHost || null
-    );
+    const output = await execGit(command, sshHost || null);
 
     if (!output) return [];
 
@@ -428,7 +426,14 @@ export async function listSubdirectories(
       .filter(Boolean)
       .map((dir) => path.basename(dir))
       .filter((name) => !name.startsWith("."));
-  } catch {
+  } catch (error) {
+    console.error("[remote-scan] subdirectory scan failed", {
+      sshHost: sshHost || null,
+      parentPath,
+      resolvedPath,
+      command,
+      error: error instanceof Error ? error.message : String(error),
+    });
     return [];
   }
 }

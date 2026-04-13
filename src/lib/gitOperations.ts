@@ -36,6 +36,12 @@ async function execRemote(sshHost: string, command: string): Promise<string> {
     });
     return stdout.trim();
   } catch (error) {
+    console.error("[remote-ssh] command failed", {
+      sshHost,
+      command,
+      sshArgs,
+      error: error instanceof Error ? error.message : String(error),
+    });
     throw normalizeSSHExecError(error, sshHost);
   }
 }
@@ -169,12 +175,10 @@ export async function scanGitRepos(
   sshHost?: string | null
 ): Promise<string[]> {
   const resolvedPath = resolvePathForShell(rootPath, sshHost);
+  const command = `find ${resolvedPath} -maxdepth 4 -name ".git" -type d 2>/dev/null`;
 
   try {
-    const output = await execGit(
-      `find ${resolvedPath} -maxdepth 4 -name ".git" -type d 2>/dev/null`,
-      sshHost
-    );
+    const output = await execGit(command, sshHost);
 
     if (!output) return [];
 
@@ -182,7 +186,14 @@ export async function scanGitRepos(
       .split("\n")
       .filter(Boolean)
       .map((gitDir) => gitDir.replace(/\/\.git$/, ""));
-  } catch {
+  } catch (error) {
+    console.error("[remote-scan] git repository scan failed", {
+      sshHost: sshHost || null,
+      rootPath,
+      resolvedPath,
+      command,
+      error: error instanceof Error ? error.message : String(error),
+    });
     return [];
   }
 }

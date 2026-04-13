@@ -10,12 +10,16 @@ export interface SSHHostConfig {
   privateKeyPath: string;
 }
 
-export function getSSHDestination(config: Pick<SSHHostConfig, "hostname" | "username">): string {
+export function getSSHDestination(config: Pick<SSHHostConfig, "host" | "hostname" | "username">): string {
+  if (config.host) {
+    return config.host;
+  }
+
   return `${config.username}@${config.hostname}`;
 }
 
 export function buildSSHArgs(
-  config: Pick<SSHHostConfig, "hostname" | "port" | "username" | "privateKeyPath">,
+  config: Pick<SSHHostConfig, "host" | "hostname" | "port" | "username" | "privateKeyPath">,
   options?: {
     forceTty?: boolean;
     disableTty?: boolean;
@@ -57,7 +61,7 @@ export async function parseSSHConfig(): Promise<SSHHostConfig[]> {
   }
 
   const hosts: SSHHostConfig[] = [];
-  let current: Partial<SSHHostConfig> | null = null;
+  let current: (Partial<SSHHostConfig> & { aliases?: string[] }) | null = null;
 
   for (const rawLine of content.split("\n")) {
     const line = rawLine.trim();
@@ -67,10 +71,10 @@ export async function parseSSHConfig(): Promise<SSHHostConfig[]> {
     const value = valueParts.join(" ");
 
     if (key.toLowerCase() === "host") {
-      if (current?.host && current.hostname) {
-        hosts.push(fillDefaults(current));
+      if (current?.aliases?.length && current.hostname) {
+        hosts.push(...expandHostAliases(current));
       }
-      current = { host: value };
+      current = { aliases: valueParts };
     } else if (current) {
       switch (key.toLowerCase()) {
         case "hostname":
@@ -89,8 +93,8 @@ export async function parseSSHConfig(): Promise<SSHHostConfig[]> {
     }
   }
 
-  if (current?.host && current.hostname) {
-    hosts.push(fillDefaults(current));
+  if (current?.aliases?.length && current.hostname) {
+    hosts.push(...expandHostAliases(current));
   }
 
   return hosts;
@@ -104,6 +108,14 @@ function fillDefaults(partial: Partial<SSHHostConfig>): SSHHostConfig {
     username: partial.username || "root",
     privateKeyPath: partial.privateKeyPath || path.join(homedir(), ".ssh", "id_rsa"),
   };
+}
+
+function expandHostAliases(
+  partial: Partial<SSHHostConfig> & { aliases?: string[] },
+): SSHHostConfig[] {
+  return (partial.aliases || [])
+    .filter((alias) => alias && !/[*!?]/.test(alias))
+    .map((alias) => fillDefaults({ ...partial, host: alias }));
 }
 
 /** 사용 가능한 SSH 호스트 이름 목록을 반환한다 */
