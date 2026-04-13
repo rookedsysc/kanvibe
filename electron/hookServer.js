@@ -31,10 +31,24 @@ function writeJson(response, statusCode, payload) {
   response.end(JSON.stringify(payload));
 }
 
+function isAuthorized(request) {
+  const expectedToken = process.env.KANVIBE_HOOK_TOKEN;
+  if (!expectedToken) {
+    return true;
+  }
+
+  return request.headers["x-kanvibe-token"] === expectedToken;
+}
+
 function createHookServer({ host, port }) {
   const hookService = require(getHookServiceModulePath());
 
   const server = http.createServer(async (request, response) => {
+    if ((request.url === "/api/hooks/start" || request.url === "/api/hooks/status") && !isAuthorized(request)) {
+      writeJson(response, 401, { success: false, error: "Unauthorized" });
+      return;
+    }
+
     if (request.method === "POST" && request.url === "/api/hooks/start") {
       try {
         const result = await hookService.startHookTask(await readJsonBody(request));
