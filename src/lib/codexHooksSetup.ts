@@ -1,6 +1,6 @@
 import { readFile, writeFile, mkdir, chmod, access } from "fs/promises";
 import path from "path";
-import { addAiToolPatternsToGitExclude } from "@/lib/gitExclude";
+import { addAiToolPatternsToGitExclude, isNotGitRepositoryError } from "@/lib/gitExclude";
 
 /**
  * Codex CLI는 현재 notify 설정의 agent-turn-complete 이벤트만 지원한다.
@@ -91,6 +91,7 @@ export async function setupCodexHooks(
   try {
     await addAiToolPatternsToGitExclude(repoPath);
   } catch (error) {
+    if (isNotGitRepositoryError(error)) return;
     console.error("git exclude 패턴 추가 실패:", error);
   }
 }

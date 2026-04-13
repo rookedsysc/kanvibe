@@ -17,6 +17,14 @@ const EXCLUDE_PATTERNS = [
   ".opencode/plugins/",
 ];
 
+export function isNotGitRepositoryError(error: unknown): boolean {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  return /not a git repository/i.test(error.message);
+}
+
 /**
  * AI 코딩 도구의 hooks 설정 파일을 .git/info/excluded에 추가하여 git tracking에서 제외한다.
  * 마커 블록을 사용해 멱등성을 보장하며, 실패해도 예외를 던지지 않는다.
