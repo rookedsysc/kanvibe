@@ -161,7 +161,7 @@ export default function FolderSearchInput({
         autoComplete="off"
       />
       {/* form 전송을 위한 hidden input */}
-      <input type="hidden" name={name} value={selectedPath} />
+      <input type="hidden" name={name} value={selectedPath || inputValue} />
 
       {isOpen && (
         <div className="absolute z-50 left-0 right-0 mt-1 bg-bg-surface border border-border-default rounded-md shadow-lg max-h-60 overflow-y-auto">
