@@ -16,7 +16,6 @@ import { computeProjectColor } from "@/lib/projectColor";
 import { broadcastBoardUpdate } from "@/lib/boardNotifier";
 import { getAvailableHosts as readAvailableHosts } from "@/lib/sshConfig";
 import { getDefaultSessionType } from "@/desktop/main/services/appSettingsService";
-import { ensureRemoteSessionDependency } from "@/lib/remoteSessionDependency";
 import { installKanvibeHooks } from "@/lib/kanvibeHooksInstaller";
 
 function resolveDirectorySearchPath(targetPath: string, sshHost?: string): string {
@@ -60,8 +59,6 @@ async function createDefaultBranchTask(project: Project) {
     baseBranch: project.defaultBranch,
   });
 
-  let installError: Error | null = null;
-
   try {
     const session = await createSessionWithoutWorktree(
       project.repoPath,
@@ -72,12 +69,11 @@ async function createDefaultBranchTask(project: Project) {
     );
     task.sessionType = defaultSessionType;
     task.sessionName = session.sessionName;
-    task.worktreePath = project.repoPath;
-    task.sshHost = project.sshHost;
-    task.status = TaskStatus.PROGRESS;
+     task.worktreePath = project.repoPath;
+     task.sshHost = project.sshHost;
+     task.status = TaskStatus.PROGRESS;
   } catch (error) {
     console.error("메인 브랜치 tmux 세션 생성 실패:", error);
-    installError = error instanceof Error ? error : new Error("기본 세션 생성 실패");
   }
 
   const savedTask = await taskRepo.save(task);
@@ -87,14 +83,7 @@ async function createDefaultBranchTask(project: Project) {
       await installKanvibeHooks(task.worktreePath, savedTask.id, project.sshHost);
     } catch (error) {
       console.error("기본 브랜치 hooks 설정 실패:", error);
-      if (!installError && error instanceof Error) {
-        installError = error;
-      }
     }
-  }
-
-  if (installError) {
-    throw installError;
   }
 
   return savedTask;
@@ -134,17 +123,6 @@ export async function registerProject(
 ): Promise<{ success: boolean; error?: string; project?: Project }> {
   if (!name || !repoPath) {
     return { success: false, error: "이름과 경로는 필수입니다." };
-  }
-
-  if (sshHost) {
-    try {
-      await ensureDefaultRemoteSessionDependency(sshHost);
-    } catch (error) {
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : "원격 호스트 검증 실패",
-      };
-    }
   }
 
   const isValid = await validateGitRepo(repoPath, sshHost || null);
@@ -212,15 +190,6 @@ export async function scanAndRegisterProjects(
   sshHost?: string
 ): Promise<ScanResult> {
   const result: ScanResult = { registered: [], skipped: [], errors: [], worktreeTasks: [], hooksSetup: [] };
-
-  if (sshHost) {
-    try {
-      await ensureDefaultRemoteSessionDependency(sshHost);
-    } catch (error) {
-      result.errors.push(error instanceof Error ? error.message : "원격 호스트 검증 실패");
-      return result;
-    }
-  }
 
   const repoPaths = await scanGitRepos(rootPath, sshHost || null);
   if (repoPaths.length === 0) {
@@ -436,11 +405,6 @@ export async function listSubdirectories(
     });
     return [];
   }
-}
-
-async function ensureDefaultRemoteSessionDependency(sshHost: string): Promise<void> {
-  const defaultSessionType = await getDefaultSessionType();
-  await ensureRemoteSessionDependency(defaultSessionType, sshHost);
 }
 
 /** 프로젝트의 브랜치 목록을 반환한다 */

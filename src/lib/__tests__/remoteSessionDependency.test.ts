@@ -51,6 +51,8 @@ describe("remoteSessionDependency", () => {
     // Then
     expect(mockExecGit).toHaveBeenCalledTimes(3);
     expect(mockExecGit.mock.calls[1]?.[0]).toContain("cargo install --locked zellij");
+    expect(mockExecGit.mock.calls[1]?.[0]).toContain("run_install() {");
+    expect(mockExecGit.mock.calls[1]?.[0]).not.toContain("run_install() {;");
     expect(mockExecGit.mock.calls[2]).toEqual(["command -v zellij >/dev/null 2>&1", "remote-b"]);
   });
 

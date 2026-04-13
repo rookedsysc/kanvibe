@@ -77,8 +77,11 @@ function buildInstallCommand(toolName: string): string {
     '  return 1',
     '}',
     ...installBranches,
-    `command -v ${toolName} >/dev/null 2>&1 || { echo "${toolName} 설치에 실패했습니다." >&2; exit 1; }`,
-  ].join("; ");
+    `if ! command -v ${toolName} >/dev/null 2>&1; then`,
+    `  echo "${toolName} 설치에 실패했습니다." >&2`,
+    '  exit 1',
+    'fi',
+  ].join("\n");
 }
 
 function buildPackageManagerBranch(command: string): string {
