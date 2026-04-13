@@ -18,6 +18,7 @@ interface TerminalCloseEvent {
 export default function Terminal({ taskId }: TerminalProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const xtermRef = useRef<import("@xterm/xterm").Terminal | null>(null);
+  const isMac = navigator.userAgent.includes("Mac") || navigator.platform.toLowerCase().includes("mac");
 
   const focusTerminal = useCallback(() => {
     xtermRef.current?.focus();
@@ -50,6 +51,7 @@ export default function Terminal({ taskId }: TerminalProps) {
       cursorBlink: true,
       fontSize: 14,
       fontFamily,
+      macOptionClickForcesSelection: true,
       rescaleOverlappingGlyphs: true,
       theme: {
         background: "#0a0a0a",
@@ -119,11 +121,47 @@ export default function Terminal({ taskId }: TerminalProps) {
       focusTerminal();
     };
 
+    const handleMouseDownCapture = (event: MouseEvent) => {
+      if (!isMac || !event.isTrusted || event.button !== 0 || !event.shiftKey || event.altKey) {
+        return;
+      }
+
+      const eventTarget = event.target instanceof EventTarget ? event.target : containerRef.current;
+      if (!eventTarget) {
+        return;
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+
+      const remappedEvent = new MouseEvent("mousedown", {
+        bubbles: true,
+        cancelable: true,
+        composed: true,
+        button: event.button,
+        buttons: event.buttons,
+        clientX: event.clientX,
+        clientY: event.clientY,
+        screenX: event.screenX,
+        screenY: event.screenY,
+        ctrlKey: event.ctrlKey,
+        metaKey: event.metaKey,
+        shiftKey: false,
+        altKey: true,
+        detail: event.detail,
+      });
+
+      focusTerminal();
+      eventTarget.dispatchEvent(remappedEvent);
+    };
+
     containerRef.current.addEventListener("pointerdown", handlePointerDown);
+    containerRef.current.addEventListener("mousedown", handleMouseDownCapture, true);
 
     return () => {
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       containerRef.current?.removeEventListener("pointerdown", handlePointerDown);
+      containerRef.current?.removeEventListener("mousedown", handleMouseDownCapture, true);
       resizeObserver.disconnect();
       unsubscribeData();
       unsubscribeClose();
@@ -131,7 +169,7 @@ export default function Terminal({ taskId }: TerminalProps) {
       xtermRef.current = null;
       terminal.dispose();
     };
-  }, [focusTerminal, taskId]);
+  }, [focusTerminal, isMac, taskId]);
 
   useEffect(() => {
     let cleanup: (() => void) | undefined;
