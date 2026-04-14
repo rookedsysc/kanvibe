@@ -3,6 +3,7 @@ import { writeFile } from "fs/promises";
 import { SessionType } from "@/entities/KanbanTask";
 import { PaneLayoutType, type PaneCommand } from "@/entities/PaneLayoutConfig";
 import { execGit } from "@/lib/gitOperations";
+import { ensureRemoteSessionDependency } from "@/lib/remoteSessionDependency";
 import { getEffectivePaneLayout } from "@/desktop/main/services/paneLayoutService";
 
 interface WorktreeSession {
@@ -225,6 +226,8 @@ export async function createWorktreeWithSession(
   sshHost?: string | null,
   projectId?: string | null,
 ): Promise<WorktreeSession> {
+  await ensureRemoteSessionDependency(sessionType, sshHost);
+
   const projectName = path.basename(projectPath);
   const worktreeBase = path.posix.join(
     path.dirname(projectPath),
@@ -301,6 +304,8 @@ export async function createSessionWithoutWorktree(
   sshHost?: string | null,
   workingDir?: string,
 ): Promise<{ sessionName: string }> {
+  await ensureRemoteSessionDependency(sessionType, sshHost);
+
   const projectName = path.basename(projectPath);
   const sessionName = formatSessionName(projectName, branchName);
   const cwd = workingDir || projectPath;

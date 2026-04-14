@@ -17,13 +17,14 @@ const globalForDb = globalThis as unknown as {
 
 function createDataSource(): DataSource {
   const databasePath = getRuntimeDatabasePath();
+  const shouldLogSql = process.env.TYPEORM_LOGGING === "true";
 
   return new DataSource({
     type: "better-sqlite3",
     database: databasePath,
     entities: [KanbanTask, Project, PaneLayoutConfig, AppSettings],
     synchronize: false,
-    logging: process.env.NODE_ENV !== "production",
+    logging: shouldLogSql,
     prepareDatabase: (database) => {
       database.pragma("journal_mode = WAL");
       database.pragma("foreign_keys = ON");
