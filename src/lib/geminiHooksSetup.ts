@@ -1,6 +1,7 @@
 import { readFile, writeFile, mkdir, chmod, access } from "fs/promises";
 import path from "path";
 import { addAiToolPatternsToGitExclude } from "@/lib/gitExclude";
+import { buildCurlAuthHeader } from "@/lib/hookAuth";
 
 /**
  * Gemini CLI hooks는 stdout에 반드시 JSON만 출력해야 한다.
@@ -8,7 +9,7 @@ import { addAiToolPatternsToGitExclude } from "@/lib/gitExclude";
  */
 
 /** BeforeAgent hook bash 스크립트를 생성한다 */
-function generatePromptHookScript(kanvibeUrl: string, taskId: string): string {
+export function generatePromptHookScript(kanvibeUrl: string, taskId: string, authToken?: string): string {
   return `#!/bin/bash
 
 # KanVibe Gemini CLI Hook: BeforeAgent
@@ -20,7 +21,7 @@ TASK_ID="${taskId}"
 
 curl -s -X POST "\${KANVIBE_URL}/api/hooks/status" \\
   -H "Content-Type: application/json" \\
-  -d "{\\"taskId\\": \\\"\${TASK_ID}\\\", \\\"status\\\": \\\"progress\\\"}" \\
+${buildCurlAuthHeader(authToken)}  -d "{\\"taskId\\": \\\"\${TASK_ID}\\\", \\\"status\\\": \\\"progress\\\"}" \\
   > /dev/null 2>&1
 
 echo '{}'
@@ -29,7 +30,7 @@ exit 0
 }
 
 /** AfterAgent hook bash 스크립트를 생성한다 */
-function generateStopHookScript(kanvibeUrl: string, taskId: string): string {
+export function generateStopHookScript(kanvibeUrl: string, taskId: string, authToken?: string): string {
   return `#!/bin/bash
 
 # KanVibe Gemini CLI Hook: AfterAgent
@@ -41,7 +42,7 @@ TASK_ID="${taskId}"
 
 curl -s -X POST "\${KANVIBE_URL}/api/hooks/status" \\
   -H "Content-Type: application/json" \\
-  -d "{\\"taskId\\": \\\"\${TASK_ID}\\\", \\\"status\\\": \\\"review\\\"}" \\
+${buildCurlAuthHeader(authToken)}  -d "{\\"taskId\\": \\\"\${TASK_ID}\\\", \\\"status\\\": \\\"review\\\"}" \\
   > /dev/null 2>&1
 
 echo '{}'
@@ -93,7 +94,8 @@ function hasKanvibeHook(hookEntries: unknown[], scriptName: string): boolean {
 export async function setupGeminiHooks(
   repoPath: string,
   taskId: string,
-  kanvibeUrl: string
+  kanvibeUrl: string,
+  authToken?: string,
 ): Promise<void> {
   const geminiDir = path.join(repoPath, ".gemini");
   const hooksDir = path.join(geminiDir, "hooks");
@@ -104,8 +106,8 @@ export async function setupGeminiHooks(
   const promptScriptPath = path.join(hooksDir, "kanvibe-prompt-hook.sh");
   const stopScriptPath = path.join(hooksDir, "kanvibe-stop-hook.sh");
 
-  await writeFile(promptScriptPath, generatePromptHookScript(kanvibeUrl, taskId), "utf-8");
-  await writeFile(stopScriptPath, generateStopHookScript(kanvibeUrl, taskId), "utf-8");
+  await writeFile(promptScriptPath, generatePromptHookScript(kanvibeUrl, taskId, authToken), "utf-8");
+  await writeFile(stopScriptPath, generateStopHookScript(kanvibeUrl, taskId, authToken), "utf-8");
   await chmod(promptScriptPath, 0o755);
   await chmod(stopScriptPath, 0o755);
 
