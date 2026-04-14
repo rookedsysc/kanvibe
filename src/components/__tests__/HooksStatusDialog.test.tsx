@@ -184,8 +184,7 @@ describe("HooksStatusDialog", () => {
 
     // When
     renderDialog(props);
-    const installButtons = screen.getAllByText("installHooks");
-    fireEvent.click(installButtons[0]);
+    fireEvent.click(screen.getAllByText("installHooks")[0]);
 
     // Then
     await waitFor(() => {
@@ -209,8 +208,7 @@ describe("HooksStatusDialog", () => {
 
     // When
     renderDialog(props);
-    const installButtons = screen.getAllByText("installHooks");
-    fireEvent.click(installButtons[0]);
+    fireEvent.click(screen.getAllByText("installHooks")[0]);
 
     // Then
     await waitFor(() => {
@@ -234,8 +232,7 @@ describe("HooksStatusDialog", () => {
 
     // When
     renderDialog(props);
-    const installButtons = screen.getAllByText("installHooks");
-    fireEvent.click(installButtons[0]);
+    fireEvent.click(screen.getAllByText("installHooks")[0]);
 
     // Then
     await waitFor(() => {
@@ -259,8 +256,7 @@ describe("HooksStatusDialog", () => {
 
     // When
     renderDialog(props);
-    const installButtons = screen.getAllByText("installHooks");
-    fireEvent.click(installButtons[1]);
+    fireEvent.click(screen.getAllByText("installHooks")[0]);
 
     // Then
     await waitFor(() => {
@@ -284,8 +280,7 @@ describe("HooksStatusDialog", () => {
 
     // When
     renderDialog(props);
-    const installButtons = screen.getAllByText("installHooks");
-    fireEvent.click(installButtons[1]);
+    fireEvent.click(screen.getAllByText("installHooks")[0]);
 
     // Then
     await waitFor(() => {
@@ -309,8 +304,7 @@ describe("HooksStatusDialog", () => {
 
     // When
     renderDialog(props);
-    const installButtons = screen.getAllByText("installHooks");
-    fireEvent.click(installButtons[2]);
+    fireEvent.click(screen.getAllByText("installHooks")[0]);
 
     // Then
     await waitFor(() => {
@@ -334,8 +328,7 @@ describe("HooksStatusDialog", () => {
 
     // When
     renderDialog(props);
-    const installButtons = screen.getAllByText("installHooks");
-    fireEvent.click(installButtons[2]);
+    fireEvent.click(screen.getAllByText("installHooks")[0]);
 
     // Then
     await waitFor(() => {
@@ -359,8 +352,7 @@ describe("HooksStatusDialog", () => {
 
     // When
     renderDialog(props);
-    const installButtons = screen.getAllByText("installHooks");
-    fireEvent.click(installButtons[3]);
+    fireEvent.click(screen.getAllByText("installHooks")[0]);
 
     // Then
     await waitFor(() => {
@@ -384,8 +376,7 @@ describe("HooksStatusDialog", () => {
 
     // When
     renderDialog(props);
-    const installButtons = screen.getAllByText("installHooks");
-    fireEvent.click(installButtons[3]);
+    fireEvent.click(screen.getAllByText("installHooks")[0]);
 
     // Then
     await waitFor(() => {
@@ -415,6 +406,26 @@ describe("HooksStatusDialog", () => {
     expect(installedBadges.length).toBeGreaterThan(0);
   });
 
+  it("should show reinstall action when hook is already installed", () => {
+    // Given
+    const props = {
+      isOpen: true,
+      onClose: vi.fn(),
+      taskId: "task-1",
+      claudeStatus: verifiedClaudeStatus,
+      geminiStatus: null,
+      codexStatus: null,
+      openCodeStatus: null,
+      isRemote: false,
+    };
+
+    // When
+    renderDialog(props);
+
+    // Then
+    expect(screen.getByText("hooksStatusDialog.reinstall")).toBeTruthy();
+  });
+
   it("should disable close button when installation is pending", async () => {
     // Given
     mockInstallTaskHooks.mockImplementation(
@@ -436,8 +447,7 @@ describe("HooksStatusDialog", () => {
 
     // When
     renderDialog(props);
-    const installButtons = screen.getAllByText("installHooks");
-    fireEvent.click(installButtons[0]);
+    fireEvent.click(screen.getAllByText("installHooks")[0]);
 
     // Then
     await waitFor(() => {

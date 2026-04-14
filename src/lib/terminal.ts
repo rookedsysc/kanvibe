@@ -19,6 +19,10 @@ interface TerminalEntry {
 
 const activeTerminals = new Map<string, TerminalEntry>();
 
+function shouldLogTerminalSpawn(): boolean {
+  return process.env.KANVIBE_DEBUG_TERMINAL === "true";
+}
+
 /** tmux 세션이 존재하는지 확인한다 */
 function isTmuxSessionAlive(sessionName: string): boolean {
   try {
@@ -150,7 +154,9 @@ export async function attachLocalSession(
     ptyCwd = process.env.HOME || "/";
   }
 
-  console.log(`[터미널] PTY spawn: shell=${shell}, args=${JSON.stringify(args)}, cwd=${ptyCwd}`);
+  if (shouldLogTerminalSpawn()) {
+    console.log(`[터미널] PTY spawn: shell=${shell}, args=${JSON.stringify(args)}, cwd=${ptyCwd}`);
+  }
 
   let ptyProcess: import("node-pty").IPty;
   try {
@@ -254,7 +260,9 @@ export async function attachRemoteSession(
     `sh -lc '${remoteCommand.replace(/'/g, `'"'"'`)}'`,
   ];
 
-  console.log(`[터미널] Remote PTY spawn: shell=ssh, args=${JSON.stringify(args)}`);
+  if (shouldLogTerminalSpawn()) {
+    console.log(`[터미널] Remote PTY spawn: shell=ssh, args=${JSON.stringify(args)}`);
+  }
 
   let ptyProcess: import("node-pty").IPty;
   try {

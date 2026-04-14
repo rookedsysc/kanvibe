@@ -17,6 +17,16 @@ function summarizeCommandFailure(errorOutput: string): string {
   return lines.at(-1) ?? "원격 명령 실행에 실패했습니다.";
 }
 
+function shouldLogRemoteCommandFailure(command: string, stderr: string): boolean {
+  const isQuietProbe = command.includes("2>/dev/null") || command.includes(">/dev/null 2>&1");
+
+  if (isQuietProbe && !stderr.trim()) {
+    return false;
+  }
+
+  return true;
+}
+
 /** 로컬에서 셸 명령을 실행하고 stdout을 반환한다 */
 async function execLocal(command: string): Promise<string> {
   const { stdout } = await execAsync(command);
@@ -45,12 +55,19 @@ async function execRemote(sshHost: string, command: string): Promise<string> {
     });
     return stdout.trim();
   } catch (error) {
-    console.error("[remote-ssh] command failed", {
-      sshHost,
-      command,
-      sshArgs,
-      error: error instanceof Error ? error.message : String(error),
-    });
+    const stderr = error && typeof error === "object" && "stderr" in error
+      ? String((error as { stderr?: string }).stderr || "")
+      : "";
+
+    if (shouldLogRemoteCommandFailure(command, stderr)) {
+      console.error("[remote-ssh] command failed", {
+        sshHost,
+        command,
+        sshArgs,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+
     throw normalizeSSHExecError(error, sshHost);
   }
 }

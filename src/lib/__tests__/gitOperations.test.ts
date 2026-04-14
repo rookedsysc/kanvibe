@@ -96,4 +96,36 @@ describe("gitOperations.resolvePathForShell", () => {
       expect.any(Function),
     );
   });
+
+  it("조용한 probe 명령 실패는 콘솔 에러를 남기지 않는다", async () => {
+    // Given
+    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    mocks.execFile.mockImplementation((_file: string, _args: string[], _options: unknown, callback: (error: Error & { stderr?: string }) => void) => {
+      const error = new Error("Command failed") as Error & { stderr?: string };
+      error.stderr = "";
+      callback(error);
+    });
+
+    vi.doMock("@/lib/sshConfig", async (importOriginal) => {
+      const actual = await importOriginal<typeof import("@/lib/sshConfig")>();
+      return {
+        ...actual,
+        parseSSHConfig: vi.fn(async () => [{
+          host: "remote-host",
+          hostname: "example.com",
+          port: 2202,
+          username: "tester",
+          privateKeyPath: "/tmp/test-key",
+        }]),
+      };
+    });
+
+    const { execGit } = await import("@/lib/gitOperations");
+
+    // When
+    await expect(execGit('tmux has-session -t "remote-session" 2>/dev/null', "remote-host")).rejects.toThrow();
+
+    // Then
+    expect(consoleErrorSpy).not.toHaveBeenCalled();
+  });
 });

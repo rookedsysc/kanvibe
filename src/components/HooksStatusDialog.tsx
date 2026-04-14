@@ -66,6 +66,14 @@ export default function HooksStatusDialog({
     setLocalOpenCodeStatus(openCodeStatus);
   }, [openCodeStatus]);
 
+  useEffect(() => {
+    setMessage(null);
+  }, [isOpen, claudeStatus, geminiStatus, codexStatus, openCodeStatus]);
+
+  function getInstallFailureText(error?: string) {
+    return error ? t("hooksInstallFailed", { error }) : t("hooksInstallFailed");
+  }
+
   function renderChecks(checks: StatusCheck[]) {
     return (
       <div className="mt-1 flex flex-wrap gap-1">
@@ -91,7 +99,7 @@ export default function HooksStatusDialog({
       return;
     }
 
-    setMessage({ type: "error", text: t("hooksInstallFailed") });
+    setMessage({ type: "error", text: getInstallFailureText(result.error) });
   }
 
   function applyGeminiResult(result: Awaited<ReturnType<typeof installTaskGeminiHooks>>) {
@@ -101,7 +109,7 @@ export default function HooksStatusDialog({
       return;
     }
 
-    setMessage({ type: "error", text: t("hooksInstallFailed") });
+    setMessage({ type: "error", text: getInstallFailureText(result.error) });
   }
 
   function applyCodexResult(result: Awaited<ReturnType<typeof installTaskCodexHooks>>) {
@@ -111,7 +119,7 @@ export default function HooksStatusDialog({
       return;
     }
 
-    setMessage({ type: "error", text: t("hooksInstallFailed") });
+    setMessage({ type: "error", text: getInstallFailureText(result.error) });
   }
 
   function applyOpenCodeResult(result: Awaited<ReturnType<typeof installTaskOpenCodeHooks>>) {
@@ -121,7 +129,7 @@ export default function HooksStatusDialog({
       return;
     }
 
-    setMessage({ type: "error", text: t("hooksInstallFailed") });
+    setMessage({ type: "error", text: getInstallFailureText(result.error) });
   }
 
   if (!isOpen) return null;
@@ -192,7 +200,7 @@ export default function HooksStatusDialog({
                   disabled={isPending}
                   className="px-3 py-1.5 text-xs bg-bg-page border border-border-default hover:border-brand-primary hover:text-text-brand text-text-secondary rounded-md transition-colors disabled:opacity-50"
                 >
-                  {isPending ? t("installingHooks") : t("installHooks")}
+                  {isPending ? t("installingHooks") : t("hooksStatusDialog.reinstall")}
                 </button>
               </>
             ) : (
@@ -236,7 +244,7 @@ export default function HooksStatusDialog({
                   disabled={isPending}
                   className="px-3 py-1.5 text-xs bg-bg-page border border-border-default hover:border-brand-primary hover:text-text-brand text-text-secondary rounded-md transition-colors disabled:opacity-50"
                 >
-                  {isPending ? t("installingHooks") : t("installHooks")}
+                  {isPending ? t("installingHooks") : t("hooksStatusDialog.reinstall")}
                 </button>
               </>
             ) : (
@@ -279,7 +287,7 @@ export default function HooksStatusDialog({
                   disabled={isPending}
                   className="px-3 py-1.5 text-xs bg-bg-page border border-border-default hover:border-brand-primary hover:text-text-brand text-text-secondary rounded-md transition-colors disabled:opacity-50"
                 >
-                  {isPending ? t("installingHooks") : t("installHooks")}
+                  {isPending ? t("installingHooks") : t("hooksStatusDialog.reinstall")}
                 </button>
               </>
             ) : (
@@ -322,7 +330,7 @@ export default function HooksStatusDialog({
                   disabled={isPending}
                   className="px-3 py-1.5 text-xs bg-bg-page border border-border-default hover:border-brand-primary hover:text-text-brand text-text-secondary rounded-md transition-colors disabled:opacity-50"
                 >
-                  {isPending ? t("installingHooks") : t("installHooks")}
+                  {isPending ? t("installingHooks") : t("hooksStatusDialog.reinstall")}
                 </button>
               </>
             ) : (

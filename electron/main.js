@@ -28,6 +28,8 @@ if (process.platform === "linux") {
   }
 }
 
+app.commandLine.appendSwitch("log-level", "3");
+
 let mainWindow = null;
 let hookServer = null;
 
@@ -138,6 +140,7 @@ function createBrowserWindowOptions() {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
       nodeIntegration: false,
+      disableBlinkFeatures: "ServiceWorker",
     },
   };
 }
