@@ -5,37 +5,8 @@ interface TerminalProps {
   taskId: string;
 }
 
-interface TerminalDataEvent {
-  taskId: string;
-  data: string;
-}
-
-interface TerminalCloseEvent {
-  taskId: string;
-  reason: string | null;
-}
-
-interface XTermSelectionService {
-  shouldForceSelection: (event: MouseEvent) => boolean;
-}
-
-interface XTermCore {
-  _selectionService?: XTermSelectionService;
-}
-
-interface XTermWithCore {
-  _core?: XTermCore;
-}
-
 export default function Terminal({ taskId }: TerminalProps) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const xtermRef = useRef<import("@xterm/xterm").Terminal | null>(null);
-  const isMac = navigator.userAgent.includes("Mac") || navigator.platform.toLowerCase().includes("mac");
-
-  const focusTerminal = useCallback(() => {
-    xtermRef.current?.focus();
-    window.kanvibeDesktop?.focusTerminal(taskId);
-  }, [taskId]);
 
   const connect = useCallback(async () => {
     if (!containerRef.current) {
@@ -63,7 +34,6 @@ export default function Terminal({ taskId }: TerminalProps) {
       cursorBlink: true,
       fontSize: 14,
       fontFamily,
-      macOptionClickForcesSelection: true,
       rescaleOverlappingGlyphs: true,
       theme: {
         background: "#0a0a0a",
@@ -77,17 +47,6 @@ export default function Terminal({ taskId }: TerminalProps) {
     terminal.loadAddon(fitAddon);
     terminal.loadAddon(new WebLinksAddon());
     terminal.open(containerRef.current);
-    xtermRef.current = terminal;
-
-    if (isMac) {
-      const terminalCore = terminal as unknown as XTermWithCore;
-      const selectionService = terminalCore._core?._selectionService;
-      if (selectionService) {
-        const defaultShouldForceSelection = selectionService.shouldForceSelection.bind(selectionService);
-        selectionService.shouldForceSelection = (event: MouseEvent) => event.shiftKey || defaultShouldForceSelection(event);
-      }
-    }
-
     terminal.options.fontFamily = "monospace";
     terminal.options.fontFamily = fontFamily;
 
@@ -103,15 +62,13 @@ export default function Terminal({ taskId }: TerminalProps) {
       terminal.writeln(`\r\n\x1b[31m${terminalReady.error || "터미널 연결 실패"}\x1b[0m`);
     }
 
-    focusTerminal();
-
-    const unsubscribeData = window.kanvibeDesktop!.onTerminalData((event: TerminalDataEvent) => {
+    const unsubscribeData = window.kanvibeDesktop!.onTerminalData((event: any) => {
       if (event.taskId === taskId) {
         terminal.write(event.data);
       }
     });
 
-    const unsubscribeClose = window.kanvibeDesktop!.onTerminalClose((event: TerminalCloseEvent) => {
+    const unsubscribeClose = window.kanvibeDesktop!.onTerminalClose((event: any) => {
       if (event.taskId === taskId) {
         terminal.writeln(`\r\n\x1b[31m${event.reason || "연결이 종료되었습니다."}\x1b[0m`);
       }
@@ -133,29 +90,21 @@ export default function Terminal({ taskId }: TerminalProps) {
 
     const handleVisibilityChange = () => {
       if (document.visibilityState === "visible") {
-        focusTerminal();
+        window.kanvibeDesktop!.focusTerminal(taskId);
       }
     };
 
     document.addEventListener("visibilitychange", handleVisibilityChange);
 
-    const handlePointerDown = () => {
-      focusTerminal();
-    };
-
-    containerRef.current.addEventListener("pointerdown", handlePointerDown);
-
     return () => {
       document.removeEventListener("visibilitychange", handleVisibilityChange);
-      containerRef.current?.removeEventListener("pointerdown", handlePointerDown);
       resizeObserver.disconnect();
       unsubscribeData();
       unsubscribeClose();
       window.kanvibeDesktop!.closeTerminal(taskId);
-      xtermRef.current = null;
       terminal.dispose();
     };
-  }, [focusTerminal, isMac, taskId]);
+  }, [taskId]);
 
   useEffect(() => {
     let cleanup: (() => void) | undefined;

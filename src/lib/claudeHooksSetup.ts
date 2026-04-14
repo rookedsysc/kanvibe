@@ -1,10 +1,9 @@
 import { readFile, writeFile, mkdir, chmod, access } from "fs/promises";
 import path from "path";
 import { addAiToolPatternsToGitExclude } from "@/lib/gitExclude";
-import { buildCurlAuthHeader } from "@/lib/hookAuth";
 
 /** UserPromptSubmit hook bash 스크립트를 생성한다 */
-export function generatePromptHookScript(kanvibeUrl: string, taskId: string, authToken?: string): string {
+function generatePromptHookScript(kanvibeUrl: string, taskId: string): string {
   return `#!/bin/bash
 
 # KanVibe Claude Code Hook: UserPromptSubmit
@@ -15,7 +14,7 @@ TASK_ID="${taskId}"
 
 curl -s -X POST "\${KANVIBE_URL}/api/hooks/status" \\
   -H "Content-Type: application/json" \\
-${buildCurlAuthHeader(authToken)}  -d "{\\"taskId\\": \\\"\${TASK_ID}\\\", \\\"status\\\": \\\"progress\\\"}" \\
+  -d "{\\"taskId\\": \\\"\${TASK_ID}\\\", \\\"status\\\": \\\"progress\\\"}" \\
   > /dev/null 2>&1
 
 exit 0
@@ -23,7 +22,7 @@ exit 0
 }
 
 /** Stop hook bash 스크립트를 생성한다 */
-export function generateStopHookScript(kanvibeUrl: string, taskId: string, authToken?: string): string {
+function generateStopHookScript(kanvibeUrl: string, taskId: string): string {
   return `#!/bin/bash
 
 # KanVibe Claude Code Hook: Stop
@@ -34,7 +33,7 @@ TASK_ID="${taskId}"
 
 curl -s -X POST "\${KANVIBE_URL}/api/hooks/status" \\
   -H "Content-Type: application/json" \\
-${buildCurlAuthHeader(authToken)}  -d "{\\"taskId\\": \\\"\${TASK_ID}\\\", \\\"status\\\": \\\"review\\\"}" \\
+  -d "{\\"taskId\\": \\\"\${TASK_ID}\\\", \\\"status\\\": \\\"review\\\"}" \\
   > /dev/null 2>&1
 
 exit 0
@@ -42,7 +41,7 @@ exit 0
 }
 
 /** PreToolUse(AskUserQuestion) hook bash 스크립트를 생성한다 */
-export function generateQuestionHookScript(kanvibeUrl: string, taskId: string, authToken?: string): string {
+function generateQuestionHookScript(kanvibeUrl: string, taskId: string): string {
   return `#!/bin/bash
 
 # KanVibe Claude Code Hook: PreToolUse (AskUserQuestion)
@@ -53,7 +52,7 @@ TASK_ID="${taskId}"
 
 curl -s -X POST "\${KANVIBE_URL}/api/hooks/status" \\
   -H "Content-Type: application/json" \\
-${buildCurlAuthHeader(authToken)}  -d "{\\"taskId\\": \\\"\${TASK_ID}\\\", \\\"status\\\": \\\"pending\\\"}" \\
+  -d "{\\"taskId\\": \\\"\${TASK_ID}\\\", \\\"status\\\": \\\"pending\\\"}" \\
   > /dev/null 2>&1
 
 exit 0
@@ -99,8 +98,7 @@ function hasKanvibeHook(hookEntries: unknown[], scriptName: string): boolean {
 export async function setupClaudeHooks(
   repoPath: string,
   taskId: string,
-  kanvibeUrl: string,
-  authToken?: string,
+  kanvibeUrl: string
 ): Promise<void> {
   const claudeDir = path.join(repoPath, ".claude");
   const hooksDir = path.join(claudeDir, "hooks");
@@ -112,9 +110,9 @@ export async function setupClaudeHooks(
   const stopScriptPath = path.join(hooksDir, "kanvibe-stop-hook.sh");
   const questionScriptPath = path.join(hooksDir, "kanvibe-question-hook.sh");
 
-  await writeFile(promptScriptPath, generatePromptHookScript(kanvibeUrl, taskId, authToken), "utf-8");
-  await writeFile(stopScriptPath, generateStopHookScript(kanvibeUrl, taskId, authToken), "utf-8");
-  await writeFile(questionScriptPath, generateQuestionHookScript(kanvibeUrl, taskId, authToken), "utf-8");
+  await writeFile(promptScriptPath, generatePromptHookScript(kanvibeUrl, taskId), "utf-8");
+  await writeFile(stopScriptPath, generateStopHookScript(kanvibeUrl, taskId), "utf-8");
+  await writeFile(questionScriptPath, generateQuestionHookScript(kanvibeUrl, taskId), "utf-8");
   await chmod(promptScriptPath, 0o755);
   await chmod(stopScriptPath, 0o755);
   await chmod(questionScriptPath, 0o755);

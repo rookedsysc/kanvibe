@@ -1,7 +1,6 @@
 import { readFile, writeFile, mkdir, chmod, access } from "fs/promises";
 import path from "path";
 import { addAiToolPatternsToGitExclude } from "@/lib/gitExclude";
-import { buildCurlAuthHeader } from "@/lib/hookAuth";
 
 /**
  * Codex CLI는 현재 notify 설정의 agent-turn-complete 이벤트만 지원한다.
@@ -9,7 +8,7 @@ import { buildCurlAuthHeader } from "@/lib/hookAuth";
  */
 
 /** notify hook bash 스크립트를 생성한다 (agent-turn-complete → REVIEW) */
-export function generateNotifyHookScript(kanvibeUrl: string, taskId: string, authToken?: string): string {
+function generateNotifyHookScript(kanvibeUrl: string, taskId: string): string {
   return `#!/bin/bash
 
 # KanVibe Codex CLI Hook: notify (agent-turn-complete)
@@ -29,15 +28,15 @@ fi
 
 curl -s -X POST "\${KANVIBE_URL}/api/hooks/status" \\
   -H "Content-Type: application/json" \\
-${buildCurlAuthHeader(authToken)}  -d "{\\"taskId\\": \\\"\${TASK_ID}\\\", \\\"status\\\": \\\"review\\\"}" \\
+  -d "{\\"taskId\\": \\\"\${TASK_ID}\\\", \\\"status\\\": \\\"review\\\"}" \\
   > /dev/null 2>&1
 
 exit 0
 `;
 }
 
-export const HOOK_SCRIPT_NAME = "kanvibe-notify-hook.sh";
-export const CONFIG_FILE_NAME = "config.toml";
+const HOOK_SCRIPT_NAME = "kanvibe-notify-hook.sh";
+const CONFIG_FILE_NAME = "config.toml";
 
 /** 기존 config.toml 내용을 읽거나 빈 문자열을 반환한다 */
 async function readConfigToml(configPath: string): Promise<string> {
@@ -60,8 +59,7 @@ function hasKanvibeNotify(configContent: string): boolean {
 export async function setupCodexHooks(
   repoPath: string,
   taskId: string,
-  kanvibeUrl: string,
-  authToken?: string,
+  kanvibeUrl: string
 ): Promise<void> {
   const codexDir = path.join(repoPath, ".codex");
   const hooksDir = path.join(codexDir, "hooks");
@@ -70,7 +68,7 @@ export async function setupCodexHooks(
   await mkdir(hooksDir, { recursive: true });
 
   const notifyScriptPath = path.join(hooksDir, HOOK_SCRIPT_NAME);
-  await writeFile(notifyScriptPath, generateNotifyHookScript(kanvibeUrl, taskId, authToken), "utf-8");
+  await writeFile(notifyScriptPath, generateNotifyHookScript(kanvibeUrl, taskId), "utf-8");
   await chmod(notifyScriptPath, 0o755);
 
   const configContent = await readConfigToml(configPath);

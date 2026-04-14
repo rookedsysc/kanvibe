@@ -6,8 +6,11 @@ import { KanbanTask, TaskStatus, SessionType } from "@/entities/KanbanTask";
 import { TaskPriority } from "@/entities/TaskPriority";
 import { createWorktreeWithSession, removeWorktreeAndBranch, createSessionWithoutWorktree, removeSessionOnly } from "@/lib/worktree";
 import { getProjectRepository } from "@/lib/database";
+import { setupClaudeHooks } from "@/lib/claudeHooksSetup";
+import { setupGeminiHooks } from "@/lib/geminiHooksSetup";
+import { setupCodexHooks } from "@/lib/codexHooksSetup";
+import { setupOpenCodeHooks } from "@/lib/openCodeHooksSetup";
 import { broadcastBoardUpdate } from "@/lib/boardNotifier";
-import { installKanvibeHooks } from "@/lib/kanvibeHooksInstaller";
 
 const execAsync = promisify(exec);
 
@@ -147,13 +150,10 @@ export async function createTask(input: CreateTaskInput): Promise<KanbanTask> {
         task.sessionName = session.sessionName;
         task.sshHost = project.sshHost;
         hookTargetPath = session.worktreePath;
-        shouldInstallHooks = Boolean(session.worktreePath);
+        shouldInstallHooks = !project.sshHost && Boolean(session.worktreePath);
       }
     } catch (error) {
       console.error("Worktree/세션 생성 실패:", error);
-      if (input.sshHost || input.projectId) {
-        throw error;
-      }
     }
   }
 
@@ -167,7 +167,13 @@ export async function createTask(input: CreateTaskInput): Promise<KanbanTask> {
   const saved = await repo.save(task);
 
   if (shouldInstallHooks && hookTargetPath) {
-    await installKanvibeHooks(hookTargetPath, saved.id, task.sshHost);
+    const kanvibeUrl = "http://localhost:9736";
+    await Promise.allSettled([
+      setupClaudeHooks(hookTargetPath, saved.id, kanvibeUrl),
+      setupGeminiHooks(hookTargetPath, saved.id, kanvibeUrl),
+      setupCodexHooks(hookTargetPath, saved.id, kanvibeUrl),
+      setupOpenCodeHooks(hookTargetPath, saved.id, kanvibeUrl),
+    ]);
   }
 
   broadcastBoardUpdate();
@@ -188,6 +194,7 @@ export async function updateTaskStatus(
     task.sessionType = null;
     task.sessionName = null;
     task.worktreePath = null;
+    task.sshHost = null;
   }
 
   task.status = newStatus;
@@ -251,7 +258,6 @@ export async function cleanupTaskResources(task: KanbanTask): Promise<void> {
   }
 
   const isProjectRoot = project && task.worktreePath === project.repoPath;
-  const sshHost = task.sshHost || project?.sshHost || null;
 
   /** 브랜치별 독립 세션 정리 */
   if (task.sessionType && task.sessionName) {
@@ -259,7 +265,7 @@ export async function cleanupTaskResources(task: KanbanTask): Promise<void> {
       await removeSessionOnly(
         task.sessionType,
         task.sessionName,
-        sshHost
+        task.sshHost
       );
     } catch (error) {
       console.error("세션 정리 실패:", error);
@@ -272,7 +278,7 @@ export async function cleanupTaskResources(task: KanbanTask): Promise<void> {
       await removeWorktreeAndBranch(
         project?.repoPath || process.cwd(),
         task.branchName,
-        sshHost
+        task.sshHost
       );
     } catch (error) {
       console.error("worktree/브랜치 정리 실패:", error);
@@ -332,9 +338,15 @@ export async function branchFromTask(
 
   const saved = await repo.save(task);
 
-  if (session.worktreePath) {
+  if (!project.sshHost && session.worktreePath) {
     try {
-      await installKanvibeHooks(session.worktreePath, saved.id, project.sshHost);
+      const kanvibeUrl = "http://localhost:9736";
+      await Promise.allSettled([
+        setupClaudeHooks(session.worktreePath, saved.id, kanvibeUrl),
+        setupGeminiHooks(session.worktreePath, saved.id, kanvibeUrl),
+        setupCodexHooks(session.worktreePath, saved.id, kanvibeUrl),
+        setupOpenCodeHooks(session.worktreePath, saved.id, kanvibeUrl),
+      ]);
     } catch (error) {
       console.error("Hooks 설정 실패:", error);
     }
@@ -414,13 +426,14 @@ export async function moveTaskToColumn(
   if (newStatus === TaskStatus.DONE) {
     const task = await repo.findOneBy({ id: taskId });
     if (task) {
-        await cleanupTaskResources(task);
-        await repo.update(taskId, {
-          status: newStatus,
-          sessionType: null,
-          sessionName: null,
-          worktreePath: null,
-        });
+      await cleanupTaskResources(task);
+      await repo.update(taskId, {
+        status: newStatus,
+        sessionType: null,
+        sessionName: null,
+        worktreePath: null,
+        sshHost: null,
+      });
     }
   } else {
     await repo.update(taskId, { status: newStatus });

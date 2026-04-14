@@ -269,7 +269,7 @@ AI 에이전트 Hooks를 통한 태스크 상태 변경이 **브라우저 알림
 | Database | SQLite + TypeORM + better-sqlite3 |
 | Styling | Tailwind CSS v4 |
 | Terminal | xterm.js + WebSocket + node-pty |
-| SSH | system ssh binary |
+| SSH | ssh2 (Node.js) |
 | Drag & Drop | @hello-pangea/dnd |
 | i18n | next-intl |
 | Desktop Packaging | Electron + Electron Builder |

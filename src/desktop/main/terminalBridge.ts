@@ -4,7 +4,6 @@ import { getTaskRepository } from "@/lib/database";
 import { SessionType } from "@/entities/KanbanTask";
 import { attachLocalSession, attachRemoteSession, focusSession } from "@/lib/terminal";
 import { parseSSHConfig } from "@/lib/sshConfig";
-import { ensureRemoteSessionDependency } from "@/lib/remoteSessionDependency";
 
 const OPEN = 1;
 const CLOSED = 3;
@@ -96,8 +95,6 @@ export async function openTerminal(
 
   try {
     if (task.sshHost) {
-      await ensureRemoteSessionDependency(task.sessionType as SessionType, task.sshHost);
-
       const sshHosts = await parseSSHConfig();
       const sshConfig = sshHosts.find((host) => host.host === task.sshHost);
 
