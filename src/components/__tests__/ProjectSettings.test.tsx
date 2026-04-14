@@ -139,4 +139,47 @@ describe("ProjectSettings", () => {
       expect(mockSetNotificationStatuses).toHaveBeenCalledWith(["progress", "review"]);
     });
   });
+
+  it("stale props가 다시 들어와도 방금 바꾼 알림 상태를 덮어쓰지 않는다", async () => {
+    // Given
+    const initialSettings = {
+      isEnabled: true,
+      enabledStatuses: ["progress", "pending", "review"],
+    };
+
+    const { rerender } = render(
+      <ProjectSettings
+        isOpen
+        onClose={vi.fn()}
+        projects={[createProject()]}
+        sshHosts={[]}
+        sidebarDefaultCollapsed={false}
+        defaultSessionType={SessionType.TMUX}
+        notificationSettings={initialSettings}
+      />,
+    );
+
+    // When
+    fireEvent.click(screen.getByText("pending"));
+    rerender(
+      <ProjectSettings
+        isOpen
+        onClose={vi.fn()}
+        projects={[createProject()]}
+        sshHosts={[]}
+        sidebarDefaultCollapsed={false}
+        defaultSessionType={SessionType.TMUX}
+        notificationSettings={{
+          isEnabled: true,
+          enabledStatuses: ["progress", "pending", "review"],
+        }}
+      />,
+    );
+
+    // Then
+    await waitFor(() => {
+      expect(mockSetNotificationStatuses).toHaveBeenCalledWith(["progress", "review"]);
+    });
+    expect(screen.getByText("pending").className).toContain("bg-bg-page");
+  });
 });

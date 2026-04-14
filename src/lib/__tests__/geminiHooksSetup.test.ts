@@ -169,5 +169,26 @@ describe("geminiHooksSetup", () => {
       expect(status.hasSettingsEntry).toBe(false);
       expect(status.installed).toBe(false);
     });
+
+    it("should treat legacy branch-targeted scripts as installed", async () => {
+      // Given
+      const hooksDir = path.join(tmpDir, ".gemini/hooks");
+      await mkdir(hooksDir, { recursive: true });
+      await writeFile(path.join(hooksDir, "kanvibe-prompt-hook.sh"), `#!/bin/bash\nPROJECT_NAME="kanvibe"\nBRANCH_NAME=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)\ncurl -d "{\\"branchName\\": \\\"\${BRANCH_NAME}\\\", \\\"projectName\\": \\\"\${PROJECT_NAME}\\\", \\\"status\\": \\\"progress\\\"}"\necho '{}'\n`, "utf-8");
+      await writeFile(path.join(hooksDir, "kanvibe-stop-hook.sh"), `#!/bin/bash\nPROJECT_NAME="kanvibe"\nBRANCH_NAME=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)\ncurl -d "{\\"branchName\\": \\\"\${BRANCH_NAME}\\\", \\\"projectName\\": \\\"\${PROJECT_NAME}\\\", \\\"status\\": \\\"review\\\"}"\necho '{}'\n`, "utf-8");
+      await writeFile(path.join(tmpDir, ".gemini/settings.json"), JSON.stringify({
+        hooks: {
+          BeforeAgent: [{ matcher: "*", hooks: [{ type: "command", command: '"$GEMINI_PROJECT_DIR"/.gemini/hooks/kanvibe-prompt-hook.sh', timeout: 10000 }] }],
+          AfterAgent: [{ matcher: "*", hooks: [{ type: "command", command: '"$GEMINI_PROJECT_DIR"/.gemini/hooks/kanvibe-stop-hook.sh', timeout: 10000 }] }],
+        },
+      }), "utf-8");
+
+      // When
+      const status = await getGeminiHooksStatus(tmpDir, "task-1");
+
+      // Then
+      expect(status.installed).toBe(true);
+      expect(status.hasTaskIdBinding).toBe(true);
+    });
   });
 });

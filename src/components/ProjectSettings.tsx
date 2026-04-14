@@ -36,6 +36,15 @@ interface ProjectSettingsProps {
   notificationSettings: { isEnabled: boolean; enabledStatuses: string[] };
 }
 
+function areNotificationSettingsEqual(
+  left: { isEnabled: boolean; enabledStatuses: string[] },
+  right: { isEnabled: boolean; enabledStatuses: string[] },
+) {
+  return left.isEnabled === right.isEnabled
+    && left.enabledStatuses.length === right.enabledStatuses.length
+    && left.enabledStatuses.every((status, index) => status === right.enabledStatuses[index]);
+}
+
 export default function ProjectSettings({
   isOpen,
   onClose,
@@ -57,14 +66,20 @@ export default function ProjectSettings({
   const [scanSshHost, setScanSshHost] = useState("");
   const [selectedDefaultSessionType, setSelectedDefaultSessionType] = useState(defaultSessionType);
   const [localNotificationSettings, setLocalNotificationSettings] = useState(notificationSettings);
+  const [pendingNotificationSettings, setPendingNotificationSettings] = useState<typeof notificationSettings | null>(null);
 
   useEffect(() => {
     setSelectedDefaultSessionType(defaultSessionType);
   }, [defaultSessionType]);
 
   useEffect(() => {
+    if (pendingNotificationSettings && !areNotificationSettingsEqual(notificationSettings, pendingNotificationSettings)) {
+      return;
+    }
+
     setLocalNotificationSettings(notificationSettings);
-  }, [notificationSettings]);
+    setPendingNotificationSettings(null);
+  }, [notificationSettings, pendingNotificationSettings]);
 
   if (!isOpen) return null;
 
@@ -219,10 +234,12 @@ export default function ProjectSettings({
                aria-checked={localNotificationSettings.isEnabled}
                onClick={() => {
                  const nextEnabled = !localNotificationSettings.isEnabled;
-                 setLocalNotificationSettings((current) => ({ ...current, isEnabled: nextEnabled }));
-                 startNotificationTransition(async () => {
-                   await setNotificationEnabled(nextEnabled);
-                 });
+                  const nextSettings = { ...localNotificationSettings, isEnabled: nextEnabled };
+                  setLocalNotificationSettings(nextSettings);
+                  setPendingNotificationSettings(nextSettings);
+                  startNotificationTransition(async () => {
+                    await setNotificationEnabled(nextEnabled);
+                  });
                }}
                disabled={isNotificationPending}
                className={`relative inline-flex h-5 w-9 shrink-0 rounded-full border-2 border-transparent transition-colors ${
@@ -255,7 +272,9 @@ export default function ProjectSettings({
                       const nextStatuses = isSelected
                         ? localNotificationSettings.enabledStatuses.filter((s) => s !== value)
                         : [...localNotificationSettings.enabledStatuses, value];
-                      setLocalNotificationSettings((current) => ({ ...current, enabledStatuses: nextStatuses }));
+                      const nextSettings = { ...localNotificationSettings, enabledStatuses: nextStatuses };
+                      setLocalNotificationSettings(nextSettings);
+                      setPendingNotificationSettings(nextSettings);
                       startNotificationTransition(async () => {
                         await setNotificationStatuses(nextStatuses);
                       });

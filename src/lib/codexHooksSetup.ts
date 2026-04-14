@@ -39,6 +39,19 @@ exit 0
 export const HOOK_SCRIPT_NAME = "kanvibe-notify-hook.sh";
 export const CONFIG_FILE_NAME = "config.toml";
 
+function hasTaskIdPayloadBinding(content: string, taskId?: string): boolean {
+  if (!taskId) return true;
+
+  return content.includes(`TASK_ID="${taskId}"`) && content.includes('\\\"taskId\\\": \\\"\\${TASK_ID}\\\"');
+}
+
+function hasLegacyBranchPayloadBinding(content: string): boolean {
+  return content.includes('BRANCH_NAME=$(git rev-parse --abbrev-ref HEAD')
+    && content.includes('PROJECT_NAME="')
+    && content.includes('\\\"branchName\\\": \\\"${BRANCH_NAME}\\\"')
+    && content.includes('\\\"projectName\\\": \\\"${PROJECT_NAME}\\\"');
+}
+
 /** 기존 config.toml 내용을 읽거나 빈 문자열을 반환한다 */
 async function readConfigToml(configPath: string): Promise<string> {
   try {
@@ -120,10 +133,7 @@ export async function getCodexHooksStatus(repoPath: string, taskId?: string): Pr
   const notifyContent = notifyScriptExists
     ? await readFile(notifyScriptPath, "utf-8").catch(() => "")
     : "";
-  const taskBindingFragments = taskId
-    ? [`TASK_ID=\"${taskId}\"`, '\\\"taskId\\\": \\\"\\${TASK_ID}\\\"']
-    : [];
-  const hasTaskIdBinding = taskBindingFragments.length === 0 || taskBindingFragments.every((fragment) => notifyContent.includes(fragment));
+  const hasTaskIdBinding = hasTaskIdPayloadBinding(notifyContent, taskId) || hasLegacyBranchPayloadBinding(notifyContent);
   const hasReviewStatus = notifyContent.includes('\\\"status\\\": \\\"review\\\"');
   const hasAgentTurnCompleteFilter = notifyContent.includes('EVENT_TYPE') && notifyContent.includes('agent-turn-complete');
 

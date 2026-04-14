@@ -73,6 +73,19 @@ interface MatcherHookEntry extends HookEntry {
   matcher: string;
 }
 
+function hasTaskIdPayloadBinding(content: string, taskId?: string): boolean {
+  if (!taskId) return true;
+
+  return content.includes(`TASK_ID="${taskId}"`) && content.includes('\\\"taskId\\\": \\\"\\${TASK_ID}\\\"');
+}
+
+function hasLegacyBranchPayloadBinding(content: string): boolean {
+  return content.includes('BRANCH_NAME=$(git rev-parse --abbrev-ref HEAD')
+    && content.includes('PROJECT_NAME="')
+    && content.includes('\\\"branchName\\\": \\\"${BRANCH_NAME}\\\"')
+    && content.includes('\\\"projectName\\\": \\\"${PROJECT_NAME}\\\"');
+}
+
 /** 기존 settings.json을 읽거나 빈 객체를 반환한다 */
 async function readSettingsJson(settingsPath: string): Promise<ClaudeSettings> {
   try {
@@ -232,12 +245,9 @@ export async function getClaudeHooksStatus(repoPath: string, taskId?: string): P
     questionScriptExists ? readFile(questionScriptPath, "utf-8").catch(() => "") : Promise.resolve(""),
   ]);
 
-  const taskBindingFragments = taskId
-    ? [`TASK_ID=\"${taskId}\"`, '\\\"taskId\\\": \\\"\\${TASK_ID}\\\"']
-    : [];
   const scriptContents = [promptContent, stopContent, questionContent];
-  const hasTaskIdBinding = taskBindingFragments.length === 0 || scriptContents.every((content) =>
-    taskBindingFragments.every((fragment) => content.includes(fragment))
+  const hasTaskIdBinding = scriptContents.every((content) =>
+    hasTaskIdPayloadBinding(content, taskId) || hasLegacyBranchPayloadBinding(content)
   );
   const hasStatusMappings =
     promptContent.includes('\\\"status\\\": \\\"progress\\\"') &&

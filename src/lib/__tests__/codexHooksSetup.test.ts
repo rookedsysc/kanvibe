@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { mkdtemp, readFile, rm } from "fs/promises";
+import { mkdtemp, mkdir, readFile, rm, writeFile } from "fs/promises";
 import { join } from "path";
 import { tmpdir } from "os";
 import { setupCodexHooks, getCodexHooksStatus } from "../codexHooksSetup";
@@ -97,7 +97,26 @@ describe("codexHooksSetup", () => {
         installed: true,
         hasNotifyHook: true,
         hasConfigEntry: true,
+        hasTaskIdBinding: true,
+        hasReviewStatus: true,
+        hasAgentTurnCompleteFilter: true,
       });
+    });
+
+    it("should treat legacy branch-targeted notify script as installed", async () => {
+      // Given
+      const repoPath = tempDir;
+      const hooksDir = join(repoPath, ".codex", "hooks");
+      await mkdir(hooksDir, { recursive: true });
+      await writeFile(join(hooksDir, "kanvibe-notify-hook.sh"), `#!/bin/bash\nPROJECT_NAME="kanvibe"\nJSON_PAYLOAD="$1"\nEVENT_TYPE=$(echo "$JSON_PAYLOAD" | grep -o '"type":"[^"]*"' | head -1 | cut -d'"' -f4)\nif [ "$EVENT_TYPE" != "agent-turn-complete" ]; then\n  exit 0\nfi\nBRANCH_NAME=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)\ncurl -d "{\\"branchName\\": \\\"\${BRANCH_NAME}\\\", \\\"projectName\\": \\\"\${PROJECT_NAME}\\\", \\\"status\\": \\\"review\\\"}"\n`, "utf-8");
+      await writeFile(join(repoPath, ".codex", "config.toml"), 'notify = [".codex/hooks/kanvibe-notify-hook.sh"]\n', "utf-8");
+
+      // When
+      const status = await getCodexHooksStatus(repoPath, "task-1");
+
+      // Then
+      expect(status.installed).toBe(true);
+      expect(status.hasTaskIdBinding).toBe(true);
     });
   });
 });
