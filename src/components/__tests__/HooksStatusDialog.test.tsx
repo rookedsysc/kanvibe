@@ -83,6 +83,16 @@ describe("HooksStatusDialog", () => {
     hasDuplicateProgressGuard: true,
   };
 
+  const incompleteOpenCodeStatus = {
+    installed: false,
+    hasPlugin: true,
+    hasTaskIdBinding: true,
+    hasStatusEndpoint: true,
+    hasEventMappings: true,
+    hasMainSessionGuard: true,
+    hasDuplicateProgressGuard: false,
+  };
+
   it("should not render when isOpen is false", () => {
     // Given
     const props = {
@@ -381,6 +391,30 @@ describe("HooksStatusDialog", () => {
     // Then
     await waitFor(() => {
       expect(screen.getByText("openCodeHooksInstallSuccess")).toBeTruthy();
+    });
+  });
+
+  it("should show incomplete verification message when OpenCode install needs follow-up checks", async () => {
+    // Given
+    mockInstallTaskOpenCodeHooks.mockResolvedValue({ success: true, status: incompleteOpenCodeStatus });
+    const props = {
+      isOpen: true,
+      onClose: vi.fn(),
+      taskId: "task-1",
+      claudeStatus: verifiedClaudeStatus,
+      geminiStatus: verifiedGeminiStatus,
+      codexStatus: verifiedCodexStatus,
+      openCodeStatus: null,
+      isRemote: false,
+    };
+
+    // When
+    renderDialog(props);
+    fireEvent.click(screen.getAllByText("installHooks")[0]);
+
+    // Then
+    await waitFor(() => {
+      expect(screen.getByText("hooksInstallIncomplete")).toBeTruthy();
     });
   });
 

@@ -221,6 +221,7 @@
     "geminiHooksInstallSuccess": "Gemini CLI hooks 安装完成",
     "codexHooksInstallSuccess": "Codex CLI hooks 安装完成",
     "openCodeHooksInstallSuccess": "OpenCode hooks 安装完成",
+    "hooksInstallIncomplete": "Hooks 已安装，但所需的校验项尚未全部通过。",
     "hooksInstallFailed": "Hooks 安装失败",
     "hooksRemoteNotSupported": "不支持远程项目",
     "aiSessions": {
