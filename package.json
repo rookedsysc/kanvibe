@@ -39,7 +39,6 @@
       "esbuild",
       "node-pty",
       "sharp",
-      "ssh2",
       "unrs-resolver",
       "better-sqlite3"
     ]
@@ -60,7 +59,6 @@
     "react-dom": "19.2.3",
     "react-router-dom": "^7.9.4",
     "reflect-metadata": "^0.2.2",
-    "ssh2": "^1.17.0",
     "tsx": "^4.21.0",
     "typeorm": "^0.3.28",
     "uuid": "^13.0.0",
@@ -75,7 +73,6 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
-    "@types/ssh2": "^1.15.5",
     "@types/uuid": "^10.0.0",
     "@types/ws": "^8.18.1",
     "@vitejs/plugin-react": "^5.1.4",

@@ -269,7 +269,7 @@ Review code changes directly in the browser with a GitHub-style diff viewer. Cli
 | Database | SQLite + TypeORM + better-sqlite3 |
 | Styling | Tailwind CSS v4 |
 | Terminal | xterm.js + WebSocket + node-pty |
-| SSH | ssh2 (Node.js) |
+| SSH | system ssh binary |
 | Drag & Drop | @hello-pangea/dnd |
 | i18n | next-intl |
 | Desktop Packaging | Electron + Electron Builder |
