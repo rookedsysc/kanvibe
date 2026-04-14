@@ -99,17 +99,31 @@ export interface CodexHooksStatus {
   installed: boolean;
   hasNotifyHook: boolean;
   hasConfigEntry: boolean;
+  hasTaskIdBinding?: boolean;
+  hasReviewStatus?: boolean;
+  hasAgentTurnCompleteFilter?: boolean;
 }
 
 /** 지정된 repo의 Codex CLI hooks 설치 상태를 확인한다 */
-export async function getCodexHooksStatus(repoPath: string): Promise<CodexHooksStatus> {
+export async function getCodexHooksStatus(repoPath: string, taskId?: string): Promise<CodexHooksStatus> {
   const codexDir = path.join(repoPath, ".codex");
   const hooksDir = path.join(codexDir, "hooks");
   const configPath = path.join(codexDir, CONFIG_FILE_NAME);
+  const notifyScriptPath = path.join(hooksDir, HOOK_SCRIPT_NAME);
 
-  const notifyScriptExists = await access(path.join(hooksDir, HOOK_SCRIPT_NAME))
+  const notifyScriptExists = await access(notifyScriptPath)
     .then(() => true)
     .catch(() => false);
+
+  const notifyContent = notifyScriptExists
+    ? await readFile(notifyScriptPath, "utf-8").catch(() => "")
+    : "";
+  const taskBindingFragments = taskId
+    ? [`TASK_ID=\"${taskId}\"`, '\\\"taskId\\\": \\\"\\${TASK_ID}\\\"']
+    : [];
+  const hasTaskIdBinding = taskBindingFragments.length === 0 || taskBindingFragments.every((fragment) => notifyContent.includes(fragment));
+  const hasReviewStatus = notifyContent.includes('\\\"status\\\": \\\"review\\\"');
+  const hasAgentTurnCompleteFilter = notifyContent.includes('EVENT_TYPE') && notifyContent.includes('agent-turn-complete');
 
   let hasConfigEntry = false;
   try {
@@ -119,11 +133,14 @@ export async function getCodexHooksStatus(repoPath: string): Promise<CodexHooksS
     /* config.toml 없음 */
   }
 
-  const installed = notifyScriptExists && hasConfigEntry;
+  const installed = notifyScriptExists && hasConfigEntry && hasTaskIdBinding && hasReviewStatus && hasAgentTurnCompleteFilter;
 
   return {
     installed,
     hasNotifyHook: notifyScriptExists,
     hasConfigEntry,
+    hasTaskIdBinding,
+    hasReviewStatus,
+    hasAgentTurnCompleteFilter,
   };
 }

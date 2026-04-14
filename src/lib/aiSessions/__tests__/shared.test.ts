@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { sortMessagesDescending } from "@/lib/aiSessions/shared";
+import { normalizeText, sortMessagesDescending } from "@/lib/aiSessions/shared";
 
 describe("sortMessagesDescending", () => {
   it("should sort session detail messages from newest to oldest", () => {
@@ -10,5 +10,13 @@ describe("sortMessagesDescending", () => {
     ]);
 
     expect(result.map((message) => message.text)).toEqual(["new", "mid", "old"]);
+  });
+});
+
+describe("normalizeText", () => {
+  it("should remove pasted placeholders and transport noise", () => {
+    const result = normalizeText(`Fix hook state\n[Pasted ~33 lines]\n[remote-ssh] command failed {\nsshHost: 'roky-home'\nerror: 'server exited unexpectedly'\n    at createSessionWithoutWorktree (/tmp/worktree.js:1:1)\nmain branch tmux session failed`);
+
+    expect(result).toBe("Fix hook state main branch tmux session failed");
   });
 });

@@ -101,6 +101,9 @@ describe("openCodeHooksSetup", () => {
       expect(pluginContent).toContain("result.data?.parentID");
       expect(pluginContent).toContain("properties?.info ?? (event as any).properties?.message");
       expect(pluginContent).toContain("return sessionCache.get(sessionID) ?? false");
+      expect(pluginContent).toContain("lastUserMessageBySession");
+      expect(pluginContent).toContain("buildMessageSignature");
+      expect(pluginContent).toContain("dedupeMessage: true");
       expect(pluginContent).toMatch(/message\.updated[\s\S]*?isMainSession\(message\)/);
       expect(pluginContent).toMatch(/question\.asked[\s\S]*?isMainSession\(event\.properties\)/);
       expect(pluginContent).toMatch(/question\.replied[\s\S]*?isMainSession\(event\.properties\)/);
@@ -133,6 +136,8 @@ describe("openCodeHooksSetup", () => {
 
       // Then
       expect(status.installed).toBe(true);
+      expect(status.hasDuplicateProgressGuard).toBe(true);
+      expect(status.hasEventMappings).toBe(true);
     });
 
     it("should return installed: false when no plugin exists", async () => {

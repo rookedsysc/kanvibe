@@ -45,6 +45,44 @@ describe("HooksStatusDialog", () => {
     return render(<HooksStatusDialog {...props} />);
   };
 
+  const verifiedClaudeStatus = {
+    installed: true,
+    hasPromptHook: true,
+    hasStopHook: true,
+    hasQuestionHook: true,
+    hasSettingsEntry: true,
+    hasTaskIdBinding: true,
+    hasStatusMappings: true,
+  };
+
+  const verifiedGeminiStatus = {
+    installed: true,
+    hasPromptHook: true,
+    hasStopHook: true,
+    hasSettingsEntry: true,
+    hasTaskIdBinding: true,
+    hasStatusMappings: true,
+  };
+
+  const verifiedCodexStatus = {
+    installed: true,
+    hasNotifyHook: true,
+    hasConfigEntry: true,
+    hasTaskIdBinding: true,
+    hasReviewStatus: true,
+    hasAgentTurnCompleteFilter: true,
+  };
+
+  const verifiedOpenCodeStatus = {
+    installed: true,
+    hasPlugin: true,
+    hasTaskIdBinding: true,
+    hasStatusEndpoint: true,
+    hasEventMappings: true,
+    hasMainSessionGuard: true,
+    hasDuplicateProgressGuard: true,
+  };
+
   it("should not render when isOpen is false", () => {
     // Given
     const props = {
@@ -132,7 +170,7 @@ describe("HooksStatusDialog", () => {
 
   it("should call installTaskHooks when Claude install button is clicked", async () => {
     // Given
-    mockInstallTaskHooks.mockResolvedValue({ success: true });
+    mockInstallTaskHooks.mockResolvedValue({ success: true, status: verifiedClaudeStatus });
     const props = {
       isOpen: true,
       onClose: vi.fn(),
@@ -157,7 +195,7 @@ describe("HooksStatusDialog", () => {
 
   it("should show success message when Claude hooks installation succeeds", async () => {
     // Given
-    mockInstallTaskHooks.mockResolvedValue({ success: true });
+    mockInstallTaskHooks.mockResolvedValue({ success: true, status: verifiedClaudeStatus });
     const props = {
       isOpen: true,
       onClose: vi.fn(),
@@ -207,12 +245,12 @@ describe("HooksStatusDialog", () => {
 
   it("should call installTaskGeminiHooks when Gemini install button is clicked", async () => {
     // Given
-    mockInstallTaskGeminiHooks.mockResolvedValue({ success: true });
+    mockInstallTaskGeminiHooks.mockResolvedValue({ success: true, status: verifiedGeminiStatus });
     const props = {
       isOpen: true,
       onClose: vi.fn(),
       taskId: "task-1",
-      claudeStatus: { installed: true, hasPromptHook: true, hasStopHook: true, hasQuestionHook: true, hasSettingsEntry: true },
+      claudeStatus: verifiedClaudeStatus,
       geminiStatus: null,
       codexStatus: null,
       openCodeStatus: null,
@@ -232,12 +270,12 @@ describe("HooksStatusDialog", () => {
 
   it("should show Gemini success message when Gemini hooks installation succeeds", async () => {
     // Given
-    mockInstallTaskGeminiHooks.mockResolvedValue({ success: true });
+    mockInstallTaskGeminiHooks.mockResolvedValue({ success: true, status: verifiedGeminiStatus });
     const props = {
       isOpen: true,
       onClose: vi.fn(),
       taskId: "task-1",
-      claudeStatus: { installed: true, hasPromptHook: true, hasStopHook: true, hasQuestionHook: true, hasSettingsEntry: true },
+      claudeStatus: verifiedClaudeStatus,
       geminiStatus: null,
       codexStatus: null,
       openCodeStatus: null,
@@ -257,13 +295,13 @@ describe("HooksStatusDialog", () => {
 
   it("should call installTaskCodexHooks when Codex install button is clicked", async () => {
     // Given
-    mockInstallTaskCodexHooks.mockResolvedValue({ success: true });
+    mockInstallTaskCodexHooks.mockResolvedValue({ success: true, status: verifiedCodexStatus });
     const props = {
       isOpen: true,
       onClose: vi.fn(),
       taskId: "task-1",
-      claudeStatus: { installed: true, hasPromptHook: true, hasStopHook: true, hasQuestionHook: true, hasSettingsEntry: true },
-      geminiStatus: { installed: true, hasPromptHook: true, hasStopHook: true, hasSettingsEntry: true },
+      claudeStatus: verifiedClaudeStatus,
+      geminiStatus: verifiedGeminiStatus,
       codexStatus: null,
       openCodeStatus: null,
       isRemote: false,
@@ -282,13 +320,13 @@ describe("HooksStatusDialog", () => {
 
   it("should show Codex success message when Codex hooks installation succeeds", async () => {
     // Given
-    mockInstallTaskCodexHooks.mockResolvedValue({ success: true });
+    mockInstallTaskCodexHooks.mockResolvedValue({ success: true, status: verifiedCodexStatus });
     const props = {
       isOpen: true,
       onClose: vi.fn(),
       taskId: "task-1",
-      claudeStatus: { installed: true, hasPromptHook: true, hasStopHook: true, hasQuestionHook: true, hasSettingsEntry: true },
-      geminiStatus: { installed: true, hasPromptHook: true, hasStopHook: true, hasSettingsEntry: true },
+      claudeStatus: verifiedClaudeStatus,
+      geminiStatus: verifiedGeminiStatus,
       codexStatus: null,
       openCodeStatus: null,
       isRemote: false,
@@ -307,14 +345,14 @@ describe("HooksStatusDialog", () => {
 
   it("should call installTaskOpenCodeHooks when OpenCode install button is clicked", async () => {
     // Given
-    mockInstallTaskOpenCodeHooks.mockResolvedValue({ success: true });
+    mockInstallTaskOpenCodeHooks.mockResolvedValue({ success: true, status: verifiedOpenCodeStatus });
     const props = {
       isOpen: true,
       onClose: vi.fn(),
       taskId: "task-1",
-      claudeStatus: { installed: true, hasPromptHook: true, hasStopHook: true, hasQuestionHook: true, hasSettingsEntry: true },
-      geminiStatus: { installed: true, hasPromptHook: true, hasStopHook: true, hasSettingsEntry: true },
-      codexStatus: { installed: true, hasNotifyHook: true, hasConfigEntry: true },
+      claudeStatus: verifiedClaudeStatus,
+      geminiStatus: verifiedGeminiStatus,
+      codexStatus: verifiedCodexStatus,
       openCodeStatus: null,
       isRemote: false,
     };
@@ -332,14 +370,14 @@ describe("HooksStatusDialog", () => {
 
   it("should show OpenCode success message when OpenCode hooks installation succeeds", async () => {
     // Given
-    mockInstallTaskOpenCodeHooks.mockResolvedValue({ success: true });
+    mockInstallTaskOpenCodeHooks.mockResolvedValue({ success: true, status: verifiedOpenCodeStatus });
     const props = {
       isOpen: true,
       onClose: vi.fn(),
       taskId: "task-1",
-      claudeStatus: { installed: true, hasPromptHook: true, hasStopHook: true, hasQuestionHook: true, hasSettingsEntry: true },
-      geminiStatus: { installed: true, hasPromptHook: true, hasStopHook: true, hasSettingsEntry: true },
-      codexStatus: { installed: true, hasNotifyHook: true, hasConfigEntry: true },
+      claudeStatus: verifiedClaudeStatus,
+      geminiStatus: verifiedGeminiStatus,
+      codexStatus: verifiedCodexStatus,
       openCodeStatus: null,
       isRemote: false,
     };
@@ -361,7 +399,7 @@ describe("HooksStatusDialog", () => {
       isOpen: true,
       onClose: vi.fn(),
       taskId: "task-1",
-      claudeStatus: { installed: true, hasPromptHook: true, hasStopHook: true, hasQuestionHook: true, hasSettingsEntry: true },
+      claudeStatus: verifiedClaudeStatus,
       geminiStatus: null,
       codexStatus: null,
       openCodeStatus: null,
@@ -382,7 +420,7 @@ describe("HooksStatusDialog", () => {
     mockInstallTaskHooks.mockImplementation(
       () =>
         new Promise((resolve) =>
-          setTimeout(() => resolve({ success: true }), 1000)
+          setTimeout(() => resolve({ success: true, status: verifiedClaudeStatus }), 1000)
         )
     );
     const props = {

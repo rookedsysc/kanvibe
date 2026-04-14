@@ -59,7 +59,7 @@ export function getProjectHooksStatus(projectId: string): Promise<ClaudeHooksSta
   return invokeDesktop("project", "getProjectHooksStatus", projectId);
 }
 
-export function installProjectHooks(projectId: string): Promise<{ success: boolean; error?: string }> {
+export function installProjectHooks(projectId: string): Promise<{ success: boolean; error?: string; status?: ClaudeHooksStatus | null }> {
   return invokeAndRefresh("installProjectHooks", projectId);
 }
 
@@ -67,7 +67,7 @@ export function getTaskHooksStatus(taskId: string): Promise<ClaudeHooksStatus | 
   return invokeDesktop("project", "getTaskHooksStatus", taskId);
 }
 
-export function installTaskHooks(taskId: string): Promise<{ success: boolean; error?: string }> {
+export function installTaskHooks(taskId: string): Promise<{ success: boolean; error?: string; status?: ClaudeHooksStatus | null }> {
   return invokeAndRefresh("installTaskHooks", taskId);
 }
 
@@ -75,7 +75,7 @@ export function getProjectGeminiHooksStatus(projectId: string): Promise<GeminiHo
   return invokeDesktop("project", "getProjectGeminiHooksStatus", projectId);
 }
 
-export function installProjectGeminiHooks(projectId: string): Promise<{ success: boolean; error?: string }> {
+export function installProjectGeminiHooks(projectId: string): Promise<{ success: boolean; error?: string; status?: GeminiHooksStatus | null }> {
   return invokeAndRefresh("installProjectGeminiHooks", projectId);
 }
 
@@ -83,7 +83,7 @@ export function getTaskGeminiHooksStatus(taskId: string): Promise<GeminiHooksSta
   return invokeDesktop("project", "getTaskGeminiHooksStatus", taskId);
 }
 
-export function installTaskGeminiHooks(taskId: string): Promise<{ success: boolean; error?: string }> {
+export function installTaskGeminiHooks(taskId: string): Promise<{ success: boolean; error?: string; status?: GeminiHooksStatus | null }> {
   return invokeAndRefresh("installTaskGeminiHooks", taskId);
 }
 
@@ -91,7 +91,7 @@ export function getProjectCodexHooksStatus(projectId: string): Promise<CodexHook
   return invokeDesktop("project", "getProjectCodexHooksStatus", projectId);
 }
 
-export function installProjectCodexHooks(projectId: string): Promise<{ success: boolean; error?: string }> {
+export function installProjectCodexHooks(projectId: string): Promise<{ success: boolean; error?: string; status?: CodexHooksStatus | null }> {
   return invokeAndRefresh("installProjectCodexHooks", projectId);
 }
 
@@ -99,15 +99,15 @@ export function getTaskCodexHooksStatus(taskId: string): Promise<CodexHooksStatu
   return invokeDesktop("project", "getTaskCodexHooksStatus", taskId);
 }
 
-export function installTaskCodexHooks(taskId: string): Promise<{ success: boolean; error?: string }> {
+export function installTaskCodexHooks(taskId: string): Promise<{ success: boolean; error?: string; status?: CodexHooksStatus | null }> {
   return invokeAndRefresh("installTaskCodexHooks", taskId);
 }
 
-export function installProjectOpenCodeHooks(projectId: string): Promise<{ success: boolean; error?: string }> {
+export function installProjectOpenCodeHooks(projectId: string): Promise<{ success: boolean; error?: string; status?: OpenCodeHooksStatus | null }> {
   return invokeAndRefresh("installProjectOpenCodeHooks", projectId);
 }
 
-export function installTaskOpenCodeHooks(taskId: string): Promise<{ success: boolean; error?: string }> {
+export function installTaskOpenCodeHooks(taskId: string): Promise<{ success: boolean; error?: string; status?: OpenCodeHooksStatus | null }> {
   return invokeAndRefresh("installTaskOpenCodeHooks", taskId);
 }
 

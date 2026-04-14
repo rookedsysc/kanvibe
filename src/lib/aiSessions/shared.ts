@@ -76,7 +76,25 @@ export function limitPreviewMessages(messages: AggregatedAiMessage[]): Aggregate
 }
 
 export function normalizeText(value: string): string {
-  return value.replace(/\s+/g, " ").trim();
+  const sanitized = value
+    .replace(/\[Pasted ~\d+ lines\]/g, " ")
+    .split(/\r?\n/)
+    .filter((line) => {
+      const trimmed = line.trim();
+      if (!trimmed) return false;
+
+      return ![
+        /^\[(?:remote-ssh|터미널|terminal)\]/,
+        /^sshHost:/,
+        /^command:/,
+        /^sshArgs:/,
+        /^error:/,
+        /^at\s+.*:\d+:\d+\)?$/,
+      ].some((pattern) => pattern.test(trimmed));
+    })
+    .join(" ");
+
+  return sanitized.replace(/\s+/g, " ").trim();
 }
 
 export function truncateText(value: string, maxLength = MAX_PREVIEW_TEXT_LENGTH): string {

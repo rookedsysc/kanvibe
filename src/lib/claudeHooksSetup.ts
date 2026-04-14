@@ -201,23 +201,46 @@ export interface ClaudeHooksStatus {
   hasStopHook: boolean;
   hasQuestionHook: boolean;
   hasSettingsEntry: boolean;
+  hasTaskIdBinding?: boolean;
+  hasStatusMappings?: boolean;
 }
 
 /** 지정된 repo의 Claude Code hooks 설치 상태를 확인한다 */
-export async function getClaudeHooksStatus(repoPath: string): Promise<ClaudeHooksStatus> {
+export async function getClaudeHooksStatus(repoPath: string, taskId?: string): Promise<ClaudeHooksStatus> {
   const claudeDir = path.join(repoPath, ".claude");
   const hooksDir = path.join(claudeDir, "hooks");
   const settingsPath = path.join(claudeDir, "settings.json");
+  const promptScriptPath = path.join(hooksDir, "kanvibe-prompt-hook.sh");
+  const stopScriptPath = path.join(hooksDir, "kanvibe-stop-hook.sh");
+  const questionScriptPath = path.join(hooksDir, "kanvibe-question-hook.sh");
 
-  const promptScriptExists = await access(path.join(hooksDir, "kanvibe-prompt-hook.sh"))
+  const promptScriptExists = await access(promptScriptPath)
     .then(() => true)
     .catch(() => false);
-  const stopScriptExists = await access(path.join(hooksDir, "kanvibe-stop-hook.sh"))
+  const stopScriptExists = await access(stopScriptPath)
     .then(() => true)
     .catch(() => false);
-  const questionScriptExists = await access(path.join(hooksDir, "kanvibe-question-hook.sh"))
+  const questionScriptExists = await access(questionScriptPath)
     .then(() => true)
     .catch(() => false);
+
+  const [promptContent, stopContent, questionContent] = await Promise.all([
+    promptScriptExists ? readFile(promptScriptPath, "utf-8").catch(() => "") : Promise.resolve(""),
+    stopScriptExists ? readFile(stopScriptPath, "utf-8").catch(() => "") : Promise.resolve(""),
+    questionScriptExists ? readFile(questionScriptPath, "utf-8").catch(() => "") : Promise.resolve(""),
+  ]);
+
+  const taskBindingFragments = taskId
+    ? [`TASK_ID=\"${taskId}\"`, '\\\"taskId\\\": \\\"\\${TASK_ID}\\\"']
+    : [];
+  const scriptContents = [promptContent, stopContent, questionContent];
+  const hasTaskIdBinding = taskBindingFragments.length === 0 || scriptContents.every((content) =>
+    taskBindingFragments.every((fragment) => content.includes(fragment))
+  );
+  const hasStatusMappings =
+    promptContent.includes('\\\"status\\\": \\\"progress\\\"') &&
+    stopContent.includes('\\\"status\\\": \\\"review\\\"') &&
+    questionContent.includes('\\\"status\\\": \\\"pending\\\"');
 
   let hasSettingsEntry = false;
   try {
@@ -234,7 +257,7 @@ export async function getClaudeHooksStatus(repoPath: string): Promise<ClaudeHook
     /* settings.json 없음 */
   }
 
-  const installed = promptScriptExists && stopScriptExists && questionScriptExists && hasSettingsEntry;
+  const installed = promptScriptExists && stopScriptExists && questionScriptExists && hasSettingsEntry && hasTaskIdBinding && hasStatusMappings;
 
   return {
     installed,
@@ -242,5 +265,7 @@ export async function getClaudeHooksStatus(repoPath: string): Promise<ClaudeHook
     hasStopHook: stopScriptExists,
     hasQuestionHook: questionScriptExists,
     hasSettingsEntry,
+    hasTaskIdBinding,
+    hasStatusMappings,
   };
 }

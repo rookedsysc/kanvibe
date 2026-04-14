@@ -6,6 +6,15 @@ import path from "path";
 
 const execAsync = promisify(exec);
 
+function summarizeCommandFailure(errorOutput: string): string {
+  const lines = errorOutput
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  return lines.at(-1) ?? "원격 명령 실행에 실패했습니다.";
+}
+
 /** 로컬에서 셸 명령을 실행하고 stdout을 반환한다 */
 async function execLocal(command: string): Promise<string> {
   const { stdout } = await execAsync(command);
@@ -48,7 +57,7 @@ async function execRemote(sshHost: string, command: string): Promise<string> {
         stream.on("close", (code: number) => {
           conn.end();
           if (code !== 0) {
-            reject(new Error(`SSH 명령 실패 (exit ${code}): ${errorOutput}`));
+            reject(new Error(`SSH 명령 실패 (exit ${code}): ${summarizeCommandFailure(errorOutput)}`));
           } else {
             resolve(output.trim());
           }

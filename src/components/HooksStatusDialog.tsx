@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useTranslations } from "next-intl";
 import {
   installTaskHooks,
@@ -24,6 +24,11 @@ interface HooksStatusDialogProps {
   isRemote: boolean;
 }
 
+interface StatusCheck {
+  label: string;
+  ok: boolean;
+}
+
 export default function HooksStatusDialog({
   isOpen,
   onClose,
@@ -45,18 +50,87 @@ export default function HooksStatusDialog({
     text: string;
   } | null>(null);
 
+  useEffect(() => {
+    setLocalClaudeStatus(claudeStatus);
+  }, [claudeStatus]);
+
+  useEffect(() => {
+    setLocalGeminiStatus(geminiStatus);
+  }, [geminiStatus]);
+
+  useEffect(() => {
+    setLocalCodexStatus(codexStatus);
+  }, [codexStatus]);
+
+  useEffect(() => {
+    setLocalOpenCodeStatus(openCodeStatus);
+  }, [openCodeStatus]);
+
+  function renderChecks(checks: StatusCheck[]) {
+    return (
+      <div className="mt-1 flex flex-wrap gap-1">
+        {checks.map((check) => (
+          <span
+            key={check.label}
+            className={`px-1.5 py-0.5 rounded text-[10px] border ${check.ok
+              ? "bg-status-done/10 text-status-done border-status-done/20"
+              : "bg-status-error/10 text-status-error border-status-error/20"
+            }`}
+          >
+            {check.label}
+          </span>
+        ))}
+      </div>
+    );
+  }
+
+  function applyClaudeResult(result: Awaited<ReturnType<typeof installTaskHooks>>) {
+    if (result.success && result.status) {
+      setLocalClaudeStatus(result.status);
+      setMessage({ type: result.status.installed ? "success" : "error", text: result.status.installed ? t("hooksInstallSuccess") : t("hooksInstallFailed") });
+      return;
+    }
+
+    setMessage({ type: "error", text: t("hooksInstallFailed") });
+  }
+
+  function applyGeminiResult(result: Awaited<ReturnType<typeof installTaskGeminiHooks>>) {
+    if (result.success && result.status) {
+      setLocalGeminiStatus(result.status);
+      setMessage({ type: result.status.installed ? "success" : "error", text: result.status.installed ? t("geminiHooksInstallSuccess") : t("hooksInstallFailed") });
+      return;
+    }
+
+    setMessage({ type: "error", text: t("hooksInstallFailed") });
+  }
+
+  function applyCodexResult(result: Awaited<ReturnType<typeof installTaskCodexHooks>>) {
+    if (result.success && result.status) {
+      setLocalCodexStatus(result.status);
+      setMessage({ type: result.status.installed ? "success" : "error", text: result.status.installed ? t("codexHooksInstallSuccess") : t("hooksInstallFailed") });
+      return;
+    }
+
+    setMessage({ type: "error", text: t("hooksInstallFailed") });
+  }
+
+  function applyOpenCodeResult(result: Awaited<ReturnType<typeof installTaskOpenCodeHooks>>) {
+    if (result.success && result.status) {
+      setLocalOpenCodeStatus(result.status);
+      setMessage({ type: result.status.installed ? "success" : "error", text: result.status.installed ? t("openCodeHooksInstallSuccess") : t("hooksInstallFailed") });
+      return;
+    }
+
+    setMessage({ type: "error", text: t("hooksInstallFailed") });
+  }
+
   if (!isOpen) return null;
 
   function handleInstallClaude() {
     setMessage(null);
     startTransition(async () => {
       const result = await installTaskHooks(taskId);
-      if (result.success) {
-        setLocalClaudeStatus({ installed: true, hasPromptHook: true, hasStopHook: true, hasQuestionHook: true, hasSettingsEntry: true });
-        setMessage({ type: "success", text: t("hooksInstallSuccess") });
-      } else {
-        setMessage({ type: "error", text: t("hooksInstallFailed") });
-      }
+      applyClaudeResult(result);
     });
   }
 
@@ -64,12 +138,7 @@ export default function HooksStatusDialog({
     setMessage(null);
     startTransition(async () => {
       const result = await installTaskGeminiHooks(taskId);
-      if (result.success) {
-        setLocalGeminiStatus({ installed: true, hasPromptHook: true, hasStopHook: true, hasSettingsEntry: true });
-        setMessage({ type: "success", text: t("geminiHooksInstallSuccess") });
-      } else {
-        setMessage({ type: "error", text: t("hooksInstallFailed") });
-      }
+      applyGeminiResult(result);
     });
   }
 
@@ -77,12 +146,7 @@ export default function HooksStatusDialog({
     setMessage(null);
     startTransition(async () => {
       const result = await installTaskCodexHooks(taskId);
-      if (result.success) {
-        setLocalCodexStatus({ installed: true, hasNotifyHook: true, hasConfigEntry: true });
-        setMessage({ type: "success", text: t("codexHooksInstallSuccess") });
-      } else {
-        setMessage({ type: "error", text: t("hooksInstallFailed") });
-      }
+      applyCodexResult(result);
     });
   }
 
@@ -90,12 +154,7 @@ export default function HooksStatusDialog({
     setMessage(null);
     startTransition(async () => {
       const result = await installTaskOpenCodeHooks(taskId);
-      if (result.success) {
-        setLocalOpenCodeStatus({ installed: true, hasPlugin: true });
-        setMessage({ type: "success", text: t("openCodeHooksInstallSuccess") });
-      } else {
-        setMessage({ type: "error", text: t("hooksInstallFailed") });
-      }
+      applyOpenCodeResult(result);
     });
   }
 
@@ -149,8 +208,16 @@ export default function HooksStatusDialog({
                   {isPending ? t("installingHooks") : t("installHooks")}
                 </button>
               </>
-            )}
+              )}
           </div>
+          {localClaudeStatus && renderChecks([
+            { label: "prompt", ok: !!localClaudeStatus.hasPromptHook },
+            { label: "stop", ok: !!localClaudeStatus.hasStopHook },
+            { label: "question", ok: !!localClaudeStatus.hasQuestionHook },
+            { label: "settings", ok: !!localClaudeStatus.hasSettingsEntry },
+            { label: "task id", ok: !!localClaudeStatus.hasTaskIdBinding },
+            { label: "mapping", ok: !!localClaudeStatus.hasStatusMappings },
+          ])}
 
           {/* Gemini CLI Hooks */}
           <div className="flex items-center justify-between gap-2">
@@ -185,8 +252,15 @@ export default function HooksStatusDialog({
                   {isPending ? t("installingHooks") : t("installHooks")}
                 </button>
               </>
-            )}
+              )}
           </div>
+          {localGeminiStatus && renderChecks([
+            { label: "prompt", ok: !!localGeminiStatus.hasPromptHook },
+            { label: "stop", ok: !!localGeminiStatus.hasStopHook },
+            { label: "settings", ok: !!localGeminiStatus.hasSettingsEntry },
+            { label: "task id", ok: !!localGeminiStatus.hasTaskIdBinding },
+            { label: "mapping", ok: !!localGeminiStatus.hasStatusMappings },
+          ])}
 
           {/* Codex CLI Hooks */}
           <div className="flex items-center justify-between gap-2">
@@ -221,8 +295,15 @@ export default function HooksStatusDialog({
                   {isPending ? t("installingHooks") : t("installHooks")}
                 </button>
               </>
-            )}
+              )}
           </div>
+          {localCodexStatus && renderChecks([
+            { label: "notify", ok: !!localCodexStatus.hasNotifyHook },
+            { label: "config", ok: !!localCodexStatus.hasConfigEntry },
+            { label: "task id", ok: !!localCodexStatus.hasTaskIdBinding },
+            { label: "review", ok: !!localCodexStatus.hasReviewStatus },
+            { label: "event filter", ok: !!localCodexStatus.hasAgentTurnCompleteFilter },
+          ])}
 
           {/* OpenCode Hooks */}
           <div className="flex items-center justify-between gap-2">
@@ -257,8 +338,16 @@ export default function HooksStatusDialog({
                   {isPending ? t("installingHooks") : t("installHooks")}
                 </button>
               </>
-            )}
+              )}
           </div>
+          {localOpenCodeStatus && renderChecks([
+            { label: "plugin", ok: !!localOpenCodeStatus.hasPlugin },
+            { label: "task id", ok: !!localOpenCodeStatus.hasTaskIdBinding },
+            { label: "endpoint", ok: !!localOpenCodeStatus.hasStatusEndpoint },
+            { label: "mapping", ok: !!localOpenCodeStatus.hasEventMappings },
+            { label: "main only", ok: !!localOpenCodeStatus.hasMainSessionGuard },
+            { label: "late progress guard", ok: !!localOpenCodeStatus.hasDuplicateProgressGuard },
+          ])}
         </div>
 
         {message && (

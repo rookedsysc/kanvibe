@@ -162,20 +162,40 @@ export interface GeminiHooksStatus {
   hasPromptHook: boolean;
   hasStopHook: boolean;
   hasSettingsEntry: boolean;
+  hasTaskIdBinding?: boolean;
+  hasStatusMappings?: boolean;
 }
 
 /** 지정된 repo의 Gemini CLI hooks 설치 상태를 확인한다 */
-export async function getGeminiHooksStatus(repoPath: string): Promise<GeminiHooksStatus> {
+export async function getGeminiHooksStatus(repoPath: string, taskId?: string): Promise<GeminiHooksStatus> {
   const geminiDir = path.join(repoPath, ".gemini");
   const hooksDir = path.join(geminiDir, "hooks");
   const settingsPath = path.join(geminiDir, "settings.json");
+  const promptScriptPath = path.join(hooksDir, "kanvibe-prompt-hook.sh");
+  const stopScriptPath = path.join(hooksDir, "kanvibe-stop-hook.sh");
 
-  const promptScriptExists = await access(path.join(hooksDir, "kanvibe-prompt-hook.sh"))
+  const promptScriptExists = await access(promptScriptPath)
     .then(() => true)
     .catch(() => false);
-  const stopScriptExists = await access(path.join(hooksDir, "kanvibe-stop-hook.sh"))
+  const stopScriptExists = await access(stopScriptPath)
     .then(() => true)
     .catch(() => false);
+
+  const [promptContent, stopContent] = await Promise.all([
+    promptScriptExists ? readFile(promptScriptPath, "utf-8").catch(() => "") : Promise.resolve(""),
+    stopScriptExists ? readFile(stopScriptPath, "utf-8").catch(() => "") : Promise.resolve(""),
+  ]);
+
+  const taskBindingFragments = taskId
+    ? [`TASK_ID=\"${taskId}\"`, '\\\"taskId\\\": \\\"\\${TASK_ID}\\\"']
+    : [];
+  const scriptContents = [promptContent, stopContent];
+  const hasTaskIdBinding = taskBindingFragments.length === 0 || scriptContents.every((content) =>
+    taskBindingFragments.every((fragment) => content.includes(fragment))
+  );
+  const hasStatusMappings =
+    promptContent.includes('\\\"status\\\": \\\"progress\\\"') &&
+    stopContent.includes('\\\"status\\\": \\\"review\\\"');
 
   let hasSettingsEntry = false;
   try {
@@ -190,12 +210,14 @@ export async function getGeminiHooksStatus(repoPath: string): Promise<GeminiHook
     /* settings.json 없음 */
   }
 
-  const installed = promptScriptExists && stopScriptExists && hasSettingsEntry;
+  const installed = promptScriptExists && stopScriptExists && hasSettingsEntry && hasTaskIdBinding && hasStatusMappings;
 
   return {
     installed,
     hasPromptHook: promptScriptExists,
     hasStopHook: stopScriptExists,
     hasSettingsEntry,
+    hasTaskIdBinding,
+    hasStatusMappings,
   };
 }
