@@ -72,7 +72,7 @@ async function readConfigToml(configPath: string, sshHost?: string | null): Prom
 
 /** config.toml에 kanvibe notify hook이 등록되어 있는지 확인한다 */
 function hasKanvibeNotify(configContent: string): boolean {
-  return configContent.includes(HOOK_SCRIPT_NAME);
+  return /^notify\s*=\s*\["\.codex\/hooks\/kanvibe-notify-hook\.sh"\]$/m.test(configContent);
 }
 
 /**

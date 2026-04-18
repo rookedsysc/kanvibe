@@ -76,6 +76,10 @@ interface MatcherHookEntry extends HookEntry {
   matcher: string;
 }
 
+const CLAUDE_PROMPT_COMMAND = '"$CLAUDE_PROJECT_DIR"/.claude/hooks/kanvibe-prompt-hook.sh';
+const CLAUDE_STOP_COMMAND = '"$CLAUDE_PROJECT_DIR"/.claude/hooks/kanvibe-stop-hook.sh';
+const CLAUDE_QUESTION_COMMAND = '"$CLAUDE_PROJECT_DIR"/.claude/hooks/kanvibe-question-hook.sh';
+
 function hasTaskIdPayloadBinding(content: string, taskId?: string, boundTaskId?: string | null): boolean {
   const hasDynamicTaskIdResolver = content.includes(`TASK_ID_FILE="${KANVIBE_TASK_ID_RELATIVE_PATH}"`);
   const hasTaskIdPayload = content.includes("taskId") && content.includes("${TASK_ID}");
@@ -113,13 +117,33 @@ async function readSettingsJson(settingsPath: string, sshHost?: string | null): 
   }
 }
 
-/** kanvibe hook이 이미 등록되어 있는지 확인한다 */
-function hasKanvibeHook(hookEntries: unknown[], scriptName: string): boolean {
+/** 현재 bucket에 원하는 command hook이 정확히 등록되어 있는지 확인한다 */
+function hasCommandHook(hookEntries: unknown[], command: string): boolean {
   if (!Array.isArray(hookEntries)) return false;
   return hookEntries.some((entry) => {
     const typed = entry as HookEntry;
-    return typed.hooks?.some((h) => h.command?.includes(scriptName));
+    return typed.hooks?.some((hook) => hook.type === "command" && hook.command === command);
   });
+}
+
+function hasMatcherCommandHook(hookEntries: unknown[], matcher: string, command: string): boolean {
+  if (!Array.isArray(hookEntries)) return false;
+  return hookEntries.some((entry) => {
+    const typed = entry as MatcherHookEntry;
+    return typed.matcher === matcher && typed.hooks?.some((hook) => hook.type === "command" && hook.command === command);
+  });
+}
+
+function referencesScriptName(entry: unknown, scriptName: string): boolean {
+  return JSON.stringify(entry).includes(scriptName);
+}
+
+function upsertHookEntries<T>(hookEntries: unknown[] | undefined, scriptName: string, nextEntry: T): T[] {
+  const preservedEntries = Array.isArray(hookEntries)
+    ? hookEntries.filter((entry) => !referencesScriptName(entry, scriptName)) as T[]
+    : [];
+  preservedEntries.push(nextEntry);
+  return preservedEntries;
 }
 
 /**
@@ -157,67 +181,47 @@ export async function setupClaudeHooks(
 
   const hooks = settings.hooks as Record<string, unknown[]>;
 
-  if (!hooks.UserPromptSubmit) {
-    hooks.UserPromptSubmit = [];
-  }
-  if (!hasKanvibeHook(hooks.UserPromptSubmit, "kanvibe-prompt-hook.sh")) {
-    (hooks.UserPromptSubmit as HookEntry[]).push({
-      hooks: [
-        {
-          type: "command",
-          command: '"$CLAUDE_PROJECT_DIR"/.claude/hooks/kanvibe-prompt-hook.sh',
-          timeout: 10,
-        },
-      ],
-    });
-  }
+  hooks.UserPromptSubmit = upsertHookEntries<HookEntry>(hooks.UserPromptSubmit, "kanvibe-prompt-hook.sh", {
+    hooks: [
+      {
+        type: "command",
+        command: CLAUDE_PROMPT_COMMAND,
+        timeout: 10,
+      },
+    ],
+  });
 
-  if (!hooks.PreToolUse) {
-    hooks.PreToolUse = [];
-  }
-  if (!hasKanvibeHook(hooks.PreToolUse, "kanvibe-question-hook.sh")) {
-    (hooks.PreToolUse as MatcherHookEntry[]).push({
-      matcher: "AskUserQuestion",
-      hooks: [
-        {
-          type: "command",
-          command: '"$CLAUDE_PROJECT_DIR"/.claude/hooks/kanvibe-question-hook.sh',
-          timeout: 10,
-        },
-      ],
-    });
-  }
+  hooks.PreToolUse = upsertHookEntries<MatcherHookEntry>(hooks.PreToolUse, "kanvibe-question-hook.sh", {
+    matcher: "AskUserQuestion",
+    hooks: [
+      {
+        type: "command",
+        command: CLAUDE_QUESTION_COMMAND,
+        timeout: 10,
+      },
+    ],
+  });
 
-  if (!hooks.PostToolUse) {
-    hooks.PostToolUse = [];
-  }
-  if (!hasKanvibeHook(hooks.PostToolUse, "kanvibe-prompt-hook.sh")) {
-    (hooks.PostToolUse as MatcherHookEntry[]).push({
-      matcher: "AskUserQuestion",
-      hooks: [
-        {
-          type: "command",
-          command: '"$CLAUDE_PROJECT_DIR"/.claude/hooks/kanvibe-prompt-hook.sh',
-          timeout: 10,
-        },
-      ],
-    });
-  }
+  hooks.PostToolUse = upsertHookEntries<MatcherHookEntry>(hooks.PostToolUse, "kanvibe-prompt-hook.sh", {
+    matcher: "AskUserQuestion",
+    hooks: [
+      {
+        type: "command",
+        command: CLAUDE_PROMPT_COMMAND,
+        timeout: 10,
+      },
+    ],
+  });
 
-  if (!hooks.Stop) {
-    hooks.Stop = [];
-  }
-  if (!hasKanvibeHook(hooks.Stop, "kanvibe-stop-hook.sh")) {
-    (hooks.Stop as HookEntry[]).push({
-      hooks: [
-        {
-          type: "command",
-          command: '"$CLAUDE_PROJECT_DIR"/.claude/hooks/kanvibe-stop-hook.sh',
-          timeout: 10,
-        },
-      ],
-    });
-  }
+  hooks.Stop = upsertHookEntries<HookEntry>(hooks.Stop, "kanvibe-stop-hook.sh", {
+    hooks: [
+      {
+        type: "command",
+        command: CLAUDE_STOP_COMMAND,
+        timeout: 10,
+      },
+    ],
+  });
 
   await writeFile(settingsPath, JSON.stringify(settings, null, 2) + "\n", "utf-8");
 
@@ -281,10 +285,10 @@ export async function getClaudeHooksStatus(repoPath: string, taskId?: string, ss
     const settings = await readSettingsJson(settingsPath, sshHost);
     const hooks = settings.hooks as Record<string, unknown[]> | undefined;
     if (hooks) {
-      const hasPrompt = hasKanvibeHook(hooks.UserPromptSubmit || [], "kanvibe-prompt-hook.sh");
-      const hasStop = hasKanvibeHook(hooks.Stop || [], "kanvibe-stop-hook.sh");
-      const hasQuestion = hasKanvibeHook(hooks.PreToolUse || [], "kanvibe-question-hook.sh");
-      const hasAnswerResume = hasKanvibeHook(hooks.PostToolUse || [], "kanvibe-prompt-hook.sh");
+      const hasPrompt = hasCommandHook(hooks.UserPromptSubmit || [], CLAUDE_PROMPT_COMMAND);
+      const hasStop = hasCommandHook(hooks.Stop || [], CLAUDE_STOP_COMMAND);
+      const hasQuestion = hasMatcherCommandHook(hooks.PreToolUse || [], "AskUserQuestion", CLAUDE_QUESTION_COMMAND);
+      const hasAnswerResume = hasMatcherCommandHook(hooks.PostToolUse || [], "AskUserQuestion", CLAUDE_PROMPT_COMMAND);
       hasSettingsEntry = hasPrompt && hasStop && hasQuestion && hasAnswerResume;
     }
   } catch {

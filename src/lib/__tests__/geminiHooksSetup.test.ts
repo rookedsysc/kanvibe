@@ -90,6 +90,41 @@ describe("geminiHooksSetup", () => {
       expect(settings.hooks.BeforeAgent).toHaveLength(1);
       expect(settings.hooks.AfterAgent).toHaveLength(1);
     });
+
+    it("should repair stale Gemini hook command entries on reinstall", async () => {
+      await setupGeminiHooks(tmpDir, "task-1", "http://localhost:9736");
+
+      await writeFile(
+        path.join(tmpDir, ".gemini", "settings.json"),
+        JSON.stringify({
+          hooks: {
+            BeforeAgent: [
+              {
+                matcher: "*",
+                hooks: [{ type: "command", command: '"/tmp/old-project/.gemini/hooks/kanvibe-prompt-hook.sh"', timeout: 10000 }],
+              },
+            ],
+            AfterAgent: [
+              {
+                matcher: "*",
+                hooks: [{ type: "command", command: '"/tmp/old-project/.gemini/hooks/kanvibe-stop-hook.sh"', timeout: 10000 }],
+              },
+            ],
+          },
+        }, null, 2) + "\n",
+        "utf-8"
+      );
+
+      const staleStatus = await getGeminiHooksStatus(tmpDir);
+      expect(staleStatus.hasSettingsEntry).toBe(false);
+      expect(staleStatus.installed).toBe(false);
+
+      await setupGeminiHooks(tmpDir, "task-1", "http://localhost:9736");
+
+      const repairedSettings = JSON.parse(await readFile(path.join(tmpDir, ".gemini", "settings.json"), "utf-8"));
+      expect(repairedSettings.hooks.BeforeAgent[0].hooks[0].command).toBe('"$GEMINI_PROJECT_DIR"/.gemini/hooks/kanvibe-prompt-hook.sh');
+      expect(repairedSettings.hooks.AfterAgent[0].hooks[0].command).toBe('"$GEMINI_PROJECT_DIR"/.gemini/hooks/kanvibe-stop-hook.sh');
+    });
   });
 
   describe("getGeminiHooksStatus", () => {

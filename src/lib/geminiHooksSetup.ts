@@ -71,6 +71,9 @@ interface GeminiHookEntry {
   hooks: GeminiHookConfig[];
 }
 
+const GEMINI_PROMPT_COMMAND = '"$GEMINI_PROJECT_DIR"/.gemini/hooks/kanvibe-prompt-hook.sh';
+const GEMINI_STOP_COMMAND = '"$GEMINI_PROJECT_DIR"/.gemini/hooks/kanvibe-stop-hook.sh';
+
 function hasTaskIdPayloadBinding(content: string, taskId?: string, boundTaskId?: string | null): boolean {
   const hasDynamicTaskIdResolver = content.includes(`TASK_ID_FILE="${KANVIBE_TASK_ID_RELATIVE_PATH}"`);
   const hasTaskIdPayload = content.includes("taskId") && content.includes("${TASK_ID}");
@@ -108,13 +111,25 @@ async function readSettingsJson(settingsPath: string, sshHost?: string | null): 
   }
 }
 
-/** kanvibe hook이 이미 등록되어 있는지 확인한다 */
-function hasKanvibeHook(hookEntries: unknown[], scriptName: string): boolean {
+/** 현재 bucket에 원하는 Gemini hook command가 정확히 등록되어 있는지 확인한다 */
+function hasGeminiHook(hookEntries: unknown[], matcher: string, command: string): boolean {
   if (!Array.isArray(hookEntries)) return false;
   return hookEntries.some((entry) => {
     const typed = entry as GeminiHookEntry;
-    return typed.hooks?.some((h) => h.command?.includes(scriptName));
+    return typed.matcher === matcher && typed.hooks?.some((hook) => hook.type === "command" && hook.command === command);
   });
+}
+
+function referencesScriptName(entry: unknown, scriptName: string): boolean {
+  return JSON.stringify(entry).includes(scriptName);
+}
+
+function upsertGeminiHookEntries(hookEntries: unknown[] | undefined, scriptName: string, nextEntry: GeminiHookEntry): GeminiHookEntry[] {
+  const preservedEntries = Array.isArray(hookEntries)
+    ? hookEntries.filter((entry) => !referencesScriptName(entry, scriptName)) as GeminiHookEntry[]
+    : [];
+  preservedEntries.push(nextEntry);
+  return preservedEntries;
 }
 
 /**
@@ -149,37 +164,27 @@ export async function setupGeminiHooks(
 
   const hooks = settings.hooks as Record<string, unknown[]>;
 
-  if (!hooks.BeforeAgent) {
-    hooks.BeforeAgent = [];
-  }
-  if (!hasKanvibeHook(hooks.BeforeAgent, "kanvibe-prompt-hook.sh")) {
-    (hooks.BeforeAgent as GeminiHookEntry[]).push({
-      matcher: "*",
-      hooks: [
-        {
-          type: "command",
-          command: '"$GEMINI_PROJECT_DIR"/.gemini/hooks/kanvibe-prompt-hook.sh',
-          timeout: 10000,
-        },
-      ],
-    });
-  }
+  hooks.BeforeAgent = upsertGeminiHookEntries(hooks.BeforeAgent, "kanvibe-prompt-hook.sh", {
+    matcher: "*",
+    hooks: [
+      {
+        type: "command",
+        command: GEMINI_PROMPT_COMMAND,
+        timeout: 10000,
+      },
+    ],
+  });
 
-  if (!hooks.AfterAgent) {
-    hooks.AfterAgent = [];
-  }
-  if (!hasKanvibeHook(hooks.AfterAgent, "kanvibe-stop-hook.sh")) {
-    (hooks.AfterAgent as GeminiHookEntry[]).push({
-      matcher: "*",
-      hooks: [
-        {
-          type: "command",
-          command: '"$GEMINI_PROJECT_DIR"/.gemini/hooks/kanvibe-stop-hook.sh',
-          timeout: 10000,
-        },
-      ],
-    });
-  }
+  hooks.AfterAgent = upsertGeminiHookEntries(hooks.AfterAgent, "kanvibe-stop-hook.sh", {
+    matcher: "*",
+    hooks: [
+      {
+        type: "command",
+        command: GEMINI_STOP_COMMAND,
+        timeout: 10000,
+      },
+    ],
+  });
 
   await writeFile(settingsPath, JSON.stringify(settings, null, 2) + "\n", "utf-8");
 
@@ -238,8 +243,8 @@ export async function getGeminiHooksStatus(repoPath: string, taskId?: string, ss
     const settings = await readSettingsJson(settingsPath, sshHost);
     const hooks = settings.hooks as Record<string, unknown[]> | undefined;
     if (hooks) {
-      const hasPrompt = hasKanvibeHook(hooks.BeforeAgent || [], "kanvibe-prompt-hook.sh");
-      const hasStop = hasKanvibeHook(hooks.AfterAgent || [], "kanvibe-stop-hook.sh");
+      const hasPrompt = hasGeminiHook(hooks.BeforeAgent || [], "*", GEMINI_PROMPT_COMMAND);
+      const hasStop = hasGeminiHook(hooks.AfterAgent || [], "*", GEMINI_STOP_COMMAND);
       hasSettingsEntry = hasPrompt && hasStop;
     }
   } catch {
