@@ -3,7 +3,8 @@ export function buildCurlAuthHeader(authToken?: string): string {
     return "";
   }
 
-  return `  -H "X-Kanvibe-Token: ${authToken}" \\\n+`;
+  return `  -H "X-Kanvibe-Token: ${authToken}" \\
+`;
 }
 
 export function buildFetchAuthHeaders(authToken?: string): string {

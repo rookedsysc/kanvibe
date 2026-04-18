@@ -11,6 +11,16 @@ const mocks = vi.hoisted(() => ({
   createSessionWithoutWorktree: vi.fn(),
   computeProjectColor: vi.fn(() => "blue"),
   getDefaultSessionType: vi.fn(),
+  setupClaudeHooks: vi.fn(),
+  getClaudeHooksStatus: vi.fn(),
+  setupGeminiHooks: vi.fn(),
+  getGeminiHooksStatus: vi.fn(),
+  setupCodexHooks: vi.fn(),
+  getCodexHooksStatus: vi.fn(),
+  setupOpenCodeHooks: vi.fn(),
+  getOpenCodeHooksStatus: vi.fn(),
+  getHookServerUrl: vi.fn(() => "http://localhost:9736"),
+  getHookServerToken: vi.fn(() => "desktop-hook-token"),
 }));
 
 vi.mock("@/lib/database", () => ({
@@ -56,23 +66,28 @@ vi.mock("@/lib/worktree", () => ({
 }));
 
 vi.mock("@/lib/claudeHooksSetup", () => ({
-  setupClaudeHooks: vi.fn(),
-  getClaudeHooksStatus: vi.fn(),
+  setupClaudeHooks: mocks.setupClaudeHooks,
+  getClaudeHooksStatus: mocks.getClaudeHooksStatus,
 }));
 
 vi.mock("@/lib/geminiHooksSetup", () => ({
-  setupGeminiHooks: vi.fn(),
-  getGeminiHooksStatus: vi.fn(),
+  setupGeminiHooks: mocks.setupGeminiHooks,
+  getGeminiHooksStatus: mocks.getGeminiHooksStatus,
 }));
 
 vi.mock("@/lib/codexHooksSetup", () => ({
-  setupCodexHooks: vi.fn(),
-  getCodexHooksStatus: vi.fn(),
+  setupCodexHooks: mocks.setupCodexHooks,
+  getCodexHooksStatus: mocks.getCodexHooksStatus,
 }));
 
 vi.mock("@/lib/openCodeHooksSetup", () => ({
-  setupOpenCodeHooks: vi.fn(),
-  getOpenCodeHooksStatus: vi.fn(),
+  setupOpenCodeHooks: mocks.setupOpenCodeHooks,
+  getOpenCodeHooksStatus: mocks.getOpenCodeHooksStatus,
+}));
+
+vi.mock("@/lib/hookEndpoint", () => ({
+  getHookServerUrl: mocks.getHookServerUrl,
+  getHookServerToken: mocks.getHookServerToken,
 }));
 
 vi.mock("@/lib/aiSessions/aggregateAiSessions", () => ({
@@ -223,5 +238,73 @@ describe("projectService remote registration flow", () => {
     expect(result.success).toBe(true);
     expect(remove).not.toHaveBeenCalled();
     expect(result.project).toMatchObject({ name: "api", sshHost: "remote-host" });
+  });
+});
+
+describe("projectService local hook installation", () => {
+  beforeEach(() => {
+    vi.resetModules();
+    vi.clearAllMocks();
+    mocks.getDefaultSessionType.mockResolvedValue("tmux");
+  });
+
+  it("로컬 Claude hook 설치 시 서버 URL과 토큰을 함께 전달한다", async () => {
+    const task = {
+      id: "task-1",
+      worktreePath: "/workspace/task-1",
+      project: {
+        id: "project-1",
+        repoPath: "/workspace/repo",
+        sshHost: null,
+      },
+    };
+
+    mocks.getTaskRepository.mockResolvedValue({
+      findOne: vi.fn().mockResolvedValue(task),
+    });
+    mocks.getClaudeHooksStatus.mockResolvedValue({ installed: true });
+
+    const { installTaskHooks } = await import("@/desktop/main/services/projectService");
+
+    await installTaskHooks(task.id);
+
+    expect(mocks.getHookServerUrl).toHaveBeenCalledWith(null);
+    expect(mocks.getHookServerToken).toHaveBeenCalled();
+    expect(mocks.setupClaudeHooks).toHaveBeenCalledWith(
+      "/workspace/task-1",
+      "task-1",
+      "http://localhost:9736",
+      "desktop-hook-token",
+    );
+  });
+
+  it("로컬 OpenCode hook 설치 시 서버 URL과 토큰을 함께 전달한다", async () => {
+    const task = {
+      id: "task-2",
+      worktreePath: null,
+      project: {
+        id: "project-1",
+        repoPath: "/workspace/repo",
+        sshHost: null,
+      },
+    };
+
+    mocks.getTaskRepository.mockResolvedValue({
+      findOne: vi.fn().mockResolvedValue(task),
+    });
+    mocks.getOpenCodeHooksStatus.mockResolvedValue({ installed: true });
+
+    const { installTaskOpenCodeHooks } = await import("@/desktop/main/services/projectService");
+
+    await installTaskOpenCodeHooks(task.id);
+
+    expect(mocks.getHookServerUrl).toHaveBeenCalledWith(null);
+    expect(mocks.getHookServerToken).toHaveBeenCalled();
+    expect(mocks.setupOpenCodeHooks).toHaveBeenCalledWith(
+      "/workspace/repo",
+      "task-2",
+      "http://localhost:9736",
+      "desktop-hook-token",
+    );
   });
 });
