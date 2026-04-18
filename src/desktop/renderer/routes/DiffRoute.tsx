@@ -17,12 +17,15 @@ export default function DiffRoute() {
   useEffect(() => {
     let cancelled = false;
 
-    Promise.all([getTaskById(id), getGitDiffFiles(id)]).then(([task, files]) => {
+    void (async () => {
+      const task = await getTaskById(id);
+      const files = task?.branchName && task.worktreePath ? await getGitDiffFiles(id) : [];
+
       if (!cancelled) {
         setState({ task, files });
         document.title = task?.branchName ? `Diff - ${task.branchName}` : "KanVibe";
       }
-    });
+    })();
 
     return () => {
       cancelled = true;

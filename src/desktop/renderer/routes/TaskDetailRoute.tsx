@@ -131,7 +131,7 @@ export default function TaskDetailRoute() {
         const baseBranchName = task.baseBranch ?? "main";
         const foundTaskId = task.projectId ? await getTaskIdByProjectAndBranch(task.projectId, baseBranchName) : null;
         const baseBranchTaskId = foundTaskId !== task.id ? foundTaskId : null;
-        const diffFiles = task.branchName ? await getGitDiffFiles(id) : [];
+        const diffFiles = task.branchName && task.worktreePath ? await getGitDiffFiles(id) : [];
         const [claudeHooksStatus, geminiHooksStatus, codexHooksStatus, openCodeHooksStatus, aiSessions, sidebarDefaultCollapsed, sidebarHintDismissed, doneAlertDismissed] = await Promise.all([
           task.projectId ? getTaskHooksStatus(id) : Promise.resolve(null),
           task.projectId ? getTaskGeminiHooksStatus(id) : Promise.resolve(null),

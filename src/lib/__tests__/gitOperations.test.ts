@@ -128,4 +128,33 @@ describe("gitOperations.resolvePathForShell", () => {
     // Then
     expect(consoleErrorSpy).not.toHaveBeenCalled();
   });
+
+  it("scanGitRepos는 일반 저장소와 worktree 저장소를 모두 찾는다", async () => {
+    // Given
+    mocks.exec.mockImplementation((
+      _command: string,
+      callback: (error: null, result: { stdout: string; stderr: string }) => void,
+    ) => {
+      callback(
+        null,
+        {
+          stdout: "/workspace/api/.git\n/workspace/feature-worktree/.git\n",
+          stderr: "",
+        },
+      );
+      return {} as never;
+    });
+
+    const { scanGitRepos } = await import("@/lib/gitOperations");
+
+    // When
+    const result = await scanGitRepos("/workspace");
+
+    // Then
+    expect(mocks.exec).toHaveBeenCalledWith(
+      'find "/workspace" -maxdepth 4 -name ".git" \\( -type d -o -type f \\) 2>/dev/null',
+      expect.any(Function),
+    );
+    expect(result).toEqual(["/workspace/api", "/workspace/feature-worktree"]);
+  });
 });

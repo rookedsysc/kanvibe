@@ -194,14 +194,14 @@ export async function getDefaultBranch(
 
 /**
  * 지정 디렉토리 하위의 git 저장소 경로 목록을 반환한다.
- * .git 디렉토리를 maxdepth 4까지 탐색하여 상위 경로를 추출한다.
+ * 일반 저장소의 `.git` 디렉토리와 worktree의 `.git` 파일을 모두 탐색하여 상위 경로를 추출한다.
  */
 export async function scanGitRepos(
   rootPath: string,
   sshHost?: string | null
 ): Promise<string[]> {
   const resolvedPath = resolvePathForShell(rootPath, sshHost);
-  const command = `find ${resolvedPath} -maxdepth 4 -name ".git" -type d 2>/dev/null`;
+  const command = `find ${resolvedPath} -maxdepth 4 -name ".git" \\( -type d -o -type f \\) 2>/dev/null`;
 
   try {
     const output = await execGit(command, sshHost);
@@ -211,7 +211,8 @@ export async function scanGitRepos(
     return output
       .split("\n")
       .filter(Boolean)
-      .map((gitDir) => gitDir.replace(/\/\.git$/, ""));
+      .map((gitDir) => gitDir.replace(/\/\.git$/, ""))
+      .filter((value, index, self) => self.indexOf(value) === index);
   } catch (error) {
     console.error("[remote-scan] git repository scan failed", {
       sshHost: sshHost || null,
