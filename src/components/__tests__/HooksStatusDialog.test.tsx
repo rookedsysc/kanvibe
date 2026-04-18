@@ -418,7 +418,7 @@ describe("HooksStatusDialog", () => {
     });
   });
 
-  it("should render Codex verification labels", () => {
+  it("should hide internal verification labels from users", () => {
     const props = {
       isOpen: true,
       onClose: vi.fn(),
@@ -432,9 +432,12 @@ describe("HooksStatusDialog", () => {
 
     renderDialog(props);
 
-    expect(screen.getByText("notify")).toBeTruthy();
-    expect(screen.getByText("config")).toBeTruthy();
-    expect(screen.getByText("event")).toBeTruthy();
+    expect(screen.queryByText("notify")).toBeNull();
+    expect(screen.queryByText("config")).toBeNull();
+    expect(screen.queryByText("event")).toBeNull();
+    expect(screen.queryByText("plugin")).toBeNull();
+    expect(screen.queryByText("dedupe")).toBeNull();
+    expect(screen.queryByText("hooksBoundTaskId")).toBeNull();
   });
 
   it("should show installed status when hook is already installed", () => {

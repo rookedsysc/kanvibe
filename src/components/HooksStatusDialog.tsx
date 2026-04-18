@@ -24,11 +24,6 @@ interface HooksStatusDialogProps {
   isRemote: boolean;
 }
 
-interface StatusCheck {
-  label: string;
-  ok: boolean;
-}
-
 type HookToolKey = "claude" | "gemini" | "codex" | "openCode";
 
 const TASK_ID_FILE_PATH = ".kanvibe/task-id";
@@ -82,24 +77,6 @@ export default function HooksStatusDialog({
 
   function getInstallIncompleteText() {
     return t("hooksInstallIncomplete");
-  }
-
-  function renderChecks(checks: StatusCheck[]) {
-    return (
-      <div className="mt-3 flex flex-wrap gap-1.5">
-        {checks.map((check) => (
-          <span
-            key={check.label}
-            className={`rounded-full border px-2 py-1 text-[11px] ${check.ok
-              ? "border-status-done/20 bg-status-done/10 text-status-done"
-              : "border-status-error/20 bg-status-error/10 text-status-error"
-            }`}
-          >
-            {check.label}
-          </span>
-        ))}
-      </div>
-    );
   }
 
   function buildManualBindingCommand(currentTaskId: string) {
@@ -184,14 +161,6 @@ export default function HooksStatusDialog({
       key: "claude" as const,
       title: "Claude",
       status: localClaudeStatus,
-      checks: localClaudeStatus ? [
-        { label: "prompt", ok: !!localClaudeStatus.hasPromptHook },
-        { label: "stop", ok: !!localClaudeStatus.hasStopHook },
-        { label: "question", ok: !!localClaudeStatus.hasQuestionHook },
-        { label: "settings", ok: !!localClaudeStatus.hasSettingsEntry },
-        { label: "taskId", ok: !!localClaudeStatus.hasTaskIdBinding },
-        { label: "mapping", ok: !!localClaudeStatus.hasStatusMappings },
-      ] : [],
       files: [
         TASK_ID_FILE_PATH,
         ".claude/hooks/kanvibe-prompt-hook.sh",
@@ -205,13 +174,6 @@ export default function HooksStatusDialog({
       key: "gemini" as const,
       title: "Gemini",
       status: localGeminiStatus,
-      checks: localGeminiStatus ? [
-        { label: "prompt", ok: !!localGeminiStatus.hasPromptHook },
-        { label: "stop", ok: !!localGeminiStatus.hasStopHook },
-        { label: "settings", ok: !!localGeminiStatus.hasSettingsEntry },
-        { label: "taskId", ok: !!localGeminiStatus.hasTaskIdBinding },
-        { label: "mapping", ok: !!localGeminiStatus.hasStatusMappings },
-      ] : [],
       files: [
         TASK_ID_FILE_PATH,
         ".gemini/hooks/kanvibe-prompt-hook.sh",
@@ -224,13 +186,6 @@ export default function HooksStatusDialog({
       key: "codex" as const,
       title: "Codex",
       status: localCodexStatus,
-      checks: localCodexStatus ? [
-        { label: "notify", ok: !!localCodexStatus.hasNotifyHook },
-        { label: "config", ok: !!localCodexStatus.hasConfigEntry },
-        { label: "taskId", ok: !!localCodexStatus.hasTaskIdBinding },
-        { label: "review", ok: !!localCodexStatus.hasReviewStatus },
-        { label: "event", ok: !!localCodexStatus.hasAgentTurnCompleteFilter },
-      ] : [],
       files: [
         TASK_ID_FILE_PATH,
         ".codex/hooks/kanvibe-notify-hook.sh",
@@ -242,14 +197,6 @@ export default function HooksStatusDialog({
       key: "openCode" as const,
       title: "OpenCode",
       status: localOpenCodeStatus,
-      checks: localOpenCodeStatus ? [
-        { label: "plugin", ok: !!localOpenCodeStatus.hasPlugin },
-        { label: "taskId", ok: !!localOpenCodeStatus.hasTaskIdBinding },
-        { label: "endpoint", ok: !!localOpenCodeStatus.hasStatusEndpoint },
-        { label: "mapping", ok: !!localOpenCodeStatus.hasEventMappings },
-        { label: "main only", ok: !!localOpenCodeStatus.hasMainSessionGuard },
-        { label: "dedupe", ok: !!localOpenCodeStatus.hasDuplicateProgressGuard },
-      ] : [],
       files: [
         TASK_ID_FILE_PATH,
         ".opencode/plugins/kanvibe-plugin.ts",
@@ -291,8 +238,6 @@ export default function HooksStatusDialog({
           {hookItems.map((item) => {
             const isInstalled = item.status?.installed === true;
             const isInstalling = installingTool === item.key;
-            const detectedTaskId = item.status?.boundTaskId ?? null;
-            const hasTaskIdMismatch = Boolean(detectedTaskId && detectedTaskId !== taskId);
 
             return (
               <section key={item.key} className="rounded-xl border border-border-default bg-bg-page/40 p-4">
@@ -319,17 +264,6 @@ export default function HooksStatusDialog({
                         ? t("hooksInstalled")
                         : t("hooksNotInstalled")}
                   </span>
-                </div>
-
-                {item.checks.length > 0 ? renderChecks(item.checks) : null}
-
-                <div className="mt-3 rounded-lg border border-border-subtle bg-bg-surface px-3 py-2 text-[11px] text-text-secondary">
-                  <p>{t("hooksCurrentTaskId", { taskId })}</p>
-                  {detectedTaskId ? (
-                    <p className={hasTaskIdMismatch ? "mt-1 text-status-error" : "mt-1 text-text-muted"}>
-                      {t("hooksBoundTaskId", { taskId: detectedTaskId })}
-                    </p>
-                  ) : null}
                 </div>
 
                 {!isRemote ? (
