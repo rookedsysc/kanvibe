@@ -134,7 +134,7 @@ describe("HooksStatusDialog", () => {
     expect(screen.getByText("Claude")).toBeTruthy();
   });
 
-  it("should show remote not supported message when isRemote is true", () => {
+  it("should still show install action for remote tasks", () => {
     // Given
     const props = {
       isOpen: true,
@@ -151,8 +151,40 @@ describe("HooksStatusDialog", () => {
     renderDialog(props);
 
     // Then
-    const remoteMessages = screen.getAllByText("hooksRemoteNotSupported");
-    expect(remoteMessages.length).toBeGreaterThan(0);
+    expect(screen.getAllByText("installHooks").length).toBeGreaterThan(0);
+  });
+
+  it("should keep other hook install buttons visually stable while one tool installs", async () => {
+    // Given
+    let resolveInstall: ((value: { success: boolean; status: typeof verifiedClaudeStatus }) => void) | undefined;
+    mockInstallTaskHooks.mockImplementation(() => new Promise((resolve) => {
+      resolveInstall = resolve;
+    }));
+    const props = {
+      isOpen: true,
+      onClose: vi.fn(),
+      taskId: "task-1",
+      claudeStatus: null,
+      geminiStatus: null,
+      codexStatus: null,
+      openCodeStatus: null,
+      isRemote: false,
+    };
+
+    // When
+    renderDialog(props);
+    const installButtons = screen.getAllByText("installHooks");
+    fireEvent.click(installButtons[0]);
+
+    // Then
+    expect(screen.getByText("installingHooks")).toBeTruthy();
+    expect(installButtons[1].hasAttribute("disabled")).toBe(false);
+
+    // Cleanup
+    resolveInstall?.({ success: true, status: verifiedClaudeStatus });
+    await waitFor(() => {
+      expect(screen.getByText("hooksInstallSuccess")).toBeTruthy();
+    });
   });
 
   it("should call onClose when close button is clicked", () => {

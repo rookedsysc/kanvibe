@@ -238,62 +238,63 @@ export default function HooksStatusDialog({
           {hookItems.map((item) => {
             const isInstalled = item.status?.installed === true;
             const isInstalling = installingTool === item.key;
+            const isAnotherInstallRunning = installingTool !== null && !isInstalling;
 
             return (
               <section key={item.key} className="rounded-xl border border-border-default bg-bg-page/40 p-4">
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <h3 className="text-sm font-semibold text-text-primary">{item.title}</h3>
-                    <p className="mt-1 text-xs text-text-muted">
-                      {isRemote
-                        ? t("hooksRemoteNotSupported")
-                        : isInstalled
-                          ? t("hooksInstalled")
-                          : t("hooksNotInstalled")}
-                    </p>
+                    <p className="mt-1 text-xs text-text-muted">{isInstalled ? t("hooksInstalled") : t("hooksNotInstalled")}</p>
                   </div>
-                  <span className={`rounded-full border px-2 py-1 text-[11px] font-medium ${isRemote
-                    ? "border-border-default bg-bg-surface text-text-muted"
-                    : isInstalled
-                      ? "border-status-done/20 bg-status-done/15 text-status-done"
-                      : "border-status-error/20 bg-status-error/15 text-status-error"
+                  <span className={`rounded-full border px-2 py-1 text-[11px] font-medium ${isInstalled
+                    ? "border-status-done/20 bg-status-done/15 text-status-done"
+                    : "border-status-error/20 bg-status-error/15 text-status-error"
                   }`}>
-                    {isRemote
-                      ? t("hooksRemoteNotSupported")
-                      : isInstalled
-                        ? t("hooksInstalled")
-                        : t("hooksNotInstalled")}
+                    {isInstalled ? t("hooksInstalled") : t("hooksNotInstalled")}
                   </span>
                 </div>
 
-                {!isRemote ? (
-                  <div className="mt-4 flex flex-wrap gap-2">
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (isAnotherInstallRunning) {
+                        return;
+                      }
+
+                      void item.onInstall();
+                    }}
+                    disabled={isInstalling}
+                    aria-disabled={isAnotherInstallRunning}
+                    className={`rounded-md px-3 py-1.5 text-xs transition-colors ${isInstalled
+                      ? "border border-border-default bg-bg-surface text-text-secondary hover:border-brand-primary hover:text-text-primary"
+                      : "bg-brand-primary text-text-inverse hover:bg-brand-hover"
+                    } ${isInstalling ? "opacity-50" : ""} ${isAnotherInstallRunning ? "cursor-not-allowed" : ""}`}
+                  >
+                    {isInstalling
+                      ? t("installingHooks")
+                      : isInstalled
+                        ? t("hooksStatusDialog.reinstall")
+                        : t("installHooks")}
+                  </button>
+                  {!isInstalled && !isRemote ? (
                     <button
                       type="button"
-                      onClick={item.onInstall}
-                      disabled={installingTool !== null}
-                      className={`rounded-md px-3 py-1.5 text-xs transition-colors disabled:opacity-50 ${isInstalled
-                        ? "border border-border-default bg-bg-surface text-text-secondary hover:border-brand-primary hover:text-text-primary"
-                        : "bg-brand-primary text-text-inverse hover:bg-brand-hover"
-                      }`}
+                      onClick={() => {
+                        if (isAnotherInstallRunning) {
+                          return;
+                        }
+
+                        setExpandedManualTool((current) => current === item.key ? null : item.key);
+                      }}
+                      aria-disabled={isAnotherInstallRunning}
+                      className={`rounded-md border border-border-default bg-bg-surface px-3 py-1.5 text-xs text-text-secondary transition-colors hover:border-brand-primary hover:text-text-primary ${isAnotherInstallRunning ? "cursor-not-allowed" : ""}`}
                     >
-                      {isInstalling
-                        ? t("installingHooks")
-                        : isInstalled
-                          ? t("hooksStatusDialog.reinstall")
-                          : t("installHooks")}
+                      {expandedManualTool === item.key ? t("close") : t("hooksManualInstallGuide")}
                     </button>
-                    {!isInstalled ? (
-                      <button
-                        type="button"
-                        onClick={() => setExpandedManualTool((current) => current === item.key ? null : item.key)}
-                        className="rounded-md border border-border-default bg-bg-surface px-3 py-1.5 text-xs text-text-secondary transition-colors hover:border-brand-primary hover:text-text-primary"
-                      >
-                        {expandedManualTool === item.key ? t("close") : t("hooksManualInstallGuide")}
-                      </button>
-                    ) : null}
-                  </div>
-                ) : null}
+                  ) : null}
+                </div>
 
                 {expandedManualTool === item.key && !isRemote && !isInstalled ? (
                   <div className="mt-4 rounded-lg border border-border-default bg-bg-surface p-3">

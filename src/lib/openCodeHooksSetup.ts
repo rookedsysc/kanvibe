@@ -1,7 +1,8 @@
-import { writeFile, mkdir, access, readFile } from "fs/promises";
+import { writeFile, mkdir } from "fs/promises";
 import path from "path";
 import { addAiToolPatternsToGitExclude } from "@/lib/gitExclude";
 import { buildFetchAuthHeaders } from "@/lib/hookAuth";
+import { pathExists, readTextFile } from "@/lib/hostFileAccess";
 import { KANVIBE_TASK_ID_RELATIVE_PATH, readHookTaskIdFile, writeHookTaskIdFile } from "@/lib/hookTaskBinding";
 
 /**
@@ -233,17 +234,16 @@ export interface OpenCodeHooksStatus {
 }
 
 /** 지정된 repo의 OpenCode plugin 설치 상태를 확인한다 */
-export async function getOpenCodeHooksStatus(repoPath: string, taskId?: string): Promise<OpenCodeHooksStatus> {
-  const openCodeDir = path.join(repoPath, ".opencode");
-  const pluginsDir = path.join(openCodeDir, PLUGIN_DIR_NAME);
-  const pluginPath = path.join(pluginsDir, PLUGIN_FILE_NAME);
+export async function getOpenCodeHooksStatus(repoPath: string, taskId?: string, sshHost?: string | null): Promise<OpenCodeHooksStatus> {
+  const pathModule = sshHost ? path.posix : path;
+  const openCodeDir = pathModule.join(repoPath, ".opencode");
+  const pluginsDir = pathModule.join(openCodeDir, PLUGIN_DIR_NAME);
+  const pluginPath = pathModule.join(pluginsDir, PLUGIN_FILE_NAME);
 
-  const pluginExists = await access(pluginPath)
-    .then(() => true)
-    .catch(() => false);
+  const pluginExists = await pathExists(pluginPath, sshHost);
 
   let hasPlugin = false;
-  const boundTaskId = await readHookTaskIdFile(repoPath);
+  const boundTaskId = await readHookTaskIdFile(repoPath, sshHost);
   let hasTaskIdBinding = !taskId;
   let hasStatusEndpoint = false;
   let hasEventMappings = false;
@@ -251,7 +251,7 @@ export async function getOpenCodeHooksStatus(repoPath: string, taskId?: string):
   let hasDuplicateProgressGuard = false;
   if (pluginExists) {
     try {
-      const content = await readFile(pluginPath, "utf-8");
+      const content = await readTextFile(pluginPath, sshHost);
       hasPlugin = hasKanvibePlugin(content);
       hasTaskIdBinding =
         !taskId || (

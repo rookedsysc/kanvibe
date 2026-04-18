@@ -26,6 +26,7 @@ export async function aggregateAiSessions(context: AiSessionReaderContext): Prom
   }
 
   return createAggregationResult({
+    isRemote: Boolean(context.sshHost),
     targetPath: context.worktreePath,
     repoPath: context.repoPath,
     sessions: sortSessionsDescending(allSessions),

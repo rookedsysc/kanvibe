@@ -1,7 +1,8 @@
-import { readFile, writeFile, mkdir, chmod, access } from "fs/promises";
+import { writeFile, mkdir, chmod } from "fs/promises";
 import path from "path";
 import { addAiToolPatternsToGitExclude } from "@/lib/gitExclude";
 import { buildCurlAuthHeader } from "@/lib/hookAuth";
+import { pathExists, readTextFile } from "@/lib/hostFileAccess";
 import { KANVIBE_TASK_ID_RELATIVE_PATH, buildShellTaskIdResolver, readHookTaskIdFile, writeHookTaskIdFile } from "@/lib/hookTaskBinding";
 
 /**
@@ -93,9 +94,13 @@ function hasLegacyBranchPayloadBinding(content: string): boolean {
 }
 
 /** 기존 settings.json을 읽거나 빈 객체를 반환한다 */
-async function readSettingsJson(settingsPath: string): Promise<GeminiSettings> {
+async function readSettingsJson(settingsPath: string, sshHost?: string | null): Promise<GeminiSettings> {
+  const content = await readTextFile(settingsPath, sshHost);
+  if (!content) {
+    return {};
+  }
+
   try {
-    const content = await readFile(settingsPath, "utf-8");
     return JSON.parse(content);
   } catch {
     return {};
@@ -195,27 +200,24 @@ export interface GeminiHooksStatus {
 }
 
 /** 지정된 repo의 Gemini CLI hooks 설치 상태를 확인한다 */
-export async function getGeminiHooksStatus(repoPath: string, taskId?: string): Promise<GeminiHooksStatus> {
-  const geminiDir = path.join(repoPath, ".gemini");
-  const hooksDir = path.join(geminiDir, "hooks");
-  const settingsPath = path.join(geminiDir, "settings.json");
-  const promptScriptPath = path.join(hooksDir, "kanvibe-prompt-hook.sh");
-  const stopScriptPath = path.join(hooksDir, "kanvibe-stop-hook.sh");
+export async function getGeminiHooksStatus(repoPath: string, taskId?: string, sshHost?: string | null): Promise<GeminiHooksStatus> {
+  const pathModule = sshHost ? path.posix : path;
+  const geminiDir = pathModule.join(repoPath, ".gemini");
+  const hooksDir = pathModule.join(geminiDir, "hooks");
+  const settingsPath = pathModule.join(geminiDir, "settings.json");
+  const promptScriptPath = pathModule.join(hooksDir, "kanvibe-prompt-hook.sh");
+  const stopScriptPath = pathModule.join(hooksDir, "kanvibe-stop-hook.sh");
 
-  const promptScriptExists = await access(promptScriptPath)
-    .then(() => true)
-    .catch(() => false);
-  const stopScriptExists = await access(stopScriptPath)
-    .then(() => true)
-    .catch(() => false);
+  const promptScriptExists = await pathExists(promptScriptPath, sshHost);
+  const stopScriptExists = await pathExists(stopScriptPath, sshHost);
 
   const [promptContent, stopContent] = await Promise.all([
-    promptScriptExists ? readFile(promptScriptPath, "utf-8").catch(() => "") : Promise.resolve(""),
-    stopScriptExists ? readFile(stopScriptPath, "utf-8").catch(() => "") : Promise.resolve(""),
+    promptScriptExists ? readTextFile(promptScriptPath, sshHost) : Promise.resolve(""),
+    stopScriptExists ? readTextFile(stopScriptPath, sshHost) : Promise.resolve(""),
   ]);
 
   const scriptContents = [promptContent, stopContent];
-  const boundTaskId = await readHookTaskIdFile(repoPath);
+  const boundTaskId = await readHookTaskIdFile(repoPath, sshHost);
   const hasTaskIdBinding = scriptContents.every((content) => hasTaskIdPayloadBinding(content, taskId, boundTaskId));
   const hasStatusMappings =
     promptContent.includes('\\\"status\\\": \\\"progress\\\"') &&
@@ -223,7 +225,7 @@ export async function getGeminiHooksStatus(repoPath: string, taskId?: string): P
 
   let hasSettingsEntry = false;
   try {
-    const settings = await readSettingsJson(settingsPath);
+    const settings = await readSettingsJson(settingsPath, sshHost);
     const hooks = settings.hooks as Record<string, unknown[]> | undefined;
     if (hooks) {
       const hasPrompt = hasKanvibeHook(hooks.BeforeAgent || [], "kanvibe-prompt-hook.sh");

@@ -1,7 +1,8 @@
-import { readFile, writeFile, mkdir, chmod, access } from "fs/promises";
+import { writeFile, mkdir, chmod } from "fs/promises";
 import path from "path";
 import { addAiToolPatternsToGitExclude } from "@/lib/gitExclude";
 import { buildCurlAuthHeader } from "@/lib/hookAuth";
+import { pathExists, readTextFile } from "@/lib/hostFileAccess";
 import { KANVIBE_TASK_ID_RELATIVE_PATH, buildShellTaskIdResolver, readHookTaskIdFile, writeHookTaskIdFile } from "@/lib/hookTaskBinding";
 
 /**
@@ -64,12 +65,8 @@ function hasLegacyBranchPayloadBinding(content: string): boolean {
 }
 
 /** 기존 config.toml 내용을 읽거나 빈 문자열을 반환한다 */
-async function readConfigToml(configPath: string): Promise<string> {
-  try {
-    return await readFile(configPath, "utf-8");
-  } catch {
-    return "";
-  }
+async function readConfigToml(configPath: string, sshHost?: string | null): Promise<string> {
+  return readTextFile(configPath, sshHost);
 }
 
 /** config.toml에 kanvibe notify hook이 등록되어 있는지 확인한다 */
@@ -133,27 +130,26 @@ export interface CodexHooksStatus {
 }
 
 /** 지정된 repo의 Codex CLI hooks 설치 상태를 확인한다 */
-export async function getCodexHooksStatus(repoPath: string, taskId?: string): Promise<CodexHooksStatus> {
-  const codexDir = path.join(repoPath, ".codex");
-  const hooksDir = path.join(codexDir, "hooks");
-  const configPath = path.join(codexDir, CONFIG_FILE_NAME);
-  const notifyScriptPath = path.join(hooksDir, HOOK_SCRIPT_NAME);
+export async function getCodexHooksStatus(repoPath: string, taskId?: string, sshHost?: string | null): Promise<CodexHooksStatus> {
+  const pathModule = sshHost ? path.posix : path;
+  const codexDir = pathModule.join(repoPath, ".codex");
+  const hooksDir = pathModule.join(codexDir, "hooks");
+  const configPath = pathModule.join(codexDir, CONFIG_FILE_NAME);
+  const notifyScriptPath = pathModule.join(hooksDir, HOOK_SCRIPT_NAME);
 
-  const notifyScriptExists = await access(notifyScriptPath)
-    .then(() => true)
-    .catch(() => false);
+  const notifyScriptExists = await pathExists(notifyScriptPath, sshHost);
 
   const notifyContent = notifyScriptExists
-    ? await readFile(notifyScriptPath, "utf-8").catch(() => "")
+    ? await readTextFile(notifyScriptPath, sshHost)
     : "";
-  const boundTaskId = await readHookTaskIdFile(repoPath);
+  const boundTaskId = await readHookTaskIdFile(repoPath, sshHost);
   const hasTaskIdBinding = hasTaskIdPayloadBinding(notifyContent, taskId, boundTaskId);
   const hasReviewStatus = notifyContent.includes('\\\"status\\\": \\\"review\\\"');
   const hasAgentTurnCompleteFilter = notifyContent.includes("EVENT_TYPE") && notifyContent.includes("agent-turn-complete");
 
   let hasConfigEntry = false;
   try {
-    const configContent = await readConfigToml(configPath);
+    const configContent = await readConfigToml(configPath, sshHost);
     hasConfigEntry = hasKanvibeNotify(configContent);
   } catch {
     /* config.toml 없음 */

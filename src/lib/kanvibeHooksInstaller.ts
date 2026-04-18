@@ -12,7 +12,7 @@ export async function installKanvibeHooks(
   taskId: string,
   sshHost?: string | null,
 ): Promise<void> {
-  const hookServerUrl = getHookServerUrl(sshHost);
+  const hookServerUrl = await getHookServerUrl(sshHost);
   const hookServerToken = getHookServerToken();
 
   if (!sshHost) {

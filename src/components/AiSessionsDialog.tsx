@@ -236,9 +236,7 @@ export default function AiSessionsDialog({ taskId, isOpen, onClose, data }: AiSe
             </div>
           </div>
 
-          {sessionsData.isRemote ? (
-            <EmptyState text={t("aiSessions.remoteUnsupported")} />
-          ) : isSessionsLoading ? (
+          {isSessionsLoading ? (
             <EmptyState text={t("aiSessions.loadingSessions")} />
           ) : sessionsError ? (
             <EmptyState text={sessionsError} />

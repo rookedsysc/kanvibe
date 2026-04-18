@@ -211,6 +211,7 @@ function registerNotificationHandlers() {
       title: appNotification.title,
       body: appNotification.body,
       icon: getNotificationIconPath(),
+      silent: false,
     });
 
     activeDesktopNotifications.add(notification);
