@@ -180,7 +180,20 @@ export default function TaskDetailRoute() {
   }
 
   if (state === null) {
-    return <div className="min-h-screen flex items-center justify-center bg-bg-page text-text-muted">Task not found.</div>;
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-bg-page px-4">
+        <div className="flex flex-col items-center gap-4 text-center">
+          <p className="text-text-muted">{t("taskNotFound")}</p>
+          <button
+            type="button"
+            onClick={() => router.back()}
+            className="rounded-md border border-border-default bg-bg-surface px-4 py-2 text-sm text-text-secondary transition-colors hover:border-brand-primary hover:text-text-primary"
+          >
+            {t("goBack")}
+          </button>
+        </div>
+      </div>
+    );
   }
 
   const hasTerminal = !!(state.task.sessionType && state.task.sessionName);

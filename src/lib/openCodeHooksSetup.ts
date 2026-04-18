@@ -2,6 +2,7 @@ import { writeFile, mkdir, access, readFile } from "fs/promises";
 import path from "path";
 import { addAiToolPatternsToGitExclude } from "@/lib/gitExclude";
 import { buildFetchAuthHeaders } from "@/lib/hookAuth";
+import { KANVIBE_TASK_ID_RELATIVE_PATH, readHookTaskIdFile, writeHookTaskIdFile } from "@/lib/hookTaskBinding";
 
 /**
  * OpenCode는 `.opencode/plugins/` 디렉토리에 TypeScript 플러그인을 배치하여 hooks를 등록한다.
@@ -14,7 +15,8 @@ export const PLUGIN_DIR_NAME = "plugins";
 
 /** OpenCode plugin TypeScript 파일 내용을 생성한다 */
 export function generatePluginScript(kanvibeUrl: string, taskId: string, authToken?: string): string {
-  return `import type { Plugin } from "@opencode-ai/plugin";
+  return `import { readFile } from "node:fs/promises";
+import type { Plugin } from "@opencode-ai/plugin";
 
 /**
  * KanVibe OpenCode Plugin
@@ -23,9 +25,23 @@ export function generatePluginScript(kanvibeUrl: string, taskId: string, authTok
  */
 export const KanvibePlugin: Plugin = async ({ client }) => {
   const KANVIBE_URL = "${kanvibeUrl}";
-  const TASK_ID = "${taskId}";
+  const DEFAULT_TASK_ID = "${taskId}";
+  const TASK_ID_FILE = "${KANVIBE_TASK_ID_RELATIVE_PATH}";
   const lastStatusBySession = new Map<string, string>();
   const lastUserMessageBySession = new Map<string, string>();
+
+  async function resolveTaskId(): Promise<string> {
+    try {
+      const taskId = (await readFile(TASK_ID_FILE, "utf-8")).trim();
+      if (taskId.length > 0) {
+        return taskId;
+      }
+    } catch {
+      /* taskId 파일이 없으면 기본값 사용 */
+    }
+
+    return DEFAULT_TASK_ID;
+  }
 
   function getSessionID(source: any): string | undefined {
     return (
@@ -74,10 +90,11 @@ export const KanvibePlugin: Plugin = async ({ client }) => {
     }
 
     try {
+      const resolvedTaskId = await resolveTaskId();
       await fetch(\`\${KANVIBE_URL}/api/hooks/status\`, {
         method: "POST",
         headers: ${buildFetchAuthHeaders(authToken)},
-        body: JSON.stringify({ taskId: TASK_ID, status }),
+        body: JSON.stringify({ taskId: resolvedTaskId, status }),
       });
       if (sessionID) {
         lastStatusBySession.set(sessionID, status);
@@ -194,6 +211,7 @@ export async function setupOpenCodeHooks(
   await mkdir(pluginsDir, { recursive: true });
 
   const pluginPath = path.join(pluginsDir, PLUGIN_FILE_NAME);
+  await writeHookTaskIdFile(repoPath, taskId);
   await writeFile(pluginPath, generatePluginScript(kanvibeUrl, taskId, authToken), "utf-8");
 
   try {
@@ -211,6 +229,7 @@ export interface OpenCodeHooksStatus {
   hasEventMappings?: boolean;
   hasMainSessionGuard?: boolean;
   hasDuplicateProgressGuard?: boolean;
+  boundTaskId?: string | null;
 }
 
 /** 지정된 repo의 OpenCode plugin 설치 상태를 확인한다 */
@@ -224,6 +243,7 @@ export async function getOpenCodeHooksStatus(repoPath: string, taskId?: string):
     .catch(() => false);
 
   let hasPlugin = false;
+  const boundTaskId = await readHookTaskIdFile(repoPath);
   let hasTaskIdBinding = !taskId;
   let hasStatusEndpoint = false;
   let hasEventMappings = false;
@@ -233,7 +253,14 @@ export async function getOpenCodeHooksStatus(repoPath: string, taskId?: string):
     try {
       const content = await readFile(pluginPath, "utf-8");
       hasPlugin = hasKanvibePlugin(content);
-      hasTaskIdBinding = !taskId || (content.includes(`const TASK_ID = \"${taskId}\";`) && content.includes("taskId: TASK_ID"));
+      hasTaskIdBinding =
+        !taskId || (
+          content.includes(`const DEFAULT_TASK_ID = \"${taskId}\";`) &&
+          content.includes(`const TASK_ID_FILE = \"${KANVIBE_TASK_ID_RELATIVE_PATH}\";`) &&
+          content.includes("resolveTaskId") &&
+          content.includes("taskId: resolvedTaskId") &&
+          boundTaskId === taskId
+        );
       hasStatusEndpoint = content.includes("/api/hooks/status");
       hasEventMappings = ["progress", "pending", "review", "done", "message.updated", "question.asked", "question.replied", "session.idle", "session.deleted"].every((fragment) => content.includes(fragment));
       hasMainSessionGuard = content.includes("isMainSession(message)") && content.includes("isMainSession(event.properties)");
@@ -253,5 +280,6 @@ export async function getOpenCodeHooksStatus(repoPath: string, taskId?: string):
     hasEventMappings,
     hasMainSessionGuard,
     hasDuplicateProgressGuard,
+    boundTaskId,
   };
 }

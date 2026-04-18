@@ -2,6 +2,7 @@ import { readFile, writeFile, mkdir, chmod, access } from "fs/promises";
 import path from "path";
 import { addAiToolPatternsToGitExclude } from "@/lib/gitExclude";
 import { buildCurlAuthHeader } from "@/lib/hookAuth";
+import { KANVIBE_TASK_ID_RELATIVE_PATH, buildShellTaskIdResolver, readHookTaskIdFile, writeHookTaskIdFile } from "@/lib/hookTaskBinding";
 
 /** UserPromptSubmit hook bash 스크립트를 생성한다 */
 export function generatePromptHookScript(kanvibeUrl: string, taskId: string, authToken?: string): string {
@@ -11,7 +12,7 @@ export function generatePromptHookScript(kanvibeUrl: string, taskId: string, aut
 # 사용자가 prompt를 입력하면 현재 task를 PROGRESS로 변경한다.
 
 KANVIBE_URL="${kanvibeUrl}"
-TASK_ID="${taskId}"
+${buildShellTaskIdResolver(taskId)}
 
 curl -s -X POST "\${KANVIBE_URL}/api/hooks/status" \\
   -H "Content-Type: application/json" \\
@@ -30,7 +31,7 @@ export function generateStopHookScript(kanvibeUrl: string, taskId: string, authT
 # AI 응답이 완료되면 현재 task를 REVIEW로 변경한다.
 
 KANVIBE_URL="${kanvibeUrl}"
-TASK_ID="${taskId}"
+${buildShellTaskIdResolver(taskId)}
 
 curl -s -X POST "\${KANVIBE_URL}/api/hooks/status" \\
   -H "Content-Type: application/json" \\
@@ -49,7 +50,7 @@ export function generateQuestionHookScript(kanvibeUrl: string, taskId: string, a
 # Claude가 사용자에게 질문할 때 현재 task를 PENDING으로 변경한다.
 
 KANVIBE_URL="${kanvibeUrl}"
-TASK_ID="${taskId}"
+${buildShellTaskIdResolver(taskId)}
 
 curl -s -X POST "\${KANVIBE_URL}/api/hooks/status" \\
   -H "Content-Type: application/json" \\
@@ -73,10 +74,20 @@ interface MatcherHookEntry extends HookEntry {
   matcher: string;
 }
 
-function hasTaskIdPayloadBinding(content: string, taskId?: string): boolean {
-  if (!taskId) return true;
+function hasTaskIdPayloadBinding(content: string, taskId?: string, boundTaskId?: string | null): boolean {
+  const hasDynamicTaskIdResolver = content.includes(`TASK_ID_FILE="${KANVIBE_TASK_ID_RELATIVE_PATH}"`);
+  const hasTaskIdPayload = content.includes("taskId") && content.includes("${TASK_ID}");
+  if (!hasTaskIdPayload) return false;
 
-  return content.includes(`TASK_ID="${taskId}"`) && content.includes('\\\"taskId\\\": \\\"\\${TASK_ID}\\\"');
+  if (!taskId) {
+    return hasDynamicTaskIdResolver || content.includes("TASK_ID=");
+  }
+
+  if (hasDynamicTaskIdResolver) {
+    return boundTaskId === taskId;
+  }
+
+  return content.includes(`TASK_ID="${taskId}"`);
 }
 
 function hasLegacyBranchPayloadBinding(content: string): boolean {
@@ -125,6 +136,7 @@ export async function setupClaudeHooks(
   const stopScriptPath = path.join(hooksDir, "kanvibe-stop-hook.sh");
   const questionScriptPath = path.join(hooksDir, "kanvibe-question-hook.sh");
 
+  await writeHookTaskIdFile(repoPath, taskId);
   await writeFile(promptScriptPath, generatePromptHookScript(kanvibeUrl, taskId, authToken), "utf-8");
   await writeFile(stopScriptPath, generateStopHookScript(kanvibeUrl, taskId, authToken), "utf-8");
   await writeFile(questionScriptPath, generateQuestionHookScript(kanvibeUrl, taskId, authToken), "utf-8");
@@ -218,6 +230,7 @@ export interface ClaudeHooksStatus {
   hasSettingsEntry: boolean;
   hasTaskIdBinding?: boolean;
   hasStatusMappings?: boolean;
+  boundTaskId?: string | null;
 }
 
 /** 지정된 repo의 Claude Code hooks 설치 상태를 확인한다 */
@@ -246,9 +259,8 @@ export async function getClaudeHooksStatus(repoPath: string, taskId?: string): P
   ]);
 
   const scriptContents = [promptContent, stopContent, questionContent];
-  const hasTaskIdBinding = scriptContents.every((content) =>
-    hasTaskIdPayloadBinding(content, taskId) || hasLegacyBranchPayloadBinding(content)
-  );
+  const boundTaskId = await readHookTaskIdFile(repoPath);
+  const hasTaskIdBinding = scriptContents.every((content) => hasTaskIdPayloadBinding(content, taskId, boundTaskId));
   const hasStatusMappings =
     promptContent.includes('\\\"status\\\": \\\"progress\\\"') &&
     stopContent.includes('\\\"status\\\": \\\"review\\\"') &&
@@ -279,5 +291,6 @@ export async function getClaudeHooksStatus(repoPath: string, taskId?: string): P
     hasSettingsEntry,
     hasTaskIdBinding,
     hasStatusMappings,
+    boundTaskId,
   };
 }

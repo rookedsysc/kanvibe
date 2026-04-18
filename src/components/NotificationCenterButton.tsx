@@ -2,8 +2,9 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
+import { getTaskById } from "@/desktop/renderer/actions/kanban";
 import { markAllNotificationsRead, markNotificationRead, listNotifications } from "@/desktop/renderer/actions/notifications";
-import { useRouter } from "@/desktop/renderer/navigation";
+import { redirect } from "@/desktop/renderer/navigation";
 import type { AppNotification } from "@/desktop/shared/notifications";
 
 interface NotificationCenterButtonProps {
@@ -13,10 +14,10 @@ interface NotificationCenterButtonProps {
 
 export default function NotificationCenterButton({ buttonClassName = "", panelClassName = "" }: NotificationCenterButtonProps) {
   const t = useTranslations("common");
-  const router = useRouter();
   const containerRef = useRef<HTMLDivElement>(null);
   const [isOpen, setIsOpen] = useState(false);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
+  const [missingTaskNotification, setMissingTaskNotification] = useState<AppNotification | null>(null);
 
   useEffect(() => {
     async function load() {
@@ -24,7 +25,7 @@ export default function NotificationCenterButton({ buttonClassName = "", panelCl
     }
 
     void load();
-    return window.kanvibeDesktop.onNotificationsChanged?.(() => {
+    return window.kanvibeDesktop?.onNotificationsChanged?.(() => {
       void load();
     });
   }, []);
@@ -53,7 +54,20 @@ export default function NotificationCenterButton({ buttonClassName = "", panelCl
     }
 
     setIsOpen(false);
-    router.push(notification.relativePath);
+
+    if (notification.taskId) {
+      const task = await getTaskById(notification.taskId);
+
+      if (!task) {
+        setMissingTaskNotification(notification);
+        return;
+      }
+
+      redirect(`/${notification.locale}/task/${notification.taskId}`);
+      return;
+    }
+
+    redirect(notification.relativePath);
   }
 
   async function handleMarkAllRead() {
@@ -117,6 +131,24 @@ export default function NotificationCenterButton({ buttonClassName = "", panelCl
                 </div>
               </button>
             ))}
+          </div>
+        </div>
+      ) : null}
+
+      {missingTaskNotification ? (
+        <div className="fixed inset-0 z-[500] flex items-center justify-center bg-bg-overlay px-4">
+          <div className="w-full max-w-sm rounded-xl border border-border-default bg-bg-surface p-6 shadow-lg">
+            <h2 className="text-lg font-semibold text-text-primary">{t("notificationTaskMissingTitle")}</h2>
+            <p className="mt-2 whitespace-pre-wrap text-sm text-text-secondary">{t("notificationTaskMissingBody")}</p>
+            <div className="mt-5 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setMissingTaskNotification(null)}
+                className="rounded-md bg-brand-primary px-4 py-1.5 text-sm text-text-inverse transition-colors hover:bg-brand-hover"
+              >
+                {t("confirm")}
+              </button>
+            </div>
           </div>
         </div>
       ) : null}

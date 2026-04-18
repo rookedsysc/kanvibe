@@ -216,7 +216,10 @@ function registerNotificationHandlers() {
       void markNotificationRead(appNotification.id).then(() => {
         broadcastNotificationsChanged();
       });
-      void focusMainWindow(appNotification.relativePath);
+      const targetPath = appNotification.taskId
+        ? `/${appNotification.locale}/task/${appNotification.taskId}`
+        : appNotification.relativePath;
+      void focusMainWindow(targetPath);
     });
 
     notification.show();

@@ -418,6 +418,25 @@ describe("HooksStatusDialog", () => {
     });
   });
 
+  it("should render Codex verification labels", () => {
+    const props = {
+      isOpen: true,
+      onClose: vi.fn(),
+      taskId: "task-1",
+      claudeStatus: verifiedClaudeStatus,
+      geminiStatus: verifiedGeminiStatus,
+      codexStatus: verifiedCodexStatus,
+      openCodeStatus: null,
+      isRemote: false,
+    };
+
+    renderDialog(props);
+
+    expect(screen.getByText("notify")).toBeTruthy();
+    expect(screen.getByText("config")).toBeTruthy();
+    expect(screen.getByText("event")).toBeTruthy();
+  });
+
   it("should show installed status when hook is already installed", () => {
     // Given
     const props = {

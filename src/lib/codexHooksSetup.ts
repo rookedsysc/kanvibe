@@ -2,6 +2,7 @@ import { readFile, writeFile, mkdir, chmod, access } from "fs/promises";
 import path from "path";
 import { addAiToolPatternsToGitExclude } from "@/lib/gitExclude";
 import { buildCurlAuthHeader } from "@/lib/hookAuth";
+import { KANVIBE_TASK_ID_RELATIVE_PATH, buildShellTaskIdResolver, readHookTaskIdFile, writeHookTaskIdFile } from "@/lib/hookTaskBinding";
 
 /**
  * Codex CLI는 현재 notify 설정의 agent-turn-complete 이벤트만 지원한다.
@@ -17,7 +18,7 @@ export function generateNotifyHookScript(kanvibeUrl: string, taskId: string, aut
 # Codex notify 스크립트는 첫 번째 인자로 JSON payload를 받는다.
 
 KANVIBE_URL="${kanvibeUrl}"
-TASK_ID="${taskId}"
+${buildShellTaskIdResolver(taskId)}
 
 JSON_PAYLOAD="$1"
 
@@ -39,10 +40,20 @@ exit 0
 export const HOOK_SCRIPT_NAME = "kanvibe-notify-hook.sh";
 export const CONFIG_FILE_NAME = "config.toml";
 
-function hasTaskIdPayloadBinding(content: string, taskId?: string): boolean {
-  if (!taskId) return true;
+function hasTaskIdPayloadBinding(content: string, taskId?: string, boundTaskId?: string | null): boolean {
+  const hasDynamicTaskIdResolver = content.includes(`TASK_ID_FILE="${KANVIBE_TASK_ID_RELATIVE_PATH}"`);
+  const hasTaskIdPayload = content.includes("taskId") && content.includes("${TASK_ID}");
+  if (!hasTaskIdPayload) return false;
 
-  return content.includes(`TASK_ID="${taskId}"`) && content.includes('\\\"taskId\\\": \\\"\\${TASK_ID}\\\"');
+  if (!taskId) {
+    return hasDynamicTaskIdResolver || content.includes("TASK_ID=");
+  }
+
+  if (hasDynamicTaskIdResolver) {
+    return boundTaskId === taskId;
+  }
+
+  return content.includes(`TASK_ID="${taskId}"`);
 }
 
 function hasLegacyBranchPayloadBinding(content: string): boolean {
@@ -83,6 +94,7 @@ export async function setupCodexHooks(
   await mkdir(hooksDir, { recursive: true });
 
   const notifyScriptPath = path.join(hooksDir, HOOK_SCRIPT_NAME);
+  await writeHookTaskIdFile(repoPath, taskId);
   await writeFile(notifyScriptPath, generateNotifyHookScript(kanvibeUrl, taskId, authToken), "utf-8");
   await chmod(notifyScriptPath, 0o755);
 
@@ -117,6 +129,7 @@ export interface CodexHooksStatus {
   hasTaskIdBinding?: boolean;
   hasReviewStatus?: boolean;
   hasAgentTurnCompleteFilter?: boolean;
+  boundTaskId?: string | null;
 }
 
 /** 지정된 repo의 Codex CLI hooks 설치 상태를 확인한다 */
@@ -133,9 +146,10 @@ export async function getCodexHooksStatus(repoPath: string, taskId?: string): Pr
   const notifyContent = notifyScriptExists
     ? await readFile(notifyScriptPath, "utf-8").catch(() => "")
     : "";
-  const hasTaskIdBinding = hasTaskIdPayloadBinding(notifyContent, taskId) || hasLegacyBranchPayloadBinding(notifyContent);
+  const boundTaskId = await readHookTaskIdFile(repoPath);
+  const hasTaskIdBinding = hasTaskIdPayloadBinding(notifyContent, taskId, boundTaskId);
   const hasReviewStatus = notifyContent.includes('\\\"status\\\": \\\"review\\\"');
-  const hasAgentTurnCompleteFilter = notifyContent.includes('EVENT_TYPE') && notifyContent.includes('agent-turn-complete');
+  const hasAgentTurnCompleteFilter = notifyContent.includes("EVENT_TYPE") && notifyContent.includes("agent-turn-complete");
 
   let hasConfigEntry = false;
   try {
@@ -154,5 +168,6 @@ export async function getCodexHooksStatus(repoPath: string, taskId?: string): Pr
     hasTaskIdBinding,
     hasReviewStatus,
     hasAgentTurnCompleteFilter,
+    boundTaskId,
   };
 }

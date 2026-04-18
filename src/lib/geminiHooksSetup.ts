@@ -2,6 +2,7 @@ import { readFile, writeFile, mkdir, chmod, access } from "fs/promises";
 import path from "path";
 import { addAiToolPatternsToGitExclude } from "@/lib/gitExclude";
 import { buildCurlAuthHeader } from "@/lib/hookAuth";
+import { KANVIBE_TASK_ID_RELATIVE_PATH, buildShellTaskIdResolver, readHookTaskIdFile, writeHookTaskIdFile } from "@/lib/hookTaskBinding";
 
 /**
  * Gemini CLI hooks는 stdout에 반드시 JSON만 출력해야 한다.
@@ -17,7 +18,7 @@ export function generatePromptHookScript(kanvibeUrl: string, taskId: string, aut
 # Gemini CLI hooks는 stdout에 JSON만 출력해야 한다.
 
 KANVIBE_URL="${kanvibeUrl}"
-TASK_ID="${taskId}"
+${buildShellTaskIdResolver(taskId)}
 
 curl -s -X POST "\${KANVIBE_URL}/api/hooks/status" \\
   -H "Content-Type: application/json" \\
@@ -38,7 +39,7 @@ export function generateStopHookScript(kanvibeUrl: string, taskId: string, authT
 # Gemini CLI hooks는 stdout에 JSON만 출력해야 한다.
 
 KANVIBE_URL="${kanvibeUrl}"
-TASK_ID="${taskId}"
+${buildShellTaskIdResolver(taskId)}
 
 curl -s -X POST "\${KANVIBE_URL}/api/hooks/status" \\
   -H "Content-Type: application/json" \\
@@ -68,10 +69,20 @@ interface GeminiHookEntry {
   hooks: GeminiHookConfig[];
 }
 
-function hasTaskIdPayloadBinding(content: string, taskId?: string): boolean {
-  if (!taskId) return true;
+function hasTaskIdPayloadBinding(content: string, taskId?: string, boundTaskId?: string | null): boolean {
+  const hasDynamicTaskIdResolver = content.includes(`TASK_ID_FILE="${KANVIBE_TASK_ID_RELATIVE_PATH}"`);
+  const hasTaskIdPayload = content.includes("taskId") && content.includes("${TASK_ID}");
+  if (!hasTaskIdPayload) return false;
 
-  return content.includes(`TASK_ID="${taskId}"`) && content.includes('\\\"taskId\\\": \\\"\\${TASK_ID}\\\"');
+  if (!taskId) {
+    return hasDynamicTaskIdResolver || content.includes("TASK_ID=");
+  }
+
+  if (hasDynamicTaskIdResolver) {
+    return boundTaskId === taskId;
+  }
+
+  return content.includes(`TASK_ID="${taskId}"`);
 }
 
 function hasLegacyBranchPayloadBinding(content: string): boolean {
@@ -119,6 +130,7 @@ export async function setupGeminiHooks(
   const promptScriptPath = path.join(hooksDir, "kanvibe-prompt-hook.sh");
   const stopScriptPath = path.join(hooksDir, "kanvibe-stop-hook.sh");
 
+  await writeHookTaskIdFile(repoPath, taskId);
   await writeFile(promptScriptPath, generatePromptHookScript(kanvibeUrl, taskId, authToken), "utf-8");
   await writeFile(stopScriptPath, generateStopHookScript(kanvibeUrl, taskId, authToken), "utf-8");
   await chmod(promptScriptPath, 0o755);
@@ -179,6 +191,7 @@ export interface GeminiHooksStatus {
   hasSettingsEntry: boolean;
   hasTaskIdBinding?: boolean;
   hasStatusMappings?: boolean;
+  boundTaskId?: string | null;
 }
 
 /** 지정된 repo의 Gemini CLI hooks 설치 상태를 확인한다 */
@@ -202,9 +215,8 @@ export async function getGeminiHooksStatus(repoPath: string, taskId?: string): P
   ]);
 
   const scriptContents = [promptContent, stopContent];
-  const hasTaskIdBinding = scriptContents.every((content) =>
-    hasTaskIdPayloadBinding(content, taskId) || hasLegacyBranchPayloadBinding(content)
-  );
+  const boundTaskId = await readHookTaskIdFile(repoPath);
+  const hasTaskIdBinding = scriptContents.every((content) => hasTaskIdPayloadBinding(content, taskId, boundTaskId));
   const hasStatusMappings =
     promptContent.includes('\\\"status\\\": \\\"progress\\\"') &&
     stopContent.includes('\\\"status\\\": \\\"review\\\"');
@@ -231,5 +243,6 @@ export async function getGeminiHooksStatus(repoPath: string, taskId?: string): P
     hasSettingsEntry,
     hasTaskIdBinding,
     hasStatusMappings,
+    boundTaskId,
   };
 }

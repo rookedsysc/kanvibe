@@ -76,9 +76,7 @@ async function showNotificationViaDesktopBridge(title: string, body: string, dat
     dedupeKey: data.dedupeKey,
   };
 
-  await window.kanvibeDesktop?.showNotification?.(payload);
-
-  return true;
+  return (await window.kanvibeDesktop?.showNotification?.(payload)) === true;
 }
 
 async function showNotificationViaServiceWorker(title: string, body: string, data: BrowserNotificationData) {
@@ -106,7 +104,7 @@ async function showNotificationViaBrowser(title: string, body: string, data: Bro
     return true;
   }
 
-  if (typeof Notification === "undefined") {
+  if (typeof Notification !== "function") {
     return false;
   }
 
