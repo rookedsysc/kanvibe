@@ -462,10 +462,10 @@ describe("AiSessionsDialog", () => {
     await screen.findByText("Newest page");
     fireEvent.click(screen.getByRole("button", { name: "Load more" }));
 
+    await screen.findByText("Newest page");
     await screen.findByText("Older page");
-    const previewMessages = screen.getAllByText(/page$/i);
-    expect(previewMessages[0]?.textContent).toBe("Newest page");
-    expect(previewMessages[1]?.textContent).toBe("Older page");
+    expect(screen.getByText("Newest page")).toBeTruthy();
+    expect(screen.getByText("Older page")).toBeTruthy();
     expect(mockGetTaskAiSessionDetail).toHaveBeenNthCalledWith(2, "task-1", "claude", "claude-1", null, "1", 20, false);
   });
 

@@ -4,7 +4,6 @@ import { SessionType } from "@/entities/KanbanTask";
 import { ZELLIJ_LAYOUT_FILENAME } from "@/lib/worktree";
 import { execSync } from "child_process";
 import type { WebSocket } from "ws";
-import { buildSSHArgs } from "@/lib/sshConfig";
 
 /**
  * 활성 터미널 세션을 관리하는 레지스트리.
@@ -226,7 +225,6 @@ export async function attachRemoteSession(
   sessionName: string,
   ws: WebSocket,
   sshConfig: {
-    host: string;
     hostname: string;
     port: number;
     username: string;
@@ -238,75 +236,79 @@ export async function attachRemoteSession(
   const initialCols = cols ?? 120;
   const initialRows = rows ?? 30;
 
-  const existing = activeTerminals.get(taskId);
-  if (existing) {
-    existing.clients.add(ws);
-    ws.on("message", (message) => handleTerminalMessage(existing.pty, message.toString()));
-    ws.on("close", () => {
-      existing.clients.delete(ws);
-      if (existing.clients.size === 0) {
-        detachSession(taskId);
-      }
-    });
-    return;
-  }
+  const { Client } = await import("ssh2");
+  const fs = await import("fs");
 
-  const pty = await import("node-pty");
-  const remoteCommand = sessionType === SessionType.TMUX
-    ? [`tmux has-session -t "${sessionName}" 2>/dev/null || tmux new-session -d -s "${sessionName}"`, `exec tmux attach-session -t "${sessionName}"`].join("; ")
-    : `exec zellij attach "${sessionName}"`;
-  const args = [
-    ...buildSSHArgs(sshConfig, { forceTty: true }),
-    `sh -lc '${remoteCommand.replace(/'/g, `'"'"'`)}'`,
-  ];
+  const conn = new Client();
 
-  if (shouldLogTerminalSpawn()) {
-    console.log(`[터미널] Remote PTY spawn: shell=ssh, args=${JSON.stringify(args)}`);
-  }
+  conn.on("ready", () => {
+    const command = sessionType === SessionType.TMUX
+      ? [
+          `tmux has-session -t "${sessionName}" 2>/dev/null || tmux new-session -d -s "${sessionName}"`,
+          `tmux attach-session -t "${sessionName}"`,
+        ].join("; ")
+      : `zellij attach "${sessionName}"`;
 
-  let ptyProcess: import("node-pty").IPty;
-  try {
-    ptyProcess = pty.spawn("ssh", args, {
-      name: "xterm-256color",
-      cols: initialCols,
-      rows: initialRows,
-      cwd: process.env.HOME || "/",
-      env: {
-        ...process.env,
-        LANG: process.env.LANG || "en_US.UTF-8",
-        LC_ALL: process.env.LC_ALL || "en_US.UTF-8",
-      } as Record<string, string>,
-    });
-  } catch (error) {
-    console.error("[터미널] Remote PTY spawn 실패:", error);
+    conn.shell(
+      { term: "xterm-256color", cols: initialCols, rows: initialRows },
+      (error, stream) => {
+        if (error) {
+          ws.close(1011, "SSH shell 오류");
+          conn.end();
+          return;
+        }
+
+        stream.write(command + "\n");
+
+        stream.on("data", (data: Buffer) => {
+          if (ws.readyState === ws.OPEN) {
+            ws.send(data);
+          }
+        });
+
+        stream.on("close", () => {
+          ws.close();
+          conn.end();
+          activeTerminals.delete(taskId);
+        });
+
+        ws.on("message", (message) => {
+          const data = message.toString();
+
+          if (data.startsWith("\x01")) {
+            try {
+              const parsed = JSON.parse(data.slice(1));
+              if (parsed.type === "resize" && parsed.cols && parsed.rows) {
+                stream.setWindow(parsed.rows, parsed.cols, 0, 0);
+              }
+            } catch {
+              stream.write(data);
+            }
+            return;
+          }
+
+          stream.write(data);
+        });
+
+        ws.on("close", () => {
+          stream.close();
+          conn.end();
+          activeTerminals.delete(taskId);
+        });
+      },
+    );
+  });
+
+  conn.on("error", (error) => {
+    console.error("SSH 연결 오류:", error.message);
     ws.close(1011, "SSH 연결 실패");
-    return;
-  }
-
-  const entry: TerminalEntry = { pty: ptyProcess, clients: new Set([ws]), sessionType, sessionName };
-  activeTerminals.set(taskId, entry);
-
-  ptyProcess.onData((data) => {
-    for (const client of entry.clients) {
-      if (client.readyState === client.OPEN) {
-        client.send(data);
-      }
-    }
   });
 
-  ptyProcess.onExit(() => {
-    detachSession(taskId);
-  });
-
-  ws.on("message", (message) => {
-    handleTerminalMessage(ptyProcess, message.toString());
-  });
-
-  ws.on("close", () => {
-    entry.clients.delete(ws);
-    if (entry.clients.size === 0) {
-      detachSession(taskId);
-    }
+  conn.connect({
+    host: sshConfig.hostname,
+    port: sshConfig.port,
+    username: sshConfig.username,
+    privateKey: fs.readFileSync(sshConfig.privateKeyPath),
   });
 }
 

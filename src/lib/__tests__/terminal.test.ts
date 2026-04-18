@@ -17,11 +17,13 @@ vi.mock("child_process", async (importOriginal) => {
 });
 
 const mockExistsSync = vi.fn();
+const mockReadFileSync = vi.fn(() => Buffer.from("PRIVATE KEY"));
 vi.mock("fs", async (importOriginal) => {
   const actual = await importOriginal<typeof import("fs")>();
   return {
     ...actual,
-    existsSync: (...args: unknown[]) => mockExistsSync(...args),
+    existsSync: mockExistsSync,
+    readFileSync: mockReadFileSync,
   };
 });
 
@@ -36,6 +38,50 @@ vi.mock("node-pty", () => ({
     kill: vi.fn(),
     pid: 12345,
   })),
+}));
+
+const mockSshConnect = vi.fn();
+const mockSshShell = vi.fn();
+const mockSshEnd = vi.fn();
+const mockStreamWrite = vi.fn();
+const mockStreamSetWindow = vi.fn();
+const mockStreamOn = vi.fn();
+const mockStreamClose = vi.fn();
+
+vi.mock("ssh2", () => ({
+  Client: class MockClient {
+    private handlers: Record<string, (...args: unknown[]) => void> = {};
+
+    on(event: string, handler: (...args: unknown[]) => void) {
+      this.handlers[event] = handler;
+      return this;
+    }
+
+    shell(options: unknown, callback: (error: Error | null, stream: {
+      write: typeof mockStreamWrite;
+      on: typeof mockStreamOn;
+      setWindow: typeof mockStreamSetWindow;
+      close: typeof mockStreamClose;
+    }) => void) {
+      mockSshShell(options);
+      callback(null, {
+        write: mockStreamWrite,
+        on: mockStreamOn,
+        setWindow: mockStreamSetWindow,
+        close: mockStreamClose,
+      });
+    }
+
+    connect(options: unknown) {
+      mockSshConnect(options);
+      this.handlers.ready?.();
+      return this;
+    }
+
+    end() {
+      mockSshEnd();
+    }
+  },
 }));
 
 function createMockWs() {
@@ -300,44 +346,34 @@ describe("attachRemoteSession — ssh 바이너리 기반 연결", () => {
     vi.resetModules();
   });
 
-  it("should spawn ssh with tty options for remote tmux attach", async () => {
+  it("should open an interactive ssh shell for remote tmux attach", async () => {
     // Given
     const { attachRemoteSession } = await import("@/lib/terminal");
-    const nodePty = await import("node-pty");
 
     // When
-      await attachRemoteSession(
-        "task-r1",
-        "remote-host",
-        SessionType.TMUX,
-        "remote-session",
-        createMockWs(),
-        {
-          host: "remote-host",
-          hostname: "example.com",
-          port: 2202,
-          username: "tester",
-          privateKeyPath: "/tmp/test-key",
-        },
+    await attachRemoteSession(
+      "task-r1",
+      "remote-host",
+      SessionType.TMUX,
+      "remote-session",
+      createMockWs(),
+      {
+        hostname: "example.com",
+        port: 2202,
+        username: "tester",
+        privateKeyPath: "/tmp/test-key",
+      },
     );
 
     // Then
-    expect(nodePty.spawn).toHaveBeenCalledWith(
-      "ssh",
-      [
-        "-i",
-        "/tmp/test-key",
-        "-p",
-        "2202",
-        "-o",
-        "BatchMode=yes",
-        "-o",
-        "IdentitiesOnly=yes",
-        "-tt",
-        "remote-host",
-        expect.stringContaining('tmux has-session -t "remote-session"'),
-      ],
-      expect.objectContaining({ cwd: expect.any(String) }),
-    );
+    expect(mockReadFileSync).toHaveBeenCalledWith("/tmp/test-key");
+    expect(mockSshConnect).toHaveBeenCalledWith({
+      host: "example.com",
+      port: 2202,
+      username: "tester",
+      privateKey: Buffer.from("PRIVATE KEY"),
+    });
+    expect(mockSshShell).toHaveBeenCalledWith({ term: "xterm-256color", cols: 120, rows: 30 });
+    expect(mockStreamWrite).toHaveBeenCalledWith(expect.stringContaining('tmux has-session -t "remote-session"'));
   });
 });

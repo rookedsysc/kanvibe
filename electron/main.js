@@ -32,6 +32,7 @@ app.commandLine.appendSwitch("log-level", "3");
 
 let mainWindow = null;
 let hookServer = null;
+const activeDesktopNotifications = new Set();
 
 function broadcastNotificationsChanged() {
   for (const window of BrowserWindow.getAllWindows()) {
@@ -212,6 +213,12 @@ function registerNotificationHandlers() {
       icon: getNotificationIconPath(),
     });
 
+    activeDesktopNotifications.add(notification);
+
+    const releaseNotification = () => {
+      activeDesktopNotifications.delete(notification);
+    };
+
     notification.on("click", () => {
       void markNotificationRead(appNotification.id).then(() => {
         broadcastNotificationsChanged();
@@ -220,7 +227,10 @@ function registerNotificationHandlers() {
         ? `/${appNotification.locale}/task/${appNotification.taskId}`
         : appNotification.relativePath;
       void focusMainWindow(targetPath);
+      releaseNotification();
     });
+
+    notification.on("close", releaseNotification);
 
     notification.show();
     return true;
