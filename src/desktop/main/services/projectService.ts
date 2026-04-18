@@ -37,6 +37,48 @@ function serialize<T>(data: T): T {
   return JSON.parse(JSON.stringify(data));
 }
 
+function buildProjectPathKey(repoPath: string, sshHost?: string | null): string {
+  return `${sshHost || ""}:${repoPath}`;
+}
+
+/** 프로젝트 표시 이름은 전역적으로 유일해야 하므로 충돌 시 경로 기반 후보명으로 보정한다 */
+function resolveUniqueProjectName(
+  preferredName: string,
+  repoPath: string,
+  existingNames: Set<string>,
+): string {
+  const baseName = path.basename(repoPath);
+  const parentName = path.basename(path.dirname(repoPath));
+  const combinedName = `${parentName}/${baseName}`;
+  const candidates = [preferredName];
+
+  if (baseName && baseName !== preferredName) {
+    candidates.push(baseName);
+  }
+
+  if (combinedName && combinedName !== preferredName) {
+    candidates.push(combinedName);
+  }
+
+  for (const candidate of candidates) {
+    if (existingNames.has(candidate)) {
+      continue;
+    }
+
+    existingNames.add(candidate);
+    return candidate;
+  }
+
+  let counter = 2;
+  while (existingNames.has(`${preferredName}-${counter}`)) {
+    counter++;
+  }
+
+  const numberedName = `${preferredName}-${counter}`;
+  existingNames.add(numberedName);
+  return numberedName;
+}
+
 /** 프로젝트의 메인 브랜치 태스크를 생성하고 tmux 세션을 자동 연결한다 */
 async function createDefaultBranchTask(project: Project) {
   const taskRepo = await getTaskRepository();
@@ -140,19 +182,28 @@ export async function registerProject(
 
   const repo = await getProjectRepository();
 
-  const existing = await repo.findOneBy({ name });
-  if (existing) {
-    return { success: false, error: "이미 같은 이름의 프로젝트가 있습니다." };
+  const existingProjects = await repo.find();
+  const pathKey = buildProjectPathKey(repoPath, sshHost || null);
+  const alreadyRegistered = existingProjects.some(
+    (project) => buildProjectPathKey(project.repoPath, project.sshHost) === pathKey,
+  );
+  if (alreadyRegistered) {
+    return { success: false, error: "이미 등록된 프로젝트입니다." };
   }
 
   const defaultBranch = await getDefaultBranch(repoPath, sshHost || null);
+  const projectName = resolveUniqueProjectName(
+    name,
+    repoPath,
+    new Set(existingProjects.map((project) => project.name)),
+  );
 
   const project = repo.create({
-    name,
+    name: projectName,
     repoPath,
     defaultBranch,
     sshHost: sshHost || null,
-    color: computeProjectColor(name),
+    color: computeProjectColor(projectName),
   });
 
   const saved = await repo.save(project);
@@ -207,36 +258,12 @@ export async function scanAndRegisterProjects(
   const repo = await getProjectRepository();
   const existing = await repo.find();
   const existingPaths = new Set(
-    existing.map((p) => `${p.sshHost || ""}:${p.repoPath}`)
+    existing.map((project) => buildProjectPathKey(project.repoPath, project.sshHost))
   );
   const existingNames = new Set(existing.map((p) => p.name));
 
-  /** 폴더명 기반 프로젝트 이름을 생성한다. 중복 시 상위 디렉토리를 포함한다 */
-  function resolveProjectName(repoPath: string): string {
-    const baseName = path.basename(repoPath);
-    if (!existingNames.has(baseName)) {
-      existingNames.add(baseName);
-      return baseName;
-    }
-
-    const parentName = path.basename(path.dirname(repoPath));
-    const combinedName = `${parentName}/${baseName}`;
-    if (!existingNames.has(combinedName)) {
-      existingNames.add(combinedName);
-      return combinedName;
-    }
-
-    let counter = 2;
-    while (existingNames.has(`${baseName}-${counter}`)) {
-      counter++;
-    }
-    const numberedName = `${baseName}-${counter}`;
-    existingNames.add(numberedName);
-    return numberedName;
-  }
-
   for (const repoPath of repoPaths) {
-    const pathKey = `${sshHost || ""}:${repoPath}`;
+    const pathKey = buildProjectPathKey(repoPath, sshHost || null);
     if (existingPaths.has(pathKey)) {
       result.skipped.push(repoPath);
       continue;
@@ -244,7 +271,7 @@ export async function scanAndRegisterProjects(
 
     try {
       const defaultBranch = await getDefaultBranch(repoPath, sshHost || null);
-      const projectName = resolveProjectName(repoPath);
+      const projectName = resolveUniqueProjectName(path.basename(repoPath), repoPath, existingNames);
 
       const project = repo.create({
         name: projectName,

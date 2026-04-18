@@ -221,7 +221,7 @@ describe("projectService remote registration flow", () => {
 
     const remove = vi.fn();
     mocks.getProjectRepository.mockResolvedValue({
-      findOneBy: vi.fn().mockResolvedValue(null),
+      find: vi.fn().mockResolvedValue([]),
       create: vi.fn((value) => value),
       save: vi.fn(async (value) => ({ id: "project-1", ...value })),
       remove,
@@ -238,6 +238,67 @@ describe("projectService remote registration flow", () => {
     expect(result.success).toBe(true);
     expect(remove).not.toHaveBeenCalled();
     expect(result.project).toMatchObject({ name: "api", sshHost: "remote-host" });
+  });
+
+  it("같은 이름의 로컬 프로젝트가 있어도 원격 프로젝트는 구분된 이름으로 등록한다", async () => {
+    mocks.validateGitRepo.mockResolvedValue(true);
+    mocks.getDefaultBranch.mockResolvedValue("main");
+    mocks.createSessionWithoutWorktree.mockResolvedValue({ sessionName: "kanvibe-main" });
+
+    mocks.getProjectRepository.mockResolvedValue({
+      find: vi.fn().mockResolvedValue([
+        {
+          id: "project-local",
+          name: "kanvibe",
+          repoPath: "/workspace/kanvibe",
+          sshHost: null,
+        },
+      ]),
+      create: vi.fn((value) => value),
+      save: vi.fn(async (value) => ({ id: "project-remote", ...value })),
+      remove: vi.fn(),
+    });
+    mocks.getTaskRepository.mockResolvedValue({
+      findOneBy: vi.fn().mockResolvedValue(null),
+      create: vi.fn((value) => value),
+      save: vi.fn(async (value) => ({ id: "task-1", ...value })),
+    });
+
+    const { registerProject } = await import("@/desktop/main/services/projectService");
+    const result = await registerProject(
+      "kanvibe",
+      "/home/rookedsysc/Documents/kanvibe/kanvibe",
+      "remote-host",
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.project).toMatchObject({
+      name: "kanvibe/kanvibe",
+      sshHost: "remote-host",
+    });
+  });
+
+  it("같은 sshHost와 repoPath 조합은 이름이 달라도 중복 등록하지 않는다", async () => {
+    mocks.validateGitRepo.mockResolvedValue(true);
+
+    mocks.getProjectRepository.mockResolvedValue({
+      find: vi.fn().mockResolvedValue([
+        {
+          id: "project-1",
+          name: "kanvibe",
+          repoPath: "/workspace/kanvibe",
+          sshHost: "remote-host",
+        },
+      ]),
+    });
+
+    const { registerProject } = await import("@/desktop/main/services/projectService");
+    const result = await registerProject("kanvibe-remote", "/workspace/kanvibe", "remote-host");
+
+    expect(result).toEqual({
+      success: false,
+      error: "이미 등록된 프로젝트입니다.",
+    });
   });
 });
 

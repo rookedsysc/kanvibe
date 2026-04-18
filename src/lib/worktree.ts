@@ -23,6 +23,33 @@ export function sanitizeZellijSessionName(sessionName: string): string {
   return sessionName.slice(0, ZELLIJ_SESSION_NAME_MAX_LENGTH);
 }
 
+function buildTmuxCreateSessionCommand(sessionName: string, workingDir: string): string {
+  return `tmux new-session -d -s "${sessionName}" -c "${workingDir}"`;
+}
+
+function shouldRetryRemoteTmuxCreate(error: unknown): boolean {
+  return error instanceof Error && /server exited unexpectedly|open terminal failed/i.test(error.message);
+}
+
+/** 원격 비대화형 SSH에서 tmux 서버가 TERM 없이 뜨지 못하는 경우가 있어 한 번 보정 재시도한다 */
+async function createTmuxSession(
+  sessionName: string,
+  workingDir: string,
+  sshHost?: string | null,
+): Promise<void> {
+  const command = buildTmuxCreateSessionCommand(sessionName, workingDir);
+
+  try {
+    await execGit(command, sshHost);
+  } catch (error) {
+    if (!sshHost || !shouldRetryRemoteTmuxCreate(error)) {
+      throw error;
+    }
+
+    await execGit(`env TERM=xterm-256color ${command}`, sshHost);
+  }
+}
+
 
 /**
  * tmux 세션에 pane 레이아웃을 적용하고 각 pane에 시작 명령어를 실행한다.
@@ -248,10 +275,7 @@ export async function createWorktreeWithSession(
     /** 동일 이름의 세션이 없을 때만 생성한다 */
     const hasSession = await isSessionAlive(sessionType, sessionName, sshHost);
     if (!hasSession) {
-      await execGit(
-        `tmux new-session -d -s "${sessionName}" -c "${worktreePath}"`,
-        sshHost,
-      );
+      await createTmuxSession(sessionName, worktreePath, sshHost);
     }
 
     /** 로컬 tmux인 경우 pane 레이아웃을 백그라운드로 적용 (task 생성을 차단하지 않음) */
@@ -313,10 +337,7 @@ export async function createSessionWithoutWorktree(
   if (sessionType === SessionType.TMUX) {
     const hasSession = await isSessionAlive(sessionType, sessionName, sshHost);
     if (!hasSession) {
-      await execGit(
-        `tmux new-session -d -s "${sessionName}" -c "${cwd}"`,
-        sshHost,
-      );
+      await createTmuxSession(sessionName, cwd, sshHost);
     }
 
     return { sessionName };
