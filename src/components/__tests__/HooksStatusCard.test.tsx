@@ -15,11 +15,24 @@ vi.mock("next-intl", async () => {
 
 vi.mock("@/components/HooksStatusDialog", () => {
   // eslint-disable-next-line react/display-name
-  const MockDialog = ({ isOpen, onClose, taskId, isRemote }: any) =>
+  const MockDialog = ({ isOpen, onClose, taskId, isRemote, onStatusesChange }: any) =>
     isOpen ? (
       <div data-testid="hooks-status-dialog">
         Dialog: taskId={taskId}, isRemote={isRemote}
         <button onClick={onClose}>Close Dialog</button>
+        <button
+          onClick={() => onStatusesChange?.({
+            claudeStatus: {
+              installed: true,
+              hasPromptHook: true,
+              hasStopHook: true,
+              hasQuestionHook: true,
+              hasSettingsEntry: true,
+            },
+          })}
+        >
+          Simulate Install
+        </button>
       </div>
     ) : null;
   return {
@@ -185,6 +198,23 @@ describe("HooksStatusCard", () => {
 
     // Then
     expect(screen.queryByTestId("hooks-status-dialog")).toBeNull();
+  });
+
+  it("should update the overall status when the dialog reports a new hook status", () => {
+    const props = {
+      taskId: "task-1",
+      initialClaudeStatus: null,
+      initialGeminiStatus: null,
+      initialCodexStatus: null,
+      initialOpenCodeStatus: null,
+      isRemote: false,
+    };
+
+    renderCard(props);
+    fireEvent.click(screen.getByText("Not Installed"));
+    fireEvent.click(screen.getByText("Simulate Install"));
+
+    expect(screen.getByText("Partial")).toBeTruthy();
   });
 
   it("should pass correct taskId to dialog", () => {

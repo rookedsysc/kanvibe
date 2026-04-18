@@ -22,6 +22,12 @@ interface HooksStatusDialogProps {
   codexStatus: CodexHooksStatus | null;
   openCodeStatus: OpenCodeHooksStatus | null;
   isRemote: boolean;
+  onStatusesChange?: (updates: {
+    claudeStatus?: ClaudeHooksStatus | null;
+    geminiStatus?: GeminiHooksStatus | null;
+    codexStatus?: CodexHooksStatus | null;
+    openCodeStatus?: OpenCodeHooksStatus | null;
+  }) => void;
 }
 
 type HookToolKey = "claude" | "gemini" | "codex" | "openCode";
@@ -37,6 +43,7 @@ export default function HooksStatusDialog({
   codexStatus,
   openCodeStatus,
   isRemote,
+  onStatusesChange,
 }: HooksStatusDialogProps) {
   const t = useTranslations("taskDetail");
   const [installingTool, setInstallingTool] = useState<HookToolKey | null>(null);
@@ -69,7 +76,7 @@ export default function HooksStatusDialog({
   useEffect(() => {
     setMessage(null);
     setExpandedManualTool(null);
-  }, [isOpen, claudeStatus, geminiStatus, codexStatus, openCodeStatus]);
+  }, [isOpen]);
 
   function getInstallFailureText(error?: string) {
     return error ? t("hooksInstallFailed", { error }) : t("hooksInstallFailed");
@@ -89,6 +96,7 @@ export default function HooksStatusDialog({
   function applyClaudeResult(result: Awaited<ReturnType<typeof installTaskHooks>>) {
     if (result.success && result.status) {
       setLocalClaudeStatus(result.status);
+      onStatusesChange?.({ claudeStatus: result.status });
       setMessage({
         type: result.status.installed ? "success" : "error",
         text: result.status.installed ? t("hooksInstallSuccess") : getInstallIncompleteText(),
@@ -102,6 +110,7 @@ export default function HooksStatusDialog({
   function applyGeminiResult(result: Awaited<ReturnType<typeof installTaskGeminiHooks>>) {
     if (result.success && result.status) {
       setLocalGeminiStatus(result.status);
+      onStatusesChange?.({ geminiStatus: result.status });
       setMessage({
         type: result.status.installed ? "success" : "error",
         text: result.status.installed ? t("geminiHooksInstallSuccess") : getInstallIncompleteText(),
@@ -115,6 +124,7 @@ export default function HooksStatusDialog({
   function applyCodexResult(result: Awaited<ReturnType<typeof installTaskCodexHooks>>) {
     if (result.success && result.status) {
       setLocalCodexStatus(result.status);
+      onStatusesChange?.({ codexStatus: result.status });
       setMessage({
         type: result.status.installed ? "success" : "error",
         text: result.status.installed ? t("codexHooksInstallSuccess") : getInstallIncompleteText(),
@@ -128,6 +138,7 @@ export default function HooksStatusDialog({
   function applyOpenCodeResult(result: Awaited<ReturnType<typeof installTaskOpenCodeHooks>>) {
     if (result.success && result.status) {
       setLocalOpenCodeStatus(result.status);
+      onStatusesChange?.({ openCodeStatus: result.status });
       setMessage({
         type: result.status.installed ? "success" : "error",
         text: result.status.installed ? t("openCodeHooksInstallSuccess") : getInstallIncompleteText(),

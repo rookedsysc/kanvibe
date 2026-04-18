@@ -32,6 +32,26 @@ export default function HooksStatusCard({
   const [openCodeStatus, setOpenCodeStatus] = useState(initialOpenCodeStatus);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
 
+  function handleStatusesChange(updates: {
+    claudeStatus?: ClaudeHooksStatus | null;
+    geminiStatus?: GeminiHooksStatus | null;
+    codexStatus?: CodexHooksStatus | null;
+    openCodeStatus?: OpenCodeHooksStatus | null;
+  }) {
+    if (updates.claudeStatus !== undefined) {
+      setClaudeStatus(updates.claudeStatus);
+    }
+    if (updates.geminiStatus !== undefined) {
+      setGeminiStatus(updates.geminiStatus);
+    }
+    if (updates.codexStatus !== undefined) {
+      setCodexStatus(updates.codexStatus);
+    }
+    if (updates.openCodeStatus !== undefined) {
+      setOpenCodeStatus(updates.openCodeStatus);
+    }
+  }
+
   useEffect(() => {
     setClaudeStatus(initialClaudeStatus);
   }, [initialClaudeStatus]);
@@ -91,6 +111,7 @@ export default function HooksStatusCard({
           codexStatus={codexStatus}
           openCodeStatus={openCodeStatus}
           isRemote={isRemote}
+          onStatusesChange={handleStatusesChange}
         />
       )}
     </>

@@ -543,4 +543,27 @@ describe("HooksStatusDialog", () => {
       expect(closeButton.disabled).toBe(true);
     });
   });
+
+  it("should report updated hook status to the parent card after installation", async () => {
+    const onStatusesChange = vi.fn();
+    mockInstallTaskHooks.mockResolvedValue({ success: true, status: verifiedClaudeStatus });
+
+    renderDialog({
+      isOpen: true,
+      onClose: vi.fn(),
+      taskId: "task-1",
+      claudeStatus: null,
+      geminiStatus: null,
+      codexStatus: null,
+      openCodeStatus: null,
+      isRemote: false,
+      onStatusesChange,
+    });
+
+    fireEvent.click(screen.getAllByText("installHooks")[0]);
+
+    await waitFor(() => {
+      expect(onStatusesChange).toHaveBeenCalledWith({ claudeStatus: verifiedClaudeStatus });
+    });
+  });
 });
