@@ -3,6 +3,7 @@ import path from "path";
 import { addAiToolPatternsToGitExclude } from "@/lib/gitExclude";
 import { buildFetchAuthHeaders } from "@/lib/hookAuth";
 import { pathExists, readTextFile } from "@/lib/hostFileAccess";
+import { extractPluginHookServerUrl, validateHookServerConfiguration } from "@/lib/hookServerStatus";
 import { KANVIBE_TASK_ID_RELATIVE_PATH, readHookTaskIdFile, writeHookTaskIdFile } from "@/lib/hookTaskBinding";
 
 /**
@@ -230,7 +231,11 @@ export interface OpenCodeHooksStatus {
   hasEventMappings?: boolean;
   hasMainSessionGuard?: boolean;
   hasDuplicateProgressGuard?: boolean;
+  hasExpectedHookServerUrl?: boolean;
+  hasReachableHookServer?: boolean;
   boundTaskId?: string | null;
+  configuredHookServerUrl?: string | null;
+  expectedHookServerUrl?: string | null;
 }
 
 /** 지정된 repo의 OpenCode plugin 설치 상태를 확인한다 */
@@ -249,10 +254,12 @@ export async function getOpenCodeHooksStatus(repoPath: string, taskId?: string, 
   let hasEventMappings = false;
   let hasMainSessionGuard = false;
   let hasDuplicateProgressGuard = false;
+  let configuredHookServerUrl: string | null = null;
   if (pluginExists) {
     try {
       const content = await readTextFile(pluginPath, sshHost);
       hasPlugin = hasKanvibePlugin(content);
+      configuredHookServerUrl = extractPluginHookServerUrl(content);
       hasTaskIdBinding =
         !taskId || (
           content.includes(`const DEFAULT_TASK_ID = \"${taskId}\";`) &&
@@ -270,7 +277,21 @@ export async function getOpenCodeHooksStatus(repoPath: string, taskId?: string, 
     }
   }
 
-  const installed = pluginExists && hasPlugin && hasTaskIdBinding && hasStatusEndpoint && hasEventMappings && hasMainSessionGuard && hasDuplicateProgressGuard;
+  const hookServerValidation = await validateHookServerConfiguration(
+    [configuredHookServerUrl],
+    Boolean(taskId),
+    sshHost,
+  );
+
+  const installed = pluginExists
+    && hasPlugin
+    && hasTaskIdBinding
+    && hasStatusEndpoint
+    && hasEventMappings
+    && hasMainSessionGuard
+    && hasDuplicateProgressGuard
+    && hookServerValidation.hasExpectedHookServerUrl
+    && hookServerValidation.hasReachableHookServer;
 
   return {
     installed,
@@ -280,6 +301,10 @@ export async function getOpenCodeHooksStatus(repoPath: string, taskId?: string, 
     hasEventMappings,
     hasMainSessionGuard,
     hasDuplicateProgressGuard,
+    hasExpectedHookServerUrl: hookServerValidation.hasExpectedHookServerUrl,
+    hasReachableHookServer: hookServerValidation.hasReachableHookServer,
     boundTaskId,
+    configuredHookServerUrl: hookServerValidation.configuredHookServerUrl,
+    expectedHookServerUrl: hookServerValidation.expectedHookServerUrl,
   };
 }

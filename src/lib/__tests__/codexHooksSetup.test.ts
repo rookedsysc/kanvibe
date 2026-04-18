@@ -82,7 +82,11 @@ describe("codexHooksSetup", () => {
         hasTaskIdBinding: true,
         hasReviewStatus: true,
         hasAgentTurnCompleteFilter: true,
+        hasExpectedHookServerUrl: true,
+        hasReachableHookServer: true,
         boundTaskId: "task-1",
+        configuredHookServerUrl: "http://localhost:3000",
+        expectedHookServerUrl: null,
       });
     });
   });

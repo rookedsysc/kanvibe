@@ -3,6 +3,7 @@ import path from "path";
 import { addAiToolPatternsToGitExclude } from "@/lib/gitExclude";
 import { buildCurlAuthHeader } from "@/lib/hookAuth";
 import { pathExists, readTextFile } from "@/lib/hostFileAccess";
+import { extractShellHookServerUrl, validateHookServerConfiguration } from "@/lib/hookServerStatus";
 import { KANVIBE_TASK_ID_RELATIVE_PATH, buildShellTaskIdResolver, readHookTaskIdFile, writeHookTaskIdFile } from "@/lib/hookTaskBinding";
 
 /**
@@ -126,7 +127,11 @@ export interface CodexHooksStatus {
   hasTaskIdBinding?: boolean;
   hasReviewStatus?: boolean;
   hasAgentTurnCompleteFilter?: boolean;
+  hasExpectedHookServerUrl?: boolean;
+  hasReachableHookServer?: boolean;
   boundTaskId?: string | null;
+  configuredHookServerUrl?: string | null;
+  expectedHookServerUrl?: string | null;
 }
 
 /** 지정된 repo의 Codex CLI hooks 설치 상태를 확인한다 */
@@ -146,6 +151,11 @@ export async function getCodexHooksStatus(repoPath: string, taskId?: string, ssh
   const hasTaskIdBinding = hasTaskIdPayloadBinding(notifyContent, taskId, boundTaskId);
   const hasReviewStatus = notifyContent.includes('\\\"status\\\": \\\"review\\\"');
   const hasAgentTurnCompleteFilter = notifyContent.includes("EVENT_TYPE") && notifyContent.includes("agent-turn-complete");
+  const hookServerValidation = await validateHookServerConfiguration(
+    [extractShellHookServerUrl(notifyContent)],
+    Boolean(taskId),
+    sshHost,
+  );
 
   let hasConfigEntry = false;
   try {
@@ -155,7 +165,13 @@ export async function getCodexHooksStatus(repoPath: string, taskId?: string, ssh
     /* config.toml 없음 */
   }
 
-  const installed = notifyScriptExists && hasConfigEntry && hasTaskIdBinding && hasReviewStatus && hasAgentTurnCompleteFilter;
+  const installed = notifyScriptExists
+    && hasConfigEntry
+    && hasTaskIdBinding
+    && hasReviewStatus
+    && hasAgentTurnCompleteFilter
+    && hookServerValidation.hasExpectedHookServerUrl
+    && hookServerValidation.hasReachableHookServer;
 
   return {
     installed,
@@ -164,6 +180,10 @@ export async function getCodexHooksStatus(repoPath: string, taskId?: string, ssh
     hasTaskIdBinding,
     hasReviewStatus,
     hasAgentTurnCompleteFilter,
+    hasExpectedHookServerUrl: hookServerValidation.hasExpectedHookServerUrl,
+    hasReachableHookServer: hookServerValidation.hasReachableHookServer,
     boundTaskId,
+    configuredHookServerUrl: hookServerValidation.configuredHookServerUrl,
+    expectedHookServerUrl: hookServerValidation.expectedHookServerUrl,
   };
 }

@@ -3,6 +3,7 @@ import path from "path";
 import { addAiToolPatternsToGitExclude } from "@/lib/gitExclude";
 import { buildCurlAuthHeader } from "@/lib/hookAuth";
 import { pathExists, readTextFile } from "@/lib/hostFileAccess";
+import { extractShellHookServerUrl, validateHookServerConfiguration } from "@/lib/hookServerStatus";
 import { KANVIBE_TASK_ID_RELATIVE_PATH, buildShellTaskIdResolver, readHookTaskIdFile, writeHookTaskIdFile } from "@/lib/hookTaskBinding";
 
 /**
@@ -196,7 +197,11 @@ export interface GeminiHooksStatus {
   hasSettingsEntry: boolean;
   hasTaskIdBinding?: boolean;
   hasStatusMappings?: boolean;
+  hasExpectedHookServerUrl?: boolean;
+  hasReachableHookServer?: boolean;
   boundTaskId?: string | null;
+  configuredHookServerUrl?: string | null;
+  expectedHookServerUrl?: string | null;
 }
 
 /** 지정된 repo의 Gemini CLI hooks 설치 상태를 확인한다 */
@@ -219,6 +224,11 @@ export async function getGeminiHooksStatus(repoPath: string, taskId?: string, ss
   const scriptContents = [promptContent, stopContent];
   const boundTaskId = await readHookTaskIdFile(repoPath, sshHost);
   const hasTaskIdBinding = scriptContents.every((content) => hasTaskIdPayloadBinding(content, taskId, boundTaskId));
+  const hookServerValidation = await validateHookServerConfiguration(
+    scriptContents.map(extractShellHookServerUrl),
+    Boolean(taskId),
+    sshHost,
+  );
   const hasStatusMappings =
     promptContent.includes('\\\"status\\\": \\\"progress\\\"') &&
     stopContent.includes('\\\"status\\\": \\\"review\\\"');
@@ -236,7 +246,13 @@ export async function getGeminiHooksStatus(repoPath: string, taskId?: string, ss
     /* settings.json 없음 */
   }
 
-  const installed = promptScriptExists && stopScriptExists && hasSettingsEntry && hasTaskIdBinding && hasStatusMappings;
+  const installed = promptScriptExists
+    && stopScriptExists
+    && hasSettingsEntry
+    && hasTaskIdBinding
+    && hasStatusMappings
+    && hookServerValidation.hasExpectedHookServerUrl
+    && hookServerValidation.hasReachableHookServer;
 
   return {
     installed,
@@ -245,6 +261,10 @@ export async function getGeminiHooksStatus(repoPath: string, taskId?: string, ss
     hasSettingsEntry,
     hasTaskIdBinding,
     hasStatusMappings,
+    hasExpectedHookServerUrl: hookServerValidation.hasExpectedHookServerUrl,
+    hasReachableHookServer: hookServerValidation.hasReachableHookServer,
     boundTaskId,
+    configuredHookServerUrl: hookServerValidation.configuredHookServerUrl,
+    expectedHookServerUrl: hookServerValidation.expectedHookServerUrl,
   };
 }

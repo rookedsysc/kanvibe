@@ -3,6 +3,7 @@ import path from "path";
 import { addAiToolPatternsToGitExclude } from "@/lib/gitExclude";
 import { buildCurlAuthHeader } from "@/lib/hookAuth";
 import { pathExists, readTextFile } from "@/lib/hostFileAccess";
+import { extractShellHookServerUrl, validateHookServerConfiguration } from "@/lib/hookServerStatus";
 import { KANVIBE_TASK_ID_RELATIVE_PATH, buildShellTaskIdResolver, readHookTaskIdFile, writeHookTaskIdFile } from "@/lib/hookTaskBinding";
 
 /** UserPromptSubmit hook bash 스크립트를 생성한다 */
@@ -235,7 +236,11 @@ export interface ClaudeHooksStatus {
   hasSettingsEntry: boolean;
   hasTaskIdBinding?: boolean;
   hasStatusMappings?: boolean;
+  hasExpectedHookServerUrl?: boolean;
+  hasReachableHookServer?: boolean;
   boundTaskId?: string | null;
+  configuredHookServerUrl?: string | null;
+  expectedHookServerUrl?: string | null;
 }
 
 /** 지정된 repo의 Claude Code hooks 설치 상태를 확인한다 */
@@ -261,6 +266,11 @@ export async function getClaudeHooksStatus(repoPath: string, taskId?: string, ss
   const scriptContents = [promptContent, stopContent, questionContent];
   const boundTaskId = await readHookTaskIdFile(repoPath, sshHost);
   const hasTaskIdBinding = scriptContents.every((content) => hasTaskIdPayloadBinding(content, taskId, boundTaskId));
+  const hookServerValidation = await validateHookServerConfiguration(
+    scriptContents.map(extractShellHookServerUrl),
+    Boolean(taskId),
+    sshHost,
+  );
   const hasStatusMappings =
     promptContent.includes('\\\"status\\\": \\\"progress\\\"') &&
     stopContent.includes('\\\"status\\\": \\\"review\\\"') &&
@@ -281,7 +291,14 @@ export async function getClaudeHooksStatus(repoPath: string, taskId?: string, ss
     /* settings.json 없음 */
   }
 
-  const installed = promptScriptExists && stopScriptExists && questionScriptExists && hasSettingsEntry && hasTaskIdBinding && hasStatusMappings;
+  const installed = promptScriptExists
+    && stopScriptExists
+    && questionScriptExists
+    && hasSettingsEntry
+    && hasTaskIdBinding
+    && hasStatusMappings
+    && hookServerValidation.hasExpectedHookServerUrl
+    && hookServerValidation.hasReachableHookServer;
 
   return {
     installed,
@@ -291,6 +308,10 @@ export async function getClaudeHooksStatus(repoPath: string, taskId?: string, ss
     hasSettingsEntry,
     hasTaskIdBinding,
     hasStatusMappings,
+    hasExpectedHookServerUrl: hookServerValidation.hasExpectedHookServerUrl,
+    hasReachableHookServer: hookServerValidation.hasReachableHookServer,
     boundTaskId,
+    configuredHookServerUrl: hookServerValidation.configuredHookServerUrl,
+    expectedHookServerUrl: hookServerValidation.expectedHookServerUrl,
   };
 }

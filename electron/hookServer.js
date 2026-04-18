@@ -52,9 +52,14 @@ function createHookServer({ host, port }) {
   const hookService = require(getHookServiceModulePath());
 
   const server = http.createServer(async (request, response) => {
-    if ((request.url === "/api/hooks/start" || request.url === "/api/hooks/status") && !isAuthorized(request)) {
+    if ((request.url === "/api/hooks/start" || request.url === "/api/hooks/status" || request.url === "/api/hooks/health") && !isAuthorized(request)) {
       console.warn(`[kanvibe] Unauthorized hook request from ${request.socket.remoteAddress || "unknown"} to ${request.url}`);
       writeJson(response, 401, { success: false, error: "Unauthorized" });
+      return;
+    }
+
+    if (request.method === "GET" && request.url === "/api/hooks/health") {
+      writeJson(response, 200, { success: true });
       return;
     }
 
