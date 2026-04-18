@@ -1,4 +1,4 @@
-import { access, readFile, readdir, stat } from "fs/promises";
+import { access, mkdir, readFile, readdir, stat, writeFile } from "fs/promises";
 import { homedir } from "os";
 import path from "path";
 import { execGit } from "@/lib/gitOperations";
@@ -57,6 +57,20 @@ export async function readTextFile(targetPath: string, sshHost?: string | null):
   } catch {
     return "";
   }
+}
+
+export async function writeTextFile(targetPath: string, content: string, sshHost?: string | null): Promise<void> {
+  if (!sshHost) {
+    await mkdir(path.dirname(targetPath), { recursive: true });
+    await writeFile(targetPath, content, "utf-8");
+    return;
+  }
+
+  const encodedContent = Buffer.from(content, "utf-8").toString("base64");
+  await execGit(
+    `mkdir -p ${quoteShellArgument(path.posix.dirname(targetPath))} && printf '%s' ${quoteShellArgument(encodedContent)} | (base64 -d 2>/dev/null || base64 -D) > ${quoteShellArgument(targetPath)}`,
+    sshHost,
+  );
 }
 
 export async function readDirectoryFilesBySuffix(
