@@ -416,7 +416,71 @@ describe("projectService local hook installation", () => {
     );
   });
 
-  it("이미 등록된 레거시 프로젝트도 root task와 repo root hooks를 자동 복구한다", async () => {
+  it("이미 등록된 레거시 프로젝트 목록 조회는 즉시 반환하고 root hooks 복구는 백그라운드에서 진행한다", async () => {
+    vi.useFakeTimers();
+
+    mocks.getProjectRepository.mockResolvedValue({
+      find: vi.fn().mockResolvedValue([
+        {
+          id: "project-1",
+          name: "api",
+          repoPath: "/workspace/api",
+          defaultBranch: "main",
+          sshHost: null,
+        },
+      ]),
+    });
+    const findOneBy = vi.fn()
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({
+        id: "task-main",
+        branchName: "main",
+        projectId: "project-1",
+        baseBranch: "main",
+        worktreePath: "/workspace/api",
+        sshHost: null,
+      });
+    mocks.getTaskRepository.mockResolvedValue({
+      findOneBy,
+      create: vi.fn((value) => value),
+      save: vi.fn(async (value) => ({ id: "task-main", ...value })),
+    });
+    mocks.createSessionWithoutWorktree.mockRejectedValue(new Error("tmux missing"));
+
+    const { getAllProjects } = await import("@/desktop/main/services/projectService");
+
+    try {
+      await expect(getAllProjects()).resolves.toEqual([
+        {
+          id: "project-1",
+          name: "api",
+          repoPath: "/workspace/api",
+          defaultBranch: "main",
+          sshHost: null,
+        },
+      ]);
+
+      expect(mocks.installKanvibeHooks).not.toHaveBeenCalled();
+      expect(mocks.broadcastBoardUpdate).toHaveBeenCalledTimes(1);
+
+      await vi.runAllTimersAsync();
+
+      expect(mocks.installKanvibeHooks).toHaveBeenCalledWith(
+        "/workspace/api",
+        "task-main",
+        null,
+      );
+      expect(mocks.broadcastBoardUpdate).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("기존 root hooks 백그라운드 복구가 한 번 실패해도 다음 조회에서 다시 재시도한다", async () => {
+    vi.useFakeTimers();
+
     mocks.getProjectRepository.mockResolvedValue({
       find: vi.fn().mockResolvedValue([
         {
@@ -429,33 +493,44 @@ describe("projectService local hook installation", () => {
       ]),
     });
     mocks.getTaskRepository.mockResolvedValue({
-      findOneBy: vi.fn()
-        .mockResolvedValueOnce(null)
-        .mockResolvedValueOnce(null)
-        .mockResolvedValueOnce(null),
+      findOneBy: vi.fn().mockResolvedValue({
+        id: "task-main",
+        branchName: "main",
+        projectId: "project-1",
+        baseBranch: "main",
+        worktreePath: "/workspace/api",
+        sshHost: null,
+      }),
       create: vi.fn((value) => value),
       save: vi.fn(async (value) => ({ id: "task-main", ...value })),
     });
-    mocks.createSessionWithoutWorktree.mockRejectedValue(new Error("tmux missing"));
+    mocks.readHookTaskIdFile.mockResolvedValue(null);
+    mocks.installKanvibeHooks
+      .mockRejectedValueOnce(new Error("hook server offline"))
+      .mockResolvedValueOnce(undefined);
 
     const { getAllProjects } = await import("@/desktop/main/services/projectService");
 
-    await expect(getAllProjects()).resolves.toEqual([
-      {
-        id: "project-1",
-        name: "api",
-        repoPath: "/workspace/api",
-        defaultBranch: "main",
-        sshHost: null,
-      },
-    ]);
+    try {
+      await getAllProjects();
+      await vi.runAllTimersAsync();
 
-    expect(mocks.installKanvibeHooks).toHaveBeenCalledWith(
-      "/workspace/api",
-      "task-main",
-      null,
-    );
-    expect(mocks.broadcastBoardUpdate).toHaveBeenCalled();
+      expect(mocks.installKanvibeHooks).toHaveBeenCalledTimes(1);
+      expect(mocks.broadcastBoardUpdate).not.toHaveBeenCalled();
+
+      await getAllProjects();
+      await vi.runAllTimersAsync();
+
+      expect(mocks.installKanvibeHooks).toHaveBeenCalledTimes(2);
+      expect(mocks.installKanvibeHooks).toHaveBeenLastCalledWith(
+        "/workspace/api",
+        "task-main",
+        null,
+      );
+      expect(mocks.broadcastBoardUpdate).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("레거시 프로젝트에서 기본 브랜치 task가 없어도 project hook 재설치를 계속 진행한다", async () => {

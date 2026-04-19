@@ -42,6 +42,40 @@ function buildProjectPathKey(repoPath: string, sshHost?: string | null): string 
   return `${sshHost || ""}:${repoPath}`;
 }
 
+const projectRootHookRepairJobs = new Map<string, Promise<void>>();
+const projectRootHookRepairScheduled = new Set<string>();
+
+function scheduleProjectRootHookRepair(project: Project) {
+  const projectPathKey = buildProjectPathKey(project.repoPath, project.sshHost);
+  if (projectRootHookRepairScheduled.has(projectPathKey)) {
+    return;
+  }
+
+  projectRootHookRepairScheduled.add(projectPathKey);
+
+  setTimeout(() => {
+    const repairJob = (async () => {
+      try {
+        const { repaired } = await ensureProjectRootTask(project, {
+          repairHooks: true,
+          throwOnHookRepairFailure: false,
+        });
+
+        if (repaired) {
+          broadcastBoardUpdate();
+        }
+      } catch (error) {
+        console.error(`${project.name} 기본 브랜치 hooks 백그라운드 복구 실패:`, error);
+      } finally {
+        projectRootHookRepairJobs.delete(projectPathKey);
+        projectRootHookRepairScheduled.delete(projectPathKey);
+      }
+    })();
+
+    projectRootHookRepairJobs.set(projectPathKey, repairJob);
+  }, 0);
+}
+
 /** 프로젝트 표시 이름은 전역적으로 유일해야 하므로 충돌 시 경로 기반 후보명으로 보정한다 */
 function resolveUniqueProjectName(
   preferredName: string,
@@ -227,11 +261,9 @@ export async function getAllProjects(): Promise<Project[]> {
   let repairedAnyProject = false;
   for (const project of projects) {
     try {
-      const { repaired } = await ensureProjectRootTask(project, {
-        repairHooks: true,
-        throwOnHookRepairFailure: false,
-      });
+      const { repaired } = await ensureProjectRootTask(project);
       repairedAnyProject = repairedAnyProject || repaired;
+      scheduleProjectRootHookRepair(project);
     } catch (error) {
       console.error(`${project.name} 기본 브랜치 task 복구 실패:`, error);
     }
