@@ -20,6 +20,10 @@ import { installKanvibeHooks } from "@/lib/kanvibeHooksInstaller";
 import { getHookServerToken, getHookServerUrl } from "@/lib/hookEndpoint";
 import { readHookTaskIdFile } from "@/lib/hookTaskBinding";
 
+function matchesTaskLocation(task: { worktreePath?: string | null; sshHost?: string | null }, expectedPath: string, sshHost?: string | null): boolean {
+  return task.worktreePath === expectedPath && (task.sshHost || null) === (sshHost || null);
+}
+
 function resolveDirectorySearchPath(targetPath: string, sshHost?: string): string {
   if (!targetPath.startsWith("~")) {
     return `"${targetPath}"`;
@@ -42,6 +46,11 @@ function buildProjectPathKey(repoPath: string, sshHost?: string | null): string 
   return `${sshHost || ""}:${repoPath}`;
 }
 
+function isRemoteConnectionError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error || "");
+  return /원격 명령 실패:.*(Connection (?:reset|closed)|kex_exchange_identification|operation timed out|no route to host|connection refused|could not resolve hostname|broken pipe)/i.test(message);
+}
+
 const projectRootHookRepairJobs = new Map<string, Promise<void>>();
 const projectRootHookRepairScheduled = new Set<string>();
 
@@ -59,13 +68,16 @@ function scheduleProjectRootHookRepair(project: Project) {
         const { repaired } = await ensureProjectRootTask(project, {
           repairHooks: true,
           throwOnHookRepairFailure: false,
+          suppressRemoteConnectionErrorLogging: true,
         });
 
         if (repaired) {
           broadcastBoardUpdate();
         }
       } catch (error) {
-        console.error(`${project.name} 기본 브랜치 hooks 백그라운드 복구 실패:`, error);
+        if (!isRemoteConnectionError(error)) {
+          console.error(`${project.name} 기본 브랜치 hooks 백그라운드 복구 실패:`, error);
+        }
       } finally {
         projectRootHookRepairJobs.delete(projectPathKey);
         projectRootHookRepairScheduled.delete(projectPathKey);
@@ -123,8 +135,11 @@ async function createDefaultBranchTask(project: Project) {
   if (existing) return existing;
 
   const orphan = await taskRepo.findOneBy({ branchName: project.defaultBranch, projectId: IsNull() });
-  if (orphan) {
+  if (orphan && matchesTaskLocation(orphan, project.repoPath, project.sshHost)) {
     orphan.projectId = project.id;
+    orphan.title = project.defaultBranch;
+    orphan.worktreePath = project.repoPath;
+    orphan.sshHost = project.sshHost;
     orphan.baseBranch = project.defaultBranch;
     return taskRepo.save(orphan);
   }
@@ -139,21 +154,23 @@ async function createDefaultBranchTask(project: Project) {
     baseBranch: project.defaultBranch,
   });
 
-  try {
-    const session = await createSessionWithoutWorktree(
-      project.repoPath,
-      project.defaultBranch,
-      defaultSessionType,
-      project.sshHost,
-      project.repoPath,
-    );
-    task.sessionType = defaultSessionType;
-    task.sessionName = session.sessionName;
-     task.worktreePath = project.repoPath;
-     task.sshHost = project.sshHost;
-     task.status = TaskStatus.PROGRESS;
-  } catch (error) {
-    console.error("메인 브랜치 tmux 세션 생성 실패:", error);
+  if (!project.sshHost) {
+    try {
+      const session = await createSessionWithoutWorktree(
+        project.repoPath,
+        project.defaultBranch,
+        defaultSessionType,
+        project.sshHost,
+        project.repoPath,
+      );
+      task.sessionType = defaultSessionType;
+      task.sessionName = session.sessionName;
+      task.worktreePath = project.repoPath;
+      task.sshHost = project.sshHost;
+      task.status = TaskStatus.PROGRESS;
+    } catch (error) {
+      console.error("메인 브랜치 tmux 세션 생성 실패:", error);
+    }
   }
 
   return taskRepo.save(task);
@@ -183,11 +200,13 @@ async function ensureProjectRootTask(
   options?: {
     repairHooks?: boolean;
     throwOnHookRepairFailure?: boolean;
+    suppressRemoteConnectionErrorLogging?: boolean;
   },
 ): Promise<{ task: Awaited<ReturnType<typeof getProjectRootTask>>; repaired: boolean }> {
   const taskRepo = await getTaskRepository();
   const repairHooks = options?.repairHooks === true;
   const throwOnHookRepairFailure = options?.throwOnHookRepairFailure !== false;
+  const suppressRemoteConnectionErrorLogging = options?.suppressRemoteConnectionErrorLogging === true;
   let task = await getProjectRootTask(project.id, project.defaultBranch);
   let repaired = false;
 
@@ -239,7 +258,9 @@ async function ensureProjectRootTask(
         throw error;
       }
 
-      console.error(`${project.name} 기본 브랜치 hooks 복구 실패:`, error);
+      if (!suppressRemoteConnectionErrorLogging || !isRemoteConnectionError(error)) {
+        console.error(`${project.name} 기본 브랜치 hooks 복구 실패:`, error);
+      }
     }
   }
 
@@ -409,6 +430,10 @@ export async function scanAndRegisterProjects(
     return result;
   }
 
+  const scannedProjectPathKeys = new Set(
+    repoPaths.map((repoPath) => buildProjectPathKey(repoPath, sshHost || null))
+  );
+
   const repo = await getProjectRepository();
   const existing = await repo.find();
   const existingPaths = new Set(
@@ -471,10 +496,12 @@ export async function scanAndRegisterProjects(
   }
 
   /** 등록된 모든 프로젝트의 worktree를 스캔하여 미등록 브랜치를 TODO task로 생성한다 */
-  const allProjects = await repo.find();
+  const scannedProjects = (await repo.find()).filter((project) => (
+    scannedProjectPathKeys.has(buildProjectPathKey(project.repoPath, project.sshHost))
+  ));
   const taskRepo = await getTaskRepository();
 
-  for (const project of allProjects) {
+  for (const project of scannedProjects) {
     try {
       const { repaired } = await ensureProjectRootTask(project, {
         repairHooks: true,
@@ -494,13 +521,32 @@ export async function scanAndRegisterProjects(
 
         /** 해당 프로젝트에 이미 동일 브랜치 태스크가 있으면 건너뛴다 */
         const existingTask = await taskRepo.findOneBy({ branchName: wt.branch, projectId: project.id });
-        if (existingTask) continue;
+        if (existingTask) {
+          const shouldRepairTask = !matchesTaskLocation(existingTask, wt.path, project.sshHost)
+            || existingTask.baseBranch !== project.defaultBranch;
+          if (shouldRepairTask) {
+            existingTask.worktreePath = wt.path;
+            existingTask.sshHost = project.sshHost;
+            existingTask.baseBranch = project.defaultBranch;
+            const savedTask = await taskRepo.save(existingTask);
+            try {
+              await installKanvibeHooks(wt.path, savedTask.id, project.sshHost);
+            } catch (hookError) {
+              result.errors.push(
+                `${project.name}/${wt.branch} hooks 설정 실패: ${hookError instanceof Error ? hookError.message : "알 수 없는 오류"}`
+              );
+            }
+          }
+          continue;
+        }
 
         /** orphan 태스크(projectId 없음)가 있으면 현재 프로젝트에 연결한다 */
         const orphanTask = await taskRepo.findOneBy({ branchName: wt.branch, projectId: IsNull() });
-        if (orphanTask) {
+        if (orphanTask && matchesTaskLocation(orphanTask, wt.path, project.sshHost)) {
           orphanTask.projectId = project.id;
+          orphanTask.title = wt.branch;
           orphanTask.worktreePath = wt.path;
+          orphanTask.sshHost = project.sshHost;
           orphanTask.baseBranch = orphanTask.baseBranch || project.defaultBranch;
           const savedTask = await taskRepo.save(orphanTask);
           try {

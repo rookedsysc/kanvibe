@@ -253,6 +253,30 @@ describe("projectService remote registration flow", () => {
     expect(result.project).toMatchObject({ name: "api", sshHost: "remote-host" });
   });
 
+  it("원격 프로젝트 기본 브랜치 task는 자동 tmux 세션을 만들지 않는다", async () => {
+    mocks.validateGitRepo.mockResolvedValue(true);
+    mocks.getDefaultBranch.mockResolvedValue("main");
+
+    mocks.getProjectRepository.mockResolvedValue({
+      find: vi.fn().mockResolvedValue([]),
+      create: vi.fn((value) => value),
+      save: vi.fn(async (value) => ({ id: "project-1", ...value })),
+      remove: vi.fn(),
+    });
+    mocks.getTaskRepository.mockResolvedValue({
+      findOneBy: vi.fn().mockResolvedValue(null),
+      create: vi.fn((value) => value),
+      save: vi.fn(async (value) => ({ id: "task-main", ...value })),
+    });
+
+    const { registerProject } = await import("@/desktop/main/services/projectService");
+
+    const result = await registerProject("api", "/remote/api", "remote-host");
+
+    expect(result.success).toBe(true);
+    expect(mocks.createSessionWithoutWorktree).not.toHaveBeenCalled();
+  });
+
   it("같은 이름의 로컬 프로젝트가 있어도 원격 프로젝트는 구분된 이름으로 등록한다", async () => {
     mocks.validateGitRepo.mockResolvedValue(true);
     mocks.getDefaultBranch.mockResolvedValue("main");
@@ -615,6 +639,100 @@ describe("projectService local hook installation", () => {
     }
   });
 
+  it("원격 hook 상태 조회가 SSH 연결 오류로 실패해도 백그라운드 복구 로그를 남기지 않는다", async () => {
+    vi.useFakeTimers();
+
+    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const remoteConnectionError = new Error("remote-host 원격 명령 실패: Connection reset by 100.73.171.123 port 22");
+
+    mocks.getProjectRepository.mockResolvedValue({
+      find: vi.fn().mockResolvedValue([
+        {
+          id: "project-1",
+          name: "prompt",
+          repoPath: "/remote/prompt",
+          defaultBranch: "main",
+          sshHost: "remote-host",
+        },
+      ]),
+    });
+    mocks.getTaskRepository.mockResolvedValue({
+      findOneBy: vi.fn().mockResolvedValue({
+        id: "task-main",
+        branchName: "main",
+        projectId: "project-1",
+        baseBranch: "main",
+        worktreePath: "/remote/prompt",
+        sshHost: "remote-host",
+      }),
+      create: vi.fn((value) => value),
+      save: vi.fn(async (value) => ({ id: "task-main", ...value })),
+    });
+    mocks.readHookTaskIdFile.mockResolvedValue("task-main");
+    mocks.getClaudeHooksStatus.mockRejectedValueOnce(remoteConnectionError);
+
+    const { getAllProjects } = await import("@/desktop/main/services/projectService");
+
+    try {
+      await getAllProjects();
+      await vi.runAllTimersAsync();
+
+      expect(mocks.installKanvibeHooks).not.toHaveBeenCalled();
+      expect(consoleErrorSpy).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("원격 hook 설치가 SSH 연결 오류로 실패해도 백그라운드 복구 로그를 남기지 않는다", async () => {
+    vi.useFakeTimers();
+
+    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const remoteConnectionError = new Error("remote-host 원격 명령 실패: Connection closed by 100.73.171.123 port 22");
+
+    mocks.getProjectRepository.mockResolvedValue({
+      find: vi.fn().mockResolvedValue([
+        {
+          id: "project-1",
+          name: "techtaurant-be",
+          repoPath: "/remote/techtaurant-be",
+          defaultBranch: "dev",
+          sshHost: "remote-host",
+        },
+      ]),
+    });
+    mocks.getTaskRepository.mockResolvedValue({
+      findOneBy: vi.fn().mockResolvedValue({
+        id: "task-main",
+        branchName: "dev",
+        projectId: "project-1",
+        baseBranch: "dev",
+        worktreePath: "/remote/techtaurant-be",
+        sshHost: "remote-host",
+      }),
+      create: vi.fn((value) => value),
+      save: vi.fn(async (value) => ({ id: "task-main", ...value })),
+    });
+    mocks.readHookTaskIdFile.mockResolvedValue(null);
+    mocks.installKanvibeHooks.mockRejectedValueOnce(remoteConnectionError);
+
+    const { getAllProjects } = await import("@/desktop/main/services/projectService");
+
+    try {
+      await getAllProjects();
+      await vi.runAllTimersAsync();
+
+      expect(mocks.installKanvibeHooks).toHaveBeenCalledWith(
+        "/remote/techtaurant-be",
+        "task-main",
+        "remote-host",
+      );
+      expect(consoleErrorSpy).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("레거시 프로젝트에서 기본 브랜치 task가 없어도 project hook 재설치를 계속 진행한다", async () => {
     const project = {
       id: "project-1",
@@ -721,6 +839,148 @@ describe("projectService local hook installation", () => {
 
     // Then
     expect(result.worktreeTasks).toContain("feature-login");
+    expect(mocks.installKanvibeHooks).toHaveBeenCalledWith(
+      "/workspace/api-worktrees/feature-login",
+      "task-worktree",
+      null,
+    );
+  });
+
+  it("프로젝트 스캔 후 worktree 후속 처리는 현재 스캔에서 찾은 저장소만 대상으로 한다", async () => {
+    mocks.scanGitRepos.mockResolvedValue(["/workspace/api"]);
+    mocks.getDefaultBranch.mockResolvedValue("main");
+    mocks.createSessionWithoutWorktree.mockResolvedValue({ sessionName: "api-main" });
+    mocks.readHookTaskIdFile.mockResolvedValue("task-main");
+    mocks.getClaudeHooksStatus.mockResolvedValue({ installed: true });
+    mocks.getGeminiHooksStatus.mockResolvedValue({ installed: true });
+    mocks.getCodexHooksStatus.mockResolvedValue({ installed: true });
+    mocks.getOpenCodeHooksStatus.mockResolvedValue({ installed: true });
+    mocks.listWorktrees.mockResolvedValue([]);
+
+    mocks.getProjectRepository.mockResolvedValue({
+      find: vi.fn()
+        .mockResolvedValueOnce([
+          {
+            id: "project-2",
+            name: "web",
+            repoPath: "/workspace/web",
+            defaultBranch: "main",
+            sshHost: null,
+          },
+        ])
+        .mockResolvedValueOnce([
+          {
+            id: "project-1",
+            name: "api",
+            repoPath: "/workspace/api",
+            defaultBranch: "main",
+            sshHost: null,
+          },
+          {
+            id: "project-2",
+            name: "web",
+            repoPath: "/workspace/web",
+            defaultBranch: "main",
+            sshHost: null,
+          },
+        ]),
+      create: vi.fn((value) => value),
+      save: vi.fn(async (value) => ({ id: "project-1", ...value })),
+      remove: vi.fn(),
+    });
+
+    mocks.getTaskRepository.mockResolvedValue({
+      findOneBy: vi.fn().mockResolvedValue(null),
+      create: vi.fn((value) => value),
+      save: vi.fn(async (value) => ({
+        id: value.branchName === "main" ? "task-main" : "task-worktree",
+        ...value,
+      })),
+    });
+
+    const { scanAndRegisterProjects } = await import("@/desktop/main/services/projectService");
+
+    await scanAndRegisterProjects("/workspace");
+
+    expect(mocks.listWorktrees).toHaveBeenCalledTimes(1);
+    expect(mocks.listWorktrees).toHaveBeenCalledWith("/workspace/api", null);
+  });
+
+  it("브랜치명만 같은 다른 orphan task는 현재 프로젝트 worktree에 재사용하지 않는다", async () => {
+    mocks.scanGitRepos.mockResolvedValue(["/workspace/api"]);
+    mocks.getDefaultBranch.mockResolvedValue("main");
+    mocks.createSessionWithoutWorktree.mockResolvedValue({ sessionName: "api-main" });
+    mocks.readHookTaskIdFile.mockResolvedValue("task-main");
+    mocks.getClaudeHooksStatus.mockResolvedValue({ installed: true });
+    mocks.getGeminiHooksStatus.mockResolvedValue({ installed: true });
+    mocks.getCodexHooksStatus.mockResolvedValue({ installed: true });
+    mocks.getOpenCodeHooksStatus.mockResolvedValue({ installed: true });
+    mocks.listWorktrees.mockResolvedValue([
+      {
+        path: "/workspace/api-worktrees/feature-login",
+        branch: "feature-login",
+        isBare: false,
+      },
+    ]);
+    mocks.formatSessionName.mockReturnValue("api-feature-login");
+    mocks.isSessionAlive.mockResolvedValue(false);
+
+    mocks.getProjectRepository.mockResolvedValue({
+      find: vi.fn()
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([
+          {
+            id: "project-1",
+            name: "api",
+            repoPath: "/workspace/api",
+            defaultBranch: "main",
+            sshHost: null,
+          },
+        ]),
+      create: vi.fn((value) => value),
+      save: vi.fn(async (value) => ({ id: "project-1", ...value })),
+      remove: vi.fn(),
+    });
+
+    const findOneBy = vi.fn()
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({
+        id: "task-main",
+        branchName: "main",
+        projectId: "project-1",
+        baseBranch: "main",
+        worktreePath: "/workspace/api",
+        sshHost: null,
+      })
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({
+        id: "orphan-1",
+        branchName: "feature-login",
+        projectId: null,
+        worktreePath: "/other/repo__worktrees/feature-login",
+        sshHost: null,
+      });
+    const create = vi.fn((value) => value);
+    const save = vi.fn()
+      .mockImplementationOnce(async (value) => ({ id: "task-main", ...value }))
+      .mockImplementationOnce(async (value) => ({ id: "task-worktree", ...value }));
+    mocks.getTaskRepository.mockResolvedValue({
+      findOneBy,
+      create,
+      save,
+    });
+
+    const { scanAndRegisterProjects } = await import("@/desktop/main/services/projectService");
+
+    await scanAndRegisterProjects("/workspace");
+
+    expect(create).toHaveBeenCalledWith(expect.objectContaining({
+      branchName: "feature-login",
+      worktreePath: "/workspace/api-worktrees/feature-login",
+      projectId: "project-1",
+    }));
     expect(mocks.installKanvibeHooks).toHaveBeenCalledWith(
       "/workspace/api-worktrees/feature-login",
       "task-worktree",

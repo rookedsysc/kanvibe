@@ -81,6 +81,19 @@ describe("kanvibeHooksInstaller", () => {
     expect(mockGetHookServerUrl).toHaveBeenCalledWith("remote-host");
   });
 
+  it("원격 hook 설치 중 첫 SSH 쓰기가 실패하면 추가 설치를 진행하지 않는다", async () => {
+    // Given
+    mockExecGit.mockRejectedValueOnce(new Error("remote host unavailable"));
+    const { installKanvibeHooks } = await import("@/lib/kanvibeHooksInstaller");
+
+    // When
+    const result = installKanvibeHooks("/remote/repo", "task-2", "remote-host");
+
+    // Then
+    await expect(result).rejects.toThrow("remote host unavailable");
+    expect(mockExecGit).toHaveBeenCalledTimes(1);
+  });
+
   it("로컬 hook 설치 중 하나라도 실패하면 예외를 전파한다", async () => {
     // Given
     mockSetupOpenCodeHooks.mockRejectedValueOnce(new Error("open code failed"));

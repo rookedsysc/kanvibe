@@ -305,7 +305,7 @@ export default function TaskDetailRoute() {
           </div>
         ) : (
           <div className="flex-1 flex items-center justify-center border border-dashed border-border-default rounded-lg bg-bg-surface">
-            {state.task.projectId ? <ConnectTerminalForm taskId={state.task.id} /> : <p className="text-text-muted text-sm">{t("noTerminal")}</p>}
+            {state.task.projectId ? <ConnectTerminalForm taskId={state.task.id} sshHost={state.task.sshHost} /> : <p className="text-text-muted text-sm">{t("noTerminal")}</p>}
           </div>
         )}
       </main>

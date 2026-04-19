@@ -16,6 +16,19 @@ export function formatSessionName(projectName: string, branchName: string): stri
   return `${projectName}-${branchName}`.replace(/\//g, "-");
 }
 
+export function buildManagedWorktreePath(projectPath: string, branchName: string): string {
+  const projectName = path.basename(projectPath);
+  const worktreeBase = path.posix.join(
+    path.dirname(projectPath),
+    `${projectName}__worktrees`,
+  );
+
+  return path.posix.join(
+    worktreeBase,
+    branchName.replace(/\//g, "-"),
+  );
+}
+
 /** zellij 세션 이름을 소켓 경로 108바이트 제한에 맞게 truncate한다 */
 const ZELLIJ_SESSION_NAME_MAX_LENGTH = 60;
 export function sanitizeZellijSessionName(sessionName: string): string {
@@ -256,14 +269,7 @@ export async function createWorktreeWithSession(
   await ensureRemoteSessionDependency(sessionType, sshHost);
 
   const projectName = path.basename(projectPath);
-  const worktreeBase = path.posix.join(
-    path.dirname(projectPath),
-    `${projectName}__worktrees`,
-  );
-  const worktreePath = path.posix.join(
-    worktreeBase,
-    branchName.replace(/\//g, "-"),
-  );
+  const worktreePath = buildManagedWorktreePath(projectPath, branchName);
   const sessionName = formatSessionName(projectName, branchName);
 
   await execGit(
@@ -358,15 +364,7 @@ export async function removeWorktreeAndBranch(
   sshHost?: string | null,
 ): Promise<void> {
   try {
-    const projectName = path.basename(projectPath);
-    const worktreeBase = path.posix.join(
-      path.dirname(projectPath),
-      `${projectName}__worktrees`,
-    );
-    const worktreePath = path.posix.join(
-      worktreeBase,
-      branchName.replace(/\//g, "-"),
-    );
+    const worktreePath = buildManagedWorktreePath(projectPath, branchName);
     await execGit(
       `git -C "${projectPath}" worktree remove "${worktreePath}" --force`,
       sshHost,
@@ -391,7 +389,7 @@ export async function removeSessionOnly(
   try {
     if (sessionType === SessionType.TMUX) {
       await execGit(
-        `tmux kill-session -t "${sessionName}"`,
+        `tmux kill-session -t "${sessionName}" 2>/dev/null || true`,
         sshHost,
       );
     } else {

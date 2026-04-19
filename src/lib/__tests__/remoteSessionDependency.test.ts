@@ -24,6 +24,29 @@ describe("remoteSessionDependency", () => {
     expect(mockExecGit).not.toHaveBeenCalled();
   });
 
+  it("로컬 환경에도 세션 의존성 상태를 조회한다", async () => {
+    mockExecGit.mockResolvedValue("");
+    const { getSessionDependencyStatus } = await import("@/lib/remoteSessionDependency");
+
+    await expect(getSessionDependencyStatus(SessionType.TMUX, null)).resolves.toMatchObject({
+      available: true,
+      isRemote: false,
+      toolName: "tmux",
+    });
+    expect(mockExecGit).toHaveBeenCalledWith("command -v tmux >/dev/null 2>&1", null);
+  });
+
+  it("로컬 환경에도 자동 설치를 시도할 수 있다", async () => {
+    mockExecGit
+      .mockRejectedValueOnce(new Error("missing"))
+      .mockResolvedValueOnce("")
+      .mockResolvedValueOnce("");
+    const { ensureSessionDependency } = await import("@/lib/remoteSessionDependency");
+
+    await expect(ensureSessionDependency(SessionType.ZELLIJ, null)).resolves.toBeUndefined();
+    expect(mockExecGit.mock.calls[1]?.[0]).toContain("cargo install --locked zellij");
+  });
+
   it("원격에 도구가 이미 있으면 설치를 시도하지 않는다", async () => {
     // Given
     mockExecGit.mockResolvedValue("");

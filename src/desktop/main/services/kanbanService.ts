@@ -1,15 +1,12 @@
-import { exec } from "child_process";
-import { promisify } from "util";
+import { execFile } from "child_process";
 import { Not, Like } from "typeorm";
 import { getTaskRepository } from "@/lib/database";
 import { KanbanTask, TaskStatus, SessionType } from "@/entities/KanbanTask";
 import { TaskPriority } from "@/entities/TaskPriority";
-import { createWorktreeWithSession, removeWorktreeAndBranch, createSessionWithoutWorktree, removeSessionOnly } from "@/lib/worktree";
+import { createWorktreeWithSession, removeWorktreeAndBranch, createSessionWithoutWorktree, removeSessionOnly, buildManagedWorktreePath } from "@/lib/worktree";
 import { getProjectRepository } from "@/lib/database";
 import { broadcastBoardUpdate } from "@/lib/boardNotifier";
 import { installKanvibeHooks } from "@/lib/kanvibeHooksInstaller";
-
-const execAsync = promisify(exec);
 
 export type TasksByStatus = Record<TaskStatus, KanbanTask[]>;
 
@@ -29,6 +26,24 @@ const DONE_PAGE_SIZE = 20;
 /** TypeORM 엔티티를 직렬화 가능한 plain object로 변환한다 */
 function serialize<T>(data: T): T {
   return JSON.parse(JSON.stringify(data));
+}
+
+async function getPrUrlFromGitHubCli(branchName: string, cwd: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    execFile(
+      "gh",
+      ["pr", "list", "--head", branchName, "--json", "url", "-q", ".[0].url"],
+      { cwd },
+      (error, stdout) => {
+        if (error) {
+          reject(error);
+          return;
+        }
+
+        resolve(stdout.trim());
+      },
+    );
+  });
 }
 
 /** 모든 작업을 상태별로 그룹핑하여 반환한다. Done 컬럼은 첫 페이지만 로드한다 */
@@ -250,8 +265,17 @@ export async function cleanupTaskResources(task: KanbanTask): Promise<void> {
     project = await projectRepo.findOneBy({ id: task.projectId });
   }
 
-  const isProjectRoot = project && task.worktreePath === project.repoPath;
   const sshHost = task.sshHost || project?.sshHost || null;
+
+  // 프로젝트 없이 브랜치/worktree만 남은 태스크는 stale 상태이므로 정리를 시도하면 잘못된 원격 세션에 접근할 수 있다.
+  if (!project && task.branchName && task.worktreePath) {
+    return;
+  }
+
+  const isProjectRoot = project && task.worktreePath === project.repoPath;
+  const expectedWorktreePath = project?.repoPath && task.branchName
+    ? buildManagedWorktreePath(project.repoPath, task.branchName)
+    : null;
 
   /** 브랜치별 독립 세션 정리 */
   if (task.sessionType && task.sessionName) {
@@ -268,6 +292,21 @@ export async function cleanupTaskResources(task: KanbanTask): Promise<void> {
 
   /** worktree + 브랜치 정리 (프로젝트 루트 브랜치 제외) */
   if (task.branchName && !isProjectRoot) {
+    const canCleanupBranch = Boolean(project?.repoPath)
+      && Boolean(task.worktreePath)
+      && task.worktreePath === expectedWorktreePath;
+
+    if (!canCleanupBranch) {
+      console.warn("worktree/브랜치 정리 건너뜀: task 경로와 project 경로가 일치하지 않습니다.", {
+        taskId: task.id,
+        branchName: task.branchName,
+        worktreePath: task.worktreePath,
+        projectRepoPath: project?.repoPath ?? null,
+        sshHost,
+      });
+      return;
+    }
+
     try {
       await removeWorktreeAndBranch(
         project?.repoPath || process.cwd(),
@@ -451,11 +490,7 @@ export async function fetchAndSavePrUrl(taskId: string): Promise<string | null> 
 
   try {
     const cwd = repoPath ?? process.cwd();
-    const { stdout } = await execAsync(
-      `gh pr list --head "${task.branchName}" --json url -q ".[0].url"`,
-      { cwd }
-    );
-    const prUrl = stdout.trim();
+    const prUrl = await getPrUrlFromGitHubCli(task.branchName, cwd);
 
     if (prUrl) {
       task.prUrl = prUrl;

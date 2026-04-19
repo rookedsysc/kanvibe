@@ -18,9 +18,16 @@ function summarizeCommandFailure(errorOutput: string): string {
 }
 
 function shouldLogRemoteCommandFailure(command: string, stderr: string): boolean {
-  const isQuietProbe = command.includes("2>/dev/null") || command.includes(">/dev/null 2>&1");
+  const trimmedCommand = command.trim();
+  const isQuietProbe = command.includes("2>/dev/null")
+    || command.includes(">/dev/null 2>&1")
+    || (/^test -[ef] /.test(trimmedCommand) && trimmedCommand.includes("|| true"));
 
   if (isQuietProbe && !stderr.trim()) {
+    return false;
+  }
+
+  if (isQuietProbe) {
     return false;
   }
 

@@ -28,13 +28,16 @@ export async function installKanvibeHooks(
 
   await writeRemoteTextFile(path.posix.join(targetPath, KANVIBE_TASK_ID_RELATIVE_PATH), `${taskId}\n`, sshHost);
 
-  const results = await Promise.allSettled([
-    setupRemoteClaudeHooks(targetPath, taskId, hookServerUrl, hookServerToken, sshHost),
-    setupRemoteGeminiHooks(targetPath, taskId, hookServerUrl, hookServerToken, sshHost),
-    setupRemoteCodexHooks(targetPath, taskId, hookServerUrl, hookServerToken, sshHost),
-    setupRemoteOpenCodeHooks(targetPath, taskId, hookServerUrl, hookServerToken, sshHost),
-  ]);
-  assertHookInstallResults(results);
+  const remoteInstallers = [
+    () => setupRemoteClaudeHooks(targetPath, taskId, hookServerUrl, hookServerToken, sshHost),
+    () => setupRemoteGeminiHooks(targetPath, taskId, hookServerUrl, hookServerToken, sshHost),
+    () => setupRemoteCodexHooks(targetPath, taskId, hookServerUrl, hookServerToken, sshHost),
+    () => setupRemoteOpenCodeHooks(targetPath, taskId, hookServerUrl, hookServerToken, sshHost),
+  ];
+
+  for (const installRemoteHooks of remoteInstallers) {
+    await installRemoteHooks();
+  }
 }
 
 async function setupRemoteClaudeHooks(repoPath: string, taskId: string, hookServerUrl: string, hookServerToken: string, sshHost: string) {

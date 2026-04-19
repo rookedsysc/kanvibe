@@ -206,7 +206,7 @@ describe("removeSessionOnly", () => {
 
     // Then
     expect(mockExecGit).toHaveBeenCalledWith(
-      'tmux kill-session -t "feat-branch"',
+      'tmux kill-session -t "feat-branch" 2>/dev/null || true',
       undefined,
     );
   });

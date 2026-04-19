@@ -21,6 +21,12 @@
     "notFoundDescription": "요청한 경로가 없거나 이미 이동되었습니다.",
     "logout": "로그아웃",
     "loading": "로딩 중...",
+    "sessionDependency": {
+      "localTarget": "현재 로컬 환경",
+      "remoteTarget": "{host}",
+      "installPrompt": "{target}에 {tool}이(가) 설치되어 있지 않습니다. 지금 설치하시겠습니까?",
+      "installFailed": "{tool} 설치에 실패했습니다: {error}"
+    },
     "doneAlert": {
       "title": "Done 이동 경고",
       "message": "Done으로 이동하면 worktree, branch, tmux session이 삭제됩니다.",
@@ -67,6 +73,7 @@
     "sessionType": "세션 타입",
     "sshHost": "SSH 호스트 (선택)",
     "createTitle": "새 작업 생성",
+    "createFailed": "작업 생성에 실패했습니다.",
     "deleteConfirm": "이 작업을 삭제하시겠습니까?",
     "priority": "우선순위",
     "priorityLow": "!",

@@ -21,6 +21,12 @@
     "notFoundDescription": "你访问的路径不存在，或已经被移动。",
     "logout": "退出登录",
     "loading": "加载中...",
+    "sessionDependency": {
+      "localTarget": "当前本机环境",
+      "remoteTarget": "{host}",
+      "installPrompt": "{target} 上未安装 {tool}。现在安装吗？",
+      "installFailed": "安装 {tool} 失败：{error}"
+    },
     "doneAlert": {
       "title": "移动到完成",
       "message": "移动到完成状态将删除 worktree、branch 和 tmux session。",
@@ -67,6 +73,7 @@
     "sessionType": "会话类型",
     "sshHost": "SSH 主机（可选）",
     "createTitle": "创建新任务",
+    "createFailed": "创建任务失败。",
     "deleteConfirm": "确定要删除此任务吗？",
     "priority": "优先级",
     "priorityLow": "!",
