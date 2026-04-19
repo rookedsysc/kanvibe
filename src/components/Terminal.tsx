@@ -132,11 +132,26 @@ export default function Terminal({ taskId }: TerminalProps) {
   }, [taskId]);
 
   useEffect(() => {
+    let isDisposed = false;
     let cleanup: (() => void) | undefined;
-    connect().then((fn) => {
-      cleanup = fn;
-    });
-    return () => cleanup?.();
+
+    void connect()
+      .then((fn) => {
+        if (isDisposed) {
+          fn?.();
+          return;
+        }
+
+        cleanup = fn;
+      })
+      .catch((error) => {
+        console.error("웹 터미널 초기화 실패:", error);
+      });
+
+    return () => {
+      isDisposed = true;
+      cleanup?.();
+    };
   }, [connect]);
 
   return (

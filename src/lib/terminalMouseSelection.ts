@@ -19,19 +19,30 @@ export function createTerminalOptions(fontFamily: string): ITerminalOptions {
   };
 }
 
-export function promoteMacShiftClickSelection(event: MouseEvent, isMacPlatform = detectMacPlatform()): void {
+export function promoteMacShiftClickSelection(
+  event: MouseEvent,
+  isMacPlatform = detectMacPlatform(),
+): MouseEvent | null {
   if (!isMacPlatform || event.button !== 0 || !event.shiftKey || event.altKey) {
-    return;
+    return null;
   }
 
-  try {
-    Object.defineProperty(event, "altKey", {
-      configurable: true,
-      value: true,
-    });
-  } catch {
-    /* 읽기 전용 이벤트 프로퍼티면 그대로 둔다 */
-  }
+  return new MouseEvent(event.type, {
+    bubbles: event.bubbles,
+    cancelable: event.cancelable,
+    composed: event.composed,
+    detail: event.detail,
+    button: event.button,
+    buttons: event.buttons,
+    clientX: event.clientX,
+    clientY: event.clientY,
+    screenX: event.screenX,
+    screenY: event.screenY,
+    ctrlKey: event.ctrlKey,
+    metaKey: event.metaKey,
+    altKey: true,
+    shiftKey: false,
+  });
 }
 
 export function registerTerminalMouseSelectionBridge(container: HTMLElement, isMacPlatform = detectMacPlatform()): () => void {
@@ -40,7 +51,14 @@ export function registerTerminalMouseSelectionBridge(container: HTMLElement, isM
   }
 
   const handleMouseDown = (event: MouseEvent) => {
-    promoteMacShiftClickSelection(event, true);
+    const promotedEvent = promoteMacShiftClickSelection(event, true);
+    if (!promotedEvent) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    (event.target ?? container).dispatchEvent(promotedEvent);
   };
 
   container.addEventListener("mousedown", handleMouseDown, true);
