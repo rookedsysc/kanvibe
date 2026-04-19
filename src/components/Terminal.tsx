@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useCallback } from "react";
 import "@xterm/xterm/css/xterm.css";
+import { createTerminalOptions, registerTerminalMouseSelectionBridge } from "@/lib/terminalMouseSelection";
 
 interface TerminalProps {
   taskId: string;
@@ -43,20 +44,8 @@ export default function Terminal({ taskId }: TerminalProps) {
     const { FitAddon } = await import("@xterm/addon-fit");
     const { WebLinksAddon } = await import("@xterm/addon-web-links");
 
-    const term = new Terminal({
-      allowProposedApi: true,
-      cursorBlink: true,
-      fontSize: 14,
-      fontFamily,
-      /** 셀 경계를 넘치는 Nerd Font 글리프를 자동 축소하여 pane 구분선 정렬 유지 */
-      rescaleOverlappingGlyphs: true,
-      theme: {
-        background: "#0a0a0a",
-        foreground: "#e4e4e7",
-        cursor: "#e4e4e7",
-        selectionBackground: "#3b82f680",
-      },
-    });
+    const term = new Terminal(createTerminalOptions(fontFamily));
+    const disposeMouseSelectionBridge = registerTerminalMouseSelectionBridge(terminalRef.current);
 
     const fitAddon = new FitAddon();
     term.loadAddon(fitAddon);
@@ -135,6 +124,7 @@ export default function Terminal({ taskId }: TerminalProps) {
 
     return () => {
       document.removeEventListener("visibilitychange", handleVisibilityChange);
+      disposeMouseSelectionBridge();
       resizeObserver.disconnect();
       ws.close();
       term.dispose();

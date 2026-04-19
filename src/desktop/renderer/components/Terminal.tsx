@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef } from "react";
 import "@xterm/xterm/css/xterm.css";
+import { createTerminalOptions, registerTerminalMouseSelectionBridge } from "@/lib/terminalMouseSelection";
 
 interface TerminalProps {
   taskId: string;
@@ -29,19 +30,8 @@ export default function Terminal({ taskId }: TerminalProps) {
       import("@xterm/addon-web-links"),
     ]);
 
-    const terminal = new XTerm({
-      allowProposedApi: true,
-      cursorBlink: true,
-      fontSize: 14,
-      fontFamily,
-      rescaleOverlappingGlyphs: true,
-      theme: {
-        background: "#0a0a0a",
-        foreground: "#e4e4e7",
-        cursor: "#e4e4e7",
-        selectionBackground: "#3b82f680",
-      },
-    });
+    const terminal = new XTerm(createTerminalOptions(fontFamily));
+    const disposeMouseSelectionBridge = registerTerminalMouseSelectionBridge(containerRef.current);
 
     const fitAddon = new FitAddon();
     terminal.loadAddon(fitAddon);
@@ -98,6 +88,7 @@ export default function Terminal({ taskId }: TerminalProps) {
 
     return () => {
       document.removeEventListener("visibilitychange", handleVisibilityChange);
+      disposeMouseSelectionBridge();
       resizeObserver.disconnect();
       unsubscribeData();
       unsubscribeClose();

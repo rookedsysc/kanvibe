@@ -359,12 +359,21 @@ describe("projectService local hook installation", () => {
       project: {
         id: "project-1",
         repoPath: "/workspace/repo",
+        defaultBranch: "main",
         sshHost: null,
       },
     };
 
     mocks.getTaskRepository.mockResolvedValue({
       findOne: vi.fn().mockResolvedValue(task),
+      findOneBy: vi.fn().mockResolvedValue({
+        id: "task-main",
+        branchName: "main",
+        projectId: "project-1",
+        worktreePath: "/workspace/repo",
+        sshHost: null,
+      }),
+      save: vi.fn(async (value) => value),
     });
     mocks.getOpenCodeHooksStatus.mockResolvedValue({ installed: true });
 
@@ -376,7 +385,80 @@ describe("projectService local hook installation", () => {
     expect(mocks.getHookServerToken).toHaveBeenCalled();
     expect(mocks.setupOpenCodeHooks).toHaveBeenCalledWith(
       "/workspace/repo",
-      "task-2",
+      "task-main",
+      "http://localhost:9736",
+      "desktop-hook-token",
+    );
+  });
+
+  it("프로젝트 루트 경로 task의 Claude hook 상태는 현재 root task 기준으로 조회한다", async () => {
+    const task = {
+      id: "stale-task",
+      worktreePath: "/workspace/repo",
+      project: {
+        id: "project-1",
+        repoPath: "/workspace/repo",
+        defaultBranch: "main",
+        sshHost: null,
+      },
+    };
+
+    mocks.getTaskRepository.mockResolvedValue({
+      findOne: vi.fn().mockResolvedValue(task),
+      findOneBy: vi.fn().mockResolvedValue({
+        id: "task-main",
+        branchName: "main",
+        projectId: "project-1",
+        worktreePath: "/workspace/repo",
+        sshHost: null,
+      }),
+      save: vi.fn(async (value) => value),
+    });
+    mocks.getClaudeHooksStatus.mockResolvedValue({ installed: true });
+
+    const { getTaskHooksStatus } = await import("@/desktop/main/services/projectService");
+
+    await getTaskHooksStatus(task.id);
+
+    expect(mocks.getClaudeHooksStatus).toHaveBeenCalledWith(
+      "/workspace/repo",
+      "task-main",
+      null,
+    );
+  });
+
+  it("프로젝트 루트 경로 task에서 Claude hook 재설치를 누르면 현재 root task에 다시 바인딩한다", async () => {
+    const task = {
+      id: "stale-task",
+      worktreePath: "/workspace/repo",
+      project: {
+        id: "project-1",
+        repoPath: "/workspace/repo",
+        defaultBranch: "main",
+        sshHost: null,
+      },
+    };
+
+    mocks.getTaskRepository.mockResolvedValue({
+      findOne: vi.fn().mockResolvedValue(task),
+      findOneBy: vi.fn().mockResolvedValue({
+        id: "task-main",
+        branchName: "main",
+        projectId: "project-1",
+        worktreePath: "/workspace/repo",
+        sshHost: null,
+      }),
+      save: vi.fn(async (value) => value),
+    });
+    mocks.getClaudeHooksStatus.mockResolvedValue({ installed: true });
+
+    const { installTaskHooks } = await import("@/desktop/main/services/projectService");
+
+    await installTaskHooks(task.id);
+
+    expect(mocks.setupClaudeHooks).toHaveBeenCalledWith(
+      "/workspace/repo",
+      "task-main",
       "http://localhost:9736",
       "desktop-hook-token",
     );
