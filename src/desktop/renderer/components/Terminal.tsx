@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef } from "react";
 import "@xterm/xterm/css/xterm.css";
-import { createTerminalOptions, registerTerminalMouseSelectionBridge } from "@/lib/terminalMouseSelection";
+import { createTerminalOptions, installMacShiftSelectionPatch } from "@/lib/terminalMouseSelection";
 
 interface TerminalProps {
   taskId: string;
@@ -31,12 +31,12 @@ export default function Terminal({ taskId }: TerminalProps) {
     ]);
 
     const terminal = new XTerm(createTerminalOptions(fontFamily));
-    const disposeMouseSelectionBridge = registerTerminalMouseSelectionBridge(containerRef.current);
 
     const fitAddon = new FitAddon();
     terminal.loadAddon(fitAddon);
     terminal.loadAddon(new WebLinksAddon());
     terminal.open(containerRef.current);
+    const disposeMacShiftSelectionPatch = installMacShiftSelectionPatch(terminal);
     terminal.options.fontFamily = "monospace";
     terminal.options.fontFamily = fontFamily;
 
@@ -51,7 +51,7 @@ export default function Terminal({ taskId }: TerminalProps) {
     if (!terminalReady.ok) {
       terminal.writeln(`\r\n\x1b[31m${terminalReady.error || "터미널 연결 실패"}\x1b[0m`);
       return () => {
-        disposeMouseSelectionBridge();
+        disposeMacShiftSelectionPatch();
         terminal.dispose();
       };
     }
@@ -92,7 +92,7 @@ export default function Terminal({ taskId }: TerminalProps) {
 
     return () => {
       document.removeEventListener("visibilitychange", handleVisibilityChange);
-      disposeMouseSelectionBridge();
+      disposeMacShiftSelectionPatch();
       resizeObserver.disconnect();
       unsubscribeData();
       unsubscribeClose();

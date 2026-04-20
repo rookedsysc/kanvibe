@@ -1,5 +1,16 @@
 import type { ITerminalOptions } from "@xterm/xterm";
 
+interface XTermSelectionService {
+  shouldForceSelection(event: MouseEvent): boolean;
+  handleMouseDown(event: MouseEvent): void;
+}
+
+interface XTermWithCore {
+  _core?: {
+    _selectionService?: XTermSelectionService;
+  };
+}
+
 const TERMINAL_THEME = {
   background: "#0a0a0a",
   foreground: "#e4e4e7",
@@ -19,52 +30,61 @@ export function createTerminalOptions(fontFamily: string): ITerminalOptions {
   };
 }
 
-export function promoteMacShiftClickSelection(
-  event: MouseEvent,
-  isMacPlatform = detectMacPlatform(),
-): MouseEvent | null {
-  if (!isMacPlatform || event.button !== 0 || !event.shiftKey || event.altKey) {
-    return null;
-  }
-
-  return new MouseEvent(event.type, {
-    bubbles: event.bubbles,
-    cancelable: event.cancelable,
-    composed: event.composed,
-    detail: event.detail,
-    button: event.button,
-    buttons: event.buttons,
-    clientX: event.clientX,
-    clientY: event.clientY,
-    screenX: event.screenX,
-    screenY: event.screenY,
-    ctrlKey: event.ctrlKey,
-    metaKey: event.metaKey,
-    altKey: true,
-    shiftKey: false,
-  });
-}
-
-export function registerTerminalMouseSelectionBridge(container: HTMLElement, isMacPlatform = detectMacPlatform()): () => void {
+export function installMacShiftSelectionPatch(terminal: unknown, isMacPlatform = detectMacPlatform()): () => void {
   if (!isMacPlatform) {
     return () => undefined;
   }
 
-  const handleMouseDown = (event: MouseEvent) => {
-    const promotedEvent = promoteMacShiftClickSelection(event, true);
-    if (!promotedEvent) {
-      return;
-    }
+  const selectionService = (terminal as XTermWithCore)._core?._selectionService;
+  if (!selectionService) {
+    return () => undefined;
+  }
 
-    event.preventDefault();
-    event.stopImmediatePropagation();
-    (event.target ?? container).dispatchEvent(promotedEvent);
+  const defaultShouldForceSelection = selectionService.shouldForceSelection.bind(selectionService);
+  const defaultHandleMouseDown = selectionService.handleMouseDown.bind(selectionService);
+
+  selectionService.shouldForceSelection = (event: MouseEvent) => {
+    return shouldPromoteMacShiftSelection(event, true) || defaultShouldForceSelection(event);
   };
 
-  container.addEventListener("mousedown", handleMouseDown, true);
+  selectionService.handleMouseDown = (event: MouseEvent) => {
+    defaultHandleMouseDown(createMacForceSelectionEvent(event, true) ?? event);
+  };
+
   return () => {
-    container.removeEventListener("mousedown", handleMouseDown, true);
+    selectionService.shouldForceSelection = defaultShouldForceSelection;
+    selectionService.handleMouseDown = defaultHandleMouseDown;
   };
+}
+
+function shouldPromoteMacShiftSelection(event: MouseEvent, isMacPlatform = detectMacPlatform()): boolean {
+  return isMacPlatform && event.button === 0 && event.shiftKey && !event.altKey;
+}
+
+function createMacForceSelectionEvent(event: MouseEvent, isMacPlatform = detectMacPlatform()): MouseEvent | null {
+  if (!shouldPromoteMacShiftSelection(event, isMacPlatform)) {
+    return null;
+  }
+
+  return {
+    altKey: true,
+    button: event.button,
+    buttons: event.buttons,
+    clientX: event.clientX,
+    clientY: event.clientY,
+    ctrlKey: event.ctrlKey,
+    detail: event.detail,
+    metaKey: event.metaKey,
+    preventDefault: event.preventDefault.bind(event),
+    screenX: event.screenX,
+    screenY: event.screenY,
+    shiftKey: false,
+    stopImmediatePropagation: event.stopImmediatePropagation.bind(event),
+    stopPropagation: event.stopPropagation.bind(event),
+    target: event.target,
+    timeStamp: event.timeStamp,
+    type: event.type,
+  } as MouseEvent;
 }
 
 function detectMacPlatform(): boolean {

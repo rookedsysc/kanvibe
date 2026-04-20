@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useCallback } from "react";
 import "@xterm/xterm/css/xterm.css";
-import { createTerminalOptions, registerTerminalMouseSelectionBridge } from "@/lib/terminalMouseSelection";
+import { createTerminalOptions, installMacShiftSelectionPatch } from "@/lib/terminalMouseSelection";
 
 interface TerminalProps {
   taskId: string;
@@ -45,12 +45,12 @@ export default function Terminal({ taskId }: TerminalProps) {
     const { WebLinksAddon } = await import("@xterm/addon-web-links");
 
     const term = new Terminal(createTerminalOptions(fontFamily));
-    const disposeMouseSelectionBridge = registerTerminalMouseSelectionBridge(terminalRef.current);
 
     const fitAddon = new FitAddon();
     term.loadAddon(fitAddon);
     term.loadAddon(new WebLinksAddon());
     term.open(terminalRef.current);
+    const disposeMacShiftSelectionPatch = installMacShiftSelectionPatch(term);
 
     /** 웹폰트 로드 완료 후 fontFamily를 재설정하여 xterm.js 글리프 캐시를 강제 갱신 */
     term.options.fontFamily = "monospace";
@@ -124,7 +124,7 @@ export default function Terminal({ taskId }: TerminalProps) {
 
     return () => {
       document.removeEventListener("visibilitychange", handleVisibilityChange);
-      disposeMouseSelectionBridge();
+      disposeMacShiftSelectionPatch();
       resizeObserver.disconnect();
       ws.close();
       term.dispose();

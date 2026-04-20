@@ -1,62 +1,83 @@
-import { describe, expect, it } from "vitest";
-import { createTerminalOptions, promoteMacShiftClickSelection, registerTerminalMouseSelectionBridge } from "@/lib/terminalMouseSelection";
+import { describe, expect, it, vi } from "vitest";
+import { createTerminalOptions, installMacShiftSelectionPatch } from "@/lib/terminalMouseSelection";
 
 describe("terminalMouseSelection", () => {
-  it("macOS에서 shift 왼쪽 클릭을 xterm 강제 선택 이벤트로 승격한다", () => {
+  it("macOS에서 shift 왼쪽 클릭을 xterm 강제 선택으로 판정한다", () => {
     // Given
+    const originalShouldForceSelection = vi.fn((event: MouseEvent) => event.altKey);
+    const originalHandleMouseDown = vi.fn();
+    const selectionService = {
+      shouldForceSelection: originalShouldForceSelection,
+      handleMouseDown: originalHandleMouseDown,
+    };
+    const dispose = installMacShiftSelectionPatch({
+      _core: {
+        _selectionService: selectionService,
+      },
+    }, true);
     const event = new MouseEvent("mousedown", {
       button: 0,
       shiftKey: true,
     });
 
     // When
-    const promotedEvent = promoteMacShiftClickSelection(event, true);
+    const result = selectionService.shouldForceSelection(event);
+    dispose();
 
     // Then
-    expect(promotedEvent).not.toBeNull();
-    expect(promotedEvent?.altKey).toBe(true);
-    expect(promotedEvent?.shiftKey).toBe(false);
+    expect(result).toBe(true);
+    expect(originalShouldForceSelection).not.toHaveBeenCalled();
   });
 
-  it("macOS가 아니면 shift 클릭 modifier를 건드리지 않는다", () => {
+  it("macOS가 아니면 shift 클릭 패치를 적용하지 않는다", () => {
     // Given
+    const originalShouldForceSelection = vi.fn((event: MouseEvent) => event.altKey);
+    const originalHandleMouseDown = vi.fn();
+    const selectionService = {
+      shouldForceSelection: originalShouldForceSelection,
+      handleMouseDown: originalHandleMouseDown,
+    };
+    const dispose = installMacShiftSelectionPatch({ _core: { _selectionService: selectionService } }, false);
     const event = new MouseEvent("mousedown", {
       button: 0,
       shiftKey: true,
     });
 
     // When
-    const promotedEvent = promoteMacShiftClickSelection(event, false);
+    const result = selectionService.shouldForceSelection(event);
+    dispose();
 
     // Then
-    expect(promotedEvent).toBeNull();
+    expect(result).toBe(false);
   });
 
-  it("컨테이너 브리지가 capture 단계에서 shift 클릭을 alt 클릭으로 재디스패치한다", () => {
+  it("macOS에서 handleMouseDown이 shift 클릭을 일반 선택 경로로 정규화한다", () => {
     // Given
-    const container = document.createElement("div");
-    const target = document.createElement("div");
-    container.append(target);
-    const dispose = registerTerminalMouseSelectionBridge(container, true);
-    const receivedModifiers: Array<{ altKey: boolean; shiftKey: boolean }> = [];
-    target.addEventListener("mousedown", (event) => {
-      receivedModifiers.push({
-        altKey: event.altKey,
-        shiftKey: event.shiftKey,
-      });
-    });
+    const originalHandleMouseDown = vi.fn();
+    const selectionService = {
+      shouldForceSelection: vi.fn((event: MouseEvent) => event.altKey),
+      handleMouseDown: originalHandleMouseDown,
+    };
+    const dispose = installMacShiftSelectionPatch({ _core: { _selectionService: selectionService } }, true);
 
     // When
-    target.dispatchEvent(new MouseEvent("mousedown", {
-      bubbles: true,
-      cancelable: true,
+    selectionService.handleMouseDown(new MouseEvent("mousedown", {
       button: 0,
+      buttons: 1,
       shiftKey: true,
+      clientX: 10,
+      clientY: 20,
+      detail: 1,
     }));
     dispose();
 
     // Then
-    expect(receivedModifiers).toEqual([{ altKey: true, shiftKey: false }]);
+    const normalizedEvent = originalHandleMouseDown.mock.calls[0]?.[0];
+    expect(normalizedEvent).toBeDefined();
+    expect(normalizedEvent?.altKey).toBe(true);
+    expect(normalizedEvent?.shiftKey).toBe(false);
+    expect(normalizedEvent?.clientX).toBe(10);
+    expect(normalizedEvent?.clientY).toBe(20);
   });
 
   it("터미널 옵션에 macOS 강제 선택 옵션을 포함한다", () => {
