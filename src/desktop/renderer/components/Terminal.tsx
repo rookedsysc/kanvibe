@@ -76,6 +76,13 @@ export default function Terminal({ taskId }: TerminalProps) {
       window.kanvibeDesktop!.resizeTerminal(taskId, cols, rows);
     });
 
+    const focusCurrentTerminal = () => {
+      terminal.focus();
+      window.kanvibeDesktop!.focusTerminal(taskId);
+    };
+
+    focusCurrentTerminal();
+
     const resizeObserver = new ResizeObserver(() => {
       fitAddon.fit();
       window.kanvibeDesktop!.resizeTerminal(taskId, terminal.cols, terminal.rows);
@@ -84,7 +91,7 @@ export default function Terminal({ taskId }: TerminalProps) {
 
     const handleVisibilityChange = () => {
       if (document.visibilityState === "visible") {
-        window.kanvibeDesktop!.focusTerminal(taskId);
+        focusCurrentTerminal();
       }
     };
 
