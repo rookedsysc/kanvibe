@@ -4,15 +4,17 @@ import { useState, useTransition } from "react";
 import { useTranslations } from "next-intl";
 import { connectTerminalSession } from "@/desktop/renderer/actions/kanban";
 import { ensureSessionDependencyWithPrompt } from "@/desktop/renderer/utils/sessionDependencyPrompt";
+import type { KanbanTask } from "@/entities/KanbanTask";
 import { SessionType } from "@/entities/KanbanTask";
 
 interface ConnectTerminalFormProps {
   taskId: string;
   sshHost?: string | null;
+  onConnected?: (task: KanbanTask) => void;
 }
 
 /** 세션이 없는 태스크에 터미널 세션을 연결하는 폼 */
-export default function ConnectTerminalForm({ taskId, sshHost }: ConnectTerminalFormProps) {
+export default function ConnectTerminalForm({ taskId, sshHost, onConnected }: ConnectTerminalFormProps) {
   const t = useTranslations("taskDetail");
   const tc = useTranslations("common");
   const [isPending, startTransition] = useTransition();
@@ -31,7 +33,10 @@ export default function ConnectTerminalForm({ taskId, sshHost }: ConnectTerminal
         const result = await connectTerminalSession(taskId, sessionType);
         if (!result) {
           setError(t("connectFailed"));
+          return;
         }
+
+        onConnected?.(result);
       } catch (error) {
         setError(error instanceof Error ? error.message : t("connectFailed"));
       }

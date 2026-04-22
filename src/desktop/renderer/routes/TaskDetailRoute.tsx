@@ -305,7 +305,23 @@ export default function TaskDetailRoute() {
           </div>
         ) : (
           <div className="flex-1 flex items-center justify-center border border-dashed border-border-default rounded-lg bg-bg-surface">
-            {state.task.projectId ? <ConnectTerminalForm taskId={state.task.id} sshHost={state.task.sshHost} /> : <p className="text-text-muted text-sm">{t("noTerminal")}</p>}
+            {state.task.projectId ? (
+              <ConnectTerminalForm
+                taskId={state.task.id}
+                sshHost={state.task.sshHost}
+                onConnected={(connectedTask) => {
+                  setState((current) => current && current.task.id === connectedTask.id
+                    ? {
+                        ...current,
+                        task: {
+                          ...current.task,
+                          ...connectedTask,
+                        },
+                      }
+                    : current);
+                }}
+              />
+            ) : <p className="text-text-muted text-sm">{t("noTerminal")}</p>}
           </div>
         )}
       </main>

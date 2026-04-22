@@ -59,10 +59,15 @@ describe("ConnectTerminalForm", () => {
 
   it("의존성 준비가 끝나면 선택한 세션 타입으로 연결을 요청한다", async () => {
     // Given
+    const handleConnected = vi.fn();
     mockEnsureSessionDependencyWithPrompt.mockResolvedValue(true);
-    mockConnectTerminalSession.mockResolvedValue(true);
+    mockConnectTerminalSession.mockResolvedValue({
+      id: "task-1",
+      sessionType: "zellij",
+      sessionName: "task-1-zellij",
+    });
 
-    render(<ConnectTerminalForm taskId="task-1" sshHost="remote-box" />);
+    render(<ConnectTerminalForm taskId="task-1" sshHost="remote-box" onConnected={handleConnected} />);
 
     // When
     fireEvent.change(screen.getByRole("combobox"), { target: { value: "zellij" } });
@@ -71,6 +76,11 @@ describe("ConnectTerminalForm", () => {
     // Then
     await waitFor(() => {
       expect(mockConnectTerminalSession).toHaveBeenCalledWith("task-1", "zellij");
+    });
+    expect(handleConnected).toHaveBeenCalledWith({
+      id: "task-1",
+      sessionType: "zellij",
+      sessionName: "task-1-zellij",
     });
   });
 });
