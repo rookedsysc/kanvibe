@@ -234,6 +234,7 @@ export async function attachRemoteSession(
   },
   cols?: number,
   rows?: number,
+  worktreePath?: string | null,
 ): Promise<void> {
   const initialCols = cols ?? 120;
   const initialRows = rows ?? 30;
@@ -252,9 +253,12 @@ export async function attachRemoteSession(
   }
 
   const pty = await import("node-pty");
+  const tmuxNewSession = worktreePath
+    ? `tmux new-session -d -s "${sessionName}" -c "${worktreePath}"`
+    : `tmux new-session -d -s "${sessionName}"`;
   const attachCommand = sessionType === SessionType.TMUX
     ? [
-        `tmux has-session -t "${sessionName}" 2>/dev/null || tmux new-session -d -s "${sessionName}"`,
+        `tmux has-session -t "${sessionName}" 2>/dev/null || ${tmuxNewSession}`,
         `exec tmux attach-session -t "${sessionName}"`,
       ].join("; ")
     : `exec zellij attach "${sessionName}"`;

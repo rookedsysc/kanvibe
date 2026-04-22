@@ -115,6 +115,7 @@ export async function openTerminal(
         sshConfig,
         cols,
         rows,
+        task.worktreePath,
       );
     } else {
       await attachLocalSession(
