@@ -7,10 +7,12 @@ import {
   getCachedOrParse,
   getCachedOrParseHead,
   getCandidatePaths,
+  mapWithConcurrency,
   makePreviewMessage,
   paginateItems,
   readJsonLines,
   readJsonLinesHead,
+  REMOTE_SESSION_FILE_PARSE_CONCURRENCY,
   sortMessagesDescending,
   toIsoString,
   truncateText,
@@ -53,8 +55,11 @@ export async function readClaudeSessions(context: AiSessionReaderContext): Promi
     return createReaderResult("claude", { sessions: [], reason: "No Claude project session files matched this task" });
   }
 
-  const results = await Promise.all(
-    projectFiles.map((filePath) => parseClaudeSessionFromFile(filePath, context))
+  const parseConcurrency = context.sshHost ? REMOTE_SESSION_FILE_PARSE_CONCURRENCY : projectFiles.length || 1;
+  const results = await mapWithConcurrency(
+    projectFiles,
+    parseConcurrency,
+    (filePath) => parseClaudeSessionFromFile(filePath, context),
   );
 
   let sessions = results.filter((s): s is AggregatedAiSession => s !== null);

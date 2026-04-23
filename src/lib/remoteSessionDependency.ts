@@ -1,5 +1,5 @@
 import { SessionType } from "@/entities/KanbanTask";
-import { execGit } from "@/lib/gitOperations";
+import { execGit, isSSHTransportError } from "@/lib/gitOperations";
 
 const blockedTargets = new Map<string, string>();
 
@@ -30,7 +30,11 @@ async function hasSessionDependency(toolName: string, sshHost?: string | null): 
   try {
     await execGit(`command -v ${toolName} >/dev/null 2>&1`, sshHost);
     return true;
-  } catch {
+  } catch (error) {
+    if (sshHost && isSSHTransportError(error)) {
+      throw error;
+    }
+
     return false;
   }
 }
@@ -77,6 +81,10 @@ export async function installSessionDependency(
     await execGit(buildInstallCommand(toolName), sshHost);
     await execGit(`command -v ${toolName} >/dev/null 2>&1`, sshHost);
   } catch (error) {
+    if (sshHost && isSSHTransportError(error)) {
+      throw error;
+    }
+
     const subject = sshHost ? `${sshHost} 호스트` : "로컬 환경";
     const reason = sshHost
       ? `${subject}에서 ${toolName} 설치를 완료하지 못해 원격 접근을 차단했습니다. ${error instanceof Error ? error.message : "원격 설치 실패"}`

@@ -161,6 +161,22 @@ describe("gitOperations.resolvePathForShell", () => {
     expect(consoleErrorSpy).not.toHaveBeenCalled();
   });
 
+  it("SSH transport 오류를 원격 명령 내부 실패와 구분한다", async () => {
+    // Given
+    const { isSSHTransportError } = await import("@/lib/gitOperations");
+
+    const connectionResetError = new Error("remote-host 원격 명령 실패: Connection reset by 100.73.171.123 port 22");
+    const keyExchangeError = {
+      stderr: "kex_exchange_identification: read: Connection reset by peer\n",
+    };
+    const commandError = new Error("remote-host 원격 명령 실패: tmux 설치에 실패했습니다.");
+
+    // Then
+    expect(isSSHTransportError(connectionResetError)).toBe(true);
+    expect(isSSHTransportError(keyExchangeError)).toBe(true);
+    expect(isSSHTransportError(commandError)).toBe(false);
+  });
+
   it("scanGitRepos는 메인 저장소 내부의 submodule/worktree 후보를 제외한다", async () => {
     // Given
     mocks.exec.mockImplementation((
