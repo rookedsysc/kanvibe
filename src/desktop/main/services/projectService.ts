@@ -54,6 +54,21 @@ function isRemoteConnectionError(error: unknown): boolean {
 const projectRootHookRepairJobs = new Map<string, Promise<void>>();
 const projectRootHookRepairScheduled = new Set<string>();
 
+function hasRequiredHookConfiguration(
+  status:
+    | ClaudeHooksStatus
+    | GeminiHooksStatus
+    | CodexHooksStatus
+    | OpenCodeHooksStatus,
+  requiredChecks: string[],
+): boolean {
+  if (status.installed) {
+    return true;
+  }
+
+  return requiredChecks.every((key) => status[key as keyof typeof status] === true);
+}
+
 function scheduleProjectRootHookRepair(project: Project) {
   const projectPathKey = buildProjectPathKey(project.repoPath, project.sshHost);
   if (projectRootHookRepairScheduled.has(projectPathKey)) {
@@ -189,10 +204,41 @@ async function areProjectRootHooksInstalled(project: Project, taskId: string): P
     getOpenCodeHooksStatus(project.repoPath, taskId, project.sshHost),
   ]);
 
-  return claudeStatus.installed
-    && geminiStatus.installed
-    && codexStatus.installed
-    && openCodeStatus.installed;
+  return hasRequiredHookConfiguration(claudeStatus, [
+    "hasPromptHook",
+    "hasStopHook",
+    "hasQuestionHook",
+    "hasSettingsEntry",
+    "hasTaskIdBinding",
+    "hasStatusMappings",
+    "hasExpectedHookServerUrl",
+  ])
+    && hasRequiredHookConfiguration(geminiStatus, [
+      "hasPromptHook",
+      "hasStopHook",
+      "hasSettingsEntry",
+      "hasTaskIdBinding",
+      "hasStatusMappings",
+      "hasExpectedHookServerUrl",
+    ])
+    && hasRequiredHookConfiguration(codexStatus, [
+      "hasNotifyHook",
+      "hasConfigEntry",
+      "hasTaskIdBinding",
+      "hasReviewStatus",
+      "hasAgentTurnCompleteFilter",
+      "hasExpectedHookServerUrl",
+    ])
+    && hasRequiredHookConfiguration(openCodeStatus, [
+      "hasPlugin",
+      "hasRegisteredPlugin",
+      "hasTaskIdBinding",
+      "hasStatusEndpoint",
+      "hasEventMappings",
+      "hasMainSessionGuard",
+      "hasDuplicateProgressGuard",
+      "hasExpectedHookServerUrl",
+    ]);
 }
 
 async function ensureProjectRootTask(
@@ -440,6 +486,7 @@ export async function scanAndRegisterProjects(
     existing.map((project) => buildProjectPathKey(project.repoPath, project.sshHost))
   );
   const existingNames = new Set(existing.map((p) => p.name));
+  const rootHookRepairAttempted = new Set<string>();
 
   for (const repoPath of repoPaths) {
     const pathKey = buildProjectPathKey(repoPath, sshHost || null);
@@ -472,6 +519,7 @@ export async function scanAndRegisterProjects(
           repairHooks: true,
           throwOnHookRepairFailure: false,
         });
+        rootHookRepairAttempted.add(pathKey);
         defaultTask = ensured.task;
       } catch (taskError) {
         await repo.remove(saved);
@@ -503,10 +551,13 @@ export async function scanAndRegisterProjects(
 
   for (const project of scannedProjects) {
     try {
-      const { repaired } = await ensureProjectRootTask(project, {
-        repairHooks: true,
-        throwOnHookRepairFailure: false,
-      });
+      const projectPathKey = buildProjectPathKey(project.repoPath, project.sshHost);
+      const { repaired } = rootHookRepairAttempted.has(projectPathKey)
+        ? await ensureProjectRootTask(project)
+        : await ensureProjectRootTask(project, {
+          repairHooks: true,
+          throwOnHookRepairFailure: false,
+        });
       if (repaired && !result.hooksSetup.includes(project.name)) {
         result.hooksSetup.push(project.name);
       }
