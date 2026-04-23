@@ -107,16 +107,19 @@ describe("Desktop Terminal", () => {
     };
   });
 
-  it("상세 화면 진입 직후 터미널 입력 포커스를 맞춘다", async () => {
+  it("상세 화면 진입 직후 xterm 입력 포커스만 맞춘다", async () => {
+    // Given
     render(<Terminal taskId="task-1" />);
 
+    // When
     await waitFor(() => {
       expect(mockOpenTerminal).toHaveBeenCalledWith("task-1", 80, 24);
     });
 
+    // Then
     await waitFor(() => {
       expect(mockTerminalFocus).toHaveBeenCalledTimes(1);
-      expect(mockFocusTerminal).toHaveBeenCalledWith("task-1");
     });
+    expect(mockFocusTerminal).not.toHaveBeenCalled();
   });
 });

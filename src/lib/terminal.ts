@@ -332,19 +332,13 @@ function handleTerminalMessage(ptyProcess: import("node-pty").IPty, data: string
   ptyProcess.write(data);
 }
 
-/** 탭 전환 시 해당 태스크의 세션으로 포커스를 이동한다 */
+/** 렌더러의 입력 포커스는 xterm DOM에서만 처리한다. 호스트 tmux 클라이언트 전환은 수행하지 않는다 */
 export function focusSession(taskId: string): void {
-  const entry = activeTerminals.get(taskId);
-  if (!entry) return;
-
-  try {
-    if (entry.sessionType === SessionType.TMUX) {
-      execSync(`tmux switch-client -t "${entry.sessionName}"`, { timeout: 3000, stdio: "ignore" });
-    }
-    // zellij는 외부에서 세션 전환이 불가능하므로 무시
-  } catch {
-    // focus 실패 시 무시 (세션이 종료되었을 수 있음)
+  if (!activeTerminals.has(taskId)) {
+    return;
   }
+
+  return;
 }
 
 /** 터미널 세션을 분리하고 PTY 프로세스를 종료한다. 모든 연결된 클라이언트를 닫는다 */

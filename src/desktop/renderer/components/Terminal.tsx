@@ -56,13 +56,13 @@ export default function Terminal({ taskId }: TerminalProps) {
       };
     }
 
-    const unsubscribeData = window.kanvibeDesktop!.onTerminalData((event: any) => {
+    const unsubscribeData = window.kanvibeDesktop!.onTerminalData((event: { taskId: string; data: string }) => {
       if (event.taskId === taskId) {
         terminal.write(event.data);
       }
     });
 
-    const unsubscribeClose = window.kanvibeDesktop!.onTerminalClose((event: any) => {
+    const unsubscribeClose = window.kanvibeDesktop!.onTerminalClose((event: { taskId: string; reason: string | null }) => {
       if (event.taskId === taskId) {
         terminal.writeln(`\r\n\x1b[31m${event.reason || "연결이 종료되었습니다."}\x1b[0m`);
       }
@@ -78,7 +78,6 @@ export default function Terminal({ taskId }: TerminalProps) {
 
     const focusCurrentTerminal = () => {
       terminal.focus();
-      window.kanvibeDesktop!.focusTerminal(taskId);
     };
 
     focusCurrentTerminal();

@@ -295,6 +295,34 @@ describe("attachLocalSession — zellij 세션 생성 및 레이아웃 적용", 
   });
 });
 
+describe("focusSession — 렌더러 포커스 처리", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.resetModules();
+  });
+
+  it("상세 탭 포커스가 tmux 클라이언트를 전환하지 않는다", async () => {
+    // Given
+    const { attachLocalSession, focusSession } = await import("@/lib/terminal");
+    mockExecSync.mockReturnValue("");
+
+    await attachLocalSession(
+      "task-focus",
+      SessionType.TMUX,
+      "feat-login",
+      createMockWs(),
+      "/workspace",
+    );
+    mockExecSync.mockClear();
+
+    // When
+    focusSession("task-focus");
+
+    // Then
+    expect(findExecSyncCall("switch-client")).toBeUndefined();
+  });
+});
+
 describe("attachRemoteSession — ssh 바이너리 기반 연결", () => {
   beforeEach(() => {
     vi.clearAllMocks();
