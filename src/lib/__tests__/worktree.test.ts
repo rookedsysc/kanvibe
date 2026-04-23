@@ -206,7 +206,7 @@ describe("removeSessionOnly", () => {
 
     // Then
     expect(mockExecGit).toHaveBeenCalledWith(
-      'tmux kill-session -t "feat-branch"',
+      'tmux kill-session -t "feat-branch" 2>/dev/null || true',
       undefined,
     );
   });
@@ -296,6 +296,50 @@ describe("createSessionWithoutWorktree", () => {
     expect(mockExecGit).toHaveBeenCalledWith(
       'tmux has-session -t "path-main" 2>/dev/null',
       undefined,
+    );
+  });
+
+  it("should retry remote tmux creation with TERM when detached startup fails", async () => {
+    // Given
+    mockExecGit.mockImplementation((command: string, sshHost?: string | null) => {
+      if (command === "command -v tmux >/dev/null 2>&1" && sshHost === "remote-host") {
+        return Promise.resolve("");
+      }
+
+      if (command === 'tmux has-session -t "path-main" 2>/dev/null' && sshHost === "remote-host") {
+        return Promise.reject(new Error("no session"));
+      }
+
+      if (command === 'tmux new-session -d -s "path-main" -c "/custom/dir"' && sshHost === "remote-host") {
+        return Promise.reject(new Error("remote-host 원격 명령 실패: server exited unexpectedly"));
+      }
+
+      if (command === 'env TERM=xterm-256color tmux new-session -d -s "path-main" -c "/custom/dir"' && sshHost === "remote-host") {
+        return Promise.resolve("");
+      }
+
+      return Promise.resolve("");
+    });
+
+    const { createSessionWithoutWorktree } = await import("@/lib/worktree");
+
+    // When
+    await createSessionWithoutWorktree(
+      "/repo/path",
+      "main",
+      SessionType.TMUX,
+      "remote-host",
+      "/custom/dir",
+    );
+
+    // Then
+    expect(mockExecGit).toHaveBeenCalledWith(
+      'tmux new-session -d -s "path-main" -c "/custom/dir"',
+      "remote-host",
+    );
+    expect(mockExecGit).toHaveBeenCalledWith(
+      'env TERM=xterm-256color tmux new-session -d -s "path-main" -c "/custom/dir"',
+      "remote-host",
     );
   });
 });

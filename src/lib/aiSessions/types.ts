@@ -56,6 +56,7 @@ export interface AiSessionReaderContext {
   includeRepoSessions?: boolean;
   query?: string;
   roles?: AiMessageRole[];
+  sshHost?: string | null;
 }
 
 export interface AiSessionReaderResult {

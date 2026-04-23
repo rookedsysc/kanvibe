@@ -1,5 +1,3 @@
-import { access } from "fs/promises";
-import { homedir } from "os";
 import path from "path";
 import {
   createReaderResult,
@@ -7,7 +5,6 @@ import {
   determineMatchScope,
   extractPlainText,
   getCachedOrParse,
-  listFilesRecursively,
   makePreviewMessage,
   paginateItems,
   readJsonLines,
@@ -15,10 +12,9 @@ import {
   toIsoString,
   truncateText,
 } from "@/lib/aiSessions/shared";
+import { getHomeDirectory, listFilesRecursivelyBySuffix, pathExists } from "@/lib/hostFileAccess";
 import type { AggregatedAiMessage, AggregatedAiSession, AiSessionDetailReaderResult, AiSessionReaderContext, AiSessionReaderResult } from "@/lib/aiSessions/types";
 
-const CODEX_ROOT_DIR = path.join(homedir(), ".codex");
-const CODEX_SESSIONS_DIR = path.join(CODEX_ROOT_DIR, "sessions");
 const DEFAULT_DETAIL_LIMIT = 20;
 
 interface CodexRolloutEvent {
@@ -28,12 +24,13 @@ interface CodexRolloutEvent {
 }
 
 export async function readCodexSessions(context: AiSessionReaderContext): Promise<AiSessionReaderResult> {
-  const sessionsDirExists = await access(CODEX_SESSIONS_DIR).then(() => true).catch(() => false);
+  const codexSessionsDirectory = await getCodexSessionsDirectory(context);
+  const sessionsDirExists = await pathExists(codexSessionsDirectory, context.sshHost);
   if (!sessionsDirExists) {
     return createReaderResult("codex", { available: false, reason: "Codex sessions directory not found" });
   }
 
-  const rolloutFiles = await listFilesRecursively(CODEX_SESSIONS_DIR, (filePath) => filePath.endsWith(".jsonl"));
+  const rolloutFiles = await listFilesRecursivelyBySuffix(codexSessionsDirectory, ".jsonl", context.sshHost);
 
   const results = await Promise.all(
     rolloutFiles.map((filePath) => parseCodexSessionSummary(filePath, context))
@@ -64,7 +61,7 @@ export async function readCodexSessionDetail(
 ): Promise<AiSessionDetailReaderResult | null> {
   const rolloutFiles = sourceRef
     ? [sourceRef]
-    : await listFilesRecursively(CODEX_SESSIONS_DIR, (filePath) => filePath.endsWith(".jsonl"));
+    : await listFilesRecursivelyBySuffix(await getCodexSessionsDirectory(context), ".jsonl", context.sshHost);
 
   for (const filePath of rolloutFiles) {
     const detail = await parseCodexSessionDetail(filePath, context, sessionId, cursor, limit);
@@ -75,7 +72,7 @@ export async function readCodexSessionDetail(
 }
 
 async function parseCodexSessionSummary(filePath: string, context: AiSessionReaderContext): Promise<AggregatedAiSession | null> {
-  const events = await getCachedOrParse(filePath, () => readJsonLines(filePath));
+  const events = await getCachedOrParse(filePath, () => readJsonLines(filePath, context.sshHost), context.sshHost);
 
   let sessionId: string | null = null;
   let matchedPath: string | null = null;
@@ -139,7 +136,7 @@ async function parseCodexSessionDetail(
   cursor?: string | null,
   limit = DEFAULT_DETAIL_LIMIT
 ): Promise<AiSessionDetailReaderResult | null> {
-  const events = await getCachedOrParse(filePath, () => readJsonLines(filePath));
+  const events = await getCachedOrParse(filePath, () => readJsonLines(filePath, context.sshHost), context.sshHost);
   let matchedPath: string | null = null;
   let title: string | null = null;
   const messages: AggregatedAiMessage[] = [];
@@ -192,4 +189,8 @@ async function parseCodexSessionDetail(
     messages: paginated.items,
     nextCursor: paginated.nextCursor,
   });
+}
+
+async function getCodexSessionsDirectory(context: AiSessionReaderContext): Promise<string> {
+  return path.join(await getHomeDirectory(context.sshHost), ".codex", "sessions");
 }

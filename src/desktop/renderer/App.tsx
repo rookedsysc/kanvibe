@@ -9,6 +9,7 @@ import { DEFAULT_LOCALE, getSafeLocale, isSupportedLocale, messagesByLocale } fr
 import { triggerDesktopRefresh } from "@/desktop/renderer/utils/refresh";
 import BoardRoute from "@/desktop/renderer/routes/BoardRoute";
 import DiffRoute from "@/desktop/renderer/routes/DiffRoute";
+import NotFoundRoute from "@/desktop/renderer/routes/NotFoundRoute";
 import PaneLayoutRoute from "@/desktop/renderer/routes/PaneLayoutRoute";
 import TaskDetailRoute from "@/desktop/renderer/routes/TaskDetailRoute";
 
@@ -112,6 +113,7 @@ export default function App() {
           <Route path="pane-layout" element={<ProtectedRoute isAuthenticated={isAuthenticated} sessionLoading={sessionLoading}><PaneLayoutRoute /></ProtectedRoute>} />
           <Route path="task/:id" element={<ProtectedRoute isAuthenticated={isAuthenticated} sessionLoading={sessionLoading}><TaskDetailRoute /></ProtectedRoute>} />
           <Route path="task/:id/diff" element={<ProtectedRoute isAuthenticated={isAuthenticated} sessionLoading={sessionLoading}><DiffRoute /></ProtectedRoute>} />
+          <Route path="*" element={<NotFoundRoute />} />
         </Route>
       </Routes>
     </HashRouter>

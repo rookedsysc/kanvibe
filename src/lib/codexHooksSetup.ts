@@ -1,7 +1,10 @@
-import { readFile, writeFile, mkdir, chmod, access } from "fs/promises";
+import { writeFile, mkdir, chmod } from "fs/promises";
 import path from "path";
 import { addAiToolPatternsToGitExclude } from "@/lib/gitExclude";
 import { buildCurlAuthHeader } from "@/lib/hookAuth";
+import { pathExists, readTextFile } from "@/lib/hostFileAccess";
+import { extractShellHookServerUrl, validateHookServerConfiguration } from "@/lib/hookServerStatus";
+import { KANVIBE_TASK_ID_RELATIVE_PATH, buildShellTaskIdResolver, readHookTaskIdFile, writeHookTaskIdFile } from "@/lib/hookTaskBinding";
 
 /**
  * Codex CLI는 현재 notify 설정의 agent-turn-complete 이벤트만 지원한다.
@@ -17,7 +20,7 @@ export function generateNotifyHookScript(kanvibeUrl: string, taskId: string, aut
 # Codex notify 스크립트는 첫 번째 인자로 JSON payload를 받는다.
 
 KANVIBE_URL="${kanvibeUrl}"
-TASK_ID="${taskId}"
+${buildShellTaskIdResolver(taskId)}
 
 JSON_PAYLOAD="$1"
 
@@ -39,18 +42,37 @@ exit 0
 export const HOOK_SCRIPT_NAME = "kanvibe-notify-hook.sh";
 export const CONFIG_FILE_NAME = "config.toml";
 
-/** 기존 config.toml 내용을 읽거나 빈 문자열을 반환한다 */
-async function readConfigToml(configPath: string): Promise<string> {
-  try {
-    return await readFile(configPath, "utf-8");
-  } catch {
-    return "";
+function hasTaskIdPayloadBinding(content: string, taskId?: string, boundTaskId?: string | null): boolean {
+  const hasDynamicTaskIdResolver = content.includes(`TASK_ID_FILE="${KANVIBE_TASK_ID_RELATIVE_PATH}"`);
+  const hasTaskIdPayload = content.includes("taskId") && content.includes("${TASK_ID}");
+  if (!hasTaskIdPayload) return false;
+
+  if (!taskId) {
+    return hasDynamicTaskIdResolver || content.includes("TASK_ID=");
   }
+
+  if (hasDynamicTaskIdResolver) {
+    return boundTaskId === taskId;
+  }
+
+  return content.includes(`TASK_ID="${taskId}"`);
+}
+
+function hasLegacyBranchPayloadBinding(content: string): boolean {
+  return content.includes('BRANCH_NAME=$(git rev-parse --abbrev-ref HEAD')
+    && content.includes('PROJECT_NAME="')
+    && content.includes('\\\"branchName\\\": \\\"${BRANCH_NAME}\\\"')
+    && content.includes('\\\"projectName\\\": \\\"${PROJECT_NAME}\\\"');
+}
+
+/** 기존 config.toml 내용을 읽거나 빈 문자열을 반환한다 */
+async function readConfigToml(configPath: string, sshHost?: string | null): Promise<string> {
+  return readTextFile(configPath, sshHost);
 }
 
 /** config.toml에 kanvibe notify hook이 등록되어 있는지 확인한다 */
 function hasKanvibeNotify(configContent: string): boolean {
-  return configContent.includes(HOOK_SCRIPT_NAME);
+  return /^notify\s*=\s*\["\.codex\/hooks\/kanvibe-notify-hook\.sh"\]$/m.test(configContent);
 }
 
 /**
@@ -70,6 +92,7 @@ export async function setupCodexHooks(
   await mkdir(hooksDir, { recursive: true });
 
   const notifyScriptPath = path.join(hooksDir, HOOK_SCRIPT_NAME);
+  await writeHookTaskIdFile(repoPath, taskId);
   await writeFile(notifyScriptPath, generateNotifyHookScript(kanvibeUrl, taskId, authToken), "utf-8");
   await chmod(notifyScriptPath, 0o755);
 
@@ -101,31 +124,66 @@ export interface CodexHooksStatus {
   installed: boolean;
   hasNotifyHook: boolean;
   hasConfigEntry: boolean;
+  hasTaskIdBinding?: boolean;
+  hasReviewStatus?: boolean;
+  hasAgentTurnCompleteFilter?: boolean;
+  hasExpectedHookServerUrl?: boolean;
+  hasReachableHookServer?: boolean;
+  boundTaskId?: string | null;
+  configuredHookServerUrl?: string | null;
+  expectedHookServerUrl?: string | null;
 }
 
 /** 지정된 repo의 Codex CLI hooks 설치 상태를 확인한다 */
-export async function getCodexHooksStatus(repoPath: string): Promise<CodexHooksStatus> {
-  const codexDir = path.join(repoPath, ".codex");
-  const hooksDir = path.join(codexDir, "hooks");
-  const configPath = path.join(codexDir, CONFIG_FILE_NAME);
+export async function getCodexHooksStatus(repoPath: string, taskId?: string, sshHost?: string | null): Promise<CodexHooksStatus> {
+  const pathModule = sshHost ? path.posix : path;
+  const codexDir = pathModule.join(repoPath, ".codex");
+  const hooksDir = pathModule.join(codexDir, "hooks");
+  const configPath = pathModule.join(codexDir, CONFIG_FILE_NAME);
+  const notifyScriptPath = pathModule.join(hooksDir, HOOK_SCRIPT_NAME);
 
-  const notifyScriptExists = await access(path.join(hooksDir, HOOK_SCRIPT_NAME))
-    .then(() => true)
-    .catch(() => false);
+  const notifyScriptExists = await pathExists(notifyScriptPath, sshHost);
+
+  const notifyContent = notifyScriptExists
+    ? await readTextFile(notifyScriptPath, sshHost)
+    : "";
+  const boundTaskId = await readHookTaskIdFile(repoPath, sshHost);
+  const hasTaskIdBinding = hasTaskIdPayloadBinding(notifyContent, taskId, boundTaskId);
+  const hasReviewStatus = notifyContent.includes('\\\"status\\\": \\\"review\\\"');
+  const hasAgentTurnCompleteFilter = notifyContent.includes("EVENT_TYPE") && notifyContent.includes("agent-turn-complete");
+  const hookServerValidation = await validateHookServerConfiguration(
+    [extractShellHookServerUrl(notifyContent)],
+    Boolean(taskId),
+    sshHost,
+  );
 
   let hasConfigEntry = false;
   try {
-    const configContent = await readConfigToml(configPath);
+    const configContent = await readConfigToml(configPath, sshHost);
     hasConfigEntry = hasKanvibeNotify(configContent);
   } catch {
     /* config.toml 없음 */
   }
 
-  const installed = notifyScriptExists && hasConfigEntry;
+  const installed = notifyScriptExists
+    && hasConfigEntry
+    && hasTaskIdBinding
+    && hasReviewStatus
+    && hasAgentTurnCompleteFilter
+    && hookServerValidation.hasExpectedHookServerUrl
+    && hookServerValidation.hasReachableHookServer;
 
   return {
     installed,
     hasNotifyHook: notifyScriptExists,
     hasConfigEntry,
+    hasTaskIdBinding,
+    hasReviewStatus,
+    hasAgentTurnCompleteFilter,
+    hasExpectedHookServerUrl: hookServerValidation.hasExpectedHookServerUrl,
+    hasReachableHookServer: hookServerValidation.hasReachableHookServer,
+    boundTaskId,
+    configuredHookServerUrl: hookServerValidation.configuredHookServerUrl,
+    expectedHookServerUrl: hookServerValidation.expectedHookServerUrl,
   };
 }

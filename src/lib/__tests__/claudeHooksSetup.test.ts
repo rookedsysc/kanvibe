@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { mkdtemp, readFile, rm } from "fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "fs/promises";
 import { join } from "path";
 import { tmpdir } from "os";
 import { setupClaudeHooks, getClaudeHooksStatus } from "../claudeHooksSetup";
@@ -16,22 +16,72 @@ describe("claudeHooksSetup", () => {
   });
 
   it("토큰이 있으면 모든 hook 스크립트에 인증 헤더를 포함한다", async () => {
-    // Given
     const repoPath = tempDir;
 
-    // When
     await setupClaudeHooks(repoPath, "task-1", "http://192.168.0.10:9736", "auth-token");
 
-    // Then
     const promptScript = await readFile(join(repoPath, ".claude", "hooks", "kanvibe-prompt-hook.sh"), "utf-8");
     const stopScript = await readFile(join(repoPath, ".claude", "hooks", "kanvibe-stop-hook.sh"), "utf-8");
     const questionScript = await readFile(join(repoPath, ".claude", "hooks", "kanvibe-question-hook.sh"), "utf-8");
 
-    expect(promptScript).toContain('X-Kanvibe-Token: auth-token');
-    expect(stopScript).toContain('X-Kanvibe-Token: auth-token');
-    expect(questionScript).toContain('X-Kanvibe-Token: auth-token');
+    expect(promptScript).toContain("X-Kanvibe-Token: auth-token");
+    expect(stopScript).toContain("X-Kanvibe-Token: auth-token");
+    expect(questionScript).toContain("X-Kanvibe-Token: auth-token");
 
     const status = await getClaudeHooksStatus(repoPath);
     expect(status.installed).toBe(true);
+  });
+
+  it("stale Claude hook command entries are not treated as installed and are repaired on reinstall", async () => {
+    const repoPath = tempDir;
+
+    await setupClaudeHooks(repoPath, "task-1", "http://localhost:9736");
+
+    await writeFile(
+      join(repoPath, ".claude", "settings.json"),
+      JSON.stringify({
+        hooks: {
+          UserPromptSubmit: [
+            {
+              hooks: [{ type: "command", command: '"/tmp/old-project/.claude/hooks/kanvibe-prompt-hook.sh"', timeout: 10 }],
+            },
+          ],
+          PreToolUse: [
+            {
+              matcher: "AskUserQuestion",
+              hooks: [{ type: "command", command: '"/tmp/old-project/.claude/hooks/kanvibe-question-hook.sh"', timeout: 10 }],
+            },
+          ],
+          PostToolUse: [
+            {
+              matcher: "AskUserQuestion",
+              hooks: [{ type: "command", command: '"/tmp/old-project/.claude/hooks/kanvibe-prompt-hook.sh"', timeout: 10 }],
+            },
+          ],
+          Stop: [
+            {
+              hooks: [{ type: "command", command: '"/tmp/old-project/.claude/hooks/kanvibe-stop-hook.sh"', timeout: 10 }],
+            },
+          ],
+        },
+      }, null, 2) + "\n",
+      "utf-8",
+    );
+
+    const staleStatus = await getClaudeHooksStatus(repoPath);
+    expect(staleStatus.hasSettingsEntry).toBe(false);
+    expect(staleStatus.installed).toBe(false);
+
+    await setupClaudeHooks(repoPath, "task-1", "http://localhost:9736");
+
+    const repairedSettings = JSON.parse(await readFile(join(repoPath, ".claude", "settings.json"), "utf-8"));
+    expect(repairedSettings.hooks.UserPromptSubmit[0].hooks[0].command).toBe('"$CLAUDE_PROJECT_DIR"/.claude/hooks/kanvibe-prompt-hook.sh');
+    expect(repairedSettings.hooks.PreToolUse[0].hooks[0].command).toBe('"$CLAUDE_PROJECT_DIR"/.claude/hooks/kanvibe-question-hook.sh');
+    expect(repairedSettings.hooks.PostToolUse[0].hooks[0].command).toBe('"$CLAUDE_PROJECT_DIR"/.claude/hooks/kanvibe-prompt-hook.sh');
+    expect(repairedSettings.hooks.Stop[0].hooks[0].command).toBe('"$CLAUDE_PROJECT_DIR"/.claude/hooks/kanvibe-stop-hook.sh');
+
+    const repairedStatus = await getClaudeHooksStatus(repoPath);
+    expect(repairedStatus.hasSettingsEntry).toBe(true);
+    expect(repairedStatus.installed).toBe(true);
   });
 });

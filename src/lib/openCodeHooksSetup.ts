@@ -1,7 +1,11 @@
-import { writeFile, mkdir, access, readFile } from "fs/promises";
+import { writeFile, mkdir } from "fs/promises";
 import path from "path";
 import { addAiToolPatternsToGitExclude } from "@/lib/gitExclude";
 import { buildFetchAuthHeaders } from "@/lib/hookAuth";
+import { pathExists, readTextFile } from "@/lib/hostFileAccess";
+import { extractPluginHookServerUrl, validateHookServerConfiguration } from "@/lib/hookServerStatus";
+import { KANVIBE_TASK_ID_RELATIVE_PATH, readHookTaskIdFile, writeHookTaskIdFile } from "@/lib/hookTaskBinding";
+import { isOpenCodePluginRegistered } from "@/lib/openCodePluginRegistry";
 
 /**
  * OpenCode는 `.opencode/plugins/` 디렉토리에 TypeScript 플러그인을 배치하여 hooks를 등록한다.
@@ -14,30 +18,35 @@ export const PLUGIN_DIR_NAME = "plugins";
 
 /** OpenCode plugin TypeScript 파일 내용을 생성한다 */
 export function generatePluginScript(kanvibeUrl: string, taskId: string, authToken?: string): string {
-  return `import type { Plugin } from "@opencode-ai/plugin";
+  return `import { readFile } from "node:fs/promises";
+import { join } from "node:path";
+import type { Plugin } from "@opencode-ai/plugin";
 
 /**
  * KanVibe OpenCode Plugin
  * message.updated(user) → progress, question.asked → pending,
  * question.replied → progress, session.idle → review, session.deleted → done 상태 변경
  */
-export const KanvibePlugin: Plugin = async ({ client }) => {
+export const KanvibePlugin: Plugin = async ({ client, directory, worktree }) => {
   const KANVIBE_URL = "${kanvibeUrl}";
-  const TASK_ID = "${taskId}";
+  const DEFAULT_TASK_ID = "${taskId}";
+  const TASK_ID_FILE = "${KANVIBE_TASK_ID_RELATIVE_PATH}";
+  const repoPath = worktree || directory || process.cwd();
+  const lastStatusBySession = new Map<string, string>();
+  const lastUserMessageBySession = new Map<string, string>();
 
-  async function updateStatus(status: string): Promise<void> {
+  async function resolveTaskId(): Promise<string> {
     try {
-      await fetch(\`\${KANVIBE_URL}/api/hooks/status\`, {
-        method: "POST",
-        headers: ${buildFetchAuthHeaders(authToken)},
-        body: JSON.stringify({ taskId: TASK_ID, status }),
-      });
+      const taskId = (await readFile(join(repoPath, TASK_ID_FILE), "utf-8")).trim();
+      if (taskId.length > 0) {
+        return taskId;
+      }
     } catch {
-      /* 네트워크 에러 무시 */
+      /* taskId 파일이 없으면 기본값 사용 */
     }
-  }
 
-  const sessionCache = new Map<string, boolean>();
+    return DEFAULT_TASK_ID;
+  }
 
   function getSessionID(source: any): string | undefined {
     return (
@@ -50,6 +59,57 @@ export const KanvibePlugin: Plugin = async ({ client }) => {
       source?.info?.id
     );
   }
+
+  function buildMessageSignature(source: any): string | undefined {
+    const parts = [
+      source?.messageID,
+      source?.messageId,
+      source?.id,
+      source?.timeCreated,
+      source?.time_created,
+      source?.createdAt,
+      source?.updatedAt,
+      source?.timestamp,
+      typeof source?.content === "string" ? source.content : undefined,
+    ].filter((value): value is string | number => value !== undefined && value !== null);
+
+    if (parts.length === 0) return undefined;
+    return parts.join(":");
+  }
+
+  async function updateStatus(source: any, status: string, options?: { dedupeMessage?: boolean }): Promise<void> {
+    const sessionID = getSessionID(source);
+
+    if (options?.dedupeMessage && sessionID) {
+      const signature = buildMessageSignature(source);
+      if (signature) {
+        if (lastUserMessageBySession.get(sessionID) === signature) {
+          return;
+        }
+        lastUserMessageBySession.set(sessionID, signature);
+      }
+    }
+
+    if (sessionID && lastStatusBySession.get(sessionID) === status) {
+      return;
+    }
+
+    try {
+      const resolvedTaskId = await resolveTaskId();
+      await fetch(\`\${KANVIBE_URL}/api/hooks/status\`, {
+        method: "POST",
+        headers: ${buildFetchAuthHeaders(authToken)},
+        body: JSON.stringify({ taskId: resolvedTaskId, status }),
+      });
+      if (sessionID) {
+        lastStatusBySession.set(sessionID, status);
+      }
+    } catch {
+      /* 네트워크 에러 무시 */
+    }
+  }
+
+  const sessionCache = new Map<string, boolean>();
 
   function getParentSessionID(source: any): string | null | undefined {
     return (
@@ -98,7 +158,7 @@ export const KanvibePlugin: Plugin = async ({ client }) => {
           (event as any).properties?.info ?? (event as any).properties?.message;
 
         if (message?.role === "user" && (await isMainSession(message))) {
-          await updateStatus("progress");
+          await updateStatus(message, "progress", { dedupeMessage: true });
         }
       }
       if (event.type === "question.asked") {
@@ -106,28 +166,28 @@ export const KanvibePlugin: Plugin = async ({ client }) => {
           return;
         }
 
-        await updateStatus("pending");
+        await updateStatus(event.properties, "pending");
       }
       if (event.type === "question.replied") {
         if (!(await isMainSession(event.properties))) {
           return;
         }
 
-        await updateStatus("progress");
+        await updateStatus(event.properties, "progress");
       }
       if (event.type === "session.idle") {
         if (!(await isMainSession(event.properties))) {
           return;
         }
 
-        await updateStatus("review");
+        await updateStatus(event.properties, "review");
       }
       if (event.type === "session.deleted") {
         if (!(await isMainSession(event.properties))) {
           return;
         }
 
-        await updateStatus("done");
+        await updateStatus(event.properties, "done");
       }
     },
   };
@@ -156,6 +216,7 @@ export async function setupOpenCodeHooks(
   await mkdir(pluginsDir, { recursive: true });
 
   const pluginPath = path.join(pluginsDir, PLUGIN_FILE_NAME);
+  await writeHookTaskIdFile(repoPath, taskId);
   await writeFile(pluginPath, generatePluginScript(kanvibeUrl, taskId, authToken), "utf-8");
 
   try {
@@ -168,32 +229,94 @@ export async function setupOpenCodeHooks(
 export interface OpenCodeHooksStatus {
   installed: boolean;
   hasPlugin: boolean;
+  hasRegisteredPlugin?: boolean;
+  hasTaskIdBinding?: boolean;
+  hasStatusEndpoint?: boolean;
+  hasEventMappings?: boolean;
+  hasMainSessionGuard?: boolean;
+  hasDuplicateProgressGuard?: boolean;
+  hasExpectedHookServerUrl?: boolean;
+  hasReachableHookServer?: boolean;
+  boundTaskId?: string | null;
+  configuredHookServerUrl?: string | null;
+  expectedHookServerUrl?: string | null;
 }
 
 /** 지정된 repo의 OpenCode plugin 설치 상태를 확인한다 */
-export async function getOpenCodeHooksStatus(repoPath: string): Promise<OpenCodeHooksStatus> {
-  const openCodeDir = path.join(repoPath, ".opencode");
-  const pluginsDir = path.join(openCodeDir, PLUGIN_DIR_NAME);
-  const pluginPath = path.join(pluginsDir, PLUGIN_FILE_NAME);
+export async function getOpenCodeHooksStatus(repoPath: string, taskId?: string, sshHost?: string | null): Promise<OpenCodeHooksStatus> {
+  const pathModule = sshHost ? path.posix : path;
+  const openCodeDir = pathModule.join(repoPath, ".opencode");
+  const pluginsDir = pathModule.join(openCodeDir, PLUGIN_DIR_NAME);
+  const pluginPath = pathModule.join(pluginsDir, PLUGIN_FILE_NAME);
 
-  const pluginExists = await access(pluginPath)
-    .then(() => true)
-    .catch(() => false);
+  const pluginExists = await pathExists(pluginPath, sshHost);
 
   let hasPlugin = false;
+  const boundTaskId = await readHookTaskIdFile(repoPath, sshHost);
+  let hasTaskIdBinding = !taskId;
+  let hasStatusEndpoint = false;
+  let hasEventMappings = false;
+  let hasMainSessionGuard = false;
+  let hasDuplicateProgressGuard = false;
+  let hasRegisteredPlugin = sshHost ? true : false;
+  let configuredHookServerUrl: string | null = null;
   if (pluginExists) {
     try {
-      const content = await readFile(pluginPath, "utf-8");
+      const content = await readTextFile(pluginPath, sshHost);
       hasPlugin = hasKanvibePlugin(content);
+      configuredHookServerUrl = extractPluginHookServerUrl(content);
+      hasTaskIdBinding =
+        !taskId || (
+          content.includes(`const DEFAULT_TASK_ID = \"${taskId}\";`) &&
+          content.includes(`const TASK_ID_FILE = \"${KANVIBE_TASK_ID_RELATIVE_PATH}\";`) &&
+          content.includes("const repoPath = worktree || directory || process.cwd();") &&
+          content.includes("readFile(join(repoPath, TASK_ID_FILE), \"utf-8\")") &&
+          content.includes("resolveTaskId") &&
+          content.includes("taskId: resolvedTaskId") &&
+          boundTaskId === taskId
+        );
+      hasStatusEndpoint = content.includes("/api/hooks/status");
+      hasEventMappings = ["progress", "pending", "review", "done", "message.updated", "question.asked", "question.replied", "session.idle", "session.deleted"].every((fragment) => content.includes(fragment));
+      hasMainSessionGuard = content.includes("isMainSession(message)") && content.includes("isMainSession(event.properties)");
+      hasDuplicateProgressGuard = content.includes("lastUserMessageBySession") && content.includes("buildMessageSignature") && content.includes("dedupeMessage: true");
+      if (!sshHost) {
+        hasRegisteredPlugin = await isOpenCodePluginRegistered(repoPath, pluginPath);
+      }
     } catch {
       /* 파일 읽기 실패 */
     }
   }
 
-  const installed = pluginExists && hasPlugin;
+  const hookServerValidation = await validateHookServerConfiguration(
+    [configuredHookServerUrl],
+    Boolean(taskId),
+    sshHost,
+  );
+
+  const installed = pluginExists
+    && hasPlugin
+    && hasTaskIdBinding
+    && hasStatusEndpoint
+    && hasEventMappings
+    && hasMainSessionGuard
+    && hasDuplicateProgressGuard
+    && hasRegisteredPlugin
+    && hookServerValidation.hasExpectedHookServerUrl
+    && hookServerValidation.hasReachableHookServer;
 
   return {
     installed,
     hasPlugin,
+    hasRegisteredPlugin,
+    hasTaskIdBinding,
+    hasStatusEndpoint,
+    hasEventMappings,
+    hasMainSessionGuard,
+    hasDuplicateProgressGuard,
+    hasExpectedHookServerUrl: hookServerValidation.hasExpectedHookServerUrl,
+    hasReachableHookServer: hookServerValidation.hasReachableHookServer,
+    boundTaskId,
+    configuredHookServerUrl: hookServerValidation.configuredHookServerUrl,
+    expectedHookServerUrl: hookServerValidation.expectedHookServerUrl,
   };
 }

@@ -16,11 +16,32 @@ export function formatSessionName(projectName: string, branchName: string): stri
   return `${projectName}-${branchName}`.replace(/\//g, "-");
 }
 
+export function buildManagedWorktreePath(projectPath: string, branchName: string): string {
+  const projectName = path.basename(projectPath);
+  const worktreeBase = path.posix.join(
+    path.dirname(projectPath),
+    `${projectName}__worktrees`,
+  );
+
+  return path.posix.join(
+    worktreeBase,
+    branchName.replace(/\//g, "-"),
+  );
+}
+
 /** zellij 세션 이름을 소켓 경로 108바이트 제한에 맞게 truncate한다 */
 const ZELLIJ_SESSION_NAME_MAX_LENGTH = 60;
 export function sanitizeZellijSessionName(sessionName: string): string {
   if (sessionName.length <= ZELLIJ_SESSION_NAME_MAX_LENGTH) return sessionName;
   return sessionName.slice(0, ZELLIJ_SESSION_NAME_MAX_LENGTH);
+}
+
+function buildTmuxCreateSessionCommand(sessionName: string, workingDir: string): string {
+  return `tmux new-session -d -s "${sessionName}" -c "${workingDir}"`;
+}
+
+async function createTmuxSession(sessionName: string, workingDir: string): Promise<void> {
+  await execGit(buildTmuxCreateSessionCommand(sessionName, workingDir));
 }
 
 
@@ -229,14 +250,7 @@ export async function createWorktreeWithSession(
   await ensureRemoteSessionDependency(sessionType, sshHost);
 
   const projectName = path.basename(projectPath);
-  const worktreeBase = path.posix.join(
-    path.dirname(projectPath),
-    `${projectName}__worktrees`,
-  );
-  const worktreePath = path.posix.join(
-    worktreeBase,
-    branchName.replace(/\//g, "-"),
-  );
+  const worktreePath = buildManagedWorktreePath(projectPath, branchName);
   const sessionName = formatSessionName(projectName, branchName);
 
   await execGit(
@@ -244,52 +258,52 @@ export async function createWorktreeWithSession(
     sshHost,
   );
 
-  if (sessionType === SessionType.TMUX) {
-    /** 동일 이름의 세션이 없을 때만 생성한다 */
-    const hasSession = await isSessionAlive(sessionType, sessionName, sshHost);
-    if (!hasSession) {
-      await execGit(
-        `tmux new-session -d -s "${sessionName}" -c "${worktreePath}"`,
-        sshHost,
-      );
-    }
-
-    /** 로컬 tmux인 경우 pane 레이아웃을 백그라운드로 적용 (task 생성을 차단하지 않음) */
-    if (!sshHost) {
-      applyPaneLayoutAsync(
-        sessionName,
-        worktreePath,
-        projectId ?? undefined,
-      );
-    }
-
-    return { worktreePath, sessionName };
-  } else {
-    /**
-     * Zellij는 TTY 없이 실행 불가하므로 서버에서 세션을 직접 시작하지 않는다.
-     * 세션 이름과 레이아웃 파일만 준비하고, 실제 세션 생성은
-     * 터미널 연결 시 node-pty가 PTY를 제공하며 처리한다.
-     */
-    const zellijSessionName = sanitizeZellijSessionName(sessionName);
-
-    /** 로컬 세션인 경우 KDL 레이아웃 파일을 worktree 디렉토리에 저장한다 */
-    if (!sshHost) {
-      try {
-        const layoutConfig = await getEffectivePaneLayout(projectId ?? undefined);
-        if (layoutConfig && layoutConfig.layoutType !== PaneLayoutType.SINGLE) {
-          const kdl = generateZellijLayoutKdl(
-            layoutConfig.layoutType as PaneLayoutType,
-            layoutConfig.panes,
-            worktreePath,
-          );
-          await writeLayoutToWorktree(worktreePath, kdl);
+  try {
+    if (sessionType === SessionType.TMUX) {
+      /**
+       * 원격 호스트에서는 비대화형 SSH로 tmux 서버를 시작할 수 없으므로
+       * 세션 생성을 터미널 연결 시 PTY가 확보된 후로 미룬다.
+       */
+      if (!sshHost) {
+        const hasSession = await isSessionAlive(sessionType, sessionName, null);
+        if (!hasSession) {
+          await createTmuxSession(sessionName, worktreePath);
         }
-      } catch (error) {
-        console.error("Zellij 레이아웃 파일 생성 실패 (레이아웃 없이 세션 생성 예정):", error);
+        applyPaneLayoutAsync(sessionName, worktreePath, projectId ?? undefined);
       }
-    }
 
-    return { worktreePath, sessionName: zellijSessionName };
+      return { worktreePath, sessionName };
+    } else {
+      /**
+       * Zellij는 TTY 없이 실행 불가하므로 서버에서 세션을 직접 시작하지 않는다.
+       * 세션 이름과 레이아웃 파일만 준비하고, 실제 세션 생성은
+       * 터미널 연결 시 node-pty가 PTY를 제공하며 처리한다.
+       */
+      const zellijSessionName = sanitizeZellijSessionName(sessionName);
+
+      /** 로컬 세션인 경우 KDL 레이아웃 파일을 worktree 디렉토리에 저장한다 */
+      if (!sshHost) {
+        try {
+          const layoutConfig = await getEffectivePaneLayout(projectId ?? undefined);
+          if (layoutConfig && layoutConfig.layoutType !== PaneLayoutType.SINGLE) {
+            const kdl = generateZellijLayoutKdl(
+              layoutConfig.layoutType as PaneLayoutType,
+              layoutConfig.panes,
+              worktreePath,
+            );
+            await writeLayoutToWorktree(worktreePath, kdl);
+          }
+        } catch (error) {
+          console.error("Zellij 레이아웃 파일 생성 실패 (레이아웃 없이 세션 생성 예정):", error);
+        }
+      }
+
+      return { worktreePath, sessionName: zellijSessionName };
+    }
+  } catch (sessionError) {
+    /** 세션 생성이 실패하면 이미 생성된 worktree와 브랜치를 정리해 다음 시도가 막히지 않도록 한다 */
+    await removeWorktreeAndBranch(projectPath, branchName, sshHost);
+    throw sessionError;
   }
 }
 
@@ -311,12 +325,11 @@ export async function createSessionWithoutWorktree(
   const cwd = workingDir || projectPath;
 
   if (sessionType === SessionType.TMUX) {
-    const hasSession = await isSessionAlive(sessionType, sessionName, sshHost);
-    if (!hasSession) {
-      await execGit(
-        `tmux new-session -d -s "${sessionName}" -c "${cwd}"`,
-        sshHost,
-      );
+    if (!sshHost) {
+      const hasSession = await isSessionAlive(sessionType, sessionName, null);
+      if (!hasSession) {
+        await createTmuxSession(sessionName, cwd);
+      }
     }
 
     return { sessionName };
@@ -337,15 +350,7 @@ export async function removeWorktreeAndBranch(
   sshHost?: string | null,
 ): Promise<void> {
   try {
-    const projectName = path.basename(projectPath);
-    const worktreeBase = path.posix.join(
-      path.dirname(projectPath),
-      `${projectName}__worktrees`,
-    );
-    const worktreePath = path.posix.join(
-      worktreeBase,
-      branchName.replace(/\//g, "-"),
-    );
+    const worktreePath = buildManagedWorktreePath(projectPath, branchName);
     await execGit(
       `git -C "${projectPath}" worktree remove "${worktreePath}" --force`,
       sshHost,
@@ -370,7 +375,7 @@ export async function removeSessionOnly(
   try {
     if (sessionType === SessionType.TMUX) {
       await execGit(
-        `tmux kill-session -t "${sessionName}"`,
+        `tmux kill-session -t "${sessionName}" 2>/dev/null || true`,
         sshHost,
       );
     } else {

@@ -131,7 +131,7 @@ export default function TaskDetailRoute() {
         const baseBranchName = task.baseBranch ?? "main";
         const foundTaskId = task.projectId ? await getTaskIdByProjectAndBranch(task.projectId, baseBranchName) : null;
         const baseBranchTaskId = foundTaskId !== task.id ? foundTaskId : null;
-        const diffFiles = task.branchName ? await getGitDiffFiles(id) : [];
+        const diffFiles = task.branchName && task.worktreePath ? await getGitDiffFiles(id) : [];
         const [claudeHooksStatus, geminiHooksStatus, codexHooksStatus, openCodeHooksStatus, aiSessions, sidebarDefaultCollapsed, sidebarHintDismissed, doneAlertDismissed] = await Promise.all([
           task.projectId ? getTaskHooksStatus(id) : Promise.resolve(null),
           task.projectId ? getTaskGeminiHooksStatus(id) : Promise.resolve(null),
@@ -180,7 +180,20 @@ export default function TaskDetailRoute() {
   }
 
   if (state === null) {
-    return <div className="min-h-screen flex items-center justify-center bg-bg-page text-text-muted">Task not found.</div>;
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-bg-page px-4">
+        <div className="flex flex-col items-center gap-4 text-center">
+          <p className="text-text-muted">{t("taskNotFound")}</p>
+          <button
+            type="button"
+            onClick={() => router.back()}
+            className="rounded-md border border-border-default bg-bg-surface px-4 py-2 text-sm text-text-secondary transition-colors hover:border-brand-primary hover:text-text-primary"
+          >
+            {t("goBack")}
+          </button>
+        </div>
+      </div>
+    );
   }
 
   const hasTerminal = !!(state.task.sessionType && state.task.sessionName);
@@ -292,7 +305,23 @@ export default function TaskDetailRoute() {
           </div>
         ) : (
           <div className="flex-1 flex items-center justify-center border border-dashed border-border-default rounded-lg bg-bg-surface">
-            {state.task.projectId ? <ConnectTerminalForm taskId={state.task.id} /> : <p className="text-text-muted text-sm">{t("noTerminal")}</p>}
+            {state.task.projectId ? (
+              <ConnectTerminalForm
+                taskId={state.task.id}
+                sshHost={state.task.sshHost}
+                onConnected={(connectedTask) => {
+                  setState((current) => current && current.task.id === connectedTask.id
+                    ? {
+                        ...current,
+                        task: {
+                          ...current.task,
+                          ...connectedTask,
+                        },
+                      }
+                    : current);
+                }}
+              />
+            ) : <p className="text-text-muted text-sm">{t("noTerminal")}</p>}
           </div>
         )}
       </main>

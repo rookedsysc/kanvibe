@@ -21,15 +21,16 @@ vi.mock("fs", async (importOriginal) => {
   const actual = await importOriginal<typeof import("fs")>();
   return {
     ...actual,
-    existsSync: (...args: unknown[]) => mockExistsSync(...args),
+    existsSync: mockExistsSync,
   };
 });
 
+const mockPtyWrite = vi.fn();
 const mockPtyOnData = vi.fn();
 const mockPtyOnExit = vi.fn();
 vi.mock("node-pty", () => ({
   spawn: vi.fn(() => ({
-    write: vi.fn(),
+    write: mockPtyWrite,
     resize: vi.fn(),
     onData: mockPtyOnData,
     onExit: mockPtyOnExit,
@@ -294,6 +295,34 @@ describe("attachLocalSession — zellij 세션 생성 및 레이아웃 적용", 
   });
 });
 
+describe("focusSession — 렌더러 포커스 처리", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.resetModules();
+  });
+
+  it("상세 탭 포커스가 tmux 클라이언트를 전환하지 않는다", async () => {
+    // Given
+    const { attachLocalSession, focusSession } = await import("@/lib/terminal");
+    mockExecSync.mockReturnValue("");
+
+    await attachLocalSession(
+      "task-focus",
+      SessionType.TMUX,
+      "feat-login",
+      createMockWs(),
+      "/workspace",
+    );
+    mockExecSync.mockClear();
+
+    // When
+    focusSession("task-focus");
+
+    // Then
+    expect(findExecSyncCall("switch-client")).toBeUndefined();
+  });
+});
+
 describe("attachRemoteSession — ssh 바이너리 기반 연결", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -306,19 +335,19 @@ describe("attachRemoteSession — ssh 바이너리 기반 연결", () => {
     const nodePty = await import("node-pty");
 
     // When
-      await attachRemoteSession(
-        "task-r1",
-        "remote-host",
-        SessionType.TMUX,
-        "remote-session",
-        createMockWs(),
-        {
-          host: "remote-host",
-          hostname: "example.com",
-          port: 2202,
-          username: "tester",
-          privateKeyPath: "/tmp/test-key",
-        },
+    await attachRemoteSession(
+      "task-r1",
+      "remote-host",
+      SessionType.TMUX,
+      "remote-session",
+      createMockWs(),
+      {
+        host: "remote-host",
+        hostname: "example.com",
+        port: 2202,
+        username: "tester",
+        privateKeyPath: "/tmp/test-key",
+      },
     );
 
     // Then
@@ -335,9 +364,11 @@ describe("attachRemoteSession — ssh 바이너리 기반 연결", () => {
         "IdentitiesOnly=yes",
         "-tt",
         "remote-host",
-        expect.stringContaining('tmux has-session -t "remote-session"'),
       ],
       expect.objectContaining({ cwd: expect.any(String) }),
+    );
+    expect(mockPtyWrite).toHaveBeenCalledWith(
+      expect.stringContaining('tmux has-session -t "remote-session"'),
     );
   });
 });

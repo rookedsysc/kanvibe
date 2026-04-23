@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useTranslations } from "next-intl";
 import { useParams } from "react-router-dom";
-import { Link } from "@/desktop/renderer/navigation";
+import { Link, useRouter } from "@/desktop/renderer/navigation";
 import { getGitDiffFiles } from "@/desktop/renderer/actions/diff";
 import { getTaskById } from "@/desktop/renderer/actions/kanban";
 import DiffPageClient from "@/desktop/renderer/components/DiffPageClient";
@@ -10,18 +10,22 @@ import { useRefreshSignal } from "@/desktop/renderer/utils/refresh";
 export default function DiffRoute() {
   const { id = "" } = useParams();
   const t = useTranslations("diffView");
+  const router = useRouter();
   const refreshSignal = useRefreshSignal(["all", "diff"]);
   const [state, setState] = useState<{ task: Awaited<ReturnType<typeof getTaskById>>; files: Awaited<ReturnType<typeof getGitDiffFiles>> } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
 
-    Promise.all([getTaskById(id), getGitDiffFiles(id)]).then(([task, files]) => {
+    void (async () => {
+      const task = await getTaskById(id);
+      const files = task?.branchName && task.worktreePath ? await getGitDiffFiles(id) : [];
+
       if (!cancelled) {
         setState({ task, files });
         document.title = task?.branchName ? `Diff - ${task.branchName}` : "KanVibe";
       }
-    });
+    })();
 
     return () => {
       cancelled = true;
@@ -33,7 +37,20 @@ export default function DiffRoute() {
   }
 
   if (!state.task) {
-    return <div className="min-h-screen flex items-center justify-center bg-bg-page text-text-muted">Task not found.</div>;
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-bg-page px-4">
+        <div className="flex flex-col items-center gap-4 text-center">
+          <p className="text-text-muted">{t("taskNotFound")}</p>
+          <button
+            type="button"
+            onClick={() => router.back()}
+            className="rounded-md border border-border-default bg-bg-surface px-4 py-2 text-sm text-text-secondary transition-colors hover:border-brand-primary hover:text-text-primary"
+          >
+            {t("goBack")}
+          </button>
+        </div>
+      </div>
+    );
   }
 
   if (!state.task.branchName) {

@@ -15,11 +15,24 @@ vi.mock("next-intl", async () => {
 
 vi.mock("@/components/HooksStatusDialog", () => {
   // eslint-disable-next-line react/display-name
-  const MockDialog = ({ isOpen, onClose, taskId, isRemote }: any) =>
+  const MockDialog = ({ isOpen, onClose, taskId, isRemote, onStatusesChange }: any) =>
     isOpen ? (
       <div data-testid="hooks-status-dialog">
-        Dialog: taskId={taskId}, isRemote={isRemote}
+        Dialog: taskId={taskId}, isRemote={String(isRemote)}
         <button onClick={onClose}>Close Dialog</button>
+        <button
+          onClick={() => onStatusesChange?.({
+            claudeStatus: {
+              installed: true,
+              hasPromptHook: true,
+              hasStopHook: true,
+              hasQuestionHook: true,
+              hasSettingsEntry: true,
+            },
+          })}
+        >
+          Simulate Install
+        </button>
       </div>
     ) : null;
   return {
@@ -50,26 +63,6 @@ describe("HooksStatusCard", () => {
       </IntlProvider>
     );
   };
-
-  it("should not render signal button when isRemote is true", () => {
-    // Given
-    const props = {
-      taskId: "task-1",
-      initialClaudeStatus: null,
-      initialGeminiStatus: null,
-      initialCodexStatus: null,
-      initialOpenCodeStatus: null,
-      isRemote: true,
-    };
-
-    // When
-    renderCard(props);
-
-    // Then - Signal button should not exist (check for status text)
-    expect(screen.queryByText("All OK")).toBeNull();
-    expect(screen.queryByText("Not Installed")).toBeNull();
-    expect(screen.queryByText("Partial")).toBeNull();
-  });
 
   it("should render signal button showing overall status when isRemote is false", () => {
     // Given
@@ -187,6 +180,23 @@ describe("HooksStatusCard", () => {
     expect(screen.queryByTestId("hooks-status-dialog")).toBeNull();
   });
 
+  it("should update the overall status when the dialog reports a new hook status", () => {
+    const props = {
+      taskId: "task-1",
+      initialClaudeStatus: null,
+      initialGeminiStatus: null,
+      initialCodexStatus: null,
+      initialOpenCodeStatus: null,
+      isRemote: false,
+    };
+
+    renderCard(props);
+    fireEvent.click(screen.getByText("Not Installed"));
+    fireEvent.click(screen.getByText("Simulate Install"));
+
+    expect(screen.getByText("Partial")).toBeTruthy();
+  });
+
   it("should pass correct taskId to dialog", () => {
     // Given
     const taskId = "task-123";
@@ -222,14 +232,14 @@ describe("HooksStatusCard", () => {
 
     // When
     renderCard(props);
+    fireEvent.click(screen.getByText("Not Installed"));
 
-    // Then - When isRemote is true, signal button should not be rendered
-    expect(screen.queryByText("All OK")).toBeNull();
-    expect(screen.queryByText("Not Installed")).toBeNull();
-    expect(screen.queryByText("Partial")).toBeNull();
+    // Then
+    const dialog = screen.getByTestId("hooks-status-dialog");
+    expect(dialog.textContent).toContain("isRemote=true");
   });
 
-  it("should not render dialog when isRemote is true", () => {
+  it("should open dialog when signal button is clicked for remote tasks", () => {
     // Given
     const props = {
       taskId: "task-1",
@@ -242,9 +252,10 @@ describe("HooksStatusCard", () => {
 
     // When
     renderCard(props);
+    fireEvent.click(screen.getByText("Not Installed"));
 
     // Then
-    expect(screen.queryByTestId("hooks-status-dialog")).toBeNull();
+    expect(screen.getByTestId("hooks-status-dialog")).toBeTruthy();
   });
 
   it("should display Hooks Status heading", () => {

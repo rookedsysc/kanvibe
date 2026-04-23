@@ -253,6 +253,8 @@ describe("useTaskNotification", () => {
       body: "네이티브 알림: review로 변경\nOS 알림 테스트",
       taskId: "task-desktop",
       locale: "ko",
+      relativePath: "/ko/task/task-desktop",
+      dedupeKey: "task-status:task-desktop:review",
     });
     expect(mockShowNotification).not.toHaveBeenCalled();
   });

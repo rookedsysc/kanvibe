@@ -5,7 +5,7 @@ const path = require("node:path");
 const process = require("node:process");
 const crypto = require("node:crypto");
 const { pathToFileURL } = require("node:url");
-const { app, BrowserWindow, ipcMain, Notification, session, shell } = require("electron");
+const { app, BrowserWindow, ipcMain, session, shell } = require("electron");
 
 const DEFAULT_LOCALE = "ko";
 const RENDERER_DEV_URL = process.env.KANVIBE_RENDERER_URL || null;
@@ -27,6 +27,8 @@ if (process.platform === "linux") {
     app.commandLine.appendSwitch("no-sandbox");
   }
 }
+
+app.commandLine.appendSwitch("log-level", "3");
 
 let mainWindow = null;
 let hookServer = null;
@@ -138,6 +140,7 @@ function createBrowserWindowOptions() {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
       nodeIntegration: false,
+      disableBlinkFeatures: "ServiceWorker",
     },
   };
 }
@@ -161,6 +164,49 @@ function isKanvibeUrl(targetUrl) {
 
 function getNotificationIconPath() {
   return path.join(app.getAppPath(), "public", "icons", "icon-192x192.png");
+}
+
+function normalizeNotificationLocale(locale) {
+  if (typeof locale !== "string") {
+    return DEFAULT_LOCALE;
+  }
+
+  if (locale.startsWith("en")) {
+    return "en";
+  }
+
+  if (locale.startsWith("zh")) {
+    return "zh";
+  }
+
+  return DEFAULT_LOCALE;
+}
+
+function getDesktopNotificationLocale() {
+  const activeWindow = mainWindow && !mainWindow.isDestroyed()
+    ? mainWindow
+    : BrowserWindow.getAllWindows().find((window) => !window.isDestroyed()) || null;
+
+  const currentUrl = activeWindow?.webContents.getURL() || "";
+  const matchedLocale = currentUrl.match(/#\/([^/?#]+)/)?.[1];
+  if (matchedLocale) {
+    return normalizeNotificationLocale(matchedLocale);
+  }
+
+  return normalizeNotificationLocale(app.getLocale() || DEFAULT_LOCALE);
+}
+
+function createDesktopNotificationOptions() {
+  return {
+    iconPath: getNotificationIconPath(),
+    onNotificationsChanged: broadcastNotificationsChanged,
+    onNotificationClick: async (appNotification) => {
+      const targetPath = appNotification.taskId
+        ? `/${appNotification.locale}/task/${appNotification.taskId}`
+        : appNotification.relativePath;
+      await focusMainWindow(targetPath);
+    },
+  };
 }
 
 async function focusMainWindow(relativePath) {
@@ -190,34 +236,11 @@ async function focusMainWindow(relativePath) {
 }
 
 function registerNotificationHandlers() {
-  const { createNotification, listNotifications, markAllNotificationsRead, markNotificationRead } = require(getRuntimeModulePath(path.join("src", "desktop", "main", "notificationStore.ts")));
+  const { deliverDesktopNotification } = require(getRuntimeModulePath(path.join("src", "desktop", "main", "services", "desktopNotificationService.ts")));
+  const { listNotifications, markAllNotificationsRead, markNotificationRead } = require(getRuntimeModulePath(path.join("src", "desktop", "main", "notificationStore.ts")));
 
   ipcMain.handle("kanvibe:show-notification", async (_event, payload) => {
-    const { created, notification: appNotification } = await createNotification(payload);
-
-    if (created) {
-      broadcastNotificationsChanged();
-    }
-
-    if (!created || !Notification.isSupported()) {
-      return created;
-    }
-
-    const notification = new Notification({
-      title: appNotification.title,
-      body: appNotification.body,
-      icon: getNotificationIconPath(),
-    });
-
-    notification.on("click", () => {
-      void markNotificationRead(appNotification.id).then(() => {
-        broadcastNotificationsChanged();
-      });
-      void focusMainWindow(appNotification.relativePath);
-    });
-
-    notification.show();
-    return true;
+    return deliverDesktopNotification(payload, createDesktopNotificationOptions());
   });
 
   ipcMain.handle("kanvibe:notifications-list", async () => {
@@ -351,13 +374,22 @@ function registerDesktopHandlers() {
 
 function registerBoardEventForwarding() {
   const { subscribeToBoardEvents } = require(getRuntimeModulePath(path.join("src", "lib", "boardNotifier.ts")));
+  const { deliverBoardEventNotification } = require(getRuntimeModulePath(path.join("src", "desktop", "main", "services", "desktopNotificationService.ts")));
 
   return subscribeToBoardEvents((payload) => {
-    for (const window of BrowserWindow.getAllWindows()) {
-      if (!window.isDestroyed()) {
-        window.webContents.send("kanvibe:board-event", payload);
+    void (async () => {
+      try {
+        await deliverBoardEventNotification(payload, getDesktopNotificationLocale(), createDesktopNotificationOptions());
+      } catch (error) {
+        console.error("[kanvibe] board event notification failed:", error);
       }
-    }
+
+      for (const window of BrowserWindow.getAllWindows()) {
+        if (!window.isDestroyed()) {
+          window.webContents.send("kanvibe:board-event", payload);
+        }
+      }
+    })();
   });
 }
 

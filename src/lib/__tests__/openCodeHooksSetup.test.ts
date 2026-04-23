@@ -1,14 +1,23 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { mkdtemp, readFile, rm } from "fs/promises";
 import { join } from "path";
 import { tmpdir } from "os";
 import { setupOpenCodeHooks, getOpenCodeHooksStatus } from "../openCodeHooksSetup";
+
+const { mockIsOpenCodePluginRegistered } = vi.hoisted(() => ({
+  mockIsOpenCodePluginRegistered: vi.fn(),
+}));
+
+vi.mock("@/lib/openCodePluginRegistry", () => ({
+  isOpenCodePluginRegistered: mockIsOpenCodePluginRegistered,
+}));
 
 describe("openCodeHooksSetup", () => {
   let tempDir: string;
 
   beforeEach(async () => {
     tempDir = await mkdtemp(join(tmpdir(), "opencode-test-"));
+    mockIsOpenCodePluginRegistered.mockResolvedValue(true);
   });
 
   afterEach(async () => {
@@ -41,8 +50,11 @@ describe("openCodeHooksSetup", () => {
 
       expect(pluginContent).toContain("KanvibePlugin");
       expect(pluginContent).toContain("/api/hooks/status");
-      expect(pluginContent).toContain('const TASK_ID = "task-1";');
-      expect(pluginContent).toContain("taskId: TASK_ID");
+      expect(pluginContent).toContain('const DEFAULT_TASK_ID = "task-1";');
+      expect(pluginContent).toContain('const TASK_ID_FILE = ".kanvibe/task-id";');
+      expect(pluginContent).toContain("const repoPath = worktree || directory || process.cwd();");
+      expect(pluginContent).toContain('readFile(join(repoPath, TASK_ID_FILE), "utf-8")');
+      expect(pluginContent).toContain("taskId: resolvedTaskId");
     });
 
     it("should generate plugin with all event handlers for status tracking", async () => {
@@ -101,6 +113,9 @@ describe("openCodeHooksSetup", () => {
       expect(pluginContent).toContain("result.data?.parentID");
       expect(pluginContent).toContain("properties?.info ?? (event as any).properties?.message");
       expect(pluginContent).toContain("return sessionCache.get(sessionID) ?? false");
+      expect(pluginContent).toContain("lastUserMessageBySession");
+      expect(pluginContent).toContain("buildMessageSignature");
+      expect(pluginContent).toContain("dedupeMessage: true");
       expect(pluginContent).toMatch(/message\.updated[\s\S]*?isMainSession\(message\)/);
       expect(pluginContent).toMatch(/question\.asked[\s\S]*?isMainSession\(event\.properties\)/);
       expect(pluginContent).toMatch(/question\.replied[\s\S]*?isMainSession\(event\.properties\)/);
@@ -133,6 +148,8 @@ describe("openCodeHooksSetup", () => {
 
       // Then
       expect(status.installed).toBe(true);
+      expect(status.hasDuplicateProgressGuard).toBe(true);
+      expect(status.hasEventMappings).toBe(true);
     });
 
     it("should return installed: false when no plugin exists", async () => {
@@ -145,6 +162,20 @@ describe("openCodeHooksSetup", () => {
       // Then
       expect(status.installed).toBe(false);
       expect(status.hasPlugin).toBe(false);
+    });
+
+    it("should return installed: false when OpenCode does not register the plugin", async () => {
+      // Given
+      const repoPath = tempDir;
+      await setupOpenCodeHooks(repoPath, "task-1", "http://localhost:3000");
+      mockIsOpenCodePluginRegistered.mockResolvedValueOnce(false);
+
+      // When
+      const status = await getOpenCodeHooksStatus(repoPath);
+
+      // Then
+      expect(status.installed).toBe(false);
+      expect(status.hasRegisteredPlugin).toBe(false);
     });
   });
 });

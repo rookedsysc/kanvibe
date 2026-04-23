@@ -28,6 +28,17 @@ type MultiSelectProps = BaseProps & {
 
 type ProjectSelectorProps = SingleSelectProps | MultiSelectProps;
 
+function matchesProjectSearch(project: Project, query: string) {
+  const normalizedQuery = query.trim().toLowerCase();
+
+  if (!normalizedQuery) {
+    return true;
+  }
+
+  return [project.name, project.repoPath, project.sshHost ?? ""]
+    .some((value) => value.toLowerCase().includes(normalizedQuery));
+}
+
 export default function ProjectSelector(props: ProjectSelectorProps) {
   const {
     projects,
@@ -62,9 +73,7 @@ export default function ProjectSelector(props: ProjectSelectorProps) {
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   const filteredProjects = searchQuery
-    ? projects.filter((p) =>
-        p.name.toLowerCase().includes(searchQuery.toLowerCase())
-      )
+    ? projects.filter((project) => matchesProjectSearch(project, searchQuery))
     : projects;
 
   /** 단일 선택 모드에서 "전체" 옵션은 검색 중이 아닐 때만 표시한다 */

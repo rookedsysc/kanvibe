@@ -1,10 +1,7 @@
-import { exec } from "child_process";
-import { promisify } from "util";
 import path from "path";
-import { readFile, writeFile } from "fs/promises";
 import { getTaskRepository } from "@/lib/database";
-
-const execAsync = promisify(exec);
+import { execGit } from "@/lib/gitOperations";
+import { quoteShellArgument, readTextFile, writeTextFile } from "@/lib/hostFileAccess";
 
 export interface DiffFile {
   path: string;
@@ -28,19 +25,25 @@ function parseGitStatus(statusLetter: string): DiffFile["status"] {
   }
 }
 
+function buildGitCommand(worktreePath: string, args: string[]) {
+  return `git -C ${quoteShellArgument(worktreePath)} ${args.join(" ")}`;
+}
+
 /**
  * 파일 경로가 worktree 디렉토리 내부에 있는지 검증한다.
  * 경로 탐색 공격(path traversal)을 방지하기 위해 ".." 포함 여부와
  * resolve된 절대 경로가 worktreePath로 시작하는지 확인한다.
  */
-function validateFilePath(worktreePath: string, filePath: string): string {
-  if (filePath.includes("..")) {
-    throw new Error("잘못된 파일 경로: 상위 디렉토리 참조가 포함되어 있습니다");
+function validateFilePath(worktreePath: string, filePath: string, sshHost?: string | null): string {
+  const pathModule = sshHost ? path.posix : path;
+
+  if (pathModule.isAbsolute(filePath)) {
+    throw new Error("잘못된 파일 경로: 절대 경로는 허용되지 않습니다");
   }
 
-  const resolvedPath = path.resolve(worktreePath, filePath);
-
-  if (!resolvedPath.startsWith(worktreePath)) {
+  const resolvedPath = pathModule.resolve(worktreePath, filePath);
+  const relativePath = pathModule.relative(worktreePath, resolvedPath);
+  if (relativePath.startsWith("..") || pathModule.isAbsolute(relativePath)) {
     throw new Error("잘못된 파일 경로: worktree 외부 접근이 감지되었습니다");
   }
 
@@ -68,6 +71,7 @@ async function getTaskWorktreeInfo(taskId: string) {
     worktreePath: task.worktreePath,
     branchName: task.branchName,
     baseBranch: task.baseBranch ?? "main",
+    sshHost: task.sshHost ?? null,
   };
 }
 
@@ -95,7 +99,7 @@ export async function getGitDiffFiles(
   taskId: string
 ): Promise<DiffFile[]> {
   try {
-    const { worktreePath, branchName, baseBranch } =
+    const { worktreePath, branchName, baseBranch, sshHost } =
       await getTaskWorktreeInfo(taskId);
 
     /**
@@ -106,15 +110,26 @@ export async function getGitDiffFiles(
     const emptyResult = { stdout: "" };
     const [nameStatusResult, numstatResult, workingTreeResult] =
       await Promise.all([
-        execAsync(`git diff ${baseBranch}...${branchName} --name-status`, {
-          cwd: worktreePath,
-        }).catch(() => emptyResult),
-        execAsync(`git diff ${baseBranch}...${branchName} --numstat`, {
-          cwd: worktreePath,
-        }).catch(() => emptyResult),
-        execAsync("git status --porcelain --untracked-files=all", {
-          cwd: worktreePath,
-        }),
+        execGit(
+          buildGitCommand(worktreePath, [
+            "diff",
+            quoteShellArgument(`${baseBranch}...${branchName}`),
+            "--name-status",
+          ]),
+          sshHost,
+        ).then((stdout) => ({ stdout })).catch(() => emptyResult),
+        execGit(
+          buildGitCommand(worktreePath, [
+            "diff",
+            quoteShellArgument(`${baseBranch}...${branchName}`),
+            "--numstat",
+          ]),
+          sshHost,
+        ).then((stdout) => ({ stdout })).catch(() => emptyResult),
+        execGit(
+          buildGitCommand(worktreePath, ["status", "--porcelain", "--untracked-files=all"]),
+          sshHost,
+        ).then((stdout) => ({ stdout })),
       ]);
 
     /** numstat 결과를 파일 경로 기준으로 맵핑한다 */
@@ -188,17 +203,18 @@ export async function getOriginalFileContent(
   filePath: string
 ): Promise<string> {
   try {
-    const { worktreePath, baseBranch } =
+    const { worktreePath, baseBranch, sshHost } =
       await getTaskWorktreeInfo(taskId);
 
-    validateFilePath(worktreePath, filePath);
+    validateFilePath(worktreePath, filePath, sshHost);
 
-    const { stdout } = await execAsync(
-      `git show ${baseBranch}:${filePath}`,
-      { cwd: worktreePath }
+    return await execGit(
+      buildGitCommand(worktreePath, [
+        "show",
+        quoteShellArgument(`${baseBranch}:${filePath}`),
+      ]),
+      sshHost,
     );
-
-    return stdout;
   } catch (error) {
     /** 파일이 baseBranch에 존재하지 않는 경우(신규 파일) 빈 문자열을 반환한다 */
     return "";
@@ -211,11 +227,10 @@ export async function getFileContent(
   filePath: string
 ): Promise<string> {
   try {
-    const { worktreePath } = await getTaskWorktreeInfo(taskId);
-    const resolvedPath = validateFilePath(worktreePath, filePath);
+    const { worktreePath, sshHost } = await getTaskWorktreeInfo(taskId);
+    const resolvedPath = validateFilePath(worktreePath, filePath, sshHost);
 
-    const content = await readFile(resolvedPath, "utf-8");
-    return content;
+    return await readTextFile(resolvedPath, sshHost);
   } catch (error) {
     console.error("파일 내용 읽기 실패:", error);
     return "";
@@ -229,10 +244,10 @@ export async function saveFileContent(
   content: string
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    const { worktreePath } = await getTaskWorktreeInfo(taskId);
-    const resolvedPath = validateFilePath(worktreePath, filePath);
+    const { worktreePath, sshHost } = await getTaskWorktreeInfo(taskId);
+    const resolvedPath = validateFilePath(worktreePath, filePath, sshHost);
 
-    await writeFile(resolvedPath, content, "utf-8");
+    await writeTextFile(resolvedPath, content, sshHost);
     return { success: true };
   } catch (error) {
     const message =

@@ -68,6 +68,7 @@ export function useRouter() {
 
   return useMemo(
     () => ({
+      back: () => navigate(-1),
       push: (href: string) => navigate(localizeHref(href, currentLocale)),
       replace: (href: string) => navigate(localizeHref(href, currentLocale), { replace: true }),
       refresh: () => triggerDesktopRefresh(getRefreshScope(location.pathname)),

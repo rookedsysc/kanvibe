@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useTranslations } from "next-intl";
 import AiSessionsDialog from "@/components/AiSessionsDialog";
 import type { AggregatedAiSessionsResult } from "@/lib/aiSessions/types";
@@ -13,6 +13,10 @@ interface AiSessionsCardProps {
 export default function AiSessionsCard({ taskId, data }: AiSessionsCardProps) {
   const t = useTranslations("taskDetail");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+
+  useEffect(() => {
+    setIsDialogOpen(false);
+  }, [taskId]);
 
   const summary = useMemo(() => {
     const providerCount = data.sources.filter((source) => source.sessionCount > 0).length;
@@ -51,6 +55,7 @@ export default function AiSessionsCard({ taskId, data }: AiSessionsCardProps) {
       </div>
 
       <AiSessionsDialog
+        key={taskId}
         taskId={taskId}
         isOpen={isDialogOpen}
         onClose={() => setIsDialogOpen(false)}

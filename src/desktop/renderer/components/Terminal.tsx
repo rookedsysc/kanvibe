@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef } from "react";
 import "@xterm/xterm/css/xterm.css";
+import { createTerminalOptions, installMacShiftSelectionPatch } from "@/lib/terminalMouseSelection";
 
 interface TerminalProps {
   taskId: string;
@@ -29,24 +30,13 @@ export default function Terminal({ taskId }: TerminalProps) {
       import("@xterm/addon-web-links"),
     ]);
 
-    const terminal = new XTerm({
-      allowProposedApi: true,
-      cursorBlink: true,
-      fontSize: 14,
-      fontFamily,
-      rescaleOverlappingGlyphs: true,
-      theme: {
-        background: "#0a0a0a",
-        foreground: "#e4e4e7",
-        cursor: "#e4e4e7",
-        selectionBackground: "#3b82f680",
-      },
-    });
+    const terminal = new XTerm(createTerminalOptions(fontFamily));
 
     const fitAddon = new FitAddon();
     terminal.loadAddon(fitAddon);
     terminal.loadAddon(new WebLinksAddon());
     terminal.open(containerRef.current);
+    const disposeMacShiftSelectionPatch = installMacShiftSelectionPatch(terminal);
     terminal.options.fontFamily = "monospace";
     terminal.options.fontFamily = fontFamily;
 
@@ -60,15 +50,19 @@ export default function Terminal({ taskId }: TerminalProps) {
     const terminalReady = await window.kanvibeDesktop!.openTerminal(taskId, terminal.cols, terminal.rows);
     if (!terminalReady.ok) {
       terminal.writeln(`\r\n\x1b[31m${terminalReady.error || "터미널 연결 실패"}\x1b[0m`);
+      return () => {
+        disposeMacShiftSelectionPatch();
+        terminal.dispose();
+      };
     }
 
-    const unsubscribeData = window.kanvibeDesktop!.onTerminalData((event: any) => {
+    const unsubscribeData = window.kanvibeDesktop!.onTerminalData((event: { taskId: string; data: string }) => {
       if (event.taskId === taskId) {
         terminal.write(event.data);
       }
     });
 
-    const unsubscribeClose = window.kanvibeDesktop!.onTerminalClose((event: any) => {
+    const unsubscribeClose = window.kanvibeDesktop!.onTerminalClose((event: { taskId: string; reason: string | null }) => {
       if (event.taskId === taskId) {
         terminal.writeln(`\r\n\x1b[31m${event.reason || "연결이 종료되었습니다."}\x1b[0m`);
       }
@@ -82,6 +76,12 @@ export default function Terminal({ taskId }: TerminalProps) {
       window.kanvibeDesktop!.resizeTerminal(taskId, cols, rows);
     });
 
+    const focusCurrentTerminal = () => {
+      terminal.focus();
+    };
+
+    focusCurrentTerminal();
+
     const resizeObserver = new ResizeObserver(() => {
       fitAddon.fit();
       window.kanvibeDesktop!.resizeTerminal(taskId, terminal.cols, terminal.rows);
@@ -90,7 +90,7 @@ export default function Terminal({ taskId }: TerminalProps) {
 
     const handleVisibilityChange = () => {
       if (document.visibilityState === "visible") {
-        window.kanvibeDesktop!.focusTerminal(taskId);
+        focusCurrentTerminal();
       }
     };
 
@@ -98,6 +98,7 @@ export default function Terminal({ taskId }: TerminalProps) {
 
     return () => {
       document.removeEventListener("visibilitychange", handleVisibilityChange);
+      disposeMacShiftSelectionPatch();
       resizeObserver.disconnect();
       unsubscribeData();
       unsubscribeClose();
@@ -107,11 +108,26 @@ export default function Terminal({ taskId }: TerminalProps) {
   }, [taskId]);
 
   useEffect(() => {
+    let isDisposed = false;
     let cleanup: (() => void) | undefined;
-    connect().then((dispose) => {
-      cleanup = dispose;
-    });
-    return () => cleanup?.();
+
+    void connect()
+      .then((dispose) => {
+        if (isDisposed) {
+          dispose?.();
+          return;
+        }
+
+        cleanup = dispose;
+      })
+      .catch((error) => {
+        console.error("데스크톱 터미널 초기화 실패:", error);
+      });
+
+    return () => {
+      isDisposed = true;
+      cleanup?.();
+    };
   }, [connect]);
 
   return <div ref={containerRef} className="w-full h-full overflow-hidden bg-terminal-bg" />;

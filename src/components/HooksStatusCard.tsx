@@ -32,6 +32,26 @@ export default function HooksStatusCard({
   const [openCodeStatus, setOpenCodeStatus] = useState(initialOpenCodeStatus);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
 
+  function handleStatusesChange(updates: {
+    claudeStatus?: ClaudeHooksStatus | null;
+    geminiStatus?: GeminiHooksStatus | null;
+    codexStatus?: CodexHooksStatus | null;
+    openCodeStatus?: OpenCodeHooksStatus | null;
+  }) {
+    if (updates.claudeStatus !== undefined) {
+      setClaudeStatus(updates.claudeStatus);
+    }
+    if (updates.geminiStatus !== undefined) {
+      setGeminiStatus(updates.geminiStatus);
+    }
+    if (updates.codexStatus !== undefined) {
+      setCodexStatus(updates.codexStatus);
+    }
+    if (updates.openCodeStatus !== undefined) {
+      setOpenCodeStatus(updates.openCodeStatus);
+    }
+  }
+
   useEffect(() => {
     setClaudeStatus(initialClaudeStatus);
   }, [initialClaudeStatus]);
@@ -67,32 +87,28 @@ export default function HooksStatusCard({
           {t("hooksStatus")}
         </h3>
 
-        {/* 신호등 버튼 */}
-        {!isRemote && (
-          <button
-            onClick={() => setIsDialogOpen(true)}
-            className="w-full px-3 py-2 text-sm bg-bg-page border border-border-default hover:border-brand-primary rounded-md transition-colors text-left flex items-center gap-2"
-          >
-            <span className="text-base">{overallStatus.icon}</span>
-            <span className="text-text-primary font-medium">{overallStatus.label}</span>
-            <span className="ml-auto text-text-muted">→</span>
-          </button>
-        )}
+        <button
+          onClick={() => setIsDialogOpen(true)}
+          className="w-full px-3 py-2 text-sm bg-bg-page border border-border-default hover:border-brand-primary rounded-md transition-colors text-left flex items-center gap-2"
+        >
+          <span className="text-base">{overallStatus.icon}</span>
+          <span className="text-text-primary font-medium">{overallStatus.label}</span>
+          <span className="ml-auto text-text-muted">→</span>
+        </button>
       </div>
 
       {/* Hooks Status Dialog */}
-      {!isRemote && (
-        <HooksStatusDialog
-          isOpen={isDialogOpen}
-          onClose={() => setIsDialogOpen(false)}
-          taskId={taskId}
-          claudeStatus={claudeStatus}
-          geminiStatus={geminiStatus}
-          codexStatus={codexStatus}
-          openCodeStatus={openCodeStatus}
-          isRemote={isRemote}
-        />
-      )}
+      <HooksStatusDialog
+        isOpen={isDialogOpen}
+        onClose={() => setIsDialogOpen(false)}
+        taskId={taskId}
+        claudeStatus={claudeStatus}
+        geminiStatus={geminiStatus}
+        codexStatus={codexStatus}
+        openCodeStatus={openCodeStatus}
+        isRemote={isRemote}
+        onStatusesChange={handleStatusesChange}
+      />
     </>
   );
 }

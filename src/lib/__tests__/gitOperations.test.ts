@@ -96,4 +96,97 @@ describe("gitOperations.resolvePathForShell", () => {
       expect.any(Function),
     );
   });
+
+  it("조용한 probe 명령 실패는 콘솔 에러를 남기지 않는다", async () => {
+    // Given
+    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    mocks.execFile.mockImplementation((_file: string, _args: string[], _options: unknown, callback: (error: Error & { stderr?: string }) => void) => {
+      const error = new Error("Command failed") as Error & { stderr?: string };
+      error.stderr = "";
+      callback(error);
+    });
+
+    vi.doMock("@/lib/sshConfig", async (importOriginal) => {
+      const actual = await importOriginal<typeof import("@/lib/sshConfig")>();
+      return {
+        ...actual,
+        parseSSHConfig: vi.fn(async () => [{
+          host: "remote-host",
+          hostname: "example.com",
+          port: 2202,
+          username: "tester",
+          privateKeyPath: "/tmp/test-key",
+        }]),
+      };
+    });
+
+    const { execGit } = await import("@/lib/gitOperations");
+
+    // When
+    await expect(execGit('tmux has-session -t "remote-session" 2>/dev/null', "remote-host")).rejects.toThrow();
+
+    // Then
+    expect(consoleErrorSpy).not.toHaveBeenCalled();
+  });
+
+  it("파일 probe 명령 실패도 콘솔 에러를 남기지 않는다", async () => {
+    // Given
+    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    mocks.execFile.mockImplementation((_file: string, _args: string[], _options: unknown, callback: (error: Error & { stderr?: string }) => void) => {
+      const error = new Error("Command failed") as Error & { stderr?: string };
+      error.stderr = "Connection reset by peer\n";
+      callback(error);
+    });
+
+    vi.doMock("@/lib/sshConfig", async (importOriginal) => {
+      const actual = await importOriginal<typeof import("@/lib/sshConfig")>();
+      return {
+        ...actual,
+        parseSSHConfig: vi.fn(async () => [{
+          host: "remote-host",
+          hostname: "example.com",
+          port: 2202,
+          username: "tester",
+          privateKeyPath: "/tmp/test-key",
+        }]),
+      };
+    });
+
+    const { execGit } = await import("@/lib/gitOperations");
+
+    // When
+    await expect(execGit("test -f '/repo/.kanvibe/task-id' && cat '/repo/.kanvibe/task-id' || true", "remote-host")).rejects.toThrow();
+
+    // Then
+    expect(consoleErrorSpy).not.toHaveBeenCalled();
+  });
+
+  it("scanGitRepos는 일반 저장소와 worktree 저장소를 모두 찾는다", async () => {
+    // Given
+    mocks.exec.mockImplementation((
+      _command: string,
+      callback: (error: null, result: { stdout: string; stderr: string }) => void,
+    ) => {
+      callback(
+        null,
+        {
+          stdout: "/workspace/api/.git\n/workspace/feature-worktree/.git\n",
+          stderr: "",
+        },
+      );
+      return {} as never;
+    });
+
+    const { scanGitRepos } = await import("@/lib/gitOperations");
+
+    // When
+    const result = await scanGitRepos("/workspace");
+
+    // Then
+    expect(mocks.exec).toHaveBeenCalledWith(
+      'find "/workspace" -maxdepth 4 -name ".git" \\( -type d -o -type f \\) 2>/dev/null',
+      expect.any(Function),
+    );
+    expect(result).toEqual(["/workspace/api", "/workspace/feature-worktree"]);
+  });
 });

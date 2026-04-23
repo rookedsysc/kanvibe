@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { render, screen, cleanup } from "@testing-library/react";
+import { render, screen, cleanup, fireEvent } from "@testing-library/react";
 import type { Project } from "@/entities/Project";
 
 vi.mock("next-intl", () => ({
@@ -19,6 +19,24 @@ function createProject(id: string, name: string): Project {
     color: null,
     createdAt: new Date(),
   };
+}
+
+function openSelectorAndSearch(query: string, projectsForTest = projects) {
+  render(
+    <ProjectSelector
+      multiple
+      projects={projectsForTest}
+      selectedProjectIds={[]}
+      onSelectionChange={vi.fn()}
+      placeholder="All projects"
+      searchPlaceholder="Search project..."
+    />,
+  );
+
+  fireEvent.click(screen.getByText("All projects"));
+  fireEvent.change(screen.getByPlaceholderText("Search project..."), {
+    target: { value: query },
+  });
 }
 
 const projects = [
@@ -75,5 +93,37 @@ describe("ProjectSelector chip truncation", () => {
     expect(screen.queryByText("Delta")).toBeNull();
     expect(screen.queryByText("Epsilon")).toBeNull();
     expect(screen.getByText("+3")).toBeTruthy();
+  });
+
+  it("should match remote projects by ssh host", () => {
+    const selectorProjects = [
+      createProject("local", "Local API"),
+      {
+        ...createProject("remote", "Remote API"),
+        repoPath: "/srv/team/remote-api",
+        sshHost: "remote-host",
+      },
+    ];
+
+    openSelectorAndSearch("remote-host", selectorProjects);
+
+    expect(screen.getByText("Remote API")).toBeTruthy();
+    expect(screen.queryByText("Local API")).toBeNull();
+  });
+
+  it("should match projects by repo path", () => {
+    const selectorProjects = [
+      createProject("local", "Local API"),
+      {
+        ...createProject("remote", "Remote API"),
+        repoPath: "/srv/team/remote-api",
+        sshHost: "remote-host",
+      },
+    ];
+
+    openSelectorAndSearch("/srv/team", selectorProjects);
+
+    expect(screen.getByText("Remote API")).toBeTruthy();
+    expect(screen.queryByText("Local API")).toBeNull();
   });
 });

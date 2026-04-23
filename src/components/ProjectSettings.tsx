@@ -36,6 +36,15 @@ interface ProjectSettingsProps {
   notificationSettings: { isEnabled: boolean; enabledStatuses: string[] };
 }
 
+function areNotificationSettingsEqual(
+  left: { isEnabled: boolean; enabledStatuses: string[] },
+  right: { isEnabled: boolean; enabledStatuses: string[] },
+) {
+  return left.isEnabled === right.isEnabled
+    && left.enabledStatuses.length === right.enabledStatuses.length
+    && left.enabledStatuses.every((status, index) => status === right.enabledStatuses[index]);
+}
+
 export default function ProjectSettings({
   isOpen,
   onClose,
@@ -56,10 +65,21 @@ export default function ProjectSettings({
   const [scanResult, setScanResult] = useState<ScanResult | null>(null);
   const [scanSshHost, setScanSshHost] = useState("");
   const [selectedDefaultSessionType, setSelectedDefaultSessionType] = useState(defaultSessionType);
+  const [localNotificationSettings, setLocalNotificationSettings] = useState(notificationSettings);
+  const [pendingNotificationSettings, setPendingNotificationSettings] = useState<typeof notificationSettings | null>(null);
 
   useEffect(() => {
     setSelectedDefaultSessionType(defaultSessionType);
   }, [defaultSessionType]);
+
+  useEffect(() => {
+    if (pendingNotificationSettings && !areNotificationSettingsEqual(notificationSettings, pendingNotificationSettings)) {
+      return;
+    }
+
+    setLocalNotificationSettings(notificationSettings);
+    setPendingNotificationSettings(null);
+  }, [notificationSettings, pendingNotificationSettings]);
 
   if (!isOpen) return null;
 
@@ -211,34 +231,38 @@ export default function ProjectSettings({
             <button
               type="button"
               role="switch"
-              aria-checked={notificationSettings.isEnabled}
-              onClick={() => {
-                startNotificationTransition(async () => {
-                  await setNotificationEnabled(!notificationSettings.isEnabled);
-                });
-              }}
-              disabled={isNotificationPending}
-              className={`relative inline-flex h-5 w-9 shrink-0 rounded-full border-2 border-transparent transition-colors ${
-                notificationSettings.isEnabled ? "bg-brand-primary" : "bg-border-default"
-              }`}
+               aria-checked={localNotificationSettings.isEnabled}
+               onClick={() => {
+                 const nextEnabled = !localNotificationSettings.isEnabled;
+                  const nextSettings = { ...localNotificationSettings, isEnabled: nextEnabled };
+                  setLocalNotificationSettings(nextSettings);
+                  setPendingNotificationSettings(nextSettings);
+                  startNotificationTransition(async () => {
+                    await setNotificationEnabled(nextEnabled);
+                  });
+               }}
+               disabled={isNotificationPending}
+               className={`relative inline-flex h-5 w-9 shrink-0 rounded-full border-2 border-transparent transition-colors ${
+                 localNotificationSettings.isEnabled ? "bg-brand-primary" : "bg-border-default"
+               }`}
             >
               <span
                 className={`pointer-events-none inline-block h-4 w-4 rounded-full bg-white shadow transition-transform ${
-                  notificationSettings.isEnabled ? "translate-x-4" : "translate-x-0"
+                  localNotificationSettings.isEnabled ? "translate-x-4" : "translate-x-0"
                 }`}
               />
             </button>
           </label>
 
           {/* 상태별 필터 — 칩 토글 */}
-          <div className={`mt-4 ${!notificationSettings.isEnabled ? "opacity-40 pointer-events-none" : ""}`}>
+          <div className={`mt-4 ${!localNotificationSettings.isEnabled ? "opacity-40 pointer-events-none" : ""}`}>
             <div className="mb-2">
               <span className="text-sm text-text-primary">{t("notificationStatusFilter")}</span>
               <p className="text-xs text-text-muted mt-0.5">{t("notificationStatusFilterDescription")}</p>
             </div>
             <div className="flex flex-wrap gap-1.5">
               {STATUS_OPTIONS.map(({ value, labelKey }) => {
-                const isSelected = notificationSettings.enabledStatuses.includes(value);
+                const isSelected = localNotificationSettings.enabledStatuses.includes(value);
                 return (
                   <button
                     key={value}
@@ -246,8 +270,11 @@ export default function ProjectSettings({
                     disabled={isNotificationPending}
                     onClick={() => {
                       const nextStatuses = isSelected
-                        ? notificationSettings.enabledStatuses.filter((s) => s !== value)
-                        : [...notificationSettings.enabledStatuses, value];
+                        ? localNotificationSettings.enabledStatuses.filter((s) => s !== value)
+                        : [...localNotificationSettings.enabledStatuses, value];
+                      const nextSettings = { ...localNotificationSettings, enabledStatuses: nextStatuses };
+                      setLocalNotificationSettings(nextSettings);
+                      setPendingNotificationSettings(nextSettings);
                       startNotificationTransition(async () => {
                         await setNotificationStatuses(nextStatuses);
                       });

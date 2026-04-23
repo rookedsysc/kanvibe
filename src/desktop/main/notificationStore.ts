@@ -8,12 +8,12 @@ const DEDUPE_WINDOW_MS = 4000;
 const recentNotificationKeys = new Map<string, number>();
 
 function getRelativePath(payload: DesktopNotificationPayload) {
-  if (payload.relativePath) {
-    return payload.relativePath;
-  }
-
   if (payload.taskId) {
     return `/${payload.locale}/task/${payload.taskId}`;
+  }
+
+  if (payload.relativePath) {
+    return payload.relativePath;
   }
 
   return `/${payload.locale}`;

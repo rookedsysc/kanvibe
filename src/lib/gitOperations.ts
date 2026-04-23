@@ -8,6 +8,32 @@ import { buildSSHArgs, type SSHHostConfig } from "@/lib/sshConfig";
 const execAsync = promisify(exec);
 const execFileAsync = promisify(execFile);
 
+function summarizeCommandFailure(errorOutput: string): string {
+  const lines = errorOutput
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  return lines.at(-1) ?? "원격 명령 실행에 실패했습니다.";
+}
+
+function shouldLogRemoteCommandFailure(command: string, stderr: string): boolean {
+  const trimmedCommand = command.trim();
+  const isQuietProbe = command.includes("2>/dev/null")
+    || command.includes(">/dev/null 2>&1")
+    || (/^test -[ef] /.test(trimmedCommand) && trimmedCommand.includes("|| true"));
+
+  if (isQuietProbe && !stderr.trim()) {
+    return false;
+  }
+
+  if (isQuietProbe) {
+    return false;
+  }
+
+  return true;
+}
+
 /** 로컬에서 셸 명령을 실행하고 stdout을 반환한다 */
 async function execLocal(command: string): Promise<string> {
   const { stdout } = await execAsync(command);
@@ -36,12 +62,19 @@ async function execRemote(sshHost: string, command: string): Promise<string> {
     });
     return stdout.trim();
   } catch (error) {
-    console.error("[remote-ssh] command failed", {
-      sshHost,
-      command,
-      sshArgs,
-      error: error instanceof Error ? error.message : String(error),
-    });
+    const stderr = error && typeof error === "object" && "stderr" in error
+      ? String((error as { stderr?: string }).stderr || "")
+      : "";
+
+    if (shouldLogRemoteCommandFailure(command, stderr)) {
+      console.error("[remote-ssh] command failed", {
+        sshHost,
+        command,
+        sshArgs,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+
     throw normalizeSSHExecError(error, sshHost);
   }
 }
@@ -57,7 +90,7 @@ function quoteForPosixShell(value: string): string {
 function normalizeSSHExecError(error: unknown, sshHost: string): Error {
   if (error && typeof error === "object" && "stderr" in error) {
     const stderr = String((error as { stderr?: string }).stderr || "").trim();
-    const message = stderr || (error instanceof Error ? error.message : "SSH 명령 실패");
+    const message = stderr ? summarizeCommandFailure(stderr) : (error instanceof Error ? error.message : "SSH 명령 실패");
     return new Error(`${sshHost} 원격 명령 실패: ${message}`);
   }
 
@@ -168,14 +201,14 @@ export async function getDefaultBranch(
 
 /**
  * 지정 디렉토리 하위의 git 저장소 경로 목록을 반환한다.
- * .git 디렉토리를 maxdepth 4까지 탐색하여 상위 경로를 추출한다.
+ * 일반 저장소의 `.git` 디렉토리와 worktree의 `.git` 파일을 모두 탐색하여 상위 경로를 추출한다.
  */
 export async function scanGitRepos(
   rootPath: string,
   sshHost?: string | null
 ): Promise<string[]> {
   const resolvedPath = resolvePathForShell(rootPath, sshHost);
-  const command = `find ${resolvedPath} -maxdepth 4 -name ".git" -type d 2>/dev/null`;
+  const command = `find ${resolvedPath} -maxdepth 4 -name ".git" \\( -type d -o -type f \\) 2>/dev/null`;
 
   try {
     const output = await execGit(command, sshHost);
@@ -185,7 +218,8 @@ export async function scanGitRepos(
     return output
       .split("\n")
       .filter(Boolean)
-      .map((gitDir) => gitDir.replace(/\/\.git$/, ""));
+      .map((gitDir) => gitDir.replace(/\/\.git$/, ""))
+      .filter((value, index, self) => self.indexOf(value) === index);
   } catch (error) {
     console.error("[remote-scan] git repository scan failed", {
       sshHost: sshHost || null,

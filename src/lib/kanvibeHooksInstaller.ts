@@ -5,13 +5,14 @@ import { setupGeminiHooks, generatePromptHookScript as generateGeminiPromptHookS
 import { setupCodexHooks, generateNotifyHookScript, HOOK_SCRIPT_NAME, CONFIG_FILE_NAME } from "@/lib/codexHooksSetup";
 import { setupOpenCodeHooks, generatePluginScript, PLUGIN_DIR_NAME, PLUGIN_FILE_NAME } from "@/lib/openCodeHooksSetup";
 import { getHookServerToken, getHookServerUrl } from "@/lib/hookEndpoint";
+import { KANVIBE_TASK_ID_RELATIVE_PATH } from "@/lib/hookTaskBinding";
 
 export async function installKanvibeHooks(
   targetPath: string,
   taskId: string,
   sshHost?: string | null,
 ): Promise<void> {
-  const hookServerUrl = getHookServerUrl(sshHost);
+  const hookServerUrl = await getHookServerUrl(sshHost);
   const hookServerToken = getHookServerToken();
 
   if (!sshHost) {
@@ -25,13 +26,18 @@ export async function installKanvibeHooks(
     return;
   }
 
-  const results = await Promise.allSettled([
-    setupRemoteClaudeHooks(targetPath, taskId, hookServerUrl, hookServerToken, sshHost),
-    setupRemoteGeminiHooks(targetPath, taskId, hookServerUrl, hookServerToken, sshHost),
-    setupRemoteCodexHooks(targetPath, taskId, hookServerUrl, hookServerToken, sshHost),
-    setupRemoteOpenCodeHooks(targetPath, taskId, hookServerUrl, hookServerToken, sshHost),
-  ]);
-  assertHookInstallResults(results);
+  await writeRemoteTextFile(path.posix.join(targetPath, KANVIBE_TASK_ID_RELATIVE_PATH), `${taskId}\n`, sshHost);
+
+  const remoteInstallers = [
+    () => setupRemoteClaudeHooks(targetPath, taskId, hookServerUrl, hookServerToken, sshHost),
+    () => setupRemoteGeminiHooks(targetPath, taskId, hookServerUrl, hookServerToken, sshHost),
+    () => setupRemoteCodexHooks(targetPath, taskId, hookServerUrl, hookServerToken, sshHost),
+    () => setupRemoteOpenCodeHooks(targetPath, taskId, hookServerUrl, hookServerToken, sshHost),
+  ];
+
+  for (const installRemoteHooks of remoteInstallers) {
+    await installRemoteHooks();
+  }
 }
 
 async function setupRemoteClaudeHooks(repoPath: string, taskId: string, hookServerUrl: string, hookServerToken: string, sshHost: string) {

@@ -31,9 +31,17 @@ function writeJson(response, statusCode, payload) {
   response.end(JSON.stringify(payload));
 }
 
+function isLoopbackAddress(address) {
+  return address === "127.0.0.1" || address === "::1" || address === "::ffff:127.0.0.1";
+}
+
 function isAuthorized(request) {
   const expectedToken = process.env.KANVIBE_HOOK_TOKEN;
   if (!expectedToken) {
+    return true;
+  }
+
+  if (isLoopbackAddress(request.socket.remoteAddress)) {
     return true;
   }
 
@@ -44,8 +52,14 @@ function createHookServer({ host, port }) {
   const hookService = require(getHookServiceModulePath());
 
   const server = http.createServer(async (request, response) => {
-    if ((request.url === "/api/hooks/start" || request.url === "/api/hooks/status") && !isAuthorized(request)) {
+    if ((request.url === "/api/hooks/start" || request.url === "/api/hooks/status" || request.url === "/api/hooks/health") && !isAuthorized(request)) {
+      console.warn(`[kanvibe] Unauthorized hook request from ${request.socket.remoteAddress || "unknown"} to ${request.url}`);
       writeJson(response, 401, { success: false, error: "Unauthorized" });
+      return;
+    }
+
+    if (request.method === "GET" && request.url === "/api/hooks/health") {
+      writeJson(response, 200, { success: true });
       return;
     }
 
@@ -73,7 +87,10 @@ function createHookServer({ host, port }) {
   });
 
   server.listen(port, host, () => {
-    console.log(`[kanvibe] Hook server listening on http://${host}:${port}`);
+    const logUrl = host === "0.0.0.0"
+      ? `http://localhost:${port} (bound to ${host}:${port})`
+      : `http://${host}:${port}`;
+    console.log(`[kanvibe] Hook server listening on ${logUrl}`);
   });
 
   server.on("error", (error) => {

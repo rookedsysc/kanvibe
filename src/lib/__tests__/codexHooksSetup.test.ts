@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { mkdtemp, readFile, rm } from "fs/promises";
 import { join } from "path";
 import { tmpdir } from "os";
@@ -17,54 +17,42 @@ describe("codexHooksSetup", () => {
 
   describe("setupCodexHooks - file operations", () => {
     it("should create hook script file", async () => {
-      // Given
       const repoPath = tempDir;
 
-      // When
       await setupCodexHooks(repoPath, "task-1", "http://localhost:3000");
 
-      // Then
       const status = await getCodexHooksStatus(repoPath);
       expect(status.hasNotifyHook).toBe(true);
     });
 
     it("should create config.toml with notify entry", async () => {
-      // Given
       const repoPath = tempDir;
 
-      // When
       await setupCodexHooks(repoPath, "task-1", "http://localhost:3000");
 
-      // Then
       const status = await getCodexHooksStatus(repoPath);
       expect(status.hasConfigEntry).toBe(true);
 
       const hookContent = await readFile(join(repoPath, ".codex", "hooks", "kanvibe-notify-hook.sh"), "utf-8");
-      expect(hookContent).toContain("TASK_ID=\"task-1\"");
+      expect(hookContent).toContain('TASK_ID="task-1"');
       expect(hookContent).toContain("taskId");
     });
 
     it("should mark as installed when both hook and config exist", async () => {
-      // Given
       const repoPath = tempDir;
 
-      // When
       await setupCodexHooks(repoPath, "task-1", "http://localhost:3000");
 
-      // Then
       const status = await getCodexHooksStatus(repoPath);
       expect(status.installed).toBe(true);
     });
 
     it("should not add duplicate notify entry", async () => {
-      // Given
       const repoPath = tempDir;
       await setupCodexHooks(repoPath, "task-1", "http://localhost:3000");
 
-      // When - setup again
       await setupCodexHooks(repoPath, "task-1", "http://localhost:3000");
 
-      // Then - should still be installed
       const status = await getCodexHooksStatus(repoPath);
       expect(status.installed).toBe(true);
     });
@@ -72,31 +60,33 @@ describe("codexHooksSetup", () => {
 
   describe("getCodexHooksStatus", () => {
     it("should return not installed when no files exist", async () => {
-      // Given
       const repoPath = tempDir;
 
-      // When
       const status = await getCodexHooksStatus(repoPath);
 
-      // Then
       expect(status.installed).toBe(false);
       expect(status.hasNotifyHook).toBe(false);
       expect(status.hasConfigEntry).toBe(false);
     });
 
     it("should detect installed status correctly", async () => {
-      // Given
       const repoPath = tempDir;
       await setupCodexHooks(repoPath, "task-1", "http://localhost:3000");
 
-      // When
       const status = await getCodexHooksStatus(repoPath);
 
-      // Then
       expect(status).toEqual({
         installed: true,
         hasNotifyHook: true,
         hasConfigEntry: true,
+        hasTaskIdBinding: true,
+        hasReviewStatus: true,
+        hasAgentTurnCompleteFilter: true,
+        hasExpectedHookServerUrl: true,
+        hasReachableHookServer: true,
+        boundTaskId: "task-1",
+        configuredHookServerUrl: "http://localhost:3000",
+        expectedHookServerUrl: null,
       });
     });
   });

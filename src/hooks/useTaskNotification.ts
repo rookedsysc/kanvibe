@@ -2,51 +2,14 @@
 
 import { useEffect, useCallback, useRef } from "react";
 import type { DesktopNotificationPayload } from "@/desktop/shared/notifications";
-
-type NotificationLocale = "ko" | "en" | "zh";
+import {
+  buildHookStatusTargetMissingNotification,
+  buildTaskStatusNotification,
+  type HookStatusTargetMissingNotification,
+  type TaskStatusNotification,
+} from "@/desktop/shared/taskNotifications";
 
 const NOTIFICATION_ICON_PATH = "/icons/icon-192x192.png";
-
-const NOTIFICATION_MESSAGES = {
-  ko: {
-    formatStatusChanged: (taskTitle: string, newStatus: string) => `${taskTitle}: ${newStatus}로 변경`,
-    formatMissingStatus: (requestedStatus: string) => `${requestedStatus} 상태로 변경하지 못했습니다.`,
-    taskNotFound: "연결된 작업을 찾지 못했습니다.",
-  },
-  en: {
-    formatStatusChanged: (taskTitle: string, newStatus: string) => `${taskTitle}: changed to ${newStatus}`,
-    formatMissingStatus: (requestedStatus: string) => `Failed to change status to ${requestedStatus}.`,
-    taskNotFound: "No matching task was found.",
-  },
-  zh: {
-    formatStatusChanged: (taskTitle: string, newStatus: string) => `${taskTitle}: 已变更为${newStatus}`,
-    formatMissingStatus: (requestedStatus: string) => `未能变更为 ${requestedStatus} 状态。`,
-    taskNotFound: "未找到匹配的任务。",
-  },
-} as const;
-
-function getNotificationLocale(locale: string): NotificationLocale {
-  if (locale.startsWith("en")) return "en";
-  if (locale.startsWith("zh")) return "zh";
-  return "ko";
-}
-
-export interface TaskStatusNotification {
-  projectName: string;
-  branchName: string;
-  taskTitle: string;
-  description: string | null;
-  newStatus: string;
-  taskId: string;
-  locale: string;
-}
-
-export interface HookStatusTargetMissingNotification {
-  taskId: string;
-  requestedStatus: string;
-  reason: "task-not-found";
-  locale: string;
-}
 
 interface BrowserNotificationData {
   taskId?: string;
@@ -76,9 +39,7 @@ async function showNotificationViaDesktopBridge(title: string, body: string, dat
     dedupeKey: data.dedupeKey,
   };
 
-  await window.kanvibeDesktop?.showNotification?.(payload);
-
-  return true;
+  return (await window.kanvibeDesktop?.showNotification?.(payload)) === true;
 }
 
 async function showNotificationViaServiceWorker(title: string, body: string, data: BrowserNotificationData) {
@@ -106,7 +67,7 @@ async function showNotificationViaBrowser(title: string, body: string, data: Bro
     return true;
   }
 
-  if (typeof Notification === "undefined") {
+  if (typeof Notification !== "function") {
     return false;
   }
 
@@ -145,27 +106,20 @@ export function useTaskNotification() {
     async (payload: TaskStatusNotification) => {
       if (!isPermissionGranted.current) return;
 
-      const messages = NOTIFICATION_MESSAGES[getNotificationLocale(payload.locale)];
-      const title = `${payload.projectName} — ${payload.branchName}`;
-      const bodyParts = [messages.formatStatusChanged(payload.taskTitle, payload.newStatus)];
-      if (payload.description) {
-        bodyParts.push(payload.description);
-      }
-
       try {
-        const body = bodyParts.join("\n");
+        const notification = buildTaskStatusNotification(payload);
         const data = {
           taskId: payload.taskId,
           locale: payload.locale,
         };
 
-        const isDesktopNotificationShown = await showNotificationViaDesktopBridge(title, body, {
-          ...data,
-          relativePath: `/${payload.locale}/task/${payload.taskId}`,
-          dedupeKey: `task-status:${payload.taskId}:${payload.newStatus}`,
-        });
+        const isDesktopNotificationShown = await showNotificationViaDesktopBridge(
+          notification.title,
+          notification.body,
+          notification.desktopPayload,
+        );
         if (!isDesktopNotificationShown) {
-          await showNotificationViaBrowser(title, body, data);
+          await showNotificationViaBrowser(notification.title, notification.body, data);
         }
       } catch (err) {
         console.error("[Notification] Failed to show notification:", err);
@@ -178,23 +132,19 @@ export function useTaskNotification() {
     async (payload: HookStatusTargetMissingNotification) => {
       if (!isPermissionGranted.current) return;
 
-      const messages = NOTIFICATION_MESSAGES[getNotificationLocale(payload.locale)];
-      const title = `Hook target missing — ${payload.taskId}`;
-      const reasonMessage = messages.taskNotFound;
-
       try {
-        const body = `${messages.formatMissingStatus(payload.requestedStatus)}\n${reasonMessage}`;
+        const notification = buildHookStatusTargetMissingNotification(payload);
         const data = {
           locale: payload.locale,
         };
 
-        const isDesktopNotificationShown = await showNotificationViaDesktopBridge(title, body, {
-          ...data,
-          relativePath: `/${payload.locale}`,
-          dedupeKey: `hook-missing:${payload.taskId}:${payload.requestedStatus}:${payload.reason}`,
-        });
+        const isDesktopNotificationShown = await showNotificationViaDesktopBridge(
+          notification.title,
+          notification.body,
+          notification.desktopPayload,
+        );
         if (!isDesktopNotificationShown) {
-          await showNotificationViaBrowser(title, body, data);
+          await showNotificationViaBrowser(notification.title, notification.body, data);
         }
       } catch (err) {
         console.error("[Notification] Failed to show missing target notification:", err);
