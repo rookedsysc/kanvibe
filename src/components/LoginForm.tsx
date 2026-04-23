@@ -17,10 +17,6 @@ export default function LoginForm() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-bg-page">
       <div className="w-full max-w-sm p-8 bg-bg-surface rounded-xl border border-border-default shadow-sm">
-        <h1 className="text-2xl font-bold text-text-primary mb-6 text-center">
-          KanVibe
-        </h1>
-
         <form action={formAction} className="space-y-4">
           <div>
             <label

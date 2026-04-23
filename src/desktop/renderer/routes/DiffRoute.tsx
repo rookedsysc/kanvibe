@@ -23,7 +23,7 @@ export default function DiffRoute() {
 
       if (!cancelled) {
         setState({ task, files });
-        document.title = task?.branchName ? `Diff - ${task.branchName}` : "KanVibe";
+        document.title = task?.branchName ? `Diff - ${task.branchName}` : "";
       }
     })();
 
