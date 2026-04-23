@@ -18,6 +18,7 @@ import type {
 
 const MAX_PREVIEW_MESSAGES = 12;
 const MAX_PREVIEW_TEXT_LENGTH = 240;
+export const REMOTE_SESSION_FILE_PARSE_CONCURRENCY = 3;
 
 export function createReaderResult(provider: AiSessionProvider, partial?: Partial<AiSessionReaderResult>): AiSessionReaderResult {
   return {
@@ -190,6 +191,31 @@ export async function listFilesRecursively(rootPath: string, matcher: (filePath:
   }));
 
   return files.flat();
+}
+
+export async function mapWithConcurrency<T, R>(
+  items: T[],
+  concurrency: number,
+  mapper: (item: T, index: number) => Promise<R>,
+): Promise<R[]> {
+  if (items.length === 0) {
+    return [];
+  }
+
+  const workerCount = Math.min(Math.max(1, Math.floor(concurrency)), items.length);
+  const results = new Array<R>(items.length);
+  let nextIndex = 0;
+
+  async function runWorker(): Promise<void> {
+    while (nextIndex < items.length) {
+      const currentIndex = nextIndex;
+      nextIndex += 1;
+      results[currentIndex] = await mapper(items[currentIndex], currentIndex);
+    }
+  }
+
+  await Promise.all(Array.from({ length: workerCount }, () => runWorker()));
+  return results;
 }
 
 export async function readJsonLines(filePath: string, sshHost?: string | null): Promise<unknown[]> {
