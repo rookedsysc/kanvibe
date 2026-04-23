@@ -162,10 +162,6 @@ function isKanvibeUrl(targetUrl) {
   }
 }
 
-function getNotificationIconPath() {
-  return path.join(app.getAppPath(), "public", "icons", "icon-192x192.png");
-}
-
 function normalizeNotificationLocale(locale) {
   if (typeof locale !== "string") {
     return DEFAULT_LOCALE;
@@ -198,7 +194,6 @@ function getDesktopNotificationLocale() {
 
 function createDesktopNotificationOptions() {
   return {
-    iconPath: getNotificationIconPath(),
     onNotificationsChanged: broadcastNotificationsChanged,
     onNotificationClick: async (appNotification) => {
       const targetPath = appNotification.taskId

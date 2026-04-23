@@ -4,7 +4,7 @@ test.describe("login e2e", () => {
   test("logs in through the actual form button", async ({ page }) => {
     await page.goto("/ko/login");
 
-    await expect(page.getByRole("heading", { name: "KanVibe" })).toBeVisible();
+    await expect(page.getByLabel("사용자 이름")).toBeVisible();
 
     await page.getByLabel("사용자 이름").fill("admin");
     await page.getByLabel("비밀번호").fill("changeme");

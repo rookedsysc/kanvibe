@@ -8,7 +8,7 @@ import { buildHookStatusTargetMissingNotification, buildTaskStatusNotification }
 const activeDesktopNotifications = new Set<InstanceType<typeof Notification>>();
 
 interface DesktopNotificationOptions {
-  iconPath: string;
+  iconPath?: string;
   onNotificationsChanged?: () => void;
   onNotificationClick?: (notification: AppNotification) => Promise<void> | void;
 }
@@ -34,8 +34,8 @@ export async function deliverDesktopNotification(
   const notification = new Notification({
     title: appNotification.title,
     body: appNotification.body,
-    icon: options.iconPath,
     silent: false,
+    ...(options.iconPath ? { icon: options.iconPath } : {}),
   });
 
   activeDesktopNotifications.add(notification);

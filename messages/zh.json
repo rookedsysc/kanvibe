@@ -44,7 +44,7 @@
     "loggingIn": "登录中..."
   },
   "board": {
-    "title": "KanVibe",
+    "title": "",
     "newTask": "+ 新任务",
     "allProjects": "所有项目",
     "columns": {
