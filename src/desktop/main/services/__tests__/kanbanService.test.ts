@@ -15,6 +15,7 @@ const mocks = vi.hoisted(() => ({
   removeWorktreeAndBranch: vi.fn(),
   removeSessionOnly: vi.fn(),
   installKanvibeHooks: vi.fn(),
+  listWorktrees: vi.fn(),
   broadcastBoardUpdate: vi.fn(),
 }));
 
@@ -50,6 +51,10 @@ vi.mock("@/lib/worktree", () => ({
   createSessionWithoutWorktree: vi.fn(),
   removeSessionOnly: mocks.removeSessionOnly,
   buildManagedWorktreePath: vi.fn((projectPath: string, branchName: string) => `${projectPath}__worktrees/${branchName}`),
+}));
+
+vi.mock("@/lib/gitOperations", () => ({
+  listWorktrees: mocks.listWorktrees,
 }));
 
 vi.mock("@/lib/kanvibeHooksInstaller", () => ({
@@ -112,6 +117,7 @@ describe("kanbanService.createTask", () => {
       repoPath: "/remote/repo",
       sshHost: "remote-host",
     });
+    mocks.listWorktrees.mockResolvedValue([]);
 
     const { cleanupTaskResources } = await import("@/desktop/main/services/kanbanService");
 
@@ -129,6 +135,45 @@ describe("kanbanService.createTask", () => {
     // Then
     expect(mocks.removeWorktreeAndBranch).not.toHaveBeenCalled();
     expect(consoleWarnSpy).toHaveBeenCalled();
+  });
+
+  it("TODO 삭제 시 git worktree 목록에서 확인한 실제 경로를 삭제한다", async () => {
+    // Given
+    const actualWorktreePath = "/workspace/repo/modules/api-worktree";
+    mocks.projectRepo.findOneBy.mockResolvedValue({
+      id: "project-1",
+      repoPath: "/workspace/repo",
+      defaultBranch: "main",
+      sshHost: null,
+    });
+    mocks.listWorktrees.mockResolvedValue([
+      {
+        path: actualWorktreePath,
+        branch: "feature/login",
+        isBare: false,
+      },
+    ]);
+
+    const { cleanupTaskResources } = await import("@/desktop/main/services/kanbanService");
+
+    // When
+    await cleanupTaskResources({
+      id: "task-actual-path",
+      projectId: "project-1",
+      branchName: "feature/login",
+      worktreePath: actualWorktreePath,
+      sshHost: null,
+      sessionType: null,
+      sessionName: null,
+    } as never);
+
+    // Then
+    expect(mocks.removeWorktreeAndBranch).toHaveBeenCalledWith(
+      "/workspace/repo",
+      "feature/login",
+      null,
+      actualWorktreePath,
+    );
   });
 
   it("연결된 프로젝트를 찾을 수 없는 원격 stale task는 정리를 시도하지 않는다", async () => {

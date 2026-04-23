@@ -1,9 +1,7 @@
 import { exec, execFile } from "child_process";
 import { promisify } from "util";
-import { readFile } from "fs/promises";
 import { homedir } from "os";
-import path from "path";
-import { buildSSHArgs, type SSHHostConfig } from "@/lib/sshConfig";
+import { buildSSHArgs } from "@/lib/sshConfig";
 
 const execAsync = promisify(exec);
 const execFileAsync = promisify(execFile);
@@ -199,9 +197,45 @@ export async function getDefaultBranch(
   }
 }
 
+function normalizeRepositoryPath(repoPath: string): string {
+  if (repoPath === "/") return repoPath;
+  return repoPath.replace(/\/+$/, "");
+}
+
+function isNestedRepositoryPath(repoPath: string, parentRepoPath: string): boolean {
+  const normalizedRepoPath = normalizeRepositoryPath(repoPath);
+  const normalizedParentPath = normalizeRepositoryPath(parentRepoPath);
+
+  if (normalizedParentPath === "/") {
+    return normalizedRepoPath !== "/";
+  }
+
+  return normalizedRepoPath !== normalizedParentPath
+    && normalizedRepoPath.startsWith(`${normalizedParentPath}/`);
+}
+
+function filterNestedRepositoryPaths(repoPaths: string[]): string[] {
+  const uniquePaths = repoPaths
+    .map(normalizeRepositoryPath)
+    .filter((value, index, self) => self.indexOf(value) === index);
+  const topLevelPaths: string[] = [];
+
+  for (const repoPath of [...uniquePaths].sort((a, b) => a.length - b.length)) {
+    if (topLevelPaths.some((parentPath) => isNestedRepositoryPath(repoPath, parentPath))) {
+      continue;
+    }
+
+    topLevelPaths.push(repoPath);
+  }
+
+  const topLevelPathSet = new Set(topLevelPaths);
+  return uniquePaths.filter((repoPath) => topLevelPathSet.has(repoPath));
+}
+
 /**
  * 지정 디렉토리 하위의 git 저장소 경로 목록을 반환한다.
  * 일반 저장소의 `.git` 디렉토리와 worktree의 `.git` 파일을 모두 탐색하여 상위 경로를 추출한다.
+ * 이미 발견한 메인 저장소 내부의 submodule/worktree는 별도 프로젝트 후보에서 제외한다.
  */
 export async function scanGitRepos(
   rootPath: string,
@@ -215,11 +249,13 @@ export async function scanGitRepos(
 
     if (!output) return [];
 
-    return output
+    const repoPaths = output
       .split("\n")
       .filter(Boolean)
       .map((gitDir) => gitDir.replace(/\/\.git$/, ""))
       .filter((value, index, self) => self.indexOf(value) === index);
+
+    return filterNestedRepositoryPaths(repoPaths);
   } catch (error) {
     console.error("[remote-scan] git repository scan failed", {
       sshHost: sshHost || null,

@@ -3,10 +3,11 @@ import { Not, Like } from "typeorm";
 import { getTaskRepository } from "@/lib/database";
 import { KanbanTask, TaskStatus, SessionType } from "@/entities/KanbanTask";
 import { TaskPriority } from "@/entities/TaskPriority";
-import { createWorktreeWithSession, removeWorktreeAndBranch, createSessionWithoutWorktree, removeSessionOnly, buildManagedWorktreePath } from "@/lib/worktree";
+import { createWorktreeWithSession, removeWorktreeAndBranch, createSessionWithoutWorktree, removeSessionOnly } from "@/lib/worktree";
 import { getProjectRepository } from "@/lib/database";
 import { broadcastBoardUpdate } from "@/lib/boardNotifier";
 import { installKanvibeHooks } from "@/lib/kanvibeHooksInstaller";
+import { listWorktrees } from "@/lib/gitOperations";
 
 export type TasksByStatus = Record<TaskStatus, KanbanTask[]>;
 
@@ -22,6 +23,34 @@ export interface LoadMoreDoneResponse {
 }
 
 const DONE_PAGE_SIZE = 20;
+
+function isProjectRootTask(task: KanbanTask, project: { repoPath: string; defaultBranch?: string | null }): boolean {
+  if (task.worktreePath === project.repoPath) {
+    return true;
+  }
+
+  return task.branchName === project.defaultBranch && !task.worktreePath;
+}
+
+async function findActualWorktreePath(
+  projectPath: string,
+  branchName: string,
+  taskWorktreePath: string | null,
+  sshHost?: string | null,
+): Promise<string | null> {
+  if (!taskWorktreePath) {
+    return null;
+  }
+
+  const worktrees = await listWorktrees(projectPath, sshHost);
+  const matchingWorktree = worktrees.find((worktree) => (
+    !worktree.isBare
+    && worktree.branch === branchName
+    && worktree.path === taskWorktreePath
+  ));
+
+  return matchingWorktree?.path ?? null;
+}
 
 /** TypeORM 엔티티를 직렬화 가능한 plain object로 변환한다 */
 function serialize<T>(data: T): T {
@@ -272,10 +301,7 @@ export async function cleanupTaskResources(task: KanbanTask): Promise<void> {
     return;
   }
 
-  const isProjectRoot = project && task.worktreePath === project.repoPath;
-  const expectedWorktreePath = project?.repoPath && task.branchName
-    ? buildManagedWorktreePath(project.repoPath, task.branchName)
-    : null;
+  const isProjectRoot = project ? isProjectRootTask(task, project) : false;
 
   /** 브랜치별 독립 세션 정리 */
   if (task.sessionType && task.sessionName) {
@@ -292,12 +318,12 @@ export async function cleanupTaskResources(task: KanbanTask): Promise<void> {
 
   /** worktree + 브랜치 정리 (프로젝트 루트 브랜치 제외) */
   if (task.branchName && !isProjectRoot) {
-    const canCleanupBranch = Boolean(project?.repoPath)
-      && Boolean(task.worktreePath)
-      && task.worktreePath === expectedWorktreePath;
+    const actualWorktreePath = project?.repoPath
+      ? await findActualWorktreePath(project.repoPath, task.branchName, task.worktreePath, sshHost)
+      : null;
 
-    if (!canCleanupBranch) {
-      console.warn("worktree/브랜치 정리 건너뜀: task 경로와 project 경로가 일치하지 않습니다.", {
+    if (!project?.repoPath || !actualWorktreePath) {
+      console.warn("worktree/브랜치 정리 건너뜀: git worktree 목록에서 task 경로를 찾을 수 없습니다.", {
         taskId: task.id,
         branchName: task.branchName,
         worktreePath: task.worktreePath,
@@ -309,9 +335,10 @@ export async function cleanupTaskResources(task: KanbanTask): Promise<void> {
 
     try {
       await removeWorktreeAndBranch(
-        project?.repoPath || process.cwd(),
+        project.repoPath,
         task.branchName,
-        sshHost
+        sshHost,
+        actualWorktreePath,
       );
     } catch (error) {
       console.error("worktree/브랜치 정리 실패:", error);

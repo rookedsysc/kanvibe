@@ -37,6 +37,16 @@ function resolveDirectorySearchPath(targetPath: string, sshHost?: string): strin
   return `"${targetPath.replace(/^~/, homedir())}"`;
 }
 
+function buildSubdirectoryScanCommand(resolvedPath: string): string {
+  return [
+    `if git -C ${resolvedPath} rev-parse --is-inside-work-tree >/dev/null 2>&1; then`,
+    `find ${resolvedPath} -maxdepth 1 -mindepth 1 -type d ! -exec test -e "{}/.git" \\; 2>/dev/null | sort;`,
+    "else",
+    `find ${resolvedPath} -maxdepth 1 -mindepth 1 -type d 2>/dev/null | sort;`,
+    "fi",
+  ].join(" ");
+}
+
 /** TypeORM 엔티티를 직렬화 가능한 plain object로 변환한다 */
 function serialize<T>(data: T): T {
   return JSON.parse(JSON.stringify(data));
@@ -637,7 +647,7 @@ export async function listSubdirectories(
   sshHost?: string
 ): Promise<string[]> {
   const resolvedPath = resolveDirectorySearchPath(parentPath, sshHost);
-  const command = `find ${resolvedPath} -maxdepth 1 -mindepth 1 -type d 2>/dev/null | sort`;
+  const command = buildSubdirectoryScanCommand(resolvedPath);
 
   try {
     const output = await execGit(command, sshHost || null);

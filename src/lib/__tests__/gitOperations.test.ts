@@ -161,7 +161,7 @@ describe("gitOperations.resolvePathForShell", () => {
     expect(consoleErrorSpy).not.toHaveBeenCalled();
   });
 
-  it("scanGitRepos는 일반 저장소와 worktree 저장소를 모두 찾는다", async () => {
+  it("scanGitRepos는 메인 저장소 내부의 submodule/worktree 후보를 제외한다", async () => {
     // Given
     mocks.exec.mockImplementation((
       _command: string,
@@ -170,7 +170,12 @@ describe("gitOperations.resolvePathForShell", () => {
       callback(
         null,
         {
-          stdout: "/workspace/api/.git\n/workspace/feature-worktree/.git\n",
+          stdout: [
+            "/workspace/api/.git",
+            "/workspace/api/packages/shared/.git",
+            "/workspace/api/.worktrees/feature-login/.git",
+            "/workspace/feature-worktree/.git",
+          ].join("\n"),
           stderr: "",
         },
       );
