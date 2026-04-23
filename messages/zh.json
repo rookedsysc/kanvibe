@@ -239,7 +239,7 @@
     "hooksCurrentTaskId": "当前 taskId: {taskId}",
     "hooksBoundTaskId": "检测到的 taskId: {taskId}",
     "hooksManualInstallGuide": "手动安装指南",
-    "hooksManualInstallDescription": "如果 {tool} hook 绑定到了其他 taskId，或者 taskId 文件不存在，可以用下面的命令手动重新绑定。",
+    "hooksManualInstallDescription": "如果 {tool} hook 绑定到了其他 taskId，请在此重新安装，或更新生成的 hook 文件，使其包含当前 taskId。",
     "hooksManualFiles": "需要检查的文件",
     "hooksManualRecheck": "手动处理后，请重新打开此对话框或点击重新安装，再次确认校验状态。",
     "taskNotFound": "未找到任务。",

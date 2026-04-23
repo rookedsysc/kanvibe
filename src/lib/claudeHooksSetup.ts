@@ -4,7 +4,7 @@ import { addAiToolPatternsToGitExclude } from "@/lib/gitExclude";
 import { buildCurlAuthHeader } from "@/lib/hookAuth";
 import { pathExists, readTextFile } from "@/lib/hostFileAccess";
 import { extractShellHookServerUrl, validateHookServerConfiguration } from "@/lib/hookServerStatus";
-import { KANVIBE_TASK_ID_RELATIVE_PATH, buildShellTaskIdResolver, readHookTaskIdFile, writeHookTaskIdFile } from "@/lib/hookTaskBinding";
+import { buildShellTaskIdResolver, extractShellTaskId } from "@/lib/hookTaskBinding";
 
 /** UserPromptSubmit hook bash 스크립트를 생성한다 */
 export function generatePromptHookScript(kanvibeUrl: string, taskId: string, authToken?: string): string {
@@ -80,20 +80,16 @@ const CLAUDE_PROMPT_COMMAND = '"$CLAUDE_PROJECT_DIR"/.claude/hooks/kanvibe-promp
 const CLAUDE_STOP_COMMAND = '"$CLAUDE_PROJECT_DIR"/.claude/hooks/kanvibe-stop-hook.sh';
 const CLAUDE_QUESTION_COMMAND = '"$CLAUDE_PROJECT_DIR"/.claude/hooks/kanvibe-question-hook.sh';
 
-function hasTaskIdPayloadBinding(content: string, taskId?: string, boundTaskId?: string | null): boolean {
-  const hasDynamicTaskIdResolver = content.includes(`TASK_ID_FILE="${KANVIBE_TASK_ID_RELATIVE_PATH}"`);
+function hasTaskIdPayloadBinding(content: string, taskId?: string): boolean {
+  const boundTaskId = extractShellTaskId(content);
   const hasTaskIdPayload = content.includes("taskId") && content.includes("${TASK_ID}");
   if (!hasTaskIdPayload) return false;
 
   if (!taskId) {
-    return hasDynamicTaskIdResolver || content.includes("TASK_ID=");
+    return boundTaskId !== null;
   }
 
-  if (hasDynamicTaskIdResolver) {
-    return boundTaskId === taskId;
-  }
-
-  return content.includes(`TASK_ID="${taskId}"`);
+  return boundTaskId === taskId;
 }
 
 function hasLegacyBranchPayloadBinding(content: string): boolean {
@@ -166,7 +162,6 @@ export async function setupClaudeHooks(
   const stopScriptPath = path.join(hooksDir, "kanvibe-stop-hook.sh");
   const questionScriptPath = path.join(hooksDir, "kanvibe-question-hook.sh");
 
-  await writeHookTaskIdFile(repoPath, taskId);
   await writeFile(promptScriptPath, generatePromptHookScript(kanvibeUrl, taskId, authToken), "utf-8");
   await writeFile(stopScriptPath, generateStopHookScript(kanvibeUrl, taskId, authToken), "utf-8");
   await writeFile(questionScriptPath, generateQuestionHookScript(kanvibeUrl, taskId, authToken), "utf-8");
@@ -268,8 +263,11 @@ export async function getClaudeHooksStatus(repoPath: string, taskId?: string, ss
   ]);
 
   const scriptContents = [promptContent, stopContent, questionContent];
-  const boundTaskId = await readHookTaskIdFile(repoPath, sshHost);
-  const hasTaskIdBinding = scriptContents.every((content) => hasTaskIdPayloadBinding(content, taskId, boundTaskId));
+  const boundTaskIds = scriptContents.map(extractShellTaskId).filter((value): value is string => value !== null);
+  const boundTaskId = boundTaskIds.length > 0 && boundTaskIds.every((value) => value === boundTaskIds[0])
+    ? boundTaskIds[0]
+    : null;
+  const hasTaskIdBinding = scriptContents.every((content) => hasTaskIdPayloadBinding(content, taskId));
   const hookServerValidation = await validateHookServerConfiguration(
     scriptContents.map(extractShellHookServerUrl),
     Boolean(taskId),

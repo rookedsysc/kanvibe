@@ -4,7 +4,7 @@ import { addAiToolPatternsToGitExclude } from "@/lib/gitExclude";
 import { buildCurlAuthHeader } from "@/lib/hookAuth";
 import { pathExists, readTextFile } from "@/lib/hostFileAccess";
 import { extractShellHookServerUrl, validateHookServerConfiguration } from "@/lib/hookServerStatus";
-import { KANVIBE_TASK_ID_RELATIVE_PATH, buildShellTaskIdResolver, readHookTaskIdFile, writeHookTaskIdFile } from "@/lib/hookTaskBinding";
+import { buildShellTaskIdResolver, extractShellTaskId } from "@/lib/hookTaskBinding";
 
 /**
  * Codex CLI는 현재 notify 설정의 agent-turn-complete 이벤트만 지원한다.
@@ -42,20 +42,16 @@ exit 0
 export const HOOK_SCRIPT_NAME = "kanvibe-notify-hook.sh";
 export const CONFIG_FILE_NAME = "config.toml";
 
-function hasTaskIdPayloadBinding(content: string, taskId?: string, boundTaskId?: string | null): boolean {
-  const hasDynamicTaskIdResolver = content.includes(`TASK_ID_FILE="${KANVIBE_TASK_ID_RELATIVE_PATH}"`);
+function hasTaskIdPayloadBinding(content: string, taskId?: string): boolean {
+  const boundTaskId = extractShellTaskId(content);
   const hasTaskIdPayload = content.includes("taskId") && content.includes("${TASK_ID}");
   if (!hasTaskIdPayload) return false;
 
   if (!taskId) {
-    return hasDynamicTaskIdResolver || content.includes("TASK_ID=");
+    return boundTaskId !== null;
   }
 
-  if (hasDynamicTaskIdResolver) {
-    return boundTaskId === taskId;
-  }
-
-  return content.includes(`TASK_ID="${taskId}"`);
+  return boundTaskId === taskId;
 }
 
 function hasLegacyBranchPayloadBinding(content: string): boolean {
@@ -92,7 +88,6 @@ export async function setupCodexHooks(
   await mkdir(hooksDir, { recursive: true });
 
   const notifyScriptPath = path.join(hooksDir, HOOK_SCRIPT_NAME);
-  await writeHookTaskIdFile(repoPath, taskId);
   await writeFile(notifyScriptPath, generateNotifyHookScript(kanvibeUrl, taskId, authToken), "utf-8");
   await chmod(notifyScriptPath, 0o755);
 
@@ -147,8 +142,8 @@ export async function getCodexHooksStatus(repoPath: string, taskId?: string, ssh
   const notifyContent = notifyScriptExists
     ? await readTextFile(notifyScriptPath, sshHost)
     : "";
-  const boundTaskId = await readHookTaskIdFile(repoPath, sshHost);
-  const hasTaskIdBinding = hasTaskIdPayloadBinding(notifyContent, taskId, boundTaskId);
+  const boundTaskId = extractShellTaskId(notifyContent);
+  const hasTaskIdBinding = hasTaskIdPayloadBinding(notifyContent, taskId);
   const hasReviewStatus = notifyContent.includes('\\\"status\\\": \\\"review\\\"');
   const hasAgentTurnCompleteFilter = notifyContent.includes("EVENT_TYPE") && notifyContent.includes("agent-turn-complete");
   const hookServerValidation = await validateHookServerConfiguration(

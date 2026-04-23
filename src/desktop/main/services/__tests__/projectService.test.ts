@@ -27,7 +27,6 @@ const mocks = vi.hoisted(() => ({
   aggregateAiSessions: vi.fn(),
   getAiSessionDetail: vi.fn(),
   installKanvibeHooks: vi.fn(),
-  readHookTaskIdFile: vi.fn(),
   broadcastBoardUpdate: vi.fn(),
 }));
 
@@ -134,16 +133,15 @@ vi.mock("@/lib/kanvibeHooksInstaller", () => ({
   installKanvibeHooks: mocks.installKanvibeHooks,
 }));
 
-vi.mock("@/lib/hookTaskBinding", () => ({
-  readHookTaskIdFile: mocks.readHookTaskIdFile,
-}));
-
 describe("projectService.listSubdirectories", () => {
   beforeEach(() => {
     vi.resetModules();
     vi.clearAllMocks();
     mocks.getDefaultSessionType.mockResolvedValue("tmux");
-    mocks.readHookTaskIdFile.mockResolvedValue(null);
+    mocks.getClaudeHooksStatus.mockResolvedValue({ installed: false });
+    mocks.getGeminiHooksStatus.mockResolvedValue({ installed: false });
+    mocks.getCodexHooksStatus.mockResolvedValue({ installed: false });
+    mocks.getOpenCodeHooksStatus.mockResolvedValue({ installed: false });
   });
 
   it("원격 호스트에서도 세션 도구 검증 없이 디렉토리를 스캔한다", async () => {
@@ -200,6 +198,10 @@ describe("projectService remote registration flow", () => {
     vi.resetModules();
     vi.clearAllMocks();
     mocks.getDefaultSessionType.mockResolvedValue("tmux");
+    mocks.getClaudeHooksStatus.mockResolvedValue({ installed: false });
+    mocks.getGeminiHooksStatus.mockResolvedValue({ installed: false });
+    mocks.getCodexHooksStatus.mockResolvedValue({ installed: false });
+    mocks.getOpenCodeHooksStatus.mockResolvedValue({ installed: false });
   });
 
   it("원격 스캔은 세션 의존성 검증 없이 git 저장소 검색을 진행한다", async () => {
@@ -344,6 +346,10 @@ describe("projectService local hook installation", () => {
     vi.resetModules();
     vi.clearAllMocks();
     mocks.getDefaultSessionType.mockResolvedValue("tmux");
+    mocks.getClaudeHooksStatus.mockResolvedValue({ installed: false });
+    mocks.getGeminiHooksStatus.mockResolvedValue({ installed: false });
+    mocks.getCodexHooksStatus.mockResolvedValue({ installed: false });
+    mocks.getOpenCodeHooksStatus.mockResolvedValue({ installed: false });
   });
 
   it("로컬 Claude hook 설치 시 서버 URL과 토큰을 함께 전달한다", async () => {
@@ -610,7 +616,6 @@ describe("projectService local hook installation", () => {
       create: vi.fn((value) => value),
       save: vi.fn(async (value) => ({ id: "task-main", ...value })),
     });
-    mocks.readHookTaskIdFile.mockResolvedValue(null);
     mocks.installKanvibeHooks
       .mockRejectedValueOnce(new Error("hook server offline"))
       .mockResolvedValueOnce(undefined);
@@ -668,7 +673,6 @@ describe("projectService local hook installation", () => {
       create: vi.fn((value) => value),
       save: vi.fn(async (value) => ({ id: "task-main", ...value })),
     });
-    mocks.readHookTaskIdFile.mockResolvedValue("task-main");
     mocks.getClaudeHooksStatus.mockRejectedValueOnce(remoteConnectionError);
 
     const { getAllProjects } = await import("@/desktop/main/services/projectService");
@@ -713,7 +717,6 @@ describe("projectService local hook installation", () => {
       create: vi.fn((value) => value),
       save: vi.fn(async (value) => ({ id: "task-main", ...value })),
     });
-    mocks.readHookTaskIdFile.mockResolvedValue(null);
     mocks.installKanvibeHooks.mockRejectedValueOnce(remoteConnectionError);
 
     const { getAllProjects } = await import("@/desktop/main/services/projectService");
@@ -776,7 +779,6 @@ describe("projectService local hook installation", () => {
     mocks.scanGitRepos.mockResolvedValue(["/workspace/api"]);
     mocks.getDefaultBranch.mockResolvedValue("main");
     mocks.createSessionWithoutWorktree.mockResolvedValue({ sessionName: "api-main" });
-    mocks.readHookTaskIdFile.mockResolvedValue("task-main");
     mocks.getClaudeHooksStatus.mockResolvedValue({ installed: true });
     mocks.getGeminiHooksStatus.mockResolvedValue({ installed: true });
     mocks.getCodexHooksStatus.mockResolvedValue({ installed: true });
@@ -850,7 +852,6 @@ describe("projectService local hook installation", () => {
     mocks.scanGitRepos.mockResolvedValue(["/workspace/api"]);
     mocks.getDefaultBranch.mockResolvedValue("main");
     mocks.createSessionWithoutWorktree.mockResolvedValue({ sessionName: "api-main" });
-    mocks.readHookTaskIdFile.mockResolvedValue("task-main");
     mocks.getClaudeHooksStatus.mockResolvedValue({ installed: true });
     mocks.getGeminiHooksStatus.mockResolvedValue({ installed: true });
     mocks.getCodexHooksStatus.mockResolvedValue({ installed: true });
@@ -910,7 +911,6 @@ describe("projectService local hook installation", () => {
     mocks.scanGitRepos.mockResolvedValue(["/workspace/api"]);
     mocks.getDefaultBranch.mockResolvedValue("main");
     mocks.createSessionWithoutWorktree.mockResolvedValue({ sessionName: "api-main" });
-    mocks.readHookTaskIdFile.mockResolvedValue("task-main");
     mocks.getClaudeHooksStatus.mockResolvedValue({ installed: true });
     mocks.getGeminiHooksStatus.mockResolvedValue({ installed: true });
     mocks.getCodexHooksStatus.mockResolvedValue({ installed: true });
@@ -994,6 +994,10 @@ describe("projectService remote hook and AI session support", () => {
     vi.resetModules();
     vi.clearAllMocks();
     mocks.getDefaultSessionType.mockResolvedValue("tmux");
+    mocks.getClaudeHooksStatus.mockResolvedValue({ installed: false });
+    mocks.getGeminiHooksStatus.mockResolvedValue({ installed: false });
+    mocks.getCodexHooksStatus.mockResolvedValue({ installed: false });
+    mocks.getOpenCodeHooksStatus.mockResolvedValue({ installed: false });
   });
 
   it("원격 태스크의 Claude hook 상태도 sshHost 기준으로 조회한다", async () => {

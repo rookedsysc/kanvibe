@@ -239,7 +239,7 @@
     "hooksCurrentTaskId": "현재 taskId: {taskId}",
     "hooksBoundTaskId": "감지된 taskId: {taskId}",
     "hooksManualInstallGuide": "수동 설치 가이드",
-    "hooksManualInstallDescription": "{tool} hook이 현재 taskId와 다르거나 taskId 파일이 없으면 아래 명령으로 수동 바인딩하세요.",
+    "hooksManualInstallDescription": "{tool} hook이 현재 taskId와 다르면 여기서 재설치하거나 생성된 hook 파일의 taskId를 현재 값으로 맞추세요.",
     "hooksManualFiles": "확인할 파일",
     "hooksManualRecheck": "수동 반영 후 다시 열거나 재설치를 눌러 검증 상태를 확인하세요.",
     "taskNotFound": "작업을 찾을 수 없습니다.",

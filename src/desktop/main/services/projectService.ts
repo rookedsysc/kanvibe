@@ -18,7 +18,6 @@ import { getAvailableHosts as readAvailableHosts } from "@/lib/sshConfig";
 import { getDefaultSessionType } from "@/desktop/main/services/appSettingsService";
 import { installKanvibeHooks } from "@/lib/kanvibeHooksInstaller";
 import { getHookServerToken, getHookServerUrl } from "@/lib/hookEndpoint";
-import { readHookTaskIdFile } from "@/lib/hookTaskBinding";
 
 function matchesTaskLocation(task: { worktreePath?: string | null; sshHost?: string | null }, expectedPath: string, sshHost?: string | null): boolean {
   return task.worktreePath === expectedPath && (task.sshHost || null) === (sshHost || null);
@@ -244,10 +243,7 @@ async function ensureProjectRootTask(
     return { task, repaired };
   }
 
-  const boundTaskId = await readHookTaskIdFile(project.repoPath, project.sshHost);
-  const hasInstalledHooks = boundTaskId === task.id
-    ? await areProjectRootHooksInstalled(project, task.id)
-    : false;
+  const hasInstalledHooks = await areProjectRootHooksInstalled(project, task.id);
 
   if (!hasInstalledHooks) {
     try {

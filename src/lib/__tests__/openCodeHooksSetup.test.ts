@@ -50,11 +50,10 @@ describe("openCodeHooksSetup", () => {
 
       expect(pluginContent).toContain("KanvibePlugin");
       expect(pluginContent).toContain("/api/hooks/status");
-      expect(pluginContent).toContain('const DEFAULT_TASK_ID = "task-1";');
-      expect(pluginContent).toContain('const TASK_ID_FILE = ".kanvibe/task-id";');
-      expect(pluginContent).toContain("const repoPath = worktree || directory || process.cwd();");
-      expect(pluginContent).toContain('readFile(join(repoPath, TASK_ID_FILE), "utf-8")');
-      expect(pluginContent).toContain("taskId: resolvedTaskId");
+      expect(pluginContent).toContain('const TASK_ID = "task-1";');
+      expect(pluginContent).not.toContain(".kanvibe/task-id");
+      expect(pluginContent).not.toContain("readFile");
+      expect(pluginContent).toContain("taskId: TASK_ID");
     });
 
     it("should generate plugin with all event handlers for status tracking", async () => {
