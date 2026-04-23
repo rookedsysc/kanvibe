@@ -8,7 +8,6 @@ const execAsync = promisify(exec);
 const MARKER = "# KanVibe AI hooks (auto-generated)";
 
 const EXCLUDE_PATTERNS = [
-  ".kanvibe/task-id",
   ".claude/hooks/",
   ".claude/settings.json",
   ".gemini/hooks/",

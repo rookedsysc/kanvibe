@@ -29,6 +29,7 @@ describe("gitExclude", () => {
       // Then
       const content = await readFile(excludePath, "utf-8");
       expect(content).toContain("# KanVibe AI hooks (auto-generated)");
+      expect(content).not.toContain(".kanvibe/task-id");
       expect(content).toContain(".claude/hooks/");
       expect(content).toContain(".claude/settings.json");
       expect(content).toContain(".gemini/hooks/");

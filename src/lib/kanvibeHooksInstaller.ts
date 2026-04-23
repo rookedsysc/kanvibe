@@ -5,7 +5,6 @@ import { setupGeminiHooks, generatePromptHookScript as generateGeminiPromptHookS
 import { setupCodexHooks, generateNotifyHookScript, HOOK_SCRIPT_NAME, CONFIG_FILE_NAME } from "@/lib/codexHooksSetup";
 import { setupOpenCodeHooks, generatePluginScript, PLUGIN_DIR_NAME, PLUGIN_FILE_NAME } from "@/lib/openCodeHooksSetup";
 import { getHookServerToken, getHookServerUrl } from "@/lib/hookEndpoint";
-import { KANVIBE_TASK_ID_RELATIVE_PATH } from "@/lib/hookTaskBinding";
 
 export async function installKanvibeHooks(
   targetPath: string,
@@ -25,8 +24,6 @@ export async function installKanvibeHooks(
     assertHookInstallResults(results);
     return;
   }
-
-  await writeRemoteTextFile(path.posix.join(targetPath, KANVIBE_TASK_ID_RELATIVE_PATH), `${taskId}\n`, sshHost);
 
   const remoteInstallers = [
     () => setupRemoteClaudeHooks(targetPath, taskId, hookServerUrl, hookServerToken, sshHost),

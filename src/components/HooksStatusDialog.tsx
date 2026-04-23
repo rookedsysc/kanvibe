@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useTranslations } from "next-intl";
 import {
   installTaskHooks,
@@ -31,8 +31,6 @@ interface HooksStatusDialogProps {
 }
 
 type HookToolKey = "claude" | "gemini" | "codex" | "openCode";
-
-const TASK_ID_FILE_PATH = ".kanvibe/task-id";
 
 export default function HooksStatusDialog({
   isOpen,
@@ -84,13 +82,6 @@ export default function HooksStatusDialog({
 
   function getInstallIncompleteText() {
     return t("hooksInstallIncomplete");
-  }
-
-  function buildManualBindingCommand(currentTaskId: string) {
-    return [
-      "mkdir -p .kanvibe",
-      `printf '%s\\n' '${currentTaskId}' > ${TASK_ID_FILE_PATH}`,
-    ].join("\n");
   }
 
   function applyClaudeResult(result: Awaited<ReturnType<typeof installTaskHooks>>) {
@@ -165,15 +156,12 @@ export default function HooksStatusDialog({
     }
   }
 
-  const manualBindingCommand = useMemo(() => buildManualBindingCommand(taskId), [taskId]);
-
   const hookItems = [
     {
       key: "claude" as const,
       title: "Claude",
       status: localClaudeStatus,
       files: [
-        TASK_ID_FILE_PATH,
         ".claude/hooks/kanvibe-prompt-hook.sh",
         ".claude/hooks/kanvibe-question-hook.sh",
         ".claude/hooks/kanvibe-stop-hook.sh",
@@ -186,7 +174,6 @@ export default function HooksStatusDialog({
       title: "Gemini",
       status: localGeminiStatus,
       files: [
-        TASK_ID_FILE_PATH,
         ".gemini/hooks/kanvibe-prompt-hook.sh",
         ".gemini/hooks/kanvibe-stop-hook.sh",
         ".gemini/settings.json",
@@ -198,7 +185,6 @@ export default function HooksStatusDialog({
       title: "Codex",
       status: localCodexStatus,
       files: [
-        TASK_ID_FILE_PATH,
         ".codex/hooks/kanvibe-notify-hook.sh",
         ".codex/config.toml",
       ],
@@ -209,7 +195,6 @@ export default function HooksStatusDialog({
       title: "OpenCode",
       status: localOpenCodeStatus,
       files: [
-        TASK_ID_FILE_PATH,
         ".opencode/plugins/kanvibe-plugin.ts",
       ],
       onInstall: () => runInstall("openCode", () => installTaskOpenCodeHooks(taskId), applyOpenCodeResult),
@@ -310,9 +295,6 @@ export default function HooksStatusDialog({
                 {expandedManualTool === item.key && !isRemote && !isInstalled ? (
                   <div className="mt-4 rounded-lg border border-border-default bg-bg-surface p-3">
                     <p className="text-xs text-text-secondary">{t("hooksManualInstallDescription", { tool: item.title })}</p>
-                    <pre className="mt-3 overflow-x-auto rounded-md bg-[#0f172a] px-3 py-2 text-[11px] text-white">
-                      <code>{manualBindingCommand}</code>
-                    </pre>
                     <p className="mt-3 text-[11px] font-medium text-text-secondary">{t("hooksManualFiles")}</p>
                     <div className="mt-2 flex flex-wrap gap-1.5">
                       {item.files.map((filePath) => (

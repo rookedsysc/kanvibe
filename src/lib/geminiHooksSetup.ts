@@ -4,7 +4,7 @@ import { addAiToolPatternsToGitExclude } from "@/lib/gitExclude";
 import { buildCurlAuthHeader } from "@/lib/hookAuth";
 import { pathExists, readTextFile } from "@/lib/hostFileAccess";
 import { extractShellHookServerUrl, validateHookServerConfiguration } from "@/lib/hookServerStatus";
-import { KANVIBE_TASK_ID_RELATIVE_PATH, buildShellTaskIdResolver, readHookTaskIdFile, writeHookTaskIdFile } from "@/lib/hookTaskBinding";
+import { buildShellTaskIdResolver, extractShellTaskId } from "@/lib/hookTaskBinding";
 
 /**
  * Gemini CLI hooks는 stdout에 반드시 JSON만 출력해야 한다.
@@ -74,20 +74,16 @@ interface GeminiHookEntry {
 const GEMINI_PROMPT_COMMAND = '"$GEMINI_PROJECT_DIR"/.gemini/hooks/kanvibe-prompt-hook.sh';
 const GEMINI_STOP_COMMAND = '"$GEMINI_PROJECT_DIR"/.gemini/hooks/kanvibe-stop-hook.sh';
 
-function hasTaskIdPayloadBinding(content: string, taskId?: string, boundTaskId?: string | null): boolean {
-  const hasDynamicTaskIdResolver = content.includes(`TASK_ID_FILE="${KANVIBE_TASK_ID_RELATIVE_PATH}"`);
+function hasTaskIdPayloadBinding(content: string, taskId?: string): boolean {
+  const boundTaskId = extractShellTaskId(content);
   const hasTaskIdPayload = content.includes("taskId") && content.includes("${TASK_ID}");
   if (!hasTaskIdPayload) return false;
 
   if (!taskId) {
-    return hasDynamicTaskIdResolver || content.includes("TASK_ID=");
+    return boundTaskId !== null;
   }
 
-  if (hasDynamicTaskIdResolver) {
-    return boundTaskId === taskId;
-  }
-
-  return content.includes(`TASK_ID="${taskId}"`);
+  return boundTaskId === taskId;
 }
 
 function hasLegacyBranchPayloadBinding(content: string): boolean {
@@ -151,7 +147,6 @@ export async function setupGeminiHooks(
   const promptScriptPath = path.join(hooksDir, "kanvibe-prompt-hook.sh");
   const stopScriptPath = path.join(hooksDir, "kanvibe-stop-hook.sh");
 
-  await writeHookTaskIdFile(repoPath, taskId);
   await writeFile(promptScriptPath, generatePromptHookScript(kanvibeUrl, taskId, authToken), "utf-8");
   await writeFile(stopScriptPath, generateStopHookScript(kanvibeUrl, taskId, authToken), "utf-8");
   await chmod(promptScriptPath, 0o755);
@@ -227,8 +222,11 @@ export async function getGeminiHooksStatus(repoPath: string, taskId?: string, ss
   ]);
 
   const scriptContents = [promptContent, stopContent];
-  const boundTaskId = await readHookTaskIdFile(repoPath, sshHost);
-  const hasTaskIdBinding = scriptContents.every((content) => hasTaskIdPayloadBinding(content, taskId, boundTaskId));
+  const boundTaskIds = scriptContents.map(extractShellTaskId).filter((value): value is string => value !== null);
+  const boundTaskId = boundTaskIds.length > 0 && boundTaskIds.every((value) => value === boundTaskIds[0])
+    ? boundTaskIds[0]
+    : null;
+  const hasTaskIdBinding = scriptContents.every((content) => hasTaskIdPayloadBinding(content, taskId));
   const hookServerValidation = await validateHookServerConfiguration(
     scriptContents.map(extractShellHookServerUrl),
     Boolean(taskId),

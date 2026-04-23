@@ -4,7 +4,6 @@ import { addAiToolPatternsToGitExclude } from "@/lib/gitExclude";
 import { buildFetchAuthHeaders } from "@/lib/hookAuth";
 import { pathExists, readTextFile } from "@/lib/hostFileAccess";
 import { extractPluginHookServerUrl, validateHookServerConfiguration } from "@/lib/hookServerStatus";
-import { KANVIBE_TASK_ID_RELATIVE_PATH, readHookTaskIdFile, writeHookTaskIdFile } from "@/lib/hookTaskBinding";
 import { isOpenCodePluginRegistered } from "@/lib/openCodePluginRegistry";
 
 /**
@@ -18,35 +17,18 @@ export const PLUGIN_DIR_NAME = "plugins";
 
 /** OpenCode plugin TypeScript 파일 내용을 생성한다 */
 export function generatePluginScript(kanvibeUrl: string, taskId: string, authToken?: string): string {
-  return `import { readFile } from "node:fs/promises";
-import { join } from "node:path";
-import type { Plugin } from "@opencode-ai/plugin";
+  return `import type { Plugin } from "@opencode-ai/plugin";
 
 /**
  * KanVibe OpenCode Plugin
  * message.updated(user) → progress, question.asked → pending,
  * question.replied → progress, session.idle → review, session.deleted → done 상태 변경
  */
-export const KanvibePlugin: Plugin = async ({ client, directory, worktree }) => {
+export const KanvibePlugin: Plugin = async ({ client }) => {
   const KANVIBE_URL = "${kanvibeUrl}";
-  const DEFAULT_TASK_ID = "${taskId}";
-  const TASK_ID_FILE = "${KANVIBE_TASK_ID_RELATIVE_PATH}";
-  const repoPath = worktree || directory || process.cwd();
+  const TASK_ID = ${JSON.stringify(taskId)};
   const lastStatusBySession = new Map<string, string>();
   const lastUserMessageBySession = new Map<string, string>();
-
-  async function resolveTaskId(): Promise<string> {
-    try {
-      const taskId = (await readFile(join(repoPath, TASK_ID_FILE), "utf-8")).trim();
-      if (taskId.length > 0) {
-        return taskId;
-      }
-    } catch {
-      /* taskId 파일이 없으면 기본값 사용 */
-    }
-
-    return DEFAULT_TASK_ID;
-  }
 
   function getSessionID(source: any): string | undefined {
     return (
@@ -95,11 +77,10 @@ export const KanvibePlugin: Plugin = async ({ client, directory, worktree }) => 
     }
 
     try {
-      const resolvedTaskId = await resolveTaskId();
       await fetch(\`\${KANVIBE_URL}/api/hooks/status\`, {
         method: "POST",
         headers: ${buildFetchAuthHeaders(authToken)},
-        body: JSON.stringify({ taskId: resolvedTaskId, status }),
+        body: JSON.stringify({ taskId: TASK_ID, status }),
       });
       if (sessionID) {
         lastStatusBySession.set(sessionID, status);
@@ -200,6 +181,17 @@ function hasKanvibePlugin(pluginContent: string): boolean {
   return pluginContent.includes("KanvibePlugin") && pluginContent.includes("/api/hooks/status");
 }
 
+function extractPluginTaskId(pluginContent: string): string | null {
+  const match = pluginContent.match(/const TASK_ID = ("(?:\\.|[^"\\])*");/);
+  if (!match) return null;
+
+  try {
+    return JSON.parse(match[1]) as string;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * 지정된 repo에 OpenCode plugin을 설정한다.
  * `.opencode/plugins/kanvibe-plugin.ts` 파일을 생성한다.
@@ -216,7 +208,6 @@ export async function setupOpenCodeHooks(
   await mkdir(pluginsDir, { recursive: true });
 
   const pluginPath = path.join(pluginsDir, PLUGIN_FILE_NAME);
-  await writeHookTaskIdFile(repoPath, taskId);
   await writeFile(pluginPath, generatePluginScript(kanvibeUrl, taskId, authToken), "utf-8");
 
   try {
@@ -252,8 +243,8 @@ export async function getOpenCodeHooksStatus(repoPath: string, taskId?: string, 
   const pluginExists = await pathExists(pluginPath, sshHost);
 
   let hasPlugin = false;
-  const boundTaskId = await readHookTaskIdFile(repoPath, sshHost);
-  let hasTaskIdBinding = !taskId;
+  let boundTaskId: string | null = null;
+  let hasTaskIdBinding = false;
   let hasStatusEndpoint = false;
   let hasEventMappings = false;
   let hasMainSessionGuard = false;
@@ -265,16 +256,11 @@ export async function getOpenCodeHooksStatus(repoPath: string, taskId?: string, 
       const content = await readTextFile(pluginPath, sshHost);
       hasPlugin = hasKanvibePlugin(content);
       configuredHookServerUrl = extractPluginHookServerUrl(content);
+      boundTaskId = extractPluginTaskId(content);
       hasTaskIdBinding =
-        !taskId || (
-          content.includes(`const DEFAULT_TASK_ID = \"${taskId}\";`) &&
-          content.includes(`const TASK_ID_FILE = \"${KANVIBE_TASK_ID_RELATIVE_PATH}\";`) &&
-          content.includes("const repoPath = worktree || directory || process.cwd();") &&
-          content.includes("readFile(join(repoPath, TASK_ID_FILE), \"utf-8\")") &&
-          content.includes("resolveTaskId") &&
-          content.includes("taskId: resolvedTaskId") &&
-          boundTaskId === taskId
-        );
+        boundTaskId !== null
+        && content.includes("taskId: TASK_ID")
+        && (!taskId || boundTaskId === taskId);
       hasStatusEndpoint = content.includes("/api/hooks/status");
       hasEventMappings = ["progress", "pending", "review", "done", "message.updated", "question.asked", "question.replied", "session.idle", "session.deleted"].every((fragment) => content.includes(fragment));
       hasMainSessionGuard = content.includes("isMainSession(message)") && content.includes("isMainSession(event.properties)");
