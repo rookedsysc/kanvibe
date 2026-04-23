@@ -5,6 +5,15 @@ const mockExecGit = vi.fn();
 
 vi.mock("@/lib/gitOperations", () => ({
   execGit: (...args: unknown[]) => mockExecGit(...args),
+  isSSHTransportError: (error: unknown) => {
+    const message = error instanceof Error
+      ? error.message
+      : error && typeof error === "object" && "stderr" in error
+        ? String((error as { stderr?: string }).stderr)
+        : "";
+
+    return /Connection (?:reset|closed)|kex_exchange_identification/.test(message);
+  },
 }));
 
 describe("remoteSessionDependency", () => {
@@ -60,6 +69,22 @@ describe("remoteSessionDependency", () => {
     expect(mockExecGit).toHaveBeenCalledWith("command -v tmux >/dev/null 2>&1", "remote-a");
   });
 
+  it("원격 의존성 확인 중 SSH 연결 실패가 발생하면 설치를 시도하거나 차단하지 않는다", async () => {
+    // Given
+    mockExecGit.mockRejectedValueOnce(new Error("remote-a 원격 명령 실패: Connection reset by 100.73.171.123 port 22"));
+    const { ensureRemoteSessionDependency } = await import("@/lib/remoteSessionDependency");
+
+    // When & Then
+    await expect(ensureRemoteSessionDependency(SessionType.TMUX, "remote-a")).rejects.toThrow(/Connection reset/);
+    expect(mockExecGit).toHaveBeenCalledTimes(1);
+    expect(mockExecGit).toHaveBeenCalledWith("command -v tmux >/dev/null 2>&1", "remote-a");
+
+    mockExecGit.mockClear();
+    mockExecGit.mockResolvedValueOnce("");
+    await expect(ensureRemoteSessionDependency(SessionType.TMUX, "remote-a")).resolves.toBeUndefined();
+    expect(mockExecGit).toHaveBeenCalledTimes(1);
+  });
+
   it("원격에 도구가 없으면 자동 설치 후 다시 검증한다", async () => {
     // Given
     mockExecGit
@@ -77,6 +102,22 @@ describe("remoteSessionDependency", () => {
     expect(mockExecGit.mock.calls[1]?.[0]).toContain("run_install() {");
     expect(mockExecGit.mock.calls[1]?.[0]).not.toContain("run_install() {;");
     expect(mockExecGit.mock.calls[2]).toEqual(["command -v zellij >/dev/null 2>&1", "remote-b"]);
+  });
+
+  it("자동 설치 중 SSH 연결 실패가 발생하면 호스트를 차단하지 않는다", async () => {
+    // Given
+    mockExecGit
+      .mockRejectedValueOnce(new Error("missing"))
+      .mockRejectedValueOnce(new Error("remote-b 원격 명령 실패: Connection closed by 100.73.171.123 port 22"));
+    const { ensureRemoteSessionDependency } = await import("@/lib/remoteSessionDependency");
+
+    // When & Then
+    await expect(ensureRemoteSessionDependency(SessionType.TMUX, "remote-b")).rejects.toThrow(/Connection closed/);
+
+    mockExecGit.mockClear();
+    mockExecGit.mockResolvedValueOnce("");
+    await expect(ensureRemoteSessionDependency(SessionType.TMUX, "remote-b")).resolves.toBeUndefined();
+    expect(mockExecGit).toHaveBeenCalledWith("command -v tmux >/dev/null 2>&1", "remote-b");
   });
 
   it("자동 설치에 실패하면 호스트를 차단하고 다음 요청도 즉시 실패시킨다", async () => {

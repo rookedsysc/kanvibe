@@ -5,9 +5,11 @@ import {
   determineMatchScope,
   extractPlainText,
   getCachedOrParse,
+  mapWithConcurrency,
   makePreviewMessage,
   paginateItems,
   readJsonLines,
+  REMOTE_SESSION_FILE_PARSE_CONCURRENCY,
   sortMessagesDescending,
   toIsoString,
   truncateText,
@@ -31,9 +33,12 @@ export async function readCodexSessions(context: AiSessionReaderContext): Promis
   }
 
   const rolloutFiles = await listFilesRecursivelyBySuffix(codexSessionsDirectory, ".jsonl", context.sshHost);
+  const parseConcurrency = context.sshHost ? REMOTE_SESSION_FILE_PARSE_CONCURRENCY : rolloutFiles.length || 1;
 
-  const results = await Promise.all(
-    rolloutFiles.map((filePath) => parseCodexSessionSummary(filePath, context))
+  const results = await mapWithConcurrency(
+    rolloutFiles,
+    parseConcurrency,
+    (filePath) => parseCodexSessionSummary(filePath, context),
   );
   let sessions = results.filter((s): s is AggregatedAiSession => s !== null);
 

@@ -8,6 +8,52 @@ import { buildSSHArgs, type SSHHostConfig } from "@/lib/sshConfig";
 const execAsync = promisify(exec);
 const execFileAsync = promisify(execFile);
 
+const SSH_TRANSPORT_ERROR_PATTERNS = [
+  /kex_exchange_identification/i,
+  /connection reset by peer/i,
+  /connection reset by /i,
+  /connection closed by /i,
+  /connection refused/i,
+  /connection timed out/i,
+  /operation timed out/i,
+  /no route to host/i,
+  /network is unreachable/i,
+  /could not resolve hostname/i,
+  /name or service not known/i,
+  /temporary failure in name resolution/i,
+  /host key verification failed/i,
+  /remote host identification has changed/i,
+  /permission denied \(publickey/i,
+  /too many authentication failures/i,
+  /bad owner or permissions/i,
+  /ssh: connect to host/i,
+];
+
+function collectErrorOutput(error: unknown): string {
+  const outputs: string[] = [];
+
+  if (error instanceof Error) {
+    outputs.push(error.message);
+  }
+
+  if (error && typeof error === "object") {
+    if ("stderr" in error) {
+      outputs.push(String((error as { stderr?: string }).stderr || ""));
+    }
+
+    if ("stdout" in error) {
+      outputs.push(String((error as { stdout?: string }).stdout || ""));
+    }
+  }
+
+  return outputs.filter(Boolean).join("\n");
+}
+
+export function isSSHTransportError(error: unknown): boolean {
+  const errorOutput = collectErrorOutput(error);
+  return SSH_TRANSPORT_ERROR_PATTERNS.some((pattern) => pattern.test(errorOutput));
+}
+
 function summarizeCommandFailure(errorOutput: string): string {
   const lines = errorOutput
     .split(/\r?\n/)
