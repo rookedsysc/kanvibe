@@ -236,6 +236,36 @@ describe("removeSessionOnly", () => {
   });
 });
 
+describe("removeWorktreeAndBranch", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("should remove the explicitly resolved worktree path", async () => {
+    // Given
+    mockExecGit.mockResolvedValue("");
+    const { removeWorktreeAndBranch } = await import("@/lib/worktree");
+
+    // When
+    await removeWorktreeAndBranch(
+      "/repo/path",
+      "feat/login",
+      null,
+      "/repo/modules/api-worktree",
+    );
+
+    // Then
+    expect(mockExecGit).toHaveBeenCalledWith(
+      'git -C "/repo/path" worktree remove "/repo/modules/api-worktree" --force',
+      null,
+    );
+    expect(mockExecGit).toHaveBeenCalledWith(
+      'git -C "/repo/path" branch -D "feat/login"',
+      null,
+    );
+  });
+});
+
 describe("createSessionWithoutWorktree", () => {
   beforeEach(() => {
     vi.clearAllMocks();

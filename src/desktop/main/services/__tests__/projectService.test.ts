@@ -156,7 +156,7 @@ describe("projectService.listSubdirectories", () => {
 
     // Then
     expect(mocks.execGit).toHaveBeenCalledWith(
-      'find "/workspace" -maxdepth 1 -mindepth 1 -type d 2>/dev/null | sort',
+      'if git -C "/workspace" rev-parse --is-inside-work-tree >/dev/null 2>&1; then find "/workspace" -maxdepth 1 -mindepth 1 -type d ! -exec test -e "{}/.git" \\; 2>/dev/null | sort; else find "/workspace" -maxdepth 1 -mindepth 1 -type d 2>/dev/null | sort; fi',
       "remote-host",
     );
     expect(result).toEqual(["api", "web"]);
@@ -172,7 +172,7 @@ describe("projectService.listSubdirectories", () => {
 
     // Then
     expect(mocks.execGit).toHaveBeenCalledWith(
-      'find "/home/tester/" -maxdepth 1 -mindepth 1 -type d 2>/dev/null | sort',
+      'if git -C "/home/tester/" rev-parse --is-inside-work-tree >/dev/null 2>&1; then find "/home/tester/" -maxdepth 1 -mindepth 1 -type d ! -exec test -e "{}/.git" \\; 2>/dev/null | sort; else find "/home/tester/" -maxdepth 1 -mindepth 1 -type d 2>/dev/null | sort; fi',
       null,
     );
     expect(result).toEqual(["projects"]);
@@ -188,7 +188,7 @@ describe("projectService.listSubdirectories", () => {
 
     // Then
     expect(mocks.execGit).toHaveBeenCalledWith(
-      'find "$HOME/projects" -maxdepth 1 -mindepth 1 -type d 2>/dev/null | sort',
+      'if git -C "$HOME/projects" rev-parse --is-inside-work-tree >/dev/null 2>&1; then find "$HOME/projects" -maxdepth 1 -mindepth 1 -type d ! -exec test -e "{}/.git" \\; 2>/dev/null | sort; else find "$HOME/projects" -maxdepth 1 -mindepth 1 -type d 2>/dev/null | sort; fi',
       "remote-host",
     );
     expect(result).toEqual(["projects"]);

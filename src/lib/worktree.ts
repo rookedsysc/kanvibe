@@ -348,11 +348,12 @@ export async function removeWorktreeAndBranch(
   projectPath: string,
   branchName: string,
   sshHost?: string | null,
+  worktreePath?: string | null,
 ): Promise<void> {
   try {
-    const worktreePath = buildManagedWorktreePath(projectPath, branchName);
+    const removalTargetPath = worktreePath || buildManagedWorktreePath(projectPath, branchName);
     await execGit(
-      `git -C "${projectPath}" worktree remove "${worktreePath}" --force`,
+      `git -C "${projectPath}" worktree remove "${removalTargetPath}" --force`,
       sshHost,
     );
   } catch {
