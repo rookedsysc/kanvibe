@@ -34,6 +34,7 @@ describe("gitExclude", () => {
       expect(content).toContain(".gemini/hooks/");
       expect(content).toContain(".gemini/settings.json");
       expect(content).toContain(".codex/hooks/");
+      expect(content).toContain(".codex/hooks.json");
       expect(content).toContain(".codex/config.toml");
       expect(content).toContain(".opencode/plugins/");
     });

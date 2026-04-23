@@ -190,12 +190,13 @@ AfterAgent（代理完成）       → REVIEW
 
 > Gemini CLI 没有与 Claude Code 的 `AskUserQuestion` 对应的事件，因此不支持 PENDING 状态。
 
-#### Codex CLI（部分支持）
+#### Codex CLI
 ```
-agent-turn-complete（代理完成） → REVIEW
+UserPromptSubmit（用户提示词） → PROGRESS
+Stop（回合结束）              → REVIEW
 ```
 
-> Codex CLI 目前仅支持 `notify` 配置的 `agent-turn-complete` 事件。PROGRESS 和 PENDING 转换尚不可用。OpenAI 正在[设计 hooks 系统](https://github.com/openai/codex/discussions/2150)，发布后将添加完整支持。
+> KanVibe 通过 `.codex/config.toml` 中的 `[features] codex_hooks = true` 和仓库本地 `.codex/hooks.json` 启用 Codex hooks。Codex hooks 仍是实验功能，目前在 Windows 上禁用，并且没有与 Claude Code 的 `AskUserQuestion` 对应的事件，因此不支持 PENDING 状态。
 
 #### OpenCode
 ```

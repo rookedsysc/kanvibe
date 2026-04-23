@@ -199,7 +199,9 @@ export default function HooksStatusDialog({
       status: localCodexStatus,
       files: [
         TASK_ID_FILE_PATH,
-        ".codex/hooks/kanvibe-notify-hook.sh",
+        ".codex/hooks/kanvibe-prompt-hook.sh",
+        ".codex/hooks/kanvibe-stop-hook.sh",
+        ".codex/hooks.json",
         ".codex/config.toml",
       ],
       onInstall: () => runInstall("codex", () => installTaskCodexHooks(taskId), applyCodexResult),

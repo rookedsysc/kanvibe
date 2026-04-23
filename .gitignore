@@ -30,6 +30,8 @@
 /.tooling/
 /.omc/
 /.codex/hooks/
+/.codex/hooks.json
+/.codex/config.toml
 /resources/database/app.seed.db
 
 # debug
