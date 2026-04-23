@@ -469,12 +469,8 @@ export default function Board({ initialTasks, initialDoneTotal, initialDoneLimit
   return (
     <div className="min-h-screen">
       <header
-        className={`flex items-center justify-between px-6 pb-4 border-b border-border-default bg-bg-surface ${needsMacDesktopHeaderOffset ? "pt-10" : "pt-4"}`}
+        className={`flex items-center justify-end px-6 pb-4 border-b border-border-default bg-bg-surface ${needsMacDesktopHeaderOffset ? "pt-10" : "pt-4"}`}
       >
-        <div className="flex items-center gap-2">
-          <img src="/kanvibe-logo.svg" alt="KanVibe" className="h-6 w-6" />
-          <h1 className="text-xl font-bold text-text-primary">{t("title")}</h1>
-        </div>
         <div className="flex items-center gap-3">
           <div className="w-64">
             <ProjectSelector

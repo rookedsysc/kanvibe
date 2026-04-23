@@ -103,7 +103,7 @@ export default function TaskDetailRoute() {
         return;
       }
 
-      document.title = [task.branchName, task.project?.name].filter(Boolean).join(" - ") || "KanVibe";
+      document.title = [task.branchName, task.project?.name].filter(Boolean).join(" - ");
       setState({
         task,
         ...DEFAULT_DETAIL_STATE,

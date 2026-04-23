@@ -19,7 +19,7 @@ export default function PaneLayoutRoute() {
   const [state, setState] = useState<PaneLayoutState | null>(null);
 
   useEffect(() => {
-    document.title = "KanVibe - Pane Layout";
+    document.title = "Pane Layout";
   }, []);
 
   useEffect(() => {

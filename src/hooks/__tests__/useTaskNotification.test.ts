@@ -90,7 +90,6 @@ describe("useTaskNotification", () => {
       "kanvibe — feat/login",
       {
         body: "로그인 구현: review로 변경\nOAuth 연동",
-        icon: "/icons/icon-192x192.png",
         data: { taskId: "task-123", locale: "ko" },
       }
     );
@@ -122,7 +121,6 @@ describe("useTaskNotification", () => {
       "kanvibe — feat/test",
       {
         body: "테스트 작업: changed to progress",
-        icon: "/icons/icon-192x192.png",
         data: { taskId: "task-456", locale: "en" },
       }
     );
@@ -173,7 +171,6 @@ describe("useTaskNotification", () => {
     // Then
     expect(mockShowNotification).toHaveBeenCalledWith("Hook target missing — task-404", {
       body: "review 상태로 변경하지 못했습니다.\n연결된 작업을 찾지 못했습니다.",
-      icon: "/icons/icon-192x192.png",
       data: { locale: "ko" },
     });
   });
@@ -198,7 +195,6 @@ describe("useTaskNotification", () => {
     // Then
     expect(mockShowNotification).toHaveBeenCalledWith("Hook target missing — task-404", {
       body: "Failed to change status to review.\nNo matching task was found.",
-      icon: "/icons/icon-192x192.png",
       data: { locale: "en" },
     });
   });

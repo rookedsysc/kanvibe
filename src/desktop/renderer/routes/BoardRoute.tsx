@@ -20,7 +20,7 @@ export default function BoardRoute() {
   const [data, setData] = useState<BoardData | null>(null);
 
   useEffect(() => {
-    document.title = "KanVibe";
+    document.title = "";
   }, []);
 
   useEffect(() => {

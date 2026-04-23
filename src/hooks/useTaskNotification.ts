@@ -9,8 +9,6 @@ import {
   type TaskStatusNotification,
 } from "@/desktop/shared/taskNotifications";
 
-const NOTIFICATION_ICON_PATH = "/icons/icon-192x192.png";
-
 interface BrowserNotificationData {
   taskId?: string;
   locale: string;
@@ -54,7 +52,6 @@ async function showNotificationViaServiceWorker(title: string, body: string, dat
 
   await registration.showNotification(title, {
     body,
-    icon: NOTIFICATION_ICON_PATH,
     data,
   });
 
@@ -73,7 +70,6 @@ async function showNotificationViaBrowser(title: string, body: string, data: Bro
 
   new Notification(title, {
     body,
-    icon: NOTIFICATION_ICON_PATH,
     data,
   });
   return true;
