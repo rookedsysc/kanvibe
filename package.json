@@ -22,12 +22,14 @@
     "db:prepare": "tsx scripts/build-seed-db.ts",
     "dist": "pnpm db:prepare && pnpm build && electron-builder --mac dmg zip",
     "dist:dir": "pnpm db:prepare && pnpm build && electron-builder --dir",
-    "lint": "eslint",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
     "check": "tsc --noEmit",
     "test:e2e:login": "bash -lc 'for port in 4884 4885; do fuser -k \"$port\"/tcp 2>/dev/null || true; done; rm -f .next/dev/lock; playwright test tests/e2e/login.spec.js'",
     "test": "vitest run",
     "test:watch": "vitest",
-    "postinstall": "node scripts/postinstall.cjs"
+    "postinstall": "node scripts/postinstall.cjs",
+    "prepare": "husky"
   },
   "pnpm": {
     "onlyBuiltDependencies": [
@@ -42,6 +44,9 @@
       "unrs-resolver",
       "better-sqlite3"
     ]
+  },
+  "lint-staged": {
+    "*.{js,jsx,cjs,mjs,ts,tsx}": "eslint --fix"
   },
   "dependencies": {
     "@hello-pangea/dnd": "^18.0.1",
@@ -80,7 +85,9 @@
     "electron-builder": "^26.0.12",
     "eslint": "^9",
     "eslint-config-next": "16.1.6",
+    "husky": "^9.1.7",
     "jsdom": "^28.1.0",
+    "lint-staged": "^16.4.0",
     "tailwindcss": "^4",
     "typescript": "5.9.3",
     "vite": "^7.1.10",
