@@ -348,6 +348,9 @@ describe("attachRemoteSession — ssh 바이너리 기반 연결", () => {
         username: "tester",
         privateKeyPath: "/tmp/test-key",
       },
+      120,
+      30,
+      "/remote/worktree",
     );
 
     // Then
@@ -369,6 +372,9 @@ describe("attachRemoteSession — ssh 바이너리 기반 연결", () => {
     );
     expect(mockPtyWrite).toHaveBeenCalledWith(
       expect.stringContaining('tmux has-session -t "remote-session"'),
+    );
+    expect(mockPtyWrite).toHaveBeenCalledWith(
+      expect.stringContaining('tmux new-session -d -s "remote-session" -c "/remote/worktree"'),
     );
   });
 });

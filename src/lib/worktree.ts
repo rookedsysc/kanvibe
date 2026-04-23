@@ -40,8 +40,12 @@ function buildTmuxCreateSessionCommand(sessionName: string, workingDir: string):
   return `tmux new-session -d -s "${sessionName}" -c "${workingDir}"`;
 }
 
-async function createTmuxSession(sessionName: string, workingDir: string): Promise<void> {
-  await execGit(buildTmuxCreateSessionCommand(sessionName, workingDir));
+async function createTmuxSession(
+  sessionName: string,
+  workingDir: string,
+  sshHost?: string | null,
+): Promise<void> {
+  await execGit(buildTmuxCreateSessionCommand(sessionName, workingDir), sshHost);
 }
 
 
@@ -265,9 +269,9 @@ export async function createWorktreeWithSession(
        * 세션 생성을 터미널 연결 시 PTY가 확보된 후로 미룬다.
        */
       if (!sshHost) {
-        const hasSession = await isSessionAlive(sessionType, sessionName, null);
+        const hasSession = await isSessionAlive(sessionType, sessionName, sshHost);
         if (!hasSession) {
-          await createTmuxSession(sessionName, worktreePath);
+          await createTmuxSession(sessionName, worktreePath, sshHost);
         }
         applyPaneLayoutAsync(sessionName, worktreePath, projectId ?? undefined);
       }
@@ -326,9 +330,9 @@ export async function createSessionWithoutWorktree(
 
   if (sessionType === SessionType.TMUX) {
     if (!sshHost) {
-      const hasSession = await isSessionAlive(sessionType, sessionName, null);
+      const hasSession = await isSessionAlive(sessionType, sessionName, sshHost);
       if (!hasSession) {
-        await createTmuxSession(sessionName, cwd);
+        await createTmuxSession(sessionName, cwd, sshHost);
       }
     }
 
