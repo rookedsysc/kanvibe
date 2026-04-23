@@ -15,7 +15,6 @@ import { reorderTasks, deleteTask, getMoreDoneTasks, moveTaskToColumn } from "@/
 import type { TasksByStatus } from "@/desktop/renderer/actions/kanban";
 import { SessionType, TaskStatus, type KanbanTask } from "@/entities/KanbanTask";
 import type { Project } from "@/entities/Project";
-import { logoutAction } from "@/desktop/renderer/actions/auth";
 import { useAutoRefresh } from "@/desktop/renderer/hooks/useAutoRefresh";
 import { useProjectFilterParams } from "@/desktop/renderer/hooks/useProjectFilterParams";
 import { computeProjectColor } from "@/lib/projectColor";
@@ -201,7 +200,7 @@ export default function Board({ initialTasks, initialDoneTotal, initialDoneLimit
   const [isDoneAlertDismissed, setIsDoneAlertDismissed] = useState(doneAlertDismissed);
   const [pendingDoneResult, setPendingDoneResult] = useState<DropResult | null>(null);
   const [currentDefaultSessionType, setCurrentDefaultSessionType] = useState<SessionType>(defaultSessionType);
-  const [needsMacDesktopHeaderOffset, setNeedsMacDesktopHeaderOffset] = useState(false);
+  const [shouldUseMacTitlebarLayout, setShouldUseMacTitlebarLayout] = useState(false);
   const [, startDragPersistenceTransition] = useTransition();
 
   /** projectId → 표시할 프로젝트 이름 매핑. worktree 프로젝트는 메인 프로젝트 이름으로 resolve한다 */
@@ -344,7 +343,7 @@ export default function Board({ initialTasks, initialDoneTotal, initialDoneLimit
   useEffect(() => {
     const isDesktopApp = window.kanvibeDesktop?.isDesktop === true;
     const isMacDesktop = navigator.userAgent.includes("Mac") || navigator.platform.toLowerCase().includes("mac");
-    setNeedsMacDesktopHeaderOffset(isDesktopApp && isMacDesktop);
+    setShouldUseMacTitlebarLayout(isDesktopApp && isMacDesktop);
   }, []);
 
   const handleLoadMoreDone = useCallback(async () => {
@@ -469,9 +468,9 @@ export default function Board({ initialTasks, initialDoneTotal, initialDoneLimit
   return (
     <div className="min-h-screen">
       <header
-        className={`flex items-center justify-end px-6 pb-4 border-b border-border-default bg-bg-surface ${needsMacDesktopHeaderOffset ? "pt-10" : "pt-4"}`}
+        className={`flex items-center justify-end border-b border-border-default bg-bg-surface ${shouldUseMacTitlebarLayout ? "h-10 pl-20 pr-4 [-webkit-app-region:drag]" : "px-6 pb-4 pt-4"}`}
       >
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 [-webkit-app-region:no-drag]">
           <div className="w-64">
             <ProjectSelector
               multiple
@@ -500,18 +499,10 @@ export default function Board({ initialTasks, initialDoneTotal, initialDoneLimit
             </svg>
           </button>
           <NotificationCenterButton buttonClassName="hover:bg-bg-page" />
-          <form action={logoutAction}>
-            <button
-              type="submit"
-              className="px-3 py-1.5 text-sm text-text-muted hover:text-text-primary transition-colors"
-            >
-              {tc("logout")}
-            </button>
-          </form>
         </div>
       </header>
 
-      <main className="p-6">
+      <main className={shouldUseMacTitlebarLayout ? "px-6 pb-6 pt-4" : "p-6"}>
         {isMounted ? (
           <DragDropContext onDragEnd={handleDragEnd}>
             <div className="flex gap-4 overflow-x-auto">
