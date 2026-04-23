@@ -66,11 +66,12 @@ describe("HooksStatusDialog", () => {
 
   const verifiedCodexStatus = {
     installed: true,
-    hasNotifyHook: true,
-    hasConfigEntry: true,
+    hasPromptHook: true,
+    hasStopHook: true,
+    hasHooksJsonEntry: true,
+    hasFeatureFlag: true,
     hasTaskIdBinding: true,
-    hasReviewStatus: true,
-    hasAgentTurnCompleteFilter: true,
+    hasStatusMappings: true,
   };
 
   const verifiedOpenCodeStatus = {

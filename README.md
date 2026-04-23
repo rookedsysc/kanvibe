@@ -190,12 +190,13 @@ AfterAgent (agent done)    → REVIEW
 
 > Gemini CLI does not have an equivalent to Claude Code's `AskUserQuestion`, so the PENDING state is not available.
 
-#### Codex CLI (Partial Support)
+#### Codex CLI
 ```
-agent-turn-complete (agent done) → REVIEW
+UserPromptSubmit (user prompt) → PROGRESS
+Stop (turn stops)              → REVIEW
 ```
 
-> Codex CLI currently only supports the `agent-turn-complete` notification event via the `notify` config. PROGRESS and PENDING transitions are not yet available. OpenAI is [actively designing a hooks system](https://github.com/openai/codex/discussions/2150) — full support will be added when it ships.
+> KanVibe enables Codex hooks with `[features] codex_hooks = true` in `.codex/config.toml` and writes repo-local `.codex/hooks.json`. Codex hooks are experimental, currently disabled on Windows, and do not expose a Claude Code `AskUserQuestion` equivalent, so PENDING is not available.
 
 #### OpenCode
 ```

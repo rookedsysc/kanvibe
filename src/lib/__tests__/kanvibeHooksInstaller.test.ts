@@ -23,9 +23,14 @@ vi.mock("@/lib/geminiHooksSetup", () => ({
 
 vi.mock("@/lib/codexHooksSetup", () => ({
   setupCodexHooks: (...args: unknown[]) => mockSetupCodexHooks(...args),
-  generateNotifyHookScript: vi.fn(() => "codex notify"),
-  HOOK_SCRIPT_NAME: "kanvibe-notify-hook.sh",
+  generatePromptHookScript: vi.fn(() => "codex prompt"),
+  generateStopHookScript: vi.fn(() => "codex stop"),
+  PROMPT_HOOK_SCRIPT_NAME: "kanvibe-prompt-hook.sh",
+  STOP_HOOK_SCRIPT_NAME: "kanvibe-stop-hook.sh",
+  HOOKS_FILE_NAME: "hooks.json",
   CONFIG_FILE_NAME: "config.toml",
+  buildCodexConfigToml: vi.fn(() => "[features]\ncodex_hooks = true\n"),
+  buildCodexHooksJsonContent: vi.fn(() => "{\"hooks\":{}}\n"),
 }));
 
 vi.mock("@/lib/openCodeHooksSetup", () => ({

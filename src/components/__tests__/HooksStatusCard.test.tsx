@@ -88,7 +88,7 @@ describe("HooksStatusCard", () => {
       taskId: "task-1",
       initialClaudeStatus: { installed: true, hasPromptHook: true, hasStopHook: true, hasQuestionHook: true, hasSettingsEntry: true },
       initialGeminiStatus: { installed: true, hasPromptHook: true, hasStopHook: true, hasSettingsEntry: true },
-      initialCodexStatus: { installed: true, hasNotifyHook: true, hasConfigEntry: true },
+      initialCodexStatus: { installed: true, hasPromptHook: true, hasStopHook: true, hasHooksJsonEntry: true, hasFeatureFlag: true },
       initialOpenCodeStatus: { installed: true, hasPlugin: true },
       isRemote: false,
     };
