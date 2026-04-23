@@ -44,10 +44,6 @@ vi.mock("@/desktop/renderer/actions/kanban", () => ({
   moveTaskToColumn: vi.fn(),
 }));
 
-vi.mock("@/desktop/renderer/actions/auth", () => ({
-  logoutAction: vi.fn(),
-}));
-
 vi.mock("@/desktop/renderer/hooks/useAutoRefresh", () => ({
   useAutoRefresh: vi.fn(),
 }));
@@ -62,6 +58,10 @@ vi.mock("../Column", () => ({
 
 vi.mock("../ProjectSelector", () => ({
   default: () => <div data-testid="project-selector" />,
+}));
+
+vi.mock("../NotificationCenterButton", () => ({
+  default: () => <button type="button" aria-label="notifications" />,
 }));
 
 vi.mock("../TaskContextMenu", () => ({
@@ -230,7 +230,7 @@ describe("Board defaultSessionType sync", () => {
     });
   });
 
-  it("맥 데스크톱 앱에서는 헤더 상단에 추가 여백을 준다", async () => {
+  it("맥 데스크톱 앱에서는 보드 컨트롤을 타이틀바 한 줄에 배치한다", async () => {
     window.kanvibeDesktop = { isDesktop: true };
     mockNavigatorPlatform("MacIntel");
 
@@ -249,7 +249,28 @@ describe("Board defaultSessionType sync", () => {
     );
 
     await waitFor(() => {
-      expect(container.querySelector("header")?.className).toContain("pt-10");
+      const headerClassName = container.querySelector("header")?.className;
+      expect(headerClassName).toContain("h-10");
+      expect(headerClassName).toContain("pl-20");
+      expect(headerClassName).not.toContain("pt-10");
     });
+  });
+
+  it("인증 UI가 없는 보드 상단에는 로그아웃 버튼을 표시하지 않는다", () => {
+    render(
+      <Board
+        initialTasks={createEmptyTasks()}
+        initialDoneTotal={0}
+        initialDoneLimit={20}
+        sshHosts={[]}
+        projects={[createProject()]}
+        sidebarDefaultCollapsed={false}
+        doneAlertDismissed={false}
+        notificationSettings={{ isEnabled: true, enabledStatuses: ["progress", "pending", "review"] }}
+        defaultSessionType={SessionType.TMUX}
+      />,
+    );
+
+    expect(screen.queryByRole("button", { name: "logout" })).toBeNull();
   });
 });
