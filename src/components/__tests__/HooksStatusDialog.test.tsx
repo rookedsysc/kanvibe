@@ -515,7 +515,7 @@ describe("HooksStatusDialog", () => {
     });
   });
 
-  it("should keep OpenCode UI brief and show only a short duplicate plugin warning", async () => {
+  it("should keep OpenCode UI brief without showing the duplicate plugin warning", async () => {
     mockGetTaskOpenCodeHooksStatus.mockResolvedValue({
       ...verifiedOpenCodeStatus,
       hasDuplicateKanvibePlugins: true,
@@ -537,7 +537,7 @@ describe("HooksStatusDialog", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText("hooksOpenCodeDuplicatePluginsNotice")).toBeTruthy();
+      expect(mockGetTaskOpenCodeHooksStatus).toHaveBeenCalledWith("task-1");
     });
 
     expect(screen.getAllByText("hooksInstalled").length).toBeGreaterThan(0);

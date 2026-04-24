@@ -234,7 +234,6 @@
     "codexHooksInstallSuccess": "Codex CLI hooks installed",
     "openCodeHooksInstallSuccess": "OpenCode hooks installed",
     "hooksInstallIncomplete": "Hooks were installed, but the required verification checks are not all passing yet.",
-    "hooksOpenCodeDuplicatePluginsNotice": "Two KanVibe plugins are registered, so both hooks may run. Check the logs for details.",
     "hooksInstallFailed": "Hooks installation failed",
     "hooksRemoteNotSupported": "Remote projects are not supported",
     "hooksCurrentTaskId": "Current taskId: {taskId}",

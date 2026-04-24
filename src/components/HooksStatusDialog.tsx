@@ -320,12 +320,6 @@ export default function HooksStatusDialog({
                   ) : null}
                 </div>
 
-                {item.key === "openCode" && item.status?.hasDuplicateKanvibePlugins ? (
-                  <p className="mt-4 rounded-md border border-status-warning/30 bg-status-warning/10 px-3 py-2 text-xs text-text-secondary">
-                    {t("hooksOpenCodeDuplicatePluginsNotice")}
-                  </p>
-                ) : null}
-
                 {expandedManualTool === item.key && !isRemote && !isInstalled ? (
                   <div className="mt-4 rounded-lg border border-border-default bg-bg-surface p-3">
                     <p className="text-xs text-text-secondary">{t("hooksManualInstallDescription", { tool: item.title })}</p>
