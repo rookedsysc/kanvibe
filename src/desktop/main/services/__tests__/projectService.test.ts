@@ -736,6 +736,89 @@ describe("projectService local hook installation", () => {
     }
   });
 
+  it("hook server 도달 실패만으로는 원격 root hook 재설치를 반복하지 않는다", async () => {
+    vi.useFakeTimers();
+
+    mocks.getProjectRepository.mockResolvedValue({
+      find: vi.fn().mockResolvedValue([
+        {
+          id: "project-1",
+          name: "prompt",
+          repoPath: "/remote/prompt",
+          defaultBranch: "main",
+          sshHost: "remote-host",
+        },
+      ]),
+    });
+    mocks.getTaskRepository.mockResolvedValue({
+      findOneBy: vi.fn().mockResolvedValue({
+        id: "task-main",
+        branchName: "main",
+        projectId: "project-1",
+        baseBranch: "main",
+        worktreePath: "/remote/prompt",
+        sshHost: "remote-host",
+      }),
+      create: vi.fn((value) => value),
+      save: vi.fn(async (value) => ({ id: "task-main", ...value })),
+    });
+    mocks.readHookTaskIdFile.mockResolvedValue("task-main");
+    mocks.getClaudeHooksStatus.mockResolvedValue({
+      installed: false,
+      hasPromptHook: true,
+      hasStopHook: true,
+      hasQuestionHook: true,
+      hasSettingsEntry: true,
+      hasTaskIdBinding: true,
+      hasStatusMappings: true,
+      hasExpectedHookServerUrl: true,
+      hasReachableHookServer: false,
+    });
+    mocks.getGeminiHooksStatus.mockResolvedValue({
+      installed: false,
+      hasPromptHook: true,
+      hasStopHook: true,
+      hasSettingsEntry: true,
+      hasTaskIdBinding: true,
+      hasStatusMappings: true,
+      hasExpectedHookServerUrl: true,
+      hasReachableHookServer: false,
+    });
+    mocks.getCodexHooksStatus.mockResolvedValue({
+      installed: false,
+      hasNotifyHook: true,
+      hasConfigEntry: true,
+      hasTaskIdBinding: true,
+      hasReviewStatus: true,
+      hasAgentTurnCompleteFilter: true,
+      hasExpectedHookServerUrl: true,
+      hasReachableHookServer: false,
+    });
+    mocks.getOpenCodeHooksStatus.mockResolvedValue({
+      installed: false,
+      hasPlugin: true,
+      hasRegisteredPlugin: true,
+      hasTaskIdBinding: true,
+      hasStatusEndpoint: true,
+      hasEventMappings: true,
+      hasMainSessionGuard: true,
+      hasDuplicateProgressGuard: true,
+      hasExpectedHookServerUrl: true,
+      hasReachableHookServer: false,
+    });
+
+    const { getAllProjects } = await import("@/desktop/main/services/projectService");
+
+    try {
+      await getAllProjects();
+      await vi.runAllTimersAsync();
+
+      expect(mocks.installKanvibeHooks).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("레거시 프로젝트에서 기본 브랜치 task가 없어도 project hook 재설치를 계속 진행한다", async () => {
     const project = {
       id: "project-1",

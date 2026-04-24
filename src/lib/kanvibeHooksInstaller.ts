@@ -32,22 +32,22 @@ export async function installKanvibeHooks(
     () => setupRemoteOpenCodeHooks(targetPath, taskId, hookServerUrl, hookServerToken, sshHost),
   ];
 
-  for (const installRemoteHooks of remoteInstallers) {
-    await installRemoteHooks();
-  }
+  const results = await Promise.allSettled(remoteInstallers.map((installRemoteHooks) => installRemoteHooks()));
+  assertHookInstallResults(results);
 }
 
 async function setupRemoteClaudeHooks(repoPath: string, taskId: string, hookServerUrl: string, hookServerToken: string, sshHost: string) {
   const claudeDir = path.posix.join(repoPath, ".claude");
   const hooksDir = path.posix.join(claudeDir, "hooks");
   const settingsPath = path.posix.join(claudeDir, "settings.json");
-  await execGit(`mkdir -p "${hooksDir}"`, sshHost);
-
-  await writeRemoteTextFile(path.posix.join(hooksDir, "kanvibe-prompt-hook.sh"), generateClaudePromptHookScript(hookServerUrl, taskId, hookServerToken), sshHost, 0o755);
-  await writeRemoteTextFile(path.posix.join(hooksDir, "kanvibe-stop-hook.sh"), generateClaudeStopHookScript(hookServerUrl, taskId, hookServerToken), sshHost, 0o755);
-  await writeRemoteTextFile(path.posix.join(hooksDir, "kanvibe-question-hook.sh"), generateClaudeQuestionHookScript(hookServerUrl, taskId, hookServerToken), sshHost, 0o755);
-
-  const settings = await readRemoteJsonFile(settingsPath, sshHost);
+  const [settings] = await Promise.all([
+    readRemoteJsonFile(settingsPath, sshHost),
+    Promise.all([
+      writeRemoteTextFile(path.posix.join(hooksDir, "kanvibe-prompt-hook.sh"), generateClaudePromptHookScript(hookServerUrl, taskId, hookServerToken), sshHost, 0o755),
+      writeRemoteTextFile(path.posix.join(hooksDir, "kanvibe-stop-hook.sh"), generateClaudeStopHookScript(hookServerUrl, taskId, hookServerToken), sshHost, 0o755),
+      writeRemoteTextFile(path.posix.join(hooksDir, "kanvibe-question-hook.sh"), generateClaudeQuestionHookScript(hookServerUrl, taskId, hookServerToken), sshHost, 0o755),
+    ]),
+  ]);
   const hooks = ((settings.hooks as Record<string, unknown[]>) || {});
   settings.hooks = hooks;
 
@@ -73,12 +73,13 @@ async function setupRemoteGeminiHooks(repoPath: string, taskId: string, hookServ
   const geminiDir = path.posix.join(repoPath, ".gemini");
   const hooksDir = path.posix.join(geminiDir, "hooks");
   const settingsPath = path.posix.join(geminiDir, "settings.json");
-  await execGit(`mkdir -p "${hooksDir}"`, sshHost);
-
-  await writeRemoteTextFile(path.posix.join(hooksDir, "kanvibe-prompt-hook.sh"), generateGeminiPromptHookScript(hookServerUrl, taskId, hookServerToken), sshHost, 0o755);
-  await writeRemoteTextFile(path.posix.join(hooksDir, "kanvibe-stop-hook.sh"), generateGeminiStopHookScript(hookServerUrl, taskId, hookServerToken), sshHost, 0o755);
-
-  const settings = await readRemoteJsonFile(settingsPath, sshHost);
+  const [settings] = await Promise.all([
+    readRemoteJsonFile(settingsPath, sshHost),
+    Promise.all([
+      writeRemoteTextFile(path.posix.join(hooksDir, "kanvibe-prompt-hook.sh"), generateGeminiPromptHookScript(hookServerUrl, taskId, hookServerToken), sshHost, 0o755),
+      writeRemoteTextFile(path.posix.join(hooksDir, "kanvibe-stop-hook.sh"), generateGeminiStopHookScript(hookServerUrl, taskId, hookServerToken), sshHost, 0o755),
+    ]),
+  ]);
   const hooks = ((settings.hooks as Record<string, unknown[]>) || {});
   settings.hooks = hooks;
 
@@ -98,11 +99,10 @@ async function setupRemoteCodexHooks(repoPath: string, taskId: string, hookServe
   const codexDir = path.posix.join(repoPath, ".codex");
   const hooksDir = path.posix.join(codexDir, "hooks");
   const configPath = path.posix.join(codexDir, CONFIG_FILE_NAME);
-  await execGit(`mkdir -p "${hooksDir}"`, sshHost);
-
-  await writeRemoteTextFile(path.posix.join(hooksDir, HOOK_SCRIPT_NAME), generateNotifyHookScript(hookServerUrl, taskId, hookServerToken), sshHost, 0o755);
-
-  const configContent = await readRemoteTextFile(configPath, sshHost);
+  const [configContent] = await Promise.all([
+    readRemoteTextFile(configPath, sshHost),
+    writeRemoteTextFile(path.posix.join(hooksDir, HOOK_SCRIPT_NAME), generateNotifyHookScript(hookServerUrl, taskId, hookServerToken), sshHost, 0o755),
+  ]);
   const notifyLine = `notify = [".codex/hooks/${HOOK_SCRIPT_NAME}"]\n`;
   const nextConfig = configContent.includes(HOOK_SCRIPT_NAME)
     ? configContent.replace(/^notify\s*=.*$/m, `notify = [".codex/hooks/${HOOK_SCRIPT_NAME}"]`)
@@ -114,7 +114,6 @@ async function setupRemoteCodexHooks(repoPath: string, taskId: string, hookServe
 
 async function setupRemoteOpenCodeHooks(repoPath: string, taskId: string, hookServerUrl: string, hookServerToken: string, sshHost: string) {
   const pluginDir = path.posix.join(repoPath, ".opencode", PLUGIN_DIR_NAME);
-  await execGit(`mkdir -p "${pluginDir}"`, sshHost);
   await writeRemoteTextFile(
     path.posix.join(pluginDir, PLUGIN_FILE_NAME),
     generatePluginScript(hookServerUrl, taskId, hookServerToken),

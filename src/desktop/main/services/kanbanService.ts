@@ -22,31 +22,130 @@ export interface LoadMoreDoneResponse {
 }
 
 const DONE_PAGE_SIZE = 20;
+const GITHUB_CLI_CANDIDATES = process.platform === "darwin"
+  ? ["gh", "/opt/homebrew/bin/gh", "/usr/local/bin/gh"]
+  : ["gh"];
+const prLookupWarnings = new Set<string>();
+let resolvedGitHubCliPath: string | null = null;
+let githubCliUnavailable = false;
 
 /** TypeORM 엔티티를 직렬화 가능한 plain object로 변환한다 */
 function serialize<T>(data: T): T {
   return JSON.parse(JSON.stringify(data));
 }
 
-async function getPrUrlFromGitHubCli(branchName: string, cwd: string): Promise<string> {
-  return new Promise((resolve, reject) => {
-    execFile(
-      "gh",
-      ["pr", "list", "--head", branchName, "--json", "url", "-q", ".[0].url"],
-      { cwd },
-      (error, stdout) => {
-        if (error) {
-          reject(error);
-          return;
-        }
-
-        resolve(stdout.trim());
-      },
-    );
-  });
+function isCommandNotFoundError(error: unknown): error is NodeJS.ErrnoException {
+  return error instanceof Error
+    && "code" in error
+    && (error as NodeJS.ErrnoException).code === "ENOENT";
 }
 
-/** 모든 작업을 상태별로 그룹핑하여 반환한다. Done 컬럼은 첫 페이지만 로드한다 */
+function warnPrLookupOnce(key: string, message: string) {
+  if (prLookupWarnings.has(key)) {
+    return;
+  }
+
+  prLookupWarnings.add(key);
+  console.warn(message);
+}
+
+async function execGitHubCli(args: string[], cwd: string): Promise<string | null> {
+  if (githubCliUnavailable) {
+    return null;
+  }
+
+  const candidates = resolvedGitHubCliPath ? [resolvedGitHubCliPath] : GITHUB_CLI_CANDIDATES;
+
+  for (const command of candidates) {
+    try {
+      const stdout = await new Promise<string>((resolve, reject) => {
+        execFile(command, args, { cwd }, (error, nextStdout) => {
+          if (error) {
+            reject(error);
+            return;
+          }
+
+          resolve(nextStdout.trim());
+        });
+      });
+
+      resolvedGitHubCliPath = command;
+      return stdout;
+    } catch (error) {
+      if (isCommandNotFoundError(error)) {
+        continue;
+      }
+
+      throw error;
+    }
+  }
+
+  githubCliUnavailable = true;
+  return null;
+}
+
+async function getPrUrlFromGitHubCli(branchName: string, cwd: string): Promise<string | null> {
+  return execGitHubCli(
+    ["pr", "list", "--head", branchName, "--json", "url", "-q", ".[0].url"],
+    cwd,
+  );
+}
+
+function getPrLookupErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function isGitHubCliAuthOrRepoError(error: unknown): boolean {
+  const message = getPrLookupErrorMessage(error);
+  return /gh auth login|not logged into any GitHub hosts|could not resolve to a repository|not a git repository/i.test(message);
+}
+
+function handlePrLookupFailure(error: unknown) {
+  if (isCommandNotFoundError(error)) {
+    githubCliUnavailable = true;
+    warnPrLookupOnce(
+      "gh-missing",
+      "[kanvibe] gh CLI를 찾지 못해 PR URL 자동 조회를 건너뜁니다.",
+    );
+    return;
+  }
+
+  if (isGitHubCliAuthOrRepoError(error)) {
+    warnPrLookupOnce(
+      `gh-auth:${getPrLookupErrorMessage(error)}`,
+      `[kanvibe] ${getPrLookupErrorMessage(error)}. PR URL 자동 조회를 건너뜁니다.`,
+    );
+    return;
+  }
+
+  console.error("PR URL 조회 실패:", error);
+}
+
+function isRemoteProject(project: { sshHost?: string | null } | null): boolean {
+  return Boolean(project?.sshHost);
+}
+
+function normalizeRepoPath(project: { repoPath?: string | null } | null): string | null {
+  if (!project?.repoPath) {
+    return null;
+  }
+
+  return project.repoPath;
+}
+
+function canLookupPrUrl(project: { sshHost?: string | null } | null, repoPath: string | null): boolean {
+  return !isRemoteProject(project) && Boolean(repoPath ?? process.cwd());
+}
+
+function clearPrLookupStateForTests() {
+  resolvedGitHubCliPath = null;
+  githubCliUnavailable = false;
+  prLookupWarnings.clear();
+}
+
+export const __testing__ = { clearPrLookupStateForTests };
+
+/** 모든 작업을 상태별로 그룹핑하여 반환한다 */
 export async function getTasksByStatus(): Promise<TasksByStatusWithMeta> {
   const repo = await getTaskRepository();
 
@@ -482,10 +581,15 @@ export async function fetchAndSavePrUrl(taskId: string): Promise<string | null> 
   if (!task?.branchName) return null;
 
   let repoPath: string | null = null;
+  let project: { repoPath?: string | null; sshHost?: string | null } | null = null;
   if (task.projectId) {
     const projectRepo = await getProjectRepository();
-    const project = await projectRepo.findOneBy({ id: task.projectId });
-    if (project) repoPath = project.repoPath;
+    project = await projectRepo.findOneBy({ id: task.projectId });
+    repoPath = normalizeRepoPath(project);
+  }
+
+  if (!canLookupPrUrl(project, repoPath)) {
+    return null;
   }
 
   try {
@@ -498,7 +602,7 @@ export async function fetchAndSavePrUrl(taskId: string): Promise<string | null> 
       return prUrl;
     }
   } catch (error) {
-    console.error("PR URL 조회 실패:", error);
+    handlePrLookupFailure(error);
   }
 
   return null;

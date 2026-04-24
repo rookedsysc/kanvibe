@@ -215,4 +215,52 @@ describe("kanbanService.createTask", () => {
     }));
     expect(result).toBe("https://github.com/kanvibe/kanvibe/pull/1");
   });
+
+  it("gh CLI가 없으면 PR URL 조회를 조용히 건너뛴다", async () => {
+    mocks.taskRepo.findOneBy.mockResolvedValue({
+      id: "task-5",
+      projectId: "project-1",
+      branchName: "main",
+      prUrl: null,
+    });
+    mocks.projectRepo.findOneBy.mockResolvedValue({
+      id: "project-1",
+      repoPath: "/workspace/repo",
+      sshHost: null,
+    });
+    mocks.execFile.mockImplementation((file, args, options, callback) => {
+      const error = Object.assign(new Error("spawn gh ENOENT"), { code: "ENOENT" });
+      callback(error, "", "");
+      return {} as never;
+    });
+
+    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { fetchAndSavePrUrl, __testing__ } = await import("@/desktop/main/services/kanbanService");
+    __testing__.clearPrLookupStateForTests();
+
+    await expect(fetchAndSavePrUrl("task-5")).resolves.toBeNull();
+    await expect(fetchAndSavePrUrl("task-5")).resolves.toBeNull();
+
+    expect(mocks.execFile).toHaveBeenCalledTimes(1);
+    expect(consoleErrorSpy).not.toHaveBeenCalledWith("PR URL 조회 실패:", expect.anything());
+  });
+
+  it("원격 프로젝트는 로컬 gh로 PR URL 조회를 시도하지 않는다", async () => {
+    mocks.taskRepo.findOneBy.mockResolvedValue({
+      id: "task-6",
+      projectId: "project-remote",
+      branchName: "main",
+      prUrl: null,
+    });
+    mocks.projectRepo.findOneBy.mockResolvedValue({
+      id: "project-remote",
+      repoPath: "/remote/repo",
+      sshHost: "remote-host",
+    });
+
+    const { fetchAndSavePrUrl } = await import("@/desktop/main/services/kanbanService");
+
+    await expect(fetchAndSavePrUrl("task-6")).resolves.toBeNull();
+    expect(mocks.execFile).not.toHaveBeenCalled();
+  });
 });
