@@ -1,9 +1,9 @@
 import path from "node:path";
 import { execGit } from "@/lib/gitOperations";
-import { setupClaudeHooks, generatePromptHookScript as generateClaudePromptHookScript, generateStopHookScript as generateClaudeStopHookScript, generateQuestionHookScript as generateClaudeQuestionHookScript } from "@/lib/claudeHooksSetup";
-import { setupGeminiHooks, generatePromptHookScript as generateGeminiPromptHookScript, generateStopHookScript as generateGeminiStopHookScript } from "@/lib/geminiHooksSetup";
-import { setupCodexHooks, generateNotifyHookScript, HOOK_SCRIPT_NAME, CONFIG_FILE_NAME } from "@/lib/codexHooksSetup";
-import { setupOpenCodeHooks, generatePluginScript, PLUGIN_DIR_NAME, PLUGIN_FILE_NAME } from "@/lib/openCodeHooksSetup";
+import { setupClaudeHooks, getClaudeHooksStatus, generatePromptHookScript as generateClaudePromptHookScript, generateStopHookScript as generateClaudeStopHookScript, generateQuestionHookScript as generateClaudeQuestionHookScript } from "@/lib/claudeHooksSetup";
+import { setupGeminiHooks, getGeminiHooksStatus, generatePromptHookScript as generateGeminiPromptHookScript, generateStopHookScript as generateGeminiStopHookScript } from "@/lib/geminiHooksSetup";
+import { setupCodexHooks, getCodexHooksStatus, generateNotifyHookScript, HOOK_SCRIPT_NAME, CONFIG_FILE_NAME } from "@/lib/codexHooksSetup";
+import { setupOpenCodeHooks, getOpenCodeHooksStatus, generatePluginScript, PLUGIN_DIR_NAME, PLUGIN_FILE_NAME } from "@/lib/openCodeHooksSetup";
 import { getHookServerToken, getHookServerUrl } from "@/lib/hookEndpoint";
 
 export async function installKanvibeHooks(
@@ -14,27 +14,53 @@ export async function installKanvibeHooks(
   const hookServerUrl = await getHookServerUrl(sshHost);
   const hookServerToken = getHookServerToken();
 
-  if (!sshHost) {
-    const results = await Promise.allSettled([
-      setupClaudeHooks(targetPath, taskId, hookServerUrl, hookServerToken),
-      setupGeminiHooks(targetPath, taskId, hookServerUrl, hookServerToken),
-      setupCodexHooks(targetPath, taskId, hookServerUrl, hookServerToken),
-      setupOpenCodeHooks(targetPath, taskId, hookServerUrl, hookServerToken),
-    ]);
-    assertHookInstallResults(results);
-    return;
-  }
-
-  const remoteInstallers = [
-    () => setupRemoteClaudeHooks(targetPath, taskId, hookServerUrl, hookServerToken, sshHost),
-    () => setupRemoteGeminiHooks(targetPath, taskId, hookServerUrl, hookServerToken, sshHost),
-    () => setupRemoteCodexHooks(targetPath, taskId, hookServerUrl, hookServerToken, sshHost),
-    () => setupRemoteOpenCodeHooks(targetPath, taskId, hookServerUrl, hookServerToken, sshHost),
+  const installers = [
+    {
+      provider: "Claude",
+      install: () => sshHost
+        ? setupRemoteClaudeHooks(targetPath, taskId, hookServerUrl, hookServerToken, sshHost)
+        : setupClaudeHooks(targetPath, taskId, hookServerUrl, hookServerToken),
+    },
+    {
+      provider: "Gemini",
+      install: () => sshHost
+        ? setupRemoteGeminiHooks(targetPath, taskId, hookServerUrl, hookServerToken, sshHost)
+        : setupGeminiHooks(targetPath, taskId, hookServerUrl, hookServerToken),
+    },
+    {
+      provider: "Codex",
+      install: () => sshHost
+        ? setupRemoteCodexHooks(targetPath, taskId, hookServerUrl, hookServerToken, sshHost)
+        : setupCodexHooks(targetPath, taskId, hookServerUrl, hookServerToken),
+    },
+    {
+      provider: "OpenCode",
+      install: () => sshHost
+        ? setupRemoteOpenCodeHooks(targetPath, taskId, hookServerUrl, hookServerToken, sshHost)
+        : setupOpenCodeHooks(targetPath, taskId, hookServerUrl, hookServerToken),
+    },
   ];
 
-  for (const installRemoteHooks of remoteInstallers) {
-    await installRemoteHooks();
+  if (!sshHost) {
+    const results = await Promise.allSettled(installers.map(({ install }) => install()));
+    assertHookInstallResults(results, installers.map(({ provider }) => provider));
+  } else {
+    for (const { provider, install } of installers) {
+      try {
+        await install();
+      } catch (error) {
+        console.error(`[hooks] ${provider} install failed`, {
+          targetPath,
+          taskId,
+          sshHost,
+          error: error instanceof Error ? error.message : String(error),
+        });
+        throw error;
+      }
+    }
   }
+
+  await logHookVerificationStatuses(targetPath, taskId, sshHost);
 }
 
 async function setupRemoteClaudeHooks(repoPath: string, taskId: string, hookServerUrl: string, hookServerToken: string, sshHost: string) {
@@ -104,7 +130,7 @@ async function setupRemoteCodexHooks(repoPath: string, taskId: string, hookServe
 
   const configContent = await readRemoteTextFile(configPath, sshHost);
   const notifyLine = `notify = [".codex/hooks/${HOOK_SCRIPT_NAME}"]\n`;
-  const nextConfig = configContent.includes(HOOK_SCRIPT_NAME)
+  const nextConfig = /^notify\s*=/m.test(configContent)
     ? configContent.replace(/^notify\s*=.*$/m, `notify = [".codex/hooks/${HOOK_SCRIPT_NAME}"]`)
     : configContent.trim().length === 0
       ? notifyLine
@@ -158,19 +184,88 @@ function upsertHookEntry(
   scriptName: string,
   entry: Record<string, unknown>,
 ) {
-  if (!hooks[bucket]) {
-    hooks[bucket] = [];
+  const currentEntries = Array.isArray(hooks[bucket]) ? hooks[bucket] : [];
+  hooks[bucket] = currentEntries.filter((value) => !JSON.stringify(value).includes(scriptName));
+  hooks[bucket].push(entry);
+}
+
+function assertHookInstallResults(results: PromiseSettledResult<unknown>[], providers: string[]) {
+  const failureIndex = results.findIndex((result) => result.status === "rejected");
+  if (failureIndex === -1) {
+    return;
   }
 
-  const hasEntry = hooks[bucket].some((value) => JSON.stringify(value).includes(scriptName));
-  if (!hasEntry) {
-    hooks[bucket].push(entry);
+  const failure = results[failureIndex] as PromiseRejectedResult;
+  console.error(`[hooks] ${providers[failureIndex]} install failed`, {
+    provider: providers[failureIndex],
+    error: failure.reason instanceof Error ? failure.reason.message : String(failure.reason),
+  });
+  throw failure.reason instanceof Error ? failure.reason : new Error("hooks 설정 실패");
+}
+
+type HookVerificationStatus = {
+  installed: boolean;
+  boundTaskId?: string | null;
+  configuredHookServerUrl?: string | null;
+  expectedHookServerUrl?: string | null;
+  registeredPluginUrls?: string[];
+  [key: string]: unknown;
+};
+
+async function logHookVerificationStatuses(targetPath: string, taskId: string, sshHost?: string | null) {
+  const verifiers = [
+    { provider: "Claude", verify: getClaudeHooksStatus },
+    { provider: "Gemini", verify: getGeminiHooksStatus },
+    { provider: "Codex", verify: getCodexHooksStatus },
+    { provider: "OpenCode", verify: getOpenCodeHooksStatus },
+  ] as const;
+
+  const results = await Promise.allSettled(verifiers.map(({ verify }) => verify(targetPath, taskId, sshHost)));
+  for (const [index, result] of results.entries()) {
+    const provider = verifiers[index].provider;
+    if (result.status === "fulfilled") {
+      logHookVerificationStatus(provider, result.value as HookVerificationStatus, targetPath, taskId, sshHost);
+      continue;
+    }
+
+    console.warn(`[hooks] ${provider} verification unavailable`, {
+      provider,
+      targetPath,
+      taskId,
+      sshHost: sshHost ?? null,
+      error: result.reason instanceof Error ? result.reason.message : String(result.reason),
+    });
   }
 }
 
-function assertHookInstallResults(results: PromiseSettledResult<unknown>[]) {
-  const failure = results.find((result): result is PromiseRejectedResult => result.status === "rejected");
-  if (failure) {
-    throw failure.reason instanceof Error ? failure.reason : new Error("hooks 설정 실패");
+function logHookVerificationStatus(
+  provider: string,
+  status: HookVerificationStatus,
+  targetPath: string,
+  taskId: string,
+  sshHost?: string | null,
+) {
+  const failedChecks = Object.entries(status)
+    .filter(([key, value]) => key.startsWith("has") && value === false)
+    .map(([key]) => key);
+
+  const payload = {
+    provider,
+    targetPath,
+    taskId,
+    sshHost: sshHost ?? null,
+    installed: status.installed,
+    failedChecks,
+    boundTaskId: status.boundTaskId ?? null,
+    configuredHookServerUrl: status.configuredHookServerUrl ?? null,
+    expectedHookServerUrl: status.expectedHookServerUrl ?? null,
+    registeredPluginUrls: Array.isArray(status.registeredPluginUrls) ? status.registeredPluginUrls : undefined,
+  };
+
+  if (status.installed) {
+    console.log(`[hooks] ${provider} verification`, payload);
+    return;
   }
+
+  console.warn(`[hooks] ${provider} verification`, payload);
 }

@@ -298,7 +298,6 @@ export async function getOpenCodeHooksStatus(repoPath: string, taskId?: string, 
     && hasMainSessionGuard
     && hasDuplicateProgressGuard
     && hasRegisteredPlugin
-    && !hasDuplicateKanvibePlugins
     && hookServerValidation.hasExpectedHookServerUrl
     && hookServerValidation.hasReachableHookServer;
 
