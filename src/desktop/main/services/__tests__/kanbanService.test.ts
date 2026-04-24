@@ -215,4 +215,39 @@ describe("kanbanService.createTask", () => {
     }));
     expect(result).toBe("https://github.com/kanvibe/kanvibe/pull/1");
   });
+
+  it("gh CLI가 없으면 PR URL 조회를 조용히 건너뛴다", async () => {
+    // Given
+    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    mocks.taskRepo.findOneBy.mockResolvedValue({
+      id: "task-5",
+      projectId: "project-1",
+      branchName: "dev",
+      prUrl: null,
+    });
+    mocks.projectRepo.findOneBy.mockResolvedValue({
+      id: "project-1",
+      repoPath: "/workspace/repo",
+    });
+    mocks.execFile.mockImplementation((file, args, options, callback) => {
+      const error = Object.assign(new Error("spawn gh ENOENT"), {
+        code: "ENOENT",
+        errno: -2,
+        syscall: "spawn gh",
+        path: "gh",
+      });
+      callback(error, "", "");
+      return {} as never;
+    });
+
+    const { fetchAndSavePrUrl } = await import("@/desktop/main/services/kanbanService");
+
+    // When
+    const result = await fetchAndSavePrUrl("task-5");
+
+    // Then
+    expect(result).toBeNull();
+    expect(mocks.taskRepo.save).not.toHaveBeenCalled();
+    expect(consoleErrorSpy).not.toHaveBeenCalled();
+  });
 });

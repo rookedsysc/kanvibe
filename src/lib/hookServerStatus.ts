@@ -1,4 +1,4 @@
-import { execGit } from "@/lib/gitOperations";
+import { execGit, isSSHTransportError } from "@/lib/gitOperations";
 import { quoteShellArgument } from "@/lib/hostFileAccess";
 import { getHookServerToken, getHookServerUrl } from "@/lib/hookEndpoint";
 
@@ -95,7 +95,10 @@ async function isHookServerReachable(baseUrl: string, sshHost?: string | null): 
       sshHost,
     );
     return true;
-  } catch {
+  } catch (error) {
+    if (isSSHTransportError(error)) {
+      return true;
+    }
     return false;
   }
 }

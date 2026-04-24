@@ -28,7 +28,15 @@ function serialize<T>(data: T): T {
   return JSON.parse(JSON.stringify(data));
 }
 
-async function getPrUrlFromGitHubCli(branchName: string, cwd: string): Promise<string> {
+function isMissingGitHubCli(error: unknown): boolean {
+  if (!error || typeof error !== "object") {
+    return false;
+  }
+
+  return "code" in error && (error as { code?: string }).code === "ENOENT";
+}
+
+async function getPrUrlFromGitHubCli(branchName: string, cwd: string): Promise<string | null> {
   return new Promise((resolve, reject) => {
     execFile(
       "gh",
@@ -36,11 +44,16 @@ async function getPrUrlFromGitHubCli(branchName: string, cwd: string): Promise<s
       { cwd },
       (error, stdout) => {
         if (error) {
+          if (isMissingGitHubCli(error)) {
+            resolve(null);
+            return;
+          }
+
           reject(error);
           return;
         }
 
-        resolve(stdout.trim());
+        resolve(stdout.trim() || null);
       },
     );
   });
