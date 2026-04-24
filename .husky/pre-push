@@ -1,0 +1,5 @@
+for var in $(git rev-parse --local-env-vars); do
+  unset "$var"
+done
+
+pnpm test
