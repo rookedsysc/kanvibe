@@ -13,6 +13,7 @@ const EXCLUDE_PATTERNS = [
   ".gemini/hooks/",
   ".gemini/settings.json",
   ".codex/hooks/",
+  ".codex/hooks.json",
   ".codex/config.toml",
   ".opencode/plugins/",
 ];
