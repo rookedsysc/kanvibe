@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { extractRegisteredPluginUrls } from "../openCodePluginRegistry";
+import { extractRegisteredKanvibePluginUrls, extractRegisteredPluginUrls, isKanvibePluginUrl } from "../openCodePluginRegistry";
 
 describe("openCodePluginRegistry", () => {
   it("extracts plugin urls from valid JSON output", () => {
@@ -35,5 +35,27 @@ line 2"
       "file:///tmp/alpha.ts",
       "file:///tmp/kanvibe-plugin.ts",
     ]);
+  });
+
+  it("filters only kanvibe plugin urls", () => {
+    const output = JSON.stringify({
+      plugin: [
+        "file:///tmp/alpha.ts",
+        "file:///tmp/kanvibe-plugin.ts",
+        "file:///tmp/kanvibe-plugin.js",
+      ],
+      agent: {},
+    });
+
+    expect(extractRegisteredKanvibePluginUrls(output)).toEqual([
+      "file:///tmp/kanvibe-plugin.ts",
+      "file:///tmp/kanvibe-plugin.js",
+    ]);
+  });
+
+  it("matches kanvibe plugin urls with ts or js extensions", () => {
+    expect(isKanvibePluginUrl("file:///tmp/kanvibe-plugin.ts")).toBe(true);
+    expect(isKanvibePluginUrl("file:///tmp/kanvibe-plugin.js")).toBe(true);
+    expect(isKanvibePluginUrl("file:///tmp/not-kanvibe.ts")).toBe(false);
   });
 });

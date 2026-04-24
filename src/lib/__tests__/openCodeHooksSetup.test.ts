@@ -4,12 +4,12 @@ import { join } from "path";
 import { tmpdir } from "os";
 import { setupOpenCodeHooks, getOpenCodeHooksStatus } from "../openCodeHooksSetup";
 
-const { mockIsOpenCodePluginRegistered } = vi.hoisted(() => ({
-  mockIsOpenCodePluginRegistered: vi.fn(),
+const { mockGetOpenCodeRegisteredKanvibePluginUrls } = vi.hoisted(() => ({
+  mockGetOpenCodeRegisteredKanvibePluginUrls: vi.fn(),
 }));
 
 vi.mock("@/lib/openCodePluginRegistry", () => ({
-  isOpenCodePluginRegistered: mockIsOpenCodePluginRegistered,
+  getOpenCodeRegisteredKanvibePluginUrls: mockGetOpenCodeRegisteredKanvibePluginUrls,
 }));
 
 describe("openCodeHooksSetup", () => {
@@ -17,7 +17,9 @@ describe("openCodeHooksSetup", () => {
 
   beforeEach(async () => {
     tempDir = await mkdtemp(join(tmpdir(), "opencode-test-"));
-    mockIsOpenCodePluginRegistered.mockResolvedValue(true);
+    mockGetOpenCodeRegisteredKanvibePluginUrls.mockImplementation((repoPath: string) => Promise.resolve([
+      `file://${repoPath}/.opencode/plugins/kanvibe-plugin.ts`,
+    ]));
   });
 
   afterEach(async () => {
@@ -193,6 +195,11 @@ export const KanvibePlugin: Plugin = async ({ $ }) => {
       expect(status.installed).toBe(true);
       expect(status.hasDuplicateProgressGuard).toBe(true);
       expect(status.hasEventMappings).toBe(true);
+      expect(status.targetPath).toBe(repoPath);
+      expect(status.pluginPath).toBe(join(repoPath, ".opencode", "plugins", "kanvibe-plugin.ts"));
+      expect(status.registeredPluginUrls).toEqual([
+        `file://${repoPath}/.opencode/plugins/kanvibe-plugin.ts`,
+      ]);
     });
 
     it("should return installed: false when no plugin exists", async () => {
@@ -211,7 +218,7 @@ export const KanvibePlugin: Plugin = async ({ $ }) => {
       // Given
       const repoPath = tempDir;
       await setupOpenCodeHooks(repoPath, "task-1", "http://localhost:3000");
-      mockIsOpenCodePluginRegistered.mockResolvedValueOnce(false);
+      mockGetOpenCodeRegisteredKanvibePluginUrls.mockResolvedValueOnce([]);
 
       // When
       const status = await getOpenCodeHooksStatus(repoPath);
@@ -219,6 +226,25 @@ export const KanvibePlugin: Plugin = async ({ $ }) => {
       // Then
       expect(status.installed).toBe(false);
       expect(status.hasRegisteredPlugin).toBe(false);
+    });
+
+    it("should return installed: false when duplicate kanvibe plugins are registered", async () => {
+      // Given
+      const repoPath = tempDir;
+      await setupOpenCodeHooks(repoPath, "task-1", "http://localhost:3000");
+      mockGetOpenCodeRegisteredKanvibePluginUrls.mockResolvedValueOnce([
+        `file://${repoPath}/.opencode/plugins/kanvibe-plugin.ts`,
+        "file:///home/test/.config/opencode/plugins/kanvibe-plugin.ts",
+      ]);
+
+      // When
+      const status = await getOpenCodeHooksStatus(repoPath);
+
+      // Then
+      expect(status.installed).toBe(false);
+      expect(status.hasRegisteredPlugin).toBe(true);
+      expect(status.hasDuplicateKanvibePlugins).toBe(true);
+      expect(status.registeredPluginUrls).toHaveLength(2);
     });
   });
 });
