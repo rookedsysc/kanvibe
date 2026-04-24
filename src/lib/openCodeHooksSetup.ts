@@ -1,10 +1,11 @@
 import { writeFile, mkdir } from "fs/promises";
 import path from "path";
+import { pathToFileURL } from "node:url";
 import { addAiToolPatternsToGitExclude } from "@/lib/gitExclude";
 import { buildFetchAuthHeaders } from "@/lib/hookAuth";
 import { pathExists, readTextFile } from "@/lib/hostFileAccess";
 import { extractPluginHookServerUrl, validateHookServerConfiguration } from "@/lib/hookServerStatus";
-import { isOpenCodePluginRegistered } from "@/lib/openCodePluginRegistry";
+import { getOpenCodeRegisteredKanvibePluginUrls } from "@/lib/openCodePluginRegistry";
 
 /**
  * OpenCode는 `.opencode/plugins/` 디렉토리에 TypeScript 플러그인을 배치하여 hooks를 등록한다.
@@ -221,6 +222,7 @@ export interface OpenCodeHooksStatus {
   installed: boolean;
   hasPlugin: boolean;
   hasRegisteredPlugin?: boolean;
+  hasDuplicateKanvibePlugins?: boolean;
   hasTaskIdBinding?: boolean;
   hasStatusEndpoint?: boolean;
   hasEventMappings?: boolean;
@@ -229,6 +231,9 @@ export interface OpenCodeHooksStatus {
   hasExpectedHookServerUrl?: boolean;
   hasReachableHookServer?: boolean;
   boundTaskId?: string | null;
+  targetPath?: string | null;
+  pluginPath?: string | null;
+  registeredPluginUrls?: string[];
   configuredHookServerUrl?: string | null;
   expectedHookServerUrl?: string | null;
 }
@@ -250,6 +255,8 @@ export async function getOpenCodeHooksStatus(repoPath: string, taskId?: string, 
   let hasMainSessionGuard = false;
   let hasDuplicateProgressGuard = false;
   let hasRegisteredPlugin = sshHost ? true : false;
+  let hasDuplicateKanvibePlugins = false;
+  let registeredPluginUrls: string[] = [];
   let configuredHookServerUrl: string | null = null;
   if (pluginExists) {
     try {
@@ -265,12 +272,16 @@ export async function getOpenCodeHooksStatus(repoPath: string, taskId?: string, 
       hasEventMappings = ["progress", "pending", "review", "done", "message.updated", "question.asked", "question.replied", "session.idle", "session.deleted"].every((fragment) => content.includes(fragment));
       hasMainSessionGuard = content.includes("isMainSession(message)") && content.includes("isMainSession(event.properties)");
       hasDuplicateProgressGuard = content.includes("lastUserMessageBySession") && content.includes("buildMessageSignature") && content.includes("dedupeMessage: true");
-      if (!sshHost) {
-        hasRegisteredPlugin = await isOpenCodePluginRegistered(repoPath, pluginPath);
-      }
     } catch {
       /* 파일 읽기 실패 */
     }
+  }
+
+  if (!sshHost) {
+    const expectedPluginUrl = pathToFileURL(pluginPath).href;
+    registeredPluginUrls = await getOpenCodeRegisteredKanvibePluginUrls(repoPath);
+    hasRegisteredPlugin = registeredPluginUrls.some((value) => value === expectedPluginUrl);
+    hasDuplicateKanvibePlugins = registeredPluginUrls.length > 1;
   }
 
   const hookServerValidation = await validateHookServerConfiguration(
@@ -287,6 +298,7 @@ export async function getOpenCodeHooksStatus(repoPath: string, taskId?: string, 
     && hasMainSessionGuard
     && hasDuplicateProgressGuard
     && hasRegisteredPlugin
+    && !hasDuplicateKanvibePlugins
     && hookServerValidation.hasExpectedHookServerUrl
     && hookServerValidation.hasReachableHookServer;
 
@@ -294,6 +306,7 @@ export async function getOpenCodeHooksStatus(repoPath: string, taskId?: string, 
     installed,
     hasPlugin,
     hasRegisteredPlugin,
+    hasDuplicateKanvibePlugins,
     hasTaskIdBinding,
     hasStatusEndpoint,
     hasEventMappings,
@@ -302,6 +315,9 @@ export async function getOpenCodeHooksStatus(repoPath: string, taskId?: string, 
     hasExpectedHookServerUrl: hookServerValidation.hasExpectedHookServerUrl,
     hasReachableHookServer: hookServerValidation.hasReachableHookServer,
     boundTaskId,
+    targetPath: repoPath,
+    pluginPath,
+    registeredPluginUrls,
     configuredHookServerUrl: hookServerValidation.configuredHookServerUrl,
     expectedHookServerUrl: hookServerValidation.expectedHookServerUrl,
   };

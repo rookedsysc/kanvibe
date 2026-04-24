@@ -36,14 +36,31 @@ export function extractRegisteredPluginUrls(output: string): string[] {
   return Array.from(pluginBlock.matchAll(/"((?:\\.|[^"\\])*)"/g), ([, value]) => JSON.parse(`"${value}"`) as string);
 }
 
-export async function isOpenCodePluginRegistered(repoPath: string, pluginPath: string): Promise<boolean> {
+export function isKanvibePluginUrl(value: string): boolean {
+  return /\/kanvibe-plugin\.(?:[cm]?js|ts)$/i.test(value);
+}
+
+export function extractRegisteredKanvibePluginUrls(output: string): string[] {
+  return extractRegisteredPluginUrls(output).filter(isKanvibePluginUrl);
+}
+
+export async function getOpenCodeRegisteredKanvibePluginUrls(repoPath: string): Promise<string[]> {
   try {
     const { stdout } = await execFileAsync("opencode", ["debug", "config"], {
       cwd: repoPath,
       maxBuffer: 1024 * 1024,
     });
+
+    return extractRegisteredKanvibePluginUrls(stdout);
+  } catch {
+    return [];
+  }
+}
+
+export async function isOpenCodePluginRegistered(repoPath: string, pluginPath: string): Promise<boolean> {
+  try {
     const expectedPluginUrl = pathToFileURL(pluginPath).href;
-    return extractRegisteredPluginUrls(stdout).some((value) => value === expectedPluginUrl);
+    return (await getOpenCodeRegisteredKanvibePluginUrls(repoPath)).some((value) => value === expectedPluginUrl);
   } catch {
     return false;
   }

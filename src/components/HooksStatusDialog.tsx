@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 import {
   installTaskHooks,
   installTaskGeminiHooks,
   installTaskCodexHooks,
   installTaskOpenCodeHooks,
+  getTaskOpenCodeHooksStatus,
 } from "@/desktop/renderer/actions/project";
 import type { ClaudeHooksStatus } from "@/lib/claudeHooksSetup";
 import type { GeminiHooksStatus } from "@/lib/geminiHooksSetup";
@@ -32,6 +33,27 @@ interface HooksStatusDialogProps {
 
 type HookToolKey = "claude" | "gemini" | "codex" | "openCode";
 
+function getOpenCodeFailedCheckKeys(status: OpenCodeHooksStatus | null): string[] {
+  if (!status) {
+    return [];
+  }
+
+  const failedChecks: string[] = [];
+
+  if (!status.hasPlugin) failedChecks.push("hooksDiagnosticCheckPluginFile");
+  if (!status.hasTaskIdBinding) failedChecks.push("hooksDiagnosticCheckTaskBinding");
+  if (!status.hasStatusEndpoint) failedChecks.push("hooksDiagnosticCheckStatusEndpoint");
+  if (!status.hasEventMappings) failedChecks.push("hooksDiagnosticCheckEventMappings");
+  if (!status.hasMainSessionGuard) failedChecks.push("hooksDiagnosticCheckMainSession");
+  if (!status.hasDuplicateProgressGuard) failedChecks.push("hooksDiagnosticCheckDuplicateProgress");
+  if (!status.hasRegisteredPlugin) failedChecks.push("hooksDiagnosticCheckPluginRegistration");
+  if (!status.hasExpectedHookServerUrl) failedChecks.push("hooksDiagnosticCheckHookServerUrl");
+  if (!status.hasReachableHookServer) failedChecks.push("hooksDiagnosticCheckHookServerReachable");
+  if (status.hasDuplicateKanvibePlugins) failedChecks.push("hooksDiagnosticCheckDuplicatePlugins");
+
+  return failedChecks;
+}
+
 export default function HooksStatusDialog({
   isOpen,
   onClose,
@@ -54,6 +76,11 @@ export default function HooksStatusDialog({
     type: "success" | "error";
     text: string;
   } | null>(null);
+  const onStatusesChangeRef = useRef(onStatusesChange);
+
+  useEffect(() => {
+    onStatusesChangeRef.current = onStatusesChange;
+  }, [onStatusesChange]);
 
   useEffect(() => {
     setLocalClaudeStatus(claudeStatus);
@@ -75,6 +102,28 @@ export default function HooksStatusDialog({
     setMessage(null);
     setExpandedManualTool(null);
   }, [isOpen]);
+
+  useEffect(() => {
+    if (!isOpen) {
+      return;
+    }
+
+    let cancelled = false;
+
+    void (async () => {
+      const latestStatus = await getTaskOpenCodeHooksStatus(taskId);
+      if (cancelled) {
+        return;
+      }
+
+      setLocalOpenCodeStatus(latestStatus);
+      onStatusesChangeRef.current?.({ openCodeStatus: latestStatus });
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, taskId]);
 
   function getInstallFailureText(error?: string) {
     return error ? t("hooksInstallFailed", { error }) : t("hooksInstallFailed");
@@ -291,6 +340,62 @@ export default function HooksStatusDialog({
                     </button>
                   ) : null}
                 </div>
+
+                {item.key === "openCode" && item.status ? (
+                  <div className="mt-4 rounded-lg border border-border-default bg-bg-surface p-3">
+                    <p className="text-[11px] font-medium text-text-secondary">{t("hooksOpenCodeDiagnosticsTitle")}</p>
+                    <div className="mt-3 space-y-3 text-[11px]">
+                      <div>
+                        <p className="font-medium text-text-secondary">{t("hooksDiagnosticTargetPath")}</p>
+                        <p className="mt-1 break-all text-text-muted">{item.status.targetPath ?? "-"}</p>
+                      </div>
+                      <div>
+                        <p className="font-medium text-text-secondary">{t("hooksDiagnosticPluginPath")}</p>
+                        <p className="mt-1 break-all text-text-muted">{item.status.pluginPath ?? "-"}</p>
+                      </div>
+                      {item.status.boundTaskId ? (
+                        <div>
+                          <p className="font-medium text-text-secondary">{t("hooksDiagnosticBoundTaskId")}</p>
+                          <p className="mt-1 break-all text-text-muted">{item.status.boundTaskId}</p>
+                        </div>
+                      ) : null}
+                      <div>
+                        <p className="font-medium text-text-secondary">{t("hooksDiagnosticRegisteredPlugins")}</p>
+                        {item.status.registeredPluginUrls && item.status.registeredPluginUrls.length > 0 ? (
+                          <div className="mt-2 space-y-1">
+                            {item.status.registeredPluginUrls.map((pluginUrl) => (
+                              <p key={pluginUrl} className="break-all rounded-md bg-bg-page px-2 py-1 text-text-muted">
+                                {pluginUrl}
+                              </p>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="mt-1 text-text-muted">{t("hooksDiagnosticNoRegisteredPlugins")}</p>
+                        )}
+                      </div>
+                      {getOpenCodeFailedCheckKeys(item.status).length > 0 ? (
+                        <div>
+                          <p className="font-medium text-text-secondary">{t("hooksDiagnosticFailedChecks")}</p>
+                          <div className="mt-2 flex flex-wrap gap-1.5">
+                            {getOpenCodeFailedCheckKeys(item.status).map((checkKey) => (
+                              <span
+                                key={checkKey}
+                                className="rounded-full border border-status-error/30 bg-status-error/10 px-2 py-1 text-text-secondary"
+                              >
+                                {t(checkKey)}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      ) : null}
+                      {item.status.hasDuplicateKanvibePlugins ? (
+                        <p className="rounded-md border border-status-error/30 bg-status-error/10 px-3 py-2 text-text-secondary">
+                          {t("hooksDiagnosticDuplicatePluginsHelp")}
+                        </p>
+                      ) : null}
+                    </div>
+                  </div>
+                ) : null}
 
                 {expandedManualTool === item.key && !isRemote && !isInstalled ? (
                   <div className="mt-4 rounded-lg border border-border-default bg-bg-surface p-3">
