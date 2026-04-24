@@ -85,6 +85,10 @@ export async function deliverBoardEventNotification(
     }).desktopPayload, options);
   }
 
+  if (payload.type === "task-hook-install-failed") {
+    return false;
+  }
+
   if (!settings.enabledStatuses.includes(payload.requestedStatus)) {
     return false;
   }

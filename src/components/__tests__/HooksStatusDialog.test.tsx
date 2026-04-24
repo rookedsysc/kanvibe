@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import type { ComponentProps } from "react";
 import HooksStatusDialog from "@/components/HooksStatusDialog";
 
 // --- Mocks ---
@@ -45,7 +46,7 @@ describe("HooksStatusDialog", () => {
     vi.restoreAllMocks();
   });
 
-  const renderDialog = (props: any) => {
+  const renderDialog = (props: ComponentProps<typeof HooksStatusDialog>) => {
     return render(<HooksStatusDialog {...props} />);
   };
 
@@ -70,11 +71,15 @@ describe("HooksStatusDialog", () => {
 
   const verifiedCodexStatus = {
     installed: true,
-    hasNotifyHook: true,
+    hasPromptHook: true,
+    hasPermissionHook: true,
+    hasPreToolHook: true,
+    hasStopHook: true,
+    hasHooksFile: true,
+    hasHookEntries: true,
     hasConfigEntry: true,
     hasTaskIdBinding: true,
-    hasReviewStatus: true,
-    hasAgentTurnCompleteFilter: true,
+    hasStatusMappings: true,
   };
 
   const verifiedOpenCodeStatus = {

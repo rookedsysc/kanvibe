@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { IntlProvider } from "next-intl";
 import { HashRouter, Navigate, Outlet, Route, Routes, useParams } from "react-router-dom";
 import LoginForm from "@/components/LoginForm";
+import BoardEventAlert from "@/desktop/renderer/components/BoardEventAlert";
 import NotificationListener from "@/desktop/renderer/components/NotificationListener";
 import { getSessionState } from "@/desktop/renderer/actions/auth";
 import { DEFAULT_LOCALE, getSafeLocale, isSupportedLocale, messagesByLocale } from "@/desktop/renderer/utils/locales";
@@ -28,7 +29,12 @@ function LocaleShell({ sessionLoading }: { sessionLoading: boolean }) {
 
   return (
     <IntlProvider locale={safeLocale} messages={messages}>
-      {!sessionLoading && <NotificationListener />}
+      {!sessionLoading && (
+        <>
+          <NotificationListener />
+          <BoardEventAlert />
+        </>
+      )}
       <Outlet />
     </IntlProvider>
   );

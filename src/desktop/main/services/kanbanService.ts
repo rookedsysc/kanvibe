@@ -5,7 +5,7 @@ import { KanbanTask, TaskStatus, SessionType } from "@/entities/KanbanTask";
 import { TaskPriority } from "@/entities/TaskPriority";
 import { createWorktreeWithSession, removeWorktreeAndBranch, createSessionWithoutWorktree, removeSessionOnly, buildManagedWorktreePath } from "@/lib/worktree";
 import { getProjectRepository } from "@/lib/database";
-import { broadcastBoardUpdate } from "@/lib/boardNotifier";
+import { broadcastBoardUpdate, broadcastTaskHookInstallFailed } from "@/lib/boardNotifier";
 import { installKanvibeHooks } from "@/lib/kanvibeHooksInstaller";
 import { execGit } from "@/lib/gitOperations";
 
@@ -38,8 +38,37 @@ function isMissingGitHubCli(error: unknown): boolean {
   return /(?:^|\s)gh:.*not found/i.test(message) || /command not found.*\bgh\b/i.test(message);
 }
 
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
 function quoteForShell(value: string): string {
   return `'${value.replace(/'/g, `'"'"'`)}'`;
+}
+
+function scheduleTaskHookInstall(
+  targetPath: string,
+  task: Pick<KanbanTask, "id" | "title" | "sshHost">,
+) {
+  setTimeout(() => {
+    void installKanvibeHooks(targetPath, task.id, task.sshHost).catch((error) => {
+      const errorMessage = getErrorMessage(error);
+
+      console.error("새 태스크 hooks 백그라운드 설치 실패:", {
+        taskId: task.id,
+        taskTitle: task.title,
+        targetPath,
+        sshHost: task.sshHost ?? null,
+        error: errorMessage,
+      });
+
+      broadcastTaskHookInstallFailed({
+        taskId: task.id,
+        taskTitle: task.title,
+        error: errorMessage,
+      });
+    });
+  }, 0);
 }
 
 async function getPrUrlFromGitHubCli(branchName: string, cwd: string, sshHost?: string | null): Promise<string | null> {
@@ -162,6 +191,11 @@ export interface CreateTaskInput {
 /** 새 작업을 생성한다. branchName + projectId가 있으면 worktree와 세션도 함께 생성한다 */
 export async function createTask(input: CreateTaskInput): Promise<KanbanTask> {
   const repo = await getTaskRepository();
+  const maxDisplayOrderPromise = repo
+    .createQueryBuilder("t")
+    .select("MAX(t.displayOrder)", "max")
+    .where("t.status = :status", { status: TaskStatus.TODO })
+    .getRawOne();
 
   const task = repo.create({
     title: input.title || input.branchName || "Untitled",
@@ -207,20 +241,21 @@ export async function createTask(input: CreateTaskInput): Promise<KanbanTask> {
     }
   }
 
-  const maxResult = await repo
-    .createQueryBuilder("t")
-    .select("MAX(t.displayOrder)", "max")
-    .where("t.status = :status", { status: task.status })
-    .getRawOne();
+  const maxResult = await maxDisplayOrderPromise;
   task.displayOrder = (maxResult?.max ?? -1) + 1;
 
   const saved = await repo.save(task);
 
+  broadcastBoardUpdate();
+
   if (shouldInstallHooks && hookTargetPath) {
-    await installKanvibeHooks(hookTargetPath, saved.id, task.sshHost);
+    scheduleTaskHookInstall(hookTargetPath, {
+      id: saved.id,
+      title: saved.title,
+      sshHost: saved.sshHost,
+    });
   }
 
-  broadcastBoardUpdate();
   return serialize(saved);
 }
 

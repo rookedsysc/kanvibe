@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdtemp, rm, readFile, writeFile, mkdir } from "fs/promises";
+import { mkdtemp, rm, readFile, writeFile } from "fs/promises";
 import { join } from "path";
 import { tmpdir } from "os";
 import { execSync } from "child_process";
@@ -35,6 +35,7 @@ describe("gitExclude", () => {
       expect(content).toContain(".gemini/hooks/");
       expect(content).toContain(".gemini/settings.json");
       expect(content).toContain(".codex/hooks/");
+      expect(content).toContain(".codex/hooks.json");
       expect(content).toContain(".codex/config.toml");
       expect(content).toContain(".opencode/plugins/");
     });
