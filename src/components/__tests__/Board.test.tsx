@@ -250,9 +250,11 @@ describe("Board defaultSessionType sync", () => {
 
     await waitFor(() => {
       const headerClassName = container.querySelector("header")?.className;
-      expect(headerClassName).toContain("h-10");
+      expect(headerClassName).toContain("pt-10");
       expect(headerClassName).toContain("pl-20");
-      expect(headerClassName).not.toContain("pt-10");
+      expect(headerClassName).toContain("bg-bg-page");
+      expect(headerClassName).not.toContain("h-10");
+      expect(headerClassName).not.toContain("border-b");
     });
   });
 

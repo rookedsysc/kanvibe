@@ -465,11 +465,15 @@ export default function Board({ initialTasks, initialDoneTotal, initialDoneLimit
     handleCloseContextMenu();
   }, [contextMenu.task, handleCloseContextMenu, tt]);
 
+  const headerClassName = shouldUseMacTitlebarLayout
+    ? "flex items-center justify-end bg-bg-page px-6 pb-4 pl-20 pr-6 pt-10 [-webkit-app-region:drag]"
+    : "flex items-center justify-end border-b border-border-default bg-bg-surface px-6 pb-4 pt-4";
+
+  const mainClassName = shouldUseMacTitlebarLayout ? "px-6 pb-6" : "p-6";
+
   return (
-    <div className="min-h-screen">
-      <header
-        className={`flex items-center justify-end border-b border-border-default bg-bg-surface ${shouldUseMacTitlebarLayout ? "h-10 pl-20 pr-4 [-webkit-app-region:drag]" : "px-6 pb-4 pt-4"}`}
-      >
+    <div className="min-h-screen bg-bg-page">
+      <header className={headerClassName}>
         <div className="flex items-center gap-3 [-webkit-app-region:no-drag]">
           <div className="w-64">
             <ProjectSelector
@@ -502,7 +506,7 @@ export default function Board({ initialTasks, initialDoneTotal, initialDoneLimit
         </div>
       </header>
 
-      <main className={shouldUseMacTitlebarLayout ? "px-6 pb-6 pt-4" : "p-6"}>
+      <main className={mainClassName}>
         {isMounted ? (
           <DragDropContext onDragEnd={handleDragEnd}>
             <div className="flex gap-4 overflow-x-auto">
