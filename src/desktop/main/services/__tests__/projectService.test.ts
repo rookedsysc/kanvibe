@@ -397,7 +397,7 @@ describe("projectService local hook installation", () => {
     mocks.getOpenCodeHooksStatus.mockResolvedValue({ installed: false });
   });
 
-  it("로컬 Claude hook 설치 시 서버 URL과 토큰을 함께 전달한다", async () => {
+  it("로컬 Claude hook 설치 시 공통 installer로 모든 hooks를 다시 설치한다", async () => {
     const task = {
       id: "task-1",
       worktreePath: "/workspace/task-1",
@@ -417,17 +417,15 @@ describe("projectService local hook installation", () => {
 
     await installTaskHooks(task.id);
 
-    expect(mocks.getHookServerUrl).toHaveBeenCalledWith(null);
-    expect(mocks.getHookServerToken).toHaveBeenCalled();
-    expect(mocks.setupClaudeHooks).toHaveBeenCalledWith(
+    expect(mocks.installKanvibeHooks).toHaveBeenCalledWith(
       "/workspace/task-1",
       "task-1",
-      "http://localhost:9736",
-      "desktop-hook-token",
+      null,
     );
+    expect(mocks.setupClaudeHooks).not.toHaveBeenCalled();
   });
 
-  it("로컬 OpenCode hook 설치 시 서버 URL과 토큰을 함께 전달한다", async () => {
+  it("로컬 OpenCode hook 설치 시 공통 installer로 모든 hooks를 다시 설치한다", async () => {
     const task = {
       id: "task-2",
       worktreePath: null,
@@ -456,14 +454,12 @@ describe("projectService local hook installation", () => {
 
     await installTaskOpenCodeHooks(task.id);
 
-    expect(mocks.getHookServerUrl).toHaveBeenCalledWith(null);
-    expect(mocks.getHookServerToken).toHaveBeenCalled();
-    expect(mocks.setupOpenCodeHooks).toHaveBeenCalledWith(
+    expect(mocks.installKanvibeHooks).toHaveBeenCalledWith(
       "/workspace/repo",
       "task-main",
-      "http://localhost:9736",
-      "desktop-hook-token",
+      null,
     );
+    expect(mocks.setupOpenCodeHooks).not.toHaveBeenCalled();
   });
 
   it("프로젝트 루트 경로 task의 Claude hook 상태는 현재 root task 기준으로 조회한다", async () => {
@@ -502,7 +498,7 @@ describe("projectService local hook installation", () => {
     );
   });
 
-  it("프로젝트 루트 경로 task에서 Claude hook 재설치를 누르면 현재 root task에 다시 바인딩한다", async () => {
+  it("프로젝트 루트 경로 task에서 Claude hook 재설치를 누르면 공통 installer로 현재 root task에 다시 바인딩한다", async () => {
     const task = {
       id: "stale-task",
       worktreePath: "/workspace/repo",
@@ -531,12 +527,12 @@ describe("projectService local hook installation", () => {
 
     await installTaskHooks(task.id);
 
-    expect(mocks.setupClaudeHooks).toHaveBeenCalledWith(
+    expect(mocks.installKanvibeHooks).toHaveBeenCalledWith(
       "/workspace/repo",
       "task-main",
-      "http://localhost:9736",
-      "desktop-hook-token",
+      null,
     );
+    expect(mocks.setupClaudeHooks).not.toHaveBeenCalled();
   });
 
   it("로컬 기본 브랜치 태스크가 TODO로 남아도 repo 경로에 hooks를 자동 설치한다", async () => {
@@ -818,12 +814,12 @@ describe("projectService local hook installation", () => {
       status: { installed: true },
     });
 
-    expect(mocks.setupClaudeHooks).toHaveBeenCalledWith(
+    expect(mocks.installKanvibeHooks).toHaveBeenCalledWith(
       "/workspace/api",
       "task-main",
-      "http://localhost:9736",
-      "desktop-hook-token",
+      null,
     );
+    expect(mocks.setupClaudeHooks).not.toHaveBeenCalled();
   });
 
   it("스캔으로 발견한 로컬 TODO worktree 태스크에도 hooks를 자동 설치한다", async () => {
