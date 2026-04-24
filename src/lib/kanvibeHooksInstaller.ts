@@ -1,9 +1,9 @@
 import path from "node:path";
 import { execGit } from "@/lib/gitOperations";
-import { setupClaudeHooks, getClaudeHooksStatus, generatePromptHookScript as generateClaudePromptHookScript, generateStopHookScript as generateClaudeStopHookScript, generateQuestionHookScript as generateClaudeQuestionHookScript } from "@/lib/claudeHooksSetup";
-import { setupGeminiHooks, getGeminiHooksStatus, generatePromptHookScript as generateGeminiPromptHookScript, generateStopHookScript as generateGeminiStopHookScript } from "@/lib/geminiHooksSetup";
-import { setupCodexHooks, getCodexHooksStatus, generateNotifyHookScript, HOOK_SCRIPT_NAME, CONFIG_FILE_NAME } from "@/lib/codexHooksSetup";
-import { setupOpenCodeHooks, getOpenCodeHooksStatus, generatePluginScript, PLUGIN_DIR_NAME, PLUGIN_FILE_NAME } from "@/lib/openCodeHooksSetup";
+import { setupClaudeHooks, getClaudeHooksStatus, generatePromptHookScript as generateClaudePromptHookScript, generateStopHookScript as generateClaudeStopHookScript, generateQuestionHookScript as generateClaudeQuestionHookScript, type ClaudeHooksStatus } from "@/lib/claudeHooksSetup";
+import { setupGeminiHooks, getGeminiHooksStatus, generatePromptHookScript as generateGeminiPromptHookScript, generateStopHookScript as generateGeminiStopHookScript, type GeminiHooksStatus } from "@/lib/geminiHooksSetup";
+import { setupCodexHooks, getCodexHooksStatus, generateNotifyHookScript, HOOK_SCRIPT_NAME, CONFIG_FILE_NAME, type CodexHooksStatus } from "@/lib/codexHooksSetup";
+import { setupOpenCodeHooks, getOpenCodeHooksStatus, generatePluginScript, PLUGIN_DIR_NAME, PLUGIN_FILE_NAME, type OpenCodeHooksStatus } from "@/lib/openCodeHooksSetup";
 import { getHookServerToken, getHookServerUrl } from "@/lib/hookEndpoint";
 
 export async function installKanvibeHooks(
@@ -203,14 +203,7 @@ function assertHookInstallResults(results: PromiseSettledResult<unknown>[], prov
   throw failure.reason instanceof Error ? failure.reason : new Error("hooks 설정 실패");
 }
 
-type HookVerificationStatus = {
-  installed: boolean;
-  boundTaskId?: string | null;
-  configuredHookServerUrl?: string | null;
-  expectedHookServerUrl?: string | null;
-  registeredPluginUrls?: string[];
-  [key: string]: unknown;
-};
+type HookVerificationStatus = ClaudeHooksStatus | GeminiHooksStatus | CodexHooksStatus | OpenCodeHooksStatus;
 
 async function logHookVerificationStatuses(targetPath: string, taskId: string, sshHost?: string | null) {
   const verifiers = [
@@ -224,7 +217,7 @@ async function logHookVerificationStatuses(targetPath: string, taskId: string, s
   for (const [index, result] of results.entries()) {
     const provider = verifiers[index].provider;
     if (result.status === "fulfilled") {
-      logHookVerificationStatus(provider, result.value as HookVerificationStatus, targetPath, taskId, sshHost);
+      logHookVerificationStatus(provider, result.value, targetPath, taskId, sshHost);
       continue;
     }
 
@@ -259,7 +252,9 @@ function logHookVerificationStatus(
     boundTaskId: status.boundTaskId ?? null,
     configuredHookServerUrl: status.configuredHookServerUrl ?? null,
     expectedHookServerUrl: status.expectedHookServerUrl ?? null,
-    registeredPluginUrls: Array.isArray(status.registeredPluginUrls) ? status.registeredPluginUrls : undefined,
+    registeredPluginUrls: "registeredPluginUrls" in status && Array.isArray(status.registeredPluginUrls)
+      ? status.registeredPluginUrls
+      : undefined,
   };
 
   if (status.installed) {
