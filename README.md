@@ -190,12 +190,20 @@ AfterAgent (agent done)    → REVIEW
 
 > Gemini CLI does not have an equivalent to Claude Code's `AskUserQuestion`, so the PENDING state is not available.
 
-#### Codex CLI (Partial Support)
+#### Codex CLI
 ```
-agent-turn-complete (agent done) → REVIEW
+UserPromptSubmit                → PROGRESS
+PermissionRequest (Bash only)  → PENDING
+PreToolUse (Bash only)         → PROGRESS
+Stop                           → REVIEW
 ```
 
-> Codex CLI currently only supports the `agent-turn-complete` notification event via the `notify` config. PROGRESS and PENDING transitions are not yet available. OpenAI is [actively designing a hooks system](https://github.com/openai/codex/discussions/2150) — full support will be added when it ships.
+KanVibe now uses Codex's current lifecycle hooks model with `.codex/hooks.json` plus `[features].codex_hooks = true` in `.codex/config.toml`, following the latest official docs:
+
+- https://developers.openai.com/codex/hooks
+- https://developers.openai.com/codex/config-reference
+
+> Codex's current `PermissionRequest` and `PreToolUse` matchers are Bash-scoped, so `PENDING` represents approval waits rather than every kind of conversational follow-up question.
 
 #### OpenCode
 ```
@@ -213,7 +221,7 @@ All agent hooks are **auto-installed** when you register a project through KanVi
 |-------|---------------|-------------|
 | Claude Code | `.claude/hooks/` | `.claude/settings.json` |
 | Gemini CLI | `.gemini/hooks/` | `.gemini/settings.json` |
-| Codex CLI | `.codex/hooks/` | `.codex/config.toml` |
+| Codex CLI | `.codex/hooks/` | `.codex/config.toml`, `.codex/hooks.json` |
 | OpenCode | `.opencode/plugins/` | Plugin auto-discovery |
 
 #### Browser Notifications

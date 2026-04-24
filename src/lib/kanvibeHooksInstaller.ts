@@ -2,7 +2,23 @@ import path from "node:path";
 import { execGit } from "@/lib/gitOperations";
 import { setupClaudeHooks, getClaudeHooksStatus, generatePromptHookScript as generateClaudePromptHookScript, generateStopHookScript as generateClaudeStopHookScript, generateQuestionHookScript as generateClaudeQuestionHookScript, type ClaudeHooksStatus } from "@/lib/claudeHooksSetup";
 import { setupGeminiHooks, getGeminiHooksStatus, generatePromptHookScript as generateGeminiPromptHookScript, generateStopHookScript as generateGeminiStopHookScript, type GeminiHooksStatus } from "@/lib/geminiHooksSetup";
-import { setupCodexHooks, getCodexHooksStatus, generateNotifyHookScript, HOOK_SCRIPT_NAME, CONFIG_FILE_NAME, type CodexHooksStatus } from "@/lib/codexHooksSetup";
+import {
+  setupCodexHooks,
+  getCodexHooksStatus,
+  generatePromptHookScript as generateCodexPromptHookScript,
+  generatePermissionHookScript as generateCodexPermissionHookScript,
+  generatePreToolHookScript as generateCodexPreToolHookScript,
+  generateStopHookScript as generateCodexStopHookScript,
+  upsertCodexConfigToml,
+  upsertCodexHooksJson,
+  PROMPT_HOOK_SCRIPT_NAME,
+  PERMISSION_HOOK_SCRIPT_NAME,
+  PRE_TOOL_HOOK_SCRIPT_NAME,
+  STOP_HOOK_SCRIPT_NAME,
+  HOOKS_FILE_NAME,
+  CONFIG_FILE_NAME,
+  type CodexHooksStatus,
+} from "@/lib/codexHooksSetup";
 import { setupOpenCodeHooks, getOpenCodeHooksStatus, generatePluginScript, PLUGIN_DIR_NAME, PLUGIN_FILE_NAME, type OpenCodeHooksStatus } from "@/lib/openCodeHooksSetup";
 import { getHookServerToken, getHookServerUrl } from "@/lib/hookEndpoint";
 
@@ -124,18 +140,19 @@ async function setupRemoteCodexHooks(repoPath: string, taskId: string, hookServe
   const codexDir = path.posix.join(repoPath, ".codex");
   const hooksDir = path.posix.join(codexDir, "hooks");
   const configPath = path.posix.join(codexDir, CONFIG_FILE_NAME);
+  const hooksPath = path.posix.join(codexDir, HOOKS_FILE_NAME);
   await execGit(`mkdir -p "${hooksDir}"`, sshHost);
 
-  await writeRemoteTextFile(path.posix.join(hooksDir, HOOK_SCRIPT_NAME), generateNotifyHookScript(hookServerUrl, taskId, hookServerToken), sshHost, 0o755);
+  await writeRemoteTextFile(path.posix.join(hooksDir, PROMPT_HOOK_SCRIPT_NAME), generateCodexPromptHookScript(hookServerUrl, taskId, hookServerToken), sshHost, 0o755);
+  await writeRemoteTextFile(path.posix.join(hooksDir, PERMISSION_HOOK_SCRIPT_NAME), generateCodexPermissionHookScript(hookServerUrl, taskId, hookServerToken), sshHost, 0o755);
+  await writeRemoteTextFile(path.posix.join(hooksDir, PRE_TOOL_HOOK_SCRIPT_NAME), generateCodexPreToolHookScript(hookServerUrl, taskId, hookServerToken), sshHost, 0o755);
+  await writeRemoteTextFile(path.posix.join(hooksDir, STOP_HOOK_SCRIPT_NAME), generateCodexStopHookScript(hookServerUrl, taskId, hookServerToken), sshHost, 0o755);
 
   const configContent = await readRemoteTextFile(configPath, sshHost);
-  const notifyLine = `notify = [".codex/hooks/${HOOK_SCRIPT_NAME}"]\n`;
-  const nextConfig = /^notify\s*=/m.test(configContent)
-    ? configContent.replace(/^notify\s*=.*$/m, `notify = [".codex/hooks/${HOOK_SCRIPT_NAME}"]`)
-    : configContent.trim().length === 0
-      ? notifyLine
-      : `${configContent.trimEnd()}\n${notifyLine}`;
-  await writeRemoteTextFile(configPath, nextConfig, sshHost);
+  await writeRemoteTextFile(configPath, upsertCodexConfigToml(configContent), sshHost);
+
+  const hooksContent = await readRemoteTextFile(hooksPath, sshHost);
+  await writeRemoteTextFile(hooksPath, upsertCodexHooksJson(hooksContent), sshHost);
 }
 
 async function setupRemoteOpenCodeHooks(repoPath: string, taskId: string, hookServerUrl: string, hookServerToken: string, sshHost: string) {

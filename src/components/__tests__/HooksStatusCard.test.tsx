@@ -1,7 +1,18 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
+import type { ComponentProps } from "react";
 import HooksStatusCard from "@/components/HooksStatusCard";
 import { IntlProvider } from "next-intl";
+
+interface MockHooksStatusDialogProps {
+  isOpen: boolean;
+  onClose: () => void;
+  taskId: string;
+  isRemote: boolean;
+  onStatusesChange?: (updates: {
+    claudeStatus?: { installed: boolean; hasPromptHook: boolean; hasStopHook: boolean; hasQuestionHook: boolean; hasSettingsEntry: boolean } | null;
+  }) => void;
+}
 
 // --- Mocks ---
 
@@ -14,8 +25,7 @@ vi.mock("next-intl", async () => {
 });
 
 vi.mock("@/components/HooksStatusDialog", () => {
-  // eslint-disable-next-line react/display-name
-  const MockDialog = ({ isOpen, onClose, taskId, isRemote, onStatusesChange }: any) =>
+  const MockDialog = ({ isOpen, onClose, taskId, isRemote, onStatusesChange }: MockHooksStatusDialogProps) =>
     isOpen ? (
       <div data-testid="hooks-status-dialog">
         Dialog: taskId={taskId}, isRemote={String(isRemote)}
@@ -56,7 +66,7 @@ describe("HooksStatusCard", () => {
     vi.restoreAllMocks();
   });
 
-  const renderCard = (props: any) => {
+  const renderCard = (props: ComponentProps<typeof HooksStatusCard>) => {
     return render(
       <IntlProvider messages={messages} locale="en">
         <HooksStatusCard {...props} />
@@ -88,7 +98,7 @@ describe("HooksStatusCard", () => {
       taskId: "task-1",
       initialClaudeStatus: { installed: true, hasPromptHook: true, hasStopHook: true, hasQuestionHook: true, hasSettingsEntry: true },
       initialGeminiStatus: { installed: true, hasPromptHook: true, hasStopHook: true, hasSettingsEntry: true },
-      initialCodexStatus: { installed: true, hasNotifyHook: true, hasConfigEntry: true },
+      initialCodexStatus: { installed: true, hasPromptHook: true, hasPermissionHook: true, hasPreToolHook: true, hasStopHook: true, hasHooksFile: true, hasHookEntries: true, hasConfigEntry: true },
       initialOpenCodeStatus: { installed: true, hasPlugin: true },
       isRemote: false,
     };
