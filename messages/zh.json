@@ -74,6 +74,8 @@
     "sshHost": "SSH 主机（可选）",
     "createTitle": "创建新任务",
     "createFailed": "创建任务失败。",
+    "createHooksBackgroundFailedTitle": "自动安装 Hooks 失败",
+    "createHooksBackgroundFailedBody": "创建“{taskTitle}”后安装 hooks 失败。你可以在 Hooks 状态区域重新安装。",
     "deleteConfirm": "确定要删除此任务吗？",
     "priority": "优先级",
     "priorityLow": "!",
