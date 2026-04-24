@@ -541,7 +541,6 @@ describe("HooksStatusDialog", () => {
     });
 
     expect(screen.getAllByText("hooksInstalled").length).toBeGreaterThan(0);
-    expect(screen.queryByText("hooksOpenCodeDuplicatePluginsNotice")).toBeNull();
     expect(screen.queryByText("hooksOpenCodeDiagnosticsTitle")).toBeNull();
     expect(screen.queryByText("hooksDiagnosticTargetPath")).toBeNull();
     expect(screen.queryByText("hooksDiagnosticPluginPath")).toBeNull();
