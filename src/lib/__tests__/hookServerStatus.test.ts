@@ -1,14 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { mockExecGit, mockGetHookServerUrl, mockGetHookServerToken, mockFetch } = vi.hoisted(() => ({
+const { mockExecGit, mockGetHookServerUrl, mockGetHookServerToken, mockFetch, mockIsSSHTransportError } = vi.hoisted(() => ({
   mockExecGit: vi.fn(),
   mockGetHookServerUrl: vi.fn(),
   mockGetHookServerToken: vi.fn(),
   mockFetch: vi.fn(),
+  mockIsSSHTransportError: vi.fn((error: unknown) => /Connection reset/i.test(String(error))),
 }));
 
 vi.mock("@/lib/gitOperations", () => ({
   execGit: (...args: unknown[]) => mockExecGit(...args),
+  isSSHTransportError: (error: unknown) => mockIsSSHTransportError(error),
 }));
 
 vi.mock("@/lib/hookEndpoint", () => ({
@@ -23,6 +25,7 @@ describe("hookServerStatus", () => {
     mockGetHookServerToken.mockReturnValue("desktop-hook-token");
     mockExecGit.mockResolvedValue("");
     mockFetch.mockResolvedValue({ ok: true });
+    mockIsSSHTransportError.mockImplementation((error: unknown) => /Connection reset/i.test(String(error)));
     vi.stubGlobal("fetch", mockFetch);
   });
 
@@ -48,6 +51,17 @@ describe("hookServerStatus", () => {
       expect.stringContaining("curl -fsS --max-time 2"),
       "remote-host",
     );
+  });
+
+  it("treats remote SSH transport failures as inconclusive instead of uninstalling hooks", async () => {
+    mockGetHookServerUrl.mockResolvedValue("http://10.0.0.4:9736");
+    mockExecGit.mockRejectedValueOnce(new Error("remote-host 원격 명령 실패: Connection reset by 100.73.171.123 port 22"));
+    const { validateHookServerConfiguration } = await import("@/lib/hookServerStatus");
+
+    const result = await validateHookServerConfiguration(["http://10.0.0.4:9736"], true, "remote-host");
+
+    expect(result.hasExpectedHookServerUrl).toBe(true);
+    expect(result.hasReachableHookServer).toBe(true);
   });
 
   it("treats a local health check failure as not installed", async () => {

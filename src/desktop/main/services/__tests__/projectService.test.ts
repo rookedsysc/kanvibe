@@ -137,6 +137,7 @@ describe("projectService.listSubdirectories", () => {
   beforeEach(() => {
     vi.resetModules();
     vi.clearAllMocks();
+    mocks.execGit.mockResolvedValue("");
     mocks.getDefaultSessionType.mockResolvedValue("tmux");
     mocks.getClaudeHooksStatus.mockResolvedValue({ installed: false });
     mocks.getGeminiHooksStatus.mockResolvedValue({ installed: false });
@@ -197,6 +198,7 @@ describe("projectService remote registration flow", () => {
   beforeEach(() => {
     vi.resetModules();
     vi.clearAllMocks();
+    mocks.execGit.mockResolvedValue("");
     mocks.getDefaultSessionType.mockResolvedValue("tmux");
     mocks.getClaudeHooksStatus.mockResolvedValue({ installed: false });
     mocks.getGeminiHooksStatus.mockResolvedValue({ installed: false });
@@ -279,6 +281,48 @@ describe("projectService remote registration flow", () => {
     expect(mocks.createSessionWithoutWorktree).not.toHaveBeenCalled();
   });
 
+  it("bare common repo 형태의 기본 브랜치 task는 worktreePath를 null로 저장한다", async () => {
+    mocks.validateGitRepo.mockResolvedValue(true);
+    mocks.getDefaultBranch.mockResolvedValue("main");
+    mocks.execGit.mockResolvedValue("/remote/repo/.git");
+    mocks.listWorktrees.mockResolvedValue([
+      {
+        path: "/remote/repo__worktrees/feature-login",
+        branch: "feature-login",
+        isBare: false,
+      },
+    ]);
+    mocks.getClaudeHooksStatus.mockResolvedValue({ installed: true });
+    mocks.getGeminiHooksStatus.mockResolvedValue({ installed: true });
+    mocks.getCodexHooksStatus.mockResolvedValue({ installed: true });
+    mocks.getOpenCodeHooksStatus.mockResolvedValue({ installed: true });
+
+    mocks.getProjectRepository.mockResolvedValue({
+      find: vi.fn().mockResolvedValue([]),
+      create: vi.fn((value) => value),
+      save: vi.fn(async (value) => ({ id: "project-1", ...value })),
+      remove: vi.fn(),
+    });
+
+    const save = vi.fn(async (value) => ({ id: "task-main", ...value }));
+    mocks.getTaskRepository.mockResolvedValue({
+      findOneBy: vi.fn().mockResolvedValue(null),
+      create: vi.fn((value) => value),
+      save,
+    });
+
+    const { registerProject } = await import("@/desktop/main/services/projectService");
+
+    const result = await registerProject("repo", "/remote/repo", "remote-host");
+
+    expect(result.success).toBe(true);
+    expect(save).toHaveBeenCalledWith(expect.objectContaining({
+      branchName: "main",
+      worktreePath: null,
+      sshHost: "remote-host",
+    }));
+  });
+
   it("같은 이름의 로컬 프로젝트가 있어도 원격 프로젝트는 구분된 이름으로 등록한다", async () => {
     mocks.validateGitRepo.mockResolvedValue(true);
     mocks.getDefaultBranch.mockResolvedValue("main");
@@ -345,6 +389,7 @@ describe("projectService local hook installation", () => {
   beforeEach(() => {
     vi.resetModules();
     vi.clearAllMocks();
+    mocks.execGit.mockResolvedValue("");
     mocks.getDefaultSessionType.mockResolvedValue("tmux");
     mocks.getClaudeHooksStatus.mockResolvedValue({ installed: false });
     mocks.getGeminiHooksStatus.mockResolvedValue({ installed: false });
@@ -616,6 +661,13 @@ describe("projectService local hook installation", () => {
       create: vi.fn((value) => value),
       save: vi.fn(async (value) => ({ id: "task-main", ...value })),
     });
+    mocks.listWorktrees.mockResolvedValue([
+      {
+        path: "/workspace/api",
+        branch: "main",
+        isBare: false,
+      },
+    ]);
     mocks.installKanvibeHooks
       .mockRejectedValueOnce(new Error("hook server offline"))
       .mockResolvedValueOnce(undefined);
@@ -811,23 +863,30 @@ describe("projectService local hook installation", () => {
       remove: vi.fn(),
     });
 
-    const findOneBy = vi.fn()
-      .mockResolvedValueOnce(null)
-      .mockResolvedValueOnce(null)
-      .mockResolvedValueOnce(null)
-      .mockResolvedValueOnce({
-        id: "task-main",
-        branchName: "main",
-        projectId: "project-1",
-        baseBranch: "main",
-        worktreePath: "/workspace/api",
-        sshHost: null,
-      })
-      .mockResolvedValueOnce(null)
-      .mockResolvedValueOnce(null);
-    const taskSave = vi.fn()
-      .mockImplementationOnce(async (value) => ({ id: "task-main", ...value }))
-      .mockImplementationOnce(async (value) => ({ id: "task-worktree", ...value }));
+    let rootTask: Record<string, unknown> | null = null;
+    const findOneBy = vi.fn(async (criteria: { branchName?: string; projectId?: string | null }) => {
+      if (criteria.projectId === "project-1" && criteria.branchName === "main") {
+        return rootTask;
+      }
+
+      if (criteria.projectId === "project-1" && criteria.branchName === "feature-login") {
+        return null;
+      }
+
+      if ((criteria.projectId === null || criteria.projectId === undefined) && criteria.branchName === "feature-login") {
+        return null;
+      }
+
+      return null;
+    });
+    const taskSave = vi.fn(async (value) => {
+      if (value.branchName === "main") {
+        rootTask = { id: "task-main", ...value };
+        return rootTask;
+      }
+
+      return { id: "task-worktree", ...value };
+    });
     mocks.getTaskRepository.mockResolvedValue({
       findOneBy,
       create: vi.fn((value) => value),
@@ -845,6 +904,77 @@ describe("projectService local hook installation", () => {
       "/workspace/api-worktrees/feature-login",
       "task-worktree",
       null,
+    );
+  });
+
+  it("worktree 경로만 스캔돼도 common repo 기준 기존 원격 프로젝트에 TODO 태스크를 등록한다", async () => {
+    mocks.scanGitRepos.mockResolvedValue(["/remote/repo__worktrees/feature-login"]);
+    mocks.execGit.mockImplementation(async (command: string) => {
+      if (command.includes("rev-parse --path-format=absolute --git-common-dir")) {
+        return "/remote/repo/.git";
+      }
+      return "";
+    });
+    mocks.getDefaultBranch.mockResolvedValue("main");
+    mocks.getClaudeHooksStatus.mockResolvedValue({ installed: true });
+    mocks.getGeminiHooksStatus.mockResolvedValue({ installed: true });
+    mocks.getCodexHooksStatus.mockResolvedValue({ installed: true });
+    mocks.getOpenCodeHooksStatus.mockResolvedValue({ installed: true });
+    mocks.listWorktrees.mockResolvedValue([
+      {
+        path: "/remote/repo__worktrees/feature-login",
+        branch: "feature-login",
+        isBare: false,
+      },
+    ]);
+    mocks.formatSessionName.mockReturnValue("repo-feature-login");
+    mocks.isSessionAlive.mockResolvedValue(false);
+
+    mocks.getProjectRepository.mockResolvedValue({
+      find: vi.fn().mockResolvedValue([
+        {
+          id: "project-1",
+          name: "repo",
+          repoPath: "/remote/repo",
+          defaultBranch: "main",
+          sshHost: "remote-host",
+        },
+      ]),
+      create: vi.fn((value) => value),
+      save: vi.fn(async (value) => ({ id: "project-1", ...value })),
+      remove: vi.fn(),
+    });
+
+    const taskRepoSave = vi.fn(async (value) => ({ id: "task-worktree", ...value }));
+    mocks.getTaskRepository.mockResolvedValue({
+      findOneBy: vi.fn(async (criteria: { branchName?: string; projectId?: string | null }) => {
+        if (criteria.projectId === "project-1" && criteria.branchName === "main") {
+          return {
+            id: "task-main",
+            branchName: "main",
+            projectId: "project-1",
+            baseBranch: "main",
+            worktreePath: null,
+            sshHost: "remote-host",
+          };
+        }
+
+        return null;
+      }),
+      create: vi.fn((value) => value),
+      save: taskRepoSave,
+    });
+
+    const { scanAndRegisterProjects } = await import("@/desktop/main/services/projectService");
+
+    const result = await scanAndRegisterProjects("/remote/workspace", "remote-host");
+
+    expect(result.worktreeTasks).toContain("feature-login");
+    expect(mocks.listWorktrees).toHaveBeenCalledWith("/remote/repo", "remote-host");
+    expect(mocks.installKanvibeHooks).toHaveBeenCalledWith(
+      "/remote/repo__worktrees/feature-login",
+      "task-worktree",
+      "remote-host",
     );
   });
 
@@ -903,8 +1033,8 @@ describe("projectService local hook installation", () => {
 
     await scanAndRegisterProjects("/workspace");
 
-    expect(mocks.listWorktrees).toHaveBeenCalledTimes(1);
     expect(mocks.listWorktrees).toHaveBeenCalledWith("/workspace/api", null);
+    expect(mocks.listWorktrees).not.toHaveBeenCalledWith("/workspace/web", null);
   });
 
   it("브랜치명만 같은 다른 orphan task는 현재 프로젝트 worktree에 재사용하지 않는다", async () => {
@@ -942,30 +1072,37 @@ describe("projectService local hook installation", () => {
       remove: vi.fn(),
     });
 
-    const findOneBy = vi.fn()
-      .mockResolvedValueOnce(null)
-      .mockResolvedValueOnce(null)
-      .mockResolvedValueOnce(null)
-      .mockResolvedValueOnce({
-        id: "task-main",
-        branchName: "main",
-        projectId: "project-1",
-        baseBranch: "main",
-        worktreePath: "/workspace/api",
-        sshHost: null,
-      })
-      .mockResolvedValueOnce(null)
-      .mockResolvedValueOnce({
-        id: "orphan-1",
-        branchName: "feature-login",
-        projectId: null,
-        worktreePath: "/other/repo__worktrees/feature-login",
-        sshHost: null,
-      });
+    let rootTask: Record<string, unknown> | null = null;
+    const findOneBy = vi.fn(async (criteria: { branchName?: string; projectId?: string | null }) => {
+      if (criteria.projectId === "project-1" && criteria.branchName === "main") {
+        return rootTask;
+      }
+
+      if (criteria.projectId === "project-1" && criteria.branchName === "feature-login") {
+        return null;
+      }
+
+      if ((criteria.projectId === null || criteria.projectId === undefined) && criteria.branchName === "feature-login") {
+        return {
+          id: "orphan-1",
+          branchName: "feature-login",
+          projectId: null,
+          worktreePath: "/other/repo__worktrees/feature-login",
+          sshHost: null,
+        };
+      }
+
+      return null;
+    });
     const create = vi.fn((value) => value);
-    const save = vi.fn()
-      .mockImplementationOnce(async (value) => ({ id: "task-main", ...value }))
-      .mockImplementationOnce(async (value) => ({ id: "task-worktree", ...value }));
+    const save = vi.fn(async (value) => {
+      if (value.branchName === "main") {
+        rootTask = { id: "task-main", ...value };
+        return rootTask;
+      }
+
+      return { id: "task-worktree", ...value };
+    });
     mocks.getTaskRepository.mockResolvedValue({
       findOneBy,
       create,
@@ -993,6 +1130,7 @@ describe("projectService remote hook and AI session support", () => {
   beforeEach(() => {
     vi.resetModules();
     vi.clearAllMocks();
+    mocks.execGit.mockResolvedValue("");
     mocks.getDefaultSessionType.mockResolvedValue("tmux");
     mocks.getClaudeHooksStatus.mockResolvedValue({ installed: false });
     mocks.getGeminiHooksStatus.mockResolvedValue({ installed: false });

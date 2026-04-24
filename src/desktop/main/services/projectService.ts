@@ -45,6 +45,37 @@ function buildProjectPathKey(repoPath: string, sshHost?: string | null): string 
   return `${sshHost || ""}:${repoPath}`;
 }
 
+async function resolveCommonRepoPath(repoPath: string, sshHost?: string | null): Promise<string> {
+  try {
+    const pathModule = sshHost ? path.posix : path;
+    const gitCommonDir = await execGit(
+      `git -C "${repoPath}" rev-parse --path-format=absolute --git-common-dir`,
+      sshHost,
+    );
+    const normalizedCommonDir = gitCommonDir.trim();
+    if (!normalizedCommonDir) {
+      return repoPath;
+    }
+
+    return pathModule.dirname(normalizedCommonDir);
+  } catch {
+    return repoPath;
+  }
+}
+
+async function resolveProjectDefaultBranchWorktreePath(project: Pick<Project, "repoPath" | "defaultBranch" | "sshHost">): Promise<string | null> {
+  try {
+    const worktrees = await listWorktrees(project.repoPath, project.sshHost);
+    if (!Array.isArray(worktrees)) {
+      return null;
+    }
+
+    return worktrees.find((worktree) => !worktree.isBare && worktree.branch === project.defaultBranch)?.path ?? null;
+  } catch {
+    return null;
+  }
+}
+
 function isRemoteConnectionError(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error || "");
   return /원격 명령 실패:.*(Connection (?:reset|closed)|kex_exchange_identification|operation timed out|no route to host|connection refused|could not resolve hostname|broken pipe)/i.test(message);
@@ -129,6 +160,7 @@ function resolveUniqueProjectName(
 async function createDefaultBranchTask(project: Project) {
   const taskRepo = await getTaskRepository();
   const defaultSessionType = await getDefaultSessionType();
+  const defaultBranchWorktreePath = await resolveProjectDefaultBranchWorktreePath(project);
 
   const existing = await taskRepo.findOneBy({ branchName: project.defaultBranch, projectId: project.id });
   if (existing) return existing;
@@ -146,25 +178,25 @@ async function createDefaultBranchTask(project: Project) {
   const task = taskRepo.create({
     title: project.defaultBranch,
     branchName: project.defaultBranch,
-    worktreePath: project.repoPath,
+    worktreePath: defaultBranchWorktreePath,
     sshHost: project.sshHost,
     status: TaskStatus.TODO,
     projectId: project.id,
     baseBranch: project.defaultBranch,
   });
 
-  if (!project.sshHost) {
+  if (!project.sshHost && defaultBranchWorktreePath) {
     try {
       const session = await createSessionWithoutWorktree(
         project.repoPath,
         project.defaultBranch,
         defaultSessionType,
         project.sshHost,
-        project.repoPath,
+        defaultBranchWorktreePath,
       );
       task.sessionType = defaultSessionType;
       task.sessionName = session.sessionName;
-      task.worktreePath = project.repoPath;
+      task.worktreePath = defaultBranchWorktreePath;
       task.sshHost = project.sshHost;
       task.status = TaskStatus.PROGRESS;
     } catch (error) {
@@ -218,14 +250,16 @@ async function ensureProjectRootTask(
     return { task: null, repaired };
   }
 
+  const expectedDefaultBranchWorktreePath = await resolveProjectDefaultBranchWorktreePath(project);
+
   let shouldSaveTask = false;
   if (task.baseBranch !== project.defaultBranch) {
     task.baseBranch = project.defaultBranch;
     shouldSaveTask = true;
   }
 
-  if (task.worktreePath !== project.repoPath) {
-    task.worktreePath = project.repoPath;
+  if ((task.worktreePath ?? null) !== expectedDefaultBranchWorktreePath) {
+    task.worktreePath = expectedDefaultBranchWorktreePath;
     shouldSaveTask = true;
   }
 
@@ -348,10 +382,12 @@ export async function registerProject(
     return { success: false, error: "유효한 git 저장소가 아닙니다." };
   }
 
+  const normalizedRepoPath = await resolveCommonRepoPath(repoPath, sshHost || null);
+
   const repo = await getProjectRepository();
 
   const existingProjects = await repo.find();
-  const pathKey = buildProjectPathKey(repoPath, sshHost || null);
+  const pathKey = buildProjectPathKey(normalizedRepoPath, sshHost || null);
   const alreadyRegistered = existingProjects.some(
     (project) => buildProjectPathKey(project.repoPath, project.sshHost) === pathKey,
   );
@@ -359,16 +395,16 @@ export async function registerProject(
     return { success: false, error: "이미 등록된 프로젝트입니다." };
   }
 
-  const defaultBranch = await getDefaultBranch(repoPath, sshHost || null);
+  const defaultBranch = await getDefaultBranch(normalizedRepoPath, sshHost || null);
   const projectName = resolveUniqueProjectName(
     name,
-    repoPath,
+    normalizedRepoPath,
     new Set(existingProjects.map((project) => project.name)),
   );
 
   const project = repo.create({
     name: projectName,
-    repoPath,
+    repoPath: normalizedRepoPath,
     defaultBranch,
     sshHost: sshHost || null,
     color: computeProjectColor(projectName),
@@ -421,7 +457,12 @@ export async function scanAndRegisterProjects(
 ): Promise<ScanResult> {
   const result: ScanResult = { registered: [], skipped: [], errors: [], worktreeTasks: [], hooksSetup: [] };
 
-  const repoPaths = await scanGitRepos(rootPath, sshHost || null);
+  const discoveredRepoPaths = await scanGitRepos(rootPath, sshHost || null);
+  const repoPaths = Array.from(
+    new Set(
+      await Promise.all(discoveredRepoPaths.map((repoPath) => resolveCommonRepoPath(repoPath, sshHost || null))),
+    ),
+  );
   if (repoPaths.length === 0) {
     return result;
   }
@@ -610,9 +651,10 @@ export async function scanAndRegisterProjects(
         );
 
         if (hasSession) {
+          const defaultBranchWorktreePath = await resolveProjectDefaultBranchWorktreePath(project);
           mainBranchTask.sessionType = SessionType.TMUX;
           mainBranchTask.sessionName = sessionName;
-          mainBranchTask.worktreePath = project.repoPath;
+          mainBranchTask.worktreePath = defaultBranchWorktreePath;
           mainBranchTask.sshHost = project.sshHost;
           mainBranchTask.status = TaskStatus.PROGRESS;
           await taskRepo.save(mainBranchTask);
