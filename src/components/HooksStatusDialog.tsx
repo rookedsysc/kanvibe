@@ -45,7 +45,7 @@ export default function HooksStatusDialog({
   onStatusesChange,
 }: HooksStatusDialogProps) {
   const t = useTranslations("taskDetail");
-  const [installingTool, setInstallingTool] = useState<HookToolKey | null>(null);
+  const [installingTools, setInstallingTools] = useState<HookToolKey[]>([]);
   const [expandedManualTool, setExpandedManualTool] = useState<HookToolKey | null>(null);
   const [localClaudeStatus, setLocalClaudeStatus] = useState(claudeStatus);
   const [localGeminiStatus, setLocalGeminiStatus] = useState(geminiStatus);
@@ -174,13 +174,13 @@ export default function HooksStatusDialog({
     applyResult: (result: T) => void,
   ) {
     setMessage(null);
-    setInstallingTool(tool);
+    setInstallingTools((current) => (current.includes(tool) ? current : [...current, tool]));
 
     try {
       const result = await install();
       applyResult(result);
     } finally {
-      setInstallingTool(null);
+      setInstallingTools((current) => current.filter((value) => value !== tool));
     }
   }
 
@@ -242,7 +242,6 @@ export default function HooksStatusDialog({
           <button
             type="button"
             onClick={onClose}
-            disabled={installingTool !== null}
             className="text-lg text-text-muted transition-colors hover:text-text-primary disabled:opacity-50"
           >
             ×
@@ -261,8 +260,7 @@ export default function HooksStatusDialog({
         <div className="grid gap-4 md:grid-cols-2">
           {hookItems.map((item) => {
             const isInstalled = item.status?.installed === true;
-            const isInstalling = installingTool === item.key;
-            const isAnotherInstallRunning = installingTool !== null && !isInstalling;
+            const isInstalling = installingTools.includes(item.key);
 
             return (
               <section key={item.key} className="rounded-xl border border-border-default bg-bg-page/40 p-4">
@@ -283,18 +281,17 @@ export default function HooksStatusDialog({
                   <button
                     type="button"
                     onClick={() => {
-                      if (isAnotherInstallRunning) {
+                      if (isInstalling) {
                         return;
                       }
 
                       void item.onInstall();
                     }}
                     disabled={isInstalling}
-                    aria-disabled={isAnotherInstallRunning}
                     className={`rounded-md px-3 py-1.5 text-xs transition-colors ${isInstalled
                       ? "border border-border-default bg-bg-surface text-text-secondary hover:border-brand-primary hover:text-text-primary"
                       : "bg-brand-primary text-text-inverse hover:bg-brand-hover"
-                    } ${isInstalling ? "opacity-50" : ""} ${isAnotherInstallRunning ? "cursor-not-allowed" : ""}`}
+                    } ${isInstalling ? "opacity-50" : ""}`}
                   >
                     {isInstalling
                       ? t("installingHooks")
@@ -306,14 +303,9 @@ export default function HooksStatusDialog({
                     <button
                       type="button"
                       onClick={() => {
-                        if (isAnotherInstallRunning) {
-                          return;
-                        }
-
                         setExpandedManualTool((current) => current === item.key ? null : item.key);
                       }}
-                      aria-disabled={isAnotherInstallRunning}
-                      className={`rounded-md border border-border-default bg-bg-surface px-3 py-1.5 text-xs text-text-secondary transition-colors hover:border-brand-primary hover:text-text-primary ${isAnotherInstallRunning ? "cursor-not-allowed" : ""}`}
+                      className="rounded-md border border-border-default bg-bg-surface px-3 py-1.5 text-xs text-text-secondary transition-colors hover:border-brand-primary hover:text-text-primary"
                     >
                       {expandedManualTool === item.key ? t("close") : t("hooksManualInstallGuide")}
                     </button>
@@ -343,7 +335,6 @@ export default function HooksStatusDialog({
           <button
             type="button"
             onClick={onClose}
-            disabled={installingTool !== null}
             className="rounded-md border border-border-default bg-bg-page px-4 py-1.5 text-sm text-text-secondary transition-colors hover:border-brand-primary hover:text-text-primary disabled:opacity-50"
           >
             {t("hooksStatusDialog.close")}
