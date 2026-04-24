@@ -228,7 +228,7 @@ export const KanvibePlugin: Plugin = async ({ $ }) => {
       expect(status.hasRegisteredPlugin).toBe(false);
     });
 
-    it("should return installed: false when duplicate kanvibe plugins are registered", async () => {
+    it("should keep installed true and surface diagnostics when duplicate kanvibe plugins are registered", async () => {
       // Given
       const repoPath = tempDir;
       await setupOpenCodeHooks(repoPath, "task-1", "http://localhost:3000");
@@ -241,7 +241,7 @@ export const KanvibePlugin: Plugin = async ({ $ }) => {
       const status = await getOpenCodeHooksStatus(repoPath);
 
       // Then
-      expect(status.installed).toBe(false);
+      expect(status.installed).toBe(true);
       expect(status.hasRegisteredPlugin).toBe(true);
       expect(status.hasDuplicateKanvibePlugins).toBe(true);
       expect(status.registeredPluginUrls).toHaveLength(2);

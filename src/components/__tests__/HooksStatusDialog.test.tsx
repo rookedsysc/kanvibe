@@ -87,6 +87,8 @@ describe("HooksStatusDialog", () => {
     hasDuplicateProgressGuard: true,
     hasRegisteredPlugin: true,
     hasDuplicateKanvibePlugins: false,
+    hasExpectedHookServerUrl: true,
+    hasReachableHookServer: true,
     targetPath: "/workspace/task",
     pluginPath: "/workspace/task/.opencode/plugins/kanvibe-plugin.ts",
     boundTaskId: "task-1",
@@ -105,6 +107,8 @@ describe("HooksStatusDialog", () => {
     hasDuplicateProgressGuard: false,
     hasRegisteredPlugin: false,
     hasDuplicateKanvibePlugins: false,
+    hasExpectedHookServerUrl: false,
+    hasReachableHookServer: false,
     targetPath: "/workspace/task",
     pluginPath: "/workspace/task/.opencode/plugins/kanvibe-plugin.ts",
     registeredPluginUrls: [],
@@ -511,9 +515,9 @@ describe("HooksStatusDialog", () => {
     });
   });
 
-  it("should render OpenCode diagnostics and duplicate plugin warning", async () => {
+  it("should keep OpenCode UI brief and show only a short duplicate plugin warning", async () => {
     mockGetTaskOpenCodeHooksStatus.mockResolvedValue({
-      ...incompleteOpenCodeStatus,
+      ...verifiedOpenCodeStatus,
       hasDuplicateKanvibePlugins: true,
       registeredPluginUrls: [
         "file:///workspace/task/.opencode/plugins/kanvibe-plugin.ts",
@@ -533,17 +537,15 @@ describe("HooksStatusDialog", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText("hooksOpenCodeDiagnosticsTitle")).toBeTruthy();
+      expect(screen.getByText("hooksOpenCodeDuplicatePluginsNotice")).toBeTruthy();
     });
 
-    expect(screen.getByText("hooksDiagnosticTargetPath")).toBeTruthy();
-    expect(screen.getByText("/workspace/task")).toBeTruthy();
-    expect(screen.getByText("hooksDiagnosticPluginPath")).toBeTruthy();
-    expect(screen.getByText("/workspace/task/.opencode/plugins/kanvibe-plugin.ts")).toBeTruthy();
-    expect(screen.getByText("hooksDiagnosticFailedChecks")).toBeTruthy();
-    expect(screen.getByText("hooksDiagnosticCheckDuplicatePlugins")).toBeTruthy();
-    expect(screen.getByText("hooksDiagnosticDuplicatePluginsHelp")).toBeTruthy();
-    expect(screen.getByText("file:///home/test/.config/opencode/plugins/kanvibe-plugin.ts")).toBeTruthy();
+    expect(screen.getAllByText("hooksInstalled").length).toBeGreaterThan(0);
+    expect(screen.queryByText("hooksOpenCodeDiagnosticsTitle")).toBeNull();
+    expect(screen.queryByText("hooksDiagnosticTargetPath")).toBeNull();
+    expect(screen.queryByText("hooksDiagnosticPluginPath")).toBeNull();
+    expect(screen.queryByText("hooksDiagnosticDuplicatePluginsHelp")).toBeNull();
+    expect(screen.queryByText("hooksDiagnosticFailedChecks")).toBeNull();
   });
 
   it("should show installed status when hook is already installed", () => {

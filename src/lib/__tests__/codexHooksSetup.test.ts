@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdtemp, readFile, rm } from "fs/promises";
+import { mkdtemp, readFile, rm, writeFile, mkdir } from "fs/promises";
 import { join } from "path";
 import { tmpdir } from "os";
 import { setupCodexHooks, getCodexHooksStatus } from "../codexHooksSetup";
@@ -55,6 +55,19 @@ describe("codexHooksSetup", () => {
 
       const status = await getCodexHooksStatus(repoPath);
       expect(status.installed).toBe(true);
+    });
+
+    it("should replace an existing notify entry on reinstall", async () => {
+      const repoPath = tempDir;
+      await mkdir(join(repoPath, ".codex"), { recursive: true });
+      await writeFile(join(repoPath, ".codex", "config.toml"), 'model = "gpt-5"\nnotify = ["old-notify.sh"]\n', "utf-8");
+
+      await setupCodexHooks(repoPath, "task-1", "http://localhost:3000");
+
+      const configContent = await readFile(join(repoPath, ".codex", "config.toml"), "utf-8");
+      expect(configContent).toContain('notify = [".codex/hooks/kanvibe-notify-hook.sh"]');
+      expect(configContent).not.toContain('notify = ["old-notify.sh"]');
+      expect(configContent.match(/^notify\s*=/gm)).toHaveLength(1);
     });
   });
 
