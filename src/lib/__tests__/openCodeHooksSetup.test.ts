@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { mkdtemp, readFile, rm } from "fs/promises";
+import { mkdtemp, readFile, rm, mkdir, writeFile } from "fs/promises";
 import { join } from "path";
 import { tmpdir } from "os";
 import { setupOpenCodeHooks, getOpenCodeHooksStatus } from "../openCodeHooksSetup";
@@ -133,6 +133,50 @@ describe("openCodeHooksSetup", () => {
       // Then - should still be installed correctly
       const status = await getOpenCodeHooksStatus(repoPath);
       expect(status.installed).toBe(true);
+    });
+
+    it("should repair stale branch-bound plugin content on reinstall", async () => {
+      // Given
+      const repoPath = tempDir;
+      const pluginDir = join(repoPath, ".opencode", "plugins");
+      const pluginPath = join(pluginDir, "kanvibe-plugin.ts");
+      await mkdir(pluginDir, { recursive: true });
+      await writeFile(pluginPath, `import type { Plugin } from "@opencode-ai/plugin";
+
+export const KanvibePlugin: Plugin = async ({ $ }) => {
+  const KANVIBE_URL = "http://localhost:3000";
+  const PROJECT_NAME = "kanvibe";
+
+  async function updateStatus(status: string): Promise<void> {
+    const branchName = "feature/legacy";
+    await fetch(\`\${KANVIBE_URL}/api/hooks/status\`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ branchName, projectName: PROJECT_NAME, status }),
+    });
+  }
+
+  return {
+    event: async () => {
+      await updateStatus("review");
+    },
+  };
+};
+`, "utf-8");
+
+      // When
+      await setupOpenCodeHooks(repoPath, "task-2", "http://localhost:3000");
+
+      // Then
+      const pluginContent = await readFile(pluginPath, "utf-8");
+      const status = await getOpenCodeHooksStatus(repoPath);
+
+      expect(pluginContent).toContain('const TASK_ID = "task-2";');
+      expect(pluginContent).toContain("taskId: TASK_ID");
+      expect(pluginContent).not.toContain("branchName");
+      expect(pluginContent).not.toContain("projectName");
+      expect(status.boundTaskId).toBe("task-2");
+      expect(status.hasTaskIdBinding).toBe(true);
     });
   });
 

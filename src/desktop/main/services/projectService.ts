@@ -4,10 +4,10 @@ import { validateGitRepo, getDefaultBranch, listBranches, scanGitRepos, listWork
 import { TaskStatus, SessionType } from "@/entities/KanbanTask";
 import { IsNull } from "typeorm";
 import { isSessionAlive, formatSessionName, createSessionWithoutWorktree } from "@/lib/worktree";
-import { setupClaudeHooks, getClaudeHooksStatus, type ClaudeHooksStatus } from "@/lib/claudeHooksSetup";
-import { setupGeminiHooks, getGeminiHooksStatus, type GeminiHooksStatus } from "@/lib/geminiHooksSetup";
-import { setupCodexHooks, getCodexHooksStatus, type CodexHooksStatus } from "@/lib/codexHooksSetup";
-import { setupOpenCodeHooks, getOpenCodeHooksStatus, type OpenCodeHooksStatus } from "@/lib/openCodeHooksSetup";
+import { getClaudeHooksStatus, type ClaudeHooksStatus } from "@/lib/claudeHooksSetup";
+import { getGeminiHooksStatus, type GeminiHooksStatus } from "@/lib/geminiHooksSetup";
+import { getCodexHooksStatus, type CodexHooksStatus } from "@/lib/codexHooksSetup";
+import { getOpenCodeHooksStatus, type OpenCodeHooksStatus } from "@/lib/openCodeHooksSetup";
 import { aggregateAiSessions, getAiSessionDetail } from "@/lib/aiSessions/aggregateAiSessions";
 import type { AggregatedAiSessionDetail, AggregatedAiSessionsResult, AiMessageRole, AiSessionProvider } from "@/lib/aiSessions/types";
 import { homedir } from "os";
@@ -17,7 +17,6 @@ import { broadcastBoardUpdate } from "@/lib/boardNotifier";
 import { getAvailableHosts as readAvailableHosts } from "@/lib/sshConfig";
 import { getDefaultSessionType } from "@/desktop/main/services/appSettingsService";
 import { installKanvibeHooks } from "@/lib/kanvibeHooksInstaller";
-import { getHookServerToken, getHookServerUrl } from "@/lib/hookEndpoint";
 
 function matchesTaskLocation(task: { worktreePath?: string | null; sshHost?: string | null }, expectedPath: string, sshHost?: string | null): boolean {
   return task.worktreePath === expectedPath && (task.sshHost || null) === (sshHost || null);
@@ -320,13 +319,6 @@ async function resolveTaskHookTarget(task: {
     targetPath,
     taskId: projectRootTask?.id ?? task.id,
     sshHost: task.project.sshHost,
-  };
-}
-
-async function getHookInstallConfig(sshHost?: string | null) {
-  return {
-    kanvibeUrl: await getHookServerUrl(sshHost),
-    authToken: getHookServerToken() || undefined,
   };
 }
 
@@ -732,13 +724,7 @@ export async function installProjectHooks(
   if (!task) return { success: false, error: "기본 브랜치 태스크를 찾을 수 없습니다." };
 
   try {
-    if (project.sshHost) {
-      await installKanvibeHooks(project.repoPath, task.id, project.sshHost);
-      return { success: true, status: await getClaudeHooksStatus(project.repoPath, task.id, project.sshHost) };
-    }
-
-    const { kanvibeUrl, authToken } = await getHookInstallConfig(project.sshHost);
-    await setupClaudeHooks(project.repoPath, task.id, kanvibeUrl, authToken);
+    await installKanvibeHooks(project.repoPath, task.id, project.sshHost);
     return { success: true, status: await getClaudeHooksStatus(project.repoPath, task.id, project.sshHost) };
   } catch (error) {
     return {
@@ -776,13 +762,7 @@ export async function installTaskHooks(
       return { success: false, error: "프로젝트를 찾을 수 없습니다." };
     }
 
-    if (hookTarget.sshHost) {
-      await installKanvibeHooks(hookTarget.targetPath, hookTarget.taskId, hookTarget.sshHost);
-      return { success: true, status: await getClaudeHooksStatus(hookTarget.targetPath, hookTarget.taskId, hookTarget.sshHost) };
-    }
-
-    const { kanvibeUrl, authToken } = await getHookInstallConfig(task.project.sshHost);
-    await setupClaudeHooks(hookTarget.targetPath, hookTarget.taskId, kanvibeUrl, authToken);
+    await installKanvibeHooks(hookTarget.targetPath, hookTarget.taskId, hookTarget.sshHost);
     return { success: true, status: await getClaudeHooksStatus(hookTarget.targetPath, hookTarget.taskId, hookTarget.sshHost) };
   } catch (error) {
     return {
@@ -816,13 +796,7 @@ export async function installProjectGeminiHooks(
   if (!task) return { success: false, error: "기본 브랜치 태스크를 찾을 수 없습니다." };
 
   try {
-    if (project.sshHost) {
-      await installKanvibeHooks(project.repoPath, task.id, project.sshHost);
-      return { success: true, status: await getGeminiHooksStatus(project.repoPath, task.id, project.sshHost) };
-    }
-
-    const { kanvibeUrl, authToken } = await getHookInstallConfig(project.sshHost);
-    await setupGeminiHooks(project.repoPath, task.id, kanvibeUrl, authToken);
+    await installKanvibeHooks(project.repoPath, task.id, project.sshHost);
     return { success: true, status: await getGeminiHooksStatus(project.repoPath, task.id, project.sshHost) };
   } catch (error) {
     return {
@@ -860,13 +834,7 @@ export async function installTaskGeminiHooks(
       return { success: false, error: "프로젝트를 찾을 수 없습니다." };
     }
 
-    if (hookTarget.sshHost) {
-      await installKanvibeHooks(hookTarget.targetPath, hookTarget.taskId, hookTarget.sshHost);
-      return { success: true, status: await getGeminiHooksStatus(hookTarget.targetPath, hookTarget.taskId, hookTarget.sshHost) };
-    }
-
-    const { kanvibeUrl, authToken } = await getHookInstallConfig(task.project.sshHost);
-    await setupGeminiHooks(hookTarget.targetPath, hookTarget.taskId, kanvibeUrl, authToken);
+    await installKanvibeHooks(hookTarget.targetPath, hookTarget.taskId, hookTarget.sshHost);
     return { success: true, status: await getGeminiHooksStatus(hookTarget.targetPath, hookTarget.taskId, hookTarget.sshHost) };
   } catch (error) {
     return {
@@ -898,13 +866,7 @@ export async function installProjectCodexHooks(
   if (!task) return { success: false, error: "기본 브랜치 태스크를 찾을 수 없습니다." };
 
   try {
-    if (project.sshHost) {
-      await installKanvibeHooks(project.repoPath, task.id, project.sshHost);
-      return { success: true, status: await getCodexHooksStatus(project.repoPath, task.id, project.sshHost) };
-    }
-
-    const { kanvibeUrl, authToken } = await getHookInstallConfig(project.sshHost);
-    await setupCodexHooks(project.repoPath, task.id, kanvibeUrl, authToken);
+    await installKanvibeHooks(project.repoPath, task.id, project.sshHost);
     return { success: true, status: await getCodexHooksStatus(project.repoPath, task.id, project.sshHost) };
   } catch (error) {
     return {
@@ -940,13 +902,7 @@ export async function installTaskCodexHooks(
       return { success: false, error: "프로젝트를 찾을 수 없습니다." };
     }
 
-    if (hookTarget.sshHost) {
-      await installKanvibeHooks(hookTarget.targetPath, hookTarget.taskId, hookTarget.sshHost);
-      return { success: true, status: await getCodexHooksStatus(hookTarget.targetPath, hookTarget.taskId, hookTarget.sshHost) };
-    }
-
-    const { kanvibeUrl, authToken } = await getHookInstallConfig(task.project.sshHost);
-    await setupCodexHooks(hookTarget.targetPath, hookTarget.taskId, kanvibeUrl, authToken);
+    await installKanvibeHooks(hookTarget.targetPath, hookTarget.taskId, hookTarget.sshHost);
     return { success: true, status: await getCodexHooksStatus(hookTarget.targetPath, hookTarget.taskId, hookTarget.sshHost) };
   } catch (error) {
     return {
@@ -968,13 +924,7 @@ export async function installProjectOpenCodeHooks(
   if (!task) return { success: false, error: "Default branch task not found" };
 
   try {
-    if (project.sshHost) {
-      await installKanvibeHooks(project.repoPath, task.id, project.sshHost);
-      return { success: true, status: await getOpenCodeHooksStatus(project.repoPath, task.id, project.sshHost) };
-    }
-
-    const { kanvibeUrl, authToken } = await getHookInstallConfig(project.sshHost);
-    await setupOpenCodeHooks(project.repoPath, task.id, kanvibeUrl, authToken);
+    await installKanvibeHooks(project.repoPath, task.id, project.sshHost);
     return { success: true, status: await getOpenCodeHooksStatus(project.repoPath, task.id, project.sshHost) };
   } catch (error) {
     return {
@@ -1001,13 +951,7 @@ export async function installTaskOpenCodeHooks(
       return { success: false, error: "Task or project not found" };
     }
 
-    if (hookTarget.sshHost) {
-      await installKanvibeHooks(hookTarget.targetPath, hookTarget.taskId, hookTarget.sshHost);
-      return { success: true, status: await getOpenCodeHooksStatus(hookTarget.targetPath, hookTarget.taskId, hookTarget.sshHost) };
-    }
-
-    const { kanvibeUrl, authToken } = await getHookInstallConfig(task.project.sshHost);
-    await setupOpenCodeHooks(hookTarget.targetPath, hookTarget.taskId, kanvibeUrl, authToken);
+    await installKanvibeHooks(hookTarget.targetPath, hookTarget.taskId, hookTarget.sshHost);
     return { success: true, status: await getOpenCodeHooksStatus(hookTarget.targetPath, hookTarget.taskId, hookTarget.sshHost) };
   } catch (error) {
     return {

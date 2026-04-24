@@ -8,19 +8,42 @@ interface OpenCodeDebugConfig {
   plugin?: unknown;
 }
 
+function normalizePluginEntries(values: unknown): string[] {
+  if (!Array.isArray(values)) {
+    return [];
+  }
+
+  return values.filter((value): value is string => typeof value === "string");
+}
+
+export function extractRegisteredPluginUrls(output: string): string[] {
+  try {
+    const config = JSON.parse(output) as OpenCodeDebugConfig;
+    const pluginEntries = normalizePluginEntries(config.plugin);
+    if (pluginEntries.length > 0) {
+      return pluginEntries;
+    }
+  } catch {
+    // OpenCode debug output can embed invalid JSON in later sections. Fall back to the top-level plugin block.
+  }
+
+  const pluginBlockMatch = output.match(/"plugin"\s*:\s*\[([\s\S]*?)\]\s*,\s*"[^"]+"\s*:/);
+  const pluginBlock = pluginBlockMatch?.[1];
+  if (!pluginBlock) {
+    return [];
+  }
+
+  return Array.from(pluginBlock.matchAll(/"((?:\\.|[^"\\])*)"/g), ([, value]) => JSON.parse(`"${value}"`) as string);
+}
+
 export async function isOpenCodePluginRegistered(repoPath: string, pluginPath: string): Promise<boolean> {
   try {
     const { stdout } = await execFileAsync("opencode", ["debug", "config"], {
       cwd: repoPath,
       maxBuffer: 1024 * 1024,
     });
-    const config = JSON.parse(stdout) as OpenCodeDebugConfig;
-    if (!Array.isArray(config.plugin)) {
-      return false;
-    }
-
     const expectedPluginUrl = pathToFileURL(pluginPath).href;
-    return config.plugin.some((value) => value === expectedPluginUrl);
+    return extractRegisteredPluginUrls(stdout).some((value) => value === expectedPluginUrl);
   } catch {
     return false;
   }
