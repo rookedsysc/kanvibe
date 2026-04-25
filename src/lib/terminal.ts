@@ -1,10 +1,12 @@
 import path from "path";
 import { existsSync } from "fs";
 import { SessionType } from "@/entities/KanbanTask";
+import { PaneLayoutType } from "@/entities/PaneLayoutConfig";
 import { ZELLIJ_LAYOUT_FILENAME } from "@/lib/worktree";
 import { execSync } from "child_process";
 import type { WebSocket } from "ws";
 import { buildSSHArgs } from "@/lib/sshConfig";
+import { buildTmuxSessionBootstrapCommands, type TmuxPaneLayoutConfig } from "@/lib/worktree";
 
 /**
  * 활성 터미널 세션을 관리하는 레지스트리.
@@ -235,6 +237,7 @@ export async function attachRemoteSession(
   cols?: number,
   rows?: number,
   worktreePath?: string | null,
+  tmuxPaneLayout?: TmuxPaneLayoutConfig | null,
 ): Promise<void> {
   const initialCols = cols ?? 120;
   const initialRows = rows ?? 30;
@@ -253,14 +256,8 @@ export async function attachRemoteSession(
   }
 
   const pty = await import("node-pty");
-  const tmuxNewSession = worktreePath
-    ? `tmux new-session -d -s "${sessionName}" -c "${worktreePath}"`
-    : `tmux new-session -d -s "${sessionName}"`;
   const attachCommand = sessionType === SessionType.TMUX
-    ? [
-        `tmux has-session -t "${sessionName}" 2>/dev/null || ${tmuxNewSession}`,
-        `exec tmux attach-session -t "${sessionName}"`,
-      ].join("; ")
+    ? buildRemoteTmuxAttachCommand(sessionName, worktreePath, tmuxPaneLayout)
     : `exec zellij attach "${sessionName}"`;
   const args = buildSSHArgs(sshConfig, { forceTty: true });
 
@@ -314,6 +311,31 @@ export async function attachRemoteSession(
       detachSession(taskId);
     }
   });
+}
+
+function buildRemoteTmuxAttachCommand(
+  sessionName: string,
+  worktreePath?: string | null,
+  tmuxPaneLayout?: TmuxPaneLayoutConfig | null,
+): string {
+  const attachCommand = `exec tmux attach-session -t "${sessionName}"`;
+  const bootstrapCommands = worktreePath
+    ? buildTmuxSessionBootstrapCommands(
+        sessionName,
+        worktreePath,
+        tmuxPaneLayout && tmuxPaneLayout.layoutType !== PaneLayoutType.SINGLE
+          ? tmuxPaneLayout
+          : null,
+      )
+    : [`tmux new-session -d -s "${sessionName}"`];
+
+  return [
+    `if tmux has-session -t "${sessionName}" 2>/dev/null; then`,
+    `  ${attachCommand}`,
+    "fi",
+    ...bootstrapCommands,
+    attachCommand,
+  ].join("; ");
 }
 
 function handleTerminalMessage(ptyProcess: import("node-pty").IPty, data: string): void {

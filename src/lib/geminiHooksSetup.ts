@@ -254,8 +254,7 @@ export async function getGeminiHooksStatus(repoPath: string, taskId?: string, ss
     && hasSettingsEntry
     && hasTaskIdBinding
     && hasStatusMappings
-    && hookServerValidation.hasExpectedHookServerUrl
-    && hookServerValidation.hasReachableHookServer;
+    && hookServerValidation.hasExpectedHookServerUrl;
 
   return {
     installed,

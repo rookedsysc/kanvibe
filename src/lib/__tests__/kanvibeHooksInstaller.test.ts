@@ -11,6 +11,7 @@ const mockGetOpenCodeHooksStatus = vi.fn();
 const mockExecGit = vi.fn();
 const mockGetHookServerUrl = vi.fn();
 const mockGetHookServerToken = vi.fn();
+const mockAddAiToolPatternsToGitExclude = vi.fn();
 
 vi.mock("@/lib/claudeHooksSetup", () => ({
   setupClaudeHooks: (...args: unknown[]) => mockSetupClaudeHooks(...args),
@@ -61,14 +62,22 @@ vi.mock("@/lib/hookEndpoint", () => ({
   getHookServerToken: (...args: unknown[]) => mockGetHookServerToken(...args),
 }));
 
+vi.mock("@/lib/gitExclude", () => ({
+  addAiToolPatternsToGitExclude: (...args: unknown[]) => mockAddAiToolPatternsToGitExclude(...args),
+}));
+
 function extractWrittenContent(calls: unknown[][], filePath: string): string {
-  const targetCall = calls.find(([command]) => typeof command === "string" && command.includes(`> "${filePath}"`));
+  const targetCall = calls.find(([command]) => typeof command === "string"
+    && (command.includes(`> "${filePath}"`) || command.includes(`> '${filePath}'`)));
   if (!targetCall) {
     throw new Error(`write command not found for ${filePath}`);
   }
 
   const command = targetCall[0] as string;
-  const encodedMatch = command.match(/printf '%s' '([^']+)' \|/);
+  const escapedFilePath = filePath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const encodedMatch = command.match(new RegExp(
+    `printf '%s' ['"]([^'"]+)['"] \\| \\(base64 -d 2>/dev/null \\|\\| base64 -D\\) > ['"]${escapedFilePath}['"]`,
+  ));
   if (!encodedMatch) {
     throw new Error(`base64 payload not found for ${filePath}`);
   }
@@ -83,6 +92,7 @@ describe("kanvibeHooksInstaller", () => {
     mockGetHookServerUrl.mockReturnValue("http://192.168.0.8:9736");
     mockGetHookServerToken.mockReturnValue("token-123");
     mockExecGit.mockResolvedValue("");
+    mockAddAiToolPatternsToGitExclude.mockResolvedValue(undefined);
     mockGetClaudeHooksStatus.mockResolvedValue({ installed: true });
     mockGetGeminiHooksStatus.mockResolvedValue({ installed: true });
     mockGetCodexHooksStatus.mockResolvedValue({ installed: true });
@@ -118,6 +128,7 @@ describe("kanvibeHooksInstaller", () => {
     expect(mockSetupClaudeHooks).not.toHaveBeenCalled();
     expect(mockExecGit).toHaveBeenCalled();
     expect(mockGetHookServerUrl).toHaveBeenCalledWith("remote-host");
+    expect(mockAddAiToolPatternsToGitExclude).toHaveBeenCalledWith("/remote/repo", "remote-host");
   });
 
   it("원격 Claude/Gemini stale hook entry도 재설치 시 현재 project 경로로 덮어쓴다", async () => {
@@ -194,7 +205,13 @@ describe("kanvibeHooksInstaller", () => {
 
   it("원격 hook 설치 중 첫 SSH 쓰기가 실패하면 추가 설치를 진행하지 않는다", async () => {
     // Given
-    mockExecGit.mockRejectedValueOnce(new Error("remote host unavailable"));
+    mockExecGit.mockImplementation(async (command: string) => {
+      if (command.includes("printf '%s'")) {
+        throw new Error("remote host unavailable");
+      }
+
+      return "";
+    });
     const { installKanvibeHooks } = await import("@/lib/kanvibeHooksInstaller");
 
     // When
@@ -202,7 +219,7 @@ describe("kanvibeHooksInstaller", () => {
 
     // Then
     await expect(result).rejects.toThrow("remote host unavailable");
-    expect(mockExecGit).toHaveBeenCalledTimes(1);
+    expect(mockExecGit).toHaveBeenCalledTimes(2);
   });
 
   it("로컬 hook 설치 중 하나라도 실패하면 예외를 전파한다", async () => {
@@ -241,5 +258,20 @@ describe("kanvibeHooksInstaller", () => {
       failedChecks: ["hasConfigEntry"],
       targetPath: "/repo",
     }));
+  });
+
+  it("원격 설치는 후속 검증을 기다리지 않고 반환한다", async () => {
+    const pendingVerification = new Promise(() => {});
+    mockGetClaudeHooksStatus.mockReturnValue(pendingVerification);
+    mockGetGeminiHooksStatus.mockReturnValue(pendingVerification);
+    mockGetCodexHooksStatus.mockReturnValue(pendingVerification);
+    mockGetOpenCodeHooksStatus.mockReturnValue(pendingVerification);
+
+    const { installKanvibeHooks } = await import("@/lib/kanvibeHooksInstaller");
+
+    await expect(Promise.race([
+      installKanvibeHooks("/remote/repo", "task-2", "remote-host").then(() => "resolved"),
+      new Promise((resolve) => setTimeout(() => resolve("timed-out"), 50)),
+    ])).resolves.toBe("resolved");
   });
 });

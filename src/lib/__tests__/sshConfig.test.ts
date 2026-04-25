@@ -47,4 +47,15 @@ describe("sshConfig.parseSSHConfig", () => {
       },
     ]);
   });
+
+  it("reuses parsed SSH config on repeated calls", async () => {
+    mocks.readFile.mockResolvedValue(`Host app-prod\n  HostName example.com\n  User tester\n`);
+
+    const { parseSSHConfig } = await import("@/lib/sshConfig");
+
+    await parseSSHConfig();
+    await parseSSHConfig();
+
+    expect(mocks.readFile).toHaveBeenCalledTimes(1);
+  });
 });

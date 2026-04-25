@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { mkdtemp, readFile, rm, writeFile, mkdir } from "fs/promises";
 import { join } from "path";
 import { tmpdir } from "os";
@@ -173,6 +173,21 @@ describe("codexHooksSetup", () => {
         configuredHookServerUrl: "http://localhost:3000",
         expectedHookServerUrl: null,
       });
+    });
+
+    it("should keep installed true when reachability fails but the hook configuration matches", async () => {
+      const repoPath = tempDir;
+      const mockFetch = vi.fn().mockRejectedValue(new Error("connection refused"));
+      vi.stubGlobal("fetch", mockFetch);
+
+      await setupCodexHooks(repoPath, "task-1", "http://localhost:9736");
+      const status = await getCodexHooksStatus(repoPath, "task-1");
+
+      expect(status.installed).toBe(true);
+      expect(status.hasExpectedHookServerUrl).toBe(true);
+      expect(status.hasReachableHookServer).toBe(false);
+
+      vi.unstubAllGlobals();
     });
   });
 });
