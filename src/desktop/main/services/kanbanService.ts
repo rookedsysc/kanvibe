@@ -551,24 +551,25 @@ export async function fetchAndSavePrUrl(taskId: string): Promise<string | null> 
   const task = await repo.findOneBy({ id: taskId });
   if (!task?.branchName) return null;
 
-  let repoPath: string | null = task.worktreePath || null;
+  let repoPath: string | null = null;
   let sshHost: string | null = task.sshHost || null;
   if (task.projectId) {
     const projectRepo = await getProjectRepository();
     const project = await projectRepo.findOneBy({ id: task.projectId });
     if (project) {
-      repoPath = repoPath ?? project.repoPath;
+      repoPath = project.repoPath;
       sshHost = sshHost ?? project.sshHost ?? null;
     }
   }
 
   try {
-    const cwd = repoPath ?? process.cwd();
+    const cwd = repoPath ?? task.worktreePath ?? process.cwd();
     const prUrl = await getPrUrlFromGitHubCli(task.branchName, cwd, sshHost);
 
     if (prUrl) {
       task.prUrl = prUrl;
       await repo.save(task);
+      broadcastBoardUpdate();
       return prUrl;
     }
   } catch (error) {
