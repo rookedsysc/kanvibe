@@ -1,0 +1,121 @@
+export type WindowOpenAction<T> =
+  | {
+      type: "external";
+    }
+  | {
+      type: "open-internal";
+      route: string;
+      outlivesOpener: true;
+    }
+  | {
+      type: "focus-existing";
+      route: string;
+      existingWindow: T;
+    };
+
+interface ResolveWindowOpenActionOptions<T> {
+  targetUrl: string;
+  rendererDevUrl: string | null;
+  openWindows: readonly T[];
+  getWindowUrl: (window: T) => string;
+  excludeWindow?: T | null;
+}
+
+function normalizeInternalRoute(route: string | null | undefined): string | null {
+  if (!route) {
+    return null;
+  }
+
+  if (route.startsWith("/#/")) {
+    return route.slice(2);
+  }
+
+  if (route.startsWith("#/")) {
+    return route.slice(1);
+  }
+
+  if (route.startsWith("/")) {
+    return route;
+  }
+
+  return `/${route}`;
+}
+
+function extractRouteFromParsedUrl(parsedUrl: URL, rendererDevUrl: string | null): string | null {
+  const hashRoute = normalizeInternalRoute(parsedUrl.hash);
+  if (parsedUrl.protocol === "file:") {
+    return hashRoute;
+  }
+
+  if (!rendererDevUrl) {
+    return null;
+  }
+
+  let rendererOrigin: string;
+  try {
+    rendererOrigin = new URL(rendererDevUrl).origin;
+  } catch {
+    return null;
+  }
+
+  if (parsedUrl.origin !== rendererOrigin) {
+    return null;
+  }
+
+  return hashRoute ?? normalizeInternalRoute(parsedUrl.pathname);
+}
+
+export function extractInternalRoute(targetUrl: string, rendererDevUrl: string | null): string | null {
+  if (!targetUrl) {
+    return null;
+  }
+
+  if (targetUrl.startsWith("/")) {
+    return normalizeInternalRoute(targetUrl);
+  }
+
+  if (targetUrl.startsWith("#")) {
+    return normalizeInternalRoute(targetUrl);
+  }
+
+  try {
+    return extractRouteFromParsedUrl(new URL(targetUrl), rendererDevUrl);
+  } catch {
+    return null;
+  }
+}
+
+export function resolveWindowOpenAction<T>({
+  targetUrl,
+  rendererDevUrl,
+  openWindows,
+  getWindowUrl,
+  excludeWindow = null,
+}: ResolveWindowOpenActionOptions<T>): WindowOpenAction<T> {
+  const route = extractInternalRoute(targetUrl, rendererDevUrl);
+  if (!route) {
+    return { type: "external" };
+  }
+
+  const existingWindow = openWindows.find((window) => {
+    if (window === excludeWindow) {
+      return false;
+    }
+
+    return extractInternalRoute(getWindowUrl(window), rendererDevUrl) === route;
+  });
+
+  if (existingWindow) {
+    return {
+      type: "focus-existing",
+      route,
+      existingWindow,
+    };
+  }
+
+  return {
+    type: "open-internal",
+    route,
+    outlivesOpener: true,
+  };
+}

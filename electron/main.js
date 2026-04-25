@@ -32,6 +32,7 @@ app.commandLine.appendSwitch("log-level", "3");
 
 let mainWindow = null;
 let hookServer = null;
+let windowOpenHelpers = null;
 
 function broadcastNotificationsChanged() {
   for (const window of BrowserWindow.getAllWindows()) {
@@ -51,6 +52,14 @@ function getRuntimeModulePath(relativePath) {
   }
 
   return path.join(app.getAppPath(), "build", "main", relativePath.replace(/\.ts$/, ".js"));
+}
+
+function getWindowOpenHelpers() {
+  if (!windowOpenHelpers) {
+    windowOpenHelpers = require(getRuntimeModulePath(path.join("src", "desktop", "main", "windowOpen.ts")));
+  }
+
+  return windowOpenHelpers;
 }
 
 function registerRuntimeAliases() {
@@ -145,23 +154,6 @@ function createBrowserWindowOptions() {
   };
 }
 
-function isKanvibeUrl(targetUrl) {
-  if (targetUrl.startsWith("file://")) {
-    return true;
-  }
-
-  if (!RENDERER_DEV_URL) {
-    return false;
-  }
-
-  try {
-    const parsedUrl = new URL(targetUrl);
-    return parsedUrl.origin === new URL(RENDERER_DEV_URL).origin;
-  } catch {
-    return false;
-  }
-}
-
 function normalizeNotificationLocale(locale) {
   if (typeof locale !== "string") {
     return DEFAULT_LOCALE;
@@ -204,7 +196,45 @@ function createDesktopNotificationOptions() {
   };
 }
 
+function getAvailableWindows() {
+  return BrowserWindow.getAllWindows().filter((window) => !window.isDestroyed());
+}
+
+function focusWindow(window) {
+  if (!window || window.isDestroyed()) {
+    return;
+  }
+
+  if (window.isMinimized()) {
+    window.restore();
+  }
+
+  window.show();
+  window.focus();
+}
+
+function registerAppWindow(browserWindow) {
+  mainWindow = browserWindow;
+  attachWindowHandlers(browserWindow);
+
+  browserWindow.on("focus", () => {
+    if (!browserWindow.isDestroyed()) {
+      mainWindow = browserWindow;
+    }
+  });
+
+  browserWindow.on("closed", () => {
+    if (mainWindow === browserWindow) {
+      mainWindow = getAvailableWindows()[0] || null;
+    }
+  });
+}
+
 async function focusMainWindow(relativePath) {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    mainWindow = getAvailableWindows()[0] || null;
+  }
+
   if (!mainWindow || mainWindow.isDestroyed()) {
     await createMainWindow();
   }
@@ -213,12 +243,7 @@ async function focusMainWindow(relativePath) {
     return;
   }
 
-  if (mainWindow.isMinimized()) {
-    mainWindow.restore();
-  }
-
-  mainWindow.show();
-  mainWindow.focus();
+  focusWindow(mainWindow);
 
   if (!relativePath) {
     return;
@@ -256,9 +281,25 @@ function registerNotificationHandlers() {
 
 function attachWindowHandlers(browserWindow) {
   browserWindow.webContents.setWindowOpenHandler(({ url }) => {
-    if (isKanvibeUrl(url)) {
+    const { resolveWindowOpenAction } = getWindowOpenHelpers();
+    const windowOpenAction = resolveWindowOpenAction({
+      targetUrl: url,
+      rendererDevUrl: RENDERER_DEV_URL,
+      openWindows: getAvailableWindows(),
+      getWindowUrl: (window) => window.webContents.getURL(),
+      excludeWindow: browserWindow,
+    });
+
+    if (windowOpenAction.type === "focus-existing") {
+      mainWindow = windowOpenAction.existingWindow;
+      focusWindow(windowOpenAction.existingWindow);
+      return { action: "deny" };
+    }
+
+    if (windowOpenAction.type === "open-internal") {
       return {
         action: "allow",
+        outlivesOpener: true,
         overrideBrowserWindowOptions: createBrowserWindowOptions(),
       };
     }
@@ -268,7 +309,7 @@ function attachWindowHandlers(browserWindow) {
   });
 
   browserWindow.webContents.on("did-create-window", (childWindow) => {
-    attachWindowHandlers(childWindow);
+    registerAppWindow(childWindow);
   });
 
   browserWindow.webContents.on("before-input-event", (event, input) => {
@@ -408,16 +449,9 @@ async function loadRenderer(window, targetUrl = getRendererNavigationUrl()) {
 
 async function createAppWindow(target = getRendererNavigationUrl()) {
   const browserWindow = new BrowserWindow(createBrowserWindowOptions());
-  mainWindow = browserWindow;
-  attachWindowHandlers(browserWindow);
+  registerAppWindow(browserWindow);
 
   await loadRenderer(browserWindow, getRendererNavigationUrl(target));
-
-  browserWindow.on("closed", () => {
-    if (mainWindow === browserWindow) {
-      mainWindow = null;
-    }
-  });
 
   return browserWindow;
 }
