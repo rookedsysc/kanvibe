@@ -352,11 +352,12 @@ describe("kanbanService.createTask", () => {
     expect(consoleErrorSpy).not.toHaveBeenCalled();
   });
 
-  it("원격 프로젝트는 SSH를 통해 gh CLI로 PR URL을 조회한다", async () => {
+  it("원격 프로젝트는 task의 worktree 경로와 SSH를 사용해 gh CLI로 PR URL을 조회한다", async () => {
     mocks.taskRepo.findOneBy.mockResolvedValue({
       id: "task-6",
       projectId: "project-remote",
       branchName: "feature/remote-pr",
+      worktreePath: "/remote/repo__worktrees/feature-remote-pr",
       sshHost: "remote-host",
       prUrl: null,
     });
@@ -373,7 +374,7 @@ describe("kanbanService.createTask", () => {
     const result = await fetchAndSavePrUrl("task-6");
 
     expect(mocks.execGit).toHaveBeenCalledWith(
-      expect.stringContaining("gh pr list --head"),
+      "cd '/remote/repo__worktrees/feature-remote-pr' && gh pr list --head 'feature/remote-pr' --json url -q '.[0].url'",
       "remote-host",
     );
     expect(mocks.execFile).not.toHaveBeenCalled();
@@ -382,5 +383,35 @@ describe("kanbanService.createTask", () => {
       prUrl: "https://github.com/kanvibe/kanvibe/pull/99",
     }));
     expect(result).toBe("https://github.com/kanvibe/kanvibe/pull/99");
+  });
+
+  it("원격에 gh CLI가 없으면 PR URL 조회를 조용히 건너뛴다", async () => {
+    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    mocks.taskRepo.findOneBy.mockResolvedValue({
+      id: "task-7",
+      projectId: "project-remote",
+      branchName: "feature/no-gh",
+      worktreePath: "/remote/repo__worktrees/feature-no-gh",
+      sshHost: "remote-host",
+      prUrl: null,
+    });
+    mocks.projectRepo.findOneBy.mockResolvedValue({
+      id: "project-remote",
+      repoPath: "/remote/repo",
+      sshHost: "remote-host",
+    });
+    mocks.execGit.mockRejectedValue(new Error("bash: gh: command not found"));
+
+    const { fetchAndSavePrUrl } = await import("@/desktop/main/services/kanbanService");
+
+    const result = await fetchAndSavePrUrl("task-7");
+
+    expect(result).toBeNull();
+    expect(mocks.execGit).toHaveBeenCalledWith(
+      "cd '/remote/repo__worktrees/feature-no-gh' && gh pr list --head 'feature/no-gh' --json url -q '.[0].url'",
+      "remote-host",
+    );
+    expect(mocks.taskRepo.save).not.toHaveBeenCalled();
+    expect(consoleErrorSpy).not.toHaveBeenCalled();
   });
 });

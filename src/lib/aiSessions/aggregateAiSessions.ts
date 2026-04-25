@@ -1,16 +1,17 @@
-import { createAggregationResult, sortSessionsDescending, toSourceStatus } from "@/lib/aiSessions/shared";
+import { isSSHTransportError } from "@/lib/gitOperations";
+import { createAggregationResult, createReaderResult, sortSessionsDescending, toSourceStatus } from "@/lib/aiSessions/shared";
 import { readClaudeSessionDetail, readClaudeSessions } from "@/lib/aiSessions/readClaudeSessions";
 import { readCodexSessionDetail, readCodexSessions } from "@/lib/aiSessions/readCodexSessions";
 import { readGeminiSessionDetail, readGeminiSessions } from "@/lib/aiSessions/readGeminiSessions";
 import { readOpenCodeSessionDetail, readOpenCodeSessions } from "@/lib/aiSessions/readOpenCodeSessions";
-import type { AggregatedAiSessionsResult, AiSessionDetailReaderResult, AiSessionProvider, AiSessionReaderContext } from "@/lib/aiSessions/types";
+import type { AggregatedAiSessionsResult, AiSessionDetailReaderResult, AiSessionProvider, AiSessionReaderContext, AiSessionReaderResult } from "@/lib/aiSessions/types";
 
 export async function aggregateAiSessions(context: AiSessionReaderContext): Promise<AggregatedAiSessionsResult> {
   const [claude, codex, openCode, gemini] = await Promise.all([
-    readClaudeSessions(context),
-    readCodexSessions(context),
-    readOpenCodeSessions(context),
-    readGeminiSessions(context),
+    readReaderSafely("claude", context, readClaudeSessions),
+    readReaderSafely("codex", context, readCodexSessions),
+    readReaderSafely("opencode", context, readOpenCodeSessions),
+    readReaderSafely("gemini", context, readGeminiSessions),
   ]);
 
   let allSessions = [...claude.sessions, ...codex.sessions, ...openCode.sessions, ...gemini.sessions];
@@ -32,6 +33,27 @@ export async function aggregateAiSessions(context: AiSessionReaderContext): Prom
     sessions: sortSessionsDescending(allSessions),
     sources: [claude, codex, openCode, gemini].map(toSourceStatus),
   });
+}
+
+async function readReaderSafely(
+  provider: AiSessionProvider,
+  context: AiSessionReaderContext,
+  reader: (context: AiSessionReaderContext) => Promise<AiSessionReaderResult>,
+): Promise<AiSessionReaderResult> {
+  try {
+    return await reader(context);
+  } catch (error) {
+    if (context.sshHost && isSSHTransportError(error)) {
+      return createReaderResult(provider, {
+        available: false,
+        sessionCount: 0,
+        sessions: [],
+        reason: `SSH connection to ${context.sshHost} is unavailable`,
+      });
+    }
+
+    throw error;
+  }
 }
 
 export async function getAiSessionDetail(

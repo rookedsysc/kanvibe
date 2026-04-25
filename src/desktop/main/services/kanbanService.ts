@@ -558,7 +558,7 @@ export async function fetchAndSavePrUrl(taskId: string): Promise<string | null> 
     const project = await projectRepo.findOneBy({ id: task.projectId });
     if (project) {
       repoPath = repoPath ?? project.repoPath;
-      sshHost = project.sshHost;
+      sshHost = sshHost ?? project.sshHost ?? null;
     }
   }
 
