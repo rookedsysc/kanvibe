@@ -7,6 +7,7 @@ import { createWorktreeWithSession, removeWorktreeAndBranch, createSessionWithou
 import { getProjectRepository } from "@/lib/database";
 import { broadcastBoardUpdate, broadcastTaskHookInstallFailed } from "@/lib/boardNotifier";
 import { installKanvibeHooks } from "@/lib/kanvibeHooksInstaller";
+import { execGit } from "@/lib/gitOperations";
 
 export type TasksByStatus = Record<TaskStatus, KanbanTask[]>;
 
@@ -29,15 +30,20 @@ function serialize<T>(data: T): T {
 }
 
 function isMissingGitHubCli(error: unknown): boolean {
-  if (!error || typeof error !== "object") {
-    return false;
+  if (error && typeof error === "object" && "code" in error && (error as { code?: string }).code === "ENOENT") {
+    return true;
   }
 
-  return "code" in error && (error as { code?: string }).code === "ENOENT";
+  const message = error instanceof Error ? error.message : String(error ?? "");
+  return /(?:^|\s)gh:.*not found/i.test(message) || /command not found.*\bgh\b/i.test(message);
 }
 
 function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function quoteForShell(value: string): string {
+  return `'${value.replace(/'/g, `'"'"'`)}'`;
 }
 
 function scheduleTaskHookInstall(
@@ -65,7 +71,23 @@ function scheduleTaskHookInstall(
   }, 0);
 }
 
-async function getPrUrlFromGitHubCli(branchName: string, cwd: string): Promise<string | null> {
+async function getPrUrlFromGitHubCli(branchName: string, cwd: string, sshHost?: string | null): Promise<string | null> {
+  if (sshHost) {
+    try {
+      const output = await execGit(
+        `cd ${quoteForShell(cwd)} && gh pr list --head ${quoteForShell(branchName)} --json url -q '.[0].url'`,
+        sshHost,
+      );
+      return output.trim() || null;
+    } catch (error) {
+      if (isMissingGitHubCli(error)) {
+        return null;
+      }
+
+      throw error;
+    }
+  }
+
   return new Promise((resolve, reject) => {
     execFile(
       "gh",
@@ -529,16 +551,20 @@ export async function fetchAndSavePrUrl(taskId: string): Promise<string | null> 
   const task = await repo.findOneBy({ id: taskId });
   if (!task?.branchName) return null;
 
-  let repoPath: string | null = null;
+  let repoPath: string | null = task.worktreePath || null;
+  let sshHost: string | null = task.sshHost || null;
   if (task.projectId) {
     const projectRepo = await getProjectRepository();
     const project = await projectRepo.findOneBy({ id: task.projectId });
-    if (project) repoPath = project.repoPath;
+    if (project) {
+      repoPath = repoPath ?? project.repoPath;
+      sshHost = project.sshHost;
+    }
   }
 
   try {
     const cwd = repoPath ?? process.cwd();
-    const prUrl = await getPrUrlFromGitHubCli(task.branchName, cwd);
+    const prUrl = await getPrUrlFromGitHubCli(task.branchName, cwd, sshHost);
 
     if (prUrl) {
       task.prUrl = prUrl;

@@ -16,6 +16,7 @@ const mocks = vi.hoisted(() => ({
   removeSessionOnly: vi.fn(),
   installKanvibeHooks: vi.fn(),
   broadcastBoardUpdate: vi.fn(),
+  execGit: vi.fn(),
   broadcastTaskHookInstallFailed: vi.fn(),
 }));
 
@@ -60,6 +61,10 @@ vi.mock("@/lib/kanvibeHooksInstaller", () => ({
 vi.mock("@/lib/boardNotifier", () => ({
   broadcastBoardUpdate: mocks.broadcastBoardUpdate,
   broadcastTaskHookInstallFailed: mocks.broadcastTaskHookInstallFailed,
+}));
+
+vi.mock("@/lib/gitOperations", () => ({
+  execGit: mocks.execGit,
 }));
 
 describe("kanbanService.createTask", () => {
@@ -345,5 +350,37 @@ describe("kanbanService.createTask", () => {
     expect(result).toBeNull();
     expect(mocks.taskRepo.save).not.toHaveBeenCalled();
     expect(consoleErrorSpy).not.toHaveBeenCalled();
+  });
+
+  it("원격 프로젝트는 SSH를 통해 gh CLI로 PR URL을 조회한다", async () => {
+    mocks.taskRepo.findOneBy.mockResolvedValue({
+      id: "task-6",
+      projectId: "project-remote",
+      branchName: "feature/remote-pr",
+      sshHost: "remote-host",
+      prUrl: null,
+    });
+    mocks.projectRepo.findOneBy.mockResolvedValue({
+      id: "project-remote",
+      repoPath: "/remote/repo",
+      sshHost: "remote-host",
+    });
+    mocks.taskRepo.save.mockImplementation(async (value) => value);
+    mocks.execGit.mockResolvedValue("https://github.com/kanvibe/kanvibe/pull/99");
+
+    const { fetchAndSavePrUrl } = await import("@/desktop/main/services/kanbanService");
+
+    const result = await fetchAndSavePrUrl("task-6");
+
+    expect(mocks.execGit).toHaveBeenCalledWith(
+      expect.stringContaining("gh pr list --head"),
+      "remote-host",
+    );
+    expect(mocks.execFile).not.toHaveBeenCalled();
+    expect(mocks.taskRepo.save).toHaveBeenCalledWith(expect.objectContaining({
+      id: "task-6",
+      prUrl: "https://github.com/kanvibe/kanvibe/pull/99",
+    }));
+    expect(result).toBe("https://github.com/kanvibe/kanvibe/pull/99");
   });
 });
