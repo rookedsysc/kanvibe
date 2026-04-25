@@ -6,10 +6,6 @@ import { parseSSHConfig } from "@/lib/sshConfig";
 
 export const KANVIBE_HOOK_SERVER_PORT = 9736;
 
-export function getHookServerToken(): string {
-  return process.env.KANVIBE_HOOK_TOKEN || "";
-}
-
 export function getLocalHookServerUrl(): string {
   return `http://localhost:${KANVIBE_HOOK_SERVER_PORT}`;
 }

@@ -2,7 +2,6 @@ import { writeFile, mkdir } from "fs/promises";
 import path from "path";
 import { pathToFileURL } from "node:url";
 import { addAiToolPatternsToGitExclude } from "@/lib/gitExclude";
-import { buildFetchAuthHeaders } from "@/lib/hookAuth";
 import { pathExists, readTextFile } from "@/lib/hostFileAccess";
 import { extractPluginHookServerUrl, validateHookServerConfiguration } from "@/lib/hookServerStatus";
 import { getOpenCodeRegisteredKanvibePluginUrls } from "@/lib/openCodePluginRegistry";
@@ -17,7 +16,7 @@ export const PLUGIN_FILE_NAME = "kanvibe-plugin.ts";
 export const PLUGIN_DIR_NAME = "plugins";
 
 /** OpenCode plugin TypeScript 파일 내용을 생성한다 */
-export function generatePluginScript(kanvibeUrl: string, taskId: string, authToken?: string): string {
+export function generatePluginScript(kanvibeUrl: string, taskId: string): string {
   return `import type { Plugin } from "@opencode-ai/plugin";
 
 /**
@@ -80,7 +79,7 @@ export const KanvibePlugin: Plugin = async ({ client }) => {
     try {
       await fetch(\`\${KANVIBE_URL}/api/hooks/status\`, {
         method: "POST",
-        headers: ${buildFetchAuthHeaders(authToken)},
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ taskId: TASK_ID, status }),
       });
       if (sessionID) {
@@ -201,7 +200,6 @@ export async function setupOpenCodeHooks(
   repoPath: string,
   taskId: string,
   kanvibeUrl: string,
-  authToken?: string,
 ): Promise<void> {
   const openCodeDir = path.join(repoPath, ".opencode");
   const pluginsDir = path.join(openCodeDir, PLUGIN_DIR_NAME);
@@ -209,7 +207,7 @@ export async function setupOpenCodeHooks(
   await mkdir(pluginsDir, { recursive: true });
 
   const pluginPath = path.join(pluginsDir, PLUGIN_FILE_NAME);
-  await writeFile(pluginPath, generatePluginScript(kanvibeUrl, taskId, authToken), "utf-8");
+  await writeFile(pluginPath, generatePluginScript(kanvibeUrl, taskId), "utf-8");
 
   try {
     await addAiToolPatternsToGitExclude(repoPath);

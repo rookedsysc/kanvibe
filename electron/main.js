@@ -3,7 +3,6 @@ const http = require("node:http");
 const Module = require("node:module");
 const path = require("node:path");
 const process = require("node:process");
-const crypto = require("node:crypto");
 const { pathToFileURL } = require("node:url");
 const { app, BrowserWindow, ipcMain, session, shell } = require("electron");
 
@@ -82,7 +81,6 @@ function ensureRuntimeEnvironment() {
   process.chdir(appRoot);
   process.env.KANVIBE_DESKTOP = "true";
   process.env.KANVIBE_HOST = HOOK_SERVER_HOST;
-  process.env.KANVIBE_HOOK_TOKEN = process.env.KANVIBE_HOOK_TOKEN || crypto.randomUUID();
   process.env.PORT = String(HOOK_SERVER_PORT);
   process.env.KANVIBE_APP_DATA_DIR = app.getPath("userData");
   process.env.KANVIBE_SEED_DB_PATH = app.isPackaged

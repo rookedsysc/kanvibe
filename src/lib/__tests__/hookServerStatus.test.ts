@@ -1,9 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { mockExecGit, mockGetHookServerUrl, mockGetHookServerToken, mockFetch, mockIsSSHTransportError } = vi.hoisted(() => ({
+const { mockExecGit, mockGetHookServerUrl, mockFetch, mockIsSSHTransportError } = vi.hoisted(() => ({
   mockExecGit: vi.fn(),
   mockGetHookServerUrl: vi.fn(),
-  mockGetHookServerToken: vi.fn(),
   mockFetch: vi.fn(),
   mockIsSSHTransportError: vi.fn((error: unknown) => /Connection reset/i.test(String(error))),
 }));
@@ -15,14 +14,12 @@ vi.mock("@/lib/gitOperations", () => ({
 
 vi.mock("@/lib/hookEndpoint", () => ({
   getHookServerUrl: (...args: unknown[]) => mockGetHookServerUrl(...args),
-  getHookServerToken: (...args: unknown[]) => mockGetHookServerToken(...args),
 }));
 
 describe("hookServerStatus", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockGetHookServerUrl.mockResolvedValue("http://localhost:9736");
-    mockGetHookServerToken.mockReturnValue("desktop-hook-token");
     mockExecGit.mockResolvedValue("");
     mockFetch.mockResolvedValue({ ok: true });
     mockIsSSHTransportError.mockImplementation((error: unknown) => /Connection reset/i.test(String(error)));
