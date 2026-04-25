@@ -413,8 +413,7 @@ export async function getCodexHooksStatus(repoPath: string, taskId?: string, ssh
     && hasConfigEntry
     && hasTaskIdBinding
     && hasStatusMappings
-    && hookServerValidation.hasExpectedHookServerUrl
-    && hookServerValidation.hasReachableHookServer;
+    && hookServerValidation.hasExpectedHookServerUrl;
 
   return {
     installed,

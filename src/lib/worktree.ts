@@ -11,6 +11,11 @@ interface WorktreeSession {
   sessionName: string;
 }
 
+export interface TmuxPaneLayoutConfig {
+  layoutType: PaneLayoutType;
+  panes: PaneCommand[];
+}
+
 /** branchName을 세션 이름으로 변환한다. `/`를 `-`로 치환한다 */
 export function formatSessionName(projectName: string, branchName: string): string {
   return `${projectName}-${branchName}`.replace(/\//g, "-");
@@ -40,28 +45,18 @@ function buildTmuxCreateSessionCommand(sessionName: string, workingDir: string):
   return `tmux new-session -d -s "${sessionName}" -c "${workingDir}"`;
 }
 
-async function createTmuxSession(
-  sessionName: string,
-  workingDir: string,
-  sshHost?: string | null,
-): Promise<void> {
-  await execGit(buildTmuxCreateSessionCommand(sessionName, workingDir), sshHost);
+function buildTmuxTarget(sessionName: string): string {
+  return `"${sessionName}":0`;
 }
 
-
-/**
- * tmux 세션에 pane 레이아웃을 적용하고 각 pane에 시작 명령어를 실행한다.
- * 분할 실패 시에도 기본 window는 유지된다 (graceful fallback).
- */
-async function applyPaneLayout(
+export function buildTmuxPaneLayoutCommands(
   sessionName: string,
   layoutType: PaneLayoutType,
   panes: PaneCommand[],
   worktreePath: string,
-): Promise<void> {
-  const target = `"${sessionName}":0`;
+): string[] {
+  const target = buildTmuxTarget(sessionName);
 
-  /** 레이아웃 타입에 따른 tmux split 명령어 시퀀스 */
   const splitCommands: Record<PaneLayoutType, string[]> = {
     [PaneLayoutType.SINGLE]: [],
     [PaneLayoutType.HORIZONTAL_2]: [
@@ -85,18 +80,58 @@ async function applyPaneLayout(
     ],
   };
 
-  const commands = splitCommands[layoutType];
-  for (const cmd of commands) {
-    await execGit(cmd);
-  }
+  const sendKeysCommands = panes
+    .filter((pane) => pane.command.trim())
+    .map((pane) => (
+      `tmux send-keys -t ${target}.${pane.position} "${pane.command}" Enter`
+    ));
 
-  /** 각 pane에 시작 명령어 전송 */
-  for (const pane of panes) {
-    if (pane.command.trim()) {
-      await execGit(
-        `tmux send-keys -t ${target}.${pane.position} "${pane.command}" Enter`,
-      );
-    }
+  return [
+    ...splitCommands[layoutType],
+    ...sendKeysCommands,
+  ];
+}
+
+export function buildTmuxSessionBootstrapCommands(
+  sessionName: string,
+  workingDir: string,
+  paneLayout?: TmuxPaneLayoutConfig | null,
+): string[] {
+  return [
+    buildTmuxCreateSessionCommand(sessionName, workingDir),
+    ...(paneLayout && paneLayout.layoutType !== PaneLayoutType.SINGLE
+      ? buildTmuxPaneLayoutCommands(
+          sessionName,
+          paneLayout.layoutType,
+          paneLayout.panes,
+          workingDir,
+        )
+      : []),
+  ];
+}
+
+async function createTmuxSession(
+  sessionName: string,
+  workingDir: string,
+  sshHost?: string | null,
+): Promise<void> {
+  await execGit(buildTmuxCreateSessionCommand(sessionName, workingDir), sshHost);
+}
+
+
+/**
+ * tmux 세션에 pane 레이아웃을 적용하고 각 pane에 시작 명령어를 실행한다.
+ * 분할 실패 시에도 기본 window는 유지된다 (graceful fallback).
+ */
+async function applyPaneLayout(
+  sessionName: string,
+  layoutType: PaneLayoutType,
+  panes: PaneCommand[],
+  worktreePath: string,
+  sshHost?: string | null,
+): Promise<void> {
+  for (const command of buildTmuxPaneLayoutCommands(sessionName, layoutType, panes, worktreePath)) {
+    await execGit(command, sshHost);
   }
 }
 

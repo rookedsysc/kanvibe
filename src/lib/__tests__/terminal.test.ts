@@ -4,6 +4,7 @@
 import path from "path";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { SessionType } from "@/entities/KanbanTask";
+import { PaneLayoutType } from "@/entities/PaneLayoutConfig";
 
 // --- Mocks ---
 
@@ -375,6 +376,45 @@ describe("attachRemoteSession — ssh 바이너리 기반 연결", () => {
     );
     expect(mockPtyWrite).toHaveBeenCalledWith(
       expect.stringContaining('tmux new-session -d -s "remote-session" -c "/remote/worktree"'),
+    );
+  });
+
+  it("should apply tmux pane layout commands when creating a remote session", async () => {
+    const { attachRemoteSession } = await import("@/lib/terminal");
+
+    await attachRemoteSession(
+      "task-r2",
+      "remote-host",
+      SessionType.TMUX,
+      "remote-session",
+      createMockWs(),
+      {
+        host: "remote-host",
+        hostname: "example.com",
+        port: 2202,
+        username: "tester",
+        privateKeyPath: "/tmp/test-key",
+      },
+      120,
+      30,
+      "/remote/worktree",
+      {
+        layoutType: PaneLayoutType.VERTICAL_2,
+        panes: [
+          { position: 0, command: "pnpm dev" },
+          { position: 1, command: "pnpm test" },
+        ],
+      },
+    );
+
+    expect(mockPtyWrite).toHaveBeenCalledWith(
+      expect.stringContaining('tmux split-window -h -t "remote-session":0 -c "/remote/worktree"'),
+    );
+    expect(mockPtyWrite).toHaveBeenCalledWith(
+      expect.stringContaining('tmux send-keys -t "remote-session":0.0 "pnpm dev" Enter'),
+    );
+    expect(mockPtyWrite).toHaveBeenCalledWith(
+      expect.stringContaining('tmux send-keys -t "remote-session":0.1 "pnpm test" Enter'),
     );
   });
 });

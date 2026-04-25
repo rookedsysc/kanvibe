@@ -405,9 +405,12 @@ export async function registerProject(
   const saved = await repo.save(project);
   try {
     await ensureProjectRootTask(saved, {
-      repairHooks: true,
+      repairHooks: !saved.sshHost,
       throwOnHookRepairFailure: false,
     });
+    if (saved.sshHost) {
+      scheduleProjectRootHookRepair(saved);
+    }
   } catch (error) {
     await repo.remove(saved);
     return {
@@ -494,11 +497,12 @@ export async function scanAndRegisterProjects(
       result.registered.push(projectName);
 
       let defaultTask = null;
+      const shouldRepairHooksSynchronously = !saved.sshHost;
 
       /** 기본 브랜치 태스크 생성 실패는 프로젝트 등록 결과에 영향을 주지 않는다 */
       try {
         const ensured = await ensureProjectRootTask(saved, {
-          repairHooks: true,
+          repairHooks: shouldRepairHooksSynchronously,
           throwOnHookRepairFailure: false,
         });
         defaultTask = ensured.task;
@@ -514,8 +518,11 @@ export async function scanAndRegisterProjects(
       }
 
       /** 기본 브랜치 작업이 준비되면 hooks가 보장된다 */
-      if (defaultTask) {
+      if (defaultTask && shouldRepairHooksSynchronously) {
         result.hooksSetup.push(projectName);
+      }
+      if (saved.sshHost) {
+        scheduleProjectRootHookRepair(saved);
       }
     } catch (error) {
       result.errors.push(
@@ -532,12 +539,16 @@ export async function scanAndRegisterProjects(
 
   for (const project of scannedProjects) {
     try {
+      const shouldRepairHooksSynchronously = !project.sshHost;
       const { repaired } = await ensureProjectRootTask(project, {
-        repairHooks: true,
+        repairHooks: shouldRepairHooksSynchronously,
         throwOnHookRepairFailure: false,
       });
-      if (repaired && !result.hooksSetup.includes(project.name)) {
+      if (shouldRepairHooksSynchronously && repaired && !result.hooksSetup.includes(project.name)) {
         result.hooksSetup.push(project.name);
+      }
+      if (project.sshHost) {
+        scheduleProjectRootHookRepair(project);
       }
 
       const worktrees = await listWorktrees(project.repoPath, project.sshHost);

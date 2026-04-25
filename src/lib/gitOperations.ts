@@ -1,6 +1,6 @@
 import { exec, execFile } from "child_process";
 import { promisify } from "util";
-import { readFile } from "fs/promises";
+import { mkdir, readFile } from "fs/promises";
 import { homedir } from "os";
 import path from "path";
 import { buildSSHArgs, type SSHHostConfig } from "@/lib/sshConfig";
@@ -98,7 +98,7 @@ async function execRemote(sshHost: string, command: string): Promise<string> {
   }
 
   const sshArgs = [
-    ...buildSSHArgs(hostConfig, { disableTty: true }),
+    ...await buildExecSSHArgs(hostConfig),
     buildRemoteShellCommand(command),
   ];
 
@@ -123,6 +123,29 @@ async function execRemote(sshHost: string, command: string): Promise<string> {
 
     throw normalizeSSHExecError(error, sshHost);
   }
+}
+
+async function buildExecSSHArgs(
+  hostConfig: SSHHostConfig,
+): Promise<string[]> {
+  const args = buildSSHArgs(hostConfig, { disableTty: true });
+  if (process.platform === "win32") {
+    return args;
+  }
+
+  const controlPath = path.join(homedir(), ".kanvibe", "ssh-%C");
+  await mkdir(path.dirname(controlPath), { recursive: true });
+
+  return [
+    ...args.slice(0, -1),
+    "-o",
+    "ControlMaster=auto",
+    "-o",
+    "ControlPersist=60",
+    "-o",
+    `ControlPath=${controlPath}`,
+    args.at(-1)!,
+  ];
 }
 
 function buildRemoteShellCommand(command: string): string {
