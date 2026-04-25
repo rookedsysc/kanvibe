@@ -131,6 +131,20 @@ describe("kanvibeHooksInstaller", () => {
     expect(mockAddAiToolPatternsToGitExclude).toHaveBeenCalledWith("/remote/repo", "remote-host");
   });
 
+  it("원격 프로젝트면 hooks 파일 설치 전에 git exclude도 함께 갱신한다", async () => {
+    // Given
+    const { installKanvibeHooks } = await import("@/lib/kanvibeHooksInstaller");
+
+    // When
+    await installKanvibeHooks("/remote/repo", "task-2", "remote-host");
+
+    // Then
+    expect(mockAddAiToolPatternsToGitExclude).toHaveBeenCalledWith("/remote/repo", "remote-host");
+    expect(mockAddAiToolPatternsToGitExclude.mock.invocationCallOrder[0]).toBeLessThan(
+      mockExecGit.mock.invocationCallOrder[0],
+    );
+  });
+
   it("원격 Claude/Gemini stale hook entry도 재설치 시 현재 project 경로로 덮어쓴다", async () => {
     mockExecGit.mockImplementation(async (command: string) => {
       if (command.includes('cat "/remote/repo/.claude/settings.json"')) {

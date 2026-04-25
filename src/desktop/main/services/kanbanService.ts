@@ -246,15 +246,19 @@ export async function createTask(input: CreateTaskInput): Promise<KanbanTask> {
 
   const saved = await repo.save(task);
 
-  broadcastBoardUpdate();
-
   if (shouldInstallHooks && hookTargetPath) {
-    scheduleTaskHookInstall(hookTargetPath, {
-      id: saved.id,
-      title: saved.title,
-      sshHost: saved.sshHost,
-    });
+    if (saved.sshHost) {
+      await installKanvibeHooks(hookTargetPath, saved.id, saved.sshHost);
+    } else {
+      scheduleTaskHookInstall(hookTargetPath, {
+        id: saved.id,
+        title: saved.title,
+        sshHost: saved.sshHost,
+      });
+    }
   }
+
+  broadcastBoardUpdate();
 
   return serialize(saved);
 }
