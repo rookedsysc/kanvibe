@@ -9,6 +9,10 @@ export interface HookServerValidation {
   configuredHookServerUrl: string | null;
 }
 
+const HOOK_SERVER_CACHE_TTL_MS = process.env.VITEST ? 0 : 5_000;
+const expectedHookServerUrlCache = new Map<string, { expiresAt: number; value: Promise<string> }>();
+const hookServerReachabilityCache = new Map<string, { expiresAt: number; value: Promise<boolean> }>();
+
 export function extractShellHookServerUrl(content: string): string | null {
   const matched = content.match(/^KANVIBE_URL="([^"]+)"/m);
   return matched?.[1] ?? null;
@@ -47,7 +51,11 @@ export async function validateHookServerConfiguration(
 
   let expectedHookServerUrl: string | null = null;
   try {
-    expectedHookServerUrl = await getHookServerUrl(sshHost);
+    expectedHookServerUrl = await getCachedValue(
+      expectedHookServerUrlCache,
+      sshHost ?? "local",
+      () => getHookServerUrl(sshHost),
+    );
   } catch {
     return {
       hasExpectedHookServerUrl: false,
@@ -72,7 +80,14 @@ export async function validateHookServerConfiguration(
 
 async function isHookServerReachable(baseUrl: string, sshHost?: string | null): Promise<boolean> {
   const healthCheckUrl = new URL("/api/hooks/health", ensureTrailingSlash(baseUrl)).toString();
+  return getCachedValue(
+    hookServerReachabilityCache,
+    `${sshHost ?? "local"}:${healthCheckUrl}`,
+    () => performHookServerReachabilityCheck(healthCheckUrl, sshHost),
+  );
+}
 
+async function performHookServerReachabilityCheck(healthCheckUrl: string, sshHost?: string | null): Promise<boolean> {
   if (!sshHost) {
     try {
       const response = await fetch(healthCheckUrl, {
@@ -100,6 +115,31 @@ async function isHookServerReachable(baseUrl: string, sshHost?: string | null): 
       return true;
     }
     return false;
+  }
+}
+
+async function getCachedValue<T>(
+  cache: Map<string, { expiresAt: number; value: Promise<T> }>,
+  key: string,
+  loader: () => Promise<T>,
+): Promise<T> {
+  const now = Date.now();
+  const cached = cache.get(key);
+  if (cached && cached.expiresAt > now) {
+    return cached.value;
+  }
+
+  const value = loader();
+  cache.set(key, {
+    expiresAt: now + HOOK_SERVER_CACHE_TTL_MS,
+    value,
+  });
+
+  try {
+    return await value;
+  } catch (error) {
+    cache.delete(key);
+    throw error;
   }
 }
 

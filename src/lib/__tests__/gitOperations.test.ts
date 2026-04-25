@@ -4,6 +4,7 @@ const mocks = vi.hoisted(() => ({
   homedir: vi.fn(() => "/home/local-user"),
   exec: vi.fn(),
   execFile: vi.fn(),
+  mkdir: vi.fn(async () => undefined),
 }));
 
 vi.mock("child_process", () => ({
@@ -20,6 +21,15 @@ vi.mock("os", () => ({
     homedir: mocks.homedir,
   },
   homedir: mocks.homedir,
+}));
+
+vi.mock("fs/promises", () => ({
+  default: {
+    mkdir: mocks.mkdir,
+    readFile: vi.fn(),
+  },
+  mkdir: mocks.mkdir,
+  readFile: vi.fn(),
 }));
 
 describe("gitOperations.resolvePathForShell", () => {
@@ -76,22 +86,38 @@ describe("gitOperations.resolvePathForShell", () => {
     const result = await execGit("pwd", "remote-host");
 
     // Then
+    const expectedArgs = [
+      "-i",
+      "/tmp/test-key",
+      "-p",
+      "2202",
+      "-o",
+      "BatchMode=yes",
+      "-o",
+      "IdentitiesOnly=yes",
+      "-T",
+    ];
+
+    if (process.platform !== "win32") {
+      expectedArgs.push(
+        "-o",
+        "ControlMaster=auto",
+        "-o",
+        "ControlPersist=60",
+        "-o",
+        "ControlPath=/home/local-user/.kanvibe/ssh-%C",
+      );
+    }
+
+    expectedArgs.push(
+      "remote-host",
+      "sh -lc 'pwd'",
+    );
+
     expect(result).toBe("ok");
     expect(mocks.execFile).toHaveBeenCalledWith(
       "ssh",
-      [
-        "-i",
-        "/tmp/test-key",
-        "-p",
-        "2202",
-        "-o",
-        "BatchMode=yes",
-        "-o",
-        "IdentitiesOnly=yes",
-        "-T",
-        "remote-host",
-        "sh -lc 'pwd'",
-      ],
+      expectedArgs,
       expect.objectContaining({ maxBuffer: 10 * 1024 * 1024 }),
       expect.any(Function),
     );

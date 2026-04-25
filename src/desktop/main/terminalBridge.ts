@@ -5,6 +5,7 @@ import { SessionType } from "@/entities/KanbanTask";
 import { attachLocalSession, attachRemoteSession, focusSession } from "@/lib/terminal";
 import { parseSSHConfig } from "@/lib/sshConfig";
 import { ensureRemoteSessionDependency } from "@/lib/remoteSessionDependency";
+import { getEffectivePaneLayout } from "@/desktop/main/services/paneLayoutService";
 
 const OPEN = 1;
 const CLOSED = 3;
@@ -106,6 +107,10 @@ export async function openTerminal(
         return { ok: false, error: `SSH 호스트를 찾을 수 없습니다: ${task.sshHost}` };
       }
 
+      const tmuxPaneLayout = task.sessionType === SessionType.TMUX
+        ? await getEffectivePaneLayout(task.projectId ?? undefined)
+        : null;
+
       await attachRemoteSession(
         taskId,
         task.sshHost,
@@ -116,6 +121,7 @@ export async function openTerminal(
         cols,
         rows,
         task.worktreePath,
+        tmuxPaneLayout,
       );
     } else {
       await attachLocalSession(

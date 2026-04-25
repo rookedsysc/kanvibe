@@ -10,6 +10,11 @@ export interface SSHHostConfig {
   privateKeyPath: string;
 }
 
+const SSH_CONFIG_CACHE_TTL_MS = 5000;
+let cachedHosts: SSHHostConfig[] | null = null;
+let cacheExpiresAt = 0;
+let inFlightParse: Promise<SSHHostConfig[]> | null = null;
+
 export function getSSHDestination(config: Pick<SSHHostConfig, "host" | "hostname" | "username">): string {
   if (config.host) {
     return config.host;
@@ -51,53 +56,74 @@ export function buildSSHArgs(
  * Host, HostName, User, IdentityFile, Port 필드를 추출한다.
  */
 export async function parseSSHConfig(): Promise<SSHHostConfig[]> {
+  const now = Date.now();
+  if (cachedHosts && cacheExpiresAt > now) {
+    return cachedHosts;
+  }
+
+  if (inFlightParse) {
+    return inFlightParse;
+  }
+
   const configPath = path.join(homedir(), ".ssh", "config");
 
-  let content: string;
-  try {
-    content = await readFile(configPath, "utf-8");
-  } catch {
-    return [];
-  }
+  inFlightParse = (async () => {
+    let content: string;
+    try {
+      content = await readFile(configPath, "utf-8");
+    } catch {
+      cachedHosts = [];
+      cacheExpiresAt = Date.now() + SSH_CONFIG_CACHE_TTL_MS;
+      return [];
+    }
 
-  const hosts: SSHHostConfig[] = [];
-  let current: (Partial<SSHHostConfig> & { aliases?: string[] }) | null = null;
+    const hosts: SSHHostConfig[] = [];
+    let current: (Partial<SSHHostConfig> & { aliases?: string[] }) | null = null;
 
-  for (const rawLine of content.split("\n")) {
-    const line = rawLine.trim();
-    if (!line || line.startsWith("#")) continue;
+    for (const rawLine of content.split("\n")) {
+      const line = rawLine.trim();
+      if (!line || line.startsWith("#")) continue;
 
-    const [key, ...valueParts] = line.split(/\s+/);
-    const value = valueParts.join(" ");
+      const [key, ...valueParts] = line.split(/\s+/);
+      const value = valueParts.join(" ");
 
-    if (key.toLowerCase() === "host") {
-      if (current?.aliases?.length && current.hostname) {
-        hosts.push(...expandHostAliases(current));
-      }
-      current = { aliases: valueParts };
-    } else if (current) {
-      switch (key.toLowerCase()) {
-        case "hostname":
-          current.hostname = value;
-          break;
-        case "user":
-          current.username = value;
-          break;
-        case "port":
-          current.port = parseInt(value, 10);
-          break;
-        case "identityfile":
-          current.privateKeyPath = value.replace("~", homedir());
-          break;
+      if (key.toLowerCase() === "host") {
+        if (current?.aliases?.length && current.hostname) {
+          hosts.push(...expandHostAliases(current));
+        }
+        current = { aliases: valueParts };
+      } else if (current) {
+        switch (key.toLowerCase()) {
+          case "hostname":
+            current.hostname = value;
+            break;
+          case "user":
+            current.username = value;
+            break;
+          case "port":
+            current.port = parseInt(value, 10);
+            break;
+          case "identityfile":
+            current.privateKeyPath = value.replace("~", homedir());
+            break;
+        }
       }
     }
-  }
 
-  if (current?.aliases?.length && current.hostname) {
-    hosts.push(...expandHostAliases(current));
-  }
+    if (current?.aliases?.length && current.hostname) {
+      hosts.push(...expandHostAliases(current));
+    }
 
-  return hosts;
+    cachedHosts = hosts;
+    cacheExpiresAt = Date.now() + SSH_CONFIG_CACHE_TTL_MS;
+    return hosts;
+  })();
+
+  try {
+    return await inFlightParse;
+  } finally {
+    inFlightParse = null;
+  }
 }
 
 function fillDefaults(partial: Partial<SSHHostConfig>): SSHHostConfig {

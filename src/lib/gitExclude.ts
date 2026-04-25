@@ -1,9 +1,6 @@
-import { exec } from "child_process";
-import { promisify } from "util";
-import { readFile, writeFile, mkdir } from "fs/promises";
-import path from "path";
-
-const execAsync = promisify(exec);
+import path from "node:path";
+import { execGit } from "@/lib/gitOperations";
+import { quoteShellArgument, readTextFile, writeTextFile } from "@/lib/hostFileAccess";
 
 const MARKER = "# KanVibe AI hooks (auto-generated)";
 
@@ -19,40 +16,37 @@ const EXCLUDE_PATTERNS = [
 ];
 
 /**
- * AI 코딩 도구의 hooks 설정 파일을 .git/info/excluded에 추가하여 git tracking에서 제외한다.
- * 마커 블록을 사용해 멱등성을 보장하며, 실패해도 예외를 던지지 않는다.
+ * AI 코딩 도구의 hooks 설정 파일을 git common dir의 info/exclude에 추가하여
+ * 모든 worktree에서 공통으로 git tracking에서 제외한다.
+ * 마커 블록을 사용해 멱등성을 보장하며, 원격 저장소도 지원한다.
  * @param repoPath - worktree 또는 저장소 경로
  */
 export async function addAiToolPatternsToGitExclude(
-  repoPath: string
+  repoPath: string,
+  sshHost?: string | null,
 ): Promise<void> {
-  const { stdout } = await execAsync("git rev-parse --git-dir", {
-    cwd: repoPath,
-  });
-  const gitDir = stdout.trim();
-  const absoluteGitDir = path.isAbsolute(gitDir)
-    ? gitDir
-    : path.join(repoPath, gitDir);
+  const gitCommonDir = (await execGit(
+    `git -C ${quoteShellArgument(repoPath)} rev-parse --path-format=absolute --git-common-dir`,
+    sshHost,
+  )).trim();
 
-  const infoDir = path.join(absoluteGitDir, "info");
-  await mkdir(infoDir, { recursive: true });
-
-  const excludedPath = path.join(infoDir, "exclude");
-
-  let content = "";
-  try {
-    content = await readFile(excludedPath, "utf-8");
-  } catch {
-    /* 파일이 없으면 새로 생성 */
+  if (!gitCommonDir) {
+    throw new Error(`git common dir를 확인할 수 없습니다: ${repoPath}`);
   }
 
-  if (content.includes(MARKER)) return;
+  const excludePath = sshHost
+    ? path.posix.join(gitCommonDir, "info", "exclude")
+    : path.join(gitCommonDir, "info", "exclude");
 
-  const block = [
-    "",
-    MARKER,
-    ...EXCLUDE_PATTERNS,
-  ].join("\n") + "\n";
+  const content = await readTextFile(excludePath, sshHost);
+  if (content.includes(MARKER)) {
+    return;
+  }
 
-  await writeFile(excludedPath, content.trimEnd() + "\n" + block, "utf-8");
+  const markerBlock = [MARKER, ...EXCLUDE_PATTERNS].join("\n");
+  const nextContent = content.trimEnd().length > 0
+    ? `${content.trimEnd()}\n\n${markerBlock}\n`
+    : `${markerBlock}\n`;
+
+  await writeTextFile(excludePath, nextContent, sshHost);
 }
