@@ -3,6 +3,7 @@ import Board from "@/components/Board";
 import { getDoneAlertDismissed, getDefaultSessionType, getNotificationSettings, getSidebarDefaultCollapsed } from "@/desktop/renderer/actions/appSettings";
 import { getTasksByStatus } from "@/desktop/renderer/actions/kanban";
 import { getAllProjects, getAvailableHosts } from "@/desktop/renderer/actions/project";
+import { buildRouteCacheKey, readRouteCache, writeRouteCache } from "@/desktop/renderer/utils/routeCache";
 import { useRefreshSignal } from "@/desktop/renderer/utils/refresh";
 
 interface BoardData {
@@ -15,9 +16,11 @@ interface BoardData {
   defaultSessionType: Awaited<ReturnType<typeof getDefaultSessionType>>;
 }
 
+const BOARD_ROUTE_CACHE_KEY = buildRouteCacheKey("board");
+
 export default function BoardRoute() {
   const refreshSignal = useRefreshSignal(["all", "board"]);
-  const [data, setData] = useState<BoardData | null>(null);
+  const [data, setData] = useState<BoardData | null>(() => readRouteCache<BoardData>(BOARD_ROUTE_CACHE_KEY));
 
   useEffect(() => {
     document.title = "";
@@ -36,7 +39,7 @@ export default function BoardRoute() {
       getDefaultSessionType(),
     ]).then(([tasks, sshHosts, projects, sidebarDefaultCollapsed, doneAlertDismissed, notificationSettings, defaultSessionType]) => {
       if (!cancelled) {
-        setData({
+        const nextData = {
           tasks,
           sshHosts,
           projects,
@@ -44,7 +47,10 @@ export default function BoardRoute() {
           doneAlertDismissed,
           notificationSettings,
           defaultSessionType,
-        });
+        };
+
+        writeRouteCache(BOARD_ROUTE_CACHE_KEY, nextData);
+        setData(nextData);
       }
     });
 

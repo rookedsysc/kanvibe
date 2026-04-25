@@ -23,6 +23,7 @@ import {
 } from "@/desktop/renderer/actions/project";
 import TerminalLoader from "@/desktop/renderer/components/TerminalLoader";
 import { fetchPrUrlWithPrompt } from "@/desktop/renderer/utils/fetchPrUrlWithPrompt";
+import { buildRouteCacheKey, readRouteCache, removeRouteCache, writeRouteCache } from "@/desktop/renderer/utils/routeCache";
 import { useRefreshSignal } from "@/desktop/renderer/utils/refresh";
 import { TaskStatus } from "@/entities/KanbanTask";
 
@@ -74,13 +75,21 @@ const DEFAULT_DETAIL_STATE: Omit<TaskDetailState, "task"> = {
   doneAlertDismissed: false,
 };
 
+function getTaskDetailRouteCacheKey(taskId: string) {
+  return buildRouteCacheKey("task-detail", taskId);
+}
+
 export default function TaskDetailRoute() {
   const { id = "" } = useParams();
   const router = useRouter();
   const t = useTranslations("taskDetail");
   const tc = useTranslations("common");
   const refreshSignal = useRefreshSignal(["all", "task-detail"]);
-  const [state, setState] = useState<TaskDetailState | null | undefined>(undefined);
+  const cachedState = useMemo(
+    () => (id ? readRouteCache<TaskDetailState>(getTaskDetailRouteCacheKey(id)) : null),
+    [id],
+  );
+  const [state, setState] = useState<TaskDetailState | null | undefined>(cachedState ?? undefined);
   const [needsMacDesktopHeaderOffset, setNeedsMacDesktopHeaderOffset] = useState(false);
 
   useEffect(() => {
@@ -88,6 +97,34 @@ export default function TaskDetailRoute() {
     const isMacDesktop = navigator.userAgent.includes("Mac") || navigator.platform.toLowerCase().includes("mac");
     setNeedsMacDesktopHeaderOffset(isDesktopApp && isMacDesktop);
   }, []);
+
+  useEffect(() => {
+    setState(cachedState ?? undefined);
+  }, [cachedState, id]);
+
+  useEffect(() => {
+    if (!state || state === null) {
+      return;
+    }
+
+    document.title = [state.task.branchName, state.task.project?.name].filter(Boolean).join(" - ");
+  }, [state]);
+
+  useEffect(() => {
+    if (!id) {
+      return;
+    }
+
+    const cacheKey = getTaskDetailRouteCacheKey(id);
+    if (state === null) {
+      removeRouteCache(cacheKey);
+      return;
+    }
+
+    if (state !== undefined) {
+      writeRouteCache(cacheKey, state);
+    }
+  }, [id, state]);
 
   useEffect(() => {
     let cancelled = false;
@@ -105,11 +142,18 @@ export default function TaskDetailRoute() {
         return;
       }
 
-      document.title = [task.branchName, task.project?.name].filter(Boolean).join(" - ");
-      setState({
-        task,
-        ...DEFAULT_DETAIL_STATE,
-      });
+      setState((current) => current && current.task.id === task.id
+        ? {
+            ...current,
+            task: {
+              ...current.task,
+              ...task,
+            },
+          }
+        : {
+            task,
+            ...DEFAULT_DETAIL_STATE,
+          });
 
       if (task.branchName && !task.prUrl) {
         void (async () => {

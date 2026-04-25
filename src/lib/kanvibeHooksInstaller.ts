@@ -21,6 +21,7 @@ import {
 } from "@/lib/codexHooksSetup";
 import { setupOpenCodeHooks, getOpenCodeHooksStatus, generatePluginScript, PLUGIN_DIR_NAME, PLUGIN_FILE_NAME, type OpenCodeHooksStatus } from "@/lib/openCodeHooksSetup";
 import { getHookServerToken, getHookServerUrl } from "@/lib/hookEndpoint";
+import { addAiToolPatternsToGitExcludeRemote } from "@/lib/gitExclude";
 
 export async function installKanvibeHooks(
   targetPath: string,
@@ -29,6 +30,10 @@ export async function installKanvibeHooks(
 ): Promise<void> {
   const hookServerUrl = await getHookServerUrl(sshHost);
   const hookServerToken = getHookServerToken();
+
+  if (sshHost) {
+    await addAiToolPatternsToGitExcludeRemote(targetPath, sshHost);
+  }
 
   const installers = [
     {

@@ -120,6 +120,20 @@ describe("kanvibeHooksInstaller", () => {
     expect(mockGetHookServerUrl).toHaveBeenCalledWith("remote-host");
   });
 
+  it("원격 프로젝트면 hooks 파일 설치 전에 git exclude도 함께 갱신한다", async () => {
+    // Given
+    const { installKanvibeHooks } = await import("@/lib/kanvibeHooksInstaller");
+
+    // When
+    await installKanvibeHooks("/remote/repo", "task-2", "remote-host");
+
+    // Then
+    expect(mockExecGit).toHaveBeenCalledWith(
+      expect.stringContaining('git -C "/remote/repo" rev-parse --path-format=absolute --git-common-dir'),
+      "remote-host",
+    );
+  });
+
   it("원격 Claude/Gemini stale hook entry도 재설치 시 현재 project 경로로 덮어쓴다", async () => {
     mockExecGit.mockImplementation(async (command: string) => {
       if (command.includes('cat "/remote/repo/.claude/settings.json"')) {
@@ -202,7 +216,7 @@ describe("kanvibeHooksInstaller", () => {
 
     // Then
     await expect(result).rejects.toThrow("remote host unavailable");
-    expect(mockExecGit).toHaveBeenCalledTimes(1);
+    expect(mockExecGit).toHaveBeenCalledTimes(2);
   });
 
   it("로컬 hook 설치 중 하나라도 실패하면 예외를 전파한다", async () => {
