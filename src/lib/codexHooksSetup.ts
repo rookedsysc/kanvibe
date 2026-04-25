@@ -7,40 +7,107 @@ import { extractShellHookServerUrl, validateHookServerConfiguration } from "@/li
 import { buildShellTaskIdResolver, extractShellTaskId } from "@/lib/hookTaskBinding";
 
 /**
- * Codex CLI는 현재 notify 설정의 agent-turn-complete 이벤트만 지원한다.
- * config.toml에 notify 명령을 등록하고, hook 스크립트를 생성한다.
+ * Codex CLI 최신 hooks 설정은 `.codex/config.toml`의 feature flag와
+ * `.codex/hooks.json` 조합을 사용한다.
  */
 
-/** notify hook bash 스크립트를 생성한다 (agent-turn-complete → REVIEW) */
-export function generateNotifyHookScript(kanvibeUrl: string, taskId: string, authToken?: string): string {
+interface CodexHooksFile {
+  hooks?: Record<string, unknown[]>;
+  [key: string]: unknown;
+}
+
+interface HookEntry {
+  hooks: { type: string; command: string; timeout: number }[];
+}
+
+interface MatcherHookEntry extends HookEntry {
+  matcher: string;
+}
+
+export const CONFIG_FILE_NAME = "config.toml";
+export const HOOKS_FILE_NAME = "hooks.json";
+export const PROMPT_HOOK_SCRIPT_NAME = "kanvibe-prompt-hook.sh";
+export const PERMISSION_HOOK_SCRIPT_NAME = "kanvibe-permission-hook.sh";
+export const PRE_TOOL_HOOK_SCRIPT_NAME = "kanvibe-pre-tool-hook.sh";
+export const STOP_HOOK_SCRIPT_NAME = "kanvibe-stop-hook.sh";
+
+const CODEX_PROMPT_COMMAND = `bash "$(git rev-parse --show-toplevel)/.codex/hooks/${PROMPT_HOOK_SCRIPT_NAME}"`;
+const CODEX_PERMISSION_COMMAND = `bash "$(git rev-parse --show-toplevel)/.codex/hooks/${PERMISSION_HOOK_SCRIPT_NAME}"`;
+const CODEX_PRE_TOOL_COMMAND = `bash "$(git rev-parse --show-toplevel)/.codex/hooks/${PRE_TOOL_HOOK_SCRIPT_NAME}"`;
+const CODEX_STOP_COMMAND = `bash "$(git rev-parse --show-toplevel)/.codex/hooks/${STOP_HOOK_SCRIPT_NAME}"`;
+
+function generateStatusHookScript(
+  eventLabel: string,
+  description: string,
+  status: "progress" | "pending" | "review",
+  kanvibeUrl: string,
+  taskId: string,
+  authToken?: string,
+): string {
   return `#!/bin/bash
 
-# KanVibe Codex CLI Hook: notify (agent-turn-complete)
-# Codex 응답이 완료되면 현재 task를 REVIEW로 변경한다.
-# Codex notify 스크립트는 첫 번째 인자로 JSON payload를 받는다.
+# KanVibe Codex Hook: ${eventLabel}
+# ${description}
 
 KANVIBE_URL="${kanvibeUrl}"
 ${buildShellTaskIdResolver(taskId)}
 
-JSON_PAYLOAD="$1"
-
-# agent-turn-complete 이벤트만 처리
-EVENT_TYPE=$(echo "$JSON_PAYLOAD" | grep -o '"type":"[^"]*"' | head -1 | cut -d'"' -f4)
-if [ "$EVENT_TYPE" != "agent-turn-complete" ]; then
-  exit 0
-fi
-
 curl -s -X POST "\${KANVIBE_URL}/api/hooks/status" \\
   -H "Content-Type: application/json" \\
-${buildCurlAuthHeader(authToken)}  -d "{\\"taskId\\": \\\"\${TASK_ID}\\\", \\\"status\\\": \\\"review\\\"}" \\
+${buildCurlAuthHeader(authToken)}  -d "{\\"taskId\\": \\\"\${TASK_ID}\\\", \\\"status\\\": \\\"${status}\\\"}" \\
   > /dev/null 2>&1
 
 exit 0
 `;
 }
 
-export const HOOK_SCRIPT_NAME = "kanvibe-notify-hook.sh";
-export const CONFIG_FILE_NAME = "config.toml";
+/** UserPromptSubmit hook bash 스크립트를 생성한다 */
+export function generatePromptHookScript(kanvibeUrl: string, taskId: string, authToken?: string): string {
+  return generateStatusHookScript(
+    "UserPromptSubmit",
+    "사용자가 prompt를 입력하면 현재 task를 PROGRESS로 변경한다.",
+    "progress",
+    kanvibeUrl,
+    taskId,
+    authToken,
+  );
+}
+
+/** PermissionRequest(Bash) hook bash 스크립트를 생성한다 */
+export function generatePermissionHookScript(kanvibeUrl: string, taskId: string, authToken?: string): string {
+  return generateStatusHookScript(
+    "PermissionRequest(Bash)",
+    "Codex가 Bash 실행 승인을 요청하면 현재 task를 PENDING으로 변경한다.",
+    "pending",
+    kanvibeUrl,
+    taskId,
+    authToken,
+  );
+}
+
+/** PreToolUse(Bash) hook bash 스크립트를 생성한다 */
+export function generatePreToolHookScript(kanvibeUrl: string, taskId: string, authToken?: string): string {
+  return generateStatusHookScript(
+    "PreToolUse(Bash)",
+    "Codex가 Bash 실행을 재개하면 현재 task를 PROGRESS로 변경한다.",
+    "progress",
+    kanvibeUrl,
+    taskId,
+    authToken,
+  );
+}
+
+/** Stop hook bash 스크립트를 생성한다 */
+export function generateStopHookScript(kanvibeUrl: string, taskId: string, authToken?: string): string {
+  return generateStatusHookScript(
+    "Stop",
+    "Codex 응답이 완료되면 현재 task를 REVIEW로 변경한다.",
+    "review",
+    kanvibeUrl,
+    taskId,
+    authToken,
+  );
+}
 
 function hasTaskIdPayloadBinding(content: string, taskId?: string): boolean {
   const boundTaskId = extractShellTaskId(content);
@@ -54,26 +121,167 @@ function hasTaskIdPayloadBinding(content: string, taskId?: string): boolean {
   return boundTaskId === taskId;
 }
 
-function hasLegacyBranchPayloadBinding(content: string): boolean {
-  return content.includes('BRANCH_NAME=$(git rev-parse --abbrev-ref HEAD')
-    && content.includes('PROJECT_NAME="')
-    && content.includes('\\\"branchName\\\": \\\"${BRANCH_NAME}\\\"')
-    && content.includes('\\\"projectName\\\": \\\"${PROJECT_NAME}\\\"');
+function parseHooksJson(content: string): CodexHooksFile {
+  if (!content) {
+    return {};
+  }
+
+  try {
+    return JSON.parse(content) as CodexHooksFile;
+  } catch {
+    return {};
+  }
 }
 
-/** 기존 config.toml 내용을 읽거나 빈 문자열을 반환한다 */
-async function readConfigToml(configPath: string, sshHost?: string | null): Promise<string> {
-  return readTextFile(configPath, sshHost);
+function hasCommandHook(hookEntries: unknown[], command: string): boolean {
+  if (!Array.isArray(hookEntries)) return false;
+  return hookEntries.some((entry) => {
+    const typed = entry as HookEntry;
+    return typed.hooks?.some((hook) => hook.type === "command" && hook.command === command);
+  });
 }
 
-/** config.toml에 kanvibe notify hook이 등록되어 있는지 확인한다 */
-function hasKanvibeNotify(configContent: string): boolean {
-  return /^notify\s*=\s*\["\.codex\/hooks\/kanvibe-notify-hook\.sh"\]$/m.test(configContent);
+function hasMatcherCommandHook(hookEntries: unknown[], matcher: string, command: string): boolean {
+  if (!Array.isArray(hookEntries)) return false;
+  return hookEntries.some((entry) => {
+    const typed = entry as MatcherHookEntry;
+    return typed.matcher === matcher && typed.hooks?.some((hook) => hook.type === "command" && hook.command === command);
+  });
+}
+
+function referencesScriptName(entry: unknown, scriptName: string): boolean {
+  return JSON.stringify(entry).includes(scriptName);
+}
+
+function upsertHookEntries<T>(hookEntries: unknown[] | undefined, scriptName: string, nextEntry: T): T[] {
+  const preservedEntries = Array.isArray(hookEntries)
+    ? hookEntries.filter((entry) => !referencesScriptName(entry, scriptName)) as T[]
+    : [];
+  preservedEntries.push(nextEntry);
+  return preservedEntries;
+}
+
+function isSectionHeader(line: string): boolean {
+  return /^\s*\[[^\]]+\]\s*$/.test(line);
+}
+
+function findFeaturesSection(lines: string[]) {
+  const start = lines.findIndex((line) => /^\s*\[features\]\s*$/.test(line));
+  if (start === -1) {
+    return null;
+  }
+
+  let end = lines.length;
+  for (let index = start + 1; index < lines.length; index += 1) {
+    if (isSectionHeader(lines[index])) {
+      end = index;
+      break;
+    }
+  }
+
+  return { start, end };
+}
+
+function stripLegacyKanvibeNotify(configContent: string): string {
+  return configContent.replace(/^notify\s*=\s*\["\.codex\/hooks\/kanvibe-notify-hook\.sh"\]\s*\n?/gm, "");
+}
+
+export function upsertCodexConfigToml(configContent: string): string {
+  const normalized = stripLegacyKanvibeNotify(configContent).replace(/\r\n/g, "\n").trimEnd();
+  const lines = normalized.length > 0 ? normalized.split("\n") : [];
+  const featuresSection = findFeaturesSection(lines);
+
+  if (!featuresSection) {
+    const prefix = normalized.length > 0 ? `${normalized}\n\n` : "";
+    return `${prefix}[features]\ncodex_hooks = true\n`;
+  }
+
+  const flagIndex = lines.findIndex(
+    (line, index) => index > featuresSection.start
+      && index < featuresSection.end
+      && /^\s*codex_hooks\s*=/.test(line),
+  );
+
+  if (flagIndex !== -1) {
+    lines[flagIndex] = "codex_hooks = true";
+  } else {
+    lines.splice(featuresSection.end, 0, "codex_hooks = true");
+  }
+
+  return `${lines.join("\n").trimEnd()}\n`;
+}
+
+function hasCodexFeatureFlag(configContent: string): boolean {
+  const normalized = configContent.replace(/\r\n/g, "\n");
+  const lines = normalized.length > 0 ? normalized.split("\n") : [];
+  const featuresSection = findFeaturesSection(lines);
+  if (!featuresSection) {
+    return false;
+  }
+
+  return lines.some(
+    (line, index) => index > featuresSection.start
+      && index < featuresSection.end
+      && /^\s*codex_hooks\s*=\s*true\s*$/.test(line),
+  );
+}
+
+export function upsertCodexHooksJson(hooksContent: string): string {
+  const settings = parseHooksJson(hooksContent);
+  if (!settings.hooks) {
+    settings.hooks = {};
+  }
+
+  const hooks = settings.hooks as Record<string, unknown[]>;
+
+  hooks.UserPromptSubmit = upsertHookEntries<HookEntry>(hooks.UserPromptSubmit, PROMPT_HOOK_SCRIPT_NAME, {
+    hooks: [
+      {
+        type: "command",
+        command: CODEX_PROMPT_COMMAND,
+        timeout: 10,
+      },
+    ],
+  });
+
+  hooks.PermissionRequest = upsertHookEntries<MatcherHookEntry>(hooks.PermissionRequest, PERMISSION_HOOK_SCRIPT_NAME, {
+    matcher: "Bash",
+    hooks: [
+      {
+        type: "command",
+        command: CODEX_PERMISSION_COMMAND,
+        timeout: 10,
+      },
+    ],
+  });
+
+  hooks.PreToolUse = upsertHookEntries<MatcherHookEntry>(hooks.PreToolUse, PRE_TOOL_HOOK_SCRIPT_NAME, {
+    matcher: "Bash",
+    hooks: [
+      {
+        type: "command",
+        command: CODEX_PRE_TOOL_COMMAND,
+        timeout: 10,
+      },
+    ],
+  });
+
+  hooks.Stop = upsertHookEntries<HookEntry>(hooks.Stop, STOP_HOOK_SCRIPT_NAME, {
+    hooks: [
+      {
+        type: "command",
+        command: CODEX_STOP_COMMAND,
+        timeout: 10,
+      },
+    ],
+  });
+
+  return `${JSON.stringify(settings, null, 2)}\n`;
 }
 
 /**
  * 지정된 repo에 Codex CLI hooks를 설정한다.
- * config.toml의 notify 설정에 hook 스크립트를 등록한다.
+ * 기존 config.toml / hooks.json이 있으면 KanVibe 관련 항목만 갱신하고 나머지는 보존한다.
  */
 export async function setupCodexHooks(
   repoPath: string,
@@ -84,29 +292,29 @@ export async function setupCodexHooks(
   const codexDir = path.join(repoPath, ".codex");
   const hooksDir = path.join(codexDir, "hooks");
   const configPath = path.join(codexDir, CONFIG_FILE_NAME);
+  const hooksFilePath = path.join(codexDir, HOOKS_FILE_NAME);
 
   await mkdir(hooksDir, { recursive: true });
 
-  const notifyScriptPath = path.join(hooksDir, HOOK_SCRIPT_NAME);
-  await writeFile(notifyScriptPath, generateNotifyHookScript(kanvibeUrl, taskId, authToken), "utf-8");
-  await chmod(notifyScriptPath, 0o755);
+  const promptScriptPath = path.join(hooksDir, PROMPT_HOOK_SCRIPT_NAME);
+  const permissionScriptPath = path.join(hooksDir, PERMISSION_HOOK_SCRIPT_NAME);
+  const preToolScriptPath = path.join(hooksDir, PRE_TOOL_HOOK_SCRIPT_NAME);
+  const stopScriptPath = path.join(hooksDir, STOP_HOOK_SCRIPT_NAME);
 
-  const configContent = await readConfigToml(configPath);
+  await writeFile(promptScriptPath, generatePromptHookScript(kanvibeUrl, taskId, authToken), "utf-8");
+  await writeFile(permissionScriptPath, generatePermissionHookScript(kanvibeUrl, taskId, authToken), "utf-8");
+  await writeFile(preToolScriptPath, generatePreToolHookScript(kanvibeUrl, taskId, authToken), "utf-8");
+  await writeFile(stopScriptPath, generateStopHookScript(kanvibeUrl, taskId, authToken), "utf-8");
+  await chmod(promptScriptPath, 0o755);
+  await chmod(permissionScriptPath, 0o755);
+  await chmod(preToolScriptPath, 0o755);
+  await chmod(stopScriptPath, 0o755);
 
-  if (!hasKanvibeNotify(configContent)) {
-    const notifyLine = `notify = [".codex/hooks/${HOOK_SCRIPT_NAME}"]\n`;
+  const configContent = await readTextFile(configPath);
+  await writeFile(configPath, upsertCodexConfigToml(configContent), "utf-8");
 
-    if (configContent.trim().length === 0) {
-      await writeFile(configPath, notifyLine, "utf-8");
-    } else {
-      if (/^notify\s*=/m.test(configContent)) {
-        const updated = configContent.replace(/^notify\s*=.*$/m, `notify = [".codex/hooks/${HOOK_SCRIPT_NAME}"]`);
-        await writeFile(configPath, updated, "utf-8");
-      } else {
-        await writeFile(configPath, configContent.trimEnd() + "\n" + notifyLine, "utf-8");
-      }
-    }
-  }
+  const hooksContent = await readTextFile(hooksFilePath);
+  await writeFile(hooksFilePath, upsertCodexHooksJson(hooksContent), "utf-8");
 
   try {
     await addAiToolPatternsToGitExclude(repoPath);
@@ -117,11 +325,15 @@ export async function setupCodexHooks(
 
 export interface CodexHooksStatus {
   installed: boolean;
-  hasNotifyHook: boolean;
+  hasPromptHook: boolean;
+  hasPermissionHook: boolean;
+  hasPreToolHook: boolean;
+  hasStopHook: boolean;
+  hasHooksFile: boolean;
+  hasHookEntries: boolean;
   hasConfigEntry: boolean;
   hasTaskIdBinding?: boolean;
-  hasReviewStatus?: boolean;
-  hasAgentTurnCompleteFilter?: boolean;
+  hasStatusMappings?: boolean;
   hasExpectedHookServerUrl?: boolean;
   hasReachableHookServer?: boolean;
   boundTaskId?: string | null;
@@ -135,46 +347,86 @@ export async function getCodexHooksStatus(repoPath: string, taskId?: string, ssh
   const codexDir = pathModule.join(repoPath, ".codex");
   const hooksDir = pathModule.join(codexDir, "hooks");
   const configPath = pathModule.join(codexDir, CONFIG_FILE_NAME);
-  const notifyScriptPath = pathModule.join(hooksDir, HOOK_SCRIPT_NAME);
+  const hooksFilePath = pathModule.join(codexDir, HOOKS_FILE_NAME);
+  const promptScriptPath = pathModule.join(hooksDir, PROMPT_HOOK_SCRIPT_NAME);
+  const permissionScriptPath = pathModule.join(hooksDir, PERMISSION_HOOK_SCRIPT_NAME);
+  const preToolScriptPath = pathModule.join(hooksDir, PRE_TOOL_HOOK_SCRIPT_NAME);
+  const stopScriptPath = pathModule.join(hooksDir, STOP_HOOK_SCRIPT_NAME);
 
-  const notifyScriptExists = await pathExists(notifyScriptPath, sshHost);
+  const [
+    promptScriptExists,
+    permissionScriptExists,
+    preToolScriptExists,
+    stopScriptExists,
+    hooksFileExists,
+  ] = await Promise.all([
+    pathExists(promptScriptPath, sshHost),
+    pathExists(permissionScriptPath, sshHost),
+    pathExists(preToolScriptPath, sshHost),
+    pathExists(stopScriptPath, sshHost),
+    pathExists(hooksFilePath, sshHost),
+  ]);
 
-  const notifyContent = notifyScriptExists
-    ? await readTextFile(notifyScriptPath, sshHost)
-    : "";
-  const boundTaskId = extractShellTaskId(notifyContent);
-  const hasTaskIdBinding = hasTaskIdPayloadBinding(notifyContent, taskId);
-  const hasReviewStatus = notifyContent.includes('\\\"status\\\": \\\"review\\\"');
-  const hasAgentTurnCompleteFilter = notifyContent.includes("EVENT_TYPE") && notifyContent.includes("agent-turn-complete");
+  const [
+    promptContent,
+    permissionContent,
+    preToolContent,
+    stopContent,
+    hooksContent,
+    configContent,
+  ] = await Promise.all([
+    promptScriptExists ? readTextFile(promptScriptPath, sshHost) : Promise.resolve(""),
+    permissionScriptExists ? readTextFile(permissionScriptPath, sshHost) : Promise.resolve(""),
+    preToolScriptExists ? readTextFile(preToolScriptPath, sshHost) : Promise.resolve(""),
+    stopScriptExists ? readTextFile(stopScriptPath, sshHost) : Promise.resolve(""),
+    hooksFileExists ? readTextFile(hooksFilePath, sshHost) : Promise.resolve(""),
+    readTextFile(configPath, sshHost),
+  ]);
+
+  const hookScripts = [promptContent, permissionContent, preToolContent, stopContent];
+  const boundTaskId = hookScripts.map((content) => extractShellTaskId(content)).find((value) => value !== null) ?? null;
+  const hasTaskIdBinding = hookScripts.every((content) => hasTaskIdPayloadBinding(content, taskId));
+  const hasStatusMappings = promptContent.includes('\\\"status\\\": \\\"progress\\\"')
+    && permissionContent.includes('\\\"status\\\": \\\"pending\\\"')
+    && preToolContent.includes('\\\"status\\\": \\\"progress\\\"')
+    && stopContent.includes('\\\"status\\\": \\\"review\\\"');
   const hookServerValidation = await validateHookServerConfiguration(
-    [extractShellHookServerUrl(notifyContent)],
+    hookScripts.map((content) => extractShellHookServerUrl(content)),
     Boolean(taskId),
     sshHost,
   );
 
-  let hasConfigEntry = false;
-  try {
-    const configContent = await readConfigToml(configPath, sshHost);
-    hasConfigEntry = hasKanvibeNotify(configContent);
-  } catch {
-    /* config.toml 없음 */
-  }
+  const settings = parseHooksJson(hooksContent);
+  const hooks = settings.hooks || {};
+  const hasHookEntries = hasCommandHook(hooks.UserPromptSubmit || [], CODEX_PROMPT_COMMAND)
+    && hasMatcherCommandHook(hooks.PermissionRequest || [], "Bash", CODEX_PERMISSION_COMMAND)
+    && hasMatcherCommandHook(hooks.PreToolUse || [], "Bash", CODEX_PRE_TOOL_COMMAND)
+    && hasCommandHook(hooks.Stop || [], CODEX_STOP_COMMAND);
+  const hasConfigEntry = hasCodexFeatureFlag(configContent);
 
-  const installed = notifyScriptExists
+  const installed = promptScriptExists
+    && permissionScriptExists
+    && preToolScriptExists
+    && stopScriptExists
+    && hooksFileExists
+    && hasHookEntries
     && hasConfigEntry
     && hasTaskIdBinding
-    && hasReviewStatus
-    && hasAgentTurnCompleteFilter
+    && hasStatusMappings
     && hookServerValidation.hasExpectedHookServerUrl
     && hookServerValidation.hasReachableHookServer;
 
   return {
     installed,
-    hasNotifyHook: notifyScriptExists,
+    hasPromptHook: promptScriptExists,
+    hasPermissionHook: permissionScriptExists,
+    hasPreToolHook: preToolScriptExists,
+    hasStopHook: stopScriptExists,
+    hasHooksFile: hooksFileExists,
+    hasHookEntries,
     hasConfigEntry,
     hasTaskIdBinding,
-    hasReviewStatus,
-    hasAgentTurnCompleteFilter,
+    hasStatusMappings,
     hasExpectedHookServerUrl: hookServerValidation.hasExpectedHookServerUrl,
     hasReachableHookServer: hookServerValidation.hasReachableHookServer,
     boundTaskId,

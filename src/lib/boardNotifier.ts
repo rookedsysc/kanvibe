@@ -19,10 +19,17 @@ export interface HookStatusTargetMissingPayload {
   reason: "task-not-found";
 }
 
+export interface TaskHookInstallFailedPayload {
+  taskId: string;
+  taskTitle: string;
+  error: string;
+}
+
 export type BoardEventPayload =
   | BoardUpdatedPayload
   | ({ type: "task-status-changed" } & TaskStatusChangedPayload)
-  | ({ type: "hook-status-target-missing" } & HookStatusTargetMissingPayload);
+  | ({ type: "hook-status-target-missing" } & HookStatusTargetMissingPayload)
+  | ({ type: "task-hook-install-failed" } & TaskHookInstallFailedPayload);
 
 const boardEventEmitter = new EventEmitter();
 
@@ -52,4 +59,9 @@ export function broadcastTaskStatusChanged(payload: TaskStatusChangedPayload) {
 /** hooks 대상 조회 실패 시 미매칭 상황을 브로드캐스트한다 */
 export function broadcastHookStatusTargetMissing(payload: HookStatusTargetMissingPayload) {
   emitBoardEvent({ type: "hook-status-target-missing", ...payload });
+}
+
+/** 새 태스크 생성 후 hooks 자동 설치가 실패하면 렌더러에 안내를 브로드캐스트한다 */
+export function broadcastTaskHookInstallFailed(payload: TaskHookInstallFailedPayload) {
+  emitBoardEvent({ type: "task-hook-install-failed", ...payload });
 }

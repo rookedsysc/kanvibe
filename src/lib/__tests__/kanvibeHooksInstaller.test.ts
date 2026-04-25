@@ -30,8 +30,17 @@ vi.mock("@/lib/geminiHooksSetup", () => ({
 vi.mock("@/lib/codexHooksSetup", () => ({
   setupCodexHooks: (...args: unknown[]) => mockSetupCodexHooks(...args),
   getCodexHooksStatus: (...args: unknown[]) => mockGetCodexHooksStatus(...args),
-  generateNotifyHookScript: vi.fn(() => "codex notify"),
-  HOOK_SCRIPT_NAME: "kanvibe-notify-hook.sh",
+  generatePromptHookScript: vi.fn(() => "codex prompt"),
+  generatePermissionHookScript: vi.fn(() => "codex permission"),
+  generatePreToolHookScript: vi.fn(() => "codex pre tool"),
+  generateStopHookScript: vi.fn(() => "codex stop"),
+  upsertCodexConfigToml: vi.fn((content: string) => `${content.trimEnd()}\n[features]\ncodex_hooks = true\n`),
+  upsertCodexHooksJson: vi.fn(() => JSON.stringify({ hooks: { UserPromptSubmit: [{}], PermissionRequest: [{}], PreToolUse: [{}], Stop: [{}] } }, null, 2)),
+  PROMPT_HOOK_SCRIPT_NAME: "kanvibe-prompt-hook.sh",
+  PERMISSION_HOOK_SCRIPT_NAME: "kanvibe-permission-hook.sh",
+  PRE_TOOL_HOOK_SCRIPT_NAME: "kanvibe-pre-tool-hook.sh",
+  STOP_HOOK_SCRIPT_NAME: "kanvibe-stop-hook.sh",
+  HOOKS_FILE_NAME: "hooks.json",
   CONFIG_FILE_NAME: "config.toml",
 }));
 
@@ -155,10 +164,14 @@ describe("kanvibeHooksInstaller", () => {
     expect(geminiSettings.hooks.AfterAgent[0].hooks[0].command).toBe('"$GEMINI_PROJECT_DIR"/.gemini/hooks/kanvibe-stop-hook.sh');
   });
 
-  it("원격 Codex 재설치는 기존 notify 설정이 있어도 append하지 않고 교체한다", async () => {
+  it("원격 Codex 재설치는 최신 hooks.json/config.toml 구조로 갱신한다", async () => {
     mockExecGit.mockImplementation(async (command: string) => {
       if (command.includes('cat "/remote/repo/.codex/config.toml"')) {
         return 'model = "gpt-5"\nnotify = ["other-notify.sh"]\n';
+      }
+
+      if (command.includes('cat "/remote/repo/.codex/hooks.json"')) {
+        return JSON.stringify({ hooks: { Stop: [{ hooks: [{ type: "command", command: "old-stop" }] }] } });
       }
 
       return "";
@@ -169,9 +182,14 @@ describe("kanvibeHooksInstaller", () => {
     await installKanvibeHooks("/remote/repo", "task-2", "remote-host");
 
     const configContent = extractWrittenContent(mockExecGit.mock.calls, "/remote/repo/.codex/config.toml");
-    expect(configContent).toContain('notify = [".codex/hooks/kanvibe-notify-hook.sh"]');
-    expect(configContent).not.toContain('notify = ["other-notify.sh"]');
-    expect(configContent.match(/^notify\s*=/gm)).toHaveLength(1);
+    expect(configContent).toContain("[features]");
+    expect(configContent).toContain("codex_hooks = true");
+
+    const hooksContent = extractWrittenContent(mockExecGit.mock.calls, "/remote/repo/.codex/hooks.json");
+    expect(hooksContent).toContain("UserPromptSubmit");
+    expect(hooksContent).toContain("PermissionRequest");
+    expect(hooksContent).toContain("PreToolUse");
+    expect(hooksContent).toContain("Stop");
   });
 
   it("원격 hook 설치 중 첫 SSH 쓰기가 실패하면 추가 설치를 진행하지 않는다", async () => {

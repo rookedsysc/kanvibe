@@ -3,6 +3,7 @@ import { getProjectRepository, getTaskRepository } from "@/lib/database";
 import { createWorktreeWithSession } from "@/lib/worktree";
 import { broadcastBoardUpdate, broadcastHookStatusTargetMissing, broadcastTaskStatusChanged } from "@/lib/boardNotifier";
 import { cleanupTaskResources } from "@/desktop/main/services/kanbanService";
+import { installKanvibeHooks } from "@/lib/kanvibeHooksInstaller";
 
 const STATUS_MAP: Record<string, TaskStatus> = {
   todo: TaskStatus.TODO,
@@ -70,6 +71,15 @@ export async function startHookTask(input: HookStartInput) {
   }
 
   const saved = await repo.save(task);
+
+  if (saved.worktreePath) {
+    try {
+      await installKanvibeHooks(saved.worktreePath, saved.id, saved.sshHost);
+    } catch (error) {
+      console.error("Hook task hooks 설정 실패:", error);
+    }
+  }
+
   broadcastBoardUpdate();
 
   return {

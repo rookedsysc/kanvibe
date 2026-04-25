@@ -190,12 +190,20 @@ AfterAgent (에이전트 완료)   → REVIEW
 
 > Gemini CLI에는 Claude Code의 `AskUserQuestion`에 대응하는 이벤트가 없어 PENDING 상태는 지원되지 않습니다.
 
-#### Codex CLI (부분 지원)
+#### Codex CLI
 ```
-agent-turn-complete (에이전트 완료) → REVIEW
+UserPromptSubmit               → PROGRESS
+PermissionRequest (Bash 전용) → PENDING
+PreToolUse (Bash 전용)        → PROGRESS
+Stop                          → REVIEW
 ```
 
-> Codex CLI는 현재 `notify` 설정의 `agent-turn-complete` 이벤트만 지원합니다. PROGRESS, PENDING 전환은 아직 불가합니다. OpenAI가 [hooks 시스템을 설계 중](https://github.com/openai/codex/discussions/2150)이며, 출시되면 전체 지원을 추가할 예정입니다.
+KanVibe는 이제 Codex 최신 lifecycle hooks 방식인 `.codex/hooks.json`과 `.codex/config.toml`의 `[features].codex_hooks = true` 조합을 사용합니다. 기준 문서는 다음 공식 문서입니다.
+
+- https://developers.openai.com/codex/hooks
+- https://developers.openai.com/codex/config-reference
+
+> 현재 Codex의 `PermissionRequest`와 `PreToolUse` 매처는 Bash 범위에 한정되므로, `PENDING`은 모든 대화형 재질문이 아니라 승인 대기 상태를 의미합니다.
 
 #### OpenCode
 ```
@@ -213,7 +221,7 @@ OpenCode는 셸 스크립트 hooks 대신 자체 [플러그인 시스템](https:
 |---------|-------------|----------|
 | Claude Code | `.claude/hooks/` | `.claude/settings.json` |
 | Gemini CLI | `.gemini/hooks/` | `.gemini/settings.json` |
-| Codex CLI | `.codex/hooks/` | `.codex/config.toml` |
+| Codex CLI | `.codex/hooks/` | `.codex/config.toml`, `.codex/hooks.json` |
 | OpenCode | `.opencode/plugins/` | 플러그인 자동 탐색 |
 
 #### 브라우저 알림
