@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
     findOneBy: vi.fn(),
   },
   execFile: vi.fn(),
+  execGit: vi.fn(),
   createWorktreeWithSession: vi.fn(),
   removeWorktreeAndBranch: vi.fn(),
   removeSessionOnly: vi.fn(),
@@ -58,6 +59,10 @@ vi.mock("@/lib/kanvibeHooksInstaller", () => ({
 
 vi.mock("@/lib/boardNotifier", () => ({
   broadcastBoardUpdate: mocks.broadcastBoardUpdate,
+}));
+
+vi.mock("@/lib/gitOperations", () => ({
+  execGit: mocks.execGit,
 }));
 
 describe("kanbanService.createTask", () => {
@@ -247,6 +252,73 @@ describe("kanbanService.createTask", () => {
 
     // Then
     expect(result).toBeNull();
+    expect(mocks.taskRepo.save).not.toHaveBeenCalled();
+    expect(consoleErrorSpy).not.toHaveBeenCalled();
+  });
+
+  it("원격 task의 PR URL 조회는 SSH를 통해 gh CLI를 실행한다", async () => {
+    // Given
+    mocks.taskRepo.findOneBy.mockResolvedValue({
+      id: "task-6",
+      projectId: "project-1",
+      branchName: "fix/wtf",
+      prUrl: null,
+      sshHost: "remote-host",
+    });
+    mocks.projectRepo.findOneBy.mockResolvedValue({
+      id: "project-1",
+      repoPath: "/remote/workspace/repo",
+      sshHost: "remote-host",
+    });
+    mocks.taskRepo.save.mockImplementation(async (value) => value);
+    mocks.execGit.mockResolvedValue("https://github.com/kanvibe/kanvibe/pull/165\n");
+
+    const { fetchAndSavePrUrl } = await import("@/desktop/main/services/kanbanService");
+
+    // When
+    const result = await fetchAndSavePrUrl("task-6");
+
+    // Then
+    expect(mocks.execGit).toHaveBeenCalledWith(
+      "command -v gh >/dev/null 2>&1 || exit 0; cd '/remote/workspace/repo' && gh pr list --head 'fix/wtf' --json url -q '.[0].url'",
+      "remote-host",
+    );
+    expect(mocks.execFile).not.toHaveBeenCalled();
+    expect(mocks.taskRepo.save).toHaveBeenCalledWith(expect.objectContaining({
+      id: "task-6",
+      prUrl: "https://github.com/kanvibe/kanvibe/pull/165",
+    }));
+    expect(result).toBe("https://github.com/kanvibe/kanvibe/pull/165");
+  });
+
+  it("원격에 gh CLI가 없으면 PR URL 조회를 조용히 건너뛴다", async () => {
+    // Given
+    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    mocks.taskRepo.findOneBy.mockResolvedValue({
+      id: "task-7",
+      projectId: "project-1",
+      branchName: "fix/remote-pr",
+      prUrl: null,
+      sshHost: "remote-host",
+    });
+    mocks.projectRepo.findOneBy.mockResolvedValue({
+      id: "project-1",
+      repoPath: "/remote/workspace/repo",
+      sshHost: "remote-host",
+    });
+    mocks.execGit.mockResolvedValue("");
+
+    const { fetchAndSavePrUrl } = await import("@/desktop/main/services/kanbanService");
+
+    // When
+    const result = await fetchAndSavePrUrl("task-7");
+
+    // Then
+    expect(result).toBeNull();
+    expect(mocks.execGit).toHaveBeenCalledWith(
+      "command -v gh >/dev/null 2>&1 || exit 0; cd '/remote/workspace/repo' && gh pr list --head 'fix/remote-pr' --json url -q '.[0].url'",
+      "remote-host",
+    );
     expect(mocks.taskRepo.save).not.toHaveBeenCalled();
     expect(consoleErrorSpy).not.toHaveBeenCalled();
   });

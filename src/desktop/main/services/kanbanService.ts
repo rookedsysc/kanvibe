@@ -7,6 +7,8 @@ import { createWorktreeWithSession, removeWorktreeAndBranch, createSessionWithou
 import { getProjectRepository } from "@/lib/database";
 import { broadcastBoardUpdate } from "@/lib/boardNotifier";
 import { installKanvibeHooks } from "@/lib/kanvibeHooksInstaller";
+import { execGit } from "@/lib/gitOperations";
+import { quoteShellArgument } from "@/lib/hostFileAccess";
 
 export type TasksByStatus = Record<TaskStatus, KanbanTask[]>;
 
@@ -36,7 +38,15 @@ function isMissingGitHubCli(error: unknown): boolean {
   return "code" in error && (error as { code?: string }).code === "ENOENT";
 }
 
-async function getPrUrlFromGitHubCli(branchName: string, cwd: string): Promise<string | null> {
+async function getPrUrlFromGitHubCli(branchName: string, cwd: string, sshHost?: string | null): Promise<string | null> {
+  if (sshHost) {
+    const output = await execGit(
+      `command -v gh >/dev/null 2>&1 || exit 0; cd ${quoteShellArgument(cwd)} && gh pr list --head ${quoteShellArgument(branchName)} --json url -q ${quoteShellArgument(".[0].url")}`,
+      sshHost,
+    );
+    return output.trim() || null;
+  }
+
   return new Promise((resolve, reject) => {
     execFile(
       "gh",
@@ -495,15 +505,19 @@ export async function fetchAndSavePrUrl(taskId: string): Promise<string | null> 
   if (!task?.branchName) return null;
 
   let repoPath: string | null = null;
+  let sshHost: string | null = task.sshHost ?? null;
   if (task.projectId) {
     const projectRepo = await getProjectRepository();
     const project = await projectRepo.findOneBy({ id: task.projectId });
-    if (project) repoPath = project.repoPath;
+    if (project) {
+      repoPath = project.repoPath;
+      sshHost = sshHost ?? project.sshHost ?? null;
+    }
   }
 
   try {
-    const cwd = repoPath ?? process.cwd();
-    const prUrl = await getPrUrlFromGitHubCli(task.branchName, cwd);
+    const cwd = repoPath ?? task.worktreePath ?? process.cwd();
+    const prUrl = await getPrUrlFromGitHubCli(task.branchName, cwd, sshHost);
 
     if (prUrl) {
       task.prUrl = prUrl;

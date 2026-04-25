@@ -13,7 +13,7 @@ import TaskDetailTitleCard from "@/components/TaskDetailTitleCard";
 import { Link, useRouter } from "@/desktop/renderer/navigation";
 import { getDoneAlertDismissed, getSidebarDefaultCollapsed, getSidebarHintDismissed } from "@/desktop/renderer/actions/appSettings";
 import { getGitDiffFiles } from "@/desktop/renderer/actions/diff";
-import { deleteTask, fetchAndSavePrUrl, getTaskById, getTaskIdByProjectAndBranch, updateTaskStatus } from "@/desktop/renderer/actions/kanban";
+import { deleteTask, getTaskById, getTaskIdByProjectAndBranch, updateTaskStatus } from "@/desktop/renderer/actions/kanban";
 import {
   getTaskAiSessions,
   getTaskCodexHooksStatus,
@@ -22,6 +22,7 @@ import {
   getTaskOpenCodeHooksStatus,
 } from "@/desktop/renderer/actions/project";
 import TerminalLoader from "@/desktop/renderer/components/TerminalLoader";
+import { fetchPrUrlWithPrompt } from "@/desktop/renderer/utils/fetchPrUrlWithPrompt";
 import { useRefreshSignal } from "@/desktop/renderer/utils/refresh";
 import { TaskStatus } from "@/entities/KanbanTask";
 
@@ -77,6 +78,7 @@ export default function TaskDetailRoute() {
   const { id = "" } = useParams();
   const router = useRouter();
   const t = useTranslations("taskDetail");
+  const tc = useTranslations("common");
   const refreshSignal = useRefreshSignal(["all", "task-detail"]);
   const [state, setState] = useState<TaskDetailState | null | undefined>(undefined);
   const [needsMacDesktopHeaderOffset, setNeedsMacDesktopHeaderOffset] = useState(false);
@@ -110,21 +112,26 @@ export default function TaskDetailRoute() {
       });
 
       if (task.branchName && !task.prUrl) {
-        void fetchAndSavePrUrl(task.id).then((prUrl) => {
-          if (!prUrl || cancelled) {
-            return;
-          }
+        void (async () => {
+          try {
+            const prUrl = await fetchPrUrlWithPrompt(task, tc);
+            if (!prUrl || cancelled) {
+              return;
+            }
 
-          setState((current) => current && current.task.id === task.id
-            ? {
-                ...current,
-                task: {
-                  ...current.task,
-                  prUrl,
-                },
-              }
-            : current);
-        });
+            setState((current) => current && current.task.id === task.id
+              ? {
+                  ...current,
+                  task: {
+                    ...current.task,
+                    prUrl,
+                  },
+                }
+              : current);
+          } catch (error) {
+            console.error("PR URL 자동 조회 실패:", error);
+          }
+        })();
       }
 
       void (async () => {
