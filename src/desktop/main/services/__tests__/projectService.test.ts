@@ -23,7 +23,6 @@ const mocks = vi.hoisted(() => ({
   setupOpenCodeHooks: vi.fn(),
   getOpenCodeHooksStatus: vi.fn(),
   getHookServerUrl: vi.fn(() => "http://localhost:9736"),
-  getHookServerToken: vi.fn(() => "desktop-hook-token"),
   aggregateAiSessions: vi.fn(),
   getAiSessionDetail: vi.fn(),
   installKanvibeHooks: vi.fn(),
@@ -94,7 +93,6 @@ vi.mock("@/lib/openCodeHooksSetup", () => ({
 
 vi.mock("@/lib/hookEndpoint", () => ({
   getHookServerUrl: mocks.getHookServerUrl,
-  getHookServerToken: mocks.getHookServerToken,
 }));
 
 vi.mock("@/lib/aiSessions/aggregateAiSessions", () => ({

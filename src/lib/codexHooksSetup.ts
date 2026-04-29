@@ -1,7 +1,6 @@
 import { writeFile, mkdir, chmod } from "fs/promises";
 import path from "path";
 import { addAiToolPatternsToGitExclude } from "@/lib/gitExclude";
-import { buildCurlAuthHeader } from "@/lib/hookAuth";
 import { pathExists, readTextFile } from "@/lib/hostFileAccess";
 import { extractShellHookServerUrl, validateHookServerConfiguration } from "@/lib/hookServerStatus";
 import { buildShellTaskIdResolver, extractShellTaskId } from "@/lib/hookTaskBinding";
@@ -42,7 +41,6 @@ function generateStatusHookScript(
   status: "progress" | "pending" | "review",
   kanvibeUrl: string,
   taskId: string,
-  authToken?: string,
 ): string {
   return `#!/bin/bash
 
@@ -54,7 +52,7 @@ ${buildShellTaskIdResolver(taskId)}
 
 curl -s -X POST "\${KANVIBE_URL}/api/hooks/status" \\
   -H "Content-Type: application/json" \\
-${buildCurlAuthHeader(authToken)}  -d "{\\"taskId\\": \\\"\${TASK_ID}\\\", \\\"status\\\": \\\"${status}\\\"}" \\
+  -d "{\\"taskId\\": \\\"\${TASK_ID}\\\", \\\"status\\\": \\\"${status}\\\"}" \\
   > /dev/null 2>&1
 
 exit 0
@@ -62,50 +60,46 @@ exit 0
 }
 
 /** UserPromptSubmit hook bash 스크립트를 생성한다 */
-export function generatePromptHookScript(kanvibeUrl: string, taskId: string, authToken?: string): string {
+export function generatePromptHookScript(kanvibeUrl: string, taskId: string): string {
   return generateStatusHookScript(
     "UserPromptSubmit",
     "사용자가 prompt를 입력하면 현재 task를 PROGRESS로 변경한다.",
     "progress",
     kanvibeUrl,
     taskId,
-    authToken,
   );
 }
 
 /** PermissionRequest(Bash) hook bash 스크립트를 생성한다 */
-export function generatePermissionHookScript(kanvibeUrl: string, taskId: string, authToken?: string): string {
+export function generatePermissionHookScript(kanvibeUrl: string, taskId: string): string {
   return generateStatusHookScript(
     "PermissionRequest(Bash)",
     "Codex가 Bash 실행 승인을 요청하면 현재 task를 PENDING으로 변경한다.",
     "pending",
     kanvibeUrl,
     taskId,
-    authToken,
   );
 }
 
 /** PreToolUse(Bash) hook bash 스크립트를 생성한다 */
-export function generatePreToolHookScript(kanvibeUrl: string, taskId: string, authToken?: string): string {
+export function generatePreToolHookScript(kanvibeUrl: string, taskId: string): string {
   return generateStatusHookScript(
     "PreToolUse(Bash)",
     "Codex가 Bash 실행을 재개하면 현재 task를 PROGRESS로 변경한다.",
     "progress",
     kanvibeUrl,
     taskId,
-    authToken,
   );
 }
 
 /** Stop hook bash 스크립트를 생성한다 */
-export function generateStopHookScript(kanvibeUrl: string, taskId: string, authToken?: string): string {
+export function generateStopHookScript(kanvibeUrl: string, taskId: string): string {
   return generateStatusHookScript(
     "Stop",
     "Codex 응답이 완료되면 현재 task를 REVIEW로 변경한다.",
     "review",
     kanvibeUrl,
     taskId,
-    authToken,
   );
 }
 
@@ -287,7 +281,6 @@ export async function setupCodexHooks(
   repoPath: string,
   taskId: string,
   kanvibeUrl: string,
-  authToken?: string,
 ): Promise<void> {
   const codexDir = path.join(repoPath, ".codex");
   const hooksDir = path.join(codexDir, "hooks");
@@ -301,10 +294,10 @@ export async function setupCodexHooks(
   const preToolScriptPath = path.join(hooksDir, PRE_TOOL_HOOK_SCRIPT_NAME);
   const stopScriptPath = path.join(hooksDir, STOP_HOOK_SCRIPT_NAME);
 
-  await writeFile(promptScriptPath, generatePromptHookScript(kanvibeUrl, taskId, authToken), "utf-8");
-  await writeFile(permissionScriptPath, generatePermissionHookScript(kanvibeUrl, taskId, authToken), "utf-8");
-  await writeFile(preToolScriptPath, generatePreToolHookScript(kanvibeUrl, taskId, authToken), "utf-8");
-  await writeFile(stopScriptPath, generateStopHookScript(kanvibeUrl, taskId, authToken), "utf-8");
+  await writeFile(promptScriptPath, generatePromptHookScript(kanvibeUrl, taskId), "utf-8");
+  await writeFile(permissionScriptPath, generatePermissionHookScript(kanvibeUrl, taskId), "utf-8");
+  await writeFile(preToolScriptPath, generatePreToolHookScript(kanvibeUrl, taskId), "utf-8");
+  await writeFile(stopScriptPath, generateStopHookScript(kanvibeUrl, taskId), "utf-8");
   await chmod(promptScriptPath, 0o755);
   await chmod(permissionScriptPath, 0o755);
   await chmod(preToolScriptPath, 0o755);

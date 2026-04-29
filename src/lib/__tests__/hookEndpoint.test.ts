@@ -50,12 +50,10 @@ vi.mock("@/lib/sshConfig", () => ({
 
 describe("hookEndpoint", () => {
   const originalExternalHost = process.env.KANVIBE_EXTERNAL_HOST;
-  const originalHookToken = process.env.KANVIBE_HOOK_TOKEN;
 
   beforeEach(() => {
     vi.resetModules();
     delete process.env.KANVIBE_EXTERNAL_HOST;
-    delete process.env.KANVIBE_HOOK_TOKEN;
     mocks.networkInterfaces.mockReset();
     mocks.parseSSHConfig.mockReset();
     mocks.lookup.mockReset();
@@ -68,12 +66,6 @@ describe("hookEndpoint", () => {
       delete process.env.KANVIBE_EXTERNAL_HOST;
     } else {
       process.env.KANVIBE_EXTERNAL_HOST = originalExternalHost;
-    }
-
-    if (originalHookToken === undefined) {
-      delete process.env.KANVIBE_HOOK_TOKEN;
-    } else {
-      process.env.KANVIBE_HOOK_TOKEN = originalHookToken;
     }
   });
 
@@ -139,17 +131,5 @@ describe("hookEndpoint", () => {
 
     // Then
     expect(result).toBe("http://localhost:9736");
-  });
-
-  it("hook 토큰은 환경변수 값을 그대로 반환한다", async () => {
-    // Given
-    process.env.KANVIBE_HOOK_TOKEN = "secret-token";
-    const { getHookServerToken } = await import("@/lib/hookEndpoint");
-
-    // When
-    const result = getHookServerToken();
-
-    // Then
-    expect(result).toBe("secret-token");
   });
 });

@@ -10,7 +10,6 @@ const mockGetCodexHooksStatus = vi.fn();
 const mockGetOpenCodeHooksStatus = vi.fn();
 const mockExecGit = vi.fn();
 const mockGetHookServerUrl = vi.fn();
-const mockGetHookServerToken = vi.fn();
 const mockAddAiToolPatternsToGitExclude = vi.fn();
 
 vi.mock("@/lib/claudeHooksSetup", () => ({
@@ -59,7 +58,6 @@ vi.mock("@/lib/gitOperations", () => ({
 
 vi.mock("@/lib/hookEndpoint", () => ({
   getHookServerUrl: (...args: unknown[]) => mockGetHookServerUrl(...args),
-  getHookServerToken: (...args: unknown[]) => mockGetHookServerToken(...args),
 }));
 
 vi.mock("@/lib/gitExclude", () => ({
@@ -90,7 +88,6 @@ describe("kanvibeHooksInstaller", () => {
     vi.resetModules();
     vi.clearAllMocks();
     mockGetHookServerUrl.mockReturnValue("http://192.168.0.8:9736");
-    mockGetHookServerToken.mockReturnValue("token-123");
     mockExecGit.mockResolvedValue("");
     mockAddAiToolPatternsToGitExclude.mockResolvedValue(undefined);
     mockGetClaudeHooksStatus.mockResolvedValue({ installed: true });
@@ -102,7 +99,7 @@ describe("kanvibeHooksInstaller", () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
   });
 
-  it("로컬 프로젝트면 기존 hook setup 함수들에 서버 URL과 토큰을 전달한다", async () => {
+  it("로컬 프로젝트면 기존 hook setup 함수들에 서버 URL을 전달한다", async () => {
     // Given
     const { installKanvibeHooks } = await import("@/lib/kanvibeHooksInstaller");
 
@@ -110,10 +107,10 @@ describe("kanvibeHooksInstaller", () => {
     await installKanvibeHooks("/repo", "task-1", null);
 
     // Then
-    expect(mockSetupClaudeHooks).toHaveBeenCalledWith("/repo", "task-1", "http://192.168.0.8:9736", "token-123");
-    expect(mockSetupGeminiHooks).toHaveBeenCalledWith("/repo", "task-1", "http://192.168.0.8:9736", "token-123");
-    expect(mockSetupCodexHooks).toHaveBeenCalledWith("/repo", "task-1", "http://192.168.0.8:9736", "token-123");
-    expect(mockSetupOpenCodeHooks).toHaveBeenCalledWith("/repo", "task-1", "http://192.168.0.8:9736", "token-123");
+    expect(mockSetupClaudeHooks).toHaveBeenCalledWith("/repo", "task-1", "http://192.168.0.8:9736");
+    expect(mockSetupGeminiHooks).toHaveBeenCalledWith("/repo", "task-1", "http://192.168.0.8:9736");
+    expect(mockSetupCodexHooks).toHaveBeenCalledWith("/repo", "task-1", "http://192.168.0.8:9736");
+    expect(mockSetupOpenCodeHooks).toHaveBeenCalledWith("/repo", "task-1", "http://192.168.0.8:9736");
     expect(mockExecGit).not.toHaveBeenCalled();
   });
 

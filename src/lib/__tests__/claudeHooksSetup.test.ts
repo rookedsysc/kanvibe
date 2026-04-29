@@ -15,18 +15,18 @@ describe("claudeHooksSetup", () => {
     await rm(tempDir, { recursive: true, force: true });
   });
 
-  it("토큰이 있으면 모든 hook 스크립트에 인증 헤더를 포함한다", async () => {
+  it("모든 hook 스크립트는 인증 헤더 없이 상태만 전송한다", async () => {
     const repoPath = tempDir;
 
-    await setupClaudeHooks(repoPath, "task-1", "http://192.168.0.10:9736", "auth-token");
+    await setupClaudeHooks(repoPath, "task-1", "http://192.168.0.10:9736");
 
     const promptScript = await readFile(join(repoPath, ".claude", "hooks", "kanvibe-prompt-hook.sh"), "utf-8");
     const stopScript = await readFile(join(repoPath, ".claude", "hooks", "kanvibe-stop-hook.sh"), "utf-8");
     const questionScript = await readFile(join(repoPath, ".claude", "hooks", "kanvibe-question-hook.sh"), "utf-8");
 
-    expect(promptScript).toContain("X-Kanvibe-Token: auth-token");
-    expect(stopScript).toContain("X-Kanvibe-Token: auth-token");
-    expect(questionScript).toContain("X-Kanvibe-Token: auth-token");
+    expect(promptScript).not.toContain("X-Kanvibe-Token");
+    expect(stopScript).not.toContain("X-Kanvibe-Token");
+    expect(questionScript).not.toContain("X-Kanvibe-Token");
 
     const status = await getClaudeHooksStatus(repoPath);
     expect(status.installed).toBe(true);

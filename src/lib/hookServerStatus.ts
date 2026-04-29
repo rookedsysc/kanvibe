@@ -1,6 +1,6 @@
 import { execGit, isSSHTransportError } from "@/lib/gitOperations";
 import { quoteShellArgument } from "@/lib/hostFileAccess";
-import { getHookServerToken, getHookServerUrl } from "@/lib/hookEndpoint";
+import { getHookServerUrl } from "@/lib/hookEndpoint";
 
 export interface HookServerValidation {
   hasExpectedHookServerUrl: boolean;
@@ -90,9 +90,7 @@ async function isHookServerReachable(baseUrl: string, sshHost?: string | null): 
 async function performHookServerReachabilityCheck(healthCheckUrl: string, sshHost?: string | null): Promise<boolean> {
   if (!sshHost) {
     try {
-      const response = await fetch(healthCheckUrl, {
-        headers: buildHealthCheckHeaders(),
-      });
+      const response = await fetch(healthCheckUrl);
       return response.ok;
     } catch {
       return false;
@@ -100,13 +98,8 @@ async function performHookServerReachabilityCheck(healthCheckUrl: string, sshHos
   }
 
   try {
-    const token = getHookServerToken();
-    const headerArgs = token.length > 0
-      ? ` -H ${quoteShellArgument(`X-Kanvibe-Token: ${token}`)}`
-      : "";
-
     await execGit(
-      `command -v curl >/dev/null 2>&1 && curl -fsS --max-time 2${headerArgs} ${quoteShellArgument(healthCheckUrl)} >/dev/null`,
+      `command -v curl >/dev/null 2>&1 && curl -fsS --max-time 2 ${quoteShellArgument(healthCheckUrl)} >/dev/null`,
       sshHost,
     );
     return true;
@@ -141,11 +134,6 @@ async function getCachedValue<T>(
     cache.delete(key);
     throw error;
   }
-}
-
-function buildHealthCheckHeaders() {
-  const token = getHookServerToken();
-  return token.length > 0 ? { "X-Kanvibe-Token": token } : undefined;
 }
 
 function ensureTrailingSlash(url: string) {

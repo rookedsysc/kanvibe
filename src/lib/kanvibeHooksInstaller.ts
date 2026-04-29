@@ -20,7 +20,7 @@ import {
   type CodexHooksStatus,
 } from "@/lib/codexHooksSetup";
 import { setupOpenCodeHooks, getOpenCodeHooksStatus, generatePluginScript, PLUGIN_DIR_NAME, PLUGIN_FILE_NAME, type OpenCodeHooksStatus } from "@/lib/openCodeHooksSetup";
-import { getHookServerToken, getHookServerUrl } from "@/lib/hookEndpoint";
+import { getHookServerUrl } from "@/lib/hookEndpoint";
 import { addAiToolPatternsToGitExclude } from "@/lib/gitExclude";
 import { quoteShellArgument } from "@/lib/hostFileAccess";
 
@@ -30,32 +30,31 @@ export async function installKanvibeHooks(
   sshHost?: string | null,
 ): Promise<void> {
   const hookServerUrl = await getHookServerUrl(sshHost);
-  const hookServerToken = getHookServerToken();
 
   const installers = [
     {
       provider: "Claude",
       install: () => sshHost
-        ? setupRemoteClaudeHooks(targetPath, taskId, hookServerUrl, hookServerToken, sshHost)
-        : setupClaudeHooks(targetPath, taskId, hookServerUrl, hookServerToken),
+        ? setupRemoteClaudeHooks(targetPath, taskId, hookServerUrl, sshHost)
+        : setupClaudeHooks(targetPath, taskId, hookServerUrl),
     },
     {
       provider: "Gemini",
       install: () => sshHost
-        ? setupRemoteGeminiHooks(targetPath, taskId, hookServerUrl, hookServerToken, sshHost)
-        : setupGeminiHooks(targetPath, taskId, hookServerUrl, hookServerToken),
+        ? setupRemoteGeminiHooks(targetPath, taskId, hookServerUrl, sshHost)
+        : setupGeminiHooks(targetPath, taskId, hookServerUrl),
     },
     {
       provider: "Codex",
       install: () => sshHost
-        ? setupRemoteCodexHooks(targetPath, taskId, hookServerUrl, hookServerToken, sshHost)
-        : setupCodexHooks(targetPath, taskId, hookServerUrl, hookServerToken),
+        ? setupRemoteCodexHooks(targetPath, taskId, hookServerUrl, sshHost)
+        : setupCodexHooks(targetPath, taskId, hookServerUrl),
     },
     {
       provider: "OpenCode",
       install: () => sshHost
-        ? setupRemoteOpenCodeHooks(targetPath, taskId, hookServerUrl, hookServerToken, sshHost)
-        : setupOpenCodeHooks(targetPath, taskId, hookServerUrl, hookServerToken),
+        ? setupRemoteOpenCodeHooks(targetPath, taskId, hookServerUrl, sshHost)
+        : setupOpenCodeHooks(targetPath, taskId, hookServerUrl),
     },
   ];
 
@@ -103,7 +102,7 @@ export async function installKanvibeHooks(
   await logHookVerificationStatuses(targetPath, taskId, sshHost);
 }
 
-async function setupRemoteClaudeHooks(repoPath: string, taskId: string, hookServerUrl: string, hookServerToken: string, sshHost: string) {
+async function setupRemoteClaudeHooks(repoPath: string, taskId: string, hookServerUrl: string, sshHost: string) {
   const claudeDir = path.posix.join(repoPath, ".claude");
   const hooksDir = path.posix.join(claudeDir, "hooks");
   const settingsPath = path.posix.join(claudeDir, "settings.json");
@@ -130,17 +129,17 @@ async function setupRemoteClaudeHooks(repoPath: string, taskId: string, hookServ
   await writeRemoteTextFiles([
     {
       filePath: path.posix.join(hooksDir, "kanvibe-prompt-hook.sh"),
-      content: generateClaudePromptHookScript(hookServerUrl, taskId, hookServerToken),
+      content: generateClaudePromptHookScript(hookServerUrl, taskId),
       mode: 0o755,
     },
     {
       filePath: path.posix.join(hooksDir, "kanvibe-stop-hook.sh"),
-      content: generateClaudeStopHookScript(hookServerUrl, taskId, hookServerToken),
+      content: generateClaudeStopHookScript(hookServerUrl, taskId),
       mode: 0o755,
     },
     {
       filePath: path.posix.join(hooksDir, "kanvibe-question-hook.sh"),
-      content: generateClaudeQuestionHookScript(hookServerUrl, taskId, hookServerToken),
+      content: generateClaudeQuestionHookScript(hookServerUrl, taskId),
       mode: 0o755,
     },
     {
@@ -150,7 +149,7 @@ async function setupRemoteClaudeHooks(repoPath: string, taskId: string, hookServ
   ], sshHost);
 }
 
-async function setupRemoteGeminiHooks(repoPath: string, taskId: string, hookServerUrl: string, hookServerToken: string, sshHost: string) {
+async function setupRemoteGeminiHooks(repoPath: string, taskId: string, hookServerUrl: string, sshHost: string) {
   const geminiDir = path.posix.join(repoPath, ".gemini");
   const hooksDir = path.posix.join(geminiDir, "hooks");
   const settingsPath = path.posix.join(geminiDir, "settings.json");
@@ -171,12 +170,12 @@ async function setupRemoteGeminiHooks(repoPath: string, taskId: string, hookServ
   await writeRemoteTextFiles([
     {
       filePath: path.posix.join(hooksDir, "kanvibe-prompt-hook.sh"),
-      content: generateGeminiPromptHookScript(hookServerUrl, taskId, hookServerToken),
+      content: generateGeminiPromptHookScript(hookServerUrl, taskId),
       mode: 0o755,
     },
     {
       filePath: path.posix.join(hooksDir, "kanvibe-stop-hook.sh"),
-      content: generateGeminiStopHookScript(hookServerUrl, taskId, hookServerToken),
+      content: generateGeminiStopHookScript(hookServerUrl, taskId),
       mode: 0o755,
     },
     {
@@ -186,7 +185,7 @@ async function setupRemoteGeminiHooks(repoPath: string, taskId: string, hookServ
   ], sshHost);
 }
 
-async function setupRemoteCodexHooks(repoPath: string, taskId: string, hookServerUrl: string, hookServerToken: string, sshHost: string) {
+async function setupRemoteCodexHooks(repoPath: string, taskId: string, hookServerUrl: string, sshHost: string) {
   const codexDir = path.posix.join(repoPath, ".codex");
   const hooksDir = path.posix.join(codexDir, "hooks");
   const configPath = path.posix.join(codexDir, CONFIG_FILE_NAME);
@@ -198,22 +197,22 @@ async function setupRemoteCodexHooks(repoPath: string, taskId: string, hookServe
   await writeRemoteTextFiles([
     {
       filePath: path.posix.join(hooksDir, PROMPT_HOOK_SCRIPT_NAME),
-      content: generateCodexPromptHookScript(hookServerUrl, taskId, hookServerToken),
+      content: generateCodexPromptHookScript(hookServerUrl, taskId),
       mode: 0o755,
     },
     {
       filePath: path.posix.join(hooksDir, PERMISSION_HOOK_SCRIPT_NAME),
-      content: generateCodexPermissionHookScript(hookServerUrl, taskId, hookServerToken),
+      content: generateCodexPermissionHookScript(hookServerUrl, taskId),
       mode: 0o755,
     },
     {
       filePath: path.posix.join(hooksDir, PRE_TOOL_HOOK_SCRIPT_NAME),
-      content: generateCodexPreToolHookScript(hookServerUrl, taskId, hookServerToken),
+      content: generateCodexPreToolHookScript(hookServerUrl, taskId),
       mode: 0o755,
     },
     {
       filePath: path.posix.join(hooksDir, STOP_HOOK_SCRIPT_NAME),
-      content: generateCodexStopHookScript(hookServerUrl, taskId, hookServerToken),
+      content: generateCodexStopHookScript(hookServerUrl, taskId),
       mode: 0o755,
     },
     {
@@ -227,12 +226,12 @@ async function setupRemoteCodexHooks(repoPath: string, taskId: string, hookServe
   ], sshHost);
 }
 
-async function setupRemoteOpenCodeHooks(repoPath: string, taskId: string, hookServerUrl: string, hookServerToken: string, sshHost: string) {
+async function setupRemoteOpenCodeHooks(repoPath: string, taskId: string, hookServerUrl: string, sshHost: string) {
   const pluginDir = path.posix.join(repoPath, ".opencode", PLUGIN_DIR_NAME);
   await writeRemoteTextFiles([
     {
       filePath: path.posix.join(pluginDir, PLUGIN_FILE_NAME),
-      content: generatePluginScript(hookServerUrl, taskId, hookServerToken),
+      content: generatePluginScript(hookServerUrl, taskId),
     },
   ], sshHost);
 }
