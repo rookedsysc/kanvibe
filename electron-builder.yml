@@ -26,4 +26,7 @@ mac:
     - dmg
     - zip
 
+dmg:
+  artifactName: "kanvibe.${ext}"
+
 publish: null
