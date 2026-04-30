@@ -5,7 +5,7 @@ import { KanbanTask, TaskStatus, SessionType } from "@/entities/KanbanTask";
 import { TaskPriority } from "@/entities/TaskPriority";
 import { createWorktreeWithSession, removeWorktreeAndBranch, createSessionWithoutWorktree, removeSessionOnly, buildManagedWorktreePath } from "@/lib/worktree";
 import { getProjectRepository } from "@/lib/database";
-import { broadcastBoardUpdate, broadcastTaskHookInstallFailed, broadcastTaskPrMergedDetected } from "@/lib/boardNotifier";
+import { broadcastBoardUpdate, broadcastTaskHookInstallFailed, broadcastTaskPrMergedDetectedBatch, type TaskPrMergedDetectedPayload } from "@/lib/boardNotifier";
 import { installKanvibeHooks } from "@/lib/kanvibeHooksInstaller";
 import { execGit } from "@/lib/gitOperations";
 
@@ -45,6 +45,7 @@ interface GitHubPullRequestInfo {
 export interface ActiveTaskPullRequestSyncResult {
   updatedTaskIds: string[];
   mergeEventKeys: string[];
+  mergedPullRequests: TaskPrMergedDetectedPayload[];
 }
 
 /** TypeORM 엔티티를 직렬화 가능한 plain object로 변환한다 */
@@ -733,6 +734,7 @@ export async function syncActiveTaskPullRequests(
   const result: ActiveTaskPullRequestSyncResult = {
     updatedTaskIds: [],
     mergeEventKeys: [],
+    mergedPullRequests: [],
   };
 
   for (const task of tasks) {
@@ -762,7 +764,7 @@ export async function syncActiveTaskPullRequests(
 
         emittedMergeEventKeys.add(mergeEventKey);
         result.mergeEventKeys.push(mergeEventKey);
-        broadcastTaskPrMergedDetected({
+        result.mergedPullRequests.push({
           taskId: task.id,
           taskTitle: task.title,
           branchName: task.branchName,
@@ -777,6 +779,12 @@ export async function syncActiveTaskPullRequests(
         error: getErrorMessage(error),
       });
     }
+  }
+
+  if (result.mergedPullRequests.length > 0) {
+    broadcastTaskPrMergedDetectedBatch({
+      mergedPullRequests: result.mergedPullRequests,
+    });
   }
 
   return result;

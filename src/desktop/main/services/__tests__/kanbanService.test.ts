@@ -19,7 +19,7 @@ const mocks = vi.hoisted(() => ({
   broadcastBoardUpdate: vi.fn(),
   execGit: vi.fn(),
   broadcastTaskHookInstallFailed: vi.fn(),
-  broadcastTaskPrMergedDetected: vi.fn(),
+  broadcastTaskPrMergedDetectedBatch: vi.fn(),
 }));
 
 vi.mock("child_process", () => ({
@@ -67,7 +67,7 @@ vi.mock("@/lib/kanvibeHooksInstaller", () => ({
 vi.mock("@/lib/boardNotifier", () => ({
   broadcastBoardUpdate: mocks.broadcastBoardUpdate,
   broadcastTaskHookInstallFailed: mocks.broadcastTaskHookInstallFailed,
-  broadcastTaskPrMergedDetected: mocks.broadcastTaskPrMergedDetected,
+  broadcastTaskPrMergedDetectedBatch: mocks.broadcastTaskPrMergedDetectedBatch,
 }));
 
 vi.mock("@/lib/gitOperations", () => ({
@@ -552,7 +552,7 @@ describe("kanbanService.createTask", () => {
       id: "task-9",
       prUrl,
     }));
-    expect(mocks.broadcastTaskPrMergedDetected).not.toHaveBeenCalled();
+    expect(mocks.broadcastTaskPrMergedDetectedBatch).not.toHaveBeenCalled();
   });
 
   it("active task PR sync는 merged PR을 감지하면 중복 없이 merge 이벤트를 브로드캐스트한다", async () => {
@@ -594,13 +594,15 @@ describe("kanbanService.createTask", () => {
     await syncActiveTaskPullRequests(mergeEventKeys);
 
     // Then
-    expect(mocks.broadcastTaskPrMergedDetected).toHaveBeenCalledTimes(1);
-    expect(mocks.broadcastTaskPrMergedDetected).toHaveBeenCalledWith({
-      taskId: "task-10",
-      taskTitle: "Merged PR task",
-      branchName: "feature/merged-pr",
-      prUrl,
-      mergedAt: "2026-04-30T02:00:00Z",
+    expect(mocks.broadcastTaskPrMergedDetectedBatch).toHaveBeenCalledTimes(1);
+    expect(mocks.broadcastTaskPrMergedDetectedBatch).toHaveBeenCalledWith({
+      mergedPullRequests: [{
+        taskId: "task-10",
+        taskTitle: "Merged PR task",
+        branchName: "feature/merged-pr",
+        prUrl,
+        mergedAt: "2026-04-30T02:00:00Z",
+      }],
     });
   });
 });

@@ -38,6 +38,7 @@
     "prMergeAlert": {
       "title": "PR merge detected",
       "message": "Kanvibe detected that worktree PR {branchName} was merged. Move the task \"{taskTitle}\" to Done?",
+      "batchMessage": "These PRs were detected as merged during the latest scan. Check the tasks you want to move to Done and handle them together.",
       "prLinkLabel": "PR Link"
     }
   },

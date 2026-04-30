@@ -89,7 +89,10 @@ export async function deliverBoardEventNotification(
     return false;
   }
 
-  if (payload.type === "task-pr-merged-detected") {
+  if (
+    payload.type === "task-pr-merged-detected"
+    || payload.type === "task-pr-merged-detected-batch"
+  ) {
     return false;
   }
 

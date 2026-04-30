@@ -33,12 +33,17 @@ export interface TaskPrMergedDetectedPayload {
   mergedAt: string;
 }
 
+export interface TaskPrMergedDetectedBatchPayload {
+  mergedPullRequests: TaskPrMergedDetectedPayload[];
+}
+
 export type BoardEventPayload =
   | BoardUpdatedPayload
   | ({ type: "task-status-changed" } & TaskStatusChangedPayload)
   | ({ type: "hook-status-target-missing" } & HookStatusTargetMissingPayload)
   | ({ type: "task-hook-install-failed" } & TaskHookInstallFailedPayload)
-  | ({ type: "task-pr-merged-detected" } & TaskPrMergedDetectedPayload);
+  | ({ type: "task-pr-merged-detected" } & TaskPrMergedDetectedPayload)
+  | ({ type: "task-pr-merged-detected-batch" } & TaskPrMergedDetectedBatchPayload);
 
 const boardEventEmitter = new EventEmitter();
 
@@ -78,4 +83,9 @@ export function broadcastTaskHookInstallFailed(payload: TaskHookInstallFailedPay
 /** background PR sync가 merge 완료를 감지하면 보드 확인 알럿으로 전달한다 */
 export function broadcastTaskPrMergedDetected(payload: TaskPrMergedDetectedPayload) {
   emitBoardEvent({ type: "task-pr-merged-detected", ...payload });
+}
+
+/** background PR sync 한 사이클에서 감지된 merged PR 목록을 한 번에 전달한다 */
+export function broadcastTaskPrMergedDetectedBatch(payload: TaskPrMergedDetectedBatchPayload) {
+  emitBoardEvent({ type: "task-pr-merged-detected-batch", ...payload });
 }
