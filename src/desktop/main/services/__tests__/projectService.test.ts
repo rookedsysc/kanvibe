@@ -1194,6 +1194,73 @@ describe("projectService local hook installation", () => {
       null,
     );
   });
+
+  it("등록된 프로젝트 background sync는 새 worktree를 TODO task로 등록한다", async () => {
+    // Given
+    mocks.getClaudeHooksStatus.mockResolvedValue({ installed: true });
+    mocks.getGeminiHooksStatus.mockResolvedValue({ installed: true });
+    mocks.getCodexHooksStatus.mockResolvedValue({ installed: true });
+    mocks.getOpenCodeHooksStatus.mockResolvedValue({ installed: true });
+    mocks.listWorktrees.mockResolvedValue([
+      {
+        path: "/workspace/api__worktrees/feature-sync",
+        branch: "feature-sync",
+        isBare: false,
+      },
+    ]);
+    mocks.formatSessionName.mockReturnValue("api-feature-sync");
+    mocks.isSessionAlive.mockResolvedValue(false);
+
+    mocks.getProjectRepository.mockResolvedValue({
+      find: vi.fn().mockResolvedValue([
+        {
+          id: "project-1",
+          name: "api",
+          repoPath: "/workspace/api",
+          defaultBranch: "main",
+          sshHost: null,
+        },
+      ]),
+    });
+
+    const taskSave = vi.fn(async (value) => ({ id: value.branchName === "main" ? "task-main" : "task-worktree", ...value }));
+    mocks.getTaskRepository.mockResolvedValue({
+      findOneBy: vi.fn(async (criteria: { branchName?: string; projectId?: string | null }) => {
+        if (criteria.projectId === "project-1" && criteria.branchName === "main") {
+          return {
+            id: "task-main",
+            branchName: "main",
+            projectId: "project-1",
+            baseBranch: "main",
+            worktreePath: null,
+            sshHost: null,
+          };
+        }
+
+        return null;
+      }),
+      create: vi.fn((value) => value),
+      save: taskSave,
+    });
+
+    const { syncRegisteredProjectWorktrees } = await import("@/desktop/main/services/projectService");
+
+    // When
+    const result = await syncRegisteredProjectWorktrees();
+
+    // Then
+    expect(result.worktreeTasks).toContain("feature-sync");
+    expect(taskSave).toHaveBeenCalledWith(expect.objectContaining({
+      branchName: "feature-sync",
+      projectId: "project-1",
+      status: "todo",
+    }));
+    expect(mocks.installKanvibeHooks).toHaveBeenCalledWith(
+      "/workspace/api__worktrees/feature-sync",
+      "task-worktree",
+      null,
+    );
+  });
 });
 
 describe("projectService remote hook and AI session support", () => {

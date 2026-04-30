@@ -33,6 +33,11 @@
       "dontAskAgain": "不再提示",
       "confirm": "移动",
       "cancel": "取消"
+    },
+    "prMergeAlert": {
+      "title": "检测到 PR 已合并",
+      "message": "已确认 worktree PR {branchName} 已被合并。要将任务“{taskTitle}”移动到 Done 吗？",
+      "prLinkLabel": "PR 链接"
     }
   },
   "login": {

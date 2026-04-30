@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import Board from "../Board";
-import { reorderTasks } from "@/desktop/renderer/actions/kanban";
+import { reorderTasks, updateTaskStatus } from "@/desktop/renderer/actions/kanban";
 import { SessionType, TaskStatus } from "@/entities/KanbanTask";
 import type { Project } from "@/entities/Project";
 import type { TasksByStatus } from "@/desktop/renderer/actions/kanban";
@@ -39,6 +39,7 @@ vi.mock("@hello-pangea/dnd", () => ({
 
 vi.mock("@/desktop/renderer/actions/kanban", () => ({
   reorderTasks: vi.fn(),
+  updateTaskStatus: vi.fn(),
   deleteTask: vi.fn(),
   getMoreDoneTasks: vi.fn().mockResolvedValue({ tasks: [], doneTotal: 0 }),
   moveTaskToColumn: vi.fn(),
@@ -274,5 +275,56 @@ describe("Board defaultSessionType sync", () => {
     );
 
     expect(screen.queryByRole("button", { name: "logout" })).toBeNull();
+  });
+
+  it("PR merge 이벤트를 받으면 확인 모달을 띄우고 confirm 시 Done으로 이동한다", async () => {
+    const listeners: Array<(event: unknown) => void> = [];
+    window.kanvibeDesktop = {
+      isDesktop: true,
+      onBoardEvent: vi.fn((listener) => {
+        listeners.push(listener);
+        return () => {};
+      }),
+    } as never;
+    vi.mocked(updateTaskStatus).mockResolvedValue(null);
+
+    render(
+      <Board
+        initialTasks={createTasksWithTodo()}
+        initialDoneTotal={0}
+        initialDoneLimit={20}
+        sshHosts={[]}
+        projects={[createProject()]}
+        sidebarDefaultCollapsed={false}
+        doneAlertDismissed={false}
+        notificationSettings={{ isEnabled: true, enabledStatuses: ["progress", "pending", "review"] }}
+        defaultSessionType={SessionType.TMUX}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(listeners).toHaveLength(1);
+    });
+
+    await act(async () => {
+      listeners[0]({
+        type: "task-pr-merged-detected",
+        taskId: "task-1",
+        taskTitle: "Test Task",
+        branchName: "feature/pr-sync",
+        prUrl: "https://github.com/kanvibe/kanvibe/pull/210",
+        mergedAt: "2026-04-30T02:00:00Z",
+      });
+    });
+
+    expect(screen.getByText("https://github.com/kanvibe/kanvibe/pull/210")).toBeTruthy();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "confirm" }));
+    });
+
+    await waitFor(() => {
+      expect(updateTaskStatus).toHaveBeenCalledWith("task-1", TaskStatus.DONE);
+    });
   });
 });

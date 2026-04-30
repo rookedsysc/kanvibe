@@ -4,6 +4,7 @@ const mocks = vi.hoisted(() => ({
   taskRepo: {
     create: vi.fn(),
     createQueryBuilder: vi.fn(),
+    find: vi.fn(),
     findOneBy: vi.fn(),
     save: vi.fn(),
   },
@@ -18,6 +19,7 @@ const mocks = vi.hoisted(() => ({
   broadcastBoardUpdate: vi.fn(),
   execGit: vi.fn(),
   broadcastTaskHookInstallFailed: vi.fn(),
+  broadcastTaskPrMergedDetected: vi.fn(),
 }));
 
 vi.mock("child_process", () => ({
@@ -35,6 +37,10 @@ vi.mock("@/lib/database", () => ({
 vi.mock("@/entities/KanbanTask", () => ({
   TaskStatus: {
     TODO: "todo",
+    PROGRESS: "progress",
+    PENDING: "pending",
+    REVIEW: "review",
+    DONE: "done",
   },
   SessionType: {
     TMUX: "tmux",
@@ -61,6 +67,7 @@ vi.mock("@/lib/kanvibeHooksInstaller", () => ({
 vi.mock("@/lib/boardNotifier", () => ({
   broadcastBoardUpdate: mocks.broadcastBoardUpdate,
   broadcastTaskHookInstallFailed: mocks.broadcastTaskHookInstallFailed,
+  broadcastTaskPrMergedDetected: mocks.broadcastTaskPrMergedDetected,
 }));
 
 vi.mock("@/lib/gitOperations", () => ({
@@ -501,5 +508,99 @@ describe("kanbanService.createTask", () => {
     expect(mocks.taskRepo.save).not.toHaveBeenCalled();
     expect(mocks.broadcastBoardUpdate).not.toHaveBeenCalled();
     expect(consoleErrorSpy).not.toHaveBeenCalled();
+  });
+
+  it("active task PR sync는 새 open PR URL을 task에 저장한다", async () => {
+    // Given
+    const prUrl = "https://github.com/kanvibe/kanvibe/pull/210";
+    mocks.taskRepo.find.mockResolvedValue([
+      {
+        id: "task-9",
+        title: "PR sync target",
+        projectId: "project-1",
+        branchName: "feature/pr-sync",
+        worktreePath: "/workspace/repo__worktrees/feature-pr-sync",
+        sshHost: null,
+        prUrl: null,
+        status: "todo",
+      },
+    ]);
+    mocks.projectRepo.findOneBy.mockResolvedValue({
+      id: "project-1",
+      repoPath: "/workspace/repo",
+      sshHost: null,
+    });
+    mocks.taskRepo.save.mockImplementation(async (value) => value);
+    mocks.execFile.mockImplementation((file, args, options, callback) => {
+      callback(null, JSON.stringify([{
+        url: prUrl,
+        state: "OPEN",
+        mergedAt: null,
+        updatedAt: "2026-04-30T01:00:00Z",
+      }]), "");
+      return {} as never;
+    });
+
+    const { syncActiveTaskPullRequests } = await import("@/desktop/main/services/kanbanService");
+
+    // When
+    const result = await syncActiveTaskPullRequests(new Set());
+
+    // Then
+    expect(result.updatedTaskIds).toEqual(["task-9"]);
+    expect(mocks.taskRepo.save).toHaveBeenCalledWith(expect.objectContaining({
+      id: "task-9",
+      prUrl,
+    }));
+    expect(mocks.broadcastTaskPrMergedDetected).not.toHaveBeenCalled();
+  });
+
+  it("active task PR sync는 merged PR을 감지하면 중복 없이 merge 이벤트를 브로드캐스트한다", async () => {
+    // Given
+    const prUrl = "https://github.com/kanvibe/kanvibe/pull/211";
+    mocks.taskRepo.find.mockResolvedValue([
+      {
+        id: "task-10",
+        title: "Merged PR task",
+        projectId: "project-1",
+        branchName: "feature/merged-pr",
+        worktreePath: "/workspace/repo__worktrees/feature-merged-pr",
+        sshHost: null,
+        prUrl: null,
+        status: "review",
+      },
+    ]);
+    mocks.projectRepo.findOneBy.mockResolvedValue({
+      id: "project-1",
+      repoPath: "/workspace/repo",
+      sshHost: null,
+    });
+    mocks.taskRepo.save.mockImplementation(async (value) => value);
+    mocks.execFile.mockImplementation((file, args, options, callback) => {
+      callback(null, JSON.stringify([{
+        url: prUrl,
+        state: "MERGED",
+        mergedAt: "2026-04-30T02:00:00Z",
+        updatedAt: "2026-04-30T02:00:00Z",
+      }]), "");
+      return {} as never;
+    });
+
+    const mergeEventKeys = new Set<string>();
+    const { syncActiveTaskPullRequests } = await import("@/desktop/main/services/kanbanService");
+
+    // When
+    await syncActiveTaskPullRequests(mergeEventKeys);
+    await syncActiveTaskPullRequests(mergeEventKeys);
+
+    // Then
+    expect(mocks.broadcastTaskPrMergedDetected).toHaveBeenCalledTimes(1);
+    expect(mocks.broadcastTaskPrMergedDetected).toHaveBeenCalledWith({
+      taskId: "task-10",
+      taskTitle: "Merged PR task",
+      branchName: "feature/merged-pr",
+      prUrl,
+      mergedAt: "2026-04-30T02:00:00Z",
+    });
   });
 });

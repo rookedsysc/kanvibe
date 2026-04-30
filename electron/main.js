@@ -32,6 +32,7 @@ app.commandLine.appendSwitch("log-level", "3");
 let mainWindow = null;
 let hookServer = null;
 let windowOpenHelpers = null;
+let stopBackgroundTaskSync = null;
 
 function broadcastNotificationsChanged() {
   for (const window of BrowserWindow.getAllWindows()) {
@@ -471,6 +472,8 @@ app.whenReady().then(async () => {
   registerNotificationHandlers();
 
   await createMainWindow();
+  const { startBackgroundTaskSync } = require(getRuntimeModulePath(path.join("src", "desktop", "main", "services", "backgroundTaskSyncService.ts")));
+  stopBackgroundTaskSync = startBackgroundTaskSync();
 
   app.on("activate", async () => {
     if (BrowserWindow.getAllWindows().length === 0) {
@@ -479,6 +482,8 @@ app.whenReady().then(async () => {
   });
 
   app.on("before-quit", () => {
+    stopBackgroundTaskSync?.();
+    stopBackgroundTaskSync = null;
     unsubscribeBoardEvents();
     hookServer?.close();
   });
