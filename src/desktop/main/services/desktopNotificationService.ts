@@ -89,6 +89,10 @@ export async function deliverBoardEventNotification(
     return false;
   }
 
+  if (payload.type === "task-pr-merged-detected") {
+    return false;
+  }
+
   if (!settings.enabledStatuses.includes(payload.requestedStatus)) {
     return false;
   }

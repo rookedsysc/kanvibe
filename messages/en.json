@@ -33,6 +33,11 @@
       "dontAskAgain": "Don't ask again",
       "confirm": "Move",
       "cancel": "Cancel"
+    },
+    "prMergeAlert": {
+      "title": "PR merge detected",
+      "message": "Kanvibe detected that worktree PR {branchName} was merged. Move the task \"{taskTitle}\" to Done?",
+      "prLinkLabel": "PR Link"
     }
   },
   "login": {

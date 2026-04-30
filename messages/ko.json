@@ -33,6 +33,11 @@
       "dontAskAgain": "다시 묻지 않기",
       "confirm": "이동",
       "cancel": "취소"
+    },
+    "prMergeAlert": {
+      "title": "PR merge 감지",
+      "message": "worktree PR {branchName} 가 merge 된 것을 확인했습니다. \"{taskTitle}\" task를 Done으로 옮길까요?",
+      "prLinkLabel": "PR 링크"
     }
   },
   "login": {

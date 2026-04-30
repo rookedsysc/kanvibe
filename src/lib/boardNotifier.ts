@@ -25,11 +25,20 @@ export interface TaskHookInstallFailedPayload {
   error: string;
 }
 
+export interface TaskPrMergedDetectedPayload {
+  taskId: string;
+  taskTitle: string;
+  branchName: string;
+  prUrl: string;
+  mergedAt: string;
+}
+
 export type BoardEventPayload =
   | BoardUpdatedPayload
   | ({ type: "task-status-changed" } & TaskStatusChangedPayload)
   | ({ type: "hook-status-target-missing" } & HookStatusTargetMissingPayload)
-  | ({ type: "task-hook-install-failed" } & TaskHookInstallFailedPayload);
+  | ({ type: "task-hook-install-failed" } & TaskHookInstallFailedPayload)
+  | ({ type: "task-pr-merged-detected" } & TaskPrMergedDetectedPayload);
 
 const boardEventEmitter = new EventEmitter();
 
@@ -64,4 +73,9 @@ export function broadcastHookStatusTargetMissing(payload: HookStatusTargetMissin
 /** 새 태스크 생성 후 hooks 자동 설치가 실패하면 렌더러에 안내를 브로드캐스트한다 */
 export function broadcastTaskHookInstallFailed(payload: TaskHookInstallFailedPayload) {
   emitBoardEvent({ type: "task-hook-install-failed", ...payload });
+}
+
+/** background PR sync가 merge 완료를 감지하면 보드 확인 알럿으로 전달한다 */
+export function broadcastTaskPrMergedDetected(payload: TaskPrMergedDetectedPayload) {
+  emitBoardEvent({ type: "task-pr-merged-detected", ...payload });
 }

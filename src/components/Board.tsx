@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect, useMemo, useTransition } from "react";
+import { useState, useCallback, useEffect, useMemo, useRef, useTransition } from "react";
 import { useTranslations } from "next-intl";
 import { DragDropContext, type DropResult } from "@hello-pangea/dnd";
 import Column from "./Column";
@@ -11,13 +11,14 @@ import ProjectSettings from "./ProjectSettings";
 import TaskContextMenu from "./TaskContextMenu";
 import BranchTaskModal from "./BranchTaskModal";
 import DoneConfirmDialog from "./DoneConfirmDialog";
-import { reorderTasks, deleteTask, getMoreDoneTasks, moveTaskToColumn } from "@/desktop/renderer/actions/kanban";
+import { reorderTasks, deleteTask, getMoreDoneTasks, moveTaskToColumn, updateTaskStatus } from "@/desktop/renderer/actions/kanban";
 import type { TasksByStatus } from "@/desktop/renderer/actions/kanban";
 import { SessionType, TaskStatus, type KanbanTask } from "@/entities/KanbanTask";
 import type { Project } from "@/entities/Project";
 import { useAutoRefresh } from "@/desktop/renderer/hooks/useAutoRefresh";
 import { useProjectFilterParams } from "@/desktop/renderer/hooks/useProjectFilterParams";
 import { computeProjectColor } from "@/lib/projectColor";
+import type { BoardEventPayload } from "@/lib/boardNotifier";
 
 interface BoardProps {
   initialTasks: TasksByStatus;
@@ -44,6 +45,15 @@ interface ContextMenuState {
   x: number;
   y: number;
   task: KanbanTask | null;
+}
+
+interface PrMergeAlertState {
+  eventKey: string;
+  taskId: string;
+  taskTitle: string;
+  branchName: string;
+  prUrl: string;
+  mergedAt: string;
 }
 
 /** worktree repoPath에서 메인 프로젝트 경로를 추출한다 */
@@ -86,6 +96,16 @@ function insertAtFilteredIndex(
   }
 
   return arr;
+}
+
+function isTaskPrMergedDetectedEvent(
+  event: BoardEventPayload,
+): event is Extract<BoardEventPayload, { type: "task-pr-merged-detected" }> {
+  return event.type === "task-pr-merged-detected";
+}
+
+function buildMergedPrEventKey(taskId: string, prUrl: string, mergedAt: string) {
+  return `${taskId}:${prUrl}:${mergedAt}`;
 }
 
 interface DragMovePlan {
@@ -182,6 +202,7 @@ export default function Board({ initialTasks, initialDoneTotal, initialDoneLimit
   const t = useTranslations("board");
   const tt = useTranslations("task");
   const tc = useTranslations("common");
+  const tm = useTranslations("common.prMergeAlert");
   const [tasks, setTasks] = useState<TasksByStatus>(initialTasks);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -202,6 +223,9 @@ export default function Board({ initialTasks, initialDoneTotal, initialDoneLimit
   const [currentDefaultSessionType, setCurrentDefaultSessionType] = useState<SessionType>(defaultSessionType);
   const [shouldUseMacTitlebarLayout, setShouldUseMacTitlebarLayout] = useState(false);
   const [, startDragPersistenceTransition] = useTransition();
+  const [isPrMergeActionPending, startPrMergeActionTransition] = useTransition();
+  const [prMergeAlerts, setPrMergeAlerts] = useState<PrMergeAlertState[]>([]);
+  const dismissedPrMergeEventKeysRef = useRef<Set<string>>(new Set());
 
   /** projectId → 표시할 프로젝트 이름 매핑. worktree 프로젝트는 메인 프로젝트 이름으로 resolve한다 */
   const projectNameMap = useMemo(() => {
@@ -346,6 +370,41 @@ export default function Board({ initialTasks, initialDoneTotal, initialDoneLimit
     setShouldUseMacTitlebarLayout(isDesktopApp && isMacDesktop);
   }, []);
 
+  useEffect(() => {
+    if (!window.kanvibeDesktop?.onBoardEvent) {
+      return;
+    }
+
+    return window.kanvibeDesktop.onBoardEvent((event: BoardEventPayload) => {
+      if (!isTaskPrMergedDetectedEvent(event)) {
+        return;
+      }
+
+      const eventKey = buildMergedPrEventKey(event.taskId, event.prUrl, event.mergedAt);
+      if (dismissedPrMergeEventKeysRef.current.has(eventKey)) {
+        return;
+      }
+
+      setPrMergeAlerts((current) => {
+        if (current.some((alert) => alert.eventKey === eventKey)) {
+          return current;
+        }
+
+        return [
+          ...current,
+          {
+            eventKey,
+            taskId: event.taskId,
+            taskTitle: event.taskTitle,
+            branchName: event.branchName,
+            prUrl: event.prUrl,
+            mergedAt: event.mergedAt,
+          },
+        ];
+      });
+    });
+  }, []);
+
   const handleLoadMoreDone = useCallback(async () => {
     if (isLoadingMore) return;
     setIsLoadingMore(true);
@@ -428,6 +487,33 @@ export default function Board({ initialTasks, initialDoneTotal, initialDoneLimit
   const handleDoneCancel = useCallback(() => {
     setPendingDoneResult(null);
   }, []);
+
+  const activePrMergeAlert = prMergeAlerts[0] ?? null;
+
+  const dismissActivePrMergeAlert = useCallback(() => {
+    setPrMergeAlerts((current) => current.slice(1));
+  }, []);
+
+  const handlePrMergeCancel = useCallback(() => {
+    if (activePrMergeAlert) {
+      dismissedPrMergeEventKeysRef.current.add(activePrMergeAlert.eventKey);
+    }
+    dismissActivePrMergeAlert();
+  }, [activePrMergeAlert, dismissActivePrMergeAlert]);
+
+  const handlePrMergeConfirm = useCallback(() => {
+    if (!activePrMergeAlert) {
+      return;
+    }
+
+    dismissedPrMergeEventKeysRef.current.add(activePrMergeAlert.eventKey);
+    const { taskId } = activePrMergeAlert;
+    dismissActivePrMergeAlert();
+
+    startPrMergeActionTransition(async () => {
+      await updateTaskStatus(taskId, TaskStatus.DONE);
+    });
+  }, [activePrMergeAlert, dismissActivePrMergeAlert, startPrMergeActionTransition]);
 
   const handleContextMenu = useCallback(
     (e: React.MouseEvent, task: KanbanTask) => {
@@ -603,6 +689,49 @@ export default function Board({ initialTasks, initialDoneTotal, initialDoneLimit
         onConfirm={handleDoneConfirm}
         onCancel={handleDoneCancel}
       />
+
+      {activePrMergeAlert && (
+        <div className="fixed inset-0 z-[520] flex items-center justify-center bg-bg-overlay">
+          <div className="w-full max-w-md rounded-xl border border-border-default bg-bg-surface p-6 shadow-lg">
+            <h2 className="mb-2 text-lg font-semibold text-text-primary">
+              {tm("title")}
+            </h2>
+            <p className="text-sm text-text-secondary">
+              {tm("message", {
+                branchName: activePrMergeAlert.branchName,
+                taskTitle: activePrMergeAlert.taskTitle,
+              })}
+            </p>
+            <a
+              href={activePrMergeAlert.prUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-4 inline-flex max-w-full items-center gap-1 rounded bg-tag-pr-bg px-2 py-1 text-xs text-tag-pr-text hover:opacity-80 transition-opacity"
+            >
+              <span className="shrink-0">{tm("prLinkLabel")}</span>
+              <span className="truncate">{activePrMergeAlert.prUrl}</span>
+            </a>
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={handlePrMergeCancel}
+                disabled={isPrMergeActionPending}
+                className="rounded-md border border-border-default bg-bg-page px-4 py-1.5 text-sm text-text-secondary transition-colors hover:border-brand-primary"
+              >
+                {tc("cancel")}
+              </button>
+              <button
+                type="button"
+                onClick={handlePrMergeConfirm}
+                disabled={isPrMergeActionPending}
+                className="rounded-md bg-brand-primary px-4 py-1.5 text-sm text-text-inverse transition-colors hover:bg-brand-hover disabled:opacity-50"
+              >
+                {tc("confirm")}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

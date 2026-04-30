@@ -5,7 +5,7 @@ import { KanbanTask, TaskStatus, SessionType } from "@/entities/KanbanTask";
 import { TaskPriority } from "@/entities/TaskPriority";
 import { createWorktreeWithSession, removeWorktreeAndBranch, createSessionWithoutWorktree, removeSessionOnly, buildManagedWorktreePath } from "@/lib/worktree";
 import { getProjectRepository } from "@/lib/database";
-import { broadcastBoardUpdate, broadcastTaskHookInstallFailed } from "@/lib/boardNotifier";
+import { broadcastBoardUpdate, broadcastTaskHookInstallFailed, broadcastTaskPrMergedDetected } from "@/lib/boardNotifier";
 import { installKanvibeHooks } from "@/lib/kanvibeHooksInstaller";
 import { execGit } from "@/lib/gitOperations";
 
@@ -23,6 +23,18 @@ export interface LoadMoreDoneResponse {
 }
 
 const DONE_PAGE_SIZE = 20;
+
+interface GitHubPullRequestInfo {
+  url: string | null;
+  state: string | null;
+  mergedAt: string | null;
+  updatedAt: string | null;
+}
+
+export interface ActiveTaskPullRequestSyncResult {
+  updatedTaskIds: string[];
+  mergeEventKeys: string[];
+}
 
 /** TypeORM 엔티티를 직렬화 가능한 plain object로 변환한다 */
 function serialize<T>(data: T): T {
@@ -108,6 +120,113 @@ async function getPrUrlFromGitHubCli(branchName: string, cwd: string, sshHost?: 
       },
     );
   });
+}
+
+function parseGitHubPullRequestInfo(output: string): GitHubPullRequestInfo | null {
+  const parsed = JSON.parse(output) as Array<{
+    url?: string | null;
+    state?: string | null;
+    mergedAt?: string | null;
+    updatedAt?: string | null;
+  }>;
+
+  if (!Array.isArray(parsed) || parsed.length === 0) {
+    return null;
+  }
+
+  const latest = [...parsed].sort((left, right) => {
+    const leftTime = left.updatedAt ? Date.parse(left.updatedAt) : 0;
+    const rightTime = right.updatedAt ? Date.parse(right.updatedAt) : 0;
+    return rightTime - leftTime;
+  })[0];
+
+  return {
+    url: latest?.url ?? null,
+    state: latest?.state ?? null,
+    mergedAt: latest?.mergedAt ?? null,
+    updatedAt: latest?.updatedAt ?? null,
+  };
+}
+
+async function getPrInfoFromGitHubCli(
+  branchName: string,
+  cwd: string,
+  sshHost?: string | null,
+): Promise<GitHubPullRequestInfo | null> {
+  if (sshHost) {
+    try {
+      const output = await execGit(
+        `cd ${quoteForShell(cwd)} && gh pr list --head ${quoteForShell(branchName)} --state all --json url,state,mergedAt,updatedAt`,
+        sshHost,
+      );
+      if (!output.trim()) {
+        return null;
+      }
+      return parseGitHubPullRequestInfo(output);
+    } catch (error) {
+      if (isMissingGitHubCli(error)) {
+        return null;
+      }
+
+      throw error;
+    }
+  }
+
+  return new Promise((resolve, reject) => {
+    execFile(
+      "gh",
+      ["pr", "list", "--head", branchName, "--state", "all", "--json", "url,state,mergedAt,updatedAt"],
+      { cwd },
+      (error, stdout) => {
+        if (error) {
+          if (isMissingGitHubCli(error)) {
+            resolve(null);
+            return;
+          }
+
+          reject(error);
+          return;
+        }
+
+        if (!stdout.trim()) {
+          resolve(null);
+          return;
+        }
+
+        resolve(parseGitHubPullRequestInfo(stdout));
+      },
+    );
+  });
+}
+
+async function resolveTaskGitContext(task: Pick<KanbanTask, "projectId" | "worktreePath" | "sshHost">): Promise<{
+  cwd: string;
+  sshHost: string | null;
+}> {
+  let repoPath: string | null = null;
+  let sshHost: string | null = task.sshHost || null;
+
+  if (task.projectId) {
+    const projectRepo = await getProjectRepository();
+    const project = await projectRepo.findOneBy({ id: task.projectId });
+    if (project) {
+      repoPath = project.repoPath;
+      sshHost = sshHost ?? project.sshHost ?? null;
+    }
+  }
+
+  return {
+    cwd: repoPath ?? task.worktreePath ?? process.cwd(),
+    sshHost,
+  };
+}
+
+function buildMergedPullRequestEventKey(
+  taskId: string,
+  prUrl: string,
+  mergedAt: string,
+): string {
+  return `${taskId}:${prUrl}:${mergedAt}`;
 }
 
 /** 모든 작업을 상태별로 그룹핑하여 반환한다. Done 컬럼은 첫 페이지만 로드한다 */
@@ -555,19 +674,8 @@ export async function fetchAndSavePrUrl(taskId: string): Promise<string | null> 
   const task = await repo.findOneBy({ id: taskId });
   if (!task?.branchName) return null;
 
-  let repoPath: string | null = null;
-  let sshHost: string | null = task.sshHost || null;
-  if (task.projectId) {
-    const projectRepo = await getProjectRepository();
-    const project = await projectRepo.findOneBy({ id: task.projectId });
-    if (project) {
-      repoPath = project.repoPath;
-      sshHost = sshHost ?? project.sshHost ?? null;
-    }
-  }
-
   try {
-    const cwd = repoPath ?? task.worktreePath ?? process.cwd();
+    const { cwd, sshHost } = await resolveTaskGitContext(task);
     const prUrl = await getPrUrlFromGitHubCli(task.branchName, cwd, sshHost);
 
     if (prUrl) {
@@ -581,4 +689,64 @@ export async function fetchAndSavePrUrl(taskId: string): Promise<string | null> 
   }
 
   return null;
+}
+
+export async function syncActiveTaskPullRequests(
+  emittedMergeEventKeys: Set<string>,
+): Promise<ActiveTaskPullRequestSyncResult> {
+  const repo = await getTaskRepository();
+  const tasks = await repo.find({
+    where: { status: Not(TaskStatus.DONE) },
+    order: { updatedAt: "ASC" },
+  });
+  const result: ActiveTaskPullRequestSyncResult = {
+    updatedTaskIds: [],
+    mergeEventKeys: [],
+  };
+
+  for (const task of tasks) {
+    if (!task.branchName) {
+      continue;
+    }
+
+    try {
+      const { cwd, sshHost } = await resolveTaskGitContext(task);
+      const prInfo = await getPrInfoFromGitHubCli(task.branchName, cwd, sshHost);
+
+      if (!prInfo?.url) {
+        continue;
+      }
+
+      if (task.prUrl !== prInfo.url) {
+        task.prUrl = prInfo.url;
+        await repo.save(task);
+        result.updatedTaskIds.push(task.id);
+      }
+
+      if (prInfo.state === "MERGED" && prInfo.mergedAt) {
+        const mergeEventKey = buildMergedPullRequestEventKey(task.id, prInfo.url, prInfo.mergedAt);
+        if (emittedMergeEventKeys.has(mergeEventKey)) {
+          continue;
+        }
+
+        emittedMergeEventKeys.add(mergeEventKey);
+        result.mergeEventKeys.push(mergeEventKey);
+        broadcastTaskPrMergedDetected({
+          taskId: task.id,
+          taskTitle: task.title,
+          branchName: task.branchName,
+          prUrl: prInfo.url,
+          mergedAt: prInfo.mergedAt,
+        });
+      }
+    } catch (error) {
+      console.error("PR 상태 동기화 실패:", {
+        taskId: task.id,
+        branchName: task.branchName,
+        error: getErrorMessage(error),
+      });
+    }
+  }
+
+  return result;
 }
