@@ -30,6 +30,7 @@ interface BoardProps {
   doneAlertDismissed: boolean;
   notificationSettings: { isEnabled: boolean; enabledStatuses: string[] };
   defaultSessionType: SessionType;
+  taskSearchShortcut: string;
 }
 
 const COLUMNS: { status: TaskStatus; labelKey: string; colorClass: string }[] = [
@@ -197,7 +198,7 @@ function buildDragMovePlan(
   };
 }
 
-export default function Board({ initialTasks, initialDoneTotal, initialDoneLimit, sshHosts, projects, sidebarDefaultCollapsed, doneAlertDismissed, notificationSettings, defaultSessionType }: BoardProps) {
+export default function Board({ initialTasks, initialDoneTotal, initialDoneLimit, sshHosts, projects, sidebarDefaultCollapsed, doneAlertDismissed, notificationSettings, defaultSessionType, taskSearchShortcut }: BoardProps) {
   useAutoRefresh();
   const t = useTranslations("board");
   const tt = useTranslations("task");
@@ -654,6 +655,7 @@ export default function Board({ initialTasks, initialDoneTotal, initialDoneLimit
         sshHosts={sshHosts}
         sidebarDefaultCollapsed={sidebarDefaultCollapsed}
         defaultSessionType={currentDefaultSessionType}
+        taskSearchShortcut={taskSearchShortcut}
         onDefaultSessionTypeChange={(sessionType) => {
           setCurrentDefaultSessionType(sessionType);
         }}

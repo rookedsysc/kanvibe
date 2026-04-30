@@ -1,9 +1,9 @@
 import type { KanbanTask, TaskStatus } from "@/entities/KanbanTask";
 import type { SessionType } from "@/entities/KanbanTask";
-import type { LoadMoreDoneResponse, TasksByStatus, TasksByStatusWithMeta, CreateTaskInput } from "@/desktop/main/services/kanbanService";
+import type { LoadMoreDoneResponse, TasksByStatus, TasksByStatusWithMeta, CreateTaskInput, SearchableTask } from "@/desktop/main/services/kanbanService";
 import { invokeDesktop } from "@/desktop/renderer/ipc";
 
-export type { TasksByStatus, TasksByStatusWithMeta, LoadMoreDoneResponse, CreateTaskInput };
+export type { TasksByStatus, TasksByStatusWithMeta, LoadMoreDoneResponse, CreateTaskInput, SearchableTask };
 
 export function getTasksByStatus(): Promise<TasksByStatusWithMeta> {
   return invokeDesktop("kanban", "getTasksByStatus");
@@ -15,6 +15,10 @@ export function getMoreDoneTasks(offset: number, limit?: number): Promise<LoadMo
 
 export function getTaskById(taskId: string): Promise<KanbanTask | null> {
   return invokeDesktop("kanban", "getTaskById", taskId);
+}
+
+export function getSearchableTasks(): Promise<SearchableTask[]> {
+  return invokeDesktop("kanban", "getSearchableTasks");
 }
 
 export function getTaskIdByProjectAndBranch(projectId: string, branchName: string): Promise<string | null> {

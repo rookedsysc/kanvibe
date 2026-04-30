@@ -8,6 +8,7 @@
     "close": "닫기",
     "confirm": "확인",
     "local": "로컬",
+    "remote": "원격",
     "settings": "설정",
     "notifications": "알림",
     "markAllRead": "모두 읽음 처리",
@@ -147,6 +148,9 @@
     "detailPageSection": "상세 페이지",
     "sidebarDefaultCollapsed": "사이드바 기본 접기",
     "sidebarDefaultCollapsedDescription": "상세 페이지 진입 시 왼쪽 사이드바를 접은 상태로 시작합니다.",
+    "taskSearchShortcut": "빠른 검색 단축키",
+    "taskSearchShortcutDescription": "브랜치명 또는 프로젝트명으로 태스크 상세 페이지를 빠르게 찾는 단축키입니다.",
+    "taskSearchShortcutRecording": "원하는 조합을 누르세요",
     "notificationSection": "알림",
     "notificationEnabled": "브라우저 알림",
     "notificationEnabledDescription": "작업 상태 변경 시 브라우저 알림을 받습니다.",
@@ -155,6 +159,12 @@
     "taskCreationSection": "작업 생성",
     "defaultSessionType": "기본 세션 타입",
     "defaultSessionTypeDescription": "새 작업 생성 시 기본으로 선택되는 세션 타입입니다."
+  },
+  "taskSearch": {
+    "title": "태스크 빠른 검색",
+    "placeholder": "브랜치명 또는 프로젝트명으로 검색...",
+    "empty": "일치하는 태스크가 없습니다.",
+    "hint": "↑↓ 이동 · Enter 이동 · Esc 닫기"
   },
   "paneLayout": {
     "title": "Pane 레이아웃 설정",

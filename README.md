@@ -149,6 +149,7 @@ Each pane can run a custom command (e.g., `vim`, `htop`, `lazygit`, test runner,
 - 5-status task management (TODO / PROGRESS / PENDING / REVIEW / DONE)
 - Custom task ordering with drag & drop
 - Multi-project filtering
+- Global quick search for task detail pages by branch or project name
 - Done column pagination
 - Real-time WebSocket updates
 
@@ -162,6 +163,12 @@ Each pane can run a custom command (e.g., `vim`, `htop`, `lazygit`, test runner,
 - Browser-based terminal via xterm.js + WebSocket
 - SSH remote terminal support (reads `~/.ssh/config`)
 - Nerd Font rendering support
+
+### Quick Task Search
+- Open a global search dialog from the configured keyboard shortcut
+- Search existing task detail pages by branch name or project name
+- Distinguish local tasks from SSH remote tasks directly in search results
+- Configure the shortcut in **Project Settings** → **Detail Page**
 
 ### AI Agent Hooks - Automatic Status Tracking
 KanVibe integrates with **Claude Code Hooks**, **Gemini CLI Hooks**, **Codex CLI**, and **OpenCode** to automatically track task status. Tasks are managed through 5 statuses:

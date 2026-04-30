@@ -8,6 +8,7 @@
     "close": "Close",
     "confirm": "Confirm",
     "local": "Local",
+    "remote": "Remote",
     "settings": "Settings",
     "notifications": "Notifications",
     "markAllRead": "Mark all read",
@@ -147,6 +148,9 @@
     "detailPageSection": "Detail Page",
     "sidebarDefaultCollapsed": "Collapse sidebar by default",
     "sidebarDefaultCollapsedDescription": "Start with the left sidebar collapsed when entering the detail page.",
+    "taskSearchShortcut": "Quick search shortcut",
+    "taskSearchShortcutDescription": "Shortcut for finding a task detail page by branch or project name.",
+    "taskSearchShortcutRecording": "Press the shortcut",
     "notificationSection": "Notifications",
     "notificationEnabled": "Browser notifications",
     "notificationEnabledDescription": "Receive browser notifications when task status changes.",
@@ -155,6 +159,12 @@
     "taskCreationSection": "Task Creation",
     "defaultSessionType": "Default session type",
     "defaultSessionTypeDescription": "The default session type selected when creating a new task."
+  },
+  "taskSearch": {
+    "title": "Quick Task Search",
+    "placeholder": "Search by branch or project name...",
+    "empty": "No matching tasks found.",
+    "hint": "↑↓ Navigate · Enter Open · Esc Close"
   },
   "paneLayout": {
     "title": "Pane Layout Settings",

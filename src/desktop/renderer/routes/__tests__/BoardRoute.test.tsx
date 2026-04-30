@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
   getDoneAlertDismissed: vi.fn(),
   getNotificationSettings: vi.fn(),
   getDefaultSessionType: vi.fn(),
+  getTaskSearchShortcut: vi.fn(),
   useRefreshSignal: vi.fn(() => 0),
 }));
 
@@ -45,6 +46,7 @@ vi.mock("@/desktop/renderer/actions/appSettings", () => ({
   getDoneAlertDismissed: (...args: unknown[]) => mocks.getDoneAlertDismissed(...args),
   getNotificationSettings: (...args: unknown[]) => mocks.getNotificationSettings(...args),
   getDefaultSessionType: (...args: unknown[]) => mocks.getDefaultSessionType(...args),
+  getTaskSearchShortcut: (...args: unknown[]) => mocks.getTaskSearchShortcut(...args),
 }));
 
 vi.mock("@/desktop/renderer/utils/refresh", () => ({
@@ -61,6 +63,7 @@ describe("BoardRoute", () => {
     mocks.getDoneAlertDismissed.mockResolvedValue(false);
     mocks.getNotificationSettings.mockResolvedValue({ isEnabled: true, enabledStatuses: [] });
     mocks.getDefaultSessionType.mockResolvedValue("tmux");
+    mocks.getTaskSearchShortcut.mockResolvedValue("Mod+Shift+O");
   });
 
   it("캐시가 있으면 stale board를 즉시 렌더링하고 이후 최신 데이터로 갱신한다", async () => {
@@ -83,6 +86,7 @@ describe("BoardRoute", () => {
       doneAlertDismissed: false,
       notificationSettings: { isEnabled: true, enabledStatuses: [] },
       defaultSessionType: "tmux",
+      taskSearchShortcut: "Mod+Shift+O",
     }));
     const deferredTasks = createDeferred<{
       tasks: {

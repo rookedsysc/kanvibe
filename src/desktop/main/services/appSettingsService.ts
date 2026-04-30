@@ -107,6 +107,7 @@ export async function setNotificationStatuses(statuses: string[]): Promise<void>
 }
 
 const DEFAULT_SESSION_TYPE_KEY = "default_session_type";
+const TASK_SEARCH_SHORTCUT_KEY = "task_search_shortcut";
 
 /** 기본 세션 타입을 조회한다. 미설정 시 "tmux"를 반환한다 */
 export async function getDefaultSessionType(): Promise<SessionType> {
@@ -117,4 +118,16 @@ export async function getDefaultSessionType(): Promise<SessionType> {
 /** 기본 세션 타입을 저장한다 */
 export async function setDefaultSessionType(sessionType: SessionType): Promise<void> {
   await setAppSetting(DEFAULT_SESSION_TYPE_KEY, sessionType);
+}
+
+/** 태스크 빠른 검색 단축키를 조회한다. 미설정 시 기본값을 반환한다 */
+export async function getTaskSearchShortcut(): Promise<string> {
+  const value = await getAppSetting(TASK_SEARCH_SHORTCUT_KEY);
+  return value?.trim() || "Mod+Shift+O";
+}
+
+/** 태스크 빠른 검색 단축키를 저장한다 */
+export async function setTaskSearchShortcut(shortcut: string): Promise<void> {
+  const normalizedShortcut = shortcut.trim() || "Mod+Shift+O";
+  await setAppSetting(TASK_SEARCH_SHORTCUT_KEY, normalizedShortcut);
 }

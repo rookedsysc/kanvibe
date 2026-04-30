@@ -7,6 +7,7 @@ import type { Project } from "@/entities/Project";
 const mockSetDefaultSessionType = vi.fn().mockResolvedValue(undefined);
 const mockSetNotificationEnabled = vi.fn().mockResolvedValue(undefined);
 const mockSetNotificationStatuses = vi.fn().mockResolvedValue(undefined);
+const mockSetTaskSearchShortcut = vi.fn().mockResolvedValue(undefined);
 
 vi.mock("next-intl", () => ({
   useTranslations: () => (key: string) => key,
@@ -43,6 +44,7 @@ vi.mock("@/desktop/renderer/actions/appSettings", () => ({
   setNotificationEnabled: (...args: unknown[]) => mockSetNotificationEnabled(...args),
   setNotificationStatuses: (...args: unknown[]) => mockSetNotificationStatuses(...args),
   setDefaultSessionType: (...args: unknown[]) => mockSetDefaultSessionType(...args),
+  setTaskSearchShortcut: (...args: unknown[]) => mockSetTaskSearchShortcut(...args),
 }));
 
 function createProject(): Project {
@@ -75,6 +77,7 @@ describe("ProjectSettings", () => {
         sshHosts={[]}
         sidebarDefaultCollapsed={false}
         defaultSessionType={SessionType.TMUX}
+        taskSearchShortcut="Mod+Shift+O"
         onDefaultSessionTypeChange={onDefaultSessionTypeChange}
         notificationSettings={{ isEnabled: true, enabledStatuses: ["progress", "pending", "review"] }}
       />,
@@ -101,6 +104,7 @@ describe("ProjectSettings", () => {
         sshHosts={[]}
         sidebarDefaultCollapsed={false}
         defaultSessionType={SessionType.TMUX}
+        taskSearchShortcut="Mod+Shift+O"
         notificationSettings={{ isEnabled: true, enabledStatuses: ["progress", "pending", "review"] }}
       />,
     );
@@ -127,6 +131,7 @@ describe("ProjectSettings", () => {
         sshHosts={[]}
         sidebarDefaultCollapsed={false}
         defaultSessionType={SessionType.TMUX}
+        taskSearchShortcut="Mod+Shift+O"
         notificationSettings={{ isEnabled: true, enabledStatuses: ["progress", "pending", "review"] }}
       />,
     );
@@ -155,6 +160,7 @@ describe("ProjectSettings", () => {
         sshHosts={[]}
         sidebarDefaultCollapsed={false}
         defaultSessionType={SessionType.TMUX}
+        taskSearchShortcut="Mod+Shift+O"
         notificationSettings={initialSettings}
       />,
     );
@@ -169,6 +175,7 @@ describe("ProjectSettings", () => {
         sshHosts={[]}
         sidebarDefaultCollapsed={false}
         defaultSessionType={SessionType.TMUX}
+        taskSearchShortcut="Mod+Shift+O"
         notificationSettings={{
           isEnabled: true,
           enabledStatuses: ["progress", "pending", "review"],
@@ -181,5 +188,37 @@ describe("ProjectSettings", () => {
       expect(mockSetNotificationStatuses).toHaveBeenCalledWith(["progress", "review"]);
     });
     expect(screen.getByText("pending").className).toContain("bg-bg-page");
+  });
+
+  it("검색 단축키를 캡처해서 즉시 저장한다", async () => {
+    // Given
+    render(
+      <ProjectSettings
+        isOpen
+        onClose={vi.fn()}
+        projects={[createProject()]}
+        sshHosts={[]}
+        sidebarDefaultCollapsed={false}
+        defaultSessionType={SessionType.TMUX}
+        taskSearchShortcut="Mod+Shift+O"
+        notificationSettings={{ isEnabled: true, enabledStatuses: ["progress", "pending", "review"] }}
+      />,
+    );
+
+    const recordButton = screen.getByTestId("task-search-shortcut-record");
+
+    // When
+    fireEvent.click(recordButton);
+    fireEvent.keyDown(recordButton, {
+      key: "p",
+      ctrlKey: true,
+      shiftKey: true,
+    });
+
+    // Then
+    await waitFor(() => {
+      expect(mockSetTaskSearchShortcut).toHaveBeenCalledWith("Ctrl+Shift+P");
+    });
+    expect(screen.getByText("Ctrl+Shift+P")).toBeTruthy();
   });
 });

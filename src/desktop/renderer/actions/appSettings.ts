@@ -59,3 +59,11 @@ export function getDefaultSessionType(): Promise<SessionType> {
 export function setDefaultSessionType(sessionType: SessionType): Promise<void> {
   return invokeAndRefresh("setDefaultSessionType", sessionType);
 }
+
+export function getTaskSearchShortcut(): Promise<string> {
+  return invokeDesktop("appSettings", "getTaskSearchShortcut");
+}
+
+export function setTaskSearchShortcut(shortcut: string): Promise<void> {
+  return invokeAndRefresh("setTaskSearchShortcut", shortcut);
+}

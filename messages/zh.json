@@ -8,6 +8,7 @@
     "close": "关闭",
     "confirm": "确认",
     "local": "本地",
+    "remote": "远程",
     "settings": "设置",
     "notifications": "通知",
     "markAllRead": "全部标记已读",
@@ -147,6 +148,9 @@
     "detailPageSection": "详情页",
     "sidebarDefaultCollapsed": "默认折叠侧栏",
     "sidebarDefaultCollapsedDescription": "进入详情页时左侧栏默认折叠。",
+    "taskSearchShortcut": "快速搜索快捷键",
+    "taskSearchShortcutDescription": "用于按分支名或项目名快速查找任务详情页的快捷键。",
+    "taskSearchShortcutRecording": "请按下快捷键组合",
     "notificationSection": "通知",
     "notificationEnabled": "浏览器通知",
     "notificationEnabledDescription": "任务状态变更时接收浏览器通知。",
@@ -155,6 +159,12 @@
     "taskCreationSection": "任务创建",
     "defaultSessionType": "默认会话类型",
     "defaultSessionTypeDescription": "创建新任务时默认选择的会话类型。"
+  },
+  "taskSearch": {
+    "title": "快速任务搜索",
+    "placeholder": "按分支名或项目名搜索...",
+    "empty": "没有找到匹配的任务。",
+    "hint": "↑↓ 移动 · Enter 打开 · Esc 关闭"
   },
   "paneLayout": {
     "title": "面板布局设置",
