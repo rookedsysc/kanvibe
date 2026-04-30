@@ -1,4 +1,4 @@
-import { render, waitFor } from "@testing-library/react";
+import { act, render, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import Terminal from "../Terminal";
 
@@ -121,5 +121,28 @@ describe("Desktop Terminal", () => {
       expect(mockTerminalFocus).toHaveBeenCalledTimes(1);
     });
     expect(mockFocusTerminal).not.toHaveBeenCalled();
+  });
+
+  it("상세 창으로 다시 포커스되면 terminal fit과 resize를 다시 실행한다", async () => {
+    // Given
+    render(<Terminal taskId="task-1" />);
+
+    await waitFor(() => {
+      expect(mockOpenTerminal).toHaveBeenCalledWith("task-1", 80, 24);
+    });
+
+    mockFit.mockClear();
+    mockResizeTerminal.mockClear();
+
+    // When
+    await act(async () => {
+      window.dispatchEvent(new Event("focus"));
+    });
+
+    // Then
+    await waitFor(() => {
+      expect(mockFit).toHaveBeenCalledTimes(1);
+    });
+    expect(mockResizeTerminal).toHaveBeenCalledWith("task-1", 80, 24);
   });
 });

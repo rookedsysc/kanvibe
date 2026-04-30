@@ -76,6 +76,17 @@ export default function Terminal({ taskId }: TerminalProps) {
       window.kanvibeDesktop!.resizeTerminal(taskId, cols, rows);
     });
 
+    const syncTerminalSize = () => {
+      fitAddon.fit();
+      window.kanvibeDesktop!.resizeTerminal(taskId, terminal.cols, terminal.rows);
+    };
+
+    const scheduleTerminalSync = () => {
+      requestAnimationFrame(() => {
+        syncTerminalSize();
+      });
+    };
+
     const focusCurrentTerminal = () => {
       terminal.focus();
     };
@@ -83,21 +94,28 @@ export default function Terminal({ taskId }: TerminalProps) {
     focusCurrentTerminal();
 
     const resizeObserver = new ResizeObserver(() => {
-      fitAddon.fit();
-      window.kanvibeDesktop!.resizeTerminal(taskId, terminal.cols, terminal.rows);
+      syncTerminalSize();
     });
     resizeObserver.observe(containerRef.current);
 
     const handleVisibilityChange = () => {
       if (document.visibilityState === "visible") {
         focusCurrentTerminal();
+        scheduleTerminalSync();
       }
     };
 
+    const handleWindowFocus = () => {
+      focusCurrentTerminal();
+      scheduleTerminalSync();
+    };
+
     document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("focus", handleWindowFocus);
 
     return () => {
       document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("focus", handleWindowFocus);
       disposeMacShiftSelectionPatch();
       resizeObserver.disconnect();
       unsubscribeData();

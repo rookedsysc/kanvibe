@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
-import { resolveWindowOpenAction } from "@/desktop/main/windowOpen";
+import { resolveNavigationTargetWindow, resolveWindowOpenAction } from "@/desktop/main/windowOpen";
 
 describe("resolveWindowOpenAction", () => {
   it("file 기반 내부 URL은 독립적인 내부 창 열기로 판단한다", () => {
@@ -70,5 +70,49 @@ describe("resolveWindowOpenAction", () => {
     expect(result).toEqual({
       type: "external",
     });
+  });
+});
+
+describe("resolveNavigationTargetWindow", () => {
+  it("이동 대상과 같은 상세 route 창이 이미 열려 있으면 그 창을 선택한다", () => {
+    const preferredWindow = {
+      id: "window-1",
+      url: "http://localhost:3000/#/ko",
+    };
+    const detailWindow = {
+      id: "window-2",
+      url: "http://localhost:3000/#/ko/task/task-1",
+    };
+
+    const result = resolveNavigationTargetWindow({
+      preferredWindow,
+      targetUrl: "http://localhost:3000/#/ko/task/task-1",
+      rendererDevUrl: "http://localhost:3000",
+      openWindows: [preferredWindow, detailWindow],
+      getWindowUrl: (windowRecord) => windowRecord.url,
+    });
+
+    expect(result).toBe(detailWindow);
+  });
+
+  it("같은 route 창이 없으면 기존 선호 창을 유지한다", () => {
+    const preferredWindow = {
+      id: "window-1",
+      url: "http://localhost:3000/#/ko",
+    };
+    const anotherDetailWindow = {
+      id: "window-2",
+      url: "http://localhost:3000/#/ko/task/task-2",
+    };
+
+    const result = resolveNavigationTargetWindow({
+      preferredWindow,
+      targetUrl: "http://localhost:3000/#/ko/task/task-1",
+      rendererDevUrl: "http://localhost:3000",
+      openWindows: [preferredWindow, anotherDetailWindow],
+      getWindowUrl: (windowRecord) => windowRecord.url,
+    });
+
+    expect(result).toBe(preferredWindow);
   });
 });

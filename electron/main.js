@@ -229,12 +229,27 @@ function registerAppWindow(browserWindow) {
 }
 
 async function focusMainWindow(relativePath) {
-  if (!mainWindow || mainWindow.isDestroyed()) {
-    mainWindow = getAvailableWindows()[0] || null;
+  const targetUrl = relativePath ? getRendererNavigationUrl(relativePath) : null;
+  const availableWindows = getAvailableWindows();
+  const fallbackWindow = mainWindow && !mainWindow.isDestroyed()
+    ? mainWindow
+    : availableWindows[0] || null;
+
+  if (targetUrl) {
+    const { resolveNavigationTargetWindow } = getWindowOpenHelpers();
+    mainWindow = resolveNavigationTargetWindow({
+      preferredWindow: fallbackWindow,
+      targetUrl,
+      rendererDevUrl: RENDERER_DEV_URL,
+      openWindows: availableWindows,
+      getWindowUrl: (window) => window.webContents.getURL(),
+    });
+  } else {
+    mainWindow = fallbackWindow;
   }
 
   if (!mainWindow || mainWindow.isDestroyed()) {
-    await createMainWindow();
+    await createMainWindow(relativePath);
   }
 
   if (!mainWindow) {
@@ -247,7 +262,6 @@ async function focusMainWindow(relativePath) {
     return;
   }
 
-  const targetUrl = getRendererNavigationUrl(relativePath);
   if (mainWindow.webContents.getURL() !== targetUrl) {
     await mainWindow.loadURL(targetUrl);
   }
@@ -454,8 +468,8 @@ async function createAppWindow(target = getRendererNavigationUrl()) {
   return browserWindow;
 }
 
-async function createMainWindow() {
-  return createAppWindow();
+async function createMainWindow(target) {
+  return createAppWindow(target);
 }
 
 app.whenReady().then(async () => {
