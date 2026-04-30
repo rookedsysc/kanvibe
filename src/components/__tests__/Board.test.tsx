@@ -282,7 +282,7 @@ describe("Board defaultSessionType sync", () => {
     expect(screen.queryByRole("button", { name: "logout" })).toBeNull();
   });
 
-  it("PR merge 이벤트를 받으면 확인 모달을 띄우고 confirm 시 Done으로 이동한다", async () => {
+  it("PR merge batch 이벤트를 받으면 하나의 체크리스트 모달을 띄우고 체크된 task만 Done으로 이동한다", async () => {
     const listeners: Array<(event: unknown) => void> = [];
     window.kanvibeDesktop = {
       isDesktop: true,
@@ -304,6 +304,7 @@ describe("Board defaultSessionType sync", () => {
         doneAlertDismissed={false}
         notificationSettings={{ isEnabled: true, enabledStatuses: ["progress", "pending", "review"] }}
         defaultSessionType={SessionType.TMUX}
+        taskSearchShortcut="Mod+Shift+O"
       />,
     );
 
@@ -313,16 +314,32 @@ describe("Board defaultSessionType sync", () => {
 
     await act(async () => {
       listeners[0]({
-        type: "task-pr-merged-detected",
-        taskId: "task-1",
-        taskTitle: "Test Task",
-        branchName: "feature/pr-sync",
-        prUrl: "https://github.com/kanvibe/kanvibe/pull/210",
-        mergedAt: "2026-04-30T02:00:00Z",
+        type: "task-pr-merged-detected-batch",
+        mergedPullRequests: [
+          {
+            taskId: "task-1",
+            taskTitle: "Test Task",
+            branchName: "feature/pr-sync",
+            prUrl: "https://github.com/kanvibe/kanvibe/pull/210",
+            mergedAt: "2026-04-30T02:00:00Z",
+          },
+          {
+            taskId: "task-2",
+            taskTitle: "Docs Task",
+            branchName: "docs/pr-sync",
+            prUrl: "https://github.com/kanvibe/kanvibe/pull/211",
+            mergedAt: "2026-04-30T02:05:00Z",
+          },
+        ],
       });
     });
 
     expect(screen.getByText("https://github.com/kanvibe/kanvibe/pull/210")).toBeTruthy();
+    expect(screen.getByText("https://github.com/kanvibe/kanvibe/pull/211")).toBeTruthy();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("checkbox", { name: "Docs Task" }));
+    });
 
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "confirm" }));
@@ -331,5 +348,6 @@ describe("Board defaultSessionType sync", () => {
     await waitFor(() => {
       expect(updateTaskStatus).toHaveBeenCalledWith("task-1", TaskStatus.DONE);
     });
+    expect(updateTaskStatus).toHaveBeenCalledTimes(1);
   });
 });

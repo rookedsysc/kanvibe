@@ -18,7 +18,7 @@ import type { Project } from "@/entities/Project";
 import { useAutoRefresh } from "@/desktop/renderer/hooks/useAutoRefresh";
 import { useProjectFilterParams } from "@/desktop/renderer/hooks/useProjectFilterParams";
 import { computeProjectColor } from "@/lib/projectColor";
-import type { BoardEventPayload } from "@/lib/boardNotifier";
+import type { BoardEventPayload, TaskPrMergedDetectedPayload } from "@/lib/boardNotifier";
 
 interface BoardProps {
   initialTasks: TasksByStatus;
@@ -105,8 +105,25 @@ function isTaskPrMergedDetectedEvent(
   return event.type === "task-pr-merged-detected";
 }
 
+function isTaskPrMergedDetectedBatchEvent(
+  event: BoardEventPayload,
+): event is Extract<BoardEventPayload, { type: "task-pr-merged-detected-batch" }> {
+  return event.type === "task-pr-merged-detected-batch";
+}
+
 function buildMergedPrEventKey(taskId: string, prUrl: string, mergedAt: string) {
   return `${taskId}:${prUrl}:${mergedAt}`;
+}
+
+function createPrMergeAlertState(payload: TaskPrMergedDetectedPayload): PrMergeAlertState {
+  return {
+    eventKey: buildMergedPrEventKey(payload.taskId, payload.prUrl, payload.mergedAt),
+    taskId: payload.taskId,
+    taskTitle: payload.taskTitle,
+    branchName: payload.branchName,
+    prUrl: payload.prUrl,
+    mergedAt: payload.mergedAt,
+  };
 }
 
 interface DragMovePlan {
@@ -226,6 +243,7 @@ export default function Board({ initialTasks, initialDoneTotal, initialDoneLimit
   const [, startDragPersistenceTransition] = useTransition();
   const [isPrMergeActionPending, startPrMergeActionTransition] = useTransition();
   const [prMergeAlerts, setPrMergeAlerts] = useState<PrMergeAlertState[]>([]);
+  const [selectedPrMergeEventKeys, setSelectedPrMergeEventKeys] = useState<string[]>([]);
   const dismissedPrMergeEventKeysRef = useRef<Set<string>>(new Set());
 
   /** projectId → 표시할 프로젝트 이름 매핑. worktree 프로젝트는 메인 프로젝트 이름으로 resolve한다 */
@@ -377,34 +395,42 @@ export default function Board({ initialTasks, initialDoneTotal, initialDoneLimit
     }
 
     return window.kanvibeDesktop.onBoardEvent((event: BoardEventPayload) => {
-      if (!isTaskPrMergedDetectedEvent(event)) {
-        return;
-      }
+      const incomingAlerts = isTaskPrMergedDetectedBatchEvent(event)
+        ? event.mergedPullRequests.map(createPrMergeAlertState)
+        : isTaskPrMergedDetectedEvent(event)
+          ? [createPrMergeAlertState(event)]
+          : null;
 
-      const eventKey = buildMergedPrEventKey(event.taskId, event.prUrl, event.mergedAt);
-      if (dismissedPrMergeEventKeysRef.current.has(eventKey)) {
+      if (!incomingAlerts) {
         return;
       }
 
       setPrMergeAlerts((current) => {
-        if (current.some((alert) => alert.eventKey === eventKey)) {
-          return current;
+        const knownEventKeys = new Set(current.map((alert) => alert.eventKey));
+        const nextAlerts = [...current];
+
+        for (const alert of incomingAlerts) {
+          if (dismissedPrMergeEventKeysRef.current.has(alert.eventKey) || knownEventKeys.has(alert.eventKey)) {
+            continue;
+          }
+
+          knownEventKeys.add(alert.eventKey);
+          nextAlerts.push(alert);
         }
 
-        return [
-          ...current,
-          {
-            eventKey,
-            taskId: event.taskId,
-            taskTitle: event.taskTitle,
-            branchName: event.branchName,
-            prUrl: event.prUrl,
-            mergedAt: event.mergedAt,
-          },
-        ];
+        return nextAlerts;
       });
     });
   }, []);
+
+  useEffect(() => {
+    if (prMergeAlerts.length === 0) {
+      setSelectedPrMergeEventKeys([]);
+      return;
+    }
+
+    setSelectedPrMergeEventKeys(prMergeAlerts.map((alert) => alert.eventKey));
+  }, [prMergeAlerts]);
 
   const handleLoadMoreDone = useCallback(async () => {
     if (isLoadingMore) return;
@@ -489,32 +515,52 @@ export default function Board({ initialTasks, initialDoneTotal, initialDoneLimit
     setPendingDoneResult(null);
   }, []);
 
-  const activePrMergeAlert = prMergeAlerts[0] ?? null;
+  const selectedPrMergeEventKeySet = useMemo(
+    () => new Set(selectedPrMergeEventKeys),
+    [selectedPrMergeEventKeys],
+  );
 
-  const dismissActivePrMergeAlert = useCallback(() => {
-    setPrMergeAlerts((current) => current.slice(1));
+  const togglePrMergeSelection = useCallback((eventKey: string) => {
+    setSelectedPrMergeEventKeys((current) => (
+      current.includes(eventKey)
+        ? current.filter((key) => key !== eventKey)
+        : [...current, eventKey]
+    ));
   }, []);
 
   const handlePrMergeCancel = useCallback(() => {
-    if (activePrMergeAlert) {
-      dismissedPrMergeEventKeysRef.current.add(activePrMergeAlert.eventKey);
+    for (const alert of prMergeAlerts) {
+      dismissedPrMergeEventKeysRef.current.add(alert.eventKey);
     }
-    dismissActivePrMergeAlert();
-  }, [activePrMergeAlert, dismissActivePrMergeAlert]);
+    setPrMergeAlerts([]);
+  }, [prMergeAlerts]);
 
   const handlePrMergeConfirm = useCallback(() => {
-    if (!activePrMergeAlert) {
+    if (prMergeAlerts.length === 0) {
       return;
     }
 
-    dismissedPrMergeEventKeysRef.current.add(activePrMergeAlert.eventKey);
-    const { taskId } = activePrMergeAlert;
-    dismissActivePrMergeAlert();
+    const selectedEventKeys = new Set(selectedPrMergeEventKeys);
+    const selectedTaskIds = prMergeAlerts
+      .filter((alert) => selectedEventKeys.has(alert.eventKey))
+      .map((alert) => alert.taskId);
+
+    for (const alert of prMergeAlerts) {
+      dismissedPrMergeEventKeysRef.current.add(alert.eventKey);
+    }
+
+    setPrMergeAlerts([]);
+
+    if (selectedTaskIds.length === 0) {
+      return;
+    }
 
     startPrMergeActionTransition(async () => {
-      await updateTaskStatus(taskId, TaskStatus.DONE);
+      for (const taskId of selectedTaskIds) {
+        await updateTaskStatus(taskId, TaskStatus.DONE);
+      }
     });
-  }, [activePrMergeAlert, dismissActivePrMergeAlert, startPrMergeActionTransition]);
+  }, [prMergeAlerts, selectedPrMergeEventKeys, startPrMergeActionTransition]);
 
   const handleContextMenu = useCallback(
     (e: React.MouseEvent, task: KanbanTask) => {
@@ -692,27 +738,48 @@ export default function Board({ initialTasks, initialDoneTotal, initialDoneLimit
         onCancel={handleDoneCancel}
       />
 
-      {activePrMergeAlert && (
+      {prMergeAlerts.length > 0 && (
         <div className="fixed inset-0 z-[520] flex items-center justify-center bg-bg-overlay">
-          <div className="w-full max-w-md rounded-xl border border-border-default bg-bg-surface p-6 shadow-lg">
+          <div className="w-full max-w-2xl rounded-xl border border-border-default bg-bg-surface p-6 shadow-lg">
             <h2 className="mb-2 text-lg font-semibold text-text-primary">
               {tm("title")}
             </h2>
             <p className="text-sm text-text-secondary">
-              {tm("message", {
-                branchName: activePrMergeAlert.branchName,
-                taskTitle: activePrMergeAlert.taskTitle,
-              })}
+              {tm("batchMessage")}
             </p>
-            <a
-              href={activePrMergeAlert.prUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="mt-4 inline-flex max-w-full items-center gap-1 rounded bg-tag-pr-bg px-2 py-1 text-xs text-tag-pr-text hover:opacity-80 transition-opacity"
-            >
-              <span className="shrink-0">{tm("prLinkLabel")}</span>
-              <span className="truncate">{activePrMergeAlert.prUrl}</span>
-            </a>
+            <div className="mt-4 max-h-[360px] space-y-3 overflow-y-auto pr-1">
+              {prMergeAlerts.map((alert) => (
+                <label
+                  key={alert.eventKey}
+                  className="flex cursor-pointer items-start gap-3 rounded-lg border border-border-default bg-bg-page px-4 py-3"
+                >
+                  <input
+                    type="checkbox"
+                    checked={selectedPrMergeEventKeySet.has(alert.eventKey)}
+                    onChange={() => togglePrMergeSelection(alert.eventKey)}
+                    aria-label={alert.taskTitle}
+                    className="mt-0.5 h-4 w-4 rounded border-border-default text-brand-primary focus:ring-brand-primary"
+                  />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-semibold text-text-primary">
+                      {alert.taskTitle}
+                    </p>
+                    <p className="mt-1 text-xs text-text-muted">
+                      {alert.branchName}
+                    </p>
+                    <a
+                      href={alert.prUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="mt-3 inline-flex max-w-full items-center gap-1 rounded bg-tag-pr-bg px-2 py-1 text-xs text-tag-pr-text transition-opacity hover:opacity-80"
+                    >
+                      <span className="shrink-0">{tm("prLinkLabel")}</span>
+                      <span className="truncate">{alert.prUrl}</span>
+                    </a>
+                  </div>
+                </label>
+              ))}
+            </div>
             <div className="mt-5 flex justify-end gap-2">
               <button
                 type="button"

@@ -5,7 +5,7 @@ import { KanbanTask, TaskStatus, SessionType } from "@/entities/KanbanTask";
 import { TaskPriority } from "@/entities/TaskPriority";
 import { createWorktreeWithSession, removeWorktreeAndBranch, createSessionWithoutWorktree, removeSessionOnly, buildManagedWorktreePath } from "@/lib/worktree";
 import { getProjectRepository } from "@/lib/database";
-import { broadcastBoardUpdate, broadcastTaskHookInstallFailed, broadcastTaskPrMergedDetected } from "@/lib/boardNotifier";
+import { broadcastBoardUpdate, broadcastTaskHookInstallFailed, broadcastTaskPrMergedDetectedBatch, type TaskPrMergedDetectedPayload } from "@/lib/boardNotifier";
 import { installKanvibeHooks } from "@/lib/kanvibeHooksInstaller";
 import { execGit } from "@/lib/gitOperations";
 
@@ -45,6 +45,7 @@ interface GitHubPullRequestInfo {
 export interface ActiveTaskPullRequestSyncResult {
   updatedTaskIds: string[];
   mergeEventKeys: string[];
+  mergedPullRequests: TaskPrMergedDetectedPayload[];
 }
 
 /** TypeORM 엔티티를 직렬화 가능한 plain object로 변환한다 */
@@ -210,19 +211,32 @@ async function getPrInfoFromGitHubCli(
   });
 }
 
-async function resolveTaskGitContext(task: Pick<KanbanTask, "projectId" | "worktreePath" | "sshHost">): Promise<{
+function isDefaultBranchTask(
+  task: Pick<KanbanTask, "branchName">,
+  project: { defaultBranch: string } | null,
+): boolean {
+  return Boolean(project && task.branchName && task.branchName === project.defaultBranch);
+}
+
+async function resolveTaskGitContext(
+  task: Pick<KanbanTask, "projectId" | "worktreePath" | "sshHost">,
+  project?: { repoPath: string; sshHost: string | null } | null,
+): Promise<{
   cwd: string;
   sshHost: string | null;
 }> {
   let repoPath: string | null = null;
   let sshHost: string | null = task.sshHost || null;
 
-  if (task.projectId) {
+  if (project) {
+    repoPath = project.repoPath;
+    sshHost = sshHost ?? project.sshHost ?? null;
+  } else if (task.projectId) {
     const projectRepo = await getProjectRepository();
-    const project = await projectRepo.findOneBy({ id: task.projectId });
-    if (project) {
-      repoPath = project.repoPath;
-      sshHost = sshHost ?? project.sshHost ?? null;
+    const resolvedProject = await projectRepo.findOneBy({ id: task.projectId });
+    if (resolvedProject) {
+      repoPath = resolvedProject.repoPath;
+      sshHost = sshHost ?? resolvedProject.sshHost ?? null;
     }
   }
 
@@ -726,6 +740,7 @@ export async function syncActiveTaskPullRequests(
   emittedMergeEventKeys: Set<string>,
 ): Promise<ActiveTaskPullRequestSyncResult> {
   const repo = await getTaskRepository();
+  const projectRepo = await getProjectRepository();
   const tasks = await repo.find({
     where: { status: Not(TaskStatus.DONE) },
     order: { updatedAt: "ASC" },
@@ -733,6 +748,7 @@ export async function syncActiveTaskPullRequests(
   const result: ActiveTaskPullRequestSyncResult = {
     updatedTaskIds: [],
     mergeEventKeys: [],
+    mergedPullRequests: [],
   };
 
   for (const task of tasks) {
@@ -741,7 +757,15 @@ export async function syncActiveTaskPullRequests(
     }
 
     try {
-      const { cwd, sshHost } = await resolveTaskGitContext(task);
+      const project = task.projectId
+        ? await projectRepo.findOneBy({ id: task.projectId })
+        : null;
+
+      if (isDefaultBranchTask(task, project)) {
+        continue;
+      }
+
+      const { cwd, sshHost } = await resolveTaskGitContext(task, project);
       const prInfo = await getPrInfoFromGitHubCli(task.branchName, cwd, sshHost);
 
       if (!prInfo?.url) {
@@ -762,7 +786,7 @@ export async function syncActiveTaskPullRequests(
 
         emittedMergeEventKeys.add(mergeEventKey);
         result.mergeEventKeys.push(mergeEventKey);
-        broadcastTaskPrMergedDetected({
+        result.mergedPullRequests.push({
           taskId: task.id,
           taskTitle: task.title,
           branchName: task.branchName,
@@ -777,6 +801,12 @@ export async function syncActiveTaskPullRequests(
         error: getErrorMessage(error),
       });
     }
+  }
+
+  if (result.mergedPullRequests.length > 0) {
+    broadcastTaskPrMergedDetectedBatch({
+      mergedPullRequests: result.mergedPullRequests,
+    });
   }
 
   return result;
