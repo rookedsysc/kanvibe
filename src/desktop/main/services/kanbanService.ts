@@ -211,19 +211,32 @@ async function getPrInfoFromGitHubCli(
   });
 }
 
-async function resolveTaskGitContext(task: Pick<KanbanTask, "projectId" | "worktreePath" | "sshHost">): Promise<{
+function isDefaultBranchTask(
+  task: Pick<KanbanTask, "branchName">,
+  project: { defaultBranch: string } | null,
+): boolean {
+  return Boolean(project && task.branchName && task.branchName === project.defaultBranch);
+}
+
+async function resolveTaskGitContext(
+  task: Pick<KanbanTask, "projectId" | "worktreePath" | "sshHost">,
+  project?: { repoPath: string; sshHost: string | null } | null,
+): Promise<{
   cwd: string;
   sshHost: string | null;
 }> {
   let repoPath: string | null = null;
   let sshHost: string | null = task.sshHost || null;
 
-  if (task.projectId) {
+  if (project) {
+    repoPath = project.repoPath;
+    sshHost = sshHost ?? project.sshHost ?? null;
+  } else if (task.projectId) {
     const projectRepo = await getProjectRepository();
-    const project = await projectRepo.findOneBy({ id: task.projectId });
-    if (project) {
-      repoPath = project.repoPath;
-      sshHost = sshHost ?? project.sshHost ?? null;
+    const resolvedProject = await projectRepo.findOneBy({ id: task.projectId });
+    if (resolvedProject) {
+      repoPath = resolvedProject.repoPath;
+      sshHost = sshHost ?? resolvedProject.sshHost ?? null;
     }
   }
 
@@ -727,6 +740,7 @@ export async function syncActiveTaskPullRequests(
   emittedMergeEventKeys: Set<string>,
 ): Promise<ActiveTaskPullRequestSyncResult> {
   const repo = await getTaskRepository();
+  const projectRepo = await getProjectRepository();
   const tasks = await repo.find({
     where: { status: Not(TaskStatus.DONE) },
     order: { updatedAt: "ASC" },
@@ -743,7 +757,15 @@ export async function syncActiveTaskPullRequests(
     }
 
     try {
-      const { cwd, sshHost } = await resolveTaskGitContext(task);
+      const project = task.projectId
+        ? await projectRepo.findOneBy({ id: task.projectId })
+        : null;
+
+      if (isDefaultBranchTask(task, project)) {
+        continue;
+      }
+
+      const { cwd, sshHost } = await resolveTaskGitContext(task, project);
       const prInfo = await getPrInfoFromGitHubCli(task.branchName, cwd, sshHost);
 
       if (!prInfo?.url) {

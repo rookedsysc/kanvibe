@@ -555,6 +555,42 @@ describe("kanbanService.createTask", () => {
     expect(mocks.broadcastTaskPrMergedDetectedBatch).not.toHaveBeenCalled();
   });
 
+  it("active task PR sync는 메인 브랜치 root task를 merge 검사 대상에서 제외한다", async () => {
+    // Given
+    mocks.taskRepo.find.mockResolvedValue([
+      {
+        id: "task-main",
+        title: "Main branch task",
+        projectId: "project-1",
+        branchName: "main",
+        worktreePath: "/workspace/repo",
+        sshHost: null,
+        prUrl: null,
+        status: "review",
+      },
+    ]);
+    mocks.projectRepo.findOneBy.mockResolvedValue({
+      id: "project-1",
+      repoPath: "/workspace/repo",
+      defaultBranch: "main",
+      sshHost: null,
+    });
+
+    const { syncActiveTaskPullRequests } = await import("@/desktop/main/services/kanbanService");
+
+    // When
+    const result = await syncActiveTaskPullRequests(new Set());
+
+    // Then
+    expect(result).toEqual({
+      updatedTaskIds: [],
+      mergeEventKeys: [],
+    });
+    expect(mocks.execFile).not.toHaveBeenCalled();
+    expect(mocks.taskRepo.save).not.toHaveBeenCalled();
+    expect(mocks.broadcastTaskPrMergedDetected).not.toHaveBeenCalled();
+  });
+
   it("active task PR sync는 merged PR을 감지하면 중복 없이 merge 이벤트를 브로드캐스트한다", async () => {
     // Given
     const prUrl = "https://github.com/kanvibe/kanvibe/pull/211";
