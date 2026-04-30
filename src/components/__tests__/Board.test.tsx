@@ -169,6 +169,7 @@ describe("Board defaultSessionType sync", () => {
       sidebarDefaultCollapsed: false,
       doneAlertDismissed: false,
       notificationSettings: { isEnabled: true, enabledStatuses: ["progress", "pending", "review"] },
+      taskSearchShortcut: "Mod+Shift+O",
     };
 
     const { rerender } = render(<Board {...baseProps} defaultSessionType={SessionType.TMUX} />);
@@ -196,6 +197,7 @@ describe("Board defaultSessionType sync", () => {
         doneAlertDismissed={false}
         notificationSettings={{ isEnabled: true, enabledStatuses: ["progress", "pending", "review"] }}
         defaultSessionType={SessionType.TMUX}
+        taskSearchShortcut="Mod+Shift+O"
       />,
     );
 
@@ -220,6 +222,7 @@ describe("Board defaultSessionType sync", () => {
         doneAlertDismissed={false}
         notificationSettings={{ isEnabled: true, enabledStatuses: ["progress", "pending", "review"] }}
         defaultSessionType={SessionType.TMUX}
+        taskSearchShortcut="Mod+Shift+O"
       />,
     );
 
@@ -245,6 +248,7 @@ describe("Board defaultSessionType sync", () => {
         doneAlertDismissed={false}
         notificationSettings={{ isEnabled: true, enabledStatuses: ["progress", "pending", "review"] }}
         defaultSessionType={SessionType.TMUX}
+        taskSearchShortcut="Mod+Shift+O"
       />,
     );
 
@@ -270,6 +274,7 @@ describe("Board defaultSessionType sync", () => {
         doneAlertDismissed={false}
         notificationSettings={{ isEnabled: true, enabledStatuses: ["progress", "pending", "review"] }}
         defaultSessionType={SessionType.TMUX}
+        taskSearchShortcut="Mod+Shift+O"
       />,
     );
 

@@ -22,6 +22,17 @@ export interface LoadMoreDoneResponse {
   doneTotal: number;
 }
 
+export interface SearchableTask {
+  id: string;
+  title: string;
+  branchName: string | null;
+  projectId: string | null;
+  projectName: string | null;
+  sshHost: string | null;
+  status: TaskStatus;
+  updatedAt: Date;
+}
+
 const DONE_PAGE_SIZE = 20;
 
 /** TypeORM 엔티티를 직렬화 가능한 plain object로 변환한다 */
@@ -162,6 +173,26 @@ export async function getTaskById(taskId: string): Promise<KanbanTask | null> {
   const repo = await getTaskRepository();
   const task = await repo.findOne({ where: { id: taskId }, relations: ["project"] });
   return task ? serialize(task) : null;
+}
+
+/** 빠른 검색 오버레이에서 사용할 태스크 목록을 반환한다 */
+export async function getSearchableTasks(): Promise<SearchableTask[]> {
+  const repo = await getTaskRepository();
+  const tasks = await repo.find({
+    relations: ["project"],
+    order: { updatedAt: "DESC", createdAt: "DESC" },
+  });
+
+  return serialize(tasks.map((task) => ({
+    id: task.id,
+    title: task.title,
+    branchName: task.branchName,
+    projectId: task.projectId,
+    projectName: task.project?.name ?? null,
+    sshHost: task.sshHost ?? task.project?.sshHost ?? null,
+    status: task.status,
+    updatedAt: task.updatedAt,
+  })));
 }
 
 /** 같은 프로젝트 내에서 branchName이 일치하는 태스크 ID를 조회 */

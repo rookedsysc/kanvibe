@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import Board from "@/components/Board";
-import { getDoneAlertDismissed, getDefaultSessionType, getNotificationSettings, getSidebarDefaultCollapsed } from "@/desktop/renderer/actions/appSettings";
+import { getDoneAlertDismissed, getDefaultSessionType, getNotificationSettings, getSidebarDefaultCollapsed, getTaskSearchShortcut } from "@/desktop/renderer/actions/appSettings";
 import { getTasksByStatus } from "@/desktop/renderer/actions/kanban";
 import { getAllProjects, getAvailableHosts } from "@/desktop/renderer/actions/project";
 import { buildRouteCacheKey, readRouteCache, writeRouteCache } from "@/desktop/renderer/utils/routeCache";
@@ -14,6 +14,7 @@ interface BoardData {
   doneAlertDismissed: boolean;
   notificationSettings: Awaited<ReturnType<typeof getNotificationSettings>>;
   defaultSessionType: Awaited<ReturnType<typeof getDefaultSessionType>>;
+  taskSearchShortcut: Awaited<ReturnType<typeof getTaskSearchShortcut>>;
 }
 
 const BOARD_ROUTE_CACHE_KEY = buildRouteCacheKey("board");
@@ -37,7 +38,8 @@ export default function BoardRoute() {
       getDoneAlertDismissed(),
       getNotificationSettings(),
       getDefaultSessionType(),
-    ]).then(([tasks, sshHosts, projects, sidebarDefaultCollapsed, doneAlertDismissed, notificationSettings, defaultSessionType]) => {
+      getTaskSearchShortcut(),
+    ]).then(([tasks, sshHosts, projects, sidebarDefaultCollapsed, doneAlertDismissed, notificationSettings, defaultSessionType, taskSearchShortcut]) => {
       if (!cancelled) {
         const nextData = {
           tasks,
@@ -47,6 +49,7 @@ export default function BoardRoute() {
           doneAlertDismissed,
           notificationSettings,
           defaultSessionType,
+          taskSearchShortcut,
         };
 
         writeRouteCache(BOARD_ROUTE_CACHE_KEY, nextData);
@@ -74,6 +77,7 @@ export default function BoardRoute() {
       doneAlertDismissed={data.doneAlertDismissed}
       notificationSettings={data.notificationSettings}
       defaultSessionType={data.defaultSessionType}
+      taskSearchShortcut={data.taskSearchShortcut}
     />
   );
 }
