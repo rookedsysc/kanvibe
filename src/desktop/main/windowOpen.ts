@@ -21,6 +21,14 @@ interface ResolveWindowOpenActionOptions<T> {
   excludeWindow?: T | null;
 }
 
+interface ResolveNavigationTargetWindowOptions<T> {
+  preferredWindow?: T | null;
+  targetUrl: string;
+  rendererDevUrl: string | null;
+  openWindows: readonly T[];
+  getWindowUrl: (window: T) => string;
+}
+
 function normalizeInternalRoute(route: string | null | undefined): string | null {
   if (!route) {
     return null;
@@ -85,16 +93,22 @@ export function extractInternalRoute(targetUrl: string, rendererDevUrl: string |
   }
 }
 
-export function resolveWindowOpenAction<T>({
+function findExistingInternalWindow<T>({
   targetUrl,
   rendererDevUrl,
   openWindows,
   getWindowUrl,
   excludeWindow = null,
-}: ResolveWindowOpenActionOptions<T>): WindowOpenAction<T> {
+}: ResolveWindowOpenActionOptions<T>): {
+  route: string | null;
+  existingWindow: T | null;
+} {
   const route = extractInternalRoute(targetUrl, rendererDevUrl);
   if (!route) {
-    return { type: "external" };
+    return {
+      route: null,
+      existingWindow: null,
+    };
   }
 
   const existingWindow = openWindows.find((window) => {
@@ -103,7 +117,49 @@ export function resolveWindowOpenAction<T>({
     }
 
     return extractInternalRoute(getWindowUrl(window), rendererDevUrl) === route;
+  }) ?? null;
+
+  return {
+    route,
+    existingWindow,
+  };
+}
+
+export function resolveNavigationTargetWindow<T>({
+  preferredWindow = null,
+  targetUrl,
+  rendererDevUrl,
+  openWindows,
+  getWindowUrl,
+}: ResolveNavigationTargetWindowOptions<T>): T | null {
+  const { existingWindow } = findExistingInternalWindow({
+    targetUrl,
+    rendererDevUrl,
+    openWindows,
+    getWindowUrl,
   });
+
+  return existingWindow ?? preferredWindow;
+}
+
+export function resolveWindowOpenAction<T>({
+  targetUrl,
+  rendererDevUrl,
+  openWindows,
+  getWindowUrl,
+  excludeWindow = null,
+}: ResolveWindowOpenActionOptions<T>): WindowOpenAction<T> {
+  const { route, existingWindow } = findExistingInternalWindow({
+    targetUrl,
+    rendererDevUrl,
+    openWindows,
+    getWindowUrl,
+    excludeWindow,
+  });
+
+  if (!route) {
+    return { type: "external" };
+  }
 
   if (existingWindow) {
     return {
