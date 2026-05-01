@@ -41,7 +41,14 @@ vi.mock("../PrioritySelector", () => ({
 }));
 
 vi.mock("../BranchSearchInput", () => ({
-  default: ({ value }: { value: string }) => <div data-testid="branch-search-input">{value}</div>,
+  default: ({ value, onChange }: { value: string; onChange: (branch: string) => void }) => (
+    <div>
+      <div data-testid="branch-search-input">{value}</div>
+      <button type="button" onClick={() => onChange("develop")}>
+        select develop
+      </button>
+    </div>
+  ),
 }));
 
 function createProject(overrides?: Partial<Project>): Project {
@@ -162,5 +169,42 @@ describe("CreateTaskModal", () => {
     });
     expect(onClose).toHaveBeenCalled();
     expect(mockPush).toHaveBeenCalledWith("/task/task-2");
+  });
+
+  it("프로젝트 목록이 새로고침되어도 사용자가 선택한 베이스 브랜치를 유지한다", async () => {
+    // Given
+    const project = createProject();
+    const { rerender } = render(
+      <CreateTaskModal
+        isOpen
+        onClose={vi.fn()}
+        sshHosts={["remote-box"]}
+        projects={[project]}
+        defaultProjectId="project-remote"
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("branch-search-input").textContent).toBe("main");
+    });
+
+    // When
+    fireEvent.click(screen.getByRole("button", { name: "select develop" }));
+    expect(screen.getByTestId("branch-search-input").textContent).toBe("develop");
+
+    rerender(
+      <CreateTaskModal
+        isOpen
+        onClose={vi.fn()}
+        sshHosts={["remote-box"]}
+        projects={[createProject({ createdAt: new Date("2026-05-01T00:00:00.000Z") })]}
+        defaultProjectId="project-remote"
+      />,
+    );
+
+    // Then
+    await waitFor(() => {
+      expect(screen.getByTestId("branch-search-input").textContent).toBe("develop");
+    });
   });
 });
