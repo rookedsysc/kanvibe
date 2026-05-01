@@ -419,7 +419,7 @@ export async function removeSessionOnly(
       );
     } else {
       await execGit(
-        `zellij kill-session "${sessionName}" 2>/dev/null || zellij delete-session "${sessionName}" 2>/dev/null`,
+        `zellij kill-session "${sessionName}" 2>/dev/null || true; zellij delete-session "${sessionName}" 2>/dev/null || true`,
         sshHost,
       );
     }

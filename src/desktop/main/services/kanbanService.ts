@@ -505,16 +505,6 @@ export async function cleanupTaskResources(task: KanbanTask): Promise<void> {
 
   const sshHost = task.sshHost || project?.sshHost || null;
 
-  // 프로젝트 없이 브랜치/worktree만 남은 태스크는 stale 상태이므로 정리를 시도하면 잘못된 원격 세션에 접근할 수 있다.
-  if (!project && task.branchName && task.worktreePath) {
-    return;
-  }
-
-  const isProjectRoot = project && task.worktreePath === project.repoPath;
-  const expectedWorktreePath = project?.repoPath && task.branchName
-    ? buildManagedWorktreePath(project.repoPath, task.branchName)
-    : null;
-
   /** 브랜치별 독립 세션 정리 */
   if (task.sessionType && task.sessionName) {
     try {
@@ -527,6 +517,16 @@ export async function cleanupTaskResources(task: KanbanTask): Promise<void> {
       console.error("세션 정리 실패:", error);
     }
   }
+
+  // 프로젝트 없이 브랜치/worktree만 남은 태스크는 stale 상태이므로 worktree/브랜치 정리는 건너뛴다.
+  if (!project && task.branchName && task.worktreePath) {
+    return;
+  }
+
+  const isProjectRoot = project && task.worktreePath === project.repoPath;
+  const expectedWorktreePath = project?.repoPath && task.branchName
+    ? buildManagedWorktreePath(project.repoPath, task.branchName)
+    : null;
 
   /** worktree + 브랜치 정리 (프로젝트 루트 브랜치 제외) */
   if (task.branchName && !isProjectRoot) {

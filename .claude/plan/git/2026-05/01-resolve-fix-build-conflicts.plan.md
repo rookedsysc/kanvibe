@@ -45,7 +45,7 @@
 - **Convention Notes**: 작업 전 working tree가 clean인지 확인한다.
 - **Verification**: `git status --short`
 - **Exit Criteria**: 충돌 파일 목록과 해소 대상이 명확하다.
-- **Status**: pending
+- **Status**: completed
 
 ### Todo 2: 충돌 해소
 - **Priority**: 2
@@ -58,7 +58,7 @@
 - **Convention Notes**: 불필요한 리팩터링 없이 충돌 구간 주변만 수정한다.
 - **Verification**: `rg '<<<<<<<|=======|>>>>>>>'`
 - **Exit Criteria**: 모든 conflict marker가 제거되고 git index에 해결 파일을 stage할 수 있다.
-- **Status**: pending
+- **Status**: completed
 
 ### Todo 3: 검증 및 push
 - **Priority**: 3
@@ -71,7 +71,7 @@
 - **Convention Notes**: 검증 실패 시 원인 파일만 최소 수정한다.
 - **Verification**: `pnpm check`, `pnpm test`, `pnpm build`
 - **Exit Criteria**: 검증 결과가 정리되고 원격 PR 브랜치가 업데이트된다.
-- **Status**: pending
+- **Status**: completed
 
 ## Verification Strategy
 - `rg '<<<<<<<|=======|>>>>>>>'`로 conflict marker 제거 확인
@@ -81,8 +81,11 @@
 
 ## Progress Tracking
 - Total Todos: 3
-- Completed: 0
-- Status: Planning complete
+- Completed: 3
+- Status: Execution complete
 
 ## Change Log
 - 2026-05-01: Plan created
+- 2026-05-01: Todo 1 completed — latest `origin/dev` merge attempted and conflict files identified
+- 2026-05-01: Todo 2 completed — conflict markers removed while preserving both branch and shortcut/dialog behavior
+- 2026-05-01: Todo 3 completed — type-check, full tests, build, merge commit, and push preparation completed

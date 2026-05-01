@@ -42,6 +42,16 @@ function BoardCommandHarness({
   );
 }
 
+function NotificationOnlyHarness({ onToggleNotificationCenter }: { onToggleNotificationCenter: () => void }) {
+  const boardCommands = useBoardCommands();
+
+  useEffect(() => boardCommands.registerNotificationCenterHandler(onToggleNotificationCenter), [boardCommands, onToggleNotificationCenter]);
+
+  return (
+    <span>{boardCommands.canCreateBranchTodo ? "branch-enabled" : "branch-disabled"}</span>
+  );
+}
+
 describe("BoardCommandProvider", () => {
   it("dispatches board shortcuts to registered handlers", () => {
     const onToggleNotificationCenter = vi.fn();
@@ -150,5 +160,24 @@ describe("BoardCommandProvider", () => {
 
     expect(onOpenCreateTaskModal).toHaveBeenCalledTimes(1);
     expect(onOpenCreateTaskModal).toHaveBeenCalledWith();
+  });
+
+  it("dispatches the notification shortcut to a notification-only handler", () => {
+    const onToggleNotificationCenter = vi.fn();
+
+    render(
+      <BoardCommandProvider>
+        <NotificationOnlyHarness onToggleNotificationCenter={onToggleNotificationCenter} />
+      </BoardCommandProvider>,
+    );
+
+    fireEvent.keyDown(window, {
+      key: "i",
+      ctrlKey: true,
+      shiftKey: true,
+    });
+
+    expect(onToggleNotificationCenter).toHaveBeenCalledTimes(1);
+    expect(screen.getByText("branch-disabled")).toBeTruthy();
   });
 });

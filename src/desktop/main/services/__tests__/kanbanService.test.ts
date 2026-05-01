@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
     createQueryBuilder: vi.fn(),
     find: vi.fn(),
     findOneBy: vi.fn(),
+    remove: vi.fn(),
     save: vi.fn(),
   },
   projectRepo: {
@@ -295,7 +296,7 @@ describe("kanbanService.createTask", () => {
     expect(consoleWarnSpy).toHaveBeenCalled();
   });
 
-  it("연결된 프로젝트를 찾을 수 없는 원격 stale task는 정리를 시도하지 않는다", async () => {
+  it("연결된 프로젝트를 찾을 수 없는 원격 stale task는 세션만 정리한다", async () => {
     // Given
     const consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     mocks.projectRepo.findOneBy.mockResolvedValue(null);
@@ -314,12 +315,16 @@ describe("kanbanService.createTask", () => {
     } as never);
 
     // Then
-    expect(mocks.removeSessionOnly).not.toHaveBeenCalled();
+    expect(mocks.removeSessionOnly).toHaveBeenCalledWith(
+      "tmux",
+      "prompt-main",
+      "roky-home",
+    );
     expect(mocks.removeWorktreeAndBranch).not.toHaveBeenCalled();
     expect(consoleWarnSpy).not.toHaveBeenCalled();
   });
 
-  it("프로젝트가 삭제되어 orphan 상태가 된 원격 stale task도 정리를 시도하지 않는다", async () => {
+  it("프로젝트가 삭제되어 orphan 상태가 된 원격 stale task도 세션만 정리한다", async () => {
     // Given
     const consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 
@@ -338,9 +343,45 @@ describe("kanbanService.createTask", () => {
 
     // Then
     expect(mocks.projectRepo.findOneBy).not.toHaveBeenCalled();
-    expect(mocks.removeSessionOnly).not.toHaveBeenCalled();
+    expect(mocks.removeSessionOnly).toHaveBeenCalledWith(
+      "tmux",
+      "techtaurant-be-dev",
+      "roky-home",
+    );
     expect(mocks.removeWorktreeAndBranch).not.toHaveBeenCalled();
     expect(consoleWarnSpy).not.toHaveBeenCalled();
+  });
+
+  it("원격 task 삭제는 프로젝트를 찾지 못해도 연결된 tmux 세션을 정리한다", async () => {
+    // Given
+    const task = {
+      id: "task-remote",
+      projectId: "missing-project",
+      branchName: "main",
+      worktreePath: "/home/rookedsysc/Downloads/prompt",
+      sshHost: "roky-home",
+      sessionType: "tmux" as never,
+      sessionName: "prompt-main",
+    };
+    mocks.taskRepo.findOneBy.mockResolvedValue(task);
+    mocks.projectRepo.findOneBy.mockResolvedValue(null);
+    mocks.taskRepo.remove.mockResolvedValue(task);
+
+    const { deleteTask } = await import("@/desktop/main/services/kanbanService");
+
+    // When
+    const result = await deleteTask("task-remote");
+
+    // Then
+    expect(result).toBe(true);
+    expect(mocks.removeSessionOnly).toHaveBeenCalledWith(
+      "tmux",
+      "prompt-main",
+      "roky-home",
+    );
+    expect(mocks.removeWorktreeAndBranch).not.toHaveBeenCalled();
+    expect(mocks.taskRepo.remove).toHaveBeenCalledWith(task);
+    expect(mocks.broadcastBoardUpdate).toHaveBeenCalledTimes(1);
   });
 
   it("PR URL 조회는 셸 없이 gh CLI를 직접 실행한다", async () => {
