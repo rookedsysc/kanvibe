@@ -20,6 +20,16 @@ describe("keyboardShortcut", () => {
     expect(matchShortcutEvent(event, "Mod+Shift+O", false)).toBe(true);
   });
 
+  it("Mod 단축키는 macOS에서 Cmd+Shift+O로 매칭한다", () => {
+    const event = new KeyboardEvent("keydown", {
+      key: "o",
+      metaKey: true,
+      shiftKey: true,
+    });
+
+    expect(matchShortcutEvent(event, "Mod+Shift+O", true)).toBe(true);
+  });
+
   it("추가 modifier가 있으면 단축키가 일치하지 않는다", () => {
     const event = new KeyboardEvent("keydown", {
       key: "o",
