@@ -2,9 +2,10 @@
 
 import { useState, useEffect, useTransition } from "react";
 import { useTranslations } from "next-intl";
-import { useRouter } from "@/i18n/navigation";
-import { createTask } from "@/app/actions/kanban";
-import { getProjectBranches } from "@/app/actions/project";
+import { useRouter } from "@/desktop/renderer/navigation";
+import { createTask } from "@/desktop/renderer/actions/kanban";
+import { getProjectBranches } from "@/desktop/renderer/actions/project";
+import { ensureSessionDependencyWithPrompt } from "@/desktop/renderer/utils/sessionDependencyPrompt";
 import { SessionType } from "@/entities/KanbanTask";
 import { TaskPriority } from "@/entities/TaskPriority";
 import type { Project } from "@/entities/Project";
@@ -39,6 +40,7 @@ export default function CreateTaskModal({
   const [branches, setBranches] = useState<string[]>([]);
   const [baseBranch, setBaseBranch] = useState("");
   const [priority, setPriority] = useState<TaskPriority | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   /** 모달이 열릴 때 필터에서 선택된 프로젝트를 자동 설정한다 */
   useEffect(() => {
@@ -76,20 +78,35 @@ export default function CreateTaskModal({
   function handleSubmit(formData: FormData) {
     const branchName = formData.get("branchName") as string;
     if (!branchName || !selectedProjectId) return;
+    setError(null);
 
     startTransition(async () => {
-      const created = await createTask({
-        title: branchName,
-        description: (formData.get("description") as string) || undefined,
-        branchName,
-        baseBranch: baseBranch || undefined,
-        sessionType: (formData.get("sessionType") as SessionType) || undefined,
-        sshHost: (formData.get("sshHost") as string) || undefined,
-        projectId: selectedProjectId,
-        priority: priority || undefined,
-      });
-      onClose();
-      router.push(`/task/${created.id}`);
+      try {
+        const sessionType = (formData.get("sessionType") as SessionType) || undefined;
+        const selectedProject = projects.find((project) => project.id === selectedProjectId) ?? null;
+
+        if (sessionType) {
+          const isReady = await ensureSessionDependencyWithPrompt(sessionType, selectedProject?.sshHost, tc);
+          if (!isReady) {
+            return;
+          }
+        }
+
+        const created = await createTask({
+          title: branchName,
+          description: (formData.get("description") as string) || undefined,
+          branchName,
+          baseBranch: baseBranch || undefined,
+          sessionType,
+          sshHost: (formData.get("sshHost") as string) || undefined,
+          projectId: selectedProjectId,
+          priority: priority || undefined,
+        });
+        onClose();
+        router.push(`/task/${created.id}`);
+      } catch (error) {
+        setError(error instanceof Error ? error.message : t("createFailed"));
+      }
     });
   }
 
@@ -171,6 +188,8 @@ export default function CreateTaskModal({
               <option value="zellij">zellij</option>
             </select>
           </div>
+
+          {error && <p className="text-xs text-status-error">{error}</p>}
 
           <div className="flex justify-end gap-3 pt-2">
             <button

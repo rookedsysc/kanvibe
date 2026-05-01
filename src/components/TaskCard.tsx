@@ -1,7 +1,7 @@
 "use client";
 
 import { Draggable } from "@hello-pangea/dnd";
-import { Link } from "@/i18n/navigation";
+import { Link } from "@/desktop/renderer/navigation";
 import type { KanbanTask } from "@/entities/KanbanTask";
 import { TaskPriority } from "@/entities/TaskPriority";
 

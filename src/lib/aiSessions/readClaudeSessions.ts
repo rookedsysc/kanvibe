@@ -1,5 +1,3 @@
-import { access, readdir } from "fs/promises";
-import { homedir } from "os";
 import path from "path";
 import {
   createReaderResult,
@@ -9,14 +7,17 @@ import {
   getCachedOrParse,
   getCachedOrParseHead,
   getCandidatePaths,
+  mapWithConcurrency,
   makePreviewMessage,
   paginateItems,
   readJsonLines,
   readJsonLinesHead,
+  REMOTE_SESSION_FILE_PARSE_CONCURRENCY,
   sortMessagesDescending,
   toIsoString,
   truncateText,
 } from "@/lib/aiSessions/shared";
+import { getHomeDirectory, pathExists, readDirectoryFilesBySuffix } from "@/lib/hostFileAccess";
 import type {
   AggregatedAiMessage,
   AggregatedAiSession,
@@ -26,8 +27,6 @@ import type {
   AiSessionReaderResult,
 } from "@/lib/aiSessions/types";
 
-const CLAUDE_ROOT_DIR = path.join(homedir(), ".claude");
-const CLAUDE_PROJECTS_DIR = path.join(CLAUDE_ROOT_DIR, "projects");
 const DEFAULT_DETAIL_LIMIT = 20;
 
 interface ClaudeProjectEvent {
@@ -46,7 +45,7 @@ interface ClaudeSessionAccumulator {
 }
 
 export async function readClaudeSessions(context: AiSessionReaderContext): Promise<AiSessionReaderResult> {
-  const rootExists = await pathExists(CLAUDE_ROOT_DIR);
+  const rootExists = await pathExists(await getClaudeRootDirectory(context), context.sshHost);
   if (!rootExists) {
     return createReaderResult("claude", { available: false, reason: "Claude Code directory not found" });
   }
@@ -56,8 +55,11 @@ export async function readClaudeSessions(context: AiSessionReaderContext): Promi
     return createReaderResult("claude", { sessions: [], reason: "No Claude project session files matched this task" });
   }
 
-  const results = await Promise.all(
-    projectFiles.map((filePath) => parseClaudeSessionFromFile(filePath, context))
+  const parseConcurrency = context.sshHost ? REMOTE_SESSION_FILE_PARSE_CONCURRENCY : projectFiles.length || 1;
+  const results = await mapWithConcurrency(
+    projectFiles,
+    parseConcurrency,
+    (filePath) => parseClaudeSessionFromFile(filePath, context),
   );
 
   let sessions = results.filter((s): s is AggregatedAiSession => s !== null);
@@ -91,7 +93,7 @@ export async function readClaudeSessionDetail(
   const messages: AggregatedAiMessage[] = [];
 
   for (const filePath of projectFiles) {
-    const events = await getCachedOrParse(filePath, () => readJsonLines(filePath));
+    const events = await getCachedOrParse(filePath, () => readJsonLines(filePath, context.sshHost), context.sshHost);
     for (const rawEvent of events) {
       const event = rawEvent as ClaudeProjectEvent;
       if (event.sessionId !== sessionId) continue;
@@ -151,35 +153,39 @@ async function parseClaudeSessionFromFile(
 
   const headEvents = await getCachedOrParseHead(
     filePath,
-    () => readJsonLinesHead(filePath, 60)
+    () => readJsonLinesHead(filePath, 60, context.sshHost),
+    context.sshHost,
   );
 
   const headResult = await parseEvents(headEvents);
   if (headResult?.firstUserPrompt) return headResult;
 
-  const allEvents = await getCachedOrParse(filePath, () => readJsonLines(filePath));
+  const allEvents = await getCachedOrParse(filePath, () => readJsonLines(filePath, context.sshHost), context.sshHost);
   return parseEvents(allEvents);
 }
 
 async function findProjectFiles(context: AiSessionReaderContext): Promise<string[]> {
+  const claudeProjectsDirectory = await getClaudeProjectsDirectory(context);
   const candidateDirs = getCandidatePaths(context)
     .map(toClaudeProjectDirName)
-    .map((directoryName) => path.join(CLAUDE_PROJECTS_DIR, directoryName));
+    .map((directoryName) => path.join(claudeProjectsDirectory, directoryName));
 
   const uniqueDirs = Array.from(new Set(candidateDirs));
   const files: string[] = [];
 
   for (const directoryPath of uniqueDirs) {
-    if (!(await pathExists(directoryPath))) continue;
-    const entries = await readdir(directoryPath, { withFileTypes: true });
-    files.push(
-      ...entries
-        .filter((entry) => entry.isFile() && entry.name.endsWith(".jsonl"))
-        .map((entry) => path.join(directoryPath, entry.name))
-    );
+    files.push(...await readDirectoryFilesBySuffix(directoryPath, ".jsonl", context.sshHost));
   }
 
   return files;
+}
+
+async function getClaudeRootDirectory(context: AiSessionReaderContext): Promise<string> {
+  return path.join(await getHomeDirectory(context.sshHost), ".claude");
+}
+
+async function getClaudeProjectsDirectory(context: AiSessionReaderContext): Promise<string> {
+  return path.join(await getClaudeRootDirectory(context), "projects");
 }
 
 /** Claude Code는 프로젝트 디렉토리 이름을 생성할 때 경로 구분자(/)와 언더스코어(_) 모두 하이픈(-)으로 치환한다 */
@@ -267,8 +273,4 @@ function resolveClaudeRole(event: ClaudeProjectEvent): AiMessageRole {
   if (event.type === "system") return "system";
   if (event.type === "progress") return "tool";
   return "unknown";
-}
-
-async function pathExists(targetPath: string): Promise<boolean> {
-  return access(targetPath).then(() => true).catch(() => false);
 }

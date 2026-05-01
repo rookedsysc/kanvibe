@@ -174,33 +174,33 @@ msg() {
     en:step_deps)       text="Installing dependencies" ;;
     zh:step_deps)       text="安装依赖" ;;
 
-    ko:step_db)         text="PostgreSQL 시작" ;;
-    en:step_db)         text="Starting PostgreSQL" ;;
-    zh:step_db)         text="启动 PostgreSQL" ;;
+    ko:step_db)         text="내장 데이터베이스 준비" ;;
+    en:step_db)         text="Preparing embedded database" ;;
+    zh:step_db)         text="准备内置数据库" ;;
 
-    ko:step_db_wait)    text="DB 준비 대기" ;;
-    en:step_db_wait)    text="Waiting for DB" ;;
-    zh:step_db_wait)    text="等待数据库就绪" ;;
+    ko:step_db_wait)    text="런타임 DB 경로 준비" ;;
+    en:step_db_wait)    text="Preparing runtime DB path" ;;
+    zh:step_db_wait)    text="准备运行时数据库路径" ;;
 
-    ko:step_db_ready)   text="DB 준비 완료" ;;
-    en:step_db_ready)   text="DB is ready" ;;
-    zh:step_db_ready)   text="数据库已就绪" ;;
+    ko:step_db_ready)   text="내장 데이터베이스 준비 완료" ;;
+    en:step_db_ready)   text="Embedded database is ready" ;;
+    zh:step_db_ready)   text="内置数据库已就绪" ;;
 
     ko:docker_not_running) text="Docker 데몬이 실행되고 있지 않습니다. Docker Desktop을 시작하거나 'sudo systemctl start docker'를 실행하세요." ;;
     en:docker_not_running) text="Docker daemon is not running. Start Docker Desktop or run 'sudo systemctl start docker'." ;;
     zh:docker_not_running) text="Docker 守护进程未运行。请启动 Docker Desktop 或运行 'sudo systemctl start docker'。" ;;
 
-    ko:step_db_fail)    text="DB 컨테이너 시작 실패" ;;
-    en:step_db_fail)    text="Failed to start DB container" ;;
-    zh:step_db_fail)    text="启动数据库容器失败" ;;
+    ko:step_db_fail)    text="내장 데이터베이스 준비 실패" ;;
+    en:step_db_fail)    text="Failed to prepare embedded database" ;;
+    zh:step_db_fail)    text="准备内置数据库失败" ;;
 
     ko:step_db_timeout) text="DB가 ${1}초 내에 준비되지 않았습니다" ;;
     en:step_db_timeout) text="DB did not become ready within ${1}s" ;;
     zh:step_db_timeout) text="数据库在 ${1} 秒内未准备就绪" ;;
 
-    ko:step_migrate)    text="DB 마이그레이션 실행" ;;
-    en:step_migrate)    text="Running DB migrations" ;;
-    zh:step_migrate)    text="执行数据库迁移" ;;
+    ko:step_migrate)    text="seed DB 생성" ;;
+    en:step_migrate)    text="Building seed DB" ;;
+    zh:step_migrate)    text="构建种子数据库" ;;
 
     ko:step_build)      text="Next.js 빌드" ;;
     en:step_build)      text="Building Next.js" ;;
@@ -223,9 +223,9 @@ msg() {
     en:stop_app)        text="Stopping app process" ;;
     zh:stop_app)        text="停止应用进程" ;;
 
-    ko:stop_db)         text="PostgreSQL 종료" ;;
-    en:stop_db)         text="Stopping PostgreSQL" ;;
-    zh:stop_db)         text="停止 PostgreSQL" ;;
+    ko:stop_db)         text="내장 데이터베이스는 앱과 함께 종료됩니다" ;;
+    en:stop_db)         text="Embedded database stops with the app" ;;
+    zh:stop_db)         text="内置数据库会随应用一起停止" ;;
 
     ko:stopped)         text="KanVibe가 종료되었습니다" ;;
     en:stopped)         text="KanVibe has been stopped" ;;
@@ -461,11 +461,10 @@ check_deps() {
   MISSING_OPTIONAL=()
 
   # 필수 의존성 (PKG_MANAGER에 따라 install_method 분기)
-  local node_method docker_method git_method tmux_method gh_method make_method
+  local node_method git_method tmux_method gh_method make_method
   case "$PKG_MANAGER" in
     brew)
       node_method="brew install node"
-      docker_method="install_docker_mac"
       git_method="brew install git"
       tmux_method="brew install tmux"
       gh_method="brew install gh"
@@ -473,7 +472,6 @@ check_deps() {
       ;;
     apt)
       node_method="install_node_apt"
-      docker_method="install_docker_apt"
       git_method="apt_install git"
       tmux_method="apt_install tmux"
       gh_method="install_gh_apt"
@@ -481,7 +479,6 @@ check_deps() {
       ;;
     *)
       node_method="pkg_mgr_missing"
-      docker_method="pkg_mgr_missing"
       git_method="pkg_mgr_missing"
       tmux_method="pkg_mgr_missing"
       gh_method="pkg_mgr_missing"
@@ -489,9 +486,8 @@ check_deps() {
       ;;
   esac
 
-  check_single_dep "Node.js"  "node"   "required" "22.0.0" "$node_method"   || true
+  check_single_dep "Node.js"  "node"   "required" "24.0.0" "$node_method"   || true
   check_single_dep "pnpm"     "pnpm"   "required" ""       "corepack_pnpm"  || true
-  check_single_dep "Docker"   "docker" "required" ""       "$docker_method" || true
   check_single_dep "git"      "git"    "required" ""       "$git_method"    || true
   check_single_dep "tmux"     "tmux"   "required" ""       "$tmux_method"   || true
   check_single_dep "gh"       "gh"     "required" ""       "$gh_method"     || true
@@ -788,9 +784,8 @@ install_missing_deps() {
   # 필수 의존성이 있었으면 재확인
   if [ "${#MISSING_REQUIRED[@]}" -gt 0 ]; then
     MISSING_REQUIRED=()
-    check_single_dep "Node.js"  "node"   "required" "22.0.0" "" || true
+    check_single_dep "Node.js"  "node"   "required" "24.0.0" "" || true
     check_single_dep "pnpm"     "pnpm"   "required" ""       "" || true
-    check_single_dep "Docker"   "docker" "required" ""       "" || true
     check_single_dep "git"      "git"    "required" ""       "" || true
     check_single_dep "tmux"     "tmux"   "required" ""       "" || true
     check_single_dep "gh"       "gh"     "required" ""       "" || true
@@ -879,7 +874,7 @@ cmd_start() {
   # tmux 설정 파일 설치 (최초 1회)
   setup_tmux_conf
 
-  local total=6
+  local total=4
   printf "\n  ${BOLD}═══ $(msg starting) ═══${NC}\n\n"
 
   # 1. pnpm install
@@ -891,55 +886,27 @@ cmd_start() {
   stop_log
   step_done 1 $total "$(msg step_deps)"
 
-  # 2. PostgreSQL 시작
+  # 2. 내장 DB 준비
   step 2 $total "$(msg step_db)"
-  if ! docker info > /dev/null 2>&1; then
-    printf "\n  ${CROSS} $(msg docker_not_running)\n\n"
-    exit 1
-  fi
   start_log
-  if ! docker compose up -d db >> "$LOG_FILE" 2>&1; then
+  if ! pnpm db:prepare >> "$LOG_FILE" 2>&1; then
     stop_log
     printf "  ${CROSS} $(msg step_db_fail)\n\n"
     exit 1
   fi
   stop_log
-  step_done 2 $total "$(msg step_db)"
+  step_done 2 $total "$(msg step_db_ready)"
 
-  # 3. DB 대기 (최대 30초)
-  step 3 $total "$(msg step_db_wait)"
-  start_log
-  local db_wait=0
-  until docker compose exec db pg_isready -U "${KANVIBE_USER:-admin}" -q 2>/dev/null; do
-    sleep 1
-    db_wait=$((db_wait + 1))
-    echo "Waiting for DB... (${db_wait}s)" >> "$LOG_FILE"
-    if [ "$db_wait" -ge 30 ]; then
-      stop_log
-      printf "  ${CROSS} $(msg step_db_timeout "30")\n\n"
-      exit 1
-    fi
-  done
-  stop_log
-  step_done 3 $total "$(msg step_db_ready)"
-
-  # 4. 마이그레이션
-  step 4 $total "$(msg step_migrate)"
-  start_log
-  pnpm migration:run >> "$LOG_FILE" 2>&1 || true
-  stop_log
-  step_done 4 $total "$(msg step_migrate)"
-
-  # 5. Next.js 빌드
-  step 5 $total "$(msg step_build)"
+  # 3. Next.js 빌드
+  step 3 $total "$(msg step_build)"
   export NODE_ENV=production
   start_log
   pnpm build >> "$LOG_FILE" 2>&1 || { stop_log; printf "  ${CROSS} $(msg step_build) failed\n\n"; exit 1; }
   stop_log
-  step_done 5 $total "$(msg step_build)"
+  step_done 3 $total "$(msg step_build)"
 
-  # 6. 서버 시작 — 실행 모드 선택
-  step 6 $total "$(msg step_server)"
+  # 4. 서버 시작 — 실행 모드 선택
+  step 4 $total "$(msg step_server)"
 
   local run_mode=""
   case "$mode_flag" in
@@ -956,7 +923,7 @@ cmd_start() {
   esac
 
   local LOG_FILE="$SCRIPT_DIR/logs/kanvibe.log"
-  local app_port="${PORT:-3000}"
+  local app_port="${PORT:-4885}"
 
   case "${run_mode:-1}" in
     2)
@@ -988,7 +955,7 @@ cmd_stop() {
   print_header
   load_env
 
-  local total=2
+  local total=1
   printf "  ${BOLD}═══ $(msg stopping) ═══${NC}\n\n"
 
   # 1. 앱 프로세스 종료
@@ -1015,11 +982,6 @@ cmd_stop() {
     printf "  ${DIM}  $(msg not_running)${NC}\n"
     step_done 1 $total "$(msg stop_app)"
   fi
-
-  # 2. Docker DB 종료
-  step 2 $total "$(msg stop_db)"
-  docker compose down 2>&1 | tail -1
-  step_done 2 $total "$(msg stop_db)"
 
   echo ""
   printf "  ${CHECK} ${BOLD}$(msg stopped)${NC}\n\n"

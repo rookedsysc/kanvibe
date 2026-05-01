@@ -1,10 +1,84 @@
-import { exec } from "child_process";
+import { exec, execFile } from "child_process";
 import { promisify } from "util";
-import { readFile } from "fs/promises";
+import { mkdir, readFile } from "fs/promises";
 import { homedir } from "os";
 import path from "path";
+import { buildSSHArgs, type SSHHostConfig } from "@/lib/sshConfig";
 
 const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
+
+const SSH_TRANSPORT_ERROR_PATTERNS = [
+  /kex_exchange_identification/i,
+  /connection reset by peer/i,
+  /connection reset by /i,
+  /connection closed by /i,
+  /connection refused/i,
+  /connection timed out/i,
+  /operation timed out/i,
+  /no route to host/i,
+  /network is unreachable/i,
+  /could not resolve hostname/i,
+  /name or service not known/i,
+  /temporary failure in name resolution/i,
+  /host key verification failed/i,
+  /remote host identification has changed/i,
+  /permission denied \(publickey/i,
+  /too many authentication failures/i,
+  /bad owner or permissions/i,
+  /ssh: connect to host/i,
+];
+
+function collectErrorOutput(error: unknown): string {
+  const outputs: string[] = [];
+
+  if (error instanceof Error) {
+    outputs.push(error.message);
+  }
+
+  if (error && typeof error === "object") {
+    if ("stderr" in error) {
+      outputs.push(String((error as { stderr?: string }).stderr || ""));
+    }
+
+    if ("stdout" in error) {
+      outputs.push(String((error as { stdout?: string }).stdout || ""));
+    }
+  }
+
+  return outputs.filter(Boolean).join("\n");
+}
+
+export function isSSHTransportError(error: unknown): boolean {
+  const errorOutput = collectErrorOutput(error);
+  return SSH_TRANSPORT_ERROR_PATTERNS.some((pattern) => pattern.test(errorOutput));
+}
+
+function summarizeCommandFailure(errorOutput: string): string {
+  const lines = errorOutput
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  return lines.at(-1) ?? "원격 명령 실행에 실패했습니다.";
+}
+
+function shouldLogRemoteCommandFailure(command: string, stderr: string): boolean {
+  const trimmedCommand = command.trim();
+  const isQuietProbe = command.includes("2>/dev/null")
+    || command.includes(">/dev/null 2>&1")
+    || (/^test -[ef] /.test(trimmedCommand) && trimmedCommand.includes("|| true"));
+
+  if (isQuietProbe && !stderr.trim()) {
+    return false;
+  }
+
+  if (isQuietProbe) {
+    return false;
+  }
+
+  return true;
+}
 
 /** 로컬에서 셸 명령을 실행하고 stdout을 반환한다 */
 async function execLocal(command: string): Promise<string> {
@@ -14,7 +88,6 @@ async function execLocal(command: string): Promise<string> {
 
 /** SSH를 통해 원격에서 명령을 실행하고 stdout을 반환한다 */
 async function execRemote(sshHost: string, command: string): Promise<string> {
-  const { Client } = await import("ssh2");
   const { parseSSHConfig } = await import("@/lib/sshConfig");
 
   const configs = await parseSSHConfig();
@@ -24,54 +97,86 @@ async function execRemote(sshHost: string, command: string): Promise<string> {
     throw new Error(`SSH 호스트를 찾을 수 없습니다: ${sshHost}`);
   }
 
-  return new Promise((resolve, reject) => {
-    const conn = new Client();
+  const sshArgs = [
+    ...await buildExecSSHArgs(hostConfig),
+    buildRemoteShellCommand(command),
+  ];
 
-    conn.on("ready", () => {
-      conn.exec(command, (err, stream) => {
-        if (err) {
-          conn.end();
-          return reject(err);
-        }
-
-        let output = "";
-        let errorOutput = "";
-
-        stream.on("data", (data: Buffer) => {
-          output += data.toString();
-        });
-
-        stream.stderr.on("data", (data: Buffer) => {
-          errorOutput += data.toString();
-        });
-
-        stream.on("close", (code: number) => {
-          conn.end();
-          if (code !== 0) {
-            reject(new Error(`SSH 명령 실패 (exit ${code}): ${errorOutput}`));
-          } else {
-            resolve(output.trim());
-          }
-        });
-      });
+  try {
+    const { stdout } = await execFileAsync("ssh", sshArgs, {
+      maxBuffer: 10 * 1024 * 1024,
     });
+    return stdout.trim();
+  } catch (error) {
+    const stderr = error && typeof error === "object" && "stderr" in error
+      ? String((error as { stderr?: string }).stderr || "")
+      : "";
 
-    conn.on("error", reject);
-
-    let privateKey: Buffer;
-    try {
-      privateKey = require("fs").readFileSync(hostConfig.privateKeyPath);
-    } catch {
-      return reject(new Error(`SSH 키를 읽을 수 없습니다: ${hostConfig.privateKeyPath}`));
+    if (shouldLogRemoteCommandFailure(command, stderr)) {
+      console.error("[remote-ssh] command failed", {
+        sshHost,
+        command,
+        sshArgs,
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
 
-    conn.connect({
-      host: hostConfig.hostname,
-      port: hostConfig.port,
-      username: hostConfig.username,
-      privateKey,
-    });
-  });
+    throw normalizeSSHExecError(error, sshHost);
+  }
+}
+
+async function buildExecSSHArgs(
+  hostConfig: SSHHostConfig,
+): Promise<string[]> {
+  const args = buildSSHArgs(hostConfig, { disableTty: true });
+  if (process.platform === "win32") {
+    return args;
+  }
+
+  const controlPath = path.join(homedir(), ".kanvibe", "ssh-%C");
+  await mkdir(path.dirname(controlPath), { recursive: true });
+
+  return [
+    ...args.slice(0, -1),
+    "-o",
+    "ControlMaster=auto",
+    "-o",
+    "ControlPersist=60",
+    "-o",
+    `ControlPath=${controlPath}`,
+    args.at(-1)!,
+  ];
+}
+
+function buildRemoteShellCommand(command: string): string {
+  return `sh -lc ${quoteForPosixShell(command)}`;
+}
+
+function quoteForPosixShell(value: string): string {
+  return `'${value.replace(/'/g, `'"'"'`)}'`;
+}
+
+function normalizeSSHExecError(error: unknown, sshHost: string): Error {
+  if (error && typeof error === "object" && "stderr" in error) {
+    const stderr = String((error as { stderr?: string }).stderr || "").trim();
+    const message = stderr ? summarizeCommandFailure(stderr) : (error instanceof Error ? error.message : "SSH 명령 실패");
+    return new Error(`${sshHost} 원격 명령 실패: ${message}`);
+  }
+
+  return error instanceof Error ? error : new Error(`${sshHost} 원격 명령 실패`);
+}
+
+export function resolvePathForShell(targetPath: string, sshHost?: string | null): string {
+  if (!targetPath.startsWith("~")) {
+    return `"${targetPath}"`;
+  }
+
+  if (sshHost) {
+    const suffix = targetPath.slice(1);
+    return `"$HOME${suffix}"`;
+  }
+
+  return `"${targetPath.replace(/^~/, homedir())}"`;
 }
 
 /** 로컬 또는 SSH에서 명령을 실행한다. sshHost가 null이면 로컬 실행 */
@@ -165,29 +270,33 @@ export async function getDefaultBranch(
 
 /**
  * 지정 디렉토리 하위의 git 저장소 경로 목록을 반환한다.
- * .git 디렉토리를 maxdepth 4까지 탐색하여 상위 경로를 추출한다.
+ * 일반 저장소의 `.git` 디렉토리와 worktree의 `.git` 파일을 모두 탐색하여 상위 경로를 추출한다.
  */
 export async function scanGitRepos(
   rootPath: string,
   sshHost?: string | null
 ): Promise<string[]> {
-  const resolvedPath = rootPath.startsWith("~")
-    ? rootPath.replace(/^~/, homedir())
-    : rootPath;
+  const resolvedPath = resolvePathForShell(rootPath, sshHost);
+  const command = `find ${resolvedPath} -maxdepth 4 -name ".git" \\( -type d -o -type f \\) 2>/dev/null`;
 
   try {
-    const output = await execGit(
-      `find "${resolvedPath}" -maxdepth 4 -name ".git" -type d 2>/dev/null`,
-      sshHost
-    );
+    const output = await execGit(command, sshHost);
 
     if (!output) return [];
 
     return output
       .split("\n")
       .filter(Boolean)
-      .map((gitDir) => gitDir.replace(/\/\.git$/, ""));
-  } catch {
+      .map((gitDir) => gitDir.replace(/\/\.git$/, ""))
+      .filter((value, index, self) => self.indexOf(value) === index);
+  } catch (error) {
+    console.error("[remote-scan] git repository scan failed", {
+      sshHost: sshHost || null,
+      rootPath,
+      resolvedPath,
+      command,
+      error: error instanceof Error ? error.message : String(error),
+    });
     return [];
   }
 }

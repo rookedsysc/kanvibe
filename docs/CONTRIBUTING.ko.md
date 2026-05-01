@@ -10,9 +10,8 @@ KanVibe에 관심을 가져주셔서 감사합니다! 이 가이드가 시작하
 
 ### 사전 요구사항
 
-- Node.js 20+ (`.nvmrc` 참조)
+- Node.js 24.x (`.nvmrc` 참조)
 - pnpm
-- Docker (PostgreSQL용)
 - tmux 또는 zellij (터미널 기능용)
 
 ### 시작하기
@@ -25,14 +24,11 @@ cd kanvibe
 # 환경변수 복사
 cp .env.example .env
 
-# PostgreSQL 시작
-docker compose up db -d
-
 # 의존성 설치
 pnpm install
 
-# 데이터베이스 마이그레이션 실행
-pnpm migration:run
+# 내장 데이터베이스 준비
+pnpm db:prepare
 
 # 개발 서버 시작
 pnpm dev
@@ -59,7 +55,7 @@ pnpm dev
    - TypeScript strict 모드
    - Tailwind CSS v4 + 디자인 토큰 (CSS 변수)
    - next-intl로 모든 사용자 텍스트 처리
-   - TypeORM migration으로 스키마 변경
+   - 내장 SQLite + TypeORM 데이터 접근
 
 ### PR 프로세스
 
@@ -94,17 +90,14 @@ refactor(scope): 코드 구조 개선
 
 ## 데이터베이스 변경
 
-모든 스키마 변경은 TypeORM migration을 통해 수행합니다:
+KanVibe는 내장 SQLite 데이터베이스를 사용합니다. 엔티티 구조를 바꿀 때는 SQLite 부트스트랩 스키마도 함께 갱신해야 합니다:
 
 ```bash
-# 엔티티 변경으로부터 마이그레이션 생성
-pnpm migration:generate -- src/migrations/DescriptiveName
-
-# 마이그레이션 실행
-pnpm migration:run
+# 번들 seed DB 다시 생성
+pnpm db:prepare
 ```
 
-절대 `synchronize: true`를 사용하지 마세요. 자세한 마이그레이션 워크플로우는 `CLAUDE.md`를 참조하세요.
+`src/lib/sqliteSchema.ts`와 TypeORM 엔티티를 항상 같이 맞춰 주세요.
 
 ---
 

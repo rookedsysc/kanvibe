@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useTranslations } from "next-intl";
-import { dismissDoneAlert } from "@/app/actions/appSettings";
+import { dismissDoneAlert } from "@/desktop/renderer/actions/appSettings";
 
 interface DoneConfirmDialogProps {
   isOpen: boolean;

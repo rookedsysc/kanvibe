@@ -40,6 +40,13 @@ interface OpenCodeDetailRow {
 }
 
 export async function readOpenCodeSessions(context: AiSessionReaderContext): Promise<AiSessionReaderResult> {
+  if (context.sshHost) {
+    return createReaderResult("opencode", {
+      available: false,
+      reason: "Remote OpenCode session reading is not available yet",
+    });
+  }
+
   const db = getSqliteConnection(OPENCODE_DB_PATH);
   if (!db) {
     return createReaderResult("opencode", { available: false, reason: "OpenCode database not found" });
@@ -115,6 +122,10 @@ export async function readOpenCodeSessionDetail(
   cursor?: string | null,
   limit = DEFAULT_DETAIL_LIMIT
 ): Promise<AiSessionDetailReaderResult | null> {
+  if (context.sshHost) {
+    return null;
+  }
+
   const sid = escapeSql(sessionId);
 
   const db = getSqliteConnection(OPENCODE_DB_PATH);

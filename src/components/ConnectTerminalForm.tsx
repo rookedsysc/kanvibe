@@ -2,16 +2,21 @@
 
 import { useState, useTransition } from "react";
 import { useTranslations } from "next-intl";
-import { connectTerminalSession } from "@/app/actions/kanban";
+import { connectTerminalSession } from "@/desktop/renderer/actions/kanban";
+import { ensureSessionDependencyWithPrompt } from "@/desktop/renderer/utils/sessionDependencyPrompt";
+import type { KanbanTask } from "@/entities/KanbanTask";
 import { SessionType } from "@/entities/KanbanTask";
 
 interface ConnectTerminalFormProps {
   taskId: string;
+  sshHost?: string | null;
+  onConnected?: (task: KanbanTask) => void;
 }
 
 /** 세션이 없는 태스크에 터미널 세션을 연결하는 폼 */
-export default function ConnectTerminalForm({ taskId }: ConnectTerminalFormProps) {
+export default function ConnectTerminalForm({ taskId, sshHost, onConnected }: ConnectTerminalFormProps) {
   const t = useTranslations("taskDetail");
+  const tc = useTranslations("common");
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
@@ -19,9 +24,21 @@ export default function ConnectTerminalForm({ taskId }: ConnectTerminalFormProps
     const sessionType = formData.get("sessionType") as SessionType;
     setError(null);
     startTransition(async () => {
-      const result = await connectTerminalSession(taskId, sessionType);
-      if (!result) {
-        setError(t("connectFailed"));
+      try {
+        const isReady = await ensureSessionDependencyWithPrompt(sessionType, sshHost, tc);
+        if (!isReady) {
+          return;
+        }
+
+        const result = await connectTerminalSession(taskId, sessionType);
+        if (!result) {
+          setError(t("connectFailed"));
+          return;
+        }
+
+        onConnected?.(result);
+      } catch (error) {
+        setError(error instanceof Error ? error.message : t("connectFailed"));
       }
     });
   }

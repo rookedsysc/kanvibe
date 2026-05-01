@@ -1,0 +1,313 @@
+# Nextron으로 DB를 앱에 포함하고 Homebrew로 설치 가능한 앱 만들기
+
+## 개요
+
+결론부터 말하면 가능합니다. 다만 운영 방식은 "DB 파일을 앱 번들 안에 그대로 두고 계속 쓰는 구조"보다, "초기 seed DB를 앱에 포함한 뒤 첫 실행 때 사용자 전용 경로로 복사해서 쓰는 구조"가 가장 안전합니다.
+
+가장 실용적인 조합은 다음과 같습니다.
+
+- UI/앱 셸: Nextron
+- 로컬 내장 DB: SQLite
+- 패키징: electron-builder
+- macOS 배포: signed/notarized `dmg` 또는 `zip`
+- 설치 채널: Homebrew Formula가 아니라 Homebrew Cask
+
+이 조합을 추천하는 이유는 다음과 같습니다.
+
+- Nextron은 Electron 앱을 빌드해 `dist` 산출물로 패키징할 수 있습니다.
+- electron-builder는 `extraResources`로 seed DB 파일을 앱 리소스에 포함할 수 있습니다.
+- Electron은 사용자별 데이터 저장 위치로 `userData`를 제공합니다.
+- SQLite는 서버 프로세스 없이 단일 파일로 동작하는 임베디드 DB라서 데스크톱 앱에 잘 맞습니다.
+- Homebrew Cask는 `.app` 번들을 내려받아 설치하는 배포 방식과 잘 맞습니다.
+
+## 추천 아키텍처
+
+### 1. DB는 SQLite를 기본값으로 잡는 편이 좋습니다
+
+Nextron 자체가 DB를 제공하는 것은 아니므로, 앱 안에 포함할 로컬 DB를 정해야 합니다. 이 경우 대부분은 SQLite가 가장 무난합니다.
+
+이유는 다음과 같습니다.
+
+- 별도 DB 서버를 띄울 필요가 없습니다.
+- DB 전체가 파일 하나라서 seed 배포가 쉽습니다.
+- 오프라인 데스크톱 앱과 궁합이 좋습니다.
+- 설치 후 사용자의 로컬 데이터로 분리해 관리하기 쉽습니다.
+
+다만 아래 조건이면 SQLite 단독 구조는 재검토하는 편이 좋습니다.
+
+- 여러 프로세스/여러 사용자가 동시에 많이 쓰는 구조
+- 중앙 서버가 단일 진실 공급원이어야 하는 구조
+- 대용량 바이너리 파일까지 DB 하나에 몰아넣는 구조
+
+이 경우에는 다음 식으로 나누는 것이 좋습니다.
+
+- 메타데이터/캐시: SQLite
+- 협업/동기화용 원본 데이터: Postgres 같은 서버 DB
+- 첨부파일/대용량 리소스: 별도 파일 저장소
+
+## 왜 "앱 번들 내부 DB를 직접 수정"하면 안 되나
+
+패키징된 Electron 앱은 업데이트 때 번들 자체가 교체될 수 있고, 설치 위치의 앱 번들은 사용자 데이터 저장소로 취급하지 않는 편이 안전합니다. 그래서 아래처럼 나누는 것이 일반적입니다.
+
+- 앱 번들 내부: 읽기 전용 seed DB
+- 사용자 전용 경로: 실제 읽기/쓰기용 runtime DB
+
+즉, 앱에 포함시키는 것은 "운영 DB"가 아니라 "초기화용 DB"라고 보는 편이 맞습니다.
+
+## 추천 디렉터리 구조
+
+```text
+.
+├── main/
+│   └── db.ts
+├── resources/
+│   └── database/
+│       └── app.seed.db
+├── electron-builder.yml
+└── package.json
+```
+
+- `resources/database/app.seed.db`: 앱에 포함할 초기 DB
+- `main/db.ts`: 첫 실행 시 seed DB를 복사하고 DB 연결 경로를 반환하는 코드
+- `electron-builder.yml`: seed DB를 패키징에 포함하는 설정
+
+## electron-builder로 seed DB 포함하기
+
+아래처럼 `extraResources`를 쓰면 seed DB를 앱 리소스 디렉터리에 넣을 수 있습니다.
+
+```yml
+appId: com.example.kanvibe
+productName: Kanvibe
+
+directories:
+  output: dist
+  buildResources: resources
+
+files:
+  - from: .
+    filter:
+      - package.json
+      - app
+      - main
+
+extraResources:
+  - from: resources/database
+    to: database
+    filter:
+      - "*.db"
+
+mac:
+  target:
+    - dmg
+    - zip
+
+publish:
+  provider: github
+  owner: your-org
+  repo: your-repo
+```
+
+포인트는 아래 두 가지입니다.
+
+- `files`는 앱 코드 포함 범위를 정합니다.
+- `extraResources`는 seed DB 같은 런타임 리소스를 앱의 resources 영역에 넣습니다.
+
+## 첫 실행 때 userData로 복사하는 방식
+
+실제로는 `app.getPath('userData')` 아래에 운영 DB를 두는 편이 안전합니다.
+
+```ts
+import fs from 'node:fs'
+import path from 'node:path'
+import { app } from 'electron'
+
+export function ensureDatabaseFilePath(): string {
+  const runtimeDirectory = app.getPath('userData')
+  const runtimeDatabasePath = path.join(runtimeDirectory, 'app.db')
+
+  // 패키징된 앱에서는 resources 아래 seed DB를 읽습니다.
+  const bundledDatabasePath = app.isPackaged
+    ? path.join(process.resourcesPath, 'database', 'app.seed.db')
+    : path.join(app.getAppPath(), 'resources', 'database', 'app.seed.db')
+
+  if (!fs.existsSync(runtimeDirectory)) {
+    fs.mkdirSync(runtimeDirectory, { recursive: true })
+  }
+
+  // 첫 실행이라면 seed DB를 사용자 전용 경로로 복사합니다.
+  if (!fs.existsSync(runtimeDatabasePath)) {
+    fs.copyFileSync(bundledDatabasePath, runtimeDatabasePath)
+  }
+
+  return runtimeDatabasePath
+}
+```
+
+예를 들어 `better-sqlite3`를 쓴다면 연결 코드는 대략 아래처럼 구성할 수 있습니다.
+
+```ts
+import Database from 'better-sqlite3'
+import { ensureDatabaseFilePath } from './db'
+
+export function openDatabase() {
+  const databasePath = ensureDatabaseFilePath()
+  return new Database(databasePath)
+}
+```
+
+이 구조의 장점은 다음과 같습니다.
+
+- 앱 업데이트를 해도 사용자 데이터가 분리됩니다.
+- 설치 위치 권한 이슈를 피하기 쉽습니다.
+- 초기 데이터가 필요한 온보딩/샘플/템플릿 앱에 특히 잘 맞습니다.
+
+## 마이그레이션은 어떻게 가져가면 좋나
+
+실서비스에 가까워질수록 seed DB만으로는 부족합니다. 일반적으로는 아래 순서를 추천합니다.
+
+1. 앱 시작 시 runtime DB 경로 확보
+2. 현재 스키마 버전 조회
+3. 필요한 SQL migration 실행
+4. migration 완료 후 앱 기능 시작
+
+즉, seed DB는 "초기 상태 제공" 용도이고, 이후 구조 변경은 migration으로 관리하는 편이 안정적입니다.
+
+## Homebrew 설치형 앱으로 배포하는 흐름
+
+### 1. macOS에서 빌드합니다
+
+Nextron 문서 기준으로 macOS 바이너리는 macOS 호스트에서 빌드해야 합니다.
+
+또한 macOS 배포용 앱은 서명과 notarization까지 준비하는 편이 좋습니다. 그렇지 않으면 설치는 되어도 실행 과정에서 Gatekeeper 경고를 강하게 맞을 수 있습니다.
+
+### 2. signed/notarized 산출물을 릴리스에 올립니다
+
+일반적으로는 아래 흐름이 가장 관리하기 쉽습니다.
+
+- `electron-builder`로 `dmg`와 필요 시 `zip` 생성
+- GitHub Releases에 업로드
+- Homebrew Cask가 그 릴리스 asset URL을 가리키도록 구성
+
+### 3. Homebrew tap 저장소를 만듭니다
+
+보통 별도 저장소를 하나 둡니다.
+
+```bash
+brew tap-new yourname/homebrew-kanvibe
+```
+
+그 다음 `Casks/` 디렉터리에 cask 파일을 둡니다.
+
+### 4. cask 파일을 작성합니다
+
+예시는 아래처럼 가져가면 됩니다.
+
+```ruby
+cask "yourname-kanvibe" do
+  version "1.0.0"
+  sha256 "PUT_REAL_SHA256_HERE"
+
+  url "https://github.com/yourname/kanvibe/releases/download/v#{version}/Kanvibe-#{version}.dmg"
+  name "Kanvibe"
+  desc "Desktop app built with Nextron and bundled SQLite"
+  homepage "https://github.com/yourname/kanvibe"
+
+  app "Kanvibe.app"
+
+  zap trash: [
+    "~/Library/Application Support/Kanvibe",
+    "~/Library/Preferences/com.example.kanvibe.plist",
+  ]
+end
+```
+
+실제 사용자 설치 흐름은 보통 아래처럼 됩니다.
+
+```bash
+brew tap yourname/homebrew-kanvibe
+brew install --cask yourname-kanvibe
+```
+
+원하면 완전 수식 이름으로도 배포할 수 있습니다.
+
+```bash
+brew install --cask yourname/homebrew-kanvibe/yourname-kanvibe
+```
+
+## 배포 체크리스트
+
+실제로 배포할 때는 아래 항목을 같이 보시면 됩니다.
+
+- seed DB는 앱 번들에 포함하고, 운영 DB는 `userData`로 복사했는가
+- seed DB와 migration 책임을 분리했는가
+- macOS에서 빌드했는가
+- 코드 서명과 notarization을 준비했는가
+- GitHub Releases asset URL과 SHA256을 cask에 반영했는가
+- cask 이름이 전역적으로 충돌하지 않게 잡혔는가
+- uninstall/zap 시 사용자 데이터 삭제 범위를 명확히 정했는가
+
+## 이 방식이 특히 잘 맞는 앱
+
+다음 종류의 앱이면 이 구조가 매우 잘 맞습니다.
+
+- 개인용 생산성 앱
+- 오프라인 우선 메모/문서/설정 관리 앱
+- 로컬 캐시가 있는 API 클라이언트 앱
+- 샘플 데이터나 템플릿 프로젝트를 내장해야 하는 앱
+- 설치 직후 바로 동작해야 하는 도구형 데스크톱 앱
+
+반대로 아래라면 서버 DB를 중심으로 다시 설계하는 편이 낫습니다.
+
+- 다중 사용자 협업이 핵심인 앱
+- 동시 write가 많은 앱
+- 중앙 감사 로그/권한 통제가 중요한 앱
+- DB 자체가 네트워크로 공유되어야 하는 앱
+
+## 추천 구현 순서
+
+가장 안전한 순서는 아래입니다.
+
+1. SQLite seed DB 파일을 먼저 만든다.
+2. `extraResources`로 seed DB를 패키징에 포함한다.
+3. Electron main process에서 첫 실행 복사 로직을 만든다.
+4. DB 연결 라이브러리를 runtime DB 경로에 붙인다.
+5. migration 체계를 붙인다.
+6. macOS signed/notarized build를 만든다.
+7. GitHub Releases에 업로드한다.
+8. Homebrew tap과 cask를 만든다.
+
+## 한 줄 정리
+
+Nextron으로 "DB를 앱에 포함한 설치형 데스크톱 앱"을 만들고 싶다면, 가장 현실적인 정답은 "SQLite seed DB를 `extraResources`로 번들링하고, 첫 실행 때 `userData`로 복사해서 사용한 뒤, signed/notarized macOS artifact를 Homebrew Cask로 배포"하는 방식입니다.
+
+## 참고 자료
+
+- [Nextron README](https://raw.githubusercontent.com/saltyshiomix/nextron/main/README.md)
+> 위 출처에서 "To build macOS binary, your host machine must be macOS!" 라고 설명합니다.
+
+- [Electron app API](https://www.electronjs.org/docs/latest/api/app)
+> 위 출처에서 "The directory for storing your app's configuration files" 라고 설명합니다.
+
+- [electron-builder Application Contents](https://www.electron.build/contents)
+> 위 출처에서 "copy the file or directory with matching names directly into the app’s resources directory" 라고 설명합니다.
+
+- [Electron Code Signing](https://www.electronjs.org/docs/latest/tutorial/code-signing)
+> 위 출처에서 "Preparing macOS applications for release requires two steps:" 라고 설명합니다.
+
+- [electron-builder Publish](https://www.electron.build/publish)
+> 위 출처에서 "Recommended GitHub Releases Workflow" 라고 안내합니다.
+
+- [Homebrew Cask Cookbook](https://docs.brew.sh/Cask-Cookbook)
+> 위 출처에서 "The cask language is declarative" 라고 설명합니다.
+
+- [Homebrew Tap Guide](https://docs.brew.sh/How-to-Create-and-Maintain-a-Tap)
+> 위 출처에서 "Casks can also be installed from a tap." 라고 설명합니다.
+
+- [Homebrew Tap Guide - Naming](https://docs.brew.sh/How-to-Create-and-Maintain-a-Tap)
+> 위 출처에서 "Unlike formulae, casks must have globally unique names to avoid clashes." 라고 설명합니다.
+
+- [SQLite About](https://www.sqlite.org/about.html)
+> 위 출처에서 "SQLite is an embedded SQL database engine." 라고 설명합니다.
+
+- [SQLite When To Use](https://www.sqlite.org/whentouse.html)
+> 위 출처에서 "SQLite only supports one writer at a time per database file." 라고 설명합니다.

@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { useTranslations } from "next-intl";
-import { useRouter } from "@/i18n/navigation";
-import { getTasksByStatus } from "@/app/actions/kanban";
+import { useRouter } from "@/desktop/renderer/navigation";
+import { getTasksByStatus } from "@/desktop/renderer/actions/kanban";
 import { TaskStatus } from "@/entities/KanbanTask";
 import type { KanbanTask } from "@/entities/KanbanTask";
 

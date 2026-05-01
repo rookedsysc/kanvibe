@@ -1,9 +1,12 @@
 import path from "path";
 import { existsSync } from "fs";
 import { SessionType } from "@/entities/KanbanTask";
+import { PaneLayoutType } from "@/entities/PaneLayoutConfig";
 import { ZELLIJ_LAYOUT_FILENAME } from "@/lib/worktree";
 import { execSync } from "child_process";
 import type { WebSocket } from "ws";
+import { buildSSHArgs } from "@/lib/sshConfig";
+import { buildTmuxSessionBootstrapCommands, type TmuxPaneLayoutConfig } from "@/lib/worktree";
 
 /**
  * 활성 터미널 세션을 관리하는 레지스트리.
@@ -17,6 +20,10 @@ interface TerminalEntry {
 }
 
 const activeTerminals = new Map<string, TerminalEntry>();
+
+function shouldLogTerminalSpawn(): boolean {
+  return process.env.KANVIBE_DEBUG_TERMINAL === "true";
+}
 
 /** tmux 세션이 존재하는지 확인한다 */
 function isTmuxSessionAlive(sessionName: string): boolean {
@@ -149,7 +156,9 @@ export async function attachLocalSession(
     ptyCwd = process.env.HOME || "/";
   }
 
-  console.log(`[터미널] PTY spawn: shell=${shell}, args=${JSON.stringify(args)}, cwd=${ptyCwd}`);
+  if (shouldLogTerminalSpawn()) {
+    console.log(`[터미널] PTY spawn: shell=${shell}, args=${JSON.stringify(args)}, cwd=${ptyCwd}`);
+  }
 
   let ptyProcess: import("node-pty").IPty;
   try {
@@ -219,6 +228,7 @@ export async function attachRemoteSession(
   sessionName: string,
   ws: WebSocket,
   sshConfig: {
+    host: string;
     hostname: string;
     port: number;
     username: string;
@@ -226,103 +236,131 @@ export async function attachRemoteSession(
   },
   cols?: number,
   rows?: number,
+  worktreePath?: string | null,
+  tmuxPaneLayout?: TmuxPaneLayoutConfig | null,
 ): Promise<void> {
   const initialCols = cols ?? 120;
   const initialRows = rows ?? 30;
 
-  const { Client } = await import("ssh2");
-  const fs = await import("fs");
+  const existing = activeTerminals.get(taskId);
+  if (existing) {
+    existing.clients.add(ws);
+    ws.on("message", (message) => handleTerminalMessage(existing.pty, message.toString()));
+    ws.on("close", () => {
+      existing.clients.delete(ws);
+      if (existing.clients.size === 0) {
+        detachSession(taskId);
+      }
+    });
+    return;
+  }
 
-  const conn = new Client();
+  const pty = await import("node-pty");
+  const attachCommand = sessionType === SessionType.TMUX
+    ? buildRemoteTmuxAttachCommand(sessionName, worktreePath, tmuxPaneLayout)
+    : `exec zellij attach "${sessionName}"`;
+  const args = buildSSHArgs(sshConfig, { forceTty: true });
 
-  conn.on("ready", () => {
-    /** 세션에 직접 attach한다 */
-    let command: string;
-    if (sessionType === SessionType.TMUX) {
-      command = [
-        `tmux has-session -t "${sessionName}" 2>/dev/null || tmux new-session -d -s "${sessionName}"`,
-        `tmux attach-session -t "${sessionName}"`,
-      ].join("; ");
-    } else {
-      command = `zellij attach "${sessionName}"`;
-    }
+  if (shouldLogTerminalSpawn()) {
+    console.log(`[터미널] Remote PTY spawn: shell=ssh, args=${JSON.stringify(args)}`);
+  }
 
-    conn.shell(
-      { term: "xterm-256color", cols: initialCols, rows: initialRows },
-      (err, stream) => {
-        if (err) {
-          ws.close(1011, "SSH shell 오류");
-          conn.end();
-          return;
-        }
-
-        stream.write(command + "\n");
-
-        stream.on("data", (data: Buffer) => {
-          if (ws.readyState === ws.OPEN) {
-            ws.send(data);
-          }
-        });
-
-        stream.on("close", () => {
-          ws.close();
-          conn.end();
-          activeTerminals.delete(taskId);
-        });
-
-        ws.on("message", (message) => {
-          const data = message.toString();
-
-          if (data.startsWith("\x01")) {
-            try {
-              const parsed = JSON.parse(data.slice(1));
-              if (parsed.type === "resize" && parsed.cols && parsed.rows) {
-                stream.setWindow(parsed.rows, parsed.cols, 0, 0);
-              }
-            } catch {
-              stream.write(data);
-            }
-            return;
-          }
-
-          stream.write(data);
-        });
-
-        ws.on("close", () => {
-          stream.close();
-          conn.end();
-          activeTerminals.delete(taskId);
-        });
-      },
-    );
-  });
-
-  conn.on("error", (err) => {
-    console.error("SSH 연결 오류:", err.message);
+  let ptyProcess: import("node-pty").IPty;
+  try {
+    ptyProcess = pty.spawn("ssh", args, {
+      name: "xterm-256color",
+      cols: initialCols,
+      rows: initialRows,
+      cwd: process.env.HOME || "/",
+      env: {
+        ...process.env,
+        LANG: process.env.LANG || "en_US.UTF-8",
+        LC_ALL: process.env.LC_ALL || "en_US.UTF-8",
+      } as Record<string, string>,
+    });
+  } catch (error) {
+    console.error("[터미널] Remote PTY spawn 실패:", error);
     ws.close(1011, "SSH 연결 실패");
+    return;
+  }
+
+  const entry: TerminalEntry = { pty: ptyProcess, clients: new Set([ws]), sessionType, sessionName };
+  activeTerminals.set(taskId, entry);
+
+  ptyProcess.onData((data) => {
+    for (const client of entry.clients) {
+      if (client.readyState === client.OPEN) {
+        client.send(data);
+      }
+    }
   });
 
-  conn.connect({
-    host: sshConfig.hostname,
-    port: sshConfig.port,
-    username: sshConfig.username,
-    privateKey: fs.readFileSync(sshConfig.privateKeyPath),
+  ptyProcess.onExit(() => {
+    detachSession(taskId);
+  });
+
+  ptyProcess.write(`${attachCommand}\r`);
+
+  ws.on("message", (message) => {
+    handleTerminalMessage(ptyProcess, message.toString());
+  });
+
+  ws.on("close", () => {
+    entry.clients.delete(ws);
+    if (entry.clients.size === 0) {
+      detachSession(taskId);
+    }
   });
 }
 
-/** 탭 전환 시 해당 태스크의 세션으로 포커스를 이동한다 */
-export function focusSession(taskId: string): void {
-  const entry = activeTerminals.get(taskId);
-  if (!entry) return;
+function buildRemoteTmuxAttachCommand(
+  sessionName: string,
+  worktreePath?: string | null,
+  tmuxPaneLayout?: TmuxPaneLayoutConfig | null,
+): string {
+  const attachCommand = `exec tmux attach-session -t "${sessionName}"`;
+  const bootstrapCommands = worktreePath
+    ? buildTmuxSessionBootstrapCommands(
+        sessionName,
+        worktreePath,
+        tmuxPaneLayout && tmuxPaneLayout.layoutType !== PaneLayoutType.SINGLE
+          ? tmuxPaneLayout
+          : null,
+      )
+    : [`tmux new-session -d -s "${sessionName}"`];
 
-  try {
-    if (entry.sessionType === SessionType.TMUX) {
-      execSync(`tmux switch-client -t "${entry.sessionName}"`, { timeout: 3000, stdio: "ignore" });
+  return [
+    `if tmux has-session -t "${sessionName}" 2>/dev/null; then`,
+    `  ${attachCommand}`,
+    "fi",
+    ...bootstrapCommands,
+    attachCommand,
+  ].join("; ");
+}
+
+function handleTerminalMessage(ptyProcess: import("node-pty").IPty, data: string): void {
+  if (data.startsWith("\x01")) {
+    try {
+      const parsed = JSON.parse(data.slice(1));
+      if (parsed.type === "resize" && parsed.cols && parsed.rows) {
+        ptyProcess.resize(parsed.cols, parsed.rows);
+      }
+    } catch {
+      ptyProcess.write(data);
     }
-    // zellij는 외부에서 세션 전환이 불가능하므로 무시
-  } catch {
-    // focus 실패 시 무시 (세션이 종료되었을 수 있음)
+    return;
   }
+
+  ptyProcess.write(data);
+}
+
+/** 렌더러의 입력 포커스는 xterm DOM에서만 처리한다. 호스트 tmux 클라이언트 전환은 수행하지 않는다 */
+export function focusSession(taskId: string): void {
+  if (!activeTerminals.has(taskId)) {
+    return;
+  }
+
+  return;
 }
 
 /** 터미널 세션을 분리하고 PTY 프로세스를 종료한다. 모든 연결된 클라이언트를 닫는다 */

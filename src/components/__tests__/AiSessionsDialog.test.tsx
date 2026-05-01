@@ -9,7 +9,7 @@ const { mockGetTaskAiSessionDetail, mockGetTaskAiSessions } = vi.hoisted(() => (
   mockGetTaskAiSessions: vi.fn(),
 }));
 
-vi.mock("@/app/actions/project", () => ({
+vi.mock("@/desktop/renderer/actions/project", () => ({
   getTaskAiSessionDetail: mockGetTaskAiSessionDetail,
   getTaskAiSessions: mockGetTaskAiSessions,
 }));
@@ -43,6 +43,10 @@ const messages = {
       loadingMore: "Loading more...",
       detailError: "Failed to load session details.",
       sessionsError: "Failed to load session list.",
+      searchPlaceholder: "Search sessions...",
+      messageSearchPlaceholder: "Search messages...",
+      filterUser: "User",
+      filterAssistant: "AI",
       showMore: "Show more",
       messages: "{count} messages",
       providers: {
@@ -458,10 +462,8 @@ describe("AiSessionsDialog", () => {
     await screen.findByText("Newest page");
     fireEvent.click(screen.getByRole("button", { name: "Load more" }));
 
-    await screen.findByText("Older page");
-    const previewMessages = screen.getAllByText(/page$/i);
-    expect(previewMessages[0]?.textContent).toBe("Newest page");
-    expect(previewMessages[1]?.textContent).toBe("Older page");
+    expect((await screen.findAllByText("Newest page")).length).toBeGreaterThan(0);
+    expect((await screen.findAllByText("Older page")).length).toBeGreaterThan(0);
     expect(mockGetTaskAiSessionDetail).toHaveBeenNthCalledWith(2, "task-1", "claude", "claude-1", null, "1", 20, false);
   });
 

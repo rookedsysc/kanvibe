@@ -1,13 +1,14 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 import {
   installTaskHooks,
   installTaskGeminiHooks,
   installTaskCodexHooks,
   installTaskOpenCodeHooks,
-} from "@/app/actions/project";
+  getTaskOpenCodeHooksStatus,
+} from "@/desktop/renderer/actions/project";
 import type { ClaudeHooksStatus } from "@/lib/claudeHooksSetup";
 import type { GeminiHooksStatus } from "@/lib/geminiHooksSetup";
 import type { CodexHooksStatus } from "@/lib/codexHooksSetup";
@@ -22,7 +23,15 @@ interface HooksStatusDialogProps {
   codexStatus: CodexHooksStatus | null;
   openCodeStatus: OpenCodeHooksStatus | null;
   isRemote: boolean;
+  onStatusesChange?: (updates: {
+    claudeStatus?: ClaudeHooksStatus | null;
+    geminiStatus?: GeminiHooksStatus | null;
+    codexStatus?: CodexHooksStatus | null;
+    openCodeStatus?: OpenCodeHooksStatus | null;
+  }) => void;
 }
+
+type HookToolKey = "claude" | "gemini" | "codex" | "openCode";
 
 export default function HooksStatusDialog({
   isOpen,
@@ -33,9 +42,11 @@ export default function HooksStatusDialog({
   codexStatus,
   openCodeStatus,
   isRemote,
+  onStatusesChange,
 }: HooksStatusDialogProps) {
   const t = useTranslations("taskDetail");
-  const [isPending, startTransition] = useTransition();
+  const [installingTools, setInstallingTools] = useState<HookToolKey[]>([]);
+  const [expandedManualTool, setExpandedManualTool] = useState<HookToolKey | null>(null);
   const [localClaudeStatus, setLocalClaudeStatus] = useState(claudeStatus);
   const [localGeminiStatus, setLocalGeminiStatus] = useState(geminiStatus);
   const [localCodexStatus, setLocalCodexStatus] = useState(codexStatus);
@@ -44,238 +55,291 @@ export default function HooksStatusDialog({
     type: "success" | "error";
     text: string;
   } | null>(null);
+  const onStatusesChangeRef = useRef(onStatusesChange);
+
+  useEffect(() => {
+    onStatusesChangeRef.current = onStatusesChange;
+  }, [onStatusesChange]);
+
+  useEffect(() => {
+    setLocalClaudeStatus(claudeStatus);
+  }, [claudeStatus]);
+
+  useEffect(() => {
+    setLocalGeminiStatus(geminiStatus);
+  }, [geminiStatus]);
+
+  useEffect(() => {
+    setLocalCodexStatus(codexStatus);
+  }, [codexStatus]);
+
+  useEffect(() => {
+    setLocalOpenCodeStatus(openCodeStatus);
+  }, [openCodeStatus]);
+
+  useEffect(() => {
+    setMessage(null);
+    setExpandedManualTool(null);
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (!isOpen) {
+      return;
+    }
+
+    let cancelled = false;
+
+    void (async () => {
+      const latestStatus = await getTaskOpenCodeHooksStatus(taskId);
+      if (cancelled) {
+        return;
+      }
+
+      setLocalOpenCodeStatus(latestStatus);
+      onStatusesChangeRef.current?.({ openCodeStatus: latestStatus });
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, taskId]);
+
+  function getInstallFailureText(error?: string) {
+    return error ? t("hooksInstallFailed", { error }) : t("hooksInstallFailed");
+  }
+
+  function getInstallIncompleteText() {
+    return t("hooksInstallIncomplete");
+  }
+
+  function applyClaudeResult(result: Awaited<ReturnType<typeof installTaskHooks>>) {
+    if (result.success && result.status) {
+      setLocalClaudeStatus(result.status);
+      onStatusesChange?.({ claudeStatus: result.status });
+      setMessage({
+        type: result.status.installed ? "success" : "error",
+        text: result.status.installed ? t("hooksInstallSuccess") : getInstallIncompleteText(),
+      });
+      return;
+    }
+
+    setMessage({ type: "error", text: getInstallFailureText(result.error) });
+  }
+
+  function applyGeminiResult(result: Awaited<ReturnType<typeof installTaskGeminiHooks>>) {
+    if (result.success && result.status) {
+      setLocalGeminiStatus(result.status);
+      onStatusesChange?.({ geminiStatus: result.status });
+      setMessage({
+        type: result.status.installed ? "success" : "error",
+        text: result.status.installed ? t("geminiHooksInstallSuccess") : getInstallIncompleteText(),
+      });
+      return;
+    }
+
+    setMessage({ type: "error", text: getInstallFailureText(result.error) });
+  }
+
+  function applyCodexResult(result: Awaited<ReturnType<typeof installTaskCodexHooks>>) {
+    if (result.success && result.status) {
+      setLocalCodexStatus(result.status);
+      onStatusesChange?.({ codexStatus: result.status });
+      setMessage({
+        type: result.status.installed ? "success" : "error",
+        text: result.status.installed ? t("codexHooksInstallSuccess") : getInstallIncompleteText(),
+      });
+      return;
+    }
+
+    setMessage({ type: "error", text: getInstallFailureText(result.error) });
+  }
+
+  function applyOpenCodeResult(result: Awaited<ReturnType<typeof installTaskOpenCodeHooks>>) {
+    if (result.success && result.status) {
+      setLocalOpenCodeStatus(result.status);
+      onStatusesChange?.({ openCodeStatus: result.status });
+      setMessage({
+        type: result.status.installed ? "success" : "error",
+        text: result.status.installed ? t("openCodeHooksInstallSuccess") : getInstallIncompleteText(),
+      });
+      return;
+    }
+
+    setMessage({ type: "error", text: getInstallFailureText(result.error) });
+  }
+
+  async function runInstall<T>(
+    tool: HookToolKey,
+    install: () => Promise<T>,
+    applyResult: (result: T) => void,
+  ) {
+    setMessage(null);
+    setInstallingTools((current) => (current.includes(tool) ? current : [...current, tool]));
+
+    try {
+      const result = await install();
+      applyResult(result);
+    } finally {
+      setInstallingTools((current) => current.filter((value) => value !== tool));
+    }
+  }
+
+  const hookItems = [
+    {
+      key: "claude" as const,
+      title: "Claude",
+      status: localClaudeStatus,
+      files: [
+        ".claude/hooks/kanvibe-prompt-hook.sh",
+        ".claude/hooks/kanvibe-question-hook.sh",
+        ".claude/hooks/kanvibe-stop-hook.sh",
+        ".claude/settings.json",
+      ],
+      onInstall: () => runInstall("claude", () => installTaskHooks(taskId), applyClaudeResult),
+    },
+    {
+      key: "gemini" as const,
+      title: "Gemini",
+      status: localGeminiStatus,
+      files: [
+        ".gemini/hooks/kanvibe-prompt-hook.sh",
+        ".gemini/hooks/kanvibe-stop-hook.sh",
+        ".gemini/settings.json",
+      ],
+      onInstall: () => runInstall("gemini", () => installTaskGeminiHooks(taskId), applyGeminiResult),
+    },
+    {
+      key: "codex" as const,
+      title: "Codex",
+      status: localCodexStatus,
+      files: [
+        ".codex/hooks/kanvibe-prompt-hook.sh",
+        ".codex/hooks/kanvibe-permission-hook.sh",
+        ".codex/hooks/kanvibe-pre-tool-hook.sh",
+        ".codex/hooks/kanvibe-stop-hook.sh",
+        ".codex/hooks.json",
+        ".codex/config.toml",
+      ],
+      onInstall: () => runInstall("codex", () => installTaskCodexHooks(taskId), applyCodexResult),
+    },
+    {
+      key: "openCode" as const,
+      title: "OpenCode",
+      status: localOpenCodeStatus,
+      files: [
+        ".opencode/plugins/kanvibe-plugin.ts",
+      ],
+      onInstall: () => runInstall("openCode", () => installTaskOpenCodeHooks(taskId), applyOpenCodeResult),
+    },
+  ];
 
   if (!isOpen) return null;
 
-  function handleInstallClaude() {
-    setMessage(null);
-    startTransition(async () => {
-      const result = await installTaskHooks(taskId);
-      if (result.success) {
-        setLocalClaudeStatus({ installed: true, hasPromptHook: true, hasStopHook: true, hasQuestionHook: true, hasSettingsEntry: true });
-        setMessage({ type: "success", text: t("hooksInstallSuccess") });
-      } else {
-        setMessage({ type: "error", text: t("hooksInstallFailed") });
-      }
-    });
-  }
-
-  function handleInstallGemini() {
-    setMessage(null);
-    startTransition(async () => {
-      const result = await installTaskGeminiHooks(taskId);
-      if (result.success) {
-        setLocalGeminiStatus({ installed: true, hasPromptHook: true, hasStopHook: true, hasSettingsEntry: true });
-        setMessage({ type: "success", text: t("geminiHooksInstallSuccess") });
-      } else {
-        setMessage({ type: "error", text: t("hooksInstallFailed") });
-      }
-    });
-  }
-
-  function handleInstallCodex() {
-    setMessage(null);
-    startTransition(async () => {
-      const result = await installTaskCodexHooks(taskId);
-      if (result.success) {
-        setLocalCodexStatus({ installed: true, hasNotifyHook: true, hasConfigEntry: true });
-        setMessage({ type: "success", text: t("codexHooksInstallSuccess") });
-      } else {
-        setMessage({ type: "error", text: t("hooksInstallFailed") });
-      }
-    });
-  }
-
-  function handleInstallOpenCode() {
-    setMessage(null);
-    startTransition(async () => {
-      const result = await installTaskOpenCodeHooks(taskId);
-      if (result.success) {
-        setLocalOpenCodeStatus({ installed: true, hasPlugin: true });
-        setMessage({ type: "success", text: t("openCodeHooksInstallSuccess") });
-      } else {
-        setMessage({ type: "error", text: t("hooksInstallFailed") });
-      }
-    });
-  }
-
   return (
-    <div className="fixed inset-0 z-[500] flex items-center justify-center bg-black/20">
-      <div className="w-full max-w-md bg-bg-surface rounded-xl border border-border-default shadow-lg p-6">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-semibold text-text-primary">
-            {t("hooksStatus")}
-          </h2>
+    <div className="fixed inset-0 z-[500] flex items-center justify-center bg-black/30 px-4 py-6">
+      <div className="max-h-[90vh] w-full max-w-5xl overflow-y-auto rounded-2xl border border-border-default bg-bg-surface p-6 shadow-xl">
+        <div className="mb-4 flex items-center justify-between gap-4">
+          <div>
+            <h2 className="text-lg font-semibold text-text-primary">{t("hooksStatus")}</h2>
+            <p className="mt-1 text-sm text-text-muted">{t("hooksCurrentTaskId", { taskId })}</p>
+          </div>
           <button
+            type="button"
             onClick={onClose}
-            disabled={isPending}
-            className="text-text-muted hover:text-text-primary text-lg"
+            className="text-lg text-text-muted transition-colors hover:text-text-primary disabled:opacity-50"
           >
             ×
           </button>
         </div>
 
-        <div className="space-y-2">
-          {/* Claude Code Hooks */}
-          <div className="flex items-center justify-between gap-2">
-            <span className="text-xs text-text-secondary font-medium">Claude</span>
-            {isRemote ? (
-              <span className="text-xs px-2 py-0.5 bg-bg-page border border-border-default rounded text-text-muted">
-                {t("hooksRemoteNotSupported")}
-              </span>
-            ) : localClaudeStatus?.installed ? (
-              <>
-                <span className="text-xs px-2 py-0.5 bg-status-done/15 text-status-done rounded">
-                  {t("hooksInstalled")}
-                </span>
-                <button
-                  onClick={handleInstallClaude}
-                  disabled={isPending}
-                  className="px-3 py-1.5 text-xs bg-bg-page border border-border-default hover:border-brand-primary hover:text-text-brand text-text-secondary rounded-md transition-colors disabled:opacity-50"
-                >
-                  {isPending ? t("installingHooks") : t("installHooks")}
-                </button>
-              </>
-            ) : (
-              <>
-                <span className="text-xs px-2 py-0.5 bg-status-error/15 text-status-error rounded">
-                  {t("hooksNotInstalled")}
-                </span>
-                <button
-                  onClick={handleInstallClaude}
-                  disabled={isPending}
-                  className="px-3 py-1.5 text-xs bg-brand-primary hover:bg-brand-hover text-text-inverse rounded-md transition-colors disabled:opacity-50"
-                >
-                  {isPending ? t("installingHooks") : t("installHooks")}
-                </button>
-              </>
-            )}
-          </div>
-
-          {/* Gemini CLI Hooks */}
-          <div className="flex items-center justify-between gap-2">
-            <span className="text-xs text-text-secondary font-medium">Gemini</span>
-            {isRemote ? (
-              <span className="text-xs px-2 py-0.5 bg-bg-page border border-border-default rounded text-text-muted">
-                {t("hooksRemoteNotSupported")}
-              </span>
-            ) : localGeminiStatus?.installed ? (
-              <>
-                <span className="text-xs px-2 py-0.5 bg-status-done/15 text-status-done rounded">
-                  {t("hooksInstalled")}
-                </span>
-                <button
-                  onClick={handleInstallGemini}
-                  disabled={isPending}
-                  className="px-3 py-1.5 text-xs bg-bg-page border border-border-default hover:border-brand-primary hover:text-text-brand text-text-secondary rounded-md transition-colors disabled:opacity-50"
-                >
-                  {isPending ? t("installingHooks") : t("installHooks")}
-                </button>
-              </>
-            ) : (
-              <>
-                <span className="text-xs px-2 py-0.5 bg-status-error/15 text-status-error rounded">
-                  {t("hooksNotInstalled")}
-                </span>
-                <button
-                  onClick={handleInstallGemini}
-                  disabled={isPending}
-                  className="px-3 py-1.5 text-xs bg-brand-primary hover:bg-brand-hover text-text-inverse rounded-md transition-colors disabled:opacity-50"
-                >
-                  {isPending ? t("installingHooks") : t("installHooks")}
-                </button>
-              </>
-            )}
-          </div>
-
-          {/* Codex CLI Hooks */}
-          <div className="flex items-center justify-between gap-2">
-            <span className="text-xs text-text-secondary font-medium">Codex</span>
-            {isRemote ? (
-              <span className="text-xs px-2 py-0.5 bg-bg-page border border-border-default rounded text-text-muted">
-                {t("hooksRemoteNotSupported")}
-              </span>
-            ) : localCodexStatus?.installed ? (
-              <>
-                <span className="text-xs px-2 py-0.5 bg-status-done/15 text-status-done rounded">
-                  {t("hooksInstalled")}
-                </span>
-                <button
-                  onClick={handleInstallCodex}
-                  disabled={isPending}
-                  className="px-3 py-1.5 text-xs bg-bg-page border border-border-default hover:border-brand-primary hover:text-text-brand text-text-secondary rounded-md transition-colors disabled:opacity-50"
-                >
-                  {isPending ? t("installingHooks") : t("installHooks")}
-                </button>
-              </>
-            ) : (
-              <>
-                <span className="text-xs px-2 py-0.5 bg-status-error/15 text-status-error rounded">
-                  {t("hooksNotInstalled")}
-                </span>
-                <button
-                  onClick={handleInstallCodex}
-                  disabled={isPending}
-                  className="px-3 py-1.5 text-xs bg-brand-primary hover:bg-brand-hover text-text-inverse rounded-md transition-colors disabled:opacity-50"
-                >
-                  {isPending ? t("installingHooks") : t("installHooks")}
-                </button>
-              </>
-            )}
-          </div>
-
-          {/* OpenCode Hooks */}
-          <div className="flex items-center justify-between gap-2">
-            <span className="text-xs text-text-secondary font-medium">OpenCode</span>
-            {isRemote ? (
-              <span className="text-xs px-2 py-0.5 bg-bg-page border border-border-default rounded text-text-muted">
-                {t("hooksRemoteNotSupported")}
-              </span>
-            ) : localOpenCodeStatus?.installed ? (
-              <>
-                <span className="text-xs px-2 py-0.5 bg-status-done/15 text-status-done rounded">
-                  {t("hooksInstalled")}
-                </span>
-                <button
-                  onClick={handleInstallOpenCode}
-                  disabled={isPending}
-                  className="px-3 py-1.5 text-xs bg-bg-page border border-border-default hover:border-brand-primary hover:text-text-brand text-text-secondary rounded-md transition-colors disabled:opacity-50"
-                >
-                  {isPending ? t("installingHooks") : t("installHooks")}
-                </button>
-              </>
-            ) : (
-              <>
-                <span className="text-xs px-2 py-0.5 bg-status-error/15 text-status-error rounded">
-                  {t("hooksNotInstalled")}
-                </span>
-                <button
-                  onClick={handleInstallOpenCode}
-                  disabled={isPending}
-                  className="px-3 py-1.5 text-xs bg-brand-primary hover:bg-brand-hover text-text-inverse rounded-md transition-colors disabled:opacity-50"
-                >
-                  {isPending ? t("installingHooks") : t("installHooks")}
-                </button>
-              </>
-            )}
-          </div>
-        </div>
-
-        {message && (
-          <p
-            className={`text-xs mt-4 ${
-              message.type === "success" ? "text-status-done" : "text-status-error"
-            }`}
-          >
+        {message ? (
+          <div className={`mb-4 rounded-lg border px-4 py-3 text-sm ${message.type === "success"
+            ? "border-status-done/20 bg-status-done/10 text-status-done"
+            : "border-status-error/20 bg-status-error/10 text-status-error"
+          }`}>
             {message.text}
-          </p>
-        )}
+          </div>
+        ) : null}
+
+        <div className="grid gap-4 md:grid-cols-2">
+          {hookItems.map((item) => {
+            const isInstalled = item.status?.installed === true;
+            const isInstalling = installingTools.includes(item.key);
+
+            return (
+              <section key={item.key} className="rounded-xl border border-border-default bg-bg-page/40 p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <h3 className="text-sm font-semibold text-text-primary">{item.title}</h3>
+                    <p className="mt-1 text-xs text-text-muted">{isInstalled ? t("hooksInstalled") : t("hooksNotInstalled")}</p>
+                  </div>
+                  <span className={`rounded-full border px-2 py-1 text-[11px] font-medium ${isInstalled
+                    ? "border-status-done/20 bg-status-done/15 text-status-done"
+                    : "border-status-error/20 bg-status-error/15 text-status-error"
+                  }`}>
+                    {isInstalled ? t("hooksInstalled") : t("hooksNotInstalled")}
+                  </span>
+                </div>
+
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (isInstalling) {
+                        return;
+                      }
+
+                      void item.onInstall();
+                    }}
+                    disabled={isInstalling}
+                    className={`rounded-md px-3 py-1.5 text-xs transition-colors ${isInstalled
+                      ? "border border-border-default bg-bg-surface text-text-secondary hover:border-brand-primary hover:text-text-primary"
+                      : "bg-brand-primary text-text-inverse hover:bg-brand-hover"
+                    } ${isInstalling ? "opacity-50" : ""}`}
+                  >
+                    {isInstalling
+                      ? t("installingHooks")
+                      : isInstalled
+                        ? t("hooksStatusDialog.reinstall")
+                        : t("installHooks")}
+                  </button>
+                  {!isInstalled && !isRemote ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setExpandedManualTool((current) => current === item.key ? null : item.key);
+                      }}
+                      className="rounded-md border border-border-default bg-bg-surface px-3 py-1.5 text-xs text-text-secondary transition-colors hover:border-brand-primary hover:text-text-primary"
+                    >
+                      {expandedManualTool === item.key ? t("close") : t("hooksManualInstallGuide")}
+                    </button>
+                  ) : null}
+                </div>
+
+                {expandedManualTool === item.key && !isRemote && !isInstalled ? (
+                  <div className="mt-4 rounded-lg border border-border-default bg-bg-surface p-3">
+                    <p className="text-xs text-text-secondary">{t("hooksManualInstallDescription", { tool: item.title })}</p>
+                    <p className="mt-3 text-[11px] font-medium text-text-secondary">{t("hooksManualFiles")}</p>
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      {item.files.map((filePath) => (
+                        <span key={filePath} className="rounded-full border border-border-default bg-bg-page px-2 py-1 text-[11px] text-text-muted">
+                          {filePath}
+                        </span>
+                      ))}
+                    </div>
+                    <p className="mt-3 text-[11px] text-text-muted">{t("hooksManualRecheck")}</p>
+                  </div>
+                ) : null}
+              </section>
+            );
+          })}
+        </div>
 
         <div className="mt-6 flex justify-end">
           <button
+            type="button"
             onClick={onClose}
-            disabled={isPending}
-            className="px-4 py-1.5 text-sm bg-bg-page border border-border-default hover:border-brand-primary text-text-secondary rounded-md transition-colors disabled:opacity-50"
+            className="rounded-md border border-border-default bg-bg-page px-4 py-1.5 text-sm text-text-secondary transition-colors hover:border-brand-primary hover:text-text-primary disabled:opacity-50"
           >
             {t("hooksStatusDialog.close")}
           </button>

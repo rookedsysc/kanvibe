@@ -1,7 +1,8 @@
 import { createReadStream } from "fs";
-import { readdir, readFile, stat } from "fs/promises";
+import { readdir, readFile } from "fs/promises";
 import { createInterface } from "readline";
 import path from "path";
+import { getFileMtimeMs, readTextFile } from "@/lib/hostFileAccess";
 import type {
   AggregatedAiMessage,
   AggregatedAiSession,
@@ -17,6 +18,7 @@ import type {
 
 const MAX_PREVIEW_MESSAGES = 12;
 const MAX_PREVIEW_TEXT_LENGTH = 240;
+export const REMOTE_SESSION_FILE_PARSE_CONCURRENCY = 3;
 
 export function createReaderResult(provider: AiSessionProvider, partial?: Partial<AiSessionReaderResult>): AiSessionReaderResult {
   return {
@@ -76,7 +78,25 @@ export function limitPreviewMessages(messages: AggregatedAiMessage[]): Aggregate
 }
 
 export function normalizeText(value: string): string {
-  return value.replace(/\s+/g, " ").trim();
+  const sanitized = value
+    .replace(/\[Pasted ~\d+ lines\]/g, " ")
+    .split(/\r?\n/)
+    .filter((line) => {
+      const trimmed = line.trim();
+      if (!trimmed) return false;
+
+      return ![
+        /^\[(?:remote-ssh|터미널|terminal)\]/,
+        /^sshHost:/,
+        /^command:/,
+        /^sshArgs:/,
+        /^error:/,
+        /^at\s+.*:\d+:\d+\)?$/,
+      ].some((pattern) => pattern.test(trimmed));
+    })
+    .join(" ");
+
+  return sanitized.replace(/\s+/g, " ").trim();
 }
 
 export function truncateText(value: string, maxLength = MAX_PREVIEW_TEXT_LENGTH): string {
@@ -173,8 +193,33 @@ export async function listFilesRecursively(rootPath: string, matcher: (filePath:
   return files.flat();
 }
 
-export async function readJsonLines(filePath: string): Promise<unknown[]> {
-  const content = await readFile(filePath, "utf-8");
+export async function mapWithConcurrency<T, R>(
+  items: T[],
+  concurrency: number,
+  mapper: (item: T, index: number) => Promise<R>,
+): Promise<R[]> {
+  if (items.length === 0) {
+    return [];
+  }
+
+  const workerCount = Math.min(Math.max(1, Math.floor(concurrency)), items.length);
+  const results = new Array<R>(items.length);
+  let nextIndex = 0;
+
+  async function runWorker(): Promise<void> {
+    while (nextIndex < items.length) {
+      const currentIndex = nextIndex;
+      nextIndex += 1;
+      results[currentIndex] = await mapper(items[currentIndex], currentIndex);
+    }
+  }
+
+  await Promise.all(Array.from({ length: workerCount }, () => runWorker()));
+  return results;
+}
+
+export async function readJsonLines(filePath: string, sshHost?: string | null): Promise<unknown[]> {
+  const content = sshHost ? await readTextFile(filePath, sshHost) : await readFile(filePath, "utf-8");
   return content
     .split("\n")
     .map((line) => line.trim())
@@ -303,9 +348,11 @@ function evictOldestIfNeeded(cache: Map<string, unknown>): void {
  * @param filePath 대상 파일 경로
  * @param parseFn 캐시 miss 시 실행할 파싱 함수
  */
-export async function getCachedOrParse<T>(filePath: string, parseFn: () => Promise<T>): Promise<T> {
-  const fileStat = await stat(filePath);
-  const mtime = fileStat.mtimeMs;
+export async function getCachedOrParse<T>(filePath: string, parseFn: () => Promise<T>, sshHost?: string | null): Promise<T> {
+  const mtime = await getFileMtimeMs(filePath, sshHost);
+  if (mtime === null) {
+    return parseFn();
+  }
 
   const cached = fileParseCache.get(filePath) as FileParseCache<T> | undefined;
   if (cached && cached.mtime === mtime) {
@@ -323,9 +370,11 @@ export async function getCachedOrParse<T>(filePath: string, parseFn: () => Promi
  * @param filePath 대상 파일 경로 (가상 suffix 없이 실제 경로)
  * @param parseFn 캐시 miss 시 실행할 파싱 함수
  */
-export async function getCachedOrParseHead<T>(filePath: string, parseFn: () => Promise<T>): Promise<T> {
-  const fileStat = await stat(filePath);
-  const mtime = fileStat.mtimeMs;
+export async function getCachedOrParseHead<T>(filePath: string, parseFn: () => Promise<T>, sshHost?: string | null): Promise<T> {
+  const mtime = await getFileMtimeMs(filePath, sshHost);
+  if (mtime === null) {
+    return parseFn();
+  }
 
   const cached = headParseCache.get(filePath) as FileParseCache<T> | undefined;
   if (cached && cached.mtime === mtime) {
@@ -344,7 +393,17 @@ export async function getCachedOrParseHead<T>(filePath: string, parseFn: () => P
  * @param filePath JSONL 파일 경로
  * @param maxLines 읽을 최대 줄 수
  */
-export function readJsonLinesHead(filePath: string, maxLines: number): Promise<unknown[]> {
+export function readJsonLinesHead(filePath: string, maxLines: number, sshHost?: string | null): Promise<unknown[]> {
+  if (sshHost) {
+    return readTextFile(filePath, sshHost).then((content) => content
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .slice(0, maxLines)
+      .map((line) => safeJsonParse(line))
+      .filter((value) => value !== null));
+  }
+
   return new Promise((resolve, reject) => {
     const results: unknown[] = [];
     const stream = createReadStream(filePath, { encoding: "utf-8" });

@@ -39,15 +39,14 @@ The `kanvibe` CLI script automatically checks and installs missing dependencies.
 
 | Dependency | Version | Required | Install |
 |------------|---------|----------|---------|
-| [Node.js](https://nodejs.org/) | >= 22 | Yes | `brew install node` |
+| [Node.js](https://nodejs.org/) | 24.x | Yes | `brew install node@24` |
 | [pnpm](https://pnpm.io/) | latest | Yes | `corepack enable && corepack prepare pnpm@latest --activate` |
-| [Docker](https://www.docker.com/) | latest | Yes | `brew install --cask docker` |
 | [git](https://git-scm.com/) | latest | Yes | `brew install git` |
 | [tmux](https://github.com/tmux/tmux) | latest | Yes | `brew install tmux` |
 | [gh](https://cli.github.com/) | latest | Yes | `brew install gh` (requires `gh auth login`) |
 | [zellij](https://github.com/zellij-org/zellij) | latest | No | `brew install zellij` |
 
-> Docker is used to run the PostgreSQL database via Docker Compose.
+> KanVibe now uses an embedded SQLite database. Docker is no longer required.
 
 ---
 
@@ -62,7 +61,6 @@ cp .env.example .env
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `PORT` | Web server port | `4885` |
-| `DB_PORT` | PostgreSQL port | `4886` |
 | `KANVIBE_USER` | Login username | `admin` |
 | `KANVIBE_PASSWORD` | Login password | `changeme` (change this!) |
 
@@ -74,15 +72,38 @@ bash kanvibe.sh start --fg     # Foreground (output to terminal, Ctrl+C to stop)
 bash kanvibe.sh start --bg     # Background (server keeps running after terminal closes)
 ```
 
-This command checks dependencies (with i18n install prompts), installs packages, starts PostgreSQL, runs migrations, builds, and launches the server.
+This command checks dependencies (with i18n install prompts), installs packages, prepares the embedded SQLite database, builds, and launches the server.
 
 ```bash
 bash kanvibe.sh stop
 ```
 
-Stops the KanVibe server and PostgreSQL container.
+Stops the KanVibe server.
 
 Open `http://localhost:4885` in your browser.
+
+### Desktop App Build (DMG / Homebrew-ready)
+
+```bash
+pnpm dist
+```
+
+This builds the renderer bundle, compiles the desktop main process into `build/main`, generates the bundled seed database, and packages a desktop app through Electron Builder.
+
+- macOS output: `dist/*.dmg`, `dist/*.zip`
+- Homebrew distribution: use the generated DMG artifact in a custom Homebrew Cask tap
+- Homebrew template: `distribution/homebrew/kanvibe.rb.template`
+
+### Native Module Recovery
+
+If macOS shows a `better-sqlite3` `NODE_MODULE_VERSION` mismatch, KanVibe now verifies the binding before startup and attempts an automatic rebuild when possible.
+
+- browser/server runtime: `pnpm rebuild better-sqlite3`
+- desktop runtime: `pnpm exec electron-rebuild -f --build-from-source -w better-sqlite3`
+
+For local desktop runs, `pnpm start` and `pnpm dev` already perform this compatibility check before Electron launches.
+
+Always run these commands under Node 24.x.
 
 ---
 
@@ -128,6 +149,8 @@ Each pane can run a custom command (e.g., `vim`, `htop`, `lazygit`, test runner,
 - 5-status task management (TODO / PROGRESS / PENDING / REVIEW / DONE)
 - Custom task ordering with drag & drop
 - Multi-project filtering
+- Board page find with `Cmd/Ctrl+F` for visible project/task text
+- Global quick search for task detail pages by branch or project name
 - Done column pagination
 - Real-time WebSocket updates
 
@@ -141,6 +164,12 @@ Each pane can run a custom command (e.g., `vim`, `htop`, `lazygit`, test runner,
 - Browser-based terminal via xterm.js + WebSocket
 - SSH remote terminal support (reads `~/.ssh/config`)
 - Nerd Font rendering support
+
+### Quick Task Search
+- Open a global search dialog from the configured keyboard shortcut
+- Search existing task detail pages by branch name or project name
+- Distinguish local tasks from SSH remote tasks directly in search results
+- Configure the shortcut in **Project Settings** → **Detail Page**
 
 ### AI Agent Hooks - Automatic Status Tracking
 KanVibe integrates with **Claude Code Hooks**, **Gemini CLI Hooks**, **Codex CLI**, and **OpenCode** to automatically track task status. Tasks are managed through 5 statuses:
@@ -169,12 +198,20 @@ AfterAgent (agent done)    → REVIEW
 
 > Gemini CLI does not have an equivalent to Claude Code's `AskUserQuestion`, so the PENDING state is not available.
 
-#### Codex CLI (Partial Support)
+#### Codex CLI
 ```
-agent-turn-complete (agent done) → REVIEW
+UserPromptSubmit                → PROGRESS
+PermissionRequest (Bash only)  → PENDING
+PreToolUse (Bash only)         → PROGRESS
+Stop                           → REVIEW
 ```
 
-> Codex CLI currently only supports the `agent-turn-complete` notification event via the `notify` config. PROGRESS and PENDING transitions are not yet available. OpenAI is [actively designing a hooks system](https://github.com/openai/codex/discussions/2150) — full support will be added when it ships.
+KanVibe now uses Codex's current lifecycle hooks model with `.codex/hooks.json` plus `[features].codex_hooks = true` in `.codex/config.toml`, following the latest official docs:
+
+- https://developers.openai.com/codex/hooks
+- https://developers.openai.com/codex/config-reference
+
+> Codex's current `PermissionRequest` and `PreToolUse` matchers are Bash-scoped, so `PENDING` represents approval waits rather than every kind of conversational follow-up question.
 
 #### OpenCode
 ```
@@ -192,7 +229,7 @@ All agent hooks are **auto-installed** when you register a project through KanVi
 |-------|---------------|-------------|
 | Claude Code | `.claude/hooks/` | `.claude/settings.json` |
 | Gemini CLI | `.gemini/hooks/` | `.gemini/settings.json` |
-| Codex CLI | `.codex/hooks/` | `.codex/config.toml` |
+| Codex CLI | `.codex/hooks/` | `.codex/config.toml`, `.codex/hooks.json` |
 | OpenCode | `.opencode/plugins/` | Plugin auto-discovery |
 
 #### Browser Notifications
@@ -245,13 +282,13 @@ Review code changes directly in the browser with a GitHub-style diff viewer. Cli
 | Category | Technology |
 |----------|------------|
 | Frontend/Backend | Next.js 16 (App Router) + React 19 + TypeScript |
-| Database | PostgreSQL 16 + TypeORM |
+| Database | SQLite + TypeORM + better-sqlite3 |
 | Styling | Tailwind CSS v4 |
 | Terminal | xterm.js + WebSocket + node-pty |
-| SSH | ssh2 (Node.js) |
+| SSH | system ssh binary |
 | Drag & Drop | @hello-pangea/dnd |
 | i18n | next-intl |
-| Container | Docker Compose |
+| Desktop Packaging | Electron + Electron Builder |
 
 ---
 

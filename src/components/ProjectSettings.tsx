@@ -6,17 +6,22 @@ import {
   deleteProject,
   scanAndRegisterProjects,
   type ScanResult,
-} from "@/app/actions/project";
+} from "@/desktop/renderer/actions/project";
 import {
   setSidebarDefaultCollapsed,
   setNotificationEnabled,
   setNotificationStatuses,
   setDefaultSessionType,
-} from "@/app/actions/appSettings";
+  setTaskSearchShortcut,
+} from "@/desktop/renderer/actions/appSettings";
 import { SessionType } from "@/entities/KanbanTask";
-import { Link } from "@/i18n/navigation";
+import { Link } from "@/desktop/renderer/navigation";
 import type { Project } from "@/entities/Project";
 import FolderSearchInput from "@/components/FolderSearchInput";
+import {
+  captureShortcutFromEvent,
+  formatShortcutForDisplay,
+} from "@/desktop/renderer/utils/keyboardShortcut";
 
 /** 알림 대상 상태 목록 (사용자가 직접 설정하는 todo/done은 제외) */
 const STATUS_OPTIONS = [
@@ -32,8 +37,18 @@ interface ProjectSettingsProps {
   sshHosts: string[];
   sidebarDefaultCollapsed: boolean;
   defaultSessionType: SessionType;
+  taskSearchShortcut: string;
   onDefaultSessionTypeChange?: (sessionType: SessionType) => void;
   notificationSettings: { isEnabled: boolean; enabledStatuses: string[] };
+}
+
+function areNotificationSettingsEqual(
+  left: { isEnabled: boolean; enabledStatuses: string[] },
+  right: { isEnabled: boolean; enabledStatuses: string[] },
+) {
+  return left.isEnabled === right.isEnabled
+    && left.enabledStatuses.length === right.enabledStatuses.length
+    && left.enabledStatuses.every((status, index) => status === right.enabledStatuses[index]);
 }
 
 export default function ProjectSettings({
@@ -43,6 +58,7 @@ export default function ProjectSettings({
   sshHosts,
   sidebarDefaultCollapsed,
   defaultSessionType,
+  taskSearchShortcut,
   onDefaultSessionTypeChange,
   notificationSettings,
 }: ProjectSettingsProps) {
@@ -56,10 +72,39 @@ export default function ProjectSettings({
   const [scanResult, setScanResult] = useState<ScanResult | null>(null);
   const [scanSshHost, setScanSshHost] = useState("");
   const [selectedDefaultSessionType, setSelectedDefaultSessionType] = useState(defaultSessionType);
+  const [localTaskSearchShortcut, setLocalTaskSearchShortcut] = useState(taskSearchShortcut);
+  const [isCapturingTaskSearchShortcut, setIsCapturingTaskSearchShortcut] = useState(false);
+  const [pendingTaskSearchShortcut, setPendingTaskSearchShortcut] = useState<string | null>(null);
+  const [localNotificationSettings, setLocalNotificationSettings] = useState(notificationSettings);
+  const [pendingNotificationSettings, setPendingNotificationSettings] = useState<typeof notificationSettings | null>(null);
+  const isMacLike = typeof navigator !== "undefined"
+    && (navigator.userAgent.includes("Mac") || navigator.platform.toLowerCase().includes("mac"));
 
   useEffect(() => {
     setSelectedDefaultSessionType(defaultSessionType);
   }, [defaultSessionType]);
+
+  useEffect(() => {
+    if (isCapturingTaskSearchShortcut) {
+      return;
+    }
+
+    if (pendingTaskSearchShortcut && taskSearchShortcut !== pendingTaskSearchShortcut) {
+      return;
+    }
+
+    setLocalTaskSearchShortcut(taskSearchShortcut);
+    setPendingTaskSearchShortcut(null);
+  }, [isCapturingTaskSearchShortcut, pendingTaskSearchShortcut, taskSearchShortcut]);
+
+  useEffect(() => {
+    if (pendingNotificationSettings && !areNotificationSettingsEqual(notificationSettings, pendingNotificationSettings)) {
+      return;
+    }
+
+    setLocalNotificationSettings(notificationSettings);
+    setPendingNotificationSettings(null);
+  }, [notificationSettings, pendingNotificationSettings]);
 
   if (!isOpen) return null;
 
@@ -165,6 +210,55 @@ export default function ProjectSettings({
               />
             </button>
           </label>
+
+          <div className="mt-4 flex items-center justify-between gap-3">
+            <div>
+              <span className="text-sm text-text-primary">{t("taskSearchShortcut")}</span>
+              <p className="text-xs text-text-muted mt-0.5">{t("taskSearchShortcutDescription")}</p>
+            </div>
+            <button
+              type="button"
+              data-testid="task-search-shortcut-record"
+              data-shortcut-capture={isCapturingTaskSearchShortcut ? "true" : "false"}
+              onClick={() => setIsCapturingTaskSearchShortcut(true)}
+              onKeyDown={(event) => {
+                if (!isCapturingTaskSearchShortcut) {
+                  return;
+                }
+
+                event.preventDefault();
+                event.stopPropagation();
+
+                if (event.key === "Escape") {
+                  setIsCapturingTaskSearchShortcut(false);
+                  setLocalTaskSearchShortcut(taskSearchShortcut);
+                  return;
+                }
+
+                const capturedShortcut = captureShortcutFromEvent(event.nativeEvent);
+                if (!capturedShortcut) {
+                  return;
+                }
+
+                setLocalTaskSearchShortcut(capturedShortcut);
+                setPendingTaskSearchShortcut(capturedShortcut);
+                setIsCapturingTaskSearchShortcut(false);
+                startTransition(async () => {
+                  await setTaskSearchShortcut(capturedShortcut);
+                });
+              }}
+              disabled={isPending}
+              className={`min-w-[140px] rounded-md border px-3 py-2 text-sm font-medium transition-colors ${
+                isCapturingTaskSearchShortcut
+                  ? "border-brand-primary bg-brand-primary/10 text-brand-primary"
+                  : "border-border-default bg-bg-page text-text-primary hover:border-brand-primary"
+              }`}
+            >
+              {isCapturingTaskSearchShortcut
+                ? t("taskSearchShortcutRecording")
+                : formatShortcutForDisplay(localTaskSearchShortcut, isMacLike)}
+            </button>
+          </div>
         </div>
 
         {/* 작업 생성 설정 */}
@@ -211,34 +305,38 @@ export default function ProjectSettings({
             <button
               type="button"
               role="switch"
-              aria-checked={notificationSettings.isEnabled}
-              onClick={() => {
-                startNotificationTransition(async () => {
-                  await setNotificationEnabled(!notificationSettings.isEnabled);
-                });
-              }}
-              disabled={isNotificationPending}
-              className={`relative inline-flex h-5 w-9 shrink-0 rounded-full border-2 border-transparent transition-colors ${
-                notificationSettings.isEnabled ? "bg-brand-primary" : "bg-border-default"
-              }`}
+               aria-checked={localNotificationSettings.isEnabled}
+               onClick={() => {
+                 const nextEnabled = !localNotificationSettings.isEnabled;
+                  const nextSettings = { ...localNotificationSettings, isEnabled: nextEnabled };
+                  setLocalNotificationSettings(nextSettings);
+                  setPendingNotificationSettings(nextSettings);
+                  startNotificationTransition(async () => {
+                    await setNotificationEnabled(nextEnabled);
+                  });
+               }}
+               disabled={isNotificationPending}
+               className={`relative inline-flex h-5 w-9 shrink-0 rounded-full border-2 border-transparent transition-colors ${
+                 localNotificationSettings.isEnabled ? "bg-brand-primary" : "bg-border-default"
+               }`}
             >
               <span
                 className={`pointer-events-none inline-block h-4 w-4 rounded-full bg-white shadow transition-transform ${
-                  notificationSettings.isEnabled ? "translate-x-4" : "translate-x-0"
+                  localNotificationSettings.isEnabled ? "translate-x-4" : "translate-x-0"
                 }`}
               />
             </button>
           </label>
 
           {/* 상태별 필터 — 칩 토글 */}
-          <div className={`mt-4 ${!notificationSettings.isEnabled ? "opacity-40 pointer-events-none" : ""}`}>
+          <div className={`mt-4 ${!localNotificationSettings.isEnabled ? "opacity-40 pointer-events-none" : ""}`}>
             <div className="mb-2">
               <span className="text-sm text-text-primary">{t("notificationStatusFilter")}</span>
               <p className="text-xs text-text-muted mt-0.5">{t("notificationStatusFilterDescription")}</p>
             </div>
             <div className="flex flex-wrap gap-1.5">
               {STATUS_OPTIONS.map(({ value, labelKey }) => {
-                const isSelected = notificationSettings.enabledStatuses.includes(value);
+                const isSelected = localNotificationSettings.enabledStatuses.includes(value);
                 return (
                   <button
                     key={value}
@@ -246,8 +344,11 @@ export default function ProjectSettings({
                     disabled={isNotificationPending}
                     onClick={() => {
                       const nextStatuses = isSelected
-                        ? notificationSettings.enabledStatuses.filter((s) => s !== value)
-                        : [...notificationSettings.enabledStatuses, value];
+                        ? localNotificationSettings.enabledStatuses.filter((s) => s !== value)
+                        : [...localNotificationSettings.enabledStatuses, value];
+                      const nextSettings = { ...localNotificationSettings, enabledStatuses: nextStatuses };
+                      setLocalNotificationSettings(nextSettings);
+                      setPendingNotificationSettings(nextSettings);
                       startNotificationTransition(async () => {
                         await setNotificationStatuses(nextStatuses);
                       });

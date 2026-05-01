@@ -1,23 +1,25 @@
 "use client";
 
-import { useState, useCallback, useEffect, useMemo } from "react";
+import { useState, useCallback, useEffect, useMemo, useRef, useTransition } from "react";
 import { useTranslations } from "next-intl";
 import { DragDropContext, type DropResult } from "@hello-pangea/dnd";
+import BoardPageFindBar from "./BoardPageFindBar";
 import Column from "./Column";
 import CreateTaskModal from "./CreateTaskModal";
+import NotificationCenterButton from "./NotificationCenterButton";
 import ProjectSelector from "./ProjectSelector";
 import ProjectSettings from "./ProjectSettings";
 import TaskContextMenu from "./TaskContextMenu";
 import BranchTaskModal from "./BranchTaskModal";
 import DoneConfirmDialog from "./DoneConfirmDialog";
-import { reorderTasks, deleteTask, getMoreDoneTasks, moveTaskToColumn } from "@/app/actions/kanban";
-import type { TasksByStatus } from "@/app/actions/kanban";
+import { reorderTasks, deleteTask, getMoreDoneTasks, moveTaskToColumn, updateTaskStatus } from "@/desktop/renderer/actions/kanban";
+import type { TasksByStatus } from "@/desktop/renderer/actions/kanban";
 import { SessionType, TaskStatus, type KanbanTask } from "@/entities/KanbanTask";
 import type { Project } from "@/entities/Project";
-import { logoutAction } from "@/app/actions/auth";
-import { useAutoRefresh } from "@/hooks/useAutoRefresh";
-import { useProjectFilterParams } from "@/hooks/useProjectFilterParams";
+import { useAutoRefresh } from "@/desktop/renderer/hooks/useAutoRefresh";
+import { useProjectFilterParams } from "@/desktop/renderer/hooks/useProjectFilterParams";
 import { computeProjectColor } from "@/lib/projectColor";
+import type { BoardEventPayload, TaskPrMergedDetectedPayload } from "@/lib/boardNotifier";
 
 interface BoardProps {
   initialTasks: TasksByStatus;
@@ -29,6 +31,7 @@ interface BoardProps {
   doneAlertDismissed: boolean;
   notificationSettings: { isEnabled: boolean; enabledStatuses: string[] };
   defaultSessionType: SessionType;
+  taskSearchShortcut: string;
 }
 
 const COLUMNS: { status: TaskStatus; labelKey: string; colorClass: string }[] = [
@@ -44,6 +47,15 @@ interface ContextMenuState {
   x: number;
   y: number;
   task: KanbanTask | null;
+}
+
+interface PrMergeAlertState {
+  eventKey: string;
+  taskId: string;
+  taskTitle: string;
+  branchName: string;
+  prUrl: string;
+  mergedAt: string;
 }
 
 /** worktree repoPath에서 메인 프로젝트 경로를 추출한다 */
@@ -88,11 +100,128 @@ function insertAtFilteredIndex(
   return arr;
 }
 
-export default function Board({ initialTasks, initialDoneTotal, initialDoneLimit, sshHosts, projects, sidebarDefaultCollapsed, doneAlertDismissed, notificationSettings, defaultSessionType }: BoardProps) {
+function isTaskPrMergedDetectedEvent(
+  event: BoardEventPayload,
+): event is Extract<BoardEventPayload, { type: "task-pr-merged-detected" }> {
+  return event.type === "task-pr-merged-detected";
+}
+
+function isTaskPrMergedDetectedBatchEvent(
+  event: BoardEventPayload,
+): event is Extract<BoardEventPayload, { type: "task-pr-merged-detected-batch" }> {
+  return event.type === "task-pr-merged-detected-batch";
+}
+
+function buildMergedPrEventKey(taskId: string, prUrl: string, mergedAt: string) {
+  return `${taskId}:${prUrl}:${mergedAt}`;
+}
+
+function createPrMergeAlertState(payload: TaskPrMergedDetectedPayload): PrMergeAlertState {
+  return {
+    eventKey: buildMergedPrEventKey(payload.taskId, payload.prUrl, payload.mergedAt),
+    taskId: payload.taskId,
+    taskTitle: payload.taskTitle,
+    branchName: payload.branchName,
+    prUrl: payload.prUrl,
+    mergedAt: payload.mergedAt,
+  };
+}
+
+interface DragMovePlan {
+  updatedTasks: TasksByStatus;
+  doneTotalDelta: number;
+  doneOffsetDelta: number;
+  persistence:
+    | { type: "reorder"; status: TaskStatus; orderedIds: string[] }
+    | { type: "move"; taskId: string; status: TaskStatus; orderedIds: string[] };
+}
+
+function buildDragMovePlan(
+  currentTasks: TasksByStatus,
+  result: DropResult,
+  projectFilterSet: Set<string> | null,
+): DragMovePlan | null {
+  const { source, destination, draggableId } = result;
+  if (!destination) return null;
+
+  const sourceStatus = source.droppableId as TaskStatus;
+  const destStatus = destination.droppableId as TaskStatus;
+  const updated: TasksByStatus = { ...currentTasks };
+
+  const taskIndex = updated[sourceStatus].findIndex((task) => task.id === draggableId);
+  if (taskIndex === -1) return null;
+
+  const movedTask = updated[sourceStatus][taskIndex];
+  const newSource = updated[sourceStatus].filter((task) => task.id !== draggableId);
+
+  if (sourceStatus === destStatus) {
+    updated[sourceStatus] = insertAtFilteredIndex(
+      newSource,
+      movedTask,
+      destination.index,
+      projectFilterSet,
+    );
+
+    const orderedIds = (
+      projectFilterSet
+        ? updated[sourceStatus].filter(
+            (task) => task.projectId && projectFilterSet.has(task.projectId),
+          )
+        : updated[sourceStatus]
+    ).map((task) => task.id);
+
+    return {
+      updatedTasks: updated,
+      doneTotalDelta: 0,
+      doneOffsetDelta: 0,
+      persistence: {
+        type: "reorder",
+        status: sourceStatus,
+        orderedIds,
+      },
+    };
+  }
+
+  updated[sourceStatus] = newSource;
+  const updatedTask: KanbanTask = { ...movedTask, status: destStatus };
+  updated[destStatus] = insertAtFilteredIndex(
+    updated[destStatus],
+    updatedTask,
+    destination.index,
+    projectFilterSet,
+  );
+
+  const orderedIds = (
+    projectFilterSet
+      ? updated[destStatus].filter(
+          (task) => task.projectId && projectFilterSet.has(task.projectId),
+        )
+      : updated[destStatus]
+  ).map((task) => task.id);
+
+  return {
+    updatedTasks: updated,
+    doneTotalDelta:
+      (destStatus === TaskStatus.DONE ? 1 : 0) -
+      (sourceStatus === TaskStatus.DONE ? 1 : 0),
+    doneOffsetDelta:
+      (destStatus === TaskStatus.DONE ? 1 : 0) -
+      (sourceStatus === TaskStatus.DONE ? 1 : 0),
+    persistence: {
+      type: "move",
+      taskId: draggableId,
+      status: destStatus,
+      orderedIds,
+    },
+  };
+}
+
+export default function Board({ initialTasks, initialDoneTotal, initialDoneLimit, sshHosts, projects, sidebarDefaultCollapsed, doneAlertDismissed, notificationSettings, defaultSessionType, taskSearchShortcut }: BoardProps) {
   useAutoRefresh();
   const t = useTranslations("board");
   const tt = useTranslations("task");
   const tc = useTranslations("common");
+  const tm = useTranslations("common.prMergeAlert");
   const [tasks, setTasks] = useState<TasksByStatus>(initialTasks);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -111,6 +240,12 @@ export default function Board({ initialTasks, initialDoneTotal, initialDoneLimit
   const [isDoneAlertDismissed, setIsDoneAlertDismissed] = useState(doneAlertDismissed);
   const [pendingDoneResult, setPendingDoneResult] = useState<DropResult | null>(null);
   const [currentDefaultSessionType, setCurrentDefaultSessionType] = useState<SessionType>(defaultSessionType);
+  const [shouldUseMacTitlebarLayout, setShouldUseMacTitlebarLayout] = useState(false);
+  const [, startDragPersistenceTransition] = useTransition();
+  const [isPrMergeActionPending, startPrMergeActionTransition] = useTransition();
+  const [prMergeAlerts, setPrMergeAlerts] = useState<PrMergeAlertState[]>([]);
+  const [selectedPrMergeEventKeys, setSelectedPrMergeEventKeys] = useState<string[]>([]);
+  const dismissedPrMergeEventKeysRef = useRef<Set<string>>(new Set());
 
   /** projectId → 표시할 프로젝트 이름 매핑. worktree 프로젝트는 메인 프로젝트 이름으로 resolve한다 */
   const projectNameMap = useMemo(() => {
@@ -249,6 +384,55 @@ export default function Board({ initialTasks, initialDoneTotal, initialDoneLimit
     setCurrentDefaultSessionType(defaultSessionType);
   }, [defaultSessionType]);
 
+  useEffect(() => {
+    const isDesktopApp = window.kanvibeDesktop?.isDesktop === true;
+    const isMacDesktop = navigator.userAgent.includes("Mac") || navigator.platform.toLowerCase().includes("mac");
+    setShouldUseMacTitlebarLayout(isDesktopApp && isMacDesktop);
+  }, []);
+
+  useEffect(() => {
+    if (!window.kanvibeDesktop?.onBoardEvent) {
+      return;
+    }
+
+    return window.kanvibeDesktop.onBoardEvent((event: BoardEventPayload) => {
+      const incomingAlerts = isTaskPrMergedDetectedBatchEvent(event)
+        ? event.mergedPullRequests.map(createPrMergeAlertState)
+        : isTaskPrMergedDetectedEvent(event)
+          ? [createPrMergeAlertState(event)]
+          : null;
+
+      if (!incomingAlerts) {
+        return;
+      }
+
+      setPrMergeAlerts((current) => {
+        const knownEventKeys = new Set(current.map((alert) => alert.eventKey));
+        const nextAlerts = [...current];
+
+        for (const alert of incomingAlerts) {
+          if (dismissedPrMergeEventKeysRef.current.has(alert.eventKey) || knownEventKeys.has(alert.eventKey)) {
+            continue;
+          }
+
+          knownEventKeys.add(alert.eventKey);
+          nextAlerts.push(alert);
+        }
+
+        return nextAlerts;
+      });
+    });
+  }, []);
+
+  useEffect(() => {
+    if (prMergeAlerts.length === 0) {
+      setSelectedPrMergeEventKeys([]);
+      return;
+    }
+
+    setSelectedPrMergeEventKeys(prMergeAlerts.map((alert) => alert.eventKey));
+  }, [prMergeAlerts]);
+
   const handleLoadMoreDone = useCallback(async () => {
     if (isLoadingMore) return;
     setIsLoadingMore(true);
@@ -268,79 +452,33 @@ export default function Board({ initialTasks, initialDoneTotal, initialDoneLimit
   /** 드래그 결과를 받아 state 업데이트 + DB 반영을 수행한다 */
   const executeDragMove = useCallback(
     (result: DropResult) => {
-      const { source, destination, draggableId } = result;
-      if (!destination) return;
+      const plan = buildDragMovePlan(tasks, result, projectFilterSet);
+      if (!plan) return;
 
-      const sourceStatus = source.droppableId as TaskStatus;
-      const destStatus = destination.droppableId as TaskStatus;
+      setTasks(plan.updatedTasks);
 
-      setTasks((prev) => {
-        const updated = { ...prev };
+      if (plan.doneTotalDelta !== 0) {
+        setDoneTotal((prev) => prev + plan.doneTotalDelta);
+      }
 
-        const taskIndex = updated[sourceStatus].findIndex(
-          (task) => task.id === draggableId
-        );
-        if (taskIndex === -1) return prev;
+      if (plan.doneOffsetDelta !== 0) {
+        setDoneOffset((prev) => prev + plan.doneOffsetDelta);
+      }
 
-        const movedTask = updated[sourceStatus][taskIndex];
-        const newSource = updated[sourceStatus].filter(
-          (task) => task.id !== draggableId
-        );
-
-        if (sourceStatus === destStatus) {
-          updated[sourceStatus] = insertAtFilteredIndex(
-            newSource,
-            movedTask,
-            destination.index,
-            projectFilterSet
-          );
-
-          const reorderIds = (
-            projectFilterSet
-              ? updated[sourceStatus].filter(
-                  (task) =>
-                    task.projectId && projectFilterSet.has(task.projectId)
-                )
-              : updated[sourceStatus]
-          ).map((task) => task.id);
-
-          reorderTasks(sourceStatus, reorderIds);
-        } else {
-          updated[sourceStatus] = newSource;
-          const updatedTask: KanbanTask = { ...movedTask, status: destStatus };
-          updated[destStatus] = insertAtFilteredIndex(
-            updated[destStatus],
-            updatedTask,
-            destination.index,
-            projectFilterSet
-          );
-
-          if (destStatus === TaskStatus.DONE) {
-            setDoneTotal((prev) => prev + 1);
-            setDoneOffset((prev) => prev + 1);
-          }
-          if (sourceStatus === TaskStatus.DONE) {
-            setDoneTotal((prev) => prev - 1);
-            setDoneOffset((prev) => prev - 1);
-          }
-
-          /** 상태 변경 + 목적지 컬럼 순서를 한 번에 DB에 반영한다 (revalidation 없음) */
-          const destReorderIds = (
-            projectFilterSet
-              ? updated[destStatus].filter(
-                  (task) =>
-                    task.projectId && projectFilterSet.has(task.projectId)
-                )
-              : updated[destStatus]
-          ).map((task) => task.id);
-
-          moveTaskToColumn(draggableId, destStatus, destReorderIds);
+      startDragPersistenceTransition(async () => {
+        if (plan.persistence.type === "reorder") {
+          await reorderTasks(plan.persistence.status, plan.persistence.orderedIds);
+          return;
         }
 
-        return updated;
+        await moveTaskToColumn(
+          plan.persistence.taskId,
+          plan.persistence.status,
+          plan.persistence.orderedIds,
+        );
       });
     },
-    [projectFilterSet]
+    [projectFilterSet, startDragPersistenceTransition, tasks]
   );
 
   const handleDragEnd = useCallback(
@@ -378,6 +516,53 @@ export default function Board({ initialTasks, initialDoneTotal, initialDoneLimit
     setPendingDoneResult(null);
   }, []);
 
+  const selectedPrMergeEventKeySet = useMemo(
+    () => new Set(selectedPrMergeEventKeys),
+    [selectedPrMergeEventKeys],
+  );
+
+  const togglePrMergeSelection = useCallback((eventKey: string) => {
+    setSelectedPrMergeEventKeys((current) => (
+      current.includes(eventKey)
+        ? current.filter((key) => key !== eventKey)
+        : [...current, eventKey]
+    ));
+  }, []);
+
+  const handlePrMergeCancel = useCallback(() => {
+    for (const alert of prMergeAlerts) {
+      dismissedPrMergeEventKeysRef.current.add(alert.eventKey);
+    }
+    setPrMergeAlerts([]);
+  }, [prMergeAlerts]);
+
+  const handlePrMergeConfirm = useCallback(() => {
+    if (prMergeAlerts.length === 0) {
+      return;
+    }
+
+    const selectedEventKeys = new Set(selectedPrMergeEventKeys);
+    const selectedTaskIds = prMergeAlerts
+      .filter((alert) => selectedEventKeys.has(alert.eventKey))
+      .map((alert) => alert.taskId);
+
+    for (const alert of prMergeAlerts) {
+      dismissedPrMergeEventKeysRef.current.add(alert.eventKey);
+    }
+
+    setPrMergeAlerts([]);
+
+    if (selectedTaskIds.length === 0) {
+      return;
+    }
+
+    startPrMergeActionTransition(async () => {
+      for (const taskId of selectedTaskIds) {
+        await updateTaskStatus(taskId, TaskStatus.DONE);
+      }
+    });
+  }, [prMergeAlerts, selectedPrMergeEventKeys, startPrMergeActionTransition]);
+
   const handleContextMenu = useCallback(
     (e: React.MouseEvent, task: KanbanTask) => {
       e.preventDefault();
@@ -414,14 +599,17 @@ export default function Board({ initialTasks, initialDoneTotal, initialDoneLimit
     handleCloseContextMenu();
   }, [contextMenu.task, handleCloseContextMenu, tt]);
 
+  const headerClassName = shouldUseMacTitlebarLayout
+    ? "flex items-center justify-end bg-bg-page px-6 pb-4 pl-20 pr-6 pt-10 [-webkit-app-region:drag]"
+    : "flex items-center justify-end border-b border-border-default bg-bg-surface px-6 pb-4 pt-4";
+
+  const mainClassName = shouldUseMacTitlebarLayout ? "px-6 pb-6" : "p-6";
+
   return (
-    <div className="min-h-screen">
-      <header className="flex items-center justify-between px-6 py-4 border-b border-border-default bg-bg-surface">
-        <div className="flex items-center gap-2">
-          <img src="/kanvibe-logo.svg" alt="KanVibe" className="h-6 w-6" />
-          <h1 className="text-xl font-bold text-text-primary">{t("title")}</h1>
-        </div>
-        <div className="flex items-center gap-3">
+    <div className="min-h-screen bg-bg-page">
+      <BoardPageFindBar />
+      <header className={headerClassName}>
+        <div className="flex items-center gap-3 [-webkit-app-region:no-drag]">
           <div className="w-64">
             <ProjectSelector
               multiple
@@ -449,18 +637,11 @@ export default function Board({ initialTasks, initialDoneTotal, initialDoneLimit
               <circle cx="12" cy="12" r="3"/>
             </svg>
           </button>
-          <form action={logoutAction}>
-            <button
-              type="submit"
-              className="px-3 py-1.5 text-sm text-text-muted hover:text-text-primary transition-colors"
-            >
-              {tc("logout")}
-            </button>
-          </form>
+          <NotificationCenterButton buttonClassName="hover:bg-bg-page" />
         </div>
       </header>
 
-      <main className="p-6">
+      <main className={mainClassName}>
         {isMounted ? (
           <DragDropContext onDragEnd={handleDragEnd}>
             <div className="flex gap-4 overflow-x-auto">
@@ -522,6 +703,7 @@ export default function Board({ initialTasks, initialDoneTotal, initialDoneLimit
         sshHosts={sshHosts}
         sidebarDefaultCollapsed={sidebarDefaultCollapsed}
         defaultSessionType={currentDefaultSessionType}
+        taskSearchShortcut={taskSearchShortcut}
         onDefaultSessionTypeChange={(sessionType) => {
           setCurrentDefaultSessionType(sessionType);
         }}
@@ -557,6 +739,70 @@ export default function Board({ initialTasks, initialDoneTotal, initialDoneLimit
         onConfirm={handleDoneConfirm}
         onCancel={handleDoneCancel}
       />
+
+      {prMergeAlerts.length > 0 && (
+        <div className="fixed inset-0 z-[520] flex items-center justify-center bg-bg-overlay">
+          <div className="w-full max-w-2xl rounded-xl border border-border-default bg-bg-surface p-6 shadow-lg">
+            <h2 className="mb-2 text-lg font-semibold text-text-primary">
+              {tm("title")}
+            </h2>
+            <p className="text-sm text-text-secondary">
+              {tm("batchMessage")}
+            </p>
+            <div className="mt-4 max-h-[360px] space-y-3 overflow-y-auto pr-1">
+              {prMergeAlerts.map((alert) => (
+                <label
+                  key={alert.eventKey}
+                  className="flex cursor-pointer items-start gap-3 rounded-lg border border-border-default bg-bg-page px-4 py-3"
+                >
+                  <input
+                    type="checkbox"
+                    checked={selectedPrMergeEventKeySet.has(alert.eventKey)}
+                    onChange={() => togglePrMergeSelection(alert.eventKey)}
+                    aria-label={alert.taskTitle}
+                    className="mt-0.5 h-4 w-4 rounded border-border-default text-brand-primary focus:ring-brand-primary"
+                  />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-semibold text-text-primary">
+                      {alert.taskTitle}
+                    </p>
+                    <p className="mt-1 text-xs text-text-muted">
+                      {alert.branchName}
+                    </p>
+                    <a
+                      href={alert.prUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="mt-3 inline-flex max-w-full items-center gap-1 rounded bg-tag-pr-bg px-2 py-1 text-xs text-tag-pr-text transition-opacity hover:opacity-80"
+                    >
+                      <span className="shrink-0">{tm("prLinkLabel")}</span>
+                      <span className="truncate">{alert.prUrl}</span>
+                    </a>
+                  </div>
+                </label>
+              ))}
+            </div>
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={handlePrMergeCancel}
+                disabled={isPrMergeActionPending}
+                className="rounded-md border border-border-default bg-bg-page px-4 py-1.5 text-sm text-text-secondary transition-colors hover:border-brand-primary"
+              >
+                {tc("cancel")}
+              </button>
+              <button
+                type="button"
+                onClick={handlePrMergeConfirm}
+                disabled={isPrMergeActionPending}
+                className="rounded-md bg-brand-primary px-4 py-1.5 text-sm text-text-inverse transition-colors hover:bg-brand-hover disabled:opacity-50"
+              >
+                {tc("confirm")}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

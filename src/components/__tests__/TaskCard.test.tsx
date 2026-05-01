@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import TaskCard from "../TaskCard";
 import { TaskPriority } from "@/entities/TaskPriority";
 import { TaskStatus } from "@/entities/KanbanTask";
@@ -17,10 +17,14 @@ vi.mock("@hello-pangea/dnd", () => ({
     ),
 }));
 
-vi.mock("@/i18n/navigation", () => ({
+vi.mock("@/desktop/renderer/navigation", () => ({
   Link: ({ children, ...props }: { children: React.ReactNode; href: string }) => (
     <a {...props}>{children}</a>
   ),
+}));
+
+vi.mock("next-intl", () => ({
+  useLocale: () => "ko",
 }));
 
 function createTask(overrides: Partial<KanbanTask> = {}): KanbanTask {
@@ -115,5 +119,24 @@ describe("TaskCard - Priority Badge", () => {
     // Then
     const badge = screen.getByText("!!!");
     expect(badge.className).toContain("ml-auto");
+  });
+
+  it("should keep task detail navigation in the same window on desktop", async () => {
+    const task = createTask();
+    const openSpy = vi.spyOn(window, "open").mockImplementation(() => null);
+
+    window.kanvibeDesktop = { isDesktop: true };
+
+    render(<TaskCard task={task} index={0} onContextMenu={onContextMenu} />);
+
+    const link = screen.getByRole("link");
+
+    fireEvent.click(link);
+
+    expect(link.getAttribute("href")).toBe("/task/task-1");
+    expect(openSpy).not.toHaveBeenCalled();
+
+    openSpy.mockRestore();
+    delete window.kanvibeDesktop;
   });
 });

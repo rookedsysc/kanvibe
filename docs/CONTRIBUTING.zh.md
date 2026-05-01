@@ -10,9 +10,8 @@
 
 ### 前置要求
 
-- Node.js 20+（参见 `.nvmrc`）
+- Node.js 24.x（参见 `.nvmrc`）
 - pnpm
-- Docker（用于 PostgreSQL）
 - tmux 或 zellij（用于终端功能）
 
 ### 开始
@@ -25,14 +24,11 @@ cd kanvibe
 # 复制环境变量
 cp .env.example .env
 
-# 启动 PostgreSQL
-docker compose up db -d
-
 # 安装依赖
 pnpm install
 
-# 运行数据库迁移
-pnpm migration:run
+# 准备内置数据库
+pnpm db:prepare
 
 # 启动开发服务器
 pnpm dev
@@ -59,7 +55,7 @@ pnpm dev
    - TypeScript 严格模式
    - Tailwind CSS v4 + 设计令牌（CSS 变量）
    - next-intl 处理所有面向用户的字符串
-   - TypeORM 迁移进行模式更改
+   - 内置 SQLite + TypeORM 数据访问
 
 ### PR 流程
 
@@ -94,17 +90,14 @@ refactor(scope): 代码重构
 
 ## 数据库更改
 
-所有模式更改通过 TypeORM 迁移进行：
+KanVibe 使用内置 SQLite 数据库。修改实体结构时，也要同步更新 SQLite 引导 schema：
 
 ```bash
-# 从实体更改生成迁移
-pnpm migration:generate -- src/migrations/DescriptiveName
-
-# 运行迁移
-pnpm migration:run
+# 重新生成随包附带的 seed DB
+pnpm db:prepare
 ```
 
-永远不要使用 `synchronize: true`。详细的迁移工作流程请参见 `CLAUDE.md`。
+请始终保持 `src/lib/sqliteSchema.ts` 与 TypeORM 实体定义一致。
 
 ---
 

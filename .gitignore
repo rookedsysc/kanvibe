@@ -17,12 +17,20 @@
 
 # production
 /build
+/dist
+/playwright-report
+/test-results
 
 # misc
 .DS_Store
 *.pem
 .kanvibe.pid
 /logs
+/.kanvibe/
+/.tooling/
+/.omc/
+/.codex/hooks/
+/resources/database/app.seed.db
 
 # debug
 npm-debug.log*

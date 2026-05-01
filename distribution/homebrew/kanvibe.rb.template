@@ -1,0 +1,16 @@
+cask "kanvibe" do
+  version "0.1.0"
+  sha256 "REPLACE_WITH_DMG_SHA256"
+
+  url "https://github.com/rookedsysc/kanvibe/releases/download/v#{version}/KanVibe-#{version}.dmg"
+  name "KanVibe"
+  desc "AI agent task management Kanban board"
+  homepage "https://github.com/rookedsysc/kanvibe"
+
+  app "KanVibe.app"
+
+  zap trash: [
+    "~/Library/Application Support/KanVibe",
+    "~/Library/Preferences/com.kanvibe.desktop.plist",
+  ]
+end

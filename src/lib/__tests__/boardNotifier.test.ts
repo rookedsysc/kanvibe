@@ -1,40 +1,23 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-
-// --- Mocks ---
-
-const mockFetch = vi.fn().mockResolvedValue({ ok: true });
-vi.stubGlobal("fetch", mockFetch);
+import { describe, it, expect, vi, beforeEach } from "vitest";
 
 describe("boardNotifier", () => {
   beforeEach(() => {
     vi.resetModules();
-    mockFetch.mockClear();
   });
 
-  afterEach(() => {
-    vi.restoreAllMocks();
-  });
+  it("should deliver board-updated message to subscribers", async () => {
+    const { broadcastBoardUpdate, subscribeToBoardEvents } = await import("@/lib/boardNotifier");
+    const listener = vi.fn();
+    const unsubscribe = subscribeToBoardEvents(listener);
 
-  it("should send board-updated message via internal broadcast endpoint", async () => {
-    // Given
-    const { broadcastBoardUpdate } = await import("@/lib/boardNotifier");
-
-    // When
     broadcastBoardUpdate();
 
-    // Then
-    expect(mockFetch).toHaveBeenCalledWith(
-      expect.stringContaining("/_internal/broadcast"),
-      expect.objectContaining({
-        method: "POST",
-        body: JSON.stringify({ type: "board-updated" }),
-      })
-    );
+    expect(listener).toHaveBeenCalledWith({ type: "board-updated" });
+    unsubscribe();
   });
 
-  it("should send task-status-changed message with payload via internal broadcast endpoint", async () => {
-    // Given
-    const { broadcastTaskStatusChanged } = await import("@/lib/boardNotifier");
+  it("should deliver task-status-changed message with payload to subscribers", async () => {
+    const { broadcastTaskStatusChanged, subscribeToBoardEvents } = await import("@/lib/boardNotifier");
     const payload = {
       projectName: "kanvibe",
       branchName: "feat/test",
@@ -43,25 +26,20 @@ describe("boardNotifier", () => {
       newStatus: "review",
       taskId: "task-123",
     };
+    const listener = vi.fn();
+    const unsubscribe = subscribeToBoardEvents(listener);
 
-    // When
     broadcastTaskStatusChanged(payload);
 
-    // Then
-    expect(mockFetch).toHaveBeenCalledWith(
-      expect.stringContaining("/_internal/broadcast"),
-      expect.objectContaining({
-        method: "POST",
-        body: JSON.stringify({ type: "task-status-changed", ...payload }),
-      })
-    );
+    expect(listener).toHaveBeenCalledWith({ type: "task-status-changed", ...payload });
+    unsubscribe();
   });
 
   it("should include description as null in payload when not provided", async () => {
-    // Given
-    const { broadcastTaskStatusChanged } = await import("@/lib/boardNotifier");
+    const { broadcastTaskStatusChanged, subscribeToBoardEvents } = await import("@/lib/boardNotifier");
+    const listener = vi.fn();
+    const unsubscribe = subscribeToBoardEvents(listener);
 
-    // When
     broadcastTaskStatusChanged({
       projectName: "test",
       branchName: "main",
@@ -71,42 +49,35 @@ describe("boardNotifier", () => {
       taskId: "task-456",
     });
 
-    // Then
-    const body = JSON.parse(mockFetch.mock.calls[0][1].body);
-    expect(body.description).toBeNull();
-    expect(body.type).toBe("task-status-changed");
-    expect(body.taskId).toBe("task-456");
+    expect(listener).toHaveBeenCalledWith(expect.objectContaining({ description: null, type: "task-status-changed", taskId: "task-456" }));
+    unsubscribe();
   });
 
-  it("should send hook-status-target-missing message with payload via internal broadcast endpoint", async () => {
-    // Given
-    const { broadcastHookStatusTargetMissing } = await import("@/lib/boardNotifier");
+  it("should deliver hook-status-target-missing message with payload to subscribers", async () => {
+    const { broadcastHookStatusTargetMissing, subscribeToBoardEvents } = await import("@/lib/boardNotifier");
     const payload = {
-      projectName: "case-study",
-      branchName: "feat/test",
+      taskId: "task-404",
       requestedStatus: "review",
       reason: "task-not-found" as const,
     };
+    const listener = vi.fn();
+    const unsubscribe = subscribeToBoardEvents(listener);
 
-    // When
     broadcastHookStatusTargetMissing(payload);
 
-    // Then
-    expect(mockFetch).toHaveBeenCalledWith(
-      expect.stringContaining("/_internal/broadcast"),
-      expect.objectContaining({
-        method: "POST",
-        body: JSON.stringify({ type: "hook-status-target-missing", ...payload }),
-      })
-    );
+    expect(listener).toHaveBeenCalledWith({ type: "hook-status-target-missing", ...payload });
+    unsubscribe();
   });
 
-  it("should silently catch fetch errors", async () => {
-    // Given
-    mockFetch.mockRejectedValueOnce(new Error("Connection refused"));
-    const { broadcastBoardUpdate } = await import("@/lib/boardNotifier");
+  it("should stop notifying after unsubscribe", async () => {
+    const { broadcastBoardUpdate, subscribeToBoardEvents } = await import("@/lib/boardNotifier");
+    const listener = vi.fn();
+    const unsubscribe = subscribeToBoardEvents(listener);
 
-    // When & Then
-    expect(() => broadcastBoardUpdate()).not.toThrow();
+    unsubscribe();
+
+    broadcastBoardUpdate();
+
+    expect(listener).not.toHaveBeenCalled();
   });
 });

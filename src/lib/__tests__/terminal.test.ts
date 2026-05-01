@@ -4,6 +4,7 @@
 import path from "path";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { SessionType } from "@/entities/KanbanTask";
+import { PaneLayoutType } from "@/entities/PaneLayoutConfig";
 
 // --- Mocks ---
 
@@ -21,15 +22,16 @@ vi.mock("fs", async (importOriginal) => {
   const actual = await importOriginal<typeof import("fs")>();
   return {
     ...actual,
-    existsSync: (...args: unknown[]) => mockExistsSync(...args),
+    existsSync: mockExistsSync,
   };
 });
 
+const mockPtyWrite = vi.fn();
 const mockPtyOnData = vi.fn();
 const mockPtyOnExit = vi.fn();
 vi.mock("node-pty", () => ({
   spawn: vi.fn(() => ({
-    write: vi.fn(),
+    write: mockPtyWrite,
     resize: vi.fn(),
     onData: mockPtyOnData,
     onExit: mockPtyOnExit,
@@ -290,6 +292,129 @@ describe("attachLocalSession — zellij 세션 생성 및 레이아웃 적용", 
       "zellij",
       ["--session", "feat-login"],
       expect.any(Object),
+    );
+  });
+});
+
+describe("focusSession — 렌더러 포커스 처리", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.resetModules();
+  });
+
+  it("상세 탭 포커스가 tmux 클라이언트를 전환하지 않는다", async () => {
+    // Given
+    const { attachLocalSession, focusSession } = await import("@/lib/terminal");
+    mockExecSync.mockReturnValue("");
+
+    await attachLocalSession(
+      "task-focus",
+      SessionType.TMUX,
+      "feat-login",
+      createMockWs(),
+      "/workspace",
+    );
+    mockExecSync.mockClear();
+
+    // When
+    focusSession("task-focus");
+
+    // Then
+    expect(findExecSyncCall("switch-client")).toBeUndefined();
+  });
+});
+
+describe("attachRemoteSession — ssh 바이너리 기반 연결", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.resetModules();
+  });
+
+  it("should spawn ssh with tty options for remote tmux attach", async () => {
+    // Given
+    const { attachRemoteSession } = await import("@/lib/terminal");
+    const nodePty = await import("node-pty");
+
+    // When
+    await attachRemoteSession(
+      "task-r1",
+      "remote-host",
+      SessionType.TMUX,
+      "remote-session",
+      createMockWs(),
+      {
+        host: "remote-host",
+        hostname: "example.com",
+        port: 2202,
+        username: "tester",
+        privateKeyPath: "/tmp/test-key",
+      },
+      120,
+      30,
+      "/remote/worktree",
+    );
+
+    // Then
+    expect(nodePty.spawn).toHaveBeenCalledWith(
+      "ssh",
+      [
+        "-i",
+        "/tmp/test-key",
+        "-p",
+        "2202",
+        "-o",
+        "BatchMode=yes",
+        "-o",
+        "IdentitiesOnly=yes",
+        "-tt",
+        "remote-host",
+      ],
+      expect.objectContaining({ cwd: expect.any(String) }),
+    );
+    expect(mockPtyWrite).toHaveBeenCalledWith(
+      expect.stringContaining('tmux has-session -t "remote-session"'),
+    );
+    expect(mockPtyWrite).toHaveBeenCalledWith(
+      expect.stringContaining('tmux new-session -d -s "remote-session" -c "/remote/worktree"'),
+    );
+  });
+
+  it("should apply tmux pane layout commands when creating a remote session", async () => {
+    const { attachRemoteSession } = await import("@/lib/terminal");
+
+    await attachRemoteSession(
+      "task-r2",
+      "remote-host",
+      SessionType.TMUX,
+      "remote-session",
+      createMockWs(),
+      {
+        host: "remote-host",
+        hostname: "example.com",
+        port: 2202,
+        username: "tester",
+        privateKeyPath: "/tmp/test-key",
+      },
+      120,
+      30,
+      "/remote/worktree",
+      {
+        layoutType: PaneLayoutType.VERTICAL_2,
+        panes: [
+          { position: 0, command: "pnpm dev" },
+          { position: 1, command: "pnpm test" },
+        ],
+      },
+    );
+
+    expect(mockPtyWrite).toHaveBeenCalledWith(
+      expect.stringContaining('tmux split-window -h -t "remote-session":0 -c "/remote/worktree"'),
+    );
+    expect(mockPtyWrite).toHaveBeenCalledWith(
+      expect.stringContaining('tmux send-keys -t "remote-session":0.0 "pnpm dev" Enter'),
+    );
+    expect(mockPtyWrite).toHaveBeenCalledWith(
+      expect.stringContaining('tmux send-keys -t "remote-session":0.1 "pnpm test" Enter'),
     );
   });
 });

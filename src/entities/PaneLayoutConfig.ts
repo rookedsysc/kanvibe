@@ -43,14 +43,14 @@ export class PaneLayoutConfig {
   })
   layoutType!: PaneLayoutType;
 
-  @Column({ type: "jsonb" })
+  @Column({ type: "simple-json" })
   panes!: PaneCommand[];
 
   @ManyToOne(() => Project, { nullable: true, onDelete: "CASCADE" })
   @JoinColumn({ name: "project_id" })
   project!: Project | null;
 
-  @Column({ name: "project_id", type: "uuid", nullable: true })
+  @Column({ name: "project_id", type: "varchar", length: 36, nullable: true })
   projectId!: string | null;
 
   @Column({ name: "is_global", type: "boolean", default: false })

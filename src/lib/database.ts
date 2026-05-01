@@ -4,18 +4,8 @@ import { KanbanTask } from "@/entities/KanbanTask";
 import { Project } from "@/entities/Project";
 import { PaneLayoutConfig } from "@/entities/PaneLayoutConfig";
 import { AppSettings } from "@/entities/AppSettings";
-import { InitialSchema1770854400000 } from "@/migrations/1770854400000-InitialSchema";
-import { AddPrUrlToKanbanTasks1770854400001 } from "@/migrations/1770854400001-AddPrUrlToKanbanTasks";
-import { AddIsWorktreeToProjects1770854400002 } from "@/migrations/1770854400002-AddIsWorktreeToProjects";
-import { AddPaneLayoutConfig1771048256887 } from "@/migrations/1771048256887-AddPaneLayoutConfig";
-import { AssignDisplayOrder1771166346785 } from "@/migrations/1771166346785-AssignDisplayOrder";
-import { AddAppSettings1771166907165 } from "@/migrations/1771166907165-AddAppSettings";
-import { AddPendingStatus1771171200000 } from "@/migrations/1771171200000-AddPendingStatus";
-import { RemoveBranchNameUnique1771257600000 } from "@/migrations/1771257600000-RemoveBranchNameUnique";
-import { AddPriorityToKanbanTasks1771344000000 } from "@/migrations/1771344000000-AddPriorityToKanbanTasks";
-import { AddColorIndexToProjects1771343199455 } from "@/migrations/1771343199455-AddColorIndexToProjects";
-import { ReplaceColorIndexWithColor1771388085809 } from "@/migrations/1771388085809-ReplaceColorIndexWithColor";
-import { FillEmptyBaseBranch1771400000000 } from "@/migrations/1771400000000-FillEmptyBaseBranch";
+import { ensureRuntimeDatabaseFile, getRuntimeDatabasePath } from "@/lib/databasePaths";
+import { ensureSqliteDatabaseReady } from "@/lib/sqliteSchema";
 
 /**
  * TypeORM DataSource 싱글턴.
@@ -25,21 +15,20 @@ const globalForDb = globalThis as unknown as {
   dataSource: DataSource | undefined;
 };
 
-function buildDatabaseUrl(): string {
-  const user = encodeURIComponent(process.env.KANVIBE_USER || "admin");
-  const password = encodeURIComponent(process.env.KANVIBE_PASSWORD || "changeme");
-  const port = process.env.DB_PORT || "4886";
-  return `postgresql://${user}:${password}@localhost:${port}/kanvibe`;
-}
-
 function createDataSource(): DataSource {
+  const databasePath = getRuntimeDatabasePath();
+  const shouldLogSql = process.env.TYPEORM_LOGGING === "true";
+
   return new DataSource({
-    type: "postgres",
-    url: process.env.DATABASE_URL ?? buildDatabaseUrl(),
+    type: "better-sqlite3",
+    database: databasePath,
     entities: [KanbanTask, Project, PaneLayoutConfig, AppSettings],
-    migrations: [InitialSchema1770854400000, AddPrUrlToKanbanTasks1770854400001, AddIsWorktreeToProjects1770854400002, AddPaneLayoutConfig1771048256887, AssignDisplayOrder1771166346785, AddAppSettings1771166907165, AddPendingStatus1771171200000, RemoveBranchNameUnique1771257600000, AddPriorityToKanbanTasks1771344000000, AddColorIndexToProjects1771343199455, ReplaceColorIndexWithColor1771388085809, FillEmptyBaseBranch1771400000000],
     synchronize: false,
-    logging: process.env.NODE_ENV !== "production",
+    logging: shouldLogSql,
+    prepareDatabase: (database) => {
+      database.pragma("journal_mode = WAL");
+      database.pragma("foreign_keys = ON");
+    },
   });
 }
 
@@ -47,6 +36,9 @@ export async function getDataSource(): Promise<DataSource> {
   if (globalForDb.dataSource?.isInitialized) {
     return globalForDb.dataSource;
   }
+
+  const databasePath = ensureRuntimeDatabaseFile();
+  ensureSqliteDatabaseReady(databasePath);
 
   const ds = createDataSource();
   await ds.initialize();

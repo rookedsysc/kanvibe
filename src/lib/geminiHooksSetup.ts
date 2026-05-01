@@ -1,6 +1,9 @@
-import { readFile, writeFile, mkdir, chmod, access } from "fs/promises";
+import { writeFile, mkdir, chmod } from "fs/promises";
 import path from "path";
 import { addAiToolPatternsToGitExclude } from "@/lib/gitExclude";
+import { pathExists, readTextFile } from "@/lib/hostFileAccess";
+import { extractShellHookServerUrl, validateHookServerConfiguration } from "@/lib/hookServerStatus";
+import { buildShellTaskIdResolver, extractShellTaskId } from "@/lib/hookTaskBinding";
 
 /**
  * Gemini CLI hooks는 stdout에 반드시 JSON만 출력해야 한다.
@@ -8,25 +11,19 @@ import { addAiToolPatternsToGitExclude } from "@/lib/gitExclude";
  */
 
 /** BeforeAgent hook bash 스크립트를 생성한다 */
-function generatePromptHookScript(kanvibeUrl: string, projectName: string): string {
+export function generatePromptHookScript(kanvibeUrl: string, taskId: string): string {
   return `#!/bin/bash
 
 # KanVibe Gemini CLI Hook: BeforeAgent
-# 사용자가 prompt를 입력하면 현재 브랜치의 작업을 PROGRESS로 변경한다.
+# 사용자가 prompt를 입력하면 현재 task를 PROGRESS로 변경한다.
 # Gemini CLI hooks는 stdout에 JSON만 출력해야 한다.
 
 KANVIBE_URL="${kanvibeUrl}"
-PROJECT_NAME="${projectName}"
-
-BRANCH_NAME=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)
-if [ -z "$BRANCH_NAME" ] || [ "$BRANCH_NAME" = "HEAD" ]; then
-  echo '{}'
-  exit 0
-fi
+${buildShellTaskIdResolver(taskId)}
 
 curl -s -X POST "\${KANVIBE_URL}/api/hooks/status" \\
   -H "Content-Type: application/json" \\
-  -d "{\\"branchName\\": \\"\${BRANCH_NAME}\\", \\"projectName\\": \\"\${PROJECT_NAME}\\", \\"status\\": \\"progress\\"}" \\
+  -d "{\\"taskId\\": \\\"\${TASK_ID}\\\", \\\"status\\\": \\\"progress\\\"}" \\
   > /dev/null 2>&1
 
 echo '{}'
@@ -35,25 +32,19 @@ exit 0
 }
 
 /** AfterAgent hook bash 스크립트를 생성한다 */
-function generateStopHookScript(kanvibeUrl: string, projectName: string): string {
+export function generateStopHookScript(kanvibeUrl: string, taskId: string): string {
   return `#!/bin/bash
 
 # KanVibe Gemini CLI Hook: AfterAgent
-# AI 응답이 완료되면 현재 브랜치의 작업을 REVIEW로 변경한다.
+# AI 응답이 완료되면 현재 task를 REVIEW로 변경한다.
 # Gemini CLI hooks는 stdout에 JSON만 출력해야 한다.
 
 KANVIBE_URL="${kanvibeUrl}"
-PROJECT_NAME="${projectName}"
-
-BRANCH_NAME=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)
-if [ -z "$BRANCH_NAME" ] || [ "$BRANCH_NAME" = "HEAD" ]; then
-  echo '{}'
-  exit 0
-fi
+${buildShellTaskIdResolver(taskId)}
 
 curl -s -X POST "\${KANVIBE_URL}/api/hooks/status" \\
   -H "Content-Type: application/json" \\
-  -d "{\\"branchName\\": \\"\${BRANCH_NAME}\\", \\"projectName\\": \\"\${PROJECT_NAME}\\", \\"status\\": \\"review\\"}" \\
+  -d "{\\"taskId\\": \\\"\${TASK_ID}\\\", \\\"status\\\": \\\"review\\\"}" \\
   > /dev/null 2>&1
 
 echo '{}'
@@ -79,23 +70,61 @@ interface GeminiHookEntry {
   hooks: GeminiHookConfig[];
 }
 
+const GEMINI_PROMPT_COMMAND = '"$GEMINI_PROJECT_DIR"/.gemini/hooks/kanvibe-prompt-hook.sh';
+const GEMINI_STOP_COMMAND = '"$GEMINI_PROJECT_DIR"/.gemini/hooks/kanvibe-stop-hook.sh';
+
+function hasTaskIdPayloadBinding(content: string, taskId?: string): boolean {
+  const boundTaskId = extractShellTaskId(content);
+  const hasTaskIdPayload = content.includes("taskId") && content.includes("${TASK_ID}");
+  if (!hasTaskIdPayload) return false;
+
+  if (!taskId) {
+    return boundTaskId !== null;
+  }
+
+  return boundTaskId === taskId;
+}
+
+function hasLegacyBranchPayloadBinding(content: string): boolean {
+  return content.includes('BRANCH_NAME=$(git rev-parse --abbrev-ref HEAD')
+    && content.includes('PROJECT_NAME="')
+    && content.includes('\\\"branchName\\\": \\\"${BRANCH_NAME}\\\"')
+    && content.includes('\\\"projectName\\\": \\\"${PROJECT_NAME}\\\"');
+}
+
 /** 기존 settings.json을 읽거나 빈 객체를 반환한다 */
-async function readSettingsJson(settingsPath: string): Promise<GeminiSettings> {
+async function readSettingsJson(settingsPath: string, sshHost?: string | null): Promise<GeminiSettings> {
+  const content = await readTextFile(settingsPath, sshHost);
+  if (!content) {
+    return {};
+  }
+
   try {
-    const content = await readFile(settingsPath, "utf-8");
     return JSON.parse(content);
   } catch {
     return {};
   }
 }
 
-/** kanvibe hook이 이미 등록되어 있는지 확인한다 */
-function hasKanvibeHook(hookEntries: unknown[], scriptName: string): boolean {
+/** 현재 bucket에 원하는 Gemini hook command가 정확히 등록되어 있는지 확인한다 */
+function hasGeminiHook(hookEntries: unknown[], matcher: string, command: string): boolean {
   if (!Array.isArray(hookEntries)) return false;
   return hookEntries.some((entry) => {
     const typed = entry as GeminiHookEntry;
-    return typed.hooks?.some((h) => h.command?.includes(scriptName));
+    return typed.matcher === matcher && typed.hooks?.some((hook) => hook.type === "command" && hook.command === command);
   });
+}
+
+function referencesScriptName(entry: unknown, scriptName: string): boolean {
+  return JSON.stringify(entry).includes(scriptName);
+}
+
+function upsertGeminiHookEntries(hookEntries: unknown[] | undefined, scriptName: string, nextEntry: GeminiHookEntry): GeminiHookEntry[] {
+  const preservedEntries = Array.isArray(hookEntries)
+    ? hookEntries.filter((entry) => !referencesScriptName(entry, scriptName)) as GeminiHookEntry[]
+    : [];
+  preservedEntries.push(nextEntry);
+  return preservedEntries;
 }
 
 /**
@@ -104,8 +133,8 @@ function hasKanvibeHook(hookEntries: unknown[], scriptName: string): boolean {
  */
 export async function setupGeminiHooks(
   repoPath: string,
-  projectName: string,
-  kanvibeUrl: string
+  taskId: string,
+  kanvibeUrl: string,
 ): Promise<void> {
   const geminiDir = path.join(repoPath, ".gemini");
   const hooksDir = path.join(geminiDir, "hooks");
@@ -116,8 +145,8 @@ export async function setupGeminiHooks(
   const promptScriptPath = path.join(hooksDir, "kanvibe-prompt-hook.sh");
   const stopScriptPath = path.join(hooksDir, "kanvibe-stop-hook.sh");
 
-  await writeFile(promptScriptPath, generatePromptHookScript(kanvibeUrl, projectName), "utf-8");
-  await writeFile(stopScriptPath, generateStopHookScript(kanvibeUrl, projectName), "utf-8");
+  await writeFile(promptScriptPath, generatePromptHookScript(kanvibeUrl, taskId), "utf-8");
+  await writeFile(stopScriptPath, generateStopHookScript(kanvibeUrl, taskId), "utf-8");
   await chmod(promptScriptPath, 0o755);
   await chmod(stopScriptPath, 0o755);
 
@@ -128,41 +157,27 @@ export async function setupGeminiHooks(
 
   const hooks = settings.hooks as Record<string, unknown[]>;
 
-  if (!hooks.BeforeAgent) {
-    hooks.BeforeAgent = [];
-  }
-  if (!hasKanvibeHook(hooks.BeforeAgent, "kanvibe-prompt-hook.sh")) {
-    (hooks.BeforeAgent as GeminiHookEntry[]).push({
-      matcher: "*",
-      hooks: [
-        {
-          name: "kanvibe-prompt",
-          type: "command",
-          command: "$GEMINI_PROJECT_DIR/.gemini/hooks/kanvibe-prompt-hook.sh",
-          timeout: 5000,
-          description: "KanVibe: 작업 시작 시 status를 progress로 변경",
-        },
-      ],
-    });
-  }
+  hooks.BeforeAgent = upsertGeminiHookEntries(hooks.BeforeAgent, "kanvibe-prompt-hook.sh", {
+    matcher: "*",
+    hooks: [
+      {
+        type: "command",
+        command: GEMINI_PROMPT_COMMAND,
+        timeout: 10000,
+      },
+    ],
+  });
 
-  if (!hooks.AfterAgent) {
-    hooks.AfterAgent = [];
-  }
-  if (!hasKanvibeHook(hooks.AfterAgent, "kanvibe-stop-hook.sh")) {
-    (hooks.AfterAgent as GeminiHookEntry[]).push({
-      matcher: "*",
-      hooks: [
-        {
-          name: "kanvibe-stop",
-          type: "command",
-          command: "$GEMINI_PROJECT_DIR/.gemini/hooks/kanvibe-stop-hook.sh",
-          timeout: 5000,
-          description: "KanVibe: 작업 완료 시 status를 review로 변경",
-        },
-      ],
-    });
-  }
+  hooks.AfterAgent = upsertGeminiHookEntries(hooks.AfterAgent, "kanvibe-stop-hook.sh", {
+    matcher: "*",
+    hooks: [
+      {
+        type: "command",
+        command: GEMINI_STOP_COMMAND,
+        timeout: 10000,
+      },
+    ],
+  });
 
   await writeFile(settingsPath, JSON.stringify(settings, null, 2) + "\n", "utf-8");
 
@@ -178,40 +193,78 @@ export interface GeminiHooksStatus {
   hasPromptHook: boolean;
   hasStopHook: boolean;
   hasSettingsEntry: boolean;
+  hasTaskIdBinding?: boolean;
+  hasStatusMappings?: boolean;
+  hasExpectedHookServerUrl?: boolean;
+  hasReachableHookServer?: boolean;
+  boundTaskId?: string | null;
+  configuredHookServerUrl?: string | null;
+  expectedHookServerUrl?: string | null;
 }
 
 /** 지정된 repo의 Gemini CLI hooks 설치 상태를 확인한다 */
-export async function getGeminiHooksStatus(repoPath: string): Promise<GeminiHooksStatus> {
-  const geminiDir = path.join(repoPath, ".gemini");
-  const hooksDir = path.join(geminiDir, "hooks");
-  const settingsPath = path.join(geminiDir, "settings.json");
+export async function getGeminiHooksStatus(repoPath: string, taskId?: string, sshHost?: string | null): Promise<GeminiHooksStatus> {
+  const pathModule = sshHost ? path.posix : path;
+  const geminiDir = pathModule.join(repoPath, ".gemini");
+  const hooksDir = pathModule.join(geminiDir, "hooks");
+  const settingsPath = pathModule.join(geminiDir, "settings.json");
+  const promptScriptPath = pathModule.join(hooksDir, "kanvibe-prompt-hook.sh");
+  const stopScriptPath = pathModule.join(hooksDir, "kanvibe-stop-hook.sh");
 
-  const promptScriptExists = await access(path.join(hooksDir, "kanvibe-prompt-hook.sh"))
-    .then(() => true)
-    .catch(() => false);
-  const stopScriptExists = await access(path.join(hooksDir, "kanvibe-stop-hook.sh"))
-    .then(() => true)
-    .catch(() => false);
+  const promptScriptExists = await pathExists(promptScriptPath, sshHost);
+  const stopScriptExists = await pathExists(stopScriptPath, sshHost);
+
+  const [promptContent, stopContent] = await Promise.all([
+    promptScriptExists ? readTextFile(promptScriptPath, sshHost) : Promise.resolve(""),
+    stopScriptExists ? readTextFile(stopScriptPath, sshHost) : Promise.resolve(""),
+  ]);
+
+  const scriptContents = [promptContent, stopContent];
+  const boundTaskIds = scriptContents.map(extractShellTaskId).filter((value): value is string => value !== null);
+  const boundTaskId = boundTaskIds.length > 0 && boundTaskIds.every((value) => value === boundTaskIds[0])
+    ? boundTaskIds[0]
+    : null;
+  const hasTaskIdBinding = scriptContents.every((content) => hasTaskIdPayloadBinding(content, taskId));
+  const hookServerValidation = await validateHookServerConfiguration(
+    scriptContents.map(extractShellHookServerUrl),
+    Boolean(taskId),
+    sshHost,
+  );
+  const hasStatusMappings =
+    promptContent.includes('\\\"status\\\": \\\"progress\\\"') &&
+    stopContent.includes('\\\"status\\\": \\\"review\\\"');
 
   let hasSettingsEntry = false;
   try {
-    const settings = await readSettingsJson(settingsPath);
+    const settings = await readSettingsJson(settingsPath, sshHost);
     const hooks = settings.hooks as Record<string, unknown[]> | undefined;
     if (hooks) {
-      const hasPrompt = hasKanvibeHook(hooks.BeforeAgent || [], "kanvibe-prompt-hook.sh");
-      const hasStop = hasKanvibeHook(hooks.AfterAgent || [], "kanvibe-stop-hook.sh");
+      const hasPrompt = hasGeminiHook(hooks.BeforeAgent || [], "*", GEMINI_PROMPT_COMMAND);
+      const hasStop = hasGeminiHook(hooks.AfterAgent || [], "*", GEMINI_STOP_COMMAND);
       hasSettingsEntry = hasPrompt && hasStop;
     }
   } catch {
     /* settings.json 없음 */
   }
 
-  const installed = promptScriptExists && stopScriptExists && hasSettingsEntry;
+  const installed = promptScriptExists
+    && stopScriptExists
+    && hasSettingsEntry
+    && hasTaskIdBinding
+    && hasStatusMappings
+    && hookServerValidation.hasExpectedHookServerUrl;
 
   return {
     installed,
     hasPromptHook: promptScriptExists,
     hasStopHook: stopScriptExists,
     hasSettingsEntry,
+    hasTaskIdBinding,
+    hasStatusMappings,
+    hasExpectedHookServerUrl: hookServerValidation.hasExpectedHookServerUrl,
+    hasReachableHookServer: hookServerValidation.hasReachableHookServer,
+    boundTaskId,
+    configuredHookServerUrl: hookServerValidation.configuredHookServerUrl,
+    expectedHookServerUrl: hookServerValidation.expectedHookServerUrl,
   };
 }

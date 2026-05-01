@@ -2,7 +2,7 @@
 
 import { useActionState } from "react";
 import { useTranslations } from "next-intl";
-import { loginAction } from "@/app/actions/auth";
+import { loginAction } from "@/desktop/renderer/actions/auth";
 
 export default function LoginForm() {
   const t = useTranslations("login");
@@ -17,10 +17,6 @@ export default function LoginForm() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-bg-page">
       <div className="w-full max-w-sm p-8 bg-bg-surface rounded-xl border border-border-default shadow-sm">
-        <h1 className="text-2xl font-bold text-text-primary mb-6 text-center">
-          KanVibe
-        </h1>
-
         <form action={formAction} className="space-y-4">
           <div>
             <label

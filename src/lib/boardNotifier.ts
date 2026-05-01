@@ -1,40 +1,7 @@
-import type { WebSocket } from "ws";
+import { EventEmitter } from "node:events";
 
-/** 보드 업데이트 알림을 수신할 WebSocket 클라이언트 목록 */
-const boardClients = new Set<WebSocket>();
-
-export function addBoardClient(ws: WebSocket) {
-  boardClients.add(ws);
-}
-
-export function removeBoardClient(ws: WebSocket) {
-  boardClients.delete(ws);
-}
-
-/** server.ts에서 직접 WS 클라이언트에 접근할 때 사용한다 */
-export function getBoardClients(): Set<WebSocket> {
-  return boardClients;
-}
-
-const BROADCAST_URL = `http://localhost:${process.env.PORT || 4885}/_internal/broadcast`;
-
-/**
- * 내부 HTTP 요청으로 custom server에 broadcast를 위임한다.
- * Turbopack이 API route를 별도 워커에서 실행하므로 in-memory Set이 공유되지 않는다.
- */
-function sendBroadcast(message: string) {
-  fetch(BROADCAST_URL, {
-    method: "POST",
-    body: message,
-    headers: { "Content-Type": "application/json" },
-  }).catch(() => {
-    /* 연결 실패 무시 (서버 시작 전 등) */
-  });
-}
-
-/** 연결된 모든 보드 클라이언트에 업데이트 알림을 전송한다 */
-export function broadcastBoardUpdate() {
-  sendBroadcast(JSON.stringify({ type: "board-updated" }));
+export interface BoardUpdatedPayload {
+  type: "board-updated";
 }
 
 export interface TaskStatusChangedPayload {
@@ -47,18 +14,78 @@ export interface TaskStatusChangedPayload {
 }
 
 export interface HookStatusTargetMissingPayload {
-  projectName: string;
-  branchName: string;
+  taskId: string;
   requestedStatus: string;
-  reason: "project-not-found" | "task-not-found";
+  reason: "task-not-found";
+}
+
+export interface TaskHookInstallFailedPayload {
+  taskId: string;
+  taskTitle: string;
+  error: string;
+}
+
+export interface TaskPrMergedDetectedPayload {
+  taskId: string;
+  taskTitle: string;
+  branchName: string;
+  prUrl: string;
+  mergedAt: string;
+}
+
+export interface TaskPrMergedDetectedBatchPayload {
+  mergedPullRequests: TaskPrMergedDetectedPayload[];
+}
+
+export type BoardEventPayload =
+  | BoardUpdatedPayload
+  | ({ type: "task-status-changed" } & TaskStatusChangedPayload)
+  | ({ type: "hook-status-target-missing" } & HookStatusTargetMissingPayload)
+  | ({ type: "task-hook-install-failed" } & TaskHookInstallFailedPayload)
+  | ({ type: "task-pr-merged-detected" } & TaskPrMergedDetectedPayload)
+  | ({ type: "task-pr-merged-detected-batch" } & TaskPrMergedDetectedBatchPayload);
+
+const boardEventEmitter = new EventEmitter();
+
+export function subscribeToBoardEvents(
+  listener: (payload: BoardEventPayload) => void,
+): () => void {
+  boardEventEmitter.on("event", listener);
+  return () => {
+    boardEventEmitter.off("event", listener);
+  };
+}
+
+function emitBoardEvent(payload: BoardEventPayload) {
+  boardEventEmitter.emit("event", payload);
+}
+
+/** 연결된 모든 데스크톱 렌더러에 업데이트 알림을 전송한다 */
+export function broadcastBoardUpdate() {
+  emitBoardEvent({ type: "board-updated" });
 }
 
 /** hooks 경유 상태 변경 시 task 상세 정보를 포함하여 브로드캐스트한다 */
 export function broadcastTaskStatusChanged(payload: TaskStatusChangedPayload) {
-  sendBroadcast(JSON.stringify({ type: "task-status-changed", ...payload }));
+  emitBoardEvent({ type: "task-status-changed", ...payload });
 }
 
 /** hooks 대상 조회 실패 시 미매칭 상황을 브로드캐스트한다 */
 export function broadcastHookStatusTargetMissing(payload: HookStatusTargetMissingPayload) {
-  sendBroadcast(JSON.stringify({ type: "hook-status-target-missing", ...payload }));
+  emitBoardEvent({ type: "hook-status-target-missing", ...payload });
+}
+
+/** 새 태스크 생성 후 hooks 자동 설치가 실패하면 렌더러에 안내를 브로드캐스트한다 */
+export function broadcastTaskHookInstallFailed(payload: TaskHookInstallFailedPayload) {
+  emitBoardEvent({ type: "task-hook-install-failed", ...payload });
+}
+
+/** background PR sync가 merge 완료를 감지하면 보드 확인 알럿으로 전달한다 */
+export function broadcastTaskPrMergedDetected(payload: TaskPrMergedDetectedPayload) {
+  emitBoardEvent({ type: "task-pr-merged-detected", ...payload });
+}
+
+/** background PR sync 한 사이클에서 감지된 merged PR 목록을 한 번에 전달한다 */
+export function broadcastTaskPrMergedDetectedBatch(payload: TaskPrMergedDetectedBatchPayload) {
+  emitBoardEvent({ type: "task-pr-merged-detected-batch", ...payload });
 }

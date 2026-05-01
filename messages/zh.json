@@ -8,15 +8,37 @@
     "close": "关闭",
     "confirm": "确认",
     "local": "本地",
+    "remote": "远程",
     "settings": "设置",
+    "notifications": "通知",
+    "markAllRead": "全部标记已读",
+    "noNotifications": "暂无通知。",
+    "allCaughtUp": "已全部查看。",
+    "unreadCount": "未读 {count} 条",
+    "notificationTaskMissingTitle": "找不到任务",
+    "notificationTaskMissingBody": "此通知对应的任务已被删除或已不存在。",
+    "goBack": "返回",
+    "notFoundTitle": "页面不存在",
+    "notFoundDescription": "你访问的路径不存在，或已经被移动。",
     "logout": "退出登录",
     "loading": "加载中...",
+    "sessionDependency": {
+      "localTarget": "当前本机环境",
+      "remoteTarget": "{host}",
+      "installPrompt": "{target} 上未安装 {tool}。现在安装吗？",
+      "installFailed": "安装 {tool} 失败：{error}"
+    },
     "doneAlert": {
       "title": "移动到完成",
       "message": "移动到完成状态将删除 worktree、branch 和 tmux session。",
       "dontAskAgain": "不再提示",
       "confirm": "移动",
       "cancel": "取消"
+    },
+    "prMergeAlert": {
+      "title": "检测到 PR 已合并",
+      "message": "已确认 worktree PR {branchName} 已被合并。要将任务“{taskTitle}”移动到 Done 吗？",
+      "prLinkLabel": "PR 链接"
     }
   },
   "login": {
@@ -28,9 +50,16 @@
     "loggingIn": "登录中..."
   },
   "board": {
-    "title": "KanVibe",
+    "title": "",
     "newTask": "+ 新任务",
     "allProjects": "所有项目",
+    "pageFind": {
+      "label": "在看板中查找",
+      "placeholder": "查找当前看板中可见的文本...",
+      "previous": "上一个",
+      "next": "下一个",
+      "noMatch": "当前看板中没有找到匹配文本。"
+    },
     "columns": {
       "todo": "待办",
       "progress": "进行中",
@@ -57,6 +86,9 @@
     "sessionType": "会话类型",
     "sshHost": "SSH 主机（可选）",
     "createTitle": "创建新任务",
+    "createFailed": "创建任务失败。",
+    "createHooksBackgroundFailedTitle": "自动安装 Hooks 失败",
+    "createHooksBackgroundFailedBody": "创建“{taskTitle}”后安装 hooks 失败。你可以在 Hooks 状态区域重新安装。",
     "deleteConfirm": "确定要删除此任务吗？",
     "priority": "优先级",
     "priorityLow": "!",
@@ -123,6 +155,9 @@
     "detailPageSection": "详情页",
     "sidebarDefaultCollapsed": "默认折叠侧栏",
     "sidebarDefaultCollapsedDescription": "进入详情页时左侧栏默认折叠。",
+    "taskSearchShortcut": "快速搜索快捷键",
+    "taskSearchShortcutDescription": "用于按分支名或项目名快速查找任务详情页的快捷键。",
+    "taskSearchShortcutRecording": "请按下快捷键组合",
     "notificationSection": "通知",
     "notificationEnabled": "浏览器通知",
     "notificationEnabledDescription": "任务状态变更时接收浏览器通知。",
@@ -131,6 +166,12 @@
     "taskCreationSection": "任务创建",
     "defaultSessionType": "默认会话类型",
     "defaultSessionTypeDescription": "创建新任务时默认选择的会话类型。"
+  },
+  "taskSearch": {
+    "title": "快速任务搜索",
+    "placeholder": "按分支名或项目名搜索...",
+    "empty": "没有找到匹配的任务。",
+    "hint": "↑↓ 移动 · Enter 打开 · Esc 关闭"
   },
   "paneLayout": {
     "title": "面板布局设置",
@@ -216,8 +257,35 @@
     "geminiHooksInstallSuccess": "Gemini CLI hooks 安装完成",
     "codexHooksInstallSuccess": "Codex CLI hooks 安装完成",
     "openCodeHooksInstallSuccess": "OpenCode hooks 安装完成",
+    "hooksInstallIncomplete": "Hooks 已安装，但所需的校验项尚未全部通过。",
     "hooksInstallFailed": "Hooks 安装失败",
     "hooksRemoteNotSupported": "不支持远程项目",
+    "hooksCurrentTaskId": "当前 taskId: {taskId}",
+    "hooksBoundTaskId": "检测到的 taskId: {taskId}",
+    "hooksOpenCodeDiagnosticsTitle": "OpenCode 诊断",
+    "hooksDiagnosticTargetPath": "当前检查路径",
+    "hooksDiagnosticPluginPath": "预期 plugin 文件路径",
+    "hooksDiagnosticBoundTaskId": "plugin 中绑定的 taskId",
+    "hooksDiagnosticRegisteredPlugins": "OpenCode 中注册的 KanVibe plugin",
+    "hooksDiagnosticNoRegisteredPlugins": "在 OpenCode debug config 中未找到 KanVibe plugin 注册项。",
+    "hooksDiagnosticFailedChecks": "未通过的校验项",
+    "hooksDiagnosticCheckPluginFile": "plugin 文件缺失或内容不匹配",
+    "hooksDiagnosticCheckTaskBinding": "taskId 绑定不匹配",
+    "hooksDiagnosticCheckStatusEndpoint": "缺少 status endpoint",
+    "hooksDiagnosticCheckEventMappings": "缺少事件映射",
+    "hooksDiagnosticCheckMainSession": "缺少 main session guard",
+    "hooksDiagnosticCheckDuplicateProgress": "缺少重复 progress 防护",
+    "hooksDiagnosticCheckPluginRegistration": "OpenCode 未注册该 plugin",
+    "hooksDiagnosticCheckHookServerUrl": "hook server URL 不匹配",
+    "hooksDiagnosticCheckHookServerReachable": "hook server 无法连接",
+    "hooksDiagnosticCheckDuplicatePlugins": "KanVibe plugin 重复注册",
+    "hooksDiagnosticDuplicatePluginsHelp": "全局 plugin 和 worktree plugin 都已注册。当前 task plugin 仍可工作，但两个 hook 都会运行。如果你想只保留单一注册，请清理 `opencode debug config` 中显示的额外 KanVibe plugin。",
+    "hooksManualInstallGuide": "手动安装指南",
+    "hooksManualInstallDescription": "如果 {tool} hook 绑定到了其他 taskId，请在此重新安装，或更新生成的 hook 文件，使其包含当前 taskId。",
+    "hooksManualFiles": "需要检查的文件",
+    "hooksManualRecheck": "手动处理后，请重新打开此对话框或点击重新安装，再次确认校验状态。",
+    "taskNotFound": "未找到任务。",
+    "goBack": "返回",
     "aiSessions": {
       "title": "AI 会话",
       "description": "查看与当前任务关联的本地 AI 对话记录。",
@@ -287,6 +355,8 @@
   "diffView": {
     "title": "代码变更",
     "backToTask": "返回任务",
+    "taskNotFound": "未找到任务。",
+    "goBack": "返回",
     "changedFiles": "已更改的文件",
     "noChanges": "没有变更",
     "editMode": "编辑模式",

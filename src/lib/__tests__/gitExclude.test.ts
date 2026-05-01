@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdtemp, rm, readFile, writeFile, mkdir } from "fs/promises";
+import { mkdtemp, rm, readFile, writeFile } from "fs/promises";
 import { join } from "path";
 import { tmpdir } from "os";
 import { execSync } from "child_process";
@@ -29,11 +29,13 @@ describe("gitExclude", () => {
       // Then
       const content = await readFile(excludePath, "utf-8");
       expect(content).toContain("# KanVibe AI hooks (auto-generated)");
+      expect(content).not.toContain(".kanvibe/task-id");
       expect(content).toContain(".claude/hooks/");
       expect(content).toContain(".claude/settings.json");
       expect(content).toContain(".gemini/hooks/");
       expect(content).toContain(".gemini/settings.json");
       expect(content).toContain(".codex/hooks/");
+      expect(content).toContain(".codex/hooks.json");
       expect(content).toContain(".codex/config.toml");
       expect(content).toContain(".opencode/plugins/");
     });
@@ -71,6 +73,54 @@ describe("gitExclude", () => {
       expect(content).toContain(".claude/hooks/");
     });
 
+    it("should restore missing patterns when only the marker block remains", async () => {
+      // Given
+      const excludePath = join(tempDir, ".git", "info", "exclude");
+      await writeFile(excludePath, "# KanVibe AI hooks (auto-generated)\n", "utf-8");
+
+      // When
+      await addAiToolPatternsToGitExclude(tempDir);
+
+      // Then
+      const content = await readFile(excludePath, "utf-8");
+      expect(content).toContain("# KanVibe AI hooks (auto-generated)");
+      expect(content).toContain(".claude/hooks/");
+      expect(content).toContain(".codex/config.toml");
+      expect(content).toContain(".opencode/plugins/");
+    });
+
+    it("should update the shared common-dir exclude when called from a linked worktree", async () => {
+      // Given
+      execSync('git config user.name "KanVibe Test"', { cwd: tempDir, stdio: "ignore" });
+      execSync('git config user.email "kanvibe@example.com"', { cwd: tempDir, stdio: "ignore" });
+      await writeFile(join(tempDir, "README.md"), "# test\n", "utf-8");
+      execSync("git add README.md", { cwd: tempDir, stdio: "ignore" });
+      execSync('git commit -m "init"', { cwd: tempDir, stdio: "ignore" });
+
+      const worktreeDir = await mkdtemp(join(tmpdir(), "git-exclude-worktree-"));
+      execSync(`git worktree add -b feature/test "${worktreeDir}" HEAD`, { cwd: tempDir, stdio: "ignore" });
+
+      const commonDir = execSync("git rev-parse --path-format=absolute --git-common-dir", {
+        cwd: worktreeDir,
+        encoding: "utf-8",
+      }).trim();
+      const commonExcludePath = join(commonDir, "info", "exclude");
+      await writeFile(commonExcludePath, "# KanVibe AI hooks (auto-generated)\n", "utf-8");
+
+      try {
+        // When
+        await addAiToolPatternsToGitExclude(worktreeDir);
+
+        // Then
+        const content = await readFile(commonExcludePath, "utf-8");
+        expect(content).toContain(".claude/hooks/");
+        expect(content).toContain(".gemini/settings.json");
+        expect(content).toContain(".codex/hooks.json");
+      } finally {
+        await rm(worktreeDir, { recursive: true, force: true });
+      }
+    });
+
     it("should throw when path is not a git repository", async () => {
       // Given
       const nonGitDir = await mkdtemp(join(tmpdir(), "non-git-"));
@@ -95,6 +145,31 @@ describe("gitExclude", () => {
         "utf-8"
       );
       expect(content).toContain("# KanVibe AI hooks (auto-generated)");
+    });
+
+    it("should update the common git exclude when called from a worktree", async () => {
+      // Given
+      execSync("git config user.name 'Kanvibe Test'", { cwd: tempDir, stdio: "ignore" });
+      execSync("git config user.email 'kanvibe@example.com'", { cwd: tempDir, stdio: "ignore" });
+      await writeFile(join(tempDir, "README.md"), "# test\n", "utf-8");
+      execSync("git add README.md", { cwd: tempDir, stdio: "ignore" });
+      execSync("git commit -m 'init'", { cwd: tempDir, stdio: "ignore" });
+
+      const worktreePath = join(
+        tmpdir(),
+        `git-exclude-worktree-${Date.now()}-${Math.random().toString(36).slice(2)}`
+      );
+      execSync(`git worktree add ${JSON.stringify(worktreePath)} -b worktree-test`, { cwd: tempDir, stdio: "ignore" });
+
+      // When
+      await addAiToolPatternsToGitExclude(worktreePath);
+
+      // Then
+      const content = await readFile(join(tempDir, ".git", "info", "exclude"), "utf-8");
+      expect(content).toContain("# KanVibe AI hooks (auto-generated)");
+      expect(content).toContain(".claude/hooks/");
+
+      await rm(worktreePath, { recursive: true, force: true });
     });
   });
 });

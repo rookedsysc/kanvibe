@@ -13,7 +13,7 @@ vi.mock("@/lib/gitOperations", () => ({
 
 const mockGetEffectivePaneLayout = vi.fn();
 
-vi.mock("@/app/actions/paneLayout", () => ({
+vi.mock("@/desktop/main/services/paneLayoutService", () => ({
   getEffectivePaneLayout: (...args: unknown[]) =>
     mockGetEffectivePaneLayout(...args),
 }));
@@ -206,7 +206,7 @@ describe("removeSessionOnly", () => {
 
     // Then
     expect(mockExecGit).toHaveBeenCalledWith(
-      'tmux kill-session -t "feat-branch"',
+      'tmux kill-session -t "feat-branch" 2>/dev/null || true',
       undefined,
     );
   });
@@ -297,6 +297,37 @@ describe("createSessionWithoutWorktree", () => {
       'tmux has-session -t "path-main" 2>/dev/null',
       undefined,
     );
+  });
+
+  it("should defer remote tmux creation until terminal attach", async () => {
+    // Given
+    mockExecGit.mockImplementation((command: string, sshHost?: string | null) => {
+      if (command === "command -v tmux >/dev/null 2>&1" && sshHost === "remote-host") {
+        return Promise.resolve("");
+      }
+
+      return Promise.resolve("");
+    });
+
+    const { createSessionWithoutWorktree } = await import("@/lib/worktree");
+
+    // When
+    await createSessionWithoutWorktree(
+      "/repo/path",
+      "main",
+      SessionType.TMUX,
+      "remote-host",
+      "/custom/dir",
+    );
+
+    // Then
+    expect(mockExecGit).toHaveBeenCalledTimes(1);
+    expect(mockExecGit).toHaveBeenCalledWith(
+      "command -v tmux >/dev/null 2>&1",
+      "remote-host",
+    );
+    expect(filterCalls("tmux has-session")).toHaveLength(0);
+    expect(filterCalls("tmux new-session")).toHaveLength(0);
   });
 });
 

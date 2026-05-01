@@ -10,9 +10,8 @@ Thank you for your interest in contributing to KanVibe! This guide will help you
 
 ### Prerequisites
 
-- Node.js 20+ (see `.nvmrc`)
+- Node.js 24.x (see `.nvmrc`)
 - pnpm
-- Docker (for PostgreSQL)
 - tmux or zellij (for terminal features)
 
 ### Getting Started
@@ -25,14 +24,11 @@ cd kanvibe
 # Copy environment variables
 cp .env.example .env
 
-# Start PostgreSQL
-docker compose up db -d
-
 # Install dependencies
 pnpm install
 
-# Run database migrations
-pnpm migration:run
+# Prepare embedded database
+pnpm db:prepare
 
 # Start development server
 pnpm dev
@@ -59,7 +55,7 @@ Open `http://localhost:4885` in your browser.
    - TypeScript strict mode
    - Tailwind CSS v4 with design tokens (CSS variables)
    - next-intl for all user-facing strings
-   - TypeORM migrations for schema changes
+   - Embedded SQLite + TypeORM data access
 
 ### PR Process
 
@@ -94,17 +90,14 @@ All user-facing strings must be translated. When adding or modifying UI text:
 
 ## Database Changes
 
-All schema changes go through TypeORM migrations:
+KanVibe uses an embedded SQLite database. When you change entity structure, update the SQLite bootstrap schema as well:
 
 ```bash
-# Generate migration from entity changes
-pnpm migration:generate -- src/migrations/DescriptiveName
-
-# Run migrations
-pnpm migration:run
+# Rebuild the bundled seed database
+pnpm db:prepare
 ```
 
-Never use `synchronize: true`. See `CLAUDE.md` for detailed migration workflow.
+Keep `src/lib/sqliteSchema.ts` and the TypeORM entities in sync.
 
 ---
 

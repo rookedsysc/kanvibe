@@ -1,0 +1,32 @@
+appId: com.kanvibe.desktop
+productName: Task Board
+asar: false
+
+directories:
+  output: dist
+  buildResources: resources
+
+files:
+  - build/renderer/**/*
+  - build/main/**/*
+  - electron/**/*
+  - messages/**/*
+  - package.json
+  - public/**/*
+  - tsconfig.json
+
+extraResources:
+  - from: resources/database
+    to: database
+    filter:
+      - app.seed.db
+
+mac:
+  target:
+    - dmg
+    - zip
+
+dmg:
+  artifactName: "kanvibe.${ext}"
+
+publish: null
