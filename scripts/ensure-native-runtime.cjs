@@ -34,21 +34,15 @@ function printNodeVersionGuidance() {
   console.error(`[kanvibe] Run \`nvm use ${REQUIRED_NODE_MAJOR}\` (or an equivalent version manager command) and reinstall dependencies.`);
 }
 
-function loadBetterSqlite3() {
-  const modulePath = require.resolve("better-sqlite3");
-  delete require.cache[modulePath];
-  return require("better-sqlite3");
-}
-
 function verifyNodeBetterSqlite3Binding() {
-  const BetterSqlite3 = loadBetterSqlite3();
-  const database = new BetterSqlite3(":memory:");
-
   try {
-    database.pragma("journal_mode = WAL");
-    database.prepare("SELECT 1").get();
-  } finally {
-    database.close();
+    execFileSync(process.execPath, [path.join(__dirname, "verify-node-better-sqlite3.cjs")], {
+      stdio: ["ignore", "inherit", "pipe"],
+      env: process.env,
+    });
+  } catch (error) {
+    const stderr = error?.stderr?.toString?.() || "";
+    throw new Error(stderr || String(error?.message || error));
   }
 }
 
@@ -66,6 +60,27 @@ function verifyBetterSqlite3Binding() {
   }
 
   verifyNodeBetterSqlite3Binding();
+}
+
+function verifyFreshNodeRuntimeAfterRebuild() {
+  const previousAttempted = process.env.KANVIBE_NATIVE_REBUILD_ATTEMPTED;
+  process.env.KANVIBE_NATIVE_REBUILD_ATTEMPTED = "1";
+  verifyNodeBetterSqlite3Binding();
+  if (previousAttempted === undefined) {
+    delete process.env.KANVIBE_NATIVE_REBUILD_ATTEMPTED;
+  } else {
+    process.env.KANVIBE_NATIVE_REBUILD_ATTEMPTED = previousAttempted;
+  }
+  process.exit(0);
+}
+
+function verifyBetterSqlite3BindingAfterRebuild() {
+  if (!isElectronTarget && !isRunningInsideElectron) {
+    verifyFreshNodeRuntimeAfterRebuild();
+    return;
+  }
+
+  verifyBetterSqlite3Binding();
 }
 
 function rebuildNativeDependency() {
@@ -137,7 +152,7 @@ function main() {
     }
 
     try {
-      verifyBetterSqlite3Binding();
+      verifyBetterSqlite3BindingAfterRebuild();
     } catch (retryError) {
       printRebuildFailureGuidance(retryError);
       process.exit(1);
