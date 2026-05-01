@@ -29,9 +29,43 @@ interface SearchResult {
   titleMatch: FuzzyMatch | null;
 }
 
+type SearchFieldKey = "branch" | "project" | "title";
+
+interface SearchFieldCandidate {
+  key: SearchFieldKey;
+  value: string | null | undefined;
+  weight: number;
+}
+
 function isMacLikePlatform() {
   return typeof navigator !== "undefined"
     && (navigator.userAgent.includes("Mac") || navigator.platform.toLowerCase().includes("mac"));
+}
+
+function tokenizeQuery(query: string) {
+  return query
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+}
+
+function mergeMatchedIndices(matches: FuzzyMatch[]) {
+  return [...new Set(matches.flatMap((match) => match.matchedIndices))].sort((left, right) => left - right);
+}
+
+function combineFieldMatches(
+  value: string | null | undefined,
+  matches: FuzzyMatch[],
+): FuzzyMatch | null {
+  if (!value || matches.length === 0) {
+    return null;
+  }
+
+  return {
+    path: value,
+    score: matches.reduce((total, match) => total + match.score, 0),
+    matchedIndices: mergeMatchedIndices(matches),
+  };
 }
 
 function buildSearchResults(tasks: SearchableTask[], query: string): SearchResult[] {
@@ -47,23 +81,62 @@ function buildSearchResults(tasks: SearchableTask[], query: string): SearchResul
     }));
   }
 
+  const tokens = tokenizeQuery(trimmedQuery);
+
   return tasks
     .map((task) => {
-      const branchMatch = task.branchName ? fuzzyMatch(trimmedQuery, task.branchName) : null;
-      const projectMatch = task.projectName ? fuzzyMatch(trimmedQuery, task.projectName) : null;
-      const titleMatch = task.title ? fuzzyMatch(trimmedQuery, task.title) : null;
-      const matches = [branchMatch, projectMatch, titleMatch].filter(
-        (match): match is FuzzyMatch => match !== null,
-      );
+      const fields: SearchFieldCandidate[] = [
+        { key: "branch", value: task.branchName, weight: 3 },
+        { key: "project", value: task.projectName, weight: 2 },
+        { key: "title", value: task.title, weight: 1 },
+      ];
+      const fieldMatches: Record<SearchFieldKey, FuzzyMatch[]> = {
+        branch: [],
+        project: [],
+        title: [],
+      };
+      let score = 0;
 
-      if (matches.length === 0) {
-        return null;
+      for (const token of tokens) {
+        const tokenMatches = fields
+          .map((field) => {
+            if (!field.value) {
+              return null;
+            }
+
+            const match = fuzzyMatch(token, field.value);
+            if (!match) {
+              return null;
+            }
+
+            return {
+              key: field.key,
+              weight: field.weight,
+              match,
+            };
+          })
+          .filter((match): match is { key: SearchFieldKey; weight: number; match: FuzzyMatch } => match !== null);
+
+        if (tokenMatches.length === 0) {
+          return null;
+        }
+
+        for (const tokenMatch of tokenMatches) {
+          fieldMatches[tokenMatch.key].push(tokenMatch.match);
+        }
+
+        const bestTokenMatch = tokenMatches.reduce((best, current) => {
+          const bestScore = best.match.score + best.weight;
+          const currentScore = current.match.score + current.weight;
+          return currentScore > bestScore ? current : best;
+        });
+
+        score += bestTokenMatch.match.score + bestTokenMatch.weight;
       }
 
-      const score = Math.max(...matches.map((match) => match.score))
-        + (branchMatch ? 3 : 0)
-        + (projectMatch ? 2 : 0)
-        + (titleMatch ? 1 : 0);
+      const branchMatch = combineFieldMatches(task.branchName, fieldMatches.branch);
+      const projectMatch = combineFieldMatches(task.projectName, fieldMatches.project);
+      const titleMatch = combineFieldMatches(task.title, fieldMatches.title);
 
       return {
         task,
@@ -254,6 +327,7 @@ export default function TaskQuickSearchDialog({
               const { task, branchMatch, projectMatch, titleMatch } = result;
               const isRemote = Boolean(task.sshHost);
               const primaryLabel = task.branchName || task.title;
+              const primaryMatch = task.branchName ? branchMatch : titleMatch;
 
               return (
                 <button
@@ -269,10 +343,10 @@ export default function TaskQuickSearchDialog({
                 >
                   <div className="min-w-0">
                     <div className="text-sm font-medium text-text-primary">
-                      {branchMatch ? (
+                      {primaryMatch ? (
                         <HighlightedText
                           text={primaryLabel}
-                          matchedIndices={branchMatch.matchedIndices}
+                          matchedIndices={primaryMatch.matchedIndices}
                         />
                       ) : (
                         primaryLabel
@@ -305,15 +379,11 @@ export default function TaskQuickSearchDialog({
                   </div>
 
                   <div className="flex shrink-0 items-center gap-2">
-                    <span
-                      className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${
-                        isRemote
-                          ? "bg-tag-gemini-bg text-tag-gemini-text"
-                          : "bg-tag-project-bg text-tag-project-text"
-                      }`}
-                    >
-                      {isRemote ? tc("remote") : tc("local")}
-                    </span>
+                    {isRemote && task.sshHost ? (
+                      <span className="rounded-full bg-tag-gemini-bg px-2 py-0.5 text-[11px] font-medium text-tag-gemini-text">
+                        {tc("remote")}
+                      </span>
+                    ) : null}
                     {task.sshHost ? (
                       <span className="text-[11px] text-text-muted">{task.sshHost}</span>
                     ) : null}
