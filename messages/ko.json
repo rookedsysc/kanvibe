@@ -38,6 +38,7 @@
     "prMergeAlert": {
       "title": "PR merge 감지",
       "message": "worktree PR {branchName} 가 merge 된 것을 확인했습니다. \"{taskTitle}\" task를 Done으로 옮길까요?",
+      "batchMessage": "이번 탐색에서 merge가 확인된 PR 목록입니다. Done으로 옮길 task를 체크해서 한 번에 처리하세요.",
       "prLinkLabel": "PR 링크"
     }
   },
