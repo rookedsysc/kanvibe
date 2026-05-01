@@ -56,6 +56,16 @@ describe("TaskQuickSearchDialog", () => {
         status: "progress",
         updatedAt: "2026-04-30T01:00:00.000Z",
       },
+      {
+        id: "task-alert",
+        title: "Alert automation",
+        branchName: "feat/alert",
+        projectId: "project-kanvibe",
+        projectName: "kanvibe",
+        sshHost: null,
+        status: "todo",
+        updatedAt: "2026-04-30T02:00:00.000Z",
+      },
     ]);
   });
 
@@ -75,7 +85,7 @@ describe("TaskQuickSearchDialog", () => {
     expect(screen.getByText("feat/api-search")).toBeTruthy();
   });
 
-  it("검색 결과에 원격과 로컬을 구분해서 표시한다", async () => {
+  it("검색 결과에서 원격 task에만 remote 배지와 호스트를 표시한다", async () => {
     render(<TaskQuickSearchDialog shortcut="Ctrl+K" />);
 
     fireEvent.keyDown(window, {
@@ -87,9 +97,9 @@ describe("TaskQuickSearchDialog", () => {
       expect(screen.getByRole("dialog")).toBeTruthy();
     });
 
-    expect(screen.getByText("common.local")).toBeTruthy();
     expect(screen.getByText("common.remote")).toBeTruthy();
     expect(screen.getByText("devbox")).toBeTruthy();
+    expect(screen.queryByText("common.local")).toBeNull();
   });
 
   it("프로젝트명이나 브랜치명으로 검색한 뒤 Enter로 상세 페이지로 이동한다", async () => {
@@ -108,6 +118,25 @@ describe("TaskQuickSearchDialog", () => {
 
     await waitFor(() => {
       expect(mocks.push).toHaveBeenCalledWith("/task/task-remote");
+    });
+  });
+
+  it("여러 토큰의 순서가 바뀌어도 같은 task를 검색할 수 있다", async () => {
+    render(<TaskQuickSearchDialog shortcut="Ctrl+K" />);
+
+    fireEvent.keyDown(window, {
+      key: "k",
+      ctrlKey: true,
+    });
+
+    const input = await screen.findByRole("textbox");
+    fireEvent.change(input, {
+      target: { value: "alert kanvibe feat" },
+    });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    await waitFor(() => {
+      expect(mocks.push).toHaveBeenCalledWith("/task/task-alert");
     });
   });
 

@@ -39,6 +39,14 @@
       "title": "检测到 PR 已合并",
       "message": "已确认 worktree PR {branchName} 已被合并。要将任务“{taskTitle}”移动到 Done 吗？",
       "prLinkLabel": "PR 链接"
+    },
+    "backgroundSyncReview": {
+      "title": "后台同步检查",
+      "message": "最近一次后台扫描发现了需要检查的项目。请勾选要移动到 Done 的已合并 PR 任务，并同时确认新注册的 worktree。",
+      "mergedSection": "已合并 PR",
+      "registeredSection": "新 TODO worktree",
+      "emptyMerged": "本次检查中没有需要移动到 Done 的已合并 PR 任务。",
+      "emptyRegistered": "本次检查中没有新注册的 worktree。"
     }
   },
   "login": {

@@ -3,7 +3,12 @@
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 import { getTaskById } from "@/desktop/renderer/actions/kanban";
-import { markAllNotificationsRead, markNotificationRead, listNotifications } from "@/desktop/renderer/actions/notifications";
+import {
+  activateNotification,
+  listNotifications,
+  markAllNotificationsRead,
+  markNotificationRead,
+} from "@/desktop/renderer/actions/notifications";
 import { redirect } from "@/desktop/renderer/navigation";
 import type { AppNotification } from "@/desktop/shared/notifications";
 
@@ -165,6 +170,11 @@ const NotificationCenterButton = forwardRef<NotificationCenterButtonHandle, Noti
     }
 
     setIsOpen(false);
+
+    if (notification.action?.type === "background-sync-review") {
+      await activateNotification(notification.id);
+      return;
+    }
 
     if (notification.taskId) {
       const task = await getTaskById(notification.taskId);

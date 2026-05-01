@@ -33,11 +33,20 @@ let mainWindow = null;
 let hookServer = null;
 let windowOpenHelpers = null;
 let stopBackgroundTaskSync = null;
+let pendingNotificationActivation = null;
 
 function broadcastNotificationsChanged() {
   for (const window of BrowserWindow.getAllWindows()) {
     if (!window.isDestroyed()) {
       window.webContents.send("kanvibe:notifications-changed");
+    }
+  }
+}
+
+function broadcastNotificationActivated(appNotification) {
+  for (const window of BrowserWindow.getAllWindows()) {
+    if (!window.isDestroyed()) {
+      window.webContents.send("kanvibe:notification-activated", appNotification);
     }
   }
 }
@@ -187,12 +196,15 @@ function createDesktopNotificationOptions() {
   return {
     onNotificationsChanged: broadcastNotificationsChanged,
     onNotificationClick: async (appNotification) => {
-      const targetPath = appNotification.taskId
-        ? `/${appNotification.locale}/task/${appNotification.taskId}`
-        : appNotification.relativePath;
-      await focusMainWindow(targetPath);
+      await activateAppNotification(appNotification, { markAsRead: false });
     },
   };
+}
+
+function getNotificationTargetPath(appNotification) {
+  return appNotification.taskId
+    ? `/${appNotification.locale}/task/${appNotification.taskId}`
+    : appNotification.relativePath;
 }
 
 function getAvailableWindows() {
@@ -268,9 +280,32 @@ async function focusMainWindow(relativePath) {
   }
 }
 
+function getNotificationStore() {
+  return require(getRuntimeModulePath(path.join("src", "desktop", "main", "notificationStore.ts")));
+}
+
+async function activateAppNotification(appNotification, options = {}) {
+  const notificationStore = getNotificationStore();
+  const markAsRead = options.markAsRead !== false;
+  let activatedNotification = appNotification;
+
+  if (markAsRead && !appNotification.isRead) {
+    const updatedNotification = await notificationStore.markNotificationRead(appNotification.id);
+    if (updatedNotification) {
+      activatedNotification = updatedNotification;
+    }
+    broadcastNotificationsChanged();
+  }
+
+  pendingNotificationActivation = activatedNotification;
+  await focusMainWindow(getNotificationTargetPath(activatedNotification));
+  broadcastNotificationActivated(activatedNotification);
+  return true;
+}
+
 function registerNotificationHandlers() {
   const { deliverDesktopNotification } = require(getRuntimeModulePath(path.join("src", "desktop", "main", "services", "desktopNotificationService.ts")));
-  const { listNotifications, markAllNotificationsRead, markNotificationRead } = require(getRuntimeModulePath(path.join("src", "desktop", "main", "notificationStore.ts")));
+  const { listNotifications, markAllNotificationsRead, markNotificationRead, getNotificationById } = getNotificationStore();
 
   ipcMain.handle("kanvibe:show-notification", async (_event, payload) => {
     return deliverDesktopNotification(payload, createDesktopNotificationOptions());
@@ -289,6 +324,21 @@ function registerNotificationHandlers() {
   ipcMain.handle("kanvibe:notifications-mark-all-read", async () => {
     await markAllNotificationsRead();
     broadcastNotificationsChanged();
+  });
+
+  ipcMain.handle("kanvibe:notifications-activate", async (_event, notificationId) => {
+    const notification = await getNotificationById(notificationId);
+    if (!notification) {
+      return false;
+    }
+
+    return activateAppNotification(notification);
+  });
+
+  ipcMain.handle("kanvibe:notifications-consume-activation", async () => {
+    const nextActivation = pendingNotificationActivation;
+    pendingNotificationActivation = null;
+    return nextActivation;
   });
 }
 

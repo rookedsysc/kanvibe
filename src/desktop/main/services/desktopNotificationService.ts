@@ -3,7 +3,11 @@ import type { AppNotification, DesktopNotificationPayload } from "@/desktop/shar
 import type { BoardEventPayload } from "@/lib/boardNotifier";
 import { createNotification, markNotificationRead } from "@/desktop/main/notificationStore";
 import { getNotificationSettings } from "@/desktop/main/services/appSettingsService";
-import { buildHookStatusTargetMissingNotification, buildTaskStatusNotification } from "@/desktop/shared/taskNotifications";
+import {
+  buildBackgroundSyncReviewNotification,
+  buildHookStatusTargetMissingNotification,
+  buildTaskStatusNotification,
+} from "@/desktop/shared/taskNotifications";
 
 const activeDesktopNotifications = new Set<InstanceType<typeof Notification>>();
 
@@ -87,6 +91,13 @@ export async function deliverBoardEventNotification(
 
   if (payload.type === "task-hook-install-failed") {
     return false;
+  }
+
+  if (payload.type === "background-sync-review-needed") {
+    return deliverDesktopNotification(buildBackgroundSyncReviewNotification({
+      ...payload,
+      locale,
+    }).desktopPayload, options);
   }
 
   if (
