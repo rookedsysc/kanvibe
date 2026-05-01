@@ -24,6 +24,11 @@ function getLocaleFromPathname(pathname: string): SupportedLocale {
   return getSafeLocale(firstSegment);
 }
 
+function canNavigateBack() {
+  const historyIndex = window.history.state?.idx;
+  return typeof historyIndex === "number" && historyIndex > 0;
+}
+
 export function localizeHref(href: string, currentLocale?: string): string {
   if (!href.startsWith("/")) {
     return href;
@@ -68,7 +73,14 @@ export function useRouter() {
 
   return useMemo(
     () => ({
-      back: () => navigate(-1),
+      back: () => {
+        if (canNavigateBack()) {
+          navigate(-1);
+          return;
+        }
+
+        navigate(localizeHref("/", currentLocale), { replace: true });
+      },
       push: (href: string) => navigate(localizeHref(href, currentLocale)),
       replace: (href: string) => navigate(localizeHref(href, currentLocale), { replace: true }),
       refresh: () => triggerDesktopRefresh(getRefreshScope(location.pathname)),
