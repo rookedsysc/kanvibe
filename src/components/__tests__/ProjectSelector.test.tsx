@@ -1,12 +1,13 @@
+import { createRef } from "react";
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { render, screen, cleanup, fireEvent } from "@testing-library/react";
+import { act, render, screen, cleanup, fireEvent } from "@testing-library/react";
 import type { Project } from "@/entities/Project";
 
 vi.mock("next-intl", () => ({
   useTranslations: () => (key: string) => key,
 }));
 
-import ProjectSelector from "../ProjectSelector";
+import ProjectSelector, { type ProjectSelectorHandle } from "../ProjectSelector";
 
 function createProject(id: string, name: string): Project {
   return {
@@ -125,5 +126,34 @@ describe("ProjectSelector chip truncation", () => {
 
     expect(screen.getByText("Remote API")).toBeTruthy();
     expect(screen.queryByText("Local API")).toBeNull();
+  });
+
+  it("should keep selected projects at the top and toggle the highlighted project after imperative open", () => {
+    const ref = createRef<ProjectSelectorHandle>();
+    const onSelectionChange = vi.fn();
+
+    render(
+      <ProjectSelector
+        ref={ref}
+        multiple
+        projects={projects}
+        selectedProjectIds={["2"]}
+        onSelectionChange={onSelectionChange}
+        placeholder="All projects"
+        searchPlaceholder="Search project..."
+      />,
+    );
+
+    act(() => {
+      ref.current?.open();
+    });
+
+    const searchInput = screen.getByPlaceholderText("Search project...");
+    const items = screen.getAllByRole("listitem");
+    expect(items[0].textContent).toContain("Beta");
+
+    fireEvent.keyDown(searchInput, { key: "Enter" });
+
+    expect(onSelectionChange).toHaveBeenCalledWith([]);
   });
 });

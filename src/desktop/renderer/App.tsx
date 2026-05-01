@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { IntlProvider } from "next-intl";
 import { HashRouter, Navigate, Outlet, Route, Routes, useParams } from "react-router-dom";
 import LoginForm from "@/components/LoginForm";
+import { BoardCommandProvider } from "@/desktop/renderer/components/BoardCommandProvider";
 import BoardEventAlert from "@/desktop/renderer/components/BoardEventAlert";
 import NotificationListener from "@/desktop/renderer/components/NotificationListener";
 import TaskQuickSearchDialog from "@/desktop/renderer/components/TaskQuickSearchDialog";
@@ -30,14 +31,16 @@ function LocaleShell({ sessionLoading, isAuthenticated }: { sessionLoading: bool
 
   return (
     <IntlProvider locale={safeLocale} messages={messages}>
-      {!sessionLoading && (
-        <>
-          {isAuthenticated ? <TaskQuickSearchDialog /> : null}
-          <NotificationListener />
-          <BoardEventAlert />
-        </>
-      )}
-      <Outlet />
+      <BoardCommandProvider>
+        {!sessionLoading && (
+          <>
+            {isAuthenticated ? <TaskQuickSearchDialog /> : null}
+            <NotificationListener />
+            <BoardEventAlert />
+          </>
+        )}
+        <Outlet />
+      </BoardCommandProvider>
     </IntlProvider>
   );
 }

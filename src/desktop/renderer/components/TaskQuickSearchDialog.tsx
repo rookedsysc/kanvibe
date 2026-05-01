@@ -16,6 +16,7 @@ import {
   matchShortcutEvent,
 } from "@/desktop/renderer/utils/keyboardShortcut";
 import { fuzzyMatch, type FuzzyMatch } from "@/utils/fuzzySearch";
+import { CREATE_BRANCH_TODO_SHORTCUT, useBoardCommands } from "@/desktop/renderer/components/BoardCommandProvider";
 
 interface TaskQuickSearchDialogProps {
   shortcut?: string;
@@ -153,6 +154,7 @@ function buildSearchResults(tasks: SearchableTask[], query: string): SearchResul
 export default function TaskQuickSearchDialog({
   shortcut,
 }: TaskQuickSearchDialogProps) {
+  const boardCommands = useBoardCommands();
   const t = useTranslations("taskSearch");
   const tc = useTranslations("common");
   const router = useRouter();
@@ -239,6 +241,14 @@ export default function TaskQuickSearchDialog({
   }, [isOpen]);
 
   useEffect(() => {
+    boardCommands.setTaskQuickSearchOpen(isOpen);
+
+    return () => {
+      boardCommands.setTaskQuickSearchOpen(false);
+    };
+  }, [boardCommands, isOpen]);
+
+  useEffect(() => {
     setSelectedIndex(0);
   }, [query]);
 
@@ -257,7 +267,27 @@ export default function TaskQuickSearchDialog({
     closeDialog();
   }
 
+  function createBranchTodoFromSelection() {
+    const selectedTask = results[selectedIndex]?.task;
+
+    if (!boardCommands.canCreateBranchTodo || !selectedTask?.projectId || !selectedTask.branchName) {
+      return;
+    }
+
+    boardCommands.requestCreateBranchTodo({
+      projectId: selectedTask.projectId,
+      baseBranch: selectedTask.branchName,
+    });
+    closeDialog();
+  }
+
   function handleInputKeyDown(event: React.KeyboardEvent<HTMLInputElement>) {
+    if (matchShortcutEvent(event, CREATE_BRANCH_TODO_SHORTCUT, isMacLike)) {
+      event.preventDefault();
+      createBranchTodoFromSelection();
+      return;
+    }
+
     switch (event.key) {
       case "ArrowDown":
         event.preventDefault();
@@ -283,6 +313,15 @@ export default function TaskQuickSearchDialog({
   if (!isOpen) {
     return null;
   }
+
+  const footerHints = [
+    t("hint"),
+    boardCommands.canCreateBranchTodo
+      ? t("branchTodoHint", {
+          shortcut: formatShortcutForDisplay(CREATE_BRANCH_TODO_SHORTCUT, isMacLike),
+        })
+      : null,
+  ].filter(Boolean).join(" · ");
 
   return (
     <div className="fixed inset-0 z-[500] flex items-start justify-center bg-black/45 px-4 pt-24">
@@ -395,7 +434,7 @@ export default function TaskQuickSearchDialog({
         </div>
 
         <div className="border-t border-border-default px-4 py-2 text-xs text-text-muted">
-          {t("hint")}
+          {footerHints}
         </div>
       </div>
     </div>

@@ -1,3 +1,4 @@
+import { forwardRef, useImperativeHandle } from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import Board from "../Board";
@@ -5,6 +6,7 @@ import { reorderTasks, updateTaskStatus } from "@/desktop/renderer/actions/kanba
 import { SessionType, TaskStatus } from "@/entities/KanbanTask";
 import type { Project } from "@/entities/Project";
 import type { TasksByStatus } from "@/desktop/renderer/actions/kanban";
+import { BoardCommandProvider, useBoardCommands } from "@/desktop/renderer/components/BoardCommandProvider";
 
 function mockNavigatorPlatform(platform: string) {
   Object.defineProperty(window.navigator, "platform", {
@@ -68,11 +70,27 @@ vi.mock("../Column", () => ({
 }));
 
 vi.mock("../ProjectSelector", () => ({
-  default: () => <div data-testid="project-selector" />,
+  default: forwardRef(function MockProjectSelector(_props, ref) {
+    useImperativeHandle(ref, () => ({
+      open() {},
+      close() {},
+      focus() {},
+    }), []);
+
+    return <div data-testid="project-selector" />;
+  }),
 }));
 
 vi.mock("../NotificationCenterButton", () => ({
-  default: () => <button type="button" aria-label="notifications" />,
+  default: forwardRef(function MockNotificationCenterButton(_props, ref) {
+    useImperativeHandle(ref, () => ({
+      open() {},
+      close() {},
+      toggle() {},
+    }), []);
+
+    return <button type="button" aria-label="notifications" />;
+  }),
 }));
 
 vi.mock("../TaskContextMenu", () => ({
@@ -88,8 +106,20 @@ vi.mock("../BranchTaskModal", () => ({
 }));
 
 vi.mock("../CreateTaskModal", () => ({
-  default: ({ defaultSessionType }: { defaultSessionType: SessionType }) => (
-    <div data-testid="create-task-default-session">{defaultSessionType}</div>
+  default: ({
+    defaultSessionType,
+    defaultProjectId,
+    defaultBaseBranch,
+  }: {
+    defaultSessionType: SessionType;
+    defaultProjectId?: string;
+    defaultBaseBranch?: string;
+  }) => (
+    <div>
+      <div data-testid="create-task-default-session">{defaultSessionType}</div>
+      <div data-testid="create-task-default-project">{defaultProjectId ?? ""}</div>
+      <div data-testid="create-task-default-base-branch">{defaultBaseBranch ?? ""}</div>
+    </div>
   ),
 }));
 
@@ -160,6 +190,22 @@ function createTasksWithTodo(): TasksByStatus {
     [TaskStatus.REVIEW]: [],
     [TaskStatus.DONE]: [],
   };
+}
+
+function BoardCommandRequester() {
+  const boardCommands = useBoardCommands();
+
+  return (
+    <button
+      type="button"
+      onClick={() => boardCommands.requestCreateBranchTodo({
+        projectId: "project-1",
+        baseBranch: "feat/from-search",
+      })}
+    >
+      request branch todo
+    </button>
+  );
 }
 
 describe("Board defaultSessionType sync", () => {
@@ -497,6 +543,33 @@ describe("Board defaultSessionType sync", () => {
 
     await waitFor(() => {
       expect(updateTaskStatus).not.toHaveBeenCalled();
+    });
+  });
+
+  it("중앙 board command 요청이 오면 branch TODO 기본값으로 create modal을 연다", async () => {
+    render(
+      <BoardCommandProvider>
+        <BoardCommandRequester />
+        <Board
+          initialTasks={createTasksWithTodo()}
+          initialDoneTotal={0}
+          initialDoneLimit={20}
+          sshHosts={[]}
+          projects={[createProject()]}
+          sidebarDefaultCollapsed={false}
+          doneAlertDismissed={false}
+          notificationSettings={{ isEnabled: true, enabledStatuses: ["progress", "pending", "review"] }}
+          defaultSessionType={SessionType.TMUX}
+          taskSearchShortcut="Mod+Shift+O"
+        />
+      </BoardCommandProvider>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "request branch todo" }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("create-task-default-project").textContent).toBe("project-1");
+      expect(screen.getByTestId("create-task-default-base-branch").textContent).toBe("feat/from-search");
     });
   });
 });

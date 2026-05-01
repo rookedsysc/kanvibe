@@ -5,6 +5,8 @@ import TaskQuickSearchDialog from "@/desktop/renderer/components/TaskQuickSearch
 const mocks = vi.hoisted(() => ({
   getSearchableTasks: vi.fn(),
   push: vi.fn(),
+  requestCreateBranchTodo: vi.fn(),
+  setTaskQuickSearchOpen: vi.fn(),
 }));
 
 vi.mock("next-intl", () => ({
@@ -18,6 +20,15 @@ vi.mock("@/desktop/renderer/actions/kanban", () => ({
 vi.mock("@/desktop/renderer/navigation", () => ({
   useRouter: () => ({
     push: (...args: unknown[]) => mocks.push(...args),
+  }),
+}));
+
+vi.mock("@/desktop/renderer/components/BoardCommandProvider", () => ({
+  CREATE_BRANCH_TODO_SHORTCUT: "Mod+N",
+  useBoardCommands: () => ({
+    requestCreateBranchTodo: mocks.requestCreateBranchTodo,
+    setTaskQuickSearchOpen: mocks.setTaskQuickSearchOpen,
+    canCreateBranchTodo: true,
   }),
 }));
 
@@ -127,6 +138,32 @@ describe("TaskQuickSearchDialog", () => {
     await waitFor(() => {
       expect(mocks.push).toHaveBeenCalledWith("/task/task-alert");
     });
+  });
+
+  it("선택된 검색 결과에서 Ctrl+N으로 branch TODO 생성을 요청한다", async () => {
+    render(<TaskQuickSearchDialog shortcut="Ctrl+K" />);
+
+    fireEvent.keyDown(window, {
+      key: "k",
+      ctrlKey: true,
+    });
+
+    const input = await screen.findByRole("textbox");
+    fireEvent.change(input, {
+      target: { value: "api" },
+    });
+    fireEvent.keyDown(input, {
+      key: "n",
+      ctrlKey: true,
+    });
+
+    await waitFor(() => {
+      expect(mocks.requestCreateBranchTodo).toHaveBeenCalledWith({
+        projectId: "project-remote",
+        baseBranch: "feat/api-search",
+      });
+    });
+    expect(screen.queryByRole("dialog")).toBeNull();
   });
 
   it("Escape를 누르면 검색 다이얼로그를 닫는다", async () => {
