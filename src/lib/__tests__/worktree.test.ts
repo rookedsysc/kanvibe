@@ -211,7 +211,7 @@ describe("removeSessionOnly", () => {
     );
   });
 
-  it("should kill zellij session with fallback to delete", async () => {
+  it("should kill zellij session and delete resurrectable session data", async () => {
     // Given
     mockExecGit.mockResolvedValue("");
     const { removeSessionOnly } = await import("@/lib/worktree");
@@ -221,8 +221,23 @@ describe("removeSessionOnly", () => {
 
     // Then
     expect(mockExecGit).toHaveBeenCalledWith(
-      'zellij kill-session "feat-branch" 2>/dev/null || zellij delete-session "feat-branch" 2>/dev/null',
+      'zellij kill-session "feat-branch" 2>/dev/null || true; zellij delete-session "feat-branch" 2>/dev/null || true',
       undefined,
+    );
+  });
+
+  it("should pass sshHost when cleaning remote zellij session", async () => {
+    // Given
+    mockExecGit.mockResolvedValue("");
+    const { removeSessionOnly } = await import("@/lib/worktree");
+
+    // When
+    await removeSessionOnly(SessionType.ZELLIJ, "feat-branch", "remote-host");
+
+    // Then
+    expect(mockExecGit).toHaveBeenCalledWith(
+      'zellij kill-session "feat-branch" 2>/dev/null || true; zellij delete-session "feat-branch" 2>/dev/null || true',
+      "remote-host",
     );
   });
 
