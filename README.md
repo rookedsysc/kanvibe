@@ -171,6 +171,19 @@ Each pane can run a custom command (e.g., `vim`, `htop`, `lazygit`, test runner,
 - Distinguish local tasks from SSH remote tasks directly in search results
 - Configure the shortcut in **Project Settings** → **Detail Page**
 
+### Keyboard Shortcuts
+
+| Shortcut | Scope | Action |
+|----------|-------|--------|
+| `Cmd/Ctrl+F` | Board | Open page find for visible project/task text |
+| `Cmd/Ctrl+Shift+O` | Global | Open quick task search by branch or project name (default, configurable) |
+| `Cmd/Ctrl+Shift+P` | Board | Open the project filter dropdown |
+| `Cmd/Ctrl+Shift+I` | Board | Open the notifications dropdown |
+| `Cmd/Ctrl+N` | Quick task search | Create a new branch TODO from the currently highlighted task |
+| `↑ / ↓ / Enter / Esc` | Quick task search | Move selection, open task, close dialog |
+| `↑ / ↓ / Enter / Esc` | Project filter dropdown | Move selection, toggle project filter, close dropdown |
+| `↑ / ↓ / Enter / Esc` | Notifications dropdown | Move selection, open notification target, close dropdown |
+
 ### AI Agent Hooks - Automatic Status Tracking
 KanVibe integrates with **Claude Code Hooks**, **Gemini CLI Hooks**, **Codex CLI**, and **OpenCode** to automatically track task status. Tasks are managed through 5 statuses:
 

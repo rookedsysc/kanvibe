@@ -163,6 +163,19 @@ pnpm dist
 - SSH 远程终端支持（读取 `~/.ssh/config`）
 - Nerd Font 渲染支持
 
+### 键盘快捷键
+
+| 快捷键 | 范围 | 动作 |
+|--------|------|------|
+| `Cmd/Ctrl+F` | 看板 | 打开当前可见项目/任务文本的页面查找 |
+| `Cmd/Ctrl+Shift+O` | 全局 | 按分支名或项目名打开任务快速搜索（默认值，可配置） |
+| `Cmd/Ctrl+Shift+P` | 看板 | 打开项目筛选下拉框 |
+| `Cmd/Ctrl+Shift+I` | 看板 | 打开通知下拉框 |
+| `Cmd/Ctrl+N` | 任务快速搜索 | 基于当前高亮任务创建新的 branch TODO |
+| `↑ / ↓ / Enter / Esc` | 任务快速搜索 | 移动选择、打开任务、关闭对话框 |
+| `↑ / ↓ / Enter / Esc` | 项目筛选下拉框 | 移动选择、切换项目筛选、关闭下拉框 |
+| `↑ / ↓ / Enter / Esc` | 通知下拉框 | 移动选择、打开通知目标、关闭下拉框 |
+
 ### AI 代理 Hooks - 自动状态追踪
 KanVibe 与 **Claude Code Hooks**、**Gemini CLI Hooks**、**Codex CLI** 和 **OpenCode** 集成，自动追踪任务状态。任务通过 5 个状态进行管理：
 

@@ -163,6 +163,19 @@ macOS에서 `better-sqlite3` `NODE_MODULE_VERSION` 불일치가 발생하면, Ka
 - SSH 원격 터미널 지원 (`~/.ssh/config` 읽기)
 - Nerd Font 렌더링 지원
 
+### 키보드 단축키
+
+| 단축키 | 범위 | 동작 |
+|--------|------|------|
+| `Cmd/Ctrl+F` | 보드 | 현재 보이는 프로젝트/태스크 텍스트 페이지 검색 열기 |
+| `Cmd/Ctrl+Shift+O` | 전역 | 브랜치명/프로젝트명 기준 태스크 빠른 검색 열기 (기본값, 변경 가능) |
+| `Cmd/Ctrl+Shift+P` | 보드 | 프로젝트 필터 드롭다운 열기 |
+| `Cmd/Ctrl+Shift+I` | 보드 | 알림 드롭다운 열기 |
+| `Cmd/Ctrl+N` | 태스크 빠른 검색 | 현재 하이라이트된 태스크 기준으로 새 branch TODO 만들기 |
+| `↑ / ↓ / Enter / Esc` | 태스크 빠른 검색 | 선택 이동, 태스크 열기, 다이얼로그 닫기 |
+| `↑ / ↓ / Enter / Esc` | 프로젝트 필터 드롭다운 | 선택 이동, 프로젝트 필터 토글, 드롭다운 닫기 |
+| `↑ / ↓ / Enter / Esc` | 알림 드롭다운 | 선택 이동, 알림 대상 열기, 드롭다운 닫기 |
+
 ### AI 에이전트 Hooks - 자동 상태 추적
 KanVibe는 **Claude Code Hooks**, **Gemini CLI Hooks**, **Codex CLI**, **OpenCode**와 연동하여 태스크 상태를 자동 추적합니다. 태스크는 5가지 상태로 관리됩니다:
 

@@ -14,12 +14,15 @@ import BranchTaskModal from "./BranchTaskModal";
 import DoneConfirmDialog from "./DoneConfirmDialog";
 import { reorderTasks, deleteTask, getMoreDoneTasks, moveTaskToColumn, updateTaskStatus } from "@/desktop/renderer/actions/kanban";
 import type { TasksByStatus } from "@/desktop/renderer/actions/kanban";
+import { useBoardCommands } from "@/desktop/renderer/components/BoardCommandProvider";
 import { SessionType, TaskStatus, type KanbanTask } from "@/entities/KanbanTask";
 import type { Project } from "@/entities/Project";
 import { useAutoRefresh } from "@/desktop/renderer/hooks/useAutoRefresh";
 import { useProjectFilterParams } from "@/desktop/renderer/hooks/useProjectFilterParams";
 import { computeProjectColor } from "@/lib/projectColor";
 import type { BoardEventPayload, TaskPrMergedDetectedPayload } from "@/lib/boardNotifier";
+import type { NotificationCenterButtonHandle } from "./NotificationCenterButton";
+import type { ProjectSelectorHandle } from "./ProjectSelector";
 
 interface BoardProps {
   initialTasks: TasksByStatus;
@@ -218,6 +221,7 @@ function buildDragMovePlan(
 
 export default function Board({ initialTasks, initialDoneTotal, initialDoneLimit, sshHosts, projects, sidebarDefaultCollapsed, doneAlertDismissed, notificationSettings, defaultSessionType, taskSearchShortcut }: BoardProps) {
   useAutoRefresh();
+  const boardCommands = useBoardCommands();
   const t = useTranslations("board");
   const tt = useTranslations("task");
   const tc = useTranslations("common");
@@ -246,6 +250,8 @@ export default function Board({ initialTasks, initialDoneTotal, initialDoneLimit
   const [prMergeAlerts, setPrMergeAlerts] = useState<PrMergeAlertState[]>([]);
   const [selectedPrMergeEventKeys, setSelectedPrMergeEventKeys] = useState<string[]>([]);
   const dismissedPrMergeEventKeysRef = useRef<Set<string>>(new Set());
+  const notificationCenterRef = useRef<NotificationCenterButtonHandle>(null);
+  const projectSelectorRef = useRef<ProjectSelectorHandle>(null);
 
   /** projectId → 표시할 프로젝트 이름 매핑. worktree 프로젝트는 메인 프로젝트 이름으로 resolve한다 */
   const projectNameMap = useMemo(() => {
@@ -423,6 +429,19 @@ export default function Board({ initialTasks, initialDoneTotal, initialDoneLimit
       });
     });
   }, []);
+
+  useEffect(() => boardCommands.registerBoardHandlers({
+    toggleNotificationCenter() {
+      notificationCenterRef.current?.toggle();
+    },
+    openProjectFilter() {
+      projectSelectorRef.current?.open();
+    },
+    openCreateTaskModal(defaults) {
+      setBranchTodoDefaults(defaults);
+      setIsModalOpen(true);
+    },
+  }), [boardCommands]);
 
   useEffect(() => {
     if (prMergeAlerts.length === 0) {
@@ -612,6 +631,7 @@ export default function Board({ initialTasks, initialDoneTotal, initialDoneLimit
         <div className="flex items-center gap-3 [-webkit-app-region:no-drag]">
           <div className="w-64">
             <ProjectSelector
+              ref={projectSelectorRef}
               multiple
               projects={filterableProjects}
               selectedProjectIds={selectedProjectIds}
@@ -637,7 +657,7 @@ export default function Board({ initialTasks, initialDoneTotal, initialDoneLimit
               <circle cx="12" cy="12" r="3"/>
             </svg>
           </button>
-          <NotificationCenterButton buttonClassName="hover:bg-bg-page" />
+          <NotificationCenterButton ref={notificationCenterRef} buttonClassName="hover:bg-bg-page" />
         </div>
       </header>
 

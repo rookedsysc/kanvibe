@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { forwardRef, useState, useEffect, useRef, useCallback, useImperativeHandle, useMemo } from "react";
 import type { Project } from "@/entities/Project";
 
 const MAX_VISIBLE_CHIPS = 2;
@@ -28,6 +28,12 @@ type MultiSelectProps = BaseProps & {
 
 type ProjectSelectorProps = SingleSelectProps | MultiSelectProps;
 
+export interface ProjectSelectorHandle {
+  close: () => void;
+  focus: () => void;
+  open: () => void;
+}
+
 function matchesProjectSearch(project: Project, query: string) {
   const normalizedQuery = query.trim().toLowerCase();
 
@@ -39,7 +45,7 @@ function matchesProjectSearch(project: Project, query: string) {
     .some((value) => value.toLowerCase().includes(normalizedQuery));
 }
 
-export default function ProjectSelector(props: ProjectSelectorProps) {
+const ProjectSelector = forwardRef<ProjectSelectorHandle, ProjectSelectorProps>(function ProjectSelector(props, ref) {
   const {
     projects,
     placeholder = "",
@@ -76,8 +82,33 @@ export default function ProjectSelector(props: ProjectSelectorProps) {
     ? projects.filter((project) => matchesProjectSearch(project, searchQuery))
     : projects;
 
+  const orderedProjects = useMemo(() => {
+    if (!isMultiple) {
+      return filteredProjects;
+    }
+
+    return [
+      ...filteredProjects.filter((project) => selectedProjectIds.includes(project.id)),
+      ...filteredProjects.filter((project) => !selectedProjectIds.includes(project.id)),
+    ];
+  }, [filteredProjects, isMultiple, selectedProjectIds]);
+
   /** 단일 선택 모드에서 "전체" 옵션은 검색 중이 아닐 때만 표시한다 */
   const showAllOption = !isMultiple && !!allOption && !searchQuery;
+  const singleTotalItems = (showAllOption ? 1 : 0) + filteredProjects.length;
+
+  const openDropdown = useCallback(() => {
+    setIsOpen(true);
+    setHighlightedIndex(isMultiple
+      ? (orderedProjects.length > 0 ? 0 : -1)
+      : (singleTotalItems > 0 ? 0 : -1));
+  }, [isMultiple, orderedProjects.length, singleTotalItems]);
+
+  const closeDropdown = useCallback(() => {
+    setIsOpen(false);
+    setSearchQuery("");
+    setHighlightedIndex(-1);
+  }, []);
 
   const singleDisplayText = (() => {
     if (isMultiple) return "";
@@ -97,13 +128,12 @@ export default function ProjectSelector(props: ProjectSelectorProps) {
         containerRef.current &&
         !containerRef.current.contains(e.target as Node)
       ) {
-        setIsOpen(false);
-        setSearchQuery("");
+        closeDropdown();
       }
     }
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
+  }, [closeDropdown]);
 
   /** 드롭다운이 열리면 검색 input에 포커스한다 */
   useEffect(() => {
@@ -111,6 +141,36 @@ export default function ProjectSelector(props: ProjectSelectorProps) {
       searchInputRef.current.focus();
     }
   }, [isOpen]);
+
+  useEffect(() => {
+    if (!isOpen) {
+      return;
+    }
+
+    const maxIndex = isMultiple ? orderedProjects.length - 1 : singleTotalItems - 1;
+    setHighlightedIndex((current) => {
+      if (maxIndex < 0) {
+        return -1;
+      }
+
+      if (current < 0 || current > maxIndex) {
+        return 0;
+      }
+
+      return current;
+    });
+  }, [isOpen, isMultiple, orderedProjects.length, singleTotalItems]);
+
+  useImperativeHandle(ref, () => ({
+    close: closeDropdown,
+    focus() {
+      openDropdown();
+      requestAnimationFrame(() => {
+        searchInputRef.current?.focus();
+      });
+    },
+    open: openDropdown,
+  }), [closeDropdown, openDropdown]);
 
   const handleToggle = useCallback(
     (projectId: string) => {
@@ -121,22 +181,18 @@ export default function ProjectSelector(props: ProjectSelectorProps) {
         onSelectionChange(nextIds);
       } else if (onSelect) {
         onSelect(projectId);
-        setSearchQuery("");
-        setIsOpen(false);
-        setHighlightedIndex(-1);
+        closeDropdown();
       }
     },
-    [isMultiple, selectedProjectIds, onSelectionChange, onSelect]
+    [closeDropdown, isMultiple, selectedProjectIds, onSelectionChange, onSelect]
   );
 
   const handleSelectAll = useCallback(() => {
     if (onSelect) {
       onSelect("");
-      setSearchQuery("");
-      setIsOpen(false);
-      setHighlightedIndex(-1);
+      closeDropdown();
     }
-  }, [onSelect]);
+  }, [closeDropdown, onSelect]);
 
   const removeChip = useCallback(
     (projectId: string, e: React.MouseEvent) => {
@@ -176,7 +232,7 @@ export default function ProjectSelector(props: ProjectSelectorProps) {
       if (!isOpen) {
         if (e.key === "ArrowDown" || e.key === "Enter") {
           e.preventDefault();
-          setIsOpen(true);
+          openDropdown();
         }
         return;
       }
@@ -185,29 +241,27 @@ export default function ProjectSelector(props: ProjectSelectorProps) {
         case "ArrowDown":
           e.preventDefault();
           setHighlightedIndex((prev) =>
-            prev < filteredProjects.length - 1 ? prev + 1 : 0
+            prev < orderedProjects.length - 1 ? prev + 1 : 0
           );
           break;
         case "ArrowUp":
           e.preventDefault();
           setHighlightedIndex((prev) =>
-            prev > 0 ? prev - 1 : filteredProjects.length - 1
+            prev > 0 ? prev - 1 : orderedProjects.length - 1
           );
           break;
         case "Enter":
           e.preventDefault();
           if (
             highlightedIndex >= 0 &&
-            highlightedIndex < filteredProjects.length
+            highlightedIndex < orderedProjects.length
           ) {
-            handleToggle(filteredProjects[highlightedIndex].id);
+            handleToggle(orderedProjects[highlightedIndex].id);
           }
           break;
         case "Escape":
           e.preventDefault();
-          setIsOpen(false);
-          setSearchQuery("");
-          setHighlightedIndex(-1);
+          closeDropdown();
           break;
       }
     };
@@ -220,7 +274,7 @@ export default function ProjectSelector(props: ProjectSelectorProps) {
       >
         {/* 트리거: 선택된 프로젝트 칩 또는 placeholder. 칩은 최대 2개까지 표시하고 나머지는 "+N" 배지로 축약한다 */}
         <div
-          onClick={() => setIsOpen(!isOpen)}
+          onClick={() => (isOpen ? closeDropdown() : openDropdown())}
           className={`w-full px-2 bg-bg-page border rounded-md text-text-primary cursor-pointer flex items-center gap-1 overflow-hidden ${
             compact ? "py-1 min-h-[34px]" : "py-1.5 min-h-[38px]"
           } ${isOpen ? "border-brand-primary" : "border-border-default"}`}
@@ -288,7 +342,7 @@ export default function ProjectSelector(props: ProjectSelectorProps) {
                   {placeholder}
                 </li>
               ) : (
-                filteredProjects.map((project, index) => {
+                orderedProjects.map((project, index) => {
                   const checked = selectedProjectIds.includes(project.id);
                   return (
                     <li
@@ -348,14 +402,11 @@ export default function ProjectSelector(props: ProjectSelectorProps) {
   }
 
   // ===== 단일 선택 모드 =====
-  const singleTotalItems =
-    (showAllOption ? 1 : 0) + filteredProjects.length;
-
   const handleSingleKeyDown = (e: React.KeyboardEvent) => {
     if (!isOpen) {
       if (e.key === "ArrowDown" || e.key === "Enter") {
         e.preventDefault();
-        setIsOpen(true);
+        openDropdown();
       }
       return;
     }
@@ -393,9 +444,7 @@ export default function ProjectSelector(props: ProjectSelectorProps) {
         break;
       case "Escape":
         e.preventDefault();
-        setIsOpen(false);
-        setSearchQuery("");
-        setHighlightedIndex(-1);
+        closeDropdown();
         break;
     }
   };
@@ -408,7 +457,7 @@ export default function ProjectSelector(props: ProjectSelectorProps) {
     >
       {/* 트리거: 선택된 프로젝트명 또는 placeholder */}
       <div
-        onClick={() => setIsOpen(!isOpen)}
+        onClick={() => (isOpen ? closeDropdown() : openDropdown())}
         className={`w-full px-2 bg-bg-page border rounded-md text-text-primary cursor-pointer flex items-center gap-1 ${
           compact ? "py-1 min-h-[34px]" : "py-1.5 min-h-[38px]"
         } ${isOpen ? "border-brand-primary" : "border-border-default"}`}
@@ -502,4 +551,6 @@ export default function ProjectSelector(props: ProjectSelectorProps) {
       )}
     </div>
   );
-}
+});
+
+export default ProjectSelector;

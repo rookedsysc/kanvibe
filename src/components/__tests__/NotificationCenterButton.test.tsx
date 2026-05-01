@@ -104,4 +104,77 @@ describe("NotificationCenterButton", () => {
       expect(mockRedirect).toHaveBeenCalledWith("/en/task/task-1");
     });
   });
+
+  it("supports arrow navigation and Enter to open the highlighted notification", async () => {
+    mockListNotifications.mockResolvedValue([
+      {
+        id: "n1",
+        title: "First task",
+        body: "Body",
+        taskId: "task-1",
+        relativePath: "/task/task-1",
+        locale: "en",
+        isRead: false,
+        createdAt: new Date().toISOString(),
+        dedupeKey: "k1",
+      },
+      {
+        id: "n2",
+        title: "Second task",
+        body: "Body",
+        taskId: "task-2",
+        relativePath: "/task/task-2",
+        locale: "en",
+        isRead: false,
+        createdAt: new Date().toISOString(),
+        dedupeKey: "k2",
+      },
+    ]);
+    mockMarkNotificationRead.mockResolvedValue(undefined);
+    mockGetTaskById.mockImplementation(async (taskId: string) => ({ id: taskId }));
+
+    render(<NotificationCenterButton />);
+
+    await waitFor(() => {
+      expect(mockListNotifications).toHaveBeenCalled();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "notifications" }));
+    fireEvent.keyDown(window, { key: "ArrowDown" });
+    fireEvent.keyDown(window, { key: "Enter" });
+
+    await waitFor(() => {
+      expect(mockGetTaskById).toHaveBeenCalledWith("task-2");
+    });
+    expect(mockRedirect).toHaveBeenCalledWith("/en/task/task-2");
+  });
+
+  it("closes the dropdown when Escape is pressed", async () => {
+    mockListNotifications.mockResolvedValue([
+      {
+        id: "n1",
+        title: "Only task",
+        body: "Body",
+        taskId: "task-1",
+        relativePath: "/task/task-1",
+        locale: "en",
+        isRead: false,
+        createdAt: new Date().toISOString(),
+        dedupeKey: "k1",
+      },
+    ]);
+
+    render(<NotificationCenterButton />);
+
+    await waitFor(() => {
+      expect(mockListNotifications).toHaveBeenCalled();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "notifications" }));
+    fireEvent.keyDown(window, { key: "Escape" });
+
+    await waitFor(() => {
+      expect(screen.queryByText("Only task")).toBeNull();
+    });
+  });
 });

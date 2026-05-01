@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 import { getTaskById } from "@/desktop/renderer/actions/kanban";
 import { markAllNotificationsRead, markNotificationRead, listNotifications } from "@/desktop/renderer/actions/notifications";
@@ -12,12 +12,59 @@ interface NotificationCenterButtonProps {
   panelClassName?: string;
 }
 
-export default function NotificationCenterButton({ buttonClassName = "", panelClassName = "" }: NotificationCenterButtonProps) {
+export interface NotificationCenterButtonHandle {
+  close: () => void;
+  open: () => void;
+  toggle: () => void;
+}
+
+function shouldIgnoreKeyboardNavigation(eventTarget: EventTarget | null, container: HTMLDivElement | null) {
+  if (!(eventTarget instanceof Element)) {
+    return false;
+  }
+
+  if (eventTarget.closest('[data-shortcut-capture="true"]')) {
+    return true;
+  }
+
+  if (container?.contains(eventTarget)) {
+    return false;
+  }
+
+  if (
+    eventTarget instanceof HTMLInputElement
+    || eventTarget instanceof HTMLTextAreaElement
+    || eventTarget instanceof HTMLSelectElement
+  ) {
+    return true;
+  }
+
+  return eventTarget.closest('[contenteditable="true"]') !== null;
+}
+
+const NotificationCenterButton = forwardRef<NotificationCenterButtonHandle, NotificationCenterButtonProps>(function NotificationCenterButton(
+  { buttonClassName = "", panelClassName = "" },
+  ref,
+) {
   const t = useTranslations("common");
   const containerRef = useRef<HTMLDivElement>(null);
+  const itemRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const [isOpen, setIsOpen] = useState(false);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
+  const [highlightedIndex, setHighlightedIndex] = useState(-1);
   const [missingTaskNotification, setMissingTaskNotification] = useState<AppNotification | null>(null);
+
+  useImperativeHandle(ref, () => ({
+    close() {
+      setIsOpen(false);
+    },
+    open() {
+      setIsOpen(true);
+    },
+    toggle() {
+      setIsOpen((current) => !current);
+    },
+  }), []);
 
   useEffect(() => {
     async function load() {
@@ -42,6 +89,70 @@ export default function NotificationCenterButton({ buttonClassName = "", panelCl
       document.removeEventListener("mousedown", handleClickOutside);
     };
   }, []);
+
+  useEffect(() => {
+    if (!isOpen) {
+      setHighlightedIndex(-1);
+      return;
+    }
+
+    setHighlightedIndex(notifications.length > 0 ? 0 : -1);
+  }, [isOpen, notifications.length]);
+
+  useEffect(() => {
+    if (highlightedIndex < 0) {
+      return;
+    }
+
+    itemRefs.current[highlightedIndex]?.scrollIntoView?.({
+      block: "nearest",
+    });
+  }, [highlightedIndex]);
+
+  useEffect(() => {
+    if (!isOpen) {
+      return;
+    }
+
+    function handleWindowKeyDown(event: KeyboardEvent) {
+      if (shouldIgnoreKeyboardNavigation(event.target, containerRef.current)) {
+        return;
+      }
+
+      switch (event.key) {
+        case "ArrowDown":
+          if (notifications.length === 0) {
+            return;
+          }
+          event.preventDefault();
+          setHighlightedIndex((current) => (current < notifications.length - 1 ? current + 1 : 0));
+          break;
+        case "ArrowUp":
+          if (notifications.length === 0) {
+            return;
+          }
+          event.preventDefault();
+          setHighlightedIndex((current) => (current > 0 ? current - 1 : notifications.length - 1));
+          break;
+        case "Enter":
+          if (highlightedIndex < 0 || highlightedIndex >= notifications.length) {
+            return;
+          }
+          event.preventDefault();
+          void handleNotificationClick(notifications[highlightedIndex]);
+          break;
+        case "Escape":
+          event.preventDefault();
+          setIsOpen(false);
+          break;
+      }
+    }
+
+    window.addEventListener("keydown", handleWindowKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleWindowKeyDown);
+    };
+  }, [highlightedIndex, isOpen, notifications]);
 
   const unreadCount = useMemo(() => notifications.filter((notification) => !notification.isRead).length, [notifications]);
 
@@ -112,12 +223,20 @@ export default function NotificationCenterButton({ buttonClassName = "", panelCl
           <div className="max-h-[28rem] overflow-y-auto">
             {notifications.length === 0 ? (
               <div className="px-4 py-8 text-center text-sm text-text-muted">{t("noNotifications")}</div>
-            ) : notifications.map((notification) => (
+            ) : notifications.map((notification, index) => (
               <button
                 key={notification.id}
+                ref={(node) => {
+                  itemRefs.current[index] = node;
+                }}
                 type="button"
                 onClick={() => handleNotificationClick(notification)}
-                className={`w-full border-b border-border-subtle px-4 py-3 text-left transition-colors hover:bg-bg-page ${notification.isRead ? "bg-bg-surface" : "bg-brand-primary/5"}`}
+                onMouseEnter={() => setHighlightedIndex(index)}
+                className={`w-full border-b border-border-subtle px-4 py-3 text-left transition-colors hover:bg-bg-page ${
+                  index === highlightedIndex
+                    ? "bg-brand-primary/10"
+                    : notification.isRead ? "bg-bg-surface" : "bg-brand-primary/5"
+                }`}
               >
                 <div className="flex items-start gap-3">
                   <span className={`mt-1 h-2.5 w-2.5 rounded-full ${notification.isRead ? "bg-border-default" : "bg-brand-primary"}`} />
@@ -154,4 +273,6 @@ export default function NotificationCenterButton({ buttonClassName = "", panelCl
       ) : null}
     </div>
   );
-}
+});
+
+export default NotificationCenterButton;
