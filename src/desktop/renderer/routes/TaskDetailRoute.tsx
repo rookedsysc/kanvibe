@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 import { useParams } from "react-router-dom";
 import AiSessionsCard from "@/components/AiSessionsCard";
@@ -7,7 +7,7 @@ import ConnectTerminalForm from "@/components/ConnectTerminalForm";
 import DeleteTaskButton from "@/components/DeleteTaskButton";
 import DoneStatusButton from "@/components/DoneStatusButton";
 import HooksStatusCard from "@/components/HooksStatusCard";
-import NotificationCenterButton from "@/components/NotificationCenterButton";
+import NotificationCenterButton, { type NotificationCenterButtonHandle } from "@/components/NotificationCenterButton";
 import TaskDetailInfoCard from "@/components/TaskDetailInfoCard";
 import TaskDetailTitleCard from "@/components/TaskDetailTitleCard";
 import { Link, useRouter } from "@/desktop/renderer/navigation";
@@ -21,6 +21,7 @@ import {
   getTaskHooksStatus,
   getTaskOpenCodeHooksStatus,
 } from "@/desktop/renderer/actions/project";
+import { useBoardCommands } from "@/desktop/renderer/components/BoardCommandProvider";
 import TerminalLoader from "@/desktop/renderer/components/TerminalLoader";
 import { fetchPrUrlWithPrompt } from "@/desktop/renderer/utils/fetchPrUrlWithPrompt";
 import { buildRouteCacheKey, readRouteCache, removeRouteCache, writeRouteCache } from "@/desktop/renderer/utils/routeCache";
@@ -82,6 +83,7 @@ function getTaskDetailRouteCacheKey(taskId: string) {
 export default function TaskDetailRoute() {
   const { id = "" } = useParams();
   const router = useRouter();
+  const boardCommands = useBoardCommands();
   const t = useTranslations("taskDetail");
   const tc = useTranslations("common");
   const refreshSignal = useRefreshSignal(["all", "task-detail"]);
@@ -91,6 +93,11 @@ export default function TaskDetailRoute() {
   );
   const [state, setState] = useState<TaskDetailState | null | undefined>(cachedState ?? undefined);
   const [needsMacDesktopHeaderOffset, setNeedsMacDesktopHeaderOffset] = useState(false);
+  const notificationCenterRef = useRef<NotificationCenterButtonHandle>(null);
+
+  useEffect(() => boardCommands.registerNotificationCenterHandler(() => {
+    notificationCenterRef.current?.toggle();
+  }), [boardCommands]);
 
   useEffect(() => {
     const isDesktopApp = window.kanvibeDesktop?.isDesktop === true;
@@ -286,7 +293,7 @@ export default function TaskDetailRoute() {
               </svg>
               {t("backToBoard")}
             </Link>
-            {!hasTerminal ? <NotificationCenterButton buttonClassName="hover:bg-bg-page" /> : null}
+            {!hasTerminal ? <NotificationCenterButton ref={notificationCenterRef} buttonClassName="hover:bg-bg-page" /> : null}
           </div>
 
           <TaskDetailTitleCard task={state.task} taskId={state.task.id} />
@@ -347,7 +354,7 @@ export default function TaskDetailRoute() {
               <span className="w-3 h-3 rounded-full bg-traffic-maximize" />
               <span className="ml-3 text-xs text-terminal-text font-mono truncate">{state.task.sessionName ?? t("terminal")}</span>
               <div className="ml-auto">
-                <NotificationCenterButton buttonClassName="text-terminal-text hover:text-white hover:bg-white/10" panelClassName="mt-3" />
+                <NotificationCenterButton ref={notificationCenterRef} buttonClassName="text-terminal-text hover:text-white hover:bg-white/10" panelClassName="mt-3" />
               </div>
             </div>
             <div className="flex-1 min-h-0 bg-terminal-bg">

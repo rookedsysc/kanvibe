@@ -1,6 +1,7 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { BoardCommandProvider } from "@/desktop/renderer/components/BoardCommandProvider";
 import TaskDetailRoute from "@/desktop/renderer/routes/TaskDetailRoute";
 
 const TASK_DETAIL_CACHE_KEY = "kanvibe:route-cache:task-detail:task-1";
@@ -19,8 +20,13 @@ const mocks = vi.hoisted(() => ({
   getSidebarDefaultCollapsed: vi.fn(),
   getSidebarHintDismissed: vi.fn(),
   getDoneAlertDismissed: vi.fn(),
+  listNotifications: vi.fn(),
+  markNotificationRead: vi.fn(),
+  markAllNotificationsRead: vi.fn(),
+  activateNotification: vi.fn(),
   fetchPrUrlWithPrompt: vi.fn(),
   useRefreshSignal: vi.fn(() => 0),
+  redirect: vi.fn(),
   push: vi.fn(),
   back: vi.fn(),
 }));
@@ -45,6 +51,7 @@ vi.mock("react-router-dom", () => ({
 
 vi.mock("@/desktop/renderer/navigation", () => ({
   Link: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+  redirect: (...args: unknown[]) => mocks.redirect(...args),
   useRouter: () => ({ push: mocks.push, back: mocks.back }),
 }));
 
@@ -77,6 +84,13 @@ vi.mock("@/desktop/renderer/actions/appSettings", () => ({
   getDoneAlertDismissed: (...args: unknown[]) => mocks.getDoneAlertDismissed(...args),
 }));
 
+vi.mock("@/desktop/renderer/actions/notifications", () => ({
+  listNotifications: (...args: unknown[]) => mocks.listNotifications(...args),
+  markNotificationRead: (...args: unknown[]) => mocks.markNotificationRead(...args),
+  markAllNotificationsRead: (...args: unknown[]) => mocks.markAllNotificationsRead(...args),
+  activateNotification: (...args: unknown[]) => mocks.activateNotification(...args),
+}));
+
 vi.mock("@/desktop/renderer/utils/fetchPrUrlWithPrompt", () => ({
   fetchPrUrlWithPrompt: (...args: unknown[]) => mocks.fetchPrUrlWithPrompt(...args),
 }));
@@ -103,10 +117,6 @@ vi.mock("@/components/DoneStatusButton", () => ({
 
 vi.mock("@/components/HooksStatusCard", () => ({
   default: () => <div data-testid="hooks-status-card" />,
-}));
-
-vi.mock("@/components/NotificationCenterButton", () => ({
-  default: () => <div data-testid="notification-center" />,
 }));
 
 vi.mock("@/components/TaskDetailInfoCard", () => ({
@@ -145,6 +155,10 @@ describe("TaskDetailRoute", () => {
     mocks.getSidebarDefaultCollapsed.mockResolvedValue(false);
     mocks.getSidebarHintDismissed.mockResolvedValue(false);
     mocks.getDoneAlertDismissed.mockResolvedValue(false);
+    mocks.listNotifications.mockResolvedValue([]);
+    mocks.markNotificationRead.mockResolvedValue(undefined);
+    mocks.markAllNotificationsRead.mockResolvedValue(undefined);
+    mocks.activateNotification.mockResolvedValue(true);
     mocks.updateTaskStatus.mockResolvedValue(null);
     mocks.deleteTask.mockResolvedValue(true);
     mocks.fetchPrUrlWithPrompt.mockResolvedValue(null);
@@ -230,6 +244,43 @@ describe("TaskDetailRoute", () => {
 
     await waitFor(() => {
       expect(screen.getByTestId("task-title").textContent).toBe("fresh task title");
+    });
+  });
+
+  it("알림 단축키로 상세 화면의 알림 센터를 토글한다", async () => {
+    mocks.getTaskById.mockResolvedValue({
+      id: "task-1",
+      title: "task title",
+      description: null,
+      branchName: "feat/detail-shortcut",
+      baseBranch: "main",
+      prUrl: null,
+      sessionType: null,
+      sessionName: null,
+      sshHost: null,
+      projectId: "project-1",
+      project: { id: "project-1", name: "kanvibe" },
+      status: "todo",
+      agentType: null,
+      worktreePath: "/repo__worktrees/detail-shortcut",
+    });
+
+    render(
+      <BoardCommandProvider>
+        <TaskDetailRoute />
+      </BoardCommandProvider>,
+    );
+
+    await screen.findByRole("button", { name: "notifications" });
+
+    fireEvent.keyDown(window, {
+      key: "i",
+      ctrlKey: true,
+      shiftKey: true,
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("noNotifications")).toBeTruthy();
     });
   });
 });
