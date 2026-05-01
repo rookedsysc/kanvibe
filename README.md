@@ -149,6 +149,7 @@ Each pane can run a custom command (e.g., `vim`, `htop`, `lazygit`, test runner,
 - 5-status task management (TODO / PROGRESS / PENDING / REVIEW / DONE)
 - Custom task ordering with drag & drop
 - Multi-project filtering
+- Board page find with `Cmd/Ctrl+F` for visible project/task text
 - Global quick search for task detail pages by branch or project name
 - Done column pagination
 - Real-time WebSocket updates

@@ -53,6 +53,13 @@
     "title": "",
     "newTask": "+ 新任务",
     "allProjects": "所有项目",
+    "pageFind": {
+      "label": "在看板中查找",
+      "placeholder": "查找当前看板中可见的文本...",
+      "previous": "上一个",
+      "next": "下一个",
+      "noMatch": "当前看板中没有找到匹配文本。"
+    },
     "columns": {
       "todo": "待办",
       "progress": "进行中",

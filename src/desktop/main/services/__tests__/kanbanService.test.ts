@@ -585,10 +585,11 @@ describe("kanbanService.createTask", () => {
     expect(result).toEqual({
       updatedTaskIds: [],
       mergeEventKeys: [],
+      mergedPullRequests: [],
     });
     expect(mocks.execFile).not.toHaveBeenCalled();
     expect(mocks.taskRepo.save).not.toHaveBeenCalled();
-    expect(mocks.broadcastTaskPrMergedDetected).not.toHaveBeenCalled();
+    expect(mocks.broadcastTaskPrMergedDetectedBatch).not.toHaveBeenCalled();
   });
 
   it("active task PR sync는 merged PR을 감지하면 중복 없이 merge 이벤트를 브로드캐스트한다", async () => {

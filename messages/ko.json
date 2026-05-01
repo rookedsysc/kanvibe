@@ -54,6 +54,13 @@
     "title": "",
     "newTask": "+ 새 작업",
     "allProjects": "전체 프로젝트",
+    "pageFind": {
+      "label": "보드에서 찾기",
+      "placeholder": "이 보드에서 보이는 텍스트 찾기...",
+      "previous": "이전",
+      "next": "다음",
+      "noMatch": "이 보드에서 일치하는 텍스트를 찾지 못했습니다."
+    },
     "columns": {
       "todo": "Todo",
       "progress": "Progress",

@@ -54,6 +54,13 @@
     "title": "",
     "newTask": "+ New Task",
     "allProjects": "All Projects",
+    "pageFind": {
+      "label": "Find on board",
+      "placeholder": "Find visible text on this board...",
+      "previous": "Prev",
+      "next": "Next",
+      "noMatch": "No matches found on this board."
+    },
     "columns": {
       "todo": "Todo",
       "progress": "Progress",
