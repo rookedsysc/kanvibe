@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useTransition } from "react";
+import { useState, useEffect, useTransition, useCallback } from "react";
 import { useTranslations } from "next-intl";
 import { useRouter } from "@/desktop/renderer/navigation";
 import { createTask } from "@/desktop/renderer/actions/kanban";
@@ -23,57 +23,99 @@ interface CreateTaskModalProps {
   defaultSessionType?: string;
 }
 
+type CreateTaskModalContentProps = Pick<
+  CreateTaskModalProps,
+  "onClose" | "projects" | "defaultProjectId" | "defaultBaseBranch" | "defaultSessionType"
+>;
+
+function findProjectDefaultBranch(projects: Project[], projectId: string) {
+  return projects.find((p) => p.id === projectId)?.defaultBranch ?? "";
+}
+
+function resolveInitialBaseBranch(
+  projects: Project[],
+  projectId: string,
+  defaultBaseBranch?: string,
+) {
+  if (!projectId) return "";
+  return defaultBaseBranch || findProjectDefaultBranch(projects, projectId);
+}
+
 export default function CreateTaskModal({
   isOpen,
   onClose,
-  sshHosts,
   projects,
   defaultProjectId,
   defaultBaseBranch,
   defaultSessionType,
 }: CreateTaskModalProps) {
+  if (!isOpen) return null;
+
+  return (
+    <CreateTaskModalContent
+      onClose={onClose}
+      projects={projects}
+      defaultProjectId={defaultProjectId}
+      defaultBaseBranch={defaultBaseBranch}
+      defaultSessionType={defaultSessionType}
+    />
+  );
+}
+
+function CreateTaskModalContent({
+  onClose,
+  projects,
+  defaultProjectId,
+  defaultBaseBranch,
+  defaultSessionType,
+}: CreateTaskModalContentProps) {
   const t = useTranslations("task");
   const tc = useTranslations("common");
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
-  const [selectedProjectId, setSelectedProjectId] = useState(defaultProjectId || "");
+  const initialProjectId = defaultProjectId || "";
+  const [selectedProjectId, setSelectedProjectId] = useState(initialProjectId);
   const [branches, setBranches] = useState<string[]>([]);
-  const [baseBranch, setBaseBranch] = useState("");
+  const [baseBranch, setBaseBranch] = useState(() =>
+    resolveInitialBaseBranch(projects, initialProjectId, defaultBaseBranch)
+  );
   const [priority, setPriority] = useState<TaskPriority | null>(null);
   const [error, setError] = useState<string | null>(null);
-
-  /** 모달이 열릴 때 필터에서 선택된 프로젝트를 자동 설정한다 */
-  useEffect(() => {
-    if (isOpen && defaultProjectId) {
-      setSelectedProjectId(defaultProjectId);
-    }
-  }, [isOpen, defaultProjectId]);
 
   /** worktree가 아닌 프로젝트만 필터링한다 */
   const availableProjects = projects.filter((p) => !p.isWorktree);
 
-  useEffect(() => {
-    if (!selectedProjectId) {
+  const handleProjectSelect = useCallback(
+    (projectId: string) => {
+      setSelectedProjectId(projectId);
+      setBaseBranch(projectId ? findProjectDefaultBranch(projects, projectId) : "");
       setBranches([]);
-      setBaseBranch("");
-      return;
-    }
+    },
+    [projects],
+  );
 
-    const selectedProject = projects.find((p) => p.id === selectedProjectId);
-    if (selectedProject) {
-      setBaseBranch(defaultBaseBranch || selectedProject.defaultBranch);
-    }
+  useEffect(() => {
+    if (!selectedProjectId) return;
 
+    let isCancelled = false;
     getProjectBranches(selectedProjectId).then((result) => {
+      if (isCancelled) return;
+
       setBranches(result);
       /** defaultBaseBranch가 브랜치 목록에 없으면 옵션에 추가한다 */
       if (defaultBaseBranch && !result.includes(defaultBaseBranch)) {
         setBranches((prev) => [defaultBaseBranch, ...prev]);
       }
     });
-  }, [selectedProjectId, projects, defaultBaseBranch]);
 
-  if (!isOpen) return null;
+    return () => {
+      isCancelled = true;
+    };
+  }, [selectedProjectId, defaultBaseBranch]);
+
+  const branchOptions = baseBranch && !branches.includes(baseBranch)
+    ? [baseBranch, ...branches]
+    : branches;
 
   function handleSubmit(formData: FormData) {
     const branchName = formData.get("branchName") as string;
@@ -125,7 +167,7 @@ export default function CreateTaskModal({
             <ProjectSelector
               projects={availableProjects}
               selectedProjectId={selectedProjectId}
-              onSelect={setSelectedProjectId}
+              onSelect={handleProjectSelect}
               placeholder={t("projectSelect")}
               searchPlaceholder={t("projectSearch")}
             />
@@ -137,7 +179,7 @@ export default function CreateTaskModal({
                 {t("baseBranch")}
               </label>
               <BranchSearchInput
-                branches={branches.length > 0 ? branches : baseBranch ? [baseBranch] : []}
+                branches={branchOptions}
                 value={baseBranch}
                 onChange={setBaseBranch}
               />
