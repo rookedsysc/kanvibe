@@ -3,7 +3,7 @@ import { promisify } from "util";
 import { mkdir, readFile } from "fs/promises";
 import { homedir } from "os";
 import path from "path";
-import { buildSSHArgs, type SSHHostConfig } from "@/lib/sshConfig";
+import { buildSSHArgs, parseSSHConfig, type SSHHostConfig } from "@/lib/sshConfig";
 
 const execAsync = promisify(exec);
 const execFileAsync = promisify(execFile);
@@ -88,8 +88,6 @@ async function execLocal(command: string): Promise<string> {
 
 /** SSH를 통해 원격에서 명령을 실행하고 stdout을 반환한다 */
 async function execRemote(sshHost: string, command: string): Promise<string> {
-  const { parseSSHConfig } = await import("@/lib/sshConfig");
-
   const configs = await parseSSHConfig();
   const hostConfig = configs.find((c) => c.host === sshHost);
 
