@@ -170,4 +170,86 @@ describe("desktopNotificationService", () => {
 
     expect(mocks.createNotification).not.toHaveBeenCalled();
   });
+
+  it("background sync review event는 review action metadata와 함께 알림을 생성한다", async () => {
+    mocks.getNotificationSettings.mockResolvedValue({
+      isEnabled: true,
+      enabledStatuses: ["progress"],
+    });
+    mocks.createNotification.mockResolvedValue({
+      created: true,
+      notification: {
+        id: "notification-review-1",
+        title: "Background sync review",
+        body: "1 merged PR\n1 registered worktree",
+        taskId: null,
+        relativePath: "/ko",
+        locale: "ko",
+        isRead: false,
+        createdAt: "2026-05-01T00:00:00.000Z",
+        dedupeKey: "background-sync-review:test",
+        action: {
+          type: "background-sync-review",
+          payload: {
+            mergedPullRequests: [],
+            registeredWorktrees: [],
+          },
+        },
+      },
+    });
+
+    const { deliverBoardEventNotification } = await import("@/desktop/main/services/desktopNotificationService");
+
+    await expect(deliverBoardEventNotification({
+      type: "background-sync-review-needed",
+      mergedPullRequests: [
+        {
+          taskId: "task-10",
+          taskTitle: "Merged PR task",
+          branchName: "feature/merged-pr",
+          prUrl: "https://github.com/kanvibe/kanvibe/pull/211",
+          mergedAt: "2026-04-30T02:00:00Z",
+        },
+      ],
+      registeredWorktrees: [
+        {
+          taskId: "task-worktree",
+          projectName: "api",
+          branchName: "feature-sync",
+          worktreePath: "/workspace/api__worktrees/feature-sync",
+          sshHost: null,
+        },
+      ],
+    }, "ko", {
+      iconPath: "/icon.png",
+    })).resolves.toBe(true);
+
+    expect(mocks.createNotification).toHaveBeenCalledWith(expect.objectContaining({
+      locale: "ko",
+      relativePath: "/ko",
+      action: {
+        type: "background-sync-review",
+        payload: {
+          mergedPullRequests: [
+            {
+              taskId: "task-10",
+              taskTitle: "Merged PR task",
+              branchName: "feature/merged-pr",
+              prUrl: "https://github.com/kanvibe/kanvibe/pull/211",
+              mergedAt: "2026-04-30T02:00:00Z",
+            },
+          ],
+          registeredWorktrees: [
+            {
+              taskId: "task-worktree",
+              projectName: "api",
+              branchName: "feature-sync",
+              worktreePath: "/workspace/api__worktrees/feature-sync",
+              sshHost: null,
+            },
+          ],
+        },
+      },
+    }));
+  });
 });

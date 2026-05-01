@@ -50,6 +50,11 @@ export async function listNotifications(): Promise<AppNotification[]> {
   return notifications.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
 
+export async function getNotificationById(id: string): Promise<AppNotification | null> {
+  const notifications = await readNotifications();
+  return notifications.find((notification) => notification.id === id) ?? null;
+}
+
 export async function createNotification(payload: DesktopNotificationPayload): Promise<{ created: boolean; notification: AppNotification }> {
   const now = Date.now();
   const dedupeKey = payload.dedupeKey || [payload.title, payload.body, payload.taskId || "", payload.locale].join("::");
@@ -75,6 +80,7 @@ export async function createNotification(payload: DesktopNotificationPayload): P
     isRead: false,
     createdAt: new Date(now).toISOString(),
     dedupeKey,
+    action: payload.action ?? null,
   };
 
   await writeNotifications([notification, ...notifications]);

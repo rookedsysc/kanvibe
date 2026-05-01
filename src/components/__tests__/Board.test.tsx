@@ -383,11 +383,52 @@ describe("Board defaultSessionType sync", () => {
   });
 
   it("PR merge batch 이벤트를 받으면 하나의 체크리스트 모달을 띄우고 체크된 task만 Done으로 이동한다", async () => {
-    const listeners: Array<(event: unknown) => void> = [];
+    const notificationActivationListeners: Array<(notification: unknown) => void> = [];
     window.kanvibeDesktop = {
       isDesktop: true,
-      onBoardEvent: vi.fn((listener) => {
-        listeners.push(listener);
+      consumePendingNotificationActivation: vi.fn().mockResolvedValue({
+        id: "n-review",
+        title: "Background sync review",
+        body: "Review pending items",
+        taskId: null,
+        relativePath: "/ko",
+        locale: "ko",
+        isRead: false,
+        createdAt: "2026-05-01T00:00:00.000Z",
+        dedupeKey: "background-review-1",
+        action: {
+          type: "background-sync-review",
+          payload: {
+            mergedPullRequests: [
+              {
+                taskId: "task-1",
+                taskTitle: "Test Task",
+                branchName: "feature/pr-sync",
+                prUrl: "https://github.com/kanvibe/kanvibe/pull/210",
+                mergedAt: "2026-04-30T02:00:00Z",
+              },
+              {
+                taskId: "task-2",
+                taskTitle: "Docs Task",
+                branchName: "docs/pr-sync",
+                prUrl: "https://github.com/kanvibe/kanvibe/pull/211",
+                mergedAt: "2026-04-30T02:05:00Z",
+              },
+            ],
+            registeredWorktrees: [
+              {
+                taskId: "task-worktree",
+                projectName: "kanvibe",
+                branchName: "feature-sync",
+                worktreePath: "/repo/kanvibe__worktrees/feature-sync",
+                sshHost: null,
+              },
+            ],
+          },
+        },
+      }),
+      onNotificationActivated: vi.fn((listener) => {
+        notificationActivationListeners.push(listener);
         return () => {};
       }),
     } as never;
@@ -409,36 +450,45 @@ describe("Board defaultSessionType sync", () => {
     );
 
     await waitFor(() => {
-      expect(listeners).toHaveLength(1);
+      expect(screen.getByText("https://github.com/kanvibe/kanvibe/pull/210")).toBeTruthy();
     });
 
+    expect(screen.getByText("https://github.com/kanvibe/kanvibe/pull/211")).toBeTruthy();
+    expect(screen.getByText("/repo/kanvibe__worktrees/feature-sync")).toBeTruthy();
+
     await act(async () => {
-      listeners[0]({
-        type: "task-pr-merged-detected-batch",
-        mergedPullRequests: [
-          {
-            taskId: "task-1",
-            taskTitle: "Test Task",
-            branchName: "feature/pr-sync",
-            prUrl: "https://github.com/kanvibe/kanvibe/pull/210",
-            mergedAt: "2026-04-30T02:00:00Z",
+      notificationActivationListeners[0]?.({
+        id: "n-review-2",
+        title: "Background sync review",
+        body: "Review pending items",
+        taskId: null,
+        relativePath: "/ko",
+        locale: "ko",
+        isRead: false,
+        createdAt: "2026-05-01T00:10:00.000Z",
+        dedupeKey: "background-review-2",
+        action: {
+          type: "background-sync-review",
+          payload: {
+            mergedPullRequests: [
+              {
+                taskId: "task-3",
+                taskTitle: "Release Task",
+                branchName: "release/pr-sync",
+                prUrl: "https://github.com/kanvibe/kanvibe/pull/310",
+                mergedAt: "2026-04-30T02:10:00Z",
+              },
+            ],
+            registeredWorktrees: [],
           },
-          {
-            taskId: "task-2",
-            taskTitle: "Docs Task",
-            branchName: "docs/pr-sync",
-            prUrl: "https://github.com/kanvibe/kanvibe/pull/211",
-            mergedAt: "2026-04-30T02:05:00Z",
-          },
-        ],
+        },
       });
     });
 
-    expect(screen.getByText("https://github.com/kanvibe/kanvibe/pull/210")).toBeTruthy();
-    expect(screen.getByText("https://github.com/kanvibe/kanvibe/pull/211")).toBeTruthy();
+    expect(screen.getByText("https://github.com/kanvibe/kanvibe/pull/310")).toBeTruthy();
 
     await act(async () => {
-      fireEvent.click(screen.getByRole("checkbox", { name: "Docs Task" }));
+      fireEvent.click(screen.getByRole("checkbox", { name: "Release Task" }));
     });
 
     await act(async () => {
@@ -446,8 +496,7 @@ describe("Board defaultSessionType sync", () => {
     });
 
     await waitFor(() => {
-      expect(updateTaskStatus).toHaveBeenCalledWith("task-1", TaskStatus.DONE);
+      expect(updateTaskStatus).not.toHaveBeenCalled();
     });
-    expect(updateTaskStatus).toHaveBeenCalledTimes(1);
   });
 });

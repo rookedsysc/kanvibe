@@ -40,6 +40,14 @@
       "message": "Kanvibe detected that worktree PR {branchName} was merged. Move the task \"{taskTitle}\" to Done?",
       "batchMessage": "These PRs were detected as merged during the latest scan. Check the tasks you want to move to Done and handle them together.",
       "prLinkLabel": "PR Link"
+    },
+    "backgroundSyncReview": {
+      "title": "Background Sync Review",
+      "message": "The latest background scan found items to review. Check merged PR tasks you want to move to Done, and review newly registered worktrees as well.",
+      "mergedSection": "Merged PRs",
+      "registeredSection": "New TODO worktrees",
+      "emptyMerged": "There are no merged PR tasks to move to Done in this review.",
+      "emptyRegistered": "There are no newly registered worktrees in this review."
     }
   },
   "login": {
