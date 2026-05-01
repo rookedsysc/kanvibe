@@ -30,6 +30,7 @@ interface BoardCommandHandlers {
 interface BoardCommandContextValue {
   canCreateBranchTodo: boolean;
   registerBoardHandlers: (handlers: BoardCommandHandlers) => () => void;
+  registerNotificationCenterHandler: (handler: () => void) => () => void;
   requestCreateBranchTodo: (defaults: BranchTodoDefaults) => void;
   setTaskQuickSearchOpen: (isOpen: boolean) => void;
 }
@@ -38,6 +39,7 @@ const noopDisposer = () => {};
 const defaultBoardCommandContextValue: BoardCommandContextValue = {
   canCreateBranchTodo: false,
   registerBoardHandlers: () => noopDisposer,
+  registerNotificationCenterHandler: () => noopDisposer,
   requestCreateBranchTodo: () => {},
   setTaskQuickSearchOpen: () => {},
 };
@@ -71,18 +73,34 @@ function shouldIgnoreGlobalShortcut(eventTarget: EventTarget | null) {
 
 export function BoardCommandProvider({ children }: PropsWithChildren) {
   const handlersRef = useRef<BoardCommandHandlers | null>(null);
+  const notificationCenterHandlerRef = useRef<(() => void) | null>(null);
   const [canCreateBranchTodo, setCanCreateBranchTodo] = useState(false);
   const [isTaskQuickSearchOpen, setIsTaskQuickSearchOpen] = useState(false);
   const isMacLike = isMacLikePlatform();
 
   const registerBoardHandlers = useCallback((handlers: BoardCommandHandlers) => {
     handlersRef.current = handlers;
+    notificationCenterHandlerRef.current = handlers.toggleNotificationCenter;
     setCanCreateBranchTodo(true);
 
     return () => {
       if (handlersRef.current === handlers) {
         handlersRef.current = null;
         setCanCreateBranchTodo(false);
+      }
+
+      if (notificationCenterHandlerRef.current === handlers.toggleNotificationCenter) {
+        notificationCenterHandlerRef.current = null;
+      }
+    };
+  }, []);
+
+  const registerNotificationCenterHandler = useCallback((handler: () => void) => {
+    notificationCenterHandlerRef.current = handler;
+
+    return () => {
+      if (notificationCenterHandlerRef.current === handler) {
+        notificationCenterHandlerRef.current = null;
       }
     };
   }, []);
@@ -97,17 +115,25 @@ export function BoardCommandProvider({ children }: PropsWithChildren) {
 
   useEffect(() => {
     function handleGlobalKeyDown(event: KeyboardEvent) {
-      if (!handlersRef.current || isTaskQuickSearchOpen || shouldIgnoreGlobalShortcut(event.target)) {
+      if (isTaskQuickSearchOpen || shouldIgnoreGlobalShortcut(event.target)) {
         return;
       }
 
       if (matchShortcutEvent(event, BOARD_NOTIFICATION_SHORTCUT, isMacLike)) {
+        if (!notificationCenterHandlerRef.current) {
+          return;
+        }
+
         event.preventDefault();
-        handlersRef.current.toggleNotificationCenter();
+        notificationCenterHandlerRef.current();
         return;
       }
 
       if (matchShortcutEvent(event, BOARD_PROJECT_FILTER_SHORTCUT, isMacLike)) {
+        if (!handlersRef.current) {
+          return;
+        }
+
         event.preventDefault();
         handlersRef.current.openProjectFilter();
       }
@@ -122,9 +148,10 @@ export function BoardCommandProvider({ children }: PropsWithChildren) {
   const value = useMemo<BoardCommandContextValue>(() => ({
     canCreateBranchTodo,
     registerBoardHandlers,
+    registerNotificationCenterHandler,
     requestCreateBranchTodo,
     setTaskQuickSearchOpen,
-  }), [canCreateBranchTodo, registerBoardHandlers, requestCreateBranchTodo]);
+  }), [canCreateBranchTodo, registerBoardHandlers, registerNotificationCenterHandler, requestCreateBranchTodo, setTaskQuickSearchOpen]);
 
   return (
     <BoardCommandContext.Provider value={value}>
