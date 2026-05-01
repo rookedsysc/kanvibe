@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect, useMemo, useRef, useTransition } from "react";
+import { useState, useCallback, useEffect, useMemo, useTransition } from "react";
 import { useTranslations } from "next-intl";
 import { DragDropContext, type DropResult } from "@hello-pangea/dnd";
 import BoardPageFindBar from "./BoardPageFindBar";
@@ -16,10 +16,15 @@ import { reorderTasks, deleteTask, getMoreDoneTasks, moveTaskToColumn, updateTas
 import type { TasksByStatus } from "@/desktop/renderer/actions/kanban";
 import { SessionType, TaskStatus, type KanbanTask } from "@/entities/KanbanTask";
 import type { Project } from "@/entities/Project";
+import type { AppNotification } from "@/desktop/shared/notifications";
 import { useAutoRefresh } from "@/desktop/renderer/hooks/useAutoRefresh";
 import { useProjectFilterParams } from "@/desktop/renderer/hooks/useProjectFilterParams";
 import { computeProjectColor } from "@/lib/projectColor";
-import type { BoardEventPayload, TaskPrMergedDetectedPayload } from "@/lib/boardNotifier";
+import type {
+  BackgroundSyncReviewPayload,
+  BackgroundSyncRegisteredWorktreePayload,
+  TaskPrMergedDetectedPayload,
+} from "@/lib/boardNotifier";
 
 interface BoardProps {
   initialTasks: TasksByStatus;
@@ -47,15 +52,6 @@ interface ContextMenuState {
   x: number;
   y: number;
   task: KanbanTask | null;
-}
-
-interface PrMergeAlertState {
-  eventKey: string;
-  taskId: string;
-  taskTitle: string;
-  branchName: string;
-  prUrl: string;
-  mergedAt: string;
 }
 
 /** worktree repoPath에서 메인 프로젝트 경로를 추출한다 */
@@ -100,31 +96,20 @@ function insertAtFilteredIndex(
   return arr;
 }
 
-function isTaskPrMergedDetectedEvent(
-  event: BoardEventPayload,
-): event is Extract<BoardEventPayload, { type: "task-pr-merged-detected" }> {
-  return event.type === "task-pr-merged-detected";
-}
-
-function isTaskPrMergedDetectedBatchEvent(
-  event: BoardEventPayload,
-): event is Extract<BoardEventPayload, { type: "task-pr-merged-detected-batch" }> {
-  return event.type === "task-pr-merged-detected-batch";
-}
-
 function buildMergedPrEventKey(taskId: string, prUrl: string, mergedAt: string) {
   return `${taskId}:${prUrl}:${mergedAt}`;
 }
 
-function createPrMergeAlertState(payload: TaskPrMergedDetectedPayload): PrMergeAlertState {
-  return {
-    eventKey: buildMergedPrEventKey(payload.taskId, payload.prUrl, payload.mergedAt),
-    taskId: payload.taskId,
-    taskTitle: payload.taskTitle,
-    branchName: payload.branchName,
-    prUrl: payload.prUrl,
-    mergedAt: payload.mergedAt,
-  };
+function getMergedPrEventKey(payload: TaskPrMergedDetectedPayload) {
+  return buildMergedPrEventKey(payload.taskId, payload.prUrl, payload.mergedAt);
+}
+
+function getBackgroundSyncReviewPayload(notification: AppNotification | null | undefined): BackgroundSyncReviewPayload | null {
+  if (notification?.action?.type !== "background-sync-review") {
+    return null;
+  }
+
+  return notification.action.payload;
 }
 
 interface DragMovePlan {
@@ -221,6 +206,7 @@ export default function Board({ initialTasks, initialDoneTotal, initialDoneLimit
   const t = useTranslations("board");
   const tt = useTranslations("task");
   const tc = useTranslations("common");
+  const tr = useTranslations("common.backgroundSyncReview");
   const tm = useTranslations("common.prMergeAlert");
   const [tasks, setTasks] = useState<TasksByStatus>(initialTasks);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -243,9 +229,8 @@ export default function Board({ initialTasks, initialDoneTotal, initialDoneLimit
   const [shouldUseMacTitlebarLayout, setShouldUseMacTitlebarLayout] = useState(false);
   const [, startDragPersistenceTransition] = useTransition();
   const [isPrMergeActionPending, startPrMergeActionTransition] = useTransition();
-  const [prMergeAlerts, setPrMergeAlerts] = useState<PrMergeAlertState[]>([]);
+  const [backgroundSyncReview, setBackgroundSyncReview] = useState<BackgroundSyncReviewPayload | null>(null);
   const [selectedPrMergeEventKeys, setSelectedPrMergeEventKeys] = useState<string[]>([]);
-  const dismissedPrMergeEventKeysRef = useRef<Set<string>>(new Set());
 
   /** projectId → 표시할 프로젝트 이름 매핑. worktree 프로젝트는 메인 프로젝트 이름으로 resolve한다 */
   const projectNameMap = useMemo(() => {
@@ -391,47 +376,47 @@ export default function Board({ initialTasks, initialDoneTotal, initialDoneLimit
   }, []);
 
   useEffect(() => {
-    if (!window.kanvibeDesktop?.onBoardEvent) {
-      return;
-    }
+    let isActive = true;
 
-    return window.kanvibeDesktop.onBoardEvent((event: BoardEventPayload) => {
-      const incomingAlerts = isTaskPrMergedDetectedBatchEvent(event)
-        ? event.mergedPullRequests.map(createPrMergeAlertState)
-        : isTaskPrMergedDetectedEvent(event)
-          ? [createPrMergeAlertState(event)]
-          : null;
-
-      if (!incomingAlerts) {
+    const applyNotification = (notification: AppNotification | null | undefined) => {
+      if (!isActive) {
         return;
       }
 
-      setPrMergeAlerts((current) => {
-        const knownEventKeys = new Set(current.map((alert) => alert.eventKey));
-        const nextAlerts = [...current];
+      const payload = getBackgroundSyncReviewPayload(notification);
+      if (!payload) {
+        return;
+      }
 
-        for (const alert of incomingAlerts) {
-          if (dismissedPrMergeEventKeysRef.current.has(alert.eventKey) || knownEventKeys.has(alert.eventKey)) {
-            continue;
-          }
+      setBackgroundSyncReview(payload);
+    };
 
-          knownEventKeys.add(alert.eventKey);
-          nextAlerts.push(alert);
-        }
-
-        return nextAlerts;
+    void window.kanvibeDesktop?.consumePendingNotificationActivation?.()
+      .then((notification: AppNotification | null) => {
+        applyNotification(notification);
+      })
+      .catch(() => {
+        /* pending activation consume 실패는 무시 */
       });
+
+    const dispose = window.kanvibeDesktop?.onNotificationActivated?.((notification: AppNotification) => {
+      applyNotification(notification);
     });
+
+    return () => {
+      isActive = false;
+      dispose?.();
+    };
   }, []);
 
   useEffect(() => {
-    if (prMergeAlerts.length === 0) {
+    if (!backgroundSyncReview || backgroundSyncReview.mergedPullRequests.length === 0) {
       setSelectedPrMergeEventKeys([]);
       return;
     }
 
-    setSelectedPrMergeEventKeys(prMergeAlerts.map((alert) => alert.eventKey));
-  }, [prMergeAlerts]);
+    setSelectedPrMergeEventKeys(backgroundSyncReview.mergedPullRequests.map(getMergedPrEventKey));
+  }, [backgroundSyncReview]);
 
   const handleLoadMoreDone = useCallback(async () => {
     if (isLoadingMore) return;
@@ -530,27 +515,20 @@ export default function Board({ initialTasks, initialDoneTotal, initialDoneLimit
   }, []);
 
   const handlePrMergeCancel = useCallback(() => {
-    for (const alert of prMergeAlerts) {
-      dismissedPrMergeEventKeysRef.current.add(alert.eventKey);
-    }
-    setPrMergeAlerts([]);
-  }, [prMergeAlerts]);
+    setBackgroundSyncReview(null);
+  }, []);
 
   const handlePrMergeConfirm = useCallback(() => {
-    if (prMergeAlerts.length === 0) {
+    if (!backgroundSyncReview) {
       return;
     }
 
     const selectedEventKeys = new Set(selectedPrMergeEventKeys);
-    const selectedTaskIds = prMergeAlerts
-      .filter((alert) => selectedEventKeys.has(alert.eventKey))
+    const selectedTaskIds = backgroundSyncReview.mergedPullRequests
+      .filter((alert) => selectedEventKeys.has(getMergedPrEventKey(alert)))
       .map((alert) => alert.taskId);
 
-    for (const alert of prMergeAlerts) {
-      dismissedPrMergeEventKeysRef.current.add(alert.eventKey);
-    }
-
-    setPrMergeAlerts([]);
+    setBackgroundSyncReview(null);
 
     if (selectedTaskIds.length === 0) {
       return;
@@ -561,7 +539,7 @@ export default function Board({ initialTasks, initialDoneTotal, initialDoneLimit
         await updateTaskStatus(taskId, TaskStatus.DONE);
       }
     });
-  }, [prMergeAlerts, selectedPrMergeEventKeys, startPrMergeActionTransition]);
+  }, [backgroundSyncReview, selectedPrMergeEventKeys, startPrMergeActionTransition]);
 
   const handleContextMenu = useCallback(
     (e: React.MouseEvent, task: KanbanTask) => {
@@ -740,47 +718,86 @@ export default function Board({ initialTasks, initialDoneTotal, initialDoneLimit
         onCancel={handleDoneCancel}
       />
 
-      {prMergeAlerts.length > 0 && (
+      {backgroundSyncReview && (
         <div className="fixed inset-0 z-[520] flex items-center justify-center bg-bg-overlay">
           <div className="w-full max-w-2xl rounded-xl border border-border-default bg-bg-surface p-6 shadow-lg">
             <h2 className="mb-2 text-lg font-semibold text-text-primary">
-              {tm("title")}
+              {tr("title")}
             </h2>
             <p className="text-sm text-text-secondary">
-              {tm("batchMessage")}
+              {tr("message")}
             </p>
-            <div className="mt-4 max-h-[360px] space-y-3 overflow-y-auto pr-1">
-              {prMergeAlerts.map((alert) => (
-                <label
-                  key={alert.eventKey}
-                  className="flex cursor-pointer items-start gap-3 rounded-lg border border-border-default bg-bg-page px-4 py-3"
-                >
-                  <input
-                    type="checkbox"
-                    checked={selectedPrMergeEventKeySet.has(alert.eventKey)}
-                    onChange={() => togglePrMergeSelection(alert.eventKey)}
-                    aria-label={alert.taskTitle}
-                    className="mt-0.5 h-4 w-4 rounded border-border-default text-brand-primary focus:ring-brand-primary"
-                  />
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-semibold text-text-primary">
-                      {alert.taskTitle}
-                    </p>
-                    <p className="mt-1 text-xs text-text-muted">
-                      {alert.branchName}
-                    </p>
-                    <a
-                      href={alert.prUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="mt-3 inline-flex max-w-full items-center gap-1 rounded bg-tag-pr-bg px-2 py-1 text-xs text-tag-pr-text transition-opacity hover:opacity-80"
-                    >
-                      <span className="shrink-0">{tm("prLinkLabel")}</span>
-                      <span className="truncate">{alert.prUrl}</span>
-                    </a>
+            <div className="mt-4 max-h-[360px] space-y-5 overflow-y-auto pr-1">
+              <section>
+                <h3 className="text-sm font-semibold text-text-primary">{tr("mergedSection")}</h3>
+                {backgroundSyncReview.mergedPullRequests.length === 0 ? (
+                  <p className="mt-2 text-sm text-text-muted">{tr("emptyMerged")}</p>
+                ) : (
+                  <div className="mt-3 space-y-3">
+                    {backgroundSyncReview.mergedPullRequests.map((alert) => {
+                      const eventKey = getMergedPrEventKey(alert);
+                      return (
+                        <label
+                          key={eventKey}
+                          className="flex cursor-pointer items-start gap-3 rounded-lg border border-border-default bg-bg-page px-4 py-3"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={selectedPrMergeEventKeySet.has(eventKey)}
+                            onChange={() => togglePrMergeSelection(eventKey)}
+                            aria-label={alert.taskTitle}
+                            className="mt-0.5 h-4 w-4 rounded border-border-default text-brand-primary focus:ring-brand-primary"
+                          />
+                          <div className="min-w-0 flex-1">
+                            <p className="text-sm font-semibold text-text-primary">
+                              {alert.taskTitle}
+                            </p>
+                            <p className="mt-1 text-xs text-text-muted">
+                              {alert.branchName}
+                            </p>
+                            <a
+                              href={alert.prUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="mt-3 inline-flex max-w-full items-center gap-1 rounded bg-tag-pr-bg px-2 py-1 text-xs text-tag-pr-text transition-opacity hover:opacity-80"
+                            >
+                              <span className="shrink-0">{tm("prLinkLabel")}</span>
+                              <span className="truncate">{alert.prUrl}</span>
+                            </a>
+                          </div>
+                        </label>
+                      );
+                    })}
                   </div>
-                </label>
-              ))}
+                )}
+              </section>
+
+              <section>
+                <h3 className="text-sm font-semibold text-text-primary">{tr("registeredSection")}</h3>
+                {backgroundSyncReview.registeredWorktrees.length === 0 ? (
+                  <p className="mt-2 text-sm text-text-muted">{tr("emptyRegistered")}</p>
+                ) : (
+                  <div className="mt-3 space-y-3">
+                    {backgroundSyncReview.registeredWorktrees.map((worktree: BackgroundSyncRegisteredWorktreePayload) => (
+                      <div
+                        key={`${worktree.taskId}:${worktree.worktreePath}`}
+                        className="rounded-lg border border-border-default bg-bg-page px-4 py-3"
+                      >
+                        <div className="flex items-center justify-between gap-3">
+                          <p className="text-sm font-semibold text-text-primary">
+                            {worktree.projectName}
+                          </p>
+                          <span className="rounded-full bg-bg-surface px-2 py-0.5 text-[11px] text-text-muted">
+                            {tc(worktree.sshHost ? "remote" : "local")}
+                          </span>
+                        </div>
+                        <p className="mt-1 text-xs text-text-muted">{worktree.branchName}</p>
+                        <p className="mt-3 text-xs text-text-secondary">{worktree.worktreePath}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </section>
             </div>
             <div className="mt-5 flex justify-end gap-2">
               <button

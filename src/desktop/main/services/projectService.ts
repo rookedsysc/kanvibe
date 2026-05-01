@@ -439,11 +439,21 @@ export interface ScanResult {
   skipped: string[];
   errors: string[];
   worktreeTasks: string[];
+  registeredWorktrees: RegisteredWorktreeSummary[];
   hooksSetup: string[];
+}
+
+export interface RegisteredWorktreeSummary {
+  taskId: string;
+  projectName: string;
+  branchName: string;
+  worktreePath: string;
+  sshHost: string | null;
 }
 
 export interface RegisteredProjectWorktreeSyncResult {
   worktreeTasks: string[];
+  registeredWorktrees: RegisteredWorktreeSummary[];
   hooksSetup: string[];
   errors: string[];
   changed: boolean;
@@ -452,6 +462,7 @@ export interface RegisteredProjectWorktreeSyncResult {
 function mergeRegisteredProjectWorktreeSyncResult(
   target: {
     worktreeTasks: string[];
+    registeredWorktrees: RegisteredWorktreeSummary[];
     hooksSetup: string[];
     errors: string[];
     changed?: boolean;
@@ -463,6 +474,7 @@ function mergeRegisteredProjectWorktreeSyncResult(
   }
   target.errors.push(...next.errors);
   target.worktreeTasks.push(...next.worktreeTasks);
+  target.registeredWorktrees.push(...next.registeredWorktrees);
   target.hooksSetup.push(...next.hooksSetup.filter((name) => !target.hooksSetup.includes(name)));
 }
 
@@ -472,6 +484,7 @@ async function syncProjectWorktrees(
 ): Promise<RegisteredProjectWorktreeSyncResult> {
   const result: RegisteredProjectWorktreeSyncResult = {
     worktreeTasks: [],
+    registeredWorktrees: [],
     hooksSetup: [],
     errors: [],
     changed: false,
@@ -540,6 +553,13 @@ async function syncProjectWorktrees(
           );
         }
         result.worktreeTasks.push(wt.branch);
+        result.registeredWorktrees.push({
+          taskId: savedTask.id,
+          projectName: project.name,
+          branchName: wt.branch,
+          worktreePath: wt.path,
+          sshHost: project.sshHost ?? null,
+        });
         continue;
       }
 
@@ -574,6 +594,13 @@ async function syncProjectWorktrees(
         );
       }
       result.worktreeTasks.push(wt.branch);
+      result.registeredWorktrees.push({
+        taskId: savedTask.id,
+        projectName: project.name,
+        branchName: wt.branch,
+        worktreePath: wt.path,
+        sshHost: project.sshHost ?? null,
+      });
     }
   } catch (error) {
     result.errors.push(
@@ -623,6 +650,7 @@ export async function syncRegisteredProjectWorktrees(
   const projects = projectsInput ?? await projectRepo.find({ order: { createdAt: "ASC" } });
   const mergedResult: RegisteredProjectWorktreeSyncResult = {
     worktreeTasks: [],
+    registeredWorktrees: [],
     hooksSetup: [],
     errors: [],
     changed: false,
@@ -646,7 +674,7 @@ export async function scanAndRegisterProjects(
   rootPath: string,
   sshHost?: string
 ): Promise<ScanResult> {
-  const result: ScanResult = { registered: [], skipped: [], errors: [], worktreeTasks: [], hooksSetup: [] };
+  const result: ScanResult = { registered: [], skipped: [], errors: [], worktreeTasks: [], registeredWorktrees: [], hooksSetup: [] };
 
   const discoveredRepoPaths = await scanGitRepos(rootPath, sshHost || null);
   const repoPaths = Array.from(

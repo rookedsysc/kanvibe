@@ -11,3 +11,11 @@ export function markNotificationRead(notificationId: string): Promise<AppNotific
 export function markAllNotificationsRead(): Promise<void> {
   return window.kanvibeDesktop?.markAllNotificationsRead?.() ?? Promise.resolve();
 }
+
+export function activateNotification(notificationId: string): Promise<boolean> {
+  return window.kanvibeDesktop?.activateNotification?.(notificationId) ?? Promise.resolve(false);
+}
+
+export function consumePendingNotificationActivation(): Promise<AppNotification | null> {
+  return window.kanvibeDesktop?.consumePendingNotificationActivation?.() ?? Promise.resolve(null);
+}

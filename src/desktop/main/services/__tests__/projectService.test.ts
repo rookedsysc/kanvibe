@@ -1250,6 +1250,15 @@ describe("projectService local hook installation", () => {
 
     // Then
     expect(result.worktreeTasks).toContain("feature-sync");
+    expect(result.registeredWorktrees).toEqual([
+      {
+        taskId: "task-worktree",
+        projectName: "api",
+        branchName: "feature-sync",
+        worktreePath: "/workspace/api__worktrees/feature-sync",
+        sshHost: null,
+      },
+    ]);
     expect(taskSave).toHaveBeenCalledWith(expect.objectContaining({
       branchName: "feature-sync",
       projectId: "project-1",

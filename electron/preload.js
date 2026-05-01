@@ -53,11 +53,24 @@ contextBridge.exposeInMainWorld("kanvibeDesktop", {
   markAllNotificationsRead() {
     return ipcRenderer.invoke("kanvibe:notifications-mark-all-read");
   },
+  activateNotification(notificationId) {
+    return ipcRenderer.invoke("kanvibe:notifications-activate", notificationId);
+  },
+  consumePendingNotificationActivation() {
+    return ipcRenderer.invoke("kanvibe:notifications-consume-activation");
+  },
   onNotificationsChanged(listener) {
     const handler = () => listener();
     ipcRenderer.on("kanvibe:notifications-changed", handler);
     return () => {
       ipcRenderer.removeListener("kanvibe:notifications-changed", handler);
+    };
+  },
+  onNotificationActivated(listener) {
+    const handler = (_event, payload) => listener(payload);
+    ipcRenderer.on("kanvibe:notification-activated", handler);
+    return () => {
+      ipcRenderer.removeListener("kanvibe:notification-activated", handler);
     };
   },
 });

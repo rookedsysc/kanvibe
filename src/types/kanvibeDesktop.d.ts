@@ -7,6 +7,9 @@ interface KanvibeDesktopApi {
   markNotificationRead?: (notificationId: string) => Promise<AppNotification | null>;
   markAllNotificationsRead?: () => Promise<void>;
   onNotificationsChanged?: (listener: () => void) => () => void;
+  activateNotification?: (notificationId: string) => Promise<boolean>;
+  consumePendingNotificationActivation?: () => Promise<AppNotification | null>;
+  onNotificationActivated?: (listener: (notification: AppNotification) => void) => () => void;
   [key: string]: any;
 }
 

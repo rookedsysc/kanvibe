@@ -1,4 +1,5 @@
 import type { DesktopNotificationPayload } from "@/desktop/shared/notifications";
+import type { BackgroundSyncReviewPayload } from "@/lib/boardNotifier";
 
 export type NotificationLocale = "ko" | "en" | "zh";
 
@@ -7,16 +8,28 @@ const NOTIFICATION_MESSAGES = {
     formatStatusChanged: (taskTitle: string, newStatus: string) => `${taskTitle}: ${newStatus}로 변경`,
     formatMissingStatus: (requestedStatus: string) => `${requestedStatus} 상태로 변경하지 못했습니다.`,
     taskNotFound: "연결된 작업을 찾지 못했습니다.",
+    backgroundSyncReviewTitle: "백그라운드 sync 검토 필요",
+    formatMergedPullRequestCount: (count: number) => `merge된 PR ${count}건`,
+    formatRegisteredWorktreeCount: (count: number) => `새 TODO worktree ${count}건`,
+    backgroundSyncReviewPrompt: "알림을 열어 정리 대상을 검토하세요.",
   },
   en: {
     formatStatusChanged: (taskTitle: string, newStatus: string) => `${taskTitle}: changed to ${newStatus}`,
     formatMissingStatus: (requestedStatus: string) => `Failed to change status to ${requestedStatus}.`,
     taskNotFound: "No matching task was found.",
+    backgroundSyncReviewTitle: "Background sync review needed",
+    formatMergedPullRequestCount: (count: number) => `${count} merged PR${count === 1 ? "" : "s"}`,
+    formatRegisteredWorktreeCount: (count: number) => `${count} new TODO worktree${count === 1 ? "" : "s"}`,
+    backgroundSyncReviewPrompt: "Open the notification to review the pending cleanup items.",
   },
   zh: {
     formatStatusChanged: (taskTitle: string, newStatus: string) => `${taskTitle}: 已变更为${newStatus}`,
     formatMissingStatus: (requestedStatus: string) => `未能变更为 ${requestedStatus} 状态。`,
     taskNotFound: "未找到匹配的任务。",
+    backgroundSyncReviewTitle: "需要检查后台同步结果",
+    formatMergedPullRequestCount: (count: number) => `已合并 PR ${count} 个`,
+    formatRegisteredWorktreeCount: (count: number) => `新建 TODO worktree ${count} 个`,
+    backgroundSyncReviewPrompt: "打开通知以检查待整理项目。",
   },
 } as const;
 
@@ -34,6 +47,10 @@ export interface HookStatusTargetMissingNotification {
   taskId: string;
   requestedStatus: string;
   reason: "task-not-found";
+  locale: string;
+}
+
+export interface BackgroundSyncReviewNotification extends BackgroundSyncReviewPayload {
   locale: string;
 }
 
@@ -85,6 +102,51 @@ export function buildHookStatusTargetMissingNotification(payload: HookStatusTarg
       locale: payload.locale,
       relativePath: `/${payload.locale}`,
       dedupeKey: `hook-missing:${payload.taskId}:${payload.requestedStatus}:${payload.reason}`,
+    },
+  };
+}
+
+export function buildBackgroundSyncReviewNotification(payload: BackgroundSyncReviewNotification): PreparedNotification {
+  const messages = NOTIFICATION_MESSAGES[getNotificationLocale(payload.locale)];
+  const title = messages.backgroundSyncReviewTitle;
+  const summaryLines: string[] = [];
+
+  if (payload.mergedPullRequests.length > 0) {
+    summaryLines.push(messages.formatMergedPullRequestCount(payload.mergedPullRequests.length));
+  }
+
+  if (payload.registeredWorktrees.length > 0) {
+    summaryLines.push(messages.formatRegisteredWorktreeCount(payload.registeredWorktrees.length));
+  }
+
+  const body = [summaryLines.join(" / "), messages.backgroundSyncReviewPrompt]
+    .filter(Boolean)
+    .join("\n");
+  const mergedKeys = payload.mergedPullRequests
+    .map((item) => `${item.taskId}:${item.prUrl}:${item.mergedAt}`)
+    .sort()
+    .join("|");
+  const worktreeKeys = payload.registeredWorktrees
+    .map((item) => `${item.taskId}:${item.branchName}:${item.worktreePath}`)
+    .sort()
+    .join("|");
+
+  return {
+    title,
+    body,
+    desktopPayload: {
+      title,
+      body,
+      locale: payload.locale,
+      relativePath: `/${payload.locale}`,
+      dedupeKey: `background-sync-review:${mergedKeys}::${worktreeKeys}`,
+      action: {
+        type: "background-sync-review",
+        payload: {
+          mergedPullRequests: payload.mergedPullRequests,
+          registeredWorktrees: payload.registeredWorktrees,
+        },
+      },
     },
   };
 }

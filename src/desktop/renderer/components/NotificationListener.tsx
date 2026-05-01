@@ -5,7 +5,11 @@ import { getNotificationSettings } from "@/desktop/renderer/actions/appSettings"
 import { useRefreshSignal } from "@/desktop/renderer/utils/refresh";
 
 export default function NotificationListener() {
-  const { notifyTaskStatusChanged, notifyHookStatusTargetMissing } = useTaskNotification();
+  const {
+    notifyTaskStatusChanged,
+    notifyHookStatusTargetMissing,
+    notifyBackgroundSyncReview,
+  } = useTaskNotification();
   const locale = useLocale();
   const refreshSignal = useRefreshSignal(["all", "settings"]);
   const [settings, setSettings] = useState({
@@ -42,8 +46,12 @@ export default function NotificationListener() {
 
         notifyHookStatusTargetMissing({ ...event, locale });
       }
+
+      if (event.type === "background-sync-review-needed") {
+        notifyBackgroundSyncReview({ ...event, locale });
+      }
     });
-  }, [locale, notifyHookStatusTargetMissing, notifyTaskStatusChanged, settings]);
+  }, [locale, notifyBackgroundSyncReview, notifyHookStatusTargetMissing, notifyTaskStatusChanged, settings]);
 
   return null;
 }

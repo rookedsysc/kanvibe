@@ -3,8 +3,10 @@
 import { useEffect, useCallback, useRef } from "react";
 import type { DesktopNotificationPayload } from "@/desktop/shared/notifications";
 import {
+  buildBackgroundSyncReviewNotification,
   buildHookStatusTargetMissingNotification,
   buildTaskStatusNotification,
+  type BackgroundSyncReviewNotification,
   type HookStatusTargetMissingNotification,
   type TaskStatusNotification,
 } from "@/desktop/shared/taskNotifications";
@@ -17,6 +19,7 @@ interface BrowserNotificationData {
 interface DesktopBridgeNotificationData extends BrowserNotificationData {
   relativePath?: string;
   dedupeKey?: string;
+  action?: DesktopNotificationPayload["action"];
 }
 
 function isDesktopNotificationAvailable() {
@@ -35,6 +38,7 @@ async function showNotificationViaDesktopBridge(title: string, body: string, dat
     locale: data.locale,
     relativePath: data.relativePath,
     dedupeKey: data.dedupeKey,
+    action: data.action,
   };
 
   return (await window.kanvibeDesktop?.showNotification?.(payload)) === true;
@@ -149,5 +153,30 @@ export function useTaskNotification() {
     []
   );
 
-  return { notifyTaskStatusChanged, notifyHookStatusTargetMissing };
+  const notifyBackgroundSyncReview = useCallback(
+    async (payload: BackgroundSyncReviewNotification) => {
+      if (!isPermissionGranted.current) return;
+
+      try {
+        const notification = buildBackgroundSyncReviewNotification(payload);
+        const data = {
+          locale: payload.locale,
+        };
+
+        const isDesktopNotificationShown = await showNotificationViaDesktopBridge(
+          notification.title,
+          notification.body,
+          notification.desktopPayload,
+        );
+        if (!isDesktopNotificationShown) {
+          await showNotificationViaBrowser(notification.title, notification.body, data);
+        }
+      } catch (err) {
+        console.error("[Notification] Failed to show background sync review notification:", err);
+      }
+    },
+    []
+  );
+
+  return { notifyTaskStatusChanged, notifyHookStatusTargetMissing, notifyBackgroundSyncReview };
 }

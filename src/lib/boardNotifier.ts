@@ -37,13 +37,27 @@ export interface TaskPrMergedDetectedBatchPayload {
   mergedPullRequests: TaskPrMergedDetectedPayload[];
 }
 
+export interface BackgroundSyncRegisteredWorktreePayload {
+  taskId: string;
+  projectName: string;
+  branchName: string;
+  worktreePath: string;
+  sshHost: string | null;
+}
+
+export interface BackgroundSyncReviewPayload {
+  mergedPullRequests: TaskPrMergedDetectedPayload[];
+  registeredWorktrees: BackgroundSyncRegisteredWorktreePayload[];
+}
+
 export type BoardEventPayload =
   | BoardUpdatedPayload
   | ({ type: "task-status-changed" } & TaskStatusChangedPayload)
   | ({ type: "hook-status-target-missing" } & HookStatusTargetMissingPayload)
   | ({ type: "task-hook-install-failed" } & TaskHookInstallFailedPayload)
   | ({ type: "task-pr-merged-detected" } & TaskPrMergedDetectedPayload)
-  | ({ type: "task-pr-merged-detected-batch" } & TaskPrMergedDetectedBatchPayload);
+  | ({ type: "task-pr-merged-detected-batch" } & TaskPrMergedDetectedBatchPayload)
+  | ({ type: "background-sync-review-needed" } & BackgroundSyncReviewPayload);
 
 const boardEventEmitter = new EventEmitter();
 
@@ -88,4 +102,9 @@ export function broadcastTaskPrMergedDetected(payload: TaskPrMergedDetectedPaylo
 /** background PR sync 한 사이클에서 감지된 merged PR 목록을 한 번에 전달한다 */
 export function broadcastTaskPrMergedDetectedBatch(payload: TaskPrMergedDetectedBatchPayload) {
   emitBoardEvent({ type: "task-pr-merged-detected-batch", ...payload });
+}
+
+/** background sync가 사용자 검토가 필요한 변경을 발견하면 review payload를 브로드캐스트한다 */
+export function broadcastBackgroundSyncReviewNeeded(payload: BackgroundSyncReviewPayload) {
+  emitBoardEvent({ type: "background-sync-review-needed", ...payload });
 }
