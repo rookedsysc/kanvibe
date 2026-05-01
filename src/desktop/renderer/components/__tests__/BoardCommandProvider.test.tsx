@@ -10,7 +10,7 @@ function BoardCommandHarness({
 }: {
   onToggleNotificationCenter: () => void;
   onOpenProjectFilter: () => void;
-  onOpenCreateTaskModal: (defaults: { projectId: string; baseBranch: string }) => void;
+  onOpenCreateTaskModal: (defaults?: { projectId: string; baseBranch: string }) => void;
 }) {
   const boardCommands = useBoardCommands();
 
@@ -126,5 +126,29 @@ describe("BoardCommandProvider", () => {
       projectId: "project-1",
       baseBranch: "feat/from-search",
     });
+  });
+
+  it("opens the create task modal from the global new task shortcut", () => {
+    const onToggleNotificationCenter = vi.fn();
+    const onOpenProjectFilter = vi.fn();
+    const onOpenCreateTaskModal = vi.fn();
+
+    render(
+      <BoardCommandProvider>
+        <BoardCommandHarness
+          onToggleNotificationCenter={onToggleNotificationCenter}
+          onOpenProjectFilter={onOpenProjectFilter}
+          onOpenCreateTaskModal={onOpenCreateTaskModal}
+        />
+      </BoardCommandProvider>,
+    );
+
+    fireEvent.keyDown(window, {
+      key: "n",
+      ctrlKey: true,
+    });
+
+    expect(onOpenCreateTaskModal).toHaveBeenCalledTimes(1);
+    expect(onOpenCreateTaskModal).toHaveBeenCalledWith();
   });
 });

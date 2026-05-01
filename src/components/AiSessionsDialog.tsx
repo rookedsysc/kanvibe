@@ -4,6 +4,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import * as Switch from "@radix-ui/react-switch";
 import { useTranslations } from "next-intl";
 import { getTaskAiSessionDetail, getTaskAiSessions } from "@/desktop/renderer/actions/project";
+import { useEscapeKey } from "@/hooks/useEscapeKey";
 import { fuzzyMatch } from "@/utils/fuzzySearch";
 import type {
   AggregatedAiMessage,
@@ -64,6 +65,8 @@ export default function AiSessionsDialog({ taskId, isOpen, onClose, data }: AiSe
   const [detailError, setDetailError] = useState<string | null>(null);
   const [sessionsError, setSessionsError] = useState<string | null>(null);
   const latestDetailRequestId = useRef<string | null>(null);
+
+  useEscapeKey(onClose, { enabled: isOpen });
 
   useEffect(() => {
     setSessionsData(createEmptySessionsResult(data));

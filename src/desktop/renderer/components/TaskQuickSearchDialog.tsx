@@ -15,6 +15,7 @@ import {
   formatShortcutForDisplay,
   matchShortcutEvent,
 } from "@/desktop/renderer/utils/keyboardShortcut";
+import { useEscapeKey } from "@/hooks/useEscapeKey";
 import { fuzzyMatch, type FuzzyMatch } from "@/utils/fuzzySearch";
 import { CREATE_BRANCH_TODO_SHORTCUT, useBoardCommands } from "@/desktop/renderer/components/BoardCommandProvider";
 
@@ -261,6 +262,8 @@ export default function TaskQuickSearchDialog({
   function closeDialog() {
     setIsOpen(false);
   }
+
+  useEscapeKey(closeDialog, { enabled: isOpen });
 
   function moveToTask(taskId: string) {
     router.push(`/task/${taskId}`);

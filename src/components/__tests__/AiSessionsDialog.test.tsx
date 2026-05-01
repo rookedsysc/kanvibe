@@ -86,6 +86,21 @@ describe("AiSessionsDialog", () => {
     expect(container.firstChild).toBeNull();
   });
 
+  it("should close when Escape is pressed", () => {
+    const onClose = vi.fn();
+    const data = { isRemote: false, targetPath: null, repoPath: null, sessions: [], sources: [] };
+
+    render(
+      <IntlProvider locale="en" messages={messages}>
+        <AiSessionsDialog taskId="task-1" isOpen onClose={onClose} data={data} />
+      </IntlProvider>
+    );
+
+    fireEvent.keyDown(window, { key: "Escape" });
+
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
   it("should not render detected sources section anymore", async () => {
     const data: AggregatedAiSessionsResult = {
       isRemote: false,

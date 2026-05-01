@@ -94,6 +94,30 @@ describe("ProjectSettings", () => {
     });
   });
 
+  it("Escape를 누르면 설정 패널을 닫는다", () => {
+    // Given
+    const onClose = vi.fn();
+
+    render(
+      <ProjectSettings
+        isOpen
+        onClose={onClose}
+        projects={[createProject()]}
+        sshHosts={[]}
+        sidebarDefaultCollapsed={false}
+        defaultSessionType={SessionType.TMUX}
+        taskSearchShortcut="Mod+Shift+O"
+        notificationSettings={{ isEnabled: true, enabledStatuses: ["progress", "pending", "review"] }}
+      />,
+    );
+
+    // When
+    fireEvent.keyDown(window, { key: "Escape" });
+
+    // Then
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
   it("알림 활성화 토글은 로컬 상태를 즉시 반영한다", async () => {
     // Given
     render(

@@ -163,4 +163,29 @@ describe("CreateTaskModal", () => {
     expect(onClose).toHaveBeenCalled();
     expect(mockPush).toHaveBeenCalledWith("/task/task-2");
   });
+
+  it("Escape를 누르면 모달을 닫는다", async () => {
+    // Given
+    const onClose = vi.fn();
+
+    render(
+      <CreateTaskModal
+        isOpen
+        onClose={onClose}
+        sshHosts={["remote-box"]}
+        projects={[createProject()]}
+        defaultProjectId="project-remote"
+      />,
+    );
+
+    await waitFor(() => {
+      expect(mockGetProjectBranches).toHaveBeenCalledWith("project-remote");
+    });
+
+    // When
+    fireEvent.keyDown(window, { key: "Escape" });
+
+    // Then
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
 });

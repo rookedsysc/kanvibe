@@ -6,6 +6,7 @@ import { useRouter } from "@/desktop/renderer/navigation";
 import { getTasksByStatus } from "@/desktop/renderer/actions/kanban";
 import { TaskStatus } from "@/entities/KanbanTask";
 import type { KanbanTask } from "@/entities/KanbanTask";
+import { useEscapeKey } from "@/hooks/useEscapeKey";
 
 interface ProjectBranchTasksModalProps {
   projectId: string;
@@ -35,6 +36,8 @@ export default function ProjectBranchTasksModal({
     [TaskStatus.DONE]: [],
   }); // 모달에서는 TODO, PENDING, REVIEW만 표시
   const [isLoading, setIsLoading] = useState(true);
+
+  useEscapeKey(onClose);
 
   // 같은 프로젝트의 작업 로드
   useEffect(() => {
