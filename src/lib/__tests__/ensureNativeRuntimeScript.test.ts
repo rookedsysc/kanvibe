@@ -27,6 +27,16 @@ describe("ensure-native-runtime script", () => {
     expect(source).toContain("const stderr = error?.stderr?.toString?.() || \"\";");
   });
 
+  it("treats missing native binding files as recoverable rebuild failures", () => {
+    const source = readFileSync(
+      path.join(process.cwd(), "scripts", "ensure-native-runtime.cjs"),
+      "utf8",
+    );
+
+    expect(source).toContain("function isRecoverableNativeModuleLoadError(error)");
+    expect(source).toContain("Could not locate the bindings file");
+  });
+
   it("exits Electron verification with failure when native loading throws", () => {
     const source = readFileSync(
       path.join(process.cwd(), "scripts", "verify-electron-better-sqlite3.cjs"),
