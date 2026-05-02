@@ -9,6 +9,7 @@ import NotificationListener from "@/desktop/renderer/components/NotificationList
 import TaskQuickSearchDialog from "@/desktop/renderer/components/TaskQuickSearchDialog";
 import { getSessionState } from "@/desktop/renderer/actions/auth";
 import { DEFAULT_LOCALE, getSafeLocale, isSupportedLocale, messagesByLocale } from "@/desktop/renderer/utils/locales";
+import { INITIAL_DESKTOP_LOAD_TIMEOUT_MS } from "@/desktop/renderer/utils/loadingTimeout";
 import { triggerDesktopRefresh } from "@/desktop/renderer/utils/refresh";
 import BoardRoute from "@/desktop/renderer/routes/BoardRoute";
 import DiffRoute from "@/desktop/renderer/routes/DiffRoute";
@@ -85,16 +86,36 @@ export default function App() {
 
   useEffect(() => {
     let cancelled = false;
+    let sessionLoadTimeout: number | null = null;
+
+    const clearSessionLoadTimeout = () => {
+      if (sessionLoadTimeout === null) {
+        return;
+      }
+
+      window.clearTimeout(sessionLoadTimeout);
+      sessionLoadTimeout = null;
+    };
 
     const reloadSession = () => {
+      clearSessionLoadTimeout();
+      sessionLoadTimeout = window.setTimeout(() => {
+        sessionLoadTimeout = null;
+        if (!cancelled) {
+          setSessionState((currentState) => currentState ?? { isAuthenticated: false });
+        }
+      }, INITIAL_DESKTOP_LOAD_TIMEOUT_MS);
+
       Promise.resolve()
         .then(() => getSessionState())
         .then((nextState) => {
+          clearSessionLoadTimeout();
           if (!cancelled) {
             setSessionState(nextState);
           }
         })
         .catch((error) => {
+          clearSessionLoadTimeout();
           console.error("Failed to load desktop session state:", error);
           if (!cancelled) {
             setSessionState({ isAuthenticated: false });
@@ -115,6 +136,7 @@ export default function App() {
 
     return () => {
       cancelled = true;
+      clearSessionLoadTimeout();
       window.removeEventListener("kanvibe:session-changed", handleSessionChanged);
       unsubscribeBoardEvents();
     };
