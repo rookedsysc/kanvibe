@@ -13,6 +13,7 @@ import type { ClaudeHooksStatus } from "@/lib/claudeHooksSetup";
 import type { GeminiHooksStatus } from "@/lib/geminiHooksSetup";
 import type { CodexHooksStatus } from "@/lib/codexHooksSetup";
 import type { OpenCodeHooksStatus } from "@/lib/openCodeHooksSetup";
+import { useEscapeKey } from "@/hooks/useEscapeKey";
 
 interface HooksStatusDialogProps {
   isOpen: boolean;
@@ -56,6 +57,8 @@ export default function HooksStatusDialog({
     text: string;
   } | null>(null);
   const onStatusesChangeRef = useRef(onStatusesChange);
+
+  useEscapeKey(onClose, { enabled: isOpen });
 
   useEffect(() => {
     onStatusesChangeRef.current = onStatusesChange;

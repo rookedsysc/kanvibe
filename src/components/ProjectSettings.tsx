@@ -22,6 +22,7 @@ import {
   captureShortcutFromEvent,
   formatShortcutForDisplay,
 } from "@/desktop/renderer/utils/keyboardShortcut";
+import { useEscapeKey } from "@/hooks/useEscapeKey";
 
 /** 알림 대상 상태 목록 (사용자가 직접 설정하는 todo/done은 제외) */
 const STATUS_OPTIONS = [
@@ -105,6 +106,8 @@ export default function ProjectSettings({
     setLocalNotificationSettings(notificationSettings);
     setPendingNotificationSettings(null);
   }, [notificationSettings, pendingNotificationSettings]);
+
+  useEscapeKey(onClose, { enabled: isOpen && !isCapturingTaskSearchShortcut });
 
   if (!isOpen) return null;
 

@@ -297,6 +297,28 @@ describe("HooksStatusDialog", () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
+  it("should call onClose when Escape is pressed", () => {
+    // Given
+    const onClose = vi.fn();
+    const props = {
+      isOpen: true,
+      onClose,
+      taskId: "task-1",
+      claudeStatus: null,
+      geminiStatus: null,
+      codexStatus: null,
+      openCodeStatus: null,
+      isRemote: false,
+    };
+
+    // When
+    renderDialog(props);
+    fireEvent.keyDown(window, { key: "Escape" });
+
+    // Then
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
   it("should call installTaskHooks when Claude install button is clicked", async () => {
     // Given
     mockInstallTaskHooks.mockResolvedValue({ success: true, status: verifiedClaudeStatus });

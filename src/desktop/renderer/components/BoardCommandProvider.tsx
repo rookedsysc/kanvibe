@@ -24,7 +24,7 @@ export interface BranchTodoDefaults {
 interface BoardCommandHandlers {
   toggleNotificationCenter: () => void;
   openProjectFilter: () => void;
-  openCreateTaskModal: (defaults: BranchTodoDefaults) => void;
+  openCreateTaskModal: (defaults?: BranchTodoDefaults) => void;
 }
 
 interface BoardCommandContextValue {
@@ -136,6 +136,16 @@ export function BoardCommandProvider({ children }: PropsWithChildren) {
 
         event.preventDefault();
         handlersRef.current.openProjectFilter();
+        return;
+      }
+
+      if (matchShortcutEvent(event, CREATE_BRANCH_TODO_SHORTCUT, isMacLike)) {
+        if (!handlersRef.current) {
+          return;
+        }
+
+        event.preventDefault();
+        handlersRef.current.openCreateTaskModal();
       }
     }
 

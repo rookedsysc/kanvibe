@@ -7,6 +7,7 @@ import { getProjectBranches } from "@/desktop/renderer/actions/project";
 import { ensureSessionDependencyWithPrompt } from "@/desktop/renderer/utils/sessionDependencyPrompt";
 import { SessionType, type KanbanTask } from "@/entities/KanbanTask";
 import type { Project } from "@/entities/Project";
+import { useEscapeKey } from "@/hooks/useEscapeKey";
 import BranchSearchInput from "./BranchSearchInput";
 
 interface BranchTaskModalProps {
@@ -49,6 +50,8 @@ export default function BranchTaskModal({
       setBranches(result);
     });
   }, [selectedProjectId, projects]);
+
+  useEscapeKey(onClose);
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();

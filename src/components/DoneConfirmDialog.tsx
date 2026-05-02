@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { useTranslations } from "next-intl";
 import { dismissDoneAlert } from "@/desktop/renderer/actions/appSettings";
+import { useEscapeKey } from "@/hooks/useEscapeKey";
 
 interface DoneConfirmDialogProps {
   isOpen: boolean;
@@ -19,6 +20,8 @@ export default function DoneConfirmDialog({
   const t = useTranslations("common.doneAlert");
   const [dontAskAgain, setDontAskAgain] = useState(false);
   const [isPending, startTransition] = useTransition();
+
+  useEscapeKey(onCancel, { enabled: isOpen && !isPending });
 
   if (!isOpen) return null;
 

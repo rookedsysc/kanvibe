@@ -15,6 +15,7 @@ import DiffRoute from "@/desktop/renderer/routes/DiffRoute";
 import NotFoundRoute from "@/desktop/renderer/routes/NotFoundRoute";
 import PaneLayoutRoute from "@/desktop/renderer/routes/PaneLayoutRoute";
 import TaskDetailRoute from "@/desktop/renderer/routes/TaskDetailRoute";
+import type { BoardEventPayload } from "@/lib/boardNotifier";
 
 interface SessionState {
   isAuthenticated: boolean;
@@ -86,11 +87,19 @@ export default function App() {
     let cancelled = false;
 
     const reloadSession = () => {
-      getSessionState().then((nextState) => {
-        if (!cancelled) {
-          setSessionState(nextState);
-        }
-      });
+      Promise.resolve()
+        .then(() => getSessionState())
+        .then((nextState) => {
+          if (!cancelled) {
+            setSessionState(nextState);
+          }
+        })
+        .catch((error) => {
+          console.error("Failed to load desktop session state:", error);
+          if (!cancelled) {
+            setSessionState({ isAuthenticated: false });
+          }
+        });
     };
 
     reloadSession();
@@ -98,11 +107,11 @@ export default function App() {
     const handleSessionChanged = () => reloadSession();
     window.addEventListener("kanvibe:session-changed", handleSessionChanged);
 
-    const unsubscribeBoardEvents = window.kanvibeDesktop!.onBoardEvent((event: any) => {
+    const unsubscribeBoardEvents = window.kanvibeDesktop?.onBoardEvent?.((event: BoardEventPayload) => {
       if (event.type === "board-updated") {
         triggerDesktopRefresh("board");
       }
-    });
+    }) ?? (() => {});
 
     return () => {
       cancelled = true;
