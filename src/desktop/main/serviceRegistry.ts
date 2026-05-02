@@ -1,5 +1,4 @@
 import * as appSettings from "@/desktop/main/services/appSettingsService";
-import * as auth from "@/desktop/main/services/authService";
 import * as diff from "@/desktop/main/services/diffService";
 import * as githubCliDependency from "@/desktop/main/services/githubCliDependencyService";
 import * as hooks from "@/desktop/main/services/hookService";
@@ -10,7 +9,6 @@ import * as sessionDependency from "@/desktop/main/services/sessionDependencySer
 
 export const desktopServices = {
   appSettings,
-  auth,
   diff,
   githubCliDependency,
   hooks,

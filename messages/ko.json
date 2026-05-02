@@ -20,7 +20,6 @@
     "goBack": "뒤로가기",
     "notFoundTitle": "페이지를 찾을 수 없습니다",
     "notFoundDescription": "요청한 경로가 없거나 이미 이동되었습니다.",
-    "logout": "로그아웃",
     "loading": "로딩 중...",
     "sessionDependency": {
       "localTarget": "현재 로컬 환경",
@@ -55,14 +54,6 @@
       "emptyMerged": "이번 검토에서 Done으로 옮길 merge PR이 없습니다.",
       "emptyRegistered": "이번 검토에서 새로 등록된 worktree가 없습니다."
     }
-  },
-  "login": {
-    "username": "사용자 이름",
-    "usernamePlaceholder": "사용자 이름 입력",
-    "password": "비밀번호",
-    "passwordPlaceholder": "비밀번호 입력",
-    "submit": "로그인",
-    "loggingIn": "로그인 중..."
   },
   "board": {
     "title": "",

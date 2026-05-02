@@ -231,7 +231,7 @@ function getRendererEntryPath() {
 }
 
 function getDefaultRoute() {
-  return `/${DEFAULT_LOCALE}/login`;
+  return `/${DEFAULT_LOCALE}`;
 }
 
 function getRendererNavigationUrl(target = getDefaultRoute()) {

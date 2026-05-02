@@ -20,7 +20,6 @@
     "goBack": "返回",
     "notFoundTitle": "页面不存在",
     "notFoundDescription": "你访问的路径不存在，或已经被移动。",
-    "logout": "退出登录",
     "loading": "加载中...",
     "sessionDependency": {
       "localTarget": "当前本机环境",
@@ -54,14 +53,6 @@
       "emptyMerged": "本次检查中没有需要移动到 Done 的已合并 PR 任务。",
       "emptyRegistered": "本次检查中没有新注册的 worktree。"
     }
-  },
-  "login": {
-    "username": "用户名",
-    "usernamePlaceholder": "输入用户名",
-    "password": "密码",
-    "passwordPlaceholder": "输入密码",
-    "submit": "登录",
-    "loggingIn": "登录中..."
   },
   "board": {
     "title": "",
