@@ -20,6 +20,7 @@ const mocks = vi.hoisted(() => ({
   broadcastBoardUpdate: vi.fn(),
   execGit: vi.fn(),
   pullCurrentBranch: vi.fn(),
+  remoteBranchExists: vi.fn(),
   broadcastTaskHookInstallFailed: vi.fn(),
   broadcastTaskPrMergedDetectedBatch: vi.fn(),
 }));
@@ -75,6 +76,7 @@ vi.mock("@/lib/boardNotifier", () => ({
 vi.mock("@/lib/gitOperations", () => ({
   execGit: mocks.execGit,
   pullCurrentBranch: mocks.pullCurrentBranch,
+  remoteBranchExists: mocks.remoteBranchExists,
 }));
 
 describe("kanbanService.createTask", () => {
@@ -83,6 +85,7 @@ describe("kanbanService.createTask", () => {
     vi.clearAllMocks();
     mocks.taskRepo.create.mockImplementation((value) => value);
     mocks.installKanvibeHooks.mockResolvedValue(undefined);
+    mocks.remoteBranchExists.mockResolvedValue(true);
     mocks.taskRepo.createQueryBuilder.mockReturnValue({
       select: vi.fn().mockReturnThis(),
       where: vi.fn().mockReturnThis(),
@@ -876,6 +879,124 @@ describe("kanbanService.createTask", () => {
         },
       ],
     });
+  });
+
+  it("active task pull sync는 done task를 pull하지 않는다", async () => {
+    // Given
+    mocks.taskRepo.find.mockResolvedValue([
+      {
+        id: "task-done",
+        title: "Done task",
+        projectId: "project-1",
+        branchName: "feature/done",
+        worktreePath: "/workspace/repo__worktrees/done",
+        sshHost: null,
+        status: "done",
+      },
+      {
+        id: "task-progress",
+        title: "Progress task",
+        projectId: "project-1",
+        branchName: "feature/progress",
+        worktreePath: "/workspace/repo__worktrees/progress",
+        sshHost: null,
+        status: "progress",
+      },
+    ]);
+    mocks.projectRepo.findOneBy.mockResolvedValue({
+      id: "project-1",
+      repoPath: "/workspace/repo",
+      defaultBranch: "main",
+      sshHost: null,
+    });
+    mocks.pullCurrentBranch.mockResolvedValue("Already up to date.");
+
+    const { syncActiveTaskPulls } = await import("@/desktop/main/services/kanbanService");
+
+    // When
+    const result = await syncActiveTaskPulls();
+
+    // Then
+    expect(mocks.taskRepo.find).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        status: expect.objectContaining({
+          _type: "in",
+          _value: ["todo", "progress", "pending", "review"],
+        }),
+      }),
+    }));
+    expect(mocks.pullCurrentBranch).toHaveBeenCalledTimes(1);
+    expect(mocks.pullCurrentBranch).toHaveBeenCalledWith("/workspace/repo__worktrees/progress", null);
+    expect(result).toEqual({ pulledTasks: [] });
+  });
+
+  it("active task pull sync는 remote branch가 없으면 pull하지 않는다", async () => {
+    // Given
+    mocks.taskRepo.find.mockResolvedValue([
+      {
+        id: "task-missing-remote",
+        title: "Missing remote branch",
+        projectId: "project-1",
+        branchName: "feature/missing-remote",
+        worktreePath: "/workspace/repo__worktrees/missing-remote",
+        sshHost: null,
+        status: "review",
+      },
+    ]);
+    mocks.projectRepo.findOneBy.mockResolvedValue({
+      id: "project-1",
+      repoPath: "/workspace/repo",
+      defaultBranch: "main",
+      sshHost: null,
+    });
+    mocks.remoteBranchExists.mockResolvedValue(false);
+
+    const { syncActiveTaskPulls } = await import("@/desktop/main/services/kanbanService");
+
+    // When
+    const result = await syncActiveTaskPulls();
+
+    // Then
+    expect(mocks.remoteBranchExists).toHaveBeenCalledWith(
+      "/workspace/repo__worktrees/missing-remote",
+      "feature/missing-remote",
+      null,
+    );
+    expect(mocks.pullCurrentBranch).not.toHaveBeenCalled();
+    expect(result).toEqual({ pulledTasks: [] });
+  });
+
+  it("active task pull sync는 remote branch 없음 pull 오류를 실패로 반환하지 않는다", async () => {
+    // Given
+    mocks.taskRepo.find.mockResolvedValue([
+      {
+        id: "task-stale-upstream",
+        title: "Stale upstream",
+        projectId: "project-1",
+        branchName: "feature/stale-upstream",
+        worktreePath: "/workspace/repo__worktrees/stale-upstream",
+        sshHost: "remote-host",
+        status: "review",
+      },
+    ]);
+    mocks.projectRepo.findOneBy.mockResolvedValue({
+      id: "project-1",
+      repoPath: "/workspace/repo",
+      defaultBranch: "main",
+      sshHost: "remote-host",
+    });
+    mocks.remoteBranchExists.mockResolvedValue(true);
+    mocks.pullCurrentBranch.mockRejectedValue(new Error(
+      "remote-host 원격 명령 실패: Your configuration specifies to merge with the ref 'refs/heads/feature/stale-upstream' from the remote, but no such ref was fetched.",
+    ));
+
+    const { syncActiveTaskPulls } = await import("@/desktop/main/services/kanbanService");
+
+    // When
+    const result = await syncActiveTaskPulls();
+
+    // Then
+    expect(result).toEqual({ pulledTasks: [] });
   });
 
   it("active task pull sync는 같은 task pull 실패를 성공 전까지 한 번만 반환한다", async () => {

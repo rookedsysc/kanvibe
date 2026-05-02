@@ -1,5 +1,5 @@
 import { execFile } from "child_process";
-import { Not, Like } from "typeorm";
+import { In, Not, Like } from "typeorm";
 import { getTaskRepository } from "@/lib/database";
 import { KanbanTask, TaskStatus, SessionType } from "@/entities/KanbanTask";
 import { TaskPriority } from "@/entities/TaskPriority";
@@ -13,7 +13,7 @@ import {
   type TaskPrMergedDetectedPayload,
 } from "@/lib/boardNotifier";
 import { installKanvibeHooks } from "@/lib/kanvibeHooksInstaller";
-import { execGit, pullCurrentBranch } from "@/lib/gitOperations";
+import { execGit, pullCurrentBranch, remoteBranchExists } from "@/lib/gitOperations";
 
 export type TasksByStatus = Record<TaskStatus, KanbanTask[]>;
 
@@ -40,6 +40,12 @@ export interface SearchableTask {
 }
 
 const DONE_PAGE_SIZE = 20;
+const ACTIVE_PULL_TASK_STATUSES = [
+  TaskStatus.TODO,
+  TaskStatus.PROGRESS,
+  TaskStatus.PENDING,
+  TaskStatus.REVIEW,
+];
 const notifiedPullFailureKeys = new Set<string>();
 
 interface GitHubPullRequestInfo {
@@ -308,6 +314,13 @@ function isPullNoop(output: string): boolean {
 
 function buildPullFailureKey(taskId: string, branchName: string, worktreePath: string, sshHost: string | null): string {
   return [taskId, branchName, worktreePath, sshHost ?? ""].join("::");
+}
+
+function isMissingRemoteBranchPullError(error: unknown): boolean {
+  const message = getErrorMessage(error);
+  return /no such ref was fetched/i.test(message)
+    || /could(?: not|n't) find remote ref/i.test(message)
+    || /requested upstream branch .* does not exist/i.test(message);
 }
 
 /** 모든 작업을 상태별로 그룹핑하여 반환한다. Done 컬럼은 첫 페이지만 로드한다 */
@@ -896,11 +909,15 @@ export async function syncActiveTaskPulls(): Promise<ActiveTaskPullSyncResult> {
   const repo = await getTaskRepository();
   const projectRepo = await getProjectRepository();
   const tasks = await repo.find({
-    where: { status: Not(TaskStatus.DONE) },
+    where: { status: In(ACTIVE_PULL_TASK_STATUSES) },
     order: { updatedAt: "ASC" },
   });
 
   const pulledTasks = await Promise.all(tasks.map(async (task): Promise<TaskPullSyncPayload | null> => {
+    if (task.status === TaskStatus.DONE) {
+      return null;
+    }
+
     if (!task.branchName || !task.worktreePath) {
       return null;
     }
@@ -917,6 +934,12 @@ export async function syncActiveTaskPulls(): Promise<ActiveTaskPullSyncResult> {
     const pullFailureKey = buildPullFailureKey(task.id, task.branchName, task.worktreePath, sshHost);
 
     try {
+      const hasRemoteBranch = await remoteBranchExists(task.worktreePath, task.branchName, sshHost);
+      if (!hasRemoteBranch) {
+        notifiedPullFailureKeys.delete(pullFailureKey);
+        return null;
+      }
+
       const output = await pullCurrentBranch(task.worktreePath, sshHost);
       notifiedPullFailureKeys.delete(pullFailureKey);
       if (isPullNoop(output)) {
@@ -933,6 +956,11 @@ export async function syncActiveTaskPulls(): Promise<ActiveTaskPullSyncResult> {
         summary: summarizePullOutput(output),
       };
     } catch (error) {
+      if (isMissingRemoteBranchPullError(error)) {
+        notifiedPullFailureKeys.delete(pullFailureKey);
+        return null;
+      }
+
       if (notifiedPullFailureKeys.has(pullFailureKey)) {
         return null;
       }
