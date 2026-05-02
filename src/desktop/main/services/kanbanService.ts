@@ -5,7 +5,13 @@ import { KanbanTask, TaskStatus, SessionType } from "@/entities/KanbanTask";
 import { TaskPriority } from "@/entities/TaskPriority";
 import { createWorktreeWithSession, removeWorktreeAndBranch, createSessionWithoutWorktree, removeSessionOnly, buildManagedWorktreePath } from "@/lib/worktree";
 import { getProjectRepository } from "@/lib/database";
-import { broadcastBoardUpdate, broadcastTaskHookInstallFailed, broadcastTaskPrMergedDetectedBatch, type TaskPrMergedDetectedPayload } from "@/lib/boardNotifier";
+import {
+  broadcastBoardUpdate,
+  broadcastTaskHookInstallFailed,
+  broadcastTaskPrMergedDetectedBatch,
+  type BackgroundSyncFailurePayload,
+  type TaskPrMergedDetectedPayload,
+} from "@/lib/boardNotifier";
 import { installKanvibeHooks } from "@/lib/kanvibeHooksInstaller";
 import { execGit } from "@/lib/gitOperations";
 
@@ -46,6 +52,7 @@ export interface ActiveTaskPullRequestSyncResult {
   updatedTaskIds: string[];
   mergeEventKeys: string[];
   mergedPullRequests: TaskPrMergedDetectedPayload[];
+  failures?: BackgroundSyncFailurePayload[];
 }
 
 /** TypeORM 엔티티를 직렬화 가능한 plain object로 변환한다 */
@@ -64,6 +71,22 @@ function isMissingGitHubCli(error: unknown): boolean {
 
 function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function buildPullRequestSyncFailure(
+  task: Pick<KanbanTask, "id" | "title" | "branchName" | "sshHost">,
+  error: unknown,
+): BackgroundSyncFailurePayload {
+  const branchSuffix = task.branchName ? ` (${task.branchName})` : "";
+
+  return {
+    operation: "pull-request-sync",
+    target: `${task.title}${branchSuffix}`,
+    reason: getErrorMessage(error),
+    taskId: task.id,
+    ...(task.branchName ? { branchName: task.branchName } : {}),
+    ...(task.sshHost ? { sshHost: task.sshHost } : {}),
+  };
 }
 
 function quoteForShell(value: string): string {
@@ -750,6 +773,7 @@ export async function syncActiveTaskPullRequests(
     mergeEventKeys: [],
     mergedPullRequests: [],
   };
+  const failures: BackgroundSyncFailurePayload[] = [];
 
   for (const task of tasks) {
     if (!task.branchName) {
@@ -795,6 +819,7 @@ export async function syncActiveTaskPullRequests(
         });
       }
     } catch (error) {
+      failures.push(buildPullRequestSyncFailure(task, error));
       console.error("PR 상태 동기화 실패:", {
         taskId: task.id,
         branchName: task.branchName,
@@ -807,6 +832,10 @@ export async function syncActiveTaskPullRequests(
     broadcastTaskPrMergedDetectedBatch({
       mergedPullRequests: result.mergedPullRequests,
     });
+  }
+
+  if (failures.length > 0) {
+    result.failures = failures;
   }
 
   return result;

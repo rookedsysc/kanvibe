@@ -471,6 +471,15 @@ describe("Board defaultSessionType sync", () => {
                 sshHost: null,
               },
             ],
+            failures: [
+              {
+                operation: "pull-request-sync",
+                target: "PR sync target (feature/pr-fail)",
+                reason: "gh auth failed",
+                taskId: "task-fail",
+                branchName: "feature/pr-fail",
+              },
+            ],
           },
         },
       }),
@@ -502,6 +511,8 @@ describe("Board defaultSessionType sync", () => {
 
     expect(screen.getByText("https://github.com/kanvibe/kanvibe/pull/211")).toBeTruthy();
     expect(screen.getByText("/repo/kanvibe__worktrees/feature-sync")).toBeTruthy();
+    expect(screen.getByText("PR sync target (feature/pr-fail)")).toBeTruthy();
+    expect(screen.getByText("gh auth failed")).toBeTruthy();
 
     await act(async () => {
       notificationActivationListeners[0]?.({
@@ -527,6 +538,7 @@ describe("Board defaultSessionType sync", () => {
               },
             ],
             registeredWorktrees: [],
+            failures: [],
           },
         },
       });

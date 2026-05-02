@@ -24,6 +24,7 @@ import { useEscapeKey } from "@/hooks/useEscapeKey";
 import { computeProjectColor } from "@/lib/projectColor";
 import type {
   BackgroundSyncReviewPayload,
+  BackgroundSyncFailurePayload,
   BackgroundSyncRegisteredWorktreePayload,
   TaskPrMergedDetectedPayload,
 } from "@/lib/boardNotifier";
@@ -525,6 +526,7 @@ export default function Board({ initialTasks, initialDoneTotal, initialDoneLimit
     () => new Set(selectedPrMergeEventKeys),
     [selectedPrMergeEventKeys],
   );
+  const backgroundSyncFailures = backgroundSyncReview?.failures ?? [];
 
   const togglePrMergeSelection = useCallback((eventKey: string) => {
     setSelectedPrMergeEventKeys((current) => (
@@ -823,6 +825,33 @@ export default function Board({ initialTasks, initialDoneTotal, initialDoneLimit
                   </div>
                 )}
               </section>
+
+              {backgroundSyncFailures.length > 0 && (
+                <section>
+                  <h3 className="text-sm font-semibold text-text-primary">{tr("failureSection")}</h3>
+                  <div className="mt-3 space-y-3">
+                    {backgroundSyncFailures.map((failure: BackgroundSyncFailurePayload) => (
+                      <div
+                        key={`${failure.operation}:${failure.taskId ?? failure.target}:${failure.reason}`}
+                        className="rounded-lg border border-status-error/30 bg-status-error/5 px-4 py-3"
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <p className="min-w-0 text-sm font-semibold text-text-primary">
+                            {failure.target}
+                          </p>
+                          <span className="shrink-0 rounded-full bg-bg-surface px-2 py-0.5 text-[11px] text-status-error">
+                            {tr(failure.operation === "pull-request-sync" ? "pullRequestFailure" : "worktreeFailure")}
+                          </span>
+                        </div>
+                        {failure.branchName ? (
+                          <p className="mt-1 text-xs text-text-muted">{failure.branchName}</p>
+                        ) : null}
+                        <p className="mt-3 whitespace-pre-wrap text-xs text-text-secondary">{failure.reason}</p>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              )}
             </div>
             <div className="mt-5 flex justify-end gap-2">
               <button

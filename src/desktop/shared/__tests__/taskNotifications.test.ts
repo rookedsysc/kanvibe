@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildBackgroundSyncReviewNotification,
   buildHookStatusTargetMissingNotification,
   buildTaskStatusNotification,
   getNotificationLocale,
@@ -66,5 +67,33 @@ describe("taskNotifications", () => {
       relativePath: "/zh-CN",
       dedupeKey: "hook-missing:task-404:pending:task-not-found",
     });
+  });
+
+  it("백그라운드 sync 알림은 실패 개수와 대표 실패 이유를 포함한다", () => {
+    // Given
+    const payload = {
+      locale: "ko",
+      mergedPullRequests: [],
+      registeredWorktrees: [],
+      failures: [
+        {
+          operation: "pull-request-sync" as const,
+          target: "PR sync target (feature/pr-fail)",
+          reason: "gh auth failed",
+          taskId: "task-11",
+          branchName: "feature/pr-fail",
+        },
+      ],
+    };
+
+    // When
+    const notification = buildBackgroundSyncReviewNotification(payload);
+
+    // Then
+    expect(notification.body).toBe(
+      "sync 실패 1건\n실패: PR sync target (feature/pr-fail): gh auth failed\n알림을 열어 정리 대상을 검토하세요.",
+    );
+    expect(notification.desktopPayload.dedupeKey).toContain("task-11:feature/pr-fail:gh auth failed");
+    expect(notification.desktopPayload.action?.payload.failures).toEqual(payload.failures);
   });
 });

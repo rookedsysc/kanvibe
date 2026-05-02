@@ -683,4 +683,46 @@ describe("kanbanService.createTask", () => {
       }],
     });
   });
+
+  it("active task PR sync 실패는 task 대상과 실패 이유를 결과에 포함한다", async () => {
+    // Given
+    mocks.taskRepo.find.mockResolvedValue([
+      {
+        id: "task-11",
+        title: "PR sync target",
+        projectId: "project-1",
+        branchName: "feature/pr-fail",
+        worktreePath: "/workspace/repo__worktrees/feature-pr-fail",
+        sshHost: null,
+        prUrl: null,
+        status: "review",
+      },
+    ]);
+    mocks.projectRepo.findOneBy.mockResolvedValue({
+      id: "project-1",
+      repoPath: "/workspace/repo",
+      sshHost: null,
+    });
+    mocks.execFile.mockImplementation((file, args, options, callback) => {
+      callback(new Error("gh auth failed"), "", "");
+      return {} as never;
+    });
+
+    const { syncActiveTaskPullRequests } = await import("@/desktop/main/services/kanbanService");
+
+    // When
+    const result = await syncActiveTaskPullRequests(new Set());
+
+    // Then
+    expect(result.failures).toEqual([
+      {
+        operation: "pull-request-sync",
+        target: "PR sync target (feature/pr-fail)",
+        reason: "gh auth failed",
+        taskId: "task-11",
+        branchName: "feature/pr-fail",
+      },
+    ]);
+    expect(mocks.broadcastTaskPrMergedDetectedBatch).not.toHaveBeenCalled();
+  });
 });
