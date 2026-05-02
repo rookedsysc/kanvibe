@@ -238,6 +238,35 @@ describe("BoardCommandProvider", () => {
     expect(screen.getByText("branch-disabled")).toBeTruthy();
   });
 
+  it("forwards the desktop notification shortcut event to a notification-only handler", () => {
+    const onToggleNotificationCenter = vi.fn();
+    let notificationShortcutListener: (() => void) | null = null;
+    const unsubscribe = vi.fn();
+    window.kanvibeDesktop = {
+      isDesktop: true,
+      onNotificationShortcut: vi.fn((listener: () => void) => {
+        notificationShortcutListener = listener;
+        return unsubscribe;
+      }),
+    } as never;
+
+    const { unmount } = renderWithRouter(
+      <BoardCommandProvider>
+        <NotificationOnlyHarness onToggleNotificationCenter={onToggleNotificationCenter} />
+      </BoardCommandProvider>,
+    );
+
+    act(() => {
+      notificationShortcutListener?.();
+    });
+
+    expect(window.kanvibeDesktop.onNotificationShortcut).toHaveBeenCalledTimes(1);
+    expect(onToggleNotificationCenter).toHaveBeenCalledTimes(1);
+
+    unmount();
+    expect(unsubscribe).toHaveBeenCalledTimes(1);
+  });
+
   it("refreshes all kanban data from the global refresh shortcut", () => {
     renderWithRouter(
       <BoardCommandProvider>

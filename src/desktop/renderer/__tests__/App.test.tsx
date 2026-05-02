@@ -5,10 +5,15 @@ import { INITIAL_DESKTOP_LOAD_TIMEOUT_MS } from "@/desktop/renderer/utils/loadin
 
 const mocks = vi.hoisted(() => ({
   getSessionState: vi.fn(),
+  updateTaskStatus: vi.fn(),
 }));
 
 vi.mock("@/desktop/renderer/actions/auth", () => ({
   getSessionState: (...args: unknown[]) => mocks.getSessionState(...args),
+}));
+
+vi.mock("@/desktop/renderer/actions/kanban", () => ({
+  updateTaskStatus: (...args: unknown[]) => mocks.updateTaskStatus(...args),
 }));
 
 vi.mock("@/components/LoginForm", () => ({
@@ -91,5 +96,59 @@ describe("App", () => {
     // Then
     expect(screen.queryByText("Loading...")).toBeNull();
     expect(screen.getByText("login form")).toBeTruthy();
+  });
+
+  it("shows a background sync review dialog on the current detail route", async () => {
+    window.location.hash = "#/en/task/task-1";
+    mocks.getSessionState.mockResolvedValue({ isAuthenticated: true });
+    window.kanvibeDesktop = {
+      isDesktop: true,
+      onBoardEvent: vi.fn(() => vi.fn()),
+      consumePendingNotificationActivation: vi.fn().mockResolvedValue({
+        id: "n-review",
+        title: "Background sync review",
+        body: "Review pending items",
+        taskId: null,
+        relativePath: "/en",
+        locale: "en",
+        isRead: false,
+        createdAt: "2026-05-01T00:00:00.000Z",
+        dedupeKey: "background-review-1",
+        action: {
+          type: "background-sync-review",
+          payload: {
+            mergedPullRequests: [
+              {
+                taskId: "task-1",
+                taskTitle: "Detail task",
+                branchName: "feature/current-route",
+                prUrl: "https://github.com/kanvibe/kanvibe/pull/410",
+                mergedAt: "2026-05-01T01:00:00Z",
+              },
+            ],
+            registeredWorktrees: [
+              {
+                taskId: "task-worktree",
+                projectName: "kanvibe",
+                branchName: "feature/new-worktree",
+                worktreePath: "/repo/kanvibe__worktrees/feature-new-worktree",
+                sshHost: null,
+              },
+            ],
+          },
+        },
+      }),
+      onNotificationActivated: vi.fn(() => vi.fn()),
+    } as unknown as NonNullable<typeof window.kanvibeDesktop>;
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getByText("task detail route")).toBeTruthy();
+      expect(screen.getByText("Background Sync Review")).toBeTruthy();
+    });
+    expect(screen.getByText("https://github.com/kanvibe/kanvibe/pull/410")).toBeTruthy();
+    expect(screen.getByText("/repo/kanvibe__worktrees/feature-new-worktree")).toBeTruthy();
+    expect(window.location.hash).toBe("#/en/task/task-1");
   });
 });

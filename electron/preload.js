@@ -73,6 +73,13 @@ contextBridge.exposeInMainWorld("kanvibeDesktop", {
       ipcRenderer.removeListener("kanvibe:notification-activated", handler);
     };
   },
+  onNotificationShortcut(listener) {
+    const handler = () => listener();
+    ipcRenderer.on("kanvibe:notification-shortcut", handler);
+    return () => {
+      ipcRenderer.removeListener("kanvibe:notification-shortcut", handler);
+    };
+  },
   onCreateTaskShortcut(listener) {
     const handler = () => listener();
     ipcRenderer.on("kanvibe:create-task-shortcut", handler);

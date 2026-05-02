@@ -12,21 +12,14 @@ import ProjectSettings from "./ProjectSettings";
 import TaskContextMenu from "./TaskContextMenu";
 import BranchTaskModal from "./BranchTaskModal";
 import DoneConfirmDialog from "./DoneConfirmDialog";
-import { reorderTasks, deleteTask, getMoreDoneTasks, moveTaskToColumn, updateTaskStatus } from "@/desktop/renderer/actions/kanban";
+import { reorderTasks, deleteTask, getMoreDoneTasks, moveTaskToColumn } from "@/desktop/renderer/actions/kanban";
 import type { TasksByStatus } from "@/desktop/renderer/actions/kanban";
 import { useBoardCommands } from "@/desktop/renderer/components/BoardCommandProvider";
 import { SessionType, TaskStatus, type KanbanTask } from "@/entities/KanbanTask";
 import type { Project } from "@/entities/Project";
-import type { AppNotification } from "@/desktop/shared/notifications";
 import { useAutoRefresh } from "@/desktop/renderer/hooks/useAutoRefresh";
 import { useProjectFilterParams } from "@/desktop/renderer/hooks/useProjectFilterParams";
-import { useEscapeKey } from "@/hooks/useEscapeKey";
 import { computeProjectColor } from "@/lib/projectColor";
-import type {
-  BackgroundSyncReviewPayload,
-  BackgroundSyncRegisteredWorktreePayload,
-  TaskPrMergedDetectedPayload,
-} from "@/lib/boardNotifier";
 import type { NotificationCenterButtonHandle } from "./NotificationCenterButton";
 import type { ProjectSelectorHandle } from "./ProjectSelector";
 
@@ -98,22 +91,6 @@ function insertAtFilteredIndex(
   }
 
   return arr;
-}
-
-function buildMergedPrEventKey(taskId: string, prUrl: string, mergedAt: string) {
-  return `${taskId}:${prUrl}:${mergedAt}`;
-}
-
-function getMergedPrEventKey(payload: TaskPrMergedDetectedPayload) {
-  return buildMergedPrEventKey(payload.taskId, payload.prUrl, payload.mergedAt);
-}
-
-function getBackgroundSyncReviewPayload(notification: AppNotification | null | undefined): BackgroundSyncReviewPayload | null {
-  if (notification?.action?.type !== "background-sync-review") {
-    return null;
-  }
-
-  return notification.action.payload;
 }
 
 interface DragMovePlan {
@@ -211,8 +188,6 @@ export default function Board({ initialTasks, initialDoneTotal, initialDoneLimit
   const t = useTranslations("board");
   const tt = useTranslations("task");
   const tc = useTranslations("common");
-  const tr = useTranslations("common.backgroundSyncReview");
-  const tm = useTranslations("common.prMergeAlert");
   const [tasks, setTasks] = useState<TasksByStatus>(initialTasks);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -233,9 +208,6 @@ export default function Board({ initialTasks, initialDoneTotal, initialDoneLimit
   const [currentDefaultSessionType, setCurrentDefaultSessionType] = useState<SessionType>(defaultSessionType);
   const [shouldUseMacTitlebarLayout, setShouldUseMacTitlebarLayout] = useState(false);
   const [, startDragPersistenceTransition] = useTransition();
-  const [isPrMergeActionPending, startPrMergeActionTransition] = useTransition();
-  const [backgroundSyncReview, setBackgroundSyncReview] = useState<BackgroundSyncReviewPayload | null>(null);
-  const [selectedPrMergeEventKeys, setSelectedPrMergeEventKeys] = useState<string[]>([]);
   const notificationCenterRef = useRef<NotificationCenterButtonHandle>(null);
   const projectSelectorRef = useRef<ProjectSelectorHandle>(null);
 
@@ -382,40 +354,6 @@ export default function Board({ initialTasks, initialDoneTotal, initialDoneLimit
     setShouldUseMacTitlebarLayout(isDesktopApp && isMacDesktop);
   }, []);
 
-  useEffect(() => {
-    let isActive = true;
-
-    const applyNotification = (notification: AppNotification | null | undefined) => {
-      if (!isActive) {
-        return;
-      }
-
-      const payload = getBackgroundSyncReviewPayload(notification);
-      if (!payload) {
-        return;
-      }
-
-      setBackgroundSyncReview(payload);
-    };
-
-    void window.kanvibeDesktop?.consumePendingNotificationActivation?.()
-      .then((notification: AppNotification | null) => {
-        applyNotification(notification);
-      })
-      .catch(() => {
-        /* pending activation consume 실패는 무시 */
-      });
-
-    const dispose = window.kanvibeDesktop?.onNotificationActivated?.((notification: AppNotification) => {
-      applyNotification(notification);
-    });
-
-    return () => {
-      isActive = false;
-      dispose?.();
-    };
-  }, []);
-
   useEffect(() => boardCommands.registerBoardHandlers({
     toggleNotificationCenter() {
       notificationCenterRef.current?.toggle();
@@ -428,15 +366,6 @@ export default function Board({ initialTasks, initialDoneTotal, initialDoneLimit
       setIsModalOpen(true);
     },
   }), [boardCommands]);
-
-  useEffect(() => {
-    if (!backgroundSyncReview || backgroundSyncReview.mergedPullRequests.length === 0) {
-      setSelectedPrMergeEventKeys([]);
-      return;
-    }
-
-    setSelectedPrMergeEventKeys(backgroundSyncReview.mergedPullRequests.map(getMergedPrEventKey));
-  }, [backgroundSyncReview]);
 
   const handleLoadMoreDone = useCallback(async () => {
     if (isLoadingMore) return;
@@ -520,50 +449,6 @@ export default function Board({ initialTasks, initialDoneTotal, initialDoneLimit
   const handleDoneCancel = useCallback(() => {
     setPendingDoneResult(null);
   }, []);
-
-  const selectedPrMergeEventKeySet = useMemo(
-    () => new Set(selectedPrMergeEventKeys),
-    [selectedPrMergeEventKeys],
-  );
-
-  const togglePrMergeSelection = useCallback((eventKey: string) => {
-    setSelectedPrMergeEventKeys((current) => (
-      current.includes(eventKey)
-        ? current.filter((key) => key !== eventKey)
-        : [...current, eventKey]
-    ));
-  }, []);
-
-  const handlePrMergeCancel = useCallback(() => {
-    setBackgroundSyncReview(null);
-  }, []);
-
-  useEscapeKey(handlePrMergeCancel, {
-    enabled: Boolean(backgroundSyncReview) && !isPrMergeActionPending,
-  });
-
-  const handlePrMergeConfirm = useCallback(() => {
-    if (!backgroundSyncReview) {
-      return;
-    }
-
-    const selectedEventKeys = new Set(selectedPrMergeEventKeys);
-    const selectedTaskIds = backgroundSyncReview.mergedPullRequests
-      .filter((alert) => selectedEventKeys.has(getMergedPrEventKey(alert)))
-      .map((alert) => alert.taskId);
-
-    setBackgroundSyncReview(null);
-
-    if (selectedTaskIds.length === 0) {
-      return;
-    }
-
-    startPrMergeActionTransition(async () => {
-      for (const taskId of selectedTaskIds) {
-        await updateTaskStatus(taskId, TaskStatus.DONE);
-      }
-    });
-  }, [backgroundSyncReview, selectedPrMergeEventKeys, startPrMergeActionTransition]);
 
   const handleContextMenu = useCallback(
     (e: React.MouseEvent, task: KanbanTask) => {
@@ -742,109 +627,6 @@ export default function Board({ initialTasks, initialDoneTotal, initialDoneLimit
         onConfirm={handleDoneConfirm}
         onCancel={handleDoneCancel}
       />
-
-      {backgroundSyncReview && (
-        <div className="fixed inset-0 z-[520] flex items-center justify-center bg-bg-overlay">
-          <div className="w-full max-w-2xl rounded-xl border border-border-default bg-bg-surface p-6 shadow-lg">
-            <h2 className="mb-2 text-lg font-semibold text-text-primary">
-              {tr("title")}
-            </h2>
-            <p className="text-sm text-text-secondary">
-              {tr("message")}
-            </p>
-            <div className="mt-4 max-h-[360px] space-y-5 overflow-y-auto pr-1">
-              <section>
-                <h3 className="text-sm font-semibold text-text-primary">{tr("mergedSection")}</h3>
-                {backgroundSyncReview.mergedPullRequests.length === 0 ? (
-                  <p className="mt-2 text-sm text-text-muted">{tr("emptyMerged")}</p>
-                ) : (
-                  <div className="mt-3 space-y-3">
-                    {backgroundSyncReview.mergedPullRequests.map((alert) => {
-                      const eventKey = getMergedPrEventKey(alert);
-                      return (
-                        <label
-                          key={eventKey}
-                          className="flex cursor-pointer items-start gap-3 rounded-lg border border-border-default bg-bg-page px-4 py-3"
-                        >
-                          <input
-                            type="checkbox"
-                            checked={selectedPrMergeEventKeySet.has(eventKey)}
-                            onChange={() => togglePrMergeSelection(eventKey)}
-                            aria-label={alert.taskTitle}
-                            className="mt-0.5 h-4 w-4 rounded border-border-default text-brand-primary focus:ring-brand-primary"
-                          />
-                          <div className="min-w-0 flex-1">
-                            <p className="text-sm font-semibold text-text-primary">
-                              {alert.taskTitle}
-                            </p>
-                            <p className="mt-1 text-xs text-text-muted">
-                              {alert.branchName}
-                            </p>
-                            <a
-                              href={alert.prUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="mt-3 inline-flex max-w-full items-center gap-1 rounded bg-tag-pr-bg px-2 py-1 text-xs text-tag-pr-text transition-opacity hover:opacity-80"
-                            >
-                              <span className="shrink-0">{tm("prLinkLabel")}</span>
-                              <span className="truncate">{alert.prUrl}</span>
-                            </a>
-                          </div>
-                        </label>
-                      );
-                    })}
-                  </div>
-                )}
-              </section>
-
-              <section>
-                <h3 className="text-sm font-semibold text-text-primary">{tr("registeredSection")}</h3>
-                {backgroundSyncReview.registeredWorktrees.length === 0 ? (
-                  <p className="mt-2 text-sm text-text-muted">{tr("emptyRegistered")}</p>
-                ) : (
-                  <div className="mt-3 space-y-3">
-                    {backgroundSyncReview.registeredWorktrees.map((worktree: BackgroundSyncRegisteredWorktreePayload) => (
-                      <div
-                        key={`${worktree.taskId}:${worktree.worktreePath}`}
-                        className="rounded-lg border border-border-default bg-bg-page px-4 py-3"
-                      >
-                        <div className="flex items-center justify-between gap-3">
-                          <p className="text-sm font-semibold text-text-primary">
-                            {worktree.projectName}
-                          </p>
-                          <span className="rounded-full bg-bg-surface px-2 py-0.5 text-[11px] text-text-muted">
-                            {tc(worktree.sshHost ? "remote" : "local")}
-                          </span>
-                        </div>
-                        <p className="mt-1 text-xs text-text-muted">{worktree.branchName}</p>
-                        <p className="mt-3 text-xs text-text-secondary">{worktree.worktreePath}</p>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </section>
-            </div>
-            <div className="mt-5 flex justify-end gap-2">
-              <button
-                type="button"
-                onClick={handlePrMergeCancel}
-                disabled={isPrMergeActionPending}
-                className="rounded-md border border-border-default bg-bg-page px-4 py-1.5 text-sm text-text-secondary transition-colors hover:border-brand-primary"
-              >
-                {tc("cancel")}
-              </button>
-              <button
-                type="button"
-                onClick={handlePrMergeConfirm}
-                disabled={isPrMergeActionPending}
-                className="rounded-md bg-brand-primary px-4 py-1.5 text-sm text-text-inverse transition-colors hover:bg-brand-hover disabled:opacity-50"
-              >
-                {tc("confirm")}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

@@ -1,9 +1,9 @@
 import { forwardRef, useImperativeHandle } from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import Board from "../Board";
-import { reorderTasks, updateTaskStatus } from "@/desktop/renderer/actions/kanban";
+import { reorderTasks } from "@/desktop/renderer/actions/kanban";
 import { SessionType, TaskStatus } from "@/entities/KanbanTask";
 import type { Project } from "@/entities/Project";
 import type { TasksByStatus } from "@/desktop/renderer/actions/kanban";
@@ -429,57 +429,39 @@ describe("Board defaultSessionType sync", () => {
     });
   });
 
-  it("PR merge batch 이벤트를 받으면 하나의 체크리스트 모달을 띄우고 체크된 task만 Done으로 이동한다", async () => {
-    const notificationActivationListeners: Array<(notification: unknown) => void> = [];
+  it("background sync review activation은 전역 dialog host가 처리하므로 Board에서 직접 소비하지 않는다", async () => {
+    const consumePendingNotificationActivation = vi.fn().mockResolvedValue({
+      id: "n-review",
+      title: "Background sync review",
+      body: "Review pending items",
+      taskId: null,
+      relativePath: "/ko",
+      locale: "ko",
+      isRead: false,
+      createdAt: "2026-05-01T00:00:00.000Z",
+      dedupeKey: "background-review-1",
+      action: {
+        type: "background-sync-review",
+        payload: {
+          mergedPullRequests: [
+            {
+              taskId: "task-1",
+              taskTitle: "Test Task",
+              branchName: "feature/pr-sync",
+              prUrl: "https://github.com/kanvibe/kanvibe/pull/210",
+              mergedAt: "2026-04-30T02:00:00Z",
+            },
+          ],
+          registeredWorktrees: [],
+        },
+      },
+    });
+    const onNotificationActivated = vi.fn(() => () => {});
     window.kanvibeDesktop = {
       isDesktop: true,
-      consumePendingNotificationActivation: vi.fn().mockResolvedValue({
-        id: "n-review",
-        title: "Background sync review",
-        body: "Review pending items",
-        taskId: null,
-        relativePath: "/ko",
-        locale: "ko",
-        isRead: false,
-        createdAt: "2026-05-01T00:00:00.000Z",
-        dedupeKey: "background-review-1",
-        action: {
-          type: "background-sync-review",
-          payload: {
-            mergedPullRequests: [
-              {
-                taskId: "task-1",
-                taskTitle: "Test Task",
-                branchName: "feature/pr-sync",
-                prUrl: "https://github.com/kanvibe/kanvibe/pull/210",
-                mergedAt: "2026-04-30T02:00:00Z",
-              },
-              {
-                taskId: "task-2",
-                taskTitle: "Docs Task",
-                branchName: "docs/pr-sync",
-                prUrl: "https://github.com/kanvibe/kanvibe/pull/211",
-                mergedAt: "2026-04-30T02:05:00Z",
-              },
-            ],
-            registeredWorktrees: [
-              {
-                taskId: "task-worktree",
-                projectName: "kanvibe",
-                branchName: "feature-sync",
-                worktreePath: "/repo/kanvibe__worktrees/feature-sync",
-                sshHost: null,
-              },
-            ],
-          },
-        },
-      }),
-      onNotificationActivated: vi.fn((listener) => {
-        notificationActivationListeners.push(listener);
-        return () => {};
-      }),
+      consumePendingNotificationActivation,
+      onNotificationActivated,
     } as never;
-    vi.mocked(updateTaskStatus).mockResolvedValue(null);
 
     render(
       <Board
@@ -497,54 +479,12 @@ describe("Board defaultSessionType sync", () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText("https://github.com/kanvibe/kanvibe/pull/210")).toBeTruthy();
+      expect(screen.getAllByTestId("column")).toHaveLength(5);
     });
 
-    expect(screen.getByText("https://github.com/kanvibe/kanvibe/pull/211")).toBeTruthy();
-    expect(screen.getByText("/repo/kanvibe__worktrees/feature-sync")).toBeTruthy();
-
-    await act(async () => {
-      notificationActivationListeners[0]?.({
-        id: "n-review-2",
-        title: "Background sync review",
-        body: "Review pending items",
-        taskId: null,
-        relativePath: "/ko",
-        locale: "ko",
-        isRead: false,
-        createdAt: "2026-05-01T00:10:00.000Z",
-        dedupeKey: "background-review-2",
-        action: {
-          type: "background-sync-review",
-          payload: {
-            mergedPullRequests: [
-              {
-                taskId: "task-3",
-                taskTitle: "Release Task",
-                branchName: "release/pr-sync",
-                prUrl: "https://github.com/kanvibe/kanvibe/pull/310",
-                mergedAt: "2026-04-30T02:10:00Z",
-              },
-            ],
-            registeredWorktrees: [],
-          },
-        },
-      });
-    });
-
-    expect(screen.getByText("https://github.com/kanvibe/kanvibe/pull/310")).toBeTruthy();
-
-    await act(async () => {
-      fireEvent.click(screen.getByRole("checkbox", { name: "Release Task" }));
-    });
-
-    await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "confirm" }));
-    });
-
-    await waitFor(() => {
-      expect(updateTaskStatus).not.toHaveBeenCalled();
-    });
+    expect(consumePendingNotificationActivation).not.toHaveBeenCalled();
+    expect(onNotificationActivated).not.toHaveBeenCalled();
+    expect(screen.queryByText("https://github.com/kanvibe/kanvibe/pull/210")).toBeNull();
   });
 
   it("중앙 board command 요청이 오면 branch TODO 기본값으로 create modal을 연다", async () => {
