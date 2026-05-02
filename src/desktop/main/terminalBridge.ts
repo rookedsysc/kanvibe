@@ -13,6 +13,12 @@ const CLOSED = 3;
 class ElectronTerminalClient extends EventEmitter {
   readonly OPEN = OPEN;
   readyState = OPEN;
+  /**
+   * 동일 (webContentsId, taskId) 조합으로 openTerminal이 중첩 호출되는 횟수를 추적한다.
+   * React StrictMode dev 환경에서 useEffect가 mount → cleanup → remount로 두 번 도는 경우,
+   * 첫 mount의 cleanup이 두 번째 mount가 사용 중인 PTY를 죽이지 않도록 보호한다.
+   */
+  refCount = 1;
 
   constructor(
     private readonly webContents: WebContents,
@@ -75,6 +81,7 @@ export async function openTerminal(
 ) {
   const existingClient = getClient(webContents.id, taskId);
   if (existingClient) {
+    existingClient.refCount += 1;
     existingClient.emitMessage(`\x01${JSON.stringify({ type: "resize", cols, rows })}`);
     return { ok: true };
   }
@@ -159,12 +166,24 @@ export function focusTerminal(taskId: string) {
 }
 
 export function closeTerminal(webContentsId: number, taskId: string) {
-  getClient(webContentsId, taskId)?.close();
+  const client = getClient(webContentsId, taskId);
+  if (!client) {
+    return;
+  }
+
+  client.refCount -= 1;
+  if (client.refCount > 0) {
+    return;
+  }
+
+  client.close();
 }
 
+/** 윈도우(webContents) 자체가 destroy되는 경로이므로 refCount와 무관하게 모든 client를 강제 정리한다 */
 export function closeWindowTerminals(webContentsId: number) {
   for (const [key, client] of terminalClients.entries()) {
     if (key.startsWith(`${webContentsId}:`)) {
+      client.refCount = 0;
       client.close();
     }
   }

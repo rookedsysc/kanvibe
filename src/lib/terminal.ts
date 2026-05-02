@@ -25,6 +25,16 @@ function shouldLogTerminalSpawn(): boolean {
   return process.env.KANVIBE_DEBUG_TERMINAL === "true";
 }
 
+/** 진단 로그 헬퍼. KANVIBE_DEBUG_TERMINAL=true일 때만 출력된다 */
+function debugLog(message: string, payload?: Record<string, unknown>): void {
+  if (!shouldLogTerminalSpawn()) return;
+  if (payload === undefined) {
+    console.log(`[터미널-진단] ${message}`);
+    return;
+  }
+  console.log(`[터미널-진단] ${message}`, JSON.stringify(payload));
+}
+
 /** tmux 세션이 존재하는지 확인한다 */
 function isTmuxSessionAlive(sessionName: string): boolean {
   try {
@@ -83,9 +93,10 @@ export async function attachLocalSession(
     });
 
     ws.on("close", () => {
+      debugLog("Local ws.close 발생 (기존 세션)", { taskId, remainingClients: existing.clients.size - 1 });
       existing.clients.delete(ws);
       if (existing.clients.size === 0) {
-        detachSession(taskId);
+        detachSession(taskId, "local-ws-close-existing");
       }
     });
 
@@ -182,7 +193,12 @@ export async function attachLocalSession(
   const entry: TerminalEntry = { pty: ptyProcess, clients: new Set([ws]), sessionType, sessionName };
   activeTerminals.set(taskId, entry);
 
+  let firstLocalDataLogged = false;
   ptyProcess.onData((data) => {
+    if (!firstLocalDataLogged) {
+      firstLocalDataLogged = true;
+      debugLog("Local PTY 첫 데이터 수신", { taskId, sample: data.slice(0, 200) });
+    }
     for (const client of entry.clients) {
       if (client.readyState === client.OPEN) {
         client.send(data);
@@ -190,8 +206,9 @@ export async function attachLocalSession(
     }
   });
 
-  ptyProcess.onExit(() => {
-    detachSession(taskId);
+  ptyProcess.onExit(({ exitCode, signal }) => {
+    debugLog("Local PTY onExit", { taskId, exitCode, signal });
+    detachSession(taskId, "local-pty-exit");
   });
 
   ws.on("message", (message) => {
@@ -213,9 +230,10 @@ export async function attachLocalSession(
   });
 
   ws.on("close", () => {
+    debugLog("Local ws.close 발생", { taskId, remainingClients: entry.clients.size - 1 });
     entry.clients.delete(ws);
     if (entry.clients.size === 0) {
-      detachSession(taskId);
+      detachSession(taskId, "local-ws-close");
     }
   });
 }
@@ -247,9 +265,10 @@ export async function attachRemoteSession(
     existing.clients.add(ws);
     ws.on("message", (message) => handleTerminalMessage(existing.pty, message.toString()));
     ws.on("close", () => {
+      debugLog("Remote ws.close 발생 (기존 세션)", { taskId, remainingClients: existing.clients.size - 1 });
       existing.clients.delete(ws);
       if (existing.clients.size === 0) {
-        detachSession(taskId);
+        detachSession(taskId, "remote-ws-close-existing");
       }
     });
     return;
@@ -264,6 +283,7 @@ export async function attachRemoteSession(
   if (shouldLogTerminalSpawn()) {
     console.log(`[터미널] Remote PTY spawn: shell=ssh, args=${JSON.stringify(args)}`);
   }
+  debugLog("attachRemoteSession 시작", { taskId, sshHost, sessionName, sessionType, worktreePath, attachCommand });
 
   let ptyProcess: import("node-pty").IPty;
   try {
@@ -284,10 +304,17 @@ export async function attachRemoteSession(
     return;
   }
 
+  debugLog("Remote PTY spawn 성공", { taskId, pid: ptyProcess.pid });
+
   const entry: TerminalEntry = { pty: ptyProcess, clients: new Set([ws]), sessionType, sessionName };
   activeTerminals.set(taskId, entry);
 
+  let firstDataLogged = false;
   ptyProcess.onData((data) => {
+    if (!firstDataLogged) {
+      firstDataLogged = true;
+      debugLog("Remote PTY 첫 데이터 수신", { taskId, sample: data.slice(0, 200) });
+    }
     for (const client of entry.clients) {
       if (client.readyState === client.OPEN) {
         client.send(data);
@@ -295,20 +322,23 @@ export async function attachRemoteSession(
     }
   });
 
-  ptyProcess.onExit(() => {
-    detachSession(taskId);
+  ptyProcess.onExit(({ exitCode, signal }) => {
+    debugLog("Remote PTY onExit", { taskId, exitCode, signal });
+    detachSession(taskId, "remote-pty-exit");
   });
 
   ptyProcess.write(`${attachCommand}\r`);
+  debugLog("Remote PTY attachCommand 전송 완료", { taskId, byteLength: attachCommand.length });
 
   ws.on("message", (message) => {
     handleTerminalMessage(ptyProcess, message.toString());
   });
 
   ws.on("close", () => {
+    debugLog("Remote ws.close 발생", { taskId, remainingClients: entry.clients.size - 1 });
     entry.clients.delete(ws);
     if (entry.clients.size === 0) {
-      detachSession(taskId);
+      detachSession(taskId, "remote-ws-close");
     }
   });
 }
@@ -363,10 +393,18 @@ export function focusSession(taskId: string): void {
   return;
 }
 
-/** 터미널 세션을 분리하고 PTY 프로세스를 종료한다. 모든 연결된 클라이언트를 닫는다 */
-export function detachSession(taskId: string): void {
+/**
+ * 터미널 세션을 분리하고 PTY 프로세스를 종료한다. 모든 연결된 클라이언트를 닫는다.
+ * @param triggerLabel 누가 detach를 호출했는지 표시 (진단용). 예: "remote-pty-exit", "remote-ws-close", "closeWindowTerminals"
+ */
+export function detachSession(taskId: string, triggerLabel?: string): void {
   const entry = activeTerminals.get(taskId);
-  if (!entry) return;
+  if (!entry) {
+    debugLog("detachSession 호출 (entry 없음)", { taskId, triggerLabel });
+    return;
+  }
+
+  debugLog("detachSession 진입", { taskId, triggerLabel, sessionName: entry.sessionName, clients: entry.clients.size });
 
   try {
     entry.pty.kill();
