@@ -1,3 +1,5 @@
+/* eslint-disable @typescript-eslint/no-require-imports */
+
 const fs = require("node:fs");
 const http = require("node:http");
 const Module = require("node:module");
@@ -5,6 +7,7 @@ const path = require("node:path");
 const process = require("node:process");
 const { pathToFileURL } = require("node:url");
 const { app, BrowserWindow, ipcMain, session, shell } = require("electron");
+const { createDesktopDiagnostics, resolveDesktopLogPath, serializeErrorForLog } = require("./diagnostics");
 
 const DEFAULT_LOCALE = "ko";
 const RENDERER_DEV_URL = process.env.KANVIBE_RENDERER_URL || null;
@@ -34,6 +37,102 @@ let hookServer = null;
 let windowOpenHelpers = null;
 let stopBackgroundTaskSync = null;
 let pendingNotificationActivation = null;
+let diagnostics = null;
+const pendingDiagnosticEvents = [];
+
+function logDiagnostic(event, payload = {}) {
+  if (!diagnostics) {
+    pendingDiagnosticEvents.push({ event, payload });
+    return;
+  }
+
+  diagnostics.log(event, payload);
+}
+
+function initializeDiagnostics() {
+  diagnostics = createDesktopDiagnostics({
+    logPath: resolveDesktopLogPath(app.getPath("userData")),
+  });
+
+  console.log(`[kanvibe] Desktop diagnostics log: ${diagnostics.logPath}`);
+
+  for (const entry of pendingDiagnosticEvents.splice(0)) {
+    diagnostics.log(entry.event, entry.payload);
+  }
+}
+
+function registerProcessDiagnostics() {
+  process.on("uncaughtException", (error) => {
+    logDiagnostic("main:uncaught-exception", { error: serializeErrorForLog(error) });
+    console.error("[kanvibe] uncaught exception:", error);
+    process.exit(1);
+  });
+
+  process.on("unhandledRejection", (reason) => {
+    logDiagnostic("main:unhandled-rejection", { reason: serializeErrorForLog(reason) });
+    console.error("[kanvibe] unhandled rejection:", reason);
+  });
+
+  app.on("child-process-gone", (_event, details) => {
+    logDiagnostic("main:child-process-gone", details);
+  });
+}
+
+function normalizeConsoleMessage(args) {
+  const [first, second, third, fourth] = args;
+  if (first && typeof first === "object" && "message" in first) {
+    return first;
+  }
+
+  return {
+    level: first,
+    message: second,
+    line: third,
+    sourceId: fourth,
+  };
+}
+
+function attachRendererDiagnostics(browserWindow) {
+  const { webContents } = browserWindow;
+
+  webContents.on("did-start-loading", () => {
+    logDiagnostic("renderer:did-start-loading", { url: webContents.getURL() });
+  });
+
+  webContents.on("did-finish-load", () => {
+    logDiagnostic("renderer:did-finish-load", { url: webContents.getURL() });
+  });
+
+  webContents.on("did-fail-load", (_event, errorCode, errorDescription, validatedURL, isMainFrame) => {
+    logDiagnostic("renderer:did-fail-load", {
+      errorCode,
+      errorDescription,
+      validatedURL,
+      isMainFrame,
+      currentUrl: webContents.getURL(),
+    });
+  });
+
+  webContents.on("render-process-gone", (_event, details) => {
+    logDiagnostic("renderer:render-process-gone", {
+      url: webContents.getURL(),
+      details,
+    });
+  });
+
+  webContents.on("console-message", (_event, ...args) => {
+    logDiagnostic("renderer:console-message", normalizeConsoleMessage(args));
+  });
+
+  webContents.on("preload-error", (_event, preloadPath, error) => {
+    logDiagnostic("renderer:preload-error", {
+      preloadPath,
+      error: serializeErrorForLog(error),
+    });
+  });
+}
+
+registerProcessDiagnostics();
 
 function broadcastNotificationsChanged() {
   for (const window of BrowserWindow.getAllWindows()) {
@@ -242,6 +341,7 @@ function focusWindow(window) {
 function registerAppWindow(browserWindow) {
   mainWindow = browserWindow;
   attachWindowHandlers(browserWindow);
+  attachRendererDiagnostics(browserWindow);
 
   browserWindow.on("focus", () => {
     if (!browserWindow.isDestroyed()) {
@@ -497,18 +597,31 @@ function registerDesktopHandlers() {
     closeWindowTerminals,
   } = require(getRuntimeModulePath(path.join("src", "desktop", "main", "terminalBridge.ts")));
 
+  ipcMain.on("kanvibe:renderer-log", (_event, payload) => {
+    logDiagnostic("renderer:bridge", payload);
+  });
+
   ipcMain.handle("kanvibe:invoke", async (_event, namespace, method, args) => {
-    const service = desktopServices[namespace];
-    if (!service) {
-      throw new Error(`Unknown desktop service namespace: ${namespace}`);
-    }
+    try {
+      const service = desktopServices[namespace];
+      if (!service) {
+        throw new Error(`Unknown desktop service namespace: ${namespace}`);
+      }
 
-    const targetMethod = service[method];
-    if (typeof targetMethod !== "function") {
-      throw new Error(`Unknown desktop service method: ${namespace}.${method}`);
-    }
+      const targetMethod = service[method];
+      if (typeof targetMethod !== "function") {
+        throw new Error(`Unknown desktop service method: ${namespace}.${method}`);
+      }
 
-    return targetMethod(...(Array.isArray(args) ? args : []));
+      return await targetMethod(...(Array.isArray(args) ? args : []));
+    } catch (error) {
+      diagnostics.log("ipc:invoke-failed", {
+        namespace,
+        method,
+        error: serializeErrorForLog(error),
+      });
+      throw error;
+    }
   });
 
   ipcMain.handle("kanvibe:terminal-open", async (event, taskId, cols, rows) => {
@@ -565,6 +678,13 @@ function startHookServer() {
 }
 
 async function loadRenderer(window, targetUrl = getRendererNavigationUrl()) {
+  logDiagnostic("renderer:load-start", {
+    targetUrl,
+    rendererDevUrl: RENDERER_DEV_URL,
+    isPackaged: app.isPackaged,
+    appPath: app.getAppPath(),
+  });
+
   if (RENDERER_DEV_URL) {
     await waitForServer(RENDERER_DEV_URL);
   } else {
@@ -574,7 +694,16 @@ async function loadRenderer(window, targetUrl = getRendererNavigationUrl()) {
     }
   }
 
-  await window.loadURL(targetUrl);
+  try {
+    await window.loadURL(targetUrl);
+    logDiagnostic("renderer:load-complete", { targetUrl });
+  } catch (error) {
+    logDiagnostic("renderer:load-failed", {
+      targetUrl,
+      error: serializeErrorForLog(error),
+    });
+    throw error;
+  }
 }
 
 async function createAppWindow(target = getRendererNavigationUrl()) {
@@ -591,7 +720,18 @@ async function createMainWindow(target) {
 }
 
 app.whenReady().then(async () => {
+  initializeDiagnostics();
   ensureRuntimeEnvironment();
+  diagnostics.log("main:startup", {
+    appPath: app.getAppPath(),
+    userDataPath: app.getPath("userData"),
+    resourcesPath: process.resourcesPath,
+    cwd: process.cwd(),
+    isPackaged: app.isPackaged,
+    rendererDevUrl: RENDERER_DEV_URL,
+    seedDbPath: process.env.KANVIBE_SEED_DB_PATH,
+  });
+
   registerRuntimeAliases();
   session.defaultSession.setPermissionRequestHandler((_webContents, permission, callback) => {
     callback(permission === "notifications");
