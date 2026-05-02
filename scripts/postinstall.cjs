@@ -40,9 +40,29 @@ function hasElectronBuilderInstalled() {
   }
 }
 
+function getPackageExecCommand() {
+  const npmExecPath = process.env.npm_execpath || "";
+
+  if (npmExecPath.includes("pnpm")) {
+    return { command: "pnpm", args: ["exec"] };
+  }
+
+  if (npmExecPath.includes("yarn")) {
+    return { command: "yarn", args: ["exec"] };
+  }
+
+  if (npmExecPath.includes("bun")) {
+    return { command: "bunx", args: [] };
+  }
+
+  return { command: process.platform === "win32" ? "npx.cmd" : "npx", args: ["--no-install"] };
+}
+
 function rebuildElectronNativeDependencies() {
+  const packageExec = getPackageExecCommand();
+
   console.warn("[kanvibe] Postinstall: rebuilding native dependencies for the Electron runtime...");
-  execFileSync("pnpm", ["exec", "electron-rebuild", "-f", "--build-from-source", "--only", "better-sqlite3"], {
+  execFileSync(packageExec.command, [...packageExec.args, "electron-rebuild", "-f", "--only", "better-sqlite3"], {
     stdio: "inherit",
     env: process.env,
   });
@@ -53,7 +73,7 @@ function main() {
 
   if (getNodeMajor() !== REQUIRED_NODE_MAJOR) {
     console.warn(
-      `[kanvibe] Postinstall: skipping Electron native rebuild because Node ${process.versions.node} is active. Use Node ${REQUIRED_NODE_MAJOR}.x and run \`pnpm exec electron-rebuild -f --build-from-source --only better-sqlite3\` if needed.`,
+      `[kanvibe] Postinstall: skipping Electron native rebuild because Node ${process.versions.node} is active. Use Node ${REQUIRED_NODE_MAJOR}.x and run \`pnpm exec electron-rebuild -f --only better-sqlite3\` if needed.`,
     );
     return;
   }

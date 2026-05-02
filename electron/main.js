@@ -92,9 +92,18 @@ function registerRuntimeAliases() {
   };
 }
 
+function getRuntimeWorkingDirectory() {
+  const appRoot = app.getAppPath();
+  if (app.isPackaged && appRoot.endsWith(".asar")) {
+    return process.resourcesPath;
+  }
+
+  return appRoot;
+}
+
 function ensureRuntimeEnvironment() {
   const appRoot = app.getAppPath();
-  process.chdir(appRoot);
+  process.chdir(getRuntimeWorkingDirectory());
   process.env.KANVIBE_DESKTOP = "true";
   process.env.KANVIBE_HOST = HOOK_SERVER_HOST;
   process.env.PORT = String(HOOK_SERVER_PORT);

@@ -20,7 +20,7 @@
     "start": "node scripts/run-desktop-start.cjs",
     "desktop:dev": "node scripts/run-desktop-dev.cjs",
     "db:prepare": "tsx scripts/build-seed-db.ts",
-    "rebuild:native:electron": "electron-rebuild -f --build-from-source --only better-sqlite3",
+    "rebuild:native:electron": "electron-rebuild -f --only better-sqlite3",
     "dist": "pnpm db:prepare && pnpm build && pnpm rebuild:native:electron && electron-builder --mac dmg zip",
     "dist:dir": "pnpm db:prepare && pnpm build && pnpm rebuild:native:electron && electron-builder --dir",
     "lint": "eslint",
@@ -51,7 +51,7 @@
     "@xterm/addon-fit": "^0.11.0",
     "@xterm/addon-web-links": "^0.12.0",
     "@xterm/xterm": "^6.0.0",
-    "better-sqlite3": "^12.6.2",
+    "better-sqlite3": "^12.9.0",
     "next": "16.1.6",
     "next-intl": "^4.8.2",
     "node-pty": "^1.1.0",
@@ -66,6 +66,7 @@
     "ws": "^8.19.0"
   },
   "devDependencies": {
+    "@electron/rebuild": "^4.0.4",
     "@playwright/test": "^1.58.2",
     "@tailwindcss/postcss": "^4",
     "@testing-library/react": "^16.3.2",
