@@ -552,11 +552,25 @@ function attachWindowHandlers(browserWindow) {
       !input.alt &&
       (input.control || input.meta) &&
       input.key.toLowerCase() === "n";
+    const isRefreshShortcut =
+      input.type === "keyDown" &&
+      !input.isAutoRepeat &&
+      !input.alt &&
+      !input.shift &&
+      (input.control || input.meta) &&
+      input.key.toLowerCase() === "r";
 
     if (isNotificationShortcut) {
       event.preventDefault();
 
       browserWindow.webContents.send("kanvibe:notification-shortcut");
+      return;
+    }
+
+    if (isRefreshShortcut) {
+      event.preventDefault();
+
+      browserWindow.webContents.send("kanvibe:refresh-shortcut");
       return;
     }
 
