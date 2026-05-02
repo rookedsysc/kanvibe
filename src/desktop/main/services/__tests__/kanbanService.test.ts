@@ -823,6 +823,60 @@ describe("kanbanService.createTask", () => {
       ],
     });
   });
+
+  it("active task pull sync는 같은 task pull 실패를 성공 전까지 한 번만 반환한다", async () => {
+    // Given
+    mocks.taskRepo.find.mockResolvedValue([
+      {
+        id: "task-pull-b",
+        title: "Pull B",
+        projectId: "project-1",
+        branchName: "feature/pull-b",
+        worktreePath: "/workspace/repo__worktrees/pull-b",
+        sshHost: null,
+        status: "review",
+      },
+    ]);
+    mocks.projectRepo.findOneBy.mockResolvedValue({
+      id: "project-1",
+      repoPath: "/workspace/repo",
+      defaultBranch: "main",
+      sshHost: null,
+    });
+    mocks.pullCurrentBranch
+      .mockRejectedValueOnce(new Error("Not possible to fast-forward"))
+      .mockRejectedValueOnce(new Error("Not possible to fast-forward"))
+      .mockResolvedValueOnce("Already up to date.")
+      .mockRejectedValueOnce(new Error("Not possible to fast-forward"));
+
+    const { syncActiveTaskPulls } = await import("@/desktop/main/services/kanbanService");
+
+    // When
+    const firstFailure = await syncActiveTaskPulls();
+    const repeatedFailure = await syncActiveTaskPulls();
+    const recovery = await syncActiveTaskPulls();
+    const failureAfterRecovery = await syncActiveTaskPulls();
+
+    // Then
+    expect(firstFailure.pulledTasks).toEqual([
+      expect.objectContaining({
+        taskId: "task-pull-b",
+        branchName: "feature/pull-b",
+        status: "failed",
+        summary: "Not possible to fast-forward",
+      }),
+    ]);
+    expect(repeatedFailure.pulledTasks).toEqual([]);
+    expect(recovery.pulledTasks).toEqual([]);
+    expect(failureAfterRecovery.pulledTasks).toEqual([
+      expect.objectContaining({
+        taskId: "task-pull-b",
+        branchName: "feature/pull-b",
+        status: "failed",
+        summary: "Not possible to fast-forward",
+      }),
+    ]);
+  });
 });
 
 describe("kanbanService.getSearchableTasks", () => {
