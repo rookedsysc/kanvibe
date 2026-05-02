@@ -1,6 +1,7 @@
 import { createRef } from "react";
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { act, render, screen, cleanup, fireEvent } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import type { Project } from "@/entities/Project";
 
 vi.mock("next-intl", () => ({
@@ -155,5 +156,29 @@ describe("ProjectSelector chip truncation", () => {
     fireEvent.keyDown(searchInput, { key: "Enter" });
 
     expect(onSelectionChange).toHaveBeenCalledWith([]);
+  });
+
+  it("should include the single-select trigger in the tab order", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <>
+        <button type="button">Before</button>
+        <ProjectSelector
+          projects={projects}
+          selectedProjectId=""
+          onSelect={vi.fn()}
+          placeholder="Select project"
+          searchPlaceholder="Search project..."
+        />
+        <button type="button">After</button>
+      </>,
+    );
+
+    await user.tab();
+    expect(screen.getByRole("button", { name: "Before" })).toBe(document.activeElement);
+
+    await user.tab();
+    expect(screen.getByRole("button", { name: "Select project" })).toBe(document.activeElement);
   });
 });
