@@ -674,9 +674,30 @@ function registerDesktopHandlers() {
   });
 
   app.on("web-contents-created", (_createdEvent, webContents) => {
+    if (process.env.KANVIBE_DEBUG_TERMINAL === "true") {
+      console.log(`[터미널-진단] webContents 생성됨: id=${webContents.id}, url=${webContents.getURL?.() || "?"}`);
+    }
     webContents.once("destroyed", () => {
+      if (process.env.KANVIBE_DEBUG_TERMINAL === "true") {
+        console.log(`[터미널-진단] webContents.destroyed → closeWindowTerminals 호출: id=${webContents.id}`);
+      }
       closeWindowTerminals(webContents.id);
     });
+    /** dev 환경에서 vite HMR이 페이지 reload 시 어떤 이벤트를 발생시키는지 추적 */
+    if (process.env.KANVIBE_DEBUG_TERMINAL === "true") {
+      webContents.on("did-start-loading", () => {
+        console.log(`[터미널-진단] webContents.did-start-loading: id=${webContents.id}`);
+      });
+      webContents.on("did-finish-load", () => {
+        console.log(`[터미널-진단] webContents.did-finish-load: id=${webContents.id}, url=${webContents.getURL()}`);
+      });
+      webContents.on("did-navigate", (_evt, url) => {
+        console.log(`[터미널-진단] webContents.did-navigate: id=${webContents.id}, url=${url}`);
+      });
+      webContents.on("render-process-gone", (_evt, details) => {
+        console.log(`[터미널-진단] webContents.render-process-gone: id=${webContents.id}, reason=${details.reason}`);
+      });
+    }
   });
 }
 
