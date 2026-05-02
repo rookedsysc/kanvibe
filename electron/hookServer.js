@@ -2,11 +2,13 @@ const http = require("node:http");
 const path = require("node:path");
 
 function getHookServiceModulePath() {
+  const appRoot = path.join(__dirname, "..");
+
   if (process.env.KANVIBE_RENDERER_URL) {
-    return path.join(process.cwd(), "src", "desktop", "main", "services", "hookService.ts");
+    return path.join(appRoot, "src", "desktop", "main", "services", "hookService.ts");
   }
 
-  return path.join(process.cwd(), "build", "main", "src", "desktop", "main", "services", "hookService.js");
+  return path.join(appRoot, "build", "main", "src", "desktop", "main", "services", "hookService.js");
 }
 
 function readJsonBody(request) {
