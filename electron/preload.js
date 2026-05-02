@@ -1,7 +1,52 @@
+/* eslint-disable @typescript-eslint/no-require-imports */
+
 const { contextBridge, ipcRenderer } = require("electron");
+
+function serializeRendererError(error) {
+  if (error instanceof Error) {
+    return error.stack || `${error.name}: ${error.message}`;
+  }
+
+  if (typeof error === "string") {
+    return error;
+  }
+
+  try {
+    return JSON.stringify(error);
+  } catch {
+    return String(error);
+  }
+}
+
+function sendRendererLog(event, payload = {}) {
+  try {
+    ipcRenderer.send("kanvibe:renderer-log", { event, payload });
+  } catch {
+    // Logging must never break the renderer bridge.
+  }
+}
+
+window.addEventListener("error", (event) => {
+  sendRendererLog("preload:window-error", {
+    message: event.message,
+    filename: event.filename,
+    lineno: event.lineno,
+    colno: event.colno,
+    error: serializeRendererError(event.error),
+  });
+});
+
+window.addEventListener("unhandledrejection", (event) => {
+  sendRendererLog("preload:unhandled-rejection", {
+    reason: serializeRendererError(event.reason),
+  });
+});
 
 contextBridge.exposeInMainWorld("kanvibeDesktop", {
   isDesktop: true,
+  logRendererError(event, payload) {
+    sendRendererLog(event, payload);
+  },
   invoke(namespace, method, args) {
     return ipcRenderer.invoke("kanvibe:invoke", namespace, method, args);
   },

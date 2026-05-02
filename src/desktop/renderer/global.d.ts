@@ -15,6 +15,7 @@ declare global {
     ) => boolean;
     kanvibeDesktop: {
       isDesktop: boolean;
+      logRendererError?: (event: string, payload?: Record<string, unknown>) => void;
       invoke: (namespace: DesktopServiceNamespace, method: string, args: unknown[]) => Promise<unknown>;
       onBoardEvent: (listener: (event: BoardEventPayload) => void) => () => void;
       openTerminal: (taskId: string, cols: number, rows: number) => Promise<{ ok: boolean; error?: string }>;
