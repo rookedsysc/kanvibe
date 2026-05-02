@@ -40,6 +40,7 @@ export interface SearchableTask {
 }
 
 const DONE_PAGE_SIZE = 20;
+const notifiedPullFailureKeys = new Set<string>();
 
 interface GitHubPullRequestInfo {
   url: string | null;
@@ -303,6 +304,10 @@ function summarizePullOutput(output: string): string {
 function isPullNoop(output: string): boolean {
   return /already up[- ]to[- ]date/i.test(output)
     || /current branch .* is up to date/i.test(output);
+}
+
+function buildPullFailureKey(taskId: string, branchName: string, worktreePath: string, sshHost: string | null): string {
+  return [taskId, branchName, worktreePath, sshHost ?? ""].join("::");
 }
 
 /** 모든 작업을 상태별로 그룹핑하여 반환한다. Done 컬럼은 첫 페이지만 로드한다 */
@@ -909,9 +914,11 @@ export async function syncActiveTaskPulls(): Promise<ActiveTaskPullSyncResult> {
     }
 
     const sshHost = task.sshHost || project?.sshHost || null;
+    const pullFailureKey = buildPullFailureKey(task.id, task.branchName, task.worktreePath, sshHost);
 
     try {
       const output = await pullCurrentBranch(task.worktreePath, sshHost);
+      notifiedPullFailureKeys.delete(pullFailureKey);
       if (isPullNoop(output)) {
         return null;
       }
@@ -926,6 +933,11 @@ export async function syncActiveTaskPulls(): Promise<ActiveTaskPullSyncResult> {
         summary: summarizePullOutput(output),
       };
     } catch (error) {
+      if (notifiedPullFailureKeys.has(pullFailureKey)) {
+        return null;
+      }
+
+      notifiedPullFailureKeys.add(pullFailureKey);
       return {
         taskId: task.id,
         taskTitle: task.title,
