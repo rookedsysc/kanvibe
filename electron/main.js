@@ -38,6 +38,7 @@ let windowOpenHelpers = null;
 let stopBackgroundTaskSync = null;
 let pendingNotificationActivation = null;
 let diagnostics = null;
+let nextIpcRequestId = 1;
 const pendingDiagnosticEvents = [];
 
 function logDiagnostic(event, payload = {}) {
@@ -90,6 +91,14 @@ function normalizeConsoleMessage(args) {
     line: third,
     sourceId: fourth,
   };
+}
+
+function getIpcSenderUrl(event) {
+  try {
+    return event.sender.getURL();
+  } catch {
+    return null;
+  }
 }
 
 function attachRendererDiagnostics(browserWindow) {
@@ -601,7 +610,18 @@ function registerDesktopHandlers() {
     logDiagnostic("renderer:bridge", payload);
   });
 
-  ipcMain.handle("kanvibe:invoke", async (_event, namespace, method, args) => {
+  ipcMain.handle("kanvibe:invoke", async (event, namespace, method, args) => {
+    const requestId = nextIpcRequestId;
+    nextIpcRequestId += 1;
+    const startedAt = Date.now();
+
+    logDiagnostic("ipc:invoke-start", {
+      requestId,
+      namespace,
+      method,
+      senderUrl: getIpcSenderUrl(event),
+    });
+
     try {
       const service = desktopServices[namespace];
       if (!service) {
@@ -613,11 +633,20 @@ function registerDesktopHandlers() {
         throw new Error(`Unknown desktop service method: ${namespace}.${method}`);
       }
 
-      return await targetMethod(...(Array.isArray(args) ? args : []));
-    } catch (error) {
-      diagnostics.log("ipc:invoke-failed", {
+      const result = await targetMethod(...(Array.isArray(args) ? args : []));
+      logDiagnostic("ipc:invoke-succeeded", {
+        requestId,
         namespace,
         method,
+        durationMs: Date.now() - startedAt,
+      });
+      return result;
+    } catch (error) {
+      logDiagnostic("ipc:invoke-failed", {
+        requestId,
+        namespace,
+        method,
+        durationMs: Date.now() - startedAt,
         error: serializeErrorForLog(error),
       });
       throw error;

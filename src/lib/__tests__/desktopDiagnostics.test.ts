@@ -76,7 +76,9 @@ describe("desktop diagnostics", () => {
     expect(source).toContain('process.on("uncaughtException"');
     expect(source).toContain('process.on("unhandledRejection"');
     expect(source).toContain('ipcMain.on("kanvibe:renderer-log"');
-    expect(source).toContain('diagnostics.log("ipc:invoke-failed"');
+    expect(source).toContain('logDiagnostic("ipc:invoke-start"');
+    expect(source).toContain('logDiagnostic("ipc:invoke-succeeded"');
+    expect(source).toContain('logDiagnostic("ipc:invoke-failed"');
     expect(source).toContain('webContents.on("did-fail-load"');
     expect(source).toContain('webContents.on("render-process-gone"');
     expect(source).toContain('webContents.on("console-message"');
