@@ -1,6 +1,7 @@
 import { forwardRef, useImperativeHandle } from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import Board from "../Board";
 import { reorderTasks, updateTaskStatus } from "@/desktop/renderer/actions/kanban";
 import { SessionType, TaskStatus } from "@/entities/KanbanTask";
@@ -548,21 +549,23 @@ describe("Board defaultSessionType sync", () => {
 
   it("중앙 board command 요청이 오면 branch TODO 기본값으로 create modal을 연다", async () => {
     render(
-      <BoardCommandProvider>
-        <BoardCommandRequester />
-        <Board
-          initialTasks={createTasksWithTodo()}
-          initialDoneTotal={0}
-          initialDoneLimit={20}
-          sshHosts={[]}
-          projects={[createProject()]}
-          sidebarDefaultCollapsed={false}
-          doneAlertDismissed={false}
-          notificationSettings={{ isEnabled: true, enabledStatuses: ["progress", "pending", "review"] }}
-          defaultSessionType={SessionType.TMUX}
-          taskSearchShortcut="Mod+Shift+O"
-        />
-      </BoardCommandProvider>,
+      <MemoryRouter initialEntries={["/ko"]}>
+        <BoardCommandProvider>
+          <BoardCommandRequester />
+          <Board
+            initialTasks={createTasksWithTodo()}
+            initialDoneTotal={0}
+            initialDoneLimit={20}
+            sshHosts={[]}
+            projects={[createProject()]}
+            sidebarDefaultCollapsed={false}
+            doneAlertDismissed={false}
+            notificationSettings={{ isEnabled: true, enabledStatuses: ["progress", "pending", "review"] }}
+            defaultSessionType={SessionType.TMUX}
+            taskSearchShortcut="Mod+Shift+O"
+          />
+        </BoardCommandProvider>
+      </MemoryRouter>,
     );
 
     fireEvent.click(screen.getByRole("button", { name: "request branch todo" }));

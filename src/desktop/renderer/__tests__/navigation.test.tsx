@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, useLocation } from "react-router-dom";
 import { beforeEach, describe, expect, it } from "vitest";
+import { BoardCommandProvider } from "@/desktop/renderer/components/BoardCommandProvider";
 import { useRouter } from "@/desktop/renderer/navigation";
 
 function RouterProbe() {
@@ -11,16 +12,24 @@ function RouterProbe() {
     <>
       <div data-testid="pathname">{location.pathname}</div>
       <button type="button" onClick={() => router.back()}>back</button>
+      <button type="button" onClick={() => router.forward()}>forward</button>
     </>
   );
 }
 
-function renderRouterProbe(initialEntries: string[], initialIndex: number, historyState: unknown) {
+function renderRouterProbe(
+  initialEntries: string[],
+  initialIndex: number,
+  historyState: unknown,
+  withShortcuts = false,
+) {
   window.history.replaceState(historyState, "", "/");
+
+  const probe = <RouterProbe />;
 
   render(
     <MemoryRouter initialEntries={initialEntries} initialIndex={initialIndex}>
-      <RouterProbe />
+      {withShortcuts ? <BoardCommandProvider>{probe}</BoardCommandProvider> : probe}
     </MemoryRouter>,
   );
 }
@@ -57,6 +66,38 @@ describe("useRouter", () => {
 
     await waitFor(() => {
       expect(screen.getByTestId("pathname").textContent).toBe("/zh");
+    });
+  });
+
+  it("forward 호출 시 다음 페이지로 이동한다", async () => {
+    renderRouterProbe(["/ko", "/ko/task/task-1", "/ko/task/task-2"], 1, { idx: 1 });
+
+    fireEvent.click(screen.getByRole("button", { name: "forward" }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("pathname").textContent).toBe("/ko/task/task-2");
+    });
+  });
+
+  it("Ctrl+[와 Ctrl+] 단축키로 뒤로/앞으로 이동한다", async () => {
+    renderRouterProbe(["/ko", "/ko/task/task-1", "/ko/task/task-2"], 1, { idx: 1 }, true);
+
+    fireEvent.keyDown(window, {
+      key: "[",
+      ctrlKey: true,
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("pathname").textContent).toBe("/ko");
+    });
+
+    fireEvent.keyDown(window, {
+      key: "]",
+      ctrlKey: true,
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("pathname").textContent).toBe("/ko/task/task-1");
     });
   });
 });

@@ -375,6 +375,22 @@ function attachWindowHandlers(browserWindow) {
     registerAppWindow(childWindow);
   });
 
+  browserWindow.webContents.on("before-input-event", (event, input) => {
+    const isNewWindowShortcut =
+      input.type === "keyDown" &&
+      !input.isAutoRepeat &&
+      !input.alt &&
+      (input.control || input.meta) &&
+      input.key.toLowerCase() === "n";
+
+    if (!isNewWindowShortcut) {
+      return;
+    }
+
+    event.preventDefault();
+
+    browserWindow.webContents.send("kanvibe:create-task-shortcut");
+  });
 }
 
 async function waitForServer(url, retries = 80) {

@@ -10,11 +10,14 @@ import {
   useState,
   type PropsWithChildren,
 } from "react";
+import { useRouter } from "@/desktop/renderer/navigation";
 import { matchShortcutEvent } from "@/desktop/renderer/utils/keyboardShortcut";
 
 export const BOARD_NOTIFICATION_SHORTCUT = "Mod+Shift+I";
 export const BOARD_PROJECT_FILTER_SHORTCUT = "Mod+Shift+P";
 export const CREATE_BRANCH_TODO_SHORTCUT = "Mod+N";
+export const PAGE_BACK_SHORTCUT = "Mod+[";
+export const PAGE_FORWARD_SHORTCUT = "Mod+]";
 
 export interface BranchTodoDefaults {
   projectId: string;
@@ -72,6 +75,7 @@ function shouldIgnoreGlobalShortcut(eventTarget: EventTarget | null) {
 }
 
 export function BoardCommandProvider({ children }: PropsWithChildren) {
+  const router = useRouter();
   const handlersRef = useRef<BoardCommandHandlers | null>(null);
   const notificationCenterHandlerRef = useRef<(() => void) | null>(null);
   const [canCreateBranchTodo, setCanCreateBranchTodo] = useState(false);
@@ -140,12 +144,20 @@ export function BoardCommandProvider({ children }: PropsWithChildren) {
       }
 
       if (matchShortcutEvent(event, CREATE_BRANCH_TODO_SHORTCUT, isMacLike)) {
-        if (!handlersRef.current) {
-          return;
-        }
-
         event.preventDefault();
-        handlersRef.current.openCreateTaskModal();
+        handlersRef.current?.openCreateTaskModal();
+        return;
+      }
+
+      if (matchShortcutEvent(event, PAGE_BACK_SHORTCUT, isMacLike)) {
+        event.preventDefault();
+        router.back();
+        return;
+      }
+
+      if (matchShortcutEvent(event, PAGE_FORWARD_SHORTCUT, isMacLike)) {
+        event.preventDefault();
+        router.forward();
       }
     }
 
@@ -153,7 +165,21 @@ export function BoardCommandProvider({ children }: PropsWithChildren) {
     return () => {
       window.removeEventListener("keydown", handleGlobalKeyDown);
     };
-  }, [isMacLike, isTaskQuickSearchOpen]);
+  }, [isMacLike, isTaskQuickSearchOpen, router]);
+
+  useEffect(() => {
+    const unsubscribe = window.kanvibeDesktop?.onCreateTaskShortcut?.(() => {
+      if (isTaskQuickSearchOpen) {
+        return;
+      }
+
+      handlersRef.current?.openCreateTaskModal();
+    });
+
+    return () => {
+      unsubscribe?.();
+    };
+  }, [isTaskQuickSearchOpen]);
 
   const value = useMemo<BoardCommandContextValue>(() => ({
     canCreateBranchTodo,
