@@ -24,6 +24,7 @@ describe("ensure-native-runtime script", () => {
 
     expect(source).toContain('"--only", "better-sqlite3"');
     expect(source).toContain("--only better-sqlite3");
+    expect(source).not.toContain("--build-from-source");
     expect(source).not.toContain('"-w", "better-sqlite3"');
     expect(source).not.toContain("-w better-sqlite3");
   });

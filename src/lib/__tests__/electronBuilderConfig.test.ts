@@ -8,4 +8,12 @@ describe("electron-builder config", () => {
 
     expect(source).toContain("npmRebuild: false");
   });
+
+  it("packs app code in asar while unpacking better-sqlite3 native files", () => {
+    const source = readFileSync(path.join(process.cwd(), "electron-builder.yml"), "utf8");
+
+    expect(source).toContain("asar: true");
+    expect(source).toContain("asarUnpack:");
+    expect(source).toContain("node_modules/better-sqlite3/**");
+  });
 });

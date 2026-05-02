@@ -89,6 +89,24 @@ function verifyBetterSqlite3BindingAfterRebuild() {
   verifyBetterSqlite3Binding();
 }
 
+function getPackageExecCommand() {
+  const npmExecPath = process.env.npm_execpath || "";
+
+  if (npmExecPath.includes("pnpm")) {
+    return { command: "pnpm", args: ["exec"] };
+  }
+
+  if (npmExecPath.includes("yarn")) {
+    return { command: "yarn", args: ["exec"] };
+  }
+
+  if (npmExecPath.includes("bun")) {
+    return { command: "bunx", args: [] };
+  }
+
+  return { command: process.platform === "win32" ? "npx.cmd" : "npx", args: ["--no-install"] };
+}
+
 function rebuildNativeDependency() {
   const env = {
     ...process.env,
@@ -100,8 +118,10 @@ function rebuildNativeDependency() {
       throw new Error("better-sqlite3 ABI mismatch in packaged Electron runtime");
     }
 
-    console.warn("[kanvibe] Detected Electron native ABI mismatch. Rebuilding better-sqlite3 for Electron from source...");
-    execFileSync("pnpm", ["exec", "electron-rebuild", "-f", "--build-from-source", "--only", "better-sqlite3"], {
+    const packageExec = getPackageExecCommand();
+
+    console.warn("[kanvibe] Detected Electron native ABI mismatch. Rebuilding better-sqlite3 for Electron...");
+    execFileSync(packageExec.command, [...packageExec.args, "electron-rebuild", "-f", "--only", "better-sqlite3"], {
       stdio: "inherit",
       env,
     });
@@ -125,7 +145,7 @@ function printRebuildFailureGuidance(error) {
       return;
     }
 
-    console.error("[kanvibe] Try running `pnpm exec electron-rebuild -f --build-from-source --only better-sqlite3` and launch the desktop app again.");
+    console.error("[kanvibe] Try running `pnpm exec electron-rebuild -f --only better-sqlite3` and launch the desktop app again.");
     return;
   }
 

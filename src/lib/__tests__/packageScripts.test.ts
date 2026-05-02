@@ -15,7 +15,7 @@ describe("package scripts", () => {
     expect(electronBuilderConfig).not.toContain("productName: Kanivibe");
   });
 
-  it("rebuilds native dependencies for Electron after preparing the Node seed database", () => {
+  it("rebuilds Electron native dependencies without forcing source compilation", () => {
     // Given
     const packageJson = JSON.parse(
       readFileSync(path.join(process.cwd(), "package.json"), "utf8"),
@@ -23,8 +23,9 @@ describe("package scripts", () => {
 
     // When / Then
     expect(packageJson.scripts["rebuild:native:electron"]).toBe(
-      "electron-rebuild -f --build-from-source --only better-sqlite3",
+      "electron-rebuild -f --only better-sqlite3",
     );
+    expect(packageJson.scripts["rebuild:native:electron"]).not.toContain("--build-from-source");
     expect(packageJson.scripts.dist).toContain(
       "pnpm db:prepare && pnpm build && pnpm rebuild:native:electron && electron-builder",
     );
