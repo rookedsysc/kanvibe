@@ -12,9 +12,11 @@ import {
 } from "react";
 import { useRouter } from "@/desktop/renderer/navigation";
 import { matchShortcutEvent } from "@/desktop/renderer/utils/keyboardShortcut";
+import { triggerDesktopRefresh } from "@/desktop/renderer/utils/refresh";
 
 export const BOARD_NOTIFICATION_SHORTCUT = "Mod+Shift+I";
 export const BOARD_PROJECT_FILTER_SHORTCUT = "Mod+Shift+P";
+export const BOARD_REFRESH_SHORTCUT = "Mod+R";
 export const CREATE_BRANCH_TODO_SHORTCUT = "Mod+N";
 export const PAGE_BACK_SHORTCUT = "Mod+[";
 export const PAGE_FORWARD_SHORTCUT = "Mod+]";
@@ -120,6 +122,12 @@ export function BoardCommandProvider({ children }: PropsWithChildren) {
   useEffect(() => {
     function handleGlobalKeyDown(event: KeyboardEvent) {
       if (isTaskQuickSearchOpen || shouldIgnoreGlobalShortcut(event.target)) {
+        return;
+      }
+
+      if (matchShortcutEvent(event, BOARD_REFRESH_SHORTCUT, isMacLike)) {
+        event.preventDefault();
+        triggerDesktopRefresh("all");
         return;
       }
 
