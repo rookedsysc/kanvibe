@@ -4,6 +4,14 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { BoardCommandProvider, useBoardCommands } from "@/desktop/renderer/components/BoardCommandProvider";
 
+const mocks = vi.hoisted(() => ({
+  triggerDesktopRefresh: vi.fn(),
+}));
+
+vi.mock("@/desktop/renderer/utils/refresh", () => ({
+  triggerDesktopRefresh: (...args: unknown[]) => mocks.triggerDesktopRefresh(...args),
+}));
+
 function BoardCommandHarness({
   onToggleNotificationCenter,
   onOpenProjectFilter,
@@ -63,6 +71,7 @@ function renderWithRouter(children: ReactNode) {
 
 describe("BoardCommandProvider", () => {
   afterEach(() => {
+    vi.clearAllMocks();
     delete window.kanvibeDesktop;
   });
 
@@ -227,5 +236,21 @@ describe("BoardCommandProvider", () => {
 
     expect(onToggleNotificationCenter).toHaveBeenCalledTimes(1);
     expect(screen.getByText("branch-disabled")).toBeTruthy();
+  });
+
+  it("refreshes all kanban data from the global refresh shortcut", () => {
+    renderWithRouter(
+      <BoardCommandProvider>
+        <div />
+      </BoardCommandProvider>,
+    );
+
+    const wasNotPrevented = fireEvent.keyDown(window, {
+      key: "r",
+      ctrlKey: true,
+    });
+
+    expect(wasNotPrevented).toBe(false);
+    expect(mocks.triggerDesktopRefresh).toHaveBeenCalledWith("all");
   });
 });
