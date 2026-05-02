@@ -1,6 +1,11 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
-import { resolveExistingNavigationTargetWindow, resolveNavigationTargetWindow, resolveWindowOpenAction } from "@/desktop/main/windowOpen";
+import {
+  resolveExistingNavigationTargetWindow,
+  resolveNavigationTargetWindow,
+  resolveWindowOpenAction,
+  shouldKeepCurrentRouteForNotificationActivation,
+} from "@/desktop/main/windowOpen";
 
 describe("resolveWindowOpenAction", () => {
   it("file 기반 내부 URL은 독립적인 내부 창 열기로 판단한다", () => {
@@ -156,5 +161,22 @@ describe("resolveExistingNavigationTargetWindow", () => {
     });
 
     expect(result).toBeNull();
+  });
+});
+
+describe("shouldKeepCurrentRouteForNotificationActivation", () => {
+  it("background sync review 알림은 현재 route를 유지한다", () => {
+    expect(shouldKeepCurrentRouteForNotificationActivation({
+      action: {
+        type: "background-sync-review",
+      },
+    })).toBe(true);
+  });
+
+  it("일반 task 알림은 기존 target route 이동 정책을 유지한다", () => {
+    expect(shouldKeepCurrentRouteForNotificationActivation({
+      taskId: "task-1",
+      action: null,
+    })).toBe(false);
   });
 });
