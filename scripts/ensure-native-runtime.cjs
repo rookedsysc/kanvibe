@@ -47,10 +47,15 @@ function verifyNodeBetterSqlite3Binding() {
 }
 
 function verifyElectronBetterSqlite3Binding() {
-  execFileSync("pnpm", ["exec", "electron", path.join(__dirname, "verify-electron-better-sqlite3.cjs")], {
-    stdio: "inherit",
-    env: process.env,
-  });
+  try {
+    execFileSync("pnpm", ["exec", "electron", path.join(__dirname, "verify-electron-better-sqlite3.cjs")], {
+      stdio: ["ignore", "inherit", "pipe"],
+      env: process.env,
+    });
+  } catch (error) {
+    const stderr = error?.stderr?.toString?.() || "";
+    throw new Error(stderr || String(error?.message || error));
+  }
 }
 
 function verifyBetterSqlite3Binding() {
