@@ -156,6 +156,7 @@ export default function BranchSearchInput({
                   <button
                     key={match.path}
                     type="button"
+                    tabIndex={-1}
                     className={`w-full text-left px-3 py-1.5 hover:bg-brand-primary/10 transition-colors ${
                       index === selectedIndex
                         ? "bg-brand-primary/10 text-text-primary"

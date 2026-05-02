@@ -95,15 +95,31 @@ describe("taskNotifications", () => {
           summary: "Not possible to fast-forward",
         },
       ],
+      failures: [
+        {
+          operation: "pull-request-sync" as const,
+          target: "PR sync target (feature/pr-fail)",
+          reason: "gh auth failed",
+          taskId: "task-11",
+          branchName: "feature/pr-fail",
+        },
+      ],
     };
 
     // When
     const notification = buildBackgroundSyncReviewNotification(payload);
 
     // Then
-    expect(notification.body).toBe("pull 완료 1건 / pull 실패 1건\n알림을 열어 정리 대상을 검토하세요.");
+    expect(notification.body).toBe(
+      [
+        "pull 완료 1건 / pull 실패 1건 / sync 실패 1건",
+        "pull 실패: Pull B (feature/pull-b): Not possible to fast-forward",
+        "실패: PR sync target (feature/pr-fail): gh auth failed",
+        "알림을 열어 정리 대상을 검토하세요.",
+      ].join("\n"),
+    );
     expect(notification.desktopPayload.dedupeKey).toBe(
-      "background-sync-review:::::task-pull-a:feature/pull-a:updated|task-pull-b:feature/pull-b:failed",
+      "background-sync-review:::::task-pull-a:feature/pull-a:updated:Fast-forward|task-pull-b:feature/pull-b:failed:Not possible to fast-forward::pull-request-sync:task-11:feature/pr-fail:gh auth failed",
     );
     expect(notification.desktopPayload.action).toEqual({
       type: "background-sync-review",
@@ -111,6 +127,7 @@ describe("taskNotifications", () => {
         mergedPullRequests: [],
         registeredWorktrees: [],
         pulledTasks: payload.pulledTasks,
+        failures: payload.failures,
       },
     });
   });

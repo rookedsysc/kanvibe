@@ -13,6 +13,10 @@ const NOTIFICATION_MESSAGES = {
     formatRegisteredWorktreeCount: (count: number) => `새 TODO worktree ${count}건`,
     formatUpdatedPullCount: (count: number) => `pull 완료 ${count}건`,
     formatFailedPullCount: (count: number) => `pull 실패 ${count}건`,
+    formatSyncFailureCount: (count: number) => `sync 실패 ${count}건`,
+    formatPullFailureDetail: (target: string, reason: string) => `pull 실패: ${target}: ${reason}`,
+    formatSyncFailureDetail: (target: string, reason: string) => `실패: ${target}: ${reason}`,
+    formatAdditionalFailureCount: (count: number) => `추가 실패 ${count}건`,
     backgroundSyncReviewPrompt: "알림을 열어 정리 대상을 검토하세요.",
   },
   en: {
@@ -24,6 +28,10 @@ const NOTIFICATION_MESSAGES = {
     formatRegisteredWorktreeCount: (count: number) => `${count} new TODO worktree${count === 1 ? "" : "s"}`,
     formatUpdatedPullCount: (count: number) => `${count} pull update${count === 1 ? "" : "s"}`,
     formatFailedPullCount: (count: number) => `${count} failed pull${count === 1 ? "" : "s"}`,
+    formatSyncFailureCount: (count: number) => `${count} sync failure${count === 1 ? "" : "s"}`,
+    formatPullFailureDetail: (target: string, reason: string) => `Pull failed: ${target}: ${reason}`,
+    formatSyncFailureDetail: (target: string, reason: string) => `Failed: ${target}: ${reason}`,
+    formatAdditionalFailureCount: (count: number) => `${count} more failure${count === 1 ? "" : "s"}`,
     backgroundSyncReviewPrompt: "Open the notification to review the pending cleanup items.",
   },
   zh: {
@@ -35,6 +43,10 @@ const NOTIFICATION_MESSAGES = {
     formatRegisteredWorktreeCount: (count: number) => `新建 TODO worktree ${count} 个`,
     formatUpdatedPullCount: (count: number) => `pull 完成 ${count} 个`,
     formatFailedPullCount: (count: number) => `pull 失败 ${count} 个`,
+    formatSyncFailureCount: (count: number) => `sync 失败 ${count} 个`,
+    formatPullFailureDetail: (target: string, reason: string) => `pull 失败：${target}：${reason}`,
+    formatSyncFailureDetail: (target: string, reason: string) => `失败：${target}：${reason}`,
+    formatAdditionalFailureCount: (count: number) => `另有失败 ${count} 个`,
     backgroundSyncReviewPrompt: "打开通知以检查待整理项目。",
   },
 } as const;
@@ -117,6 +129,7 @@ export function buildBackgroundSyncReviewNotification(payload: BackgroundSyncRev
   const title = messages.backgroundSyncReviewTitle;
   const summaryLines: string[] = [];
   const pulledTasks = payload.pulledTasks ?? [];
+  const failures = payload.failures ?? [];
 
   if (payload.mergedPullRequests.length > 0) {
     summaryLines.push(messages.formatMergedPullRequestCount(payload.mergedPullRequests.length));
@@ -134,8 +147,21 @@ export function buildBackgroundSyncReviewNotification(payload: BackgroundSyncRev
   if (failedPullCount > 0) {
     summaryLines.push(messages.formatFailedPullCount(failedPullCount));
   }
+  if (failures.length > 0) {
+    summaryLines.push(messages.formatSyncFailureCount(failures.length));
+  }
 
-  const body = [summaryLines.join(" / "), messages.backgroundSyncReviewPrompt]
+  const failedPullTasks = pulledTasks.filter((item) => item.status === "failed");
+  const detailLines = [
+    ...failedPullTasks.slice(0, 3).map((item) => (
+      messages.formatPullFailureDetail(`${item.taskTitle} (${item.branchName})`, item.summary)
+    )),
+    ...(failedPullTasks.length > 3 ? [messages.formatAdditionalFailureCount(failedPullTasks.length - 3)] : []),
+    ...failures.slice(0, 3).map((item) => messages.formatSyncFailureDetail(item.target, item.reason)),
+    ...(failures.length > 3 ? [messages.formatAdditionalFailureCount(failures.length - 3)] : []),
+  ];
+
+  const body = [summaryLines.join(" / "), ...detailLines, messages.backgroundSyncReviewPrompt]
     .filter(Boolean)
     .join("\n");
   const mergedKeys = payload.mergedPullRequests
@@ -147,9 +173,14 @@ export function buildBackgroundSyncReviewNotification(payload: BackgroundSyncRev
     .sort()
     .join("|");
   const pullKeys = pulledTasks
-    .map((item) => `${item.taskId}:${item.branchName}:${item.status}`)
+    .map((item) => `${item.taskId}:${item.branchName}:${item.status}:${item.summary}`)
     .sort()
     .join("|");
+  const failureKeys = failures
+    .map((item) => `${item.operation}:${item.taskId ?? item.target}:${item.branchName ?? ""}:${item.reason}`)
+    .sort()
+    .join("|");
+  const dedupeKey = `background-sync-review:${mergedKeys}::${worktreeKeys}::${pullKeys}`;
 
   return {
     title,
@@ -159,13 +190,14 @@ export function buildBackgroundSyncReviewNotification(payload: BackgroundSyncRev
       body,
       locale: payload.locale,
       relativePath: `/${payload.locale}`,
-      dedupeKey: `background-sync-review:${mergedKeys}::${worktreeKeys}::${pullKeys}`,
+      dedupeKey: failureKeys ? `${dedupeKey}::${failureKeys}` : dedupeKey,
       action: {
         type: "background-sync-review",
         payload: {
           mergedPullRequests: payload.mergedPullRequests,
           registeredWorktrees: payload.registeredWorktrees,
           pulledTasks,
+          ...(failures.length > 0 ? { failures } : {}),
         },
       },
     },

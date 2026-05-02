@@ -1,6 +1,10 @@
 import { syncRegisteredProjectWorktrees } from "@/desktop/main/services/projectService";
 import { syncActiveTaskPullRequests, syncActiveTaskPulls } from "@/desktop/main/services/kanbanService";
-import { broadcastBackgroundSyncReviewNeeded, broadcastBoardUpdate } from "@/lib/boardNotifier";
+import {
+  broadcastBackgroundSyncReviewNeeded,
+  broadcastBoardUpdate,
+  type BackgroundSyncFailurePayload,
+} from "@/lib/boardNotifier";
 
 const INITIAL_SYNC_DELAY_MS = 20_000;
 const SYNC_INTERVAL_MS = 90_000;
@@ -45,16 +49,26 @@ export function startBackgroundTaskSync() {
         syncActiveTaskPullRequests(emittedMergeEventKeys),
         syncActiveTaskPulls(),
       ]);
+      const failures: BackgroundSyncFailurePayload[] = [
+        ...worktreeSyncResult.errors.map((reason) => ({
+          operation: "worktree-sync" as const,
+          target: "등록 프로젝트 worktree sync",
+          reason,
+        })),
+        ...(prSyncResult.failures ?? []),
+      ];
 
       if (
         worktreeSyncResult.registeredWorktrees.length > 0
         || prSyncResult.mergedPullRequests.length > 0
         || pullSyncResult.pulledTasks.length > 0
+        || failures.length > 0
       ) {
         broadcastBackgroundSyncReviewNeeded({
           registeredWorktrees: worktreeSyncResult.registeredWorktrees,
           mergedPullRequests: prSyncResult.mergedPullRequests,
           pulledTasks: pullSyncResult.pulledTasks,
+          ...(failures.length > 0 ? { failures } : {}),
         });
       }
 

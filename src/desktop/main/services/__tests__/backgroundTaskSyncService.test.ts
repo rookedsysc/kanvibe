@@ -157,4 +157,55 @@ describe("backgroundTaskSyncService", () => {
 
     stop();
   });
+
+  it("background sync 실패만 있어도 대상과 이유를 review event로 브로드캐스트한다", async () => {
+    mocks.syncRegisteredProjectWorktrees.mockResolvedValue({
+      worktreeTasks: [],
+      registeredWorktrees: [],
+      hooksSetup: [],
+      errors: ["api worktree 스캔 실패: git fetch failed"],
+      changed: false,
+    });
+    mocks.syncActiveTaskPullRequests.mockResolvedValue({
+      updatedTaskIds: [],
+      mergeEventKeys: [],
+      mergedPullRequests: [],
+      failures: [
+        {
+          operation: "pull-request-sync",
+          target: "PR sync target (feature/pr-fail)",
+          reason: "gh auth failed",
+          taskId: "task-11",
+          branchName: "feature/pr-fail",
+        },
+      ],
+    });
+
+    const { startBackgroundTaskSync } = await import("@/desktop/main/services/backgroundTaskSyncService");
+
+    const stop = startBackgroundTaskSync();
+    await vi.advanceTimersByTimeAsync(20_000);
+
+    expect(mocks.broadcastBackgroundSyncReviewNeeded).toHaveBeenCalledWith({
+      registeredWorktrees: [],
+      mergedPullRequests: [],
+      pulledTasks: [],
+      failures: [
+        {
+          operation: "worktree-sync",
+          target: "등록 프로젝트 worktree sync",
+          reason: "api worktree 스캔 실패: git fetch failed",
+        },
+        {
+          operation: "pull-request-sync",
+          target: "PR sync target (feature/pr-fail)",
+          reason: "gh auth failed",
+          taskId: "task-11",
+          branchName: "feature/pr-fail",
+        },
+      ],
+    });
+
+    stop();
+  });
 });

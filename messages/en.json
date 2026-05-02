@@ -46,6 +46,12 @@
       "message": "The latest background scan found items to review. Check merged PR tasks you want to move to Done, and review newly registered worktrees as well.",
       "mergedSection": "Merged PRs",
       "registeredSection": "New TODO worktrees",
+      "pulledSection": "Pull results",
+      "pullUpdated": "Pull updated",
+      "pullFailed": "Pull failed",
+      "failureSection": "Sync failures",
+      "pullRequestFailure": "Pull Request check failed",
+      "worktreeFailure": "Worktree sync failed",
       "emptyMerged": "There are no merged PR tasks to move to Done in this review.",
       "emptyRegistered": "There are no newly registered worktrees in this review."
     }

@@ -135,6 +135,26 @@ describe("App", () => {
                 sshHost: null,
               },
             ],
+            pulledTasks: [
+              {
+                taskId: "task-pull",
+                taskTitle: "Pull target",
+                branchName: "feature/pull-fail",
+                worktreePath: "/repo/kanvibe__worktrees/feature-pull-fail",
+                sshHost: null,
+                status: "failed",
+                summary: "Not possible to fast-forward",
+              },
+            ],
+            failures: [
+              {
+                operation: "pull-request-sync",
+                target: "PR sync target (feature/pr-fail)",
+                reason: "gh auth failed",
+                taskId: "task-pr-fail",
+                branchName: "feature/pr-fail",
+              },
+            ],
           },
         },
       }),
@@ -149,6 +169,12 @@ describe("App", () => {
     });
     expect(screen.getByText("https://github.com/kanvibe/kanvibe/pull/410")).toBeTruthy();
     expect(screen.getByText("/repo/kanvibe__worktrees/feature-new-worktree")).toBeTruthy();
+    expect(screen.getByText("Pull results")).toBeTruthy();
+    expect(screen.getByText("Pull target")).toBeTruthy();
+    expect(screen.getByText("Not possible to fast-forward")).toBeTruthy();
+    expect(screen.getByText("Sync failures")).toBeTruthy();
+    expect(screen.getByText("PR sync target (feature/pr-fail)")).toBeTruthy();
+    expect(screen.getByText("gh auth failed")).toBeTruthy();
     expect(window.location.hash).toBe("#/en/task/task-1");
   });
 });
