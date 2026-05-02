@@ -10,6 +10,7 @@ interface BranchSearchInputProps {
   value: string;
   onChange: (branch: string) => void;
   placeholder?: string;
+  autoFocus?: boolean;
 }
 
 /** 브랜치 목록에서 fuzzy 검색으로 선택할 수 있는 입력 컴포넌트 */
@@ -18,6 +19,7 @@ export default function BranchSearchInput({
   value,
   onChange,
   placeholder,
+  autoFocus = false,
 }: BranchSearchInputProps) {
   const t = useTranslations("task");
   const [inputValue, setInputValue] = useState(value);
@@ -33,6 +35,14 @@ export default function BranchSearchInput({
   useEffect(() => {
     setInputValue(value);
   }, [value]);
+
+  useEffect(() => {
+    if (!autoFocus) {
+      return;
+    }
+
+    inputRef.current?.focus();
+  }, [autoFocus]);
 
   /** 검색어 변경 시 fuzzy 필터링을 수행한다 */
   useEffect(() => {

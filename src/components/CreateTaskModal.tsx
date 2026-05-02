@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useTransition, useCallback } from "react";
+import { useState, useEffect, useTransition, useCallback, useRef } from "react";
 import { useTranslations } from "next-intl";
 import { useRouter } from "@/desktop/renderer/navigation";
 import { createTask } from "@/desktop/renderer/actions/kanban";
@@ -29,6 +29,14 @@ type CreateTaskModalContentProps = Pick<
   "onClose" | "projects" | "defaultProjectId" | "defaultBaseBranch" | "defaultSessionType"
 >;
 
+const FOCUSABLE_SELECTOR = [
+  "button:not([disabled])",
+  "input:not([disabled]):not([type='hidden'])",
+  "select:not([disabled])",
+  "textarea:not([disabled])",
+  "[tabindex]:not([tabindex='-1'])",
+].join(",");
+
 function findProjectDefaultBranch(projects: Project[], projectId: string) {
   return projects.find((p) => p.id === projectId)?.defaultBranch ?? "";
 }
@@ -40,6 +48,15 @@ function resolveInitialBaseBranch(
 ) {
   if (!projectId) return "";
   return defaultBaseBranch || findProjectDefaultBranch(projects, projectId);
+}
+
+function getFocusableElements(container: HTMLElement | null) {
+  if (!container) {
+    return [];
+  }
+
+  return Array.from(container.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR))
+    .filter((element) => element.tabIndex >= 0 && !element.hasAttribute("disabled"));
 }
 
 export default function CreateTaskModal({
@@ -73,6 +90,7 @@ function CreateTaskModalContent({
   const t = useTranslations("task");
   const tc = useTranslations("common");
   const router = useRouter();
+  const dialogRef = useRef<HTMLDivElement>(null);
   const [isPending, startTransition] = useTransition();
   const initialProjectId = defaultProjectId || "";
   const [selectedProjectId, setSelectedProjectId] = useState(initialProjectId);
@@ -115,6 +133,15 @@ function CreateTaskModalContent({
   }, [selectedProjectId, defaultBaseBranch]);
 
   useEscapeKey(onClose);
+
+  useEffect(() => {
+    const focusableElements = getFocusableElements(dialogRef.current);
+    if (selectedProjectId) {
+      return;
+    }
+
+    focusableElements[0]?.focus();
+  }, [selectedProjectId]);
 
   const branchOptions = baseBranch && !branches.includes(baseBranch)
     ? [baseBranch, ...branches]
@@ -176,8 +203,48 @@ function CreateTaskModalContent({
     event.currentTarget.requestSubmit();
   }
 
+  function handleDialogKeyDownCapture(event: React.KeyboardEvent<HTMLDivElement>) {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      event.stopPropagation();
+      onClose();
+      return;
+    }
+
+    if (event.key !== "Tab") {
+      return;
+    }
+
+    const focusableElements = getFocusableElements(dialogRef.current);
+    if (focusableElements.length === 0) {
+      return;
+    }
+
+    const activeElement = document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : null;
+    const currentIndex = activeElement ? focusableElements.indexOf(activeElement) : -1;
+
+    if (event.shiftKey) {
+      if (currentIndex <= 0) {
+        event.preventDefault();
+        focusableElements[focusableElements.length - 1]?.focus();
+      }
+      return;
+    }
+
+    if (currentIndex === -1 || currentIndex === focusableElements.length - 1) {
+      event.preventDefault();
+      focusableElements[0]?.focus();
+    }
+  }
+
   return (
-    <div className="fixed inset-0 z-[400] flex items-center justify-center bg-bg-overlay">
+    <div
+      ref={dialogRef}
+      className="fixed inset-0 z-[400] flex items-center justify-center bg-bg-overlay"
+      onKeyDownCapture={handleDialogKeyDownCapture}
+    >
       <div className="w-full max-w-md bg-bg-surface rounded-xl border border-border-default shadow-lg p-6">
         <h2 className="text-lg font-semibold text-text-primary mb-4">
           {t("createTitle")}
@@ -206,6 +273,7 @@ function CreateTaskModalContent({
                 branches={branchOptions}
                 value={baseBranch}
                 onChange={setBaseBranch}
+                autoFocus
               />
             </div>
           )}
