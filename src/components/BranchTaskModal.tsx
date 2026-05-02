@@ -17,6 +17,10 @@ interface BranchTaskModalProps {
   onClose: () => void;
 }
 
+function findProjectDefaultBranch(projects: Project[], projectId: string) {
+  return projects.find((project) => project.id === projectId)?.defaultBranch ?? "";
+}
+
 /** 기존 작업에서 브랜치를 분기하는 모달. 프로젝트, 베이스 브랜치, 새 브랜치명, 세션 타입을 선택한다 */
 export default function BranchTaskModal({
   task,
@@ -31,25 +35,23 @@ export default function BranchTaskModal({
     projects[0]?.id || ""
   );
   const [branches, setBranches] = useState<string[]>([]);
-  const [baseBranch, setBaseBranch] = useState("");
+  const [baseBranch, setBaseBranch] = useState(() =>
+    findProjectDefaultBranch(projects, projects[0]?.id || "")
+  );
   const [branchName, setBranchName] = useState("");
   const [sessionType, setSessionType] = useState<SessionType>(
     (defaultSessionType as SessionType) || SessionType.TMUX
   );
   const [error, setError] = useState<string | null>(null);
+  const selectedProjectName = projects.find((project) => project.id === selectedProjectId)?.name;
 
   useEffect(() => {
     if (!selectedProjectId) return;
 
-    const selectedProject = projects.find((p) => p.id === selectedProjectId);
-    if (selectedProject) {
-      setBaseBranch(selectedProject.defaultBranch);
-    }
-
     getProjectBranches(selectedProjectId).then((result) => {
       setBranches(result);
     });
-  }, [selectedProjectId, projects]);
+  }, [selectedProjectId]);
 
   useEscapeKey(onClose);
 
@@ -86,6 +88,12 @@ export default function BranchTaskModal({
     });
   }
 
+  function handleProjectChange(projectId: string) {
+    setSelectedProjectId(projectId);
+    setBaseBranch(findProjectDefaultBranch(projects, projectId));
+    setBranches([]);
+  }
+
   return (
     <div className="fixed inset-0 z-[400] flex items-center justify-center bg-bg-overlay">
       <div className="w-full max-w-md bg-bg-surface rounded-xl border border-border-default shadow-lg p-6">
@@ -103,7 +111,7 @@ export default function BranchTaskModal({
             </label>
             <select
               value={selectedProjectId}
-              onChange={(e) => setSelectedProjectId(e.target.value)}
+              onChange={(e) => handleProjectChange(e.target.value)}
               className="w-full px-3 py-2 bg-bg-page border border-border-default rounded-md text-text-primary focus:outline-none focus:border-brand-primary transition-colors"
             >
               {projects.length === 0 && (
@@ -126,6 +134,7 @@ export default function BranchTaskModal({
               branches={branches.length > 0 ? branches : baseBranch ? [baseBranch] : []}
               value={baseBranch}
               onChange={setBaseBranch}
+              projectName={selectedProjectName}
             />
           </div>
 
