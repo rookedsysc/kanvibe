@@ -7,7 +7,7 @@ import {
 } from "@/lib/boardNotifier";
 
 const INITIAL_SYNC_DELAY_MS = 20_000;
-const SYNC_INTERVAL_MS = 90_000;
+const SYNC_INTERVAL_MS = 10 * 60_000;
 
 let activeBackgroundTaskSyncStop: (() => void) | null = null;
 
@@ -32,8 +32,11 @@ export function startBackgroundTaskSync() {
   }
 
   async function runSyncCycle() {
-    if (disposed || running) {
-      scheduleNext(SYNC_INTERVAL_MS);
+    if (disposed) {
+      return;
+    }
+
+    if (running) {
       return;
     }
 

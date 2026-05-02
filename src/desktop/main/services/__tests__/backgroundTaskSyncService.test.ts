@@ -119,6 +119,77 @@ describe("backgroundTaskSyncService", () => {
     stopB();
   });
 
+  it("실행 중인 background task sync cycle이 있으면 추가 cycle을 실행하지 않는다", async () => {
+    let resolveWorktreeSync: (result: {
+      worktreeTasks: string[];
+      registeredWorktrees: never[];
+      hooksSetup: never[];
+      errors: never[];
+      changed: boolean;
+    }) => void = () => {};
+    mocks.syncRegisteredProjectWorktrees.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveWorktreeSync = resolve;
+      }),
+    );
+
+    const { startBackgroundTaskSync } = await import("@/desktop/main/services/backgroundTaskSyncService");
+
+    const stop = startBackgroundTaskSync();
+    await vi.advanceTimersByTimeAsync(20_000);
+
+    expect(mocks.syncRegisteredProjectWorktrees).toHaveBeenCalledTimes(1);
+    expect(mocks.syncActiveTaskPullRequests).toHaveBeenCalledTimes(1);
+    expect(mocks.syncActiveTaskPulls).toHaveBeenCalledTimes(1);
+
+    await vi.advanceTimersByTimeAsync(10 * 60_000);
+
+    expect(mocks.syncRegisteredProjectWorktrees).toHaveBeenCalledTimes(1);
+    expect(mocks.syncActiveTaskPullRequests).toHaveBeenCalledTimes(1);
+    expect(mocks.syncActiveTaskPulls).toHaveBeenCalledTimes(1);
+
+    resolveWorktreeSync({
+      worktreeTasks: [],
+      registeredWorktrees: [],
+      hooksSetup: [],
+      errors: [],
+      changed: false,
+    });
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(10 * 60_000);
+
+    expect(mocks.syncRegisteredProjectWorktrees).toHaveBeenCalledTimes(2);
+    expect(mocks.syncActiveTaskPullRequests).toHaveBeenCalledTimes(2);
+    expect(mocks.syncActiveTaskPulls).toHaveBeenCalledTimes(2);
+
+    stop();
+  });
+
+  it("background task sync 갱신 주기는 최초 실행 후 10분이다", async () => {
+    const { startBackgroundTaskSync } = await import("@/desktop/main/services/backgroundTaskSyncService");
+
+    const stop = startBackgroundTaskSync();
+    await vi.advanceTimersByTimeAsync(20_000);
+
+    expect(mocks.syncRegisteredProjectWorktrees).toHaveBeenCalledTimes(1);
+    expect(mocks.syncActiveTaskPullRequests).toHaveBeenCalledTimes(1);
+    expect(mocks.syncActiveTaskPulls).toHaveBeenCalledTimes(1);
+
+    await vi.advanceTimersByTimeAsync(10 * 60_000 - 1);
+
+    expect(mocks.syncRegisteredProjectWorktrees).toHaveBeenCalledTimes(1);
+    expect(mocks.syncActiveTaskPullRequests).toHaveBeenCalledTimes(1);
+    expect(mocks.syncActiveTaskPulls).toHaveBeenCalledTimes(1);
+
+    await vi.advanceTimersByTimeAsync(1);
+
+    expect(mocks.syncRegisteredProjectWorktrees).toHaveBeenCalledTimes(2);
+    expect(mocks.syncActiveTaskPullRequests).toHaveBeenCalledTimes(2);
+    expect(mocks.syncActiveTaskPulls).toHaveBeenCalledTimes(2);
+
+    stop();
+  });
+
   it("task pull 결과가 있으면 background sync review event에 포함한다", async () => {
     mocks.syncActiveTaskPulls.mockResolvedValue({
       pulledTasks: [
