@@ -20,6 +20,7 @@ import type { Project } from "@/entities/Project";
 import type { AppNotification } from "@/desktop/shared/notifications";
 import { useAutoRefresh } from "@/desktop/renderer/hooks/useAutoRefresh";
 import { useProjectFilterParams } from "@/desktop/renderer/hooks/useProjectFilterParams";
+import { useEscapeKey } from "@/hooks/useEscapeKey";
 import { computeProjectColor } from "@/lib/projectColor";
 import type {
   BackgroundSyncReviewPayload,
@@ -536,6 +537,10 @@ export default function Board({ initialTasks, initialDoneTotal, initialDoneLimit
   const handlePrMergeCancel = useCallback(() => {
     setBackgroundSyncReview(null);
   }, []);
+
+  useEscapeKey(handlePrMergeCancel, {
+    enabled: Boolean(backgroundSyncReview) && !isPrMergeActionPending,
+  });
 
   const handlePrMergeConfirm = useCallback(() => {
     if (!backgroundSyncReview) {

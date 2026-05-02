@@ -124,4 +124,20 @@ describe("BoardRoute", () => {
       expect(screen.getByTestId("board-titles").textContent).toBe("fresh board task");
     });
   });
+
+  it("초기 데이터 로딩이 실패해도 Loading 화면에 고착되지 않는다", async () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    mocks.getTasksByStatus.mockRejectedValue(new Error("database failed"));
+
+    try {
+      render(<BoardRoute />);
+
+      await waitFor(() => {
+        expect(screen.queryByText("Loading...")).toBeNull();
+      });
+      expect(screen.getByTestId("board-titles").textContent).toBe("");
+    } finally {
+      consoleError.mockRestore();
+    }
+  });
 });

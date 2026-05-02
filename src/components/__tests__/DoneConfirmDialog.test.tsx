@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, cleanup } from "@testing-library/react";
+import { fireEvent, render, screen, cleanup } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 // --- Mocks ---
@@ -70,6 +70,18 @@ describe("DoneConfirmDialog", () => {
 
     // When
     await user.click(screen.getByText("Cancel"));
+
+    // Then
+    expect(defaultProps.onCancel).toHaveBeenCalledTimes(1);
+    expect(defaultProps.onConfirm).not.toHaveBeenCalled();
+  });
+
+  it("should call onCancel when Escape is pressed", () => {
+    // Given
+    render(<DoneConfirmDialog {...defaultProps} />);
+
+    // When
+    fireEvent.keyDown(window, { key: "Escape" });
 
     // Then
     expect(defaultProps.onCancel).toHaveBeenCalledTimes(1);

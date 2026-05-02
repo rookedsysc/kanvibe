@@ -151,7 +151,7 @@ describe("BoardCommandProvider", () => {
     });
   });
 
-  it("dispatches the create task shortcut to the registered board handler", () => {
+  it("opens the create task modal from the global new task shortcut", () => {
     const onToggleNotificationCenter = vi.fn();
     const onOpenProjectFilter = vi.fn();
     const onOpenCreateTaskModal = vi.fn();

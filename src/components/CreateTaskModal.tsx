@@ -9,6 +9,7 @@ import { ensureSessionDependencyWithPrompt } from "@/desktop/renderer/utils/sess
 import { SessionType } from "@/entities/KanbanTask";
 import { TaskPriority } from "@/entities/TaskPriority";
 import type { Project } from "@/entities/Project";
+import { useEscapeKey } from "@/hooks/useEscapeKey";
 import ProjectSelector from "./ProjectSelector";
 import PrioritySelector from "./PrioritySelector";
 import BranchSearchInput from "./BranchSearchInput";
@@ -112,6 +113,8 @@ function CreateTaskModalContent({
       isCancelled = true;
     };
   }, [selectedProjectId, defaultBaseBranch]);
+
+  useEscapeKey(onClose);
 
   const branchOptions = baseBranch && !branches.includes(baseBranch)
     ? [baseBranch, ...branches]
