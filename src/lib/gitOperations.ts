@@ -26,8 +26,13 @@ const SSH_TRANSPORT_ERROR_PATTERNS = [
   /permission denied \(publickey/i,
   /too many authentication failures/i,
   /bad owner or permissions/i,
+  /session open refused by peer/i,
   /ssh: connect to host/i,
 ];
+
+const REMOTE_SSH_TRANSPORT_FAILURE_COOLDOWN_MS = 60_000;
+const remoteSSHHostQueues = new Map<string, Promise<void>>();
+const remoteSSHTransportFailures = new Map<string, { until: number; error: Error }>();
 
 function collectErrorOutput(error: unknown): string {
   const outputs: string[] = [];
@@ -88,39 +93,96 @@ async function execLocal(command: string): Promise<string> {
 
 /** SSH를 통해 원격에서 명령을 실행하고 stdout을 반환한다 */
 async function execRemote(sshHost: string, command: string): Promise<string> {
-  const configs = await parseSSHConfig();
-  const hostConfig = configs.find((c) => c.host === sshHost);
+  return runQueuedRemoteCommand(sshHost, async () => {
+    throwIfSSHTransportCooldownActive(sshHost);
 
-  if (!hostConfig) {
-    throw new Error(`SSH 호스트를 찾을 수 없습니다: ${sshHost}`);
-  }
+    const configs = await parseSSHConfig();
+    const hostConfig = configs.find((c) => c.host === sshHost);
 
-  const sshArgs = [
-    ...await buildExecSSHArgs(hostConfig),
-    buildRemoteShellCommand(command),
-  ];
-
-  try {
-    const { stdout } = await execFileAsync("ssh", sshArgs, {
-      maxBuffer: 10 * 1024 * 1024,
-    });
-    return stdout.trim();
-  } catch (error) {
-    const stderr = error && typeof error === "object" && "stderr" in error
-      ? String((error as { stderr?: string }).stderr || "")
-      : "";
-
-    if (shouldLogRemoteCommandFailure(command, stderr)) {
-      console.error("[remote-ssh] command failed", {
-        sshHost,
-        command,
-        sshArgs,
-        error: error instanceof Error ? error.message : String(error),
-      });
+    if (!hostConfig) {
+      throw new Error(`SSH 호스트를 찾을 수 없습니다: ${sshHost}`);
     }
 
-    throw normalizeSSHExecError(error, sshHost);
+    const sshArgs = [
+      ...await buildExecSSHArgs(hostConfig),
+      buildRemoteShellCommand(command),
+    ];
+
+    try {
+      const { stdout } = await execFileAsync("ssh", sshArgs, {
+        maxBuffer: 10 * 1024 * 1024,
+      });
+      return stdout.trim();
+    } catch (error) {
+      const stderr = error && typeof error === "object" && "stderr" in error
+        ? String((error as { stderr?: string }).stderr || "")
+        : "";
+
+      if (shouldLogRemoteCommandFailure(command, stderr)) {
+        console.error("[remote-ssh] command failed", {
+          sshHost,
+          command,
+          sshArgs,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+
+      const normalizedError = normalizeSSHExecError(error, sshHost);
+      rememberSSHTransportFailure(sshHost, normalizedError);
+      throw normalizedError;
+    }
+  });
+}
+
+async function runQueuedRemoteCommand<T>(
+  sshHost: string,
+  operation: () => Promise<T>,
+): Promise<T> {
+  const previous = remoteSSHHostQueues.get(sshHost) ?? Promise.resolve();
+  let releaseCurrent: () => void = () => {};
+  const current = new Promise<void>((resolve) => {
+    releaseCurrent = resolve;
+  });
+  const queued = previous.catch(() => undefined).then(() => current);
+  remoteSSHHostQueues.set(sshHost, queued);
+
+  await previous.catch(() => undefined);
+
+  try {
+    return await operation();
+  } finally {
+    releaseCurrent();
+    if (remoteSSHHostQueues.get(sshHost) === queued) {
+      remoteSSHHostQueues.delete(sshHost);
+    }
   }
+}
+
+function throwIfSSHTransportCooldownActive(sshHost: string): void {
+  const failure = remoteSSHTransportFailures.get(sshHost);
+  if (!failure) {
+    return;
+  }
+
+  if (Date.now() >= failure.until) {
+    remoteSSHTransportFailures.delete(sshHost);
+    return;
+  }
+
+  throw new Error(
+    `${sshHost} 원격 명령 실패: 최근 SSH transport 실패로 원격 명령을 잠시 건너뜁니다. 마지막 오류: ${failure.error.message}`,
+  );
+}
+
+function rememberSSHTransportFailure(sshHost: string, error: Error): void {
+  if (!isSSHTransportError(error)) {
+    return;
+  }
+
+  remoteSSHTransportFailures.set(sshHost, {
+    until: Date.now() + REMOTE_SSH_TRANSPORT_FAILURE_COOLDOWN_MS,
+    error,
+  });
 }
 
 async function buildExecSSHArgs(

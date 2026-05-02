@@ -1271,7 +1271,7 @@ describe("projectService local hook installation", () => {
     );
   });
 
-  it("등록된 프로젝트 background sync는 프로젝트별 worktree 조회를 병렬로 시작한다", async () => {
+  it("등록된 프로젝트 background sync는 프로젝트별 worktree 조회를 직렬로 실행한다", async () => {
     // Given
     mocks.getClaudeHooksStatus.mockResolvedValue({ installed: true });
     mocks.getGeminiHooksStatus.mockResolvedValue({ installed: true });
@@ -1331,11 +1331,12 @@ describe("projectService local hook installation", () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     // Then
-    const targetRepoPaths = seenRepoPaths.filter((repoPath) => repoPath.startsWith("/workspace/api-"));
-    expect(targetRepoPaths.slice(0, 2)).toEqual(["/workspace/api-a", "/workspace/api-b"]);
+    expect(Array.from(firstCalls).filter((repoPath) => repoPath.startsWith("/workspace/api-"))).toEqual(["/workspace/api-a"]);
 
     releaseGate?.();
     await syncPromise;
+
+    expect(Array.from(firstCalls).filter((repoPath) => repoPath.startsWith("/workspace/api-"))).toEqual(["/workspace/api-a", "/workspace/api-b"]);
   });
 });
 
