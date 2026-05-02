@@ -5,30 +5,69 @@ import { Link, useRouter } from "@/desktop/renderer/navigation";
 import { getGitDiffFiles } from "@/desktop/renderer/actions/diff";
 import { getTaskById } from "@/desktop/renderer/actions/kanban";
 import DiffPageClient from "@/desktop/renderer/components/DiffPageClient";
+import { INITIAL_DESKTOP_LOAD_TIMEOUT_MS, logDesktopInitialLoadTimeout } from "@/desktop/renderer/utils/loadingTimeout";
 import { useRefreshSignal } from "@/desktop/renderer/utils/refresh";
+
+interface DiffRouteState {
+  task: Awaited<ReturnType<typeof getTaskById>>;
+  files: Awaited<ReturnType<typeof getGitDiffFiles>>;
+}
+
+function createEmptyDiffState(): DiffRouteState {
+  return {
+    task: null,
+    files: [],
+  };
+}
 
 export default function DiffRoute() {
   const { id = "" } = useParams();
   const t = useTranslations("diffView");
   const router = useRouter();
   const refreshSignal = useRefreshSignal(["all", "diff"]);
-  const [state, setState] = useState<{ task: Awaited<ReturnType<typeof getTaskById>>; files: Awaited<ReturnType<typeof getGitDiffFiles>> } | null>(null);
+  const [state, setState] = useState<DiffRouteState | null>(null);
 
   useEffect(() => {
     let cancelled = false;
+    let loadingTimeout: number | null = window.setTimeout(() => {
+      loadingTimeout = null;
+      if (!cancelled) {
+        logDesktopInitialLoadTimeout("diff", { taskId: id });
+        setState((current) => current ?? createEmptyDiffState());
+      }
+    }, INITIAL_DESKTOP_LOAD_TIMEOUT_MS);
+
+    const clearLoadingTimeout = () => {
+      if (loadingTimeout === null) {
+        return;
+      }
+
+      window.clearTimeout(loadingTimeout);
+      loadingTimeout = null;
+    };
 
     void (async () => {
-      const task = await getTaskById(id);
-      const files = task?.branchName && task.worktreePath ? await getGitDiffFiles(id) : [];
+      try {
+        const task = await getTaskById(id);
+        const files = task?.branchName && task.worktreePath ? await getGitDiffFiles(id) : [];
 
-      if (!cancelled) {
-        setState({ task, files });
-        document.title = task?.branchName ? `Diff - ${task.branchName}` : "";
+        clearLoadingTimeout();
+        if (!cancelled) {
+          setState({ task, files });
+          document.title = task?.branchName ? `Diff - ${task.branchName}` : "";
+        }
+      } catch (error) {
+        clearLoadingTimeout();
+        console.error("Failed to load diff route data:", error);
+        if (!cancelled) {
+          setState((current) => current ?? createEmptyDiffState());
+        }
       }
     })();
 
     return () => {
       cancelled = true;
+      clearLoadingTimeout();
     };
   }, [id, refreshSignal]);
 

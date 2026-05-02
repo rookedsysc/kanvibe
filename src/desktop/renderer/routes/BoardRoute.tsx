@@ -6,7 +6,7 @@ import { getAllProjects, getAvailableHosts } from "@/desktop/renderer/actions/pr
 import { buildRouteCacheKey, readRouteCache, writeRouteCache } from "@/desktop/renderer/utils/routeCache";
 import { useRefreshSignal } from "@/desktop/renderer/utils/refresh";
 import { DEFAULT_TASK_SEARCH_SHORTCUT } from "@/desktop/renderer/utils/keyboardShortcut";
-import { INITIAL_DESKTOP_LOAD_TIMEOUT_MS } from "@/desktop/renderer/utils/loadingTimeout";
+import { INITIAL_DESKTOP_LOAD_TIMEOUT_MS, logDesktopInitialLoadTimeout } from "@/desktop/renderer/utils/loadingTimeout";
 import { SessionType, TaskStatus } from "@/entities/KanbanTask";
 
 interface BoardData {
@@ -57,6 +57,7 @@ export default function BoardRoute() {
     let cancelled = false;
     const loadingTimeout = window.setTimeout(() => {
       if (!cancelled) {
+        logDesktopInitialLoadTimeout("board");
         setData((currentData) => currentData ?? createEmptyBoardData());
       }
     }, INITIAL_DESKTOP_LOAD_TIMEOUT_MS);

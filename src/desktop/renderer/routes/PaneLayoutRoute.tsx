@@ -5,12 +5,21 @@ import { Link } from "@/desktop/renderer/navigation";
 import { getAllProjects } from "@/desktop/renderer/actions/project";
 import { getGlobalPaneLayout, getProjectPaneLayout } from "@/desktop/renderer/actions/paneLayout";
 import type { PaneLayoutConfig } from "@/entities/PaneLayoutConfig";
+import { INITIAL_DESKTOP_LOAD_TIMEOUT_MS, logDesktopInitialLoadTimeout } from "@/desktop/renderer/utils/loadingTimeout";
 import { useRefreshSignal } from "@/desktop/renderer/utils/refresh";
 
 interface PaneLayoutState {
   globalConfig: PaneLayoutConfig | null;
   projects: Awaited<ReturnType<typeof getAllProjects>>;
   projectConfigs: Map<string, PaneLayoutConfig | null>;
+}
+
+function createEmptyPaneLayoutState(): PaneLayoutState {
+  return {
+    globalConfig: null,
+    projects: [],
+    projectConfigs: new Map(),
+  };
 }
 
 export default function PaneLayoutRoute() {
@@ -24,26 +33,52 @@ export default function PaneLayoutRoute() {
 
   useEffect(() => {
     let cancelled = false;
+    let loadingTimeout: number | null = window.setTimeout(() => {
+      loadingTimeout = null;
+      if (!cancelled) {
+        logDesktopInitialLoadTimeout("pane-layout");
+        setState((current) => current ?? createEmptyPaneLayoutState());
+      }
+    }, INITIAL_DESKTOP_LOAD_TIMEOUT_MS);
+
+    const clearLoadingTimeout = () => {
+      if (loadingTimeout === null) {
+        return;
+      }
+
+      window.clearTimeout(loadingTimeout);
+      loadingTimeout = null;
+    };
 
     (async () => {
-      const [globalConfig, projects] = await Promise.all([getGlobalPaneLayout(), getAllProjects()]);
-      const projectConfigs = new Map<string, PaneLayoutConfig | null>();
+      try {
+        const [globalConfig, projects] = await Promise.all([getGlobalPaneLayout(), getAllProjects()]);
+        const projectConfigs = new Map<string, PaneLayoutConfig | null>();
 
-      await Promise.all(projects.map(async (project) => {
-        try {
-          projectConfigs.set(project.id, await getProjectPaneLayout(project.id));
-        } catch {
-          projectConfigs.set(project.id, null);
+        await Promise.all(projects.map(async (project) => {
+          try {
+            projectConfigs.set(project.id, await getProjectPaneLayout(project.id));
+          } catch {
+            projectConfigs.set(project.id, null);
+          }
+        }));
+
+        clearLoadingTimeout();
+        if (!cancelled) {
+          setState({ globalConfig, projects, projectConfigs });
         }
-      }));
-
-      if (!cancelled) {
-        setState({ globalConfig, projects, projectConfigs });
+      } catch (error) {
+        clearLoadingTimeout();
+        console.error("Failed to load pane layout route data:", error);
+        if (!cancelled) {
+          setState((current) => current ?? createEmptyPaneLayoutState());
+        }
       }
     })();
 
     return () => {
       cancelled = true;
+      clearLoadingTimeout();
     };
   }, [refreshSignal]);
 

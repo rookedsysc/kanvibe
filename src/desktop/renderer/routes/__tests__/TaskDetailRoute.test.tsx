@@ -1,8 +1,9 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { BoardCommandProvider } from "@/desktop/renderer/components/BoardCommandProvider";
 import TaskDetailRoute from "@/desktop/renderer/routes/TaskDetailRoute";
+import { INITIAL_DESKTOP_LOAD_TIMEOUT_MS } from "@/desktop/renderer/utils/loadingTimeout";
 
 const TASK_DETAIL_CACHE_KEY = "kanvibe:route-cache:task-detail:task-1";
 
@@ -201,6 +202,10 @@ describe("TaskDetailRoute", () => {
     mocks.fetchPrUrlWithPrompt.mockResolvedValue(null);
   });
 
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it("캐시가 있으면 stale task detail을 즉시 렌더링하고 이후 최신 데이터로 갱신한다", async () => {
     // Given
     sessionStorage.setItem(TASK_DETAIL_CACHE_KEY, JSON.stringify({
@@ -282,6 +287,19 @@ describe("TaskDetailRoute", () => {
     await waitFor(() => {
       expect(screen.getByTestId("task-title").textContent).toBe("fresh task title");
     });
+  });
+
+  it("초기 task 조회가 끝나지 않아도 Loading 화면에 고착되지 않는다", async () => {
+    vi.useFakeTimers();
+    mocks.getTaskById.mockReturnValue(new Promise(() => {}));
+
+    render(<TaskDetailRoute />);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(INITIAL_DESKTOP_LOAD_TIMEOUT_MS);
+    });
+
+    expect(screen.queryByText("Loading...")).toBeNull();
+    expect(screen.getByText("taskNotFound")).toBeTruthy();
   });
 
   it("알림 단축키로 상세 화면의 알림 센터를 토글한다", async () => {
