@@ -42,7 +42,7 @@ function hasElectronBuilderInstalled() {
 
 function rebuildElectronNativeDependencies() {
   console.warn("[kanvibe] Postinstall: rebuilding native dependencies for the Electron runtime...");
-  execFileSync("pnpm", ["exec", "electron-rebuild", "-f", "--build-from-source", "-w", "better-sqlite3"], {
+  execFileSync("pnpm", ["exec", "electron-rebuild", "-f", "--build-from-source", "--only", "better-sqlite3"], {
     stdio: "inherit",
     env: process.env,
   });
@@ -53,7 +53,7 @@ function main() {
 
   if (getNodeMajor() !== REQUIRED_NODE_MAJOR) {
     console.warn(
-      `[kanvibe] Postinstall: skipping Electron native rebuild because Node ${process.versions.node} is active. Use Node ${REQUIRED_NODE_MAJOR}.x and run \`pnpm exec electron-rebuild -f --build-from-source -w better-sqlite3\` if needed.`,
+      `[kanvibe] Postinstall: skipping Electron native rebuild because Node ${process.versions.node} is active. Use Node ${REQUIRED_NODE_MAJOR}.x and run \`pnpm exec electron-rebuild -f --build-from-source --only better-sqlite3\` if needed.`,
     );
     return;
   }

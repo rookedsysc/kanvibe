@@ -5,6 +5,7 @@ import { HashRouter, Navigate, Outlet, Route, Routes, useParams } from "react-ro
 import LoginForm from "@/components/LoginForm";
 import { BoardCommandProvider } from "@/desktop/renderer/components/BoardCommandProvider";
 import BoardEventAlert from "@/desktop/renderer/components/BoardEventAlert";
+import BackgroundSyncReviewDialog from "@/desktop/renderer/components/BackgroundSyncReviewDialog";
 import NotificationListener from "@/desktop/renderer/components/NotificationListener";
 import TaskQuickSearchDialog from "@/desktop/renderer/components/TaskQuickSearchDialog";
 import { getSessionState } from "@/desktop/renderer/actions/auth";
@@ -39,6 +40,7 @@ function LocaleShell({ sessionLoading, isAuthenticated }: { sessionLoading: bool
             {isAuthenticated ? <TaskQuickSearchDialog /> : null}
             <NotificationListener />
             <BoardEventAlert />
+            {isAuthenticated ? <BackgroundSyncReviewDialog /> : null}
           </>
         )}
         <Outlet />

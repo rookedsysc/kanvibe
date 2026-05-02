@@ -69,12 +69,32 @@ describe("taskNotifications", () => {
     });
   });
 
-  it("백그라운드 sync 알림은 실패 개수와 대표 실패 이유를 포함한다", () => {
+  it("background sync review 알림은 pull 결과를 요약하고 action payload에 포함한다", () => {
     // Given
     const payload = {
       locale: "ko",
       mergedPullRequests: [],
       registeredWorktrees: [],
+      pulledTasks: [
+        {
+          taskId: "task-pull-a",
+          taskTitle: "Pull A",
+          branchName: "feature/pull-a",
+          worktreePath: "/workspace/repo__worktrees/pull-a",
+          sshHost: null,
+          status: "updated" as const,
+          summary: "Fast-forward",
+        },
+        {
+          taskId: "task-pull-b",
+          taskTitle: "Pull B",
+          branchName: "feature/pull-b",
+          worktreePath: "/workspace/repo__worktrees/pull-b",
+          sshHost: "remote-host",
+          status: "failed" as const,
+          summary: "Not possible to fast-forward",
+        },
+      ],
       failures: [
         {
           operation: "pull-request-sync" as const,
@@ -91,9 +111,24 @@ describe("taskNotifications", () => {
 
     // Then
     expect(notification.body).toBe(
-      "sync 실패 1건\n실패: PR sync target (feature/pr-fail): gh auth failed\n알림을 열어 정리 대상을 검토하세요.",
+      [
+        "pull 완료 1건 / pull 실패 1건 / sync 실패 1건",
+        "pull 실패: Pull B (feature/pull-b): Not possible to fast-forward",
+        "실패: PR sync target (feature/pr-fail): gh auth failed",
+        "알림을 열어 정리 대상을 검토하세요.",
+      ].join("\n"),
     );
-    expect(notification.desktopPayload.dedupeKey).toContain("task-11:feature/pr-fail:gh auth failed");
-    expect(notification.desktopPayload.action?.payload.failures).toEqual(payload.failures);
+    expect(notification.desktopPayload.dedupeKey).toBe(
+      "background-sync-review:::::task-pull-a:feature/pull-a:updated:Fast-forward|task-pull-b:feature/pull-b:failed:Not possible to fast-forward::pull-request-sync:task-11:feature/pr-fail:gh auth failed",
+    );
+    expect(notification.desktopPayload.action).toEqual({
+      type: "background-sync-review",
+      payload: {
+        mergedPullRequests: [],
+        registeredWorktrees: [],
+        pulledTasks: payload.pulledTasks,
+        failures: payload.failures,
+      },
+    });
   });
 });

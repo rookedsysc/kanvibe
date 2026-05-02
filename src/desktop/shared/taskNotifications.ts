@@ -11,9 +11,12 @@ const NOTIFICATION_MESSAGES = {
     backgroundSyncReviewTitle: "백그라운드 sync 검토 필요",
     formatMergedPullRequestCount: (count: number) => `merge된 PR ${count}건`,
     formatRegisteredWorktreeCount: (count: number) => `새 TODO worktree ${count}건`,
+    formatUpdatedPullCount: (count: number) => `pull 완료 ${count}건`,
+    formatFailedPullCount: (count: number) => `pull 실패 ${count}건`,
     formatSyncFailureCount: (count: number) => `sync 실패 ${count}건`,
+    formatPullFailureDetail: (target: string, reason: string) => `pull 실패: ${target}: ${reason}`,
     formatSyncFailureDetail: (target: string, reason: string) => `실패: ${target}: ${reason}`,
-    formatAdditionalSyncFailureCount: (count: number) => `그 외 실패 ${count}건`,
+    formatAdditionalFailureCount: (count: number) => `추가 실패 ${count}건`,
     backgroundSyncReviewPrompt: "알림을 열어 정리 대상을 검토하세요.",
   },
   en: {
@@ -23,9 +26,12 @@ const NOTIFICATION_MESSAGES = {
     backgroundSyncReviewTitle: "Background sync review needed",
     formatMergedPullRequestCount: (count: number) => `${count} merged PR${count === 1 ? "" : "s"}`,
     formatRegisteredWorktreeCount: (count: number) => `${count} new TODO worktree${count === 1 ? "" : "s"}`,
+    formatUpdatedPullCount: (count: number) => `${count} pull update${count === 1 ? "" : "s"}`,
+    formatFailedPullCount: (count: number) => `${count} failed pull${count === 1 ? "" : "s"}`,
     formatSyncFailureCount: (count: number) => `${count} sync failure${count === 1 ? "" : "s"}`,
+    formatPullFailureDetail: (target: string, reason: string) => `Pull failed: ${target}: ${reason}`,
     formatSyncFailureDetail: (target: string, reason: string) => `Failed: ${target}: ${reason}`,
-    formatAdditionalSyncFailureCount: (count: number) => `${count} more failure${count === 1 ? "" : "s"}`,
+    formatAdditionalFailureCount: (count: number) => `${count} more failure${count === 1 ? "" : "s"}`,
     backgroundSyncReviewPrompt: "Open the notification to review the pending cleanup items.",
   },
   zh: {
@@ -35,9 +41,12 @@ const NOTIFICATION_MESSAGES = {
     backgroundSyncReviewTitle: "需要检查后台同步结果",
     formatMergedPullRequestCount: (count: number) => `已合并 PR ${count} 个`,
     formatRegisteredWorktreeCount: (count: number) => `新建 TODO worktree ${count} 个`,
-    formatSyncFailureCount: (count: number) => `同步失败 ${count} 个`,
-    formatSyncFailureDetail: (target: string, reason: string) => `失败：${target}: ${reason}`,
-    formatAdditionalSyncFailureCount: (count: number) => `另有 ${count} 个失败`,
+    formatUpdatedPullCount: (count: number) => `pull 完成 ${count} 个`,
+    formatFailedPullCount: (count: number) => `pull 失败 ${count} 个`,
+    formatSyncFailureCount: (count: number) => `sync 失败 ${count} 个`,
+    formatPullFailureDetail: (target: string, reason: string) => `pull 失败：${target}：${reason}`,
+    formatSyncFailureDetail: (target: string, reason: string) => `失败：${target}：${reason}`,
+    formatAdditionalFailureCount: (count: number) => `另有失败 ${count} 个`,
     backgroundSyncReviewPrompt: "打开通知以检查待整理项目。",
   },
 } as const;
@@ -119,6 +128,7 @@ export function buildBackgroundSyncReviewNotification(payload: BackgroundSyncRev
   const messages = NOTIFICATION_MESSAGES[getNotificationLocale(payload.locale)];
   const title = messages.backgroundSyncReviewTitle;
   const summaryLines: string[] = [];
+  const pulledTasks = payload.pulledTasks ?? [];
   const failures = payload.failures ?? [];
 
   if (payload.mergedPullRequests.length > 0) {
@@ -129,19 +139,29 @@ export function buildBackgroundSyncReviewNotification(payload: BackgroundSyncRev
     summaryLines.push(messages.formatRegisteredWorktreeCount(payload.registeredWorktrees.length));
   }
 
+  const updatedPullCount = pulledTasks.filter((item) => item.status === "updated").length;
+  const failedPullCount = pulledTasks.filter((item) => item.status === "failed").length;
+  if (updatedPullCount > 0) {
+    summaryLines.push(messages.formatUpdatedPullCount(updatedPullCount));
+  }
+  if (failedPullCount > 0) {
+    summaryLines.push(messages.formatFailedPullCount(failedPullCount));
+  }
   if (failures.length > 0) {
     summaryLines.push(messages.formatSyncFailureCount(failures.length));
   }
 
-  const failureDetailLines = failures.slice(0, 3).map((failure) => (
-    messages.formatSyncFailureDetail(failure.target, failure.reason)
-  ));
-  const additionalFailureCount = failures.length - failureDetailLines.length;
-  if (additionalFailureCount > 0) {
-    failureDetailLines.push(messages.formatAdditionalSyncFailureCount(additionalFailureCount));
-  }
+  const failedPullTasks = pulledTasks.filter((item) => item.status === "failed");
+  const detailLines = [
+    ...failedPullTasks.slice(0, 3).map((item) => (
+      messages.formatPullFailureDetail(`${item.taskTitle} (${item.branchName})`, item.summary)
+    )),
+    ...(failedPullTasks.length > 3 ? [messages.formatAdditionalFailureCount(failedPullTasks.length - 3)] : []),
+    ...failures.slice(0, 3).map((item) => messages.formatSyncFailureDetail(item.target, item.reason)),
+    ...(failures.length > 3 ? [messages.formatAdditionalFailureCount(failures.length - 3)] : []),
+  ];
 
-  const body = [summaryLines.join(" / "), ...failureDetailLines, messages.backgroundSyncReviewPrompt]
+  const body = [summaryLines.join(" / "), ...detailLines, messages.backgroundSyncReviewPrompt]
     .filter(Boolean)
     .join("\n");
   const mergedKeys = payload.mergedPullRequests
@@ -152,11 +172,15 @@ export function buildBackgroundSyncReviewNotification(payload: BackgroundSyncRev
     .map((item) => `${item.taskId}:${item.branchName}:${item.worktreePath}`)
     .sort()
     .join("|");
+  const pullKeys = pulledTasks
+    .map((item) => `${item.taskId}:${item.branchName}:${item.status}:${item.summary}`)
+    .sort()
+    .join("|");
   const failureKeys = failures
     .map((item) => `${item.operation}:${item.taskId ?? item.target}:${item.branchName ?? ""}:${item.reason}`)
     .sort()
     .join("|");
-  const dedupeKey = `background-sync-review:${mergedKeys}::${worktreeKeys}`;
+  const dedupeKey = `background-sync-review:${mergedKeys}::${worktreeKeys}::${pullKeys}`;
 
   return {
     title,
@@ -172,6 +196,7 @@ export function buildBackgroundSyncReviewNotification(payload: BackgroundSyncRev
         payload: {
           mergedPullRequests: payload.mergedPullRequests,
           registeredWorktrees: payload.registeredWorktrees,
+          pulledTasks,
           ...(failures.length > 0 ? { failures } : {}),
         },
       },

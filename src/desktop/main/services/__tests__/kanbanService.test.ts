@@ -19,6 +19,7 @@ const mocks = vi.hoisted(() => ({
   installKanvibeHooks: vi.fn(),
   broadcastBoardUpdate: vi.fn(),
   execGit: vi.fn(),
+  pullCurrentBranch: vi.fn(),
   broadcastTaskHookInstallFailed: vi.fn(),
   broadcastTaskPrMergedDetectedBatch: vi.fn(),
 }));
@@ -73,6 +74,7 @@ vi.mock("@/lib/boardNotifier", () => ({
 
 vi.mock("@/lib/gitOperations", () => ({
   execGit: mocks.execGit,
+  pullCurrentBranch: mocks.pullCurrentBranch,
 }));
 
 describe("kanbanService.createTask", () => {
@@ -633,6 +635,60 @@ describe("kanbanService.createTask", () => {
     expect(mocks.broadcastTaskPrMergedDetectedBatch).not.toHaveBeenCalled();
   });
 
+  it("active task PR sync 실패는 task 대상과 실패 이유를 결과에 포함한다", async () => {
+    // Given
+    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    mocks.taskRepo.find.mockResolvedValue([
+      {
+        id: "task-11",
+        title: "PR sync target",
+        projectId: "project-1",
+        branchName: "feature/pr-fail",
+        worktreePath: "/workspace/repo__worktrees/feature-pr-fail",
+        sshHost: null,
+        prUrl: null,
+        status: "review",
+      },
+    ]);
+    mocks.projectRepo.findOneBy.mockResolvedValue({
+      id: "project-1",
+      repoPath: "/workspace/repo",
+      defaultBranch: "main",
+      sshHost: null,
+    });
+    mocks.execFile.mockImplementation((file, args, options, callback) => {
+      callback(new Error("gh auth failed"), "", "");
+      return {} as never;
+    });
+
+    try {
+      const { syncActiveTaskPullRequests } = await import("@/desktop/main/services/kanbanService");
+
+      // When
+      const result = await syncActiveTaskPullRequests(new Set());
+
+      // Then
+      expect(result).toEqual({
+        updatedTaskIds: [],
+        mergeEventKeys: [],
+        mergedPullRequests: [],
+        failures: [
+          {
+            operation: "pull-request-sync",
+            target: "PR sync target (feature/pr-fail)",
+            reason: "gh auth failed",
+            taskId: "task-11",
+            branchName: "feature/pr-fail",
+          },
+        ],
+      });
+      expect(mocks.taskRepo.save).not.toHaveBeenCalled();
+      expect(mocks.broadcastTaskPrMergedDetectedBatch).not.toHaveBeenCalled();
+    } finally {
+      consoleErrorSpy.mockRestore();
+    }
+  });
+
   it("active task PR sync는 merged PR을 감지하면 중복 없이 merge 이벤트를 브로드캐스트한다", async () => {
     // Given
     const prUrl = "https://github.com/kanvibe/kanvibe/pull/211";
@@ -684,15 +740,25 @@ describe("kanbanService.createTask", () => {
     });
   });
 
-  it("active task PR sync 실패는 task 대상과 실패 이유를 결과에 포함한다", async () => {
+  it("active task PR sync는 task별 GitHub CLI 조회를 병렬로 시작한다", async () => {
     // Given
     mocks.taskRepo.find.mockResolvedValue([
       {
-        id: "task-11",
-        title: "PR sync target",
+        id: "task-parallel-a",
+        title: "Parallel PR A",
         projectId: "project-1",
-        branchName: "feature/pr-fail",
-        worktreePath: "/workspace/repo__worktrees/feature-pr-fail",
+        branchName: "feature/parallel-a",
+        worktreePath: "/workspace/repo__worktrees/parallel-a",
+        sshHost: null,
+        prUrl: null,
+        status: "review",
+      },
+      {
+        id: "task-parallel-b",
+        title: "Parallel PR B",
+        projectId: "project-1",
+        branchName: "feature/parallel-b",
+        worktreePath: "/workspace/repo__worktrees/parallel-b",
         sshHost: null,
         prUrl: null,
         status: "review",
@@ -701,28 +767,167 @@ describe("kanbanService.createTask", () => {
     mocks.projectRepo.findOneBy.mockResolvedValue({
       id: "project-1",
       repoPath: "/workspace/repo",
+      defaultBranch: "main",
       sshHost: null,
     });
+    const callbacks: Array<(error: Error | null, stdout: string, stderr: string) => void> = [];
     mocks.execFile.mockImplementation((file, args, options, callback) => {
-      callback(new Error("gh auth failed"), "", "");
+      callbacks.push(callback);
       return {} as never;
     });
 
     const { syncActiveTaskPullRequests } = await import("@/desktop/main/services/kanbanService");
 
     // When
-    const result = await syncActiveTaskPullRequests(new Set());
+    const syncPromise = syncActiveTaskPullRequests(new Set());
+    await new Promise((resolve) => setTimeout(resolve, 0));
 
     // Then
-    expect(result.failures).toEqual([
+    expect(callbacks).toHaveLength(2);
+
+    callbacks.forEach((callback) => {
+      callback(null, JSON.stringify([{
+        url: null,
+        state: null,
+        mergedAt: null,
+        updatedAt: "2026-05-02T01:00:00Z",
+      }]), "");
+    });
+    await syncPromise;
+  });
+
+  it("active task pull sync는 default branch task를 제외하고 task별 pull을 병렬로 실행한다", async () => {
+    // Given
+    mocks.taskRepo.find.mockResolvedValue([
       {
-        operation: "pull-request-sync",
-        target: "PR sync target (feature/pr-fail)",
-        reason: "gh auth failed",
-        taskId: "task-11",
-        branchName: "feature/pr-fail",
+        id: "task-main",
+        title: "Main",
+        projectId: "project-1",
+        branchName: "main",
+        worktreePath: "/workspace/repo",
+        sshHost: null,
+        status: "progress",
+      },
+      {
+        id: "task-pull-a",
+        title: "Pull A",
+        projectId: "project-1",
+        branchName: "feature/pull-a",
+        worktreePath: "/workspace/repo__worktrees/pull-a",
+        sshHost: null,
+        status: "progress",
+      },
+      {
+        id: "task-pull-b",
+        title: "Pull B",
+        projectId: "project-1",
+        branchName: "feature/pull-b",
+        worktreePath: "/workspace/repo__worktrees/pull-b",
+        sshHost: null,
+        status: "review",
       },
     ]);
-    expect(mocks.broadcastTaskPrMergedDetectedBatch).not.toHaveBeenCalled();
+    mocks.projectRepo.findOneBy.mockResolvedValue({
+      id: "project-1",
+      repoPath: "/workspace/repo",
+      defaultBranch: "main",
+      sshHost: null,
+    });
+    const resolvers: Array<(value: string) => void> = [];
+    const rejecters: Array<(error: Error) => void> = [];
+    mocks.pullCurrentBranch.mockImplementation(() => new Promise<string>((resolve, reject) => {
+      resolvers.push(resolve);
+      rejecters.push(reject);
+    }));
+
+    const { syncActiveTaskPulls } = await import("@/desktop/main/services/kanbanService");
+
+    // When
+    const syncPromise = syncActiveTaskPulls();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    // Then
+    expect(mocks.pullCurrentBranch).toHaveBeenCalledTimes(2);
+    expect(mocks.pullCurrentBranch).toHaveBeenNthCalledWith(1, "/workspace/repo__worktrees/pull-a", null);
+    expect(mocks.pullCurrentBranch).toHaveBeenNthCalledWith(2, "/workspace/repo__worktrees/pull-b", null);
+
+    resolvers[0]("Fast-forward\n src/file.ts | 1 +");
+    rejecters[1](new Error("Not possible to fast-forward"));
+
+    await expect(syncPromise).resolves.toEqual({
+      pulledTasks: [
+        {
+          taskId: "task-pull-a",
+          taskTitle: "Pull A",
+          branchName: "feature/pull-a",
+          worktreePath: "/workspace/repo__worktrees/pull-a",
+          sshHost: null,
+          status: "updated",
+          summary: "Fast-forward",
+        },
+        {
+          taskId: "task-pull-b",
+          taskTitle: "Pull B",
+          branchName: "feature/pull-b",
+          worktreePath: "/workspace/repo__worktrees/pull-b",
+          sshHost: null,
+          status: "failed",
+          summary: "Not possible to fast-forward",
+        },
+      ],
+    });
+  });
+});
+
+describe("kanbanService.getSearchableTasks", () => {
+  beforeEach(() => {
+    vi.resetModules();
+    vi.clearAllMocks();
+  });
+
+  it("빠른 검색용 task 목록에서 done 상태를 조회하지 않는다", async () => {
+    // Given
+    const updatedAt = new Date("2026-05-02T00:00:00.000Z");
+    mocks.taskRepo.find.mockResolvedValue([
+      {
+        id: "task-active",
+        title: "Active task",
+        branchName: "dev",
+        projectId: "project-kanvibe",
+        project: { name: "kanvibe", sshHost: null },
+        sshHost: null,
+        status: "progress",
+        updatedAt,
+      },
+    ]);
+
+    const { getSearchableTasks } = await import("@/desktop/main/services/kanbanService");
+
+    // When
+    const result = await getSearchableTasks();
+
+    // Then
+    expect(mocks.taskRepo.find).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        status: expect.objectContaining({
+          _type: "not",
+          _value: "done",
+        }),
+      }),
+      relations: ["project"],
+      order: { updatedAt: "DESC", createdAt: "DESC" },
+    }));
+    expect(result).toEqual([
+      {
+        id: "task-active",
+        title: "Active task",
+        branchName: "dev",
+        projectId: "project-kanvibe",
+        projectName: "kanvibe",
+        sshHost: null,
+        status: "progress",
+        updatedAt: "2026-05-02T00:00:00.000Z",
+      },
+    ]);
   });
 });

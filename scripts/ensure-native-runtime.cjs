@@ -16,10 +16,11 @@ function getNodeMajor() {
   return Number.parseInt(process.versions.node.split(".")[0] || "0", 10);
 }
 
-function isNativeModuleMismatch(error) {
+function isRecoverableNativeModuleLoadError(error) {
   const message = String(error?.stack || error?.message || error || "");
   return (
     message.includes("NODE_MODULE_VERSION") ||
+    message.includes("Could not locate the bindings file") ||
     message.includes("did not self-register") ||
     message.includes("ERR_DLOPEN_FAILED") ||
     message.includes("compiled against a different Node.js version")
@@ -100,7 +101,7 @@ function rebuildNativeDependency() {
     }
 
     console.warn("[kanvibe] Detected Electron native ABI mismatch. Rebuilding better-sqlite3 for Electron from source...");
-    execFileSync("pnpm", ["exec", "electron-rebuild", "-f", "--build-from-source", "-w", "better-sqlite3"], {
+    execFileSync("pnpm", ["exec", "electron-rebuild", "-f", "--build-from-source", "--only", "better-sqlite3"], {
       stdio: "inherit",
       env,
     });
@@ -124,7 +125,7 @@ function printRebuildFailureGuidance(error) {
       return;
     }
 
-    console.error("[kanvibe] Try running `pnpm exec electron-rebuild -f --build-from-source -w better-sqlite3` and launch the desktop app again.");
+    console.error("[kanvibe] Try running `pnpm exec electron-rebuild -f --build-from-source --only better-sqlite3` and launch the desktop app again.");
     return;
   }
 
@@ -140,7 +141,7 @@ function main() {
   try {
     verifyBetterSqlite3Binding();
   } catch (error) {
-    if (!isNativeModuleMismatch(error)) {
+    if (!isRecoverableNativeModuleLoadError(error)) {
       throw error;
     }
 

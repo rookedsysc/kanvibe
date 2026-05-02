@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   syncRegisteredProjectWorktrees: vi.fn(),
   syncActiveTaskPullRequests: vi.fn(),
+  syncActiveTaskPulls: vi.fn(),
   broadcastBoardUpdate: vi.fn(),
   broadcastBackgroundSyncReviewNeeded: vi.fn(),
 }));
@@ -13,6 +14,7 @@ vi.mock("@/desktop/main/services/projectService", () => ({
 
 vi.mock("@/desktop/main/services/kanbanService", () => ({
   syncActiveTaskPullRequests: mocks.syncActiveTaskPullRequests,
+  syncActiveTaskPulls: mocks.syncActiveTaskPulls,
 }));
 
 vi.mock("@/lib/boardNotifier", () => ({
@@ -36,6 +38,9 @@ describe("backgroundTaskSyncService", () => {
       updatedTaskIds: [],
       mergeEventKeys: [],
       mergedPullRequests: [],
+    });
+    mocks.syncActiveTaskPulls.mockResolvedValue({
+      pulledTasks: [],
     });
   });
 
@@ -93,6 +98,61 @@ describe("backgroundTaskSyncService", () => {
           mergedAt: "2026-04-30T02:00:00Z",
         },
       ],
+      pulledTasks: [],
+    });
+
+    stop();
+  });
+
+  it("background task sync는 여러 번 시작해도 하나의 loop만 실행한다", async () => {
+    const { startBackgroundTaskSync } = await import("@/desktop/main/services/backgroundTaskSyncService");
+
+    const stopA = startBackgroundTaskSync();
+    const stopB = startBackgroundTaskSync();
+    await vi.advanceTimersByTimeAsync(20_000);
+
+    expect(mocks.syncRegisteredProjectWorktrees).toHaveBeenCalledTimes(1);
+    expect(mocks.syncActiveTaskPullRequests).toHaveBeenCalledTimes(1);
+    expect(mocks.syncActiveTaskPulls).toHaveBeenCalledTimes(1);
+
+    stopA();
+    stopB();
+  });
+
+  it("task pull 결과가 있으면 background sync review event에 포함한다", async () => {
+    mocks.syncActiveTaskPulls.mockResolvedValue({
+      pulledTasks: [
+        {
+          taskId: "task-pull",
+          taskTitle: "Pull target",
+          branchName: "feature/pull",
+          worktreePath: "/workspace/repo__worktrees/feature-pull",
+          sshHost: null,
+          status: "updated",
+          summary: "Fast-forward",
+        },
+      ],
+    });
+
+    const { startBackgroundTaskSync } = await import("@/desktop/main/services/backgroundTaskSyncService");
+
+    const stop = startBackgroundTaskSync();
+    await vi.advanceTimersByTimeAsync(20_000);
+
+    expect(mocks.broadcastBackgroundSyncReviewNeeded).toHaveBeenCalledWith({
+      registeredWorktrees: [],
+      mergedPullRequests: [],
+      pulledTasks: [
+        {
+          taskId: "task-pull",
+          taskTitle: "Pull target",
+          branchName: "feature/pull",
+          worktreePath: "/workspace/repo__worktrees/feature-pull",
+          sshHost: null,
+          status: "updated",
+          summary: "Fast-forward",
+        },
+      ],
     });
 
     stop();
@@ -129,6 +189,7 @@ describe("backgroundTaskSyncService", () => {
     expect(mocks.broadcastBackgroundSyncReviewNeeded).toHaveBeenCalledWith({
       registeredWorktrees: [],
       mergedPullRequests: [],
+      pulledTasks: [],
       failures: [
         {
           operation: "worktree-sync",

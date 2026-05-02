@@ -99,7 +99,7 @@ pnpm dist
 如果 macOS 上出现 `better-sqlite3` 的 `NODE_MODULE_VERSION` 不匹配，KanVibe 现在会在启动前先验证绑定，并在可能时自动尝试重建。
 
 - 浏览器/服务器运行时：`pnpm rebuild better-sqlite3`
-- 桌面运行时：`pnpm exec electron-rebuild -f --build-from-source -w better-sqlite3`
+- 桌面运行时：`pnpm exec electron-rebuild -f --build-from-source --only better-sqlite3`
 
 对于本地桌面运行，`pnpm start` 和 `pnpm dev` 会在 Electron 启动前先执行这项兼容性检查。
 

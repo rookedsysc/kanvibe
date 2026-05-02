@@ -45,10 +45,16 @@ function broadcastNotificationsChanged() {
 
 function broadcastNotificationActivated(appNotification) {
   for (const window of BrowserWindow.getAllWindows()) {
-    if (!window.isDestroyed()) {
-      window.webContents.send("kanvibe:notification-activated", appNotification);
-    }
+    sendNotificationActivated(window, appNotification);
   }
+}
+
+function sendNotificationActivated(browserWindow, appNotification) {
+  if (!browserWindow || browserWindow.isDestroyed()) {
+    return;
+  }
+
+  browserWindow.webContents.send("kanvibe:notification-activated", appNotification);
 }
 
 function getBuildMainRoot() {
@@ -325,6 +331,13 @@ async function activateAppNotification(appNotification, options = {}) {
   }
 
   pendingNotificationActivation = activatedNotification;
+  const { shouldKeepCurrentRouteForNotificationActivation } = getWindowOpenHelpers();
+  if (shouldKeepCurrentRouteForNotificationActivation(activatedNotification)) {
+    await focusMainWindow();
+    sendNotificationActivated(mainWindow, activatedNotification);
+    return true;
+  }
+
   const targetPath = getNotificationTargetPath(activatedNotification);
   if (activatedNotification.taskId) {
     await focusTaskNotificationWindow(targetPath);
@@ -408,12 +421,26 @@ function attachWindowHandlers(browserWindow) {
   });
 
   browserWindow.webContents.on("before-input-event", (event, input) => {
+    const isNotificationShortcut =
+      input.type === "keyDown" &&
+      !input.isAutoRepeat &&
+      !input.alt &&
+      input.shift &&
+      (input.control || input.meta) &&
+      input.key.toLowerCase() === "i";
     const isNewWindowShortcut =
       input.type === "keyDown" &&
       !input.isAutoRepeat &&
       !input.alt &&
       (input.control || input.meta) &&
       input.key.toLowerCase() === "n";
+
+    if (isNotificationShortcut) {
+      event.preventDefault();
+
+      browserWindow.webContents.send("kanvibe:notification-shortcut");
+      return;
+    }
 
     if (!isNewWindowShortcut) {
       return;

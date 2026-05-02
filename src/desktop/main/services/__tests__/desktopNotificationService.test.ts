@@ -193,6 +193,7 @@ describe("desktopNotificationService", () => {
           payload: {
             mergedPullRequests: [],
             registeredWorktrees: [],
+            pulledTasks: [],
           },
         },
       },
@@ -218,8 +219,9 @@ describe("desktopNotificationService", () => {
           branchName: "feature-sync",
           worktreePath: "/workspace/api__worktrees/feature-sync",
           sshHost: null,
-        },
-      ],
+          },
+        ],
+      pulledTasks: [],
     }, "ko", {
       iconPath: "/icon.png",
     })).resolves.toBe(true);
@@ -248,6 +250,7 @@ describe("desktopNotificationService", () => {
               sshHost: null,
             },
           ],
+          pulledTasks: [],
         },
       },
     }));

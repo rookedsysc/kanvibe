@@ -29,6 +29,19 @@ interface ResolveNavigationTargetWindowOptions<T> {
   getWindowUrl: (window: T) => string;
 }
 
+interface NotificationActivationLike {
+  taskId?: string | null;
+  action?: {
+    type?: string;
+  } | null;
+}
+
+export function shouldKeepCurrentRouteForNotificationActivation(
+  notification: NotificationActivationLike | null | undefined,
+): boolean {
+  return notification?.action?.type === "background-sync-review";
+}
+
 function normalizeInternalRoute(route: string | null | undefined): string | null {
   if (!route) {
     return null;

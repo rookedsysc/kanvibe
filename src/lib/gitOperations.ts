@@ -1,6 +1,6 @@
 import { exec, execFile } from "child_process";
 import { promisify } from "util";
-import { mkdir, readFile } from "fs/promises";
+import { mkdir } from "fs/promises";
 import { homedir } from "os";
 import path from "path";
 import { buildSSHArgs, parseSSHConfig, type SSHHostConfig } from "@/lib/sshConfig";
@@ -195,6 +195,14 @@ export async function fetchOrigin(
   } catch {
     /* 네트워크 실패 시에도 로컬 브랜치 목록은 정상 제공해야 하므로 무시한다 */
   }
+}
+
+/** 현재 checkout된 브랜치를 fast-forward 가능한 경우에만 pull한다 */
+export async function pullCurrentBranch(
+  repoPath: string,
+  sshHost?: string | null
+): Promise<string> {
+  return execGit(`git -C "${repoPath}" pull --ff-only`, sshHost);
 }
 
 /**

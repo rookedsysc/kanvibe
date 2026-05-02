@@ -32,6 +32,7 @@ declare global {
       activateNotification?: (notificationId: string) => Promise<boolean>;
       consumePendingNotificationActivation?: () => Promise<AppNotification | null>;
       onNotificationActivated?: (listener: (notification: AppNotification) => void) => () => void;
+      onNotificationShortcut?: (listener: () => void) => () => void;
     };
   }
 }
