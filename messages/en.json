@@ -20,7 +20,6 @@
     "goBack": "Go back",
     "notFoundTitle": "Page not found",
     "notFoundDescription": "The path you requested does not exist or has already moved.",
-    "logout": "Logout",
     "loading": "Loading...",
     "sessionDependency": {
       "localTarget": "this machine",
@@ -55,14 +54,6 @@
       "emptyMerged": "There are no merged PR tasks to move to Done in this review.",
       "emptyRegistered": "There are no newly registered worktrees in this review."
     }
-  },
-  "login": {
-    "username": "Username",
-    "usernamePlaceholder": "Enter username",
-    "password": "Password",
-    "passwordPlaceholder": "Enter password",
-    "submit": "Login",
-    "loggingIn": "Logging in..."
   },
   "board": {
     "title": "",
