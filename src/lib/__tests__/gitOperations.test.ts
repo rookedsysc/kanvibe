@@ -123,6 +123,89 @@ describe("gitOperations.resolvePathForShell", () => {
     );
   });
 
+  it("SSH transport 실패 직후 같은 host의 후속 명령은 새 ssh 프로세스를 만들지 않는다", async () => {
+    // Given
+    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    mocks.execFile.mockImplementation((_file: string, _args: string[], _options: unknown, callback: (error: Error & { stderr?: string }) => void) => {
+      const error = new Error("Command failed") as Error & { stderr?: string };
+      error.stderr = [
+        "mux_client_request_session: session request failed: Session open refused by peer",
+        "Connection closed by 100.73.171.123 port 22",
+      ].join("\n");
+      callback(error);
+    });
+
+    vi.doMock("@/lib/sshConfig", async (importOriginal) => {
+      const actual = await importOriginal<typeof import("@/lib/sshConfig")>();
+      return {
+        ...actual,
+        parseSSHConfig: vi.fn(async () => [{
+          host: "remote-host",
+          hostname: "example.com",
+          port: 2202,
+          username: "tester",
+          privateKeyPath: "/tmp/test-key",
+        }]),
+      };
+    });
+
+    const { execGit } = await import("@/lib/gitOperations");
+
+    try {
+      // When
+      await expect(execGit("git -C /repo worktree list --porcelain", "remote-host")).rejects.toThrow();
+      await expect(execGit("git -C /repo status --short", "remote-host")).rejects.toThrow();
+
+      // Then
+      expect(mocks.execFile).toHaveBeenCalledTimes(1);
+    } finally {
+      consoleErrorSpy.mockRestore();
+    }
+  });
+
+  it("같은 SSH host의 원격 명령은 한 번에 하나씩 실행한다", async () => {
+    // Given
+    const startedCommands: string[] = [];
+    const pendingCallbacks: Array<(error: null, result: { stdout: string }) => void> = [];
+    mocks.execFile.mockImplementation((_file: string, args: string[], _options: unknown, callback: (error: null, result: { stdout: string }) => void) => {
+      startedCommands.push(args.at(-1) ?? "");
+      pendingCallbacks.push(callback);
+    });
+
+    vi.doMock("@/lib/sshConfig", async (importOriginal) => {
+      const actual = await importOriginal<typeof import("@/lib/sshConfig")>();
+      return {
+        ...actual,
+        parseSSHConfig: vi.fn(async () => [{
+          host: "remote-host",
+          hostname: "example.com",
+          port: 2202,
+          username: "tester",
+          privateKeyPath: "/tmp/test-key",
+        }]),
+      };
+    });
+
+    const { execGit } = await import("@/lib/gitOperations");
+
+    // When
+    const first = execGit("first", "remote-host");
+    const second = execGit("second", "remote-host");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    // Then
+    expect(startedCommands).toEqual(["sh -lc 'first'"]);
+
+    pendingCallbacks.shift()?.(null, { stdout: "one\n" });
+    await expect(first).resolves.toBe("one");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(startedCommands).toEqual(["sh -lc 'first'", "sh -lc 'second'"]);
+
+    pendingCallbacks.shift()?.(null, { stdout: "two\n" });
+    await expect(second).resolves.toBe("two");
+  });
+
   it("조용한 probe 명령 실패는 콘솔 에러를 남기지 않는다", async () => {
     // Given
     const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
