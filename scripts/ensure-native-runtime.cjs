@@ -101,7 +101,7 @@ function rebuildNativeDependency() {
     }
 
     console.warn("[kanvibe] Detected Electron native ABI mismatch. Rebuilding better-sqlite3 for Electron from source...");
-    execFileSync("pnpm", ["exec", "electron-rebuild", "-f", "--build-from-source", "-w", "better-sqlite3"], {
+    execFileSync("pnpm", ["exec", "electron-rebuild", "-f", "--build-from-source", "--only", "better-sqlite3"], {
       stdio: "inherit",
       env,
     });
@@ -125,7 +125,7 @@ function printRebuildFailureGuidance(error) {
       return;
     }
 
-    console.error("[kanvibe] Try running `pnpm exec electron-rebuild -f --build-from-source -w better-sqlite3` and launch the desktop app again.");
+    console.error("[kanvibe] Try running `pnpm exec electron-rebuild -f --build-from-source --only better-sqlite3` and launch the desktop app again.");
     return;
   }
 

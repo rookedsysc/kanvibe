@@ -99,7 +99,7 @@ pnpm dist
 macOS에서 `better-sqlite3` `NODE_MODULE_VERSION` 불일치가 발생하면, KanVibe는 시작 전에 바인딩을 검증하고 가능하면 자동 재빌드를 시도합니다.
 
 - 브라우저/서버 런타임: `pnpm rebuild better-sqlite3`
-- 데스크톱 런타임: `pnpm exec electron-rebuild -f --build-from-source -w better-sqlite3`
+- 데스크톱 런타임: `pnpm exec electron-rebuild -f --build-from-source --only better-sqlite3`
 
 로컬 데스크톱 실행에서는 `pnpm start`, `pnpm dev`가 Electron 실행 전에 이 호환성 검사를 이미 수행합니다.
 

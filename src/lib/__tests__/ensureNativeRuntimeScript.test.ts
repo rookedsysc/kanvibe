@@ -16,6 +16,18 @@ describe("ensure-native-runtime script", () => {
     expect(source).toContain("process.exit(0);");
   });
 
+  it("limits Electron native rebuilds to better-sqlite3", () => {
+    const source = readFileSync(
+      path.join(process.cwd(), "scripts", "ensure-native-runtime.cjs"),
+      "utf8",
+    );
+
+    expect(source).toContain('"--only", "better-sqlite3"');
+    expect(source).toContain("--only better-sqlite3");
+    expect(source).not.toContain('"-w", "better-sqlite3"');
+    expect(source).not.toContain("-w better-sqlite3");
+  });
+
   it("captures Electron verification stderr so ABI mismatches trigger rebuilds", () => {
     const source = readFileSync(
       path.join(process.cwd(), "scripts", "ensure-native-runtime.cjs"),

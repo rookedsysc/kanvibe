@@ -99,7 +99,7 @@ This builds the renderer bundle, compiles the desktop main process into `build/m
 If macOS shows a `better-sqlite3` `NODE_MODULE_VERSION` mismatch, KanVibe now verifies the binding before startup and attempts an automatic rebuild when possible.
 
 - browser/server runtime: `pnpm rebuild better-sqlite3`
-- desktop runtime: `pnpm exec electron-rebuild -f --build-from-source -w better-sqlite3`
+- desktop runtime: `pnpm exec electron-rebuild -f --build-from-source --only better-sqlite3`
 
 For local desktop runs, `pnpm start` and `pnpm dev` already perform this compatibility check before Electron launches.
 
