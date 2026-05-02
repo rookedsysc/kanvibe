@@ -10,7 +10,7 @@ import NotificationListener from "@/desktop/renderer/components/NotificationList
 import TaskQuickSearchDialog from "@/desktop/renderer/components/TaskQuickSearchDialog";
 import { getSessionState } from "@/desktop/renderer/actions/auth";
 import { DEFAULT_LOCALE, getSafeLocale, isSupportedLocale, messagesByLocale } from "@/desktop/renderer/utils/locales";
-import { INITIAL_DESKTOP_LOAD_TIMEOUT_MS } from "@/desktop/renderer/utils/loadingTimeout";
+import { INITIAL_DESKTOP_LOAD_TIMEOUT_MS, logDesktopInitialLoadTimeout } from "@/desktop/renderer/utils/loadingTimeout";
 import { triggerDesktopRefresh } from "@/desktop/renderer/utils/refresh";
 import BoardRoute from "@/desktop/renderer/routes/BoardRoute";
 import DiffRoute from "@/desktop/renderer/routes/DiffRoute";
@@ -104,6 +104,7 @@ export default function App() {
       sessionLoadTimeout = window.setTimeout(() => {
         sessionLoadTimeout = null;
         if (!cancelled) {
+          logDesktopInitialLoadTimeout("session", { href: window.location.href });
           setSessionState((currentState) => currentState ?? { isAuthenticated: false });
         }
       }, INITIAL_DESKTOP_LOAD_TIMEOUT_MS);

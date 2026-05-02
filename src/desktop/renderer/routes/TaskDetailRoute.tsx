@@ -26,6 +26,7 @@ import {
 import { useBoardCommands, type BranchTodoDefaults } from "@/desktop/renderer/components/BoardCommandProvider";
 import TerminalLoader from "@/desktop/renderer/components/TerminalLoader";
 import { fetchPrUrlWithPrompt } from "@/desktop/renderer/utils/fetchPrUrlWithPrompt";
+import { INITIAL_DESKTOP_LOAD_TIMEOUT_MS, logDesktopInitialLoadTimeout } from "@/desktop/renderer/utils/loadingTimeout";
 import { buildRouteCacheKey, readRouteCache, removeRouteCache, writeRouteCache } from "@/desktop/renderer/utils/routeCache";
 import { useRefreshSignal } from "@/desktop/renderer/utils/refresh";
 import { SessionType, TaskStatus } from "@/entities/KanbanTask";
@@ -159,73 +160,34 @@ export default function TaskDetailRoute() {
 
   useEffect(() => {
     let cancelled = false;
+    let loadingTimeout: number | null = window.setTimeout(() => {
+      loadingTimeout = null;
+      if (!cancelled) {
+        logDesktopInitialLoadTimeout("task-detail", { taskId: id });
+        setState((current) => current === undefined ? null : current);
+      }
+    }, INITIAL_DESKTOP_LOAD_TIMEOUT_MS);
+
+    const clearLoadingTimeout = () => {
+      if (loadingTimeout === null) {
+        return;
+      }
+
+      window.clearTimeout(loadingTimeout);
+      loadingTimeout = null;
+    };
 
     (async () => {
-      const task = await getTaskById(id);
-      if (!task) {
-        if (!cancelled) {
-          setState(null);
+      try {
+        const task = await getTaskById(id);
+        clearLoadingTimeout();
+
+        if (!task) {
+          if (!cancelled) {
+            setState(null);
+          }
+          return;
         }
-        return;
-      }
-
-      if (cancelled) {
-        return;
-      }
-
-      setState((current) => current && current.task.id === task.id
-        ? {
-            ...current,
-            task: {
-              ...current.task,
-              ...task,
-            },
-          }
-        : {
-            task,
-            ...DEFAULT_DETAIL_STATE,
-          });
-
-      if (task.branchName && !task.prUrl) {
-        void (async () => {
-          try {
-            const prUrl = await fetchPrUrlWithPrompt(task, tc);
-            if (!prUrl || cancelled) {
-              return;
-            }
-
-            setState((current) => current && current.task.id === task.id
-              ? {
-                  ...current,
-                  task: {
-                    ...current.task,
-                    prUrl,
-                  },
-                }
-              : current);
-          } catch (error) {
-            console.error("PR URL 자동 조회 실패:", error);
-          }
-        })();
-      }
-
-      void (async () => {
-        const baseBranchName = task.baseBranch ?? "main";
-        const foundTaskId = task.projectId ? await getTaskIdByProjectAndBranch(task.projectId, baseBranchName) : null;
-        const baseBranchTaskId = foundTaskId !== task.id ? foundTaskId : null;
-        const diffFiles = task.branchName && task.worktreePath ? await getGitDiffFiles(id) : [];
-        const [claudeHooksStatus, geminiHooksStatus, codexHooksStatus, openCodeHooksStatus, aiSessions, projects, defaultSessionType, sidebarDefaultCollapsed, sidebarHintDismissed, doneAlertDismissed] = await Promise.all([
-          task.projectId ? getTaskHooksStatus(id) : Promise.resolve(null),
-          task.projectId ? getTaskGeminiHooksStatus(id) : Promise.resolve(null),
-          task.projectId ? getTaskCodexHooksStatus(id) : Promise.resolve(null),
-          task.projectId ? getTaskOpenCodeHooksStatus(id) : Promise.resolve(null),
-          task.projectId ? getTaskAiSessions(id) : Promise.resolve(EMPTY_AI_SESSIONS),
-          getAllProjects(),
-          getDefaultSessionType(),
-          getSidebarDefaultCollapsed(),
-          getSidebarHintDismissed(),
-          getDoneAlertDismissed(),
-        ]);
 
         if (cancelled) {
           return;
@@ -234,25 +196,95 @@ export default function TaskDetailRoute() {
         setState((current) => current && current.task.id === task.id
           ? {
               ...current,
-              baseBranchTaskId,
-              diffFiles,
-              claudeHooksStatus,
-              geminiHooksStatus,
-              codexHooksStatus,
-              openCodeHooksStatus,
-              aiSessions,
-              projects,
-              defaultSessionType,
-              sidebarDefaultCollapsed,
-              sidebarHintDismissed,
-              doneAlertDismissed,
+              task: {
+                ...current.task,
+                ...task,
+              },
             }
-          : current);
-      })();
+          : {
+              task,
+              ...DEFAULT_DETAIL_STATE,
+            });
+
+        if (task.branchName && !task.prUrl) {
+          void (async () => {
+            try {
+              const prUrl = await fetchPrUrlWithPrompt(task, tc);
+              if (!prUrl || cancelled) {
+                return;
+              }
+
+              setState((current) => current && current.task.id === task.id
+                ? {
+                    ...current,
+                    task: {
+                      ...current.task,
+                      prUrl,
+                    },
+                  }
+                : current);
+            } catch (error) {
+              console.error("PR URL 자동 조회 실패:", error);
+            }
+          })();
+        }
+
+        void (async () => {
+          try {
+            const baseBranchName = task.baseBranch ?? "main";
+            const foundTaskId = task.projectId ? await getTaskIdByProjectAndBranch(task.projectId, baseBranchName) : null;
+            const baseBranchTaskId = foundTaskId !== task.id ? foundTaskId : null;
+            const diffFiles = task.branchName && task.worktreePath ? await getGitDiffFiles(id) : [];
+            const [claudeHooksStatus, geminiHooksStatus, codexHooksStatus, openCodeHooksStatus, aiSessions, projects, defaultSessionType, sidebarDefaultCollapsed, sidebarHintDismissed, doneAlertDismissed] = await Promise.all([
+              task.projectId ? getTaskHooksStatus(id) : Promise.resolve(null),
+              task.projectId ? getTaskGeminiHooksStatus(id) : Promise.resolve(null),
+              task.projectId ? getTaskCodexHooksStatus(id) : Promise.resolve(null),
+              task.projectId ? getTaskOpenCodeHooksStatus(id) : Promise.resolve(null),
+              task.projectId ? getTaskAiSessions(id) : Promise.resolve(EMPTY_AI_SESSIONS),
+              getAllProjects(),
+              getDefaultSessionType(),
+              getSidebarDefaultCollapsed(),
+              getSidebarHintDismissed(),
+              getDoneAlertDismissed(),
+            ]);
+
+            if (cancelled) {
+              return;
+            }
+
+            setState((current) => current && current.task.id === task.id
+              ? {
+                  ...current,
+                  baseBranchTaskId,
+                  diffFiles,
+                  claudeHooksStatus,
+                  geminiHooksStatus,
+                  codexHooksStatus,
+                  openCodeHooksStatus,
+                  aiSessions,
+                  projects,
+                  defaultSessionType,
+                  sidebarDefaultCollapsed,
+                  sidebarHintDismissed,
+                  doneAlertDismissed,
+                }
+              : current);
+          } catch (error) {
+            console.error("Failed to load task detail supplemental data:", error);
+          }
+        })();
+      } catch (error) {
+        clearLoadingTimeout();
+        console.error("Failed to load task detail:", error);
+        if (!cancelled) {
+          setState((current) => current === undefined ? null : current);
+        }
+      }
     })();
 
     return () => {
       cancelled = true;
+      clearLoadingTimeout();
     };
   }, [id, refreshSignal]);
 
