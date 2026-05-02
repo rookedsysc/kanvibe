@@ -205,6 +205,24 @@ export async function pullCurrentBranch(
   return execGit(`git -C "${repoPath}" pull --ff-only`, sshHost);
 }
 
+/** origin에 현재 task 브랜치가 존재하는지 확인한다 */
+export async function remoteBranchExists(
+  repoPath: string,
+  branchName: string,
+  sshHost?: string | null,
+): Promise<boolean> {
+  const resolvedRepoPath = resolvePathForShell(repoPath, sshHost);
+  const remoteRef = quoteForPosixShell(`refs/heads/${branchName}`);
+  const command = [
+    `git -C ${resolvedRepoPath} ls-remote --exit-code --heads origin ${remoteRef} >/dev/null`,
+    `status=$?`,
+    `if [ "$status" -eq 0 ]; then printf exists; elif [ "$status" -eq 2 ]; then printf missing; else exit "$status"; fi`,
+  ].join("; ");
+
+  const output = await execGit(command, sshHost);
+  return output.trim() === "exists";
+}
+
 /**
  * git 저장소의 브랜치 목록을 반환한다.
  * remote origin을 먼저 fetch하여 최신 상태를 반영하며,

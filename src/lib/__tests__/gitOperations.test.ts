@@ -203,6 +203,46 @@ describe("gitOperations.resolvePathForShell", () => {
     expect(isSSHTransportError(commandError)).toBe(false);
   });
 
+  it("remoteBranchExists는 origin branch가 있으면 true를 반환한다", async () => {
+    // Given
+    mocks.exec.mockImplementation((
+      command: string,
+      callback: (error: null, result: { stdout: string; stderr: string }) => void,
+    ) => {
+      expect(command).toContain("refs/heads/feature/exists");
+      callback(null, { stdout: "exists", stderr: "" });
+      return {} as never;
+    });
+
+    const { remoteBranchExists } = await import("@/lib/gitOperations");
+
+    // When
+    const result = await remoteBranchExists("/workspace/repo", "feature/exists");
+
+    // Then
+    expect(result).toBe(true);
+  });
+
+  it("remoteBranchExists는 origin branch가 없으면 false를 반환한다", async () => {
+    // Given
+    mocks.exec.mockImplementation((
+      command: string,
+      callback: (error: null, result: { stdout: string; stderr: string }) => void,
+    ) => {
+      expect(command).toContain("refs/heads/feature/missing");
+      callback(null, { stdout: "missing", stderr: "" });
+      return {} as never;
+    });
+
+    const { remoteBranchExists } = await import("@/lib/gitOperations");
+
+    // When
+    const result = await remoteBranchExists("/workspace/repo", "feature/missing");
+
+    // Then
+    expect(result).toBe(false);
+  });
+
   it("scanGitRepos는 일반 저장소와 worktree 저장소를 모두 찾는다", async () => {
     // Given
     mocks.exec.mockImplementation((
