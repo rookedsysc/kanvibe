@@ -1,6 +1,7 @@
 appId: com.kanvibe.desktop
 productName: Kanivibe
 asar: false
+npmRebuild: false
 
 directories:
   output: dist

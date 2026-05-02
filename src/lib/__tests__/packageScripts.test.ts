@@ -9,7 +9,7 @@ describe("package scripts", () => {
     ) as { scripts: Record<string, string> };
 
     expect(packageJson.scripts["rebuild:native:electron"]).toBe(
-      "electron-rebuild -f --build-from-source -w better-sqlite3",
+      "electron-rebuild -f --build-from-source --only better-sqlite3",
     );
     expect(packageJson.scripts.dist).toContain(
       "pnpm db:prepare && pnpm build && pnpm rebuild:native:electron && electron-builder",

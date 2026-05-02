@@ -20,7 +20,7 @@
     "start": "node scripts/run-desktop-start.cjs",
     "desktop:dev": "node scripts/run-desktop-dev.cjs",
     "db:prepare": "tsx scripts/build-seed-db.ts",
-    "rebuild:native:electron": "electron-rebuild -f --build-from-source -w better-sqlite3",
+    "rebuild:native:electron": "electron-rebuild -f --build-from-source --only better-sqlite3",
     "dist": "pnpm db:prepare && pnpm build && pnpm rebuild:native:electron && electron-builder --mac dmg zip",
     "dist:dir": "pnpm db:prepare && pnpm build && pnpm rebuild:native:electron && electron-builder --dir",
     "lint": "eslint",
