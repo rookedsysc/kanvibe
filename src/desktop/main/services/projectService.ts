@@ -656,10 +656,14 @@ export async function syncRegisteredProjectWorktrees(
     changed: false,
   };
 
-  for (const project of projects) {
+  const projectResults = await Promise.all(
+    projects.map((project) => syncProjectWorktrees(project, taskRepo)),
+  );
+
+  for (const projectResult of projectResults) {
     mergeRegisteredProjectWorktreeSyncResult(
       mergedResult,
-      await syncProjectWorktrees(project, taskRepo),
+      projectResult,
     );
   }
 

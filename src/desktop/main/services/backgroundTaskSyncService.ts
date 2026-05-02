@@ -1,11 +1,17 @@
 import { syncRegisteredProjectWorktrees } from "@/desktop/main/services/projectService";
-import { syncActiveTaskPullRequests } from "@/desktop/main/services/kanbanService";
+import { syncActiveTaskPullRequests, syncActiveTaskPulls } from "@/desktop/main/services/kanbanService";
 import { broadcastBackgroundSyncReviewNeeded, broadcastBoardUpdate } from "@/lib/boardNotifier";
 
 const INITIAL_SYNC_DELAY_MS = 20_000;
 const SYNC_INTERVAL_MS = 90_000;
 
+let activeBackgroundTaskSyncStop: (() => void) | null = null;
+
 export function startBackgroundTaskSync() {
+  if (activeBackgroundTaskSyncStop) {
+    return activeBackgroundTaskSyncStop;
+  }
+
   let disposed = false;
   let running = false;
   let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
@@ -30,17 +36,30 @@ export function startBackgroundTaskSync() {
     running = true;
 
     try {
-      const worktreeSyncResult = await syncRegisteredProjectWorktrees();
-      const prSyncResult = await syncActiveTaskPullRequests(emittedMergeEventKeys);
+      const [
+        worktreeSyncResult,
+        prSyncResult,
+        pullSyncResult,
+      ] = await Promise.all([
+        syncRegisteredProjectWorktrees(),
+        syncActiveTaskPullRequests(emittedMergeEventKeys),
+        syncActiveTaskPulls(),
+      ]);
 
-      if (worktreeSyncResult.registeredWorktrees.length > 0 || prSyncResult.mergedPullRequests.length > 0) {
+      if (
+        worktreeSyncResult.registeredWorktrees.length > 0
+        || prSyncResult.mergedPullRequests.length > 0
+        || pullSyncResult.pulledTasks.length > 0
+      ) {
         broadcastBackgroundSyncReviewNeeded({
           registeredWorktrees: worktreeSyncResult.registeredWorktrees,
           mergedPullRequests: prSyncResult.mergedPullRequests,
+          pulledTasks: pullSyncResult.pulledTasks,
         });
       }
 
-      if (worktreeSyncResult.changed || prSyncResult.updatedTaskIds.length > 0) {
+      const hasUpdatedPulledTasks = pullSyncResult.pulledTasks.some((task) => task.status === "updated");
+      if (worktreeSyncResult.changed || prSyncResult.updatedTaskIds.length > 0 || hasUpdatedPulledTasks) {
         broadcastBoardUpdate();
       }
     } catch (error) {
@@ -53,11 +72,17 @@ export function startBackgroundTaskSync() {
 
   scheduleNext(INITIAL_SYNC_DELAY_MS);
 
-  return () => {
+  function stopBackgroundTaskSync() {
     disposed = true;
     if (timeoutHandle) {
       clearTimeout(timeoutHandle);
       timeoutHandle = null;
     }
-  };
+    if (activeBackgroundTaskSyncStop === stopBackgroundTaskSync) {
+      activeBackgroundTaskSyncStop = null;
+    }
+  }
+
+  activeBackgroundTaskSyncStop = stopBackgroundTaskSync;
+  return activeBackgroundTaskSyncStop;
 }
