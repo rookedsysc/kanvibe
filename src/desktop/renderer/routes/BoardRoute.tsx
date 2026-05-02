@@ -6,6 +6,7 @@ import { getAllProjects, getAvailableHosts } from "@/desktop/renderer/actions/pr
 import { buildRouteCacheKey, readRouteCache, writeRouteCache } from "@/desktop/renderer/utils/routeCache";
 import { useRefreshSignal } from "@/desktop/renderer/utils/refresh";
 import { DEFAULT_TASK_SEARCH_SHORTCUT } from "@/desktop/renderer/utils/keyboardShortcut";
+import { INITIAL_DESKTOP_LOAD_TIMEOUT_MS } from "@/desktop/renderer/utils/loadingTimeout";
 import { SessionType, TaskStatus } from "@/entities/KanbanTask";
 
 interface BoardData {
@@ -54,6 +55,11 @@ export default function BoardRoute() {
 
   useEffect(() => {
     let cancelled = false;
+    const loadingTimeout = window.setTimeout(() => {
+      if (!cancelled) {
+        setData((currentData) => currentData ?? createEmptyBoardData());
+      }
+    }, INITIAL_DESKTOP_LOAD_TIMEOUT_MS);
 
     Promise.all([
       getTasksByStatus(),
@@ -65,6 +71,7 @@ export default function BoardRoute() {
       getDefaultSessionType(),
       getTaskSearchShortcut(),
     ]).then(([tasks, sshHosts, projects, sidebarDefaultCollapsed, doneAlertDismissed, notificationSettings, defaultSessionType, taskSearchShortcut]) => {
+      window.clearTimeout(loadingTimeout);
       if (!cancelled) {
         const nextData = {
           tasks,
@@ -81,6 +88,7 @@ export default function BoardRoute() {
         setData(nextData);
       }
     }).catch((error) => {
+      window.clearTimeout(loadingTimeout);
       console.error("Failed to load board route data:", error);
       if (!cancelled) {
         setData((currentData) => currentData ?? createEmptyBoardData());
@@ -89,6 +97,7 @@ export default function BoardRoute() {
 
     return () => {
       cancelled = true;
+      window.clearTimeout(loadingTimeout);
     };
   }, [refreshSignal]);
 

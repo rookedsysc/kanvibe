@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildBackgroundSyncReviewNotification,
   buildHookStatusTargetMissingNotification,
   buildTaskStatusNotification,
   getNotificationLocale,
@@ -65,6 +66,52 @@ describe("taskNotifications", () => {
       locale: "zh-CN",
       relativePath: "/zh-CN",
       dedupeKey: "hook-missing:task-404:pending:task-not-found",
+    });
+  });
+
+  it("background sync review 알림은 pull 결과를 요약하고 action payload에 포함한다", () => {
+    // Given
+    const payload = {
+      locale: "ko",
+      mergedPullRequests: [],
+      registeredWorktrees: [],
+      pulledTasks: [
+        {
+          taskId: "task-pull-a",
+          taskTitle: "Pull A",
+          branchName: "feature/pull-a",
+          worktreePath: "/workspace/repo__worktrees/pull-a",
+          sshHost: null,
+          status: "updated" as const,
+          summary: "Fast-forward",
+        },
+        {
+          taskId: "task-pull-b",
+          taskTitle: "Pull B",
+          branchName: "feature/pull-b",
+          worktreePath: "/workspace/repo__worktrees/pull-b",
+          sshHost: "remote-host",
+          status: "failed" as const,
+          summary: "Not possible to fast-forward",
+        },
+      ],
+    };
+
+    // When
+    const notification = buildBackgroundSyncReviewNotification(payload);
+
+    // Then
+    expect(notification.body).toBe("pull 완료 1건 / pull 실패 1건\n알림을 열어 정리 대상을 검토하세요.");
+    expect(notification.desktopPayload.dedupeKey).toBe(
+      "background-sync-review:::::task-pull-a:feature/pull-a:updated|task-pull-b:feature/pull-b:failed",
+    );
+    expect(notification.desktopPayload.action).toEqual({
+      type: "background-sync-review",
+      payload: {
+        mergedPullRequests: [],
+        registeredWorktrees: [],
+        pulledTasks: payload.pulledTasks,
+      },
     });
   });
 });

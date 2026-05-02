@@ -1270,6 +1270,73 @@ describe("projectService local hook installation", () => {
       null,
     );
   });
+
+  it("등록된 프로젝트 background sync는 프로젝트별 worktree 조회를 병렬로 시작한다", async () => {
+    // Given
+    mocks.getClaudeHooksStatus.mockResolvedValue({ installed: true });
+    mocks.getGeminiHooksStatus.mockResolvedValue({ installed: true });
+    mocks.getCodexHooksStatus.mockResolvedValue({ installed: true });
+    mocks.getOpenCodeHooksStatus.mockResolvedValue({ installed: true });
+    mocks.isSessionAlive.mockResolvedValue(false);
+
+    const seenRepoPaths: string[] = [];
+    const firstCalls = new Set<string>();
+    let releaseGate: (() => void) | undefined;
+    const gate = new Promise<void>((resolve) => {
+      releaseGate = resolve;
+    });
+    mocks.listWorktrees.mockImplementation(async (repoPath: string) => {
+      seenRepoPaths.push(repoPath);
+      if (!firstCalls.has(repoPath)) {
+        firstCalls.add(repoPath);
+        await gate;
+      }
+      return [];
+    });
+
+    mocks.getTaskRepository.mockResolvedValue({
+      findOneBy: vi.fn(async (criteria: { branchName?: string; projectId?: string | null }) => ({
+        id: `task-${criteria.projectId}`,
+        branchName: criteria.branchName,
+        projectId: criteria.projectId,
+        baseBranch: criteria.branchName,
+        worktreePath: null,
+        sshHost: null,
+      })),
+      create: vi.fn((value) => value),
+      save: vi.fn(async (value) => value),
+    });
+
+    const projects = [
+      {
+        id: "project-a",
+        name: "api-a",
+        repoPath: "/workspace/api-a",
+        defaultBranch: "main",
+        sshHost: null,
+      },
+      {
+        id: "project-b",
+        name: "api-b",
+        repoPath: "/workspace/api-b",
+        defaultBranch: "main",
+        sshHost: null,
+      },
+    ];
+
+    const { syncRegisteredProjectWorktrees } = await import("@/desktop/main/services/projectService");
+
+    // When
+    const syncPromise = syncRegisteredProjectWorktrees(projects as never);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    // Then
+    const targetRepoPaths = seenRepoPaths.filter((repoPath) => repoPath.startsWith("/workspace/api-"));
+    expect(targetRepoPaths.slice(0, 2)).toEqual(["/workspace/api-a", "/workspace/api-b"]);
+
+    releaseGate?.();
+    await syncPromise;
+  });
 });
 
 describe("projectService remote hook and AI session support", () => {

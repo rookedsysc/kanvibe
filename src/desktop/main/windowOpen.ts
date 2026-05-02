@@ -142,6 +142,22 @@ export function resolveNavigationTargetWindow<T>({
   return existingWindow ?? preferredWindow;
 }
 
+export function resolveExistingNavigationTargetWindow<T>({
+  targetUrl,
+  rendererDevUrl,
+  openWindows,
+  getWindowUrl,
+}: ResolveNavigationTargetWindowOptions<T>): T | null {
+  const { existingWindow } = findExistingInternalWindow({
+    targetUrl,
+    rendererDevUrl,
+    openWindows,
+    getWindowUrl,
+  });
+
+  return existingWindow;
+}
+
 export function resolveWindowOpenAction<T>({
   targetUrl,
   rendererDevUrl,

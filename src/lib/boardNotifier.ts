@@ -45,9 +45,20 @@ export interface BackgroundSyncRegisteredWorktreePayload {
   sshHost: string | null;
 }
 
+export interface BackgroundSyncPulledTaskPayload {
+  taskId: string;
+  taskTitle: string;
+  branchName: string;
+  worktreePath: string;
+  sshHost: string | null;
+  status: "updated" | "failed";
+  summary: string;
+}
+
 export interface BackgroundSyncReviewPayload {
   mergedPullRequests: TaskPrMergedDetectedPayload[];
   registeredWorktrees: BackgroundSyncRegisteredWorktreePayload[];
+  pulledTasks?: BackgroundSyncPulledTaskPayload[];
 }
 
 export type BoardEventPayload =

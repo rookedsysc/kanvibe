@@ -7,7 +7,7 @@ import { createWorktreeWithSession, removeWorktreeAndBranch, createSessionWithou
 import { getProjectRepository } from "@/lib/database";
 import { broadcastBoardUpdate, broadcastTaskHookInstallFailed, broadcastTaskPrMergedDetectedBatch, type TaskPrMergedDetectedPayload } from "@/lib/boardNotifier";
 import { installKanvibeHooks } from "@/lib/kanvibeHooksInstaller";
-import { execGit } from "@/lib/gitOperations";
+import { execGit, pullCurrentBranch } from "@/lib/gitOperations";
 
 export type TasksByStatus = Record<TaskStatus, KanbanTask[]>;
 
@@ -46,6 +46,20 @@ export interface ActiveTaskPullRequestSyncResult {
   updatedTaskIds: string[];
   mergeEventKeys: string[];
   mergedPullRequests: TaskPrMergedDetectedPayload[];
+}
+
+export interface TaskPullSyncPayload {
+  taskId: string;
+  taskTitle: string;
+  branchName: string;
+  worktreePath: string;
+  sshHost: string | null;
+  status: "updated" | "failed";
+  summary: string;
+}
+
+export interface ActiveTaskPullSyncResult {
+  pulledTasks: TaskPullSyncPayload[];
 }
 
 /** TypeORM 엔티티를 직렬화 가능한 plain object로 변환한다 */
@@ -254,6 +268,20 @@ function buildMergedPullRequestEventKey(
   return `${taskId}:${prUrl}:${mergedAt}`;
 }
 
+function summarizePullOutput(output: string): string {
+  const line = output
+    .split(/\r?\n/)
+    .map((item) => item.trim())
+    .find(Boolean);
+
+  return line ?? "Pull completed";
+}
+
+function isPullNoop(output: string): boolean {
+  return /already up[- ]to[- ]date/i.test(output)
+    || /current branch .* is up to date/i.test(output);
+}
+
 /** 모든 작업을 상태별로 그룹핑하여 반환한다. Done 컬럼은 첫 페이지만 로드한다 */
 export async function getTasksByStatus(): Promise<TasksByStatusWithMeta> {
   const repo = await getTaskRepository();
@@ -312,6 +340,7 @@ export async function getTaskById(taskId: string): Promise<KanbanTask | null> {
 export async function getSearchableTasks(): Promise<SearchableTask[]> {
   const repo = await getTaskRepository();
   const tasks = await repo.find({
+    where: { status: Not(TaskStatus.DONE) },
     relations: ["project"],
     order: { updatedAt: "DESC", createdAt: "DESC" },
   });
@@ -751,9 +780,9 @@ export async function syncActiveTaskPullRequests(
     mergedPullRequests: [],
   };
 
-  for (const task of tasks) {
+  const taskResults = await Promise.all(tasks.map(async (task) => {
     if (!task.branchName) {
-      continue;
+      return null;
     }
 
     try {
@@ -762,31 +791,35 @@ export async function syncActiveTaskPullRequests(
         : null;
 
       if (isDefaultBranchTask(task, project)) {
-        continue;
+        return null;
       }
 
       const { cwd, sshHost } = await resolveTaskGitContext(task, project);
       const prInfo = await getPrInfoFromGitHubCli(task.branchName, cwd, sshHost);
 
       if (!prInfo?.url) {
-        continue;
+        return null;
       }
+
+      const updatedTaskIds: string[] = [];
+      const mergeEventKeys: string[] = [];
+      const mergedPullRequests: TaskPrMergedDetectedPayload[] = [];
 
       if (task.prUrl !== prInfo.url) {
         task.prUrl = prInfo.url;
         await repo.save(task);
-        result.updatedTaskIds.push(task.id);
+        updatedTaskIds.push(task.id);
       }
 
       if (prInfo.state === "MERGED" && prInfo.mergedAt) {
         const mergeEventKey = buildMergedPullRequestEventKey(task.id, prInfo.url, prInfo.mergedAt);
         if (emittedMergeEventKeys.has(mergeEventKey)) {
-          continue;
+          return { updatedTaskIds, mergeEventKeys, mergedPullRequests };
         }
 
         emittedMergeEventKeys.add(mergeEventKey);
-        result.mergeEventKeys.push(mergeEventKey);
-        result.mergedPullRequests.push({
+        mergeEventKeys.push(mergeEventKey);
+        mergedPullRequests.push({
           taskId: task.id,
           taskTitle: task.title,
           branchName: task.branchName,
@@ -794,13 +827,26 @@ export async function syncActiveTaskPullRequests(
           mergedAt: prInfo.mergedAt,
         });
       }
+
+      return { updatedTaskIds, mergeEventKeys, mergedPullRequests };
     } catch (error) {
       console.error("PR 상태 동기화 실패:", {
         taskId: task.id,
         branchName: task.branchName,
         error: getErrorMessage(error),
       });
+      return null;
     }
+  }));
+
+  for (const taskResult of taskResults) {
+    if (!taskResult) {
+      continue;
+    }
+
+    result.updatedTaskIds.push(...taskResult.updatedTaskIds);
+    result.mergeEventKeys.push(...taskResult.mergeEventKeys);
+    result.mergedPullRequests.push(...taskResult.mergedPullRequests);
   }
 
   if (result.mergedPullRequests.length > 0) {
@@ -810,4 +856,60 @@ export async function syncActiveTaskPullRequests(
   }
 
   return result;
+}
+
+export async function syncActiveTaskPulls(): Promise<ActiveTaskPullSyncResult> {
+  const repo = await getTaskRepository();
+  const projectRepo = await getProjectRepository();
+  const tasks = await repo.find({
+    where: { status: Not(TaskStatus.DONE) },
+    order: { updatedAt: "ASC" },
+  });
+
+  const pulledTasks = await Promise.all(tasks.map(async (task): Promise<TaskPullSyncPayload | null> => {
+    if (!task.branchName || !task.worktreePath) {
+      return null;
+    }
+
+    const project = task.projectId
+      ? await projectRepo.findOneBy({ id: task.projectId })
+      : null;
+
+    if (isDefaultBranchTask(task, project)) {
+      return null;
+    }
+
+    const sshHost = task.sshHost || project?.sshHost || null;
+
+    try {
+      const output = await pullCurrentBranch(task.worktreePath, sshHost);
+      if (isPullNoop(output)) {
+        return null;
+      }
+
+      return {
+        taskId: task.id,
+        taskTitle: task.title,
+        branchName: task.branchName,
+        worktreePath: task.worktreePath,
+        sshHost,
+        status: "updated",
+        summary: summarizePullOutput(output),
+      };
+    } catch (error) {
+      return {
+        taskId: task.id,
+        taskTitle: task.title,
+        branchName: task.branchName,
+        worktreePath: task.worktreePath,
+        sshHost,
+        status: "failed",
+        summary: getErrorMessage(error),
+      };
+    }
+  }));
+
+  return {
+    pulledTasks: pulledTasks.filter((task): task is TaskPullSyncPayload => task !== null),
+  };
 }

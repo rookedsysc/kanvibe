@@ -280,6 +280,33 @@ async function focusMainWindow(relativePath) {
   }
 }
 
+async function focusTaskNotificationWindow(relativePath) {
+  const targetUrl = getRendererNavigationUrl(relativePath);
+  const { resolveExistingNavigationTargetWindow } = getWindowOpenHelpers();
+  const existingWindow = resolveExistingNavigationTargetWindow({
+    targetUrl,
+    rendererDevUrl: RENDERER_DEV_URL,
+    openWindows: getAvailableWindows(),
+    getWindowUrl: (window) => window.webContents.getURL(),
+  });
+
+  if (existingWindow) {
+    mainWindow = existingWindow;
+  } else {
+    mainWindow = await createAppWindow(relativePath);
+  }
+
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    return;
+  }
+
+  focusWindow(mainWindow);
+
+  if (mainWindow.webContents.getURL() !== targetUrl) {
+    await mainWindow.loadURL(targetUrl);
+  }
+}
+
 function getNotificationStore() {
   return require(getRuntimeModulePath(path.join("src", "desktop", "main", "notificationStore.ts")));
 }
@@ -298,7 +325,12 @@ async function activateAppNotification(appNotification, options = {}) {
   }
 
   pendingNotificationActivation = activatedNotification;
-  await focusMainWindow(getNotificationTargetPath(activatedNotification));
+  const targetPath = getNotificationTargetPath(activatedNotification);
+  if (activatedNotification.taskId) {
+    await focusTaskNotificationWindow(targetPath);
+  } else {
+    await focusMainWindow(targetPath);
+  }
   broadcastNotificationActivated(activatedNotification);
   return true;
 }

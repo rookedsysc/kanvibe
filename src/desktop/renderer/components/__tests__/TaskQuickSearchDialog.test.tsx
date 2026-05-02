@@ -66,6 +66,16 @@ describe("TaskQuickSearchDialog", () => {
         status: "todo",
         updatedAt: "2026-04-30T02:00:00.000Z",
       },
+      {
+        id: "task-dev-kanvibe",
+        title: "Dev branch task",
+        branchName: "dev",
+        projectId: "project-kanvibe",
+        projectName: "kanvibe",
+        sshHost: null,
+        status: "progress",
+        updatedAt: "2026-04-30T03:00:00.000Z",
+      },
     ]);
   });
 
@@ -81,7 +91,7 @@ describe("TaskQuickSearchDialog", () => {
       expect(screen.getByRole("dialog")).toBeTruthy();
     });
     expect(mocks.getSearchableTasks).toHaveBeenCalledTimes(1);
-    expect(screen.getByText("feat/local-search")).toBeTruthy();
+    expect(await screen.findByText("feat/local-search")).toBeTruthy();
     expect(screen.getByText("feat/api-search")).toBeTruthy();
   });
 
@@ -97,7 +107,7 @@ describe("TaskQuickSearchDialog", () => {
       expect(screen.getByRole("dialog")).toBeTruthy();
     });
 
-    expect(screen.getByText("common.remote")).toBeTruthy();
+    expect(await screen.findByText("common.remote")).toBeTruthy();
     expect(screen.getByText("devbox")).toBeTruthy();
     expect(screen.queryByText("common.local")).toBeNull();
   });
@@ -137,6 +147,25 @@ describe("TaskQuickSearchDialog", () => {
 
     await waitFor(() => {
       expect(mocks.push).toHaveBeenCalledWith("/task/task-alert");
+    });
+  });
+
+  it.each(["dev kanvibe", "kanvibe dev"])("%s 검색어로 project와 branch를 함께 찾는다", async (query) => {
+    render(<TaskQuickSearchDialog shortcut="Ctrl+K" />);
+
+    fireEvent.keyDown(window, {
+      key: "k",
+      ctrlKey: true,
+    });
+
+    const input = await screen.findByRole("textbox");
+    fireEvent.change(input, {
+      target: { value: query },
+    });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    await waitFor(() => {
+      expect(mocks.push).toHaveBeenCalledWith("/task/task-dev-kanvibe");
     });
   });
 

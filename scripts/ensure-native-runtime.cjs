@@ -16,10 +16,11 @@ function getNodeMajor() {
   return Number.parseInt(process.versions.node.split(".")[0] || "0", 10);
 }
 
-function isNativeModuleMismatch(error) {
+function isRecoverableNativeModuleLoadError(error) {
   const message = String(error?.stack || error?.message || error || "");
   return (
     message.includes("NODE_MODULE_VERSION") ||
+    message.includes("Could not locate the bindings file") ||
     message.includes("did not self-register") ||
     message.includes("ERR_DLOPEN_FAILED") ||
     message.includes("compiled against a different Node.js version")
@@ -47,10 +48,15 @@ function verifyNodeBetterSqlite3Binding() {
 }
 
 function verifyElectronBetterSqlite3Binding() {
-  execFileSync("pnpm", ["exec", "electron", path.join(__dirname, "verify-electron-better-sqlite3.cjs")], {
-    stdio: "inherit",
-    env: process.env,
-  });
+  try {
+    execFileSync("pnpm", ["exec", "electron", path.join(__dirname, "verify-electron-better-sqlite3.cjs")], {
+      stdio: ["ignore", "inherit", "pipe"],
+      env: process.env,
+    });
+  } catch (error) {
+    const stderr = error?.stderr?.toString?.() || "";
+    throw new Error(stderr || String(error?.message || error));
+  }
 }
 
 function verifyBetterSqlite3Binding() {
@@ -135,7 +141,7 @@ function main() {
   try {
     verifyBetterSqlite3Binding();
   } catch (error) {
-    if (!isNativeModuleMismatch(error)) {
+    if (!isRecoverableNativeModuleLoadError(error)) {
       throw error;
     }
 

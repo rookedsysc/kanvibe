@@ -11,6 +11,8 @@ const NOTIFICATION_MESSAGES = {
     backgroundSyncReviewTitle: "백그라운드 sync 검토 필요",
     formatMergedPullRequestCount: (count: number) => `merge된 PR ${count}건`,
     formatRegisteredWorktreeCount: (count: number) => `새 TODO worktree ${count}건`,
+    formatUpdatedPullCount: (count: number) => `pull 완료 ${count}건`,
+    formatFailedPullCount: (count: number) => `pull 실패 ${count}건`,
     backgroundSyncReviewPrompt: "알림을 열어 정리 대상을 검토하세요.",
   },
   en: {
@@ -20,6 +22,8 @@ const NOTIFICATION_MESSAGES = {
     backgroundSyncReviewTitle: "Background sync review needed",
     formatMergedPullRequestCount: (count: number) => `${count} merged PR${count === 1 ? "" : "s"}`,
     formatRegisteredWorktreeCount: (count: number) => `${count} new TODO worktree${count === 1 ? "" : "s"}`,
+    formatUpdatedPullCount: (count: number) => `${count} pull update${count === 1 ? "" : "s"}`,
+    formatFailedPullCount: (count: number) => `${count} failed pull${count === 1 ? "" : "s"}`,
     backgroundSyncReviewPrompt: "Open the notification to review the pending cleanup items.",
   },
   zh: {
@@ -29,6 +33,8 @@ const NOTIFICATION_MESSAGES = {
     backgroundSyncReviewTitle: "需要检查后台同步结果",
     formatMergedPullRequestCount: (count: number) => `已合并 PR ${count} 个`,
     formatRegisteredWorktreeCount: (count: number) => `新建 TODO worktree ${count} 个`,
+    formatUpdatedPullCount: (count: number) => `pull 完成 ${count} 个`,
+    formatFailedPullCount: (count: number) => `pull 失败 ${count} 个`,
     backgroundSyncReviewPrompt: "打开通知以检查待整理项目。",
   },
 } as const;
@@ -110,6 +116,7 @@ export function buildBackgroundSyncReviewNotification(payload: BackgroundSyncRev
   const messages = NOTIFICATION_MESSAGES[getNotificationLocale(payload.locale)];
   const title = messages.backgroundSyncReviewTitle;
   const summaryLines: string[] = [];
+  const pulledTasks = payload.pulledTasks ?? [];
 
   if (payload.mergedPullRequests.length > 0) {
     summaryLines.push(messages.formatMergedPullRequestCount(payload.mergedPullRequests.length));
@@ -117,6 +124,15 @@ export function buildBackgroundSyncReviewNotification(payload: BackgroundSyncRev
 
   if (payload.registeredWorktrees.length > 0) {
     summaryLines.push(messages.formatRegisteredWorktreeCount(payload.registeredWorktrees.length));
+  }
+
+  const updatedPullCount = pulledTasks.filter((item) => item.status === "updated").length;
+  const failedPullCount = pulledTasks.filter((item) => item.status === "failed").length;
+  if (updatedPullCount > 0) {
+    summaryLines.push(messages.formatUpdatedPullCount(updatedPullCount));
+  }
+  if (failedPullCount > 0) {
+    summaryLines.push(messages.formatFailedPullCount(failedPullCount));
   }
 
   const body = [summaryLines.join(" / "), messages.backgroundSyncReviewPrompt]
@@ -130,6 +146,10 @@ export function buildBackgroundSyncReviewNotification(payload: BackgroundSyncRev
     .map((item) => `${item.taskId}:${item.branchName}:${item.worktreePath}`)
     .sort()
     .join("|");
+  const pullKeys = pulledTasks
+    .map((item) => `${item.taskId}:${item.branchName}:${item.status}`)
+    .sort()
+    .join("|");
 
   return {
     title,
@@ -139,12 +159,13 @@ export function buildBackgroundSyncReviewNotification(payload: BackgroundSyncRev
       body,
       locale: payload.locale,
       relativePath: `/${payload.locale}`,
-      dedupeKey: `background-sync-review:${mergedKeys}::${worktreeKeys}`,
+      dedupeKey: `background-sync-review:${mergedKeys}::${worktreeKeys}::${pullKeys}`,
       action: {
         type: "background-sync-review",
         payload: {
           mergedPullRequests: payload.mergedPullRequests,
           registeredWorktrees: payload.registeredWorktrees,
+          pulledTasks,
         },
       },
     },
