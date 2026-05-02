@@ -161,7 +161,8 @@ export default function TaskQuickSearchDialog({
   const router = useRouter();
   const refreshSignal = useRefreshSignal(["all", "settings"]);
   const inputRef = useRef<HTMLInputElement>(null);
-  const [resolvedShortcut, setResolvedShortcut] = useState(shortcut || DEFAULT_TASK_SEARCH_SHORTCUT);
+  const resultsListRef = useRef<HTMLDivElement>(null);
+  const [savedShortcut, setSavedShortcut] = useState(DEFAULT_TASK_SEARCH_SHORTCUT);
   const [isOpen, setIsOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [tasks, setTasks] = useState<SearchableTask[]>([]);
@@ -169,12 +170,28 @@ export default function TaskQuickSearchDialog({
   const [isLoading, setIsLoading] = useState(false);
   const isMacLike = isMacLikePlatform();
 
-  const effectiveShortcut = shortcut || resolvedShortcut;
+  const effectiveShortcut = shortcut || savedShortcut;
   const results = useMemo(() => buildSearchResults(tasks, query), [query, tasks]);
+  const selectedResultIndex = results.length === 0
+    ? 0
+    : Math.min(selectedIndex, results.length - 1);
+
+  const openDialog = useCallback(() => {
+    setQuery("");
+    setSelectedIndex(0);
+    setIsLoading(true);
+    setIsOpen(true);
+  }, []);
+
+  const closeDialog = useCallback(() => {
+    setIsOpen(false);
+    setQuery("");
+    setSelectedIndex(0);
+    setIsLoading(false);
+  }, []);
 
   useEffect(() => {
     if (shortcut) {
-      setResolvedShortcut(shortcut);
       return;
     }
 
@@ -182,7 +199,7 @@ export default function TaskQuickSearchDialog({
 
     getTaskSearchShortcut().then((nextShortcut) => {
       if (!cancelled) {
-        setResolvedShortcut(nextShortcut || DEFAULT_TASK_SEARCH_SHORTCUT);
+        setSavedShortcut(nextShortcut || DEFAULT_TASK_SEARCH_SHORTCUT);
       }
     });
 
@@ -203,26 +220,28 @@ export default function TaskQuickSearchDialog({
       }
 
       event.preventDefault();
-      setIsOpen((current) => !current);
+      if (isOpen) {
+        closeDialog();
+        return;
+      }
+
+      openDialog();
     }
 
     window.addEventListener("keydown", handleGlobalKeyDown);
     return () => {
       window.removeEventListener("keydown", handleGlobalKeyDown);
     };
-  }, [effectiveShortcut, isMacLike]);
+  }, [closeDialog, effectiveShortcut, isMacLike, isOpen, openDialog]);
 
   useEffect(() => {
     if (!isOpen) {
-      setQuery("");
-      setSelectedIndex(0);
       return;
     }
 
     inputRef.current?.focus();
 
     let cancelled = false;
-    setIsLoading(true);
 
     getSearchableTasks()
       .then((nextTasks) => {
@@ -250,18 +269,15 @@ export default function TaskQuickSearchDialog({
   }, [boardCommands, isOpen]);
 
   useEffect(() => {
-    setSelectedIndex(0);
-  }, [query]);
-
-  useEffect(() => {
-    if (selectedIndex >= results.length) {
-      setSelectedIndex(0);
+    if (!isOpen) {
+      return;
     }
-  }, [results.length, selectedIndex]);
 
-  const closeDialog = useCallback(() => {
-    setIsOpen(false);
-  }, []);
+    const selectedResult = resultsListRef.current?.children[selectedResultIndex];
+    if (selectedResult instanceof HTMLElement) {
+      selectedResult.scrollIntoView({ block: "nearest" });
+    }
+  }, [isOpen, results, selectedResultIndex]);
 
   useEscapeKey(closeDialog, { enabled: isOpen });
 
@@ -271,7 +287,7 @@ export default function TaskQuickSearchDialog({
   }
 
   const createBranchTodoFromSelection = useCallback(() => {
-    const selectedTask = results[selectedIndex]?.task;
+    const selectedTask = results[selectedResultIndex]?.task;
 
     if (!boardCommands.canCreateBranchTodo || !selectedTask?.projectId || !selectedTask.branchName) {
       return;
@@ -282,7 +298,7 @@ export default function TaskQuickSearchDialog({
       baseBranch: selectedTask.branchName,
     });
     closeDialog();
-  }, [boardCommands, closeDialog, results, selectedIndex]);
+  }, [boardCommands, closeDialog, results, selectedResultIndex]);
 
   useEffect(() => {
     if (!isOpen) {
@@ -312,8 +328,8 @@ export default function TaskQuickSearchDialog({
         break;
       case "Enter":
         event.preventDefault();
-        if (results[selectedIndex]) {
-          moveToTask(results[selectedIndex].task.id);
+        if (results[selectedResultIndex]) {
+          moveToTask(results[selectedResultIndex].task.id);
         }
         break;
       case "Escape":
@@ -362,7 +378,10 @@ export default function TaskQuickSearchDialog({
             ref={inputRef}
             type="text"
             value={query}
-            onChange={(event) => setQuery(event.target.value)}
+            onChange={(event) => {
+              setQuery(event.target.value);
+              setSelectedIndex(0);
+            }}
             onKeyDown={handleInputKeyDown}
             placeholder={t("placeholder")}
             className="mt-3 w-full rounded-md border border-border-default bg-bg-page px-3 py-2 text-sm text-text-primary outline-none transition-colors focus:border-brand-primary"
@@ -375,74 +394,76 @@ export default function TaskQuickSearchDialog({
           ) : results.length === 0 ? (
             <div className="px-4 py-6 text-sm text-text-muted">{t("empty")}</div>
           ) : (
-            results.map((result, index) => {
-              const { task, branchMatch, projectMatch, titleMatch } = result;
-              const isRemote = Boolean(task.sshHost);
-              const primaryLabel = task.branchName || task.title;
-              const primaryMatch = task.branchName ? branchMatch : titleMatch;
+            <div ref={resultsListRef}>
+              {results.map((result, index) => {
+                const { task, branchMatch, projectMatch, titleMatch } = result;
+                const isRemote = Boolean(task.sshHost);
+                const primaryLabel = task.branchName || task.title;
+                const primaryMatch = task.branchName ? branchMatch : titleMatch;
 
-              return (
-                <button
-                  key={task.id}
-                  type="button"
-                  onClick={() => moveToTask(task.id)}
-                  onMouseEnter={() => setSelectedIndex(index)}
-                  className={`flex w-full items-start justify-between gap-4 border-b border-border-subtle px-4 py-3 text-left transition-colors ${
-                    index === selectedIndex
-                      ? "bg-brand-primary/10"
-                      : "hover:bg-bg-page"
-                  }`}
-                >
-                  <div className="min-w-0">
-                    <div className="text-sm font-medium text-text-primary">
-                      {primaryMatch ? (
-                        <HighlightedText
-                          text={primaryLabel}
-                          matchedIndices={primaryMatch.matchedIndices}
-                        />
-                      ) : (
-                        primaryLabel
-                      )}
+                return (
+                  <button
+                    key={task.id}
+                    type="button"
+                    onClick={() => moveToTask(task.id)}
+                    onMouseEnter={() => setSelectedIndex(index)}
+                    className={`flex w-full items-start justify-between gap-4 border-b border-border-subtle px-4 py-3 text-left transition-colors ${
+                      index === selectedResultIndex
+                        ? "bg-brand-primary/10"
+                        : "hover:bg-bg-page"
+                    }`}
+                  >
+                    <div className="min-w-0">
+                      <div className="text-sm font-medium text-text-primary">
+                        {primaryMatch ? (
+                          <HighlightedText
+                            text={primaryLabel}
+                            matchedIndices={primaryMatch.matchedIndices}
+                          />
+                        ) : (
+                          primaryLabel
+                        )}
+                      </div>
+                      {task.branchName && task.title !== task.branchName ? (
+                        <div className="mt-1 truncate text-xs text-text-muted">
+                          {titleMatch ? (
+                            <HighlightedText
+                              text={task.title}
+                              matchedIndices={titleMatch.matchedIndices}
+                            />
+                          ) : (
+                            task.title
+                          )}
+                        </div>
+                      ) : null}
+                      {task.projectName ? (
+                        <div className="mt-1 truncate text-xs text-text-muted">
+                          {projectMatch ? (
+                            <HighlightedText
+                              text={task.projectName}
+                              matchedIndices={projectMatch.matchedIndices}
+                            />
+                          ) : (
+                            task.projectName
+                          )}
+                        </div>
+                      ) : null}
                     </div>
-                    {task.branchName && task.title !== task.branchName ? (
-                      <div className="mt-1 truncate text-xs text-text-muted">
-                        {titleMatch ? (
-                          <HighlightedText
-                            text={task.title}
-                            matchedIndices={titleMatch.matchedIndices}
-                          />
-                        ) : (
-                          task.title
-                        )}
-                      </div>
-                    ) : null}
-                    {task.projectName ? (
-                      <div className="mt-1 truncate text-xs text-text-muted">
-                        {projectMatch ? (
-                          <HighlightedText
-                            text={task.projectName}
-                            matchedIndices={projectMatch.matchedIndices}
-                          />
-                        ) : (
-                          task.projectName
-                        )}
-                      </div>
-                    ) : null}
-                  </div>
 
-                  <div className="flex shrink-0 items-center gap-2">
-                    {isRemote && task.sshHost ? (
-                      <span className="rounded-full bg-tag-gemini-bg px-2 py-0.5 text-[11px] font-medium text-tag-gemini-text">
-                        {tc("remote")}
-                      </span>
-                    ) : null}
-                    {task.sshHost ? (
-                      <span className="text-[11px] text-text-muted">{task.sshHost}</span>
-                    ) : null}
-                  </div>
-                </button>
-              );
-            })
+                    <div className="flex shrink-0 items-center gap-2">
+                      {isRemote && task.sshHost ? (
+                        <span className="rounded-full bg-tag-gemini-bg px-2 py-0.5 text-[11px] font-medium text-tag-gemini-text">
+                          {tc("remote")}
+                        </span>
+                      ) : null}
+                      {task.sshHost ? (
+                        <span className="text-[11px] text-text-muted">{task.sshHost}</span>
+                      ) : null}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
           )}
         </div>
 
