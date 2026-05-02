@@ -16,10 +16,11 @@ function getNodeMajor() {
   return Number.parseInt(process.versions.node.split(".")[0] || "0", 10);
 }
 
-function isNativeModuleMismatch(error) {
+function isRecoverableNativeModuleLoadError(error) {
   const message = String(error?.stack || error?.message || error || "");
   return (
     message.includes("NODE_MODULE_VERSION") ||
+    message.includes("Could not locate the bindings file") ||
     message.includes("did not self-register") ||
     message.includes("ERR_DLOPEN_FAILED") ||
     message.includes("compiled against a different Node.js version")
@@ -140,7 +141,7 @@ function main() {
   try {
     verifyBetterSqlite3Binding();
   } catch (error) {
-    if (!isNativeModuleMismatch(error)) {
+    if (!isRecoverableNativeModuleLoadError(error)) {
       throw error;
     }
 
