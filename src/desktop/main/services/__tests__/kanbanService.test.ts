@@ -824,3 +824,56 @@ describe("kanbanService.createTask", () => {
     });
   });
 });
+
+describe("kanbanService.getSearchableTasks", () => {
+  beforeEach(() => {
+    vi.resetModules();
+    vi.clearAllMocks();
+  });
+
+  it("빠른 검색용 task 목록에서 done 상태를 조회하지 않는다", async () => {
+    // Given
+    const updatedAt = new Date("2026-05-02T00:00:00.000Z");
+    mocks.taskRepo.find.mockResolvedValue([
+      {
+        id: "task-active",
+        title: "Active task",
+        branchName: "dev",
+        projectId: "project-kanvibe",
+        project: { name: "kanvibe", sshHost: null },
+        sshHost: null,
+        status: "progress",
+        updatedAt,
+      },
+    ]);
+
+    const { getSearchableTasks } = await import("@/desktop/main/services/kanbanService");
+
+    // When
+    const result = await getSearchableTasks();
+
+    // Then
+    expect(mocks.taskRepo.find).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        status: expect.objectContaining({
+          _type: "not",
+          _value: "done",
+        }),
+      }),
+      relations: ["project"],
+      order: { updatedAt: "DESC", createdAt: "DESC" },
+    }));
+    expect(result).toEqual([
+      {
+        id: "task-active",
+        title: "Active task",
+        branchName: "dev",
+        projectId: "project-kanvibe",
+        projectName: "kanvibe",
+        sshHost: null,
+        status: "progress",
+        updatedAt: "2026-05-02T00:00:00.000Z",
+      },
+    ]);
+  });
+});

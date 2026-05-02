@@ -340,6 +340,7 @@ export async function getTaskById(taskId: string): Promise<KanbanTask | null> {
 export async function getSearchableTasks(): Promise<SearchableTask[]> {
   const repo = await getTaskRepository();
   const tasks = await repo.find({
+    where: { status: Not(TaskStatus.DONE) },
     relations: ["project"],
     order: { updatedAt: "DESC", createdAt: "DESC" },
   });
