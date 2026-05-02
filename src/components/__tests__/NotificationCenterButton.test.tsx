@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import NotificationCenterButton from "@/components/NotificationCenterButton";
+import { useRef } from "react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import NotificationCenterButton, { type NotificationCenterButtonHandle } from "@/components/NotificationCenterButton";
 
 const { mockListNotifications, mockMarkNotificationRead, mockMarkAllNotificationsRead, mockActivateNotification, mockGetTaskById, mockRedirect } = vi.hoisted(() => ({
   mockListNotifications: vi.fn(),
@@ -34,12 +35,29 @@ vi.mock("@/desktop/renderer/navigation", () => ({
   redirect: mockRedirect,
 }));
 
+function NotificationShortcutHarness() {
+  const notificationCenterRef = useRef<NotificationCenterButtonHandle>(null);
+
+  return (
+    <>
+      <button type="button" onClick={() => notificationCenterRef.current?.toggle()}>
+        open notification shortcut
+      </button>
+      <NotificationCenterButton ref={notificationCenterRef} />
+    </>
+  );
+}
+
 describe("NotificationCenterButton", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     window.kanvibeDesktop = {
       onNotificationsChanged: vi.fn(() => undefined),
-    } as any;
+    } as Partial<NonNullable<Window["kanvibeDesktop"]>> as NonNullable<Window["kanvibeDesktop"]>;
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
   });
 
   it("shows a popup instead of redirecting when the task no longer exists", async () => {
@@ -107,6 +125,68 @@ describe("NotificationCenterButton", () => {
     });
   });
 
+  it("focuses the notification panel when opened through the shortcut handle", async () => {
+    mockListNotifications.mockResolvedValue([
+      {
+        id: "n1",
+        title: "Focusable task",
+        body: "Body",
+        taskId: "task-1",
+        relativePath: "/task/task-1",
+        locale: "en",
+        isRead: false,
+        createdAt: new Date().toISOString(),
+        dedupeKey: "k1",
+      },
+    ]);
+
+    render(<NotificationShortcutHarness />);
+
+    await waitFor(() => {
+      expect(mockListNotifications).toHaveBeenCalled();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "open notification shortcut" }));
+
+    const panel = await screen.findByRole("dialog", { name: "notifications" });
+    await waitFor(() => {
+      expect(document.activeElement).toBe(panel);
+    });
+  });
+
+  it("opens task notifications in a new window with Shift+Click", async () => {
+    const openWindow = vi.spyOn(window, "open").mockImplementation(() => null);
+    mockListNotifications.mockResolvedValue([
+      {
+        id: "n1",
+        title: "Existing task",
+        body: "Body",
+        taskId: "task-1",
+        relativePath: "/task/task-1",
+        locale: "en",
+        isRead: false,
+        createdAt: new Date().toISOString(),
+        dedupeKey: "k1",
+      },
+    ]);
+    mockMarkNotificationRead.mockResolvedValue(undefined);
+    mockGetTaskById.mockResolvedValue({ id: "task-1" });
+
+    render(<NotificationCenterButton />);
+
+    await waitFor(() => {
+      expect(mockListNotifications).toHaveBeenCalled();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "notifications" }));
+    fireEvent.click(screen.getByRole("button", { name: /Existing task/i }), { shiftKey: true });
+
+    await waitFor(() => {
+      expect(openWindow).toHaveBeenCalledWith("/#/en/task/task-1", "_blank", "noopener,noreferrer");
+    });
+    expect(mockRedirect).not.toHaveBeenCalled();
+  });
+
   it("supports arrow navigation and Enter to open the highlighted notification", async () => {
     mockListNotifications.mockResolvedValue([
       {
@@ -149,6 +229,39 @@ describe("NotificationCenterButton", () => {
       expect(mockGetTaskById).toHaveBeenCalledWith("task-2");
     });
     expect(mockRedirect).toHaveBeenCalledWith("/en/task/task-2");
+  });
+
+  it("opens the highlighted task notification in a new window with Shift+Enter", async () => {
+    const openWindow = vi.spyOn(window, "open").mockImplementation(() => null);
+    mockListNotifications.mockResolvedValue([
+      {
+        id: "n1",
+        title: "First task",
+        body: "Body",
+        taskId: "task-1",
+        relativePath: "/task/task-1",
+        locale: "en",
+        isRead: false,
+        createdAt: new Date().toISOString(),
+        dedupeKey: "k1",
+      },
+    ]);
+    mockMarkNotificationRead.mockResolvedValue(undefined);
+    mockGetTaskById.mockResolvedValue({ id: "task-1" });
+
+    render(<NotificationCenterButton />);
+
+    await waitFor(() => {
+      expect(mockListNotifications).toHaveBeenCalled();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "notifications" }));
+    fireEvent.keyDown(window, { key: "Enter", shiftKey: true });
+
+    await waitFor(() => {
+      expect(openWindow).toHaveBeenCalledWith("/#/en/task/task-1", "_blank", "noopener,noreferrer");
+    });
+    expect(mockRedirect).not.toHaveBeenCalled();
   });
 
   it("uses activation bridge for background sync review notifications", async () => {

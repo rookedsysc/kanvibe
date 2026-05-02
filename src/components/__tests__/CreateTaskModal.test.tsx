@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import CreateTaskModal from "../CreateTaskModal";
 import type { Project } from "@/entities/Project";
@@ -41,10 +42,11 @@ vi.mock("../PrioritySelector", () => ({
 }));
 
 vi.mock("../BranchSearchInput", () => ({
-  default: ({ value, onChange }: { value: string; onChange: (branch: string) => void }) => (
+  default: ({ value, onChange, autoFocus }: { value: string; onChange: (branch: string) => void; autoFocus?: boolean }) => (
     <div>
+      <input aria-label="baseBranch" readOnly value={value} autoFocus={autoFocus} />
       <div data-testid="branch-search-input">{value}</div>
-      <button type="button" onClick={() => onChange("develop")}>
+      <button type="button" tabIndex={-1} onClick={() => onChange("develop")}>
         select develop
       </button>
     </div>
@@ -191,6 +193,73 @@ describe("CreateTaskModal", () => {
 
     // When
     fireEvent.keyDown(window, { key: "Escape" });
+
+    // Then
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("기본 프로젝트가 있으면 베이스 브랜치에서 시작해 Tab과 Shift+Tab으로 주요 입력 사이를 이동한다", async () => {
+    // Given
+    const user = userEvent.setup();
+
+    render(
+      <CreateTaskModal
+        isOpen
+        onClose={vi.fn()}
+        sshHosts={["remote-box"]}
+        projects={[createProject()]}
+        defaultProjectId="project-remote"
+      />,
+    );
+
+    await waitFor(() => {
+      expect(mockGetProjectBranches).toHaveBeenCalledWith("project-remote");
+    });
+
+    const baseBranchInput = screen.getByLabelText("baseBranch");
+    const branchNameInput = screen.getByPlaceholderText("branchPlaceholder");
+    const descriptionInput = screen.getByPlaceholderText("descriptionPlaceholder");
+
+    // Then
+    await waitFor(() => {
+      expect(document.activeElement).toBe(baseBranchInput);
+    });
+
+    // When & Then
+    await user.tab();
+    expect(document.activeElement).toBe(branchNameInput);
+
+    await user.tab();
+    expect(document.activeElement).toBe(descriptionInput);
+
+    await user.tab({ shift: true });
+    expect(document.activeElement).toBe(branchNameInput);
+
+    await user.tab({ shift: true });
+    expect(document.activeElement).toBe(baseBranchInput);
+  });
+
+  it("포커스가 모달 입력에 있을 때 Escape를 누르면 모달을 닫는다", async () => {
+    // Given
+    const user = userEvent.setup();
+    const onClose = vi.fn();
+
+    render(
+      <CreateTaskModal
+        isOpen
+        onClose={onClose}
+        sshHosts={["remote-box"]}
+        projects={[createProject()]}
+        defaultProjectId="project-remote"
+      />,
+    );
+
+    await waitFor(() => {
+      expect(document.activeElement).toBe(screen.getByLabelText("baseBranch"));
+    });
+
+    // When
+    await user.keyboard("{Escape}");
 
     // Then
     expect(onClose).toHaveBeenCalledTimes(1);

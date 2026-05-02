@@ -1,6 +1,6 @@
 "use client";
 
-import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 import { getTaskById } from "@/desktop/renderer/actions/kanban";
 import {
@@ -47,29 +47,55 @@ function shouldIgnoreKeyboardNavigation(eventTarget: EventTarget | null, contain
   return eventTarget.closest('[contenteditable="true"]') !== null;
 }
 
+function getTaskNotificationPath(notification: AppNotification) {
+  return `/${notification.locale}/task/${notification.taskId}`;
+}
+
+function openTaskNotificationInNewWindow(notification: AppNotification) {
+  window.open(`/#${getTaskNotificationPath(notification)}`, "_blank", "noopener,noreferrer");
+}
+
 const NotificationCenterButton = forwardRef<NotificationCenterButtonHandle, NotificationCenterButtonProps>(function NotificationCenterButton(
   { buttonClassName = "", panelClassName = "" },
   ref,
 ) {
   const t = useTranslations("common");
   const containerRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
   const itemRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const [isOpen, setIsOpen] = useState(false);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
-  const [highlightedIndex, setHighlightedIndex] = useState(-1);
+  const [highlightedIndex, setHighlightedIndex] = useState(0);
   const [missingTaskNotification, setMissingTaskNotification] = useState<AppNotification | null>(null);
+
+  const closePanel = useCallback(() => {
+    setIsOpen(false);
+  }, []);
+
+  const openPanel = useCallback(() => {
+    setHighlightedIndex(0);
+    setIsOpen(true);
+  }, []);
+
+  const togglePanel = useCallback(() => {
+    if (!isOpen) {
+      setHighlightedIndex(0);
+    }
+
+    setIsOpen(!isOpen);
+  }, [isOpen]);
 
   useImperativeHandle(ref, () => ({
     close() {
-      setIsOpen(false);
+      closePanel();
     },
     open() {
-      setIsOpen(true);
+      openPanel();
     },
     toggle() {
-      setIsOpen((current) => !current);
+      togglePanel();
     },
-  }), []);
+  }), [closePanel, openPanel, togglePanel]);
 
   useEffect(() => {
     async function load() {
@@ -85,7 +111,7 @@ const NotificationCenterButton = forwardRef<NotificationCenterButtonHandle, Noti
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (!containerRef.current?.contains(event.target as Node)) {
-        setIsOpen(false);
+        closePanel();
       }
     }
 
@@ -93,26 +119,69 @@ const NotificationCenterButton = forwardRef<NotificationCenterButtonHandle, Noti
     return () => {
       document.removeEventListener("mousedown", handleClickOutside);
     };
-  }, []);
+  }, [closePanel]);
+
+  const highlightedNotificationIndex = isOpen && notifications.length > 0
+    ? Math.min(Math.max(highlightedIndex, 0), notifications.length - 1)
+    : -1;
 
   useEffect(() => {
     if (!isOpen) {
-      setHighlightedIndex(-1);
       return;
     }
 
-    setHighlightedIndex(notifications.length > 0 ? 0 : -1);
-  }, [isOpen, notifications.length]);
+    panelRef.current?.focus();
+  }, [isOpen]);
 
   useEffect(() => {
-    if (highlightedIndex < 0) {
+    if (highlightedNotificationIndex < 0) {
       return;
     }
 
-    itemRefs.current[highlightedIndex]?.scrollIntoView?.({
+    itemRefs.current[highlightedNotificationIndex]?.scrollIntoView?.({
       block: "nearest",
     });
-  }, [highlightedIndex]);
+  }, [highlightedNotificationIndex]);
+
+  const unreadCount = useMemo(() => notifications.filter((notification) => !notification.isRead).length, [notifications]);
+
+  const handleNotificationClick = useCallback(async (
+    notification: AppNotification,
+    { openInNewWindow = false }: { openInNewWindow?: boolean } = {},
+  ) => {
+    if (!notification.isRead) {
+      await markNotificationRead(notification.id);
+      setNotifications((current) => current.map((item) => (
+        item.id === notification.id ? { ...item, isRead: true } : item
+      )));
+    }
+
+    closePanel();
+
+    if (notification.action?.type === "background-sync-review") {
+      await activateNotification(notification.id);
+      return;
+    }
+
+    if (notification.taskId) {
+      const task = await getTaskById(notification.taskId);
+
+      if (!task) {
+        setMissingTaskNotification(notification);
+        return;
+      }
+
+      if (openInNewWindow) {
+        openTaskNotificationInNewWindow(notification);
+        return;
+      }
+
+      redirect(getTaskNotificationPath(notification));
+      return;
+    }
+
+    redirect(notification.relativePath);
+  }, [closePanel]);
 
   useEffect(() => {
     if (!isOpen) {
@@ -140,15 +209,15 @@ const NotificationCenterButton = forwardRef<NotificationCenterButtonHandle, Noti
           setHighlightedIndex((current) => (current > 0 ? current - 1 : notifications.length - 1));
           break;
         case "Enter":
-          if (highlightedIndex < 0 || highlightedIndex >= notifications.length) {
+          if (highlightedNotificationIndex < 0 || highlightedNotificationIndex >= notifications.length) {
             return;
           }
           event.preventDefault();
-          void handleNotificationClick(notifications[highlightedIndex]);
+          void handleNotificationClick(notifications[highlightedNotificationIndex], { openInNewWindow: event.shiftKey });
           break;
         case "Escape":
           event.preventDefault();
-          setIsOpen(false);
+          closePanel();
           break;
       }
     }
@@ -157,39 +226,7 @@ const NotificationCenterButton = forwardRef<NotificationCenterButtonHandle, Noti
     return () => {
       window.removeEventListener("keydown", handleWindowKeyDown);
     };
-  }, [highlightedIndex, isOpen, notifications]);
-
-  const unreadCount = useMemo(() => notifications.filter((notification) => !notification.isRead).length, [notifications]);
-
-  async function handleNotificationClick(notification: AppNotification) {
-    if (!notification.isRead) {
-      await markNotificationRead(notification.id);
-      setNotifications((current) => current.map((item) => (
-        item.id === notification.id ? { ...item, isRead: true } : item
-      )));
-    }
-
-    setIsOpen(false);
-
-    if (notification.action?.type === "background-sync-review") {
-      await activateNotification(notification.id);
-      return;
-    }
-
-    if (notification.taskId) {
-      const task = await getTaskById(notification.taskId);
-
-      if (!task) {
-        setMissingTaskNotification(notification);
-        return;
-      }
-
-      redirect(`/${notification.locale}/task/${notification.taskId}`);
-      return;
-    }
-
-    redirect(notification.relativePath);
-  }
+  }, [closePanel, handleNotificationClick, highlightedNotificationIndex, isOpen, notifications]);
 
   async function handleMarkAllRead() {
     await markAllNotificationsRead();
@@ -200,7 +237,7 @@ const NotificationCenterButton = forwardRef<NotificationCenterButtonHandle, Noti
     <div ref={containerRef} className="relative">
       <button
         type="button"
-        onClick={() => setIsOpen((current) => !current)}
+        onClick={togglePanel}
         className={`relative rounded-md p-1.5 text-text-muted hover:bg-bg-page hover:text-text-primary transition-colors ${buttonClassName}`.trim()}
         title={t("notifications")}
         aria-label={t("notifications")}
@@ -217,7 +254,13 @@ const NotificationCenterButton = forwardRef<NotificationCenterButtonHandle, Noti
       </button>
 
       {isOpen ? (
-        <div className={`absolute right-0 z-50 mt-2 w-96 max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl border border-border-default bg-bg-surface shadow-xl ${panelClassName}`.trim()}>
+        <div
+          ref={panelRef}
+          role="dialog"
+          aria-label={t("notifications")}
+          tabIndex={-1}
+          className={`absolute right-0 z-50 mt-2 w-96 max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl border border-border-default bg-bg-surface shadow-xl ${panelClassName}`.trim()}
+        >
           <div className="flex items-center justify-between border-b border-border-default px-4 py-3">
             <div>
               <h3 className="text-sm font-semibold text-text-primary">{t("notifications")}</h3>
@@ -240,10 +283,10 @@ const NotificationCenterButton = forwardRef<NotificationCenterButtonHandle, Noti
                   itemRefs.current[index] = node;
                 }}
                 type="button"
-                onClick={() => handleNotificationClick(notification)}
+                onClick={(event) => handleNotificationClick(notification, { openInNewWindow: event.shiftKey })}
                 onMouseEnter={() => setHighlightedIndex(index)}
                 className={`w-full border-b border-border-subtle px-4 py-3 text-left transition-colors hover:bg-bg-page ${
-                  index === highlightedIndex
+                  index === highlightedNotificationIndex
                     ? "bg-brand-primary/10"
                     : notification.isRead ? "bg-bg-surface" : "bg-brand-primary/5"
                 }`}
