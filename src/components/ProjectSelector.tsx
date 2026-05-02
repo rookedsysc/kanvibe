@@ -4,6 +4,7 @@ import { forwardRef, useState, useEffect, useRef, useCallback, useImperativeHand
 import type { Project } from "@/entities/Project";
 
 const MAX_VISIBLE_CHIPS = 2;
+const EMPTY_SELECTED_PROJECT_IDS: string[] = [];
 
 type BaseProps = {
   projects: Project[];
@@ -57,7 +58,7 @@ const ProjectSelector = forwardRef<ProjectSelectorHandle, ProjectSelectorProps>(
 
   const selectedProjectIds = isMultiple
     ? (props as MultiSelectProps).selectedProjectIds
-    : [];
+    : EMPTY_SELECTED_PROJECT_IDS;
   const onSelectionChange = isMultiple
     ? (props as MultiSelectProps).onSelectionChange
     : undefined;
@@ -142,25 +143,6 @@ const ProjectSelector = forwardRef<ProjectSelectorHandle, ProjectSelectorProps>(
     }
   }, [isOpen]);
 
-  useEffect(() => {
-    if (!isOpen) {
-      return;
-    }
-
-    const maxIndex = isMultiple ? orderedProjects.length - 1 : singleTotalItems - 1;
-    setHighlightedIndex((current) => {
-      if (maxIndex < 0) {
-        return -1;
-      }
-
-      if (current < 0 || current > maxIndex) {
-        return 0;
-      }
-
-      return current;
-    });
-  }, [isOpen, isMultiple, orderedProjects.length, singleTotalItems]);
-
   useImperativeHandle(ref, () => ({
     close: closeDropdown,
     focus() {
@@ -226,11 +208,16 @@ const ProjectSelector = forwardRef<ProjectSelectorHandle, ProjectSelectorProps>(
     []
   );
 
+  const maxHighlightedIndex = isMultiple ? orderedProjects.length - 1 : singleTotalItems - 1;
+  const normalizedHighlightedIndex = isOpen && maxHighlightedIndex >= 0
+    ? Math.min(Math.max(highlightedIndex, 0), maxHighlightedIndex)
+    : -1;
+
   // ===== 멀티 선택 모드 =====
   if (isMultiple) {
     const handleMultiKeyDown = (e: React.KeyboardEvent) => {
       if (!isOpen) {
-        if (e.key === "ArrowDown" || e.key === "Enter") {
+        if (e.key === "ArrowDown" || e.key === "Enter" || e.key === " ") {
           e.preventDefault();
           openDropdown();
         }
@@ -253,10 +240,10 @@ const ProjectSelector = forwardRef<ProjectSelectorHandle, ProjectSelectorProps>(
         case "Enter":
           e.preventDefault();
           if (
-            highlightedIndex >= 0 &&
-            highlightedIndex < orderedProjects.length
+            normalizedHighlightedIndex >= 0 &&
+            normalizedHighlightedIndex < orderedProjects.length
           ) {
-            handleToggle(orderedProjects[highlightedIndex].id);
+            handleToggle(orderedProjects[normalizedHighlightedIndex].id);
           }
           break;
         case "Escape":
@@ -274,10 +261,14 @@ const ProjectSelector = forwardRef<ProjectSelectorHandle, ProjectSelectorProps>(
       >
         {/* 트리거: 선택된 프로젝트 칩 또는 placeholder. 칩은 최대 2개까지 표시하고 나머지는 "+N" 배지로 축약한다 */}
         <div
+          role="button"
+          tabIndex={0}
+          aria-haspopup="listbox"
+          aria-expanded={isOpen}
           onClick={() => (isOpen ? closeDropdown() : openDropdown())}
           className={`w-full px-2 bg-bg-page border rounded-md text-text-primary cursor-pointer flex items-center gap-1 overflow-hidden ${
             compact ? "py-1 min-h-[34px]" : "py-1.5 min-h-[38px]"
-          } ${isOpen ? "border-brand-primary" : "border-border-default"}`}
+          } ${isOpen ? "border-brand-primary" : "border-border-default"} focus:outline-none focus:border-brand-primary`}
         >
           {selectedProjects.length === 0 ? (
             <span className="text-text-muted text-sm px-1">{placeholder}</span>
@@ -353,7 +344,7 @@ const ProjectSelector = forwardRef<ProjectSelectorHandle, ProjectSelectorProps>(
                       }}
                       onMouseEnter={() => setHighlightedIndex(index)}
                       className={`flex items-center gap-2 px-3 py-2 text-sm cursor-pointer transition-colors ${
-                        index === highlightedIndex
+                        index === normalizedHighlightedIndex
                           ? "bg-brand-primary/10 text-text-primary"
                           : "text-text-primary hover:bg-bg-page"
                       }`}
@@ -404,7 +395,7 @@ const ProjectSelector = forwardRef<ProjectSelectorHandle, ProjectSelectorProps>(
   // ===== 단일 선택 모드 =====
   const handleSingleKeyDown = (e: React.KeyboardEvent) => {
     if (!isOpen) {
-      if (e.key === "ArrowDown" || e.key === "Enter") {
+      if (e.key === "ArrowDown" || e.key === "Enter" || e.key === " ") {
         e.preventDefault();
         openDropdown();
       }
@@ -426,13 +417,13 @@ const ProjectSelector = forwardRef<ProjectSelectorHandle, ProjectSelectorProps>(
         break;
       case "Enter":
         e.preventDefault();
-        if (highlightedIndex >= 0 && highlightedIndex < singleTotalItems) {
-          if (showAllOption && highlightedIndex === 0) {
+        if (normalizedHighlightedIndex >= 0 && normalizedHighlightedIndex < singleTotalItems) {
+          if (showAllOption && normalizedHighlightedIndex === 0) {
             handleSelectAll();
           } else {
             const projectIndex = showAllOption
-              ? highlightedIndex - 1
-              : highlightedIndex;
+              ? normalizedHighlightedIndex - 1
+              : normalizedHighlightedIndex;
             if (
               projectIndex >= 0 &&
               projectIndex < filteredProjects.length
@@ -457,10 +448,14 @@ const ProjectSelector = forwardRef<ProjectSelectorHandle, ProjectSelectorProps>(
     >
       {/* 트리거: 선택된 프로젝트명 또는 placeholder */}
       <div
+        role="button"
+        tabIndex={0}
+        aria-haspopup="listbox"
+        aria-expanded={isOpen}
         onClick={() => (isOpen ? closeDropdown() : openDropdown())}
         className={`w-full px-2 bg-bg-page border rounded-md text-text-primary cursor-pointer flex items-center gap-1 ${
           compact ? "py-1 min-h-[34px]" : "py-1.5 min-h-[38px]"
-        } ${isOpen ? "border-brand-primary" : "border-border-default"}`}
+        } ${isOpen ? "border-brand-primary" : "border-border-default"} focus:outline-none focus:border-brand-primary`}
       >
         {singleDisplayText ? (
           <span className="text-sm px-1 truncate">{singleDisplayText}</span>
@@ -507,7 +502,7 @@ const ProjectSelector = forwardRef<ProjectSelectorHandle, ProjectSelectorProps>(
                 }}
                 onMouseEnter={() => setHighlightedIndex(0)}
                 className={`px-3 py-2 text-sm cursor-pointer transition-colors ${
-                  highlightedIndex === 0
+                  normalizedHighlightedIndex === 0
                     ? "bg-brand-primary/10 text-text-primary"
                     : "text-text-primary hover:bg-bg-page"
                 } ${!selectedProjectId ? "font-medium" : ""}`}
@@ -531,7 +526,7 @@ const ProjectSelector = forwardRef<ProjectSelectorHandle, ProjectSelectorProps>(
                     }}
                     onMouseEnter={() => setHighlightedIndex(itemIndex)}
                     className={`px-3 py-2 text-sm cursor-pointer transition-colors ${
-                      itemIndex === highlightedIndex
+                      itemIndex === normalizedHighlightedIndex
                         ? "bg-brand-primary/10 text-text-primary"
                         : "text-text-primary hover:bg-bg-page"
                     } ${project.id === selectedProjectId ? "font-medium" : ""}`}

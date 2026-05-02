@@ -196,6 +196,48 @@ describe("CreateTaskModal", () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
+  it("입력창에서 Enter를 누르면 작업을 생성한다", async () => {
+    // Given
+    const onClose = vi.fn();
+    mockEnsureSessionDependencyWithPrompt.mockResolvedValue(true);
+    mockCreateTask.mockResolvedValue({ id: "task-enter" });
+
+    render(
+      <CreateTaskModal
+        isOpen
+        onClose={onClose}
+        sshHosts={["remote-box"]}
+        projects={[createProject()]}
+        defaultProjectId="project-remote"
+      />,
+    );
+
+    await waitFor(() => {
+      expect(mockGetProjectBranches).toHaveBeenCalledWith("project-remote");
+    });
+
+    // When
+    const branchNameInput = screen.getByPlaceholderText("branchPlaceholder");
+    fireEvent.change(branchNameInput, { target: { value: "fix/enter-submit" } });
+    fireEvent.keyDown(branchNameInput, { key: "Enter" });
+
+    // Then
+    await waitFor(() => {
+      expect(mockCreateTask).toHaveBeenCalledWith({
+        title: "fix/enter-submit",
+        description: undefined,
+        branchName: "fix/enter-submit",
+        baseBranch: "main",
+        sessionType: "tmux",
+        sshHost: undefined,
+        projectId: "project-remote",
+        priority: undefined,
+      });
+    });
+    expect(onClose).toHaveBeenCalled();
+    expect(mockPush).toHaveBeenCalledWith("/task/task-enter");
+  });
+
   it("프로젝트 목록이 새로고침되어도 사용자가 선택한 베이스 브랜치를 유지한다", async () => {
     // Given
     const project = createProject();

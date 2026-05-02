@@ -155,6 +155,27 @@ function CreateTaskModalContent({
     });
   }
 
+  function handleFormKeyDown(event: React.KeyboardEvent<HTMLFormElement>) {
+    if (
+      event.key !== "Enter" ||
+      event.defaultPrevented ||
+      event.nativeEvent.isComposing ||
+      event.shiftKey ||
+      event.altKey ||
+      event.ctrlKey ||
+      event.metaKey
+    ) {
+      return;
+    }
+
+    if (event.target instanceof HTMLButtonElement) {
+      return;
+    }
+
+    event.preventDefault();
+    event.currentTarget.requestSubmit();
+  }
+
   return (
     <div className="fixed inset-0 z-[400] flex items-center justify-center bg-bg-overlay">
       <div className="w-full max-w-md bg-bg-surface rounded-xl border border-border-default shadow-lg p-6">
@@ -162,7 +183,7 @@ function CreateTaskModalContent({
           {t("createTitle")}
         </h2>
 
-        <form action={handleSubmit} className="space-y-4">
+        <form action={handleSubmit} className="space-y-4" onKeyDown={handleFormKeyDown}>
           <div>
             <label className="block text-sm text-text-secondary mb-1">
               {t("project")} *
