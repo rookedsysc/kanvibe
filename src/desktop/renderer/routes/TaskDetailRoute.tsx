@@ -4,6 +4,7 @@ import { useParams } from "react-router-dom";
 import AiSessionsCard from "@/components/AiSessionsCard";
 import CollapsibleSidebar from "@/components/CollapsibleSidebar";
 import ConnectTerminalForm from "@/components/ConnectTerminalForm";
+import CreateTaskModal from "@/components/CreateTaskModal";
 import DeleteTaskButton from "@/components/DeleteTaskButton";
 import DoneStatusButton from "@/components/DoneStatusButton";
 import HooksStatusCard from "@/components/HooksStatusCard";
@@ -11,7 +12,7 @@ import NotificationCenterButton, { type NotificationCenterButtonHandle } from "@
 import TaskDetailInfoCard from "@/components/TaskDetailInfoCard";
 import TaskDetailTitleCard from "@/components/TaskDetailTitleCard";
 import { Link, useRouter } from "@/desktop/renderer/navigation";
-import { getDoneAlertDismissed, getSidebarDefaultCollapsed, getSidebarHintDismissed } from "@/desktop/renderer/actions/appSettings";
+import { getDefaultSessionType, getDoneAlertDismissed, getSidebarDefaultCollapsed, getSidebarHintDismissed } from "@/desktop/renderer/actions/appSettings";
 import { getGitDiffFiles } from "@/desktop/renderer/actions/diff";
 import { deleteTask, getTaskById, getTaskIdByProjectAndBranch, updateTaskStatus } from "@/desktop/renderer/actions/kanban";
 import {
@@ -20,13 +21,14 @@ import {
   getTaskGeminiHooksStatus,
   getTaskHooksStatus,
   getTaskOpenCodeHooksStatus,
+  getAllProjects,
 } from "@/desktop/renderer/actions/project";
-import { useBoardCommands } from "@/desktop/renderer/components/BoardCommandProvider";
+import { useBoardCommands, type BranchTodoDefaults } from "@/desktop/renderer/components/BoardCommandProvider";
 import TerminalLoader from "@/desktop/renderer/components/TerminalLoader";
 import { fetchPrUrlWithPrompt } from "@/desktop/renderer/utils/fetchPrUrlWithPrompt";
 import { buildRouteCacheKey, readRouteCache, removeRouteCache, writeRouteCache } from "@/desktop/renderer/utils/routeCache";
 import { useRefreshSignal } from "@/desktop/renderer/utils/refresh";
-import { TaskStatus } from "@/entities/KanbanTask";
+import { SessionType, TaskStatus } from "@/entities/KanbanTask";
 
 const STATUS_TRANSITIONS = [
   { status: TaskStatus.TODO, labelKey: "moveToTodo" },
@@ -50,6 +52,8 @@ interface TaskDetailState {
   codexHooksStatus: Awaited<ReturnType<typeof getTaskCodexHooksStatus>>;
   openCodeHooksStatus: Awaited<ReturnType<typeof getTaskOpenCodeHooksStatus>>;
   aiSessions: Awaited<ReturnType<typeof getTaskAiSessions>>;
+  projects: Awaited<ReturnType<typeof getAllProjects>>;
+  defaultSessionType: Awaited<ReturnType<typeof getDefaultSessionType>>;
   sidebarDefaultCollapsed: boolean;
   sidebarHintDismissed: boolean;
   doneAlertDismissed: boolean;
@@ -71,6 +75,8 @@ const DEFAULT_DETAIL_STATE: Omit<TaskDetailState, "task"> = {
   codexHooksStatus: null,
   openCodeHooksStatus: null,
   aiSessions: EMPTY_AI_SESSIONS,
+  projects: [],
+  defaultSessionType: SessionType.TMUX,
   sidebarDefaultCollapsed: false,
   sidebarHintDismissed: false,
   doneAlertDismissed: false,
@@ -92,12 +98,30 @@ export default function TaskDetailRoute() {
     [id],
   );
   const [state, setState] = useState<TaskDetailState | null | undefined>(cachedState ?? undefined);
+  const [isCreateTaskModalOpen, setIsCreateTaskModalOpen] = useState(false);
+  const [createTaskDefaults, setCreateTaskDefaults] = useState<BranchTodoDefaults | null>(null);
   const [needsMacDesktopHeaderOffset, setNeedsMacDesktopHeaderOffset] = useState(false);
   const notificationCenterRef = useRef<NotificationCenterButtonHandle>(null);
 
   useEffect(() => boardCommands.registerNotificationCenterHandler(() => {
     notificationCenterRef.current?.toggle();
   }), [boardCommands]);
+
+  useEffect(() => boardCommands.registerBoardHandlers({
+    toggleNotificationCenter() {
+      notificationCenterRef.current?.toggle();
+    },
+    openProjectFilter() {},
+    openCreateTaskModal(defaults) {
+      setCreateTaskDefaults(defaults ?? (state?.task.projectId
+        ? {
+            projectId: state.task.projectId,
+            baseBranch: state.task.branchName || state.task.baseBranch || "",
+          }
+        : null));
+      setIsCreateTaskModalOpen(true);
+    },
+  }), [boardCommands, state?.task.baseBranch, state?.task.branchName, state?.task.projectId]);
 
   useEffect(() => {
     const isDesktopApp = window.kanvibeDesktop?.isDesktop === true;
@@ -190,12 +214,14 @@ export default function TaskDetailRoute() {
         const foundTaskId = task.projectId ? await getTaskIdByProjectAndBranch(task.projectId, baseBranchName) : null;
         const baseBranchTaskId = foundTaskId !== task.id ? foundTaskId : null;
         const diffFiles = task.branchName && task.worktreePath ? await getGitDiffFiles(id) : [];
-        const [claudeHooksStatus, geminiHooksStatus, codexHooksStatus, openCodeHooksStatus, aiSessions, sidebarDefaultCollapsed, sidebarHintDismissed, doneAlertDismissed] = await Promise.all([
+        const [claudeHooksStatus, geminiHooksStatus, codexHooksStatus, openCodeHooksStatus, aiSessions, projects, defaultSessionType, sidebarDefaultCollapsed, sidebarHintDismissed, doneAlertDismissed] = await Promise.all([
           task.projectId ? getTaskHooksStatus(id) : Promise.resolve(null),
           task.projectId ? getTaskGeminiHooksStatus(id) : Promise.resolve(null),
           task.projectId ? getTaskCodexHooksStatus(id) : Promise.resolve(null),
           task.projectId ? getTaskOpenCodeHooksStatus(id) : Promise.resolve(null),
           task.projectId ? getTaskAiSessions(id) : Promise.resolve(EMPTY_AI_SESSIONS),
+          getAllProjects(),
+          getDefaultSessionType(),
           getSidebarDefaultCollapsed(),
           getSidebarHintDismissed(),
           getDoneAlertDismissed(),
@@ -215,6 +241,8 @@ export default function TaskDetailRoute() {
               codexHooksStatus,
               openCodeHooksStatus,
               aiSessions,
+              projects,
+              defaultSessionType,
               sidebarDefaultCollapsed,
               sidebarHintDismissed,
               doneAlertDismissed,
@@ -383,6 +411,19 @@ export default function TaskDetailRoute() {
           </div>
         )}
       </main>
+
+      <CreateTaskModal
+        isOpen={isCreateTaskModalOpen}
+        onClose={() => {
+          setIsCreateTaskModalOpen(false);
+          setCreateTaskDefaults(null);
+        }}
+        sshHosts={[]}
+        projects={state.projects}
+        defaultProjectId={createTaskDefaults?.projectId ?? state.task.projectId ?? ""}
+        defaultBaseBranch={createTaskDefaults?.baseBranch}
+        defaultSessionType={state.defaultSessionType}
+      />
     </div>
   );
 }

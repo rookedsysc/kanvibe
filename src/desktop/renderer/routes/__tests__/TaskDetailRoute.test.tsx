@@ -17,9 +17,11 @@ const mocks = vi.hoisted(() => ({
   getTaskCodexHooksStatus: vi.fn(),
   getTaskOpenCodeHooksStatus: vi.fn(),
   getTaskAiSessions: vi.fn(),
+  getAllProjects: vi.fn(),
   getSidebarDefaultCollapsed: vi.fn(),
   getSidebarHintDismissed: vi.fn(),
   getDoneAlertDismissed: vi.fn(),
+  getDefaultSessionType: vi.fn(),
   listNotifications: vi.fn(),
   markNotificationRead: vi.fn(),
   markAllNotificationsRead: vi.fn(),
@@ -76,12 +78,14 @@ vi.mock("@/desktop/renderer/actions/project", () => ({
   getTaskCodexHooksStatus: (...args: unknown[]) => mocks.getTaskCodexHooksStatus(...args),
   getTaskOpenCodeHooksStatus: (...args: unknown[]) => mocks.getTaskOpenCodeHooksStatus(...args),
   getTaskAiSessions: (...args: unknown[]) => mocks.getTaskAiSessions(...args),
+  getAllProjects: (...args: unknown[]) => mocks.getAllProjects(...args),
 }));
 
 vi.mock("@/desktop/renderer/actions/appSettings", () => ({
   getSidebarDefaultCollapsed: (...args: unknown[]) => mocks.getSidebarDefaultCollapsed(...args),
   getSidebarHintDismissed: (...args: unknown[]) => mocks.getSidebarHintDismissed(...args),
   getDoneAlertDismissed: (...args: unknown[]) => mocks.getDoneAlertDismissed(...args),
+  getDefaultSessionType: (...args: unknown[]) => mocks.getDefaultSessionType(...args),
 }));
 
 vi.mock("@/desktop/renderer/actions/notifications", () => ({
@@ -105,6 +109,26 @@ vi.mock("@/components/CollapsibleSidebar", () => ({
 
 vi.mock("@/components/ConnectTerminalForm", () => ({
   default: () => <div data-testid="connect-terminal-form" />,
+}));
+
+vi.mock("@/components/CreateTaskModal", () => ({
+  default: ({
+    isOpen,
+    defaultProjectId,
+    defaultBaseBranch,
+    defaultSessionType,
+  }: {
+    isOpen: boolean;
+    defaultProjectId?: string;
+    defaultBaseBranch?: string;
+    defaultSessionType?: string;
+  }) => isOpen ? (
+    <div data-testid="create-task-modal">
+      <div data-testid="create-task-default-project">{defaultProjectId ?? ""}</div>
+      <div data-testid="create-task-default-base-branch">{defaultBaseBranch ?? ""}</div>
+      <div data-testid="create-task-default-session">{defaultSessionType ?? ""}</div>
+    </div>
+  ) : null,
 }));
 
 vi.mock("@/components/DeleteTaskButton", () => ({
@@ -152,9 +176,22 @@ describe("TaskDetailRoute", () => {
       sessions: [],
       sources: [],
     });
+    mocks.getAllProjects.mockResolvedValue([
+      {
+        id: "project-1",
+        name: "kanvibe",
+        repoPath: "/repo/kanvibe",
+        defaultBranch: "main",
+        sshHost: null,
+        isWorktree: false,
+        color: null,
+        createdAt: new Date(),
+      },
+    ]);
     mocks.getSidebarDefaultCollapsed.mockResolvedValue(false);
     mocks.getSidebarHintDismissed.mockResolvedValue(false);
     mocks.getDoneAlertDismissed.mockResolvedValue(false);
+    mocks.getDefaultSessionType.mockResolvedValue("tmux");
     mocks.listNotifications.mockResolvedValue([]);
     mocks.markNotificationRead.mockResolvedValue(undefined);
     mocks.markAllNotificationsRead.mockResolvedValue(undefined);
@@ -281,6 +318,44 @@ describe("TaskDetailRoute", () => {
 
     await waitFor(() => {
       expect(screen.getByText("noNotifications")).toBeTruthy();
+    });
+  });
+
+  it("새 task 단축키로 현재 상세 task의 branch를 base로 하는 생성 모달을 연다", async () => {
+    mocks.getTaskById.mockResolvedValue({
+      id: "task-1",
+      title: "task title",
+      description: null,
+      branchName: "feat/detail-shortcut",
+      baseBranch: "main",
+      prUrl: null,
+      sessionType: null,
+      sessionName: null,
+      sshHost: null,
+      projectId: "project-1",
+      project: { id: "project-1", name: "kanvibe" },
+      status: "todo",
+      agentType: null,
+      worktreePath: "/repo__worktrees/detail-shortcut",
+    });
+
+    render(
+      <BoardCommandProvider>
+        <TaskDetailRoute />
+      </BoardCommandProvider>,
+    );
+
+    await screen.findByTestId("task-title");
+
+    fireEvent.keyDown(window, {
+      key: "n",
+      ctrlKey: true,
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("create-task-default-project").textContent).toBe("project-1");
+      expect(screen.getByTestId("create-task-default-base-branch").textContent).toBe("feat/detail-shortcut");
+      expect(screen.getByTestId("create-task-default-session").textContent).toBe("tmux");
     });
   });
 });

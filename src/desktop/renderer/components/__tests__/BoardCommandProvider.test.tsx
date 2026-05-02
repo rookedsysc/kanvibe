@@ -1,6 +1,7 @@
-import { useEffect } from "react";
-import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { useEffect, type ReactNode } from "react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { BoardCommandProvider, useBoardCommands } from "@/desktop/renderer/components/BoardCommandProvider";
 
 function BoardCommandHarness({
@@ -10,7 +11,7 @@ function BoardCommandHarness({
 }: {
   onToggleNotificationCenter: () => void;
   onOpenProjectFilter: () => void;
-  onOpenCreateTaskModal: (defaults: { projectId: string; baseBranch: string }) => void;
+  onOpenCreateTaskModal: (defaults?: { projectId: string; baseBranch: string }) => void;
 }) {
   const boardCommands = useBoardCommands();
 
@@ -52,13 +53,25 @@ function NotificationOnlyHarness({ onToggleNotificationCenter }: { onToggleNotif
   );
 }
 
+function renderWithRouter(children: ReactNode) {
+  return render(
+    <MemoryRouter initialEntries={["/ko"]}>
+      {children}
+    </MemoryRouter>,
+  );
+}
+
 describe("BoardCommandProvider", () => {
+  afterEach(() => {
+    delete window.kanvibeDesktop;
+  });
+
   it("dispatches board shortcuts to registered handlers", () => {
     const onToggleNotificationCenter = vi.fn();
     const onOpenProjectFilter = vi.fn();
     const onOpenCreateTaskModal = vi.fn();
 
-    render(
+    renderWithRouter(
       <BoardCommandProvider>
         <BoardCommandHarness
           onToggleNotificationCenter={onToggleNotificationCenter}
@@ -89,7 +102,7 @@ describe("BoardCommandProvider", () => {
     const onOpenProjectFilter = vi.fn();
     const onOpenCreateTaskModal = vi.fn();
 
-    render(
+    renderWithRouter(
       <BoardCommandProvider>
         <BoardCommandHarness
           onToggleNotificationCenter={onToggleNotificationCenter}
@@ -120,7 +133,7 @@ describe("BoardCommandProvider", () => {
     const onOpenProjectFilter = vi.fn();
     const onOpenCreateTaskModal = vi.fn();
 
-    render(
+    renderWithRouter(
       <BoardCommandProvider>
         <BoardCommandHarness
           onToggleNotificationCenter={onToggleNotificationCenter}
@@ -138,10 +151,69 @@ describe("BoardCommandProvider", () => {
     });
   });
 
+  it("dispatches the create task shortcut to the registered board handler", () => {
+    const onToggleNotificationCenter = vi.fn();
+    const onOpenProjectFilter = vi.fn();
+    const onOpenCreateTaskModal = vi.fn();
+
+    renderWithRouter(
+      <BoardCommandProvider>
+        <BoardCommandHarness
+          onToggleNotificationCenter={onToggleNotificationCenter}
+          onOpenProjectFilter={onOpenProjectFilter}
+          onOpenCreateTaskModal={onOpenCreateTaskModal}
+        />
+      </BoardCommandProvider>,
+    );
+
+    fireEvent.keyDown(window, {
+      key: "n",
+      ctrlKey: true,
+    });
+
+    expect(onOpenCreateTaskModal).toHaveBeenCalledTimes(1);
+    expect(onOpenCreateTaskModal).toHaveBeenCalledWith();
+  });
+
+  it("forwards the desktop create task shortcut event to the registered board handler", () => {
+    const onToggleNotificationCenter = vi.fn();
+    const onOpenProjectFilter = vi.fn();
+    const onOpenCreateTaskModal = vi.fn();
+    let createTaskShortcutListener: (() => void) | null = null;
+    const unsubscribe = vi.fn();
+    window.kanvibeDesktop = {
+      isDesktop: true,
+      onCreateTaskShortcut: vi.fn((listener: () => void) => {
+        createTaskShortcutListener = listener;
+        return unsubscribe;
+      }),
+    };
+
+    const { unmount } = renderWithRouter(
+      <BoardCommandProvider>
+        <BoardCommandHarness
+          onToggleNotificationCenter={onToggleNotificationCenter}
+          onOpenProjectFilter={onOpenProjectFilter}
+          onOpenCreateTaskModal={onOpenCreateTaskModal}
+        />
+      </BoardCommandProvider>,
+    );
+
+    act(() => {
+      createTaskShortcutListener?.();
+    });
+
+    expect(onOpenCreateTaskModal).toHaveBeenCalledTimes(1);
+    expect(onOpenCreateTaskModal).toHaveBeenCalledWith();
+
+    unmount();
+    expect(unsubscribe).toHaveBeenCalledTimes(1);
+  });
+
   it("dispatches the notification shortcut to a notification-only handler", () => {
     const onToggleNotificationCenter = vi.fn();
 
-    render(
+    renderWithRouter(
       <BoardCommandProvider>
         <NotificationOnlyHarness onToggleNotificationCenter={onToggleNotificationCenter} />
       </BoardCommandProvider>,

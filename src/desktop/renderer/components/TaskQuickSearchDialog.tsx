@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 import HighlightedText from "@/components/HighlightedText";
 import {
@@ -258,16 +258,16 @@ export default function TaskQuickSearchDialog({
     }
   }, [results.length, selectedIndex]);
 
-  function closeDialog() {
+  const closeDialog = useCallback(() => {
     setIsOpen(false);
-  }
+  }, []);
 
   function moveToTask(taskId: string) {
     router.push(`/task/${taskId}`);
     closeDialog();
   }
 
-  function createBranchTodoFromSelection() {
+  const createBranchTodoFromSelection = useCallback(() => {
     const selectedTask = results[selectedIndex]?.task;
 
     if (!boardCommands.canCreateBranchTodo || !selectedTask?.projectId || !selectedTask.branchName) {
@@ -279,7 +279,17 @@ export default function TaskQuickSearchDialog({
       baseBranch: selectedTask.branchName,
     });
     closeDialog();
-  }
+  }, [boardCommands, closeDialog, results, selectedIndex]);
+
+  useEffect(() => {
+    if (!isOpen) {
+      return;
+    }
+
+    return window.kanvibeDesktop?.onCreateTaskShortcut?.(() => {
+      createBranchTodoFromSelection();
+    });
+  }, [createBranchTodoFromSelection, isOpen]);
 
   function handleInputKeyDown(event: React.KeyboardEvent<HTMLInputElement>) {
     if (matchShortcutEvent(event, CREATE_BRANCH_TODO_SHORTCUT, isMacLike)) {

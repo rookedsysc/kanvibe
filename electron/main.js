@@ -389,8 +389,7 @@ function attachWindowHandlers(browserWindow) {
 
     event.preventDefault();
 
-    const currentUrl = browserWindow.webContents.getURL() || getRendererNavigationUrl();
-    void createAppWindow(currentUrl);
+    browserWindow.webContents.send("kanvibe:create-task-shortcut");
   });
 }
 

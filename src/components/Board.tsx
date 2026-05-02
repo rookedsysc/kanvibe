@@ -423,7 +423,7 @@ export default function Board({ initialTasks, initialDoneTotal, initialDoneLimit
       projectSelectorRef.current?.open();
     },
     openCreateTaskModal(defaults) {
-      setBranchTodoDefaults(defaults);
+      setBranchTodoDefaults(defaults ?? null);
       setIsModalOpen(true);
     },
   }), [boardCommands]);
