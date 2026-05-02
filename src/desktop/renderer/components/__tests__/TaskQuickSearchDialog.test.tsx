@@ -81,7 +81,7 @@ describe("TaskQuickSearchDialog", () => {
       expect(screen.getByRole("dialog")).toBeTruthy();
     });
     expect(mocks.getSearchableTasks).toHaveBeenCalledTimes(1);
-    expect(screen.getByText("feat/local-search")).toBeTruthy();
+    expect(await screen.findByText("feat/local-search")).toBeTruthy();
     expect(screen.getByText("feat/api-search")).toBeTruthy();
   });
 
@@ -97,7 +97,7 @@ describe("TaskQuickSearchDialog", () => {
       expect(screen.getByRole("dialog")).toBeTruthy();
     });
 
-    expect(screen.getByText("common.remote")).toBeTruthy();
+    expect(await screen.findByText("common.remote")).toBeTruthy();
     expect(screen.getByText("devbox")).toBeTruthy();
     expect(screen.queryByText("common.local")).toBeNull();
   });

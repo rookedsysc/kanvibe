@@ -1,6 +1,7 @@
-import { render, screen, waitFor } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { act, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import BoardRoute from "@/desktop/renderer/routes/BoardRoute";
+import { INITIAL_DESKTOP_LOAD_TIMEOUT_MS } from "@/desktop/renderer/utils/loadingTimeout";
 
 const BOARD_CACHE_KEY = "kanvibe:route-cache:board";
 
@@ -64,6 +65,10 @@ describe("BoardRoute", () => {
     mocks.getNotificationSettings.mockResolvedValue({ isEnabled: true, enabledStatuses: [] });
     mocks.getDefaultSessionType.mockResolvedValue("tmux");
     mocks.getTaskSearchShortcut.mockResolvedValue("Mod+Shift+O");
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it("캐시가 있으면 stale board를 즉시 렌더링하고 이후 최신 데이터로 갱신한다", async () => {
@@ -139,5 +144,21 @@ describe("BoardRoute", () => {
     } finally {
       consoleError.mockRestore();
     }
+  });
+
+  it("should not stay on the loading screen when initial data loading never settles", async () => {
+    // Given
+    vi.useFakeTimers();
+    mocks.getTasksByStatus.mockReturnValue(new Promise(() => {}));
+
+    // When
+    render(<BoardRoute />);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(INITIAL_DESKTOP_LOAD_TIMEOUT_MS);
+    });
+
+    // Then
+    expect(screen.queryByText("Loading...")).toBeNull();
+    expect(screen.getByTestId("board-titles").textContent).toBe("");
   });
 });

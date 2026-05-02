@@ -1,0 +1,1 @@
+export const INITIAL_DESKTOP_LOAD_TIMEOUT_MS = 5000;

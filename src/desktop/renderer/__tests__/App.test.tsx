@@ -1,6 +1,7 @@
-import { render, screen, waitFor } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { act, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "@/desktop/renderer/App";
+import { INITIAL_DESKTOP_LOAD_TIMEOUT_MS } from "@/desktop/renderer/utils/loadingTimeout";
 
 const mocks = vi.hoisted(() => ({
   getSessionState: vi.fn(),
@@ -56,6 +57,10 @@ describe("App", () => {
     } as unknown as NonNullable<typeof window.kanvibeDesktop>;
   });
 
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it("session lookup failure does not keep the app on the loading screen", async () => {
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
     mocks.getSessionState.mockRejectedValue(new Error("ipc failed"));
@@ -70,5 +75,21 @@ describe("App", () => {
     } finally {
       consoleError.mockRestore();
     }
+  });
+
+  it("should not stay on the loading screen when session lookup never settles", async () => {
+    // Given
+    vi.useFakeTimers();
+    mocks.getSessionState.mockReturnValue(new Promise(() => {}));
+
+    // When
+    render(<App />);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(INITIAL_DESKTOP_LOAD_TIMEOUT_MS);
+    });
+
+    // Then
+    expect(screen.queryByText("Loading...")).toBeNull();
+    expect(screen.getByText("login form")).toBeTruthy();
   });
 });
