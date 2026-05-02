@@ -24,7 +24,49 @@ import { getHookServerUrl } from "@/lib/hookEndpoint";
 import { addAiToolPatternsToGitExclude } from "@/lib/gitExclude";
 import { quoteShellArgument } from "@/lib/hostFileAccess";
 
+const HOOK_INSTALL_MAX_ATTEMPTS = 3;
+const HOOK_INSTALL_RETRY_DELAY_MS = 500;
+
 export async function installKanvibeHooks(
+  targetPath: string,
+  taskId: string,
+  sshHost?: string | null,
+): Promise<void> {
+  let lastError: unknown;
+
+  for (let attempt = 1; attempt <= HOOK_INSTALL_MAX_ATTEMPTS; attempt += 1) {
+    try {
+      await installKanvibeHooksOnce(targetPath, taskId, sshHost);
+      return;
+    } catch (error) {
+      lastError = error;
+
+      if (attempt === HOOK_INSTALL_MAX_ATTEMPTS) {
+        throw error;
+      }
+
+      const retryDelayMs = HOOK_INSTALL_RETRY_DELAY_MS * attempt;
+      console.warn("[hooks] install failed; retrying", {
+        targetPath,
+        taskId,
+        sshHost: sshHost ?? null,
+        attempt,
+        maxAttempts: HOOK_INSTALL_MAX_ATTEMPTS,
+        nextAttemptInMs: retryDelayMs,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      await waitForHookInstallRetry(retryDelayMs);
+    }
+  }
+
+  throw lastError instanceof Error ? lastError : new Error("hooks 설정 실패");
+}
+
+async function waitForHookInstallRetry(delayMs: number): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, delayMs));
+}
+
+async function installKanvibeHooksOnce(
   targetPath: string,
   taskId: string,
   sshHost?: string | null,

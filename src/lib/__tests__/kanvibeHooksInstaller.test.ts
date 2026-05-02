@@ -87,6 +87,17 @@ describe("kanvibeHooksInstaller", () => {
   beforeEach(() => {
     vi.resetModules();
     vi.clearAllMocks();
+    mockSetupClaudeHooks.mockReset();
+    mockSetupGeminiHooks.mockReset();
+    mockSetupCodexHooks.mockReset();
+    mockSetupOpenCodeHooks.mockReset();
+    mockExecGit.mockReset();
+    mockGetHookServerUrl.mockReset();
+    mockAddAiToolPatternsToGitExclude.mockReset();
+    mockSetupClaudeHooks.mockResolvedValue(undefined);
+    mockSetupGeminiHooks.mockResolvedValue(undefined);
+    mockSetupCodexHooks.mockResolvedValue(undefined);
+    mockSetupOpenCodeHooks.mockResolvedValue(undefined);
     mockGetHookServerUrl.mockReturnValue("http://192.168.0.8:9736");
     mockExecGit.mockResolvedValue("");
     mockAddAiToolPatternsToGitExclude.mockResolvedValue(undefined);
@@ -112,6 +123,28 @@ describe("kanvibeHooksInstaller", () => {
     expect(mockSetupCodexHooks).toHaveBeenCalledWith("/repo", "task-1", "http://192.168.0.8:9736");
     expect(mockSetupOpenCodeHooks).toHaveBeenCalledWith("/repo", "task-1", "http://192.168.0.8:9736");
     expect(mockExecGit).not.toHaveBeenCalled();
+  });
+
+  it("로컬 hook 설치가 일시적으로 실패하면 재시도 후 성공한다", async () => {
+    vi.useFakeTimers();
+
+    try {
+      // Given
+      mockSetupOpenCodeHooks
+        .mockRejectedValueOnce(new Error("open code busy"))
+        .mockResolvedValueOnce(undefined);
+      const { installKanvibeHooks } = await import("@/lib/kanvibeHooksInstaller");
+
+      // When
+      const result = expect(installKanvibeHooks("/repo", "task-1", null)).resolves.toBeUndefined();
+      await vi.runAllTimersAsync();
+
+      // Then
+      await result;
+      expect(mockSetupOpenCodeHooks).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("원격 프로젝트면 SSH 명령으로 hook 파일을 설치한다", async () => {
@@ -214,35 +247,50 @@ describe("kanvibeHooksInstaller", () => {
     expect(hooksContent).toContain("Stop");
   });
 
-  it("원격 hook 설치 중 첫 SSH 쓰기가 실패하면 추가 설치를 진행하지 않는다", async () => {
-    // Given
-    mockExecGit.mockImplementation(async (command: string) => {
-      if (command.includes("printf '%s'")) {
-        throw new Error("remote host unavailable");
-      }
+  it("원격 hook 설치 중 SSH 쓰기가 계속 실패하면 재시도 후 예외를 전파한다", async () => {
+    vi.useFakeTimers();
 
-      return "";
-    });
-    const { installKanvibeHooks } = await import("@/lib/kanvibeHooksInstaller");
+    try {
+      // Given
+      mockExecGit.mockImplementation(async (command: string) => {
+        if (command.includes("printf '%s'")) {
+          throw new Error("remote host unavailable");
+        }
 
-    // When
-    const result = installKanvibeHooks("/remote/repo", "task-2", "remote-host");
+        return "";
+      });
+      const { installKanvibeHooks } = await import("@/lib/kanvibeHooksInstaller");
 
-    // Then
-    await expect(result).rejects.toThrow("remote host unavailable");
-    expect(mockExecGit).toHaveBeenCalledTimes(2);
+      // When
+      const result = expect(installKanvibeHooks("/remote/repo", "task-2", "remote-host")).rejects.toThrow("remote host unavailable");
+      await vi.runAllTimersAsync();
+
+      // Then
+      await result;
+      expect(mockExecGit).toHaveBeenCalledTimes(6);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("로컬 hook 설치 중 하나라도 실패하면 예외를 전파한다", async () => {
-    // Given
-    mockSetupOpenCodeHooks.mockRejectedValueOnce(new Error("open code failed"));
-    const { installKanvibeHooks } = await import("@/lib/kanvibeHooksInstaller");
+    vi.useFakeTimers();
 
-    // When
-    const result = installKanvibeHooks("/repo", "task-3", null);
+    try {
+      // Given
+      mockSetupOpenCodeHooks.mockRejectedValue(new Error("open code failed"));
+      const { installKanvibeHooks } = await import("@/lib/kanvibeHooksInstaller");
 
-    // Then
-    await expect(result).rejects.toThrow("open code failed");
+      // When
+      const result = expect(installKanvibeHooks("/repo", "task-3", null)).rejects.toThrow("open code failed");
+      await vi.runAllTimersAsync();
+
+      // Then
+      await result;
+      expect(mockSetupOpenCodeHooks).toHaveBeenCalledTimes(3);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("설치 후 provider별 검증 결과를 로그로 남긴다", async () => {
