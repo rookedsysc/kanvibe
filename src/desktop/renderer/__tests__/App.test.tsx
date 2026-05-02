@@ -2,8 +2,16 @@ import { render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import App from "@/desktop/renderer/App";
 
+const mocks = vi.hoisted(() => ({
+  triggerDesktopRefresh: vi.fn(),
+}));
+
 vi.mock("@/desktop/renderer/actions/kanban", () => ({
   updateTaskStatus: vi.fn(),
+}));
+
+vi.mock("@/desktop/renderer/utils/refresh", () => ({
+  triggerDesktopRefresh: (...args: unknown[]) => mocks.triggerDesktopRefresh(...args),
 }));
 
 vi.mock("@/desktop/renderer/routes/BoardRoute", () => ({
@@ -39,11 +47,17 @@ vi.mock("@/desktop/renderer/components/BoardEventAlert", () => ({
 }));
 
 describe("App", () => {
+  let boardEventListener: ((event: { type: string }) => void) | null = null;
+
   beforeEach(() => {
     vi.clearAllMocks();
+    boardEventListener = null;
     window.kanvibeDesktop = {
       isDesktop: true,
-      onBoardEvent: vi.fn(() => vi.fn()),
+      onBoardEvent: vi.fn((listener: (event: { type: string }) => void) => {
+        boardEventListener = listener;
+        return vi.fn();
+      }),
     } as unknown as NonNullable<typeof window.kanvibeDesktop>;
   });
 
@@ -55,6 +69,20 @@ describe("App", () => {
     await waitFor(() => {
       expect(screen.getByText("board route")).toBeTruthy();
     });
+  });
+
+  it("refreshes all visible data when a board update event arrives", async () => {
+    window.location.hash = "#/ko/task/task-1";
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getByText("task detail route")).toBeTruthy();
+    });
+
+    boardEventListener?.({ type: "board-updated" });
+
+    expect(mocks.triggerDesktopRefresh).toHaveBeenCalledWith("all");
   });
 
   it("shows a background sync review dialog on the current detail route", async () => {

@@ -8,9 +8,12 @@ const mocks = vi.hoisted(() => ({
     findOneBy: vi.fn(),
     remove: vi.fn(),
     save: vi.fn(),
+    update: vi.fn(),
   },
   projectRepo: {
+    find: vi.fn(),
     findOneBy: vi.fn(),
+    save: vi.fn(),
   },
   execFile: vi.fn(),
   createWorktreeWithSession: vi.fn(),
@@ -386,6 +389,84 @@ describe("kanbanService.createTask", () => {
     );
     expect(mocks.removeWorktreeAndBranch).not.toHaveBeenCalled();
     expect(mocks.taskRepo.remove).toHaveBeenCalledWith(task);
+    expect(mocks.broadcastBoardUpdate).toHaveBeenCalledTimes(1);
+  });
+
+  it("task 내용 수정 후 board update를 브로드캐스트한다", async () => {
+    // Given
+    const task = {
+      id: "task-update",
+      title: "Old title",
+      description: null,
+      priority: null,
+    };
+    mocks.taskRepo.findOneBy.mockResolvedValue(task);
+    mocks.taskRepo.save.mockImplementation(async (value) => value);
+
+    const { updateTask } = await import("@/desktop/main/services/kanbanService");
+
+    // When
+    const result = await updateTask("task-update", {
+      description: "Fresh description",
+    });
+
+    // Then
+    expect(result).toEqual(expect.objectContaining({
+      id: "task-update",
+      description: "Fresh description",
+    }));
+    expect(mocks.broadcastBoardUpdate).toHaveBeenCalledTimes(1);
+  });
+
+  it("프로젝트 색상 수정 후 board update를 브로드캐스트한다", async () => {
+    // Given
+    const project = {
+      id: "project-1",
+      repoPath: "/workspace/repo",
+      color: null,
+    };
+    mocks.projectRepo.findOneBy.mockResolvedValue(project);
+    mocks.projectRepo.find.mockResolvedValue([]);
+    mocks.projectRepo.save.mockImplementation(async (value) => value);
+
+    const { updateProjectColor } = await import("@/desktop/main/services/kanbanService");
+
+    // When
+    await updateProjectColor("project-1", "#93C5FD");
+
+    // Then
+    expect(mocks.projectRepo.save).toHaveBeenCalledWith(expect.objectContaining({
+      id: "project-1",
+      color: "#93C5FD",
+    }));
+    expect(mocks.broadcastBoardUpdate).toHaveBeenCalledTimes(1);
+  });
+
+  it("컬럼 내 task 순서 변경 후 board update를 브로드캐스트한다", async () => {
+    // Given
+    mocks.taskRepo.update.mockResolvedValue({ affected: 1 });
+
+    const { reorderTasks } = await import("@/desktop/main/services/kanbanService");
+
+    // When
+    await reorderTasks("todo" as never, ["task-a", "task-b"]);
+
+    // Then
+    expect(mocks.taskRepo.update).toHaveBeenCalledTimes(2);
+    expect(mocks.broadcastBoardUpdate).toHaveBeenCalledTimes(1);
+  });
+
+  it("다른 컬럼으로 task 이동 후 board update를 브로드캐스트한다", async () => {
+    // Given
+    mocks.taskRepo.update.mockResolvedValue({ affected: 1 });
+
+    const { moveTaskToColumn } = await import("@/desktop/main/services/kanbanService");
+
+    // When
+    await moveTaskToColumn("task-a", "review" as never, ["task-b", "task-a"]);
+
+    // Then
+    expect(mocks.taskRepo.update).toHaveBeenCalledWith("task-a", { status: "review" });
     expect(mocks.broadcastBoardUpdate).toHaveBeenCalledTimes(1);
   });
 

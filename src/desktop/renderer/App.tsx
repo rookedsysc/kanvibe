@@ -41,7 +41,7 @@ export default function App() {
   useEffect(() => {
     const unsubscribeBoardEvents = window.kanvibeDesktop?.onBoardEvent?.((event: BoardEventPayload) => {
       if (event.type === "board-updated") {
-        triggerDesktopRefresh("board");
+        triggerDesktopRefresh("all");
       }
     }) ?? (() => {});
 
