@@ -100,6 +100,14 @@ describe("attachLocalSession — tmux 세션 자동 생성", () => {
     expect(newSessionCmd).toBeDefined();
     expect(newSessionCmd).toContain('-s "feat-login"');
     expect(newSessionCmd).toContain('-c "/workspace"');
+    const newSessionCall = mockExecSync.mock.calls.find((call) => String(call[0]).includes("new-session"));
+    expect(newSessionCall?.[1]).toEqual(expect.objectContaining({
+      env: expect.objectContaining({
+        PATH: process.platform === "darwin"
+          ? expect.stringContaining("/opt/homebrew/bin")
+          : expect.any(String),
+      }),
+    }));
   });
 
   it("should skip session creation when tmux session already exists", async () => {
@@ -139,7 +147,13 @@ describe("attachLocalSession — tmux 세션 자동 생성", () => {
     expect(nodePty.spawn).toHaveBeenCalledWith(
       "tmux",
       ["attach-session", "-t", "feat-login"],
-      expect.any(Object),
+      expect.objectContaining({
+        env: expect.objectContaining({
+          PATH: process.platform === "darwin"
+            ? expect.stringContaining("/opt/homebrew/bin")
+            : expect.any(String),
+        }),
+      }),
     );
   });
 
@@ -158,13 +172,13 @@ describe("attachLocalSession — tmux 세션 자동 생성", () => {
     });
 
     // When
-    await attachLocalSession(
+    await expect(attachLocalSession(
       "task-4",
       SessionType.TMUX,
       "feat-login",
       ws,
       "/workspace",
-    );
+    )).rejects.toThrow("tmux 세션 생성에 실패했습니다.");
 
     // Then
     expect(ws.close).toHaveBeenCalledWith(1008, "tmux 세션 생성에 실패했습니다.");

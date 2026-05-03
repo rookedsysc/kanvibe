@@ -3,6 +3,7 @@
 const fs = require("node:fs");
 const http = require("node:http");
 const Module = require("node:module");
+const os = require("node:os");
 const path = require("node:path");
 const process = require("node:process");
 const { pathToFileURL } = require("node:url");
@@ -211,9 +212,46 @@ function getRuntimeWorkingDirectory() {
   return appRoot;
 }
 
+function getMacLocalCommandSearchPaths() {
+  const homeDirectory = process.env.HOME || os.homedir();
+  return [
+    "/opt/homebrew/bin",
+    "/opt/homebrew/sbin",
+    "/usr/local/bin",
+    "/usr/local/sbin",
+    "/opt/local/bin",
+    "/opt/local/sbin",
+    path.join(homeDirectory, ".local", "bin"),
+    path.join(homeDirectory, ".cargo", "bin"),
+    path.join(homeDirectory, "Library", "pnpm"),
+    path.join(homeDirectory, ".bun", "bin"),
+  ];
+}
+
+function mergePathEntries(pathValues) {
+  const pathEntries = pathValues
+    .flatMap((pathValue) => String(pathValue || "").split(path.delimiter))
+    .map((pathEntry) => pathEntry.trim())
+    .filter(Boolean);
+
+  return [...new Set(pathEntries)].join(path.delimiter);
+}
+
+function ensureMacLocalCommandPath() {
+  if (process.platform !== "darwin") {
+    return;
+  }
+
+  process.env.PATH = mergePathEntries([
+    process.env.PATH,
+    ...getMacLocalCommandSearchPaths(),
+  ]);
+}
+
 function ensureRuntimeEnvironment() {
   const appRoot = app.getAppPath();
   process.chdir(getRuntimeWorkingDirectory());
+  ensureMacLocalCommandPath();
   process.env.KANVIBE_DESKTOP = "true";
   process.env.KANVIBE_HOST = HOOK_SERVER_HOST;
   process.env.PORT = String(HOOK_SERVER_PORT);
