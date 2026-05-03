@@ -30,8 +30,12 @@ export function subscribeToDesktopRefresh(scopes: DesktopRefreshScope[], listene
 
 export function useRefreshSignal(scopes: DesktopRefreshScope[] = ["all"]) {
   const [signal, setSignal] = useState(0);
+  const scopesKey = scopes.join(",");
 
-  useEffect(() => subscribeToDesktopRefresh(scopes, () => setSignal((value) => value + 1)), [scopes]);
+  useEffect(() => {
+    const stableScopes = scopesKey.split(",") as DesktopRefreshScope[];
+    return subscribeToDesktopRefresh(stableScopes, () => setSignal((value) => value + 1));
+  }, [scopesKey]);
 
   return signal;
 }
