@@ -50,7 +50,7 @@ export default function App() {
 
       boardRefreshTimerRef.current = window.setTimeout(() => {
         boardRefreshTimerRef.current = null;
-        triggerDesktopRefresh("board");
+        triggerDesktopRefresh("all");
       }, BOARD_REFRESH_DEBOUNCE_MS);
     };
 

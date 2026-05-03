@@ -1,9 +1,17 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import App from "@/desktop/renderer/App";
 
+const mocks = vi.hoisted(() => ({
+  triggerDesktopRefresh: vi.fn(),
+}));
+
 vi.mock("@/desktop/renderer/actions/kanban", () => ({
   updateTaskStatus: vi.fn(),
+}));
+
+vi.mock("@/desktop/renderer/utils/refresh", () => ({
+  triggerDesktopRefresh: (...args: unknown[]) => mocks.triggerDesktopRefresh(...args),
 }));
 
 vi.mock("@/desktop/renderer/routes/BoardRoute", () => ({
@@ -39,11 +47,17 @@ vi.mock("@/desktop/renderer/components/BoardEventAlert", () => ({
 }));
 
 describe("App", () => {
+  let boardEventListener: ((event: { type: string }) => void) | null = null;
+
   beforeEach(() => {
     vi.clearAllMocks();
+    boardEventListener = null;
     window.kanvibeDesktop = {
       isDesktop: true,
-      onBoardEvent: vi.fn(() => vi.fn()),
+      onBoardEvent: vi.fn((listener: (event: { type: string }) => void) => {
+        boardEventListener = listener;
+        return vi.fn();
+      }),
     } as unknown as NonNullable<typeof window.kanvibeDesktop>;
   });
 
@@ -55,6 +69,33 @@ describe("App", () => {
     await waitFor(() => {
       expect(screen.getByText("board route")).toBeTruthy();
     });
+  });
+
+  it("debounces board update events and refreshes all visible data", async () => {
+    window.location.hash = "#/ko/task/task-1";
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getByText("task detail route")).toBeTruthy();
+    });
+
+    vi.useFakeTimers();
+    try {
+      boardEventListener?.({ type: "board-updated" });
+      boardEventListener?.({ type: "board-updated" });
+
+      expect(mocks.triggerDesktopRefresh).not.toHaveBeenCalled();
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(250);
+      });
+
+      expect(mocks.triggerDesktopRefresh).toHaveBeenCalledTimes(1);
+      expect(mocks.triggerDesktopRefresh).toHaveBeenCalledWith("all");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("shows a background sync review dialog on the current detail route", async () => {

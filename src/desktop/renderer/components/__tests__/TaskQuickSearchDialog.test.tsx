@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   getSearchableTasks: vi.fn(),
   push: vi.fn(),
   requestCreateBranchTodo: vi.fn(),
+  scrollIntoView: vi.fn(),
   setTaskQuickSearchOpen: vi.fn(),
 }));
 
@@ -35,6 +36,10 @@ vi.mock("@/desktop/renderer/components/BoardCommandProvider", () => ({
 describe("TaskQuickSearchDialog", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    Object.defineProperty(Element.prototype, "scrollIntoView", {
+      configurable: true,
+      value: mocks.scrollIntoView,
+    });
     mocks.getSearchableTasks.mockResolvedValue([
       {
         id: "task-local",
@@ -208,6 +213,28 @@ describe("TaskQuickSearchDialog", () => {
 
     await waitFor(() => {
       expect(screen.queryByRole("dialog")).toBeNull();
+    });
+  });
+
+  it("should scroll the keyboard-selected result into view", async () => {
+    // Given
+    render(<TaskQuickSearchDialog shortcut="Ctrl+K" />);
+
+    fireEvent.keyDown(window, {
+      key: "k",
+      ctrlKey: true,
+    });
+
+    const input = await screen.findByRole("textbox");
+    await screen.findByText("feat/api-search");
+    mocks.scrollIntoView.mockClear();
+
+    // When
+    fireEvent.keyDown(input, { key: "ArrowDown" });
+
+    // Then
+    await waitFor(() => {
+      expect(mocks.scrollIntoView).toHaveBeenCalledWith({ block: "nearest" });
     });
   });
 });

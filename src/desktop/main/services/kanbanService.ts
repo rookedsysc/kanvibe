@@ -533,6 +533,7 @@ export async function updateTask(
   if (updates.priority !== undefined) task.priority = updates.priority;
 
   const saved = await repo.save(task);
+  broadcastBoardUpdate();
   return serialize(saved);
 }
 
@@ -563,6 +564,7 @@ export async function updateProjectColor(
     await repo.save(related);
   }
 
+  broadcastBoardUpdate();
 }
 
 /** 작업에 연결된 worktree, 세션, 브랜치를 정리한다. task 레코드는 삭제하지 않는다 */
@@ -748,6 +750,7 @@ export async function reorderTasks(
   );
 
   await Promise.all(updates);
+  broadcastBoardUpdate();
 }
 
 /** 드래그로 태스크를 다른 컬럼으로 이동할 때 사용한다. revalidation 없이 DB만 갱신한다 */
@@ -778,6 +781,7 @@ export async function moveTaskToColumn(
   );
 
   await Promise.all(reorderUpdates);
+  broadcastBoardUpdate();
 }
 
 /**

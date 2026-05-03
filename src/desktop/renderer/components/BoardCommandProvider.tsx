@@ -203,6 +203,16 @@ export function BoardCommandProvider({ children }: PropsWithChildren) {
     };
   }, [isTaskQuickSearchOpen]);
 
+  useEffect(() => {
+    const unsubscribe = window.kanvibeDesktop?.onRefreshShortcut?.(() => {
+      triggerDesktopRefresh("all");
+    });
+
+    return () => {
+      unsubscribe?.();
+    };
+  }, []);
+
   const value = useMemo<BoardCommandContextValue>(() => ({
     canCreateBranchTodo,
     registerBoardHandlers,

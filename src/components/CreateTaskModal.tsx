@@ -146,6 +146,7 @@ function CreateTaskModalContent({
   const branchOptions = baseBranch && !branches.includes(baseBranch)
     ? [baseBranch, ...branches]
     : branches;
+  const selectedProjectName = projects.find((project) => project.id === selectedProjectId)?.name;
 
   function handleSubmit(formData: FormData) {
     const branchName = formData.get("branchName") as string;
@@ -273,6 +274,7 @@ function CreateTaskModalContent({
                 branches={branchOptions}
                 value={baseBranch}
                 onChange={setBaseBranch}
+                projectName={selectedProjectName}
                 autoFocus
               />
             </div>

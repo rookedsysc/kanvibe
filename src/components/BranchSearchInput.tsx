@@ -9,8 +9,58 @@ interface BranchSearchInputProps {
   branches: string[];
   value: string;
   onChange: (branch: string) => void;
+  projectName?: string;
   placeholder?: string;
   autoFocus?: boolean;
+}
+
+function tokenizeQuery(query: string) {
+  return query
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+}
+
+function mergeMatchedIndices(matches: FuzzyMatch[]) {
+  return [...new Set(matches.flatMap((match) => match.matchedIndices))].sort(
+    (left, right) => left - right
+  );
+}
+
+function matchBranchSearch(
+  query: string,
+  branch: string,
+  projectName?: string
+): FuzzyMatch | null {
+  const tokens = tokenizeQuery(query);
+
+  if (tokens.length === 0) {
+    return { path: branch, score: 0, matchedIndices: [] };
+  }
+
+  const branchMatches: FuzzyMatch[] = [];
+  let score = 0;
+
+  for (const token of tokens) {
+    const branchMatch = fuzzyMatch(token, branch);
+    const projectMatch = projectName ? fuzzyMatch(token, projectName) : null;
+
+    if (!branchMatch && !projectMatch) {
+      return null;
+    }
+
+    if (branchMatch) {
+      branchMatches.push(branchMatch);
+    }
+
+    score += Math.max(branchMatch?.score ?? 0, projectMatch?.score ?? 0);
+  }
+
+  return {
+    path: branch,
+    score,
+    matchedIndices: mergeMatchedIndices(branchMatches),
+  };
 }
 
 /** 브랜치 목록에서 fuzzy 검색으로 선택할 수 있는 입력 컴포넌트 */
@@ -18,6 +68,7 @@ export default function BranchSearchInput({
   branches,
   value,
   onChange,
+  projectName,
   placeholder,
   autoFocus = false,
 }: BranchSearchInputProps) {
@@ -55,13 +106,13 @@ export default function BranchSearchInput({
     }
 
     const matches = branches
-      .map((branch) => fuzzyMatch(inputValue, branch))
+      .map((branch) => matchBranchSearch(inputValue, branch, projectName))
       .filter((m): m is FuzzyMatch => m !== null)
       .sort((a, b) => b.score - a.score);
 
     setFilteredBranches(matches);
     setSelectedIndex(0);
-  }, [inputValue, branches]);
+  }, [inputValue, branches, projectName]);
 
   /** 선택된 항목이 보이도록 스크롤한다 */
   useEffect(() => {
