@@ -114,7 +114,7 @@ function quoteForShell(value: string): string {
   return `'${value.replace(/'/g, `'"'"'`)}'`;
 }
 
-function scheduleTaskHookInstall(
+export function scheduleTaskHookInstall(
   targetPath: string,
   task: Pick<KanbanTask, "id" | "title" | "sshHost">,
 ) {
@@ -481,15 +481,11 @@ export async function createTask(input: CreateTaskInput): Promise<KanbanTask> {
   const saved = await repo.save(task);
 
   if (shouldInstallHooks && hookTargetPath) {
-    if (saved.sshHost) {
-      await installKanvibeHooks(hookTargetPath, saved.id, saved.sshHost);
-    } else {
-      scheduleTaskHookInstall(hookTargetPath, {
-        id: saved.id,
-        title: saved.title,
-        sshHost: saved.sshHost,
-      });
-    }
+    scheduleTaskHookInstall(hookTargetPath, {
+      id: saved.id,
+      title: saved.title,
+      sshHost: saved.sshHost,
+    });
   }
 
   broadcastBoardUpdate();

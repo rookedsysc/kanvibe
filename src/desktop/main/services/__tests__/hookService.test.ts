@@ -29,6 +29,7 @@ const mocks = vi.hoisted(() => ({
   broadcastHookStatusTargetMissing: vi.fn(),
   broadcastTaskStatusChanged: vi.fn(),
   cleanupTaskResources: vi.fn(),
+  scheduleTaskHookInstall: vi.fn(),
   installKanvibeHooks: vi.fn(),
 }));
 
@@ -53,6 +54,7 @@ vi.mock("@/lib/boardNotifier", () => ({
 
 vi.mock("@/desktop/main/services/kanbanService", () => ({
   cleanupTaskResources: mocks.cleanupTaskResources,
+  scheduleTaskHookInstall: mocks.scheduleTaskHookInstall,
 }));
 
 vi.mock("@/lib/kanvibeHooksInstaller", () => ({
@@ -134,7 +136,7 @@ describe("hookService.startHookTask", () => {
     mocks.taskRepo.create.mockImplementation((value) => value);
   });
 
-  it("원격 worktree task를 만들면 hooks를 자동 설치한다", async () => {
+  it("원격 worktree task를 만들면 hooks 설치를 백그라운드 예약한다", async () => {
     const project = {
       id: "project-1",
       repoPath: "/remote/repo",
@@ -158,10 +160,14 @@ describe("hookService.startHookTask", () => {
       projectId: "project-1",
     });
 
-    expect(mocks.installKanvibeHooks).toHaveBeenCalledWith(
+    expect(mocks.scheduleTaskHookInstall).toHaveBeenCalledWith(
       "/remote/repo__worktrees/feature-task",
-      "task-1",
-      "remote-host",
+      {
+        id: "task-1",
+        title: "remote task",
+        sshHost: "remote-host",
+      },
     );
+    expect(mocks.installKanvibeHooks).not.toHaveBeenCalled();
   });
 });
