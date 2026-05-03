@@ -172,7 +172,7 @@ macOS에서 `better-sqlite3` `NODE_MODULE_VERSION` 불일치가 발생하면, Ka
 | `Cmd/Ctrl+Shift+P` | 보드 | 프로젝트 필터 드롭다운 열기 |
 | `Cmd/Ctrl+Shift+I` | 보드 | 알림 드롭다운 열기 |
 | `Cmd/Ctrl+N` | 태스크 빠른 검색 | 현재 하이라이트된 태스크 기준으로 새 branch TODO 만들기 |
-| `↑ / ↓ / Enter / Esc` | 태스크 빠른 검색 | 선택 이동, 태스크 열기, 다이얼로그 닫기 |
+| `↑ / ↓ / Enter / Shift+Enter / Esc` | 태스크 빠른 검색 | 선택 이동, 태스크 열기, 태스크 새 창 열기, 다이얼로그 닫기 |
 | `↑ / ↓ / Enter / Esc` | 프로젝트 필터 드롭다운 | 선택 이동, 프로젝트 필터 토글, 드롭다운 닫기 |
 | `↑ / ↓ / Enter / Esc` | 알림 드롭다운 | 선택 이동, 알림 대상 열기, 드롭다운 닫기 |
 

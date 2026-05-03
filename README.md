@@ -180,7 +180,7 @@ Each pane can run a custom command (e.g., `vim`, `htop`, `lazygit`, test runner,
 | `Cmd/Ctrl+Shift+P` | Board | Open the project filter dropdown |
 | `Cmd/Ctrl+Shift+I` | Board | Open the notifications dropdown |
 | `Cmd/Ctrl+N` | Quick task search | Create a new branch TODO from the currently highlighted task |
-| `↑ / ↓ / Enter / Esc` | Quick task search | Move selection, open task, close dialog |
+| `↑ / ↓ / Enter / Shift+Enter / Esc` | Quick task search | Move selection, open task, open task in a new window, close dialog |
 | `↑ / ↓ / Enter / Esc` | Project filter dropdown | Move selection, toggle project filter, close dropdown |
 | `↑ / ↓ / Enter / Esc` | Notifications dropdown | Move selection, open notification target, close dropdown |
 

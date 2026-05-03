@@ -8,7 +8,7 @@ import {
   type SearchableTask,
 } from "@/desktop/renderer/actions/kanban";
 import { getTaskSearchShortcut } from "@/desktop/renderer/actions/appSettings";
-import { useRouter } from "@/desktop/renderer/navigation";
+import { localizeHref, usePathname, useRouter } from "@/desktop/renderer/navigation";
 import { useRefreshSignal } from "@/desktop/renderer/utils/refresh";
 import {
   DEFAULT_TASK_SEARCH_SHORTCUT,
@@ -159,6 +159,7 @@ export default function TaskQuickSearchDialog({
   const t = useTranslations("taskSearch");
   const tc = useTranslations("common");
   const router = useRouter();
+  const pathname = usePathname();
   const refreshSignal = useRefreshSignal(["all", "settings"]);
   const inputRef = useRef<HTMLInputElement>(null);
   const resultsListRef = useRef<HTMLDivElement>(null);
@@ -286,6 +287,13 @@ export default function TaskQuickSearchDialog({
     closeDialog();
   }
 
+  function openTaskInNewWindow(taskId: string) {
+    const currentLocale = pathname.split("/").filter(Boolean)[0];
+    const taskHref = localizeHref(`/task/${taskId}`, currentLocale);
+    window.open(`/#${taskHref}`, "_blank", "noopener,noreferrer");
+    closeDialog();
+  }
+
   const createBranchTodoFromSelection = useCallback(() => {
     const selectedTask = results[selectedResultIndex]?.task;
 
@@ -329,7 +337,13 @@ export default function TaskQuickSearchDialog({
       case "Enter":
         event.preventDefault();
         if (results[selectedResultIndex]) {
-          moveToTask(results[selectedResultIndex].task.id);
+          const selectedTaskId = results[selectedResultIndex].task.id;
+          if (event.shiftKey) {
+            openTaskInNewWindow(selectedTaskId);
+            break;
+          }
+
+          moveToTask(selectedTaskId);
         }
         break;
       case "Escape":

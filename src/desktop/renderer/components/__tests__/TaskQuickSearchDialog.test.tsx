@@ -19,6 +19,10 @@ vi.mock("@/desktop/renderer/actions/kanban", () => ({
 }));
 
 vi.mock("@/desktop/renderer/navigation", () => ({
+  localizeHref: (href: string, currentLocale = "ko") => (
+    href.startsWith("/") ? `/${currentLocale}${href}` : href
+  ),
+  usePathname: () => "/en",
   useRouter: () => ({
     push: (...args: unknown[]) => mocks.push(...args),
   }),
@@ -134,6 +138,32 @@ describe("TaskQuickSearchDialog", () => {
     await waitFor(() => {
       expect(mocks.push).toHaveBeenCalledWith("/task/task-remote");
     });
+  });
+
+  it("검색 결과에서 Shift+Enter로 상세 페이지를 새 창에서 연다", async () => {
+    const openWindow = vi.spyOn(window, "open").mockImplementation(() => null);
+
+    render(<TaskQuickSearchDialog shortcut="Ctrl+K" />);
+
+    fireEvent.keyDown(window, {
+      key: "k",
+      ctrlKey: true,
+    });
+
+    const input = await screen.findByRole("textbox");
+    fireEvent.change(input, {
+      target: { value: "api" },
+    });
+    fireEvent.keyDown(input, {
+      key: "Enter",
+      shiftKey: true,
+    });
+
+    await waitFor(() => {
+      expect(openWindow).toHaveBeenCalledWith("/#/en/task/task-remote", "_blank", "noopener,noreferrer");
+    });
+    expect(mocks.push).not.toHaveBeenCalled();
+    expect(screen.queryByRole("dialog")).toBeNull();
   });
 
   it("여러 토큰의 순서가 바뀌어도 같은 task를 검색할 수 있다", async () => {

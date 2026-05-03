@@ -177,7 +177,7 @@
     "title": "Quick Task Search",
     "placeholder": "Search by branch or project name...",
     "empty": "No matching tasks found.",
-    "hint": "↑↓ Navigate · Enter Open · Esc Close",
+    "hint": "↑↓ Navigate · Enter Open · Shift+Enter New Window · Esc Close",
     "branchTodoHint": "{shortcut} Create branch TODO"
   },
   "paneLayout": {
