@@ -2,6 +2,16 @@ import { act, render, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import Terminal from "../Terminal";
 
+function createDeferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (error?: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
+
 const {
   mockOpenTerminal,
   mockFocusTerminal,
@@ -181,5 +191,34 @@ describe("Desktop Terminal", () => {
 
     expect(mockTerminalFocus).not.toHaveBeenCalled();
     blocker.remove();
+  });
+
+  it("Nerd Font 로딩이 느려도 터미널 연결을 먼저 시작한다", async () => {
+    // Given
+    const fontsReady = createDeferred<void>();
+    const fontLoaded = createDeferred<FontFace>();
+    Object.defineProperty(document, "fonts", {
+      configurable: true,
+      value: {
+        add: vi.fn(),
+        ready: fontsReady.promise,
+      },
+    });
+    vi.stubGlobal(
+      "FontFace",
+      class {
+        load() {
+          return fontLoaded.promise;
+        }
+      },
+    );
+
+    // When
+    render(<Terminal taskId="task-1" />);
+
+    // Then
+    await waitFor(() => {
+      expect(mockOpenTerminal).toHaveBeenCalledWith("task-1", 80, 24);
+    });
   });
 });

@@ -2,6 +2,8 @@ import { SessionType } from "@/entities/KanbanTask";
 import { execGit, isSSHTransportError } from "@/lib/gitOperations";
 
 const blockedTargets = new Map<string, string>();
+const availableTargets = new Map<string, number>();
+const SESSION_DEPENDENCY_SUCCESS_CACHE_MS = 60_000;
 
 export interface SessionDependencyStatus {
   sessionType: SessionType;
@@ -20,6 +22,28 @@ function buildBlockedTargetKey(toolName: string, sshHost?: string | null): strin
   return `${sshHost || "local"}:${toolName}`;
 }
 
+function getCachedAvailableTarget(toolName: string, sshHost?: string | null): boolean {
+  const cacheKey = buildBlockedTargetKey(toolName, sshHost);
+  const expiresAt = availableTargets.get(cacheKey);
+  if (!expiresAt) {
+    return false;
+  }
+
+  if (Date.now() < expiresAt) {
+    return true;
+  }
+
+  availableTargets.delete(cacheKey);
+  return false;
+}
+
+function rememberAvailableTarget(toolName: string, sshHost?: string | null): void {
+  availableTargets.set(
+    buildBlockedTargetKey(toolName, sshHost),
+    Date.now() + SESSION_DEPENDENCY_SUCCESS_CACHE_MS,
+  );
+}
+
 export function getBlockedRemoteHostReason(sshHost: string): string | null {
   return blockedTargets.get(buildBlockedTargetKey("tmux", sshHost))
     ?? blockedTargets.get(buildBlockedTargetKey("zellij", sshHost))
@@ -27,10 +51,17 @@ export function getBlockedRemoteHostReason(sshHost: string): string | null {
 }
 
 async function hasSessionDependency(toolName: string, sshHost?: string | null): Promise<boolean> {
+  if (getCachedAvailableTarget(toolName, sshHost)) {
+    return true;
+  }
+
   try {
     await execGit(`command -v ${toolName} >/dev/null 2>&1`, sshHost);
+    rememberAvailableTarget(toolName, sshHost);
     return true;
   } catch (error) {
+    availableTargets.delete(buildBlockedTargetKey(toolName, sshHost));
+
     if (sshHost && isSSHTransportError(error)) {
       throw error;
     }
@@ -76,11 +107,15 @@ export async function installSessionDependency(
   const toolName = getToolName(sessionType);
   const blockedTargetKey = buildBlockedTargetKey(toolName, sshHost);
   blockedTargets.delete(blockedTargetKey);
+  availableTargets.delete(blockedTargetKey);
 
   try {
     await execGit(buildInstallCommand(toolName), sshHost);
     await execGit(`command -v ${toolName} >/dev/null 2>&1`, sshHost);
+    rememberAvailableTarget(toolName, sshHost);
   } catch (error) {
+    availableTargets.delete(blockedTargetKey);
+
     if (sshHost && isSSHTransportError(error)) {
       throw error;
     }
