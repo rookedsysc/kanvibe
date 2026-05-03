@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import App from "@/desktop/renderer/App";
 
@@ -71,7 +71,7 @@ describe("App", () => {
     });
   });
 
-  it("refreshes all visible data when a board update event arrives", async () => {
+  it("debounces board update events and refreshes all visible data", async () => {
     window.location.hash = "#/ko/task/task-1";
 
     render(<App />);
@@ -80,9 +80,22 @@ describe("App", () => {
       expect(screen.getByText("task detail route")).toBeTruthy();
     });
 
-    boardEventListener?.({ type: "board-updated" });
+    vi.useFakeTimers();
+    try {
+      boardEventListener?.({ type: "board-updated" });
+      boardEventListener?.({ type: "board-updated" });
 
-    expect(mocks.triggerDesktopRefresh).toHaveBeenCalledWith("all");
+      expect(mocks.triggerDesktopRefresh).not.toHaveBeenCalled();
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(250);
+      });
+
+      expect(mocks.triggerDesktopRefresh).toHaveBeenCalledTimes(1);
+      expect(mocks.triggerDesktopRefresh).toHaveBeenCalledWith("all");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("shows a background sync review dialog on the current detail route", async () => {

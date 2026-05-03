@@ -82,6 +82,8 @@ function isRemoteConnectionError(error: unknown): boolean {
 
 const projectRootHookRepairJobs = new Map<string, Promise<void>>();
 const projectRootHookRepairScheduled = new Set<string>();
+const projectRootTaskRepairJobs = new Map<string, Promise<void>>();
+const projectRootTaskRepairScheduled = new Set<string>();
 
 function scheduleProjectRootHookRepair(project: Project) {
   const projectPathKey = buildProjectPathKey(project.repoPath, project.sshHost);
@@ -114,6 +116,37 @@ function scheduleProjectRootHookRepair(project: Project) {
     })();
 
     projectRootHookRepairJobs.set(projectPathKey, repairJob);
+  }, 0);
+}
+
+function scheduleProjectRootTaskRepair(project: Project) {
+  const projectPathKey = buildProjectPathKey(project.repoPath, project.sshHost);
+  if (projectRootTaskRepairScheduled.has(projectPathKey)) {
+    return;
+  }
+
+  projectRootTaskRepairScheduled.add(projectPathKey);
+
+  setTimeout(() => {
+    const repairJob = (async () => {
+      try {
+        const { repaired } = await ensureProjectRootTask(project);
+        scheduleProjectRootHookRepair(project);
+
+        if (repaired) {
+          broadcastBoardUpdate();
+        }
+      } catch (error) {
+        if (!isRemoteConnectionError(error)) {
+          console.error(`${project.name} 기본 브랜치 task 백그라운드 복구 실패:`, error);
+        }
+      } finally {
+        projectRootTaskRepairJobs.delete(projectPathKey);
+        projectRootTaskRepairScheduled.delete(projectPathKey);
+      }
+    })();
+
+    projectRootTaskRepairJobs.set(projectPathKey, repairJob);
   }, 0);
 }
 
@@ -327,19 +360,8 @@ export async function getAllProjects(): Promise<Project[]> {
   const repo = await getProjectRepository();
   const projects = await repo.find({ order: { createdAt: "ASC" } });
 
-  let repairedAnyProject = false;
   for (const project of projects) {
-    try {
-      const { repaired } = await ensureProjectRootTask(project);
-      repairedAnyProject = repairedAnyProject || repaired;
-      scheduleProjectRootHookRepair(project);
-    } catch (error) {
-      console.error(`${project.name} 기본 브랜치 task 복구 실패:`, error);
-    }
-  }
-
-  if (repairedAnyProject) {
-    broadcastBoardUpdate();
+    scheduleProjectRootTaskRepair(project);
   }
 
   return serialize(projects);

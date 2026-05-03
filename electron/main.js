@@ -13,6 +13,8 @@ const DEFAULT_LOCALE = "ko";
 const RENDERER_DEV_URL = process.env.KANVIBE_RENDERER_URL || null;
 const HOOK_SERVER_HOST = "0.0.0.0";
 const HOOK_SERVER_PORT = 9736;
+const RENDERER_ABORT_RECOVERY_TIMEOUT_MS = 1000;
+const RENDERER_ABORT_RECOVERY_INTERVAL_MS = 50;
 const SHOULD_USE_SOURCE_MODULES = Boolean(RENDERER_DEV_URL);
 const originalResolveFilename = Module._resolveFilename;
 
@@ -248,6 +250,41 @@ function getRendererNavigationUrl(target = getDefaultRoute()) {
   }
 
   return `${pathToFileURL(getRendererEntryPath()).href}#${normalizedTarget}`;
+}
+
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isRendererLoadAbort(error) {
+  if (!error) {
+    return false;
+  }
+
+  if (typeof error === "object" && error.code === "ERR_ABORTED") {
+    return true;
+  }
+
+  const message = error instanceof Error ? error.message : String(error);
+  return message.includes("ERR_ABORTED");
+}
+
+async function didRendererRecoverFromLoadAbort(browserWindow, targetUrl) {
+  const startedAt = Date.now();
+
+  while (Date.now() - startedAt < RENDERER_ABORT_RECOVERY_TIMEOUT_MS) {
+    if (browserWindow.isDestroyed()) {
+      return false;
+    }
+
+    if (browserWindow.webContents.getURL() === targetUrl) {
+      return true;
+    }
+
+    await delay(RENDERER_ABORT_RECOVERY_INTERVAL_MS);
+  }
+
+  return false;
 }
 
 function getTitleBarOptions() {
@@ -762,6 +799,14 @@ async function loadRenderer(window, targetUrl = getRendererNavigationUrl()) {
     await window.loadURL(targetUrl);
     logDiagnostic("renderer:load-complete", { targetUrl });
   } catch (error) {
+    if (isRendererLoadAbort(error) && await didRendererRecoverFromLoadAbort(window, targetUrl)) {
+      logDiagnostic("renderer:load-aborted-recovered", {
+        targetUrl,
+        error: serializeErrorForLog(error),
+      });
+      return;
+    }
+
     logDiagnostic("renderer:load-failed", {
       targetUrl,
       error: serializeErrorForLog(error),

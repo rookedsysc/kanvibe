@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { IntlProvider } from "next-intl";
 import { HashRouter, Navigate, Outlet, Route, Routes, useParams } from "react-router-dom";
 import { BoardCommandProvider } from "@/desktop/renderer/components/BoardCommandProvider";
@@ -14,6 +14,8 @@ import NotFoundRoute from "@/desktop/renderer/routes/NotFoundRoute";
 import PaneLayoutRoute from "@/desktop/renderer/routes/PaneLayoutRoute";
 import TaskDetailRoute from "@/desktop/renderer/routes/TaskDetailRoute";
 import type { BoardEventPayload } from "@/lib/boardNotifier";
+
+const BOARD_REFRESH_DEBOUNCE_MS = 250;
 
 function LocaleShell() {
   const { locale } = useParams();
@@ -38,15 +40,32 @@ function LocaleShell() {
 }
 
 export default function App() {
+  const boardRefreshTimerRef = useRef<number | null>(null);
+
   useEffect(() => {
+    const scheduleBoardRefresh = () => {
+      if (boardRefreshTimerRef.current !== null) {
+        return;
+      }
+
+      boardRefreshTimerRef.current = window.setTimeout(() => {
+        boardRefreshTimerRef.current = null;
+        triggerDesktopRefresh("all");
+      }, BOARD_REFRESH_DEBOUNCE_MS);
+    };
+
     const unsubscribeBoardEvents = window.kanvibeDesktop?.onBoardEvent?.((event: BoardEventPayload) => {
       if (event.type === "board-updated") {
-        triggerDesktopRefresh("all");
+        scheduleBoardRefresh();
       }
     }) ?? (() => {});
 
     return () => {
       unsubscribeBoardEvents();
+      if (boardRefreshTimerRef.current !== null) {
+        window.clearTimeout(boardRefreshTimerRef.current);
+        boardRefreshTimerRef.current = null;
+      }
     };
   }, []);
 

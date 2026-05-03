@@ -613,18 +613,18 @@ describe("projectService local hook installation", () => {
         },
       ]);
 
+      expect(mocks.listWorktrees).not.toHaveBeenCalled();
       expect(mocks.installKanvibeHooks).not.toHaveBeenCalled();
-      const syncBroadcastCount = mocks.broadcastBoardUpdate.mock.calls.length;
-      expect(syncBroadcastCount).toBeGreaterThanOrEqual(1);
+      expect(mocks.broadcastBoardUpdate).not.toHaveBeenCalled();
 
       await vi.runAllTimersAsync();
 
+      expect(mocks.broadcastBoardUpdate).toHaveBeenCalled();
       expect(mocks.installKanvibeHooks).toHaveBeenCalledWith(
         "/workspace/api",
         "task-main",
         null,
       );
-      expect(mocks.broadcastBoardUpdate.mock.calls.length).toBeGreaterThan(syncBroadcastCount);
     } finally {
       vi.useRealTimers();
     }
