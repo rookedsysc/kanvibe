@@ -39,6 +39,17 @@ interface SearchFieldCandidate {
   weight: number;
 }
 
+interface WeightedFieldMatch {
+  key: SearchFieldKey;
+  weight: number;
+  match: FuzzyMatch;
+}
+
+interface TokenMatchSet {
+  matches: WeightedFieldMatch[];
+  score: number;
+}
+
 function isMacLikePlatform() {
   return typeof navigator !== "undefined"
     && (navigator.userAgent.includes("Mac") || navigator.platform.toLowerCase().includes("mac"));
@@ -68,6 +79,67 @@ function combineFieldMatches(
     score: matches.reduce((total, match) => total + match.score, 0),
     matchedIndices: mergeMatchedIndices(matches),
   };
+}
+
+function findFieldMatches(token: string, fields: SearchFieldCandidate[]): WeightedFieldMatch[] {
+  return fields
+    .map((field) => {
+      if (!field.value) {
+        return null;
+      }
+
+      const match = fuzzyMatch(token, field.value);
+      if (!match) {
+        return null;
+      }
+
+      return {
+        key: field.key,
+        weight: field.weight,
+        match,
+      };
+    })
+    .filter((match): match is WeightedFieldMatch => match !== null);
+}
+
+function scoreFieldMatch(match: WeightedFieldMatch) {
+  return match.match.score + match.weight;
+}
+
+function findTokenMatchSet(token: string, fields: SearchFieldCandidate[]): TokenMatchSet | null {
+  const directMatches = findFieldMatches(token, fields);
+
+  if (directMatches.length > 0) {
+    return {
+      matches: directMatches,
+      score: Math.max(...directMatches.map(scoreFieldMatch)),
+    };
+  }
+
+  let bestSplitMatchSet: TokenMatchSet | null = null;
+
+  for (let splitIndex = 1; splitIndex < token.length; splitIndex++) {
+    const leftMatches = findFieldMatches(token.slice(0, splitIndex), fields);
+    const rightMatches = findFieldMatches(token.slice(splitIndex), fields);
+
+    for (const leftMatch of leftMatches) {
+      for (const rightMatch of rightMatches) {
+        if (leftMatch.key === rightMatch.key) {
+          continue;
+        }
+
+        const splitScore = scoreFieldMatch(leftMatch) + scoreFieldMatch(rightMatch);
+        if (!bestSplitMatchSet || splitScore > bestSplitMatchSet.score) {
+          bestSplitMatchSet = {
+            matches: [leftMatch, rightMatch],
+            score: splitScore,
+          };
+        }
+      }
+    }
+  }
+
+  return bestSplitMatchSet;
 }
 
 function buildSearchResults(tasks: SearchableTask[], query: string): SearchResult[] {
@@ -100,40 +172,17 @@ function buildSearchResults(tasks: SearchableTask[], query: string): SearchResul
       let score = 0;
 
       for (const token of tokens) {
-        const tokenMatches = fields
-          .map((field) => {
-            if (!field.value) {
-              return null;
-            }
+        const tokenMatchSet = findTokenMatchSet(token, fields);
 
-            const match = fuzzyMatch(token, field.value);
-            if (!match) {
-              return null;
-            }
-
-            return {
-              key: field.key,
-              weight: field.weight,
-              match,
-            };
-          })
-          .filter((match): match is { key: SearchFieldKey; weight: number; match: FuzzyMatch } => match !== null);
-
-        if (tokenMatches.length === 0) {
+        if (!tokenMatchSet) {
           return null;
         }
 
-        for (const tokenMatch of tokenMatches) {
+        for (const tokenMatch of tokenMatchSet.matches) {
           fieldMatches[tokenMatch.key].push(tokenMatch.match);
         }
 
-        const bestTokenMatch = tokenMatches.reduce((best, current) => {
-          const bestScore = best.match.score + best.weight;
-          const currentScore = current.match.score + current.weight;
-          return currentScore > bestScore ? current : best;
-        });
-
-        score += bestTokenMatch.match.score + bestTokenMatch.weight;
+        score += tokenMatchSet.score;
       }
 
       const branchMatch = combineFieldMatches(task.branchName, fieldMatches.branch);
