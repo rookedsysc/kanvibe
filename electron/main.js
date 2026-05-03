@@ -621,10 +621,18 @@ function attachWindowHandlers(browserWindow) {
       input.shift &&
       (input.control || input.meta) &&
       input.key.toLowerCase() === "i";
+    const isCreateTaskShortcut =
+      input.type === "keyDown" &&
+      !input.isAutoRepeat &&
+      !input.alt &&
+      !input.shift &&
+      (input.control || input.meta) &&
+      input.key.toLowerCase() === "n";
     const isNewWindowShortcut =
       input.type === "keyDown" &&
       !input.isAutoRepeat &&
       !input.alt &&
+      input.shift &&
       (input.control || input.meta) &&
       input.key.toLowerCase() === "n";
     const isRefreshShortcut =
@@ -649,13 +657,19 @@ function attachWindowHandlers(browserWindow) {
       return;
     }
 
-    if (!isNewWindowShortcut) {
+    if (isCreateTaskShortcut) {
+      event.preventDefault();
+
+      browserWindow.webContents.send("kanvibe:create-task-shortcut");
       return;
     }
 
-    event.preventDefault();
+    if (isNewWindowShortcut) {
+      event.preventDefault();
 
-    browserWindow.webContents.send("kanvibe:create-task-shortcut");
+      const currentUrl = browserWindow.webContents.getURL() || getRendererNavigationUrl();
+      void createAppWindow(currentUrl);
+    }
   });
 }
 
