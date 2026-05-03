@@ -60,6 +60,31 @@ describe("gitOperations.resolvePathForShell", () => {
     expect(result).toBe('"$HOME/work"');
   });
 
+  it("로컬 명령은 macOS 앱 실행 환경에서 누락되기 쉬운 CLI 경로를 포함한다", async () => {
+    // Given
+    mocks.exec.mockImplementation((_command: string, _options: unknown, callback: (error: null, result: { stdout: string; stderr: string }) => void) => {
+      callback(null, { stdout: "ok\n", stderr: "" });
+    });
+    const { execGit } = await import("@/lib/gitOperations");
+
+    // When
+    const result = await execGit("command -v tmux", null);
+
+    // Then
+    expect(result).toBe("ok");
+    expect(mocks.exec).toHaveBeenCalledWith(
+      "command -v tmux",
+      expect.objectContaining({
+        env: expect.objectContaining({
+          PATH: process.platform === "darwin"
+            ? expect.stringContaining("/opt/homebrew/bin")
+            : expect.any(String),
+        }),
+      }),
+      expect.any(Function),
+    );
+  });
+
   it("원격 명령 실행은 ssh 바이너리와 옵션을 사용한다", async () => {
     // Given
     mocks.execFile.mockImplementation((_file: string, _args: string[], _options: unknown, callback: (error: null, result: { stdout: string }) => void) => {
@@ -291,6 +316,7 @@ describe("gitOperations.resolvePathForShell", () => {
     // Given
     mocks.exec.mockImplementation((
       command: string,
+      _options: unknown,
       callback: (error: null, result: { stdout: string; stderr: string }) => void,
     ) => {
       expect(command).toContain("refs/heads/feature/exists");
@@ -311,6 +337,7 @@ describe("gitOperations.resolvePathForShell", () => {
     // Given
     mocks.exec.mockImplementation((
       command: string,
+      _options: unknown,
       callback: (error: null, result: { stdout: string; stderr: string }) => void,
     ) => {
       expect(command).toContain("refs/heads/feature/missing");
@@ -331,6 +358,7 @@ describe("gitOperations.resolvePathForShell", () => {
     // Given
     mocks.exec.mockImplementation((
       _command: string,
+      _options: unknown,
       callback: (error: null, result: { stdout: string; stderr: string }) => void,
     ) => {
       callback(
@@ -351,6 +379,7 @@ describe("gitOperations.resolvePathForShell", () => {
     // Then
     expect(mocks.exec).toHaveBeenCalledWith(
       'find "/workspace" -maxdepth 4 -name ".git" \\( -type d -o -type f \\) 2>/dev/null',
+      expect.objectContaining({ env: expect.any(Object) }),
       expect.any(Function),
     );
     expect(result).toEqual(["/workspace/api", "/workspace/feature-worktree"]);

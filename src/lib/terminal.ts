@@ -7,6 +7,7 @@ import { execSync } from "child_process";
 import type { WebSocket } from "ws";
 import { buildSSHArgs, getKanvibeSSHConnectionReuseOptions } from "@/lib/sshConfig";
 import { buildTmuxSessionBootstrapCommands, type TmuxPaneLayoutConfig } from "@/lib/worktree";
+import { createLocalShellEnvironment } from "@/lib/shellEnvironment";
 
 /**
  * 활성 터미널 세션을 관리하는 레지스트리.
@@ -38,7 +39,10 @@ function debugLog(message: string, payload?: Record<string, unknown>): void {
 /** tmux 세션이 존재하는지 확인한다 */
 function isTmuxSessionAlive(sessionName: string): boolean {
   try {
-    execSync(`tmux has-session -t "${sessionName}" 2>/dev/null`, { timeout: 3000 });
+    execSync(`tmux has-session -t "${sessionName}" 2>/dev/null`, {
+      env: createLocalShellEnvironment(),
+      timeout: 3000,
+    });
     return true;
   } catch {
     return false;
@@ -50,6 +54,7 @@ function isZellijSessionAlive(sessionName: string): boolean {
   try {
     const output = execSync("zellij list-sessions", {
       encoding: "utf-8",
+      env: createLocalShellEnvironment(),
       timeout: 3000,
     });
     return output.split("\n").some((s) => s.trim().startsWith(sessionName));
@@ -70,6 +75,7 @@ export async function attachLocalSession(
 ): Promise<void> {
   const initialCols = cols ?? 120;
   const initialRows = rows ?? 30;
+  const terminalEnvironment = createLocalShellEnvironment();
 
   /** 동일 taskId로 이미 활성 PTY가 있으면 기존 PTY를 공유한다 */
   const existing = activeTerminals.get(taskId);
@@ -115,12 +121,12 @@ export async function attachLocalSession(
         const dir = cwd || process.env.HOME || "/";
         execSync(
           `tmux new-session -d -s "${sessionName}" -c "${dir}"`,
-          { timeout: 5000 },
+          { env: terminalEnvironment, timeout: 5000 },
         );
       } catch (error) {
         console.error(`[터미널] tmux 세션 자동 생성 실패:`, error);
         ws.close(1008, "tmux 세션 생성에 실패했습니다.");
-        return;
+        throw new Error("tmux 세션 생성에 실패했습니다.");
       }
     }
   } else {
@@ -131,7 +137,10 @@ export async function attachLocalSession(
   /** 웹 터미널 크기가 다른 클라이언트에 제한되지 않도록 최근 활성 클라이언트 기준으로 설정 */
   if (sessionType === SessionType.TMUX) {
     try {
-      execSync("tmux set-option -g window-size latest", { stdio: "ignore" });
+      execSync("tmux set-option -g window-size latest", {
+        env: terminalEnvironment,
+        stdio: "ignore",
+      });
     } catch {
       // tmux 구버전에서는 window-size 옵션이 없을 수 있음
     }
@@ -178,16 +187,12 @@ export async function attachLocalSession(
       cols: initialCols,
       rows: initialRows,
       cwd: ptyCwd,
-      env: {
-        ...process.env,
-        LANG: process.env.LANG || "en_US.UTF-8",
-        LC_ALL: process.env.LC_ALL || "en_US.UTF-8",
-      } as Record<string, string>,
+      env: terminalEnvironment,
     });
   } catch (error) {
     console.error("[터미널] PTY spawn 실패:", error);
     ws.close(1011, "터미널 프로세스 생성 실패");
-    return;
+    throw new Error("터미널 프로세스 생성 실패");
   }
 
   const entry: TerminalEntry = { pty: ptyProcess, clients: new Set([ws]), sessionType, sessionName };
@@ -259,6 +264,7 @@ export async function attachRemoteSession(
 ): Promise<void> {
   const initialCols = cols ?? 120;
   const initialRows = rows ?? 30;
+  const terminalEnvironment = createLocalShellEnvironment();
 
   const existing = activeTerminals.get(taskId);
   if (existing) {
@@ -296,16 +302,12 @@ export async function attachRemoteSession(
       cols: initialCols,
       rows: initialRows,
       cwd: process.env.HOME || "/",
-      env: {
-        ...process.env,
-        LANG: process.env.LANG || "en_US.UTF-8",
-        LC_ALL: process.env.LC_ALL || "en_US.UTF-8",
-      } as Record<string, string>,
+      env: terminalEnvironment,
     });
   } catch (error) {
     console.error("[터미널] Remote PTY spawn 실패:", error);
     ws.close(1011, "SSH 연결 실패");
-    return;
+    throw new Error("SSH 연결 실패");
   }
 
   debugLog("Remote PTY spawn 성공", { taskId, pid: ptyProcess.pid });

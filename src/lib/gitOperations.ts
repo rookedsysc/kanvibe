@@ -9,6 +9,7 @@ import {
   parseSSHConfig,
   type SSHHostConfig,
 } from "@/lib/sshConfig";
+import { createLocalShellEnvironment } from "@/lib/shellEnvironment";
 
 const execAsync = promisify(exec);
 const execFileAsync = promisify(execFile);
@@ -92,7 +93,9 @@ function shouldLogRemoteCommandFailure(command: string, stderr: string): boolean
 
 /** 로컬에서 셸 명령을 실행하고 stdout을 반환한다 */
 async function execLocal(command: string): Promise<string> {
-  const { stdout } = await execAsync(command);
+  const { stdout } = await execAsync(command, {
+    env: createLocalShellEnvironment(),
+  });
   return stdout.trim();
 }
 
@@ -115,6 +118,7 @@ async function execRemote(sshHost: string, command: string): Promise<string> {
 
     try {
       const { stdout } = await execFileAsync("ssh", sshArgs, {
+        env: createLocalShellEnvironment(),
         maxBuffer: 10 * 1024 * 1024,
       });
       return stdout.trim();
