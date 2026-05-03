@@ -10,6 +10,7 @@ import {
   markNotificationRead,
 } from "@/desktop/renderer/actions/notifications";
 import { redirect } from "@/desktop/renderer/navigation";
+import { requestActiveTerminalFocusAfterUiSettles } from "@/desktop/renderer/utils/terminalFocus";
 import type { AppNotification } from "@/desktop/shared/notifications";
 
 interface NotificationCenterButtonProps {
@@ -63,27 +64,39 @@ const NotificationCenterButton = forwardRef<NotificationCenterButtonHandle, Noti
   const containerRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const itemRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const isOpenRef = useRef(false);
   const [isOpen, setIsOpen] = useState(false);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [highlightedIndex, setHighlightedIndex] = useState(0);
   const [missingTaskNotification, setMissingTaskNotification] = useState<AppNotification | null>(null);
 
-  const closePanel = useCallback(() => {
-    setIsOpen(false);
+  const setPanelOpen = useCallback((nextIsOpen: boolean) => {
+    isOpenRef.current = nextIsOpen;
+    setIsOpen(nextIsOpen);
   }, []);
+
+  const closePanel = useCallback(() => {
+    if (!isOpenRef.current) {
+      return;
+    }
+
+    setPanelOpen(false);
+    requestActiveTerminalFocusAfterUiSettles();
+  }, [setPanelOpen]);
 
   const openPanel = useCallback(() => {
     setHighlightedIndex(0);
-    setIsOpen(true);
-  }, []);
+    setPanelOpen(true);
+  }, [setPanelOpen]);
 
   const togglePanel = useCallback(() => {
-    if (!isOpen) {
-      setHighlightedIndex(0);
+    if (isOpenRef.current) {
+      closePanel();
+      return;
     }
 
-    setIsOpen(!isOpen);
-  }, [isOpen]);
+    openPanel();
+  }, [closePanel, openPanel]);
 
   useImperativeHandle(ref, () => ({
     close() {
@@ -259,6 +272,7 @@ const NotificationCenterButton = forwardRef<NotificationCenterButtonHandle, Noti
           role="dialog"
           aria-label={t("notifications")}
           tabIndex={-1}
+          data-terminal-focus-blocker="true"
           className={`absolute right-0 z-50 mt-2 w-96 max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl border border-border-default bg-bg-surface shadow-xl ${panelClassName}`.trim()}
         >
           <div className="flex items-center justify-between border-b border-border-default px-4 py-3">
@@ -308,7 +322,7 @@ const NotificationCenterButton = forwardRef<NotificationCenterButtonHandle, Noti
       ) : null}
 
       {missingTaskNotification ? (
-        <div className="fixed inset-0 z-[500] flex items-center justify-center bg-bg-overlay px-4">
+        <div data-terminal-focus-blocker="true" className="fixed inset-0 z-[500] flex items-center justify-center bg-bg-overlay px-4">
           <div className="w-full max-w-sm rounded-xl border border-border-default bg-bg-surface p-6 shadow-lg">
             <h2 className="text-lg font-semibold text-text-primary">{t("notificationTaskMissingTitle")}</h2>
             <p className="mt-2 whitespace-pre-wrap text-sm text-text-secondary">{t("notificationTaskMissingBody")}</p>

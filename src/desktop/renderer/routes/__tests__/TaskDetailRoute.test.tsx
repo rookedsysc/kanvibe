@@ -115,19 +115,22 @@ vi.mock("@/components/ConnectTerminalForm", () => ({
 vi.mock("@/components/CreateTaskModal", () => ({
   default: ({
     isOpen,
+    onClose,
     defaultProjectId,
     defaultBaseBranch,
     defaultSessionType,
   }: {
     isOpen: boolean;
+    onClose: () => void;
     defaultProjectId?: string;
     defaultBaseBranch?: string;
     defaultSessionType?: string;
   }) => isOpen ? (
-    <div data-testid="create-task-modal">
+    <div data-testid="create-task-modal" data-terminal-focus-blocker="true">
       <div data-testid="create-task-default-project">{defaultProjectId ?? ""}</div>
       <div data-testid="create-task-default-base-branch">{defaultBaseBranch ?? ""}</div>
       <div data-testid="create-task-default-session">{defaultSessionType ?? ""}</div>
+      <button type="button" onClick={onClose}>close create modal</button>
     </div>
   ) : null,
 }));
@@ -156,9 +159,32 @@ vi.mock("@/components/TaskDetailTitleCard", () => ({
   ),
 }));
 
-vi.mock("@/desktop/renderer/components/TerminalLoader", () => ({
-  default: () => <div data-testid="terminal-loader" />,
-}));
+vi.mock("@/desktop/renderer/components/TerminalLoader", async () => {
+  const React = await vi.importActual<typeof import("react")>("react");
+
+  return {
+    default: function MockTerminalLoader() {
+      const inputRef = React.useRef<HTMLInputElement>(null);
+
+      React.useEffect(() => {
+        function handleRequestTerminalFocus() {
+          if (document.querySelector('[data-terminal-focus-blocker="true"]')) {
+            return;
+          }
+
+          inputRef.current?.focus();
+        }
+
+        window.addEventListener("kanvibe:request-terminal-focus", handleRequestTerminalFocus);
+        return () => {
+          window.removeEventListener("kanvibe:request-terminal-focus", handleRequestTerminalFocus);
+        };
+      }, []);
+
+      return <input data-testid="terminal-loader" ref={inputRef} aria-label="terminal input" />;
+    },
+  };
+});
 
 describe("TaskDetailRoute", () => {
   beforeEach(() => {
@@ -374,6 +400,89 @@ describe("TaskDetailRoute", () => {
       expect(screen.getByTestId("create-task-default-project").textContent).toBe("project-1");
       expect(screen.getByTestId("create-task-default-base-branch").textContent).toBe("feat/detail-shortcut");
       expect(screen.getByTestId("create-task-default-session").textContent).toBe("tmux");
+    });
+  });
+
+  it("새 task 모달이 닫히면 terminal 입력 포커스로 복귀한다", async () => {
+    mocks.getTaskById.mockResolvedValue({
+      id: "task-1",
+      title: "task title",
+      description: null,
+      branchName: "feat/detail-shortcut",
+      baseBranch: "main",
+      prUrl: null,
+      sessionType: "tmux",
+      sessionName: "task-session",
+      sshHost: null,
+      projectId: "project-1",
+      project: { id: "project-1", name: "kanvibe" },
+      status: "todo",
+      agentType: null,
+      worktreePath: "/repo__worktrees/detail-shortcut",
+    });
+
+    render(
+      <BoardCommandProvider>
+        <TaskDetailRoute />
+      </BoardCommandProvider>,
+    );
+
+    const terminalInput = await screen.findByLabelText("terminal input");
+
+    fireEvent.keyDown(window, {
+      key: "n",
+      ctrlKey: true,
+    });
+    await screen.findByTestId("create-task-modal");
+
+    fireEvent.click(screen.getByRole("button", { name: "close create modal" }));
+
+    await waitFor(() => {
+      expect(document.activeElement).toBe(terminalInput);
+    });
+  });
+
+  it("알림 dropdown이 닫히면 terminal 입력 포커스로 복귀한다", async () => {
+    mocks.getTaskById.mockResolvedValue({
+      id: "task-1",
+      title: "task title",
+      description: null,
+      branchName: "feat/detail-shortcut",
+      baseBranch: "main",
+      prUrl: null,
+      sessionType: "tmux",
+      sessionName: "task-session",
+      sshHost: null,
+      projectId: "project-1",
+      project: { id: "project-1", name: "kanvibe" },
+      status: "todo",
+      agentType: null,
+      worktreePath: "/repo__worktrees/detail-shortcut",
+    });
+
+    render(
+      <BoardCommandProvider>
+        <TaskDetailRoute />
+      </BoardCommandProvider>,
+    );
+
+    const terminalInput = await screen.findByLabelText("terminal input");
+
+    fireEvent.keyDown(window, {
+      key: "i",
+      ctrlKey: true,
+      shiftKey: true,
+    });
+
+    const panel = await screen.findByRole("dialog", { name: "notifications" });
+    await waitFor(() => {
+      expect(document.activeElement).toBe(panel);
+    });
+
+    fireEvent.keyDown(window, { key: "Escape" });
+
+    await waitFor(() => {
+      expect(document.activeElement).toBe(terminalInput);
     });
   });
 });
