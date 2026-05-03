@@ -185,7 +185,7 @@ describe("TaskQuickSearchDialog", () => {
     });
   });
 
-  it.each(["dev kanvibe", "kanvibe dev"])("%s 검색어로 project와 branch를 함께 찾는다", async (query) => {
+  it.each(["dev kanvibe", "kanvibe dev", "kanvibedev"])("%s 검색어로 project와 branch를 함께 찾는다", async (query) => {
     render(<TaskQuickSearchDialog shortcut="Ctrl+K" />);
 
     fireEvent.keyDown(window, {
