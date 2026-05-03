@@ -59,3 +59,99 @@ describe("sshConfig.parseSSHConfig", () => {
     expect(mocks.readFile).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("sshConfig.buildSSHArgs", () => {
+  beforeEach(() => {
+    vi.resetModules();
+    vi.clearAllMocks();
+  });
+
+  it("adds trusted X11 forwarding and forced tty before the SSH destination", async () => {
+    // Given
+    const { buildSSHArgs } = await import("@/lib/sshConfig");
+
+    // When
+    const args = buildSSHArgs({
+      host: "remote-host",
+      hostname: "example.com",
+      port: 2202,
+      username: "tester",
+      privateKeyPath: "/tmp/test-key",
+    }, {
+      trustedX11Forwarding: true,
+      forceTty: true,
+    });
+
+    // Then
+    expect(args).toEqual([
+      "-i",
+      "/tmp/test-key",
+      "-p",
+      "2202",
+      "-o",
+      "BatchMode=yes",
+      "-o",
+      "IdentitiesOnly=yes",
+      "-Y",
+      "-tt",
+      "remote-host",
+    ]);
+    expect(args.indexOf("-Y")).toBeLessThan(args.indexOf("remote-host"));
+    expect(args.indexOf("-tt")).toBeLessThan(args.indexOf("remote-host"));
+  });
+
+  it("adds connection reuse options before the SSH destination", async () => {
+    // Given
+    const { buildSSHArgs } = await import("@/lib/sshConfig");
+
+    // When
+    const args = buildSSHArgs({
+      host: "remote-host",
+      hostname: "example.com",
+      port: 2202,
+      username: "tester",
+      privateKeyPath: "/tmp/test-key",
+    }, {
+      disableTty: true,
+      connectionReuse: {
+        controlPath: "/home/local-user/.kanvibe/ssh-%C",
+        controlPersist: "10m",
+      },
+    });
+
+    // Then
+    expect(args).toEqual([
+      "-i",
+      "/tmp/test-key",
+      "-p",
+      "2202",
+      "-o",
+      "BatchMode=yes",
+      "-o",
+      "IdentitiesOnly=yes",
+      "-T",
+      "-o",
+      "ControlMaster=auto",
+      "-o",
+      "ControlPersist=10m",
+      "-o",
+      "ControlPath=/home/local-user/.kanvibe/ssh-%C",
+      "remote-host",
+    ]);
+    expect(args.indexOf("ControlPath=/home/local-user/.kanvibe/ssh-%C")).toBeLessThan(args.indexOf("remote-host"));
+  });
+
+  it("builds KanVibe connection reuse options under the app-local directory", async () => {
+    // Given
+    const { getKanvibeSSHConnectionReuseOptions } = await import("@/lib/sshConfig");
+
+    // When
+    const result = getKanvibeSSHConnectionReuseOptions();
+
+    // Then
+    expect(result).toEqual({
+      controlPath: "/home/local-user/.kanvibe/ssh-%C",
+      controlPersist: "10m",
+    });
+  });
+});

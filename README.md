@@ -163,6 +163,8 @@ Each pane can run a custom command (e.g., `vim`, `htop`, `lazygit`, test runner,
 - **tmux** and **zellij** are both supported as terminal multiplexers
 - Browser-based terminal via xterm.js + WebSocket
 - SSH remote terminal support (reads `~/.ssh/config`)
+- Remote SSH commands reuse an app-local ControlMaster socket under `~/.kanvibe`
+- Remote terminal attach uses trusted X11 forwarding (`ssh -Y`), so tools such as `xclip` can work when local `DISPLAY`, remote `X11Forwarding`, and `xauth` are available
 - Nerd Font rendering support
 
 ### Quick Task Search

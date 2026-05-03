@@ -2,8 +2,13 @@ import { exec, execFile } from "child_process";
 import { promisify } from "util";
 import { mkdir } from "fs/promises";
 import { homedir } from "os";
-import path from "path";
-import { buildSSHArgs, parseSSHConfig, type SSHHostConfig } from "@/lib/sshConfig";
+import {
+  buildSSHArgs,
+  getKanvibeSSHConnectionReuseOptions,
+  getKanvibeSSHControlDirectory,
+  parseSSHConfig,
+  type SSHHostConfig,
+} from "@/lib/sshConfig";
 
 const execAsync = promisify(exec);
 const execFileAsync = promisify(execFile);
@@ -188,24 +193,15 @@ function rememberSSHTransportFailure(sshHost: string, error: Error): void {
 async function buildExecSSHArgs(
   hostConfig: SSHHostConfig,
 ): Promise<string[]> {
-  const args = buildSSHArgs(hostConfig, { disableTty: true });
   if (process.platform === "win32") {
-    return args;
+    return buildSSHArgs(hostConfig, { disableTty: true });
   }
 
-  const controlPath = path.join(homedir(), ".kanvibe", "ssh-%C");
-  await mkdir(path.dirname(controlPath), { recursive: true });
-
-  return [
-    ...args.slice(0, -1),
-    "-o",
-    "ControlMaster=auto",
-    "-o",
-    "ControlPersist=60",
-    "-o",
-    `ControlPath=${controlPath}`,
-    args.at(-1)!,
-  ];
+  await mkdir(getKanvibeSSHControlDirectory(), { recursive: true });
+  return buildSSHArgs(hostConfig, {
+    disableTty: true,
+    connectionReuse: getKanvibeSSHConnectionReuseOptions(),
+  });
 }
 
 function buildRemoteShellCommand(command: string): string {
