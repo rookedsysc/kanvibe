@@ -26,6 +26,19 @@ vi.mock("fs", async (importOriginal) => {
   };
 });
 
+const mockHomedir = vi.fn(() => "/home/local-user");
+vi.mock("os", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("os")>();
+  return {
+    ...actual,
+    default: {
+      ...actual,
+      homedir: mockHomedir,
+    },
+    homedir: mockHomedir,
+  };
+});
+
 const mockPtyWrite = vi.fn();
 const mockPtyOnData = vi.fn();
 const mockPtyOnExit = vi.fn();
@@ -366,11 +379,21 @@ describe("attachRemoteSession — ssh 바이너리 기반 연결", () => {
         "BatchMode=yes",
         "-o",
         "IdentitiesOnly=yes",
+        "-Y",
         "-tt",
+        "-o",
+        "ControlMaster=auto",
+        "-o",
+        "ControlPersist=10m",
+        "-o",
+        "ControlPath=/home/local-user/.kanvibe/ssh-%C",
         "remote-host",
       ],
       expect.objectContaining({ cwd: expect.any(String) }),
     );
+    const sshArgs = vi.mocked(nodePty.spawn).mock.calls[0][1] as string[];
+    expect(sshArgs.indexOf("-Y")).toBeLessThan(sshArgs.indexOf("remote-host"));
+    expect(sshArgs.indexOf("-tt")).toBeLessThan(sshArgs.indexOf("remote-host"));
     expect(mockPtyWrite).toHaveBeenCalledWith(
       expect.stringContaining('tmux has-session -t "remote-session"'),
     );

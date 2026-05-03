@@ -103,7 +103,7 @@ describe("gitOperations.resolvePathForShell", () => {
         "-o",
         "ControlMaster=auto",
         "-o",
-        "ControlPersist=60",
+        "ControlPersist=10m",
         "-o",
         "ControlPath=/home/local-user/.kanvibe/ssh-%C",
       );
@@ -115,6 +115,7 @@ describe("gitOperations.resolvePathForShell", () => {
     );
 
     expect(result).toBe("ok");
+    expect(expectedArgs).not.toContain("-Y");
     expect(mocks.execFile).toHaveBeenCalledWith(
       "ssh",
       expectedArgs,

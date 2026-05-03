@@ -161,6 +161,8 @@ pnpm dist
 - 同时支持 **tmux** 和 **zellij** 作为终端复用器
 - 基于 xterm.js + WebSocket 的浏览器终端
 - SSH 远程终端支持（读取 `~/.ssh/config`）
+- 远程 SSH 命令会复用 `~/.kanvibe` 下的应用专用 ControlMaster socket
+- 远程终端 attach 使用 trusted X11 forwarding（`ssh -Y`），因此在本地 `DISPLAY`、远程 `X11Forwarding` 和 `xauth` 可用时，`xclip` 等工具可以工作
 - Nerd Font 渲染支持
 
 ### 键盘快捷键

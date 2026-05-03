@@ -5,7 +5,7 @@ import { PaneLayoutType } from "@/entities/PaneLayoutConfig";
 import { ZELLIJ_LAYOUT_FILENAME } from "@/lib/worktree";
 import { execSync } from "child_process";
 import type { WebSocket } from "ws";
-import { buildSSHArgs } from "@/lib/sshConfig";
+import { buildSSHArgs, getKanvibeSSHConnectionReuseOptions } from "@/lib/sshConfig";
 import { buildTmuxSessionBootstrapCommands, type TmuxPaneLayoutConfig } from "@/lib/worktree";
 
 /**
@@ -278,7 +278,11 @@ export async function attachRemoteSession(
   const attachCommand = sessionType === SessionType.TMUX
     ? buildRemoteTmuxAttachCommand(sessionName, worktreePath, tmuxPaneLayout)
     : `exec zellij attach "${sessionName}"`;
-  const args = buildSSHArgs(sshConfig, { forceTty: true });
+  const args = buildSSHArgs(sshConfig, {
+    forceTty: true,
+    trustedX11Forwarding: true,
+    connectionReuse: getKanvibeSSHConnectionReuseOptions(),
+  });
 
   if (shouldLogTerminalSpawn()) {
     console.log(`[터미널] Remote PTY spawn: shell=ssh, args=${JSON.stringify(args)}`);

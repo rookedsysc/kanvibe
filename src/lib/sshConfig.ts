@@ -10,7 +10,13 @@ export interface SSHHostConfig {
   privateKeyPath: string;
 }
 
+export interface SSHConnectionReuseOptions {
+  controlPath: string;
+  controlPersist: string;
+}
+
 const SSH_CONFIG_CACHE_TTL_MS = 5000;
+const KANVIBE_SSH_CONTROL_PERSIST = "10m";
 let cachedHosts: SSHHostConfig[] | null = null;
 let cacheExpiresAt = 0;
 let inFlightParse: Promise<SSHHostConfig[]> | null = null;
@@ -28,6 +34,8 @@ export function buildSSHArgs(
   options?: {
     forceTty?: boolean;
     disableTty?: boolean;
+    trustedX11Forwarding?: boolean;
+    connectionReuse?: SSHConnectionReuseOptions;
   },
 ): string[] {
   const args = [
@@ -41,14 +49,40 @@ export function buildSSHArgs(
     "IdentitiesOnly=yes",
   ];
 
+  if (options?.trustedX11Forwarding) {
+    args.push("-Y");
+  }
+
   if (options?.forceTty) {
     args.push("-tt");
   } else if (options?.disableTty) {
     args.push("-T");
   }
 
+  if (options?.connectionReuse) {
+    args.push(
+      "-o",
+      "ControlMaster=auto",
+      "-o",
+      `ControlPersist=${options.connectionReuse.controlPersist}`,
+      "-o",
+      `ControlPath=${options.connectionReuse.controlPath}`,
+    );
+  }
+
   args.push(getSSHDestination(config));
   return args;
+}
+
+export function getKanvibeSSHControlDirectory(): string {
+  return path.join(homedir(), ".kanvibe");
+}
+
+export function getKanvibeSSHConnectionReuseOptions(): SSHConnectionReuseOptions {
+  return {
+    controlPath: path.join(getKanvibeSSHControlDirectory(), "ssh-%C"),
+    controlPersist: KANVIBE_SSH_CONTROL_PERSIST,
+  };
 }
 
 /**
