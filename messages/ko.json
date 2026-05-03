@@ -177,7 +177,7 @@
     "title": "태스크 빠른 검색",
     "placeholder": "브랜치명 또는 프로젝트명으로 검색...",
     "empty": "일치하는 태스크가 없습니다.",
-    "hint": "↑↓ 이동 · Enter 이동 · Esc 닫기",
+    "hint": "↑↓ 이동 · Enter 이동 · Shift+Enter 새 창 · Esc 닫기",
     "branchTodoHint": "{shortcut} 새 branch TODO"
   },
   "paneLayout": {

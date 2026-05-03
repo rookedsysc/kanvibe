@@ -176,7 +176,7 @@
     "title": "快速任务搜索",
     "placeholder": "按分支名或项目名搜索...",
     "empty": "没有找到匹配的任务。",
-    "hint": "↑↓ 移动 · Enter 打开 · Esc 关闭",
+    "hint": "↑↓ 移动 · Enter 打开 · Shift+Enter 新窗口 · Esc 关闭",
     "branchTodoHint": "{shortcut} 创建分支 TODO"
   },
   "paneLayout": {
