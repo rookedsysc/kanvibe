@@ -69,6 +69,16 @@ describe("useRouter", () => {
     });
   });
 
+  it("브라우저 history index가 있어도 앱 내부 이전 경로가 없으면 현재 locale의 칸반 홈으로 이동한다", async () => {
+    renderRouterProbe(["/en/task/task-1"], 0, { idx: 1 });
+
+    fireEvent.click(screen.getByRole("button", { name: "back" }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("pathname").textContent).toBe("/en");
+    });
+  });
+
   it("forward 호출 시 다음 페이지로 이동한다", async () => {
     renderRouterProbe(["/ko", "/ko/task/task-1", "/ko/task/task-2"], 1, { idx: 1 });
 

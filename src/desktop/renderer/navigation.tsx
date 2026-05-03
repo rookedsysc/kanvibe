@@ -1,7 +1,9 @@
-import { useMemo, type AnchorHTMLAttributes, type PropsWithChildren } from "react";
+import { useEffect, useMemo, useRef, type AnchorHTMLAttributes, type PropsWithChildren } from "react";
 import { Link as RouterLink, useLocation, useNavigate } from "react-router-dom";
 import { DEFAULT_LOCALE, SUPPORTED_LOCALES, getSafeLocale, type SupportedLocale } from "@/desktop/renderer/utils/locales";
 import { triggerDesktopRefresh } from "@/desktop/renderer/utils/refresh";
+
+const BACK_NAVIGATION_FALLBACK_DELAY_MS = 100;
 
 function getRefreshScope(pathname: string) {
   if (pathname.includes("/task/") && pathname.endsWith("/diff")) {
@@ -70,16 +72,46 @@ export function useRouter() {
   const navigate = useNavigate();
   const location = useLocation();
   const currentLocale = getLocaleFromPathname(location.pathname);
+  const latestLocationRef = useRef(location);
+  const backFallbackTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    latestLocationRef.current = location;
+  }, [location]);
+
+  useEffect(() => () => {
+    if (backFallbackTimerRef.current !== null) {
+      window.clearTimeout(backFallbackTimerRef.current);
+    }
+  }, []);
 
   return useMemo(
     () => ({
       back: () => {
-        if (canNavigateBack()) {
-          navigate(-1);
+        const fallbackToHome = () => navigate(localizeHref("/", currentLocale), { replace: true });
+
+        if (!canNavigateBack()) {
+          fallbackToHome();
           return;
         }
 
-        navigate(localizeHref("/", currentLocale), { replace: true });
+        const beforeBackLocation = latestLocationRef.current;
+        navigate(-1);
+
+        if (backFallbackTimerRef.current !== null) {
+          window.clearTimeout(backFallbackTimerRef.current);
+        }
+
+        backFallbackTimerRef.current = window.setTimeout(() => {
+          backFallbackTimerRef.current = null;
+          const currentLocation = latestLocationRef.current;
+          if (
+            currentLocation.key === beforeBackLocation.key
+            && currentLocation.pathname === beforeBackLocation.pathname
+          ) {
+            fallbackToHome();
+          }
+        }, BACK_NAVIGATION_FALLBACK_DELAY_MS);
       },
       forward: () => navigate(1),
       push: (href: string) => navigate(localizeHref(href, currentLocale)),
