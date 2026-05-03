@@ -69,6 +69,20 @@ describe("remoteSessionDependency", () => {
     expect(mockExecGit).toHaveBeenCalledWith("command -v tmux >/dev/null 2>&1", "remote-a");
   });
 
+  it("성공한 원격 의존성 확인은 같은 호스트와 도구에 재사용한다", async () => {
+    // Given
+    mockExecGit.mockResolvedValue("");
+    const { getSessionDependencyStatus, ensureRemoteSessionDependency } = await import("@/lib/remoteSessionDependency");
+
+    // When
+    await getSessionDependencyStatus(SessionType.TMUX, "remote-a");
+    mockExecGit.mockClear();
+    await ensureRemoteSessionDependency(SessionType.TMUX, "remote-a");
+
+    // Then
+    expect(mockExecGit).not.toHaveBeenCalled();
+  });
+
   it("원격 의존성 확인 중 SSH 연결 실패가 발생하면 설치를 시도하거나 차단하지 않는다", async () => {
     // Given
     mockExecGit.mockRejectedValueOnce(new Error("remote-a 원격 명령 실패: Connection reset by 100.73.171.123 port 22"));
