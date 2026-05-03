@@ -119,23 +119,27 @@ export function scheduleTaskHookInstall(
   task: Pick<KanbanTask, "id" | "title" | "sshHost">,
 ) {
   setTimeout(() => {
-    void installKanvibeHooks(targetPath, task.id, task.sshHost).catch((error) => {
-      const errorMessage = getErrorMessage(error);
+    void installKanvibeHooks(targetPath, task.id, task.sshHost)
+      .then(() => {
+        broadcastBoardUpdate();
+      })
+      .catch((error) => {
+        const errorMessage = getErrorMessage(error);
 
-      console.error("새 태스크 hooks 백그라운드 설치 실패:", {
-        taskId: task.id,
-        taskTitle: task.title,
-        targetPath,
-        sshHost: task.sshHost ?? null,
-        error: errorMessage,
-      });
+        console.error("새 태스크 hooks 백그라운드 설치 실패:", {
+          taskId: task.id,
+          taskTitle: task.title,
+          targetPath,
+          sshHost: task.sshHost ?? null,
+          error: errorMessage,
+        });
 
-      broadcastTaskHookInstallFailed({
-        taskId: task.id,
-        taskTitle: task.title,
-        error: errorMessage,
+        broadcastTaskHookInstallFailed({
+          taskId: task.id,
+          taskTitle: task.title,
+          error: errorMessage,
+        });
       });
-    });
   }, 0);
 }
 

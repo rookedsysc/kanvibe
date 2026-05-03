@@ -6,6 +6,65 @@ interface TerminalProps {
   taskId: string;
 }
 
+const NERD_FONT_FAMILY = "JetBrainsMono Nerd Font Mono";
+const NERD_FONT_CDN_BASE = "https://cdn.jsdelivr.net/gh/mshaugh/nerdfont-webfonts@v3.3.0/build/fonts";
+const FALLBACK_FONT_FAMILY = "monospace";
+const TERMINAL_FONT_FAMILY = `'${NERD_FONT_FAMILY}', ${FALLBACK_FONT_FAMILY}`;
+
+type TerminalModules = [
+  typeof import("@xterm/xterm"),
+  typeof import("@xterm/addon-fit"),
+  typeof import("@xterm/addon-web-links"),
+];
+
+let terminalModulesPromise: Promise<TerminalModules> | null = null;
+let nerdFontLoadPromise: Promise<string | null> | null = null;
+
+function loadTerminalModules() {
+  if (!terminalModulesPromise) {
+    terminalModulesPromise = Promise.all([
+      import("@xterm/xterm"),
+      import("@xterm/addon-fit"),
+      import("@xterm/addon-web-links"),
+    ]);
+  }
+
+  return terminalModulesPromise;
+}
+
+function loadNerdFontFamily(): Promise<string | null> {
+  if (
+    typeof document === "undefined" ||
+    typeof FontFace === "undefined" ||
+    !document.fonts
+  ) {
+    return Promise.resolve(null);
+  }
+
+  if (!nerdFontLoadPromise) {
+    const regular = new FontFace(
+      NERD_FONT_FAMILY,
+      `url(${NERD_FONT_CDN_BASE}/JetBrainsMonoNerdFontMono-Regular.woff2)`,
+      { weight: "400" },
+    );
+    const bold = new FontFace(
+      NERD_FONT_FAMILY,
+      `url(${NERD_FONT_CDN_BASE}/JetBrainsMonoNerdFontMono-Bold.woff2)`,
+      { weight: "700" },
+    );
+
+    document.fonts.add(regular);
+    document.fonts.add(bold);
+
+    nerdFontLoadPromise = Promise.allSettled([regular.load(), bold.load()])
+      .then(() => document.fonts.ready)
+      .then(() => TERMINAL_FONT_FAMILY)
+      .catch(() => null);
+  }
+
+  return nerdFontLoadPromise;
+}
+
 export default function Terminal({ taskId }: TerminalProps) {
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -14,47 +73,17 @@ export default function Terminal({ taskId }: TerminalProps) {
       return undefined;
     }
 
-    const nerdFontFamily = "JetBrainsMono Nerd Font Mono";
-    const fontFamily = `'${nerdFontFamily}', monospace`;
-    const cdnBase = "https://cdn.jsdelivr.net/gh/mshaugh/nerdfont-webfonts@v3.3.0/build/fonts";
-    const regular = new FontFace(nerdFontFamily, `url(${cdnBase}/JetBrainsMonoNerdFontMono-Regular.woff2)`, { weight: "400" });
-    const bold = new FontFace(nerdFontFamily, `url(${cdnBase}/JetBrainsMonoNerdFontMono-Bold.woff2)`, { weight: "700" });
-    document.fonts.add(regular);
-    document.fonts.add(bold);
-    await document.fonts.ready;
-    await Promise.all([regular.load(), bold.load()]);
+    const [{ Terminal: XTerm }, { FitAddon }, { WebLinksAddon }] = await loadTerminalModules();
+    let isTerminalDisposed = false;
 
-    const [{ Terminal: XTerm }, { FitAddon }, { WebLinksAddon }] = await Promise.all([
-      import("@xterm/xterm"),
-      import("@xterm/addon-fit"),
-      import("@xterm/addon-web-links"),
-    ]);
-
-    const terminal = new XTerm(createTerminalOptions(fontFamily));
+    const terminal = new XTerm(createTerminalOptions(FALLBACK_FONT_FAMILY));
 
     const fitAddon = new FitAddon();
     terminal.loadAddon(fitAddon);
     terminal.loadAddon(new WebLinksAddon());
     terminal.open(containerRef.current);
     const disposeMacShiftSelectionPatch = installMacShiftSelectionPatch(terminal);
-    terminal.options.fontFamily = "monospace";
-    terminal.options.fontFamily = fontFamily;
-
-    await new Promise<void>((resolve) => {
-      requestAnimationFrame(() => {
-        fitAddon.fit();
-        resolve();
-      });
-    });
-
-    const terminalReady = await window.kanvibeDesktop!.openTerminal(taskId, terminal.cols, terminal.rows);
-    if (!terminalReady.ok) {
-      terminal.writeln(`\r\n\x1b[31m${terminalReady.error || "터미널 연결 실패"}\x1b[0m`);
-      return () => {
-        disposeMacShiftSelectionPatch();
-        terminal.dispose();
-      };
-    }
+    terminal.options.fontFamily = FALLBACK_FONT_FAMILY;
 
     const unsubscribeData = window.kanvibeDesktop!.onTerminalData((event: { taskId: string; data: string }) => {
       if (event.taskId === taskId) {
@@ -68,14 +97,6 @@ export default function Terminal({ taskId }: TerminalProps) {
       }
     });
 
-    terminal.onData((data) => {
-      window.kanvibeDesktop!.writeTerminal(taskId, data);
-    });
-
-    terminal.onResize(({ cols, rows }) => {
-      window.kanvibeDesktop!.resizeTerminal(taskId, cols, rows);
-    });
-
     const syncTerminalSize = () => {
       fitAddon.fit();
       window.kanvibeDesktop!.resizeTerminal(taskId, terminal.cols, terminal.rows);
@@ -86,6 +107,42 @@ export default function Terminal({ taskId }: TerminalProps) {
         syncTerminalSize();
       });
     };
+
+    void loadNerdFontFamily().then((fontFamily) => {
+      if (!fontFamily || isTerminalDisposed) {
+        return;
+      }
+
+      terminal.options.fontFamily = fontFamily;
+      scheduleTerminalSync();
+    });
+
+    await new Promise<void>((resolve) => {
+      requestAnimationFrame(() => {
+        fitAddon.fit();
+        resolve();
+      });
+    });
+
+    const terminalReady = await window.kanvibeDesktop!.openTerminal(taskId, terminal.cols, terminal.rows);
+    if (!terminalReady.ok) {
+      terminal.writeln(`\r\n\x1b[31m${terminalReady.error || "터미널 연결 실패"}\x1b[0m`);
+      return () => {
+        isTerminalDisposed = true;
+        disposeMacShiftSelectionPatch();
+        unsubscribeData();
+        unsubscribeClose();
+        terminal.dispose();
+      };
+    }
+
+    terminal.onData((data) => {
+      window.kanvibeDesktop!.writeTerminal(taskId, data);
+    });
+
+    terminal.onResize(({ cols, rows }) => {
+      window.kanvibeDesktop!.resizeTerminal(taskId, cols, rows);
+    });
 
     const focusCurrentTerminal = () => {
       terminal.focus();
@@ -114,6 +171,7 @@ export default function Terminal({ taskId }: TerminalProps) {
     window.addEventListener("focus", handleWindowFocus);
 
     return () => {
+      isTerminalDisposed = true;
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       window.removeEventListener("focus", handleWindowFocus);
       disposeMacShiftSelectionPatch();
