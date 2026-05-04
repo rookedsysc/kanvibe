@@ -57,6 +57,10 @@ function openTaskNotificationInNewWindow(notification: AppNotification) {
   openInternalRouteInNewWindow(getTaskNotificationPath(notification));
 }
 
+function sortNotificationsByNewestFirst(notifications: AppNotification[]) {
+  return [...notifications].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+}
+
 const NotificationCenterButton = forwardRef<NotificationCenterButtonHandle, NotificationCenterButtonProps>(function NotificationCenterButton(
   { buttonClassName = "", panelClassName = "" },
   ref,
@@ -113,7 +117,7 @@ const NotificationCenterButton = forwardRef<NotificationCenterButtonHandle, Noti
 
   useEffect(() => {
     async function load() {
-      setNotifications(await listNotifications());
+      setNotifications(sortNotificationsByNewestFirst(await listNotifications()));
     }
 
     void load();
