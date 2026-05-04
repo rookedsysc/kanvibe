@@ -10,9 +10,11 @@ import {
 import { getTaskSearchShortcut } from "@/desktop/renderer/actions/appSettings";
 import { localizeHref, usePathname, useRouter } from "@/desktop/renderer/navigation";
 import { useRefreshSignal } from "@/desktop/renderer/utils/refresh";
+import { openInternalRouteInNewWindow } from "@/desktop/renderer/utils/windowOpen";
 import {
   DEFAULT_TASK_SEARCH_SHORTCUT,
   formatShortcutForDisplay,
+  getCurrentShortcutPlatform,
   matchShortcutEvent,
 } from "@/desktop/renderer/utils/keyboardShortcut";
 import { useEscapeKey } from "@/hooks/useEscapeKey";
@@ -48,11 +50,6 @@ interface WeightedFieldMatch {
 interface TokenMatchSet {
   matches: WeightedFieldMatch[];
   score: number;
-}
-
-function isMacLikePlatform() {
-  return typeof navigator !== "undefined"
-    && (navigator.userAgent.includes("Mac") || navigator.platform.toLowerCase().includes("mac"));
 }
 
 function tokenizeQuery(query: string) {
@@ -212,13 +209,13 @@ export default function TaskQuickSearchDialog({
   const refreshSignal = useRefreshSignal(["all", "settings"]);
   const inputRef = useRef<HTMLInputElement>(null);
   const resultsListRef = useRef<HTMLDivElement>(null);
-  const [savedShortcut, setSavedShortcut] = useState(DEFAULT_TASK_SEARCH_SHORTCUT);
+  const [savedShortcut, setSavedShortcut] = useState<string>(DEFAULT_TASK_SEARCH_SHORTCUT);
   const [isOpen, setIsOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [tasks, setTasks] = useState<SearchableTask[]>([]);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
-  const isMacLike = isMacLikePlatform();
+  const shortcutPlatform = getCurrentShortcutPlatform();
 
   const effectiveShortcut = shortcut || savedShortcut;
   const results = useMemo(() => buildSearchResults(tasks, query), [query, tasks]);
@@ -265,7 +262,7 @@ export default function TaskQuickSearchDialog({
         return;
       }
 
-      if (!matchShortcutEvent(event, effectiveShortcut, isMacLike)) {
+      if (!matchShortcutEvent(event, effectiveShortcut, shortcutPlatform)) {
         return;
       }
 
@@ -282,7 +279,7 @@ export default function TaskQuickSearchDialog({
     return () => {
       window.removeEventListener("keydown", handleGlobalKeyDown);
     };
-  }, [closeDialog, effectiveShortcut, isMacLike, isOpen, openDialog]);
+  }, [closeDialog, effectiveShortcut, isOpen, openDialog, shortcutPlatform]);
 
   useEffect(() => {
     if (!isOpen) {
@@ -339,7 +336,7 @@ export default function TaskQuickSearchDialog({
   function openTaskInNewWindow(taskId: string) {
     const currentLocale = pathname.split("/").filter(Boolean)[0];
     const taskHref = localizeHref(`/task/${taskId}`, currentLocale);
-    window.open(`/#${taskHref}`, "_blank", "noopener,noreferrer");
+    openInternalRouteInNewWindow(taskHref);
     closeDialog();
   }
 
@@ -368,7 +365,7 @@ export default function TaskQuickSearchDialog({
   }, [createBranchTodoFromSelection, isOpen]);
 
   function handleInputKeyDown(event: React.KeyboardEvent<HTMLInputElement>) {
-    if (matchShortcutEvent(event, CREATE_BRANCH_TODO_SHORTCUT, isMacLike)) {
+    if (matchShortcutEvent(event, CREATE_BRANCH_TODO_SHORTCUT, shortcutPlatform)) {
       event.preventDefault();
       createBranchTodoFromSelection();
       return;
@@ -410,7 +407,7 @@ export default function TaskQuickSearchDialog({
     t("hint"),
     boardCommands.canCreateBranchTodo
       ? t("branchTodoHint", {
-          shortcut: formatShortcutForDisplay(CREATE_BRANCH_TODO_SHORTCUT, isMacLike),
+          shortcut: formatShortcutForDisplay(CREATE_BRANCH_TODO_SHORTCUT, shortcutPlatform),
         })
       : null,
   ].filter(Boolean).join(" · ");
@@ -433,7 +430,7 @@ export default function TaskQuickSearchDialog({
             <div>
               <p className="text-sm font-semibold text-text-primary">{t("title")}</p>
               <p className="text-xs text-text-muted">
-                {formatShortcutForDisplay(effectiveShortcut, isMacLike)}
+                {formatShortcutForDisplay(effectiveShortcut, shortcutPlatform)}
               </p>
             </div>
           </div>

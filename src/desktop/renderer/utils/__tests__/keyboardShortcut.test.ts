@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   captureShortcutFromEvent,
   formatShortcutForDisplay,
+  getShortcutPlatformFromNavigator,
+  matchElectronShortcutInput,
   matchShortcutEvent,
 } from "@/desktop/renderer/utils/keyboardShortcut";
 
@@ -49,6 +51,60 @@ describe("keyboardShortcut", () => {
     });
 
     expect(captureShortcutFromEvent(event)).toBe("Ctrl+Shift+P");
+  });
+
+  it("macOS 기본 modifier 입력은 portable Mod shortcut으로 캡처한다", () => {
+    const event = new KeyboardEvent("keydown", {
+      key: "p",
+      metaKey: true,
+      shiftKey: true,
+    });
+
+    expect(captureShortcutFromEvent(event, "mac")).toBe("Mod+Shift+P");
+  });
+
+  it("Linux 기본 modifier 입력은 portable Mod shortcut으로 캡처한다", () => {
+    const event = new KeyboardEvent("keydown", {
+      key: "p",
+      ctrlKey: true,
+      shiftKey: true,
+    });
+
+    expect(captureShortcutFromEvent(event, "linux")).toBe("Mod+Shift+P");
+  });
+
+  it("navigator 정보에서 shortcut platform을 판별한다", () => {
+    expect(getShortcutPlatformFromNavigator({
+      userAgent: "Mozilla/5.0",
+      platform: "MacIntel",
+    })).toBe("mac");
+
+    expect(getShortcutPlatformFromNavigator({
+      userAgent: "Mozilla/5.0 (X11; Linux x86_64)",
+      platform: "Linux x86_64",
+    })).toBe("linux");
+  });
+
+  it("Electron input도 platform별 Mod 조합으로 매칭한다", () => {
+    expect(matchElectronShortcutInput({
+      type: "keyDown",
+      isAutoRepeat: false,
+      key: "n",
+      meta: true,
+      control: false,
+      alt: false,
+      shift: false,
+    }, "Mod+N", "mac")).toBe(true);
+
+    expect(matchElectronShortcutInput({
+      type: "keyDown",
+      isAutoRepeat: false,
+      key: "n",
+      meta: true,
+      control: false,
+      alt: false,
+      shift: false,
+    }, "Mod+N", "linux")).toBe(false);
   });
 
   it("modifier만 누른 경우는 캡처하지 않는다", () => {

@@ -2,14 +2,9 @@
 
 import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { useTranslations } from "next-intl";
-import { matchShortcutEvent } from "@/desktop/renderer/utils/keyboardShortcut";
+import { SHORTCUTS, getCurrentShortcutPlatform, matchShortcutEvent } from "@/desktop/renderer/utils/keyboardShortcut";
 
-const BOARD_PAGE_FIND_SHORTCUT = "Mod+F";
-
-function isMacLikePlatform() {
-  return typeof navigator !== "undefined"
-    && (navigator.userAgent.includes("Mac") || navigator.platform.toLowerCase().includes("mac"));
-}
+const BOARD_PAGE_FIND_SHORTCUT = SHORTCUTS.boardPageFind;
 
 function findPageText(query: string, backwards = false) {
   const trimmedQuery = query.trim();
@@ -27,7 +22,7 @@ export default function BoardPageFindBar() {
   const [isOpen, setIsOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [hasMatch, setHasMatch] = useState<boolean | null>(null);
-  const isMacLike = isMacLikePlatform();
+  const shortcutPlatform = getCurrentShortcutPlatform();
 
   useEffect(() => {
     if (!isOpen) {
@@ -42,7 +37,7 @@ export default function BoardPageFindBar() {
 
   useEffect(() => {
     function handleGlobalKeyDown(event: KeyboardEvent) {
-      if (!matchShortcutEvent(event, BOARD_PAGE_FIND_SHORTCUT, isMacLike)) {
+      if (!matchShortcutEvent(event, BOARD_PAGE_FIND_SHORTCUT, shortcutPlatform)) {
         return;
       }
 
@@ -54,7 +49,7 @@ export default function BoardPageFindBar() {
     return () => {
       window.removeEventListener("keydown", handleGlobalKeyDown);
     };
-  }, [isMacLike]);
+  }, [shortcutPlatform]);
 
   function closeSearchBar() {
     setIsOpen(false);

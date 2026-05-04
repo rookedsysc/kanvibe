@@ -10,6 +10,7 @@ import {
   markNotificationRead,
 } from "@/desktop/renderer/actions/notifications";
 import { redirect } from "@/desktop/renderer/navigation";
+import { openInternalRouteInNewWindow } from "@/desktop/renderer/utils/windowOpen";
 import type { AppNotification } from "@/desktop/shared/notifications";
 
 interface NotificationCenterButtonProps {
@@ -52,7 +53,7 @@ function getTaskNotificationPath(notification: AppNotification) {
 }
 
 function openTaskNotificationInNewWindow(notification: AppNotification) {
-  window.open(`/#${getTaskNotificationPath(notification)}`, "_blank", "noopener,noreferrer");
+  openInternalRouteInNewWindow(getTaskNotificationPath(notification));
 }
 
 const NotificationCenterButton = forwardRef<NotificationCenterButtonHandle, NotificationCenterButtonProps>(function NotificationCenterButton(

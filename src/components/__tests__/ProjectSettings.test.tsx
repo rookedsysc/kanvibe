@@ -241,7 +241,7 @@ describe("ProjectSettings", () => {
 
     // Then
     await waitFor(() => {
-      expect(mockSetTaskSearchShortcut).toHaveBeenCalledWith("Ctrl+Shift+P");
+      expect(mockSetTaskSearchShortcut).toHaveBeenCalledWith("Mod+Shift+P");
     });
     expect(screen.getByText("Ctrl+Shift+P")).toBeTruthy();
   });

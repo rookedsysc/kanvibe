@@ -38,6 +38,7 @@ app.commandLine.appendSwitch("log-level", "3");
 let mainWindow = null;
 let hookServer = null;
 let windowOpenHelpers = null;
+let keyboardShortcutHelpers = null;
 let stopBackgroundTaskSync = null;
 let pendingNotificationActivation = null;
 let diagnostics = null;
@@ -186,6 +187,14 @@ function getWindowOpenHelpers() {
   }
 
   return windowOpenHelpers;
+}
+
+function getKeyboardShortcutHelpers() {
+  if (!keyboardShortcutHelpers) {
+    keyboardShortcutHelpers = require(getRuntimeModulePath(path.join("src", "desktop", "shared", "keyboardShortcut.ts")));
+  }
+
+  return keyboardShortcutHelpers;
 }
 
 function registerRuntimeAliases() {
@@ -614,46 +623,20 @@ function attachWindowHandlers(browserWindow) {
   });
 
   browserWindow.webContents.on("before-input-event", (event, input) => {
-    const isNotificationShortcut =
-      input.type === "keyDown" &&
-      !input.isAutoRepeat &&
-      !input.alt &&
-      input.shift &&
-      (input.control || input.meta) &&
-      input.key.toLowerCase() === "i";
-    const isCreateTaskShortcut =
-      input.type === "keyDown" &&
-      !input.isAutoRepeat &&
-      !input.alt &&
-      !input.shift &&
-      (input.control || input.meta) &&
-      input.key.toLowerCase() === "n";
-    const isNewWindowShortcut =
-      input.type === "keyDown" &&
-      !input.isAutoRepeat &&
-      !input.alt &&
-      input.shift &&
-      (input.control || input.meta) &&
-      input.key.toLowerCase() === "n";
-    const isRefreshShortcut =
-      input.type === "keyDown" &&
-      !input.isAutoRepeat &&
-      !input.alt &&
-      !input.shift &&
-      (input.control || input.meta) &&
-      input.key.toLowerCase() === "r";
+    const {
+      DESKTOP_SHORTCUTS,
+      getShortcutPlatformFromProcessPlatform,
+      matchElectronShortcutInput,
+    } = getKeyboardShortcutHelpers();
+    const shortcutPlatform = getShortcutPlatformFromProcessPlatform(process.platform);
+    const isNotificationShortcut = matchElectronShortcutInput(input, DESKTOP_SHORTCUTS.notificationCenter, shortcutPlatform);
+    const isCreateTaskShortcut = matchElectronShortcutInput(input, DESKTOP_SHORTCUTS.createTask, shortcutPlatform);
+    const isNewWindowShortcut = matchElectronShortcutInput(input, DESKTOP_SHORTCUTS.newWindow, shortcutPlatform);
 
     if (isNotificationShortcut) {
       event.preventDefault();
 
       browserWindow.webContents.send("kanvibe:notification-shortcut");
-      return;
-    }
-
-    if (isRefreshShortcut) {
-      event.preventDefault();
-
-      browserWindow.webContents.send("kanvibe:refresh-shortcut");
       return;
     }
 

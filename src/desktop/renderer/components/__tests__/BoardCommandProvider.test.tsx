@@ -267,35 +267,7 @@ describe("BoardCommandProvider", () => {
     expect(unsubscribe).toHaveBeenCalledTimes(1);
   });
 
-  it("refreshes all kanban data from the desktop refresh shortcut event", () => {
-    let refreshShortcutListener: (() => void) | null = null;
-    const unsubscribe = vi.fn();
-    window.kanvibeDesktop = {
-      isDesktop: true,
-      onRefreshShortcut: vi.fn((listener: () => void) => {
-        refreshShortcutListener = listener;
-        return unsubscribe;
-      }),
-    } as never;
-
-    const { unmount } = renderWithRouter(
-      <BoardCommandProvider>
-        <div />
-      </BoardCommandProvider>,
-    );
-
-    act(() => {
-      refreshShortcutListener?.();
-    });
-
-    expect(window.kanvibeDesktop.onRefreshShortcut).toHaveBeenCalledTimes(1);
-    expect(mocks.triggerDesktopRefresh).toHaveBeenCalledWith("all");
-
-    unmount();
-    expect(unsubscribe).toHaveBeenCalledTimes(1);
-  });
-
-  it("refreshes all kanban data from the global refresh shortcut", () => {
+  it("does not reserve Cmd/Ctrl+R as a Kanvibe global shortcut", () => {
     renderWithRouter(
       <BoardCommandProvider>
         <div />
@@ -307,7 +279,7 @@ describe("BoardCommandProvider", () => {
       ctrlKey: true,
     });
 
-    expect(wasNotPrevented).toBe(false);
-    expect(mocks.triggerDesktopRefresh).toHaveBeenCalledWith("all");
+    expect(wasNotPrevented).toBe(true);
+    expect(mocks.triggerDesktopRefresh).not.toHaveBeenCalled();
   });
 });

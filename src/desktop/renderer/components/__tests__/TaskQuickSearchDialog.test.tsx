@@ -40,6 +40,7 @@ vi.mock("@/desktop/renderer/components/BoardCommandProvider", () => ({
 describe("TaskQuickSearchDialog", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    window.history.replaceState({}, "", "/#/en");
     Object.defineProperty(Element.prototype, "scrollIntoView", {
       configurable: true,
       value: mocks.scrollIntoView,
@@ -160,7 +161,7 @@ describe("TaskQuickSearchDialog", () => {
     });
 
     await waitFor(() => {
-      expect(openWindow).toHaveBeenCalledWith("/#/en/task/task-remote", "_blank", "noopener,noreferrer");
+      expect(openWindow).toHaveBeenCalledWith(`${window.location.origin}/#/en/task/task-remote`, "_blank", "noopener,noreferrer");
     });
     expect(mocks.push).not.toHaveBeenCalled();
     expect(screen.queryByRole("dialog")).toBeNull();
