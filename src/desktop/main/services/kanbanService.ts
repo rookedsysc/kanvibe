@@ -48,6 +48,24 @@ const ACTIVE_PULL_TASK_STATUSES = [
 ];
 const notifiedPullFailureKeys = new Set<string>();
 
+interface CleanupTaskResourcesOptions {
+  throwOnError?: boolean;
+}
+
+interface DoneRollbackSnapshot {
+  id: string;
+  status: TaskStatus;
+  sessionType: SessionType | null;
+  sessionName: string | null;
+  worktreePath: string | null;
+  sshHost: string | null;
+}
+
+export interface DoneCleanupPlan {
+  cleanupTask: KanbanTask;
+  rollbackSnapshot: DoneRollbackSnapshot;
+}
+
 interface GitHubPullRequestInfo {
   url: string | null;
   state: string | null;
@@ -141,6 +159,68 @@ export function scheduleTaskHookInstall(
         });
       });
   }, 0);
+}
+
+export function prepareOptimisticDoneTransition(
+  task: KanbanTask,
+  options: { clearSshHost?: boolean } = {},
+): DoneCleanupPlan {
+  const cleanupTask = { ...task } as KanbanTask;
+  const rollbackSnapshot: DoneRollbackSnapshot = {
+    id: task.id,
+    status: task.status,
+    sessionType: task.sessionType,
+    sessionName: task.sessionName,
+    worktreePath: task.worktreePath,
+    sshHost: task.sshHost,
+  };
+
+  task.status = TaskStatus.DONE;
+  task.sessionType = null;
+  task.sessionName = null;
+  task.worktreePath = null;
+
+  if (options.clearSshHost) {
+    task.sshHost = null;
+  }
+
+  return { cleanupTask, rollbackSnapshot };
+}
+
+export function scheduleDoneCleanupWithRollback(plan: DoneCleanupPlan): void {
+  setTimeout(() => {
+    void cleanupTaskResources(plan.cleanupTask, { throwOnError: true })
+      .catch((error) => rollbackDoneTransition(plan.rollbackSnapshot, error));
+  }, 0);
+}
+
+async function rollbackDoneTransition(
+  snapshot: DoneRollbackSnapshot,
+  cleanupError: unknown,
+): Promise<void> {
+  console.error("Done 리소스 백그라운드 정리 실패, 상태를 롤백합니다:", {
+    taskId: snapshot.id,
+    error: getErrorMessage(cleanupError),
+  });
+
+  try {
+    const repo = await getTaskRepository();
+    const current = await repo.findOneBy({ id: snapshot.id });
+    if (!current || current.status !== TaskStatus.DONE) {
+      return;
+    }
+
+    await repo.update(snapshot.id, {
+      status: snapshot.status,
+      sessionType: snapshot.sessionType,
+      sessionName: snapshot.sessionName,
+      worktreePath: snapshot.worktreePath,
+      sshHost: snapshot.sshHost,
+    });
+    broadcastBoardUpdate();
+  } catch (rollbackError) {
+    console.error("Done 상태 롤백 실패:", rollbackError);
+  }
 }
 
 async function getPrUrlFromGitHubCli(branchName: string, cwd: string, sshHost?: string | null): Promise<string | null> {
@@ -507,10 +587,11 @@ export async function updateTaskStatus(
   if (!task) return null;
 
   if (newStatus === TaskStatus.DONE) {
-    await cleanupTaskResources(task);
-    task.sessionType = null;
-    task.sessionName = null;
-    task.worktreePath = null;
+    const doneCleanupPlan = prepareOptimisticDoneTransition(task);
+    const saved = await repo.save(task);
+    broadcastBoardUpdate();
+    scheduleDoneCleanupWithRollback(doneCleanupPlan);
+    return serialize(saved);
   }
 
   task.status = newStatus;
@@ -568,7 +649,10 @@ export async function updateProjectColor(
 }
 
 /** 작업에 연결된 worktree, 세션, 브랜치를 정리한다. task 레코드는 삭제하지 않는다 */
-export async function cleanupTaskResources(task: KanbanTask): Promise<void> {
+export async function cleanupTaskResources(
+  task: KanbanTask,
+  options: CleanupTaskResourcesOptions = {},
+): Promise<void> {
   let project = null;
   if (task.projectId) {
     const projectRepo = await getProjectRepository();
@@ -576,16 +660,31 @@ export async function cleanupTaskResources(task: KanbanTask): Promise<void> {
   }
 
   const sshHost = task.sshHost || project?.sshHost || null;
+  const cleanupOptions = options.throwOnError
+    ? { throwOnError: true }
+    : undefined;
 
   /** 브랜치별 독립 세션 정리 */
   if (task.sessionType && task.sessionName) {
     try {
-      await removeSessionOnly(
-        task.sessionType,
-        task.sessionName,
-        sshHost
-      );
+      if (cleanupOptions) {
+        await removeSessionOnly(
+          task.sessionType,
+          task.sessionName,
+          sshHost,
+          cleanupOptions,
+        );
+      } else {
+        await removeSessionOnly(
+          task.sessionType,
+          task.sessionName,
+          sshHost,
+        );
+      }
     } catch (error) {
+      if (options.throwOnError) {
+        throw error;
+      }
       console.error("세션 정리 실패:", error);
     }
   }
@@ -607,23 +706,39 @@ export async function cleanupTaskResources(task: KanbanTask): Promise<void> {
       && task.worktreePath === expectedWorktreePath;
 
     if (!canCleanupBranch) {
-      console.warn("worktree/브랜치 정리 건너뜀: task 경로와 project 경로가 일치하지 않습니다.", {
+      const warningPayload = {
         taskId: task.id,
         branchName: task.branchName,
         worktreePath: task.worktreePath,
         projectRepoPath: project?.repoPath ?? null,
         sshHost,
-      });
+      };
+      console.warn("worktree/브랜치 정리 건너뜀: task 경로와 project 경로가 일치하지 않습니다.", warningPayload);
+      if (options.throwOnError) {
+        throw new Error("task 경로와 project 경로가 일치하지 않아 worktree/브랜치 정리를 건너뛰었습니다.");
+      }
       return;
     }
 
     try {
-      await removeWorktreeAndBranch(
-        project?.repoPath || process.cwd(),
-        task.branchName,
-        sshHost
-      );
+      if (cleanupOptions) {
+        await removeWorktreeAndBranch(
+          project?.repoPath || process.cwd(),
+          task.branchName,
+          sshHost,
+          cleanupOptions,
+        );
+      } else {
+        await removeWorktreeAndBranch(
+          project?.repoPath || process.cwd(),
+          task.branchName,
+          sshHost,
+        );
+      }
     } catch (error) {
+      if (options.throwOnError) {
+        throw error;
+      }
       console.error("worktree/브랜치 정리 실패:", error);
     }
   }
@@ -760,28 +875,40 @@ export async function moveTaskToColumn(
   destOrderedIds: string[]
 ): Promise<void> {
   const repo = await getTaskRepository();
+  let doneCleanupPlan: DoneCleanupPlan | null = null;
 
-  if (newStatus === TaskStatus.DONE) {
-    const task = await repo.findOneBy({ id: taskId });
-    if (task) {
-        await cleanupTaskResources(task);
+  try {
+    if (newStatus === TaskStatus.DONE) {
+      const task = await repo.findOneBy({ id: taskId });
+      if (task) {
+        doneCleanupPlan = prepareOptimisticDoneTransition(task);
         await repo.update(taskId, {
           status: newStatus,
           sessionType: null,
           sessionName: null,
           worktreePath: null,
         });
+      }
+    } else {
+      await repo.update(taskId, { status: newStatus });
     }
-  } else {
-    await repo.update(taskId, { status: newStatus });
+
+    const reorderUpdates = destOrderedIds.map((id, index) =>
+      repo.update(id, { displayOrder: index })
+    );
+
+    await Promise.all(reorderUpdates);
+    broadcastBoardUpdate();
+  } catch (error) {
+    if (doneCleanupPlan) {
+      await rollbackDoneTransition(doneCleanupPlan.rollbackSnapshot, error);
+    }
+    throw error;
   }
 
-  const reorderUpdates = destOrderedIds.map((id, index) =>
-    repo.update(id, { displayOrder: index })
-  );
-
-  await Promise.all(reorderUpdates);
-  broadcastBoardUpdate();
+  if (doneCleanupPlan) {
+    scheduleDoneCleanupWithRollback(doneCleanupPlan);
+  }
 }
 
 /**

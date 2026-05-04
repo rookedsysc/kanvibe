@@ -382,25 +382,40 @@ export async function createSessionWithoutWorktree(
   }
 }
 
+interface ResourceCleanupOptions {
+  throwOnError?: boolean;
+}
+
 /** worktree와 브랜치를 삭제한다. 세션은 건드리지 않는다 */
 export async function removeWorktreeAndBranch(
   projectPath: string,
   branchName: string,
   sshHost?: string | null,
+  options: ResourceCleanupOptions = {},
 ): Promise<void> {
+  const worktreePath = buildManagedWorktreePath(projectPath, branchName);
+  const worktreeCommand = options.throwOnError
+    ? `if git -C "${projectPath}" worktree list --porcelain | grep -Fxq "worktree ${worktreePath}"; then git -C "${projectPath}" worktree remove "${worktreePath}" --force; fi`
+    : `git -C "${projectPath}" worktree remove "${worktreePath}" --force`;
+  const branchCommand = options.throwOnError
+    ? `if git -C "${projectPath}" show-ref --verify --quiet "refs/heads/${branchName}"; then git -C "${projectPath}" branch -D "${branchName}"; fi`
+    : `git -C "${projectPath}" branch -D "${branchName}"`;
+
   try {
-    const worktreePath = buildManagedWorktreePath(projectPath, branchName);
-    await execGit(
-      `git -C "${projectPath}" worktree remove "${worktreePath}" --force`,
-      sshHost,
-    );
+    await execGit(worktreeCommand, sshHost);
   } catch {
+    if (options.throwOnError) {
+      throw new Error(`worktree 정리 실패: ${worktreePath}`);
+    }
     // worktree가 이미 삭제된 경우 무시
   }
 
   try {
-    await execGit(`git -C "${projectPath}" branch -D "${branchName}"`, sshHost);
+    await execGit(branchCommand, sshHost);
   } catch {
+    if (options.throwOnError) {
+      throw new Error(`브랜치 정리 실패: ${branchName}`);
+    }
     // 브랜치가 이미 삭제된 경우 무시
   }
 }
@@ -410,6 +425,7 @@ export async function removeSessionOnly(
   sessionType: SessionType,
   sessionName: string,
   sshHost?: string | null,
+  options: ResourceCleanupOptions = {},
 ): Promise<void> {
   try {
     if (sessionType === SessionType.TMUX) {
@@ -424,6 +440,9 @@ export async function removeSessionOnly(
       );
     }
   } catch {
+    if (options.throwOnError) {
+      throw new Error(`세션 정리 실패: ${sessionName}`);
+    }
     // 세션이 이미 종료된 경우 무시
   }
 }

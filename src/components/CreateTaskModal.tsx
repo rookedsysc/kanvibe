@@ -243,6 +243,7 @@ function CreateTaskModalContent({
   return (
     <div
       ref={dialogRef}
+      data-terminal-focus-blocker="true"
       className="fixed inset-0 z-[400] flex items-center justify-center bg-bg-overlay"
       onKeyDownCapture={handleDialogKeyDownCapture}
     >

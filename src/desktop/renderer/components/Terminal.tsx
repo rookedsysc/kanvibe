@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef } from "react";
 import "@xterm/xterm/css/xterm.css";
 import { createTerminalOptions, installMacShiftSelectionPatch } from "@/lib/terminalMouseSelection";
+import { REQUEST_ACTIVE_TERMINAL_FOCUS_EVENT, hasTerminalFocusBlocker } from "@/desktop/renderer/utils/terminalFocus";
 
 interface TerminalProps {
   taskId: string;
@@ -145,6 +146,10 @@ export default function Terminal({ taskId }: TerminalProps) {
     });
 
     const focusCurrentTerminal = () => {
+      if (hasTerminalFocusBlocker()) {
+        return;
+      }
+
       terminal.focus();
     };
 
@@ -167,13 +172,20 @@ export default function Terminal({ taskId }: TerminalProps) {
       scheduleTerminalSync();
     };
 
+    const handleRequestTerminalFocus = () => {
+      focusCurrentTerminal();
+      scheduleTerminalSync();
+    };
+
     document.addEventListener("visibilitychange", handleVisibilityChange);
     window.addEventListener("focus", handleWindowFocus);
+    window.addEventListener(REQUEST_ACTIVE_TERMINAL_FOCUS_EVENT, handleRequestTerminalFocus);
 
     return () => {
       isTerminalDisposed = true;
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       window.removeEventListener("focus", handleWindowFocus);
+      window.removeEventListener(REQUEST_ACTIVE_TERMINAL_FOCUS_EVENT, handleRequestTerminalFocus);
       disposeMacShiftSelectionPatch();
       resizeObserver.disconnect();
       unsubscribeData();

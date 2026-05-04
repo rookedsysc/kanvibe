@@ -17,6 +17,7 @@ import {
   getCurrentShortcutPlatform,
   matchShortcutEvent,
 } from "@/desktop/renderer/utils/keyboardShortcut";
+import { requestActiveTerminalFocusAfterUiSettles } from "@/desktop/renderer/utils/terminalFocus";
 import { useEscapeKey } from "@/hooks/useEscapeKey";
 import { fuzzyMatch, type FuzzyMatch } from "@/utils/fuzzySearch";
 import { CREATE_BRANCH_TODO_SHORTCUT, useBoardCommands } from "@/desktop/renderer/components/BoardCommandProvider";
@@ -235,6 +236,7 @@ export default function TaskQuickSearchDialog({
     setQuery("");
     setSelectedIndex(0);
     setIsLoading(false);
+    requestActiveTerminalFocusAfterUiSettles();
   }, []);
 
   useEffect(() => {
@@ -413,7 +415,7 @@ export default function TaskQuickSearchDialog({
   ].filter(Boolean).join(" · ");
 
   return (
-    <div className="fixed inset-0 z-[500] flex items-start justify-center bg-black/45 px-4 pt-24">
+    <div data-terminal-focus-blocker="true" className="fixed inset-0 z-[500] flex items-start justify-center bg-black/45 px-4 pt-24">
       <button
         type="button"
         aria-label={tc("close")}

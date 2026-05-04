@@ -156,6 +156,43 @@ describe("Desktop Terminal", () => {
     expect(mockResizeTerminal).toHaveBeenCalledWith("task-1", 80, 24);
   });
 
+  it("active terminal focus 요청을 받으면 xterm 입력 포커스를 맞춘다", async () => {
+    render(<Terminal taskId="task-1" />);
+
+    await waitFor(() => {
+      expect(mockOpenTerminal).toHaveBeenCalledWith("task-1", 80, 24);
+    });
+    mockTerminalFocus.mockClear();
+
+    await act(async () => {
+      window.dispatchEvent(new Event("kanvibe:request-terminal-focus"));
+    });
+
+    await waitFor(() => {
+      expect(mockTerminalFocus).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it("terminal focus blocker가 열려 있으면 active terminal focus 요청을 무시한다", async () => {
+    render(<Terminal taskId="task-1" />);
+
+    await waitFor(() => {
+      expect(mockOpenTerminal).toHaveBeenCalledWith("task-1", 80, 24);
+    });
+    mockTerminalFocus.mockClear();
+
+    const blocker = document.createElement("div");
+    blocker.setAttribute("data-terminal-focus-blocker", "true");
+    document.body.appendChild(blocker);
+
+    await act(async () => {
+      window.dispatchEvent(new Event("kanvibe:request-terminal-focus"));
+    });
+
+    expect(mockTerminalFocus).not.toHaveBeenCalled();
+    blocker.remove();
+  });
+
   it("Nerd Font 로딩이 느려도 터미널 연결을 먼저 시작한다", async () => {
     // Given
     const fontsReady = createDeferred<void>();
