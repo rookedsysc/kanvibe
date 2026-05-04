@@ -41,6 +41,10 @@ export const DESKTOP_SHORTCUTS = {
   newWindow: SHORTCUTS.newWindow,
 } as const;
 
+export const BLOCKED_DESKTOP_SHORTCUTS = {
+  reload: "Mod+R",
+} as const;
+
 export const DEFAULT_TASK_SEARCH_SHORTCUT = SHORTCUTS.taskSearchDefault;
 
 function normalizeShortcutPlatform(platform: ShortcutPlatformInput): ShortcutPlatform {
@@ -234,6 +238,24 @@ export function matchElectronShortcutInput(
   }, shortcut, platform);
 }
 
+export function isBlockedShortcutEvent(
+  event: ShortcutInput,
+  platform: ShortcutPlatformInput,
+): boolean {
+  return Object.values(BLOCKED_DESKTOP_SHORTCUTS).some((shortcut) => (
+    matchShortcutEvent(event, shortcut, platform)
+  ));
+}
+
+export function isBlockedElectronShortcutInput(
+  input: ElectronShortcutInput,
+  platform: ShortcutPlatformInput,
+): boolean {
+  return Object.values(BLOCKED_DESKTOP_SHORTCUTS).some((shortcut) => (
+    matchElectronShortcutInput(input, shortcut, platform)
+  ));
+}
+
 export function captureShortcutFromEvent(
   event: ShortcutInput,
   platform?: ShortcutPlatformInput,
@@ -284,5 +306,13 @@ export function captureShortcutFromEvent(
     return null;
   }
 
-  return [...MODIFIER_ORDER.filter((modifier) => modifiers.has(modifier)), key].join("+");
+  const shortcut = [...MODIFIER_ORDER.filter((modifier) => modifiers.has(modifier)), key].join("+");
+  if (platform !== undefined && Object.values(BLOCKED_DESKTOP_SHORTCUTS).some((blockedShortcut) => (
+    normalizeShortcutParts(blockedShortcut).key === key
+    && matchShortcutEvent(event, blockedShortcut, platform)
+  ))) {
+    return null;
+  }
+
+  return shortcut;
 }

@@ -3,6 +3,8 @@ import {
   captureShortcutFromEvent,
   formatShortcutForDisplay,
   getShortcutPlatformFromNavigator,
+  isBlockedElectronShortcutInput,
+  isBlockedShortcutEvent,
   matchElectronShortcutInput,
   matchShortcutEvent,
 } from "@/desktop/renderer/utils/keyboardShortcut";
@@ -105,6 +107,40 @@ describe("keyboardShortcut", () => {
       alt: false,
       shift: false,
     }, "Mod+N", "linux")).toBe(false);
+  });
+
+  it("Cmd/Ctrl+R은 앱에서 차단할 shortcut으로 판별한다", () => {
+    expect(isBlockedShortcutEvent(new KeyboardEvent("keydown", {
+      key: "r",
+      metaKey: true,
+    }), "mac")).toBe(true);
+
+    expect(isBlockedShortcutEvent(new KeyboardEvent("keydown", {
+      key: "r",
+      ctrlKey: true,
+    }), "linux")).toBe(true);
+
+    expect(isBlockedShortcutEvent(new KeyboardEvent("keydown", {
+      key: "r",
+      ctrlKey: true,
+      shiftKey: true,
+    }), "linux")).toBe(false);
+  });
+
+  it("Electron Cmd/Ctrl+R input도 앱에서 차단할 shortcut으로 판별한다", () => {
+    expect(isBlockedElectronShortcutInput({
+      type: "keyDown",
+      isAutoRepeat: false,
+      key: "r",
+      control: true,
+    }, "linux")).toBe(true);
+  });
+
+  it("Cmd/Ctrl+R은 사용자 지정 shortcut으로 캡처하지 않는다", () => {
+    expect(captureShortcutFromEvent(new KeyboardEvent("keydown", {
+      key: "r",
+      ctrlKey: true,
+    }), "linux")).toBeNull();
   });
 
   it("modifier만 누른 경우는 캡처하지 않는다", () => {

@@ -17,9 +17,10 @@ describe("desktop shortcut routing", () => {
     expect(source).toContain("void createAppWindow(currentUrl)");
   });
 
-  it("does not register a Kanvibe Cmd/Ctrl+R refresh shortcut", () => {
+  it("blocks Cmd/Ctrl+R without registering a Kanvibe refresh shortcut", () => {
     const source = readMainSource();
 
+    expect(source).toContain("isBlockedElectronShortcutInput");
     expect(source).not.toContain("kanvibe:refresh-shortcut");
     expect(source).not.toContain("isRefreshShortcut");
   });

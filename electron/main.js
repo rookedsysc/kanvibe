@@ -626,12 +626,19 @@ function attachWindowHandlers(browserWindow) {
     const {
       DESKTOP_SHORTCUTS,
       getShortcutPlatformFromProcessPlatform,
+      isBlockedElectronShortcutInput,
       matchElectronShortcutInput,
     } = getKeyboardShortcutHelpers();
     const shortcutPlatform = getShortcutPlatformFromProcessPlatform(process.platform);
+    const isBlockedShortcut = isBlockedElectronShortcutInput(input, shortcutPlatform);
     const isNotificationShortcut = matchElectronShortcutInput(input, DESKTOP_SHORTCUTS.notificationCenter, shortcutPlatform);
     const isCreateTaskShortcut = matchElectronShortcutInput(input, DESKTOP_SHORTCUTS.createTask, shortcutPlatform);
     const isNewWindowShortcut = matchElectronShortcutInput(input, DESKTOP_SHORTCUTS.newWindow, shortcutPlatform);
+
+    if (isBlockedShortcut) {
+      event.preventDefault();
+      return;
+    }
 
     if (isNotificationShortcut) {
       event.preventDefault();

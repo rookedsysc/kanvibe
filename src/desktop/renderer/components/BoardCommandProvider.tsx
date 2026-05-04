@@ -11,7 +11,12 @@ import {
   type PropsWithChildren,
 } from "react";
 import { useRouter } from "@/desktop/renderer/navigation";
-import { SHORTCUTS, getCurrentShortcutPlatform, matchShortcutEvent } from "@/desktop/renderer/utils/keyboardShortcut";
+import {
+  SHORTCUTS,
+  getCurrentShortcutPlatform,
+  isBlockedShortcutEvent,
+  matchShortcutEvent,
+} from "@/desktop/renderer/utils/keyboardShortcut";
 
 export const BOARD_NOTIFICATION_SHORTCUT = SHORTCUTS.boardNotification;
 export const BOARD_PROJECT_FILTER_SHORTCUT = SHORTCUTS.boardProjectFilter;
@@ -114,6 +119,11 @@ export function BoardCommandProvider({ children }: PropsWithChildren) {
 
   useEffect(() => {
     function handleGlobalKeyDown(event: KeyboardEvent) {
+      if (isBlockedShortcutEvent(event, shortcutPlatform)) {
+        event.preventDefault();
+        return;
+      }
+
       if (isTaskQuickSearchOpen || shouldIgnoreGlobalShortcut(event.target)) {
         return;
       }

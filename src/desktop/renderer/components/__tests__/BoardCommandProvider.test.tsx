@@ -267,7 +267,7 @@ describe("BoardCommandProvider", () => {
     expect(unsubscribe).toHaveBeenCalledTimes(1);
   });
 
-  it("does not reserve Cmd/Ctrl+R as a Kanvibe global shortcut", () => {
+  it("blocks Cmd/Ctrl+R so native reload shortcuts cannot run", () => {
     renderWithRouter(
       <BoardCommandProvider>
         <div />
@@ -279,7 +279,7 @@ describe("BoardCommandProvider", () => {
       ctrlKey: true,
     });
 
-    expect(wasNotPrevented).toBe(true);
+    expect(wasNotPrevented).toBe(false);
     expect(mocks.triggerDesktopRefresh).not.toHaveBeenCalled();
   });
 });
