@@ -292,13 +292,10 @@ export async function attachRemoteSession(
   const attachCommand = sessionType === SessionType.TMUX
     ? buildRemoteTmuxAttachCommand(sessionName, worktreePath, tmuxPaneLayout)
     : `exec zellij attach "${sessionName}"`;
-  const args = [
-    ...buildSSHArgs(sshConfig, {
-      forceTty: true,
-      trustedX11Forwarding: hasLocalX11Display(),
-    }),
-    buildRemoteShellCommand(attachCommand),
-  ];
+  const args = buildSSHArgs(sshConfig, {
+    forceTty: true,
+    trustedX11Forwarding: hasLocalX11Display(),
+  });
 
   if (shouldLogTerminalSpawn()) {
     console.log(`[터미널] Remote PTY spawn: shell=ssh, args=${JSON.stringify(args)}`);
@@ -343,7 +340,8 @@ export async function attachRemoteSession(
     detachSession(taskId, "remote-pty-exit");
   });
 
-  debugLog("Remote PTY attachCommand 인자 전달 완료", { taskId, byteLength: attachCommand.length });
+  ptyProcess.write(`${attachCommand}\r`);
+  debugLog("Remote PTY attachCommand 전송 완료", { taskId, byteLength: attachCommand.length });
 
   ws.on("message", (message) => {
     handleTerminalMessage(ptyProcess, message.toString());
@@ -356,14 +354,6 @@ export async function attachRemoteSession(
       detachSession(taskId, "remote-ws-close");
     }
   });
-}
-
-function buildRemoteShellCommand(command: string): string {
-  return `sh -lc ${quoteForPosixShell(command)}`;
-}
-
-function quoteForPosixShell(value: string): string {
-  return `'${value.replace(/'/g, `'"'"'`)}'`;
 }
 
 function buildRemoteTmuxAttachCommand(
