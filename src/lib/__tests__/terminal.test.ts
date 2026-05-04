@@ -2,6 +2,7 @@
  * @vitest-environment node
  */
 import path from "path";
+import { spawnSync } from "child_process";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { SessionType } from "@/entities/KanbanTask";
 import { PaneLayoutType } from "@/entities/PaneLayoutConfig";
@@ -68,6 +69,22 @@ function findExecSyncCall(pattern: string): string | undefined {
   return mockExecSync.mock.calls
     .map((call) => call[0] as string)
     .find((cmd) => cmd.includes(pattern));
+}
+
+function extractRemoteShellPayload(command: string): string {
+  const prefix = "sh -lc ";
+  expect(command.startsWith(prefix)).toBe(true);
+
+  const quotedPayload = command.slice(prefix.length);
+  expect(quotedPayload.startsWith("'")).toBe(true);
+  expect(quotedPayload.endsWith("'")).toBe(true);
+
+  return quotedPayload.slice(1, -1).replace(/'"'"'/g, "'");
+}
+
+function expectValidPosixShellSyntax(command: string): void {
+  const result = spawnSync("sh", ["-n", "-c", command], { encoding: "utf-8" });
+  expect(result.status, result.stderr).toBe(0);
 }
 
 describe("attachLocalSession — tmux 세션 자동 생성", () => {
@@ -447,6 +464,46 @@ describe("attachRemoteSession — ssh 바이너리 기반 연결", () => {
       expect(mockPtyWrite).not.toHaveBeenCalledWith(
         expect.stringContaining('tmux has-session -t "remote-session"'),
       );
+    } finally {
+      if (originalDisplay === undefined) {
+        delete process.env.DISPLAY;
+      } else {
+        process.env.DISPLAY = originalDisplay;
+      }
+    }
+  });
+
+  it("should build a POSIX-sh-valid remote tmux attach command", async () => {
+    // Given
+    const originalDisplay = process.env.DISPLAY;
+    delete process.env.DISPLAY;
+    const { attachRemoteSession } = await import("@/lib/terminal");
+    const nodePty = await import("node-pty");
+
+    try {
+      // When
+      await attachRemoteSession(
+        "task-r-shell",
+        "remote-host",
+        SessionType.TMUX,
+        "remote-session",
+        createMockWs(),
+        {
+          host: "remote-host",
+          hostname: "example.com",
+          port: 2202,
+          username: "tester",
+          privateKeyPath: "/tmp/test-key",
+        },
+        120,
+        30,
+        "/remote/worktree",
+      );
+
+      // Then
+      const sshArgs = vi.mocked(nodePty.spawn).mock.calls[0][1] as string[];
+      const remoteShellPayload = extractRemoteShellPayload(sshArgs.at(-1) ?? "");
+      expectValidPosixShellSyntax(remoteShellPayload);
     } finally {
       if (originalDisplay === undefined) {
         delete process.env.DISPLAY;

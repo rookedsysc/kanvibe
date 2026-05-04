@@ -383,9 +383,7 @@ function buildRemoteTmuxAttachCommand(
     : [`tmux new-session -d -s "${sessionName}"`];
 
   return [
-    `if tmux has-session -t "${sessionName}" 2>/dev/null; then`,
-    `  ${attachCommand}`,
-    "fi",
+    `if tmux has-session -t "${sessionName}" 2>/dev/null; then ${attachCommand}; fi`,
     ...bootstrapCommands,
     attachCommand,
   ].join("; ");
