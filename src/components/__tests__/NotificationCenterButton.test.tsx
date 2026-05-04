@@ -51,6 +51,7 @@ function NotificationShortcutHarness() {
 describe("NotificationCenterButton", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    window.history.replaceState({}, "", "/#/en");
     window.kanvibeDesktop = {
       onNotificationsChanged: vi.fn(() => undefined),
     } as Partial<NonNullable<Window["kanvibeDesktop"]>> as NonNullable<Window["kanvibeDesktop"]>;
@@ -182,7 +183,7 @@ describe("NotificationCenterButton", () => {
     fireEvent.click(screen.getByRole("button", { name: /Existing task/i }), { shiftKey: true });
 
     await waitFor(() => {
-      expect(openWindow).toHaveBeenCalledWith("/#/en/task/task-1", "_blank", "noopener,noreferrer");
+      expect(openWindow).toHaveBeenCalledWith(`${window.location.origin}/#/en/task/task-1`, "_blank", "noopener,noreferrer");
     });
     expect(mockRedirect).not.toHaveBeenCalled();
   });
@@ -259,7 +260,7 @@ describe("NotificationCenterButton", () => {
     fireEvent.keyDown(window, { key: "Enter", shiftKey: true });
 
     await waitFor(() => {
-      expect(openWindow).toHaveBeenCalledWith("/#/en/task/task-1", "_blank", "noopener,noreferrer");
+      expect(openWindow).toHaveBeenCalledWith(`${window.location.origin}/#/en/task/task-1`, "_blank", "noopener,noreferrer");
     });
     expect(mockRedirect).not.toHaveBeenCalled();
   });

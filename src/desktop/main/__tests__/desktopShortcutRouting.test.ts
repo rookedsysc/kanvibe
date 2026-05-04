@@ -7,12 +7,21 @@ function readMainSource() {
 }
 
 describe("desktop shortcut routing", () => {
-  it("routes Cmd/Ctrl+N to task creation while preserving Cmd/Ctrl+Shift+N new windows", () => {
+  it("routes platform-aware shortcuts through the shared shortcut matcher", () => {
     const source = readMainSource();
 
-    expect(source).toMatch(/const isCreateTaskShortcut =[\s\S]*!input\.shift[\s\S]*input\.key\.toLowerCase\(\) === "n";/);
-    expect(source).toMatch(/const isNewWindowShortcut =[\s\S]*input\.shift[\s\S]*input\.key\.toLowerCase\(\) === "n";/);
+    expect(source).toContain("matchElectronShortcutInput");
+    expect(source).toContain("DESKTOP_SHORTCUTS.createTask");
+    expect(source).toContain("DESKTOP_SHORTCUTS.newWindow");
     expect(source).toContain('browserWindow.webContents.send("kanvibe:create-task-shortcut")');
     expect(source).toContain("void createAppWindow(currentUrl)");
+  });
+
+  it("blocks Cmd/Ctrl+R without registering a Kanvibe refresh shortcut", () => {
+    const source = readMainSource();
+
+    expect(source).toContain("isBlockedElectronShortcutInput");
+    expect(source).not.toContain("kanvibe:refresh-shortcut");
+    expect(source).not.toContain("isRefreshShortcut");
   });
 });
