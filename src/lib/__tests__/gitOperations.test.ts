@@ -72,6 +72,7 @@ describe("gitOperations.resolvePathForShell", () => {
 
     // Then
     expect(result).toBe("ok");
+    const execOptions = mocks.exec.mock.calls[0]?.[1] as { env?: { PATH?: string } };
     expect(mocks.exec).toHaveBeenCalledWith(
       "command -v tmux",
       expect.objectContaining({
@@ -83,6 +84,9 @@ describe("gitOperations.resolvePathForShell", () => {
       }),
       expect.any(Function),
     );
+    if (process.platform === "darwin") {
+      expect(execOptions.env?.PATH).toContain(".opencode/bin");
+    }
   });
 
   it("원격 명령 실행은 ssh 바이너리와 옵션을 사용한다", async () => {

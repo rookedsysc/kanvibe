@@ -14,6 +14,7 @@ function getUserLocalCommandPaths(homeDirectory: string): string[] {
   return [
     path.join(homeDirectory, ".local", "bin"),
     path.join(homeDirectory, ".cargo", "bin"),
+    path.join(homeDirectory, ".opencode", "bin"),
     path.join(homeDirectory, "Library", "pnpm"),
     path.join(homeDirectory, ".bun", "bin"),
   ];
