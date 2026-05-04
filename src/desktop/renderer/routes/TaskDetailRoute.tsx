@@ -57,7 +57,6 @@ interface TaskDetailState {
   projects: Awaited<ReturnType<typeof getAllProjects>>;
   defaultSessionType: Awaited<ReturnType<typeof getDefaultSessionType>>;
   sidebarDefaultCollapsed: boolean;
-  sidebarHintDismissed: boolean;
   doneAlertDismissed: boolean;
 }
 
@@ -80,8 +79,6 @@ const DEFAULT_DETAIL_STATE: Omit<TaskDetailState, "task"> = {
   projects: [],
   defaultSessionType: SessionType.TMUX,
   sidebarDefaultCollapsed: false,
-  // 전역 설정이 로드되기 전에는 stale cache가 dismiss된 힌트를 다시 띄우지 않도록 숨긴다.
-  sidebarHintDismissed: true,
   doneAlertDismissed: false,
 };
 
@@ -94,11 +91,10 @@ function normalizeCachedTaskDetailState(cachedState: TaskDetailState | null): Ta
     return null;
   }
 
-  return {
-    ...cachedState,
-    // route cache는 태스크별이지만 힌트 dismiss는 전역 설정이라 cached false를 신뢰하지 않는다.
-    sidebarHintDismissed: true,
+  const { sidebarHintDismissed: _legacySidebarHintDismissed, ...routeState } = cachedState as TaskDetailState & {
+    sidebarHintDismissed?: boolean;
   };
+  return routeState;
 }
 
 export default function TaskDetailRoute() {
@@ -116,6 +112,7 @@ export default function TaskDetailRoute() {
   const [isCreateTaskModalOpen, setIsCreateTaskModalOpen] = useState(false);
   const [createTaskDefaults, setCreateTaskDefaults] = useState<BranchTodoDefaults | null>(null);
   const [needsMacDesktopHeaderOffset, setNeedsMacDesktopHeaderOffset] = useState(false);
+  const [isSidebarHintDismissed, setIsSidebarHintDismissed] = useState(true);
   const notificationCenterRef = useRef<NotificationCenterButtonHandle>(null);
   const hasTerminal = !!(state?.task.sessionType && state.task.sessionName);
 
@@ -288,10 +285,10 @@ export default function TaskDetailRoute() {
                   projects,
                   defaultSessionType,
                   sidebarDefaultCollapsed,
-                  sidebarHintDismissed,
                   doneAlertDismissed,
                 }
               : current);
+            setIsSidebarHintDismissed(sidebarHintDismissed);
           } catch (error) {
             console.error("Failed to load task detail supplemental data:", error);
           }
@@ -364,12 +361,7 @@ export default function TaskDetailRoute() {
   }
 
   function handleSidebarHintDismissed() {
-    setState((current) => current
-      ? {
-          ...current,
-          sidebarHintDismissed: true,
-        }
-      : current);
+    setIsSidebarHintDismissed(true);
   }
 
   function closeCreateTaskModal() {
@@ -382,7 +374,7 @@ export default function TaskDetailRoute() {
     <div className="h-screen flex flex-col lg:flex-row bg-bg-page p-4 gap-4">
       <CollapsibleSidebar
         defaultCollapsed={state.sidebarDefaultCollapsed}
-        showHint={!state.sidebarHintDismissed}
+        showHint={!isSidebarHintDismissed}
         onDismissHint={handleSidebarHintDismissed}
       >
         <div className={`flex flex-col gap-4 ${needsMacDesktopHeaderOffset ? "pt-10" : ""}`}>

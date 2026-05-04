@@ -279,7 +279,6 @@ describe("TaskDetailRoute", () => {
         sources: [],
       },
       sidebarDefaultCollapsed: false,
-      sidebarHintDismissed: false,
       doneAlertDismissed: false,
     }));
     const deferredTask = createDeferred<{
@@ -387,7 +386,7 @@ describe("TaskDetailRoute", () => {
     expect(screen.queryByText("sidebar hint visible")).toBeNull();
   });
 
-  it("사이드바 힌트를 닫으면 현재 route state와 cache를 전역 dismissed 상태로 갱신한다", async () => {
+  it("사이드바 힌트를 닫아도 route cache에는 앱 전체 힌트 설정을 저장하지 않는다", async () => {
     mocks.getTaskById.mockResolvedValue({
       id: "task-1",
       title: "task title",
@@ -416,8 +415,8 @@ describe("TaskDetailRoute", () => {
     });
 
     await waitFor(() => {
-      const cached = JSON.parse(sessionStorage.getItem(TASK_DETAIL_CACHE_KEY) ?? "{}") as { sidebarHintDismissed?: boolean };
-      expect(cached.sidebarHintDismissed).toBe(true);
+      const cached = JSON.parse(sessionStorage.getItem(TASK_DETAIL_CACHE_KEY) ?? "{}") as Record<string, unknown>;
+      expect(cached).not.toHaveProperty("sidebarHintDismissed");
     });
   });
 
