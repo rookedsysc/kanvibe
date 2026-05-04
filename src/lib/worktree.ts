@@ -3,7 +3,6 @@ import { writeFile } from "fs/promises";
 import { SessionType } from "@/entities/KanbanTask";
 import { PaneLayoutType, type PaneCommand } from "@/entities/PaneLayoutConfig";
 import { execGit } from "@/lib/gitOperations";
-import { ensureRemoteSessionDependency } from "@/lib/remoteSessionDependency";
 import { getEffectivePaneLayout } from "@/desktop/main/services/paneLayoutService";
 
 interface WorktreeSession {
@@ -108,31 +107,6 @@ export function buildTmuxSessionBootstrapCommands(
         )
       : []),
   ];
-}
-
-async function createTmuxSession(
-  sessionName: string,
-  workingDir: string,
-  sshHost?: string | null,
-): Promise<void> {
-  await execGit(buildTmuxCreateSessionCommand(sessionName, workingDir), sshHost);
-}
-
-
-/**
- * tmux 세션에 pane 레이아웃을 적용하고 각 pane에 시작 명령어를 실행한다.
- * 분할 실패 시에도 기본 window는 유지된다 (graceful fallback).
- */
-async function applyPaneLayout(
-  sessionName: string,
-  layoutType: PaneLayoutType,
-  panes: PaneCommand[],
-  worktreePath: string,
-  sshHost?: string | null,
-): Promise<void> {
-  for (const command of buildTmuxPaneLayoutCommands(sessionName, layoutType, panes, worktreePath)) {
-    await execGit(command, sshHost);
-  }
 }
 
 /** KDL 문자열 내 특수문자를 이스케이프한다 */
@@ -248,35 +222,9 @@ async function writeLayoutToWorktree(
 }
 
 /**
- * pane 레이아웃을 백그라운드에서 적용한다.
- * task 생성 흐름을 차단하지 않으며, 실패해도 기본 window는 유지된다.
- */
-function applyPaneLayoutAsync(
-  sessionName: string,
-  worktreePath: string,
-  projectId?: string,
-): void {
-  (async () => {
-    try {
-      const layoutConfig = await getEffectivePaneLayout(projectId);
-      if (layoutConfig && layoutConfig.layoutType !== PaneLayoutType.SINGLE) {
-        await applyPaneLayout(
-          sessionName,
-          layoutConfig.layoutType as PaneLayoutType,
-          layoutConfig.panes,
-          worktreePath,
-        );
-      }
-    } catch (error) {
-      console.error("Pane 레이아웃 적용 실패 (기본 window 유지):", error);
-    }
-  })();
-}
-
-/**
  * git worktree를 생성하고 브랜치별 독립 세션을 생성한다.
- * 세션이 없으면 자동 생성한다. sshHost가 지정되면 원격에서 실행한다.
- * 로컬 세션인 경우 projectId를 기반으로 pane 레이아웃 설정을 적용한다.
+ * 세션은 터미널 연결 시점에 생성한다.
+ * 로컬 Zellij 세션인 경우 연결 시점에 사용할 KDL 레이아웃 파일만 준비한다.
  */
 export async function createWorktreeWithSession(
   projectPath: string,
@@ -286,8 +234,6 @@ export async function createWorktreeWithSession(
   sshHost?: string | null,
   projectId?: string | null,
 ): Promise<WorktreeSession> {
-  await ensureRemoteSessionDependency(sessionType, sshHost);
-
   const projectName = path.basename(projectPath);
   const worktreePath = buildManagedWorktreePath(projectPath, branchName);
   const sessionName = formatSessionName(projectName, branchName);
@@ -299,18 +245,6 @@ export async function createWorktreeWithSession(
 
   try {
     if (sessionType === SessionType.TMUX) {
-      /**
-       * 원격 호스트에서는 비대화형 SSH로 tmux 서버를 시작할 수 없으므로
-       * 세션 생성을 터미널 연결 시 PTY가 확보된 후로 미룬다.
-       */
-      if (!sshHost) {
-        const hasSession = await isSessionAlive(sessionType, sessionName, sshHost);
-        if (!hasSession) {
-          await createTmuxSession(sessionName, worktreePath, sshHost);
-        }
-        applyPaneLayoutAsync(sessionName, worktreePath, projectId ?? undefined);
-      }
-
       return { worktreePath, sessionName };
     } else {
       /**
@@ -354,23 +288,16 @@ export async function createSessionWithoutWorktree(
   projectPath: string,
   branchName: string,
   sessionType: SessionType,
-  sshHost?: string | null,
-  workingDir?: string,
+  _sshHost?: string | null,
+  _workingDir?: string,
 ): Promise<{ sessionName: string }> {
-  await ensureRemoteSessionDependency(sessionType, sshHost);
+  void _sshHost;
+  void _workingDir;
 
   const projectName = path.basename(projectPath);
   const sessionName = formatSessionName(projectName, branchName);
-  const cwd = workingDir || projectPath;
 
   if (sessionType === SessionType.TMUX) {
-    if (!sshHost) {
-      const hasSession = await isSessionAlive(sessionType, sessionName, sshHost);
-      if (!hasSession) {
-        await createTmuxSession(sessionName, cwd, sshHost);
-      }
-    }
-
     return { sessionName };
   } else {
     /**

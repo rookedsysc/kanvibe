@@ -73,16 +73,19 @@ describe("CreateTaskModal", () => {
     mockGetProjectBranches.mockResolvedValue(["main", "develop"]);
   });
 
-  it("원격 의존성 프롬프트를 취소하면 작업 생성을 진행하지 않는다", async () => {
+  it("로컬 프로젝트 task 생성도 세션 도구 프롬프트 없이 생성 요청을 보낸다", async () => {
     // Given
+    const onClose = vi.fn();
     mockEnsureSessionDependencyWithPrompt.mockResolvedValue(false);
+    mockCreateTask.mockResolvedValue({ id: "task-local-fast" });
+    const localProject = createProject({ sshHost: null });
 
     render(
       <CreateTaskModal
         isOpen
-        onClose={vi.fn()}
+        onClose={onClose}
         sshHosts={["remote-box"]}
-        projects={[createProject()]}
+        projects={[localProject]}
         defaultProjectId="project-remote"
       />,
     );
@@ -97,20 +100,32 @@ describe("CreateTaskModal", () => {
 
     // Then
     await waitFor(() => {
-      expect(mockEnsureSessionDependencyWithPrompt).toHaveBeenCalledWith("tmux", "remote-box", expect.any(Function));
+      expect(mockCreateTask).toHaveBeenCalledWith({
+        title: "fix/session-prompt",
+        description: undefined,
+        branchName: "fix/session-prompt",
+        baseBranch: "main",
+        sessionType: "tmux",
+        sshHost: undefined,
+        projectId: "project-remote",
+        priority: undefined,
+      });
     });
-    expect(mockCreateTask).not.toHaveBeenCalled();
-    expect(mockPush).not.toHaveBeenCalled();
+    expect(mockEnsureSessionDependencyWithPrompt).not.toHaveBeenCalled();
+    expect(onClose).toHaveBeenCalled();
+    expect(mockPush).toHaveBeenCalledWith("/task/task-local-fast");
   });
 
-  it("의존성 확인이 실패하면 오류를 보여주고 생성 요청을 멈춘다", async () => {
+  it("원격 프로젝트 task 생성은 세션 도구 프롬프트 없이 생성 요청을 보낸다", async () => {
     // Given
-    mockEnsureSessionDependencyWithPrompt.mockRejectedValue(new Error("tmux 설치 실패"));
+    const onClose = vi.fn();
+    mockEnsureSessionDependencyWithPrompt.mockResolvedValue(true);
+    mockCreateTask.mockResolvedValue({ id: "task-remote-fast" });
 
     render(
       <CreateTaskModal
         isOpen
-        onClose={vi.fn()}
+        onClose={onClose}
         sshHosts={["remote-box"]}
         projects={[createProject()]}
         defaultProjectId="project-remote"
@@ -122,14 +137,25 @@ describe("CreateTaskModal", () => {
     });
 
     // When
-    fireEvent.change(screen.getByPlaceholderText("branchPlaceholder"), { target: { value: "fix/session-prompt" } });
+    fireEvent.change(screen.getByPlaceholderText("branchPlaceholder"), { target: { value: "fix/remote-fast" } });
     fireEvent.click(screen.getByRole("button", { name: "create" }));
 
     // Then
     await waitFor(() => {
-      expect(screen.getByText("tmux 설치 실패")).toBeTruthy();
+      expect(mockCreateTask).toHaveBeenCalledWith({
+        title: "fix/remote-fast",
+        description: undefined,
+        branchName: "fix/remote-fast",
+        baseBranch: "main",
+        sessionType: "tmux",
+        sshHost: undefined,
+        projectId: "project-remote",
+        priority: undefined,
+      });
     });
-    expect(mockCreateTask).not.toHaveBeenCalled();
+    expect(mockEnsureSessionDependencyWithPrompt).not.toHaveBeenCalled();
+    expect(onClose).toHaveBeenCalled();
+    expect(mockPush).toHaveBeenCalledWith("/task/task-remote-fast");
   });
 
   it("의존성 준비가 끝나면 생성한 작업 상세 페이지로 이동한다", async () => {

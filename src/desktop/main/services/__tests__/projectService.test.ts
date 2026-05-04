@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   homedir: vi.fn(() => "/home/tester"),
   validateGitRepo: vi.fn(),
   getDefaultBranch: vi.fn(),
+  listBranches: vi.fn(),
   scanGitRepos: vi.fn(),
   listWorktrees: vi.fn(),
   getProjectRepository: vi.fn(),
@@ -59,7 +60,7 @@ vi.mock("typeorm", () => ({
 vi.mock("@/lib/gitOperations", () => ({
   validateGitRepo: mocks.validateGitRepo,
   getDefaultBranch: mocks.getDefaultBranch,
-  listBranches: vi.fn(),
+  listBranches: mocks.listBranches,
   scanGitRepos: mocks.scanGitRepos,
   listWorktrees: mocks.listWorktrees,
   execGit: mocks.execGit,
@@ -136,6 +137,7 @@ describe("projectService.listSubdirectories", () => {
     vi.resetModules();
     vi.clearAllMocks();
     mocks.execGit.mockResolvedValue("");
+    mocks.listBranches.mockResolvedValue(["main", "develop"]);
     mocks.getDefaultSessionType.mockResolvedValue("tmux");
     mocks.getClaudeHooksStatus.mockResolvedValue({ installed: false });
     mocks.getGeminiHooksStatus.mockResolvedValue({ installed: false });
@@ -189,6 +191,28 @@ describe("projectService.listSubdirectories", () => {
       "remote-host",
     );
     expect(result).toEqual(["projects"]);
+  });
+
+  it("원격 프로젝트 브랜치 목록은 blocking fetch 없이 조회한다", async () => {
+    // Given
+    const findOneBy = vi.fn().mockResolvedValue({
+      id: "project-remote",
+      repoPath: "/remote/repo",
+      sshHost: "remote-host",
+    });
+    mocks.getProjectRepository.mockResolvedValue({ findOneBy });
+    const { getProjectBranches } = await import("@/desktop/main/services/projectService");
+
+    // When
+    const result = await getProjectBranches("project-remote");
+
+    // Then
+    expect(result).toEqual(["main", "develop"]);
+    expect(mocks.listBranches).toHaveBeenCalledWith(
+      "/remote/repo",
+      "remote-host",
+      { refresh: false },
+    );
   });
 });
 

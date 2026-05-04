@@ -110,6 +110,42 @@ describe("attachLocalSession — tmux 세션 자동 생성", () => {
     }));
   });
 
+  it("should apply tmux pane layout commands when creating a local session", async () => {
+    // Given
+    const { attachLocalSession } = await import("@/lib/terminal");
+    mockExecSync.mockImplementation((cmd: string) => {
+      if (typeof cmd === "string" && cmd.includes("has-session")) {
+        throw new Error("session not found");
+      }
+      return "";
+    });
+
+    // When
+    await attachLocalSession(
+      "task-layout",
+      SessionType.TMUX,
+      "feat-login",
+      createMockWs(),
+      "/workspace",
+      120,
+      30,
+      {
+        layoutType: PaneLayoutType.VERTICAL_2,
+        panes: [
+          { position: 0, command: "pnpm dev" },
+          { position: 1, command: "pnpm test" },
+        ],
+      },
+    );
+
+    // Then
+    const bootstrapCmd = findExecSyncCall("new-session");
+    expect(bootstrapCmd).toContain('tmux new-session -d -s "feat-login" -c "/workspace"');
+    expect(bootstrapCmd).toContain('tmux split-window -h -t "feat-login":0 -c "/workspace"');
+    expect(bootstrapCmd).toContain('tmux send-keys -t "feat-login":0.0 "pnpm dev" Enter');
+    expect(bootstrapCmd).toContain('tmux send-keys -t "feat-login":0.1 "pnpm test" Enter');
+  });
+
   it("should skip session creation when tmux session already exists", async () => {
     // Given
     const { attachLocalSession } = await import("@/lib/terminal");
