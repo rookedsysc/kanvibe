@@ -1,5 +1,6 @@
 export type ShortcutPlatform = "mac" | "linux";
 export type ShortcutPlatformInput = ShortcutPlatform | boolean;
+export type ShortcutDefinition = string | Record<ShortcutPlatform, string>;
 
 type ShortcutInput = Pick<KeyboardEvent, "key" | "metaKey" | "ctrlKey" | "altKey" | "shiftKey">;
 
@@ -30,8 +31,14 @@ export const SHORTCUTS = {
   boardProjectFilter: "Mod+Shift+P",
   createTask: "Mod+N",
   newWindow: "Mod+Shift+N",
-  pageBack: "Mod+[",
-  pageForward: "Mod+]",
+  pageBack: {
+    mac: "Meta+[",
+    linux: "Alt+[",
+  },
+  pageForward: {
+    mac: "Meta+]",
+    linux: "Alt+]",
+  },
   boardPageFind: "Mod+F",
 } as const;
 
@@ -53,6 +60,17 @@ function normalizeShortcutPlatform(platform: ShortcutPlatformInput): ShortcutPla
   }
 
   return platform === "mac" ? "mac" : "linux";
+}
+
+function resolveShortcutForPlatform(
+  shortcut: ShortcutDefinition,
+  platform: ShortcutPlatformInput,
+): string {
+  if (typeof shortcut === "string") {
+    return shortcut;
+  }
+
+  return shortcut[normalizeShortcutPlatform(platform)];
 }
 
 export function getShortcutPlatformFromNavigator(
@@ -170,9 +188,10 @@ function getNormalizedModifierState(event: ShortcutInput) {
   };
 }
 
-export function formatShortcutForDisplay(shortcut: string, platform: ShortcutPlatformInput): string {
+export function formatShortcutForDisplay(shortcut: ShortcutDefinition, platform: ShortcutPlatformInput): string {
   const shortcutPlatform = normalizeShortcutPlatform(platform);
-  const { modifiers, key } = normalizeShortcutParts(shortcut);
+  const resolvedShortcut = resolveShortcutForPlatform(shortcut, shortcutPlatform);
+  const { modifiers, key } = normalizeShortcutParts(resolvedShortcut);
   const displayParts: string[] = modifiers.map((modifier) => {
     if (modifier === "Mod") {
       return shortcutPlatform === "mac" ? "Cmd" : "Ctrl";
@@ -194,11 +213,12 @@ export function formatShortcutForDisplay(shortcut: string, platform: ShortcutPla
 
 export function matchShortcutEvent(
   event: ShortcutInput,
-  shortcut: string,
+  shortcut: ShortcutDefinition,
   platform: ShortcutPlatformInput,
 ): boolean {
   const shortcutPlatform = normalizeShortcutPlatform(platform);
-  const { modifiers, key } = normalizeShortcutParts(shortcut);
+  const resolvedShortcut = resolveShortcutForPlatform(shortcut, shortcutPlatform);
+  const { modifiers, key } = normalizeShortcutParts(resolvedShortcut);
   const normalizedKey = normalizeEventKey(event.key);
 
   if (!key || key !== normalizedKey) {
@@ -222,7 +242,7 @@ export function matchShortcutEvent(
 
 export function matchElectronShortcutInput(
   input: ElectronShortcutInput,
-  shortcut: string,
+  shortcut: ShortcutDefinition,
   platform: ShortcutPlatformInput,
 ): boolean {
   if (input.type !== "keyDown" || input.isAutoRepeat) {

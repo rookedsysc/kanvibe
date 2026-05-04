@@ -181,6 +181,7 @@ Each pane can run a custom command (e.g., `vim`, `htop`, `lazygit`, test runner,
 | `Cmd/Ctrl+Shift+O` | Global | Open quick task search by branch or project name (default, configurable) |
 | `Cmd/Ctrl+Shift+P` | Board | Open the project filter dropdown |
 | `Cmd/Ctrl+Shift+I` | Board | Open the notifications dropdown |
+| `Cmd+[` / `Cmd+]` (macOS), `Alt+[` / `Alt+]` (Linux) | Global | Navigate back/forward through app history; back falls back to board home when there is no previous page |
 | `Cmd/Ctrl+N` | Quick task search | Create a new branch TODO from the currently highlighted task |
 | `↑ / ↓ / Enter / Shift+Enter / Esc` | Quick task search | Move selection, open task, open task in a new window, close dialog |
 | `↑ / ↓ / Enter / Esc` | Project filter dropdown | Move selection, toggle project filter, close dropdown |

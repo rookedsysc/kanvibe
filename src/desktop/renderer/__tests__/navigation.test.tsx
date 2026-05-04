@@ -34,8 +34,16 @@ function renderRouterProbe(
   );
 }
 
+function setNavigatorPlatform(platform: string) {
+  Object.defineProperty(window.navigator, "platform", {
+    value: platform,
+    configurable: true,
+  });
+}
+
 describe("useRouter", () => {
   beforeEach(() => {
+    setNavigatorPlatform("Linux x86_64");
     window.history.replaceState(null, "", "/");
   });
 
@@ -69,6 +77,16 @@ describe("useRouter", () => {
     });
   });
 
+  it("현재 locale의 칸반 홈에서 뒤로 갈 히스토리가 없으면 경로를 유지한다", async () => {
+    renderRouterProbe(["/ko"], 0, { idx: 0 });
+
+    fireEvent.click(screen.getByRole("button", { name: "back" }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("pathname").textContent).toBe("/ko");
+    });
+  });
+
   it("브라우저 history index가 있어도 앱 내부 이전 경로가 없으면 현재 locale의 칸반 홈으로 이동한다", async () => {
     renderRouterProbe(["/en/task/task-1"], 0, { idx: 1 });
 
@@ -89,12 +107,12 @@ describe("useRouter", () => {
     });
   });
 
-  it("Ctrl+[와 Ctrl+] 단축키로 뒤로/앞으로 이동한다", async () => {
+  it("Linux에서는 Alt+[와 Alt+] 단축키로 뒤로/앞으로 이동한다", async () => {
     renderRouterProbe(["/ko", "/ko/task/task-1", "/ko/task/task-2"], 1, { idx: 1 }, true);
 
     fireEvent.keyDown(window, {
       key: "[",
-      ctrlKey: true,
+      altKey: true,
     });
 
     await waitFor(() => {
@@ -103,7 +121,30 @@ describe("useRouter", () => {
 
     fireEvent.keyDown(window, {
       key: "]",
-      ctrlKey: true,
+      altKey: true,
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("pathname").textContent).toBe("/ko/task/task-1");
+    });
+  });
+
+  it("macOS에서는 Cmd+[와 Cmd+] 단축키로 뒤로/앞으로 이동한다", async () => {
+    setNavigatorPlatform("MacIntel");
+    renderRouterProbe(["/ko", "/ko/task/task-1", "/ko/task/task-2"], 1, { idx: 1 }, true);
+
+    fireEvent.keyDown(window, {
+      key: "[",
+      metaKey: true,
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("pathname").textContent).toBe("/ko");
+    });
+
+    fireEvent.keyDown(window, {
+      key: "]",
+      metaKey: true,
     });
 
     await waitFor(() => {

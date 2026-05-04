@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  SHORTCUTS,
   captureShortcutFromEvent,
   formatShortcutForDisplay,
   getShortcutPlatformFromNavigator,
@@ -32,6 +33,39 @@ describe("keyboardShortcut", () => {
     });
 
     expect(matchShortcutEvent(event, "Mod+Shift+O", true)).toBe(true);
+  });
+
+  it("페이지 이동 단축키는 플랫폼별 조합으로 표시한다", () => {
+    expect(formatShortcutForDisplay(SHORTCUTS.pageBack, "mac")).toBe("Cmd+[");
+    expect(formatShortcutForDisplay(SHORTCUTS.pageForward, "mac")).toBe("Cmd+]");
+    expect(formatShortcutForDisplay(SHORTCUTS.pageBack, "linux")).toBe("Alt+[");
+    expect(formatShortcutForDisplay(SHORTCUTS.pageForward, "linux")).toBe("Alt+]");
+  });
+
+  it("페이지 이동 단축키는 macOS Cmd와 Linux Alt로 매칭한다", () => {
+    expect(matchShortcutEvent(new KeyboardEvent("keydown", {
+      key: "[",
+      metaKey: true,
+    }), SHORTCUTS.pageBack, "mac")).toBe(true);
+    expect(matchShortcutEvent(new KeyboardEvent("keydown", {
+      key: "]",
+      metaKey: true,
+    }), SHORTCUTS.pageForward, "mac")).toBe(true);
+    expect(matchShortcutEvent(new KeyboardEvent("keydown", {
+      key: "[",
+      altKey: true,
+    }), SHORTCUTS.pageBack, "linux")).toBe(true);
+    expect(matchShortcutEvent(new KeyboardEvent("keydown", {
+      key: "]",
+      altKey: true,
+    }), SHORTCUTS.pageForward, "linux")).toBe(true);
+  });
+
+  it("Linux 페이지 이동 단축키는 Ctrl 조합으로 매칭하지 않는다", () => {
+    expect(matchShortcutEvent(new KeyboardEvent("keydown", {
+      key: "[",
+      ctrlKey: true,
+    }), SHORTCUTS.pageBack, "linux")).toBe(false);
   });
 
   it("추가 modifier가 있으면 단축키가 일치하지 않는다", () => {
@@ -107,6 +141,48 @@ describe("keyboardShortcut", () => {
       alt: false,
       shift: false,
     }, "Mod+N", "linux")).toBe(false);
+  });
+
+  it("Electron 페이지 이동 input도 macOS Cmd와 Linux Alt로 매칭한다", () => {
+    expect(matchElectronShortcutInput({
+      type: "keyDown",
+      isAutoRepeat: false,
+      key: "[",
+      meta: true,
+      alt: false,
+      control: false,
+      shift: false,
+    }, SHORTCUTS.pageBack, "mac")).toBe(true);
+
+    expect(matchElectronShortcutInput({
+      type: "keyDown",
+      isAutoRepeat: false,
+      key: "]",
+      meta: true,
+      alt: false,
+      control: false,
+      shift: false,
+    }, SHORTCUTS.pageForward, "mac")).toBe(true);
+
+    expect(matchElectronShortcutInput({
+      type: "keyDown",
+      isAutoRepeat: false,
+      key: "[",
+      alt: true,
+      meta: false,
+      control: false,
+      shift: false,
+    }, SHORTCUTS.pageBack, "linux")).toBe(true);
+
+    expect(matchElectronShortcutInput({
+      type: "keyDown",
+      isAutoRepeat: false,
+      key: "]",
+      alt: true,
+      meta: false,
+      control: false,
+      shift: false,
+    }, SHORTCUTS.pageForward, "linux")).toBe(true);
   });
 
   it("Cmd/Ctrl+R은 앱에서 차단할 shortcut으로 판별한다", () => {
