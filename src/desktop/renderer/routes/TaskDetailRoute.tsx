@@ -80,12 +80,25 @@ const DEFAULT_DETAIL_STATE: Omit<TaskDetailState, "task"> = {
   projects: [],
   defaultSessionType: SessionType.TMUX,
   sidebarDefaultCollapsed: false,
-  sidebarHintDismissed: false,
+  // 전역 설정이 로드되기 전에는 stale cache가 dismiss된 힌트를 다시 띄우지 않도록 숨긴다.
+  sidebarHintDismissed: true,
   doneAlertDismissed: false,
 };
 
 function getTaskDetailRouteCacheKey(taskId: string) {
   return buildRouteCacheKey("task-detail", taskId);
+}
+
+function normalizeCachedTaskDetailState(cachedState: TaskDetailState | null): TaskDetailState | null {
+  if (!cachedState) {
+    return null;
+  }
+
+  return {
+    ...cachedState,
+    // route cache는 태스크별이지만 힌트 dismiss는 전역 설정이라 cached false를 신뢰하지 않는다.
+    sidebarHintDismissed: true,
+  };
 }
 
 export default function TaskDetailRoute() {
@@ -96,7 +109,7 @@ export default function TaskDetailRoute() {
   const tc = useTranslations("common");
   const refreshSignal = useRefreshSignal(["all", "task-detail"]);
   const cachedState = useMemo(
-    () => (id ? readRouteCache<TaskDetailState>(getTaskDetailRouteCacheKey(id)) : null),
+    () => (id ? normalizeCachedTaskDetailState(readRouteCache<TaskDetailState>(getTaskDetailRouteCacheKey(id))) : null),
     [id],
   );
   const [state, setState] = useState<TaskDetailState | null | undefined>(cachedState ?? undefined);
@@ -350,6 +363,15 @@ export default function TaskDetailRoute() {
     router.push("/");
   }
 
+  function handleSidebarHintDismissed() {
+    setState((current) => current
+      ? {
+          ...current,
+          sidebarHintDismissed: true,
+        }
+      : current);
+  }
+
   function closeCreateTaskModal() {
     setIsCreateTaskModalOpen(false);
     setCreateTaskDefaults(null);
@@ -358,7 +380,11 @@ export default function TaskDetailRoute() {
 
   return (
     <div className="h-screen flex flex-col lg:flex-row bg-bg-page p-4 gap-4">
-      <CollapsibleSidebar defaultCollapsed={state.sidebarDefaultCollapsed} showHint={!state.sidebarHintDismissed}>
+      <CollapsibleSidebar
+        defaultCollapsed={state.sidebarDefaultCollapsed}
+        showHint={!state.sidebarHintDismissed}
+        onDismissHint={handleSidebarHintDismissed}
+      >
         <div className={`flex flex-col gap-4 ${needsMacDesktopHeaderOffset ? "pt-10" : ""}`}>
           <div className="flex items-center justify-between gap-3">
             <Link href="/" className="flex items-center gap-2 text-sm text-text-secondary hover:text-text-primary transition-colors">
