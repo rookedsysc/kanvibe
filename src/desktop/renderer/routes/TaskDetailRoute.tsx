@@ -29,6 +29,7 @@ import { fetchPrUrlWithPrompt } from "@/desktop/renderer/utils/fetchPrUrlWithPro
 import { INITIAL_DESKTOP_LOAD_TIMEOUT_MS, logDesktopInitialLoadTimeout } from "@/desktop/renderer/utils/loadingTimeout";
 import { buildRouteCacheKey, readRouteCache, removeRouteCache, writeRouteCache } from "@/desktop/renderer/utils/routeCache";
 import { useRefreshSignal } from "@/desktop/renderer/utils/refresh";
+import { requestActiveTerminalFocusAfterUiSettles } from "@/desktop/renderer/utils/terminalFocus";
 import { SessionType, TaskStatus } from "@/entities/KanbanTask";
 
 const STATUS_TRANSITIONS = [
@@ -103,6 +104,7 @@ export default function TaskDetailRoute() {
   const [createTaskDefaults, setCreateTaskDefaults] = useState<BranchTodoDefaults | null>(null);
   const [needsMacDesktopHeaderOffset, setNeedsMacDesktopHeaderOffset] = useState(false);
   const notificationCenterRef = useRef<NotificationCenterButtonHandle>(null);
+  const hasTerminal = !!(state?.task.sessionType && state.task.sessionName);
 
   useEffect(() => boardCommands.registerNotificationCenterHandler(() => {
     notificationCenterRef.current?.toggle();
@@ -141,6 +143,14 @@ export default function TaskDetailRoute() {
 
     document.title = [state.task.branchName, state.task.project?.name].filter(Boolean).join(" - ");
   }, [state]);
+
+  useEffect(() => {
+    if (!hasTerminal || isCreateTaskModalOpen) {
+      return;
+    }
+
+    requestActiveTerminalFocusAfterUiSettles();
+  }, [hasTerminal, id, isCreateTaskModalOpen]);
 
   useEffect(() => {
     if (!id) {
@@ -314,8 +324,6 @@ export default function TaskDetailRoute() {
     );
   }
 
-  const hasTerminal = !!(state.task.sessionType && state.task.sessionName);
-
   async function handleStatusChange(formData: FormData) {
     const newStatus = formData.get("status") as TaskStatus;
     const updatedTask = await updateTaskStatus(id, newStatus);
@@ -340,6 +348,12 @@ export default function TaskDetailRoute() {
   async function handleDelete() {
     await deleteTask(id);
     router.push("/");
+  }
+
+  function closeCreateTaskModal() {
+    setIsCreateTaskModalOpen(false);
+    setCreateTaskDefaults(null);
+    requestActiveTerminalFocusAfterUiSettles();
   }
 
   return (
@@ -446,10 +460,7 @@ export default function TaskDetailRoute() {
 
       <CreateTaskModal
         isOpen={isCreateTaskModalOpen}
-        onClose={() => {
-          setIsCreateTaskModalOpen(false);
-          setCreateTaskDefaults(null);
-        }}
+        onClose={closeCreateTaskModal}
         sshHosts={[]}
         projects={state.projects}
         defaultProjectId={createTaskDefaults?.projectId ?? state.task.projectId ?? ""}

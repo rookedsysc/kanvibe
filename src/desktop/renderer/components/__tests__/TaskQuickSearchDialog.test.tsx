@@ -140,6 +140,33 @@ describe("TaskQuickSearchDialog", () => {
     });
   });
 
+  it("검색 결과에서 상세 페이지로 이동할 때 terminal focus 요청을 보낸다", async () => {
+    const focusListener = vi.fn();
+    window.addEventListener("kanvibe:request-terminal-focus", focusListener);
+
+    render(<TaskQuickSearchDialog shortcut="Ctrl+K" />);
+
+    fireEvent.keyDown(window, {
+      key: "k",
+      ctrlKey: true,
+    });
+
+    const input = await screen.findByRole("textbox");
+    fireEvent.change(input, {
+      target: { value: "api" },
+    });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    await waitFor(() => {
+      expect(mocks.push).toHaveBeenCalledWith("/task/task-remote");
+    });
+    await waitFor(() => {
+      expect(focusListener).toHaveBeenCalled();
+    });
+
+    window.removeEventListener("kanvibe:request-terminal-focus", focusListener);
+  });
+
   it("검색 결과에서 Shift+Enter로 상세 페이지를 새 창에서 연다", async () => {
     const openWindow = vi.spyOn(window, "open").mockImplementation(() => null);
 
