@@ -4,7 +4,6 @@ import { useState, useEffect, useTransition } from "react";
 import { useTranslations } from "next-intl";
 import { branchFromTask } from "@/desktop/renderer/actions/kanban";
 import { getProjectBranches } from "@/desktop/renderer/actions/project";
-import { ensureSessionDependencyWithPrompt } from "@/desktop/renderer/utils/sessionDependencyPrompt";
 import { SessionType, type KanbanTask } from "@/entities/KanbanTask";
 import type { Project } from "@/entities/Project";
 import { useEscapeKey } from "@/hooks/useEscapeKey";
@@ -66,14 +65,6 @@ export default function BranchTaskModal({
 
     startTransition(async () => {
       try {
-        const selectedProject = projects.find((project) => project.id === selectedProjectId) ?? null;
-        if (!selectedProject?.sshHost) {
-          const isReady = await ensureSessionDependencyWithPrompt(sessionType, selectedProject?.sshHost, tc);
-          if (!isReady) {
-            return;
-          }
-        }
-
         await branchFromTask(
           task.id,
           selectedProjectId,

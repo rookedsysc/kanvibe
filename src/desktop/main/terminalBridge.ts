@@ -103,6 +103,10 @@ export async function openTerminal(
   client.once("close", finalizeClient);
 
   try {
+    const tmuxPaneLayout = task.sessionType === SessionType.TMUX
+      ? await getEffectivePaneLayout(task.projectId ?? undefined)
+      : null;
+
     if (task.sshHost) {
       await ensureRemoteSessionDependency(task.sessionType as SessionType, task.sshHost);
 
@@ -113,10 +117,6 @@ export async function openTerminal(
         client.close(1008, `SSH 호스트를 찾을 수 없습니다: ${task.sshHost}`);
         return { ok: false, error: `SSH 호스트를 찾을 수 없습니다: ${task.sshHost}` };
       }
-
-      const tmuxPaneLayout = task.sessionType === SessionType.TMUX
-        ? await getEffectivePaneLayout(task.projectId ?? undefined)
-        : null;
 
       await attachRemoteSession(
         taskId,
@@ -139,6 +139,7 @@ export async function openTerminal(
         task.worktreePath,
         cols,
         rows,
+        tmuxPaneLayout,
       );
     }
 

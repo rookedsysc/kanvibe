@@ -72,6 +72,7 @@ export async function attachLocalSession(
   cwd?: string | null,
   cols?: number,
   rows?: number,
+  tmuxPaneLayout?: TmuxPaneLayoutConfig | null,
 ): Promise<void> {
   const initialCols = cols ?? 120;
   const initialRows = rows ?? 30;
@@ -119,10 +120,17 @@ export async function attachLocalSession(
     if (!isTmuxSessionAlive(sessionName)) {
       try {
         const dir = cwd || process.env.HOME || "/";
-        execSync(
-          `tmux new-session -d -s "${sessionName}" -c "${dir}"`,
-          { env: terminalEnvironment, timeout: 5000 },
+        const bootstrapCommands = buildTmuxSessionBootstrapCommands(
+          sessionName,
+          dir,
+          tmuxPaneLayout && tmuxPaneLayout.layoutType !== PaneLayoutType.SINGLE
+            ? tmuxPaneLayout
+            : null,
         );
+        execSync(bootstrapCommands.join("; "), {
+          env: terminalEnvironment,
+          timeout: 5000,
+        });
       } catch (error) {
         console.error(`[터미널] tmux 세션 자동 생성 실패:`, error);
         ws.close(1008, "tmux 세션 생성에 실패했습니다.");

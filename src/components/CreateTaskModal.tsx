@@ -5,7 +5,6 @@ import { useTranslations } from "next-intl";
 import { useRouter } from "@/desktop/renderer/navigation";
 import { createTask } from "@/desktop/renderer/actions/kanban";
 import { getProjectBranches } from "@/desktop/renderer/actions/project";
-import { ensureSessionDependencyWithPrompt } from "@/desktop/renderer/utils/sessionDependencyPrompt";
 import { SessionType } from "@/entities/KanbanTask";
 import { TaskPriority } from "@/entities/TaskPriority";
 import type { Project } from "@/entities/Project";
@@ -156,14 +155,6 @@ function CreateTaskModalContent({
     startTransition(async () => {
       try {
         const sessionType = (formData.get("sessionType") as SessionType) || undefined;
-        const selectedProject = projects.find((project) => project.id === selectedProjectId) ?? null;
-
-        if (sessionType && !selectedProject?.sshHost) {
-          const isReady = await ensureSessionDependencyWithPrompt(sessionType, selectedProject?.sshHost, tc);
-          if (!isReady) {
-            return;
-          }
-        }
 
         const created = await createTask({
           title: branchName,

@@ -112,4 +112,41 @@ describe("BranchTaskModal", () => {
     expect(mockEnsureSessionDependencyWithPrompt).not.toHaveBeenCalled();
     expect(onClose).toHaveBeenCalledTimes(1);
   });
+
+  it("로컬 프로젝트 branch 생성도 세션 도구 프롬프트 없이 분기 요청을 보낸다", async () => {
+    // Given
+    const onClose = vi.fn();
+
+    render(
+      <BranchTaskModal
+        task={createTask()}
+        projects={[createProject({ sshHost: null })]}
+        defaultSessionType="tmux"
+        onClose={onClose}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(mockGetProjectBranches).toHaveBeenCalledWith("project-remote");
+    });
+
+    // When
+    fireEvent.change(screen.getByPlaceholderText("branchPlaceholder"), {
+      target: { value: "feat/local-fast" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "submit" }));
+
+    // Then
+    await waitFor(() => {
+      expect(mockBranchFromTask).toHaveBeenCalledWith(
+        "task-1",
+        "project-remote",
+        "main",
+        "feat/local-fast",
+        "tmux",
+      );
+    });
+    expect(mockEnsureSessionDependencyWithPrompt).not.toHaveBeenCalled();
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
 });
