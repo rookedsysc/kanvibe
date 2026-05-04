@@ -173,6 +173,7 @@ pnpm dist
 | `Cmd/Ctrl+Shift+O` | 全局 | 按分支名或项目名打开任务快速搜索（默认值，可配置） |
 | `Cmd/Ctrl+Shift+P` | 看板 | 打开项目筛选下拉框 |
 | `Cmd/Ctrl+Shift+I` | 看板 | 打开通知下拉框 |
+| `Cmd+[` / `Cmd+]` (macOS), `Alt+[` / `Alt+]` (Linux) | 全局 | 在应用历史中后退/前进；没有上一页时后退到看板首页 |
 | `Cmd/Ctrl+N` | 任务快速搜索 | 基于当前高亮任务创建新的 branch TODO |
 | `↑ / ↓ / Enter / Esc` | 任务快速搜索 | 移动选择、打开任务、关闭对话框 |
 | `↑ / ↓ / Enter / Esc` | 项目筛选下拉框 | 移动选择、切换项目筛选、关闭下拉框 |

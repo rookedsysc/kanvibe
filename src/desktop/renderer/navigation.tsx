@@ -49,6 +49,10 @@ export function localizeHref(href: string, currentLocale?: string): string {
   return `/${locale}${href}`;
 }
 
+function isLocalizedHomePath(pathname: string, currentLocale: string): boolean {
+  return pathname === localizeHref("/", currentLocale);
+}
+
 interface LinkProps extends PropsWithChildren<Omit<AnchorHTMLAttributes<HTMLAnchorElement>, "href">> {
   href: string;
   prefetch?: boolean;
@@ -88,7 +92,13 @@ export function useRouter() {
   return useMemo(
     () => ({
       back: () => {
-        const fallbackToHome = () => navigate(localizeHref("/", currentLocale), { replace: true });
+        const fallbackToHome = () => {
+          if (isLocalizedHomePath(latestLocationRef.current.pathname, currentLocale)) {
+            return;
+          }
+
+          navigate(localizeHref("/", currentLocale), { replace: true });
+        };
 
         if (!canNavigateBack()) {
           fallbackToHome();
