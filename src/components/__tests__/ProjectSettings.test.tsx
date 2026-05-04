@@ -23,11 +23,15 @@ vi.mock("@/desktop/renderer/navigation", () => ({
     children: React.ReactNode;
     href: string;
     prefetch?: boolean;
-  }) => (
-    <a href={href} {...props}>
-      {children}
-    </a>
-  ),
+  }) => {
+    void _prefetch;
+
+    return (
+      <a href={href} {...props}>
+        {children}
+      </a>
+    );
+  },
 }));
 
 vi.mock("@/components/FolderSearchInput", () => ({
@@ -241,8 +245,34 @@ describe("ProjectSettings", () => {
 
     // Then
     await waitFor(() => {
-      expect(mockSetTaskSearchShortcut).toHaveBeenCalledWith("Ctrl+Shift+P");
+      expect(mockSetTaskSearchShortcut).toHaveBeenCalledWith("Mod+Shift+P");
     });
     expect(screen.getByText("Ctrl+Shift+P")).toBeTruthy();
+  });
+
+  it("Cmd/Ctrl+R은 검색 단축키로 저장하지 않는다", () => {
+    render(
+      <ProjectSettings
+        isOpen
+        onClose={vi.fn()}
+        projects={[createProject()]}
+        sshHosts={[]}
+        sidebarDefaultCollapsed={false}
+        defaultSessionType={SessionType.TMUX}
+        taskSearchShortcut="Mod+Shift+O"
+        notificationSettings={{ isEnabled: true, enabledStatuses: ["progress", "pending", "review"] }}
+      />,
+    );
+
+    const recordButton = screen.getByTestId("task-search-shortcut-record");
+
+    fireEvent.click(recordButton);
+    fireEvent.keyDown(recordButton, {
+      key: "r",
+      ctrlKey: true,
+    });
+
+    expect(mockSetTaskSearchShortcut).not.toHaveBeenCalled();
+    expect(screen.getByText("taskSearchShortcutRecording")).toBeTruthy();
   });
 });

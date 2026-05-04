@@ -21,6 +21,7 @@ import FolderSearchInput from "@/components/FolderSearchInput";
 import {
   captureShortcutFromEvent,
   formatShortcutForDisplay,
+  getCurrentShortcutPlatform,
 } from "@/desktop/renderer/utils/keyboardShortcut";
 import { useEscapeKey } from "@/hooks/useEscapeKey";
 
@@ -78,8 +79,7 @@ export default function ProjectSettings({
   const [pendingTaskSearchShortcut, setPendingTaskSearchShortcut] = useState<string | null>(null);
   const [localNotificationSettings, setLocalNotificationSettings] = useState(notificationSettings);
   const [pendingNotificationSettings, setPendingNotificationSettings] = useState<typeof notificationSettings | null>(null);
-  const isMacLike = typeof navigator !== "undefined"
-    && (navigator.userAgent.includes("Mac") || navigator.platform.toLowerCase().includes("mac"));
+  const shortcutPlatform = getCurrentShortcutPlatform();
 
   useEffect(() => {
     setSelectedDefaultSessionType(defaultSessionType);
@@ -238,7 +238,7 @@ export default function ProjectSettings({
                   return;
                 }
 
-                const capturedShortcut = captureShortcutFromEvent(event.nativeEvent);
+                const capturedShortcut = captureShortcutFromEvent(event.nativeEvent, shortcutPlatform);
                 if (!capturedShortcut) {
                   return;
                 }
@@ -259,7 +259,7 @@ export default function ProjectSettings({
             >
               {isCapturingTaskSearchShortcut
                 ? t("taskSearchShortcutRecording")
-                : formatShortcutForDisplay(localTaskSearchShortcut, isMacLike)}
+                : formatShortcutForDisplay(localTaskSearchShortcut, shortcutPlatform)}
             </button>
           </div>
         </div>

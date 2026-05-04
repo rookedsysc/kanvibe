@@ -1,5 +1,6 @@
 import { getAppSettingsRepository } from "@/lib/database";
 import { SessionType } from "@/entities/KanbanTask";
+import { DEFAULT_TASK_SEARCH_SHORTCUT } from "@/desktop/shared/keyboardShortcut";
 
 const SIDEBAR_COLLAPSED_KEY = "sidebar_default_collapsed";
 const SIDEBAR_HINT_DISMISSED_KEY = "sidebar_hint_dismissed";
@@ -123,11 +124,11 @@ export async function setDefaultSessionType(sessionType: SessionType): Promise<v
 /** 태스크 빠른 검색 단축키를 조회한다. 미설정 시 기본값을 반환한다 */
 export async function getTaskSearchShortcut(): Promise<string> {
   const value = await getAppSetting(TASK_SEARCH_SHORTCUT_KEY);
-  return value?.trim() || "Mod+Shift+O";
+  return value?.trim() || DEFAULT_TASK_SEARCH_SHORTCUT;
 }
 
 /** 태스크 빠른 검색 단축키를 저장한다 */
 export async function setTaskSearchShortcut(shortcut: string): Promise<void> {
-  const normalizedShortcut = shortcut.trim() || "Mod+Shift+O";
+  const normalizedShortcut = shortcut.trim() || DEFAULT_TASK_SEARCH_SHORTCUT;
   await setAppSetting(TASK_SEARCH_SHORTCUT_KEY, normalizedShortcut);
 }

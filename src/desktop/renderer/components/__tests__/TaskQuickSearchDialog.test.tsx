@@ -40,6 +40,7 @@ vi.mock("@/desktop/renderer/components/BoardCommandProvider", () => ({
 describe("TaskQuickSearchDialog", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    window.history.replaceState({}, "", "/#/en");
     Object.defineProperty(Element.prototype, "scrollIntoView", {
       configurable: true,
       value: mocks.scrollIntoView,
@@ -102,6 +103,19 @@ describe("TaskQuickSearchDialog", () => {
     expect(mocks.getSearchableTasks).toHaveBeenCalledTimes(1);
     expect(await screen.findByText("feat/local-search")).toBeTruthy();
     expect(screen.getByText("feat/api-search")).toBeTruthy();
+  });
+
+  it("Ctrl+R이 저장된 shortcut이어도 검색 다이얼로그를 열지 않는다", () => {
+    render(<TaskQuickSearchDialog shortcut="Ctrl+R" />);
+
+    const wasNotPrevented = fireEvent.keyDown(window, {
+      key: "r",
+      ctrlKey: true,
+    });
+
+    expect(wasNotPrevented).toBe(false);
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(mocks.getSearchableTasks).not.toHaveBeenCalled();
   });
 
   it("검색 결과에서 원격 task에만 remote 배지와 호스트를 표시한다", async () => {
@@ -187,7 +201,7 @@ describe("TaskQuickSearchDialog", () => {
     });
 
     await waitFor(() => {
-      expect(openWindow).toHaveBeenCalledWith("/#/en/task/task-remote", "_blank", "noopener,noreferrer");
+      expect(openWindow).toHaveBeenCalledWith(`${window.location.origin}/#/en/task/task-remote`, "_blank", "noopener,noreferrer");
     });
     expect(mocks.push).not.toHaveBeenCalled();
     expect(screen.queryByRole("dialog")).toBeNull();

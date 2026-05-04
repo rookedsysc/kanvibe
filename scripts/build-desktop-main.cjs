@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 
+/* eslint-disable @typescript-eslint/no-require-imports */
+
 const { execFileSync } = require("node:child_process");
 const { mkdtempSync, readdirSync, rmSync, statSync, writeFileSync } = require("node:fs");
 const os = require("node:os");
@@ -37,6 +39,7 @@ function main() {
   const tempConfigPath = path.join(tempDir, "tsconfig.json");
   const files = [
     ...collectTypeScriptFiles("src/desktop/main"),
+    ...collectTypeScriptFiles("src/desktop/shared"),
     ...collectTypeScriptFiles("src/entities"),
     ...collectTypeScriptFiles("src/lib"),
   ];
