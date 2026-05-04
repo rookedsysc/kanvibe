@@ -28,8 +28,9 @@ const mocks = vi.hoisted(() => ({
   broadcastBoardUpdate: vi.fn(),
   broadcastHookStatusTargetMissing: vi.fn(),
   broadcastTaskStatusChanged: vi.fn(),
-  cleanupTaskResources: vi.fn(),
   scheduleTaskHookInstall: vi.fn(),
+  prepareOptimisticDoneTransition: vi.fn(),
+  scheduleDoneCleanupWithRollback: vi.fn(),
   installKanvibeHooks: vi.fn(),
 }));
 
@@ -53,8 +54,9 @@ vi.mock("@/lib/boardNotifier", () => ({
 }));
 
 vi.mock("@/desktop/main/services/kanbanService", () => ({
-  cleanupTaskResources: mocks.cleanupTaskResources,
   scheduleTaskHookInstall: mocks.scheduleTaskHookInstall,
+  prepareOptimisticDoneTransition: mocks.prepareOptimisticDoneTransition,
+  scheduleDoneCleanupWithRollback: mocks.scheduleDoneCleanupWithRollback,
 }));
 
 vi.mock("@/lib/kanvibeHooksInstaller", () => ({
@@ -65,6 +67,28 @@ describe("hookService.updateHookTaskStatus", () => {
   beforeEach(() => {
     vi.resetModules();
     vi.clearAllMocks();
+    mocks.prepareOptimisticDoneTransition.mockImplementation((task, options = {}) => {
+      const cleanupTask = { ...task };
+      const rollbackSnapshot = {
+        id: task.id,
+        status: task.status,
+        sessionType: task.sessionType,
+        sessionName: task.sessionName,
+        worktreePath: task.worktreePath,
+        sshHost: task.sshHost,
+      };
+
+      task.status = TaskStatus.DONE;
+      task.sessionType = null;
+      task.sessionName = null;
+      task.worktreePath = null;
+
+      if ((options as { clearSshHost?: boolean }).clearSshHost) {
+        task.sshHost = null;
+      }
+
+      return { cleanupTask, rollbackSnapshot };
+    });
   });
 
   it("taskId로 작업 상태를 변경한다", async () => {
