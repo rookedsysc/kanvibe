@@ -155,6 +155,49 @@ describe("NotificationCenterButton", () => {
     });
   });
 
+  it("starts keyboard selection from the newest notification when opened", async () => {
+    mockListNotifications.mockResolvedValue([
+      {
+        id: "n-old",
+        title: "Older task",
+        body: "Body",
+        taskId: "task-old",
+        relativePath: "/task/task-old",
+        locale: "en",
+        isRead: false,
+        createdAt: "2026-05-04T00:00:00.000Z",
+        dedupeKey: "k-old",
+      },
+      {
+        id: "n-new",
+        title: "Newest task",
+        body: "Body",
+        taskId: "task-new",
+        relativePath: "/task/task-new",
+        locale: "en",
+        isRead: false,
+        createdAt: "2026-05-04T00:01:00.000Z",
+        dedupeKey: "k-new",
+      },
+    ]);
+    mockMarkNotificationRead.mockResolvedValue(undefined);
+    mockGetTaskById.mockImplementation(async (taskId: string) => ({ id: taskId }));
+
+    render(<NotificationShortcutHarness />);
+
+    await waitFor(() => {
+      expect(mockListNotifications).toHaveBeenCalled();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "open notification shortcut" }));
+    fireEvent.keyDown(window, { key: "Enter" });
+
+    await waitFor(() => {
+      expect(mockGetTaskById).toHaveBeenCalledWith("task-new");
+    });
+    expect(mockRedirect).toHaveBeenCalledWith("/en/task/task-new");
+  });
+
   it("opens task notifications in a new window with Shift+Click", async () => {
     const openWindow = vi.spyOn(window, "open").mockImplementation(() => null);
     mockListNotifications.mockResolvedValue([
