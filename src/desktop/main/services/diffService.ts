@@ -29,6 +29,54 @@ function buildGitCommand(worktreePath: string, args: string[]) {
   return `git -C ${quoteShellArgument(worktreePath)} ${args.join(" ")}`;
 }
 
+const DIFF_NAME_STATUS_MARKER = "__KANVIBE_DIFF_NAME_STATUS__";
+const DIFF_NUMSTAT_MARKER = "__KANVIBE_DIFF_NUMSTAT__";
+const DIFF_WORKING_TREE_MARKER = "__KANVIBE_DIFF_WORKING_TREE__";
+
+function buildGitDiffFilesCommand(worktreePath: string, baseBranch: string, branchName: string): string {
+  const range = quoteShellArgument(`${baseBranch}...${branchName}`);
+  return [
+    `printf '%s\\n' ${quoteShellArgument(DIFF_NAME_STATUS_MARKER)}`,
+    `${buildGitCommand(worktreePath, ["diff", range, "--name-status"])} || true`,
+    `printf '%s\\n' ${quoteShellArgument(DIFF_NUMSTAT_MARKER)}`,
+    `${buildGitCommand(worktreePath, ["diff", range, "--numstat"])} || true`,
+    `printf '%s\\n' ${quoteShellArgument(DIFF_WORKING_TREE_MARKER)}`,
+    buildGitCommand(worktreePath, ["status", "--porcelain", "--untracked-files=all"]),
+  ].join("; ");
+}
+
+function parseGitDiffFilesCommandOutput(output: string) {
+  const sections = {
+    nameStatus: "",
+    numstat: "",
+    workingTree: "",
+  };
+  let currentSection: keyof typeof sections | null = null;
+
+  for (const line of output.split("\n")) {
+    if (line === DIFF_NAME_STATUS_MARKER) {
+      currentSection = "nameStatus";
+      continue;
+    }
+
+    if (line === DIFF_NUMSTAT_MARKER) {
+      currentSection = "numstat";
+      continue;
+    }
+
+    if (line === DIFF_WORKING_TREE_MARKER) {
+      currentSection = "workingTree";
+      continue;
+    }
+
+    if (currentSection) {
+      sections[currentSection] += `${line}\n`;
+    }
+  }
+
+  return sections;
+}
+
 /**
  * 파일 경로가 worktree 디렉토리 내부에 있는지 검증한다.
  * 경로 탐색 공격(path traversal)을 방지하기 위해 ".." 포함 여부와
@@ -102,43 +150,19 @@ export async function getGitDiffFiles(
     const { worktreePath, branchName, baseBranch, sshHost } =
       await getTaskWorktreeInfo(taskId);
 
-    /**
-     * 커밋된 브랜치 diff(name-status, numstat)와
-     * working directory 상태(git status)를 동시에 조회한다.
-     * git diff는 브랜치가 존재하지 않으면 실패할 수 있으므로 개별 에러를 허용한다.
-     */
-    const emptyResult = { stdout: "" };
-    const [nameStatusResult, numstatResult, workingTreeResult] =
-      await Promise.all([
-        execGit(
-          buildGitCommand(worktreePath, [
-            "diff",
-            quoteShellArgument(`${baseBranch}...${branchName}`),
-            "--name-status",
-          ]),
-          sshHost,
-        ).then((stdout) => ({ stdout })).catch(() => emptyResult),
-        execGit(
-          buildGitCommand(worktreePath, [
-            "diff",
-            quoteShellArgument(`${baseBranch}...${branchName}`),
-            "--numstat",
-          ]),
-          sshHost,
-        ).then((stdout) => ({ stdout })).catch(() => emptyResult),
-        execGit(
-          buildGitCommand(worktreePath, ["status", "--porcelain", "--untracked-files=all"]),
-          sshHost,
-        ).then((stdout) => ({ stdout })),
-      ]);
+    const commandOutput = await execGit(
+      buildGitDiffFilesCommand(worktreePath, baseBranch, branchName),
+      sshHost,
+    );
+    const diffSections = parseGitDiffFilesCommandOutput(commandOutput);
 
     /** numstat 결과를 파일 경로 기준으로 맵핑한다 */
     const statsByPath = new Map<
       string,
       { additions: number; deletions: number }
     >();
-    if (numstatResult.stdout.trim()) {
-      for (const line of numstatResult.stdout.trim().split("\n")) {
+    if (diffSections.numstat.trim()) {
+      for (const line of diffSections.numstat.trim().split("\n")) {
         const [added, deleted, ...pathParts] = line.split("\t");
         const filePath = pathParts.join("\t");
         statsByPath.set(filePath, {
@@ -151,8 +175,8 @@ export async function getGitDiffFiles(
     /** 커밋된 브랜치 diff에서 파일 목록을 구성한다 */
     const fileMap = new Map<string, DiffFile>();
 
-    if (nameStatusResult.stdout.trim()) {
-      for (const line of nameStatusResult.stdout.trim().split("\n")) {
+    if (diffSections.nameStatus.trim()) {
+      for (const line of diffSections.nameStatus.trim().split("\n")) {
         const parts = line.split("\t");
         const statusLetter = parts[0];
         /** rename의 경우 "R100\told\tnew" 형태이므로 마지막 경로를 사용한다 */
@@ -171,7 +195,7 @@ export async function getGitDiffFiles(
     }
 
     /** working directory의 변경/untracked 파일을 추가한다 (커밋된 diff에 없는 파일만) */
-    const workingTreeLines = workingTreeResult.stdout.replace(/\n$/, "");
+    const workingTreeLines = diffSections.workingTree.replace(/\n$/, "");
     if (workingTreeLines) {
       for (const line of workingTreeLines.split("\n")) {
         const xy = line.substring(0, 2);

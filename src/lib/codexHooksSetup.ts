@@ -1,7 +1,7 @@
 import { writeFile, mkdir, chmod } from "fs/promises";
 import path from "path";
 import { addAiToolPatternsToGitExclude } from "@/lib/gitExclude";
-import { pathExists, readTextFile } from "@/lib/hostFileAccess";
+import { readTextFile, readTextFiles } from "@/lib/hostFileAccess";
 import { extractShellHookServerUrl, validateHookServerConfiguration } from "@/lib/hookServerStatus";
 import { buildShellTaskIdResolver, extractShellTaskId } from "@/lib/hookTaskBinding";
 
@@ -346,35 +346,26 @@ export async function getCodexHooksStatus(repoPath: string, taskId?: string, ssh
   const preToolScriptPath = pathModule.join(hooksDir, PRE_TOOL_HOOK_SCRIPT_NAME);
   const stopScriptPath = pathModule.join(hooksDir, STOP_HOOK_SCRIPT_NAME);
 
-  const [
-    promptScriptExists,
-    permissionScriptExists,
-    preToolScriptExists,
-    stopScriptExists,
-    hooksFileExists,
-  ] = await Promise.all([
-    pathExists(promptScriptPath, sshHost),
-    pathExists(permissionScriptPath, sshHost),
-    pathExists(preToolScriptPath, sshHost),
-    pathExists(stopScriptPath, sshHost),
-    pathExists(hooksFilePath, sshHost),
-  ]);
-
-  const [
-    promptContent,
-    permissionContent,
-    preToolContent,
-    stopContent,
-    hooksContent,
-    configContent,
-  ] = await Promise.all([
-    promptScriptExists ? readTextFile(promptScriptPath, sshHost) : Promise.resolve(""),
-    permissionScriptExists ? readTextFile(permissionScriptPath, sshHost) : Promise.resolve(""),
-    preToolScriptExists ? readTextFile(preToolScriptPath, sshHost) : Promise.resolve(""),
-    stopScriptExists ? readTextFile(stopScriptPath, sshHost) : Promise.resolve(""),
-    hooksFileExists ? readTextFile(hooksFilePath, sshHost) : Promise.resolve(""),
-    readTextFile(configPath, sshHost),
-  ]);
+  const files = await readTextFiles([
+    promptScriptPath,
+    permissionScriptPath,
+    preToolScriptPath,
+    stopScriptPath,
+    hooksFilePath,
+    configPath,
+  ], sshHost);
+  const promptScript = files.get(promptScriptPath) ?? { exists: false, content: "" };
+  const permissionScript = files.get(permissionScriptPath) ?? { exists: false, content: "" };
+  const preToolScript = files.get(preToolScriptPath) ?? { exists: false, content: "" };
+  const stopScript = files.get(stopScriptPath) ?? { exists: false, content: "" };
+  const hooksFile = files.get(hooksFilePath) ?? { exists: false, content: "" };
+  const configFile = files.get(configPath) ?? { exists: false, content: "" };
+  const promptContent = promptScript.content;
+  const permissionContent = permissionScript.content;
+  const preToolContent = preToolScript.content;
+  const stopContent = stopScript.content;
+  const hooksContent = hooksFile.content;
+  const configContent = configFile.content;
 
   const hookScripts = [promptContent, permissionContent, preToolContent, stopContent];
   const boundTaskId = hookScripts.map((content) => extractShellTaskId(content)).find((value) => value !== null) ?? null;
@@ -397,11 +388,11 @@ export async function getCodexHooksStatus(repoPath: string, taskId?: string, ssh
     && hasCommandHook(hooks.Stop || [], CODEX_STOP_COMMAND);
   const hasConfigEntry = hasCodexFeatureFlag(configContent);
 
-  const installed = promptScriptExists
-    && permissionScriptExists
-    && preToolScriptExists
-    && stopScriptExists
-    && hooksFileExists
+  const installed = promptScript.exists
+    && permissionScript.exists
+    && preToolScript.exists
+    && stopScript.exists
+    && hooksFile.exists
     && hasHookEntries
     && hasConfigEntry
     && hasTaskIdBinding
@@ -410,11 +401,11 @@ export async function getCodexHooksStatus(repoPath: string, taskId?: string, ssh
 
   return {
     installed,
-    hasPromptHook: promptScriptExists,
-    hasPermissionHook: permissionScriptExists,
-    hasPreToolHook: preToolScriptExists,
-    hasStopHook: stopScriptExists,
-    hasHooksFile: hooksFileExists,
+    hasPromptHook: promptScript.exists,
+    hasPermissionHook: permissionScript.exists,
+    hasPreToolHook: preToolScript.exists,
+    hasStopHook: stopScript.exists,
+    hasHooksFile: hooksFile.exists,
     hasHookEntries,
     hasConfigEntry,
     hasTaskIdBinding,

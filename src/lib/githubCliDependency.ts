@@ -1,6 +1,9 @@
 import { execGit, isSSHTransportError } from "@/lib/gitOperations";
 
 const blockedTargets = new Map<string, string>();
+const availableTargets = new Map<string, number>();
+const inFlightStatusChecks = new Map<string, Promise<boolean>>();
+const GITHUB_CLI_SUCCESS_CACHE_MS = 60_000;
 
 export interface GitHubCliStatus {
   toolName: "gh";
@@ -14,16 +17,55 @@ function buildBlockedTargetKey(sshHost?: string | null): string {
   return `${sshHost || "local"}:gh`;
 }
 
-async function hasGitHubCli(sshHost?: string | null): Promise<boolean> {
-  try {
-    await execGit("command -v gh >/dev/null 2>&1", sshHost);
-    return true;
-  } catch (error) {
-    if (sshHost && isSSHTransportError(error)) {
-      throw error;
-    }
-
+function isCachedAvailable(sshHost?: string | null): boolean {
+  const checkedAt = availableTargets.get(buildBlockedTargetKey(sshHost));
+  if (!checkedAt) {
     return false;
+  }
+
+  if (Date.now() - checkedAt > GITHUB_CLI_SUCCESS_CACHE_MS) {
+    availableTargets.delete(buildBlockedTargetKey(sshHost));
+    return false;
+  }
+
+  return true;
+}
+
+function rememberAvailable(sshHost?: string | null): void {
+  availableTargets.set(buildBlockedTargetKey(sshHost), Date.now());
+}
+
+async function hasGitHubCli(sshHost?: string | null): Promise<boolean> {
+  if (isCachedAvailable(sshHost)) {
+    return true;
+  }
+
+  const targetKey = buildBlockedTargetKey(sshHost);
+  const inFlightCheck = inFlightStatusChecks.get(targetKey);
+  if (inFlightCheck) {
+    return inFlightCheck;
+  }
+
+  const check = (async () => {
+    try {
+      await execGit("command -v gh >/dev/null 2>&1", sshHost);
+      rememberAvailable(sshHost);
+      return true;
+    } catch (error) {
+      if (sshHost && isSSHTransportError(error)) {
+        throw error;
+      }
+
+      return false;
+    }
+  })();
+
+  inFlightStatusChecks.set(targetKey, check);
+
+  try {
+    return await check;
+  } finally {
+    inFlightStatusChecks.delete(targetKey);
   }
 }
 
@@ -52,10 +94,13 @@ export async function getGitHubCliStatus(sshHost?: string | null): Promise<GitHu
 export async function installGitHubCli(sshHost?: string | null): Promise<void> {
   const blockedTargetKey = buildBlockedTargetKey(sshHost);
   blockedTargets.delete(blockedTargetKey);
+  availableTargets.delete(blockedTargetKey);
+  inFlightStatusChecks.delete(blockedTargetKey);
 
   try {
     await execGit(buildInstallCommand(), sshHost);
     await execGit("command -v gh >/dev/null 2>&1", sshHost);
+    rememberAvailable(sshHost);
   } catch (error) {
     if (sshHost && isSSHTransportError(error)) {
       throw error;

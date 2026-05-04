@@ -42,15 +42,17 @@ describe("diffService remote task support", () => {
     });
     mocks.execGit.mockImplementation(async (command: string, sshHost?: string | null) => {
       expect(sshHost).toBe("remote-host");
-      if (command.includes("--name-status")) {
-        return "M\tsrc/app.ts\n";
-      }
-
-      if (command.includes("--numstat")) {
-        return "3\t1\tsrc/app.ts\n";
-      }
-
-      return "?? docs/new.md\n";
+      expect(command).toContain("git -C '/remote/worktrees/fix-qa' diff 'main...fix/qa' --name-status");
+      expect(command).toContain("git -C '/remote/worktrees/fix-qa' diff 'main...fix/qa' --numstat");
+      expect(command).toContain("git -C '/remote/worktrees/fix-qa' status --porcelain --untracked-files=all");
+      return [
+        "__KANVIBE_DIFF_NAME_STATUS__",
+        "M\tsrc/app.ts",
+        "__KANVIBE_DIFF_NUMSTAT__",
+        "3\t1\tsrc/app.ts",
+        "__KANVIBE_DIFF_WORKING_TREE__",
+        "?? docs/new.md",
+      ].join("\n");
     });
 
     const { getGitDiffFiles } = await import("@/desktop/main/services/diffService");
@@ -63,10 +65,7 @@ describe("diffService remote task support", () => {
       expect.stringContaining("git -C '/remote/worktrees/fix-qa' diff 'main...fix/qa' --name-status"),
       "remote-host",
     );
-    expect(mocks.execGit).toHaveBeenCalledWith(
-      expect.stringContaining("git -C '/remote/worktrees/fix-qa' status --porcelain --untracked-files=all"),
-      "remote-host",
-    );
+    expect(mocks.execGit).toHaveBeenCalledTimes(1);
   });
 
   it("원격 태스크의 파일 읽기와 저장을 sshHost로 처리한다", async () => {

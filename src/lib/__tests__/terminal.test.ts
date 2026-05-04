@@ -443,6 +443,12 @@ describe("attachRemoteSession — ssh 바이너리 기반 연결", () => {
         "-o",
         "IdentitiesOnly=yes",
         "-tt",
+        "-o",
+        "ConnectTimeout=8",
+        "-o",
+        "ServerAliveInterval=5",
+        "-o",
+        "ServerAliveCountMax=2",
         "remote-host",
       ]);
       expect(sshArgs).not.toContain("-Y");

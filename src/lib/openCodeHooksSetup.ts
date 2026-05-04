@@ -2,7 +2,7 @@ import { writeFile, mkdir } from "fs/promises";
 import path from "path";
 import { pathToFileURL } from "node:url";
 import { addAiToolPatternsToGitExclude } from "@/lib/gitExclude";
-import { pathExists, readTextFile } from "@/lib/hostFileAccess";
+import { readTextFiles } from "@/lib/hostFileAccess";
 import { extractPluginHookServerUrl, validateHookServerConfiguration } from "@/lib/hookServerStatus";
 import { getOpenCodeRegisteredKanvibePluginUrls } from "@/lib/openCodePluginRegistry";
 
@@ -243,7 +243,8 @@ export async function getOpenCodeHooksStatus(repoPath: string, taskId?: string, 
   const pluginsDir = pathModule.join(openCodeDir, PLUGIN_DIR_NAME);
   const pluginPath = pathModule.join(pluginsDir, PLUGIN_FILE_NAME);
 
-  const pluginExists = await pathExists(pluginPath, sshHost);
+  const files = await readTextFiles([pluginPath], sshHost);
+  const pluginFile = files.get(pluginPath) ?? { exists: false, content: "" };
 
   let hasPlugin = false;
   let boundTaskId: string | null = null;
@@ -256,9 +257,9 @@ export async function getOpenCodeHooksStatus(repoPath: string, taskId?: string, 
   let hasDuplicateKanvibePlugins = false;
   let registeredPluginUrls: string[] = [];
   let configuredHookServerUrl: string | null = null;
-  if (pluginExists) {
+  if (pluginFile.exists) {
     try {
-      const content = await readTextFile(pluginPath, sshHost);
+      const content = pluginFile.content;
       hasPlugin = hasKanvibePlugin(content);
       configuredHookServerUrl = extractPluginHookServerUrl(content);
       boundTaskId = extractPluginTaskId(content);
@@ -288,7 +289,7 @@ export async function getOpenCodeHooksStatus(repoPath: string, taskId?: string, 
     sshHost,
   );
 
-  const installed = pluginExists
+  const installed = pluginFile.exists
     && hasPlugin
     && hasTaskIdBinding
     && hasStatusEndpoint

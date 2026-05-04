@@ -5,7 +5,7 @@ import { PaneLayoutType } from "@/entities/PaneLayoutConfig";
 import { ZELLIJ_LAYOUT_FILENAME } from "@/lib/worktree";
 import { execSync } from "child_process";
 import type { WebSocket } from "ws";
-import { buildSSHArgs, hasLocalX11Display } from "@/lib/sshConfig";
+import { buildSSHArgs, getKanvibeSSHConnectionHealthOptions, hasLocalX11Display } from "@/lib/sshConfig";
 import { buildTmuxSessionBootstrapCommands, type TmuxPaneLayoutConfig } from "@/lib/worktree";
 import { createLocalShellEnvironment } from "@/lib/shellEnvironment";
 
@@ -295,6 +295,7 @@ export async function attachRemoteSession(
   const args = buildSSHArgs(sshConfig, {
     forceTty: true,
     trustedX11Forwarding: hasLocalX11Display(),
+    connectionHealth: getKanvibeSSHConnectionHealthOptions(),
   });
 
   if (shouldLogTerminalSpawn()) {

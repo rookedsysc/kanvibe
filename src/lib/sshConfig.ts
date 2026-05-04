@@ -15,8 +15,17 @@ export interface SSHConnectionReuseOptions {
   controlPersist: string;
 }
 
+export interface SSHConnectionHealthOptions {
+  connectTimeoutSeconds: number;
+  serverAliveIntervalSeconds: number;
+  serverAliveCountMax: number;
+}
+
 const SSH_CONFIG_CACHE_TTL_MS = 5000;
 const KANVIBE_SSH_CONTROL_PERSIST = "10m";
+const KANVIBE_SSH_CONNECT_TIMEOUT_SECONDS = 8;
+const KANVIBE_SSH_SERVER_ALIVE_INTERVAL_SECONDS = 5;
+const KANVIBE_SSH_SERVER_ALIVE_COUNT_MAX = 2;
 let cachedHosts: SSHHostConfig[] | null = null;
 let cacheExpiresAt = 0;
 let inFlightParse: Promise<SSHHostConfig[]> | null = null;
@@ -36,6 +45,7 @@ export function buildSSHArgs(
     disableTty?: boolean;
     trustedX11Forwarding?: boolean;
     connectionReuse?: SSHConnectionReuseOptions;
+    connectionHealth?: SSHConnectionHealthOptions;
   },
 ): string[] {
   const args = [
@@ -70,6 +80,17 @@ export function buildSSHArgs(
     );
   }
 
+  if (options?.connectionHealth) {
+    args.push(
+      "-o",
+      `ConnectTimeout=${options.connectionHealth.connectTimeoutSeconds}`,
+      "-o",
+      `ServerAliveInterval=${options.connectionHealth.serverAliveIntervalSeconds}`,
+      "-o",
+      `ServerAliveCountMax=${options.connectionHealth.serverAliveCountMax}`,
+    );
+  }
+
   args.push(getSSHDestination(config));
   return args;
 }
@@ -86,6 +107,14 @@ export function getKanvibeSSHConnectionReuseOptions(): SSHConnectionReuseOptions
   return {
     controlPath: path.join(getKanvibeSSHControlDirectory(), "ssh-%C"),
     controlPersist: KANVIBE_SSH_CONTROL_PERSIST,
+  };
+}
+
+export function getKanvibeSSHConnectionHealthOptions(): SSHConnectionHealthOptions {
+  return {
+    connectTimeoutSeconds: KANVIBE_SSH_CONNECT_TIMEOUT_SECONDS,
+    serverAliveIntervalSeconds: KANVIBE_SSH_SERVER_ALIVE_INTERVAL_SECONDS,
+    serverAliveCountMax: KANVIBE_SSH_SERVER_ALIVE_COUNT_MAX,
   };
 }
 
