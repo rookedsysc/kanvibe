@@ -1,6 +1,7 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { pathToFileURL } from "node:url";
+import { createLocalShellEnvironment } from "@/lib/shellEnvironment";
 
 const execFileAsync = promisify(execFile);
 
@@ -48,6 +49,7 @@ export async function getOpenCodeRegisteredKanvibePluginUrls(repoPath: string): 
   try {
     const { stdout } = await execFileAsync("opencode", ["debug", "config"], {
       cwd: repoPath,
+      env: createLocalShellEnvironment(),
       maxBuffer: 1024 * 1024,
     });
 
