@@ -158,7 +158,7 @@ function CreateTaskModalContent({
         const sessionType = (formData.get("sessionType") as SessionType) || undefined;
         const selectedProject = projects.find((project) => project.id === selectedProjectId) ?? null;
 
-        if (sessionType) {
+        if (sessionType && !selectedProject?.sshHost) {
           const isReady = await ensureSessionDependencyWithPrompt(sessionType, selectedProject?.sshHost, tc);
           if (!isReady) {
             return;

@@ -67,9 +67,11 @@ export default function BranchTaskModal({
     startTransition(async () => {
       try {
         const selectedProject = projects.find((project) => project.id === selectedProjectId) ?? null;
-        const isReady = await ensureSessionDependencyWithPrompt(sessionType, selectedProject?.sshHost, tc);
-        if (!isReady) {
-          return;
+        if (!selectedProject?.sshHost) {
+          const isReady = await ensureSessionDependencyWithPrompt(sessionType, selectedProject?.sshHost, tc);
+          if (!isReady) {
+            return;
+          }
         }
 
         await branchFromTask(

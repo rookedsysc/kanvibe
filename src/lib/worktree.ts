@@ -286,8 +286,6 @@ export async function createWorktreeWithSession(
   sshHost?: string | null,
   projectId?: string | null,
 ): Promise<WorktreeSession> {
-  await ensureRemoteSessionDependency(sessionType, sshHost);
-
   const projectName = path.basename(projectPath);
   const worktreePath = buildManagedWorktreePath(projectPath, branchName);
   const sessionName = formatSessionName(projectName, branchName);

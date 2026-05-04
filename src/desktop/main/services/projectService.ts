@@ -831,7 +831,9 @@ export async function getProjectBranches(projectId: string): Promise<string[]> {
   const project = await repo.findOneBy({ id: projectId });
   if (!project) return [];
 
-  return listBranches(project.repoPath, project.sshHost);
+  return listBranches(project.repoPath, project.sshHost, {
+    refresh: !project.sshHost,
+  });
 }
 
 /** 프로젝트의 Claude Code hooks 설치 상태를 조회한다 */

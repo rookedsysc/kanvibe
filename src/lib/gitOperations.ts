@@ -290,11 +290,18 @@ export async function remoteBranchExists(
  * remote origin을 먼저 fetch하여 최신 상태를 반영하며,
  * 로컬에 없는 remote-only 브랜치는 `origin/` prefix를 유지한다.
  */
+interface ListBranchesOptions {
+  refresh?: boolean;
+}
+
 export async function listBranches(
   repoPath: string,
-  sshHost?: string | null
+  sshHost?: string | null,
+  options: ListBranchesOptions = {},
 ): Promise<string[]> {
-  await fetchOrigin(repoPath, sshHost);
+  if (options.refresh ?? true) {
+    await fetchOrigin(repoPath, sshHost);
+  }
 
   const output = await execGit(
     `git -C "${repoPath}" branch -a --format='%(refname:short)'`,

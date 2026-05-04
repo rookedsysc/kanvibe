@@ -542,6 +542,28 @@ describe("createWorktreeWithSession — Zellij KDL layout file persistence", () 
     vi.clearAllMocks();
   });
 
+  it("should defer remote tmux dependency checks until terminal attach", async () => {
+    // Given
+    mockExecGit.mockResolvedValue("");
+    const { createWorktreeWithSession } = await import("@/lib/worktree");
+
+    // When
+    await createWorktreeWithSession(
+      "/home/user/kanvibe",
+      "feat-new",
+      "main",
+      SessionType.TMUX,
+      "remote-create-host",
+      "project-1",
+    );
+
+    // Then
+    expect(filterCalls("command -v tmux")).toHaveLength(0);
+    expect(filterCalls("tmux has-session")).toHaveLength(0);
+    expect(filterCalls("tmux new-session")).toHaveLength(0);
+    expect(filterCalls("git -C")).toHaveLength(1);
+  });
+
   it("should write layout file to worktree directory without starting zellij", async () => {
     // Given
     mockGetEffectivePaneLayout.mockResolvedValue({
