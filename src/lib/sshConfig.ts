@@ -1,4 +1,4 @@
-import { readFile } from "fs/promises";
+import { mkdir, readFile } from "fs/promises";
 import { homedir } from "os";
 import path from "path";
 
@@ -78,11 +78,19 @@ export function getKanvibeSSHControlDirectory(): string {
   return path.join(homedir(), ".kanvibe");
 }
 
+export async function ensureKanvibeSSHControlDirectory(): Promise<void> {
+  await mkdir(getKanvibeSSHControlDirectory(), { recursive: true, mode: 0o700 });
+}
+
 export function getKanvibeSSHConnectionReuseOptions(): SSHConnectionReuseOptions {
   return {
     controlPath: path.join(getKanvibeSSHControlDirectory(), "ssh-%C"),
     controlPersist: KANVIBE_SSH_CONTROL_PERSIST,
   };
+}
+
+export function hasLocalX11Display(env: NodeJS.ProcessEnv = process.env): boolean {
+  return Boolean(env.DISPLAY);
 }
 
 /**

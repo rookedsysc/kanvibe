@@ -19,6 +19,7 @@ const mocks = vi.hoisted(() => ({
   createWorktreeWithSession: vi.fn(),
   removeWorktreeAndBranch: vi.fn(),
   removeSessionOnly: vi.fn(),
+  detachSession: vi.fn(),
   installKanvibeHooks: vi.fn(),
   broadcastBoardUpdate: vi.fn(),
   execGit: vi.fn(),
@@ -64,6 +65,10 @@ vi.mock("@/lib/worktree", () => ({
   createSessionWithoutWorktree: vi.fn(),
   removeSessionOnly: mocks.removeSessionOnly,
   buildManagedWorktreePath: vi.fn((projectPath: string, branchName: string) => `${projectPath}__worktrees/${branchName}`),
+}));
+
+vi.mock("@/lib/terminal", () => ({
+  detachSession: mocks.detachSession,
 }));
 
 vi.mock("@/lib/kanvibeHooksInstaller", () => ({
@@ -367,6 +372,7 @@ describe("kanbanService.createTask", () => {
     } as never);
 
     // Then
+    expect(mocks.detachSession).toHaveBeenCalledWith("task-2", "cleanup-task-resources");
     expect(mocks.removeSessionOnly).toHaveBeenCalledWith(
       "tmux",
       "prompt-main",
@@ -395,6 +401,7 @@ describe("kanbanService.createTask", () => {
 
     // Then
     expect(mocks.projectRepo.findOneBy).not.toHaveBeenCalled();
+    expect(mocks.detachSession).toHaveBeenCalledWith("task-3", "cleanup-task-resources");
     expect(mocks.removeSessionOnly).toHaveBeenCalledWith(
       "tmux",
       "techtaurant-be-dev",
@@ -426,6 +433,7 @@ describe("kanbanService.createTask", () => {
 
     // Then
     expect(result).toBe(true);
+    expect(mocks.detachSession).toHaveBeenCalledWith("task-remote", "cleanup-task-resources");
     expect(mocks.removeSessionOnly).toHaveBeenCalledWith(
       "tmux",
       "prompt-main",
@@ -434,6 +442,39 @@ describe("kanbanService.createTask", () => {
     expect(mocks.removeWorktreeAndBranch).not.toHaveBeenCalled();
     expect(mocks.taskRepo.remove).toHaveBeenCalledWith(task);
     expect(mocks.broadcastBoardUpdate).toHaveBeenCalledTimes(1);
+  });
+
+  it("tmux 세션 정리 전 앱이 붙잡고 있는 활성 터미널 PTY를 먼저 닫는다", async () => {
+    // Given
+    const callOrder: string[] = [];
+    mocks.detachSession.mockImplementation(() => {
+      callOrder.push("detach");
+    });
+    mocks.removeSessionOnly.mockImplementation(async () => {
+      callOrder.push("remove-session");
+    });
+
+    const { cleanupTaskResources } = await import("@/desktop/main/services/kanbanService");
+
+    // When
+    await cleanupTaskResources({
+      id: "task-open-terminal",
+      projectId: null,
+      branchName: null,
+      worktreePath: null,
+      sshHost: null,
+      sessionType: "tmux" as never,
+      sessionName: "repo-feat-open",
+    } as never);
+
+    // Then
+    expect(callOrder).toEqual(["detach", "remove-session"]);
+    expect(mocks.detachSession).toHaveBeenCalledWith("task-open-terminal", "cleanup-task-resources");
+    expect(mocks.removeSessionOnly).toHaveBeenCalledWith(
+      "tmux",
+      "repo-feat-open",
+      null,
+    );
   });
 
   it("task 내용 수정 후 board update를 브로드캐스트한다", async () => {

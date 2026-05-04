@@ -161,8 +161,8 @@ macOS에서 `better-sqlite3` `NODE_MODULE_VERSION` 불일치가 발생하면, Ka
 - **tmux**와 **zellij** 모두 터미널 멀티플렉서로 지원
 - xterm.js + WebSocket 기반 브라우저 터미널
 - SSH 원격 터미널 지원 (`~/.ssh/config` 읽기)
-- 원격 SSH 명령은 `~/.kanvibe` 아래의 앱 전용 ControlMaster 소켓을 재사용합니다
-- 원격 터미널 attach는 trusted X11 forwarding(`ssh -Y`)을 사용하므로 로컬 `DISPLAY`, 원격 `X11Forwarding`, `xauth`가 준비되어 있으면 `xclip` 같은 도구가 동작할 수 있습니다
+- 비대화형 원격 SSH 명령은 `~/.kanvibe` 아래의 앱 전용 ControlMaster 소켓을 재사용하며 host별 동시성을 제한합니다
+- 원격 터미널 attach는 SSH에서 tmux/zellij를 직접 실행하며, 로컬 `DISPLAY`, 원격 `X11Forwarding`, `xauth`가 준비된 경우에만 trusted X11 forwarding(`ssh -Y`)을 요청합니다
 - Nerd Font 렌더링 지원
 
 ### 키보드 단축키

@@ -14,6 +14,7 @@ import {
 } from "@/lib/boardNotifier";
 import { installKanvibeHooks } from "@/lib/kanvibeHooksInstaller";
 import { execGit, pullCurrentBranch, remoteBranchExists } from "@/lib/gitOperations";
+import { detachSession } from "@/lib/terminal";
 
 export type TasksByStatus = Record<TaskStatus, KanbanTask[]>;
 
@@ -667,6 +668,8 @@ export async function cleanupTaskResources(
   /** 브랜치별 독립 세션 정리 */
   if (task.sessionType && task.sessionName) {
     try {
+      detachSession(task.id, "cleanup-task-resources");
+
       if (cleanupOptions) {
         await removeSessionOnly(
           task.sessionType,
