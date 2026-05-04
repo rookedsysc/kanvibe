@@ -4,6 +4,12 @@ import path from "path";
 import { execGit } from "@/lib/gitOperations";
 
 const remoteHomeDirectoryCache = new Map<string, string>();
+const REMOTE_FILE_RECORD_PREFIX = "__KANVIBE_FILE_RECORD__";
+
+export interface TextFileReadResult {
+  exists: boolean;
+  content: string;
+}
 
 export function quoteShellArgument(value: string): string {
   return `'${value.replaceAll("'", `'\\''`)}'`;
@@ -57,6 +63,74 @@ export async function readTextFile(targetPath: string, sshHost?: string | null):
   } catch {
     return "";
   }
+}
+
+export async function readTextFiles(
+  targetPaths: string[],
+  sshHost?: string | null,
+): Promise<Map<string, TextFileReadResult>> {
+  if (targetPaths.length === 0) {
+    return new Map();
+  }
+
+  if (!sshHost) {
+    const entries: Array<[string, TextFileReadResult]> = await Promise.all(targetPaths.map(async (targetPath) => {
+      try {
+        return [targetPath, { exists: true, content: await readFile(targetPath, "utf-8") }];
+      } catch {
+        return [targetPath, { exists: false, content: "" }];
+      }
+    }));
+
+    return new Map<string, TextFileReadResult>(entries);
+  }
+
+  const command = [
+    "for __kanvibe_file in",
+    targetPaths.map(quoteShellArgument).join(" "),
+    "; do",
+    `printf '%s\\t%s\\t' ${quoteShellArgument(REMOTE_FILE_RECORD_PREFIX)} \"$__kanvibe_file\"`,
+    "if test -f \"$__kanvibe_file\"; then",
+    "printf '1\\t'",
+    "(base64 -w 0 \"$__kanvibe_file\" 2>/dev/null || base64 \"$__kanvibe_file\" | tr -d '\\n')",
+    "else",
+    "printf '0\\t'",
+    "fi",
+    "printf '\\n'",
+    "done",
+  ].join(" ");
+  const output = await execGit(command, sshHost);
+
+  return parseRemoteTextFiles(output, targetPaths);
+}
+
+function parseRemoteTextFiles(
+  output: string,
+  targetPaths: string[],
+): Map<string, TextFileReadResult> {
+  const files = new Map<string, TextFileReadResult>(
+    targetPaths.map((targetPath) => [targetPath, { exists: false, content: "" }]),
+  );
+
+  for (const line of output.split("\n")) {
+    if (!line.startsWith(`${REMOTE_FILE_RECORD_PREFIX}\t`)) {
+      continue;
+    }
+
+    const [, filePath, existsFlag, encodedContent = ""] = line.split("\t");
+    if (!filePath) {
+      continue;
+    }
+
+    files.set(filePath, {
+      exists: existsFlag === "1",
+      content: existsFlag === "1"
+        ? Buffer.from(encodedContent, "base64").toString("utf-8")
+        : "",
+    });
+  }
+
+  return files;
 }
 
 export async function writeTextFile(targetPath: string, content: string, sshHost?: string | null): Promise<void> {

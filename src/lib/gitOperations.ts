@@ -1,9 +1,10 @@
-import { exec, execFile } from "child_process";
+import { exec, execFile, spawn } from "child_process";
 import { promisify } from "util";
 import { homedir } from "os";
 import {
   buildSSHArgs,
   ensureKanvibeSSHControlDirectory,
+  getKanvibeSSHConnectionHealthOptions,
   getKanvibeSSHConnectionReuseOptions,
   parseSSHConfig,
   type SSHHostConfig,
@@ -20,6 +21,8 @@ const SSH_TRANSPORT_ERROR_PATTERNS = [
   /connection closed by /i,
   /connection refused/i,
   /connection timed out/i,
+  /ssh command timed out/i,
+  /ssh 명령이 .*완료되지 않았/i,
   /operation timed out/i,
   /no route to host/i,
   /network is unreachable/i,
@@ -35,10 +38,21 @@ const SSH_TRANSPORT_ERROR_PATTERNS = [
   /ssh: connect to host/i,
 ];
 
-const REMOTE_SSH_TRANSPORT_FAILURE_COOLDOWN_MS = 60_000;
-const REMOTE_SSH_HOST_MAX_CONCURRENCY = 4;
+const DEFAULT_REMOTE_SSH_TRANSPORT_FAILURE_COOLDOWN_MS = 5_000;
+const MAX_REMOTE_SSH_TRANSPORT_FAILURE_COOLDOWN_MS = 60_000;
+const DEFAULT_REMOTE_SSH_HOST_MAX_CONCURRENCY = 4;
+const MAX_REMOTE_SSH_HOST_MAX_CONCURRENCY = 16;
+const DEFAULT_REMOTE_SSH_COMMAND_TIMEOUT_MS = 45_000;
+const REMOTE_SSH_COMMAND_MAX_ATTEMPTS = 3;
+const REMOTE_SSH_CONTROLMASTER_SHUTDOWN_TIMEOUT_MS = 3_000;
+const REMOTE_COMMAND_EXIT_MARKER = "__KANVIBE_REMOTE_COMMAND_EXIT_7b3f6e5d__";
+const REMOTE_COMMAND_MAX_BUFFER_BYTES = 10 * 1024 * 1024;
 const remoteSSHTransportFailures = new Map<string, { until: number; error: Error }>();
 const remoteSSHHostLimiters = new Map<string, { active: number; queue: Array<() => void> }>();
+
+export interface ExecGitOptions {
+  timeoutMs?: number;
+}
 
 function collectErrorOutput(error: unknown): string {
   const outputs: string[] = [];
@@ -91,6 +105,59 @@ function shouldLogRemoteCommandFailure(command: string, stderr: string): boolean
   return true;
 }
 
+function readPositiveInteger(value: string | undefined, fallback: number): number {
+  const parsed = Number.parseInt(value ?? "", 10);
+  if (!Number.isFinite(parsed) || parsed < 1) {
+    return fallback;
+  }
+
+  return parsed;
+}
+
+function getRemoteSSHHostMaxConcurrency(): number {
+  return Math.min(
+    readPositiveInteger(
+      process.env.KANVIBE_REMOTE_SSH_HOST_MAX_CONCURRENCY,
+      DEFAULT_REMOTE_SSH_HOST_MAX_CONCURRENCY,
+    ),
+    MAX_REMOTE_SSH_HOST_MAX_CONCURRENCY,
+  );
+}
+
+function getRemoteSSHCommandTimeoutMs(options?: ExecGitOptions): number {
+  return options?.timeoutMs
+    ?? readPositiveInteger(
+      process.env.KANVIBE_REMOTE_SSH_COMMAND_TIMEOUT_MS,
+      DEFAULT_REMOTE_SSH_COMMAND_TIMEOUT_MS,
+    );
+}
+
+function getRemoteSSHTransportFailureCooldownMs(): number {
+  return Math.min(
+    readPositiveInteger(
+      process.env.KANVIBE_REMOTE_SSH_TRANSPORT_FAILURE_COOLDOWN_MS,
+      DEFAULT_REMOTE_SSH_TRANSPORT_FAILURE_COOLDOWN_MS,
+    ),
+    MAX_REMOTE_SSH_TRANSPORT_FAILURE_COOLDOWN_MS,
+  );
+}
+
+function isSSHCommandTimeoutError(error: unknown): boolean {
+  if (!error || typeof error !== "object") {
+    return false;
+  }
+
+  const maybeTimeoutError = error as {
+    code?: string;
+    killed?: boolean;
+    signal?: string | null;
+  };
+
+  return maybeTimeoutError.killed === true
+    || maybeTimeoutError.signal === "SIGTERM"
+    || maybeTimeoutError.code === "ETIMEDOUT";
+}
+
 /** 로컬에서 셸 명령을 실행하고 stdout을 반환한다 */
 async function execLocal(command: string): Promise<string> {
   const { stdout } = await execAsync(command, {
@@ -100,10 +167,15 @@ async function execLocal(command: string): Promise<string> {
 }
 
 /** SSH를 통해 원격에서 명령을 실행하고 stdout을 반환한다 */
-async function execRemote(sshHost: string, command: string): Promise<string> {
+async function execRemote(
+  sshHost: string,
+  command: string,
+  options?: ExecGitOptions,
+): Promise<string> {
   return runLimitedRemoteCommand(sshHost, async () => {
     throwIfSSHTransportCooldownActive(sshHost);
 
+    const timeoutMs = getRemoteSSHCommandTimeoutMs(options);
     const configs = await parseSSHConfig();
     const hostConfig = configs.find((c) => c.host === sshHost);
 
@@ -116,31 +188,211 @@ async function execRemote(sshHost: string, command: string): Promise<string> {
       buildRemoteShellCommand(command),
     ];
 
-    try {
-      const { stdout } = await execFileAsync("ssh", sshArgs, {
-        env: createLocalShellEnvironment(),
-        maxBuffer: 10 * 1024 * 1024,
-      });
-      return stdout.trim();
-    } catch (error) {
-      const stderr = error && typeof error === "object" && "stderr" in error
-        ? String((error as { stderr?: string }).stderr || "")
-        : "";
+    let lastError: Error | null = null;
+    for (let attempt = 1; attempt <= REMOTE_SSH_COMMAND_MAX_ATTEMPTS; attempt += 1) {
+      try {
+        return await spawnSSHCommand(sshArgs, timeoutMs);
+      } catch (error) {
+        const isCommandTimeout = isSSHCommandTimeoutError(error);
+        const normalizedError = normalizeSSHExecError(error, sshHost, timeoutMs, isCommandTimeout);
+        const shouldRetry = isRetriableSSHExecError(normalizedError, isCommandTimeout)
+          && attempt < REMOTE_SSH_COMMAND_MAX_ATTEMPTS;
+        lastError = normalizedError;
 
-      if (shouldLogRemoteCommandFailure(command, stderr)) {
-        console.error("[remote-ssh] command failed", {
-          sshHost,
-          command,
-          sshArgs,
-          error: error instanceof Error ? error.message : String(error),
-        });
+        if (isCommandTimeout || isSSHTransportError(normalizedError)) {
+          await closeRemoteSSHControlMaster(hostConfig).catch(() => undefined);
+        }
+
+        if (!shouldRetry) {
+          logRemoteCommandFailure(command, sshHost, sshArgs, error);
+          rememberSSHTransportFailure(sshHost, normalizedError);
+          throw normalizedError;
+        }
+      }
+    }
+
+    throw lastError ?? new Error(`${sshHost} 원격 명령 실패`);
+  });
+}
+
+function logRemoteCommandFailure(
+  command: string,
+  sshHost: string,
+  sshArgs: string[],
+  error: unknown,
+): void {
+  const stderr = error && typeof error === "object" && "stderr" in error
+    ? String((error as { stderr?: string }).stderr || "")
+    : "";
+
+  if (!shouldLogRemoteCommandFailure(command, stderr)) {
+    return;
+  }
+
+  console.error("[remote-ssh] command failed", {
+    sshHost,
+    command,
+    sshArgs,
+    error: error instanceof Error ? error.message : String(error),
+  });
+}
+
+function isRetriableSSHExecError(error: Error, isCommandTimeout: boolean): boolean {
+  return isCommandTimeout || isSSHTransportError(error);
+}
+
+function spawnSSHCommand(sshArgs: string[], timeoutMs: number): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const child = spawn("ssh", sshArgs, {
+      env: createLocalShellEnvironment(),
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+
+    let stdout = "";
+    let stderr = "";
+    let settled = false;
+    const timeout = setTimeout(() => {
+      finishWithError(createSSHTimeoutError(timeoutMs, stdout, stderr));
+    }, timeoutMs);
+
+    child.stdout.setEncoding("utf8");
+    child.stderr.setEncoding("utf8");
+
+    child.stdout.on("data", (chunk: string) => {
+      stdout += chunk;
+      rejectIfOutputIsTooLarge();
+
+      const parsed = parseRemoteCommandCompletion(stdout);
+      if (parsed) {
+        finishWithRemoteCompletion(parsed.exitCode, parsed.stdout, stderr);
+      }
+    });
+
+    child.stderr.on("data", (chunk: string) => {
+      stderr += chunk;
+      rejectIfOutputIsTooLarge();
+    });
+
+    child.on("error", (error) => {
+      finishWithError(attachCommandOutput(error, stdout, stderr));
+    });
+
+    child.on("close", (code, signal) => {
+      if (settled) {
+        return;
       }
 
-      const normalizedError = normalizeSSHExecError(error, sshHost);
-      rememberSSHTransportFailure(sshHost, normalizedError);
-      throw normalizedError;
+      const parsed = parseRemoteCommandCompletion(stdout);
+      if (parsed) {
+        finishWithRemoteCompletion(parsed.exitCode, parsed.stdout, stderr);
+        return;
+      }
+
+      if (code === 0) {
+        finishWithSuccess(stdout.trim());
+        return;
+      }
+
+      finishWithError(createSSHExitError(code, signal, stdout, stderr));
+    });
+
+    function rejectIfOutputIsTooLarge(): void {
+      if (Buffer.byteLength(stdout) + Buffer.byteLength(stderr) <= REMOTE_COMMAND_MAX_BUFFER_BYTES) {
+        return;
+      }
+
+      finishWithError(attachCommandOutput(
+        new Error("SSH command output exceeded maxBuffer"),
+        stdout,
+        stderr,
+      ));
+    }
+
+    function finishWithRemoteCompletion(exitCode: number, completedStdout: string, completedStderr: string): void {
+      if (exitCode === 0) {
+        finishWithSuccess(completedStdout.trim());
+        return;
+      }
+
+      const error = createSSHExitError(exitCode, null, completedStdout, completedStderr);
+      finishWithError(error);
+    }
+
+    function finishWithSuccess(output: string): void {
+      if (settled) {
+        return;
+      }
+
+      settled = true;
+      clearTimeout(timeout);
+      if (child.exitCode === null && !child.killed) {
+        child.kill("SIGTERM");
+      }
+      resolve(output);
+    }
+
+    function finishWithError(error: Error): void {
+      if (settled) {
+        return;
+      }
+
+      settled = true;
+      clearTimeout(timeout);
+      if (child.exitCode === null && !child.killed) {
+        child.kill("SIGTERM");
+      }
+      reject(error);
     }
   });
+}
+
+function parseRemoteCommandCompletion(stdout: string): { stdout: string; exitCode: number } | null {
+  const markerPrefix = `\n${REMOTE_COMMAND_EXIT_MARKER}:`;
+  const markerIndex = stdout.lastIndexOf(markerPrefix);
+  if (markerIndex < 0) {
+    return null;
+  }
+
+  const exitCodeMatch = stdout
+    .slice(markerIndex + markerPrefix.length)
+    .match(/^(\d+)\r?\n/);
+  if (!exitCodeMatch) {
+    return null;
+  }
+
+  return {
+    stdout: stdout.slice(0, markerIndex),
+    exitCode: Number.parseInt(exitCodeMatch[1], 10),
+  };
+}
+
+function createSSHTimeoutError(timeoutMs: number, stdout: string, stderr: string): Error {
+  const error = new Error(`Command timed out after ${timeoutMs}ms`) as Error & {
+    killed?: boolean;
+    signal?: string;
+  };
+  error.killed = true;
+  error.signal = "SIGTERM";
+  return attachCommandOutput(error, stdout, stderr);
+}
+
+function createSSHExitError(
+  code: number | null,
+  signal: NodeJS.Signals | null,
+  stdout: string,
+  stderr: string,
+): Error {
+  const error = new Error(`Command failed: ssh exited with ${signal ?? code ?? "unknown"}`) as Error & {
+    code?: number | null;
+    signal?: NodeJS.Signals | null;
+  };
+  error.code = code;
+  error.signal = signal;
+  return attachCommandOutput(error, stdout, stderr);
+}
+
+function attachCommandOutput<T extends Error>(error: T, stdout: string, stderr: string): T {
+  return Object.assign(error, { stdout, stderr });
 }
 
 async function runLimitedRemoteCommand<T>(
@@ -169,7 +421,7 @@ function acquireRemoteSSHSlot(sshHost: string): Promise<() => void> {
       resolve(() => releaseRemoteSSHSlot(sshHost, limiter));
     };
 
-    if (limiter.active < REMOTE_SSH_HOST_MAX_CONCURRENCY) {
+    if (limiter.active < getRemoteSSHHostMaxConcurrency()) {
       start();
       return;
     }
@@ -217,7 +469,7 @@ function rememberSSHTransportFailure(sshHost: string, error: Error): void {
   }
 
   remoteSSHTransportFailures.set(sshHost, {
-    until: Date.now() + REMOTE_SSH_TRANSPORT_FAILURE_COOLDOWN_MS,
+    until: Date.now() + getRemoteSSHTransportFailureCooldownMs(),
     error,
   });
 }
@@ -226,25 +478,79 @@ async function buildExecSSHArgs(
   hostConfig: SSHHostConfig,
 ): Promise<string[]> {
   if (process.platform === "win32") {
-    return buildSSHArgs(hostConfig, { disableTty: true });
+    return buildSSHArgs(hostConfig, {
+      disableTty: true,
+      connectionHealth: getKanvibeSSHConnectionHealthOptions(),
+    });
   }
 
   await ensureKanvibeSSHControlDirectory();
   return buildSSHArgs(hostConfig, {
     disableTty: true,
     connectionReuse: getKanvibeSSHConnectionReuseOptions(),
+    connectionHealth: getKanvibeSSHConnectionHealthOptions(),
+  });
+}
+
+async function closeRemoteSSHControlMaster(hostConfig: SSHHostConfig): Promise<void> {
+  if (process.platform === "win32") {
+    return;
+  }
+
+  const reuseOptions = getKanvibeSSHConnectionReuseOptions();
+  const baseArgs = buildSSHArgs(hostConfig, {
+    disableTty: true,
+    connectionHealth: {
+      connectTimeoutSeconds: 3,
+      serverAliveIntervalSeconds: 1,
+      serverAliveCountMax: 1,
+    },
+  });
+  const destination = baseArgs.at(-1);
+  if (!destination) {
+    return;
+  }
+
+  const shutdownArgs = [
+    ...baseArgs.slice(0, -1),
+    "-O",
+    "exit",
+    "-S",
+    reuseOptions.controlPath,
+    destination,
+  ];
+
+  await execFileAsync("ssh", shutdownArgs, {
+    env: createLocalShellEnvironment(),
+    timeout: REMOTE_SSH_CONTROLMASTER_SHUTDOWN_TIMEOUT_MS,
   });
 }
 
 function buildRemoteShellCommand(command: string): string {
-  return `sh -lc ${quoteForPosixShell(command)}`;
+  const wrappedCommand = [
+    `sh -lc ${quoteForPosixShell(command)}`,
+    "__kanvibe_status=$?",
+    `printf '\\n${REMOTE_COMMAND_EXIT_MARKER}:%s\\n' "$__kanvibe_status"`,
+    'exit "$__kanvibe_status"',
+  ].join("; ");
+
+  return `sh -lc ${quoteForPosixShell(wrappedCommand)}`;
 }
 
 function quoteForPosixShell(value: string): string {
   return `'${value.replace(/'/g, `'"'"'`)}'`;
 }
 
-function normalizeSSHExecError(error: unknown, sshHost: string): Error {
+function normalizeSSHExecError(
+  error: unknown,
+  sshHost: string,
+  timeoutMs: number,
+  isCommandTimeout: boolean,
+): Error {
+  if (isCommandTimeout) {
+    return new Error(`${sshHost} 원격 명령 실패: SSH 명령이 ${Math.ceil(timeoutMs / 1000)}초 안에 완료되지 않았습니다.`);
+  }
+
   if (error && typeof error === "object" && "stderr" in error) {
     const stderr = String((error as { stderr?: string }).stderr || "").trim();
     const message = stderr ? summarizeCommandFailure(stderr) : (error instanceof Error ? error.message : "SSH 명령 실패");
@@ -268,9 +574,13 @@ export function resolvePathForShell(targetPath: string, sshHost?: string | null)
 }
 
 /** 로컬 또는 SSH에서 명령을 실행한다. sshHost가 null이면 로컬 실행 */
-export async function execGit(command: string, sshHost?: string | null): Promise<string> {
+export async function execGit(
+  command: string,
+  sshHost?: string | null,
+  options?: ExecGitOptions,
+): Promise<string> {
   if (sshHost) {
-    return execRemote(sshHost, command);
+    return execRemote(sshHost, command, options);
   }
   return execLocal(command);
 }

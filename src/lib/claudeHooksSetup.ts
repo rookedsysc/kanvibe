@@ -1,7 +1,7 @@
 import { writeFile, mkdir, chmod } from "fs/promises";
 import path from "path";
 import { addAiToolPatternsToGitExclude } from "@/lib/gitExclude";
-import { pathExists, readTextFile } from "@/lib/hostFileAccess";
+import { readTextFile, readTextFiles } from "@/lib/hostFileAccess";
 import { extractShellHookServerUrl, validateHookServerConfiguration } from "@/lib/hookServerStatus";
 import { buildShellTaskIdResolver, extractShellTaskId } from "@/lib/hookTaskBinding";
 
@@ -100,7 +100,10 @@ function hasLegacyBranchPayloadBinding(content: string): boolean {
 
 /** 기존 settings.json을 읽거나 빈 객체를 반환한다 */
 async function readSettingsJson(settingsPath: string, sshHost?: string | null): Promise<ClaudeSettings> {
-  const content = await readTextFile(settingsPath, sshHost);
+  return parseSettingsJson(await readTextFile(settingsPath, sshHost));
+}
+
+function parseSettingsJson(content: string): ClaudeSettings {
   if (!content) {
     return {};
   }
@@ -250,15 +253,19 @@ export async function getClaudeHooksStatus(repoPath: string, taskId?: string, ss
   const stopScriptPath = pathModule.join(hooksDir, "kanvibe-stop-hook.sh");
   const questionScriptPath = pathModule.join(hooksDir, "kanvibe-question-hook.sh");
 
-  const promptScriptExists = await pathExists(promptScriptPath, sshHost);
-  const stopScriptExists = await pathExists(stopScriptPath, sshHost);
-  const questionScriptExists = await pathExists(questionScriptPath, sshHost);
-
-  const [promptContent, stopContent, questionContent] = await Promise.all([
-    promptScriptExists ? readTextFile(promptScriptPath, sshHost) : Promise.resolve(""),
-    stopScriptExists ? readTextFile(stopScriptPath, sshHost) : Promise.resolve(""),
-    questionScriptExists ? readTextFile(questionScriptPath, sshHost) : Promise.resolve(""),
-  ]);
+  const files = await readTextFiles([
+    promptScriptPath,
+    stopScriptPath,
+    questionScriptPath,
+    settingsPath,
+  ], sshHost);
+  const promptScript = files.get(promptScriptPath) ?? { exists: false, content: "" };
+  const stopScript = files.get(stopScriptPath) ?? { exists: false, content: "" };
+  const questionScript = files.get(questionScriptPath) ?? { exists: false, content: "" };
+  const settingsFile = files.get(settingsPath) ?? { exists: false, content: "" };
+  const promptContent = promptScript.content;
+  const stopContent = stopScript.content;
+  const questionContent = questionScript.content;
 
   const scriptContents = [promptContent, stopContent, questionContent];
   const boundTaskIds = scriptContents.map(extractShellTaskId).filter((value): value is string => value !== null);
@@ -278,7 +285,7 @@ export async function getClaudeHooksStatus(repoPath: string, taskId?: string, ss
 
   let hasSettingsEntry = false;
   try {
-    const settings = await readSettingsJson(settingsPath, sshHost);
+    const settings = parseSettingsJson(settingsFile.content);
     const hooks = settings.hooks as Record<string, unknown[]> | undefined;
     if (hooks) {
       const hasPrompt = hasCommandHook(hooks.UserPromptSubmit || [], CLAUDE_PROMPT_COMMAND);
@@ -291,9 +298,9 @@ export async function getClaudeHooksStatus(repoPath: string, taskId?: string, ss
     /* settings.json 없음 */
   }
 
-  const installed = promptScriptExists
-    && stopScriptExists
-    && questionScriptExists
+  const installed = promptScript.exists
+    && stopScript.exists
+    && questionScript.exists
     && hasSettingsEntry
     && hasTaskIdBinding
     && hasStatusMappings
@@ -301,9 +308,9 @@ export async function getClaudeHooksStatus(repoPath: string, taskId?: string, ss
 
   return {
     installed,
-    hasPromptHook: promptScriptExists,
-    hasStopHook: stopScriptExists,
-    hasQuestionHook: questionScriptExists,
+    hasPromptHook: promptScript.exists,
+    hasStopHook: stopScript.exists,
+    hasQuestionHook: questionScript.exists,
     hasSettingsEntry,
     hasTaskIdBinding,
     hasStatusMappings,

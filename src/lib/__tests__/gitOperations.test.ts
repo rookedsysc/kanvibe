@@ -4,6 +4,7 @@ const mocks = vi.hoisted(() => ({
   homedir: vi.fn(() => "/home/local-user"),
   exec: vi.fn(),
   execFile: vi.fn(),
+  spawn: vi.fn(),
   mkdir: vi.fn(async () => undefined),
 }));
 
@@ -11,9 +12,11 @@ vi.mock("child_process", () => ({
   default: {
     exec: mocks.exec,
     execFile: mocks.execFile,
+    spawn: mocks.spawn,
   },
   exec: mocks.exec,
   execFile: mocks.execFile,
+  spawn: mocks.spawn,
 }));
 
 vi.mock("os", () => ({
@@ -31,6 +34,83 @@ vi.mock("fs/promises", () => ({
   mkdir: mocks.mkdir,
   readFile: vi.fn(),
 }));
+
+const REMOTE_COMMAND_EXIT_MARKER = "__KANVIBE_REMOTE_COMMAND_EXIT_7b3f6e5d__";
+
+type MockListener = (...args: unknown[]) => void;
+
+class MockReadableStream {
+  private listeners = new Map<string, MockListener[]>();
+
+  setEncoding = vi.fn();
+
+  on(event: string, listener: MockListener): this {
+    this.listeners.set(event, [...(this.listeners.get(event) ?? []), listener]);
+    return this;
+  }
+
+  emit(event: string, ...args: unknown[]): void {
+    for (const listener of this.listeners.get(event) ?? []) {
+      listener(...args);
+    }
+  }
+}
+
+class MockSSHProcess {
+  stdout = new MockReadableStream();
+  stderr = new MockReadableStream();
+  exitCode: number | null = null;
+  killed = false;
+  kill = vi.fn(() => {
+    this.killed = true;
+    return true;
+  });
+  private listeners = new Map<string, MockListener[]>();
+
+  on(event: string, listener: MockListener): this {
+    this.listeners.set(event, [...(this.listeners.get(event) ?? []), listener]);
+    return this;
+  }
+
+  emit(event: string, ...args: unknown[]): void {
+    for (const listener of this.listeners.get(event) ?? []) {
+      listener(...args);
+    }
+  }
+
+  writeStdout(chunk: string): void {
+    this.stdout.emit("data", chunk);
+  }
+
+  writeStderr(chunk: string): void {
+    this.stderr.emit("data", chunk);
+  }
+
+  emitError(error: Error): void {
+    this.emit("error", error);
+  }
+
+  close(code: number | null = 0, signal: NodeJS.Signals | null = null): void {
+    this.exitCode = code;
+    this.emit("close", code, signal);
+  }
+}
+
+function createMockSSHProcess(): MockSSHProcess {
+  return new MockSSHProcess();
+}
+
+function completeRemoteCommand(child: MockSSHProcess, stdout: string, exitCode = 0): void {
+  child.writeStdout(`${stdout}\n${REMOTE_COMMAND_EXIT_MARKER}:${exitCode}\n`);
+}
+
+function getSpawnedSSHArgs(callIndex = 0): string[] {
+  return mocks.spawn.mock.calls[callIndex]?.[1] as string[] ?? [];
+}
+
+function getSpawnedRemoteCommand(callIndex = 0): string {
+  return getSpawnedSSHArgs(callIndex).at(-1) ?? "";
+}
 
 describe("gitOperations.resolvePathForShell", () => {
   beforeEach(() => {
@@ -91,8 +171,12 @@ describe("gitOperations.resolvePathForShell", () => {
 
   it("원격 명령 실행은 ssh 바이너리와 옵션을 사용한다", async () => {
     // Given
-    mocks.execFile.mockImplementation((_file: string, _args: string[], _options: unknown, callback: (error: null, result: { stdout: string }) => void) => {
-      callback(null, { stdout: "ok\n" });
+    const spawnedChildren: MockSSHProcess[] = [];
+    mocks.spawn.mockImplementation(() => {
+      const child = createMockSSHProcess();
+      spawnedChildren.push(child);
+      queueMicrotask(() => completeRemoteCommand(child, "ok"));
+      return child;
     });
 
     vi.doMock("@/lib/sshConfig", async (importOriginal) => {
@@ -115,7 +199,7 @@ describe("gitOperations.resolvePathForShell", () => {
     const result = await execGit("pwd", "remote-host");
 
     // Then
-    const expectedArgs = [
+    const expectedPrefix = [
       "-i",
       "/tmp/test-key",
       "-p",
@@ -128,7 +212,7 @@ describe("gitOperations.resolvePathForShell", () => {
     ];
 
     if (process.platform !== "win32") {
-      expectedArgs.push(
+      expectedPrefix.push(
         "-o",
         "ControlMaster=auto",
         "-o",
@@ -138,31 +222,50 @@ describe("gitOperations.resolvePathForShell", () => {
       );
     }
 
-    expectedArgs.push(
+    expectedPrefix.push(
+      "-o",
+      "ConnectTimeout=8",
+      "-o",
+      "ServerAliveInterval=5",
+      "-o",
+      "ServerAliveCountMax=2",
+    );
+
+    expectedPrefix.push(
       "remote-host",
-      "sh -lc 'pwd'",
     );
 
     expect(result).toBe("ok");
-    expect(expectedArgs).not.toContain("-Y");
-    expect(mocks.execFile).toHaveBeenCalledWith(
+    expect(spawnedChildren[0]?.killed).toBe(true);
+    expect(expectedPrefix).not.toContain("-Y");
+    expect(mocks.spawn).toHaveBeenCalledWith(
       "ssh",
-      expectedArgs,
-      expect.objectContaining({ maxBuffer: 10 * 1024 * 1024 }),
-      expect.any(Function),
+      expect.arrayContaining(expectedPrefix),
+      expect.objectContaining({
+        env: expect.any(Object),
+        stdio: ["ignore", "pipe", "pipe"],
+      }),
     );
+    expect(getSpawnedRemoteCommand()).toContain("pwd");
+    expect(getSpawnedRemoteCommand()).toContain(REMOTE_COMMAND_EXIT_MARKER);
   });
 
   it("SSH transport 실패 직후 같은 host의 후속 명령은 새 ssh 프로세스를 만들지 않는다", async () => {
     // Given
     const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-    mocks.execFile.mockImplementation((_file: string, _args: string[], _options: unknown, callback: (error: Error & { stderr?: string }) => void) => {
-      const error = new Error("Command failed") as Error & { stderr?: string };
-      error.stderr = [
-        "mux_client_request_session: session request failed: Session open refused by peer",
-        "Connection closed by 100.73.171.123 port 22",
-      ].join("\n");
-      callback(error);
+    mocks.execFile.mockImplementation((_file: string, _args: string[], _options: unknown, callback: (error: null, result: { stdout: string }) => void) => {
+      callback(null, { stdout: "" });
+    });
+    mocks.spawn.mockImplementation(() => {
+      const child = createMockSSHProcess();
+      queueMicrotask(() => {
+        child.writeStderr([
+          "mux_client_request_session: session request failed: Session open refused by peer",
+          "Connection closed by 100.73.171.123 port 22",
+        ].join("\n"));
+        child.close(255);
+      });
+      return child;
     });
 
     vi.doMock("@/lib/sshConfig", async (importOriginal) => {
@@ -187,7 +290,110 @@ describe("gitOperations.resolvePathForShell", () => {
       await expect(execGit("git -C /repo status --short", "remote-host")).rejects.toThrow();
 
       // Then
+      expect(mocks.spawn).toHaveBeenCalledTimes(3);
+      expect(mocks.execFile).toHaveBeenCalledTimes(3);
+      expect(mocks.execFile.mock.calls[0]?.[1]).toEqual(expect.arrayContaining([
+        "-O",
+        "exit",
+        "-S",
+        "/home/local-user/.kanvibe/ssh-%C",
+      ]));
+    } finally {
+      consoleErrorSpy.mockRestore();
+    }
+  });
+
+  it("원격 SSH 명령이 timeout되면 ControlMaster를 종료하고 후속 명령을 cooldown 처리한다", async () => {
+    // Given
+    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    mocks.execFile.mockImplementation((_file: string, _args: string[], _options: unknown, callback: (error: null, result: { stdout: string }) => void) => {
+      callback(null, { stdout: "" });
+    });
+    mocks.spawn.mockImplementation(() => {
+      const child = createMockSSHProcess();
+      queueMicrotask(() => {
+        const error = new Error("Command timed out") as Error & { killed?: boolean; signal?: string };
+        error.killed = true;
+        error.signal = "SIGTERM";
+        child.emitError(error);
+      });
+      return child;
+    });
+
+    vi.doMock("@/lib/sshConfig", async (importOriginal) => {
+      const actual = await importOriginal<typeof import("@/lib/sshConfig")>();
+      return {
+        ...actual,
+        parseSSHConfig: vi.fn(async () => [{
+          host: "remote-host",
+          hostname: "example.com",
+          port: 2202,
+          username: "tester",
+          privateKeyPath: "/tmp/test-key",
+        }]),
+      };
+    });
+
+    const { execGit } = await import("@/lib/gitOperations");
+
+    try {
+      // When & Then
+      await expect(execGit("long-running-command", "remote-host", { timeoutMs: 1000 })).rejects.toThrow(/1초/);
+      await expect(execGit("next-command", "remote-host")).rejects.toThrow(/최근 SSH transport 실패/);
+      expect(mocks.spawn).toHaveBeenCalledTimes(3);
+      expect(mocks.execFile).toHaveBeenCalledTimes(3);
+      expect(mocks.execFile.mock.calls[0]?.[1]).toEqual(expect.arrayContaining(["-O", "exit"]));
+    } finally {
+      consoleErrorSpy.mockRestore();
+    }
+  });
+
+  it("SSH transport 오류는 3회 안에 성공하면 원격 명령 결과를 반환한다", async () => {
+    // Given
+    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    mocks.execFile.mockImplementation((_file: string, _args: string[], _options: unknown, callback: (error: null, result: { stdout: string }) => void) => {
+      callback(null, { stdout: "" });
+    });
+    mocks.spawn.mockImplementation(() => {
+      const child = createMockSSHProcess();
+      const attempt = mocks.spawn.mock.calls.length;
+      queueMicrotask(() => {
+        if (attempt === 1) {
+          child.writeStderr("Connection reset by peer\n");
+          child.close(255);
+          return;
+        }
+
+        completeRemoteCommand(child, "recovered");
+      });
+      return child;
+    });
+
+    vi.doMock("@/lib/sshConfig", async (importOriginal) => {
+      const actual = await importOriginal<typeof import("@/lib/sshConfig")>();
+      return {
+        ...actual,
+        parseSSHConfig: vi.fn(async () => [{
+          host: "remote-host",
+          hostname: "example.com",
+          port: 2202,
+          username: "tester",
+          privateKeyPath: "/tmp/test-key",
+        }]),
+      };
+    });
+
+    const { execGit } = await import("@/lib/gitOperations");
+
+    try {
+      // When
+      const result = await execGit("recoverable-command", "remote-host");
+
+      // Then
+      expect(result).toBe("recovered");
+      expect(mocks.spawn).toHaveBeenCalledTimes(2);
       expect(mocks.execFile).toHaveBeenCalledTimes(1);
+      await expect(execGit("next-command", "remote-host")).resolves.toBe("recovered");
     } finally {
       consoleErrorSpy.mockRestore();
     }
@@ -196,10 +402,12 @@ describe("gitOperations.resolvePathForShell", () => {
   it("같은 SSH host의 원격 명령은 제한된 동시성으로 실행한다", async () => {
     // Given
     const startedCommands: string[] = [];
-    const pendingCallbacks: Array<(error: null, result: { stdout: string }) => void> = [];
-    mocks.execFile.mockImplementation((_file: string, args: string[], _options: unknown, callback: (error: null, result: { stdout: string }) => void) => {
+    const pendingChildren: MockSSHProcess[] = [];
+    mocks.spawn.mockImplementation((_file: string, args: string[]) => {
+      const child = createMockSSHProcess();
       startedCommands.push(args.at(-1) ?? "");
-      pendingCallbacks.push(callback);
+      pendingChildren.push(child);
+      return child;
     });
 
     vi.doMock("@/lib/sshConfig", async (importOriginal) => {
@@ -227,42 +435,95 @@ describe("gitOperations.resolvePathForShell", () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     // Then
-    expect(startedCommands).toEqual([
-      "sh -lc 'first'",
-      "sh -lc 'second'",
-      "sh -lc 'third'",
-      "sh -lc 'fourth'",
-    ]);
+    expect(startedCommands).toHaveLength(4);
+    expect(startedCommands[0]).toContain("first");
+    expect(startedCommands[1]).toContain("second");
+    expect(startedCommands[2]).toContain("third");
+    expect(startedCommands[3]).toContain("fourth");
 
-    pendingCallbacks.shift()?.(null, { stdout: "one\n" });
+    completeRemoteCommand(pendingChildren.shift()!, "one");
     await expect(first).resolves.toBe("one");
     await new Promise((resolve) => setTimeout(resolve, 0));
 
-    expect(startedCommands).toEqual([
-      "sh -lc 'first'",
-      "sh -lc 'second'",
-      "sh -lc 'third'",
-      "sh -lc 'fourth'",
-      "sh -lc 'fifth'",
-    ]);
+    expect(startedCommands).toHaveLength(5);
+    expect(startedCommands[4]).toContain("fifth");
 
-    pendingCallbacks.shift()?.(null, { stdout: "two\n" });
+    completeRemoteCommand(pendingChildren.shift()!, "two");
     await expect(second).resolves.toBe("two");
-    pendingCallbacks.shift()?.(null, { stdout: "three\n" });
-    pendingCallbacks.shift()?.(null, { stdout: "four\n" });
-    pendingCallbacks.shift()?.(null, { stdout: "five\n" });
+    completeRemoteCommand(pendingChildren.shift()!, "three");
+    completeRemoteCommand(pendingChildren.shift()!, "four");
+    completeRemoteCommand(pendingChildren.shift()!, "five");
     await expect(third).resolves.toBe("three");
     await expect(fourth).resolves.toBe("four");
     await expect(fifth).resolves.toBe("five");
   });
 
+  it("환경변수로 같은 SSH host의 원격 명령 동시성 제한을 늘릴 수 있다", async () => {
+    // Given
+    const originalConcurrency = process.env.KANVIBE_REMOTE_SSH_HOST_MAX_CONCURRENCY;
+    process.env.KANVIBE_REMOTE_SSH_HOST_MAX_CONCURRENCY = "6";
+    const startedCommands: string[] = [];
+    const pendingChildren: MockSSHProcess[] = [];
+    mocks.spawn.mockImplementation((_file: string, args: string[]) => {
+      const child = createMockSSHProcess();
+      startedCommands.push(args.at(-1) ?? "");
+      pendingChildren.push(child);
+      return child;
+    });
+
+    vi.doMock("@/lib/sshConfig", async (importOriginal) => {
+      const actual = await importOriginal<typeof import("@/lib/sshConfig")>();
+      return {
+        ...actual,
+        parseSSHConfig: vi.fn(async () => [{
+          host: "remote-host",
+          hostname: "example.com",
+          port: 2202,
+          username: "tester",
+          privateKeyPath: "/tmp/test-key",
+        }]),
+      };
+    });
+
+    try {
+      const { execGit } = await import("@/lib/gitOperations");
+
+      // When
+      const commands = Array.from({ length: 7 }, (_, index) => execGit(`command-${index}`, "remote-host"));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      // Then
+      expect(startedCommands).toHaveLength(6);
+      for (let index = 0; index < 6; index += 1) {
+        expect(startedCommands[index]).toContain(`command-${index}`);
+      }
+
+      completeRemoteCommand(pendingChildren.shift()!, "done");
+      await expect(commands[0]).resolves.toBe("done");
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(startedCommands).toHaveLength(7);
+      expect(startedCommands[6]).toContain("command-6");
+      for (const [index, command] of commands.slice(1).entries()) {
+        completeRemoteCommand(pendingChildren.shift()!, String(index));
+        await expect(command).resolves.toBe(String(index));
+      }
+    } finally {
+      if (originalConcurrency === undefined) {
+        delete process.env.KANVIBE_REMOTE_SSH_HOST_MAX_CONCURRENCY;
+      } else {
+        process.env.KANVIBE_REMOTE_SSH_HOST_MAX_CONCURRENCY = originalConcurrency;
+      }
+    }
+  });
+
   it("조용한 probe 명령 실패는 콘솔 에러를 남기지 않는다", async () => {
     // Given
     const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-    mocks.execFile.mockImplementation((_file: string, _args: string[], _options: unknown, callback: (error: Error & { stderr?: string }) => void) => {
-      const error = new Error("Command failed") as Error & { stderr?: string };
-      error.stderr = "";
-      callback(error);
+    mocks.spawn.mockImplementation(() => {
+      const child = createMockSSHProcess();
+      queueMicrotask(() => child.close(255));
+      return child;
     });
 
     vi.doMock("@/lib/sshConfig", async (importOriginal) => {
@@ -291,10 +552,16 @@ describe("gitOperations.resolvePathForShell", () => {
   it("파일 probe 명령 실패도 콘솔 에러를 남기지 않는다", async () => {
     // Given
     const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-    mocks.execFile.mockImplementation((_file: string, _args: string[], _options: unknown, callback: (error: Error & { stderr?: string }) => void) => {
-      const error = new Error("Command failed") as Error & { stderr?: string };
-      error.stderr = "Connection reset by peer\n";
-      callback(error);
+    mocks.execFile.mockImplementation((_file: string, _args: string[], _options: unknown, callback: (error: null, result: { stdout: string }) => void) => {
+      callback(null, { stdout: "" });
+    });
+    mocks.spawn.mockImplementation(() => {
+      const child = createMockSSHProcess();
+      queueMicrotask(() => {
+        child.writeStderr("Connection reset by peer\n");
+        child.close(255);
+      });
+      return child;
     });
 
     vi.doMock("@/lib/sshConfig", async (importOriginal) => {
