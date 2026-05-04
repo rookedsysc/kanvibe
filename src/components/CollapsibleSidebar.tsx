@@ -8,6 +8,7 @@ import { dismissSidebarHint } from "@/desktop/renderer/actions/appSettings";
 interface CollapsibleSidebarProps {
   defaultCollapsed: boolean;
   showHint: boolean;
+  onDismissHint?: () => void;
   children: React.ReactNode;
 }
 
@@ -113,11 +114,17 @@ function ToggleButtonWithHint({
 export default function CollapsibleSidebar({
   defaultCollapsed,
   showHint,
+  onDismissHint,
   children,
 }: CollapsibleSidebarProps) {
   const [isCollapsed, setIsCollapsed] = useState(defaultCollapsed);
-  const [isHintVisible, setIsHintVisible] = useState(showHint);
-  const t = useTranslations("taskDetail");
+  const [isHintDismissedLocally, setIsHintDismissedLocally] = useState(false);
+  const shouldShowHint = showHint && !isHintDismissedLocally;
+
+  function handleDismissHint() {
+    setIsHintDismissedLocally(true);
+    onDismissHint?.();
+  }
 
   if (isCollapsed) {
     return (
@@ -127,8 +134,8 @@ export default function CollapsibleSidebar({
           <ToggleButtonWithHint
             onClick={() => setIsCollapsed(false)}
             buttonClassName="p-2 bg-bg-surface border border-border-default rounded-lg hover:border-brand-primary text-text-muted hover:text-text-primary transition-colors"
-            showHint={isHintVisible}
-            onDismissHint={() => setIsHintVisible(false)}
+            showHint={shouldShowHint}
+            onDismissHint={handleDismissHint}
           >
             <SidebarPanelIcon />
           </ToggleButtonWithHint>
@@ -146,8 +153,8 @@ export default function CollapsibleSidebar({
         <ToggleButtonWithHint
           onClick={() => setIsCollapsed(true)}
           buttonClassName="p-1.5 text-text-muted hover:text-text-primary transition-colors"
-          showHint={isHintVisible}
-          onDismissHint={() => setIsHintVisible(false)}
+          showHint={shouldShowHint}
+          onDismissHint={handleDismissHint}
         >
           <SidebarPanelIcon />
         </ToggleButtonWithHint>

@@ -57,7 +57,6 @@ interface TaskDetailState {
   projects: Awaited<ReturnType<typeof getAllProjects>>;
   defaultSessionType: Awaited<ReturnType<typeof getDefaultSessionType>>;
   sidebarDefaultCollapsed: boolean;
-  sidebarHintDismissed: boolean;
   doneAlertDismissed: boolean;
 }
 
@@ -80,12 +79,22 @@ const DEFAULT_DETAIL_STATE: Omit<TaskDetailState, "task"> = {
   projects: [],
   defaultSessionType: SessionType.TMUX,
   sidebarDefaultCollapsed: false,
-  sidebarHintDismissed: false,
   doneAlertDismissed: false,
 };
 
 function getTaskDetailRouteCacheKey(taskId: string) {
   return buildRouteCacheKey("task-detail", taskId);
+}
+
+function normalizeCachedTaskDetailState(cachedState: TaskDetailState | null): TaskDetailState | null {
+  if (!cachedState) {
+    return null;
+  }
+
+  const { sidebarHintDismissed: _legacySidebarHintDismissed, ...routeState } = cachedState as TaskDetailState & {
+    sidebarHintDismissed?: boolean;
+  };
+  return routeState;
 }
 
 export default function TaskDetailRoute() {
@@ -96,13 +105,14 @@ export default function TaskDetailRoute() {
   const tc = useTranslations("common");
   const refreshSignal = useRefreshSignal(["all", "task-detail"]);
   const cachedState = useMemo(
-    () => (id ? readRouteCache<TaskDetailState>(getTaskDetailRouteCacheKey(id)) : null),
+    () => (id ? normalizeCachedTaskDetailState(readRouteCache<TaskDetailState>(getTaskDetailRouteCacheKey(id))) : null),
     [id],
   );
   const [state, setState] = useState<TaskDetailState | null | undefined>(cachedState ?? undefined);
   const [isCreateTaskModalOpen, setIsCreateTaskModalOpen] = useState(false);
   const [createTaskDefaults, setCreateTaskDefaults] = useState<BranchTodoDefaults | null>(null);
   const [needsMacDesktopHeaderOffset, setNeedsMacDesktopHeaderOffset] = useState(false);
+  const [isSidebarHintDismissed, setIsSidebarHintDismissed] = useState(true);
   const notificationCenterRef = useRef<NotificationCenterButtonHandle>(null);
   const hasTerminal = !!(state?.task.sessionType && state.task.sessionName);
 
@@ -275,10 +285,10 @@ export default function TaskDetailRoute() {
                   projects,
                   defaultSessionType,
                   sidebarDefaultCollapsed,
-                  sidebarHintDismissed,
                   doneAlertDismissed,
                 }
               : current);
+            setIsSidebarHintDismissed(sidebarHintDismissed);
           } catch (error) {
             console.error("Failed to load task detail supplemental data:", error);
           }
@@ -350,6 +360,10 @@ export default function TaskDetailRoute() {
     router.push("/");
   }
 
+  function handleSidebarHintDismissed() {
+    setIsSidebarHintDismissed(true);
+  }
+
   function closeCreateTaskModal() {
     setIsCreateTaskModalOpen(false);
     setCreateTaskDefaults(null);
@@ -358,7 +372,11 @@ export default function TaskDetailRoute() {
 
   return (
     <div className="h-screen flex flex-col lg:flex-row bg-bg-page p-4 gap-4">
-      <CollapsibleSidebar defaultCollapsed={state.sidebarDefaultCollapsed} showHint={!state.sidebarHintDismissed}>
+      <CollapsibleSidebar
+        defaultCollapsed={state.sidebarDefaultCollapsed}
+        showHint={!isSidebarHintDismissed}
+        onDismissHint={handleSidebarHintDismissed}
+      >
         <div className={`flex flex-col gap-4 ${needsMacDesktopHeaderOffset ? "pt-10" : ""}`}>
           <div className="flex items-center justify-between gap-3">
             <Link href="/" className="flex items-center gap-2 text-sm text-text-secondary hover:text-text-primary transition-colors">

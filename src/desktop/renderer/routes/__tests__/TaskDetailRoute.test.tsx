@@ -105,7 +105,21 @@ vi.mock("@/components/AiSessionsCard", () => ({
 }));
 
 vi.mock("@/components/CollapsibleSidebar", () => ({
-  default: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+  default: ({
+    children,
+    showHint,
+    onDismissHint,
+  }: {
+    children: ReactNode;
+    showHint: boolean;
+    onDismissHint?: () => void;
+  }) => (
+    <div data-testid="collapsible-sidebar" data-show-hint={String(showHint)}>
+      <button type="button" onClick={onDismissHint}>dismiss sidebar hint</button>
+      {showHint ? <div>sidebar hint visible</div> : null}
+      {children}
+    </div>
+  ),
 }));
 
 vi.mock("@/components/ConnectTerminalForm", () => ({
@@ -265,7 +279,6 @@ describe("TaskDetailRoute", () => {
         sources: [],
       },
       sidebarDefaultCollapsed: false,
-      sidebarHintDismissed: false,
       doneAlertDismissed: false,
     }));
     const deferredTask = createDeferred<{
@@ -326,6 +339,85 @@ describe("TaskDetailRoute", () => {
 
     expect(screen.queryByText("Loading...")).toBeNull();
     expect(screen.getByText("taskNotFound")).toBeTruthy();
+  });
+
+  it("앱 설정을 로드하기 전에는 stale cache의 사이드바 힌트 값을 신뢰하지 않는다", () => {
+    sessionStorage.setItem(TASK_DETAIL_CACHE_KEY, JSON.stringify({
+      task: {
+        id: "task-1",
+        title: "cached task title",
+        description: null,
+        branchName: "feat/cached",
+        baseBranch: "main",
+        prUrl: null,
+        sessionType: null,
+        sessionName: null,
+        sshHost: null,
+        projectId: "project-1",
+        project: { id: "project-1", name: "kanvibe" },
+        status: "todo",
+        agentType: null,
+        worktreePath: "/repo__worktrees/cached",
+      },
+      baseBranchTaskId: null,
+      diffFiles: [],
+      claudeHooksStatus: null,
+      geminiHooksStatus: null,
+      codexHooksStatus: null,
+      openCodeHooksStatus: null,
+      aiSessions: {
+        isRemote: false,
+        targetPath: null,
+        repoPath: null,
+        sessions: [],
+        sources: [],
+      },
+      projects: [],
+      defaultSessionType: "tmux",
+      sidebarDefaultCollapsed: false,
+      sidebarHintDismissed: false,
+      doneAlertDismissed: false,
+    }));
+    mocks.getTaskById.mockReturnValue(new Promise(() => {}));
+
+    render(<TaskDetailRoute />);
+
+    expect(screen.getByTestId("collapsible-sidebar").dataset.showHint).toBe("false");
+    expect(screen.queryByText("sidebar hint visible")).toBeNull();
+  });
+
+  it("사이드바 힌트를 닫아도 route cache에는 앱 전체 힌트 설정을 저장하지 않는다", async () => {
+    mocks.getTaskById.mockResolvedValue({
+      id: "task-1",
+      title: "task title",
+      description: null,
+      branchName: "feat/detail-shortcut",
+      baseBranch: "main",
+      prUrl: null,
+      sessionType: null,
+      sessionName: null,
+      sshHost: null,
+      projectId: "project-1",
+      project: { id: "project-1", name: "kanvibe" },
+      status: "todo",
+      agentType: null,
+      worktreePath: "/repo__worktrees/detail-shortcut",
+    });
+
+    render(<TaskDetailRoute />);
+
+    await screen.findByText("sidebar hint visible");
+
+    fireEvent.click(screen.getByRole("button", { name: "dismiss sidebar hint" }));
+
+    await waitFor(() => {
+      expect(screen.queryByText("sidebar hint visible")).toBeNull();
+    });
+
+    await waitFor(() => {
+      const cached = JSON.parse(sessionStorage.getItem(TASK_DETAIL_CACHE_KEY) ?? "{}") as Record<string, unknown>;
+      expect(cached).not.toHaveProperty("sidebarHintDismissed");
+    });
   });
 
   it("알림 단축키로 상세 화면의 알림 센터를 토글한다", async () => {
