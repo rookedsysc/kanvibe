@@ -189,7 +189,7 @@ describe("gitOperations.resolvePathForShell", () => {
     }
   });
 
-  it("같은 SSH host의 원격 명령은 한 번에 하나씩 실행한다", async () => {
+  it("같은 SSH host의 원격 명령은 제한된 동시성으로 실행한다", async () => {
     // Given
     const startedCommands: string[] = [];
     const pendingCallbacks: Array<(error: null, result: { stdout: string }) => void> = [];
@@ -217,19 +217,39 @@ describe("gitOperations.resolvePathForShell", () => {
     // When
     const first = execGit("first", "remote-host");
     const second = execGit("second", "remote-host");
+    const third = execGit("third", "remote-host");
+    const fourth = execGit("fourth", "remote-host");
+    const fifth = execGit("fifth", "remote-host");
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     // Then
-    expect(startedCommands).toEqual(["sh -lc 'first'"]);
+    expect(startedCommands).toEqual([
+      "sh -lc 'first'",
+      "sh -lc 'second'",
+      "sh -lc 'third'",
+      "sh -lc 'fourth'",
+    ]);
 
     pendingCallbacks.shift()?.(null, { stdout: "one\n" });
     await expect(first).resolves.toBe("one");
     await new Promise((resolve) => setTimeout(resolve, 0));
 
-    expect(startedCommands).toEqual(["sh -lc 'first'", "sh -lc 'second'"]);
+    expect(startedCommands).toEqual([
+      "sh -lc 'first'",
+      "sh -lc 'second'",
+      "sh -lc 'third'",
+      "sh -lc 'fourth'",
+      "sh -lc 'fifth'",
+    ]);
 
     pendingCallbacks.shift()?.(null, { stdout: "two\n" });
     await expect(second).resolves.toBe("two");
+    pendingCallbacks.shift()?.(null, { stdout: "three\n" });
+    pendingCallbacks.shift()?.(null, { stdout: "four\n" });
+    pendingCallbacks.shift()?.(null, { stdout: "five\n" });
+    await expect(third).resolves.toBe("three");
+    await expect(fourth).resolves.toBe("four");
+    await expect(fifth).resolves.toBe("five");
   });
 
   it("조용한 probe 명령 실패는 콘솔 에러를 남기지 않는다", async () => {

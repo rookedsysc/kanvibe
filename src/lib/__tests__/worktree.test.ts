@@ -206,7 +206,7 @@ describe("removeSessionOnly", () => {
 
     // Then
     expect(mockExecGit).toHaveBeenCalledWith(
-      'tmux kill-session -t "feat-branch" 2>/dev/null || true',
+      "tmux kill-session -t 'feat-branch' 2>/dev/null || true",
       undefined,
     );
   });
@@ -221,7 +221,7 @@ describe("removeSessionOnly", () => {
 
     // Then
     expect(mockExecGit).toHaveBeenCalledWith(
-      'zellij kill-session "feat-branch" 2>/dev/null || true; zellij delete-session "feat-branch" 2>/dev/null || true',
+      "zellij kill-sessions 'feat-branch' 2>/dev/null || true; zellij delete-session 'feat-branch' 2>/dev/null || true",
       undefined,
     );
   });
@@ -236,9 +236,45 @@ describe("removeSessionOnly", () => {
 
     // Then
     expect(mockExecGit).toHaveBeenCalledWith(
-      'zellij kill-session "feat-branch" 2>/dev/null || true; zellij delete-session "feat-branch" 2>/dev/null || true',
+      "zellij kill-sessions 'feat-branch' 2>/dev/null || true; zellij delete-session 'feat-branch' 2>/dev/null || true",
       "remote-host",
     );
+  });
+
+  it("should verify zellij cleanup when cleanup errors must be surfaced", async () => {
+    // Given
+    mockExecGit.mockResolvedValue("");
+    const { removeSessionOnly } = await import("@/lib/worktree");
+
+    // When
+    await removeSessionOnly(SessionType.ZELLIJ, "feat-branch", "remote-host", { throwOnError: true });
+
+    // Then
+    const command = mockExecGit.mock.calls[0][0] as string;
+    expect(command).toContain("command -v zellij >/dev/null 2>&1");
+    expect(command).toContain("zellij kill-sessions 'feat-branch'");
+    expect(command).toContain("zellij delete-session 'feat-branch'");
+    expect(command).toContain("zellij list-sessions");
+    expect(command).toContain("grep -Fx -- 'feat-branch'");
+    expect(mockExecGit).toHaveBeenCalledWith(command, "remote-host");
+  });
+
+  it("should verify tmux cleanup by exact session name when cleanup errors must be surfaced", async () => {
+    // Given
+    mockExecGit.mockResolvedValue("");
+    const { removeSessionOnly } = await import("@/lib/worktree");
+
+    // When
+    await removeSessionOnly(SessionType.TMUX, "feat-branch", "remote-host", { throwOnError: true });
+
+    // Then
+    const command = mockExecGit.mock.calls[0][0] as string;
+    expect(command).toContain("command -v tmux >/dev/null 2>&1");
+    expect(command).toContain("tmux kill-session -t 'feat-branch'");
+    expect(command).toContain("tmux list-sessions -F '#{session_name}'");
+    expect(command).toContain("grep -Fx -- 'feat-branch'");
+    expect(command).not.toContain("tmux has-session");
+    expect(mockExecGit).toHaveBeenCalledWith(command, "remote-host");
   });
 
   it("should not throw when session is already terminated", async () => {

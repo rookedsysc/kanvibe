@@ -235,6 +235,10 @@ export function generateZellijLayoutKdl(
 /** Zellij KDL 레이아웃 파일의 기본 파일명 */
 export const ZELLIJ_LAYOUT_FILENAME = ".zellij-layout.kdl";
 
+function quoteForPosixShell(value: string): string {
+  return `'${value.replace(/'/g, `'"'"'`)}'`;
+}
+
 /**
  * KDL 레이아웃 파일을 worktree 디렉토리에 저장한다.
  * 터미널 연결 시 node-pty가 이 파일을 --layout 플래그로 사용한다.
@@ -430,12 +434,12 @@ export async function removeSessionOnly(
   try {
     if (sessionType === SessionType.TMUX) {
       await execGit(
-        `tmux kill-session -t "${sessionName}" 2>/dev/null || true`,
+        buildTmuxSessionCleanupCommand(sessionName, options.throwOnError === true),
         sshHost,
       );
     } else {
       await execGit(
-        `zellij kill-session "${sessionName}" 2>/dev/null || true; zellij delete-session "${sessionName}" 2>/dev/null || true`,
+        buildZellijSessionCleanupCommand(sessionName, options.throwOnError === true),
         sshHost,
       );
     }
@@ -445,6 +449,38 @@ export async function removeSessionOnly(
     }
     // 세션이 이미 종료된 경우 무시
   }
+}
+
+function buildTmuxSessionCleanupCommand(sessionName: string, verifyCleanup: boolean): string {
+  const target = quoteForPosixShell(sessionName);
+
+  if (!verifyCleanup) {
+    return `tmux kill-session -t ${target} 2>/dev/null || true`;
+  }
+
+  return [
+    "command -v tmux >/dev/null 2>&1 || exit 1",
+    `tmux kill-session -t ${target} 2>/dev/null || true`,
+    `if tmux list-sessions -F '#{session_name}' 2>/dev/null | grep -Fx -- ${target} >/dev/null; then exit 1; fi`,
+  ].join("; ");
+}
+
+function buildZellijSessionCleanupCommand(sessionName: string, verifyCleanup: boolean): string {
+  const target = quoteForPosixShell(sessionName);
+  const commands = [
+    `zellij kill-sessions ${target} 2>/dev/null || true`,
+    `zellij delete-session ${target} 2>/dev/null || true`,
+  ];
+
+  if (!verifyCleanup) {
+    return commands.join("; ");
+  }
+
+  return [
+    "command -v zellij >/dev/null 2>&1 || exit 1",
+    ...commands,
+    `if zellij list-sessions 2>/dev/null | awk '{ if ($1 == "EXITED:") print $2; else print $1 }' | grep -Fx -- ${target} >/dev/null; then exit 1; fi`,
+  ].join("; ");
 }
 
 /**

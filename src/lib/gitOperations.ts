@@ -1,11 +1,10 @@
 import { exec, execFile } from "child_process";
 import { promisify } from "util";
-import { mkdir } from "fs/promises";
 import { homedir } from "os";
 import {
   buildSSHArgs,
+  ensureKanvibeSSHControlDirectory,
   getKanvibeSSHConnectionReuseOptions,
-  getKanvibeSSHControlDirectory,
   parseSSHConfig,
   type SSHHostConfig,
 } from "@/lib/sshConfig";
@@ -37,8 +36,9 @@ const SSH_TRANSPORT_ERROR_PATTERNS = [
 ];
 
 const REMOTE_SSH_TRANSPORT_FAILURE_COOLDOWN_MS = 60_000;
-const remoteSSHHostQueues = new Map<string, Promise<void>>();
+const REMOTE_SSH_HOST_MAX_CONCURRENCY = 4;
 const remoteSSHTransportFailures = new Map<string, { until: number; error: Error }>();
+const remoteSSHHostLimiters = new Map<string, { active: number; queue: Array<() => void> }>();
 
 function collectErrorOutput(error: unknown): string {
   const outputs: string[] = [];
@@ -101,7 +101,7 @@ async function execLocal(command: string): Promise<string> {
 
 /** SSH를 통해 원격에서 명령을 실행하고 stdout을 반환한다 */
 async function execRemote(sshHost: string, command: string): Promise<string> {
-  return runQueuedRemoteCommand(sshHost, async () => {
+  return runLimitedRemoteCommand(sshHost, async () => {
     throwIfSSHTransportCooldownActive(sshHost);
 
     const configs = await parseSSHConfig();
@@ -143,27 +143,55 @@ async function execRemote(sshHost: string, command: string): Promise<string> {
   });
 }
 
-async function runQueuedRemoteCommand<T>(
+async function runLimitedRemoteCommand<T>(
   sshHost: string,
   operation: () => Promise<T>,
 ): Promise<T> {
-  const previous = remoteSSHHostQueues.get(sshHost) ?? Promise.resolve();
-  let releaseCurrent: () => void = () => {};
-  const current = new Promise<void>((resolve) => {
-    releaseCurrent = resolve;
-  });
-  const queued = previous.catch(() => undefined).then(() => current);
-  remoteSSHHostQueues.set(sshHost, queued);
-
-  await previous.catch(() => undefined);
+  const release = await acquireRemoteSSHSlot(sshHost);
 
   try {
     return await operation();
   } finally {
-    releaseCurrent();
-    if (remoteSSHHostQueues.get(sshHost) === queued) {
-      remoteSSHHostQueues.delete(sshHost);
+    release();
+  }
+}
+
+function acquireRemoteSSHSlot(sshHost: string): Promise<() => void> {
+  let limiter = remoteSSHHostLimiters.get(sshHost);
+  if (!limiter) {
+    limiter = { active: 0, queue: [] };
+    remoteSSHHostLimiters.set(sshHost, limiter);
+  }
+
+  return new Promise((resolve) => {
+    const start = () => {
+      limiter.active += 1;
+      resolve(() => releaseRemoteSSHSlot(sshHost, limiter));
+    };
+
+    if (limiter.active < REMOTE_SSH_HOST_MAX_CONCURRENCY) {
+      start();
+      return;
     }
+
+    limiter.queue.push(start);
+  });
+}
+
+function releaseRemoteSSHSlot(
+  sshHost: string,
+  limiter: { active: number; queue: Array<() => void> },
+): void {
+  limiter.active -= 1;
+
+  const next = limiter.queue.shift();
+  if (next) {
+    next();
+    return;
+  }
+
+  if (limiter.active === 0) {
+    remoteSSHHostLimiters.delete(sshHost);
   }
 }
 
@@ -201,7 +229,7 @@ async function buildExecSSHArgs(
     return buildSSHArgs(hostConfig, { disableTty: true });
   }
 
-  await mkdir(getKanvibeSSHControlDirectory(), { recursive: true });
+  await ensureKanvibeSSHControlDirectory();
   return buildSSHArgs(hostConfig, {
     disableTty: true,
     connectionReuse: getKanvibeSSHConnectionReuseOptions(),

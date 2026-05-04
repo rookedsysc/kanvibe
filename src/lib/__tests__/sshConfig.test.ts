@@ -2,14 +2,17 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   readFile: vi.fn(),
+  mkdir: vi.fn(),
   homedir: vi.fn(() => "/home/local-user"),
 }));
 
 vi.mock("fs/promises", () => ({
   default: {
     readFile: mocks.readFile,
+    mkdir: mocks.mkdir,
   },
   readFile: mocks.readFile,
+  mkdir: mocks.mkdir,
 }));
 
 vi.mock("os", () => ({
@@ -153,5 +156,29 @@ describe("sshConfig.buildSSHArgs", () => {
       controlPath: "/home/local-user/.kanvibe/ssh-%C",
       controlPersist: "10m",
     });
+  });
+
+  it("creates the KanVibe SSH control directory with private permissions", async () => {
+    // Given
+    mocks.mkdir.mockResolvedValue(undefined);
+    const { ensureKanvibeSSHControlDirectory } = await import("@/lib/sshConfig");
+
+    // When
+    await ensureKanvibeSSHControlDirectory();
+
+    // Then
+    expect(mocks.mkdir).toHaveBeenCalledWith(
+      "/home/local-user/.kanvibe",
+      { recursive: true, mode: 0o700 },
+    );
+  });
+
+  it("detects local X11 availability from DISPLAY", async () => {
+    // Given
+    const { hasLocalX11Display } = await import("@/lib/sshConfig");
+
+    // When & Then
+    expect(hasLocalX11Display({ DISPLAY: ":0" })).toBe(true);
+    expect(hasLocalX11Display({})).toBe(false);
   });
 });
