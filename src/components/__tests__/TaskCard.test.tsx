@@ -124,7 +124,7 @@ describe("TaskCard - Priority Badge", () => {
   it("should render project label above the task title with project color", () => {
     const task = createTask();
 
-    render(
+    const { container } = render(
       <TaskCard
         task={task}
         index={0}
@@ -137,6 +137,10 @@ describe("TaskCard - Priority Badge", () => {
     const projectLabel = screen.getByText("kanvibe");
     expect(projectLabel).toBeTruthy();
     expect(projectLabel.style.color).toBe("rgb(101, 208, 138)");
+
+    const card = screen.getByRole("link").firstElementChild as HTMLElement;
+    expect(card.style.borderColor).toBe("rgb(101, 208, 138)");
+    expect(container.querySelector(".bg-border-strong")).toBeNull();
   });
 
   it("should keep task detail navigation in the same window on desktop", async () => {

@@ -100,8 +100,8 @@ export default function Column({
   }, [groups]);
 
   return (
-    <div className="flex-1 min-w-[284px] max-w-[340px]">
-      <div className="flex h-10 items-center gap-2 px-2">
+    <div className="flex-1 min-w-[284px] max-w-[340px] overflow-hidden rounded-lg border border-border-default bg-transparent">
+      <div className="flex h-10 items-center gap-2 border-b border-border-subtle px-3">
         <div className={`h-2 w-2 rounded-full ${colorClass}`} />
         <h2 className="text-[11px] font-semibold text-text-secondary uppercase">
           {label}
@@ -118,7 +118,7 @@ export default function Column({
             {...provided.droppableProps}
             className={`min-h-[calc(100vh-132px)] p-2 transition-colors ${
               snapshot.isDraggingOver
-                ? "rounded-lg bg-brand-subtle ring-1 ring-inset ring-border-brand"
+                ? "bg-brand-subtle ring-1 ring-inset ring-border-brand"
                 : "bg-transparent"
             }`}
           >

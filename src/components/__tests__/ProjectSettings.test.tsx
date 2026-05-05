@@ -67,8 +67,13 @@ function createProject(): Project {
 describe("ProjectSettings", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    delete window.kanvibeDesktop;
     document.documentElement.removeAttribute("data-theme");
     document.documentElement.removeAttribute("data-theme-preference");
+    Object.defineProperty(window.navigator, "platform", {
+      configurable: true,
+      value: "Linux x86_64",
+    });
   });
 
   it("기본 세션 타입을 변경하면 onDefaultSessionTypeChange를 호출한다", async () => {
@@ -123,6 +128,30 @@ describe("ProjectSettings", () => {
     expect(onThemePreferenceChange).toHaveBeenCalledWith("dark");
     await waitFor(() => {
       expect(mockSetThemePreference).toHaveBeenCalledWith("dark");
+    });
+  });
+
+  it("mac 데스크톱 페이지에서는 Board 링크를 titlebar 버튼 아래로 내린다", async () => {
+    window.kanvibeDesktop = { isDesktop: true };
+    Object.defineProperty(window.navigator, "platform", {
+      configurable: true,
+      value: "MacIntel",
+    });
+
+    const { container } = render(
+      <ProjectSettings
+        variant="page"
+        projects={[createProject()]}
+        sshHosts={[]}
+        sidebarDefaultCollapsed={false}
+        defaultSessionType={SessionType.TMUX}
+        notificationSettings={{ isEnabled: true, enabledStatuses: ["progress", "pending", "review"] }}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(container.querySelector("aside")?.className).toContain("pt-16");
+      expect(screen.getByText("Board").closest("a")?.className).toContain("gap-3");
     });
   });
 

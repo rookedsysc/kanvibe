@@ -27,6 +27,8 @@ const priorityConfig: Record<TaskPriority, { label: string; colorClass: string }
 };
 
 export default function TaskCard({ task, index, onContextMenu, projectName, projectColor, isBaseProject }: TaskCardProps) {
+  const cardStyle = projectColor ? { borderColor: projectColor } : undefined;
+
   return (
     <Draggable draggableId={task.id} index={index}>
       {(provided, snapshot) => (
@@ -36,7 +38,8 @@ export default function TaskCard({ task, index, onContextMenu, projectName, proj
             {...provided.draggableProps}
             {...provided.dragHandleProps}
             onContextMenu={(e) => onContextMenu(e, task)}
-            className={`group relative mb-1.5 overflow-hidden rounded-md px-2.5 py-2 transition-colors cursor-pointer ${
+            style={cardStyle}
+            className={`group relative mb-1.5 overflow-hidden rounded-md border border-border-subtle px-2.5 py-2 transition-colors cursor-pointer ${
               snapshot.isDragging
                 ? "bg-bg-surface shadow-md ring-1 ring-border-brand"
                 : "hover:bg-bg-surface/70"
@@ -50,13 +53,13 @@ export default function TaskCard({ task, index, onContextMenu, projectName, proj
             )}
 
             {projectName && (
-              <div className="mb-1 flex items-center gap-1.5 pl-3.5">
+              <div className="mb-1 grid grid-cols-[6px_minmax(0,1fr)] items-center gap-2">
                 <span
                   className="h-1.5 w-1.5 shrink-0 rounded-full"
                   style={{ backgroundColor: projectColor }}
                 />
                 <span
-                  className="truncate text-[10px] font-medium"
+                  className="truncate text-xs font-semibold leading-4"
                   style={{ color: projectColor }}
                 >
                   {projectName}
@@ -64,9 +67,9 @@ export default function TaskCard({ task, index, onContextMenu, projectName, proj
               </div>
             )}
 
-            <div className="flex items-start gap-2">
-              <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-border-strong transition-colors group-hover:bg-brand-primary" />
-              <div className="min-w-0 flex-1">
+            <div className={projectName ? "grid grid-cols-[6px_minmax(0,1fr)] items-start gap-2" : "block"}>
+              {projectName ? <span aria-hidden="true" /> : null}
+              <div className="min-w-0">
                 <h3 className="truncate text-[13px] font-medium leading-5 text-text-primary">
                   {task.title}
                 </h3>

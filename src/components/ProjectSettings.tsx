@@ -79,6 +79,7 @@ export default function ProjectSettings({
   const [pendingNotificationSettings, setPendingNotificationSettings] = useState<typeof notificationSettings | null>(null);
   const [localThemePreference, setLocalThemePreference] = useState<ThemePreference>(themePreference);
   const [localSidebarDefaultCollapsed, setLocalSidebarDefaultCollapsed] = useState(sidebarDefaultCollapsed);
+  const [shouldUseMacTitlebarLayout, setShouldUseMacTitlebarLayout] = useState(false);
   const isPage = variant === "page";
 
   useEffect(() => {
@@ -92,6 +93,12 @@ export default function ProjectSettings({
   useEffect(() => {
     setLocalThemePreference(themePreference);
   }, [themePreference]);
+
+  useEffect(() => {
+    const isDesktopApp = window.kanvibeDesktop?.isDesktop === true;
+    const isMacDesktop = navigator.userAgent.includes("Mac") || navigator.platform.toLowerCase().includes("mac");
+    setShouldUseMacTitlebarLayout(isDesktopApp && isMacDesktop);
+  }, []);
 
   useEffect(() => {
     if (pendingNotificationSettings && !areNotificationSettingsEqual(notificationSettings, pendingNotificationSettings)) {
@@ -169,8 +176,10 @@ export default function ProjectSettings({
         : "relative w-96 max-h-[80vh] overflow-y-auto rounded-lg border border-border-default bg-bg-surface shadow-lg"
       }>
         {isPage ? (
-          <aside className="border-b border-border-default bg-bg-surface/80 px-4 py-4 lg:sticky lg:top-0 lg:h-screen lg:border-b-0 lg:border-r lg:py-6">
-            <Link href="/" className="mb-8 inline-flex items-center gap-2 text-xs font-medium text-text-muted hover:text-text-primary">
+          <aside className={`border-b border-border-default bg-bg-surface/80 px-4 pb-4 lg:sticky lg:top-0 lg:h-screen lg:border-b-0 lg:border-r lg:pb-6 ${
+            shouldUseMacTitlebarLayout ? "pt-16 lg:pt-16" : "pt-4 lg:pt-6"
+          }`}>
+            <Link href="/" className="mb-8 inline-flex items-center gap-3 text-xs font-medium text-text-muted hover:text-text-primary">
               <span aria-hidden="true">←</span>
               Board
             </Link>
