@@ -62,13 +62,21 @@ describe("hookEndpoint", () => {
   it("desktop main이 설정한 hook server port를 hook URL에 사용한다", async () => {
     // Given
     const { getHookServerUrl, setHookServerPort } = await import("@/lib/hookEndpoint");
-    setHookServerPort(6379);
+    setHookServerPort(19736);
 
     // When
     const result = await getHookServerUrl(null);
 
     // Then
-    expect(result).toBe("http://localhost:6379");
+    expect(result).toBe("http://localhost:19736");
+  });
+
+  it("desktop dev hook server port 상수는 pnpm dev 포트와 일치한다", async () => {
+    // Given
+    const { KANVIBE_DEV_HOOK_SERVER_PORT } = await import("@/lib/hookEndpoint");
+
+    // Then
+    expect(KANVIBE_DEV_HOOK_SERVER_PORT).toBe(19736);
   });
 
   it("원격 hook 주소는 SSH 연결에 사용한 로컬 출발 IP를 우선 사용한다", async () => {
@@ -107,13 +115,13 @@ describe("hookEndpoint", () => {
     ]);
     mocks.lookup.mockResolvedValue({ address: "203.0.113.20", family: 4 });
     const { getHookServerUrl, setHookServerPort } = await import("@/lib/hookEndpoint");
-    setHookServerPort(6379);
+    setHookServerPort(19736);
 
     // When
     const result = await getHookServerUrl("remote-devbox");
 
     // Then
-    expect(result).toBe("http://10.0.0.8:6379");
+    expect(result).toBe("http://10.0.0.8:19736");
   });
 
   it("원격 호스트 경로를 해석하지 못하면 내부망 IPv4 주소를 사용한다", async () => {
