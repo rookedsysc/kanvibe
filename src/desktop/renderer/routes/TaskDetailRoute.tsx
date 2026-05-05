@@ -488,44 +488,69 @@ export default function TaskDetailRoute() {
           })();
         }
 
+        const applySupplementalState = (updates: Partial<Omit<TaskDetailState, "task">>) => {
+          if (cancelled) {
+            return;
+          }
+
+          setState((current) => current && current.task.id === task.id
+            ? {
+                ...current,
+                ...updates,
+              }
+            : current);
+        };
+
         void (async () => {
           try {
             const baseBranchName = task.baseBranch ?? "main";
-            const foundTaskId = task.projectId ? await getTaskIdByProjectAndBranch(task.projectId, baseBranchName) : null;
-            const baseBranchTaskId = foundTaskId !== task.id ? foundTaskId : null;
-            const diffFiles = task.branchName && task.worktreePath ? await getGitDiffFiles(id) : [];
-            const [claudeHooksStatus, geminiHooksStatus, codexHooksStatus, openCodeHooksStatus, aiSessions, projects, defaultSessionType, doneAlertDismissed] = await Promise.all([
-              task.projectId ? getTaskHooksStatus(id) : Promise.resolve(null),
-              task.projectId ? getTaskGeminiHooksStatus(id) : Promise.resolve(null),
-              task.projectId ? getTaskCodexHooksStatus(id) : Promise.resolve(null),
-              task.projectId ? getTaskOpenCodeHooksStatus(id) : Promise.resolve(null),
-              task.projectId ? getTaskAiSessions(id) : Promise.resolve(EMPTY_AI_SESSIONS),
+            const [foundTaskId, diffFiles, projects, defaultSessionType, doneAlertDismissed] = await Promise.all([
+              task.projectId ? getTaskIdByProjectAndBranch(task.projectId, baseBranchName) : Promise.resolve(null),
+              task.branchName && task.worktreePath ? getGitDiffFiles(id) : Promise.resolve([]),
               getAllProjects(),
               getDefaultSessionType(),
               getDoneAlertDismissed(),
             ]);
+            const baseBranchTaskId = foundTaskId !== task.id ? foundTaskId : null;
 
-            if (cancelled) {
-              return;
-            }
-
-            setState((current) => current && current.task.id === task.id
-              ? {
-                  ...current,
-                  baseBranchTaskId,
-                  diffFiles,
-                  claudeHooksStatus,
-                  geminiHooksStatus,
-                  codexHooksStatus,
-                  openCodeHooksStatus,
-                  aiSessions,
-                  projects,
-                  defaultSessionType,
-                  doneAlertDismissed,
-                }
-              : current);
+            applySupplementalState({
+              baseBranchTaskId,
+              diffFiles,
+              projects,
+              defaultSessionType,
+              doneAlertDismissed,
+            });
           } catch (error) {
-            console.error("Failed to load task detail supplemental data:", error);
+            console.error("Failed to load task detail reference data:", error);
+          }
+        })();
+
+        void (async () => {
+          try {
+            const [claudeHooksStatus, geminiHooksStatus, codexHooksStatus, openCodeHooksStatus] = await Promise.all([
+              task.projectId ? getTaskHooksStatus(id) : Promise.resolve(null),
+              task.projectId ? getTaskGeminiHooksStatus(id) : Promise.resolve(null),
+              task.projectId ? getTaskCodexHooksStatus(id) : Promise.resolve(null),
+              task.projectId ? getTaskOpenCodeHooksStatus(id) : Promise.resolve(null),
+            ]);
+
+            applySupplementalState({
+              claudeHooksStatus,
+              geminiHooksStatus,
+              codexHooksStatus,
+              openCodeHooksStatus,
+            });
+          } catch (error) {
+            console.error("Failed to load task hook statuses:", error);
+          }
+        })();
+
+        void (async () => {
+          try {
+            const aiSessions = task.projectId ? await getTaskAiSessions(id) : EMPTY_AI_SESSIONS;
+            applySupplementalState({ aiSessions });
+          } catch (error) {
+            console.error("Failed to load task AI sessions:", error);
           }
         })();
       } catch (error) {

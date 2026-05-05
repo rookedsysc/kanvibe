@@ -29,6 +29,7 @@ const mocks = vi.hoisted(() => ({
   markAllNotificationsRead: vi.fn(),
   activateNotification: vi.fn(),
   fetchPrUrlWithPrompt: vi.fn(),
+  renderHooksStatusCard: vi.fn(),
   useRefreshSignal: vi.fn(() => 0),
   redirect: vi.fn(),
   push: vi.fn(),
@@ -161,7 +162,24 @@ vi.mock("@/components/DoneStatusButton", () => ({
 }));
 
 vi.mock("@/components/HooksStatusCard", () => ({
-  default: () => <div data-testid="hooks-status-card" />,
+  default: (props: {
+    initialClaudeStatus: { installed: boolean } | null;
+    initialGeminiStatus: { installed: boolean } | null;
+    initialCodexStatus: { installed: boolean } | null;
+    initialOpenCodeStatus: { installed: boolean } | null;
+  }) => {
+    mocks.renderHooksStatusCard(props);
+
+    return (
+      <div
+        data-testid="hooks-status-card"
+        data-claude-installed={String(props.initialClaudeStatus?.installed ?? false)}
+        data-gemini-installed={String(props.initialGeminiStatus?.installed ?? false)}
+        data-codex-installed={String(props.initialCodexStatus?.installed ?? false)}
+        data-opencode-installed={String(props.initialOpenCodeStatus?.installed ?? false)}
+      />
+    );
+  },
 }));
 
 vi.mock("@/components/TaskDetailInfoCard", () => ({
@@ -599,6 +617,41 @@ describe("TaskDetailRoute", () => {
 
     expect(await screen.findByTestId("hooks-status-card")).toBeTruthy();
     expect(screen.getByText("done")).toBeTruthy();
+  });
+
+  it("AI 세션 로드가 느려도 hooks 상태는 먼저 갱신한다", async () => {
+    const codexStatus = { installed: true };
+    const unresolvedAiSessions = createDeferred<Awaited<ReturnType<typeof mocks.getTaskAiSessions>>>();
+    mocks.getSidebarDefaultCollapsed.mockResolvedValue(true);
+    mocks.getTaskById.mockResolvedValue({
+      id: "task-1",
+      title: "task title",
+      description: null,
+      branchName: "feat/detail-shortcut",
+      baseBranch: "main",
+      prUrl: null,
+      sessionType: null,
+      sessionName: null,
+      sshHost: null,
+      projectId: "project-1",
+      project: { id: "project-1", name: "kanvibe" },
+      status: "todo",
+      agentType: null,
+      worktreePath: "/repo__worktrees/detail-shortcut",
+    });
+    mocks.getTaskCodexHooksStatus.mockResolvedValue(codexStatus);
+    mocks.getTaskAiSessions.mockReturnValue(unresolvedAiSessions.promise);
+
+    render(<TaskDetailRoute />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "actions · hooksStatus" }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("hooks-status-card").getAttribute("data-codex-installed")).toBe("true");
+    });
+    expect(mocks.renderHooksStatusCard).toHaveBeenLastCalledWith(expect.objectContaining({
+      initialCodexStatus: codexStatus,
+    }));
   });
 
   it("상세 화면 좌측 하단 rail에는 알림 버튼을 렌더링하지 않는다", async () => {
