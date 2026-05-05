@@ -69,8 +69,8 @@ vi.mock("@hugeicons/react", () => ({
 
 vi.mock("@hugeicons/core-free-icons", () => ({
   Chatting01Icon: { __iconName: "Chatting01Icon" },
+  Clock01Icon: { __iconName: "Clock01Icon" },
   InformationCircleIcon: { __iconName: "InformationCircleIcon" },
-  Task02Icon: { __iconName: "Task02Icon" },
 }));
 
 vi.mock("react-router-dom", () => ({
@@ -456,6 +456,7 @@ describe("TaskDetailRoute", () => {
     const prLink = await screen.findByRole("link", { name: "PR" });
     expect(prLink.getAttribute("href")).toBe(prUrl);
     expect(prLink.getAttribute("target")).toBe("_blank");
+    expect(screen.getByTestId("task-detail-pr-icon")).toBeTruthy();
   });
 
   it("채팅 아이콘을 클릭하면 drawer 대신 메인 영역을 AI 채팅 내역으로 전환한다", async () => {
@@ -593,7 +594,7 @@ describe("TaskDetailRoute", () => {
 
     const statusButton = await screen.findByRole("button", { name: "actions · hooksStatus" });
     expect(screen.queryByTestId("hooks-status-card")).toBeNull();
-    expect(screen.getByTestId("task-status-panel-icon").getAttribute("data-icon-name")).toBe("Task02Icon");
+    expect(screen.getByTestId("task-status-panel-icon").getAttribute("data-icon-name")).toBe("Clock01Icon");
 
     fireEvent.click(statusButton);
 

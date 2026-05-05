@@ -2,8 +2,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react";
 import {
   Chatting01Icon,
+  Clock01Icon,
   InformationCircleIcon,
-  Task02Icon,
 } from "@hugeicons/core-free-icons";
 import { useTranslations } from "next-intl";
 import { useParams } from "react-router-dom";
@@ -62,6 +62,29 @@ const AGENT_TAG_STYLES: Record<string, string> = {
 
 type DetailPanel = "overview" | "status";
 type MainView = "terminal" | "chat";
+
+function PullRequestIcon() {
+  return (
+    <svg
+      width="17"
+      height="17"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      data-testid="task-detail-pr-icon"
+    >
+      <circle cx="6" cy="18" r="3" />
+      <circle cx="18" cy="6" r="3" />
+      <path d="M6 15V6" />
+      <path d="M18 9v1.5A5.5 5.5 0 0 1 12.5 16H9" />
+      <path d="m12 13-3 3 3 3" />
+    </svg>
+  );
+}
 
 interface TaskDetailState {
   task: NonNullable<Awaited<ReturnType<typeof getTaskById>>>;
@@ -582,7 +605,7 @@ export default function TaskDetailRoute() {
 
         {([
           { panel: "overview", label: t("info"), icon: InformationCircleIcon },
-          { panel: "status", label: statusPanelLabel, icon: Task02Icon, iconTestId: "task-status-panel-icon" },
+          { panel: "status", label: statusPanelLabel, icon: Clock01Icon, iconTestId: "task-status-panel-icon" },
         ] satisfies Array<{ panel: DetailPanel; label: string; icon: IconSvgElement; iconTestId?: string }>).map(({ panel, label, icon, iconTestId }) => (
           <button
             key={panel}
@@ -630,11 +653,11 @@ export default function TaskDetailRoute() {
             href={state.task.prUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="mb-1 flex h-8 w-8 items-center justify-center rounded-md border border-tag-pr-text/30 bg-tag-pr-bg text-[10px] font-semibold text-tag-pr-text transition-opacity hover:opacity-80"
+            className="mb-1 flex h-8 w-8 items-center justify-center rounded-md border border-tag-pr-text/30 bg-tag-pr-bg text-tag-pr-text transition-opacity hover:opacity-80"
             title="PR"
             aria-label="PR"
           >
-            PR
+            <PullRequestIcon />
           </a>
         ) : null}
 

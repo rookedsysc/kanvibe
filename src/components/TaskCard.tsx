@@ -43,6 +43,48 @@ const KANBAN_STATUS_ORDER = [
 
 const TASK_CARD_SELECTOR = "[data-kanban-task-card='true']";
 
+function BaseBranchIcon() {
+  return (
+    <svg
+      width="12"
+      height="12"
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <circle cx="5" cy="3.5" r="1.7" fill="currentColor" stroke="none" />
+      <circle cx="11" cy="12.5" r="1.7" fill="currentColor" stroke="none" />
+      <path d="M5 5.5v2.2c0 2.5 1.8 4.3 4.1 4.3H9" />
+    </svg>
+  );
+}
+
+function PullRequestIcon({ size = 12 }: { size?: number }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <circle cx="6" cy="18" r="3" />
+      <circle cx="18" cy="6" r="3" />
+      <path d="M6 15V6" />
+      <path d="M18 9v1.5A5.5 5.5 0 0 1 12.5 16H9" />
+      <path d="m12 13-3 3 3 3" />
+    </svg>
+  );
+}
+
 function getTaskCards() {
   return Array.from(document.querySelectorAll<HTMLAnchorElement>(TASK_CARD_SELECTOR));
 }
@@ -137,17 +179,22 @@ export default function TaskCard({ task, index, onContextMenu, projectName, proj
             ...provided.draggableProps.style,
             ...cardStyle,
           }}
-          className={`group relative mb-1.5 block overflow-hidden rounded-md border border-border-subtle px-2.5 py-2 transition-colors cursor-pointer outline-none focus:border-brand-primary focus:bg-bg-surface/80 focus:ring-2 focus:ring-brand-primary/30 ${
+          className={`group relative mb-1.5 block overflow-hidden rounded-md border border-border-subtle px-2.5 py-2 transition-colors cursor-pointer outline-none focus:border-brand-primary focus:bg-bg-surface/80 focus:ring-2 focus:ring-brand-primary/30 ${isBaseProject ? "pr-8" : ""} ${
             snapshot.isDragging
               ? "bg-bg-surface shadow-md ring-1 ring-border-brand"
               : "hover:bg-bg-surface/70"
           }`}
         >
-          {/* Base 프로젝트 리본 배지 */}
+          {/* Base branch 표시 */}
           {isBaseProject && (
-            <div className="absolute -right-7 top-2.5 rotate-45 bg-tag-base-bg text-tag-base-text text-[10px] font-bold px-7 py-0.5 pointer-events-none select-none">
-              Base
-            </div>
+            <span
+              className="pointer-events-none absolute right-2 top-2 inline-flex h-5 w-5 items-center justify-center rounded-full border border-border-subtle bg-tag-base-bg text-tag-base-text shadow-sm"
+              title="Base branch"
+              aria-hidden="true"
+              data-testid="base-branch-icon"
+            >
+              <BaseBranchIcon />
+            </span>
           )}
 
           {projectName && (
@@ -191,9 +238,7 @@ export default function TaskCard({ task, index, onContextMenu, projectName, proj
                 }}
                 className={`${badgeClassName} gap-1 bg-tag-pr-bg text-tag-pr-text transition-opacity hover:opacity-80`}
               >
-                <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
-                  <path d="M7.177 3.073L9.573.677A.25.25 0 0110 .854v4.792a.25.25 0 01-.427.177L7.177 3.427a.25.25 0 010-.354zM3.75 2.5a.75.75 0 100 1.5.75.75 0 000-1.5zm-2.25.75a2.25 2.25 0 113 2.122v5.256a2.251 2.251 0 11-1.5 0V5.372A2.25 2.25 0 011.5 3.25zM11 2.5h-1V4h1a1 1 0 011 1v5.628a2.251 2.251 0 101.5 0V5A2.5 2.5 0 0011 2.5zm1 10.25a.75.75 0 111.5 0 .75.75 0 01-1.5 0zM3.75 12a.75.75 0 100 1.5.75.75 0 000-1.5z"/>
-                </svg>
+                <PullRequestIcon />
                 PR
               </span>
             )}

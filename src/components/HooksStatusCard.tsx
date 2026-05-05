@@ -6,7 +6,6 @@ import {
   AlertCircleIcon,
   CheckmarkCircle02Icon,
   Clock01Icon,
-  WebhookIcon,
 } from "@hugeicons/core-free-icons";
 import { useTranslations } from "next-intl";
 import {
@@ -218,7 +217,7 @@ export default function HooksStatusCard({
                   ? "border-status-done/20 bg-status-done/10 text-status-done"
                   : "border-status-error/20 bg-status-error/10 text-status-error"
                 }`}>
-                  <HookToolIcon />
+                  <HookToolIcon tool={item.key} />
                 </span>
                 <div className="min-w-0 flex-1">
                   <div className="flex min-w-0 items-center gap-2">
@@ -307,14 +306,65 @@ function StatusIcon({ status }: { status: "ok" | "partial" | "error" }) {
   );
 }
 
-function HookToolIcon() {
+function HookToolIcon({ tool }: { tool: HookToolKey }) {
+  const iconNameByTool: Record<HookToolKey, string> = {
+    claude: "ClaudeIcon",
+    gemini: "GeminiIcon",
+    codex: "CodexIcon",
+    openCode: "OpenCodeIcon",
+  };
+
+  const commonProps = {
+    width: 17,
+    height: 17,
+    viewBox: "0 0 24 24",
+    fill: "none",
+    stroke: "currentColor",
+    strokeWidth: 1.9,
+    strokeLinecap: "round" as const,
+    strokeLinejoin: "round" as const,
+    "aria-hidden": true,
+    "data-testid": "hook-status-tool-icon",
+    "data-icon-name": iconNameByTool[tool],
+  };
+
+  if (tool === "claude") {
+    return (
+      <svg {...commonProps}>
+        <path d="M12 3.5v17" />
+        <path d="M5.1 7.5l13.8 9" />
+        <path d="M18.9 7.5l-13.8 9" />
+        <circle cx="12" cy="12" r="2.2" fill="currentColor" stroke="none" />
+      </svg>
+    );
+  }
+
+  if (tool === "gemini") {
+    return (
+      <svg {...commonProps}>
+        <path d="M12 3l1.6 5.4L19 10l-5.4 1.6L12 17l-1.6-5.4L5 10l5.4-1.6L12 3Z" fill="currentColor" stroke="none" />
+        <path d="M18 15l.7 2.3L21 18l-2.3.7L18 21l-.7-2.3L15 18l2.3-.7L18 15Z" fill="currentColor" stroke="none" />
+      </svg>
+    );
+  }
+
+  if (tool === "codex") {
+    return (
+      <svg {...commonProps}>
+        <path d="M7.5 5 4 8.5 7.5 12" />
+        <path d="M16.5 5 20 8.5 16.5 12" />
+        <path d="M9 19h6" />
+        <path d="M12 12v7" />
+        <circle cx="12" cy="8.5" r="1.8" fill="currentColor" stroke="none" />
+      </svg>
+    );
+  }
+
   return (
-    <HugeiconsIcon
-      icon={WebhookIcon}
-      size={17}
-      strokeWidth={1.8}
-      aria-hidden="true"
-      data-testid="hook-status-tool-icon"
-    />
+    <svg {...commonProps}>
+      <rect x="4" y="5" width="16" height="14" rx="3" />
+      <path d="m8 10 2.2 2L8 14" />
+      <path d="M13 14h3" />
+    </svg>
   );
 }

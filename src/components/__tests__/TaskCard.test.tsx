@@ -154,6 +154,19 @@ describe("TaskCard - Priority Badge", () => {
     expect(remoteBadge.className).not.toContain("ring-1");
   });
 
+  it("should render base branch as a compact icon instead of a ribbon label", () => {
+    const task = createTask();
+
+    render(<TaskCard task={task} index={0} onContextMenu={onContextMenu} isBaseProject />);
+
+    const baseIcon = screen.getByTestId("base-branch-icon");
+
+    expect(baseIcon).toBeTruthy();
+    expect(baseIcon.className).toContain("bg-tag-base-bg");
+    expect(baseIcon.className).toContain("text-tag-base-text");
+    expect(screen.queryByText("Base")).toBeNull();
+  });
+
   it("should render project label above the task title with project color", () => {
     const task = createTask();
 
