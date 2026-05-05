@@ -104,24 +104,6 @@ vi.mock("@/components/AiSessionsCard", () => ({
   default: () => <div data-testid="ai-sessions-card" />,
 }));
 
-vi.mock("@/components/CollapsibleSidebar", () => ({
-  default: ({
-    children,
-    showHint,
-    onDismissHint,
-  }: {
-    children: ReactNode;
-    showHint: boolean;
-    onDismissHint?: () => void;
-  }) => (
-    <div data-testid="collapsible-sidebar" data-show-hint={String(showHint)}>
-      <button type="button" onClick={onDismissHint}>dismiss sidebar hint</button>
-      {showHint ? <div>sidebar hint visible</div> : null}
-      {children}
-    </div>
-  ),
-}));
-
 vi.mock("@/components/ConnectTerminalForm", () => ({
   default: () => <div data-testid="connect-terminal-form" />,
 }));
@@ -341,7 +323,7 @@ describe("TaskDetailRoute", () => {
     expect(screen.getByText("taskNotFound")).toBeTruthy();
   });
 
-  it("앱 설정을 로드하기 전에는 stale cache의 사이드바 힌트 값을 신뢰하지 않는다", () => {
+  it("stale cache의 레거시 사이드바 힌트 값은 아이콘 패널 UI에 렌더링하지 않는다", () => {
     sessionStorage.setItem(TASK_DETAIL_CACHE_KEY, JSON.stringify({
       task: {
         id: "task-1",
@@ -382,11 +364,11 @@ describe("TaskDetailRoute", () => {
 
     render(<TaskDetailRoute />);
 
-    expect(screen.getByTestId("collapsible-sidebar").dataset.showHint).toBe("false");
     expect(screen.queryByText("sidebar hint visible")).toBeNull();
   });
 
-  it("사이드바 힌트를 닫아도 route cache에는 앱 전체 힌트 설정을 저장하지 않는다", async () => {
+  it("아이콘 버튼으로 상세 overview 패널을 열고 닫을 수 있다", async () => {
+    mocks.getSidebarDefaultCollapsed.mockResolvedValue(true);
     mocks.getTaskById.mockResolvedValue({
       id: "task-1",
       title: "task title",
@@ -406,18 +388,18 @@ describe("TaskDetailRoute", () => {
 
     render(<TaskDetailRoute />);
 
-    await screen.findByText("sidebar hint visible");
+    const overviewButton = await screen.findByRole("button", { name: "info" });
+    expect(screen.queryByTestId("task-title")).toBeNull();
 
-    fireEvent.click(screen.getByRole("button", { name: "dismiss sidebar hint" }));
-
-    await waitFor(() => {
-      expect(screen.queryByText("sidebar hint visible")).toBeNull();
-    });
+    fireEvent.click(overviewButton);
 
     await waitFor(() => {
-      const cached = JSON.parse(sessionStorage.getItem(TASK_DETAIL_CACHE_KEY) ?? "{}") as Record<string, unknown>;
-      expect(cached).not.toHaveProperty("sidebarHintDismissed");
+      expect(screen.getByTestId("task-title").textContent).toBe("task title");
     });
+
+    fireEvent.click(screen.getByRole("button", { name: "close" }));
+
+    expect(screen.queryByTestId("task-title")).toBeNull();
   });
 
   it("알림 단축키로 상세 화면의 알림 센터를 토글한다", async () => {

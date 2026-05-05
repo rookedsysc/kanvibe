@@ -14,6 +14,10 @@ vi.mock("@/desktop/renderer/utils/refresh", () => ({
   triggerDesktopRefresh: (...args: unknown[]) => mocks.triggerDesktopRefresh(...args),
 }));
 
+vi.mock("@/desktop/renderer/actions/appSettings", () => ({
+  getThemePreference: vi.fn().mockResolvedValue("system"),
+}));
+
 vi.mock("@/desktop/renderer/routes/BoardRoute", () => ({
   default: () => <div>board route</div>,
 }));
@@ -24,6 +28,10 @@ vi.mock("@/desktop/renderer/routes/DiffRoute", () => ({
 
 vi.mock("@/desktop/renderer/routes/PaneLayoutRoute", () => ({
   default: () => <div>pane layout route</div>,
+}));
+
+vi.mock("@/desktop/renderer/routes/SettingsRoute", () => ({
+  default: () => <div>settings route</div>,
 }));
 
 vi.mock("@/desktop/renderer/routes/TaskDetailRoute", () => ({
@@ -68,6 +76,16 @@ describe("App", () => {
 
     await waitFor(() => {
       expect(screen.getByText("board route")).toBeTruthy();
+    });
+  });
+
+  it("shows settings route", async () => {
+    window.location.hash = "#/ko/settings";
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getByText("settings route")).toBeTruthy();
     });
   });
 

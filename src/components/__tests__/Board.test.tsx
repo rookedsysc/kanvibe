@@ -124,21 +124,6 @@ vi.mock("../CreateTaskModal", () => ({
   ),
 }));
 
-vi.mock("../ProjectSettings", () => ({
-  default: ({
-    defaultSessionType,
-    onDefaultSessionTypeChange,
-  }: {
-    defaultSessionType: SessionType;
-    onDefaultSessionTypeChange?: (sessionType: SessionType) => void;
-  }) => (
-    <div>
-      <div data-testid="project-settings-default-session">{defaultSessionType}</div>
-      <button onClick={() => onDefaultSessionTypeChange?.(SessionType.ZELLIJ)}>change-default-session</button>
-    </div>
-  ),
-}));
-
 function createProject(): Project {
   return {
     id: "project-1",
@@ -239,12 +224,13 @@ describe("Board defaultSessionType sync", () => {
     // Then
     await waitFor(() => {
       expect(screen.getByTestId("create-task-default-session").textContent).toBe(SessionType.ZELLIJ);
-      expect(screen.getByTestId("project-settings-default-session").textContent).toBe(SessionType.ZELLIJ);
     });
   });
 
-  it("ProjectSettings에서 변경 콜백을 호출하면 Board 상태가 즉시 반영된다", async () => {
+  it("설정 버튼을 누르면 현재 locale의 settings 페이지로 이동한다", () => {
     // Given
+    window.location.hash = "#/ko";
+
     render(
       <Board
         initialTasks={createEmptyTasks()}
@@ -261,12 +247,10 @@ describe("Board defaultSessionType sync", () => {
     );
 
     // When
-    fireEvent.click(screen.getByRole("button", { name: "change-default-session" }));
+    fireEvent.click(screen.getByRole("button", { name: "settings" }));
 
     // Then
-    await waitFor(() => {
-      expect(screen.getByTestId("create-task-default-session").textContent).toBe(SessionType.ZELLIJ);
-    });
+    expect(window.location.hash).toBe("#/ko/settings");
   });
 
   it("드래그 종료 시 reorder action을 이벤트 이후에 호출한다", async () => {

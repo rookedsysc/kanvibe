@@ -62,12 +62,12 @@ describe("TaskCard - Priority Badge", () => {
     render(<TaskCard task={task} index={0} onContextMenu={onContextMenu} />);
 
     // Then
-    expect(screen.queryByText("!")).toBeNull();
-    expect(screen.queryByText("!!")).toBeNull();
-    expect(screen.queryByText("!!!")).toBeNull();
+    expect(screen.queryByText("P3")).toBeNull();
+    expect(screen.queryByText("P2")).toBeNull();
+    expect(screen.queryByText("P1")).toBeNull();
   });
 
-  it("should render ! badge with low priority color when priority is LOW", () => {
+  it("should render P3 badge with low priority color when priority is LOW", () => {
     // Given
     const task = createTask({ priority: TaskPriority.LOW });
 
@@ -75,13 +75,13 @@ describe("TaskCard - Priority Badge", () => {
     render(<TaskCard task={task} index={0} onContextMenu={onContextMenu} />);
 
     // Then
-    const badge = screen.getByText("!");
+    const badge = screen.getByText("P3");
     expect(badge).toBeTruthy();
     expect(badge.className).toContain("bg-priority-low-bg");
     expect(badge.className).toContain("text-priority-low-text");
   });
 
-  it("should render !! badge with medium priority color when priority is MEDIUM", () => {
+  it("should render P2 badge with medium priority color when priority is MEDIUM", () => {
     // Given
     const task = createTask({ priority: TaskPriority.MEDIUM });
 
@@ -89,13 +89,13 @@ describe("TaskCard - Priority Badge", () => {
     render(<TaskCard task={task} index={0} onContextMenu={onContextMenu} />);
 
     // Then
-    const badge = screen.getByText("!!");
+    const badge = screen.getByText("P2");
     expect(badge).toBeTruthy();
     expect(badge.className).toContain("bg-priority-medium-bg");
     expect(badge.className).toContain("text-priority-medium-text");
   });
 
-  it("should render !!! badge with high priority color when priority is HIGH", () => {
+  it("should render P1 badge with high priority color when priority is HIGH", () => {
     // Given
     const task = createTask({ priority: TaskPriority.HIGH });
 
@@ -103,7 +103,7 @@ describe("TaskCard - Priority Badge", () => {
     render(<TaskCard task={task} index={0} onContextMenu={onContextMenu} />);
 
     // Then
-    const badge = screen.getByText("!!!");
+    const badge = screen.getByText("P1");
     expect(badge).toBeTruthy();
     expect(badge.className).toContain("bg-priority-high-bg");
     expect(badge.className).toContain("text-priority-high-text");
@@ -117,8 +117,30 @@ describe("TaskCard - Priority Badge", () => {
     render(<TaskCard task={task} index={0} onContextMenu={onContextMenu} />);
 
     // Then
-    const badge = screen.getByText("!!!");
+    const badge = screen.getByText("P1");
     expect(badge.className).toContain("ml-auto");
+  });
+
+  it("should render project label above the task title with project color", () => {
+    const task = createTask();
+
+    const { container } = render(
+      <TaskCard
+        task={task}
+        index={0}
+        onContextMenu={onContextMenu}
+        projectName="kanvibe"
+        projectColor="#65d08a"
+      />,
+    );
+
+    const projectLabel = screen.getByText("kanvibe");
+    expect(projectLabel).toBeTruthy();
+    expect(projectLabel.style.color).toBe("rgb(101, 208, 138)");
+
+    const card = screen.getByRole("link").firstElementChild as HTMLElement;
+    expect(card.style.borderColor).toBe("rgb(101, 208, 138)");
+    expect(container.querySelector(".bg-border-strong")).toBeNull();
   });
 
   it("should keep task detail navigation in the same window on desktop", async () => {

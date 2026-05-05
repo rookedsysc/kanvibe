@@ -168,6 +168,135 @@
   --transition-normal: 200ms ease;
 }
 
+:root,
+:root[data-theme="dark"] {
+  --color-brand-primary: #6e7dfb;
+  --color-brand-hover: #7d8aff;
+  --color-brand-active: #5b68e8;
+  --color-brand-subtle: rgba(110, 125, 251, 0.14);
+  --color-brand-muted: rgba(110, 125, 251, 0.22);
+
+  --color-bg-page: #090a0d;
+  --color-bg-surface: #111216;
+  --color-bg-overlay: rgba(0, 0, 0, 0.62);
+
+  --color-text-primary: #f3f4f7;
+  --color-text-secondary: #b0b4bd;
+  --color-text-muted: #717680;
+  --color-text-inverse: #ffffff;
+  --color-text-brand: #9aa4ff;
+  --color-text-link: #9aa4ff;
+
+  --color-border-default: #24262d;
+  --color-border-subtle: #1a1c22;
+  --color-border-strong: #353842;
+  --color-border-brand: rgba(154, 164, 255, 0.62);
+
+  --color-status-todo: #747985;
+  --color-status-progress: #f6c35f;
+  --color-status-pending: #9b8cff;
+  --color-status-review: #6ea8ff;
+  --color-status-done: #65d08a;
+  --color-status-success: #65d08a;
+  --color-status-warning: #f6c35f;
+  --color-status-error: #ff7d73;
+  --color-status-info: #6ea8ff;
+
+  --color-tag-claude-bg: rgba(255, 125, 115, 0.12);
+  --color-tag-claude-text: #ffaaa2;
+  --color-tag-gemini-bg: rgba(110, 168, 255, 0.12);
+  --color-tag-gemini-text: #9fc8ff;
+  --color-tag-codex-bg: rgba(101, 208, 138, 0.12);
+  --color-tag-codex-text: #9be6b4;
+  --color-tag-session-bg: rgba(154, 164, 255, 0.12);
+  --color-tag-session-text: #aeb6ff;
+  --color-tag-ssh-bg: rgba(101, 208, 138, 0.12);
+  --color-tag-ssh-text: #9be6b4;
+  --color-tag-project-bg: rgba(255, 255, 255, 0.08);
+  --color-tag-project-text: #d7dae1;
+  --color-tag-branch-bg: rgba(255, 255, 255, 0.06);
+  --color-tag-branch-text: #aeb3bd;
+  --color-tag-neutral-bg: rgba(255, 255, 255, 0.07);
+  --color-tag-neutral-text: #aeb3bd;
+  --color-tag-pr-bg: rgba(110, 168, 255, 0.12);
+  --color-tag-pr-text: #9fc8ff;
+  --color-tag-base-bg: rgba(255, 255, 255, 0.1);
+  --color-tag-base-text: #ffffff;
+
+  --color-group-0-border: rgba(255, 154, 204, 0.4);
+  --color-group-0-bg: rgba(255, 154, 204, 0.08);
+  --color-group-1-border: rgba(147, 197, 253, 0.38);
+  --color-group-1-bg: rgba(147, 197, 253, 0.08);
+  --color-group-2-border: rgba(134, 239, 172, 0.36);
+  --color-group-2-bg: rgba(134, 239, 172, 0.08);
+  --color-group-3-border: rgba(196, 181, 253, 0.38);
+  --color-group-3-bg: rgba(196, 181, 253, 0.08);
+  --color-group-4-border: rgba(253, 186, 116, 0.34);
+  --color-group-4-bg: rgba(253, 186, 116, 0.08);
+  --color-group-5-border: rgba(253, 224, 71, 0.28);
+  --color-group-5-bg: rgba(253, 224, 71, 0.07);
+  --color-group-6-border: rgba(94, 234, 212, 0.34);
+  --color-group-6-bg: rgba(94, 234, 212, 0.08);
+  --color-group-7-border: rgba(165, 180, 252, 0.36);
+  --color-group-7-bg: rgba(165, 180, 252, 0.08);
+  --color-group-line: #3b3f49;
+
+  --color-priority-low-bg: rgba(110, 168, 255, 0.12);
+  --color-priority-low-text: #9fc8ff;
+  --color-priority-medium-bg: rgba(246, 195, 95, 0.13);
+  --color-priority-medium-text: #ffd58a;
+  --color-priority-high-bg: rgba(255, 125, 115, 0.13);
+  --color-priority-high-text: #ffaaa2;
+
+  --color-terminal-chrome: #0f1014;
+  --color-terminal-bg: #050608;
+  --color-terminal-text: #a0a7b4;
+
+  --shadow-xs: 0 1px 1px rgba(0, 0, 0, 0.24);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.24);
+  --shadow-md: 0 12px 30px rgba(0, 0, 0, 0.26);
+  --shadow-lg: 0 22px 60px rgba(0, 0, 0, 0.34);
+
+  --radius-sm: 0.1875rem;
+  --radius-md: 0.375rem;
+  --radius-lg: 0.5rem;
+  --radius-xl: 0.625rem;
+}
+
+:root[data-theme="light"] {
+  --color-brand-primary: #5e6ad2;
+  --color-brand-hover: #4f5cc4;
+  --color-brand-active: #4651b3;
+  --color-brand-subtle: #eef0ff;
+  --color-brand-muted: #e2e5ff;
+
+  --color-bg-page: #f7f8fa;
+  --color-bg-surface: #ffffff;
+  --color-bg-overlay: rgba(15, 17, 22, 0.42);
+
+  --color-text-primary: #17181c;
+  --color-text-secondary: #5f636d;
+  --color-text-muted: #8a909b;
+  --color-text-inverse: #ffffff;
+  --color-text-brand: #4f5cc4;
+  --color-text-link: #4f5cc4;
+
+  --color-border-default: #e2e4e8;
+  --color-border-subtle: #eef0f3;
+  --color-border-strong: #c8ccd3;
+  --color-border-brand: #8f97ee;
+
+  --color-tag-project-bg: #eef0f4;
+  --color-tag-project-text: #3c414a;
+  --color-tag-base-bg: #2f3440;
+  --color-group-line: #cdd1d8;
+
+  --shadow-xs: 0 1px 1px rgba(17, 24, 39, 0.04);
+  --shadow-sm: 0 1px 2px rgba(17, 24, 39, 0.06);
+  --shadow-md: 0 12px 28px rgba(17, 24, 39, 0.08);
+  --shadow-lg: 0 22px 60px rgba(17, 24, 39, 0.14);
+}
+
 @theme inline {
   /* Brand */
   --color-brand-primary: var(--color-brand-primary);
@@ -286,6 +415,24 @@ body {
   background: var(--color-bg-page);
   color: var(--color-text-primary);
   font-family: var(--font-sans);
+  font-size: 14px;
+  letter-spacing: 0;
+}
+
+* {
+  scrollbar-color: var(--color-border-strong) transparent;
+}
+
+::selection {
+  background: var(--color-brand-muted);
+  color: var(--color-text-primary);
+}
+
+button,
+input,
+select,
+textarea {
+  letter-spacing: 0;
 }
 
 /* xterm 터미널이 컨테이너를 꽉 채우도록 강제 */

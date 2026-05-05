@@ -7,7 +7,7 @@ import type { Project } from "@/entities/Project";
 const mockSetDefaultSessionType = vi.fn().mockResolvedValue(undefined);
 const mockSetNotificationEnabled = vi.fn().mockResolvedValue(undefined);
 const mockSetNotificationStatuses = vi.fn().mockResolvedValue(undefined);
-const mockSetTaskSearchShortcut = vi.fn().mockResolvedValue(undefined);
+const mockSetThemePreference = vi.fn().mockResolvedValue(undefined);
 
 vi.mock("next-intl", () => ({
   useTranslations: () => (key: string) => key,
@@ -48,7 +48,7 @@ vi.mock("@/desktop/renderer/actions/appSettings", () => ({
   setNotificationEnabled: (...args: unknown[]) => mockSetNotificationEnabled(...args),
   setNotificationStatuses: (...args: unknown[]) => mockSetNotificationStatuses(...args),
   setDefaultSessionType: (...args: unknown[]) => mockSetDefaultSessionType(...args),
-  setTaskSearchShortcut: (...args: unknown[]) => mockSetTaskSearchShortcut(...args),
+  setThemePreference: (...args: unknown[]) => mockSetThemePreference(...args),
 }));
 
 function createProject(): Project {
@@ -67,6 +67,13 @@ function createProject(): Project {
 describe("ProjectSettings", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    delete window.kanvibeDesktop;
+    document.documentElement.removeAttribute("data-theme");
+    document.documentElement.removeAttribute("data-theme-preference");
+    Object.defineProperty(window.navigator, "platform", {
+      configurable: true,
+      value: "Linux x86_64",
+    });
   });
 
   it("기본 세션 타입을 변경하면 onDefaultSessionTypeChange를 호출한다", async () => {
@@ -81,7 +88,6 @@ describe("ProjectSettings", () => {
         sshHosts={[]}
         sidebarDefaultCollapsed={false}
         defaultSessionType={SessionType.TMUX}
-        taskSearchShortcut="Mod+Shift+O"
         onDefaultSessionTypeChange={onDefaultSessionTypeChange}
         notificationSettings={{ isEnabled: true, enabledStatuses: ["progress", "pending", "review"] }}
       />,
@@ -98,6 +104,57 @@ describe("ProjectSettings", () => {
     });
   });
 
+  it("테마 설정을 변경하면 즉시 DOM 테마와 저장 값을 갱신한다", async () => {
+    const onThemePreferenceChange = vi.fn();
+
+    render(
+      <ProjectSettings
+        isOpen
+        onClose={vi.fn()}
+        projects={[createProject()]}
+        sshHosts={[]}
+        sidebarDefaultCollapsed={false}
+        defaultSessionType={SessionType.TMUX}
+        themePreference="system"
+        onThemePreferenceChange={onThemePreferenceChange}
+        notificationSettings={{ isEnabled: true, enabledStatuses: ["progress", "pending", "review"] }}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "theme.dark" }));
+
+    expect(document.documentElement.dataset.theme).toBe("dark");
+    expect(document.documentElement.dataset.themePreference).toBe("dark");
+    expect(onThemePreferenceChange).toHaveBeenCalledWith("dark");
+    await waitFor(() => {
+      expect(mockSetThemePreference).toHaveBeenCalledWith("dark");
+    });
+  });
+
+  it("mac 데스크톱 페이지에서는 Board 링크를 titlebar 버튼 아래로 내린다", async () => {
+    window.kanvibeDesktop = { isDesktop: true };
+    Object.defineProperty(window.navigator, "platform", {
+      configurable: true,
+      value: "MacIntel",
+    });
+
+    const { container } = render(
+      <ProjectSettings
+        variant="page"
+        projects={[createProject()]}
+        sshHosts={[]}
+        sidebarDefaultCollapsed={false}
+        defaultSessionType={SessionType.TMUX}
+        notificationSettings={{ isEnabled: true, enabledStatuses: ["progress", "pending", "review"] }}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(container.querySelector("aside")?.className).toContain("pt-16");
+      expect(screen.getByText("Board").closest("a")?.className).toContain("gap-3");
+    });
+  });
+
   it("Escape를 누르면 설정 패널을 닫는다", () => {
     // Given
     const onClose = vi.fn();
@@ -110,7 +167,6 @@ describe("ProjectSettings", () => {
         sshHosts={[]}
         sidebarDefaultCollapsed={false}
         defaultSessionType={SessionType.TMUX}
-        taskSearchShortcut="Mod+Shift+O"
         notificationSettings={{ isEnabled: true, enabledStatuses: ["progress", "pending", "review"] }}
       />,
     );
@@ -132,7 +188,6 @@ describe("ProjectSettings", () => {
         sshHosts={[]}
         sidebarDefaultCollapsed={false}
         defaultSessionType={SessionType.TMUX}
-        taskSearchShortcut="Mod+Shift+O"
         notificationSettings={{ isEnabled: true, enabledStatuses: ["progress", "pending", "review"] }}
       />,
     );
@@ -159,7 +214,6 @@ describe("ProjectSettings", () => {
         sshHosts={[]}
         sidebarDefaultCollapsed={false}
         defaultSessionType={SessionType.TMUX}
-        taskSearchShortcut="Mod+Shift+O"
         notificationSettings={{ isEnabled: true, enabledStatuses: ["progress", "pending", "review"] }}
       />,
     );
@@ -188,7 +242,6 @@ describe("ProjectSettings", () => {
         sshHosts={[]}
         sidebarDefaultCollapsed={false}
         defaultSessionType={SessionType.TMUX}
-        taskSearchShortcut="Mod+Shift+O"
         notificationSettings={initialSettings}
       />,
     );
@@ -203,7 +256,6 @@ describe("ProjectSettings", () => {
         sshHosts={[]}
         sidebarDefaultCollapsed={false}
         defaultSessionType={SessionType.TMUX}
-        taskSearchShortcut="Mod+Shift+O"
         notificationSettings={{
           isEnabled: true,
           enabledStatuses: ["progress", "pending", "review"],
@@ -218,61 +270,4 @@ describe("ProjectSettings", () => {
     expect(screen.getByText("pending").className).toContain("bg-bg-page");
   });
 
-  it("검색 단축키를 캡처해서 즉시 저장한다", async () => {
-    // Given
-    render(
-      <ProjectSettings
-        isOpen
-        onClose={vi.fn()}
-        projects={[createProject()]}
-        sshHosts={[]}
-        sidebarDefaultCollapsed={false}
-        defaultSessionType={SessionType.TMUX}
-        taskSearchShortcut="Mod+Shift+O"
-        notificationSettings={{ isEnabled: true, enabledStatuses: ["progress", "pending", "review"] }}
-      />,
-    );
-
-    const recordButton = screen.getByTestId("task-search-shortcut-record");
-
-    // When
-    fireEvent.click(recordButton);
-    fireEvent.keyDown(recordButton, {
-      key: "p",
-      ctrlKey: true,
-      shiftKey: true,
-    });
-
-    // Then
-    await waitFor(() => {
-      expect(mockSetTaskSearchShortcut).toHaveBeenCalledWith("Mod+Shift+P");
-    });
-    expect(screen.getByText("Ctrl+Shift+P")).toBeTruthy();
-  });
-
-  it("Cmd/Ctrl+R은 검색 단축키로 저장하지 않는다", () => {
-    render(
-      <ProjectSettings
-        isOpen
-        onClose={vi.fn()}
-        projects={[createProject()]}
-        sshHosts={[]}
-        sidebarDefaultCollapsed={false}
-        defaultSessionType={SessionType.TMUX}
-        taskSearchShortcut="Mod+Shift+O"
-        notificationSettings={{ isEnabled: true, enabledStatuses: ["progress", "pending", "review"] }}
-      />,
-    );
-
-    const recordButton = screen.getByTestId("task-search-shortcut-record");
-
-    fireEvent.click(recordButton);
-    fireEvent.keyDown(recordButton, {
-      key: "r",
-      ctrlKey: true,
-    });
-
-    expect(mockSetTaskSearchShortcut).not.toHaveBeenCalled();
-    expect(screen.getByText("taskSearchShortcutRecording")).toBeTruthy();
-  });
 });

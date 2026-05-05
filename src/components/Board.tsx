@@ -8,7 +8,6 @@ import Column from "./Column";
 import CreateTaskModal from "./CreateTaskModal";
 import NotificationCenterButton from "./NotificationCenterButton";
 import ProjectSelector from "./ProjectSelector";
-import ProjectSettings from "./ProjectSettings";
 import TaskContextMenu from "./TaskContextMenu";
 import BranchTaskModal from "./BranchTaskModal";
 import DoneConfirmDialog from "./DoneConfirmDialog";
@@ -19,6 +18,7 @@ import { SessionType, TaskStatus, type KanbanTask } from "@/entities/KanbanTask"
 import type { Project } from "@/entities/Project";
 import { useAutoRefresh } from "@/desktop/renderer/hooks/useAutoRefresh";
 import { useProjectFilterParams } from "@/desktop/renderer/hooks/useProjectFilterParams";
+import { DEFAULT_LOCALE, SUPPORTED_LOCALES } from "@/desktop/renderer/utils/locales";
 import { computeProjectColor } from "@/lib/projectColor";
 import type { NotificationCenterButtonHandle } from "./NotificationCenterButton";
 import type { ProjectSelectorHandle } from "./ProjectSelector";
@@ -56,6 +56,14 @@ function extractMainRepoPath(repoPath: string): string | null {
   const worktreeIndex = repoPath.indexOf("__worktrees");
   if (worktreeIndex === -1) return null;
   return repoPath.slice(0, worktreeIndex);
+}
+
+function openSettingsPage() {
+  const firstSegment = window.location.hash.replace(/^#/, "").split("/").filter(Boolean)[0];
+  const locale = SUPPORTED_LOCALES.includes(firstSegment as typeof SUPPORTED_LOCALES[number])
+    ? firstSegment
+    : DEFAULT_LOCALE;
+  window.location.hash = `#/${locale}/settings`;
 }
 
 /**
@@ -182,7 +190,15 @@ function buildDragMovePlan(
   };
 }
 
-export default function Board({ initialTasks, initialDoneTotal, initialDoneLimit, sshHosts, projects, sidebarDefaultCollapsed, doneAlertDismissed, notificationSettings, defaultSessionType, taskSearchShortcut }: BoardProps) {
+export default function Board({
+  initialTasks,
+  initialDoneTotal,
+  initialDoneLimit,
+  sshHosts,
+  projects,
+  doneAlertDismissed,
+  defaultSessionType,
+}: BoardProps) {
   useAutoRefresh();
   const boardCommands = useBoardCommands();
   const t = useTranslations("board");
@@ -190,7 +206,6 @@ export default function Board({ initialTasks, initialDoneTotal, initialDoneLimit
   const tc = useTranslations("common");
   const [tasks, setTasks] = useState<TasksByStatus>(initialTasks);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isBranchModalOpen, setIsBranchModalOpen] = useState(false);
   const [branchTodoDefaults, setBranchTodoDefaults] = useState<{
     baseBranch: string;
@@ -255,28 +270,6 @@ export default function Board({ initialTasks, initialDoneTotal, initialDoneLimit
     }
     return colorMap;
   }, [projectNameMap, projects]);
-
-  /** projectId → defaultBranch 매핑. worktree 프로젝트는 메인 프로젝트의 defaultBranch를 상속 */
-  const projectDefaultBranchMap = useMemo(() => {
-    const branchMap: Record<string, string> = {};
-    const pathToBranch: Record<string, string> = {};
-
-    for (const project of projects) {
-      const mainPath = extractMainRepoPath(project.repoPath);
-      if (!mainPath) {
-        pathToBranch[project.repoPath] = project.defaultBranch;
-      }
-    }
-
-    for (const project of projects) {
-      const mainPath = extractMainRepoPath(project.repoPath);
-      branchMap[project.id] = mainPath
-        ? (pathToBranch[mainPath] ?? project.defaultBranch)
-        : project.defaultBranch;
-    }
-
-    return branchMap;
-  }, [projects]);
 
   /** 필터 드롭다운에 표시할 메인 프로젝트 목록 (worktree 제외) */
   const filterableProjects = useMemo(
@@ -487,8 +480,8 @@ export default function Board({ initialTasks, initialDoneTotal, initialDoneLimit
   }, [contextMenu.task, handleCloseContextMenu, tt]);
 
   const headerClassName = shouldUseMacTitlebarLayout
-    ? "flex items-center justify-end bg-bg-page px-6 pb-4 pl-20 pr-6 pt-10 [-webkit-app-region:drag]"
-    : "flex items-center justify-end border-b border-border-default bg-bg-surface px-6 pb-4 pt-4";
+    ? "flex items-center justify-end bg-bg-page px-6 pb-3 pl-20 pr-6 pt-10 [-webkit-app-region:drag]"
+    : "flex items-center justify-end border-b border-border-default bg-bg-surface px-6 py-3";
 
   const mainClassName = shouldUseMacTitlebarLayout ? "px-6 pb-6" : "p-6";
 
@@ -516,9 +509,10 @@ export default function Board({ initialTasks, initialDoneTotal, initialDoneLimit
             {t("newTask")}
           </button>
           <button
-            onClick={() => setIsSettingsOpen(true)}
-            className="p-1.5 rounded-md text-text-muted hover:text-text-primary hover:bg-bg-surface transition-colors"
+            onClick={openSettingsPage}
+            className="p-1.5 rounded-md border border-transparent text-text-muted transition-colors hover:border-border-default hover:bg-bg-page hover:text-text-primary"
             title={tc("settings")}
+            aria-label={tc("settings")}
           >
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/>
@@ -532,7 +526,7 @@ export default function Board({ initialTasks, initialDoneTotal, initialDoneLimit
       <main className={mainClassName}>
         {isMounted ? (
           <DragDropContext onDragEnd={handleDragEnd}>
-            <div className="flex gap-4 overflow-x-auto">
+            <div className="flex gap-3 overflow-x-auto pb-2">
               {COLUMNS.map((col) => (
                 <Column
                   key={col.status}
@@ -543,7 +537,6 @@ export default function Board({ initialTasks, initialDoneTotal, initialDoneLimit
                   onContextMenu={handleContextMenu}
                   projectNameMap={projectNameMap}
                   projectColorMap={projectColorMap}
-                  projectDefaultBranchMap={projectDefaultBranchMap}
                   {...(col.status === TaskStatus.DONE && {
                     totalCount: doneTotal,
                     hasMore: doneOffset < doneTotal,
@@ -582,20 +575,6 @@ export default function Board({ initialTasks, initialDoneTotal, initialDoneLimit
         defaultProjectId={branchTodoDefaults?.projectId || (selectedProjectIds.length === 1 ? selectedProjectIds[0] : "")}
         defaultBaseBranch={branchTodoDefaults?.baseBranch}
         defaultSessionType={currentDefaultSessionType}
-      />
-
-      <ProjectSettings
-        isOpen={isSettingsOpen}
-        onClose={() => setIsSettingsOpen(false)}
-        projects={projects}
-        sshHosts={sshHosts}
-        sidebarDefaultCollapsed={sidebarDefaultCollapsed}
-        defaultSessionType={currentDefaultSessionType}
-        taskSearchShortcut={taskSearchShortcut}
-        onDefaultSessionTypeChange={(sessionType) => {
-          setCurrentDefaultSessionType(sessionType);
-        }}
-        notificationSettings={notificationSettings}
       />
 
       {contextMenu.isOpen && contextMenu.task && (

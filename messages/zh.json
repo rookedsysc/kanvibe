@@ -120,7 +120,16 @@
     "delete": "删除"
   },
   "settings": {
-    "title": "项目管理",
+    "title": "设置",
+    "pageDescription": "管理项目、外观、通知和任务创建默认值。",
+    "appearanceSection": "外观",
+    "themePreference": "主题",
+    "themePreferenceDescription": "选择整个应用使用的显示模式。",
+    "theme": {
+      "system": "系统",
+      "dark": "深色",
+      "light": "浅色"
+    },
     "scanTitle": "目录扫描",
     "scanPathPlaceholder": "要扫描的目录路径（例如：~/Documents）",
     "scanButton": "扫描并注册",
@@ -160,9 +169,6 @@
     "detailPageSection": "详情页",
     "sidebarDefaultCollapsed": "默认折叠侧栏",
     "sidebarDefaultCollapsedDescription": "进入详情页时左侧栏默认折叠。",
-    "taskSearchShortcut": "快速搜索快捷键",
-    "taskSearchShortcutDescription": "用于按分支名或项目名快速查找任务详情页的快捷键。",
-    "taskSearchShortcutRecording": "请按下快捷键组合",
     "notificationSection": "通知",
     "notificationEnabled": "浏览器通知",
     "notificationEnabledDescription": "任务状态变更时接收浏览器通知。",

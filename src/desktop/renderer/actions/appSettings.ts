@@ -2,6 +2,11 @@ import type { SessionType } from "@/entities/KanbanTask";
 import { invokeDesktop } from "@/desktop/renderer/ipc";
 import { triggerDesktopRefresh } from "@/desktop/renderer/utils/refresh";
 
+export type ThemePreference = "system" | "light" | "dark";
+
+const THEME_PREFERENCE_KEY = "theme_preference";
+const THEME_PREFERENCES = new Set<ThemePreference>(["system", "light", "dark"]);
+
 async function invokeAndRefresh<T>(method: string, ...args: unknown[]): Promise<T> {
   const result = await invokeDesktop<T>("appSettings", method, ...args);
   triggerDesktopRefresh("settings");
@@ -66,4 +71,13 @@ export function getTaskSearchShortcut(): Promise<string> {
 
 export function setTaskSearchShortcut(shortcut: string): Promise<void> {
   return invokeAndRefresh("setTaskSearchShortcut", shortcut);
+}
+
+export async function getThemePreference(): Promise<ThemePreference> {
+  const value = await getAppSetting(THEME_PREFERENCE_KEY);
+  return THEME_PREFERENCES.has(value as ThemePreference) ? value as ThemePreference : "system";
+}
+
+export function setThemePreference(themePreference: ThemePreference): Promise<void> {
+  return setAppSetting(THEME_PREFERENCE_KEY, themePreference);
 }
