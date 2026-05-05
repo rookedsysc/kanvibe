@@ -437,9 +437,6 @@ export default function TaskQuickSearchDialog({
           <div className="flex items-center justify-between gap-3">
             <div>
               <p className="text-sm font-semibold text-text-primary">{t("title")}</p>
-              <p className="text-xs text-text-muted">
-                {formatShortcutForDisplay(effectiveShortcut, shortcutPlatform)}
-              </p>
             </div>
           </div>
           <input

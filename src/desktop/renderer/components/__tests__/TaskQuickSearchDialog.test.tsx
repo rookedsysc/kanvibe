@@ -105,6 +105,22 @@ describe("TaskQuickSearchDialog", () => {
     expect(screen.getByText("feat/api-search")).toBeTruthy();
   });
 
+  it("검색 다이얼로그 헤더에는 실행 단축키 문자열을 별도로 표시하지 않는다", async () => {
+    render(<TaskQuickSearchDialog shortcut="Ctrl+K" />);
+
+    fireEvent.keyDown(window, {
+      key: "k",
+      ctrlKey: true,
+    });
+
+    await waitFor(() => {
+      expect(screen.getByRole("dialog")).toBeTruthy();
+    });
+
+    expect(screen.getByText("taskSearch.title")).toBeTruthy();
+    expect(screen.queryByText("Ctrl+K")).toBeNull();
+  });
+
   it("Ctrl+R이 저장된 shortcut이어도 검색 다이얼로그를 열지 않는다", () => {
     render(<TaskQuickSearchDialog shortcut="Ctrl+R" />);
 

@@ -301,6 +301,7 @@
     "goBack": "뒤로가기",
     "aiSessions": {
       "title": "AI 세션",
+      "inlineChat": "AI 채팅",
       "description": "현재 작업과 연결된 로컬 AI 대화 이력을 확인합니다.",
       "includeRepoToggle": "main branch 세션 포함",
       "includeRepoToggleShort": "main 포함",

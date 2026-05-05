@@ -166,6 +166,7 @@ describe("codexHooksSetup", () => {
         hasHookEntries: true,
         hasConfigEntry: true,
         hasTaskIdBinding: true,
+        hasExpectedTaskId: true,
         hasStatusMappings: true,
         hasExpectedHookServerUrl: true,
         hasReachableHookServer: true,
@@ -188,6 +189,18 @@ describe("codexHooksSetup", () => {
       expect(status.hasReachableHookServer).toBe(false);
 
       vi.unstubAllGlobals();
+    });
+
+    it("현재 task id와 다른 Codex hook은 설치된 것으로 보지 않는다", async () => {
+      const repoPath = tempDir;
+      await setupCodexHooks(repoPath, "task-1", "http://localhost:9736");
+
+      const status = await getCodexHooksStatus(repoPath, "task-2");
+
+      expect(status.installed).toBe(false);
+      expect(status.hasTaskIdBinding).toBe(true);
+      expect(status.hasExpectedTaskId).toBe(false);
+      expect(status.boundTaskId).toBe("task-1");
     });
   });
 });

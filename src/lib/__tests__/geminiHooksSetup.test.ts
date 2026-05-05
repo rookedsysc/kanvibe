@@ -161,5 +161,16 @@ describe("geminiHooksSetup", () => {
       expect(status.hasSettingsEntry).toBe(false);
       expect(status.installed).toBe(false);
     });
+
+    it("현재 task id와 다른 Gemini hook은 설치된 것으로 보지 않는다", async () => {
+      await setupGeminiHooks(tmpDir, "task-1", "http://localhost:9736");
+
+      const status = await getGeminiHooksStatus(tmpDir, "task-2");
+
+      expect(status.installed).toBe(false);
+      expect(status.hasTaskIdBinding).toBe(true);
+      expect(status.hasExpectedTaskId).toBe(false);
+      expect(status.boundTaskId).toBe("task-1");
+    });
   });
 });

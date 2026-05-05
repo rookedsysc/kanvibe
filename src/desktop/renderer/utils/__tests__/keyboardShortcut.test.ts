@@ -36,35 +36,39 @@ describe("keyboardShortcut", () => {
   });
 
   it("페이지 이동 단축키는 플랫폼별 조합으로 표시한다", () => {
-    expect(formatShortcutForDisplay(SHORTCUTS.pageBack, "mac")).toBe("Cmd+[");
-    expect(formatShortcutForDisplay(SHORTCUTS.pageForward, "mac")).toBe("Cmd+]");
-    expect(formatShortcutForDisplay(SHORTCUTS.pageBack, "linux")).toBe("Alt+[");
-    expect(formatShortcutForDisplay(SHORTCUTS.pageForward, "linux")).toBe("Alt+]");
+    expect(formatShortcutForDisplay(SHORTCUTS.pageBack, "mac")).toBe("Cmd+Shift+[");
+    expect(formatShortcutForDisplay(SHORTCUTS.pageForward, "mac")).toBe("Cmd+Shift+]");
+    expect(formatShortcutForDisplay(SHORTCUTS.pageBack, "linux")).toBe("Ctrl+Shift+[");
+    expect(formatShortcutForDisplay(SHORTCUTS.pageForward, "linux")).toBe("Ctrl+Shift+]");
   });
 
-  it("페이지 이동 단축키는 macOS Cmd와 Linux Alt로 매칭한다", () => {
+  it("페이지 이동 단축키는 플랫폼별 Mod+Shift 조합으로 매칭한다", () => {
     expect(matchShortcutEvent(new KeyboardEvent("keydown", {
       key: "[",
       metaKey: true,
+      shiftKey: true,
     }), SHORTCUTS.pageBack, "mac")).toBe(true);
     expect(matchShortcutEvent(new KeyboardEvent("keydown", {
       key: "]",
       metaKey: true,
+      shiftKey: true,
     }), SHORTCUTS.pageForward, "mac")).toBe(true);
     expect(matchShortcutEvent(new KeyboardEvent("keydown", {
       key: "[",
-      altKey: true,
+      ctrlKey: true,
+      shiftKey: true,
     }), SHORTCUTS.pageBack, "linux")).toBe(true);
     expect(matchShortcutEvent(new KeyboardEvent("keydown", {
       key: "]",
-      altKey: true,
+      ctrlKey: true,
+      shiftKey: true,
     }), SHORTCUTS.pageForward, "linux")).toBe(true);
   });
 
-  it("Linux 페이지 이동 단축키는 Ctrl 조합으로 매칭하지 않는다", () => {
+  it("Linux 페이지 이동 단축키는 Alt 조합으로 매칭하지 않는다", () => {
     expect(matchShortcutEvent(new KeyboardEvent("keydown", {
       key: "[",
-      ctrlKey: true,
+      altKey: true,
     }), SHORTCUTS.pageBack, "linux")).toBe(false);
   });
 
@@ -143,7 +147,7 @@ describe("keyboardShortcut", () => {
     }, "Mod+N", "linux")).toBe(false);
   });
 
-  it("Electron 페이지 이동 input도 macOS Cmd와 Linux Alt로 매칭한다", () => {
+  it("Electron 페이지 이동 input도 macOS Cmd와 Linux Ctrl로 매칭한다", () => {
     expect(matchElectronShortcutInput({
       type: "keyDown",
       isAutoRepeat: false,
@@ -151,7 +155,7 @@ describe("keyboardShortcut", () => {
       meta: true,
       alt: false,
       control: false,
-      shift: false,
+      shift: true,
     }, SHORTCUTS.pageBack, "mac")).toBe(true);
 
     expect(matchElectronShortcutInput({
@@ -161,27 +165,27 @@ describe("keyboardShortcut", () => {
       meta: true,
       alt: false,
       control: false,
-      shift: false,
+      shift: true,
     }, SHORTCUTS.pageForward, "mac")).toBe(true);
 
     expect(matchElectronShortcutInput({
       type: "keyDown",
       isAutoRepeat: false,
       key: "[",
-      alt: true,
+      alt: false,
       meta: false,
-      control: false,
-      shift: false,
+      control: true,
+      shift: true,
     }, SHORTCUTS.pageBack, "linux")).toBe(true);
 
     expect(matchElectronShortcutInput({
       type: "keyDown",
       isAutoRepeat: false,
       key: "]",
-      alt: true,
+      alt: false,
       meta: false,
-      control: false,
-      shift: false,
+      control: true,
+      shift: true,
     }, SHORTCUTS.pageForward, "linux")).toBe(true);
   });
 

@@ -300,6 +300,7 @@
     "goBack": "返回",
     "aiSessions": {
       "title": "AI 会话",
+      "inlineChat": "AI 聊天",
       "description": "查看与当前任务关联的本地 AI 对话记录。",
       "includeRepoToggle": "包含 main 分支会话",
       "includeRepoToggleShort": "+ main",

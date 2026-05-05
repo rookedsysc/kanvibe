@@ -3,7 +3,7 @@ import path from "path";
 import { addAiToolPatternsToGitExclude } from "@/lib/gitExclude";
 import { readTextFile, readTextFiles } from "@/lib/hostFileAccess";
 import { extractShellHookServerUrl, validateHookServerConfiguration } from "@/lib/hookServerStatus";
-import { buildShellTaskIdResolver, extractShellTaskId } from "@/lib/hookTaskBinding";
+import { buildShellTaskIdResolver, getShellTaskIdBindingStatus } from "@/lib/hookTaskBinding";
 
 /** UserPromptSubmit hook bash 스크립트를 생성한다 */
 export function generatePromptHookScript(kanvibeUrl: string, taskId: string): string {
@@ -78,25 +78,6 @@ interface MatcherHookEntry extends HookEntry {
 const CLAUDE_PROMPT_COMMAND = '"$CLAUDE_PROJECT_DIR"/.claude/hooks/kanvibe-prompt-hook.sh';
 const CLAUDE_STOP_COMMAND = '"$CLAUDE_PROJECT_DIR"/.claude/hooks/kanvibe-stop-hook.sh';
 const CLAUDE_QUESTION_COMMAND = '"$CLAUDE_PROJECT_DIR"/.claude/hooks/kanvibe-question-hook.sh';
-
-function hasTaskIdPayloadBinding(content: string, taskId?: string): boolean {
-  const boundTaskId = extractShellTaskId(content);
-  const hasTaskIdPayload = content.includes("taskId") && content.includes("${TASK_ID}");
-  if (!hasTaskIdPayload) return false;
-
-  if (!taskId) {
-    return boundTaskId !== null;
-  }
-
-  return boundTaskId === taskId;
-}
-
-function hasLegacyBranchPayloadBinding(content: string): boolean {
-  return content.includes('BRANCH_NAME=$(git rev-parse --abbrev-ref HEAD')
-    && content.includes('PROJECT_NAME="')
-    && content.includes('\\\"branchName\\\": \\\"${BRANCH_NAME}\\\"')
-    && content.includes('\\\"projectName\\\": \\\"${PROJECT_NAME}\\\"');
-}
 
 /** 기존 settings.json을 읽거나 빈 객체를 반환한다 */
 async function readSettingsJson(settingsPath: string, sshHost?: string | null): Promise<ClaudeSettings> {
@@ -235,6 +216,7 @@ export interface ClaudeHooksStatus {
   hasQuestionHook: boolean;
   hasSettingsEntry: boolean;
   hasTaskIdBinding?: boolean;
+  hasExpectedTaskId?: boolean;
   hasStatusMappings?: boolean;
   hasExpectedHookServerUrl?: boolean;
   hasReachableHookServer?: boolean;
@@ -268,11 +250,7 @@ export async function getClaudeHooksStatus(repoPath: string, taskId?: string, ss
   const questionContent = questionScript.content;
 
   const scriptContents = [promptContent, stopContent, questionContent];
-  const boundTaskIds = scriptContents.map(extractShellTaskId).filter((value): value is string => value !== null);
-  const boundTaskId = boundTaskIds.length > 0 && boundTaskIds.every((value) => value === boundTaskIds[0])
-    ? boundTaskIds[0]
-    : null;
-  const hasTaskIdBinding = scriptContents.every((content) => hasTaskIdPayloadBinding(content, taskId));
+  const { boundTaskId, hasTaskIdBinding, hasExpectedTaskId } = getShellTaskIdBindingStatus(scriptContents, taskId);
   const hookServerValidation = await validateHookServerConfiguration(
     scriptContents.map(extractShellHookServerUrl),
     Boolean(taskId),
@@ -303,6 +281,7 @@ export async function getClaudeHooksStatus(repoPath: string, taskId?: string, ss
     && questionScript.exists
     && hasSettingsEntry
     && hasTaskIdBinding
+    && hasExpectedTaskId
     && hasStatusMappings
     && hookServerValidation.hasExpectedHookServerUrl;
 
@@ -313,6 +292,7 @@ export async function getClaudeHooksStatus(repoPath: string, taskId?: string, ss
     hasQuestionHook: questionScript.exists,
     hasSettingsEntry,
     hasTaskIdBinding,
+    hasExpectedTaskId,
     hasStatusMappings,
     hasExpectedHookServerUrl: hookServerValidation.hasExpectedHookServerUrl,
     hasReachableHookServer: hookServerValidation.hasReachableHookServer,

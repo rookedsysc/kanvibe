@@ -33,6 +33,7 @@ const mocks = vi.hoisted(() => ({
   redirect: vi.fn(),
   push: vi.fn(),
   back: vi.fn(),
+  forward: vi.fn(),
 }));
 
 function createDeferred<T>() {
@@ -49,6 +50,29 @@ vi.mock("next-intl", () => ({
   useTranslations: () => (key: string) => key,
 }));
 
+vi.mock("@hugeicons/react", () => ({
+  HugeiconsIcon: ({
+    icon,
+    "data-testid": testId = "hugeicons-icon",
+    ...props
+  }: {
+    icon?: { __iconName?: string };
+    "data-testid"?: string;
+  }) => (
+    <svg
+      {...props}
+      data-testid={testId}
+      data-icon-name={icon?.__iconName ?? "unknown"}
+    />
+  ),
+}));
+
+vi.mock("@hugeicons/core-free-icons", () => ({
+  Chatting01Icon: { __iconName: "Chatting01Icon" },
+  InformationCircleIcon: { __iconName: "InformationCircleIcon" },
+  Task02Icon: { __iconName: "Task02Icon" },
+}));
+
 vi.mock("react-router-dom", () => ({
   useParams: () => ({ id: "task-1" }),
 }));
@@ -56,7 +80,7 @@ vi.mock("react-router-dom", () => ({
 vi.mock("@/desktop/renderer/navigation", () => ({
   Link: ({ children }: { children: ReactNode }) => <div>{children}</div>,
   redirect: (...args: unknown[]) => mocks.redirect(...args),
-  useRouter: () => ({ push: mocks.push, back: mocks.back }),
+  useRouter: () => ({ push: mocks.push, back: mocks.back, forward: mocks.forward }),
 }));
 
 vi.mock("@/desktop/renderer/utils/refresh", () => ({
@@ -509,7 +533,7 @@ describe("TaskDetailRoute", () => {
 
     await screen.findByLabelText("terminal input");
 
-    fireEvent.click(screen.getByRole("button", { name: "aiSessions.title" }));
+    fireEvent.click(screen.getByRole("button", { name: "aiSessions.inlineChat" }));
 
     expect(await screen.findByTestId("inline-ai-chat")).toBeTruthy();
     expect(screen.getByText("Please fix the UI")).toBeTruthy();
@@ -517,12 +541,180 @@ describe("TaskDetailRoute", () => {
     expect(screen.queryByLabelText("terminal input")).toBeNull();
     expect(screen.queryByTestId("ai-sessions-card")).toBeNull();
 
-    fireEvent.click(screen.getByRole("button", { name: "aiSessions.title" }));
+    fireEvent.click(screen.getByRole("button", { name: "aiSessions.inlineChat" }));
 
     await waitFor(() => {
       expect(screen.getByLabelText("terminal input")).toBeTruthy();
     });
     expect(screen.queryByTestId("inline-ai-chat")).toBeNull();
+  });
+
+  it("AI sessions 패널을 열면 세션 카드 drawer를 표시한다", async () => {
+    mocks.getSidebarDefaultCollapsed.mockResolvedValue(true);
+    mocks.getTaskById.mockResolvedValue({
+      id: "task-1",
+      title: "task title",
+      description: null,
+      branchName: "feat/detail-shortcut",
+      baseBranch: "main",
+      prUrl: null,
+      sessionType: null,
+      sessionName: null,
+      sshHost: null,
+      projectId: "project-1",
+      project: { id: "project-1", name: "kanvibe" },
+      status: "todo",
+      agentType: null,
+      worktreePath: "/repo__worktrees/detail-shortcut",
+    });
+
+    render(<TaskDetailRoute />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "aiSessions.title" }));
+
+    expect(await screen.findByTestId("ai-sessions-card")).toBeTruthy();
+    expect(screen.queryByTestId("inline-ai-chat")).toBeNull();
+  });
+
+  it("상태 변경과 hooks 상태는 하나의 status 패널에서 함께 보여준다", async () => {
+    mocks.getSidebarDefaultCollapsed.mockResolvedValue(true);
+    mocks.getTaskById.mockResolvedValue({
+      id: "task-1",
+      title: "task title",
+      description: null,
+      branchName: "feat/detail-shortcut",
+      baseBranch: "main",
+      prUrl: null,
+      sessionType: null,
+      sessionName: null,
+      sshHost: null,
+      projectId: "project-1",
+      project: { id: "project-1", name: "kanvibe" },
+      status: "todo",
+      agentType: null,
+      worktreePath: "/repo__worktrees/detail-shortcut",
+    });
+
+    render(<TaskDetailRoute />);
+
+    const statusButton = await screen.findByRole("button", { name: "actions · hooksStatus" });
+    expect(screen.queryByTestId("hooks-status-card")).toBeNull();
+    expect(screen.getByTestId("task-status-panel-icon").getAttribute("data-icon-name")).toBe("Task02Icon");
+
+    fireEvent.click(statusButton);
+
+    expect(await screen.findByTestId("hooks-status-card")).toBeTruthy();
+    expect(screen.getByText("done")).toBeTruthy();
+  });
+
+  it("상세 화면 좌측 하단 rail에는 알림 버튼을 렌더링하지 않는다", async () => {
+    mocks.getSidebarDefaultCollapsed.mockResolvedValue(true);
+    mocks.getTaskById.mockResolvedValue({
+      id: "task-1",
+      title: "task title",
+      description: null,
+      branchName: "feat/detail-shortcut",
+      baseBranch: "main",
+      prUrl: null,
+      sessionType: null,
+      sessionName: null,
+      sshHost: null,
+      projectId: "project-1",
+      project: { id: "project-1", name: "kanvibe" },
+      status: "todo",
+      agentType: null,
+      worktreePath: "/repo__worktrees/detail-shortcut",
+    });
+
+    render(<TaskDetailRoute />);
+
+    await screen.findByRole("button", { name: "info" });
+
+    expect(screen.queryByRole("button", { name: "notifications" })).toBeNull();
+  });
+
+  it("서랍이 열린 상태에서 터미널 히스토리창을 누르면 서랍을 닫는다", async () => {
+    mocks.getSidebarDefaultCollapsed.mockResolvedValue(true);
+    mocks.getTaskById.mockResolvedValue({
+      id: "task-1",
+      title: "task title",
+      description: null,
+      branchName: "feat/detail-shortcut",
+      baseBranch: "main",
+      prUrl: null,
+      sessionType: "tmux",
+      sessionName: "task-session",
+      sshHost: null,
+      projectId: "project-1",
+      project: { id: "project-1", name: "kanvibe" },
+      status: "todo",
+      agentType: null,
+      worktreePath: "/repo__worktrees/detail-shortcut",
+    });
+
+    render(<TaskDetailRoute />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "info" }));
+    await screen.findByTestId("task-title");
+
+    fireEvent.click(screen.getByTestId("terminal-loader"));
+
+    await waitFor(() => {
+      expect(screen.queryByTestId("task-title")).toBeNull();
+    });
+  });
+
+  it("상세 화면 페이지 이동 단축키는 터미널 입력보다 먼저 capture 단계에서 처리한다", async () => {
+    mocks.getTaskById.mockResolvedValue({
+      id: "task-1",
+      title: "task title",
+      description: null,
+      branchName: "feat/detail-shortcut",
+      baseBranch: "main",
+      prUrl: null,
+      sessionType: "tmux",
+      sessionName: "task-session",
+      sshHost: null,
+      projectId: "project-1",
+      project: { id: "project-1", name: "kanvibe" },
+      status: "todo",
+      agentType: null,
+      worktreePath: "/repo__worktrees/detail-shortcut",
+    });
+
+    render(
+      <BoardCommandProvider>
+        <TaskDetailRoute />
+      </BoardCommandProvider>,
+    );
+
+    const terminalInput = await screen.findByLabelText("terminal input");
+    const terminalKeyDown = vi.fn();
+    const windowBubbleKeyDown = vi.fn();
+    terminalInput.addEventListener("keydown", terminalKeyDown);
+    window.addEventListener("keydown", windowBubbleKeyDown);
+
+    const wasNotPrevented = fireEvent.keyDown(terminalInput, {
+      key: "[",
+      ctrlKey: true,
+      shiftKey: true,
+    });
+    terminalInput.removeEventListener("keydown", terminalKeyDown);
+    window.removeEventListener("keydown", windowBubbleKeyDown);
+
+    expect(wasNotPrevented).toBe(false);
+    expect(mocks.back).toHaveBeenCalledTimes(1);
+    expect(terminalKeyDown).not.toHaveBeenCalled();
+    expect(windowBubbleKeyDown).not.toHaveBeenCalled();
+
+    fireEvent.keyDown(terminalInput, {
+      key: "]",
+      ctrlKey: true,
+      shiftKey: true,
+    });
+
+    expect(mocks.forward).toHaveBeenCalledTimes(1);
+    expect(mocks.back).toHaveBeenCalledTimes(1);
   });
 
   it("알림 단축키로 상세 화면의 알림 센터를 토글한다", async () => {
@@ -533,8 +725,8 @@ describe("TaskDetailRoute", () => {
       branchName: "feat/detail-shortcut",
       baseBranch: "main",
       prUrl: null,
-      sessionType: null,
-      sessionName: null,
+      sessionType: "tmux",
+      sessionName: "task-session",
       sshHost: null,
       projectId: "project-1",
       project: { id: "project-1", name: "kanvibe" },

@@ -5,7 +5,6 @@ import * as Switch from "@radix-ui/react-switch";
 import { useTranslations } from "next-intl";
 import { getTaskAiSessionDetail, getTaskAiSessions } from "@/desktop/renderer/actions/project";
 import { useEscapeKey } from "@/hooks/useEscapeKey";
-import { fuzzyMatch } from "@/utils/fuzzySearch";
 import type {
   AggregatedAiMessage,
   AggregatedAiSession,
@@ -73,7 +72,6 @@ export default function AiSessionsDialog({ taskId, isOpen, onClose, data }: AiSe
   }, [data]);
 
   const sessionSearchPlaceholder = translateOptional(t, "aiSessions.searchPlaceholder", "Search sessions...");
-  const messageSearchPlaceholder = translateOptional(t, "aiSessions.messageSearchPlaceholder", "Search messages...");
   const filterUserLabel = translateOptional(t, "aiSessions.filterUser", translateOptional(t, "aiSessions.roles.user", "User"));
   const filterAssistantLabel = translateOptional(t, "aiSessions.filterAssistant", translateOptional(t, "aiSessions.roles.assistant", "AI"));
 
@@ -672,7 +670,7 @@ function SessionPreview({
         </div>
       </div>
 
-      <div className="flex-1 space-y-3 overflow-y-auto p-4">
+      <div className="flex-1 space-y-3 overflow-y-auto bg-terminal-bg p-4">
         {isLoading ? <LoadingDetailState session={session} /> : null}
         {!isLoading && error ? <EmptyState text={error} compact /> : null}
         {!isLoading && !error && messages.length === 0 ? (
@@ -703,12 +701,22 @@ function PreviewMessageCard({ message, index }: { message: AggregatedAiMessage; 
   const [isExpanded, setIsExpanded] = useState(false);
   const displayedText = isExpanded ? message.fullText : message.text;
   const toggleLabel = isExpanded ? t("aiSessions.showLess") : t("aiSessions.showMore");
+  const isUserMessage = message.role === "user";
 
   return (
-    <div className="rounded-lg border border-border-default bg-bg-surface p-3">
+    <div
+      data-testid="ai-session-message-card"
+      className={`animate-[ai-session-line-in_180ms_ease-out_both] rounded-lg border p-3 ${isUserMessage
+        ? "ml-auto max-w-[88%] border-brand-primary/20 bg-brand-primary/10"
+        : "mr-auto max-w-full border-border-default bg-bg-surface"
+      }`}
+      style={{ animationDelay: `${Math.min(index, 8) * 55}ms` }}
+    >
       <div className="flex items-center justify-between gap-2 text-xs text-text-muted">
-        <span className="font-medium text-text-secondary">{t(`aiSessions.roles.${message.role}`)}</span>
-        <span>{formatDate(message.timestamp)}</span>
+        <span className={`font-medium ${isUserMessage ? "text-text-brand" : "text-text-secondary"}`}>
+          {t(`aiSessions.roles.${message.role}`)}
+        </span>
+        <span className="font-mono">{formatDate(message.timestamp)}</span>
       </div>
       <p id={`ai-session-message-${index}`} className="mt-2 whitespace-pre-wrap break-words text-sm text-text-primary">{displayedText}</p>
       {message.isTruncated ? (

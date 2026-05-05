@@ -301,6 +301,7 @@
     "goBack": "Go back",
     "aiSessions": {
       "title": "AI Sessions",
+      "inlineChat": "AI Chat",
       "description": "Browse local AI conversation history related to this task.",
       "includeRepoToggle": "Include main branch sessions",
       "includeRepoToggleShort": "+ main",

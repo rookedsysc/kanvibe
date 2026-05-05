@@ -222,6 +222,7 @@ export interface OpenCodeHooksStatus {
   hasRegisteredPlugin?: boolean;
   hasDuplicateKanvibePlugins?: boolean;
   hasTaskIdBinding?: boolean;
+  hasExpectedTaskId?: boolean;
   hasStatusEndpoint?: boolean;
   hasEventMappings?: boolean;
   hasMainSessionGuard?: boolean;
@@ -257,6 +258,7 @@ export async function getOpenCodeHooksStatus(repoPath: string, taskId?: string, 
   let hasDuplicateKanvibePlugins = false;
   let registeredPluginUrls: string[] = [];
   let configuredHookServerUrl: string | null = null;
+  let hasExpectedTaskId = false;
   if (pluginFile.exists) {
     try {
       const content = pluginFile.content;
@@ -265,8 +267,8 @@ export async function getOpenCodeHooksStatus(repoPath: string, taskId?: string, 
       boundTaskId = extractPluginTaskId(content);
       hasTaskIdBinding =
         boundTaskId !== null
-        && content.includes("taskId: TASK_ID")
-        && (!taskId || boundTaskId === taskId);
+        && content.includes("taskId: TASK_ID");
+      hasExpectedTaskId = hasTaskIdBinding && (!taskId || boundTaskId === taskId);
       hasStatusEndpoint = content.includes("/api/hooks/status");
       hasEventMappings = ["progress", "pending", "review", "done", "message.updated", "question.asked", "question.replied", "session.idle", "session.deleted"].every((fragment) => content.includes(fragment));
       hasMainSessionGuard = content.includes("isMainSession(message)") && content.includes("isMainSession(event.properties)");
@@ -292,6 +294,7 @@ export async function getOpenCodeHooksStatus(repoPath: string, taskId?: string, 
   const installed = pluginFile.exists
     && hasPlugin
     && hasTaskIdBinding
+    && hasExpectedTaskId
     && hasStatusEndpoint
     && hasEventMappings
     && hasMainSessionGuard
@@ -305,6 +308,7 @@ export async function getOpenCodeHooksStatus(repoPath: string, taskId?: string, 
     hasRegisteredPlugin,
     hasDuplicateKanvibePlugins,
     hasTaskIdBinding,
+    hasExpectedTaskId,
     hasStatusEndpoint,
     hasEventMappings,
     hasMainSessionGuard,

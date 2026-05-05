@@ -76,6 +76,38 @@ describe("AiSessionsCard", () => {
     expect(screen.getByText("1 tools / 2 sessions")).toBeTruthy();
   });
 
+  it("should render a terminal-like chat preview for recent sessions", () => {
+    const data: AggregatedAiSessionsResult = {
+      isRemote: false,
+      targetPath: "/repo",
+      repoPath: "/repo",
+      sessions: [
+        {
+          id: "1",
+          provider: "claude",
+          startedAt: null,
+          updatedAt: null,
+          matchedPath: "/repo",
+          matchScope: "repo",
+          title: "Claude planning",
+          firstUserPrompt: "Please review the task detail layout.",
+          messageCount: 4,
+        },
+      ],
+      sources: [{ provider: "claude", available: true, sessionCount: 1, reason: null }],
+    };
+
+    render(
+      <IntlProvider locale="en" messages={messages}>
+        <AiSessionsCard taskId="task-1" data={data} />
+      </IntlProvider>
+    );
+
+    const preview = screen.getByTestId("ai-sessions-chat-preview");
+    expect(preview.className).toContain("bg-terminal-bg");
+    expect(screen.getByText("Please review the task detail layout.")).toBeTruthy();
+  });
+
   it("should open dialog when card button is clicked", () => {
     const data: AggregatedAiSessionsResult = {
       isRemote: false,
