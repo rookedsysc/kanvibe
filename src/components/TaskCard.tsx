@@ -5,10 +5,15 @@ import { Link } from "@/desktop/renderer/navigation";
 import type { KanbanTask } from "@/entities/KanbanTask";
 import { TaskPriority } from "@/entities/TaskPriority";
 
+interface ContextMenuPosition {
+  x: number;
+  y: number;
+}
+
 interface TaskCardProps {
   task: KanbanTask;
   index: number;
-  onContextMenu: (e: React.MouseEvent, task: KanbanTask) => void;
+  onContextMenu: (task: KanbanTask, position: ContextMenuPosition) => void;
   projectName?: string;
   projectColor?: string;
   isBaseProject?: boolean;
@@ -29,16 +34,37 @@ const priorityConfig: Record<TaskPriority, { label: string; colorClass: string }
 export default function TaskCard({ task, index, onContextMenu, projectName, projectColor, isBaseProject }: TaskCardProps) {
   const cardStyle = projectColor ? { borderColor: projectColor } : undefined;
 
+  function handleKeyboardContextMenu(event: React.KeyboardEvent<HTMLAnchorElement>) {
+    if (event.key !== "Enter" || !event.shiftKey) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+
+    const rect = event.currentTarget.getBoundingClientRect();
+    onContextMenu(task, {
+      x: rect.left + 12,
+      y: rect.top + 12,
+    });
+  }
+
   return (
     <Draggable draggableId={task.id} index={index}>
       {(provided, snapshot) => (
-        <Link href={`/task/${task.id}`}>
+        <Link href={`/task/${task.id}`} onKeyDown={handleKeyboardContextMenu}>
           <div
             ref={provided.innerRef}
             {...provided.draggableProps}
             {...provided.dragHandleProps}
-            onContextMenu={(e) => onContextMenu(e, task)}
-            style={cardStyle}
+            onContextMenu={(e) => {
+              e.preventDefault();
+              onContextMenu(task, { x: e.clientX, y: e.clientY });
+            }}
+            style={{
+              ...provided.draggableProps.style,
+              ...cardStyle,
+            }}
             className={`group relative mb-1.5 overflow-hidden rounded-md border border-border-subtle px-2.5 py-2 transition-colors cursor-pointer ${
               snapshot.isDragging
                 ? "bg-bg-surface shadow-md ring-1 ring-border-brand"

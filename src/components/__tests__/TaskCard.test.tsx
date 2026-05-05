@@ -1,5 +1,5 @@
-import { describe, it, expect, vi } from "vitest";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { createEvent, fireEvent, render, screen } from "@testing-library/react";
 import TaskCard from "../TaskCard";
 import { TaskPriority } from "@/entities/TaskPriority";
 import { TaskStatus } from "@/entities/KanbanTask";
@@ -10,7 +10,10 @@ vi.mock("@hello-pangea/dnd", () => ({
     children(
       {
         innerRef: vi.fn(),
-        draggableProps: { "data-rfd-draggable-id": "test" },
+        draggableProps: {
+          "data-rfd-draggable-id": "test",
+          style: { transform: "translate(12px, 18px)", transition: "transform 200ms ease" },
+        },
         dragHandleProps: {},
       },
       { isDragging: false },
@@ -53,6 +56,10 @@ function createTask(overrides: Partial<KanbanTask> = {}): KanbanTask {
 
 describe("TaskCard - Priority Badge", () => {
   const onContextMenu = vi.fn();
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
 
   it("should not render priority badge when priority is null", () => {
     // Given
@@ -141,6 +148,51 @@ describe("TaskCard - Priority Badge", () => {
     const card = screen.getByRole("link").firstElementChild as HTMLElement;
     expect(card.style.borderColor).toBe("rgb(101, 208, 138)");
     expect(container.querySelector(".bg-border-strong")).toBeNull();
+  });
+
+  it("should preserve draggable style while applying the project border color", () => {
+    const task = createTask();
+
+    render(
+      <TaskCard
+        task={task}
+        index={0}
+        onContextMenu={onContextMenu}
+        projectName="kanvibe"
+        projectColor="#65d08a"
+      />,
+    );
+
+    const card = screen.getByRole("link").firstElementChild as HTMLElement;
+    expect(card.style.transform).toBe("translate(12px, 18px)");
+    expect(card.style.transition).toBe("transform 200ms ease");
+    expect(card.style.borderColor).toBe("rgb(101, 208, 138)");
+  });
+
+  it("should open the task context menu with Shift+Enter without following the link", () => {
+    const task = createTask();
+    const rectSpy = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue({
+      x: 40,
+      y: 80,
+      left: 40,
+      top: 80,
+      right: 240,
+      bottom: 120,
+      width: 200,
+      height: 40,
+      toJSON: () => ({}),
+    });
+
+    render(<TaskCard task={task} index={0} onContextMenu={onContextMenu} />);
+
+    const link = screen.getByRole("link");
+    const event = createEvent.keyDown(link, { key: "Enter", shiftKey: true });
+    fireEvent(link, event);
+
+    expect(event.defaultPrevented).toBe(true);
+    expect(onContextMenu).toHaveBeenCalledWith(task, { x: 52, y: 92 });
+
+    rectSpy.mockRestore();
   });
 
   it("should keep task detail navigation in the same window on desktop", async () => {

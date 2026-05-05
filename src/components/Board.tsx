@@ -444,9 +444,8 @@ export default function Board({
   }, []);
 
   const handleContextMenu = useCallback(
-    (e: React.MouseEvent, task: KanbanTask) => {
-      e.preventDefault();
-      setContextMenu({ isOpen: true, x: e.clientX, y: e.clientY, task });
+    (task: KanbanTask, position: { x: number; y: number }) => {
+      setContextMenu({ isOpen: true, x: position.x, y: position.y, task });
     },
     []
   );
