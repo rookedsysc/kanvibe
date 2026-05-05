@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => {
   const socket = {
@@ -8,7 +8,7 @@ const mocks = vi.hoisted(() => {
     close: vi.fn(),
   };
 
-  socket.once.mockImplementation((_event: string, _handler: () => void) => socket);
+  socket.once.mockImplementation(() => socket);
   socket.connect.mockImplementation((_port: number, _host: string, callback: () => void) => {
     callback();
     return socket;
@@ -49,11 +49,9 @@ vi.mock("@/lib/sshConfig", () => ({
 }));
 
 describe("hookEndpoint", () => {
-  const originalExternalHost = process.env.KANVIBE_EXTERNAL_HOST;
-
   beforeEach(() => {
     vi.resetModules();
-    delete process.env.KANVIBE_EXTERNAL_HOST;
+    delete globalThis.__KANVIBE_HOOK_SERVER_PORT__;
     mocks.networkInterfaces.mockReset();
     mocks.parseSSHConfig.mockReset();
     mocks.lookup.mockReset();
@@ -61,24 +59,16 @@ describe("hookEndpoint", () => {
     mocks.socket.address.mockReturnValue({ address: "10.0.0.8", family: "IPv4", port: 2202 });
   });
 
-  afterEach(() => {
-    if (originalExternalHost === undefined) {
-      delete process.env.KANVIBE_EXTERNAL_HOST;
-    } else {
-      process.env.KANVIBE_EXTERNAL_HOST = originalExternalHost;
-    }
-  });
-
-  it("원격 호스트가 있으면 명시된 외부 주소를 hook 서버 경로로 사용한다", async () => {
+  it("desktop main이 설정한 hook server port를 hook URL에 사용한다", async () => {
     // Given
-    process.env.KANVIBE_EXTERNAL_HOST = "192.168.0.5";
-    const { getHookServerUrl } = await import("@/lib/hookEndpoint");
+    const { getHookServerUrl, setHookServerPort } = await import("@/lib/hookEndpoint");
+    setHookServerPort(6379);
 
     // When
-    const result = await getHookServerUrl("remote-devbox");
+    const result = await getHookServerUrl(null);
 
     // Then
-    expect(result).toBe("http://192.168.0.5:9736");
+    expect(result).toBe("http://localhost:6379");
   });
 
   it("원격 hook 주소는 SSH 연결에 사용한 로컬 출발 IP를 우선 사용한다", async () => {
@@ -102,6 +92,28 @@ describe("hookEndpoint", () => {
     expect(mocks.createSocket).toHaveBeenCalledWith("udp4");
     expect(mocks.socket.connect).toHaveBeenCalledWith(2202, "203.0.113.20", expect.any(Function));
     expect(result).toBe("http://10.0.0.8:9736");
+  });
+
+  it("설정된 hook server port를 원격 hook 주소에도 반영한다", async () => {
+    // Given
+    mocks.parseSSHConfig.mockResolvedValue([
+      {
+        host: "remote-devbox",
+        hostname: "ssh.example.com",
+        port: 2202,
+        username: "tester",
+        privateKeyPath: "/tmp/test-key",
+      },
+    ]);
+    mocks.lookup.mockResolvedValue({ address: "203.0.113.20", family: 4 });
+    const { getHookServerUrl, setHookServerPort } = await import("@/lib/hookEndpoint");
+    setHookServerPort(6379);
+
+    // When
+    const result = await getHookServerUrl("remote-devbox");
+
+    // Then
+    expect(result).toBe("http://10.0.0.8:6379");
   });
 
   it("원격 호스트 경로를 해석하지 못하면 내부망 IPv4 주소를 사용한다", async () => {

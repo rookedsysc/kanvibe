@@ -246,5 +246,20 @@ export const KanvibePlugin: Plugin = async ({ $ }) => {
       expect(status.hasDuplicateKanvibePlugins).toBe(true);
       expect(status.registeredPluginUrls).toHaveLength(2);
     });
+
+    it("현재 task id와 다른 OpenCode hook은 설치된 것으로 보지 않는다", async () => {
+      // Given
+      const repoPath = tempDir;
+      await setupOpenCodeHooks(repoPath, "task-1", "http://localhost:9736");
+
+      // When
+      const status = await getOpenCodeHooksStatus(repoPath, "task-2");
+
+      // Then
+      expect(status.installed).toBe(false);
+      expect(status.hasTaskIdBinding).toBe(true);
+      expect(status.hasExpectedTaskId).toBe(false);
+      expect(status.boundTaskId).toBe("task-1");
+    });
   });
 });
