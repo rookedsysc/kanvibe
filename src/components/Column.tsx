@@ -127,13 +127,13 @@ export default function Column({
   }, [groups]);
 
   return (
-    <div className="flex-1 min-w-[280px] max-w-[350px]">
-      <div className="flex items-center gap-2 mb-3 px-2">
-        <div className={`w-3 h-3 rounded-full ${colorClass}`} />
-        <h2 className="text-sm font-semibold text-text-secondary uppercase tracking-wide">
+    <div className="flex-1 min-w-[284px] max-w-[340px] rounded-lg border border-border-subtle bg-bg-surface/70">
+      <div className="flex h-10 items-center gap-2 border-b border-border-subtle px-3">
+        <div className={`h-2 w-2 rounded-full ${colorClass}`} />
+        <h2 className="text-[11px] font-semibold text-text-secondary uppercase">
           {label}
         </h2>
-        <span className="text-xs text-text-muted ml-auto">
+        <span className="ml-auto rounded-full border border-border-subtle px-1.5 py-0.5 text-[11px] text-text-muted">
           {totalCount ?? tasks.length}
         </span>
       </div>
@@ -143,9 +143,9 @@ export default function Column({
           <div
             ref={provided.innerRef}
             {...provided.droppableProps}
-            className={`min-h-[200px] p-2 rounded-lg transition-colors ${
+            className={`min-h-[calc(100vh-132px)] p-2 transition-colors ${
               snapshot.isDraggingOver
-                ? "bg-brand-subtle border border-dashed border-brand-primary"
+                ? "bg-brand-subtle ring-1 ring-inset ring-border-brand"
                 : "bg-transparent"
             }`}
           >
@@ -204,7 +204,7 @@ export default function Column({
               <button
                 onClick={onLoadMore}
                 disabled={isLoadingMore}
-                className="w-full mt-2 py-2 text-sm text-text-muted hover:text-text-secondary hover:bg-bg-surface rounded-md transition-colors disabled:opacity-50"
+                className="mt-2 w-full rounded-md border border-border-subtle py-2 text-xs text-text-muted transition-colors hover:bg-bg-page hover:text-text-secondary disabled:opacity-50"
               >
                 {isLoadingMore ? t("loadingMore") : t("loadMore")}
               </button>

@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 import { useParams } from "react-router-dom";
 import AiSessionsCard from "@/components/AiSessionsCard";
-import CollapsibleSidebar from "@/components/CollapsibleSidebar";
 import ConnectTerminalForm from "@/components/ConnectTerminalForm";
 import CreateTaskModal from "@/components/CreateTaskModal";
 import DeleteTaskButton from "@/components/DeleteTaskButton";
@@ -12,7 +11,7 @@ import NotificationCenterButton, { type NotificationCenterButtonHandle } from "@
 import TaskDetailInfoCard from "@/components/TaskDetailInfoCard";
 import TaskDetailTitleCard from "@/components/TaskDetailTitleCard";
 import { Link, useRouter } from "@/desktop/renderer/navigation";
-import { getDefaultSessionType, getDoneAlertDismissed, getSidebarDefaultCollapsed, getSidebarHintDismissed } from "@/desktop/renderer/actions/appSettings";
+import { getDefaultSessionType, getDoneAlertDismissed, getSidebarDefaultCollapsed } from "@/desktop/renderer/actions/appSettings";
 import { getGitDiffFiles } from "@/desktop/renderer/actions/diff";
 import { deleteTask, getTaskById, getTaskIdByProjectAndBranch, updateTaskStatus } from "@/desktop/renderer/actions/kanban";
 import {
@@ -31,6 +30,7 @@ import { buildRouteCacheKey, readRouteCache, removeRouteCache, writeRouteCache }
 import { useRefreshSignal } from "@/desktop/renderer/utils/refresh";
 import { requestActiveTerminalFocusAfterUiSettles } from "@/desktop/renderer/utils/terminalFocus";
 import { SessionType, TaskStatus } from "@/entities/KanbanTask";
+import { useEscapeKey } from "@/hooks/useEscapeKey";
 
 const STATUS_TRANSITIONS = [
   { status: TaskStatus.TODO, labelKey: "moveToTodo" },
@@ -45,6 +45,8 @@ const AGENT_TAG_STYLES: Record<string, string> = {
   codex: "bg-tag-codex-bg text-tag-codex-text",
 };
 
+type DetailPanel = "overview" | "actions" | "hooks" | "sessions";
+
 interface TaskDetailState {
   task: NonNullable<Awaited<ReturnType<typeof getTaskById>>>;
   baseBranchTaskId: string | null;
@@ -55,8 +57,8 @@ interface TaskDetailState {
   openCodeHooksStatus: Awaited<ReturnType<typeof getTaskOpenCodeHooksStatus>>;
   aiSessions: Awaited<ReturnType<typeof getTaskAiSessions>>;
   projects: Awaited<ReturnType<typeof getAllProjects>>;
-  defaultSessionType: Awaited<ReturnType<typeof getDefaultSessionType>>;
   sidebarDefaultCollapsed: boolean;
+  defaultSessionType: Awaited<ReturnType<typeof getDefaultSessionType>>;
   doneAlertDismissed: boolean;
 }
 
@@ -77,8 +79,8 @@ const DEFAULT_DETAIL_STATE: Omit<TaskDetailState, "task"> = {
   openCodeHooksStatus: null,
   aiSessions: EMPTY_AI_SESSIONS,
   projects: [],
-  defaultSessionType: SessionType.TMUX,
   sidebarDefaultCollapsed: false,
+  defaultSessionType: SessionType.TMUX,
   doneAlertDismissed: false,
 };
 
@@ -91,10 +93,15 @@ function normalizeCachedTaskDetailState(cachedState: TaskDetailState | null): Ta
     return null;
   }
 
-  const { sidebarHintDismissed: _legacySidebarHintDismissed, ...routeState } = cachedState as TaskDetailState & {
+  const routeState = { ...cachedState } as TaskDetailState & {
     sidebarHintDismissed?: boolean;
   };
-  return routeState;
+  delete routeState.sidebarHintDismissed;
+  return {
+    ...DEFAULT_DETAIL_STATE,
+    ...routeState,
+    sidebarDefaultCollapsed: routeState.sidebarDefaultCollapsed ?? DEFAULT_DETAIL_STATE.sidebarDefaultCollapsed,
+  };
 }
 
 export default function TaskDetailRoute() {
@@ -111,9 +118,16 @@ export default function TaskDetailRoute() {
   const [state, setState] = useState<TaskDetailState | null | undefined>(cachedState ?? undefined);
   const [isCreateTaskModalOpen, setIsCreateTaskModalOpen] = useState(false);
   const [createTaskDefaults, setCreateTaskDefaults] = useState<BranchTodoDefaults | null>(null);
-  const [needsMacDesktopHeaderOffset, setNeedsMacDesktopHeaderOffset] = useState(false);
-  const [isSidebarHintDismissed, setIsSidebarHintDismissed] = useState(true);
+  const needsMacDesktopHeaderOffset = useMemo(() => {
+    const isDesktopApp = window.kanvibeDesktop?.isDesktop === true;
+    const isMacDesktop = navigator.userAgent.includes("Mac") || navigator.platform.toLowerCase().includes("mac");
+    return isDesktopApp && isMacDesktop;
+  }, []);
+  const [activePanel, setActivePanel] = useState<DetailPanel | null>(
+    cachedState && !cachedState.sidebarDefaultCollapsed ? "overview" : null,
+  );
   const notificationCenterRef = useRef<NotificationCenterButtonHandle>(null);
+  const currentTaskIdRef = useRef(id);
   const hasTerminal = !!(state?.task.sessionType && state.task.sessionName);
 
   useEffect(() => boardCommands.registerNotificationCenterHandler(() => {
@@ -137,13 +151,24 @@ export default function TaskDetailRoute() {
   }), [boardCommands, state?.task.baseBranch, state?.task.branchName, state?.task.projectId]);
 
   useEffect(() => {
-    const isDesktopApp = window.kanvibeDesktop?.isDesktop === true;
-    const isMacDesktop = navigator.userAgent.includes("Mac") || navigator.platform.toLowerCase().includes("mac");
-    setNeedsMacDesktopHeaderOffset(isDesktopApp && isMacDesktop);
-  }, []);
+    if (currentTaskIdRef.current === id) {
+      return;
+    }
 
-  useEffect(() => {
-    setState(cachedState ?? undefined);
+    currentTaskIdRef.current = id;
+    let cancelled = false;
+    window.queueMicrotask(() => {
+      if (cancelled) {
+        return;
+      }
+
+      setState(cachedState ?? undefined);
+      setActivePanel(cachedState && !cachedState.sidebarDefaultCollapsed ? "overview" : null);
+    });
+
+    return () => {
+      cancelled = true;
+    };
   }, [cachedState, id]);
 
   useEffect(() => {
@@ -199,7 +224,10 @@ export default function TaskDetailRoute() {
 
     (async () => {
       try {
-        const task = await getTaskById(id);
+        const [task, sidebarDefaultCollapsed] = await Promise.all([
+          getTaskById(id),
+          getSidebarDefaultCollapsed().catch(() => DEFAULT_DETAIL_STATE.sidebarDefaultCollapsed),
+        ]);
         clearLoadingTimeout();
 
         if (!task) {
@@ -224,7 +252,11 @@ export default function TaskDetailRoute() {
           : {
               task,
               ...DEFAULT_DETAIL_STATE,
+              sidebarDefaultCollapsed,
             });
+        if (!cachedState && !sidebarDefaultCollapsed) {
+          setActivePanel("overview");
+        }
 
         if (task.branchName && !task.prUrl) {
           void (async () => {
@@ -255,7 +287,7 @@ export default function TaskDetailRoute() {
             const foundTaskId = task.projectId ? await getTaskIdByProjectAndBranch(task.projectId, baseBranchName) : null;
             const baseBranchTaskId = foundTaskId !== task.id ? foundTaskId : null;
             const diffFiles = task.branchName && task.worktreePath ? await getGitDiffFiles(id) : [];
-            const [claudeHooksStatus, geminiHooksStatus, codexHooksStatus, openCodeHooksStatus, aiSessions, projects, defaultSessionType, sidebarDefaultCollapsed, sidebarHintDismissed, doneAlertDismissed] = await Promise.all([
+            const [claudeHooksStatus, geminiHooksStatus, codexHooksStatus, openCodeHooksStatus, aiSessions, projects, defaultSessionType, doneAlertDismissed] = await Promise.all([
               task.projectId ? getTaskHooksStatus(id) : Promise.resolve(null),
               task.projectId ? getTaskGeminiHooksStatus(id) : Promise.resolve(null),
               task.projectId ? getTaskCodexHooksStatus(id) : Promise.resolve(null),
@@ -263,8 +295,6 @@ export default function TaskDetailRoute() {
               task.projectId ? getTaskAiSessions(id) : Promise.resolve(EMPTY_AI_SESSIONS),
               getAllProjects(),
               getDefaultSessionType(),
-              getSidebarDefaultCollapsed(),
-              getSidebarHintDismissed(),
               getDoneAlertDismissed(),
             ]);
 
@@ -284,11 +314,9 @@ export default function TaskDetailRoute() {
                   aiSessions,
                   projects,
                   defaultSessionType,
-                  sidebarDefaultCollapsed,
                   doneAlertDismissed,
                 }
               : current);
-            setIsSidebarHintDismissed(sidebarHintDismissed);
           } catch (error) {
             console.error("Failed to load task detail supplemental data:", error);
           }
@@ -306,12 +334,17 @@ export default function TaskDetailRoute() {
       cancelled = true;
       clearLoadingTimeout();
     };
-  }, [id, refreshSignal]);
+  }, [cachedState, id, refreshSignal, tc]);
 
   const agentTagStyle = useMemo(
     () => (state?.task.agentType ? AGENT_TAG_STYLES[state.task.agentType] ?? "bg-tag-neutral-bg text-tag-neutral-text" : null),
     [state?.task.agentType],
   );
+
+  useEscapeKey(() => {
+    setActivePanel(null);
+    requestActiveTerminalFocusAfterUiSettles();
+  }, { enabled: activePanel !== null });
 
   if (state === undefined) {
     return <div className="min-h-screen flex items-center justify-center bg-bg-page text-text-muted">Loading...</div>;
@@ -360,10 +393,6 @@ export default function TaskDetailRoute() {
     router.push("/");
   }
 
-  function handleSidebarHintDismissed() {
-    setIsSidebarHintDismissed(true);
-  }
-
   function closeCreateTaskModal() {
     setIsCreateTaskModalOpen(false);
     setCreateTaskDefaults(null);
@@ -371,73 +400,123 @@ export default function TaskDetailRoute() {
   }
 
   return (
-    <div className="h-screen flex flex-col lg:flex-row bg-bg-page p-4 gap-4">
-      <CollapsibleSidebar
-        defaultCollapsed={state.sidebarDefaultCollapsed}
-        showHint={!isSidebarHintDismissed}
-        onDismissHint={handleSidebarHintDismissed}
-      >
-        <div className={`flex flex-col gap-4 ${needsMacDesktopHeaderOffset ? "pt-10" : ""}`}>
-          <div className="flex items-center justify-between gap-3">
-            <Link href="/" className="flex items-center gap-2 text-sm text-text-secondary hover:text-text-primary transition-colors">
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" className="shrink-0">
-                <path d="M10 12L6 8L10 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-              {t("backToBoard")}
-            </Link>
-            {!hasTerminal ? <NotificationCenterButton ref={notificationCenterRef} buttonClassName="hover:bg-bg-page" /> : null}
-          </div>
+    <div className="relative h-screen overflow-hidden bg-bg-page p-3">
+      <aside className={`absolute bottom-3 left-3 top-3 z-40 flex w-12 flex-col items-center rounded-lg border border-border-default bg-bg-surface/95 p-1.5 shadow-sm ${needsMacDesktopHeaderOffset ? "pt-10" : ""}`}>
+        <Link href="/" className="mb-2 rounded-md p-2 text-text-muted transition-colors hover:bg-bg-page hover:text-text-primary" title={t("backToBoard")}>
+          <svg width="17" height="17" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+            <path d="M10 12L6 8L10 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </Link>
 
-          <TaskDetailTitleCard task={state.task} taskId={state.task.id} />
+        {([
+          { panel: "overview", label: t("info"), path: "M8 2.5a5.5 5.5 0 1 0 0 11 5.5 5.5 0 0 0 0-11Zm0 4.75v3.25M8 5.5h.01" },
+          { panel: "actions", label: t("actions"), path: "M3 4h10M3 8h10M3 12h10" },
+          { panel: "hooks", label: t("hooksStatus"), path: "M5.5 3.5 3 6l2.5 2.5M10.5 3.5 13 6l-2.5 2.5M9.5 2.5l-3 11" },
+          { panel: "sessions", label: t("aiSessions.title"), path: "M3 4.5h10v6H6l-3 2v-8Z" },
+        ] satisfies Array<{ panel: DetailPanel; label: string; path: string }>).map(({ panel, label, path }) => (
+          <button
+            key={panel}
+            type="button"
+            onClick={() => setActivePanel((current) => current === panel ? null : panel)}
+            className={`mb-1 rounded-md p-2 transition-colors ${
+              activePanel === panel
+                ? "bg-brand-subtle text-text-brand"
+                : "text-text-muted hover:bg-bg-page hover:text-text-primary"
+            }`}
+            title={label}
+            aria-label={label}
+          >
+            <svg width="17" height="17" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.35" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d={path} />
+            </svg>
+          </button>
+        ))}
 
-          <TaskDetailInfoCard
-            task={state.task}
-            agentTagStyle={agentTagStyle}
-            baseBranchTaskId={state.baseBranchTaskId}
-            diffFileCount={state.diffFiles.length}
-          />
-
-          <div className="bg-bg-surface rounded-lg p-5 shadow-sm border border-border-default">
-            <h3 className="text-xs font-semibold text-text-muted uppercase tracking-wider mb-3">{t("actions")}</h3>
-            <div className="flex flex-wrap gap-2">
-              {STATUS_TRANSITIONS.filter((transition) => transition.status !== state.task.status).map((transition) => (
-                transition.status === TaskStatus.DONE ? (
-                  <DoneStatusButton
-                    key={transition.status}
-                    statusChangeAction={handleStatusChange}
-                    label={t(transition.labelKey)}
-                    hasCleanableResources={!!(state.task.branchName || state.task.sessionType)}
-                    doneAlertDismissed={state.doneAlertDismissed}
-                  />
-                ) : (
-                  <form key={transition.status} action={handleStatusChange}>
-                    <input type="hidden" name="status" value={transition.status} />
-                    <button type="submit" className="px-3 py-1.5 text-xs bg-bg-page border border-border-default hover:border-brand-primary hover:text-text-brand text-text-secondary rounded-md transition-colors">
-                      {t(transition.labelKey)}
-                    </button>
-                  </form>
-                )
-              ))}
-            </div>
-            <div className="mt-3 pt-3 border-t border-border-subtle">
-              <DeleteTaskButton deleteAction={handleDelete} />
-            </div>
-          </div>
-
-          <HooksStatusCard
-            taskId={state.task.id}
-            initialClaudeStatus={state.claudeHooksStatus}
-            initialGeminiStatus={state.geminiHooksStatus}
-            initialCodexStatus={state.codexHooksStatus}
-            initialOpenCodeStatus={state.openCodeHooksStatus}
-            isRemote={!!state.task.sshHost}
-          />
-
-          <AiSessionsCard taskId={state.task.id} data={state.aiSessions} />
+        <div className="mt-auto">
+          <NotificationCenterButton ref={notificationCenterRef} buttonClassName="hover:bg-bg-page" panelClassName="left-0 right-auto" />
         </div>
-      </CollapsibleSidebar>
+      </aside>
 
-      <main className="flex-1 flex flex-col min-h-0 min-w-0">
+      {activePanel ? (
+        <section
+          className={`absolute bottom-3 left-[4.5rem] top-3 z-30 w-[360px] max-w-[calc(100vw-5.5rem)] overflow-y-auto rounded-lg border border-border-default bg-bg-surface/95 p-3 shadow-lg ${needsMacDesktopHeaderOffset ? "pt-10" : ""}`}
+        >
+          <div className="mb-3 flex items-center justify-between border-b border-border-subtle pb-2">
+            <h2 className="text-xs font-semibold uppercase text-text-muted">
+              {activePanel === "overview" && t("info")}
+              {activePanel === "actions" && t("actions")}
+              {activePanel === "hooks" && t("hooksStatus")}
+              {activePanel === "sessions" && t("aiSessions.title")}
+            </h2>
+            <button
+              type="button"
+              onClick={() => {
+                setActivePanel(null);
+                requestActiveTerminalFocusAfterUiSettles();
+              }}
+              className="rounded-md p-1 text-text-muted transition-colors hover:bg-bg-page hover:text-text-primary"
+              aria-label={tc("close")}
+            >
+              ×
+            </button>
+          </div>
+
+          {activePanel === "overview" ? (
+            <div className="space-y-3">
+              <TaskDetailTitleCard task={state.task} taskId={state.task.id} />
+              <TaskDetailInfoCard
+                task={state.task}
+                agentTagStyle={agentTagStyle}
+                baseBranchTaskId={state.baseBranchTaskId}
+                diffFileCount={state.diffFiles.length}
+              />
+            </div>
+          ) : null}
+
+          {activePanel === "actions" ? (
+            <div className="rounded-lg border border-border-default bg-bg-surface p-4">
+              <div className="flex flex-wrap gap-2">
+                {STATUS_TRANSITIONS.filter((transition) => transition.status !== state.task.status).map((transition) => (
+                  transition.status === TaskStatus.DONE ? (
+                    <DoneStatusButton
+                      key={transition.status}
+                      statusChangeAction={handleStatusChange}
+                      label={t(transition.labelKey)}
+                      hasCleanableResources={!!(state.task.branchName || state.task.sessionType)}
+                      doneAlertDismissed={state.doneAlertDismissed}
+                    />
+                  ) : (
+                    <form key={transition.status} action={handleStatusChange}>
+                      <input type="hidden" name="status" value={transition.status} />
+                      <button type="submit" className="rounded-md border border-border-default bg-bg-page px-3 py-1.5 text-xs text-text-secondary transition-colors hover:border-brand-primary hover:text-text-brand">
+                        {t(transition.labelKey)}
+                      </button>
+                    </form>
+                  )
+                ))}
+              </div>
+              <div className="mt-3 border-t border-border-subtle pt-3">
+                <DeleteTaskButton deleteAction={handleDelete} />
+              </div>
+            </div>
+          ) : null}
+
+          {activePanel === "hooks" ? (
+            <HooksStatusCard
+              taskId={state.task.id}
+              initialClaudeStatus={state.claudeHooksStatus}
+              initialGeminiStatus={state.geminiHooksStatus}
+              initialCodexStatus={state.codexHooksStatus}
+              initialOpenCodeStatus={state.openCodeHooksStatus}
+              isRemote={!!state.task.sshHost}
+            />
+          ) : null}
+
+          {activePanel === "sessions" ? <AiSessionsCard taskId={state.task.id} data={state.aiSessions} /> : null}
+        </section>
+      ) : null}
+
+      <main className="ml-14 flex h-full min-w-0 flex-col">
         {hasTerminal ? (
           <div className="flex-1 flex flex-col min-h-0 rounded-lg overflow-hidden shadow-md">
             <div className="bg-terminal-chrome flex items-center gap-2 px-4 py-2.5 shrink-0">

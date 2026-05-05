@@ -18,6 +18,10 @@ function getRefreshScope(pathname: string) {
     return "pane-layout" as const;
   }
 
+  if (pathname.endsWith("/settings")) {
+    return "settings" as const;
+  }
+
   return "board" as const;
 }
 
@@ -57,6 +61,7 @@ interface LinkProps extends PropsWithChildren<Omit<AnchorHTMLAttributes<HTMLAnch
 export function Link({ href, children, prefetch: _prefetch, ...props }: LinkProps) {
   const location = useLocation();
   const localizedHref = localizeHref(href, getLocaleFromPathname(location.pathname));
+  void _prefetch;
   return (
     <RouterLink to={localizedHref} {...props}>
       {children}

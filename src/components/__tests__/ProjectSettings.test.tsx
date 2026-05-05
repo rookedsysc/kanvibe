@@ -8,6 +8,7 @@ const mockSetDefaultSessionType = vi.fn().mockResolvedValue(undefined);
 const mockSetNotificationEnabled = vi.fn().mockResolvedValue(undefined);
 const mockSetNotificationStatuses = vi.fn().mockResolvedValue(undefined);
 const mockSetTaskSearchShortcut = vi.fn().mockResolvedValue(undefined);
+const mockSetThemePreference = vi.fn().mockResolvedValue(undefined);
 
 vi.mock("next-intl", () => ({
   useTranslations: () => (key: string) => key,
@@ -49,6 +50,7 @@ vi.mock("@/desktop/renderer/actions/appSettings", () => ({
   setNotificationStatuses: (...args: unknown[]) => mockSetNotificationStatuses(...args),
   setDefaultSessionType: (...args: unknown[]) => mockSetDefaultSessionType(...args),
   setTaskSearchShortcut: (...args: unknown[]) => mockSetTaskSearchShortcut(...args),
+  setThemePreference: (...args: unknown[]) => mockSetThemePreference(...args),
 }));
 
 function createProject(): Project {
@@ -67,6 +69,8 @@ function createProject(): Project {
 describe("ProjectSettings", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    document.documentElement.removeAttribute("data-theme");
+    document.documentElement.removeAttribute("data-theme-preference");
   });
 
   it("기본 세션 타입을 변경하면 onDefaultSessionTypeChange를 호출한다", async () => {
@@ -95,6 +99,34 @@ describe("ProjectSettings", () => {
     await waitFor(() => {
       expect(mockSetDefaultSessionType).toHaveBeenCalledWith(SessionType.ZELLIJ);
       expect(onDefaultSessionTypeChange).toHaveBeenCalledWith(SessionType.ZELLIJ);
+    });
+  });
+
+  it("테마 설정을 변경하면 즉시 DOM 테마와 저장 값을 갱신한다", async () => {
+    const onThemePreferenceChange = vi.fn();
+
+    render(
+      <ProjectSettings
+        isOpen
+        onClose={vi.fn()}
+        projects={[createProject()]}
+        sshHosts={[]}
+        sidebarDefaultCollapsed={false}
+        defaultSessionType={SessionType.TMUX}
+        taskSearchShortcut="Mod+Shift+O"
+        themePreference="system"
+        onThemePreferenceChange={onThemePreferenceChange}
+        notificationSettings={{ isEnabled: true, enabledStatuses: ["progress", "pending", "review"] }}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "theme.dark" }));
+
+    expect(document.documentElement.dataset.theme).toBe("dark");
+    expect(document.documentElement.dataset.themePreference).toBe("dark");
+    expect(onThemePreferenceChange).toHaveBeenCalledWith("dark");
+    await waitFor(() => {
+      expect(mockSetThemePreference).toHaveBeenCalledWith("dark");
     });
   });
 

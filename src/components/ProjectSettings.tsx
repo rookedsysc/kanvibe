@@ -13,11 +13,14 @@ import {
   setNotificationStatuses,
   setDefaultSessionType,
   setTaskSearchShortcut,
+  setThemePreference,
+  type ThemePreference,
 } from "@/desktop/renderer/actions/appSettings";
 import { SessionType } from "@/entities/KanbanTask";
 import { Link } from "@/desktop/renderer/navigation";
 import type { Project } from "@/entities/Project";
 import FolderSearchInput from "@/components/FolderSearchInput";
+import { applyThemePreference, notifyThemePreferenceChanged } from "@/desktop/renderer/utils/theme";
 import {
   captureShortcutFromEvent,
   formatShortcutForDisplay,
@@ -33,14 +36,17 @@ const STATUS_OPTIONS = [
 ] as const;
 
 interface ProjectSettingsProps {
-  isOpen: boolean;
-  onClose: () => void;
+  isOpen?: boolean;
+  onClose?: () => void;
+  variant?: "modal" | "page";
   projects: Project[];
   sshHosts: string[];
   sidebarDefaultCollapsed: boolean;
   defaultSessionType: SessionType;
   taskSearchShortcut: string;
+  themePreference?: ThemePreference;
   onDefaultSessionTypeChange?: (sessionType: SessionType) => void;
+  onThemePreferenceChange?: (themePreference: ThemePreference) => void;
   notificationSettings: { isEnabled: boolean; enabledStatuses: string[] };
 }
 
@@ -56,12 +62,15 @@ function areNotificationSettingsEqual(
 export default function ProjectSettings({
   isOpen,
   onClose,
+  variant = "modal",
   projects,
   sshHosts,
   sidebarDefaultCollapsed,
   defaultSessionType,
   taskSearchShortcut,
+  themePreference = "system",
   onDefaultSessionTypeChange,
+  onThemePreferenceChange,
   notificationSettings,
 }: ProjectSettingsProps) {
   const t = useTranslations("settings");
@@ -79,11 +88,22 @@ export default function ProjectSettings({
   const [pendingTaskSearchShortcut, setPendingTaskSearchShortcut] = useState<string | null>(null);
   const [localNotificationSettings, setLocalNotificationSettings] = useState(notificationSettings);
   const [pendingNotificationSettings, setPendingNotificationSettings] = useState<typeof notificationSettings | null>(null);
+  const [localThemePreference, setLocalThemePreference] = useState<ThemePreference>(themePreference);
+  const [localSidebarDefaultCollapsed, setLocalSidebarDefaultCollapsed] = useState(sidebarDefaultCollapsed);
   const shortcutPlatform = getCurrentShortcutPlatform();
+  const isPage = variant === "page";
 
   useEffect(() => {
     setSelectedDefaultSessionType(defaultSessionType);
   }, [defaultSessionType]);
+
+  useEffect(() => {
+    setLocalSidebarDefaultCollapsed(sidebarDefaultCollapsed);
+  }, [sidebarDefaultCollapsed]);
+
+  useEffect(() => {
+    setLocalThemePreference(themePreference);
+  }, [themePreference]);
 
   useEffect(() => {
     if (isCapturingTaskSearchShortcut) {
@@ -107,9 +127,9 @@ export default function ProjectSettings({
     setPendingNotificationSettings(null);
   }, [notificationSettings, pendingNotificationSettings]);
 
-  useEscapeKey(onClose, { enabled: isOpen && !isCapturingTaskSearchShortcut });
+  useEscapeKey(() => onClose?.(), { enabled: !isPage && !!isOpen && !isCapturingTaskSearchShortcut });
 
-  if (!isOpen) return null;
+  if (!isPage && !isOpen) return null;
 
   function handleScan(formData: FormData) {
     setError(null);
@@ -156,18 +176,95 @@ export default function ProjectSettings({
     });
   }
 
+  function handleThemePreferenceChange(nextThemePreference: ThemePreference) {
+    setLocalThemePreference(nextThemePreference);
+    applyThemePreference(nextThemePreference);
+    notifyThemePreferenceChanged(nextThemePreference);
+    onThemePreferenceChange?.(nextThemePreference);
+    startTransition(async () => {
+      await setThemePreference(nextThemePreference);
+    });
+  }
+
   return (
-    <div className="fixed inset-0 z-[400] flex items-start justify-end pt-14 pr-4">
-      <div className="fixed inset-0" onClick={onClose} />
-      <div className="relative w-96 bg-bg-surface rounded-xl border border-border-default shadow-lg max-h-[80vh] overflow-y-auto">
-        <div className="flex items-center justify-between p-4 border-b border-border-default">
-          <h2 className="text-sm font-semibold text-text-primary">{t("title")}</h2>
-          <button
-            onClick={onClose}
-            className="text-text-muted hover:text-text-primary text-lg"
-          >
-            &times;
-          </button>
+    <div className={isPage ? "min-h-screen bg-bg-page text-text-primary" : "fixed inset-0 z-[400] flex items-start justify-end pt-14 pr-4"}>
+      {!isPage ? <div className="fixed inset-0 bg-bg-overlay" onClick={onClose} /> : null}
+      <div className={isPage
+        ? "mx-auto grid min-h-screen max-w-7xl grid-cols-1 lg:grid-cols-[240px_minmax(0,1fr)]"
+        : "relative w-96 max-h-[80vh] overflow-y-auto rounded-lg border border-border-default bg-bg-surface shadow-lg"
+      }>
+        {isPage ? (
+          <aside className="border-b border-border-default bg-bg-surface/80 px-4 py-4 lg:sticky lg:top-0 lg:h-screen lg:border-b-0 lg:border-r lg:py-6">
+            <Link href="/" className="mb-8 inline-flex items-center gap-2 text-xs font-medium text-text-muted hover:text-text-primary">
+              <span aria-hidden="true">←</span>
+              Board
+            </Link>
+            <nav className="flex gap-1 overflow-x-auto text-sm lg:block lg:space-y-1 lg:overflow-visible">
+              {[
+                ["appearance", t("appearanceSection")],
+                ["detail", t("detailPageSection")],
+                ["creation", t("taskCreationSection")],
+                ["notifications", t("notificationSection")],
+                ["projects", t("projectList")],
+              ].map(([id, label]) => (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => document.getElementById(id)?.scrollIntoView({ block: "start", behavior: "smooth" })}
+                  className="block shrink-0 rounded-md px-3 py-2 text-text-secondary transition-colors hover:bg-bg-page hover:text-text-primary"
+                >
+                  {label}
+                </button>
+              ))}
+            </nav>
+          </aside>
+        ) : null}
+
+        <div className={isPage ? "min-w-0 px-4 py-5 sm:px-8 sm:py-6" : ""}>
+          <div className="flex items-center justify-between border-b border-border-default px-4 py-4">
+            <div>
+              <h2 className="text-sm font-semibold text-text-primary">{t("title")}</h2>
+              {isPage ? <p className="mt-1 text-xs text-text-muted">{t("pageDescription")}</p> : null}
+            </div>
+            {!isPage ? (
+              <button
+                type="button"
+                onClick={onClose}
+                className="text-text-muted hover:text-text-primary text-lg"
+              >
+                &times;
+              </button>
+            ) : null}
+          </div>
+
+        {/* 외관 설정 */}
+        <div id="appearance" className="p-4 border-b border-border-default">
+          <h3 className="text-xs text-text-muted uppercase tracking-wide mb-3">
+            {t("appearanceSection")}
+          </h3>
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <span className="text-sm text-text-primary">{t("themePreference")}</span>
+              <p className="text-xs text-text-muted mt-0.5">{t("themePreferenceDescription")}</p>
+            </div>
+            <div className="inline-flex rounded-md border border-border-default bg-bg-page p-0.5">
+              {(["system", "dark", "light"] as const).map((value) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => handleThemePreferenceChange(value)}
+                  disabled={isPending}
+                  className={`rounded-[5px] px-2.5 py-1 text-xs font-medium transition-colors ${
+                    localThemePreference === value
+                      ? "bg-bg-surface text-text-primary shadow-xs"
+                      : "text-text-muted hover:text-text-primary"
+                  }`}
+                >
+                  {t(`theme.${value}`)}
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
 
         {/* Pane 레이아웃 설정 링크 */}
@@ -183,7 +280,7 @@ export default function ProjectSettings({
         </div>
 
         {/* 상세 페이지 설정 */}
-        <div className="p-4 border-b border-border-default">
+        <div id="detail" className="p-4 border-b border-border-default">
           <h3 className="text-xs text-text-muted uppercase tracking-wide mb-3">
             {t("detailPageSection")}
           </h3>
@@ -195,20 +292,22 @@ export default function ProjectSettings({
             <button
               type="button"
               role="switch"
-              aria-checked={sidebarDefaultCollapsed}
+              aria-checked={localSidebarDefaultCollapsed}
               onClick={() => {
+                const nextCollapsed = !localSidebarDefaultCollapsed;
+                setLocalSidebarDefaultCollapsed(nextCollapsed);
                 startTransition(async () => {
-                  await setSidebarDefaultCollapsed(!sidebarDefaultCollapsed);
+                  await setSidebarDefaultCollapsed(nextCollapsed);
                 });
               }}
               disabled={isPending}
               className={`relative inline-flex h-5 w-9 shrink-0 rounded-full border-2 border-transparent transition-colors ${
-                sidebarDefaultCollapsed ? "bg-brand-primary" : "bg-border-default"
+                localSidebarDefaultCollapsed ? "bg-brand-primary" : "bg-border-default"
               }`}
             >
               <span
                 className={`pointer-events-none inline-block h-4 w-4 rounded-full bg-white shadow transition-transform ${
-                  sidebarDefaultCollapsed ? "translate-x-4" : "translate-x-0"
+                  localSidebarDefaultCollapsed ? "translate-x-4" : "translate-x-0"
                 }`}
               />
             </button>
@@ -265,7 +364,7 @@ export default function ProjectSettings({
         </div>
 
         {/* 작업 생성 설정 */}
-        <div className="p-4 border-b border-border-default">
+        <div id="creation" className="p-4 border-b border-border-default">
           <h3 className="text-xs text-text-muted uppercase tracking-wide mb-3">
             {t("taskCreationSection")}
           </h3>
@@ -294,7 +393,7 @@ export default function ProjectSettings({
         </div>
 
         {/* 알림 설정 */}
-        <div className="p-4 border-b border-border-default">
+        <div id="notifications" className="p-4 border-b border-border-default">
           <h3 className="text-xs text-text-muted uppercase tracking-wide mb-3">
             {t("notificationSection")}
           </h3>
@@ -371,7 +470,7 @@ export default function ProjectSettings({
         </div>
 
         {/* 디렉토리 스캔 등록 */}
-        <div className="p-4 border-b border-border-default">
+        <div id="projects" className="p-4 border-b border-border-default">
           <h3 className="text-xs text-text-muted uppercase tracking-wide mb-3">
             {t("scanTitle")}
           </h3>
@@ -482,6 +581,7 @@ export default function ProjectSettings({
               })}
             </ul>
           )}
+        </div>
         </div>
       </div>
     </div>

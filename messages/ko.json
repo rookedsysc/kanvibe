@@ -121,7 +121,16 @@
     "delete": "삭제"
   },
   "settings": {
-    "title": "프로젝트 관리",
+    "title": "설정",
+    "pageDescription": "프로젝트, 테마, 알림, 작업 생성 흐름을 관리합니다.",
+    "appearanceSection": "외관",
+    "themePreference": "테마",
+    "themePreferenceDescription": "앱 전체에 적용할 표시 모드를 선택합니다.",
+    "theme": {
+      "system": "시스템",
+      "dark": "다크",
+      "light": "라이트"
+    },
     "scanTitle": "디렉토리 스캔",
     "scanPathPlaceholder": "스캔할 디렉토리 경로 (예: ~/Documents)",
     "scanButton": "스캔 및 등록",

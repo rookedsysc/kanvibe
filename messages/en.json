@@ -121,7 +121,16 @@
     "delete": "Delete"
   },
   "settings": {
-    "title": "Project Management",
+    "title": "Settings",
+    "pageDescription": "Manage projects, appearance, notifications, and task creation defaults.",
+    "appearanceSection": "Appearance",
+    "themePreference": "Theme",
+    "themePreferenceDescription": "Choose the display mode used across the app.",
+    "theme": {
+      "system": "System",
+      "dark": "Dark",
+      "light": "Light"
+    },
     "scanTitle": "Directory Scan",
     "scanPathPlaceholder": "Directory path to scan (e.g., ~/Documents)",
     "scanButton": "Scan & Register",
