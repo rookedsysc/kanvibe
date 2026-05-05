@@ -10,10 +10,19 @@ function readThemeVar(themeSelector: string, variableName: string): string | nul
 }
 
 describe("globals.css theme tokens", () => {
-  it("keeps light theme project point tags in Toss Gray", () => {
-    expect(readThemeVar(':root\\[data-theme="light"\\]', "--color-tag-project-bg")).toBe("#202632");
-    expect(readThemeVar(':root\\[data-theme="light"\\]', "--color-tag-project-text")).toBe("#FFFFFF");
-    expect(readThemeVar(':root\\[data-theme="light"\\]', "--color-tag-base-bg")).toBe("#202632");
-    expect(readThemeVar(':root\\[data-theme="light"\\]', "--color-tag-base-text")).toBe("#FFFFFF");
+  it("keeps light theme project point tags on neutral button tokens", () => {
+    expect(readThemeVar(":root", "--button-gray")).toBe("#202632");
+    expect(readThemeVar(':root\\[data-theme="light"\\]', "--color-tag-project-bg")).toBe("var(--color-button-neutral)");
+    expect(readThemeVar(':root\\[data-theme="light"\\]', "--color-tag-project-text")).toBe("#ffffff");
+    expect(readThemeVar(':root\\[data-theme="light"\\]', "--color-tag-base-bg")).toBe("var(--color-button-neutral)");
+    expect(readThemeVar(':root\\[data-theme="light"\\]', "--color-tag-base-text")).toBe("#ffffff");
+  });
+
+  it("keeps task session and remote tag text on the point color", () => {
+    expect(readThemeVar(":root", "--color-tag-pr-text")).toBe("var(--color-brand-primary)");
+    expect(readThemeVar(":root", "--color-tag-session-text")).toBe("var(--color-brand-primary)");
+    expect(readThemeVar(":root", "--color-tag-ssh-text")).toBe("var(--color-brand-primary)");
+    expect(readThemeVar(':root\\[data-theme="light"\\]', "--color-tag-session-text")).toBe("var(--color-brand-primary)");
+    expect(readThemeVar(':root\\[data-theme="light"\\]', "--color-tag-ssh-text")).toBe("var(--color-brand-primary)");
   });
 });

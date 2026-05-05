@@ -365,6 +365,57 @@ describe("AiSessionsDialog", () => {
     expect(screen.getByRole("button", { name: "Show less" })).toBeTruthy();
   });
 
+  it("should render loaded messages as animated chat transcript rows", async () => {
+    mockGetTaskAiSessionDetail.mockResolvedValue({
+      sessionId: "claude-1",
+      provider: "claude",
+      title: "Claude session",
+      matchedPath: "/repo",
+      messages: [
+        {
+          role: "assistant",
+          timestamp: "2026-03-11T09:00:00.000Z",
+          text: "I'll update the drawer layout.",
+          fullText: "I'll update the drawer layout.",
+          isTruncated: false,
+        },
+      ],
+      nextCursor: null,
+    } satisfies AggregatedAiSessionDetail);
+
+    const data: AggregatedAiSessionsResult = {
+      isRemote: false,
+      targetPath: "/repo",
+      repoPath: "/repo",
+      sessions: [
+        {
+          id: "claude-1",
+          provider: "claude",
+          title: "Claude session",
+          firstUserPrompt: "Alpha",
+          updatedAt: "2026-03-11T10:00:00.000Z",
+          startedAt: "2026-03-11T09:00:00.000Z",
+          matchedPath: "/repo",
+          matchScope: "worktree",
+          messageCount: 1,
+        },
+      ],
+      sources: [{ provider: "claude", available: true, sessionCount: 1, reason: null }],
+    };
+
+    render(
+      <IntlProvider locale="en" messages={messages}>
+        <AiSessionsDialog taskId="task-1" isOpen onClose={() => {}} data={data} />
+      </IntlProvider>
+    );
+
+    fireEvent.click(screen.getByText("Claude session"));
+    const message = await screen.findByText("I'll update the drawer layout.");
+    const card = message.closest("[data-testid='ai-session-message-card']");
+
+    expect(card?.className).toContain("animate-[ai-session-line-in");
+  });
+
   it("should show animated loading details while fetching messages", async () => {
     let resolveDetail: ((value: AggregatedAiSessionDetail) => void) | undefined;
     mockGetTaskAiSessionDetail.mockImplementation(

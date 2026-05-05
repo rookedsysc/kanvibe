@@ -1,11 +1,24 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
+import { HugeiconsIcon } from "@hugeicons/react";
+import {
+  AlertCircleIcon,
+  CheckmarkCircle02Icon,
+  Clock01Icon,
+  WebhookIcon,
+} from "@hugeicons/core-free-icons";
 import { useTranslations } from "next-intl";
-import { useEffect, useState } from "react";
-import HooksStatusDialog from "@/components/HooksStatusDialog";
+import {
+  getTaskOpenCodeHooksStatus,
+  installTaskCodexHooks,
+  installTaskGeminiHooks,
+  installTaskHooks,
+  installTaskOpenCodeHooks,
+} from "@/desktop/renderer/actions/project";
 import type { ClaudeHooksStatus } from "@/lib/claudeHooksSetup";
-import type { GeminiHooksStatus } from "@/lib/geminiHooksSetup";
 import type { CodexHooksStatus } from "@/lib/codexHooksSetup";
+import type { GeminiHooksStatus } from "@/lib/geminiHooksSetup";
 import type { OpenCodeHooksStatus } from "@/lib/openCodeHooksSetup";
 
 interface HooksStatusCardProps {
@@ -15,7 +28,16 @@ interface HooksStatusCardProps {
   initialCodexStatus: CodexHooksStatus | null;
   initialOpenCodeStatus: OpenCodeHooksStatus | null;
   isRemote: boolean;
+  onStatusesChange?: (updates: {
+    claudeStatus?: ClaudeHooksStatus | null;
+    geminiStatus?: GeminiHooksStatus | null;
+    codexStatus?: CodexHooksStatus | null;
+    openCodeStatus?: OpenCodeHooksStatus | null;
+  }) => void;
 }
+
+type HookToolKey = "claude" | "gemini" | "codex" | "openCode";
+type InstallMessage = { type: "success" | "error"; text: string };
 
 export default function HooksStatusCard({
   taskId,
@@ -24,33 +46,20 @@ export default function HooksStatusCard({
   initialCodexStatus,
   initialOpenCodeStatus,
   isRemote,
+  onStatusesChange,
 }: HooksStatusCardProps) {
   const t = useTranslations("taskDetail");
   const [claudeStatus, setClaudeStatus] = useState(initialClaudeStatus);
   const [geminiStatus, setGeminiStatus] = useState(initialGeminiStatus);
   const [codexStatus, setCodexStatus] = useState(initialCodexStatus);
   const [openCodeStatus, setOpenCodeStatus] = useState(initialOpenCodeStatus);
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [installingTools, setInstallingTools] = useState<HookToolKey[]>([]);
+  const [message, setMessage] = useState<InstallMessage | null>(null);
+  const onStatusesChangeRef = useRef(onStatusesChange);
 
-  function handleStatusesChange(updates: {
-    claudeStatus?: ClaudeHooksStatus | null;
-    geminiStatus?: GeminiHooksStatus | null;
-    codexStatus?: CodexHooksStatus | null;
-    openCodeStatus?: OpenCodeHooksStatus | null;
-  }) {
-    if (updates.claudeStatus !== undefined) {
-      setClaudeStatus(updates.claudeStatus);
-    }
-    if (updates.geminiStatus !== undefined) {
-      setGeminiStatus(updates.geminiStatus);
-    }
-    if (updates.codexStatus !== undefined) {
-      setCodexStatus(updates.codexStatus);
-    }
-    if (updates.openCodeStatus !== undefined) {
-      setOpenCodeStatus(updates.openCodeStatus);
-    }
-  }
+  useEffect(() => {
+    onStatusesChangeRef.current = onStatusesChange;
+  }, [onStatusesChange]);
 
   useEffect(() => {
     setClaudeStatus(initialClaudeStatus);
@@ -68,47 +77,244 @@ export default function HooksStatusCard({
     setOpenCodeStatus(initialOpenCodeStatus);
   }, [initialOpenCodeStatus]);
 
-  // 신호등 상태 계산
-  const getOverallStatus = () => {
-    const installed = [claudeStatus?.installed, geminiStatus?.installed, codexStatus?.installed, openCodeStatus?.installed];
-    const installedCount = installed.filter((x) => x === true).length;
+  useEffect(() => {
+    let cancelled = false;
 
-    if (installedCount === 4) return { icon: "🟢", label: "All OK" };
-    if (installedCount === 0) return { icon: "🔴", label: "Not Installed" };
-    return { icon: "🟡", label: "Partial" };
-  };
+    void (async () => {
+      const latestStatus = await getTaskOpenCodeHooksStatus(taskId);
+      if (cancelled) {
+        return;
+      }
 
-  const overallStatus = getOverallStatus();
+      setOpenCodeStatus(latestStatus);
+      onStatusesChangeRef.current?.({ openCodeStatus: latestStatus });
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [taskId]);
+
+  const hookItems = [
+    {
+      key: "claude" as const,
+      title: "Claude",
+      status: claudeStatus,
+      install: () => runInstall("claude", () => installTaskHooks(taskId), (result) => {
+        if (result.success && result.status) {
+          setClaudeStatus(result.status);
+          onStatusesChange?.({ claudeStatus: result.status });
+          setMessage(getResultMessage(result.status.installed, t("hooksInstallSuccess"), t));
+          return;
+        }
+
+        setMessage({ type: "error", text: getInstallFailureText(t, result.error) });
+      }),
+    },
+    {
+      key: "gemini" as const,
+      title: "Gemini",
+      status: geminiStatus,
+      install: () => runInstall("gemini", () => installTaskGeminiHooks(taskId), (result) => {
+        if (result.success && result.status) {
+          setGeminiStatus(result.status);
+          onStatusesChange?.({ geminiStatus: result.status });
+          setMessage(getResultMessage(result.status.installed, t("geminiHooksInstallSuccess"), t));
+          return;
+        }
+
+        setMessage({ type: "error", text: getInstallFailureText(t, result.error) });
+      }),
+    },
+    {
+      key: "codex" as const,
+      title: "Codex",
+      status: codexStatus,
+      install: () => runInstall("codex", () => installTaskCodexHooks(taskId), (result) => {
+        if (result.success && result.status) {
+          setCodexStatus(result.status);
+          onStatusesChange?.({ codexStatus: result.status });
+          setMessage(getResultMessage(result.status.installed, t("codexHooksInstallSuccess"), t));
+          return;
+        }
+
+        setMessage({ type: "error", text: getInstallFailureText(t, result.error) });
+      }),
+    },
+    {
+      key: "openCode" as const,
+      title: "OpenCode",
+      status: openCodeStatus,
+      install: () => runInstall("openCode", () => installTaskOpenCodeHooks(taskId), (result) => {
+        if (result.success && result.status) {
+          setOpenCodeStatus(result.status);
+          onStatusesChange?.({ openCodeStatus: result.status });
+          setMessage(getResultMessage(result.status.installed, t("openCodeHooksInstallSuccess"), t));
+          return;
+        }
+
+        setMessage({ type: "error", text: getInstallFailureText(t, result.error) });
+      }),
+    },
+  ];
+
+  const installedCount = hookItems.filter((item) => item.status?.installed === true).length;
+  const overallStatus = getOverallStatus(installedCount, hookItems.length);
+
+  async function runInstall<T>(
+    tool: HookToolKey,
+    install: () => Promise<T>,
+    applyResult: (result: T) => void,
+  ) {
+    setMessage(null);
+    setInstallingTools((current) => (current.includes(tool) ? current : [...current, tool]));
+
+    try {
+      const result = await install();
+      applyResult(result);
+    } finally {
+      setInstallingTools((current) => current.filter((value) => value !== tool));
+    }
+  }
 
   return (
-    <>
-      <div className="bg-bg-surface rounded-lg p-5 shadow-sm border border-border-default">
-        <h3 className="text-xs font-semibold text-text-muted uppercase tracking-wider mb-3">
-          {t("hooksStatus")}
-        </h3>
-
-        <button
-          onClick={() => setIsDialogOpen(true)}
-          className="w-full px-3 py-2 text-sm bg-bg-page border border-border-default hover:border-brand-primary rounded-md transition-colors text-left flex items-center gap-2"
-        >
-          <span className="text-base">{overallStatus.icon}</span>
-          <span className="text-text-primary font-medium">{overallStatus.label}</span>
-          <span className="ml-auto text-text-muted">→</span>
-        </button>
+    <div className="rounded-lg border border-border-default bg-bg-surface p-4 shadow-sm">
+      <div className="mb-3 flex items-start justify-between gap-3">
+        <div>
+          <h3 className="text-xs font-semibold uppercase tracking-wider text-text-muted">
+            {t("hooksStatus")}
+          </h3>
+          <p className="mt-1 text-xs text-text-muted">{t("hooksCurrentTaskId", { taskId })}</p>
+        </div>
+        <span className={`inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2 py-1 text-[11px] font-medium ${overallStatus.className}`}>
+          <StatusIcon status={overallStatus.kind} />
+          {installedCount}/{hookItems.length}
+        </span>
       </div>
 
-      {/* Hooks Status Dialog */}
-      <HooksStatusDialog
-        isOpen={isDialogOpen}
-        onClose={() => setIsDialogOpen(false)}
-        taskId={taskId}
-        claudeStatus={claudeStatus}
-        geminiStatus={geminiStatus}
-        codexStatus={codexStatus}
-        openCodeStatus={openCodeStatus}
-        isRemote={isRemote}
-        onStatusesChange={handleStatusesChange}
-      />
-    </>
+      {message ? (
+        <div className={`mb-3 rounded-md border px-3 py-2 text-xs ${message.type === "success"
+          ? "border-status-done/20 bg-status-done/10 text-status-done"
+          : "border-status-error/20 bg-status-error/10 text-status-error"
+        }`}>
+          {message.text}
+        </div>
+      ) : null}
+
+      <div className="space-y-2">
+        {hookItems.map((item) => {
+          const isInstalled = item.status?.installed === true;
+          const isInstalling = installingTools.includes(item.key);
+          const actionLabel = isInstalling
+            ? t("installingHooks")
+            : isInstalled
+              ? t("hooksStatusDialog.reinstall")
+              : t("installHooks");
+
+          return (
+            <section key={item.key} className="rounded-md border border-border-default bg-bg-page/60 p-3">
+              <div className="flex items-center gap-3">
+                <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-md border ${isInstalled
+                  ? "border-status-done/20 bg-status-done/10 text-status-done"
+                  : "border-status-error/20 bg-status-error/10 text-status-error"
+                }`}>
+                  <HookToolIcon />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <h4 className="truncate text-sm font-semibold text-text-primary">{item.title}</h4>
+                    <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${isInstalled
+                      ? "bg-status-done/15 text-status-done"
+                      : "bg-status-error/15 text-status-error"
+                    }`}>
+                      {isInstalled ? t("hooksInstalled") : t("hooksNotInstalled")}
+                    </span>
+                  </div>
+                  {isRemote ? <p className="mt-0.5 text-xs text-text-muted">{t("hooksRemoteNotSupported")}</p> : null}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!isInstalling) {
+                      void item.install();
+                    }
+                  }}
+                  disabled={isInstalling}
+                  aria-label={`${actionLabel} ${item.title}`}
+                  className={`shrink-0 rounded-md px-3 py-1.5 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${isInstalled
+                    ? "border border-border-default bg-bg-surface text-text-secondary hover:border-brand-primary hover:text-text-primary"
+                    : "bg-brand-primary text-text-inverse hover:bg-brand-hover"
+                  }`}
+                >
+                  {actionLabel}
+                </button>
+              </div>
+            </section>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function getInstallFailureText(t: ReturnType<typeof useTranslations>, error?: string) {
+  return error ? t("hooksInstallFailed", { error }) : t("hooksInstallFailed");
+}
+
+function getResultMessage(installed: boolean, successText: string, t: ReturnType<typeof useTranslations>): InstallMessage {
+  return {
+    type: installed ? "success" : "error",
+    text: installed ? successText : t("hooksInstallIncomplete"),
+  };
+}
+
+function getOverallStatus(installedCount: number, totalCount: number) {
+  if (installedCount === totalCount) {
+    return {
+      kind: "ok" as const,
+      className: "border-status-done/20 bg-status-done/15 text-status-done",
+    };
+  }
+
+  if (installedCount === 0) {
+    return {
+      kind: "error" as const,
+      className: "border-status-error/20 bg-status-error/15 text-status-error",
+    };
+  }
+
+  return {
+    kind: "partial" as const,
+    className: "border-status-warning/20 bg-status-warning/15 text-status-warning",
+  };
+}
+
+function StatusIcon({ status }: { status: "ok" | "partial" | "error" }) {
+  const icon = status === "ok"
+    ? CheckmarkCircle02Icon
+    : status === "partial"
+      ? Clock01Icon
+      : AlertCircleIcon;
+
+  return (
+    <HugeiconsIcon
+      icon={icon}
+      size={13}
+      strokeWidth={2}
+      aria-hidden="true"
+      data-testid="hooks-overall-status-icon"
+    />
+  );
+}
+
+function HookToolIcon() {
+  return (
+    <HugeiconsIcon
+      icon={WebhookIcon}
+      size={17}
+      strokeWidth={1.8}
+      aria-hidden="true"
+      data-testid="hook-status-tool-icon"
+    />
   );
 }

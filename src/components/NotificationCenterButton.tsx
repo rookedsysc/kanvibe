@@ -70,6 +70,7 @@ const NotificationCenterButton = forwardRef<NotificationCenterButtonHandle, Noti
   const panelRef = useRef<HTMLDivElement>(null);
   const itemRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const isOpenRef = useRef(false);
+  const highlightedIndexRef = useRef(0);
   const [isOpen, setIsOpen] = useState(false);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [highlightedIndex, setHighlightedIndex] = useState(0);
@@ -90,6 +91,7 @@ const NotificationCenterButton = forwardRef<NotificationCenterButtonHandle, Noti
   }, [setPanelOpen]);
 
   const openPanel = useCallback(() => {
+    highlightedIndexRef.current = 0;
     setHighlightedIndex(0);
     setPanelOpen(true);
   }, [setPanelOpen]);
@@ -217,22 +219,31 @@ const NotificationCenterButton = forwardRef<NotificationCenterButtonHandle, Noti
             return;
           }
           event.preventDefault();
-          setHighlightedIndex((current) => (current < notifications.length - 1 ? current + 1 : 0));
+          highlightedIndexRef.current = highlightedIndexRef.current < notifications.length - 1
+            ? highlightedIndexRef.current + 1
+            : 0;
+          setHighlightedIndex(highlightedIndexRef.current);
           break;
         case "ArrowUp":
           if (notifications.length === 0) {
             return;
           }
           event.preventDefault();
-          setHighlightedIndex((current) => (current > 0 ? current - 1 : notifications.length - 1));
+          highlightedIndexRef.current = highlightedIndexRef.current > 0
+            ? highlightedIndexRef.current - 1
+            : notifications.length - 1;
+          setHighlightedIndex(highlightedIndexRef.current);
           break;
         case "Enter":
-          if (highlightedNotificationIndex < 0 || highlightedNotificationIndex >= notifications.length) {
+          {
+            const currentHighlightedIndex = Math.min(Math.max(highlightedIndexRef.current, 0), notifications.length - 1);
+            if (currentHighlightedIndex < 0 || currentHighlightedIndex >= notifications.length) {
+              return;
+            }
+            event.preventDefault();
+            void handleNotificationClick(notifications[currentHighlightedIndex], { openInNewWindow: event.shiftKey });
             return;
           }
-          event.preventDefault();
-          void handleNotificationClick(notifications[highlightedNotificationIndex], { openInNewWindow: event.shiftKey });
-          break;
         case "Escape":
           event.preventDefault();
           closePanel();
@@ -303,7 +314,10 @@ const NotificationCenterButton = forwardRef<NotificationCenterButtonHandle, Noti
                 }}
                 type="button"
                 onClick={(event) => handleNotificationClick(notification, { openInNewWindow: event.shiftKey })}
-                onMouseEnter={() => setHighlightedIndex(index)}
+                onMouseEnter={() => {
+                  highlightedIndexRef.current = index;
+                  setHighlightedIndex(index);
+                }}
                 className={`w-full border-b border-border-subtle px-4 py-3 text-left transition-colors hover:bg-bg-page ${
                   index === highlightedNotificationIndex
                     ? "bg-brand-primary/10"

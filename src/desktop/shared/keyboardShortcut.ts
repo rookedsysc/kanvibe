@@ -31,14 +31,8 @@ export const SHORTCUTS = {
   boardProjectFilter: "Mod+Shift+P",
   createTask: "Mod+N",
   newWindow: "Mod+Shift+N",
-  pageBack: {
-    mac: "Meta+[",
-    linux: "Alt+[",
-  },
-  pageForward: {
-    mac: "Meta+]",
-    linux: "Alt+]",
-  },
+  pageBack: "Mod+Shift+[",
+  pageForward: "Mod+Shift+]",
   boardPageFind: "Mod+F",
 } as const;
 

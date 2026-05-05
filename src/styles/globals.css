@@ -1,5 +1,16 @@
 @import "tailwindcss";
 
+@keyframes ai-session-line-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 :root {
   /* Primitive: Gray */
   --gray-50: #FAFAFA;
@@ -13,7 +24,20 @@
   --gray-800: #424242;
   --gray-900: #212121;
 
-  /* Primitive: Google Blue */
+  /* Primitive: Point Blue */
+  --point-blue: #0064FF;
+  --point-blue-hover: #0052D9;
+  --point-blue-active: #0044B8;
+  --point-blue-subtle: #EAF2FF;
+  --point-blue-muted: #D6E6FF;
+
+  /* Primitive: Button Gray */
+  --button-gray: #202632;
+  --button-gray-hover: #2A3242;
+  --button-gray-active: #161B24;
+  --button-gray-subtle: rgba(32, 38, 50, 0.1);
+
+  /* Primitive: Blue */
   --blue-50: #E8F0FE;
   --blue-100: #D2E3FC;
   --blue-200: #AECBFA;
@@ -49,11 +73,15 @@
   --green-700: #188038;
 
   /* Semantic: Brand */
-  --color-brand-primary: var(--blue-500);
-  --color-brand-hover: var(--blue-600);
-  --color-brand-active: var(--blue-700);
-  --color-brand-subtle: var(--blue-50);
-  --color-brand-muted: var(--blue-100);
+  --color-brand-primary: var(--point-blue);
+  --color-brand-hover: var(--point-blue-hover);
+  --color-brand-active: var(--point-blue-active);
+  --color-brand-subtle: var(--point-blue-subtle);
+  --color-brand-muted: var(--point-blue-muted);
+  --color-button-neutral: var(--button-gray);
+  --color-button-neutral-hover: var(--button-gray-hover);
+  --color-button-neutral-active: var(--button-gray-active);
+  --color-button-neutral-subtle: var(--button-gray-subtle);
 
   /* Semantic: Background */
   --color-bg-page: var(--gray-50);
@@ -65,25 +93,25 @@
   --color-text-secondary: #5F6368;
   --color-text-muted: #9AA0A6;
   --color-text-inverse: #FFFFFF;
-  --color-text-brand: var(--blue-600);
-  --color-text-link: var(--blue-600);
+  --color-text-brand: var(--point-blue);
+  --color-text-link: var(--point-blue);
 
   /* Semantic: Border */
   --color-border-default: #DADCE0;
   --color-border-subtle: var(--gray-100);
   --color-border-strong: var(--gray-400);
-  --color-border-brand: var(--blue-500);
+  --color-border-brand: var(--point-blue);
 
   /* Semantic: Status */
   --color-status-todo: var(--gray-500);
   --color-status-progress: var(--yellow-500);
   --color-status-pending: #8B5CF6;
-  --color-status-review: var(--blue-500);
+  --color-status-review: var(--point-blue);
   --color-status-done: var(--green-500);
   --color-status-success: var(--green-500);
   --color-status-warning: var(--yellow-500);
   --color-status-error: var(--red-500);
-  --color-status-info: var(--blue-500);
+  --color-status-info: var(--point-blue);
 
   /* Semantic: Tags - Agent */
   --color-tag-claude-bg: var(--red-50);
@@ -93,18 +121,18 @@
   --color-tag-codex-bg: var(--green-50);
   --color-tag-codex-text: var(--green-600);
   --color-tag-session-bg: var(--blue-50);
-  --color-tag-session-text: var(--blue-600);
+  --color-tag-session-text: var(--color-brand-primary);
   --color-tag-ssh-bg: var(--green-50);
-  --color-tag-ssh-text: var(--green-600);
-  --color-tag-project-bg: #202632;
+  --color-tag-ssh-text: var(--color-brand-primary);
+  --color-tag-project-bg: var(--color-button-neutral);
   --color-tag-project-text: #FFFFFF;
   --color-tag-branch-bg: var(--gray-100);
   --color-tag-branch-text: var(--gray-700);
   --color-tag-neutral-bg: var(--gray-100);
   --color-tag-neutral-text: var(--gray-600);
-  --color-tag-pr-bg: #ddf4ff;
-  --color-tag-pr-text: #0969da;
-  --color-tag-base-bg: #202632;
+  --color-tag-pr-bg: var(--color-brand-subtle);
+  --color-tag-pr-text: var(--color-brand-primary);
+  --color-tag-base-bg: var(--color-button-neutral);
   --color-tag-base-text: #FFFFFF;
 
   /* Semantic: Project Group (pastel) */
@@ -170,11 +198,15 @@
 
 :root,
 :root[data-theme="dark"] {
-  --color-brand-primary: #6e7dfb;
-  --color-brand-hover: #7d8aff;
-  --color-brand-active: #5b68e8;
-  --color-brand-subtle: rgba(110, 125, 251, 0.14);
-  --color-brand-muted: rgba(110, 125, 251, 0.22);
+  --color-brand-primary: var(--point-blue);
+  --color-brand-hover: #2B7DFF;
+  --color-brand-active: #0052D9;
+  --color-brand-subtle: rgba(0, 100, 255, 0.16);
+  --color-brand-muted: rgba(0, 100, 255, 0.24);
+  --color-button-neutral: var(--button-gray);
+  --color-button-neutral-hover: var(--button-gray-hover);
+  --color-button-neutral-active: var(--button-gray-active);
+  --color-button-neutral-subtle: rgba(32, 38, 50, 0.3);
 
   --color-bg-page: #090a0d;
   --color-bg-surface: #111216;
@@ -184,23 +216,23 @@
   --color-text-secondary: #b0b4bd;
   --color-text-muted: #717680;
   --color-text-inverse: #ffffff;
-  --color-text-brand: #9aa4ff;
-  --color-text-link: #9aa4ff;
+  --color-text-brand: var(--point-blue);
+  --color-text-link: var(--point-blue);
 
   --color-border-default: #24262d;
   --color-border-subtle: #1a1c22;
   --color-border-strong: #353842;
-  --color-border-brand: rgba(154, 164, 255, 0.62);
+  --color-border-brand: rgba(0, 100, 255, 0.62);
 
   --color-status-todo: #747985;
   --color-status-progress: #f6c35f;
   --color-status-pending: #9b8cff;
-  --color-status-review: #6ea8ff;
+  --color-status-review: var(--point-blue);
   --color-status-done: #65d08a;
   --color-status-success: #65d08a;
   --color-status-warning: #f6c35f;
   --color-status-error: #ff7d73;
-  --color-status-info: #6ea8ff;
+  --color-status-info: var(--point-blue);
 
   --color-tag-claude-bg: rgba(255, 125, 115, 0.12);
   --color-tag-claude-text: #ffaaa2;
@@ -209,18 +241,18 @@
   --color-tag-codex-bg: rgba(101, 208, 138, 0.12);
   --color-tag-codex-text: #9be6b4;
   --color-tag-session-bg: rgba(154, 164, 255, 0.12);
-  --color-tag-session-text: #aeb6ff;
+  --color-tag-session-text: var(--color-brand-primary);
   --color-tag-ssh-bg: rgba(101, 208, 138, 0.12);
-  --color-tag-ssh-text: #9be6b4;
-  --color-tag-project-bg: rgba(255, 255, 255, 0.08);
-  --color-tag-project-text: #d7dae1;
+  --color-tag-ssh-text: var(--color-brand-primary);
+  --color-tag-project-bg: var(--color-button-neutral);
+  --color-tag-project-text: #ffffff;
   --color-tag-branch-bg: rgba(255, 255, 255, 0.06);
   --color-tag-branch-text: #aeb3bd;
   --color-tag-neutral-bg: rgba(255, 255, 255, 0.07);
   --color-tag-neutral-text: #aeb3bd;
-  --color-tag-pr-bg: rgba(110, 168, 255, 0.12);
-  --color-tag-pr-text: #9fc8ff;
-  --color-tag-base-bg: rgba(255, 255, 255, 0.1);
+  --color-tag-pr-bg: var(--color-brand-subtle);
+  --color-tag-pr-text: var(--color-brand-primary);
+  --color-tag-base-bg: var(--color-button-neutral);
   --color-tag-base-text: #ffffff;
 
   --color-group-0-border: rgba(255, 154, 204, 0.4);
@@ -241,8 +273,8 @@
   --color-group-7-bg: rgba(165, 180, 252, 0.08);
   --color-group-line: #3b3f49;
 
-  --color-priority-low-bg: rgba(110, 168, 255, 0.12);
-  --color-priority-low-text: #9fc8ff;
+  --color-priority-low-bg: var(--color-brand-subtle);
+  --color-priority-low-text: var(--color-brand-primary);
   --color-priority-medium-bg: rgba(246, 195, 95, 0.13);
   --color-priority-medium-text: #ffd58a;
   --color-priority-high-bg: rgba(255, 125, 115, 0.13);
@@ -264,11 +296,15 @@
 }
 
 :root[data-theme="light"] {
-  --color-brand-primary: #5e6ad2;
-  --color-brand-hover: #4f5cc4;
-  --color-brand-active: #4651b3;
-  --color-brand-subtle: #eef0ff;
-  --color-brand-muted: #e2e5ff;
+  --color-brand-primary: var(--point-blue);
+  --color-brand-hover: var(--point-blue-hover);
+  --color-brand-active: var(--point-blue-active);
+  --color-brand-subtle: var(--point-blue-subtle);
+  --color-brand-muted: var(--point-blue-muted);
+  --color-button-neutral: var(--button-gray);
+  --color-button-neutral-hover: var(--button-gray-hover);
+  --color-button-neutral-active: var(--button-gray-active);
+  --color-button-neutral-subtle: var(--button-gray-subtle);
 
   --color-bg-page: #f7f8fa;
   --color-bg-surface: #ffffff;
@@ -278,18 +314,22 @@
   --color-text-secondary: #5f636d;
   --color-text-muted: #8a909b;
   --color-text-inverse: #ffffff;
-  --color-text-brand: #4f5cc4;
-  --color-text-link: #4f5cc4;
+  --color-text-brand: var(--point-blue);
+  --color-text-link: var(--point-blue);
 
   --color-border-default: #e2e4e8;
   --color-border-subtle: #eef0f3;
   --color-border-strong: #c8ccd3;
-  --color-border-brand: #8f97ee;
+  --color-border-brand: var(--point-blue);
 
-  --color-tag-project-bg: #202632;
-  --color-tag-project-text: #FFFFFF;
-  --color-tag-base-bg: #202632;
-  --color-tag-base-text: #FFFFFF;
+  --color-tag-project-bg: var(--color-button-neutral);
+  --color-tag-project-text: #ffffff;
+  --color-tag-pr-bg: var(--color-brand-subtle);
+  --color-tag-pr-text: var(--color-brand-primary);
+  --color-tag-session-text: var(--color-brand-primary);
+  --color-tag-ssh-text: var(--color-brand-primary);
+  --color-tag-base-bg: var(--color-button-neutral);
+  --color-tag-base-text: #ffffff;
   --color-group-line: #cdd1d8;
 
   --shadow-xs: 0 1px 1px rgba(17, 24, 39, 0.04);
@@ -305,6 +345,10 @@
   --color-brand-active: var(--color-brand-active);
   --color-brand-subtle: var(--color-brand-subtle);
   --color-brand-muted: var(--color-brand-muted);
+  --color-button-neutral: var(--color-button-neutral);
+  --color-button-neutral-hover: var(--color-button-neutral-hover);
+  --color-button-neutral-active: var(--color-button-neutral-active);
+  --color-button-neutral-subtle: var(--color-button-neutral-subtle);
 
   /* Background */
   --color-bg-page: var(--color-bg-page);

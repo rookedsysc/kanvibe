@@ -241,7 +241,7 @@ describe("NotificationCenterButton", () => {
         relativePath: "/task/task-1",
         locale: "en",
         isRead: false,
-        createdAt: new Date().toISOString(),
+        createdAt: "2026-05-04T00:01:00.000Z",
         dedupeKey: "k1",
       },
       {
@@ -252,7 +252,7 @@ describe("NotificationCenterButton", () => {
         relativePath: "/task/task-2",
         locale: "en",
         isRead: false,
-        createdAt: new Date().toISOString(),
+        createdAt: "2026-05-04T00:00:00.000Z",
         dedupeKey: "k2",
       },
     ]);
