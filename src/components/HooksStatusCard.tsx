@@ -44,7 +44,6 @@ export default function HooksStatusCard({
   initialGeminiStatus,
   initialCodexStatus,
   initialOpenCodeStatus,
-  isRemote,
   onStatusesChange,
 }: HooksStatusCardProps) {
   const t = useTranslations("taskDetail");
@@ -229,7 +228,6 @@ export default function HooksStatusCard({
                       {isInstalled ? t("hooksInstalled") : t("hooksNotInstalled")}
                     </span>
                   </div>
-                  {isRemote ? <p className="mt-0.5 text-xs text-text-muted">{t("hooksRemoteNotSupported")}</p> : null}
                 </div>
                 <button
                   type="button"
