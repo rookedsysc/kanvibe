@@ -7,7 +7,6 @@ import {
 } from "@hugeicons/core-free-icons";
 import { useTranslations } from "next-intl";
 import { useParams } from "react-router-dom";
-import AiSessionsCard from "@/components/AiSessionsCard";
 import ConnectTerminalForm from "@/components/ConnectTerminalForm";
 import CreateTaskModal from "@/components/CreateTaskModal";
 import DeleteTaskButton from "@/components/DeleteTaskButton";
@@ -61,7 +60,7 @@ const AGENT_TAG_STYLES: Record<string, string> = {
   codex: "bg-tag-codex-bg text-tag-codex-text",
 };
 
-type DetailPanel = "overview" | "status" | "sessions";
+type DetailPanel = "overview" | "status";
 type MainView = "terminal" | "chat";
 
 interface TaskDetailState {
@@ -584,7 +583,6 @@ export default function TaskDetailRoute() {
         {([
           { panel: "overview", label: t("info"), icon: InformationCircleIcon },
           { panel: "status", label: statusPanelLabel, icon: Task02Icon, iconTestId: "task-status-panel-icon" },
-          { panel: "sessions", label: t("aiSessions.title"), icon: Chatting01Icon },
         ] satisfies Array<{ panel: DetailPanel; label: string; icon: IconSvgElement; iconTestId?: string }>).map(({ panel, label, icon, iconTestId }) => (
           <button
             key={panel}
@@ -651,7 +649,6 @@ export default function TaskDetailRoute() {
             <h2 className="text-xs font-semibold uppercase text-text-muted">
               {activePanel === "overview" && t("info")}
               {activePanel === "status" && statusPanelLabel}
-              {activePanel === "sessions" && t("aiSessions.title")}
             </h2>
             <button
               type="button"
@@ -727,7 +724,6 @@ export default function TaskDetailRoute() {
             </div>
           ) : null}
 
-          {activePanel === "sessions" ? <AiSessionsCard taskId={state.task.id} data={state.aiSessions} /> : null}
         </section>
       ) : null}
 
