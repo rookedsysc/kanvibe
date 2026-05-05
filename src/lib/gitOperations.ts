@@ -1,6 +1,6 @@
 import { exec, execFile, spawn } from "child_process";
 import { promisify } from "util";
-import { homedir } from "os";
+import { availableParallelism, homedir } from "os";
 import {
   buildSSHArgs,
   ensureKanvibeSSHControlDirectory,
@@ -40,7 +40,7 @@ const SSH_TRANSPORT_ERROR_PATTERNS = [
 
 const DEFAULT_REMOTE_SSH_TRANSPORT_FAILURE_COOLDOWN_MS = 5_000;
 const MAX_REMOTE_SSH_TRANSPORT_FAILURE_COOLDOWN_MS = 60_000;
-const DEFAULT_REMOTE_SSH_HOST_MAX_CONCURRENCY = 4;
+const FALLBACK_REMOTE_SSH_HOST_MAX_CONCURRENCY = 4;
 const MAX_REMOTE_SSH_HOST_MAX_CONCURRENCY = 16;
 const DEFAULT_REMOTE_SSH_COMMAND_TIMEOUT_MS = 45_000;
 const REMOTE_SSH_COMMAND_MAX_ATTEMPTS = 3;
@@ -48,7 +48,11 @@ const REMOTE_SSH_CONTROLMASTER_SHUTDOWN_TIMEOUT_MS = 3_000;
 const REMOTE_COMMAND_EXIT_MARKER = "__KANVIBE_REMOTE_COMMAND_EXIT_7b3f6e5d__";
 const REMOTE_COMMAND_MAX_BUFFER_BYTES = 10 * 1024 * 1024;
 const remoteSSHTransportFailures = new Map<string, { until: number; error: Error }>();
-const remoteSSHHostLimiters = new Map<string, { active: number; queue: Array<() => void> }>();
+const remoteSSHHostLimiters = new Map<string, {
+  active: number;
+  queue: Array<() => void>;
+  availableShards: number[];
+}>();
 
 export interface ExecGitOptions {
   timeoutMs?: number;
@@ -118,10 +122,23 @@ function getRemoteSSHHostMaxConcurrency(): number {
   return Math.min(
     readPositiveInteger(
       process.env.KANVIBE_REMOTE_SSH_HOST_MAX_CONCURRENCY,
-      DEFAULT_REMOTE_SSH_HOST_MAX_CONCURRENCY,
+      getDefaultRemoteSSHHostMaxConcurrency(),
     ),
     MAX_REMOTE_SSH_HOST_MAX_CONCURRENCY,
   );
+}
+
+function getDefaultRemoteSSHHostMaxConcurrency(): number {
+  try {
+    const defaultConcurrency = availableParallelism() * 2;
+    if (!Number.isFinite(defaultConcurrency) || defaultConcurrency < 1) {
+      return FALLBACK_REMOTE_SSH_HOST_MAX_CONCURRENCY;
+    }
+
+    return Math.min(defaultConcurrency, MAX_REMOTE_SSH_HOST_MAX_CONCURRENCY);
+  } catch {
+    return FALLBACK_REMOTE_SSH_HOST_MAX_CONCURRENCY;
+  }
 }
 
 function getRemoteSSHCommandTimeoutMs(options?: ExecGitOptions): number {
@@ -172,7 +189,7 @@ async function execRemote(
   command: string,
   options?: ExecGitOptions,
 ): Promise<string> {
-  return runLimitedRemoteCommand(sshHost, async () => {
+  return runLimitedRemoteCommand(sshHost, async (controlMasterShardIndex) => {
     throwIfSSHTransportCooldownActive(sshHost);
 
     const timeoutMs = getRemoteSSHCommandTimeoutMs(options);
@@ -184,7 +201,7 @@ async function execRemote(
     }
 
     const sshArgs = [
-      ...await buildExecSSHArgs(hostConfig),
+      ...await buildExecSSHArgs(hostConfig, controlMasterShardIndex),
       buildRemoteShellCommand(command),
     ];
 
@@ -200,7 +217,7 @@ async function execRemote(
         lastError = normalizedError;
 
         if (isCommandTimeout || isSSHTransportError(normalizedError)) {
-          await closeRemoteSSHControlMaster(hostConfig).catch(() => undefined);
+          await closeRemoteSSHControlMaster(hostConfig, controlMasterShardIndex).catch(() => undefined);
         }
 
         if (!shouldRetry) {
@@ -397,28 +414,35 @@ function attachCommandOutput<T extends Error>(error: T, stdout: string, stderr: 
 
 async function runLimitedRemoteCommand<T>(
   sshHost: string,
-  operation: () => Promise<T>,
+  operation: (controlMasterShardIndex: number) => Promise<T>,
 ): Promise<T> {
-  const release = await acquireRemoteSSHSlot(sshHost);
+  const slot = await acquireRemoteSSHSlot(sshHost);
 
   try {
-    return await operation();
+    return await operation(slot.controlMasterShardIndex);
   } finally {
-    release();
+    slot.release();
   }
 }
 
-function acquireRemoteSSHSlot(sshHost: string): Promise<() => void> {
+function acquireRemoteSSHSlot(sshHost: string): Promise<{
+  controlMasterShardIndex: number;
+  release: () => void;
+}> {
   let limiter = remoteSSHHostLimiters.get(sshHost);
   if (!limiter) {
-    limiter = { active: 0, queue: [] };
+    limiter = { active: 0, queue: [], availableShards: [] };
     remoteSSHHostLimiters.set(sshHost, limiter);
   }
 
   return new Promise((resolve) => {
     const start = () => {
+      const controlMasterShardIndex = acquireRemoteSSHControlMasterShard(limiter);
       limiter.active += 1;
-      resolve(() => releaseRemoteSSHSlot(sshHost, limiter));
+      resolve({
+        controlMasterShardIndex,
+        release: () => releaseRemoteSSHSlot(sshHost, limiter, controlMasterShardIndex),
+      });
     };
 
     if (limiter.active < getRemoteSSHHostMaxConcurrency()) {
@@ -430,11 +454,29 @@ function acquireRemoteSSHSlot(sshHost: string): Promise<() => void> {
   });
 }
 
+function acquireRemoteSSHControlMasterShard(
+  limiter: { active: number; availableShards: number[] },
+): number {
+  const reusableShard = limiter.availableShards.shift();
+  if (reusableShard !== undefined) {
+    return reusableShard;
+  }
+
+  return limiter.active;
+}
+
 function releaseRemoteSSHSlot(
   sshHost: string,
-  limiter: { active: number; queue: Array<() => void> },
+  limiter: {
+    active: number;
+    queue: Array<() => void>;
+    availableShards: number[];
+  },
+  controlMasterShardIndex: number,
 ): void {
   limiter.active -= 1;
+  limiter.availableShards.push(controlMasterShardIndex);
+  limiter.availableShards.sort((left, right) => left - right);
 
   const next = limiter.queue.shift();
   if (next) {
@@ -476,6 +518,7 @@ function rememberSSHTransportFailure(sshHost: string, error: Error): void {
 
 async function buildExecSSHArgs(
   hostConfig: SSHHostConfig,
+  controlMasterShardIndex: number,
 ): Promise<string[]> {
   if (process.platform === "win32") {
     return buildSSHArgs(hostConfig, {
@@ -487,17 +530,20 @@ async function buildExecSSHArgs(
   await ensureKanvibeSSHControlDirectory();
   return buildSSHArgs(hostConfig, {
     disableTty: true,
-    connectionReuse: getKanvibeSSHConnectionReuseOptions(),
+    connectionReuse: getKanvibeSSHConnectionReuseOptions(controlMasterShardIndex),
     connectionHealth: getKanvibeSSHConnectionHealthOptions(),
   });
 }
 
-async function closeRemoteSSHControlMaster(hostConfig: SSHHostConfig): Promise<void> {
+async function closeRemoteSSHControlMaster(
+  hostConfig: SSHHostConfig,
+  controlMasterShardIndex: number,
+): Promise<void> {
   if (process.platform === "win32") {
     return;
   }
 
-  const reuseOptions = getKanvibeSSHConnectionReuseOptions();
+  const reuseOptions = getKanvibeSSHConnectionReuseOptions(controlMasterShardIndex);
   const baseArgs = buildSSHArgs(hostConfig, {
     disableTty: true,
     connectionHealth: {

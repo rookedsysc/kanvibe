@@ -103,9 +103,13 @@ export async function ensureKanvibeSSHControlDirectory(): Promise<void> {
   await mkdir(getKanvibeSSHControlDirectory(), { recursive: true, mode: 0o700 });
 }
 
-export function getKanvibeSSHConnectionReuseOptions(): SSHConnectionReuseOptions {
+export function getKanvibeSSHConnectionReuseOptions(shardIndex?: number): SSHConnectionReuseOptions {
+  const controlPathName = typeof shardIndex === "number" && Number.isInteger(shardIndex) && shardIndex >= 0
+    ? `ssh-%C-${shardIndex}`
+    : "ssh-%C";
+
   return {
-    controlPath: path.join(getKanvibeSSHControlDirectory(), "ssh-%C"),
+    controlPath: path.join(getKanvibeSSHControlDirectory(), controlPathName),
     controlPersist: KANVIBE_SSH_CONTROL_PERSIST,
   };
 }
