@@ -71,6 +71,18 @@ describe("BoardRoute", () => {
     vi.useRealTimers();
   });
 
+  it("초기 데이터가 없으면 보드 형태의 skeleton을 즉시 렌더링한다", () => {
+    // Given
+    mocks.getTasksByStatus.mockReturnValue(new Promise(() => {}));
+
+    // When
+    render(<BoardRoute />);
+
+    // Then
+    expect(screen.getByTestId("board-route-skeleton")).toBeTruthy();
+    expect(screen.queryByText("Loading...")).toBeNull();
+  });
+
   it("캐시가 있으면 stale board를 즉시 렌더링하고 이후 최신 데이터로 갱신한다", async () => {
     // Given
     sessionStorage.setItem(BOARD_CACHE_KEY, JSON.stringify({

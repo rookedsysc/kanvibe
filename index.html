@@ -4,9 +4,442 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title></title>
+    <style>
+      html,
+      body,
+      #root {
+        min-height: 100%;
+        margin: 0;
+        background: #090a0d;
+        color: #717680;
+        font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+
+      .kanvibe-initial-board {
+        min-height: 100vh;
+        background: #090a0d;
+      }
+
+      .kanvibe-initial-header {
+        height: 56px;
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 12px;
+        padding: 0 24px;
+        border-bottom: 1px solid #24262d;
+        background: #111216;
+        box-sizing: border-box;
+      }
+
+      .kanvibe-skeleton-filter,
+      .kanvibe-skeleton-button,
+      .kanvibe-skeleton-icon {
+        border-radius: 6px;
+        background: #1a1c22;
+        border: 1px solid #24262d;
+      }
+
+      .kanvibe-skeleton-filter {
+        width: 256px;
+        height: 32px;
+      }
+
+      .kanvibe-skeleton-button {
+        width: 80px;
+        height: 32px;
+        background: rgba(0, 100, 255, 0.26);
+      }
+
+      .kanvibe-skeleton-icon {
+        width: 32px;
+        height: 32px;
+      }
+
+      .kanvibe-initial-main {
+        padding: 24px;
+        overflow-x: auto;
+      }
+
+      .kanvibe-skeleton-columns {
+        display: flex;
+        gap: 12px;
+        min-width: 1420px;
+        animation: kanvibe-skeleton-pulse 1.5s ease-in-out infinite;
+      }
+
+      .kanvibe-skeleton-column {
+        width: 284px;
+        min-height: calc(100vh - 132px);
+        border: 1px solid #24262d;
+        border-radius: 8px;
+        overflow: hidden;
+        box-sizing: border-box;
+      }
+
+      .kanvibe-skeleton-column-header {
+        height: 40px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 0 12px;
+        border-bottom: 1px solid #1a1c22;
+        box-sizing: border-box;
+      }
+
+      .kanvibe-skeleton-status {
+        width: 8px;
+        height: 8px;
+        border-radius: 999px;
+        background: #747985;
+      }
+
+      .kanvibe-skeleton-column:nth-child(2) .kanvibe-skeleton-status {
+        background: #f6c35f;
+      }
+
+      .kanvibe-skeleton-column:nth-child(3) .kanvibe-skeleton-status {
+        background: #9b8cff;
+      }
+
+      .kanvibe-skeleton-column:nth-child(4) .kanvibe-skeleton-status {
+        background: #0064ff;
+      }
+
+      .kanvibe-skeleton-column:nth-child(5) .kanvibe-skeleton-status {
+        background: #65d08a;
+      }
+
+      .kanvibe-skeleton-column-title,
+      .kanvibe-skeleton-column-count,
+      .kanvibe-skeleton-project,
+      .kanvibe-skeleton-title,
+      .kanvibe-skeleton-description,
+      .kanvibe-skeleton-badge {
+        border-radius: 999px;
+        background: #24262d;
+      }
+
+      .kanvibe-skeleton-column-title {
+        width: 80px;
+        height: 12px;
+      }
+
+      .kanvibe-skeleton-column-count {
+        width: 20px;
+        height: 12px;
+        margin-left: auto;
+      }
+
+      .kanvibe-skeleton-task-list {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        padding: 8px;
+      }
+
+      .kanvibe-skeleton-task {
+        min-height: 86px;
+        padding: 10px;
+        border: 1px solid #1a1c22;
+        border-radius: 6px;
+        box-sizing: border-box;
+      }
+
+      .kanvibe-skeleton-project-row {
+        display: grid;
+        grid-template-columns: 6px minmax(0, 1fr);
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 9px;
+      }
+
+      .kanvibe-skeleton-project-dot {
+        width: 6px;
+        height: 6px;
+        border-radius: 999px;
+        background: #353842;
+      }
+
+      .kanvibe-skeleton-project {
+        width: 96px;
+        height: 10px;
+      }
+
+      .kanvibe-skeleton-title {
+        width: 82%;
+        height: 14px;
+      }
+
+      .kanvibe-skeleton-task:nth-child(2) .kanvibe-skeleton-title {
+        width: 68%;
+      }
+
+      .kanvibe-skeleton-task:nth-child(3) .kanvibe-skeleton-title {
+        width: 76%;
+      }
+
+      .kanvibe-skeleton-description {
+        width: 58%;
+        height: 10px;
+        margin-top: 9px;
+        background: #1a1c22;
+      }
+
+      .kanvibe-skeleton-badges {
+        display: flex;
+        gap: 6px;
+        margin-top: 12px;
+      }
+
+      .kanvibe-skeleton-badge {
+        width: 36px;
+        height: 16px;
+        border: 1px solid #24262d;
+        background: #111216;
+        box-sizing: border-box;
+      }
+
+      .kanvibe-skeleton-badge:nth-child(2) {
+        width: 28px;
+      }
+
+      @keyframes kanvibe-skeleton-pulse {
+        0%,
+        100% {
+          opacity: 0.62;
+        }
+
+        50% {
+          opacity: 0.9;
+        }
+      }
+
+      @media (max-width: 720px) {
+        .kanvibe-initial-header {
+          padding: 0 16px;
+        }
+
+        .kanvibe-skeleton-filter {
+          width: 44vw;
+        }
+
+        .kanvibe-skeleton-columns {
+          min-width: 1180px;
+        }
+
+        .kanvibe-skeleton-column {
+          width: 236px;
+        }
+      }
+    </style>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <div class="kanvibe-initial-board" aria-hidden="true">
+        <header class="kanvibe-initial-header">
+          <div class="kanvibe-skeleton-filter"></div>
+          <div class="kanvibe-skeleton-button"></div>
+          <div class="kanvibe-skeleton-icon"></div>
+          <div class="kanvibe-skeleton-icon"></div>
+        </header>
+        <main class="kanvibe-initial-main">
+          <div class="kanvibe-skeleton-columns">
+            <section class="kanvibe-skeleton-column">
+              <div class="kanvibe-skeleton-column-header">
+                <span class="kanvibe-skeleton-status"></span>
+                <span class="kanvibe-skeleton-column-title"></span>
+                <span class="kanvibe-skeleton-column-count"></span>
+              </div>
+              <div class="kanvibe-skeleton-task-list">
+                <div class="kanvibe-skeleton-task">
+                  <div class="kanvibe-skeleton-project-row">
+                    <span class="kanvibe-skeleton-project-dot"></span>
+                    <span class="kanvibe-skeleton-project"></span>
+                  </div>
+                  <div class="kanvibe-skeleton-title"></div>
+                  <div class="kanvibe-skeleton-description"></div>
+                  <div class="kanvibe-skeleton-badges">
+                    <span class="kanvibe-skeleton-badge"></span>
+                    <span class="kanvibe-skeleton-badge"></span>
+                    <span class="kanvibe-skeleton-badge"></span>
+                  </div>
+                </div>
+                <div class="kanvibe-skeleton-task">
+                  <div class="kanvibe-skeleton-project-row">
+                    <span class="kanvibe-skeleton-project-dot"></span>
+                    <span class="kanvibe-skeleton-project"></span>
+                  </div>
+                  <div class="kanvibe-skeleton-title"></div>
+                  <div class="kanvibe-skeleton-description"></div>
+                  <div class="kanvibe-skeleton-badges">
+                    <span class="kanvibe-skeleton-badge"></span>
+                    <span class="kanvibe-skeleton-badge"></span>
+                  </div>
+                </div>
+                <div class="kanvibe-skeleton-task">
+                  <div class="kanvibe-skeleton-project-row">
+                    <span class="kanvibe-skeleton-project-dot"></span>
+                    <span class="kanvibe-skeleton-project"></span>
+                  </div>
+                  <div class="kanvibe-skeleton-title"></div>
+                  <div class="kanvibe-skeleton-description"></div>
+                  <div class="kanvibe-skeleton-badges">
+                    <span class="kanvibe-skeleton-badge"></span>
+                    <span class="kanvibe-skeleton-badge"></span>
+                  </div>
+                </div>
+              </div>
+            </section>
+            <section class="kanvibe-skeleton-column">
+              <div class="kanvibe-skeleton-column-header">
+                <span class="kanvibe-skeleton-status"></span>
+                <span class="kanvibe-skeleton-column-title"></span>
+                <span class="kanvibe-skeleton-column-count"></span>
+              </div>
+              <div class="kanvibe-skeleton-task-list">
+                <div class="kanvibe-skeleton-task">
+                  <div class="kanvibe-skeleton-project-row">
+                    <span class="kanvibe-skeleton-project-dot"></span>
+                    <span class="kanvibe-skeleton-project"></span>
+                  </div>
+                  <div class="kanvibe-skeleton-title"></div>
+                  <div class="kanvibe-skeleton-description"></div>
+                  <div class="kanvibe-skeleton-badges">
+                    <span class="kanvibe-skeleton-badge"></span>
+                    <span class="kanvibe-skeleton-badge"></span>
+                  </div>
+                </div>
+                <div class="kanvibe-skeleton-task">
+                  <div class="kanvibe-skeleton-project-row">
+                    <span class="kanvibe-skeleton-project-dot"></span>
+                    <span class="kanvibe-skeleton-project"></span>
+                  </div>
+                  <div class="kanvibe-skeleton-title"></div>
+                  <div class="kanvibe-skeleton-description"></div>
+                  <div class="kanvibe-skeleton-badges">
+                    <span class="kanvibe-skeleton-badge"></span>
+                    <span class="kanvibe-skeleton-badge"></span>
+                  </div>
+                </div>
+              </div>
+            </section>
+            <section class="kanvibe-skeleton-column">
+              <div class="kanvibe-skeleton-column-header">
+                <span class="kanvibe-skeleton-status"></span>
+                <span class="kanvibe-skeleton-column-title"></span>
+                <span class="kanvibe-skeleton-column-count"></span>
+              </div>
+              <div class="kanvibe-skeleton-task-list">
+                <div class="kanvibe-skeleton-task">
+                  <div class="kanvibe-skeleton-project-row">
+                    <span class="kanvibe-skeleton-project-dot"></span>
+                    <span class="kanvibe-skeleton-project"></span>
+                  </div>
+                  <div class="kanvibe-skeleton-title"></div>
+                  <div class="kanvibe-skeleton-description"></div>
+                  <div class="kanvibe-skeleton-badges">
+                    <span class="kanvibe-skeleton-badge"></span>
+                    <span class="kanvibe-skeleton-badge"></span>
+                    <span class="kanvibe-skeleton-badge"></span>
+                  </div>
+                </div>
+                <div class="kanvibe-skeleton-task">
+                  <div class="kanvibe-skeleton-project-row">
+                    <span class="kanvibe-skeleton-project-dot"></span>
+                    <span class="kanvibe-skeleton-project"></span>
+                  </div>
+                  <div class="kanvibe-skeleton-title"></div>
+                  <div class="kanvibe-skeleton-description"></div>
+                  <div class="kanvibe-skeleton-badges">
+                    <span class="kanvibe-skeleton-badge"></span>
+                    <span class="kanvibe-skeleton-badge"></span>
+                  </div>
+                </div>
+                <div class="kanvibe-skeleton-task">
+                  <div class="kanvibe-skeleton-project-row">
+                    <span class="kanvibe-skeleton-project-dot"></span>
+                    <span class="kanvibe-skeleton-project"></span>
+                  </div>
+                  <div class="kanvibe-skeleton-title"></div>
+                  <div class="kanvibe-skeleton-description"></div>
+                  <div class="kanvibe-skeleton-badges">
+                    <span class="kanvibe-skeleton-badge"></span>
+                    <span class="kanvibe-skeleton-badge"></span>
+                  </div>
+                </div>
+              </div>
+            </section>
+            <section class="kanvibe-skeleton-column">
+              <div class="kanvibe-skeleton-column-header">
+                <span class="kanvibe-skeleton-status"></span>
+                <span class="kanvibe-skeleton-column-title"></span>
+                <span class="kanvibe-skeleton-column-count"></span>
+              </div>
+              <div class="kanvibe-skeleton-task-list">
+                <div class="kanvibe-skeleton-task">
+                  <div class="kanvibe-skeleton-project-row">
+                    <span class="kanvibe-skeleton-project-dot"></span>
+                    <span class="kanvibe-skeleton-project"></span>
+                  </div>
+                  <div class="kanvibe-skeleton-title"></div>
+                  <div class="kanvibe-skeleton-description"></div>
+                  <div class="kanvibe-skeleton-badges">
+                    <span class="kanvibe-skeleton-badge"></span>
+                    <span class="kanvibe-skeleton-badge"></span>
+                  </div>
+                </div>
+                <div class="kanvibe-skeleton-task">
+                  <div class="kanvibe-skeleton-project-row">
+                    <span class="kanvibe-skeleton-project-dot"></span>
+                    <span class="kanvibe-skeleton-project"></span>
+                  </div>
+                  <div class="kanvibe-skeleton-title"></div>
+                  <div class="kanvibe-skeleton-description"></div>
+                  <div class="kanvibe-skeleton-badges">
+                    <span class="kanvibe-skeleton-badge"></span>
+                    <span class="kanvibe-skeleton-badge"></span>
+                  </div>
+                </div>
+              </div>
+            </section>
+            <section class="kanvibe-skeleton-column">
+              <div class="kanvibe-skeleton-column-header">
+                <span class="kanvibe-skeleton-status"></span>
+                <span class="kanvibe-skeleton-column-title"></span>
+                <span class="kanvibe-skeleton-column-count"></span>
+              </div>
+              <div class="kanvibe-skeleton-task-list">
+                <div class="kanvibe-skeleton-task">
+                  <div class="kanvibe-skeleton-project-row">
+                    <span class="kanvibe-skeleton-project-dot"></span>
+                    <span class="kanvibe-skeleton-project"></span>
+                  </div>
+                  <div class="kanvibe-skeleton-title"></div>
+                  <div class="kanvibe-skeleton-description"></div>
+                  <div class="kanvibe-skeleton-badges">
+                    <span class="kanvibe-skeleton-badge"></span>
+                    <span class="kanvibe-skeleton-badge"></span>
+                  </div>
+                </div>
+                <div class="kanvibe-skeleton-task">
+                  <div class="kanvibe-skeleton-project-row">
+                    <span class="kanvibe-skeleton-project-dot"></span>
+                    <span class="kanvibe-skeleton-project"></span>
+                  </div>
+                  <div class="kanvibe-skeleton-title"></div>
+                  <div class="kanvibe-skeleton-description"></div>
+                  <div class="kanvibe-skeleton-badges">
+                    <span class="kanvibe-skeleton-badge"></span>
+                    <span class="kanvibe-skeleton-badge"></span>
+                  </div>
+                </div>
+              </div>
+            </section>
+          </div>
+        </main>
+      </div>
+    </div>
     <script type="module" src="/src/desktop/renderer/main.tsx"></script>
   </body>
   </html>
