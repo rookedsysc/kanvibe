@@ -121,9 +121,9 @@
   --color-tag-codex-bg: var(--green-50);
   --color-tag-codex-text: var(--green-600);
   --color-tag-session-bg: var(--blue-50);
-  --color-tag-session-text: var(--blue-600);
+  --color-tag-session-text: var(--color-brand-primary);
   --color-tag-ssh-bg: var(--green-50);
-  --color-tag-ssh-text: var(--green-600);
+  --color-tag-ssh-text: var(--color-brand-primary);
   --color-tag-project-bg: var(--color-button-neutral);
   --color-tag-project-text: #FFFFFF;
   --color-tag-branch-bg: var(--gray-100);
@@ -241,9 +241,9 @@
   --color-tag-codex-bg: rgba(101, 208, 138, 0.12);
   --color-tag-codex-text: #9be6b4;
   --color-tag-session-bg: rgba(154, 164, 255, 0.12);
-  --color-tag-session-text: #aeb6ff;
+  --color-tag-session-text: var(--color-brand-primary);
   --color-tag-ssh-bg: rgba(101, 208, 138, 0.12);
-  --color-tag-ssh-text: #9be6b4;
+  --color-tag-ssh-text: var(--color-brand-primary);
   --color-tag-project-bg: var(--color-button-neutral);
   --color-tag-project-text: #ffffff;
   --color-tag-branch-bg: rgba(255, 255, 255, 0.06);
@@ -326,6 +326,8 @@
   --color-tag-project-text: #ffffff;
   --color-tag-pr-bg: var(--color-brand-subtle);
   --color-tag-pr-text: var(--color-brand-primary);
+  --color-tag-session-text: var(--color-brand-primary);
+  --color-tag-ssh-text: var(--color-brand-primary);
   --color-tag-base-bg: var(--color-button-neutral);
   --color-tag-base-text: #ffffff;
   --color-group-line: #cdd1d8;

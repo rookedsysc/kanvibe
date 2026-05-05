@@ -17,4 +17,12 @@ describe("globals.css theme tokens", () => {
     expect(readThemeVar(':root\\[data-theme="light"\\]', "--color-tag-base-bg")).toBe("var(--color-button-neutral)");
     expect(readThemeVar(':root\\[data-theme="light"\\]', "--color-tag-base-text")).toBe("#ffffff");
   });
+
+  it("keeps task session and remote tag text on the point color", () => {
+    expect(readThemeVar(":root", "--color-tag-pr-text")).toBe("var(--color-brand-primary)");
+    expect(readThemeVar(":root", "--color-tag-session-text")).toBe("var(--color-brand-primary)");
+    expect(readThemeVar(":root", "--color-tag-ssh-text")).toBe("var(--color-brand-primary)");
+    expect(readThemeVar(':root\\[data-theme="light"\\]', "--color-tag-session-text")).toBe("var(--color-brand-primary)");
+    expect(readThemeVar(':root\\[data-theme="light"\\]', "--color-tag-ssh-text")).toBe("var(--color-brand-primary)");
+  });
 });
