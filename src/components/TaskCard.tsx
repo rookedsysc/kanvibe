@@ -1,7 +1,9 @@
 "use client";
 
 import { Draggable } from "@hello-pangea/dnd";
-import { Link } from "@/desktop/renderer/navigation";
+import { useLocale } from "next-intl";
+import { Link, localizeHref } from "@/desktop/renderer/navigation";
+import { openInternalRouteInNewWindow } from "@/desktop/renderer/utils/windowOpen";
 import { TaskStatus, type KanbanTask } from "@/entities/KanbanTask";
 import { TaskPriority } from "@/entities/TaskPriority";
 
@@ -76,11 +78,24 @@ function findHorizontalTaskCard(currentStatus: TaskStatus, currentIndex: number,
   return null;
 }
 
+function isShiftOnlyKeyboardShortcut(event: React.KeyboardEvent, key: string) {
+  return event.key === key && event.shiftKey && !event.altKey && !event.ctrlKey && !event.metaKey;
+}
+
 export default function TaskCard({ task, index, onContextMenu, projectName, projectColor, isBaseProject }: TaskCardProps) {
   const cardStyle = projectColor ? { borderColor: projectColor } : undefined;
+  const locale = useLocale();
 
   function handleTaskKeyDown(event: React.KeyboardEvent<HTMLAnchorElement>) {
-    if (event.key === "Enter" && event.shiftKey) {
+    if (isShiftOnlyKeyboardShortcut(event, "Enter")) {
+      event.preventDefault();
+      event.stopPropagation();
+
+      openInternalRouteInNewWindow(localizeHref(`/task/${task.id}`, locale));
+      return;
+    }
+
+    if (isShiftOnlyKeyboardShortcut(event, "F10")) {
       event.preventDefault();
       event.stopPropagation();
 

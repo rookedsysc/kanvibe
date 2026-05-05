@@ -395,7 +395,10 @@ describe("Board defaultSessionType sync", () => {
     expect(document.activeElement).toBe(taskLink);
   });
 
-  it("포커스된 task에서 Shift+Enter를 누르면 컨텍스트 메뉴를 연다", async () => {
+  it("포커스된 task에서 Shift+Enter를 누르면 상세 페이지를 새 창에서 연다", async () => {
+    window.location.hash = "#/en";
+    const openWindow = vi.spyOn(window, "open").mockImplementation(() => null);
+
     render(
       <Board
         initialTasks={createTasksWithTodo()}
@@ -416,6 +419,38 @@ describe("Board defaultSessionType sync", () => {
 
     const event = createEvent.keyDown(taskLink, {
       key: "Enter",
+      shiftKey: true,
+    });
+    fireEvent(taskLink, event);
+
+    expect(event.defaultPrevented).toBe(true);
+    expect(openWindow).toHaveBeenCalledWith(`${window.location.origin}/#/en/task/task-1`, "_blank", "noopener,noreferrer");
+    expect(screen.queryByTestId("task-context-menu")).toBeNull();
+
+    openWindow.mockRestore();
+  });
+
+  it("포커스된 task에서 Shift+F10을 누르면 컨텍스트 메뉴를 연다", async () => {
+    render(
+      <Board
+        initialTasks={createTasksWithTodo()}
+        initialDoneTotal={0}
+        initialDoneLimit={20}
+        sshHosts={[]}
+        projects={[createProject()]}
+        sidebarDefaultCollapsed={false}
+        doneAlertDismissed={false}
+        notificationSettings={{ isEnabled: true, enabledStatuses: ["progress", "pending", "review"] }}
+        defaultSessionType={SessionType.TMUX}
+        taskSearchShortcut="Mod+Shift+O"
+      />,
+    );
+
+    const taskLink = await screen.findByRole("link", { name: "Test Task" });
+    taskLink.focus();
+
+    const event = createEvent.keyDown(taskLink, {
+      key: "F10",
       shiftKey: true,
     });
     fireEvent(taskLink, event);
