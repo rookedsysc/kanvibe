@@ -5,7 +5,7 @@ import os from "node:os";
 import { parseSSHConfig } from "@/lib/sshConfig";
 
 export const KANVIBE_HOOK_SERVER_PORT = 9736;
-export const KANVIBE_DEV_HOOK_SERVER_PORT = 6379;
+export const KANVIBE_DEV_HOOK_SERVER_PORT = 19736;
 
 declare global {
   var __KANVIBE_HOOK_SERVER_PORT__: number | undefined;
