@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, type ReactNode } from "react";
 import { IntlProvider } from "next-intl";
 import { HashRouter, Navigate, Outlet, Route, Routes, useParams } from "react-router-dom";
 import { BoardCommandProvider } from "@/desktop/renderer/components/BoardCommandProvider";
@@ -9,16 +9,29 @@ import TaskQuickSearchDialog from "@/desktop/renderer/components/TaskQuickSearch
 import { DEFAULT_LOCALE, getSafeLocale, isSupportedLocale, messagesByLocale } from "@/desktop/renderer/utils/locales";
 import { triggerDesktopRefresh } from "@/desktop/renderer/utils/refresh";
 import BoardRoute from "@/desktop/renderer/routes/BoardRoute";
-import DiffRoute from "@/desktop/renderer/routes/DiffRoute";
-import NotFoundRoute from "@/desktop/renderer/routes/NotFoundRoute";
-import PaneLayoutRoute from "@/desktop/renderer/routes/PaneLayoutRoute";
-import SettingsRoute from "@/desktop/renderer/routes/SettingsRoute";
-import TaskDetailRoute from "@/desktop/renderer/routes/TaskDetailRoute";
 import { getThemePreference, type ThemePreference } from "@/desktop/renderer/actions/appSettings";
 import { applyThemePreference, THEME_PREFERENCE_CHANGED_EVENT } from "@/desktop/renderer/utils/theme";
 import type { BoardEventPayload } from "@/lib/boardNotifier";
 
 const BOARD_REFRESH_DEBOUNCE_MS = 250;
+
+const DiffRoute = lazy(() => import("@/desktop/renderer/routes/DiffRoute"));
+const NotFoundRoute = lazy(() => import("@/desktop/renderer/routes/NotFoundRoute"));
+const PaneLayoutRoute = lazy(() => import("@/desktop/renderer/routes/PaneLayoutRoute"));
+const SettingsRoute = lazy(() => import("@/desktop/renderer/routes/SettingsRoute"));
+const TaskDetailRoute = lazy(() => import("@/desktop/renderer/routes/TaskDetailRoute"));
+
+function RouteLoadingFallback() {
+  return <div className="min-h-screen flex items-center justify-center bg-bg-page text-text-muted">Loading...</div>;
+}
+
+function DeferredRoute({ children }: { children: ReactNode }) {
+  return (
+    <Suspense fallback={<RouteLoadingFallback />}>
+      {children}
+    </Suspense>
+  );
+}
 
 function ThemeController() {
   useEffect(() => {
@@ -118,11 +131,11 @@ export default function App() {
         <Route path="/" element={<Navigate to={`/${DEFAULT_LOCALE}`} replace />} />
         <Route path="/:locale" element={<LocaleShell />}>
           <Route index element={<BoardRoute />} />
-          <Route path="pane-layout" element={<PaneLayoutRoute />} />
-          <Route path="settings" element={<SettingsRoute />} />
-          <Route path="task/:id" element={<TaskDetailRoute />} />
-          <Route path="task/:id/diff" element={<DiffRoute />} />
-          <Route path="*" element={<NotFoundRoute />} />
+          <Route path="pane-layout" element={<DeferredRoute><PaneLayoutRoute /></DeferredRoute>} />
+          <Route path="settings" element={<DeferredRoute><SettingsRoute /></DeferredRoute>} />
+          <Route path="task/:id" element={<DeferredRoute><TaskDetailRoute /></DeferredRoute>} />
+          <Route path="task/:id/diff" element={<DeferredRoute><DiffRoute /></DeferredRoute>} />
+          <Route path="*" element={<DeferredRoute><NotFoundRoute /></DeferredRoute>} />
         </Route>
       </Routes>
     </HashRouter>
