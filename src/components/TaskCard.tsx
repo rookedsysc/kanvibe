@@ -123,6 +123,7 @@ export default function TaskCard({ task, index, onContextMenu, projectName, proj
           {...provided.dragHandleProps}
           role="link"
           data-kanban-task-card="true"
+          data-kanban-task-id={task.id}
           data-kanban-status={task.status}
           data-kanban-index={index}
           onKeyDown={handleTaskKeyDown}

@@ -63,6 +63,15 @@ function focusBoardTaskCard(card: HTMLAnchorElement) {
   card.scrollIntoView?.({ block: "nearest", inline: "nearest" });
 }
 
+function findTaskById(tasks: TasksByStatus, taskId: string) {
+  for (const status of Object.values(TaskStatus)) {
+    const task = tasks[status].find((candidate) => candidate.id === taskId);
+    if (task) return task;
+  }
+
+  return null;
+}
+
 function shouldIgnoreBoardTaskFocusEvent(event: KeyboardEvent) {
   if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey) {
     return true;
@@ -421,6 +430,34 @@ export default function Board({
     window.addEventListener("keydown", handleWindowTaskFocus);
     return () => window.removeEventListener("keydown", handleWindowTaskFocus);
   }, [contextMenu.isOpen, isBranchModalOpen, isModalOpen, pendingDoneResult]);
+
+  useEffect(() => {
+    function handleWindowTaskContextMenu(event: KeyboardEvent) {
+      if (event.key !== "Enter" || !event.shiftKey || event.altKey || event.ctrlKey || event.metaKey) return;
+      if (contextMenu.isOpen || isModalOpen || isBranchModalOpen || pendingDoneResult) return;
+
+      const target = event.target instanceof Element
+        ? event.target
+        : document.activeElement instanceof Element
+          ? document.activeElement
+          : null;
+      const taskCard = target?.closest<HTMLAnchorElement>(TASK_CARD_SELECTOR);
+      const taskId = taskCard?.dataset.kanbanTaskId;
+      if (!taskCard || !taskId) return;
+
+      const task = findTaskById(filteredTasks, taskId);
+      if (!task) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+
+      const rect = taskCard.getBoundingClientRect();
+      setContextMenu({ isOpen: true, x: rect.left + 12, y: rect.top + 12, task });
+    }
+
+    window.addEventListener("keydown", handleWindowTaskContextMenu, true);
+    return () => window.removeEventListener("keydown", handleWindowTaskContextMenu, true);
+  }, [contextMenu.isOpen, filteredTasks, isBranchModalOpen, isModalOpen, pendingDoneResult]);
 
   const handleLoadMoreDone = useCallback(async () => {
     if (isLoadingMore) return;

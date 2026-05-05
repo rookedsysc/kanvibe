@@ -1,6 +1,6 @@
 import { forwardRef, useImperativeHandle } from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { createEvent, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import Board from "../Board";
 import { reorderTasks } from "@/desktop/renderer/actions/kanban";
@@ -74,6 +74,7 @@ vi.mock("../Column", () => ({
           key={task.id}
           href={`/task/${task.id}`}
           data-kanban-task-card="true"
+          data-kanban-task-id={task.id}
           data-kanban-status={status}
           data-kanban-index={index}
         >
@@ -392,6 +393,37 @@ describe("Board defaultSessionType sync", () => {
 
     expect(event.defaultPrevented).toBe(true);
     expect(document.activeElement).toBe(taskLink);
+  });
+
+  it("포커스된 task에서 Shift+Enter를 누르면 컨텍스트 메뉴를 연다", async () => {
+    render(
+      <Board
+        initialTasks={createTasksWithTodo()}
+        initialDoneTotal={0}
+        initialDoneLimit={20}
+        sshHosts={[]}
+        projects={[createProject()]}
+        sidebarDefaultCollapsed={false}
+        doneAlertDismissed={false}
+        notificationSettings={{ isEnabled: true, enabledStatuses: ["progress", "pending", "review"] }}
+        defaultSessionType={SessionType.TMUX}
+        taskSearchShortcut="Mod+Shift+O"
+      />,
+    );
+
+    const taskLink = await screen.findByRole("link", { name: "Test Task" });
+    taskLink.focus();
+
+    const event = createEvent.keyDown(taskLink, {
+      key: "Enter",
+      shiftKey: true,
+    });
+    fireEvent(taskLink, event);
+
+    expect(event.defaultPrevented).toBe(true);
+    await waitFor(() => {
+      expect(screen.getByTestId("task-context-menu")).toBeTruthy();
+    });
   });
 
   it("보드 검색 바에서 Enter와 Shift+Enter로 순방향/역방향 찾기를 호출한다", async () => {
