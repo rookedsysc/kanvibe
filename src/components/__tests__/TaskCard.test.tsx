@@ -164,6 +164,7 @@ describe("TaskCard - Priority Badge", () => {
     expect(baseIcon).toBeTruthy();
     expect(baseIcon.className).toContain("bg-tag-base-bg");
     expect(baseIcon.className).toContain("text-tag-base-text");
+    expect(baseIcon.querySelector("svg")?.getAttribute("data-icon-name")).toBe("CrownIcon");
     expect(screen.queryByText("Base")).toBeNull();
   });
 

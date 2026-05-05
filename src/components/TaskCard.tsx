@@ -43,22 +43,21 @@ const KANBAN_STATUS_ORDER = [
 
 const TASK_CARD_SELECTOR = "[data-kanban-task-card='true']";
 
-function BaseBranchIcon() {
+function CrownIcon() {
   return (
     <svg
       width="12"
       height="12"
       viewBox="0 0 16 16"
       fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      strokeLinecap="round"
-      strokeLinejoin="round"
       aria-hidden="true"
+      data-icon-name="CrownIcon"
     >
-      <circle cx="5" cy="3.5" r="1.7" fill="currentColor" stroke="none" />
-      <circle cx="11" cy="12.5" r="1.7" fill="currentColor" stroke="none" />
-      <path d="M5 5.5v2.2c0 2.5 1.8 4.3 4.1 4.3H9" />
+      <path
+        d="M2.2 5.1 5.3 8l2.7-4.1L10.7 8l3.1-2.9-1.2 6.6H3.4L2.2 5.1Z"
+        fill="currentColor"
+      />
+      <path d="M3.7 13h8.6" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
     </svg>
   );
 }
@@ -193,7 +192,7 @@ export default function TaskCard({ task, index, onContextMenu, projectName, proj
               aria-hidden="true"
               data-testid="base-branch-icon"
             >
-              <BaseBranchIcon />
+              <CrownIcon />
             </span>
           )}
 

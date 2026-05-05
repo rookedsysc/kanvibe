@@ -308,21 +308,17 @@ function StatusIcon({ status }: { status: "ok" | "partial" | "error" }) {
 
 function HookToolIcon({ tool }: { tool: HookToolKey }) {
   const iconNameByTool: Record<HookToolKey, string> = {
-    claude: "ClaudeIcon",
-    gemini: "GeminiIcon",
-    codex: "CodexIcon",
-    openCode: "OpenCodeIcon",
+    claude: "ClaudeLogoIcon",
+    gemini: "GeminiLogoIcon",
+    codex: "CodexLogoIcon",
+    openCode: "OpenCodeLogoIcon",
   };
 
   const commonProps = {
-    width: 17,
-    height: 17,
+    width: 18,
+    height: 18,
     viewBox: "0 0 24 24",
     fill: "none",
-    stroke: "currentColor",
-    strokeWidth: 1.9,
-    strokeLinecap: "round" as const,
-    strokeLinejoin: "round" as const,
     "aria-hidden": true,
     "data-testid": "hook-status-tool-icon",
     "data-icon-name": iconNameByTool[tool],
@@ -331,10 +327,14 @@ function HookToolIcon({ tool }: { tool: HookToolKey }) {
   if (tool === "claude") {
     return (
       <svg {...commonProps}>
-        <path d="M12 3.5v17" />
-        <path d="M5.1 7.5l13.8 9" />
-        <path d="M18.9 7.5l-13.8 9" />
-        <circle cx="12" cy="12" r="2.2" fill="currentColor" stroke="none" />
+        <path d="M12 2.6c1.15 2.9.92 5.15 0 6.72-.92-1.57-1.15-3.82 0-6.72Z" fill="#111111" />
+        <path d="M12 21.4c-1.15-2.9-.92-5.15 0-6.72.92 1.57 1.15 3.82 0 6.72Z" fill="#111111" />
+        <path d="M2.6 12c2.9-1.15 5.15-.92 6.72 0-1.57.92-3.82 1.15-6.72 0Z" fill="#111111" />
+        <path d="M21.4 12c-2.9 1.15-5.15.92-6.72 0 1.57-.92 3.82-1.15 6.72 0Z" fill="#111111" />
+        <path d="M5.35 5.35c2.86 1.24 4.3 2.99 4.76 4.75-1.76-.45-3.51-1.9-4.76-4.75Z" fill="#111111" />
+        <path d="M18.65 18.65c-2.86-1.24-4.3-2.99-4.76-4.75 1.76.45 3.51 1.9 4.76 4.75Z" fill="#111111" />
+        <path d="M18.65 5.35c-1.24 2.86-2.99 4.3-4.75 4.76.45-1.76 1.9-3.51 4.75-4.76Z" fill="#111111" />
+        <path d="M5.35 18.65c1.24-2.86 2.99-4.3 4.75-4.76-.45 1.76-1.9 3.51-4.75 4.76Z" fill="#111111" />
       </svg>
     );
   }
@@ -342,8 +342,8 @@ function HookToolIcon({ tool }: { tool: HookToolKey }) {
   if (tool === "gemini") {
     return (
       <svg {...commonProps}>
-        <path d="M12 3l1.6 5.4L19 10l-5.4 1.6L12 17l-1.6-5.4L5 10l5.4-1.6L12 3Z" fill="currentColor" stroke="none" />
-        <path d="M18 15l.7 2.3L21 18l-2.3.7L18 21l-.7-2.3L15 18l2.3-.7L18 15Z" fill="currentColor" stroke="none" />
+        <path d="M12 2.7 14.58 9.42 21.3 12l-6.72 2.58L12 21.3l-2.58-6.72L2.7 12l6.72-2.58L12 2.7Z" fill="#1A73E8" />
+        <path d="M17.7 3.8 18.55 6 20.8 6.85 18.55 7.7 17.7 9.95 16.85 7.7 14.6 6.85 16.85 6 17.7 3.8Z" fill="#7FC7FF" />
       </svg>
     );
   }
@@ -351,20 +351,22 @@ function HookToolIcon({ tool }: { tool: HookToolKey }) {
   if (tool === "codex") {
     return (
       <svg {...commonProps}>
-        <path d="M7.5 5 4 8.5 7.5 12" />
-        <path d="M16.5 5 20 8.5 16.5 12" />
-        <path d="M9 19h6" />
-        <path d="M12 12v7" />
-        <circle cx="12" cy="8.5" r="1.8" fill="currentColor" stroke="none" />
+        <rect x="3.2" y="4.2" width="17.6" height="15.6" rx="4" fill="#0B5FFF" />
+        <path d="M8.8 9.1 5.9 12l2.9 2.9" stroke="#FFFFFF" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" />
+        <path d="M15.2 9.1 18.1 12l-2.9 2.9" stroke="#FFFFFF" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" />
+        <path d="m13.2 8.2-2.4 7.6" stroke="#A9D8FF" strokeWidth="1.7" strokeLinecap="round" />
       </svg>
     );
   }
 
   return (
     <svg {...commonProps}>
-      <rect x="4" y="5" width="16" height="14" rx="3" />
-      <path d="m8 10 2.2 2L8 14" />
-      <path d="M13 14h3" />
+      <rect x="3" y="4.5" width="18" height="15" rx="3.5" fill="#0A84FF" />
+      <path d="M3 8h18" stroke="#CFEAFF" strokeWidth="1.5" />
+      <circle cx="6.5" cy="6.4" r="0.7" fill="#FFFFFF" />
+      <circle cx="8.7" cy="6.4" r="0.7" fill="#FFFFFF" />
+      <path d="m8 11 2.2 2L8 15" stroke="#FFFFFF" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M13 15h3.5" stroke="#FFFFFF" strokeWidth="1.8" strokeLinecap="round" />
     </svg>
   );
 }

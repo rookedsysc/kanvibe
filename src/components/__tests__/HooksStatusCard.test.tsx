@@ -119,10 +119,10 @@ describe("HooksStatusCard", () => {
 
     expect(toolIcons).toHaveLength(4);
     expect(toolIcons.map((icon) => icon.getAttribute("data-icon-name"))).toEqual([
-      "ClaudeIcon",
-      "GeminiIcon",
-      "CodexIcon",
-      "OpenCodeIcon",
+      "ClaudeLogoIcon",
+      "GeminiLogoIcon",
+      "CodexLogoIcon",
+      "OpenCodeLogoIcon",
     ]);
     expect(screen.getByTestId("hooks-overall-status-icon").getAttribute("data-icon-name")).toBe("AlertCircleIcon");
   });
