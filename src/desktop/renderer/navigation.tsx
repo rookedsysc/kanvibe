@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, type AnchorHTMLAttributes, type PropsWithChildren } from "react";
+import { forwardRef, useEffect, useMemo, useRef, type AnchorHTMLAttributes, type PropsWithChildren } from "react";
 import { Link as RouterLink, useLocation, useNavigate } from "react-router-dom";
 import { DEFAULT_LOCALE, SUPPORTED_LOCALES, getSafeLocale, type SupportedLocale } from "@/desktop/renderer/utils/locales";
 import { triggerDesktopRefresh } from "@/desktop/renderer/utils/refresh";
@@ -62,16 +62,19 @@ interface LinkProps extends PropsWithChildren<Omit<AnchorHTMLAttributes<HTMLAnch
   prefetch?: boolean;
 }
 
-export function Link({ href, children, prefetch: _prefetch, ...props }: LinkProps) {
+export const Link = forwardRef<HTMLAnchorElement, LinkProps>(function Link(
+  { href, children, prefetch: _prefetch, ...props },
+  ref,
+) {
   const location = useLocation();
   const localizedHref = localizeHref(href, getLocaleFromPathname(location.pathname));
   void _prefetch;
   return (
-    <RouterLink to={localizedHref} {...props}>
+    <RouterLink ref={ref} to={localizedHref} {...props}>
       {children}
     </RouterLink>
   );
-}
+});
 
 export function usePathname() {
   return useLocation().pathname;

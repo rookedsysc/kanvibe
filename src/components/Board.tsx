@@ -44,11 +44,65 @@ const COLUMNS: { status: TaskStatus; labelKey: string; colorClass: string }[] = 
   { status: TaskStatus.DONE, labelKey: "done", colorClass: "bg-status-done" },
 ];
 
+const TASK_CARD_SELECTOR = "[data-kanban-task-card='true']";
+const BOARD_TASK_FOCUS_KEYS = new Set(["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"]);
+
 interface ContextMenuState {
   isOpen: boolean;
   x: number;
   y: number;
   task: KanbanTask | null;
+}
+
+function getBoardTaskCards() {
+  return Array.from(document.querySelectorAll<HTMLAnchorElement>(TASK_CARD_SELECTOR));
+}
+
+function focusBoardTaskCard(card: HTMLAnchorElement) {
+  card.focus({ preventScroll: true });
+  card.scrollIntoView?.({ block: "nearest", inline: "nearest" });
+}
+
+function findTaskById(tasks: TasksByStatus, taskId: string) {
+  for (const status of Object.values(TaskStatus)) {
+    const task = tasks[status].find((candidate) => candidate.id === taskId);
+    if (task) return task;
+  }
+
+  return null;
+}
+
+function shouldIgnoreBoardTaskFocusEvent(event: KeyboardEvent) {
+  if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey) {
+    return true;
+  }
+
+  const target = event.target instanceof Element
+    ? event.target
+    : document.activeElement instanceof Element
+      ? document.activeElement
+      : null;
+
+  if (!target) return false;
+
+  return Boolean(
+    target.closest(
+      [
+            TASK_CARD_SELECTOR,
+            "a[href]",
+            "[role='link']",
+            "input",
+            "textarea",
+            "select",
+        "button",
+        "[contenteditable='true']",
+        "[data-terminal-focus-blocker='true']",
+        "[role='menu']",
+        "[role='menuitem']",
+        "[role='dialog']",
+      ].join(","),
+    ),
+  );
 }
 
 /** worktree repoPath에서 메인 프로젝트 경로를 추출한다 */
@@ -360,6 +414,51 @@ export default function Board({
     },
   }), [boardCommands]);
 
+  useEffect(() => {
+    function handleWindowTaskFocus(event: KeyboardEvent) {
+      if (!BOARD_TASK_FOCUS_KEYS.has(event.key)) return;
+      if (contextMenu.isOpen || isModalOpen || isBranchModalOpen || pendingDoneResult) return;
+      if (shouldIgnoreBoardTaskFocusEvent(event)) return;
+
+      const firstTaskCard = getBoardTaskCards()[0];
+      if (!firstTaskCard) return;
+
+      event.preventDefault();
+      focusBoardTaskCard(firstTaskCard);
+    }
+
+    window.addEventListener("keydown", handleWindowTaskFocus);
+    return () => window.removeEventListener("keydown", handleWindowTaskFocus);
+  }, [contextMenu.isOpen, isBranchModalOpen, isModalOpen, pendingDoneResult]);
+
+  useEffect(() => {
+    function handleWindowTaskContextMenu(event: KeyboardEvent) {
+      if (event.key !== "Enter" || !event.shiftKey || event.altKey || event.ctrlKey || event.metaKey) return;
+      if (contextMenu.isOpen || isModalOpen || isBranchModalOpen || pendingDoneResult) return;
+
+      const target = event.target instanceof Element
+        ? event.target
+        : document.activeElement instanceof Element
+          ? document.activeElement
+          : null;
+      const taskCard = target?.closest<HTMLAnchorElement>(TASK_CARD_SELECTOR);
+      const taskId = taskCard?.dataset.kanbanTaskId;
+      if (!taskCard || !taskId) return;
+
+      const task = findTaskById(filteredTasks, taskId);
+      if (!task) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+
+      const rect = taskCard.getBoundingClientRect();
+      setContextMenu({ isOpen: true, x: rect.left + 12, y: rect.top + 12, task });
+    }
+
+    window.addEventListener("keydown", handleWindowTaskContextMenu, true);
+    return () => window.removeEventListener("keydown", handleWindowTaskContextMenu, true);
+  }, [contextMenu.isOpen, filteredTasks, isBranchModalOpen, isModalOpen, pendingDoneResult]);
+
   const handleLoadMoreDone = useCallback(async () => {
     if (isLoadingMore) return;
     setIsLoadingMore(true);
@@ -444,9 +543,8 @@ export default function Board({
   }, []);
 
   const handleContextMenu = useCallback(
-    (e: React.MouseEvent, task: KanbanTask) => {
-      e.preventDefault();
-      setContextMenu({ isOpen: true, x: e.clientX, y: e.clientY, task });
+    (task: KanbanTask, position: { x: number; y: number }) => {
+      setContextMenu({ isOpen: true, x: position.x, y: position.y, task });
     },
     []
   );

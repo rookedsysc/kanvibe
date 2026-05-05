@@ -12,7 +12,7 @@ interface ColumnProps {
   tasks: KanbanTask[];
   label: string;
   colorClass: string;
-  onContextMenu: (e: React.MouseEvent, task: KanbanTask) => void;
+  onContextMenu: (task: KanbanTask, position: { x: number; y: number }) => void;
   projectNameMap: Record<string, string>;
   projectColorMap: Record<string, string>;
   totalCount?: number;

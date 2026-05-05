@@ -1,8 +1,9 @@
-import { describe, it, expect, vi } from "vitest";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { forwardRef } from "react";
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { createEvent, fireEvent, render, screen } from "@testing-library/react";
 import TaskCard from "../TaskCard";
 import { TaskPriority } from "@/entities/TaskPriority";
-import { TaskStatus } from "@/entities/KanbanTask";
+import { SessionType, TaskStatus } from "@/entities/KanbanTask";
 import type { KanbanTask } from "@/entities/KanbanTask";
 
 vi.mock("@hello-pangea/dnd", () => ({
@@ -10,7 +11,10 @@ vi.mock("@hello-pangea/dnd", () => ({
     children(
       {
         innerRef: vi.fn(),
-        draggableProps: { "data-rfd-draggable-id": "test" },
+        draggableProps: {
+          "data-rfd-draggable-id": "test",
+          style: { transform: "translate(12px, 18px)", transition: "transform 200ms ease" },
+        },
         dragHandleProps: {},
       },
       { isDragging: false },
@@ -18,8 +22,10 @@ vi.mock("@hello-pangea/dnd", () => ({
 }));
 
 vi.mock("@/desktop/renderer/navigation", () => ({
-  Link: ({ children, ...props }: { children: React.ReactNode; href: string }) => (
-    <a {...props}>{children}</a>
+  Link: forwardRef<HTMLAnchorElement, React.AnchorHTMLAttributes<HTMLAnchorElement> & { href: string }>(
+    function MockLink({ children, ...props }, ref) {
+      return <a ref={ref} {...props}>{children}</a>;
+    },
   ),
 }));
 
@@ -53,6 +59,10 @@ function createTask(overrides: Partial<KanbanTask> = {}): KanbanTask {
 
 describe("TaskCard - Priority Badge", () => {
   const onContextMenu = vi.fn();
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
 
   it("should not render priority badge when priority is null", () => {
     // Given
@@ -121,6 +131,27 @@ describe("TaskCard - Priority Badge", () => {
     expect(badge.className).toContain("ml-auto");
   });
 
+  it("should render session and remote badges with emphasized badge treatment", () => {
+    const task = createTask({
+      sessionType: SessionType.TMUX,
+      sshHost: "devbox",
+    });
+
+    render(<TaskCard task={task} index={0} onContextMenu={onContextMenu} />);
+
+    const sessionBadge = screen.getByText("tmux");
+    const remoteBadge = screen.getByText("devbox");
+
+    expect(sessionBadge.className).toContain("bg-tag-session-bg");
+    expect(sessionBadge.className).toContain("text-tag-session-text");
+    expect(sessionBadge.className).toContain("font-semibold");
+    expect(sessionBadge.className).toContain("ring-1");
+    expect(remoteBadge.className).toContain("bg-tag-ssh-bg");
+    expect(remoteBadge.className).toContain("text-tag-ssh-text");
+    expect(remoteBadge.className).toContain("font-semibold");
+    expect(remoteBadge.className).toContain("ring-1");
+  });
+
   it("should render project label above the task title with project color", () => {
     const task = createTask();
 
@@ -138,9 +169,112 @@ describe("TaskCard - Priority Badge", () => {
     expect(projectLabel).toBeTruthy();
     expect(projectLabel.style.color).toBe("rgb(101, 208, 138)");
 
-    const card = screen.getByRole("link").firstElementChild as HTMLElement;
+    const card = screen.getByRole("link");
     expect(card.style.borderColor).toBe("rgb(101, 208, 138)");
     expect(container.querySelector(".bg-border-strong")).toBeNull();
+  });
+
+  it("should preserve draggable style on the focusable task link while applying the project border color", () => {
+    const task = createTask();
+
+    render(
+      <TaskCard
+        task={task}
+        index={0}
+        onContextMenu={onContextMenu}
+        projectName="kanvibe"
+        projectColor="#65d08a"
+      />,
+    );
+
+    const link = screen.getByRole("link");
+    expect(link.getAttribute("data-rfd-draggable-id")).toBe("test");
+    expect(link.style.transform).toBe("translate(12px, 18px)");
+    expect(link.style.transition).toBe("transform 200ms ease");
+    expect(link.style.borderColor).toBe("rgb(101, 208, 138)");
+    expect(link.firstElementChild?.getAttribute("data-rfd-draggable-id")).toBeNull();
+  });
+
+  it("should move focus between tasks with ArrowUp and ArrowDown without scrolling", () => {
+    const firstTask = createTask({ id: "task-1", title: "First task", status: TaskStatus.TODO });
+    const secondTask = createTask({ id: "task-2", title: "Second task", status: TaskStatus.TODO });
+
+    render(
+      <>
+        <TaskCard task={firstTask} index={0} onContextMenu={onContextMenu} />
+        <TaskCard task={secondTask} index={1} onContextMenu={onContextMenu} />
+      </>,
+    );
+
+    const firstLink = screen.getByRole("link", { name: /First task/ });
+    const secondLink = screen.getByRole("link", { name: /Second task/ });
+
+    firstLink.focus();
+    const downEvent = createEvent.keyDown(firstLink, { key: "ArrowDown" });
+    fireEvent(firstLink, downEvent);
+
+    expect(downEvent.defaultPrevented).toBe(true);
+    expect(document.activeElement).toBe(secondLink);
+
+    const upEvent = createEvent.keyDown(secondLink, { key: "ArrowUp" });
+    fireEvent(secondLink, upEvent);
+
+    expect(upEvent.defaultPrevented).toBe(true);
+    expect(document.activeElement).toBe(firstLink);
+  });
+
+  it("should move focus across kanban columns with ArrowLeft and ArrowRight", () => {
+    const todoTask = createTask({ id: "task-1", title: "Todo task", status: TaskStatus.TODO });
+    const progressTask = createTask({ id: "task-2", title: "Progress task", status: TaskStatus.PROGRESS });
+
+    render(
+      <>
+        <TaskCard task={todoTask} index={0} onContextMenu={onContextMenu} />
+        <TaskCard task={progressTask} index={0} onContextMenu={onContextMenu} />
+      </>,
+    );
+
+    const todoLink = screen.getByRole("link", { name: /Todo task/ });
+    const progressLink = screen.getByRole("link", { name: /Progress task/ });
+
+    todoLink.focus();
+    const rightEvent = createEvent.keyDown(todoLink, { key: "ArrowRight" });
+    fireEvent(todoLink, rightEvent);
+
+    expect(rightEvent.defaultPrevented).toBe(true);
+    expect(document.activeElement).toBe(progressLink);
+
+    const leftEvent = createEvent.keyDown(progressLink, { key: "ArrowLeft" });
+    fireEvent(progressLink, leftEvent);
+
+    expect(leftEvent.defaultPrevented).toBe(true);
+    expect(document.activeElement).toBe(todoLink);
+  });
+
+  it("should open the task context menu with Shift+Enter without following the link", () => {
+    const task = createTask();
+    const rectSpy = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue({
+      x: 40,
+      y: 80,
+      left: 40,
+      top: 80,
+      right: 240,
+      bottom: 120,
+      width: 200,
+      height: 40,
+      toJSON: () => ({}),
+    });
+
+    render(<TaskCard task={task} index={0} onContextMenu={onContextMenu} />);
+
+    const link = screen.getByRole("link");
+    const event = createEvent.keyDown(link, { key: "Enter", shiftKey: true });
+    fireEvent(link, event);
+
+    expect(event.defaultPrevented).toBe(true);
+    expect(onContextMenu).toHaveBeenCalledWith(task, { x: 52, y: 92 });
+
+    rectSpy.mockRestore();
   });
 
   it("should keep task detail navigation in the same window on desktop", async () => {
