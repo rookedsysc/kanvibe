@@ -62,6 +62,7 @@ const messages = {
     openCodeHooksInstallSuccess: "OpenCode hooks installed",
     hooksInstallIncomplete: "Hooks were installed, but verification is incomplete.",
     hooksInstallFailed: "Hooks installation failed",
+    hooksRemoteNotSupported: "Remote projects are not supported",
     hooksCurrentTaskId: "Current taskId: {taskId}",
     hooksStatusDialog: {
       reinstall: "Reinstall",
@@ -138,6 +139,19 @@ describe("HooksStatusCard", () => {
     });
 
     expect(screen.getByRole("button", { name: "Reinstall Claude" })).toBeTruthy();
+  });
+
+  it("does not describe remote hook status as unsupported", () => {
+    renderCard({
+      taskId: "task-remote",
+      initialClaudeStatus: null,
+      initialGeminiStatus: null,
+      initialCodexStatus: null,
+      initialOpenCodeStatus: null,
+      isRemote: true,
+    });
+
+    expect(screen.queryByText("Remote projects are not supported")).toBeNull();
   });
 
   it("installs Claude hooks from the inline action and updates local status", async () => {

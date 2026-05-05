@@ -1,6 +1,6 @@
 import { execGit, isSSHTransportError } from "@/lib/gitOperations";
 import { quoteShellArgument } from "@/lib/hostFileAccess";
-import { getHookServerUrl } from "@/lib/hookEndpoint";
+import { getHookServerPort, getHookServerUrl } from "@/lib/hookEndpoint";
 
 export interface HookServerValidation {
   hasExpectedHookServerUrl: boolean;
@@ -57,6 +57,21 @@ export async function validateHookServerConfiguration(
       () => getHookServerUrl(sshHost),
     );
   } catch {
+    if (sshHost) {
+      const hasExpectedHookServerUrl = definedUrls.every(isRemoteHookServerUrlOnActivePort);
+      const reachableUrl = configuredHookServerUrl ?? definedUrls[0];
+      const hasReachableHookServer = hasExpectedHookServerUrl
+        ? await isHookServerReachable(reachableUrl, sshHost)
+        : false;
+
+      return {
+        hasExpectedHookServerUrl,
+        hasReachableHookServer,
+        expectedHookServerUrl: null,
+        configuredHookServerUrl,
+      };
+    }
+
     return {
       hasExpectedHookServerUrl: false,
       hasReachableHookServer: false,
@@ -160,6 +175,15 @@ function isExpectedHookServerUrl(configuredUrl: string, expectedUrl: string, isR
   }
 
   return normalizeLoopbackHostname(configured.hostname) === normalizeLoopbackHostname(expected.hostname);
+}
+
+function isRemoteHookServerUrlOnActivePort(configuredUrl: string): boolean {
+  const configured = parseHookServerUrl(configuredUrl);
+  if (!configured) {
+    return false;
+  }
+
+  return configured.protocol === "http:" && configured.port === String(getHookServerPort());
 }
 
 function parseHookServerUrl(url: string): URL | null {

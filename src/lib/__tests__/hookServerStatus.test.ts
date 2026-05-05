@@ -1,8 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { mockExecGit, mockGetHookServerUrl, mockFetch, mockIsSSHTransportError } = vi.hoisted(() => ({
+const { mockExecGit, mockGetHookServerUrl, mockGetHookServerPort, mockFetch, mockIsSSHTransportError } = vi.hoisted(() => ({
   mockExecGit: vi.fn(),
   mockGetHookServerUrl: vi.fn(),
+  mockGetHookServerPort: vi.fn(),
   mockFetch: vi.fn(),
   mockIsSSHTransportError: vi.fn((error: unknown) => /Connection reset/i.test(String(error))),
 }));
@@ -14,12 +15,14 @@ vi.mock("@/lib/gitOperations", () => ({
 
 vi.mock("@/lib/hookEndpoint", () => ({
   getHookServerUrl: (...args: unknown[]) => mockGetHookServerUrl(...args),
+  getHookServerPort: (...args: unknown[]) => mockGetHookServerPort(...args),
 }));
 
 describe("hookServerStatus", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockGetHookServerUrl.mockResolvedValue("http://localhost:9736");
+    mockGetHookServerPort.mockReturnValue(9736);
     mockExecGit.mockResolvedValue("");
     mockFetch.mockResolvedValue({ ok: true });
     mockIsSSHTransportError.mockImplementation((error: unknown) => /Connection reset/i.test(String(error)));
@@ -49,6 +52,32 @@ describe("hookServerStatus", () => {
       expect.stringContaining("http://100.83.96.29:6379/api/hooks/health"),
       "remote-host",
     );
+  });
+
+  it("accepts remote hook URLs by the active hook server port when the routed local IP cannot be recomputed", async () => {
+    mockGetHookServerUrl.mockRejectedValue(new Error("route unavailable"));
+    const { validateHookServerConfiguration } = await import("@/lib/hookServerStatus");
+
+    const result = await validateHookServerConfiguration(["http://100.83.96.29:9736"], true, "remote-host");
+
+    expect(result.hasExpectedHookServerUrl).toBe(true);
+    expect(result.hasReachableHookServer).toBe(true);
+    expect(result.expectedHookServerUrl).toBe(null);
+    expect(mockExecGit).toHaveBeenCalledWith(
+      expect.stringContaining("http://100.83.96.29:9736/api/hooks/health"),
+      "remote-host",
+    );
+  });
+
+  it("rejects remote hook URLs with a stale port when the routed local IP cannot be recomputed", async () => {
+    mockGetHookServerUrl.mockRejectedValue(new Error("route unavailable"));
+    const { validateHookServerConfiguration } = await import("@/lib/hookServerStatus");
+
+    const result = await validateHookServerConfiguration(["http://100.83.96.29:19736"], true, "remote-host");
+
+    expect(result.hasExpectedHookServerUrl).toBe(false);
+    expect(result.hasReachableHookServer).toBe(false);
+    expect(mockExecGit).not.toHaveBeenCalled();
   });
 
   it("checks hook server reachability from the remote host", async () => {
