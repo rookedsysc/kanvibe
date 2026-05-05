@@ -158,6 +158,20 @@ describe("sshConfig.buildSSHArgs", () => {
     });
   });
 
+  it("builds shard-specific KanVibe connection reuse options", async () => {
+    // Given
+    const { getKanvibeSSHConnectionReuseOptions } = await import("@/lib/sshConfig");
+
+    // When
+    const result = getKanvibeSSHConnectionReuseOptions(3);
+
+    // Then
+    expect(result).toEqual({
+      controlPath: "/home/local-user/.kanvibe/ssh-%C-3",
+      controlPersist: "10m",
+    });
+  });
+
   it("creates the KanVibe SSH control directory with private permissions", async () => {
     // Given
     mocks.mkdir.mockResolvedValue(undefined);
