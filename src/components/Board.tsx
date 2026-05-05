@@ -14,6 +14,8 @@ import DoneConfirmDialog from "./DoneConfirmDialog";
 import { reorderTasks, deleteTask, getMoreDoneTasks, moveTaskToColumn } from "@/desktop/renderer/actions/kanban";
 import type { TasksByStatus } from "@/desktop/renderer/actions/kanban";
 import { useBoardCommands } from "@/desktop/renderer/components/BoardCommandProvider";
+import { localizeHref } from "@/desktop/renderer/navigation";
+import { openInternalRouteInNewWindow } from "@/desktop/renderer/utils/windowOpen";
 import { SessionType, TaskStatus, type KanbanTask } from "@/entities/KanbanTask";
 import type { Project } from "@/entities/Project";
 import { useAutoRefresh } from "@/desktop/renderer/hooks/useAutoRefresh";
@@ -105,6 +107,31 @@ function shouldIgnoreBoardTaskFocusEvent(event: KeyboardEvent) {
   );
 }
 
+function getTaskCardFromKeyboardEvent(event: KeyboardEvent) {
+  const target = event.target instanceof Element
+    ? event.target
+    : document.activeElement instanceof Element
+      ? document.activeElement
+      : null;
+
+  return target?.closest<HTMLAnchorElement>(TASK_CARD_SELECTOR) ?? null;
+}
+
+function isShiftOnlyKeyboardShortcut(event: KeyboardEvent, key: string) {
+  return event.key === key && event.shiftKey && !event.altKey && !event.ctrlKey && !event.metaKey;
+}
+
+function getCurrentBoardLocale() {
+  const firstSegment = window.location.hash.replace(/^#/, "").split("/").filter(Boolean)[0];
+  return SUPPORTED_LOCALES.includes(firstSegment as typeof SUPPORTED_LOCALES[number])
+    ? firstSegment
+    : DEFAULT_LOCALE;
+}
+
+function openTaskDetailInNewWindow(taskId: string) {
+  openInternalRouteInNewWindow(localizeHref(`/task/${taskId}`, getCurrentBoardLocale()));
+}
+
 /** worktree repoPath에서 메인 프로젝트 경로를 추출한다 */
 function extractMainRepoPath(repoPath: string): string | null {
   const worktreeIndex = repoPath.indexOf("__worktrees");
@@ -113,11 +140,7 @@ function extractMainRepoPath(repoPath: string): string | null {
 }
 
 function openSettingsPage() {
-  const firstSegment = window.location.hash.replace(/^#/, "").split("/").filter(Boolean)[0];
-  const locale = SUPPORTED_LOCALES.includes(firstSegment as typeof SUPPORTED_LOCALES[number])
-    ? firstSegment
-    : DEFAULT_LOCALE;
-  window.location.hash = `#/${locale}/settings`;
+  window.location.hash = `#/${getCurrentBoardLocale()}/settings`;
 }
 
 /**
@@ -432,31 +455,33 @@ export default function Board({
   }, [contextMenu.isOpen, isBranchModalOpen, isModalOpen, pendingDoneResult]);
 
   useEffect(() => {
-    function handleWindowTaskContextMenu(event: KeyboardEvent) {
-      if (event.key !== "Enter" || !event.shiftKey || event.altKey || event.ctrlKey || event.metaKey) return;
+    function handleWindowTaskShortcut(event: KeyboardEvent) {
+      const shouldOpenTaskInNewWindow = isShiftOnlyKeyboardShortcut(event, "Enter");
+      const shouldOpenTaskContextMenu = isShiftOnlyKeyboardShortcut(event, "F10");
+      if (!shouldOpenTaskInNewWindow && !shouldOpenTaskContextMenu) return;
       if (contextMenu.isOpen || isModalOpen || isBranchModalOpen || pendingDoneResult) return;
 
-      const target = event.target instanceof Element
-        ? event.target
-        : document.activeElement instanceof Element
-          ? document.activeElement
-          : null;
-      const taskCard = target?.closest<HTMLAnchorElement>(TASK_CARD_SELECTOR);
+      const taskCard = getTaskCardFromKeyboardEvent(event);
       const taskId = taskCard?.dataset.kanbanTaskId;
       if (!taskCard || !taskId) return;
 
-      const task = findTaskById(filteredTasks, taskId);
-      if (!task) return;
-
       event.preventDefault();
       event.stopPropagation();
+
+      if (shouldOpenTaskInNewWindow) {
+        openTaskDetailInNewWindow(taskId);
+        return;
+      }
+
+      const task = findTaskById(filteredTasks, taskId);
+      if (!task) return;
 
       const rect = taskCard.getBoundingClientRect();
       setContextMenu({ isOpen: true, x: rect.left + 12, y: rect.top + 12, task });
     }
 
-    window.addEventListener("keydown", handleWindowTaskContextMenu, true);
-    return () => window.removeEventListener("keydown", handleWindowTaskContextMenu, true);
+    window.addEventListener("keydown", handleWindowTaskShortcut, true);
+    return () => window.removeEventListener("keydown", handleWindowTaskShortcut, true);
   }, [contextMenu.isOpen, filteredTasks, isBranchModalOpen, isModalOpen, pendingDoneResult]);
 
   const handleLoadMoreDone = useCallback(async () => {

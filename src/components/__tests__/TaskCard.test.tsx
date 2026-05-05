@@ -22,6 +22,7 @@ vi.mock("@hello-pangea/dnd", () => ({
 }));
 
 vi.mock("@/desktop/renderer/navigation", () => ({
+  localizeHref: (href: string, currentLocale = "ko") => href.startsWith("/") ? `/${currentLocale}${href}` : href,
   Link: forwardRef<HTMLAnchorElement, React.AnchorHTMLAttributes<HTMLAnchorElement> & { href: string }>(
     function MockLink({ children, ...props }, ref) {
       return <a ref={ref} {...props}>{children}</a>;
@@ -251,7 +252,24 @@ describe("TaskCard - Priority Badge", () => {
     expect(document.activeElement).toBe(todoLink);
   });
 
-  it("should open the task context menu with Shift+Enter without following the link", () => {
+  it("should open the task detail in a new window with Shift+Enter without following the link", () => {
+    const task = createTask();
+    const openWindow = vi.spyOn(window, "open").mockImplementation(() => null);
+
+    render(<TaskCard task={task} index={0} onContextMenu={onContextMenu} />);
+
+    const link = screen.getByRole("link");
+    const event = createEvent.keyDown(link, { key: "Enter", shiftKey: true });
+    fireEvent(link, event);
+
+    expect(event.defaultPrevented).toBe(true);
+    expect(openWindow).toHaveBeenCalledWith(`${window.location.origin}/#/ko/task/task-1`, "_blank", "noopener,noreferrer");
+    expect(onContextMenu).not.toHaveBeenCalled();
+
+    openWindow.mockRestore();
+  });
+
+  it("should open the task context menu with Shift+F10 without following the link", () => {
     const task = createTask();
     const rectSpy = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue({
       x: 40,
@@ -268,7 +286,7 @@ describe("TaskCard - Priority Badge", () => {
     render(<TaskCard task={task} index={0} onContextMenu={onContextMenu} />);
 
     const link = screen.getByRole("link");
-    const event = createEvent.keyDown(link, { key: "Enter", shiftKey: true });
+    const event = createEvent.keyDown(link, { key: "F10", shiftKey: true });
     fireEvent(link, event);
 
     expect(event.defaultPrevented).toBe(true);
