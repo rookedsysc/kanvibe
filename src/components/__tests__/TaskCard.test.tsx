@@ -131,7 +131,7 @@ describe("TaskCard - Priority Badge", () => {
     expect(badge.className).toContain("ml-auto");
   });
 
-  it("should render session and remote badges with emphasized badge treatment", () => {
+  it("should render session and remote badges with PR-aligned badge treatment", () => {
     const task = createTask({
       sessionType: SessionType.TMUX,
       sshHost: "devbox",
@@ -142,14 +142,16 @@ describe("TaskCard - Priority Badge", () => {
     const sessionBadge = screen.getByText("tmux");
     const remoteBadge = screen.getByText("devbox");
 
+    expect(sessionBadge.className).toContain("border-border-subtle");
     expect(sessionBadge.className).toContain("bg-tag-session-bg");
     expect(sessionBadge.className).toContain("text-tag-session-text");
-    expect(sessionBadge.className).toContain("font-semibold");
-    expect(sessionBadge.className).toContain("ring-1");
+    expect(sessionBadge.className).not.toContain("font-semibold");
+    expect(sessionBadge.className).not.toContain("ring-1");
+    expect(remoteBadge.className).toContain("border-border-subtle");
     expect(remoteBadge.className).toContain("bg-tag-ssh-bg");
     expect(remoteBadge.className).toContain("text-tag-ssh-text");
-    expect(remoteBadge.className).toContain("font-semibold");
-    expect(remoteBadge.className).toContain("ring-1");
+    expect(remoteBadge.className).not.toContain("font-semibold");
+    expect(remoteBadge.className).not.toContain("ring-1");
   });
 
   it("should render project label above the task title with project color", () => {

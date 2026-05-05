@@ -31,6 +31,8 @@ const priorityConfig: Record<TaskPriority, { label: string; colorClass: string }
   [TaskPriority.HIGH]: { label: "P1", colorClass: "bg-priority-high-bg text-priority-high-text" },
 };
 
+const badgeClassName = "inline-flex items-center rounded border border-border-subtle px-1.5 py-0.5 text-[10px]";
+
 const KANBAN_STATUS_ORDER = [
   TaskStatus.TODO,
   TaskStatus.PROGRESS,
@@ -187,7 +189,7 @@ export default function TaskCard({ task, index, onContextMenu, projectName, proj
                   e.stopPropagation();
                   window.open(task.prUrl!, "_blank", "noopener,noreferrer");
                 }}
-                className="inline-flex items-center gap-1 rounded border border-border-subtle bg-tag-pr-bg px-1.5 py-0.5 text-[10px] text-tag-pr-text transition-opacity hover:opacity-80"
+                className={`${badgeClassName} gap-1 bg-tag-pr-bg text-tag-pr-text transition-opacity hover:opacity-80`}
               >
                 <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
                   <path d="M7.177 3.073L9.573.677A.25.25 0 0110 .854v4.792a.25.25 0 01-.427.177L7.177 3.427a.25.25 0 010-.354zM3.75 2.5a.75.75 0 100 1.5.75.75 0 000-1.5zm-2.25.75a2.25 2.25 0 113 2.122v5.256a2.251 2.251 0 11-1.5 0V5.372A2.25 2.25 0 011.5 3.25zM11 2.5h-1V4h1a1 1 0 011 1v5.628a2.251 2.251 0 101.5 0V5A2.5 2.5 0 0011 2.5zm1 10.25a.75.75 0 111.5 0 .75.75 0 01-1.5 0zM3.75 12a.75.75 0 100 1.5.75.75 0 000-1.5z"/>
@@ -207,13 +209,13 @@ export default function TaskCard({ task, index, onContextMenu, projectName, proj
             )}
 
             {task.sessionType && (
-              <span className="inline-flex items-center rounded border border-tag-session-text/30 bg-tag-session-bg px-1.5 py-0.5 text-[10px] font-semibold text-tag-session-text ring-1 ring-inset ring-tag-session-text/10">
+              <span className={`${badgeClassName} bg-tag-session-bg text-tag-session-text`}>
                 {task.sessionType}
               </span>
             )}
 
             {task.sshHost && (
-              <span className="inline-flex items-center rounded border border-tag-ssh-text/30 bg-tag-ssh-bg px-1.5 py-0.5 text-[10px] font-semibold text-tag-ssh-text ring-1 ring-inset ring-tag-ssh-text/10">
+              <span className={`${badgeClassName} bg-tag-ssh-bg text-tag-ssh-text`}>
                 {task.sshHost}
               </span>
             )}
