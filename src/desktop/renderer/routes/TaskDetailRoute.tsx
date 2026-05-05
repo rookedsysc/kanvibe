@@ -31,6 +31,7 @@ import {
 import { useBoardCommands, type BranchTodoDefaults } from "@/desktop/renderer/components/BoardCommandProvider";
 import TerminalLoader from "@/desktop/renderer/components/TerminalLoader";
 import { fetchPrUrlWithPrompt } from "@/desktop/renderer/utils/fetchPrUrlWithPrompt";
+import { SHORTCUTS, getCurrentShortcutPlatform, matchShortcutEvent } from "@/desktop/renderer/utils/keyboardShortcut";
 import { INITIAL_DESKTOP_LOAD_TIMEOUT_MS, logDesktopInitialLoadTimeout } from "@/desktop/renderer/utils/loadingTimeout";
 import { buildRouteCacheKey, readRouteCache, removeRouteCache, writeRouteCache } from "@/desktop/renderer/utils/routeCache";
 import { useRefreshSignal } from "@/desktop/renderer/utils/refresh";
@@ -135,6 +136,7 @@ export default function TaskDetailRoute() {
   const notificationCenterRef = useRef<NotificationCenterButtonHandle>(null);
   const currentTaskIdRef = useRef(id);
   const hasTerminal = !!(state?.task.sessionType && state.task.sessionName);
+  const shortcutPlatform = getCurrentShortcutPlatform();
 
   useEffect(() => boardCommands.registerNotificationCenterHandler(() => {
     notificationCenterRef.current?.toggle();
@@ -155,6 +157,32 @@ export default function TaskDetailRoute() {
       setIsCreateTaskModalOpen(true);
     },
   }), [boardCommands, state?.task.baseBranch, state?.task.branchName, state?.task.projectId]);
+
+  useEffect(() => {
+    function consumeHistoryShortcut(event: KeyboardEvent) {
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation();
+    }
+
+    function handlePriorityHistoryShortcut(event: KeyboardEvent) {
+      if (matchShortcutEvent(event, SHORTCUTS.pageBack, shortcutPlatform)) {
+        consumeHistoryShortcut(event);
+        router.back();
+        return;
+      }
+
+      if (matchShortcutEvent(event, SHORTCUTS.pageForward, shortcutPlatform)) {
+        consumeHistoryShortcut(event);
+        router.forward();
+      }
+    }
+
+    window.addEventListener("keydown", handlePriorityHistoryShortcut, { capture: true });
+    return () => {
+      window.removeEventListener("keydown", handlePriorityHistoryShortcut, { capture: true });
+    };
+  }, [router, shortcutPlatform]);
 
   useEffect(() => {
     if (currentTaskIdRef.current === id) {

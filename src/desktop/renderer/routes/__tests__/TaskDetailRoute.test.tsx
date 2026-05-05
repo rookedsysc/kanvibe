@@ -32,6 +32,7 @@ const mocks = vi.hoisted(() => ({
   redirect: vi.fn(),
   push: vi.fn(),
   back: vi.fn(),
+  forward: vi.fn(),
 }));
 
 function createDeferred<T>() {
@@ -78,7 +79,7 @@ vi.mock("react-router-dom", () => ({
 vi.mock("@/desktop/renderer/navigation", () => ({
   Link: ({ children }: { children: ReactNode }) => <div>{children}</div>,
   redirect: (...args: unknown[]) => mocks.redirect(...args),
-  useRouter: () => ({ push: mocks.push, back: mocks.back }),
+  useRouter: () => ({ push: mocks.push, back: mocks.back, forward: mocks.forward }),
 }));
 
 vi.mock("@/desktop/renderer/utils/refresh", () => ({
@@ -511,6 +512,59 @@ describe("TaskDetailRoute", () => {
     await waitFor(() => {
       expect(screen.queryByTestId("task-title")).toBeNull();
     });
+  });
+
+  it("상세 화면 페이지 이동 단축키는 터미널 입력보다 먼저 capture 단계에서 처리한다", async () => {
+    mocks.getTaskById.mockResolvedValue({
+      id: "task-1",
+      title: "task title",
+      description: null,
+      branchName: "feat/detail-shortcut",
+      baseBranch: "main",
+      prUrl: null,
+      sessionType: "tmux",
+      sessionName: "task-session",
+      sshHost: null,
+      projectId: "project-1",
+      project: { id: "project-1", name: "kanvibe" },
+      status: "todo",
+      agentType: null,
+      worktreePath: "/repo__worktrees/detail-shortcut",
+    });
+
+    render(
+      <BoardCommandProvider>
+        <TaskDetailRoute />
+      </BoardCommandProvider>,
+    );
+
+    const terminalInput = await screen.findByLabelText("terminal input");
+    const terminalKeyDown = vi.fn();
+    const windowBubbleKeyDown = vi.fn();
+    terminalInput.addEventListener("keydown", terminalKeyDown);
+    window.addEventListener("keydown", windowBubbleKeyDown);
+
+    const wasNotPrevented = fireEvent.keyDown(terminalInput, {
+      key: "[",
+      ctrlKey: true,
+      shiftKey: true,
+    });
+    terminalInput.removeEventListener("keydown", terminalKeyDown);
+    window.removeEventListener("keydown", windowBubbleKeyDown);
+
+    expect(wasNotPrevented).toBe(false);
+    expect(mocks.back).toHaveBeenCalledTimes(1);
+    expect(terminalKeyDown).not.toHaveBeenCalled();
+    expect(windowBubbleKeyDown).not.toHaveBeenCalled();
+
+    fireEvent.keyDown(terminalInput, {
+      key: "]",
+      ctrlKey: true,
+      shiftKey: true,
+    });
+
+    expect(mocks.forward).toHaveBeenCalledTimes(1);
+    expect(mocks.back).toHaveBeenCalledTimes(1);
   });
 
   it("알림 단축키로 상세 화면의 알림 센터를 토글한다", async () => {

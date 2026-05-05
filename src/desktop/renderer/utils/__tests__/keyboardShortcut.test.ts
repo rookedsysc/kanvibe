@@ -147,7 +147,7 @@ describe("keyboardShortcut", () => {
     }, "Mod+N", "linux")).toBe(false);
   });
 
-  it("Electron 페이지 이동 input도 macOS Cmd와 Linux Alt로 매칭한다", () => {
+  it("Electron 페이지 이동 input도 macOS Cmd와 Linux Ctrl로 매칭한다", () => {
     expect(matchElectronShortcutInput({
       type: "keyDown",
       isAutoRepeat: false,
