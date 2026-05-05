@@ -286,9 +286,10 @@
   --color-border-strong: #c8ccd3;
   --color-border-brand: #8f97ee;
 
-  --color-tag-project-bg: #eef0f4;
-  --color-tag-project-text: #3c414a;
-  --color-tag-base-bg: #2f3440;
+  --color-tag-project-bg: #202632;
+  --color-tag-project-text: #FFFFFF;
+  --color-tag-base-bg: #202632;
+  --color-tag-base-text: #FFFFFF;
   --color-group-line: #cdd1d8;
 
   --shadow-xs: 0 1px 1px rgba(17, 24, 39, 0.04);
