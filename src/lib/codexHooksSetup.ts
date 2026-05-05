@@ -3,7 +3,7 @@ import path from "path";
 import { addAiToolPatternsToGitExclude } from "@/lib/gitExclude";
 import { readTextFile, readTextFiles } from "@/lib/hostFileAccess";
 import { extractShellHookServerUrl, validateHookServerConfiguration } from "@/lib/hookServerStatus";
-import { buildShellTaskIdResolver, extractShellTaskId } from "@/lib/hookTaskBinding";
+import { buildShellTaskIdResolver, getShellTaskIdBindingStatus } from "@/lib/hookTaskBinding";
 
 /**
  * Codex CLI 최신 hooks 설정은 `.codex/config.toml`의 feature flag와
@@ -101,18 +101,6 @@ export function generateStopHookScript(kanvibeUrl: string, taskId: string): stri
     kanvibeUrl,
     taskId,
   );
-}
-
-function hasTaskIdPayloadBinding(content: string, taskId?: string): boolean {
-  const boundTaskId = extractShellTaskId(content);
-  const hasTaskIdPayload = content.includes("taskId") && content.includes("${TASK_ID}");
-  if (!hasTaskIdPayload) return false;
-
-  if (!taskId) {
-    return boundTaskId !== null;
-  }
-
-  return boundTaskId === taskId;
 }
 
 function parseHooksJson(content: string): CodexHooksFile {
@@ -326,6 +314,7 @@ export interface CodexHooksStatus {
   hasHookEntries: boolean;
   hasConfigEntry: boolean;
   hasTaskIdBinding?: boolean;
+  hasExpectedTaskId?: boolean;
   hasStatusMappings?: boolean;
   hasExpectedHookServerUrl?: boolean;
   hasReachableHookServer?: boolean;
@@ -368,8 +357,7 @@ export async function getCodexHooksStatus(repoPath: string, taskId?: string, ssh
   const configContent = configFile.content;
 
   const hookScripts = [promptContent, permissionContent, preToolContent, stopContent];
-  const boundTaskId = hookScripts.map((content) => extractShellTaskId(content)).find((value) => value !== null) ?? null;
-  const hasTaskIdBinding = hookScripts.every((content) => hasTaskIdPayloadBinding(content, taskId));
+  const { boundTaskId, hasTaskIdBinding, hasExpectedTaskId } = getShellTaskIdBindingStatus(hookScripts, taskId);
   const hasStatusMappings = promptContent.includes('\\\"status\\\": \\\"progress\\\"')
     && permissionContent.includes('\\\"status\\\": \\\"pending\\\"')
     && preToolContent.includes('\\\"status\\\": \\\"progress\\\"')
@@ -396,6 +384,7 @@ export async function getCodexHooksStatus(repoPath: string, taskId?: string, ssh
     && hasHookEntries
     && hasConfigEntry
     && hasTaskIdBinding
+    && hasExpectedTaskId
     && hasStatusMappings
     && hookServerValidation.hasExpectedHookServerUrl;
 
@@ -409,6 +398,7 @@ export async function getCodexHooksStatus(repoPath: string, taskId?: string, ssh
     hasHookEntries,
     hasConfigEntry,
     hasTaskIdBinding,
+    hasExpectedTaskId,
     hasStatusMappings,
     hasExpectedHookServerUrl: hookServerValidation.hasExpectedHookServerUrl,
     hasReachableHookServer: hookServerValidation.hasReachableHookServer,

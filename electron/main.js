@@ -12,11 +12,13 @@ const { createDesktopDiagnostics, resolveDesktopLogPath, serializeErrorForLog } 
 
 const DEFAULT_LOCALE = "ko";
 const RENDERER_DEV_URL = process.env.KANVIBE_RENDERER_URL || null;
+const SHOULD_USE_SOURCE_MODULES = Boolean(RENDERER_DEV_URL);
 const HOOK_SERVER_HOST = "0.0.0.0";
-const HOOK_SERVER_PORT = 9736;
+const DEV_HOOK_SERVER_PORT = 6379;
+const PACKAGED_HOOK_SERVER_PORT = 9736;
+const HOOK_SERVER_PORT = SHOULD_USE_SOURCE_MODULES ? DEV_HOOK_SERVER_PORT : PACKAGED_HOOK_SERVER_PORT;
 const RENDERER_ABORT_RECOVERY_TIMEOUT_MS = 1000;
 const RENDERER_ABORT_RECOVERY_INTERVAL_MS = 50;
-const SHOULD_USE_SOURCE_MODULES = Boolean(RENDERER_DEV_URL);
 const originalResolveFilename = Module._resolveFilename;
 
 const isHeadlessLinuxRuntime = !process.env.DISPLAY && !process.env.WAYLAND_DISPLAY;
@@ -821,6 +823,11 @@ function startHookServer() {
   hookServer = createHookServer({ host: HOOK_SERVER_HOST, port: HOOK_SERVER_PORT });
 }
 
+function configureHookEndpointPort() {
+  const { setHookServerPort } = require(getRuntimeModulePath(path.join("src", "lib", "hookEndpoint.ts")));
+  setHookServerPort(HOOK_SERVER_PORT);
+}
+
 async function loadRenderer(window, targetUrl = getRendererNavigationUrl()) {
   logDiagnostic("renderer:load-start", {
     targetUrl,
@@ -885,6 +892,7 @@ app.whenReady().then(async () => {
   });
 
   registerRuntimeAliases();
+  configureHookEndpointPort();
   session.defaultSession.setPermissionRequestHandler((_webContents, permission, callback) => {
     callback(permission === "notifications");
   });

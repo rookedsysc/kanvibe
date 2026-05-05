@@ -26,7 +26,8 @@ describe("hookServerStatus", () => {
     vi.stubGlobal("fetch", mockFetch);
   });
 
-  it("marks stale configured hook URLs as invalid", async () => {
+  it("marks remote hook URLs with a mismatched port as invalid", async () => {
+    mockGetHookServerUrl.mockResolvedValue("http://10.0.0.4:6379");
     const { validateHookServerConfiguration } = await import("@/lib/hookServerStatus");
 
     const result = await validateHookServerConfiguration(["http://192.168.0.8:9736"], true, "remote-host");
@@ -34,6 +35,20 @@ describe("hookServerStatus", () => {
     expect(result.hasExpectedHookServerUrl).toBe(false);
     expect(result.hasReachableHookServer).toBe(false);
     expect(mockExecGit).not.toHaveBeenCalled();
+  });
+
+  it("accepts remote hook URLs with a different host when the port matches", async () => {
+    mockGetHookServerUrl.mockResolvedValue("http://10.0.0.4:6379");
+    const { validateHookServerConfiguration } = await import("@/lib/hookServerStatus");
+
+    const result = await validateHookServerConfiguration(["http://100.83.96.29:6379"], true, "remote-host");
+
+    expect(result.hasExpectedHookServerUrl).toBe(true);
+    expect(result.hasReachableHookServer).toBe(true);
+    expect(mockExecGit).toHaveBeenCalledWith(
+      expect.stringContaining("http://100.83.96.29:6379/api/hooks/health"),
+      "remote-host",
+    );
   });
 
   it("checks hook server reachability from the remote host", async () => {

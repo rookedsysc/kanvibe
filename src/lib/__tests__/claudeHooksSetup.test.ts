@@ -99,4 +99,16 @@ describe("claudeHooksSetup", () => {
 
     vi.unstubAllGlobals();
   });
+
+  it("현재 task id와 다른 Claude hook은 설치된 것으로 보지 않는다", async () => {
+    const repoPath = tempDir;
+
+    await setupClaudeHooks(repoPath, "task-1", "http://localhost:9736");
+    const status = await getClaudeHooksStatus(repoPath, "task-2");
+
+    expect(status.installed).toBe(false);
+    expect(status.hasTaskIdBinding).toBe(true);
+    expect(status.hasExpectedTaskId).toBe(false);
+    expect(status.boundTaskId).toBe("task-1");
+  });
 });

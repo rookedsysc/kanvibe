@@ -23,4 +23,16 @@ describe("desktop runtime environment", () => {
       source.indexOf("process.env.KANVIBE_DESKTOP"),
     );
   });
+
+  it("uses port 6379 for hook server in desktop dev mode", () => {
+    const source = readFileSync(path.join(process.cwd(), "electron", "main.js"), "utf8");
+
+    expect(source).toContain("const DEV_HOOK_SERVER_PORT = 6379");
+    expect(source).toContain("const PACKAGED_HOOK_SERVER_PORT = 9736");
+    expect(source).toContain("const HOOK_SERVER_PORT = SHOULD_USE_SOURCE_MODULES ? DEV_HOOK_SERVER_PORT : PACKAGED_HOOK_SERVER_PORT");
+    expect(source).toContain("setHookServerPort(HOOK_SERVER_PORT)");
+    expect(source.indexOf("configureHookEndpointPort();")).toBeLessThan(
+      source.indexOf("  registerDesktopHandlers();"),
+    );
+  });
 });

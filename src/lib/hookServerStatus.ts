@@ -65,9 +65,13 @@ export async function validateHookServerConfiguration(
     };
   }
 
-  const hasExpectedHookServerUrl = definedUrls.every((value) => value === expectedHookServerUrl);
+  const hasExpectedHookServerUrl = definedUrls.every((value) => isExpectedHookServerUrl(
+    value,
+    expectedHookServerUrl,
+    Boolean(sshHost),
+  ));
   const hasReachableHookServer = hasExpectedHookServerUrl
-    ? await isHookServerReachable(expectedHookServerUrl, sshHost)
+    ? await isHookServerReachable(configuredHookServerUrl, sshHost)
     : false;
 
   return {
@@ -138,4 +142,34 @@ async function getCachedValue<T>(
 
 function ensureTrailingSlash(url: string) {
   return url.endsWith("/") ? url : `${url}/`;
+}
+
+function isExpectedHookServerUrl(configuredUrl: string, expectedUrl: string, isRemote: boolean): boolean {
+  const configured = parseHookServerUrl(configuredUrl);
+  const expected = parseHookServerUrl(expectedUrl);
+  if (!configured || !expected) {
+    return false;
+  }
+
+  if (configured.protocol !== expected.protocol || configured.port !== expected.port) {
+    return false;
+  }
+
+  if (isRemote) {
+    return true;
+  }
+
+  return normalizeLoopbackHostname(configured.hostname) === normalizeLoopbackHostname(expected.hostname);
+}
+
+function parseHookServerUrl(url: string): URL | null {
+  try {
+    return new URL(url);
+  } catch {
+    return null;
+  }
+}
+
+function normalizeLoopbackHostname(hostname: string): string {
+  return hostname === "127.0.0.1" ? "localhost" : hostname;
 }

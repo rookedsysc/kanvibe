@@ -5,21 +5,33 @@ import os from "node:os";
 import { parseSSHConfig } from "@/lib/sshConfig";
 
 export const KANVIBE_HOOK_SERVER_PORT = 9736;
+export const KANVIBE_DEV_HOOK_SERVER_PORT = 6379;
+
+declare global {
+  var __KANVIBE_HOOK_SERVER_PORT__: number | undefined;
+}
+
+export function setHookServerPort(port: number): void {
+  globalThis.__KANVIBE_HOOK_SERVER_PORT__ = port;
+}
+
+export function getHookServerPort(): number {
+  return globalThis.__KANVIBE_HOOK_SERVER_PORT__ ?? KANVIBE_HOOK_SERVER_PORT;
+}
 
 export function getLocalHookServerUrl(): string {
-  return `http://localhost:${KANVIBE_HOOK_SERVER_PORT}`;
+  return `http://localhost:${getHookServerPort()}`;
 }
 
 export async function getRemoteHookServerUrl(sshHost?: string | null): Promise<string> {
-  const preferredHost = process.env.KANVIBE_EXTERNAL_HOST
-    || await getSshRouteIpv4Address(sshHost)
+  const preferredHost = await getSshRouteIpv4Address(sshHost)
     || getPreferredIpv4Address();
 
   if (!preferredHost) {
-    throw new Error("로컬 Hook 서버에 접근할 수 있는 IP를 찾지 못했습니다. KANVIBE_EXTERNAL_HOST를 설정해 주세요.");
+    throw new Error("원격 환경에서 로컬 Hook 서버에 접근할 수 있는 경로를 찾지 못했습니다.");
   }
 
-  return `http://${preferredHost}:${KANVIBE_HOOK_SERVER_PORT}`;
+  return `http://${preferredHost}:${getHookServerPort()}`;
 }
 
 export async function getHookServerUrl(sshHost?: string | null): Promise<string> {

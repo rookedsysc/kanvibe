@@ -3,7 +3,7 @@ import path from "path";
 import { addAiToolPatternsToGitExclude } from "@/lib/gitExclude";
 import { readTextFile, readTextFiles } from "@/lib/hostFileAccess";
 import { extractShellHookServerUrl, validateHookServerConfiguration } from "@/lib/hookServerStatus";
-import { buildShellTaskIdResolver, extractShellTaskId } from "@/lib/hookTaskBinding";
+import { buildShellTaskIdResolver, getShellTaskIdBindingStatus } from "@/lib/hookTaskBinding";
 
 /**
  * Gemini CLI hooks는 stdout에 반드시 JSON만 출력해야 한다.
@@ -72,25 +72,6 @@ interface GeminiHookEntry {
 
 const GEMINI_PROMPT_COMMAND = '"$GEMINI_PROJECT_DIR"/.gemini/hooks/kanvibe-prompt-hook.sh';
 const GEMINI_STOP_COMMAND = '"$GEMINI_PROJECT_DIR"/.gemini/hooks/kanvibe-stop-hook.sh';
-
-function hasTaskIdPayloadBinding(content: string, taskId?: string): boolean {
-  const boundTaskId = extractShellTaskId(content);
-  const hasTaskIdPayload = content.includes("taskId") && content.includes("${TASK_ID}");
-  if (!hasTaskIdPayload) return false;
-
-  if (!taskId) {
-    return boundTaskId !== null;
-  }
-
-  return boundTaskId === taskId;
-}
-
-function hasLegacyBranchPayloadBinding(content: string): boolean {
-  return content.includes('BRANCH_NAME=$(git rev-parse --abbrev-ref HEAD')
-    && content.includes('PROJECT_NAME="')
-    && content.includes('\\\"branchName\\\": \\\"${BRANCH_NAME}\\\"')
-    && content.includes('\\\"projectName\\\": \\\"${PROJECT_NAME}\\\"');
-}
 
 /** 기존 settings.json을 읽거나 빈 객체를 반환한다 */
 async function readSettingsJson(settingsPath: string, sshHost?: string | null): Promise<GeminiSettings> {
@@ -197,6 +178,7 @@ export interface GeminiHooksStatus {
   hasStopHook: boolean;
   hasSettingsEntry: boolean;
   hasTaskIdBinding?: boolean;
+  hasExpectedTaskId?: boolean;
   hasStatusMappings?: boolean;
   hasExpectedHookServerUrl?: boolean;
   hasReachableHookServer?: boolean;
@@ -226,11 +208,7 @@ export async function getGeminiHooksStatus(repoPath: string, taskId?: string, ss
   const stopContent = stopScript.content;
 
   const scriptContents = [promptContent, stopContent];
-  const boundTaskIds = scriptContents.map(extractShellTaskId).filter((value): value is string => value !== null);
-  const boundTaskId = boundTaskIds.length > 0 && boundTaskIds.every((value) => value === boundTaskIds[0])
-    ? boundTaskIds[0]
-    : null;
-  const hasTaskIdBinding = scriptContents.every((content) => hasTaskIdPayloadBinding(content, taskId));
+  const { boundTaskId, hasTaskIdBinding, hasExpectedTaskId } = getShellTaskIdBindingStatus(scriptContents, taskId);
   const hookServerValidation = await validateHookServerConfiguration(
     scriptContents.map(extractShellHookServerUrl),
     Boolean(taskId),
@@ -257,6 +235,7 @@ export async function getGeminiHooksStatus(repoPath: string, taskId?: string, ss
     && stopScript.exists
     && hasSettingsEntry
     && hasTaskIdBinding
+    && hasExpectedTaskId
     && hasStatusMappings
     && hookServerValidation.hasExpectedHookServerUrl;
 
@@ -266,6 +245,7 @@ export async function getGeminiHooksStatus(repoPath: string, taskId?: string, ss
     hasStopHook: stopScript.exists,
     hasSettingsEntry,
     hasTaskIdBinding,
+    hasExpectedTaskId,
     hasStatusMappings,
     hasExpectedHookServerUrl: hookServerValidation.hasExpectedHookServerUrl,
     hasReachableHookServer: hookServerValidation.hasReachableHookServer,
