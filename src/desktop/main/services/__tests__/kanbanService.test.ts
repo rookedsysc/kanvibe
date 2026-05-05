@@ -21,6 +21,7 @@ const mocks = vi.hoisted(() => ({
   removeSessionOnly: vi.fn(),
   detachSession: vi.fn(),
   installKanvibeHooks: vi.fn(),
+  scheduleKanvibeHooksInstall: vi.fn(),
   broadcastBoardUpdate: vi.fn(),
   execGit: vi.fn(),
   pullCurrentBranch: vi.fn(),
@@ -73,6 +74,7 @@ vi.mock("@/lib/terminal", () => ({
 
 vi.mock("@/lib/kanvibeHooksInstaller", () => ({
   installKanvibeHooks: mocks.installKanvibeHooks,
+  scheduleKanvibeHooksInstall: mocks.scheduleKanvibeHooksInstall,
 }));
 
 vi.mock("@/lib/boardNotifier", () => ({
@@ -99,6 +101,18 @@ describe("kanbanService.createTask", () => {
     vi.clearAllMocks();
     mocks.taskRepo.create.mockImplementation((value) => value);
     mocks.installKanvibeHooks.mockResolvedValue(undefined);
+    mocks.scheduleKanvibeHooksInstall.mockImplementation((
+      targetPath: string,
+      taskId: string,
+      sshHost: string | null | undefined,
+      options: { delayMs?: number; onSuccess?: () => void; onFailure?: (error: unknown) => void } = {},
+    ) => {
+      setTimeout(() => {
+        void mocks.installKanvibeHooks(targetPath, taskId, sshHost)
+          .then(() => options.onSuccess?.())
+          .catch((error: unknown) => options.onFailure?.(error));
+      }, options.delayMs ?? 0);
+    });
     mocks.removeSessionOnly.mockResolvedValue(undefined);
     mocks.removeWorktreeAndBranch.mockResolvedValue(undefined);
     mocks.remoteBranchExists.mockResolvedValue(true);

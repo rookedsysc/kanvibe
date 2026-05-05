@@ -12,7 +12,7 @@ import {
   type BackgroundSyncFailurePayload,
   type TaskPrMergedDetectedPayload,
 } from "@/lib/boardNotifier";
-import { installKanvibeHooks } from "@/lib/kanvibeHooksInstaller";
+import { installKanvibeHooks, scheduleKanvibeHooksInstall } from "@/lib/kanvibeHooksInstaller";
 import { execGit, pullCurrentBranch, remoteBranchExists } from "@/lib/gitOperations";
 import { detachSession } from "@/lib/terminal";
 
@@ -137,29 +137,28 @@ export function scheduleTaskHookInstall(
   targetPath: string,
   task: Pick<KanbanTask, "id" | "title" | "sshHost">,
 ) {
-  setTimeout(() => {
-    void installKanvibeHooks(targetPath, task.id, task.sshHost)
-      .then(() => {
-        broadcastBoardUpdate();
-      })
-      .catch((error) => {
-        const errorMessage = getErrorMessage(error);
+  scheduleKanvibeHooksInstall(targetPath, task.id, task.sshHost, {
+    onSuccess: () => {
+      broadcastBoardUpdate();
+    },
+    onFailure: (error) => {
+      const errorMessage = getErrorMessage(error);
 
-        console.error("새 태스크 hooks 백그라운드 설치 실패:", {
-          taskId: task.id,
-          taskTitle: task.title,
-          targetPath,
-          sshHost: task.sshHost ?? null,
-          error: errorMessage,
-        });
-
-        broadcastTaskHookInstallFailed({
-          taskId: task.id,
-          taskTitle: task.title,
-          error: errorMessage,
-        });
+      console.error("새 태스크 hooks 백그라운드 설치 실패:", {
+        taskId: task.id,
+        taskTitle: task.title,
+        targetPath,
+        sshHost: task.sshHost ?? null,
+        error: errorMessage,
       });
-  }, 0);
+
+      broadcastTaskHookInstallFailed({
+        taskId: task.id,
+        taskTitle: task.title,
+        error: errorMessage,
+      });
+    },
+  });
 }
 
 export function prepareOptimisticDoneTransition(

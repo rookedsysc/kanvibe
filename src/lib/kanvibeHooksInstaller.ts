@@ -26,8 +26,107 @@ import { quoteShellArgument } from "@/lib/hostFileAccess";
 
 const HOOK_INSTALL_MAX_ATTEMPTS = 3;
 const HOOK_INSTALL_RETRY_DELAY_MS = 500;
+const activeHookInstallJobs = new Map<string, Promise<void>>();
+const scheduledHookInstallJobs = new Map<string, ScheduledHookInstallJob>();
+
+interface HookInstallScheduleOptions {
+  delayMs?: number;
+  onSuccess?: () => void;
+  onFailure?: (error: unknown) => void;
+}
+
+interface HookInstallCallbacks {
+  onSuccess?: () => void;
+  onFailure?: (error: unknown) => void;
+}
+
+interface ScheduledHookInstallJob {
+  callbacks: HookInstallCallbacks[];
+}
 
 export async function installKanvibeHooks(
+  targetPath: string,
+  taskId: string,
+  sshHost?: string | null,
+): Promise<void> {
+  const installKey = buildHookInstallKey(targetPath, taskId, sshHost);
+  const activeJob = activeHookInstallJobs.get(installKey);
+  if (activeJob) {
+    return activeJob;
+  }
+
+  const installJob = runKanvibeHooksInstallWithRetry(targetPath, taskId, sshHost)
+    .finally(() => {
+      if (activeHookInstallJobs.get(installKey) === installJob) {
+        activeHookInstallJobs.delete(installKey);
+      }
+    });
+
+  activeHookInstallJobs.set(installKey, installJob);
+  return installJob;
+}
+
+export function scheduleKanvibeHooksInstall(
+  targetPath: string,
+  taskId: string,
+  sshHost?: string | null,
+  options: HookInstallScheduleOptions = {},
+): void {
+  const installKey = buildHookInstallKey(targetPath, taskId, sshHost);
+  const callbacks: HookInstallCallbacks = {
+    onSuccess: options.onSuccess,
+    onFailure: options.onFailure,
+  };
+  const scheduledJob = scheduledHookInstallJobs.get(installKey);
+  if (scheduledJob) {
+    scheduledJob.callbacks.push(callbacks);
+    return;
+  }
+
+  const nextJob: ScheduledHookInstallJob = {
+    callbacks: [callbacks],
+  };
+  scheduledHookInstallJobs.set(installKey, nextJob);
+
+  setTimeout(() => {
+    void installKanvibeHooks(targetPath, taskId, sshHost)
+      .then(() => notifyHookInstallSuccess(nextJob.callbacks))
+      .catch((error) => notifyHookInstallFailure(nextJob.callbacks, error))
+      .finally(() => {
+        if (scheduledHookInstallJobs.get(installKey) === nextJob) {
+          scheduledHookInstallJobs.delete(installKey);
+        }
+      });
+  }, options.delayMs ?? 0);
+}
+
+function buildHookInstallKey(targetPath: string, taskId: string, sshHost?: string | null): string {
+  return [sshHost ?? "", targetPath, taskId].join("\0");
+}
+
+function notifyHookInstallSuccess(callbacks: HookInstallCallbacks[]): void {
+  for (const callback of callbacks) {
+    runHookInstallCallback(() => callback.onSuccess?.());
+  }
+}
+
+function notifyHookInstallFailure(callbacks: HookInstallCallbacks[], error: unknown): void {
+  for (const callback of callbacks) {
+    runHookInstallCallback(() => callback.onFailure?.(error));
+  }
+}
+
+function runHookInstallCallback(callback: () => void): void {
+  try {
+    callback();
+  } catch (error) {
+    console.warn("[hooks] install callback failed", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
+async function runKanvibeHooksInstallWithRetry(
   targetPath: string,
   taskId: string,
   sshHost?: string | null,
