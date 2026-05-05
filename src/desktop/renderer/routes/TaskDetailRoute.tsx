@@ -520,10 +520,7 @@ export default function TaskDetailRoute() {
         {hasTerminal ? (
           <div className="flex-1 flex flex-col min-h-0 rounded-lg overflow-hidden shadow-md">
             <div className="bg-terminal-chrome flex items-center gap-2 px-4 py-2.5 shrink-0">
-              <span className="w-3 h-3 rounded-full bg-traffic-close" />
-              <span className="w-3 h-3 rounded-full bg-traffic-minimize" />
-              <span className="w-3 h-3 rounded-full bg-traffic-maximize" />
-              <span className="ml-3 text-xs text-terminal-text font-mono truncate">{state.task.sessionName ?? t("terminal")}</span>
+              <span className="text-xs text-terminal-text font-mono truncate">{state.task.sessionName ?? t("terminal")}</span>
               <div className="ml-auto">
                 <NotificationCenterButton ref={notificationCenterRef} buttonClassName="text-terminal-text hover:text-white hover:bg-white/10" panelClassName="mt-3" />
               </div>

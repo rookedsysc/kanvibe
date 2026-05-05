@@ -4,14 +4,12 @@ import {
   getDefaultSessionType,
   getNotificationSettings,
   getSidebarDefaultCollapsed,
-  getTaskSearchShortcut,
   getThemePreference,
   type ThemePreference,
 } from "@/desktop/renderer/actions/appSettings";
 import { getAllProjects, getAvailableHosts } from "@/desktop/renderer/actions/project";
 import { useRouter } from "@/desktop/renderer/navigation";
 import { useRefreshSignal } from "@/desktop/renderer/utils/refresh";
-import { DEFAULT_TASK_SEARCH_SHORTCUT } from "@/desktop/renderer/utils/keyboardShortcut";
 import { INITIAL_DESKTOP_LOAD_TIMEOUT_MS, logDesktopInitialLoadTimeout } from "@/desktop/renderer/utils/loadingTimeout";
 import { SessionType } from "@/entities/KanbanTask";
 
@@ -21,7 +19,6 @@ interface SettingsData {
   sidebarDefaultCollapsed: boolean;
   notificationSettings: Awaited<ReturnType<typeof getNotificationSettings>>;
   defaultSessionType: Awaited<ReturnType<typeof getDefaultSessionType>>;
-  taskSearchShortcut: Awaited<ReturnType<typeof getTaskSearchShortcut>>;
   themePreference: ThemePreference;
 }
 
@@ -32,7 +29,6 @@ function createEmptySettingsData(): SettingsData {
     sidebarDefaultCollapsed: false,
     notificationSettings: { isEnabled: true, enabledStatuses: ["progress", "pending", "review"] },
     defaultSessionType: SessionType.TMUX,
-    taskSearchShortcut: DEFAULT_TASK_SEARCH_SHORTCUT,
     themePreference: "system",
   };
 }
@@ -61,9 +57,8 @@ export default function SettingsRoute() {
       getSidebarDefaultCollapsed(),
       getNotificationSettings(),
       getDefaultSessionType(),
-      getTaskSearchShortcut(),
       getThemePreference(),
-    ]).then(([projects, sshHosts, sidebarDefaultCollapsed, notificationSettings, defaultSessionType, taskSearchShortcut, themePreference]) => {
+    ]).then(([projects, sshHosts, sidebarDefaultCollapsed, notificationSettings, defaultSessionType, themePreference]) => {
       window.clearTimeout(loadingTimeout);
       if (!cancelled) {
         setData({
@@ -72,7 +67,6 @@ export default function SettingsRoute() {
           sidebarDefaultCollapsed,
           notificationSettings,
           defaultSessionType,
-          taskSearchShortcut,
           themePreference,
         });
       }
@@ -103,7 +97,6 @@ export default function SettingsRoute() {
       sshHosts={data.sshHosts}
       sidebarDefaultCollapsed={data.sidebarDefaultCollapsed}
       defaultSessionType={data.defaultSessionType}
-      taskSearchShortcut={data.taskSearchShortcut}
       themePreference={data.themePreference}
       onDefaultSessionTypeChange={(sessionType) => {
         setData((currentData) => currentData ? { ...currentData, defaultSessionType: sessionType } : currentData);

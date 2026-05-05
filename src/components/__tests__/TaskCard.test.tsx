@@ -121,6 +121,24 @@ describe("TaskCard - Priority Badge", () => {
     expect(badge.className).toContain("ml-auto");
   });
 
+  it("should render project label above the task title with project color", () => {
+    const task = createTask();
+
+    render(
+      <TaskCard
+        task={task}
+        index={0}
+        onContextMenu={onContextMenu}
+        projectName="kanvibe"
+        projectColor="#65d08a"
+      />,
+    );
+
+    const projectLabel = screen.getByText("kanvibe");
+    expect(projectLabel).toBeTruthy();
+    expect(projectLabel.style.color).toBe("rgb(101, 208, 138)");
+  });
+
   it("should keep task detail navigation in the same window on desktop", async () => {
     const task = createTask();
     const openSpy = vi.spyOn(window, "open").mockImplementation(() => null);

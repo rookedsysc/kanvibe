@@ -12,7 +12,6 @@ import {
   setNotificationEnabled,
   setNotificationStatuses,
   setDefaultSessionType,
-  setTaskSearchShortcut,
   setThemePreference,
   type ThemePreference,
 } from "@/desktop/renderer/actions/appSettings";
@@ -21,11 +20,6 @@ import { Link } from "@/desktop/renderer/navigation";
 import type { Project } from "@/entities/Project";
 import FolderSearchInput from "@/components/FolderSearchInput";
 import { applyThemePreference, notifyThemePreferenceChanged } from "@/desktop/renderer/utils/theme";
-import {
-  captureShortcutFromEvent,
-  formatShortcutForDisplay,
-  getCurrentShortcutPlatform,
-} from "@/desktop/renderer/utils/keyboardShortcut";
 import { useEscapeKey } from "@/hooks/useEscapeKey";
 
 /** 알림 대상 상태 목록 (사용자가 직접 설정하는 todo/done은 제외) */
@@ -43,7 +37,6 @@ interface ProjectSettingsProps {
   sshHosts: string[];
   sidebarDefaultCollapsed: boolean;
   defaultSessionType: SessionType;
-  taskSearchShortcut: string;
   themePreference?: ThemePreference;
   onDefaultSessionTypeChange?: (sessionType: SessionType) => void;
   onThemePreferenceChange?: (themePreference: ThemePreference) => void;
@@ -67,7 +60,6 @@ export default function ProjectSettings({
   sshHosts,
   sidebarDefaultCollapsed,
   defaultSessionType,
-  taskSearchShortcut,
   themePreference = "system",
   onDefaultSessionTypeChange,
   onThemePreferenceChange,
@@ -83,14 +75,10 @@ export default function ProjectSettings({
   const [scanResult, setScanResult] = useState<ScanResult | null>(null);
   const [scanSshHost, setScanSshHost] = useState("");
   const [selectedDefaultSessionType, setSelectedDefaultSessionType] = useState(defaultSessionType);
-  const [localTaskSearchShortcut, setLocalTaskSearchShortcut] = useState(taskSearchShortcut);
-  const [isCapturingTaskSearchShortcut, setIsCapturingTaskSearchShortcut] = useState(false);
-  const [pendingTaskSearchShortcut, setPendingTaskSearchShortcut] = useState<string | null>(null);
   const [localNotificationSettings, setLocalNotificationSettings] = useState(notificationSettings);
   const [pendingNotificationSettings, setPendingNotificationSettings] = useState<typeof notificationSettings | null>(null);
   const [localThemePreference, setLocalThemePreference] = useState<ThemePreference>(themePreference);
   const [localSidebarDefaultCollapsed, setLocalSidebarDefaultCollapsed] = useState(sidebarDefaultCollapsed);
-  const shortcutPlatform = getCurrentShortcutPlatform();
   const isPage = variant === "page";
 
   useEffect(() => {
@@ -106,19 +94,6 @@ export default function ProjectSettings({
   }, [themePreference]);
 
   useEffect(() => {
-    if (isCapturingTaskSearchShortcut) {
-      return;
-    }
-
-    if (pendingTaskSearchShortcut && taskSearchShortcut !== pendingTaskSearchShortcut) {
-      return;
-    }
-
-    setLocalTaskSearchShortcut(taskSearchShortcut);
-    setPendingTaskSearchShortcut(null);
-  }, [isCapturingTaskSearchShortcut, pendingTaskSearchShortcut, taskSearchShortcut]);
-
-  useEffect(() => {
     if (pendingNotificationSettings && !areNotificationSettingsEqual(notificationSettings, pendingNotificationSettings)) {
       return;
     }
@@ -127,7 +102,7 @@ export default function ProjectSettings({
     setPendingNotificationSettings(null);
   }, [notificationSettings, pendingNotificationSettings]);
 
-  useEscapeKey(() => onClose?.(), { enabled: !isPage && !!isOpen && !isCapturingTaskSearchShortcut });
+  useEscapeKey(() => onClose?.(), { enabled: !isPage && !!isOpen });
 
   if (!isPage && !isOpen) return null;
 
@@ -187,10 +162,10 @@ export default function ProjectSettings({
   }
 
   return (
-    <div className={isPage ? "min-h-screen bg-bg-page text-text-primary" : "fixed inset-0 z-[400] flex items-start justify-end pt-14 pr-4"}>
+    <div className={isPage ? "min-h-screen w-full bg-bg-page text-text-primary" : "fixed inset-0 z-[400] flex items-start justify-end pt-14 pr-4"}>
       {!isPage ? <div className="fixed inset-0 bg-bg-overlay" onClick={onClose} /> : null}
       <div className={isPage
-        ? "mx-auto grid min-h-screen max-w-7xl grid-cols-1 lg:grid-cols-[240px_minmax(0,1fr)]"
+        ? "grid min-h-screen w-full grid-cols-1 lg:grid-cols-[240px_minmax(0,1fr)]"
         : "relative w-96 max-h-[80vh] overflow-y-auto rounded-lg border border-border-default bg-bg-surface shadow-lg"
       }>
         {isPage ? (
@@ -220,7 +195,7 @@ export default function ProjectSettings({
           </aside>
         ) : null}
 
-        <div className={isPage ? "min-w-0 px-4 py-5 sm:px-8 sm:py-6" : ""}>
+        <div className={isPage ? "min-h-screen min-w-0 px-4 py-5 sm:px-8 sm:py-6" : ""}>
           <div className="flex items-center justify-between border-b border-border-default px-4 py-4">
             <div>
               <h2 className="text-sm font-semibold text-text-primary">{t("title")}</h2>
@@ -312,55 +287,6 @@ export default function ProjectSettings({
               />
             </button>
           </label>
-
-          <div className="mt-4 flex items-center justify-between gap-3">
-            <div>
-              <span className="text-sm text-text-primary">{t("taskSearchShortcut")}</span>
-              <p className="text-xs text-text-muted mt-0.5">{t("taskSearchShortcutDescription")}</p>
-            </div>
-            <button
-              type="button"
-              data-testid="task-search-shortcut-record"
-              data-shortcut-capture={isCapturingTaskSearchShortcut ? "true" : "false"}
-              onClick={() => setIsCapturingTaskSearchShortcut(true)}
-              onKeyDown={(event) => {
-                if (!isCapturingTaskSearchShortcut) {
-                  return;
-                }
-
-                event.preventDefault();
-                event.stopPropagation();
-
-                if (event.key === "Escape") {
-                  setIsCapturingTaskSearchShortcut(false);
-                  setLocalTaskSearchShortcut(taskSearchShortcut);
-                  return;
-                }
-
-                const capturedShortcut = captureShortcutFromEvent(event.nativeEvent, shortcutPlatform);
-                if (!capturedShortcut) {
-                  return;
-                }
-
-                setLocalTaskSearchShortcut(capturedShortcut);
-                setPendingTaskSearchShortcut(capturedShortcut);
-                setIsCapturingTaskSearchShortcut(false);
-                startTransition(async () => {
-                  await setTaskSearchShortcut(capturedShortcut);
-                });
-              }}
-              disabled={isPending}
-              className={`min-w-[140px] rounded-md border px-3 py-2 text-sm font-medium transition-colors ${
-                isCapturingTaskSearchShortcut
-                  ? "border-brand-primary bg-brand-primary/10 text-brand-primary"
-                  : "border-border-default bg-bg-page text-text-primary hover:border-brand-primary"
-              }`}
-            >
-              {isCapturingTaskSearchShortcut
-                ? t("taskSearchShortcutRecording")
-                : formatShortcutForDisplay(localTaskSearchShortcut, shortcutPlatform)}
-            </button>
-          </div>
         </div>
 
         {/* 작업 생성 설정 */}

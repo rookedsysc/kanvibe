@@ -4,9 +4,7 @@ import { Fragment, useMemo } from "react";
 import { useTranslations } from "next-intl";
 import { Droppable } from "@hello-pangea/dnd";
 import TaskCard from "./TaskCard";
-import ProjectTaskGroup, {
-  buildBranchTree,
-} from "./ProjectTaskGroup";
+import ProjectTaskGroup from "./ProjectTaskGroup";
 import type { KanbanTask, TaskStatus } from "@/entities/KanbanTask";
 
 interface ColumnProps {
@@ -17,7 +15,6 @@ interface ColumnProps {
   onContextMenu: (e: React.MouseEvent, task: KanbanTask) => void;
   projectNameMap: Record<string, string>;
   projectColorMap: Record<string, string>;
-  projectDefaultBranchMap: Record<string, string>;
   totalCount?: number;
   hasMore?: boolean;
   onLoadMore?: () => void;
@@ -27,16 +24,12 @@ interface ColumnProps {
 interface TaskGroup {
   projectName: string | null;
   tasks: KanbanTask[];
-  hasBranchRelations: boolean;
-  /** 그룹 내 기본 브랜치(defaultBranch) 태스크가 없으면 true → 자식 전용 그룹 */
-  isChildGroup: boolean;
 }
 
 /** 태스크 배열을 프로젝트별 연속 그룹으로 분할한다. DnD 순서를 유지하며 같은 프로젝트가 인접하면 하나의 그룹으로 묶는다 */
 function buildContiguousGroups(
   tasks: KanbanTask[],
   projectNameMap: Record<string, string>,
-  projectDefaultBranchMap: Record<string, string>,
 ): TaskGroup[] {
   const groups: TaskGroup[] = [];
   let current: { name: string | null; tasks: KanbanTask[] } | null = null;
@@ -49,47 +42,28 @@ function buildContiguousGroups(
     if (current && current.name === name) {
       current.tasks.push(task);
     } else {
-      if (current) groups.push(finalizeGroup(current, projectDefaultBranchMap));
+      if (current) groups.push(finalizeGroup(current));
       current = { name, tasks: [task] };
     }
   }
-  if (current) groups.push(finalizeGroup(current, projectDefaultBranchMap));
+  if (current) groups.push(finalizeGroup(current));
 
   return groups;
 }
 
 function finalizeGroup(
   raw: { name: string | null; tasks: KanbanTask[] },
-  projectDefaultBranchMap: Record<string, string>,
 ): TaskGroup {
   if (!raw.name) {
     return {
       projectName: null,
       tasks: raw.tasks,
-      hasBranchRelations: false,
-      isChildGroup: false,
     };
   }
-
-  /** DnD 인덱스 호환성을 위해 원래 순서를 유지하고 트리 정보만 추출한다 */
-  const { treeInfo } = buildBranchTree(raw.tasks);
-  const hasBranchRelations = Array.from(treeInfo.values()).some(
-    (info) => info.depth > 0 || info.hasChildren,
-  );
-
-  /** 그룹 내에 기본 브랜치 태스크가 있는지 확인 */
-  const hasDefaultBranch = raw.tasks.some((t) => {
-    const defaultBranch = t.projectId
-      ? projectDefaultBranchMap[t.projectId]
-      : undefined;
-    return defaultBranch && t.branchName === defaultBranch;
-  });
 
   return {
     projectName: raw.name,
     tasks: raw.tasks,
-    hasBranchRelations,
-    isChildGroup: !hasDefaultBranch,
   };
 }
 
@@ -102,7 +76,6 @@ export default function Column({
   onContextMenu,
   projectNameMap,
   projectColorMap,
-  projectDefaultBranchMap,
   totalCount,
   hasMore,
   onLoadMore,
@@ -111,8 +84,8 @@ export default function Column({
   const t = useTranslations("board");
 
   const groups = useMemo(
-    () => buildContiguousGroups(tasks, projectNameMap, projectDefaultBranchMap),
-    [tasks, projectNameMap, projectDefaultBranchMap],
+    () => buildContiguousGroups(tasks, projectNameMap),
+    [tasks, projectNameMap],
   );
 
   /** 그룹 간 연속적인 DnD 인덱스를 부여하기 위한 시작 인덱스 배열 */
@@ -127,13 +100,13 @@ export default function Column({
   }, [groups]);
 
   return (
-    <div className="flex-1 min-w-[284px] max-w-[340px] rounded-lg border border-border-subtle bg-bg-surface/70">
-      <div className="flex h-10 items-center gap-2 border-b border-border-subtle px-3">
+    <div className="flex-1 min-w-[284px] max-w-[340px]">
+      <div className="flex h-10 items-center gap-2 px-2">
         <div className={`h-2 w-2 rounded-full ${colorClass}`} />
         <h2 className="text-[11px] font-semibold text-text-secondary uppercase">
           {label}
         </h2>
-        <span className="ml-auto rounded-full border border-border-subtle px-1.5 py-0.5 text-[11px] text-text-muted">
+        <span className="ml-auto px-1.5 py-0.5 text-[11px] text-text-muted">
           {totalCount ?? tasks.length}
         </span>
       </div>
@@ -145,7 +118,7 @@ export default function Column({
             {...provided.droppableProps}
             className={`min-h-[calc(100vh-132px)] p-2 transition-colors ${
               snapshot.isDraggingOver
-                ? "bg-brand-subtle ring-1 ring-inset ring-border-brand"
+                ? "rounded-lg bg-brand-subtle ring-1 ring-inset ring-border-brand"
                 : "bg-transparent"
             }`}
           >
@@ -163,6 +136,7 @@ export default function Column({
                         index={startIndex + localIdx}
                         onContextMenu={onContextMenu}
                         projectName={undefined}
+                        projectColor={undefined}
                         isBaseProject={
                           !!task.worktreePath &&
                           !task.worktreePath.includes("__worktrees")
@@ -178,10 +152,6 @@ export default function Column({
               return (
                 <ProjectTaskGroup
                   key={`${group.projectName}-${groupIdx}`}
-                  projectName={group.projectName}
-                  color={color}
-                  hasBranchRelations={group.hasBranchRelations}
-                  isChildGroup={group.isChildGroup}
                 >
                   {group.tasks.map((task, localIdx) => (
                     <TaskCard
@@ -189,7 +159,8 @@ export default function Column({
                       task={task}
                       index={startIndex + localIdx}
                       onContextMenu={onContextMenu}
-                      projectName={undefined}
+                      projectName={group.projectName ?? undefined}
+                      projectColor={color}
                       isBaseProject={
                         !!task.worktreePath &&
                         !task.worktreePath.includes("__worktrees")

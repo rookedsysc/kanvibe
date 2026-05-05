@@ -271,28 +271,6 @@ export default function Board({
     return colorMap;
   }, [projectNameMap, projects]);
 
-  /** projectId → defaultBranch 매핑. worktree 프로젝트는 메인 프로젝트의 defaultBranch를 상속 */
-  const projectDefaultBranchMap = useMemo(() => {
-    const branchMap: Record<string, string> = {};
-    const pathToBranch: Record<string, string> = {};
-
-    for (const project of projects) {
-      const mainPath = extractMainRepoPath(project.repoPath);
-      if (!mainPath) {
-        pathToBranch[project.repoPath] = project.defaultBranch;
-      }
-    }
-
-    for (const project of projects) {
-      const mainPath = extractMainRepoPath(project.repoPath);
-      branchMap[project.id] = mainPath
-        ? (pathToBranch[mainPath] ?? project.defaultBranch)
-        : project.defaultBranch;
-    }
-
-    return branchMap;
-  }, [projects]);
-
   /** 필터 드롭다운에 표시할 메인 프로젝트 목록 (worktree 제외) */
   const filterableProjects = useMemo(
     () => projects.filter((p) => !p.isWorktree),
@@ -503,7 +481,7 @@ export default function Board({
 
   const headerClassName = shouldUseMacTitlebarLayout
     ? "flex items-center justify-end bg-bg-page px-6 pb-3 pl-20 pr-6 pt-10 [-webkit-app-region:drag]"
-    : "flex items-center justify-between border-b border-border-default bg-bg-surface px-6 py-3";
+    : "flex items-center justify-end border-b border-border-default bg-bg-surface px-6 py-3";
 
   const mainClassName = shouldUseMacTitlebarLayout ? "px-6 pb-6" : "p-6";
 
@@ -511,10 +489,6 @@ export default function Board({
     <div className="min-h-screen bg-bg-page">
       <BoardPageFindBar />
       <header className={headerClassName}>
-        <div className="hidden min-w-0 flex-col [-webkit-app-region:no-drag] sm:flex">
-          <span className="text-[11px] font-medium uppercase text-text-muted">Kanvibe</span>
-          <h1 className="text-sm font-semibold text-text-primary">Tasks</h1>
-        </div>
         <div className="flex items-center gap-3 [-webkit-app-region:no-drag]">
           <div className="w-64">
             <ProjectSelector
@@ -563,7 +537,6 @@ export default function Board({
                   onContextMenu={handleContextMenu}
                   projectNameMap={projectNameMap}
                   projectColorMap={projectColorMap}
-                  projectDefaultBranchMap={projectDefaultBranchMap}
                   {...(col.status === TaskStatus.DONE && {
                     totalCount: doneTotal,
                     hasMore: doneOffset < doneTotal,

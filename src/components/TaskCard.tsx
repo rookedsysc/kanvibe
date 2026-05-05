@@ -10,6 +10,7 @@ interface TaskCardProps {
   index: number;
   onContextMenu: (e: React.MouseEvent, task: KanbanTask) => void;
   projectName?: string;
+  projectColor?: string;
   isBaseProject?: boolean;
 }
 
@@ -25,7 +26,7 @@ const priorityConfig: Record<TaskPriority, { label: string; colorClass: string }
   [TaskPriority.HIGH]: { label: "P1", colorClass: "bg-priority-high-bg text-priority-high-text" },
 };
 
-export default function TaskCard({ task, index, onContextMenu, projectName, isBaseProject }: TaskCardProps) {
+export default function TaskCard({ task, index, onContextMenu, projectName, projectColor, isBaseProject }: TaskCardProps) {
   return (
     <Draggable draggableId={task.id} index={index}>
       {(provided, snapshot) => (
@@ -35,16 +36,31 @@ export default function TaskCard({ task, index, onContextMenu, projectName, isBa
             {...provided.draggableProps}
             {...provided.dragHandleProps}
             onContextMenu={(e) => onContextMenu(e, task)}
-            className={`group relative mb-1.5 overflow-hidden rounded-md border px-2.5 py-2 transition-colors cursor-pointer ${
+            className={`group relative mb-1.5 overflow-hidden rounded-md px-2.5 py-2 transition-colors cursor-pointer ${
               snapshot.isDragging
-                ? "bg-bg-surface border-border-brand shadow-md"
-                : "bg-bg-surface border-border-subtle hover:border-border-strong hover:bg-bg-page"
+                ? "bg-bg-surface shadow-md ring-1 ring-border-brand"
+                : "hover:bg-bg-surface/70"
             }`}
           >
             {/* Base 프로젝트 리본 배지 */}
             {isBaseProject && (
               <div className="absolute -right-7 top-2.5 rotate-45 bg-tag-base-bg text-tag-base-text text-[10px] font-bold px-7 py-0.5 pointer-events-none select-none">
                 Base
+              </div>
+            )}
+
+            {projectName && (
+              <div className="mb-1 flex items-center gap-1.5 pl-3.5">
+                <span
+                  className="h-1.5 w-1.5 shrink-0 rounded-full"
+                  style={{ backgroundColor: projectColor }}
+                />
+                <span
+                  className="truncate text-[10px] font-medium"
+                  style={{ color: projectColor }}
+                >
+                  {projectName}
+                </span>
               </div>
             )}
 
@@ -64,12 +80,6 @@ export default function TaskCard({ task, index, onContextMenu, projectName, isBa
             </div>
 
             <div className="mt-1.5 flex items-center gap-1.5 overflow-hidden">
-              {projectName && (
-                <span className="max-w-[120px] truncate rounded border border-border-subtle bg-tag-project-bg px-1.5 py-0.5 text-[10px] font-medium text-tag-project-text">
-                  {projectName}
-                </span>
-              )}
-
               {task.prUrl && (
                 <span
                   role="link"
