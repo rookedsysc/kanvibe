@@ -126,10 +126,6 @@ vi.mock("@/desktop/renderer/utils/fetchPrUrlWithPrompt", () => ({
   fetchPrUrlWithPrompt: (...args: unknown[]) => mocks.fetchPrUrlWithPrompt(...args),
 }));
 
-vi.mock("@/components/AiSessionsCard", () => ({
-  default: () => <div data-testid="ai-sessions-card" />,
-}));
-
 vi.mock("@/components/ConnectTerminalForm", () => ({
   default: () => <div data-testid="connect-terminal-form" />,
 }));
@@ -539,7 +535,6 @@ describe("TaskDetailRoute", () => {
     expect(screen.getByText("Please fix the UI")).toBeTruthy();
     expect(screen.getByText("Updated the terminal chat view.")).toBeTruthy();
     expect(screen.queryByLabelText("terminal input")).toBeNull();
-    expect(screen.queryByTestId("ai-sessions-card")).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "aiSessions.inlineChat" }));
 
@@ -549,7 +544,7 @@ describe("TaskDetailRoute", () => {
     expect(screen.queryByTestId("inline-ai-chat")).toBeNull();
   });
 
-  it("AI sessions 패널을 열면 세션 카드 drawer를 표시한다", async () => {
+  it("AI sessions dialog 진입점은 상세 화면 sidebar에 표시하지 않는다", async () => {
     mocks.getSidebarDefaultCollapsed.mockResolvedValue(true);
     mocks.getTaskById.mockResolvedValue({
       id: "task-1",
@@ -570,10 +565,9 @@ describe("TaskDetailRoute", () => {
 
     render(<TaskDetailRoute />);
 
-    fireEvent.click(await screen.findByRole("button", { name: "aiSessions.title" }));
+    await screen.findByRole("button", { name: "info" });
 
-    expect(await screen.findByTestId("ai-sessions-card")).toBeTruthy();
-    expect(screen.queryByTestId("inline-ai-chat")).toBeNull();
+    expect(screen.queryByRole("button", { name: "aiSessions.title" })).toBeNull();
   });
 
   it("상태 변경과 hooks 상태는 하나의 status 패널에서 함께 보여준다", async () => {
