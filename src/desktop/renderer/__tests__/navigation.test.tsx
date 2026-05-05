@@ -107,12 +107,13 @@ describe("useRouter", () => {
     });
   });
 
-  it("Linux에서는 Alt+[와 Alt+] 단축키로 뒤로/앞으로 이동한다", async () => {
+  it("Linux에서는 Ctrl+Shift+[와 Ctrl+Shift+] 단축키로 뒤로/앞으로 이동한다", async () => {
     renderRouterProbe(["/ko", "/ko/task/task-1", "/ko/task/task-2"], 1, { idx: 1 }, true);
 
     fireEvent.keyDown(window, {
       key: "[",
-      altKey: true,
+      ctrlKey: true,
+      shiftKey: true,
     });
 
     await waitFor(() => {
@@ -121,7 +122,8 @@ describe("useRouter", () => {
 
     fireEvent.keyDown(window, {
       key: "]",
-      altKey: true,
+      ctrlKey: true,
+      shiftKey: true,
     });
 
     await waitFor(() => {
@@ -129,13 +131,14 @@ describe("useRouter", () => {
     });
   });
 
-  it("macOS에서는 Cmd+[와 Cmd+] 단축키로 뒤로/앞으로 이동한다", async () => {
+  it("macOS에서는 Cmd+Shift+[와 Cmd+Shift+] 단축키로 뒤로/앞으로 이동한다", async () => {
     setNavigatorPlatform("MacIntel");
     renderRouterProbe(["/ko", "/ko/task/task-1", "/ko/task/task-2"], 1, { idx: 1 }, true);
 
     fireEvent.keyDown(window, {
       key: "[",
       metaKey: true,
+      shiftKey: true,
     });
 
     await waitFor(() => {
@@ -145,6 +148,7 @@ describe("useRouter", () => {
     fireEvent.keyDown(window, {
       key: "]",
       metaKey: true,
+      shiftKey: true,
     });
 
     await waitFor(() => {

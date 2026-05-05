@@ -1,4 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react";
+import {
+  Chatting01Icon,
+  InformationCircleIcon,
+  Task02Icon,
+} from "@hugeicons/core-free-icons";
 import { useTranslations } from "next-intl";
 import { useParams } from "react-router-dom";
 import AiSessionsCard from "@/components/AiSessionsCard";
@@ -45,7 +51,7 @@ const AGENT_TAG_STYLES: Record<string, string> = {
   codex: "bg-tag-codex-bg text-tag-codex-text",
 };
 
-type DetailPanel = "overview" | "actions" | "hooks" | "sessions";
+type DetailPanel = "overview" | "status" | "sessions";
 
 interface TaskDetailState {
   task: NonNullable<Awaited<ReturnType<typeof getTaskById>>>;
@@ -340,6 +346,7 @@ export default function TaskDetailRoute() {
     () => (state?.task.agentType ? AGENT_TAG_STYLES[state.task.agentType] ?? "bg-tag-neutral-bg text-tag-neutral-text" : null),
     [state?.task.agentType],
   );
+  const statusPanelLabel = `${t("actions")} · ${t("hooksStatus")}`;
 
   useEscapeKey(() => {
     setActivePanel(null);
@@ -409,11 +416,10 @@ export default function TaskDetailRoute() {
         </Link>
 
         {([
-          { panel: "overview", label: t("info"), path: "M8 2.5a5.5 5.5 0 1 0 0 11 5.5 5.5 0 0 0 0-11Zm0 4.75v3.25M8 5.5h.01" },
-          { panel: "actions", label: t("actions"), path: "M3 4h10M3 8h10M3 12h10" },
-          { panel: "hooks", label: t("hooksStatus"), path: "M5.5 3.5 3 6l2.5 2.5M10.5 3.5 13 6l-2.5 2.5M9.5 2.5l-3 11" },
-          { panel: "sessions", label: t("aiSessions.title"), path: "M3 4.5h10v6H6l-3 2v-8Z" },
-        ] satisfies Array<{ panel: DetailPanel; label: string; path: string }>).map(({ panel, label, path }) => (
+          { panel: "overview", label: t("info"), icon: InformationCircleIcon },
+          { panel: "status", label: statusPanelLabel, icon: Task02Icon, iconTestId: "task-status-panel-icon" },
+          { panel: "sessions", label: t("aiSessions.title"), icon: Chatting01Icon },
+        ] satisfies Array<{ panel: DetailPanel; label: string; icon: IconSvgElement; iconTestId?: string }>).map(({ panel, label, icon, iconTestId }) => (
           <button
             key={panel}
             type="button"
@@ -426,15 +432,17 @@ export default function TaskDetailRoute() {
             title={label}
             aria-label={label}
           >
-            <svg width="17" height="17" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.35" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              <path d={path} />
-            </svg>
+            <HugeiconsIcon
+              icon={icon}
+              size={17}
+              strokeWidth={1.6}
+              aria-hidden="true"
+              data-testid={iconTestId}
+            />
           </button>
         ))}
 
-        <div className="mt-auto">
-          <NotificationCenterButton ref={notificationCenterRef} buttonClassName="hover:bg-bg-page" panelClassName="left-0 right-auto" />
-        </div>
+        <div className="mt-auto" />
       </aside>
 
       {activePanel ? (
@@ -444,8 +452,7 @@ export default function TaskDetailRoute() {
           <div className="mb-3 flex items-center justify-between border-b border-border-subtle pb-2">
             <h2 className="text-xs font-semibold uppercase text-text-muted">
               {activePanel === "overview" && t("info")}
-              {activePanel === "actions" && t("actions")}
-              {activePanel === "hooks" && t("hooksStatus")}
+              {activePanel === "status" && statusPanelLabel}
               {activePanel === "sessions" && t("aiSessions.title")}
             </h2>
             <button
@@ -473,43 +480,53 @@ export default function TaskDetailRoute() {
             </div>
           ) : null}
 
-          {activePanel === "actions" ? (
-            <div className="rounded-lg border border-border-default bg-bg-surface p-4">
-              <div className="flex flex-wrap gap-2">
-                {STATUS_TRANSITIONS.filter((transition) => transition.status !== state.task.status).map((transition) => (
-                  transition.status === TaskStatus.DONE ? (
-                    <DoneStatusButton
-                      key={transition.status}
-                      statusChangeAction={handleStatusChange}
-                      label={t(transition.labelKey)}
-                      hasCleanableResources={!!(state.task.branchName || state.task.sessionType)}
-                      doneAlertDismissed={state.doneAlertDismissed}
-                    />
-                  ) : (
-                    <form key={transition.status} action={handleStatusChange}>
-                      <input type="hidden" name="status" value={transition.status} />
-                      <button type="submit" className="rounded-md border border-border-default bg-bg-page px-3 py-1.5 text-xs text-text-secondary transition-colors hover:border-brand-primary hover:text-text-brand">
-                        {t(transition.labelKey)}
-                      </button>
-                    </form>
-                  )
-                ))}
+          {activePanel === "status" ? (
+            <div className="space-y-3">
+              <div className="rounded-lg border border-border-default bg-bg-surface p-4">
+                <div className="flex flex-wrap gap-2">
+                  {STATUS_TRANSITIONS.filter((transition) => transition.status !== state.task.status).map((transition) => (
+                    transition.status === TaskStatus.DONE ? (
+                      <DoneStatusButton
+                        key={transition.status}
+                        statusChangeAction={handleStatusChange}
+                        label={t(transition.labelKey)}
+                        hasCleanableResources={!!(state.task.branchName || state.task.sessionType)}
+                        doneAlertDismissed={state.doneAlertDismissed}
+                      />
+                    ) : (
+                      <form key={transition.status} action={handleStatusChange}>
+                        <input type="hidden" name="status" value={transition.status} />
+                        <button type="submit" className="rounded-md border border-border-default bg-bg-page px-3 py-1.5 text-xs text-text-secondary transition-colors hover:border-brand-primary hover:text-text-brand">
+                          {t(transition.labelKey)}
+                        </button>
+                      </form>
+                    )
+                  ))}
+                </div>
+                <div className="mt-3 border-t border-border-subtle pt-3">
+                  <DeleteTaskButton deleteAction={handleDelete} />
+                </div>
               </div>
-              <div className="mt-3 border-t border-border-subtle pt-3">
-                <DeleteTaskButton deleteAction={handleDelete} />
-              </div>
+              <HooksStatusCard
+                taskId={state.task.id}
+                initialClaudeStatus={state.claudeHooksStatus}
+                initialGeminiStatus={state.geminiHooksStatus}
+                initialCodexStatus={state.codexHooksStatus}
+                initialOpenCodeStatus={state.openCodeHooksStatus}
+                isRemote={!!state.task.sshHost}
+                onStatusesChange={(updates) => {
+                  setState((current) => current
+                    ? {
+                        ...current,
+                        claudeHooksStatus: updates.claudeStatus !== undefined ? updates.claudeStatus : current.claudeHooksStatus,
+                        geminiHooksStatus: updates.geminiStatus !== undefined ? updates.geminiStatus : current.geminiHooksStatus,
+                        codexHooksStatus: updates.codexStatus !== undefined ? updates.codexStatus : current.codexHooksStatus,
+                        openCodeHooksStatus: updates.openCodeStatus !== undefined ? updates.openCodeStatus : current.openCodeHooksStatus,
+                      }
+                    : current);
+                }}
+              />
             </div>
-          ) : null}
-
-          {activePanel === "hooks" ? (
-            <HooksStatusCard
-              taskId={state.task.id}
-              initialClaudeStatus={state.claudeHooksStatus}
-              initialGeminiStatus={state.geminiHooksStatus}
-              initialCodexStatus={state.codexHooksStatus}
-              initialOpenCodeStatus={state.openCodeHooksStatus}
-              isRemote={!!state.task.sshHost}
-            />
           ) : null}
 
           {activePanel === "sessions" ? <AiSessionsCard taskId={state.task.id} data={state.aiSessions} /> : null}
@@ -525,7 +542,15 @@ export default function TaskDetailRoute() {
                 <NotificationCenterButton ref={notificationCenterRef} buttonClassName="text-terminal-text hover:text-white hover:bg-white/10" panelClassName="mt-3" />
               </div>
             </div>
-            <div className="flex-1 min-h-0 bg-terminal-bg">
+            <div
+              className="flex-1 min-h-0 bg-terminal-bg"
+              onClick={() => {
+                if (activePanel !== null) {
+                  setActivePanel(null);
+                  requestActiveTerminalFocusAfterUiSettles();
+                }
+              }}
+            >
               <TerminalLoader taskId={state.task.id} />
             </div>
           </div>

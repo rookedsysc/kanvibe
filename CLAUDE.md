@@ -23,3 +23,11 @@
 - Renderer keyboard events and Electron `before-input-event` inputs must be routed through the same shared matcher so macOS and Linux behavior stays consistent.
 - Shortcut capture UIs must store normalized shortcut strings from the shared capture helper, not hand-built modifier strings.
 - When adding or changing a shortcut, cover the shared command definition, display formatting, Electron input matching, renderer global handling, and any user-configurable capture flow with focused tests.
+
+## UI Color Tokens
+
+- Use `#0064FF` as the primary point color for PR buttons, primary actions, selected states, links, focus borders, and other important interactive highlights.
+- Keep point-color usage behind semantic tokens such as `--color-brand-primary`, `--color-brand-hover`, `--color-brand-active`, `--color-brand-subtle`, and `--color-tag-pr-*` instead of hard-coding hex values in components.
+- Use `#202632` for neutral button-like surfaces that should read as actionable but not alerting, such as compact shortcut buttons, base/project badges, and non-notification controls.
+- Keep neutral button usage behind semantic tokens such as `--color-button-neutral-*`, `--color-tag-project-*`, and `--color-tag-base-*`.
+- Do not use the primary point color for warning, error, success, or notification severity. Keep those on the existing `status-*` semantic tokens.
