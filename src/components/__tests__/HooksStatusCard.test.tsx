@@ -47,7 +47,6 @@ vi.mock("@hugeicons/core-free-icons", () => ({
   AlertCircleIcon: { __iconName: "AlertCircleIcon" },
   CheckmarkCircle02Icon: { __iconName: "CheckmarkCircle02Icon" },
   Clock01Icon: { __iconName: "Clock01Icon" },
-  WebhookIcon: { __iconName: "WebhookIcon" },
 }));
 
 const messages = {
@@ -106,7 +105,7 @@ describe("HooksStatusCard", () => {
     expect(screen.queryByTestId("hooks-status-dialog")).toBeNull();
   });
 
-  it("uses dedicated webhook resource icons for hook status rows", () => {
+  it("uses dedicated tool icons for hook status rows", () => {
     renderCard({
       taskId: "task-1",
       initialClaudeStatus: null,
@@ -119,7 +118,12 @@ describe("HooksStatusCard", () => {
     const toolIcons = screen.getAllByTestId("hook-status-tool-icon");
 
     expect(toolIcons).toHaveLength(4);
-    expect(toolIcons.every((icon) => icon.getAttribute("data-icon-name") === "WebhookIcon")).toBe(true);
+    expect(toolIcons.map((icon) => icon.getAttribute("data-icon-name"))).toEqual([
+      "ClaudeLogoIcon",
+      "GeminiLogoIcon",
+      "CodexLogoIcon",
+      "OpenCodeLogoIcon",
+    ]);
     expect(screen.getByTestId("hooks-overall-status-icon").getAttribute("data-icon-name")).toBe("AlertCircleIcon");
   });
 
