@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react";
 import {
   Chatting01Icon,
-  Clock01Icon,
   InformationCircleIcon,
 } from "@hugeicons/core-free-icons";
 import { useTranslations } from "next-intl";
@@ -82,6 +81,32 @@ function PullRequestIcon() {
       <path d="M6 15V6" />
       <path d="M18 9v1.5A5.5 5.5 0 0 1 12.5 16H9" />
       <path d="m12 13-3 3 3 3" />
+    </svg>
+  );
+}
+
+function AntennaSignalIcon({ testId }: { testId?: string }) {
+  return (
+    <svg
+      width="17"
+      height="17"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.7"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      data-testid={testId}
+      data-icon-name="AntennaSignalIcon"
+    >
+      <path d="M12 19v-7" />
+      <path d="m9 22 3-3 3 3" />
+      <circle cx="12" cy="10" r="1.6" fill="currentColor" stroke="none" />
+      <path d="M8.7 13.1a5 5 0 0 1 0-6.2" />
+      <path d="M15.3 6.9a5 5 0 0 1 0 6.2" />
+      <path d="M5.8 15.8a9 9 0 0 1 0-11.6" />
+      <path d="M18.2 4.2a9 9 0 0 1 0 11.6" />
     </svg>
   );
 }
@@ -605,8 +630,8 @@ export default function TaskDetailRoute() {
 
         {([
           { panel: "overview", label: t("info"), icon: InformationCircleIcon },
-          { panel: "status", label: statusPanelLabel, icon: Clock01Icon, iconTestId: "task-status-panel-icon" },
-        ] satisfies Array<{ panel: DetailPanel; label: string; icon: IconSvgElement; iconTestId?: string }>).map(({ panel, label, icon, iconTestId }) => (
+          { panel: "status", label: statusPanelLabel, iconTestId: "task-status-panel-icon" },
+        ] satisfies Array<{ panel: DetailPanel; label: string; icon?: IconSvgElement; iconTestId?: string }>).map(({ panel, label, icon, iconTestId }) => (
           <button
             key={panel}
             type="button"
@@ -619,13 +644,17 @@ export default function TaskDetailRoute() {
             title={label}
             aria-label={label}
           >
-            <HugeiconsIcon
-              icon={icon}
-              size={17}
-              strokeWidth={1.6}
-              aria-hidden="true"
-              data-testid={iconTestId}
-            />
+            {icon ? (
+              <HugeiconsIcon
+                icon={icon}
+                size={17}
+                strokeWidth={1.6}
+                aria-hidden="true"
+                data-testid={iconTestId}
+              />
+            ) : (
+              <AntennaSignalIcon testId={iconTestId} />
+            )}
           </button>
         ))}
 

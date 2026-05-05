@@ -69,7 +69,6 @@ vi.mock("@hugeicons/react", () => ({
 
 vi.mock("@hugeicons/core-free-icons", () => ({
   Chatting01Icon: { __iconName: "Chatting01Icon" },
-  Clock01Icon: { __iconName: "Clock01Icon" },
   InformationCircleIcon: { __iconName: "InformationCircleIcon" },
 }));
 
@@ -594,7 +593,7 @@ describe("TaskDetailRoute", () => {
 
     const statusButton = await screen.findByRole("button", { name: "actions · hooksStatus" });
     expect(screen.queryByTestId("hooks-status-card")).toBeNull();
-    expect(screen.getByTestId("task-status-panel-icon").getAttribute("data-icon-name")).toBe("Clock01Icon");
+    expect(screen.getByTestId("task-status-panel-icon").getAttribute("data-icon-name")).toBe("AntennaSignalIcon");
 
     fireEvent.click(statusButton);
 
