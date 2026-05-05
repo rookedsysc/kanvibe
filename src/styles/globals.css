@@ -327,6 +327,7 @@
   --color-tag-pr-bg: var(--color-brand-subtle);
   --color-tag-pr-text: var(--color-brand-primary);
   --color-tag-base-bg: var(--color-button-neutral);
+  --color-tag-base-text: #ffffff;
   --color-group-line: #cdd1d8;
 
   --shadow-xs: 0 1px 1px rgba(17, 24, 39, 0.04);
