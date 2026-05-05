@@ -1,3 +1,4 @@
+import { forwardRef } from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { createEvent, fireEvent, render, screen } from "@testing-library/react";
 import TaskCard from "../TaskCard";
@@ -21,8 +22,10 @@ vi.mock("@hello-pangea/dnd", () => ({
 }));
 
 vi.mock("@/desktop/renderer/navigation", () => ({
-  Link: ({ children, ...props }: { children: React.ReactNode; href: string }) => (
-    <a {...props}>{children}</a>
+  Link: forwardRef<HTMLAnchorElement, React.AnchorHTMLAttributes<HTMLAnchorElement> & { href: string }>(
+    function MockLink({ children, ...props }, ref) {
+      return <a ref={ref} {...props}>{children}</a>;
+    },
   ),
 }));
 
@@ -145,12 +148,12 @@ describe("TaskCard - Priority Badge", () => {
     expect(projectLabel).toBeTruthy();
     expect(projectLabel.style.color).toBe("rgb(101, 208, 138)");
 
-    const card = screen.getByRole("link").firstElementChild as HTMLElement;
+    const card = screen.getByRole("link");
     expect(card.style.borderColor).toBe("rgb(101, 208, 138)");
     expect(container.querySelector(".bg-border-strong")).toBeNull();
   });
 
-  it("should preserve draggable style while applying the project border color", () => {
+  it("should preserve draggable style on the focusable task link while applying the project border color", () => {
     const task = createTask();
 
     render(
@@ -163,10 +166,68 @@ describe("TaskCard - Priority Badge", () => {
       />,
     );
 
-    const card = screen.getByRole("link").firstElementChild as HTMLElement;
-    expect(card.style.transform).toBe("translate(12px, 18px)");
-    expect(card.style.transition).toBe("transform 200ms ease");
-    expect(card.style.borderColor).toBe("rgb(101, 208, 138)");
+    const link = screen.getByRole("link");
+    expect(link.getAttribute("data-rfd-draggable-id")).toBe("test");
+    expect(link.style.transform).toBe("translate(12px, 18px)");
+    expect(link.style.transition).toBe("transform 200ms ease");
+    expect(link.style.borderColor).toBe("rgb(101, 208, 138)");
+    expect(link.firstElementChild?.getAttribute("data-rfd-draggable-id")).toBeNull();
+  });
+
+  it("should move focus between tasks with ArrowUp and ArrowDown without scrolling", () => {
+    const firstTask = createTask({ id: "task-1", title: "First task", status: TaskStatus.TODO });
+    const secondTask = createTask({ id: "task-2", title: "Second task", status: TaskStatus.TODO });
+
+    render(
+      <>
+        <TaskCard task={firstTask} index={0} onContextMenu={onContextMenu} />
+        <TaskCard task={secondTask} index={1} onContextMenu={onContextMenu} />
+      </>,
+    );
+
+    const firstLink = screen.getByRole("link", { name: /First task/ });
+    const secondLink = screen.getByRole("link", { name: /Second task/ });
+
+    firstLink.focus();
+    const downEvent = createEvent.keyDown(firstLink, { key: "ArrowDown" });
+    fireEvent(firstLink, downEvent);
+
+    expect(downEvent.defaultPrevented).toBe(true);
+    expect(document.activeElement).toBe(secondLink);
+
+    const upEvent = createEvent.keyDown(secondLink, { key: "ArrowUp" });
+    fireEvent(secondLink, upEvent);
+
+    expect(upEvent.defaultPrevented).toBe(true);
+    expect(document.activeElement).toBe(firstLink);
+  });
+
+  it("should move focus across kanban columns with ArrowLeft and ArrowRight", () => {
+    const todoTask = createTask({ id: "task-1", title: "Todo task", status: TaskStatus.TODO });
+    const progressTask = createTask({ id: "task-2", title: "Progress task", status: TaskStatus.PROGRESS });
+
+    render(
+      <>
+        <TaskCard task={todoTask} index={0} onContextMenu={onContextMenu} />
+        <TaskCard task={progressTask} index={0} onContextMenu={onContextMenu} />
+      </>,
+    );
+
+    const todoLink = screen.getByRole("link", { name: /Todo task/ });
+    const progressLink = screen.getByRole("link", { name: /Progress task/ });
+
+    todoLink.focus();
+    const rightEvent = createEvent.keyDown(todoLink, { key: "ArrowRight" });
+    fireEvent(todoLink, rightEvent);
+
+    expect(rightEvent.defaultPrevented).toBe(true);
+    expect(document.activeElement).toBe(progressLink);
+
+    const leftEvent = createEvent.keyDown(progressLink, { key: "ArrowLeft" });
+    fireEvent(progressLink, leftEvent);
+
+    expect(leftEvent.defaultPrevented).toBe(true);
+    expect(document.activeElement).toBe(todoLink);
   });
 
   it("should open the task context menu with Shift+Enter without following the link", () => {
