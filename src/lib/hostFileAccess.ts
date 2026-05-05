@@ -85,14 +85,15 @@ export async function readTextFiles(
     return new Map<string, TextFileReadResult>(entries);
   }
 
+  const encodedManifest = encodeRemoteTextFileManifest(targetPaths);
   const command = [
-    "for __kanvibe_file in",
-    targetPaths.map(quoteShellArgument).join(" "),
-    "; do",
+    `printf '%s' ${quoteShellArgument(encodedManifest)} | (base64 -d 2>/dev/null || base64 -D) | while IFS= read -r __kanvibe_encoded_file; do`,
+    "test -n \"$__kanvibe_encoded_file\" || continue;",
+    "__kanvibe_file=$(printf '%s' \"$__kanvibe_encoded_file\" | (base64 -d 2>/dev/null || base64 -D));",
     `printf '%s\\t%s\\t' ${quoteShellArgument(REMOTE_FILE_RECORD_PREFIX)} "$__kanvibe_file";`,
     "if test -f \"$__kanvibe_file\"; then",
     "printf '1\\t';",
-    "(base64 -w 0 \"$__kanvibe_file\" 2>/dev/null || base64 \"$__kanvibe_file\" | tr -d '\\n');",
+    "(base64 -w 0 \"$__kanvibe_file\" 2>/dev/null || base64 < \"$__kanvibe_file\" | tr -d '\\n');",
     "else",
     "printf '0\\t';",
     "fi;",
@@ -102,6 +103,11 @@ export async function readTextFiles(
   const output = await execGit(command, sshHost);
 
   return parseRemoteTextFiles(output, targetPaths);
+}
+
+function encodeRemoteTextFileManifest(targetPaths: string[]): string {
+  const encodedPaths = targetPaths.map((targetPath) => Buffer.from(targetPath, "utf-8").toString("base64"));
+  return Buffer.from(encodedPaths.join("\n"), "utf-8").toString("base64");
 }
 
 function parseRemoteTextFiles(

@@ -147,6 +147,49 @@ describe("kanvibeHooksInstaller", () => {
     }
   });
 
+  it("같은 target/task/host 동시 설치 요청은 하나의 설치 작업을 공유한다", async () => {
+    // Given
+    let resolveClaudeInstall: (() => void) | undefined;
+    mockSetupClaudeHooks.mockImplementation(() => new Promise<void>((resolve) => {
+      resolveClaudeInstall = resolve;
+    }));
+    const { installKanvibeHooks } = await import("@/lib/kanvibeHooksInstaller");
+
+    // When
+    const firstInstall = installKanvibeHooks("/repo", "task-1", null);
+    const secondInstall = installKanvibeHooks("/repo", "task-1", null);
+    await Promise.resolve();
+    await Promise.resolve();
+
+    // Then
+    expect(mockSetupClaudeHooks).toHaveBeenCalledTimes(1);
+    resolveClaudeInstall?.();
+    await expect(Promise.all([firstInstall, secondInstall])).resolves.toEqual([undefined, undefined]);
+  });
+
+  it("백그라운드 스케줄러는 같은 설치 요청을 합치고 모든 callback을 호출한다", async () => {
+    vi.useFakeTimers();
+
+    try {
+      // Given
+      const onSuccessA = vi.fn();
+      const onSuccessB = vi.fn();
+      const { scheduleKanvibeHooksInstall } = await import("@/lib/kanvibeHooksInstaller");
+
+      // When
+      scheduleKanvibeHooksInstall("/repo", "task-1", null, { onSuccess: onSuccessA });
+      scheduleKanvibeHooksInstall("/repo", "task-1", null, { onSuccess: onSuccessB });
+      await vi.runAllTimersAsync();
+
+      // Then
+      expect(mockSetupClaudeHooks).toHaveBeenCalledTimes(1);
+      expect(onSuccessA).toHaveBeenCalledTimes(1);
+      expect(onSuccessB).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("원격 프로젝트면 SSH 명령으로 hook 파일을 설치한다", async () => {
     // Given
     const { installKanvibeHooks } = await import("@/lib/kanvibeHooksInstaller");

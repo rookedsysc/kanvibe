@@ -27,6 +27,7 @@ const mocks = vi.hoisted(() => ({
   aggregateAiSessions: vi.fn(),
   getAiSessionDetail: vi.fn(),
   installKanvibeHooks: vi.fn(),
+  scheduleKanvibeHooksInstall: vi.fn(),
   broadcastBoardUpdate: vi.fn(),
 }));
 
@@ -130,6 +131,7 @@ vi.mock("@/lib/remoteSessionDependency", () => ({
 
 vi.mock("@/lib/kanvibeHooksInstaller", () => ({
   installKanvibeHooks: mocks.installKanvibeHooks,
+  scheduleKanvibeHooksInstall: mocks.scheduleKanvibeHooksInstall,
 }));
 
 describe("projectService.listSubdirectories", () => {
@@ -990,11 +992,16 @@ describe("projectService local hook installation", () => {
 
     expect(result.worktreeTasks).toContain("feature-login");
     expect(mocks.listWorktrees).toHaveBeenCalledWith("/remote/repo", "remote-host");
-    expect(mocks.installKanvibeHooks).toHaveBeenCalledWith(
+    expect(mocks.scheduleKanvibeHooksInstall).toHaveBeenCalledWith(
       "/remote/repo__worktrees/feature-login",
       "task-worktree",
       "remote-host",
+      expect.objectContaining({
+        onSuccess: expect.any(Function),
+        onFailure: expect.any(Function),
+      }),
     );
+    expect(mocks.installKanvibeHooks).not.toHaveBeenCalled();
   });
 
   it("원격 스캔은 root hook 상태 조회 실패와 무관하게 worktree 등록을 계속 진행한다", async () => {
@@ -1293,6 +1300,80 @@ describe("projectService local hook installation", () => {
       "task-worktree",
       null,
     );
+  });
+
+  it("원격 등록 프로젝트의 새 worktree hooks 설치는 백그라운드로 예약한다", async () => {
+    vi.useFakeTimers();
+
+    try {
+      // Given
+      mocks.getClaudeHooksStatus.mockResolvedValue({ installed: true });
+      mocks.getGeminiHooksStatus.mockResolvedValue({ installed: true });
+      mocks.getCodexHooksStatus.mockResolvedValue({ installed: true });
+      mocks.getOpenCodeHooksStatus.mockResolvedValue({ installed: true });
+      mocks.listWorktrees.mockResolvedValue([
+        {
+          path: "/remote/api__worktrees/feature-sync",
+          branch: "feature-sync",
+          isBare: false,
+        },
+      ]);
+      mocks.formatSessionName.mockReturnValue("api-feature-sync");
+      mocks.isSessionAlive.mockResolvedValue(false);
+
+      mocks.getProjectRepository.mockResolvedValue({
+        find: vi.fn().mockResolvedValue([
+          {
+            id: "project-1",
+            name: "api",
+            repoPath: "/remote/api",
+            defaultBranch: "main",
+            sshHost: "remote-host",
+          },
+        ]),
+      });
+
+      const taskSave = vi.fn(async (value) => ({ id: value.branchName === "main" ? "task-main" : "task-worktree", ...value }));
+      mocks.getTaskRepository.mockResolvedValue({
+        findOneBy: vi.fn(async (criteria: { branchName?: string; projectId?: string | null }) => {
+          if (criteria.projectId === "project-1" && criteria.branchName === "main") {
+            return {
+              id: "task-main",
+              branchName: "main",
+              projectId: "project-1",
+              baseBranch: "main",
+              worktreePath: "/remote/api",
+              sshHost: "remote-host",
+            };
+          }
+
+          return null;
+        }),
+        create: vi.fn((value) => value),
+        save: taskSave,
+      });
+
+      const { syncRegisteredProjectWorktrees } = await import("@/desktop/main/services/projectService");
+
+      // When
+      const result = await syncRegisteredProjectWorktrees();
+
+      // Then
+      expect(result.worktreeTasks).toContain("feature-sync");
+      expect(mocks.scheduleKanvibeHooksInstall).toHaveBeenCalledWith(
+        "/remote/api__worktrees/feature-sync",
+        "task-worktree",
+        "remote-host",
+        expect.objectContaining({
+          onSuccess: expect.any(Function),
+          onFailure: expect.any(Function),
+        }),
+      );
+      expect(mocks.installKanvibeHooks).not.toHaveBeenCalled();
+    } finally {
+      vi.clearAllTimers();
+      vi.useRealTimers();
+    }
   });
 
   it("등록된 프로젝트 background sync는 프로젝트별 worktree 조회를 직렬로 실행한다", async () => {

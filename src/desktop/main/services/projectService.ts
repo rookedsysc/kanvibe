@@ -16,7 +16,7 @@ import { computeProjectColor } from "@/lib/projectColor";
 import { broadcastBoardUpdate } from "@/lib/boardNotifier";
 import { getAvailableHosts as readAvailableHosts } from "@/lib/sshConfig";
 import { getDefaultSessionType } from "@/desktop/main/services/appSettingsService";
-import { installKanvibeHooks } from "@/lib/kanvibeHooksInstaller";
+import { installKanvibeHooks, scheduleKanvibeHooksInstall } from "@/lib/kanvibeHooksInstaller";
 
 function matchesTaskLocation(task: { worktreePath?: string | null; sshHost?: string | null }, expectedPath: string, sshHost?: string | null): boolean {
   return task.worktreePath === expectedPath && (task.sshHost || null) === (sshHost || null);
@@ -117,6 +117,36 @@ function scheduleProjectRootHookRepair(project: Project) {
 
     projectRootHookRepairJobs.set(projectPathKey, repairJob);
   }, 0);
+}
+
+async function installSyncedWorktreeHooks(
+  project: Project,
+  worktreePath: string,
+  taskId: string,
+  branchName: string,
+  result: Pick<RegisteredProjectWorktreeSyncResult, "errors">,
+): Promise<void> {
+  if (project.sshHost) {
+    scheduleKanvibeHooksInstall(worktreePath, taskId, project.sshHost, {
+      onSuccess: () => {
+        broadcastBoardUpdate();
+      },
+      onFailure: (error) => {
+        if (!isRemoteConnectionError(error)) {
+          console.warn(`${project.name}/${branchName} hooks 백그라운드 설정 실패:`, error);
+        }
+      },
+    });
+    return;
+  }
+
+  try {
+    await installKanvibeHooks(worktreePath, taskId, project.sshHost);
+  } catch (hookError) {
+    result.errors.push(
+      `${project.name}/${branchName} hooks 설정 실패: ${hookError instanceof Error ? hookError.message : "알 수 없는 오류"}`,
+    );
+  }
 }
 
 function scheduleProjectRootTaskRepair(project: Project) {
@@ -546,13 +576,7 @@ async function syncProjectWorktrees(
           existingTask.baseBranch = project.defaultBranch;
           const savedTask = await taskRepo.save(existingTask);
           result.changed = true;
-          try {
-            await installKanvibeHooks(wt.path, savedTask.id, project.sshHost);
-          } catch (hookError) {
-            result.errors.push(
-              `${project.name}/${wt.branch} hooks 설정 실패: ${hookError instanceof Error ? hookError.message : "알 수 없는 오류"}`,
-            );
-          }
+          await installSyncedWorktreeHooks(project, wt.path, savedTask.id, wt.branch, result);
         }
         continue;
       }
@@ -567,13 +591,7 @@ async function syncProjectWorktrees(
         orphanTask.baseBranch = orphanTask.baseBranch || project.defaultBranch;
         const savedTask = await taskRepo.save(orphanTask);
         result.changed = true;
-        try {
-          await installKanvibeHooks(wt.path, savedTask.id, project.sshHost);
-        } catch (hookError) {
-          result.errors.push(
-            `${project.name}/${wt.branch} hooks 설정 실패: ${hookError instanceof Error ? hookError.message : "알 수 없는 오류"}`,
-          );
-        }
+        await installSyncedWorktreeHooks(project, wt.path, savedTask.id, wt.branch, result);
         result.worktreeTasks.push(wt.branch);
         result.registeredWorktrees.push({
           taskId: savedTask.id,
@@ -608,13 +626,7 @@ async function syncProjectWorktrees(
       });
       const savedTask = await taskRepo.save(task);
       result.changed = true;
-      try {
-        await installKanvibeHooks(wt.path, savedTask.id, project.sshHost);
-      } catch (hookError) {
-        result.errors.push(
-          `${project.name}/${wt.branch} hooks 설정 실패: ${hookError instanceof Error ? hookError.message : "알 수 없는 오류"}`,
-        );
-      }
+      await installSyncedWorktreeHooks(project, wt.path, savedTask.id, wt.branch, result);
       result.worktreeTasks.push(wt.branch);
       result.registeredWorktrees.push({
         taskId: savedTask.id,
