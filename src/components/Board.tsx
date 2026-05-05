@@ -44,11 +44,56 @@ const COLUMNS: { status: TaskStatus; labelKey: string; colorClass: string }[] = 
   { status: TaskStatus.DONE, labelKey: "done", colorClass: "bg-status-done" },
 ];
 
+const TASK_CARD_SELECTOR = "[data-kanban-task-card='true']";
+const BOARD_TASK_FOCUS_KEYS = new Set(["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"]);
+
 interface ContextMenuState {
   isOpen: boolean;
   x: number;
   y: number;
   task: KanbanTask | null;
+}
+
+function getBoardTaskCards() {
+  return Array.from(document.querySelectorAll<HTMLAnchorElement>(TASK_CARD_SELECTOR));
+}
+
+function focusBoardTaskCard(card: HTMLAnchorElement) {
+  card.focus({ preventScroll: true });
+  card.scrollIntoView?.({ block: "nearest", inline: "nearest" });
+}
+
+function shouldIgnoreBoardTaskFocusEvent(event: KeyboardEvent) {
+  if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey) {
+    return true;
+  }
+
+  const target = event.target instanceof Element
+    ? event.target
+    : document.activeElement instanceof Element
+      ? document.activeElement
+      : null;
+
+  if (!target) return false;
+
+  return Boolean(
+    target.closest(
+      [
+            TASK_CARD_SELECTOR,
+            "a[href]",
+            "[role='link']",
+            "input",
+            "textarea",
+            "select",
+        "button",
+        "[contenteditable='true']",
+        "[data-terminal-focus-blocker='true']",
+        "[role='menu']",
+        "[role='menuitem']",
+        "[role='dialog']",
+      ].join(","),
+    ),
+  );
 }
 
 /** worktree repoPath에서 메인 프로젝트 경로를 추출한다 */
@@ -359,6 +404,23 @@ export default function Board({
       setIsModalOpen(true);
     },
   }), [boardCommands]);
+
+  useEffect(() => {
+    function handleWindowTaskFocus(event: KeyboardEvent) {
+      if (!BOARD_TASK_FOCUS_KEYS.has(event.key)) return;
+      if (contextMenu.isOpen || isModalOpen || isBranchModalOpen || pendingDoneResult) return;
+      if (shouldIgnoreBoardTaskFocusEvent(event)) return;
+
+      const firstTaskCard = getBoardTaskCards()[0];
+      if (!firstTaskCard) return;
+
+      event.preventDefault();
+      focusBoardTaskCard(firstTaskCard);
+    }
+
+    window.addEventListener("keydown", handleWindowTaskFocus);
+    return () => window.removeEventListener("keydown", handleWindowTaskFocus);
+  }, [contextMenu.isOpen, isBranchModalOpen, isModalOpen, pendingDoneResult]);
 
   const handleLoadMoreDone = useCallback(async () => {
     if (isLoadingMore) return;

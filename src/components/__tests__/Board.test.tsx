@@ -4,7 +4,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import Board from "../Board";
 import { reorderTasks } from "@/desktop/renderer/actions/kanban";
-import { SessionType, TaskStatus } from "@/entities/KanbanTask";
+import { SessionType, TaskStatus, type KanbanTask } from "@/entities/KanbanTask";
 import type { Project } from "@/entities/Project";
 import type { TasksByStatus } from "@/desktop/renderer/actions/kanban";
 import { BoardCommandProvider, useBoardCommands } from "@/desktop/renderer/components/BoardCommandProvider";
@@ -67,7 +67,21 @@ vi.mock("@/desktop/renderer/hooks/useProjectFilterParams", () => ({
 }));
 
 vi.mock("../Column", () => ({
-  default: () => <div data-testid="column" />,
+  default: ({ status, tasks }: { status: TaskStatus; tasks: KanbanTask[] }) => (
+    <div data-testid="column">
+      {tasks.map((task, index) => (
+        <a
+          key={task.id}
+          href={`/task/${task.id}`}
+          data-kanban-task-card="true"
+          data-kanban-status={status}
+          data-kanban-index={index}
+        >
+          {task.title}
+        </a>
+      ))}
+    </div>
+  ),
 }));
 
 vi.mock("../ProjectSelector", () => ({
@@ -348,6 +362,36 @@ describe("Board defaultSessionType sync", () => {
     await waitFor(() => {
       expect(screen.getByPlaceholderText("pageFind.placeholder")).toBeTruthy();
     });
+  });
+
+  it("task focus가 없을 때 방향키를 누르면 페이지 스크롤 대신 첫 task로 focus를 진입시킨다", async () => {
+    render(
+      <Board
+        initialTasks={createTasksWithTodo()}
+        initialDoneTotal={0}
+        initialDoneLimit={20}
+        sshHosts={[]}
+        projects={[createProject()]}
+        sidebarDefaultCollapsed={false}
+        doneAlertDismissed={false}
+        notificationSettings={{ isEnabled: true, enabledStatuses: ["progress", "pending", "review"] }}
+        defaultSessionType={SessionType.TMUX}
+        taskSearchShortcut="Mod+Shift+O"
+      />,
+    );
+
+    const taskLink = await screen.findByRole("link", { name: "Test Task" });
+    taskLink.blur();
+
+    const event = new KeyboardEvent("keydown", {
+      key: "ArrowDown",
+      bubbles: true,
+      cancelable: true,
+    });
+    window.dispatchEvent(event);
+
+    expect(event.defaultPrevented).toBe(true);
+    expect(document.activeElement).toBe(taskLink);
   });
 
   it("보드 검색 바에서 Enter와 Shift+Enter로 순방향/역방향 찾기를 호출한다", async () => {
