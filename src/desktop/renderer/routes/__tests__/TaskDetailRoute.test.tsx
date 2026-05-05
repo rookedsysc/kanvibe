@@ -18,6 +18,7 @@ const mocks = vi.hoisted(() => ({
   getTaskCodexHooksStatus: vi.fn(),
   getTaskOpenCodeHooksStatus: vi.fn(),
   getTaskAiSessions: vi.fn(),
+  getTaskAiSessionDetail: vi.fn(),
   getAllProjects: vi.fn(),
   getSidebarDefaultCollapsed: vi.fn(),
   getSidebarHintDismissed: vi.fn(),
@@ -79,6 +80,7 @@ vi.mock("@/desktop/renderer/actions/project", () => ({
   getTaskCodexHooksStatus: (...args: unknown[]) => mocks.getTaskCodexHooksStatus(...args),
   getTaskOpenCodeHooksStatus: (...args: unknown[]) => mocks.getTaskOpenCodeHooksStatus(...args),
   getTaskAiSessions: (...args: unknown[]) => mocks.getTaskAiSessions(...args),
+  getTaskAiSessionDetail: (...args: unknown[]) => mocks.getTaskAiSessionDetail(...args),
   getAllProjects: (...args: unknown[]) => mocks.getAllProjects(...args),
 }));
 
@@ -198,6 +200,14 @@ describe("TaskDetailRoute", () => {
       repoPath: null,
       sessions: [],
       sources: [],
+    });
+    mocks.getTaskAiSessionDetail.mockResolvedValue({
+      sessionId: "empty-session",
+      provider: "claude",
+      title: null,
+      matchedPath: null,
+      messages: [],
+      nextCursor: null,
     });
     mocks.getAllProjects.mockResolvedValue([
       {
@@ -400,6 +410,119 @@ describe("TaskDetailRoute", () => {
     fireEvent.click(screen.getByRole("button", { name: "close" }));
 
     expect(screen.queryByTestId("task-title")).toBeNull();
+  });
+
+  it("PR URL이 있는 task는 dock에 PR 링크를 바로 표시한다", async () => {
+    const prUrl = "https://github.com/kanvibe/kanvibe/pull/236";
+    mocks.getTaskById.mockResolvedValue({
+      id: "task-1",
+      title: "task title",
+      description: null,
+      branchName: "feat/detail-shortcut",
+      baseBranch: "main",
+      prUrl,
+      sessionType: null,
+      sessionName: null,
+      sshHost: null,
+      projectId: "project-1",
+      project: { id: "project-1", name: "kanvibe" },
+      status: "todo",
+      agentType: null,
+      worktreePath: "/repo__worktrees/detail-shortcut",
+    });
+
+    render(<TaskDetailRoute />);
+
+    const prLink = await screen.findByRole("link", { name: "PR" });
+    expect(prLink.getAttribute("href")).toBe(prUrl);
+    expect(prLink.getAttribute("target")).toBe("_blank");
+  });
+
+  it("채팅 아이콘을 클릭하면 drawer 대신 메인 영역을 AI 채팅 내역으로 전환한다", async () => {
+    mocks.getTaskById.mockResolvedValue({
+      id: "task-1",
+      title: "task title",
+      description: null,
+      branchName: "feat/detail-shortcut",
+      baseBranch: "main",
+      prUrl: null,
+      sessionType: "tmux",
+      sessionName: "task-session",
+      sshHost: null,
+      projectId: "project-1",
+      project: { id: "project-1", name: "kanvibe" },
+      status: "todo",
+      agentType: null,
+      worktreePath: "/repo__worktrees/detail-shortcut",
+    });
+    mocks.getTaskAiSessions.mockResolvedValue({
+      isRemote: false,
+      targetPath: "/repo__worktrees/detail-shortcut",
+      repoPath: "/repo",
+      sessions: [
+        {
+          id: "claude-session",
+          provider: "claude",
+          startedAt: null,
+          updatedAt: null,
+          matchedPath: "/repo__worktrees/detail-shortcut",
+          matchScope: "worktree",
+          title: "Claude chat",
+          firstUserPrompt: "Please fix the UI",
+          messageCount: 2,
+        },
+      ],
+      sources: [
+        {
+          provider: "claude",
+          available: true,
+          sessionCount: 1,
+          reason: null,
+        },
+      ],
+    });
+    mocks.getTaskAiSessionDetail.mockResolvedValue({
+      sessionId: "claude-session",
+      provider: "claude",
+      title: "Claude chat",
+      matchedPath: "/repo__worktrees/detail-shortcut",
+      messages: [
+        {
+          role: "user",
+          timestamp: null,
+          text: "Please fix the UI",
+          fullText: "Please fix the UI",
+          isTruncated: false,
+        },
+        {
+          role: "assistant",
+          timestamp: null,
+          text: "Updated the terminal chat view.",
+          fullText: "Updated the terminal chat view.",
+          isTruncated: false,
+        },
+      ],
+      nextCursor: null,
+    });
+
+    render(<TaskDetailRoute />);
+
+    await screen.findByLabelText("terminal input");
+
+    fireEvent.click(screen.getByRole("button", { name: "aiSessions.title" }));
+
+    expect(await screen.findByTestId("inline-ai-chat")).toBeTruthy();
+    expect(screen.getByText("Please fix the UI")).toBeTruthy();
+    expect(screen.getByText("Updated the terminal chat view.")).toBeTruthy();
+    expect(screen.queryByLabelText("terminal input")).toBeNull();
+    expect(screen.queryByTestId("ai-sessions-card")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "aiSessions.title" }));
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("terminal input")).toBeTruthy();
+    });
+    expect(screen.queryByTestId("inline-ai-chat")).toBeNull();
   });
 
   it("알림 단축키로 상세 화면의 알림 센터를 토글한다", async () => {

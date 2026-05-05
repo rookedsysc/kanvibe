@@ -194,3 +194,22 @@ describe("TaskDetailInfoCard - Project Badge Color", () => {
     expect(shortcutLink.className).toContain("bg-tag-project-bg");
   });
 });
+
+describe("TaskDetailInfoCard - PR Link", () => {
+  it("should not render PR link in the task information drawer", () => {
+    const task = createTask({
+      prUrl: "https://github.com/kanvibe/kanvibe/pull/236",
+    });
+
+    render(
+      <TaskDetailInfoCard
+        task={task}
+        agentTagStyle={null}
+        baseBranchTaskId={null}
+      />
+    );
+
+    expect(screen.queryByText("PR 링크")).toBeNull();
+    expect(screen.queryByText("PR")).toBeNull();
+  });
+});

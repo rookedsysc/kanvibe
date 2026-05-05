@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 import { useParams } from "react-router-dom";
-import AiSessionsCard from "@/components/AiSessionsCard";
 import ConnectTerminalForm from "@/components/ConnectTerminalForm";
 import CreateTaskModal from "@/components/CreateTaskModal";
 import DeleteTaskButton from "@/components/DeleteTaskButton";
@@ -16,6 +15,7 @@ import { getGitDiffFiles } from "@/desktop/renderer/actions/diff";
 import { deleteTask, getTaskById, getTaskIdByProjectAndBranch, updateTaskStatus } from "@/desktop/renderer/actions/kanban";
 import {
   getTaskAiSessions,
+  getTaskAiSessionDetail,
   getTaskCodexHooksStatus,
   getTaskGeminiHooksStatus,
   getTaskHooksStatus,
@@ -31,6 +31,12 @@ import { useRefreshSignal } from "@/desktop/renderer/utils/refresh";
 import { requestActiveTerminalFocusAfterUiSettles } from "@/desktop/renderer/utils/terminalFocus";
 import { SessionType, TaskStatus } from "@/entities/KanbanTask";
 import { useEscapeKey } from "@/hooks/useEscapeKey";
+import type {
+  AggregatedAiMessage,
+  AggregatedAiSession,
+  AggregatedAiSessionDetail,
+  AggregatedAiSessionsResult,
+} from "@/lib/aiSessions/types";
 
 const STATUS_TRANSITIONS = [
   { status: TaskStatus.TODO, labelKey: "moveToTodo" },
@@ -39,13 +45,16 @@ const STATUS_TRANSITIONS = [
   { status: TaskStatus.DONE, labelKey: "moveToDone" },
 ] as const;
 
+const INLINE_CHAT_DETAIL_LIMIT = 40;
+
 const AGENT_TAG_STYLES: Record<string, string> = {
   claude: "bg-tag-claude-bg text-tag-claude-text",
   gemini: "bg-tag-gemini-bg text-tag-gemini-text",
   codex: "bg-tag-codex-bg text-tag-codex-text",
 };
 
-type DetailPanel = "overview" | "actions" | "hooks" | "sessions";
+type DetailPanel = "overview" | "actions" | "hooks";
+type MainView = "terminal" | "chat";
 
 interface TaskDetailState {
   task: NonNullable<Awaited<ReturnType<typeof getTaskById>>>;
@@ -104,6 +113,120 @@ function normalizeCachedTaskDetailState(cachedState: TaskDetailState | null): Ta
   };
 }
 
+function selectInlineChatSession(sessions: AggregatedAiSession[]) {
+  return sessions.find((session) => session.provider === "claude") ?? sessions[0] ?? null;
+}
+
+function InlineAiChatView({ taskId, data }: { taskId: string; data: AggregatedAiSessionsResult }) {
+  const t = useTranslations("taskDetail");
+  const selectedSession = useMemo(() => selectInlineChatSession(data.sessions), [data.sessions]);
+  const [detail, setDetail] = useState<AggregatedAiSessionDetail | null>(null);
+  const [detailError, setDetailError] = useState<{ sessionId: string; message: string } | null>(null);
+
+  useEffect(() => {
+    if (!selectedSession) {
+      return;
+    }
+
+    let cancelled = false;
+
+    getTaskAiSessionDetail(
+      taskId,
+      selectedSession.provider,
+      selectedSession.id,
+      selectedSession.sourceRef ?? null,
+      null,
+      INLINE_CHAT_DETAIL_LIMIT,
+      false,
+    ).then((result) => {
+      if (cancelled) return;
+      if (!result) {
+        setDetailError({ sessionId: selectedSession.id, message: t("aiSessions.detailError") });
+        return;
+      }
+
+      setDetail(result);
+      setDetailError(null);
+    }).catch(() => {
+      if (cancelled) return;
+      setDetailError({ sessionId: selectedSession.id, message: t("aiSessions.detailError") });
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedSession, taskId, t]);
+
+  const messages = selectedSession && detail?.sessionId === selectedSession.id ? detail.messages : [];
+  const error = selectedSession && detailError?.sessionId === selectedSession.id ? detailError.message : null;
+  const isLoading = Boolean(selectedSession && detail?.sessionId !== selectedSession.id && !error);
+
+  return (
+    <div
+      data-testid="inline-ai-chat"
+      className="flex h-full min-h-0 flex-1 translate-y-0 flex-col overflow-hidden rounded-lg border border-border-default bg-bg-page opacity-100 shadow-md transition-all duration-200 ease-out"
+    >
+      <div className="flex shrink-0 items-center gap-3 border-b border-border-default bg-terminal-chrome px-4 py-2.5">
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-xs font-semibold text-terminal-text">
+            {selectedSession?.title ?? t("aiSessions.title")}
+          </p>
+          <p className="mt-0.5 truncate text-[11px] text-terminal-text/70">
+            {selectedSession ? selectedSession.provider : t("aiSessions.noPreview")}
+          </p>
+        </div>
+        {selectedSession ? (
+          <span className="rounded border border-tag-claude-text/30 bg-tag-claude-bg px-2 py-0.5 text-[10px] font-semibold text-tag-claude-text">
+            {selectedSession.provider}
+          </span>
+        ) : null}
+      </div>
+
+      <div className="flex-1 space-y-4 overflow-y-auto px-5 py-5">
+        {!selectedSession ? <InlineAiChatEmpty text={data.isRemote ? t("aiSessions.remoteBadge") : t("aiSessions.noPreview")} /> : null}
+        {selectedSession && isLoading ? <InlineAiChatEmpty text={t("aiSessions.loadingDetail")} /> : null}
+        {selectedSession && !isLoading && error ? <InlineAiChatEmpty text={error} /> : null}
+        {selectedSession && !isLoading && !error && messages.length === 0 ? <InlineAiChatEmpty text={t("aiSessions.noPreview")} /> : null}
+        {!isLoading && !error && messages.map((message, index) => (
+          <InlineAiChatMessage key={`${message.role}-${message.timestamp ?? index}-${index}`} message={message} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function InlineAiChatEmpty({ text }: { text: string }) {
+  return (
+    <div className="flex h-full items-center justify-center">
+      <p className="rounded-md border border-border-default bg-bg-surface px-4 py-3 text-sm text-text-muted">
+        {text}
+      </p>
+    </div>
+  );
+}
+
+function InlineAiChatMessage({ message }: { message: AggregatedAiMessage }) {
+  const isUserMessage = message.role === "user";
+  const displayedText = message.fullText || message.text;
+
+  return (
+    <div className={`flex ${isUserMessage ? "justify-end" : "justify-start"}`}>
+      <div
+        className={`max-w-[74%] rounded-2xl px-4 py-3 text-sm leading-6 shadow-sm ${
+          isUserMessage
+            ? "rounded-br-md bg-brand-primary text-white"
+            : "rounded-bl-md border border-border-default bg-bg-surface text-text-primary"
+        }`}
+      >
+        <div className={`mb-1 text-[11px] font-semibold ${isUserMessage ? "text-white/75" : "text-text-muted"}`}>
+          {message.role}
+        </div>
+        <p className="whitespace-pre-wrap break-words">{displayedText}</p>
+      </div>
+    </div>
+  );
+}
+
 export default function TaskDetailRoute() {
   const { id = "" } = useParams();
   const router = useRouter();
@@ -126,6 +249,7 @@ export default function TaskDetailRoute() {
   const [activePanel, setActivePanel] = useState<DetailPanel | null>(
     cachedState && !cachedState.sidebarDefaultCollapsed ? "overview" : null,
   );
+  const [mainView, setMainView] = useState<MainView>("terminal");
   const notificationCenterRef = useRef<NotificationCenterButtonHandle>(null);
   const currentTaskIdRef = useRef(id);
   const hasTerminal = !!(state?.task.sessionType && state.task.sessionName);
@@ -164,6 +288,7 @@ export default function TaskDetailRoute() {
 
       setState(cachedState ?? undefined);
       setActivePanel(cachedState && !cachedState.sidebarDefaultCollapsed ? "overview" : null);
+      setMainView("terminal");
     });
 
     return () => {
@@ -180,12 +305,12 @@ export default function TaskDetailRoute() {
   }, [state]);
 
   useEffect(() => {
-    if (!hasTerminal || isCreateTaskModalOpen) {
+    if (!hasTerminal || isCreateTaskModalOpen || mainView !== "terminal") {
       return;
     }
 
     requestActiveTerminalFocusAfterUiSettles();
-  }, [hasTerminal, id, isCreateTaskModalOpen]);
+  }, [hasTerminal, id, isCreateTaskModalOpen, mainView]);
 
   useEffect(() => {
     if (!id) {
@@ -399,6 +524,18 @@ export default function TaskDetailRoute() {
     requestActiveTerminalFocusAfterUiSettles();
   }
 
+  function toggleChatView() {
+    setMainView((current) => {
+      const nextView = current === "chat" ? "terminal" : "chat";
+      if (nextView === "chat") {
+        setActivePanel(null);
+      } else {
+        requestActiveTerminalFocusAfterUiSettles();
+      }
+      return nextView;
+    });
+  }
+
   return (
     <div className="relative h-screen overflow-hidden bg-bg-page p-3">
       <aside className={`absolute bottom-3 left-3 top-3 z-40 flex w-12 flex-col items-center rounded-lg border border-border-default bg-bg-surface/95 p-1.5 shadow-sm ${needsMacDesktopHeaderOffset ? "pt-10" : ""}`}>
@@ -412,7 +549,6 @@ export default function TaskDetailRoute() {
           { panel: "overview", label: t("info"), path: "M8 2.5a5.5 5.5 0 1 0 0 11 5.5 5.5 0 0 0 0-11Zm0 4.75v3.25M8 5.5h.01" },
           { panel: "actions", label: t("actions"), path: "M3 4h10M3 8h10M3 12h10" },
           { panel: "hooks", label: t("hooksStatus"), path: "M5.5 3.5 3 6l2.5 2.5M10.5 3.5 13 6l-2.5 2.5M9.5 2.5l-3 11" },
-          { panel: "sessions", label: t("aiSessions.title"), path: "M3 4.5h10v6H6l-3 2v-8Z" },
         ] satisfies Array<{ panel: DetailPanel; label: string; path: string }>).map(({ panel, label, path }) => (
           <button
             key={panel}
@@ -432,6 +568,35 @@ export default function TaskDetailRoute() {
           </button>
         ))}
 
+        <button
+          type="button"
+          onClick={toggleChatView}
+          className={`mb-1 rounded-md p-2 transition-colors ${
+            mainView === "chat"
+              ? "bg-brand-subtle text-text-brand"
+              : "text-text-muted hover:bg-bg-page hover:text-text-primary"
+          }`}
+          title={t("aiSessions.title")}
+          aria-label={t("aiSessions.title")}
+        >
+          <svg width="17" height="17" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.35" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M3 4.5h10v6H6l-3 2v-8Z" />
+          </svg>
+        </button>
+
+        {state.task.prUrl ? (
+          <a
+            href={state.task.prUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="mb-1 flex h-8 w-8 items-center justify-center rounded-md border border-tag-pr-text/30 bg-tag-pr-bg text-[10px] font-semibold text-tag-pr-text transition-opacity hover:opacity-80"
+            title="PR"
+            aria-label="PR"
+          >
+            PR
+          </a>
+        ) : null}
+
         <div className="mt-auto">
           <NotificationCenterButton ref={notificationCenterRef} buttonClassName="hover:bg-bg-page" panelClassName="left-0 right-auto" />
         </div>
@@ -446,7 +611,6 @@ export default function TaskDetailRoute() {
               {activePanel === "overview" && t("info")}
               {activePanel === "actions" && t("actions")}
               {activePanel === "hooks" && t("hooksStatus")}
-              {activePanel === "sessions" && t("aiSessions.title")}
             </h2>
             <button
               type="button"
@@ -512,13 +676,14 @@ export default function TaskDetailRoute() {
             />
           ) : null}
 
-          {activePanel === "sessions" ? <AiSessionsCard taskId={state.task.id} data={state.aiSessions} /> : null}
         </section>
       ) : null}
 
       <main className="ml-14 flex h-full min-w-0 flex-col">
-        {hasTerminal ? (
-          <div className="flex-1 flex flex-col min-h-0 rounded-lg overflow-hidden shadow-md">
+        {mainView === "chat" ? (
+          <InlineAiChatView taskId={state.task.id} data={state.aiSessions} />
+        ) : hasTerminal ? (
+          <div className="flex-1 flex flex-col min-h-0 rounded-lg overflow-hidden shadow-md transition-all duration-200 ease-out">
             <div className="bg-terminal-chrome flex items-center gap-2 px-4 py-2.5 shrink-0">
               <span className="text-xs text-terminal-text font-mono truncate">{state.task.sessionName ?? t("terminal")}</span>
               <div className="ml-auto">

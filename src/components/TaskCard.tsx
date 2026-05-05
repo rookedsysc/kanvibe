@@ -206,13 +206,13 @@ export default function TaskCard({ task, index, onContextMenu, projectName, proj
             )}
 
             {task.sessionType && (
-              <span className="rounded border border-border-subtle bg-tag-session-bg px-1.5 py-0.5 text-[10px] text-tag-session-text">
+              <span className="inline-flex items-center rounded border border-tag-session-text/30 bg-tag-session-bg px-1.5 py-0.5 text-[10px] font-semibold text-tag-session-text ring-1 ring-inset ring-tag-session-text/10">
                 {task.sessionType}
               </span>
             )}
 
             {task.sshHost && (
-              <span className="rounded border border-border-subtle bg-tag-ssh-bg px-1.5 py-0.5 text-[10px] text-tag-ssh-text">
+              <span className="inline-flex items-center rounded border border-tag-ssh-text/30 bg-tag-ssh-bg px-1.5 py-0.5 text-[10px] font-semibold text-tag-ssh-text ring-1 ring-inset ring-tag-ssh-text/10">
                 {task.sshHost}
               </span>
             )}

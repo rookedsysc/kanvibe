@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { createEvent, fireEvent, render, screen } from "@testing-library/react";
 import TaskCard from "../TaskCard";
 import { TaskPriority } from "@/entities/TaskPriority";
-import { TaskStatus } from "@/entities/KanbanTask";
+import { SessionType, TaskStatus } from "@/entities/KanbanTask";
 import type { KanbanTask } from "@/entities/KanbanTask";
 
 vi.mock("@hello-pangea/dnd", () => ({
@@ -129,6 +129,27 @@ describe("TaskCard - Priority Badge", () => {
     // Then
     const badge = screen.getByText("P1");
     expect(badge.className).toContain("ml-auto");
+  });
+
+  it("should render session and remote badges with emphasized badge treatment", () => {
+    const task = createTask({
+      sessionType: SessionType.TMUX,
+      sshHost: "devbox",
+    });
+
+    render(<TaskCard task={task} index={0} onContextMenu={onContextMenu} />);
+
+    const sessionBadge = screen.getByText("tmux");
+    const remoteBadge = screen.getByText("devbox");
+
+    expect(sessionBadge.className).toContain("bg-tag-session-bg");
+    expect(sessionBadge.className).toContain("text-tag-session-text");
+    expect(sessionBadge.className).toContain("font-semibold");
+    expect(sessionBadge.className).toContain("ring-1");
+    expect(remoteBadge.className).toContain("bg-tag-ssh-bg");
+    expect(remoteBadge.className).toContain("text-tag-ssh-text");
+    expect(remoteBadge.className).toContain("font-semibold");
+    expect(remoteBadge.className).toContain("ring-1");
   });
 
   it("should render project label above the task title with project color", () => {
