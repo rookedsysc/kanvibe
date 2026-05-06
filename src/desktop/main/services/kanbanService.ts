@@ -847,6 +847,11 @@ export async function connectTerminalSession(
     task.status = TaskStatus.PROGRESS;
 
     const saved = await repo.save(task);
+    scheduleTaskHookInstall(workingDir, {
+      id: saved.id,
+      title: saved.title,
+      sshHost: saved.sshHost,
+    });
     broadcastBoardUpdate();
     return serialize(saved);
   } catch (error) {
