@@ -55,14 +55,6 @@ export default function BackgroundSyncReviewDialog() {
       setSelectedPrMergeEventKeys(payload.mergedPullRequests.map(getMergedPrEventKey));
     };
 
-    void window.kanvibeDesktop?.consumePendingNotificationActivation?.()
-      .then((notification: AppNotification | null) => {
-        applyNotification(notification);
-      })
-      .catch(() => {
-        /* pending activation consume 실패는 무시 */
-      });
-
     const dispose = window.kanvibeDesktop?.onNotificationActivated?.((notification: AppNotification) => {
       applyNotification(notification);
     });

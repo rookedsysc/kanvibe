@@ -40,6 +40,7 @@ import {
   matchTaskDetailDockShortcutEvent,
 } from "@/desktop/renderer/utils/keyboardShortcut";
 import { INITIAL_DESKTOP_LOAD_TIMEOUT_MS, logDesktopInitialLoadTimeout } from "@/desktop/renderer/utils/loadingTimeout";
+import { rememberBoardFocusTask } from "@/desktop/renderer/utils/boardFocusTarget";
 import { buildRouteCacheKey, readRouteCache, removeRouteCache, writeRouteCache } from "@/desktop/renderer/utils/routeCache";
 import { useRefreshSignal } from "@/desktop/renderer/utils/refresh";
 import { requestActiveTerminalFocusAfterUiSettles } from "@/desktop/renderer/utils/terminalFocus";
@@ -417,6 +418,12 @@ export default function TaskDetailRoute() {
     item.onActivate();
     return true;
   }, [dockItems]);
+
+  useEffect(() => {
+    if (id) {
+      rememberBoardFocusTask(id);
+    }
+  }, [id]);
 
   useEffect(() => boardCommands.registerNotificationCenterHandler(() => {
     notificationCenterRef.current?.toggle();

@@ -5,6 +5,7 @@ import TaskQuickSearchDialog from "@/desktop/renderer/components/TaskQuickSearch
 const mocks = vi.hoisted(() => ({
   getSearchableTasks: vi.fn(),
   push: vi.fn(),
+  focusExistingInternalRoute: vi.fn(),
   requestCreateBranchTodo: vi.fn(),
   scrollIntoView: vi.fn(),
   setTaskQuickSearchOpen: vi.fn(),
@@ -22,6 +23,7 @@ vi.mock("@/desktop/renderer/navigation", () => ({
   localizeHref: (href: string, currentLocale = "ko") => (
     href.startsWith("/") ? `/${currentLocale}${href}` : href
   ),
+  redirect: (...args: unknown[]) => mocks.push(...args),
   usePathname: () => "/en",
   useRouter: () => ({
     push: (...args: unknown[]) => mocks.push(...args),
@@ -41,6 +43,10 @@ describe("TaskQuickSearchDialog", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     window.history.replaceState({}, "", "/#/en");
+    window.kanvibeDesktop = {
+      isDesktop: true,
+      focusExistingInternalRoute: mocks.focusExistingInternalRoute.mockResolvedValue(false),
+    } as unknown as NonNullable<typeof window.kanvibeDesktop>;
     Object.defineProperty(Element.prototype, "scrollIntoView", {
       configurable: true,
       value: mocks.scrollIntoView,
@@ -166,8 +172,31 @@ describe("TaskQuickSearchDialog", () => {
     fireEvent.keyDown(input, { key: "Enter" });
 
     await waitFor(() => {
-      expect(mocks.push).toHaveBeenCalledWith("/task/task-remote");
+      expect(mocks.push).toHaveBeenCalledWith("/en/task/task-remote");
     });
+  });
+
+  it("Enter로 이동할 task가 다른 윈도우에 열려 있으면 해당 윈도우 focus를 우선한다", async () => {
+    mocks.focusExistingInternalRoute.mockResolvedValue(true);
+
+    render(<TaskQuickSearchDialog shortcut="Ctrl+K" />);
+
+    fireEvent.keyDown(window, {
+      key: "k",
+      ctrlKey: true,
+    });
+
+    const input = await screen.findByRole("textbox");
+    fireEvent.change(input, {
+      target: { value: "api" },
+    });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    await waitFor(() => {
+      expect(mocks.focusExistingInternalRoute).toHaveBeenCalledWith("/en/task/task-remote");
+    });
+    expect(mocks.push).not.toHaveBeenCalled();
+    expect(screen.queryByRole("dialog")).toBeNull();
   });
 
   it("검색 결과에서 상세 페이지로 이동할 때 terminal focus 요청을 보낸다", async () => {
@@ -188,7 +217,7 @@ describe("TaskQuickSearchDialog", () => {
     fireEvent.keyDown(input, { key: "Enter" });
 
     await waitFor(() => {
-      expect(mocks.push).toHaveBeenCalledWith("/task/task-remote");
+      expect(mocks.push).toHaveBeenCalledWith("/en/task/task-remote");
     });
     await waitFor(() => {
       expect(focusListener).toHaveBeenCalled();
@@ -238,7 +267,7 @@ describe("TaskQuickSearchDialog", () => {
     fireEvent.keyDown(input, { key: "Enter" });
 
     await waitFor(() => {
-      expect(mocks.push).toHaveBeenCalledWith("/task/task-alert");
+      expect(mocks.push).toHaveBeenCalledWith("/en/task/task-alert");
     });
   });
 
@@ -257,7 +286,7 @@ describe("TaskQuickSearchDialog", () => {
     fireEvent.keyDown(input, { key: "Enter" });
 
     await waitFor(() => {
-      expect(mocks.push).toHaveBeenCalledWith("/task/task-dev-kanvibe");
+      expect(mocks.push).toHaveBeenCalledWith("/en/task/task-dev-kanvibe");
     });
   });
 

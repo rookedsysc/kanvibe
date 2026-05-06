@@ -14,8 +14,7 @@ import DoneConfirmDialog from "./DoneConfirmDialog";
 import { reorderTasks, deleteTask, getMoreDoneTasks, moveTaskToColumn } from "@/desktop/renderer/actions/kanban";
 import type { TasksByStatus } from "@/desktop/renderer/actions/kanban";
 import { useBoardCommands } from "@/desktop/renderer/components/BoardCommandProvider";
-import { localizeHref } from "@/desktop/renderer/navigation";
-import { openInternalRouteInNewWindow } from "@/desktop/renderer/utils/windowOpen";
+import { navigateToTaskDetail } from "@/desktop/renderer/utils/taskNavigation";
 import { SessionType, TaskStatus, type KanbanTask } from "@/entities/KanbanTask";
 import type { Project } from "@/entities/Project";
 import { useAutoRefresh } from "@/desktop/renderer/hooks/useAutoRefresh";
@@ -29,6 +28,7 @@ interface BoardProps {
   initialTasks: TasksByStatus;
   initialDoneTotal: number;
   initialDoneLimit: number;
+  initialFocusTaskId?: string | null;
   sshHosts: string[];
   projects: Project[];
   sidebarDefaultCollapsed: boolean;
@@ -63,6 +63,10 @@ function getBoardTaskCards() {
 function focusBoardTaskCard(card: HTMLAnchorElement) {
   card.focus({ preventScroll: true });
   card.scrollIntoView?.({ block: "nearest", inline: "nearest" });
+}
+
+function findBoardTaskCardById(taskId: string) {
+  return getBoardTaskCards().find((card) => card.dataset.kanbanTaskId === taskId) ?? null;
 }
 
 function findTaskById(tasks: TasksByStatus, taskId: string) {
@@ -129,7 +133,38 @@ function getCurrentBoardLocale() {
 }
 
 function openTaskDetailInNewWindow(taskId: string) {
-  openInternalRouteInNewWindow(localizeHref(`/task/${taskId}`, getCurrentBoardLocale()));
+  void navigateToTaskDetail(taskId, {
+    currentLocale: getCurrentBoardLocale(),
+    openInNewWindow: true,
+  });
+}
+
+function buildStatusMoveResult(
+  task: KanbanTask,
+  destinationStatus: TaskStatus,
+  currentTasks: TasksByStatus,
+  filteredTasks: TasksByStatus,
+): DropResult | null {
+  if (task.status === destinationStatus) return null;
+
+  const sourceIndex = currentTasks[task.status].findIndex((candidate) => candidate.id === task.id);
+  if (sourceIndex === -1) return null;
+
+  return {
+    draggableId: task.id,
+    type: "DEFAULT",
+    source: {
+      droppableId: task.status,
+      index: sourceIndex,
+    },
+    destination: {
+      droppableId: destinationStatus,
+      index: filteredTasks[destinationStatus].length,
+    },
+    reason: "DROP",
+    mode: "FLUID",
+    combine: null,
+  };
 }
 
 /** worktree repoPath에서 메인 프로젝트 경로를 추출한다 */
@@ -271,6 +306,7 @@ export default function Board({
   initialTasks,
   initialDoneTotal,
   initialDoneLimit,
+  initialFocusTaskId,
   sshHosts,
   projects,
   doneAlertDismissed,
@@ -302,6 +338,7 @@ export default function Board({
   const [, startDragPersistenceTransition] = useTransition();
   const notificationCenterRef = useRef<NotificationCenterButtonHandle>(null);
   const projectSelectorRef = useRef<ProjectSelectorHandle>(null);
+  const hasAppliedInitialFocusRef = useRef(false);
 
   /** projectId → 표시할 프로젝트 이름 매핑. worktree 프로젝트는 메인 프로젝트 이름으로 resolve한다 */
   const projectNameMap = useMemo(() => {
@@ -423,6 +460,28 @@ export default function Board({
     const isMacDesktop = navigator.userAgent.includes("Mac") || navigator.platform.toLowerCase().includes("mac");
     setShouldUseMacTitlebarLayout(isDesktopApp && isMacDesktop);
   }, []);
+
+  useEffect(() => {
+    hasAppliedInitialFocusRef.current = false;
+  }, [initialFocusTaskId]);
+
+  useEffect(() => {
+    if (!isMounted || !initialFocusTaskId || hasAppliedInitialFocusRef.current) {
+      return;
+    }
+
+    if (!findTaskById(filteredTasks, initialFocusTaskId)) {
+      return;
+    }
+
+    const targetTaskCard = findBoardTaskCardById(initialFocusTaskId);
+    if (!targetTaskCard) {
+      return;
+    }
+
+    focusBoardTaskCard(targetTaskCard);
+    hasAppliedInitialFocusRef.current = true;
+  }, [filteredTasks, initialFocusTaskId, isMounted]);
 
   useEffect(() => boardCommands.registerBoardHandlers({
     toggleNotificationCenter() {
@@ -602,6 +661,39 @@ export default function Board({
     handleCloseContextMenu();
   }, [contextMenu.task, handleCloseContextMenu, tt]);
 
+  const handleStatusChangeFromCard = useCallback(
+    (newStatus: TaskStatus) => {
+      const task = contextMenu.task;
+      if (!task) return;
+
+      const result = buildStatusMoveResult(task, newStatus, tasks, filteredTasks);
+      handleCloseContextMenu();
+
+      if (!result) return;
+
+      const shouldConfirmDoneMove =
+        newStatus === TaskStatus.DONE &&
+        task.status !== TaskStatus.DONE &&
+        !isDoneAlertDismissed &&
+        !!(task.branchName || task.sessionType);
+
+      if (shouldConfirmDoneMove) {
+        setPendingDoneResult(result);
+        return;
+      }
+
+      executeDragMove(result);
+    },
+    [
+      contextMenu.task,
+      executeDragMove,
+      filteredTasks,
+      handleCloseContextMenu,
+      isDoneAlertDismissed,
+      tasks,
+    ],
+  );
+
   const headerClassName = shouldUseMacTitlebarLayout
     ? "flex items-center justify-end bg-bg-page px-6 pb-3 pl-20 pr-6 pt-10 [-webkit-app-region:drag]"
     : "flex items-center justify-end border-b border-border-default bg-bg-surface px-6 py-3";
@@ -707,8 +799,15 @@ export default function Board({
           onClose={handleCloseContextMenu}
           onBranch={handleBranchFromCard}
           onCreateBranchTodo={handleCreateBranchTodo}
+          onStatusChange={handleStatusChangeFromCard}
           onDelete={handleDeleteFromCard}
           hasBranch={!!contextMenu.task.branchName}
+          currentStatus={contextMenu.task.status}
+          statusOptions={COLUMNS.map((column) => ({
+            status: column.status,
+            label: t(`columns.${column.labelKey}`),
+            colorClass: column.colorClass,
+          }))}
         />
       )}
 

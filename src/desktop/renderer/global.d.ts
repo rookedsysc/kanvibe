@@ -17,6 +17,7 @@ declare global {
       isDesktop: boolean;
       logRendererError?: (event: string, payload?: Record<string, unknown>) => void;
       invoke: (namespace: DesktopServiceNamespace, method: string, args: unknown[]) => Promise<unknown>;
+      focusExistingInternalRoute?: (route: string) => Promise<boolean>;
       onBoardEvent: (listener: (event: BoardEventPayload) => void) => () => void;
       openTerminal: (taskId: string, cols: number, rows: number) => Promise<{ ok: boolean; error?: string }>;
       writeTerminal: (taskId: string, data: string) => void;

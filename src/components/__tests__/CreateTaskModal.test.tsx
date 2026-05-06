@@ -16,6 +16,9 @@ vi.mock("next-intl", () => ({
 }));
 
 vi.mock("@/desktop/renderer/navigation", () => ({
+  localizeHref: (href: string, currentLocale = "ko") => href.startsWith("/") ? `/${currentLocale}${href}` : href,
+  redirect: (...args: unknown[]) => mockPush(...args),
+  usePathname: () => "/ko",
   useRouter: () => ({ push: mockPush }),
 }));
 
@@ -113,7 +116,7 @@ describe("CreateTaskModal", () => {
     });
     expect(mockEnsureSessionDependencyWithPrompt).not.toHaveBeenCalled();
     expect(onClose).toHaveBeenCalled();
-    expect(mockPush).toHaveBeenCalledWith("/task/task-local-fast");
+    expect(mockPush).toHaveBeenCalledWith("/ko/task/task-local-fast");
   });
 
   it("원격 프로젝트 task 생성은 세션 도구 프롬프트 없이 생성 요청을 보낸다", async () => {
@@ -155,7 +158,7 @@ describe("CreateTaskModal", () => {
     });
     expect(mockEnsureSessionDependencyWithPrompt).not.toHaveBeenCalled();
     expect(onClose).toHaveBeenCalled();
-    expect(mockPush).toHaveBeenCalledWith("/task/task-remote-fast");
+    expect(mockPush).toHaveBeenCalledWith("/ko/task/task-remote-fast");
   });
 
   it("의존성 준비가 끝나면 생성한 작업 상세 페이지로 이동한다", async () => {
@@ -196,7 +199,7 @@ describe("CreateTaskModal", () => {
       });
     });
     expect(onClose).toHaveBeenCalled();
-    expect(mockPush).toHaveBeenCalledWith("/task/task-2");
+    expect(mockPush).toHaveBeenCalledWith("/ko/task/task-2");
   });
 
   it("Escape를 누르면 모달을 닫는다", async () => {
@@ -330,7 +333,7 @@ describe("CreateTaskModal", () => {
       });
     });
     expect(onClose).toHaveBeenCalled();
-    expect(mockPush).toHaveBeenCalledWith("/task/task-enter");
+    expect(mockPush).toHaveBeenCalledWith("/ko/task/task-enter");
   });
 
   it("프로젝트 목록이 새로고침되어도 사용자가 선택한 베이스 브랜치를 유지한다", async () => {

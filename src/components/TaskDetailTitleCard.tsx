@@ -61,7 +61,7 @@ export default function TaskDetailTitleCard({ task, taskId }: TaskDetailTitleCar
     if (e.key === "Escape") {
       handleCancel();
     }
-    if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+    if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       handleSave();
     }

@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { createEvent, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import Board from "../Board";
-import { reorderTasks } from "@/desktop/renderer/actions/kanban";
+import { moveTaskToColumn, reorderTasks } from "@/desktop/renderer/actions/kanban";
 import { SessionType, TaskStatus, type KanbanTask } from "@/entities/KanbanTask";
 import type { Project } from "@/entities/Project";
 import type { TasksByStatus } from "@/desktop/renderer/actions/kanban";
@@ -110,7 +110,17 @@ vi.mock("../NotificationCenterButton", () => ({
 }));
 
 vi.mock("../TaskContextMenu", () => ({
-  default: () => <div data-testid="task-context-menu" />,
+  default: ({
+    onStatusChange,
+  }: {
+    onStatusChange: (status: TaskStatus) => void;
+  }) => (
+    <div data-testid="task-context-menu">
+      <button type="button" onClick={() => onStatusChange(TaskStatus.REVIEW)}>
+        change-status-review
+      </button>
+    </div>
+  ),
 }));
 
 vi.mock("../DoneConfirmDialog", () => ({
@@ -187,6 +197,58 @@ function createTasksWithTodo(): TasksByStatus {
       },
     ],
     [TaskStatus.PROGRESS]: [],
+    [TaskStatus.PENDING]: [],
+    [TaskStatus.REVIEW]: [],
+    [TaskStatus.DONE]: [],
+  };
+}
+
+function createTasksWithTodoAndProgress(): TasksByStatus {
+  return {
+    [TaskStatus.TODO]: [
+      {
+        id: "task-1",
+        title: "Todo Task",
+        description: null,
+        status: TaskStatus.TODO,
+        branchName: null,
+        worktreePath: null,
+        sessionType: null,
+        sessionName: null,
+        sshHost: null,
+        agentType: null,
+        project: null,
+        projectId: "project-1",
+        baseBranch: null,
+        prUrl: null,
+        priority: null,
+        displayOrder: 0,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+    ],
+    [TaskStatus.PROGRESS]: [
+      {
+        id: "task-2",
+        title: "Progress Task",
+        description: null,
+        status: TaskStatus.PROGRESS,
+        branchName: null,
+        worktreePath: null,
+        sessionType: null,
+        sessionName: null,
+        sshHost: null,
+        agentType: null,
+        project: null,
+        projectId: "project-1",
+        baseBranch: null,
+        prUrl: null,
+        priority: null,
+        displayOrder: 0,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+    ],
     [TaskStatus.PENDING]: [],
     [TaskStatus.REVIEW]: [],
     [TaskStatus.DONE]: [],
@@ -395,6 +457,30 @@ describe("Board defaultSessionType sync", () => {
     expect(document.activeElement).toBe(taskLink);
   });
 
+  it("상세 화면에서 돌아온 task id가 있으면 해당 task로 초기 focus를 시작한다", async () => {
+    render(
+      <Board
+        initialTasks={createTasksWithTodoAndProgress()}
+        initialDoneTotal={0}
+        initialDoneLimit={20}
+        sshHosts={[]}
+        projects={[createProject()]}
+        sidebarDefaultCollapsed={false}
+        doneAlertDismissed={false}
+        notificationSettings={{ isEnabled: true, enabledStatuses: ["progress", "pending", "review"] }}
+        defaultSessionType={SessionType.TMUX}
+        taskSearchShortcut="Mod+Shift+O"
+        initialFocusTaskId="task-2"
+      />,
+    );
+
+    const progressTaskLink = await screen.findByRole("link", { name: "Progress Task" });
+
+    await waitFor(() => {
+      expect(document.activeElement).toBe(progressTaskLink);
+    });
+  });
+
   it("포커스된 task에서 Shift+Enter를 누르면 상세 페이지를 새 창에서 연다", async () => {
     window.location.hash = "#/en";
     const openWindow = vi.spyOn(window, "open").mockImplementation(() => null);
@@ -458,6 +544,37 @@ describe("Board defaultSessionType sync", () => {
     expect(event.defaultPrevented).toBe(true);
     await waitFor(() => {
       expect(screen.getByTestId("task-context-menu")).toBeTruthy();
+    });
+  });
+
+  it("컨텍스트 메뉴에서 상태를 선택하면 대상 컬럼 마지막으로 task를 이동한다", async () => {
+    render(
+      <Board
+        initialTasks={createTasksWithTodo()}
+        initialDoneTotal={0}
+        initialDoneLimit={20}
+        sshHosts={[]}
+        projects={[createProject()]}
+        sidebarDefaultCollapsed={false}
+        doneAlertDismissed={false}
+        notificationSettings={{ isEnabled: true, enabledStatuses: ["progress", "pending", "review"] }}
+        defaultSessionType={SessionType.TMUX}
+        taskSearchShortcut="Mod+Shift+O"
+      />,
+    );
+
+    const taskLink = await screen.findByRole("link", { name: "Test Task" });
+    taskLink.focus();
+
+    fireEvent.keyDown(taskLink, {
+      key: "F10",
+      shiftKey: true,
+    });
+
+    fireEvent.click(await screen.findByRole("button", { name: "change-status-review" }));
+
+    await waitFor(() => {
+      expect(moveTaskToColumn).toHaveBeenCalledWith("task-1", TaskStatus.REVIEW, ["task-1"]);
     });
   });
 

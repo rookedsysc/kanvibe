@@ -1,12 +1,16 @@
 import { useEffect, useState } from "react";
 import { useTranslations } from "next-intl";
 import { useParams } from "react-router-dom";
-import { Link, useRouter } from "@/desktop/renderer/navigation";
+import { Link, usePathname, useRouter } from "@/desktop/renderer/navigation";
 import { getGitDiffFiles } from "@/desktop/renderer/actions/diff";
 import { getTaskById } from "@/desktop/renderer/actions/kanban";
 import DiffPageClient from "@/desktop/renderer/components/DiffPageClient";
 import { INITIAL_DESKTOP_LOAD_TIMEOUT_MS, logDesktopInitialLoadTimeout } from "@/desktop/renderer/utils/loadingTimeout";
 import { useRefreshSignal } from "@/desktop/renderer/utils/refresh";
+import {
+  navigateToTaskDetail,
+  shouldHandleTaskNavigationClick,
+} from "@/desktop/renderer/utils/taskNavigation";
 
 interface DiffRouteState {
   task: Awaited<ReturnType<typeof getTaskById>>;
@@ -24,8 +28,22 @@ export default function DiffRoute() {
   const { id = "" } = useParams();
   const t = useTranslations("diffView");
   const router = useRouter();
+  const pathname = usePathname();
   const refreshSignal = useRefreshSignal(["all", "diff"]);
   const [state, setState] = useState<DiffRouteState | null>(null);
+  const currentLocale = pathname.split("/").filter(Boolean)[0];
+
+  function handleTaskDetailLinkClick(event: React.MouseEvent<HTMLAnchorElement>) {
+    if (!shouldHandleTaskNavigationClick(event)) {
+      return;
+    }
+
+    event.preventDefault();
+    void navigateToTaskDetail(id, {
+      currentLocale,
+      navigate: router.push,
+    });
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -96,7 +114,7 @@ export default function DiffRoute() {
     return (
       <div className="h-screen flex flex-col items-center justify-center bg-bg-page gap-4">
         <p className="text-text-muted text-sm">{t("noBranch")}</p>
-        <Link href={`/task/${id}`} className="text-sm text-text-brand hover:underline">{t("backToTask")}</Link>
+        <Link href={`/task/${id}`} onClick={handleTaskDetailLinkClick} className="text-sm text-text-brand hover:underline">{t("backToTask")}</Link>
       </div>
     );
   }
@@ -105,7 +123,7 @@ export default function DiffRoute() {
     return (
       <div className="h-screen flex flex-col items-center justify-center bg-bg-page gap-4">
         <p className="text-text-muted text-sm">{t("noWorktree")}</p>
-        <Link href={`/task/${id}`} className="text-sm text-text-brand hover:underline">{t("backToTask")}</Link>
+        <Link href={`/task/${id}`} onClick={handleTaskDetailLinkClick} className="text-sm text-text-brand hover:underline">{t("backToTask")}</Link>
       </div>
     );
   }
@@ -113,7 +131,7 @@ export default function DiffRoute() {
   return (
     <div className="h-screen flex flex-col bg-bg-page">
       <header className="shrink-0 flex items-center gap-3 px-4 py-2.5 bg-bg-surface border-b border-border-default">
-        <Link href={`/task/${id}`} className="flex items-center gap-1.5 text-sm text-text-secondary hover:text-text-primary transition-colors">
+        <Link href={`/task/${id}`} onClick={handleTaskDetailLinkClick} className="flex items-center gap-1.5 text-sm text-text-secondary hover:text-text-primary transition-colors">
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none" className="shrink-0">
             <path d="M10 12L6 8L10 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
           </svg>

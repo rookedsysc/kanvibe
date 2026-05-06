@@ -5,6 +5,7 @@ import { getTasksByStatus } from "@/desktop/renderer/actions/kanban";
 import { getAllProjects, getAvailableHosts } from "@/desktop/renderer/actions/project";
 import { buildRouteCacheKey, readRouteCache, writeRouteCache } from "@/desktop/renderer/utils/routeCache";
 import { useRefreshSignal } from "@/desktop/renderer/utils/refresh";
+import { consumeBoardFocusTask } from "@/desktop/renderer/utils/boardFocusTarget";
 import { DEFAULT_TASK_SEARCH_SHORTCUT } from "@/desktop/renderer/utils/keyboardShortcut";
 import { INITIAL_DESKTOP_LOAD_TIMEOUT_MS, logDesktopInitialLoadTimeout } from "@/desktop/renderer/utils/loadingTimeout";
 import { SessionType, TaskStatus } from "@/entities/KanbanTask";
@@ -119,6 +120,7 @@ function BoardRouteSkeleton() {
 export default function BoardRoute() {
   const refreshSignal = useRefreshSignal(["all", "board"]);
   const [data, setData] = useState<BoardData | null>(() => readRouteCache<BoardData>(BOARD_ROUTE_CACHE_KEY));
+  const [initialFocusTaskId] = useState(() => consumeBoardFocusTask());
 
   useEffect(() => {
     document.title = "";
@@ -182,6 +184,7 @@ export default function BoardRoute() {
       initialTasks={data.tasks.tasks}
       initialDoneTotal={data.tasks.doneTotal}
       initialDoneLimit={data.tasks.doneLimit}
+      initialFocusTaskId={initialFocusTaskId}
       sshHosts={data.sshHosts}
       projects={data.projects}
       sidebarDefaultCollapsed={data.sidebarDefaultCollapsed}

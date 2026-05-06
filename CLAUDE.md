@@ -26,6 +26,13 @@
 - Task detail dock shortcuts must use the shared dock shortcut helpers: macOS uses `Cmd+{number}` and Linux uses `Alt+{number}`. Electron `before-input-event` must intercept these before terminal input receives them.
 - Task detail dock numbering excludes the back-to-board button and must be derived from the dock item array order, not hard-coded per item. Keep PR as the conditional slot after the first three dock items: with PR it is slot 4 and later items shift to 5+, without PR the next dock item gets slot 4.
 
+## Task Navigation
+
+- Route all task-detail transitions through `navigateToTaskDetail()` in `src/desktop/renderer/utils/taskNavigation.ts`.
+- Before navigating the current window to a task detail route, focus an already-open window for the same task detail route when one exists.
+- Keep explicit new-window actions on `openInternalRouteInNewWindow()` or `navigateToTaskDetail(..., { openInNewWindow: true })` so Electron main can reuse its existing-window focus policy.
+- Do not hand-roll `router.push("/task/...")`, `redirect("/.../task/...")`, or `window.location.hash` for task detail transitions in feature components.
+
 ## UI Color Tokens
 
 - Use `#0064FF` as the primary point color for PR buttons, primary actions, selected states, links, focus borders, and other important interactive highlights.

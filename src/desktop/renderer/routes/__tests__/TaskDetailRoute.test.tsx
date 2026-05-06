@@ -6,6 +6,7 @@ import TaskDetailRoute from "@/desktop/renderer/routes/TaskDetailRoute";
 import { INITIAL_DESKTOP_LOAD_TIMEOUT_MS } from "@/desktop/renderer/utils/loadingTimeout";
 
 const TASK_DETAIL_CACHE_KEY = "kanvibe:route-cache:task-detail:task-1";
+const BOARD_FOCUS_TASK_CACHE_KEY = "kanvibe:route-cache:board-focus-task";
 
 const mocks = vi.hoisted(() => ({
   getTaskById: vi.fn(),
@@ -79,7 +80,9 @@ vi.mock("react-router-dom", () => ({
 
 vi.mock("@/desktop/renderer/navigation", () => ({
   Link: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+  localizeHref: (href: string, currentLocale = "ko") => href.startsWith("/") ? `/${currentLocale}${href}` : href,
   redirect: (...args: unknown[]) => mocks.redirect(...args),
+  usePathname: () => "/ko/task/task-1",
   useRouter: () => ({ push: mocks.push, back: mocks.back, forward: mocks.forward }),
 }));
 
@@ -357,6 +360,31 @@ describe("TaskDetailRoute", () => {
     await waitFor(() => {
       expect(screen.getByTestId("task-title").textContent).toBe("fresh task title");
     });
+  });
+
+  it("현재 task id를 보드 복귀 focus target으로 기록한다", async () => {
+    mocks.getTaskById.mockResolvedValue({
+      id: "task-1",
+      title: "task title",
+      description: null,
+      branchName: "feat/detail-focus-return",
+      baseBranch: "main",
+      prUrl: null,
+      sessionType: null,
+      sessionName: null,
+      sshHost: null,
+      projectId: "project-1",
+      project: { id: "project-1", name: "kanvibe" },
+      status: "todo",
+      agentType: null,
+      worktreePath: "/repo__worktrees/detail-focus-return",
+    });
+
+    render(<TaskDetailRoute />);
+
+    await screen.findByTestId("task-title");
+
+    expect(JSON.parse(sessionStorage.getItem(BOARD_FOCUS_TASK_CACHE_KEY) ?? "null")).toBe("task-1");
   });
 
   it("초기 task 조회가 끝나지 않아도 Loading 화면에 고착되지 않는다", async () => {

@@ -31,4 +31,14 @@ describe("globals.css theme tokens", () => {
     expect(readThemeVar(':root\\[data-theme="light"\\]', "--color-tag-ssh-bg")).toBe("var(--green-50)");
     expect(readThemeVar(':root\\[data-theme="light"\\]', "--color-tag-ssh-text")).toBe("var(--green-700)");
   });
+
+  it("defines a high-contrast focus glow for keyboard-focused kanban task cards", () => {
+    const darkThemeSelector = ':root,\\s*:root\\[data-theme="dark"\\]';
+
+    expect(readThemeVar(":root", "--shadow-kanban-task-focus")).toContain("var(--color-brand-muted)");
+    expect(readThemeVar(darkThemeSelector, "--shadow-kanban-task-focus")).toContain("rgba(0, 100, 255, 0.38)");
+    expect(css).toContain('[data-kanban-task-card="true"]:focus');
+    expect(css).toContain("border-color: var(--color-border-brand) !important;");
+    expect(css).toContain("box-shadow: var(--shadow-kanban-task-focus);");
+  });
 });

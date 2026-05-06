@@ -62,6 +62,19 @@ async function resolveCommonRepoPath(repoPath: string, sshHost?: string | null):
   }
 }
 
+async function isSubmoduleRepoPath(repoPath: string, sshHost?: string | null): Promise<boolean> {
+  try {
+    const superprojectPath = await execGit(
+      `git -C "${repoPath}" rev-parse --show-superproject-working-tree`,
+      sshHost,
+    );
+
+    return superprojectPath.trim().length > 0;
+  } catch {
+    return false;
+  }
+}
+
 async function resolveProjectDefaultBranchWorktreePath(project: Pick<Project, "repoPath" | "defaultBranch" | "sshHost">): Promise<string | null> {
   try {
     const worktrees = await listWorktrees(project.repoPath, project.sshHost);
@@ -362,6 +375,8 @@ async function ensureProjectRootTask(
 async function resolveTaskHookTarget(task: {
   id: string;
   worktreePath: string | null;
+  branchName?: string | null;
+  baseBranch?: string | null;
   project: Project | null;
 }) {
   if (!task.project) {
@@ -369,7 +384,7 @@ async function resolveTaskHookTarget(task: {
   }
 
   const targetPath = task.worktreePath || task.project.repoPath;
-  if (targetPath !== task.project.repoPath) {
+  if (targetPath !== task.project.repoPath || !isDefaultBranchTask(task, task.project.defaultBranch)) {
     return {
       targetPath,
       taskId: task.id,
@@ -383,6 +398,17 @@ async function resolveTaskHookTarget(task: {
     taskId: projectRootTask?.id ?? task.id,
     sshHost: task.project.sshHost,
   };
+}
+
+function isDefaultBranchTask(
+  task: { branchName?: string | null; baseBranch?: string | null },
+  defaultBranch: string,
+): boolean {
+  if (task.branchName) {
+    return task.branchName === defaultBranch;
+  }
+
+  return !task.baseBranch || task.baseBranch === defaultBranch;
 }
 
 /** 등록된 모든 프로젝트를 반환한다 */
@@ -716,9 +742,17 @@ export async function scanAndRegisterProjects(
   const result: ScanResult = { registered: [], skipped: [], errors: [], worktreeTasks: [], registeredWorktrees: [], hooksSetup: [] };
 
   const discoveredRepoPaths = await scanGitRepos(rootPath, sshHost || null);
+  const registerableDiscoveredRepoPaths = (
+    await Promise.all(discoveredRepoPaths.map(async (repoPath) => ({
+      repoPath,
+      isSubmodule: await isSubmoduleRepoPath(repoPath, sshHost || null),
+    })))
+  )
+    .filter(({ isSubmodule }) => !isSubmodule)
+    .map(({ repoPath }) => repoPath);
   const repoPaths = Array.from(
     new Set(
-      await Promise.all(discoveredRepoPaths.map((repoPath) => resolveCommonRepoPath(repoPath, sshHost || null))),
+      await Promise.all(registerableDiscoveredRepoPaths.map((repoPath) => resolveCommonRepoPath(repoPath, sshHost || null))),
     ),
   );
   if (repoPaths.length === 0) {
