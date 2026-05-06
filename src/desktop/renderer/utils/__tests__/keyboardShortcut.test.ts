@@ -192,25 +192,32 @@ describe("keyboardShortcut", () => {
     }, SHORTCUTS.pageForward, "linux")).toBe(true);
   });
 
-  it("상세 dock shortcut은 macOS Cmd+Shift+숫자와 Linux Alt+Shift+숫자로 표시하고 매칭한다", () => {
+  it("상세 dock shortcut은 macOS Cmd+숫자와 Linux Alt+숫자로 표시하고 매칭한다", () => {
     expect(TASK_DETAIL_DOCK_SHORTCUT_INDEXES).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9]);
-    expect(formatShortcutForDisplay(createTaskDetailDockShortcut(1), "mac")).toBe("Cmd+Shift+1");
-    expect(formatShortcutForDisplay(createTaskDetailDockShortcut(1), "linux")).toBe("Alt+Shift+1");
+    expect(formatShortcutForDisplay(createTaskDetailDockShortcut(1), "mac")).toBe("Cmd+1");
+    expect(formatShortcutForDisplay(createTaskDetailDockShortcut(1), "linux")).toBe("Alt+1");
 
     expect(matchShortcutEvent(new KeyboardEvent("keydown", {
       key: "1",
       metaKey: true,
-      shiftKey: true,
     }), createTaskDetailDockShortcut(1), "mac")).toBe(true);
     expect(matchShortcutEvent(new KeyboardEvent("keydown", {
       key: "1",
       altKey: true,
-      shiftKey: true,
     }), createTaskDetailDockShortcut(1), "linux")).toBe(true);
     expect(matchShortcutEvent(new KeyboardEvent("keydown", {
       key: "1",
-      ctrlKey: true,
+      metaKey: true,
       shiftKey: true,
+    }), createTaskDetailDockShortcut(1), "mac")).toBe(false);
+    expect(matchShortcutEvent(new KeyboardEvent("keydown", {
+      key: "1",
+      altKey: true,
+      shiftKey: true,
+    }), createTaskDetailDockShortcut(1), "linux")).toBe(false);
+    expect(matchShortcutEvent(new KeyboardEvent("keydown", {
+      key: "1",
+      ctrlKey: true,
     }), createTaskDetailDockShortcut(1), "linux")).toBe(false);
   });
 
@@ -218,17 +225,14 @@ describe("keyboardShortcut", () => {
     expect(matchTaskDetailDockShortcutEvent(new KeyboardEvent("keydown", {
       key: "4",
       metaKey: true,
-      shiftKey: true,
     }), "mac")).toBe(4);
     expect(matchTaskDetailDockShortcutEvent(new KeyboardEvent("keydown", {
       key: "4",
       altKey: true,
-      shiftKey: true,
     }), "linux")).toBe(4);
     expect(matchTaskDetailDockShortcutEvent(new KeyboardEvent("keydown", {
       key: "4",
       ctrlKey: true,
-      shiftKey: true,
     }), "linux")).toBeNull();
   });
 

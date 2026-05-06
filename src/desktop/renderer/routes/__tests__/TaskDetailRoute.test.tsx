@@ -512,7 +512,6 @@ describe("TaskDetailRoute", () => {
     const wasNotPrevented = fireEvent.keyDown(terminalInput, {
       key: "1",
       altKey: true,
-      shiftKey: true,
     });
     terminalInput.removeEventListener("keydown", terminalKeyDown);
     window.removeEventListener("keydown", windowBubbleKeyDown);
@@ -550,12 +549,11 @@ describe("TaskDetailRoute", () => {
     );
 
     const prLink = await screen.findByRole("link", { name: "PR" });
-    expect(prLink.getAttribute("title")).toContain("Alt+Shift+4");
+    expect(prLink.getAttribute("title")).toContain("Alt+4");
 
     const wasNotPrevented = fireEvent.keyDown(window, {
       key: "4",
       altKey: true,
-      shiftKey: true,
     });
 
     expect(wasNotPrevented).toBe(false);

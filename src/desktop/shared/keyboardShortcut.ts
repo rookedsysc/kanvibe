@@ -257,8 +257,8 @@ export function matchElectronShortcutInput(
 
 export function createTaskDetailDockShortcut(index: TaskDetailDockShortcutIndex): ShortcutDefinition {
   return {
-    mac: `Meta+Shift+${index}`,
-    linux: `Alt+Shift+${index}`,
+    mac: `Meta+${index}`,
+    linux: `Alt+${index}`,
   };
 }
 
