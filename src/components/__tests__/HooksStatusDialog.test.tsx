@@ -10,12 +10,18 @@ const {
   mockInstallTaskGeminiHooks,
   mockInstallTaskCodexHooks,
   mockInstallTaskOpenCodeHooks,
+  mockGetTaskHooksStatus,
+  mockGetTaskGeminiHooksStatus,
+  mockGetTaskCodexHooksStatus,
   mockGetTaskOpenCodeHooksStatus,
 } = vi.hoisted(() => ({
   mockInstallTaskHooks: vi.fn(),
   mockInstallTaskGeminiHooks: vi.fn(),
   mockInstallTaskCodexHooks: vi.fn(),
   mockInstallTaskOpenCodeHooks: vi.fn(),
+  mockGetTaskHooksStatus: vi.fn(),
+  mockGetTaskGeminiHooksStatus: vi.fn(),
+  mockGetTaskCodexHooksStatus: vi.fn(),
   mockGetTaskOpenCodeHooksStatus: vi.fn(),
 }));
 
@@ -24,6 +30,9 @@ vi.mock("@/desktop/renderer/actions/project", () => ({
   installTaskGeminiHooks: mockInstallTaskGeminiHooks,
   installTaskCodexHooks: mockInstallTaskCodexHooks,
   installTaskOpenCodeHooks: mockInstallTaskOpenCodeHooks,
+  getTaskHooksStatus: mockGetTaskHooksStatus,
+  getTaskGeminiHooksStatus: mockGetTaskGeminiHooksStatus,
+  getTaskCodexHooksStatus: mockGetTaskCodexHooksStatus,
   getTaskOpenCodeHooksStatus: mockGetTaskOpenCodeHooksStatus,
 }));
 
@@ -39,6 +48,9 @@ vi.mock("next-intl", async () => {
 describe("HooksStatusDialog", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockGetTaskHooksStatus.mockResolvedValue(null);
+    mockGetTaskGeminiHooksStatus.mockResolvedValue(null);
+    mockGetTaskCodexHooksStatus.mockResolvedValue(null);
     mockGetTaskOpenCodeHooksStatus.mockResolvedValue(null);
   });
 
@@ -681,6 +693,10 @@ describe("HooksStatusDialog", () => {
   it("should report updated hook status to the parent card after installation", async () => {
     const onStatusesChange = vi.fn();
     mockInstallTaskHooks.mockResolvedValue({ success: true, status: verifiedClaudeStatus });
+    mockGetTaskHooksStatus.mockResolvedValue(verifiedClaudeStatus);
+    mockGetTaskGeminiHooksStatus.mockResolvedValue(verifiedGeminiStatus);
+    mockGetTaskCodexHooksStatus.mockResolvedValue(verifiedCodexStatus);
+    mockGetTaskOpenCodeHooksStatus.mockResolvedValue(verifiedOpenCodeStatus);
 
     renderDialog({
       isOpen: true,
@@ -697,7 +713,12 @@ describe("HooksStatusDialog", () => {
     fireEvent.click(screen.getAllByText("installHooks")[0]);
 
     await waitFor(() => {
-      expect(onStatusesChange).toHaveBeenCalledWith({ claudeStatus: verifiedClaudeStatus });
+      expect(onStatusesChange).toHaveBeenCalledWith({
+        claudeStatus: verifiedClaudeStatus,
+        geminiStatus: verifiedGeminiStatus,
+        codexStatus: verifiedCodexStatus,
+        openCodeStatus: verifiedOpenCodeStatus,
+      });
     });
   });
 });

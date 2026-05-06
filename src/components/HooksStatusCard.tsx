@@ -9,6 +9,9 @@ import {
 } from "@hugeicons/core-free-icons";
 import { useTranslations } from "next-intl";
 import {
+  getTaskCodexHooksStatus,
+  getTaskGeminiHooksStatus,
+  getTaskHooksStatus,
   getTaskOpenCodeHooksStatus,
   installTaskCodexHooks,
   installTaskGeminiHooks,
@@ -37,6 +40,12 @@ interface HooksStatusCardProps {
 
 type HookToolKey = "claude" | "gemini" | "codex" | "openCode";
 type InstallMessage = { type: "success" | "error"; text: string };
+type HookStatusUpdates = {
+  claudeStatus?: ClaudeHooksStatus | null;
+  geminiStatus?: GeminiHooksStatus | null;
+  codexStatus?: CodexHooksStatus | null;
+  openCodeStatus?: OpenCodeHooksStatus | null;
+};
 
 export default function HooksStatusCard({
   taskId,
@@ -170,8 +179,52 @@ export default function HooksStatusCard({
     try {
       const result = await install();
       applyResult(result);
+      if (isSuccessfulInstallResult(result)) {
+        await refreshAllHookStatuses().catch(() => undefined);
+      }
     } finally {
       setInstallingTools((current) => current.filter((value) => value !== tool));
+    }
+  }
+
+  async function refreshAllHookStatuses() {
+    const [latestClaudeStatus, latestGeminiStatus, latestCodexStatus, latestOpenCodeStatus] = await Promise.all([
+      getTaskHooksStatus(taskId),
+      getTaskGeminiHooksStatus(taskId),
+      getTaskCodexHooksStatus(taskId),
+      getTaskOpenCodeHooksStatus(taskId),
+    ]);
+
+    applyRefreshedStatuses({
+      claudeStatus: latestClaudeStatus,
+      geminiStatus: latestGeminiStatus,
+      codexStatus: latestCodexStatus,
+      openCodeStatus: latestOpenCodeStatus,
+    });
+  }
+
+  function applyRefreshedStatuses(updates: HookStatusUpdates) {
+    const parentUpdates: HookStatusUpdates = {};
+
+    if (updates.claudeStatus) {
+      setClaudeStatus(updates.claudeStatus);
+      parentUpdates.claudeStatus = updates.claudeStatus;
+    }
+    if (updates.geminiStatus) {
+      setGeminiStatus(updates.geminiStatus);
+      parentUpdates.geminiStatus = updates.geminiStatus;
+    }
+    if (updates.codexStatus) {
+      setCodexStatus(updates.codexStatus);
+      parentUpdates.codexStatus = updates.codexStatus;
+    }
+    if (updates.openCodeStatus) {
+      setOpenCodeStatus(updates.openCodeStatus);
+      parentUpdates.openCodeStatus = updates.openCodeStatus;
+    }
+
+    if (Object.keys(parentUpdates).length > 0) {
+      onStatusesChangeRef.current?.(parentUpdates);
     }
   }
 
@@ -252,6 +305,13 @@ export default function HooksStatusCard({
       </div>
     </div>
   );
+}
+
+function isSuccessfulInstallResult(result: unknown): result is { success: true } {
+  return result !== null
+    && typeof result === "object"
+    && "success" in result
+    && (result as { success?: unknown }).success === true;
 }
 
 function getInstallFailureText(t: ReturnType<typeof useTranslations>, error?: string) {

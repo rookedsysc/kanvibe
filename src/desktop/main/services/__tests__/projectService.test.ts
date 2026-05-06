@@ -1487,6 +1487,49 @@ describe("projectService remote hook and AI session support", () => {
     );
   });
 
+  it("원격 repo root에서 실행 중인 비기본 브랜치 task는 현재 taskId로 hook 상태를 조회한다", async () => {
+    const task = {
+      id: "task-remote",
+      branchName: "feature/login",
+      baseBranch: "main",
+      worktreePath: "/remote/repo",
+      project: {
+        id: "project-1",
+        repoPath: "/remote/repo",
+        defaultBranch: "main",
+        sshHost: "remote-host",
+      },
+    };
+    const findOneBy = vi.fn();
+
+    mocks.getTaskRepository.mockResolvedValue({
+      findOne: vi.fn().mockResolvedValue(task),
+      findOneBy,
+    });
+    mocks.getClaudeHooksStatus.mockResolvedValue({ installed: true });
+    mocks.getGeminiHooksStatus.mockResolvedValue({ installed: true });
+    mocks.getCodexHooksStatus.mockResolvedValue({ installed: true });
+    mocks.getOpenCodeHooksStatus.mockResolvedValue({ installed: true });
+
+    const {
+      getTaskHooksStatus,
+      getTaskGeminiHooksStatus,
+      getTaskCodexHooksStatus,
+      getTaskOpenCodeHooksStatus,
+    } = await import("@/desktop/main/services/projectService");
+
+    await getTaskHooksStatus(task.id);
+    await getTaskGeminiHooksStatus(task.id);
+    await getTaskCodexHooksStatus(task.id);
+    await getTaskOpenCodeHooksStatus(task.id);
+
+    expect(mocks.getClaudeHooksStatus).toHaveBeenCalledWith("/remote/repo", "task-remote", "remote-host");
+    expect(mocks.getGeminiHooksStatus).toHaveBeenCalledWith("/remote/repo", "task-remote", "remote-host");
+    expect(mocks.getCodexHooksStatus).toHaveBeenCalledWith("/remote/repo", "task-remote", "remote-host");
+    expect(mocks.getOpenCodeHooksStatus).toHaveBeenCalledWith("/remote/repo", "task-remote", "remote-host");
+    expect(findOneBy).not.toHaveBeenCalled();
+  });
+
   it("원격 태스크에서 hook 재설치를 누르면 공통 installer를 다시 실행한다", async () => {
     // Given
     const task = {
@@ -1515,6 +1558,45 @@ describe("projectService remote hook and AI session support", () => {
       "task-remote",
       "remote-host",
     );
+  });
+
+  it("원격 repo root에서 실행 중인 비기본 브랜치 task는 현재 taskId로 hook을 재설치한다", async () => {
+    const task = {
+      id: "task-remote",
+      branchName: "feature/login",
+      baseBranch: "main",
+      worktreePath: "/remote/repo",
+      project: {
+        id: "project-1",
+        repoPath: "/remote/repo",
+        defaultBranch: "main",
+        sshHost: "remote-host",
+      },
+    };
+
+    mocks.getTaskRepository.mockResolvedValue({
+      findOne: vi.fn().mockResolvedValue(task),
+      findOneBy: vi.fn(),
+    });
+    mocks.getClaudeHooksStatus.mockResolvedValue({ installed: true });
+    mocks.getGeminiHooksStatus.mockResolvedValue({ installed: true });
+    mocks.getCodexHooksStatus.mockResolvedValue({ installed: true });
+    mocks.getOpenCodeHooksStatus.mockResolvedValue({ installed: true });
+
+    const {
+      installTaskHooks,
+      installTaskGeminiHooks,
+      installTaskCodexHooks,
+      installTaskOpenCodeHooks,
+    } = await import("@/desktop/main/services/projectService");
+
+    await installTaskHooks(task.id);
+    await installTaskGeminiHooks(task.id);
+    await installTaskCodexHooks(task.id);
+    await installTaskOpenCodeHooks(task.id);
+
+    expect(mocks.installKanvibeHooks).toHaveBeenCalledTimes(4);
+    expect(mocks.installKanvibeHooks).toHaveBeenCalledWith("/remote/repo", "task-remote", "remote-host");
   });
 
   it("원격 AI 세션 집계에도 sshHost를 전달한다", async () => {

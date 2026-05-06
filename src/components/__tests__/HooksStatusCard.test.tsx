@@ -9,12 +9,18 @@ const {
   mockInstallTaskGeminiHooks,
   mockInstallTaskCodexHooks,
   mockInstallTaskOpenCodeHooks,
+  mockGetTaskHooksStatus,
+  mockGetTaskGeminiHooksStatus,
+  mockGetTaskCodexHooksStatus,
   mockGetTaskOpenCodeHooksStatus,
 } = vi.hoisted(() => ({
   mockInstallTaskHooks: vi.fn(),
   mockInstallTaskGeminiHooks: vi.fn(),
   mockInstallTaskCodexHooks: vi.fn(),
   mockInstallTaskOpenCodeHooks: vi.fn(),
+  mockGetTaskHooksStatus: vi.fn(),
+  mockGetTaskGeminiHooksStatus: vi.fn(),
+  mockGetTaskCodexHooksStatus: vi.fn(),
   mockGetTaskOpenCodeHooksStatus: vi.fn(),
 }));
 
@@ -23,6 +29,9 @@ vi.mock("@/desktop/renderer/actions/project", () => ({
   installTaskGeminiHooks: mockInstallTaskGeminiHooks,
   installTaskCodexHooks: mockInstallTaskCodexHooks,
   installTaskOpenCodeHooks: mockInstallTaskOpenCodeHooks,
+  getTaskHooksStatus: mockGetTaskHooksStatus,
+  getTaskGeminiHooksStatus: mockGetTaskGeminiHooksStatus,
+  getTaskCodexHooksStatus: mockGetTaskCodexHooksStatus,
   getTaskOpenCodeHooksStatus: mockGetTaskOpenCodeHooksStatus,
 }));
 
@@ -73,6 +82,9 @@ const messages = {
 describe("HooksStatusCard", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockGetTaskHooksStatus.mockResolvedValue(null);
+    mockGetTaskGeminiHooksStatus.mockResolvedValue(null);
+    mockGetTaskCodexHooksStatus.mockResolvedValue(null);
     mockGetTaskOpenCodeHooksStatus.mockResolvedValue(null);
   });
 
@@ -155,10 +167,18 @@ describe("HooksStatusCard", () => {
   });
 
   it("installs Claude hooks from the inline action and updates local status", async () => {
+    const installedClaudeStatus = { installed: true, hasPromptHook: true, hasStopHook: true, hasQuestionHook: true, hasSettingsEntry: true };
+    const installedGeminiStatus = { installed: true, hasPromptHook: true, hasStopHook: true, hasSettingsEntry: true };
+    const installedCodexStatus = { installed: true, hasPromptHook: true, hasPermissionHook: true, hasPreToolHook: true, hasStopHook: true, hasHooksFile: true, hasHookEntries: true, hasConfigEntry: true };
+    const installedOpenCodeStatus = { installed: true, hasPlugin: true, hasTaskIdBinding: true, hasStatusEndpoint: true, hasEventMappings: true, hasMainSessionGuard: true, hasDuplicateProgressGuard: true };
     mockInstallTaskHooks.mockResolvedValue({
       success: true,
-      status: { installed: true, hasPromptHook: true, hasStopHook: true, hasQuestionHook: true, hasSettingsEntry: true },
+      status: installedClaudeStatus,
     });
+    mockGetTaskHooksStatus.mockResolvedValue(installedClaudeStatus);
+    mockGetTaskGeminiHooksStatus.mockResolvedValue(installedGeminiStatus);
+    mockGetTaskCodexHooksStatus.mockResolvedValue(installedCodexStatus);
+    mockGetTaskOpenCodeHooksStatus.mockResolvedValue(installedOpenCodeStatus);
     const onStatusesChange = vi.fn();
 
     renderCard({
@@ -176,7 +196,10 @@ describe("HooksStatusCard", () => {
     await waitFor(() => {
       expect(mockInstallTaskHooks).toHaveBeenCalledWith("task-1");
       expect(onStatusesChange).toHaveBeenCalledWith({
-        claudeStatus: { installed: true, hasPromptHook: true, hasStopHook: true, hasQuestionHook: true, hasSettingsEntry: true },
+        claudeStatus: installedClaudeStatus,
+        geminiStatus: installedGeminiStatus,
+        codexStatus: installedCodexStatus,
+        openCodeStatus: installedOpenCodeStatus,
       });
     });
     expect(screen.getByText("Hooks installed successfully")).toBeTruthy();
