@@ -29,6 +29,7 @@ interface BoardProps {
   initialTasks: TasksByStatus;
   initialDoneTotal: number;
   initialDoneLimit: number;
+  initialFocusTaskId?: string | null;
   sshHosts: string[];
   projects: Project[];
   sidebarDefaultCollapsed: boolean;
@@ -63,6 +64,10 @@ function getBoardTaskCards() {
 function focusBoardTaskCard(card: HTMLAnchorElement) {
   card.focus({ preventScroll: true });
   card.scrollIntoView?.({ block: "nearest", inline: "nearest" });
+}
+
+function findBoardTaskCardById(taskId: string) {
+  return getBoardTaskCards().find((card) => card.dataset.kanbanTaskId === taskId) ?? null;
 }
 
 function findTaskById(tasks: TasksByStatus, taskId: string) {
@@ -271,6 +276,7 @@ export default function Board({
   initialTasks,
   initialDoneTotal,
   initialDoneLimit,
+  initialFocusTaskId,
   sshHosts,
   projects,
   doneAlertDismissed,
@@ -302,6 +308,7 @@ export default function Board({
   const [, startDragPersistenceTransition] = useTransition();
   const notificationCenterRef = useRef<NotificationCenterButtonHandle>(null);
   const projectSelectorRef = useRef<ProjectSelectorHandle>(null);
+  const hasAppliedInitialFocusRef = useRef(false);
 
   /** projectId → 표시할 프로젝트 이름 매핑. worktree 프로젝트는 메인 프로젝트 이름으로 resolve한다 */
   const projectNameMap = useMemo(() => {
@@ -423,6 +430,28 @@ export default function Board({
     const isMacDesktop = navigator.userAgent.includes("Mac") || navigator.platform.toLowerCase().includes("mac");
     setShouldUseMacTitlebarLayout(isDesktopApp && isMacDesktop);
   }, []);
+
+  useEffect(() => {
+    hasAppliedInitialFocusRef.current = false;
+  }, [initialFocusTaskId]);
+
+  useEffect(() => {
+    if (!isMounted || !initialFocusTaskId || hasAppliedInitialFocusRef.current) {
+      return;
+    }
+
+    if (!findTaskById(filteredTasks, initialFocusTaskId)) {
+      return;
+    }
+
+    const targetTaskCard = findBoardTaskCardById(initialFocusTaskId);
+    if (!targetTaskCard) {
+      return;
+    }
+
+    focusBoardTaskCard(targetTaskCard);
+    hasAppliedInitialFocusRef.current = true;
+  }, [filteredTasks, initialFocusTaskId, isMounted]);
 
   useEffect(() => boardCommands.registerBoardHandlers({
     toggleNotificationCenter() {
