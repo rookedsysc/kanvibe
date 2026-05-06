@@ -162,6 +162,27 @@ describe("resolveExistingNavigationTargetWindow", () => {
 
     expect(result).toBeNull();
   });
+
+  it("제외할 현재 창이 같은 route여도 다른 열린 상세 route 창을 선택한다", () => {
+    const currentWindow = {
+      id: "window-1",
+      url: "http://localhost:3000/#/ko/task/task-1",
+    };
+    const detailWindow = {
+      id: "window-2",
+      url: "http://localhost:3000/#/ko/task/task-1",
+    };
+
+    const result = resolveExistingNavigationTargetWindow({
+      targetUrl: "http://localhost:3000/#/ko/task/task-1",
+      rendererDevUrl: "http://localhost:3000",
+      openWindows: [currentWindow, detailWindow],
+      getWindowUrl: (windowRecord) => windowRecord.url,
+      excludeWindow: currentWindow,
+    });
+
+    expect(result).toBe(detailWindow);
+  });
 });
 
 describe("shouldKeepCurrentRouteForNotificationActivation", () => {

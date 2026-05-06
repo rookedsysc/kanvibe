@@ -24,6 +24,13 @@
 - Shortcut capture UIs must store normalized shortcut strings from the shared capture helper, not hand-built modifier strings.
 - When adding or changing a shortcut, cover the shared command definition, display formatting, Electron input matching, renderer global handling, and any user-configurable capture flow with focused tests.
 
+## Task Navigation
+
+- Route all task-detail transitions through `navigateToTaskDetail()` in `src/desktop/renderer/utils/taskNavigation.ts`.
+- Before navigating the current window to a task detail route, focus an already-open window for the same task detail route when one exists.
+- Keep explicit new-window actions on `openInternalRouteInNewWindow()` or `navigateToTaskDetail(..., { openInNewWindow: true })` so Electron main can reuse its existing-window focus policy.
+- Do not hand-roll `router.push("/task/...")`, `redirect("/.../task/...")`, or `window.location.hash` for task detail transitions in feature components.
+
 ## UI Color Tokens
 
 - Use `#0064FF` as the primary point color for PR buttons, primary actions, selected states, links, focus borders, and other important interactive highlights.

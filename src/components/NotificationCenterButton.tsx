@@ -10,8 +10,8 @@ import {
   markNotificationRead,
 } from "@/desktop/renderer/actions/notifications";
 import { redirect } from "@/desktop/renderer/navigation";
-import { openInternalRouteInNewWindow } from "@/desktop/renderer/utils/windowOpen";
 import { requestActiveTerminalFocusAfterUiSettles } from "@/desktop/renderer/utils/terminalFocus";
+import { navigateToTaskDetail } from "@/desktop/renderer/utils/taskNavigation";
 import type { AppNotification } from "@/desktop/shared/notifications";
 
 interface NotificationCenterButtonProps {
@@ -47,14 +47,6 @@ function shouldIgnoreKeyboardNavigation(eventTarget: EventTarget | null, contain
   }
 
   return eventTarget.closest('[contenteditable="true"]') !== null;
-}
-
-function getTaskNotificationPath(notification: AppNotification) {
-  return `/${notification.locale}/task/${notification.taskId}`;
-}
-
-function openTaskNotificationInNewWindow(notification: AppNotification) {
-  openInternalRouteInNewWindow(getTaskNotificationPath(notification));
 }
 
 function sortNotificationsByNewestFirst(notifications: AppNotification[]) {
@@ -192,11 +184,17 @@ const NotificationCenterButton = forwardRef<NotificationCenterButtonHandle, Noti
       }
 
       if (openInNewWindow) {
-        openTaskNotificationInNewWindow(notification);
+        await navigateToTaskDetail(notification.taskId, {
+          currentLocale: notification.locale,
+          openInNewWindow: true,
+        });
         return;
       }
 
-      redirect(getTaskNotificationPath(notification));
+      await navigateToTaskDetail(notification.taskId, {
+        currentLocale: notification.locale,
+        navigate: redirect,
+      });
       return;
     }
 

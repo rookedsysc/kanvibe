@@ -12,6 +12,7 @@ interface KanvibeDesktopApi {
   onNotificationActivated?: (listener: (notification: AppNotification) => void) => () => void;
   onNotificationShortcut?: (listener: () => void) => () => void;
   onCreateTaskShortcut?: (listener: () => void) => () => void;
+  focusExistingInternalRoute?: (route: string) => Promise<boolean>;
   [key: string]: unknown;
 }
 

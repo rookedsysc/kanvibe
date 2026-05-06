@@ -8,9 +8,9 @@ import {
   type SearchableTask,
 } from "@/desktop/renderer/actions/kanban";
 import { getTaskSearchShortcut } from "@/desktop/renderer/actions/appSettings";
-import { localizeHref, usePathname, useRouter } from "@/desktop/renderer/navigation";
+import { usePathname, useRouter } from "@/desktop/renderer/navigation";
 import { useRefreshSignal } from "@/desktop/renderer/utils/refresh";
-import { openInternalRouteInNewWindow } from "@/desktop/renderer/utils/windowOpen";
+import { navigateToTaskDetail } from "@/desktop/renderer/utils/taskNavigation";
 import {
   DEFAULT_TASK_SEARCH_SHORTCUT,
   formatShortcutForDisplay,
@@ -336,15 +336,24 @@ export default function TaskQuickSearchDialog({
 
   useEscapeKey(closeDialog, { enabled: isOpen });
 
-  function moveToTask(taskId: string) {
-    router.push(`/task/${taskId}`);
+  function getCurrentLocale() {
+    const currentLocale = pathname.split("/").filter(Boolean)[0];
+    return currentLocale;
+  }
+
+  async function moveToTask(taskId: string) {
+    await navigateToTaskDetail(taskId, {
+      currentLocale: getCurrentLocale(),
+      navigate: router.push,
+    });
     closeDialog();
   }
 
   function openTaskInNewWindow(taskId: string) {
-    const currentLocale = pathname.split("/").filter(Boolean)[0];
-    const taskHref = localizeHref(`/task/${taskId}`, currentLocale);
-    openInternalRouteInNewWindow(taskHref);
+    void navigateToTaskDetail(taskId, {
+      currentLocale: getCurrentLocale(),
+      openInNewWindow: true,
+    });
     closeDialog();
   }
 

@@ -79,7 +79,9 @@ vi.mock("react-router-dom", () => ({
 
 vi.mock("@/desktop/renderer/navigation", () => ({
   Link: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+  localizeHref: (href: string, currentLocale = "ko") => href.startsWith("/") ? `/${currentLocale}${href}` : href,
   redirect: (...args: unknown[]) => mocks.redirect(...args),
+  usePathname: () => "/ko/task/task-1",
   useRouter: () => ({ push: mocks.push, back: mocks.back, forward: mocks.forward }),
 }));
 
