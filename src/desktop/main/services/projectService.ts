@@ -62,6 +62,19 @@ async function resolveCommonRepoPath(repoPath: string, sshHost?: string | null):
   }
 }
 
+async function isSubmoduleRepoPath(repoPath: string, sshHost?: string | null): Promise<boolean> {
+  try {
+    const superprojectPath = await execGit(
+      `git -C "${repoPath}" rev-parse --show-superproject-working-tree`,
+      sshHost,
+    );
+
+    return superprojectPath.trim().length > 0;
+  } catch {
+    return false;
+  }
+}
+
 async function resolveProjectDefaultBranchWorktreePath(project: Pick<Project, "repoPath" | "defaultBranch" | "sshHost">): Promise<string | null> {
   try {
     const worktrees = await listWorktrees(project.repoPath, project.sshHost);
@@ -716,9 +729,17 @@ export async function scanAndRegisterProjects(
   const result: ScanResult = { registered: [], skipped: [], errors: [], worktreeTasks: [], registeredWorktrees: [], hooksSetup: [] };
 
   const discoveredRepoPaths = await scanGitRepos(rootPath, sshHost || null);
+  const registerableDiscoveredRepoPaths = (
+    await Promise.all(discoveredRepoPaths.map(async (repoPath) => ({
+      repoPath,
+      isSubmodule: await isSubmoduleRepoPath(repoPath, sshHost || null),
+    })))
+  )
+    .filter(({ isSubmodule }) => !isSubmodule)
+    .map(({ repoPath }) => repoPath);
   const repoPaths = Array.from(
     new Set(
-      await Promise.all(discoveredRepoPaths.map((repoPath) => resolveCommonRepoPath(repoPath, sshHost || null))),
+      await Promise.all(registerableDiscoveredRepoPaths.map((repoPath) => resolveCommonRepoPath(repoPath, sshHost || null))),
     ),
   );
   if (repoPaths.length === 0) {

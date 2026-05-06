@@ -928,6 +928,71 @@ describe("projectService local hook installation", () => {
     );
   });
 
+  it("프로젝트 스캔은 git submodule을 별도 프로젝트로 등록하지 않는다", async () => {
+    // Given
+    mocks.scanGitRepos.mockResolvedValue([
+      "/workspace/app",
+      "/workspace/app/packages/ui",
+    ]);
+    mocks.execGit.mockImplementation(async (command: string) => {
+      if (command.includes("rev-parse --show-superproject-working-tree")) {
+        return command.includes('"/workspace/app/packages/ui"') ? "/workspace/app" : "";
+      }
+
+      if (command.includes("rev-parse --path-format=absolute --git-common-dir")) {
+        return command.includes('"/workspace/app/packages/ui"')
+          ? "/workspace/app/.git/modules/packages/ui"
+          : "/workspace/app/.git";
+      }
+
+      return "";
+    });
+    mocks.getDefaultBranch.mockResolvedValue("main");
+    mocks.getClaudeHooksStatus.mockResolvedValue({ installed: true });
+    mocks.getGeminiHooksStatus.mockResolvedValue({ installed: true });
+    mocks.getCodexHooksStatus.mockResolvedValue({ installed: true });
+    mocks.getOpenCodeHooksStatus.mockResolvedValue({ installed: true });
+    mocks.listWorktrees.mockResolvedValue([]);
+
+    const projectSave = vi.fn(async (value) => ({ id: "project-1", ...value }));
+    mocks.getProjectRepository.mockResolvedValue({
+      find: vi.fn()
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([
+          {
+            id: "project-1",
+            name: "app",
+            repoPath: "/workspace/app",
+            defaultBranch: "main",
+            sshHost: null,
+          },
+        ]),
+      create: vi.fn((value) => value),
+      save: projectSave,
+      remove: vi.fn(),
+    });
+    mocks.getTaskRepository.mockResolvedValue({
+      findOneBy: vi.fn().mockResolvedValue(null),
+      create: vi.fn((value) => value),
+      save: vi.fn(async (value) => ({ id: "task-main", ...value })),
+    });
+
+    const { scanAndRegisterProjects } = await import("@/desktop/main/services/projectService");
+
+    // When
+    const result = await scanAndRegisterProjects("/workspace");
+
+    // Then
+    expect(result.registered).toEqual(["app"]);
+    expect(projectSave).toHaveBeenCalledTimes(1);
+    expect(projectSave).toHaveBeenCalledWith(expect.objectContaining({
+      name: "app",
+      repoPath: "/workspace/app",
+    }));
+    expect(mocks.getDefaultBranch).toHaveBeenCalledWith("/workspace/app", null);
+    expect(mocks.getDefaultBranch).not.toHaveBeenCalledWith("/workspace/app/packages/ui", null);
+  });
+
   it("worktree 경로만 스캔돼도 common repo 기준 기존 원격 프로젝트에 TODO 태스크를 등록한다", async () => {
     mocks.scanGitRepos.mockResolvedValue(["/remote/repo__worktrees/feature-login"]);
     mocks.execGit.mockImplementation(async (command: string) => {
