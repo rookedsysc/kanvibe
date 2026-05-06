@@ -117,6 +117,7 @@
   "contextMenu": {
     "branchOff": "创建分支",
     "createBranchTodo": "创建分支TODO",
+    "changeStatus": "更改状态",
     "delete": "删除"
   },
   "settings": {
