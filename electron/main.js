@@ -518,6 +518,32 @@ async function focusTaskNotificationWindow(relativePath) {
   }
 }
 
+async function focusExistingInternalRoute(relativePath, sourceWebContents) {
+  const targetUrl = getRendererNavigationUrl(relativePath);
+  const sourceWindow = sourceWebContents ? BrowserWindow.fromWebContents(sourceWebContents) : null;
+  const { resolveExistingNavigationTargetWindow } = getWindowOpenHelpers();
+  const existingWindow = resolveExistingNavigationTargetWindow({
+    targetUrl,
+    rendererDevUrl: RENDERER_DEV_URL,
+    openWindows: getAvailableWindows(),
+    getWindowUrl: (window) => window.webContents.getURL(),
+    excludeWindow: sourceWindow,
+  });
+
+  if (!existingWindow) {
+    return false;
+  }
+
+  mainWindow = existingWindow;
+  focusWindow(existingWindow);
+
+  if (existingWindow.webContents.getURL() !== targetUrl) {
+    await existingWindow.loadURL(targetUrl);
+  }
+
+  return true;
+}
+
 function getNotificationStore() {
   return require(getRuntimeModulePath(path.join("src", "desktop", "main", "notificationStore.ts")));
 }
@@ -747,6 +773,10 @@ function registerDesktopHandlers() {
       });
       throw error;
     }
+  });
+
+  ipcMain.handle("kanvibe:focus-existing-internal-route", async (event, relativePath) => {
+    return focusExistingInternalRoute(relativePath, event.sender);
   });
 
   ipcMain.handle("kanvibe:terminal-open", async (event, taskId, cols, rows) => {

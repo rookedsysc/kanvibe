@@ -1,10 +1,14 @@
 import { forwardRef } from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { createEvent, fireEvent, render, screen } from "@testing-library/react";
+import { createEvent, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import TaskCard from "../TaskCard";
 import { TaskPriority } from "@/entities/TaskPriority";
 import { SessionType, TaskStatus } from "@/entities/KanbanTask";
 import type { KanbanTask } from "@/entities/KanbanTask";
+
+const mocks = vi.hoisted(() => ({
+  push: vi.fn(),
+}));
 
 vi.mock("@hello-pangea/dnd", () => ({
   Draggable: ({ children }: { children: (provided: unknown, snapshot: unknown) => React.ReactNode }) =>
@@ -23,6 +27,10 @@ vi.mock("@hello-pangea/dnd", () => ({
 
 vi.mock("@/desktop/renderer/navigation", () => ({
   localizeHref: (href: string, currentLocale = "ko") => href.startsWith("/") ? `/${currentLocale}${href}` : href,
+  redirect: (...args: unknown[]) => mocks.push(...args),
+  useRouter: () => ({
+    push: (...args: unknown[]) => mocks.push(...args),
+  }),
   Link: forwardRef<HTMLAnchorElement, React.AnchorHTMLAttributes<HTMLAnchorElement> & { href: string }>(
     function MockLink({ children, ...props }, ref) {
       return <a ref={ref} {...props}>{children}</a>;
@@ -63,6 +71,10 @@ describe("TaskCard - Priority Badge", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    window.kanvibeDesktop = {
+      isDesktop: true,
+      focusExistingInternalRoute: vi.fn().mockResolvedValue(false),
+    } as unknown as NonNullable<typeof window.kanvibeDesktop>;
   });
 
   it("should not render priority badge when priority is null", () => {
@@ -328,5 +340,23 @@ describe("TaskCard - Priority Badge", () => {
 
     openSpy.mockRestore();
     delete window.kanvibeDesktop;
+  });
+
+  it("should focus an existing task detail window before following a plain task click", async () => {
+    const task = createTask();
+    const focusExistingInternalRoute = vi.fn().mockResolvedValue(true);
+    window.kanvibeDesktop = {
+      isDesktop: true,
+      focusExistingInternalRoute,
+    } as unknown as NonNullable<typeof window.kanvibeDesktop>;
+
+    render(<TaskCard task={task} index={0} onContextMenu={onContextMenu} />);
+
+    fireEvent.click(screen.getByRole("link"));
+
+    await waitFor(() => {
+      expect(focusExistingInternalRoute).toHaveBeenCalledWith("/ko/task/task-1");
+    });
+    expect(mocks.push).not.toHaveBeenCalled();
   });
 });

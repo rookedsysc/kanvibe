@@ -50,6 +50,9 @@ contextBridge.exposeInMainWorld("kanvibeDesktop", {
   invoke(namespace, method, args) {
     return ipcRenderer.invoke("kanvibe:invoke", namespace, method, args);
   },
+  focusExistingInternalRoute(route) {
+    return ipcRenderer.invoke("kanvibe:focus-existing-internal-route", route);
+  },
   onBoardEvent(listener) {
     const handler = (_event, payload) => listener(payload);
     ipcRenderer.on("kanvibe:board-event", handler);

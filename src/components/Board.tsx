@@ -14,8 +14,7 @@ import DoneConfirmDialog from "./DoneConfirmDialog";
 import { reorderTasks, deleteTask, getMoreDoneTasks, moveTaskToColumn } from "@/desktop/renderer/actions/kanban";
 import type { TasksByStatus } from "@/desktop/renderer/actions/kanban";
 import { useBoardCommands } from "@/desktop/renderer/components/BoardCommandProvider";
-import { localizeHref } from "@/desktop/renderer/navigation";
-import { openInternalRouteInNewWindow } from "@/desktop/renderer/utils/windowOpen";
+import { navigateToTaskDetail } from "@/desktop/renderer/utils/taskNavigation";
 import { SessionType, TaskStatus, type KanbanTask } from "@/entities/KanbanTask";
 import type { Project } from "@/entities/Project";
 import { useAutoRefresh } from "@/desktop/renderer/hooks/useAutoRefresh";
@@ -129,7 +128,10 @@ function getCurrentBoardLocale() {
 }
 
 function openTaskDetailInNewWindow(taskId: string) {
-  openInternalRouteInNewWindow(localizeHref(`/task/${taskId}`, getCurrentBoardLocale()));
+  void navigateToTaskDetail(taskId, {
+    currentLocale: getCurrentBoardLocale(),
+    openInNewWindow: true,
+  });
 }
 
 /** worktree repoPath에서 메인 프로젝트 경로를 추출한다 */

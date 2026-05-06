@@ -27,6 +27,7 @@ interface ResolveNavigationTargetWindowOptions<T> {
   rendererDevUrl: string | null;
   openWindows: readonly T[];
   getWindowUrl: (window: T) => string;
+  excludeWindow?: T | null;
 }
 
 interface NotificationActivationLike {
@@ -144,12 +145,14 @@ export function resolveNavigationTargetWindow<T>({
   rendererDevUrl,
   openWindows,
   getWindowUrl,
+  excludeWindow = null,
 }: ResolveNavigationTargetWindowOptions<T>): T | null {
   const { existingWindow } = findExistingInternalWindow({
     targetUrl,
     rendererDevUrl,
     openWindows,
     getWindowUrl,
+    excludeWindow,
   });
 
   return existingWindow ?? preferredWindow;
@@ -160,12 +163,14 @@ export function resolveExistingNavigationTargetWindow<T>({
   rendererDevUrl,
   openWindows,
   getWindowUrl,
+  excludeWindow = null,
 }: ResolveNavigationTargetWindowOptions<T>): T | null {
   const { existingWindow } = findExistingInternalWindow({
     targetUrl,
     rendererDevUrl,
     openWindows,
     getWindowUrl,
+    excludeWindow,
   });
 
   return existingWindow;

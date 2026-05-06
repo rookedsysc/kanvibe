@@ -32,6 +32,9 @@ vi.mock("@/desktop/renderer/actions/kanban", () => ({
 }));
 
 vi.mock("@/desktop/renderer/navigation", () => ({
+  localizeHref: (href: string, currentLocale = "ko") => (
+    href.startsWith("/") ? `/${currentLocale}${href}` : href
+  ),
   redirect: mockRedirect,
 }));
 
@@ -124,6 +127,44 @@ describe("NotificationCenterButton", () => {
     await waitFor(() => {
       expect(mockRedirect).toHaveBeenCalledWith("/en/task/task-1");
     });
+  });
+
+  it("focuses an existing task window instead of redirecting when opening a task notification", async () => {
+    const focusExistingInternalRoute = vi.fn().mockResolvedValue(true);
+    window.kanvibeDesktop = {
+      isDesktop: true,
+      onNotificationsChanged: vi.fn(() => undefined),
+      focusExistingInternalRoute,
+    } as Partial<NonNullable<Window["kanvibeDesktop"]>> as NonNullable<Window["kanvibeDesktop"]>;
+    mockListNotifications.mockResolvedValue([
+      {
+        id: "n1",
+        title: "Existing task",
+        body: "Body",
+        taskId: "task-1",
+        relativePath: "/task/task-1",
+        locale: "en",
+        isRead: false,
+        createdAt: new Date().toISOString(),
+        dedupeKey: "k1",
+      },
+    ]);
+    mockMarkNotificationRead.mockResolvedValue(undefined);
+    mockGetTaskById.mockResolvedValue({ id: "task-1" });
+
+    render(<NotificationCenterButton />);
+
+    await waitFor(() => {
+      expect(mockListNotifications).toHaveBeenCalled();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "notifications" }));
+    fireEvent.click(screen.getByRole("button", { name: /Existing task/i }));
+
+    await waitFor(() => {
+      expect(focusExistingInternalRoute).toHaveBeenCalledWith("/en/task/task-1");
+    });
+    expect(mockRedirect).not.toHaveBeenCalled();
   });
 
   it("focuses the notification panel when opened through the shortcut handle", async () => {

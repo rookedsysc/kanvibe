@@ -2,8 +2,9 @@
 
 import { useEffect, useState } from "react";
 import { useTranslations } from "next-intl";
-import { useRouter } from "@/desktop/renderer/navigation";
+import { usePathname, useRouter } from "@/desktop/renderer/navigation";
 import { getTasksByStatus } from "@/desktop/renderer/actions/kanban";
+import { navigateToTaskDetail } from "@/desktop/renderer/utils/taskNavigation";
 import { TaskStatus } from "@/entities/KanbanTask";
 import type { KanbanTask } from "@/entities/KanbanTask";
 import { useEscapeKey } from "@/hooks/useEscapeKey";
@@ -22,12 +23,11 @@ const COLUMNS = [
 
 export default function ProjectBranchTasksModal({
   projectId,
-  currentBranchName,
   onClose,
 }: ProjectBranchTasksModalProps) {
   const t = useTranslations("board.columns");
-  const tc = useTranslations("common");
   const router = useRouter();
+  const pathname = usePathname();
   const [tasksByStatus, setTasksByStatus] = useState<Record<TaskStatus, KanbanTask[]>>({
     [TaskStatus.TODO]: [],
     [TaskStatus.PROGRESS]: [],
@@ -68,8 +68,11 @@ export default function ProjectBranchTasksModal({
     })();
   }, [projectId]);
 
-  const handleTaskClick = (taskId: string) => {
-    router.push(`/task/${taskId}`);
+  const handleTaskClick = async (taskId: string) => {
+    await navigateToTaskDetail(taskId, {
+      currentLocale: pathname.split("/").filter(Boolean)[0],
+      navigate: router.push,
+    });
     onClose();
   };
 

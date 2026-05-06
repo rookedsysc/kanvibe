@@ -2,9 +2,10 @@
 
 import { useState, useEffect, useTransition, useCallback, useRef } from "react";
 import { useTranslations } from "next-intl";
-import { useRouter } from "@/desktop/renderer/navigation";
+import { usePathname, useRouter } from "@/desktop/renderer/navigation";
 import { createTask } from "@/desktop/renderer/actions/kanban";
 import { getProjectBranches } from "@/desktop/renderer/actions/project";
+import { navigateToTaskDetail } from "@/desktop/renderer/utils/taskNavigation";
 import { SessionType } from "@/entities/KanbanTask";
 import { TaskPriority } from "@/entities/TaskPriority";
 import type { Project } from "@/entities/Project";
@@ -89,6 +90,7 @@ function CreateTaskModalContent({
   const t = useTranslations("task");
   const tc = useTranslations("common");
   const router = useRouter();
+  const pathname = usePathname();
   const dialogRef = useRef<HTMLDivElement>(null);
   const [isPending, startTransition] = useTransition();
   const initialProjectId = defaultProjectId || "";
@@ -167,7 +169,10 @@ function CreateTaskModalContent({
           priority: priority || undefined,
         });
         onClose();
-        router.push(`/task/${created.id}`);
+        await navigateToTaskDetail(created.id, {
+          currentLocale: pathname.split("/").filter(Boolean)[0],
+          navigate: router.push,
+        });
       } catch (error) {
         setError(error instanceof Error ? error.message : t("createFailed"));
       }
