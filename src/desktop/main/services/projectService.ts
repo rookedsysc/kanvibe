@@ -375,6 +375,8 @@ async function ensureProjectRootTask(
 async function resolveTaskHookTarget(task: {
   id: string;
   worktreePath: string | null;
+  branchName?: string | null;
+  baseBranch?: string | null;
   project: Project | null;
 }) {
   if (!task.project) {
@@ -382,7 +384,7 @@ async function resolveTaskHookTarget(task: {
   }
 
   const targetPath = task.worktreePath || task.project.repoPath;
-  if (targetPath !== task.project.repoPath) {
+  if (targetPath !== task.project.repoPath || !isDefaultBranchTask(task, task.project.defaultBranch)) {
     return {
       targetPath,
       taskId: task.id,
@@ -396,6 +398,17 @@ async function resolveTaskHookTarget(task: {
     taskId: projectRootTask?.id ?? task.id,
     sshHost: task.project.sshHost,
   };
+}
+
+function isDefaultBranchTask(
+  task: { branchName?: string | null; baseBranch?: string | null },
+  defaultBranch: string,
+): boolean {
+  if (task.branchName) {
+    return task.branchName === defaultBranch;
+  }
+
+  return !task.baseBranch || task.baseBranch === defaultBranch;
 }
 
 /** 등록된 모든 프로젝트를 반환한다 */
