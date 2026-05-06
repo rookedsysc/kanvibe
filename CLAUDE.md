@@ -23,6 +23,8 @@
 - Renderer keyboard events and Electron `before-input-event` inputs must be routed through the same shared matcher so macOS and Linux behavior stays consistent.
 - Shortcut capture UIs must store normalized shortcut strings from the shared capture helper, not hand-built modifier strings.
 - When adding or changing a shortcut, cover the shared command definition, display formatting, Electron input matching, renderer global handling, and any user-configurable capture flow with focused tests.
+- Task detail dock shortcuts must use the shared dock shortcut helpers: macOS uses `Cmd+Shift+{number}` and Linux uses `Alt+Shift+{number}`. Electron `before-input-event` must intercept these before terminal input receives them.
+- Task detail dock numbering excludes the back-to-board button and must be derived from the dock item array order, not hard-coded per item. Keep PR as the conditional slot after the first three dock items: with PR it is slot 4 and later items shift to 5+, without PR the next dock item gets slot 4.
 
 ## UI Color Tokens
 

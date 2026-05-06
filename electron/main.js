@@ -286,6 +286,10 @@ function getDefaultRoute() {
   return `/${DEFAULT_LOCALE}`;
 }
 
+function isTaskDetailRouteUrl(url) {
+  return /#\/[^/]+\/task\/[^/?#]+(?:[?#]|$)/.test(url || "");
+}
+
 function getRendererNavigationUrl(target = getDefaultRoute()) {
   if (target.startsWith("http://") || target.startsWith("https://") || target.startsWith("file://")) {
     return target;
@@ -631,12 +635,16 @@ function attachWindowHandlers(browserWindow) {
       getShortcutPlatformFromProcessPlatform,
       isBlockedElectronShortcutInput,
       matchElectronShortcutInput,
+      matchTaskDetailDockShortcutInput,
     } = getKeyboardShortcutHelpers();
     const shortcutPlatform = getShortcutPlatformFromProcessPlatform(process.platform);
     const isBlockedShortcut = isBlockedElectronShortcutInput(input, shortcutPlatform);
     const isNotificationShortcut = matchElectronShortcutInput(input, DESKTOP_SHORTCUTS.notificationCenter, shortcutPlatform);
     const isCreateTaskShortcut = matchElectronShortcutInput(input, DESKTOP_SHORTCUTS.createTask, shortcutPlatform);
     const isNewWindowShortcut = matchElectronShortcutInput(input, DESKTOP_SHORTCUTS.newWindow, shortcutPlatform);
+    const taskDetailDockShortcutIndex = isTaskDetailRouteUrl(browserWindow.webContents.getURL())
+      ? matchTaskDetailDockShortcutInput(input, shortcutPlatform)
+      : null;
 
     if (isBlockedShortcut) {
       event.preventDefault();
@@ -662,6 +670,12 @@ function attachWindowHandlers(browserWindow) {
 
       const currentUrl = browserWindow.webContents.getURL() || getRendererNavigationUrl();
       void createAppWindow(currentUrl);
+    }
+
+    if (taskDetailDockShortcutIndex !== null) {
+      event.preventDefault();
+
+      browserWindow.webContents.send("kanvibe:task-detail-dock-shortcut", taskDetailDockShortcutIndex);
     }
   });
 }

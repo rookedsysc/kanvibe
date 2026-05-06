@@ -47,6 +47,9 @@ export const BLOCKED_DESKTOP_SHORTCUTS = {
 } as const;
 
 export const DEFAULT_TASK_SEARCH_SHORTCUT = SHORTCUTS.taskSearchDefault;
+export const TASK_DETAIL_DOCK_SHORTCUT_INDEXES = [1, 2, 3, 4, 5, 6, 7, 8, 9] as const;
+
+export type TaskDetailDockShortcutIndex = typeof TASK_DETAIL_DOCK_SHORTCUT_INDEXES[number];
 
 function normalizeShortcutPlatform(platform: ShortcutPlatformInput): ShortcutPlatform {
   if (typeof platform === "boolean") {
@@ -250,6 +253,39 @@ export function matchElectronShortcutInput(
     altKey: Boolean(input.alt),
     shiftKey: Boolean(input.shift),
   }, shortcut, platform);
+}
+
+export function createTaskDetailDockShortcut(index: TaskDetailDockShortcutIndex): ShortcutDefinition {
+  return {
+    mac: `Meta+Shift+${index}`,
+    linux: `Alt+Shift+${index}`,
+  };
+}
+
+export function matchTaskDetailDockShortcutEvent(
+  event: ShortcutInput,
+  platform: ShortcutPlatformInput,
+): TaskDetailDockShortcutIndex | null {
+  for (const shortcutIndex of TASK_DETAIL_DOCK_SHORTCUT_INDEXES) {
+    if (matchShortcutEvent(event, createTaskDetailDockShortcut(shortcutIndex), platform)) {
+      return shortcutIndex;
+    }
+  }
+
+  return null;
+}
+
+export function matchTaskDetailDockShortcutInput(
+  input: ElectronShortcutInput,
+  platform: ShortcutPlatformInput,
+): TaskDetailDockShortcutIndex | null {
+  for (const shortcutIndex of TASK_DETAIL_DOCK_SHORTCUT_INDEXES) {
+    if (matchElectronShortcutInput(input, createTaskDetailDockShortcut(shortcutIndex), platform)) {
+      return shortcutIndex;
+    }
+  }
+
+  return null;
 }
 
 export function isBlockedShortcutEvent(

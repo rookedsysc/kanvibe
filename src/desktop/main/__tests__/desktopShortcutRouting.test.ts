@@ -13,7 +13,9 @@ describe("desktop shortcut routing", () => {
     expect(source).toContain("matchElectronShortcutInput");
     expect(source).toContain("DESKTOP_SHORTCUTS.createTask");
     expect(source).toContain("DESKTOP_SHORTCUTS.newWindow");
+    expect(source).toContain("matchTaskDetailDockShortcutInput");
     expect(source).toContain('browserWindow.webContents.send("kanvibe:create-task-shortcut")');
+    expect(source).toContain('browserWindow.webContents.send("kanvibe:task-detail-dock-shortcut"');
     expect(source).toContain("void createAppWindow(currentUrl)");
   });
 
