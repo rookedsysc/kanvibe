@@ -17,6 +17,7 @@ const mocks = vi.hoisted(() => ({
   },
   execFile: vi.fn(),
   createWorktreeWithSession: vi.fn(),
+  createSessionWithoutWorktree: vi.fn(),
   removeWorktreeAndBranch: vi.fn(),
   removeSessionOnly: vi.fn(),
   detachSession: vi.fn(),
@@ -63,7 +64,7 @@ vi.mock("@/entities/TaskPriority", () => ({
 vi.mock("@/lib/worktree", () => ({
   createWorktreeWithSession: mocks.createWorktreeWithSession,
   removeWorktreeAndBranch: mocks.removeWorktreeAndBranch,
-  createSessionWithoutWorktree: vi.fn(),
+  createSessionWithoutWorktree: mocks.createSessionWithoutWorktree,
   removeSessionOnly: mocks.removeSessionOnly,
   buildManagedWorktreePath: vi.fn((projectPath: string, branchName: string) => `${projectPath}__worktrees/${branchName}`),
 }));
@@ -100,6 +101,7 @@ describe("kanbanService.createTask", () => {
     vi.resetModules();
     vi.clearAllMocks();
     mocks.taskRepo.create.mockImplementation((value) => value);
+    mocks.createSessionWithoutWorktree.mockResolvedValue({ sessionName: "repo-feature-remote" });
     mocks.installKanvibeHooks.mockResolvedValue(undefined);
     mocks.scheduleKanvibeHooksInstall.mockImplementation((
       targetPath: string,
@@ -336,6 +338,64 @@ describe("kanbanService.createTask", () => {
 
       expect(mocks.broadcastBoardUpdate).toHaveBeenCalledTimes(2);
     } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("원격 기존 브랜치 task에 터미널을 연결하면 hooks 설치를 백그라운드로 예약한다", async () => {
+    vi.useFakeTimers();
+
+    try {
+      // Given
+      const task = {
+        id: "task-connect",
+        title: "원격 브랜치 연결",
+        projectId: "project-remote",
+        branchName: "feature/remote",
+        baseBranch: "main",
+        worktreePath: "/remote/repo__worktrees/feature-remote",
+        sshHost: "remote-host",
+        sessionType: null,
+        sessionName: null,
+        status: "todo",
+      };
+      mocks.taskRepo.findOneBy.mockResolvedValue(task);
+      mocks.projectRepo.findOneBy.mockResolvedValue({
+        id: "project-remote",
+        repoPath: "/remote/repo",
+        defaultBranch: "main",
+        sshHost: "remote-host",
+      });
+      mocks.createSessionWithoutWorktree.mockResolvedValue({
+        sessionName: "repo-feature-remote",
+      });
+      mocks.taskRepo.save.mockImplementation(async (value) => value);
+
+      const { connectTerminalSession } = await import("@/desktop/main/services/kanbanService");
+
+      // When
+      const result = await connectTerminalSession("task-connect", "tmux" as never);
+
+      // Then
+      expect(result).toEqual(expect.objectContaining({
+        id: "task-connect",
+        sessionType: "tmux",
+        sessionName: "repo-feature-remote",
+        status: "progress",
+      }));
+      expect(mocks.broadcastBoardUpdate).toHaveBeenCalledTimes(1);
+      expect(mocks.installKanvibeHooks).not.toHaveBeenCalled();
+
+      await vi.runAllTimersAsync();
+
+      expect(mocks.installKanvibeHooks).toHaveBeenCalledWith(
+        "/remote/repo__worktrees/feature-remote",
+        "task-connect",
+        "remote-host",
+      );
+      expect(mocks.broadcastBoardUpdate).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.clearAllTimers();
       vi.useRealTimers();
     }
   });
