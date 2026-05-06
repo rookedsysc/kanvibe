@@ -1,12 +1,15 @@
 import { describe, expect, it } from "vitest";
 import {
   SHORTCUTS,
+  TASK_DETAIL_DOCK_SHORTCUT_INDEXES,
   captureShortcutFromEvent,
+  createTaskDetailDockShortcut,
   formatShortcutForDisplay,
   getShortcutPlatformFromNavigator,
   isBlockedElectronShortcutInput,
   isBlockedShortcutEvent,
   matchElectronShortcutInput,
+  matchTaskDetailDockShortcutEvent,
   matchShortcutEvent,
 } from "@/desktop/renderer/utils/keyboardShortcut";
 
@@ -187,6 +190,50 @@ describe("keyboardShortcut", () => {
       control: true,
       shift: true,
     }, SHORTCUTS.pageForward, "linux")).toBe(true);
+  });
+
+  it("상세 dock shortcut은 macOS Cmd+숫자와 Linux Alt+숫자로 표시하고 매칭한다", () => {
+    expect(TASK_DETAIL_DOCK_SHORTCUT_INDEXES).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9]);
+    expect(formatShortcutForDisplay(createTaskDetailDockShortcut(1), "mac")).toBe("Cmd+1");
+    expect(formatShortcutForDisplay(createTaskDetailDockShortcut(1), "linux")).toBe("Alt+1");
+
+    expect(matchShortcutEvent(new KeyboardEvent("keydown", {
+      key: "1",
+      metaKey: true,
+    }), createTaskDetailDockShortcut(1), "mac")).toBe(true);
+    expect(matchShortcutEvent(new KeyboardEvent("keydown", {
+      key: "1",
+      altKey: true,
+    }), createTaskDetailDockShortcut(1), "linux")).toBe(true);
+    expect(matchShortcutEvent(new KeyboardEvent("keydown", {
+      key: "1",
+      metaKey: true,
+      shiftKey: true,
+    }), createTaskDetailDockShortcut(1), "mac")).toBe(false);
+    expect(matchShortcutEvent(new KeyboardEvent("keydown", {
+      key: "1",
+      altKey: true,
+      shiftKey: true,
+    }), createTaskDetailDockShortcut(1), "linux")).toBe(false);
+    expect(matchShortcutEvent(new KeyboardEvent("keydown", {
+      key: "1",
+      ctrlKey: true,
+    }), createTaskDetailDockShortcut(1), "linux")).toBe(false);
+  });
+
+  it("상세 dock shortcut matcher는 일치한 dock 번호를 반환한다", () => {
+    expect(matchTaskDetailDockShortcutEvent(new KeyboardEvent("keydown", {
+      key: "4",
+      metaKey: true,
+    }), "mac")).toBe(4);
+    expect(matchTaskDetailDockShortcutEvent(new KeyboardEvent("keydown", {
+      key: "4",
+      altKey: true,
+    }), "linux")).toBe(4);
+    expect(matchTaskDetailDockShortcutEvent(new KeyboardEvent("keydown", {
+      key: "4",
+      ctrlKey: true,
+    }), "linux")).toBeNull();
   });
 
   it("Cmd/Ctrl+R은 앱에서 차단할 shortcut으로 판별한다", () => {

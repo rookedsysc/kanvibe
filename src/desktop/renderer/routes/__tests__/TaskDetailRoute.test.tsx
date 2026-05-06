@@ -276,6 +276,8 @@ describe("TaskDetailRoute", () => {
 
   afterEach(() => {
     vi.useRealTimers();
+    vi.restoreAllMocks();
+    delete window.kanvibeDesktop;
   });
 
   it("캐시가 있으면 stale task detail을 즉시 렌더링하고 이후 최신 데이터로 갱신한다", async () => {
@@ -502,6 +504,132 @@ describe("TaskDetailRoute", () => {
     expect(prLink.getAttribute("href")).toBe(prUrl);
     expect(prLink.getAttribute("target")).toBe("_blank");
     expect(screen.getByTestId("task-detail-pr-icon")).toBeTruthy();
+  });
+
+  it("상세 dock shortcut은 terminal 입력보다 먼저 capture 단계에서 처리한다", async () => {
+    mocks.getSidebarDefaultCollapsed.mockResolvedValue(true);
+    mocks.getTaskById.mockResolvedValue({
+      id: "task-1",
+      title: "task title",
+      description: null,
+      branchName: "feat/detail-shortcut",
+      baseBranch: "main",
+      prUrl: null,
+      sessionType: "tmux",
+      sessionName: "task-session",
+      sshHost: null,
+      projectId: "project-1",
+      project: { id: "project-1", name: "kanvibe" },
+      status: "todo",
+      agentType: null,
+      worktreePath: "/repo__worktrees/detail-shortcut",
+    });
+
+    render(
+      <BoardCommandProvider>
+        <TaskDetailRoute />
+      </BoardCommandProvider>,
+    );
+
+    const terminalInput = await screen.findByLabelText("terminal input");
+    const terminalKeyDown = vi.fn();
+    const windowBubbleKeyDown = vi.fn();
+    terminalInput.addEventListener("keydown", terminalKeyDown);
+    window.addEventListener("keydown", windowBubbleKeyDown);
+
+    const wasNotPrevented = fireEvent.keyDown(terminalInput, {
+      key: "1",
+      altKey: true,
+    });
+    terminalInput.removeEventListener("keydown", terminalKeyDown);
+    window.removeEventListener("keydown", windowBubbleKeyDown);
+
+    expect(wasNotPrevented).toBe(false);
+    expect(terminalKeyDown).not.toHaveBeenCalled();
+    expect(windowBubbleKeyDown).not.toHaveBeenCalled();
+    expect(await screen.findByTestId("task-title")).toBeTruthy();
+  });
+
+  it("PR이 있는 task는 dock 4번 shortcut으로 PR을 새 브라우저 창에서 연다", async () => {
+    const prUrl = "https://github.com/kanvibe/kanvibe/pull/236";
+    const openSpy = vi.spyOn(window, "open").mockImplementation(() => null);
+    mocks.getTaskById.mockResolvedValue({
+      id: "task-1",
+      title: "task title",
+      description: null,
+      branchName: "feat/detail-shortcut",
+      baseBranch: "main",
+      prUrl,
+      sessionType: "tmux",
+      sessionName: "task-session",
+      sshHost: null,
+      projectId: "project-1",
+      project: { id: "project-1", name: "kanvibe" },
+      status: "todo",
+      agentType: null,
+      worktreePath: "/repo__worktrees/detail-shortcut",
+    });
+
+    render(
+      <BoardCommandProvider>
+        <TaskDetailRoute />
+      </BoardCommandProvider>,
+    );
+
+    const prLink = await screen.findByRole("link", { name: "PR" });
+    expect(prLink.getAttribute("title")).toContain("Alt+4");
+
+    const wasNotPrevented = fireEvent.keyDown(window, {
+      key: "4",
+      altKey: true,
+    });
+
+    expect(wasNotPrevented).toBe(false);
+    expect(openSpy).toHaveBeenCalledWith(prUrl, "_blank", "noopener,noreferrer");
+  });
+
+  it("Electron main에서 전달된 dock shortcut도 같은 dock action을 실행한다", async () => {
+    let dockShortcutListener: ((index: number) => void) | null = null;
+    window.kanvibeDesktop = {
+      isDesktop: true,
+      onTaskDetailDockShortcut(listener: (index: number) => void) {
+        dockShortcutListener = listener;
+        return () => {
+          dockShortcutListener = null;
+        };
+      },
+    };
+    mocks.getSidebarDefaultCollapsed.mockResolvedValue(true);
+    mocks.getTaskById.mockResolvedValue({
+      id: "task-1",
+      title: "task title",
+      description: null,
+      branchName: "feat/detail-shortcut",
+      baseBranch: "main",
+      prUrl: null,
+      sessionType: "tmux",
+      sessionName: "task-session",
+      sshHost: null,
+      projectId: "project-1",
+      project: { id: "project-1", name: "kanvibe" },
+      status: "todo",
+      agentType: null,
+      worktreePath: "/repo__worktrees/detail-shortcut",
+    });
+
+    render(
+      <BoardCommandProvider>
+        <TaskDetailRoute />
+      </BoardCommandProvider>,
+    );
+
+    await screen.findByLabelText("terminal input");
+
+    act(() => {
+      dockShortcutListener?.(2);
+    });
+
+    expect(await screen.findByTestId("hooks-status-card")).toBeTruthy();
   });
 
   it("채팅 아이콘을 클릭하면 drawer 대신 메인 영역을 AI 채팅 내역으로 전환한다", async () => {

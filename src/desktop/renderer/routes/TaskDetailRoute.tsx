@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { HugeiconsIcon } from "@hugeicons/react";
 import {
   Chatting01Icon,
   InformationCircleIcon,
@@ -30,7 +30,15 @@ import {
 import { useBoardCommands, type BranchTodoDefaults } from "@/desktop/renderer/components/BoardCommandProvider";
 import TerminalLoader from "@/desktop/renderer/components/TerminalLoader";
 import { fetchPrUrlWithPrompt } from "@/desktop/renderer/utils/fetchPrUrlWithPrompt";
-import { SHORTCUTS, getCurrentShortcutPlatform, matchShortcutEvent } from "@/desktop/renderer/utils/keyboardShortcut";
+import {
+  SHORTCUTS,
+  TASK_DETAIL_DOCK_SHORTCUT_INDEXES,
+  createTaskDetailDockShortcut,
+  formatShortcutForDisplay,
+  getCurrentShortcutPlatform,
+  matchShortcutEvent,
+  matchTaskDetailDockShortcutEvent,
+} from "@/desktop/renderer/utils/keyboardShortcut";
 import { INITIAL_DESKTOP_LOAD_TIMEOUT_MS, logDesktopInitialLoadTimeout } from "@/desktop/renderer/utils/loadingTimeout";
 import { rememberBoardFocusTask } from "@/desktop/renderer/utils/boardFocusTarget";
 import { buildRouteCacheKey, readRouteCache, removeRouteCache, writeRouteCache } from "@/desktop/renderer/utils/routeCache";
@@ -62,6 +70,16 @@ const AGENT_TAG_STYLES: Record<string, string> = {
 
 type DetailPanel = "overview" | "status";
 type MainView = "terminal" | "chat";
+type TaskDetailDockItem = {
+  id: string;
+  label: string;
+  isActive: boolean;
+  renderIcon: () => ReactNode;
+  onActivate: () => void;
+  href?: string;
+};
+
+const PR_DOCK_INSERT_INDEX = 3;
 
 function PullRequestIcon() {
   return (
@@ -310,6 +328,96 @@ export default function TaskDetailRoute() {
   const currentTaskIdRef = useRef(id);
   const hasTerminal = !!(state?.task.sessionType && state.task.sessionName);
   const shortcutPlatform = getCurrentShortcutPlatform();
+  const statusPanelLabel = `${t("actions")} · ${t("hooksStatus")}`;
+
+  const toggleDetailPanel = useCallback((panel: DetailPanel) => {
+    setActivePanel((current) => current === panel ? null : panel);
+  }, []);
+
+  const toggleChatView = useCallback(() => {
+    setMainView((current) => {
+      const nextView = current === "chat" ? "terminal" : "chat";
+      if (nextView === "chat") {
+        setActivePanel(null);
+      } else {
+        requestActiveTerminalFocusAfterUiSettles();
+      }
+      return nextView;
+    });
+  }, []);
+
+  const dockItems = useMemo<TaskDetailDockItem[]>(() => {
+    if (!state) {
+      return [];
+    }
+
+    const items: TaskDetailDockItem[] = [
+      {
+        id: "overview",
+        label: t("info"),
+        isActive: activePanel === "overview",
+        renderIcon: () => (
+          <HugeiconsIcon
+            icon={InformationCircleIcon}
+            size={17}
+            strokeWidth={1.6}
+            aria-hidden="true"
+          />
+        ),
+        onActivate: () => toggleDetailPanel("overview"),
+      },
+      {
+        id: "status",
+        label: statusPanelLabel,
+        isActive: activePanel === "status",
+        renderIcon: () => <AntennaSignalIcon testId="task-status-panel-icon" />,
+        onActivate: () => toggleDetailPanel("status"),
+      },
+      {
+        id: "chat",
+        label: t("aiSessions.inlineChat"),
+        isActive: mainView === "chat",
+        renderIcon: () => (
+          <HugeiconsIcon
+            icon={Chatting01Icon}
+            size={17}
+            strokeWidth={1.6}
+            aria-hidden="true"
+          />
+        ),
+        onActivate: toggleChatView,
+      },
+    ];
+
+    if (state.task.prUrl) {
+      items.splice(PR_DOCK_INSERT_INDEX, 0, {
+        id: "pull-request",
+        label: "PR",
+        isActive: false,
+        renderIcon: () => <PullRequestIcon />,
+        onActivate: () => {
+          window.open(state.task.prUrl!, "_blank", "noopener,noreferrer");
+        },
+        href: state.task.prUrl,
+      });
+    }
+
+    return items;
+  }, [activePanel, mainView, state, statusPanelLabel, t, toggleChatView, toggleDetailPanel]);
+
+  const activateDockItem = useCallback((shortcutIndex: number) => {
+    if (!Number.isInteger(shortcutIndex)) {
+      return false;
+    }
+
+    const item = dockItems[shortcutIndex - 1];
+    if (!item) {
+      return false;
+    }
+
+    item.onActivate();
+    return true;
+  }, [dockItems]);
 
   useEffect(() => {
     if (id) {
@@ -362,6 +470,39 @@ export default function TaskDetailRoute() {
       window.removeEventListener("keydown", handlePriorityHistoryShortcut, { capture: true });
     };
   }, [router, shortcutPlatform]);
+
+  useEffect(() => {
+    function consumeDockShortcut(event: KeyboardEvent) {
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation();
+    }
+
+    function handlePriorityDockShortcut(event: KeyboardEvent) {
+      const shortcutIndex = matchTaskDetailDockShortcutEvent(event, shortcutPlatform);
+      if (shortcutIndex === null) {
+        return;
+      }
+
+      const handled = activateDockItem(shortcutIndex);
+      if (!handled) {
+        return;
+      }
+
+      consumeDockShortcut(event);
+    }
+
+    window.addEventListener("keydown", handlePriorityDockShortcut, { capture: true });
+    return () => {
+      window.removeEventListener("keydown", handlePriorityDockShortcut, { capture: true });
+    };
+  }, [activateDockItem, shortcutPlatform]);
+
+  useEffect(() => (
+    window.kanvibeDesktop?.onTaskDetailDockShortcut?.((shortcutIndex: number) => {
+      activateDockItem(shortcutIndex);
+    }) ?? undefined
+  ), [activateDockItem]);
 
   useEffect(() => {
     if (currentTaskIdRef.current === id) {
@@ -579,7 +720,6 @@ export default function TaskDetailRoute() {
     () => (state?.task.agentType ? AGENT_TAG_STYLES[state.task.agentType] ?? "bg-tag-neutral-bg text-tag-neutral-text" : null),
     [state?.task.agentType],
   );
-  const statusPanelLabel = `${t("actions")} · ${t("hooksStatus")}`;
 
   useEscapeKey(() => {
     setActivePanel(null);
@@ -639,18 +779,6 @@ export default function TaskDetailRoute() {
     requestActiveTerminalFocusAfterUiSettles();
   }
 
-  function toggleChatView() {
-    setMainView((current) => {
-      const nextView = current === "chat" ? "terminal" : "chat";
-      if (nextView === "chat") {
-        setActivePanel(null);
-      } else {
-        requestActiveTerminalFocusAfterUiSettles();
-      }
-      return nextView;
-    });
-  }
-
   return (
     <div className="relative h-screen overflow-hidden bg-bg-page p-3">
       <aside className={`absolute bottom-3 left-3 top-3 z-40 flex w-12 flex-col items-center rounded-lg border border-border-default bg-bg-surface/95 p-1.5 shadow-sm ${needsMacDesktopHeaderOffset ? "pt-10" : ""}`}>
@@ -660,67 +788,46 @@ export default function TaskDetailRoute() {
           </svg>
         </Link>
 
-        {([
-          { panel: "overview", label: t("info"), icon: InformationCircleIcon },
-          { panel: "status", label: statusPanelLabel, iconTestId: "task-status-panel-icon" },
-        ] satisfies Array<{ panel: DetailPanel; label: string; icon?: IconSvgElement; iconTestId?: string }>).map(({ panel, label, icon, iconTestId }) => (
-          <button
-            key={panel}
-            type="button"
-            onClick={() => setActivePanel((current) => current === panel ? null : panel)}
-            className={`mb-1 rounded-md p-2 transition-colors ${
-              activePanel === panel
-                ? "bg-brand-subtle text-text-brand"
-                : "text-text-muted hover:bg-bg-page hover:text-text-primary"
-            }`}
-            title={label}
-            aria-label={label}
-          >
-            {icon ? (
-              <HugeiconsIcon
-                icon={icon}
-                size={17}
-                strokeWidth={1.6}
-                aria-hidden="true"
-                data-testid={iconTestId}
-              />
-            ) : (
-              <AntennaSignalIcon testId={iconTestId} />
-            )}
-          </button>
-        ))}
+        {dockItems.map((item, itemIndex) => {
+          const shortcutIndex = TASK_DETAIL_DOCK_SHORTCUT_INDEXES[itemIndex];
+          const shortcutText = shortcutIndex
+            ? formatShortcutForDisplay(createTaskDetailDockShortcut(shortcutIndex), shortcutPlatform)
+            : null;
+          const title = shortcutText ? `${item.label} (${shortcutText})` : item.label;
 
-        <button
-          type="button"
-          onClick={toggleChatView}
-          className={`mb-1 rounded-md p-2 transition-colors ${
-            mainView === "chat"
-              ? "bg-brand-subtle text-text-brand"
-              : "text-text-muted hover:bg-bg-page hover:text-text-primary"
-          }`}
-          title={t("aiSessions.inlineChat")}
-          aria-label={t("aiSessions.inlineChat")}
-        >
-          <HugeiconsIcon
-            icon={Chatting01Icon}
-            size={17}
-            strokeWidth={1.6}
-            aria-hidden="true"
-          />
-        </button>
+          if (item.href) {
+            return (
+              <a
+                key={item.id}
+                href={item.href}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mb-1 flex h-8 w-8 items-center justify-center rounded-md border border-tag-pr-text/30 bg-tag-pr-bg text-tag-pr-text transition-opacity hover:opacity-80"
+                title={title}
+                aria-label={item.label}
+              >
+                {item.renderIcon()}
+              </a>
+            );
+          }
 
-        {state.task.prUrl ? (
-          <a
-            href={state.task.prUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="mb-1 flex h-8 w-8 items-center justify-center rounded-md border border-tag-pr-text/30 bg-tag-pr-bg text-tag-pr-text transition-opacity hover:opacity-80"
-            title="PR"
-            aria-label="PR"
-          >
-            <PullRequestIcon />
-          </a>
-        ) : null}
+          return (
+            <button
+              key={item.id}
+              type="button"
+              onClick={item.onActivate}
+              className={`mb-1 rounded-md p-2 transition-colors ${
+                item.isActive
+                  ? "bg-brand-subtle text-text-brand"
+                  : "text-text-muted hover:bg-bg-page hover:text-text-primary"
+              }`}
+              title={title}
+              aria-label={item.label}
+            >
+              {item.renderIcon()}
+            </button>
+          );
+        })}
 
         <div className="mt-auto" />
       </aside>
