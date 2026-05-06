@@ -1,6 +1,7 @@
 import { act, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import App from "@/desktop/renderer/App";
+import type { AppNotification } from "@/desktop/shared/notifications";
 
 const mocks = vi.hoisted(() => ({
   triggerDesktopRefresh: vi.fn(),
@@ -116,7 +117,7 @@ describe("App", () => {
     }
   });
 
-  it("shows a background sync review dialog on the current detail route", async () => {
+  it("does not show a background sync review dialog from pending activation on route entry", async () => {
     window.location.hash = "#/en/task/task-1";
     window.kanvibeDesktop = {
       isDesktop: true,
@@ -182,6 +183,91 @@ describe("App", () => {
 
     await waitFor(() => {
       expect(screen.getByText("task detail route")).toBeTruthy();
+    });
+    expect(screen.queryByText("Background Sync Review")).toBeNull();
+    expect(window.kanvibeDesktop.consumePendingNotificationActivation).not.toHaveBeenCalled();
+    expect(window.location.hash).toBe("#/en/task/task-1");
+  });
+
+  it("shows a background sync review dialog when a notification is activated", async () => {
+    window.location.hash = "#/en/task/task-1";
+    let activateNotificationListener: ((notification: AppNotification) => void) | null = null;
+    const notification: AppNotification = {
+      id: "n-review",
+      title: "Background sync review",
+      body: "Review pending items",
+      taskId: null,
+      relativePath: "/en",
+      locale: "en",
+      isRead: false,
+      createdAt: "2026-05-01T00:00:00.000Z",
+      dedupeKey: "background-review-1",
+      action: {
+        type: "background-sync-review" as const,
+        payload: {
+          mergedPullRequests: [
+            {
+              taskId: "task-1",
+              taskTitle: "Detail task",
+              branchName: "feature/current-route",
+              prUrl: "https://github.com/kanvibe/kanvibe/pull/410",
+              mergedAt: "2026-05-01T01:00:00Z",
+            },
+          ],
+          registeredWorktrees: [
+            {
+              taskId: "task-worktree",
+              projectName: "kanvibe",
+              branchName: "feature/new-worktree",
+              worktreePath: "/repo/kanvibe__worktrees/feature-new-worktree",
+              sshHost: null,
+            },
+          ],
+          pulledTasks: [
+            {
+              taskId: "task-pull",
+              taskTitle: "Pull target",
+              branchName: "feature/pull-fail",
+              worktreePath: "/repo/kanvibe__worktrees/feature-pull-fail",
+              sshHost: null,
+              status: "failed" as const,
+              summary: "Not possible to fast-forward",
+            },
+          ],
+          failures: [
+            {
+              operation: "pull-request-sync" as const,
+              target: "PR sync target (feature/pr-fail)",
+              reason: "gh auth failed",
+              taskId: "task-pr-fail",
+              branchName: "feature/pr-fail",
+            },
+          ],
+        },
+      },
+    };
+
+    window.kanvibeDesktop = {
+      isDesktop: true,
+      onBoardEvent: vi.fn(() => vi.fn()),
+      consumePendingNotificationActivation: vi.fn(),
+      onNotificationActivated: vi.fn((listener) => {
+        activateNotificationListener = listener;
+        return vi.fn();
+      }),
+    } as unknown as NonNullable<typeof window.kanvibeDesktop>;
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getByText("task detail route")).toBeTruthy();
+    });
+
+    act(() => {
+      activateNotificationListener?.(notification);
+    });
+
+    await waitFor(() => {
       expect(screen.getByText("Background Sync Review")).toBeTruthy();
     });
     expect(screen.getByText("https://github.com/kanvibe/kanvibe/pull/410")).toBeTruthy();
@@ -192,6 +278,7 @@ describe("App", () => {
     expect(screen.getByText("Sync failures")).toBeTruthy();
     expect(screen.getByText("PR sync target (feature/pr-fail)")).toBeTruthy();
     expect(screen.getByText("gh auth failed")).toBeTruthy();
+    expect(window.kanvibeDesktop.consumePendingNotificationActivation).not.toHaveBeenCalled();
     expect(window.location.hash).toBe("#/en/task/task-1");
   });
 });
