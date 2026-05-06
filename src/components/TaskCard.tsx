@@ -213,7 +213,7 @@ export default function TaskCard({ task, index, onContextMenu, projectName, proj
             ...provided.draggableProps.style,
             ...cardStyle,
           }}
-          className={`group relative mb-1.5 block overflow-hidden rounded-md border border-border-subtle px-2.5 py-2 transition-colors cursor-pointer outline-none focus:border-brand-primary focus:bg-bg-surface/80 focus:ring-2 focus:ring-brand-primary/30 ${isBaseProject ? "pr-8" : ""} ${
+          className={`group relative mb-1.5 block overflow-hidden rounded-md border border-border-subtle px-2.5 py-2 transition-[background-color,border-color,box-shadow] cursor-pointer outline-none focus:border-border-brand focus:bg-bg-surface/90 ${isBaseProject ? "pr-8" : ""} ${
             snapshot.isDragging
               ? "bg-bg-surface shadow-md ring-1 ring-border-brand"
               : "hover:bg-bg-surface/70"

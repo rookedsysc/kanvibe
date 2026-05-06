@@ -4,6 +4,7 @@ import BoardRoute from "@/desktop/renderer/routes/BoardRoute";
 import { INITIAL_DESKTOP_LOAD_TIMEOUT_MS } from "@/desktop/renderer/utils/loadingTimeout";
 
 const BOARD_CACHE_KEY = "kanvibe:route-cache:board";
+const BOARD_FOCUS_TASK_CACHE_KEY = "kanvibe:route-cache:board-focus-task";
 
 const mocks = vi.hoisted(() => ({
   getTasksByStatus: vi.fn(),
@@ -28,8 +29,17 @@ function createDeferred<T>() {
 }
 
 vi.mock("@/components/Board", () => ({
-  default: ({ initialTasks }: { initialTasks: Record<string, Array<{ title: string }>> }) => (
-    <div data-testid="board-titles">{Object.values(initialTasks).flat().map((task) => task.title).join(",")}</div>
+  default: ({
+    initialTasks,
+    initialFocusTaskId,
+  }: {
+    initialTasks: Record<string, Array<{ title: string }>>;
+    initialFocusTaskId?: string | null;
+  }) => (
+    <>
+      <div data-testid="board-titles">{Object.values(initialTasks).flat().map((task) => task.title).join(",")}</div>
+      <div data-testid="board-focus-task">{initialFocusTaskId ?? ""}</div>
+    </>
   ),
 }));
 
@@ -140,6 +150,28 @@ describe("BoardRoute", () => {
     await waitFor(() => {
       expect(screen.getByTestId("board-titles").textContent).toBe("fresh board task");
     });
+  });
+
+  it("상세 화면에서 기록한 focus task id를 한 번 소비해서 Board에 전달한다", async () => {
+    sessionStorage.setItem(BOARD_FOCUS_TASK_CACHE_KEY, JSON.stringify("task-2"));
+    mocks.getTasksByStatus.mockResolvedValue({
+      tasks: {
+        todo: [],
+        progress: [{ id: "task-2", title: "focus target task" }],
+        pending: [],
+        review: [],
+        done: [],
+      },
+      doneTotal: 0,
+      doneLimit: 20,
+    });
+
+    render(<BoardRoute />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("board-focus-task").textContent).toBe("task-2");
+    });
+    expect(sessionStorage.getItem(BOARD_FOCUS_TASK_CACHE_KEY)).toBeNull();
   });
 
   it("초기 데이터 로딩이 실패해도 Loading 화면에 고착되지 않는다", async () => {

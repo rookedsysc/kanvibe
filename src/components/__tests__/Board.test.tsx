@@ -193,6 +193,58 @@ function createTasksWithTodo(): TasksByStatus {
   };
 }
 
+function createTasksWithTodoAndProgress(): TasksByStatus {
+  return {
+    [TaskStatus.TODO]: [
+      {
+        id: "task-1",
+        title: "Todo Task",
+        description: null,
+        status: TaskStatus.TODO,
+        branchName: null,
+        worktreePath: null,
+        sessionType: null,
+        sessionName: null,
+        sshHost: null,
+        agentType: null,
+        project: null,
+        projectId: "project-1",
+        baseBranch: null,
+        prUrl: null,
+        priority: null,
+        displayOrder: 0,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+    ],
+    [TaskStatus.PROGRESS]: [
+      {
+        id: "task-2",
+        title: "Progress Task",
+        description: null,
+        status: TaskStatus.PROGRESS,
+        branchName: null,
+        worktreePath: null,
+        sessionType: null,
+        sessionName: null,
+        sshHost: null,
+        agentType: null,
+        project: null,
+        projectId: "project-1",
+        baseBranch: null,
+        prUrl: null,
+        priority: null,
+        displayOrder: 0,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+    ],
+    [TaskStatus.PENDING]: [],
+    [TaskStatus.REVIEW]: [],
+    [TaskStatus.DONE]: [],
+  };
+}
+
 function BoardCommandRequester() {
   const boardCommands = useBoardCommands();
 
@@ -393,6 +445,30 @@ describe("Board defaultSessionType sync", () => {
 
     expect(event.defaultPrevented).toBe(true);
     expect(document.activeElement).toBe(taskLink);
+  });
+
+  it("상세 화면에서 돌아온 task id가 있으면 해당 task로 초기 focus를 시작한다", async () => {
+    render(
+      <Board
+        initialTasks={createTasksWithTodoAndProgress()}
+        initialDoneTotal={0}
+        initialDoneLimit={20}
+        sshHosts={[]}
+        projects={[createProject()]}
+        sidebarDefaultCollapsed={false}
+        doneAlertDismissed={false}
+        notificationSettings={{ isEnabled: true, enabledStatuses: ["progress", "pending", "review"] }}
+        defaultSessionType={SessionType.TMUX}
+        taskSearchShortcut="Mod+Shift+O"
+        initialFocusTaskId="task-2"
+      />,
+    );
+
+    const progressTaskLink = await screen.findByRole("link", { name: "Progress Task" });
+
+    await waitFor(() => {
+      expect(document.activeElement).toBe(progressTaskLink);
+    });
   });
 
   it("포커스된 task에서 Shift+Enter를 누르면 상세 페이지를 새 창에서 연다", async () => {
