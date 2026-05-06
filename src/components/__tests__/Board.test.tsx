@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { createEvent, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import Board from "../Board";
-import { reorderTasks } from "@/desktop/renderer/actions/kanban";
+import { moveTaskToColumn, reorderTasks } from "@/desktop/renderer/actions/kanban";
 import { SessionType, TaskStatus, type KanbanTask } from "@/entities/KanbanTask";
 import type { Project } from "@/entities/Project";
 import type { TasksByStatus } from "@/desktop/renderer/actions/kanban";
@@ -110,7 +110,17 @@ vi.mock("../NotificationCenterButton", () => ({
 }));
 
 vi.mock("../TaskContextMenu", () => ({
-  default: () => <div data-testid="task-context-menu" />,
+  default: ({
+    onStatusChange,
+  }: {
+    onStatusChange: (status: TaskStatus) => void;
+  }) => (
+    <div data-testid="task-context-menu">
+      <button type="button" onClick={() => onStatusChange(TaskStatus.REVIEW)}>
+        change-status-review
+      </button>
+    </div>
+  ),
 }));
 
 vi.mock("../DoneConfirmDialog", () => ({
@@ -534,6 +544,37 @@ describe("Board defaultSessionType sync", () => {
     expect(event.defaultPrevented).toBe(true);
     await waitFor(() => {
       expect(screen.getByTestId("task-context-menu")).toBeTruthy();
+    });
+  });
+
+  it("컨텍스트 메뉴에서 상태를 선택하면 대상 컬럼 마지막으로 task를 이동한다", async () => {
+    render(
+      <Board
+        initialTasks={createTasksWithTodo()}
+        initialDoneTotal={0}
+        initialDoneLimit={20}
+        sshHosts={[]}
+        projects={[createProject()]}
+        sidebarDefaultCollapsed={false}
+        doneAlertDismissed={false}
+        notificationSettings={{ isEnabled: true, enabledStatuses: ["progress", "pending", "review"] }}
+        defaultSessionType={SessionType.TMUX}
+        taskSearchShortcut="Mod+Shift+O"
+      />,
+    );
+
+    const taskLink = await screen.findByRole("link", { name: "Test Task" });
+    taskLink.focus();
+
+    fireEvent.keyDown(taskLink, {
+      key: "F10",
+      shiftKey: true,
+    });
+
+    fireEvent.click(await screen.findByRole("button", { name: "change-status-review" }));
+
+    await waitFor(() => {
+      expect(moveTaskToColumn).toHaveBeenCalledWith("task-1", TaskStatus.REVIEW, ["task-1"]);
     });
   });
 

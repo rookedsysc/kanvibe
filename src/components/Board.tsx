@@ -139,6 +139,34 @@ function openTaskDetailInNewWindow(taskId: string) {
   });
 }
 
+function buildStatusMoveResult(
+  task: KanbanTask,
+  destinationStatus: TaskStatus,
+  currentTasks: TasksByStatus,
+  filteredTasks: TasksByStatus,
+): DropResult | null {
+  if (task.status === destinationStatus) return null;
+
+  const sourceIndex = currentTasks[task.status].findIndex((candidate) => candidate.id === task.id);
+  if (sourceIndex === -1) return null;
+
+  return {
+    draggableId: task.id,
+    type: "DEFAULT",
+    source: {
+      droppableId: task.status,
+      index: sourceIndex,
+    },
+    destination: {
+      droppableId: destinationStatus,
+      index: filteredTasks[destinationStatus].length,
+    },
+    reason: "DROP",
+    mode: "FLUID",
+    combine: null,
+  };
+}
+
 /** worktree repoPath에서 메인 프로젝트 경로를 추출한다 */
 function extractMainRepoPath(repoPath: string): string | null {
   const worktreeIndex = repoPath.indexOf("__worktrees");
@@ -633,6 +661,39 @@ export default function Board({
     handleCloseContextMenu();
   }, [contextMenu.task, handleCloseContextMenu, tt]);
 
+  const handleStatusChangeFromCard = useCallback(
+    (newStatus: TaskStatus) => {
+      const task = contextMenu.task;
+      if (!task) return;
+
+      const result = buildStatusMoveResult(task, newStatus, tasks, filteredTasks);
+      handleCloseContextMenu();
+
+      if (!result) return;
+
+      const shouldConfirmDoneMove =
+        newStatus === TaskStatus.DONE &&
+        task.status !== TaskStatus.DONE &&
+        !isDoneAlertDismissed &&
+        !!(task.branchName || task.sessionType);
+
+      if (shouldConfirmDoneMove) {
+        setPendingDoneResult(result);
+        return;
+      }
+
+      executeDragMove(result);
+    },
+    [
+      contextMenu.task,
+      executeDragMove,
+      filteredTasks,
+      handleCloseContextMenu,
+      isDoneAlertDismissed,
+      tasks,
+    ],
+  );
+
   const headerClassName = shouldUseMacTitlebarLayout
     ? "flex items-center justify-end bg-bg-page px-6 pb-3 pl-20 pr-6 pt-10 [-webkit-app-region:drag]"
     : "flex items-center justify-end border-b border-border-default bg-bg-surface px-6 py-3";
@@ -738,8 +799,15 @@ export default function Board({
           onClose={handleCloseContextMenu}
           onBranch={handleBranchFromCard}
           onCreateBranchTodo={handleCreateBranchTodo}
+          onStatusChange={handleStatusChangeFromCard}
           onDelete={handleDeleteFromCard}
           hasBranch={!!contextMenu.task.branchName}
+          currentStatus={contextMenu.task.status}
+          statusOptions={COLUMNS.map((column) => ({
+            status: column.status,
+            label: t(`columns.${column.labelKey}`),
+            colorClass: column.colorClass,
+          }))}
         />
       )}
 
