@@ -16,16 +16,6 @@ function mockNavigatorPlatform(platform: string) {
   });
 }
 
-function mockWindowFind(implementation?: (query: string, ...args: unknown[]) => boolean) {
-  const findMock = vi.fn(implementation ?? (() => true));
-  Object.defineProperty(window, "find", {
-    configurable: true,
-    value: findMock,
-  });
-
-  return findMock;
-}
-
 vi.mock("next-intl", () => ({
   useTranslations: () => (key: string) => key,
 }));
@@ -276,7 +266,6 @@ describe("Board defaultSessionType sync", () => {
     vi.clearAllMocks();
     delete window.kanvibeDesktop;
     mockNavigatorPlatform("Linux x86_64");
-    mockWindowFind();
   });
 
   it("defaultSessionType prop이 변경되면 내부 상태와 하위 컴포넌트가 동기화된다", async () => {
@@ -401,7 +390,7 @@ describe("Board defaultSessionType sync", () => {
     expect(screen.queryByRole("button", { name: "logout" })).toBeNull();
   });
 
-  it("리눅스 보드에서 Ctrl+F를 누르면 페이지 검색 바를 연다", async () => {
+  it("보드는 앱 공통 페이지 검색 바를 직접 렌더링하지 않는다", async () => {
     render(
       <Board
         initialTasks={createEmptyTasks()}
@@ -422,9 +411,7 @@ describe("Board defaultSessionType sync", () => {
       ctrlKey: true,
     });
 
-    await waitFor(() => {
-      expect(screen.getByPlaceholderText("pageFind.placeholder")).toBeTruthy();
-    });
+    expect(screen.queryByPlaceholderText("pageFind.placeholder")).toBeNull();
   });
 
   it("task focus가 없을 때 방향키를 누르면 페이지 스크롤 대신 첫 task로 focus를 진입시킨다", async () => {
@@ -575,69 +562,6 @@ describe("Board defaultSessionType sync", () => {
 
     await waitFor(() => {
       expect(moveTaskToColumn).toHaveBeenCalledWith("task-1", TaskStatus.REVIEW, ["task-1"]);
-    });
-  });
-
-  it("보드 검색 바에서 Enter와 Shift+Enter로 순방향/역방향 찾기를 호출한다", async () => {
-    const findMock = mockWindowFind();
-
-    render(
-      <Board
-        initialTasks={createEmptyTasks()}
-        initialDoneTotal={0}
-        initialDoneLimit={20}
-        sshHosts={[]}
-        projects={[createProject()]}
-        sidebarDefaultCollapsed={false}
-        doneAlertDismissed={false}
-        notificationSettings={{ isEnabled: true, enabledStatuses: ["progress", "pending", "review"] }}
-        defaultSessionType={SessionType.TMUX}
-        taskSearchShortcut="Mod+Shift+O"
-      />,
-    );
-
-    fireEvent.keyDown(window, {
-      key: "f",
-      ctrlKey: true,
-    });
-
-    const input = await screen.findByPlaceholderText("pageFind.placeholder");
-    fireEvent.change(input, {
-      target: { value: "kanvibe" },
-    });
-    fireEvent.keyDown(input, { key: "Enter" });
-    fireEvent.keyDown(input, { key: "Enter", shiftKey: true });
-
-    expect(findMock).toHaveBeenNthCalledWith(1, "kanvibe", false, false, true, false, false, false);
-    expect(findMock).toHaveBeenNthCalledWith(2, "kanvibe", false, true, true, false, false, false);
-  });
-
-  it("보드 검색 바에서 Escape를 누르면 검색 UI를 닫는다", async () => {
-    render(
-      <Board
-        initialTasks={createEmptyTasks()}
-        initialDoneTotal={0}
-        initialDoneLimit={20}
-        sshHosts={[]}
-        projects={[createProject()]}
-        sidebarDefaultCollapsed={false}
-        doneAlertDismissed={false}
-        notificationSettings={{ isEnabled: true, enabledStatuses: ["progress", "pending", "review"] }}
-        defaultSessionType={SessionType.TMUX}
-        taskSearchShortcut="Mod+Shift+O"
-      />,
-    );
-
-    fireEvent.keyDown(window, {
-      key: "f",
-      ctrlKey: true,
-    });
-
-    const input = await screen.findByPlaceholderText("pageFind.placeholder");
-    fireEvent.keyDown(input, { key: "Escape" });
-
-    await waitFor(() => {
-      expect(screen.queryByPlaceholderText("pageFind.placeholder")).toBeNull();
     });
   });
 

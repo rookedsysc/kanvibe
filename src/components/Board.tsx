@@ -3,7 +3,6 @@
 import { useState, useCallback, useEffect, useMemo, useRef, useTransition } from "react";
 import { useTranslations } from "next-intl";
 import { DragDropContext, type DropResult } from "@hello-pangea/dnd";
-import BoardPageFindBar from "./BoardPageFindBar";
 import Column from "./Column";
 import CreateTaskModal from "./CreateTaskModal";
 import NotificationCenterButton from "./NotificationCenterButton";
@@ -702,7 +701,6 @@ export default function Board({
 
   return (
     <div className="min-h-screen bg-bg-page">
-      <BoardPageFindBar />
       <header className={headerClassName}>
         <div className="flex items-center gap-3 [-webkit-app-region:no-drag]">
           <div className="w-64">

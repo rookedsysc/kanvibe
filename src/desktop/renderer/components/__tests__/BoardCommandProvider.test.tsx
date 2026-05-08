@@ -267,7 +267,7 @@ describe("BoardCommandProvider", () => {
     expect(unsubscribe).toHaveBeenCalledTimes(1);
   });
 
-  it("blocks Cmd/Ctrl+R so native reload shortcuts cannot run", () => {
+  it("triggers KanVibe refresh from Cmd/Ctrl+R", () => {
     renderWithRouter(
       <BoardCommandProvider>
         <div />
@@ -280,6 +280,6 @@ describe("BoardCommandProvider", () => {
     });
 
     expect(wasNotPrevented).toBe(false);
-    expect(mocks.triggerDesktopRefresh).not.toHaveBeenCalled();
+    expect(mocks.triggerDesktopRefresh).toHaveBeenCalledWith("all");
   });
 });

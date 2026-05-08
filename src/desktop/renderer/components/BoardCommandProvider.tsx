@@ -11,6 +11,7 @@ import {
   type PropsWithChildren,
 } from "react";
 import { useRouter } from "@/desktop/renderer/navigation";
+import { triggerDesktopRefresh } from "@/desktop/renderer/utils/refresh";
 import {
   SHORTCUTS,
   getCurrentShortcutPlatform,
@@ -23,6 +24,7 @@ export const BOARD_PROJECT_FILTER_SHORTCUT = SHORTCUTS.boardProjectFilter;
 export const CREATE_BRANCH_TODO_SHORTCUT = SHORTCUTS.createTask;
 export const PAGE_BACK_SHORTCUT = SHORTCUTS.pageBack;
 export const PAGE_FORWARD_SHORTCUT = SHORTCUTS.pageForward;
+export const REFRESH_SHORTCUT = SHORTCUTS.refresh;
 
 export interface BranchTodoDefaults {
   projectId: string;
@@ -74,6 +76,10 @@ function shouldIgnoreGlobalShortcut(eventTarget: EventTarget | null) {
   return eventTarget.closest('[contenteditable="true"]') !== null;
 }
 
+function isShortcutCaptureTarget(eventTarget: EventTarget | null) {
+  return eventTarget instanceof Element && eventTarget.closest('[data-shortcut-capture="true"]') !== null;
+}
+
 export function BoardCommandProvider({ children }: PropsWithChildren) {
   const router = useRouter();
   const handlersRef = useRef<BoardCommandHandlers | null>(null);
@@ -121,6 +127,16 @@ export function BoardCommandProvider({ children }: PropsWithChildren) {
     function handleGlobalKeyDown(event: KeyboardEvent) {
       if (isBlockedShortcutEvent(event, shortcutPlatform)) {
         event.preventDefault();
+        return;
+      }
+
+      if (matchShortcutEvent(event, REFRESH_SHORTCUT, shortcutPlatform)) {
+        if (isShortcutCaptureTarget(event.target)) {
+          return;
+        }
+
+        event.preventDefault();
+        triggerDesktopRefresh("all");
         return;
       }
 

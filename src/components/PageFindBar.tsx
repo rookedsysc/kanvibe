@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent }
 import { useTranslations } from "next-intl";
 import { SHORTCUTS, getCurrentShortcutPlatform, matchShortcutEvent } from "@/desktop/renderer/utils/keyboardShortcut";
 
-const BOARD_PAGE_FIND_SHORTCUT = SHORTCUTS.boardPageFind;
+const PAGE_FIND_SHORTCUT = SHORTCUTS.pageFind;
 
 function findPageText(query: string, backwards = false) {
   const trimmedQuery = query.trim();
@@ -15,8 +15,8 @@ function findPageText(query: string, backwards = false) {
   return window.find(trimmedQuery, false, backwards, true, false, false, false);
 }
 
-export default function BoardPageFindBar() {
-  const t = useTranslations("board");
+export default function PageFindBar() {
+  const t = useTranslations("common.pageFind");
   const tc = useTranslations("common");
   const inputRef = useRef<HTMLInputElement>(null);
   const [isOpen, setIsOpen] = useState(false);
@@ -37,7 +37,7 @@ export default function BoardPageFindBar() {
 
   useEffect(() => {
     function handleGlobalKeyDown(event: KeyboardEvent) {
-      if (!matchShortcutEvent(event, BOARD_PAGE_FIND_SHORTCUT, shortcutPlatform)) {
+      if (!matchShortcutEvent(event, PAGE_FIND_SHORTCUT, shortcutPlatform)) {
         return;
       }
 
@@ -95,8 +95,8 @@ export default function BoardPageFindBar() {
             setHasMatch(null);
           }}
           onKeyDown={handleInputKeyDown}
-          placeholder={t("pageFind.placeholder")}
-          aria-label={t("pageFind.label")}
+          placeholder={t("placeholder")}
+          aria-label={t("label")}
           className="min-w-0 flex-1 rounded-md border border-border-default bg-bg-page px-3 py-2 text-sm text-text-primary outline-none transition-colors focus:border-brand-primary"
         />
         <button
@@ -104,14 +104,14 @@ export default function BoardPageFindBar() {
           onClick={() => runSearch(true)}
           className="rounded-md border border-border-default bg-bg-page px-2.5 py-2 text-xs text-text-secondary transition-colors hover:border-brand-primary hover:text-text-primary"
         >
-          {t("pageFind.previous")}
+          {t("previous")}
         </button>
         <button
           type="button"
           onClick={() => runSearch(false)}
           className="rounded-md border border-border-default bg-bg-page px-2.5 py-2 text-xs text-text-secondary transition-colors hover:border-brand-primary hover:text-text-primary"
         >
-          {t("pageFind.next")}
+          {t("next")}
         </button>
         <button
           type="button"
@@ -123,7 +123,7 @@ export default function BoardPageFindBar() {
         </button>
       </div>
       {hasMatch === false ? (
-        <p className="mt-2 text-xs text-text-muted">{t("pageFind.noMatch")}</p>
+        <p className="mt-2 text-xs text-text-muted">{t("noMatch")}</p>
       ) : null}
     </div>
   );

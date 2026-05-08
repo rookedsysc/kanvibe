@@ -16,6 +16,7 @@ import {
   formatShortcutForDisplay,
   getCurrentShortcutPlatform,
   isBlockedShortcutEvent,
+  isReservedShortcutEvent,
   matchShortcutEvent,
 } from "@/desktop/renderer/utils/keyboardShortcut";
 import { requestActiveTerminalFocusAfterUiSettles } from "@/desktop/renderer/utils/terminalFocus";
@@ -261,6 +262,11 @@ export default function TaskQuickSearchDialog({
   useEffect(() => {
     function handleGlobalKeyDown(event: KeyboardEvent) {
       if (isBlockedShortcutEvent(event, shortcutPlatform)) {
+        event.preventDefault();
+        return;
+      }
+
+      if (isReservedShortcutEvent(event, shortcutPlatform)) {
         event.preventDefault();
         return;
       }

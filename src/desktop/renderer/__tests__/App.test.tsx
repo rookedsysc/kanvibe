@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import App from "@/desktop/renderer/App";
 import type { AppNotification } from "@/desktop/shared/notifications";
@@ -88,6 +88,23 @@ describe("App", () => {
     await waitFor(() => {
       expect(screen.getByText("settings route")).toBeTruthy();
     });
+  });
+
+  it("opens page find from Cmd/Ctrl+F on non-board routes", async () => {
+    window.location.hash = "#/en/settings";
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getByText("settings route")).toBeTruthy();
+    });
+
+    fireEvent.keyDown(window, {
+      key: "f",
+      ctrlKey: true,
+    });
+
+    expect(await screen.findByPlaceholderText("Find text on this page...")).toBeTruthy();
   });
 
   it("debounces board update events and refreshes all visible data", async () => {

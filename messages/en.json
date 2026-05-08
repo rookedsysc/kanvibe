@@ -53,19 +53,19 @@
       "worktreeFailure": "Worktree sync failed",
       "emptyMerged": "There are no merged PR tasks to move to Done in this review.",
       "emptyRegistered": "There are no newly registered worktrees in this review."
+    },
+    "pageFind": {
+      "label": "Find on page",
+      "placeholder": "Find text on this page...",
+      "previous": "Prev",
+      "next": "Next",
+      "noMatch": "No matches found on this page."
     }
   },
   "board": {
     "title": "",
     "newTask": "+ New Task",
     "allProjects": "All Projects",
-    "pageFind": {
-      "label": "Find on board",
-      "placeholder": "Find visible text on this board...",
-      "previous": "Prev",
-      "next": "Next",
-      "noMatch": "No matches found on this board."
-    },
     "columns": {
       "todo": "Todo",
       "progress": "Progress",

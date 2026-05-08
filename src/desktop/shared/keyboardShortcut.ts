@@ -33,7 +33,8 @@ export const SHORTCUTS = {
   newWindow: "Mod+Shift+N",
   pageBack: "Mod+Shift+[",
   pageForward: "Mod+Shift+]",
-  boardPageFind: "Mod+F",
+  pageFind: "Mod+F",
+  refresh: "Mod+R",
 } as const;
 
 export const DESKTOP_SHORTCUTS = {
@@ -43,8 +44,14 @@ export const DESKTOP_SHORTCUTS = {
 } as const;
 
 export const BLOCKED_DESKTOP_SHORTCUTS = {
-  reload: "Mod+R",
 } as const;
+
+export const RESERVED_DESKTOP_SHORTCUTS = {
+  refresh: SHORTCUTS.refresh,
+} as const;
+
+const BLOCKED_DESKTOP_SHORTCUT_VALUES = Object.values(BLOCKED_DESKTOP_SHORTCUTS) as ShortcutDefinition[];
+const RESERVED_DESKTOP_SHORTCUT_VALUES = Object.values(RESERVED_DESKTOP_SHORTCUTS) as ShortcutDefinition[];
 
 export const DEFAULT_TASK_SEARCH_SHORTCUT = SHORTCUTS.taskSearchDefault;
 export const TASK_DETAIL_DOCK_SHORTCUT_INDEXES = [1, 2, 3, 4, 5, 6, 7, 8, 9] as const;
@@ -292,7 +299,7 @@ export function isBlockedShortcutEvent(
   event: ShortcutInput,
   platform: ShortcutPlatformInput,
 ): boolean {
-  return Object.values(BLOCKED_DESKTOP_SHORTCUTS).some((shortcut) => (
+  return BLOCKED_DESKTOP_SHORTCUT_VALUES.some((shortcut) => (
     matchShortcutEvent(event, shortcut, platform)
   ));
 }
@@ -301,8 +308,17 @@ export function isBlockedElectronShortcutInput(
   input: ElectronShortcutInput,
   platform: ShortcutPlatformInput,
 ): boolean {
-  return Object.values(BLOCKED_DESKTOP_SHORTCUTS).some((shortcut) => (
+  return BLOCKED_DESKTOP_SHORTCUT_VALUES.some((shortcut) => (
     matchElectronShortcutInput(input, shortcut, platform)
+  ));
+}
+
+export function isReservedShortcutEvent(
+  event: ShortcutInput,
+  platform: ShortcutPlatformInput,
+): boolean {
+  return RESERVED_DESKTOP_SHORTCUT_VALUES.some((shortcut) => (
+    matchShortcutEvent(event, shortcut, platform)
   ));
 }
 
@@ -357,9 +373,8 @@ export function captureShortcutFromEvent(
   }
 
   const shortcut = [...MODIFIER_ORDER.filter((modifier) => modifiers.has(modifier)), key].join("+");
-  if (platform !== undefined && Object.values(BLOCKED_DESKTOP_SHORTCUTS).some((blockedShortcut) => (
-    normalizeShortcutParts(blockedShortcut).key === key
-    && matchShortcutEvent(event, blockedShortcut, platform)
+  if (platform !== undefined && RESERVED_DESKTOP_SHORTCUT_VALUES.some((reservedShortcut) => (
+    matchShortcutEvent(event, reservedShortcut, platform)
   ))) {
     return null;
   }

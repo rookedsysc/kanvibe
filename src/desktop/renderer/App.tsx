@@ -12,6 +12,7 @@ import BoardRoute from "@/desktop/renderer/routes/BoardRoute";
 import { getThemePreference, type ThemePreference } from "@/desktop/renderer/actions/appSettings";
 import { applyThemePreference, THEME_PREFERENCE_CHANGED_EVENT } from "@/desktop/renderer/utils/theme";
 import type { BoardEventPayload } from "@/lib/boardNotifier";
+import PageFindBar from "@/components/PageFindBar";
 
 const BOARD_REFRESH_DEBOUNCE_MS = 250;
 
@@ -85,6 +86,7 @@ function LocaleShell() {
     <IntlProvider locale={safeLocale} messages={messages}>
       <ThemeController />
       <BoardCommandProvider>
+        <PageFindBar />
         <TaskQuickSearchDialog />
         <NotificationListener />
         <BoardEventAlert />

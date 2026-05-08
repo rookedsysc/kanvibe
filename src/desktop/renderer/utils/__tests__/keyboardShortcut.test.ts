@@ -8,6 +8,7 @@ import {
   getShortcutPlatformFromNavigator,
   isBlockedElectronShortcutInput,
   isBlockedShortcutEvent,
+  isReservedShortcutEvent,
   matchElectronShortcutInput,
   matchTaskDetailDockShortcutEvent,
   matchShortcutEvent,
@@ -236,13 +237,23 @@ describe("keyboardShortcut", () => {
     }), "linux")).toBeNull();
   });
 
-  it("Cmd/Ctrl+R은 앱에서 차단할 shortcut으로 판별한다", () => {
+  it("Cmd/Ctrl+R은 앱에서 차단하지 않고 refresh shortcut으로 매칭한다", () => {
     expect(isBlockedShortcutEvent(new KeyboardEvent("keydown", {
       key: "r",
       metaKey: true,
-    }), "mac")).toBe(true);
+    }), "mac")).toBe(false);
 
     expect(isBlockedShortcutEvent(new KeyboardEvent("keydown", {
+      key: "r",
+      ctrlKey: true,
+    }), "linux")).toBe(false);
+
+    expect(matchShortcutEvent(new KeyboardEvent("keydown", {
+      key: "r",
+      ctrlKey: true,
+    }), SHORTCUTS.refresh, "linux")).toBe(true);
+
+    expect(isReservedShortcutEvent(new KeyboardEvent("keydown", {
       key: "r",
       ctrlKey: true,
     }), "linux")).toBe(true);
@@ -254,16 +265,16 @@ describe("keyboardShortcut", () => {
     }), "linux")).toBe(false);
   });
 
-  it("Electron Cmd/Ctrl+R input도 앱에서 차단할 shortcut으로 판별한다", () => {
+  it("Electron Cmd/Ctrl+R input도 앱에서 차단하지 않는다", () => {
     expect(isBlockedElectronShortcutInput({
       type: "keyDown",
       isAutoRepeat: false,
       key: "r",
       control: true,
-    }, "linux")).toBe(true);
+    }, "linux")).toBe(false);
   });
 
-  it("Cmd/Ctrl+R은 사용자 지정 shortcut으로 캡처하지 않는다", () => {
+  it("Cmd/Ctrl+R은 앱 refresh shortcut이므로 사용자 지정 shortcut으로 캡처하지 않는다", () => {
     expect(captureShortcutFromEvent(new KeyboardEvent("keydown", {
       key: "r",
       ctrlKey: true,
