@@ -214,7 +214,7 @@ PreToolUse（仅 Bash）          → PROGRESS
 Stop                           → REVIEW
 ```
 
-KanVibe 现在使用 Codex 当前的 lifecycle hooks 方案：`.codex/hooks.json` 加上 `.codex/config.toml` 中的 `[features].codex_hooks = true` 和 `[features].hooks = true`。对应的官方文档如下：
+KanVibe 现在使用 Codex 当前的 lifecycle hooks 方案：`.codex/hooks.json` 加上 `.codex/config.toml` 中的 `[features].hooks = true`。对应的官方文档如下：
 
 - https://developers.openai.com/codex/hooks
 - https://developers.openai.com/codex/config-reference

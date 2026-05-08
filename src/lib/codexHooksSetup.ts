@@ -144,7 +144,7 @@ function upsertHookEntries<T>(hookEntries: unknown[] | undefined, scriptName: st
 }
 
 function isSectionHeader(line: string): boolean {
-  return /^\s*\[[^\]]+\]\s*$/.test(line);
+  return /^\s*(?:\[[^\[\]]+\]|\[\[[^\[\]]+\]\])\s*$/.test(line);
 }
 
 function findFeaturesSection(lines: string[]) {
@@ -175,25 +175,16 @@ export function upsertCodexConfigToml(configContent: string): string {
 
   if (!featuresSection) {
     const prefix = normalized.length > 0 ? `${normalized}\n\n` : "";
-    return `${prefix}[features]\ncodex_hooks = true\nhooks = true\n`;
+    return `${prefix}[features]\nhooks = true\n`;
   }
 
   const beforeFeaturesBody = lines.slice(0, featuresSection.start + 1);
   const featuresBody = lines.slice(featuresSection.start + 1, featuresSection.end);
   const afterFeaturesSection = lines.slice(featuresSection.end);
   const nextFeaturesBody: string[] = [];
-  let hasLegacyHooksFlag = false;
   let hasHooksFlag = false;
 
   for (const line of featuresBody) {
-    if (/^\s*codex_hooks\s*=/.test(line)) {
-      if (!hasLegacyHooksFlag) {
-        nextFeaturesBody.push("codex_hooks = true");
-        hasLegacyHooksFlag = true;
-      }
-      continue;
-    }
-
     if (/^\s*hooks\s*=/.test(line)) {
       if (!hasHooksFlag) {
         nextFeaturesBody.push("hooks = true");
@@ -202,11 +193,11 @@ export function upsertCodexConfigToml(configContent: string): string {
       continue;
     }
 
-    nextFeaturesBody.push(line);
-  }
+    if (/^\s*(?:codex_hooks|codex_hook)\s*=/.test(line)) {
+      continue;
+    }
 
-  if (!hasLegacyHooksFlag) {
-    nextFeaturesBody.push("codex_hooks = true");
+    nextFeaturesBody.push(line);
   }
 
   if (!hasHooksFlag) {
@@ -228,17 +219,11 @@ function hasCodexFeatureFlag(configContent: string): boolean {
     return false;
   }
 
-  const hasLegacyHooksFlag = lines.some(
-    (line, index) => index > featuresSection.start
-      && index < featuresSection.end
-      && /^\s*codex_hooks\s*=\s*true\s*$/.test(line),
-  );
-  const hasHooksFlag = lines.some(
+  return lines.some(
     (line, index) => index > featuresSection.start
       && index < featuresSection.end
       && /^\s*hooks\s*=\s*true\s*$/.test(line),
   );
-  return hasLegacyHooksFlag && hasHooksFlag;
 }
 
 export function upsertCodexHooksJson(hooksContent: string): string {
