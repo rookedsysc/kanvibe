@@ -34,7 +34,7 @@ const CODEX_PROMPT_COMMAND = `bash "$(git rev-parse --show-toplevel)/.codex/hook
 const CODEX_PERMISSION_COMMAND = `bash "$(git rev-parse --show-toplevel)/.codex/hooks/${PERMISSION_HOOK_SCRIPT_NAME}"`;
 const CODEX_PRE_TOOL_COMMAND = `bash "$(git rev-parse --show-toplevel)/.codex/hooks/${PRE_TOOL_HOOK_SCRIPT_NAME}"`;
 const CODEX_STOP_COMMAND = `bash "$(git rev-parse --show-toplevel)/.codex/hooks/${STOP_HOOK_SCRIPT_NAME}"`;
-const CODEX_HOOKS_FEATURE_FLAG = "codex_hooks";
+const CODEX_HOOKS_FEATURE_FLAG = "hooks";
 
 function generateStatusHookScript(
   eventLabel: string,
@@ -223,7 +223,7 @@ function hasCodexFeatureFlag(configContent: string): boolean {
   return lines.some(
     (line, index) => index > featuresSection.start
       && index < featuresSection.end
-      && /^\s*codex_hooks\s*=\s*true\s*$/.test(line),
+      && /^\s*hooks\s*=\s*true\s*$/.test(line),
   );
 }
 

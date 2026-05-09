@@ -217,7 +217,7 @@ PreToolUse (Bash 전용)        → PROGRESS
 Stop                          → REVIEW
 ```
 
-KanVibe는 이제 Codex 최신 lifecycle hooks 방식인 `.codex/hooks.json`과 `.codex/config.toml`의 `[features].codex_hooks = true` 조합을 사용합니다. 기준 문서는 다음 공식 문서입니다.
+KanVibe는 이제 Codex 최신 lifecycle hooks 방식인 `.codex/hooks.json`과 `.codex/config.toml`의 `[features].hooks = true` 조합을 사용합니다. 기준 문서는 다음 공식 문서입니다.
 
 - https://developers.openai.com/codex/hooks
 - https://developers.openai.com/codex/config-reference

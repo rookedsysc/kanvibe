@@ -229,7 +229,7 @@ PreToolUse (Bash only)         → PROGRESS
 Stop                           → REVIEW
 ```
 
-KanVibe now uses Codex's current lifecycle hooks model with `.codex/hooks.json` plus `[features].codex_hooks = true` in `.codex/config.toml`:
+KanVibe now uses Codex's current lifecycle hooks model with `.codex/hooks.json` plus `[features].hooks = true` in `.codex/config.toml`:
 
 - https://developers.openai.com/codex/hooks
 - https://developers.openai.com/codex/config-reference
