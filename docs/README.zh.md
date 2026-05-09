@@ -214,10 +214,12 @@ PreToolUse（仅 Bash）          → PROGRESS
 Stop                           → REVIEW
 ```
 
-KanVibe 现在使用 Codex 当前的 lifecycle hooks 方案：`.codex/hooks.json` 加上 `.codex/config.toml` 中的 `[features].hooks = true`。对应的官方文档如下：
+KanVibe 现在使用 Codex 当前的 lifecycle hooks 方案：`.codex/hooks.json` 加上 `.codex/config.toml` 中的 `[features].codex_hooks = true`。对应的官方文档如下：
 
 - https://developers.openai.com/codex/hooks
 - https://developers.openai.com/codex/config-reference
+
+Codex 只会在受信任的项目/worktree 路径中加载 project-local `.codex/` hooks。如果任务运行在生成的 worktree 中，需要先在 Codex 中信任该 worktree，local hook 文件才会触发。
 
 > 当前 Codex 的 `PermissionRequest` 和 `PreToolUse` matcher 仍然限定在 Bash 场景，因此这里的 `PENDING` 表示等待审批，而不是所有类型的对话追问。
 

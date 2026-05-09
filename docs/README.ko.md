@@ -217,10 +217,12 @@ PreToolUse (Bash 전용)        → PROGRESS
 Stop                          → REVIEW
 ```
 
-KanVibe는 이제 Codex 최신 lifecycle hooks 방식인 `.codex/hooks.json`과 `.codex/config.toml`의 `[features].hooks = true` 조합을 사용합니다. 기준 문서는 다음 공식 문서입니다.
+KanVibe는 이제 Codex 최신 lifecycle hooks 방식인 `.codex/hooks.json`과 `.codex/config.toml`의 `[features].codex_hooks = true` 조합을 사용합니다. 기준 문서는 다음 공식 문서입니다.
 
 - https://developers.openai.com/codex/hooks
 - https://developers.openai.com/codex/config-reference
+
+Codex는 신뢰된 프로젝트/worktree 경로에서만 project-local `.codex/` hooks를 로드합니다. 태스크가 생성된 worktree에서 실행된다면 local hook 파일이 실행되기 전에 해당 worktree를 Codex에서 신뢰 상태로 설정해야 합니다.
 
 > 현재 Codex의 `PermissionRequest`와 `PreToolUse` 매처는 Bash 범위에 한정되므로, `PENDING`은 모든 대화형 재질문이 아니라 승인 대기 상태를 의미합니다.
 

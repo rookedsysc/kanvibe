@@ -21,26 +21,26 @@ describe("codexHooksSetup", () => {
   });
 
   describe("upsertCodexConfigToml", () => {
-    it("should enable the hooks feature flag under the features table", () => {
+    it("should enable the codex hooks feature flag under the features table", () => {
       const content = 'model = "gpt-5"\n[features]\nfast_mode = true\n';
 
       const updated = upsertCodexConfigToml(content);
 
       expect(updated).toContain("[features]");
       expect(updated).toContain("fast_mode = true");
-      expect(updated).toMatch(/^hooks = true$/m);
-      expect(updated).not.toMatch(/^codex_hooks\s*=/m);
+      expect(updated).toMatch(/^codex_hooks = true$/m);
+      expect(updated).not.toMatch(/^hooks\s*=/m);
       expect(updated).not.toMatch(/^codex_hook\s*=/m);
     });
 
-    it("should replace hooks and remove obsolete codex hook feature flags", () => {
+    it("should replace stale hook flags and remove obsolete codex hook feature flags", () => {
       const obsoleteCodexHookFlag = "codex" + "_hook = true";
-      const obsoleteCodexHooksFlag = "codex" + "_hooks = true";
+      const disabledCodexHooksFlag = "codex" + "_hooks = false";
       const obsoleteHooksFlag = "hooks" + " = true";
       const content = [
         'model = "gpt-5"',
         "[features]",
-        obsoleteCodexHooksFlag,
+        disabledCodexHooksFlag,
         obsoleteCodexHookFlag,
         obsoleteHooksFlag.replace("true", "false"),
         "fast_mode = true",
@@ -51,8 +51,9 @@ describe("codexHooksSetup", () => {
 
       expect(updated).toContain("[features]");
       expect(updated).toContain("fast_mode = true");
-      expect(updated).toMatch(/^hooks = true$/m);
-      expect(updated).not.toMatch(/^codex_hooks\s*=/m);
+      expect(updated).toMatch(/^codex_hooks = true$/m);
+      expect(updated.match(/^codex_hooks\s*=/gm)).toHaveLength(1);
+      expect(updated).not.toMatch(/^hooks\s*=/m);
       expect(updated).not.toMatch(/^codex_hook\s*=/m);
     });
 
@@ -63,8 +64,8 @@ describe("codexHooksSetup", () => {
 
       expect(updated).not.toContain('notify = [".codex/hooks/kanvibe-notify-hook.sh"]');
       expect(updated).toContain("[features]");
-      expect(updated).toMatch(/^hooks = true$/m);
-      expect(updated).not.toMatch(/^codex_hooks\s*=/m);
+      expect(updated).toMatch(/^codex_hooks = true$/m);
+      expect(updated).not.toMatch(/^hooks\s*=/m);
     });
 
     it("should keep inline hooks tables outside the features table", () => {
@@ -72,9 +73,9 @@ describe("codexHooksSetup", () => {
 
       const updated = upsertCodexConfigToml(content);
 
-      expect(updated).toMatch(/\[features\][\s\S]*hooks = true[\s\S]*\[\[hooks\.PreToolUse\]\]/);
+      expect(updated).toMatch(/\[features\][\s\S]*codex_hooks = true[\s\S]*\[\[hooks\.PreToolUse\]\]/);
       expect(updated).toContain('matcher = "^Bash$"');
-      expect(updated).not.toMatch(/^codex_hooks\s*=/m);
+      expect(updated).not.toMatch(/^hooks\s*=/m);
     });
   });
 
@@ -122,8 +123,8 @@ describe("codexHooksSetup", () => {
 
       const configContent = await readFile(join(repoPath, ".codex", "config.toml"), "utf-8");
       expect(configContent).toContain("[features]");
-      expect(configContent).toMatch(/^hooks = true$/m);
-      expect(configContent).not.toMatch(/^codex_hooks\s*=/m);
+      expect(configContent).toMatch(/^codex_hooks = true$/m);
+      expect(configContent).not.toMatch(/^hooks\s*=/m);
 
       const hooksContent = await readFile(join(repoPath, ".codex", "hooks.json"), "utf-8");
       expect(hooksContent).toContain('"UserPromptSubmit"');
@@ -168,8 +169,8 @@ describe("codexHooksSetup", () => {
       const configContent = await readFile(join(repoPath, ".codex", "config.toml"), "utf-8");
       expect(configContent).not.toContain('notify = [".codex/hooks/kanvibe-notify-hook.sh"]');
       expect(configContent).toContain("[features]");
-      expect(configContent).toMatch(/^hooks = true$/m);
-      expect(configContent).not.toMatch(/^codex_hooks\s*=/m);
+      expect(configContent).toMatch(/^codex_hooks = true$/m);
+      expect(configContent).not.toMatch(/^hooks\s*=/m);
     });
   });
 
