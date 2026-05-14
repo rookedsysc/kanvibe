@@ -5,9 +5,9 @@ import {
   broadcastBoardUpdate,
   type BackgroundSyncFailurePayload,
 } from "@/lib/boardNotifier";
+import { getBackgroundSyncEnabled, getBackgroundSyncIntervalMs } from "@/desktop/main/services/appSettingsService";
 
 const INITIAL_SYNC_DELAY_MS = 20_000;
-const SYNC_INTERVAL_MS = 10 * 60_000;
 
 let activeBackgroundTaskSyncStop: (() => void) | null = null;
 
@@ -43,47 +43,51 @@ export function startBackgroundTaskSync() {
     running = true;
 
     try {
-      const [
-        worktreeSyncResult,
-        prSyncResult,
-        pullSyncResult,
-      ] = await Promise.all([
-        syncRegisteredProjectWorktrees(),
-        syncActiveTaskPullRequests(emittedMergeEventKeys),
-        syncActiveTaskPulls(),
-      ]);
-      const failures: BackgroundSyncFailurePayload[] = [
-        ...worktreeSyncResult.errors.map((reason) => ({
-          operation: "worktree-sync" as const,
-          target: "등록 프로젝트 worktree sync",
-          reason,
-        })),
-        ...(prSyncResult.failures ?? []),
-      ];
+      const isEnabled = await getBackgroundSyncEnabled();
+      if (isEnabled) {
+        const [
+          worktreeSyncResult,
+          prSyncResult,
+          pullSyncResult,
+        ] = await Promise.all([
+          syncRegisteredProjectWorktrees(),
+          syncActiveTaskPullRequests(emittedMergeEventKeys),
+          syncActiveTaskPulls(),
+        ]);
+        const failures: BackgroundSyncFailurePayload[] = [
+          ...worktreeSyncResult.errors.map((reason) => ({
+            operation: "worktree-sync" as const,
+            target: "등록 프로젝트 worktree sync",
+            reason,
+          })),
+          ...(prSyncResult.failures ?? []),
+        ];
 
-      if (
-        worktreeSyncResult.registeredWorktrees.length > 0
-        || prSyncResult.mergedPullRequests.length > 0
-        || pullSyncResult.pulledTasks.length > 0
-        || failures.length > 0
-      ) {
-        broadcastBackgroundSyncReviewNeeded({
-          registeredWorktrees: worktreeSyncResult.registeredWorktrees,
-          mergedPullRequests: prSyncResult.mergedPullRequests,
-          pulledTasks: pullSyncResult.pulledTasks,
-          ...(failures.length > 0 ? { failures } : {}),
-        });
-      }
+        if (
+          worktreeSyncResult.registeredWorktrees.length > 0
+          || prSyncResult.mergedPullRequests.length > 0
+          || pullSyncResult.pulledTasks.length > 0
+          || failures.length > 0
+        ) {
+          broadcastBackgroundSyncReviewNeeded({
+            registeredWorktrees: worktreeSyncResult.registeredWorktrees,
+            mergedPullRequests: prSyncResult.mergedPullRequests,
+            pulledTasks: pullSyncResult.pulledTasks,
+            ...(failures.length > 0 ? { failures } : {}),
+          });
+        }
 
-      const hasUpdatedPulledTasks = pullSyncResult.pulledTasks.some((task) => task.status === "updated");
-      if (worktreeSyncResult.changed || prSyncResult.updatedTaskIds.length > 0 || hasUpdatedPulledTasks) {
-        broadcastBoardUpdate();
+        const hasUpdatedPulledTasks = pullSyncResult.pulledTasks.some((task) => task.status === "updated");
+        if (worktreeSyncResult.changed || prSyncResult.updatedTaskIds.length > 0 || hasUpdatedPulledTasks) {
+          broadcastBoardUpdate();
+        }
       }
     } catch (error) {
       console.error("[background-task-sync] sync failed:", error);
     } finally {
       running = false;
-      scheduleNext(SYNC_INTERVAL_MS);
+      const intervalMs = await getBackgroundSyncIntervalMs();
+      scheduleNext(intervalMs);
     }
   }
 

@@ -186,7 +186,17 @@
     "notificationStatusFilterDescription": "선택한 상태로 변경될 때만 알림을 받습니다.",
     "taskCreationSection": "작업 생성",
     "defaultSessionType": "기본 세션 타입",
-    "defaultSessionTypeDescription": "새 작업 생성 시 기본으로 선택되는 세션 타입입니다."
+    "defaultSessionTypeDescription": "새 작업 생성 시 기본으로 선택되는 세션 타입입니다.",
+    "backgroundSyncSection": "백그라운드 Sync",
+    "backgroundSyncEnabled": "백그라운드 Sync",
+    "backgroundSyncEnabledDescription": "주기적으로 프로젝트 worktree와 PR 상태를 백그라운드에서 동기화합니다.",
+    "backgroundSyncInterval": "Sync 주기",
+    "backgroundSyncIntervalDescription": "백그라운드 sync를 실행하는 간격입니다.",
+    "backgroundSyncInterval1min": "1분",
+    "backgroundSyncInterval5min": "5분",
+    "backgroundSyncInterval10min": "10분",
+    "backgroundSyncInterval30min": "30분",
+    "backgroundSyncInterval60min": "60분"
   },
   "taskSearch": {
     "title": "태스크 빠른 검색",

@@ -13,6 +13,8 @@ import {
   setNotificationStatuses,
   setDefaultSessionType,
   setThemePreference,
+  setBackgroundSyncEnabled,
+  setBackgroundSyncIntervalMs,
   type ThemePreference,
 } from "@/desktop/renderer/actions/appSettings";
 import { SessionType } from "@/entities/KanbanTask";
@@ -21,6 +23,14 @@ import type { Project } from "@/entities/Project";
 import FolderSearchInput from "@/components/FolderSearchInput";
 import { applyThemePreference, notifyThemePreferenceChanged } from "@/desktop/renderer/utils/theme";
 import { useEscapeKey } from "@/hooks/useEscapeKey";
+
+const BACKGROUND_SYNC_INTERVAL_OPTIONS = [
+  { value: 60_000, labelKey: "backgroundSyncInterval1min" },
+  { value: 5 * 60_000, labelKey: "backgroundSyncInterval5min" },
+  { value: 10 * 60_000, labelKey: "backgroundSyncInterval10min" },
+  { value: 30 * 60_000, labelKey: "backgroundSyncInterval30min" },
+  { value: 60 * 60_000, labelKey: "backgroundSyncInterval60min" },
+] as const;
 
 /** 알림 대상 상태 목록 (사용자가 직접 설정하는 todo/done은 제외) */
 const STATUS_OPTIONS = [
@@ -41,6 +51,7 @@ interface ProjectSettingsProps {
   onDefaultSessionTypeChange?: (sessionType: SessionType) => void;
   onThemePreferenceChange?: (themePreference: ThemePreference) => void;
   notificationSettings: { isEnabled: boolean; enabledStatuses: string[] };
+  backgroundSyncSettings: { isEnabled: boolean; intervalMs: number };
 }
 
 function areNotificationSettingsEqual(
@@ -64,6 +75,7 @@ export default function ProjectSettings({
   onDefaultSessionTypeChange,
   onThemePreferenceChange,
   notificationSettings,
+  backgroundSyncSettings,
 }: ProjectSettingsProps) {
   const t = useTranslations("settings");
   const tc = useTranslations("common");
@@ -79,6 +91,7 @@ export default function ProjectSettings({
   const [pendingNotificationSettings, setPendingNotificationSettings] = useState<typeof notificationSettings | null>(null);
   const [localThemePreference, setLocalThemePreference] = useState<ThemePreference>(themePreference);
   const [localSidebarDefaultCollapsed, setLocalSidebarDefaultCollapsed] = useState(sidebarDefaultCollapsed);
+  const [localBackgroundSyncSettings, setLocalBackgroundSyncSettings] = useState(backgroundSyncSettings);
   const [shouldUseMacTitlebarLayout, setShouldUseMacTitlebarLayout] = useState(false);
   const isPage = variant === "page";
 
@@ -89,6 +102,10 @@ export default function ProjectSettings({
   useEffect(() => {
     setLocalSidebarDefaultCollapsed(sidebarDefaultCollapsed);
   }, [sidebarDefaultCollapsed]);
+
+  useEffect(() => {
+    setLocalBackgroundSyncSettings(backgroundSyncSettings);
+  }, [backgroundSyncSettings]);
 
   useEffect(() => {
     setLocalThemePreference(themePreference);
@@ -189,6 +206,7 @@ export default function ProjectSettings({
                 ["detail", t("detailPageSection")],
                 ["creation", t("taskCreationSection")],
                 ["notifications", t("notificationSection")],
+                ["background-sync", t("backgroundSyncSection")],
                 ["projects", t("projectList")],
               ].map(([id, label]) => (
                 <button
@@ -401,6 +419,69 @@ export default function ProjectSettings({
                 );
               })}
             </div>
+          </div>
+        </div>
+
+        {/* 백그라운드 Sync 설정 */}
+        <div id="background-sync" className="p-4 border-b border-border-default">
+          <h3 className="text-xs text-text-muted uppercase tracking-wide mb-3">
+            {t("backgroundSyncSection")}
+          </h3>
+
+          {/* 활성화 토글 */}
+          <label className="flex items-center justify-between cursor-pointer">
+            <div>
+              <span className="text-sm text-text-primary">{t("backgroundSyncEnabled")}</span>
+              <p className="text-xs text-text-muted mt-0.5">{t("backgroundSyncEnabledDescription")}</p>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={localBackgroundSyncSettings.isEnabled}
+              onClick={() => {
+                const nextEnabled = !localBackgroundSyncSettings.isEnabled;
+                setLocalBackgroundSyncSettings((prev) => ({ ...prev, isEnabled: nextEnabled }));
+                startTransition(async () => {
+                  await setBackgroundSyncEnabled(nextEnabled);
+                });
+              }}
+              disabled={isPending}
+              className={`relative inline-flex h-5 w-9 shrink-0 rounded-full border-2 border-transparent transition-colors ${
+                localBackgroundSyncSettings.isEnabled ? "bg-brand-primary" : "bg-border-default"
+              }`}
+            >
+              <span
+                className={`pointer-events-none inline-block h-4 w-4 rounded-full bg-white shadow transition-transform ${
+                  localBackgroundSyncSettings.isEnabled ? "translate-x-4" : "translate-x-0"
+                }`}
+              />
+            </button>
+          </label>
+
+          {/* 주기 선택 */}
+          <div className={`mt-4 flex items-center justify-between ${!localBackgroundSyncSettings.isEnabled ? "opacity-40 pointer-events-none" : ""}`}>
+            <div>
+              <span className="text-sm text-text-primary">{t("backgroundSyncInterval")}</span>
+              <p className="text-xs text-text-muted mt-0.5">{t("backgroundSyncIntervalDescription")}</p>
+            </div>
+            <select
+              value={localBackgroundSyncSettings.intervalMs}
+              onChange={(e) => {
+                const nextIntervalMs = Number(e.target.value);
+                setLocalBackgroundSyncSettings((prev) => ({ ...prev, intervalMs: nextIntervalMs }));
+                startTransition(async () => {
+                  await setBackgroundSyncIntervalMs(nextIntervalMs);
+                });
+              }}
+              disabled={isPending || !localBackgroundSyncSettings.isEnabled}
+              className="px-2 py-1 text-sm bg-bg-page border border-border-default rounded-md text-text-primary focus:outline-none focus:border-brand-primary transition-colors"
+            >
+              {BACKGROUND_SYNC_INTERVAL_OPTIONS.map(({ value, labelKey }) => (
+                <option key={value} value={value}>
+                  {t(labelKey)}
+                </option>
+              ))}
+            </select>
           </div>
         </div>
 

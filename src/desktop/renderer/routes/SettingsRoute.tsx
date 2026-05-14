@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import ProjectSettings from "@/components/ProjectSettings";
 import {
+  getBackgroundSyncSettings,
   getDefaultSessionType,
   getNotificationSettings,
   getSidebarDefaultCollapsed,
@@ -20,6 +21,7 @@ interface SettingsData {
   notificationSettings: Awaited<ReturnType<typeof getNotificationSettings>>;
   defaultSessionType: Awaited<ReturnType<typeof getDefaultSessionType>>;
   themePreference: ThemePreference;
+  backgroundSyncSettings: Awaited<ReturnType<typeof getBackgroundSyncSettings>>;
 }
 
 function createEmptySettingsData(): SettingsData {
@@ -30,6 +32,7 @@ function createEmptySettingsData(): SettingsData {
     notificationSettings: { isEnabled: true, enabledStatuses: ["progress", "pending", "review"] },
     defaultSessionType: SessionType.TMUX,
     themePreference: "system",
+    backgroundSyncSettings: { isEnabled: true, intervalMs: 10 * 60_000 },
   };
 }
 
@@ -58,7 +61,8 @@ export default function SettingsRoute() {
       getNotificationSettings(),
       getDefaultSessionType(),
       getThemePreference(),
-    ]).then(([projects, sshHosts, sidebarDefaultCollapsed, notificationSettings, defaultSessionType, themePreference]) => {
+      getBackgroundSyncSettings(),
+    ]).then(([projects, sshHosts, sidebarDefaultCollapsed, notificationSettings, defaultSessionType, themePreference, backgroundSyncSettings]) => {
       window.clearTimeout(loadingTimeout);
       if (!cancelled) {
         setData({
@@ -68,6 +72,7 @@ export default function SettingsRoute() {
           notificationSettings,
           defaultSessionType,
           themePreference,
+          backgroundSyncSettings,
         });
       }
     }).catch((error) => {
@@ -105,6 +110,7 @@ export default function SettingsRoute() {
         setData((currentData) => currentData ? { ...currentData, themePreference } : currentData);
       }}
       notificationSettings={data.notificationSettings}
+      backgroundSyncSettings={data.backgroundSyncSettings}
     />
   );
 }

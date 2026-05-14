@@ -186,7 +186,17 @@
     "notificationStatusFilterDescription": "Only receive notifications when tasks change to selected statuses.",
     "taskCreationSection": "Task Creation",
     "defaultSessionType": "Default session type",
-    "defaultSessionTypeDescription": "The default session type selected when creating a new task."
+    "defaultSessionTypeDescription": "The default session type selected when creating a new task.",
+    "backgroundSyncSection": "Background Sync",
+    "backgroundSyncEnabled": "Background Sync",
+    "backgroundSyncEnabledDescription": "Periodically sync project worktrees and PR status in the background.",
+    "backgroundSyncInterval": "Sync interval",
+    "backgroundSyncIntervalDescription": "How often to run background sync.",
+    "backgroundSyncInterval1min": "1 min",
+    "backgroundSyncInterval5min": "5 min",
+    "backgroundSyncInterval10min": "10 min",
+    "backgroundSyncInterval30min": "30 min",
+    "backgroundSyncInterval60min": "60 min"
   },
   "taskSearch": {
     "title": "Quick Task Search",
