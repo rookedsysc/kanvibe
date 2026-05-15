@@ -57,6 +57,8 @@ vi.mock("@/desktop/renderer/actions/appSettings", () => ({
   setNotificationStatuses: (...args: unknown[]) => mockSetNotificationStatuses(...args),
   setDefaultSessionType: (...args: unknown[]) => mockSetDefaultSessionType(...args),
   setThemePreference: (...args: unknown[]) => mockSetThemePreference(...args),
+  setBackgroundSyncEnabled: vi.fn().mockResolvedValue(undefined),
+  setBackgroundSyncIntervalMs: vi.fn().mockResolvedValue(undefined),
 }));
 
 function createProject(): Project {
@@ -98,6 +100,7 @@ describe("ProjectSettings", () => {
         defaultSessionType={SessionType.TMUX}
         onDefaultSessionTypeChange={onDefaultSessionTypeChange}
         notificationSettings={{ isEnabled: true, enabledStatuses: ["progress", "pending", "review"] }}
+        backgroundSyncSettings={{ isEnabled: true, intervalMs: 10 * 60_000 }}
       />,
     );
 
@@ -126,6 +129,7 @@ describe("ProjectSettings", () => {
         themePreference="system"
         onThemePreferenceChange={onThemePreferenceChange}
         notificationSettings={{ isEnabled: true, enabledStatuses: ["progress", "pending", "review"] }}
+        backgroundSyncSettings={{ isEnabled: true, intervalMs: 10 * 60_000 }}
       />,
     );
 
@@ -154,6 +158,7 @@ describe("ProjectSettings", () => {
         sidebarDefaultCollapsed={false}
         defaultSessionType={SessionType.TMUX}
         notificationSettings={{ isEnabled: true, enabledStatuses: ["progress", "pending", "review"] }}
+        backgroundSyncSettings={{ isEnabled: true, intervalMs: 10 * 60_000 }}
       />,
     );
 
@@ -176,6 +181,7 @@ describe("ProjectSettings", () => {
         sidebarDefaultCollapsed={false}
         defaultSessionType={SessionType.TMUX}
         notificationSettings={{ isEnabled: true, enabledStatuses: ["progress", "pending", "review"] }}
+        backgroundSyncSettings={{ isEnabled: true, intervalMs: 10 * 60_000 }}
       />,
     );
 
@@ -199,6 +205,7 @@ describe("ProjectSettings", () => {
         sidebarDefaultCollapsed={false}
         defaultSessionType={SessionType.TMUX}
         notificationSettings={{ isEnabled: true, enabledStatuses: ["progress", "pending", "review"] }}
+        backgroundSyncSettings={{ isEnabled: true, intervalMs: 10 * 60_000 }}
       />,
     );
 
@@ -228,6 +235,7 @@ describe("ProjectSettings", () => {
         sidebarDefaultCollapsed={false}
         defaultSessionType={SessionType.TMUX}
         notificationSettings={{ isEnabled: true, enabledStatuses: ["progress", "pending", "review"] }}
+        backgroundSyncSettings={{ isEnabled: true, intervalMs: 10 * 60_000 }}
       />,
     );
 
@@ -254,6 +262,7 @@ describe("ProjectSettings", () => {
         sidebarDefaultCollapsed={false}
         defaultSessionType={SessionType.TMUX}
         notificationSettings={{ isEnabled: true, enabledStatuses: ["progress", "pending", "review"] }}
+        backgroundSyncSettings={{ isEnabled: true, intervalMs: 10 * 60_000 }}
       />,
     );
 
@@ -282,6 +291,7 @@ describe("ProjectSettings", () => {
         sidebarDefaultCollapsed={false}
         defaultSessionType={SessionType.TMUX}
         notificationSettings={initialSettings}
+        backgroundSyncSettings={{ isEnabled: true, intervalMs: 10 * 60_000 }}
       />,
     );
 
@@ -299,6 +309,7 @@ describe("ProjectSettings", () => {
           isEnabled: true,
           enabledStatuses: ["progress", "pending", "review"],
         }}
+        backgroundSyncSettings={{ isEnabled: true, intervalMs: 10 * 60_000 }}
       />,
     );
 

@@ -6,6 +6,8 @@ const mocks = vi.hoisted(() => ({
   syncActiveTaskPulls: vi.fn(),
   broadcastBoardUpdate: vi.fn(),
   broadcastBackgroundSyncReviewNeeded: vi.fn(),
+  getBackgroundSyncEnabled: vi.fn().mockResolvedValue(true),
+  getBackgroundSyncIntervalMs: vi.fn().mockResolvedValue(10 * 60_000),
 }));
 
 vi.mock("@/desktop/main/services/projectService", () => ({
@@ -22,11 +24,20 @@ vi.mock("@/lib/boardNotifier", () => ({
   broadcastBackgroundSyncReviewNeeded: mocks.broadcastBackgroundSyncReviewNeeded,
 }));
 
+vi.mock("@/desktop/main/services/appSettingsService", () => ({
+  getBackgroundSyncEnabled: mocks.getBackgroundSyncEnabled,
+  getBackgroundSyncIntervalMs: mocks.getBackgroundSyncIntervalMs,
+  registerBackgroundSyncIntervalChangedCallback: vi.fn(),
+  registerBackgroundSyncEnabledChangedCallback: vi.fn(),
+}));
+
 describe("backgroundTaskSyncService", () => {
   beforeEach(() => {
     vi.resetModules();
     vi.clearAllMocks();
     vi.useFakeTimers();
+    mocks.getBackgroundSyncEnabled.mockResolvedValue(true);
+    mocks.getBackgroundSyncIntervalMs.mockResolvedValue(10 * 60_000);
     mocks.syncRegisteredProjectWorktrees.mockResolvedValue({
       worktreeTasks: [],
       registeredWorktrees: [],
