@@ -28,6 +28,7 @@ vi.mock("@/desktop/main/services/appSettingsService", () => ({
   getBackgroundSyncEnabled: mocks.getBackgroundSyncEnabled,
   getBackgroundSyncIntervalMs: mocks.getBackgroundSyncIntervalMs,
   registerBackgroundSyncIntervalChangedCallback: vi.fn(),
+  registerBackgroundSyncEnabledChangedCallback: vi.fn(),
 }));
 
 describe("backgroundTaskSyncService", () => {

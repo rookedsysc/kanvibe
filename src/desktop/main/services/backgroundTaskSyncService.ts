@@ -9,6 +9,7 @@ import {
   getBackgroundSyncEnabled,
   getBackgroundSyncIntervalMs,
   registerBackgroundSyncIntervalChangedCallback,
+  registerBackgroundSyncEnabledChangedCallback,
 } from "@/desktop/main/services/appSettingsService";
 
 const INITIAL_SYNC_DELAY_MS = 20_000;
@@ -98,6 +99,8 @@ export function startBackgroundTaskSync() {
 
   function reschedule(newIntervalMs: number) {
     if (disposed) return;
+    // 사이클 실행 중이면 건너뜀 — finally 블록이 최신 주기를 읽어 스케줄링함
+    if (running) return;
     if (timeoutHandle) {
       clearTimeout(timeoutHandle);
       timeoutHandle = null;
@@ -105,7 +108,19 @@ export function startBackgroundTaskSync() {
     scheduleNext(newIntervalMs);
   }
 
+  function rescheduleOnEnable(enabled: boolean) {
+    if (!enabled) return; // 비활성화 시: 루프는 다음 웨이크업에서 작업을 건너뜀
+    if (disposed) return;
+    if (running) return; // 사이클 진행 중: finally 블록이 이어서 스케줄링함
+    if (timeoutHandle) {
+      clearTimeout(timeoutHandle);
+      timeoutHandle = null;
+    }
+    scheduleNext(INITIAL_SYNC_DELAY_MS);
+  }
+
   registerBackgroundSyncIntervalChangedCallback(reschedule);
+  registerBackgroundSyncEnabledChangedCallback(rescheduleOnEnable);
   scheduleNext(INITIAL_SYNC_DELAY_MS);
 
   function stopBackgroundTaskSync() {
