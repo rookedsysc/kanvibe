@@ -190,12 +190,8 @@
     "backgroundSyncEnabled": "后台同步",
     "backgroundSyncEnabledDescription": "定期在后台同步项目 worktree 和 PR 状态。",
     "backgroundSyncInterval": "同步间隔",
-    "backgroundSyncIntervalDescription": "后台同步的执行间隔。",
-    "backgroundSyncInterval1min": "1 分钟",
-    "backgroundSyncInterval5min": "5 分钟",
-    "backgroundSyncInterval10min": "10 分钟",
-    "backgroundSyncInterval30min": "30 分钟",
-    "backgroundSyncInterval60min": "60 分钟"
+    "backgroundSyncIntervalDescription": "后台同步的执行间隔。（1–1440 分钟）",
+    "backgroundSyncIntervalUnit": "分钟"
   },
   "taskSearch": {
     "title": "快速任务搜索",

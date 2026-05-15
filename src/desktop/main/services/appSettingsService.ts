@@ -158,6 +158,13 @@ const BACKGROUND_SYNC_ENABLED_KEY = "background_sync_enabled";
 const BACKGROUND_SYNC_INTERVAL_MS_KEY = "background_sync_interval_ms";
 const DEFAULT_BACKGROUND_SYNC_INTERVAL_MS = 10 * 60_000;
 
+let backgroundSyncIntervalChangedCallback: ((intervalMs: number) => void) | null = null;
+
+/** 백그라운드 sync 주기 변경 시 호출될 콜백을 등록한다. 순환 의존성 없이 서비스 간 협력을 위해 사용한다 */
+export function registerBackgroundSyncIntervalChangedCallback(callback: (intervalMs: number) => void): void {
+  backgroundSyncIntervalChangedCallback = callback;
+}
+
 /** 백그라운드 sync 활성화 여부를 조회한다. 미설정 시 기본값(활성화)을 반환한다 */
 export async function getBackgroundSyncEnabled(): Promise<boolean> {
   const value = await getAppSetting(BACKGROUND_SYNC_ENABLED_KEY);
@@ -177,9 +184,10 @@ export async function getBackgroundSyncIntervalMs(): Promise<number> {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_BACKGROUND_SYNC_INTERVAL_MS;
 }
 
-/** 백그라운드 sync 실행 주기(ms)를 저장한다 */
+/** 백그라운드 sync 실행 주기(ms)를 저장하고, 실행 중인 루프에 즉시 반영한다 */
 export async function setBackgroundSyncIntervalMs(intervalMs: number): Promise<void> {
   await setAppSetting(BACKGROUND_SYNC_INTERVAL_MS_KEY, String(intervalMs));
+  backgroundSyncIntervalChangedCallback?.(intervalMs);
 }
 
 const DEFAULT_SESSION_TYPE_KEY = "default_session_type";

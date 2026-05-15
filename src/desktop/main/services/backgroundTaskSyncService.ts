@@ -5,9 +5,14 @@ import {
   broadcastBoardUpdate,
   type BackgroundSyncFailurePayload,
 } from "@/lib/boardNotifier";
-import { getBackgroundSyncEnabled, getBackgroundSyncIntervalMs } from "@/desktop/main/services/appSettingsService";
+import {
+  getBackgroundSyncEnabled,
+  getBackgroundSyncIntervalMs,
+  registerBackgroundSyncIntervalChangedCallback,
+} from "@/desktop/main/services/appSettingsService";
 
 const INITIAL_SYNC_DELAY_MS = 20_000;
+const FALLBACK_SYNC_INTERVAL_MS = 10 * 60_000;
 
 let activeBackgroundTaskSyncStop: (() => void) | null = null;
 
@@ -86,11 +91,21 @@ export function startBackgroundTaskSync() {
       console.error("[background-task-sync] sync failed:", error);
     } finally {
       running = false;
-      const intervalMs = await getBackgroundSyncIntervalMs();
+      const intervalMs = await getBackgroundSyncIntervalMs().catch(() => FALLBACK_SYNC_INTERVAL_MS);
       scheduleNext(intervalMs);
     }
   }
 
+  function reschedule(newIntervalMs: number) {
+    if (disposed) return;
+    if (timeoutHandle) {
+      clearTimeout(timeoutHandle);
+      timeoutHandle = null;
+    }
+    scheduleNext(newIntervalMs);
+  }
+
+  registerBackgroundSyncIntervalChangedCallback(reschedule);
   scheduleNext(INITIAL_SYNC_DELAY_MS);
 
   function stopBackgroundTaskSync() {

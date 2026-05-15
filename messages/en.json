@@ -191,12 +191,8 @@
     "backgroundSyncEnabled": "Background Sync",
     "backgroundSyncEnabledDescription": "Periodically sync project worktrees and PR status in the background.",
     "backgroundSyncInterval": "Sync interval",
-    "backgroundSyncIntervalDescription": "How often to run background sync.",
-    "backgroundSyncInterval1min": "1 min",
-    "backgroundSyncInterval5min": "5 min",
-    "backgroundSyncInterval10min": "10 min",
-    "backgroundSyncInterval30min": "30 min",
-    "backgroundSyncInterval60min": "60 min"
+    "backgroundSyncIntervalDescription": "How often to run background sync. (1–1440 min)",
+    "backgroundSyncIntervalUnit": "min"
   },
   "taskSearch": {
     "title": "Quick Task Search",
