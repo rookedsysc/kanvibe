@@ -306,7 +306,6 @@ async function getPrUrlFromGitHubCli(branchName: string, cwd: string, sshHost?: 
       const output = await execGit(
         `cd ${quoteForShell(cwd)} && gh pr list --head ${quoteForShell(branchName)} --json url -q '.[0].url'`,
         sshHost,
-        { timeoutMs: ACTIVE_TASK_PR_GITHUB_CLI_TIMEOUT_MS },
       );
       return output.trim() || null;
     } catch (error) {
@@ -376,7 +375,6 @@ async function getPrInfoFromGitHubCli(
       const output = await execGit(
         `cd ${quoteForShell(cwd)} && gh pr list --head ${quoteForShell(branchName)} --state all --json url,state,mergedAt,updatedAt`,
         sshHost,
-        { timeoutMs: ACTIVE_TASK_PR_GITHUB_CLI_TIMEOUT_MS },
       );
       if (!output.trim()) {
         return null;
@@ -1143,14 +1141,22 @@ export async function syncActiveTaskPulls(): Promise<ActiveTaskPullSyncResult> {
     const pullFailureKey = buildPullFailureKey(task.id, task.branchName, task.worktreePath, sshHost);
 
     try {
-      const gitOptions = { timeoutMs: ACTIVE_TASK_PULL_GIT_TIMEOUT_MS };
-      const hasRemoteBranch = await remoteBranchExists(task.worktreePath, task.branchName, sshHost, gitOptions);
+      const hasRemoteBranch = sshHost
+        ? await remoteBranchExists(task.worktreePath, task.branchName, sshHost)
+        : await remoteBranchExists(
+          task.worktreePath,
+          task.branchName,
+          sshHost,
+          { timeoutMs: ACTIVE_TASK_PULL_GIT_TIMEOUT_MS },
+        );
       if (!hasRemoteBranch) {
         notifiedPullFailureKeys.delete(pullFailureKey);
         continue;
       }
 
-      const output = await pullCurrentBranch(task.worktreePath, sshHost, gitOptions);
+      const output = sshHost
+        ? await pullCurrentBranch(task.worktreePath, sshHost)
+        : await pullCurrentBranch(task.worktreePath, sshHost, { timeoutMs: ACTIVE_TASK_PULL_GIT_TIMEOUT_MS });
       notifiedPullFailureKeys.delete(pullFailureKey);
       if (isPullNoop(output)) {
         continue;

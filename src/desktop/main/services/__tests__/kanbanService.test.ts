@@ -1182,7 +1182,6 @@ describe("kanbanService.createTask", () => {
     expect(mocks.execGit).toHaveBeenCalledWith(
       "cd '/remote/repo' && gh pr list --head 'feature/remote-pr' --json url -q '.[0].url'",
       "remote-host",
-      expect.objectContaining({ timeoutMs: 2_000 }),
     );
     expect(mocks.execFile).not.toHaveBeenCalled();
     expect(mocks.taskRepo.save).toHaveBeenCalledWith(expect.objectContaining({
@@ -1213,7 +1212,6 @@ describe("kanbanService.createTask", () => {
     expect(mocks.execGit).toHaveBeenCalledWith(
       "cd '/remote/repo__worktrees/feature-fallback-path' && gh pr list --head 'feature/fallback-path' --json url -q '.[0].url'",
       "remote-host",
-      expect.objectContaining({ timeoutMs: 2_000 }),
     );
     expect(mocks.taskRepo.save).toHaveBeenCalledWith(expect.objectContaining({
       id: "task-7",
@@ -1248,7 +1246,6 @@ describe("kanbanService.createTask", () => {
     expect(mocks.execGit).toHaveBeenCalledWith(
       "cd '/remote/repo' && gh pr list --head 'feature/no-gh' --json url -q '.[0].url'",
       "remote-host",
-      expect.objectContaining({ timeoutMs: 2_000 }),
     );
     expect(mocks.taskRepo.save).not.toHaveBeenCalled();
     expect(mocks.broadcastBoardUpdate).not.toHaveBeenCalled();
@@ -1824,7 +1821,6 @@ describe("kanbanService.createTask", () => {
         "/remote/repo__worktrees/remote-pull",
         "feature/remote-pull",
         "remote-host",
-        expect.objectContaining({ timeoutMs: 2_000 }),
       );
 
       await vi.advanceTimersByTimeAsync(2_000);
@@ -1839,7 +1835,6 @@ describe("kanbanService.createTask", () => {
       expect(mocks.pullCurrentBranch).toHaveBeenCalledWith(
         "/remote/repo__worktrees/remote-pull",
         "remote-host",
-        expect.objectContaining({ timeoutMs: 2_000 }),
       );
 
       await vi.advanceTimersByTimeAsync(2_000);
