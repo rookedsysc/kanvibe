@@ -49,7 +49,7 @@ function verifyNodeBetterSqlite3Binding() {
 
 function verifyElectronBetterSqlite3Binding() {
   try {
-    execFileSync("pnpm", ["exec", "electron", path.join(__dirname, "verify-electron-better-sqlite3.cjs")], {
+    execFileSync("pnpm", ["exec", "electron", "--no-sandbox", path.join(__dirname, "verify-electron-better-sqlite3.cjs")], {
       stdio: ["ignore", "inherit", "pipe"],
       env: process.env,
     });

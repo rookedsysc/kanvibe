@@ -62,7 +62,7 @@ function main() {
 
   ensureAppBuild();
 
-  const child = spawn("pnpm", ["exec", "electron", "."], {
+  const child = spawn("pnpm", ["exec", "electron", "--no-sandbox", "."], {
     stdio: "inherit",
     env: process.env,
   });
