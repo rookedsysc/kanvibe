@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { useTranslations } from "next-intl";
 import {
   deleteProject,
@@ -116,8 +116,18 @@ export default function ProjectSettings({
   const [backgroundSyncIntervalInputValue, setBackgroundSyncIntervalInputValue] = useState(
     () => formatSyncIntervalMinutes(backgroundSyncSettings.intervalMs),
   );
+  const backgroundSyncIntervalSaveQueueRef = useRef<Promise<void>>(Promise.resolve());
   const [shouldUseMacTitlebarLayout, setShouldUseMacTitlebarLayout] = useState(false);
   const isPage = variant === "page";
+
+  function saveBackgroundSyncIntervalMs(nextIntervalMs: number) {
+    const nextSave = backgroundSyncIntervalSaveQueueRef.current
+      .catch(() => undefined)
+      .then(() => setBackgroundSyncIntervalMs(nextIntervalMs));
+
+    backgroundSyncIntervalSaveQueueRef.current = nextSave;
+    return nextSave;
+  }
 
   useEffect(() => {
     setSelectedDefaultSessionType(defaultSessionType);
@@ -519,7 +529,7 @@ export default function ProjectSettings({
                   setLocalBackgroundSyncSettings(nextSettings);
                   setPendingBackgroundSyncSettings(nextSettings);
                   startTransition(async () => {
-                    await setBackgroundSyncIntervalMs(nextIntervalMs);
+                    await saveBackgroundSyncIntervalMs(nextIntervalMs);
                   });
                 }}
                 onBlur={() => {

@@ -256,6 +256,62 @@ describe("backgroundTaskSyncService", () => {
     stop();
   });
 
+  it("worktree sync 단계가 예외로 실패해도 PR sync와 pull sync를 계속 실행한다", async () => {
+    mocks.syncRegisteredProjectWorktrees.mockRejectedValue(new Error("project repository unavailable"));
+    mocks.syncActiveTaskPullRequests.mockResolvedValue({
+      updatedTaskIds: ["task-pr"],
+      mergeEventKeys: [],
+      mergedPullRequests: [],
+    });
+    mocks.syncActiveTaskPulls.mockResolvedValue({
+      pulledTasks: [
+        {
+          taskId: "task-pull",
+          taskTitle: "Pull target",
+          branchName: "feature/pull",
+          worktreePath: "/workspace/repo__worktrees/feature-pull",
+          sshHost: null,
+          status: "updated",
+          summary: "Fast-forward",
+        },
+      ],
+    });
+
+    const { startBackgroundTaskSync } = await import("@/desktop/main/services/backgroundTaskSyncService");
+
+    const stop = startBackgroundTaskSync();
+    await vi.advanceTimersByTimeAsync(20_000);
+    await flushBackgroundSyncCycle();
+
+    expect(mocks.syncActiveTaskPullRequests).toHaveBeenCalledTimes(1);
+    expect(mocks.syncActiveTaskPulls).toHaveBeenCalledTimes(1);
+    expect(mocks.broadcastBackgroundSyncReviewNeeded).toHaveBeenCalledWith({
+      registeredWorktrees: [],
+      mergedPullRequests: [],
+      pulledTasks: [
+        {
+          taskId: "task-pull",
+          taskTitle: "Pull target",
+          branchName: "feature/pull",
+          worktreePath: "/workspace/repo__worktrees/feature-pull",
+          sshHost: null,
+          status: "updated",
+          summary: "Fast-forward",
+        },
+      ],
+      failures: [
+        {
+          operation: "worktree-sync",
+          target: "등록 프로젝트 worktree sync",
+          reason: "project repository unavailable",
+        },
+      ],
+    });
+    expect(mocks.broadcastBoardUpdate).toHaveBeenCalledTimes(1);
+
+    stop();
+  });
+
   it("background task sync 갱신 주기는 최초 실행 후 10분이다", async () => {
     const { startBackgroundTaskSync } = await import("@/desktop/main/services/backgroundTaskSyncService");
 

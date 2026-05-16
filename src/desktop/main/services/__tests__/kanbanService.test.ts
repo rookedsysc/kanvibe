@@ -1555,13 +1555,23 @@ describe("kanbanService.createTask", () => {
 
     // Then
     expect(mocks.pullCurrentBranch).toHaveBeenCalledTimes(1);
-    expect(mocks.pullCurrentBranch).toHaveBeenNthCalledWith(1, "/workspace/repo__worktrees/pull-a", null);
+    expect(mocks.pullCurrentBranch).toHaveBeenNthCalledWith(
+      1,
+      "/workspace/repo__worktrees/pull-a",
+      null,
+      expect.objectContaining({ timeoutMs: 45_000 }),
+    );
 
     resolvers[0]("Fast-forward\n src/file.ts | 1 +");
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(mocks.pullCurrentBranch).toHaveBeenCalledTimes(2);
-    expect(mocks.pullCurrentBranch).toHaveBeenNthCalledWith(2, "/workspace/repo__worktrees/pull-b", null);
+    expect(mocks.pullCurrentBranch).toHaveBeenNthCalledWith(
+      2,
+      "/workspace/repo__worktrees/pull-b",
+      null,
+      expect.objectContaining({ timeoutMs: 45_000 }),
+    );
 
     rejecters[1](new Error("Not possible to fast-forward"));
 
@@ -1587,6 +1597,87 @@ describe("kanbanService.createTask", () => {
         },
       ],
     });
+  });
+
+  it("active task pull sync는 한 task의 remote branch 확인이 멈춰도 다음 task를 계속 처리한다", async () => {
+    vi.useFakeTimers();
+    try {
+      // Given
+      mocks.taskRepo.find.mockResolvedValue([
+        {
+          id: "task-main",
+          title: "Main task",
+          projectId: "project-1",
+          branchName: "main",
+          worktreePath: "/workspace/repo",
+          sshHost: null,
+          status: "progress",
+        },
+        {
+          id: "task-stuck",
+          title: "Stuck pull",
+          projectId: "project-1",
+          branchName: "feature/stuck",
+          worktreePath: "/workspace/repo__worktrees/stuck",
+          sshHost: null,
+          status: "progress",
+        },
+        {
+          id: "task-next",
+          title: "Next pull",
+          projectId: "project-1",
+          branchName: "feature/next",
+          worktreePath: "/workspace/repo__worktrees/next",
+          sshHost: null,
+          status: "review",
+        },
+      ]);
+      mocks.projectRepo.findOneBy.mockResolvedValue({
+        id: "project-1",
+        repoPath: "/workspace/repo",
+        defaultBranch: "main",
+        sshHost: null,
+      });
+      mocks.remoteBranchExists.mockImplementation((worktreePath: string) => {
+        if (worktreePath.includes("stuck")) {
+          return new Promise<boolean>(() => {});
+        }
+
+        return Promise.resolve(true);
+      });
+      mocks.pullCurrentBranch.mockResolvedValue("Already up to date.");
+
+      const { syncActiveTaskPulls } = await import("@/desktop/main/services/kanbanService");
+
+      // When
+      const syncPromise = syncActiveTaskPulls();
+      await vi.advanceTimersByTimeAsync(0);
+
+      // Then
+      expect(mocks.remoteBranchExists).toHaveBeenCalledTimes(1);
+
+      await vi.advanceTimersByTimeAsync(45_000);
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(mocks.remoteBranchExists).toHaveBeenCalledTimes(2);
+      expect(mocks.pullCurrentBranch).toHaveBeenCalledWith(
+        "/workspace/repo__worktrees/next",
+        null,
+        expect.objectContaining({ timeoutMs: 45_000 }),
+      );
+      await expect(syncPromise).resolves.toEqual({
+        pulledTasks: [
+          expect.objectContaining({
+            taskId: "task-stuck",
+            branchName: "feature/stuck",
+            status: "failed",
+            summary: expect.stringContaining("timed out"),
+          }),
+        ],
+      });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("active task pull sync는 done task를 pull하지 않는다", async () => {
@@ -1634,7 +1725,11 @@ describe("kanbanService.createTask", () => {
       }),
     }));
     expect(mocks.pullCurrentBranch).toHaveBeenCalledTimes(1);
-    expect(mocks.pullCurrentBranch).toHaveBeenCalledWith("/workspace/repo__worktrees/progress", null);
+    expect(mocks.pullCurrentBranch).toHaveBeenCalledWith(
+      "/workspace/repo__worktrees/progress",
+      null,
+      expect.objectContaining({ timeoutMs: 45_000 }),
+    );
     expect(result).toEqual({ pulledTasks: [] });
   });
 
@@ -1669,6 +1764,7 @@ describe("kanbanService.createTask", () => {
       "/workspace/repo__worktrees/missing-remote",
       "feature/missing-remote",
       null,
+      expect.objectContaining({ timeoutMs: 45_000 }),
     );
     expect(mocks.pullCurrentBranch).not.toHaveBeenCalled();
     expect(result).toEqual({ pulledTasks: [] });

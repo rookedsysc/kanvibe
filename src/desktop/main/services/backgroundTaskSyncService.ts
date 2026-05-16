@@ -1,5 +1,10 @@
-import { syncRegisteredProjectWorktrees } from "@/desktop/main/services/projectService";
-import { syncActiveTaskPullRequests, syncActiveTaskPulls } from "@/desktop/main/services/kanbanService";
+import { syncRegisteredProjectWorktrees, type RegisteredProjectWorktreeSyncResult } from "@/desktop/main/services/projectService";
+import {
+  syncActiveTaskPullRequests,
+  syncActiveTaskPulls,
+  type ActiveTaskPullRequestSyncResult,
+  type ActiveTaskPullSyncResult,
+} from "@/desktop/main/services/kanbanService";
 import {
   broadcastBackgroundSyncReviewNeeded,
   broadcastBoardUpdate,
@@ -16,6 +21,68 @@ const INITIAL_SYNC_DELAY_MS = 20_000;
 const FALLBACK_SYNC_INTERVAL_MS = 10 * 60_000;
 
 let activeBackgroundTaskSyncStop: (() => void) | null = null;
+
+interface BackgroundSyncStageResult<T> {
+  result: T;
+  failure: BackgroundSyncFailurePayload | null;
+}
+
+function createEmptyWorktreeSyncResult(): RegisteredProjectWorktreeSyncResult {
+  return {
+    worktreeTasks: [],
+    registeredWorktrees: [],
+    hooksSetup: [],
+    errors: [],
+    changed: false,
+  };
+}
+
+function createEmptyPullRequestSyncResult(): ActiveTaskPullRequestSyncResult {
+  return {
+    updatedTaskIds: [],
+    mergeEventKeys: [],
+    mergedPullRequests: [],
+  };
+}
+
+function createEmptyTaskPullSyncResult(): ActiveTaskPullSyncResult {
+  return {
+    pulledTasks: [],
+  };
+}
+
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  if (typeof error === "string") {
+    return error;
+  }
+
+  return String(error);
+}
+
+async function runBackgroundSyncStage<T>(
+  stageName: string,
+  operation: () => Promise<T>,
+  createFallbackResult: () => T,
+  createFailure: (reason: string) => BackgroundSyncFailurePayload,
+): Promise<BackgroundSyncStageResult<T>> {
+  try {
+    return {
+      result: await operation(),
+      failure: null,
+    };
+  } catch (error) {
+    console.error(`[background-task-sync] ${stageName} failed:`, error);
+
+    return {
+      result: createFallbackResult(),
+      failure: createFailure(getErrorMessage(error)),
+    };
+  }
+}
 
 export function startBackgroundTaskSync() {
   if (activeBackgroundTaskSyncStop) {
@@ -51,16 +118,49 @@ export function startBackgroundTaskSync() {
     try {
       const isEnabled = await getBackgroundSyncEnabled();
       if (isEnabled) {
-        const worktreeSyncResult = await syncRegisteredProjectWorktrees();
-        const prSyncResult = await syncActiveTaskPullRequests(emittedMergeEventKeys);
-        const pullSyncResult = await syncActiveTaskPulls();
+        const worktreeSync = await runBackgroundSyncStage(
+          "worktree sync",
+          syncRegisteredProjectWorktrees,
+          createEmptyWorktreeSyncResult,
+          (reason) => ({
+            operation: "worktree-sync",
+            target: "등록 프로젝트 worktree sync",
+            reason,
+          }),
+        );
+        const prSync = await runBackgroundSyncStage(
+          "pull request sync",
+          () => syncActiveTaskPullRequests(emittedMergeEventKeys),
+          createEmptyPullRequestSyncResult,
+          (reason) => ({
+            operation: "pull-request-sync",
+            target: "PR 상태 sync",
+            reason,
+          }),
+        );
+        const pullSync = await runBackgroundSyncStage(
+          "task pull sync",
+          syncActiveTaskPulls,
+          createEmptyTaskPullSyncResult,
+          (reason) => ({
+            operation: "task-pull-sync",
+            target: "active task pull sync",
+            reason,
+          }),
+        );
+        const worktreeSyncResult = worktreeSync.result;
+        const prSyncResult = prSync.result;
+        const pullSyncResult = pullSync.result;
         const failures: BackgroundSyncFailurePayload[] = [
+          ...(worktreeSync.failure ? [worktreeSync.failure] : []),
           ...worktreeSyncResult.errors.map((reason) => ({
             operation: "worktree-sync" as const,
             target: "등록 프로젝트 worktree sync",
             reason,
           })),
+          ...(prSync.failure ? [prSync.failure] : []),
           ...(prSyncResult.failures ?? []),
+          ...(pullSync.failure ? [pullSync.failure] : []),
         ];
 
         if (

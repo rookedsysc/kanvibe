@@ -80,6 +80,8 @@ function createProject(): Project {
 describe("ProjectSettings", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockSetBackgroundSyncEnabled.mockResolvedValue(undefined);
+    mockSetBackgroundSyncIntervalMs.mockResolvedValue(undefined);
     delete window.kanvibeDesktop;
     document.documentElement.removeAttribute("data-theme");
     document.documentElement.removeAttribute("data-theme-preference");
@@ -351,6 +353,48 @@ describe("ProjectSettings", () => {
     await waitFor(() => {
       expect(mockSetBackgroundSyncIntervalMs).toHaveBeenLastCalledWith(10 * 60_000);
     });
+  });
+
+  it("background sync 주기 저장은 이전 저장이 끝난 뒤 최신 값을 저장한다", async () => {
+    // Given
+    const user = userEvent.setup();
+    let resolveFirstSave: () => void = () => {};
+    mockSetBackgroundSyncIntervalMs
+      .mockImplementationOnce(() => new Promise<void>((resolve) => {
+        resolveFirstSave = resolve;
+      }))
+      .mockResolvedValue(undefined);
+
+    render(
+      <ProjectSettings
+        isOpen
+        onClose={vi.fn()}
+        projects={[createProject()]}
+        sshHosts={[]}
+        sidebarDefaultCollapsed={false}
+        defaultSessionType={SessionType.TMUX}
+        notificationSettings={{ isEnabled: true, enabledStatuses: ["progress", "pending", "review"] }}
+        backgroundSyncSettings={{ isEnabled: true, intervalMs: 1 * 60_000 }}
+      />,
+    );
+
+    const intervalInput = screen.getByRole("spinbutton") as HTMLInputElement;
+
+    // When
+    await user.clear(intervalInput);
+    await user.type(intervalInput, "20");
+
+    // Then
+    expect(intervalInput.value).toBe("20");
+    expect(mockSetBackgroundSyncIntervalMs).toHaveBeenCalledTimes(1);
+    expect(mockSetBackgroundSyncIntervalMs).toHaveBeenCalledWith(2 * 60_000);
+
+    resolveFirstSave();
+
+    await waitFor(() => {
+      expect(mockSetBackgroundSyncIntervalMs).toHaveBeenCalledTimes(2);
+    });
+    expect(mockSetBackgroundSyncIntervalMs).toHaveBeenLastCalledWith(20 * 60_000);
   });
 
 });

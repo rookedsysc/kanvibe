@@ -52,6 +52,7 @@ const ACTIVE_PULL_TASK_STATUSES = [
   TaskStatus.PENDING,
   TaskStatus.REVIEW,
 ];
+const ACTIVE_TASK_PULL_GIT_TIMEOUT_MS = 45_000;
 const notifiedPullFailureKeys = new Set<string>();
 
 interface CleanupTaskResourcesOptions {
@@ -473,6 +474,29 @@ function isPullNoop(output: string): boolean {
 
 function buildPullFailureKey(taskId: string, branchName: string, worktreePath: string, sshHost: string | null): string {
   return [taskId, branchName, worktreePath, sshHost ?? ""].join("::");
+}
+
+function runWithTimeout<T>(
+  operation: Promise<T>,
+  timeoutMs: number,
+  timeoutMessage: string,
+): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timeoutHandle = setTimeout(() => {
+      reject(new Error(timeoutMessage));
+    }, timeoutMs);
+
+    operation.then(
+      (value) => {
+        clearTimeout(timeoutHandle);
+        resolve(value);
+      },
+      (error: unknown) => {
+        clearTimeout(timeoutHandle);
+        reject(error);
+      },
+    );
+  });
 }
 
 function isMissingRemoteBranchPullError(error: unknown): boolean {
@@ -1139,13 +1163,23 @@ export async function syncActiveTaskPulls(): Promise<ActiveTaskPullSyncResult> {
     const pullFailureKey = buildPullFailureKey(task.id, task.branchName, task.worktreePath, sshHost);
 
     try {
-      const hasRemoteBranch = await remoteBranchExists(task.worktreePath, task.branchName, sshHost);
+      const gitOptions = { timeoutMs: ACTIVE_TASK_PULL_GIT_TIMEOUT_MS };
+      const timeoutSeconds = ACTIVE_TASK_PULL_GIT_TIMEOUT_MS / 1000;
+      const hasRemoteBranch = await runWithTimeout(
+        remoteBranchExists(task.worktreePath, task.branchName, sshHost, gitOptions),
+        ACTIVE_TASK_PULL_GIT_TIMEOUT_MS,
+        `Remote branch check timed out after ${timeoutSeconds}s: ${task.title} (${task.branchName})`,
+      );
       if (!hasRemoteBranch) {
         notifiedPullFailureKeys.delete(pullFailureKey);
         continue;
       }
 
-      const output = await pullCurrentBranch(task.worktreePath, sshHost);
+      const output = await runWithTimeout(
+        pullCurrentBranch(task.worktreePath, sshHost, gitOptions),
+        ACTIVE_TASK_PULL_GIT_TIMEOUT_MS,
+        `Pull timed out after ${timeoutSeconds}s: ${task.title} (${task.branchName})`,
+      );
       notifiedPullFailureKeys.delete(pullFailureKey);
       if (isPullNoop(output)) {
         continue;

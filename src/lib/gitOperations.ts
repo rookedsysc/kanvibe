@@ -185,9 +185,10 @@ function isSSHCommandTimeoutError(error: unknown): boolean {
 }
 
 /** 로컬에서 셸 명령을 실행하고 stdout을 반환한다 */
-async function execLocal(command: string): Promise<string> {
+async function execLocal(command: string, options?: ExecGitOptions): Promise<string> {
   const { stdout } = await execAsync(command, {
     env: createLocalShellEnvironment(),
+    ...(options?.timeoutMs ? { timeout: options.timeoutMs } : {}),
   });
   return stdout.trim();
 }
@@ -640,7 +641,7 @@ export async function execGit(
   if (sshHost) {
     return execRemote(sshHost, command, options);
   }
-  return execLocal(command);
+  return execLocal(command, options);
 }
 
 /** remote origin의 최신 브랜치 정보를 가져온다. 네트워크 실패 시 silent fail */
@@ -658,9 +659,10 @@ export async function fetchOrigin(
 /** 현재 checkout된 브랜치를 fast-forward 가능한 경우에만 pull한다 */
 export async function pullCurrentBranch(
   repoPath: string,
-  sshHost?: string | null
+  sshHost?: string | null,
+  options?: ExecGitOptions,
 ): Promise<string> {
-  return execGit(`git -C "${repoPath}" pull --ff-only`, sshHost);
+  return execGit(`git -C "${repoPath}" pull --ff-only`, sshHost, options);
 }
 
 /** origin에 현재 task 브랜치가 존재하는지 확인한다 */
@@ -668,6 +670,7 @@ export async function remoteBranchExists(
   repoPath: string,
   branchName: string,
   sshHost?: string | null,
+  options?: ExecGitOptions,
 ): Promise<boolean> {
   const resolvedRepoPath = resolvePathForShell(repoPath, sshHost);
   const remoteRef = quoteForPosixShell(`refs/heads/${branchName}`);
@@ -677,7 +680,7 @@ export async function remoteBranchExists(
     `if [ "$status" -eq 0 ]; then printf exists; elif [ "$status" -eq 2 ]; then printf missing; else exit "$status"; fi`,
   ].join("; ");
 
-  const output = await execGit(command, sshHost);
+  const output = await execGit(command, sshHost, options);
   return output.trim() === "exists";
 }
 
