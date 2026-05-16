@@ -1112,7 +1112,7 @@ describe("kanbanService.createTask", () => {
     expect(mocks.execFile).toHaveBeenCalledWith(
       "gh",
       ["pr", "list", "--head", "main", "--json", "url", "-q", ".[0].url"],
-      { cwd: "/workspace/repo" },
+      expect.objectContaining({ cwd: "/workspace/repo", timeout: 45_000 }),
       expect.any(Function),
     );
     expect(mocks.taskRepo.save).toHaveBeenCalledWith(expect.objectContaining({
@@ -1182,6 +1182,7 @@ describe("kanbanService.createTask", () => {
     expect(mocks.execGit).toHaveBeenCalledWith(
       "cd '/remote/repo' && gh pr list --head 'feature/remote-pr' --json url -q '.[0].url'",
       "remote-host",
+      expect.objectContaining({ timeoutMs: 45_000 }),
     );
     expect(mocks.execFile).not.toHaveBeenCalled();
     expect(mocks.taskRepo.save).toHaveBeenCalledWith(expect.objectContaining({
@@ -1212,6 +1213,7 @@ describe("kanbanService.createTask", () => {
     expect(mocks.execGit).toHaveBeenCalledWith(
       "cd '/remote/repo__worktrees/feature-fallback-path' && gh pr list --head 'feature/fallback-path' --json url -q '.[0].url'",
       "remote-host",
+      expect.objectContaining({ timeoutMs: 45_000 }),
     );
     expect(mocks.taskRepo.save).toHaveBeenCalledWith(expect.objectContaining({
       id: "task-7",
@@ -1246,6 +1248,7 @@ describe("kanbanService.createTask", () => {
     expect(mocks.execGit).toHaveBeenCalledWith(
       "cd '/remote/repo' && gh pr list --head 'feature/no-gh' --json url -q '.[0].url'",
       "remote-host",
+      expect.objectContaining({ timeoutMs: 45_000 }),
     );
     expect(mocks.taskRepo.save).not.toHaveBeenCalled();
     expect(mocks.broadcastBoardUpdate).not.toHaveBeenCalled();
@@ -1503,6 +1506,97 @@ describe("kanbanService.createTask", () => {
     await syncPromise;
   });
 
+  it("active task PR sync는 local gh 조회 timeout 후 다음 task를 계속 처리한다", async () => {
+    vi.useFakeTimers();
+    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      // Given
+      mocks.taskRepo.find.mockResolvedValue([
+        {
+          id: "task-pr-stuck",
+          title: "Stuck PR",
+          projectId: "project-1",
+          branchName: "feature/pr-stuck",
+          worktreePath: "/workspace/repo__worktrees/pr-stuck",
+          sshHost: null,
+          prUrl: null,
+          status: "review",
+        },
+        {
+          id: "task-pr-next",
+          title: "Next PR",
+          projectId: "project-1",
+          branchName: "feature/pr-next",
+          worktreePath: "/workspace/repo__worktrees/pr-next",
+          sshHost: null,
+          prUrl: null,
+          status: "review",
+        },
+      ]);
+      mocks.projectRepo.findOneBy.mockResolvedValue({
+        id: "project-1",
+        repoPath: "/workspace/repo",
+        defaultBranch: "main",
+        sshHost: null,
+      });
+      const execFileOptions: Array<{ cwd?: string; timeout?: number }> = [];
+      mocks.execFile.mockImplementation((file, args: string[], options, callback) => {
+        execFileOptions.push(options);
+        if (args.includes("feature/pr-stuck")) {
+          if (typeof options.timeout === "number") {
+            setTimeout(() => {
+              callback(Object.assign(new Error("gh pr list timed out"), { killed: true, signal: "SIGTERM" }), "", "");
+            }, options.timeout);
+          }
+          return {} as never;
+        }
+
+        callback(null, JSON.stringify([{
+          url: null,
+          state: null,
+          mergedAt: null,
+          updatedAt: "2026-05-02T01:00:00Z",
+        }]), "");
+        return {} as never;
+      });
+
+      const { syncActiveTaskPullRequests } = await import("@/desktop/main/services/kanbanService");
+
+      // When
+      const syncPromise = syncActiveTaskPullRequests(new Set());
+      await vi.advanceTimersByTimeAsync(0);
+
+      // Then
+      expect(execFileOptions).toEqual([
+        expect.objectContaining({ cwd: "/workspace/repo", timeout: 45_000 }),
+      ]);
+
+      await vi.advanceTimersByTimeAsync(45_000);
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(execFileOptions).toEqual([
+        expect.objectContaining({ cwd: "/workspace/repo", timeout: 45_000 }),
+        expect.objectContaining({ cwd: "/workspace/repo", timeout: 45_000 }),
+      ]);
+      await expect(syncPromise).resolves.toEqual({
+        updatedTaskIds: [],
+        mergeEventKeys: [],
+        mergedPullRequests: [],
+        failures: [
+          expect.objectContaining({
+            operation: "pull-request-sync",
+            taskId: "task-pr-stuck",
+            branchName: "feature/pr-stuck",
+            reason: "gh pr list timed out",
+          }),
+        ],
+      });
+    } finally {
+      consoleErrorSpy.mockRestore();
+      vi.useRealTimers();
+    }
+  });
+
   it("active task pull sync는 default branch task를 제외하고 task별 pull을 직렬로 실행한다", async () => {
     // Given
     mocks.taskRepo.find.mockResolvedValue([
@@ -1638,9 +1732,14 @@ describe("kanbanService.createTask", () => {
         defaultBranch: "main",
         sshHost: null,
       });
-      mocks.remoteBranchExists.mockImplementation((worktreePath: string) => {
+      mocks.remoteBranchExists.mockImplementation((worktreePath: string, branchName: string, sshHost: string | null, options?: { timeoutMs?: number }) => {
         if (worktreePath.includes("stuck")) {
-          return new Promise<boolean>(() => {});
+          return new Promise<boolean>((resolve, reject) => {
+            void resolve;
+            setTimeout(() => {
+              reject(new Error(`Remote branch check timed out after ${(options?.timeoutMs ?? 0) / 1000}s`));
+            }, options?.timeoutMs ?? 0);
+          });
         }
 
         return Promise.resolve(true);
@@ -1673,6 +1772,94 @@ describe("kanbanService.createTask", () => {
             status: "failed",
             summary: expect.stringContaining("timed out"),
           }),
+        ],
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("remote task pull sync는 외부 timer로 원격 git 결과를 버리지 않는다", async () => {
+    vi.useFakeTimers();
+    try {
+      // Given
+      mocks.taskRepo.find.mockResolvedValue([
+        {
+          id: "task-remote",
+          title: "Remote pull",
+          projectId: "project-remote",
+          branchName: "feature/remote-pull",
+          worktreePath: "/remote/repo__worktrees/remote-pull",
+          sshHost: "remote-host",
+          status: "review",
+        },
+      ]);
+      mocks.projectRepo.findOneBy.mockResolvedValue({
+        id: "project-remote",
+        repoPath: "/remote/repo",
+        defaultBranch: "main",
+        sshHost: "remote-host",
+      });
+      let resolveRemoteBranchExists: (value: boolean) => void = () => {};
+      let resolveRemotePull: (value: string) => void = () => {};
+      mocks.remoteBranchExists.mockImplementation(() => new Promise<boolean>((resolve) => {
+        resolveRemoteBranchExists = resolve;
+      }));
+      mocks.pullCurrentBranch.mockImplementation(() => new Promise<string>((resolve) => {
+        resolveRemotePull = resolve;
+      }));
+
+      const { syncActiveTaskPulls } = await import("@/desktop/main/services/kanbanService");
+
+      // When
+      let isSyncComplete = false;
+      const syncPromise = syncActiveTaskPulls().then((result) => {
+        isSyncComplete = true;
+        return result;
+      });
+      await vi.advanceTimersByTimeAsync(0);
+
+      // Then
+      expect(mocks.remoteBranchExists).toHaveBeenCalledWith(
+        "/remote/repo__worktrees/remote-pull",
+        "feature/remote-pull",
+        "remote-host",
+        expect.objectContaining({ timeoutMs: 45_000 }),
+      );
+
+      await vi.advanceTimersByTimeAsync(45_000);
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(isSyncComplete).toBe(false);
+      expect(mocks.pullCurrentBranch).not.toHaveBeenCalled();
+
+      resolveRemoteBranchExists(true);
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(mocks.pullCurrentBranch).toHaveBeenCalledWith(
+        "/remote/repo__worktrees/remote-pull",
+        "remote-host",
+        expect.objectContaining({ timeoutMs: 45_000 }),
+      );
+
+      await vi.advanceTimersByTimeAsync(45_000);
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(isSyncComplete).toBe(false);
+
+      resolveRemotePull("Fast-forward\n src/file.ts | 1 +");
+
+      await expect(syncPromise).resolves.toEqual({
+        pulledTasks: [
+          {
+            taskId: "task-remote",
+            taskTitle: "Remote pull",
+            branchName: "feature/remote-pull",
+            worktreePath: "/remote/repo__worktrees/remote-pull",
+            sshHost: "remote-host",
+            status: "updated",
+            summary: "Fast-forward",
+          },
         ],
       });
     } finally {
