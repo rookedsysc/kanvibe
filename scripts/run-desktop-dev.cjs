@@ -5,6 +5,9 @@ const http = require("node:http");
 
 const REQUIRED_NODE_MAJOR = 24;
 const DEV_SERVER_URL = "http://127.0.0.1:5173";
+const VITE_DEV_SERVER_ENV = {
+  CHOKIDAR_USEPOLLING: process.env.CHOKIDAR_USEPOLLING ?? "true",
+};
 
 function getNodeMajor() {
   return Number.parseInt(process.versions.node.split(".")[0] || "0", 10);
@@ -78,7 +81,10 @@ function waitForUrl(url, retries = 80) {
 function spawnViteServer() {
   return spawn("pnpm", ["exec", "vite", "--host", "127.0.0.1", "--port", "5173"], {
     stdio: "inherit",
-    env: process.env,
+    env: {
+      ...process.env,
+      ...VITE_DEV_SERVER_ENV,
+    },
   });
 }
 
