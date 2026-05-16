@@ -52,8 +52,8 @@ const ACTIVE_PULL_TASK_STATUSES = [
   TaskStatus.PENDING,
   TaskStatus.REVIEW,
 ];
-const ACTIVE_TASK_PULL_GIT_TIMEOUT_MS = 45_000;
-const ACTIVE_TASK_PR_GITHUB_CLI_TIMEOUT_MS = 45_000;
+const ACTIVE_TASK_PULL_GIT_TIMEOUT_MS = 2_000;
+const ACTIVE_TASK_PR_GITHUB_CLI_TIMEOUT_MS = 2_000;
 const notifiedPullFailureKeys = new Set<string>();
 
 interface CleanupTaskResourcesOptions {

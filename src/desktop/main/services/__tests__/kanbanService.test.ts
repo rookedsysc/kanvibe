@@ -1112,7 +1112,7 @@ describe("kanbanService.createTask", () => {
     expect(mocks.execFile).toHaveBeenCalledWith(
       "gh",
       ["pr", "list", "--head", "main", "--json", "url", "-q", ".[0].url"],
-      expect.objectContaining({ cwd: "/workspace/repo", timeout: 45_000 }),
+      expect.objectContaining({ cwd: "/workspace/repo", timeout: 2_000 }),
       expect.any(Function),
     );
     expect(mocks.taskRepo.save).toHaveBeenCalledWith(expect.objectContaining({
@@ -1182,7 +1182,7 @@ describe("kanbanService.createTask", () => {
     expect(mocks.execGit).toHaveBeenCalledWith(
       "cd '/remote/repo' && gh pr list --head 'feature/remote-pr' --json url -q '.[0].url'",
       "remote-host",
-      expect.objectContaining({ timeoutMs: 45_000 }),
+      expect.objectContaining({ timeoutMs: 2_000 }),
     );
     expect(mocks.execFile).not.toHaveBeenCalled();
     expect(mocks.taskRepo.save).toHaveBeenCalledWith(expect.objectContaining({
@@ -1213,7 +1213,7 @@ describe("kanbanService.createTask", () => {
     expect(mocks.execGit).toHaveBeenCalledWith(
       "cd '/remote/repo__worktrees/feature-fallback-path' && gh pr list --head 'feature/fallback-path' --json url -q '.[0].url'",
       "remote-host",
-      expect.objectContaining({ timeoutMs: 45_000 }),
+      expect.objectContaining({ timeoutMs: 2_000 }),
     );
     expect(mocks.taskRepo.save).toHaveBeenCalledWith(expect.objectContaining({
       id: "task-7",
@@ -1248,7 +1248,7 @@ describe("kanbanService.createTask", () => {
     expect(mocks.execGit).toHaveBeenCalledWith(
       "cd '/remote/repo' && gh pr list --head 'feature/no-gh' --json url -q '.[0].url'",
       "remote-host",
-      expect.objectContaining({ timeoutMs: 45_000 }),
+      expect.objectContaining({ timeoutMs: 2_000 }),
     );
     expect(mocks.taskRepo.save).not.toHaveBeenCalled();
     expect(mocks.broadcastBoardUpdate).not.toHaveBeenCalled();
@@ -1568,15 +1568,15 @@ describe("kanbanService.createTask", () => {
 
       // Then
       expect(execFileOptions).toEqual([
-        expect.objectContaining({ cwd: "/workspace/repo", timeout: 45_000 }),
+        expect.objectContaining({ cwd: "/workspace/repo", timeout: 2_000 }),
       ]);
 
-      await vi.advanceTimersByTimeAsync(45_000);
+      await vi.advanceTimersByTimeAsync(2_000);
       await vi.advanceTimersByTimeAsync(0);
 
       expect(execFileOptions).toEqual([
-        expect.objectContaining({ cwd: "/workspace/repo", timeout: 45_000 }),
-        expect.objectContaining({ cwd: "/workspace/repo", timeout: 45_000 }),
+        expect.objectContaining({ cwd: "/workspace/repo", timeout: 2_000 }),
+        expect.objectContaining({ cwd: "/workspace/repo", timeout: 2_000 }),
       ]);
       await expect(syncPromise).resolves.toEqual({
         updatedTaskIds: [],
@@ -1653,7 +1653,7 @@ describe("kanbanService.createTask", () => {
       1,
       "/workspace/repo__worktrees/pull-a",
       null,
-      expect.objectContaining({ timeoutMs: 45_000 }),
+      expect.objectContaining({ timeoutMs: 2_000 }),
     );
 
     resolvers[0]("Fast-forward\n src/file.ts | 1 +");
@@ -1664,7 +1664,7 @@ describe("kanbanService.createTask", () => {
       2,
       "/workspace/repo__worktrees/pull-b",
       null,
-      expect.objectContaining({ timeoutMs: 45_000 }),
+      expect.objectContaining({ timeoutMs: 2_000 }),
     );
 
     rejecters[1](new Error("Not possible to fast-forward"));
@@ -1755,14 +1755,14 @@ describe("kanbanService.createTask", () => {
       // Then
       expect(mocks.remoteBranchExists).toHaveBeenCalledTimes(1);
 
-      await vi.advanceTimersByTimeAsync(45_000);
+      await vi.advanceTimersByTimeAsync(2_000);
       await vi.advanceTimersByTimeAsync(0);
 
       expect(mocks.remoteBranchExists).toHaveBeenCalledTimes(2);
       expect(mocks.pullCurrentBranch).toHaveBeenCalledWith(
         "/workspace/repo__worktrees/next",
         null,
-        expect.objectContaining({ timeoutMs: 45_000 }),
+        expect.objectContaining({ timeoutMs: 2_000 }),
       );
       await expect(syncPromise).resolves.toEqual({
         pulledTasks: [
@@ -1824,10 +1824,10 @@ describe("kanbanService.createTask", () => {
         "/remote/repo__worktrees/remote-pull",
         "feature/remote-pull",
         "remote-host",
-        expect.objectContaining({ timeoutMs: 45_000 }),
+        expect.objectContaining({ timeoutMs: 2_000 }),
       );
 
-      await vi.advanceTimersByTimeAsync(45_000);
+      await vi.advanceTimersByTimeAsync(2_000);
       await vi.advanceTimersByTimeAsync(0);
 
       expect(isSyncComplete).toBe(false);
@@ -1839,10 +1839,10 @@ describe("kanbanService.createTask", () => {
       expect(mocks.pullCurrentBranch).toHaveBeenCalledWith(
         "/remote/repo__worktrees/remote-pull",
         "remote-host",
-        expect.objectContaining({ timeoutMs: 45_000 }),
+        expect.objectContaining({ timeoutMs: 2_000 }),
       );
 
-      await vi.advanceTimersByTimeAsync(45_000);
+      await vi.advanceTimersByTimeAsync(2_000);
       await vi.advanceTimersByTimeAsync(0);
 
       expect(isSyncComplete).toBe(false);
@@ -1915,7 +1915,7 @@ describe("kanbanService.createTask", () => {
     expect(mocks.pullCurrentBranch).toHaveBeenCalledWith(
       "/workspace/repo__worktrees/progress",
       null,
-      expect.objectContaining({ timeoutMs: 45_000 }),
+      expect.objectContaining({ timeoutMs: 2_000 }),
     );
     expect(result).toEqual({ pulledTasks: [] });
   });
@@ -1951,7 +1951,7 @@ describe("kanbanService.createTask", () => {
       "/workspace/repo__worktrees/missing-remote",
       "feature/missing-remote",
       null,
-      expect.objectContaining({ timeoutMs: 45_000 }),
+      expect.objectContaining({ timeoutMs: 2_000 }),
     );
     expect(mocks.pullCurrentBranch).not.toHaveBeenCalled();
     expect(result).toEqual({ pulledTasks: [] });
