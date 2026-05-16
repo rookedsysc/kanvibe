@@ -5,15 +5,38 @@ import { Project } from "@/entities/Project";
 import { PaneLayoutConfig } from "@/entities/PaneLayoutConfig";
 import { AppSettings } from "@/entities/AppSettings";
 import { ensureRuntimeDatabaseFile, getRuntimeDatabasePath } from "@/lib/databasePaths";
-import { ensureSqliteDatabaseReady } from "@/lib/sqliteSchema";
+import { InitialSchema1770854400000 } from "@/migrations/1770854400000-InitialSchema";
+import { AddPrUrlToKanbanTasks1770854400001 } from "@/migrations/1770854400001-AddPrUrlToKanbanTasks";
+import { AddIsWorktreeToProjects1770854400002 } from "@/migrations/1770854400002-AddIsWorktreeToProjects";
+import { AddPaneLayoutConfig1771048256887 } from "@/migrations/1771048256887-AddPaneLayoutConfig";
+import { AssignDisplayOrder1771166346785 } from "@/migrations/1771166346785-AssignDisplayOrder";
+import { AddAppSettings1771166907165 } from "@/migrations/1771166907165-AddAppSettings";
+import { AddPendingStatus1771171200000 } from "@/migrations/1771171200000-AddPendingStatus";
+import { RemoveBranchNameUnique1771257600000 } from "@/migrations/1771257600000-RemoveBranchNameUnique";
+import { AddColorIndexToProjects1771343199455 } from "@/migrations/1771343199455-AddColorIndexToProjects";
+import { AddPriorityToKanbanTasks1771344000000 } from "@/migrations/1771344000000-AddPriorityToKanbanTasks";
+import { ReplaceColorIndexWithColor1771388085809 } from "@/migrations/1771388085809-ReplaceColorIndexWithColor";
+import { FillEmptyBaseBranch1771400000000 } from "@/migrations/1771400000000-FillEmptyBaseBranch";
 
-/**
- * TypeORM DataSource 싱글턴.
- * Next.js hot-reload 시 재연결을 방지하기 위해 global 객체에 캐싱한다.
- */
+/** TypeORM DataSource 싱글턴. Vite HMR 시 재연결을 방지하기 위해 globalThis에 캐싱한다. */
 const globalForDb = globalThis as unknown as {
   dataSource: DataSource | undefined;
 };
+
+const MIGRATIONS = [
+  InitialSchema1770854400000,
+  AddPrUrlToKanbanTasks1770854400001,
+  AddIsWorktreeToProjects1770854400002,
+  AddPaneLayoutConfig1771048256887,
+  AssignDisplayOrder1771166346785,
+  AddAppSettings1771166907165,
+  AddPendingStatus1771171200000,
+  RemoveBranchNameUnique1771257600000,
+  AddColorIndexToProjects1771343199455,
+  AddPriorityToKanbanTasks1771344000000,
+  ReplaceColorIndexWithColor1771388085809,
+  FillEmptyBaseBranch1771400000000,
+];
 
 function createDataSource(): DataSource {
   const databasePath = getRuntimeDatabasePath();
@@ -23,6 +46,7 @@ function createDataSource(): DataSource {
     type: "better-sqlite3",
     database: databasePath,
     entities: [KanbanTask, Project, PaneLayoutConfig, AppSettings],
+    migrations: MIGRATIONS,
     synchronize: false,
     logging: shouldLogSql,
     prepareDatabase: (database) => {
@@ -37,11 +61,11 @@ export async function getDataSource(): Promise<DataSource> {
     return globalForDb.dataSource;
   }
 
-  const databasePath = ensureRuntimeDatabaseFile();
-  ensureSqliteDatabaseReady(databasePath);
+  ensureRuntimeDatabaseFile();
 
   const ds = createDataSource();
   await ds.initialize();
+  await ds.runMigrations();
   globalForDb.dataSource = ds;
   return ds;
 }

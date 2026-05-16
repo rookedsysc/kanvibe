@@ -83,7 +83,7 @@ function spawnViteServer() {
 }
 
 function spawnElectron() {
-  return spawn("pnpm", ["exec", "electron", "."], {
+  return spawn("pnpm", ["exec", "electron", "--no-sandbox", "."], {
     stdio: "inherit",
     env: {
       ...process.env,
