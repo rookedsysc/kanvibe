@@ -38,6 +38,70 @@ const MIGRATIONS = [
   FillEmptyBaseBranch1771400000000,
 ];
 
+interface MigrationRecord {
+  name: string;
+  timestamp: number;
+}
+
+function getMigrationRecords(): MigrationRecord[] {
+  return MIGRATIONS.map((MigrationClass) => {
+    const migration = new MigrationClass();
+    const name = migration.name || migration.constructor.name;
+    const timestamp = Number.parseInt(name.slice(-13), 10);
+
+    if (!timestamp || Number.isNaN(timestamp)) {
+      throw new Error(`Invalid migration name: ${name}`);
+    }
+
+    return { name, timestamp };
+  }).sort((a, b) => a.timestamp - b.timestamp);
+}
+
+async function baselineExistingSqliteDatabase(ds: DataSource): Promise<void> {
+  const queryRunner = ds.createQueryRunner();
+
+  try {
+    const hasKanbanTasksTable = await queryRunner.hasTable("kanban_tasks");
+    if (!hasKanbanTasksTable) {
+      return;
+    }
+
+    await queryRunner.startTransaction();
+
+    await queryRunner.query(`
+      CREATE TABLE IF NOT EXISTS "migrations" (
+        "id" integer PRIMARY KEY AUTOINCREMENT NOT NULL,
+        "timestamp" bigint NOT NULL,
+        "name" varchar NOT NULL
+      )
+    `);
+
+    const rows: Array<{ count: number }> = await queryRunner.query(
+      `SELECT COUNT(1) AS "count" FROM "migrations"`,
+    );
+    if (Number(rows[0]?.count ?? 0) > 0) {
+      await queryRunner.commitTransaction();
+      return;
+    }
+
+    for (const migration of getMigrationRecords()) {
+      await queryRunner.query(
+        `INSERT INTO "migrations"("timestamp", "name") VALUES (?, ?)`,
+        [migration.timestamp, migration.name],
+      );
+    }
+
+    await queryRunner.commitTransaction();
+  } catch (error) {
+    if (queryRunner.isTransactionActive) {
+      await queryRunner.rollbackTransaction();
+    }
+    throw error;
+  } finally {
+    await queryRunner.release();
+  }
+}
+
 function createDataSource(): DataSource {
   const databasePath = getRuntimeDatabasePath();
   const shouldLogSql = process.env.TYPEORM_LOGGING === "true";
@@ -65,6 +129,7 @@ export async function getDataSource(): Promise<DataSource> {
 
   const ds = createDataSource();
   await ds.initialize();
+  await baselineExistingSqliteDatabase(ds);
   await ds.runMigrations();
   globalForDb.dataSource = ds;
   return ds;
