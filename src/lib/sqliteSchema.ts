@@ -73,11 +73,6 @@ function ensureBaseTables(database: Database.Database): void {
       updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
 
-    CREATE INDEX IF NOT EXISTS idx_kanban_tasks_status_order
-      ON kanban_tasks(status, display_order, created_at);
-
-    CREATE INDEX IF NOT EXISTS idx_kanban_tasks_project_branch
-      ON kanban_tasks(project_id, branch_name);
   `);
 }
 
@@ -94,6 +89,16 @@ function ensureColumns(database: Database.Database): void {
   ensureColumn(database, "pane_layout_configs", "panes", "panes TEXT NOT NULL DEFAULT '[]'");
 }
 
+function ensureIndexes(database: Database.Database): void {
+  database.exec(`
+    CREATE INDEX IF NOT EXISTS idx_kanban_tasks_status_order
+      ON kanban_tasks(status, display_order, created_at);
+
+    CREATE INDEX IF NOT EXISTS idx_kanban_tasks_project_branch
+      ON kanban_tasks(project_id, branch_name);
+  `);
+}
+
 export function ensureSqliteDatabaseReady(databasePath: string): void {
   fs.mkdirSync(path.dirname(databasePath), { recursive: true });
 
@@ -106,6 +111,7 @@ export function ensureSqliteDatabaseReady(databasePath: string): void {
     const transaction = database.transaction(() => {
       ensureBaseTables(database);
       ensureColumns(database);
+      ensureIndexes(database);
     });
 
     transaction();

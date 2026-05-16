@@ -1,10 +1,12 @@
 import "reflect-metadata";
+import Database from "better-sqlite3";
 import { DataSource, type ObjectLiteral, type Repository } from "typeorm";
 import { KanbanTask } from "@/entities/KanbanTask";
 import { Project } from "@/entities/Project";
 import { PaneLayoutConfig } from "@/entities/PaneLayoutConfig";
 import { AppSettings } from "@/entities/AppSettings";
 import { ensureRuntimeDatabaseFile, getRuntimeDatabasePath } from "@/lib/databasePaths";
+import { ensureSqliteDatabaseReady } from "@/lib/sqliteSchema";
 import { InitialSchema1770854400000 } from "@/migrations/1770854400000-InitialSchema";
 import { AddPrUrlToKanbanTasks1770854400001 } from "@/migrations/1770854400001-AddPrUrlToKanbanTasks";
 import { AddIsWorktreeToProjects1770854400002 } from "@/migrations/1770854400002-AddIsWorktreeToProjects";
@@ -55,6 +57,27 @@ function getMigrationRecords(): MigrationRecord[] {
 
     return { name, timestamp };
   }).sort((a, b) => a.timestamp - b.timestamp);
+}
+
+function databaseHasTable(databasePath: string, tableName: string): boolean {
+  const database = new Database(databasePath, { readonly: true, fileMustExist: true });
+
+  try {
+    const row = database
+      .prepare(
+        `
+          SELECT 1 AS "exists"
+          FROM sqlite_master
+          WHERE type = 'table' AND name = ?
+          LIMIT 1
+        `,
+      )
+      .get(tableName);
+
+    return row !== undefined;
+  } finally {
+    database.close();
+  }
 }
 
 async function baselineExistingSqliteDatabase(ds: DataSource): Promise<void> {
@@ -125,7 +148,10 @@ export async function getDataSource(): Promise<DataSource> {
     return globalForDb.dataSource;
   }
 
-  ensureRuntimeDatabaseFile();
+  const databasePath = ensureRuntimeDatabaseFile();
+  if (databaseHasTable(databasePath, "kanban_tasks")) {
+    ensureSqliteDatabaseReady(databasePath);
+  }
 
   const ds = createDataSource();
   await ds.initialize();

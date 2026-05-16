@@ -14,7 +14,10 @@ export class AssignDisplayOrder1771166346785 implements MigrationInterface {
         SELECT COUNT(*)
         FROM kanban_tasks t2
         WHERE t2.status = kanban_tasks.status
-          AND t2.created_at < kanban_tasks.created_at
+          AND (
+            t2.created_at < kanban_tasks.created_at
+            OR (t2.created_at = kanban_tasks.created_at AND t2.id < kanban_tasks.id)
+          )
       )
       WHERE display_order = 0
     `);
