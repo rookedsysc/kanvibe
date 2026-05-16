@@ -51,15 +51,9 @@ export function startBackgroundTaskSync() {
     try {
       const isEnabled = await getBackgroundSyncEnabled();
       if (isEnabled) {
-        const [
-          worktreeSyncResult,
-          prSyncResult,
-          pullSyncResult,
-        ] = await Promise.all([
-          syncRegisteredProjectWorktrees(),
-          syncActiveTaskPullRequests(emittedMergeEventKeys),
-          syncActiveTaskPulls(),
-        ]);
+        const worktreeSyncResult = await syncRegisteredProjectWorktrees();
+        const prSyncResult = await syncActiveTaskPullRequests(emittedMergeEventKeys);
+        const pullSyncResult = await syncActiveTaskPulls();
         const failures: BackgroundSyncFailurePayload[] = [
           ...worktreeSyncResult.errors.map((reason) => ({
             operation: "worktree-sync" as const,

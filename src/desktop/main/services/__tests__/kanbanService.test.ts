@@ -1439,25 +1439,25 @@ describe("kanbanService.createTask", () => {
     });
   });
 
-  it("active task PR sync는 task별 GitHub CLI 조회를 병렬로 시작한다", async () => {
+  it("active task PR sync는 task별 GitHub CLI 조회를 직렬로 실행한다", async () => {
     // Given
     mocks.taskRepo.find.mockResolvedValue([
       {
-        id: "task-parallel-a",
-        title: "Parallel PR A",
+        id: "task-serial-a",
+        title: "Serial PR A",
         projectId: "project-1",
-        branchName: "feature/parallel-a",
-        worktreePath: "/workspace/repo__worktrees/parallel-a",
+        branchName: "feature/serial-a",
+        worktreePath: "/workspace/repo__worktrees/serial-a",
         sshHost: null,
         prUrl: null,
         status: "review",
       },
       {
-        id: "task-parallel-b",
-        title: "Parallel PR B",
+        id: "task-serial-b",
+        title: "Serial PR B",
         projectId: "project-1",
-        branchName: "feature/parallel-b",
-        worktreePath: "/workspace/repo__worktrees/parallel-b",
+        branchName: "feature/serial-b",
+        worktreePath: "/workspace/repo__worktrees/serial-b",
         sshHost: null,
         prUrl: null,
         status: "review",
@@ -1482,20 +1482,28 @@ describe("kanbanService.createTask", () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     // Then
+    expect(callbacks).toHaveLength(1);
+
+    callbacks[0](null, JSON.stringify([{
+      url: null,
+      state: null,
+      mergedAt: null,
+      updatedAt: "2026-05-02T01:00:00Z",
+    }]), "");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
     expect(callbacks).toHaveLength(2);
 
-    callbacks.forEach((callback) => {
-      callback(null, JSON.stringify([{
-        url: null,
-        state: null,
-        mergedAt: null,
-        updatedAt: "2026-05-02T01:00:00Z",
-      }]), "");
-    });
+    callbacks[1](null, JSON.stringify([{
+      url: null,
+      state: null,
+      mergedAt: null,
+      updatedAt: "2026-05-02T01:00:00Z",
+    }]), "");
     await syncPromise;
   });
 
-  it("active task pull sync는 default branch task를 제외하고 task별 pull을 병렬로 실행한다", async () => {
+  it("active task pull sync는 default branch task를 제외하고 task별 pull을 직렬로 실행한다", async () => {
     // Given
     mocks.taskRepo.find.mockResolvedValue([
       {
@@ -1546,11 +1554,15 @@ describe("kanbanService.createTask", () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     // Then
-    expect(mocks.pullCurrentBranch).toHaveBeenCalledTimes(2);
+    expect(mocks.pullCurrentBranch).toHaveBeenCalledTimes(1);
     expect(mocks.pullCurrentBranch).toHaveBeenNthCalledWith(1, "/workspace/repo__worktrees/pull-a", null);
-    expect(mocks.pullCurrentBranch).toHaveBeenNthCalledWith(2, "/workspace/repo__worktrees/pull-b", null);
 
     resolvers[0]("Fast-forward\n src/file.ts | 1 +");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(mocks.pullCurrentBranch).toHaveBeenCalledTimes(2);
+    expect(mocks.pullCurrentBranch).toHaveBeenNthCalledWith(2, "/workspace/repo__worktrees/pull-b", null);
+
     rejecters[1](new Error("Not possible to fast-forward"));
 
     await expect(syncPromise).resolves.toEqual({

@@ -1036,9 +1036,9 @@ export async function syncActiveTaskPullRequests(
   };
   const failures: BackgroundSyncFailurePayload[] = [];
 
-  const taskResults = await Promise.all(tasks.map(async (task) => {
+  for (const task of tasks) {
     if (!task.branchName) {
-      return null;
+      continue;
     }
 
     try {
@@ -1047,14 +1047,14 @@ export async function syncActiveTaskPullRequests(
         : null;
 
       if (isDefaultBranchTask(task, project)) {
-        return null;
+        continue;
       }
 
       const { cwd, sshHost } = await resolveTaskGitContext(task, project);
       const prInfo = await getPrInfoFromGitHubCli(task.branchName, cwd, sshHost);
 
       if (!prInfo?.url) {
-        return null;
+        continue;
       }
 
       const updatedTaskIds: string[] = [];
@@ -1069,22 +1069,22 @@ export async function syncActiveTaskPullRequests(
 
       if (prInfo.state === "MERGED" && prInfo.mergedAt) {
         const mergeEventKey = buildMergedPullRequestEventKey(task.id, prInfo.url, prInfo.mergedAt);
-        if (emittedMergeEventKeys.has(mergeEventKey)) {
-          return { updatedTaskIds, mergeEventKeys, mergedPullRequests };
+        if (!emittedMergeEventKeys.has(mergeEventKey)) {
+          emittedMergeEventKeys.add(mergeEventKey);
+          mergeEventKeys.push(mergeEventKey);
+          mergedPullRequests.push({
+            taskId: task.id,
+            taskTitle: task.title,
+            branchName: task.branchName,
+            prUrl: prInfo.url,
+            mergedAt: prInfo.mergedAt,
+          });
         }
-
-        emittedMergeEventKeys.add(mergeEventKey);
-        mergeEventKeys.push(mergeEventKey);
-        mergedPullRequests.push({
-          taskId: task.id,
-          taskTitle: task.title,
-          branchName: task.branchName,
-          prUrl: prInfo.url,
-          mergedAt: prInfo.mergedAt,
-        });
       }
 
-      return { updatedTaskIds, mergeEventKeys, mergedPullRequests };
+      result.updatedTaskIds.push(...updatedTaskIds);
+      result.mergeEventKeys.push(...mergeEventKeys);
+      result.mergedPullRequests.push(...mergedPullRequests);
     } catch (error) {
       failures.push(buildPullRequestSyncFailure(task, error));
       console.error("PR 상태 동기화 실패:", {
@@ -1092,18 +1092,7 @@ export async function syncActiveTaskPullRequests(
         branchName: task.branchName,
         error: getErrorMessage(error),
       });
-      return null;
     }
-  }));
-
-  for (const taskResult of taskResults) {
-    if (!taskResult) {
-      continue;
-    }
-
-    result.updatedTaskIds.push(...taskResult.updatedTaskIds);
-    result.mergeEventKeys.push(...taskResult.mergeEventKeys);
-    result.mergedPullRequests.push(...taskResult.mergedPullRequests);
   }
 
   if (result.mergedPullRequests.length > 0) {
@@ -1127,13 +1116,15 @@ export async function syncActiveTaskPulls(): Promise<ActiveTaskPullSyncResult> {
     order: { updatedAt: "ASC" },
   });
 
-  const pulledTasks = await Promise.all(tasks.map(async (task): Promise<TaskPullSyncPayload | null> => {
+  const pulledTasks: TaskPullSyncPayload[] = [];
+
+  for (const task of tasks) {
     if (task.status === TaskStatus.DONE) {
-      return null;
+      continue;
     }
 
     if (!task.branchName || !task.worktreePath) {
-      return null;
+      continue;
     }
 
     const project = task.projectId
@@ -1141,7 +1132,7 @@ export async function syncActiveTaskPulls(): Promise<ActiveTaskPullSyncResult> {
       : null;
 
     if (isDefaultBranchTask(task, project)) {
-      return null;
+      continue;
     }
 
     const sshHost = task.sshHost || project?.sshHost || null;
@@ -1151,16 +1142,16 @@ export async function syncActiveTaskPulls(): Promise<ActiveTaskPullSyncResult> {
       const hasRemoteBranch = await remoteBranchExists(task.worktreePath, task.branchName, sshHost);
       if (!hasRemoteBranch) {
         notifiedPullFailureKeys.delete(pullFailureKey);
-        return null;
+        continue;
       }
 
       const output = await pullCurrentBranch(task.worktreePath, sshHost);
       notifiedPullFailureKeys.delete(pullFailureKey);
       if (isPullNoop(output)) {
-        return null;
+        continue;
       }
 
-      return {
+      pulledTasks.push({
         taskId: task.id,
         taskTitle: task.title,
         branchName: task.branchName,
@@ -1168,19 +1159,19 @@ export async function syncActiveTaskPulls(): Promise<ActiveTaskPullSyncResult> {
         sshHost,
         status: "updated",
         summary: summarizePullOutput(output),
-      };
+      });
     } catch (error) {
       if (isMissingRemoteBranchPullError(error)) {
         notifiedPullFailureKeys.delete(pullFailureKey);
-        return null;
+        continue;
       }
 
       if (notifiedPullFailureKeys.has(pullFailureKey)) {
-        return null;
+        continue;
       }
 
       notifiedPullFailureKeys.add(pullFailureKey);
-      return {
+      pulledTasks.push({
         taskId: task.id,
         taskTitle: task.title,
         branchName: task.branchName,
@@ -1188,11 +1179,11 @@ export async function syncActiveTaskPulls(): Promise<ActiveTaskPullSyncResult> {
         sshHost,
         status: "failed",
         summary: getErrorMessage(error),
-      };
+      });
     }
-  }));
+  }
 
   return {
-    pulledTasks: pulledTasks.filter((task): task is TaskPullSyncPayload => task !== null),
+    pulledTasks,
   };
 }

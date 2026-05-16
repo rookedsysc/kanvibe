@@ -31,6 +31,12 @@ vi.mock("@/desktop/main/services/appSettingsService", () => ({
   registerBackgroundSyncEnabledChangedCallback: vi.fn(),
 }));
 
+async function flushBackgroundSyncCycle() {
+  for (let i = 0; i < 5; i += 1) {
+    await vi.advanceTimersByTimeAsync(0);
+  }
+}
+
 describe("backgroundTaskSyncService", () => {
   beforeEach(() => {
     vi.resetModules();
@@ -150,14 +156,82 @@ describe("backgroundTaskSyncService", () => {
     await vi.advanceTimersByTimeAsync(20_000);
 
     expect(mocks.syncRegisteredProjectWorktrees).toHaveBeenCalledTimes(1);
-    expect(mocks.syncActiveTaskPullRequests).toHaveBeenCalledTimes(1);
-    expect(mocks.syncActiveTaskPulls).toHaveBeenCalledTimes(1);
+    expect(mocks.syncActiveTaskPullRequests).not.toHaveBeenCalled();
+    expect(mocks.syncActiveTaskPulls).not.toHaveBeenCalled();
 
     await vi.advanceTimersByTimeAsync(10 * 60_000);
 
     expect(mocks.syncRegisteredProjectWorktrees).toHaveBeenCalledTimes(1);
+    expect(mocks.syncActiveTaskPullRequests).not.toHaveBeenCalled();
+    expect(mocks.syncActiveTaskPulls).not.toHaveBeenCalled();
+
+    resolveWorktreeSync({
+      worktreeTasks: [],
+      registeredWorktrees: [],
+      hooksSetup: [],
+      errors: [],
+      changed: false,
+    });
+    await flushBackgroundSyncCycle();
+
     expect(mocks.syncActiveTaskPullRequests).toHaveBeenCalledTimes(1);
     expect(mocks.syncActiveTaskPulls).toHaveBeenCalledTimes(1);
+
+    await vi.advanceTimersByTimeAsync(10 * 60_000);
+    await flushBackgroundSyncCycle();
+
+    expect(mocks.syncRegisteredProjectWorktrees).toHaveBeenCalledTimes(2);
+    expect(mocks.syncActiveTaskPullRequests).toHaveBeenCalledTimes(2);
+    expect(mocks.syncActiveTaskPulls).toHaveBeenCalledTimes(2);
+
+    stop();
+  });
+
+  it("background task sync cycle은 고비용 sync 작업을 직렬로 실행한다", async () => {
+    const calls: string[] = [];
+    let resolveWorktreeSync: (result: {
+      worktreeTasks: string[];
+      registeredWorktrees: never[];
+      hooksSetup: never[];
+      errors: never[];
+      changed: boolean;
+    }) => void = () => {};
+    let resolvePrSync: (result: {
+      updatedTaskIds: string[];
+      mergeEventKeys: string[];
+      mergedPullRequests: never[];
+    }) => void = () => {};
+
+    mocks.syncRegisteredProjectWorktrees.mockImplementationOnce(
+      () => new Promise((resolve) => {
+        calls.push("worktree:start");
+        resolveWorktreeSync = (result) => {
+          calls.push("worktree:end");
+          resolve(result);
+        };
+      }),
+    );
+    mocks.syncActiveTaskPullRequests.mockImplementationOnce(
+      () => new Promise((resolve) => {
+        calls.push("pr:start");
+        resolvePrSync = (result) => {
+          calls.push("pr:end");
+          resolve(result);
+        };
+      }),
+    );
+    mocks.syncActiveTaskPulls.mockImplementationOnce(async () => {
+      calls.push("pull:start");
+      return { pulledTasks: [] };
+    });
+
+    const { startBackgroundTaskSync } = await import("@/desktop/main/services/backgroundTaskSyncService");
+
+    const stop = startBackgroundTaskSync();
+    await vi.advanceTimersByTimeAsync(20_000);
+    await flushBackgroundSyncCycle();
+
+    expect(calls).toEqual(["worktree:start"]);
 
     resolveWorktreeSync({
       worktreeTasks: [],
@@ -167,11 +241,17 @@ describe("backgroundTaskSyncService", () => {
       changed: false,
     });
     await vi.advanceTimersByTimeAsync(0);
-    await vi.advanceTimersByTimeAsync(10 * 60_000);
 
-    expect(mocks.syncRegisteredProjectWorktrees).toHaveBeenCalledTimes(2);
-    expect(mocks.syncActiveTaskPullRequests).toHaveBeenCalledTimes(2);
-    expect(mocks.syncActiveTaskPulls).toHaveBeenCalledTimes(2);
+    expect(calls).toEqual(["worktree:start", "worktree:end", "pr:start"]);
+
+    resolvePrSync({
+      updatedTaskIds: [],
+      mergeEventKeys: [],
+      mergedPullRequests: [],
+    });
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(calls).toEqual(["worktree:start", "worktree:end", "pr:start", "pr:end", "pull:start"]);
 
     stop();
   });
@@ -181,6 +261,7 @@ describe("backgroundTaskSyncService", () => {
 
     const stop = startBackgroundTaskSync();
     await vi.advanceTimersByTimeAsync(20_000);
+    await flushBackgroundSyncCycle();
 
     expect(mocks.syncRegisteredProjectWorktrees).toHaveBeenCalledTimes(1);
     expect(mocks.syncActiveTaskPullRequests).toHaveBeenCalledTimes(1);
@@ -193,6 +274,7 @@ describe("backgroundTaskSyncService", () => {
     expect(mocks.syncActiveTaskPulls).toHaveBeenCalledTimes(1);
 
     await vi.advanceTimersByTimeAsync(1);
+    await flushBackgroundSyncCycle();
 
     expect(mocks.syncRegisteredProjectWorktrees).toHaveBeenCalledTimes(2);
     expect(mocks.syncActiveTaskPullRequests).toHaveBeenCalledTimes(2);
@@ -220,6 +302,7 @@ describe("backgroundTaskSyncService", () => {
 
     const stop = startBackgroundTaskSync();
     await vi.advanceTimersByTimeAsync(20_000);
+    await flushBackgroundSyncCycle();
 
     expect(mocks.broadcastBackgroundSyncReviewNeeded).toHaveBeenCalledWith({
       registeredWorktrees: [],
