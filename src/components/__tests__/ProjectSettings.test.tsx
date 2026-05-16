@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import ProjectSettings from "../ProjectSettings";
 import { SessionType } from "@/entities/KanbanTask";
 import type { Project } from "@/entities/Project";
@@ -10,6 +11,8 @@ const mockSetDefaultSessionType = vi.fn().mockResolvedValue(undefined);
 const mockSetNotificationEnabled = vi.fn().mockResolvedValue(undefined);
 const mockSetNotificationStatuses = vi.fn().mockResolvedValue(undefined);
 const mockSetThemePreference = vi.fn().mockResolvedValue(undefined);
+const mockSetBackgroundSyncEnabled = vi.fn().mockResolvedValue(undefined);
+const mockSetBackgroundSyncIntervalMs = vi.fn().mockResolvedValue(undefined);
 
 vi.mock("next-intl", () => ({
   useTranslations: (namespace?: string) => (key: string, values?: Record<string, string>) => {
@@ -57,8 +60,8 @@ vi.mock("@/desktop/renderer/actions/appSettings", () => ({
   setNotificationStatuses: (...args: unknown[]) => mockSetNotificationStatuses(...args),
   setDefaultSessionType: (...args: unknown[]) => mockSetDefaultSessionType(...args),
   setThemePreference: (...args: unknown[]) => mockSetThemePreference(...args),
-  setBackgroundSyncEnabled: vi.fn().mockResolvedValue(undefined),
-  setBackgroundSyncIntervalMs: vi.fn().mockResolvedValue(undefined),
+  setBackgroundSyncEnabled: (...args: unknown[]) => mockSetBackgroundSyncEnabled(...args),
+  setBackgroundSyncIntervalMs: (...args: unknown[]) => mockSetBackgroundSyncIntervalMs(...args),
 }));
 
 function createProject(): Project {
@@ -77,6 +80,8 @@ function createProject(): Project {
 describe("ProjectSettings", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockSetBackgroundSyncEnabled.mockResolvedValue(undefined);
+    mockSetBackgroundSyncIntervalMs.mockResolvedValue(undefined);
     delete window.kanvibeDesktop;
     document.documentElement.removeAttribute("data-theme");
     document.documentElement.removeAttribute("data-theme-preference");
@@ -318,6 +323,78 @@ describe("ProjectSettings", () => {
       expect(mockSetNotificationStatuses).toHaveBeenCalledWith(["progress", "review"]);
     });
     expect(screen.getByText("pending").className).toContain("bg-bg-page");
+  });
+
+  it("background sync 주기 입력은 기존 한 자리 값을 지운 뒤 두 자리 분 값을 입력할 수 있다", async () => {
+    // Given
+    const user = userEvent.setup();
+
+    render(
+      <ProjectSettings
+        isOpen
+        onClose={vi.fn()}
+        projects={[createProject()]}
+        sshHosts={[]}
+        sidebarDefaultCollapsed={false}
+        defaultSessionType={SessionType.TMUX}
+        notificationSettings={{ isEnabled: true, enabledStatuses: ["progress", "pending", "review"] }}
+        backgroundSyncSettings={{ isEnabled: true, intervalMs: 1 * 60_000 }}
+      />,
+    );
+
+    const intervalInput = screen.getByRole("spinbutton") as HTMLInputElement;
+
+    // When
+    await user.clear(intervalInput);
+    await user.type(intervalInput, "10");
+
+    // Then
+    expect(intervalInput.value).toBe("10");
+    await waitFor(() => {
+      expect(mockSetBackgroundSyncIntervalMs).toHaveBeenLastCalledWith(10 * 60_000);
+    });
+  });
+
+  it("background sync 주기 저장은 이전 저장이 끝난 뒤 최신 값을 저장한다", async () => {
+    // Given
+    const user = userEvent.setup();
+    let resolveFirstSave: () => void = () => {};
+    mockSetBackgroundSyncIntervalMs
+      .mockImplementationOnce(() => new Promise<void>((resolve) => {
+        resolveFirstSave = resolve;
+      }))
+      .mockResolvedValue(undefined);
+
+    render(
+      <ProjectSettings
+        isOpen
+        onClose={vi.fn()}
+        projects={[createProject()]}
+        sshHosts={[]}
+        sidebarDefaultCollapsed={false}
+        defaultSessionType={SessionType.TMUX}
+        notificationSettings={{ isEnabled: true, enabledStatuses: ["progress", "pending", "review"] }}
+        backgroundSyncSettings={{ isEnabled: true, intervalMs: 1 * 60_000 }}
+      />,
+    );
+
+    const intervalInput = screen.getByRole("spinbutton") as HTMLInputElement;
+
+    // When
+    await user.clear(intervalInput);
+    await user.type(intervalInput, "20");
+
+    // Then
+    expect(intervalInput.value).toBe("20");
+    expect(mockSetBackgroundSyncIntervalMs).toHaveBeenCalledTimes(1);
+    expect(mockSetBackgroundSyncIntervalMs).toHaveBeenCalledWith(2 * 60_000);
+
+    resolveFirstSave();
+
+    await waitFor(() => {
+      expect(mockSetBackgroundSyncIntervalMs).toHaveBeenCalledTimes(2);
+    });
+    expect(mockSetBackgroundSyncIntervalMs).toHaveBeenLastCalledWith(20 * 60_000);
   });
 
 });

@@ -50,6 +50,7 @@
       "pullFailed": "Pull 실패",
       "failureSection": "Sync 실패",
       "pullRequestFailure": "Pull Request 조회 실패",
+      "taskPullFailure": "Task pull 실패",
       "worktreeFailure": "Worktree sync 실패",
       "emptyMerged": "이번 검토에서 Done으로 옮길 merge PR이 없습니다.",
       "emptyRegistered": "이번 검토에서 새로 등록된 worktree가 없습니다."

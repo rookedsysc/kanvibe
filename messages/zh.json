@@ -49,6 +49,7 @@
       "pullFailed": "Pull 失败",
       "failureSection": "同步失败",
       "pullRequestFailure": "Pull Request 检查失败",
+      "taskPullFailure": "Task pull 失败",
       "worktreeFailure": "Worktree 同步失败",
       "emptyMerged": "本次检查中没有需要移动到 Done 的已合并 PR 任务。",
       "emptyRegistered": "本次检查中没有新注册的 worktree。"

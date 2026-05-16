@@ -56,7 +56,7 @@ export interface BackgroundSyncPulledTaskPayload {
 }
 
 export interface BackgroundSyncFailurePayload {
-  operation: "worktree-sync" | "pull-request-sync";
+  operation: "worktree-sync" | "pull-request-sync" | "task-pull-sync";
   target: string;
   reason: string;
   taskId?: string;

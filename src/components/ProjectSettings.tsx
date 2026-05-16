@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { useTranslations } from "next-intl";
 import {
   deleteProject,
@@ -58,6 +58,31 @@ function areNotificationSettingsEqual(
     && left.enabledStatuses.every((status, index) => status === right.enabledStatuses[index]);
 }
 
+function areBackgroundSyncSettingsEqual(
+  left: { isEnabled: boolean; intervalMs: number },
+  right: { isEnabled: boolean; intervalMs: number },
+) {
+  return left.isEnabled === right.isEnabled && left.intervalMs === right.intervalMs;
+}
+
+function formatSyncIntervalMinutes(intervalMs: number) {
+  return String(Math.round(intervalMs / 60_000));
+}
+
+function parseSyncIntervalMinutes(value: string): number | null {
+  const normalizedValue = value.trim();
+  if (!/^\d+$/.test(normalizedValue)) {
+    return null;
+  }
+
+  const minutes = Number(normalizedValue);
+  if (!Number.isSafeInteger(minutes) || minutes < MIN_SYNC_INTERVAL_MINUTES || minutes > MAX_SYNC_INTERVAL_MINUTES) {
+    return null;
+  }
+
+  return minutes;
+}
+
 export default function ProjectSettings({
   isOpen,
   onClose,
@@ -87,8 +112,22 @@ export default function ProjectSettings({
   const [localThemePreference, setLocalThemePreference] = useState<ThemePreference>(themePreference);
   const [localSidebarDefaultCollapsed, setLocalSidebarDefaultCollapsed] = useState(sidebarDefaultCollapsed);
   const [localBackgroundSyncSettings, setLocalBackgroundSyncSettings] = useState(backgroundSyncSettings);
+  const [pendingBackgroundSyncSettings, setPendingBackgroundSyncSettings] = useState<typeof backgroundSyncSettings | null>(null);
+  const [backgroundSyncIntervalInputValue, setBackgroundSyncIntervalInputValue] = useState(
+    () => formatSyncIntervalMinutes(backgroundSyncSettings.intervalMs),
+  );
+  const backgroundSyncIntervalSaveQueueRef = useRef<Promise<void>>(Promise.resolve());
   const [shouldUseMacTitlebarLayout, setShouldUseMacTitlebarLayout] = useState(false);
   const isPage = variant === "page";
+
+  function saveBackgroundSyncIntervalMs(nextIntervalMs: number) {
+    const nextSave = backgroundSyncIntervalSaveQueueRef.current
+      .catch(() => undefined)
+      .then(() => setBackgroundSyncIntervalMs(nextIntervalMs));
+
+    backgroundSyncIntervalSaveQueueRef.current = nextSave;
+    return nextSave;
+  }
 
   useEffect(() => {
     setSelectedDefaultSessionType(defaultSessionType);
@@ -99,8 +138,14 @@ export default function ProjectSettings({
   }, [sidebarDefaultCollapsed]);
 
   useEffect(() => {
+    if (pendingBackgroundSyncSettings && !areBackgroundSyncSettingsEqual(backgroundSyncSettings, pendingBackgroundSyncSettings)) {
+      return;
+    }
+
     setLocalBackgroundSyncSettings(backgroundSyncSettings);
-  }, [backgroundSyncSettings]);
+    setPendingBackgroundSyncSettings(null);
+    setBackgroundSyncIntervalInputValue(formatSyncIntervalMinutes(backgroundSyncSettings.intervalMs));
+  }, [backgroundSyncSettings, pendingBackgroundSyncSettings]);
 
   useEffect(() => {
     setLocalThemePreference(themePreference);
@@ -435,7 +480,9 @@ export default function ProjectSettings({
               aria-checked={localBackgroundSyncSettings.isEnabled}
               onClick={() => {
                 const nextEnabled = !localBackgroundSyncSettings.isEnabled;
-                setLocalBackgroundSyncSettings((prev) => ({ ...prev, isEnabled: nextEnabled }));
+                const nextSettings = { ...localBackgroundSyncSettings, isEnabled: nextEnabled };
+                setLocalBackgroundSyncSettings(nextSettings);
+                setPendingBackgroundSyncSettings(nextSettings);
                 startTransition(async () => {
                   await setBackgroundSyncEnabled(nextEnabled);
                 });
@@ -464,16 +511,31 @@ export default function ProjectSettings({
                 type="number"
                 min={MIN_SYNC_INTERVAL_MINUTES}
                 max={MAX_SYNC_INTERVAL_MINUTES}
-                value={Math.round(localBackgroundSyncSettings.intervalMs / 60_000)}
-                disabled={isPending || !localBackgroundSyncSettings.isEnabled}
+                step={1}
+                inputMode="numeric"
+                value={backgroundSyncIntervalInputValue}
+                disabled={!localBackgroundSyncSettings.isEnabled}
                 onChange={(e) => {
-                  const minutes = Number(e.target.value);
-                  if (!Number.isInteger(minutes) || minutes < MIN_SYNC_INTERVAL_MINUTES || minutes > MAX_SYNC_INTERVAL_MINUTES) return;
+                  const nextInputValue = e.target.value;
+                  setBackgroundSyncIntervalInputValue(nextInputValue);
+
+                  const minutes = parseSyncIntervalMinutes(nextInputValue);
+                  if (minutes === null) return;
+
                   const nextIntervalMs = minutes * 60_000;
-                  setLocalBackgroundSyncSettings((prev) => ({ ...prev, intervalMs: nextIntervalMs }));
+                  if (nextIntervalMs === localBackgroundSyncSettings.intervalMs) return;
+
+                  const nextSettings = { ...localBackgroundSyncSettings, intervalMs: nextIntervalMs };
+                  setLocalBackgroundSyncSettings(nextSettings);
+                  setPendingBackgroundSyncSettings(nextSettings);
                   startTransition(async () => {
-                    await setBackgroundSyncIntervalMs(nextIntervalMs);
+                    await saveBackgroundSyncIntervalMs(nextIntervalMs);
                   });
+                }}
+                onBlur={() => {
+                  if (parseSyncIntervalMinutes(backgroundSyncIntervalInputValue) === null) {
+                    setBackgroundSyncIntervalInputValue(formatSyncIntervalMinutes(localBackgroundSyncSettings.intervalMs));
+                  }
                 }}
                 className="w-20 px-2 py-1 text-sm bg-bg-page border border-border-default rounded-md text-text-primary text-right focus:outline-none focus:border-brand-primary transition-colors disabled:opacity-50"
               />

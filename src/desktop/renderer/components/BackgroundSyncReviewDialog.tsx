@@ -30,6 +30,18 @@ function getBackgroundSyncReviewPayload(notification: AppNotification | null | u
   return notification.action.payload;
 }
 
+function getBackgroundSyncFailureLabelKey(operation: BackgroundSyncFailurePayload["operation"]) {
+  if (operation === "pull-request-sync") {
+    return "pullRequestFailure";
+  }
+
+  if (operation === "task-pull-sync") {
+    return "taskPullFailure";
+  }
+
+  return "worktreeFailure";
+}
+
 export default function BackgroundSyncReviewDialog() {
   const tc = useTranslations("common");
   const tr = useTranslations("common.backgroundSyncReview");
@@ -267,7 +279,7 @@ export default function BackgroundSyncReviewDialog() {
                           </span>
                         ) : null}
                         <span className="rounded-full bg-red-50 px-2 py-0.5 text-[11px] text-status-error">
-                          {tr(failure.operation === "pull-request-sync" ? "pullRequestFailure" : "worktreeFailure")}
+                          {tr(getBackgroundSyncFailureLabelKey(failure.operation))}
                         </span>
                       </div>
                     </div>
