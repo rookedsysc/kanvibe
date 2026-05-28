@@ -669,19 +669,10 @@ describe("kanbanService.createTask", () => {
     expect(mocks.broadcastBoardUpdate).toHaveBeenCalledTimes(1);
   });
 
-  it("원격 stale task는 안전하지 않은 worktree/브랜치 삭제를 건너뛴다", async () => {
+  it("원격 stale task 삭제는 안전하지 않은 worktree/브랜치 정리 상태에서 task 레코드를 삭제하지 않는다", async () => {
     // Given
     const consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-    mocks.projectRepo.findOneBy.mockResolvedValue({
-      id: "project-1",
-      repoPath: "/remote/repo",
-      sshHost: "remote-host",
-    });
-
-    const { cleanupTaskResources } = await import("@/desktop/main/services/kanbanService");
-
-    // When
-    await cleanupTaskResources({
+    const task = {
       id: "task-1",
       projectId: "project-1",
       branchName: "dev",
@@ -689,22 +680,27 @@ describe("kanbanService.createTask", () => {
       sshHost: "remote-host",
       sessionType: null,
       sessionName: null,
-    } as never);
+    };
+    mocks.taskRepo.findOneBy.mockResolvedValue(task);
+    mocks.projectRepo.findOneBy.mockResolvedValue({
+      id: "project-1",
+      repoPath: "/remote/repo",
+      sshHost: "remote-host",
+    });
 
-    // Then
+    const { deleteTask } = await import("@/desktop/main/services/kanbanService");
+
+    // When & Then
+    await expect(deleteTask("task-1")).rejects.toThrow("task 경로와 project 경로가 일치하지 않아");
     expect(mocks.removeWorktreeAndBranch).not.toHaveBeenCalled();
+    expect(mocks.taskRepo.remove).not.toHaveBeenCalled();
     expect(consoleWarnSpy).toHaveBeenCalled();
   });
 
-  it("연결된 프로젝트를 찾을 수 없는 원격 stale task는 세션만 정리한다", async () => {
+  it("연결된 프로젝트를 찾을 수 없는 원격 stale task 삭제는 세션 정리 후 task 레코드를 삭제하지 않는다", async () => {
     // Given
     const consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-    mocks.projectRepo.findOneBy.mockResolvedValue(null);
-
-    const { cleanupTaskResources } = await import("@/desktop/main/services/kanbanService");
-
-    // When
-    await cleanupTaskResources({
+    const task = {
       id: "task-2",
       projectId: "missing-project",
       branchName: "main",
@@ -712,27 +708,30 @@ describe("kanbanService.createTask", () => {
       sshHost: "roky-home",
       sessionType: "tmux" as never,
       sessionName: "prompt-main",
-    } as never);
+    };
+    mocks.taskRepo.findOneBy.mockResolvedValue(task);
+    mocks.projectRepo.findOneBy.mockResolvedValue(null);
 
-    // Then
+    const { deleteTask } = await import("@/desktop/main/services/kanbanService");
+
+    // When & Then
+    await expect(deleteTask("task-2")).rejects.toThrow("연결된 프로젝트를 찾을 수 없어");
     expect(mocks.detachSession).toHaveBeenCalledWith("task-2", "cleanup-task-resources");
     expect(mocks.removeSessionOnly).toHaveBeenCalledWith(
       "tmux",
       "prompt-main",
       "roky-home",
+      { throwOnError: true },
     );
     expect(mocks.removeWorktreeAndBranch).not.toHaveBeenCalled();
+    expect(mocks.taskRepo.remove).not.toHaveBeenCalled();
     expect(consoleWarnSpy).not.toHaveBeenCalled();
   });
 
-  it("프로젝트가 삭제되어 orphan 상태가 된 원격 stale task도 세션만 정리한다", async () => {
+  it("프로젝트가 삭제되어 orphan 상태가 된 원격 stale task 삭제도 task 레코드를 삭제하지 않는다", async () => {
     // Given
     const consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-
-    const { cleanupTaskResources } = await import("@/desktop/main/services/kanbanService");
-
-    // When
-    await cleanupTaskResources({
+    const task = {
       id: "task-3",
       projectId: null,
       branchName: "dev",
@@ -740,27 +739,33 @@ describe("kanbanService.createTask", () => {
       sshHost: "roky-home",
       sessionType: "tmux" as never,
       sessionName: "techtaurant-be-dev",
-    } as never);
+    };
+    mocks.taskRepo.findOneBy.mockResolvedValue(task);
 
-    // Then
+    const { deleteTask } = await import("@/desktop/main/services/kanbanService");
+
+    // When & Then
+    await expect(deleteTask("task-3")).rejects.toThrow("연결된 프로젝트를 찾을 수 없어");
     expect(mocks.projectRepo.findOneBy).not.toHaveBeenCalled();
     expect(mocks.detachSession).toHaveBeenCalledWith("task-3", "cleanup-task-resources");
     expect(mocks.removeSessionOnly).toHaveBeenCalledWith(
       "tmux",
       "techtaurant-be-dev",
       "roky-home",
+      { throwOnError: true },
     );
     expect(mocks.removeWorktreeAndBranch).not.toHaveBeenCalled();
+    expect(mocks.taskRepo.remove).not.toHaveBeenCalled();
     expect(consoleWarnSpy).not.toHaveBeenCalled();
   });
 
-  it("원격 task 삭제는 프로젝트를 찾지 못해도 연결된 tmux 세션을 정리한다", async () => {
+  it("세션만 연결된 원격 task 삭제는 프로젝트를 찾지 못해도 tmux 세션을 정리한다", async () => {
     // Given
     const task = {
       id: "task-remote",
       projectId: "missing-project",
-      branchName: "main",
-      worktreePath: "/home/rookedsysc/Downloads/prompt",
+      branchName: null,
+      worktreePath: null,
       sshHost: "roky-home",
       sessionType: "tmux" as never,
       sessionName: "prompt-main",
@@ -781,10 +786,41 @@ describe("kanbanService.createTask", () => {
       "tmux",
       "prompt-main",
       "roky-home",
+      { throwOnError: true },
     );
     expect(mocks.removeWorktreeAndBranch).not.toHaveBeenCalled();
     expect(mocks.taskRepo.remove).toHaveBeenCalledWith(task);
     expect(mocks.broadcastBoardUpdate).toHaveBeenCalledTimes(1);
+  });
+
+  it("원격 task 삭제 중 세션 정리가 실패하면 task 레코드를 삭제하지 않는다", async () => {
+    // Given
+    const task = {
+      id: "task-remote-fail",
+      projectId: "missing-project",
+      branchName: "main",
+      worktreePath: "/home/rookedsysc/Downloads/prompt",
+      sshHost: "roky-home",
+      sessionType: "tmux" as never,
+      sessionName: "prompt-main",
+    };
+    mocks.taskRepo.findOneBy.mockResolvedValue(task);
+    mocks.projectRepo.findOneBy.mockResolvedValue(null);
+    mocks.removeSessionOnly.mockRejectedValueOnce(new Error("ssh failed"));
+
+    const { deleteTask } = await import("@/desktop/main/services/kanbanService");
+
+    // When & Then
+    await expect(deleteTask("task-remote-fail")).rejects.toThrow("ssh failed");
+    expect(mocks.detachSession).toHaveBeenCalledWith("task-remote-fail", "cleanup-task-resources");
+    expect(mocks.removeSessionOnly).toHaveBeenCalledWith(
+      "tmux",
+      "prompt-main",
+      "roky-home",
+      { throwOnError: true },
+    );
+    expect(mocks.taskRepo.remove).not.toHaveBeenCalled();
+    expect(mocks.broadcastBoardUpdate).not.toHaveBeenCalled();
   });
 
   it("tmux 세션 정리 전 앱이 붙잡고 있는 활성 터미널 PTY를 먼저 닫는다", async () => {
@@ -797,10 +833,7 @@ describe("kanbanService.createTask", () => {
       callOrder.push("remove-session");
     });
 
-    const { cleanupTaskResources } = await import("@/desktop/main/services/kanbanService");
-
-    // When
-    await cleanupTaskResources({
+    mocks.taskRepo.findOneBy.mockResolvedValue({
       id: "task-open-terminal",
       projectId: null,
       branchName: null,
@@ -808,7 +841,13 @@ describe("kanbanService.createTask", () => {
       sshHost: null,
       sessionType: "tmux" as never,
       sessionName: "repo-feat-open",
-    } as never);
+    });
+    mocks.taskRepo.remove.mockResolvedValue({});
+
+    const { deleteTask } = await import("@/desktop/main/services/kanbanService");
+
+    // When
+    await deleteTask("task-open-terminal");
 
     // Then
     expect(callOrder).toEqual(["detach", "remove-session"]);
@@ -817,6 +856,7 @@ describe("kanbanService.createTask", () => {
       "tmux",
       "repo-feat-open",
       null,
+      { throwOnError: true },
     );
   });
 

@@ -60,6 +60,8 @@ interface CleanupTaskResourcesOptions {
   throwOnError?: boolean;
 }
 
+const TASK_RESOURCE_DELETE_CLEANUP_OPTIONS = { throwOnError: true } as const;
+
 interface DoneRollbackSnapshot {
   id: string;
   status: TaskStatus;
@@ -266,7 +268,7 @@ export function prepareOptimisticDoneTransition(
 
 export function scheduleDoneCleanupWithRollback(plan: DoneCleanupPlan): void {
   setTimeout(() => {
-    void cleanupTaskResources(plan.cleanupTask, { throwOnError: true })
+    void deleteTaskResources(plan.cleanupTask)
       .catch((error) => rollbackDoneTransition(plan.rollbackSnapshot, error));
   }, 0);
 }
@@ -726,7 +728,7 @@ export async function updateProjectColor(
 }
 
 /** 작업에 연결된 worktree, 세션, 브랜치를 정리한다. task 레코드는 삭제하지 않는다 */
-export async function cleanupTaskResources(
+async function cleanupTaskResources(
   task: KanbanTask,
   options: CleanupTaskResourcesOptions = {},
 ): Promise<void> {
@@ -746,20 +748,12 @@ export async function cleanupTaskResources(
     try {
       detachSession(task.id, "cleanup-task-resources");
 
-      if (cleanupOptions) {
-        await removeSessionOnly(
-          task.sessionType,
-          task.sessionName,
-          sshHost,
-          cleanupOptions,
-        );
-      } else {
-        await removeSessionOnly(
-          task.sessionType,
-          task.sessionName,
-          sshHost,
-        );
-      }
+      await removeSessionOnly(
+        task.sessionType,
+        task.sessionName,
+        sshHost,
+        cleanupOptions,
+      );
     } catch (error) {
       if (options.throwOnError) {
         throw error;
@@ -770,6 +764,9 @@ export async function cleanupTaskResources(
 
   // 프로젝트 없이 브랜치/worktree만 남은 태스크는 stale 상태이므로 worktree/브랜치 정리는 건너뛴다.
   if (!project && task.branchName && task.worktreePath) {
+    if (options.throwOnError) {
+      throw new Error("연결된 프로젝트를 찾을 수 없어 worktree/브랜치 정리를 완료할 수 없습니다.");
+    }
     return;
   }
 
@@ -800,20 +797,12 @@ export async function cleanupTaskResources(
     }
 
     try {
-      if (cleanupOptions) {
-        await removeWorktreeAndBranch(
-          project?.repoPath || process.cwd(),
-          task.branchName,
-          sshHost,
-          cleanupOptions,
-        );
-      } else {
-        await removeWorktreeAndBranch(
-          project?.repoPath || process.cwd(),
-          task.branchName,
-          sshHost,
-        );
-      }
+      await removeWorktreeAndBranch(
+        project?.repoPath || process.cwd(),
+        task.branchName,
+        sshHost,
+        cleanupOptions,
+      );
     } catch (error) {
       if (options.throwOnError) {
         throw error;
@@ -823,13 +812,18 @@ export async function cleanupTaskResources(
   }
 }
 
+/** task 삭제/Done 전환에서 사용하는 공통 리소스 삭제 정책 */
+async function deleteTaskResources(task: KanbanTask): Promise<void> {
+  await cleanupTaskResources(task, TASK_RESOURCE_DELETE_CLEANUP_OPTIONS);
+}
+
 /** 작업을 삭제한다. worktree와 세션이 있으면 함께 정리한다 */
 export async function deleteTask(taskId: string): Promise<boolean> {
   const repo = await getTaskRepository();
   const task = await repo.findOneBy({ id: taskId });
   if (!task) return false;
 
-  await cleanupTaskResources(task);
+  await deleteTaskResources(task);
 
   await repo.remove(task);
   broadcastBoardUpdate();
