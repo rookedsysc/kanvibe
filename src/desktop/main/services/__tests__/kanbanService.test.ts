@@ -68,7 +68,6 @@ vi.mock("@/lib/worktree", () => ({
   removeWorktreeAndBranch: mocks.removeWorktreeAndBranch,
   createSessionWithoutWorktree: mocks.createSessionWithoutWorktree,
   removeSessionOnly: mocks.removeSessionOnly,
-  buildManagedWorktreePath: vi.fn((projectPath: string, branchName: string) => `${projectPath}__worktrees/${branchName}`),
 }));
 
 vi.mock("@/lib/terminal", () => ({
@@ -669,7 +668,7 @@ describe("kanbanService.createTask", () => {
     expect(mocks.broadcastBoardUpdate).toHaveBeenCalledTimes(1);
   });
 
-  it("원격 stale task는 안전하지 않은 worktree/브랜치 삭제를 건너뛴다", async () => {
+  it("DB worktreePath가 managed 예상 경로와 달라도 프로젝트와 브랜치 기준으로 정리한다", async () => {
     // Given
     const consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     mocks.projectRepo.findOneBy.mockResolvedValue({
@@ -692,8 +691,12 @@ describe("kanbanService.createTask", () => {
     } as never);
 
     // Then
-    expect(mocks.removeWorktreeAndBranch).not.toHaveBeenCalled();
-    expect(consoleWarnSpy).toHaveBeenCalled();
+    expect(mocks.removeWorktreeAndBranch).toHaveBeenCalledWith(
+      "/remote/repo",
+      "dev",
+      "remote-host",
+    );
+    expect(consoleWarnSpy).not.toHaveBeenCalled();
   });
 
   it("연결된 프로젝트를 찾을 수 없는 원격 stale task는 세션만 정리한다", async () => {
