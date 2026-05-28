@@ -317,15 +317,36 @@ interface ResourceCleanupOptions {
   throwOnError?: boolean;
 }
 
+interface ResolvedBranchWorktree {
+  path: string | null;
+  isProjectRootCheckout: boolean;
+}
+
+function normalizeGitWorktreePath(worktreePath: string): string {
+  return worktreePath.replace(/\/+$/, "") || worktreePath;
+}
+
 async function resolveBranchWorktreePath(
   projectPath: string,
   branchName: string,
   sshHost?: string | null,
-): Promise<string | null> {
+): Promise<ResolvedBranchWorktree> {
   const worktrees = await listWorktrees(projectPath, sshHost);
-  return worktrees.find((worktree) => (
+  const normalizedProjectPath = normalizeGitWorktreePath(projectPath);
+  const matchingWorktrees = worktrees.filter((worktree) => (
     !worktree.isBare && worktree.branch === branchName
-  ))?.path ?? null;
+  ));
+
+  const linkedWorktree = matchingWorktrees.find((worktree) => (
+    normalizeGitWorktreePath(worktree.path) !== normalizedProjectPath
+  ));
+
+  return {
+    path: linkedWorktree?.path ?? null,
+    isProjectRootCheckout: matchingWorktrees.some((worktree) => (
+      normalizeGitWorktreePath(worktree.path) === normalizedProjectPath
+    )),
+  };
 }
 
 /** worktree와 브랜치를 삭제한다. 세션은 건드리지 않는다 */
@@ -335,7 +356,8 @@ export async function removeWorktreeAndBranch(
   sshHost?: string | null,
   options: ResourceCleanupOptions = {},
 ): Promise<void> {
-  const worktreePath = await resolveBranchWorktreePath(projectPath, branchName, sshHost);
+  const resolvedWorktree = await resolveBranchWorktreePath(projectPath, branchName, sshHost);
+  const worktreePath = resolvedWorktree.path;
   const branchCommand = options.throwOnError
     ? `if git -C "${projectPath}" show-ref --verify --quiet "refs/heads/${branchName}"; then git -C "${projectPath}" branch -D "${branchName}"; fi`
     : `git -C "${projectPath}" branch -D "${branchName}"`;
@@ -353,6 +375,10 @@ export async function removeWorktreeAndBranch(
       }
       // worktree가 이미 삭제된 경우 무시
     }
+  }
+
+  if (resolvedWorktree.isProjectRootCheckout) {
+    return;
   }
 
   try {

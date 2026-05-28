@@ -249,6 +249,26 @@ describe("removeWorktreeAndBranch", () => {
       undefined,
     );
   });
+
+  it("should not remove or delete a branch checked out in the project root", async () => {
+    // Given
+    mockListWorktrees.mockResolvedValue([
+      {
+        path: "/workspace/repo",
+        branch: "feature/root-checkout",
+        isBare: false,
+      },
+    ]);
+
+    const { removeWorktreeAndBranch } = await import("@/lib/worktree");
+
+    // When
+    await removeWorktreeAndBranch("/workspace/repo/", "feature/root-checkout", null, { throwOnError: true });
+
+    // Then
+    expect(filterCalls("worktree remove")).toHaveLength(0);
+    expect(filterCalls("branch -D")).toHaveLength(0);
+  });
 });
 
 describe("removeSessionOnly", () => {
