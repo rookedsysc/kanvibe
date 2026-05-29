@@ -338,6 +338,9 @@ async function resolveBranchWorktreePath(
   const normalizedFallbackWorktreePath = fallbackWorktreePath
     ? normalizeGitWorktreePath(fallbackWorktreePath)
     : null;
+  const normalizedManagedWorktreePath = normalizeGitWorktreePath(
+    buildManagedWorktreePath(projectPath, branchName),
+  );
   const matchingWorktrees = worktrees.filter((worktree) => (
     !worktree.isBare && worktree.branch === branchName
   ));
@@ -350,6 +353,7 @@ async function resolveBranchWorktreePath(
     ? worktrees.find((worktree) => (
         !worktree.isBare
         && normalizeGitWorktreePath(worktree.path) === normalizedFallbackWorktreePath
+        && normalizedFallbackWorktreePath === normalizedManagedWorktreePath
         && normalizedFallbackWorktreePath !== normalizedProjectPath
       ))
     : null;

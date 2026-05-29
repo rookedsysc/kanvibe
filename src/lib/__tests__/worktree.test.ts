@@ -250,7 +250,7 @@ describe("removeWorktreeAndBranch", () => {
     );
   });
 
-  it("should fall back to the task worktree path when the worktree branch changed", async () => {
+  it("should fall back to the managed task worktree path when the worktree branch changed", async () => {
     // Given
     mockListWorktrees.mockResolvedValue([
       {
@@ -280,6 +280,39 @@ describe("removeWorktreeAndBranch", () => {
       'git -C "/workspace/repo" worktree remove "/workspace/repo__worktrees/feature-task" --force',
       "remote-host",
     );
+    expect(mockExecGit).toHaveBeenCalledWith(
+      'git -C "/workspace/repo" branch -D "feature/task"',
+      "remote-host",
+    );
+  });
+
+  it("should not fall back to a stale task path owned by another linked worktree", async () => {
+    // Given
+    mockListWorktrees.mockResolvedValue([
+      {
+        path: "/workspace/repo",
+        branch: "main",
+        isBare: false,
+      },
+      {
+        path: "/workspace/custom-worktrees/other-task",
+        branch: "feature/other-task",
+        isBare: false,
+      },
+    ]);
+
+    const { removeWorktreeAndBranch } = await import("@/lib/worktree");
+
+    // When
+    await removeWorktreeAndBranch(
+      "/workspace/repo",
+      "feature/task",
+      "remote-host",
+      { worktreePath: "/workspace/custom-worktrees/other-task" },
+    );
+
+    // Then
+    expect(filterCalls("worktree remove")).toHaveLength(0);
     expect(mockExecGit).toHaveBeenCalledWith(
       'git -C "/workspace/repo" branch -D "feature/task"',
       "remote-host",
