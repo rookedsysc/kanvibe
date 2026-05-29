@@ -44,10 +44,6 @@ export function updateProjectColor(projectId: string, color: string): Promise<vo
   return invokeDesktop("kanban", "updateProjectColor", projectId, color);
 }
 
-export function cleanupTaskResources(task: KanbanTask): Promise<void> {
-  return invokeDesktop("kanban", "cleanupTaskResources", task);
-}
-
 export function deleteTask(taskId: string): Promise<boolean> {
   return invokeDesktop("kanban", "deleteTask", taskId);
 }

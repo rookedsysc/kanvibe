@@ -472,21 +472,6 @@ function buildZellijSessionCleanupCommand(sessionName: string, verifyCleanup: bo
   ].join("; ");
 }
 
-/**
- * worktree와 브랜치별 독립 세션을 삭제한다.
- * sshHost가 지정되면 원격에서 실행한다.
- */
-export async function removeWorktreeAndSession(
-  projectPath: string,
-  branchName: string,
-  sessionType: SessionType,
-  sessionName: string,
-  sshHost?: string | null,
-): Promise<void> {
-  await removeSessionOnly(sessionType, sessionName, sshHost);
-  await removeWorktreeAndBranch(projectPath, branchName, sshHost);
-}
-
 /** 활성 tmux/zellij 세션 이름 목록을 반환한다 */
 export async function listActiveSessions(
   sessionType: SessionType,
