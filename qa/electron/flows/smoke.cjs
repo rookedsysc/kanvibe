@@ -24,6 +24,56 @@ function gitValue(args) {
   }
 }
 
+function execGit(args, cwd) {
+  return execFileSync("git", args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
+}
+
+function buildManagedWorktreePath(projectPath, branchName) {
+  const projectName = path.basename(projectPath);
+  return path.join(path.dirname(projectPath), `${projectName}__worktrees`, branchName.replace(/\//g, "-"));
+}
+
+function createFixtureRepository(run) {
+  const fixturesDir = path.join(run.runDir, "fixtures");
+  const projectDir = path.join(fixturesDir, "repo");
+  const branchName = `qa/video-proof-${run.runId.replace(/[^a-zA-Z0-9-]/g, "-").slice(-32)}`;
+  const worktreePath = buildManagedWorktreePath(projectDir, branchName);
+
+  fs.rmSync(fixturesDir, { recursive: true, force: true });
+  fs.mkdirSync(projectDir, { recursive: true });
+  execGit(["init", "-b", "main"], projectDir);
+  execGit(["config", "user.email", "qa@kanvibe.local"], projectDir);
+  execGit(["config", "user.name", "KanVibe QA"], projectDir);
+  fs.writeFileSync(path.join(projectDir, "README.md"), "# KanVibe Electron QA fixture\n", "utf8");
+  execGit(["add", "README.md"], projectDir);
+  execGit(["commit", "-m", "fixture"], projectDir);
+  execGit(["worktree", "add", "-b", branchName, worktreePath, "main"], projectDir);
+
+  return {
+    projectName: `KanVibe QA ${run.runId}`,
+    projectDir,
+    branchName,
+    worktreePath,
+  };
+}
+
+function getGitWorktrees(projectDir) {
+  try {
+    return execGit(["worktree", "list", "--porcelain"], projectDir);
+  } catch (error) {
+    return error instanceof Error ? error.message : String(error);
+  }
+}
+
+function branchExists(projectDir, branchName) {
+  try {
+    execGit(["show-ref", "--verify", "--quiet", `refs/heads/${branchName}`], projectDir);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 async function takeScreenshot(page, run, label, screenshots) {
   const fileName = `${String(screenshots.length + 1).padStart(2, "0")}-${label}.png`;
   const shotPath = path.join(run.screenshotsDir, fileName);
@@ -35,9 +85,78 @@ async function optionalStep(checks, name, fn) {
   try {
     const detail = await fn();
     checks.push({ name, ok: true, detail: detail || "ok" });
+    return detail;
   } catch (error) {
     checks.push({ name, ok: false, detail: error instanceof Error ? error.message : String(error) });
+    return null;
   }
+}
+
+async function invokeDesktop(page, namespace, method, ...args) {
+  return page.evaluate(
+    async ({ namespace, method, args }) => window.kanvibeDesktop.invoke(namespace, method, args),
+    { namespace, method, args },
+  );
+}
+
+async function dismissUpdateDialogIfPresent(page) {
+  const closeButton = page.getByRole("button", { name: "닫기" }).first();
+  try {
+    await closeButton.click({ timeout: 2500 });
+    await page.waitForTimeout(600);
+  } catch {
+    // The update/release-note dialog is optional and may already be suppressed.
+  }
+}
+
+async function seedQaProjectAndTask(page, fixture) {
+  return page.evaluate(async ({ projectName, projectDir, branchName }) => {
+    const projectResult = await window.kanvibeDesktop.invoke("project", "registerProject", [projectName, projectDir]);
+    if (!projectResult.success || !projectResult.project) {
+      throw new Error(projectResult.error || "QA project registration failed");
+    }
+
+    const task = await window.kanvibeDesktop.invoke("kanban", "createTask", [{
+      title: branchName,
+      description: "Electron QA: UI status change and delete must clean the real git worktree even when DB worktreePath is empty.",
+      branchName,
+      baseBranch: "main",
+      projectId: projectResult.project.id,
+    }]);
+
+    window.localStorage.clear();
+    window.sessionStorage.clear();
+    return { project: projectResult.project, task };
+  }, fixture);
+}
+
+async function waitForTaskCard(page, taskId) {
+  const selector = `[data-kanban-task-card='true'][data-kanban-task-id='${taskId}']`;
+  const card = page.locator(selector);
+  await card.waitFor({ state: "visible", timeout: 20000 });
+  await card.scrollIntoViewIfNeeded();
+  return card;
+}
+
+async function changeTaskStatusFromContextMenu(page, taskId, statusIndex) {
+  const card = await waitForTaskCard(page, taskId);
+  await card.click({ button: "right" });
+  await page.waitForTimeout(700);
+  await page.locator("[role='menuitem'][aria-haspopup='menu']").click();
+  await page.waitForTimeout(700);
+  await page.locator("[role='menuitemradio']").nth(statusIndex).click();
+  await page.waitForTimeout(1200);
+}
+
+async function deleteTaskFromContextMenu(page, taskId) {
+  const card = await waitForTaskCard(page, taskId);
+  page.once("dialog", async (dialog) => {
+    await dialog.accept();
+  });
+  await card.click({ button: "right" });
+  await page.waitForTimeout(700);
+  await page.locator("[role='menu'] > button").last().click();
+  await page.waitForTimeout(1800);
 }
 
 async function main() {
@@ -48,6 +167,7 @@ async function main() {
     runId: args.runId,
     runDir: args.runDir,
   });
+  const fixture = createFixtureRepository(run);
 
   const consoleErrors = [];
   const checks = [];
@@ -55,9 +175,14 @@ async function main() {
   const notes = [];
   let app;
   let ok = false;
+  let seeded;
 
   try {
-    const launched = await launchKanVibeElectron({ rootDir: process.cwd(), outputDir: run.runDir });
+    const launched = await launchKanVibeElectron({
+      rootDir: process.cwd(),
+      outputDir: run.runDir,
+      appDataDir: path.join(run.runDir, "app-data"),
+    });
     app = launched.app;
     const page = launched.page;
 
@@ -74,6 +199,7 @@ async function main() {
 
     await optionalStep(checks, "Electron window opens", async () => {
       await page.waitForLoadState("domcontentloaded");
+      await dismissUpdateDialogIfPresent(page);
       return page.url();
     });
 
@@ -82,31 +208,83 @@ async function main() {
       return "body visible";
     });
 
+    await optionalStep(checks, "QA fixture contains real git worktree before UI delete", async () => {
+      const worktrees = getGitWorktrees(fixture.projectDir);
+      if (!worktrees.includes(fixture.worktreePath) || !branchExists(fixture.projectDir, fixture.branchName)) {
+        throw new Error(`fixture branch/worktree missing before QA\n${worktrees}`);
+      }
+      return fixture.branchName;
+    });
+
+    let seededResult = null;
+    await optionalStep(checks, "Seed isolated QA project and task through app IPC", async () => {
+      seededResult = await seedQaProjectAndTask(page, fixture);
+      await page.reload({ waitUntil: "domcontentloaded" });
+      await dismissUpdateDialogIfPresent(page);
+      return `project=${seededResult.project.name}, task=${seededResult.task.id}, dbWorktreePath=${seededResult.task.worktreePath ?? "null"}`;
+    });
+    seeded = seededResult;
+
+    if (!seeded) {
+      throw new Error("QA seed failed; cannot continue UI flow");
+    }
+
+    await optionalStep(checks, "Board shows seeded QA task card", async () => {
+      await waitForTaskCard(page, seeded.task.id);
+      return fixture.branchName;
+    });
+
     await page.waitForTimeout(1500);
-    await takeScreenshot(page, run, "initial-render", screenshots);
+    await takeScreenshot(page, run, "seeded-task-visible", screenshots);
+
+    await optionalStep(checks, "UI context menu changes task status TODO to PROGRESS", async () => {
+      await changeTaskStatusFromContextMenu(page, seeded.task.id, 1);
+      await page.locator(`[data-kanban-task-card='true'][data-kanban-task-id='${seeded.task.id}'][data-kanban-status='progress']`).waitFor({ state: "visible", timeout: 10000 });
+      const task = await invokeDesktop(page, "kanban", "getTaskById", seeded.task.id);
+      if (task?.status !== "progress") {
+        throw new Error(`expected backend status progress, got ${task?.status}`);
+      }
+      return "card moved to PROGRESS and backend status updated";
+    });
+
+    await takeScreenshot(page, run, "task-moved-to-progress", screenshots);
+    await page.waitForTimeout(1500);
+
+    await optionalStep(checks, "UI delete removes task record", async () => {
+      await deleteTaskFromContextMenu(page, seeded.task.id);
+      await page.waitForFunction(
+        async (taskId) => {
+          const task = await window.kanvibeDesktop.invoke("kanban", "getTaskById", [taskId]);
+          return task === null;
+        },
+        seeded.task.id,
+        { timeout: 15000 },
+      );
+      return "backend getTaskById returned null after confirm delete";
+    });
+
+    await page.reload({ waitUntil: "domcontentloaded" });
+    await page.waitForTimeout(1500);
+    await takeScreenshot(page, run, "task-deleted-after-refresh", screenshots);
+
+    await optionalStep(checks, "Delete cleanup removes actual git worktree and branch", async () => {
+      const worktrees = getGitWorktrees(fixture.projectDir);
+      if (worktrees.includes(fixture.worktreePath)) {
+        throw new Error(`worktree still present after delete\n${worktrees}`);
+      }
+      if (branchExists(fixture.projectDir, fixture.branchName)) {
+        throw new Error(`branch still present after delete: ${fixture.branchName}`);
+      }
+      return "actual git worktree and branch are gone";
+    });
 
     await optionalStep(checks, "Keyboard shortcut smoke", async () => {
       await page.keyboard.press(process.platform === "darwin" ? "Meta+K" : "Control+K");
-      await page.waitForTimeout(1500);
+      await page.waitForTimeout(1000);
       await page.keyboard.press("Escape");
-      await page.waitForTimeout(800);
+      await page.waitForTimeout(600);
       return "command/search shortcut did not crash renderer";
     });
-
-    await optionalStep(checks, "Mouse click smoke", async () => {
-      await page.mouse.move(120, 120, { steps: 12 });
-      await page.waitForTimeout(500);
-      await page.mouse.move(480, 220, { steps: 24 });
-      await page.waitForTimeout(500);
-      await page.mouse.click(480, 220);
-      await page.waitForTimeout(1000);
-      await page.mouse.move(760, 420, { steps: 24 });
-      await page.waitForTimeout(800);
-      return "visible mouse movement and click accepted";
-    });
-
-    await takeScreenshot(page, run, "after-keyboard-mouse", screenshots);
-    await page.waitForTimeout(1500);
 
     await optionalStep(checks, "Main page contains KanVibe UI text", async () => {
       const text = (await page.locator("body").innerText({ timeout: 5000 })).slice(0, 2000);
@@ -134,10 +312,13 @@ async function main() {
   } else {
     notes.push("No mp4 was present when smoke flow finished; wrapper script can synthesize one from screenshots.");
   }
+  notes.push(`Fixture repo: ${fixture.projectDir}`);
+  notes.push(`Fixture branch/worktree under test: ${fixture.branchName} / ${fixture.worktreePath}`);
+  notes.push("QA uses an isolated KANVIBE_APP_DATA_DIR inside the run directory, not the user's app database.");
 
   const result = {
     ok,
-    scope: "Electron smoke QA plus PR #275/#276 resource-cleanup regression readiness",
+    scope: "Electron UI QA for PR #275/#276: create visible QA task, move status from context menu, delete it, and verify real git worktree/branch cleanup when DB worktreePath is empty",
     branch: gitValue(["branch", "--show-current"]),
     commit: gitValue(["rev-parse", "--short", "HEAD"]),
     checks,

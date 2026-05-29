@@ -11,10 +11,8 @@ cd "$ROOT_DIR"
 echo "[kanvibe-qa] branch: $(git branch --show-current)"
 echo "[kanvibe-qa] commit: $(git rev-parse --short HEAD)"
 
-if [[ ! -f "$ROOT_DIR/build/renderer/index.html" || ! -f "$ROOT_DIR/build/main/src/desktop/main/serviceRegistry.js" ]]; then
-  echo "[kanvibe-qa] desktop build missing; running pnpm build"
-  pnpm build
-fi
+echo "[kanvibe-qa] building desktop app from current source"
+pnpm build
 
 echo "[kanvibe-qa] verifying Node native runtime for regression tests"
 node scripts/ensure-native-runtime.cjs
