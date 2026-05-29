@@ -35,8 +35,20 @@ if [[ ! -s "$RUN_DIR/run.mp4" ]]; then
   exit 1
 fi
 
+if [[ ! -s "$RUN_DIR/diagnostics/playwright-trace.zip" ]]; then
+  echo "[kanvibe-qa] expected Playwright trace missing or empty: $RUN_DIR/diagnostics/playwright-trace.zip" >&2
+  exit 1
+fi
+
+if [[ ! -s "$RUN_DIR/diagnostics/cdp-diagnostics.json" ]]; then
+  echo "[kanvibe-qa] expected CDP diagnostics missing or empty: $RUN_DIR/diagnostics/cdp-diagnostics.json" >&2
+  exit 1
+fi
+
 echo "[kanvibe-qa] output: $RUN_DIR"
 if [[ -f "$RUN_DIR/report.md" ]]; then
   echo "[kanvibe-qa] report: $RUN_DIR/report.md"
 fi
 echo "[kanvibe-qa] video: $RUN_DIR/run.mp4"
+echo "[kanvibe-qa] trace: $RUN_DIR/diagnostics/playwright-trace.zip"
+echo "[kanvibe-qa] cdp: $RUN_DIR/diagnostics/cdp-diagnostics.json"

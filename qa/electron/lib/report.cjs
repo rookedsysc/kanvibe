@@ -11,7 +11,9 @@ function createQaRun(options = {}) {
   const runId = options.runId || new Date().toISOString().replace(/[:.]/g, "-");
   const runDir = options.runDir || path.join(outputRoot, runId);
   const screenshotsDir = path.join(runDir, "screenshots");
+  const diagnosticsDir = path.join(runDir, "diagnostics");
   ensureDir(screenshotsDir);
+  ensureDir(diagnosticsDir);
 
   return {
     rootDir,
@@ -19,9 +21,12 @@ function createQaRun(options = {}) {
     runId,
     runDir,
     screenshotsDir,
+    diagnosticsDir,
     reportPath: path.join(runDir, "report.md"),
     jsonPath: path.join(runDir, "result.json"),
     videoPath: path.join(runDir, "run.mp4"),
+    tracePath: path.join(diagnosticsDir, "playwright-trace.zip"),
+    cdpDiagnosticsPath: path.join(diagnosticsDir, "cdp-diagnostics.json"),
   };
 }
 
@@ -67,6 +72,20 @@ function renderMarkdown(result) {
   }
   if (result.videoPath) {
     lines.push(`- Video: \`${result.videoPath}\``);
+  }
+  lines.push("");
+  lines.push("## Diagnostics");
+  lines.push("");
+  if (result.tracePath) {
+    lines.push(`- Playwright trace: \`${result.tracePath}\``);
+  }
+  if (result.cdpDiagnosticsPath) {
+    lines.push(`- CDP diagnostics: \`${result.cdpDiagnosticsPath}\``);
+  }
+  if (result.diagnostics?.length) {
+    for (const diagnostic of result.diagnostics) {
+      lines.push(`- ${diagnostic}`);
+    }
   }
   lines.push("");
   lines.push("## Notes");

@@ -74,11 +74,83 @@ function branchExists(projectDir, branchName) {
   }
 }
 
+function writeJson(filePath, data) {
+  fs.writeFileSync(filePath, `${JSON.stringify(data, null, 2)}\n`, "utf8");
+}
+
 async function takeScreenshot(page, run, label, screenshots) {
   const fileName = `${String(screenshots.length + 1).padStart(2, "0")}-${label}.png`;
   const shotPath = path.join(run.screenshotsDir, fileName);
   await page.screenshot({ path: shotPath, fullPage: true });
   screenshots.push({ label, path: shotPath });
+}
+
+function createCdpDiagnosticsCollector() {
+  const events = [];
+  const counters = {
+    requests: 0,
+    responses: 0,
+    failedRequests: 0,
+    exceptions: 0,
+    logEntries: 0,
+  };
+
+  const pushEvent = (type, payload) => {
+    if (events.length >= 200) return;
+    events.push({ type, timestamp: new Date().toISOString(), payload });
+  };
+
+  return {
+    events,
+    counters,
+    pushEvent,
+    summary() {
+      return { counters, sampledEvents: events };
+    },
+  };
+}
+
+async function attachCdpDiagnostics(page, collector) {
+  const cdpSession = await page.context().newCDPSession(page);
+  await Promise.all([
+    cdpSession.send("Runtime.enable"),
+    cdpSession.send("Log.enable"),
+    cdpSession.send("Network.enable"),
+    cdpSession.send("Performance.enable"),
+  ]);
+
+  cdpSession.on("Runtime.exceptionThrown", (event) => {
+    collector.counters.exceptions += 1;
+    collector.pushEvent("Runtime.exceptionThrown", {
+      text: event.exceptionDetails?.text,
+      url: event.exceptionDetails?.url,
+      lineNumber: event.exceptionDetails?.lineNumber,
+    });
+  });
+  cdpSession.on("Log.entryAdded", (event) => {
+    collector.counters.logEntries += 1;
+    collector.pushEvent("Log.entryAdded", {
+      level: event.entry?.level,
+      text: event.entry?.text,
+      url: event.entry?.url,
+    });
+  });
+  cdpSession.on("Network.requestWillBeSent", () => {
+    collector.counters.requests += 1;
+  });
+  cdpSession.on("Network.responseReceived", () => {
+    collector.counters.responses += 1;
+  });
+  cdpSession.on("Network.loadingFailed", (event) => {
+    collector.counters.failedRequests += 1;
+    collector.pushEvent("Network.loadingFailed", {
+      requestId: event.requestId,
+      errorText: event.errorText,
+      canceled: event.canceled,
+    });
+  });
+
+  return cdpSession;
 }
 
 async function optionalStep(checks, name, fn) {
@@ -170,10 +242,15 @@ async function main() {
   const fixture = createFixtureRepository(run);
 
   const consoleErrors = [];
+  const diagnostics = [];
+  const cdpCollector = createCdpDiagnosticsCollector();
   const checks = [];
   const screenshots = [];
   const notes = [];
   let app;
+  let page;
+  let cdpSession;
+  let traceStarted = false;
   let ok = false;
   let seeded;
 
@@ -184,7 +261,15 @@ async function main() {
       appDataDir: path.join(run.runDir, "app-data"),
     });
     app = launched.app;
-    const page = launched.page;
+    page = launched.page;
+
+    await page.context().tracing.start({ screenshots: true, snapshots: true, sources: true });
+    traceStarted = true;
+
+    await optionalStep(checks, "CDP diagnostics session attaches to Electron renderer", async () => {
+      cdpSession = await attachCdpDiagnostics(page, cdpCollector);
+      return `remote-debugging-port=${launched.cdpPort}`;
+    });
 
     page.on("console", (message) => {
       if (["error", "warning"].includes(message.type())) {
@@ -294,18 +379,50 @@ async function main() {
       return "board/navigation text detected";
     });
 
+    await optionalStep(checks, "CDP runtime/network diagnostics captured", async () => {
+      const metrics = cdpSession ? await cdpSession.send("Performance.getMetrics") : { metrics: [] };
+      const metricNames = new Set((metrics.metrics || []).map((metric) => metric.name));
+      if (!metricNames.has("Timestamp")) {
+        throw new Error("CDP Performance metrics did not include Timestamp");
+      }
+      return `requests=${cdpCollector.counters.requests}, responses=${cdpCollector.counters.responses}, failures=${cdpCollector.counters.failedRequests}, exceptions=${cdpCollector.counters.exceptions}`;
+    });
+
     await optionalStep(checks, "No blocking console errors", async () => {
       const blocking = consoleErrors.filter((line) => !/favicon|DevTools|Electron Security Warning|Insecure Content-Security-Policy/i.test(line));
       if (blocking.length > 0) throw new Error(blocking.join("\n"));
       return "none";
     });
 
-    ok = checks.every((check) => check.ok);
   } catch (error) {
     checks.push({ name: "Electron QA flow", ok: false, detail: error instanceof Error ? error.stack || error.message : String(error) });
   } finally {
+    if (page && traceStarted) {
+      await page.context().tracing.stop({ path: run.tracePath }).catch((error) => {
+        checks.push({ name: "Playwright trace artifact", ok: false, detail: error instanceof Error ? error.message : String(error) });
+      });
+      traceStarted = false;
+    }
+    writeJson(run.cdpDiagnosticsPath, cdpCollector.summary());
+    if (cdpSession) await cdpSession.detach().catch(() => {});
     if (app) await app.close().catch(() => {});
   }
+
+  await optionalStep(checks, "Playwright trace artifact written", async () => {
+    if (!fs.existsSync(run.tracePath) || fs.statSync(run.tracePath).size === 0) {
+      throw new Error(`trace missing or empty: ${run.tracePath}`);
+    }
+    return run.tracePath;
+  });
+
+  await optionalStep(checks, "CDP diagnostics artifact written", async () => {
+    if (!fs.existsSync(run.cdpDiagnosticsPath) || fs.statSync(run.cdpDiagnosticsPath).size === 0) {
+      throw new Error(`CDP diagnostics missing or empty: ${run.cdpDiagnosticsPath}`);
+    }
+    return run.cdpDiagnosticsPath;
+  });
+
+  ok = checks.every((check) => check.ok);
 
   if (fs.existsSync(run.videoPath)) {
     notes.push("Actual X11 screen recording captured with ffmpeg.");
@@ -315,6 +432,8 @@ async function main() {
   notes.push(`Fixture repo: ${fixture.projectDir}`);
   notes.push(`Fixture branch/worktree under test: ${fixture.branchName} / ${fixture.worktreePath}`);
   notes.push("QA uses an isolated KANVIBE_APP_DATA_DIR inside the run directory, not the user's app database.");
+  diagnostics.push(`CDP counters: ${JSON.stringify(cdpCollector.counters)}`);
+  diagnostics.push("Playwright trace captures actions, screenshots, DOM snapshots, console, and network timeline.");
 
   const result = {
     ok,
@@ -323,8 +442,11 @@ async function main() {
     commit: gitValue(["rev-parse", "--short", "HEAD"]),
     checks,
     errors: consoleErrors,
+    diagnostics,
     screenshots,
     videoPath: fs.existsSync(run.videoPath) ? run.videoPath : null,
+    tracePath: fs.existsSync(run.tracePath) ? run.tracePath : null,
+    cdpDiagnosticsPath: fs.existsSync(run.cdpDiagnosticsPath) ? run.cdpDiagnosticsPath : null,
     notes,
   };
 
