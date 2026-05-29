@@ -82,23 +82,31 @@ async function main() {
       return "body visible";
     });
 
+    await page.waitForTimeout(1500);
     await takeScreenshot(page, run, "initial-render", screenshots);
 
     await optionalStep(checks, "Keyboard shortcut smoke", async () => {
       await page.keyboard.press(process.platform === "darwin" ? "Meta+K" : "Control+K");
-      await page.waitForTimeout(500);
+      await page.waitForTimeout(1500);
       await page.keyboard.press("Escape");
+      await page.waitForTimeout(800);
       return "command/search shortcut did not crash renderer";
     });
 
     await optionalStep(checks, "Mouse click smoke", async () => {
-      await page.mouse.move(240, 180);
-      await page.mouse.click(240, 180);
-      await page.waitForTimeout(300);
-      return "click accepted";
+      await page.mouse.move(120, 120, { steps: 12 });
+      await page.waitForTimeout(500);
+      await page.mouse.move(480, 220, { steps: 24 });
+      await page.waitForTimeout(500);
+      await page.mouse.click(480, 220);
+      await page.waitForTimeout(1000);
+      await page.mouse.move(760, 420, { steps: 24 });
+      await page.waitForTimeout(800);
+      return "visible mouse movement and click accepted";
     });
 
     await takeScreenshot(page, run, "after-keyboard-mouse", screenshots);
+    await page.waitForTimeout(1500);
 
     await optionalStep(checks, "Main page contains KanVibe UI text", async () => {
       const text = (await page.locator("body").innerText({ timeout: 5000 })).slice(0, 2000);
