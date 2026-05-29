@@ -315,6 +315,7 @@ export async function createSessionWithoutWorktree(
 
 interface ResourceCleanupOptions {
   throwOnError?: boolean;
+  worktreePath?: string | null;
 }
 
 interface ResolvedBranchWorktree {
@@ -329,10 +330,14 @@ function normalizeGitWorktreePath(worktreePath: string): string {
 async function resolveBranchWorktreePath(
   projectPath: string,
   branchName: string,
+  fallbackWorktreePath?: string | null,
   sshHost?: string | null,
 ): Promise<ResolvedBranchWorktree> {
   const worktrees = await listWorktrees(projectPath, sshHost);
   const normalizedProjectPath = normalizeGitWorktreePath(projectPath);
+  const normalizedFallbackWorktreePath = fallbackWorktreePath
+    ? normalizeGitWorktreePath(fallbackWorktreePath)
+    : null;
   const matchingWorktrees = worktrees.filter((worktree) => (
     !worktree.isBare && worktree.branch === branchName
   ));
@@ -341,8 +346,16 @@ async function resolveBranchWorktreePath(
     normalizeGitWorktreePath(worktree.path) !== normalizedProjectPath
   ));
 
+  const fallbackWorktree = normalizedFallbackWorktreePath
+    ? worktrees.find((worktree) => (
+        !worktree.isBare
+        && normalizeGitWorktreePath(worktree.path) === normalizedFallbackWorktreePath
+        && normalizedFallbackWorktreePath !== normalizedProjectPath
+      ))
+    : null;
+
   return {
-    path: linkedWorktree?.path ?? null,
+    path: linkedWorktree?.path ?? fallbackWorktree?.path ?? null,
     isProjectRootCheckout: matchingWorktrees.some((worktree) => (
       normalizeGitWorktreePath(worktree.path) === normalizedProjectPath
     )),
@@ -356,7 +369,12 @@ export async function removeWorktreeAndBranch(
   sshHost?: string | null,
   options: ResourceCleanupOptions = {},
 ): Promise<void> {
-  const resolvedWorktree = await resolveBranchWorktreePath(projectPath, branchName, sshHost);
+  const resolvedWorktree = await resolveBranchWorktreePath(
+    projectPath,
+    branchName,
+    options.worktreePath,
+    sshHost,
+  );
   const worktreePath = resolvedWorktree.path;
   const branchCommand = options.throwOnError
     ? `if git -C "${projectPath}" show-ref --verify --quiet "refs/heads/${branchName}"; then git -C "${projectPath}" branch -D "${branchName}"; fi`

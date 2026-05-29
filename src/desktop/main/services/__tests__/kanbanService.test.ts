@@ -695,6 +695,7 @@ describe("kanbanService.createTask", () => {
       "/remote/repo",
       "dev",
       "remote-host",
+      { worktreePath: "/Users/local/repo__worktrees/dev" },
     );
     expect(consoleWarnSpy).not.toHaveBeenCalled();
   });

@@ -250,6 +250,42 @@ describe("removeWorktreeAndBranch", () => {
     );
   });
 
+  it("should fall back to the task worktree path when the worktree branch changed", async () => {
+    // Given
+    mockListWorktrees.mockResolvedValue([
+      {
+        path: "/workspace/repo",
+        branch: "main",
+        isBare: false,
+      },
+      {
+        path: "/workspace/repo__worktrees/feature-task",
+        branch: "debug/other-branch",
+        isBare: false,
+      },
+    ]);
+
+    const { removeWorktreeAndBranch } = await import("@/lib/worktree");
+
+    // When
+    await removeWorktreeAndBranch(
+      "/workspace/repo",
+      "feature/task",
+      "remote-host",
+      { worktreePath: "/workspace/repo__worktrees/feature-task/" },
+    );
+
+    // Then
+    expect(mockExecGit).toHaveBeenCalledWith(
+      'git -C "/workspace/repo" worktree remove "/workspace/repo__worktrees/feature-task" --force',
+      "remote-host",
+    );
+    expect(mockExecGit).toHaveBeenCalledWith(
+      'git -C "/workspace/repo" branch -D "feature/task"',
+      "remote-host",
+    );
+  });
+
   it("should not remove or delete a branch checked out in the project root", async () => {
     // Given
     mockListWorktrees.mockResolvedValue([

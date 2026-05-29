@@ -737,21 +737,22 @@ export async function cleanupTaskResources(
   }
 
   const sshHost = task.sshHost || project?.sshHost || null;
-  const cleanupOptions = options.throwOnError
-    ? { throwOnError: true }
-    : undefined;
+  const cleanupOptions = {
+    ...(options.throwOnError ? { throwOnError: true } : {}),
+    worktreePath: task.worktreePath,
+  };
 
   /** 브랜치별 독립 세션 정리 */
   if (task.sessionType && task.sessionName) {
     try {
       detachSession(task.id, "cleanup-task-resources");
 
-      if (cleanupOptions) {
+      if (options.throwOnError) {
         await removeSessionOnly(
           task.sessionType,
           task.sessionName,
           sshHost,
-          cleanupOptions,
+          { throwOnError: true },
         );
       } else {
         await removeSessionOnly(
@@ -796,7 +797,7 @@ export async function cleanupTaskResources(
     }
 
     try {
-      if (cleanupOptions) {
+      if (options.throwOnError) {
         await removeWorktreeAndBranch(
           project?.repoPath || process.cwd(),
           task.branchName,
@@ -808,6 +809,7 @@ export async function cleanupTaskResources(
           project?.repoPath || process.cwd(),
           task.branchName,
           sshHost,
+          cleanupOptions,
         );
       }
     } catch (error) {
