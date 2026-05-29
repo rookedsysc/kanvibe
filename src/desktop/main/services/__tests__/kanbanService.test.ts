@@ -68,7 +68,6 @@ vi.mock("@/lib/worktree", () => ({
   removeWorktreeAndBranch: mocks.removeWorktreeAndBranch,
   createSessionWithoutWorktree: mocks.createSessionWithoutWorktree,
   removeSessionOnly: mocks.removeSessionOnly,
-  buildManagedWorktreePath: vi.fn((projectPath: string, branchName: string) => `${projectPath}__worktrees/${branchName}`),
 }));
 
 vi.mock("@/lib/terminal", () => ({
@@ -669,7 +668,7 @@ describe("kanbanService.createTask", () => {
     expect(mocks.broadcastBoardUpdate).toHaveBeenCalledTimes(1);
   });
 
-  it("원격 stale task 삭제는 안전하지 않은 worktree/브랜치 정리 상태에서 task 레코드를 삭제하지 않는다", async () => {
+  it("DB worktreePath가 managed 예상 경로와 달라도 task 삭제는 프로젝트와 브랜치 기준으로 정리한 뒤 레코드를 삭제한다", async () => {
     // Given
     const consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     const task = {
@@ -682,6 +681,7 @@ describe("kanbanService.createTask", () => {
       sessionName: null,
     };
     mocks.taskRepo.findOneBy.mockResolvedValue(task);
+    mocks.taskRepo.remove.mockResolvedValue(task);
     mocks.projectRepo.findOneBy.mockResolvedValue({
       id: "project-1",
       repoPath: "/remote/repo",
@@ -690,11 +690,19 @@ describe("kanbanService.createTask", () => {
 
     const { deleteTask } = await import("@/desktop/main/services/kanbanService");
 
-    // When & Then
-    await expect(deleteTask("task-1")).rejects.toThrow("task 경로와 project 경로가 일치하지 않아");
-    expect(mocks.removeWorktreeAndBranch).not.toHaveBeenCalled();
-    expect(mocks.taskRepo.remove).not.toHaveBeenCalled();
-    expect(consoleWarnSpy).toHaveBeenCalled();
+    // When
+    const result = await deleteTask("task-1");
+
+    // Then
+    expect(result).toBe(true);
+    expect(mocks.removeWorktreeAndBranch).toHaveBeenCalledWith(
+      "/remote/repo",
+      "dev",
+      "remote-host",
+      { throwOnError: true, worktreePath: "/Users/local/repo__worktrees/dev" },
+    );
+    expect(mocks.taskRepo.remove).toHaveBeenCalledWith(task);
+    expect(consoleWarnSpy).not.toHaveBeenCalled();
   });
 
   it("연결된 프로젝트를 찾을 수 없는 원격 stale task 삭제는 세션 정리 후 task 레코드를 삭제하지 않는다", async () => {

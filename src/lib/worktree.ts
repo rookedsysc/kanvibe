@@ -2,7 +2,7 @@ import path from "path";
 import { writeFile } from "fs/promises";
 import { SessionType } from "@/entities/KanbanTask";
 import { PaneLayoutType, type PaneCommand } from "@/entities/PaneLayoutConfig";
-import { execGit } from "@/lib/gitOperations";
+import { execGit, listWorktrees } from "@/lib/gitOperations";
 import { getEffectivePaneLayout } from "@/desktop/main/services/paneLayoutService";
 
 interface WorktreeSession {
@@ -315,6 +315,55 @@ export async function createSessionWithoutWorktree(
 
 interface ResourceCleanupOptions {
   throwOnError?: boolean;
+  worktreePath?: string | null;
+}
+
+interface ResolvedBranchWorktree {
+  path: string | null;
+  isProjectRootCheckout: boolean;
+}
+
+function normalizeGitWorktreePath(worktreePath: string): string {
+  return worktreePath.replace(/\/+$/, "") || worktreePath;
+}
+
+async function resolveBranchWorktreePath(
+  projectPath: string,
+  branchName: string,
+  fallbackWorktreePath?: string | null,
+  sshHost?: string | null,
+): Promise<ResolvedBranchWorktree> {
+  const worktrees = await listWorktrees(projectPath, sshHost);
+  const normalizedProjectPath = normalizeGitWorktreePath(projectPath);
+  const normalizedFallbackWorktreePath = fallbackWorktreePath
+    ? normalizeGitWorktreePath(fallbackWorktreePath)
+    : null;
+  const normalizedManagedWorktreePath = normalizeGitWorktreePath(
+    buildManagedWorktreePath(projectPath, branchName),
+  );
+  const matchingWorktrees = worktrees.filter((worktree) => (
+    !worktree.isBare && worktree.branch === branchName
+  ));
+
+  const linkedWorktree = matchingWorktrees.find((worktree) => (
+    normalizeGitWorktreePath(worktree.path) !== normalizedProjectPath
+  ));
+
+  const fallbackWorktree = normalizedFallbackWorktreePath
+    ? worktrees.find((worktree) => (
+        !worktree.isBare
+        && normalizeGitWorktreePath(worktree.path) === normalizedFallbackWorktreePath
+        && normalizedFallbackWorktreePath === normalizedManagedWorktreePath
+        && normalizedFallbackWorktreePath !== normalizedProjectPath
+      ))
+    : null;
+
+  return {
+    path: linkedWorktree?.path ?? fallbackWorktree?.path ?? null,
+    isProjectRootCheckout: matchingWorktrees.some((worktree) => (
+      normalizeGitWorktreePath(worktree.path) === normalizedProjectPath
+    )),
+  };
 }
 
 /** worktree와 브랜치를 삭제한다. 세션은 건드리지 않는다 */
@@ -324,21 +373,34 @@ export async function removeWorktreeAndBranch(
   sshHost?: string | null,
   options: ResourceCleanupOptions = {},
 ): Promise<void> {
-  const worktreePath = buildManagedWorktreePath(projectPath, branchName);
-  const worktreeCommand = options.throwOnError
-    ? `if git -C "${projectPath}" worktree list --porcelain | grep -Fxq "worktree ${worktreePath}"; then git -C "${projectPath}" worktree remove "${worktreePath}" --force; fi`
-    : `git -C "${projectPath}" worktree remove "${worktreePath}" --force`;
+  const resolvedWorktree = await resolveBranchWorktreePath(
+    projectPath,
+    branchName,
+    options.worktreePath,
+    sshHost,
+  );
+  const worktreePath = resolvedWorktree.path;
   const branchCommand = options.throwOnError
     ? `if git -C "${projectPath}" show-ref --verify --quiet "refs/heads/${branchName}"; then git -C "${projectPath}" branch -D "${branchName}"; fi`
     : `git -C "${projectPath}" branch -D "${branchName}"`;
 
-  try {
-    await execGit(worktreeCommand, sshHost);
-  } catch {
-    if (options.throwOnError) {
-      throw new Error(`worktree 정리 실패: ${worktreePath}`);
+  if (worktreePath) {
+    const worktreeCommand = options.throwOnError
+      ? `if git -C "${projectPath}" worktree list --porcelain | grep -Fxq "worktree ${worktreePath}"; then git -C "${projectPath}" worktree remove "${worktreePath}" --force; fi`
+      : `git -C "${projectPath}" worktree remove "${worktreePath}" --force`;
+
+    try {
+      await execGit(worktreeCommand, sshHost);
+    } catch {
+      if (options.throwOnError) {
+        throw new Error(`worktree 정리 실패: ${worktreePath}`);
+      }
+      // worktree가 이미 삭제된 경우 무시
     }
-    // worktree가 이미 삭제된 경우 무시
+  }
+
+  if (resolvedWorktree.isProjectRootCheckout) {
+    return;
   }
 
   try {

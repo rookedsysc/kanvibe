@@ -3,7 +3,7 @@ import { In, Not, Like } from "typeorm";
 import { getTaskRepository } from "@/lib/database";
 import { KanbanTask, TaskStatus, SessionType } from "@/entities/KanbanTask";
 import { TaskPriority } from "@/entities/TaskPriority";
-import { createWorktreeWithSession, removeWorktreeAndBranch, createSessionWithoutWorktree, removeSessionOnly, buildManagedWorktreePath } from "@/lib/worktree";
+import { createWorktreeWithSession, removeWorktreeAndBranch, createSessionWithoutWorktree, removeSessionOnly } from "@/lib/worktree";
 import { getProjectRepository } from "@/lib/database";
 import {
   broadcastBoardUpdate,
@@ -739,21 +739,33 @@ async function cleanupTaskResources(
   }
 
   const sshHost = task.sshHost || project?.sshHost || null;
-  const cleanupOptions = options.throwOnError
+  const sessionCleanupOptions = options.throwOnError
     ? { throwOnError: true }
     : undefined;
+  const worktreeCleanupOptions = {
+    ...(options.throwOnError ? { throwOnError: true } : {}),
+    worktreePath: task.worktreePath,
+  };
 
   /** 브랜치별 독립 세션 정리 */
   if (task.sessionType && task.sessionName) {
     try {
       detachSession(task.id, "cleanup-task-resources");
 
-      await removeSessionOnly(
-        task.sessionType,
-        task.sessionName,
-        sshHost,
-        cleanupOptions,
-      );
+      if (sessionCleanupOptions) {
+        await removeSessionOnly(
+          task.sessionType,
+          task.sessionName,
+          sshHost,
+          sessionCleanupOptions,
+        );
+      } else {
+        await removeSessionOnly(
+          task.sessionType,
+          task.sessionName,
+          sshHost,
+        );
+      }
     } catch (error) {
       if (options.throwOnError) {
         throw error;
@@ -771,15 +783,11 @@ async function cleanupTaskResources(
   }
 
   const isProjectRoot = project && task.worktreePath === project.repoPath;
-  const expectedWorktreePath = project?.repoPath && task.branchName
-    ? buildManagedWorktreePath(project.repoPath, task.branchName)
-    : null;
 
   /** worktree + 브랜치 정리 (프로젝트 루트 브랜치 제외) */
   if (task.branchName && !isProjectRoot) {
     const canCleanupBranch = Boolean(project?.repoPath)
-      && Boolean(task.worktreePath)
-      && task.worktreePath === expectedWorktreePath;
+      && Boolean(task.worktreePath);
 
     if (!canCleanupBranch) {
       const warningPayload = {
@@ -789,9 +797,9 @@ async function cleanupTaskResources(
         projectRepoPath: project?.repoPath ?? null,
         sshHost,
       };
-      console.warn("worktree/브랜치 정리 건너뜀: task 경로와 project 경로가 일치하지 않습니다.", warningPayload);
+      console.warn("worktree/브랜치 정리 건너뜀: 정리할 프로젝트 또는 worktree 정보가 부족합니다.", warningPayload);
       if (options.throwOnError) {
-        throw new Error("task 경로와 project 경로가 일치하지 않아 worktree/브랜치 정리를 건너뛰었습니다.");
+        throw new Error("정리할 프로젝트 또는 worktree 정보가 부족해 worktree/브랜치 정리를 건너뛰었습니다.");
       }
       return;
     }
@@ -801,7 +809,7 @@ async function cleanupTaskResources(
         project?.repoPath || process.cwd(),
         task.branchName,
         sshHost,
-        cleanupOptions,
+        worktreeCleanupOptions,
       );
     } catch (error) {
       if (options.throwOnError) {

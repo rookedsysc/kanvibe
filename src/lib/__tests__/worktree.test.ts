@@ -6,9 +6,11 @@ import { SessionType } from "@/entities/KanbanTask";
 // --- Mocks ---
 
 const mockExecGit = vi.fn().mockResolvedValue("");
+const mockListWorktrees = vi.fn().mockResolvedValue([]);
 
 vi.mock("@/lib/gitOperations", () => ({
   execGit: (...args: unknown[]) => mockExecGit(...args),
+  listWorktrees: (...args: unknown[]) => mockListWorktrees(...args),
 }));
 
 const mockGetEffectivePaneLayout = vi.fn();
@@ -188,6 +190,153 @@ describe("isSessionAlive", () => {
       'tmux has-session -t "feat-branch" 2>/dev/null',
       "remote-host",
     );
+  });
+});
+
+describe("removeWorktreeAndBranch", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockExecGit.mockResolvedValue("");
+    mockListWorktrees.mockResolvedValue([]);
+  });
+
+  it("should remove the actual worktree path resolved from git worktree list", async () => {
+    // Given
+    mockListWorktrees.mockResolvedValue([
+      {
+        path: "/workspace/custom-worktrees/feature-real-path",
+        branch: "feature/real-path",
+        isBare: false,
+      },
+    ]);
+
+    const { removeWorktreeAndBranch } = await import("@/lib/worktree");
+
+    // When
+    await removeWorktreeAndBranch("/workspace/repo", "feature/real-path", "remote-host");
+
+    // Then
+    expect(mockListWorktrees).toHaveBeenCalledWith("/workspace/repo", "remote-host");
+    expect(mockExecGit).toHaveBeenCalledWith(
+      'git -C "/workspace/repo" worktree remove "/workspace/custom-worktrees/feature-real-path" --force',
+      "remote-host",
+    );
+    expect(mockExecGit).toHaveBeenCalledWith(
+      'git -C "/workspace/repo" branch -D "feature/real-path"',
+      "remote-host",
+    );
+  });
+
+  it("should skip worktree removal when the branch has no registered worktree", async () => {
+    // Given
+    mockListWorktrees.mockResolvedValue([
+      {
+        path: "/workspace/repo",
+        branch: "main",
+        isBare: false,
+      },
+    ]);
+
+    const { removeWorktreeAndBranch } = await import("@/lib/worktree");
+
+    // When
+    await removeWorktreeAndBranch("/workspace/repo", "feature/missing");
+
+    // Then
+    expect(filterCalls("worktree remove")).toHaveLength(0);
+    expect(mockExecGit).toHaveBeenCalledWith(
+      'git -C "/workspace/repo" branch -D "feature/missing"',
+      undefined,
+    );
+  });
+
+  it("should fall back to the managed task worktree path when the worktree branch changed", async () => {
+    // Given
+    mockListWorktrees.mockResolvedValue([
+      {
+        path: "/workspace/repo",
+        branch: "main",
+        isBare: false,
+      },
+      {
+        path: "/workspace/repo__worktrees/feature-task",
+        branch: "debug/other-branch",
+        isBare: false,
+      },
+    ]);
+
+    const { removeWorktreeAndBranch } = await import("@/lib/worktree");
+
+    // When
+    await removeWorktreeAndBranch(
+      "/workspace/repo",
+      "feature/task",
+      "remote-host",
+      { worktreePath: "/workspace/repo__worktrees/feature-task/" },
+    );
+
+    // Then
+    expect(mockExecGit).toHaveBeenCalledWith(
+      'git -C "/workspace/repo" worktree remove "/workspace/repo__worktrees/feature-task" --force',
+      "remote-host",
+    );
+    expect(mockExecGit).toHaveBeenCalledWith(
+      'git -C "/workspace/repo" branch -D "feature/task"',
+      "remote-host",
+    );
+  });
+
+  it("should not fall back to a stale task path owned by another linked worktree", async () => {
+    // Given
+    mockListWorktrees.mockResolvedValue([
+      {
+        path: "/workspace/repo",
+        branch: "main",
+        isBare: false,
+      },
+      {
+        path: "/workspace/custom-worktrees/other-task",
+        branch: "feature/other-task",
+        isBare: false,
+      },
+    ]);
+
+    const { removeWorktreeAndBranch } = await import("@/lib/worktree");
+
+    // When
+    await removeWorktreeAndBranch(
+      "/workspace/repo",
+      "feature/task",
+      "remote-host",
+      { worktreePath: "/workspace/custom-worktrees/other-task" },
+    );
+
+    // Then
+    expect(filterCalls("worktree remove")).toHaveLength(0);
+    expect(mockExecGit).toHaveBeenCalledWith(
+      'git -C "/workspace/repo" branch -D "feature/task"',
+      "remote-host",
+    );
+  });
+
+  it("should not remove or delete a branch checked out in the project root", async () => {
+    // Given
+    mockListWorktrees.mockResolvedValue([
+      {
+        path: "/workspace/repo",
+        branch: "feature/root-checkout",
+        isBare: false,
+      },
+    ]);
+
+    const { removeWorktreeAndBranch } = await import("@/lib/worktree");
+
+    // When
+    await removeWorktreeAndBranch("/workspace/repo/", "feature/root-checkout", null, { throwOnError: true });
+
+    // Then
+    expect(filterCalls("worktree remove")).toHaveLength(0);
+    expect(filterCalls("branch -D")).toHaveLength(0);
   });
 });
 
