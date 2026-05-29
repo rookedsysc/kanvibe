@@ -16,16 +16,29 @@ if [[ ! -f "$ROOT_DIR/build/renderer/index.html" || ! -f "$ROOT_DIR/build/main/s
   pnpm build
 fi
 
-echo "[kanvibe-qa] running PR #275/#276 targeted worktree cleanup tests"
-pnpm exec vitest run src/lib/__tests__/worktree.test.ts --reporter=verbose | tee "$RUN_DIR/worktree-vitest.log"
+echo "[kanvibe-qa] verifying Node native runtime for regression tests"
+node scripts/ensure-native-runtime.cjs
 
-echo "[kanvibe-qa] running Electron video smoke QA"
-KANVIBE_QA_RUN_ID="$RUN_ID" KANVIBE_QA_RUN_DIR="$RUN_DIR" bash scripts/qa-electron-video.sh | tee "$RUN_DIR/electron-smoke.log"
+echo "[kanvibe-qa] running PR #275/#276 resource-cleanup regression tests"
+pnpm exec vitest run \
+  src/lib/__tests__/worktree.test.ts \
+  src/desktop/main/services/__tests__/kanbanService.test.ts \
+  src/desktop/renderer/actions/__tests__/kanban.test.ts \
+  --reporter=verbose | tee "$RUN_DIR/resource-cleanup-vitest.log"
+
+echo "[kanvibe-qa] verifying Electron native runtime for video QA"
+node scripts/ensure-native-runtime.cjs --electron
+
+echo "[kanvibe-qa] running Electron keyboard/mouse QA with mp4 capture"
+KANVIBE_QA_RUN_ID="$RUN_ID" KANVIBE_QA_RUN_DIR="$RUN_DIR" bash scripts/qa-electron-video.sh | tee "$RUN_DIR/electron-video.log"
+
+if [[ ! -s "$RUN_DIR/run.mp4" ]]; then
+  echo "[kanvibe-qa] expected video missing or empty: $RUN_DIR/run.mp4" >&2
+  exit 1
+fi
 
 echo "[kanvibe-qa] output: $RUN_DIR"
 if [[ -f "$RUN_DIR/report.md" ]]; then
   echo "[kanvibe-qa] report: $RUN_DIR/report.md"
 fi
-if [[ -f "$RUN_DIR/run.mp4" ]]; then
-  echo "[kanvibe-qa] video: $RUN_DIR/run.mp4"
-fi
+echo "[kanvibe-qa] video: $RUN_DIR/run.mp4"
