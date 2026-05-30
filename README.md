@@ -85,7 +85,7 @@ Create follow-up branch TODOs directly from the highlighted search result, prese
 
 ### 6. Vim-Style Board Controls
 
-Turn on Vim-style board controls in **Settings → Keyboard**, then move across task cards with `h/j/k/l`, open the new-task modal with `n`, move statuses with `:move progress`, and delete a focused task with `dd`.
+Turn on Vim-style board controls in **Settings → Keyboard**, then move across task cards with `h/j/k/l`, find visible task text with `/`, open the new-task modal with `n`, move statuses with `:move progress`, and delete a focused task with `dd`.
 
 <video src="./docs/images/readme/kanvibe-vim-controls.mp4" poster="./docs/images/readme/kanvibe-vim-controls.png" controls muted playsinline width="100%"></video>
 
@@ -207,7 +207,7 @@ Each pane can run a custom command (e.g., `vim`, `htop`, `lazygit`, test runner,
 
 | Shortcut | Scope | Action |
 |----------|-------|--------|
-| `Cmd/Ctrl+F` | Board | Open page find for visible project/task text |
+| `Cmd/Ctrl+F` or `/` with Vim-style controls enabled | Board | Open page find for visible project/task text; press `Enter` for next and `Shift+Enter` for previous |
 | `h / j / k / l` or `← / ↓ / ↑ / →` | Board task cards | Move focus left/down/up/right across visible task cards; if no task is focused, enter the first visible task |
 | `n` | Board | Open the new task modal immediately |
 | `:move todo\|progress\|pending\|review\|done` | Focused board task card | Move the focused task to the target status without drag-and-drop |
@@ -225,7 +225,7 @@ Each pane can run a custom command (e.g., `vim`, `htop`, `lazygit`, test runner,
 
 Task detail dock numbering excludes the back-to-board button and follows the visible dock item order. If a task has a PR URL, PR takes slot 4 and later dock items shift to 5+; without a PR, the next dock item uses slot 4.
 
-Vim-style board controls (`h/j/k/l`, `n`, `dd`, and `:move ...`) can be turned on or off in **Settings → Keyboard**. Arrow-key task navigation remains available even when Vim-style controls are disabled.
+Vim-style board controls (`h/j/k/l`, `/`, `n`, `dd`, and `:move ...`) can be turned on or off in **Settings → Keyboard**. Arrow-key task navigation and `Cmd/Ctrl+F` page find remain available even when Vim-style controls are disabled.
 
 ### AI Agent Hooks - Automatic Status Tracking
 KanVibe integrates with **Claude Code Hooks**, **Gemini CLI Hooks**, **Codex CLI**, and **OpenCode** to automatically track task status. Tasks are managed through 5 statuses:

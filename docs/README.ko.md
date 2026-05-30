@@ -140,7 +140,7 @@ brew untap rookedsysc/kanvibe
 
 | 단축키 | 범위 | 동작 |
 |--------|------|------|
-| `Cmd/Ctrl+F` | 보드 | 현재 보이는 프로젝트/태스크 텍스트를 보드 안에서 검색 |
+| `Cmd/Ctrl+F` 또는 Vim 스타일 조작이 켜진 상태의 `/` | 보드 | 현재 보이는 프로젝트/태스크 텍스트를 보드 안에서 검색. `Enter`로 다음, `Shift+Enter`로 이전 결과 이동 |
 | `h / j / k / l` 또는 `← / ↓ / ↑ / →` | 보드 태스크 카드 | 보이는 태스크 카드 포커스를 좌/하/상/우로 이동. 포커스된 태스크가 없으면 첫 번째 보이는 태스크로 진입 |
 | `n` | 보드 | 새 작업 모달 즉시 열기 |
 | `:move todo\|progress\|pending\|review\|done` | 포커스된 보드 태스크 카드 | 드래그 없이 포커스된 태스크를 대상 상태로 이동 |
@@ -154,11 +154,11 @@ brew untap rookedsysc/kanvibe
 | `↑ / ↓ / Enter / Esc` | 프로젝트 필터 드롭다운 | 선택 이동, 프로젝트 필터 토글, 드롭다운 닫기 |
 | `↑ / ↓ / Enter / Esc` | 알림 드롭다운 | 선택 이동, 알림 대상 열기, 드롭다운 닫기 |
 
-Vim 스타일 보드 조작(`h/j/k/l`, `n`, `dd`, `:move ...`)은 **설정 → 키보드**에서 켜고 끌 수 있습니다. 꺼도 방향키 태스크 이동은 계속 사용할 수 있습니다.
+Vim 스타일 보드 조작(`h/j/k/l`, `/`, `n`, `dd`, `:move ...`)은 **설정 → 키보드**에서 켜고 끌 수 있습니다. 꺼도 방향키 태스크 이동과 `Cmd/Ctrl+F` 보드 검색은 계속 사용할 수 있습니다.
 
 #### Vim 스타일 보드 조작 데모
 
-아래 영상은 **설정 → 키보드**에서 Vim 스타일 보드 조작을 켠 뒤 `h/j/k/l`, `:move progress`, `n`, `dd`를 실제 보드에서 사용하는 흐름을 보여줍니다.
+아래 영상은 **설정 → 키보드**에서 Vim 스타일 보드 조작을 켠 뒤 `h/j/k/l`, `/`, `:move progress`, `n`, `dd`를 실제 보드에서 사용하는 흐름을 보여줍니다.
 
 <video src="./images/readme/kanvibe-vim-controls.mp4" poster="./images/readme/kanvibe-vim-controls.png" controls muted playsinline width="100%"></video>
 

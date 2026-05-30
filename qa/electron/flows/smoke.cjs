@@ -360,6 +360,63 @@ async function submitVimMoveCommand(page, taskId, status) {
   await waitForTaskStatus(page, taskId, status);
 }
 
+function getPageFindInput(page) {
+  return page.getByRole("textbox", { name: /보드에서 찾기|Find on board|在看板中查找/i });
+}
+
+async function assertPageFindClosed(page, context) {
+  await page.waitForTimeout(500);
+  const isVisible = await getPageFindInput(page).first().isVisible().catch(() => false);
+  if (isVisible) {
+    await page.keyboard.press("Escape").catch(() => {});
+    throw new Error(`${context}: page find input unexpectedly opened`);
+  }
+}
+
+async function installPageFindRecorder(page) {
+  await page.evaluate(() => {
+    const originalFind = typeof window.find === "function" ? window.find.bind(window) : null;
+    window.__kanvibeQaFindCalls = [];
+    Object.defineProperty(window, "find", {
+      configurable: true,
+      writable: true,
+      value: (...args) => {
+        window.__kanvibeQaFindCalls.push(args);
+        return originalFind ? originalFind(...args) : true;
+      },
+    });
+  });
+}
+
+async function getPageFindCalls(page) {
+  return page.evaluate(() => window.__kanvibeQaFindCalls || []);
+}
+
+async function assertSlashPageFindNavigation(page, taskId, query) {
+  await installPageFindRecorder(page);
+  await focusTaskCard(page, taskId);
+  await page.keyboard.press("/");
+
+  const input = getPageFindInput(page);
+  await input.waitFor({ state: "visible", timeout: 7000 });
+  await input.fill(query);
+  await page.keyboard.press("Enter");
+  await page.keyboard.press("Shift+Enter");
+
+  await page.waitForFunction(() => (window.__kanvibeQaFindCalls || []).length >= 2, null, { timeout: 7000 });
+  const calls = await getPageFindCalls(page);
+  const expectedNext = [query, false, false, true, false, false, false];
+  const expectedPrevious = [query, false, true, true, false, false, false];
+  const stringify = (value) => JSON.stringify(value);
+  if (stringify(calls[0]) !== stringify(expectedNext) || stringify(calls[1]) !== stringify(expectedPrevious)) {
+    throw new Error(`expected / find Enter/Shift+Enter calls ${stringify([expectedNext, expectedPrevious])}, got ${stringify(calls)}`);
+  }
+
+  await page.keyboard.press("Escape");
+  await input.waitFor({ state: "hidden", timeout: 7000 });
+  return calls.slice(0, 2);
+}
+
 async function assertVimCommandClosed(page, context) {
   await page.waitForTimeout(700);
   const isVisible = await page.locator("#vim-command-input").first().isVisible().catch(() => false);
@@ -575,6 +632,13 @@ async function main() {
 
     await takeScreenshot(page, run, "vim-hjkl-focus-navigation-on", screenshots);
 
+    await optionalStep(checks, "Vim / opens board page find and Enter/Shift+Enter navigate matches", async () => {
+      const calls = await assertSlashPageFindNavigation(page, vimTasks.navTodoTop.id, `vim-qa-${run.runId}`);
+      return `/ opened the same page find UI; Enter/Shift+Enter called window.find with next/previous directions: ${JSON.stringify(calls)}`;
+    });
+
+    await takeScreenshot(page, run, "vim-slash-page-find-complete", screenshots);
+
     await optionalStep(checks, "Vim :move command moves focused task through every supported status", async () => {
       const statuses = ["progress", "pending", "review", "done", "todo"];
       for (const status of statuses) {
@@ -612,6 +676,10 @@ async function main() {
       await page.keyboard.press("n");
       await assertCreateTaskModalClosed(page, "Vim OFF n shortcut");
 
+      await blurActiveElement(page);
+      await page.keyboard.press("/");
+      await assertPageFindClosed(page, "Vim OFF / shortcut");
+
       await focusTaskCard(page, vimTasks.navTodoTop.id);
       await page.keyboard.press("l");
       await expectFocusedTask(page, vimTasks.navTodoTop.id, "Vim OFF l shortcut should not move focus");
@@ -634,7 +702,7 @@ async function main() {
       }
       await assertTaskExists(page, vimTasks.commandTask.id, "Vim OFF dd shortcut");
 
-      return `n/:/dd/l disabled; ArrowRight still moved focus to ${arrowFocus.taskId}`;
+      return `n/:/dd/l and / disabled; ArrowRight still moved focus to ${arrowFocus.taskId}`;
     });
 
     await optionalStep(checks, "Settings toggle ON restores Vim shortcut handling", async () => {
@@ -760,7 +828,7 @@ async function main() {
 
   const result = {
     ok,
-    scope: "Electron UI QA for PR #275/#276 cleanup plus Vim-style board controls: clone fixture repo, seed real tasks, verify h/j/k/l, n, dd, :move todo|progress|pending|review|done, settings ON/OFF behavior, and external worktree cleanup",
+    scope: "Electron UI QA for PR #275/#276 cleanup plus Vim-style board controls: clone fixture repo, seed real tasks, verify h/j/k/l, / page find with Enter/Shift+Enter, n, dd, :move todo|progress|pending|review|done, settings ON/OFF behavior, and external worktree cleanup",
     branch: gitValue(["branch", "--show-current"]),
     commit: gitValue(["rev-parse", "--short", "HEAD"]),
     checks,

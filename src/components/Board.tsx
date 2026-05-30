@@ -1025,7 +1025,7 @@ export default function Board({
 
   return (
     <div className="min-h-screen bg-bg-page">
-      <BoardPageFindBar />
+      <BoardPageFindBar vimModeEnabled={vimModeEnabled} />
       <header className={headerClassName}>
         <div className="flex items-center gap-3 [-webkit-app-region:no-drag]">
           <div className="w-64">

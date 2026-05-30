@@ -453,6 +453,70 @@ describe("Board defaultSessionType sync", () => {
     });
   });
 
+  it("보드에서 /를 누르면 Ctrl+F와 같은 페이지 검색 바를 열고 Enter로 결과를 이동한다", async () => {
+    const findMock = mockWindowFind();
+
+    render(
+      <Board
+        initialTasks={createTasksWithTodo()}
+        initialDoneTotal={0}
+        initialDoneLimit={20}
+        sshHosts={[]}
+        projects={[createProject()]}
+        sidebarDefaultCollapsed={false}
+        doneAlertDismissed={false}
+        notificationSettings={{ isEnabled: true, enabledStatuses: ["progress", "pending", "review"] }}
+        defaultSessionType={SessionType.TMUX}
+        taskSearchShortcut="Mod+Shift+O"
+      />,
+    );
+
+    const taskLink = await screen.findByRole("link", { name: "Test Task" });
+    taskLink.focus();
+
+    const openFindEvent = createEvent.keyDown(taskLink, { key: "/" });
+    fireEvent(taskLink, openFindEvent);
+
+    expect(openFindEvent.defaultPrevented).toBe(true);
+
+    const input = await screen.findByPlaceholderText("pageFind.placeholder");
+    fireEvent.change(input, {
+      target: { value: "Test Task" },
+    });
+    fireEvent.keyDown(input, { key: "Enter" });
+    fireEvent.keyDown(input, { key: "Enter", shiftKey: true });
+
+    expect(findMock).toHaveBeenNthCalledWith(1, "Test Task", false, false, true, false, false, false);
+    expect(findMock).toHaveBeenNthCalledWith(2, "Test Task", false, true, true, false, false, false);
+  });
+
+  it("vim mode가 꺼져 있으면 /를 페이지 검색 단축키로 소비하지 않는다", async () => {
+    render(
+      <Board
+        initialTasks={createTasksWithTodo()}
+        initialDoneTotal={0}
+        initialDoneLimit={20}
+        sshHosts={[]}
+        projects={[createProject()]}
+        sidebarDefaultCollapsed={false}
+        doneAlertDismissed={false}
+        notificationSettings={{ isEnabled: true, enabledStatuses: ["progress", "pending", "review"] }}
+        defaultSessionType={SessionType.TMUX}
+        taskSearchShortcut="Mod+Shift+O"
+        vimModeEnabled={false}
+      />,
+    );
+
+    const taskLink = await screen.findByRole("link", { name: "Test Task" });
+    taskLink.focus();
+
+    const openFindEvent = createEvent.keyDown(taskLink, { key: "/" });
+    fireEvent(taskLink, openFindEvent);
+
+    expect(openFindEvent.defaultPrevented).toBe(false);
+    expect(screen.queryByPlaceholderText("pageFind.placeholder")).toBeNull();
+  });
+
   it("shortcut blocker가 등록되어 있으면 Ctrl+F가 보드 검색 바를 열지 않는다", async () => {
     render(
       <MemoryRouter initialEntries={["/ko"]}>
