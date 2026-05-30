@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { createEvent, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import Board from "../Board";
-import { moveTaskToColumn, reorderTasks } from "@/desktop/renderer/actions/kanban";
+import { deleteTask, moveTaskToColumn, reorderTasks } from "@/desktop/renderer/actions/kanban";
 import { SessionType, TaskStatus, type KanbanTask } from "@/entities/KanbanTask";
 import type { Project } from "@/entities/Project";
 import type { TasksByStatus } from "@/desktop/renderer/actions/kanban";
@@ -535,6 +535,73 @@ describe("Board defaultSessionType sync", () => {
 
     expect(event.defaultPrevented).toBe(true);
     expect(document.activeElement).toBe(taskLink);
+  });
+
+  it("포커스된 task에서 dd를 누르면 확인 후 task를 삭제한다", async () => {
+    const confirmMock = vi.spyOn(window, "confirm").mockReturnValue(true);
+
+    render(
+      <Board
+        initialTasks={createTasksWithTodo()}
+        initialDoneTotal={0}
+        initialDoneLimit={20}
+        sshHosts={[]}
+        projects={[createProject()]}
+        sidebarDefaultCollapsed={false}
+        doneAlertDismissed={false}
+        notificationSettings={{ isEnabled: true, enabledStatuses: ["progress", "pending", "review"] }}
+        defaultSessionType={SessionType.TMUX}
+        taskSearchShortcut="Mod+Shift+O"
+      />,
+    );
+
+    const taskLink = await screen.findByRole("link", { name: "Test Task" });
+    taskLink.focus();
+
+    const firstD = createEvent.keyDown(taskLink, { key: "d" });
+    fireEvent(taskLink, firstD);
+
+    expect(firstD.defaultPrevented).toBe(true);
+    expect(deleteTask).not.toHaveBeenCalled();
+
+    const secondD = createEvent.keyDown(taskLink, { key: "d" });
+    fireEvent(taskLink, secondD);
+
+    expect(secondD.defaultPrevented).toBe(true);
+    expect(confirmMock).toHaveBeenCalledWith("deleteConfirm");
+    expect(deleteTask).toHaveBeenCalledWith("task-1");
+
+    confirmMock.mockRestore();
+  });
+
+  it("포커스된 task에서 dd를 눌러도 확인을 취소하면 task를 삭제하지 않는다", async () => {
+    const confirmMock = vi.spyOn(window, "confirm").mockReturnValue(false);
+
+    render(
+      <Board
+        initialTasks={createTasksWithTodo()}
+        initialDoneTotal={0}
+        initialDoneLimit={20}
+        sshHosts={[]}
+        projects={[createProject()]}
+        sidebarDefaultCollapsed={false}
+        doneAlertDismissed={false}
+        notificationSettings={{ isEnabled: true, enabledStatuses: ["progress", "pending", "review"] }}
+        defaultSessionType={SessionType.TMUX}
+        taskSearchShortcut="Mod+Shift+O"
+      />,
+    );
+
+    const taskLink = await screen.findByRole("link", { name: "Test Task" });
+    taskLink.focus();
+
+    fireEvent.keyDown(taskLink, { key: "d" });
+    fireEvent.keyDown(taskLink, { key: "d" });
+
+    expect(confirmMock).toHaveBeenCalledWith("deleteConfirm");
+    expect(deleteTask).not.toHaveBeenCalled();
+
+    confirmMock.mockRestore();
   });
 
   it("상세 화면에서 돌아온 task id가 있으면 해당 task로 초기 focus를 시작한다", async () => {

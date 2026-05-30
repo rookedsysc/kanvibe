@@ -57,6 +57,8 @@ const BOARD_TASK_FOCUS_KEYS = new Set([
   "k",
   "l",
 ]);
+const TASK_DELETE_SEQUENCE_KEY = "d";
+const TASK_DELETE_SEQUENCE_TIMEOUT_MS = 1_000;
 
 interface ContextMenuState {
   isOpen: boolean;
@@ -132,6 +134,14 @@ function getTaskCardFromKeyboardEvent(event: KeyboardEvent) {
 
 function isShiftOnlyKeyboardShortcut(event: KeyboardEvent, key: string) {
   return event.key === key && event.shiftKey && !event.altKey && !event.ctrlKey && !event.metaKey;
+}
+
+function isPlainTaskDeleteSequenceKey(event: KeyboardEvent) {
+  return event.key === TASK_DELETE_SEQUENCE_KEY && !event.shiftKey && !event.altKey && !event.ctrlKey && !event.metaKey;
+}
+
+function isModifierKey(key: string) {
+  return key === "Alt" || key === "Control" || key === "Meta" || key === "Shift";
 }
 
 function getCurrentBoardLocale() {
@@ -348,6 +358,10 @@ export default function Board({
   const notificationCenterRef = useRef<NotificationCenterButtonHandle>(null);
   const projectSelectorRef = useRef<ProjectSelectorHandle>(null);
   const hasAppliedInitialFocusRef = useRef(false);
+  const pendingTaskDeleteSequenceRef = useRef<{
+    taskId: string;
+    timeoutId: number;
+  } | null>(null);
 
   /** projectId → 표시할 프로젝트 이름 매핑. worktree 프로젝트는 메인 프로젝트 이름으로 resolve한다 */
   const projectNameMap = useMemo(() => {
@@ -521,6 +535,65 @@ export default function Board({
     window.addEventListener("keydown", handleWindowTaskFocus);
     return () => window.removeEventListener("keydown", handleWindowTaskFocus);
   }, [contextMenu.isOpen, isBranchModalOpen, isModalOpen, pendingDoneResult]);
+
+  useEffect(() => {
+    function resetPendingTaskDeleteSequence() {
+      if (pendingTaskDeleteSequenceRef.current) {
+        window.clearTimeout(pendingTaskDeleteSequenceRef.current.timeoutId);
+      }
+
+      pendingTaskDeleteSequenceRef.current = null;
+    }
+
+    function armTaskDeleteSequence(taskId: string) {
+      resetPendingTaskDeleteSequence();
+      const timeoutId = window.setTimeout(() => {
+        if (pendingTaskDeleteSequenceRef.current?.taskId === taskId) {
+          pendingTaskDeleteSequenceRef.current = null;
+        }
+      }, TASK_DELETE_SEQUENCE_TIMEOUT_MS);
+
+      pendingTaskDeleteSequenceRef.current = { taskId, timeoutId };
+    }
+
+    function handleWindowTaskDeleteSequence(event: KeyboardEvent) {
+      if (!isPlainTaskDeleteSequenceKey(event)) {
+        if (!isModifierKey(event.key)) {
+          resetPendingTaskDeleteSequence();
+        }
+        return;
+      }
+
+      if (event.defaultPrevented || contextMenu.isOpen || isModalOpen || isBranchModalOpen || pendingDoneResult) return;
+
+      const taskCard = getTaskCardFromKeyboardEvent(event);
+      const taskId = taskCard?.dataset.kanbanTaskId;
+      if (!taskCard || !taskId) {
+        resetPendingTaskDeleteSequence();
+        return;
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+
+      if (pendingTaskDeleteSequenceRef.current?.taskId === taskId) {
+        resetPendingTaskDeleteSequence();
+        const task = findTaskById(filteredTasks, taskId);
+        if (task && confirm(tt("deleteConfirm"))) {
+          deleteTask(task.id);
+        }
+        return;
+      }
+
+      armTaskDeleteSequence(taskId);
+    }
+
+    window.addEventListener("keydown", handleWindowTaskDeleteSequence, true);
+    return () => {
+      window.removeEventListener("keydown", handleWindowTaskDeleteSequence, true);
+      resetPendingTaskDeleteSequence();
+    };
+  }, [contextMenu.isOpen, filteredTasks, isBranchModalOpen, isModalOpen, pendingDoneResult, tt]);
 
   useEffect(() => {
     function handleWindowTaskShortcut(event: KeyboardEvent) {
