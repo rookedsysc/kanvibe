@@ -705,6 +705,42 @@ describe("kanbanService.createTask", () => {
     expect(consoleWarnSpy).not.toHaveBeenCalled();
   });
 
+  it("DB worktreePath가 없어도 task 삭제는 프로젝트와 브랜치 기준으로 실제 worktree 탐색 정리를 위임한다", async () => {
+    // Given
+    const task = {
+      id: "task-no-db-worktree-path",
+      projectId: "project-1",
+      branchName: "feature/actual-worktree",
+      worktreePath: null,
+      sshHost: null,
+      sessionType: null,
+      sessionName: null,
+    };
+    mocks.taskRepo.findOneBy.mockResolvedValue(task);
+    mocks.taskRepo.remove.mockResolvedValue(task);
+    mocks.projectRepo.findOneBy.mockResolvedValue({
+      id: "project-1",
+      repoPath: "/workspace/repo",
+      sshHost: "remote-host",
+    });
+
+    const { deleteTask } = await import("@/desktop/main/services/kanbanService");
+
+    // When
+    const result = await deleteTask("task-no-db-worktree-path");
+
+    // Then
+    expect(result).toBe(true);
+    expect(mocks.removeWorktreeAndBranch).toHaveBeenCalledWith(
+      "/workspace/repo",
+      "feature/actual-worktree",
+      "remote-host",
+      { throwOnError: true, worktreePath: null },
+    );
+    expect(mocks.taskRepo.remove).toHaveBeenCalledWith(task);
+    expect(mocks.broadcastBoardUpdate).toHaveBeenCalledTimes(1);
+  });
+
   it("연결된 프로젝트를 찾을 수 없는 원격 stale task 삭제는 세션 정리 후 task 레코드를 삭제하지 않는다", async () => {
     // Given
     const consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
@@ -1128,6 +1164,55 @@ describe("kanbanService.createTask", () => {
       mocks.taskRepo.findOneBy.mockReset();
       mocks.removeSessionOnly.mockReset();
       consoleErrorSpy.mockRestore();
+      vi.clearAllTimers();
+      vi.useRealTimers();
+    }
+  });
+
+
+  it("Done 전환 백그라운드 정리도 DB worktreePath 없이 프로젝트와 브랜치 기준 공통 삭제 정책을 사용한다", async () => {
+    vi.useFakeTimers();
+
+    try {
+      // Given
+      const task = {
+        id: "task-done-no-db-worktree-path",
+        title: "Done cleanup",
+        description: null,
+        status: "review",
+        branchName: "feature/actual-worktree",
+        projectId: "project-1",
+        sessionType: null,
+        sessionName: null,
+        worktreePath: null,
+        sshHost: null,
+      };
+      mocks.taskRepo.findOneBy.mockResolvedValue(task);
+      mocks.projectRepo.findOneBy.mockResolvedValue({
+        id: "project-1",
+        repoPath: "/workspace/repo",
+        sshHost: "remote-host",
+      });
+      mocks.taskRepo.save.mockImplementation(async (value) => value);
+
+      const { updateTaskStatus } = await import("@/desktop/main/services/kanbanService");
+
+      // When
+      await updateTaskStatus("task-done-no-db-worktree-path", "done" as never);
+      await vi.runAllTimersAsync();
+
+      // Then
+      expect(mocks.removeWorktreeAndBranch).toHaveBeenCalledWith(
+        "/workspace/repo",
+        "feature/actual-worktree",
+        "remote-host",
+        { throwOnError: true, worktreePath: null },
+      );
+      expect(mocks.taskRepo.update).not.toHaveBeenCalledWith(
+        "task-done-no-db-worktree-path",
+        expect.objectContaining({ status: "review" }),
+      );
+    } finally {
       vi.clearAllTimers();
       vi.useRealTimers();
     }

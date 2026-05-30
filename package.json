@@ -27,6 +27,10 @@
     "lint": "eslint",
     "check": "tsc --noEmit",
     "test:e2e:login": "bash -lc 'for port in 4884 4885; do fuser -k \"$port\"/tcp 2>/dev/null || true; done; rm -f .next/dev/lock; playwright test tests/e2e/login.spec.js'",
+    "qa:electron:prepare": "pnpm build && node scripts/ensure-native-runtime.cjs --electron",
+    "qa:electron": "pnpm qa:electron:prepare && bash scripts/qa-electron.sh",
+    "qa:electron:video": "pnpm qa:electron:prepare && bash scripts/qa-electron-video.sh",
+    "qa:pr275-pr276": "bash scripts/qa-pr275-pr276.sh",
     "test": "vitest run",
     "test:watch": "vitest",
     "postinstall": "node scripts/postinstall.cjs"

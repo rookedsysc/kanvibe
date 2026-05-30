@@ -786,10 +786,7 @@ async function cleanupTaskResources(
 
   /** worktree + 브랜치 정리 (프로젝트 루트 브랜치 제외) */
   if (task.branchName && !isProjectRoot) {
-    const canCleanupBranch = Boolean(project?.repoPath)
-      && Boolean(task.worktreePath);
-
-    if (!canCleanupBranch) {
+    if (!project?.repoPath) {
       const warningPayload = {
         taskId: task.id,
         branchName: task.branchName,
@@ -797,16 +794,16 @@ async function cleanupTaskResources(
         projectRepoPath: project?.repoPath ?? null,
         sshHost,
       };
-      console.warn("worktree/브랜치 정리 건너뜀: 정리할 프로젝트 또는 worktree 정보가 부족합니다.", warningPayload);
+      console.warn("worktree/브랜치 정리 건너뜀: 정리할 프로젝트 정보가 부족합니다.", warningPayload);
       if (options.throwOnError) {
-        throw new Error("정리할 프로젝트 또는 worktree 정보가 부족해 worktree/브랜치 정리를 건너뛰었습니다.");
+        throw new Error("정리할 프로젝트 정보가 부족해 worktree/브랜치 정리를 건너뛰었습니다.");
       }
       return;
     }
 
     try {
       await removeWorktreeAndBranch(
-        project?.repoPath || process.cwd(),
+        project.repoPath,
         task.branchName,
         sshHost,
         worktreeCleanupOptions,
