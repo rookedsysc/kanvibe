@@ -248,10 +248,12 @@ PreToolUse (Bash only)         → PROGRESS
 Stop                           → REVIEW
 ```
 
-KanVibe now uses Codex's current lifecycle hooks model with `.codex/hooks.json` plus both `[features].codex_hooks = true` and `[features].hooks = true` in `.codex/config.toml`:
+KanVibe now uses Codex's current lifecycle hooks model with `.codex/hooks.json` plus `[features].hooks = true` in `.codex/config.toml`:
 
 - https://developers.openai.com/codex/hooks
 - https://developers.openai.com/codex/config-reference
+
+Codex loads project-local `.codex/` hooks only for trusted project/worktree paths. If a task runs in a generated worktree, trust that worktree in Codex before expecting the local hook file to fire.
 
 > Codex's current `PermissionRequest` and `PreToolUse` matchers are Bash-scoped, so `PENDING` represents approval waits rather than every kind of conversational follow-up question.
 

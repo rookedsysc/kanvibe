@@ -34,6 +34,7 @@ const CODEX_PROMPT_COMMAND = `bash "$(git rev-parse --show-toplevel)/.codex/hook
 const CODEX_PERMISSION_COMMAND = `bash "$(git rev-parse --show-toplevel)/.codex/hooks/${PERMISSION_HOOK_SCRIPT_NAME}"`;
 const CODEX_PRE_TOOL_COMMAND = `bash "$(git rev-parse --show-toplevel)/.codex/hooks/${PRE_TOOL_HOOK_SCRIPT_NAME}"`;
 const CODEX_STOP_COMMAND = `bash "$(git rev-parse --show-toplevel)/.codex/hooks/${STOP_HOOK_SCRIPT_NAME}"`;
+const CODEX_HOOKS_FEATURE_FLAG = "hooks";
 
 function generateStatusHookScript(
   eventLabel: string,
@@ -144,7 +145,7 @@ function upsertHookEntries<T>(hookEntries: unknown[] | undefined, scriptName: st
 }
 
 function isSectionHeader(line: string): boolean {
-  return /^\s*\[[^\]]+\]\s*$/.test(line);
+  return /^\s*(?:\[[^\[\]]+\]|\[\[[^\[\]]+\]\])\s*$/.test(line);
 }
 
 function findFeaturesSection(lines: string[]) {
@@ -175,42 +176,33 @@ export function upsertCodexConfigToml(configContent: string): string {
 
   if (!featuresSection) {
     const prefix = normalized.length > 0 ? `${normalized}\n\n` : "";
-    return `${prefix}[features]\ncodex_hooks = true\nhooks = true\n`;
+    return `${prefix}[features]\n${CODEX_HOOKS_FEATURE_FLAG} = true\n`;
   }
 
   const beforeFeaturesBody = lines.slice(0, featuresSection.start + 1);
   const featuresBody = lines.slice(featuresSection.start + 1, featuresSection.end);
   const afterFeaturesSection = lines.slice(featuresSection.end);
   const nextFeaturesBody: string[] = [];
-  let hasLegacyHooksFlag = false;
-  let hasHooksFlag = false;
+  let hasCodexHooksFlag = false;
 
   for (const line of featuresBody) {
     if (/^\s*codex_hooks\s*=/.test(line)) {
-      if (!hasLegacyHooksFlag) {
-        nextFeaturesBody.push("codex_hooks = true");
-        hasLegacyHooksFlag = true;
+      if (!hasCodexHooksFlag) {
+        nextFeaturesBody.push(`${CODEX_HOOKS_FEATURE_FLAG} = true`);
+        hasCodexHooksFlag = true;
       }
       continue;
     }
 
-    if (/^\s*hooks\s*=/.test(line)) {
-      if (!hasHooksFlag) {
-        nextFeaturesBody.push("hooks = true");
-        hasHooksFlag = true;
-      }
+    if (/^\s*(?:hooks|codex_hook)\s*=/.test(line)) {
       continue;
     }
 
     nextFeaturesBody.push(line);
   }
 
-  if (!hasLegacyHooksFlag) {
-    nextFeaturesBody.push("codex_hooks = true");
-  }
-
-  if (!hasHooksFlag) {
-    nextFeaturesBody.push("hooks = true");
+  if (!hasCodexHooksFlag) {
+    nextFeaturesBody.push(`${CODEX_HOOKS_FEATURE_FLAG} = true`);
   }
 
   return `${[
@@ -228,17 +220,11 @@ function hasCodexFeatureFlag(configContent: string): boolean {
     return false;
   }
 
-  const hasLegacyHooksFlag = lines.some(
-    (line, index) => index > featuresSection.start
-      && index < featuresSection.end
-      && /^\s*codex_hooks\s*=\s*true\s*$/.test(line),
-  );
-  const hasHooksFlag = lines.some(
+  return lines.some(
     (line, index) => index > featuresSection.start
       && index < featuresSection.end
       && /^\s*hooks\s*=\s*true\s*$/.test(line),
   );
-  return hasLegacyHooksFlag && hasHooksFlag;
 }
 
 export function upsertCodexHooksJson(hooksContent: string): string {
