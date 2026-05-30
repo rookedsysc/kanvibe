@@ -605,6 +605,61 @@ describe("Board defaultSessionType sync", () => {
     expect(secondD.defaultPrevented).toBe(true);
     expect(confirmMock).toHaveBeenCalledWith("deleteConfirm");
     expect(deleteTask).toHaveBeenCalledWith("task-1");
+    await waitFor(() => {
+      expect(screen.queryByRole("link", { name: "Test Task" })).toBeNull();
+    });
+
+    confirmMock.mockRestore();
+  });
+
+  it("포커스된 task에서 dd를 누르는 중 보드 task 목록이 refresh되어도 삭제 sequence를 유지한다", async () => {
+    const confirmMock = vi.spyOn(window, "confirm").mockReturnValue(true);
+
+    const { rerender } = render(
+      <Board
+        initialTasks={createTasksWithTodo()}
+        initialDoneTotal={0}
+        initialDoneLimit={20}
+        sshHosts={[]}
+        projects={[createProject()]}
+        sidebarDefaultCollapsed={false}
+        doneAlertDismissed={false}
+        notificationSettings={{ isEnabled: true, enabledStatuses: ["progress", "pending", "review"] }}
+        defaultSessionType={SessionType.TMUX}
+        taskSearchShortcut="Mod+Shift+O"
+      />,
+    );
+
+    const taskLink = await screen.findByRole("link", { name: "Test Task" });
+    taskLink.focus();
+    fireEvent(taskLink, createEvent.keyDown(taskLink, { key: "d" }));
+
+    rerender(
+      <Board
+        initialTasks={createTasksWithTodo()}
+        initialDoneTotal={0}
+        initialDoneLimit={20}
+        sshHosts={[]}
+        projects={[createProject()]}
+        sidebarDefaultCollapsed={false}
+        doneAlertDismissed={false}
+        notificationSettings={{ isEnabled: true, enabledStatuses: ["progress", "pending", "review"] }}
+        defaultSessionType={SessionType.TMUX}
+        taskSearchShortcut="Mod+Shift+O"
+      />,
+    );
+
+    const refreshedTaskLink = await screen.findByRole("link", { name: "Test Task" });
+    refreshedTaskLink.focus();
+    const secondD = createEvent.keyDown(refreshedTaskLink, { key: "d" });
+    fireEvent(refreshedTaskLink, secondD);
+
+    expect(secondD.defaultPrevented).toBe(true);
+    expect(confirmMock).toHaveBeenCalledWith("deleteConfirm");
+    expect(deleteTask).toHaveBeenCalledWith("task-1");
+    await waitFor(() => {
+      expect(screen.queryByRole("link", { name: "Test Task" })).toBeNull();
+    });
 
     confirmMock.mockRestore();
   });

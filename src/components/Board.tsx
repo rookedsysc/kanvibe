@@ -109,6 +109,21 @@ function findTaskById(tasks: TasksByStatus, taskId: string) {
   return null;
 }
 
+function removeTaskFromBoardTasks(currentTasks: TasksByStatus, taskId: string) {
+  let didRemoveTask = false;
+  const nextTasks: TasksByStatus = { ...currentTasks };
+
+  for (const status of Object.values(TaskStatus)) {
+    const remainingTasks = currentTasks[status].filter((candidate) => candidate.id !== taskId);
+    if (remainingTasks.length !== currentTasks[status].length) {
+      nextTasks[status] = remainingTasks;
+      didRemoveTask = true;
+    }
+  }
+
+  return didRemoveTask ? nextTasks : currentTasks;
+}
+
 function shouldIgnoreBoardTaskFocusEvent(event: KeyboardEvent) {
   if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey) {
     return true;
@@ -555,6 +570,27 @@ export default function Board({
     y: 0,
     task: null,
   });
+  const taskDeleteRuntimeRef = useRef({
+    vimModeEnabled,
+    contextMenuIsOpen: contextMenu.isOpen,
+    isModalOpen,
+    isBranchModalOpen,
+    isVimCommandOpen,
+    hasPendingDoneResult: Boolean(pendingDoneResult),
+    filteredTasks,
+    deleteConfirmMessage: tt("deleteConfirm"),
+  });
+
+  taskDeleteRuntimeRef.current = {
+    vimModeEnabled,
+    contextMenuIsOpen: contextMenu.isOpen,
+    isModalOpen,
+    isBranchModalOpen,
+    isVimCommandOpen,
+    hasPendingDoneResult: Boolean(pendingDoneResult),
+    filteredTasks,
+    deleteConfirmMessage: tt("deleteConfirm"),
+  };
 
   useEffect(() => {
     setIsMounted(true);
@@ -668,6 +704,14 @@ export default function Board({
     return () => window.removeEventListener("keydown", handleWindowTaskFocus);
   }, [contextMenu.isOpen, isBranchModalOpen, isModalOpen, isVimCommandOpen, pendingDoneResult, vimModeEnabled]);
 
+  const removeTaskFromBoard = useCallback((task: Pick<KanbanTask, "id" | "status">) => {
+    setTasks((prev) => removeTaskFromBoardTasks(prev, task.id));
+    if (task.status === TaskStatus.DONE) {
+      setDoneTotal((prev) => Math.max(0, prev - 1));
+      setDoneOffset((prev) => Math.max(0, prev - 1));
+    }
+  }, []);
+
   useEffect(() => {
     function resetPendingTaskDeleteSequence() {
       if (pendingTaskDeleteSequenceRef.current) {
@@ -689,7 +733,8 @@ export default function Board({
     }
 
     function handleWindowTaskDeleteSequence(event: KeyboardEvent) {
-      if (!vimModeEnabled) return;
+      const runtime = taskDeleteRuntimeRef.current;
+      if (!runtime.vimModeEnabled) return;
 
       if (!isPlainTaskDeleteSequenceKey(event)) {
         if (!isModifierKey(event.key)) {
@@ -698,7 +743,16 @@ export default function Board({
         return;
       }
 
-      if (event.defaultPrevented || contextMenu.isOpen || isModalOpen || isBranchModalOpen || pendingDoneResult || isVimCommandOpen) return;
+      if (
+        event.defaultPrevented ||
+        runtime.contextMenuIsOpen ||
+        runtime.isModalOpen ||
+        runtime.isBranchModalOpen ||
+        runtime.hasPendingDoneResult ||
+        runtime.isVimCommandOpen
+      ) {
+        return;
+      }
 
       const taskCard = getTaskCardFromKeyboardEvent(event);
       const taskId = taskCard?.dataset.kanbanTaskId;
@@ -712,9 +766,10 @@ export default function Board({
 
       if (pendingTaskDeleteSequenceRef.current?.taskId === taskId) {
         resetPendingTaskDeleteSequence();
-        const task = findTaskById(filteredTasks, taskId);
-        if (task && confirm(tt("deleteConfirm"))) {
-          deleteTask(task.id);
+        const task = findTaskById(runtime.filteredTasks, taskId);
+        if (task && confirm(runtime.deleteConfirmMessage)) {
+          void deleteTask(task.id);
+          removeTaskFromBoard(task);
         }
         return;
       }
@@ -727,7 +782,7 @@ export default function Board({
       window.removeEventListener("keydown", handleWindowTaskDeleteSequence, true);
       resetPendingTaskDeleteSequence();
     };
-  }, [contextMenu.isOpen, filteredTasks, isBranchModalOpen, isModalOpen, isVimCommandOpen, pendingDoneResult, tt, vimModeEnabled]);
+  }, [removeTaskFromBoard]);
 
   useEffect(() => {
     function handleWindowTaskShortcut(event: KeyboardEvent) {
@@ -934,11 +989,13 @@ export default function Board({
   }, [contextMenu.task]);
 
   const handleDeleteFromCard = useCallback(() => {
-    if (contextMenu.task && confirm(tt("deleteConfirm"))) {
-      deleteTask(contextMenu.task.id);
+    const task = contextMenu.task;
+    if (task && confirm(tt("deleteConfirm"))) {
+      void deleteTask(task.id);
+      removeTaskFromBoard(task);
     }
     handleCloseContextMenu();
-  }, [contextMenu.task, handleCloseContextMenu, tt]);
+  }, [contextMenu.task, handleCloseContextMenu, removeTaskFromBoard, tt]);
 
   const handleStatusChangeFromCard = useCallback(
     (newStatus: TaskStatus) => {
