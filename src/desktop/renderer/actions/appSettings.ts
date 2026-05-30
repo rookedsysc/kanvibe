@@ -81,6 +81,14 @@ export function setTaskSearchShortcut(shortcut: string): Promise<void> {
   return invokeAndRefresh("setTaskSearchShortcut", shortcut);
 }
 
+export function getVimModeEnabled(): Promise<boolean> {
+  return invokeDesktop("appSettings", "getVimModeEnabled");
+}
+
+export function setVimModeEnabled(enabled: boolean): Promise<void> {
+  return invokeAndRefresh("setVimModeEnabled", enabled);
+}
+
 export async function getBackgroundSyncSettings(): Promise<{ isEnabled: boolean; intervalMs: number }> {
   const [isEnabled, intervalMs] = await Promise.all([
     invokeDesktop<boolean>("appSettings", "getBackgroundSyncEnabled"),

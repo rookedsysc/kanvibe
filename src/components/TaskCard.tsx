@@ -22,6 +22,7 @@ interface TaskCardProps {
   projectName?: string;
   projectColor?: string;
   isBaseProject?: boolean;
+  vimModeEnabled?: boolean;
 }
 
 const agentTagColors: Record<string, string> = {
@@ -126,12 +127,12 @@ function isShiftOnlyKeyboardShortcut(event: React.KeyboardEvent, key: string) {
   return event.key === key && event.shiftKey && !event.altKey && !event.ctrlKey && !event.metaKey;
 }
 
-function getTaskFocusNavigationKey(event: React.KeyboardEvent): "ArrowUp" | "ArrowDown" | "ArrowLeft" | "ArrowRight" | null {
+function getTaskFocusNavigationKey(event: React.KeyboardEvent, vimModeEnabled: boolean): "ArrowUp" | "ArrowDown" | "ArrowLeft" | "ArrowRight" | null {
   if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(event.key)) {
     return event.key as "ArrowUp" | "ArrowDown" | "ArrowLeft" | "ArrowRight";
   }
 
-  if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) {
+  if (!vimModeEnabled || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) {
     return null;
   }
 
@@ -149,7 +150,15 @@ function getTaskFocusNavigationKey(event: React.KeyboardEvent): "ArrowUp" | "Arr
   }
 }
 
-export default function TaskCard({ task, index, onContextMenu, projectName, projectColor, isBaseProject }: TaskCardProps) {
+export default function TaskCard({
+  task,
+  index,
+  onContextMenu,
+  projectName,
+  projectColor,
+  isBaseProject,
+  vimModeEnabled = true,
+}: TaskCardProps) {
   const cardStyle = projectColor ? { borderColor: projectColor } : undefined;
   const locale = useLocale();
   const router = useRouter();
@@ -178,7 +187,7 @@ export default function TaskCard({ task, index, onContextMenu, projectName, proj
       return;
     }
 
-    const navigationKey = getTaskFocusNavigationKey(event);
+    const navigationKey = getTaskFocusNavigationKey(event, vimModeEnabled);
     if (!navigationKey) {
       return;
     }

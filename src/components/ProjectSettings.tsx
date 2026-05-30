@@ -13,6 +13,7 @@ import {
   setNotificationStatuses,
   setDefaultSessionType,
   setThemePreference,
+  setVimModeEnabled,
   setBackgroundSyncEnabled,
   setBackgroundSyncIntervalMs,
   type ThemePreference,
@@ -42,8 +43,10 @@ interface ProjectSettingsProps {
   sshHosts: string[];
   sidebarDefaultCollapsed: boolean;
   defaultSessionType: SessionType;
+  vimModeEnabled?: boolean;
   themePreference?: ThemePreference;
   onDefaultSessionTypeChange?: (sessionType: SessionType) => void;
+  onVimModeEnabledChange?: (enabled: boolean) => void;
   onThemePreferenceChange?: (themePreference: ThemePreference) => void;
   notificationSettings: { isEnabled: boolean; enabledStatuses: string[] };
   backgroundSyncSettings: { isEnabled: boolean; intervalMs: number };
@@ -91,8 +94,10 @@ export default function ProjectSettings({
   sshHosts,
   sidebarDefaultCollapsed,
   defaultSessionType,
+  vimModeEnabled = true,
   themePreference = "system",
   onDefaultSessionTypeChange,
+  onVimModeEnabledChange,
   onThemePreferenceChange,
   notificationSettings,
   backgroundSyncSettings,
@@ -107,6 +112,7 @@ export default function ProjectSettings({
   const [scanResult, setScanResult] = useState<ScanResult | null>(null);
   const [scanSshHost, setScanSshHost] = useState("");
   const [selectedDefaultSessionType, setSelectedDefaultSessionType] = useState(defaultSessionType);
+  const [localVimModeEnabled, setLocalVimModeEnabled] = useState(vimModeEnabled);
   const [localNotificationSettings, setLocalNotificationSettings] = useState(notificationSettings);
   const [pendingNotificationSettings, setPendingNotificationSettings] = useState<typeof notificationSettings | null>(null);
   const [localThemePreference, setLocalThemePreference] = useState<ThemePreference>(themePreference);
@@ -132,6 +138,10 @@ export default function ProjectSettings({
   useEffect(() => {
     setSelectedDefaultSessionType(defaultSessionType);
   }, [defaultSessionType]);
+
+  useEffect(() => {
+    setLocalVimModeEnabled(vimModeEnabled);
+  }, [vimModeEnabled]);
 
   useEffect(() => {
     setLocalSidebarDefaultCollapsed(sidebarDefaultCollapsed);
@@ -247,6 +257,7 @@ export default function ProjectSettings({
                 ["creation", t("taskCreationSection")],
                 ["notifications", t("notificationSection")],
                 ["background-sync", t("backgroundSyncSection")],
+                ["keyboard", t("keyboardSection")],
                 ["projects", t("projectList")],
               ].map(([id, label]) => (
                 <button
@@ -542,6 +553,43 @@ export default function ProjectSettings({
               <span className="text-sm text-text-muted">{t("backgroundSyncIntervalUnit")}</span>
             </div>
           </div>
+        </div>
+
+        {/* 키보드 설정 */}
+        <div id="keyboard" className="p-4 border-b border-border-default">
+          <h3 className="text-xs text-text-muted uppercase tracking-wide mb-3">
+            {t("keyboardSection")}
+          </h3>
+          <label className="flex items-center justify-between cursor-pointer">
+            <div>
+              <span className="text-sm text-text-primary">{t("vimModeEnabled")}</span>
+              <p className="text-xs text-text-muted mt-0.5">{t("vimModeEnabledDescription")}</p>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-label={t("vimModeEnabled")}
+              aria-checked={localVimModeEnabled}
+              onClick={() => {
+                const nextEnabled = !localVimModeEnabled;
+                setLocalVimModeEnabled(nextEnabled);
+                onVimModeEnabledChange?.(nextEnabled);
+                startTransition(async () => {
+                  await setVimModeEnabled(nextEnabled);
+                });
+              }}
+              disabled={isPending}
+              className={`relative inline-flex h-5 w-9 shrink-0 rounded-full border-2 border-transparent transition-colors ${
+                localVimModeEnabled ? "bg-brand-primary" : "bg-border-default"
+              }`}
+            >
+              <span
+                className={`pointer-events-none inline-block h-4 w-4 rounded-full bg-white shadow transition-transform ${
+                  localVimModeEnabled ? "translate-x-4" : "translate-x-0"
+                }`}
+              />
+            </button>
+          </label>
         </div>
 
         {/* 디렉토리 스캔 등록 */}

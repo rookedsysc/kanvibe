@@ -137,20 +137,23 @@ vi.mock("../BranchTaskModal", () => ({
 
 vi.mock("../CreateTaskModal", () => ({
   default: ({
+    isOpen,
     defaultSessionType,
     defaultProjectId,
     defaultBaseBranch,
   }: {
+    isOpen: boolean;
     defaultSessionType: SessionType;
     defaultProjectId?: string;
     defaultBaseBranch?: string;
-  }) => (
+  }) => isOpen ? (
     <div>
+      <div data-testid="create-task-modal" />
       <div data-testid="create-task-default-session">{defaultSessionType}</div>
       <div data-testid="create-task-default-project">{defaultProjectId ?? ""}</div>
       <div data-testid="create-task-default-base-branch">{defaultBaseBranch ?? ""}</div>
     </div>
-  ),
+  ) : null,
 }));
 
 function createProject(): Project {
@@ -311,6 +314,7 @@ describe("Board defaultSessionType sync", () => {
     };
 
     const { rerender } = render(<Board {...baseProps} defaultSessionType={SessionType.TMUX} />);
+    fireEvent.click(screen.getByRole("button", { name: "newTask" }));
 
     // When
     rerender(<Board {...baseProps} defaultSessionType={SessionType.ZELLIJ} />);
@@ -537,6 +541,37 @@ describe("Board defaultSessionType sync", () => {
     expect(document.activeElement).toBe(taskLink);
   });
 
+  it("vim mode가 꺼져 있으면 task focus가 없을 때 vim 이동 키를 소비하지 않는다", async () => {
+    render(
+      <Board
+        initialTasks={createTasksWithTodo()}
+        initialDoneTotal={0}
+        initialDoneLimit={20}
+        sshHosts={[]}
+        projects={[createProject()]}
+        sidebarDefaultCollapsed={false}
+        doneAlertDismissed={false}
+        notificationSettings={{ isEnabled: true, enabledStatuses: ["progress", "pending", "review"] }}
+        defaultSessionType={SessionType.TMUX}
+        taskSearchShortcut="Mod+Shift+O"
+        vimModeEnabled={false}
+      />,
+    );
+
+    const taskLink = await screen.findByRole("link", { name: "Test Task" });
+    taskLink.blur();
+
+    const event = new KeyboardEvent("keydown", {
+      key: "j",
+      bubbles: true,
+      cancelable: true,
+    });
+    window.dispatchEvent(event);
+
+    expect(event.defaultPrevented).toBe(false);
+    expect(document.activeElement).not.toBe(taskLink);
+  });
+
   it("포커스된 task에서 dd를 누르면 확인 후 task를 삭제한다", async () => {
     const confirmMock = vi.spyOn(window, "confirm").mockReturnValue(true);
 
@@ -602,6 +637,101 @@ describe("Board defaultSessionType sync", () => {
     expect(deleteTask).not.toHaveBeenCalled();
 
     confirmMock.mockRestore();
+  });
+
+  it("vim mode가 꺼져 있으면 포커스된 task에서 dd를 소비하지 않고 삭제하지 않는다", async () => {
+    const confirmMock = vi.spyOn(window, "confirm").mockReturnValue(true);
+
+    render(
+      <Board
+        initialTasks={createTasksWithTodo()}
+        initialDoneTotal={0}
+        initialDoneLimit={20}
+        sshHosts={[]}
+        projects={[createProject()]}
+        sidebarDefaultCollapsed={false}
+        doneAlertDismissed={false}
+        notificationSettings={{ isEnabled: true, enabledStatuses: ["progress", "pending", "review"] }}
+        defaultSessionType={SessionType.TMUX}
+        taskSearchShortcut="Mod+Shift+O"
+        vimModeEnabled={false}
+      />,
+    );
+
+    const taskLink = await screen.findByRole("link", { name: "Test Task" });
+    taskLink.focus();
+
+    const firstD = createEvent.keyDown(taskLink, { key: "d" });
+    fireEvent(taskLink, firstD);
+    const secondD = createEvent.keyDown(taskLink, { key: "d" });
+    fireEvent(taskLink, secondD);
+
+    expect(firstD.defaultPrevented).toBe(false);
+    expect(secondD.defaultPrevented).toBe(false);
+    expect(confirmMock).not.toHaveBeenCalled();
+    expect(deleteTask).not.toHaveBeenCalled();
+
+    confirmMock.mockRestore();
+  });
+
+  it("vim mode에서 n을 누르면 새 작업 모달을 즉시 연다", async () => {
+    render(
+      <Board
+        initialTasks={createTasksWithTodo()}
+        initialDoneTotal={0}
+        initialDoneLimit={20}
+        sshHosts={[]}
+        projects={[createProject()]}
+        sidebarDefaultCollapsed={false}
+        doneAlertDismissed={false}
+        notificationSettings={{ isEnabled: true, enabledStatuses: ["progress", "pending", "review"] }}
+        defaultSessionType={SessionType.TMUX}
+        taskSearchShortcut="Mod+Shift+O"
+      />,
+    );
+
+    expect(screen.queryByTestId("create-task-modal")).toBeNull();
+
+    const event = createEvent.keyDown(window, { key: "n" });
+    fireEvent(window, event);
+
+    expect(event.defaultPrevented).toBe(true);
+    await waitFor(() => {
+      expect(screen.getByTestId("create-task-modal")).toBeTruthy();
+    });
+  });
+
+  it(":move <status> 명령으로 포커스된 task를 대상 컬럼으로 이동한다", async () => {
+    render(
+      <Board
+        initialTasks={createTasksWithTodo()}
+        initialDoneTotal={0}
+        initialDoneLimit={20}
+        sshHosts={[]}
+        projects={[createProject()]}
+        sidebarDefaultCollapsed={false}
+        doneAlertDismissed={false}
+        notificationSettings={{ isEnabled: true, enabledStatuses: ["progress", "pending", "review"] }}
+        defaultSessionType={SessionType.TMUX}
+        taskSearchShortcut="Mod+Shift+O"
+      />,
+    );
+
+    const taskLink = await screen.findByRole("link", { name: "Test Task" });
+    taskLink.focus();
+
+    const openCommandEvent = createEvent.keyDown(taskLink, { key: ":" });
+    fireEvent(taskLink, openCommandEvent);
+
+    expect(openCommandEvent.defaultPrevented).toBe(true);
+
+    const commandInput = await screen.findByRole("textbox", { name: "vimCommand.label" });
+    fireEvent.change(commandInput, { target: { value: "move review" } });
+    fireEvent.keyDown(commandInput, { key: "Enter" });
+
+    await waitFor(() => {
+      expect(moveTaskToColumn).toHaveBeenCalledWith("task-1", TaskStatus.REVIEW, ["task-1"]);
+    });
   });
 
   it("상세 화면에서 돌아온 task id가 있으면 해당 task로 초기 focus를 시작한다", async () => {

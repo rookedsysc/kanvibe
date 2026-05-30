@@ -11,6 +11,7 @@ const mockSetDefaultSessionType = vi.fn().mockResolvedValue(undefined);
 const mockSetNotificationEnabled = vi.fn().mockResolvedValue(undefined);
 const mockSetNotificationStatuses = vi.fn().mockResolvedValue(undefined);
 const mockSetThemePreference = vi.fn().mockResolvedValue(undefined);
+const mockSetVimModeEnabled = vi.fn().mockResolvedValue(undefined);
 const mockSetBackgroundSyncEnabled = vi.fn().mockResolvedValue(undefined);
 const mockSetBackgroundSyncIntervalMs = vi.fn().mockResolvedValue(undefined);
 
@@ -60,6 +61,7 @@ vi.mock("@/desktop/renderer/actions/appSettings", () => ({
   setNotificationStatuses: (...args: unknown[]) => mockSetNotificationStatuses(...args),
   setDefaultSessionType: (...args: unknown[]) => mockSetDefaultSessionType(...args),
   setThemePreference: (...args: unknown[]) => mockSetThemePreference(...args),
+  setVimModeEnabled: (...args: unknown[]) => mockSetVimModeEnabled(...args),
   setBackgroundSyncEnabled: (...args: unknown[]) => mockSetBackgroundSyncEnabled(...args),
   setBackgroundSyncIntervalMs: (...args: unknown[]) => mockSetBackgroundSyncIntervalMs(...args),
 }));
@@ -145,6 +147,35 @@ describe("ProjectSettings", () => {
     expect(onThemePreferenceChange).toHaveBeenCalledWith("dark");
     await waitFor(() => {
       expect(mockSetThemePreference).toHaveBeenCalledWith("dark");
+    });
+  });
+
+  it("vim mode 토글을 변경하면 로컬 상태와 저장 값을 갱신한다", async () => {
+    const onVimModeEnabledChange = vi.fn();
+
+    render(
+      <ProjectSettings
+        isOpen
+        onClose={vi.fn()}
+        projects={[createProject()]}
+        sshHosts={[]}
+        sidebarDefaultCollapsed={false}
+        defaultSessionType={SessionType.TMUX}
+        vimModeEnabled
+        onVimModeEnabledChange={onVimModeEnabledChange}
+        notificationSettings={{ isEnabled: true, enabledStatuses: ["progress", "pending", "review"] }}
+        backgroundSyncSettings={{ isEnabled: true, intervalMs: 10 * 60_000 }}
+      />,
+    );
+
+    const vimModeSwitch = screen.getByRole("switch", { name: "vimModeEnabled" });
+
+    fireEvent.click(vimModeSwitch);
+
+    expect(vimModeSwitch.getAttribute("aria-checked")).toBe("false");
+    expect(onVimModeEnabledChange).toHaveBeenCalledWith(false);
+    await waitFor(() => {
+      expect(mockSetVimModeEnabled).toHaveBeenCalledWith(false);
     });
   });
 

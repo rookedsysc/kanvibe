@@ -201,6 +201,8 @@ Each pane can run a custom command (e.g., `vim`, `htop`, `lazygit`, test runner,
 |----------|-------|--------|
 | `Cmd/Ctrl+F` | Board | Open page find for visible project/task text |
 | `h / j / k / l` or `← / ↓ / ↑ / →` | Board task cards | Move focus left/down/up/right across visible task cards; if no task is focused, enter the first visible task |
+| `n` | Board | Open the new task modal immediately |
+| `:move todo\|progress\|pending\|review\|done` | Focused board task card | Move the focused task to the target status without drag-and-drop |
 | `dd` | Focused board task card | Delete the focused task after confirmation |
 | `Cmd/Ctrl+Shift+O` | Global | Open quick task search by branch or project name (default, configurable) |
 | `Cmd/Ctrl+Shift+P` | Board | Open the project filter dropdown |
@@ -214,6 +216,8 @@ Each pane can run a custom command (e.g., `vim`, `htop`, `lazygit`, test runner,
 | `↑ / ↓ / Enter / Esc` | Notifications dropdown | Move selection, open notification target, close dropdown |
 
 Task detail dock numbering excludes the back-to-board button and follows the visible dock item order. If a task has a PR URL, PR takes slot 4 and later dock items shift to 5+; without a PR, the next dock item uses slot 4.
+
+Vim-style board controls (`h/j/k/l`, `n`, `dd`, and `:move ...`) can be turned on or off in **Settings → Keyboard**. Arrow-key task navigation remains available even when Vim-style controls are disabled.
 
 ### AI Agent Hooks - Automatic Status Tracking
 KanVibe integrates with **Claude Code Hooks**, **Gemini CLI Hooks**, **Codex CLI**, and **OpenCode** to automatically track task status. Tasks are managed through 5 statuses:

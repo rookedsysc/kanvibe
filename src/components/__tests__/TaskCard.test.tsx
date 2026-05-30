@@ -280,6 +280,34 @@ describe("TaskCard - Priority Badge", () => {
     expect(document.activeElement).toBe(firstLink);
   });
 
+  it("should ignore vim keys when vim mode is disabled while preserving arrow navigation", () => {
+    const firstTask = createTask({ id: "task-1", title: "First task", status: TaskStatus.TODO });
+    const secondTask = createTask({ id: "task-2", title: "Second task", status: TaskStatus.TODO });
+
+    render(
+      <>
+        <TaskCard task={firstTask} index={0} onContextMenu={onContextMenu} vimModeEnabled={false} />
+        <TaskCard task={secondTask} index={1} onContextMenu={onContextMenu} vimModeEnabled={false} />
+      </>,
+    );
+
+    const firstLink = screen.getByRole("link", { name: /First task/ });
+    const secondLink = screen.getByRole("link", { name: /Second task/ });
+
+    firstLink.focus();
+    const vimDownEvent = createEvent.keyDown(firstLink, { key: "j" });
+    fireEvent(firstLink, vimDownEvent);
+
+    expect(vimDownEvent.defaultPrevented).toBe(false);
+    expect(document.activeElement).toBe(firstLink);
+
+    const arrowDownEvent = createEvent.keyDown(firstLink, { key: "ArrowDown" });
+    fireEvent(firstLink, arrowDownEvent);
+
+    expect(arrowDownEvent.defaultPrevented).toBe(true);
+    expect(document.activeElement).toBe(secondLink);
+  });
+
   it("should move focus across kanban columns with ArrowLeft and ArrowRight", () => {
     const todoTask = createTask({ id: "task-1", title: "Todo task", status: TaskStatus.TODO });
     const progressTask = createTask({ id: "task-2", title: "Progress task", status: TaskStatus.PROGRESS });

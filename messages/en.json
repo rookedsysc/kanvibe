@@ -83,7 +83,17 @@
       "done": "Done"
     },
     "loadMore": "Load More",
-    "loadingMore": "Loading..."
+    "loadingMore": "Loading...",
+    "vimCommand": {
+      "label": "Vim command",
+      "placeholder": "move review",
+      "hint": "Use :move todo|progress|pending|review|done for the focused task.",
+      "errors": {
+        "unknownCommand": "Unknown command. Try :move review.",
+        "noFocusedTask": "Focus a task card before running :move.",
+        "taskNotFound": "The focused task is no longer visible."
+      }
+    }
   },
   "task": {
     "descriptionLabel": "Description",
@@ -193,7 +203,10 @@
     "backgroundSyncEnabledDescription": "Periodically sync project worktrees and PR status in the background.",
     "backgroundSyncInterval": "Sync interval",
     "backgroundSyncIntervalDescription": "How often to run background sync. (1–1440 min)",
-    "backgroundSyncIntervalUnit": "min"
+    "backgroundSyncIntervalUnit": "min",
+    "keyboardSection": "Keyboard",
+    "vimModeEnabled": "Vim-style board controls",
+    "vimModeEnabledDescription": "Enable h/j/k/l focus movement, n for a new task, dd delete, and :move status commands on the board. Arrow keys stay available when this is off."
   },
   "taskSearch": {
     "title": "Quick Task Search",
