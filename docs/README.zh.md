@@ -153,6 +153,14 @@ brew untap rookedsysc/kanvibe
 
 Vim 风格看板控制（`h/j/k/l`、`n`、`dd`、`:move ...`）可在**设置 → 键盘**中启用或关闭。关闭后仍可使用方向键移动任务焦点。
 
+#### Vim 风格看板控制演示
+
+下面的视频从**设置 → 键盘**启用 Vim 风格看板控制开始，然后展示在真实看板中使用 `h/j/k/l`、`:move progress`、`n` 和 `dd` 的流程。
+
+<video src="./images/readme/kanvibe-vim-controls.mp4" poster="./images/readme/kanvibe-vim-controls.png" controls muted playsinline width="100%"></video>
+
+[打开演示视频](./images/readme/kanvibe-vim-controls.mp4)
+
 ### AI 代理 Hooks - 自动状态追踪
 KanVibe 与 **Claude Code Hooks**、**Gemini CLI Hooks**、**Codex CLI** 和 **OpenCode** 集成，自动追踪任务状态。任务通过 5 个状态进行管理：
 

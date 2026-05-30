@@ -83,6 +83,14 @@ Create follow-up branch TODOs directly from the highlighted search result, prese
 
 <img src="./docs/images/readme/kanvibe-quick-action-shortcut.png" alt="Quick task action shortcut" width="100%">
 
+### 6. Vim-Style Board Controls
+
+Turn on Vim-style board controls in **Settings → Keyboard**, then move across task cards with `h/j/k/l`, open the new-task modal with `n`, move statuses with `:move progress`, and delete a focused task with `dd`.
+
+<video src="./docs/images/readme/kanvibe-vim-controls.mp4" poster="./docs/images/readme/kanvibe-vim-controls.png" controls muted playsinline width="100%"></video>
+
+[Open the Vim controls demo video](./docs/images/readme/kanvibe-vim-controls.mp4)
+
 ---
 
 ## Prerequisites

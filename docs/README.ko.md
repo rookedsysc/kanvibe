@@ -156,6 +156,14 @@ brew untap rookedsysc/kanvibe
 
 Vim 스타일 보드 조작(`h/j/k/l`, `n`, `dd`, `:move ...`)은 **설정 → 키보드**에서 켜고 끌 수 있습니다. 꺼도 방향키 태스크 이동은 계속 사용할 수 있습니다.
 
+#### Vim 스타일 보드 조작 데모
+
+아래 영상은 **설정 → 키보드**에서 Vim 스타일 보드 조작을 켠 뒤 `h/j/k/l`, `:move progress`, `n`, `dd`를 실제 보드에서 사용하는 흐름을 보여줍니다.
+
+<video src="./images/readme/kanvibe-vim-controls.mp4" poster="./images/readme/kanvibe-vim-controls.png" controls muted playsinline width="100%"></video>
+
+[데모 영상 열기](./images/readme/kanvibe-vim-controls.mp4)
+
 ### AI 에이전트 Hooks - 자동 상태 추적
 KanVibe는 **Claude Code Hooks**, **Gemini CLI Hooks**, **Codex CLI**, **OpenCode**와 연동하여 태스크 상태를 자동 추적합니다. 태스크는 5가지 상태로 관리됩니다:
 
