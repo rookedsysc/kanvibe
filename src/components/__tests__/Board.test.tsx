@@ -116,12 +116,17 @@ vi.mock("../NotificationCenterButton", () => ({
 vi.mock("../TaskContextMenu", () => ({
   default: ({
     onStatusChange,
+    onDelete,
   }: {
     onStatusChange: (status: TaskStatus) => void;
+    onDelete: () => void;
   }) => (
     <div data-testid="task-context-menu">
       <button type="button" onClick={() => onStatusChange(TaskStatus.REVIEW)}>
         change-status-review
+      </button>
+      <button type="button" onClick={onDelete}>
+        delete-task
       </button>
     </div>
   ),
@@ -572,8 +577,9 @@ describe("Board defaultSessionType sync", () => {
     expect(document.activeElement).not.toBe(taskLink);
   });
 
-  it("포커스된 task에서 dd를 누르면 확인 후 task를 삭제한다", async () => {
+  it("포커스된 task에서 dd를 누르면 삭제 성공 후 task를 보드에서 제거한다", async () => {
     const confirmMock = vi.spyOn(window, "confirm").mockReturnValue(true);
+    vi.mocked(deleteTask).mockResolvedValueOnce(true);
 
     render(
       <Board
@@ -612,8 +618,83 @@ describe("Board defaultSessionType sync", () => {
     confirmMock.mockRestore();
   });
 
+  it("포커스된 task에서 dd 삭제가 완료되기 전에는 task를 숨기지 않는다", async () => {
+    const confirmMock = vi.spyOn(window, "confirm").mockReturnValue(true);
+    let resolveDelete: (value: boolean) => void = () => {};
+    vi.mocked(deleteTask).mockReturnValueOnce(new Promise((resolve) => {
+      resolveDelete = resolve;
+    }));
+
+    render(
+      <Board
+        initialTasks={createTasksWithTodo()}
+        initialDoneTotal={0}
+        initialDoneLimit={20}
+        sshHosts={[]}
+        projects={[createProject()]}
+        sidebarDefaultCollapsed={false}
+        doneAlertDismissed={false}
+        notificationSettings={{ isEnabled: true, enabledStatuses: ["progress", "pending", "review"] }}
+        defaultSessionType={SessionType.TMUX}
+        taskSearchShortcut="Mod+Shift+O"
+      />,
+    );
+
+    const taskLink = await screen.findByRole("link", { name: "Test Task" });
+    taskLink.focus();
+    fireEvent.keyDown(taskLink, { key: "d" });
+    fireEvent.keyDown(taskLink, { key: "d" });
+
+    expect(confirmMock).toHaveBeenCalledWith("deleteConfirm");
+    expect(deleteTask).toHaveBeenCalledWith("task-1");
+    expect(screen.getByRole("link", { name: "Test Task" })).toBeTruthy();
+
+    resolveDelete(true);
+
+    await waitFor(() => {
+      expect(screen.queryByRole("link", { name: "Test Task" })).toBeNull();
+    });
+
+    confirmMock.mockRestore();
+  });
+
+  it("포커스된 task에서 dd 삭제가 실패하면 task를 보드에 유지한다", async () => {
+    const confirmMock = vi.spyOn(window, "confirm").mockReturnValue(true);
+    const consoleErrorMock = vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.mocked(deleteTask).mockRejectedValueOnce(new Error("cleanup failed"));
+
+    render(
+      <Board
+        initialTasks={createTasksWithTodo()}
+        initialDoneTotal={0}
+        initialDoneLimit={20}
+        sshHosts={[]}
+        projects={[createProject()]}
+        sidebarDefaultCollapsed={false}
+        doneAlertDismissed={false}
+        notificationSettings={{ isEnabled: true, enabledStatuses: ["progress", "pending", "review"] }}
+        defaultSessionType={SessionType.TMUX}
+        taskSearchShortcut="Mod+Shift+O"
+      />,
+    );
+
+    const taskLink = await screen.findByRole("link", { name: "Test Task" });
+    taskLink.focus();
+    fireEvent.keyDown(taskLink, { key: "d" });
+    fireEvent.keyDown(taskLink, { key: "d" });
+
+    await waitFor(() => {
+      expect(consoleErrorMock).toHaveBeenCalledWith("Failed to delete task", expect.any(Error));
+    });
+    expect(screen.getByRole("link", { name: "Test Task" })).toBeTruthy();
+
+    confirmMock.mockRestore();
+    consoleErrorMock.mockRestore();
+  });
+
   it("포커스된 task에서 dd를 누르는 중 보드 task 목록이 refresh되어도 삭제 sequence를 유지한다", async () => {
     const confirmMock = vi.spyOn(window, "confirm").mockReturnValue(true);
+    vi.mocked(deleteTask).mockResolvedValueOnce(true);
 
     const { rerender } = render(
       <Board
@@ -657,6 +738,47 @@ describe("Board defaultSessionType sync", () => {
     expect(secondD.defaultPrevented).toBe(true);
     expect(confirmMock).toHaveBeenCalledWith("deleteConfirm");
     expect(deleteTask).toHaveBeenCalledWith("task-1");
+    await waitFor(() => {
+      expect(screen.queryByRole("link", { name: "Test Task" })).toBeNull();
+    });
+
+    confirmMock.mockRestore();
+  });
+
+  it("context menu 삭제도 deleteTask가 완료되기 전에는 task를 숨기지 않는다", async () => {
+    const confirmMock = vi.spyOn(window, "confirm").mockReturnValue(true);
+    let resolveDelete: (value: boolean) => void = () => {};
+    vi.mocked(deleteTask).mockReturnValueOnce(new Promise((resolve) => {
+      resolveDelete = resolve;
+    }));
+
+    render(
+      <Board
+        initialTasks={createTasksWithTodo()}
+        initialDoneTotal={0}
+        initialDoneLimit={20}
+        sshHosts={[]}
+        projects={[createProject()]}
+        sidebarDefaultCollapsed={false}
+        doneAlertDismissed={false}
+        notificationSettings={{ isEnabled: true, enabledStatuses: ["progress", "pending", "review"] }}
+        defaultSessionType={SessionType.TMUX}
+        taskSearchShortcut="Mod+Shift+O"
+      />,
+    );
+
+    const taskLink = await screen.findByRole("link", { name: "Test Task" });
+    taskLink.focus();
+    fireEvent.keyDown(taskLink, { key: "F10", shiftKey: true });
+
+    fireEvent.click(await screen.findByRole("button", { name: "delete-task" }));
+
+    expect(confirmMock).toHaveBeenCalledWith("deleteConfirm");
+    expect(deleteTask).toHaveBeenCalledWith("task-1");
+    expect(screen.getByRole("link", { name: "Test Task" })).toBeTruthy();
+
+    resolveDelete(true);
+
     await waitFor(() => {
       expect(screen.queryByRole("link", { name: "Test Task" })).toBeNull();
     });

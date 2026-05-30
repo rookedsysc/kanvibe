@@ -712,6 +712,17 @@ export default function Board({
     }
   }, []);
 
+  const deleteTaskFromBoard = useCallback(async (task: Pick<KanbanTask, "id" | "status">) => {
+    try {
+      const didDelete = await deleteTask(task.id);
+      if (didDelete) {
+        removeTaskFromBoard(task);
+      }
+    } catch (error) {
+      console.error("Failed to delete task", error);
+    }
+  }, [removeTaskFromBoard]);
+
   useEffect(() => {
     function resetPendingTaskDeleteSequence() {
       if (pendingTaskDeleteSequenceRef.current) {
@@ -768,8 +779,7 @@ export default function Board({
         resetPendingTaskDeleteSequence();
         const task = findTaskById(runtime.filteredTasks, taskId);
         if (task && confirm(runtime.deleteConfirmMessage)) {
-          void deleteTask(task.id);
-          removeTaskFromBoard(task);
+          void deleteTaskFromBoard(task);
         }
         return;
       }
@@ -782,7 +792,7 @@ export default function Board({
       window.removeEventListener("keydown", handleWindowTaskDeleteSequence, true);
       resetPendingTaskDeleteSequence();
     };
-  }, [removeTaskFromBoard]);
+  }, [deleteTaskFromBoard]);
 
   useEffect(() => {
     function handleWindowTaskShortcut(event: KeyboardEvent) {
@@ -991,11 +1001,10 @@ export default function Board({
   const handleDeleteFromCard = useCallback(() => {
     const task = contextMenu.task;
     if (task && confirm(tt("deleteConfirm"))) {
-      void deleteTask(task.id);
-      removeTaskFromBoard(task);
+      void deleteTaskFromBoard(task);
     }
     handleCloseContextMenu();
-  }, [contextMenu.task, handleCloseContextMenu, removeTaskFromBoard, tt]);
+  }, [contextMenu.task, deleteTaskFromBoard, handleCloseContextMenu, tt]);
 
   const handleStatusChangeFromCard = useCallback(
     (newStatus: TaskStatus) => {
