@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-RUN_ID="${KANVIBE_QA_RUN_ID:-pr275-pr276-$(date -u +%Y%m%dT%H%M%SZ)}"
+RUN_ID="${KANVIBE_QA_RUN_ID:-pr275-pr276-$(date -u +%Y%m%dT%H%M%SZ)-$$}"
 RUN_DIR="${KANVIBE_QA_RUN_DIR:-$ROOT_DIR/qa-output/$RUN_ID}"
 mkdir -p "$RUN_DIR"
 
@@ -22,6 +22,9 @@ pnpm exec vitest run \
   src/lib/__tests__/worktree.test.ts \
   src/desktop/main/services/__tests__/kanbanService.test.ts \
   src/desktop/renderer/actions/__tests__/kanban.test.ts \
+  electron/runtimeEnvironment.test.mjs \
+  qa/electron/lib/fixtureRepository.test.mjs \
+  qa/electron/lib/launchElectron.test.mjs \
   --reporter=verbose | tee "$RUN_DIR/resource-cleanup-vitest.log"
 
 echo "[kanvibe-qa] verifying Electron native runtime for video QA"

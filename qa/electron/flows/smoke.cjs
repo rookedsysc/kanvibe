@@ -1,8 +1,10 @@
 #!/usr/bin/env node
+/* eslint-disable @typescript-eslint/no-require-imports */
 const fs = require("node:fs");
 const path = require("node:path");
 const { execFileSync } = require("node:child_process");
 const { createQaRun, writeReport } = require("../lib/report.cjs");
+const { createFixtureRepository } = require("../lib/fixtureRepository.cjs");
 const { launchKanVibeElectron } = require("../lib/launchElectron.cjs");
 
 function parseArgs(argv) {
@@ -26,35 +28,6 @@ function gitValue(args) {
 
 function execGit(args, cwd) {
   return execFileSync("git", args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
-}
-
-function buildManagedWorktreePath(projectPath, branchName) {
-  const projectName = path.basename(projectPath);
-  return path.join(path.dirname(projectPath), `${projectName}__worktrees`, branchName.replace(/\//g, "-"));
-}
-
-function createFixtureRepository(run) {
-  const fixturesDir = path.join(run.runDir, "fixtures");
-  const projectDir = path.join(fixturesDir, "repo");
-  const branchName = `qa/video-proof-${run.runId.replace(/[^a-zA-Z0-9-]/g, "-").slice(-32)}`;
-  const worktreePath = buildManagedWorktreePath(projectDir, branchName);
-
-  fs.rmSync(fixturesDir, { recursive: true, force: true });
-  fs.mkdirSync(projectDir, { recursive: true });
-  execGit(["init", "-b", "main"], projectDir);
-  execGit(["config", "user.email", "qa@kanvibe.local"], projectDir);
-  execGit(["config", "user.name", "KanVibe QA"], projectDir);
-  fs.writeFileSync(path.join(projectDir, "README.md"), "# KanVibe Electron QA fixture\n", "utf8");
-  execGit(["add", "README.md"], projectDir);
-  execGit(["commit", "-m", "fixture"], projectDir);
-  execGit(["worktree", "add", "-b", branchName, worktreePath, "main"], projectDir);
-
-  return {
-    projectName: `KanVibe QA ${run.runId}`,
-    projectDir,
-    branchName,
-    worktreePath,
-  };
 }
 
 function getGitWorktrees(projectDir) {
@@ -182,7 +155,7 @@ async function dismissUpdateDialogIfPresent(page) {
 }
 
 async function seedQaProjectAndTask(page, fixture) {
-  return page.evaluate(async ({ projectName, projectDir, branchName }) => {
+  return page.evaluate(async ({ projectName, projectDir, branchName, baseBranch }) => {
     const projectResult = await window.kanvibeDesktop.invoke("project", "registerProject", [projectName, projectDir]);
     if (!projectResult.success || !projectResult.project) {
       throw new Error(projectResult.error || "QA project registration failed");
@@ -190,9 +163,9 @@ async function seedQaProjectAndTask(page, fixture) {
 
     const task = await window.kanvibeDesktop.invoke("kanban", "createTask", [{
       title: branchName,
-      description: "Electron QA: UI status change and delete must clean the real git worktree even when DB worktreePath is empty.",
+      description: "Electron QA: UI status change and delete must clean a real git worktree located outside KanVibe's managed __worktrees convention, even when DB worktreePath is empty.",
       branchName,
-      baseBranch: "main",
+      baseBranch,
       projectId: projectResult.project.id,
     }]);
 
@@ -293,12 +266,15 @@ async function main() {
       return "body visible";
     });
 
-    await optionalStep(checks, "QA fixture contains real git worktree before UI delete", async () => {
+    await optionalStep(checks, "QA fixture contains real non-managed external git worktree before UI delete", async () => {
       const worktrees = getGitWorktrees(fixture.projectDir);
+      if (fixture.worktreePath.includes("__worktrees") || fixture.worktreePath.startsWith(path.dirname(fixture.projectDir))) {
+        throw new Error(`fixture worktree is not external/non-managed: ${fixture.worktreePath}`);
+      }
       if (!worktrees.includes(fixture.worktreePath) || !branchExists(fixture.projectDir, fixture.branchName)) {
         throw new Error(`fixture branch/worktree missing before QA\n${worktrees}`);
       }
-      return fixture.branchName;
+      return `${fixture.branchName} at ${fixture.worktreePath}`;
     });
 
     let seededResult = null;
@@ -352,7 +328,7 @@ async function main() {
     await page.waitForTimeout(1500);
     await takeScreenshot(page, run, "task-deleted-after-refresh", screenshots);
 
-    await optionalStep(checks, "Delete cleanup removes actual git worktree and branch", async () => {
+    await optionalStep(checks, "Delete cleanup removes actual external git worktree and branch", async () => {
       const worktrees = getGitWorktrees(fixture.projectDir);
       if (worktrees.includes(fixture.worktreePath)) {
         throw new Error(`worktree still present after delete\n${worktrees}`);
@@ -360,7 +336,10 @@ async function main() {
       if (branchExists(fixture.projectDir, fixture.branchName)) {
         throw new Error(`branch still present after delete: ${fixture.branchName}`);
       }
-      return "actual git worktree and branch are gone";
+      if (fs.existsSync(fixture.worktreePath)) {
+        throw new Error(`worktree directory still exists after delete: ${fixture.worktreePath}`);
+      }
+      return "actual external git worktree directory, registration, and branch are gone";
     });
 
     await optionalStep(checks, "Keyboard shortcut smoke", async () => {
@@ -422,6 +401,14 @@ async function main() {
     return run.cdpDiagnosticsPath;
   });
 
+  await optionalStep(checks, "Isolated app-data database written inside run directory", async () => {
+    const isolatedDatabasePath = path.join(run.runDir, "app-data", "kanvibe.db");
+    if (!fs.existsSync(isolatedDatabasePath) || fs.statSync(isolatedDatabasePath).size === 0) {
+      throw new Error(`isolated QA database missing or empty: ${isolatedDatabasePath}`);
+    }
+    return isolatedDatabasePath;
+  });
+
   ok = checks.every((check) => check.ok);
 
   if (fs.existsSync(run.videoPath)) {
@@ -429,15 +416,16 @@ async function main() {
   } else {
     notes.push("No mp4 was present when smoke flow finished; wrapper script can synthesize one from screenshots.");
   }
-  notes.push(`Fixture repo: ${fixture.projectDir}`);
-  notes.push(`Fixture branch/worktree under test: ${fixture.branchName} / ${fixture.worktreePath}`);
+  notes.push(`Fixture public repo: ${fixture.repositoryUrl}`);
+  notes.push(`Fixture clone registered as project: ${fixture.projectName} / ${fixture.projectDir}`);
+  notes.push(`Fixture branch/external worktree under test: ${fixture.branchName} / ${fixture.worktreePath}`);
   notes.push("QA uses an isolated KANVIBE_APP_DATA_DIR inside the run directory, not the user's app database.");
   diagnostics.push(`CDP counters: ${JSON.stringify(cdpCollector.counters)}`);
   diagnostics.push("Playwright trace captures actions, screenshots, DOM snapshots, console, and network timeline.");
 
   const result = {
     ok,
-    scope: "Electron UI QA for PR #275/#276: create visible QA task, move status from context menu, delete it, and verify real git worktree/branch cleanup when DB worktreePath is empty",
+    scope: "Electron UI QA for PR #275/#276: clone the public QA fixture repo, register a run-unique project, create/move/delete a task, and verify cleanup of a real external git worktree outside KanVibe's managed __worktrees convention when DB worktreePath is empty",
     branch: gitValue(["branch", "--show-current"]),
     commit: gitValue(["rev-parse", "--short", "HEAD"]),
     checks,

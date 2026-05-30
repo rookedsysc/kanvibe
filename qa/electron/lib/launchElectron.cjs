@@ -1,3 +1,5 @@
+/* eslint-disable @typescript-eslint/no-require-imports */
+const net = require("node:net");
 const { _electron: electron } = require("@playwright/test");
 const electronExecutable = require("electron");
 
@@ -8,9 +10,50 @@ function collectProcessOutput(child) {
   return () => output.join("");
 }
 
+function parseConfiguredPort(value) {
+  if (value === undefined || value === null || value === "") return null;
+  const port = Number.parseInt(String(value), 10);
+  if (!Number.isInteger(port) || port <= 0 || port > 65535) {
+    throw new Error(`Invalid KANVIBE_QA_CDP_PORT: ${value}`);
+  }
+  return port;
+}
+
+function listenOnEphemeralPort() {
+  return new Promise((resolve, reject) => {
+    const server = net.createServer();
+    server.unref();
+    server.on("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      const address = server.address();
+      const port = typeof address === "object" && address ? address.port : null;
+      server.close((error) => {
+        if (error) reject(error);
+        else if (!port) reject(new Error("Failed to allocate a QA CDP port"));
+        else resolve(port);
+      });
+    });
+  });
+}
+
+async function findAvailablePort() {
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    const port = await listenOnEphemeralPort();
+    if (port !== 19337) return port;
+  }
+  return listenOnEphemeralPort();
+}
+
+async function resolveCdpPort(options = {}) {
+  const env = options.env || process.env;
+  const configured = parseConfiguredPort(options.cdpPort ?? env.KANVIBE_QA_CDP_PORT);
+  if (configured) return configured;
+  return findAvailablePort();
+}
+
 async function launchKanVibeElectron(options = {}) {
   const rootDir = options.rootDir || process.cwd();
-  const cdpPort = Number.parseInt(process.env.KANVIBE_QA_CDP_PORT || "19337", 10);
+  const cdpPort = await resolveCdpPort(options);
   let app;
 
   try {
@@ -57,4 +100,4 @@ async function launchKanVibeElectron(options = {}) {
   }
 }
 
-module.exports = { launchKanVibeElectron };
+module.exports = { launchKanVibeElectron, resolveCdpPort };

@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-RUN_ID="${KANVIBE_QA_RUN_ID:-$(date -u +%Y%m%dT%H%M%SZ)}"
+RUN_ID="${KANVIBE_QA_RUN_ID:-$(date -u +%Y%m%dT%H%M%SZ)-$$}"
 RUN_DIR="${KANVIBE_QA_RUN_DIR:-$ROOT_DIR/qa-output/$RUN_ID}"
 VIDEO_PATH="$RUN_DIR/run.mp4"
 LOG_PATH="$RUN_DIR/ffmpeg.log"
