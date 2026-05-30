@@ -507,6 +507,36 @@ describe("Board defaultSessionType sync", () => {
     expect(document.activeElement).toBe(taskLink);
   });
 
+  it("task focus가 없을 때 vim 이동 키를 누르면 첫 task로 focus를 진입시킨다", async () => {
+    render(
+      <Board
+        initialTasks={createTasksWithTodo()}
+        initialDoneTotal={0}
+        initialDoneLimit={20}
+        sshHosts={[]}
+        projects={[createProject()]}
+        sidebarDefaultCollapsed={false}
+        doneAlertDismissed={false}
+        notificationSettings={{ isEnabled: true, enabledStatuses: ["progress", "pending", "review"] }}
+        defaultSessionType={SessionType.TMUX}
+        taskSearchShortcut="Mod+Shift+O"
+      />,
+    );
+
+    const taskLink = await screen.findByRole("link", { name: "Test Task" });
+    taskLink.blur();
+
+    const event = new KeyboardEvent("keydown", {
+      key: "j",
+      bubbles: true,
+      cancelable: true,
+    });
+    window.dispatchEvent(event);
+
+    expect(event.defaultPrevented).toBe(true);
+    expect(document.activeElement).toBe(taskLink);
+  });
+
   it("상세 화면에서 돌아온 task id가 있으면 해당 task로 초기 focus를 시작한다", async () => {
     render(
       <Board

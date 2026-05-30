@@ -200,6 +200,7 @@ Each pane can run a custom command (e.g., `vim`, `htop`, `lazygit`, test runner,
 | Shortcut | Scope | Action |
 |----------|-------|--------|
 | `Cmd/Ctrl+F` | Board | Open page find for visible project/task text |
+| `h / j / k / l` or `← / ↓ / ↑ / →` | Board task cards | Move focus left/down/up/right across visible task cards; if no task is focused, enter the first visible task |
 | `Cmd/Ctrl+Shift+O` | Global | Open quick task search by branch or project name (default, configurable) |
 | `Cmd/Ctrl+Shift+P` | Board | Open the project filter dropdown |
 | `Cmd/Ctrl+Shift+I` | Board | Open the notifications dropdown |

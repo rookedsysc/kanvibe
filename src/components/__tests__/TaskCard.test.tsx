@@ -252,6 +252,34 @@ describe("TaskCard - Priority Badge", () => {
     expect(document.activeElement).toBe(firstLink);
   });
 
+  it("should move focus vertically with vim j and k keys without scrolling", () => {
+    const firstTask = createTask({ id: "task-1", title: "First task", status: TaskStatus.TODO });
+    const secondTask = createTask({ id: "task-2", title: "Second task", status: TaskStatus.TODO });
+
+    render(
+      <>
+        <TaskCard task={firstTask} index={0} onContextMenu={onContextMenu} />
+        <TaskCard task={secondTask} index={1} onContextMenu={onContextMenu} />
+      </>,
+    );
+
+    const firstLink = screen.getByRole("link", { name: /First task/ });
+    const secondLink = screen.getByRole("link", { name: /Second task/ });
+
+    firstLink.focus();
+    const downEvent = createEvent.keyDown(firstLink, { key: "j" });
+    fireEvent(firstLink, downEvent);
+
+    expect(downEvent.defaultPrevented).toBe(true);
+    expect(document.activeElement).toBe(secondLink);
+
+    const upEvent = createEvent.keyDown(secondLink, { key: "k" });
+    fireEvent(secondLink, upEvent);
+
+    expect(upEvent.defaultPrevented).toBe(true);
+    expect(document.activeElement).toBe(firstLink);
+  });
+
   it("should move focus across kanban columns with ArrowLeft and ArrowRight", () => {
     const todoTask = createTask({ id: "task-1", title: "Todo task", status: TaskStatus.TODO });
     const progressTask = createTask({ id: "task-2", title: "Progress task", status: TaskStatus.PROGRESS });
@@ -274,6 +302,34 @@ describe("TaskCard - Priority Badge", () => {
     expect(document.activeElement).toBe(progressLink);
 
     const leftEvent = createEvent.keyDown(progressLink, { key: "ArrowLeft" });
+    fireEvent(progressLink, leftEvent);
+
+    expect(leftEvent.defaultPrevented).toBe(true);
+    expect(document.activeElement).toBe(todoLink);
+  });
+
+  it("should move focus horizontally with vim h and l keys", () => {
+    const todoTask = createTask({ id: "task-1", title: "Todo task", status: TaskStatus.TODO });
+    const progressTask = createTask({ id: "task-2", title: "Progress task", status: TaskStatus.PROGRESS });
+
+    render(
+      <>
+        <TaskCard task={todoTask} index={0} onContextMenu={onContextMenu} />
+        <TaskCard task={progressTask} index={0} onContextMenu={onContextMenu} />
+      </>,
+    );
+
+    const todoLink = screen.getByRole("link", { name: /Todo task/ });
+    const progressLink = screen.getByRole("link", { name: /Progress task/ });
+
+    todoLink.focus();
+    const rightEvent = createEvent.keyDown(todoLink, { key: "l" });
+    fireEvent(todoLink, rightEvent);
+
+    expect(rightEvent.defaultPrevented).toBe(true);
+    expect(document.activeElement).toBe(progressLink);
+
+    const leftEvent = createEvent.keyDown(progressLink, { key: "h" });
     fireEvent(progressLink, leftEvent);
 
     expect(leftEvent.defaultPrevented).toBe(true);

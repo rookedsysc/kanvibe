@@ -126,6 +126,29 @@ function isShiftOnlyKeyboardShortcut(event: React.KeyboardEvent, key: string) {
   return event.key === key && event.shiftKey && !event.altKey && !event.ctrlKey && !event.metaKey;
 }
 
+function getTaskFocusNavigationKey(event: React.KeyboardEvent): "ArrowUp" | "ArrowDown" | "ArrowLeft" | "ArrowRight" | null {
+  if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(event.key)) {
+    return event.key as "ArrowUp" | "ArrowDown" | "ArrowLeft" | "ArrowRight";
+  }
+
+  if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) {
+    return null;
+  }
+
+  switch (event.key) {
+    case "k":
+      return "ArrowUp";
+    case "j":
+      return "ArrowDown";
+    case "h":
+      return "ArrowLeft";
+    case "l":
+      return "ArrowRight";
+    default:
+      return null;
+  }
+}
+
 export default function TaskCard({ task, index, onContextMenu, projectName, projectColor, isBaseProject }: TaskCardProps) {
   const cardStyle = projectColor ? { borderColor: projectColor } : undefined;
   const locale = useLocale();
@@ -155,7 +178,8 @@ export default function TaskCard({ task, index, onContextMenu, projectName, proj
       return;
     }
 
-    if (!["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(event.key)) {
+    const navigationKey = getTaskFocusNavigationKey(event);
+    if (!navigationKey) {
       return;
     }
 
@@ -167,11 +191,11 @@ export default function TaskCard({ task, index, onContextMenu, projectName, proj
 
     const currentIndex = getTaskIndex(event.currentTarget);
     const target =
-      event.key === "ArrowUp"
+      navigationKey === "ArrowUp"
         ? findTaskCardByStatusAndIndex(currentStatus, currentIndex - 1)
-        : event.key === "ArrowDown"
+        : navigationKey === "ArrowDown"
           ? findTaskCardByStatusAndIndex(currentStatus, currentIndex + 1)
-          : findHorizontalTaskCard(currentStatus, currentIndex, event.key === "ArrowRight" ? 1 : -1);
+          : findHorizontalTaskCard(currentStatus, currentIndex, navigationKey === "ArrowRight" ? 1 : -1);
 
     if (target) {
       focusTaskCard(target);

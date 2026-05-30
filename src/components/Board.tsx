@@ -47,7 +47,16 @@ const COLUMNS: { status: TaskStatus; labelKey: string; colorClass: string }[] = 
 ];
 
 const TASK_CARD_SELECTOR = "[data-kanban-task-card='true']";
-const BOARD_TASK_FOCUS_KEYS = new Set(["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"]);
+const BOARD_TASK_FOCUS_KEYS = new Set([
+  "ArrowUp",
+  "ArrowDown",
+  "ArrowLeft",
+  "ArrowRight",
+  "h",
+  "j",
+  "k",
+  "l",
+]);
 
 interface ContextMenuState {
   isOpen: boolean;
