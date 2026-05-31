@@ -53,49 +53,6 @@ brew untap rookedsysc/kanvibe
   </div>
   <div className="kv-card">
     <h3>3. 알림 권한 허용</h3>
-    <p>AI 에이전트 hooks 상태 변경을 놓치지 않도록 브라우저 알림 권한을 허용합니다.</p>
+    <p>AI 에이전트 hooks 상태 변경을 놓치지 않도록 시스템 알림 권한을 허용합니다.</p>
   </div>
 </div>
-
-<figure className="kv-shot">
-  <img src="/screenshots/project-filter.png" alt="프로젝트 필터 드롭다운" />
-  <figcaption>프로젝트가 많아지면 필터 드롭다운과 검색으로 작업 범위를 빠르게 좁힐 수 있습니다.</figcaption>
-</figure>
-
-## Quick Start
-
-아래 흐름은 KanVibe에서 AI 에이전트 작업을 시작하고, 진행 상태를 추적한 뒤, 완료 처리하는 기본 루틴입니다.
-
-### 1. 프로젝트 등록
-
-설정 화면에서 로컬 git 저장소를 선택합니다. KanVibe는 등록 시점에 프로젝트의 worktree 상태를 읽고, 지원되는 에이전트에 필요한 hook 파일을 자동 설치합니다.
-
-<div className="kv-note">
-  프로젝트 삭제는 KanVibe의 SQLite 레코드만 제거합니다. 실제 git branch, worktree, 파일은 삭제하지 않습니다.
-</div>
-
-### 2. 태스크 만들기
-
-보드에서 TODO 태스크를 추가합니다. 브랜치명을 입력하면 KanVibe가 git worktree를 만들고, tmux 또는 zellij 세션을 연결합니다.
-
-<figure className="kv-shot">
-  <img src="/screenshots/quick-action.png" alt="빠른 액션으로 새 브랜치 TODO 생성" />
-  <figcaption>빠른 검색 결과에서 현재 컨텍스트를 유지한 채 후속 branch TODO를 만들 수 있습니다.</figcaption>
-</figure>
-
-### 3. 태스크 상세에서 작업
-
-태스크 카드를 열면 해당 세션의 터미널 워크스페이스로 이동합니다. 왼쪽 dock에서 작업 정보, hook 상태, AI 채팅, PR 링크를 전환하고, 가운데 터미널에서는 직접 명령 실행과 에이전트 대화를 이어갑니다.
-
-<figure className="kv-shot">
-  <img src="/screenshots/detail-shortcuts.png" alt="태스크 상세 dock 단축키" />
-  <figcaption>상세 dock 단축키는 터미널 입력보다 먼저 처리되어 포커스가 흔들리지 않습니다.</figcaption>
-</figure>
-
-### 4. AI 에이전트로 상태 추적
-
-AI 에이전트가 작업을 시작하면 PROGRESS, 질문을 남기면 PENDING, 응답을 끝내면 REVIEW로 이동합니다. 수동으로 드래그해도 같은 상태 모델을 사용하므로 보드와 태스크 상세가 같은 흐름을 공유합니다.
-
-### 5. DONE으로 완료
-
-작업이 끝나면 DONE으로 이동합니다. KanVibe는 해당 태스크의 branch, worktree, terminal session을 자동 정리합니다.
