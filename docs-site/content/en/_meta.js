@@ -16,9 +16,6 @@ export default {
   settings: {
     title: 'Settings'
   },
-  usage: {
-    title: 'Basic usage'
-  },
   shortcuts: {
     title: 'Shortcuts'
   }

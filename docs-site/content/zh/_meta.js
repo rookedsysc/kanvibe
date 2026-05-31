@@ -16,9 +16,6 @@ export default {
   settings: {
     title: '设置'
   },
-  usage: {
-    title: '基本用法'
-  },
   shortcuts: {
     title: '快捷键'
   }

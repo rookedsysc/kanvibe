@@ -16,9 +16,6 @@ export default {
   settings: {
     title: '설정'
   },
-  usage: {
-    title: '기본 사용법'
-  },
   shortcuts: {
     title: '단축키'
   }
