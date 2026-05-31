@@ -13,6 +13,9 @@ export default {
   features: {
     title: 'Features'
   },
+  settings: {
+    title: 'Settings'
+  },
   usage: {
     title: 'Basic usage'
   },

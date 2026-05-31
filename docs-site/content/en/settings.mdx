@@ -1,0 +1,53 @@
+---
+title: Settings
+---
+
+# Settings
+
+The KanVibe settings page keeps project registration, display preferences, notifications, task creation defaults, and background sync in one place.
+
+<figure className="kv-shot">
+  <img src="/screenshots/settings.png" alt="KanVibe settings page" />
+  <figcaption>Manage appearance, pane layouts, detail-page defaults, notification statuses, background sync, and project registration from Settings.</figcaption>
+</figure>
+
+## What Settings controls
+
+<div className="kv-grid">
+  <div className="kv-card">
+    <h3>Appearance</h3>
+    <p>Choose system, dark, or light mode for the whole app.</p>
+  </div>
+  <div className="kv-card">
+    <h3>Pane layouts</h3>
+    <p>Save terminal pane layouts and startup commands as a global default or project-specific override.</p>
+  </div>
+  <div className="kv-card">
+    <h3>Detail page</h3>
+    <p>Decide whether the left sidebar starts collapsed when opening a task workspace.</p>
+  </div>
+  <div className="kv-card">
+    <h3>Task creation</h3>
+    <p>Select the default session type for new tasks: tmux or zellij.</p>
+  </div>
+  <div className="kv-card">
+    <h3>Notifications</h3>
+    <p>Turn browser notifications on and choose which PROGRESS, PENDING, or REVIEW status changes should alert you.</p>
+  </div>
+  <div className="kv-card">
+    <h3>Background Sync</h3>
+    <p>Synchronize project worktrees and PR state on a schedule, with an interval from 1 to 1440 minutes.</p>
+  </div>
+</div>
+
+## Notifications jump to tasks
+
+- The notification center and browser notifications surface AI agent state changes, PR events, and background sync events.
+- Clicking a notification that is linked to a task opens that task detail workspace directly.
+- Restricting notification statuses lets you keep only the events that need attention, such as PENDING questions or REVIEW-ready work.
+
+## Project registration and cleanup
+
+- Scan local or SSH-hosted directories and register git repositories as KanVibe projects.
+- Review each registered project's repo path, default branch, and SSH host from the project list.
+- Delete projects from Settings when you no longer want KanVibe to track them.

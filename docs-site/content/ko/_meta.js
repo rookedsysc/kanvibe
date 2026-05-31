@@ -13,6 +13,9 @@ export default {
   features: {
     title: '기능'
   },
+  settings: {
+    title: '설정'
+  },
   usage: {
     title: '기본 사용법'
   },

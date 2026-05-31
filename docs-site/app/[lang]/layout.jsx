@@ -7,7 +7,7 @@ export const metadata = {
     default: 'KanVibe Docs',
     template: '%s · KanVibe Docs'
   },
-  description: 'KanVibe documentation for installation, features, usage, and keyboard shortcuts.',
+  description: 'KanVibe documentation for installation, features, settings, usage, and keyboard shortcuts.',
   applicationName: 'KanVibe Docs',
   generator: 'Nextra',
   openGraph: {
@@ -25,6 +25,7 @@ const dictionaries = {
       ['/', '홈'],
       ['/installation', '설치'],
       ['/features', '기능'],
+      ['/settings', '설정'],
       ['/usage', '기본 사용법'],
       ['/shortcuts', '단축키']
     ],
@@ -37,6 +38,7 @@ const dictionaries = {
       ['/', 'Home'],
       ['/installation', 'Installation'],
       ['/features', 'Features'],
+      ['/settings', 'Settings'],
       ['/usage', 'Basic usage'],
       ['/shortcuts', 'Shortcuts']
     ],
@@ -49,6 +51,7 @@ const dictionaries = {
       ['/', '首页'],
       ['/installation', '安装'],
       ['/features', '功能'],
+      ['/settings', '设置'],
       ['/usage', '基本用法'],
       ['/shortcuts', '快捷键']
     ],
