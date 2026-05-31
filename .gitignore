@@ -19,6 +19,10 @@
 /out/
 /docs-site/out/
 
+# cloudflare
+/docs-site/.open-next/
+/docs-site/.wrangler/
+
 # production
 /build
 /dist

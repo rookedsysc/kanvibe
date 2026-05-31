@@ -6,6 +6,9 @@
   "scripts": {
     "dev": "WATCHPACK_POLLING=true CHOKIDAR_USEPOLLING=true next dev --webpack",
     "build": "next build --webpack",
+    "build:worker": "next build --webpack && npx @opennextjs/cloudflare build",
+    "preview": "npx wrangler dev",
+    "deploy": "npx wrangler deploy",
     "start": "next start"
   },
   "dependencies": {
@@ -14,5 +17,9 @@
     "nextra-theme-docs": "^4.6.1",
     "react": "19.2.3",
     "react-dom": "19.2.3"
+  },
+  "devDependencies": {
+    "@opennextjs/cloudflare": "^1.19.11",
+    "wrangler": "^4.95.0"
   }
 }
