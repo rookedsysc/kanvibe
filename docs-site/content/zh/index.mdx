@@ -46,12 +46,24 @@ title: KanVibe 文档
     <h3>键盘优先 UI</h3>
     <p>用快捷键打开项目过滤、快速搜索、通知和详情面板，同时保持终端焦点可预测。</p>
   </div>
+  <div className="kv-card">
+    <h3>新 Worktree 自动检测</h3>
+    <p>后台 Sync 定期扫描项目，发现外部创建的 git worktree 后自动注册为任务并安装 hook。</p>
+  </div>
+  <div className="kv-card">
+    <h3>Merged PR 自动检测</h3>
+    <p>通过 GitHub CLI 定期检查 PR 状态，发现已合并 PR 后发送通知并引导转为 DONE。</p>
+  </div>
+  <div className="kv-card">
+    <h3>通知中心</h3>
+    <p>通过 Cmd+Shift+I 打开通知中心，查看 AI 代理状态变更、PR 合并等事件，并直接跳转到相关任务。</p>
+  </div>
+  <div className="kv-card">
+    <h3>会话自动关联</h3>
+    <p>后台 Sync 检测到运行中的 tmux/zellij 会话时，自动关联到对应任务并将状态转为 PROGRESS。</p>
+  </div>
+  <div className="kv-card">
+    <h3>DONE 自动清理</h3>
+    <p>将任务移到 DONE 或删除时，自动在后台清理 git worktree、branch 和 tmux/zellij 会话。项目根分支受保护。</p>
+  </div>
 </div>
-
-## 文档地图
-
-- [安装](/zh/installation)：Homebrew 安装、前置条件、首次运行清单
-- [功能](/zh/features)：看板、任务工作区、搜索、通知、hooks
-- [设置](/zh/settings)：外观、Pane 布局、通知、后台 Sync、项目注册
-- [安装 Quick Start](/zh/installation#quick-start)：从项目注册到 DONE 清理
-- [快捷键](/zh/shortcuts)：macOS 与 Linux 键盘参考

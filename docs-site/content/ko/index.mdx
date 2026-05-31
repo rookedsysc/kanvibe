@@ -46,12 +46,24 @@ title: KanVibe Docs
     <h3>키보드 중심 UI</h3>
     <p>프로젝트 필터, 빠른 태스크 검색, 알림, 상세 패널을 단축키로 열고 터미널 포커스를 유지합니다.</p>
   </div>
+  <div className="kv-card">
+    <h3>새 Worktree 자동 감지</h3>
+    <p>백그라운드 Sync가 주기적으로 프로젝트를 스캔하여 외부에서 생성된 git worktree를 발견하면 자동으로 태스크를 등록하고 hook을 설치합니다.</p>
+  </div>
+  <div className="kv-card">
+    <h3>Merged PR 자동 감지</h3>
+    <p>GitHub CLI로 PR 상태를 주기적으로 확인하여 머지된 PR을 발견하면 알림을 보내고, DONE 전환을 유도합니다.</p>
+  </div>
+  <div className="kv-card">
+    <h3>알림 센터</h3>
+    <p>Cmd+Shift+I로 알림 센터를 열어 AI 에이전트 상태 변경, PR 머지 등의 이벤트를 확인하고 해당 태스크로 바로 이동할 수 있습니다.</p>
+  </div>
+  <div className="kv-card">
+    <h3>세션 자동 연결</h3>
+    <p>백그라운드 Sync가 이미 실행 중인 tmux/zellij 세션을 감지하면 해당 태스크에 자동 연결하고 상태를 PROGRESS로 전환합니다.</p>
+  </div>
+  <div className="kv-card">
+    <h3>DONE 시 자동 정리</h3>
+    <p>태스크를 DONE으로 이동하거나 삭제하면 git worktree, branch, tmux/zellij 세션을 백그라운드에서 자동 정리합니다. 프로젝트 루트 브랜치는 보호됩니다.</p>
+  </div>
 </div>
-
-## 문서 구성
-
-- [설치](/ko/installation): Homebrew 설치, 사전 요구사항, 첫 실행 체크리스트
-- [기능](/ko/features): 보드, 상세 워크스페이스, 검색, 알림, hooks
-- [설정](/ko/settings): 외관, Pane 레이아웃, 알림, 백그라운드 Sync, 프로젝트 등록
-- [설치 Quick Start](/ko/installation#quick-start): 프로젝트 등록부터 DONE 정리까지의 작업 흐름
-- [단축키](/ko/shortcuts): macOS와 Linux 기준 키보드 조작표

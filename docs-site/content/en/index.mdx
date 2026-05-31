@@ -46,12 +46,24 @@ title: KanVibe Docs
     <h3>Keyboard-first UI</h3>
     <p>Open filters, quick search, notifications, and detail panels with shortcuts while terminal focus stays predictable.</p>
   </div>
+  <div className="kv-card">
+    <h3>New worktree auto-detection</h3>
+    <p>Background Sync periodically scans projects, discovers externally created git worktrees, and automatically registers them as tasks with hooks installed.</p>
+  </div>
+  <div className="kv-card">
+    <h3>Merged PR auto-detection</h3>
+    <p>Periodically checks PR status via GitHub CLI. When a merged PR is found, KanVibe sends a notification and prompts transition to DONE.</p>
+  </div>
+  <div className="kv-card">
+    <h3>Notification center</h3>
+    <p>Open the notification center with Cmd+Shift+I to see AI agent status changes, PR merges, and jump directly to the relevant task.</p>
+  </div>
+  <div className="kv-card">
+    <h3>Session auto-linking</h3>
+    <p>Background Sync detects running tmux/zellij sessions and automatically links them to the matching task, moving it to PROGRESS.</p>
+  </div>
+  <div className="kv-card">
+    <h3>DONE auto-cleanup</h3>
+    <p>Moving a task to DONE or deleting it automatically cleans up the git worktree, branch, and tmux/zellij session in the background. The project root branch is protected.</p>
+  </div>
 </div>
-
-## Documentation map
-
-- [Installation](/en/installation): Homebrew install, prerequisites, first-run checklist
-- [Features](/en/features): board, task workspace, search, notifications, hooks
-- [Settings](/en/settings): appearance, pane layouts, notifications, Background Sync, project registration
-- [Installation Quick Start](/en/installation#quick-start): from project registration to DONE cleanup
-- [Shortcuts](/en/shortcuts): keyboard reference for macOS and Linux

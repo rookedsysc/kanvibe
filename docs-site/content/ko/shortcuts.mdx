@@ -29,7 +29,37 @@ KanVibe는 터미널 포커스를 깨지 않도록 전역/보드/상세 단축�
 | `↑ / ↓ / Enter / Esc` | 프로젝트 필터 | 선택 이동, 토글, 닫기 |
 | `↑ / ↓ / Enter / Esc` | 알림 | 선택 이동, 대상 열기, 닫기 |
 
-<figure className="kv-shot">
-  <img src="/screenshots/detail-shortcuts.png" alt="태스크 상세 단축키 화면" />
-  <figcaption>태스크 상세 dock 번호는 뒤로가기 버튼을 제외하고, 화면에 보이는 dock 항목 순서를 따릅니다.</figcaption>
-</figure>
+## Vim 모드
+
+보드에서 h/j/k/l 포커스 이동, `n` 새 태스크, `dd` 삭제, `:move` 상태 변경, `/` 검색을 Vim 스타일로 사용할 수 있습니다. 기본값은 **켜짐**이며, 설정 → 키보드 → "Vim 스타일 보드 조작" 토글로 끄거나 켤 수 있습니다.
+
+<div className="kv-note">
+  Vim 모드를 꺼도 방향키(Arrow Keys) 기반 포커스 이동은 그대로 유지됩니다.
+</div>
+
+### Vim 단축키 표
+
+| 단축키 | 동작 |
+| --- | --- |
+| `h` | 왼쪽 컬럼으로 포커스 이동 |
+| `j` | 같은 컬럼에서 아래 태스크로 이동 |
+| `k` | 같은 컬럼에서 위 태스크로 이동 |
+| `l` | 오른쪽 컬럼으로 포커스 이동 |
+| `n` | 새 태스크 생성 모달 열기 |
+| `dd` | 포커스된 태스크 삭제 (확인 대화상자 표시) |
+| `/` | 보드 페이지 검색 열기 |
+| `:` | 명령 입력창 열기 |
+
+### `:move` 명령
+
+명령 입력창(`:`)에서 `move` 뒤에 상태를 입력하면 포커스된 태스크의 상태를 변경합니다.
+
+```
+:move progress
+:move pending
+:move review
+:move done
+:move todo
+```
+
+축약어도 지원합니다: `t`(todo), `prog`(progress), `pend`(pending), `rev`(review), `d`(done).
