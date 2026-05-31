@@ -83,7 +83,17 @@
       "done": "Done"
     },
     "loadMore": "더 보기",
-    "loadingMore": "불러오는 중..."
+    "loadingMore": "불러오는 중...",
+    "vimCommand": {
+      "label": "Vim 명령",
+      "placeholder": "move review",
+      "hint": "포커스된 task에 :move todo|progress|pending|review|done을 사용할 수 있습니다.",
+      "errors": {
+        "unknownCommand": "알 수 없는 명령입니다. :move review를 시도해 보세요.",
+        "noFocusedTask": ":move 실행 전 task card에 포커스하세요.",
+        "taskNotFound": "포커스했던 task가 현재 보이지 않습니다."
+      }
+    }
   },
   "task": {
     "descriptionLabel": "설명",
@@ -193,7 +203,10 @@
     "backgroundSyncEnabledDescription": "주기적으로 프로젝트 worktree와 PR 상태를 백그라운드에서 동기화합니다.",
     "backgroundSyncInterval": "Sync 주기",
     "backgroundSyncIntervalDescription": "백그라운드 sync를 실행하는 간격입니다. (1~1440분)",
-    "backgroundSyncIntervalUnit": "분"
+    "backgroundSyncIntervalUnit": "분",
+    "keyboardSection": "키보드",
+    "vimModeEnabled": "Vim 스타일 보드 조작",
+    "vimModeEnabledDescription": "보드에서 h/j/k/l 포커스 이동, n 새 작업, dd 삭제, :move status 명령을 사용합니다. 꺼도 방향키 이동은 유지됩니다."
   },
   "taskSearch": {
     "title": "태스크 빠른 검색",

@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { useTranslations } from "next-intl";
 import { useHasBoardShortcutBlocker } from "@/desktop/renderer/components/BoardCommandProvider";
 import { SHORTCUTS, getCurrentShortcutPlatform, matchShortcutEvent } from "@/desktop/renderer/utils/keyboardShortcut";
 
 const BOARD_PAGE_FIND_SHORTCUT = SHORTCUTS.boardPageFind;
+const BOARD_PAGE_VIM_FIND_KEY = "/";
 
 function findPageText(query: string, backwards = false) {
   const trimmedQuery = query.trim();
@@ -28,7 +29,19 @@ function shouldIgnoreBoardPageFindShortcut(eventTarget: EventTarget | null) {
   return Boolean(eventTarget.closest("input, textarea, select, [contenteditable='true']"));
 }
 
-export default function BoardPageFindBar() {
+function isPlainBoardPageFindKey(event: KeyboardEvent) {
+  return event.key === BOARD_PAGE_VIM_FIND_KEY
+    && !event.shiftKey
+    && !event.altKey
+    && !event.ctrlKey
+    && !event.metaKey;
+}
+
+interface BoardPageFindBarProps {
+  vimModeEnabled: boolean;
+}
+
+export default function BoardPageFindBar({ vimModeEnabled }: BoardPageFindBarProps) {
   const hasShortcutBlocker = useHasBoardShortcutBlocker();
   const t = useTranslations("board");
   const tc = useTranslations("common");
@@ -37,6 +50,14 @@ export default function BoardPageFindBar() {
   const [query, setQuery] = useState("");
   const [hasMatch, setHasMatch] = useState<boolean | null>(null);
   const shortcutPlatform = getCurrentShortcutPlatform();
+
+  const openSearchBar = useCallback(() => {
+    setIsOpen(true);
+    requestAnimationFrame(() => {
+      inputRef.current?.focus();
+      inputRef.current?.select();
+    });
+  }, []);
 
   useEffect(() => {
     if (!isOpen) {
@@ -55,19 +76,21 @@ export default function BoardPageFindBar() {
         return;
       }
 
-      if (!matchShortcutEvent(event, BOARD_PAGE_FIND_SHORTCUT, shortcutPlatform)) {
+      const shouldOpenSearchBar = matchShortcutEvent(event, BOARD_PAGE_FIND_SHORTCUT, shortcutPlatform)
+        || (vimModeEnabled && isPlainBoardPageFindKey(event));
+      if (!shouldOpenSearchBar) {
         return;
       }
 
       event.preventDefault();
-      setIsOpen(true);
+      openSearchBar();
     }
 
     window.addEventListener("keydown", handleGlobalKeyDown);
     return () => {
       window.removeEventListener("keydown", handleGlobalKeyDown);
     };
-  }, [hasShortcutBlocker, shortcutPlatform]);
+  }, [hasShortcutBlocker, openSearchBar, shortcutPlatform, vimModeEnabled]);
 
   function closeSearchBar() {
     setIsOpen(false);

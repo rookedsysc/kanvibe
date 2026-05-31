@@ -19,6 +19,7 @@ interface ColumnProps {
   hasMore?: boolean;
   onLoadMore?: () => void;
   isLoadingMore?: boolean;
+  vimModeEnabled?: boolean;
 }
 
 interface TaskGroup {
@@ -80,6 +81,7 @@ export default function Column({
   hasMore,
   onLoadMore,
   isLoadingMore,
+  vimModeEnabled = true,
 }: ColumnProps) {
   const t = useTranslations("board");
 
@@ -141,6 +143,7 @@ export default function Column({
                           !!task.worktreePath &&
                           !task.worktreePath.includes("__worktrees")
                         }
+                        vimModeEnabled={vimModeEnabled}
                       />
                     ))}
                   </Fragment>
@@ -165,6 +168,7 @@ export default function Column({
                         !!task.worktreePath &&
                         !task.worktreePath.includes("__worktrees")
                       }
+                      vimModeEnabled={vimModeEnabled}
                     />
                   ))}
                 </ProjectTaskGroup>

@@ -6,6 +6,7 @@ import {
   getNotificationSettings,
   getSidebarDefaultCollapsed,
   getThemePreference,
+  getVimModeEnabled,
   type ThemePreference,
 } from "@/desktop/renderer/actions/appSettings";
 import { getAllProjects, getAvailableHosts } from "@/desktop/renderer/actions/project";
@@ -20,6 +21,7 @@ interface SettingsData {
   sidebarDefaultCollapsed: boolean;
   notificationSettings: Awaited<ReturnType<typeof getNotificationSettings>>;
   defaultSessionType: Awaited<ReturnType<typeof getDefaultSessionType>>;
+  vimModeEnabled: Awaited<ReturnType<typeof getVimModeEnabled>>;
   themePreference: ThemePreference;
   backgroundSyncSettings: Awaited<ReturnType<typeof getBackgroundSyncSettings>>;
 }
@@ -31,6 +33,7 @@ function createEmptySettingsData(): SettingsData {
     sidebarDefaultCollapsed: false,
     notificationSettings: { isEnabled: true, enabledStatuses: ["progress", "pending", "review"] },
     defaultSessionType: SessionType.TMUX,
+    vimModeEnabled: true,
     themePreference: "system",
     backgroundSyncSettings: { isEnabled: true, intervalMs: 10 * 60_000 },
   };
@@ -60,9 +63,10 @@ export default function SettingsRoute() {
       getSidebarDefaultCollapsed(),
       getNotificationSettings(),
       getDefaultSessionType(),
+      getVimModeEnabled(),
       getThemePreference(),
       getBackgroundSyncSettings(),
-    ]).then(([projects, sshHosts, sidebarDefaultCollapsed, notificationSettings, defaultSessionType, themePreference, backgroundSyncSettings]) => {
+    ]).then(([projects, sshHosts, sidebarDefaultCollapsed, notificationSettings, defaultSessionType, vimModeEnabled, themePreference, backgroundSyncSettings]) => {
       window.clearTimeout(loadingTimeout);
       if (!cancelled) {
         setData({
@@ -71,6 +75,7 @@ export default function SettingsRoute() {
           sidebarDefaultCollapsed,
           notificationSettings,
           defaultSessionType,
+          vimModeEnabled,
           themePreference,
           backgroundSyncSettings,
         });
@@ -102,12 +107,16 @@ export default function SettingsRoute() {
       sshHosts={data.sshHosts}
       sidebarDefaultCollapsed={data.sidebarDefaultCollapsed}
       defaultSessionType={data.defaultSessionType}
+      vimModeEnabled={data.vimModeEnabled}
       themePreference={data.themePreference}
       onDefaultSessionTypeChange={(sessionType) => {
         setData((currentData) => currentData ? { ...currentData, defaultSessionType: sessionType } : currentData);
       }}
       onThemePreferenceChange={(themePreference) => {
         setData((currentData) => currentData ? { ...currentData, themePreference } : currentData);
+      }}
+      onVimModeEnabledChange={(vimModeEnabled) => {
+        setData((currentData) => currentData ? { ...currentData, vimModeEnabled } : currentData);
       }}
       notificationSettings={data.notificationSettings}
       backgroundSyncSettings={data.backgroundSyncSettings}

@@ -82,7 +82,17 @@
       "done": "完成"
     },
     "loadMore": "加载更多",
-    "loadingMore": "加载中..."
+    "loadingMore": "加载中...",
+    "vimCommand": {
+      "label": "Vim 命令",
+      "placeholder": "move review",
+      "hint": "对当前聚焦任务使用 :move todo|progress|pending|review|done。",
+      "errors": {
+        "unknownCommand": "未知命令。请尝试 :move review。",
+        "noFocusedTask": "运行 :move 前请先聚焦一个任务卡片。",
+        "taskNotFound": "当前聚焦的任务已不在可见列表中。"
+      }
+    }
   },
   "task": {
     "descriptionLabel": "描述",
@@ -192,7 +202,10 @@
     "backgroundSyncEnabledDescription": "定期在后台同步项目 worktree 和 PR 状态。",
     "backgroundSyncInterval": "同步间隔",
     "backgroundSyncIntervalDescription": "后台同步的执行间隔。（1–1440 分钟）",
-    "backgroundSyncIntervalUnit": "分钟"
+    "backgroundSyncIntervalUnit": "分钟",
+    "keyboardSection": "键盘",
+    "vimModeEnabled": "Vim 风格看板控制",
+    "vimModeEnabledDescription": "在看板中启用 h/j/k/l 焦点移动、n 新建任务、dd 删除和 :move status 命令。关闭后仍可使用方向键移动。"
   },
   "taskSearch": {
     "title": "快速任务搜索",

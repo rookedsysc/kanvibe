@@ -204,6 +204,307 @@ async function deleteTaskFromContextMenu(page, taskId) {
   await page.waitForTimeout(1800);
 }
 
+function taskCardSelector(taskId) {
+  return `[data-kanban-task-card='true'][data-kanban-task-id='${taskId}']`;
+}
+
+async function createPlainQaTask(page, projectId, title) {
+  return invokeDesktop(page, "kanban", "createTask", {
+    title,
+    description: "Electron QA: Vim-style board shortcut coverage task.",
+    projectId,
+  });
+}
+
+async function moveTaskStatusThroughBackend(page, taskId, status) {
+  await invokeDesktop(page, "kanban", "moveTaskToColumn", taskId, status, [taskId]);
+}
+
+async function seedVimShortcutTasks(page, projectId, runId) {
+  const navTodoTop = await createPlainQaTask(page, projectId, `vim-qa-${runId}-todo-top`);
+  const navTodoBottom = await createPlainQaTask(page, projectId, `vim-qa-${runId}-todo-bottom`);
+  const navProgressPeer = await createPlainQaTask(page, projectId, `vim-qa-${runId}-progress-peer`);
+  const commandTask = await createPlainQaTask(page, projectId, `vim-qa-${runId}-command-cycle`);
+  const deleteTask = await createPlainQaTask(page, projectId, `vim-qa-${runId}-dd-delete`);
+
+  await moveTaskStatusThroughBackend(page, navProgressPeer.id, "progress");
+
+  return { navTodoTop, navTodoBottom, navProgressPeer, commandTask, deleteTask };
+}
+
+async function navigateToBoard(page) {
+  await page.evaluate(() => {
+    window.location.hash = "#/ko";
+  });
+  await page.waitForTimeout(800);
+  await dismissUpdateDialogIfPresent(page);
+}
+
+async function openSettingsFromBoard(page) {
+  await navigateToBoard(page);
+  await page.getByRole("button", { name: /설정|Settings/ }).click({ timeout: 10000 });
+  const vimSwitch = page.getByRole("switch", { name: /Vim/i });
+  await vimSwitch.waitFor({ state: "visible", timeout: 10000 });
+  await page.waitForTimeout(600);
+  return vimSwitch;
+}
+
+async function setVimModeFromSettings(page, enabled) {
+  const vimSwitch = await openSettingsFromBoard(page);
+  const current = (await vimSwitch.getAttribute("aria-checked")) === "true";
+  if (current !== enabled) {
+    await vimSwitch.click();
+    await page.waitForTimeout(800);
+  }
+
+  await page.waitForFunction(
+    async (expected) => window.kanvibeDesktop.invoke("appSettings", "getVimModeEnabled", []).then((value) => value === expected),
+    enabled,
+    { timeout: 10000 },
+  );
+  await navigateToBoard(page);
+}
+
+async function blurActiveElement(page) {
+  await page.evaluate(() => {
+    if (document.activeElement instanceof HTMLElement) {
+      document.activeElement.blur();
+    }
+  });
+}
+
+async function focusTaskCard(page, taskId) {
+  const card = await waitForTaskCard(page, taskId);
+  await card.focus();
+  await page.waitForTimeout(500);
+}
+
+async function getFocusedTaskInfo(page) {
+  return page.evaluate(() => {
+    const activeElement = document.activeElement;
+    const card = activeElement instanceof Element
+      ? activeElement.closest("[data-kanban-task-card='true']")
+      : null;
+    return {
+      taskId: card?.getAttribute("data-kanban-task-id") ?? null,
+      status: card?.getAttribute("data-kanban-status") ?? null,
+    };
+  });
+}
+
+async function expectFocusedTask(page, taskId, context) {
+  await page.waitForFunction(
+    (expectedTaskId) => {
+      const activeElement = document.activeElement;
+      const card = activeElement instanceof Element
+        ? activeElement.closest("[data-kanban-task-card='true']")
+        : null;
+      return card?.getAttribute("data-kanban-task-id") === expectedTaskId;
+    },
+    taskId,
+    { timeout: 7000 },
+  ).catch(async (error) => {
+    const focused = await getFocusedTaskInfo(page);
+    throw new Error(`${context}: expected focused task ${taskId}, got ${JSON.stringify(focused)} (${error.message})`);
+  });
+}
+
+async function expectFocusedStatus(page, status, context) {
+  const focused = await getFocusedTaskInfo(page);
+  if (focused.status !== status) {
+    throw new Error(`${context}: expected focused status ${status}, got ${JSON.stringify(focused)}`);
+  }
+  return focused;
+}
+
+async function waitForTaskStatus(page, taskId, status) {
+  await page.locator(`${taskCardSelector(taskId)}[data-kanban-status='${status}']`).waitFor({ state: "visible", timeout: 15000 });
+  const task = await invokeDesktop(page, "kanban", "getTaskById", taskId);
+  if (task?.status !== status) {
+    throw new Error(`expected backend status ${status} for ${taskId}, got ${task?.status}`);
+  }
+  return task;
+}
+
+async function openCreateTaskModalWithVimN(page) {
+  await blurActiveElement(page);
+  await page.keyboard.press("n");
+  await page.locator("input[name='branchName']").waitFor({ state: "visible", timeout: 7000 });
+  await page.waitForTimeout(700);
+}
+
+async function assertCreateTaskModalClosed(page, context) {
+  await page.waitForTimeout(800);
+  const isVisible = await page.locator("input[name='branchName']").first().isVisible().catch(() => false);
+  if (isVisible) {
+    await page.keyboard.press("Escape").catch(() => {});
+    throw new Error(`${context}: create task modal unexpectedly opened`);
+  }
+}
+
+async function pressVimCommandShortcut(page) {
+  // Playwright emits key=';' for Shift+; on Linux, while the app's shortcut
+  // handler listens for the actual ':' key value produced by users typing ':'.
+  await page.keyboard.press(":");
+}
+
+async function submitVimMoveCommand(page, taskId, status) {
+  await focusTaskCard(page, taskId);
+  await pressVimCommandShortcut(page);
+  const commandInput = page.locator("#vim-command-input");
+  await commandInput.waitFor({ state: "visible", timeout: 7000 });
+  await page.keyboard.type(`move ${status}`, { delay: 25 });
+  await page.waitForTimeout(250);
+  await page.keyboard.press("Enter");
+  await page.waitForTimeout(900);
+  await waitForTaskStatus(page, taskId, status);
+}
+
+function getPageFindInput(page) {
+  return page.getByRole("textbox", { name: /보드에서 찾기|Find on board|在看板中查找/i });
+}
+
+async function assertPageFindClosed(page, context) {
+  await page.waitForTimeout(500);
+  const isVisible = await getPageFindInput(page).first().isVisible().catch(() => false);
+  if (isVisible) {
+    await page.keyboard.press("Escape").catch(() => {});
+    throw new Error(`${context}: page find input unexpectedly opened`);
+  }
+}
+
+async function installPageFindRecorder(page) {
+  await page.evaluate(() => {
+    const originalFind = typeof window.find === "function" ? window.find.bind(window) : null;
+    window.__kanvibeQaFindCalls = [];
+    Object.defineProperty(window, "find", {
+      configurable: true,
+      writable: true,
+      value: (...args) => {
+        window.__kanvibeQaFindCalls.push(args);
+        return originalFind ? originalFind(...args) : true;
+      },
+    });
+  });
+}
+
+async function getPageFindCalls(page) {
+  return page.evaluate(() => window.__kanvibeQaFindCalls || []);
+}
+
+async function assertSlashPageFindNavigation(page, taskId, query) {
+  await installPageFindRecorder(page);
+  await focusTaskCard(page, taskId);
+  await page.keyboard.press("/");
+
+  const input = getPageFindInput(page);
+  await input.waitFor({ state: "visible", timeout: 7000 });
+  await input.fill(query);
+  await page.keyboard.press("Enter");
+  await page.keyboard.press("Shift+Enter");
+
+  await page.waitForFunction(() => (window.__kanvibeQaFindCalls || []).length >= 2, null, { timeout: 7000 });
+  const calls = await getPageFindCalls(page);
+  const expectedNext = [query, false, false, true, false, false, false];
+  const expectedPrevious = [query, false, true, true, false, false, false];
+  const stringify = (value) => JSON.stringify(value);
+  if (stringify(calls[0]) !== stringify(expectedNext) || stringify(calls[1]) !== stringify(expectedPrevious)) {
+    throw new Error(`expected / find Enter/Shift+Enter calls ${stringify([expectedNext, expectedPrevious])}, got ${stringify(calls)}`);
+  }
+
+  await page.keyboard.press("Escape");
+  await input.waitFor({ state: "hidden", timeout: 7000 });
+  return calls.slice(0, 2);
+}
+
+async function assertVimCommandClosed(page, context) {
+  await page.waitForTimeout(700);
+  const isVisible = await page.locator("#vim-command-input").first().isVisible().catch(() => false);
+  if (isVisible) {
+    await page.keyboard.press("Escape").catch(() => {});
+    throw new Error(`${context}: Vim command input unexpectedly opened`);
+  }
+}
+
+async function captureDialogs(page, fn, action = "dismiss") {
+  const dialogs = [];
+  const handler = async (dialog) => {
+    dialogs.push({ type: dialog.type(), message: dialog.message() });
+    if (action === "accept") {
+      await dialog.accept();
+    } else {
+      await dialog.dismiss();
+    }
+  };
+
+  page.on("dialog", handler);
+  try {
+    await fn();
+  } finally {
+    page.off("dialog", handler);
+  }
+  return dialogs;
+}
+
+async function deleteTaskWithVimDd(page, taskId) {
+  let lastFocused = null;
+  for (let attempt = 1; attempt <= 8; attempt += 1) {
+    await focusTaskCard(page, taskId);
+    await expectFocusedTask(page, taskId, `Vim dd delete attempt ${attempt} should focus target task`);
+    await page.waitForTimeout(500);
+    lastFocused = await getFocusedTaskInfo(page);
+
+    const dialogPromise = page.waitForEvent("dialog", { timeout: 1800 })
+      .then(async (dialog) => {
+        const info = { type: dialog.type(), message: dialog.message(), attempt };
+        await dialog.accept();
+        return info;
+      })
+      .catch(() => null);
+
+    await page.keyboard.press("d");
+    await page.waitForTimeout(700);
+    await page.keyboard.press("d");
+
+    const dialog = await dialogPromise;
+    if (dialog) {
+      return dialog;
+    }
+
+    await page.waitForTimeout(500);
+  }
+
+  const task = await invokeDesktop(page, "kanban", "getTaskById", taskId);
+  throw new Error(`expected one delete confirmation dialog, got none after 8 attempts; focused=${JSON.stringify(lastFocused)}, task=${JSON.stringify(task)}`);
+}
+
+async function assertTaskExists(page, taskId, context) {
+  const task = await invokeDesktop(page, "kanban", "getTaskById", taskId);
+  if (!task) {
+    throw new Error(`${context}: expected task ${taskId} to still exist`);
+  }
+  return task;
+}
+
+async function assertTaskDeleted(page, taskId, context) {
+  await page.locator(taskCardSelector(taskId)).waitFor({ state: "hidden", timeout: 15000 }).catch(async (error) => {
+    const focused = await getFocusedTaskInfo(page);
+    throw new Error(`${context}: task card ${taskId} is still visible; focused=${JSON.stringify(focused)} (${error.message})`);
+  });
+
+  await page.waitForFunction(
+    async (id) => {
+      const task = await window.kanvibeDesktop.invoke("kanban", "getTaskById", [id]);
+      return task === null;
+    },
+    taskId,
+    { timeout: 15000 },
+  ).catch(async (error) => {
+    const task = await invokeDesktop(page, "kanban", "getTaskById", taskId);
+    throw new Error(`${context}: task still exists (${JSON.stringify(task)}) (${error.message})`);
+  });
+}
+
 async function main() {
   const args = parseArgs(process.argv);
   const run = createQaRun({
@@ -278,55 +579,157 @@ async function main() {
     });
 
     let seededResult = null;
-    await optionalStep(checks, "Seed isolated QA project and task through app IPC", async () => {
+    let vimTasks = null;
+    await optionalStep(checks, "Seed isolated QA project, cleanup task, and Vim shortcut tasks through app IPC", async () => {
       seededResult = await seedQaProjectAndTask(page, fixture);
+      await invokeDesktop(page, "appSettings", "setVimModeEnabled", true);
+      vimTasks = await seedVimShortcutTasks(page, seededResult.project.id, run.runId);
       await page.reload({ waitUntil: "domcontentloaded" });
       await dismissUpdateDialogIfPresent(page);
-      return `project=${seededResult.project.name}, task=${seededResult.task.id}, dbWorktreePath=${seededResult.task.worktreePath ?? "null"}`;
+      return `project=${seededResult.project.name}, cleanupTask=${seededResult.task.id}, vimTasks=${Object.values(vimTasks).map((task) => task.id).join(",")}`;
     });
     seeded = seededResult;
 
-    if (!seeded) {
+    if (!seeded || !vimTasks) {
       throw new Error("QA seed failed; cannot continue UI flow");
     }
 
-    await optionalStep(checks, "Board shows seeded QA task card", async () => {
+    await optionalStep(checks, "Board shows seeded cleanup and Vim QA task cards", async () => {
       await waitForTaskCard(page, seeded.task.id);
-      return fixture.branchName;
+      await waitForTaskCard(page, vimTasks.navTodoTop.id);
+      await waitForTaskCard(page, vimTasks.navTodoBottom.id);
+      await waitForTaskStatus(page, vimTasks.navProgressPeer.id, "progress");
+      return `${fixture.branchName}; ${Object.values(vimTasks).map((task) => task.title).join(", ")}`;
     });
 
     await page.waitForTimeout(1500);
-    await takeScreenshot(page, run, "seeded-task-visible", screenshots);
+    await takeScreenshot(page, run, "seeded-vim-task-cards-visible", screenshots);
 
-    await optionalStep(checks, "UI context menu changes task status TODO to PROGRESS", async () => {
+    await optionalStep(checks, "UI context menu changes cleanup task status TODO to PROGRESS", async () => {
       await changeTaskStatusFromContextMenu(page, seeded.task.id, 1);
-      await page.locator(`[data-kanban-task-card='true'][data-kanban-task-id='${seeded.task.id}'][data-kanban-status='progress']`).waitFor({ state: "visible", timeout: 10000 });
-      const task = await invokeDesktop(page, "kanban", "getTaskById", seeded.task.id);
-      if (task?.status !== "progress") {
-        throw new Error(`expected backend status progress, got ${task?.status}`);
-      }
+      await waitForTaskStatus(page, seeded.task.id, "progress");
       return "card moved to PROGRESS and backend status updated";
     });
 
-    await takeScreenshot(page, run, "task-moved-to-progress", screenshots);
-    await page.waitForTimeout(1500);
+    await takeScreenshot(page, run, "cleanup-task-moved-to-progress", screenshots);
+    await page.waitForTimeout(1200);
 
-    await optionalStep(checks, "UI delete removes task record", async () => {
+    await optionalStep(checks, "Vim h/j/k/l moves focus across task cards when setting is ON", async () => {
+      await focusTaskCard(page, vimTasks.navTodoTop.id);
+      await page.keyboard.press("j");
+      await expectFocusedTask(page, vimTasks.navTodoBottom.id, "j should move to next TODO task");
+      await page.waitForTimeout(500);
+      await page.keyboard.press("k");
+      await expectFocusedTask(page, vimTasks.navTodoTop.id, "k should move back to previous TODO task");
+      await page.waitForTimeout(500);
+      await page.keyboard.press("l");
+      const rightFocus = await expectFocusedStatus(page, "progress", "l should move to the next non-empty status column");
+      await page.waitForTimeout(500);
+      await page.keyboard.press("h");
+      await expectFocusedTask(page, vimTasks.navTodoTop.id, "h should move back to TODO at the nearest index");
+      return `j/k reached ${vimTasks.navTodoBottom.id}/${vimTasks.navTodoTop.id}; l reached ${rightFocus.taskId} in PROGRESS; h returned to TODO`;
+    });
+
+    await takeScreenshot(page, run, "vim-hjkl-focus-navigation-on", screenshots);
+
+    await optionalStep(checks, "Vim / opens board page find and Enter/Shift+Enter navigate matches", async () => {
+      const calls = await assertSlashPageFindNavigation(page, vimTasks.navTodoTop.id, `vim-qa-${run.runId}`);
+      return `/ opened the same page find UI; Enter/Shift+Enter called window.find with next/previous directions: ${JSON.stringify(calls)}`;
+    });
+
+    await takeScreenshot(page, run, "vim-slash-page-find-complete", screenshots);
+
+    await optionalStep(checks, "Vim :move command moves focused task through every supported status", async () => {
+      const statuses = ["progress", "pending", "review", "done", "todo"];
+      for (const status of statuses) {
+        await submitVimMoveCommand(page, vimTasks.commandTask.id, status);
+      }
+      await focusTaskCard(page, vimTasks.commandTask.id);
+      return `:move ${statuses.join(" -> :move ")} all updated UI and backend state`;
+    });
+
+    await takeScreenshot(page, run, "vim-command-move-all-statuses", screenshots);
+
+    await optionalStep(checks, "Vim n opens the create-task modal when setting is ON", async () => {
+      await openCreateTaskModalWithVimN(page);
+      await page.keyboard.press("Escape");
+      await assertCreateTaskModalClosed(page, "Escape should close Vim-created task modal");
+      return "n opened Create Task modal; Escape closed it";
+    });
+
+    await optionalStep(checks, "Vim dd deletes the focused task after confirmation when setting is ON", async () => {
+      const dialog = await deleteTaskWithVimDd(page, vimTasks.deleteTask.id);
+      if (!/삭제|delete/i.test(dialog.message)) {
+        throw new Error(`expected delete confirmation message, got ${JSON.stringify(dialog)}`);
+      }
+      await assertTaskDeleted(page, vimTasks.deleteTask.id, "Vim dd delete");
+      return `confirmed dd delete dialog on attempt ${dialog.attempt} and removed ${vimTasks.deleteTask.id}`;
+    });
+
+    await takeScreenshot(page, run, "vim-dd-delete-complete", screenshots);
+
+    await optionalStep(checks, "Settings toggle OFF disables Vim-only shortcuts but keeps arrow-key focus navigation", async () => {
+      await setVimModeFromSettings(page, false);
+      await takeScreenshot(page, run, "vim-mode-toggle-off", screenshots);
+
+      await blurActiveElement(page);
+      await page.keyboard.press("n");
+      await assertCreateTaskModalClosed(page, "Vim OFF n shortcut");
+
+      await blurActiveElement(page);
+      await page.keyboard.press("/");
+      await assertPageFindClosed(page, "Vim OFF / shortcut");
+
+      await focusTaskCard(page, vimTasks.navTodoTop.id);
+      await page.keyboard.press("l");
+      await expectFocusedTask(page, vimTasks.navTodoTop.id, "Vim OFF l shortcut should not move focus");
+      await page.keyboard.press("ArrowRight");
+      const arrowFocus = await expectFocusedStatus(page, "progress", "ArrowRight should still move focus while Vim mode is OFF");
+
+      await focusTaskCard(page, vimTasks.commandTask.id);
+      await pressVimCommandShortcut(page);
+      await assertVimCommandClosed(page, "Vim OFF : command shortcut");
+
+      const dialogs = await captureDialogs(page, async () => {
+        await focusTaskCard(page, vimTasks.commandTask.id);
+        await page.keyboard.press("d");
+        await page.waitForTimeout(180);
+        await page.keyboard.press("d");
+        await page.waitForTimeout(900);
+      }, "dismiss");
+      if (dialogs.length > 0) {
+        throw new Error(`Vim OFF dd unexpectedly opened dialog(s): ${JSON.stringify(dialogs)}`);
+      }
+      await assertTaskExists(page, vimTasks.commandTask.id, "Vim OFF dd shortcut");
+
+      return `n/:/dd/l and / disabled; ArrowRight still moved focus to ${arrowFocus.taskId}`;
+    });
+
+    await optionalStep(checks, "Settings toggle ON restores Vim shortcut handling", async () => {
+      await setVimModeFromSettings(page, true);
+      await takeScreenshot(page, run, "vim-mode-toggle-on", screenshots);
+      await openCreateTaskModalWithVimN(page);
+      await page.keyboard.press("Escape");
+      await assertCreateTaskModalClosed(page, "Vim ON n shortcut after re-enable");
+      await focusTaskCard(page, vimTasks.commandTask.id);
+      await pressVimCommandShortcut(page);
+      await page.locator("#vim-command-input").waitFor({ state: "visible", timeout: 7000 });
+      await page.keyboard.press("Escape");
+      await assertVimCommandClosed(page, "Vim command input after re-enable Escape");
+      return "Vim n and : shortcuts worked again after re-enable";
+    });
+
+    await takeScreenshot(page, run, "vim-shortcuts-restored", screenshots);
+
+    await optionalStep(checks, "UI delete removes cleanup task record", async () => {
       await deleteTaskFromContextMenu(page, seeded.task.id);
-      await page.waitForFunction(
-        async (taskId) => {
-          const task = await window.kanvibeDesktop.invoke("kanban", "getTaskById", [taskId]);
-          return task === null;
-        },
-        seeded.task.id,
-        { timeout: 15000 },
-      );
+      await assertTaskDeleted(page, seeded.task.id, "context-menu cleanup task delete");
       return "backend getTaskById returned null after confirm delete";
     });
 
     await page.reload({ waitUntil: "domcontentloaded" });
     await page.waitForTimeout(1500);
-    await takeScreenshot(page, run, "task-deleted-after-refresh", screenshots);
+    await takeScreenshot(page, run, "cleanup-task-deleted-after-refresh", screenshots);
 
     await optionalStep(checks, "Delete cleanup removes actual external git worktree and branch", async () => {
       const worktrees = getGitWorktrees(fixture.projectDir);
@@ -425,7 +828,7 @@ async function main() {
 
   const result = {
     ok,
-    scope: "Electron UI QA for PR #275/#276: clone the public QA fixture repo, register a run-unique project, create/move/delete a task, and verify cleanup of a real external git worktree outside KanVibe's managed __worktrees convention when DB worktreePath is empty",
+    scope: "Electron UI QA for PR #275/#276 cleanup plus Vim-style board controls: clone fixture repo, seed real tasks, verify h/j/k/l, / page find with Enter/Shift+Enter, n, dd, :move todo|progress|pending|review|done, settings ON/OFF behavior, and external worktree cleanup",
     branch: gitValue(["branch", "--show-current"]),
     commit: gitValue(["rev-parse", "--short", "HEAD"]),
     checks,

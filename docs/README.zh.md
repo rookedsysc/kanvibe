@@ -135,9 +135,13 @@ brew untap rookedsysc/kanvibe
 
 ### 键盘快捷键
 
-| 快捷键 | 范围 | 动作 |
+| 快捷键 | 范围 | 操作 |
 |--------|------|------|
-| `Cmd/Ctrl+F` | 看板 | 打开当前可见项目/任务文本的页面查找 |
+| `Cmd/Ctrl+F` 或启用 Vim 风格控制时的 `/` | 看板 | 在当前可见的项目/任务文本中打开页面查找；按 `Enter` 查找下一个，按 `Shift+Enter` 查找上一个 |
+| `h / j / k / l` 或 `← / ↓ / ↑ / →` | 看板任务卡片 | 在可见任务卡片间向左/下/上/右移动焦点；没有任务聚焦时进入第一个可见任务 |
+| `n` | 看板 | 立即打开新任务弹窗 |
+| `:move todo\|progress\|pending\|review\|done` | 已聚焦的看板任务卡片 | 无需拖放，将当前聚焦任务移动到目标状态 |
+| `dd` | 已聚焦的看板任务卡片 | 确认后删除当前聚焦任务 |
 | `Cmd/Ctrl+Shift+O` | 全局 | 按分支名或项目名打开任务快速搜索（默认值，可配置） |
 | `Cmd/Ctrl+Shift+P` | 看板 | 打开项目筛选下拉框 |
 | `Cmd/Ctrl+Shift+I` | 看板 | 打开通知下拉框 |
@@ -146,6 +150,16 @@ brew untap rookedsysc/kanvibe
 | `↑ / ↓ / Enter / Esc` | 任务快速搜索 | 移动选择、打开任务、关闭对话框 |
 | `↑ / ↓ / Enter / Esc` | 项目筛选下拉框 | 移动选择、切换项目筛选、关闭下拉框 |
 | `↑ / ↓ / Enter / Esc` | 通知下拉框 | 移动选择、打开通知目标、关闭下拉框 |
+
+Vim 风格看板控制（`h/j/k/l`、`/`、`n`、`dd`、`:move ...`）可在**设置 → 键盘**中启用或关闭。关闭后仍可使用方向键移动任务焦点，也可继续使用 `Cmd/Ctrl+F` 页面查找。
+
+#### Vim 风格看板控制演示
+
+下面的视频从**设置 → 键盘**启用 Vim 风格看板控制开始，然后展示在真实看板中使用 `h/j/k/l`、`/`、`:move progress`、`n` 和 `dd` 的流程。
+
+<video src="./images/readme/kanvibe-vim-controls.mp4" poster="./images/readme/kanvibe-vim-controls.png" controls muted playsinline width="100%"></video>
+
+[打开演示视频](./images/readme/kanvibe-vim-controls.mp4)
 
 ### AI 代理 Hooks - 自动状态追踪
 KanVibe 与 **Claude Code Hooks**、**Gemini CLI Hooks**、**Codex CLI** 和 **OpenCode** 集成，自动追踪任务状态。任务通过 5 个状态进行管理：
