@@ -1,0 +1,35 @@
+---
+title: Shortcuts
+---
+
+# Shortcuts
+
+KanVibe keeps global, board, and task-detail shortcuts separated so terminal focus remains predictable.
+
+<div className="kv-kbd-grid">
+  <div className="kv-kbd-card"><kbd>Cmd/Ctrl + F</kbd><strong>Board find</strong><p>Search visible project and task text on the board.</p></div>
+  <div className="kv-kbd-card"><kbd>Cmd/Ctrl + Shift + O</kbd><strong>Quick task search</strong><p>Find any task by branch or project name.</p></div>
+  <div className="kv-kbd-card"><kbd>Cmd/Ctrl + Shift + P</kbd><strong>Project filter</strong><p>Toggle which projects are visible on the board.</p></div>
+  <div className="kv-kbd-card"><kbd>Cmd/Ctrl + Shift + I</kbd><strong>Notification center</strong><p>Open AI agent status and event notifications.</p></div>
+</div>
+
+## Full shortcut reference
+
+| Shortcut | Scope | Action |
+| --- | --- | --- |
+| `Cmd/Ctrl+F` | Board | Search visible project/task text |
+| `Cmd/Ctrl+Shift+O` | Global | Open quick task search by branch or project name |
+| `Cmd/Ctrl+Shift+P` | Board | Open the project filter dropdown |
+| `Cmd/Ctrl+Shift+I` | Board | Open the notifications dropdown |
+| `Cmd+[` / `Cmd+]` (macOS), `Alt+[` / `Alt+]` (Linux) | Global | Navigate back/forward through app history |
+| `Cmd+1/2/3` (macOS), `Alt+1/2/3` (Linux) | Task detail | Activate info, status/hooks, and AI chat dock items |
+| `Cmd+4` (macOS), `Alt+4` (Linux) | Task detail | Open the PR in the browser when a PR exists |
+| `Cmd/Ctrl+N` | Quick task search | Create a branch TODO from the highlighted task |
+| `↑ / ↓ / Enter / Shift+Enter / Esc` | Quick task search | Move selection, open, open in new window, close |
+| `↑ / ↓ / Enter / Esc` | Project filter | Move selection, toggle, close |
+| `↑ / ↓ / Enter / Esc` | Notifications | Move selection, open target, close |
+
+<figure className="kv-shot">
+  <img src="/screenshots/detail-shortcuts.png" alt="Task detail shortcut screen" />
+  <figcaption>Task detail dock numbering excludes the back button and follows the visible dock item order.</figcaption>
+</figure>

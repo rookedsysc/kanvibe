@@ -1,0 +1,73 @@
+---
+title: Features
+---
+
+# Features
+
+KanVibe connects the Kanban board, terminal sessions, git worktrees, and AI agent hooks into one workflow.
+
+## Real-time Kanban board
+
+<figure className="kv-shot">
+  <img src="/screenshots/board.png" alt="KanVibe main Kanban board" />
+  <figcaption>Manage TODO, PROGRESS, PENDING, REVIEW, and DONE with project colors and task metadata.</figcaption>
+</figure>
+
+<div className="kv-status-flow">
+  <span>TODO</span><span>PROGRESS</span><span>PENDING</span><span>REVIEW</span><span>DONE</span>
+</div>
+
+- Move cards and reorder tasks with drag and drop.
+- Read project color, priority, PR, and session labels directly from each card.
+- Paginate the DONE column for long-running projects.
+
+## Task detail workspace
+
+<figure className="kv-shot">
+  <img src="/screenshots/task-detail.png" alt="Task detail terminal workspace" />
+  <figcaption>Each task brings terminal panes, metadata, hook status, AI chat, and PR actions into one workspace.</figcaption>
+</figure>
+
+- Open tmux or zellij sessions in the browser or desktop app.
+- Switch info, hook status, AI chat, and PR actions through numbered dock shortcuts.
+- Moving a task to DONE cleans up its branch, worktree, and terminal session.
+
+## Quick task search
+
+<figure className="kv-shot">
+  <img src="/screenshots/quick-search.png" alt="Quick task search dialog" />
+  <figcaption>Search all tasks by branch or project name and jump directly into the task workspace.</figcaption>
+</figure>
+
+## Project filters and notifications
+
+<div className="kv-grid">
+  <figure className="kv-shot">
+    <img src="/screenshots/project-filter.png" alt="Project filter" />
+    <figcaption>Toggle visible projects from the keyboard.</figcaption>
+  </figure>
+  <figure className="kv-shot">
+    <img src="/screenshots/notifications.png" alt="Notification center" />
+    <figcaption>Review AI agent status changes and background events.</figcaption>
+  </figure>
+</div>
+
+## GitHub-style Diff view
+
+<figure className="kv-shot">
+  <img src="/screenshots/diff-view.png" alt="GitHub-style Diff view" />
+  <figcaption>Review changed files against the base branch in a Monaco-powered diff viewer.</figcaption>
+</figure>
+
+- Use the file tree to inspect changed files and counts.
+- Review inline diffs before merging or marking a task DONE.
+- Track viewed files with checkboxes.
+
+## AI agent hooks
+
+| Agent | Automatic status flow | Install location |
+| --- | --- | --- |
+| Claude Code | user prompt → PROGRESS, question → PENDING, response done → REVIEW | `.claude/hooks/`, `.claude/settings.json` |
+| Gemini CLI | BeforeAgent → PROGRESS, AfterAgent → REVIEW | `.gemini/hooks/`, `.gemini/settings.json` |
+| Codex CLI | UserPromptSubmit → PROGRESS, PermissionRequest → PENDING, Stop → REVIEW | `.codex/hooks.json`, `.codex/config.toml` |
+| OpenCode | message.updated → PROGRESS, question.asked → PENDING, session.idle → REVIEW | `.opencode/plugins/` |

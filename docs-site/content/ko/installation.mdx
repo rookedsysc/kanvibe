@@ -1,0 +1,73 @@
+---
+title: 설치
+---
+
+# 설치
+
+KanVibe는 macOS 데스크톱 앱으로 배포되며, 현재 권장 설치 경로는 Homebrew Cask입니다.
+
+## 사전 요구사항
+
+| 의존성 | 필수 | 설명 | 설치 예시 |
+| --- | --- | --- | --- |
+| Git | 필수 | branch와 worktree 생성 및 정리 | `brew install git` |
+| tmux | 필수 | 기본 터미널 세션 백엔드 | `brew install tmux` |
+| GitHub CLI `gh` | 필수 | PR URL 조회와 GitHub 워크플로우 | `brew install gh` 후 `gh auth login` |
+| zellij | 선택 | tmux 대신 사용할 수 있는 세션 백엔드 | `brew install zellij` |
+
+## Homebrew로 설치
+
+```bash
+brew install --cask rookedsysc/kanvibe/kanvibe
+open -a KanVibe
+```
+
+공식 Homebrew Cask 등록 후에는 아래 명령으로 설치할 수 있습니다.
+
+```bash
+brew install --cask kanvibe
+```
+
+## 업데이트와 제거
+
+```bash
+brew update
+brew upgrade --cask kanvibe
+```
+
+```bash
+brew uninstall --cask kanvibe
+brew untap rookedsysc/kanvibe
+```
+
+## 첫 실행 체크리스트
+
+<div className="kv-grid">
+  <div className="kv-card">
+    <h3>1. 프로젝트 등록</h3>
+    <p>설정에서 로컬 git 저장소를 선택합니다. KanVibe가 worktree 브랜치를 스캔합니다.</p>
+  </div>
+  <div className="kv-card">
+    <h3>2. 세션 타입 확인</h3>
+    <p>tmux를 기본값으로 사용하거나, zellij를 설치했다면 기본 세션 타입을 변경합니다.</p>
+  </div>
+  <div className="kv-card">
+    <h3>3. 알림 권한 허용</h3>
+    <p>AI 에이전트 hooks 상태 변경을 놓치지 않도록 브라우저 알림 권한을 허용합니다.</p>
+  </div>
+</div>
+
+<figure className="kv-shot">
+  <img src="/screenshots/project-filter.png" alt="프로젝트 필터 드롭다운" />
+  <figcaption>프로젝트가 많아지면 필터 드롭다운과 검색으로 작업 범위를 빠르게 좁힐 수 있습니다.</figcaption>
+</figure>
+
+## 개발 환경에서 문서 사이트 실행
+
+이 문서 사이트는 Nextra 4 기반입니다. 저장소 루트에서 다음 명령을 사용할 수 있습니다.
+
+```bash
+pnpm docs:dev
+pnpm docs:build
+pnpm docs:start
+```

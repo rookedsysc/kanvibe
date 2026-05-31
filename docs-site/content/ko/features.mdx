@@ -1,0 +1,73 @@
+---
+title: 기능
+---
+
+# 기능
+
+KanVibe는 칸반 보드, 터미널 세션, git worktree, AI 에이전트 hooks를 하나의 워크플로우로 연결합니다.
+
+## 실시간 칸반 보드
+
+<figure className="kv-shot">
+  <img src="/screenshots/board.png" alt="KanVibe 메인 칸반 보드" />
+  <figcaption>TODO, PROGRESS, PENDING, REVIEW, DONE 상태를 프로젝트 색상과 함께 관리합니다.</figcaption>
+</figure>
+
+<div className="kv-status-flow">
+  <span>TODO</span><span>PROGRESS</span><span>PENDING</span><span>REVIEW</span><span>DONE</span>
+</div>
+
+- 드래그 앤 드롭으로 상태와 순서를 변경합니다.
+- 프로젝트 색상, 우선순위, PR, 세션 타입을 카드에서 바로 확인합니다.
+- DONE 컬럼은 장기 프로젝트를 위해 페이지네이션을 제공합니다.
+
+## 태스크 상세 워크스페이스
+
+<figure className="kv-shot">
+  <img src="/screenshots/task-detail.png" alt="태스크 상세 터미널 워크스페이스" />
+  <figcaption>각 태스크는 터미널, 메타데이터, hook 상태, AI 채팅, PR 액션을 한 화면에서 제공합니다.</figcaption>
+</figure>
+
+- tmux 또는 zellij 세션을 브라우저/데스크톱에서 열 수 있습니다.
+- 상세 dock 단축키로 정보, hook 상태, AI 채팅, PR을 전환합니다.
+- 작업이 DONE으로 이동하면 branch, worktree, terminal session을 정리합니다.
+
+## 빠른 태스크 검색
+
+<figure className="kv-shot">
+  <img src="/screenshots/quick-search.png" alt="빠른 태스크 검색 다이얼로그" />
+  <figcaption>브랜치명 또는 프로젝트명으로 전체 태스크를 검색하고 바로 상세 화면으로 이동합니다.</figcaption>
+</figure>
+
+## 프로젝트 필터와 알림
+
+<div className="kv-grid">
+  <figure className="kv-shot">
+    <img src="/screenshots/project-filter.png" alt="프로젝트 필터" />
+    <figcaption>보드에 표시할 프로젝트를 키보드로 토글합니다.</figcaption>
+  </figure>
+  <figure className="kv-shot">
+    <img src="/screenshots/notifications.png" alt="알림 센터" />
+    <figcaption>AI 에이전트 상태 변경과 백그라운드 이벤트를 확인합니다.</figcaption>
+  </figure>
+</div>
+
+## GitHub 스타일 Diff 뷰
+
+<figure className="kv-shot">
+  <img src="/screenshots/diff-view.png" alt="GitHub 스타일 Diff 뷰" />
+  <figcaption>base branch 대비 변경 파일을 Monaco 기반 diff viewer로 검토합니다.</figcaption>
+</figure>
+
+- 파일 트리에서 변경 파일 수와 상태를 확인합니다.
+- inline diff를 보면서 빠르게 리뷰합니다.
+- 확인한 파일은 viewed 상태로 추적할 수 있습니다.
+
+## AI 에이전트 Hooks
+
+| Agent | 자동 상태 흐름 | 설치 위치 |
+| --- | --- | --- |
+| Claude Code | 사용자 프롬프트 → PROGRESS, 질문 → PENDING, 응답 완료 → REVIEW | `.claude/hooks/`, `.claude/settings.json` |
+| Gemini CLI | BeforeAgent → PROGRESS, AfterAgent → REVIEW | `.gemini/hooks/`, `.gemini/settings.json` |
+| Codex CLI | UserPromptSubmit → PROGRESS, PermissionRequest → PENDING, Stop → REVIEW | `.codex/hooks.json`, `.codex/config.toml` |
+| OpenCode | message.updated → PROGRESS, question.asked → PENDING, session.idle → REVIEW | `.opencode/plugins/` |

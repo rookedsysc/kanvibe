@@ -1,0 +1,35 @@
+---
+title: 快捷键
+---
+
+# 快捷键
+
+KanVibe 明确区分全局、看板和任务详情快捷键，让终端焦点保持可预测。
+
+<div className="kv-kbd-grid">
+  <div className="kv-kbd-card"><kbd>Cmd/Ctrl + F</kbd><strong>看板搜索</strong><p>搜索当前可见项目和任务文本。</p></div>
+  <div className="kv-kbd-card"><kbd>Cmd/Ctrl + Shift + O</kbd><strong>快速任务搜索</strong><p>按分支名或项目名查找任意任务。</p></div>
+  <div className="kv-kbd-card"><kbd>Cmd/Ctrl + Shift + P</kbd><strong>项目过滤</strong><p>切换看板中可见的项目。</p></div>
+  <div className="kv-kbd-card"><kbd>Cmd/Ctrl + Shift + I</kbd><strong>通知中心</strong><p>打开 AI 代理状态和事件通知。</p></div>
+</div>
+
+## 完整快捷键表
+
+| 快捷键 | 范围 | 操作 |
+| --- | --- | --- |
+| `Cmd/Ctrl+F` | 看板 | 搜索当前可见项目/任务文本 |
+| `Cmd/Ctrl+Shift+O` | 全局 | 按分支名/项目名打开快速任务搜索 |
+| `Cmd/Ctrl+Shift+P` | 看板 | 打开项目过滤下拉框 |
+| `Cmd/Ctrl+Shift+I` | 看板 | 打开通知下拉框 |
+| `Cmd+[` / `Cmd+]` (macOS), `Alt+[` / `Alt+]` (Linux) | 全局 | 在应用历史中后退/前进 |
+| `Cmd+1/2/3` (macOS), `Alt+1/2/3` (Linux) | 任务详情 | 激活信息、状态/hooks、AI 聊天 dock 项 |
+| `Cmd+4` (macOS), `Alt+4` (Linux) | 任务详情 | 存在 PR 时在浏览器中打开 PR |
+| `Cmd/Ctrl+N` | 快速任务搜索 | 基于高亮任务创建 branch TODO |
+| `↑ / ↓ / Enter / Shift+Enter / Esc` | 快速任务搜索 | 移动选择、打开、新窗口打开、关闭 |
+| `↑ / ↓ / Enter / Esc` | 项目过滤 | 移动选择、切换、关闭 |
+| `↑ / ↓ / Enter / Esc` | 通知 | 移动选择、打开目标、关闭 |
+
+<figure className="kv-shot">
+  <img src="/screenshots/detail-shortcuts.png" alt="任务详情快捷键界面" />
+  <figcaption>任务详情 dock 编号不包含返回按钮，并按屏幕上可见 dock 项的顺序排列。</figcaption>
+</figure>
