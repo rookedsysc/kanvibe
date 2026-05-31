@@ -15,6 +15,7 @@ const mocks = vi.hoisted(() => ({
   getNotificationSettings: vi.fn(),
   getDefaultSessionType: vi.fn(),
   getTaskSearchShortcut: vi.fn(),
+  getVimModeEnabled: vi.fn(),
   useRefreshSignal: vi.fn(() => 0),
 }));
 
@@ -32,13 +33,16 @@ vi.mock("@/components/Board", () => ({
   default: ({
     initialTasks,
     initialFocusTaskId,
+    vimModeEnabled,
   }: {
     initialTasks: Record<string, Array<{ title: string }>>;
     initialFocusTaskId?: string | null;
+    vimModeEnabled?: boolean;
   }) => (
     <>
       <div data-testid="board-titles">{Object.values(initialTasks).flat().map((task) => task.title).join(",")}</div>
       <div data-testid="board-focus-task">{initialFocusTaskId ?? ""}</div>
+      <div data-testid="board-vim-mode">{String(vimModeEnabled)}</div>
     </>
   ),
 }));
@@ -58,6 +62,7 @@ vi.mock("@/desktop/renderer/actions/appSettings", () => ({
   getNotificationSettings: (...args: unknown[]) => mocks.getNotificationSettings(...args),
   getDefaultSessionType: (...args: unknown[]) => mocks.getDefaultSessionType(...args),
   getTaskSearchShortcut: (...args: unknown[]) => mocks.getTaskSearchShortcut(...args),
+  getVimModeEnabled: (...args: unknown[]) => mocks.getVimModeEnabled(...args),
 }));
 
 vi.mock("@/desktop/renderer/utils/refresh", () => ({
@@ -75,6 +80,7 @@ describe("BoardRoute", () => {
     mocks.getNotificationSettings.mockResolvedValue({ isEnabled: true, enabledStatuses: [] });
     mocks.getDefaultSessionType.mockResolvedValue("tmux");
     mocks.getTaskSearchShortcut.mockResolvedValue("Mod+Shift+O");
+    mocks.getVimModeEnabled.mockResolvedValue(true);
   });
 
   afterEach(() => {
@@ -114,6 +120,7 @@ describe("BoardRoute", () => {
       notificationSettings: { isEnabled: true, enabledStatuses: [] },
       defaultSessionType: "tmux",
       taskSearchShortcut: "Mod+Shift+O",
+      vimModeEnabled: false,
     }));
     const deferredTasks = createDeferred<{
       tasks: {
@@ -134,6 +141,7 @@ describe("BoardRoute", () => {
     // Then
     expect(screen.queryByText("Loading...")).toBeNull();
     expect(screen.getByTestId("board-titles").textContent).toBe("cached board task");
+    expect(screen.getByTestId("board-vim-mode").textContent).toBe("false");
 
     deferredTasks.resolve({
       tasks: {

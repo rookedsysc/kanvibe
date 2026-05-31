@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import Board from "@/components/Board";
-import { getDoneAlertDismissed, getDefaultSessionType, getNotificationSettings, getSidebarDefaultCollapsed, getTaskSearchShortcut } from "@/desktop/renderer/actions/appSettings";
+import { getDoneAlertDismissed, getDefaultSessionType, getNotificationSettings, getSidebarDefaultCollapsed, getTaskSearchShortcut, getVimModeEnabled } from "@/desktop/renderer/actions/appSettings";
 import { getTasksByStatus } from "@/desktop/renderer/actions/kanban";
 import { getAllProjects, getAvailableHosts } from "@/desktop/renderer/actions/project";
 import { buildRouteCacheKey, readRouteCache, writeRouteCache } from "@/desktop/renderer/utils/routeCache";
@@ -19,6 +19,7 @@ interface BoardData {
   notificationSettings: Awaited<ReturnType<typeof getNotificationSettings>>;
   defaultSessionType: Awaited<ReturnType<typeof getDefaultSessionType>>;
   taskSearchShortcut: Awaited<ReturnType<typeof getTaskSearchShortcut>>;
+  vimModeEnabled: Awaited<ReturnType<typeof getVimModeEnabled>>;
 }
 
 const BOARD_ROUTE_CACHE_KEY = buildRouteCacheKey("board");
@@ -55,6 +56,7 @@ function createEmptyBoardData(): BoardData {
     notificationSettings: { isEnabled: true, enabledStatuses: ["progress", "pending", "review"] },
     defaultSessionType: SessionType.TMUX,
     taskSearchShortcut: DEFAULT_TASK_SEARCH_SHORTCUT,
+    vimModeEnabled: true,
   };
 }
 
@@ -144,7 +146,8 @@ export default function BoardRoute() {
       getNotificationSettings(),
       getDefaultSessionType(),
       getTaskSearchShortcut(),
-    ]).then(([tasks, sshHosts, projects, sidebarDefaultCollapsed, doneAlertDismissed, notificationSettings, defaultSessionType, taskSearchShortcut]) => {
+      getVimModeEnabled(),
+    ]).then(([tasks, sshHosts, projects, sidebarDefaultCollapsed, doneAlertDismissed, notificationSettings, defaultSessionType, taskSearchShortcut, vimModeEnabled]) => {
       window.clearTimeout(loadingTimeout);
       if (!cancelled) {
         const nextData = {
@@ -156,6 +159,7 @@ export default function BoardRoute() {
           notificationSettings,
           defaultSessionType,
           taskSearchShortcut,
+          vimModeEnabled,
         };
 
         writeRouteCache(BOARD_ROUTE_CACHE_KEY, nextData);
@@ -192,6 +196,7 @@ export default function BoardRoute() {
       notificationSettings={data.notificationSettings}
       defaultSessionType={data.defaultSessionType}
       taskSearchShortcut={data.taskSearchShortcut}
+      vimModeEnabled={data.vimModeEnabled ?? true}
     />
   );
 }

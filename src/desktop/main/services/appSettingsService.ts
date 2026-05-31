@@ -199,6 +199,7 @@ export async function setBackgroundSyncIntervalMs(intervalMs: number): Promise<v
 
 const DEFAULT_SESSION_TYPE_KEY = "default_session_type";
 const TASK_SEARCH_SHORTCUT_KEY = "task_search_shortcut";
+const VIM_MODE_ENABLED_KEY = "vim_mode_enabled";
 
 /** 기본 세션 타입을 조회한다. 미설정 시 "tmux"를 반환한다 */
 export async function getDefaultSessionType(): Promise<SessionType> {
@@ -221,4 +222,15 @@ export async function getTaskSearchShortcut(): Promise<string> {
 export async function setTaskSearchShortcut(shortcut: string): Promise<void> {
   const normalizedShortcut = shortcut.trim() || DEFAULT_TASK_SEARCH_SHORTCUT;
   await setAppSetting(TASK_SEARCH_SHORTCUT_KEY, normalizedShortcut);
+}
+
+/** Vim-style board navigation 활성화 여부를 조회한다. 미설정 시 활성화 상태를 반환한다 */
+export async function getVimModeEnabled(): Promise<boolean> {
+  const value = await getAppSetting(VIM_MODE_ENABLED_KEY);
+  return value !== "false";
+}
+
+/** Vim-style board navigation 활성화 여부를 저장한다 */
+export async function setVimModeEnabled(enabled: boolean): Promise<void> {
+  await setAppSetting(VIM_MODE_ENABLED_KEY, String(enabled));
 }
