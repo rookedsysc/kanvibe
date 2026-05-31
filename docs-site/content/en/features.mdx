@@ -24,11 +24,12 @@ KanVibe connects the Kanban board, terminal sessions, git worktrees, and AI agen
 ## Task detail workspace
 
 <figure className="kv-shot">
-  <img src="/screenshots/task-detail.png" alt="Task detail terminal workspace" />
-  <figcaption>Each task brings terminal panes, metadata, hook status, AI chat, and PR actions into one workspace.</figcaption>
+  <img src="/screenshots/terminal-workspace.png" alt="Per-task terminal workspace" />
+  <figcaption>Each task provides an isolated terminal interface so agent runs, direct commands, builds, and tests stay freely interchangeable.</figcaption>
 </figure>
 
 - Open tmux or zellij sessions in the browser or desktop app.
+- Every task owns its terminal, so you can continue an AI-run task with direct shell commands whenever needed.
 - Switch info, hook status, AI chat, and PR actions through numbered dock shortcuts.
 - Moving a task to DONE cleans up its branch, worktree, and terminal session.
 
@@ -51,17 +52,6 @@ KanVibe connects the Kanban board, terminal sessions, git worktrees, and AI agen
     <figcaption>Review AI agent status changes and background events.</figcaption>
   </figure>
 </div>
-
-## GitHub-style Diff view
-
-<figure className="kv-shot">
-  <img src="/screenshots/diff-view.png" alt="GitHub-style Diff view" />
-  <figcaption>Review changed files against the base branch in a Monaco-powered diff viewer.</figcaption>
-</figure>
-
-- Use the file tree to inspect changed files and counts.
-- Review inline diffs before merging or marking a task DONE.
-- Track viewed files with checkboxes.
 
 ## AI agent hooks
 

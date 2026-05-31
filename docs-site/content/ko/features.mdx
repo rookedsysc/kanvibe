@@ -24,11 +24,12 @@ KanVibe는 칸반 보드, 터미널 세션, git worktree, AI 에이전트 hooks�
 ## 태스크 상세 워크스페이스
 
 <figure className="kv-shot">
-  <img src="/screenshots/task-detail.png" alt="태스크 상세 터미널 워크스페이스" />
-  <figcaption>각 태스크는 터미널, 메타데이터, hook 상태, AI 채팅, PR 액션을 한 화면에서 제공합니다.</figcaption>
+  <img src="/screenshots/terminal-workspace.png" alt="태스크별 터미널 워크스페이스" />
+  <figcaption>각 태스크는 독립 터미널 인터페이스를 제공해 AI 에이전트 실행, 직접 명령, 빌드/테스트를 자유롭게 오갈 수 있습니다.</figcaption>
 </figure>
 
 - tmux 또는 zellij 세션을 브라우저/데스크톱에서 열 수 있습니다.
+- 각 태스크가 자기 터미널을 가지므로 AI에게 맡긴 작업을 그대로 이어서 직접 명령으로 보정할 수 있습니다.
 - 상세 dock 단축키로 정보, hook 상태, AI 채팅, PR을 전환합니다.
 - 작업이 DONE으로 이동하면 branch, worktree, terminal session을 정리합니다.
 
@@ -51,17 +52,6 @@ KanVibe는 칸반 보드, 터미널 세션, git worktree, AI 에이전트 hooks�
     <figcaption>AI 에이전트 상태 변경과 백그라운드 이벤트를 확인합니다.</figcaption>
   </figure>
 </div>
-
-## GitHub 스타일 Diff 뷰
-
-<figure className="kv-shot">
-  <img src="/screenshots/diff-view.png" alt="GitHub 스타일 Diff 뷰" />
-  <figcaption>base branch 대비 변경 파일을 Monaco 기반 diff viewer로 검토합니다.</figcaption>
-</figure>
-
-- 파일 트리에서 변경 파일 수와 상태를 확인합니다.
-- inline diff를 보면서 빠르게 리뷰합니다.
-- 확인한 파일은 viewed 상태로 추적할 수 있습니다.
 
 ## AI 에이전트 Hooks
 

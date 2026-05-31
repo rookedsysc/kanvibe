@@ -6,7 +6,7 @@ title: KanVibe Docs
   <span className="kv-eyebrow">KanVibe Docs · Nextra 4</span>
   <h1>Bring AI agent work into one Kanban, terminal, and branch workflow.</h1>
   <div className="kv-hero-copy">
-    KanVibe is a keyboard-first desktop workspace that connects AI coding agent tasks from Claude Code, Gemini CLI, Codex CLI, and OpenCode to real git worktrees and tmux/zellij sessions.
+    KanVibe connects AI coding agent tasks from Claude Code, Gemini CLI, Codex CLI, and OpenCode to real git worktrees and tmux/zellij sessions. Every task gets its own terminal interface, so you can freely move between agent runs, manual commands, builds, tests, and logs in one flow.
   </div>
   <div className="kv-actions">
     <a className="kv-button kv-button-primary" href="/en/installation">Start installation</a>
@@ -24,6 +24,11 @@ title: KanVibe Docs
   <figcaption>The KanVibe board shows project colors, priorities, PR badges, and terminal session labels in one view.</figcaption>
 </figure>
 
+<figure className="kv-shot">
+  <img src="/screenshots/terminal-workspace.png" alt="Per-task terminal workspace" />
+  <figcaption>Each task opens an isolated terminal workspace so agent execution and direct shell commands stay equally accessible.</figcaption>
+</figure>
+
 <div className="kv-grid">
   <div className="kv-card">
     <h3>Branch-based task management</h3>
@@ -34,6 +39,10 @@ title: KanVibe Docs
     <p>Claude, Gemini, Codex, and OpenCode events automatically move tasks through PROGRESS, PENDING, and REVIEW.</p>
   </div>
   <div className="kv-card">
+    <h3>Per-task terminal interface</h3>
+    <p>Every task owns a tmux/zellij session, giving you the freedom to hand work to an AI agent or run shell commands yourself.</p>
+  </div>
+  <div className="kv-card">
     <h3>Keyboard-first UI</h3>
     <p>Open filters, quick search, notifications, and detail panels with shortcuts while terminal focus stays predictable.</p>
   </div>
@@ -42,6 +51,6 @@ title: KanVibe Docs
 ## Documentation map
 
 - [Installation](/en/installation): Homebrew install, prerequisites, first-run checklist
-- [Features](/en/features): board, task workspace, search, notifications, diff, hooks
+- [Features](/en/features): board, task workspace, search, notifications, hooks
 - [Basic usage](/en/usage): from project registration to DONE cleanup
 - [Shortcuts](/en/shortcuts): keyboard reference for macOS and Linux

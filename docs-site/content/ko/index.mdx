@@ -6,7 +6,7 @@ title: KanVibe Docs
   <span className="kv-eyebrow">KanVibe Docs · Nextra 4</span>
   <h1>AI 에이전트 작업을 칸반, 터미널, 브랜치 흐름으로 묶습니다.</h1>
   <div className="kv-hero-copy">
-    KanVibe는 Claude Code, Gemini CLI, Codex CLI, OpenCode 같은 AI 코딩 에이전트 작업을 실제 git worktree와 tmux/zellij 세션에 연결해 관리하는 키보드 중심 데스크톱 워크스페이스입니다.
+    KanVibe는 Claude Code, Gemini CLI, Codex CLI, OpenCode 같은 AI 코딩 에이전트 작업을 실제 git worktree와 tmux/zellij 세션에 연결합니다. 각 태스크마다 터미널 인터페이스를 제공해 에이전트 실행, 수동 명령, 빌드/테스트, 로그 확인을 한 흐름에서 자유롭게 이어갈 수 있습니다.
   </div>
   <div className="kv-actions">
     <a className="kv-button kv-button-primary" href="/ko/installation">설치 시작하기</a>
@@ -24,6 +24,11 @@ title: KanVibe Docs
   <figcaption>프로젝트별 색상, 우선순위, PR 배지, 세션 라벨이 함께 보이는 KanVibe 메인 보드.</figcaption>
 </figure>
 
+<figure className="kv-shot">
+  <img src="/screenshots/terminal-workspace.png" alt="태스크별 터미널 워크스페이스" />
+  <figcaption>태스크마다 독립 터미널 워크스페이스를 열어 AI 에이전트 실행과 직접 명령을 자유롭게 오갈 수 있습니다.</figcaption>
+</figure>
+
 <div className="kv-grid">
   <div className="kv-card">
     <h3>브랜치 기반 작업 관리</h3>
@@ -34,6 +39,10 @@ title: KanVibe Docs
     <p>Claude, Gemini, Codex, OpenCode 이벤트를 받아 PROGRESS, PENDING, REVIEW 상태를 자동 갱신합니다.</p>
   </div>
   <div className="kv-card">
+    <h3>태스크별 터미널 인터페이스</h3>
+    <p>모든 태스크가 자기 tmux/zellij 세션을 가지므로 AI에게 맡기거나 직접 명령을 실행하며 높은 자유도로 작업할 수 있습니다.</p>
+  </div>
+  <div className="kv-card">
     <h3>키보드 중심 UI</h3>
     <p>프로젝트 필터, 빠른 태스크 검색, 알림, 상세 패널을 단축키로 열고 터미널 포커스를 유지합니다.</p>
   </div>
@@ -42,6 +51,6 @@ title: KanVibe Docs
 ## 문서 구성
 
 - [설치](/ko/installation): Homebrew 설치, 사전 요구사항, 첫 실행 체크리스트
-- [기능](/ko/features): 보드, 상세 워크스페이스, 검색, 알림, diff, hooks
+- [기능](/ko/features): 보드, 상세 워크스페이스, 검색, 알림, hooks
 - [기본 사용법](/ko/usage): 프로젝트 등록부터 DONE 정리까지의 작업 흐름
 - [단축키](/ko/shortcuts): macOS와 Linux 기준 키보드 조작표
