@@ -10,6 +10,9 @@ export default {
   installation: {
     title: '설치'
   },
+  'quick-start': {
+    title: 'Quick Start'
+  },
   features: {
     title: '기능'
   },

@@ -10,6 +10,9 @@ export default {
   installation: {
     title: '安装'
   },
+  'quick-start': {
+    title: 'Quick Start'
+  },
   features: {
     title: '功能'
   },

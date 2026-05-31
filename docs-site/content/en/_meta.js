@@ -10,6 +10,9 @@ export default {
   installation: {
     title: 'Installation'
   },
+  'quick-start': {
+    title: 'Quick Start'
+  },
   features: {
     title: 'Features'
   },

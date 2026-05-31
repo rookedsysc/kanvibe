@@ -1,0 +1,41 @@
+---
+title: Quick Start
+---
+
+# Quick Start
+
+下面是用 KanVibe 启动 AI 代理任务、跟踪进度并完成清理的基本流程。
+
+## 1. 注册项目
+
+在设置中选择本地 git 仓库。KanVibe 会读取已有 worktree 状态，并为支持的代理安装必要 hook 文件。
+
+<div className="kv-note">
+  删除项目只会移除 KanVibe SQLite 记录，不会删除磁盘上的 git branch、worktree 或文件。
+</div>
+
+## 2. 创建任务
+
+在看板中添加 TODO 任务。输入分支名后，KanVibe 会创建 git worktree，并连接 tmux 或 zellij 会话。
+
+<figure className="kv-shot">
+  <img src="/screenshots/quick-action.png" alt="通过快速操作创建 branch TODO" />
+  <figcaption>可在快速搜索结果中保留当前上下文，并创建后续 branch TODO。</figcaption>
+</figure>
+
+## 3. 在任务详情中工作
+
+打开任务卡片后会进入该任务的终端工作区。左侧 dock 可切换任务信息、hook 状态、AI 聊天和 PR 链接，中间终端则保留手动命令和代理交互空间。
+
+<figure className="kv-shot">
+  <img src="/screenshots/task-detail.png" alt="任务详情工作区" />
+  <figcaption>左侧 dock 查看任务信息和 hook 状态，右侧终端运行代理或手动命令。</figcaption>
+</figure>
+
+## 4. 让 AI 代理更新状态
+
+代理开始工作时任务进入 PROGRESS；提出问题时可进入 PENDING；响应完成后进入 REVIEW。手动拖拽也使用同一状态模型，因此看板和任务详情会保持同步。
+
+## 5. 用 DONE 完成
+
+任务完成后移动到 DONE。KanVibe 会自动清理该任务的 branch、worktree 与终端会话。

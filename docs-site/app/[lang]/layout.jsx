@@ -24,6 +24,7 @@ const dictionaries = {
     nav: [
       ['/', '홈'],
       ['/installation', '설치'],
+      ['/quick-start', 'Quick Start'],
       ['/features', '기능'],
       ['/settings', '설정'],
       ['/shortcuts', '단축키']
@@ -36,6 +37,7 @@ const dictionaries = {
     nav: [
       ['/', 'Home'],
       ['/installation', 'Installation'],
+      ['/quick-start', 'Quick Start'],
       ['/features', 'Features'],
       ['/settings', 'Settings'],
       ['/shortcuts', 'Shortcuts']
@@ -48,6 +50,7 @@ const dictionaries = {
     nav: [
       ['/', '首页'],
       ['/installation', '安装'],
+      ['/quick-start', 'Quick Start'],
       ['/features', '功能'],
       ['/settings', '设置'],
       ['/shortcuts', '快捷键']
