@@ -1,0 +1,59 @@
+---
+title: Installation
+---
+
+# Installation
+
+KanVibe is distributed as a macOS desktop app. The recommended install path is Homebrew Cask.
+
+## Prerequisites
+
+| Dependency | Required | Why it is needed | Install example |
+| --- | --- | --- | --- |
+| Git | Required | Branch and worktree creation/cleanup | `brew install git` |
+| tmux | Required | Default terminal session backend | `brew install tmux` |
+| GitHub CLI `gh` | Required | PR URL lookup and GitHub workflows | `brew install gh`, then `gh auth login` |
+| zellij | Optional | Alternative session backend | `brew install zellij` |
+
+## Install with Homebrew
+
+```bash
+brew install --cask rookedsysc/kanvibe/kanvibe
+open -a KanVibe
+```
+
+After KanVibe is accepted into the official Homebrew Cask repository, the command becomes:
+
+```bash
+brew install --cask kanvibe
+```
+
+## Update or remove
+
+```bash
+brew update
+brew upgrade --cask kanvibe
+```
+
+```bash
+brew uninstall --cask kanvibe
+brew untap rookedsysc/kanvibe
+```
+
+## First-run checklist
+
+<div className="kv-grid">
+  <div className="kv-card">
+    <h3>1. Register a project</h3>
+    <p>Pick a local git repository in settings. KanVibe scans existing worktree branches.</p>
+  </div>
+  <div className="kv-card">
+    <h3>2. Confirm session type</h3>
+    <p>Use tmux by default, or switch the default session type if you prefer zellij.</p>
+  </div>
+  <div className="kv-card">
+    <h3>3. Allow notifications</h3>
+    <p>Enable system notifications so AI agent hook status changes are visible immediately.</p>
+  </div>
+</div>
+

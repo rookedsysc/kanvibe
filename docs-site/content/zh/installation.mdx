@@ -1,0 +1,59 @@
+---
+title: 安装
+---
+
+# 安装
+
+KanVibe 以 macOS 桌面应用形式分发，推荐通过 Homebrew Cask 安装。
+
+## 前置条件
+
+| 依赖 | 是否必需 | 用途 | 安装示例 |
+| --- | --- | --- | --- |
+| Git | 必需 | 创建和清理 branch、worktree | `brew install git` |
+| tmux | 必需 | 默认终端会话后端 | `brew install tmux` |
+| GitHub CLI `gh` | 必需 | PR URL 查询与 GitHub 工作流 | `brew install gh`，然后 `gh auth login` |
+| zellij | 可选 | 可替代 tmux 的会话后端 | `brew install zellij` |
+
+## 使用 Homebrew 安装
+
+```bash
+brew install --cask rookedsysc/kanvibe/kanvibe
+open -a KanVibe
+```
+
+当 KanVibe 进入官方 Homebrew Cask 后，可使用：
+
+```bash
+brew install --cask kanvibe
+```
+
+## 更新与卸载
+
+```bash
+brew update
+brew upgrade --cask kanvibe
+```
+
+```bash
+brew uninstall --cask kanvibe
+brew untap rookedsysc/kanvibe
+```
+
+## 首次运行清单
+
+<div className="kv-grid">
+  <div className="kv-card">
+    <h3>1. 注册项目</h3>
+    <p>在设置中选择本地 git 仓库，KanVibe 会扫描已有 worktree 分支。</p>
+  </div>
+  <div className="kv-card">
+    <h3>2. 确认会话类型</h3>
+    <p>默认使用 tmux；如果偏好 zellij，可在设置中切换默认会话类型。</p>
+  </div>
+  <div className="kv-card">
+    <h3>3. 允许通知</h3>
+    <p>启用系统通知后，AI 代理 hooks 的状态变化会立即显示。</p>
+  </div>
+</div>
+

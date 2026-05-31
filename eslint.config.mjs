@@ -24,5 +24,14 @@ export default defineConfig([
       },
     },
   },
-  globalIgnores(["build/**", "dist/**", "out/**", "electron/**/*.js", "scripts/**/*.cjs"]),
+  globalIgnores([
+    "build/**",
+    "dist/**",
+    "out/**",
+    "electron/**/*.js",
+    "scripts/**/*.cjs",
+    "qa/**/*.cjs",
+    ".opencode/**",
+    "docs-site/.next/**",
+  ]),
 ]);

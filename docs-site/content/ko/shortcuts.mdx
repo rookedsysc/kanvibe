@@ -1,0 +1,65 @@
+---
+title: 단축키
+---
+
+# 단축키
+
+KanVibe는 터미널 포커스를 깨지 않도록 전역/보드/상세 단축키를 명확히 분리합니다.
+
+<div className="kv-kbd-grid">
+  <div className="kv-kbd-card"><kbd>Cmd/Ctrl + F</kbd><strong>보드 페이지 검색</strong><p>현재 보이는 프로젝트와 태스크 텍스트를 검색합니다.</p></div>
+  <div className="kv-kbd-card"><kbd>Cmd/Ctrl + Shift + O</kbd><strong>빠른 태스크 검색</strong><p>브랜치명 또는 프로젝트명으로 전체 태스크를 찾습니다.</p></div>
+  <div className="kv-kbd-card"><kbd>Cmd/Ctrl + Shift + P</kbd><strong>프로젝트 필터</strong><p>보드에 표시할 프로젝트를 토글합니다.</p></div>
+  <div className="kv-kbd-card"><kbd>Cmd/Ctrl + Shift + I</kbd><strong>알림 센터</strong><p>AI 에이전트 상태 변경과 이벤트 알림을 엽니다.</p></div>
+</div>
+
+## 전체 단축키 표
+
+| 단축키 | 범위 | 동작 |
+| --- | --- | --- |
+| `Cmd/Ctrl+F` | 보드 | 현재 보이는 프로젝트/태스크 텍스트 검색 |
+| `Cmd/Ctrl+Shift+O` | 전역 | 브랜치명/프로젝트명 기준 빠른 태스크 검색 |
+| `Cmd/Ctrl+Shift+P` | 보드 | 프로젝트 필터 드롭다운 열기 |
+| `Cmd/Ctrl+Shift+I` | 보드 | 알림 드롭다운 열기 |
+| `Cmd+[` / `Cmd+]` (macOS), `Alt+[` / `Alt+]` (Linux) | 전역 | 앱 히스토리 뒤로/앞으로 이동 |
+| `Cmd+1/2/3` (macOS), `Alt+1/2/3` (Linux) | 태스크 상세 | 정보, 상태/hooks, AI 채팅 dock 항목 활성화 |
+| `Cmd+4` (macOS), `Alt+4` (Linux) | 태스크 상세 | PR이 있으면 브라우저에서 PR 열기 |
+| `Cmd/Ctrl+N` | 빠른 태스크 검색 | 하이라이트된 태스크 기준 새 branch TODO 생성 |
+| `↑ / ↓ / Enter / Shift+Enter / Esc` | 빠른 태스크 검색 | 선택 이동, 열기, 새 창 열기, 닫기 |
+| `↑ / ↓ / Enter / Esc` | 프로젝트 필터 | 선택 이동, 토글, 닫기 |
+| `↑ / ↓ / Enter / Esc` | 알림 | 선택 이동, 대상 열기, 닫기 |
+
+## Vim 모드
+
+보드에서 h/j/k/l 포커스 이동, `n` 새 태스크, `dd` 삭제, `:move` 상태 변경, `/` 검색을 Vim 스타일로 사용할 수 있습니다. 기본값은 **켜짐**이며, 설정 → 키보드 → "Vim 스타일 보드 조작" 토글로 끄거나 켤 수 있습니다.
+
+<div className="kv-note">
+  Vim 모드를 꺼도 방향키(Arrow Keys) 기반 포커스 이동은 그대로 유지됩니다.
+</div>
+
+### Vim 단축키 표
+
+| 단축키 | 동작 |
+| --- | --- |
+| `h` | 왼쪽 컬럼으로 포커스 이동 |
+| `j` | 같은 컬럼에서 아래 태스크로 이동 |
+| `k` | 같은 컬럼에서 위 태스크로 이동 |
+| `l` | 오른쪽 컬럼으로 포커스 이동 |
+| `n` | 새 태스크 생성 모달 열기 |
+| `dd` | 포커스된 태스크 삭제 (확인 대화상자 표시) |
+| `/` | 보드 페이지 검색 열기 |
+| `:` | 명령 입력창 열기 |
+
+### `:move` 명령
+
+명령 입력창(`:`)에서 `move` 뒤에 상태를 입력하면 포커스된 태스크의 상태를 변경합니다.
+
+```
+:move progress
+:move pending
+:move review
+:move done
+:move todo
+```
+
+축약어도 지원합니다: `t`(todo), `prog`(progress), `pend`(pending), `rev`(review), `d`(done).

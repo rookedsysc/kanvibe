@@ -1,0 +1,67 @@
+---
+title: 功能
+---
+
+# 功能
+
+KanVibe 将看板、终端会话、git worktree 与 AI 代理 hooks 连接成一个工作流。
+
+## 实时看板
+
+<figure className="kv-shot">
+  <img src="/screenshots/board.png" alt="KanVibe 主看板" />
+  <figcaption>用项目颜色和任务元数据管理 TODO、PROGRESS、PENDING、REVIEW、DONE。</figcaption>
+</figure>
+
+<div className="kv-status-flow">
+  <span>TODO</span><span>PROGRESS</span><span>PENDING</span><span>REVIEW</span><span>DONE</span>
+</div>
+
+- 通过拖拽移动卡片并调整顺序。
+- 在卡片上直接查看项目颜色、优先级、PR 与会话标签。
+- DONE 列支持分页，适合长期项目。
+
+## 任务详情工作区
+
+<figure className="kv-shot">
+  <img src="/screenshots/terminal-workspace.png" alt="每个任务的终端工作区" />
+  <figcaption>每个任务都提供独立终端界面，可在 AI 代理执行、直接命令、构建和测试之间自由切换。</figcaption>
+</figure>
+
+- 在浏览器或桌面应用中打开 tmux / zellij 会话。
+- 每个任务都有自己的终端，因此可把 AI 代理执行的任务随时接回并用 shell 命令继续处理。
+- 用编号 dock 快捷键切换信息、hook 状态、AI 聊天和 PR 操作。
+- 将任务移动到 DONE 时，会清理 branch、worktree 和终端会话。
+
+## 快速任务搜索
+
+<figure className="kv-shot">
+  <img src="/screenshots/quick-search.png" alt="快速任务搜索对话框" />
+  <figcaption>按分支名或项目名搜索全部任务，并直接进入任务工作区。</figcaption>
+</figure>
+
+## 项目过滤与通知
+
+<div className="kv-grid">
+  <figure className="kv-shot">
+    <img src="/screenshots/project-filter.png" alt="项目过滤" />
+    <figcaption>通过键盘切换看板中可见的项目。</figcaption>
+  </figure>
+  <figure className="kv-shot">
+    <img src="/screenshots/notifications.png" alt="通知中心" />
+    <figcaption>点击通知即可直接进入关联任务的详情工作区。</figcaption>
+  </figure>
+</div>
+
+- 项目过滤可快速缩小看板范围，只保留当前要关注的仓库。
+- 通知中心和系统通知会集中展示 AI 代理状态变化、PR 事件和后台 Sync 事件。
+- 已关联任务的通知被点击后，会立即打开对应任务详情页。
+
+## AI 代理 Hooks
+
+| Agent | 自动状态流 | 安装位置 |
+| --- | --- | --- |
+| Claude Code | 用户提示 → PROGRESS，提问 → PENDING，回复完成 → REVIEW | `.claude/hooks/`, `.claude/settings.json` |
+| Gemini CLI | BeforeAgent → PROGRESS，AfterAgent → REVIEW | `.gemini/hooks/`, `.gemini/settings.json` |
+| Codex CLI | UserPromptSubmit → PROGRESS，PermissionRequest → PENDING，Stop → REVIEW | `.codex/hooks.json`, `.codex/config.toml` |
+| OpenCode | message.updated → PROGRESS，question.asked → PENDING，session.idle → REVIEW | `.opencode/plugins/` |
