@@ -140,7 +140,7 @@ brew untap rookedsysc/kanvibe
 | `Cmd/Ctrl+F` 或启用 Vim 风格控制时的 `/` | 看板 | 在当前可见的项目/任务文本中打开页面查找；按 `Enter` 查找下一个，按 `Shift+Enter` 查找上一个 |
 | `h / j / k / l` 或 `← / ↓ / ↑ / →` | 看板任务卡片 | 在可见任务卡片间向左/下/上/右移动焦点；没有任务聚焦时进入第一个可见任务 |
 | `n` | 看板 | 立即打开新任务弹窗 |
-| `:move todo\|progress\|pending\|review\|done` | 已聚焦的看板任务卡片 | 无需拖放，将当前聚焦任务移动到目标状态 |
+| `:move todo\|progress\|pending\|review\|done` | 已聚焦的看板任务卡片 | 无需拖放，将当前聚焦任务移动到目标状态；在命令输入框按 `Tab` 可补全唯一的状态前缀 |
 | `dd` | 已聚焦的看板任务卡片 | 确认后删除当前聚焦任务 |
 | `Cmd/Ctrl+Shift+O` | 全局 | 按分支名或项目名打开任务快速搜索（默认值，可配置） |
 | `Cmd/Ctrl+Shift+P` | 看板 | 打开项目筛选下拉框 |

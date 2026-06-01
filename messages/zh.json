@@ -86,7 +86,8 @@
     "vimCommand": {
       "label": "Vim 命令",
       "placeholder": "move review",
-      "hint": "对当前聚焦任务使用 :move todo|progress|pending|review|done。",
+      "hint": "对当前聚焦任务使用 :move todo|progress|pending|review|done。按 Tab 自动补全。",
+      "completionHint": "按 Tab 补全为 {command}。",
       "errors": {
         "unknownCommand": "未知命令。请尝试 :move review。",
         "noFocusedTask": "运行 :move 前请先聚焦一个任务卡片。",

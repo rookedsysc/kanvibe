@@ -210,7 +210,7 @@ Each pane can run a custom command (e.g., `vim`, `htop`, `lazygit`, test runner,
 | `Cmd/Ctrl+F` or `/` with Vim-style controls enabled | Board | Open page find for visible project/task text; press `Enter` for next and `Shift+Enter` for previous |
 | `h / j / k / l` or `← / ↓ / ↑ / →` | Board task cards | Move focus left/down/up/right across visible task cards; if no task is focused, enter the first visible task |
 | `n` | Board | Open the new task modal immediately |
-| `:move todo\|progress\|pending\|review\|done` | Focused board task card | Move the focused task to the target status without drag-and-drop |
+| `:move todo\|progress\|pending\|review\|done` | Focused board task card | Move the focused task to the target status without drag-and-drop; press `Tab` in the command input to autocomplete a unique status prefix |
 | `dd` | Focused board task card | Delete the focused task after confirmation |
 | `Cmd/Ctrl+Shift+O` | Global | Open quick task search by branch or project name (default, configurable) |
 | `Cmd/Ctrl+Shift+P` | Board | Open the project filter dropdown |

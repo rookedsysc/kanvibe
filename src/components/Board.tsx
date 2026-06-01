@@ -65,6 +65,15 @@ const VIM_COMMAND_KEY = ":";
 const TASK_DELETE_SEQUENCE_KEY = "d";
 const TASK_DELETE_SEQUENCE_TIMEOUT_MS = 1_000;
 
+const VIM_MOVE_COMMAND_ALIASES = new Set(["move", "m"]);
+const VIM_MOVE_STATUSES = [
+  TaskStatus.TODO,
+  TaskStatus.PROGRESS,
+  TaskStatus.PENDING,
+  TaskStatus.REVIEW,
+  TaskStatus.DONE,
+] as const;
+
 const VIM_STATUS_ALIASES: Record<string, TaskStatus> = {
   t: TaskStatus.TODO,
   todo: TaskStatus.TODO,
@@ -235,11 +244,67 @@ function parseVimMoveStatus(commandValue: string): TaskStatus | null {
     .split(/\s+/)
     .filter(Boolean);
 
-  if (tokens.length !== 2 || (tokens[0] !== "move" && tokens[0] !== "m")) {
+  if (tokens.length !== 2 || !VIM_MOVE_COMMAND_ALIASES.has(tokens[0])) {
     return null;
   }
 
   return VIM_STATUS_ALIASES[tokens[1]] ?? null;
+}
+
+function getUniqueVimMoveStatusCompletion(statusPrefix: string): TaskStatus | null {
+  const normalizedPrefix = statusPrefix.toLowerCase();
+  if (!normalizedPrefix) return null;
+
+  const canonicalMatches = VIM_MOVE_STATUSES.filter((status) => status.startsWith(normalizedPrefix));
+  if (canonicalMatches.length === 1) return canonicalMatches[0];
+  if (canonicalMatches.length > 1) return null;
+
+  const aliasMatches = new Set<TaskStatus>();
+  for (const [alias, status] of Object.entries(VIM_STATUS_ALIASES)) {
+    if (alias.startsWith(normalizedPrefix)) {
+      aliasMatches.add(status);
+    }
+  }
+
+  return aliasMatches.size === 1 ? Array.from(aliasMatches)[0] : null;
+}
+
+function getVimMoveCommandAutocomplete(commandValue: string): string | null {
+  const leadingWhitespace = commandValue.match(/^\s*/)?.[0] ?? "";
+  const trimmedStartValue = commandValue.trimStart();
+  const hasColonPrefix = trimmedStartValue.startsWith(":");
+  const valueWithoutColon = hasColonPrefix ? trimmedStartValue.slice(1) : trimmedStartValue;
+  const hasTrailingWhitespace = /\s$/.test(valueWithoutColon);
+  const tokens = valueWithoutColon.toLowerCase().split(/\s+/).filter(Boolean);
+  const commandToken = tokens[0] ?? "";
+
+  const formatCompletion = (status?: TaskStatus) => {
+    const prefix = `${leadingWhitespace}${hasColonPrefix ? ":" : ""}move`;
+    return status ? `${prefix} ${status}` : `${prefix} `;
+  };
+
+  if (tokens.length === 0) {
+    return formatCompletion();
+  }
+
+  if (tokens.length === 1 && !hasTrailingWhitespace) {
+    if ("move".startsWith(commandToken) || commandToken === "m") {
+      const completion = formatCompletion();
+      return completion === commandValue ? null : completion;
+    }
+
+    return null;
+  }
+
+  if (!VIM_MOVE_COMMAND_ALIASES.has(commandToken) || tokens.length !== 2) {
+    return null;
+  }
+
+  const completedStatus = getUniqueVimMoveStatusCompletion(tokens[1]);
+  if (!completedStatus) return null;
+
+  const completion = formatCompletion(completedStatus);
+  return completion === commandValue ? null : completion;
 }
 
 function isModifierKey(key: string) {
@@ -461,6 +526,10 @@ export default function Board({
   const [pendingDoneResult, setPendingDoneResult] = useState<DropResult | null>(null);
   const [currentDefaultSessionType, setCurrentDefaultSessionType] = useState<SessionType>(defaultSessionType);
   const [shouldUseMacTitlebarLayout, setShouldUseMacTitlebarLayout] = useState(false);
+  const vimCommandCompletion = useMemo(
+    () => getVimMoveCommandAutocomplete(vimCommandValue),
+    [vimCommandValue],
+  );
   const [, startDragPersistenceTransition] = useTransition();
   const notificationCenterRef = useRef<NotificationCenterButtonHandle>(null);
   const projectSelectorRef = useRef<ProjectSelectorHandle>(null);
@@ -1119,6 +1188,15 @@ export default function Board({
                 setVimCommandError(null);
               }}
               onKeyDown={(event) => {
+                if (event.key === "Tab" && !event.shiftKey && !event.altKey && !event.ctrlKey && !event.metaKey) {
+                  const completion = getVimMoveCommandAutocomplete(event.currentTarget.value);
+                  if (completion) {
+                    event.preventDefault();
+                    setVimCommandValue(completion);
+                    setVimCommandError(null);
+                  }
+                  return;
+                }
                 if (event.key === "Enter") {
                   event.preventDefault();
                   submitVimCommand();
@@ -1136,7 +1214,10 @@ export default function Board({
             />
           </div>
           <p className={`mt-2 text-xs ${vimCommandError ? "text-status-error" : "text-text-muted"}`}>
-            {vimCommandError ?? t("vimCommand.hint")}
+            {vimCommandError
+              ?? (vimCommandCompletion
+                ? t("vimCommand.completionHint", { command: `:${vimCommandCompletion.trim().replace(/^:/, "")}` })
+                : t("vimCommand.hint"))}
           </p>
         </div>
       )}

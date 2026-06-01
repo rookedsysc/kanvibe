@@ -33,6 +33,7 @@
     "qa:electron:prepare": "pnpm build && node scripts/ensure-native-runtime.cjs --electron",
     "qa:electron": "pnpm qa:electron:prepare && bash scripts/qa-electron.sh",
     "qa:electron:video": "pnpm qa:electron:prepare && bash scripts/qa-electron-video.sh",
+    "qa:move-autocomplete": "pnpm exec vitest run src/components/__tests__/Board.test.tsx -t \"자동 완성\" && pnpm qa:electron:prepare && bash scripts/qa-move-autocomplete-video.sh",
     "qa:pr275-pr276": "bash scripts/qa-pr275-pr276.sh",
     "test": "vitest run",
     "test:watch": "vitest",

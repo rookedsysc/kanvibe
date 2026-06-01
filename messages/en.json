@@ -87,7 +87,8 @@
     "vimCommand": {
       "label": "Vim command",
       "placeholder": "move review",
-      "hint": "Use :move todo|progress|pending|review|done for the focused task.",
+      "hint": "Use :move todo|progress|pending|review|done for the focused task. Press Tab to autocomplete.",
+      "completionHint": "Press Tab to complete {command}.",
       "errors": {
         "unknownCommand": "Unknown command. Try :move review.",
         "noFocusedTask": "Focus a task card before running :move.",
