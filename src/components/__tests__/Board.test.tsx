@@ -975,6 +975,76 @@ describe("Board defaultSessionType sync", () => {
     });
   });
 
+  it(":move 명령에서 Tab으로 상태명을 자동 완성한다", async () => {
+    render(
+      <Board
+        initialTasks={createTasksWithTodo()}
+        initialDoneTotal={0}
+        initialDoneLimit={20}
+        sshHosts={[]}
+        projects={[createProject()]}
+        sidebarDefaultCollapsed={false}
+        doneAlertDismissed={false}
+        notificationSettings={{ isEnabled: true, enabledStatuses: ["progress", "pending", "review"] }}
+        defaultSessionType={SessionType.TMUX}
+        taskSearchShortcut="Mod+Shift+O"
+      />,
+    );
+
+    const taskLink = await screen.findByRole("link", { name: "Test Task" });
+    taskLink.focus();
+
+    fireEvent.keyDown(taskLink, { key: ":" });
+
+    const commandInput = await screen.findByRole("textbox", { name: "vimCommand.label" });
+    fireEvent.change(commandInput, { target: { value: "move re" } });
+
+    const autocompleteEvent = createEvent.keyDown(commandInput, { key: "Tab" });
+    fireEvent(commandInput, autocompleteEvent);
+
+    expect(autocompleteEvent.defaultPrevented).toBe(true);
+    await waitFor(() => {
+      expect((commandInput as HTMLInputElement).value).toBe("move review");
+    });
+
+    fireEvent.keyDown(commandInput, { key: "Enter" });
+
+    await waitFor(() => {
+      expect(moveTaskToColumn).toHaveBeenCalledWith("task-1", TaskStatus.REVIEW, ["task-1"]);
+    });
+  });
+
+  it(":move 명령 자동 완성 후보가 모호하면 Tab을 소비하지 않는다", async () => {
+    render(
+      <Board
+        initialTasks={createTasksWithTodo()}
+        initialDoneTotal={0}
+        initialDoneLimit={20}
+        sshHosts={[]}
+        projects={[createProject()]}
+        sidebarDefaultCollapsed={false}
+        doneAlertDismissed={false}
+        notificationSettings={{ isEnabled: true, enabledStatuses: ["progress", "pending", "review"] }}
+        defaultSessionType={SessionType.TMUX}
+        taskSearchShortcut="Mod+Shift+O"
+      />,
+    );
+
+    const taskLink = await screen.findByRole("link", { name: "Test Task" });
+    taskLink.focus();
+
+    fireEvent.keyDown(taskLink, { key: ":" });
+
+    const commandInput = await screen.findByRole("textbox", { name: "vimCommand.label" });
+    fireEvent.change(commandInput, { target: { value: "move p" } });
+
+    const autocompleteEvent = createEvent.keyDown(commandInput, { key: "Tab" });
+    fireEvent(commandInput, autocompleteEvent);
+
+    expect(autocompleteEvent.defaultPrevented).toBe(false);
+    expect((commandInput as HTMLInputElement).value).toBe("move p");
+  });
+
   it("상세 화면에서 돌아온 task id가 있으면 해당 task로 초기 focus를 시작한다", async () => {
     render(
       <Board
