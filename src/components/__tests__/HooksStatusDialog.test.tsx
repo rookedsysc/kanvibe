@@ -172,6 +172,35 @@ describe("HooksStatusDialog", () => {
     expect(screen.getByText("Claude")).toBeTruthy();
   });
 
+  it("should use LobeHub provider icons for hook settings rows", () => {
+    renderDialog({
+      isOpen: true,
+      onClose: vi.fn(),
+      taskId: "task-1",
+      claudeStatus: null,
+      geminiStatus: null,
+      codexStatus: null,
+      openCodeStatus: null,
+      isRemote: false,
+    });
+
+    const toolIcons = screen.getAllByTestId("hook-status-tool-icon");
+
+    expect(toolIcons).toHaveLength(4);
+    expect(toolIcons.map((icon) => icon.getAttribute("data-icon-source"))).toEqual([
+      "lobehub-icons",
+      "lobehub-icons",
+      "lobehub-icons",
+      "lobehub-icons",
+    ]);
+    expect(toolIcons.map((icon) => icon.getAttribute("data-icon-name"))).toEqual([
+      "Claude",
+      "Gemini",
+      "Codex",
+      "OpenCode",
+    ]);
+  });
+
   it("should still show install action for remote tasks", () => {
     // Given
     const props = {

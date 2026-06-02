@@ -11,6 +11,7 @@ import CreateTaskModal from "@/components/CreateTaskModal";
 import DeleteTaskButton from "@/components/DeleteTaskButton";
 import DoneStatusButton from "@/components/DoneStatusButton";
 import HooksStatusCard from "@/components/HooksStatusCard";
+import { AiProviderIcon } from "@/components/AiProviderIcon";
 import NotificationCenterButton, { type NotificationCenterButtonHandle } from "@/components/NotificationCenterButton";
 import TaskDetailInfoCard from "@/components/TaskDetailInfoCard";
 import TaskDetailTitleCard from "@/components/TaskDetailTitleCard";
@@ -233,11 +234,11 @@ const AI_SESSION_PROVIDER_ICON_STYLES: Record<AggregatedAiSession["provider"], s
 
 const AI_SESSION_PROVIDER_ORDER: AggregatedAiSession["provider"][] = ["claude", "opencode", "gemini", "codex"];
 
-const AI_SESSION_PROVIDER_META: Record<AggregatedAiSession["provider"], { label: string; shortLabel: string }> = {
-  claude: { label: "Claude", shortLabel: "Cl" },
-  opencode: { label: "OpenCode", shortLabel: "OC" },
-  gemini: { label: "Gemini", shortLabel: "G" },
-  codex: { label: "Codex", shortLabel: "Cx" },
+const AI_SESSION_PROVIDER_META: Record<AggregatedAiSession["provider"], { label: string }> = {
+  claude: { label: "Claude" },
+  opencode: { label: "OpenCode" },
+  gemini: { label: "Gemini" },
+  codex: { label: "Codex" },
 };
 
 const INLINE_CHAT_ROLE_FILTERS: AiMessageRole[] = [
@@ -474,7 +475,12 @@ function InlineAiChatView({ taskId }: { taskId: string }) {
                       : `${AI_SESSION_PROVIDER_ICON_STYLES[provider]} opacity-65 hover:opacity-100`
                   }`}
                 >
-                  <span aria-hidden="true">{AI_SESSION_PROVIDER_META[provider].shortLabel}</span>
+                  <AiProviderIcon
+                    provider={provider}
+                    className="inline-flex h-[18px] w-[18px] items-center justify-center"
+                    imageClassName="block h-[18px] w-[18px] object-contain"
+                    size={18}
+                  />
                   {history ? (
                     <span className="absolute -bottom-1 -right-1 flex min-w-4 items-center justify-center rounded-full border border-bg-page bg-bg-surface px-1 text-[9px] leading-4 text-text-muted">
                       {count}
@@ -575,13 +581,13 @@ function InlineAiChatView({ taskId }: { taskId: string }) {
 }
 function AiSessionProviderIcon({ provider, testId = true }: { provider: AggregatedAiSession["provider"]; testId?: boolean }) {
   return (
-    <span
-      data-testid={testId ? `ai-session-provider-${provider}` : undefined}
-      aria-hidden="true"
-      className={`flex size-6 shrink-0 items-center justify-center rounded-full border text-[9px] font-bold ${AI_SESSION_PROVIDER_ICON_STYLES[provider]}`}
-    >
-      {AI_SESSION_PROVIDER_META[provider].shortLabel}
-    </span>
+    <AiProviderIcon
+      provider={provider}
+      testId={testId ? `ai-session-provider-${provider}` : undefined}
+      className={`flex size-6 shrink-0 items-center justify-center rounded-full border ${AI_SESSION_PROVIDER_ICON_STYLES[provider]}`}
+      imageClassName="block h-4 w-4 object-contain"
+      size={16}
+    />
   );
 }
 

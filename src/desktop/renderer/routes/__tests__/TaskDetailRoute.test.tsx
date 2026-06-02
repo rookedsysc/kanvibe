@@ -1458,7 +1458,9 @@ describe("TaskDetailRoute", () => {
 
     expect(await screen.findByTestId("ai-session-list")).toBeTruthy();
     for (const provider of ["gemini", "claude", "opencode", "codex"]) {
-      expect(screen.getByTestId(`ai-session-provider-${provider}`)).toBeTruthy();
+      const icon = screen.getByTestId(`ai-session-provider-${provider}`);
+      expect(icon).toBeTruthy();
+      expect(icon.getAttribute("data-icon-source")).toBe("lobehub-icons");
     }
     expect(screen.getByRole("button", { name: /Gemini answer/ })).toBeTruthy();
     expect(screen.getByRole("button", { name: /Claude answer/ })).toBeTruthy();
