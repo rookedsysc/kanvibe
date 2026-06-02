@@ -33,6 +33,24 @@ KanVibe connects the Kanban board, terminal sessions, git worktrees, and AI agen
 - Switch info, hook status, AI chat, and PR actions through numbered dock shortcuts.
 - Moving a task to DONE cleans up its branch, worktree, and terminal session.
 
+## Task-scoped AI chat history
+
+<div className="kv-grid">
+  <figure className="kv-shot">
+    <img src="/screenshots/ai-chat-provider-filters.png" alt="AI chat provider filter with Claude and Gemini selected together" />
+    <figcaption>Select multiple agents in the left provider icon rail to show all matching sessions with OR semantics.</figcaption>
+  </figure>
+  <figure className="kv-shot">
+    <img src="/screenshots/ai-chat-search.png" alt="AI chat body search result" />
+    <figcaption>Search matches conversation body text as well as session titles, then opens the relevant message context.</figcaption>
+  </figure>
+</div>
+
+- Load Claude, Gemini, Codex, and OpenCode history on demand inside the task detail AI chat panel.
+- Provider filters can be selected together; selected providers are combined with OR before other filters narrow the results.
+- Chat search narrows both the session list and message detail, while role chips refine user, assistant, system, developer, reasoning, tool, and other messages.
+- Message bubbles include provider badges so mixed-agent context stays readable.
+
 ## Quick task search
 
 <figure className="kv-shot">

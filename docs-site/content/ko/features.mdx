@@ -33,6 +33,24 @@ KanVibe는 칸반 보드, 터미널 세션, git worktree, AI 에이전트 hooks�
 - 상세 dock 단축키로 정보, hook 상태, AI 채팅, PR을 전환합니다.
 - 작업이 DONE으로 이동하면 branch, worktree, terminal session을 정리합니다.
 
+## 태스크별 AI 채팅 히스토리
+
+<div className="kv-grid">
+  <figure className="kv-shot">
+    <img src="/screenshots/ai-chat-provider-filters.png" alt="Claude와 Gemini가 함께 선택된 AI 채팅 provider 필터" />
+    <figcaption>왼쪽 provider 아이콘 rail에서 여러 에이전트를 선택하면 OR 조건으로 Claude와 Gemini 같은 선택된 세션을 함께 보여줍니다.</figcaption>
+  </figure>
+  <figure className="kv-shot">
+    <img src="/screenshots/ai-chat-search.png" alt="AI 채팅 본문 검색 결과" />
+    <figcaption>검색어가 세션 제목뿐 아니라 대화 본문까지 매칭해 관련 메시지를 바로 열어 줍니다.</figcaption>
+  </figure>
+</div>
+
+- Claude, Gemini, Codex, OpenCode 히스토리를 태스크 상세의 AI 채팅 패널에서 필요할 때만 불러옵니다.
+- provider 필터는 여러 아이콘을 동시에 선택할 수 있고, 선택된 provider끼리는 OR 조건으로 합쳐집니다.
+- 검색은 세션 목록과 대화 본문을 함께 좁히며, role chip으로 사용자 입력, AI 답변, 시스템 입력, 개발자 입력, 추론, 도구 메시지를 추가 필터링합니다.
+- 말풍선에는 provider 배지가 붙어 어떤 에이전트의 메시지인지 한눈에 구분할 수 있습니다.
+
 ## 빠른 태스크 검색
 
 <figure className="kv-shot">
