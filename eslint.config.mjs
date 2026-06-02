@@ -31,6 +31,7 @@ export default defineConfig([
     "electron/**/*.js",
     "scripts/**/*.cjs",
     "qa/**/*.cjs",
+    "qa-output/**",
     ".opencode/**",
     "docs-site/.next/**",
   ]),

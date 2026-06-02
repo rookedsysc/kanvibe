@@ -42,6 +42,7 @@ interface ClaudeProjectEvent {
 
 interface ClaudeSessionAccumulator {
   session: AggregatedAiSession;
+  hasQueryMatch: boolean;
 }
 
 export async function readClaudeSessions(context: AiSessionReaderContext): Promise<AiSessionReaderResult> {
@@ -62,16 +63,7 @@ export async function readClaudeSessions(context: AiSessionReaderContext): Promi
     (filePath) => parseClaudeSessionFromFile(filePath, context),
   );
 
-  let sessions = results.filter((s): s is AggregatedAiSession => s !== null);
-
-  if (context.query) {
-    const q = context.query.toLowerCase();
-    sessions = sessions.filter((s) =>
-      s.title?.toLowerCase().includes(q) ||
-      s.firstUserPrompt?.toLowerCase().includes(q) ||
-      s.matchedPath?.toLowerCase().includes(q)
-    );
-  }
+  const sessions = results.filter((s): s is AggregatedAiSession => s !== null);
 
   return createReaderResult("claude", {
     sessions,
@@ -148,8 +140,15 @@ async function parseClaudeSessionFromFile(
       consumeClaudeListEvent(accumulator, rawEvent as ClaudeProjectEvent, context, filePath);
     }
     const first = Array.from(accumulator.values())[0];
-    return first?.session ?? null;
+    if (!first) return null;
+    if (context.query && !first.hasQueryMatch) return null;
+    return first.session;
   };
+
+  if (context.query) {
+    const allEvents = await getCachedOrParse(filePath, () => readJsonLines(filePath, context.sshHost), context.sshHost);
+    return parseEvents(allEvents);
+  }
 
   const headEvents = await getCachedOrParseHead(
     filePath,
@@ -223,18 +222,8 @@ function consumeClaudeListEvent(
     accumulator.session.updatedAt = normalizedTimestamp;
   }
 
-  // 필터링 적용 (세션 제목이나 첫 프롬프트에 검색어가 없으면 제거 대기)
-  if (context.query) {
-    const q = context.query.toLowerCase();
-    const hasMatch =
-      (accumulator.session.title?.toLowerCase().includes(q)) ||
-      (accumulator.session.firstUserPrompt?.toLowerCase().includes(q)) ||
-      (accumulator.session.matchedPath?.toLowerCase().includes(q));
-
-    if (!hasMatch) {
-      // 나중에 취합할 때 걸러내기 위해 마킹하거나, 아예 생성하지 않아야 함.
-      // 여기서는 목록을 모으는 중이므로, 모든 이벤트가 처리된 후 최종적으로 필터링하는 것이 안전함.
-    }
+  if (matchesClaudeQuery(context.query, text, accumulator.session.title, accumulator.session.firstUserPrompt, accumulator.session.matchedPath)) {
+    accumulator.hasQueryMatch = true;
   }
 }
 
@@ -262,15 +251,34 @@ function getOrCreateClaudeSession(
     sourceRef,
   };
 
-  const accumulator = { session };
+  const accumulator = { session, hasQueryMatch: false };
   sessions.set(sessionId, accumulator);
   return accumulator;
 }
 
+function matchesClaudeQuery(query: string | undefined, ...values: Array<string | null | undefined>): boolean {
+  if (!query) return true;
+  const normalizedQuery = query.toLowerCase();
+  return values.some((value) => value?.toLowerCase().includes(normalizedQuery));
+}
+
 function resolveClaudeRole(event: ClaudeProjectEvent): AiMessageRole {
+  if (hasClaudeContentPartType(event.message?.content, "tool_result")) return "tool";
+  if (event.message?.role === "system" || event.type === "system") return "system";
   if (event.message?.role === "user") return "user";
   if (event.message?.role === "assistant") return "assistant";
-  if (event.type === "system") return "system";
   if (event.type === "progress") return "tool";
   return "unknown";
+}
+
+function hasClaudeContentPartType(content: unknown, partType: string): boolean {
+  if (!Array.isArray(content)) {
+    return false;
+  }
+
+  return content.some((part) => Boolean(
+    part &&
+    typeof part === "object" &&
+    (part as Record<string, unknown>).type === partType,
+  ));
 }

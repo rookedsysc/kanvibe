@@ -187,4 +187,37 @@ describe("aggregateAiSessions", () => {
       },
     ]);
   });
+
+  it("should not drop reader-filtered sessions when the query matched message body text", async () => {
+    mockReadClaudeSessions.mockResolvedValue({
+      provider: "claude",
+      available: true,
+      sessionCount: 1,
+      reason: null,
+      sessions: [
+        {
+          id: "claude-body-match",
+          provider: "claude",
+          startedAt: "2026-03-10T10:00:00.000Z",
+          updatedAt: "2026-03-10T10:10:00.000Z",
+          matchedPath: "/repo",
+          matchScope: "worktree",
+          title: "Unrelated title",
+          firstUserPrompt: "initial prompt",
+          messageCount: 4,
+        },
+      ],
+    });
+    mockReadCodexSessions.mockResolvedValue({ provider: "codex", available: true, sessionCount: 0, reason: null, sessions: [] });
+    mockReadOpenCodeSessions.mockResolvedValue({ provider: "opencode", available: true, sessionCount: 0, reason: null, sessions: [] });
+    mockReadGeminiSessions.mockResolvedValue({ provider: "gemini", available: true, sessionCount: 0, reason: null, sessions: [] });
+
+    const result = await aggregateAiSessions({
+      worktreePath: "/repo",
+      repoPath: "/repo",
+      query: "database migration",
+    });
+
+    expect(result.sessions.map((session) => session.id)).toEqual(["claude-body-match"]);
+  });
 });

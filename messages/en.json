@@ -334,8 +334,24 @@
       "inlineChat": "AI Chat",
       "remoteBadge": "Remote unsupported",
       "noPreview": "No preview is available.",
+      "loadHistory": "Load history",
+      "search": "Search",
+      "searchLabel": "Search AI chats",
+      "searchPlaceholder": "Search chats...",
+      "providerFilterLabel": "Filter {provider}",
+      "loadHistoryHint": "AI session history is loaded only when requested.",
+      "selectSession": "Select an AI session from the list.",
       "loadingDetail": "Loading messages...",
-      "detailError": "Failed to load session details."
+      "detailError": "Failed to load session details.",
+      "roles": {
+        "user": "User input",
+        "assistant": "AI answer",
+        "system": "System input",
+        "developer": "Developer input",
+        "reasoning": "Reasoning",
+        "tool": "Tool",
+        "unknown": "Other"
+      }
     },
     "priority": "Priority",
     "collapseSidebar": "Collapse sidebar",

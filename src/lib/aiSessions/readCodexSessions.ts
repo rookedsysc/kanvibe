@@ -15,7 +15,7 @@ import {
   truncateText,
 } from "@/lib/aiSessions/shared";
 import { getHomeDirectory, listFilesRecursivelyBySuffix, pathExists } from "@/lib/hostFileAccess";
-import type { AggregatedAiMessage, AggregatedAiSession, AiSessionDetailReaderResult, AiSessionReaderContext, AiSessionReaderResult } from "@/lib/aiSessions/types";
+import type { AggregatedAiMessage, AggregatedAiSession, AiMessageRole, AiSessionDetailReaderResult, AiSessionReaderContext, AiSessionReaderResult } from "@/lib/aiSessions/types";
 
 const DEFAULT_DETAIL_LIMIT = 20;
 
@@ -40,16 +40,7 @@ export async function readCodexSessions(context: AiSessionReaderContext): Promis
     parseConcurrency,
     (filePath) => parseCodexSessionSummary(filePath, context),
   );
-  let sessions = results.filter((s): s is AggregatedAiSession => s !== null);
-
-  if (context.query) {
-    const q = context.query.toLowerCase();
-    sessions = sessions.filter((s) =>
-      s.title?.toLowerCase().includes(q) ||
-      s.firstUserPrompt?.toLowerCase().includes(q) ||
-      s.matchedPath?.toLowerCase().includes(q)
-    );
-  }
+  const sessions = results.filter((s): s is AggregatedAiSession => s !== null);
 
   return createReaderResult("codex", {
     sessions,
@@ -86,6 +77,7 @@ async function parseCodexSessionSummary(filePath: string, context: AiSessionRead
   let updatedAt: string | null = null;
   let firstUserPrompt: string | null = null;
   let messageCount = 0;
+  let hasQueryMatch = false;
 
   for (const rawEvent of events) {
     const event = rawEvent as CodexRolloutEvent;
@@ -100,25 +92,31 @@ async function parseCodexSessionSummary(filePath: string, context: AiSessionRead
       matchScope = resolvedMatchScope;
       startedAt = toIsoString(payload.timestamp ?? event.timestamp);
       updatedAt = toIsoString(payload.timestamp ?? event.timestamp);
+      if (matchesCodexQuery(context.query, cwd, sessionId)) {
+        hasQueryMatch = true;
+      }
       continue;
     }
 
     if (event.type !== "response_item") continue;
-    const payload = event.payload ?? {};
-    if (payload.type !== "message") continue;
 
-    const text = extractPlainText(payload.content);
-    if (!text) continue;
+    const parsedMessages = extractCodexPayloadMessages(event.payload ?? {});
+    for (const message of parsedMessages) {
+      if (message.role === "user" && !firstUserPrompt) {
+        firstUserPrompt = message.text;
+      }
 
-    if (payload.role === "user" && !firstUserPrompt) {
-      firstUserPrompt = text;
+      if (matchesCodexQuery(context.query, message.text)) {
+        hasQueryMatch = true;
+      }
+
+      messageCount += 1;
+      updatedAt = toIsoString(event.timestamp) ?? updatedAt;
     }
-
-    messageCount += 1;
-    updatedAt = toIsoString(event.timestamp) ?? updatedAt;
   }
 
   if (!sessionId || !matchedPath || !matchScope) return null;
+  if (context.query && !matchesCodexQuery(context.query, firstUserPrompt, matchedPath, sessionId) && !hasQueryMatch) return null;
 
   return {
     id: sessionId,
@@ -160,27 +158,23 @@ async function parseCodexSessionDetail(
     }
 
     if (event.type !== "response_item") continue;
-    const payload = event.payload ?? {};
-    if (payload.type !== "message") continue;
 
-    const role = payload.role === "user" || payload.role === "assistant" ? payload.role : "unknown";
-    if (context.roles && context.roles.length > 0 && !context.roles.includes(role)) {
-      continue;
+    for (const message of extractCodexPayloadMessages(event.payload ?? {})) {
+      if (context.roles && context.roles.length > 0 && !context.roles.includes(message.role)) {
+        continue;
+      }
+
+      if (context.query && !message.text.toLowerCase().includes(context.query.toLowerCase())) {
+        continue;
+      }
+
+      if (message.role === "user" && !title) {
+        title = truncateText(message.text, 80);
+      }
+
+      const previewMessage = makePreviewMessage(message.role, event.timestamp, message.text);
+      if (previewMessage) messages.push(previewMessage);
     }
-
-    const text = extractPlainText(payload.content);
-    if (!text) continue;
-
-    if (context.query && !text.toLowerCase().includes(context.query.toLowerCase())) {
-      continue;
-    }
-
-    if (role === "user" && !title) {
-      title = truncateText(text, 80);
-    }
-
-    const previewMessage = makePreviewMessage(role, event.timestamp, text);
-    if (previewMessage) messages.push(previewMessage);
   }
 
   if (!matchedPath) return null;
@@ -194,6 +188,53 @@ async function parseCodexSessionDetail(
     messages: paginated.items,
     nextCursor: paginated.nextCursor,
   });
+}
+
+function extractCodexPayloadMessages(payload: Record<string, unknown>): Array<{ role: AiMessageRole; text: string }> {
+  if (payload.type === "message") {
+    const role = resolveCodexMessageRole(payload.role);
+    const text = extractPlainText(payload.content);
+    return text ? [{ role, text }] : [];
+  }
+
+  if (payload.type === "reasoning") {
+    const text = extractPlainText(payload.summary ?? payload.content ?? payload.text ?? payload);
+    return text ? [{ role: "reasoning", text }] : [];
+  }
+
+  if (payload.type === "function_call" || payload.type === "tool_call") {
+    const name = typeof payload.name === "string"
+      ? payload.name
+      : typeof payload.call_id === "string"
+        ? payload.call_id
+        : "tool";
+    const argumentText = extractPlainText(payload.arguments ?? payload.args ?? payload.input);
+    const text = argumentText ? `${name}: ${argumentText}` : `${name} called`;
+    return [{ role: "tool", text }];
+  }
+
+  if (payload.type === "function_call_output" || payload.type === "tool_result") {
+    const text = extractPlainText(payload.output ?? payload.result ?? payload.content ?? payload);
+    return text ? [{ role: "tool", text }] : [];
+  }
+
+  const text = extractPlainText(payload);
+  return text ? [{ role: "unknown", text }] : [];
+}
+
+function matchesCodexQuery(query: string | undefined, ...values: Array<string | null | undefined>): boolean {
+  if (!query) return true;
+  const normalizedQuery = query.toLowerCase();
+  return values.some((value) => value?.toLowerCase().includes(normalizedQuery));
+}
+
+function resolveCodexMessageRole(role: unknown): AiMessageRole {
+  if (role === "user") return "user";
+  if (role === "assistant") return "assistant";
+  if (role === "system") return "system";
+  if (role === "developer") return "developer";
+  if (role === "tool") return "tool";
+  return "unknown";
 }
 
 async function getCodexSessionsDirectory(context: AiSessionReaderContext): Promise<string> {

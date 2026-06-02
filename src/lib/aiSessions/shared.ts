@@ -251,7 +251,7 @@ export function extractPlainText(value: unknown): string {
 
   const record = value as Record<string, unknown>;
 
-  const directKeys = ["text", "input_text", "output_text", "display"];
+  const directKeys = ["text", "input_text", "output_text", "display", "description", "subject", "output", "result"];
   for (const key of directKeys) {
     if (typeof record[key] === "string") {
       return normalizeText(record[key] as string);

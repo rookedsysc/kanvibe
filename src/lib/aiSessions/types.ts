@@ -2,7 +2,7 @@ export type AiSessionProvider = "claude" | "codex" | "opencode" | "gemini";
 
 export type AiSessionMatchScope = "worktree" | "repo" | "unknown";
 
-export type AiMessageRole = "user" | "assistant" | "tool" | "system" | "unknown";
+export type AiMessageRole = "user" | "assistant" | "tool" | "system" | "developer" | "reasoning" | "unknown";
 
 export interface AggregatedAiMessage {
   role: AiMessageRole;
