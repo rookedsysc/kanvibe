@@ -1,5 +1,7 @@
+import { execFile } from "child_process";
 import { homedir } from "os";
 import path from "path";
+import { promisify } from "util";
 import { execGit } from "@/lib/gitOperations";
 import { getHomeDirectory, pathExists, quoteShellArgument } from "@/lib/hostFileAccess";
 import {
@@ -13,13 +15,12 @@ import {
   toIsoString,
   truncateText,
 } from "@/lib/aiSessions/shared";
-import { getSqliteConnection, querySqlite } from "@/lib/sqliteConnectionPool";
 import type { AggregatedAiMessage, AiMessageRole, AiSessionDetailReaderResult, AiSessionReaderContext, AiSessionReaderResult } from "@/lib/aiSessions/types";
 
-const OPENCODE_DB_PATH = path.join(homedir(), ".local", "share", "opencode", "opencode.db");
+const execFileAsync = promisify(execFile);
 const OPEN_CODE_QUERY_LIMIT = 120;
 const DEFAULT_DETAIL_LIMIT = 20;
-const REMOTE_SQLITE_QUERY_SCRIPT = `
+const SQLITE_QUERY_SCRIPT = `
 import base64
 import json
 import sqlite3
@@ -202,26 +203,72 @@ async function queryOpenCodeRows<T>(
 ): Promise<T[] | null> {
   const dbPath = await getOpenCodeDatabasePath(context);
   if (!context.sshHost) {
-    const db = getSqliteConnection(dbPath);
-    return db ? querySqlite<T>(db, sql, parameters) : null;
+    let nativeSqliteError: unknown = null;
+    try {
+      const { getSqliteConnection, querySqlite } = await import("@/lib/sqliteConnectionPool");
+      const db = getSqliteConnection(dbPath);
+      if (db) {
+        return querySqlite<T>(db, sql, parameters);
+      }
+    } catch (error) {
+      nativeSqliteError = error;
+    }
+
+    if (!await pathExists(dbPath)) {
+      return null;
+    }
+
+    try {
+      return await querySqliteRowsWithPython<T>(dbPath, sql, parameters);
+    } catch (error) {
+      if (nativeSqliteError instanceof Error) {
+        throw new Error(`${error instanceof Error ? error.message : "Failed to query OpenCode database with Python sqlite"}; native sqlite unavailable: ${nativeSqliteError.message}`);
+      }
+      throw error;
+    }
   }
 
   if (!await pathExists(dbPath, context.sshHost)) {
     return null;
   }
 
-  const encodedPayload = Buffer.from(JSON.stringify({
+  const output = await execGit(
+    `python3 -c ${quoteShellArgument(SQLITE_QUERY_SCRIPT)} ${quoteShellArgument(encodeSqliteQueryPayload(dbPath, sql, parameters))}`,
+    context.sshHost,
+  );
+  return parseSqliteQueryRows<T>(output);
+}
+
+async function querySqliteRowsWithPython<T>(
+  dbPath: string,
+  sql: string,
+  parameters?: Record<string, unknown>,
+): Promise<T[]> {
+  const { stdout } = await execFileAsync(
+    "python3",
+    ["-c", SQLITE_QUERY_SCRIPT, encodeSqliteQueryPayload(dbPath, sql, parameters)],
+    { encoding: "utf-8", maxBuffer: 10 * 1024 * 1024 },
+  );
+
+  return parseSqliteQueryRows<T>(stdout);
+}
+
+function encodeSqliteQueryPayload(
+  dbPath: string,
+  sql: string,
+  parameters?: Record<string, unknown>,
+): string {
+  return Buffer.from(JSON.stringify({
     dbPath,
     sql,
     parameters: parameters ?? {},
   }), "utf-8").toString("base64");
-  const output = await execGit(
-    `python3 -c ${quoteShellArgument(REMOTE_SQLITE_QUERY_SCRIPT)} ${quoteShellArgument(encodedPayload)}`,
-    context.sshHost,
-  );
+}
+
+function parseSqliteQueryRows<T>(output: string): T[] {
   const parsedRows = safeJsonParse<unknown>(output.trim());
   if (!Array.isArray(parsedRows)) {
-    throw new Error("Failed to parse remote OpenCode database query result");
+    throw new Error("Failed to parse OpenCode database query result");
   }
 
   return parsedRows as T[];
@@ -229,7 +276,7 @@ async function queryOpenCodeRows<T>(
 
 async function getOpenCodeDatabasePath(context: AiSessionReaderContext): Promise<string> {
   if (!context.sshHost) {
-    return OPENCODE_DB_PATH;
+    return path.join(homedir(), ".local", "share", "opencode", "opencode.db");
   }
 
   return path.posix.join(await getHomeDirectory(context.sshHost), ".local", "share", "opencode", "opencode.db");

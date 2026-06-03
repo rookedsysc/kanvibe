@@ -17,7 +17,7 @@ import {
   toIsoString,
   truncateText,
 } from "@/lib/aiSessions/shared";
-import { getHomeDirectory, pathExists, readDirectoryFilesBySuffix } from "@/lib/hostFileAccess";
+import { getHomeDirectory, listFilesRecursivelyBySuffix, pathExists, readDirectoryFilesBySuffix } from "@/lib/hostFileAccess";
 import type {
   AggregatedAiMessage,
   AggregatedAiSession,
@@ -176,7 +176,19 @@ async function findProjectFiles(context: AiSessionReaderContext): Promise<string
     files.push(...await readDirectoryFilesBySuffix(directoryPath, ".jsonl", context.sshHost));
   }
 
-  return files;
+  const uniqueFiles = Array.from(new Set(files));
+  if (uniqueFiles.length > 0) {
+    return uniqueFiles;
+  }
+
+  // Claude Code stores the canonical cwd inside each JSONL event, but the outer
+  // ~/.claude/projects/<encoded-path> directory can diverge when paths are
+  // symlinked, migrated, or encoded by a different CLI version. If the direct
+  // encoded-directory lookup misses, scan project JSONL files and let cwd-based
+  // parsing decide which sessions belong to this task/repo.
+  return Array.from(new Set(
+    await listFilesRecursivelyBySuffix(claudeProjectsDirectory, ".jsonl", context.sshHost),
+  ));
 }
 
 async function getClaudeRootDirectory(context: AiSessionReaderContext): Promise<string> {
