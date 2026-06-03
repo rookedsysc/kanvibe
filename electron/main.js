@@ -359,8 +359,6 @@ function createBrowserWindowOptions() {
   return {
     width: 1600,
     height: 1000,
-    minWidth: 1200,
-    minHeight: 800,
     backgroundColor: "#ffffff",
     autoHideMenuBar: true,
     ...getTitleBarOptions(),
