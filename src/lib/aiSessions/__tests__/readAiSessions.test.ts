@@ -4,7 +4,7 @@ import { tmpdir } from "os";
 import path from "path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { readClaudeSessionDetail, readClaudeSessions } from "@/lib/aiSessions/readClaudeSessions";
-import { readCodexSessionDetail } from "@/lib/aiSessions/readCodexSessions";
+import { readCodexSessionDetail, readCodexSessions } from "@/lib/aiSessions/readCodexSessions";
 import { readGeminiSessionDetail, readGeminiSessions } from "@/lib/aiSessions/readGeminiSessions";
 
 let tempHome: string;
@@ -222,6 +222,63 @@ describe("AI session history readers", () => {
       "developer",
     ]);
     expect(detail?.messages.find((message) => message.role === "developer")?.fullText).toBe("Follow project rules.");
+  });
+
+  it("uses actual Codex exec prompts and final answers instead of internal environment messages", async () => {
+    const worktreePath = path.join(tempHome, "repo__worktrees", "task");
+    const sessionFile = path.join(tempHome, ".codex", "sessions", "2026", "codex-exec-session.jsonl");
+
+    await writeJsonLines(sessionFile, [
+      {
+        type: "session_meta",
+        timestamp: "2026-01-01T00:00:00.000Z",
+        payload: { id: "codex-exec-session", cwd: worktreePath, timestamp: "2026-01-01T00:00:00.000Z", source: "exec" },
+      },
+      {
+        type: "response_item",
+        timestamp: "2026-01-01T00:01:00.000Z",
+        payload: { type: "message", role: "developer", content: [{ type: "input_text", text: "<permissions instructions>\nSandbox metadata\n</permissions instructions>" }] },
+      },
+      {
+        type: "response_item",
+        timestamp: "2026-01-01T00:02:00.000Z",
+        payload: { type: "message", role: "user", content: [{ type: "input_text", text: `<environment_context>\n  <cwd>${worktreePath}</cwd>\n</environment_context>` }] },
+      },
+      {
+        type: "response_item",
+        timestamp: "2026-01-01T00:03:00.000Z",
+        payload: { type: "message", role: "user", content: [{ type: "input_text", text: "Run the headless smoke check." }] },
+      },
+      {
+        type: "event_msg",
+        timestamp: "2026-01-01T00:04:00.000Z",
+        payload: { type: "agent_message", message: "KANVIBE_CODEX_HEADLESS_OK", phase: "final_answer" },
+      },
+    ]);
+
+    const sessions = await readCodexSessions({ worktreePath, repoPath: worktreePath, query: "KANVIBE_CODEX_HEADLESS_OK" });
+    expect(sessions).toMatchObject({ provider: "codex", available: true, sessionCount: 1 });
+    expect(sessions.sessions[0]).toMatchObject({
+      id: "codex-exec-session",
+      provider: "codex",
+      title: "Run the headless smoke check.",
+      firstUserPrompt: "Run the headless smoke check.",
+      messageCount: 2,
+      sourceRef: sessionFile,
+    });
+
+    const detail = await readCodexSessionDetail(
+      { worktreePath, repoPath: worktreePath },
+      "codex-exec-session",
+      sessionFile,
+      null,
+      20,
+    );
+
+    expect(detail?.messages.map((message) => [message.role, message.fullText])).toEqual([
+      ["assistant", "KANVIBE_CODEX_HEADLESS_OK"],
+      ["user", "Run the headless smoke check."],
+    ]);
   });
 
   it("reads Gemini chat recordings from ~/.gemini/tmp/<project>/chats and classifies responses, thoughts, and tool calls", async () => {
