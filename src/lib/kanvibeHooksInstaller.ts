@@ -23,6 +23,7 @@ import { setupOpenCodeHooks, getOpenCodeHooksStatus, generatePluginScript, PLUGI
 import { getHookServerUrl } from "@/lib/hookEndpoint";
 import { addAiToolPatternsToGitExclude } from "@/lib/gitExclude";
 import { quoteShellArgument, readTextFiles } from "@/lib/hostFileAccess";
+import { buildKanvibeHookTargetsContent, getKanvibeHookTargetsPath } from "@/lib/kanvibeProjectState";
 
 const HOOK_INSTALL_MAX_ATTEMPTS = 3;
 const HOOK_INSTALL_RETRY_DELAY_MS = 500;
@@ -427,9 +428,14 @@ async function installKanvibeHookProviderOnce(
 async function setupRemoteClaudeHooks(repoPath: string, taskId: string, hookServerUrl: string, sshHost: string) {
   const claudeDir = path.posix.join(repoPath, ".claude");
   const settingsPath = path.posix.join(claudeDir, "settings.json");
+  const hookTargetsPath = getKanvibeHookTargetsPath(repoPath, sshHost);
+  const files = await readTextFiles([settingsPath, hookTargetsPath], sshHost);
 
   await writeRemoteTextFiles(
-    buildRemoteClaudeHookFiles(repoPath, taskId, hookServerUrl, await readRemoteTextFile(settingsPath, sshHost)),
+    [
+      ...buildRemoteClaudeHookFiles(repoPath, taskId, hookServerUrl, files.get(settingsPath)?.content ?? ""),
+      buildRemoteHookTargetsFile(repoPath, taskId, hookServerUrl, sshHost, files.get(hookTargetsPath)?.content ?? ""),
+    ],
     sshHost,
   );
 }
@@ -437,9 +443,14 @@ async function setupRemoteClaudeHooks(repoPath: string, taskId: string, hookServ
 async function setupRemoteGeminiHooks(repoPath: string, taskId: string, hookServerUrl: string, sshHost: string) {
   const geminiDir = path.posix.join(repoPath, ".gemini");
   const settingsPath = path.posix.join(geminiDir, "settings.json");
+  const hookTargetsPath = getKanvibeHookTargetsPath(repoPath, sshHost);
+  const files = await readTextFiles([settingsPath, hookTargetsPath], sshHost);
 
   await writeRemoteTextFiles(
-    buildRemoteGeminiHookFiles(repoPath, taskId, hookServerUrl, await readRemoteTextFile(settingsPath, sshHost)),
+    [
+      ...buildRemoteGeminiHookFiles(repoPath, taskId, hookServerUrl, files.get(settingsPath)?.content ?? ""),
+      buildRemoteHookTargetsFile(repoPath, taskId, hookServerUrl, sshHost, files.get(hookTargetsPath)?.content ?? ""),
+    ],
     sshHost,
   );
 }
@@ -448,22 +459,31 @@ async function setupRemoteCodexHooks(repoPath: string, taskId: string, hookServe
   const codexDir = path.posix.join(repoPath, ".codex");
   const configPath = path.posix.join(codexDir, CONFIG_FILE_NAME);
   const hooksPath = path.posix.join(codexDir, HOOKS_FILE_NAME);
-  const files = await readTextFiles([configPath, hooksPath], sshHost);
+  const hookTargetsPath = getKanvibeHookTargetsPath(repoPath, sshHost);
+  const files = await readTextFiles([configPath, hooksPath, hookTargetsPath], sshHost);
 
   await writeRemoteTextFiles(
-    buildRemoteCodexHookFiles(
-      repoPath,
-      taskId,
-      hookServerUrl,
-      files.get(configPath)?.content ?? "",
-      files.get(hooksPath)?.content ?? "",
-    ),
+    [
+      ...buildRemoteCodexHookFiles(
+        repoPath,
+        taskId,
+        hookServerUrl,
+        files.get(configPath)?.content ?? "",
+        files.get(hooksPath)?.content ?? "",
+      ),
+      buildRemoteHookTargetsFile(repoPath, taskId, hookServerUrl, sshHost, files.get(hookTargetsPath)?.content ?? ""),
+    ],
     sshHost,
   );
 }
 
 async function setupRemoteOpenCodeHooks(repoPath: string, taskId: string, hookServerUrl: string, sshHost: string) {
-  await writeRemoteTextFiles(buildRemoteOpenCodeHookFiles(repoPath, taskId, hookServerUrl), sshHost);
+  const hookTargetsPath = getKanvibeHookTargetsPath(repoPath, sshHost);
+  const files = await readTextFiles([hookTargetsPath], sshHost);
+  await writeRemoteTextFiles([
+    ...buildRemoteOpenCodeHookFiles(repoPath, taskId, hookServerUrl),
+    buildRemoteHookTargetsFile(repoPath, taskId, hookServerUrl, sshHost, files.get(hookTargetsPath)?.content ?? ""),
+  ], sshHost);
 }
 
 async function setupRemoteKanvibeHooks(repoPath: string, taskId: string, hookServerUrl: string, sshHost: string) {
@@ -471,11 +491,13 @@ async function setupRemoteKanvibeHooks(repoPath: string, taskId: string, hookSer
   const geminiSettingsPath = path.posix.join(repoPath, ".gemini", "settings.json");
   const codexConfigPath = path.posix.join(repoPath, ".codex", CONFIG_FILE_NAME);
   const codexHooksPath = path.posix.join(repoPath, ".codex", HOOKS_FILE_NAME);
+  const hookTargetsPath = getKanvibeHookTargetsPath(repoPath, sshHost);
   const existingFiles = await readTextFiles([
     claudeSettingsPath,
     geminiSettingsPath,
     codexConfigPath,
     codexHooksPath,
+    hookTargetsPath,
   ], sshHost);
   const plans = [
     {
@@ -499,6 +521,16 @@ async function setupRemoteKanvibeHooks(repoPath: string, taskId: string, hookSer
     {
       label: "OpenCode",
       files: buildRemoteOpenCodeHookFiles(repoPath, taskId, hookServerUrl),
+    },
+    {
+      label: "KanVibe targets",
+      files: [buildRemoteHookTargetsFile(
+        repoPath,
+        taskId,
+        hookServerUrl,
+        sshHost,
+        existingFiles.get(hookTargetsPath)?.content ?? "",
+      )],
     },
   ];
 
@@ -667,15 +699,17 @@ function buildRemoteOpenCodeHookFiles(
   ];
 }
 
-async function readRemoteTextFile(filePath: string, sshHost: string): Promise<string> {
-  try {
-    return await execGit(
-      `test -f ${quoteShellArgument(filePath)} && cat ${quoteShellArgument(filePath)} || true`,
-      sshHost,
-    );
-  } catch {
-    return "";
-  }
+function buildRemoteHookTargetsFile(
+  repoPath: string,
+  taskId: string,
+  hookServerUrl: string,
+  sshHost: string,
+  currentContent: string,
+): RemoteTextFile {
+  return {
+    filePath: getKanvibeHookTargetsPath(repoPath, sshHost),
+    content: buildKanvibeHookTargetsContent(currentContent, { url: hookServerUrl, taskId }),
+  };
 }
 
 function parseRemoteJsonObject(content: string): Record<string, unknown> {

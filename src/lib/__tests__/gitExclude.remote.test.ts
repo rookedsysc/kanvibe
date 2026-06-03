@@ -42,5 +42,15 @@ describe("gitExclude remote", () => {
       expect.stringContaining(".codex/config.toml"),
       "remote-host",
     );
+    expect(mockWriteTextFile).toHaveBeenCalledWith(
+      "/remote/main/.git/info/exclude",
+      expect.stringContaining(".kanvibe/hooks-targets.json"),
+      "remote-host",
+    );
+    expect(mockWriteTextFile).toHaveBeenCalledWith(
+      "/remote/main/.git/info/exclude",
+      expect.stringContaining(".kanvibe/task-state.json"),
+      "remote-host",
+    );
   });
 });

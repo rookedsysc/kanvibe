@@ -38,6 +38,8 @@ describe("gitExclude", () => {
       expect(content).toContain(".codex/hooks.json");
       expect(content).toContain(".codex/config.toml");
       expect(content).toContain(".opencode/plugins/");
+      expect(content).toContain(".kanvibe/hooks-targets.json");
+      expect(content).toContain(".kanvibe/task-state.json");
     });
 
     it("should not duplicate patterns when called multiple times", async () => {
@@ -87,6 +89,8 @@ describe("gitExclude", () => {
       expect(content).toContain(".claude/hooks/");
       expect(content).toContain(".codex/config.toml");
       expect(content).toContain(".opencode/plugins/");
+      expect(content).toContain(".kanvibe/hooks-targets.json");
+      expect(content).toContain(".kanvibe/task-state.json");
     });
 
     it("should update the shared common-dir exclude when called from a linked worktree", async () => {

@@ -13,6 +13,8 @@ const EXCLUDE_PATTERNS = [
   ".codex/hooks.json",
   ".codex/config.toml",
   ".opencode/plugins/",
+  ".kanvibe/hooks-targets.json",
+  ".kanvibe/task-state.json",
 ];
 
 function buildExcludeContent(currentContent: string): string {

@@ -3,7 +3,8 @@ import path from "path";
 import { addAiToolPatternsToGitExclude } from "@/lib/gitExclude";
 import { readTextFile, readTextFiles } from "@/lib/hostFileAccess";
 import { extractShellHookServerUrl, validateHookServerConfiguration } from "@/lib/hookServerStatus";
-import { buildShellTaskIdResolver, getShellTaskIdBindingStatus } from "@/lib/hookTaskBinding";
+import { buildShellKanvibeStatusUpdater, buildShellTaskIdResolver, getShellTaskIdBindingStatus } from "@/lib/hookTaskBinding";
+import { upsertKanvibeHookTarget } from "@/lib/kanvibeProjectState";
 
 /**
  * Gemini CLI hooks는 stdout에 반드시 JSON만 출력해야 한다.
@@ -20,11 +21,7 @@ export function generatePromptHookScript(kanvibeUrl: string, taskId: string): st
 
 KANVIBE_URL="${kanvibeUrl}"
 ${buildShellTaskIdResolver(taskId)}
-
-curl -s -X POST "\${KANVIBE_URL}/api/hooks/status" \\
-  -H "Content-Type: application/json" \\
-  -d "{\\"taskId\\": \\\"\${TASK_ID}\\\", \\\"status\\\": \\\"progress\\\"}" \\
-  > /dev/null 2>&1
+${buildShellKanvibeStatusUpdater("progress")}
 
 echo '{}'
 exit 0
@@ -41,11 +38,7 @@ export function generateStopHookScript(kanvibeUrl: string, taskId: string): stri
 
 KANVIBE_URL="${kanvibeUrl}"
 ${buildShellTaskIdResolver(taskId)}
-
-curl -s -X POST "\${KANVIBE_URL}/api/hooks/status" \\
-  -H "Content-Type: application/json" \\
-  -d "{\\"taskId\\": \\\"\${TASK_ID}\\\", \\\"status\\\": \\\"review\\\"}" \\
-  > /dev/null 2>&1
+${buildShellKanvibeStatusUpdater("review")}
 
 echo '{}'
 exit 0
@@ -133,6 +126,7 @@ export async function setupGeminiHooks(
   await writeFile(stopScriptPath, generateStopHookScript(kanvibeUrl, taskId), "utf-8");
   await chmod(promptScriptPath, 0o755);
   await chmod(stopScriptPath, 0o755);
+  await upsertKanvibeHookTarget(repoPath, { url: kanvibeUrl, taskId });
 
   const settings = await readSettingsJson(settingsPath);
   if (!settings.hooks) {

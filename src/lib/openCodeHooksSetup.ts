@@ -5,6 +5,7 @@ import { addAiToolPatternsToGitExclude } from "@/lib/gitExclude";
 import { readTextFiles } from "@/lib/hostFileAccess";
 import { extractPluginHookServerUrl, validateHookServerConfiguration } from "@/lib/hookServerStatus";
 import { getOpenCodeRegisteredKanvibePluginUrls } from "@/lib/openCodePluginRegistry";
+import { upsertKanvibeHookTarget } from "@/lib/kanvibeProjectState";
 
 /**
  * OpenCode는 `.opencode/plugins/` 디렉토리에 TypeScript 플러그인을 배치하여 hooks를 등록한다.
@@ -18,6 +19,9 @@ export const PLUGIN_DIR_NAME = "plugins";
 /** OpenCode plugin TypeScript 파일 내용을 생성한다 */
 export function generatePluginScript(kanvibeUrl: string, taskId: string): string {
   return `import type { Plugin } from "@opencode-ai/plugin";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
+import { dirname, resolve } from "path";
+import { fileURLToPath } from "url";
 
 /**
  * KanVibe OpenCode Plugin
@@ -27,8 +31,44 @@ export function generatePluginScript(kanvibeUrl: string, taskId: string): string
 export const KanvibePlugin: Plugin = async ({ client }) => {
   const KANVIBE_URL = "${kanvibeUrl}";
   const TASK_ID = ${JSON.stringify(taskId)};
+  const KANVIBE_REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
+  const KANVIBE_STATE_DIR = resolve(KANVIBE_REPO_ROOT, ".kanvibe");
+  const KANVIBE_TARGETS_FILE = resolve(KANVIBE_STATE_DIR, "hooks-targets.json");
+  const KANVIBE_TASK_STATE_FILE = resolve(KANVIBE_STATE_DIR, "task-state.json");
   const lastStatusBySession = new Map<string, string>();
   const lastUserMessageBySession = new Map<string, string>();
+
+  function readKanvibeTargets(): Array<{ url: string; taskId: string }> {
+    try {
+      if (!existsSync(KANVIBE_TARGETS_FILE)) {
+        return [{ url: KANVIBE_URL, taskId: TASK_ID }];
+      }
+
+      const parsed = JSON.parse(readFileSync(KANVIBE_TARGETS_FILE, "utf8"));
+      const targets = Array.isArray(parsed.targets)
+        ? parsed.targets.filter((target: any) => (
+          target && typeof target.url === "string" && target.url && typeof target.taskId === "string" && target.taskId
+        ))
+        : [];
+
+      return targets.length > 0 ? targets : [{ url: KANVIBE_URL, taskId: TASK_ID }];
+    } catch {
+      return [{ url: KANVIBE_URL, taskId: TASK_ID }];
+    }
+  }
+
+  function writeKanvibeTaskState(status: string): void {
+    try {
+      mkdirSync(KANVIBE_STATE_DIR, { recursive: true });
+      writeFileSync(
+        KANVIBE_TASK_STATE_FILE,
+        JSON.stringify({ version: 1, taskId: TASK_ID, status, updatedAt: new Date().toISOString() }, null, 2) + "\\n",
+        "utf8",
+      );
+    } catch {
+      /* 파일 쓰기 에러 무시 */
+    }
+  }
 
   function getSessionID(source: any): string | undefined {
     return (
@@ -76,17 +116,22 @@ export const KanvibePlugin: Plugin = async ({ client }) => {
       return;
     }
 
-    try {
-      await fetch(\`\${KANVIBE_URL}/api/hooks/status\`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ taskId: TASK_ID, status }),
-      });
-      if (sessionID) {
-        lastStatusBySession.set(sessionID, status);
+    writeKanvibeTaskState(status);
+
+    for (const target of readKanvibeTargets()) {
+      try {
+        await fetch(\`\${target.url.replace(/\/$/, "")}/api/hooks/status\`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ taskId: target.taskId, status }),
+        });
+      } catch {
+        /* 네트워크 에러 무시 */
       }
-    } catch {
-      /* 네트워크 에러 무시 */
+    }
+
+    if (sessionID) {
+      lastStatusBySession.set(sessionID, status);
     }
   }
 
@@ -208,6 +253,7 @@ export async function setupOpenCodeHooks(
 
   const pluginPath = path.join(pluginsDir, PLUGIN_FILE_NAME);
   await writeFile(pluginPath, generatePluginScript(kanvibeUrl, taskId), "utf-8");
+  await upsertKanvibeHookTarget(repoPath, { url: kanvibeUrl, taskId });
 
   try {
     await addAiToolPatternsToGitExclude(repoPath);

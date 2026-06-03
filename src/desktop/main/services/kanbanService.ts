@@ -19,6 +19,7 @@ import {
 } from "@/lib/kanvibeHooksInstaller";
 import { execGit, pullCurrentBranch, remoteBranchExists } from "@/lib/gitOperations";
 import { detachSession } from "@/lib/terminal";
+import { writeKanvibeTaskState } from "@/lib/kanvibeProjectState";
 
 export type TasksByStatus = Record<TaskStatus, KanbanTask[]>;
 
@@ -69,6 +70,8 @@ interface DoneRollbackSnapshot {
   sessionName: string | null;
   worktreePath: string | null;
   sshHost: string | null;
+  projectId: string | null;
+  branchName: string | null;
 }
 
 export interface DoneCleanupPlan {
@@ -120,6 +123,46 @@ function isMissingGitHubCli(error: unknown): boolean {
 
 function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+async function persistTaskState(
+  task: Pick<KanbanTask, "id" | "status" | "worktreePath" | "sshHost"> & {
+    projectId?: string | null;
+    branchName?: string | null;
+  },
+): Promise<void> {
+  let project: { repoPath: string; defaultBranch: string; sshHost?: string | null } | null = null;
+
+  if (task.projectId && !task.worktreePath) {
+    const projectRepo = await getProjectRepository();
+    project = await projectRepo.findOneBy({ id: task.projectId });
+  }
+
+  const canUseProjectRoot = Boolean(
+    project
+      && task.branchName
+      && task.branchName === project.defaultBranch,
+  );
+  const targetPath = task.worktreePath || (canUseProjectRoot ? project?.repoPath : null);
+  if (!targetPath) {
+    return;
+  }
+
+  try {
+    await writeKanvibeTaskState(
+      targetPath,
+      { taskId: task.id, status: task.status },
+      task.sshHost || (canUseProjectRoot ? project?.sshHost : null) || null,
+    );
+  } catch (error) {
+    console.error(".kanvibe task 상태 저장 실패:", {
+      taskId: task.id,
+      status: task.status,
+      targetPath,
+      sshHost: task.sshHost || (canUseProjectRoot ? project?.sshHost : null) || null,
+      error: getErrorMessage(error),
+    });
+  }
 }
 
 function buildPullRequestSyncFailure(
@@ -252,6 +295,8 @@ export function prepareOptimisticDoneTransition(
     sessionName: task.sessionName,
     worktreePath: task.worktreePath,
     sshHost: task.sshHost,
+    projectId: task.projectId,
+    branchName: task.branchName,
   };
 
   task.status = TaskStatus.DONE;
@@ -296,6 +341,7 @@ async function rollbackDoneTransition(
       worktreePath: snapshot.worktreePath,
       sshHost: snapshot.sshHost,
     });
+    await persistTaskState(snapshot);
     broadcastBoardUpdate();
   } catch (rollbackError) {
     console.error("Done 상태 롤백 실패:", rollbackError);
@@ -651,6 +697,8 @@ export async function createTask(input: CreateTaskInput): Promise<KanbanTask> {
     );
   }
 
+  await persistTaskState(saved);
+
   broadcastBoardUpdate();
 
   return serialize(saved);
@@ -668,6 +716,7 @@ export async function updateTaskStatus(
   if (newStatus === TaskStatus.DONE) {
     const doneCleanupPlan = prepareOptimisticDoneTransition(task);
     const saved = await repo.save(task);
+    await persistTaskState({ ...doneCleanupPlan.cleanupTask, status: TaskStatus.DONE });
     broadcastBoardUpdate();
     scheduleDoneCleanupWithRollback(doneCleanupPlan);
     return serialize(saved);
@@ -675,6 +724,7 @@ export async function updateTaskStatus(
 
   task.status = newStatus;
   const saved = await repo.save(task);
+  await persistTaskState(saved);
   broadcastBoardUpdate();
   return serialize(saved);
 }
@@ -882,6 +932,7 @@ export async function branchFromTask(
     );
   }
 
+  await persistTaskState(saved);
   broadcastBoardUpdate();
   return serialize(saved);
 }
@@ -929,6 +980,7 @@ export async function connectTerminalSession(
     task.status = TaskStatus.PROGRESS;
 
     const saved = await repo.save(task);
+    await persistTaskState(saved);
     broadcastBoardUpdate();
     return serialize(saved);
   } catch (error) {
@@ -962,8 +1014,8 @@ export async function moveTaskToColumn(
   let doneCleanupPlan: DoneCleanupPlan | null = null;
 
   try {
+    const task = await repo.findOneBy({ id: taskId });
     if (newStatus === TaskStatus.DONE) {
-      const task = await repo.findOneBy({ id: taskId });
       if (task) {
         doneCleanupPlan = prepareOptimisticDoneTransition(task);
         await repo.update(taskId, {
@@ -972,9 +1024,13 @@ export async function moveTaskToColumn(
           sessionName: null,
           worktreePath: null,
         });
+        await persistTaskState({ ...doneCleanupPlan.cleanupTask, status: TaskStatus.DONE });
       }
     } else {
       await repo.update(taskId, { status: newStatus });
+      if (task) {
+        await persistTaskState({ ...task, status: newStatus });
+      }
     }
 
     const reorderUpdates = destOrderedIds.map((id, index) =>

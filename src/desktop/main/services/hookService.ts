@@ -8,6 +8,7 @@ import {
   scheduleDoneCleanupWithRollback,
   type DoneCleanupPlan,
 } from "@/desktop/main/services/kanbanService";
+import { writeKanvibeTaskState } from "@/lib/kanvibeProjectState";
 
 const STATUS_MAP: Record<string, TaskStatus> = {
   todo: TaskStatus.TODO,
@@ -16,6 +17,29 @@ const STATUS_MAP: Record<string, TaskStatus> = {
   review: TaskStatus.REVIEW,
   done: TaskStatus.DONE,
 };
+
+async function persistHookTaskState(
+  repoPath: string | null | undefined,
+  taskId: string,
+  status: TaskStatus,
+  sshHost?: string | null,
+): Promise<void> {
+  if (!repoPath) {
+    return;
+  }
+
+  try {
+    await writeKanvibeTaskState(repoPath, { taskId, status }, sshHost);
+  } catch (error) {
+    console.error(".kanvibe task 상태 저장 실패:", {
+      repoPath,
+      taskId,
+      status,
+      sshHost: sshHost ?? null,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
 
 export interface HookStartInput {
   title: string;
@@ -46,7 +70,7 @@ export async function startHookTask(input: HookStartInput) {
     sshHost: input.sshHost || null,
     projectId: input.projectId || null,
     baseBranch: input.baseBranch || null,
-    status: TaskStatus.PROGRESS,
+    status: TaskStatus.TODO,
   });
 
   if (input.branchName && input.sessionType && input.projectId) {
@@ -86,6 +110,7 @@ export async function startHookTask(input: HookStartInput) {
       },
       "새 태스크 hooks 동기 설치 실패",
     );
+    await persistHookTaskState(saved.worktreePath, saved.id, saved.status, saved.sshHost);
   }
 
   broadcastBoardUpdate();
@@ -139,6 +164,8 @@ export async function updateHookTaskStatus(input: HookStatusInput) {
   }
 
   const projectName = task.project?.name || task.projectId || "Unknown project";
+  const taskStatePath = task.worktreePath || task.project?.repoPath || null;
+  const taskStateSshHost = task.sshHost || task.project?.sshHost || null;
   let doneCleanupPlan: DoneCleanupPlan | null = null;
 
   if (taskStatus === TaskStatus.DONE) {
@@ -148,6 +175,10 @@ export async function updateHookTaskStatus(input: HookStatusInput) {
   }
 
   const saved = await taskRepo.save(task);
+
+  if (taskStatePath) {
+    await persistHookTaskState(taskStatePath, saved.id, taskStatus, taskStateSshHost);
+  }
 
   broadcastBoardUpdate();
   broadcastTaskStatusChanged({

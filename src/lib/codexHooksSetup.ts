@@ -3,7 +3,8 @@ import path from "path";
 import { addAiToolPatternsToGitExclude } from "@/lib/gitExclude";
 import { readTextFile, readTextFiles } from "@/lib/hostFileAccess";
 import { extractShellHookServerUrl, validateHookServerConfiguration } from "@/lib/hookServerStatus";
-import { buildShellTaskIdResolver, getShellTaskIdBindingStatus } from "@/lib/hookTaskBinding";
+import { buildShellKanvibeStatusUpdater, buildShellTaskIdResolver, getShellTaskIdBindingStatus } from "@/lib/hookTaskBinding";
+import { upsertKanvibeHookTarget } from "@/lib/kanvibeProjectState";
 
 /**
  * Codex CLI 최신 hooks 설정은 `.codex/config.toml`의 hooks feature flag와
@@ -50,11 +51,7 @@ function generateStatusHookScript(
 
 KANVIBE_URL="${kanvibeUrl}"
 ${buildShellTaskIdResolver(taskId)}
-
-curl -s -X POST "\${KANVIBE_URL}/api/hooks/status" \\
-  -H "Content-Type: application/json" \\
-  -d "{\\"taskId\\": \\\"\${TASK_ID}\\\", \\\"status\\\": \\\"${status}\\\"}" \\
-  > /dev/null 2>&1
+${buildShellKanvibeStatusUpdater(status)}
 
 exit 0
 `;
@@ -309,6 +306,7 @@ export async function setupCodexHooks(
   await chmod(permissionScriptPath, 0o755);
   await chmod(preToolScriptPath, 0o755);
   await chmod(stopScriptPath, 0o755);
+  await upsertKanvibeHookTarget(repoPath, { url: kanvibeUrl, taskId });
 
   const configContent = await readTextFile(configPath);
   await writeFile(configPath, upsertCodexConfigToml(configContent), "utf-8");
