@@ -30,6 +30,7 @@ describe("AI session history readers", () => {
 
   afterEach(async () => {
     vi.doUnmock("@/lib/sqliteConnectionPool");
+    vi.doUnmock("@/lib/gitOperations");
     vi.unstubAllEnvs();
     await rm(tempHome, { recursive: true, force: true });
   });
@@ -206,6 +207,98 @@ describe("AI session history readers", () => {
       "user",
     ]);
     expect(detail?.messages.find((message) => message.role === "tool")?.fullText).toContain("read_file");
+  });
+
+  it("reads remote OpenCode sessions and detail over SSH", async () => {
+    const worktreePath = "/remote/repo__worktrees/task";
+    const repoPath = "/remote/repo";
+    const execCalls: Array<{ command: string; sshHost?: string | null }> = [];
+    let remoteSqliteQueryCount = 0;
+
+    vi.resetModules();
+    vi.doMock("@/lib/gitOperations", () => ({
+      execGit: vi.fn(async (command: string, sshHost?: string | null) => {
+        execCalls.push({ command, sshHost });
+        if (command === "printf '%s' \"$HOME\"") {
+          return "/remote/home";
+        }
+        if (command.includes("test -e") && command.includes("opencode.db")) {
+          return "1";
+        }
+        if (command.includes("python3 -c")) {
+          remoteSqliteQueryCount += 1;
+          if (remoteSqliteQueryCount === 1) {
+            return JSON.stringify([
+              {
+                id: "remote-open",
+                directory: worktreePath,
+                title: "Remote OpenCode",
+                time_created: 1_700_000_000_000,
+                time_updated: 1_700_000_010_000,
+                part_count: 2,
+                first_user_part: JSON.stringify({ type: "text", text: "fix remote chat" }),
+                matching_part_count: 0,
+              },
+            ]);
+          }
+
+          return JSON.stringify([
+            {
+              session_id: "remote-open",
+              directory: worktreePath,
+              title: "Remote OpenCode",
+              message_id: "user-message",
+              part_data: JSON.stringify({ type: "text", text: "fix remote chat" }),
+              time_created: 1_700_000_000_000,
+              message_data: JSON.stringify({ role: "user" }),
+            },
+            {
+              session_id: "remote-open",
+              directory: worktreePath,
+              title: "Remote OpenCode",
+              message_id: "assistant-message",
+              part_data: JSON.stringify({ type: "text", text: "remote history loaded" }),
+              time_created: 1_700_000_010_000,
+              message_data: JSON.stringify({ role: "assistant" }),
+            },
+          ]);
+        }
+        throw new Error(`unexpected remote command: ${command}`);
+      }),
+    }));
+
+    const { readOpenCodeSessionDetail, readOpenCodeSessions } = await import("@/lib/aiSessions/readOpenCodeSessions");
+
+    const sessions = await readOpenCodeSessions({ worktreePath, repoPath, sshHost: "remote-host" });
+    expect(sessions).toMatchObject({
+      provider: "opencode",
+      available: true,
+      sessionCount: 1,
+      reason: null,
+    });
+    expect(sessions.sessions[0]).toMatchObject({
+      id: "remote-open",
+      provider: "opencode",
+      matchedPath: worktreePath,
+      title: "Remote OpenCode",
+      firstUserPrompt: "fix remote chat",
+      sourceRef: "remote-open",
+    });
+
+    const detail = await readOpenCodeSessionDetail(
+      { worktreePath, repoPath, sshHost: "remote-host" },
+      "remote-open",
+      "remote-open",
+      null,
+      20,
+    );
+
+    expect(detail?.messages.map((message) => [message.role, message.fullText])).toEqual([
+      ["assistant", "remote history loaded"],
+      ["user", "fix remote chat"],
+    ]);
+    expect(execCalls.every((call) => call.sshHost === "remote-host")).toBe(true);
+    expect(remoteSqliteQueryCount).toBe(2);
   });
 
   it("treats OpenCode body search wildcard characters as literal text", async () => {

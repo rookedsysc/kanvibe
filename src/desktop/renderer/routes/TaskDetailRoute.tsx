@@ -67,6 +67,7 @@ const STATUS_TRANSITIONS = [
 ] as const;
 
 const INLINE_CHAT_DETAIL_LIMIT = 40;
+const INLINE_CHAT_INCLUDE_REPO_SESSIONS = true;
 
 const AGENT_TAG_STYLES: Record<string, string> = {
   claude: "bg-tag-claude-bg text-tag-claude-text",
@@ -303,7 +304,7 @@ function InlineAiChatView({ taskId }: { taskId: string }) {
     setIsHistoryLoading(true);
     setHistoryError(null);
     try {
-      const result = await getTaskAiSessions(taskId, false, normalizedQuery);
+      const result = await getTaskAiSessions(taskId, INLINE_CHAT_INCLUDE_REPO_SESSIONS, normalizedQuery);
       setHistory(result);
       setAppliedSearchQuery(normalizedQuery);
       setSelectedSessionKey(null);
@@ -357,7 +358,7 @@ function InlineAiChatView({ taskId }: { taskId: string }) {
       selectedSession.sourceRef ?? null,
       null,
       INLINE_CHAT_DETAIL_LIMIT,
-      false,
+      INLINE_CHAT_INCLUDE_REPO_SESSIONS,
       appliedSearchQuery,
       activeRoles.length > 0 ? activeRoles : undefined,
     ).then((result) => {

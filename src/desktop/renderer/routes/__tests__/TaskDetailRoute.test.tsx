@@ -960,9 +960,30 @@ describe("TaskDetailRoute", () => {
 
     expect(await screen.findByTestId("inline-ai-chat")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "aiSessions.loadHistory" }));
+
+    await waitFor(() => {
+      expect(mocks.getTaskAiSessions).toHaveBeenCalledWith("task-1", true, undefined);
+    });
+
     fireEvent.click(await screen.findByRole("button", { name: /Claude chat/ }));
 
-    expect(await screen.findByText("Please fix the UI")).toBeTruthy();
+    await waitFor(() => {
+      expect(mocks.getTaskAiSessionDetail).toHaveBeenCalledWith(
+        "task-1",
+        "claude",
+        "claude-session",
+        null,
+        null,
+        40,
+        true,
+        undefined,
+        undefined,
+      );
+    });
+
+    await waitFor(() => {
+      expect(screen.getAllByText("Please fix the UI").length).toBeGreaterThanOrEqual(1);
+    });
     expect(screen.getByText("Updated the terminal chat view.")).toBeTruthy();
     expect(screen.queryByLabelText("terminal input")).toBeNull();
 
@@ -1416,7 +1437,7 @@ describe("TaskDetailRoute", () => {
 
     await waitFor(() => {
       expect(mocks.getTaskAiSessions).toHaveBeenCalledTimes(1);
-      expect(mocks.getTaskAiSessions).toHaveBeenCalledWith("task-1", false, undefined);
+      expect(mocks.getTaskAiSessions).toHaveBeenCalledWith("task-1", true, undefined);
     });
   });
 
@@ -1558,7 +1579,7 @@ describe("TaskDetailRoute", () => {
     fireEvent.submit(searchInput.closest("form")!);
 
     await waitFor(() => {
-      expect(mocks.getTaskAiSessions).toHaveBeenCalledWith("task-1", false, "database migration");
+      expect(mocks.getTaskAiSessions).toHaveBeenCalledWith("task-1", true, "database migration");
     });
     expect(await screen.findByRole("button", { name: /Gemini architecture answer/ })).toBeTruthy();
   });
@@ -1618,7 +1639,7 @@ describe("TaskDetailRoute", () => {
         "claude.jsonl",
         null,
         expect.any(Number),
-        false,
+        true,
         undefined,
         undefined,
       );
@@ -1634,7 +1655,7 @@ describe("TaskDetailRoute", () => {
         "claude.jsonl",
         null,
         expect.any(Number),
-        false,
+        true,
         undefined,
         ["system"],
       );
