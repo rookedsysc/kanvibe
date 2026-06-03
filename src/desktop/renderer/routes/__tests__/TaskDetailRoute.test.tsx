@@ -1496,6 +1496,62 @@ describe("TaskDetailRoute", () => {
     expect(await screen.findByRole("button", { name: /Older chat/ })).toBeTruthy();
   });
 
+  it("provider 필터가 현재 페이지를 모두 숨겨도 다음 세션 페이지를 불러올 수 있다", async () => {
+    mocks.getSidebarDefaultCollapsed.mockResolvedValue(true);
+    mocks.getTaskById.mockResolvedValue({
+      id: "task-1",
+      title: "task title",
+      description: null,
+      branchName: "feat/paged-provider-filter",
+      baseBranch: "main",
+      prUrl: null,
+      sessionType: null,
+      sessionName: null,
+      sshHost: null,
+      projectId: "project-1",
+      project: { id: "project-1", name: "kanvibe" },
+      status: "todo",
+      agentType: null,
+      worktreePath: "/repo__worktrees/paged-provider-filter",
+    });
+    mocks.getTaskAiSessions
+      .mockResolvedValueOnce({
+        isRemote: false,
+        targetPath: "/repo__worktrees/paged-provider-filter",
+        repoPath: "/repo",
+        sources: [],
+        nextCursor: "20",
+        sessions: [
+          { id: "claude-newest", provider: "claude", startedAt: null, updatedAt: "2026-01-01T00:03:00.000Z", matchedPath: "/repo", matchScope: "worktree", title: "Claude newest", firstUserPrompt: "Claude prompt", messageCount: 2, sourceRef: "claude.jsonl" },
+        ],
+      })
+      .mockResolvedValueOnce({
+        isRemote: false,
+        targetPath: "/repo__worktrees/paged-provider-filter",
+        repoPath: "/repo",
+        sources: [],
+        nextCursor: null,
+        sessions: [
+          { id: "codex-older", provider: "codex", startedAt: null, updatedAt: "2026-01-01T00:02:00.000Z", matchedPath: "/repo", matchScope: "worktree", title: "Codex older", firstUserPrompt: "Codex prompt", messageCount: 3, sourceRef: "codex.jsonl" },
+        ],
+      });
+
+    render(<TaskDetailRoute />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "aiSessions.inlineChat" }));
+    expect(await screen.findByRole("button", { name: /Claude newest/ })).toBeTruthy();
+
+    fireEvent.click(screen.getByTestId("ai-session-filter-codex"));
+
+    expect(screen.queryByRole("button", { name: /Claude newest/ })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "aiSessions.loadMoreSessions" }));
+
+    await waitFor(() => {
+      expect(mocks.getTaskAiSessions).toHaveBeenLastCalledWith("task-1", true, undefined, "20", 20);
+    });
+    expect(await screen.findByRole("button", { name: /Codex older/ })).toBeTruthy();
+  });
+
   it("채팅 상세 메시지는 최신순 페이지를 받고 더보기로 이전 메시지를 이어 붙인다", async () => {
     mocks.getSidebarDefaultCollapsed.mockResolvedValue(true);
     mocks.getTaskById.mockResolvedValue({

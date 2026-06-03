@@ -593,39 +593,43 @@ function InlineAiChatView({ taskId }: { taskId: string }) {
             {historyError ? <InlineAiChatEmpty compact text={historyError} /> : null}
             {isHistoryLoading ? <InlineAiChatEmpty compact text={t("aiSessions.loadingDetail")} /> : null}
             {history ? (
-              filteredSessions.length > 0 ? (
+              filteredSessions.length > 0 || history.nextCursor ? (
                 <div data-testid="ai-session-list" className="space-y-2">
-                  {filteredSessions.map((session) => {
-                    const sessionKey = getAiSessionKey(session);
-                    const isSelected = selectedSessionKey === sessionKey;
-                    return (
-                      <button
-                        key={sessionKey}
-                        type="button"
-                        onClick={() => {
-                          setSelectedSessionKey(sessionKey);
-                          setActiveRoles([]);
-                        }}
-                        className={`w-full rounded-xl border p-3 text-left transition-colors ${
-                          isSelected
-                            ? "border-brand-primary bg-brand-subtle"
-                            : "border-border-default bg-bg-page hover:border-brand-primary/70"
-                        }`}
-                        aria-label={`${AI_SESSION_PROVIDER_META[session.provider].label} ${session.title ?? session.firstUserPrompt ?? session.id}`}
-                      >
-                        <div className="mb-2 flex items-start gap-2">
-                          <AiSessionProviderIcon provider={session.provider} />
-                          <span className="min-w-0 flex-1 truncate text-xs font-semibold text-text-primary">
-                            {session.title ?? session.firstUserPrompt ?? session.id}
-                          </span>
-                        </div>
-                        {session.firstUserPrompt ? (
-                          <p className="line-clamp-2 text-[11px] leading-4 text-text-muted">{session.firstUserPrompt}</p>
-                        ) : null}
-                        <p className="mt-2 text-[10px] text-text-muted">{session.messageCount}</p>
-                      </button>
-                    );
-                  })}
+                  {filteredSessions.length > 0 ? (
+                    filteredSessions.map((session) => {
+                      const sessionKey = getAiSessionKey(session);
+                      const isSelected = selectedSessionKey === sessionKey;
+                      return (
+                        <button
+                          key={sessionKey}
+                          type="button"
+                          onClick={() => {
+                            setSelectedSessionKey(sessionKey);
+                            setActiveRoles([]);
+                          }}
+                          className={`w-full rounded-xl border p-3 text-left transition-colors ${
+                            isSelected
+                              ? "border-brand-primary bg-brand-subtle"
+                              : "border-border-default bg-bg-page hover:border-brand-primary/70"
+                          }`}
+                          aria-label={`${AI_SESSION_PROVIDER_META[session.provider].label} ${session.title ?? session.firstUserPrompt ?? session.id}`}
+                        >
+                          <div className="mb-2 flex items-start gap-2">
+                            <AiSessionProviderIcon provider={session.provider} />
+                            <span className="min-w-0 flex-1 truncate text-xs font-semibold text-text-primary">
+                              {session.title ?? session.firstUserPrompt ?? session.id}
+                            </span>
+                          </div>
+                          {session.firstUserPrompt ? (
+                            <p className="line-clamp-2 text-[11px] leading-4 text-text-muted">{session.firstUserPrompt}</p>
+                          ) : null}
+                          <p className="mt-2 text-[10px] text-text-muted">{session.messageCount}</p>
+                        </button>
+                      );
+                    })
+                  ) : (
+                    <InlineAiChatEmpty compact text={history.isRemote ? t("aiSessions.remoteBadge") : t("aiSessions.noPreview")} />
+                  )}
                   {history.nextCursor ? (
                     <button
                       type="button"
