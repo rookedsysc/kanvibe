@@ -108,7 +108,6 @@
     "branchCount": "{count}개의 브랜치",
     "branchNavHint": "↑↓ 이동 · Enter 선택 · Esc 닫기",
     "branchName": "브랜치 이름",
-    "branchPlaceholder": "feat/my-feature",
     "sessionType": "세션 타입",
     "sshHost": "SSH 호스트 (선택)",
     "createTitle": "새 작업 생성",

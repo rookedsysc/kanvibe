@@ -333,6 +333,23 @@ async function openCreateTaskModalWithVimN(page) {
   await page.waitForTimeout(700);
 }
 
+async function assertCreateTaskBranchNameInputStartsBlank(page) {
+  const input = page.locator("input[name='branchName']").first();
+  await input.waitFor({ state: "visible", timeout: 7000 });
+  const placeholder = await input.getAttribute("placeholder");
+  const value = await input.inputValue();
+
+  if (placeholder !== null) {
+    throw new Error(`expected create-task branch input to have no placeholder, got ${JSON.stringify(placeholder)}`);
+  }
+
+  if (value !== "") {
+    throw new Error(`expected create-task branch input to start empty, got ${JSON.stringify(value)}`);
+  }
+
+  return "branch name input has no placeholder and starts empty";
+}
+
 async function assertCreateTaskModalClosed(page, context) {
   await page.waitForTimeout(800);
   const isVisible = await page.locator("input[name='branchName']").first().isVisible().catch(() => false);
@@ -650,11 +667,14 @@ async function main() {
 
     await takeScreenshot(page, run, "vim-command-move-all-statuses", screenshots);
 
-    await optionalStep(checks, "Vim n opens the create-task modal when setting is ON", async () => {
+    await optionalStep(checks, "Vim n opens the create-task modal with a blank branch name field when setting is ON", async () => {
       await openCreateTaskModalWithVimN(page);
+      const branchNameDetail = await assertCreateTaskBranchNameInputStartsBlank(page);
+      await takeScreenshot(page, run, "create-task-modal-blank-branch-name", screenshots);
+      await page.waitForTimeout(1200);
       await page.keyboard.press("Escape");
       await assertCreateTaskModalClosed(page, "Escape should close Vim-created task modal");
-      return "n opened Create Task modal; Escape closed it";
+      return `n opened Create Task modal; ${branchNameDetail}; screenshot captured; Escape closed it`;
     });
 
     await optionalStep(checks, "Vim dd deletes the focused task after confirmation when setting is ON", async () => {
@@ -828,7 +848,7 @@ async function main() {
 
   const result = {
     ok,
-    scope: "Electron UI QA for PR #275/#276 cleanup plus Vim-style board controls: clone fixture repo, seed real tasks, verify h/j/k/l, / page find with Enter/Shift+Enter, n, dd, :move todo|progress|pending|review|done, settings ON/OFF behavior, and external worktree cleanup",
+    scope: "Electron UI QA for PR #275/#276 cleanup plus Vim-style board controls: clone fixture repo, seed real tasks, verify h/j/k/l, / page find with Enter/Shift+Enter, n create-task modal blank branch-name field, dd, :move todo|progress|pending|review|done, settings ON/OFF behavior, and external worktree cleanup",
     branch: gitValue(["branch", "--show-current"]),
     commit: gitValue(["rev-parse", "--short", "HEAD"]),
     checks,

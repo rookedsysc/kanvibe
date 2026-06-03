@@ -70,10 +70,38 @@ function createProject(overrides?: Partial<Project>): Project {
   };
 }
 
+function getBranchNameInput() {
+  return screen.getByLabelText(/branchName/) as HTMLInputElement;
+}
+
 describe("CreateTaskModal", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockGetProjectBranches.mockResolvedValue(["main", "develop"]);
+  });
+
+  it("새 작업 브랜치 이름 입력은 예시 브랜치명을 placeholder로 보여주지 않는다", async () => {
+    // Given
+    render(
+      <CreateTaskModal
+        isOpen
+        onClose={vi.fn()}
+        sshHosts={["remote-box"]}
+        projects={[createProject()]}
+        defaultProjectId="project-remote"
+      />,
+    );
+
+    await waitFor(() => {
+      expect(mockGetProjectBranches).toHaveBeenCalledWith("project-remote");
+    });
+
+    // When
+    const branchNameInput = getBranchNameInput();
+
+    // Then
+    expect(branchNameInput.getAttribute("placeholder")).toBeNull();
+    expect(branchNameInput.value).toBe("");
   });
 
   it("로컬 프로젝트 task 생성도 세션 도구 프롬프트 없이 생성 요청을 보낸다", async () => {
@@ -98,7 +126,7 @@ describe("CreateTaskModal", () => {
     });
 
     // When
-    fireEvent.change(screen.getByPlaceholderText("branchPlaceholder"), { target: { value: "fix/session-prompt" } });
+    fireEvent.change(getBranchNameInput(), { target: { value: "fix/session-prompt" } });
     fireEvent.click(screen.getByRole("button", { name: "create" }));
 
     // Then
@@ -140,7 +168,7 @@ describe("CreateTaskModal", () => {
     });
 
     // When
-    fireEvent.change(screen.getByPlaceholderText("branchPlaceholder"), { target: { value: "fix/remote-fast" } });
+    fireEvent.change(getBranchNameInput(), { target: { value: "fix/remote-fast" } });
     fireEvent.click(screen.getByRole("button", { name: "create" }));
 
     // Then
@@ -182,7 +210,7 @@ describe("CreateTaskModal", () => {
     });
 
     // When
-    fireEvent.change(screen.getByPlaceholderText("branchPlaceholder"), { target: { value: "fix/session-prompt" } });
+    fireEvent.change(getBranchNameInput(), { target: { value: "fix/session-prompt" } });
     fireEvent.click(screen.getByRole("button", { name: "create" }));
 
     // Then
@@ -246,7 +274,7 @@ describe("CreateTaskModal", () => {
     });
 
     const baseBranchInput = screen.getByLabelText("baseBranch");
-    const branchNameInput = screen.getByPlaceholderText("branchPlaceholder");
+    const branchNameInput = getBranchNameInput();
     const descriptionInput = screen.getByPlaceholderText("descriptionPlaceholder");
 
     // Then
@@ -315,7 +343,7 @@ describe("CreateTaskModal", () => {
     });
 
     // When
-    const branchNameInput = screen.getByPlaceholderText("branchPlaceholder");
+    const branchNameInput = getBranchNameInput();
     fireEvent.change(branchNameInput, { target: { value: "fix/enter-submit" } });
     fireEvent.keyDown(branchNameInput, { key: "Enter" });
 

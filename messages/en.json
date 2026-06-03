@@ -108,7 +108,6 @@
     "branchCount": "{count} branches",
     "branchNavHint": "↑↓ Navigate · Enter Select · Esc Close",
     "branchName": "Branch name",
-    "branchPlaceholder": "feat/my-feature",
     "sessionType": "Session type",
     "sshHost": "SSH Host (optional)",
     "createTitle": "Create New Task",
