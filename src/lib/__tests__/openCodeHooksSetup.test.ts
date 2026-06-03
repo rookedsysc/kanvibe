@@ -54,9 +54,10 @@ describe("openCodeHooksSetup", () => {
       expect(pluginContent).toContain("/api/hooks/status");
       expect(pluginContent).toContain('const TASK_ID = "task-1";');
       expect(pluginContent).not.toContain(".kanvibe/task-id");
-      expect(pluginContent).toContain("hooks-targets.json");
-      expect(pluginContent).toContain("task-state.json");
-      expect(pluginContent).toContain("readFileSync(KANVIBE_TARGETS_FILE");
+      expect(pluginContent).toContain("status.md");
+      expect(pluginContent).not.toContain("hooks-targets.json");
+      expect(pluginContent).not.toContain("task-state.json");
+      expect(pluginContent).not.toContain("readFileSync(KANVIBE_TARGETS_FILE");
       expect(pluginContent).toContain("writeFileSync(");
       expect(pluginContent).toContain("taskId: TASK_ID");
     });

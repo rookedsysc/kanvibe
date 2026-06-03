@@ -44,12 +44,12 @@ describe("gitExclude remote", () => {
     );
     expect(mockWriteTextFile).toHaveBeenCalledWith(
       "/remote/main/.git/info/exclude",
-      expect.stringContaining(".kanvibe/hooks-targets.json"),
+      expect.stringContaining(".kanvibe/status.md"),
       "remote-host",
     );
-    expect(mockWriteTextFile).toHaveBeenCalledWith(
+    expect(mockWriteTextFile).not.toHaveBeenCalledWith(
       "/remote/main/.git/info/exclude",
-      expect.stringContaining(".kanvibe/task-state.json"),
+      expect.stringContaining(".kanvibe/hooks-targets.json"),
       "remote-host",
     );
   });

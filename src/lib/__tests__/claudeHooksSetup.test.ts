@@ -28,9 +28,10 @@ describe("claudeHooksSetup", () => {
     expect(stopScript).not.toContain("X-Kanvibe-Token");
     expect(questionScript).not.toContain("X-Kanvibe-Token");
     expect(promptScript).toContain(".kanvibe");
-    expect(promptScript).toContain("hooks-targets.json");
-    expect(promptScript).toContain("task-state.json");
-    expect(promptScript).toContain("while IFS=");
+    expect(promptScript).toContain("status.md");
+    expect(promptScript).not.toContain("hooks-targets.json");
+    expect(promptScript).not.toContain("task-state.json");
+    expect(promptScript).not.toContain("while IFS=");
 
     const status = await getClaudeHooksStatus(repoPath);
     expect(status.installed).toBe(true);

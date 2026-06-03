@@ -4,7 +4,6 @@ import { addAiToolPatternsToGitExclude } from "@/lib/gitExclude";
 import { readTextFile, readTextFiles } from "@/lib/hostFileAccess";
 import { extractShellHookServerUrl, validateHookServerConfiguration } from "@/lib/hookServerStatus";
 import { buildShellKanvibeStatusUpdater, buildShellTaskIdResolver, getShellTaskIdBindingStatus } from "@/lib/hookTaskBinding";
-import { upsertKanvibeHookTarget } from "@/lib/kanvibeProjectState";
 
 /** UserPromptSubmit hook bash 스크립트를 생성한다 */
 export function generatePromptHookScript(kanvibeUrl: string, taskId: string): string {
@@ -139,7 +138,6 @@ export async function setupClaudeHooks(
   await chmod(promptScriptPath, 0o755);
   await chmod(stopScriptPath, 0o755);
   await chmod(questionScriptPath, 0o755);
-  await upsertKanvibeHookTarget(repoPath, { url: kanvibeUrl, taskId });
 
   const settings = await readSettingsJson(settingsPath);
   if (!settings.hooks) {

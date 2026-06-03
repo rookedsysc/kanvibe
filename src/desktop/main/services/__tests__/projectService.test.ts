@@ -1629,7 +1629,7 @@ describe("projectService local hook installation", () => {
     await syncRegisteredProjectWorktrees();
 
     expect(mocks.readTextFile).toHaveBeenCalledWith(
-      "/workspace/api__worktrees/feature-review/.kanvibe/task-state.json",
+      "/workspace/api__worktrees/feature-review/.kanvibe/status.md",
       null,
     );
     expect(taskSave).toHaveBeenCalledWith(expect.objectContaining({

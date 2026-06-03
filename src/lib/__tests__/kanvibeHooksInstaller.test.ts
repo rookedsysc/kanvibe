@@ -438,7 +438,7 @@ describe("kanvibeHooksInstaller", () => {
     );
   });
 
-  it("원격 hook 설치는 .kanvibe/hooks-targets.json에 현재 hook target을 기존 target 뒤에 추가한다", async () => {
+  it("원격 hook 설치는 제거된 .kanvibe/hooks-targets.json을 읽거나 쓰지 않는다", async () => {
     // Given
     mockExecGit.mockImplementation(async (command: string) => {
       if (command.includes("__KANVIBE_FILE_RECORD__")) {
@@ -460,14 +460,8 @@ describe("kanvibeHooksInstaller", () => {
     await installKanvibeHooks("/remote/repo", "task-2", "remote-host");
 
     // Then
-    const targets = JSON.parse(extractWrittenContent(mockExecGit.mock.calls, "/remote/repo/.kanvibe/hooks-targets.json"));
-    expect(targets).toEqual({
-      version: 1,
-      targets: [
-        { url: "http://10.0.0.5:9736", taskId: "other-client-task" },
-        { url: "http://192.168.0.8:9736", taskId: "task-2" },
-      ],
-    });
+    const commands = mockExecGit.mock.calls.map(([command]) => String(command));
+    expect(commands.join("\n")).not.toContain("/remote/repo/.kanvibe/hooks-targets.json");
   });
 
   it.each([
@@ -475,39 +469,20 @@ describe("kanvibeHooksInstaller", () => {
     ["gemini", "/remote/repo/.gemini/settings.json", "/remote/repo/.claude/settings.json"],
     ["codex", "/remote/repo/.codex/hooks.json", "/remote/repo/.opencode/plugins/kanvibe-plugin.ts"],
     ["openCode", "/remote/repo/.opencode/plugins/kanvibe-plugin.ts", "/remote/repo/.codex/hooks.json"],
-  ] as const)("원격 %s 단독 hook 설치도 .kanvibe/hooks-targets.json에 현재 hook target을 추가한다", async (provider, expectedProviderFile, unexpectedProviderFile) => {
+  ] as const)("원격 %s 단독 hook 설치도 provider 파일만 쓰고 hook target registry는 쓰지 않는다", async (provider, expectedProviderFile, unexpectedProviderFile) => {
     // Given
-    mockExecGit.mockImplementation(async (command: string) => {
-      if (command.includes("__KANVIBE_FILE_RECORD__")) {
-        return buildRemoteTextFileRecords({
-          "/remote/repo/.kanvibe/hooks-targets.json": JSON.stringify({
-            version: 1,
-            targets: [
-              { url: "http://10.0.0.5:9736", taskId: "other-client-task" },
-            ],
-          }),
-        });
-      }
-
-      return "";
-    });
     const { installKanvibeHookProvider } = await import("@/lib/kanvibeHooksInstaller");
 
     // When
     await installKanvibeHookProvider("/remote/repo", "task-2", provider, "remote-host");
 
     // Then
-    const targets = JSON.parse(extractWrittenContent(mockExecGit.mock.calls, "/remote/repo/.kanvibe/hooks-targets.json"));
-    expect(targets.targets).toEqual([
-      { url: "http://10.0.0.5:9736", taskId: "other-client-task" },
-      { url: "http://192.168.0.8:9736", taskId: "task-2" },
-    ]);
-
-    const writeCommand = mockExecGit.mock.calls.find(([command]) => typeof command === "string"
-      && command.includes("printf '%s'")
-      && command.includes("/remote/repo/.kanvibe/hooks-targets.json"))?.[0] as string;
-    expect(writeCommand).toContain(expectedProviderFile);
-    expect(writeCommand).not.toContain(unexpectedProviderFile);
+    const writeCommands = mockExecGit.mock.calls
+      .map(([command]) => String(command))
+      .filter((command) => command.includes("printf '%s'") && command.includes(" > "));
+    expect(writeCommands.join("\n")).toContain(expectedProviderFile);
+    expect(writeCommands.join("\n")).not.toContain(unexpectedProviderFile);
+    expect(writeCommands.join("\n")).not.toContain("/remote/repo/.kanvibe/hooks-targets.json");
   });
 
   it("원격 전체 hook 설치는 기존 설정 파일을 한 번의 SSH 명령으로 읽는다", async () => {
@@ -528,7 +503,7 @@ describe("kanvibeHooksInstaller", () => {
 
     expect(batchReadCommands).toHaveLength(1);
     expect(individualReadCommands).toHaveLength(0);
-    expect(writeCommands).toHaveLength(5);
+    expect(writeCommands).toHaveLength(4);
   });
 
   it("원격 Claude/Gemini stale hook entry도 재설치 시 현재 project 경로로 덮어쓴다", async () => {
@@ -626,7 +601,7 @@ describe("kanvibeHooksInstaller", () => {
       const writeCommands = mockExecGit.mock.calls.filter(([command]) => typeof command === "string"
         && command.includes("printf '%s'")
         && command.includes(" > "));
-      expect(writeCommands).toHaveLength(15);
+      expect(writeCommands).toHaveLength(12);
     } finally {
       vi.useRealTimers();
     }
