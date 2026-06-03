@@ -97,8 +97,6 @@ function isRemoteConnectionError(error: unknown): boolean {
   return /원격 명령 실패:.*(Connection (?:reset|closed)|kex_exchange_identification|operation timed out|no route to host|connection refused|could not resolve hostname|broken pipe)/i.test(message);
 }
 
-const projectRootHookRepairJobs = new Map<string, Promise<void>>();
-const projectRootHookRepairScheduled = new Set<string>();
 const projectRootTaskRepairJobs = new Map<string, Promise<void>>();
 const projectRootTaskRepairScheduled = new Set<string>();
 const projectRootRepairDeletingProjectIds = new Set<string>();
@@ -106,48 +104,6 @@ const projectRootRepairDeletedProjectIds = new Set<string>();
 
 function isProjectRootRepairBlocked(projectId: string): boolean {
   return projectRootRepairDeletingProjectIds.has(projectId) || projectRootRepairDeletedProjectIds.has(projectId);
-}
-
-function scheduleProjectRootHookRepair(project: Project) {
-  if (isProjectRootRepairBlocked(project.id)) {
-    return;
-  }
-
-  const projectPathKey = buildProjectPathKey(project.repoPath, project.sshHost);
-  if (projectRootHookRepairScheduled.has(projectPathKey)) {
-    return;
-  }
-
-  projectRootHookRepairScheduled.add(projectPathKey);
-
-  setTimeout(() => {
-    const repairJob = (async () => {
-      try {
-        if (isProjectRootRepairBlocked(project.id)) {
-          return;
-        }
-
-        const { repaired } = await ensureProjectRootTask(project, {
-          repairHooks: true,
-          throwOnHookRepairFailure: false,
-          suppressRemoteConnectionErrorLogging: true,
-        });
-
-        if (repaired) {
-          broadcastBoardUpdate();
-        }
-      } catch (error) {
-        if (!isRemoteConnectionError(error)) {
-          console.error(`${project.name} 기본 브랜치 hooks 백그라운드 복구 실패:`, error);
-        }
-      } finally {
-        projectRootHookRepairJobs.delete(projectPathKey);
-        projectRootHookRepairScheduled.delete(projectPathKey);
-      }
-    })();
-
-    projectRootHookRepairJobs.set(projectPathKey, repairJob);
-  }, 0);
 }
 
 async function installSyncedWorktreeHooks(
@@ -200,7 +156,6 @@ function scheduleProjectRootTaskRepair(project: Project) {
         }
 
         const { repaired } = await ensureProjectRootTask(project);
-        scheduleProjectRootHookRepair(project);
 
         if (repaired) {
           broadcastBoardUpdate();
@@ -533,9 +488,6 @@ export async function registerProject(
       repairHooks: !saved.sshHost,
       throwOnHookRepairFailure: false,
     });
-    if (saved.sshHost) {
-      scheduleProjectRootHookRepair(saved);
-    }
   } catch (error) {
     await repo.remove(saved);
     return {
@@ -633,19 +585,11 @@ async function syncProjectWorktrees(
   };
 
   try {
-    const shouldRepairHooksSynchronously = !project.sshHost;
     const { repaired } = await ensureProjectRootTask(project, {
-      repairHooks: shouldRepairHooksSynchronously,
+      repairHooks: false,
       throwOnHookRepairFailure: false,
     });
-    if (shouldRepairHooksSynchronously && repaired) {
-      result.hooksSetup.push(project.name);
-    }
     result.changed = result.changed || repaired;
-
-    if (project.sshHost) {
-      scheduleProjectRootHookRepair(project);
-    }
 
     const worktrees = await listWorktrees(project.repoPath, project.sshHost);
 
@@ -896,9 +840,6 @@ export async function scanAndRegisterProjects(
       /** 기본 브랜치 작업이 준비되면 hooks가 보장된다 */
       if (defaultTask && shouldRepairHooksSynchronously) {
         result.hooksSetup.push(projectName);
-      }
-      if (saved.sshHost) {
-        scheduleProjectRootHookRepair(saved);
       }
     } catch (error) {
       result.errors.push(
