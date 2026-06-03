@@ -107,7 +107,6 @@
     "branchCount": "{count} 个分支",
     "branchNavHint": "↑↓ 导航 · Enter 选择 · Esc 关闭",
     "branchName": "分支名称",
-    "branchPlaceholder": "feat/my-feature",
     "sessionType": "会话类型",
     "sshHost": "SSH 主机（可选）",
     "createTitle": "创建新任务",

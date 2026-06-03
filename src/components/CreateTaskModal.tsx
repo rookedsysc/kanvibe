@@ -278,14 +278,17 @@ function CreateTaskModalContent({
           )}
 
           <div>
-            <label className="block text-sm text-text-secondary mb-1">
+            <label
+              htmlFor="create-task-branch-name"
+              className="block text-sm text-text-secondary mb-1"
+            >
               {t("branchName")} *
             </label>
             <input
+              id="create-task-branch-name"
               name="branchName"
               required
               className="w-full px-3 py-2 bg-bg-page border border-border-default rounded-md text-text-primary focus:outline-none focus:border-brand-primary font-mono transition-colors"
-              placeholder={t("branchPlaceholder")}
             />
           </div>
 
