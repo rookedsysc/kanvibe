@@ -12,7 +12,7 @@ import {
   truncateText,
 } from "@/lib/aiSessions/shared";
 import { getSqliteConnection, querySqlite } from "@/lib/sqliteConnectionPool";
-import type { AggregatedAiMessage, AiSessionDetailReaderResult, AiSessionReaderContext, AiSessionReaderResult } from "@/lib/aiSessions/types";
+import type { AggregatedAiMessage, AiMessageRole, AiSessionDetailReaderResult, AiSessionReaderContext, AiSessionReaderResult } from "@/lib/aiSessions/types";
 
 const OPENCODE_DB_PATH = path.join(homedir(), ".local", "share", "opencode", "opencode.db");
 const OPEN_CODE_QUERY_LIMIT = 120;
@@ -26,6 +26,7 @@ interface OpenCodeSessionRow {
   time_updated: number | null;
   part_count?: number | null;
   first_user_part?: string | null;
+  matching_part_count?: number | null;
 }
 
 interface OpenCodeDetailRow {
@@ -52,6 +53,8 @@ export async function readOpenCodeSessions(context: AiSessionReaderContext): Pro
     return createReaderResult("opencode", { available: false, reason: "OpenCode database not found" });
   }
 
+  const normalizedQuery = context.query?.toLowerCase();
+  const escapedLikeQuery = normalizedQuery ? escapeSqliteLikePattern(normalizedQuery) : null;
   let rows: OpenCodeSessionRow[];
   try {
     rows = querySqlite<OpenCodeSessionRow>(db,
@@ -71,10 +74,14 @@ export async function readOpenCodeSessions(context: AiSessionReaderContext): Pro
             AND json_extract(p.data, '$.type') = 'text'
           ORDER BY p.time_created ASC
           LIMIT 1
-        ) as first_user_part
+        ) as first_user_part,
+        ${escapedLikeQuery
+          ? `(SELECT COUNT(*) FROM part p WHERE p.session_id = s.id AND lower(p.data) LIKE '%' || @query || '%' ESCAPE '\\')`
+          : '0'} as matching_part_count
       FROM session s
       ORDER BY s.time_updated DESC
-      LIMIT ${OPEN_CODE_QUERY_LIMIT};`
+      LIMIT ${OPEN_CODE_QUERY_LIMIT};`,
+      escapedLikeQuery ? { query: escapedLikeQuery } : undefined
     );
   } catch (error) {
     return createReaderResult("opencode", {
@@ -85,6 +92,13 @@ export async function readOpenCodeSessions(context: AiSessionReaderContext): Pro
 
   const sessions = rows
     .filter((row) => determineMatchScope(row.directory, context))
+    .filter((row) => {
+      if (!normalizedQuery) return true;
+      const firstUserPrompt = extractOpenCodePartText(row.first_user_part ?? "");
+      const title = row.title ?? (firstUserPrompt ? truncateText(firstUserPrompt, 80) : null);
+      return matchesOpenCodeQuery(normalizedQuery, title, firstUserPrompt, row.directory, row.id)
+        || (row.matching_part_count ?? 0) > 0;
+    })
     .map((row) => {
       const firstUserPrompt = extractOpenCodePartText(row.first_user_part ?? "");
 
@@ -100,13 +114,6 @@ export async function readOpenCodeSessions(context: AiSessionReaderContext): Pro
         messageCount: row.part_count ?? 0,
         sourceRef: row.id,
       };
-    })
-    .filter((s) => {
-      if (!context.query) return true;
-      const q = context.query.toLowerCase();
-      return s.title?.toLowerCase().includes(q) ||
-             s.firstUserPrompt?.toLowerCase().includes(q) ||
-             s.matchedPath?.toLowerCase().includes(q);
     });
 
   return createReaderResult("opencode", {
@@ -126,7 +133,7 @@ export async function readOpenCodeSessionDetail(
     return null;
   }
 
-  const sid = escapeSql(sessionId);
+  const sid = sessionId;
 
   const db = getSqliteConnection(OPENCODE_DB_PATH);
   if (!db) return null;
@@ -144,8 +151,9 @@ export async function readOpenCodeSessionDetail(
     FROM session s
     JOIN part p ON p.session_id = s.id
     JOIN message m ON m.id = p.message_id
-    WHERE s.id = '${sid}'
-    ORDER BY p.time_created ASC;`
+    WHERE s.id = @sessionId
+    ORDER BY p.time_created ASC;`,
+    { sessionId: sid }
   );
 
   if (allRows.length === 0) return null;
@@ -156,7 +164,7 @@ export async function readOpenCodeSessionDetail(
   const filteredMessages = allRows
     .map((row) => {
       const parsedMessage = safeJsonParse<Record<string, unknown>>(row.message_data);
-      const role = resolveOpenCodeRole(typeof parsedMessage?.role === "string" ? parsedMessage.role : undefined);
+      const role = resolveOpenCodeRole(typeof parsedMessage?.role === "string" ? parsedMessage.role : undefined, row.part_data);
       const text = extractOpenCodePartText(row.part_data);
 
       if (context.roles && context.roles.length > 0 && !context.roles.includes(role)) return null;
@@ -185,6 +193,11 @@ export async function readOpenCodeSessionDetail(
   });
 }
 
+function matchesOpenCodeQuery(query: string | undefined, ...values: Array<string | null | undefined>): boolean {
+  if (!query) return true;
+  return values.some((value) => value?.toLowerCase().includes(query));
+}
+
 function extractOpenCodePartText(rawData: string): string {
   const parsed = safeJsonParse<Record<string, unknown>>(rawData);
   if (!parsed) return "";
@@ -202,12 +215,21 @@ function extractOpenCodePartText(rawData: string): string {
   return "";
 }
 
-function resolveOpenCodeRole(role: string | undefined): "user" | "assistant" | "unknown" {
+function resolveOpenCodeRole(role: string | undefined, rawPartData?: string): AiMessageRole {
+  const parsedPart = rawPartData ? safeJsonParse<Record<string, unknown>>(rawPartData) : null;
+  if (parsedPart?.type === "tool") return "tool";
+  if (parsedPart?.type === "reasoning") return "reasoning";
   if (role === "user") return "user";
   if (role === "assistant") return "assistant";
+  if (role === "system") return "system";
+  if (role === "developer") return "developer";
+  if (role === "tool") return "tool";
   return "unknown";
 }
 
-function escapeSql(value: string): string {
-  return value.replaceAll("'", "''");
+function escapeSqliteLikePattern(value: string): string {
+  return value
+    .replaceAll("\\", "\\\\")
+    .replaceAll("%", "\\%")
+    .replaceAll("_", "\\_");
 }

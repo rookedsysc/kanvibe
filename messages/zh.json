@@ -333,8 +333,24 @@
       "inlineChat": "AI 聊天",
       "remoteBadge": "不支持远程",
       "noPreview": "没有可显示的预览。",
+      "loadHistory": "加载历史",
+      "search": "搜索",
+      "searchLabel": "搜索 AI 聊天",
+      "searchPlaceholder": "搜索聊天...",
+      "providerFilterLabel": "筛选 {provider}",
+      "loadHistoryHint": "AI 会话历史仅在需要时加载。",
+      "selectSession": "从左侧列表选择 AI 会话。",
       "loadingDetail": "正在加载消息...",
-      "detailError": "加载会话详情失败。"
+      "detailError": "加载会话详情失败。",
+      "roles": {
+        "user": "用户输入",
+        "assistant": "AI 回复",
+        "system": "系统输入",
+        "developer": "开发者输入",
+        "reasoning": "推理",
+        "tool": "工具",
+        "unknown": "其他"
+      }
     },
     "priority": "优先级",
     "collapseSidebar": "折叠侧栏",

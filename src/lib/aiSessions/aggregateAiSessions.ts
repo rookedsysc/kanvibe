@@ -14,17 +14,7 @@ export async function aggregateAiSessions(context: AiSessionReaderContext): Prom
     readReaderSafely("gemini", context, readGeminiSessions),
   ]);
 
-  let allSessions = [...claude.sessions, ...codex.sessions, ...openCode.sessions, ...gemini.sessions];
-
-  // 각 리더에서 이미 필터링하지만, 취합 단계에서 다시 한 번 필터링 (선택 사항이나 일관성 위해 유지)
-  if (context.query) {
-    const q = context.query.toLowerCase();
-    allSessions = allSessions.filter((s) =>
-      s.title?.toLowerCase().includes(q) ||
-      s.firstUserPrompt?.toLowerCase().includes(q) ||
-      s.matchedPath?.toLowerCase().includes(q)
-    );
-  }
+  const allSessions = [...claude.sessions, ...codex.sessions, ...openCode.sessions, ...gemini.sessions];
 
   return createAggregationResult({
     isRemote: Boolean(context.sshHost),
@@ -72,7 +62,7 @@ export async function getAiSessionDetail(
     case "opencode":
       return readOpenCodeSessionDetail(context, sessionId, sourceRef, cursor, limit);
     case "gemini":
-      return readGeminiSessionDetail(context, sessionId);
+      return readGeminiSessionDetail(context, sessionId, sourceRef, cursor, limit);
     default:
       return null;
   }
