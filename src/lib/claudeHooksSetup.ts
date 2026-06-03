@@ -3,7 +3,12 @@ import path from "path";
 import { addAiToolPatternsToGitExclude } from "@/lib/gitExclude";
 import { readTextFile, readTextFiles } from "@/lib/hostFileAccess";
 import { extractShellHookServerUrl, validateHookServerConfiguration } from "@/lib/hookServerStatus";
-import { buildShellTaskIdResolver, getShellTaskIdBindingStatus } from "@/lib/hookTaskBinding";
+import {
+  buildShellKanvibeStatusUpdater,
+  buildShellTaskIdResolver,
+  getShellTaskIdBindingStatus,
+  hasShellKanvibeStatusJsonPersistence,
+} from "@/lib/hookTaskBinding";
 
 /** UserPromptSubmit hook bash 스크립트를 생성한다 */
 export function generatePromptHookScript(kanvibeUrl: string, taskId: string): string {
@@ -14,11 +19,7 @@ export function generatePromptHookScript(kanvibeUrl: string, taskId: string): st
 
 KANVIBE_URL="${kanvibeUrl}"
 ${buildShellTaskIdResolver(taskId)}
-
-curl -s -X POST "\${KANVIBE_URL}/api/hooks/status" \\
-  -H "Content-Type: application/json" \\
-  -d "{\\"taskId\\": \\\"\${TASK_ID}\\\", \\\"status\\\": \\\"progress\\\"}" \\
-  > /dev/null 2>&1
+${buildShellKanvibeStatusUpdater("progress")}
 
 exit 0
 `;
@@ -33,11 +34,7 @@ export function generateStopHookScript(kanvibeUrl: string, taskId: string): stri
 
 KANVIBE_URL="${kanvibeUrl}"
 ${buildShellTaskIdResolver(taskId)}
-
-curl -s -X POST "\${KANVIBE_URL}/api/hooks/status" \\
-  -H "Content-Type: application/json" \\
-  -d "{\\"taskId\\": \\\"\${TASK_ID}\\\", \\\"status\\\": \\\"review\\\"}" \\
-  > /dev/null 2>&1
+${buildShellKanvibeStatusUpdater("review")}
 
 exit 0
 `;
@@ -52,11 +49,7 @@ export function generateQuestionHookScript(kanvibeUrl: string, taskId: string): 
 
 KANVIBE_URL="${kanvibeUrl}"
 ${buildShellTaskIdResolver(taskId)}
-
-curl -s -X POST "\${KANVIBE_URL}/api/hooks/status" \\
-  -H "Content-Type: application/json" \\
-  -d "{\\"taskId\\": \\\"\${TASK_ID}\\\", \\\"status\\\": \\\"pending\\\"}" \\
-  > /dev/null 2>&1
+${buildShellKanvibeStatusUpdater("pending")}
 
 exit 0
 `;
@@ -218,6 +211,7 @@ export interface ClaudeHooksStatus {
   hasTaskIdBinding?: boolean;
   hasExpectedTaskId?: boolean;
   hasStatusMappings?: boolean;
+  hasStatusJsonPersistence?: boolean;
   hasExpectedHookServerUrl?: boolean;
   hasReachableHookServer?: boolean;
   boundTaskId?: string | null;
@@ -260,6 +254,7 @@ export async function getClaudeHooksStatus(repoPath: string, taskId?: string, ss
     promptContent.includes('\\\"status\\\": \\\"progress\\\"') &&
     stopContent.includes('\\\"status\\\": \\\"review\\\"') &&
     questionContent.includes('\\\"status\\\": \\\"pending\\\"');
+  const hasStatusJsonPersistence = scriptContents.every(hasShellKanvibeStatusJsonPersistence);
 
   let hasSettingsEntry = false;
   try {
@@ -283,6 +278,7 @@ export async function getClaudeHooksStatus(repoPath: string, taskId?: string, ss
     && hasTaskIdBinding
     && hasExpectedTaskId
     && hasStatusMappings
+    && hasStatusJsonPersistence
     && hookServerValidation.hasExpectedHookServerUrl;
 
   return {
@@ -294,6 +290,7 @@ export async function getClaudeHooksStatus(repoPath: string, taskId?: string, ss
     hasTaskIdBinding,
     hasExpectedTaskId,
     hasStatusMappings,
+    hasStatusJsonPersistence,
     hasExpectedHookServerUrl: hookServerValidation.hasExpectedHookServerUrl,
     hasReachableHookServer: hookServerValidation.hasReachableHookServer,
     boundTaskId,

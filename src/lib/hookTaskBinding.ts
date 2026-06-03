@@ -25,6 +25,33 @@ export interface ShellTaskIdBindingStatus {
   boundTaskId: string | null;
 }
 
+export function buildShellKanvibeStatusUpdater(status: "progress" | "pending" | "review" | "done") {
+  return `KANVIBE_STATUS="${status}"
+KANVIBE_REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || (cd "$(dirname "\${BASH_SOURCE[0]}")/../.." && pwd))"
+KANVIBE_STATE_DIR="\${KANVIBE_REPO_ROOT}/.kanvibe"
+KANVIBE_TASK_STATE_FILE="\${KANVIBE_STATE_DIR}/status.json"
+
+mkdir -p "\${KANVIBE_STATE_DIR}" 2>/dev/null || true
+KANVIBE_UPDATED_AT="$(date -u +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null || true)"
+if [ -n "\${KANVIBE_UPDATED_AT}" ]; then
+  printf '{"schemaVersion":1,"status":"%s","updatedAt":"%s"}\\n' "\${KANVIBE_STATUS}" "\${KANVIBE_UPDATED_AT}" > "\${KANVIBE_TASK_STATE_FILE}" 2>/dev/null || true
+else
+  printf '{"schemaVersion":1,"status":"%s"}\\n' "\${KANVIBE_STATUS}" > "\${KANVIBE_TASK_STATE_FILE}" 2>/dev/null || true
+fi
+
+curl -s -X POST "\${KANVIBE_URL%/}/api/hooks/status" \
+  -H "Content-Type: application/json" \
+  -d "{\\"taskId\\": \\\"\${TASK_ID}\\\", \\\"status\\\": \\\"${status}\\\"}" \
+  > /dev/null 2>&1 || true`;
+}
+
+export function hasShellKanvibeStatusJsonPersistence(content: string): boolean {
+  return content.includes("status.json")
+    && content.includes("KANVIBE_TASK_STATE_FILE")
+    && content.includes('"schemaVersion":1')
+    && content.includes('"status":"%s"');
+}
+
 export function getShellTaskIdBindingStatus(
   contents: string[],
   expectedTaskId?: string,

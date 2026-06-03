@@ -30,6 +30,9 @@ const mocks = vi.hoisted(() => ({
   installKanvibeHookProvider: vi.fn(),
   scheduleKanvibeHooksInstall: vi.fn(),
   broadcastBoardUpdate: vi.fn(),
+  readTextFile: vi.fn(),
+  writeTextFile: vi.fn(),
+  quoteShellArgument: vi.fn((value: string) => `'${value}'`),
 }));
 
 vi.mock("@/lib/database", () => ({
@@ -135,6 +138,12 @@ vi.mock("@/lib/kanvibeHooksInstaller", () => ({
   installKanvibeHooks: mocks.installKanvibeHooks,
   installKanvibeHookProvider: mocks.installKanvibeHookProvider,
   scheduleKanvibeHooksInstall: mocks.scheduleKanvibeHooksInstall,
+}));
+
+vi.mock("@/lib/hostFileAccess", () => ({
+  readTextFile: mocks.readTextFile,
+  writeTextFile: mocks.writeTextFile,
+  quoteShellArgument: mocks.quoteShellArgument,
 }));
 
 describe("projectService.deleteProject", () => {
@@ -1506,6 +1515,376 @@ describe("projectService local hook installation", () => {
       "task-worktree",
       null,
     );
+  });
+
+  it("등록된 프로젝트 background sync는 활성 세션이 있어도 .kanvibe 상태가 없으면 새 worktree를 TODO task로 등록한다", async () => {
+    mocks.getClaudeHooksStatus.mockResolvedValue({ installed: true });
+    mocks.getGeminiHooksStatus.mockResolvedValue({ installed: true });
+    mocks.getCodexHooksStatus.mockResolvedValue({ installed: true });
+    mocks.getOpenCodeHooksStatus.mockResolvedValue({ installed: true });
+    mocks.listWorktrees.mockResolvedValue([
+      {
+        path: "/workspace/api__worktrees/feature-active",
+        branch: "feature-active",
+        isBare: false,
+      },
+    ]);
+    mocks.formatSessionName.mockReturnValue("api-feature-active");
+    mocks.isSessionAlive.mockResolvedValue(true);
+    mocks.readTextFile.mockResolvedValue("");
+
+    mocks.getProjectRepository.mockResolvedValue({
+      find: vi.fn().mockResolvedValue([
+        {
+          id: "project-1",
+          name: "api",
+          repoPath: "/workspace/api",
+          defaultBranch: "main",
+          sshHost: null,
+        },
+      ]),
+    });
+
+    const taskSave = vi.fn(async (value) => ({ id: value.branchName === "main" ? "task-main" : "task-worktree", ...value }));
+    mocks.getTaskRepository.mockResolvedValue({
+      findOneBy: vi.fn(async (criteria: { branchName?: string; projectId?: string | null }) => {
+        if (criteria.projectId === "project-1" && criteria.branchName === "main") {
+          return {
+            id: "task-main",
+            branchName: "main",
+            projectId: "project-1",
+            baseBranch: "main",
+            worktreePath: "/workspace/api",
+            sshHost: null,
+          };
+        }
+
+        return null;
+      }),
+      create: vi.fn((value) => value),
+      save: taskSave,
+    });
+
+    const { syncRegisteredProjectWorktrees } = await import("@/desktop/main/services/projectService");
+
+    await syncRegisteredProjectWorktrees();
+
+    expect(taskSave).toHaveBeenCalledWith(expect.objectContaining({
+      branchName: "feature-active",
+      status: "todo",
+      sessionName: "api-feature-active",
+    }));
+  });
+
+  it("등록된 프로젝트 background sync는 .kanvibe task 상태가 있으면 그 상태로 새 worktree를 등록한다", async () => {
+    mocks.getClaudeHooksStatus.mockResolvedValue({ installed: true });
+    mocks.getGeminiHooksStatus.mockResolvedValue({ installed: true });
+    mocks.getCodexHooksStatus.mockResolvedValue({ installed: true });
+    mocks.getOpenCodeHooksStatus.mockResolvedValue({ installed: true });
+    mocks.listWorktrees.mockResolvedValue([
+      {
+        path: "/workspace/api__worktrees/feature-review",
+        branch: "feature-review",
+        isBare: false,
+      },
+    ]);
+    mocks.formatSessionName.mockReturnValue("api-feature-review");
+    mocks.isSessionAlive.mockResolvedValue(false);
+    mocks.readTextFile.mockResolvedValue(JSON.stringify({ schemaVersion: 1, status: "review", updatedAt: "2026-06-03T00:00:00.000Z" }));
+
+    mocks.getProjectRepository.mockResolvedValue({
+      find: vi.fn().mockResolvedValue([
+        {
+          id: "project-1",
+          name: "api",
+          repoPath: "/workspace/api",
+          defaultBranch: "main",
+          sshHost: null,
+        },
+      ]),
+    });
+
+    const taskSave = vi.fn(async (value) => ({ id: value.branchName === "main" ? "task-main" : "task-worktree", ...value }));
+    mocks.getTaskRepository.mockResolvedValue({
+      findOneBy: vi.fn(async (criteria: { branchName?: string; projectId?: string | null }) => {
+        if (criteria.projectId === "project-1" && criteria.branchName === "main") {
+          return {
+            id: "task-main",
+            branchName: "main",
+            projectId: "project-1",
+            baseBranch: "main",
+            worktreePath: "/workspace/api",
+            sshHost: null,
+          };
+        }
+
+        return null;
+      }),
+      create: vi.fn((value) => value),
+      save: taskSave,
+    });
+
+    const { syncRegisteredProjectWorktrees } = await import("@/desktop/main/services/projectService");
+
+    await syncRegisteredProjectWorktrees();
+
+    expect(mocks.readTextFile).toHaveBeenCalledWith(
+      "/workspace/api__worktrees/feature-review/.kanvibe/status.json",
+      null,
+    );
+    expect(taskSave).toHaveBeenCalledWith(expect.objectContaining({
+      branchName: "feature-review",
+      status: "review",
+    }));
+  });
+
+  it("등록된 프로젝트 background sync는 기존 worktree task도 .kanvibe task 상태대로 갱신한다", async () => {
+    mocks.getClaudeHooksStatus.mockResolvedValue({ installed: true });
+    mocks.getGeminiHooksStatus.mockResolvedValue({ installed: true });
+    mocks.getCodexHooksStatus.mockResolvedValue({ installed: true });
+    mocks.getOpenCodeHooksStatus.mockResolvedValue({ installed: true });
+    mocks.listWorktrees.mockResolvedValue([
+      {
+        path: "/workspace/api__worktrees/feature-pending",
+        branch: "feature-pending",
+        isBare: false,
+      },
+    ]);
+    mocks.readTextFile.mockResolvedValue(JSON.stringify({ schemaVersion: 1, status: "pending" }));
+
+    const existingTask = {
+      id: "task-worktree",
+      branchName: "feature-pending",
+      projectId: "project-1",
+      baseBranch: "main",
+      worktreePath: "/workspace/api__worktrees/feature-pending",
+      sshHost: null,
+      status: "todo",
+    };
+
+    mocks.getProjectRepository.mockResolvedValue({
+      find: vi.fn().mockResolvedValue([
+        {
+          id: "project-1",
+          name: "api",
+          repoPath: "/workspace/api",
+          defaultBranch: "main",
+          sshHost: null,
+        },
+      ]),
+    });
+
+    const taskSave = vi.fn(async (value) => value);
+    mocks.getTaskRepository.mockResolvedValue({
+      findOneBy: vi.fn(async (criteria: { branchName?: string; projectId?: string | null }) => {
+        if (criteria.projectId === "project-1" && criteria.branchName === "main") {
+          return {
+            id: "task-main",
+            branchName: "main",
+            projectId: "project-1",
+            baseBranch: "main",
+            worktreePath: "/workspace/api",
+            sshHost: null,
+          };
+        }
+
+        if (criteria.projectId === "project-1" && criteria.branchName === "feature-pending") {
+          return existingTask;
+        }
+
+        return null;
+      }),
+      create: vi.fn((value) => value),
+      save: taskSave,
+    });
+
+    const { syncRegisteredProjectWorktrees } = await import("@/desktop/main/services/projectService");
+
+    await syncRegisteredProjectWorktrees();
+
+    expect(taskSave).toHaveBeenCalledWith(expect.objectContaining({
+      id: "task-worktree",
+      status: "pending",
+    }));
+  });
+
+  it("프로젝트 등록은 기본 브랜치 worktree의 .kanvibe 상태를 tmux 연결 후에도 유지한다", async () => {
+    mocks.validateGitRepo.mockResolvedValue(true);
+    mocks.getDefaultBranch.mockResolvedValue("main");
+    mocks.listWorktrees.mockResolvedValue([
+      {
+        path: "/workspace/api",
+        branch: "main",
+        isBare: false,
+      },
+    ]);
+    mocks.readTextFile.mockResolvedValue(JSON.stringify({ schemaVersion: 1, status: "review", updatedAt: "2026-06-03T00:00:00.000Z" }));
+    mocks.createSessionWithoutWorktree.mockResolvedValue({ sessionName: "api-main" });
+    mocks.getClaudeHooksStatus.mockResolvedValue({ installed: true });
+    mocks.getGeminiHooksStatus.mockResolvedValue({ installed: true });
+    mocks.getCodexHooksStatus.mockResolvedValue({ installed: true });
+    mocks.getOpenCodeHooksStatus.mockResolvedValue({ installed: true });
+
+    mocks.getProjectRepository.mockResolvedValue({
+      find: vi.fn().mockResolvedValue([]),
+      create: vi.fn((value) => value),
+      save: vi.fn(async (value) => ({ id: "project-1", ...value })),
+      remove: vi.fn(),
+    });
+    const taskSave = vi.fn(async (value) => ({ id: "task-main", ...value }));
+    mocks.getTaskRepository.mockResolvedValue({
+      findOneBy: vi.fn().mockResolvedValue(null),
+      create: vi.fn((value) => value),
+      save: taskSave,
+    });
+
+    const { registerProject } = await import("@/desktop/main/services/projectService");
+
+    await expect(registerProject("api", "/workspace/api")).resolves.toMatchObject({ success: true });
+
+    expect(mocks.createSessionWithoutWorktree).toHaveBeenCalledWith(
+      "/workspace/api",
+      "main",
+      "tmux",
+      null,
+      "/workspace/api",
+    );
+    expect(taskSave).toHaveBeenCalledWith(expect.objectContaining({
+      branchName: "main",
+      sessionName: "api-main",
+      status: "review",
+    }));
+  });
+
+  it("등록된 프로젝트 background sync는 orphan worktree task도 .kanvibe 상태대로 연결한다", async () => {
+    mocks.getClaudeHooksStatus.mockResolvedValue({ installed: true });
+    mocks.getGeminiHooksStatus.mockResolvedValue({ installed: true });
+    mocks.getCodexHooksStatus.mockResolvedValue({ installed: true });
+    mocks.getOpenCodeHooksStatus.mockResolvedValue({ installed: true });
+    mocks.listWorktrees.mockResolvedValue([
+      {
+        path: "/workspace/api__worktrees/feature-orphan",
+        branch: "feature-orphan",
+        isBare: false,
+      },
+    ]);
+    mocks.readTextFile.mockImplementation(async (filePath: string) => (
+      filePath.includes("feature-orphan") ? JSON.stringify({ schemaVersion: 1, status: "done" }) : ""
+    ));
+    mocks.formatSessionName.mockReturnValue("api-feature-orphan");
+    mocks.isSessionAlive.mockResolvedValue(false);
+
+    mocks.getProjectRepository.mockResolvedValue({
+      find: vi.fn().mockResolvedValue([
+        {
+          id: "project-1",
+          name: "api",
+          repoPath: "/workspace/api",
+          defaultBranch: "main",
+          sshHost: null,
+        },
+      ]),
+    });
+
+    const orphanTask = {
+      id: "orphan-task",
+      branchName: "feature-orphan",
+      projectId: null,
+      worktreePath: "/workspace/api__worktrees/feature-orphan",
+      sshHost: null,
+      status: "todo",
+    };
+    const taskSave = vi.fn(async (value) => value);
+    mocks.getTaskRepository.mockResolvedValue({
+      findOneBy: vi.fn(async (criteria: { branchName?: string; projectId?: string | null }) => {
+        if (criteria.projectId === "project-1" && criteria.branchName === "main") {
+          return {
+            id: "task-main",
+            branchName: "main",
+            projectId: "project-1",
+            baseBranch: "main",
+            worktreePath: "/workspace/api",
+            sshHost: null,
+          };
+        }
+
+        if (criteria.projectId === "project-1" && criteria.branchName === "feature-orphan") {
+          return null;
+        }
+
+        if ((criteria.projectId === null || criteria.projectId === undefined) && criteria.branchName === "feature-orphan") {
+          return orphanTask;
+        }
+
+        return null;
+      }),
+      create: vi.fn((value) => value),
+      save: taskSave,
+    });
+
+    const { syncRegisteredProjectWorktrees } = await import("@/desktop/main/services/projectService");
+
+    const result = await syncRegisteredProjectWorktrees();
+
+    expect(result.worktreeTasks).toContain("feature-orphan");
+    expect(taskSave).toHaveBeenCalledWith(expect.objectContaining({
+      id: "orphan-task",
+      projectId: "project-1",
+      baseBranch: "main",
+      status: "done",
+    }));
+  });
+
+  it("등록된 프로젝트 background sync는 메인 브랜치 세션 연결 시 .kanvibe 상태를 보존한다", async () => {
+    mocks.listWorktrees.mockResolvedValue([]);
+    mocks.readTextFile.mockResolvedValue(JSON.stringify({ schemaVersion: 1, status: "progress" }));
+    mocks.formatSessionName.mockReturnValue("api-main");
+    mocks.isSessionAlive.mockResolvedValue(true);
+
+    mocks.getProjectRepository.mockResolvedValue({
+      find: vi.fn().mockResolvedValue([
+        {
+          id: "project-1",
+          name: "api",
+          repoPath: "/workspace/api",
+          defaultBranch: "main",
+          sshHost: null,
+        },
+      ]),
+    });
+
+    const mainBranchTask = {
+      id: "task-main",
+      branchName: "main",
+      projectId: "project-1",
+      baseBranch: "main",
+      worktreePath: null,
+      sshHost: null,
+      status: "todo",
+    };
+    const taskSave = vi.fn(async (value) => value);
+    mocks.getTaskRepository.mockResolvedValue({
+      findOneBy: vi.fn(async (criteria: { branchName?: string; projectId?: string | null }) => {
+        if (criteria.projectId === "project-1" && criteria.branchName === "main") {
+          return mainBranchTask;
+        }
+
+        return null;
+      }),
+      create: vi.fn((value) => value),
+      save: taskSave,
+    });
+
+    const { syncRegisteredProjectWorktrees } = await import("@/desktop/main/services/projectService");
+
+    await syncRegisteredProjectWorktrees();
+
+    expect(taskSave).toHaveBeenCalledWith(expect.objectContaining({
+      id: "task-main",
+      sessionType: "tmux",
+      sessionName: "api-main",
+      status: "progress",
+    }));
   });
 
   it("원격 등록 프로젝트의 새 worktree hooks 설치는 백그라운드로 예약한다", async () => {

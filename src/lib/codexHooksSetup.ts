@@ -3,7 +3,12 @@ import path from "path";
 import { addAiToolPatternsToGitExclude } from "@/lib/gitExclude";
 import { readTextFile, readTextFiles } from "@/lib/hostFileAccess";
 import { extractShellHookServerUrl, validateHookServerConfiguration } from "@/lib/hookServerStatus";
-import { buildShellTaskIdResolver, getShellTaskIdBindingStatus } from "@/lib/hookTaskBinding";
+import {
+  buildShellKanvibeStatusUpdater,
+  buildShellTaskIdResolver,
+  getShellTaskIdBindingStatus,
+  hasShellKanvibeStatusJsonPersistence,
+} from "@/lib/hookTaskBinding";
 
 /**
  * Codex CLI 최신 hooks 설정은 `.codex/config.toml`의 hooks feature flag와
@@ -50,11 +55,7 @@ function generateStatusHookScript(
 
 KANVIBE_URL="${kanvibeUrl}"
 ${buildShellTaskIdResolver(taskId)}
-
-curl -s -X POST "\${KANVIBE_URL}/api/hooks/status" \\
-  -H "Content-Type: application/json" \\
-  -d "{\\"taskId\\": \\\"\${TASK_ID}\\\", \\\"status\\\": \\\"${status}\\\"}" \\
-  > /dev/null 2>&1
+${buildShellKanvibeStatusUpdater(status)}
 
 exit 0
 `;
@@ -335,6 +336,7 @@ export interface CodexHooksStatus {
   hasTaskIdBinding?: boolean;
   hasExpectedTaskId?: boolean;
   hasStatusMappings?: boolean;
+  hasStatusJsonPersistence?: boolean;
   hasExpectedHookServerUrl?: boolean;
   hasReachableHookServer?: boolean;
   boundTaskId?: string | null;
@@ -381,6 +383,7 @@ export async function getCodexHooksStatus(repoPath: string, taskId?: string, ssh
     && permissionContent.includes('\\\"status\\\": \\\"pending\\\"')
     && preToolContent.includes('\\\"status\\\": \\\"progress\\\"')
     && stopContent.includes('\\\"status\\\": \\\"review\\\"');
+  const hasStatusJsonPersistence = hookScripts.every(hasShellKanvibeStatusJsonPersistence);
   const hookServerValidation = await validateHookServerConfiguration(
     hookScripts.map((content) => extractShellHookServerUrl(content)),
     Boolean(taskId),
@@ -405,6 +408,7 @@ export async function getCodexHooksStatus(repoPath: string, taskId?: string, ssh
     && hasTaskIdBinding
     && hasExpectedTaskId
     && hasStatusMappings
+    && hasStatusJsonPersistence
     && hookServerValidation.hasExpectedHookServerUrl;
 
   return {
@@ -419,6 +423,7 @@ export async function getCodexHooksStatus(repoPath: string, taskId?: string, ssh
     hasTaskIdBinding,
     hasExpectedTaskId,
     hasStatusMappings,
+    hasStatusJsonPersistence,
     hasExpectedHookServerUrl: hookServerValidation.hasExpectedHookServerUrl,
     hasReachableHookServer: hookServerValidation.hasReachableHookServer,
     boundTaskId,

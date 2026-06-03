@@ -38,6 +38,7 @@ describe("gitExclude", () => {
       expect(content).toContain(".codex/hooks.json");
       expect(content).toContain(".codex/config.toml");
       expect(content).toContain(".opencode/plugins/");
+      expect(content).toContain(".kanvibe/status.json");
     });
 
     it("should not duplicate patterns when called multiple times", async () => {
@@ -87,6 +88,43 @@ describe("gitExclude", () => {
       expect(content).toContain(".claude/hooks/");
       expect(content).toContain(".codex/config.toml");
       expect(content).toContain(".opencode/plugins/");
+      expect(content).toContain(".kanvibe/status.json");
+    });
+
+    it("should prune legacy KanVibe state files from the auto-generated block", async () => {
+      // Given
+      const excludePath = join(tempDir, ".git", "info", "exclude");
+      await writeFile(
+        excludePath,
+        [
+          "# user pattern",
+          "*.log",
+          "# KanVibe AI hooks (auto-generated)",
+          ".claude/hooks/",
+          ".kanvibe/hooks-targets.json",
+          ".kanvibe/task-state.json",
+          ".kanvibe/status.md",
+          "",
+          "# keep me",
+          "dist/",
+          "",
+        ].join("\n"),
+        "utf-8",
+      );
+
+      // When
+      await addAiToolPatternsToGitExclude(tempDir);
+
+      // Then
+      const content = await readFile(excludePath, "utf-8");
+      expect(content).toContain("*.log");
+      expect(content).toContain("# keep me");
+      expect(content).toContain("dist/");
+      expect(content).toContain(".kanvibe/status.json");
+      expect(content).not.toContain(".kanvibe/hooks-targets.json");
+      expect(content).not.toContain(".kanvibe/task-state.json");
+      expect(content).not.toContain(".kanvibe/status.md");
+      expect(content.split("# KanVibe AI hooks (auto-generated)")).toHaveLength(2);
     });
 
     it("should update the shared common-dir exclude when called from a linked worktree", async () => {

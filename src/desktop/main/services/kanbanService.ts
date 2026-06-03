@@ -19,6 +19,7 @@ import {
 } from "@/lib/kanvibeHooksInstaller";
 import { execGit, pullCurrentBranch, remoteBranchExists } from "@/lib/gitOperations";
 import { detachSession } from "@/lib/terminal";
+import { persistTaskStateForTask as persistTaskState } from "@/desktop/main/services/kanvibeTaskStateService";
 
 export type TasksByStatus = Record<TaskStatus, KanbanTask[]>;
 
@@ -69,6 +70,8 @@ interface DoneRollbackSnapshot {
   sessionName: string | null;
   worktreePath: string | null;
   sshHost: string | null;
+  projectId: string | null;
+  branchName: string | null;
 }
 
 export interface DoneCleanupPlan {
@@ -252,6 +255,8 @@ export function prepareOptimisticDoneTransition(
     sessionName: task.sessionName,
     worktreePath: task.worktreePath,
     sshHost: task.sshHost,
+    projectId: task.projectId,
+    branchName: task.branchName,
   };
 
   task.status = TaskStatus.DONE;
@@ -296,6 +301,7 @@ async function rollbackDoneTransition(
       worktreePath: snapshot.worktreePath,
       sshHost: snapshot.sshHost,
     });
+    await persistTaskState(snapshot);
     broadcastBoardUpdate();
   } catch (rollbackError) {
     console.error("Done 상태 롤백 실패:", rollbackError);
@@ -651,6 +657,8 @@ export async function createTask(input: CreateTaskInput): Promise<KanbanTask> {
     );
   }
 
+  await persistTaskState(saved);
+
   broadcastBoardUpdate();
 
   return serialize(saved);
@@ -668,6 +676,7 @@ export async function updateTaskStatus(
   if (newStatus === TaskStatus.DONE) {
     const doneCleanupPlan = prepareOptimisticDoneTransition(task);
     const saved = await repo.save(task);
+    await persistTaskState({ ...doneCleanupPlan.cleanupTask, status: TaskStatus.DONE });
     broadcastBoardUpdate();
     scheduleDoneCleanupWithRollback(doneCleanupPlan);
     return serialize(saved);
@@ -675,6 +684,7 @@ export async function updateTaskStatus(
 
   task.status = newStatus;
   const saved = await repo.save(task);
+  await persistTaskState(saved);
   broadcastBoardUpdate();
   return serialize(saved);
 }
@@ -882,6 +892,7 @@ export async function branchFromTask(
     );
   }
 
+  await persistTaskState(saved);
   broadcastBoardUpdate();
   return serialize(saved);
 }
@@ -929,6 +940,7 @@ export async function connectTerminalSession(
     task.status = TaskStatus.PROGRESS;
 
     const saved = await repo.save(task);
+    await persistTaskState(saved);
     broadcastBoardUpdate();
     return serialize(saved);
   } catch (error) {
@@ -962,8 +974,8 @@ export async function moveTaskToColumn(
   let doneCleanupPlan: DoneCleanupPlan | null = null;
 
   try {
+    const task = await repo.findOneBy({ id: taskId });
     if (newStatus === TaskStatus.DONE) {
-      const task = await repo.findOneBy({ id: taskId });
       if (task) {
         doneCleanupPlan = prepareOptimisticDoneTransition(task);
         await repo.update(taskId, {
@@ -972,9 +984,13 @@ export async function moveTaskToColumn(
           sessionName: null,
           worktreePath: null,
         });
+        await persistTaskState({ ...doneCleanupPlan.cleanupTask, status: TaskStatus.DONE });
       }
     } else {
       await repo.update(taskId, { status: newStatus });
+      if (task) {
+        await persistTaskState({ ...task, status: newStatus });
+      }
     }
 
     const reorderUpdates = destOrderedIds.map((id, index) =>

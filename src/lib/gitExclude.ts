@@ -13,6 +13,13 @@ const EXCLUDE_PATTERNS = [
   ".codex/hooks.json",
   ".codex/config.toml",
   ".opencode/plugins/",
+  ".kanvibe/status.json",
+];
+
+const LEGACY_EXCLUDE_PATTERNS = [
+  ".kanvibe/hooks-targets.json",
+  ".kanvibe/task-state.json",
+  ".kanvibe/status.md",
 ];
 
 function buildExcludeContent(currentContent: string): string {
@@ -27,7 +34,11 @@ function buildExcludeContent(currentContent: string): string {
     }
 
     index += 1;
-    while (index < lines.length && (EXCLUDE_PATTERNS.includes(lines[index]) || lines[index] === "")) {
+    while (index < lines.length && (
+      EXCLUDE_PATTERNS.includes(lines[index])
+      || LEGACY_EXCLUDE_PATTERNS.includes(lines[index])
+      || lines[index] === ""
+    )) {
       index += 1;
     }
     index -= 1;

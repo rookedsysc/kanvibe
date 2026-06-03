@@ -427,9 +427,12 @@ async function installKanvibeHookProviderOnce(
 async function setupRemoteClaudeHooks(repoPath: string, taskId: string, hookServerUrl: string, sshHost: string) {
   const claudeDir = path.posix.join(repoPath, ".claude");
   const settingsPath = path.posix.join(claudeDir, "settings.json");
+  const existingFiles = await readRemoteHookInstallInputs(sshHost, [settingsPath]);
 
   await writeRemoteTextFiles(
-    buildRemoteClaudeHookFiles(repoPath, taskId, hookServerUrl, await readRemoteTextFile(settingsPath, sshHost)),
+    [
+      ...buildRemoteClaudeHookFiles(repoPath, taskId, hookServerUrl, existingFiles.get(settingsPath)?.content ?? ""),
+    ],
     sshHost,
   );
 }
@@ -437,9 +440,12 @@ async function setupRemoteClaudeHooks(repoPath: string, taskId: string, hookServ
 async function setupRemoteGeminiHooks(repoPath: string, taskId: string, hookServerUrl: string, sshHost: string) {
   const geminiDir = path.posix.join(repoPath, ".gemini");
   const settingsPath = path.posix.join(geminiDir, "settings.json");
+  const existingFiles = await readRemoteHookInstallInputs(sshHost, [settingsPath]);
 
   await writeRemoteTextFiles(
-    buildRemoteGeminiHookFiles(repoPath, taskId, hookServerUrl, await readRemoteTextFile(settingsPath, sshHost)),
+    [
+      ...buildRemoteGeminiHookFiles(repoPath, taskId, hookServerUrl, existingFiles.get(settingsPath)?.content ?? ""),
+    ],
     sshHost,
   );
 }
@@ -448,16 +454,18 @@ async function setupRemoteCodexHooks(repoPath: string, taskId: string, hookServe
   const codexDir = path.posix.join(repoPath, ".codex");
   const configPath = path.posix.join(codexDir, CONFIG_FILE_NAME);
   const hooksPath = path.posix.join(codexDir, HOOKS_FILE_NAME);
-  const files = await readTextFiles([configPath, hooksPath], sshHost);
+  const existingFiles = await readRemoteHookInstallInputs(sshHost, [configPath, hooksPath]);
 
   await writeRemoteTextFiles(
-    buildRemoteCodexHookFiles(
-      repoPath,
-      taskId,
-      hookServerUrl,
-      files.get(configPath)?.content ?? "",
-      files.get(hooksPath)?.content ?? "",
-    ),
+    [
+      ...buildRemoteCodexHookFiles(
+        repoPath,
+        taskId,
+        hookServerUrl,
+        existingFiles.get(configPath)?.content ?? "",
+        existingFiles.get(hooksPath)?.content ?? "",
+      ),
+    ],
     sshHost,
   );
 }
@@ -471,12 +479,10 @@ async function setupRemoteKanvibeHooks(repoPath: string, taskId: string, hookSer
   const geminiSettingsPath = path.posix.join(repoPath, ".gemini", "settings.json");
   const codexConfigPath = path.posix.join(repoPath, ".codex", CONFIG_FILE_NAME);
   const codexHooksPath = path.posix.join(repoPath, ".codex", HOOKS_FILE_NAME);
-  const existingFiles = await readTextFiles([
-    claudeSettingsPath,
-    geminiSettingsPath,
-    codexConfigPath,
-    codexHooksPath,
-  ], sshHost);
+  const existingFiles = await readRemoteHookInstallInputs(
+    sshHost,
+    [claudeSettingsPath, geminiSettingsPath, codexConfigPath, codexHooksPath],
+  );
   const plans = [
     {
       label: "Claude",
@@ -516,6 +522,13 @@ async function setupRemoteKanvibeHooks(repoPath: string, taskId: string, hookSer
     }
   }));
   assertHookInstallResults(results, plans.map(({ label }) => label));
+}
+
+async function readRemoteHookInstallInputs(
+  sshHost: string,
+  filePaths: string[] = [],
+): Promise<Awaited<ReturnType<typeof readTextFiles>>> {
+  return readTextFiles(filePaths, sshHost);
 }
 
 function buildRemoteClaudeHookFiles(
@@ -665,17 +678,6 @@ function buildRemoteOpenCodeHookFiles(
       content: generatePluginScript(hookServerUrl, taskId),
     },
   ];
-}
-
-async function readRemoteTextFile(filePath: string, sshHost: string): Promise<string> {
-  try {
-    return await execGit(
-      `test -f ${quoteShellArgument(filePath)} && cat ${quoteShellArgument(filePath)} || true`,
-      sshHost,
-    );
-  } catch {
-    return "";
-  }
 }
 
 function parseRemoteJsonObject(content: string): Record<string, unknown> {

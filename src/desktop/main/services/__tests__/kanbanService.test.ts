@@ -31,6 +31,7 @@ const mocks = vi.hoisted(() => ({
   remoteBranchExists: vi.fn(),
   broadcastTaskHookInstallFailed: vi.fn(),
   broadcastTaskPrMergedDetectedBatch: vi.fn(),
+  writeTextFile: vi.fn(),
 }));
 
 vi.mock("child_process", () => ({
@@ -91,6 +92,10 @@ vi.mock("@/lib/gitOperations", () => ({
   execGit: mocks.execGit,
   pullCurrentBranch: mocks.pullCurrentBranch,
   remoteBranchExists: mocks.remoteBranchExists,
+}));
+
+vi.mock("@/lib/hostFileAccess", () => ({
+  writeTextFile: mocks.writeTextFile,
 }));
 
 function nextMacrotask<T>(value: T): Promise<T> {
@@ -168,6 +173,11 @@ describe("kanbanService.createTask", () => {
         onSuccess: expect.any(Function),
         onFailure: expect.any(Function),
       }),
+    );
+    expect(mocks.writeTextFile).toHaveBeenCalledWith(
+      "/workspace/repo-worktrees/task-1/.kanvibe/status.json",
+      expect.stringContaining('"status": "todo"'),
+      null,
     );
     expect(mocks.installKanvibeHooks).not.toHaveBeenCalled();
   });
@@ -490,6 +500,11 @@ describe("kanbanService.createTask", () => {
       mocks.createSessionWithoutWorktree.mock.invocationCallOrder[0],
     );
     expect(mocks.scheduleKanvibeHooksInstall).not.toHaveBeenCalled();
+    expect(mocks.writeTextFile).toHaveBeenCalledWith(
+      "/remote/repo__worktrees/feature-remote/.kanvibe/status.json",
+      expect.stringContaining('"status": "progress"'),
+      "remote-host",
+    );
     expect(mocks.broadcastBoardUpdate).toHaveBeenCalledTimes(1);
   });
 
@@ -665,6 +680,11 @@ describe("kanbanService.createTask", () => {
       mocks.broadcastBoardUpdate.mock.invocationCallOrder[0],
     );
     expect(mocks.installKanvibeHooks).not.toHaveBeenCalled();
+    expect(mocks.writeTextFile).toHaveBeenCalledWith(
+      "/remote/repo__worktrees/feature-from-task/.kanvibe/status.json",
+      expect.stringContaining('"status": "progress"'),
+      "remote-host",
+    );
     expect(mocks.broadcastBoardUpdate).toHaveBeenCalledTimes(1);
   });
 
@@ -979,6 +999,43 @@ describe("kanbanService.createTask", () => {
 
     // Then
     expect(mocks.taskRepo.update).toHaveBeenCalledWith("task-a", { status: "review" });
+    expect(mocks.broadcastBoardUpdate).toHaveBeenCalledTimes(1);
+  });
+
+  it("worktreePath가 없는 비기본 브랜치 task 상태 변경은 프로젝트 루트 task-state를 덮어쓰지 않는다", async () => {
+    // Given
+    const task = {
+      id: "task-feature-no-worktree",
+      status: "todo",
+      projectId: "project-1",
+      branchName: "feature/without-worktree",
+      worktreePath: null,
+      sshHost: null,
+    };
+    mocks.taskRepo.findOneBy.mockResolvedValue(task);
+    mocks.taskRepo.save.mockImplementation(async (value) => value);
+    mocks.projectRepo.findOneBy.mockResolvedValue({
+      id: "project-1",
+      repoPath: "/workspace/repo",
+      defaultBranch: "main",
+      sshHost: null,
+    });
+
+    const { updateTaskStatus } = await import("@/desktop/main/services/kanbanService");
+
+    // When
+    const result = await updateTaskStatus("task-feature-no-worktree", "review" as never);
+
+    // Then
+    expect(result).toEqual(expect.objectContaining({
+      id: "task-feature-no-worktree",
+      status: "review",
+    }));
+    expect(mocks.writeTextFile).not.toHaveBeenCalledWith(
+      "/workspace/repo/.kanvibe/status.json",
+      expect.any(String),
+      null,
+    );
     expect(mocks.broadcastBoardUpdate).toHaveBeenCalledTimes(1);
   });
 
