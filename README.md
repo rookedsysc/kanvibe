@@ -1,7 +1,5 @@
 <div align="center">
 
-<img src="./docs/images/readme/kanvibe.png" alt="KanVibe app icon" width="120">
-
 # KanVibe
 
 **Keyboard-first Kanban workspace for AI coding agents**
@@ -35,17 +33,11 @@ Use shortcuts for project filters, task search, notifications, task detail panel
   </tr>
 </table>
 
-<iframe
-  width="100%"
-  height="480"
-  src="https://www.youtube.com/embed/8JTrvd3T_Z0"
-  title="KanVibe demo"
-  frameborder="0"
-  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-  allowfullscreen>
-</iframe>
+<a href="https://www.youtube.com/watch?v=8JTrvd3T_Z0">
+  <img src="https://img.youtube.com/vi/8JTrvd3T_Z0/maxresdefault.jpg" alt="KanVibe demo video thumbnail" width="100%">
+</a>
 
-**[Watch Demo on YouTube](https://www.youtube.com/watch?v=8JTrvd3T_Z0)**
+<strong><a href="https://www.youtube.com/watch?v=8JTrvd3T_Z0">Watch Demo on YouTube</a></strong>
 
 </div>
 
