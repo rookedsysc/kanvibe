@@ -54,7 +54,7 @@ export async function readOpenCodeSessions(context: AiSessionReaderContext): Pro
   }
 
   const normalizedQuery = context.query?.toLowerCase();
-  const escapedLikeQuery = normalizedQuery ? escapeSql(normalizedQuery) : null;
+  const escapedLikeQuery = normalizedQuery ? escapeSqliteLikePattern(normalizedQuery) : null;
   let rows: OpenCodeSessionRow[];
   try {
     rows = querySqlite<OpenCodeSessionRow>(db,
@@ -76,11 +76,12 @@ export async function readOpenCodeSessions(context: AiSessionReaderContext): Pro
           LIMIT 1
         ) as first_user_part,
         ${escapedLikeQuery
-          ? `(SELECT COUNT(*) FROM part p WHERE p.session_id = s.id AND lower(p.data) LIKE '%${escapedLikeQuery}%')`
+          ? `(SELECT COUNT(*) FROM part p WHERE p.session_id = s.id AND lower(p.data) LIKE '%' || @query || '%' ESCAPE '\\')`
           : '0'} as matching_part_count
       FROM session s
       ORDER BY s.time_updated DESC
-      LIMIT ${OPEN_CODE_QUERY_LIMIT};`
+      LIMIT ${OPEN_CODE_QUERY_LIMIT};`,
+      escapedLikeQuery ? { query: escapedLikeQuery } : undefined
     );
   } catch (error) {
     return createReaderResult("opencode", {
@@ -132,7 +133,7 @@ export async function readOpenCodeSessionDetail(
     return null;
   }
 
-  const sid = escapeSql(sessionId);
+  const sid = sessionId;
 
   const db = getSqliteConnection(OPENCODE_DB_PATH);
   if (!db) return null;
@@ -150,8 +151,9 @@ export async function readOpenCodeSessionDetail(
     FROM session s
     JOIN part p ON p.session_id = s.id
     JOIN message m ON m.id = p.message_id
-    WHERE s.id = '${sid}'
-    ORDER BY p.time_created ASC;`
+    WHERE s.id = @sessionId
+    ORDER BY p.time_created ASC;`,
+    { sessionId: sid }
   );
 
   if (allRows.length === 0) return null;
@@ -225,6 +227,9 @@ function resolveOpenCodeRole(role: string | undefined, rawPartData?: string): Ai
   return "unknown";
 }
 
-function escapeSql(value: string): string {
-  return value.replaceAll("'", "''");
+function escapeSqliteLikePattern(value: string): string {
+  return value
+    .replaceAll("\\", "\\\\")
+    .replaceAll("%", "\\%")
+    .replaceAll("_", "\\_");
 }

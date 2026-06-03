@@ -29,6 +29,7 @@ describe("AI session history readers", () => {
   });
 
   afterEach(async () => {
+    vi.doUnmock("@/lib/sqliteConnectionPool");
     vi.unstubAllEnvs();
     await rm(tempHome, { recursive: true, force: true });
   });
@@ -205,5 +206,75 @@ describe("AI session history readers", () => {
       "user",
     ]);
     expect(detail?.messages.find((message) => message.role === "tool")?.fullText).toContain("read_file");
+  });
+
+  it("treats OpenCode body search wildcard characters as literal text", async () => {
+    const worktreePath = path.join(tempHome, "repo", "task");
+    const rows = [
+      {
+        id: "literal-percent",
+        directory: worktreePath,
+        title: "Percent",
+        time_created: 1_700_000_000_000,
+        time_updated: 1_700_000_000_000,
+        part_count: 1,
+        first_user_part: JSON.stringify({ type: "text", text: "deployment reached 100% complete" }),
+      },
+      {
+        id: "literal-underscore",
+        directory: worktreePath,
+        title: "Underscore",
+        time_created: 1_700_000_001_000,
+        time_updated: 1_700_000_001_000,
+        part_count: 1,
+        first_user_part: JSON.stringify({ type: "text", text: "rename user_name field" }),
+      },
+      {
+        id: "plain-text",
+        directory: worktreePath,
+        title: "Plain",
+        time_created: 1_700_000_002_000,
+        time_updated: 1_700_000_002_000,
+        part_count: 1,
+        first_user_part: JSON.stringify({ type: "text", text: "database migration rollback" }),
+      },
+    ];
+    const queryCalls: Array<{ sql: string; parameters?: Record<string, unknown> }> = [];
+
+    vi.resetModules();
+    vi.doMock("@/lib/sqliteConnectionPool", () => ({
+      getSqliteConnection: () => ({}),
+      querySqlite: (_db: unknown, sql: string, parameters?: Record<string, unknown>) => {
+        queryCalls.push({ sql, parameters });
+        const query = parameters?.query;
+        const matchingIds = query === "\\%"
+          ? new Set(["literal-percent"])
+          : query === "\\_"
+            ? new Set(["literal-underscore"])
+            : query === "database migration"
+              ? new Set(["plain-text"])
+              : new Set<string>();
+
+        return rows.map((row) => ({
+          ...row,
+          matching_part_count: matchingIds.has(row.id) ? 1 : 0,
+        }));
+      },
+    }));
+    const { readOpenCodeSessions } = await import("@/lib/aiSessions/readOpenCodeSessions");
+
+    const percentMatches = await readOpenCodeSessions({ worktreePath, repoPath: worktreePath, query: "%" });
+    expect(percentMatches.sessions.map((session) => session.id)).toEqual(["literal-percent"]);
+    expect(queryCalls.at(-1)?.parameters).toEqual({ query: "\\%" });
+
+    const underscoreMatches = await readOpenCodeSessions({ worktreePath, repoPath: worktreePath, query: "_" });
+    expect(underscoreMatches.sessions.map((session) => session.id)).toEqual(["literal-underscore"]);
+    expect(queryCalls.at(-1)?.parameters).toEqual({ query: "\\_" });
+
+    const bodyMatches = await readOpenCodeSessions({ worktreePath, repoPath: worktreePath, query: "database migration" });
+    expect(bodyMatches.sessions.map((session) => session.id)).toEqual(["plain-text"]);
+    expect(queryCalls.at(-1)?.parameters).toEqual({ query: "database migration" });
+
+    expect(queryCalls.every((call) => call.sql.includes("ESCAPE"))).toBe(true);
   });
 });
