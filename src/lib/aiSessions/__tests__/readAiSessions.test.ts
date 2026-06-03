@@ -15,11 +15,80 @@ async function writeJson(filePath: string, value: unknown) {
 
 async function writeJsonLines(filePath: string, values: unknown[]) {
   await mkdir(path.dirname(filePath), { recursive: true });
-  await writeFile(filePath, `${values.map((value) => JSON.stringify(value)).join("\n")}\n`, "utf-8");
+  await writeFile(filePath, jsonLines(values), "utf-8");
+}
+
+function jsonLines(values: unknown[]) {
+  return `${values.map((value) => JSON.stringify(value)).join("\n")}\n`;
 }
 
 function claudeProjectDirectoryName(targetPath: string) {
   return path.resolve(targetPath).replaceAll(path.sep, "-").replaceAll("_", "-");
+}
+
+function setupRemoteFileSystem(files: Record<string, string>) {
+  const fileMap = new Map(Object.entries(files));
+  const directorySet = new Set<string>();
+  const execCalls: Array<{ command: string; sshHost?: string | null }> = [];
+
+  for (const filePath of fileMap.keys()) {
+    let current = path.dirname(filePath);
+    while (current && current !== path.dirname(current)) {
+      directorySet.add(current);
+      current = path.dirname(current);
+    }
+  }
+
+  const pathExists = (targetPath: string) => fileMap.has(targetPath) || directorySet.has(targetPath);
+  const listFiles = (rootPath: string, suffix: string, recursive: boolean) => Array.from(fileMap.keys())
+    .filter((filePath) => filePath.endsWith(suffix))
+    .filter((filePath) => recursive
+      ? filePath.startsWith(`${rootPath}/`)
+      : path.dirname(filePath) === rootPath)
+    .sort()
+    .join("\n");
+
+  vi.doMock("@/lib/gitOperations", () => ({
+    execGit: vi.fn(async (command: string, sshHost?: string | null) => {
+      execCalls.push({ command, sshHost });
+      if (command === "printf '%s' \"$HOME\"") {
+        return "/remote/home";
+      }
+
+      const findMatch = command.match(/test -d '([^']+)' && find '([^']+)' (?:-maxdepth 1 )?-type f -name '\*([^']+)'/);
+      if (findMatch) {
+        if (findMatch[1] !== findMatch[2]) {
+          throw new Error(`find command path mismatch: ${command}`);
+        }
+        return listFiles(findMatch[1], findMatch[3], !command.includes(" -maxdepth 1 "));
+      }
+
+      const catMatch = command.match(/test -f '([^']+)' && cat '([^']+)' \|\| true/);
+      if (catMatch) {
+        if (catMatch[1] !== catMatch[2]) {
+          throw new Error(`cat command path mismatch: ${command}`);
+        }
+        return fileMap.get(catMatch[1]) ?? "";
+      }
+
+      const statMatch = command.match(/test -e '([^']+)' && \(stat -c %Y '([^']+)'/);
+      if (statMatch) {
+        if (statMatch[1] !== statMatch[2]) {
+          throw new Error(`stat command path mismatch: ${command}`);
+        }
+        return pathExists(statMatch[1]) ? "1700000000" : "";
+      }
+
+      const existsMatch = command.match(/test -e '([^']+)' && printf '1' \|\| true/);
+      if (existsMatch) {
+        return pathExists(existsMatch[1]) ? "1" : "";
+      }
+
+      throw new Error(`unexpected remote command: ${command}`);
+    }),
+  }));
+
+  return { execCalls };
 }
 
 describe("AI session history readers", () => {
@@ -31,6 +100,7 @@ describe("AI session history readers", () => {
   afterEach(async () => {
     vi.doUnmock("@/lib/sqliteConnectionPool");
     vi.doUnmock("@/lib/gitOperations");
+    vi.resetModules();
     vi.unstubAllEnvs();
     await rm(tempHome, { recursive: true, force: true });
   });
@@ -207,6 +277,161 @@ describe("AI session history readers", () => {
       "user",
     ]);
     expect(detail?.messages.find((message) => message.role === "tool")?.fullText).toContain("read_file");
+  });
+
+  it("reads remote Claude Code repo sessions and detail over SSH", async () => {
+    const worktreePath = "/remote/repo__worktrees/task";
+    const repoPath = "/remote/repo";
+    const sessionFile = `/remote/home/.claude/projects/${claudeProjectDirectoryName(repoPath)}/remote-claude.jsonl`;
+
+    vi.resetModules();
+    const { execCalls } = setupRemoteFileSystem({
+      [sessionFile]: jsonLines([
+        {
+          type: "user",
+          sessionId: "remote-claude",
+          cwd: repoPath,
+          timestamp: "2026-01-01T00:01:00.000Z",
+          message: { role: "user", content: [{ type: "text", text: "load repo claude history" }] },
+        },
+        {
+          type: "assistant",
+          sessionId: "remote-claude",
+          cwd: repoPath,
+          timestamp: "2026-01-01T00:02:00.000Z",
+          message: { role: "assistant", content: [{ type: "text", text: "Claude history loaded remotely." }] },
+        },
+      ]),
+    });
+    const { readClaudeSessionDetail, readClaudeSessions } = await import("@/lib/aiSessions/readClaudeSessions");
+
+    const sessions = await readClaudeSessions({ worktreePath, repoPath, includeRepoSessions: true, sshHost: "remote-host" });
+    expect(sessions).toMatchObject({ provider: "claude", available: true, sessionCount: 1 });
+    expect(sessions.sessions[0]).toMatchObject({
+      id: "remote-claude",
+      provider: "claude",
+      matchedPath: repoPath,
+      matchScope: "repo",
+      firstUserPrompt: "load repo claude history",
+      sourceRef: sessionFile,
+    });
+
+    const detail = await readClaudeSessionDetail(
+      { worktreePath, repoPath, includeRepoSessions: true, sshHost: "remote-host" },
+      "remote-claude",
+      sessionFile,
+      null,
+      20,
+    );
+
+    expect(detail?.messages.map((message) => [message.role, message.fullText])).toEqual([
+      ["assistant", "Claude history loaded remotely."],
+      ["user", "load repo claude history"],
+    ]);
+    expect(execCalls.length).toBeGreaterThan(0);
+    expect(execCalls.every((call) => call.sshHost === "remote-host")).toBe(true);
+  });
+
+  it("reads remote Codex repo sessions and detail over SSH", async () => {
+    const worktreePath = "/remote/repo__worktrees/task";
+    const repoPath = "/remote/repo";
+    const sessionFile = "/remote/home/.codex/sessions/2026/remote-codex.jsonl";
+
+    vi.resetModules();
+    const { execCalls } = setupRemoteFileSystem({
+      [sessionFile]: jsonLines([
+        {
+          type: "session_meta",
+          timestamp: "2026-01-01T00:00:00.000Z",
+          payload: { id: "remote-codex", cwd: repoPath, timestamp: "2026-01-01T00:00:00.000Z" },
+        },
+        {
+          type: "response_item",
+          timestamp: "2026-01-01T00:01:00.000Z",
+          payload: { type: "message", role: "user", content: [{ type: "input_text", text: "load repo codex history" }] },
+        },
+        {
+          type: "response_item",
+          timestamp: "2026-01-01T00:02:00.000Z",
+          payload: { type: "message", role: "assistant", content: [{ type: "output_text", text: "Codex history loaded remotely." }] },
+        },
+      ]),
+    });
+    const { readCodexSessionDetail, readCodexSessions } = await import("@/lib/aiSessions/readCodexSessions");
+
+    const sessions = await readCodexSessions({ worktreePath, repoPath, includeRepoSessions: true, sshHost: "remote-host" });
+    expect(sessions).toMatchObject({ provider: "codex", available: true, sessionCount: 1 });
+    expect(sessions.sessions[0]).toMatchObject({
+      id: "remote-codex",
+      provider: "codex",
+      matchedPath: repoPath,
+      matchScope: "repo",
+      firstUserPrompt: "load repo codex history",
+      sourceRef: sessionFile,
+    });
+
+    const detail = await readCodexSessionDetail(
+      { worktreePath, repoPath, includeRepoSessions: true, sshHost: "remote-host" },
+      "remote-codex",
+      sessionFile,
+      null,
+      20,
+    );
+
+    expect(detail?.messages.map((message) => [message.role, message.fullText])).toEqual([
+      ["assistant", "Codex history loaded remotely."],
+      ["user", "load repo codex history"],
+    ]);
+    expect(execCalls.length).toBeGreaterThan(0);
+    expect(execCalls.every((call) => call.sshHost === "remote-host")).toBe(true);
+  });
+
+  it("reads remote Gemini CLI repo sessions and detail over SSH", async () => {
+    const worktreePath = "/remote/repo__worktrees/task";
+    const repoPath = "/remote/repo";
+    const projectsFile = "/remote/home/.gemini/projects.json";
+    const chatFile = "/remote/home/.gemini/tmp/remote-repo/chats/remote-gemini.json";
+
+    vi.resetModules();
+    const { execCalls } = setupRemoteFileSystem({
+      [projectsFile]: JSON.stringify({ projects: { [repoPath]: "remote-repo" } }),
+      [chatFile]: JSON.stringify({
+        sessionId: "remote-gemini",
+        startTime: "2026-01-01T00:00:00.000Z",
+        lastUpdated: "2026-01-01T00:02:00.000Z",
+        messages: [
+          { id: "user-1", timestamp: "2026-01-01T00:01:00.000Z", type: "user", content: [{ text: "load repo gemini history" }] },
+          { id: "assistant-1", timestamp: "2026-01-01T00:02:00.000Z", type: "gemini", content: [{ text: "Gemini history loaded remotely." }] },
+        ],
+      }),
+    });
+    const { readGeminiSessionDetail, readGeminiSessions } = await import("@/lib/aiSessions/readGeminiSessions");
+
+    const sessions = await readGeminiSessions({ worktreePath, repoPath, includeRepoSessions: true, sshHost: "remote-host" });
+    expect(sessions).toMatchObject({ provider: "gemini", available: true, sessionCount: 1 });
+    expect(sessions.sessions[0]).toMatchObject({
+      id: "remote-gemini",
+      provider: "gemini",
+      matchedPath: repoPath,
+      matchScope: "repo",
+      firstUserPrompt: "load repo gemini history",
+      sourceRef: chatFile,
+    });
+
+    const detail = await readGeminiSessionDetail(
+      { worktreePath, repoPath, includeRepoSessions: true, sshHost: "remote-host" },
+      "remote-gemini",
+      chatFile,
+      null,
+      20,
+    );
+
+    expect(detail?.messages.map((message) => [message.role, message.fullText])).toEqual([
+      ["assistant", "Gemini history loaded remotely."],
+      ["user", "load repo gemini history"],
+    ]);
+    expect(execCalls.length).toBeGreaterThan(0);
+    expect(execCalls.every((call) => call.sshHost === "remote-host")).toBe(true);
   });
 
   it("reads remote OpenCode sessions and detail over SSH", async () => {
