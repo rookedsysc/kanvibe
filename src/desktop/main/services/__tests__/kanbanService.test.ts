@@ -175,8 +175,8 @@ describe("kanbanService.createTask", () => {
       }),
     );
     expect(mocks.writeTextFile).toHaveBeenCalledWith(
-      "/workspace/repo-worktrees/task-1/.kanvibe/status.md",
-      "todo\n",
+      "/workspace/repo-worktrees/task-1/.kanvibe/status.json",
+      expect.stringContaining('"status": "todo"'),
       null,
     );
     expect(mocks.installKanvibeHooks).not.toHaveBeenCalled();
@@ -501,8 +501,8 @@ describe("kanbanService.createTask", () => {
     );
     expect(mocks.scheduleKanvibeHooksInstall).not.toHaveBeenCalled();
     expect(mocks.writeTextFile).toHaveBeenCalledWith(
-      "/remote/repo__worktrees/feature-remote/.kanvibe/status.md",
-      "progress\n",
+      "/remote/repo__worktrees/feature-remote/.kanvibe/status.json",
+      expect.stringContaining('"status": "progress"'),
       "remote-host",
     );
     expect(mocks.broadcastBoardUpdate).toHaveBeenCalledTimes(1);
@@ -681,8 +681,8 @@ describe("kanbanService.createTask", () => {
     );
     expect(mocks.installKanvibeHooks).not.toHaveBeenCalled();
     expect(mocks.writeTextFile).toHaveBeenCalledWith(
-      "/remote/repo__worktrees/feature-from-task/.kanvibe/status.md",
-      "progress\n",
+      "/remote/repo__worktrees/feature-from-task/.kanvibe/status.json",
+      expect.stringContaining('"status": "progress"'),
       "remote-host",
     );
     expect(mocks.broadcastBoardUpdate).toHaveBeenCalledTimes(1);
@@ -1032,7 +1032,7 @@ describe("kanbanService.createTask", () => {
       status: "review",
     }));
     expect(mocks.writeTextFile).not.toHaveBeenCalledWith(
-      "/workspace/repo/.kanvibe/status.md",
+      "/workspace/repo/.kanvibe/status.json",
       expect.any(String),
       null,
     );

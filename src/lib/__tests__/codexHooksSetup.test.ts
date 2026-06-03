@@ -120,6 +120,8 @@ describe("codexHooksSetup", () => {
       const promptHookContent = await readFile(join(repoPath, ".codex", "hooks", "kanvibe-prompt-hook.sh"), "utf-8");
       expect(promptHookContent).toContain('TASK_ID="task-1"');
       expect(promptHookContent).toContain("taskId");
+      expect(promptHookContent).toContain("status.json");
+      expect(promptHookContent).toContain('"schemaVersion":1');
 
       const configContent = await readFile(join(repoPath, ".codex", "config.toml"), "utf-8");
       expect(configContent).toContain("[features]");
@@ -140,6 +142,29 @@ describe("codexHooksSetup", () => {
 
       const status = await getCodexHooksStatus(repoPath);
       expect(status.installed).toBe(true);
+      expect(status.hasStatusJsonPersistence).toBe(true);
+    });
+
+    it("legacy status.md Codex hook은 설치된 것으로 보지 않는다", async () => {
+      const repoPath = tempDir;
+
+      await setupCodexHooks(repoPath, "task-1", "http://localhost:3000");
+      for (const scriptName of [
+        "kanvibe-prompt-hook.sh",
+        "kanvibe-permission-hook.sh",
+        "kanvibe-pre-tool-hook.sh",
+        "kanvibe-stop-hook.sh",
+      ]) {
+        const scriptPath = join(repoPath, ".codex", "hooks", scriptName);
+        const content = await readFile(scriptPath, "utf-8");
+        await writeFile(scriptPath, content.replaceAll("status.json", "status.md"), "utf-8");
+      }
+
+      const status = await getCodexHooksStatus(repoPath, "task-1");
+      expect(status.hasTaskIdBinding).toBe(true);
+      expect(status.hasStatusMappings).toBe(true);
+      expect(status.hasStatusJsonPersistence).toBe(false);
+      expect(status.installed).toBe(false);
     });
 
     it("should not duplicate hook registrations on reinstall", async () => {
@@ -207,6 +232,7 @@ describe("codexHooksSetup", () => {
         hasTaskIdBinding: true,
         hasExpectedTaskId: true,
         hasStatusMappings: true,
+        hasStatusJsonPersistence: true,
         hasExpectedHookServerUrl: true,
         hasReachableHookServer: true,
         boundTaskId: "task-1",

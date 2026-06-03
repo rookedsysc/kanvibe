@@ -64,7 +64,7 @@ describe("kanvibeTaskStateService", () => {
 
     expect(mocks.writeKanvibeTaskState).toHaveBeenCalledWith(
       "/workspace/repo",
-      { taskId: "task-1", status: TaskStatus.REVIEW },
+      { status: TaskStatus.REVIEW },
       "ssh-host",
     );
     expect(consoleError).toHaveBeenCalledWith(
@@ -95,7 +95,7 @@ describe("kanvibeTaskStateService", () => {
     expect(mocks.getProjectRepository).not.toHaveBeenCalled();
     expect(mocks.writeKanvibeTaskState).toHaveBeenCalledWith(
       "/workspace/repo__worktrees/task-1",
-      { taskId: "task-1", status: TaskStatus.PENDING },
+      { status: TaskStatus.PENDING },
       "ssh-host",
     );
   });
@@ -121,7 +121,7 @@ describe("kanvibeTaskStateService", () => {
     expect(mocks.projectRepo.findOneBy).toHaveBeenCalledWith({ id: "project-1" });
     expect(mocks.writeKanvibeTaskState).toHaveBeenCalledWith(
       "/workspace/repo",
-      { taskId: "task-main", status: TaskStatus.TODO },
+      { status: TaskStatus.TODO },
       "project-ssh",
     );
   });
@@ -150,8 +150,7 @@ describe("kanvibeTaskStateService", () => {
 
   it("저장된 task 상태만 읽어 반환한다", async () => {
     mocks.readKanvibeTaskState.mockResolvedValue({
-      version: 1,
-      taskId: "task-1",
+      schemaVersion: 1,
       status: TaskStatus.DONE,
       updatedAt: "2026-06-03T00:00:00.000Z",
     });

@@ -3,7 +3,12 @@ import path from "path";
 import { addAiToolPatternsToGitExclude } from "@/lib/gitExclude";
 import { readTextFile, readTextFiles } from "@/lib/hostFileAccess";
 import { extractShellHookServerUrl, validateHookServerConfiguration } from "@/lib/hookServerStatus";
-import { buildShellKanvibeStatusUpdater, buildShellTaskIdResolver, getShellTaskIdBindingStatus } from "@/lib/hookTaskBinding";
+import {
+  buildShellKanvibeStatusUpdater,
+  buildShellTaskIdResolver,
+  getShellTaskIdBindingStatus,
+  hasShellKanvibeStatusJsonPersistence,
+} from "@/lib/hookTaskBinding";
 
 /**
  * Gemini CLI hooks는 stdout에 반드시 JSON만 출력해야 한다.
@@ -172,6 +177,7 @@ export interface GeminiHooksStatus {
   hasTaskIdBinding?: boolean;
   hasExpectedTaskId?: boolean;
   hasStatusMappings?: boolean;
+  hasStatusJsonPersistence?: boolean;
   hasExpectedHookServerUrl?: boolean;
   hasReachableHookServer?: boolean;
   boundTaskId?: string | null;
@@ -209,6 +215,7 @@ export async function getGeminiHooksStatus(repoPath: string, taskId?: string, ss
   const hasStatusMappings =
     promptContent.includes('\\\"status\\\": \\\"progress\\\"') &&
     stopContent.includes('\\\"status\\\": \\\"review\\\"');
+  const hasStatusJsonPersistence = scriptContents.every(hasShellKanvibeStatusJsonPersistence);
 
   let hasSettingsEntry = false;
   try {
@@ -229,6 +236,7 @@ export async function getGeminiHooksStatus(repoPath: string, taskId?: string, ss
     && hasTaskIdBinding
     && hasExpectedTaskId
     && hasStatusMappings
+    && hasStatusJsonPersistence
     && hookServerValidation.hasExpectedHookServerUrl;
 
   return {
@@ -239,6 +247,7 @@ export async function getGeminiHooksStatus(repoPath: string, taskId?: string, ss
     hasTaskIdBinding,
     hasExpectedTaskId,
     hasStatusMappings,
+    hasStatusJsonPersistence,
     hasExpectedHookServerUrl: hookServerValidation.hasExpectedHookServerUrl,
     hasReachableHookServer: hookServerValidation.hasReachableHookServer,
     boundTaskId,

@@ -3,11 +3,12 @@ import { TaskStatus } from "@/entities/KanbanTask";
 import { readTextFile, writeTextFile } from "@/lib/hostFileAccess";
 
 export const KANVIBE_DIR_NAME = ".kanvibe";
-export const TASK_STATE_FILE_NAME = "status.md";
+export const TASK_STATE_FILE_NAME = "status.json";
 
 export interface KanvibeTaskState {
-  version: 1;
+  schemaVersion: 1;
   status: TaskStatus;
+  updatedAt?: string;
 }
 
 export function getKanvibeTaskStatePath(repoPath: string, sshHost?: string | null): string {
@@ -24,7 +25,7 @@ export async function readKanvibeTaskState(
 
 export async function writeKanvibeTaskState(
   repoPath: string,
-  taskState: Pick<KanvibeTaskState, "status"> & { taskId?: string | null },
+  taskState: Pick<KanvibeTaskState, "status">,
   sshHost?: string | null,
 ): Promise<void> {
   await writeTextFile(
@@ -35,9 +36,15 @@ export async function writeKanvibeTaskState(
 }
 
 export function buildKanvibeTaskStateContent(
-  taskState: Pick<KanvibeTaskState, "status"> & { taskId?: string | null },
+  taskState: Pick<KanvibeTaskState, "status">,
 ): string {
-  return `${taskState.status}\n`;
+  const payload: KanvibeTaskState = {
+    schemaVersion: 1,
+    status: taskState.status,
+    updatedAt: new Date().toISOString(),
+  };
+
+  return JSON.stringify(payload, null, 2) + "\n";
 }
 
 export function parseKanvibeTaskState(content: string): KanvibeTaskState | null {
@@ -48,21 +55,22 @@ export function parseKanvibeTaskState(content: string): KanvibeTaskState | null 
   const statusFromMarkdown = parseTaskStatus(content.trim());
   if (statusFromMarkdown) {
     return {
-      version: 1,
+      schemaVersion: 1,
       status: statusFromMarkdown,
     };
   }
 
   try {
-    const parsed = JSON.parse(content) as { status?: unknown };
+    const parsed = JSON.parse(content) as { status?: unknown; updatedAt?: unknown };
     const status = parseTaskStatus(parsed.status);
     if (!status) {
       return null;
     }
 
     return {
-      version: 1,
+      schemaVersion: 1,
       status,
+      ...(typeof parsed.updatedAt === "string" && parsed.updatedAt.length > 0 ? { updatedAt: parsed.updatedAt } : {}),
     };
   } catch {
     return null;

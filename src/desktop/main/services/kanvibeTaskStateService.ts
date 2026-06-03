@@ -40,7 +40,7 @@ export async function persistTaskStateAtPath(
   }
 
   try {
-    await writeKanvibeTaskState(repoPath, { taskId: task.id, status: task.status }, sshHost);
+    await writeKanvibeTaskState(repoPath, { status: task.status }, sshHost);
   } catch (error) {
     console.error(".kanvibe task 상태 저장 실패:", {
       repoPath,

@@ -1590,7 +1590,7 @@ describe("projectService local hook installation", () => {
     ]);
     mocks.formatSessionName.mockReturnValue("api-feature-review");
     mocks.isSessionAlive.mockResolvedValue(false);
-    mocks.readTextFile.mockResolvedValue(JSON.stringify({ version: 1, status: "review", taskId: "other-client-task" }));
+    mocks.readTextFile.mockResolvedValue(JSON.stringify({ schemaVersion: 1, status: "review", updatedAt: "2026-06-03T00:00:00.000Z" }));
 
     mocks.getProjectRepository.mockResolvedValue({
       find: vi.fn().mockResolvedValue([
@@ -1629,7 +1629,7 @@ describe("projectService local hook installation", () => {
     await syncRegisteredProjectWorktrees();
 
     expect(mocks.readTextFile).toHaveBeenCalledWith(
-      "/workspace/api__worktrees/feature-review/.kanvibe/status.md",
+      "/workspace/api__worktrees/feature-review/.kanvibe/status.json",
       null,
     );
     expect(taskSave).toHaveBeenCalledWith(expect.objectContaining({
@@ -1650,7 +1650,7 @@ describe("projectService local hook installation", () => {
         isBare: false,
       },
     ]);
-    mocks.readTextFile.mockResolvedValue(JSON.stringify({ version: 1, status: "pending" }));
+    mocks.readTextFile.mockResolvedValue(JSON.stringify({ schemaVersion: 1, status: "pending" }));
 
     const existingTask = {
       id: "task-worktree",
@@ -1718,7 +1718,7 @@ describe("projectService local hook installation", () => {
         isBare: false,
       },
     ]);
-    mocks.readTextFile.mockResolvedValue(JSON.stringify({ version: 1, status: "review", taskId: "other-client-task" }));
+    mocks.readTextFile.mockResolvedValue(JSON.stringify({ schemaVersion: 1, status: "review", updatedAt: "2026-06-03T00:00:00.000Z" }));
     mocks.createSessionWithoutWorktree.mockResolvedValue({ sessionName: "api-main" });
     mocks.getClaudeHooksStatus.mockResolvedValue({ installed: true });
     mocks.getGeminiHooksStatus.mockResolvedValue({ installed: true });
@@ -1769,7 +1769,7 @@ describe("projectService local hook installation", () => {
       },
     ]);
     mocks.readTextFile.mockImplementation(async (filePath: string) => (
-      filePath.includes("feature-orphan") ? JSON.stringify({ version: 1, status: "done" }) : ""
+      filePath.includes("feature-orphan") ? JSON.stringify({ schemaVersion: 1, status: "done" }) : ""
     ));
     mocks.formatSessionName.mockReturnValue("api-feature-orphan");
     mocks.isSessionAlive.mockResolvedValue(false);
@@ -1837,7 +1837,7 @@ describe("projectService local hook installation", () => {
 
   it("등록된 프로젝트 background sync는 메인 브랜치 세션 연결 시 .kanvibe 상태를 보존한다", async () => {
     mocks.listWorktrees.mockResolvedValue([]);
-    mocks.readTextFile.mockResolvedValue(JSON.stringify({ version: 1, status: "progress" }));
+    mocks.readTextFile.mockResolvedValue(JSON.stringify({ schemaVersion: 1, status: "progress" }));
     mocks.formatSessionName.mockReturnValue("api-main");
     mocks.isSessionAlive.mockResolvedValue(true);
 

@@ -4,6 +4,7 @@ import {
   buildShellTaskIdResolver,
   extractShellTaskId,
   getShellTaskIdBindingStatus,
+  hasShellKanvibeStatusJsonPersistence,
 } from "@/lib/hookTaskBinding";
 
 describe("hookTaskBinding", () => {
@@ -46,17 +47,28 @@ describe("hookTaskBinding", () => {
     expect(extractShellTaskId(resolver)).toBe(taskId);
   });
 
-  it("status updater는 target fan-out 없이 status.md에 상태만 저장한다", () => {
+  it("status updater는 target fan-out 없이 status.json에 상태만 저장한다", () => {
     const updater = buildShellKanvibeStatusUpdater("review");
 
     expect(updater).toContain("KANVIBE_STATUS=\"review\"");
-    expect(updater).toContain("status.md");
+    expect(updater).toContain("status.json");
+    expect(updater).toContain('"schemaVersion":1');
+    expect(updater).toContain('"status":"%s"');
+    expect(updater).toContain('"updatedAt":"%s"');
     expect(updater).toContain("${KANVIBE_TASK_STATE_FILE}");
     expect(updater).not.toContain("hooks-targets.json");
     expect(updater).not.toContain("task-state.json");
     expect(updater).not.toContain("KANVIBE_TARGET_ROWS");
     expect(updater).not.toContain("while IFS=");
     expect(updater).not.toContain("taskId, status");
+  });
+
+  it("status json persistence 판정은 legacy status.md hook을 거부한다", () => {
+    const updater = buildShellKanvibeStatusUpdater("review");
+    const legacyUpdater = updater.replaceAll("status.json", "status.md");
+
+    expect(hasShellKanvibeStatusJsonPersistence(updater)).toBe(true);
+    expect(hasShellKanvibeStatusJsonPersistence(legacyUpdater)).toBe(false);
   });
 
   it("모든 shell hook이 같은 현재 task id를 가리키는지 판정한다", () => {

@@ -44,7 +44,7 @@ describe("gitExclude remote", () => {
     );
     expect(mockWriteTextFile).toHaveBeenCalledWith(
       "/remote/main/.git/info/exclude",
-      expect.stringContaining(".kanvibe/status.md"),
+      expect.stringContaining(".kanvibe/status.json"),
       "remote-host",
     );
     expect(mockWriteTextFile).not.toHaveBeenCalledWith(

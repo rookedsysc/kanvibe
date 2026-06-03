@@ -165,8 +165,8 @@ describe("hookService.updateHookTaskStatus", () => {
     await updateHookTaskStatus({ taskId: task.id, status: TaskStatus.REVIEW });
 
     expect(mocks.writeTextFile).toHaveBeenCalledWith(
-      "/workspace/api__worktrees/feature-sync/.kanvibe/status.md",
-      "review\n",
+      "/workspace/api__worktrees/feature-sync/.kanvibe/status.json",
+      expect.stringContaining('"status": "review"'),
       null,
     );
   });
@@ -312,8 +312,8 @@ describe("hookService.startHookTask", () => {
     const result = await resultPromise;
 
     expect(mocks.writeTextFile).toHaveBeenCalledWith(
-      "/remote/repo__worktrees/feature-task/.kanvibe/status.md",
-      "todo\n",
+      "/remote/repo__worktrees/feature-task/.kanvibe/status.json",
+      expect.stringContaining('"status": "todo"'),
       "remote-host",
     );
     expect(mocks.broadcastBoardUpdate).toHaveBeenCalledTimes(1);

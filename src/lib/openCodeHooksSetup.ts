@@ -32,14 +32,18 @@ export const KanvibePlugin: Plugin = async ({ client }) => {
   const TASK_ID = ${JSON.stringify(taskId)};
   const KANVIBE_REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
   const KANVIBE_STATE_DIR = resolve(KANVIBE_REPO_ROOT, ".kanvibe");
-  const KANVIBE_STATUS_FILE = resolve(KANVIBE_STATE_DIR, "status.md");
+  const KANVIBE_STATUS_FILE = resolve(KANVIBE_STATE_DIR, "status.json");
   const lastStatusBySession = new Map<string, string>();
   const lastUserMessageBySession = new Map<string, string>();
 
   function writeKanvibeTaskState(status: string): void {
     try {
       mkdirSync(KANVIBE_STATE_DIR, { recursive: true });
-      writeFileSync(KANVIBE_STATUS_FILE, status + "\\n", "utf8");
+      writeFileSync(
+        KANVIBE_STATUS_FILE,
+        JSON.stringify({ schemaVersion: 1, status, updatedAt: new Date().toISOString() }, null, 2) + "\\n",
+        "utf8",
+      );
     } catch {
       /* 파일 쓰기 에러 무시 */
     }
@@ -199,6 +203,11 @@ function hasKanvibePlugin(pluginContent: string): boolean {
   return pluginContent.includes("KanvibePlugin") && pluginContent.includes("/api/hooks/status");
 }
 
+function hasOpenCodeStatusJsonPersistence(pluginContent: string): boolean {
+  return pluginContent.includes("status.json")
+    && pluginContent.includes("JSON.stringify({ schemaVersion: 1, status, updatedAt: new Date().toISOString() }");
+}
+
 function extractPluginTaskId(pluginContent: string): string | null {
   const match = pluginContent.match(/const TASK_ID = ("(?:\\.|[^"\\])*");/);
   if (!match) return null;
@@ -243,6 +252,7 @@ export interface OpenCodeHooksStatus {
   hasExpectedTaskId?: boolean;
   hasStatusEndpoint?: boolean;
   hasEventMappings?: boolean;
+  hasStatusJsonPersistence?: boolean;
   hasMainSessionGuard?: boolean;
   hasDuplicateProgressGuard?: boolean;
   hasExpectedHookServerUrl?: boolean;
@@ -270,6 +280,7 @@ export async function getOpenCodeHooksStatus(repoPath: string, taskId?: string, 
   let hasTaskIdBinding = false;
   let hasStatusEndpoint = false;
   let hasEventMappings = false;
+  let hasStatusJsonPersistence = false;
   let hasMainSessionGuard = false;
   let hasDuplicateProgressGuard = false;
   let hasRegisteredPlugin = sshHost ? true : false;
@@ -289,6 +300,7 @@ export async function getOpenCodeHooksStatus(repoPath: string, taskId?: string, 
       hasExpectedTaskId = hasTaskIdBinding && (!taskId || boundTaskId === taskId);
       hasStatusEndpoint = content.includes("/api/hooks/status");
       hasEventMappings = ["progress", "pending", "review", "done", "message.updated", "question.asked", "question.replied", "session.idle", "session.deleted"].every((fragment) => content.includes(fragment));
+      hasStatusJsonPersistence = hasOpenCodeStatusJsonPersistence(content);
       hasMainSessionGuard = content.includes("isMainSession(message)") && content.includes("isMainSession(event.properties)");
       hasDuplicateProgressGuard = content.includes("lastUserMessageBySession") && content.includes("buildMessageSignature") && content.includes("dedupeMessage: true");
     } catch {
@@ -315,6 +327,7 @@ export async function getOpenCodeHooksStatus(repoPath: string, taskId?: string, 
     && hasExpectedTaskId
     && hasStatusEndpoint
     && hasEventMappings
+    && hasStatusJsonPersistence
     && hasMainSessionGuard
     && hasDuplicateProgressGuard
     && hasRegisteredPlugin
@@ -329,6 +342,7 @@ export async function getOpenCodeHooksStatus(repoPath: string, taskId?: string, 
     hasExpectedTaskId,
     hasStatusEndpoint,
     hasEventMappings,
+    hasStatusJsonPersistence,
     hasMainSessionGuard,
     hasDuplicateProgressGuard,
     hasExpectedHookServerUrl: hookServerValidation.hasExpectedHookServerUrl,

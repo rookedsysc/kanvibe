@@ -28,13 +28,36 @@ describe("claudeHooksSetup", () => {
     expect(stopScript).not.toContain("X-Kanvibe-Token");
     expect(questionScript).not.toContain("X-Kanvibe-Token");
     expect(promptScript).toContain(".kanvibe");
-    expect(promptScript).toContain("status.md");
+    expect(promptScript).toContain("status.json");
     expect(promptScript).not.toContain("hooks-targets.json");
     expect(promptScript).not.toContain("task-state.json");
     expect(promptScript).not.toContain("while IFS=");
 
     const status = await getClaudeHooksStatus(repoPath);
     expect(status.installed).toBe(true);
+    expect(status.hasStatusJsonPersistence).toBe(true);
+  });
+
+  it("legacy status.md Claude hook은 설치된 것으로 보지 않고 재설치로 복구한다", async () => {
+    const repoPath = tempDir;
+
+    await setupClaudeHooks(repoPath, "task-1", "http://localhost:9736");
+    for (const scriptName of ["kanvibe-prompt-hook.sh", "kanvibe-stop-hook.sh", "kanvibe-question-hook.sh"]) {
+      const scriptPath = join(repoPath, ".claude", "hooks", scriptName);
+      const content = await readFile(scriptPath, "utf-8");
+      await writeFile(scriptPath, content.replaceAll("status.json", "status.md"), "utf-8");
+    }
+
+    const legacyStatus = await getClaudeHooksStatus(repoPath, "task-1");
+    expect(legacyStatus.hasTaskIdBinding).toBe(true);
+    expect(legacyStatus.hasStatusMappings).toBe(true);
+    expect(legacyStatus.hasStatusJsonPersistence).toBe(false);
+    expect(legacyStatus.installed).toBe(false);
+
+    await setupClaudeHooks(repoPath, "task-1", "http://localhost:9736");
+    const repairedStatus = await getClaudeHooksStatus(repoPath, "task-1");
+    expect(repairedStatus.hasStatusJsonPersistence).toBe(true);
+    expect(repairedStatus.installed).toBe(true);
   });
 
   it("stale Claude hook command entries are not treated as installed and are repaired on reinstall", async () => {

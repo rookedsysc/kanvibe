@@ -13,12 +13,13 @@ const EXCLUDE_PATTERNS = [
   ".codex/hooks.json",
   ".codex/config.toml",
   ".opencode/plugins/",
-  ".kanvibe/status.md",
+  ".kanvibe/status.json",
 ];
 
 const LEGACY_EXCLUDE_PATTERNS = [
   ".kanvibe/hooks-targets.json",
   ".kanvibe/task-state.json",
+  ".kanvibe/status.md",
 ];
 
 function buildExcludeContent(currentContent: string): string {
