@@ -169,7 +169,7 @@ async function parseGeminiChatFile(
   if (!value || typeof value !== "object") return null;
 
   const projectId = getGeminiProjectIdFromChatPath(filePath);
-  const matchedPath = resolveGeminiMatchedPath(value, projectId, projectPathById);
+  const matchedPath = await resolveGeminiMatchedPath(value, filePath, projectId, projectPathById, context);
   const matchScope = determineMatchScope(matchedPath, context);
   if (!matchedPath || !matchScope) return null;
 
@@ -275,14 +275,28 @@ function resolveGeminiSessionId(value: GeminiChatFile, filePath: string): string
   return value.sessionId ?? value.id ?? path.basename(filePath, ".json");
 }
 
-function resolveGeminiMatchedPath(
+async function resolveGeminiMatchedPath(
   value: GeminiChatFile,
+  filePath: string,
   projectId: string | null,
   projectPathById: Map<string, string>,
-): string | null {
+  context: AiSessionReaderContext,
+): Promise<string | null> {
   const directPath = value.cwd ?? value.projectPath ?? value.directory;
   if (directPath) return directPath;
-  return projectId ? projectPathById.get(projectId) ?? null : null;
+
+  if (projectId) {
+    const mappedProjectPath = projectPathById.get(projectId);
+    if (mappedProjectPath) return mappedProjectPath;
+
+    const projectRoot = (await readTextFile(path.join(path.dirname(path.dirname(filePath)), ".project_root"), context.sshHost)).trim();
+    if (projectRoot) {
+      projectPathById.set(projectId, projectRoot);
+      return projectRoot;
+    }
+  }
+
+  return null;
 }
 
 function getGeminiProjectIdFromChatPath(filePath: string): string | null {

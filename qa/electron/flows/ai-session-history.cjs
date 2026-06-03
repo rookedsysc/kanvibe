@@ -2,7 +2,7 @@
 /* eslint-disable @typescript-eslint/no-require-imports */
 const fs = require("node:fs");
 const path = require("node:path");
-const { execFileSync } = require("node:child_process");
+const { execFileSync, spawnSync } = require("node:child_process");
 const { createQaRun } = require("../lib/report.cjs");
 const { launchKanVibeElectron } = require("../lib/launchElectron.cjs");
 
@@ -343,6 +343,150 @@ connection.close()
   return { claudeFile, codexFile, geminiChatFile, openCodeDbPath: dbPath };
 }
 
+function commandExists(command) {
+  try {
+    execFileSync("bash", ["-lc", `command -v ${command}`], { stdio: "ignore", timeout: 3000 });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function resolveCodexHeadlessCommand() {
+  if (process.env.KANVIBE_QA_CODEX_COMMAND) {
+    const parts = process.env.KANVIBE_QA_CODEX_COMMAND.split(" ").filter(Boolean);
+    return parts.length > 0 ? { command: parts[0], baseArgs: parts.slice(1), label: process.env.KANVIBE_QA_CODEX_COMMAND } : null;
+  }
+
+  if (commandExists("codex")) {
+    return { command: "codex", baseArgs: [], label: "codex" };
+  }
+
+  if (commandExists("npx")) {
+    return { command: "npx", baseArgs: ["-y", "@openai/codex"], label: "npx -y @openai/codex" };
+  }
+
+  return null;
+}
+
+function collectJsonlFiles(rootPath) {
+  if (!fs.existsSync(rootPath)) return [];
+  const entries = fs.readdirSync(rootPath, { withFileTypes: true });
+  return entries.flatMap((entry) => {
+    const entryPath = path.join(rootPath, entry.name);
+    if (entry.isDirectory()) return collectJsonlFiles(entryPath);
+    return entry.isFile() && entry.name.endsWith(".jsonl") ? [entryPath] : [];
+  });
+}
+
+function findCodexHeadlessSessionFile(codexHome, marker, targetPath) {
+  const sessionsRoot = path.join(codexHome, "sessions");
+  return collectJsonlFiles(sessionsRoot)
+    .sort((left, right) => fs.statSync(right).mtimeMs - fs.statSync(left).mtimeMs)
+    .find((filePath) => {
+      const content = fs.readFileSync(filePath, "utf8");
+      return content.includes(marker) && content.includes(targetPath);
+    }) || null;
+}
+
+function classifyCodexHeadlessSkipReason(output) {
+  const normalized = output.toLowerCase();
+  if (/command not found|enoent|not found|could not determine executable|npm error.*eacces/.test(normalized)) {
+    return "Codex CLI is not installed or could not be started";
+  }
+  if (/not logged in|login required|please log in|unauthorized|authentication|auth|api key|401/.test(normalized)) {
+    return "Codex is not logged in or authentication is unavailable";
+  }
+  if (/rate limit|usage limit|limit reached|quota|insufficient_quota|429|too many requests|temporarily unavailable/.test(normalized)) {
+    return "Codex usage/rate limit is currently blocking live requests";
+  }
+  if (/network|enotfound|econn|etimedout|fetch failed|proxy|tls|certificate/.test(normalized)) {
+    return "Network/runtime environment prevented the live Codex request";
+  }
+  return null;
+}
+
+function runActualCodexHeadlessRequest({ run, fakeHome, previousHome, fixture }) {
+  const commandSpec = resolveCodexHeadlessCommand();
+  if (!commandSpec) {
+    return { state: "skipped", reason: "Codex CLI is not installed and npx is unavailable" };
+  }
+
+  const realHome = process.env.KANVIBE_QA_REAL_HOME || previousHome;
+  if (!realHome) {
+    return { state: "skipped", reason: "Real HOME is unavailable, so Codex auth cannot be checked" };
+  }
+
+  const realCodexHome = process.env.KANVIBE_QA_REAL_CODEX_HOME || path.join(realHome, ".codex");
+  const realAuthPath = path.join(realCodexHome, "auth.json");
+  if (!fs.existsSync(realAuthPath)) {
+    return { state: "skipped", reason: "Codex auth.json is missing; agent is not logged in" };
+  }
+
+  const fakeCodexHome = path.join(fakeHome, ".codex");
+  fs.mkdirSync(fakeCodexHome, { recursive: true });
+  const fakeAuthPath = path.join(fakeCodexHome, "auth.json");
+  fs.rmSync(fakeAuthPath, { force: true });
+  fs.symlinkSync(realAuthPath, fakeAuthPath);
+
+  const marker = `KANVIBE_CODEX_HEADLESS_OK_${run.runId.replace(/[^a-zA-Z0-9]/g, "_")}`;
+  const stdoutPath = path.join(run.runDir, "codex-headless.stdout.jsonl");
+  const stderrPath = path.join(run.runDir, "codex-headless.stderr.log");
+  const prompt = `KanVibe QA headless smoke. Do not modify files. Reply exactly: ${marker}.`;
+  const args = [
+    ...commandSpec.baseArgs,
+    "exec",
+    "--json",
+    "--skip-git-repo-check",
+    "--sandbox",
+    "read-only",
+    "-C",
+    fixture.repoDir,
+    prompt,
+  ];
+  const timeout = Number(process.env.KANVIBE_QA_CODEX_HEADLESS_TIMEOUT_MS || 180_000);
+
+  try {
+    const result = spawnSync(commandSpec.command, args, {
+      cwd: fixture.repoDir,
+      env: {
+        ...process.env,
+        HOME: fakeHome,
+        CODEX_HOME: fakeCodexHome,
+      },
+      encoding: "utf8",
+      timeout,
+      maxBuffer: 10 * 1024 * 1024,
+    });
+
+    fs.writeFileSync(stdoutPath, result.stdout || "", "utf8");
+    fs.writeFileSync(stderrPath, result.stderr || "", "utf8");
+
+    const combinedOutput = `${result.error ? result.error.message : ""}\n${result.stderr || ""}\n${result.stdout || ""}`;
+    if (result.error) {
+      const reason = classifyCodexHeadlessSkipReason(combinedOutput) || `Codex process error: ${result.error.message}`;
+      return { state: "skipped", reason, stdoutPath, stderrPath, marker, command: commandSpec.label };
+    }
+
+    if (result.status !== 0) {
+      const skipReason = classifyCodexHeadlessSkipReason(combinedOutput);
+      if (skipReason) {
+        return { state: "skipped", reason: skipReason, stdoutPath, stderrPath, marker, command: commandSpec.label };
+      }
+      return { state: "failed", reason: `Codex exited with status ${result.status}`, stdoutPath, stderrPath, marker, command: commandSpec.label };
+    }
+
+    const sessionFile = findCodexHeadlessSessionFile(fakeCodexHome, marker, fixture.repoDir);
+    if (!sessionFile) {
+      return { state: "failed", reason: "Codex succeeded but no persisted session JSONL contained the marker", stdoutPath, stderrPath, marker, command: commandSpec.label };
+    }
+
+    return { state: "passed", marker, sessionFile, stdoutPath, stderrPath, command: commandSpec.label };
+  } finally {
+    fs.rmSync(fakeAuthPath, { force: true });
+  }
+}
+
 async function waitForText(page, text) {
   await page.getByText(text, { exact: false }).first().waitFor({ state: "visible", timeout: 15000 });
 }
@@ -389,6 +533,7 @@ async function main() {
   let traceStarted = false;
   let fixture;
   let seededTask;
+  let headlessCodexResult = null;
 
   const check = async (name, fn) => {
     try {
@@ -417,6 +562,18 @@ async function main() {
   try {
     fixture = createFixtureRepository(run);
     const aiFixtures = createFakeAiSessionHistory(fakeHome, fixture);
+
+    await optionalCheck("Actual Codex headless CLI request persists readable history (non-blocking when unavailable)", async () => {
+      headlessCodexResult = runActualCodexHeadlessRequest({ run, fakeHome, previousHome, fixture });
+      if (headlessCodexResult.state === "failed") {
+        throw new Error(headlessCodexResult.reason);
+      }
+      if (headlessCodexResult.state === "skipped") {
+        return `skipped (non-blocking): ${headlessCodexResult.reason}`;
+      }
+      return `passed: ${headlessCodexResult.command}; marker=${headlessCodexResult.marker}; session=${headlessCodexResult.sessionFile}`;
+    });
+
     process.env.HOME = fakeHome;
 
     const launched = await launchKanVibeElectron({
@@ -501,6 +658,17 @@ async function main() {
       return "all four provider icons and expected session titles/prompts are visible";
     });
     await takeScreenshot(page, run, "provider-session-list-visible", screenshots);
+
+    await check("Actual Codex headless session is visible in the KanVibe history UI when available", async () => {
+      if (!headlessCodexResult || headlessCodexResult.state !== "passed") {
+        return `not required: ${headlessCodexResult?.reason || "headless Codex did not run"}`;
+      }
+      const listText = await getSessionListText(page);
+      if (!listText.includes(headlessCodexResult.marker)) {
+        throw new Error(`live Codex marker was not visible in the loaded session list: ${headlessCodexResult.marker}`);
+      }
+      return `live Codex exec marker visible in session list: ${headlessCodexResult.marker}`;
+    });
 
     await setStepOverlay(page, "3/6 왼쪽 provider 아이콘 rail: Claude+Gemini OR 필터 동작 검증");
     await check("Provider icon rail filters sessions with OR semantics", async () => {
@@ -655,6 +823,11 @@ async function main() {
   else notes.push("No mp4 was present when flow finished; wrapper script is expected to fail if recording is missing.");
   notes.push(`Fake HOME for provider history fixtures: ${fakeHome}`);
   if (fixture) notes.push(`Fixture repo/worktree: ${fixture.repoDir} / ${fixture.worktreePath}`);
+  if (headlessCodexResult?.state === "passed") {
+    notes.push(`Actual Codex headless request persisted to fake HOME and was checked in the UI: ${headlessCodexResult.sessionFile}`);
+  } else if (headlessCodexResult?.state === "skipped") {
+    notes.push(`Actual Codex headless request skipped without failing QA: ${headlessCodexResult.reason}`);
+  }
   notes.push("QA uses isolated KANVIBE_APP_DATA_DIR and fake HOME under the run directory, not the user's app data or real AI history.");
   diagnostics.push(`CDP counters: ${JSON.stringify(cdpCollector.counters)}`);
   diagnostics.push("Playwright trace captures actions, screenshots, DOM snapshots, console, and network timeline.");
@@ -671,6 +844,7 @@ async function main() {
     videoPath: fs.existsSync(run.videoPath) ? run.videoPath : null,
     tracePath: fs.existsSync(run.tracePath) ? run.tracePath : null,
     cdpDiagnosticsPath: fs.existsSync(run.cdpDiagnosticsPath) ? run.cdpDiagnosticsPath : null,
+    headlessCodex: headlessCodexResult,
     notes,
   };
 

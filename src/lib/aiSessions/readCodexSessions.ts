@@ -78,6 +78,7 @@ async function parseCodexSessionSummary(filePath: string, context: AiSessionRead
   let firstUserPrompt: string | null = null;
   let messageCount = 0;
   let hasQueryMatch = false;
+  const seenMessages = new Set<string>();
 
   for (const rawEvent of events) {
     const event = rawEvent as CodexRolloutEvent;
@@ -98,10 +99,17 @@ async function parseCodexSessionSummary(filePath: string, context: AiSessionRead
       continue;
     }
 
-    if (event.type !== "response_item") continue;
-
-    const parsedMessages = extractCodexPayloadMessages(event.payload ?? {});
+    const parsedMessages = extractCodexEventMessages(event);
     for (const message of parsedMessages) {
+      if (shouldSkipCodexMessage(message.role, message.text)) {
+        continue;
+      }
+      const messageKey = createCodexMessageKey(message.role, event.timestamp, message.text);
+      if (seenMessages.has(messageKey)) {
+        continue;
+      }
+      seenMessages.add(messageKey);
+
       if (message.role === "user" && !firstUserPrompt) {
         firstUserPrompt = message.text;
       }
@@ -143,6 +151,7 @@ async function parseCodexSessionDetail(
   let matchedPath: string | null = null;
   let title: string | null = null;
   const messages: AggregatedAiMessage[] = [];
+  const seenMessages = new Set<string>();
 
   for (const rawEvent of events) {
     const event = rawEvent as CodexRolloutEvent;
@@ -157,9 +166,16 @@ async function parseCodexSessionDetail(
       continue;
     }
 
-    if (event.type !== "response_item") continue;
+    for (const message of extractCodexEventMessages(event)) {
+      if (shouldSkipCodexMessage(message.role, message.text)) {
+        continue;
+      }
+      const messageKey = createCodexMessageKey(message.role, event.timestamp, message.text);
+      if (seenMessages.has(messageKey)) {
+        continue;
+      }
+      seenMessages.add(messageKey);
 
-    for (const message of extractCodexPayloadMessages(event.payload ?? {})) {
       if (context.roles && context.roles.length > 0 && !context.roles.includes(message.role)) {
         continue;
       }
@@ -188,6 +204,51 @@ async function parseCodexSessionDetail(
     messages: paginated.items,
     nextCursor: paginated.nextCursor,
   });
+}
+
+function extractCodexEventMessages(event: CodexRolloutEvent): Array<{ role: AiMessageRole; text: string }> {
+  if (event.type === "response_item") {
+    return extractCodexPayloadMessages(event.payload ?? {});
+  }
+
+  if (event.type === "event_msg") {
+    const payload = event.payload ?? {};
+    if (payload.type === "agent_message") {
+      const text = typeof payload.message === "string"
+        ? payload.message
+        : extractPlainText(payload.message ?? payload);
+      return text ? [{ role: "assistant", text }] : [];
+    }
+  }
+
+  return [];
+}
+
+function createCodexMessageKey(role: AiMessageRole, timestamp: string | undefined, text: string): string {
+  return `${role}\u0000${timestamp ?? ""}\u0000${text}`;
+}
+
+function shouldSkipCodexMessage(role: AiMessageRole, text: string): boolean {
+  const trimmed = text.trim();
+
+  if (role === "user") {
+    return [
+      /^<environment_context>/,
+      /^<skill>/,
+      /^<system-reminder>/,
+    ].some((pattern) => pattern.test(trimmed));
+  }
+
+  if (role === "developer") {
+    return [
+      /<permissions instructions>/,
+      /<apps_instructions>/,
+      /<skills_instructions>/,
+      /<collaboration_mode>/,
+    ].some((pattern) => pattern.test(trimmed));
+  }
+
+  return false;
 }
 
 function extractCodexPayloadMessages(payload: Record<string, unknown>): Array<{ role: AiMessageRole; text: string }> {

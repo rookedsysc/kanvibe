@@ -7,6 +7,15 @@ RUN_DIR="${KANVIBE_QA_RUN_DIR:-$ROOT_DIR/qa-output/$RUN_ID}"
 VIDEO_PATH="$RUN_DIR/run.mp4"
 LOG_PATH="$RUN_DIR/ffmpeg.log"
 mkdir -p "$RUN_DIR"
+if [[ -z "${HOME:-}" || ! -d "$HOME" ]]; then
+  HOME="$(python3 - <<'PY'
+import os, pwd
+print(pwd.getpwuid(os.getuid()).pw_dir)
+PY
+)"
+  export HOME
+fi
+export KANVIBE_QA_REAL_HOME="${KANVIBE_QA_REAL_HOME:-$HOME}"
 
 run_flow() {
   cd "$ROOT_DIR"
