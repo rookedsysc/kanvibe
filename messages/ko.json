@@ -334,6 +334,8 @@
       "remoteBadge": "원격 미지원",
       "noPreview": "표시할 미리보기가 없습니다.",
       "loadHistory": "히스토리 불러오기",
+      "loadMoreSessions": "채팅 더 불러오기",
+      "loadOlderMessages": "이전 메시지 더 보기",
       "search": "검색",
       "searchLabel": "AI 채팅 검색",
       "searchPlaceholder": "채팅 검색...",

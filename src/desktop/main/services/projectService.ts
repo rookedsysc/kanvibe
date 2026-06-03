@@ -1243,7 +1243,9 @@ export async function getTaskOpenCodeHooksStatus(
 export async function getTaskAiSessions(
   taskId: string,
   includeRepoSessions = false,
-  query?: string
+  query?: string,
+  cursor?: string | null,
+  limit?: number
 ): Promise<AggregatedAiSessionsResult> {
   const taskRepo = await getTaskRepository();
   const task = await taskRepo.findOne({
@@ -1258,6 +1260,7 @@ export async function getTaskAiSessions(
       repoPath: null,
       sessions: [],
       sources: [],
+      nextCursor: null,
     };
   }
 
@@ -1266,6 +1269,8 @@ export async function getTaskAiSessions(
     repoPath: task.project.repoPath,
     includeRepoSessions,
     query,
+    cursor,
+    limit,
     sshHost: task.project.sshHost,
   });
 }

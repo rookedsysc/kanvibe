@@ -334,6 +334,8 @@
       "remoteBadge": "Remote unsupported",
       "noPreview": "No preview is available.",
       "loadHistory": "Load history",
+      "loadMoreSessions": "Load more chats",
+      "loadOlderMessages": "Load older messages",
       "search": "Search",
       "searchLabel": "Search AI chats",
       "searchPlaceholder": "Search chats...",

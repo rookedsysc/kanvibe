@@ -956,13 +956,13 @@ describe("TaskDetailRoute", () => {
 
     await screen.findByLabelText("terminal input");
 
+    expect(mocks.getTaskAiSessions).not.toHaveBeenCalled();
+
     fireEvent.click(screen.getByRole("button", { name: "aiSessions.inlineChat" }));
 
     expect(await screen.findByTestId("inline-ai-chat")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "aiSessions.loadHistory" }));
-
     await waitFor(() => {
-      expect(mocks.getTaskAiSessions).toHaveBeenCalledWith("task-1", true, undefined);
+      expect(mocks.getTaskAiSessions).toHaveBeenCalledWith("task-1", true, undefined, null, 20);
     });
 
     fireEvent.click(await screen.findByRole("button", { name: /Claude chat/ }));
@@ -1402,7 +1402,7 @@ describe("TaskDetailRoute", () => {
     });
   });
 
-  it("상세 화면 로드만으로 AI 세션 히스토리를 자동 읽지 않고 채팅 화면에서 수동 로드한다", async () => {
+  it("상세 화면 로드만으로 AI 세션 히스토리를 읽지 않고 채팅 버튼 클릭 때 최신 첫 페이지를 로드한다", async () => {
     mocks.getSidebarDefaultCollapsed.mockResolvedValue(true);
     mocks.getTaskById.mockResolvedValue({
       id: "task-1",
@@ -1430,15 +1430,158 @@ describe("TaskDetailRoute", () => {
 
     render(<TaskDetailRoute />);
 
-    fireEvent.click(await screen.findByRole("button", { name: "aiSessions.inlineChat" }));
+    await screen.findByRole("button", { name: "aiSessions.inlineChat" });
     expect(mocks.getTaskAiSessions).not.toHaveBeenCalled();
 
-    fireEvent.click(screen.getByRole("button", { name: "aiSessions.loadHistory" }));
+    fireEvent.click(screen.getByRole("button", { name: "aiSessions.inlineChat" }));
 
     await waitFor(() => {
       expect(mocks.getTaskAiSessions).toHaveBeenCalledTimes(1);
-      expect(mocks.getTaskAiSessions).toHaveBeenCalledWith("task-1", true, undefined);
+      expect(mocks.getTaskAiSessions).toHaveBeenCalledWith("task-1", true, undefined, null, 20);
     });
+  });
+
+  it("채팅 화면 세션 목록은 최신순 첫 페이지를 받고 다음 페이지를 이어 붙인다", async () => {
+    mocks.getSidebarDefaultCollapsed.mockResolvedValue(true);
+    mocks.getTaskById.mockResolvedValue({
+      id: "task-1",
+      title: "task title",
+      description: null,
+      branchName: "feat/paged-ai-history",
+      baseBranch: "main",
+      prUrl: null,
+      sessionType: null,
+      sessionName: null,
+      sshHost: null,
+      projectId: "project-1",
+      project: { id: "project-1", name: "kanvibe" },
+      status: "todo",
+      agentType: null,
+      worktreePath: "/repo__worktrees/paged-ai-history",
+    });
+    mocks.getTaskAiSessions
+      .mockResolvedValueOnce({
+        isRemote: false,
+        targetPath: "/repo__worktrees/paged-ai-history",
+        repoPath: "/repo",
+        sources: [],
+        nextCursor: "20",
+        sessions: [
+          { id: "newest-session", provider: "claude", startedAt: null, updatedAt: "2026-01-01T00:03:00.000Z", matchedPath: "/repo", matchScope: "worktree", title: "Newest chat", firstUserPrompt: "Newest prompt", messageCount: 2, sourceRef: "newest.jsonl" },
+        ],
+      })
+      .mockResolvedValueOnce({
+        isRemote: false,
+        targetPath: "/repo__worktrees/paged-ai-history",
+        repoPath: "/repo",
+        sources: [],
+        nextCursor: null,
+        sessions: [
+          { id: "older-session", provider: "codex", startedAt: null, updatedAt: "2026-01-01T00:02:00.000Z", matchedPath: "/repo", matchScope: "worktree", title: "Older chat", firstUserPrompt: "Older prompt", messageCount: 3, sourceRef: "older.jsonl" },
+        ],
+      });
+
+    render(<TaskDetailRoute />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "aiSessions.inlineChat" }));
+
+    expect(await screen.findByRole("button", { name: /Newest chat/ })).toBeTruthy();
+    expect(mocks.getTaskAiSessions).toHaveBeenCalledWith("task-1", true, undefined, null, 20);
+
+    fireEvent.click(screen.getByRole("button", { name: "aiSessions.loadMoreSessions" }));
+
+    await waitFor(() => {
+      expect(mocks.getTaskAiSessions).toHaveBeenLastCalledWith("task-1", true, undefined, "20", 20);
+    });
+    expect(await screen.findByRole("button", { name: /Older chat/ })).toBeTruthy();
+  });
+
+  it("채팅 상세 메시지는 최신순 페이지를 받고 더보기로 이전 메시지를 이어 붙인다", async () => {
+    mocks.getSidebarDefaultCollapsed.mockResolvedValue(true);
+    mocks.getTaskById.mockResolvedValue({
+      id: "task-1",
+      title: "task title",
+      description: null,
+      branchName: "feat/paged-ai-detail",
+      baseBranch: "main",
+      prUrl: null,
+      sessionType: null,
+      sessionName: null,
+      sshHost: null,
+      projectId: "project-1",
+      project: { id: "project-1", name: "kanvibe" },
+      status: "todo",
+      agentType: null,
+      worktreePath: "/repo__worktrees/paged-ai-detail",
+    });
+    mocks.getTaskAiSessions.mockResolvedValue({
+      isRemote: false,
+      targetPath: "/repo__worktrees/paged-ai-detail",
+      repoPath: "/repo",
+      sources: [],
+      nextCursor: null,
+      sessions: [
+        { id: "claude-1", provider: "claude", startedAt: null, updatedAt: "2026-01-01T00:03:00.000Z", matchedPath: "/repo", matchScope: "worktree", title: "Claude paged chat", firstUserPrompt: "Claude prompt", messageCount: 80, sourceRef: "claude.jsonl" },
+      ],
+    });
+    mocks.getTaskAiSessionDetail
+      .mockResolvedValueOnce({
+        sessionId: "claude-1",
+        provider: "claude",
+        title: "Claude paged chat",
+        matchedPath: "/repo",
+        sourceRef: "claude.jsonl",
+        nextCursor: "40",
+        messages: [
+          { role: "assistant", timestamp: "2026-01-01T00:04:00.000Z", text: "Newest answer", fullText: "Newest answer", isTruncated: false },
+        ],
+      })
+      .mockResolvedValueOnce({
+        sessionId: "claude-1",
+        provider: "claude",
+        title: "Claude paged chat",
+        matchedPath: "/repo",
+        sourceRef: "claude.jsonl",
+        nextCursor: null,
+        messages: [
+          { role: "user", timestamp: "2026-01-01T00:03:00.000Z", text: "Older prompt", fullText: "Older prompt", isTruncated: false },
+        ],
+      });
+
+    render(<TaskDetailRoute />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "aiSessions.inlineChat" }));
+    fireEvent.click(await screen.findByRole("button", { name: /Claude paged chat/ }));
+
+    expect(await screen.findByText("Newest answer")).toBeTruthy();
+    expect(mocks.getTaskAiSessionDetail).toHaveBeenLastCalledWith(
+      "task-1",
+      "claude",
+      "claude-1",
+      "claude.jsonl",
+      null,
+      40,
+      true,
+      undefined,
+      undefined,
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: "aiSessions.loadOlderMessages" }));
+
+    await waitFor(() => {
+      expect(mocks.getTaskAiSessionDetail).toHaveBeenLastCalledWith(
+        "task-1",
+        "claude",
+        "claude-1",
+        "claude.jsonl",
+        "40",
+        40,
+        true,
+        undefined,
+        undefined,
+      );
+    });
+    expect(await screen.findByText("Older prompt")).toBeTruthy();
   });
 
   it("채팅 화면에서 Claude/Codex/OpenCode/Gemini 세션을 한 목록에 표시하고 provider를 구분한다", async () => {
@@ -1475,7 +1618,6 @@ describe("TaskDetailRoute", () => {
     render(<TaskDetailRoute />);
 
     fireEvent.click(await screen.findByRole("button", { name: "aiSessions.inlineChat" }));
-    fireEvent.click(screen.getByRole("button", { name: "aiSessions.loadHistory" }));
 
     expect(await screen.findByTestId("ai-session-list")).toBeTruthy();
     for (const provider of ["gemini", "claude", "opencode", "codex"]) {
@@ -1523,7 +1665,6 @@ describe("TaskDetailRoute", () => {
     render(<TaskDetailRoute />);
 
     fireEvent.click(await screen.findByRole("button", { name: "aiSessions.inlineChat" }));
-    fireEvent.click(screen.getByRole("button", { name: "aiSessions.loadHistory" }));
     await screen.findByTestId("ai-session-list");
 
     fireEvent.click(screen.getByTestId("ai-session-filter-claude"));
@@ -1579,7 +1720,7 @@ describe("TaskDetailRoute", () => {
     fireEvent.submit(searchInput.closest("form")!);
 
     await waitFor(() => {
-      expect(mocks.getTaskAiSessions).toHaveBeenCalledWith("task-1", true, "database migration");
+      expect(mocks.getTaskAiSessions).toHaveBeenCalledWith("task-1", true, "database migration", null, 20);
     });
     expect(await screen.findByRole("button", { name: /Gemini architecture answer/ })).toBeTruthy();
   });
@@ -1628,7 +1769,6 @@ describe("TaskDetailRoute", () => {
     render(<TaskDetailRoute />);
 
     fireEvent.click(await screen.findByRole("button", { name: "aiSessions.inlineChat" }));
-    fireEvent.click(screen.getByRole("button", { name: "aiSessions.loadHistory" }));
     fireEvent.click(await screen.findByRole("button", { name: /Claude answer/ }));
 
     await waitFor(() => {

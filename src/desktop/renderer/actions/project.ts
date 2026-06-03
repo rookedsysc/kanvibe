@@ -121,8 +121,14 @@ export function getTaskOpenCodeHooksStatus(taskId: string): Promise<OpenCodeHook
   return invokeDesktop("project", "getTaskOpenCodeHooksStatus", taskId);
 }
 
-export function getTaskAiSessions(taskId: string, includeRepoSessions = false, query?: string): Promise<AggregatedAiSessionsResult> {
-  return invokeDesktop("project", "getTaskAiSessions", taskId, includeRepoSessions, query);
+export function getTaskAiSessions(
+  taskId: string,
+  includeRepoSessions = false,
+  query?: string,
+  cursor?: string | null,
+  limit?: number,
+): Promise<AggregatedAiSessionsResult> {
+  return invokeDesktop("project", "getTaskAiSessions", taskId, includeRepoSessions, query, cursor, limit);
 }
 
 export function getTaskAiSessionDetail(

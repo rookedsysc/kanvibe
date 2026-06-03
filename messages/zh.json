@@ -333,6 +333,8 @@
       "remoteBadge": "不支持远程",
       "noPreview": "没有可显示的预览。",
       "loadHistory": "加载历史",
+      "loadMoreSessions": "加载更多聊天",
+      "loadOlderMessages": "加载更早消息",
       "search": "搜索",
       "searchLabel": "搜索 AI 聊天",
       "searchPlaceholder": "搜索聊天...",

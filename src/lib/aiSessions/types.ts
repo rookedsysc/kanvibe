@@ -48,6 +48,7 @@ export interface AggregatedAiSessionsResult {
   repoPath: string | null;
   sessions: AggregatedAiSession[];
   sources: AiSessionSourceStatus[];
+  nextCursor: string | null;
 }
 
 export interface AiSessionReaderContext {
@@ -56,6 +57,8 @@ export interface AiSessionReaderContext {
   includeRepoSessions?: boolean;
   query?: string;
   roles?: AiMessageRole[];
+  cursor?: string | null;
+  limit?: number;
   sshHost?: string | null;
 }
 

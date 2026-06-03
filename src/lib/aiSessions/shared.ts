@@ -37,6 +37,7 @@ export function createAggregationResult(partial?: Partial<AggregatedAiSessionsRe
     repoPath: partial?.repoPath ?? null,
     sessions: partial?.sessions ?? [],
     sources: partial?.sources ?? [],
+    nextCursor: partial?.nextCursor ?? null,
   };
 }
 

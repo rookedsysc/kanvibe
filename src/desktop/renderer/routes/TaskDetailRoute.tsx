@@ -67,6 +67,7 @@ const STATUS_TRANSITIONS = [
 ] as const;
 
 const INLINE_CHAT_DETAIL_LIMIT = 40;
+const INLINE_CHAT_SESSION_LIMIT = 20;
 const INLINE_CHAT_INCLUDE_REPO_SESSIONS = true;
 
 const AGENT_TAG_STYLES: Record<string, string> = {
@@ -167,6 +168,7 @@ const EMPTY_AI_SESSIONS: Awaited<ReturnType<typeof getTaskAiSessions>> = {
   repoPath: null,
   sessions: [],
   sources: [],
+  nextCursor: null,
 };
 
 const DEFAULT_DETAIL_STATE: Omit<TaskDetailState, "task"> = {
@@ -263,16 +265,19 @@ function normalizeAiSessionSearchQuery(value: string): string | undefined {
 
 function InlineAiChatView({ taskId }: { taskId: string }) {
   const t = useTranslations("taskDetail");
+  const detailErrorMessage = t("aiSessions.detailError");
   const [history, setHistory] = useState<AggregatedAiSessionsResult | null>(null);
   const [historyError, setHistoryError] = useState<string | null>(null);
   const [isHistoryLoading, setIsHistoryLoading] = useState(false);
   const [selectedSessionKey, setSelectedSessionKey] = useState<string | null>(null);
   const [detail, setDetail] = useState<AggregatedAiSessionDetail | null>(null);
   const [detailError, setDetailError] = useState<{ sessionId: string; message: string } | null>(null);
+  const [isOlderMessagesLoading, setIsOlderMessagesLoading] = useState(false);
   const [activeRoles, setActiveRoles] = useState<AiMessageRole[]>([]);
   const [activeProviders, setActiveProviders] = useState<AggregatedAiSession["provider"][]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [appliedSearchQuery, setAppliedSearchQuery] = useState<string | undefined>(undefined);
+  const loadedTaskIdRef = useRef<string | null>(null);
 
   const selectedSession = useMemo(
     () => history?.sessions.find((session) => getAiSessionKey(session) === selectedSessionKey) ?? null,
@@ -299,37 +304,77 @@ function InlineAiChatView({ taskId }: { taskId: string }) {
     return history.sessions.filter((session) => activeProviderSet.has(session.provider));
   }, [activeProviders, history]);
 
-  const loadHistory = useCallback(async (queryOverride?: string) => {
+  const loadHistory = useCallback(async (queryOverride?: string, options?: { cursor?: string | null; append?: boolean }) => {
     const normalizedQuery = normalizeAiSessionSearchQuery(queryOverride ?? searchQuery);
+    const isAppending = options?.append === true;
     setIsHistoryLoading(true);
     setHistoryError(null);
     try {
-      const result = await getTaskAiSessions(taskId, INLINE_CHAT_INCLUDE_REPO_SESSIONS, normalizedQuery);
-      setHistory(result);
+      const result = await getTaskAiSessions(
+        taskId,
+        INLINE_CHAT_INCLUDE_REPO_SESSIONS,
+        normalizedQuery,
+        options?.cursor ?? null,
+        INLINE_CHAT_SESSION_LIMIT,
+      );
+      setHistory((current) => {
+        if (!isAppending || !current) {
+          return result;
+        }
+
+        const seenKeys = new Set(current.sessions.map(getAiSessionKey));
+        const mergedSessions = [...current.sessions];
+        for (const session of result.sessions) {
+          const sessionKey = getAiSessionKey(session);
+          if (!seenKeys.has(sessionKey)) {
+            seenKeys.add(sessionKey);
+            mergedSessions.push(session);
+          }
+        }
+
+        return {
+          ...result,
+          sessions: mergedSessions,
+          sources: result.sources.length > 0 ? result.sources : current.sources,
+        };
+      });
       setAppliedSearchQuery(normalizedQuery);
-      setSelectedSessionKey(null);
-      setDetail(null);
-      setDetailError(null);
-      setActiveRoles([]);
+      if (!isAppending) {
+        setSelectedSessionKey(null);
+        setDetail(null);
+        setDetailError(null);
+        setActiveRoles([]);
+      }
     } catch {
-      setHistoryError(t("aiSessions.detailError"));
+      setHistoryError(detailErrorMessage);
     } finally {
       setIsHistoryLoading(false);
     }
-  }, [searchQuery, taskId, t]);
+  }, [detailErrorMessage, searchQuery, taskId]);
 
   useEffect(() => {
+    loadedTaskIdRef.current = null;
     setHistory(null);
     setHistoryError(null);
     setIsHistoryLoading(false);
     setSelectedSessionKey(null);
     setDetail(null);
     setDetailError(null);
+    setIsOlderMessagesLoading(false);
     setActiveRoles([]);
     setActiveProviders([]);
     setSearchQuery("");
     setAppliedSearchQuery(undefined);
   }, [taskId]);
+
+  useEffect(() => {
+    if (loadedTaskIdRef.current === taskId) {
+      return;
+    }
+
+    loadedTaskIdRef.current = taskId;
+    void loadHistory("");
+  }, [loadHistory, taskId]);
 
   useEffect(() => {
     if (!selectedSessionKey) return;
@@ -350,6 +395,7 @@ function InlineAiChatView({ taskId }: { taskId: string }) {
     let cancelled = false;
     setDetail(null);
     setDetailError(null);
+    setIsOlderMessagesLoading(false);
 
     getTaskAiSessionDetail(
       taskId,
@@ -364,7 +410,7 @@ function InlineAiChatView({ taskId }: { taskId: string }) {
     ).then((result) => {
       if (cancelled) return;
       if (!result) {
-        setDetailError({ sessionId: selectedSession.id, message: t("aiSessions.detailError") });
+        setDetailError({ sessionId: selectedSession.id, message: detailErrorMessage });
         return;
       }
 
@@ -372,13 +418,13 @@ function InlineAiChatView({ taskId }: { taskId: string }) {
       setDetailError(null);
     }).catch(() => {
       if (cancelled) return;
-      setDetailError({ sessionId: selectedSession.id, message: t("aiSessions.detailError") });
+      setDetailError({ sessionId: selectedSession.id, message: detailErrorMessage });
     });
 
     return () => {
       cancelled = true;
     };
-  }, [activeRoles, appliedSearchQuery, selectedSession, taskId, t]);
+  }, [activeRoles, appliedSearchQuery, detailErrorMessage, selectedSession, taskId]);
 
   const messages = selectedSession && detail?.sessionId === selectedSession.id ? detail.messages : [];
   const error = selectedSession && detailError?.sessionId === selectedSession.id ? detailError.message : null;
@@ -403,6 +449,56 @@ function InlineAiChatView({ taskId }: { taskId: string }) {
   function handleSearchSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     void loadHistory(searchQuery);
+  }
+
+  async function handleLoadMoreSessions() {
+    if (!history?.nextCursor || isHistoryLoading) {
+      return;
+    }
+
+    await loadHistory(appliedSearchQuery ?? "", { cursor: history.nextCursor, append: true });
+  }
+
+  async function handleLoadOlderMessages() {
+    if (!selectedSession || !detail?.nextCursor || isOlderMessagesLoading) {
+      return;
+    }
+
+    setIsOlderMessagesLoading(true);
+    setDetailError(null);
+    try {
+      const result = await getTaskAiSessionDetail(
+        taskId,
+        selectedSession.provider,
+        selectedSession.id,
+        selectedSession.sourceRef ?? null,
+        detail.nextCursor,
+        INLINE_CHAT_DETAIL_LIMIT,
+        INLINE_CHAT_INCLUDE_REPO_SESSIONS,
+        appliedSearchQuery,
+        activeRoles.length > 0 ? activeRoles : undefined,
+      );
+
+      if (!result) {
+        setDetailError({ sessionId: selectedSession.id, message: t("aiSessions.detailError") });
+        return;
+      }
+
+      setDetail((current) => {
+        if (!current || current.sessionId !== result.sessionId) {
+          return result;
+        }
+
+        return {
+          ...result,
+          messages: [...current.messages, ...result.messages],
+        };
+      });
+    } catch {
+      setDetailError({ sessionId: selectedSession.id, message: t("aiSessions.detailError") });
+    } finally {
+      setIsOlderMessagesLoading(false);
+    }
   }
 
   const historyCountLabel = history
@@ -530,6 +626,16 @@ function InlineAiChatView({ taskId }: { taskId: string }) {
                       </button>
                     );
                   })}
+                  {history.nextCursor ? (
+                    <button
+                      type="button"
+                      onClick={() => void handleLoadMoreSessions()}
+                      disabled={isHistoryLoading}
+                      className="w-full rounded-lg border border-dashed border-border-default px-3 py-2 text-[11px] font-semibold text-text-muted transition-colors hover:border-brand-primary hover:text-text-brand disabled:opacity-50"
+                    >
+                      {isHistoryLoading ? t("aiSessions.loadingDetail") : t("aiSessions.loadMoreSessions")}
+                    </button>
+                  ) : null}
                 </div>
               ) : <InlineAiChatEmpty compact text={history.isRemote ? t("aiSessions.remoteBadge") : t("aiSessions.noPreview")} />
             ) : null}
@@ -574,6 +680,18 @@ function InlineAiChatView({ taskId }: { taskId: string }) {
                 provider={selectedSession.provider}
               />
             ))}
+            {selectedSession && !isDetailLoading && !error && detail?.sessionId === selectedSession.id && detail.nextCursor ? (
+              <div className="flex justify-center">
+                <button
+                  type="button"
+                  onClick={() => void handleLoadOlderMessages()}
+                  disabled={isOlderMessagesLoading}
+                  className="rounded-full border border-border-default bg-bg-surface px-4 py-2 text-xs font-semibold text-text-muted transition-colors hover:border-brand-primary hover:text-text-brand disabled:opacity-50"
+                >
+                  {isOlderMessagesLoading ? t("aiSessions.loadingDetail") : t("aiSessions.loadOlderMessages")}
+                </button>
+              </div>
+            ) : null}
           </div>
         </div>
       </div>
