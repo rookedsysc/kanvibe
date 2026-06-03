@@ -8,7 +8,7 @@ import {
   scheduleDoneCleanupWithRollback,
   type DoneCleanupPlan,
 } from "@/desktop/main/services/kanbanService";
-import { writeKanvibeTaskState } from "@/lib/kanvibeProjectState";
+import { persistTaskStateAtPath as persistHookTaskState } from "@/desktop/main/services/kanvibeTaskStateService";
 
 const STATUS_MAP: Record<string, TaskStatus> = {
   todo: TaskStatus.TODO,
@@ -17,29 +17,6 @@ const STATUS_MAP: Record<string, TaskStatus> = {
   review: TaskStatus.REVIEW,
   done: TaskStatus.DONE,
 };
-
-async function persistHookTaskState(
-  repoPath: string | null | undefined,
-  taskId: string,
-  status: TaskStatus,
-  sshHost?: string | null,
-): Promise<void> {
-  if (!repoPath) {
-    return;
-  }
-
-  try {
-    await writeKanvibeTaskState(repoPath, { taskId, status }, sshHost);
-  } catch (error) {
-    console.error(".kanvibe task 상태 저장 실패:", {
-      repoPath,
-      taskId,
-      status,
-      sshHost: sshHost ?? null,
-      error: error instanceof Error ? error.message : String(error),
-    });
-  }
-}
 
 export interface HookStartInput {
   title: string;
@@ -110,7 +87,7 @@ export async function startHookTask(input: HookStartInput) {
       },
       "새 태스크 hooks 동기 설치 실패",
     );
-    await persistHookTaskState(saved.worktreePath, saved.id, saved.status, saved.sshHost);
+    await persistHookTaskState(saved.worktreePath, { id: saved.id, status: saved.status }, saved.sshHost);
   }
 
   broadcastBoardUpdate();
@@ -177,7 +154,7 @@ export async function updateHookTaskStatus(input: HookStatusInput) {
   const saved = await taskRepo.save(task);
 
   if (taskStatePath) {
-    await persistHookTaskState(taskStatePath, saved.id, taskStatus, taskStateSshHost);
+    await persistHookTaskState(taskStatePath, { id: saved.id, status: taskStatus }, taskStateSshHost);
   }
 
   broadcastBoardUpdate();

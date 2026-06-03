@@ -17,36 +17,13 @@ import { broadcastBoardUpdate } from "@/lib/boardNotifier";
 import { getAvailableHosts as readAvailableHosts } from "@/lib/sshConfig";
 import { getDefaultSessionType } from "@/desktop/main/services/appSettingsService";
 import { installKanvibeHooks, installKanvibeHookProvider, scheduleKanvibeHooksInstall } from "@/lib/kanvibeHooksInstaller";
-import { readKanvibeTaskState, writeKanvibeTaskState } from "@/lib/kanvibeProjectState";
+import {
+  persistTaskStateAtPath as persistTaskState,
+  readPersistedTaskStatusAtPath as readPersistedTaskStatus,
+} from "@/desktop/main/services/kanvibeTaskStateService";
 
 function matchesTaskLocation(task: { worktreePath?: string | null; sshHost?: string | null }, expectedPath: string, sshHost?: string | null): boolean {
   return task.worktreePath === expectedPath && (task.sshHost || null) === (sshHost || null);
-}
-
-async function readPersistedTaskStatus(repoPath: string, sshHost?: string | null): Promise<TaskStatus | null> {
-  return (await readKanvibeTaskState(repoPath, sshHost))?.status ?? null;
-}
-
-async function persistTaskState(
-  repoPath: string | null | undefined,
-  task: Pick<KanbanTask, "id" | "status">,
-  sshHost?: string | null,
-): Promise<void> {
-  if (!repoPath) {
-    return;
-  }
-
-  try {
-    await writeKanvibeTaskState(repoPath, { taskId: task.id, status: task.status }, sshHost);
-  } catch (error) {
-    console.error(".kanvibe task 상태 저장 실패:", {
-      repoPath,
-      taskId: task.id,
-      status: task.status,
-      sshHost: sshHost ?? null,
-      error: error instanceof Error ? error.message : String(error),
-    });
-  }
 }
 
 function resolveDirectorySearchPath(targetPath: string, sshHost?: string): string {

@@ -19,7 +19,7 @@ import {
 } from "@/lib/kanvibeHooksInstaller";
 import { execGit, pullCurrentBranch, remoteBranchExists } from "@/lib/gitOperations";
 import { detachSession } from "@/lib/terminal";
-import { writeKanvibeTaskState } from "@/lib/kanvibeProjectState";
+import { persistTaskStateForTask as persistTaskState } from "@/desktop/main/services/kanvibeTaskStateService";
 
 export type TasksByStatus = Record<TaskStatus, KanbanTask[]>;
 
@@ -123,46 +123,6 @@ function isMissingGitHubCli(error: unknown): boolean {
 
 function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
-}
-
-async function persistTaskState(
-  task: Pick<KanbanTask, "id" | "status" | "worktreePath" | "sshHost"> & {
-    projectId?: string | null;
-    branchName?: string | null;
-  },
-): Promise<void> {
-  let project: { repoPath: string; defaultBranch: string; sshHost?: string | null } | null = null;
-
-  if (task.projectId && !task.worktreePath) {
-    const projectRepo = await getProjectRepository();
-    project = await projectRepo.findOneBy({ id: task.projectId });
-  }
-
-  const canUseProjectRoot = Boolean(
-    project
-      && task.branchName
-      && task.branchName === project.defaultBranch,
-  );
-  const targetPath = task.worktreePath || (canUseProjectRoot ? project?.repoPath : null);
-  if (!targetPath) {
-    return;
-  }
-
-  try {
-    await writeKanvibeTaskState(
-      targetPath,
-      { taskId: task.id, status: task.status },
-      task.sshHost || (canUseProjectRoot ? project?.sshHost : null) || null,
-    );
-  } catch (error) {
-    console.error(".kanvibe task 상태 저장 실패:", {
-      taskId: task.id,
-      status: task.status,
-      targetPath,
-      sshHost: task.sshHost || (canUseProjectRoot ? project?.sshHost : null) || null,
-      error: getErrorMessage(error),
-    });
-  }
 }
 
 function buildPullRequestSyncFailure(
