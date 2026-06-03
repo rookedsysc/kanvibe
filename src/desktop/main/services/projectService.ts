@@ -200,7 +200,6 @@ function scheduleProjectRootTaskRepair(project: Project) {
         }
 
         const { repaired } = await ensureProjectRootTask(project);
-        scheduleProjectRootHookRepair(project);
 
         if (repaired) {
           broadcastBoardUpdate();
@@ -633,19 +632,11 @@ async function syncProjectWorktrees(
   };
 
   try {
-    const shouldRepairHooksSynchronously = !project.sshHost;
     const { repaired } = await ensureProjectRootTask(project, {
-      repairHooks: shouldRepairHooksSynchronously,
+      repairHooks: false,
       throwOnHookRepairFailure: false,
     });
-    if (shouldRepairHooksSynchronously && repaired) {
-      result.hooksSetup.push(project.name);
-    }
     result.changed = result.changed || repaired;
-
-    if (project.sshHost) {
-      scheduleProjectRootHookRepair(project);
-    }
 
     const worktrees = await listWorktrees(project.repoPath, project.sshHost);
 
