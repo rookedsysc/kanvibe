@@ -11,6 +11,7 @@ import { INITIAL_DESKTOP_LOAD_TIMEOUT_MS } from "@/desktop/renderer/utils/loadin
 
 const TASK_DETAIL_CACHE_KEY = "kanvibe:route-cache:task-detail:task-1";
 const BOARD_FOCUS_TASK_CACHE_KEY = "kanvibe:route-cache:board-focus-task";
+const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
 
 const mocks = vi.hoisted(() => ({
   getTaskById: vi.fn(),
@@ -294,6 +295,14 @@ describe("TaskDetailRoute", () => {
   afterEach(() => {
     vi.useRealTimers();
     vi.restoreAllMocks();
+    if (typeof originalScrollIntoView === "function") {
+      Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+        configurable: true,
+        value: originalScrollIntoView,
+      });
+    } else {
+      delete (HTMLElement.prototype as Partial<HTMLElement>).scrollIntoView;
+    }
     delete window.kanvibeDesktop;
   });
 
@@ -832,6 +841,63 @@ describe("TaskDetailRoute", () => {
     expect(await screen.findByTestId("hooks-status-card")).toBeTruthy();
   });
 
+  it("Electron dock shortcut 3은 수동 히스토리 버튼 없이 AI 채팅 첫 페이지를 로드한다", async () => {
+    let dockShortcutListener: ((index: number) => void) | null = null;
+    window.kanvibeDesktop = {
+      isDesktop: true,
+      onTaskDetailDockShortcut(listener: (index: number) => void) {
+        dockShortcutListener = listener;
+        return () => {
+          dockShortcutListener = null;
+        };
+      },
+    };
+    mocks.getSidebarDefaultCollapsed.mockResolvedValue(true);
+    mocks.getTaskById.mockResolvedValue({
+      id: "task-1",
+      title: "task title",
+      description: null,
+      branchName: "feat/shortcut-ai-chat",
+      baseBranch: "main",
+      prUrl: null,
+      sessionType: "tmux",
+      sessionName: "task-session",
+      sshHost: null,
+      projectId: "project-1",
+      project: { id: "project-1", name: "kanvibe" },
+      status: "todo",
+      agentType: null,
+      worktreePath: "/repo__worktrees/shortcut-ai-chat",
+    });
+    mocks.getTaskAiSessions.mockResolvedValue({
+      isRemote: false,
+      targetPath: "/repo__worktrees/shortcut-ai-chat",
+      repoPath: "/repo",
+      sessions: [],
+      sources: [],
+      nextCursor: null,
+    });
+
+    render(
+      <BoardCommandProvider>
+        <TaskDetailRoute />
+      </BoardCommandProvider>,
+    );
+
+    await screen.findByLabelText("terminal input");
+    expect(mocks.getTaskAiSessions).not.toHaveBeenCalled();
+
+    act(() => {
+      dockShortcutListener?.(3);
+    });
+
+    expect(await screen.findByTestId("inline-ai-chat")).toBeTruthy();
+    await waitFor(() => {
+      expect(mocks.getTaskAiSessions).toHaveBeenCalledWith("task-1", false, undefined, null, 20);
+    });
+    expect(screen.queryByRole("button", { name: "aiSessions.loadHistory" })).toBeNull();
+  });
+
   it("shortcut blocker가 등록되어 있으면 상세 dock shortcut을 실행하지 않는다", async () => {
     let dockShortcutListener: ((index: number) => void) | null = null;
     window.kanvibeDesktop = {
@@ -962,7 +1028,7 @@ describe("TaskDetailRoute", () => {
 
     expect(await screen.findByTestId("inline-ai-chat")).toBeTruthy();
     await waitFor(() => {
-      expect(mocks.getTaskAiSessions).toHaveBeenCalledWith("task-1", true, undefined, null, 20);
+      expect(mocks.getTaskAiSessions).toHaveBeenCalledWith("task-1", false, undefined, null, 20);
     });
 
     fireEvent.click(await screen.findByRole("button", { name: /Claude chat/ }));
@@ -975,7 +1041,7 @@ describe("TaskDetailRoute", () => {
         null,
         null,
         40,
-        true,
+        false,
         undefined,
         undefined,
       );
@@ -1437,8 +1503,10 @@ describe("TaskDetailRoute", () => {
 
     await waitFor(() => {
       expect(mocks.getTaskAiSessions).toHaveBeenCalledTimes(1);
-      expect(mocks.getTaskAiSessions).toHaveBeenCalledWith("task-1", true, undefined, null, 20);
+      expect(mocks.getTaskAiSessions).toHaveBeenCalledWith("task-1", false, undefined, null, 20);
     });
+    expect(screen.queryByRole("button", { name: "aiSessions.loadHistory" })).toBeNull();
+    expect(screen.queryByText("aiSessions.loadHistoryHint")).toBeNull();
   });
 
   it("채팅 화면 세션 목록은 최신순 첫 페이지를 받고 다음 페이지를 이어 붙인다", async () => {
@@ -1486,12 +1554,12 @@ describe("TaskDetailRoute", () => {
     fireEvent.click(await screen.findByRole("button", { name: "aiSessions.inlineChat" }));
 
     expect(await screen.findByRole("button", { name: /Newest chat/ })).toBeTruthy();
-    expect(mocks.getTaskAiSessions).toHaveBeenCalledWith("task-1", true, undefined, null, 20);
+    expect(mocks.getTaskAiSessions).toHaveBeenCalledWith("task-1", false, undefined, null, 20);
 
     fireEvent.click(screen.getByRole("button", { name: "aiSessions.loadMoreSessions" }));
 
     await waitFor(() => {
-      expect(mocks.getTaskAiSessions).toHaveBeenLastCalledWith("task-1", true, undefined, "20", 20);
+      expect(mocks.getTaskAiSessions).toHaveBeenLastCalledWith("task-1", false, undefined, "20", 20);
     });
     expect(await screen.findByRole("button", { name: /Older chat/ })).toBeTruthy();
   });
@@ -1547,7 +1615,7 @@ describe("TaskDetailRoute", () => {
     fireEvent.click(screen.getByRole("button", { name: "aiSessions.loadMoreSessions" }));
 
     await waitFor(() => {
-      expect(mocks.getTaskAiSessions).toHaveBeenLastCalledWith("task-1", true, undefined, "20", 20);
+      expect(mocks.getTaskAiSessions).toHaveBeenLastCalledWith("task-1", false, undefined, "20", 20);
     });
     expect(await screen.findByRole("button", { name: /Codex older/ })).toBeTruthy();
   });
@@ -1617,7 +1685,7 @@ describe("TaskDetailRoute", () => {
       "claude.jsonl",
       null,
       40,
-      true,
+      false,
       undefined,
       undefined,
     );
@@ -1632,12 +1700,70 @@ describe("TaskDetailRoute", () => {
         "claude.jsonl",
         "40",
         40,
-        true,
+        false,
         undefined,
         undefined,
       );
     });
     expect(await screen.findByText("Older prompt")).toBeTruthy();
+  });
+
+  it("채팅 상세를 선택하면 최신 메시지 위치로 자동 스크롤하고 시간순으로 표시한다", async () => {
+    const scrollIntoView = vi.fn();
+    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+      configurable: true,
+      value: scrollIntoView,
+    });
+    mocks.getSidebarDefaultCollapsed.mockResolvedValue(true);
+    mocks.getTaskById.mockResolvedValue({
+      id: "task-1",
+      title: "task title",
+      description: null,
+      branchName: "feat/auto-scroll-ai-chat",
+      baseBranch: "main",
+      prUrl: null,
+      sessionType: null,
+      sessionName: null,
+      sshHost: null,
+      projectId: "project-1",
+      project: { id: "project-1", name: "kanvibe" },
+      status: "todo",
+      agentType: null,
+      worktreePath: "/repo__worktrees/auto-scroll-ai-chat",
+    });
+    mocks.getTaskAiSessions.mockResolvedValue({
+      isRemote: false,
+      targetPath: "/repo__worktrees/auto-scroll-ai-chat",
+      repoPath: "/repo",
+      sources: [],
+      nextCursor: null,
+      sessions: [
+        { id: "claude-1", provider: "claude", startedAt: null, updatedAt: "2026-01-01T00:03:00.000Z", matchedPath: "/repo__worktrees/auto-scroll-ai-chat", matchScope: "worktree", title: "Claude scrolled chat", firstUserPrompt: "Older prompt", messageCount: 2, sourceRef: "claude.jsonl" },
+      ],
+    });
+    mocks.getTaskAiSessionDetail.mockResolvedValue({
+      sessionId: "claude-1",
+      provider: "claude",
+      title: "Claude scrolled chat",
+      matchedPath: "/repo__worktrees/auto-scroll-ai-chat",
+      sourceRef: "claude.jsonl",
+      nextCursor: null,
+      messages: [
+        { role: "assistant", timestamp: "2026-01-01T00:03:00.000Z", text: "Newest answer", fullText: "Newest answer", isTruncated: false },
+        { role: "user", timestamp: "2026-01-01T00:02:00.000Z", text: "Older prompt", fullText: "Older prompt", isTruncated: false },
+      ],
+    });
+
+    render(<TaskDetailRoute />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "aiSessions.inlineChat" }));
+    fireEvent.click(await screen.findByRole("button", { name: /Claude scrolled chat/ }));
+
+    const messagePane = await screen.findByTestId("ai-session-messages");
+    await waitFor(() => {
+      expect(scrollIntoView).toHaveBeenCalledWith({ block: "end" });
+    });
+    expect(messagePane.textContent?.indexOf("Older prompt")).toBeLessThan(messagePane.textContent?.indexOf("Newest answer") ?? -1);
   });
 
   it("채팅 화면에서 Claude/Codex/OpenCode/Gemini 세션을 한 목록에 표시하고 provider를 구분한다", async () => {
@@ -1776,7 +1902,7 @@ describe("TaskDetailRoute", () => {
     fireEvent.submit(searchInput.closest("form")!);
 
     await waitFor(() => {
-      expect(mocks.getTaskAiSessions).toHaveBeenCalledWith("task-1", true, "database migration", null, 20);
+      expect(mocks.getTaskAiSessions).toHaveBeenCalledWith("task-1", false, "database migration", null, 20);
     });
     expect(await screen.findByRole("button", { name: /Gemini architecture answer/ })).toBeTruthy();
   });
@@ -1835,7 +1961,7 @@ describe("TaskDetailRoute", () => {
         "claude.jsonl",
         null,
         expect.any(Number),
-        true,
+        false,
         undefined,
         undefined,
       );
@@ -1851,7 +1977,7 @@ describe("TaskDetailRoute", () => {
         "claude.jsonl",
         null,
         expect.any(Number),
-        true,
+        false,
         undefined,
         ["system"],
       );

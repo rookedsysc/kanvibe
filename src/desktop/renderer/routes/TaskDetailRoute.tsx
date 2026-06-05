@@ -68,7 +68,7 @@ const STATUS_TRANSITIONS = [
 
 const INLINE_CHAT_DETAIL_LIMIT = 40;
 const INLINE_CHAT_SESSION_LIMIT = 20;
-const INLINE_CHAT_INCLUDE_REPO_SESSIONS = true;
+const INLINE_CHAT_INCLUDE_REPO_SESSIONS = false;
 
 const AGENT_TAG_STYLES: Record<string, string> = {
   claude: "bg-tag-claude-bg text-tag-claude-text",
@@ -146,7 +146,6 @@ interface TaskDetailState {
   geminiHooksStatus: Awaited<ReturnType<typeof getTaskGeminiHooksStatus>>;
   codexHooksStatus: Awaited<ReturnType<typeof getTaskCodexHooksStatus>>;
   openCodeHooksStatus: Awaited<ReturnType<typeof getTaskOpenCodeHooksStatus>>;
-  aiSessions: Awaited<ReturnType<typeof getTaskAiSessions>>;
   projects: Awaited<ReturnType<typeof getAllProjects>>;
   sidebarDefaultCollapsed: boolean;
   defaultSessionType: Awaited<ReturnType<typeof getDefaultSessionType>>;
@@ -162,15 +161,6 @@ interface NormalizedTaskDetailRouteCache {
   defaultPanelDismissed: boolean;
 }
 
-const EMPTY_AI_SESSIONS: Awaited<ReturnType<typeof getTaskAiSessions>> = {
-  isRemote: false,
-  targetPath: null,
-  repoPath: null,
-  sessions: [],
-  sources: [],
-  nextCursor: null,
-};
-
 const DEFAULT_DETAIL_STATE: Omit<TaskDetailState, "task"> = {
   baseBranchTaskId: null,
   diffFiles: [],
@@ -178,7 +168,6 @@ const DEFAULT_DETAIL_STATE: Omit<TaskDetailState, "task"> = {
   geminiHooksStatus: null,
   codexHooksStatus: null,
   openCodeHooksStatus: null,
-  aiSessions: EMPTY_AI_SESSIONS,
   projects: [],
   sidebarDefaultCollapsed: false,
   defaultSessionType: SessionType.TMUX,
@@ -207,10 +196,12 @@ function normalizeCachedTaskDetailRouteCache(cachedRoute: TaskDetailRouteCache |
 
   const routeState = { ...cachedRoute } as TaskDetailRouteCache & {
     sidebarHintDismissed?: boolean;
+    aiSessions?: unknown;
   };
   const defaultPanelDismissed = routeState.defaultPanelDismissed === true;
   delete routeState.sidebarHintDismissed;
   delete routeState.defaultPanelDismissed;
+  delete routeState.aiSessions;
   return {
     state: {
       ...DEFAULT_DETAIL_STATE,
@@ -268,7 +259,7 @@ function InlineAiChatView({ taskId }: { taskId: string }) {
   const detailErrorMessage = t("aiSessions.detailError");
   const [history, setHistory] = useState<AggregatedAiSessionsResult | null>(null);
   const [historyError, setHistoryError] = useState<string | null>(null);
-  const [isHistoryLoading, setIsHistoryLoading] = useState(false);
+  const [isHistoryLoading, setIsHistoryLoading] = useState(true);
   const [selectedSessionKey, setSelectedSessionKey] = useState<string | null>(null);
   const [detail, setDetail] = useState<AggregatedAiSessionDetail | null>(null);
   const [detailError, setDetailError] = useState<{ sessionId: string; message: string } | null>(null);
@@ -278,6 +269,8 @@ function InlineAiChatView({ taskId }: { taskId: string }) {
   const [searchQuery, setSearchQuery] = useState("");
   const [appliedSearchQuery, setAppliedSearchQuery] = useState<string | undefined>(undefined);
   const loadedTaskIdRef = useRef<string | null>(null);
+  const latestMessageAnchorRef = useRef<HTMLDivElement | null>(null);
+  const shouldScrollToLatestMessageRef = useRef(false);
 
   const selectedSession = useMemo(
     () => history?.sessions.find((session) => getAiSessionKey(session) === selectedSessionKey) ?? null,
@@ -356,7 +349,7 @@ function InlineAiChatView({ taskId }: { taskId: string }) {
     loadedTaskIdRef.current = null;
     setHistory(null);
     setHistoryError(null);
-    setIsHistoryLoading(false);
+    setIsHistoryLoading(true);
     setSelectedSessionKey(null);
     setDetail(null);
     setDetailError(null);
@@ -396,6 +389,7 @@ function InlineAiChatView({ taskId }: { taskId: string }) {
     setDetail(null);
     setDetailError(null);
     setIsOlderMessagesLoading(false);
+    shouldScrollToLatestMessageRef.current = true;
 
     getTaskAiSessionDetail(
       taskId,
@@ -426,9 +420,26 @@ function InlineAiChatView({ taskId }: { taskId: string }) {
     };
   }, [activeRoles, appliedSearchQuery, detailErrorMessage, selectedSession, taskId]);
 
-  const messages = selectedSession && detail?.sessionId === selectedSession.id ? detail.messages : [];
+  const selectedSessionId = selectedSession?.id ?? null;
+  const messages = useMemo(() => {
+    if (!selectedSessionId || detail?.sessionId !== selectedSessionId) {
+      return [];
+    }
+
+    return detail.messages;
+  }, [detail?.messages, detail?.sessionId, selectedSessionId]);
+  const displayedMessages = useMemo(() => [...messages].reverse(), [messages]);
   const error = selectedSession && detailError?.sessionId === selectedSession.id ? detailError.message : null;
   const isDetailLoading = Boolean(selectedSession && detail?.sessionId !== selectedSession.id && !error);
+
+  useEffect(() => {
+    if (!shouldScrollToLatestMessageRef.current || isDetailLoading || !selectedSession || displayedMessages.length === 0) {
+      return;
+    }
+
+    latestMessageAnchorRef.current?.scrollIntoView?.({ block: "end" });
+    shouldScrollToLatestMessageRef.current = false;
+  }, [displayedMessages.length, isDetailLoading, selectedSession]);
 
   function toggleRole(role: AiMessageRole) {
     setActiveRoles((current) => (
@@ -541,14 +552,6 @@ function InlineAiChatView({ taskId }: { taskId: string }) {
             {t("aiSessions.search")}
           </button>
         </form>
-        <button
-          type="button"
-          onClick={() => void loadHistory(searchQuery)}
-          disabled={isHistoryLoading}
-          className="rounded-md border border-terminal-text/20 px-3 py-1.5 text-[11px] font-semibold text-terminal-text transition-colors hover:bg-white/10 disabled:opacity-50"
-        >
-          {isHistoryLoading ? t("aiSessions.loadingDetail") : t("aiSessions.loadHistory")}
-        </button>
       </div>
 
       <div className="flex min-h-0 flex-1">
@@ -604,6 +607,7 @@ function InlineAiChatView({ taskId }: { taskId: string }) {
                           key={sessionKey}
                           type="button"
                           onClick={() => {
+                            shouldScrollToLatestMessageRef.current = true;
                             setSelectedSessionKey(sessionKey);
                             setActiveRoles([]);
                           }}
@@ -671,19 +675,13 @@ function InlineAiChatView({ taskId }: { taskId: string }) {
             </div>
           ) : null}
 
-          <div className="flex-1 space-y-4 overflow-y-auto px-5 py-5">
-            {!history && !isHistoryLoading ? <InlineAiChatEmpty text={t("aiSessions.loadHistoryHint")} /> : null}
+          <div data-testid="ai-session-messages" className="flex-1 space-y-4 overflow-y-auto px-5 py-5">
+            {!history && !isHistoryLoading && !historyError ? <InlineAiChatEmpty text={t("aiSessions.noPreview")} /> : null}
+            {historyError ? <InlineAiChatEmpty text={historyError} /> : null}
             {history && !selectedSession ? <InlineAiChatEmpty text={t("aiSessions.selectSession")} /> : null}
             {selectedSession && isDetailLoading ? <InlineAiChatEmpty text={t("aiSessions.loadingDetail")} /> : null}
             {selectedSession && !isDetailLoading && error ? <InlineAiChatEmpty text={error} /> : null}
             {selectedSession && !isDetailLoading && !error && messages.length === 0 ? <InlineAiChatEmpty text={t("aiSessions.noPreview")} /> : null}
-            {selectedSession && !isDetailLoading && !error && messages.map((message, index) => (
-              <InlineAiChatMessage
-                key={`${message.role}-${message.timestamp ?? index}-${index}`}
-                message={message}
-                provider={selectedSession.provider}
-              />
-            ))}
             {selectedSession && !isDetailLoading && !error && detail?.sessionId === selectedSession.id && detail.nextCursor ? (
               <div className="flex justify-center">
                 <button
@@ -696,6 +694,14 @@ function InlineAiChatView({ taskId }: { taskId: string }) {
                 </button>
               </div>
             ) : null}
+            {selectedSession && !isDetailLoading && !error && displayedMessages.map((message, index) => (
+              <InlineAiChatMessage
+                key={`${message.role}-${message.timestamp ?? index}-${index}`}
+                message={message}
+                provider={selectedSession.provider}
+              />
+            ))}
+            <div ref={latestMessageAnchorRef} aria-hidden="true" />
           </div>
         </div>
       </div>
