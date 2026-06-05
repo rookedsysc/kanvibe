@@ -1708,6 +1708,115 @@ describe("TaskDetailRoute", () => {
     expect(await screen.findByText("Older prompt")).toBeTruthy();
   });
 
+  it("역할 필터 변경 뒤 늦게 도착한 이전 메시지 페이지를 상세에 섞지 않는다", async () => {
+    const staleOlderMessages = createDeferred<Awaited<ReturnType<typeof mocks.getTaskAiSessionDetail>>>();
+    mocks.getSidebarDefaultCollapsed.mockResolvedValue(true);
+    mocks.getTaskById.mockResolvedValue({
+      id: "task-1",
+      title: "task title",
+      description: null,
+      branchName: "feat/stale-role-detail",
+      baseBranch: "main",
+      prUrl: null,
+      sessionType: null,
+      sessionName: null,
+      sshHost: null,
+      projectId: "project-1",
+      project: { id: "project-1", name: "kanvibe" },
+      status: "todo",
+      agentType: null,
+      worktreePath: "/repo__worktrees/stale-role-detail",
+    });
+    mocks.getTaskAiSessions.mockResolvedValue({
+      isRemote: false,
+      targetPath: "/repo__worktrees/stale-role-detail",
+      repoPath: "/repo",
+      sources: [],
+      nextCursor: null,
+      sessions: [
+        { id: "claude-1", provider: "claude", startedAt: null, updatedAt: "2026-01-01T00:03:00.000Z", matchedPath: "/repo", matchScope: "worktree", title: "Claude filtered chat", firstUserPrompt: "Claude prompt", messageCount: 80, sourceRef: "claude.jsonl" },
+      ],
+    });
+    mocks.getTaskAiSessionDetail
+      .mockResolvedValueOnce({
+        sessionId: "claude-1",
+        provider: "claude",
+        title: "Claude filtered chat",
+        matchedPath: "/repo",
+        sourceRef: "claude.jsonl",
+        nextCursor: "40",
+        messages: [
+          { role: "assistant", timestamp: "2026-01-01T00:04:00.000Z", text: "Current assistant answer", fullText: "Current assistant answer", isTruncated: false },
+        ],
+      })
+      .mockReturnValueOnce(staleOlderMessages.promise)
+      .mockResolvedValueOnce({
+        sessionId: "claude-1",
+        provider: "claude",
+        title: "Claude filtered chat",
+        matchedPath: "/repo",
+        sourceRef: "claude.jsonl",
+        nextCursor: null,
+        messages: [
+          { role: "assistant", timestamp: "2026-01-01T00:04:00.000Z", text: "Filtered assistant answer", fullText: "Filtered assistant answer", isTruncated: false },
+        ],
+      });
+
+    render(<TaskDetailRoute />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "aiSessions.inlineChat" }));
+    fireEvent.click(await screen.findByRole("button", { name: /Claude filtered chat/ }));
+    expect(await screen.findByText("Current assistant answer")).toBeTruthy();
+
+    fireEvent.click(await screen.findByRole("button", { name: "aiSessions.loadOlderMessages" }));
+    await waitFor(() => {
+      expect(mocks.getTaskAiSessionDetail).toHaveBeenLastCalledWith(
+        "task-1",
+        "claude",
+        "claude-1",
+        "claude.jsonl",
+        "40",
+        40,
+        false,
+        undefined,
+        undefined,
+      );
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "aiSessions.roles.assistant" }));
+    await waitFor(() => {
+      expect(mocks.getTaskAiSessionDetail).toHaveBeenLastCalledWith(
+        "task-1",
+        "claude",
+        "claude-1",
+        "claude.jsonl",
+        null,
+        40,
+        false,
+        undefined,
+        ["assistant"],
+      );
+    });
+    expect(await screen.findByText("Filtered assistant answer")).toBeTruthy();
+
+    await act(async () => {
+      staleOlderMessages.resolve({
+        sessionId: "claude-1",
+        provider: "claude",
+        title: "Claude filtered chat",
+        matchedPath: "/repo",
+        sourceRef: "claude.jsonl",
+        nextCursor: null,
+        messages: [
+          { role: "user", timestamp: "2026-01-01T00:03:00.000Z", text: "Stale user prompt", fullText: "Stale user prompt", isTruncated: false },
+        ],
+      });
+    });
+
+    expect(screen.getByText("Filtered assistant answer")).toBeTruthy();
+    expect(screen.queryByText("Stale user prompt")).toBeNull();
+  });
+
   it("채팅 상세를 선택하면 최신 메시지 위치로 자동 스크롤하고 시간순으로 표시한다", async () => {
     const scrollIntoView = vi.fn();
     Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
@@ -1905,6 +2014,88 @@ describe("TaskDetailRoute", () => {
       expect(mocks.getTaskAiSessions).toHaveBeenCalledWith("task-1", false, "database migration", null, 20);
     });
     expect(await screen.findByRole("button", { name: /Gemini architecture answer/ })).toBeTruthy();
+  });
+
+  it("검색이 바뀐 뒤 늦게 도착한 이전 세션 페이지를 현재 결과에 섞지 않는다", async () => {
+    const staleAppend = createDeferred<Awaited<ReturnType<typeof mocks.getTaskAiSessions>>>();
+    const filteredSearch = createDeferred<Awaited<ReturnType<typeof mocks.getTaskAiSessions>>>();
+    mocks.getSidebarDefaultCollapsed.mockResolvedValue(true);
+    mocks.getTaskById.mockResolvedValue({
+      id: "task-1",
+      title: "task title",
+      description: null,
+      branchName: "feat/stale-session-page",
+      baseBranch: "main",
+      prUrl: null,
+      sessionType: null,
+      sessionName: null,
+      sshHost: null,
+      projectId: "project-1",
+      project: { id: "project-1", name: "kanvibe" },
+      status: "todo",
+      agentType: null,
+      worktreePath: "/repo__worktrees/stale-session-page",
+    });
+    mocks.getTaskAiSessions
+      .mockResolvedValueOnce({
+        isRemote: false,
+        targetPath: "/repo__worktrees/stale-session-page",
+        repoPath: "/repo",
+        sources: [],
+        nextCursor: "20",
+        sessions: [
+          { id: "initial-session", provider: "claude", startedAt: null, updatedAt: "2026-01-01T00:03:00.000Z", matchedPath: "/repo", matchScope: "worktree", title: "Initial chat", firstUserPrompt: "Initial prompt", messageCount: 2, sourceRef: "initial.jsonl" },
+        ],
+      })
+      .mockReturnValueOnce(staleAppend.promise)
+      .mockReturnValueOnce(filteredSearch.promise);
+
+    render(<TaskDetailRoute />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "aiSessions.inlineChat" }));
+    expect(await screen.findByRole("button", { name: /Initial chat/ })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "aiSessions.loadMoreSessions" }));
+    await waitFor(() => {
+      expect(mocks.getTaskAiSessions).toHaveBeenLastCalledWith("task-1", false, undefined, "20", 20);
+    });
+
+    const searchInput = screen.getByLabelText("aiSessions.searchLabel");
+    fireEvent.change(searchInput, { target: { value: "filtered topic" } });
+    fireEvent.submit(searchInput.closest("form")!);
+    await waitFor(() => {
+      expect(mocks.getTaskAiSessions).toHaveBeenLastCalledWith("task-1", false, "filtered topic", null, 20);
+    });
+
+    await act(async () => {
+      filteredSearch.resolve({
+        isRemote: false,
+        targetPath: "/repo__worktrees/stale-session-page",
+        repoPath: "/repo",
+        sources: [],
+        nextCursor: null,
+        sessions: [
+          { id: "filtered-session", provider: "gemini", startedAt: null, updatedAt: "2026-01-01T00:04:00.000Z", matchedPath: "/repo", matchScope: "worktree", title: "Filtered chat", firstUserPrompt: "Filtered prompt", messageCount: 1, sourceRef: "filtered.json" },
+        ],
+      });
+    });
+    expect(await screen.findByRole("button", { name: /Filtered chat/ })).toBeTruthy();
+
+    await act(async () => {
+      staleAppend.resolve({
+        isRemote: false,
+        targetPath: "/repo__worktrees/stale-session-page",
+        repoPath: "/repo",
+        sources: [],
+        nextCursor: null,
+        sessions: [
+          { id: "stale-session", provider: "codex", startedAt: null, updatedAt: "2026-01-01T00:02:00.000Z", matchedPath: "/repo", matchScope: "worktree", title: "Stale old query chat", firstUserPrompt: "Old prompt", messageCount: 1, sourceRef: "stale.jsonl" },
+        ],
+      });
+    });
+
+    expect(screen.getByRole("button", { name: /Filtered chat/ })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /Stale old query chat/ })).toBeNull();
   });
 
   it("AI 채팅 상세는 사용자 입력, 시스템 입력, AI 답변과 추가 역할 필터를 전달한다", async () => {

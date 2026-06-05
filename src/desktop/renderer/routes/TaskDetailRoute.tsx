@@ -271,6 +271,8 @@ function InlineAiChatView({ taskId }: { taskId: string }) {
   const loadedTaskIdRef = useRef<string | null>(null);
   const latestMessageAnchorRef = useRef<HTMLDivElement | null>(null);
   const shouldScrollToLatestMessageRef = useRef(false);
+  const historyRequestIdRef = useRef(0);
+  const olderMessagesRequestIdRef = useRef(0);
 
   const selectedSession = useMemo(
     () => history?.sessions.find((session) => getAiSessionKey(session) === selectedSessionKey) ?? null,
@@ -300,6 +302,8 @@ function InlineAiChatView({ taskId }: { taskId: string }) {
   const loadHistory = useCallback(async (queryOverride?: string, options?: { cursor?: string | null; append?: boolean }) => {
     const normalizedQuery = normalizeAiSessionSearchQuery(queryOverride ?? searchQuery);
     const isAppending = options?.append === true;
+    const requestId = historyRequestIdRef.current + 1;
+    historyRequestIdRef.current = requestId;
     setIsHistoryLoading(true);
     setHistoryError(null);
     try {
@@ -310,6 +314,10 @@ function InlineAiChatView({ taskId }: { taskId: string }) {
         options?.cursor ?? null,
         INLINE_CHAT_SESSION_LIMIT,
       );
+      if (historyRequestIdRef.current !== requestId) {
+        return;
+      }
+
       setHistory((current) => {
         if (!isAppending || !current) {
           return result;
@@ -333,20 +341,27 @@ function InlineAiChatView({ taskId }: { taskId: string }) {
       });
       setAppliedSearchQuery(normalizedQuery);
       if (!isAppending) {
+        olderMessagesRequestIdRef.current += 1;
         setSelectedSessionKey(null);
         setDetail(null);
         setDetailError(null);
         setActiveRoles([]);
       }
     } catch {
-      setHistoryError(detailErrorMessage);
+      if (historyRequestIdRef.current === requestId) {
+        setHistoryError(detailErrorMessage);
+      }
     } finally {
-      setIsHistoryLoading(false);
+      if (historyRequestIdRef.current === requestId) {
+        setIsHistoryLoading(false);
+      }
     }
   }, [detailErrorMessage, searchQuery, taskId]);
 
   useEffect(() => {
     loadedTaskIdRef.current = null;
+    historyRequestIdRef.current += 1;
+    olderMessagesRequestIdRef.current += 1;
     setHistory(null);
     setHistoryError(null);
     setIsHistoryLoading(true);
@@ -377,6 +392,7 @@ function InlineAiChatView({ taskId }: { taskId: string }) {
     setSelectedSessionKey(null);
     setDetail(null);
     setDetailError(null);
+    olderMessagesRequestIdRef.current += 1;
     setActiveRoles([]);
   }, [filteredSessions, selectedSessionKey]);
 
@@ -386,6 +402,7 @@ function InlineAiChatView({ taskId }: { taskId: string }) {
     }
 
     let cancelled = false;
+    olderMessagesRequestIdRef.current += 1;
     setDetail(null);
     setDetailError(null);
     setIsOlderMessagesLoading(false);
@@ -442,6 +459,7 @@ function InlineAiChatView({ taskId }: { taskId: string }) {
   }, [displayedMessages.length, isDetailLoading, selectedSession]);
 
   function toggleRole(role: AiMessageRole) {
+    olderMessagesRequestIdRef.current += 1;
     setActiveRoles((current) => (
       current.includes(role)
         ? current.filter((candidate) => candidate !== role)
@@ -475,23 +493,32 @@ function InlineAiChatView({ taskId }: { taskId: string }) {
       return;
     }
 
+    const requestId = olderMessagesRequestIdRef.current + 1;
+    olderMessagesRequestIdRef.current = requestId;
+    const requestedSession = selectedSession;
+    const requestedSearchQuery = appliedSearchQuery;
+    const requestedRoles = activeRoles.length > 0 ? activeRoles : undefined;
     setIsOlderMessagesLoading(true);
     setDetailError(null);
     try {
       const result = await getTaskAiSessionDetail(
         taskId,
-        selectedSession.provider,
-        selectedSession.id,
-        selectedSession.sourceRef ?? null,
+        requestedSession.provider,
+        requestedSession.id,
+        requestedSession.sourceRef ?? null,
         detail.nextCursor,
         INLINE_CHAT_DETAIL_LIMIT,
         INLINE_CHAT_INCLUDE_REPO_SESSIONS,
-        appliedSearchQuery,
-        activeRoles.length > 0 ? activeRoles : undefined,
+        requestedSearchQuery,
+        requestedRoles,
       );
 
+      if (olderMessagesRequestIdRef.current !== requestId) {
+        return;
+      }
+
       if (!result) {
-        setDetailError({ sessionId: selectedSession.id, message: t("aiSessions.detailError") });
+        setDetailError({ sessionId: requestedSession.id, message: t("aiSessions.detailError") });
         return;
       }
 
@@ -506,9 +533,13 @@ function InlineAiChatView({ taskId }: { taskId: string }) {
         };
       });
     } catch {
-      setDetailError({ sessionId: selectedSession.id, message: t("aiSessions.detailError") });
+      if (olderMessagesRequestIdRef.current === requestId) {
+        setDetailError({ sessionId: requestedSession.id, message: t("aiSessions.detailError") });
+      }
     } finally {
-      setIsOlderMessagesLoading(false);
+      if (olderMessagesRequestIdRef.current === requestId) {
+        setIsOlderMessagesLoading(false);
+      }
     }
   }
 
