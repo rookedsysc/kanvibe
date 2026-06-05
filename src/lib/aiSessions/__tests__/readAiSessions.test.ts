@@ -463,10 +463,10 @@ conn.close()
     ]);
   });
 
-  it("reads remote Claude Code repo sessions and detail over SSH", async () => {
+  it("reads remote Claude Code worktree sessions and detail over SSH", async () => {
     const worktreePath = "/remote/repo__worktrees/task";
     const repoPath = "/remote/repo";
-    const sessionFile = `/remote/home/.claude/projects/${claudeProjectDirectoryName(repoPath)}/remote-claude.jsonl`;
+    const sessionFile = `/remote/home/.claude/projects/${claudeProjectDirectoryName(worktreePath)}/remote-claude.jsonl`;
 
     vi.resetModules();
     const { execCalls } = setupRemoteFileSystem({
@@ -474,14 +474,14 @@ conn.close()
         {
           type: "user",
           sessionId: "remote-claude",
-          cwd: repoPath,
+          cwd: worktreePath,
           timestamp: "2026-01-01T00:01:00.000Z",
           message: { role: "user", content: [{ type: "text", text: "load repo claude history" }] },
         },
         {
           type: "assistant",
           sessionId: "remote-claude",
-          cwd: repoPath,
+          cwd: worktreePath,
           timestamp: "2026-01-01T00:02:00.000Z",
           message: { role: "assistant", content: [{ type: "text", text: "Claude history loaded remotely." }] },
         },
@@ -489,19 +489,19 @@ conn.close()
     });
     const { readClaudeSessionDetail, readClaudeSessions } = await import("@/lib/aiSessions/readClaudeSessions");
 
-    const sessions = await readClaudeSessions({ worktreePath, repoPath, includeRepoSessions: true, sshHost: "remote-host" });
+    const sessions = await readClaudeSessions({ worktreePath, repoPath, sshHost: "remote-host" });
     expect(sessions).toMatchObject({ provider: "claude", available: true, sessionCount: 1 });
     expect(sessions.sessions[0]).toMatchObject({
       id: "remote-claude",
       provider: "claude",
-      matchedPath: repoPath,
-      matchScope: "repo",
+      matchedPath: worktreePath,
+      matchScope: "worktree",
       firstUserPrompt: "load repo claude history",
       sourceRef: sessionFile,
     });
 
     const detail = await readClaudeSessionDetail(
-      { worktreePath, repoPath, includeRepoSessions: true, sshHost: "remote-host" },
+      { worktreePath, repoPath, sshHost: "remote-host" },
       "remote-claude",
       sessionFile,
       null,
@@ -516,7 +516,7 @@ conn.close()
     expect(execCalls.every((call) => call.sshHost === "remote-host")).toBe(true);
   });
 
-  it("reads remote Codex repo sessions and detail over SSH", async () => {
+  it("reads remote Codex worktree sessions and detail over SSH", async () => {
     const worktreePath = "/remote/repo__worktrees/task";
     const repoPath = "/remote/repo";
     const sessionFile = "/remote/home/.codex/sessions/2026/remote-codex.jsonl";
@@ -527,7 +527,7 @@ conn.close()
         {
           type: "session_meta",
           timestamp: "2026-01-01T00:00:00.000Z",
-          payload: { id: "remote-codex", cwd: repoPath, timestamp: "2026-01-01T00:00:00.000Z" },
+          payload: { id: "remote-codex", cwd: worktreePath, timestamp: "2026-01-01T00:00:00.000Z" },
         },
         {
           type: "response_item",
@@ -543,19 +543,19 @@ conn.close()
     });
     const { readCodexSessionDetail, readCodexSessions } = await import("@/lib/aiSessions/readCodexSessions");
 
-    const sessions = await readCodexSessions({ worktreePath, repoPath, includeRepoSessions: true, sshHost: "remote-host" });
+    const sessions = await readCodexSessions({ worktreePath, repoPath, sshHost: "remote-host" });
     expect(sessions).toMatchObject({ provider: "codex", available: true, sessionCount: 1 });
     expect(sessions.sessions[0]).toMatchObject({
       id: "remote-codex",
       provider: "codex",
-      matchedPath: repoPath,
-      matchScope: "repo",
+      matchedPath: worktreePath,
+      matchScope: "worktree",
       firstUserPrompt: "load repo codex history",
       sourceRef: sessionFile,
     });
 
     const detail = await readCodexSessionDetail(
-      { worktreePath, repoPath, includeRepoSessions: true, sshHost: "remote-host" },
+      { worktreePath, repoPath, sshHost: "remote-host" },
       "remote-codex",
       sessionFile,
       null,
@@ -570,7 +570,7 @@ conn.close()
     expect(execCalls.every((call) => call.sshHost === "remote-host")).toBe(true);
   });
 
-  it("reads remote Gemini CLI repo sessions and detail over SSH", async () => {
+  it("reads remote Gemini CLI worktree sessions and detail over SSH", async () => {
     const worktreePath = "/remote/repo__worktrees/task";
     const repoPath = "/remote/repo";
     const projectsFile = "/remote/home/.gemini/projects.json";
@@ -578,7 +578,7 @@ conn.close()
 
     vi.resetModules();
     const { execCalls } = setupRemoteFileSystem({
-      [projectsFile]: JSON.stringify({ projects: { [repoPath]: "remote-repo" } }),
+      [projectsFile]: JSON.stringify({ projects: { [worktreePath]: "remote-repo" } }),
       [chatFile]: JSON.stringify({
         sessionId: "remote-gemini",
         startTime: "2026-01-01T00:00:00.000Z",
@@ -591,19 +591,19 @@ conn.close()
     });
     const { readGeminiSessionDetail, readGeminiSessions } = await import("@/lib/aiSessions/readGeminiSessions");
 
-    const sessions = await readGeminiSessions({ worktreePath, repoPath, includeRepoSessions: true, sshHost: "remote-host" });
+    const sessions = await readGeminiSessions({ worktreePath, repoPath, sshHost: "remote-host" });
     expect(sessions).toMatchObject({ provider: "gemini", available: true, sessionCount: 1 });
     expect(sessions.sessions[0]).toMatchObject({
       id: "remote-gemini",
       provider: "gemini",
-      matchedPath: repoPath,
-      matchScope: "repo",
+      matchedPath: worktreePath,
+      matchScope: "worktree",
       firstUserPrompt: "load repo gemini history",
       sourceRef: chatFile,
     });
 
     const detail = await readGeminiSessionDetail(
-      { worktreePath, repoPath, includeRepoSessions: true, sshHost: "remote-host" },
+      { worktreePath, repoPath, sshHost: "remote-host" },
       "remote-gemini",
       chatFile,
       null,

@@ -893,7 +893,7 @@ describe("TaskDetailRoute", () => {
 
     expect(await screen.findByTestId("inline-ai-chat")).toBeTruthy();
     await waitFor(() => {
-      expect(mocks.getTaskAiSessions).toHaveBeenCalledWith("task-1", false, undefined, null, 20);
+      expect(mocks.getTaskAiSessions).toHaveBeenCalledWith("task-1", undefined, null, 20);
     });
     expect(screen.queryByRole("button", { name: "aiSessions.loadHistory" })).toBeNull();
   });
@@ -1028,7 +1028,7 @@ describe("TaskDetailRoute", () => {
 
     expect(await screen.findByTestId("inline-ai-chat")).toBeTruthy();
     await waitFor(() => {
-      expect(mocks.getTaskAiSessions).toHaveBeenCalledWith("task-1", false, undefined, null, 20);
+      expect(mocks.getTaskAiSessions).toHaveBeenCalledWith("task-1", undefined, null, 20);
     });
 
     fireEvent.click(await screen.findByRole("button", { name: /Claude chat/ }));
@@ -1041,7 +1041,6 @@ describe("TaskDetailRoute", () => {
         null,
         null,
         40,
-        false,
         undefined,
         undefined,
       );
@@ -1503,7 +1502,7 @@ describe("TaskDetailRoute", () => {
 
     await waitFor(() => {
       expect(mocks.getTaskAiSessions).toHaveBeenCalledTimes(1);
-      expect(mocks.getTaskAiSessions).toHaveBeenCalledWith("task-1", false, undefined, null, 20);
+      expect(mocks.getTaskAiSessions).toHaveBeenCalledWith("task-1", undefined, null, 20);
     });
     expect(screen.queryByRole("button", { name: "aiSessions.loadHistory" })).toBeNull();
     expect(screen.queryByText("aiSessions.loadHistoryHint")).toBeNull();
@@ -1554,12 +1553,12 @@ describe("TaskDetailRoute", () => {
     fireEvent.click(await screen.findByRole("button", { name: "aiSessions.inlineChat" }));
 
     expect(await screen.findByRole("button", { name: /Newest chat/ })).toBeTruthy();
-    expect(mocks.getTaskAiSessions).toHaveBeenCalledWith("task-1", false, undefined, null, 20);
+    expect(mocks.getTaskAiSessions).toHaveBeenCalledWith("task-1", undefined, null, 20);
 
     fireEvent.click(screen.getByRole("button", { name: "aiSessions.loadMoreSessions" }));
 
     await waitFor(() => {
-      expect(mocks.getTaskAiSessions).toHaveBeenLastCalledWith("task-1", false, undefined, "20", 20);
+      expect(mocks.getTaskAiSessions).toHaveBeenLastCalledWith("task-1", undefined, "20", 20);
     });
     expect(await screen.findByRole("button", { name: /Older chat/ })).toBeTruthy();
   });
@@ -1615,7 +1614,7 @@ describe("TaskDetailRoute", () => {
     fireEvent.click(screen.getByRole("button", { name: "aiSessions.loadMoreSessions" }));
 
     await waitFor(() => {
-      expect(mocks.getTaskAiSessions).toHaveBeenLastCalledWith("task-1", false, undefined, "20", 20);
+      expect(mocks.getTaskAiSessions).toHaveBeenLastCalledWith("task-1", undefined, "20", 20);
     });
     expect(await screen.findByRole("button", { name: /Codex older/ })).toBeTruthy();
   });
@@ -1685,7 +1684,6 @@ describe("TaskDetailRoute", () => {
       "claude.jsonl",
       null,
       40,
-      false,
       undefined,
       undefined,
     );
@@ -1700,7 +1698,6 @@ describe("TaskDetailRoute", () => {
         "claude.jsonl",
         "40",
         40,
-        false,
         undefined,
         undefined,
       );
@@ -1777,7 +1774,6 @@ describe("TaskDetailRoute", () => {
         "claude.jsonl",
         "40",
         40,
-        false,
         undefined,
         undefined,
       );
@@ -1792,7 +1788,6 @@ describe("TaskDetailRoute", () => {
         "claude.jsonl",
         null,
         40,
-        false,
         undefined,
         ["assistant"],
       );
@@ -2011,7 +2006,7 @@ describe("TaskDetailRoute", () => {
     fireEvent.submit(searchInput.closest("form")!);
 
     await waitFor(() => {
-      expect(mocks.getTaskAiSessions).toHaveBeenCalledWith("task-1", false, "database migration", null, 20);
+      expect(mocks.getTaskAiSessions).toHaveBeenCalledWith("task-1", "database migration", null, 20);
     });
     expect(await screen.findByRole("button", { name: /Gemini architecture answer/ })).toBeTruthy();
   });
@@ -2057,14 +2052,14 @@ describe("TaskDetailRoute", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "aiSessions.loadMoreSessions" }));
     await waitFor(() => {
-      expect(mocks.getTaskAiSessions).toHaveBeenLastCalledWith("task-1", false, undefined, "20", 20);
+      expect(mocks.getTaskAiSessions).toHaveBeenLastCalledWith("task-1", undefined, "20", 20);
     });
 
     const searchInput = screen.getByLabelText("aiSessions.searchLabel");
     fireEvent.change(searchInput, { target: { value: "filtered topic" } });
     fireEvent.submit(searchInput.closest("form")!);
     await waitFor(() => {
-      expect(mocks.getTaskAiSessions).toHaveBeenLastCalledWith("task-1", false, "filtered topic", null, 20);
+      expect(mocks.getTaskAiSessions).toHaveBeenLastCalledWith("task-1", "filtered topic", null, 20);
     });
 
     await act(async () => {
@@ -2152,7 +2147,6 @@ describe("TaskDetailRoute", () => {
         "claude.jsonl",
         null,
         expect.any(Number),
-        false,
         undefined,
         undefined,
       );
@@ -2168,7 +2162,6 @@ describe("TaskDetailRoute", () => {
         "claude.jsonl",
         null,
         expect.any(Number),
-        false,
         undefined,
         ["system"],
       );

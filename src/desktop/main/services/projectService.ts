@@ -1242,7 +1242,6 @@ export async function getTaskOpenCodeHooksStatus(
 /** 태스크와 연결된 로컬 AI 세션들을 집계한다 */
 export async function getTaskAiSessions(
   taskId: string,
-  includeRepoSessions = false,
   query?: string,
   cursor?: string | null,
   limit?: number
@@ -1267,7 +1266,6 @@ export async function getTaskAiSessions(
   return aggregateAiSessions({
     worktreePath: task.worktreePath || task.project.repoPath,
     repoPath: task.project.repoPath,
-    includeRepoSessions,
     query,
     cursor,
     limit,
@@ -1282,7 +1280,6 @@ export async function getTaskAiSessionDetail(
   sourceRef?: string | null,
   cursor?: string | null,
   limit = 20,
-  includeRepoSessions = false,
   query?: string,
   roles?: AiMessageRole[]
 ): Promise<AggregatedAiSessionDetail | null> {
@@ -1301,7 +1298,6 @@ export async function getTaskAiSessionDetail(
     {
       worktreePath: targetPath,
       repoPath: task.project.repoPath,
-      includeRepoSessions,
       query,
       roles,
       sshHost: task.project.sshHost,

@@ -2190,7 +2190,7 @@ describe("projectService remote hook and AI session support", () => {
     expect(mocks.installKanvibeHooks).not.toHaveBeenCalled();
   });
 
-  it("원격 AI 세션 집계에도 sshHost를 전달한다", async () => {
+  it("원격 AI 세션 집계는 task worktree scope와 sshHost를 전달한다", async () => {
     // Given
     const task = {
       id: "task-remote",
@@ -2216,13 +2216,12 @@ describe("projectService remote hook and AI session support", () => {
     const { getTaskAiSessions } = await import("@/desktop/main/services/projectService");
 
     // When
-    await getTaskAiSessions(task.id, true, "claude");
+    await getTaskAiSessions(task.id, "claude");
 
     // Then
     expect(mocks.aggregateAiSessions).toHaveBeenCalledWith({
       worktreePath: "/remote/worktree",
       repoPath: "/remote/repo",
-      includeRepoSessions: true,
       query: "claude",
       sshHost: "remote-host",
     });
