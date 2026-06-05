@@ -104,8 +104,8 @@ describe("attachLocalSession — tmux 세션 자동 생성", () => {
     // Then
     const newSessionCmd = findExecSyncCall("new-session");
     expect(newSessionCmd).toBeDefined();
-    expect(newSessionCmd).toContain('-s "feat-login"');
-    expect(newSessionCmd).toContain('-c "/workspace"');
+    expect(newSessionCmd).toContain("-s 'feat-login'");
+    expect(newSessionCmd).toContain("-c '/workspace'");
     const newSessionCall = mockExecSync.mock.calls.find((call) => String(call[0]).includes("new-session"));
     expect(newSessionCall?.[1]).toEqual(expect.objectContaining({
       env: expect.objectContaining({
@@ -146,10 +146,46 @@ describe("attachLocalSession — tmux 세션 자동 생성", () => {
 
     // Then
     const bootstrapCmd = findExecSyncCall("new-session");
-    expect(bootstrapCmd).toContain('tmux new-session -d -s "feat-login" -c "/workspace"');
-    expect(bootstrapCmd).toContain('tmux split-window -h -t "feat-login":0 -c "/workspace"');
-    expect(bootstrapCmd).toContain('tmux send-keys -t "feat-login":0.0 "pnpm dev" Enter');
-    expect(bootstrapCmd).toContain('tmux send-keys -t "feat-login":0.1 "pnpm test" Enter');
+    expect(bootstrapCmd).toContain("tmux new-session -d -s 'feat-login' -c '/workspace'");
+    expect(bootstrapCmd).toContain("tmux split-window -h -t 'feat-login:0' -c '/workspace'");
+    expect(bootstrapCmd).toContain("tmux send-keys -t 'feat-login:0.0' -- 'pnpm dev' Enter");
+    expect(bootstrapCmd).toContain("tmux send-keys -t 'feat-login:0.1' -- 'pnpm test' Enter");
+  });
+
+  it("should build POSIX-valid local tmux bootstrap commands for multiline quoted pane commands", async () => {
+    // Given
+    const { attachLocalSession } = await import("@/lib/terminal");
+    mockExecSync.mockImplementation((cmd: string) => {
+      if (typeof cmd === "string" && cmd.includes("has-session")) {
+        throw new Error("session not found");
+      }
+      return "";
+    });
+
+    // When
+    await attachLocalSession(
+      "task-layout-quoted",
+      SessionType.TMUX,
+      "feat-login",
+      createMockWs(),
+      "/workspace",
+      120,
+      30,
+      {
+        layoutType: PaneLayoutType.VERTICAL_2,
+        panes: [
+          {
+            position: 0,
+            command: "nvm use 24 && \nnode -e \"console.log('ok')\"",
+          },
+        ],
+      },
+    );
+
+    // Then
+    const bootstrapCmd = findExecSyncCall("new-session");
+    expect(bootstrapCmd).toBeDefined();
+    expectValidPosixShellSyntax(bootstrapCmd ?? "");
   });
 
   it("should skip session creation when tmux session already exists", async () => {
@@ -457,7 +493,7 @@ describe("attachRemoteSession — ssh 바이너리 기반 연결", () => {
         expect.stringContaining('tmux has-session -t "remote-session"'),
       );
       expect(mockPtyWrite).toHaveBeenCalledWith(
-        expect.stringContaining('tmux new-session -d -s "remote-session" -c "/remote/worktree"'),
+        expect.stringContaining("tmux new-session -d -s 'remote-session' -c '/remote/worktree'"),
       );
     } finally {
       if (originalDisplay === undefined) {
@@ -615,13 +651,47 @@ describe("attachRemoteSession — ssh 바이너리 기반 연결", () => {
     );
 
     expect(mockPtyWrite).toHaveBeenCalledWith(
-      expect.stringContaining('tmux split-window -h -t "remote-session":0 -c "/remote/worktree"'),
+      expect.stringContaining("tmux split-window -h -t 'remote-session:0' -c '/remote/worktree'"),
     );
     expect(mockPtyWrite).toHaveBeenCalledWith(
-      expect.stringContaining('tmux send-keys -t "remote-session":0.0 "pnpm dev" Enter'),
+      expect.stringContaining("tmux send-keys -t 'remote-session:0.0' -- 'pnpm dev' Enter"),
     );
     expect(mockPtyWrite).toHaveBeenCalledWith(
-      expect.stringContaining('tmux send-keys -t "remote-session":0.1 "pnpm test" Enter'),
+      expect.stringContaining("tmux send-keys -t 'remote-session:0.1' -- 'pnpm test' Enter"),
     );
+  });
+
+  it("should build POSIX-valid remote tmux attach commands for multiline quoted pane commands", async () => {
+    const { attachRemoteSession } = await import("@/lib/terminal");
+
+    await attachRemoteSession(
+      "task-r-quoted",
+      "remote-host",
+      SessionType.TMUX,
+      "remote-session",
+      createMockWs(),
+      {
+        host: "remote-host",
+        hostname: "example.com",
+        port: 2202,
+        username: "tester",
+        privateKeyPath: "/tmp/test-key",
+      },
+      120,
+      30,
+      "/remote/worktree",
+      {
+        layoutType: PaneLayoutType.VERTICAL_2,
+        panes: [
+          {
+            position: 0,
+            command: "nvm use 24 && \nnode -e \"console.log('ok')\"",
+          },
+        ],
+      },
+    );
+
+    const attachCommand = String(mockPtyWrite.mock.calls[0]?.[0] ?? "").trim();
+    expectValidPosixShellSyntax(attachCommand);
   });
 });

@@ -40,12 +40,20 @@ export function sanitizeZellijSessionName(sessionName: string): string {
   return sessionName.slice(0, ZELLIJ_SESSION_NAME_MAX_LENGTH);
 }
 
-function buildTmuxCreateSessionCommand(sessionName: string, workingDir: string): string {
-  return `tmux new-session -d -s "${sessionName}" -c "${workingDir}"`;
+function quoteForPosixShell(value: string): string {
+  return `'${value.replace(/'/g, `'"'"'`)}'`;
 }
 
-function buildTmuxTarget(sessionName: string): string {
-  return `"${sessionName}":0`;
+function buildTmuxCreateSessionCommand(sessionName: string, workingDir: string): string {
+  return `tmux new-session -d -s ${quoteForPosixShell(sessionName)} -c ${quoteForPosixShell(workingDir)}`;
+}
+
+function buildTmuxWindowTarget(sessionName: string): string {
+  return quoteForPosixShell(`${sessionName}:0`);
+}
+
+function buildTmuxPaneTarget(sessionName: string, position: number): string {
+  return quoteForPosixShell(`${sessionName}:0.${position}`);
 }
 
 export function buildTmuxPaneLayoutCommands(
@@ -54,35 +62,35 @@ export function buildTmuxPaneLayoutCommands(
   panes: PaneCommand[],
   worktreePath: string,
 ): string[] {
-  const target = buildTmuxTarget(sessionName);
+  const target = buildTmuxWindowTarget(sessionName);
 
   const splitCommands: Record<PaneLayoutType, string[]> = {
     [PaneLayoutType.SINGLE]: [],
     [PaneLayoutType.HORIZONTAL_2]: [
-      `tmux split-window -v -t ${target} -c "${worktreePath}"`,
+      `tmux split-window -v -t ${target} -c ${quoteForPosixShell(worktreePath)}`,
     ],
     [PaneLayoutType.VERTICAL_2]: [
-      `tmux split-window -h -t ${target} -c "${worktreePath}"`,
+      `tmux split-window -h -t ${target} -c ${quoteForPosixShell(worktreePath)}`,
     ],
     [PaneLayoutType.LEFT_RIGHT_TB]: [
-      `tmux split-window -h -t ${target} -c "${worktreePath}"`,
-      `tmux split-window -v -t ${target}.1 -c "${worktreePath}"`,
+      `tmux split-window -h -t ${target} -c ${quoteForPosixShell(worktreePath)}`,
+      `tmux split-window -v -t ${buildTmuxPaneTarget(sessionName, 1)} -c ${quoteForPosixShell(worktreePath)}`,
     ],
     [PaneLayoutType.LEFT_TB_RIGHT]: [
-      `tmux split-window -h -t ${target} -c "${worktreePath}"`,
-      `tmux split-window -v -t ${target}.0 -c "${worktreePath}"`,
+      `tmux split-window -h -t ${target} -c ${quoteForPosixShell(worktreePath)}`,
+      `tmux split-window -v -t ${buildTmuxPaneTarget(sessionName, 0)} -c ${quoteForPosixShell(worktreePath)}`,
     ],
     [PaneLayoutType.QUAD]: [
-      `tmux split-window -h -t ${target} -c "${worktreePath}"`,
-      `tmux split-window -v -t ${target}.0 -c "${worktreePath}"`,
-      `tmux split-window -v -t ${target}.2 -c "${worktreePath}"`,
+      `tmux split-window -h -t ${target} -c ${quoteForPosixShell(worktreePath)}`,
+      `tmux split-window -v -t ${buildTmuxPaneTarget(sessionName, 0)} -c ${quoteForPosixShell(worktreePath)}`,
+      `tmux split-window -v -t ${buildTmuxPaneTarget(sessionName, 2)} -c ${quoteForPosixShell(worktreePath)}`,
     ],
   };
 
   const sendKeysCommands = panes
     .filter((pane) => pane.command.trim())
     .map((pane) => (
-      `tmux send-keys -t ${target}.${pane.position} "${pane.command}" Enter`
+      `tmux send-keys -t ${buildTmuxPaneTarget(sessionName, pane.position)} -- ${quoteForPosixShell(pane.command)} Enter`
     ));
 
   return [
@@ -208,10 +216,6 @@ export function generateZellijLayoutKdl(
 
 /** Zellij KDL 레이아웃 파일의 기본 파일명 */
 export const ZELLIJ_LAYOUT_FILENAME = ".zellij-layout.kdl";
-
-function quoteForPosixShell(value: string): string {
-  return `'${value.replace(/'/g, `'"'"'`)}'`;
-}
 
 /**
  * KDL 레이아웃 파일을 worktree 디렉토리에 저장한다.
