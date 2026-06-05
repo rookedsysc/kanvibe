@@ -41,7 +41,7 @@ export async function persistTaskStateAtPath(
   }
 
   try {
-    await ensureKanvibeStatusFileExcluded(repoPath, sshHost);
+    await ensureKanvibeStateDirectoryExcluded(repoPath, sshHost);
     await writeKanvibeTaskState(repoPath, { status: task.status }, sshHost);
   } catch (error) {
     console.error(".kanvibe task 상태 저장 실패:", {
@@ -55,14 +55,14 @@ export async function persistTaskStateAtPath(
   }
 }
 
-async function ensureKanvibeStatusFileExcluded(
+async function ensureKanvibeStateDirectoryExcluded(
   repoPath: string,
   sshHost?: string | null,
 ): Promise<void> {
   try {
     await addAiToolPatternsToGitExclude(repoPath, sshHost);
   } catch (error) {
-    console.warn(".kanvibe status 파일 git exclude 갱신 실패:", {
+    console.warn(".kanvibe 상태 디렉터리 git exclude 갱신 실패:", {
       repoPath,
       sshHost: sshHost ?? null,
       error: getErrorMessage(error),

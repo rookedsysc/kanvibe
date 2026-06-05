@@ -3,7 +3,7 @@ import { execGit } from "@/lib/gitOperations";
 import { quoteShellArgument, readTextFile, writeTextFile } from "@/lib/hostFileAccess";
 
 export const KANVIBE_GIT_EXCLUDE_MARKER = "# KanVibe AI hooks (auto-generated)";
-export const KANVIBE_STATUS_FILE_EXCLUDE_PATTERN = ".kanvibe/status.json";
+export const KANVIBE_STATE_DIR_EXCLUDE_PATTERN = ".kanvibe/";
 
 const EXCLUDE_PATTERNS = [
   ".claude/hooks/",
@@ -14,13 +14,14 @@ const EXCLUDE_PATTERNS = [
   ".codex/hooks.json",
   ".codex/config.toml",
   ".opencode/plugins/",
-  KANVIBE_STATUS_FILE_EXCLUDE_PATTERN,
+  KANVIBE_STATE_DIR_EXCLUDE_PATTERN,
 ];
 
 const LEGACY_EXCLUDE_PATTERNS = [
   ".kanvibe/hooks-targets.json",
   ".kanvibe/task-state.json",
   ".kanvibe/status.md",
+  ".kanvibe/status.json",
 ];
 
 function buildExcludeContent(currentContent: string): string {

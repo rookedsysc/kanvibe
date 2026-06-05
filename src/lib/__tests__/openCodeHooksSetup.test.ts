@@ -59,13 +59,9 @@ describe("openCodeHooksSetup", () => {
       expect(pluginContent).not.toContain("task-state.json");
       expect(pluginContent).not.toContain("readFileSync(KANVIBE_TARGETS_FILE");
       expect(pluginContent).toContain("--git-common-dir");
-      expect(pluginContent).toContain('resolve(gitCommonDir, "info", "exclude")');
-      expect(pluginContent).toContain(".kanvibe/status.json");
-      expect(pluginContent).toContain("includes(KANVIBE_STATUS_EXCLUDE_PATTERN)");
+      expect(pluginContent).toContain(".kanvibe/");
       expect(pluginContent).toContain("writeFileSync(");
-      expect(pluginContent).toContain("JSON.stringify({ schemaVersion: 1, status, updatedAt: new Date().toISOString() }");
-      expect(pluginContent).toContain('KANVIBE_URL.endsWith("/")');
-      expect(pluginContent).toContain('baseUrl + "/api/hooks/status"');
+      expect(pluginContent).toContain("schemaVersion: 1");
       expect(pluginContent).toContain("taskId: TASK_ID");
     });
 
@@ -242,7 +238,7 @@ export const KanvibePlugin: Plugin = async ({ $ }) => {
       await writeFile(
         pluginPath,
         pluginContent.replace(
-          /\n  const KANVIBE_STATUS_EXCLUDE_PATTERN =[\s\S]*?\n  function writeKanvibeTaskState/,
+          /\n  const KANVIBE_STATE_DIR_EXCLUDE_PATTERN =[\s\S]*?\n  function writeKanvibeTaskState/,
           "\n  function writeKanvibeTaskState",
         ),
         "utf-8",

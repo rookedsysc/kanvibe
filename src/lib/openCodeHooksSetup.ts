@@ -4,7 +4,7 @@ import { pathToFileURL } from "node:url";
 import {
   addAiToolPatternsToGitExclude,
   KANVIBE_GIT_EXCLUDE_MARKER,
-  KANVIBE_STATUS_FILE_EXCLUDE_PATTERN,
+  KANVIBE_STATE_DIR_EXCLUDE_PATTERN,
 } from "@/lib/gitExclude";
 import { readTextFiles } from "@/lib/hostFileAccess";
 import { extractPluginHookServerUrl, validateHookServerConfiguration } from "@/lib/hookServerStatus";
@@ -38,7 +38,7 @@ export const KanvibePlugin: Plugin = async ({ client }) => {
   const KANVIBE_REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
   const KANVIBE_STATE_DIR = resolve(KANVIBE_REPO_ROOT, ".kanvibe");
   const KANVIBE_STATUS_FILE = resolve(KANVIBE_STATE_DIR, "status.json");
-  const KANVIBE_STATUS_EXCLUDE_PATTERN = ${JSON.stringify(KANVIBE_STATUS_FILE_EXCLUDE_PATTERN)};
+  const KANVIBE_STATE_DIR_EXCLUDE_PATTERN = ${JSON.stringify(KANVIBE_STATE_DIR_EXCLUDE_PATTERN)};
   const KANVIBE_GIT_EXCLUDE_MARKER = ${JSON.stringify(KANVIBE_GIT_EXCLUDE_MARKER)};
   const lastStatusBySession = new Map<string, string>();
   const lastUserMessageBySession = new Map<string, string>();
@@ -57,12 +57,12 @@ export const KanvibePlugin: Plugin = async ({ client }) => {
 
       const content = existsSync(excludeFile) ? readFileSync(excludeFile, "utf8") : "";
       const lines = content.split(/\\r?\\n/);
-      if (lines.includes(KANVIBE_STATUS_EXCLUDE_PATTERN)) return;
+      if (lines.includes(KANVIBE_STATE_DIR_EXCLUDE_PATTERN)) return;
 
       const markerPrefix = lines.includes(KANVIBE_GIT_EXCLUDE_MARKER)
         ? ""
         : "\\n" + KANVIBE_GIT_EXCLUDE_MARKER + "\\n";
-      appendFileSync(excludeFile, markerPrefix + KANVIBE_STATUS_EXCLUDE_PATTERN + "\\n", "utf8");
+      appendFileSync(excludeFile, markerPrefix + KANVIBE_STATE_DIR_EXCLUDE_PATTERN + "\\n", "utf8");
     } catch {
       /* git exclude 갱신 에러 무시 */
     }
@@ -239,9 +239,9 @@ function hasKanvibePlugin(pluginContent: string): boolean {
 
 function hasOpenCodeStatusJsonPersistence(pluginContent: string): boolean {
   return pluginContent.includes("status.json")
-    && pluginContent.includes("KANVIBE_STATUS_EXCLUDE_PATTERN")
+    && pluginContent.includes("KANVIBE_STATE_DIR_EXCLUDE_PATTERN")
     && pluginContent.includes("--git-common-dir")
-    && pluginContent.includes("includes(KANVIBE_STATUS_EXCLUDE_PATTERN)")
+    && pluginContent.includes("includes(KANVIBE_STATE_DIR_EXCLUDE_PATTERN)")
     && pluginContent.includes("JSON.stringify({ schemaVersion: 1, status, updatedAt: new Date().toISOString() }");
 }
 

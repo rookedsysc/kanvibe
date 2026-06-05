@@ -54,7 +54,7 @@ describe("hookTaskBinding", () => {
     expect(updater).toContain("status.json");
     expect(updater).toContain("--git-common-dir");
     expect(updater).toContain("/info/exclude");
-    expect(updater).toContain(".kanvibe/status.json");
+    expect(updater).toContain(".kanvibe/");
     expect(updater).toContain("grep -qxF");
     expect(updater).toContain('"schemaVersion":1');
     expect(updater).toContain('"status":"%s"');

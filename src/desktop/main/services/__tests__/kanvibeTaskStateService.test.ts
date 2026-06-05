@@ -98,7 +98,7 @@ describe("kanvibeTaskStateService", () => {
       null,
     );
     expect(consoleWarn).toHaveBeenCalledWith(
-      ".kanvibe status 파일 git exclude 갱신 실패:",
+      ".kanvibe 상태 디렉터리 git exclude 갱신 실패:",
       expect.objectContaining({
         repoPath: "/workspace/repo",
         sshHost: null,

@@ -1,6 +1,6 @@
 import {
   KANVIBE_GIT_EXCLUDE_MARKER,
-  KANVIBE_STATUS_FILE_EXCLUDE_PATTERN,
+  KANVIBE_STATE_DIR_EXCLUDE_PATTERN,
 } from "@/lib/gitExclude";
 
 function escapeShellDoubleQuotedValue(value: string) {
@@ -57,11 +57,11 @@ if [ -n "\${KANVIBE_GIT_COMMON_DIR}" ]; then
   KANVIBE_GIT_EXCLUDE_FILE="\${KANVIBE_GIT_COMMON_DIR}/info/exclude"
   mkdir -p "$(dirname "\${KANVIBE_GIT_EXCLUDE_FILE}")" 2>/dev/null || true
   touch "\${KANVIBE_GIT_EXCLUDE_FILE}" 2>/dev/null || true
-  if ! grep -qxF "${KANVIBE_STATUS_FILE_EXCLUDE_PATTERN}" "\${KANVIBE_GIT_EXCLUDE_FILE}" 2>/dev/null; then
+  if ! grep -qxF "${KANVIBE_STATE_DIR_EXCLUDE_PATTERN}" "\${KANVIBE_GIT_EXCLUDE_FILE}" 2>/dev/null; then
     if ! grep -qxF "${KANVIBE_GIT_EXCLUDE_MARKER}" "\${KANVIBE_GIT_EXCLUDE_FILE}" 2>/dev/null; then
       printf '\n%s\n' "${KANVIBE_GIT_EXCLUDE_MARKER}" >> "\${KANVIBE_GIT_EXCLUDE_FILE}" 2>/dev/null || true
     fi
-    printf '%s\n' "${KANVIBE_STATUS_FILE_EXCLUDE_PATTERN}" >> "\${KANVIBE_GIT_EXCLUDE_FILE}" 2>/dev/null || true
+    printf '%s\n' "${KANVIBE_STATE_DIR_EXCLUDE_PATTERN}" >> "\${KANVIBE_GIT_EXCLUDE_FILE}" 2>/dev/null || true
   fi
 fi`;
 }
@@ -72,7 +72,7 @@ export function hasShellKanvibeStatusJsonPersistence(content: string): boolean {
     && content.includes("KANVIBE_GIT_COMMON_DIR")
     && content.includes("--git-common-dir")
     && content.includes("KANVIBE_GIT_EXCLUDE_FILE")
-    && content.includes(KANVIBE_STATUS_FILE_EXCLUDE_PATTERN)
+    && content.includes(KANVIBE_STATE_DIR_EXCLUDE_PATTERN)
     && content.includes('"schemaVersion":1')
     && content.includes('"status":"%s"');
 }
