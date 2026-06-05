@@ -243,7 +243,7 @@ function getOrCreateClaudeSession(
   sessions: Map<string, ClaudeSessionAccumulator>,
   sessionId: string,
   cwd: string,
-  matchScope: "worktree" | "repo" | "unknown",
+  matchScope: AggregatedAiSession["matchScope"],
   timestamp: string | undefined,
   sourceRef: string
 ): ClaudeSessionAccumulator {

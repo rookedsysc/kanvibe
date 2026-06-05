@@ -1,5 +1,5 @@
 import { isSSHTransportError } from "@/lib/gitOperations";
-import { createAggregationResult, createReaderResult, sortSessionsDescending, toSourceStatus } from "@/lib/aiSessions/shared";
+import { createAggregationResult, createReaderResult, paginateItems, sortSessionsDescending, toSourceStatus } from "@/lib/aiSessions/shared";
 import { readClaudeSessionDetail, readClaudeSessions } from "@/lib/aiSessions/readClaudeSessions";
 import { readCodexSessionDetail, readCodexSessions } from "@/lib/aiSessions/readCodexSessions";
 import { readGeminiSessionDetail, readGeminiSessions } from "@/lib/aiSessions/readGeminiSessions";
@@ -15,13 +15,18 @@ export async function aggregateAiSessions(context: AiSessionReaderContext): Prom
   ]);
 
   const allSessions = [...claude.sessions, ...codex.sessions, ...openCode.sessions, ...gemini.sessions];
+  const sortedSessions = sortSessionsDescending(allSessions);
+  const paginatedSessions = context.limit
+    ? paginateItems(sortedSessions, context.cursor, context.limit)
+    : { items: sortedSessions, nextCursor: null };
 
   return createAggregationResult({
     isRemote: Boolean(context.sshHost),
     targetPath: context.worktreePath,
     repoPath: context.repoPath,
-    sessions: sortSessionsDescending(allSessions),
+    sessions: paginatedSessions.items,
     sources: [claude, codex, openCode, gemini].map(toSourceStatus),
+    nextCursor: paginatedSessions.nextCursor,
   });
 }
 
