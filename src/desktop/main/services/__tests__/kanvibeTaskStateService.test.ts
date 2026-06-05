@@ -17,6 +17,7 @@ const mocks = vi.hoisted(() => ({
   getProjectRepository: vi.fn(),
   readKanvibeTaskState: vi.fn(),
   writeKanvibeTaskState: vi.fn(),
+  addAiToolPatternsToGitExclude: vi.fn(),
 }));
 
 vi.mock("@/entities/KanbanTask", () => entityMocks);
@@ -30,6 +31,10 @@ vi.mock("@/lib/kanvibeProjectState", () => ({
   writeKanvibeTaskState: mocks.writeKanvibeTaskState,
 }));
 
+vi.mock("@/lib/gitExclude", () => ({
+  addAiToolPatternsToGitExclude: mocks.addAiToolPatternsToGitExclude,
+}));
+
 const TaskStatus = entityMocks.TaskStatus as unknown as typeof import("@/entities/KanbanTask").TaskStatus;
 
 describe("kanvibeTaskStateService", () => {
@@ -40,6 +45,7 @@ describe("kanvibeTaskStateService", () => {
     mocks.projectRepo.findOneBy.mockReset();
     mocks.readKanvibeTaskState.mockReset();
     mocks.writeKanvibeTaskState.mockReset();
+    mocks.addAiToolPatternsToGitExclude.mockReset();
     mocks.getProjectRepository.mockResolvedValue(mocks.projectRepo);
   });
 
@@ -49,6 +55,57 @@ describe("kanvibeTaskStateService", () => {
     await persistTaskStateAtPath(null, { id: "task-1", status: TaskStatus.PROGRESS }, "ssh-host");
 
     expect(mocks.writeKanvibeTaskState).not.toHaveBeenCalled();
+    expect(mocks.addAiToolPatternsToGitExclude).not.toHaveBeenCalled();
+  });
+
+  it("path 기반 task 상태 저장은 status 파일 작성 전에 git exclude를 갱신한다", async () => {
+    const { persistTaskStateAtPath } = await import("@/desktop/main/services/kanvibeTaskStateService");
+
+    await persistTaskStateAtPath(
+      "/remote/repo__worktrees/feature-task",
+      { id: "task-1", status: TaskStatus.REVIEW },
+      "remote-host",
+    );
+
+    expect(mocks.addAiToolPatternsToGitExclude).toHaveBeenCalledWith(
+      "/remote/repo__worktrees/feature-task",
+      "remote-host",
+    );
+    expect(mocks.addAiToolPatternsToGitExclude.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.writeKanvibeTaskState.mock.invocationCallOrder[0],
+    );
+    expect(mocks.writeKanvibeTaskState).toHaveBeenCalledWith(
+      "/remote/repo__worktrees/feature-task",
+      { status: TaskStatus.REVIEW },
+      "remote-host",
+    );
+  });
+
+  it("git exclude 갱신 실패는 status 파일 저장을 막지 않는다", async () => {
+    const consoleWarn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    mocks.addAiToolPatternsToGitExclude.mockRejectedValue(new Error("not a git repo"));
+    const { persistTaskStateAtPath } = await import("@/desktop/main/services/kanvibeTaskStateService");
+
+    await expect(persistTaskStateAtPath(
+      "/workspace/repo",
+      { id: "task-1", status: TaskStatus.PROGRESS },
+      null,
+    )).resolves.toBeUndefined();
+
+    expect(mocks.writeKanvibeTaskState).toHaveBeenCalledWith(
+      "/workspace/repo",
+      { status: TaskStatus.PROGRESS },
+      null,
+    );
+    expect(consoleWarn).toHaveBeenCalledWith(
+      ".kanvibe 상태 디렉터리 git exclude 갱신 실패:",
+      expect.objectContaining({
+        repoPath: "/workspace/repo",
+        sshHost: null,
+        error: "not a git repo",
+      }),
+    );
+    consoleWarn.mockRestore();
   });
 
   it("path 기반 task 상태 저장은 실패해도 호출자 흐름을 막지 않는다", async () => {

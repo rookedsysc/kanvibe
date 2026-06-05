@@ -33,6 +33,10 @@ describe("gitExclude remote", () => {
 
     await addAiToolPatternsToGitExclude("/remote/worktree/task-1", "remote-host");
 
+    expect(mockExecGit).not.toHaveBeenCalledWith(
+      "git -C '/remote/worktree/task-1' rev-parse --path-format=absolute --git-dir",
+      "remote-host",
+    );
     expect(mockExecGit).toHaveBeenCalledWith(
       "git -C '/remote/worktree/task-1' rev-parse --path-format=absolute --git-common-dir",
       "remote-host",
@@ -44,7 +48,7 @@ describe("gitExclude remote", () => {
     );
     expect(mockWriteTextFile).toHaveBeenCalledWith(
       "/remote/main/.git/info/exclude",
-      expect.stringContaining(".kanvibe/status.json"),
+      expect.stringContaining(".kanvibe/"),
       "remote-host",
     );
     expect(mockWriteTextFile).not.toHaveBeenCalledWith(

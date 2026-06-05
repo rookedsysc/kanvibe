@@ -38,7 +38,7 @@ describe("gitExclude", () => {
       expect(content).toContain(".codex/hooks.json");
       expect(content).toContain(".codex/config.toml");
       expect(content).toContain(".opencode/plugins/");
-      expect(content).toContain(".kanvibe/status.json");
+      expect(content).toContain(".kanvibe/");
     });
 
     it("should not duplicate patterns when called multiple times", async () => {
@@ -88,7 +88,7 @@ describe("gitExclude", () => {
       expect(content).toContain(".claude/hooks/");
       expect(content).toContain(".codex/config.toml");
       expect(content).toContain(".opencode/plugins/");
-      expect(content).toContain(".kanvibe/status.json");
+      expect(content).toContain(".kanvibe/");
     });
 
     it("should prune legacy KanVibe state files from the auto-generated block", async () => {
@@ -104,6 +104,7 @@ describe("gitExclude", () => {
           ".kanvibe/hooks-targets.json",
           ".kanvibe/task-state.json",
           ".kanvibe/status.md",
+          ".kanvibe/status.json",
           "",
           "# keep me",
           "dist/",
@@ -120,10 +121,11 @@ describe("gitExclude", () => {
       expect(content).toContain("*.log");
       expect(content).toContain("# keep me");
       expect(content).toContain("dist/");
-      expect(content).toContain(".kanvibe/status.json");
+      expect(content).toContain(".kanvibe/");
       expect(content).not.toContain(".kanvibe/hooks-targets.json");
       expect(content).not.toContain(".kanvibe/task-state.json");
       expect(content).not.toContain(".kanvibe/status.md");
+      expect(content).not.toContain(".kanvibe/status.json");
       expect(content.split("# KanVibe AI hooks (auto-generated)")).toHaveLength(2);
     });
 
