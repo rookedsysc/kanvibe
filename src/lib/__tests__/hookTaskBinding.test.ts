@@ -52,6 +52,10 @@ describe("hookTaskBinding", () => {
 
     expect(updater).toContain("KANVIBE_STATUS=\"review\"");
     expect(updater).toContain("status.json");
+    expect(updater).toContain("--git-common-dir");
+    expect(updater).toContain("/info/exclude");
+    expect(updater).toContain(".kanvibe/status.json");
+    expect(updater).toContain("grep -qxF");
     expect(updater).toContain('"schemaVersion":1');
     expect(updater).toContain('"status":"%s"');
     expect(updater).toContain('"updatedAt":"%s"');
@@ -69,6 +73,16 @@ describe("hookTaskBinding", () => {
 
     expect(hasShellKanvibeStatusJsonPersistence(updater)).toBe(true);
     expect(hasShellKanvibeStatusJsonPersistence(legacyUpdater)).toBe(false);
+  });
+
+  it("status json persistence 판정은 common exclude 갱신 없는 hook을 거부한다", () => {
+    const updater = buildShellKanvibeStatusUpdater("review");
+    const updaterWithoutCommonExclude = updater.replace(
+      /\nKANVIBE_GIT_COMMON_DIR=[\s\S]*?fi\n(?=\nmkdir -p)/,
+      "",
+    );
+
+    expect(hasShellKanvibeStatusJsonPersistence(updaterWithoutCommonExclude)).toBe(false);
   });
 
   it("모든 shell hook이 같은 현재 task id를 가리키는지 판정한다", () => {

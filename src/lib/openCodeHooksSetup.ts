@@ -1,7 +1,11 @@
 import { writeFile, mkdir } from "fs/promises";
 import path from "path";
 import { pathToFileURL } from "node:url";
-import { addAiToolPatternsToGitExclude } from "@/lib/gitExclude";
+import {
+  addAiToolPatternsToGitExclude,
+  KANVIBE_GIT_EXCLUDE_MARKER,
+  KANVIBE_STATUS_FILE_EXCLUDE_PATTERN,
+} from "@/lib/gitExclude";
 import { readTextFiles } from "@/lib/hostFileAccess";
 import { extractPluginHookServerUrl, validateHookServerConfiguration } from "@/lib/hookServerStatus";
 import { getOpenCodeRegisteredKanvibePluginUrls } from "@/lib/openCodePluginRegistry";
@@ -18,7 +22,8 @@ export const PLUGIN_DIR_NAME = "plugins";
 /** OpenCode plugin TypeScript 파일 내용을 생성한다 */
 export function generatePluginScript(kanvibeUrl: string, taskId: string): string {
   return `import type { Plugin } from "@opencode-ai/plugin";
-import { mkdirSync, writeFileSync } from "fs";
+import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
+import { execFileSync } from "child_process";
 import { dirname, resolve } from "path";
 import { fileURLToPath } from "url";
 
@@ -33,11 +38,39 @@ export const KanvibePlugin: Plugin = async ({ client }) => {
   const KANVIBE_REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
   const KANVIBE_STATE_DIR = resolve(KANVIBE_REPO_ROOT, ".kanvibe");
   const KANVIBE_STATUS_FILE = resolve(KANVIBE_STATE_DIR, "status.json");
+  const KANVIBE_STATUS_EXCLUDE_PATTERN = ${JSON.stringify(KANVIBE_STATUS_FILE_EXCLUDE_PATTERN)};
+  const KANVIBE_GIT_EXCLUDE_MARKER = ${JSON.stringify(KANVIBE_GIT_EXCLUDE_MARKER)};
   const lastStatusBySession = new Map<string, string>();
   const lastUserMessageBySession = new Map<string, string>();
 
+  function ensureKanvibeStatusExcluded(): void {
+    try {
+      const gitCommonDir = execFileSync(
+        "git",
+        ["-C", KANVIBE_REPO_ROOT, "rev-parse", "--path-format=absolute", "--git-common-dir"],
+        { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] },
+      ).trim();
+      if (!gitCommonDir) return;
+
+      const excludeFile = resolve(gitCommonDir, "info", "exclude");
+      mkdirSync(dirname(excludeFile), { recursive: true });
+
+      const content = existsSync(excludeFile) ? readFileSync(excludeFile, "utf8") : "";
+      const lines = content.split(/\\r?\\n/);
+      if (lines.includes(KANVIBE_STATUS_EXCLUDE_PATTERN)) return;
+
+      const markerPrefix = lines.includes(KANVIBE_GIT_EXCLUDE_MARKER)
+        ? ""
+        : "\\n" + KANVIBE_GIT_EXCLUDE_MARKER + "\\n";
+      appendFileSync(excludeFile, markerPrefix + KANVIBE_STATUS_EXCLUDE_PATTERN + "\\n", "utf8");
+    } catch {
+      /* git exclude 갱신 에러 무시 */
+    }
+  }
+
   function writeKanvibeTaskState(status: string): void {
     try {
+      ensureKanvibeStatusExcluded();
       mkdirSync(KANVIBE_STATE_DIR, { recursive: true });
       writeFileSync(
         KANVIBE_STATUS_FILE,
@@ -98,7 +131,8 @@ export const KanvibePlugin: Plugin = async ({ client }) => {
     writeKanvibeTaskState(status);
 
     try {
-      await fetch(\`\${KANVIBE_URL.replace(/\/$/, "")}/api/hooks/status\`, {
+      const baseUrl = KANVIBE_URL.endsWith("/") ? KANVIBE_URL.slice(0, -1) : KANVIBE_URL;
+      await fetch(baseUrl + "/api/hooks/status", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ taskId: TASK_ID, status }),
@@ -205,6 +239,9 @@ function hasKanvibePlugin(pluginContent: string): boolean {
 
 function hasOpenCodeStatusJsonPersistence(pluginContent: string): boolean {
   return pluginContent.includes("status.json")
+    && pluginContent.includes("KANVIBE_STATUS_EXCLUDE_PATTERN")
+    && pluginContent.includes("--git-common-dir")
+    && pluginContent.includes("includes(KANVIBE_STATUS_EXCLUDE_PATTERN)")
     && pluginContent.includes("JSON.stringify({ schemaVersion: 1, status, updatedAt: new Date().toISOString() }");
 }
 

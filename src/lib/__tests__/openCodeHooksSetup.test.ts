@@ -58,8 +58,14 @@ describe("openCodeHooksSetup", () => {
       expect(pluginContent).not.toContain("hooks-targets.json");
       expect(pluginContent).not.toContain("task-state.json");
       expect(pluginContent).not.toContain("readFileSync(KANVIBE_TARGETS_FILE");
+      expect(pluginContent).toContain("--git-common-dir");
+      expect(pluginContent).toContain('resolve(gitCommonDir, "info", "exclude")');
+      expect(pluginContent).toContain(".kanvibe/status.json");
+      expect(pluginContent).toContain("includes(KANVIBE_STATUS_EXCLUDE_PATTERN)");
       expect(pluginContent).toContain("writeFileSync(");
       expect(pluginContent).toContain("JSON.stringify({ schemaVersion: 1, status, updatedAt: new Date().toISOString() }");
+      expect(pluginContent).toContain('KANVIBE_URL.endsWith("/")');
+      expect(pluginContent).toContain('baseUrl + "/api/hooks/status"');
       expect(pluginContent).toContain("taskId: TASK_ID");
     });
 
@@ -216,6 +222,31 @@ export const KanvibePlugin: Plugin = async ({ $ }) => {
       await setupOpenCodeHooks(repoPath, "task-1", "http://localhost:3000");
       const pluginContent = await readFile(pluginPath, "utf-8");
       await writeFile(pluginPath, pluginContent.replaceAll("status.json", "status.md"), "utf-8");
+
+      // When
+      const status = await getOpenCodeHooksStatus(repoPath, "task-1");
+
+      // Then
+      expect(status.hasTaskIdBinding).toBe(true);
+      expect(status.hasEventMappings).toBe(true);
+      expect(status.hasStatusJsonPersistence).toBe(false);
+      expect(status.installed).toBe(false);
+    });
+
+    it("common exclude 갱신 없는 OpenCode plugin은 설치된 것으로 보지 않는다", async () => {
+      // Given
+      const repoPath = tempDir;
+      const pluginPath = join(repoPath, ".opencode", "plugins", "kanvibe-plugin.ts");
+      await setupOpenCodeHooks(repoPath, "task-1", "http://localhost:3000");
+      const pluginContent = await readFile(pluginPath, "utf-8");
+      await writeFile(
+        pluginPath,
+        pluginContent.replace(
+          /\n  const KANVIBE_STATUS_EXCLUDE_PATTERN =[\s\S]*?\n  function writeKanvibeTaskState/,
+          "\n  function writeKanvibeTaskState",
+        ),
+        "utf-8",
+      );
 
       // When
       const status = await getOpenCodeHooksStatus(repoPath, "task-1");

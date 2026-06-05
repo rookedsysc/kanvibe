@@ -1,5 +1,6 @@
 import type { KanbanTask, TaskStatus } from "@/entities/KanbanTask";
 import { getProjectRepository } from "@/lib/database";
+import { addAiToolPatternsToGitExclude } from "@/lib/gitExclude";
 import { readKanvibeTaskState, writeKanvibeTaskState } from "@/lib/kanvibeProjectState";
 
 type TaskStateTask = Pick<KanbanTask, "id" | "status">;
@@ -40,6 +41,7 @@ export async function persistTaskStateAtPath(
   }
 
   try {
+    await ensureKanvibeStatusFileExcluded(repoPath, sshHost);
     await writeKanvibeTaskState(repoPath, { status: task.status }, sshHost);
   } catch (error) {
     console.error(".kanvibe task 상태 저장 실패:", {
@@ -47,6 +49,21 @@ export async function persistTaskStateAtPath(
       targetPath: repoPath,
       taskId: task.id,
       status: task.status,
+      sshHost: sshHost ?? null,
+      error: getErrorMessage(error),
+    });
+  }
+}
+
+async function ensureKanvibeStatusFileExcluded(
+  repoPath: string,
+  sshHost?: string | null,
+): Promise<void> {
+  try {
+    await addAiToolPatternsToGitExclude(repoPath, sshHost);
+  } catch (error) {
+    console.warn(".kanvibe status 파일 git exclude 갱신 실패:", {
+      repoPath,
       sshHost: sshHost ?? null,
       error: getErrorMessage(error),
     });
