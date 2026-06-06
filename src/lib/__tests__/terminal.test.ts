@@ -501,8 +501,8 @@ describe("attachRemoteSession — ssh 바이너리 기반 연결", () => {
       expect(sshArgs).not.toContain("-Y");
       expect(sshArgs).not.toContain("ControlMaster=auto");
       const attachCommand = extractRemoteShellPayload(sshArgs.at(-1) ?? "");
-      expect(attachCommand).toContain("tmux has-session -t 'remote-session'");
-      expect(attachCommand).toContain("tmux new-session -d -s 'remote-session' -c '/remote/worktree'");
+      expect(attachCommand).toContain("tmux -L 'kanvibe' -f /dev/null has-session -t 'remote-session'");
+      expect(attachCommand).toContain("tmux -L 'kanvibe' -f /dev/null new-session -d -s 'remote-session' -c '/remote/worktree'");
       expect(mockPtyWrite).not.toHaveBeenCalled();
     } finally {
       if (originalDisplay === undefined) {
@@ -586,7 +586,7 @@ describe("attachRemoteSession — ssh 바이너리 기반 연결", () => {
       const sshArgs = vi.mocked(nodePty.spawn).mock.calls[0][1] as string[];
       expect(sshArgs.at(-2)).toBe("remote-host");
       expect(sshArgs.at(-1)).toEqual(expect.stringMatching(/^sh -lc /));
-      expect(extractRemoteShellPayload(sshArgs.at(-1) ?? "")).toContain("tmux has-session -t 'remote-session'");
+      expect(extractRemoteShellPayload(sshArgs.at(-1) ?? "")).toContain("tmux -L 'kanvibe' -f /dev/null has-session -t 'remote-session'");
       expect(mockPtyWrite).not.toHaveBeenCalled();
     } finally {
       if (originalDisplay === undefined) {
@@ -665,9 +665,61 @@ describe("attachRemoteSession — ssh 바이너리 기반 연결", () => {
     const nodePty = await import("node-pty");
     const sshArgs = vi.mocked(nodePty.spawn).mock.calls[0][1] as string[];
     const attachCommand = extractRemoteShellPayload(sshArgs.at(-1) ?? "");
-    expect(attachCommand).toContain("tmux split-window -h -t 'remote-session:0' -c '/remote/worktree'");
-    expect(attachCommand).toContain("tmux send-keys -t 'remote-session:0.0' -- 'pnpm dev' Enter");
-    expect(attachCommand).toContain("tmux send-keys -t 'remote-session:0.1' -- 'pnpm test' Enter");
+    expect(attachCommand).toContain("tmux -L 'kanvibe' -f /dev/null split-window -h -t 'remote-session:0' -c '/remote/worktree'");
+    expect(attachCommand).toContain("tmux -L 'kanvibe' -f /dev/null send-keys -t 'remote-session:0.0' -- 'pnpm dev' Enter");
+    expect(attachCommand).toContain("tmux -L 'kanvibe' -f /dev/null send-keys -t 'remote-session:0.1' -- 'pnpm test' Enter");
+    expect(mockPtyWrite).not.toHaveBeenCalled();
+  });
+
+  it("should use a KanVibe isolated tmux socket without duplicating the bootstrap flow", async () => {
+    const { attachRemoteSession } = await import("@/lib/terminal");
+
+    await attachRemoteSession(
+      "task-r-tmux-isolated",
+      "remote-host",
+      SessionType.TMUX,
+      "remote-session",
+      createMockWs(),
+      {
+        host: "remote-host",
+        hostname: "example.com",
+        port: 2202,
+        username: "tester",
+        privateKeyPath: "/tmp/test-key",
+      },
+      120,
+      30,
+      "/remote/worktree",
+      {
+        layoutType: PaneLayoutType.VERTICAL_2,
+        panes: [
+          { position: 0, command: "pnpm dev" },
+        ],
+      },
+    );
+
+    const nodePty = await import("node-pty");
+    const sshArgs = vi.mocked(nodePty.spawn).mock.calls[0][1] as string[];
+    const remoteShellCommand = sshArgs.at(-1) ?? "";
+    const attachCommand = extractRemoteShellPayload(remoteShellCommand);
+
+    expect(attachCommand).toContain(
+      "tmux -L 'kanvibe' -f /dev/null has-session -t 'remote-session'",
+    );
+    expect(attachCommand).toContain(
+      "tmux -L 'kanvibe' -f /dev/null new-session -d -s 'remote-session' -c '/remote/worktree' && tmux -L 'kanvibe' -f /dev/null split-window",
+    );
+    expect(attachCommand).toContain(
+      "tmux -L 'kanvibe' -f /dev/null attach-session -t 'remote-session'",
+    );
+    expect(attachCommand).not.toContain("tmux default server failed");
+    expect(attachCommand).not.toContain("kanvibe-fallback");
+    expect(attachCommand.match(/has-session/g)).toHaveLength(1);
+    expect(attachCommand).toContain("tmux session setup failed; leaving the SSH shell open");
+    expect(attachCommand).toContain('exec "${SHELL:-/bin/sh}" -l');
+    expect(Buffer.byteLength(attachCommand)).toBeLessThan(1_000);
+    expectValidPosixShellSyntax(remoteShellCommand);
+    expectValidPosixShellSyntax(attachCommand);
     expect(mockPtyWrite).not.toHaveBeenCalled();
   });
 
@@ -745,6 +797,9 @@ describe("attachRemoteSession — ssh 바이너리 기반 연결", () => {
     expect(sshArgs.at(-2)).toBe("remote-host");
     expect(remoteShellCommand).toEqual(expect.stringMatching(/^sh -lc /));
     expect(attachCommand).toContain("nvm use 24");
+    expect(attachCommand).toContain("tmux -L 'kanvibe' -f /dev/null");
+    expect(attachCommand).not.toContain("kanvibe-fallback");
+    expect(attachCommand).not.toContain("tmux default server failed");
     expect(attachCommand).toContain(sessionName);
     expectValidPosixShellSyntax(remoteShellCommand);
     expectValidPosixShellSyntax(attachCommand);
