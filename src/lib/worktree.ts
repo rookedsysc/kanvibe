@@ -40,7 +40,7 @@ export function sanitizeZellijSessionName(sessionName: string): string {
   return sessionName.slice(0, ZELLIJ_SESSION_NAME_MAX_LENGTH);
 }
 
-function quoteForPosixShell(value: string): string {
+export function quoteForPosixShell(value: string): string {
   return `'${value.replace(/'/g, `'"'"'`)}'`;
 }
 
