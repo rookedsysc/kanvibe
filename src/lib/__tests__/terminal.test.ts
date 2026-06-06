@@ -76,6 +76,17 @@ function expectValidPosixShellSyntax(command: string): void {
   expect(result.status, result.stderr).toBe(0);
 }
 
+function extractRemoteShellPayload(remoteShellCommand: string): string {
+  const result = spawnSync(
+    "sh",
+    ["-c", `set -- ${remoteShellCommand}; printf '%s' "$3"`],
+    { encoding: "utf-8" },
+  );
+  expect(result.status, result.stderr).toBe(0);
+  expect(result.stdout).not.toBe("");
+  return result.stdout;
+}
+
 describe("attachLocalSession — tmux 세션 자동 생성", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -469,7 +480,7 @@ describe("attachRemoteSession — ssh 바이너리 기반 연결", () => {
         expect.objectContaining({ cwd: expect.any(String) }),
       );
       const sshArgs = vi.mocked(nodePty.spawn).mock.calls[0][1] as string[];
-      expect(sshArgs).toEqual([
+      expect(sshArgs.slice(0, -1)).toEqual([
         "-i",
         "/tmp/test-key",
         "-p",
@@ -489,12 +500,10 @@ describe("attachRemoteSession — ssh 바이너리 기반 연결", () => {
       ]);
       expect(sshArgs).not.toContain("-Y");
       expect(sshArgs).not.toContain("ControlMaster=auto");
-      expect(mockPtyWrite).toHaveBeenCalledWith(
-        expect.stringContaining('tmux has-session -t "remote-session"'),
-      );
-      expect(mockPtyWrite).toHaveBeenCalledWith(
-        expect.stringContaining("tmux new-session -d -s 'remote-session' -c '/remote/worktree'"),
-      );
+      const attachCommand = extractRemoteShellPayload(sshArgs.at(-1) ?? "");
+      expect(attachCommand).toContain("tmux has-session -t 'remote-session'");
+      expect(attachCommand).toContain("tmux new-session -d -s 'remote-session' -c '/remote/worktree'");
+      expect(mockPtyWrite).not.toHaveBeenCalled();
     } finally {
       if (originalDisplay === undefined) {
         delete process.env.DISPLAY;
@@ -531,8 +540,12 @@ describe("attachRemoteSession — ssh 바이너리 기반 연결", () => {
       );
 
       // Then
-      const attachCommand = String(mockPtyWrite.mock.calls[0]?.[0] ?? "").trim();
+      const sshArgs = vi.mocked((await import("node-pty")).spawn).mock.calls[0][1] as string[];
+      const remoteShellCommand = sshArgs.at(-1) ?? "";
+      const attachCommand = extractRemoteShellPayload(remoteShellCommand);
+      expectValidPosixShellSyntax(remoteShellCommand);
       expectValidPosixShellSyntax(attachCommand);
+      expect(mockPtyWrite).not.toHaveBeenCalled();
     } finally {
       if (originalDisplay === undefined) {
         delete process.env.DISPLAY;
@@ -542,7 +555,7 @@ describe("attachRemoteSession — ssh 바이너리 기반 연결", () => {
     }
   });
 
-  it("should start remote tmux through an interactive SSH shell", async () => {
+  it("should pass remote tmux bootstrap as an SSH command instead of typing it into the shell", async () => {
     // Given
     const originalDisplay = process.env.DISPLAY;
     delete process.env.DISPLAY;
@@ -571,11 +584,10 @@ describe("attachRemoteSession — ssh 바이너리 기반 연결", () => {
 
       // Then
       const sshArgs = vi.mocked(nodePty.spawn).mock.calls[0][1] as string[];
-      expect(sshArgs.at(-1)).toBe("remote-host");
-      expect(sshArgs).not.toContain(expect.stringContaining("sh -lc "));
-      expect(mockPtyWrite).toHaveBeenCalledWith(
-        expect.stringContaining('tmux has-session -t "remote-session"'),
-      );
+      expect(sshArgs.at(-2)).toBe("remote-host");
+      expect(sshArgs.at(-1)).toEqual(expect.stringMatching(/^sh -lc /));
+      expect(extractRemoteShellPayload(sshArgs.at(-1) ?? "")).toContain("tmux has-session -t 'remote-session'");
+      expect(mockPtyWrite).not.toHaveBeenCalled();
     } finally {
       if (originalDisplay === undefined) {
         delete process.env.DISPLAY;
@@ -650,15 +662,13 @@ describe("attachRemoteSession — ssh 바이너리 기반 연결", () => {
       },
     );
 
-    expect(mockPtyWrite).toHaveBeenCalledWith(
-      expect.stringContaining("tmux split-window -h -t 'remote-session:0' -c '/remote/worktree'"),
-    );
-    expect(mockPtyWrite).toHaveBeenCalledWith(
-      expect.stringContaining("tmux send-keys -t 'remote-session:0.0' -- 'pnpm dev' Enter"),
-    );
-    expect(mockPtyWrite).toHaveBeenCalledWith(
-      expect.stringContaining("tmux send-keys -t 'remote-session:0.1' -- 'pnpm test' Enter"),
-    );
+    const nodePty = await import("node-pty");
+    const sshArgs = vi.mocked(nodePty.spawn).mock.calls[0][1] as string[];
+    const attachCommand = extractRemoteShellPayload(sshArgs.at(-1) ?? "");
+    expect(attachCommand).toContain("tmux split-window -h -t 'remote-session:0' -c '/remote/worktree'");
+    expect(attachCommand).toContain("tmux send-keys -t 'remote-session:0.0' -- 'pnpm dev' Enter");
+    expect(attachCommand).toContain("tmux send-keys -t 'remote-session:0.1' -- 'pnpm test' Enter");
+    expect(mockPtyWrite).not.toHaveBeenCalled();
   });
 
   it("should build POSIX-valid remote tmux attach commands for multiline quoted pane commands", async () => {
@@ -691,7 +701,53 @@ describe("attachRemoteSession — ssh 바이너리 기반 연결", () => {
       },
     );
 
-    const attachCommand = String(mockPtyWrite.mock.calls[0]?.[0] ?? "").trim();
+    const nodePty = await import("node-pty");
+    const sshArgs = vi.mocked(nodePty.spawn).mock.calls[0][1] as string[];
+    const remoteShellCommand = sshArgs.at(-1) ?? "";
+    const attachCommand = extractRemoteShellPayload(remoteShellCommand);
+    expectValidPosixShellSyntax(remoteShellCommand);
     expectValidPosixShellSyntax(attachCommand);
+    expect(mockPtyWrite).not.toHaveBeenCalled();
+  });
+
+  it("should keep long remote tmux bootstrap text out of the login prompt", async () => {
+    const { attachRemoteSession } = await import("@/lib/terminal");
+    const sessionName = "2026-06-toss-node-developer-agent-2026-06-toss-node-developer-export-hermes-session-history-20260605-205232";
+
+    await attachRemoteSession(
+      "task-r-long-bootstrap",
+      "remote-host",
+      SessionType.TMUX,
+      sessionName,
+      createMockWs(),
+      {
+        host: "remote-host",
+        hostname: "example.com",
+        port: 2202,
+        username: "tester",
+        privateKeyPath: "/tmp/test-key",
+      },
+      120,
+      30,
+      "/home/rookedsysc/Documents/toss/2026-06-toss-node-developer__worktrees/agent-2026-06-toss-node-developer-export-hermes-session-history-20260605-205232",
+      {
+        layoutType: PaneLayoutType.VERTICAL_2,
+        panes: [
+          { position: 0, command: "nvm use 24" },
+        ],
+      },
+    );
+
+    const nodePty = await import("node-pty");
+    const sshArgs = vi.mocked(nodePty.spawn).mock.calls[0][1] as string[];
+    const remoteShellCommand = sshArgs.at(-1) ?? "";
+    const attachCommand = extractRemoteShellPayload(remoteShellCommand);
+    expect(sshArgs.at(-2)).toBe("remote-host");
+    expect(remoteShellCommand).toEqual(expect.stringMatching(/^sh -lc /));
+    expect(attachCommand).toContain("nvm use 24");
+    expect(attachCommand).toContain(sessionName);
+    expectValidPosixShellSyntax(remoteShellCommand);
+    expectValidPosixShellSyntax(attachCommand);
+    expect(mockPtyWrite).not.toHaveBeenCalled();
   });
 });
