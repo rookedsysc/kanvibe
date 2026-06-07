@@ -1,13 +1,13 @@
 ---
 name: kanvibe-release-deploy
-description: "Use this skill whenever releasing or deploying KanVibe desktop: run the signed/notarized `pnpm dist:deploy` build, create or update the GitHub release with the generated `dist/KanVibe-<version>.dmg` asset, and update the KanVibe Homebrew cask tap. Always use it for KanVibe release versions such as 1.0.2, DMG uploads, or Homebrew cask checksum updates."
+description: "Use this skill whenever releasing or deploying KanVibe desktop: report the current package version, ask the user which release version to use, update `package.json`, run the requested `pnpm dev:dist` DMG build, create or update the GitHub release with `dist/KanVibe-<version>.dmg`, and update the KanVibe Homebrew cask tap. Always use it for KanVibe release versions such as 1.0.2, DMG uploads, or Homebrew cask checksum updates."
 ---
 
 # KanVibe Release Deploy
 
 ## Overview
 
-This skill coordinates the KanVibe desktop release workflow from a signed/notarized macOS DMG to GitHub release publication and Homebrew cask update. It is intentionally release-operator focused: verify the version, build with `pnpm dist:deploy`, upload the exact DMG artifact to the `rookedsysc/kanvibe` GitHub release, then update the separate Homebrew cask repository with the same version and SHA-256.
+This skill coordinates the KanVibe desktop release workflow from version selection to DMG publication and Homebrew cask update. It is intentionally release-operator focused: read and report the current `package.json` version, ask the user for the target release version, update the package version, run the requested `pnpm dev:dist` DMG build, upload the exact DMG artifact to the `rookedsysc/kanvibe` GitHub release, then update the separate Homebrew cask repository with the same version and SHA-256.
 
 Before touching the cask, read `references/homebrew-cask-repository.md`. The cask repository location and cask file path live there so this skill stays portable if the tap checkout moves.
 
@@ -16,7 +16,8 @@ Before touching the cask, read `references/homebrew-cask-repository.md`. The cas
 Use this skill when the user asks to:
 
 - deploy or release KanVibe desktop;
-- run `pnpm dist:deploy` for KanVibe;
+- run `pnpm dev:dist` for KanVibe release packaging;
+- bump the KanVibe package version for a release;
 - create release notes or a GitHub release that includes `dist/KanVibe-<version>.dmg`;
 - update the KanVibe Homebrew cask version or checksum;
 - specifically release a version such as `1.0.2` where the expected DMG is `dist/KanVibe-1.0.2.dmg`.
@@ -28,10 +29,11 @@ Do not use this skill for docs-site deploys, Linux-only package checks, or routi
 - The GitHub release tag is the raw package version, for example `1.0.2`, not `v1.0.2`.
 - The DMG filename is `KanVibe-<version>.dmg` because `electron-builder.yml` sets `dmg.artifactName: "KanVibe-${version}.${ext}"`.
 - The cask URL expects the same raw version tag: `https://github.com/rookedsysc/kanvibe/releases/download/#{version}/KanVibe-#{version}.dmg`.
-- Use the SHA-256 of the final stapled DMG produced by `pnpm dist:deploy`, not an earlier unsigned or unstapled artifact.
-- `pnpm dist:deploy` must run on macOS. It requires Apple signing/notarization tooling and exits on non-Darwin hosts.
+- Use the SHA-256 of the final DMG produced after the version bump and `pnpm dev:dist`, not an earlier artifact.
+- `pnpm dev:dist` is the requested release build command for this workflow. If the current checkout does not define a `dev:dist` script, stop and report that exact blocker instead of silently substituting `pnpm dist:deploy` or another command.
+- If `pnpm dev:dist` performs macOS signing/notarization, it must run on macOS with Apple signing tools configured. Do not fabricate build, notarization, or checksum output from Linux.
 
-## 1. Preflight
+## 1. Preflight and Version Selection
 
 Work from the KanVibe application repository, not the Homebrew tap.
 
@@ -40,34 +42,69 @@ pwd
 git status --short --branch
 git fetch origin --prune
 node -p "process.version"
-node -p "require('./package.json').version"
+CURRENT_VERSION=$(node -p "require('./package.json').version")
+printf 'Current KanVibe version: %s\n' "$CURRENT_VERSION"
 gh auth status
 gh release list --limit 5 --repo rookedsysc/kanvibe
 ```
 
+After printing the current version, ask the user which version to release before editing files:
+
+```text
+현재 KanVibe 버전은 <CURRENT_VERSION>입니다. 배포 버전을 몇으로 올릴까요? 예: 1.0.2
+```
+
+Only proceed after the user supplies the target version. If the original user prompt already supplied the exact target version, echo the current version and target version back to the user and proceed without asking again.
+
 Validate these before proceeding:
 
-1. The requested release version matches `package.json` `version`. If the user asks for `1.0.2`, `node -p "require('./package.json').version"` must print `1.0.2` before building.
-2. The worktree is clean or only contains intentional release-version changes.
-3. The release commit/branch is the intended one. If unsure whether to release from `dev`, `main`, or a specific commit, ask before creating the tag.
-4. The active GitHub account can create releases in `rookedsysc/kanvibe`.
-5. The host is macOS:
+1. The target version is a plain SemVer-like value such as `1.0.2`; do not include a leading `v`.
+2. The target version is different from the current `package.json` version unless the user explicitly wants to rebuild the same version.
+3. The worktree is clean or only contains intentional release-version changes.
+4. The release commit/branch is the intended one. If unsure whether to release from `dev`, `main`, or a specific commit, ask before creating the tag.
+5. The active GitHub account can create releases in `rookedsysc/kanvibe`.
+6. If the release build requires macOS signing tools, the host is macOS:
 
 ```bash
 uname -s
 ```
 
-If it is not `Darwin`, stop and report that `pnpm dist:deploy` cannot be exercised on this host. Do not fabricate build, notarization, or checksum output.
+If the required host/tooling is unavailable, stop and report the blocker. Do not fake `pnpm dev:dist`, DMG, notarization, or checksum output.
 
-## 2. Build, sign, notarize, and staple the DMG
+## 2. Update `package.json` Version
+
+After the user chooses the target version, update `package.json` before running the build. Use a deterministic script instead of manually editing JSON punctuation.
+
+```bash
+TARGET_VERSION="<version supplied by user>"
+node -e '
+const fs = require("node:fs");
+const version = process.argv[1];
+if (!/^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/.test(version)) {
+  throw new Error(`Invalid release version: ${version}`);
+}
+const packagePath = "package.json";
+const packageJson = JSON.parse(fs.readFileSync(packagePath, "utf8"));
+packageJson.version = version;
+fs.writeFileSync(packagePath, `${JSON.stringify(packageJson, null, 2)}\n`);
+' "$TARGET_VERSION"
+
+node -p "require('./package.json').version"
+git diff -- package.json
+```
+
+Verify the printed package version exactly matches the user-selected target version. Commit the version bump with the release changes or ensure the release tag targets a commit that already contains the updated `package.json`.
+
+## 3. Build the Versioned DMG
 
 KanVibe requires Node 24.x. If `node -p "process.version"` is not v24, switch to Node 24 with the local toolchain available on that Mac before running the release build.
 
-`pnpm dist:deploy` loads `.env`, verifies Apple signing values, runs `pnpm dist`, verifies the app signature, submits the DMG to notarytool, staples the ticket, validates the staple, and prints the DMG SHA-256.
+Run the requested release build command after the version bump:
 
 ```bash
+node -e "const scripts=require('./package.json').scripts || {}; if (!scripts['dev:dist']) { console.error('Missing package.json scripts.dev:dist'); process.exit(1); }"
 pnpm install --frozen-lockfile
-pnpm dist:deploy
+pnpm dev:dist
 ```
 
 Expected artifact for version `1.0.2`:
@@ -87,14 +124,15 @@ shasum -a 256 "$DMG"
 
 Keep the checksum from this final DMG for the cask update.
 
-## 3. Create or update the GitHub release
+## 4. Create or Update the GitHub Release
 
 Draft release notes in a temporary markdown file. Match the existing release-note tone: concise sections such as `## New Features`, `## Improvements and Stability`, and `## Packaging Note`. Include a packaging note naming the exact DMG artifact, for example:
 
 ```markdown
 ## Packaging Note
 
-- The signed and notarized DMG artifact is `KanVibe-1.0.2.dmg`.
+- The version was updated from `1.0.1` to `1.0.2` before building.
+- The DMG artifact is `KanVibe-1.0.2.dmg`.
 ```
 
 Create the release with the DMG asset. Use the raw version tag and upload the generated DMG, not a directory or renamed copy.
@@ -133,7 +171,7 @@ gh release view "$VERSION" --repo rookedsysc/kanvibe --json tagName,name,assets,
 curl -I -L "https://github.com/rookedsysc/kanvibe/releases/download/${VERSION}/KanVibe-${VERSION}.dmg"
 ```
 
-## 4. Update the Homebrew cask tap
+## 5. Update the Homebrew Cask Tap
 
 Read `references/homebrew-cask-repository.md` first and use its local repository path and cask file path.
 
@@ -181,11 +219,13 @@ brew fetch --cask Casks/kanvibe.rb
 
 If Homebrew cannot run in the current environment, still verify Ruby syntax, the release asset URL, and the exact cask diff before pushing.
 
-## 5. Final Verification
+## 6. Final Verification
 
 Before reporting success, collect real output for:
 
-- `pnpm dist:deploy` completion and stapler validation;
+- current version printed before the bump and the user-selected target version;
+- `git diff -- package.json` or commit evidence showing the version bump;
+- `pnpm dev:dist` completion;
 - `test -f dist/KanVibe-<version>.dmg` and `shasum -a 256`;
 - `gh release view <version>` showing the `KanVibe-<version>.dmg` asset;
 - `curl -I -L` against the release asset URL returning an HTTP success/redirect chain rather than a 404;
@@ -197,7 +237,8 @@ Final handoff format:
 ```markdown
 완료했습니다.
 
-- Version: <version>
+- Previous version: <current version reported before bump>
+- Release version: <target version selected by user>
 - DMG: `dist/KanVibe-<version>.dmg`
 - SHA-256: `<sha256>`
 - GitHub release: <release URL>
@@ -209,10 +250,12 @@ Final handoff format:
 
 ## Common Pitfalls
 
-1. **Running on Linux and pretending success.** `pnpm dist:deploy` requires macOS codesign, notarytool, and stapler. Stop honestly if the host is not Darwin.
-2. **Using a `v` tag.** The cask URL uses the raw version as the release tag. `v1.0.2` will break the current cask URL.
-3. **Checksum from the wrong file.** Always hash the final stapled DMG produced by `pnpm dist:deploy`.
-4. **Package version mismatch.** `dist/KanVibe-<version>.dmg` is derived from `package.json`; update and commit the package version before building if the requested release version differs.
-5. **Editing the cask before the release asset exists.** Homebrew fetch/audit can fail if the GitHub release asset is missing or still uploading.
-6. **Leaking signing secrets.** Never print `.env` contents or Apple API key material in release notes, logs, commits, or Discord output.
-7. **Dirty tap checkout.** Do not overwrite unrelated cask repository edits. Inspect status and either preserve them or ask the user before continuing.
+1. **Skipping the version question.** Always report the current package version and ask the user what version to release unless the prompt already contains the exact target version.
+2. **Running a stale version build.** Update `package.json` before `pnpm dev:dist`, then derive the DMG path from the updated version.
+3. **Substituting the wrong build command.** The requested command is `pnpm dev:dist`; if it is missing, report that blocker instead of silently running `pnpm dist:deploy`.
+4. **Running on Linux and pretending success.** If the build/signing command requires macOS codesign, notarytool, or stapler, stop honestly when the host is not Darwin.
+5. **Using a `v` tag.** The cask URL uses the raw version as the release tag. `v1.0.2` will break the current cask URL.
+6. **Checksum from the wrong file.** Always hash the final DMG produced after the version bump and release build.
+7. **Editing the cask before the release asset exists.** Homebrew fetch/audit can fail if the GitHub release asset is missing or still uploading.
+8. **Leaking signing secrets.** Never print `.env` contents or Apple API key material in release notes, logs, commits, or Discord output.
+9. **Dirty tap checkout.** Do not overwrite unrelated cask repository edits. Inspect status and either preserve them or ask the user before continuing.
