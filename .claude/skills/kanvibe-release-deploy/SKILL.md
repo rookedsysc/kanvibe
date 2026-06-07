@@ -137,10 +137,23 @@ Draft release notes in a temporary markdown file. Match the existing release-not
 
 Create the release with the DMG asset. Use the raw version tag and upload the generated DMG, not a directory or renamed copy.
 
+Before deriving the tag target, require the version bump to be committed. If `package.json` is still dirty, or `HEAD` does not yet contain the target version, stop and commit the bump first. Otherwise `TARGET_SHA` resolves to the pre-bump commit and the release source archive ships the old `package.json` version even though the DMG and cask use the new one.
+
 ```bash
 VERSION=$(node -p "require('./package.json').version")
 DMG="dist/KanVibe-${VERSION}.dmg"
 RELEASE_NOTES="/tmp/kanvibe-release-${VERSION}.md"
+
+# Fail fast on an uncommitted version bump so the tag never points at the pre-bump HEAD.
+if ! git diff --quiet -- package.json || ! git diff --cached --quiet -- package.json; then
+  echo "package.json has uncommitted changes; commit the version bump before tagging the release." >&2
+  exit 1
+fi
+HEAD_VERSION=$(git show HEAD:package.json | node -p "JSON.parse(require('fs').readFileSync(0,'utf8')).version")
+if [ "$HEAD_VERSION" != "$VERSION" ]; then
+  echo "HEAD package.json version ($HEAD_VERSION) does not match target ($VERSION); commit the bump onto the release commit first." >&2
+  exit 1
+fi
 TARGET_SHA=$(git rev-parse HEAD)
 
 gh release create "$VERSION" "$DMG" \
