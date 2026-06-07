@@ -1,6 +1,6 @@
 {
   "name": "kanvibe",
-  "version": "1.0.0",
+  "version": "1.0.2",
   "private": true,
   "description": "AI agent task management Kanban board with embedded SQLite desktop packaging.",
   "author": "rookedsysc",
@@ -22,7 +22,7 @@
     "db:prepare": "tsx scripts/build-seed-db.ts",
     "rebuild:native:electron": "electron-rebuild -f --only better-sqlite3",
     "dist": "pnpm db:prepare && pnpm build && pnpm rebuild:native:electron && electron-builder --mac dmg",
-    "dist:deploy": "node scripts/dist-deploy.cjs",
+    "deploy": "node scripts/dist-deploy.cjs",
     "dist:dir": "pnpm db:prepare && pnpm build && pnpm rebuild:native:electron && electron-builder --dir",
     "docs:dev": "pnpm --dir docs-site install && pnpm --dir docs-site dev",
     "docs:build": "pnpm --dir docs-site install && pnpm --dir docs-site build",

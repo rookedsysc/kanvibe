@@ -111,7 +111,7 @@ function getCommandOutput(command, args) {
 
 function ensureMacOS() {
   if (process.platform !== "darwin") {
-    throw new Error("dist:deploy requires macOS because codesign, stapler, and notarytool are macOS tools.");
+    throw new Error("deploy requires macOS because codesign, stapler, and notarytool are macOS tools.");
   }
 }
 
@@ -232,7 +232,7 @@ function main() {
     runCommand("xcrun", ["stapler", "validate", dmgPath]);
     printDmgSha256(dmgPath);
   } catch (error) {
-    console.error(`\n[kanvibe] dist:deploy failed: ${error.message}`);
+    console.error(`\n[kanvibe] deploy failed: ${error.message}`);
     process.exit(1);
   }
 }
