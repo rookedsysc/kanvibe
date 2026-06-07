@@ -142,7 +142,19 @@ Draft release notes in a temporary markdown file. Match the existing release-not
 - The DMG artifact is `KanVibe-1.0.2.dmg`.
 ```
 
-Create the release with the DMG asset. Use the raw version tag and upload the generated DMG, not a directory or renamed copy.
+### Review release notes with the user before publishing
+
+Publishing a GitHub release is outward-facing, so the release notes must be reviewed and approved by the user before any `gh release create` or `gh release edit` runs. Do not publish notes the user has not signed off on.
+
+1. Keep the original English notes in the temporary markdown file (`$RELEASE_NOTES`).
+2. Present both versions to the user in the same message:
+   - the original English release notes, exactly as they will be published;
+   - a Korean translation of the same notes, clearly labeled as a translation for review only.
+3. Ask the user to approve or request changes. Treat this as a hard gate: do not proceed to create or edit the release until the user explicitly approves.
+4. If the user requests edits, update `$RELEASE_NOTES` with the corrected English text, re-translate, and present both versions again. Repeat until approved.
+5. Only the approved English notes file is published; the Korean translation is for the user's review and is not uploaded unless the user explicitly asks for bilingual release notes.
+
+Create the release with the DMG asset only after the user approves the notes. Use the raw version tag and upload the generated DMG, not a directory or renamed copy.
 
 Before deriving the tag target, require the version bump to be committed. If `package.json` is still dirty, or `HEAD` does not yet contain the target version, stop and commit the bump first. Otherwise `TARGET_SHA` resolves to the pre-bump commit and the release source archive ships the old `package.json` version even though the DMG and cask use the new one.
 
@@ -239,7 +251,44 @@ brew fetch --cask Casks/kanvibe.rb
 
 If Homebrew cannot run in the current environment, still verify Ruby syntax, the release asset URL, and the exact cask diff before pushing.
 
-## 6. Final Verification
+## 6. Merge the Release to `main`
+
+After the GitHub release and Homebrew cask are published, the release commit must land on `main` so `main` reflects the shipped version. Follow the repository branch policy: KanVibe integrates through `dev`, so the normal path is to merge the release branch into `dev` and then promote `dev` to `main`. If you are unsure whether to merge directly into `main` or go through `dev` first, ask the user before merging.
+
+Merging is an outward-facing, hard-to-undo action, so confirm with the user before merging and never merge a PR that still has unresolved review threads or failing checks.
+
+1. Confirm the release PR has the intended base and that all review threads are resolved and checks pass:
+
+```bash
+PR_NUMBER="<release PR number>"
+gh pr view "$PR_NUMBER" --repo rookedsysc/kanvibe --json baseRefName,mergeable,reviewDecision,statusCheckRollup
+gh pr checks "$PR_NUMBER" --repo rookedsysc/kanvibe
+```
+
+2. Merge the release branch into its base after the user approves:
+
+```bash
+gh pr merge "$PR_NUMBER" --repo rookedsysc/kanvibe --merge
+```
+
+3. If the release branch was merged into `dev`, promote `dev` to `main` with a separate PR (or fast-forward per the repo policy), again only after user confirmation:
+
+```bash
+gh pr create --repo rookedsysc/kanvibe --base main --head dev \
+  --title "Release: promote dev to main (<version>)" \
+  --body "Promote the <version> release commit to main."
+# After approval:
+# gh pr merge <dev->main PR number> --repo rookedsysc/kanvibe --merge
+```
+
+4. Confirm `main` now contains the release version:
+
+```bash
+git fetch origin main
+git show origin/main:package.json | node -p "JSON.parse(require('fs').readFileSync(0,'utf8')).version"
+```
+
+## 7. Final Verification
 
 Before reporting success, collect real output for:
 
@@ -247,10 +296,12 @@ Before reporting success, collect real output for:
 - `git diff -- package.json package-lock.json` or commit evidence showing the version bump in both files;
 - `pnpm deploy` completion;
 - `test -f dist/KanVibe-<version>.dmg` and `shasum -a 256`;
+- user approval of the release notes, confirming both the English original and the Korean translation were shown before publishing;
 - `gh release view <version>` showing the `KanVibe-<version>.dmg` asset;
 - `curl -I -L` against the release asset URL returning an HTTP success/redirect chain rather than a 404;
 - Homebrew cask diff showing only `version` and `sha256` changes;
-- cask repository push result or, if not pushed, the exact reason it is left unpushed.
+- cask repository push result or, if not pushed, the exact reason it is left unpushed;
+- merge result for `main` (and `dev` if promoted through it), or the exact reason the merge is left pending.
 
 Final handoff format:
 
@@ -263,6 +314,7 @@ Final handoff format:
 - SHA-256: `<sha256>`
 - GitHub release: <release URL>
 - Homebrew cask: <commit SHA or branch/status>
+- main merge: <merge result, or pending reason>
 - Verification:
   - `<command>` → <real result>
   - `<command>` → <real result>
@@ -278,3 +330,5 @@ Final handoff format:
 6. **Editing the cask before the release asset exists.** Homebrew fetch/audit can fail if the GitHub release asset is missing or still uploading.
 7. **Leaking signing secrets.** Never print `.env` contents or Apple API key material in release notes, logs, commits, or Discord output.
 8. **Dirty tap checkout.** Do not overwrite unrelated cask repository edits. Inspect status and either preserve them or ask the user before continuing.
+9. **Publishing unreviewed release notes.** Always show the user the English original and a Korean translation and get explicit approval before `gh release create`/`gh release edit`.
+10. **Merging without confirmation.** Do not merge the release PR into `dev` or `main` without user confirmation, and never merge with unresolved review threads or failing checks.
