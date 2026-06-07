@@ -33,4 +33,15 @@ describe("package scripts", () => {
       "pnpm db:prepare && pnpm build && pnpm rebuild:native:electron && electron-builder",
     );
   });
+
+  it("starts the desktop Vite dev server with polling watchers", () => {
+    const source = readFileSync(
+      path.join(process.cwd(), "scripts", "run-desktop-dev.cjs"),
+      "utf8",
+    );
+
+    expect(source).toContain("CHOKIDAR_USEPOLLING");
+    expect(source).toContain('process.env.CHOKIDAR_USEPOLLING ?? "true"');
+    expect(source).toContain("...VITE_DEV_SERVER_ENV");
+  });
 });

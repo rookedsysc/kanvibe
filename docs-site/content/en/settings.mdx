@@ -1,0 +1,110 @@
+---
+title: Settings
+---
+
+# Settings
+
+The KanVibe settings page keeps project registration, display preferences, terminal pane configuration, notifications, task creation defaults, and background sync in one place. Settings are stored in the app database, and several of them update the board or task detail workspace immediately after saving.
+
+<figure className="kv-shot">
+  <img src="/screenshots/settings.png" alt="KanVibe settings page" />
+  <figcaption>Manage appearance, pane layouts, detail-page defaults, notification statuses, background sync, and project registration from Settings.</figcaption>
+</figure>
+
+## What Settings controls
+
+<div className="kv-grid">
+  <div className="kv-card">
+    <h3>Appearance</h3>
+    <p>Choose system, dark, or light mode for the whole app.</p>
+  </div>
+  <div className="kv-card">
+    <h3>Pane layouts</h3>
+    <p>Save terminal pane layouts and startup commands as a global default or project-specific override.</p>
+  </div>
+  <div className="kv-card">
+    <h3>Detail page</h3>
+    <p>Decide whether the left sidebar starts collapsed when opening a task workspace.</p>
+  </div>
+  <div className="kv-card">
+    <h3>Task creation</h3>
+    <p>Select the default session type for new tasks: tmux or zellij.</p>
+  </div>
+  <div className="kv-card">
+    <h3>Notifications</h3>
+    <p>Turn system notifications on and choose which PROGRESS, PENDING, or REVIEW status changes should alert you.</p>
+  </div>
+  <div className="kv-card">
+    <h3>Background Sync</h3>
+    <p>Synchronize project worktrees and PR state on a schedule, with an interval from 1 to 1440 minutes.</p>
+  </div>
+</div>
+
+## Appearance
+
+| Setting | Options | Behavior |
+| --- | --- | --- |
+| Theme | System, Dark, Light | Changes the color mode for the whole app. System follows the macOS display mode, while Dark and Light pin the app to the selected mode immediately. |
+
+Theme changes are applied as soon as they are saved. The same preference is reused by the board, task detail, and the next app launch.
+
+## Pane layouts
+
+The **Pane Layout Settings** link opens the editor for tmux pane splits and startup commands.
+
+| Setting | Details |
+| --- | --- |
+| Global default | The layout used for every new terminal session when a project does not have its own override. |
+| Project overrides | A per-project layout and command set. Projects without an override continue using the global default. |
+| Layout type | Choose `Single`, `Top / Bottom`, `Left / Right`, `Left + Right T/B`, `Left T/B + Right`, or `Quad`. |
+| Pane startup commands | Enter the command to run in each pane position. For example, start `pnpm dev` in one pane and tests or logs in another. |
+| Save / reset | Save applies the layout to future sessions. A project override can be removed with **Reset to global default**. |
+
+Pane layouts are the main way to make task terminals feel repeatable. If every worktree needs a server, tests, and logs, store those commands once and new task workspaces open with the same structure.
+
+## Detail page
+
+| Setting | Default | Behavior |
+| --- | --- | --- |
+| Collapse sidebar by default | Off | Controls whether the left information panel starts collapsed when you enter a task detail page. Turn it on for more terminal space, or leave it off when you want title, project, priority, and session metadata visible. |
+
+This only changes how the task detail workspace opens. It does not change task data or terminal sessions.
+
+## Task creation
+
+| Setting | Options | Behavior |
+| --- | --- | --- |
+| Default session type | `tmux`, `zellij` | Selects the default terminal backend when creating a new task. tmux is the default. zellij requires zellij to be installed in the local or remote target environment. |
+
+The session type setting changes the default choice for newly created tasks. It does not rewrite existing tasks.
+
+## Notifications
+
+| Setting | Options | Behavior |
+| --- | --- | --- |
+| System notifications | On / Off | Controls whether task status changes, PR events, and background sync review items can show system notifications. |
+| Notify for statuses | PROGRESS, PENDING, REVIEW | Sends notifications only when a task changes into a selected status. The default set is PROGRESS, PENDING, and REVIEW. TODO and DONE are excluded because they are commonly user-driven states. |
+
+The notification center and system notifications surface AI agent state changes, PR events, and background sync events. Clicking a notification that is linked to a task opens that task detail workspace directly. Restricting statuses keeps attention on events such as PENDING questions or REVIEW-ready work.
+
+## Background Sync
+
+| Setting | Range | Behavior |
+| --- | --- | --- |
+| Background Sync | On / Off | While the app is open, periodically checks project worktrees, PR state, and task pull results. |
+| Sync interval | 1–1440 minutes | How often background sync runs. The default is 10 minutes, stored in minutes. Invalid values are not saved and the previous valid value is restored. |
+
+Background Sync collects review items such as merged PRs, newly discovered worktrees, pull successes or failures, and PR lookup failures. If one sync stage fails, the remaining stages still run, and the failure reason appears in the Background Sync Review notification.
+
+## Directory Scan
+
+| Setting | Details |
+| --- | --- |
+| SSH host selector | When SSH hosts exist, choose Local or a specific remote host before scanning. |
+| Directory to scan | Use the folder search input to choose a local or remote directory. Folder search supports arrow-key navigation, Tab to drill down, Enter to select, Backspace to go up, and Esc to close. |
+| Scan & Register | Finds git repositories under the selected directory and registers them as projects. Already registered repositories are skipped, and newly found worktrees are registered as TODO tasks. |
+| Scan result | Shows registered, skipped, and error counts. If there are no new projects or no git repositories, Settings shows that message directly. |
+
+## Registered Projects
+
+The project list shows each project's name, repo path, SSH host, and default branch. Deleting a project removes KanVibe project and task records from the database only. Existing git branches, worktrees, and files stay on disk, so delete a project only when you no longer want KanVibe to track it.

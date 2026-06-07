@@ -33,6 +33,8 @@ describe("geminiHooksSetup", () => {
       expect(promptScript).toContain(kanvibeUrl);
       expect(promptScript).toContain(taskId);
       expect(promptScript).toContain("taskId");
+      expect(promptScript).toContain("status.json");
+      expect(promptScript).toContain('"schemaVersion":1');
       expect(promptScript).toContain("echo '{}'");
 
       expect(stopScript).toContain("#!/bin/bash");
@@ -137,6 +139,23 @@ describe("geminiHooksSetup", () => {
       expect(status.hasPromptHook).toBe(true);
       expect(status.hasStopHook).toBe(true);
       expect(status.hasSettingsEntry).toBe(true);
+      expect(status.hasStatusJsonPersistence).toBe(true);
+    });
+
+    it("legacy status.md Gemini hook은 설치된 것으로 보지 않는다", async () => {
+      await setupGeminiHooks(tmpDir, "task-1", "http://localhost:9736");
+      for (const scriptName of ["kanvibe-prompt-hook.sh", "kanvibe-stop-hook.sh"]) {
+        const scriptPath = path.join(tmpDir, ".gemini/hooks", scriptName);
+        const content = await readFile(scriptPath, "utf-8");
+        await writeFile(scriptPath, content.replaceAll("status.json", "status.md"), "utf-8");
+      }
+
+      const status = await getGeminiHooksStatus(tmpDir, "task-1");
+
+      expect(status.hasTaskIdBinding).toBe(true);
+      expect(status.hasStatusMappings).toBe(true);
+      expect(status.hasStatusJsonPersistence).toBe(false);
+      expect(status.installed).toBe(false);
     });
 
     it("should return installed: false when no hooks exist", async () => {

@@ -37,6 +37,7 @@ export function createAggregationResult(partial?: Partial<AggregatedAiSessionsRe
     repoPath: partial?.repoPath ?? null,
     sessions: partial?.sessions ?? [],
     sources: partial?.sources ?? [],
+    nextCursor: partial?.nextCursor ?? null,
   };
 }
 
@@ -144,35 +145,16 @@ export function determineMatchScope(candidatePath: string | null | undefined, co
 
   const normalizedCandidate = path.resolve(candidatePath);
   const normalizedWorktree = context.worktreePath ? path.resolve(context.worktreePath) : null;
-  const normalizedRepo = context.repoPath ? path.resolve(context.repoPath) : null;
 
   if (normalizedWorktree && isPathMatch(normalizedCandidate, normalizedWorktree)) {
     return "worktree";
-  }
-
-  if (context.includeRepoSessions && normalizedRepo && isPathMatch(normalizedCandidate, normalizedRepo)) {
-    return "repo";
   }
 
   return null;
 }
 
 export function getCandidatePaths(context: AiSessionReaderContext): string[] {
-  const candidates: string[] = [];
-
-  if (context.worktreePath) {
-    candidates.push(context.worktreePath);
-  }
-
-  if (
-    context.includeRepoSessions &&
-    context.repoPath &&
-    context.repoPath !== context.worktreePath
-  ) {
-    candidates.push(context.repoPath);
-  }
-
-  return Array.from(new Set(candidates));
+  return context.worktreePath ? [context.worktreePath] : [];
 }
 
 function isPathMatch(candidatePath: string, targetPath: string): boolean {
@@ -251,7 +233,7 @@ export function extractPlainText(value: unknown): string {
 
   const record = value as Record<string, unknown>;
 
-  const directKeys = ["text", "input_text", "output_text", "display"];
+  const directKeys = ["text", "input_text", "output_text", "display", "description", "subject", "output", "result"];
   for (const key of directKeys) {
     if (typeof record[key] === "string") {
       return normalizeText(record[key] as string);

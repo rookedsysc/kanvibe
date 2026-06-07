@@ -49,6 +49,7 @@
       "pullFailed": "Pull 失败",
       "failureSection": "同步失败",
       "pullRequestFailure": "Pull Request 检查失败",
+      "taskPullFailure": "Task pull 失败",
       "worktreeFailure": "Worktree 同步失败",
       "emptyMerged": "本次检查中没有需要移动到 Done 的已合并 PR 任务。",
       "emptyRegistered": "本次检查中没有新注册的 worktree。"
@@ -81,7 +82,18 @@
       "done": "完成"
     },
     "loadMore": "加载更多",
-    "loadingMore": "加载中..."
+    "loadingMore": "加载中...",
+    "vimCommand": {
+      "label": "Vim 命令",
+      "placeholder": "move review",
+      "hint": "对当前聚焦任务使用 :move todo|progress|pending|review|done。按 Tab 自动补全。",
+      "completionHint": "按 Tab 补全为 {command}。",
+      "errors": {
+        "unknownCommand": "未知命令。请尝试 :move review。",
+        "noFocusedTask": "运行 :move 前请先聚焦一个任务卡片。",
+        "taskNotFound": "当前聚焦的任务已不在可见列表中。"
+      }
+    }
   },
   "task": {
     "descriptionLabel": "描述",
@@ -95,7 +107,6 @@
     "branchCount": "{count} 个分支",
     "branchNavHint": "↑↓ 导航 · Enter 选择 · Esc 关闭",
     "branchName": "分支名称",
-    "branchPlaceholder": "feat/my-feature",
     "sessionType": "会话类型",
     "sshHost": "SSH 主机（可选）",
     "createTitle": "创建新任务",
@@ -185,7 +196,16 @@
     "notificationStatusFilterDescription": "仅在任务变更为所选状态时接收通知。",
     "taskCreationSection": "任务创建",
     "defaultSessionType": "默认会话类型",
-    "defaultSessionTypeDescription": "创建新任务时默认选择的会话类型。"
+    "defaultSessionTypeDescription": "创建新任务时默认选择的会话类型。",
+    "backgroundSyncSection": "后台同步",
+    "backgroundSyncEnabled": "后台同步",
+    "backgroundSyncEnabledDescription": "定期在后台同步项目 worktree 和 PR 状态。",
+    "backgroundSyncInterval": "同步间隔",
+    "backgroundSyncIntervalDescription": "后台同步的执行间隔。（1–1440 分钟）",
+    "backgroundSyncIntervalUnit": "分钟",
+    "keyboardSection": "键盘",
+    "vimModeEnabled": "Vim 风格看板控制",
+    "vimModeEnabledDescription": "在看板中启用 h/j/k/l 焦点移动、n 新建任务、dd 删除和 :move status 命令。关闭后仍可使用方向键移动。"
   },
   "taskSearch": {
     "title": "快速任务搜索",
@@ -312,8 +332,24 @@
       "inlineChat": "AI 聊天",
       "remoteBadge": "不支持远程",
       "noPreview": "没有可显示的预览。",
+      "loadMoreSessions": "加载更多聊天",
+      "loadOlderMessages": "加载更早消息",
+      "search": "搜索",
+      "searchLabel": "搜索 AI 聊天",
+      "searchPlaceholder": "搜索聊天...",
+      "providerFilterLabel": "筛选 {provider}",
+      "selectSession": "从左侧列表选择 AI 会话。",
       "loadingDetail": "正在加载消息...",
-      "detailError": "加载会话详情失败。"
+      "detailError": "加载会话详情失败。",
+      "roles": {
+        "user": "用户输入",
+        "assistant": "AI 回复",
+        "system": "系统输入",
+        "developer": "开发者输入",
+        "reasoning": "推理",
+        "tool": "工具",
+        "unknown": "其他"
+      }
     },
     "priority": "优先级",
     "collapseSidebar": "折叠侧栏",

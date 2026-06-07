@@ -34,7 +34,7 @@ vi.mock("@/lib/codexHooksSetup", () => ({
   generatePermissionHookScript: vi.fn(() => "codex permission"),
   generatePreToolHookScript: vi.fn(() => "codex pre tool"),
   generateStopHookScript: vi.fn(() => "codex stop"),
-  upsertCodexConfigToml: vi.fn((content: string) => `${content.trimEnd()}\n[features]\ncodex_hooks = true\nhooks = true\n`),
+  upsertCodexConfigToml: vi.fn((content: string) => `${content.trimEnd()}\n[features]\nhooks = true\n`),
   upsertCodexHooksJson: vi.fn(() => JSON.stringify({ hooks: { UserPromptSubmit: [{}], PermissionRequest: [{}], PreToolUse: [{}], Stop: [{}] } }, null, 2)),
   PROMPT_HOOK_SCRIPT_NAME: "kanvibe-prompt-hook.sh",
   PERMISSION_HOOK_SCRIPT_NAME: "kanvibe-permission-hook.sh",
@@ -438,6 +438,53 @@ describe("kanvibeHooksInstaller", () => {
     );
   });
 
+  it("원격 hook 설치는 제거된 .kanvibe/hooks-targets.json을 읽거나 쓰지 않는다", async () => {
+    // Given
+    mockExecGit.mockImplementation(async (command: string) => {
+      if (command.includes("__KANVIBE_FILE_RECORD__")) {
+        return buildRemoteTextFileRecords({
+          "/remote/repo/.kanvibe/hooks-targets.json": JSON.stringify({
+            version: 1,
+            targets: [
+              { url: "http://10.0.0.5:9736", taskId: "other-client-task" },
+            ],
+          }),
+        });
+      }
+
+      return "";
+    });
+    const { installKanvibeHooks } = await import("@/lib/kanvibeHooksInstaller");
+
+    // When
+    await installKanvibeHooks("/remote/repo", "task-2", "remote-host");
+
+    // Then
+    const commands = mockExecGit.mock.calls.map(([command]) => String(command));
+    expect(commands.join("\n")).not.toContain("/remote/repo/.kanvibe/hooks-targets.json");
+  });
+
+  it.each([
+    ["claude", "/remote/repo/.claude/settings.json", "/remote/repo/.gemini/settings.json"],
+    ["gemini", "/remote/repo/.gemini/settings.json", "/remote/repo/.claude/settings.json"],
+    ["codex", "/remote/repo/.codex/hooks.json", "/remote/repo/.opencode/plugins/kanvibe-plugin.ts"],
+    ["openCode", "/remote/repo/.opencode/plugins/kanvibe-plugin.ts", "/remote/repo/.codex/hooks.json"],
+  ] as const)("원격 %s 단독 hook 설치도 provider 파일만 쓰고 hook target registry는 쓰지 않는다", async (provider, expectedProviderFile, unexpectedProviderFile) => {
+    // Given
+    const { installKanvibeHookProvider } = await import("@/lib/kanvibeHooksInstaller");
+
+    // When
+    await installKanvibeHookProvider("/remote/repo", "task-2", provider, "remote-host");
+
+    // Then
+    const writeCommands = mockExecGit.mock.calls
+      .map(([command]) => String(command))
+      .filter((command) => command.includes("printf '%s'") && command.includes(" > "));
+    expect(writeCommands.join("\n")).toContain(expectedProviderFile);
+    expect(writeCommands.join("\n")).not.toContain(unexpectedProviderFile);
+    expect(writeCommands.join("\n")).not.toContain("/remote/repo/.kanvibe/hooks-targets.json");
+  });
+
   it("원격 전체 hook 설치는 기존 설정 파일을 한 번의 SSH 명령으로 읽는다", async () => {
     // Given
     const { installKanvibeHooks } = await import("@/lib/kanvibeHooksInstaller");
@@ -521,8 +568,8 @@ describe("kanvibeHooksInstaller", () => {
     const configContent = extractWrittenContent(mockExecGit.mock.calls, "/remote/repo/.codex/config.toml");
     expect(configContent).toContain('model = "gpt-5"');
     expect(configContent).toContain("[features]");
-    expect(configContent).toMatch(/^codex_hooks = true$/m);
     expect(configContent).toMatch(/^hooks = true$/m);
+    expect(configContent).not.toMatch(/^codex_hooks\s*=/m);
 
     const hooksContent = extractWrittenContent(mockExecGit.mock.calls, "/remote/repo/.codex/hooks.json");
     expect(hooksContent).toContain("UserPromptSubmit");

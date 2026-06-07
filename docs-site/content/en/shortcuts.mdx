@@ -1,0 +1,65 @@
+---
+title: Shortcuts
+---
+
+# Shortcuts
+
+KanVibe keeps global, board, and task-detail shortcuts separated so terminal focus remains predictable.
+
+<div className="kv-kbd-grid">
+  <div className="kv-kbd-card"><kbd>Cmd/Ctrl + F</kbd><strong>Board find</strong><p>Search visible project and task text on the board.</p></div>
+  <div className="kv-kbd-card"><kbd>Cmd/Ctrl + Shift + O</kbd><strong>Quick task search</strong><p>Find any task by branch or project name.</p></div>
+  <div className="kv-kbd-card"><kbd>Cmd/Ctrl + Shift + P</kbd><strong>Project filter</strong><p>Toggle which projects are visible on the board.</p></div>
+  <div className="kv-kbd-card"><kbd>Cmd/Ctrl + Shift + I</kbd><strong>Notification center</strong><p>Open AI agent status and event notifications.</p></div>
+</div>
+
+## Full shortcut reference
+
+| Shortcut | Scope | Action |
+| --- | --- | --- |
+| `Cmd/Ctrl+F` | Board | Search visible project/task text |
+| `Cmd/Ctrl+Shift+O` | Global | Open quick task search by branch or project name |
+| `Cmd/Ctrl+Shift+P` | Board | Open the project filter dropdown |
+| `Cmd/Ctrl+Shift+I` | Board | Open the notifications dropdown |
+| `Cmd+[` / `Cmd+]` (macOS), `Alt+[` / `Alt+]` (Linux) | Global | Navigate back/forward through app history |
+| `Cmd+1/2/3` (macOS), `Alt+1/2/3` (Linux) | Task detail | Activate info, status/hooks, and AI chat dock items |
+| `Cmd+4` (macOS), `Alt+4` (Linux) | Task detail | Open the PR in the browser when a PR exists |
+| `Cmd/Ctrl+N` | Quick task search | Create a branch TODO from the highlighted task |
+| `↑ / ↓ / Enter / Shift+Enter / Esc` | Quick task search | Move selection, open, open in new window, close |
+| `↑ / ↓ / Enter / Esc` | Project filter | Move selection, toggle, close |
+| `↑ / ↓ / Enter / Esc` | Notifications | Move selection, open target, close |
+
+## Vim mode
+
+Use h/j/k/l for focus navigation, `n` for new task, `dd` for delete, `:move` for status change, and `/` for search — all in Vim style on the board. Vim mode is **on by default** and can be toggled in Settings → Keyboard → "Vim-style board controls".
+
+<div className="kv-note">
+  Arrow key focus navigation remains available even when Vim mode is off.
+</div>
+
+### Vim shortcut reference
+
+| Shortcut | Action |
+| --- | --- |
+| `h` | Move focus to the left column |
+| `j` | Move focus down within the same column |
+| `k` | Move focus up within the same column |
+| `l` | Move focus to the right column |
+| `n` | Open the new task modal |
+| `dd` | Delete the focused task (shows confirmation dialog) |
+| `/` | Open the board page search |
+| `:` | Open the command input |
+
+### `:move` command
+
+Type `move` followed by a status in the command input (`:`) to change the focused task's status. Press `Tab` to autocomplete a unique command/status prefix, such as `move re` → `move review`.
+
+```
+:move progress
+:move pending
+:move review
+:move done
+:move todo
+```
+
+Aliases are also supported: `t` (todo), `prog` (progress), `pend` (pending), `rev` (review), `d` (done).

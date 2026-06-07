@@ -17,6 +17,10 @@ import { broadcastBoardUpdate } from "@/lib/boardNotifier";
 import { getAvailableHosts as readAvailableHosts } from "@/lib/sshConfig";
 import { getDefaultSessionType } from "@/desktop/main/services/appSettingsService";
 import { installKanvibeHooks, installKanvibeHookProvider, scheduleKanvibeHooksInstall } from "@/lib/kanvibeHooksInstaller";
+import {
+  persistTaskStateAtPath as persistTaskState,
+  readPersistedTaskStatusAtPath as readPersistedTaskStatus,
+} from "@/desktop/main/services/kanvibeTaskStateService";
 
 function matchesTaskLocation(task: { worktreePath?: string | null; sshHost?: string | null }, expectedPath: string, sshHost?: string | null): boolean {
   return task.worktreePath === expectedPath && (task.sshHost || null) === (sshHost || null);
@@ -93,8 +97,6 @@ function isRemoteConnectionError(error: unknown): boolean {
   return /원격 명령 실패:.*(Connection (?:reset|closed)|kex_exchange_identification|operation timed out|no route to host|connection refused|could not resolve hostname|broken pipe)/i.test(message);
 }
 
-const projectRootHookRepairJobs = new Map<string, Promise<void>>();
-const projectRootHookRepairScheduled = new Set<string>();
 const projectRootTaskRepairJobs = new Map<string, Promise<void>>();
 const projectRootTaskRepairScheduled = new Set<string>();
 const projectRootRepairDeletingProjectIds = new Set<string>();
@@ -102,48 +104,6 @@ const projectRootRepairDeletedProjectIds = new Set<string>();
 
 function isProjectRootRepairBlocked(projectId: string): boolean {
   return projectRootRepairDeletingProjectIds.has(projectId) || projectRootRepairDeletedProjectIds.has(projectId);
-}
-
-function scheduleProjectRootHookRepair(project: Project) {
-  if (isProjectRootRepairBlocked(project.id)) {
-    return;
-  }
-
-  const projectPathKey = buildProjectPathKey(project.repoPath, project.sshHost);
-  if (projectRootHookRepairScheduled.has(projectPathKey)) {
-    return;
-  }
-
-  projectRootHookRepairScheduled.add(projectPathKey);
-
-  setTimeout(() => {
-    const repairJob = (async () => {
-      try {
-        if (isProjectRootRepairBlocked(project.id)) {
-          return;
-        }
-
-        const { repaired } = await ensureProjectRootTask(project, {
-          repairHooks: true,
-          throwOnHookRepairFailure: false,
-          suppressRemoteConnectionErrorLogging: true,
-        });
-
-        if (repaired) {
-          broadcastBoardUpdate();
-        }
-      } catch (error) {
-        if (!isRemoteConnectionError(error)) {
-          console.error(`${project.name} 기본 브랜치 hooks 백그라운드 복구 실패:`, error);
-        }
-      } finally {
-        projectRootHookRepairJobs.delete(projectPathKey);
-        projectRootHookRepairScheduled.delete(projectPathKey);
-      }
-    })();
-
-    projectRootHookRepairJobs.set(projectPathKey, repairJob);
-  }, 0);
 }
 
 async function installSyncedWorktreeHooks(
@@ -196,7 +156,6 @@ function scheduleProjectRootTaskRepair(project: Project) {
         }
 
         const { repaired } = await ensureProjectRootTask(project);
-        scheduleProjectRootHookRepair(project);
 
         if (repaired) {
           broadcastBoardUpdate();
@@ -258,9 +217,13 @@ async function createDefaultBranchTask(project: Project) {
   const taskRepo = await getTaskRepository();
   const defaultSessionType = await getDefaultSessionType();
   const defaultBranchWorktreePath = await resolveProjectDefaultBranchWorktreePath(project);
+  const persistedStatus = await readPersistedTaskStatus(defaultBranchWorktreePath || project.repoPath, project.sshHost);
 
   const existing = await taskRepo.findOneBy({ branchName: project.defaultBranch, projectId: project.id });
-  if (existing) return existing;
+  if (existing) {
+    await persistTaskState(defaultBranchWorktreePath || project.repoPath, existing, project.sshHost);
+    return existing;
+  }
 
   const orphan = await taskRepo.findOneBy({ branchName: project.defaultBranch, projectId: IsNull() });
   if (orphan && matchesTaskLocation(orphan, project.repoPath, project.sshHost)) {
@@ -269,7 +232,10 @@ async function createDefaultBranchTask(project: Project) {
     orphan.worktreePath = project.repoPath;
     orphan.sshHost = project.sshHost;
     orphan.baseBranch = project.defaultBranch;
-    return taskRepo.save(orphan);
+    orphan.status = persistedStatus ?? TaskStatus.TODO;
+    const savedOrphan = await taskRepo.save(orphan);
+    await persistTaskState(defaultBranchWorktreePath || project.repoPath, savedOrphan, project.sshHost);
+    return savedOrphan;
   }
 
   const task = taskRepo.create({
@@ -277,7 +243,7 @@ async function createDefaultBranchTask(project: Project) {
     branchName: project.defaultBranch,
     worktreePath: defaultBranchWorktreePath,
     sshHost: project.sshHost,
-    status: TaskStatus.TODO,
+    status: persistedStatus ?? TaskStatus.TODO,
     projectId: project.id,
     baseBranch: project.defaultBranch,
   });
@@ -295,13 +261,15 @@ async function createDefaultBranchTask(project: Project) {
       task.sessionName = session.sessionName;
       task.worktreePath = defaultBranchWorktreePath;
       task.sshHost = project.sshHost;
-      task.status = TaskStatus.PROGRESS;
+      task.status = persistedStatus ?? TaskStatus.TODO;
     } catch (error) {
       console.error("메인 브랜치 tmux 세션 생성 실패:", error);
     }
   }
 
-  return taskRepo.save(task);
+  const savedTask = await taskRepo.save(task);
+  await persistTaskState(defaultBranchWorktreePath || project.repoPath, savedTask, project.sshHost);
+  return savedTask;
 }
 
 async function getProjectRootTask(projectId: string, defaultBranch: string) {
@@ -352,6 +320,7 @@ async function ensureProjectRootTask(
   }
 
   const expectedDefaultBranchWorktreePath = await resolveProjectDefaultBranchWorktreePath(project);
+  const persistedStatus = await readPersistedTaskStatus(expectedDefaultBranchWorktreePath || project.repoPath, project.sshHost);
 
   let shouldSaveTask = false;
   if (task.baseBranch !== project.defaultBranch) {
@@ -369,10 +338,17 @@ async function ensureProjectRootTask(
     shouldSaveTask = true;
   }
 
+  if (persistedStatus !== null && task.status !== persistedStatus) {
+    task.status = persistedStatus;
+    shouldSaveTask = true;
+  }
+
   if (shouldSaveTask) {
     task = await taskRepo.save(task);
     repaired = true;
   }
+
+  await persistTaskState(expectedDefaultBranchWorktreePath || project.repoPath, task, project.sshHost);
 
   if (!repairHooks) {
     return { task, repaired };
@@ -512,9 +488,6 @@ export async function registerProject(
       repairHooks: !saved.sshHost,
       throwOnHookRepairFailure: false,
     });
-    if (saved.sshHost) {
-      scheduleProjectRootHookRepair(saved);
-    }
   } catch (error) {
     await repo.remove(saved);
     return {
@@ -612,19 +585,11 @@ async function syncProjectWorktrees(
   };
 
   try {
-    const shouldRepairHooksSynchronously = !project.sshHost;
     const { repaired } = await ensureProjectRootTask(project, {
-      repairHooks: shouldRepairHooksSynchronously,
+      repairHooks: false,
       throwOnHookRepairFailure: false,
     });
-    if (shouldRepairHooksSynchronously && repaired) {
-      result.hooksSetup.push(project.name);
-    }
     result.changed = result.changed || repaired;
-
-    if (project.sshHost) {
-      scheduleProjectRootHookRepair(project);
-    }
 
     const worktrees = await listWorktrees(project.repoPath, project.sshHost);
 
@@ -636,17 +601,25 @@ async function syncProjectWorktrees(
 
       /** 해당 프로젝트에 이미 동일 브랜치 태스크가 있으면 건너뛴다 */
       const existingTask = await taskRepo.findOneBy({ branchName: wt.branch, projectId: project.id });
+      const persistedStatus = await readPersistedTaskStatus(wt.path, project.sshHost);
       if (existingTask) {
         const shouldRepairTask = !matchesTaskLocation(existingTask, wt.path, project.sshHost)
-          || existingTask.baseBranch !== project.defaultBranch;
+          || existingTask.baseBranch !== project.defaultBranch
+          || (persistedStatus !== null && existingTask.status !== persistedStatus);
+        let taskToPersist = existingTask;
         if (shouldRepairTask) {
           existingTask.worktreePath = wt.path;
           existingTask.sshHost = project.sshHost;
           existingTask.baseBranch = project.defaultBranch;
+          if (persistedStatus !== null) {
+            existingTask.status = persistedStatus;
+          }
           const savedTask = await taskRepo.save(existingTask);
+          taskToPersist = savedTask;
           result.changed = true;
           await installSyncedWorktreeHooks(project, wt.path, savedTask.id, wt.branch, result);
         }
+        await persistTaskState(wt.path, taskToPersist, project.sshHost);
         continue;
       }
 
@@ -658,8 +631,10 @@ async function syncProjectWorktrees(
         orphanTask.worktreePath = wt.path;
         orphanTask.sshHost = project.sshHost;
         orphanTask.baseBranch = orphanTask.baseBranch || project.defaultBranch;
+        orphanTask.status = persistedStatus ?? TaskStatus.TODO;
         const savedTask = await taskRepo.save(orphanTask);
         result.changed = true;
+        await persistTaskState(wt.path, savedTask, project.sshHost);
         await installSyncedWorktreeHooks(project, wt.path, savedTask.id, wt.branch, result);
         result.worktreeTasks.push(wt.branch);
         result.registeredWorktrees.push({
@@ -686,7 +661,7 @@ async function syncProjectWorktrees(
         worktreePath: wt.path,
         projectId: project.id,
         baseBranch: project.defaultBranch,
-        status: hasSession ? TaskStatus.PROGRESS : TaskStatus.TODO,
+        status: persistedStatus ?? TaskStatus.TODO,
         ...(hasSession && {
           sessionType: SessionType.TMUX,
           sessionName,
@@ -695,6 +670,7 @@ async function syncProjectWorktrees(
       });
       const savedTask = await taskRepo.save(task);
       result.changed = true;
+      await persistTaskState(wt.path, savedTask, project.sshHost);
       await installSyncedWorktreeHooks(project, wt.path, savedTask.id, wt.branch, result);
       result.worktreeTasks.push(wt.branch);
       result.registeredWorktrees.push({
@@ -729,12 +705,16 @@ async function syncProjectWorktrees(
 
       if (hasSession) {
         const defaultBranchWorktreePath = await resolveProjectDefaultBranchWorktreePath(project);
+        const persistedStatus = await readPersistedTaskStatus(defaultBranchWorktreePath || project.repoPath, project.sshHost);
         mainBranchTask.sessionType = SessionType.TMUX;
         mainBranchTask.sessionName = sessionName;
         mainBranchTask.worktreePath = defaultBranchWorktreePath;
         mainBranchTask.sshHost = project.sshHost;
-        mainBranchTask.status = TaskStatus.PROGRESS;
-        await taskRepo.save(mainBranchTask);
+        if (persistedStatus !== null) {
+          mainBranchTask.status = persistedStatus;
+        }
+        const savedTask = await taskRepo.save(mainBranchTask);
+        await persistTaskState(defaultBranchWorktreePath || project.repoPath, savedTask, project.sshHost);
         result.changed = true;
       }
     }
@@ -860,9 +840,6 @@ export async function scanAndRegisterProjects(
       /** 기본 브랜치 작업이 준비되면 hooks가 보장된다 */
       if (defaultTask && shouldRepairHooksSynchronously) {
         result.hooksSetup.push(projectName);
-      }
-      if (saved.sshHost) {
-        scheduleProjectRootHookRepair(saved);
       }
     } catch (error) {
       result.errors.push(
@@ -1206,8 +1183,9 @@ export async function getTaskOpenCodeHooksStatus(
 /** 태스크와 연결된 로컬 AI 세션들을 집계한다 */
 export async function getTaskAiSessions(
   taskId: string,
-  includeRepoSessions = false,
-  query?: string
+  query?: string,
+  cursor?: string | null,
+  limit?: number
 ): Promise<AggregatedAiSessionsResult> {
   const taskRepo = await getTaskRepository();
   const task = await taskRepo.findOne({
@@ -1222,14 +1200,16 @@ export async function getTaskAiSessions(
       repoPath: null,
       sessions: [],
       sources: [],
+      nextCursor: null,
     };
   }
 
   return aggregateAiSessions({
     worktreePath: task.worktreePath || task.project.repoPath,
     repoPath: task.project.repoPath,
-    includeRepoSessions,
     query,
+    cursor,
+    limit,
     sshHost: task.project.sshHost,
   });
 }
@@ -1241,7 +1221,6 @@ export async function getTaskAiSessionDetail(
   sourceRef?: string | null,
   cursor?: string | null,
   limit = 20,
-  includeRepoSessions = false,
   query?: string,
   roles?: AiMessageRole[]
 ): Promise<AggregatedAiSessionDetail | null> {
@@ -1260,7 +1239,6 @@ export async function getTaskAiSessionDetail(
     {
       worktreePath: targetPath,
       repoPath: task.project.repoPath,
-      includeRepoSessions,
       query,
       roles,
       sshHost: task.project.sshHost,

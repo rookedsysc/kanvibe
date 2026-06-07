@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
   Chatting01Icon,
@@ -11,6 +11,7 @@ import CreateTaskModal from "@/components/CreateTaskModal";
 import DeleteTaskButton from "@/components/DeleteTaskButton";
 import DoneStatusButton from "@/components/DoneStatusButton";
 import HooksStatusCard from "@/components/HooksStatusCard";
+import { AiProviderIcon } from "@/components/AiProviderIcon";
 import NotificationCenterButton, { type NotificationCenterButtonHandle } from "@/components/NotificationCenterButton";
 import TaskDetailInfoCard from "@/components/TaskDetailInfoCard";
 import TaskDetailTitleCard from "@/components/TaskDetailTitleCard";
@@ -51,6 +52,7 @@ import { requestActiveTerminalFocusAfterUiSettles } from "@/desktop/renderer/uti
 import { SessionType, TaskStatus } from "@/entities/KanbanTask";
 import { useEscapeKey } from "@/hooks/useEscapeKey";
 import type {
+  AiMessageRole,
   AggregatedAiMessage,
   AggregatedAiSession,
   AggregatedAiSessionDetail,
@@ -65,6 +67,7 @@ const STATUS_TRANSITIONS = [
 ] as const;
 
 const INLINE_CHAT_DETAIL_LIMIT = 40;
+const INLINE_CHAT_SESSION_LIMIT = 20;
 
 const AGENT_TAG_STYLES: Record<string, string> = {
   claude: "bg-tag-claude-bg text-tag-claude-text",
@@ -142,7 +145,6 @@ interface TaskDetailState {
   geminiHooksStatus: Awaited<ReturnType<typeof getTaskGeminiHooksStatus>>;
   codexHooksStatus: Awaited<ReturnType<typeof getTaskCodexHooksStatus>>;
   openCodeHooksStatus: Awaited<ReturnType<typeof getTaskOpenCodeHooksStatus>>;
-  aiSessions: Awaited<ReturnType<typeof getTaskAiSessions>>;
   projects: Awaited<ReturnType<typeof getAllProjects>>;
   sidebarDefaultCollapsed: boolean;
   defaultSessionType: Awaited<ReturnType<typeof getDefaultSessionType>>;
@@ -158,14 +160,6 @@ interface NormalizedTaskDetailRouteCache {
   defaultPanelDismissed: boolean;
 }
 
-const EMPTY_AI_SESSIONS: Awaited<ReturnType<typeof getTaskAiSessions>> = {
-  isRemote: false,
-  targetPath: null,
-  repoPath: null,
-  sessions: [],
-  sources: [],
-};
-
 const DEFAULT_DETAIL_STATE: Omit<TaskDetailState, "task"> = {
   baseBranchTaskId: null,
   diffFiles: [],
@@ -173,7 +167,6 @@ const DEFAULT_DETAIL_STATE: Omit<TaskDetailState, "task"> = {
   geminiHooksStatus: null,
   codexHooksStatus: null,
   openCodeHooksStatus: null,
-  aiSessions: EMPTY_AI_SESSIONS,
   projects: [],
   sidebarDefaultCollapsed: false,
   defaultSessionType: SessionType.TMUX,
@@ -202,10 +195,12 @@ function normalizeCachedTaskDetailRouteCache(cachedRoute: TaskDetailRouteCache |
 
   const routeState = { ...cachedRoute } as TaskDetailRouteCache & {
     sidebarHintDismissed?: boolean;
+    aiSessions?: unknown;
   };
   const defaultPanelDismissed = routeState.defaultPanelDismissed === true;
   delete routeState.sidebarHintDismissed;
   delete routeState.defaultPanelDismissed;
+  delete routeState.aiSessions;
   return {
     state: {
       ...DEFAULT_DETAIL_STATE,
@@ -216,15 +211,188 @@ function normalizeCachedTaskDetailRouteCache(cachedRoute: TaskDetailRouteCache |
   };
 }
 
-function selectInlineChatSession(sessions: AggregatedAiSession[]) {
-  return sessions.find((session) => session.provider === "claude") ?? sessions[0] ?? null;
+const AI_SESSION_PROVIDER_STYLES: Record<AggregatedAiSession["provider"], string> = {
+  claude: "border-tag-claude-text/30 bg-tag-claude-bg text-tag-claude-text",
+  gemini: "border-tag-gemini-text/30 bg-tag-gemini-bg text-tag-gemini-text",
+  codex: "border-tag-codex-text/30 bg-tag-codex-bg text-tag-codex-text",
+  opencode: "border-tag-neutral-text/30 bg-tag-neutral-bg text-tag-neutral-text",
+};
+
+const AI_SESSION_PROVIDER_ICON_STYLES: Record<AggregatedAiSession["provider"], string> = {
+  claude: "border-tag-claude-text/40 bg-tag-claude-bg text-tag-claude-text",
+  gemini: "border-tag-gemini-text/40 bg-tag-gemini-bg text-tag-gemini-text",
+  codex: "border-tag-codex-text/40 bg-tag-codex-bg text-tag-codex-text",
+  opencode: "border-tag-neutral-text/40 bg-tag-neutral-bg text-tag-neutral-text",
+};
+
+const AI_SESSION_PROVIDER_ORDER: AggregatedAiSession["provider"][] = ["claude", "opencode", "gemini", "codex"];
+
+const AI_SESSION_PROVIDER_META: Record<AggregatedAiSession["provider"], { label: string }> = {
+  claude: { label: "Claude" },
+  opencode: { label: "OpenCode" },
+  gemini: { label: "Gemini" },
+  codex: { label: "Codex" },
+};
+
+const INLINE_CHAT_ROLE_FILTERS: AiMessageRole[] = [
+  "user",
+  "assistant",
+  "system",
+  "developer",
+  "reasoning",
+  "tool",
+  "unknown",
+];
+
+function getAiSessionKey(session: AggregatedAiSession): string {
+  return `${session.provider}:${session.id}:${session.sourceRef ?? ""}`;
 }
 
-function InlineAiChatView({ taskId, data }: { taskId: string; data: AggregatedAiSessionsResult }) {
+function normalizeAiSessionSearchQuery(value: string): string | undefined {
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
+function InlineAiChatView({ taskId }: { taskId: string }) {
   const t = useTranslations("taskDetail");
-  const selectedSession = useMemo(() => selectInlineChatSession(data.sessions), [data.sessions]);
+  const detailErrorMessage = t("aiSessions.detailError");
+  const [history, setHistory] = useState<AggregatedAiSessionsResult | null>(null);
+  const [historyError, setHistoryError] = useState<string | null>(null);
+  const [isHistoryLoading, setIsHistoryLoading] = useState(true);
+  const [selectedSessionKey, setSelectedSessionKey] = useState<string | null>(null);
   const [detail, setDetail] = useState<AggregatedAiSessionDetail | null>(null);
   const [detailError, setDetailError] = useState<{ sessionId: string; message: string } | null>(null);
+  const [isOlderMessagesLoading, setIsOlderMessagesLoading] = useState(false);
+  const [activeRoles, setActiveRoles] = useState<AiMessageRole[]>([]);
+  const [activeProviders, setActiveProviders] = useState<AggregatedAiSession["provider"][]>([]);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [appliedSearchQuery, setAppliedSearchQuery] = useState<string | undefined>(undefined);
+  const loadedTaskIdRef = useRef<string | null>(null);
+  const latestMessageAnchorRef = useRef<HTMLDivElement | null>(null);
+  const shouldScrollToLatestMessageRef = useRef(false);
+  const historyRequestIdRef = useRef(0);
+  const olderMessagesRequestIdRef = useRef(0);
+
+  const selectedSession = useMemo(
+    () => history?.sessions.find((session) => getAiSessionKey(session) === selectedSessionKey) ?? null,
+    [history?.sessions, selectedSessionKey],
+  );
+
+  const providerCounts = useMemo(() => {
+    const counts: Record<AggregatedAiSession["provider"], number> = {
+      claude: 0,
+      codex: 0,
+      opencode: 0,
+      gemini: 0,
+    };
+    for (const session of history?.sessions ?? []) {
+      counts[session.provider] += 1;
+    }
+    return counts;
+  }, [history?.sessions]);
+
+  const filteredSessions = useMemo(() => {
+    if (!history) return [];
+    if (activeProviders.length === 0) return history.sessions;
+    const activeProviderSet = new Set(activeProviders);
+    return history.sessions.filter((session) => activeProviderSet.has(session.provider));
+  }, [activeProviders, history]);
+
+  const loadHistory = useCallback(async (queryOverride?: string, options?: { cursor?: string | null; append?: boolean }) => {
+    const normalizedQuery = normalizeAiSessionSearchQuery(queryOverride ?? searchQuery);
+    const isAppending = options?.append === true;
+    const requestId = historyRequestIdRef.current + 1;
+    historyRequestIdRef.current = requestId;
+    setIsHistoryLoading(true);
+    setHistoryError(null);
+    try {
+      const result = await getTaskAiSessions(
+        taskId,
+        normalizedQuery,
+        options?.cursor ?? null,
+        INLINE_CHAT_SESSION_LIMIT,
+      );
+      if (historyRequestIdRef.current !== requestId) {
+        return;
+      }
+
+      setHistory((current) => {
+        if (!isAppending || !current) {
+          return result;
+        }
+
+        const seenKeys = new Set(current.sessions.map(getAiSessionKey));
+        const mergedSessions = [...current.sessions];
+        for (const session of result.sessions) {
+          const sessionKey = getAiSessionKey(session);
+          if (!seenKeys.has(sessionKey)) {
+            seenKeys.add(sessionKey);
+            mergedSessions.push(session);
+          }
+        }
+
+        return {
+          ...result,
+          sessions: mergedSessions,
+          sources: result.sources.length > 0 ? result.sources : current.sources,
+        };
+      });
+      setAppliedSearchQuery(normalizedQuery);
+      if (!isAppending) {
+        olderMessagesRequestIdRef.current += 1;
+        setSelectedSessionKey(null);
+        setDetail(null);
+        setDetailError(null);
+        setActiveRoles([]);
+      }
+    } catch {
+      if (historyRequestIdRef.current === requestId) {
+        setHistoryError(detailErrorMessage);
+      }
+    } finally {
+      if (historyRequestIdRef.current === requestId) {
+        setIsHistoryLoading(false);
+      }
+    }
+  }, [detailErrorMessage, searchQuery, taskId]);
+
+  useEffect(() => {
+    loadedTaskIdRef.current = null;
+    historyRequestIdRef.current += 1;
+    olderMessagesRequestIdRef.current += 1;
+    setHistory(null);
+    setHistoryError(null);
+    setIsHistoryLoading(true);
+    setSelectedSessionKey(null);
+    setDetail(null);
+    setDetailError(null);
+    setIsOlderMessagesLoading(false);
+    setActiveRoles([]);
+    setActiveProviders([]);
+    setSearchQuery("");
+    setAppliedSearchQuery(undefined);
+  }, [taskId]);
+
+  useEffect(() => {
+    if (loadedTaskIdRef.current === taskId) {
+      return;
+    }
+
+    loadedTaskIdRef.current = taskId;
+    void loadHistory("");
+  }, [loadHistory, taskId]);
+
+  useEffect(() => {
+    if (!selectedSessionKey) return;
+    const selectedSessionStillVisible = filteredSessions.some((session) => getAiSessionKey(session) === selectedSessionKey);
+    if (selectedSessionStillVisible) return;
+
+    setSelectedSessionKey(null);
+    setDetail(null);
+    setDetailError(null);
+    olderMessagesRequestIdRef.current += 1;
+    setActiveRoles([]);
+  }, [filteredSessions, selectedSessionKey]);
 
   useEffect(() => {
     if (!selectedSession) {
@@ -232,6 +400,11 @@ function InlineAiChatView({ taskId, data }: { taskId: string; data: AggregatedAi
     }
 
     let cancelled = false;
+    olderMessagesRequestIdRef.current += 1;
+    setDetail(null);
+    setDetailError(null);
+    setIsOlderMessagesLoading(false);
+    shouldScrollToLatestMessageRef.current = true;
 
     getTaskAiSessionDetail(
       taskId,
@@ -240,11 +413,12 @@ function InlineAiChatView({ taskId, data }: { taskId: string; data: AggregatedAi
       selectedSession.sourceRef ?? null,
       null,
       INLINE_CHAT_DETAIL_LIMIT,
-      false,
+      appliedSearchQuery,
+      activeRoles.length > 0 ? activeRoles : undefined,
     ).then((result) => {
       if (cancelled) return;
       if (!result) {
-        setDetailError({ sessionId: selectedSession.id, message: t("aiSessions.detailError") });
+        setDetailError({ sessionId: selectedSession.id, message: detailErrorMessage });
         return;
       }
 
@@ -252,17 +426,124 @@ function InlineAiChatView({ taskId, data }: { taskId: string; data: AggregatedAi
       setDetailError(null);
     }).catch(() => {
       if (cancelled) return;
-      setDetailError({ sessionId: selectedSession.id, message: t("aiSessions.detailError") });
+      setDetailError({ sessionId: selectedSession.id, message: detailErrorMessage });
     });
 
     return () => {
       cancelled = true;
     };
-  }, [selectedSession, taskId, t]);
+  }, [activeRoles, appliedSearchQuery, detailErrorMessage, selectedSession, taskId]);
 
-  const messages = selectedSession && detail?.sessionId === selectedSession.id ? detail.messages : [];
+  const selectedSessionId = selectedSession?.id ?? null;
+  const messages = useMemo(() => {
+    if (!selectedSessionId || detail?.sessionId !== selectedSessionId) {
+      return [];
+    }
+
+    return detail.messages;
+  }, [detail?.messages, detail?.sessionId, selectedSessionId]);
+  const displayedMessages = useMemo(() => [...messages].reverse(), [messages]);
   const error = selectedSession && detailError?.sessionId === selectedSession.id ? detailError.message : null;
-  const isLoading = Boolean(selectedSession && detail?.sessionId !== selectedSession.id && !error);
+  const isDetailLoading = Boolean(selectedSession && detail?.sessionId !== selectedSession.id && !error);
+
+  useEffect(() => {
+    if (!shouldScrollToLatestMessageRef.current || isDetailLoading || !selectedSession || displayedMessages.length === 0) {
+      return;
+    }
+
+    latestMessageAnchorRef.current?.scrollIntoView?.({ block: "end" });
+    shouldScrollToLatestMessageRef.current = false;
+  }, [displayedMessages.length, isDetailLoading, selectedSession]);
+
+  function toggleRole(role: AiMessageRole) {
+    olderMessagesRequestIdRef.current += 1;
+    setActiveRoles((current) => (
+      current.includes(role)
+        ? current.filter((candidate) => candidate !== role)
+        : [...current, role]
+    ));
+  }
+
+  function toggleProvider(provider: AggregatedAiSession["provider"]) {
+    setActiveProviders((current) => (
+      current.includes(provider)
+        ? current.filter((candidate) => candidate !== provider)
+        : [...current, provider]
+    ));
+  }
+
+  function handleSearchSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    void loadHistory(searchQuery);
+  }
+
+  async function handleLoadMoreSessions() {
+    if (!history?.nextCursor || isHistoryLoading) {
+      return;
+    }
+
+    await loadHistory(appliedSearchQuery ?? "", { cursor: history.nextCursor, append: true });
+  }
+
+  async function handleLoadOlderMessages() {
+    if (!selectedSession || !detail?.nextCursor || isOlderMessagesLoading) {
+      return;
+    }
+
+    const requestId = olderMessagesRequestIdRef.current + 1;
+    olderMessagesRequestIdRef.current = requestId;
+    const requestedSession = selectedSession;
+    const requestedSearchQuery = appliedSearchQuery;
+    const requestedRoles = activeRoles.length > 0 ? activeRoles : undefined;
+    setIsOlderMessagesLoading(true);
+    setDetailError(null);
+    try {
+      const result = await getTaskAiSessionDetail(
+        taskId,
+        requestedSession.provider,
+        requestedSession.id,
+        requestedSession.sourceRef ?? null,
+        detail.nextCursor,
+        INLINE_CHAT_DETAIL_LIMIT,
+        requestedSearchQuery,
+        requestedRoles,
+      );
+
+      if (olderMessagesRequestIdRef.current !== requestId) {
+        return;
+      }
+
+      if (!result) {
+        setDetailError({ sessionId: requestedSession.id, message: t("aiSessions.detailError") });
+        return;
+      }
+
+      setDetail((current) => {
+        if (!current || current.sessionId !== result.sessionId) {
+          return result;
+        }
+
+        return {
+          ...result,
+          messages: [...current.messages, ...result.messages],
+        };
+      });
+    } catch {
+      if (olderMessagesRequestIdRef.current === requestId) {
+        setDetailError({ sessionId: requestedSession.id, message: t("aiSessions.detailError") });
+      }
+    } finally {
+      if (olderMessagesRequestIdRef.current === requestId) {
+        setIsOlderMessagesLoading(false);
+      }
+    }
+  }
+
+  const historyCountLabel = history
+    ? activeProviders.length > 0
+      ? `${filteredSessions.length}/${history.sessions.length}`
+      : `${history.sessions.length}`
+    : t("aiSessions.noPreview");
 
   return (
     <div
@@ -275,32 +556,211 @@ function InlineAiChatView({ taskId, data }: { taskId: string; data: AggregatedAi
             {selectedSession?.title ?? t("aiSessions.title")}
           </p>
           <p className="mt-0.5 truncate text-[11px] text-terminal-text/70">
-            {selectedSession ? selectedSession.provider : t("aiSessions.noPreview")}
+            {selectedSession ? AI_SESSION_PROVIDER_META[selectedSession.provider].label : historyCountLabel}
           </p>
         </div>
-        {selectedSession ? (
-          <span className="rounded border border-tag-claude-text/30 bg-tag-claude-bg px-2 py-0.5 text-[10px] font-semibold text-tag-claude-text">
-            {selectedSession.provider}
-          </span>
-        ) : null}
+        {selectedSession ? <AiSessionProviderBadge provider={selectedSession.provider} /> : null}
+        <form onSubmit={handleSearchSubmit} className="flex w-[320px] items-center gap-2">
+          <label htmlFor="ai-session-search" className="sr-only">
+            {t("aiSessions.searchLabel")}
+          </label>
+          <input
+            id="ai-session-search"
+            value={searchQuery}
+            onChange={(event) => setSearchQuery(event.target.value)}
+            placeholder={t("aiSessions.searchPlaceholder")}
+            className="min-w-0 flex-1 rounded-md border border-terminal-text/20 bg-black/10 px-3 py-1.5 text-[11px] text-terminal-text placeholder:text-terminal-text/45 outline-none transition-colors focus:border-terminal-text/50"
+          />
+          <button
+            type="submit"
+            disabled={isHistoryLoading}
+            className="rounded-md border border-terminal-text/20 px-3 py-1.5 text-[11px] font-semibold text-terminal-text transition-colors hover:bg-white/10 disabled:opacity-50"
+          >
+            {t("aiSessions.search")}
+          </button>
+        </form>
       </div>
 
-      <div className="flex-1 space-y-4 overflow-y-auto px-5 py-5">
-        {!selectedSession ? <InlineAiChatEmpty text={data.isRemote ? t("aiSessions.remoteBadge") : t("aiSessions.noPreview")} /> : null}
-        {selectedSession && isLoading ? <InlineAiChatEmpty text={t("aiSessions.loadingDetail")} /> : null}
-        {selectedSession && !isLoading && error ? <InlineAiChatEmpty text={error} /> : null}
-        {selectedSession && !isLoading && !error && messages.length === 0 ? <InlineAiChatEmpty text={t("aiSessions.noPreview")} /> : null}
-        {!isLoading && !error && messages.map((message, index) => (
-          <InlineAiChatMessage key={`${message.role}-${message.timestamp ?? index}-${index}`} message={message} />
-        ))}
+      <div className="flex min-h-0 flex-1">
+        <div className="flex w-[340px] shrink-0 border-r border-border-default bg-bg-surface/45">
+          <div className="flex w-14 shrink-0 flex-col items-center gap-2 border-r border-border-default bg-bg-page/70 px-2 py-3">
+            {AI_SESSION_PROVIDER_ORDER.map((provider) => {
+              const isActive = activeProviders.includes(provider);
+              const count = providerCounts[provider];
+              return (
+                <button
+                  key={provider}
+                  type="button"
+                  data-testid={`ai-session-filter-${provider}`}
+                  aria-label={t("aiSessions.providerFilterLabel", { provider: AI_SESSION_PROVIDER_META[provider].label })}
+                  aria-pressed={isActive}
+                  title={t("aiSessions.providerFilterLabel", { provider: AI_SESSION_PROVIDER_META[provider].label })}
+                  onClick={() => toggleProvider(provider)}
+                  className={`relative flex size-10 items-center justify-center rounded-full border text-[11px] font-bold shadow-sm transition-all ${
+                    isActive
+                      ? `${AI_SESSION_PROVIDER_ICON_STYLES[provider]} ring-2 ring-brand-primary/45 ring-offset-2 ring-offset-bg-page`
+                      : `${AI_SESSION_PROVIDER_ICON_STYLES[provider]} opacity-65 hover:opacity-100`
+                  }`}
+                >
+                  <AiProviderIcon
+                    provider={provider}
+                    className="inline-flex h-[18px] w-[18px] items-center justify-center"
+                    imageClassName="block h-[18px] w-[18px] object-contain"
+                    size={18}
+                  />
+                  {history ? (
+                    <span className="absolute -bottom-1 -right-1 flex min-w-4 items-center justify-center rounded-full border border-bg-page bg-bg-surface px-1 text-[9px] leading-4 text-text-muted">
+                      {count}
+                    </span>
+                  ) : null}
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="min-w-0 flex-1 overflow-y-auto p-3">
+            {!history && !isHistoryLoading && !historyError ? <InlineAiChatEmpty compact text={t("aiSessions.noPreview")} /> : null}
+            {historyError ? <InlineAiChatEmpty compact text={historyError} /> : null}
+            {isHistoryLoading ? <InlineAiChatEmpty compact text={t("aiSessions.loadingDetail")} /> : null}
+            {history ? (
+              filteredSessions.length > 0 || history.nextCursor ? (
+                <div data-testid="ai-session-list" className="space-y-2">
+                  {filteredSessions.length > 0 ? (
+                    filteredSessions.map((session) => {
+                      const sessionKey = getAiSessionKey(session);
+                      const isSelected = selectedSessionKey === sessionKey;
+                      return (
+                        <button
+                          key={sessionKey}
+                          type="button"
+                          onClick={() => {
+                            shouldScrollToLatestMessageRef.current = true;
+                            setSelectedSessionKey(sessionKey);
+                            setActiveRoles([]);
+                          }}
+                          className={`w-full rounded-xl border p-3 text-left transition-colors ${
+                            isSelected
+                              ? "border-brand-primary bg-brand-subtle"
+                              : "border-border-default bg-bg-page hover:border-brand-primary/70"
+                          }`}
+                          aria-label={`${AI_SESSION_PROVIDER_META[session.provider].label} ${session.title ?? session.firstUserPrompt ?? session.id}`}
+                        >
+                          <div className="mb-2 flex items-start gap-2">
+                            <AiSessionProviderIcon provider={session.provider} />
+                            <span className="min-w-0 flex-1 truncate text-xs font-semibold text-text-primary">
+                              {session.title ?? session.firstUserPrompt ?? session.id}
+                            </span>
+                          </div>
+                          {session.firstUserPrompt ? (
+                            <p className="line-clamp-2 text-[11px] leading-4 text-text-muted">{session.firstUserPrompt}</p>
+                          ) : null}
+                          <p className="mt-2 text-[10px] text-text-muted">{session.messageCount}</p>
+                        </button>
+                      );
+                    })
+                  ) : (
+                    <InlineAiChatEmpty compact text={history.isRemote ? t("aiSessions.remoteBadge") : t("aiSessions.noPreview")} />
+                  )}
+                  {history.nextCursor ? (
+                    <button
+                      type="button"
+                      onClick={() => void handleLoadMoreSessions()}
+                      disabled={isHistoryLoading}
+                      className="w-full rounded-lg border border-dashed border-border-default px-3 py-2 text-[11px] font-semibold text-text-muted transition-colors hover:border-brand-primary hover:text-text-brand disabled:opacity-50"
+                    >
+                      {isHistoryLoading ? t("aiSessions.loadingDetail") : t("aiSessions.loadMoreSessions")}
+                    </button>
+                  ) : null}
+                </div>
+              ) : <InlineAiChatEmpty compact text={history.isRemote ? t("aiSessions.remoteBadge") : t("aiSessions.noPreview")} />
+            ) : null}
+          </div>
+        </div>
+
+        <div className="flex min-w-0 flex-1 flex-col">
+          {selectedSession ? (
+            <div className="flex shrink-0 flex-wrap gap-2 border-b border-border-default px-4 py-2">
+              {INLINE_CHAT_ROLE_FILTERS.map((role) => {
+                const isActive = activeRoles.includes(role);
+                return (
+                  <button
+                    key={role}
+                    type="button"
+                    aria-label={t(`aiSessions.roles.${role}`)}
+                    aria-pressed={isActive}
+                    onClick={() => toggleRole(role)}
+                    className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold transition-colors ${
+                      isActive
+                        ? "border-brand-primary bg-brand-subtle text-text-brand"
+                        : "border-border-default bg-bg-surface text-text-muted hover:border-brand-primary/70 hover:text-text-primary"
+                    }`}
+                  >
+                    {t(`aiSessions.roles.${role}`)}
+                  </button>
+                );
+              })}
+            </div>
+          ) : null}
+
+          <div data-testid="ai-session-messages" className="flex-1 space-y-4 overflow-y-auto px-5 py-5">
+            {!history && !isHistoryLoading && !historyError ? <InlineAiChatEmpty text={t("aiSessions.noPreview")} /> : null}
+            {historyError ? <InlineAiChatEmpty text={historyError} /> : null}
+            {history && !selectedSession ? <InlineAiChatEmpty text={t("aiSessions.selectSession")} /> : null}
+            {selectedSession && isDetailLoading ? <InlineAiChatEmpty text={t("aiSessions.loadingDetail")} /> : null}
+            {selectedSession && !isDetailLoading && error ? <InlineAiChatEmpty text={error} /> : null}
+            {selectedSession && !isDetailLoading && !error && messages.length === 0 ? <InlineAiChatEmpty text={t("aiSessions.noPreview")} /> : null}
+            {selectedSession && !isDetailLoading && !error && detail?.sessionId === selectedSession.id && detail.nextCursor ? (
+              <div className="flex justify-center">
+                <button
+                  type="button"
+                  onClick={() => void handleLoadOlderMessages()}
+                  disabled={isOlderMessagesLoading}
+                  className="rounded-full border border-border-default bg-bg-surface px-4 py-2 text-xs font-semibold text-text-muted transition-colors hover:border-brand-primary hover:text-text-brand disabled:opacity-50"
+                >
+                  {isOlderMessagesLoading ? t("aiSessions.loadingDetail") : t("aiSessions.loadOlderMessages")}
+                </button>
+              </div>
+            ) : null}
+            {selectedSession && !isDetailLoading && !error && displayedMessages.map((message, index) => (
+              <InlineAiChatMessage
+                key={`${message.role}-${message.timestamp ?? index}-${index}`}
+                message={message}
+                provider={selectedSession.provider}
+              />
+            ))}
+            <div ref={latestMessageAnchorRef} aria-hidden="true" />
+          </div>
+        </div>
       </div>
     </div>
   );
 }
-
-function InlineAiChatEmpty({ text }: { text: string }) {
+function AiSessionProviderIcon({ provider, testId = true }: { provider: AggregatedAiSession["provider"]; testId?: boolean }) {
   return (
-    <div className="flex h-full items-center justify-center">
+    <AiProviderIcon
+      provider={provider}
+      testId={testId ? `ai-session-provider-${provider}` : undefined}
+      className={`flex size-6 shrink-0 items-center justify-center rounded-full border ${AI_SESSION_PROVIDER_ICON_STYLES[provider]}`}
+      imageClassName="block h-4 w-4 object-contain"
+      size={16}
+    />
+  );
+}
+
+function AiSessionProviderBadge({ provider }: { provider: AggregatedAiSession["provider"] }) {
+  return (
+    <span
+      data-testid={`ai-session-provider-${provider}`}
+      className={`rounded border px-2 py-0.5 text-[10px] font-semibold ${AI_SESSION_PROVIDER_STYLES[provider]}`}
+    >
+      {AI_SESSION_PROVIDER_META[provider].label}
+    </span>
+  );
+}
+
+function InlineAiChatEmpty({ text, compact = false }: { text: string; compact?: boolean }) {
+  return (
+    <div className={`flex ${compact ? "py-6" : "h-full"} items-center justify-center`}>
       <p className="rounded-md border border-border-default bg-bg-surface px-4 py-3 text-sm text-text-muted">
         {text}
       </p>
@@ -308,7 +768,7 @@ function InlineAiChatEmpty({ text }: { text: string }) {
   );
 }
 
-function InlineAiChatMessage({ message }: { message: AggregatedAiMessage }) {
+function InlineAiChatMessage({ message, provider }: { message: AggregatedAiMessage; provider: AggregatedAiSession["provider"] }) {
   const isUserMessage = message.role === "user";
   const displayedText = message.fullText || message.text;
 
@@ -321,8 +781,9 @@ function InlineAiChatMessage({ message }: { message: AggregatedAiMessage }) {
             : "rounded-bl-md border border-border-default bg-bg-surface text-text-primary"
         }`}
       >
-        <div className={`mb-1 text-[11px] font-semibold ${isUserMessage ? "text-white/75" : "text-text-muted"}`}>
-          {message.role}
+        <div className={`mb-2 flex items-center gap-2 text-[11px] font-semibold ${isUserMessage ? "text-white/75" : "text-text-muted"}`}>
+          <AiSessionProviderIcon provider={provider} testId={false} />
+          <span>{message.role}</span>
         </div>
         <p className="whitespace-pre-wrap break-words">{displayedText}</p>
       </div>
@@ -767,14 +1228,6 @@ export default function TaskDetailRoute() {
           }
         })();
 
-        void (async () => {
-          try {
-            const aiSessions = task.projectId ? await getTaskAiSessions(id) : EMPTY_AI_SESSIONS;
-            applySupplementalState({ aiSessions });
-          } catch (error) {
-            console.error("Failed to load task AI sessions:", error);
-          }
-        })();
       } catch (error) {
         clearLoadingTimeout();
         console.error("Failed to load task detail:", error);
@@ -990,7 +1443,7 @@ export default function TaskDetailRoute() {
 
       <main className="ml-14 flex h-full min-w-0 flex-col">
         {mainView === "chat" ? (
-          <InlineAiChatView taskId={state.task.id} data={state.aiSessions} />
+          <InlineAiChatView taskId={state.task.id} />
         ) : hasTerminal ? (
           <div className="flex-1 flex flex-col min-h-0 rounded-lg overflow-hidden shadow-md transition-all duration-200 ease-out">
             <div className="bg-terminal-chrome flex items-center gap-2 px-4 py-2.5 shrink-0">

@@ -3,7 +3,7 @@ import { In, Not, Like } from "typeorm";
 import { getTaskRepository } from "@/lib/database";
 import { KanbanTask, TaskStatus, SessionType } from "@/entities/KanbanTask";
 import { TaskPriority } from "@/entities/TaskPriority";
-import { createWorktreeWithSession, removeWorktreeAndBranch, createSessionWithoutWorktree, removeSessionOnly, buildManagedWorktreePath } from "@/lib/worktree";
+import { createWorktreeWithSession, removeWorktreeAndBranch, createSessionWithoutWorktree, removeSessionOnly } from "@/lib/worktree";
 import { getProjectRepository } from "@/lib/database";
 import {
   broadcastBoardUpdate,
@@ -19,6 +19,7 @@ import {
 } from "@/lib/kanvibeHooksInstaller";
 import { execGit, pullCurrentBranch, remoteBranchExists } from "@/lib/gitOperations";
 import { detachSession } from "@/lib/terminal";
+import { persistTaskStateForTask as persistTaskState } from "@/desktop/main/services/kanvibeTaskStateService";
 
 export type TasksByStatus = Record<TaskStatus, KanbanTask[]>;
 
@@ -52,11 +53,15 @@ const ACTIVE_PULL_TASK_STATUSES = [
   TaskStatus.PENDING,
   TaskStatus.REVIEW,
 ];
+const ACTIVE_TASK_PULL_GIT_TIMEOUT_MS = 10_000;
+const ACTIVE_TASK_PR_GITHUB_CLI_TIMEOUT_MS = 10_000;
 const notifiedPullFailureKeys = new Set<string>();
 
 interface CleanupTaskResourcesOptions {
   throwOnError?: boolean;
 }
+
+const TASK_RESOURCE_DELETE_CLEANUP_OPTIONS = { throwOnError: true } as const;
 
 interface DoneRollbackSnapshot {
   id: string;
@@ -65,6 +70,8 @@ interface DoneRollbackSnapshot {
   sessionName: string | null;
   worktreePath: string | null;
   sshHost: string | null;
+  projectId: string | null;
+  branchName: string | null;
 }
 
 export interface DoneCleanupPlan {
@@ -248,6 +255,8 @@ export function prepareOptimisticDoneTransition(
     sessionName: task.sessionName,
     worktreePath: task.worktreePath,
     sshHost: task.sshHost,
+    projectId: task.projectId,
+    branchName: task.branchName,
   };
 
   task.status = TaskStatus.DONE;
@@ -264,7 +273,7 @@ export function prepareOptimisticDoneTransition(
 
 export function scheduleDoneCleanupWithRollback(plan: DoneCleanupPlan): void {
   setTimeout(() => {
-    void cleanupTaskResources(plan.cleanupTask, { throwOnError: true })
+    void deleteTaskResources(plan.cleanupTask)
       .catch((error) => rollbackDoneTransition(plan.rollbackSnapshot, error));
   }, 0);
 }
@@ -292,6 +301,7 @@ async function rollbackDoneTransition(
       worktreePath: snapshot.worktreePath,
       sshHost: snapshot.sshHost,
     });
+    await persistTaskState(snapshot);
     broadcastBoardUpdate();
   } catch (rollbackError) {
     console.error("Done 상태 롤백 실패:", rollbackError);
@@ -319,7 +329,7 @@ async function getPrUrlFromGitHubCli(branchName: string, cwd: string, sshHost?: 
     execFile(
       "gh",
       ["pr", "list", "--head", branchName, "--json", "url", "-q", ".[0].url"],
-      { cwd },
+      { cwd, timeout: ACTIVE_TASK_PR_GITHUB_CLI_TIMEOUT_MS },
       (error, stdout) => {
         if (error) {
           if (isMissingGitHubCli(error)) {
@@ -391,7 +401,7 @@ async function getPrInfoFromGitHubCli(
     execFile(
       "gh",
       ["pr", "list", "--head", branchName, "--state", "all", "--json", "url,state,mergedAt,updatedAt"],
-      { cwd },
+      { cwd, timeout: ACTIVE_TASK_PR_GITHUB_CLI_TIMEOUT_MS },
       (error, stdout) => {
         if (error) {
           if (isMissingGitHubCli(error)) {
@@ -647,6 +657,8 @@ export async function createTask(input: CreateTaskInput): Promise<KanbanTask> {
     );
   }
 
+  await persistTaskState(saved);
+
   broadcastBoardUpdate();
 
   return serialize(saved);
@@ -664,6 +676,7 @@ export async function updateTaskStatus(
   if (newStatus === TaskStatus.DONE) {
     const doneCleanupPlan = prepareOptimisticDoneTransition(task);
     const saved = await repo.save(task);
+    await persistTaskState({ ...doneCleanupPlan.cleanupTask, status: TaskStatus.DONE });
     broadcastBoardUpdate();
     scheduleDoneCleanupWithRollback(doneCleanupPlan);
     return serialize(saved);
@@ -671,6 +684,7 @@ export async function updateTaskStatus(
 
   task.status = newStatus;
   const saved = await repo.save(task);
+  await persistTaskState(saved);
   broadcastBoardUpdate();
   return serialize(saved);
 }
@@ -724,7 +738,7 @@ export async function updateProjectColor(
 }
 
 /** 작업에 연결된 worktree, 세션, 브랜치를 정리한다. task 레코드는 삭제하지 않는다 */
-export async function cleanupTaskResources(
+async function cleanupTaskResources(
   task: KanbanTask,
   options: CleanupTaskResourcesOptions = {},
 ): Promise<void> {
@@ -735,21 +749,25 @@ export async function cleanupTaskResources(
   }
 
   const sshHost = task.sshHost || project?.sshHost || null;
-  const cleanupOptions = options.throwOnError
+  const sessionCleanupOptions = options.throwOnError
     ? { throwOnError: true }
     : undefined;
+  const worktreeCleanupOptions = {
+    ...(options.throwOnError ? { throwOnError: true } : {}),
+    worktreePath: task.worktreePath,
+  };
 
   /** 브랜치별 독립 세션 정리 */
   if (task.sessionType && task.sessionName) {
     try {
       detachSession(task.id, "cleanup-task-resources");
 
-      if (cleanupOptions) {
+      if (sessionCleanupOptions) {
         await removeSessionOnly(
           task.sessionType,
           task.sessionName,
           sshHost,
-          cleanupOptions,
+          sessionCleanupOptions,
         );
       } else {
         await removeSessionOnly(
@@ -768,21 +786,17 @@ export async function cleanupTaskResources(
 
   // 프로젝트 없이 브랜치/worktree만 남은 태스크는 stale 상태이므로 worktree/브랜치 정리는 건너뛴다.
   if (!project && task.branchName && task.worktreePath) {
+    if (options.throwOnError) {
+      throw new Error("연결된 프로젝트를 찾을 수 없어 worktree/브랜치 정리를 완료할 수 없습니다.");
+    }
     return;
   }
 
   const isProjectRoot = project && task.worktreePath === project.repoPath;
-  const expectedWorktreePath = project?.repoPath && task.branchName
-    ? buildManagedWorktreePath(project.repoPath, task.branchName)
-    : null;
 
   /** worktree + 브랜치 정리 (프로젝트 루트 브랜치 제외) */
   if (task.branchName && !isProjectRoot) {
-    const canCleanupBranch = Boolean(project?.repoPath)
-      && Boolean(task.worktreePath)
-      && task.worktreePath === expectedWorktreePath;
-
-    if (!canCleanupBranch) {
+    if (!project?.repoPath) {
       const warningPayload = {
         taskId: task.id,
         branchName: task.branchName,
@@ -790,28 +804,20 @@ export async function cleanupTaskResources(
         projectRepoPath: project?.repoPath ?? null,
         sshHost,
       };
-      console.warn("worktree/브랜치 정리 건너뜀: task 경로와 project 경로가 일치하지 않습니다.", warningPayload);
+      console.warn("worktree/브랜치 정리 건너뜀: 정리할 프로젝트 정보가 부족합니다.", warningPayload);
       if (options.throwOnError) {
-        throw new Error("task 경로와 project 경로가 일치하지 않아 worktree/브랜치 정리를 건너뛰었습니다.");
+        throw new Error("정리할 프로젝트 정보가 부족해 worktree/브랜치 정리를 건너뛰었습니다.");
       }
       return;
     }
 
     try {
-      if (cleanupOptions) {
-        await removeWorktreeAndBranch(
-          project?.repoPath || process.cwd(),
-          task.branchName,
-          sshHost,
-          cleanupOptions,
-        );
-      } else {
-        await removeWorktreeAndBranch(
-          project?.repoPath || process.cwd(),
-          task.branchName,
-          sshHost,
-        );
-      }
+      await removeWorktreeAndBranch(
+        project.repoPath,
+        task.branchName,
+        sshHost,
+        worktreeCleanupOptions,
+      );
     } catch (error) {
       if (options.throwOnError) {
         throw error;
@@ -821,13 +827,18 @@ export async function cleanupTaskResources(
   }
 }
 
+/** task 삭제/Done 전환에서 사용하는 공통 리소스 삭제 정책 */
+async function deleteTaskResources(task: KanbanTask): Promise<void> {
+  await cleanupTaskResources(task, TASK_RESOURCE_DELETE_CLEANUP_OPTIONS);
+}
+
 /** 작업을 삭제한다. worktree와 세션이 있으면 함께 정리한다 */
 export async function deleteTask(taskId: string): Promise<boolean> {
   const repo = await getTaskRepository();
   const task = await repo.findOneBy({ id: taskId });
   if (!task) return false;
 
-  await cleanupTaskResources(task);
+  await deleteTaskResources(task);
 
   await repo.remove(task);
   broadcastBoardUpdate();
@@ -881,6 +892,7 @@ export async function branchFromTask(
     );
   }
 
+  await persistTaskState(saved);
   broadcastBoardUpdate();
   return serialize(saved);
 }
@@ -928,6 +940,7 @@ export async function connectTerminalSession(
     task.status = TaskStatus.PROGRESS;
 
     const saved = await repo.save(task);
+    await persistTaskState(saved);
     broadcastBoardUpdate();
     return serialize(saved);
   } catch (error) {
@@ -961,8 +974,8 @@ export async function moveTaskToColumn(
   let doneCleanupPlan: DoneCleanupPlan | null = null;
 
   try {
+    const task = await repo.findOneBy({ id: taskId });
     if (newStatus === TaskStatus.DONE) {
-      const task = await repo.findOneBy({ id: taskId });
       if (task) {
         doneCleanupPlan = prepareOptimisticDoneTransition(task);
         await repo.update(taskId, {
@@ -971,9 +984,13 @@ export async function moveTaskToColumn(
           sessionName: null,
           worktreePath: null,
         });
+        await persistTaskState({ ...doneCleanupPlan.cleanupTask, status: TaskStatus.DONE });
       }
     } else {
       await repo.update(taskId, { status: newStatus });
+      if (task) {
+        await persistTaskState({ ...task, status: newStatus });
+      }
     }
 
     const reorderUpdates = destOrderedIds.map((id, index) =>
@@ -1036,9 +1053,9 @@ export async function syncActiveTaskPullRequests(
   };
   const failures: BackgroundSyncFailurePayload[] = [];
 
-  const taskResults = await Promise.all(tasks.map(async (task) => {
+  for (const task of tasks) {
     if (!task.branchName) {
-      return null;
+      continue;
     }
 
     try {
@@ -1047,14 +1064,14 @@ export async function syncActiveTaskPullRequests(
         : null;
 
       if (isDefaultBranchTask(task, project)) {
-        return null;
+        continue;
       }
 
       const { cwd, sshHost } = await resolveTaskGitContext(task, project);
       const prInfo = await getPrInfoFromGitHubCli(task.branchName, cwd, sshHost);
 
       if (!prInfo?.url) {
-        return null;
+        continue;
       }
 
       const updatedTaskIds: string[] = [];
@@ -1069,22 +1086,22 @@ export async function syncActiveTaskPullRequests(
 
       if (prInfo.state === "MERGED" && prInfo.mergedAt) {
         const mergeEventKey = buildMergedPullRequestEventKey(task.id, prInfo.url, prInfo.mergedAt);
-        if (emittedMergeEventKeys.has(mergeEventKey)) {
-          return { updatedTaskIds, mergeEventKeys, mergedPullRequests };
+        if (!emittedMergeEventKeys.has(mergeEventKey)) {
+          emittedMergeEventKeys.add(mergeEventKey);
+          mergeEventKeys.push(mergeEventKey);
+          mergedPullRequests.push({
+            taskId: task.id,
+            taskTitle: task.title,
+            branchName: task.branchName,
+            prUrl: prInfo.url,
+            mergedAt: prInfo.mergedAt,
+          });
         }
-
-        emittedMergeEventKeys.add(mergeEventKey);
-        mergeEventKeys.push(mergeEventKey);
-        mergedPullRequests.push({
-          taskId: task.id,
-          taskTitle: task.title,
-          branchName: task.branchName,
-          prUrl: prInfo.url,
-          mergedAt: prInfo.mergedAt,
-        });
       }
 
-      return { updatedTaskIds, mergeEventKeys, mergedPullRequests };
+      result.updatedTaskIds.push(...updatedTaskIds);
+      result.mergeEventKeys.push(...mergeEventKeys);
+      result.mergedPullRequests.push(...mergedPullRequests);
     } catch (error) {
       failures.push(buildPullRequestSyncFailure(task, error));
       console.error("PR 상태 동기화 실패:", {
@@ -1092,18 +1109,7 @@ export async function syncActiveTaskPullRequests(
         branchName: task.branchName,
         error: getErrorMessage(error),
       });
-      return null;
     }
-  }));
-
-  for (const taskResult of taskResults) {
-    if (!taskResult) {
-      continue;
-    }
-
-    result.updatedTaskIds.push(...taskResult.updatedTaskIds);
-    result.mergeEventKeys.push(...taskResult.mergeEventKeys);
-    result.mergedPullRequests.push(...taskResult.mergedPullRequests);
   }
 
   if (result.mergedPullRequests.length > 0) {
@@ -1127,13 +1133,15 @@ export async function syncActiveTaskPulls(): Promise<ActiveTaskPullSyncResult> {
     order: { updatedAt: "ASC" },
   });
 
-  const pulledTasks = await Promise.all(tasks.map(async (task): Promise<TaskPullSyncPayload | null> => {
+  const pulledTasks: TaskPullSyncPayload[] = [];
+
+  for (const task of tasks) {
     if (task.status === TaskStatus.DONE) {
-      return null;
+      continue;
     }
 
     if (!task.branchName || !task.worktreePath) {
-      return null;
+      continue;
     }
 
     const project = task.projectId
@@ -1141,26 +1149,35 @@ export async function syncActiveTaskPulls(): Promise<ActiveTaskPullSyncResult> {
       : null;
 
     if (isDefaultBranchTask(task, project)) {
-      return null;
+      continue;
     }
 
     const sshHost = task.sshHost || project?.sshHost || null;
     const pullFailureKey = buildPullFailureKey(task.id, task.branchName, task.worktreePath, sshHost);
 
     try {
-      const hasRemoteBranch = await remoteBranchExists(task.worktreePath, task.branchName, sshHost);
+      const hasRemoteBranch = sshHost
+        ? await remoteBranchExists(task.worktreePath, task.branchName, sshHost)
+        : await remoteBranchExists(
+          task.worktreePath,
+          task.branchName,
+          sshHost,
+          { timeoutMs: ACTIVE_TASK_PULL_GIT_TIMEOUT_MS },
+        );
       if (!hasRemoteBranch) {
         notifiedPullFailureKeys.delete(pullFailureKey);
-        return null;
+        continue;
       }
 
-      const output = await pullCurrentBranch(task.worktreePath, sshHost);
+      const output = sshHost
+        ? await pullCurrentBranch(task.worktreePath, sshHost)
+        : await pullCurrentBranch(task.worktreePath, sshHost, { timeoutMs: ACTIVE_TASK_PULL_GIT_TIMEOUT_MS });
       notifiedPullFailureKeys.delete(pullFailureKey);
       if (isPullNoop(output)) {
-        return null;
+        continue;
       }
 
-      return {
+      pulledTasks.push({
         taskId: task.id,
         taskTitle: task.title,
         branchName: task.branchName,
@@ -1168,19 +1185,19 @@ export async function syncActiveTaskPulls(): Promise<ActiveTaskPullSyncResult> {
         sshHost,
         status: "updated",
         summary: summarizePullOutput(output),
-      };
+      });
     } catch (error) {
       if (isMissingRemoteBranchPullError(error)) {
         notifiedPullFailureKeys.delete(pullFailureKey);
-        return null;
+        continue;
       }
 
       if (notifiedPullFailureKeys.has(pullFailureKey)) {
-        return null;
+        continue;
       }
 
       notifiedPullFailureKeys.add(pullFailureKey);
-      return {
+      pulledTasks.push({
         taskId: task.id,
         taskTitle: task.title,
         branchName: task.branchName,
@@ -1188,11 +1205,11 @@ export async function syncActiveTaskPulls(): Promise<ActiveTaskPullSyncResult> {
         sshHost,
         status: "failed",
         summary: getErrorMessage(error),
-      };
+      });
     }
-  }));
+  }
 
   return {
-    pulledTasks: pulledTasks.filter((task): task is TaskPullSyncPayload => task !== null),
+    pulledTasks,
   };
 }

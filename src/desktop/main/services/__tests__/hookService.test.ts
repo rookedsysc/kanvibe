@@ -31,6 +31,7 @@ const mocks = vi.hoisted(() => ({
   installTaskHooksImmediately: vi.fn(),
   prepareOptimisticDoneTransition: vi.fn(),
   scheduleDoneCleanupWithRollback: vi.fn(),
+  writeTextFile: vi.fn(),
 }));
 
 vi.mock("@/entities/KanbanTask", () => entityMocks);
@@ -56,6 +57,10 @@ vi.mock("@/desktop/main/services/kanbanService", () => ({
   installTaskHooksImmediately: mocks.installTaskHooksImmediately,
   prepareOptimisticDoneTransition: mocks.prepareOptimisticDoneTransition,
   scheduleDoneCleanupWithRollback: mocks.scheduleDoneCleanupWithRollback,
+}));
+
+vi.mock("@/lib/hostFileAccess", () => ({
+  writeTextFile: mocks.writeTextFile,
 }));
 
 async function flushMicrotasks(count = 8): Promise<void> {
@@ -139,6 +144,80 @@ describe("hookService.updateHookTaskStatus", () => {
     });
   });
 
+  it("hook 상태 변경은 worktree의 .kanvibe task 상태 파일에도 저장한다", async () => {
+    const { updateHookTaskStatus } = await import("@/desktop/main/services/hookService");
+    const task = {
+      id: "task-1",
+      title: "Fix sync",
+      description: null,
+      branchName: "feature-sync",
+      projectId: "project-1",
+      project: { id: "project-1", name: "kanvibe" },
+      status: TaskStatus.PROGRESS,
+      sessionType: null,
+      sessionName: null,
+      worktreePath: "/workspace/api__worktrees/feature-sync",
+      sshHost: null,
+    };
+    mocks.taskRepo.findOne.mockResolvedValue(task);
+    mocks.taskRepo.save.mockImplementation(async (value) => value);
+
+    await updateHookTaskStatus({ taskId: task.id, status: TaskStatus.REVIEW });
+
+    expect(mocks.writeTextFile).toHaveBeenCalledWith(
+      "/workspace/api__worktrees/feature-sync/.kanvibe/status.json",
+      expect.stringContaining('"status": "review"'),
+      null,
+    );
+  });
+
+  it(".kanvibe task 상태 파일 저장이 실패해도 hook 상태 변경 응답과 broadcast는 계속 진행한다", async () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    try {
+      const { updateHookTaskStatus } = await import("@/desktop/main/services/hookService");
+      const task = {
+        id: "task-1",
+        title: "Fix sync",
+        description: null,
+        branchName: "feature-sync",
+        projectId: "project-1",
+        project: { id: "project-1", name: "kanvibe" },
+        status: TaskStatus.PROGRESS,
+        sessionType: null,
+        sessionName: null,
+        worktreePath: "/workspace/api__worktrees/feature-sync",
+        sshHost: null,
+      };
+      mocks.taskRepo.findOne.mockResolvedValue(task);
+      mocks.taskRepo.save.mockImplementation(async (value) => value);
+      mocks.writeTextFile.mockRejectedValueOnce(new Error("state write failed"));
+
+      const result = await updateHookTaskStatus({ taskId: task.id, status: TaskStatus.REVIEW });
+
+      expect(result).toEqual({
+        success: true,
+        data: {
+          id: task.id,
+          status: TaskStatus.REVIEW,
+          branchName: task.branchName,
+          projectName: "kanvibe",
+        },
+      });
+      expect(mocks.broadcastBoardUpdate).toHaveBeenCalledTimes(1);
+      expect(mocks.broadcastTaskStatusChanged).toHaveBeenCalledWith(expect.objectContaining({
+        taskId: task.id,
+        newStatus: TaskStatus.REVIEW,
+      }));
+      expect(consoleError).toHaveBeenCalledWith(".kanvibe task 상태 저장 실패:", expect.objectContaining({
+        repoPath: "/workspace/api__worktrees/feature-sync",
+        taskId: task.id,
+        status: TaskStatus.REVIEW,
+      }));
+    } finally {
+      consoleError.mockRestore();
+    }
+  });
+
   it("task 식별자가 없으면 400을 반환한다", async () => {
     const { updateHookTaskStatus } = await import("@/desktop/main/services/hookService");
     const result = await updateHookTaskStatus({
@@ -160,6 +239,27 @@ describe("hookService.startHookTask", () => {
     vi.clearAllMocks();
     mocks.taskRepo.create.mockImplementation((value) => value);
     mocks.installTaskHooksImmediately.mockResolvedValue(undefined);
+  });
+
+  it("새 hook task는 기존 .kanvibe 상태가 없으면 todo로 생성한다", async () => {
+    mocks.taskRepo.save.mockImplementation(async (value) => ({ id: "task-1", ...value }));
+
+    const { startHookTask } = await import("@/desktop/main/services/hookService");
+
+    const result = await startHookTask({ title: "new hook task" });
+
+    expect(mocks.taskRepo.create).toHaveBeenCalledWith(expect.objectContaining({
+      title: "new hook task",
+      status: TaskStatus.TODO,
+    }));
+    expect(result).toEqual({
+      success: true,
+      data: {
+        id: "task-1",
+        status: TaskStatus.TODO,
+        sessionName: undefined,
+      },
+    });
   });
 
   it("원격 worktree task를 만들면 hooks 설치와 검증 완료를 기다린 뒤 응답한다", async () => {
@@ -211,13 +311,18 @@ describe("hookService.startHookTask", () => {
     resolveInstall();
     const result = await resultPromise;
 
+    expect(mocks.writeTextFile).toHaveBeenCalledWith(
+      "/remote/repo__worktrees/feature-task/.kanvibe/status.json",
+      expect.stringContaining('"status": "todo"'),
+      "remote-host",
+    );
     expect(mocks.broadcastBoardUpdate).toHaveBeenCalledTimes(1);
     expect(resolved).toBe(true);
     expect(result).toEqual({
       success: true,
       data: {
         id: "task-1",
-        status: TaskStatus.PROGRESS,
+        status: TaskStatus.TODO,
         sessionName: "feature-task",
       },
     });

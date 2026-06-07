@@ -1,0 +1,65 @@
+---
+title: 快捷键
+---
+
+# 快捷键
+
+KanVibe 明确区分全局、看板和任务详情快捷键，让终端焦点保持可预测。
+
+<div className="kv-kbd-grid">
+  <div className="kv-kbd-card"><kbd>Cmd/Ctrl + F</kbd><strong>看板搜索</strong><p>搜索当前可见项目和任务文本。</p></div>
+  <div className="kv-kbd-card"><kbd>Cmd/Ctrl + Shift + O</kbd><strong>快速任务搜索</strong><p>按分支名或项目名查找任意任务。</p></div>
+  <div className="kv-kbd-card"><kbd>Cmd/Ctrl + Shift + P</kbd><strong>项目过滤</strong><p>切换看板中可见的项目。</p></div>
+  <div className="kv-kbd-card"><kbd>Cmd/Ctrl + Shift + I</kbd><strong>通知中心</strong><p>打开 AI 代理状态和事件通知。</p></div>
+</div>
+
+## 完整快捷键表
+
+| 快捷键 | 范围 | 操作 |
+| --- | --- | --- |
+| `Cmd/Ctrl+F` | 看板 | 搜索当前可见项目/任务文本 |
+| `Cmd/Ctrl+Shift+O` | 全局 | 按分支名/项目名打开快速任务搜索 |
+| `Cmd/Ctrl+Shift+P` | 看板 | 打开项目过滤下拉框 |
+| `Cmd/Ctrl+Shift+I` | 看板 | 打开通知下拉框 |
+| `Cmd+[` / `Cmd+]` (macOS), `Alt+[` / `Alt+]` (Linux) | 全局 | 在应用历史中后退/前进 |
+| `Cmd+1/2/3` (macOS), `Alt+1/2/3` (Linux) | 任务详情 | 激活信息、状态/hooks、AI 聊天 dock 项 |
+| `Cmd+4` (macOS), `Alt+4` (Linux) | 任务详情 | 存在 PR 时在浏览器中打开 PR |
+| `Cmd/Ctrl+N` | 快速任务搜索 | 基于高亮任务创建 branch TODO |
+| `↑ / ↓ / Enter / Shift+Enter / Esc` | 快速任务搜索 | 移动选择、打开、新窗口打开、关闭 |
+| `↑ / ↓ / Enter / Esc` | 项目过滤 | 移动选择、切换、关闭 |
+| `↑ / ↓ / Enter / Esc` | 通知 | 移动选择、打开目标、关闭 |
+
+## Vim 模式
+
+在看板上使用 h/j/k/l 移动焦点、`n` 新建任务、`dd` 删除、`:move` 更改状态、`/` 搜索，全部 Vim 风格操作。默认为**开启**状态，可在设置 → 键盘 → "Vim 风格看板操作"中切换。
+
+<div className="kv-note">
+  关闭 Vim 模式后，方向键焦点导航仍然可用。
+</div>
+
+### Vim 快捷键表
+
+| 快捷键 | 操作 |
+| --- | --- |
+| `h` | 将焦点移到左侧列 |
+| `j` | 在同一列中向下移动焦点 |
+| `k` | 在同一列中向上移动焦点 |
+| `l` | 将焦点移到右侧列 |
+| `n` | 打开新建任务弹窗 |
+| `dd` | 删除聚焦的任务（显示确认对话框） |
+| `/` | 打开看板页面搜索 |
+| `:` | 打开命令输入框 |
+
+### `:move` 命令
+
+在命令输入框（`:`）中输入 `move` 加状态名，即可更改聚焦任务的状态。按 `Tab` 可补全唯一的命令/状态前缀，例如 `move re` → `move review`。
+
+```
+:move progress
+:move pending
+:move review
+:move done
+:move todo
+```
+
+也支持缩写：`t`（todo）、`prog`（progress）、`pend`（pending）、`rev`（review）、`d`（done）。

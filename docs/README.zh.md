@@ -2,11 +2,11 @@
 
 # KanVibe
 
-**AI 代理任务管理看板**
+**面向 AI 编程代理的键盘优先 Kanban 工作区**
 
-用于实时管理 AI 编程代理（Claude Code、Gemini CLI、Codex CLI 等）任务的基于 Web 的终端看板。
-在浏览器中直接监控 tmux/zellij 会话，同时通过拖放看板追踪任务进度。
-通过 [AI 代理 Hooks](#ai-代理-hooks---自动状态追踪) 自动追踪任务状态，无需手动更新。
+KanVibe 让 AI 编程工作不再散落在一堆终端标签中。你可以在实时 Kanban 看板上跟踪基于分支的任务，在浏览器或桌面应用中打开每个任务的 tmux/zellij 会话，并让 Claude Code、Gemini CLI、Codex CLI 和 OpenCode hooks 自动推动任务在工作流中流转。
+
+使用快捷键处理项目筛选、任务搜索、通知、任务详情面板和常用任务操作，同时不丢失终端焦点。
 
 [![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-FFDD00?style=for-the-badge&logo=buy-me-a-coffee&logoColor=black)](https://buymeacoffee.com/rookedsysc)
 
@@ -18,18 +18,70 @@
 
 <div align="center">
 
-[![▶ 在 YouTube 上观看演示](https://img.youtube.com/vi/8JTrvd3T_Z0/maxresdefault.jpg)](https://www.youtube.com/watch?v=8JTrvd3T_Z0)
-
-**▶ [在 YouTube 上观看演示](https://www.youtube.com/watch?v=8JTrvd3T_Z0)**
-
 <table>
   <tr>
-    <td width="50%"><img src="./images/detail-page.png" alt="看板" width="100%"></td>
-    <td width="50%"><img src="./images/detail-page.png" alt="任务详情 & 终端" width="100%"></td>
+    <td width="50%">
+      <img src="./images/readme/kanvibe-main.png" alt="KanVibe Kanban 看板" width="100%">
+      <br>
+      <strong>主 Kanban 看板</strong>
+    </td>
+    <td width="50%">
+      <img src="./images/readme/kanvibe-detail.png" alt="任务详情终端工作区" width="100%">
+      <br>
+      <strong>任务详情工作区</strong>
+    </td>
   </tr>
 </table>
 
+<a href="https://www.youtube.com/watch?v=8JTrvd3T_Z0">
+  <img src="https://img.youtube.com/vi/8JTrvd3T_Z0/maxresdefault.jpg" alt="KanVibe 演示视频缩略图" width="100%">
+</a>
+
+<strong><a href="https://www.youtube.com/watch?v=8JTrvd3T_Z0">在 YouTube 上观看演示</a></strong>
+
 </div>
+
+---
+
+## 主要工作流
+
+### 1. 快速任务搜索
+
+从任何位置打开任务搜索，按项目或分支名筛选，并无需先回到看板即可直接进入任务工作区。
+
+<img src="./images/readme/kanvibe-search-shortcut.png" alt="快速任务搜索快捷键" width="100%">
+
+### 2. 任务详情快捷键
+
+在任务详情页面使用编号 dock 快捷键，在按键进入嵌入式终端之前打开任务元数据、hook 状态、AI 聊天和 PR 操作。
+
+<img src="./images/readme/kanvibe-detail-shortcut.png" alt="任务详情快捷键面板" width="100%">
+
+### 3. 项目筛选
+
+将看板缩小到你关心的活动项目，并通过键盘导航在仓库之间快速切换。
+
+<img src="./images/readme/kanvibe-project-search-shortcut.png" alt="项目筛选快捷键" width="100%">
+
+### 4. 通知
+
+打开通知面板，查看 AI 代理状态变化、后台同步结果和任务事件，然后跳转到相关任务。
+
+<img src="./images/readme/kanvibe-notification-shortcut.png" alt="通知快捷键面板" width="100%">
+
+### 5. 快速任务操作
+
+直接从高亮的搜索结果创建后续分支 TODO，保留下一项工作所需的项目和分支上下文。
+
+<img src="./images/readme/kanvibe-quick-action-shortcut.png" alt="快速任务操作快捷键" width="100%">
+
+### 6. Vim 风格看板控制
+
+在**设置 → 键盘**中启用 Vim 风格看板控制后，可以用 `h/j/k/l` 在任务卡片间移动，用 `/` 查找可见任务文本，用 `n` 打开新任务弹窗，用 `:move progress` 移动状态，并用 `dd` 删除当前聚焦任务。
+
+<video src="./images/readme/kanvibe-vim-controls.mp4" poster="./images/readme/kanvibe-vim-controls.png" controls muted playsinline width="100%"></video>
+
+[打开 Vim 控制演示视频](./images/readme/kanvibe-vim-controls.mp4)
 
 ---
 
@@ -55,7 +107,7 @@ brew install --cask rookedsysc/kanvibe/kanvibe
 open -a KanVibe
 ```
 
-官方 Homebrew Cask 收录后，可以用下面的一行命令安装：
+官方 Homebrew Cask 收录后，安装命令将变为：
 
 ```bash
 brew install --cask kanvibe
@@ -79,20 +131,22 @@ brew untap rookedsysc/kanvibe
 
 ### 1. 注册项目
 
-在项目设置中使用 **fzf 风格的文件夹搜索** 查找并注册本地 git 仓库。KanVibe 会扫描目录并自动检测现有的 worktree 分支。
+在项目设置中使用 **fzf 风格的文件夹搜索**查找本地 git 仓库。KanVibe 会扫描目录并自动检测现有的 worktree 分支。
+
+如果要停止管理某个项目，请在项目设置中删除它。此操作只会从嵌入式 SQLite 数据库中移除该项目及其 KanVibe 任务；磁盘上的 git 分支、worktree 和文件都会保留。
 
 ### 2. 创建任务
 
-在看板中添加 TODO 任务。使用分支名创建任务时，KanVibe 会自动：
+在 Kanban 看板中添加 TODO 任务。使用分支名创建任务时，KanVibe 会自动：
 - 为该分支创建 **git worktree**
-- 生成 **tmux window** 或 **zellij tab** 终端会话
+- 为会话生成 **tmux window** 或 **zellij tab**
 - 将终端会话链接到任务
 
 ### 3. 在看板中工作
 
 任务通过 5 个状态进行管理：**TODO** → **PROGRESS** → **PENDING** → **REVIEW** → **DONE**
 
-通过拖放更改状态，或通过 [AI 代理 Hooks](#ai-代理-hooks---自动状态追踪) 自动转换。当任务移至 **DONE** 时，分支、worktree 和终端会话会**自动删除**。
+通过拖放更改状态，或让 [AI 代理 Hooks](#ai-代理-hooks---自动状态追踪) 自动转换。当任务移至 **DONE** 时，分支、worktree 和终端会话会**自动删除**。
 
 ### 4. 选择面板布局
 
@@ -103,49 +157,67 @@ brew untap rookedsysc/kanvibe
 | **Single** | 全屏单面板 |
 | **Horizontal 2** | 左右两分 |
 | **Vertical 2** | 上下两分 |
-| **Left + Right TB** | 左侧 + 右侧上下分割 |
-| **Left TB + Right** | 左侧上下分割 + 右侧 |
+| **Left + Right TB** | 左侧面板 + 右侧上下分割 |
+| **Left TB + Right** | 左侧上下分割 + 右侧面板 |
 | **Quad** | 四等分 |
 
-每个面板可以配置自定义命令（如 `vim`、`htop`、`lazygit`、测试运行器等）。布局可以全局设置或按项目设置。
+每个面板可以运行自定义命令（如 `vim`、`htop`、`lazygit`、测试运行器等）。布局可在设置对话框中全局配置，也可按项目配置。
 
 ---
 
 ## 功能
 
-### 看板
+### 实时 Kanban 看板
 - 5 状态任务管理（TODO / PROGRESS / PENDING / REVIEW / DONE）
-- 自定义任务排序
-- 多项目筛选
-- Done 列分页
-- 基于 WebSocket 的实时更新
+- 带项目颜色、优先级标记、PR 徽章和会话标签的拖放任务排序
+- 支持键盘搜索可见项目和任务文本的多项目筛选
+- 面向长期项目的 Done 列分页
+- 跨浏览器和桌面窗口的实时 WebSocket 更新
 
-### Git Worktree 集成
-- 创建基于分支的任务时自动创建 git worktree
-- Worktree 扫描：自动将现有分支注册为 TODO 任务
-- 任务移至 DONE 时自动清理分支 + worktree + 会话
+### 基于分支的任务工作区
+- 创建会自动准备 git worktree 和终端会话的分支 TODO
+- 扫描现有 worktree 分支并注册为 TODO 任务
+- 将每个任务打开到专用终端工作区，并在侧边 dock 中使用任务元数据、hook 控制、聊天和 PR 操作
+- 将任务移至 DONE 时自动清理其分支、worktree 和终端会话
+- 在设置中删除项目时，不会触碰现有 git 分支、worktree 或磁盘文件
 
 ### 终端会话（tmux / zellij）
 - 同时支持 **tmux** 和 **zellij** 作为终端复用器
-- 基于 xterm.js + WebSocket 的浏览器终端
-- SSH 远程终端支持（读取 `~/.ssh/config`）
+- 通过 xterm.js 和 WebSocket 进行基于浏览器的终端流式传输
+- 读取 `~/.ssh/config` 的 SSH 远程终端支持
 - 非交互式远程 SSH 命令会复用 `~/.kanvibe` 下的应用专用 ControlMaster socket 池，并将每个 host 的并发数限制为可用 CPU 核心数的 4 倍
 - 远程终端 attach 会通过 SSH 直接执行 tmux/zellij；仅在本地 `DISPLAY`、远程 `X11Forwarding` 和 `xauth` 可用时请求 trusted X11 forwarding（`ssh -Y`）
 - Nerd Font 渲染支持
 
+### 键盘优先控制
+- 从任何位置按分支名或项目名打开快速任务搜索
+- 不离开看板即可筛选项目、检查通知并触发任务操作
+- 在按键进入终端之前，使用编号详情快捷键切换任务信息、状态/hooks、AI 聊天、PR 和其他 dock 面板
+- 使用配置的快捷键直接从快速任务搜索创建分支 TODO
+
 ### 键盘快捷键
 
-| 快捷键 | 范围 | 动作 |
+| 快捷键 | 范围 | 操作 |
 |--------|------|------|
-| `Cmd/Ctrl+F` | 看板 | 打开当前可见项目/任务文本的页面查找 |
-| `Cmd/Ctrl+Shift+O` | 全局 | 按分支名或项目名打开任务快速搜索（默认值，可配置） |
+| `Cmd/Ctrl+F` 或启用 Vim 风格控制时的 `/` | 看板 | 在当前可见的项目/任务文本中打开页面查找；按 `Enter` 查找下一个，按 `Shift+Enter` 查找上一个 |
+| `h / j / k / l` 或 `← / ↓ / ↑ / →` | 看板任务卡片 | 在可见任务卡片间向左/下/上/右移动焦点；没有任务聚焦时进入第一个可见任务 |
+| `n` | 看板 | 立即打开新任务弹窗 |
+| `:move todo\|progress\|pending\|review\|done` | 已聚焦的看板任务卡片 | 无需拖放，将当前聚焦任务移动到目标状态；在命令输入框按 `Tab` 可补全唯一的状态前缀 |
+| `dd` | 已聚焦的看板任务卡片 | 确认后删除当前聚焦任务 |
+| `Cmd/Ctrl+Shift+O` | 全局 | 按分支名或项目名打开快速任务搜索（默认值，可配置） |
 | `Cmd/Ctrl+Shift+P` | 看板 | 打开项目筛选下拉框 |
 | `Cmd/Ctrl+Shift+I` | 看板 | 打开通知下拉框 |
 | `Cmd+[` / `Cmd+]` (macOS), `Alt+[` / `Alt+]` (Linux) | 全局 | 在应用历史中后退/前进；没有上一页时后退到看板首页 |
-| `Cmd/Ctrl+N` | 任务快速搜索 | 基于当前高亮任务创建新的 branch TODO |
-| `↑ / ↓ / Enter / Esc` | 任务快速搜索 | 移动选择、打开任务、关闭对话框 |
+| `Cmd+1/2/3` (macOS), `Alt+1/2/3` (Linux) | 任务详情 | 激活编号详情 dock 项：信息、状态/hooks 和 AI 聊天。这些快捷键会先于终端输入被拦截 |
+| `Cmd+4` (macOS), `Alt+4` (Linux) | 任务详情 | 任务有 PR 时在浏览器中打开该 PR；否则该快捷键属于当前可见的第四个 dock 项 |
+| `Cmd/Ctrl+N` | 快速任务搜索 | 基于当前高亮任务创建新的分支 TODO |
+| `↑ / ↓ / Enter / Shift+Enter / Esc` | 快速任务搜索 | 移动选择、打开任务、在新窗口打开任务、关闭对话框 |
 | `↑ / ↓ / Enter / Esc` | 项目筛选下拉框 | 移动选择、切换项目筛选、关闭下拉框 |
 | `↑ / ↓ / Enter / Esc` | 通知下拉框 | 移动选择、打开通知目标、关闭下拉框 |
+
+任务详情 dock 编号会排除返回看板按钮，并遵循可见 dock 项顺序。如果任务有 PR URL，PR 会占用第 4 个位置，后续 dock 项会顺延到 5+；如果没有 PR，下一个 dock 项会使用第 4 个位置。
+
+Vim 风格看板控制（`h/j/k/l`、`/`、`n`、`dd`、`:move ...`）可在**设置 → 键盘**中启用或关闭。即使禁用 Vim 风格控制，方向键任务导航和 `Cmd/Ctrl+F` 页面查找仍然可用。
 
 ### AI 代理 Hooks - 自动状态追踪
 KanVibe 与 **Claude Code Hooks**、**Gemini CLI Hooks**、**Codex CLI** 和 **OpenCode** 集成，自动追踪任务状态。任务通过 5 个状态进行管理：
@@ -153,10 +225,10 @@ KanVibe 与 **Claude Code Hooks**、**Gemini CLI Hooks**、**Codex CLI** 和 **O
 | 状态 | 说明 |
 |------|------|
 | **TODO** | 任务创建时的初始状态 |
-| **PROGRESS** | AI 正在处理任务 |
-| **PENDING** | AI 向用户提出追问，等待用户回复（仅 Claude Code 支持） |
+| **PROGRESS** | AI 正在主动处理任务 |
+| **PENDING** | AI 提出后续问题，等待用户回复（仅 Claude Code 支持） |
 | **REVIEW** | AI 已完成工作，等待审查 |
-| **DONE** | 任务完成 — 分支、worktree、终端会话会**自动删除** |
+| **DONE** | 任务完成 — 分支、worktree 和终端会话会**自动删除** |
 
 #### Claude Code
 ```
@@ -176,16 +248,18 @@ AfterAgent（代理完成）       → REVIEW
 
 #### Codex CLI
 ```
-UserPromptSubmit                → PROGRESS
-PermissionRequest（仅 Bash）   → PENDING
-PreToolUse（仅 Bash）          → PROGRESS
-Stop                           → REVIEW
+UserPromptSubmit              → PROGRESS
+PermissionRequest（仅 Bash）  → PENDING
+PreToolUse（仅 Bash）         → PROGRESS
+Stop                          → REVIEW
 ```
 
-KanVibe 现在使用 Codex 当前的 lifecycle hooks 方案：`.codex/hooks.json` 加上 `.codex/config.toml` 中的 `[features].codex_hooks = true` 和 `[features].hooks = true`。对应的官方文档如下：
+KanVibe 现在使用 Codex 当前的 lifecycle hooks 方案：`.codex/hooks.json` 加上 `.codex/config.toml` 中的 `[features].hooks = true`：
 
 - https://developers.openai.com/codex/hooks
 - https://developers.openai.com/codex/config-reference
+
+Codex 只会在受信任的项目/worktree 路径中加载 project-local `.codex/` hooks。如果任务运行在生成的 worktree 中，需要先在 Codex 中信任该 worktree，local hook 文件才会触发。
 
 > 当前 Codex 的 `PermissionRequest` 和 `PreToolUse` matcher 仍然限定在 Bash 场景，因此这里的 `PENDING` 表示等待审批，而不是所有类型的对话追问。
 
@@ -215,7 +289,7 @@ AI 代理 Hooks 触发的任务状态变更会发送**浏览器通知**，显示
 - **实时通知** — 任务状态变更时立即收到通知
 - **后台模式** — KanVibe 不在焦点时也能收到通知
 - **智能导航** — 点击通知 → 任务详情页面（保持当前语言）
-- **可自定义** — 按项目启用/禁用，并可按状态筛选（PROGRESS、PENDING、REVIEW、DONE）
+- **可配置** — 按项目启用/禁用，并可按状态筛选（PROGRESS、PENDING、REVIEW、DONE）
 
 设置：首次访问时请允许浏览器通知权限。在**项目设置** → **通知**中配置筛选条件。
 
@@ -224,18 +298,11 @@ AI 代理 Hooks 触发的任务状态变更会发送**浏览器通知**，显示
 | 端点 | 方法 | 说明 |
 |------|------|------|
 | `/api/hooks/start` | POST | 创建新任务 |
-| `/api/hooks/status` | POST | 通过 `branchName` + `projectName` 更新任务状态；如果目标不存在，则只发送浏览器通知并保持 `404` 响应，不会修改状态 |
+| `/api/hooks/status` | POST | 通过 `branchName` + `projectName` 更新任务状态；如果目标不存在，则只发送浏览器通知并返回 `404`，不会修改状态 |
 
 ### GitHub 风格 Diff 视图
 
 在浏览器中使用 GitHub 风格的 diff 查看器直接审查代码变更。点击任务详情页面上的 **Diff** 徽章，即可查看与 base 分支相比的所有修改文件。
-
-<table>
-  <tr>
-    <td width="30%"><img src="./images/diff-view-button.png" alt="任务详情中的 Diff 徽章" width="100%"></td>
-    <td width="70%"><img src="./images/diff-view.png" alt="Diff 视图页面" width="100%"></td>
-  </tr>
-</table>
 
 - 显示变更文件数量的文件树侧边栏
 - 基于 Monaco Editor 的内联 diff 查看器
@@ -270,7 +337,7 @@ AI 代理 Hooks 触发的任务状态变更会发送**浏览器通知**，显示
 
 ## 许可证
 
-本项目使用 **AGPL-3.0** 许可证。您可以自由地用于开源目的进行使用、修改和扩展。此许可证不允许商业 SaaS 分发。详情请参阅 [LICENSE](../LICENSE)。
+本项目使用 **AGPL-3.0** 许可证。你可以自由地用于开源目的进行使用、修改和扩展。此许可证不允许商业 SaaS 分发。详情请参阅 [LICENSE](../LICENSE)。
 
 ---
 

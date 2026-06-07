@@ -31,6 +31,7 @@ const mocks = vi.hoisted(() => ({
   remoteBranchExists: vi.fn(),
   broadcastTaskHookInstallFailed: vi.fn(),
   broadcastTaskPrMergedDetectedBatch: vi.fn(),
+  writeTextFile: vi.fn(),
 }));
 
 vi.mock("child_process", () => ({
@@ -68,7 +69,6 @@ vi.mock("@/lib/worktree", () => ({
   removeWorktreeAndBranch: mocks.removeWorktreeAndBranch,
   createSessionWithoutWorktree: mocks.createSessionWithoutWorktree,
   removeSessionOnly: mocks.removeSessionOnly,
-  buildManagedWorktreePath: vi.fn((projectPath: string, branchName: string) => `${projectPath}__worktrees/${branchName}`),
 }));
 
 vi.mock("@/lib/terminal", () => ({
@@ -92,6 +92,10 @@ vi.mock("@/lib/gitOperations", () => ({
   execGit: mocks.execGit,
   pullCurrentBranch: mocks.pullCurrentBranch,
   remoteBranchExists: mocks.remoteBranchExists,
+}));
+
+vi.mock("@/lib/hostFileAccess", () => ({
+  writeTextFile: mocks.writeTextFile,
 }));
 
 function nextMacrotask<T>(value: T): Promise<T> {
@@ -169,6 +173,11 @@ describe("kanbanService.createTask", () => {
         onSuccess: expect.any(Function),
         onFailure: expect.any(Function),
       }),
+    );
+    expect(mocks.writeTextFile).toHaveBeenCalledWith(
+      "/workspace/repo-worktrees/task-1/.kanvibe/status.json",
+      expect.stringContaining('"status": "todo"'),
+      null,
     );
     expect(mocks.installKanvibeHooks).not.toHaveBeenCalled();
   });
@@ -491,6 +500,11 @@ describe("kanbanService.createTask", () => {
       mocks.createSessionWithoutWorktree.mock.invocationCallOrder[0],
     );
     expect(mocks.scheduleKanvibeHooksInstall).not.toHaveBeenCalled();
+    expect(mocks.writeTextFile).toHaveBeenCalledWith(
+      "/remote/repo__worktrees/feature-remote/.kanvibe/status.json",
+      expect.stringContaining('"status": "progress"'),
+      "remote-host",
+    );
     expect(mocks.broadcastBoardUpdate).toHaveBeenCalledTimes(1);
   });
 
@@ -666,22 +680,18 @@ describe("kanbanService.createTask", () => {
       mocks.broadcastBoardUpdate.mock.invocationCallOrder[0],
     );
     expect(mocks.installKanvibeHooks).not.toHaveBeenCalled();
+    expect(mocks.writeTextFile).toHaveBeenCalledWith(
+      "/remote/repo__worktrees/feature-from-task/.kanvibe/status.json",
+      expect.stringContaining('"status": "progress"'),
+      "remote-host",
+    );
     expect(mocks.broadcastBoardUpdate).toHaveBeenCalledTimes(1);
   });
 
-  it("원격 stale task는 안전하지 않은 worktree/브랜치 삭제를 건너뛴다", async () => {
+  it("DB worktreePath가 managed 예상 경로와 달라도 task 삭제는 프로젝트와 브랜치 기준으로 정리한 뒤 레코드를 삭제한다", async () => {
     // Given
     const consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-    mocks.projectRepo.findOneBy.mockResolvedValue({
-      id: "project-1",
-      repoPath: "/remote/repo",
-      sshHost: "remote-host",
-    });
-
-    const { cleanupTaskResources } = await import("@/desktop/main/services/kanbanService");
-
-    // When
-    await cleanupTaskResources({
+    const task = {
       id: "task-1",
       projectId: "project-1",
       branchName: "dev",
@@ -689,22 +699,72 @@ describe("kanbanService.createTask", () => {
       sshHost: "remote-host",
       sessionType: null,
       sessionName: null,
-    } as never);
+    };
+    mocks.taskRepo.findOneBy.mockResolvedValue(task);
+    mocks.taskRepo.remove.mockResolvedValue(task);
+    mocks.projectRepo.findOneBy.mockResolvedValue({
+      id: "project-1",
+      repoPath: "/remote/repo",
+      sshHost: "remote-host",
+    });
 
-    // Then
-    expect(mocks.removeWorktreeAndBranch).not.toHaveBeenCalled();
-    expect(consoleWarnSpy).toHaveBeenCalled();
-  });
-
-  it("연결된 프로젝트를 찾을 수 없는 원격 stale task는 세션만 정리한다", async () => {
-    // Given
-    const consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-    mocks.projectRepo.findOneBy.mockResolvedValue(null);
-
-    const { cleanupTaskResources } = await import("@/desktop/main/services/kanbanService");
+    const { deleteTask } = await import("@/desktop/main/services/kanbanService");
 
     // When
-    await cleanupTaskResources({
+    const result = await deleteTask("task-1");
+
+    // Then
+    expect(result).toBe(true);
+    expect(mocks.removeWorktreeAndBranch).toHaveBeenCalledWith(
+      "/remote/repo",
+      "dev",
+      "remote-host",
+      { throwOnError: true, worktreePath: "/Users/local/repo__worktrees/dev" },
+    );
+    expect(mocks.taskRepo.remove).toHaveBeenCalledWith(task);
+    expect(consoleWarnSpy).not.toHaveBeenCalled();
+  });
+
+  it("DB worktreePath가 없어도 task 삭제는 프로젝트와 브랜치 기준으로 실제 worktree 탐색 정리를 위임한다", async () => {
+    // Given
+    const task = {
+      id: "task-no-db-worktree-path",
+      projectId: "project-1",
+      branchName: "feature/actual-worktree",
+      worktreePath: null,
+      sshHost: null,
+      sessionType: null,
+      sessionName: null,
+    };
+    mocks.taskRepo.findOneBy.mockResolvedValue(task);
+    mocks.taskRepo.remove.mockResolvedValue(task);
+    mocks.projectRepo.findOneBy.mockResolvedValue({
+      id: "project-1",
+      repoPath: "/workspace/repo",
+      sshHost: "remote-host",
+    });
+
+    const { deleteTask } = await import("@/desktop/main/services/kanbanService");
+
+    // When
+    const result = await deleteTask("task-no-db-worktree-path");
+
+    // Then
+    expect(result).toBe(true);
+    expect(mocks.removeWorktreeAndBranch).toHaveBeenCalledWith(
+      "/workspace/repo",
+      "feature/actual-worktree",
+      "remote-host",
+      { throwOnError: true, worktreePath: null },
+    );
+    expect(mocks.taskRepo.remove).toHaveBeenCalledWith(task);
+    expect(mocks.broadcastBoardUpdate).toHaveBeenCalledTimes(1);
+  });
+
+  it("연결된 프로젝트를 찾을 수 없는 원격 stale task 삭제는 세션 정리 후 task 레코드를 삭제하지 않는다", async () => {
+    // Given
+    const consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const task = {
       id: "task-2",
       projectId: "missing-project",
       branchName: "main",
@@ -712,27 +772,30 @@ describe("kanbanService.createTask", () => {
       sshHost: "roky-home",
       sessionType: "tmux" as never,
       sessionName: "prompt-main",
-    } as never);
+    };
+    mocks.taskRepo.findOneBy.mockResolvedValue(task);
+    mocks.projectRepo.findOneBy.mockResolvedValue(null);
 
-    // Then
+    const { deleteTask } = await import("@/desktop/main/services/kanbanService");
+
+    // When & Then
+    await expect(deleteTask("task-2")).rejects.toThrow("연결된 프로젝트를 찾을 수 없어");
     expect(mocks.detachSession).toHaveBeenCalledWith("task-2", "cleanup-task-resources");
     expect(mocks.removeSessionOnly).toHaveBeenCalledWith(
       "tmux",
       "prompt-main",
       "roky-home",
+      { throwOnError: true },
     );
     expect(mocks.removeWorktreeAndBranch).not.toHaveBeenCalled();
+    expect(mocks.taskRepo.remove).not.toHaveBeenCalled();
     expect(consoleWarnSpy).not.toHaveBeenCalled();
   });
 
-  it("프로젝트가 삭제되어 orphan 상태가 된 원격 stale task도 세션만 정리한다", async () => {
+  it("프로젝트가 삭제되어 orphan 상태가 된 원격 stale task 삭제도 task 레코드를 삭제하지 않는다", async () => {
     // Given
     const consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-
-    const { cleanupTaskResources } = await import("@/desktop/main/services/kanbanService");
-
-    // When
-    await cleanupTaskResources({
+    const task = {
       id: "task-3",
       projectId: null,
       branchName: "dev",
@@ -740,27 +803,33 @@ describe("kanbanService.createTask", () => {
       sshHost: "roky-home",
       sessionType: "tmux" as never,
       sessionName: "techtaurant-be-dev",
-    } as never);
+    };
+    mocks.taskRepo.findOneBy.mockResolvedValue(task);
 
-    // Then
+    const { deleteTask } = await import("@/desktop/main/services/kanbanService");
+
+    // When & Then
+    await expect(deleteTask("task-3")).rejects.toThrow("연결된 프로젝트를 찾을 수 없어");
     expect(mocks.projectRepo.findOneBy).not.toHaveBeenCalled();
     expect(mocks.detachSession).toHaveBeenCalledWith("task-3", "cleanup-task-resources");
     expect(mocks.removeSessionOnly).toHaveBeenCalledWith(
       "tmux",
       "techtaurant-be-dev",
       "roky-home",
+      { throwOnError: true },
     );
     expect(mocks.removeWorktreeAndBranch).not.toHaveBeenCalled();
+    expect(mocks.taskRepo.remove).not.toHaveBeenCalled();
     expect(consoleWarnSpy).not.toHaveBeenCalled();
   });
 
-  it("원격 task 삭제는 프로젝트를 찾지 못해도 연결된 tmux 세션을 정리한다", async () => {
+  it("세션만 연결된 원격 task 삭제는 프로젝트를 찾지 못해도 tmux 세션을 정리한다", async () => {
     // Given
     const task = {
       id: "task-remote",
       projectId: "missing-project",
-      branchName: "main",
-      worktreePath: "/home/rookedsysc/Downloads/prompt",
+      branchName: null,
+      worktreePath: null,
       sshHost: "roky-home",
       sessionType: "tmux" as never,
       sessionName: "prompt-main",
@@ -781,10 +850,41 @@ describe("kanbanService.createTask", () => {
       "tmux",
       "prompt-main",
       "roky-home",
+      { throwOnError: true },
     );
     expect(mocks.removeWorktreeAndBranch).not.toHaveBeenCalled();
     expect(mocks.taskRepo.remove).toHaveBeenCalledWith(task);
     expect(mocks.broadcastBoardUpdate).toHaveBeenCalledTimes(1);
+  });
+
+  it("원격 task 삭제 중 세션 정리가 실패하면 task 레코드를 삭제하지 않는다", async () => {
+    // Given
+    const task = {
+      id: "task-remote-fail",
+      projectId: "missing-project",
+      branchName: "main",
+      worktreePath: "/home/rookedsysc/Downloads/prompt",
+      sshHost: "roky-home",
+      sessionType: "tmux" as never,
+      sessionName: "prompt-main",
+    };
+    mocks.taskRepo.findOneBy.mockResolvedValue(task);
+    mocks.projectRepo.findOneBy.mockResolvedValue(null);
+    mocks.removeSessionOnly.mockRejectedValueOnce(new Error("ssh failed"));
+
+    const { deleteTask } = await import("@/desktop/main/services/kanbanService");
+
+    // When & Then
+    await expect(deleteTask("task-remote-fail")).rejects.toThrow("ssh failed");
+    expect(mocks.detachSession).toHaveBeenCalledWith("task-remote-fail", "cleanup-task-resources");
+    expect(mocks.removeSessionOnly).toHaveBeenCalledWith(
+      "tmux",
+      "prompt-main",
+      "roky-home",
+      { throwOnError: true },
+    );
+    expect(mocks.taskRepo.remove).not.toHaveBeenCalled();
+    expect(mocks.broadcastBoardUpdate).not.toHaveBeenCalled();
   });
 
   it("tmux 세션 정리 전 앱이 붙잡고 있는 활성 터미널 PTY를 먼저 닫는다", async () => {
@@ -797,10 +897,7 @@ describe("kanbanService.createTask", () => {
       callOrder.push("remove-session");
     });
 
-    const { cleanupTaskResources } = await import("@/desktop/main/services/kanbanService");
-
-    // When
-    await cleanupTaskResources({
+    mocks.taskRepo.findOneBy.mockResolvedValue({
       id: "task-open-terminal",
       projectId: null,
       branchName: null,
@@ -808,7 +905,13 @@ describe("kanbanService.createTask", () => {
       sshHost: null,
       sessionType: "tmux" as never,
       sessionName: "repo-feat-open",
-    } as never);
+    });
+    mocks.taskRepo.remove.mockResolvedValue({});
+
+    const { deleteTask } = await import("@/desktop/main/services/kanbanService");
+
+    // When
+    await deleteTask("task-open-terminal");
 
     // Then
     expect(callOrder).toEqual(["detach", "remove-session"]);
@@ -817,6 +920,7 @@ describe("kanbanService.createTask", () => {
       "tmux",
       "repo-feat-open",
       null,
+      { throwOnError: true },
     );
   });
 
@@ -895,6 +999,43 @@ describe("kanbanService.createTask", () => {
 
     // Then
     expect(mocks.taskRepo.update).toHaveBeenCalledWith("task-a", { status: "review" });
+    expect(mocks.broadcastBoardUpdate).toHaveBeenCalledTimes(1);
+  });
+
+  it("worktreePath가 없는 비기본 브랜치 task 상태 변경은 프로젝트 루트 task-state를 덮어쓰지 않는다", async () => {
+    // Given
+    const task = {
+      id: "task-feature-no-worktree",
+      status: "todo",
+      projectId: "project-1",
+      branchName: "feature/without-worktree",
+      worktreePath: null,
+      sshHost: null,
+    };
+    mocks.taskRepo.findOneBy.mockResolvedValue(task);
+    mocks.taskRepo.save.mockImplementation(async (value) => value);
+    mocks.projectRepo.findOneBy.mockResolvedValue({
+      id: "project-1",
+      repoPath: "/workspace/repo",
+      defaultBranch: "main",
+      sshHost: null,
+    });
+
+    const { updateTaskStatus } = await import("@/desktop/main/services/kanbanService");
+
+    // When
+    const result = await updateTaskStatus("task-feature-no-worktree", "review" as never);
+
+    // Then
+    expect(result).toEqual(expect.objectContaining({
+      id: "task-feature-no-worktree",
+      status: "review",
+    }));
+    expect(mocks.writeTextFile).not.toHaveBeenCalledWith(
+      "/workspace/repo/.kanvibe/status.json",
+      expect.any(String),
+      null,
+    );
     expect(mocks.broadcastBoardUpdate).toHaveBeenCalledTimes(1);
   });
 
@@ -1085,6 +1226,55 @@ describe("kanbanService.createTask", () => {
     }
   });
 
+
+  it("Done 전환 백그라운드 정리도 DB worktreePath 없이 프로젝트와 브랜치 기준 공통 삭제 정책을 사용한다", async () => {
+    vi.useFakeTimers();
+
+    try {
+      // Given
+      const task = {
+        id: "task-done-no-db-worktree-path",
+        title: "Done cleanup",
+        description: null,
+        status: "review",
+        branchName: "feature/actual-worktree",
+        projectId: "project-1",
+        sessionType: null,
+        sessionName: null,
+        worktreePath: null,
+        sshHost: null,
+      };
+      mocks.taskRepo.findOneBy.mockResolvedValue(task);
+      mocks.projectRepo.findOneBy.mockResolvedValue({
+        id: "project-1",
+        repoPath: "/workspace/repo",
+        sshHost: "remote-host",
+      });
+      mocks.taskRepo.save.mockImplementation(async (value) => value);
+
+      const { updateTaskStatus } = await import("@/desktop/main/services/kanbanService");
+
+      // When
+      await updateTaskStatus("task-done-no-db-worktree-path", "done" as never);
+      await vi.runAllTimersAsync();
+
+      // Then
+      expect(mocks.removeWorktreeAndBranch).toHaveBeenCalledWith(
+        "/workspace/repo",
+        "feature/actual-worktree",
+        "remote-host",
+        { throwOnError: true, worktreePath: null },
+      );
+      expect(mocks.taskRepo.update).not.toHaveBeenCalledWith(
+        "task-done-no-db-worktree-path",
+        expect.objectContaining({ status: "review" }),
+      );
+    } finally {
+      vi.clearAllTimers();
+      vi.useRealTimers();
+    }
+  });
+
   it("PR URL 조회는 셸 없이 gh CLI를 직접 실행한다", async () => {
     // Given
     mocks.taskRepo.findOneBy.mockResolvedValue({
@@ -1112,7 +1302,7 @@ describe("kanbanService.createTask", () => {
     expect(mocks.execFile).toHaveBeenCalledWith(
       "gh",
       ["pr", "list", "--head", "main", "--json", "url", "-q", ".[0].url"],
-      { cwd: "/workspace/repo" },
+      expect.objectContaining({ cwd: "/workspace/repo", timeout: 10_000 }),
       expect.any(Function),
     );
     expect(mocks.taskRepo.save).toHaveBeenCalledWith(expect.objectContaining({
@@ -1439,25 +1629,25 @@ describe("kanbanService.createTask", () => {
     });
   });
 
-  it("active task PR sync는 task별 GitHub CLI 조회를 병렬로 시작한다", async () => {
+  it("active task PR sync는 task별 GitHub CLI 조회를 직렬로 실행한다", async () => {
     // Given
     mocks.taskRepo.find.mockResolvedValue([
       {
-        id: "task-parallel-a",
-        title: "Parallel PR A",
+        id: "task-serial-a",
+        title: "Serial PR A",
         projectId: "project-1",
-        branchName: "feature/parallel-a",
-        worktreePath: "/workspace/repo__worktrees/parallel-a",
+        branchName: "feature/serial-a",
+        worktreePath: "/workspace/repo__worktrees/serial-a",
         sshHost: null,
         prUrl: null,
         status: "review",
       },
       {
-        id: "task-parallel-b",
-        title: "Parallel PR B",
+        id: "task-serial-b",
+        title: "Serial PR B",
         projectId: "project-1",
-        branchName: "feature/parallel-b",
-        worktreePath: "/workspace/repo__worktrees/parallel-b",
+        branchName: "feature/serial-b",
+        worktreePath: "/workspace/repo__worktrees/serial-b",
         sshHost: null,
         prUrl: null,
         status: "review",
@@ -1482,20 +1672,119 @@ describe("kanbanService.createTask", () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     // Then
+    expect(callbacks).toHaveLength(1);
+
+    callbacks[0](null, JSON.stringify([{
+      url: null,
+      state: null,
+      mergedAt: null,
+      updatedAt: "2026-05-02T01:00:00Z",
+    }]), "");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
     expect(callbacks).toHaveLength(2);
 
-    callbacks.forEach((callback) => {
-      callback(null, JSON.stringify([{
-        url: null,
-        state: null,
-        mergedAt: null,
-        updatedAt: "2026-05-02T01:00:00Z",
-      }]), "");
-    });
+    callbacks[1](null, JSON.stringify([{
+      url: null,
+      state: null,
+      mergedAt: null,
+      updatedAt: "2026-05-02T01:00:00Z",
+    }]), "");
     await syncPromise;
   });
 
-  it("active task pull sync는 default branch task를 제외하고 task별 pull을 병렬로 실행한다", async () => {
+  it("active task PR sync는 local gh 조회 timeout 후 다음 task를 계속 처리한다", async () => {
+    vi.useFakeTimers();
+    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      // Given
+      mocks.taskRepo.find.mockResolvedValue([
+        {
+          id: "task-pr-stuck",
+          title: "Stuck PR",
+          projectId: "project-1",
+          branchName: "feature/pr-stuck",
+          worktreePath: "/workspace/repo__worktrees/pr-stuck",
+          sshHost: null,
+          prUrl: null,
+          status: "review",
+        },
+        {
+          id: "task-pr-next",
+          title: "Next PR",
+          projectId: "project-1",
+          branchName: "feature/pr-next",
+          worktreePath: "/workspace/repo__worktrees/pr-next",
+          sshHost: null,
+          prUrl: null,
+          status: "review",
+        },
+      ]);
+      mocks.projectRepo.findOneBy.mockResolvedValue({
+        id: "project-1",
+        repoPath: "/workspace/repo",
+        defaultBranch: "main",
+        sshHost: null,
+      });
+      const execFileOptions: Array<{ cwd?: string; timeout?: number }> = [];
+      mocks.execFile.mockImplementation((file, args: string[], options, callback) => {
+        execFileOptions.push(options);
+        if (args.includes("feature/pr-stuck")) {
+          if (typeof options.timeout === "number") {
+            setTimeout(() => {
+              callback(Object.assign(new Error("gh pr list timed out"), { killed: true, signal: "SIGTERM" }), "", "");
+            }, options.timeout);
+          }
+          return {} as never;
+        }
+
+        callback(null, JSON.stringify([{
+          url: null,
+          state: null,
+          mergedAt: null,
+          updatedAt: "2026-05-02T01:00:00Z",
+        }]), "");
+        return {} as never;
+      });
+
+      const { syncActiveTaskPullRequests } = await import("@/desktop/main/services/kanbanService");
+
+      // When
+      const syncPromise = syncActiveTaskPullRequests(new Set());
+      await vi.advanceTimersByTimeAsync(0);
+
+      // Then
+      expect(execFileOptions).toEqual([
+        expect.objectContaining({ cwd: "/workspace/repo", timeout: 10_000 }),
+      ]);
+
+      await vi.advanceTimersByTimeAsync(10_000);
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(execFileOptions).toEqual([
+        expect.objectContaining({ cwd: "/workspace/repo", timeout: 10_000 }),
+        expect.objectContaining({ cwd: "/workspace/repo", timeout: 10_000 }),
+      ]);
+      await expect(syncPromise).resolves.toEqual({
+        updatedTaskIds: [],
+        mergeEventKeys: [],
+        mergedPullRequests: [],
+        failures: [
+          expect.objectContaining({
+            operation: "pull-request-sync",
+            taskId: "task-pr-stuck",
+            branchName: "feature/pr-stuck",
+            reason: "gh pr list timed out",
+          }),
+        ],
+      });
+    } finally {
+      consoleErrorSpy.mockRestore();
+      vi.useRealTimers();
+    }
+  });
+
+  it("active task pull sync는 default branch task를 제외하고 task별 pull을 직렬로 실행한다", async () => {
     // Given
     mocks.taskRepo.find.mockResolvedValue([
       {
@@ -1546,11 +1835,25 @@ describe("kanbanService.createTask", () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     // Then
-    expect(mocks.pullCurrentBranch).toHaveBeenCalledTimes(2);
-    expect(mocks.pullCurrentBranch).toHaveBeenNthCalledWith(1, "/workspace/repo__worktrees/pull-a", null);
-    expect(mocks.pullCurrentBranch).toHaveBeenNthCalledWith(2, "/workspace/repo__worktrees/pull-b", null);
+    expect(mocks.pullCurrentBranch).toHaveBeenCalledTimes(1);
+    expect(mocks.pullCurrentBranch).toHaveBeenNthCalledWith(
+      1,
+      "/workspace/repo__worktrees/pull-a",
+      null,
+      expect.objectContaining({ timeoutMs: 10_000 }),
+    );
 
     resolvers[0]("Fast-forward\n src/file.ts | 1 +");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(mocks.pullCurrentBranch).toHaveBeenCalledTimes(2);
+    expect(mocks.pullCurrentBranch).toHaveBeenNthCalledWith(
+      2,
+      "/workspace/repo__worktrees/pull-b",
+      null,
+      expect.objectContaining({ timeoutMs: 10_000 }),
+    );
+
     rejecters[1](new Error("Not possible to fast-forward"));
 
     await expect(syncPromise).resolves.toEqual({
@@ -1575,6 +1878,178 @@ describe("kanbanService.createTask", () => {
         },
       ],
     });
+  });
+
+  it("active task pull sync는 한 task의 remote branch 확인이 멈춰도 다음 task를 계속 처리한다", async () => {
+    vi.useFakeTimers();
+    try {
+      // Given
+      mocks.taskRepo.find.mockResolvedValue([
+        {
+          id: "task-main",
+          title: "Main task",
+          projectId: "project-1",
+          branchName: "main",
+          worktreePath: "/workspace/repo",
+          sshHost: null,
+          status: "progress",
+        },
+        {
+          id: "task-stuck",
+          title: "Stuck pull",
+          projectId: "project-1",
+          branchName: "feature/stuck",
+          worktreePath: "/workspace/repo__worktrees/stuck",
+          sshHost: null,
+          status: "progress",
+        },
+        {
+          id: "task-next",
+          title: "Next pull",
+          projectId: "project-1",
+          branchName: "feature/next",
+          worktreePath: "/workspace/repo__worktrees/next",
+          sshHost: null,
+          status: "review",
+        },
+      ]);
+      mocks.projectRepo.findOneBy.mockResolvedValue({
+        id: "project-1",
+        repoPath: "/workspace/repo",
+        defaultBranch: "main",
+        sshHost: null,
+      });
+      mocks.remoteBranchExists.mockImplementation((worktreePath: string, branchName: string, sshHost: string | null, options?: { timeoutMs?: number }) => {
+        if (worktreePath.includes("stuck")) {
+          return new Promise<boolean>((resolve, reject) => {
+            void resolve;
+            setTimeout(() => {
+              reject(new Error(`Remote branch check timed out after ${(options?.timeoutMs ?? 0) / 1000}s`));
+            }, options?.timeoutMs ?? 0);
+          });
+        }
+
+        return Promise.resolve(true);
+      });
+      mocks.pullCurrentBranch.mockResolvedValue("Already up to date.");
+
+      const { syncActiveTaskPulls } = await import("@/desktop/main/services/kanbanService");
+
+      // When
+      const syncPromise = syncActiveTaskPulls();
+      await vi.advanceTimersByTimeAsync(0);
+
+      // Then
+      expect(mocks.remoteBranchExists).toHaveBeenCalledTimes(1);
+
+      await vi.advanceTimersByTimeAsync(10_000);
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(mocks.remoteBranchExists).toHaveBeenCalledTimes(2);
+      expect(mocks.pullCurrentBranch).toHaveBeenCalledWith(
+        "/workspace/repo__worktrees/next",
+        null,
+        expect.objectContaining({ timeoutMs: 10_000 }),
+      );
+      await expect(syncPromise).resolves.toEqual({
+        pulledTasks: [
+          expect.objectContaining({
+            taskId: "task-stuck",
+            branchName: "feature/stuck",
+            status: "failed",
+            summary: expect.stringContaining("timed out"),
+          }),
+        ],
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("remote task pull sync는 외부 timer로 원격 git 결과를 버리지 않는다", async () => {
+    vi.useFakeTimers();
+    try {
+      // Given
+      mocks.taskRepo.find.mockResolvedValue([
+        {
+          id: "task-remote",
+          title: "Remote pull",
+          projectId: "project-remote",
+          branchName: "feature/remote-pull",
+          worktreePath: "/remote/repo__worktrees/remote-pull",
+          sshHost: "remote-host",
+          status: "review",
+        },
+      ]);
+      mocks.projectRepo.findOneBy.mockResolvedValue({
+        id: "project-remote",
+        repoPath: "/remote/repo",
+        defaultBranch: "main",
+        sshHost: "remote-host",
+      });
+      let resolveRemoteBranchExists: (value: boolean) => void = () => {};
+      let resolveRemotePull: (value: string) => void = () => {};
+      mocks.remoteBranchExists.mockImplementation(() => new Promise<boolean>((resolve) => {
+        resolveRemoteBranchExists = resolve;
+      }));
+      mocks.pullCurrentBranch.mockImplementation(() => new Promise<string>((resolve) => {
+        resolveRemotePull = resolve;
+      }));
+
+      const { syncActiveTaskPulls } = await import("@/desktop/main/services/kanbanService");
+
+      // When
+      let isSyncComplete = false;
+      const syncPromise = syncActiveTaskPulls().then((result) => {
+        isSyncComplete = true;
+        return result;
+      });
+      await vi.advanceTimersByTimeAsync(0);
+
+      // Then
+      expect(mocks.remoteBranchExists).toHaveBeenCalledWith(
+        "/remote/repo__worktrees/remote-pull",
+        "feature/remote-pull",
+        "remote-host",
+      );
+
+      await vi.advanceTimersByTimeAsync(10_000);
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(isSyncComplete).toBe(false);
+      expect(mocks.pullCurrentBranch).not.toHaveBeenCalled();
+
+      resolveRemoteBranchExists(true);
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(mocks.pullCurrentBranch).toHaveBeenCalledWith(
+        "/remote/repo__worktrees/remote-pull",
+        "remote-host",
+      );
+
+      await vi.advanceTimersByTimeAsync(10_000);
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(isSyncComplete).toBe(false);
+
+      resolveRemotePull("Fast-forward\n src/file.ts | 1 +");
+
+      await expect(syncPromise).resolves.toEqual({
+        pulledTasks: [
+          {
+            taskId: "task-remote",
+            taskTitle: "Remote pull",
+            branchName: "feature/remote-pull",
+            worktreePath: "/remote/repo__worktrees/remote-pull",
+            sshHost: "remote-host",
+            status: "updated",
+            summary: "Fast-forward",
+          },
+        ],
+      });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("active task pull sync는 done task를 pull하지 않는다", async () => {
@@ -1622,7 +2097,11 @@ describe("kanbanService.createTask", () => {
       }),
     }));
     expect(mocks.pullCurrentBranch).toHaveBeenCalledTimes(1);
-    expect(mocks.pullCurrentBranch).toHaveBeenCalledWith("/workspace/repo__worktrees/progress", null);
+    expect(mocks.pullCurrentBranch).toHaveBeenCalledWith(
+      "/workspace/repo__worktrees/progress",
+      null,
+      expect.objectContaining({ timeoutMs: 10_000 }),
+    );
     expect(result).toEqual({ pulledTasks: [] });
   });
 
@@ -1657,6 +2136,7 @@ describe("kanbanService.createTask", () => {
       "/workspace/repo__worktrees/missing-remote",
       "feature/missing-remote",
       null,
+      expect.objectContaining({ timeoutMs: 10_000 }),
     );
     expect(mocks.pullCurrentBranch).not.toHaveBeenCalled();
     expect(result).toEqual({ pulledTasks: [] });

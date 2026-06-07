@@ -12,6 +12,7 @@ import {
   getTaskCodexHooksStatus,
   getTaskOpenCodeHooksStatus,
 } from "@/desktop/renderer/actions/project";
+import { AiProviderIcon, type AiProviderIconName } from "@/components/AiProviderIcon";
 import type { ClaudeHooksStatus } from "@/lib/claudeHooksSetup";
 import type { GeminiHooksStatus } from "@/lib/geminiHooksSetup";
 import type { CodexHooksStatus } from "@/lib/codexHooksSetup";
@@ -325,11 +326,19 @@ export default function HooksStatusDialog({
             return (
               <section key={item.key} className="rounded-xl border border-border-default bg-bg-page/40 p-4">
                 <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <h3 className="text-sm font-semibold text-text-primary">{item.title}</h3>
-                    <p className="mt-1 text-xs text-text-muted">{isInstalled ? t("hooksInstalled") : t("hooksNotInstalled")}</p>
+                  <div className="flex min-w-0 items-start gap-3">
+                    <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-md border ${isInstalled
+                      ? "border-status-done/20 bg-status-done/10"
+                      : "border-status-error/20 bg-status-error/10"
+                    }`}>
+                      <HookToolIcon tool={item.key} />
+                    </span>
+                    <div className="min-w-0">
+                      <h3 className="truncate text-sm font-semibold text-text-primary">{item.title}</h3>
+                      <p className="mt-1 text-xs text-text-muted">{isInstalled ? t("hooksInstalled") : t("hooksNotInstalled")}</p>
+                    </div>
                   </div>
-                  <span className={`rounded-full border px-2 py-1 text-[11px] font-medium ${isInstalled
+                  <span className={`shrink-0 rounded-full border px-2 py-1 text-[11px] font-medium ${isInstalled
                     ? "border-status-done/20 bg-status-done/15 text-status-done"
                     : "border-status-error/20 bg-status-error/15 text-status-error"
                   }`}>
@@ -402,6 +411,25 @@ export default function HooksStatusDialog({
         </div>
       </div>
     </div>
+  );
+}
+
+function HookToolIcon({ tool }: { tool: HookToolKey }) {
+  const providerByTool: Record<HookToolKey, AiProviderIconName> = {
+    claude: "claude",
+    gemini: "gemini",
+    codex: "codex",
+    openCode: "opencode",
+  };
+
+  return (
+    <AiProviderIcon
+      provider={providerByTool[tool]}
+      testId="hook-status-tool-icon"
+      className="inline-flex h-[18px] w-[18px] items-center justify-center"
+      imageClassName="block h-[18px] w-[18px] object-contain"
+      size={18}
+    />
   );
 }
 

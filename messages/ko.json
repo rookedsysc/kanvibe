@@ -50,6 +50,7 @@
       "pullFailed": "Pull 실패",
       "failureSection": "Sync 실패",
       "pullRequestFailure": "Pull Request 조회 실패",
+      "taskPullFailure": "Task pull 실패",
       "worktreeFailure": "Worktree sync 실패",
       "emptyMerged": "이번 검토에서 Done으로 옮길 merge PR이 없습니다.",
       "emptyRegistered": "이번 검토에서 새로 등록된 worktree가 없습니다."
@@ -82,7 +83,18 @@
       "done": "Done"
     },
     "loadMore": "더 보기",
-    "loadingMore": "불러오는 중..."
+    "loadingMore": "불러오는 중...",
+    "vimCommand": {
+      "label": "Vim 명령",
+      "placeholder": "move review",
+      "hint": "포커스된 task에 :move todo|progress|pending|review|done을 사용할 수 있습니다. Tab으로 자동 완성할 수 있습니다.",
+      "completionHint": "Tab을 누르면 {command}(으)로 자동 완성합니다.",
+      "errors": {
+        "unknownCommand": "알 수 없는 명령입니다. :move review를 시도해 보세요.",
+        "noFocusedTask": ":move 실행 전 task card에 포커스하세요.",
+        "taskNotFound": "포커스했던 task가 현재 보이지 않습니다."
+      }
+    }
   },
   "task": {
     "descriptionLabel": "설명",
@@ -96,7 +108,6 @@
     "branchCount": "{count}개의 브랜치",
     "branchNavHint": "↑↓ 이동 · Enter 선택 · Esc 닫기",
     "branchName": "브랜치 이름",
-    "branchPlaceholder": "feat/my-feature",
     "sessionType": "세션 타입",
     "sshHost": "SSH 호스트 (선택)",
     "createTitle": "새 작업 생성",
@@ -186,7 +197,16 @@
     "notificationStatusFilterDescription": "선택한 상태로 변경될 때만 알림을 받습니다.",
     "taskCreationSection": "작업 생성",
     "defaultSessionType": "기본 세션 타입",
-    "defaultSessionTypeDescription": "새 작업 생성 시 기본으로 선택되는 세션 타입입니다."
+    "defaultSessionTypeDescription": "새 작업 생성 시 기본으로 선택되는 세션 타입입니다.",
+    "backgroundSyncSection": "백그라운드 Sync",
+    "backgroundSyncEnabled": "백그라운드 Sync",
+    "backgroundSyncEnabledDescription": "주기적으로 프로젝트 worktree와 PR 상태를 백그라운드에서 동기화합니다.",
+    "backgroundSyncInterval": "Sync 주기",
+    "backgroundSyncIntervalDescription": "백그라운드 sync를 실행하는 간격입니다. (1~1440분)",
+    "backgroundSyncIntervalUnit": "분",
+    "keyboardSection": "키보드",
+    "vimModeEnabled": "Vim 스타일 보드 조작",
+    "vimModeEnabledDescription": "보드에서 h/j/k/l 포커스 이동, n 새 작업, dd 삭제, :move status 명령을 사용합니다. 꺼도 방향키 이동은 유지됩니다."
   },
   "taskSearch": {
     "title": "태스크 빠른 검색",
@@ -313,8 +333,24 @@
       "inlineChat": "AI 채팅",
       "remoteBadge": "원격 미지원",
       "noPreview": "표시할 미리보기가 없습니다.",
+      "loadMoreSessions": "채팅 더 불러오기",
+      "loadOlderMessages": "이전 메시지 더 보기",
+      "search": "검색",
+      "searchLabel": "AI 채팅 검색",
+      "searchPlaceholder": "채팅 검색...",
+      "providerFilterLabel": "{provider} 필터",
+      "selectSession": "왼쪽 목록에서 AI 세션을 선택하세요.",
       "loadingDetail": "메시지를 불러오는 중...",
-      "detailError": "세션 상세를 불러오지 못했습니다."
+      "detailError": "세션 상세를 불러오지 못했습니다.",
+      "roles": {
+        "user": "사용자 입력",
+        "assistant": "AI 답변",
+        "system": "시스템 입력",
+        "developer": "개발자 입력",
+        "reasoning": "추론",
+        "tool": "도구",
+        "unknown": "기타"
+      }
     },
     "priority": "우선순위",
     "collapseSidebar": "사이드바 접기",

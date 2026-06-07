@@ -1,5 +1,5 @@
 import { isSSHTransportError } from "@/lib/gitOperations";
-import { createAggregationResult, createReaderResult, sortSessionsDescending, toSourceStatus } from "@/lib/aiSessions/shared";
+import { createAggregationResult, createReaderResult, paginateItems, sortSessionsDescending, toSourceStatus } from "@/lib/aiSessions/shared";
 import { readClaudeSessionDetail, readClaudeSessions } from "@/lib/aiSessions/readClaudeSessions";
 import { readCodexSessionDetail, readCodexSessions } from "@/lib/aiSessions/readCodexSessions";
 import { readGeminiSessionDetail, readGeminiSessions } from "@/lib/aiSessions/readGeminiSessions";
@@ -14,24 +14,19 @@ export async function aggregateAiSessions(context: AiSessionReaderContext): Prom
     readReaderSafely("gemini", context, readGeminiSessions),
   ]);
 
-  let allSessions = [...claude.sessions, ...codex.sessions, ...openCode.sessions, ...gemini.sessions];
-
-  // 각 리더에서 이미 필터링하지만, 취합 단계에서 다시 한 번 필터링 (선택 사항이나 일관성 위해 유지)
-  if (context.query) {
-    const q = context.query.toLowerCase();
-    allSessions = allSessions.filter((s) =>
-      s.title?.toLowerCase().includes(q) ||
-      s.firstUserPrompt?.toLowerCase().includes(q) ||
-      s.matchedPath?.toLowerCase().includes(q)
-    );
-  }
+  const allSessions = [...claude.sessions, ...codex.sessions, ...openCode.sessions, ...gemini.sessions];
+  const sortedSessions = sortSessionsDescending(allSessions);
+  const paginatedSessions = context.limit
+    ? paginateItems(sortedSessions, context.cursor, context.limit)
+    : { items: sortedSessions, nextCursor: null };
 
   return createAggregationResult({
     isRemote: Boolean(context.sshHost),
     targetPath: context.worktreePath,
     repoPath: context.repoPath,
-    sessions: sortSessionsDescending(allSessions),
+    sessions: paginatedSessions.items,
     sources: [claude, codex, openCode, gemini].map(toSourceStatus),
+    nextCursor: paginatedSessions.nextCursor,
   });
 }
 
@@ -72,7 +67,7 @@ export async function getAiSessionDetail(
     case "opencode":
       return readOpenCodeSessionDetail(context, sessionId, sourceRef, cursor, limit);
     case "gemini":
-      return readGeminiSessionDetail(context, sessionId);
+      return readGeminiSessionDetail(context, sessionId, sourceRef, cursor, limit);
     default:
       return null;
   }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { useTranslations } from "next-intl";
 import {
   deleteProject,
@@ -13,6 +13,9 @@ import {
   setNotificationStatuses,
   setDefaultSessionType,
   setThemePreference,
+  setVimModeEnabled,
+  setBackgroundSyncEnabled,
+  setBackgroundSyncIntervalMs,
   type ThemePreference,
 } from "@/desktop/renderer/actions/appSettings";
 import { SessionType } from "@/entities/KanbanTask";
@@ -21,6 +24,9 @@ import type { Project } from "@/entities/Project";
 import FolderSearchInput from "@/components/FolderSearchInput";
 import { applyThemePreference, notifyThemePreferenceChanged } from "@/desktop/renderer/utils/theme";
 import { useEscapeKey } from "@/hooks/useEscapeKey";
+
+const MIN_SYNC_INTERVAL_MINUTES = 1;
+const MAX_SYNC_INTERVAL_MINUTES = 1440;
 
 /** 알림 대상 상태 목록 (사용자가 직접 설정하는 todo/done은 제외) */
 const STATUS_OPTIONS = [
@@ -37,10 +43,13 @@ interface ProjectSettingsProps {
   sshHosts: string[];
   sidebarDefaultCollapsed: boolean;
   defaultSessionType: SessionType;
+  vimModeEnabled?: boolean;
   themePreference?: ThemePreference;
   onDefaultSessionTypeChange?: (sessionType: SessionType) => void;
+  onVimModeEnabledChange?: (enabled: boolean) => void;
   onThemePreferenceChange?: (themePreference: ThemePreference) => void;
   notificationSettings: { isEnabled: boolean; enabledStatuses: string[] };
+  backgroundSyncSettings: { isEnabled: boolean; intervalMs: number };
 }
 
 function areNotificationSettingsEqual(
@@ -52,6 +61,31 @@ function areNotificationSettingsEqual(
     && left.enabledStatuses.every((status, index) => status === right.enabledStatuses[index]);
 }
 
+function areBackgroundSyncSettingsEqual(
+  left: { isEnabled: boolean; intervalMs: number },
+  right: { isEnabled: boolean; intervalMs: number },
+) {
+  return left.isEnabled === right.isEnabled && left.intervalMs === right.intervalMs;
+}
+
+function formatSyncIntervalMinutes(intervalMs: number) {
+  return String(Math.round(intervalMs / 60_000));
+}
+
+function parseSyncIntervalMinutes(value: string): number | null {
+  const normalizedValue = value.trim();
+  if (!/^\d+$/.test(normalizedValue)) {
+    return null;
+  }
+
+  const minutes = Number(normalizedValue);
+  if (!Number.isSafeInteger(minutes) || minutes < MIN_SYNC_INTERVAL_MINUTES || minutes > MAX_SYNC_INTERVAL_MINUTES) {
+    return null;
+  }
+
+  return minutes;
+}
+
 export default function ProjectSettings({
   isOpen,
   onClose,
@@ -60,10 +94,13 @@ export default function ProjectSettings({
   sshHosts,
   sidebarDefaultCollapsed,
   defaultSessionType,
+  vimModeEnabled = true,
   themePreference = "system",
   onDefaultSessionTypeChange,
+  onVimModeEnabledChange,
   onThemePreferenceChange,
   notificationSettings,
+  backgroundSyncSettings,
 }: ProjectSettingsProps) {
   const t = useTranslations("settings");
   const tc = useTranslations("common");
@@ -75,20 +112,50 @@ export default function ProjectSettings({
   const [scanResult, setScanResult] = useState<ScanResult | null>(null);
   const [scanSshHost, setScanSshHost] = useState("");
   const [selectedDefaultSessionType, setSelectedDefaultSessionType] = useState(defaultSessionType);
+  const [localVimModeEnabled, setLocalVimModeEnabled] = useState(vimModeEnabled);
   const [localNotificationSettings, setLocalNotificationSettings] = useState(notificationSettings);
   const [pendingNotificationSettings, setPendingNotificationSettings] = useState<typeof notificationSettings | null>(null);
   const [localThemePreference, setLocalThemePreference] = useState<ThemePreference>(themePreference);
   const [localSidebarDefaultCollapsed, setLocalSidebarDefaultCollapsed] = useState(sidebarDefaultCollapsed);
+  const [localBackgroundSyncSettings, setLocalBackgroundSyncSettings] = useState(backgroundSyncSettings);
+  const [pendingBackgroundSyncSettings, setPendingBackgroundSyncSettings] = useState<typeof backgroundSyncSettings | null>(null);
+  const [backgroundSyncIntervalInputValue, setBackgroundSyncIntervalInputValue] = useState(
+    () => formatSyncIntervalMinutes(backgroundSyncSettings.intervalMs),
+  );
+  const backgroundSyncIntervalSaveQueueRef = useRef<Promise<void>>(Promise.resolve());
   const [shouldUseMacTitlebarLayout, setShouldUseMacTitlebarLayout] = useState(false);
   const isPage = variant === "page";
+
+  function saveBackgroundSyncIntervalMs(nextIntervalMs: number) {
+    const nextSave = backgroundSyncIntervalSaveQueueRef.current
+      .catch(() => undefined)
+      .then(() => setBackgroundSyncIntervalMs(nextIntervalMs));
+
+    backgroundSyncIntervalSaveQueueRef.current = nextSave;
+    return nextSave;
+  }
 
   useEffect(() => {
     setSelectedDefaultSessionType(defaultSessionType);
   }, [defaultSessionType]);
 
   useEffect(() => {
+    setLocalVimModeEnabled(vimModeEnabled);
+  }, [vimModeEnabled]);
+
+  useEffect(() => {
     setLocalSidebarDefaultCollapsed(sidebarDefaultCollapsed);
   }, [sidebarDefaultCollapsed]);
+
+  useEffect(() => {
+    if (pendingBackgroundSyncSettings && !areBackgroundSyncSettingsEqual(backgroundSyncSettings, pendingBackgroundSyncSettings)) {
+      return;
+    }
+
+    setLocalBackgroundSyncSettings(backgroundSyncSettings);
+    setPendingBackgroundSyncSettings(null);
+    setBackgroundSyncIntervalInputValue(formatSyncIntervalMinutes(backgroundSyncSettings.intervalMs));
+  }, [backgroundSyncSettings, pendingBackgroundSyncSettings]);
 
   useEffect(() => {
     setLocalThemePreference(themePreference);
@@ -189,6 +256,8 @@ export default function ProjectSettings({
                 ["detail", t("detailPageSection")],
                 ["creation", t("taskCreationSection")],
                 ["notifications", t("notificationSection")],
+                ["background-sync", t("backgroundSyncSection")],
+                ["keyboard", t("keyboardSection")],
                 ["projects", t("projectList")],
               ].map(([id, label]) => (
                 <button
@@ -402,6 +471,125 @@ export default function ProjectSettings({
               })}
             </div>
           </div>
+        </div>
+
+        {/* 백그라운드 Sync 설정 */}
+        <div id="background-sync" className="p-4 border-b border-border-default">
+          <h3 className="text-xs text-text-muted uppercase tracking-wide mb-3">
+            {t("backgroundSyncSection")}
+          </h3>
+
+          {/* 활성화 토글 */}
+          <label className="flex items-center justify-between cursor-pointer">
+            <div>
+              <span className="text-sm text-text-primary">{t("backgroundSyncEnabled")}</span>
+              <p className="text-xs text-text-muted mt-0.5">{t("backgroundSyncEnabledDescription")}</p>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={localBackgroundSyncSettings.isEnabled}
+              onClick={() => {
+                const nextEnabled = !localBackgroundSyncSettings.isEnabled;
+                const nextSettings = { ...localBackgroundSyncSettings, isEnabled: nextEnabled };
+                setLocalBackgroundSyncSettings(nextSettings);
+                setPendingBackgroundSyncSettings(nextSettings);
+                startTransition(async () => {
+                  await setBackgroundSyncEnabled(nextEnabled);
+                });
+              }}
+              disabled={isPending}
+              className={`relative inline-flex h-5 w-9 shrink-0 rounded-full border-2 border-transparent transition-colors ${
+                localBackgroundSyncSettings.isEnabled ? "bg-brand-primary" : "bg-border-default"
+              }`}
+            >
+              <span
+                className={`pointer-events-none inline-block h-4 w-4 rounded-full bg-white shadow transition-transform ${
+                  localBackgroundSyncSettings.isEnabled ? "translate-x-4" : "translate-x-0"
+                }`}
+              />
+            </button>
+          </label>
+
+          {/* 주기 입력 */}
+          <div className={`mt-4 flex items-center justify-between ${!localBackgroundSyncSettings.isEnabled ? "opacity-40 pointer-events-none" : ""}`}>
+            <div>
+              <span className="text-sm text-text-primary">{t("backgroundSyncInterval")}</span>
+              <p className="text-xs text-text-muted mt-0.5">{t("backgroundSyncIntervalDescription")}</p>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <input
+                type="number"
+                min={MIN_SYNC_INTERVAL_MINUTES}
+                max={MAX_SYNC_INTERVAL_MINUTES}
+                step={1}
+                inputMode="numeric"
+                value={backgroundSyncIntervalInputValue}
+                disabled={!localBackgroundSyncSettings.isEnabled}
+                onChange={(e) => {
+                  const nextInputValue = e.target.value;
+                  setBackgroundSyncIntervalInputValue(nextInputValue);
+
+                  const minutes = parseSyncIntervalMinutes(nextInputValue);
+                  if (minutes === null) return;
+
+                  const nextIntervalMs = minutes * 60_000;
+                  if (nextIntervalMs === localBackgroundSyncSettings.intervalMs) return;
+
+                  const nextSettings = { ...localBackgroundSyncSettings, intervalMs: nextIntervalMs };
+                  setLocalBackgroundSyncSettings(nextSettings);
+                  setPendingBackgroundSyncSettings(nextSettings);
+                  startTransition(async () => {
+                    await saveBackgroundSyncIntervalMs(nextIntervalMs);
+                  });
+                }}
+                onBlur={() => {
+                  if (parseSyncIntervalMinutes(backgroundSyncIntervalInputValue) === null) {
+                    setBackgroundSyncIntervalInputValue(formatSyncIntervalMinutes(localBackgroundSyncSettings.intervalMs));
+                  }
+                }}
+                className="w-20 px-2 py-1 text-sm bg-bg-page border border-border-default rounded-md text-text-primary text-right focus:outline-none focus:border-brand-primary transition-colors disabled:opacity-50"
+              />
+              <span className="text-sm text-text-muted">{t("backgroundSyncIntervalUnit")}</span>
+            </div>
+          </div>
+        </div>
+
+        {/* 키보드 설정 */}
+        <div id="keyboard" className="p-4 border-b border-border-default">
+          <h3 className="text-xs text-text-muted uppercase tracking-wide mb-3">
+            {t("keyboardSection")}
+          </h3>
+          <label className="flex items-center justify-between cursor-pointer">
+            <div>
+              <span className="text-sm text-text-primary">{t("vimModeEnabled")}</span>
+              <p className="text-xs text-text-muted mt-0.5">{t("vimModeEnabledDescription")}</p>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-label={t("vimModeEnabled")}
+              aria-checked={localVimModeEnabled}
+              onClick={() => {
+                const nextEnabled = !localVimModeEnabled;
+                setLocalVimModeEnabled(nextEnabled);
+                onVimModeEnabledChange?.(nextEnabled);
+                startTransition(async () => {
+                  await setVimModeEnabled(nextEnabled);
+                });
+              }}
+              disabled={isPending}
+              className={`relative inline-flex h-5 w-9 shrink-0 rounded-full border-2 border-transparent transition-colors ${
+                localVimModeEnabled ? "bg-brand-primary" : "bg-border-default"
+              }`}
+            >
+              <span
+                className={`pointer-events-none inline-block h-4 w-4 rounded-full bg-white shadow transition-transform ${
+                  localVimModeEnabled ? "translate-x-4" : "translate-x-0"
+                }`}
+              />
+            </button>
+          </label>
         </div>
 
         {/* 디렉토리 스캔 등록 */}

@@ -54,7 +54,14 @@ describe("openCodeHooksSetup", () => {
       expect(pluginContent).toContain("/api/hooks/status");
       expect(pluginContent).toContain('const TASK_ID = "task-1";');
       expect(pluginContent).not.toContain(".kanvibe/task-id");
-      expect(pluginContent).not.toContain("readFile");
+      expect(pluginContent).toContain("status.json");
+      expect(pluginContent).not.toContain("hooks-targets.json");
+      expect(pluginContent).not.toContain("task-state.json");
+      expect(pluginContent).not.toContain("readFileSync(KANVIBE_TARGETS_FILE");
+      expect(pluginContent).toContain("--git-common-dir");
+      expect(pluginContent).toContain(".kanvibe/");
+      expect(pluginContent).toContain("writeFileSync(");
+      expect(pluginContent).toContain("schemaVersion: 1");
       expect(pluginContent).toContain("taskId: TASK_ID");
     });
 
@@ -135,6 +142,7 @@ describe("openCodeHooksSetup", () => {
       // Then - should still be installed correctly
       const status = await getOpenCodeHooksStatus(repoPath);
       expect(status.installed).toBe(true);
+      expect(status.hasStatusJsonPersistence).toBe(true);
     });
 
     it("should repair stale branch-bound plugin content on reinstall", async () => {
@@ -195,11 +203,55 @@ export const KanvibePlugin: Plugin = async ({ $ }) => {
       expect(status.installed).toBe(true);
       expect(status.hasDuplicateProgressGuard).toBe(true);
       expect(status.hasEventMappings).toBe(true);
+      expect(status.hasStatusJsonPersistence).toBe(true);
       expect(status.targetPath).toBe(repoPath);
       expect(status.pluginPath).toBe(join(repoPath, ".opencode", "plugins", "kanvibe-plugin.ts"));
       expect(status.registeredPluginUrls).toEqual([
         `file://${repoPath}/.opencode/plugins/kanvibe-plugin.ts`,
       ]);
+    });
+
+    it("legacy status.md OpenCode plugin은 설치된 것으로 보지 않는다", async () => {
+      // Given
+      const repoPath = tempDir;
+      const pluginPath = join(repoPath, ".opencode", "plugins", "kanvibe-plugin.ts");
+      await setupOpenCodeHooks(repoPath, "task-1", "http://localhost:3000");
+      const pluginContent = await readFile(pluginPath, "utf-8");
+      await writeFile(pluginPath, pluginContent.replaceAll("status.json", "status.md"), "utf-8");
+
+      // When
+      const status = await getOpenCodeHooksStatus(repoPath, "task-1");
+
+      // Then
+      expect(status.hasTaskIdBinding).toBe(true);
+      expect(status.hasEventMappings).toBe(true);
+      expect(status.hasStatusJsonPersistence).toBe(false);
+      expect(status.installed).toBe(false);
+    });
+
+    it("common exclude 갱신 없는 OpenCode plugin은 설치된 것으로 보지 않는다", async () => {
+      // Given
+      const repoPath = tempDir;
+      const pluginPath = join(repoPath, ".opencode", "plugins", "kanvibe-plugin.ts");
+      await setupOpenCodeHooks(repoPath, "task-1", "http://localhost:3000");
+      const pluginContent = await readFile(pluginPath, "utf-8");
+      await writeFile(
+        pluginPath,
+        pluginContent.replace(
+          /\n  const KANVIBE_STATE_DIR_EXCLUDE_PATTERN =[\s\S]*?\n  function writeKanvibeTaskState/,
+          "\n  function writeKanvibeTaskState",
+        ),
+        "utf-8",
+      );
+
+      // When
+      const status = await getOpenCodeHooksStatus(repoPath, "task-1");
+
+      // Then
+      expect(status.hasTaskIdBinding).toBe(true);
+      expect(status.hasEventMappings).toBe(true);
+      expect(status.hasStatusJsonPersistence).toBe(false);
+      expect(status.installed).toBe(false);
     });
 
     it("should return installed: false when no plugin exists", async () => {

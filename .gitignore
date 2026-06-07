@@ -1,5 +1,6 @@
 # dependencies
 /node_modules
+/docs-site/node_modules
 /.pnp
 .pnp.*
 .yarn/*
@@ -10,10 +11,17 @@
 
 # testing
 /coverage
+/qa-output
 
 # next.js
 /.next/
+/docs-site/.next/
 /out/
+/docs-site/out/
+
+# cloudflare
+/docs-site/.open-next/
+/docs-site/.wrangler/
 
 # production
 /build

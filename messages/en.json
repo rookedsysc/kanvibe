@@ -50,6 +50,7 @@
       "pullFailed": "Pull failed",
       "failureSection": "Sync failures",
       "pullRequestFailure": "Pull Request check failed",
+      "taskPullFailure": "Task pull failed",
       "worktreeFailure": "Worktree sync failed",
       "emptyMerged": "There are no merged PR tasks to move to Done in this review.",
       "emptyRegistered": "There are no newly registered worktrees in this review."
@@ -82,7 +83,18 @@
       "done": "Done"
     },
     "loadMore": "Load More",
-    "loadingMore": "Loading..."
+    "loadingMore": "Loading...",
+    "vimCommand": {
+      "label": "Vim command",
+      "placeholder": "move review",
+      "hint": "Use :move todo|progress|pending|review|done for the focused task. Press Tab to autocomplete.",
+      "completionHint": "Press Tab to complete {command}.",
+      "errors": {
+        "unknownCommand": "Unknown command. Try :move review.",
+        "noFocusedTask": "Focus a task card before running :move.",
+        "taskNotFound": "The focused task is no longer visible."
+      }
+    }
   },
   "task": {
     "descriptionLabel": "Description",
@@ -96,7 +108,6 @@
     "branchCount": "{count} branches",
     "branchNavHint": "↑↓ Navigate · Enter Select · Esc Close",
     "branchName": "Branch name",
-    "branchPlaceholder": "feat/my-feature",
     "sessionType": "Session type",
     "sshHost": "SSH Host (optional)",
     "createTitle": "Create New Task",
@@ -186,7 +197,16 @@
     "notificationStatusFilterDescription": "Only receive notifications when tasks change to selected statuses.",
     "taskCreationSection": "Task Creation",
     "defaultSessionType": "Default session type",
-    "defaultSessionTypeDescription": "The default session type selected when creating a new task."
+    "defaultSessionTypeDescription": "The default session type selected when creating a new task.",
+    "backgroundSyncSection": "Background Sync",
+    "backgroundSyncEnabled": "Background Sync",
+    "backgroundSyncEnabledDescription": "Periodically sync project worktrees and PR status in the background.",
+    "backgroundSyncInterval": "Sync interval",
+    "backgroundSyncIntervalDescription": "How often to run background sync. (1–1440 min)",
+    "backgroundSyncIntervalUnit": "min",
+    "keyboardSection": "Keyboard",
+    "vimModeEnabled": "Vim-style board controls",
+    "vimModeEnabledDescription": "Enable h/j/k/l focus movement, n for a new task, dd delete, and :move status commands on the board. Arrow keys stay available when this is off."
   },
   "taskSearch": {
     "title": "Quick Task Search",
@@ -313,8 +333,24 @@
       "inlineChat": "AI Chat",
       "remoteBadge": "Remote unsupported",
       "noPreview": "No preview is available.",
+      "loadMoreSessions": "Load more chats",
+      "loadOlderMessages": "Load older messages",
+      "search": "Search",
+      "searchLabel": "Search AI chats",
+      "searchPlaceholder": "Search chats...",
+      "providerFilterLabel": "Filter {provider}",
+      "selectSession": "Select an AI session from the list.",
       "loadingDetail": "Loading messages...",
-      "detailError": "Failed to load session details."
+      "detailError": "Failed to load session details.",
+      "roles": {
+        "user": "User input",
+        "assistant": "AI answer",
+        "system": "System input",
+        "developer": "Developer input",
+        "reasoning": "Reasoning",
+        "tool": "Tool",
+        "unknown": "Other"
+      }
     },
     "priority": "Priority",
     "collapseSidebar": "Collapse sidebar",

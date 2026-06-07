@@ -2,7 +2,7 @@ import path from "path";
 import { writeFile } from "fs/promises";
 import { SessionType } from "@/entities/KanbanTask";
 import { PaneLayoutType, type PaneCommand } from "@/entities/PaneLayoutConfig";
-import { execGit } from "@/lib/gitOperations";
+import { execGit, listWorktrees } from "@/lib/gitOperations";
 import { getEffectivePaneLayout } from "@/desktop/main/services/paneLayoutService";
 
 interface WorktreeSession {
@@ -40,12 +40,20 @@ export function sanitizeZellijSessionName(sessionName: string): string {
   return sessionName.slice(0, ZELLIJ_SESSION_NAME_MAX_LENGTH);
 }
 
-function buildTmuxCreateSessionCommand(sessionName: string, workingDir: string): string {
-  return `tmux new-session -d -s "${sessionName}" -c "${workingDir}"`;
+export function quoteForPosixShell(value: string): string {
+  return `'${value.replace(/'/g, `'"'"'`)}'`;
 }
 
-function buildTmuxTarget(sessionName: string): string {
-  return `"${sessionName}":0`;
+function buildTmuxCreateSessionCommand(sessionName: string, workingDir: string): string {
+  return `tmux new-session -d -s ${quoteForPosixShell(sessionName)} -c ${quoteForPosixShell(workingDir)}`;
+}
+
+function buildTmuxWindowTarget(sessionName: string): string {
+  return quoteForPosixShell(`${sessionName}:0`);
+}
+
+function buildTmuxPaneTarget(sessionName: string, position: number): string {
+  return quoteForPosixShell(`${sessionName}:0.${position}`);
 }
 
 export function buildTmuxPaneLayoutCommands(
@@ -54,35 +62,35 @@ export function buildTmuxPaneLayoutCommands(
   panes: PaneCommand[],
   worktreePath: string,
 ): string[] {
-  const target = buildTmuxTarget(sessionName);
+  const target = buildTmuxWindowTarget(sessionName);
 
   const splitCommands: Record<PaneLayoutType, string[]> = {
     [PaneLayoutType.SINGLE]: [],
     [PaneLayoutType.HORIZONTAL_2]: [
-      `tmux split-window -v -t ${target} -c "${worktreePath}"`,
+      `tmux split-window -v -t ${target} -c ${quoteForPosixShell(worktreePath)}`,
     ],
     [PaneLayoutType.VERTICAL_2]: [
-      `tmux split-window -h -t ${target} -c "${worktreePath}"`,
+      `tmux split-window -h -t ${target} -c ${quoteForPosixShell(worktreePath)}`,
     ],
     [PaneLayoutType.LEFT_RIGHT_TB]: [
-      `tmux split-window -h -t ${target} -c "${worktreePath}"`,
-      `tmux split-window -v -t ${target}.1 -c "${worktreePath}"`,
+      `tmux split-window -h -t ${target} -c ${quoteForPosixShell(worktreePath)}`,
+      `tmux split-window -v -t ${buildTmuxPaneTarget(sessionName, 1)} -c ${quoteForPosixShell(worktreePath)}`,
     ],
     [PaneLayoutType.LEFT_TB_RIGHT]: [
-      `tmux split-window -h -t ${target} -c "${worktreePath}"`,
-      `tmux split-window -v -t ${target}.0 -c "${worktreePath}"`,
+      `tmux split-window -h -t ${target} -c ${quoteForPosixShell(worktreePath)}`,
+      `tmux split-window -v -t ${buildTmuxPaneTarget(sessionName, 0)} -c ${quoteForPosixShell(worktreePath)}`,
     ],
     [PaneLayoutType.QUAD]: [
-      `tmux split-window -h -t ${target} -c "${worktreePath}"`,
-      `tmux split-window -v -t ${target}.0 -c "${worktreePath}"`,
-      `tmux split-window -v -t ${target}.2 -c "${worktreePath}"`,
+      `tmux split-window -h -t ${target} -c ${quoteForPosixShell(worktreePath)}`,
+      `tmux split-window -v -t ${buildTmuxPaneTarget(sessionName, 0)} -c ${quoteForPosixShell(worktreePath)}`,
+      `tmux split-window -v -t ${buildTmuxPaneTarget(sessionName, 2)} -c ${quoteForPosixShell(worktreePath)}`,
     ],
   };
 
   const sendKeysCommands = panes
     .filter((pane) => pane.command.trim())
     .map((pane) => (
-      `tmux send-keys -t ${target}.${pane.position} "${pane.command}" Enter`
+      `tmux send-keys -t ${buildTmuxPaneTarget(sessionName, pane.position)} -- ${quoteForPosixShell(pane.command)} Enter`
     ));
 
   return [
@@ -209,10 +217,6 @@ export function generateZellijLayoutKdl(
 /** Zellij KDL 레이아웃 파일의 기본 파일명 */
 export const ZELLIJ_LAYOUT_FILENAME = ".zellij-layout.kdl";
 
-function quoteForPosixShell(value: string): string {
-  return `'${value.replace(/'/g, `'"'"'`)}'`;
-}
-
 /**
  * KDL 레이아웃 파일을 worktree 디렉토리에 저장한다.
  * 터미널 연결 시 node-pty가 이 파일을 --layout 플래그로 사용한다.
@@ -315,6 +319,55 @@ export async function createSessionWithoutWorktree(
 
 interface ResourceCleanupOptions {
   throwOnError?: boolean;
+  worktreePath?: string | null;
+}
+
+interface ResolvedBranchWorktree {
+  path: string | null;
+  isProjectRootCheckout: boolean;
+}
+
+function normalizeGitWorktreePath(worktreePath: string): string {
+  return worktreePath.replace(/\/+$/, "") || worktreePath;
+}
+
+async function resolveBranchWorktreePath(
+  projectPath: string,
+  branchName: string,
+  fallbackWorktreePath?: string | null,
+  sshHost?: string | null,
+): Promise<ResolvedBranchWorktree> {
+  const worktrees = await listWorktrees(projectPath, sshHost);
+  const normalizedProjectPath = normalizeGitWorktreePath(projectPath);
+  const normalizedFallbackWorktreePath = fallbackWorktreePath
+    ? normalizeGitWorktreePath(fallbackWorktreePath)
+    : null;
+  const normalizedManagedWorktreePath = normalizeGitWorktreePath(
+    buildManagedWorktreePath(projectPath, branchName),
+  );
+  const matchingWorktrees = worktrees.filter((worktree) => (
+    !worktree.isBare && worktree.branch === branchName
+  ));
+
+  const linkedWorktree = matchingWorktrees.find((worktree) => (
+    normalizeGitWorktreePath(worktree.path) !== normalizedProjectPath
+  ));
+
+  const fallbackWorktree = normalizedFallbackWorktreePath
+    ? worktrees.find((worktree) => (
+        !worktree.isBare
+        && normalizeGitWorktreePath(worktree.path) === normalizedFallbackWorktreePath
+        && normalizedFallbackWorktreePath === normalizedManagedWorktreePath
+        && normalizedFallbackWorktreePath !== normalizedProjectPath
+      ))
+    : null;
+
+  return {
+    path: linkedWorktree?.path ?? fallbackWorktree?.path ?? null,
+    isProjectRootCheckout: matchingWorktrees.some((worktree) => (
+      normalizeGitWorktreePath(worktree.path) === normalizedProjectPath
+    )),
+  };
 }
 
 /** worktree와 브랜치를 삭제한다. 세션은 건드리지 않는다 */
@@ -324,21 +377,34 @@ export async function removeWorktreeAndBranch(
   sshHost?: string | null,
   options: ResourceCleanupOptions = {},
 ): Promise<void> {
-  const worktreePath = buildManagedWorktreePath(projectPath, branchName);
-  const worktreeCommand = options.throwOnError
-    ? `if git -C "${projectPath}" worktree list --porcelain | grep -Fxq "worktree ${worktreePath}"; then git -C "${projectPath}" worktree remove "${worktreePath}" --force; fi`
-    : `git -C "${projectPath}" worktree remove "${worktreePath}" --force`;
+  const resolvedWorktree = await resolveBranchWorktreePath(
+    projectPath,
+    branchName,
+    options.worktreePath,
+    sshHost,
+  );
+  const worktreePath = resolvedWorktree.path;
   const branchCommand = options.throwOnError
     ? `if git -C "${projectPath}" show-ref --verify --quiet "refs/heads/${branchName}"; then git -C "${projectPath}" branch -D "${branchName}"; fi`
     : `git -C "${projectPath}" branch -D "${branchName}"`;
 
-  try {
-    await execGit(worktreeCommand, sshHost);
-  } catch {
-    if (options.throwOnError) {
-      throw new Error(`worktree 정리 실패: ${worktreePath}`);
+  if (worktreePath) {
+    const worktreeCommand = options.throwOnError
+      ? `if git -C "${projectPath}" worktree list --porcelain | grep -Fxq "worktree ${worktreePath}"; then git -C "${projectPath}" worktree remove "${worktreePath}" --force; fi`
+      : `git -C "${projectPath}" worktree remove "${worktreePath}" --force`;
+
+    try {
+      await execGit(worktreeCommand, sshHost);
+    } catch {
+      if (options.throwOnError) {
+        throw new Error(`worktree 정리 실패: ${worktreePath}`);
+      }
+      // worktree가 이미 삭제된 경우 무시
     }
-    // worktree가 이미 삭제된 경우 무시
+  }
+
+  if (resolvedWorktree.isProjectRootCheckout) {
+    return;
   }
 
   try {
@@ -408,21 +474,6 @@ function buildZellijSessionCleanupCommand(sessionName: string, verifyCleanup: bo
     ...commands,
     `if zellij list-sessions 2>/dev/null | awk '{ if ($1 == "EXITED:") print $2; else print $1 }' | grep -Fx -- ${target} >/dev/null; then exit 1; fi`,
   ].join("; ");
-}
-
-/**
- * worktree와 브랜치별 독립 세션을 삭제한다.
- * sshHost가 지정되면 원격에서 실행한다.
- */
-export async function removeWorktreeAndSession(
-  projectPath: string,
-  branchName: string,
-  sessionType: SessionType,
-  sessionName: string,
-  sshHost?: string | null,
-): Promise<void> {
-  await removeSessionOnly(sessionType, sessionName, sshHost);
-  await removeWorktreeAndBranch(projectPath, branchName, sshHost);
 }
 
 /** 활성 tmux/zellij 세션 이름 목록을 반환한다 */

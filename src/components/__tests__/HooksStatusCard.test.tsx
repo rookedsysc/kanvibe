@@ -118,7 +118,7 @@ describe("HooksStatusCard", () => {
     expect(screen.queryByTestId("hooks-status-dialog")).toBeNull();
   });
 
-  it("uses dedicated tool icons for hook status rows", () => {
+  it("uses LobeHub provider icons for hook status rows", () => {
     renderCard({
       taskId: "task-1",
       initialClaudeStatus: null,
@@ -131,11 +131,17 @@ describe("HooksStatusCard", () => {
     const toolIcons = screen.getAllByTestId("hook-status-tool-icon");
 
     expect(toolIcons).toHaveLength(4);
+    expect(toolIcons.map((icon) => icon.getAttribute("data-icon-source"))).toEqual([
+      "lobehub-icons",
+      "lobehub-icons",
+      "lobehub-icons",
+      "lobehub-icons",
+    ]);
     expect(toolIcons.map((icon) => icon.getAttribute("data-icon-name"))).toEqual([
-      "ClaudeLogoIcon",
-      "GeminiLogoIcon",
-      "CodexLogoIcon",
-      "OpenCodeLogoIcon",
+      "Claude",
+      "Gemini",
+      "Codex",
+      "OpenCode",
     ]);
     expect(screen.getByTestId("hooks-overall-status-icon").getAttribute("data-icon-name")).toBe("AlertCircleIcon");
   });

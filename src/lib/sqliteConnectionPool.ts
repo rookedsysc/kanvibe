@@ -29,6 +29,11 @@ export function getSqliteConnection(dbPath: string): Database.Database | null {
  * @param db Database 인스턴스
  * @param sql 실행할 SQL 쿼리
  */
-export function querySqlite<T>(db: Database.Database, sql: string): T[] {
-  return db.prepare(sql).all() as T[];
+export function querySqlite<T>(
+  db: Database.Database,
+  sql: string,
+  parameters?: Record<string, unknown>
+): T[] {
+  const statement = db.prepare(sql);
+  return (parameters ? statement.all(parameters) : statement.all()) as T[];
 }

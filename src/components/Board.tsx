@@ -36,6 +36,7 @@ interface BoardProps {
   notificationSettings: { isEnabled: boolean; enabledStatuses: string[] };
   defaultSessionType: SessionType;
   taskSearchShortcut: string;
+  vimModeEnabled?: boolean;
 }
 
 const COLUMNS: { status: TaskStatus; labelKey: string; colorClass: string }[] = [
@@ -47,7 +48,46 @@ const COLUMNS: { status: TaskStatus; labelKey: string; colorClass: string }[] = 
 ];
 
 const TASK_CARD_SELECTOR = "[data-kanban-task-card='true']";
-const BOARD_TASK_FOCUS_KEYS = new Set(["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"]);
+const BOARD_ARROW_TASK_FOCUS_KEYS = new Set([
+  "ArrowUp",
+  "ArrowDown",
+  "ArrowLeft",
+  "ArrowRight",
+]);
+const BOARD_VIM_TASK_FOCUS_KEYS = new Set([
+  "h",
+  "j",
+  "k",
+  "l",
+]);
+const VIM_NEW_TASK_KEY = "n";
+const VIM_COMMAND_KEY = ":";
+const TASK_DELETE_SEQUENCE_KEY = "d";
+const TASK_DELETE_SEQUENCE_TIMEOUT_MS = 1_000;
+
+const VIM_MOVE_COMMAND_ALIASES = new Set(["move", "m"]);
+const VIM_MOVE_STATUSES = [
+  TaskStatus.TODO,
+  TaskStatus.PROGRESS,
+  TaskStatus.PENDING,
+  TaskStatus.REVIEW,
+  TaskStatus.DONE,
+] as const;
+
+const VIM_STATUS_ALIASES: Record<string, TaskStatus> = {
+  t: TaskStatus.TODO,
+  todo: TaskStatus.TODO,
+  "to-do": TaskStatus.TODO,
+  progress: TaskStatus.PROGRESS,
+  prog: TaskStatus.PROGRESS,
+  doing: TaskStatus.PROGRESS,
+  pending: TaskStatus.PENDING,
+  pend: TaskStatus.PENDING,
+  review: TaskStatus.REVIEW,
+  rev: TaskStatus.REVIEW,
+  done: TaskStatus.DONE,
+  d: TaskStatus.DONE,
+};
 
 interface ContextMenuState {
   isOpen: boolean;
@@ -78,6 +118,21 @@ function findTaskById(tasks: TasksByStatus, taskId: string) {
   return null;
 }
 
+function removeTaskFromBoardTasks(currentTasks: TasksByStatus, taskId: string) {
+  let didRemoveTask = false;
+  const nextTasks: TasksByStatus = { ...currentTasks };
+
+  for (const status of Object.values(TaskStatus)) {
+    const remainingTasks = currentTasks[status].filter((candidate) => candidate.id !== taskId);
+    if (remainingTasks.length !== currentTasks[status].length) {
+      nextTasks[status] = remainingTasks;
+      didRemoveTask = true;
+    }
+  }
+
+  return didRemoveTask ? nextTasks : currentTasks;
+}
+
 function shouldIgnoreBoardTaskFocusEvent(event: KeyboardEvent) {
   if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey) {
     return true;
@@ -94,18 +149,50 @@ function shouldIgnoreBoardTaskFocusEvent(event: KeyboardEvent) {
   return Boolean(
     target.closest(
       [
-            TASK_CARD_SELECTOR,
-            "a[href]",
-            "[role='link']",
-            "input",
-            "textarea",
-            "select",
+        TASK_CARD_SELECTOR,
+        "a[href]",
+        "[role='link']",
+        "input",
+        "textarea",
+        "select",
         "button",
         "[contenteditable='true']",
         "[data-terminal-focus-blocker='true']",
         "[role='menu']",
         "[role='menuitem']",
         "[role='dialog']",
+      ].join(","),
+    ),
+  );
+}
+
+function shouldIgnoreBoardVimShortcutEvent(event: KeyboardEvent) {
+  if (event.defaultPrevented) {
+    return true;
+  }
+
+  const target = event.target instanceof Element
+    ? event.target
+    : document.activeElement instanceof Element
+      ? document.activeElement
+      : null;
+
+  if (!target) return false;
+  if (target.closest(TASK_CARD_SELECTOR)) return false;
+
+  return Boolean(
+    target.closest(
+      [
+        "input",
+        "textarea",
+        "select",
+        "button",
+        "[contenteditable='true']",
+        "[data-shortcut-capture='true']",
+        "[data-terminal-focus-blocker='true']",
+        "[role='dialog']",
+        "[role='menu']",
+        "[role='menuitem']",
       ].join(","),
     ),
   );
@@ -123,6 +210,105 @@ function getTaskCardFromKeyboardEvent(event: KeyboardEvent) {
 
 function isShiftOnlyKeyboardShortcut(event: KeyboardEvent, key: string) {
   return event.key === key && event.shiftKey && !event.altKey && !event.ctrlKey && !event.metaKey;
+}
+
+function isPlainTaskDeleteSequenceKey(event: KeyboardEvent) {
+  return event.key === TASK_DELETE_SEQUENCE_KEY && !event.shiftKey && !event.altKey && !event.ctrlKey && !event.metaKey;
+}
+
+function isBoardTaskFocusKey(event: KeyboardEvent, vimModeEnabled: boolean) {
+  if (BOARD_ARROW_TASK_FOCUS_KEYS.has(event.key)) return true;
+  return vimModeEnabled && BOARD_VIM_TASK_FOCUS_KEYS.has(event.key);
+}
+
+function isPlainVimShortcutKey(event: KeyboardEvent, key: string) {
+  return event.key === key && !event.shiftKey && !event.altKey && !event.ctrlKey && !event.metaKey;
+}
+
+function isVimCommandShortcutKey(event: KeyboardEvent) {
+  return event.key === VIM_COMMAND_KEY && !event.altKey && !event.ctrlKey && !event.metaKey;
+}
+
+function getFocusedBoardTaskCard() {
+  const activeElement = document.activeElement;
+  return activeElement instanceof Element
+    ? activeElement.closest<HTMLAnchorElement>(TASK_CARD_SELECTOR)
+    : null;
+}
+
+function parseVimMoveStatus(commandValue: string): TaskStatus | null {
+  const tokens = commandValue
+    .trim()
+    .replace(/^:/, "")
+    .toLowerCase()
+    .split(/\s+/)
+    .filter(Boolean);
+
+  if (tokens.length !== 2 || !VIM_MOVE_COMMAND_ALIASES.has(tokens[0])) {
+    return null;
+  }
+
+  return VIM_STATUS_ALIASES[tokens[1]] ?? null;
+}
+
+function getUniqueVimMoveStatusCompletion(statusPrefix: string): TaskStatus | null {
+  const normalizedPrefix = statusPrefix.toLowerCase();
+  if (!normalizedPrefix) return null;
+
+  const canonicalMatches = VIM_MOVE_STATUSES.filter((status) => status.startsWith(normalizedPrefix));
+  if (canonicalMatches.length === 1) return canonicalMatches[0];
+  if (canonicalMatches.length > 1) return null;
+
+  const aliasMatches = new Set<TaskStatus>();
+  for (const [alias, status] of Object.entries(VIM_STATUS_ALIASES)) {
+    if (alias.startsWith(normalizedPrefix)) {
+      aliasMatches.add(status);
+    }
+  }
+
+  return aliasMatches.size === 1 ? Array.from(aliasMatches)[0] : null;
+}
+
+function getVimMoveCommandAutocomplete(commandValue: string): string | null {
+  const leadingWhitespace = commandValue.match(/^\s*/)?.[0] ?? "";
+  const trimmedStartValue = commandValue.trimStart();
+  const hasColonPrefix = trimmedStartValue.startsWith(":");
+  const valueWithoutColon = hasColonPrefix ? trimmedStartValue.slice(1) : trimmedStartValue;
+  const hasTrailingWhitespace = /\s$/.test(valueWithoutColon);
+  const tokens = valueWithoutColon.toLowerCase().split(/\s+/).filter(Boolean);
+  const commandToken = tokens[0] ?? "";
+
+  const formatCompletion = (status?: TaskStatus) => {
+    const prefix = `${leadingWhitespace}${hasColonPrefix ? ":" : ""}move`;
+    return status ? `${prefix} ${status}` : `${prefix} `;
+  };
+
+  if (tokens.length === 0) {
+    return formatCompletion();
+  }
+
+  if (tokens.length === 1 && !hasTrailingWhitespace) {
+    if ("move".startsWith(commandToken) || commandToken === "m") {
+      const completion = formatCompletion();
+      return completion === commandValue ? null : completion;
+    }
+
+    return null;
+  }
+
+  if (!VIM_MOVE_COMMAND_ALIASES.has(commandToken) || tokens.length !== 2) {
+    return null;
+  }
+
+  const completedStatus = getUniqueVimMoveStatusCompletion(tokens[1]);
+  if (!completedStatus) return null;
+
+  const completion = formatCompletion(completedStatus);
+  return completion === commandValue ? null : completion;
+}
+
+function isModifierKey(key: string) {
+  return key === "Alt" || key === "Control" || key === "Meta" || key === "Shift";
 }
 
 function getCurrentBoardLocale() {
@@ -311,6 +497,7 @@ export default function Board({
   projects,
   doneAlertDismissed,
   defaultSessionType,
+  vimModeEnabled = true,
 }: BoardProps) {
   useAutoRefresh();
   const boardCommands = useBoardCommands();
@@ -320,6 +507,10 @@ export default function Board({
   const [tasks, setTasks] = useState<TasksByStatus>(initialTasks);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isBranchModalOpen, setIsBranchModalOpen] = useState(false);
+  const [isVimCommandOpen, setIsVimCommandOpen] = useState(false);
+  const [vimCommandValue, setVimCommandValue] = useState("");
+  const [vimCommandError, setVimCommandError] = useState<string | null>(null);
+  const [vimCommandTaskId, setVimCommandTaskId] = useState<string | null>(null);
   const [branchTodoDefaults, setBranchTodoDefaults] = useState<{
     baseBranch: string;
     projectId: string;
@@ -335,10 +526,19 @@ export default function Board({
   const [pendingDoneResult, setPendingDoneResult] = useState<DropResult | null>(null);
   const [currentDefaultSessionType, setCurrentDefaultSessionType] = useState<SessionType>(defaultSessionType);
   const [shouldUseMacTitlebarLayout, setShouldUseMacTitlebarLayout] = useState(false);
+  const vimCommandCompletion = useMemo(
+    () => getVimMoveCommandAutocomplete(vimCommandValue),
+    [vimCommandValue],
+  );
   const [, startDragPersistenceTransition] = useTransition();
   const notificationCenterRef = useRef<NotificationCenterButtonHandle>(null);
   const projectSelectorRef = useRef<ProjectSelectorHandle>(null);
+  const vimCommandInputRef = useRef<HTMLInputElement>(null);
   const hasAppliedInitialFocusRef = useRef(false);
+  const pendingTaskDeleteSequenceRef = useRef<{
+    taskId: string;
+    timeoutId: number;
+  } | null>(null);
 
   /** projectId → 표시할 프로젝트 이름 매핑. worktree 프로젝트는 메인 프로젝트 이름으로 resolve한다 */
   const projectNameMap = useMemo(() => {
@@ -439,6 +639,27 @@ export default function Board({
     y: 0,
     task: null,
   });
+  const taskDeleteRuntimeRef = useRef({
+    vimModeEnabled,
+    contextMenuIsOpen: contextMenu.isOpen,
+    isModalOpen,
+    isBranchModalOpen,
+    isVimCommandOpen,
+    hasPendingDoneResult: Boolean(pendingDoneResult),
+    filteredTasks,
+    deleteConfirmMessage: tt("deleteConfirm"),
+  });
+
+  taskDeleteRuntimeRef.current = {
+    vimModeEnabled,
+    contextMenuIsOpen: contextMenu.isOpen,
+    isModalOpen,
+    isBranchModalOpen,
+    isVimCommandOpen,
+    hasPendingDoneResult: Boolean(pendingDoneResult),
+    filteredTasks,
+    deleteConfirmMessage: tt("deleteConfirm"),
+  };
 
   useEffect(() => {
     setIsMounted(true);
@@ -497,9 +718,48 @@ export default function Board({
   }), [boardCommands]);
 
   useEffect(() => {
+    boardCommands.setTaskQuickSearchOpen(isVimCommandOpen);
+    return () => boardCommands.setTaskQuickSearchOpen(false);
+  }, [boardCommands, isVimCommandOpen]);
+
+  useEffect(() => {
+    if (isVimCommandOpen) {
+      vimCommandInputRef.current?.focus();
+    }
+  }, [isVimCommandOpen]);
+
+  useEffect(() => {
+    function handleWindowVimShortcut(event: KeyboardEvent) {
+      if (!vimModeEnabled) return;
+      if (contextMenu.isOpen || isModalOpen || isBranchModalOpen || pendingDoneResult || isVimCommandOpen) return;
+      if (shouldIgnoreBoardVimShortcutEvent(event)) return;
+
+      if (isPlainVimShortcutKey(event, VIM_NEW_TASK_KEY)) {
+        event.preventDefault();
+        event.stopPropagation();
+        setBranchTodoDefaults(null);
+        setIsModalOpen(true);
+        return;
+      }
+
+      if (isVimCommandShortcutKey(event)) {
+        event.preventDefault();
+        event.stopPropagation();
+        setVimCommandValue("");
+        setVimCommandError(null);
+        setVimCommandTaskId(getFocusedBoardTaskCard()?.dataset.kanbanTaskId ?? null);
+        setIsVimCommandOpen(true);
+      }
+    }
+
+    window.addEventListener("keydown", handleWindowVimShortcut, true);
+    return () => window.removeEventListener("keydown", handleWindowVimShortcut, true);
+  }, [contextMenu.isOpen, isBranchModalOpen, isModalOpen, isVimCommandOpen, pendingDoneResult, vimModeEnabled]);
+
+  useEffect(() => {
     function handleWindowTaskFocus(event: KeyboardEvent) {
-      if (!BOARD_TASK_FOCUS_KEYS.has(event.key)) return;
-      if (contextMenu.isOpen || isModalOpen || isBranchModalOpen || pendingDoneResult) return;
+      if (!isBoardTaskFocusKey(event, vimModeEnabled)) return;
+      if (contextMenu.isOpen || isModalOpen || isBranchModalOpen || pendingDoneResult || isVimCommandOpen) return;
       if (shouldIgnoreBoardTaskFocusEvent(event)) return;
 
       const firstTaskCard = getBoardTaskCards()[0];
@@ -511,14 +771,104 @@ export default function Board({
 
     window.addEventListener("keydown", handleWindowTaskFocus);
     return () => window.removeEventListener("keydown", handleWindowTaskFocus);
-  }, [contextMenu.isOpen, isBranchModalOpen, isModalOpen, pendingDoneResult]);
+  }, [contextMenu.isOpen, isBranchModalOpen, isModalOpen, isVimCommandOpen, pendingDoneResult, vimModeEnabled]);
+
+  const removeTaskFromBoard = useCallback((task: Pick<KanbanTask, "id" | "status">) => {
+    setTasks((prev) => removeTaskFromBoardTasks(prev, task.id));
+    if (task.status === TaskStatus.DONE) {
+      setDoneTotal((prev) => Math.max(0, prev - 1));
+      setDoneOffset((prev) => Math.max(0, prev - 1));
+    }
+  }, []);
+
+  const deleteTaskFromBoard = useCallback(async (task: Pick<KanbanTask, "id" | "status">) => {
+    try {
+      const didDelete = await deleteTask(task.id);
+      if (didDelete) {
+        removeTaskFromBoard(task);
+      }
+    } catch (error) {
+      console.error("Failed to delete task", error);
+    }
+  }, [removeTaskFromBoard]);
+
+  useEffect(() => {
+    function resetPendingTaskDeleteSequence() {
+      if (pendingTaskDeleteSequenceRef.current) {
+        window.clearTimeout(pendingTaskDeleteSequenceRef.current.timeoutId);
+      }
+
+      pendingTaskDeleteSequenceRef.current = null;
+    }
+
+    function armTaskDeleteSequence(taskId: string) {
+      resetPendingTaskDeleteSequence();
+      const timeoutId = window.setTimeout(() => {
+        if (pendingTaskDeleteSequenceRef.current?.taskId === taskId) {
+          pendingTaskDeleteSequenceRef.current = null;
+        }
+      }, TASK_DELETE_SEQUENCE_TIMEOUT_MS);
+
+      pendingTaskDeleteSequenceRef.current = { taskId, timeoutId };
+    }
+
+    function handleWindowTaskDeleteSequence(event: KeyboardEvent) {
+      const runtime = taskDeleteRuntimeRef.current;
+      if (!runtime.vimModeEnabled) return;
+
+      if (!isPlainTaskDeleteSequenceKey(event)) {
+        if (!isModifierKey(event.key)) {
+          resetPendingTaskDeleteSequence();
+        }
+        return;
+      }
+
+      if (
+        event.defaultPrevented ||
+        runtime.contextMenuIsOpen ||
+        runtime.isModalOpen ||
+        runtime.isBranchModalOpen ||
+        runtime.hasPendingDoneResult ||
+        runtime.isVimCommandOpen
+      ) {
+        return;
+      }
+
+      const taskCard = getTaskCardFromKeyboardEvent(event);
+      const taskId = taskCard?.dataset.kanbanTaskId;
+      if (!taskCard || !taskId) {
+        resetPendingTaskDeleteSequence();
+        return;
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+
+      if (pendingTaskDeleteSequenceRef.current?.taskId === taskId) {
+        resetPendingTaskDeleteSequence();
+        const task = findTaskById(runtime.filteredTasks, taskId);
+        if (task && confirm(runtime.deleteConfirmMessage)) {
+          void deleteTaskFromBoard(task);
+        }
+        return;
+      }
+
+      armTaskDeleteSequence(taskId);
+    }
+
+    window.addEventListener("keydown", handleWindowTaskDeleteSequence, true);
+    return () => {
+      window.removeEventListener("keydown", handleWindowTaskDeleteSequence, true);
+      resetPendingTaskDeleteSequence();
+    };
+  }, [deleteTaskFromBoard]);
 
   useEffect(() => {
     function handleWindowTaskShortcut(event: KeyboardEvent) {
       const shouldOpenTaskInNewWindow = isShiftOnlyKeyboardShortcut(event, "Enter");
       const shouldOpenTaskContextMenu = isShiftOnlyKeyboardShortcut(event, "F10");
       if (!shouldOpenTaskInNewWindow && !shouldOpenTaskContextMenu) return;
-      if (contextMenu.isOpen || isModalOpen || isBranchModalOpen || pendingDoneResult) return;
+      if (contextMenu.isOpen || isModalOpen || isBranchModalOpen || pendingDoneResult || isVimCommandOpen) return;
 
       const taskCard = getTaskCardFromKeyboardEvent(event);
       const taskId = taskCard?.dataset.kanbanTaskId;
@@ -541,7 +891,7 @@ export default function Board({
 
     window.addEventListener("keydown", handleWindowTaskShortcut, true);
     return () => window.removeEventListener("keydown", handleWindowTaskShortcut, true);
-  }, [contextMenu.isOpen, filteredTasks, isBranchModalOpen, isModalOpen, pendingDoneResult]);
+  }, [contextMenu.isOpen, filteredTasks, isBranchModalOpen, isModalOpen, isVimCommandOpen, pendingDoneResult]);
 
   const handleLoadMoreDone = useCallback(async () => {
     if (isLoadingMore) return;
@@ -590,6 +940,69 @@ export default function Board({
     },
     [projectFilterSet, startDragPersistenceTransition, tasks]
   );
+
+  const moveTaskToStatus = useCallback(
+    (task: KanbanTask, newStatus: TaskStatus) => {
+      const result = buildStatusMoveResult(task, newStatus, tasks, filteredTasks);
+      if (!result) return;
+
+      const shouldConfirmDoneMove =
+        newStatus === TaskStatus.DONE &&
+        task.status !== TaskStatus.DONE &&
+        !isDoneAlertDismissed &&
+        !!(task.branchName || task.sessionType);
+
+      if (shouldConfirmDoneMove) {
+        setPendingDoneResult(result);
+        return;
+      }
+
+      executeDragMove(result);
+    },
+    [executeDragMove, filteredTasks, isDoneAlertDismissed, tasks],
+  );
+
+  const moveFocusedTaskToStatus = useCallback(
+    (newStatus: TaskStatus, taskIdOverride?: string | null): "moved" | "missing-focus" | "missing-task" => {
+      const taskCard = getFocusedBoardTaskCard();
+      const taskId = taskIdOverride ?? taskCard?.dataset.kanbanTaskId;
+      if (!taskId) return "missing-focus";
+
+      const task = findTaskById(filteredTasks, taskId);
+      if (!task) return "missing-task";
+
+      moveTaskToStatus(task, newStatus);
+      return "moved";
+    },
+    [filteredTasks, moveTaskToStatus],
+  );
+
+  const closeVimCommand = useCallback(() => {
+    setIsVimCommandOpen(false);
+    setVimCommandValue("");
+    setVimCommandError(null);
+    setVimCommandTaskId(null);
+  }, []);
+
+  const submitVimCommand = useCallback(() => {
+    const destinationStatus = parseVimMoveStatus(vimCommandValue);
+    if (!destinationStatus) {
+      setVimCommandError(t("vimCommand.errors.unknownCommand"));
+      return;
+    }
+
+    const moveResult = moveFocusedTaskToStatus(destinationStatus, vimCommandTaskId);
+    if (moveResult === "missing-focus") {
+      setVimCommandError(t("vimCommand.errors.noFocusedTask"));
+      return;
+    }
+    if (moveResult === "missing-task") {
+      setVimCommandError(t("vimCommand.errors.taskNotFound"));
+      return;
+    }
+
+    closeVimCommand();
+  }, [closeVimCommand, moveFocusedTaskToStatus, t, vimCommandTaskId, vimCommandValue]);
 
   const handleDragEnd = useCallback(
     (result: DropResult) => {
@@ -655,43 +1068,22 @@ export default function Board({
   }, [contextMenu.task]);
 
   const handleDeleteFromCard = useCallback(() => {
-    if (contextMenu.task && confirm(tt("deleteConfirm"))) {
-      deleteTask(contextMenu.task.id);
+    const task = contextMenu.task;
+    if (task && confirm(tt("deleteConfirm"))) {
+      void deleteTaskFromBoard(task);
     }
     handleCloseContextMenu();
-  }, [contextMenu.task, handleCloseContextMenu, tt]);
+  }, [contextMenu.task, deleteTaskFromBoard, handleCloseContextMenu, tt]);
 
   const handleStatusChangeFromCard = useCallback(
     (newStatus: TaskStatus) => {
       const task = contextMenu.task;
+      handleCloseContextMenu();
       if (!task) return;
 
-      const result = buildStatusMoveResult(task, newStatus, tasks, filteredTasks);
-      handleCloseContextMenu();
-
-      if (!result) return;
-
-      const shouldConfirmDoneMove =
-        newStatus === TaskStatus.DONE &&
-        task.status !== TaskStatus.DONE &&
-        !isDoneAlertDismissed &&
-        !!(task.branchName || task.sessionType);
-
-      if (shouldConfirmDoneMove) {
-        setPendingDoneResult(result);
-        return;
-      }
-
-      executeDragMove(result);
+      moveTaskToStatus(task, newStatus);
     },
-    [
-      contextMenu.task,
-      executeDragMove,
-      filteredTasks,
-      handleCloseContextMenu,
-      isDoneAlertDismissed,
-      tasks,
-    ],
+    [contextMenu.task, handleCloseContextMenu, moveTaskToStatus],
   );
 
   const headerClassName = shouldUseMacTitlebarLayout
@@ -702,7 +1094,7 @@ export default function Board({
 
   return (
     <div className="min-h-screen bg-bg-page">
-      <BoardPageFindBar />
+      <BoardPageFindBar vimModeEnabled={vimModeEnabled} />
       <header className={headerClassName}>
         <div className="flex items-center gap-3 [-webkit-app-region:no-drag]">
           <div className="w-64">
@@ -752,6 +1144,7 @@ export default function Board({
                   onContextMenu={handleContextMenu}
                   projectNameMap={projectNameMap}
                   projectColorMap={projectColorMap}
+                  vimModeEnabled={vimModeEnabled}
                   {...(col.status === TaskStatus.DONE && {
                     totalCount: doneTotal,
                     hasMore: doneOffset < doneTotal,
@@ -778,6 +1171,56 @@ export default function Board({
           </div>
         )}
       </main>
+
+      {isVimCommandOpen && (
+        <div className="fixed bottom-4 left-1/2 z-[350] w-[min(520px,calc(100vw-32px))] -translate-x-1/2 rounded-lg border border-border-default bg-bg-surface p-3 shadow-lg">
+          <label htmlFor="vim-command-input" className="sr-only">
+            {t("vimCommand.label")}
+          </label>
+          <div className="flex items-center gap-2 rounded-md border border-border-default bg-bg-page px-3 py-2 text-sm text-text-primary focus-within:border-brand-primary">
+            <span className="font-mono text-text-muted" aria-hidden="true">:</span>
+            <input
+              id="vim-command-input"
+              ref={vimCommandInputRef}
+              value={vimCommandValue}
+              onChange={(event) => {
+                setVimCommandValue(event.target.value);
+                setVimCommandError(null);
+              }}
+              onKeyDown={(event) => {
+                if (event.key === "Tab" && !event.shiftKey && !event.altKey && !event.ctrlKey && !event.metaKey) {
+                  const completion = getVimMoveCommandAutocomplete(event.currentTarget.value);
+                  if (completion) {
+                    event.preventDefault();
+                    setVimCommandValue(completion);
+                    setVimCommandError(null);
+                  }
+                  return;
+                }
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  submitVimCommand();
+                  return;
+                }
+                if (event.key === "Escape") {
+                  event.preventDefault();
+                  closeVimCommand();
+                }
+              }}
+              aria-label={t("vimCommand.label")}
+              data-shortcut-capture="true"
+              className="min-w-0 flex-1 bg-transparent font-mono outline-none placeholder:text-text-muted"
+              placeholder={t("vimCommand.placeholder")}
+            />
+          </div>
+          <p className={`mt-2 text-xs ${vimCommandError ? "text-status-error" : "text-text-muted"}`}>
+            {vimCommandError
+              ?? (vimCommandCompletion
+                ? t("vimCommand.completionHint", { command: `:${vimCommandCompletion.trim().replace(/^:/, "")}` })
+                : t("vimCommand.hint"))}
+          </p>
+        </div>
+      )}
 
       <CreateTaskModal
         isOpen={isModalOpen}

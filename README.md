@@ -1,7 +1,5 @@
 <div align="center">
 
-<img src="./docs/images/readme/kanvibe.png" alt="KanVibe app icon" width="120">
-
 # KanVibe
 
 **Keyboard-first Kanban workspace for AI coding agents**
@@ -35,17 +33,11 @@ Use shortcuts for project filters, task search, notifications, task detail panel
   </tr>
 </table>
 
-<iframe
-  width="100%"
-  height="480"
-  src="https://www.youtube.com/embed/8JTrvd3T_Z0"
-  title="KanVibe demo"
-  frameborder="0"
-  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-  allowfullscreen>
-</iframe>
+<a href="https://www.youtube.com/watch?v=8JTrvd3T_Z0">
+  <img src="https://img.youtube.com/vi/8JTrvd3T_Z0/maxresdefault.jpg" alt="KanVibe demo video thumbnail" width="100%">
+</a>
 
-**[Watch Demo on YouTube](https://www.youtube.com/watch?v=8JTrvd3T_Z0)**
+<strong><a href="https://www.youtube.com/watch?v=8JTrvd3T_Z0">Watch Demo on YouTube</a></strong>
 
 </div>
 
@@ -82,6 +74,14 @@ Open the notification panel to review AI agent status changes, background sync r
 Create follow-up branch TODOs directly from the highlighted search result, preserving project and branch context for the next piece of work.
 
 <img src="./docs/images/readme/kanvibe-quick-action-shortcut.png" alt="Quick task action shortcut" width="100%">
+
+### 6. Vim-Style Board Controls
+
+Turn on Vim-style board controls in **Settings → Keyboard**, then move across task cards with `h/j/k/l`, find visible task text with `/`, open the new-task modal with `n`, move statuses with `:move progress`, and delete a focused task with `dd`.
+
+<video src="./docs/images/readme/kanvibe-vim-controls.mp4" poster="./docs/images/readme/kanvibe-vim-controls.png" controls muted playsinline width="100%"></video>
+
+[Open the Vim controls demo video](./docs/images/readme/kanvibe-vim-controls.mp4)
 
 ---
 
@@ -199,7 +199,11 @@ Each pane can run a custom command (e.g., `vim`, `htop`, `lazygit`, test runner,
 
 | Shortcut | Scope | Action |
 |----------|-------|--------|
-| `Cmd/Ctrl+F` | Board | Open page find for visible project/task text |
+| `Cmd/Ctrl+F` or `/` with Vim-style controls enabled | Board | Open page find for visible project/task text; press `Enter` for next and `Shift+Enter` for previous |
+| `h / j / k / l` or `← / ↓ / ↑ / →` | Board task cards | Move focus left/down/up/right across visible task cards; if no task is focused, enter the first visible task |
+| `n` | Board | Open the new task modal immediately |
+| `:move todo\|progress\|pending\|review\|done` | Focused board task card | Move the focused task to the target status without drag-and-drop; press `Tab` in the command input to autocomplete a unique status prefix |
+| `dd` | Focused board task card | Delete the focused task after confirmation |
 | `Cmd/Ctrl+Shift+O` | Global | Open quick task search by branch or project name (default, configurable) |
 | `Cmd/Ctrl+Shift+P` | Board | Open the project filter dropdown |
 | `Cmd/Ctrl+Shift+I` | Board | Open the notifications dropdown |
@@ -212,6 +216,8 @@ Each pane can run a custom command (e.g., `vim`, `htop`, `lazygit`, test runner,
 | `↑ / ↓ / Enter / Esc` | Notifications dropdown | Move selection, open notification target, close dropdown |
 
 Task detail dock numbering excludes the back-to-board button and follows the visible dock item order. If a task has a PR URL, PR takes slot 4 and later dock items shift to 5+; without a PR, the next dock item uses slot 4.
+
+Vim-style board controls (`h/j/k/l`, `/`, `n`, `dd`, and `:move ...`) can be turned on or off in **Settings → Keyboard**. Arrow-key task navigation and `Cmd/Ctrl+F` page find remain available even when Vim-style controls are disabled.
 
 ### AI Agent Hooks - Automatic Status Tracking
 KanVibe integrates with **Claude Code Hooks**, **Gemini CLI Hooks**, **Codex CLI**, and **OpenCode** to automatically track task status. Tasks are managed through 5 statuses:
@@ -248,10 +254,12 @@ PreToolUse (Bash only)         → PROGRESS
 Stop                           → REVIEW
 ```
 
-KanVibe now uses Codex's current lifecycle hooks model with `.codex/hooks.json` plus both `[features].codex_hooks = true` and `[features].hooks = true` in `.codex/config.toml`:
+KanVibe now uses Codex's current lifecycle hooks model with `.codex/hooks.json` plus `[features].hooks = true` in `.codex/config.toml`:
 
 - https://developers.openai.com/codex/hooks
 - https://developers.openai.com/codex/config-reference
+
+Codex loads project-local `.codex/` hooks only for trusted project/worktree paths. If a task runs in a generated worktree, trust that worktree in Codex before expecting the local hook file to fire.
 
 > Codex's current `PermissionRequest` and `PreToolUse` matchers are Bash-scoped, so `PENDING` represents approval waits rather than every kind of conversational follow-up question.
 

@@ -1,8 +1,8 @@
 export type AiSessionProvider = "claude" | "codex" | "opencode" | "gemini";
 
-export type AiSessionMatchScope = "worktree" | "repo" | "unknown";
+export type AiSessionMatchScope = "worktree";
 
-export type AiMessageRole = "user" | "assistant" | "tool" | "system" | "unknown";
+export type AiMessageRole = "user" | "assistant" | "tool" | "system" | "developer" | "reasoning" | "unknown";
 
 export interface AggregatedAiMessage {
   role: AiMessageRole;
@@ -48,14 +48,16 @@ export interface AggregatedAiSessionsResult {
   repoPath: string | null;
   sessions: AggregatedAiSession[];
   sources: AiSessionSourceStatus[];
+  nextCursor: string | null;
 }
 
 export interface AiSessionReaderContext {
   worktreePath: string | null;
   repoPath: string | null;
-  includeRepoSessions?: boolean;
   query?: string;
   roles?: AiMessageRole[];
+  cursor?: string | null;
+  limit?: number;
   sshHost?: string | null;
 }
 

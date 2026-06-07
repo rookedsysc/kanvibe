@@ -81,6 +81,30 @@ export function setTaskSearchShortcut(shortcut: string): Promise<void> {
   return invokeAndRefresh("setTaskSearchShortcut", shortcut);
 }
 
+export function getVimModeEnabled(): Promise<boolean> {
+  return invokeDesktop("appSettings", "getVimModeEnabled");
+}
+
+export function setVimModeEnabled(enabled: boolean): Promise<void> {
+  return invokeAndRefresh("setVimModeEnabled", enabled);
+}
+
+export async function getBackgroundSyncSettings(): Promise<{ isEnabled: boolean; intervalMs: number }> {
+  const [isEnabled, intervalMs] = await Promise.all([
+    invokeDesktop<boolean>("appSettings", "getBackgroundSyncEnabled"),
+    invokeDesktop<number>("appSettings", "getBackgroundSyncIntervalMs"),
+  ]);
+  return { isEnabled, intervalMs };
+}
+
+export function setBackgroundSyncEnabled(enabled: boolean): Promise<void> {
+  return invokeAndRefresh("setBackgroundSyncEnabled", enabled);
+}
+
+export function setBackgroundSyncIntervalMs(intervalMs: number): Promise<void> {
+  return invokeAndRefresh("setBackgroundSyncIntervalMs", intervalMs);
+}
+
 export async function getThemePreference(): Promise<ThemePreference> {
   const value = await getAppSetting(THEME_PREFERENCE_KEY);
   return THEME_PREFERENCES.has(value as ThemePreference) ? value as ThemePreference : "system";

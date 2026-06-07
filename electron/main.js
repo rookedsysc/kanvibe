@@ -9,6 +9,7 @@ const process = require("node:process");
 const { pathToFileURL } = require("node:url");
 const { app, BrowserWindow, ipcMain, session, shell } = require("electron");
 const { createDesktopDiagnostics, resolveDesktopLogPath, serializeErrorForLog } = require("./diagnostics");
+const { applyAppDataDirectoryOverride } = require("./runtimeEnvironment");
 
 const DEFAULT_LOCALE = "ko";
 const RENDERER_DEV_URL = process.env.KANVIBE_RENDERER_URL || null;
@@ -22,6 +23,7 @@ const RENDERER_ABORT_RECOVERY_INTERVAL_MS = 50;
 const originalResolveFilename = Module._resolveFilename;
 
 const isHeadlessLinuxRuntime = !process.env.DISPLAY && !process.env.WAYLAND_DISPLAY;
+applyAppDataDirectoryOverride(app, process.env);
 
 if (SHOULD_USE_SOURCE_MODULES) {
   require("tsx/cjs");
@@ -357,8 +359,6 @@ function createBrowserWindowOptions() {
   return {
     width: 1600,
     height: 1000,
-    minWidth: 1200,
-    minHeight: 800,
     backgroundColor: "#ffffff",
     autoHideMenuBar: true,
     ...getTitleBarOptions(),

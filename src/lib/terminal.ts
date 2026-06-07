@@ -2,11 +2,15 @@ import path from "path";
 import { existsSync } from "fs";
 import { SessionType } from "@/entities/KanbanTask";
 import { PaneLayoutType } from "@/entities/PaneLayoutConfig";
-import { ZELLIJ_LAYOUT_FILENAME } from "@/lib/worktree";
 import { execSync } from "child_process";
 import type { WebSocket } from "ws";
 import { buildSSHArgs, getKanvibeSSHConnectionHealthOptions, hasLocalX11Display } from "@/lib/sshConfig";
-import { buildTmuxSessionBootstrapCommands, type TmuxPaneLayoutConfig } from "@/lib/worktree";
+import {
+  buildTmuxSessionBootstrapCommands,
+  quoteForPosixShell,
+  type TmuxPaneLayoutConfig,
+  ZELLIJ_LAYOUT_FILENAME,
+} from "@/lib/worktree";
 import { createLocalShellEnvironment } from "@/lib/shellEnvironment";
 
 /**
@@ -291,12 +295,15 @@ export async function attachRemoteSession(
   const pty = await import("node-pty");
   const attachCommand = sessionType === SessionType.TMUX
     ? buildRemoteTmuxAttachCommand(sessionName, worktreePath, tmuxPaneLayout)
-    : `exec zellij attach "${sessionName}"`;
-  const args = buildSSHArgs(sshConfig, {
-    forceTty: true,
-    trustedX11Forwarding: hasLocalX11Display(),
-    connectionHealth: getKanvibeSSHConnectionHealthOptions(),
-  });
+    : `exec zellij attach ${quoteForPosixShell(sessionName)}`;
+  const args = [
+    ...buildSSHArgs(sshConfig, {
+      forceTty: true,
+      trustedX11Forwarding: hasLocalX11Display(),
+      connectionHealth: getKanvibeSSHConnectionHealthOptions(),
+    }),
+    buildRemoteShellCommand(attachCommand),
+  ];
 
   if (shouldLogTerminalSpawn()) {
     console.log(`[터미널] Remote PTY spawn: shell=ssh, args=${JSON.stringify(args)}`);
@@ -341,8 +348,7 @@ export async function attachRemoteSession(
     detachSession(taskId, "remote-pty-exit");
   });
 
-  ptyProcess.write(`${attachCommand}\r`);
-  debugLog("Remote PTY attachCommand 전송 완료", { taskId, byteLength: attachCommand.length });
+  debugLog("Remote PTY attachCommand 인자 전달 완료", { taskId, byteLength: attachCommand.length });
 
   ws.on("message", (message) => {
     handleTerminalMessage(ptyProcess, message.toString());
@@ -357,13 +363,60 @@ export async function attachRemoteSession(
   });
 }
 
+function buildRemoteShellCommand(command: string): string {
+  return `sh -lc ${quoteForPosixShell(command)}`;
+}
+
+const REMOTE_TMUX_SOCKET_NAME = "kanvibe";
+
 function buildRemoteTmuxAttachCommand(
   sessionName: string,
   worktreePath?: string | null,
   tmuxPaneLayout?: TmuxPaneLayoutConfig | null,
 ): string {
-  const attachCommand = `exec tmux attach-session -t "${sessionName}"`;
-  const bootstrapCommands = worktreePath
+  const tmuxFlow = buildRemoteTmuxSessionFlow(
+    buildRemoteTmuxCommand(),
+    sessionName,
+    worktreePath,
+    tmuxPaneLayout,
+  );
+
+  return `${tmuxFlow} || { ${buildRemoteInteractiveShellFallbackCommand()}; }`;
+}
+
+function buildRemoteTmuxCommand(): string {
+  return `tmux -L ${quoteForPosixShell(REMOTE_TMUX_SOCKET_NAME)} -f /dev/null`;
+}
+
+function buildRemoteTmuxSessionFlow(
+  tmuxCommand: string,
+  sessionName: string,
+  worktreePath?: string | null,
+  tmuxPaneLayout?: TmuxPaneLayoutConfig | null,
+): string {
+  const quotedSessionName = quoteForPosixShell(sessionName);
+  const attachCommand = `${tmuxCommand} attach-session -t ${quotedSessionName}`;
+  const bootstrapCommands = buildRemoteTmuxBootstrapCommands(
+    tmuxCommand,
+    sessionName,
+    worktreePath,
+    tmuxPaneLayout,
+  );
+
+  return `if ${tmuxCommand} has-session -t ${quotedSessionName} 2>/dev/null; then ${attachCommand}; else ${[
+    ...bootstrapCommands,
+    attachCommand,
+  ].join(" && ")}; fi`;
+}
+
+function buildRemoteTmuxBootstrapCommands(
+  tmuxCommand: string,
+  sessionName: string,
+  worktreePath?: string | null,
+  tmuxPaneLayout?: TmuxPaneLayoutConfig | null,
+): string[] {
+  const quotedSessionName = quoteForPosixShell(sessionName);
+  const defaultBootstrapCommands = worktreePath
     ? buildTmuxSessionBootstrapCommands(
         sessionName,
         worktreePath,
@@ -371,12 +424,17 @@ function buildRemoteTmuxAttachCommand(
           ? tmuxPaneLayout
           : null,
       )
-    : [`tmux new-session -d -s "${sessionName}"`];
+    : [`tmux new-session -d -s ${quotedSessionName}`];
 
+  return defaultBootstrapCommands.map((command) => command.replace(/^tmux(?=\s)/, tmuxCommand));
+}
+
+function buildRemoteInteractiveShellFallbackCommand(): string {
   return [
-    `if tmux has-session -t "${sessionName}" 2>/dev/null; then ${attachCommand}; fi`,
-    ...bootstrapCommands,
-    attachCommand,
+    `printf '%s\\n' ${quoteForPosixShell(
+      "KanVibe: tmux session setup failed; leaving the SSH shell open.",
+    )} >&2`,
+    'exec "${SHELL:-/bin/sh}" -l',
   ].join("; ");
 }
 
