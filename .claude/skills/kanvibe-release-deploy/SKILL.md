@@ -58,7 +58,7 @@ Only proceed after the user supplies the target version. If the original user pr
 
 Validate these before proceeding:
 
-1. The target version is a plain SemVer-like value such as `1.0.2`; do not include a leading `v`.
+1. The target version is a plain `x.y.z` value such as `1.0.2`; do not include a leading `v` or any prerelease/build suffix (for example `1.0.3-beta.1`). The desktop update checker (`src/desktop/shared/releaseUpdates.ts`) only parses `^v?\d+\.\d+\.\d+$`, so a prerelease tag would be invisible to in-app updates.
 2. The target version is different from the current `package.json` version unless the user explicitly wants to rebuild the same version.
 3. The worktree is clean or only contains intentional release-version changes.
 4. The release commit/branch is the intended one. If unsure whether to release from `dev`, `main`, or a specific commit, ask before creating the tag.
@@ -75,25 +75,33 @@ If the required host/tooling is unavailable, stop and report the blocker. Do not
 
 After the user chooses the target version, update `package.json` before running the build. Use a deterministic script instead of manually editing JSON punctuation.
 
+The same script also keeps the tracked `package-lock.json` in sync, because its top-level `version` and root `packages[""].version` fields otherwise keep advertising the previous release and npm-based install/packaging paths would see conflicting metadata. The regex rejects prerelease/build suffixes so the published tag always matches the desktop update checker.
+
 ```bash
 TARGET_VERSION="<version supplied by user>"
 node -e '
 const fs = require("node:fs");
 const version = process.argv[1];
-if (!/^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/.test(version)) {
-  throw new Error(`Invalid release version: ${version}`);
+if (!/^\d+\.\d+\.\d+$/.test(version)) {
+  throw new Error(`Invalid release version (expected plain x.y.z, no v/prerelease): ${version}`);
 }
-const packagePath = "package.json";
-const packageJson = JSON.parse(fs.readFileSync(packagePath, "utf8"));
+const packageJson = JSON.parse(fs.readFileSync("package.json", "utf8"));
 packageJson.version = version;
-fs.writeFileSync(packagePath, `${JSON.stringify(packageJson, null, 2)}\n`);
+fs.writeFileSync("package.json", `${JSON.stringify(packageJson, null, 2)}\n`);
+if (fs.existsSync("package-lock.json")) {
+  const lock = JSON.parse(fs.readFileSync("package-lock.json", "utf8"));
+  lock.version = version;
+  if (lock.packages && lock.packages[""]) lock.packages[""].version = version;
+  fs.writeFileSync("package-lock.json", `${JSON.stringify(lock, null, 2)}\n`);
+}
 ' "$TARGET_VERSION"
 
 node -p "require('./package.json').version"
-git diff -- package.json
+test -f package-lock.json && node -p "require('./package-lock.json').version"
+git diff -- package.json package-lock.json
 ```
 
-Verify the printed package version exactly matches the user-selected target version. Commit the version bump with the release changes or ensure the release tag targets a commit that already contains the updated `package.json`.
+Verify the printed `package.json` and `package-lock.json` versions both match the user-selected target version. Commit the version bump (including `package-lock.json`) with the release changes or ensure the release tag targets a commit that already contains the updated files.
 
 ## 3. Build the Versioned DMG
 
@@ -144,8 +152,8 @@ DMG="dist/KanVibe-${VERSION}.dmg"
 RELEASE_NOTES="/tmp/kanvibe-release-${VERSION}.md"
 
 # Fail fast on an uncommitted version bump so the tag never points at the pre-bump HEAD.
-if ! git diff --quiet -- package.json || ! git diff --cached --quiet -- package.json; then
-  echo "package.json has uncommitted changes; commit the version bump before tagging the release." >&2
+if ! git diff --quiet -- package.json package-lock.json || ! git diff --cached --quiet -- package.json package-lock.json; then
+  echo "package.json/package-lock.json have uncommitted changes; commit the version bump before tagging the release." >&2
   exit 1
 fi
 HEAD_VERSION=$(git show HEAD:package.json | node -p "JSON.parse(require('fs').readFileSync(0,'utf8')).version")
@@ -236,7 +244,7 @@ If Homebrew cannot run in the current environment, still verify Ruby syntax, the
 Before reporting success, collect real output for:
 
 - current version printed before the bump and the user-selected target version;
-- `git diff -- package.json` or commit evidence showing the version bump;
+- `git diff -- package.json package-lock.json` or commit evidence showing the version bump in both files;
 - `pnpm deploy` completion;
 - `test -f dist/KanVibe-<version>.dmg` and `shasum -a 256`;
 - `gh release view <version>` showing the `KanVibe-<version>.dmg` asset;
