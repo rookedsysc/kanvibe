@@ -8,6 +8,11 @@ const projectActionMocks = vi.hoisted(() => ({
   scanAndRegisterProjects: vi.fn(),
 }));
 
+const boardCommandMocks = vi.hoisted(() => ({
+  registerShortcutBlocker: vi.fn(),
+  unregisterShortcutBlocker: vi.fn(),
+}));
+
 vi.mock("next-intl", () => ({
   useTranslations: (namespace?: string) => (key: string, values?: Record<string, unknown>) => {
     if (namespace === "settings" && key === "registeredCount") {
@@ -24,6 +29,12 @@ vi.mock("@/components/FolderSearchInput", () => ({
   default: ({ name }: { name: string }) => (
     <input data-testid="folder-search-input" type="hidden" name={name} value="~/" />
   ),
+}));
+
+vi.mock("@/desktop/renderer/components/BoardCommandProvider", () => ({
+  useBoardCommands: () => ({
+    registerShortcutBlocker: boardCommandMocks.registerShortcutBlocker,
+  }),
 }));
 
 vi.mock("@/desktop/renderer/actions/project", () => ({
@@ -47,6 +58,7 @@ function createProject(): Project {
 describe("ProjectRegistryDialog", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    boardCommandMocks.registerShortcutBlocker.mockReturnValue(boardCommandMocks.unregisterShortcutBlocker);
     projectActionMocks.deleteProject.mockResolvedValue(true);
     projectActionMocks.scanAndRegisterProjects.mockResolvedValue({
       registered: [],
@@ -84,6 +96,25 @@ describe("ProjectRegistryDialog", () => {
     expect(screen.getByRole("button", { name: "scanButton" })).toBeTruthy();
     expect(screen.getByText("projectList (1)")).toBeTruthy();
     expect(screen.getByText("kanvibe")).toBeTruthy();
+  });
+
+  it("열려 있는 동안 보드 단축키를 차단한다", () => {
+    const { unmount } = render(
+      <ProjectRegistryDialog
+        isOpen
+        onClose={vi.fn()}
+        projects={[createProject()]}
+        sshHosts={[]}
+      />,
+    );
+
+    const dialog = screen.getByRole("dialog", { name: "scanTitle" });
+    expect(dialog.closest('[data-shortcut-capture="true"]')).toBeTruthy();
+    expect(boardCommandMocks.registerShortcutBlocker).toHaveBeenCalledTimes(1);
+
+    unmount();
+
+    expect(boardCommandMocks.unregisterShortcutBlocker).toHaveBeenCalledTimes(1);
   });
 
   it("스캔 폼을 제출하면 선택한 SSH host와 경로로 프로젝트를 등록한다", async () => {

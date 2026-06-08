@@ -1,12 +1,13 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useTranslations } from "next-intl";
 import {
   deleteProject,
   scanAndRegisterProjects,
   type ScanResult,
 } from "@/desktop/renderer/actions/project";
+import { useBoardCommands } from "@/desktop/renderer/components/BoardCommandProvider";
 import type { Project } from "@/entities/Project";
 import FolderSearchInput from "@/components/FolderSearchInput";
 import { useEscapeKey } from "@/hooks/useEscapeKey";
@@ -26,6 +27,7 @@ export default function ProjectRegistryDialog({
 }: ProjectRegistryDialogProps) {
   const t = useTranslations("settings");
   const tc = useTranslations("common");
+  const { registerShortcutBlocker } = useBoardCommands();
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
@@ -33,6 +35,12 @@ export default function ProjectRegistryDialog({
   const [scanSshHost, setScanSshHost] = useState("");
 
   useEscapeKey(() => onClose(), { enabled: isOpen });
+
+  useEffect(() => {
+    if (!isOpen) return undefined;
+
+    return registerShortcutBlocker();
+  }, [isOpen, registerShortcutBlocker]);
 
   if (!isOpen) return null;
 
@@ -82,7 +90,10 @@ export default function ProjectRegistryDialog({
   }
 
   return (
-    <div className="fixed inset-0 z-[450] flex items-center justify-center p-4">
+    <div
+      data-shortcut-capture="true"
+      className="fixed inset-0 z-[450] flex items-center justify-center p-4"
+    >
       <div className="fixed inset-0 bg-bg-overlay" onClick={onClose} />
       <section
         role="dialog"
