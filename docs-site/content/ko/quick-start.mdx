@@ -8,20 +8,20 @@ title: Quick Start
 
 ## 1. 프로젝트 등록
 
-설정 화면에서 로컬 git 저장소를 선택합니다. KanVibe는 등록 시점에 프로젝트의 worktree 상태를 읽고, 지원되는 에이전트에 필요한 hook 파일을 자동 설치합니다.
+메인 보드에서 프로젝트 필터와 + 새 작업 사이의 돋보기 디렉터리 스캔 버튼을 눌러 프로젝트 등록 dialog를 엽니다. Dialog에서 로컬/원격 git 저장소가 있는 경로를 선택하고 "스캔 및 등록"을 실행하면 KanVibe가 프로젝트를 등록하고 기존 worktree 상태를 읽은 뒤 지원되는 에이전트 hook 파일을 설치합니다.
 
 <figure className="kv-shot">
   <img src="/screenshots/project-register.png" alt="프로젝트 등록 — 디렉토리 스캔" />
-  <figcaption>설정 → 디렉토리 스캔에서 로컬 git 저장소 경로를 지정하고 "스캔 및 등록"을 누르면 프로젝트가 등록됩니다.</figcaption>
+  <figcaption>보드 toolbar의 돋보기 버튼은 등록 dialog를 여는 진입점입니다. 경로를 지정하고 "스캔 및 등록"을 누르는 시점에 프로젝트 등록, worktree 감지, hook 설치가 실행됩니다.</figcaption>
 </figure>
 
 <div className="kv-note">
-  프로젝트 삭제는 KanVibe의 SQLite 레코드만 제거합니다. 실제 git branch, worktree, 파일은 삭제하지 않습니다.
+  프로젝트 삭제는 KanVibe 관리 대상에서 제외하는 동작입니다. SQLite의 프로젝트와 연결된 KanVibe 태스크 레코드만 제거하며 실제 git branch, worktree, 파일은 삭제하지 않습니다.
 </div>
 
 <figure className="kv-shot">
   <img src="/screenshots/project-delete.png" alt="등록된 프로젝트 목록 — 삭제 버튼" />
-  <figcaption>등록된 프로젝트 옆 "삭제" 버튼을 누르면 KanVibe 내부 레코드만 제거됩니다.</figcaption>
+  <figcaption>등록 dialog 하단의 등록된 프로젝트 목록에서 "삭제"를 누르면 KanVibe 내부 프로젝트/태스크 레코드만 제거됩니다.</figcaption>
 </figure>
 
 ## 2. 태스크 만들기
