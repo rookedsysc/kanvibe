@@ -356,7 +356,7 @@ describe("Board defaultSessionType sync", () => {
     expect(window.location.hash).toBe("#/ko/settings");
   });
 
-  it("프로젝트 스캔 버튼을 프로젝트 필터와 새 작업 버튼 사이에 렌더링한다", () => {
+  it("프로젝트 스캔 아이콘 버튼을 프로젝트 필터와 새 작업 버튼 사이에 렌더링한다", () => {
     render(
       <Board
         initialTasks={createEmptyTasks()}
@@ -378,6 +378,8 @@ describe("Board defaultSessionType sync", () => {
     const toolbarItems = Array.from(scanButton.parentElement?.children ?? []);
 
     expect(projectSelectorContainer).toBeTruthy();
+    expect(scanButton.getAttribute("aria-label")).toBe("scanTitle");
+    expect(scanButton.textContent).toBe("");
     expect(toolbarItems.indexOf(projectSelectorContainer as Element)).toBeLessThan(toolbarItems.indexOf(scanButton));
     expect(toolbarItems.indexOf(scanButton)).toBeLessThan(toolbarItems.indexOf(newTaskButton));
 

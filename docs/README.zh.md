@@ -131,9 +131,9 @@ brew untap rookedsysc/kanvibe
 
 ### 1. 注册项目
 
-在项目设置中使用 **fzf 风格的文件夹搜索**查找本地 git 仓库。KanVibe 会扫描目录并自动检测现有的 worktree 分支。
+在主看板顶部点击位于项目筛选和 **+ 新任务** 之间的**放大镜目录扫描按钮**。在对话框中使用 fzf 风格文件夹搜索选择本地或远程 git 仓库；KanVibe 会扫描目录并自动检测现有的 worktree 分支。
 
-如果要停止管理某个项目，请在项目设置中删除它。此操作只会从嵌入式 SQLite 数据库中移除该项目及其 KanVibe 任务；磁盘上的 git 分支、worktree 和文件都会保留。
+如果要停止管理某个项目，请在目录扫描对话框中删除它。此操作只会从嵌入式 SQLite 数据库中移除该项目及其 KanVibe 任务；磁盘上的 git 分支、worktree 和文件都会保留。
 
 ### 2. 创建任务
 
@@ -176,10 +176,10 @@ brew untap rookedsysc/kanvibe
 
 ### 基于分支的任务工作区
 - 创建会自动准备 git worktree 和终端会话的分支 TODO
-- 扫描现有 worktree 分支并注册为 TODO 任务
+- 使用看板工具栏上的放大镜扫描对话框注册仓库，并把现有 worktree 分支检测为 TODO 任务
 - 将每个任务打开到专用终端工作区，并在侧边 dock 中使用任务元数据、hook 控制、聊天和 PR 操作
 - 将任务移至 DONE 时自动清理其分支、worktree 和终端会话
-- 在设置中删除项目时，不会触碰现有 git 分支、worktree 或磁盘文件
+- 在目录扫描对话框中删除项目时，不会触碰现有 git 分支、worktree 或磁盘文件
 
 ### 终端会话（tmux / zellij）
 - 同时支持 **tmux** 和 **zellij** 作为终端复用器

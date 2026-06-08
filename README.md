@@ -131,9 +131,9 @@ brew untap rookedsysc/kanvibe
 
 ### 1. Register a Project
 
-Search for your local git repository using the **fzf-style folder search** in project settings. KanVibe scans the directory and automatically detects existing worktree branches.
+Open the **magnifying-glass directory scan button** on the main board toolbar — it sits between the project filter and **+ New Task**. In the dialog, use the fzf-style folder search to choose a local or remote git repository; KanVibe scans the directory and automatically detects existing worktree branches.
 
-To stop managing a project, delete it from project settings. This removes the project and its KanVibe tasks from the embedded SQLite database only; git branches, worktrees, and files on disk are kept.
+To stop managing a project, delete it from the directory scan dialog. This removes the project and its KanVibe tasks from the embedded SQLite database only; git branches, worktrees, and files on disk are kept.
 
 ### 2. Create Tasks
 
@@ -176,10 +176,10 @@ Each pane can run a custom command (e.g., `vim`, `htop`, `lazygit`, test runner,
 
 ### Branch-Based Task Workspace
 - Create branch TODOs that automatically prepare a git worktree and terminal session
-- Scan existing worktree branches and register them as TODO tasks
+- Use the board toolbar magnifying-glass scan dialog to register repositories and detect existing worktree branches as TODO tasks
 - Open each task into a dedicated terminal workspace with task metadata, hook controls, chat, and PR actions in the side dock
 - Move a task to DONE to clean up its branch, worktree, and terminal session automatically
-- Delete a project from settings without touching existing git branches, worktrees, or files on disk
+- Delete a project from the scan dialog without touching existing git branches, worktrees, or files on disk
 
 ### Terminal Sessions (tmux / zellij)
 - **tmux** and **zellij** are both supported as terminal multiplexers
