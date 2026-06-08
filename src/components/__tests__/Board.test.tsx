@@ -356,6 +356,36 @@ describe("Board defaultSessionType sync", () => {
     expect(window.location.hash).toBe("#/ko/settings");
   });
 
+  it("프로젝트 스캔 버튼을 프로젝트 필터와 새 작업 버튼 사이에 렌더링한다", () => {
+    render(
+      <Board
+        initialTasks={createEmptyTasks()}
+        initialDoneTotal={0}
+        initialDoneLimit={20}
+        sshHosts={[]}
+        projects={[createProject()]}
+        sidebarDefaultCollapsed={false}
+        doneAlertDismissed={false}
+        notificationSettings={{ isEnabled: true, enabledStatuses: ["progress", "pending", "review"] }}
+        defaultSessionType={SessionType.TMUX}
+        taskSearchShortcut="Mod+Shift+O"
+      />,
+    );
+
+    const projectSelectorContainer = screen.getByTestId("project-selector").parentElement;
+    const scanButton = screen.getByRole("button", { name: "scanTitle" });
+    const newTaskButton = screen.getByRole("button", { name: "newTask" });
+    const toolbarItems = Array.from(scanButton.parentElement?.children ?? []);
+
+    expect(projectSelectorContainer).toBeTruthy();
+    expect(toolbarItems.indexOf(projectSelectorContainer as Element)).toBeLessThan(toolbarItems.indexOf(scanButton));
+    expect(toolbarItems.indexOf(scanButton)).toBeLessThan(toolbarItems.indexOf(newTaskButton));
+
+    fireEvent.click(scanButton);
+
+    expect(screen.getByRole("dialog", { name: "scanTitle" })).toBeTruthy();
+  });
+
   it("드래그 종료 시 reorder action을 이벤트 이후에 호출한다", async () => {
     render(
       <Board
