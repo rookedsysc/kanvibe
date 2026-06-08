@@ -32,6 +32,7 @@ const mocks = vi.hoisted(() => ({
   broadcastTaskHookInstallFailed: vi.fn(),
   broadcastTaskPrMergedDetectedBatch: vi.fn(),
   writeTextFile: vi.fn(),
+  readTextFile: vi.fn(),
 }));
 
 vi.mock("child_process", () => ({
@@ -69,6 +70,11 @@ vi.mock("@/lib/worktree", () => ({
   removeWorktreeAndBranch: mocks.removeWorktreeAndBranch,
   createSessionWithoutWorktree: mocks.createSessionWithoutWorktree,
   removeSessionOnly: mocks.removeSessionOnly,
+  formatSessionName: (projectName: string, branchName: string) => `${projectName}-${branchName}`.replace(/\//g, "-"),
+  formatProjectBranchSessionName: (projectPath: string, branchName: string) => {
+    const projectName = projectPath.split("/").filter(Boolean).at(-1) ?? projectPath;
+    return `${projectName}-${branchName}`.replace(/\//g, "-");
+  },
 }));
 
 vi.mock("@/lib/terminal", () => ({
@@ -95,14 +101,10 @@ vi.mock("@/lib/gitOperations", () => ({
 }));
 
 vi.mock("@/lib/hostFileAccess", () => ({
+  readTextFile: mocks.readTextFile,
   writeTextFile: mocks.writeTextFile,
+  quoteShellArgument: (value: string) => `'${value.replaceAll("'", `'\\''`)}'`,
 }));
-
-function nextMacrotask<T>(value: T): Promise<T> {
-  return new Promise((resolve) => {
-    setTimeout(() => resolve(value), 0);
-  });
-}
 
 describe("kanbanService.createTask", () => {
   beforeEach(() => {
@@ -128,6 +130,8 @@ describe("kanbanService.createTask", () => {
     mocks.removeSessionOnly.mockResolvedValue(undefined);
     mocks.removeWorktreeAndBranch.mockResolvedValue(undefined);
     mocks.remoteBranchExists.mockResolvedValue(true);
+    mocks.execGit.mockResolvedValue("");
+    mocks.readTextFile.mockResolvedValue("");
     mocks.taskRepo.createQueryBuilder.mockReturnValue({
       select: vi.fn().mockReturnThis(),
       where: vi.fn().mockReturnThis(),
@@ -761,6 +765,49 @@ describe("kanbanService.createTask", () => {
     expect(mocks.broadcastBoardUpdate).toHaveBeenCalledTimes(1);
   });
 
+  it("sessionName이 사라진 원격 tmux task 삭제는 프로젝트와 브랜치에서 세션명을 계산해 정리한다", async () => {
+    // Given
+    const task = {
+      id: "task-lost-session-name",
+      projectId: "project-1",
+      branchName: "feature/cleanup-session",
+      worktreePath: null,
+      sshHost: null,
+      sessionType: null,
+      sessionName: null,
+    };
+    mocks.taskRepo.findOneBy.mockResolvedValue(task);
+    mocks.taskRepo.remove.mockResolvedValue(task);
+    mocks.projectRepo.findOneBy.mockResolvedValue({
+      id: "project-1",
+      repoPath: "/remote/repo",
+      sshHost: "remote-host",
+    });
+
+    const { deleteTask } = await import("@/desktop/main/services/kanbanService");
+
+    // When
+    const result = await deleteTask("task-lost-session-name");
+
+    // Then
+    expect(result).toBe(true);
+    expect(mocks.detachSession).toHaveBeenCalledWith("task-lost-session-name", "cleanup-task-resources");
+    expect(mocks.removeSessionOnly).toHaveBeenCalledWith(
+      "tmux",
+      "repo-feature-cleanup-session",
+      "remote-host",
+      { throwOnError: true },
+    );
+    expect(mocks.removeWorktreeAndBranch).toHaveBeenCalledWith(
+      "/remote/repo",
+      "feature/cleanup-session",
+      "remote-host",
+      { throwOnError: true, worktreePath: null },
+    );
+    expect(mocks.taskRepo.remove).toHaveBeenCalledWith(task);
+    expect(mocks.broadcastBoardUpdate).toHaveBeenCalledTimes(1);
+  });
+
   it("연결된 프로젝트를 찾을 수 없는 원격 stale task 삭제는 세션 정리 후 task 레코드를 삭제하지 않는다", async () => {
     // Given
     const consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
@@ -1039,83 +1086,182 @@ describe("kanbanService.createTask", () => {
     expect(mocks.broadcastBoardUpdate).toHaveBeenCalledTimes(1);
   });
 
-  it("Done 상태 변경은 리소스 정리를 기다리지 않고 먼저 저장한다", async () => {
-    // Given
-    const task = {
-      id: "task-done",
-      title: "Remote cleanup",
-      description: null,
-      status: "review",
-      branchName: null,
-      projectId: null,
-      sessionType: "tmux" as never,
-      sessionName: "repo-fix-done",
-      worktreePath: "/remote/repo__worktrees/fix-done",
-      sshHost: "remote-host",
-    };
-    mocks.taskRepo.findOneBy.mockResolvedValue(task);
-    mocks.taskRepo.save.mockImplementation(async (value) => value);
-    mocks.removeSessionOnly.mockReturnValue(new Promise(() => {}));
+  it("Done 상태 변경은 리소스 정리를 기다리지 않고 리소스 정보를 보존한 채 먼저 저장한다", async () => {
+    vi.useFakeTimers();
 
-    const { updateTaskStatus } = await import("@/desktop/main/services/kanbanService");
+    try {
+      // Given
+      const task = {
+        id: "task-done",
+        title: "Remote cleanup",
+        description: null,
+        status: "review",
+        branchName: null,
+        projectId: null,
+        sessionType: "tmux" as never,
+        sessionName: "repo-fix-done",
+        worktreePath: "/remote/repo__worktrees/fix-done",
+        sshHost: "remote-host",
+      };
+      mocks.taskRepo.findOneBy.mockResolvedValue(task);
+      mocks.taskRepo.save.mockImplementation(async (value) => value);
+      mocks.removeSessionOnly.mockReturnValue(new Promise(() => {}));
 
-    // When
-    const resultPromise = updateTaskStatus("task-done", "done" as never);
-    const raceResult = await Promise.race([
-      resultPromise.then(() => "resolved"),
-      nextMacrotask("pending"),
-    ]);
+      const { updateTaskStatus } = await import("@/desktop/main/services/kanbanService");
 
-    // Then
-    expect(raceResult).toBe("resolved");
-    expect(mocks.taskRepo.save).toHaveBeenCalledWith(expect.objectContaining({
-      id: "task-done",
-      status: "done",
-      sessionType: null,
-      sessionName: null,
-      worktreePath: null,
-    }));
-    expect(mocks.broadcastBoardUpdate).toHaveBeenCalledTimes(1);
+      // When
+      await updateTaskStatus("task-done", "done" as never);
+
+      // Then
+      expect(mocks.taskRepo.save).toHaveBeenCalledWith(expect.objectContaining({
+        id: "task-done",
+        status: "done",
+        sessionType: "tmux",
+        sessionName: "repo-fix-done",
+        worktreePath: "/remote/repo__worktrees/fix-done",
+      }));
+      expect(mocks.removeSessionOnly).not.toHaveBeenCalled();
+      expect(mocks.broadcastBoardUpdate).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.clearAllTimers();
+      vi.useRealTimers();
+    }
+  });
+
+  it("Done 전환 백그라운드 정리가 성공하면 보존했던 리소스 필드를 비운다", async () => {
+    vi.useFakeTimers();
+
+    try {
+      // Given
+      const task = {
+        id: "task-done-cleanup-success",
+        title: "Remote cleanup",
+        description: null,
+        status: "review",
+        branchName: null,
+        projectId: null,
+        sessionType: "tmux" as never,
+        sessionName: "repo-fix-done",
+        worktreePath: "/remote/repo__worktrees/fix-done",
+        sshHost: "remote-host",
+      };
+      mocks.taskRepo.findOneBy
+        .mockResolvedValueOnce(task)
+        .mockResolvedValueOnce({ ...task, status: "done" });
+      mocks.taskRepo.save.mockImplementation(async (value) => value);
+      mocks.taskRepo.update.mockResolvedValue({ affected: 1 });
+      mocks.removeSessionOnly.mockResolvedValue(undefined);
+
+      const { updateTaskStatus } = await import("@/desktop/main/services/kanbanService");
+
+      // When
+      await updateTaskStatus("task-done-cleanup-success", "done" as never);
+      await vi.runAllTimersAsync();
+
+      // Then
+      expect(mocks.taskRepo.update).toHaveBeenCalledWith("task-done-cleanup-success", {
+        sessionType: null,
+        sessionName: null,
+        worktreePath: null,
+      });
+      expect(mocks.broadcastBoardUpdate).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.clearAllTimers();
+      vi.useRealTimers();
+    }
+  });
+
+  it("오래된 Done 정리 성공은 새로 연결된 리소스를 비우지 않는다", async () => {
+    vi.useFakeTimers();
+
+    try {
+      // Given
+      const task = {
+        id: "task-stale-cleanup-success",
+        title: "Remote cleanup",
+        description: null,
+        status: "review",
+        branchName: null,
+        projectId: null,
+        sessionType: "tmux" as never,
+        sessionName: "repo-old-done",
+        worktreePath: "/remote/repo__worktrees/old-done",
+        sshHost: "remote-host",
+      };
+      mocks.taskRepo.findOneBy
+        .mockResolvedValueOnce(task)
+        .mockResolvedValueOnce({
+          ...task,
+          status: "done",
+          branchName: "feature/new-done",
+          projectId: "project-new",
+          sessionName: "repo-new-done",
+          worktreePath: "/remote/repo__worktrees/new-done",
+          sshHost: "remote-new",
+        });
+      mocks.taskRepo.save.mockImplementation(async (value) => value);
+      mocks.removeSessionOnly.mockResolvedValue(undefined);
+
+      const { updateTaskStatus } = await import("@/desktop/main/services/kanbanService");
+
+      // When
+      await updateTaskStatus("task-stale-cleanup-success", "done" as never);
+      await vi.runAllTimersAsync();
+
+      // Then
+      expect(mocks.taskRepo.update).not.toHaveBeenCalledWith("task-stale-cleanup-success", {
+        sessionType: null,
+        sessionName: null,
+        worktreePath: null,
+      });
+      expect(mocks.broadcastBoardUpdate).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.clearAllTimers();
+      vi.useRealTimers();
+    }
   });
 
   it("Done 컬럼 이동은 리소스 정리를 기다리지 않고 status와 순서를 먼저 저장한다", async () => {
-    // Given
-    const task = {
-      id: "task-done",
-      title: "Remote cleanup",
-      description: null,
-      status: "review",
-      branchName: null,
-      projectId: null,
-      sessionType: "tmux" as never,
-      sessionName: "repo-fix-done",
-      worktreePath: "/remote/repo__worktrees/fix-done",
-      sshHost: "remote-host",
-    };
-    mocks.taskRepo.findOneBy.mockResolvedValue(task);
-    mocks.taskRepo.update.mockResolvedValue({ affected: 1 });
-    mocks.removeSessionOnly.mockReturnValue(new Promise(() => {}));
+    vi.useFakeTimers();
 
-    const { moveTaskToColumn } = await import("@/desktop/main/services/kanbanService");
+    try {
+      // Given
+      const task = {
+        id: "task-done",
+        title: "Remote cleanup",
+        description: null,
+        status: "review",
+        branchName: null,
+        projectId: null,
+        sessionType: "tmux" as never,
+        sessionName: "repo-fix-done",
+        worktreePath: "/remote/repo__worktrees/fix-done",
+        sshHost: "remote-host",
+      };
+      mocks.taskRepo.findOneBy.mockResolvedValue(task);
+      mocks.taskRepo.update.mockResolvedValue({ affected: 1 });
+      mocks.removeSessionOnly.mockReturnValue(new Promise(() => {}));
 
-    // When
-    const resultPromise = moveTaskToColumn("task-done", "done" as never, ["task-a", "task-done"]);
-    const raceResult = await Promise.race([
-      resultPromise.then(() => "resolved"),
-      nextMacrotask("pending"),
-    ]);
+      const { moveTaskToColumn } = await import("@/desktop/main/services/kanbanService");
 
-    // Then
-    expect(raceResult).toBe("resolved");
-    expect(mocks.taskRepo.update).toHaveBeenCalledWith("task-done", {
-      status: "done",
-      sessionType: null,
-      sessionName: null,
-      worktreePath: null,
-    });
-    expect(mocks.taskRepo.update).toHaveBeenCalledWith("task-a", { displayOrder: 0 });
-    expect(mocks.taskRepo.update).toHaveBeenCalledWith("task-done", { displayOrder: 1 });
-    expect(mocks.broadcastBoardUpdate).toHaveBeenCalledTimes(1);
+      // When
+      await moveTaskToColumn("task-done", "done" as never, ["task-a", "task-done"]);
+
+      // Then
+      expect(mocks.taskRepo.update).toHaveBeenCalledWith("task-done", {
+        status: "done",
+        sessionType: "tmux",
+        sessionName: "repo-fix-done",
+        worktreePath: "/remote/repo__worktrees/fix-done",
+      });
+      expect(mocks.taskRepo.update).toHaveBeenCalledWith("task-a", { displayOrder: 0 });
+      expect(mocks.taskRepo.update).toHaveBeenCalledWith("task-done", { displayOrder: 1 });
+      expect(mocks.removeSessionOnly).not.toHaveBeenCalled();
+      expect(mocks.broadcastBoardUpdate).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.clearAllTimers();
+      vi.useRealTimers();
+    }
   });
 
   it("Done 컬럼 이동 중 순서 저장이 실패하면 이전 상태와 리소스 필드로 롤백한다", async () => {
@@ -1137,9 +1283,6 @@ describe("kanbanService.createTask", () => {
       .mockResolvedValueOnce({
         ...task,
         status: "done",
-        sessionType: null,
-        sessionName: null,
-        worktreePath: null,
       });
     mocks.taskRepo.update.mockImplementation(async (id, updates) => {
       if (id === "task-a" && "displayOrder" in updates) {
@@ -1193,9 +1336,6 @@ describe("kanbanService.createTask", () => {
         .mockResolvedValueOnce({
           ...task,
           status: "done",
-          sessionType: null,
-          sessionName: null,
-          worktreePath: null,
         });
       mocks.taskRepo.save.mockImplementation(async (value) => value);
       mocks.taskRepo.update.mockResolvedValue({ affected: 1 });
@@ -1216,6 +1356,64 @@ describe("kanbanService.createTask", () => {
         sshHost: "remote-host",
       });
       expect(mocks.broadcastBoardUpdate).toHaveBeenCalledTimes(2);
+      expect(consoleErrorSpy).toHaveBeenCalled();
+    } finally {
+      mocks.taskRepo.findOneBy.mockReset();
+      mocks.removeSessionOnly.mockReset();
+      consoleErrorSpy.mockRestore();
+      vi.clearAllTimers();
+      vi.useRealTimers();
+    }
+  });
+
+  it("오래된 Done 정리 실패는 새로 연결된 리소스를 롤백하지 않는다", async () => {
+    vi.useFakeTimers();
+    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    try {
+      // Given
+      const task = {
+        id: "task-stale-cleanup-failure",
+        title: "Remote cleanup",
+        description: null,
+        status: "review",
+        branchName: null,
+        projectId: null,
+        sessionType: "tmux" as never,
+        sessionName: "repo-old-done",
+        worktreePath: "/remote/repo__worktrees/old-done",
+        sshHost: "remote-host",
+      };
+      mocks.taskRepo.findOneBy
+        .mockResolvedValueOnce(task)
+        .mockResolvedValueOnce({
+          ...task,
+          status: "done",
+          branchName: "feature/new-done",
+          projectId: "project-new",
+          sessionName: "repo-new-done",
+          worktreePath: "/remote/repo__worktrees/new-done",
+          sshHost: "remote-new",
+        });
+      mocks.taskRepo.save.mockImplementation(async (value) => value);
+      mocks.taskRepo.update.mockResolvedValue({ affected: 1 });
+      mocks.removeSessionOnly.mockRejectedValueOnce(new Error("ssh failed"));
+
+      const { updateTaskStatus } = await import("@/desktop/main/services/kanbanService");
+
+      // When
+      await updateTaskStatus("task-stale-cleanup-failure", "done" as never);
+      await vi.runAllTimersAsync();
+
+      // Then
+      expect(mocks.taskRepo.update).not.toHaveBeenCalledWith("task-stale-cleanup-failure", {
+        status: "review",
+        sessionType: "tmux",
+        sessionName: "repo-old-done",
+        worktreePath: "/remote/repo__worktrees/old-done",
+        sshHost: "remote-host",
+      });
+      expect(mocks.broadcastBoardUpdate).toHaveBeenCalledTimes(1);
       expect(consoleErrorSpy).toHaveBeenCalled();
     } finally {
       mocks.taskRepo.findOneBy.mockReset();

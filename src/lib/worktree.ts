@@ -2,7 +2,7 @@ import path from "path";
 import { writeFile } from "fs/promises";
 import { SessionType } from "@/entities/KanbanTask";
 import { PaneLayoutType, type PaneCommand } from "@/entities/PaneLayoutConfig";
-import { execGit, listWorktrees } from "@/lib/gitOperations";
+import { execGit, listWorktrees, type WorktreeInfo } from "@/lib/gitOperations";
 import { getEffectivePaneLayout } from "@/desktop/main/services/paneLayoutService";
 
 interface WorktreeSession {
@@ -20,16 +20,24 @@ export function formatSessionName(projectName: string, branchName: string): stri
   return `${projectName}-${branchName}`.replace(/\//g, "-");
 }
 
+export function formatProjectBranchSessionName(projectPath: string, branchName: string): string {
+  return formatSessionName(path.basename(projectPath), branchName);
+}
+
 export function buildManagedWorktreePath(projectPath: string, branchName: string): string {
-  const projectName = path.basename(projectPath);
-  const worktreeBase = path.posix.join(
-    path.dirname(projectPath),
-    `${projectName}__worktrees`,
-  );
+  const worktreeBase = buildManagedWorktreeBasePath(projectPath);
 
   return path.posix.join(
     worktreeBase,
     branchName.replace(/\//g, "-"),
+  );
+}
+
+function buildManagedWorktreeBasePath(projectPath: string): string {
+  const projectName = path.basename(projectPath);
+  return path.posix.join(
+    path.dirname(projectPath),
+    `${projectName}__worktrees`,
   );
 }
 
@@ -242,9 +250,8 @@ export async function createWorktreeWithSession(
   sshHost?: string | null,
   projectId?: string | null,
 ): Promise<WorktreeSession> {
-  const projectName = path.basename(projectPath);
   const worktreePath = buildManagedWorktreePath(projectPath, branchName);
-  const sessionName = formatSessionName(projectName, branchName);
+  const sessionName = formatProjectBranchSessionName(projectPath, branchName);
 
   await execGit(
     `git -C "${projectPath}" worktree add "${worktreePath}" -b "${branchName}" "${baseBranch}"`,
@@ -302,8 +309,7 @@ export async function createSessionWithoutWorktree(
   void _sshHost;
   void _workingDir;
 
-  const projectName = path.basename(projectPath);
-  const sessionName = formatSessionName(projectName, branchName);
+  const sessionName = formatProjectBranchSessionName(projectPath, branchName);
 
   if (sessionType === SessionType.TMUX) {
     return { sessionName };
@@ -322,13 +328,118 @@ interface ResourceCleanupOptions {
   worktreePath?: string | null;
 }
 
+interface NormalizedManagedWorktreePaths {
+  projectPath: string;
+  basePath: string;
+  managedPath: string;
+}
+
 interface ResolvedBranchWorktree {
   path: string | null;
   isProjectRootCheckout: boolean;
+  registeredWorktrees: WorktreeInfo[];
 }
 
 function normalizeGitWorktreePath(worktreePath: string): string {
-  return worktreePath.replace(/\/+$/, "") || worktreePath;
+  const normalized = path.posix.normalize(worktreePath);
+  return normalized.replace(/\/+$/, "") || normalized;
+}
+
+function getNormalizedManagedWorktreePaths(
+  projectPath: string,
+  branchName: string,
+): NormalizedManagedWorktreePaths {
+  return {
+    projectPath: normalizeGitWorktreePath(projectPath),
+    basePath: normalizeGitWorktreePath(buildManagedWorktreeBasePath(projectPath)),
+    managedPath: normalizeGitWorktreePath(buildManagedWorktreePath(projectPath, branchName)),
+  };
+}
+
+function getManagedCleanupCandidatePaths(
+  projectPath: string,
+  branchName: string,
+  candidates: Array<string | null | undefined>,
+): string[] {
+  const managedPaths = getNormalizedManagedWorktreePaths(projectPath, branchName);
+  const normalizedCandidates = candidates
+    .filter((candidate): candidate is string => Boolean(candidate?.trim()))
+    .map(normalizeGitWorktreePath);
+  const allowedPaths = new Set([managedPaths.managedPath, ...normalizedCandidates]);
+
+  return [...allowedPaths].filter((candidatePath) => (
+    candidatePath !== managedPaths.projectPath
+    && candidatePath !== managedPaths.basePath
+    && candidatePath.startsWith(`${managedPaths.basePath}/`)
+    && (
+      candidatePath === managedPaths.managedPath
+      || normalizedCandidates.includes(candidatePath)
+    )
+  ));
+}
+
+function buildManagedWorktreeDirectoryCleanupCommand(
+  projectPath: string,
+  branchName: string,
+  candidatePath: string,
+  fallbackWorktreePath?: string | null,
+): string {
+  const managedPaths = getNormalizedManagedWorktreePaths(projectPath, branchName);
+  const normalizedFallbackPath = fallbackWorktreePath?.trim()
+    ? normalizeGitWorktreePath(fallbackWorktreePath)
+    : null;
+  const target = quoteForPosixShell(candidatePath);
+  const projectRoot = quoteForPosixShell(managedPaths.projectPath);
+  const basePrefixPattern = `${quoteForPosixShell(`${managedPaths.basePath}/`)}*`;
+  const allowedPathChecks = [managedPaths.managedPath, normalizedFallbackPath]
+    .filter((value): value is string => Boolean(value))
+    .filter((value, index, self) => self.indexOf(value) === index)
+    .map((value) => `[ ${target} = ${quoteForPosixShell(value)} ]`)
+    .join(" || ");
+
+  return [
+    `test -n ${target}`,
+    `if [ ${target} = ${projectRoot} ]; then exit 0; fi`,
+    `case ${target} in ${basePrefixPattern}) ;; *) exit 0;; esac`,
+    `if ! { ${allowedPathChecks}; }; then exit 0; fi`,
+    `test -d ${target} || exit 0`,
+    `test ! -L ${target}`,
+    `rm -rf -- ${target}`,
+    `test ! -e ${target}`,
+  ].join("; ");
+}
+
+async function removeStaleManagedWorktreeDirectories(
+  projectPath: string,
+  branchName: string,
+  candidates: Array<string | null | undefined>,
+  registeredWorktrees: WorktreeInfo[],
+  sshHost?: string | null,
+  options: ResourceCleanupOptions = {},
+): Promise<void> {
+  const registeredWorktreePaths = new Set(
+    registeredWorktrees.map((worktree) => normalizeGitWorktreePath(worktree.path)),
+  );
+  const cleanupPaths = getManagedCleanupCandidatePaths(projectPath, branchName, candidates)
+    .filter((cleanupPath) => !registeredWorktreePaths.has(cleanupPath));
+
+  for (const cleanupPath of cleanupPaths) {
+    try {
+      await execGit(
+        buildManagedWorktreeDirectoryCleanupCommand(
+          projectPath,
+          branchName,
+          cleanupPath,
+          options.worktreePath,
+        ),
+        sshHost,
+      );
+    } catch {
+      if (options.throwOnError) {
+        throw new Error(`managed worktree 디렉토리 정리 실패: ${cleanupPath}`);
+      }
+    }
+  }
 }
 
 async function resolveBranchWorktreePath(
@@ -338,35 +449,33 @@ async function resolveBranchWorktreePath(
   sshHost?: string | null,
 ): Promise<ResolvedBranchWorktree> {
   const worktrees = await listWorktrees(projectPath, sshHost);
-  const normalizedProjectPath = normalizeGitWorktreePath(projectPath);
+  const managedPaths = getNormalizedManagedWorktreePaths(projectPath, branchName);
   const normalizedFallbackWorktreePath = fallbackWorktreePath
     ? normalizeGitWorktreePath(fallbackWorktreePath)
     : null;
-  const normalizedManagedWorktreePath = normalizeGitWorktreePath(
-    buildManagedWorktreePath(projectPath, branchName),
-  );
   const matchingWorktrees = worktrees.filter((worktree) => (
     !worktree.isBare && worktree.branch === branchName
   ));
 
   const linkedWorktree = matchingWorktrees.find((worktree) => (
-    normalizeGitWorktreePath(worktree.path) !== normalizedProjectPath
+    normalizeGitWorktreePath(worktree.path) !== managedPaths.projectPath
   ));
 
   const fallbackWorktree = normalizedFallbackWorktreePath
     ? worktrees.find((worktree) => (
         !worktree.isBare
         && normalizeGitWorktreePath(worktree.path) === normalizedFallbackWorktreePath
-        && normalizedFallbackWorktreePath === normalizedManagedWorktreePath
-        && normalizedFallbackWorktreePath !== normalizedProjectPath
+        && normalizedFallbackWorktreePath === managedPaths.managedPath
+        && normalizedFallbackWorktreePath !== managedPaths.projectPath
       ))
     : null;
 
   return {
     path: linkedWorktree?.path ?? fallbackWorktree?.path ?? null,
     isProjectRootCheckout: matchingWorktrees.some((worktree) => (
-      normalizeGitWorktreePath(worktree.path) === normalizedProjectPath
+      normalizeGitWorktreePath(worktree.path) === managedPaths.projectPath
     )),
+    registeredWorktrees: worktrees,
   };
 }
 
@@ -403,6 +512,15 @@ export async function removeWorktreeAndBranch(
     }
   }
 
+  await removeStaleManagedWorktreeDirectories(
+    projectPath,
+    branchName,
+    [worktreePath, options.worktreePath, buildManagedWorktreePath(projectPath, branchName)],
+    resolvedWorktree.registeredWorktrees,
+    sshHost,
+    options,
+  );
+
   if (resolvedWorktree.isProjectRootCheckout) {
     return;
   }
@@ -427,7 +545,7 @@ export async function removeSessionOnly(
   try {
     if (sessionType === SessionType.TMUX) {
       await execGit(
-        buildTmuxSessionCleanupCommand(sessionName, options.throwOnError === true),
+        buildTmuxSessionCleanupCommand(sessionName, options.throwOnError === true, sshHost),
         sshHost,
       );
     } else {
@@ -444,17 +562,29 @@ export async function removeSessionOnly(
   }
 }
 
-function buildTmuxSessionCleanupCommand(sessionName: string, verifyCleanup: boolean): string {
+function buildTmuxSessionCleanupCommand(
+  sessionName: string,
+  verifyCleanup: boolean,
+  sshHost?: string | null,
+): string {
   const target = quoteForPosixShell(sessionName);
+  const tmuxCommands = sshHost
+    ? ["tmux -L kanvibe -f /dev/null", "tmux"]
+    : ["tmux"];
+  const killCommands = tmuxCommands.map((tmuxCommand) => (
+    `${tmuxCommand} kill-session -t ${target} 2>/dev/null || true`
+  ));
 
   if (!verifyCleanup) {
-    return `tmux kill-session -t ${target} 2>/dev/null || true`;
+    return killCommands.join("; ");
   }
 
   return [
     "command -v tmux >/dev/null 2>&1 || exit 1",
-    `tmux kill-session -t ${target} 2>/dev/null || true`,
-    `if tmux list-sessions -F '#{session_name}' 2>/dev/null | grep -Fx -- ${target} >/dev/null; then exit 1; fi`,
+    ...killCommands,
+    ...tmuxCommands.map((tmuxCommand) => (
+      `if ${tmuxCommand} has-session -t ${target} 2>/dev/null; then exit 1; fi`
+    )),
   ].join("; ");
 }
 
