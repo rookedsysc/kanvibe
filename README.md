@@ -131,9 +131,9 @@ brew untap rookedsysc/kanvibe
 
 ### 1. Register a Project
 
-Open the **magnifying-glass directory scan button** on the main board toolbar — it sits between the project filter and **+ New Task**. In the dialog, use the fzf-style folder search to choose a local or remote git repository; KanVibe scans the directory and automatically detects existing worktree branches.
+Click the **magnifying-glass directory scan button** on the main board toolbar — it sits between the project filter and **+ New Task** — to open the project registry dialog. In the dialog, choose a local or remote git repository path and click **Scan & Register**; KanVibe then registers the repository, detects existing worktree branches, and installs supported agent hooks.
 
-To stop managing a project, delete it from the directory scan dialog. This removes the project and its KanVibe tasks from the embedded SQLite database only; git branches, worktrees, and files on disk are kept.
+To stop managing a project, delete it from the registered-project list in the registry dialog. This removes only the SQLite project record and associated KanVibe task records; git branches, worktrees, and files on disk are kept.
 
 ### 2. Create Tasks
 
