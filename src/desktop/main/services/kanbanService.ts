@@ -3,7 +3,7 @@ import { In, Not, Like } from "typeorm";
 import { getTaskRepository } from "@/lib/database";
 import { KanbanTask, TaskStatus, SessionType } from "@/entities/KanbanTask";
 import { TaskPriority } from "@/entities/TaskPriority";
-import { createWorktreeWithSession, removeWorktreeAndBranch, createSessionWithoutWorktree, removeSessionOnly } from "@/lib/worktree";
+import { createWorktreeWithSession, removeWorktreeAndBranch, createSessionWithoutWorktree, removeSessionOnly, formatProjectBranchSessionName } from "@/lib/worktree";
 import { getProjectRepository } from "@/lib/database";
 import {
   broadcastBoardUpdate,
@@ -62,6 +62,8 @@ interface CleanupTaskResourcesOptions {
 }
 
 const TASK_RESOURCE_DELETE_CLEANUP_OPTIONS = { throwOnError: true } as const;
+
+type TaskRepository = Awaited<ReturnType<typeof getTaskRepository>>;
 
 interface DoneRollbackSnapshot {
   id: string;
@@ -260,9 +262,6 @@ export function prepareOptimisticDoneTransition(
   };
 
   task.status = TaskStatus.DONE;
-  task.sessionType = null;
-  task.sessionName = null;
-  task.worktreePath = null;
 
   if (options.clearSshHost) {
     task.sshHost = null;
@@ -274,8 +273,51 @@ export function prepareOptimisticDoneTransition(
 export function scheduleDoneCleanupWithRollback(plan: DoneCleanupPlan): void {
   setTimeout(() => {
     void deleteTaskResources(plan.cleanupTask)
+      .then(() => clearDoneCleanupResources(plan.rollbackSnapshot))
       .catch((error) => rollbackDoneTransition(plan.rollbackSnapshot, error));
   }, 0);
+}
+
+function matchesDoneCleanupSnapshot(
+  current: KanbanTask,
+  snapshot: DoneRollbackSnapshot,
+): boolean {
+  return current.sessionType === snapshot.sessionType
+    && current.sessionName === snapshot.sessionName
+    && current.worktreePath === snapshot.worktreePath
+    && current.sshHost === snapshot.sshHost
+    && current.projectId === snapshot.projectId
+    && current.branchName === snapshot.branchName;
+}
+
+async function getDoneCleanupRepositoryForCurrentSnapshot(
+  snapshot: DoneRollbackSnapshot,
+): Promise<TaskRepository | null> {
+  const repo = await getTaskRepository();
+  const current = await repo.findOneBy({ id: snapshot.id });
+  if (
+    !current
+    || current.status !== TaskStatus.DONE
+    || !matchesDoneCleanupSnapshot(current, snapshot)
+  ) {
+    return null;
+  }
+
+  return repo;
+}
+
+async function clearDoneCleanupResources(snapshot: DoneRollbackSnapshot): Promise<void> {
+  const repo = await getDoneCleanupRepositoryForCurrentSnapshot(snapshot);
+  if (!repo) {
+    return;
+  }
+
+  await repo.update(snapshot.id, {
+    sessionType: null,
+    sessionName: null,
+    worktreePath: null,
+  });
+  broadcastBoardUpdate();
 }
 
 async function rollbackDoneTransition(
@@ -288,9 +330,8 @@ async function rollbackDoneTransition(
   });
 
   try {
-    const repo = await getTaskRepository();
-    const current = await repo.findOneBy({ id: snapshot.id });
-    if (!current || current.status !== TaskStatus.DONE) {
+    const repo = await getDoneCleanupRepositoryForCurrentSnapshot(snapshot);
+    if (!repo) {
       return;
     }
 
@@ -749,6 +790,17 @@ async function cleanupTaskResources(
   }
 
   const sshHost = task.sshHost || project?.sshHost || null;
+  const fallbackTmuxSessionName = !task.sessionName
+    && (task.sessionType === SessionType.TMUX || !task.sessionType)
+    && sshHost
+    && task.branchName
+    && project?.repoPath
+      ? formatProjectBranchSessionName(project.repoPath, task.branchName)
+      : null;
+  const cleanupSessionType = task.sessionName
+    ? task.sessionType
+    : (fallbackTmuxSessionName ? SessionType.TMUX : null);
+  const cleanupSessionName = task.sessionName ?? fallbackTmuxSessionName;
   const sessionCleanupOptions = options.throwOnError
     ? { throwOnError: true }
     : undefined;
@@ -758,21 +810,21 @@ async function cleanupTaskResources(
   };
 
   /** 브랜치별 독립 세션 정리 */
-  if (task.sessionType && task.sessionName) {
+  if (cleanupSessionType && cleanupSessionName) {
     try {
       detachSession(task.id, "cleanup-task-resources");
 
       if (sessionCleanupOptions) {
         await removeSessionOnly(
-          task.sessionType,
-          task.sessionName,
+          cleanupSessionType,
+          cleanupSessionName,
           sshHost,
           sessionCleanupOptions,
         );
       } else {
         await removeSessionOnly(
-          task.sessionType,
-          task.sessionName,
+          cleanupSessionType,
+          cleanupSessionName,
           sshHost,
         );
       }
@@ -980,9 +1032,9 @@ export async function moveTaskToColumn(
         doneCleanupPlan = prepareOptimisticDoneTransition(task);
         await repo.update(taskId, {
           status: newStatus,
-          sessionType: null,
-          sessionName: null,
-          worktreePath: null,
+          sessionType: task.sessionType,
+          sessionName: task.sessionName,
+          worktreePath: task.worktreePath,
         });
         await persistTaskState({ ...doneCleanupPlan.cleanupTask, status: TaskStatus.DONE });
       }

@@ -79,6 +79,17 @@ describe("formatSessionName", () => {
     // Then
     expect(result).toBe("parent-project-feat-test");
   });
+
+  it("should derive session name from project path and branch name", async () => {
+    // Given
+    const { formatProjectBranchSessionName } = await import("@/lib/worktree");
+
+    // When
+    const result = formatProjectBranchSessionName("/workspace/kanvibe", "feat/session-cleanup");
+
+    // Then
+    expect(result).toBe("kanvibe-feat-session-cleanup");
+  });
 });
 
 describe("sanitizeZellijSessionName", () => {
@@ -250,6 +261,64 @@ describe("removeWorktreeAndBranch", () => {
     );
   });
 
+  it("should delete a stale managed worktree directory even when git no longer lists it", async () => {
+    // Given
+    mockListWorktrees.mockResolvedValue([
+      {
+        path: "/workspace/repo",
+        branch: "main",
+        isBare: false,
+      },
+    ]);
+
+    const { removeWorktreeAndBranch } = await import("@/lib/worktree");
+
+    // When
+    await removeWorktreeAndBranch(
+      "/workspace/repo",
+      "feature/stale-dir",
+      "remote-host",
+      { throwOnError: true, worktreePath: "/workspace/repo__worktrees/feature-stale-dir" },
+    );
+
+    // Then
+    const staleCleanupCommand = filterCalls("rm -rf -- '/workspace/repo__worktrees/feature-stale-dir'")[0];
+    expect(staleCleanupCommand).toContain("test -d '/workspace/repo__worktrees/feature-stale-dir'");
+    expect(staleCleanupCommand).toContain("test ! -L '/workspace/repo__worktrees/feature-stale-dir'");
+    expect(staleCleanupCommand).toContain("'/workspace/repo__worktrees/feature-stale-dir' = '/workspace/repo__worktrees/feature-stale-dir'");
+    expect(mockExecGit).toHaveBeenCalledWith(staleCleanupCommand, "remote-host");
+  });
+
+  it("should not raw-delete a sanitized managed path that is still registered to another worktree", async () => {
+    // Given
+    mockListWorktrees.mockResolvedValue([
+      {
+        path: "/workspace/repo",
+        branch: "main",
+        isBare: false,
+      },
+      {
+        path: "/workspace/repo__worktrees/feature-a-b",
+        branch: "feature-a/b",
+        isBare: false,
+      },
+    ]);
+
+    const { removeWorktreeAndBranch } = await import("@/lib/worktree");
+
+    // When
+    await removeWorktreeAndBranch(
+      "/workspace/repo",
+      "feature/a-b",
+      "remote-host",
+      { throwOnError: true, worktreePath: null },
+    );
+
+    // Then
+    expect(filterCalls("worktree remove")).toHaveLength(0);
+    expect(filterCalls("rm -rf -- '/workspace/repo__worktrees/feature-a-b'")).toHaveLength(0);
+  });
+
   it("should fall back to the managed task worktree path when the worktree branch changed", async () => {
     // Given
     mockListWorktrees.mockResolvedValue([
@@ -419,10 +488,12 @@ describe("removeSessionOnly", () => {
     // Then
     const command = mockExecGit.mock.calls[0][0] as string;
     expect(command).toContain("command -v tmux >/dev/null 2>&1");
+    expect(command).toContain("tmux -L kanvibe -f /dev/null kill-session -t 'feat-branch'");
     expect(command).toContain("tmux kill-session -t 'feat-branch'");
-    expect(command).toContain("tmux list-sessions -F '#{session_name}'");
-    expect(command).toContain("grep -Fx -- 'feat-branch'");
-    expect(command).not.toContain("tmux has-session");
+    expect(command).toContain("if tmux -L kanvibe -f /dev/null has-session -t 'feat-branch' 2>/dev/null; then exit 1; fi");
+    expect(command).toContain("if tmux has-session -t 'feat-branch' 2>/dev/null; then exit 1; fi");
+    expect(command).not.toContain("tmux list-sessions");
+    expect(command).not.toContain("grep -Fx");
     expect(mockExecGit).toHaveBeenCalledWith(command, "remote-host");
   });
 

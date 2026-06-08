@@ -75,6 +75,7 @@ vi.mock("@/lib/gitOperations", () => ({
 vi.mock("@/lib/worktree", () => ({
   isSessionAlive: mocks.isSessionAlive,
   formatSessionName: mocks.formatSessionName,
+  formatProjectBranchSessionName: mocks.formatSessionName,
   createSessionWithoutWorktree: mocks.createSessionWithoutWorktree,
 }));
 
