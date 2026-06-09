@@ -48,7 +48,12 @@ fi
 
 KANVIBE_TARGET_ROWS="$(
   if [ -f "\${KANVIBE_TARGETS_FILE}" ]; then
-    node -e 'const fs=require("fs");const file=process.argv[1];const fallbackUrl=process.argv[2];const fallbackTaskId=process.argv[3];const normalize=(value)=>String(value||"").trim().replace(new RegExp("/+$"),"");function printFallback(){const url=normalize(fallbackUrl);if(url&&fallbackTaskId) process.stdout.write(url+"\\t"+fallbackTaskId);}try{const parsed=JSON.parse(fs.readFileSync(file,"utf8"));const targets=Array.isArray(parsed.targets)?parsed.targets:[];const rows=[];const seen=new Set();for(const target of targets){const url=normalize(target&&target.url);const taskId=String(target&&target.taskId||"").trim();if(!url||!taskId||seen.has(taskId)) continue;seen.add(taskId);rows.push(url+"\\t"+taskId);}if(rows.length){process.stdout.write(rows.join("\\n"));}else{printFallback();}}catch{printFallback();}' "\${KANVIBE_TARGETS_FILE}" "\${KANVIBE_URL}" "\${TASK_ID}" 2>/dev/null || true
+    grep -oE '"(url|taskId)"[[:space:]]*:[[:space:]]*"[^"]*"' "\${KANVIBE_TARGETS_FILE}" 2>/dev/null \
+      | awk '
+          { s=$0; sub(/^"[^"]*"[[:space:]]*:[[:space:]]*"/,"",s); sub(/"$/,"",s) }
+          /^"url"/ { u=s; sub(/\\/+$/,"",u); haveUrl=1; next }
+          /^"taskId"/ { if(haveUrl){ if(u!="" && s!="" && !(s in seen)){ seen[s]=1; print u "\\t" s } haveUrl=0 } }
+        ' 2>/dev/null || true
   else
     printf '%s\t%s\n' "\${KANVIBE_URL%/}" "\${TASK_ID}"
   fi

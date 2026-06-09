@@ -1,7 +1,8 @@
 import { execFile } from "node:child_process";
-import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { accessSync, constants, statSync } from "node:fs";
+import { chmod, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { delimiter, join } from "node:path";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { promisify } from "node:util";
 import { describe, expect, it } from "vitest";
 import {
@@ -14,6 +15,25 @@ import {
 } from "@/lib/hookTaskBinding";
 
 const execFileAsync = promisify(execFile);
+
+/**
+ * `process.env.PATH`에서 실제 실행 파일 경로를 찾는다. shell alias/function이 아닌
+ * 진짜 바이너리만 sandbox PATH로 노출해 node 없는 hook 환경을 재현하기 위해 사용한다.
+ */
+function resolveRealBinary(name: string): string | null {
+  const dirs = (process.env.PATH ?? "").split(delimiter).filter(Boolean);
+  for (const dir of dirs) {
+    const candidate = join(dir, name);
+    try {
+      if (!statSync(candidate).isFile()) continue;
+      accessSync(candidate, constants.X_OK);
+      return candidate;
+    } catch {
+      /* 다음 후보 탐색 */
+    }
+  }
+  return null;
+}
 
 describe("hookTaskBinding", () => {
   it("shell resolver는 hook 파일 안에 task id를 직접 고정한다", () => {
@@ -160,6 +180,95 @@ describe("hookTaskBinding", () => {
         { taskId: "local-task", status: "review" },
         { taskId: "dev-task", status: "review" },
       ]);
+    } finally {
+      await rm(repoPath, { recursive: true, force: true });
+    }
+  });
+
+  it("node가 PATH에 없어도 targets.json 모든 대상에 fan-out 한다", async () => {
+    const repoPath = await mkdtemp(join(tmpdir(), "kanvibe-hook-nonode-"));
+
+    try {
+      const hookDir = join(repoPath, ".claude", "hooks");
+      const sandboxBinDir = join(repoPath, "sandbox-bin");
+      await mkdir(join(repoPath, ".kanvibe"), { recursive: true });
+      await mkdir(hookDir, { recursive: true });
+      await mkdir(sandboxBinDir, { recursive: true });
+
+      await writeFile(
+        join(repoPath, ".kanvibe", "targets.json"),
+        JSON.stringify({
+          schemaVersion: 1,
+          targets: [
+            { url: "http://127.0.0.1:9736/", taskId: "local-task" },
+            { url: "http://127.0.0.1:9736", taskId: "dev-task" },
+          ],
+        }),
+        "utf8",
+      );
+
+      // hook이 사용하는 POSIX 도구만 sandbox PATH로 노출한다. node는 의도적으로 제외해
+      // node 미설치 hook 환경(예: Codex CLI)을 재현한다.
+      const requiredTools = ["bash", "grep", "awk", "sed", "date", "mkdir", "touch", "dirname"];
+      for (const tool of requiredTools) {
+        const real = resolveRealBinary(tool);
+        if (!real) {
+          throw new Error(`테스트에 필요한 ${tool} 바이너리를 PATH에서 찾을 수 없습니다`);
+        }
+        await symlink(real, join(sandboxBinDir, tool));
+      }
+      const gitBinary = resolveRealBinary("git");
+      if (gitBinary) {
+        await symlink(gitBinary, join(sandboxBinDir, "git"));
+      }
+
+      // fake curl을 node가 아닌 POSIX shell script로 작성해 node 의존성을 제거한다.
+      const curlLogPath = join(repoPath, "curl.log");
+      const fakeCurlPath = join(sandboxBinDir, "curl");
+      await writeFile(
+        fakeCurlPath,
+        [
+          "#!/bin/sh",
+          'printf \'%s\\n\' "$*" >> "$KANVIBE_CURL_LOG"',
+        ].join("\n"),
+        "utf8",
+      );
+      await chmod(fakeCurlPath, 0o755);
+
+      const scriptPath = join(hookDir, "kanvibe-test-hook.sh");
+      await writeFile(
+        scriptPath,
+        [
+          "#!/bin/bash",
+          'KANVIBE_URL="http://fallback:9736"',
+          buildShellTaskIdResolver("fallback-task"),
+          buildShellKanvibeStatusUpdater("review"),
+        ].join("\n"),
+        "utf8",
+      );
+      await chmod(scriptPath, 0o755);
+
+      const bashBinary = resolveRealBinary("bash");
+      await execFileAsync(bashBinary!, [scriptPath], {
+        cwd: repoPath,
+        env: {
+          // process.env를 펼치지 않아 node가 들어 있는 디렉터리를 PATH에서 배제한다.
+          PATH: sandboxBinDir,
+          HOME: repoPath,
+          KANVIBE_CURL_LOG: curlLogPath,
+        },
+      });
+
+      const curlCalls = (await readFile(curlLogPath, "utf8"))
+        .trim()
+        .split("\n")
+        .filter((line) => line.length > 0);
+      const postedTaskIds = curlCalls
+        .map((line) => line.match(/"taskId":\s*"([^"]+)"/)?.[1])
+        .filter((value): value is string => Boolean(value));
+
+      expect(postedTaskIds).toEqual(["local-task", "dev-task"]);
+      expect(curlCalls.every((line) => line.includes("http://127.0.0.1:9736/api/hooks/status"))).toBe(true);
     } finally {
       await rm(repoPath, { recursive: true, force: true });
     }
