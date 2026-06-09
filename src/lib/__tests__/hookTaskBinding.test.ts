@@ -117,87 +117,7 @@ describe("hookTaskBinding", () => {
     expect(hasShellKanvibeTargetFanout(updaterWithoutTargets)).toBe(false);
   });
 
-  it("생성된 shell updater는 targets.json 대상별 task id로 status POST를 fan-out 한다", async () => {
-    const repoPath = await mkdtemp(join(tmpdir(), "kanvibe-hook-fanout-"));
-
-    try {
-      const hookDir = join(repoPath, ".claude", "hooks");
-      const fakeBinDir = join(repoPath, "bin");
-      await mkdir(join(repoPath, ".kanvibe"), { recursive: true });
-      await mkdir(hookDir, { recursive: true });
-      await mkdir(fakeBinDir, { recursive: true });
-
-      await writeFile(
-        join(repoPath, ".kanvibe", "targets.json"),
-        JSON.stringify({
-          schemaVersion: 1,
-          targets: [
-            { url: "http://127.0.0.1:9736/", taskId: "local-task" },
-            { url: "http://127.0.0.1:9736", taskId: "dev-task" },
-          ],
-        }),
-        "utf8",
-      );
-
-      const curlLogPath = join(repoPath, "curl.log");
-      const fakeCurlPath = join(fakeBinDir, "curl");
-      await writeFile(
-        fakeCurlPath,
-        [
-          "#!/usr/bin/env node",
-          "const fs = require('fs');",
-          "fs.appendFileSync(process.env.KANVIBE_CURL_LOG, JSON.stringify(process.argv.slice(2)) + '\\n');",
-        ].join("\n"),
-        "utf8",
-      );
-      await chmod(fakeCurlPath, 0o755);
-
-      const scriptPath = join(hookDir, "kanvibe-test-hook.sh");
-      await writeFile(
-        scriptPath,
-        [
-          "#!/bin/bash",
-          'KANVIBE_URL="http://fallback:9736"',
-          buildShellTaskIdResolver("fallback-task"),
-          buildShellKanvibeStatusUpdater("review"),
-        ].join("\n"),
-        "utf8",
-      );
-      await chmod(scriptPath, 0o755);
-
-      await execFileAsync("bash", [scriptPath], {
-        cwd: repoPath,
-        env: {
-          ...process.env,
-          KANVIBE_CURL_LOG: curlLogPath,
-          PATH: `${fakeBinDir}:${process.env.PATH ?? ""}`,
-        },
-      });
-
-      const status = JSON.parse(await readFile(join(repoPath, ".kanvibe", "status.json"), "utf8")) as { status?: string };
-      expect(status.status).toBe("review");
-
-      const curlCalls = (await readFile(curlLogPath, "utf8"))
-        .trim()
-        .split("\n")
-        .map((line) => JSON.parse(line) as string[]);
-      const postUrls = curlCalls.map((args) => args.find((arg) => arg.endsWith("/api/hooks/status")));
-      const payloads = curlCalls.map((args) => JSON.parse(args[args.indexOf("-d") + 1]) as { taskId: string; status: string });
-
-      expect(postUrls).toEqual([
-        "http://127.0.0.1:9736/api/hooks/status",
-        "http://127.0.0.1:9736/api/hooks/status",
-      ]);
-      expect(payloads).toEqual([
-        { taskId: "local-task", status: "review" },
-        { taskId: "dev-task", status: "review" },
-      ]);
-    } finally {
-      await rm(repoPath, { recursive: true, force: true });
-    }
-  });
-
-  it("node가 PATH에 없어도 targets.json 모든 대상에 fan-out 한다", async () => {
+  it("node·user env 없이도 targets.json 대상별 task id로 status를 fan-out 한다", async () => {
     const repoPath = await mkdtemp(join(tmpdir(), "kanvibe-hook-nonode-"));
 
     try {
@@ -271,16 +191,31 @@ describe("hookTaskBinding", () => {
         },
       });
 
+      const status = JSON.parse(
+        await readFile(join(repoPath, ".kanvibe", "status.json"), "utf8"),
+      ) as { status?: string };
+      expect(status.status).toBe("review");
+
       const curlCalls = (await readFile(curlLogPath, "utf8"))
         .trim()
         .split("\n")
         .filter((line) => line.length > 0);
-      const postedTaskIds = curlCalls
-        .map((line) => line.match(/"taskId":\s*"([^"]+)"/)?.[1])
-        .filter((value): value is string => Boolean(value));
+      const postedEndpoints = curlCalls.map((line) =>
+        line.split(/\s+/).find((token) => token.endsWith("/api/hooks/status")),
+      );
+      const payloads = curlCalls.map((line) => ({
+        taskId: line.match(/"taskId":\s*"([^"]+)"/)?.[1],
+        status: line.match(/"status":\s*"([^"]+)"/)?.[1],
+      }));
 
-      expect(postedTaskIds).toEqual(["local-task", "dev-task"]);
-      expect(curlCalls.every((line) => line.includes("http://127.0.0.1:9736/api/hooks/status"))).toBe(true);
+      expect(postedEndpoints).toEqual([
+        "http://127.0.0.1:9736/api/hooks/status",
+        "http://127.0.0.1:9736/api/hooks/status",
+      ]);
+      expect(payloads).toEqual([
+        { taskId: "local-task", status: "review" },
+        { taskId: "dev-task", status: "review" },
+      ]);
     } finally {
       await rm(repoPath, { recursive: true, force: true });
     }
