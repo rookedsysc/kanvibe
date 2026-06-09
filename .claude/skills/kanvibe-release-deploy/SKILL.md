@@ -1,15 +1,15 @@
 ---
 name: kanvibe-release-deploy
-description: "Use this skill whenever releasing or deploying KanVibe desktop: ask only for the target version and release-note approval, then let the AI update package versions, run `pnpm deploy`, publish the DMG GitHub release, update the Homebrew cask, create the release PR, and auto-merge the release/promotion PRs when checks pass. Always use it for KanVibe release versions, DMG uploads, or Homebrew cask checksum updates."
+description: "Use this skill whenever releasing or deploying KanVibe desktop from a clean, up-to-date `dev` checkout: ask only for the target version and release-note approval, then let the AI update package versions, run `pnpm deploy`, publish the DMG GitHub release, update the Homebrew cask, create the release PR, and auto-merge the release/promotion PRs when checks pass. Always use it for KanVibe release versions, DMG uploads, or Homebrew cask checksum updates."
 ---
 
 # KanVibe Release Deploy
 
 ## Overview
 
-This skill coordinates the KanVibe desktop release workflow from version selection to DMG publication, Homebrew cask update, release PR creation, and automatic merge. It is intentionally release-operator focused: read and report the current `package.json` version, ask the user for the target release version, update the package version, run the `pnpm deploy` DMG build, get explicit approval for the release notes, upload the exact DMG artifact to the `rookedsysc/kanvibe` GitHub release, update the separate Homebrew cask repository with the same version and SHA-256, create the KanVibe release PR, then merge the release and promotion PRs automatically once checks and review-thread gates pass.
+This skill coordinates the KanVibe desktop release workflow from version selection to DMG publication, Homebrew cask update, release PR creation, and automatic merge. It is intentionally release-operator focused and may only be invoked from a clean, up-to-date local `dev` checkout: read and report the current `package.json` version, ask the user for the target release version, update the package version, run the `pnpm deploy` DMG build, get explicit approval for the release notes, upload the exact DMG artifact to the `rookedsysc/kanvibe` GitHub release, update the separate Homebrew cask repository with the same version and SHA-256, create the KanVibe release PR, then merge the release and promotion PRs automatically once checks and review-thread gates pass.
 
-The only routine user gates are target-version selection and release-note approval. After those are approved, do not ask for additional confirmation for build, release publication, cask update, PR creation, auto-merge enablement, or merge completion unless a blocker or branch-policy ambiguity appears.
+The only routine user gates are target-version selection and release-note approval. After those are approved, do not ask for additional confirmation for build, release publication, cask update, PR creation, auto-merge enablement, or merge completion unless a blocker or branch-policy violation appears.
 
 Before touching the cask, read `references/homebrew-cask-repository.md`. The cask repository location and cask file path live there so this skill stays portable if the tap checkout moves.
 
@@ -25,7 +25,7 @@ Use this skill when the user asks to:
 - update the KanVibe Homebrew cask version or checksum;
 - specifically release a version such as `1.0.2` where the expected DMG is `dist/KanVibe-1.0.2.dmg`.
 
-Do not use this skill for docs-site deploys, Linux-only package checks, or routine feature PRs that do not publish a desktop release.
+Do not use this skill for docs-site deploys, Linux-only package checks, routine feature PRs that do not publish a desktop release, or any checkout that is not clean, up-to-date `dev`.
 
 ## Release Invariants
 
@@ -35,8 +35,10 @@ Do not use this skill for docs-site deploys, Linux-only package checks, or routi
 - Use the SHA-256 of the final DMG produced after the version bump and `pnpm deploy`, not an earlier artifact.
 - `pnpm deploy` is the release build command for this workflow. It runs `scripts/dist-deploy.cjs`, which builds the DMG, codesigns, notarizes, staples, and prints the SHA-256.
 - `pnpm deploy` performs macOS signing/notarization, so it must run on macOS with Apple signing tools configured. Do not fabricate build, notarization, or checksum output from Linux.
+- Invoke this skill only from a clean, up-to-date local `dev` checkout. Stop on `main`, feature branches, existing release branches, detached HEADs, dirty worktrees, or a local `dev` HEAD that differs from `origin/dev`.
+- The release source is always `origin/dev`. Do not accept, infer, or ask about alternate source branches for this workflow.
 - The user's target-version selection and release-note approval authorize the remaining release actions. After those two gates, the AI should continue through release publication, cask update, release PR creation, auto-merge enablement, and pinned release-branch promotion to `main` without asking for another confirmation.
-- Stop instead of auto-merging only when checks fail, required review threads remain unresolved, the PR is not mergeable, GitHub permissions are missing, branch policy is ambiguous, or the visible PR diff contains files outside the expected release bump scope.
+- Stop instead of auto-merging only when checks fail, required review threads remain unresolved, the PR is not mergeable, GitHub permissions are missing, the checkout is not clean/up-to-date `dev`, or the visible PR diff contains files outside the expected release bump scope.
 
 ## 1. Preflight and Version Selection
 
@@ -44,8 +46,23 @@ Work from the KanVibe application repository, not the Homebrew tap.
 
 ```bash
 pwd
-git status --short --branch
 git fetch origin --prune
+CURRENT_BRANCH=$(git branch --show-current)
+if [ "$CURRENT_BRANCH" != "dev" ]; then
+  echo "KanVibe release deploy must start from the local dev branch; current branch is ${CURRENT_BRANCH:-detached}." >&2
+  exit 1
+fi
+if [ -n "$(git status --short)" ]; then
+  echo "KanVibe release deploy must start from a clean dev worktree." >&2
+  git status --short
+  exit 1
+fi
+git pull --ff-only origin dev
+if [ "$(git rev-parse HEAD)" != "$(git rev-parse origin/dev)" ]; then
+  echo "Local dev must match origin/dev before cutting a release branch." >&2
+  exit 1
+fi
+git status --short --branch
 node -p "process.version"
 CURRENT_VERSION=$(node -p "require('./package.json').version")
 printf 'Current KanVibe version: %s\n' "$CURRENT_VERSION"
@@ -65,8 +82,8 @@ Validate these before proceeding:
 
 1. The target version is a plain `x.y.z` value such as `1.0.2`; do not include a leading `v` or any prerelease/build suffix (for example `1.0.3-beta.1`). The desktop update checker (`src/desktop/shared/releaseUpdates.ts`) only parses `^v?\d+\.\d+\.\d+$`, so a prerelease tag would be invisible to in-app updates.
 2. The target version is different from the current `package.json` version unless the user explicitly wants to rebuild the same version.
-3. Work from a clean release worktree or a worktree that only contains intentional release-version changes.
-4. Default the release source to `origin/dev` because KanVibe integrates through `dev`. Ask only if the user requested a different source branch/commit or the repository state makes the release source ambiguous.
+3. Work from a clean local `dev` checkout before creating the release branch. If the current branch is not `dev`, stop and tell the user to rerun the skill from `dev`; do not silently proceed from `main`, a feature branch, or an existing release branch.
+4. Confirm local `dev` matches `origin/dev` after `git fetch`/`git pull --ff-only`. The release source is always `origin/dev`; do not ask about or honor alternate source branches in this workflow.
 5. The active GitHub account can create releases in `rookedsysc/kanvibe`.
 6. If the release build requires macOS signing tools, the host is macOS:
 
@@ -76,7 +93,7 @@ uname -s
 
 If the required host/tooling is unavailable, stop and report the blocker. Do not fake `pnpm deploy`, DMG, notarization, or checksum output.
 
-After the target version is selected, create a dedicated release branch from `origin/dev` unless you are already in a clean release branch based on the intended source. This keeps the release PR narrow and prevents dirty local feature work from leaking into the release.
+After the target version is selected, create a dedicated release branch from the current `origin/dev` SHA. Do not use an existing release branch as the invocation point; reuse an existing release branch only after the `dev` preflight passes and only when it is the same release version with no unrelated files. This keeps the release PR narrow and prevents dirty local feature work from leaking into the release.
 
 ```bash
 TARGET_VERSION="<version supplied by user>"
@@ -85,8 +102,10 @@ RELEASE_BRANCH="release/${TARGET_VERSION}"
 RELEASE_WT="/home/rookedsysc/Documents/kanvibe/kanvibe__worktrees/release-${TARGET_VERSION}"
 
 git fetch origin --prune
-git worktree add -b "$RELEASE_BRANCH" "$RELEASE_WT" "origin/${BASE_BRANCH}"
+SOURCE_SHA=$(git rev-parse "origin/${BASE_BRANCH}")
+git worktree add -b "$RELEASE_BRANCH" "$RELEASE_WT" "$SOURCE_SHA"
 cd "$RELEASE_WT"
+printf 'Release source SHA: %s\n' "$SOURCE_SHA"
 git status --short --branch
 ```
 
@@ -184,10 +203,10 @@ After release-note approval, commit and push the release branch before deriving 
 VERSION=$(node -p "require('./package.json').version")
 DMG="dist/KanVibe-${VERSION}.dmg"
 RELEASE_NOTES="/tmp/kanvibe-release-${VERSION}.md"
-BASE_BRANCH="${BASE_BRANCH:-dev}"
+BASE_BRANCH="dev"
 RELEASE_BRANCH="${RELEASE_BRANCH:-release/${VERSION}}"
 
-# Verify the release branch diff is only the expected version bump.
+# Verify the release branch diff is only the expected version bump against the required dev base.
 git fetch origin --prune
 git diff --name-status "origin/${BASE_BRANCH}"
 node -e '
@@ -311,19 +330,21 @@ Create or reuse the release PR from `release/<version>` to `dev`. Write a concis
 ```bash
 VERSION=$(node -p "require('./package.json').version")
 RELEASE_BRANCH="${RELEASE_BRANCH:-release/${VERSION}}"
-BASE_BRANCH="${BASE_BRANCH:-dev}"
+BASE_BRANCH="dev"
 RELEASE_PR_BODY="/tmp/kanvibe-release-pr-${VERSION}.md"
 
 # Use file tools to write $RELEASE_PR_BODY before running gh pr create.
-RELEASE_PR=$(gh pr list --repo rookedsysc/kanvibe --head "$RELEASE_BRANCH" --state open --json number --jq '.[0].number // empty')
+RELEASE_PR=$(gh pr list --repo rookedsysc/kanvibe --base "$BASE_BRANCH" --head "$RELEASE_BRANCH" --state open --json number --jq '.[0].number // empty')
 if [ -z "$RELEASE_PR" ]; then
   gh pr create --repo rookedsysc/kanvibe --base "$BASE_BRANCH" --head "$RELEASE_BRANCH" \
     --title "chore(release): publish KanVibe ${VERSION}" \
     --body-file "$RELEASE_PR_BODY" \
     --assignee @me
-  RELEASE_PR=$(gh pr list --repo rookedsysc/kanvibe --head "$RELEASE_BRANCH" --state open --json number --jq '.[0].number')
+  RELEASE_PR=$(gh pr list --repo rookedsysc/kanvibe --base "$BASE_BRANCH" --head "$RELEASE_BRANCH" --state open --json number --jq '.[0].number')
 fi
 
+RELEASE_BASE=$(gh pr view "$RELEASE_PR" --repo rookedsysc/kanvibe --json baseRefName --jq .baseRefName)
+test "$RELEASE_BASE" = "dev"
 gh pr view "$RELEASE_PR" --repo rookedsysc/kanvibe --json url,baseRefName,headRefName,headRefOid,mergeable,assignees,files,statusCheckRollup
 RELEASE_HEAD_SHA=$(gh pr view "$RELEASE_PR" --repo rookedsysc/kanvibe --json headRefOid --jq .headRefOid)
 printf 'Release PR head SHA: %s\n' "$RELEASE_HEAD_SHA"
@@ -438,6 +459,7 @@ fi
 
 Before reporting success, collect real output for:
 
+- dev-only preflight evidence: current branch `dev`, clean status, and local `HEAD` matching `origin/dev` before the release branch was cut;
 - current version printed before the bump and the user-selected target version;
 - `git diff -- package.json package-lock.json` or commit evidence showing the version bump in both files;
 - `pnpm deploy` completion;
@@ -456,6 +478,7 @@ Final handoff format:
 ```markdown
 완료했습니다.
 
+- Dev preflight: <branch/status/local HEAD == origin/dev evidence>
 - Previous version: <current version reported before bump>
 - Release version: <target version selected by user>
 - DMG: `dist/KanVibe-<version>.dmg`
@@ -484,3 +507,4 @@ Final handoff format:
 10. **Asking for extra merge confirmation after approval.** Once the target version and release notes are approved, create the release PR, enable auto-merge or merge when green, and promote the pinned release branch to `main` without another routine confirmation.
 11. **Auto-merging through blockers.** Automatic merge is allowed only after checks pass or auto-merge is enabled from a pending state, active unresolved review threads are zero, GitHub reports the PR mergeable, and the PR file list matches the expected release scope.
 12. **Promoting moving `dev`.** Do not create the `main` promotion PR with `--head dev`; use the pinned release branch/SHA so commits that land on `dev` after the DMG build cannot ride along into `main`.
+13. **Starting from a non-`dev` checkout.** This workflow is dev-only at invocation. Stop instead of switching branches, inferring a different source, or running directly from `main`, feature branches, release branches, or detached HEADs.
