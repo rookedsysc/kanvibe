@@ -35,6 +35,7 @@ export function buildShellKanvibeStatusUpdater(status: "progress" | "pending" | 
 KANVIBE_REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || (cd "$(dirname "\${BASH_SOURCE[0]}")/../.." && pwd))"
 KANVIBE_STATE_DIR="\${KANVIBE_REPO_ROOT}/.kanvibe"
 KANVIBE_TASK_STATE_FILE="\${KANVIBE_STATE_DIR}/status.json"
+KANVIBE_TARGETS_FILE="\${KANVIBE_STATE_DIR}/targets.json"
 ${buildShellKanvibeStatusExcludeUpdater()}
 
 mkdir -p "\${KANVIBE_STATE_DIR}" 2>/dev/null || true
@@ -45,10 +46,31 @@ else
   printf '{"schemaVersion":1,"status":"%s"}\\n' "\${KANVIBE_STATUS}" > "\${KANVIBE_TASK_STATE_FILE}" 2>/dev/null || true
 fi
 
-curl -s -X POST "\${KANVIBE_URL%/}/api/hooks/status" \
-  -H "Content-Type: application/json" \
-  -d "{\\"taskId\\": \\\"\${TASK_ID}\\\", \\\"status\\\": \\\"${status}\\\"}" \
-  > /dev/null 2>&1 || true`;
+KANVIBE_TARGET_ROWS="$(
+  if [ -f "\${KANVIBE_TARGETS_FILE}" ]; then
+    grep -oE '"(url|taskId)"[[:space:]]*:[[:space:]]*"[^"]*"' "\${KANVIBE_TARGETS_FILE}" 2>/dev/null \
+      | awk '
+          { s=$0; sub(/^"[^"]*"[[:space:]]*:[[:space:]]*"/,"",s); sub(/"$/,"",s) }
+          /^"url"/ { u=s; sub(/\\/+$/,"",u); haveUrl=1; next }
+          /^"taskId"/ { if(haveUrl){ if(u!="" && s!="" && !(s in seen)){ seen[s]=1; print u "\\t" s } haveUrl=0 } }
+        ' 2>/dev/null || true
+  else
+    printf '%s\t%s\n' "\${KANVIBE_URL%/}" "\${TASK_ID}"
+  fi
+)"
+if [ -z "\${KANVIBE_TARGET_ROWS}" ]; then
+  KANVIBE_TARGET_ROWS="$(printf '%s\t%s\n' "\${KANVIBE_URL%/}" "\${TASK_ID}")"
+fi
+
+printf '%s\n' "\${KANVIBE_TARGET_ROWS}" | while IFS="$(printf '\\t')" read -r KANVIBE_TARGET_URL KANVIBE_TARGET_TASK_ID; do
+  if [ -z "\${KANVIBE_TARGET_URL}" ] || [ -z "\${KANVIBE_TARGET_TASK_ID}" ]; then
+    continue
+  fi
+  curl -s -X POST "\${KANVIBE_TARGET_URL%/}/api/hooks/status" \
+    -H "Content-Type: application/json" \
+    -d "{\\"taskId\\": \\\"\${KANVIBE_TARGET_TASK_ID}\\\", \\\"status\\\": \\\"${status}\\\"}" \
+    > /dev/null 2>&1 || true
+done`;
 }
 
 function buildShellKanvibeStatusExcludeUpdater() {
@@ -75,6 +97,17 @@ export function hasShellKanvibeStatusJsonPersistence(content: string): boolean {
     && content.includes(KANVIBE_STATE_DIR_EXCLUDE_PATTERN)
     && content.includes('"schemaVersion":1')
     && content.includes('"status":"%s"');
+}
+
+export function hasShellKanvibeTargetFanout(content: string): boolean {
+  return content.includes("targets.json")
+    && content.includes("KANVIBE_TARGETS_FILE")
+    && content.includes("KANVIBE_TARGET_ROWS")
+    && content.includes("KANVIBE_TARGET_URL")
+    && content.includes("KANVIBE_TARGET_TASK_ID")
+    && content.includes("while IFS=")
+    && content.includes("/api/hooks/status")
+    && content.includes("taskId");
 }
 
 export function getShellTaskIdBindingStatus(

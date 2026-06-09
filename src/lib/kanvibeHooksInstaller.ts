@@ -23,6 +23,7 @@ import { setupOpenCodeHooks, getOpenCodeHooksStatus, generatePluginScript, PLUGI
 import { getHookServerUrl } from "@/lib/hookEndpoint";
 import { addAiToolPatternsToGitExclude } from "@/lib/gitExclude";
 import { quoteShellArgument, readTextFiles } from "@/lib/hostFileAccess";
+import { upsertKanvibeHookTarget } from "@/lib/kanvibeProjectState";
 
 const HOOK_INSTALL_MAX_ATTEMPTS = 3;
 const HOOK_INSTALL_RETRY_DELAY_MS = 500;
@@ -378,6 +379,7 @@ async function installKanvibeHookFilesOnce(
   sshHost?: string | null,
 ): Promise<void> {
   const hookServerUrl = await getHookServerUrl(sshHost);
+  await upsertKanvibeHookTarget(targetPath, { url: hookServerUrl, taskId }, sshHost);
 
   if (!sshHost) {
     const installers = Object.values(createHookProviderInstallers(targetPath, taskId, hookServerUrl, sshHost));
@@ -405,6 +407,7 @@ async function installKanvibeHookProviderOnce(
   sshHost?: string | null,
 ): Promise<void> {
   const hookServerUrl = await getHookServerUrl(sshHost);
+  await upsertKanvibeHookTarget(targetPath, { url: hookServerUrl, taskId }, sshHost);
   const installer = createHookProviderInstallers(targetPath, taskId, hookServerUrl, sshHost)[provider];
 
   if (sshHost) {
