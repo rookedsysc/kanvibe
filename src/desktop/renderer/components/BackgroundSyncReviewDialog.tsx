@@ -2,9 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
 import { useTranslations } from "next-intl";
-import { updateTaskStatus } from "@/desktop/renderer/actions/kanban";
+import { deleteTasks } from "@/desktop/renderer/actions/kanban";
 import type { AppNotification } from "@/desktop/shared/notifications";
-import { TaskStatus } from "@/entities/KanbanTask";
 import { useEscapeKey } from "@/hooks/useEscapeKey";
 import type {
   BackgroundSyncFailurePayload,
@@ -46,7 +45,7 @@ export default function BackgroundSyncReviewDialog() {
   const tc = useTranslations("common");
   const tr = useTranslations("common.backgroundSyncReview");
   const tm = useTranslations("common.prMergeAlert");
-  const [isPrMergeActionPending, startPrMergeActionTransition] = useTransition();
+  const [isPrMergeDeletePending, startPrMergeDeleteTransition] = useTransition();
   const [backgroundSyncReview, setBackgroundSyncReview] = useState<BackgroundSyncReviewPayload | null>(null);
   const [selectedPrMergeEventKeys, setSelectedPrMergeEventKeys] = useState<string[]>([]);
 
@@ -96,7 +95,7 @@ export default function BackgroundSyncReviewDialog() {
   }, []);
 
   useEscapeKey(handlePrMergeCancel, {
-    enabled: Boolean(backgroundSyncReview) && !isPrMergeActionPending,
+    enabled: Boolean(backgroundSyncReview) && !isPrMergeDeletePending,
   });
 
   const handlePrMergeConfirm = useCallback(() => {
@@ -116,12 +115,10 @@ export default function BackgroundSyncReviewDialog() {
       return;
     }
 
-    startPrMergeActionTransition(async () => {
-      for (const taskId of selectedTaskIds) {
-        await updateTaskStatus(taskId, TaskStatus.DONE);
-      }
+    startPrMergeDeleteTransition(async () => {
+      await deleteTasks(selectedTaskIds);
     });
-  }, [backgroundSyncReview, selectedPrMergeEventKeys, startPrMergeActionTransition]);
+  }, [backgroundSyncReview, selectedPrMergeEventKeys, startPrMergeDeleteTransition]);
 
   if (!backgroundSyncReview) {
     return null;
@@ -129,6 +126,7 @@ export default function BackgroundSyncReviewDialog() {
 
   const pulledTasks = backgroundSyncReview.pulledTasks ?? [];
   const backgroundSyncFailures = backgroundSyncReview.failures ?? [];
+  const hasSelectedPrMergeTasks = selectedPrMergeEventKeys.length > 0;
 
   return (
     <div className="fixed inset-0 z-[520] flex items-center justify-center bg-bg-overlay">
@@ -294,7 +292,7 @@ export default function BackgroundSyncReviewDialog() {
           <button
             type="button"
             onClick={handlePrMergeCancel}
-            disabled={isPrMergeActionPending}
+            disabled={isPrMergeDeletePending}
             className="rounded-md border border-border-default bg-bg-page px-4 py-1.5 text-sm text-text-secondary transition-colors hover:border-brand-primary"
           >
             {tc("cancel")}
@@ -302,10 +300,10 @@ export default function BackgroundSyncReviewDialog() {
           <button
             type="button"
             onClick={handlePrMergeConfirm}
-            disabled={isPrMergeActionPending}
+            disabled={isPrMergeDeletePending}
             className="rounded-md bg-brand-primary px-4 py-1.5 text-sm text-text-inverse transition-colors hover:bg-brand-hover disabled:opacity-50"
           >
-            {tc("confirm")}
+            {tc(hasSelectedPrMergeTasks ? "delete" : "confirm")}
           </button>
         </div>
       </div>

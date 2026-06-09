@@ -36,13 +36,13 @@
     },
     "prMergeAlert": {
       "title": "PR merge detected",
-      "message": "Kanvibe detected that worktree PR {branchName} was merged. Move the task \"{taskTitle}\" to Done?",
-      "batchMessage": "These PRs were detected as merged during the latest scan. Check the tasks you want to move to Done and handle them together.",
+      "message": "Kanvibe detected that worktree PR {branchName} was merged. Delete the task \"{taskTitle}\" and its resources?",
+      "batchMessage": "These PRs were detected as merged during the latest scan. Check the tasks you want to delete and handle them together.",
       "prLinkLabel": "PR Link"
     },
     "backgroundSyncReview": {
       "title": "Background Sync Review",
-      "message": "The latest background scan found items to review. Check merged PR tasks you want to move to Done, and review newly registered worktrees as well.",
+      "message": "The latest background scan found items to review. Check merged PR tasks you want to delete, and review newly registered worktrees as well.",
       "mergedSection": "Merged PRs",
       "registeredSection": "New TODO worktrees",
       "pulledSection": "Pull results",
@@ -52,7 +52,7 @@
       "pullRequestFailure": "Pull Request check failed",
       "taskPullFailure": "Task pull failed",
       "worktreeFailure": "Worktree sync failed",
-      "emptyMerged": "There are no merged PR tasks to move to Done in this review.",
+      "emptyMerged": "There are no merged PR tasks to delete in this review.",
       "emptyRegistered": "There are no newly registered worktrees in this review."
     },
     "releaseUpdate": {

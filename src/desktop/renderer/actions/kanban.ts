@@ -48,6 +48,10 @@ export function deleteTask(taskId: string): Promise<boolean> {
   return invokeDesktop("kanban", "deleteTask", taskId);
 }
 
+export function deleteTasks(taskIds: string[]): Promise<string[]> {
+  return invokeDesktop("kanban", "deleteTasks", taskIds);
+}
+
 export function branchFromTask(
   taskId: string,
   projectId: string,
