@@ -1,13 +1,13 @@
 ---
 name: kanvibe-release-deploy
-description: "Use this skill whenever releasing or deploying KanVibe desktop from a clean, up-to-date `dev` checkout: ask only for the target version and release-note approval, then let the AI update package versions, run `pnpm deploy`, publish the DMG GitHub release, update the Homebrew cask, create the release PR, and auto-merge the release/promotion PRs when checks pass. Always use it for KanVibe release versions, DMG uploads, or Homebrew cask checksum updates."
+description: "Use this skill whenever releasing or deploying KanVibe desktop from a clean, up-to-date `dev` checkout: ask only for the target version and release-note approval, then let the AI update package versions, run `pnpm run deploy`, publish the DMG GitHub release, update the Homebrew cask, create the release PR, and auto-merge the release/promotion PRs when checks pass. Always use it for KanVibe release versions, DMG uploads, or Homebrew cask checksum updates."
 ---
 
 # KanVibe Release Deploy
 
 ## Overview
 
-This skill coordinates the KanVibe desktop release workflow from version selection to DMG publication, Homebrew cask update, release PR creation, and automatic merge. It is intentionally release-operator focused and may only be invoked from a clean, up-to-date local `dev` checkout: read and report the current `package.json` version, ask the user for the target release version, update the package version, run the `pnpm deploy` DMG build, get explicit approval for the release notes, upload the exact DMG artifact to the `rookedsysc/kanvibe` GitHub release, update the separate Homebrew cask repository with the same version and SHA-256, create the KanVibe release PR, then merge the release and promotion PRs automatically once checks and review-thread gates pass.
+This skill coordinates the KanVibe desktop release workflow from version selection to DMG publication, Homebrew cask update, release PR creation, and automatic merge. It is intentionally release-operator focused and may only be invoked from a clean, up-to-date local `dev` checkout: read and report the current `package.json` version, ask the user for the target release version, update the package version, run the `pnpm run deploy` DMG build, get explicit approval for the release notes, upload the exact DMG artifact to the `rookedsysc/kanvibe` GitHub release, update the separate Homebrew cask repository with the same version and SHA-256, create the KanVibe release PR, then merge the release and promotion PRs automatically once checks and review-thread gates pass.
 
 The only routine user gates are target-version selection and release-note approval. After those are approved, do not ask for additional confirmation for build, release publication, cask update, PR creation, auto-merge enablement, or merge completion unless a blocker or branch-policy violation appears.
 
@@ -18,7 +18,7 @@ Before touching the cask, read `references/homebrew-cask-repository.md`. The cas
 Use this skill when the user asks to:
 
 - deploy or release KanVibe desktop;
-- run `pnpm deploy` for KanVibe release packaging;
+- run `pnpm run deploy` for KanVibe release packaging;
 - bump the KanVibe package version for a release;
 - create release notes or a GitHub release that includes `dist/KanVibe-<version>.dmg`;
 - create and merge the KanVibe release PR or pinned main-promotion PR after a desktop release;
@@ -32,9 +32,9 @@ Do not use this skill for docs-site deploys, Linux-only package checks, routine 
 - The GitHub release tag is the raw package version, for example `1.0.2`, not `v1.0.2`.
 - The DMG filename is `KanVibe-<version>.dmg` because `electron-builder.yml` sets `dmg.artifactName: "KanVibe-${version}.${ext}"`.
 - The cask URL expects the same raw version tag: `https://github.com/rookedsysc/kanvibe/releases/download/#{version}/KanVibe-#{version}.dmg`.
-- Use the SHA-256 of the final DMG produced after the version bump and `pnpm deploy`, not an earlier artifact.
-- `pnpm deploy` is the release build command for this workflow. It runs `scripts/dist-deploy.cjs`, which builds the DMG, codesigns, notarizes, staples, and prints the SHA-256.
-- `pnpm deploy` performs macOS signing/notarization, so it must run on macOS with Apple signing tools configured. Do not fabricate build, notarization, or checksum output from Linux.
+- Use the SHA-256 of the final DMG produced after the version bump and `pnpm run deploy`, not an earlier artifact.
+- `pnpm run deploy` is the release build command for this workflow. It runs `scripts/dist-deploy.cjs`, which builds the DMG, codesigns, notarizes, staples, and prints the SHA-256.
+- `pnpm run deploy` performs macOS signing/notarization, so it must run on macOS with Apple signing tools configured. Do not fabricate build, notarization, or checksum output from Linux.
 - Invoke this skill only from a clean, up-to-date local `dev` checkout. Stop on `main`, feature branches, existing release branches, detached HEADs, dirty worktrees, or a local `dev` HEAD that differs from `origin/dev`.
 - The release source is always `origin/dev`. Do not accept, infer, or ask about alternate source branches for this workflow.
 - The user's target-version selection and release-note approval authorize the remaining release actions. After those two gates, the AI should continue through release publication, cask update, release PR creation, auto-merge enablement, and pinned release-branch promotion to `main` without asking for another confirmation.
@@ -91,7 +91,7 @@ Validate these before proceeding:
 uname -s
 ```
 
-If the required host/tooling is unavailable, stop and report the blocker. Do not fake `pnpm deploy`, DMG, notarization, or checksum output.
+If the required host/tooling is unavailable, stop and report the blocker. Do not fake `pnpm run deploy`, DMG, notarization, or checksum output.
 
 After the target version is selected, create a dedicated release branch from the current `origin/dev` SHA. Do not use an existing release branch as the invocation point; reuse an existing release branch only after the `dev` preflight passes and only when it is the same release version with no unrelated files. This keeps the release PR narrow and prevents dirty local feature work from leaking into the release.
 
@@ -151,7 +151,7 @@ Run the release build command after the version bump:
 
 ```bash
 pnpm install --frozen-lockfile
-pnpm deploy
+pnpm run deploy
 ```
 
 Expected artifact for version `1.0.2`:
@@ -462,7 +462,7 @@ Before reporting success, collect real output for:
 - dev-only preflight evidence: current branch `dev`, clean status, and local `HEAD` matching `origin/dev` before the release branch was cut;
 - current version printed before the bump and the user-selected target version;
 - `git diff -- package.json package-lock.json` or commit evidence showing the version bump in both files;
-- `pnpm deploy` completion;
+- `pnpm run deploy` completion;
 - `test -f dist/KanVibe-<version>.dmg` and `shasum -a 256`;
 - user approval of the release notes, confirming both the English original and the Korean translation were shown before publishing;
 - `gh release view <version>` showing the `KanVibe-<version>.dmg` asset;
@@ -496,8 +496,8 @@ Final handoff format:
 ## Common Pitfalls
 
 1. **Skipping the version question.** Always report the current package version and ask the user what version to release unless the prompt already contains the exact target version.
-2. **Running a stale version build.** Update `package.json` before `pnpm deploy`, then derive the DMG path from the updated version.
-3. **Running on Linux and pretending success.** `pnpm deploy` requires macOS codesign, notarytool, and stapler, so stop honestly when the host is not Darwin.
+2. **Running a stale version build.** Update `package.json` before `pnpm run deploy`, then derive the DMG path from the updated version.
+3. **Running on Linux and pretending success.** `pnpm run deploy` requires macOS codesign, notarytool, and stapler, so stop honestly when the host is not Darwin.
 4. **Using a `v` tag.** The cask URL uses the raw version as the release tag. `v1.0.2` will break the current cask URL.
 5. **Checksum from the wrong file.** Always hash the final DMG produced after the version bump and release build.
 6. **Editing the cask before the release asset exists.** Homebrew fetch/audit can fail if the GitHub release asset is missing or still uploading.
@@ -508,3 +508,4 @@ Final handoff format:
 11. **Auto-merging through blockers.** Automatic merge is allowed only after checks pass or auto-merge is enabled from a pending state, active unresolved review threads are zero, GitHub reports the PR mergeable, and the PR file list matches the expected release scope.
 12. **Promoting moving `dev`.** Do not create the `main` promotion PR with `--head dev`; use the pinned release branch/SHA so commits that land on `dev` after the DMG build cannot ride along into `main`.
 13. **Starting from a non-`dev` checkout.** This workflow is dev-only at invocation. Stop instead of switching branches, inferring a different source, or running directly from `main`, feature branches, release branches, or detached HEADs.
+14. **Invoking the build as `pnpm deploy`.** `deploy` is a reserved pnpm command (workspace deploy), so `pnpm deploy` fails with `ERR_PNPM_CANNOT_DEPLOY` and never runs the release script. Always invoke the release build as `pnpm run deploy`.
