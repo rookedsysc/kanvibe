@@ -479,7 +479,7 @@ describe("kanbanService.createTask", () => {
       id: "task-connect",
       sessionType: "tmux",
       sessionName: "repo-feature-remote",
-      status: "progress",
+      status: "todo",
     }));
     expect(mocks.createSessionWithoutWorktree).toHaveBeenCalledWith(
       "/remote/repo",
@@ -506,10 +506,59 @@ describe("kanbanService.createTask", () => {
     expect(mocks.scheduleKanvibeHooksInstall).not.toHaveBeenCalled();
     expect(mocks.writeTextFile).toHaveBeenCalledWith(
       "/remote/repo__worktrees/feature-remote/.kanvibe/status.json",
-      expect.stringContaining('"status": "progress"'),
+      expect.stringContaining('"status": "todo"'),
       "remote-host",
     );
     expect(mocks.broadcastBoardUpdate).toHaveBeenCalledTimes(1);
+  });
+
+  it("기존 브랜치 task 터미널 연결은 현재 상태를 보존한다", async () => {
+    // Given
+    const task = {
+      id: "task-connect-review",
+      title: "리뷰 브랜치 연결",
+      projectId: "project-remote",
+      branchName: "feature/review",
+      baseBranch: "main",
+      worktreePath: "/remote/repo__worktrees/feature-review",
+      sshHost: "remote-host",
+      sessionType: null,
+      sessionName: null,
+      status: "review",
+    };
+    mocks.taskRepo.findOneBy.mockResolvedValue(task);
+    mocks.projectRepo.findOneBy.mockResolvedValue({
+      id: "project-remote",
+      repoPath: "/remote/repo",
+      defaultBranch: "main",
+      sshHost: "remote-host",
+    });
+    mocks.createSessionWithoutWorktree.mockResolvedValue({
+      sessionName: "repo-feature-review",
+    });
+    mocks.taskRepo.save.mockImplementation(async (value) => value);
+
+    const { connectTerminalSession } = await import("@/desktop/main/services/kanbanService");
+
+    // When
+    const result = await connectTerminalSession("task-connect-review", "tmux" as never);
+
+    // Then
+    expect(result).toEqual(expect.objectContaining({
+      id: "task-connect-review",
+      sessionType: "tmux",
+      sessionName: "repo-feature-review",
+      status: "review",
+    }));
+    expect(mocks.taskRepo.save).toHaveBeenCalledWith(expect.objectContaining({
+      id: "task-connect-review",
+      status: "review",
+    }));
+    expect(mocks.writeTextFile).toHaveBeenCalledWith(
+      "/remote/repo__worktrees/feature-review/.kanvibe/status.json",
+      expect.stringContaining('"status": "review"'),
+      "remote-host",
+    );
   });
 
   it("기존 브랜치 task 터미널 연결은 hooks 설치가 지연되어도 세션 생성을 계속한다", async () => {
@@ -569,7 +618,7 @@ describe("kanbanService.createTask", () => {
         id: "task-connect-slow-hooks",
         sessionType: "tmux",
         sessionName: "repo-feature-slow-hooks",
-        status: "progress",
+        status: "todo",
       }));
       expect(mocks.createSessionWithoutWorktree).toHaveBeenCalledWith(
         "/remote/repo",
