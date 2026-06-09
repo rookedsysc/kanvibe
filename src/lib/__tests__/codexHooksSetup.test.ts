@@ -233,6 +233,7 @@ describe("codexHooksSetup", () => {
         hasExpectedTaskId: true,
         hasStatusMappings: true,
         hasStatusJsonPersistence: true,
+        hasTargetFanout: true,
         hasExpectedHookServerUrl: true,
         hasReachableHookServer: true,
         boundTaskId: "task-1",

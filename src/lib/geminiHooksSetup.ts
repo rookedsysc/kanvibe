@@ -8,6 +8,7 @@ import {
   buildShellTaskIdResolver,
   getShellTaskIdBindingStatus,
   hasShellKanvibeStatusJsonPersistence,
+  hasShellKanvibeTargetFanout,
 } from "@/lib/hookTaskBinding";
 
 /**
@@ -178,6 +179,7 @@ export interface GeminiHooksStatus {
   hasExpectedTaskId?: boolean;
   hasStatusMappings?: boolean;
   hasStatusJsonPersistence?: boolean;
+  hasTargetFanout?: boolean;
   hasExpectedHookServerUrl?: boolean;
   hasReachableHookServer?: boolean;
   boundTaskId?: string | null;
@@ -216,6 +218,7 @@ export async function getGeminiHooksStatus(repoPath: string, taskId?: string, ss
     promptContent.includes('\\\"status\\\": \\\"progress\\\"') &&
     stopContent.includes('\\\"status\\\": \\\"review\\\"');
   const hasStatusJsonPersistence = scriptContents.every(hasShellKanvibeStatusJsonPersistence);
+  const hasTargetFanout = scriptContents.every(hasShellKanvibeTargetFanout);
 
   let hasSettingsEntry = false;
   try {
@@ -237,6 +240,7 @@ export async function getGeminiHooksStatus(repoPath: string, taskId?: string, ss
     && hasExpectedTaskId
     && hasStatusMappings
     && hasStatusJsonPersistence
+    && hasTargetFanout
     && hookServerValidation.hasExpectedHookServerUrl;
 
   return {
@@ -248,6 +252,7 @@ export async function getGeminiHooksStatus(repoPath: string, taskId?: string, ss
     hasExpectedTaskId,
     hasStatusMappings,
     hasStatusJsonPersistence,
+    hasTargetFanout,
     hasExpectedHookServerUrl: hookServerValidation.hasExpectedHookServerUrl,
     hasReachableHookServer: hookServerValidation.hasReachableHookServer,
     boundTaskId,

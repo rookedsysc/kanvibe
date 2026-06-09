@@ -12,11 +12,15 @@ vi.mock("@/lib/hostFileAccess", () => ({
 }));
 
 import {
+  buildKanvibeTargetsContent,
   buildKanvibeTaskStateContent,
+  getKanvibeTargetsPath,
   getKanvibeTaskStatePath,
+  parseKanvibeTargets,
   parseKanvibeTaskState,
   parseTaskStatus,
   readKanvibeTaskState,
+  upsertKanvibeHookTarget,
   writeKanvibeTaskState,
 } from "@/lib/kanvibeProjectState";
 
@@ -92,5 +96,58 @@ describe("kanvibeProjectState", () => {
     expect(writtenContent).not.toContain("url");
 
     expect(getKanvibeTaskStatePath("/local/repo")).toBe("/local/repo/.kanvibe/status.json");
+  });
+
+  it("builds and parses .kanvibe/targets.json as url to task id mappings", () => {
+    const content = buildKanvibeTargetsContent([
+      { url: "http://127.0.0.1:19736/", taskId: "task-local" },
+      { url: "http://127.0.0.1:19736", taskId: "task-dev" },
+      { url: "http://10.0.0.5:19736", taskId: "task-local" },
+    ]);
+    const parsed = JSON.parse(content) as { schemaVersion?: unknown; targets?: unknown; updatedAt?: unknown };
+
+    expect(parsed).toEqual({
+      schemaVersion: 1,
+      targets: [
+        { url: "http://127.0.0.1:19736", taskId: "task-local" },
+        { url: "http://127.0.0.1:19736", taskId: "task-dev" },
+      ],
+      updatedAt: expect.any(String),
+    });
+    expect(parseKanvibeTargets(content)?.targets).toEqual(parsed.targets);
+    expect(parseKanvibeTargets("not-json")).toEqual({ schemaVersion: 1, targets: [] });
+  });
+
+  it("upserts the current KanVibe hook target without dropping other clients", async () => {
+    mockReadTextFile.mockResolvedValueOnce(JSON.stringify({
+      schemaVersion: 1,
+      targets: [
+        { url: "http://127.0.0.1:19736", taskId: "origin-task" },
+        { url: "http://10.0.0.5:19736", taskId: "current-task" },
+      ],
+    }));
+
+    await upsertKanvibeHookTarget(
+      "/remote/repo",
+      { url: "http://127.0.0.1:19736/", taskId: "current-task" },
+      "ssh-host",
+    );
+
+    expect(mockReadTextFile).toHaveBeenCalledWith("/remote/repo/.kanvibe/targets.json", "ssh-host");
+    expect(mockWriteTextFile).toHaveBeenCalledWith(
+      "/remote/repo/.kanvibe/targets.json",
+      expect.any(String),
+      "ssh-host",
+    );
+    const writtenContent = mockWriteTextFile.mock.calls.at(-1)?.[1] as string;
+    expect(JSON.parse(writtenContent)).toEqual({
+      schemaVersion: 1,
+      targets: [
+        { url: "http://127.0.0.1:19736", taskId: "origin-task" },
+        { url: "http://127.0.0.1:19736", taskId: "current-task" },
+      ],
+      updatedAt: expect.any(String),
+    });
+    expect(getKanvibeTargetsPath("/local/repo")).toBe("/local/repo/.kanvibe/targets.json");
   });
 });
