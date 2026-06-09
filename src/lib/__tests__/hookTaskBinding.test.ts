@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
 import { accessSync, constants, statSync } from "node:fs";
 import { chmod, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
-import { delimiter, join } from "node:path";
+import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { promisify } from "node:util";
 import { describe, expect, it } from "vitest";
@@ -17,12 +17,24 @@ import {
 const execFileAsync = promisify(execFile);
 
 /**
- * `process.env.PATH`에서 실제 실행 파일 경로를 찾는다. shell alias/function이 아닌
- * 진짜 바이너리만 sandbox PATH로 노출해 node 없는 hook 환경을 재현하기 위해 사용한다.
+ * 표준 시스템 디렉터리에서만 실제 실행 파일을 찾는다. `process.env.PATH`에 의존하지
+ * 않으므로, PATH를 물려받지 못하는 설치 프로그램 환경(예: macOS GUI로 실행된 앱은
+ * `/usr/bin:/bin` 수준의 최소 PATH만 가짐)을 그대로 재현한다. bash가 빈 환경에서도
+ * 기본으로 노출하는 디렉터리 집합과 git이 흔히 설치되는 위치를 포함한다.
  */
+const SYSTEM_BIN_DIRS = [
+  "/usr/local/sbin",
+  "/usr/local/bin",
+  "/usr/sbin",
+  "/usr/bin",
+  "/sbin",
+  "/bin",
+  "/opt/homebrew/bin",
+  "/home/linuxbrew/.linuxbrew/bin",
+];
+
 function resolveRealBinary(name: string): string | null {
-  const dirs = (process.env.PATH ?? "").split(delimiter).filter(Boolean);
-  for (const dir of dirs) {
+  for (const dir of SYSTEM_BIN_DIRS) {
     const candidate = join(dir, name);
     try {
       if (!statSync(candidate).isFile()) continue;
