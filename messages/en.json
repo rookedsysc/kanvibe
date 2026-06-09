@@ -29,7 +29,7 @@
     },
     "doneAlert": {
       "title": "Move to Done",
-      "message": "Moving to Done will delete the worktree, branch, and tmux session.",
+      "message": "Moving to Done keeps the worktree, branch, and tmux session. Resources are deleted only when you delete the task.",
       "dontAskAgain": "Don't ask again",
       "confirm": "Move",
       "cancel": "Cancel"

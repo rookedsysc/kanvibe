@@ -29,7 +29,7 @@
     },
     "doneAlert": {
       "title": "Done 이동 경고",
-      "message": "Done으로 이동하면 worktree, branch, tmux session이 삭제됩니다.",
+      "message": "Done으로 이동해도 worktree, branch, tmux session은 보존됩니다. 리소스 삭제는 task 삭제 액션에서만 실행됩니다.",
       "dontAskAgain": "다시 묻지 않기",
       "confirm": "이동",
       "cancel": "취소"

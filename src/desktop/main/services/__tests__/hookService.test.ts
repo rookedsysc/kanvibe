@@ -29,9 +29,9 @@ const mocks = vi.hoisted(() => ({
   broadcastHookStatusTargetMissing: vi.fn(),
   broadcastTaskStatusChanged: vi.fn(),
   installTaskHooksImmediately: vi.fn(),
-  prepareOptimisticDoneTransition: vi.fn(),
-  scheduleDoneCleanupWithRollback: vi.fn(),
   writeTextFile: vi.fn(),
+  readTextFile: vi.fn(),
+  execGit: vi.fn(),
 }));
 
 vi.mock("@/entities/KanbanTask", () => entityMocks);
@@ -55,12 +55,16 @@ vi.mock("@/lib/boardNotifier", () => ({
 
 vi.mock("@/desktop/main/services/kanbanService", () => ({
   installTaskHooksImmediately: mocks.installTaskHooksImmediately,
-  prepareOptimisticDoneTransition: mocks.prepareOptimisticDoneTransition,
-  scheduleDoneCleanupWithRollback: mocks.scheduleDoneCleanupWithRollback,
+}));
+
+vi.mock("@/lib/gitOperations", () => ({
+  execGit: mocks.execGit,
 }));
 
 vi.mock("@/lib/hostFileAccess", () => ({
+  readTextFile: mocks.readTextFile,
   writeTextFile: mocks.writeTextFile,
+  quoteShellArgument: (value: string) => `'${value.replaceAll("'", `'\''`)}'`,
 }));
 
 async function flushMicrotasks(count = 8): Promise<void> {
@@ -73,28 +77,8 @@ describe("hookService.updateHookTaskStatus", () => {
   beforeEach(() => {
     vi.resetModules();
     vi.clearAllMocks();
-    mocks.prepareOptimisticDoneTransition.mockImplementation((task, options = {}) => {
-      const cleanupTask = { ...task };
-      const rollbackSnapshot = {
-        id: task.id,
-        status: task.status,
-        sessionType: task.sessionType,
-        sessionName: task.sessionName,
-        worktreePath: task.worktreePath,
-        sshHost: task.sshHost,
-      };
-
-      task.status = TaskStatus.DONE;
-      task.sessionType = null;
-      task.sessionName = null;
-      task.worktreePath = null;
-
-      if ((options as { clearSshHost?: boolean }).clearSshHost) {
-        task.sshHost = null;
-      }
-
-      return { cleanupTask, rollbackSnapshot };
-    });
+    mocks.readTextFile.mockResolvedValue("");
+    mocks.execGit.mockResolvedValue(".git");
   });
 
   it("taskId로 작업 상태를 변경한다", async () => {
@@ -138,6 +122,53 @@ describe("hookService.updateHookTaskStatus", () => {
       data: {
         id: task.id,
         status: TaskStatus.REVIEW,
+        branchName: task.branchName,
+        projectName: project.name,
+      },
+    });
+  });
+
+  it("hook Done 상태 변경은 세션/worktree 정보를 보존하고 Done cleanup을 예약하지 않는다", async () => {
+    const { updateHookTaskStatus } = await import("@/desktop/main/services/hookService");
+    const project = { id: "project-1", name: "kanvibe", repoPath: "/workspace/api", sshHost: "remote-host" };
+    const task = {
+      id: "task-done-hook",
+      title: "Preserve hook resources",
+      description: null,
+      branchName: "feature-hook-done",
+      projectId: project.id,
+      project,
+      status: TaskStatus.REVIEW,
+      sessionType: "tmux" as never,
+      sessionName: "api-feature-hook-done",
+      worktreePath: "/workspace/api__worktrees/feature-hook-done",
+      sshHost: "remote-host",
+    };
+    mocks.taskRepo.findOne.mockResolvedValue(task);
+    mocks.taskRepo.save.mockImplementation(async (value) => value);
+
+    const result = await updateHookTaskStatus({
+      taskId: task.id,
+      status: TaskStatus.DONE,
+    });
+
+    expect(mocks.execGit).toHaveBeenCalledWith(
+      "git -C '/workspace/api__worktrees/feature-hook-done' rev-parse --path-format=absolute --git-common-dir",
+      "remote-host",
+    );
+    expect(mocks.taskRepo.save).toHaveBeenCalledWith(expect.objectContaining({
+      id: task.id,
+      status: TaskStatus.DONE,
+      sessionType: "tmux",
+      sessionName: "api-feature-hook-done",
+      worktreePath: "/workspace/api__worktrees/feature-hook-done",
+      sshHost: "remote-host",
+    }));
+    expect(result).toEqual({
+      success: true,
+      data: {
+        id: task.id,
+        status: TaskStatus.DONE,
         branchName: task.branchName,
         projectName: project.name,
       },
@@ -190,7 +221,9 @@ describe("hookService.updateHookTaskStatus", () => {
       };
       mocks.taskRepo.findOne.mockResolvedValue(task);
       mocks.taskRepo.save.mockImplementation(async (value) => value);
-      mocks.writeTextFile.mockRejectedValueOnce(new Error("state write failed"));
+      mocks.writeTextFile
+        .mockResolvedValueOnce(undefined)
+        .mockRejectedValueOnce(new Error("state write failed"));
 
       const result = await updateHookTaskStatus({ taskId: task.id, status: TaskStatus.REVIEW });
 
@@ -239,6 +272,9 @@ describe("hookService.startHookTask", () => {
     vi.clearAllMocks();
     mocks.taskRepo.create.mockImplementation((value) => value);
     mocks.installTaskHooksImmediately.mockResolvedValue(undefined);
+    mocks.readTextFile.mockResolvedValue("");
+    mocks.writeTextFile.mockResolvedValue(undefined);
+    mocks.execGit.mockResolvedValue(".git");
   });
 
   it("새 hook task는 기존 .kanvibe 상태가 없으면 todo로 생성한다", async () => {

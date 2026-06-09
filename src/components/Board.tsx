@@ -1017,7 +1017,7 @@ export default function Board({
       const sourceStatus = source.droppableId as TaskStatus;
       const destStatus = destination.droppableId as TaskStatus;
 
-      /** Done 이동 시 리소스 삭제 경고 (dismissed 아닌 경우만) */
+      /** Done 이동 시 리소스 보존 안내 (dismissed 아닌 경우만) */
       if (destStatus === TaskStatus.DONE && sourceStatus !== destStatus && !isDoneAlertDismissed) {
         const task = tasks[sourceStatus].find((task) => task.id === draggableId);
         const hasCleanableResources = task && (task.branchName || task.sessionType);

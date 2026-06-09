@@ -29,7 +29,7 @@
     },
     "doneAlert": {
       "title": "移动到完成",
-      "message": "移动到完成状态将删除 worktree、branch 和 tmux session。",
+      "message": "移动到完成状态会保留 worktree、branch 和 tmux session。只有删除任务时才会删除这些资源。",
       "dontAskAgain": "不再提示",
       "confirm": "移动",
       "cancel": "取消"

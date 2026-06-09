@@ -12,7 +12,7 @@ vi.mock("next-intl", () => ({
   useTranslations: () => (key: string) => {
     const messages: Record<string, string> = {
       title: "Move to Done",
-      message: "Moving to Done will delete resources.",
+      message: "Moving to Done keeps resources.",
       dontAskAgain: "Don't ask again",
       confirm: "Move",
       cancel: "Cancel",
@@ -49,7 +49,7 @@ describe("DoneStatusButton", () => {
     expect(screen.getByText("Done")).toBeTruthy();
   });
 
-  it("should show confirm dialog when clicked with cleanable resources and not dismissed", async () => {
+  it("should show resource preservation notice when clicked with cleanable resources and not dismissed", async () => {
     // Given
     const user = userEvent.setup();
     render(<DoneStatusButton {...defaultProps} />);
@@ -59,7 +59,7 @@ describe("DoneStatusButton", () => {
 
     // Then
     expect(screen.getByText("Move to Done")).toBeTruthy();
-    expect(screen.getByText("Moving to Done will delete resources.")).toBeTruthy();
+    expect(screen.getByText("Moving to Done keeps resources.")).toBeTruthy();
   });
 
   it("should not show confirm dialog when doneAlertDismissed is true", async () => {

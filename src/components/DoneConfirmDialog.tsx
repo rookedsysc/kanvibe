@@ -11,7 +11,7 @@ interface DoneConfirmDialogProps {
   onCancel: () => void;
 }
 
-/** Done 이동 시 리소스 삭제 경고 모달. "다시 묻지 않기" 체크 시 DB에 설정을 저장한다 */
+/** Done 이동 시 리소스 보존 안내 모달. "다시 묻지 않기" 체크 시 DB에 설정을 저장한다 */
 export default function DoneConfirmDialog({
   isOpen,
   onConfirm,
