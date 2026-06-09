@@ -14,7 +14,7 @@ vi.mock("next-intl", () => ({
   useTranslations: () => (key: string) => {
     const messages: Record<string, string> = {
       title: "Move to Done",
-      message: "Moving to Done will delete resources.",
+      message: "Moving to Done keeps resources.",
       dontAskAgain: "Don't ask again",
       confirm: "Move",
       cancel: "Cancel",
@@ -57,7 +57,7 @@ describe("DoneConfirmDialog", () => {
 
     // Then
     expect(screen.getByText("Move to Done")).toBeTruthy();
-    expect(screen.getByText("Moving to Done will delete resources.")).toBeTruthy();
+    expect(screen.getByText("Moving to Done keeps resources.")).toBeTruthy();
     expect(screen.getByText("Don't ask again")).toBeTruthy();
     expect(screen.getByText("Move")).toBeTruthy();
     expect(screen.getByText("Cancel")).toBeTruthy();

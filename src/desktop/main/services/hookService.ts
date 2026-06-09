@@ -2,12 +2,7 @@ import { TaskStatus, SessionType } from "@/entities/KanbanTask";
 import { getProjectRepository, getTaskRepository } from "@/lib/database";
 import { createWorktreeWithSession } from "@/lib/worktree";
 import { broadcastBoardUpdate, broadcastHookStatusTargetMissing, broadcastTaskStatusChanged } from "@/lib/boardNotifier";
-import {
-  installTaskHooksImmediately,
-  prepareOptimisticDoneTransition,
-  scheduleDoneCleanupWithRollback,
-  type DoneCleanupPlan,
-} from "@/desktop/main/services/kanbanService";
+import { installTaskHooksImmediately } from "@/desktop/main/services/kanbanService";
 import { persistTaskStateAtPath as persistHookTaskState } from "@/desktop/main/services/kanvibeTaskStateService";
 
 const STATUS_MAP: Record<string, TaskStatus> = {
@@ -143,13 +138,7 @@ export async function updateHookTaskStatus(input: HookStatusInput) {
   const projectName = task.project?.name || task.projectId || "Unknown project";
   const taskStatePath = task.worktreePath || task.project?.repoPath || null;
   const taskStateSshHost = task.sshHost || task.project?.sshHost || null;
-  let doneCleanupPlan: DoneCleanupPlan | null = null;
-
-  if (taskStatus === TaskStatus.DONE) {
-    doneCleanupPlan = prepareOptimisticDoneTransition(task, { clearSshHost: true });
-  } else {
-    task.status = taskStatus;
-  }
+  task.status = taskStatus;
 
   const saved = await taskRepo.save(task);
 
@@ -166,10 +155,6 @@ export async function updateHookTaskStatus(input: HookStatusInput) {
     newStatus: taskStatus,
     taskId: saved.id,
   });
-
-  if (doneCleanupPlan) {
-    scheduleDoneCleanupWithRollback(doneCleanupPlan);
-  }
 
   return {
     success: true,

@@ -29,20 +29,20 @@
     },
     "doneAlert": {
       "title": "Done 이동 경고",
-      "message": "Done으로 이동하면 worktree, branch, tmux session이 삭제됩니다.",
+      "message": "Done으로 이동해도 worktree, branch, tmux session은 보존됩니다. 리소스 삭제는 task 삭제 액션에서만 실행됩니다.",
       "dontAskAgain": "다시 묻지 않기",
       "confirm": "이동",
       "cancel": "취소"
     },
     "prMergeAlert": {
       "title": "PR merge 감지",
-      "message": "worktree PR {branchName} 가 merge 된 것을 확인했습니다. \"{taskTitle}\" task를 Done으로 옮길까요?",
-      "batchMessage": "이번 탐색에서 merge가 확인된 PR 목록입니다. Done으로 옮길 task를 체크해서 한 번에 처리하세요.",
+      "message": "worktree PR {branchName} 가 merge 된 것을 확인했습니다. \"{taskTitle}\" task와 리소스를 삭제할까요?",
+      "batchMessage": "이번 탐색에서 merge가 확인된 PR 목록입니다. 삭제할 task를 체크해서 한 번에 처리하세요.",
       "prLinkLabel": "PR 링크"
     },
     "backgroundSyncReview": {
       "title": "백그라운드 sync 검토",
-      "message": "이번 백그라운드 탐색에서 정리하거나 확인할 항목을 찾았습니다. merge 완료 PR은 체크 후 Done으로 옮기고, 새로 등록된 worktree도 함께 확인하세요.",
+      "message": "이번 백그라운드 탐색에서 정리하거나 확인할 항목을 찾았습니다. merge 완료 PR은 체크 후 task 삭제로 정리하고, 새로 등록된 worktree도 함께 확인하세요.",
       "mergedSection": "Merge 완료 PR",
       "registeredSection": "새 TODO worktree",
       "pulledSection": "Pull 결과",
@@ -52,7 +52,7 @@
       "pullRequestFailure": "Pull Request 조회 실패",
       "taskPullFailure": "Task pull 실패",
       "worktreeFailure": "Worktree sync 실패",
-      "emptyMerged": "이번 검토에서 Done으로 옮길 merge PR이 없습니다.",
+      "emptyMerged": "이번 검토에서 삭제할 merge PR task가 없습니다.",
       "emptyRegistered": "이번 검토에서 새로 등록된 worktree가 없습니다."
     },
     "releaseUpdate": {
