@@ -989,7 +989,6 @@ export async function connectTerminalSession(
     task.sessionName = session.sessionName;
     task.worktreePath = workingDir;
     task.sshHost = project.sshHost;
-    task.status = TaskStatus.PROGRESS;
 
     const saved = await repo.save(task);
     await persistTaskState(saved);
