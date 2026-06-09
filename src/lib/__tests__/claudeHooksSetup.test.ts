@@ -29,13 +29,15 @@ describe("claudeHooksSetup", () => {
     expect(questionScript).not.toContain("X-Kanvibe-Token");
     expect(promptScript).toContain(".kanvibe");
     expect(promptScript).toContain("status.json");
+    expect(promptScript).toContain("targets.json");
+    expect(promptScript).toContain("KANVIBE_TARGET_ROWS");
     expect(promptScript).not.toContain("hooks-targets.json");
     expect(promptScript).not.toContain("task-state.json");
-    expect(promptScript).not.toContain("while IFS=");
 
     const status = await getClaudeHooksStatus(repoPath);
     expect(status.installed).toBe(true);
     expect(status.hasStatusJsonPersistence).toBe(true);
+    expect(status.hasTargetFanout).toBe(true);
   });
 
   it("legacy status.md Claude hook은 설치된 것으로 보지 않고 재설치로 복구한다", async () => {

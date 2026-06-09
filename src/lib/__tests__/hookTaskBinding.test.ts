@@ -1,3 +1,9 @@
+import { execFile } from "node:child_process";
+import { accessSync, constants, statSync } from "node:fs";
+import { chmod, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+import { promisify } from "node:util";
 import { describe, expect, it } from "vitest";
 import {
   buildShellKanvibeStatusUpdater,
@@ -5,7 +11,41 @@ import {
   extractShellTaskId,
   getShellTaskIdBindingStatus,
   hasShellKanvibeStatusJsonPersistence,
+  hasShellKanvibeTargetFanout,
 } from "@/lib/hookTaskBinding";
+
+const execFileAsync = promisify(execFile);
+
+/**
+ * 표준 시스템 디렉터리에서만 실제 실행 파일을 찾는다. `process.env.PATH`에 의존하지
+ * 않으므로, PATH를 물려받지 못하는 설치 프로그램 환경(예: macOS GUI로 실행된 앱은
+ * `/usr/bin:/bin` 수준의 최소 PATH만 가짐)을 그대로 재현한다. bash가 빈 환경에서도
+ * 기본으로 노출하는 디렉터리 집합과 git이 흔히 설치되는 위치를 포함한다.
+ */
+const SYSTEM_BIN_DIRS = [
+  "/usr/local/sbin",
+  "/usr/local/bin",
+  "/usr/sbin",
+  "/usr/bin",
+  "/sbin",
+  "/bin",
+  "/opt/homebrew/bin",
+  "/home/linuxbrew/.linuxbrew/bin",
+];
+
+function resolveRealBinary(name: string): string | null {
+  for (const dir of SYSTEM_BIN_DIRS) {
+    const candidate = join(dir, name);
+    try {
+      if (!statSync(candidate).isFile()) continue;
+      accessSync(candidate, constants.X_OK);
+      return candidate;
+    } catch {
+      /* 다음 후보 탐색 */
+    }
+  }
+  return null;
+}
 
 describe("hookTaskBinding", () => {
   it("shell resolver는 hook 파일 안에 task id를 직접 고정한다", () => {
@@ -47,11 +87,13 @@ describe("hookTaskBinding", () => {
     expect(extractShellTaskId(resolver)).toBe(taskId);
   });
 
-  it("status updater는 target fan-out 없이 status.json에 상태만 저장한다", () => {
+  it("status updater는 status.json 저장 후 targets.json의 모든 대상에 fan-out 한다", () => {
     const updater = buildShellKanvibeStatusUpdater("review");
 
     expect(updater).toContain("KANVIBE_STATUS=\"review\"");
     expect(updater).toContain("status.json");
+    expect(updater).toContain("targets.json");
+    expect(updater).toContain("KANVIBE_TARGETS_FILE");
     expect(updater).toContain("--git-common-dir");
     expect(updater).toContain("/info/exclude");
     expect(updater).toContain(".kanvibe/");
@@ -60,11 +102,123 @@ describe("hookTaskBinding", () => {
     expect(updater).toContain('"status":"%s"');
     expect(updater).toContain('"updatedAt":"%s"');
     expect(updater).toContain("${KANVIBE_TASK_STATE_FILE}");
+    expect(updater).toContain("KANVIBE_TARGET_URL");
+    expect(updater).toContain("KANVIBE_TARGET_TASK_ID");
+    expect(updater).toContain("while IFS=");
     expect(updater).not.toContain("hooks-targets.json");
     expect(updater).not.toContain("task-state.json");
-    expect(updater).not.toContain("KANVIBE_TARGET_ROWS");
-    expect(updater).not.toContain("while IFS=");
-    expect(updater).not.toContain("taskId, status");
+  });
+
+  it("target fan-out 판정은 targets.json fan-out 없는 hook을 거부한다", () => {
+    const updater = buildShellKanvibeStatusUpdater("review");
+    const updaterWithoutTargets = updater.replace(/\nKANVIBE_TARGETS_FILE=[\s\S]*$/, "");
+
+    expect(hasShellKanvibeTargetFanout(updater)).toBe(true);
+    expect(hasShellKanvibeTargetFanout(updaterWithoutTargets)).toBe(false);
+  });
+
+  it("node·user env 없이도 targets.json 대상별 task id로 status를 fan-out 한다", async () => {
+    const repoPath = await mkdtemp(join(tmpdir(), "kanvibe-hook-nonode-"));
+
+    try {
+      const hookDir = join(repoPath, ".claude", "hooks");
+      const sandboxBinDir = join(repoPath, "sandbox-bin");
+      await mkdir(join(repoPath, ".kanvibe"), { recursive: true });
+      await mkdir(hookDir, { recursive: true });
+      await mkdir(sandboxBinDir, { recursive: true });
+
+      await writeFile(
+        join(repoPath, ".kanvibe", "targets.json"),
+        JSON.stringify({
+          schemaVersion: 1,
+          targets: [
+            { url: "http://127.0.0.1:9736/", taskId: "local-task" },
+            { url: "http://127.0.0.1:9736", taskId: "dev-task" },
+          ],
+        }),
+        "utf8",
+      );
+
+      // hook이 사용하는 POSIX 도구만 sandbox PATH로 노출한다. node는 의도적으로 제외해
+      // node 미설치 hook 환경(예: Codex CLI)을 재현한다.
+      const requiredTools = ["bash", "grep", "awk", "sed", "date", "mkdir", "touch", "dirname"];
+      for (const tool of requiredTools) {
+        const real = resolveRealBinary(tool);
+        if (!real) {
+          throw new Error(`테스트에 필요한 ${tool} 바이너리를 PATH에서 찾을 수 없습니다`);
+        }
+        await symlink(real, join(sandboxBinDir, tool));
+      }
+      const gitBinary = resolveRealBinary("git");
+      if (gitBinary) {
+        await symlink(gitBinary, join(sandboxBinDir, "git"));
+      }
+
+      // fake curl을 node가 아닌 POSIX shell script로 작성해 node 의존성을 제거한다.
+      const curlLogPath = join(repoPath, "curl.log");
+      const fakeCurlPath = join(sandboxBinDir, "curl");
+      await writeFile(
+        fakeCurlPath,
+        [
+          "#!/bin/sh",
+          'printf \'%s\\n\' "$*" >> "$KANVIBE_CURL_LOG"',
+        ].join("\n"),
+        "utf8",
+      );
+      await chmod(fakeCurlPath, 0o755);
+
+      const scriptPath = join(hookDir, "kanvibe-test-hook.sh");
+      await writeFile(
+        scriptPath,
+        [
+          "#!/bin/bash",
+          'KANVIBE_URL="http://fallback:9736"',
+          buildShellTaskIdResolver("fallback-task"),
+          buildShellKanvibeStatusUpdater("review"),
+        ].join("\n"),
+        "utf8",
+      );
+      await chmod(scriptPath, 0o755);
+
+      const bashBinary = resolveRealBinary("bash");
+      await execFileAsync(bashBinary!, [scriptPath], {
+        cwd: repoPath,
+        env: {
+          // process.env를 펼치지 않아 node가 들어 있는 디렉터리를 PATH에서 배제한다.
+          PATH: sandboxBinDir,
+          HOME: repoPath,
+          KANVIBE_CURL_LOG: curlLogPath,
+        },
+      });
+
+      const status = JSON.parse(
+        await readFile(join(repoPath, ".kanvibe", "status.json"), "utf8"),
+      ) as { status?: string };
+      expect(status.status).toBe("review");
+
+      const curlCalls = (await readFile(curlLogPath, "utf8"))
+        .trim()
+        .split("\n")
+        .filter((line) => line.length > 0);
+      const postedEndpoints = curlCalls.map((line) =>
+        line.split(/\s+/).find((token) => token.endsWith("/api/hooks/status")),
+      );
+      const payloads = curlCalls.map((line) => ({
+        taskId: line.match(/"taskId":\s*"([^"]+)"/)?.[1],
+        status: line.match(/"status":\s*"([^"]+)"/)?.[1],
+      }));
+
+      expect(postedEndpoints).toEqual([
+        "http://127.0.0.1:9736/api/hooks/status",
+        "http://127.0.0.1:9736/api/hooks/status",
+      ]);
+      expect(payloads).toEqual([
+        { taskId: "local-task", status: "review" },
+        { taskId: "dev-task", status: "review" },
+      ]);
+    } finally {
+      await rm(repoPath, { recursive: true, force: true });
+    }
   });
 
   it("status json persistence 판정은 legacy status.md hook을 거부한다", () => {

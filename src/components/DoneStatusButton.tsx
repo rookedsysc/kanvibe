@@ -10,7 +10,7 @@ interface DoneStatusButtonProps {
   doneAlertDismissed: boolean;
 }
 
-/** Done 상태 전환 버튼. 정리 대상 리소스가 있으면 확인 모달을 표시한다 */
+/** Done 상태 전환 버튼. 연결 리소스가 있으면 보존 안내 모달을 표시한다 */
 export default function DoneStatusButton({
   statusChangeAction,
   label,

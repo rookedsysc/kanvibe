@@ -11,6 +11,7 @@ const mockGetOpenCodeHooksStatus = vi.fn();
 const mockExecGit = vi.fn();
 const mockGetHookServerUrl = vi.fn();
 const mockAddAiToolPatternsToGitExclude = vi.fn();
+const mockUpsertKanvibeHookTarget = vi.fn();
 
 vi.mock("@/lib/claudeHooksSetup", () => ({
   setupClaudeHooks: (...args: unknown[]) => mockSetupClaudeHooks(...args),
@@ -64,6 +65,10 @@ vi.mock("@/lib/gitExclude", () => ({
   addAiToolPatternsToGitExclude: (...args: unknown[]) => mockAddAiToolPatternsToGitExclude(...args),
 }));
 
+vi.mock("@/lib/kanvibeProjectState", () => ({
+  upsertKanvibeHookTarget: (...args: unknown[]) => mockUpsertKanvibeHookTarget(...args),
+}));
+
 function extractWrittenContent(calls: unknown[][], filePath: string): string {
   const targetCall = calls.find(([command]) => typeof command === "string"
     && (command.includes(`> "${filePath}"`) || command.includes(`> '${filePath}'`)));
@@ -105,11 +110,13 @@ describe("kanvibeHooksInstaller", () => {
     mockExecGit.mockReset();
     mockGetHookServerUrl.mockReset();
     mockAddAiToolPatternsToGitExclude.mockReset();
+    mockUpsertKanvibeHookTarget.mockReset();
     mockSetupClaudeHooks.mockResolvedValue(undefined);
     mockSetupGeminiHooks.mockResolvedValue(undefined);
     mockSetupCodexHooks.mockResolvedValue(undefined);
     mockSetupOpenCodeHooks.mockResolvedValue(undefined);
     mockGetHookServerUrl.mockReturnValue("http://192.168.0.8:9736");
+    mockUpsertKanvibeHookTarget.mockResolvedValue(undefined);
     mockExecGit.mockResolvedValue("");
     mockAddAiToolPatternsToGitExclude.mockResolvedValue(undefined);
     mockGetClaudeHooksStatus.mockResolvedValue({ installed: true });
@@ -133,6 +140,11 @@ describe("kanvibeHooksInstaller", () => {
     expect(mockSetupGeminiHooks).toHaveBeenCalledWith("/repo", "task-1", "http://192.168.0.8:9736");
     expect(mockSetupCodexHooks).toHaveBeenCalledWith("/repo", "task-1", "http://192.168.0.8:9736");
     expect(mockSetupOpenCodeHooks).toHaveBeenCalledWith("/repo", "task-1", "http://192.168.0.8:9736");
+    expect(mockUpsertKanvibeHookTarget).toHaveBeenCalledWith(
+      "/repo",
+      { url: "http://192.168.0.8:9736", taskId: "task-1" },
+      null,
+    );
     expect(mockExecGit).not.toHaveBeenCalled();
   });
 
@@ -148,6 +160,11 @@ describe("kanvibeHooksInstaller", () => {
     expect(mockSetupGeminiHooks).toHaveBeenCalledWith("/repo", "task-1", "http://192.168.0.8:9736");
     expect(mockSetupCodexHooks).toHaveBeenCalledWith("/repo", "task-1", "http://192.168.0.8:9736");
     expect(mockSetupOpenCodeHooks).toHaveBeenCalledWith("/repo", "task-1", "http://192.168.0.8:9736");
+    expect(mockUpsertKanvibeHookTarget).toHaveBeenCalledWith(
+      "/repo",
+      { url: "http://192.168.0.8:9736", taskId: "task-1" },
+      null,
+    );
     expect(mockGetClaudeHooksStatus).not.toHaveBeenCalled();
     expect(mockGetGeminiHooksStatus).not.toHaveBeenCalled();
     expect(mockGetCodexHooksStatus).not.toHaveBeenCalled();
@@ -235,6 +252,11 @@ describe("kanvibeHooksInstaller", () => {
 
     // Then
     expect(mockSetupCodexHooks).toHaveBeenCalledWith("/repo", "task-1", "http://192.168.0.8:9736");
+    expect(mockUpsertKanvibeHookTarget).toHaveBeenCalledWith(
+      "/repo",
+      { url: "http://192.168.0.8:9736", taskId: "task-1" },
+      null,
+    );
     expect(mockSetupClaudeHooks).not.toHaveBeenCalled();
     expect(mockSetupGeminiHooks).not.toHaveBeenCalled();
     expect(mockSetupOpenCodeHooks).not.toHaveBeenCalled();
@@ -469,7 +491,7 @@ describe("kanvibeHooksInstaller", () => {
     ["gemini", "/remote/repo/.gemini/settings.json", "/remote/repo/.claude/settings.json"],
     ["codex", "/remote/repo/.codex/hooks.json", "/remote/repo/.opencode/plugins/kanvibe-plugin.ts"],
     ["openCode", "/remote/repo/.opencode/plugins/kanvibe-plugin.ts", "/remote/repo/.codex/hooks.json"],
-  ] as const)("원격 %s 단독 hook 설치도 provider 파일만 쓰고 hook target registry는 쓰지 않는다", async (provider, expectedProviderFile, unexpectedProviderFile) => {
+  ] as const)("원격 %s 단독 hook 설치도 target registry를 갱신하고 provider 파일만 쓴다", async (provider, expectedProviderFile, unexpectedProviderFile) => {
     // Given
     const { installKanvibeHookProvider } = await import("@/lib/kanvibeHooksInstaller");
 
@@ -483,6 +505,11 @@ describe("kanvibeHooksInstaller", () => {
     expect(writeCommands.join("\n")).toContain(expectedProviderFile);
     expect(writeCommands.join("\n")).not.toContain(unexpectedProviderFile);
     expect(writeCommands.join("\n")).not.toContain("/remote/repo/.kanvibe/hooks-targets.json");
+    expect(mockUpsertKanvibeHookTarget).toHaveBeenCalledWith(
+      "/remote/repo",
+      { url: "http://192.168.0.8:9736", taskId: "task-2" },
+      "remote-host",
+    );
   });
 
   it("원격 전체 hook 설치는 기존 설정 파일을 한 번의 SSH 명령으로 읽는다", async () => {

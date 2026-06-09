@@ -29,19 +29,19 @@
     },
     "doneAlert": {
       "title": "移动到完成",
-      "message": "移动到完成状态将删除 worktree、branch 和 tmux session。",
+      "message": "移动到完成状态会保留 worktree、branch 和 tmux session。只有删除任务时才会删除这些资源。",
       "dontAskAgain": "不再提示",
       "confirm": "移动",
       "cancel": "取消"
     },
     "prMergeAlert": {
       "title": "检测到 PR 已合并",
-      "message": "已确认 worktree PR {branchName} 已被合并。要将任务“{taskTitle}”移动到 Done 吗？",
+      "message": "已确认 worktree PR {branchName} 已被合并。要删除任务“{taskTitle}”及其资源吗？",
       "prLinkLabel": "PR 链接"
     },
     "backgroundSyncReview": {
       "title": "后台同步检查",
-      "message": "最近一次后台扫描发现了需要检查的项目。请勾选要移动到 Done 的已合并 PR 任务，并同时确认新注册的 worktree。",
+      "message": "最近一次后台扫描发现了需要检查的项目。请勾选要删除的已合并 PR 任务，并同时确认新注册的 worktree。",
       "mergedSection": "已合并 PR",
       "registeredSection": "新 TODO worktree",
       "pulledSection": "Pull 结果",
@@ -51,7 +51,7 @@
       "pullRequestFailure": "Pull Request 检查失败",
       "taskPullFailure": "Task pull 失败",
       "worktreeFailure": "Worktree 同步失败",
-      "emptyMerged": "本次检查中没有需要移动到 Done 的已合并 PR 任务。",
+      "emptyMerged": "本次检查中没有需要删除的已合并 PR 任务。",
       "emptyRegistered": "本次检查中没有新注册的 worktree。"
     },
     "releaseUpdate": {

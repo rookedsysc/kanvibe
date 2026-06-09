@@ -131,9 +131,9 @@ brew untap rookedsysc/kanvibe
 
 ### 1. 프로젝트 등록
 
-프로젝트 설정에서 **fzf 스타일 폴더 검색**으로 로컬 git 저장소를 검색합니다. KanVibe가 디렉터리를 스캔하여 기존 worktree 브랜치를 자동 감지합니다.
+메인 보드 상단에서 프로젝트 필터와 **+ 새 작업** 사이의 **돋보기 디렉터리 스캔 버튼**을 눌러 프로젝트 등록 dialog를 엽니다. Dialog에서 로컬/원격 git 저장소 경로를 선택하고 **스캔 및 등록**을 누르면 KanVibe가 저장소를 등록하고 기존 worktree 브랜치를 감지하며 지원 에이전트 hook을 설치합니다.
 
-프로젝트 관리를 중단하려면 프로젝트 설정에서 삭제하세요. 이 동작은 내장 SQLite 데이터베이스에서 해당 프로젝트와 KanVibe 태스크만 삭제하며, 디스크의 git 브랜치, worktree, 파일은 보존합니다.
+프로젝트 관리를 중단하려면 등록 dialog 하단의 등록된 프로젝트 목록에서 삭제하세요. 이 동작은 SQLite의 프로젝트와 연결된 KanVibe 태스크 레코드만 제거하며, 디스크의 git 브랜치, worktree, 파일은 보존합니다.
 
 ### 2. 태스크 생성
 
@@ -176,10 +176,10 @@ brew untap rookedsysc/kanvibe
 
 ### 브랜치 기반 태스크 워크스페이스
 - git worktree와 터미널 세션을 자동으로 준비하는 브랜치 TODO 생성
-- 기존 worktree 브랜치를 스캔하여 TODO 태스크로 등록
+- 보드 toolbar의 돋보기 스캔 dialog로 저장소를 등록하고 기존 worktree 브랜치를 TODO 태스크로 감지
 - 각 태스크를 전용 터미널 워크스페이스로 열고, 사이드 dock에서 태스크 메타데이터, hook 컨트롤, 채팅, PR 액션 사용
 - 태스크를 DONE으로 이동하여 브랜치, worktree, 터미널 세션 자동 정리
-- 기존 git 브랜치, worktree, 디스크 파일을 건드리지 않고 설정에서 프로젝트 삭제
+- 기존 git 브랜치, worktree, 디스크 파일을 건드리지 않고 디렉터리 스캔 dialog에서 프로젝트 삭제
 
 ### 터미널 세션 (tmux / zellij)
 - **tmux**와 **zellij** 모두 터미널 멀티플렉서로 지원
