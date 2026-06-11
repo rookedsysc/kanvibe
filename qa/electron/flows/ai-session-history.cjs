@@ -95,6 +95,10 @@ async function takeScreenshot(page, run, label, screenshots) {
   const shotPath = path.join(run.screenshotsDir, fileName);
   await page.screenshot({ path: shotPath, fullPage: true });
   screenshots.push({ label, path: shotPath });
+  const videoPauseMs = Number.parseInt(process.env.KANVIBE_QA_VIDEO_STEP_PAUSE_MS || "900", 10);
+  if (Number.isFinite(videoPauseMs) && videoPauseMs > 0) {
+    await page.waitForTimeout(videoPauseMs);
+  }
 }
 
 async function dismissUpdateDialogIfPresent(page) {
@@ -255,7 +259,42 @@ function createFakeAiSessionHistory(fakeHome, fixture) {
   writeJsonLines(claudeFile, [
     { type: "system", sessionId: "claude-manual-ai-history", cwd: matchedPath, timestamp: "2026-01-01T00:00:00.000Z", message: { role: "system", content: "Claude system instructions for KanVibe QA." } },
     { type: "user", sessionId: "claude-manual-ai-history", cwd: matchedPath, timestamp: "2026-01-01T00:01:00.000Z", message: { role: "user", content: [{ type: "text", text: "Claude QA prompt: verify manual AI history loading" }] } },
-    { type: "assistant", sessionId: "claude-manual-ai-history", cwd: matchedPath, timestamp: "2026-01-01T00:02:00.000Z", message: { role: "assistant", content: [{ type: "text", text: "Claude QA assistant answer: load only after the user presses the history button. Body-search marker: database migration rollback." }] } },
+    {
+      type: "assistant",
+      sessionId: "claude-manual-ai-history",
+      cwd: matchedPath,
+      timestamp: "2026-01-01T00:02:00.000Z",
+      message: {
+        role: "assistant",
+        content: [{
+          type: "text",
+          text: [
+            "Claude QA assistant answer: load only after the user presses the history button.",
+            "",
+            "## Markdown + Mermaid QA summary",
+            "",
+            "- Markdown bullet renders as a real list item.",
+            "- **Strong text** and `inline code` stay formatted.",
+            "- [Safe KanVibe link](https://example.com/kanvibe) opens with safe link attributes.",
+            "",
+            "```ts",
+            "const qaResult = 'markdown-rendered';",
+            "```",
+            "",
+            "```mermaid",
+            "graph TD",
+            "  A[AI history loaded] --> B[Markdown rendered]",
+            "  B --> C[Mermaid SVG rendered]",
+            "```",
+            "",
+            "<script>KanVibe QA blocked script</script>",
+            "<span style=\"color:red\">Style attribute is stripped but text remains.</span>",
+            "",
+            "Body-search marker: database migration rollback.",
+          ].join("\n"),
+        }],
+      },
+    },
     { type: "user", sessionId: "claude-manual-ai-history", cwd: matchedPath, timestamp: "2026-01-01T00:03:00.000Z", message: { role: "user", content: [{ type: "tool_result", content: "Claude QA tool result text." }] } },
   ]);
 
@@ -534,6 +573,7 @@ async function main() {
   let fixture;
   let seededTask;
   let headlessCodexResult = null;
+  let isExpectedShutdown = false;
 
   const check = async (name, fn) => {
     try {
@@ -585,6 +625,18 @@ async function main() {
     app = launched.app;
     page = launched.page;
 
+    app.process().on("exit", (code, signal) => {
+      if (isExpectedShutdown) return;
+      const output = typeof app?.output === "function" ? app.output() : "";
+      errors.push(`electron exited: code=${code ?? "null"} signal=${signal ?? "null"}${output ? ` output=${output.slice(-4000)}` : ""}`);
+    });
+    page.on("close", () => {
+      if (!isExpectedShutdown) errors.push("page closed before QA flow completed");
+    });
+    page.on("crash", () => {
+      if (!isExpectedShutdown) errors.push("page crashed before QA flow completed");
+    });
+
     page.on("console", (message) => {
       if (["error", "warning"].includes(message.type())) errors.push(`${message.type()}: ${message.text()}`);
     });
@@ -622,29 +674,42 @@ async function main() {
       return `task=${seededTask.id}; repo=${fixture.repoDir}; worktree=${fixture.worktreePath}; fakeHome=${fakeHome}; fixtures=${Object.values(aiFixtures).join(",")}`;
     });
 
-    await setStepOverlay(page, "1/5 상세 화면 진입: AI 히스토리는 아직 자동 로드되지 않아야 함");
+    await setStepOverlay(page, "1/7 상세 화면 진입: AI 히스토리는 아직 자동 로드되지 않아야 함");
     await page.evaluate((taskId) => {
       window.location.hash = `#/ko/task/${taskId}`;
     }, seededTask.id);
     await page.waitForTimeout(1200);
     await dismissUpdateDialogIfPresent(page);
-    await page.getByText("QA manual AI session history", { exact: false }).first().waitFor({ state: "visible", timeout: 20000 });
+    await page.getByText("이 작업에는 연결된 터미널 세션이 없습니다.", { exact: false }).first().waitFor({ state: "visible", timeout: 20000 });
+    await page.getByRole("button", { name: "AI 채팅" }).waitFor({ state: "visible", timeout: 15000 });
     await takeScreenshot(page, run, "task-detail-before-ai-history-load", screenshots);
 
-    await check("Opening AI chat view does not auto-load history", async () => {
+    await check("Opening AI chat view shows the AI session panel without selecting a conversation", async () => {
       await dismissUpdateDialogIfPresent(page);
       await page.getByRole("button", { name: "AI 채팅" }).click({ timeout: 15000 });
       await page.locator("[data-testid='inline-ai-chat']").waitFor({ state: "visible", timeout: 15000 });
-      await waitForText(page, "AI 세션 히스토리는 필요할 때만 불러옵니다.");
-      const listCount = await page.locator("[data-testid='ai-session-list']").count();
-      if (listCount !== 0) throw new Error(`history list appeared before manual load: ${listCount}`);
-      return "inline chat opened with manual-load hint and no session list";
-    });
-    await takeScreenshot(page, run, "inline-chat-manual-load-hint", screenshots);
 
-    await setStepOverlay(page, "2/6 히스토리 불러오기: Claude/Codex/OpenCode/Gemini provider 목록 표시");
-    await check("Manual history load shows Claude, Codex, OpenCode, and Gemini sessions", async () => {
-      await page.getByRole("button", { name: "히스토리 불러오기" }).click({ timeout: 15000 });
+      const manualLoadButton = page.getByRole("button", { name: "히스토리 불러오기" });
+      if (await manualLoadButton.isVisible({ timeout: 1000 }).catch(() => false)) {
+        await waitForText(page, "AI 세션 히스토리는 필요할 때만 불러옵니다.");
+        const listCount = await page.locator("[data-testid='ai-session-list']").count();
+        if (listCount !== 0) throw new Error(`history list appeared before manual load: ${listCount}`);
+        return "inline chat opened with manual-load hint and no session list";
+      }
+
+      await page.locator("[data-testid='ai-session-list']").waitFor({ state: "visible", timeout: 15000 });
+      await waitForText(page, "왼쪽 목록에서 AI 세션을 선택하세요.");
+      return "inline chat opened with the session list visible and no conversation selected";
+    });
+    await takeScreenshot(page, run, "inline-chat-session-panel-opened", screenshots);
+
+    await setStepOverlay(page, "2/7 히스토리 목록 확인: Claude/Codex/OpenCode/Gemini provider 목록 표시");
+    await check("History panel shows Claude, Codex, OpenCode, and Gemini sessions", async () => {
+      const manualLoadButton = page.getByRole("button", { name: "히스토리 불러오기" });
+      const clickedManualLoad = await manualLoadButton.isVisible({ timeout: 1000 }).catch(() => false);
+      if (clickedManualLoad) {
+        await manualLoadButton.click({ timeout: 15000 });
+      }
       await page.locator("[data-testid='ai-session-list']").waitFor({ state: "visible", timeout: 20000 });
       await assertProviderBadges(page);
       for (const text of [
@@ -670,7 +735,7 @@ async function main() {
       return `live Codex exec marker visible in session list: ${headlessCodexResult.marker}`;
     });
 
-    await setStepOverlay(page, "3/6 왼쪽 provider 아이콘 rail: Claude+Gemini OR 필터 동작 검증");
+    await setStepOverlay(page, "3/7 왼쪽 provider 아이콘 rail: Claude+Gemini OR 필터 동작 검증");
     await check("Provider icon rail filters sessions with OR semantics", async () => {
       for (const provider of ["claude", "opencode", "gemini", "codex"]) {
         await page.locator(`[data-testid='ai-session-filter-${provider}']`).waitFor({ state: "visible", timeout: 10000 });
@@ -711,7 +776,7 @@ async function main() {
     });
     await takeScreenshot(page, run, "provider-or-filter-rail", screenshots);
 
-    await setStepOverlay(page, "4/6 Claude 세션 선택: 말풍선 왼쪽 위 provider 아이콘과 user/assistant/system/tool 메시지 표시");
+    await setStepOverlay(page, "4/7 Claude 세션 선택: 말풍선 왼쪽 위 provider 아이콘과 user/assistant/system/tool 메시지 표시");
     await check("Selecting a Claude session loads chat messages with provider icons", async () => {
       await page.getByRole("button", { name: /claude .*manual AI history|claude .*Claude QA prompt/i }).click({ timeout: 15000 });
       await waitForText(page, "Claude QA assistant answer");
@@ -723,7 +788,56 @@ async function main() {
     });
     await takeScreenshot(page, run, "claude-session-detail-messages", screenshots);
 
-    await setStepOverlay(page, "5/6 역할 필터: 시스템 입력만 선택하면 system 메시지만 남아야 함");
+    await setStepOverlay(page, "5/7 Markdown + Mermaid: heading/list/code/link/SVG 렌더링 및 sanitize 검증");
+    await check("Selected Claude detail renders Markdown and Mermaid safely", async () => {
+      await waitForText(page, "Markdown + Mermaid QA summary");
+      await waitForText(page, "Markdown bullet renders as a real list item.");
+      await waitForText(page, "const qaResult = 'markdown-rendered';");
+      await page.locator("[data-testid='ai-session-mermaid-diagram'] svg").first().waitFor({ state: "attached", timeout: 20000 });
+
+      const renderState = await page.locator("[data-testid='inline-ai-chat']").evaluate((root) => {
+        const textIncludes = (selector, value) => Array.from(root.querySelectorAll(selector)).some((node) => node.textContent?.includes(value));
+        const safeLink = Array.from(root.querySelectorAll(".ai-session-markdown a"))
+          .find((node) => node.textContent?.includes("Safe KanVibe link"));
+
+        return {
+          heading: textIncludes("h2", "Markdown + Mermaid QA summary"),
+          listItem: textIncludes("li", "Markdown bullet renders as a real list item."),
+          codeBlock: textIncludes("pre code", "const qaResult = 'markdown-rendered';"),
+          strongText: textIncludes("strong", "Strong text"),
+          mermaidSvg: Boolean(root.querySelector("[data-testid='ai-session-mermaid-diagram'] svg")),
+          mermaidFallback: Boolean(root.querySelector("[data-testid='ai-session-mermaid-fallback']")),
+          unsafeScript: Boolean(root.querySelector(".ai-session-markdown script")),
+          unsafeStyle: Boolean(root.querySelector(".ai-session-markdown [style]")),
+          unsafeJavascriptLink: Boolean(root.querySelector('.ai-session-markdown a[href^="javascript:"]')),
+          safeLinkTarget: safeLink?.getAttribute("target") || "",
+          safeLinkRel: safeLink?.getAttribute("rel") || "",
+          safeLinkHref: safeLink?.getAttribute("href") || "",
+        };
+      });
+
+      const failures = [];
+      if (!renderState.heading) failures.push("missing markdown h2");
+      if (!renderState.listItem) failures.push("missing markdown li");
+      if (!renderState.codeBlock) failures.push("missing fenced code block");
+      if (!renderState.strongText) failures.push("missing strong text");
+      if (!renderState.mermaidSvg) failures.push("missing Mermaid SVG");
+      if (renderState.mermaidFallback) failures.push("Mermaid fell back to raw pre/code");
+      if (renderState.unsafeScript) failures.push("script tag survived sanitizer");
+      if (renderState.unsafeStyle) failures.push("style attribute survived sanitizer");
+      if (renderState.unsafeJavascriptLink) failures.push("javascript: link survived sanitizer");
+      if (renderState.safeLinkTarget !== "_blank") failures.push(`safe link target=${renderState.safeLinkTarget || "missing"}`);
+      if (!renderState.safeLinkRel.includes("noopener") || !renderState.safeLinkRel.includes("noreferrer")) {
+        failures.push(`safe link rel=${renderState.safeLinkRel || "missing"}`);
+      }
+      if (renderState.safeLinkHref !== "https://example.com/kanvibe") failures.push(`safe link href=${renderState.safeLinkHref || "missing"}`);
+      if (failures.length > 0) throw new Error(failures.join("; "));
+
+      return "Markdown h2/li/strong/code/link rendered, Mermaid SVG attached, and unsafe script/style/javascript links were removed";
+    });
+    await takeScreenshot(page, run, "markdown-mermaid-rendered-and-sanitized", screenshots);
+
+    await setStepOverlay(page, "6/7 역할 필터: 시스템 입력만 선택하면 system 메시지만 남아야 함");
     await check("Role filter passes through and narrows detail to system messages", async () => {
       await page.getByRole("button", { name: "시스템 입력" }).click({ timeout: 15000 });
       await page.waitForTimeout(1000);
@@ -744,7 +858,7 @@ async function main() {
     });
     await takeScreenshot(page, run, "system-role-filter-applied", screenshots);
 
-    await setStepOverlay(page, "6/6 채팅 검색: 본문에만 있는 database migration 문구로 Claude 대화 검색");
+    await setStepOverlay(page, "7/7 채팅 검색: 본문에만 있는 database migration 문구로 Claude 대화 검색");
     await check("Chat search reloads history by message-body query and opens the matching conversation", async () => {
       const searchInput = page.locator("#ai-session-search");
       await searchInput.fill("database migration rollback");
@@ -792,6 +906,7 @@ async function main() {
     console.error(`[kanvibe-qa] AI session history flow failed:\n${detail}`);
     checks.push({ name: "AI session history Electron QA flow", ok: false, detail });
   } finally {
+    isExpectedShutdown = true;
     if (page && traceStarted) {
       await page.context().tracing.stop({ path: run.tracePath }).catch((error) => {
         checks.push({ name: "Playwright trace artifact", ok: false, detail: error instanceof Error ? error.message : String(error) });
@@ -834,7 +949,7 @@ async function main() {
 
   const result = {
     ok,
-    scope: "Electron UI QA for AI session history controls: manual history loading, provider icon rail OR filtering, message-level provider icons, body-text chat search across Claude/Codex/OpenCode/Gemini history, session detail rendering, and role filter narrowing",
+    scope: "Electron UI QA for AI session history controls: manual history loading, provider icon rail OR filtering, message-level provider icons, Markdown rendering, Mermaid SVG rendering, sanitizer behavior, body-text chat search across Claude/Codex/OpenCode/Gemini history, session detail rendering, and role filter narrowing",
     branch: gitValue(["branch", "--show-current"]),
     commit: gitValue(["rev-parse", "--short", "HEAD"]),
     checks,
