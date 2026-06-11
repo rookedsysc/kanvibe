@@ -67,6 +67,19 @@
     "title": "",
     "newTask": "+ 新任务",
     "allProjects": "所有项目",
+    "taskKindFilter": {
+      "label": "任务类型筛选",
+      "options": {
+        "project": "Project",
+        "task": "Task",
+        "all": "All"
+      },
+      "descriptions": {
+        "project": "仅显示项目根任务",
+        "task": "仅显示项目根以外的任务",
+        "all": "显示项目根和任务"
+      }
+    },
     "pageFind": {
       "label": "在看板中查找",
       "placeholder": "查找当前看板中可见的文本...",

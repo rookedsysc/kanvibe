@@ -68,6 +68,19 @@
     "title": "",
     "newTask": "+ 새 작업",
     "allProjects": "전체 프로젝트",
+    "taskKindFilter": {
+      "label": "작업 유형 필터",
+      "options": {
+        "project": "Project",
+        "task": "Task",
+        "all": "All"
+      },
+      "descriptions": {
+        "project": "프로젝트 root task만 보기",
+        "task": "프로젝트 root를 제외한 task만 보기",
+        "all": "프로젝트 root와 task 모두 보기"
+      }
+    },
     "pageFind": {
       "label": "보드에서 찾기",
       "placeholder": "이 보드에서 보이는 텍스트 찾기...",
