@@ -12,6 +12,12 @@
 # testing
 /coverage
 /qa-output
+/qa/baseline/.run
+/qa/parity/run-*/
+/qa/parity/native-db/
+/qa/perf-output
+/qa/seed/*.sqlite-shm
+/qa/seed/*.sqlite-wal
 
 # next.js
 /.next/
@@ -26,6 +32,8 @@
 # production
 /build
 /dist
+/native/target
+/native/dist
 /playwright-report
 /test-results
 
@@ -37,8 +45,18 @@
 /.kanvibe/
 /.tooling/
 /.omc/
-/.codex/hooks/
 /resources/database/app.seed.db
+
+# AI agent local state
+/.claude/.notification-context.json
+/.claude/hooks/
+/.claude/settings.json
+/.codex/
+/.gemini/
+/.opencode/
+/AGENTS.md
+/CLAUDE.local.md
+/GEMINI.md
 
 # debug
 npm-debug.log*
