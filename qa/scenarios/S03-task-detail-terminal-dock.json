@@ -1,0 +1,74 @@
+{
+  "$schema": "./scenario.schema.json",
+  "seed": "qa/seed/kanvibe-seed.sqlite",
+  "id": "S03-task-detail-terminal-dock",
+  "title": "Task detail shows dock, metadata, and terminal attachment state",
+  "coverage": [
+    "task-detail",
+    "dock-shortcuts",
+    "terminal-panel",
+    "tmux-session"
+  ],
+  "steps": [
+    {
+      "action": "launchApp",
+      "seed": "qa/seed/kanvibe-seed.sqlite",
+      "locale": "ko",
+      "theme": "dark",
+      "viewport": {
+        "width": 1440,
+        "height": 960
+      }
+    },
+    {
+      "action": "waitForBoardReady"
+    },
+    {
+      "action": "openTaskDetail",
+      "taskId": "qa-task-progress-terminal"
+    },
+    {
+      "action": "selectDockItem",
+      "item": "terminal"
+    },
+    {
+      "action": "captureScreen",
+      "name": "task-detail-terminal"
+    }
+  ],
+  "assertions": [
+    {
+      "type": "route",
+      "pattern": "/task/qa-task-progress-terminal"
+    },
+    {
+      "type": "dockItems",
+      "expected": [
+        "overview",
+        "status",
+        "terminal",
+        "chat",
+        "aiSessions"
+      ]
+    },
+    {
+      "type": "shortcutLabels",
+      "platform": "macos",
+      "expectedPrefix": "Cmd+"
+    },
+    {
+      "type": "taskField",
+      "taskId": "qa-task-progress-terminal",
+      "field": "session_type",
+      "expected": "tmux"
+    }
+  ],
+  "artifacts": {
+    "screens": [
+      "screens/S03-task-detail-terminal.png"
+    ],
+    "videos": [
+      "videos/S03-task-detail-terminal-dock.mp4"
+    ]
+  }
+}

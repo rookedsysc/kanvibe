@@ -1,7 +1,6 @@
 /* eslint-disable @typescript-eslint/no-require-imports */
 const net = require("node:net");
 const { _electron: electron } = require("@playwright/test");
-const electronExecutable = require("electron");
 
 function collectProcessOutput(child) {
   const output = [];
@@ -51,6 +50,27 @@ async function resolveCdpPort(options = {}) {
   return findAvailablePort();
 }
 
+function resolveElectronExecutable(options = {}) {
+  if (options.executablePath) return options.executablePath;
+  if (process.env.KANVIBE_QA_ELECTRON_EXECUTABLE) return process.env.KANVIBE_QA_ELECTRON_EXECUTABLE;
+  return require("electron");
+}
+
+function buildElectronArgs(rootDir, cdpPort, options = {}) {
+  if (options.args) return options.args;
+
+  const args = [
+    `--remote-debugging-port=${cdpPort}`,
+    "--no-sandbox",
+  ];
+
+  if (options.passRootDir !== false) {
+    args.push(rootDir);
+  }
+
+  return args;
+}
+
 async function launchKanVibeElectron(options = {}) {
   const rootDir = options.rootDir || process.cwd();
   const cdpPort = await resolveCdpPort(options);
@@ -58,12 +78,8 @@ async function launchKanVibeElectron(options = {}) {
 
   try {
     app = await electron.launch({
-      executablePath: electronExecutable,
-      args: [
-        `--remote-debugging-port=${cdpPort}`,
-        "--no-sandbox",
-        rootDir,
-      ],
+      executablePath: resolveElectronExecutable(options),
+      args: buildElectronArgs(rootDir, cdpPort, options),
       cwd: rootDir,
       env: {
         ...process.env,

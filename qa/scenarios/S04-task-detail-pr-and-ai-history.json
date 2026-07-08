@@ -1,0 +1,79 @@
+{
+  "$schema": "./scenario.schema.json",
+  "seed": "qa/seed/kanvibe-seed.sqlite",
+  "id": "S04-task-detail-pr-and-ai-history",
+  "title": "Task detail PR slot and AI session history are visible",
+  "coverage": [
+    "task-detail",
+    "pull-request",
+    "ai-session-history",
+    "dock-slot-order"
+  ],
+  "steps": [
+    {
+      "action": "launchApp",
+      "seed": "qa/seed/kanvibe-seed.sqlite",
+      "locale": "ko",
+      "theme": "dark",
+      "viewport": {
+        "width": 1440,
+        "height": 960
+      }
+    },
+    {
+      "action": "waitForBoardReady"
+    },
+    {
+      "action": "openTaskDetail",
+      "taskId": "qa-task-review-diff"
+    },
+    {
+      "action": "selectDockItem",
+      "item": "pullRequest"
+    },
+    {
+      "action": "selectDockItem",
+      "item": "aiSessions"
+    },
+    {
+      "action": "captureScreen",
+      "name": "task-detail-pr-ai"
+    }
+  ],
+  "assertions": [
+    {
+      "type": "taskField",
+      "taskId": "qa-task-review-diff",
+      "field": "pr_url",
+      "expectedContains": "/pull/302"
+    },
+    {
+      "type": "dockItems",
+      "expected": [
+        "overview",
+        "status",
+        "terminal",
+        "pullRequest",
+        "chat",
+        "aiSessions"
+      ]
+    },
+    {
+      "type": "aiProviderFilters",
+      "expected": [
+        "claude",
+        "codex",
+        "gemini",
+        "opencode"
+      ]
+    }
+  ],
+  "artifacts": {
+    "screens": [
+      "screens/S04-task-detail-pr-ai.png"
+    ],
+    "videos": [
+      "videos/S04-task-detail-pr-and-ai-history.mp4"
+    ]
+  }
+}

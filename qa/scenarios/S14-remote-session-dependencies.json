@@ -1,0 +1,72 @@
+{
+  "$schema": "./scenario.schema.json",
+  "seed": "qa/seed/kanvibe-seed.sqlite",
+  "id": "S14-remote-session-dependencies",
+  "title": "Remote session dependency UI reports SSH-scoped tmux/zellij checks",
+  "coverage": [
+    "remote-session",
+    "ssh-host",
+    "tmux",
+    "zellij",
+    "dependency-install"
+  ],
+  "steps": [
+    {
+      "action": "launchApp",
+      "seed": "qa/seed/kanvibe-seed.sqlite",
+      "locale": "ko",
+      "theme": "dark",
+      "viewport": {
+        "width": 1440,
+        "height": 960
+      }
+    },
+    {
+      "action": "waitForBoardReady"
+    },
+    {
+      "action": "openTaskDetail",
+      "taskId": "qa-task-todo-remote"
+    },
+    {
+      "action": "selectDockItem",
+      "item": "terminal"
+    },
+    {
+      "action": "openSessionDependencyPanel"
+    },
+    {
+      "action": "captureScreen",
+      "name": "remote-session-dependencies"
+    }
+  ],
+  "assertions": [
+    {
+      "type": "taskField",
+      "taskId": "qa-task-todo-remote",
+      "field": "ssh_host",
+      "expected": "qa-remote"
+    },
+    {
+      "type": "sessionDependencyVisible",
+      "sessionType": "zellij",
+      "sshHost": "qa-remote"
+    },
+    {
+      "type": "noGenericEnvLeak",
+      "forbiddenKeys": [
+        "PORT",
+        "HOST",
+        "NODE_ENV"
+      ]
+    }
+  ],
+  "artifacts": {
+    "screens": [
+      "screens/S14-remote-session-dependencies.png"
+    ],
+    "videos": [
+      "videos/S14-remote-session-dependencies.mp4"
+    ]
+  }
+}

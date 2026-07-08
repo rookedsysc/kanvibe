@@ -1,0 +1,73 @@
+{
+  "$schema": "./scenario.schema.json",
+  "seed": "qa/seed/kanvibe-seed.sqlite",
+  "id": "S02-create-task-modal",
+  "title": "Create task modal writes a todo task without worktree side effects",
+  "coverage": [
+    "create-task-modal",
+    "kanban.createTask",
+    "db-write",
+    "board-refresh"
+  ],
+  "steps": [
+    {
+      "action": "launchApp",
+      "seed": "qa/seed/kanvibe-seed.sqlite",
+      "locale": "ko",
+      "theme": "dark",
+      "viewport": {
+        "width": 1440,
+        "height": 960
+      }
+    },
+    {
+      "action": "waitForBoardReady"
+    },
+    {
+      "action": "openCreateTaskModal"
+    },
+    {
+      "action": "fillTaskForm",
+      "title": "QA created task",
+      "description": "Created by S02",
+      "priority": "medium"
+    },
+    {
+      "action": "submitCreateTask"
+    },
+    {
+      "action": "captureScreen",
+      "name": "create-task-result"
+    }
+  ],
+  "assertions": [
+    {
+      "type": "taskVisible",
+      "title": "QA created task",
+      "status": "todo"
+    },
+    {
+      "type": "dbRow",
+      "table": "kanban_tasks",
+      "where": {
+        "title": "QA created task"
+      },
+      "expected": {
+        "status": "todo",
+        "priority": "medium"
+      }
+    },
+    {
+      "type": "noWorktreeCreated",
+      "title": "QA created task"
+    }
+  ],
+  "artifacts": {
+    "screens": [
+      "screens/S02-create-task-result.png"
+    ],
+    "videos": [
+      "videos/S02-create-task-modal.mp4"
+    ]
+  }
+}

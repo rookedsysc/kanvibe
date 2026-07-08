@@ -1,0 +1,11 @@
+allowBuilds:
+  '@parcel/watcher': true
+  '@swc/core': true
+  better-sqlite3: true
+  electron: true
+  electron-winstaller: true
+  esbuild: true
+  node-pty: true
+  sharp: true
+  cpu-features: true
+  unrs-resolver: true

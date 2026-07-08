@@ -40,29 +40,46 @@ function hasElectronBuilderInstalled() {
   }
 }
 
-function getPackageExecCommand() {
+function getLocalBinCommand(binaryName) {
+  const extension = process.platform === "win32" ? ".cmd" : "";
+  const binaryPath = path.join(process.cwd(), "node_modules", ".bin", `${binaryName}${extension}`);
+
+  return existsSync(binaryPath) ? binaryPath : null;
+}
+
+function getPackageExecCommand(binaryName) {
+  const localBinCommand = getLocalBinCommand(binaryName);
+
+  if (localBinCommand) {
+    return { command: localBinCommand, args: [] };
+  }
+
   const npmExecPath = process.env.npm_execpath || "";
 
   if (npmExecPath.includes("pnpm")) {
-    return { command: "pnpm", args: ["exec"] };
+    if (existsSync(npmExecPath) && !npmExecPath.endsWith(".cmd")) {
+      return { command: process.execPath, args: [npmExecPath, "exec", binaryName] };
+    }
+
+    return { command: process.platform === "win32" ? "pnpm.cmd" : "pnpm", args: ["exec", binaryName] };
   }
 
   if (npmExecPath.includes("yarn")) {
-    return { command: "yarn", args: ["exec"] };
+    return { command: "yarn", args: ["exec", binaryName] };
   }
 
   if (npmExecPath.includes("bun")) {
-    return { command: "bunx", args: [] };
+    return { command: "bunx", args: [binaryName] };
   }
 
-  return { command: process.platform === "win32" ? "npx.cmd" : "npx", args: ["--no-install"] };
+  return { command: process.platform === "win32" ? "npx.cmd" : "npx", args: ["--no-install", binaryName] };
 }
 
 function rebuildElectronNativeDependencies() {
-  const packageExec = getPackageExecCommand();
+  const packageExec = getPackageExecCommand("electron-rebuild");
 
   console.warn("[kanvibe] Postinstall: rebuilding native dependencies for the Electron runtime...");
-  execFileSync(packageExec.command, [...packageExec.args, "electron-rebuild", "-f", "--only", "better-sqlite3"], {
+  execFileSync(packageExec.command, [...packageExec.args, "-f", "--only", "better-sqlite3"], {
     stdio: "inherit",
     env: process.env,
   });

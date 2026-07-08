@@ -1,0 +1,69 @@
+{
+  "$schema": "./scenario.schema.json",
+  "seed": "qa/seed/kanvibe-seed.sqlite",
+  "id": "S11-notifications-hooks-background-sync",
+  "title": "Notifications, hook status, and background sync settings are visible",
+  "coverage": [
+    "notifications",
+    "hooks",
+    "background-sync",
+    "release-update-dialog"
+  ],
+  "steps": [
+    {
+      "action": "launchApp",
+      "seed": "qa/seed/kanvibe-seed.sqlite",
+      "locale": "ko",
+      "theme": "dark",
+      "viewport": {
+        "width": 1440,
+        "height": 960
+      }
+    },
+    {
+      "action": "waitForBoardReady"
+    },
+    {
+      "action": "openNotificationCenter"
+    },
+    {
+      "action": "openTaskDetail",
+      "taskId": "qa-task-review-ai-history"
+    },
+    {
+      "action": "selectDockItem",
+      "item": "hooks"
+    },
+    {
+      "action": "captureScreen",
+      "name": "notifications-hooks"
+    }
+  ],
+  "assertions": [
+    {
+      "type": "notificationCenterVisible"
+    },
+    {
+      "type": "hookStatusVisible",
+      "taskId": "qa-task-review-ai-history"
+    },
+    {
+      "type": "dbRow",
+      "table": "app_settings",
+      "where": {
+        "key": "background_sync_enabled"
+      },
+      "expected": {
+        "value": "false"
+      }
+    }
+  ],
+  "artifacts": {
+    "screens": [
+      "screens/S11-notifications-hooks.png"
+    ],
+    "videos": [
+      "videos/S11-notifications-hooks-background-sync.mp4"
+    ]
+  }
+}

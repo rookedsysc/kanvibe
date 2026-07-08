@@ -1,0 +1,88 @@
+{
+  "$schema": "./scenario.schema.json",
+  "seed": "qa/seed/kanvibe-seed.sqlite",
+  "id": "S09-vim-keyboard-shortcuts-search",
+  "title": "Vim commands and global task search keyboard flows work",
+  "coverage": [
+    "vim-mode",
+    "task-search",
+    "keyboard-shortcuts",
+    "page-find"
+  ],
+  "steps": [
+    {
+      "action": "launchApp",
+      "seed": "qa/seed/kanvibe-seed.sqlite",
+      "locale": "ko",
+      "theme": "dark",
+      "viewport": {
+        "width": 1440,
+        "height": 960
+      }
+    },
+    {
+      "action": "waitForBoardReady"
+    },
+    {
+      "action": "focusTask",
+      "taskId": "qa-task-todo-local"
+    },
+    {
+      "action": "pressKeys",
+      "keys": [
+        ":"
+      ]
+    },
+    {
+      "action": "typeText",
+      "text": "move review"
+    },
+    {
+      "action": "pressKeys",
+      "keys": [
+        "Enter"
+      ]
+    },
+    {
+      "action": "pressShortcut",
+      "command": "taskSearchDefault"
+    },
+    {
+      "action": "typeText",
+      "text": "diff renderer"
+    },
+    {
+      "action": "captureScreen",
+      "name": "keyboard-search"
+    }
+  ],
+  "assertions": [
+    {
+      "type": "taskVisible",
+      "taskId": "qa-task-todo-local",
+      "status": "review"
+    },
+    {
+      "type": "searchResultVisible",
+      "taskId": "qa-task-review-diff"
+    },
+    {
+      "type": "dbRow",
+      "table": "kanban_tasks",
+      "where": {
+        "id": "qa-task-todo-local"
+      },
+      "expected": {
+        "status": "review"
+      }
+    }
+  ],
+  "artifacts": {
+    "screens": [
+      "screens/S09-keyboard-search.png"
+    ],
+    "videos": [
+      "videos/S09-vim-keyboard-shortcuts-search.mp4"
+    ]
+  }
+}

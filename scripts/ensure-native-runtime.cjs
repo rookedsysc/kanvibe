@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 const { execFileSync } = require("node:child_process");
+const { existsSync } = require("node:fs");
 const path = require("node:path");
 
 const REQUIRED_NODE_MAJOR = 24;
@@ -48,8 +49,10 @@ function verifyNodeBetterSqlite3Binding() {
 }
 
 function verifyElectronBetterSqlite3Binding() {
+  const packageExec = getPackageExecCommand("electron");
+
   try {
-    execFileSync("pnpm", ["exec", "electron", "--no-sandbox", path.join(__dirname, "verify-electron-better-sqlite3.cjs")], {
+    execFileSync(packageExec.command, [...packageExec.args, "--no-sandbox", path.join(__dirname, "verify-electron-better-sqlite3.cjs")], {
       stdio: ["ignore", "inherit", "pipe"],
       env: process.env,
     });
@@ -89,22 +92,58 @@ function verifyBetterSqlite3BindingAfterRebuild() {
   verifyBetterSqlite3Binding();
 }
 
-function getPackageExecCommand() {
+function getLocalBinCommand(binaryName) {
+  const extension = process.platform === "win32" ? ".cmd" : "";
+  const binaryPath = path.join(process.cwd(), "node_modules", ".bin", `${binaryName}${extension}`);
+
+  return existsSync(binaryPath) ? binaryPath : null;
+}
+
+function getPackageManagerCommand() {
   const npmExecPath = process.env.npm_execpath || "";
 
   if (npmExecPath.includes("pnpm")) {
-    return { command: "pnpm", args: ["exec"] };
+    if (existsSync(npmExecPath) && !npmExecPath.endsWith(".cmd")) {
+      return { command: process.execPath, args: [npmExecPath] };
+    }
+
+    return { command: process.platform === "win32" ? "pnpm.cmd" : "pnpm", args: [] };
   }
 
   if (npmExecPath.includes("yarn")) {
-    return { command: "yarn", args: ["exec"] };
+    return { command: "yarn", args: [] };
   }
 
   if (npmExecPath.includes("bun")) {
-    return { command: "bunx", args: [] };
+    return { command: "bun", args: [] };
   }
 
-  return { command: process.platform === "win32" ? "npx.cmd" : "npx", args: ["--no-install"] };
+  return { command: process.platform === "win32" ? "npm.cmd" : "npm", args: [] };
+}
+
+function getPackageExecCommand(binaryName) {
+  const localBinCommand = getLocalBinCommand(binaryName);
+
+  if (localBinCommand) {
+    return { command: localBinCommand, args: [] };
+  }
+
+  const npmExecPath = process.env.npm_execpath || "";
+
+  if (npmExecPath.includes("pnpm")) {
+    const packageManager = getPackageManagerCommand();
+    return { command: packageManager.command, args: [...packageManager.args, "exec", binaryName] };
+  }
+
+  if (npmExecPath.includes("yarn")) {
+    return { command: "yarn", args: ["exec", binaryName] };
+  }
+
+  if (npmExecPath.includes("bun")) {
+    return { command: "bunx", args: [binaryName] };
+  }
+
+  return { command: process.platform === "win32" ? "npx.cmd" : "npx", args: ["--no-install", binaryName] };
 }
 
 function rebuildNativeDependency() {
@@ -118,10 +157,10 @@ function rebuildNativeDependency() {
       throw new Error("better-sqlite3 ABI mismatch in packaged Electron runtime");
     }
 
-    const packageExec = getPackageExecCommand();
+    const packageExec = getPackageExecCommand("electron-rebuild");
 
     console.warn("[kanvibe] Detected Electron native ABI mismatch. Rebuilding better-sqlite3 for Electron...");
-    execFileSync(packageExec.command, [...packageExec.args, "electron-rebuild", "-f", "--only", "better-sqlite3"], {
+    execFileSync(packageExec.command, [...packageExec.args, "-f", "--only", "better-sqlite3"], {
       stdio: "inherit",
       env,
     });
@@ -129,7 +168,8 @@ function rebuildNativeDependency() {
   }
 
   console.warn("[kanvibe] Detected Node native ABI mismatch. Rebuilding better-sqlite3...");
-  execFileSync("pnpm", ["rebuild", "better-sqlite3"], {
+  const packageManager = getPackageManagerCommand();
+  execFileSync(packageManager.command, [...packageManager.args, "rebuild", "better-sqlite3"], {
     stdio: "inherit",
     env,
   });

@@ -1,0 +1,76 @@
+{
+  "$schema": "./scenario.schema.json",
+  "seed": "qa/seed/kanvibe-seed.sqlite",
+  "id": "S06-git-worktree-branch-flow",
+  "title": "Branch-from-task flow creates branch metadata and preserves base branch",
+  "coverage": [
+    "branch-task-modal",
+    "git-worktree",
+    "kanban.branchFromTask",
+    "db-write"
+  ],
+  "steps": [
+    {
+      "action": "launchApp",
+      "seed": "qa/seed/kanvibe-seed.sqlite",
+      "locale": "ko",
+      "theme": "dark",
+      "viewport": {
+        "width": 1440,
+        "height": 960
+      }
+    },
+    {
+      "action": "waitForBoardReady"
+    },
+    {
+      "action": "openTaskContextMenu",
+      "taskId": "qa-task-todo-local"
+    },
+    {
+      "action": "chooseContextAction",
+      "actionName": "branchFromTask"
+    },
+    {
+      "action": "fillBranchTaskForm",
+      "projectId": "qa-project-kanvibe",
+      "branchName": "qa/branch-from-task",
+      "baseBranch": "main",
+      "sessionType": "tmux"
+    },
+    {
+      "action": "submitBranchTask"
+    },
+    {
+      "action": "captureScreen",
+      "name": "branch-task-result"
+    }
+  ],
+  "assertions": [
+    {
+      "type": "dbRow",
+      "table": "kanban_tasks",
+      "where": {
+        "branch_name": "qa/branch-from-task"
+      },
+      "expected": {
+        "status": "progress",
+        "base_branch": "main",
+        "session_type": "tmux"
+      }
+    },
+    {
+      "type": "taskVisible",
+      "branchName": "qa/branch-from-task",
+      "status": "progress"
+    }
+  ],
+  "artifacts": {
+    "screens": [
+      "screens/S06-branch-task-result.png"
+    ],
+    "videos": [
+      "videos/S06-git-worktree-branch-flow.mp4"
+    ]
+  }
+}
