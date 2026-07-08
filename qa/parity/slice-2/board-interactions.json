@@ -1,0 +1,55 @@
+{
+  "afterCreate": {
+    "todoCount": 4
+  },
+  "afterDelete": {
+    "doneTotal": 3,
+    "todoCount": 3
+  },
+  "artifact": "slice-2-board-interactions",
+  "createdTask": {
+    "displayOrder": 3,
+    "id": "qa-harness-created-task",
+    "status": "todo"
+  },
+  "deletedCreatedTask": true,
+  "donePageAfterMove": {
+    "doneTotal": 4,
+    "firstPageIds": [
+      "qa-harness-created-task",
+      "qa-task-done-migrated"
+    ]
+  },
+  "editedTask": {
+    "description": null,
+    "priority": "high",
+    "title": "Harness edited board task"
+  },
+  "movedToProgress": {
+    "status": "progress"
+  },
+  "projectColor": {
+    "color": "#123456",
+    "projectId": "qa-project-api"
+  },
+  "projectFilter": {
+    "projectId": "qa-project-kanvibe",
+    "visibleTaskCount": 7
+  },
+  "scenarioSubset": [
+    "S02-create-task-modal",
+    "S07-board-drag-drop-status",
+    "S08-context-menu-status-and-delete",
+    "S09-vim-keyboard-shortcuts-search",
+    "S12-project-filter-and-done-pagination"
+  ],
+  "search": {
+    "matchCount": 1,
+    "query": "terminal"
+  },
+  "todoOrderAfterReorder": [
+    "qa-task-todo-remote",
+    "qa-task-todo-local",
+    "qa-task-todo-unassigned"
+  ]
+}

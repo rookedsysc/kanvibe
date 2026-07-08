@@ -1,0 +1,72 @@
+{
+  "artifact": "native-performance-comparison",
+  "blockers": [
+    "appBundle is not available: artifact has not been generated on this host",
+    "dmg is not available: artifact has not been generated on this host",
+    "native GPUI cold start requires macOS runtime measurement",
+    "native GPUI idle memory requires macOS runtime measurement",
+    "native terminal scroll FPS requires macOS runtime measurement"
+  ],
+  "electronBaseline": {
+    "exists": true,
+    "linuxBoardReadyMs": 6245.35,
+    "linuxBoardReadyProcessCount": 6.0,
+    "linuxBoardReadyRssKb": 740572.0,
+    "linuxFirstPageObservedMs": 3692.34,
+    "linuxPackagedDirectoryBytes": 425578021.0,
+    "linuxTaskOperationsProcessCount": 6.0,
+    "linuxTaskOperationsRssKb": 742012.0,
+    "path": "../qa/PERF_BASELINE.md"
+  },
+  "native": {
+    "appBundle": {
+      "exists": false,
+      "kind": "appBundle",
+      "path": "../native/dist/KanVibe.app",
+      "reason": "artifact has not been generated on this host",
+      "status": "BLOCKED"
+    },
+    "dmg": {
+      "exists": false,
+      "kind": "dmg",
+      "path": "../native/dist/KanVibe-0.1.0.dmg",
+      "reason": "artifact has not been generated on this host",
+      "status": "BLOCKED"
+    },
+    "macosMeasurements": {
+      "coldStartToWindow": {
+        "reason": "requires launching the macOS GPUI app and observing the first native window",
+        "status": "BLOCKED",
+        "targetMs": 500
+      },
+      "idleMemory": {
+        "reason": "requires macOS process-tree sampling after the native board is ready",
+        "status": "BLOCKED",
+        "target": "Electron idle RSS / 4"
+      },
+      "terminalScrollFps": {
+        "reason": "requires macOS GPUI terminal scenario replay and frame-rate sampling",
+        "status": "BLOCKED",
+        "targetFps": 60
+      }
+    },
+    "releaseBinary": {
+      "exists": true,
+      "kind": "releaseBinary",
+      "maxBytes": null,
+      "maxMiB": null,
+      "path": "../native/target/release/kanvibe-app",
+      "sizeBytes": 443192,
+      "sizeMiB": 0.42,
+      "status": "PASS"
+    }
+  },
+  "status": "BLOCKED",
+  "targetSummary": {
+    "appBundleMaxBytes": 31457280,
+    "appBundleMaxMb": 30.0,
+    "coldStartMaxMs": 500,
+    "idleMemory": "Electron idle RSS / 4",
+    "terminalScrollFps": "60fps+"
+  }
+}

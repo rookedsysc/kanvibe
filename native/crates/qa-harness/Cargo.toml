@@ -1,0 +1,18 @@
+[package]
+name = "qa-harness"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+kanvibe-app = { path = "../kanvibe-app" }
+kanvibe-core.workspace = true
+kanvibe-git = { path = "../kanvibe-git" }
+kanvibe-hooks = { path = "../kanvibe-hooks" }
+kanvibe-i18n.workspace = true
+kanvibe-pty = { path = "../kanvibe-pty" }
+serde_json.workspace = true
+
+[lints]
+workspace = true

@@ -1,0 +1,85 @@
+{
+  "aiSessions": {
+    "firstSessionId": "codex-native-hooks",
+    "providers": [
+      "claude",
+      "codex",
+      "gemini",
+      "opencode"
+    ],
+    "sessionCount": 4,
+    "sourceSessionCounts": [
+      {
+        "count": 1,
+        "provider": "claude"
+      },
+      {
+        "count": 1,
+        "provider": "codex"
+      },
+      {
+        "count": 1,
+        "provider": "gemini"
+      },
+      {
+        "count": 1,
+        "provider": "opencode"
+      }
+    ]
+  },
+  "appSettings": {
+    "background_sync_enabled": "false",
+    "background_sync_interval_ms": "300000",
+    "notification_enabled": "true",
+    "notification_statuses": "[\"progress\",\"pending\",\"review\"]",
+    "release_update_dismissed_versions": null
+  },
+  "artifact": "slice-5-notifications-hooks-ai",
+  "hookStatus": {
+    "configuredPluginUrl": "http://localhost:9736",
+    "configuredShellUrl": "http://localhost:9736",
+    "expectedHookServerUrl": "http://localhost:9736",
+    "hasExpectedHookServerUrl": true,
+    "hasReachableHookServer": true,
+    "providers": [
+      {
+        "hasExpectedHookServerUrl": true,
+        "hasReachableHookServer": true,
+        "installed": true,
+        "provider": "claude"
+      },
+      {
+        "hasExpectedHookServerUrl": true,
+        "hasReachableHookServer": true,
+        "installed": true,
+        "provider": "codex"
+      },
+      {
+        "hasExpectedHookServerUrl": true,
+        "hasReachableHookServer": true,
+        "installed": true,
+        "provider": "gemini"
+      },
+      {
+        "hasExpectedHookServerUrl": true,
+        "hasReachableHookServer": true,
+        "installed": true,
+        "provider": "opencode"
+      }
+    ],
+    "taskId": "qa-task-review-ai-history",
+    "visible": true
+  },
+  "notificationCenter": {
+    "titles": [
+      "Task status changed",
+      "Hook install failed",
+      "Background sync needs review"
+    ],
+    "unreadCount": 3,
+    "visible": true
+  },
+  "scenarioSubset": [
+    "S11-notifications-hooks-background-sync"
+  ]
+}

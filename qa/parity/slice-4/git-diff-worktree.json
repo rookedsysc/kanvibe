@@ -1,0 +1,38 @@
+{
+  "artifact": "slice-4-git-diff-worktree",
+  "branchFromTask": {
+    "baseBranch": "main",
+    "branchName": "qa/branch-from-task",
+    "sessionName": "slice-4-git-diff-qa-branch-from-task",
+    "sessionType": "tmux",
+    "status": "progress",
+    "taskId": "qa-task-todo-local",
+    "worktreeCurrentBranch": "qa/branch-from-task",
+    "worktreePath": "/tmp/kanvibe-harness-slice-4-git-diff-2844949-1783481698758696300/slice-4-git-diff__worktrees/qa-branch-from-task"
+  },
+  "diffRoute": {
+    "currentContainsBranch": true,
+    "fileCount": 2,
+    "files": [
+      {
+        "additions": 1,
+        "deletions": 1,
+        "path": "src/app.ts",
+        "status": "modified"
+      },
+      {
+        "additions": 0,
+        "deletions": 0,
+        "path": "src/untracked.ts",
+        "status": "added"
+      }
+    ],
+    "originalContainsBase": true,
+    "route": "/ko/task/qa-task-review-diff/diff",
+    "savedContainsSaved": true
+  },
+  "scenarioSubset": [
+    "S05-diff-route-file-tree",
+    "S06-git-worktree-branch-flow"
+  ]
+}

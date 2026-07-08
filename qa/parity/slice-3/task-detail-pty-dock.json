@@ -1,0 +1,98 @@
+{
+  "artifact": "slice-3-task-detail-pty-dock",
+  "existingWindowFocus": {
+    "decision": "FocusExisting",
+    "href": "/ko/task/qa-task-progress-pr"
+  },
+  "ptyEnvironment": {
+    "customVisible": "kept",
+    "forbiddenAbsent": true,
+    "home": "/Users/kanvibe",
+    "pathContainsHomebrew": true
+  },
+  "pullRequestTask": {
+    "aiProviderFilters": [
+      "claude",
+      "codex",
+      "gemini",
+      "opencode"
+    ],
+    "dockItems": [
+      "overview",
+      "status",
+      "terminal",
+      "pullRequest",
+      "chat",
+      "aiSessions"
+    ],
+    "pullRequestHref": "https://github.com/rookedsysc/kanvibe/pull/302",
+    "shortcutLabels": [
+      "Cmd+1",
+      "Cmd+2",
+      "Cmd+3",
+      "Cmd+4",
+      "Cmd+5",
+      "Cmd+6"
+    ],
+    "taskId": "qa-task-review-diff"
+  },
+  "remoteSession": {
+    "dependencyPanelSessionType": "zellij",
+    "sessionType": "zellij",
+    "sshHost": "qa-remote",
+    "taskId": "qa-task-todo-remote"
+  },
+  "scenarioSubset": [
+    "S03-task-detail-terminal-dock",
+    "S04-task-detail-pr-and-ai-history",
+    "S13-task-detail-existing-window-focus",
+    "S14-remote-session-dependencies"
+  ],
+  "sidebarSettings": {
+    "defaultCollapsed": false,
+    "hintDismissed": false
+  },
+  "terminalTask": {
+    "cmd3MatchesTerminal": true,
+    "dockItems": [
+      "overview",
+      "status",
+      "terminal",
+      "chat",
+      "aiSessions"
+    ],
+    "href": "/ko/task/qa-task-progress-terminal",
+    "sessionName": "kanvibe-native-terminal",
+    "sessionType": "tmux",
+    "shortcutLabels": [
+      "Cmd+1",
+      "Cmd+2",
+      "Cmd+3",
+      "Cmd+4",
+      "Cmd+5"
+    ],
+    "taskId": "qa-task-progress-terminal"
+  },
+  "withoutPullRequestDock": [
+    {
+      "id": "overview",
+      "shortcut": "Cmd+1"
+    },
+    {
+      "id": "status",
+      "shortcut": "Cmd+2"
+    },
+    {
+      "id": "terminal",
+      "shortcut": "Cmd+3"
+    },
+    {
+      "id": "chat",
+      "shortcut": "Cmd+4"
+    },
+    {
+      "id": "aiSessions",
+      "shortcut": "Cmd+5"
+    }
+  ]
+}

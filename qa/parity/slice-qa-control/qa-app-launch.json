@@ -1,0 +1,23 @@
+{
+  "appBinary": "/home/crookedbot/Documents/kanvibe/kanvibe__worktrees/perf-rust-backend/native/target/debug/kanvibe-app",
+  "artifact": "native-app-launch-contract",
+  "blockers": [
+    "native app process exited before opening the QA socket; on this host the app may be a non-macOS headless stub"
+  ],
+  "childEnvKeys": [
+    "KANVIBE_REPO_ROOT",
+    "KANVIBE_DB_PATH",
+    "KANVIBE_LOCALE",
+    "KANVIBE_QA_SOCKET"
+  ],
+  "dbCopyPath": "../qa/parity/native-db/native-app-launch.sqlite",
+  "exitStatus": 0,
+  "lastSocketError": "No such file or directory (os error 2)",
+  "mode": "externalNativeAppProcess",
+  "processExitedBeforeSocket": true,
+  "qaSocketReady": false,
+  "socketPath": "/tmp/kanvibe-qa-native-app-launch-3122567-1783489103976120145.sock",
+  "status": "BLOCKED",
+  "stderr": "kanvibe native scaffold mode: HeadlessStub",
+  "stdout": ""
+}

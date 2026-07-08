@@ -1,0 +1,61 @@
+{
+  "artifact": "slice-6-settings-layout-remote",
+  "paneLayout": {
+    "allLayoutCount": 2,
+    "beforeLayoutType": "horizontal_2",
+    "effectiveLayoutType": "vertical_2",
+    "fallbackLayoutType": "quad",
+    "firstTmuxCommand": "tmux split-window -h -t 'kanvibe-feature-settings:0' -c '/tmp/kanvibe-qa/repos/kanvibe__worktrees/feature-settings'",
+    "globalLayoutType": "quad",
+    "paneCommands": [
+      {
+        "command": "pnpm desktop:dev",
+        "position": 0
+      },
+      {
+        "command": "git status --short",
+        "position": 1
+      }
+    ],
+    "projectId": "qa-project-kanvibe",
+    "route": "/ko/pane-layout",
+    "savedLayoutType": "vertical_2",
+    "tmuxCommandCount": 3,
+    "zellijLayoutContainsVertical": true,
+    "zellijLayoutFilename": ".zellij-layout.kdl"
+  },
+  "remoteSessionDependency": {
+    "availableAfterInstall": true,
+    "availableBeforeInstall": false,
+    "blockedRemoteReason": "qa-remote-blocked host could not complete tmux installation, so remote access is blocked. fixture install failure",
+    "checkCommand": "command -v zellij >/dev/null 2>&1",
+    "installCommandContainsCargo": true,
+    "sessionType": "zellij",
+    "sshHost": "qa-remote",
+    "taskId": "qa-task-todo-remote",
+    "toolName": "zellij",
+    "visible": true
+  },
+  "scenarioSubset": [
+    "S10-settings-pane-layout",
+    "S14-remote-session-dependencies"
+  ],
+  "settings": {
+    "backgroundSyncEnabled": true,
+    "backgroundSyncIntervalMs": 300000,
+    "defaultSessionType": "zellij",
+    "releaseUpdateDismissedVersions": [
+      "v1.2.3"
+    ],
+    "route": "/ko/settings",
+    "taskSearchShortcut": "Mod+Shift+K",
+    "themePreferenceAfter": "dark",
+    "themePreferenceBefore": "dark",
+    "vimModeEnabled": false
+  },
+  "windowPolicy": {
+    "action": "focus-existing",
+    "existingWindowId": "pane-layout-window",
+    "keepsCurrentRouteForBackgroundReview": true
+  }
+}

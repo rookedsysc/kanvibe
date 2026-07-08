@@ -1,0 +1,689 @@
+{
+  "artifact": "native-qa-control-protocol",
+  "assertionMappingCount": 43,
+  "assertionMappings": [
+    {
+      "assertionType": "columns",
+      "controlCommand": "queryElement",
+      "scenarioId": "S01-board-load-and-columns"
+    },
+    {
+      "assertionType": "taskCountByStatus",
+      "controlCommand": "dbSnapshot",
+      "scenarioId": "S01-board-load-and-columns"
+    },
+    {
+      "assertionType": "taskVisible",
+      "controlCommand": "queryElement",
+      "scenarioId": "S01-board-load-and-columns"
+    },
+    {
+      "assertionType": "dbCount",
+      "controlCommand": "dbSnapshot",
+      "scenarioId": "S01-board-load-and-columns"
+    },
+    {
+      "assertionType": "dbCount",
+      "controlCommand": "dbSnapshot",
+      "scenarioId": "S01-board-load-and-columns"
+    },
+    {
+      "assertionType": "taskVisible",
+      "controlCommand": "queryElement",
+      "scenarioId": "S02-create-task-modal"
+    },
+    {
+      "assertionType": "dbRow",
+      "controlCommand": "dbSnapshot",
+      "scenarioId": "S02-create-task-modal"
+    },
+    {
+      "assertionType": "noWorktreeCreated",
+      "controlCommand": "dbSnapshot",
+      "scenarioId": "S02-create-task-modal"
+    },
+    {
+      "assertionType": "route",
+      "controlCommand": "queryText",
+      "scenarioId": "S03-task-detail-terminal-dock"
+    },
+    {
+      "assertionType": "dockItems",
+      "controlCommand": "queryElement",
+      "scenarioId": "S03-task-detail-terminal-dock"
+    },
+    {
+      "assertionType": "shortcutLabels",
+      "controlCommand": "queryElement",
+      "scenarioId": "S03-task-detail-terminal-dock"
+    },
+    {
+      "assertionType": "taskField",
+      "controlCommand": "queryText",
+      "scenarioId": "S03-task-detail-terminal-dock"
+    },
+    {
+      "assertionType": "taskField",
+      "controlCommand": "queryText",
+      "scenarioId": "S04-task-detail-pr-and-ai-history"
+    },
+    {
+      "assertionType": "dockItems",
+      "controlCommand": "queryElement",
+      "scenarioId": "S04-task-detail-pr-and-ai-history"
+    },
+    {
+      "assertionType": "aiProviderFilters",
+      "controlCommand": "queryText",
+      "scenarioId": "S04-task-detail-pr-and-ai-history"
+    },
+    {
+      "assertionType": "route",
+      "controlCommand": "queryText",
+      "scenarioId": "S05-diff-route-file-tree"
+    },
+    {
+      "assertionType": "diffSidebarVisible",
+      "controlCommand": "queryElement",
+      "scenarioId": "S05-diff-route-file-tree"
+    },
+    {
+      "assertionType": "diffPaneVisible",
+      "controlCommand": "queryElement",
+      "scenarioId": "S05-diff-route-file-tree"
+    },
+    {
+      "assertionType": "externalToolBlockerAllowed",
+      "controlCommand": "protocolRecordedBlocker",
+      "scenarioId": "S05-diff-route-file-tree"
+    },
+    {
+      "assertionType": "dbRow",
+      "controlCommand": "dbSnapshot",
+      "scenarioId": "S06-git-worktree-branch-flow"
+    },
+    {
+      "assertionType": "taskVisible",
+      "controlCommand": "queryElement",
+      "scenarioId": "S06-git-worktree-branch-flow"
+    },
+    {
+      "assertionType": "taskVisible",
+      "controlCommand": "queryElement",
+      "scenarioId": "S07-board-drag-drop-status"
+    },
+    {
+      "assertionType": "dbRow",
+      "controlCommand": "dbSnapshot",
+      "scenarioId": "S07-board-drag-drop-status"
+    },
+    {
+      "assertionType": "taskNotVisible",
+      "controlCommand": "queryElement",
+      "scenarioId": "S08-context-menu-status-and-delete"
+    },
+    {
+      "assertionType": "dbMissing",
+      "controlCommand": "dbSnapshot",
+      "scenarioId": "S08-context-menu-status-and-delete"
+    },
+    {
+      "assertionType": "taskVisible",
+      "controlCommand": "queryElement",
+      "scenarioId": "S09-vim-keyboard-shortcuts-search"
+    },
+    {
+      "assertionType": "searchResultVisible",
+      "controlCommand": "queryElement",
+      "scenarioId": "S09-vim-keyboard-shortcuts-search"
+    },
+    {
+      "assertionType": "dbRow",
+      "controlCommand": "dbSnapshot",
+      "scenarioId": "S09-vim-keyboard-shortcuts-search"
+    },
+    {
+      "assertionType": "dbRow",
+      "controlCommand": "dbSnapshot",
+      "scenarioId": "S10-settings-pane-layout"
+    },
+    {
+      "assertionType": "dbRow",
+      "controlCommand": "dbSnapshot",
+      "scenarioId": "S10-settings-pane-layout"
+    },
+    {
+      "assertionType": "route",
+      "controlCommand": "queryText",
+      "scenarioId": "S10-settings-pane-layout"
+    },
+    {
+      "assertionType": "notificationCenterVisible",
+      "controlCommand": "queryElement",
+      "scenarioId": "S11-notifications-hooks-background-sync"
+    },
+    {
+      "assertionType": "hookStatusVisible",
+      "controlCommand": "queryElement",
+      "scenarioId": "S11-notifications-hooks-background-sync"
+    },
+    {
+      "assertionType": "dbRow",
+      "controlCommand": "dbSnapshot",
+      "scenarioId": "S11-notifications-hooks-background-sync"
+    },
+    {
+      "assertionType": "onlyProjectTasksVisible",
+      "controlCommand": "queryElement",
+      "scenarioId": "S12-project-filter-and-done-pagination"
+    },
+    {
+      "assertionType": "taskVisible",
+      "controlCommand": "queryElement",
+      "scenarioId": "S12-project-filter-and-done-pagination"
+    },
+    {
+      "assertionType": "taskNotVisible",
+      "controlCommand": "queryElement",
+      "scenarioId": "S12-project-filter-and-done-pagination"
+    },
+    {
+      "assertionType": "windowCountUnchanged",
+      "controlCommand": "queryElement",
+      "scenarioId": "S13-task-detail-existing-window-focus"
+    },
+    {
+      "assertionType": "route",
+      "controlCommand": "queryText",
+      "scenarioId": "S13-task-detail-existing-window-focus"
+    },
+    {
+      "assertionType": "taskTitleVisible",
+      "controlCommand": "queryElement",
+      "scenarioId": "S13-task-detail-existing-window-focus"
+    },
+    {
+      "assertionType": "taskField",
+      "controlCommand": "queryText",
+      "scenarioId": "S14-remote-session-dependencies"
+    },
+    {
+      "assertionType": "sessionDependencyVisible",
+      "controlCommand": "queryElement",
+      "scenarioId": "S14-remote-session-dependencies"
+    },
+    {
+      "assertionType": "noGenericEnvLeak",
+      "controlCommand": "dbSnapshot",
+      "scenarioId": "S14-remote-session-dependencies"
+    }
+  ],
+  "coveragePass": true,
+  "debugOnly": true,
+  "protocolCapabilities": {
+    "commands": [
+      "ping",
+      "queryElement",
+      "queryText",
+      "syntheticClick",
+      "syntheticKey",
+      "syntheticMouse",
+      "dumpScreenshot",
+      "startVideoCapture",
+      "stopVideoCapture",
+      "dbSnapshot"
+    ],
+    "debugOnly": true,
+    "releaseUserBuild": "disabled",
+    "screenshotCapture": {
+      "linux": "blocked",
+      "macos": "screencapture -x -l <window-id> <path>"
+    },
+    "screenshotWindowIdEnv": "KANVIBE_QA_WINDOW_ID",
+    "socketEnv": "KANVIBE_QA_SOCKET",
+    "transport": "unix-line-json",
+    "videoCapture": {
+      "ffmpegEnv": "KANVIBE_QA_FFMPEG",
+      "linux": "blocked",
+      "macos": "screencapture frame sequence plus ffmpeg encoding"
+    }
+  },
+  "scenarioFileCount": 14,
+  "scenarioSubset": [
+    "S01-board-load-and-columns",
+    "S02-create-task-modal",
+    "S03-task-detail-terminal-dock",
+    "S04-task-detail-pr-and-ai-history",
+    "S05-diff-route-file-tree",
+    "S06-git-worktree-branch-flow",
+    "S07-board-drag-drop-status",
+    "S08-context-menu-status-and-delete",
+    "S09-vim-keyboard-shortcuts-search",
+    "S10-settings-pane-layout",
+    "S11-notifications-hooks-background-sync",
+    "S12-project-filter-and-done-pagination",
+    "S13-task-detail-existing-window-focus",
+    "S14-remote-session-dependencies"
+  ],
+  "socketEnv": "KANVIBE_QA_SOCKET",
+  "stepMappingCount": 83,
+  "stepMappings": [
+    {
+      "action": "launchApp",
+      "controlCommand": "launchAppWithQaSocket",
+      "scenarioId": "S01-board-load-and-columns"
+    },
+    {
+      "action": "waitForBoardReady",
+      "controlCommand": "queryElement",
+      "scenarioId": "S01-board-load-and-columns"
+    },
+    {
+      "action": "captureScreen",
+      "controlCommand": "dumpScreenshot",
+      "scenarioId": "S01-board-load-and-columns"
+    },
+    {
+      "action": "launchApp",
+      "controlCommand": "launchAppWithQaSocket",
+      "scenarioId": "S02-create-task-modal"
+    },
+    {
+      "action": "waitForBoardReady",
+      "controlCommand": "queryElement",
+      "scenarioId": "S02-create-task-modal"
+    },
+    {
+      "action": "openCreateTaskModal",
+      "controlCommand": "syntheticClick",
+      "scenarioId": "S02-create-task-modal"
+    },
+    {
+      "action": "fillTaskForm",
+      "controlCommand": "syntheticClick",
+      "scenarioId": "S02-create-task-modal"
+    },
+    {
+      "action": "submitCreateTask",
+      "controlCommand": "syntheticClick",
+      "scenarioId": "S02-create-task-modal"
+    },
+    {
+      "action": "captureScreen",
+      "controlCommand": "dumpScreenshot",
+      "scenarioId": "S02-create-task-modal"
+    },
+    {
+      "action": "launchApp",
+      "controlCommand": "launchAppWithQaSocket",
+      "scenarioId": "S03-task-detail-terminal-dock"
+    },
+    {
+      "action": "waitForBoardReady",
+      "controlCommand": "queryElement",
+      "scenarioId": "S03-task-detail-terminal-dock"
+    },
+    {
+      "action": "openTaskDetail",
+      "controlCommand": "syntheticClick",
+      "scenarioId": "S03-task-detail-terminal-dock"
+    },
+    {
+      "action": "selectDockItem",
+      "controlCommand": "syntheticClick",
+      "scenarioId": "S03-task-detail-terminal-dock"
+    },
+    {
+      "action": "captureScreen",
+      "controlCommand": "dumpScreenshot",
+      "scenarioId": "S03-task-detail-terminal-dock"
+    },
+    {
+      "action": "launchApp",
+      "controlCommand": "launchAppWithQaSocket",
+      "scenarioId": "S04-task-detail-pr-and-ai-history"
+    },
+    {
+      "action": "waitForBoardReady",
+      "controlCommand": "queryElement",
+      "scenarioId": "S04-task-detail-pr-and-ai-history"
+    },
+    {
+      "action": "openTaskDetail",
+      "controlCommand": "syntheticClick",
+      "scenarioId": "S04-task-detail-pr-and-ai-history"
+    },
+    {
+      "action": "selectDockItem",
+      "controlCommand": "syntheticClick",
+      "scenarioId": "S04-task-detail-pr-and-ai-history"
+    },
+    {
+      "action": "selectDockItem",
+      "controlCommand": "syntheticClick",
+      "scenarioId": "S04-task-detail-pr-and-ai-history"
+    },
+    {
+      "action": "captureScreen",
+      "controlCommand": "dumpScreenshot",
+      "scenarioId": "S04-task-detail-pr-and-ai-history"
+    },
+    {
+      "action": "launchApp",
+      "controlCommand": "launchAppWithQaSocket",
+      "scenarioId": "S05-diff-route-file-tree"
+    },
+    {
+      "action": "waitForBoardReady",
+      "controlCommand": "queryElement",
+      "scenarioId": "S05-diff-route-file-tree"
+    },
+    {
+      "action": "openDiffRoute",
+      "controlCommand": "syntheticClick",
+      "scenarioId": "S05-diff-route-file-tree"
+    },
+    {
+      "action": "selectFirstChangedFile",
+      "controlCommand": "syntheticClick",
+      "scenarioId": "S05-diff-route-file-tree"
+    },
+    {
+      "action": "captureScreen",
+      "controlCommand": "dumpScreenshot",
+      "scenarioId": "S05-diff-route-file-tree"
+    },
+    {
+      "action": "launchApp",
+      "controlCommand": "launchAppWithQaSocket",
+      "scenarioId": "S06-git-worktree-branch-flow"
+    },
+    {
+      "action": "waitForBoardReady",
+      "controlCommand": "queryElement",
+      "scenarioId": "S06-git-worktree-branch-flow"
+    },
+    {
+      "action": "openTaskContextMenu",
+      "controlCommand": "syntheticClick",
+      "scenarioId": "S06-git-worktree-branch-flow"
+    },
+    {
+      "action": "chooseContextAction",
+      "controlCommand": "syntheticClick",
+      "scenarioId": "S06-git-worktree-branch-flow"
+    },
+    {
+      "action": "fillBranchTaskForm",
+      "controlCommand": "syntheticClick",
+      "scenarioId": "S06-git-worktree-branch-flow"
+    },
+    {
+      "action": "submitBranchTask",
+      "controlCommand": "syntheticClick",
+      "scenarioId": "S06-git-worktree-branch-flow"
+    },
+    {
+      "action": "captureScreen",
+      "controlCommand": "dumpScreenshot",
+      "scenarioId": "S06-git-worktree-branch-flow"
+    },
+    {
+      "action": "launchApp",
+      "controlCommand": "launchAppWithQaSocket",
+      "scenarioId": "S07-board-drag-drop-status"
+    },
+    {
+      "action": "waitForBoardReady",
+      "controlCommand": "queryElement",
+      "scenarioId": "S07-board-drag-drop-status"
+    },
+    {
+      "action": "dragTaskToColumn",
+      "controlCommand": "syntheticClick",
+      "scenarioId": "S07-board-drag-drop-status"
+    },
+    {
+      "action": "captureScreen",
+      "controlCommand": "dumpScreenshot",
+      "scenarioId": "S07-board-drag-drop-status"
+    },
+    {
+      "action": "launchApp",
+      "controlCommand": "launchAppWithQaSocket",
+      "scenarioId": "S08-context-menu-status-and-delete"
+    },
+    {
+      "action": "waitForBoardReady",
+      "controlCommand": "queryElement",
+      "scenarioId": "S08-context-menu-status-and-delete"
+    },
+    {
+      "action": "openTaskContextMenu",
+      "controlCommand": "syntheticClick",
+      "scenarioId": "S08-context-menu-status-and-delete"
+    },
+    {
+      "action": "chooseContextAction",
+      "controlCommand": "syntheticClick",
+      "scenarioId": "S08-context-menu-status-and-delete"
+    },
+    {
+      "action": "openTaskContextMenu",
+      "controlCommand": "syntheticClick",
+      "scenarioId": "S08-context-menu-status-and-delete"
+    },
+    {
+      "action": "chooseContextAction",
+      "controlCommand": "syntheticClick",
+      "scenarioId": "S08-context-menu-status-and-delete"
+    },
+    {
+      "action": "confirmDialog",
+      "controlCommand": "syntheticClick",
+      "scenarioId": "S08-context-menu-status-and-delete"
+    },
+    {
+      "action": "captureScreen",
+      "controlCommand": "dumpScreenshot",
+      "scenarioId": "S08-context-menu-status-and-delete"
+    },
+    {
+      "action": "launchApp",
+      "controlCommand": "launchAppWithQaSocket",
+      "scenarioId": "S09-vim-keyboard-shortcuts-search"
+    },
+    {
+      "action": "waitForBoardReady",
+      "controlCommand": "queryElement",
+      "scenarioId": "S09-vim-keyboard-shortcuts-search"
+    },
+    {
+      "action": "focusTask",
+      "controlCommand": "syntheticClick",
+      "scenarioId": "S09-vim-keyboard-shortcuts-search"
+    },
+    {
+      "action": "pressKeys",
+      "controlCommand": "syntheticKey",
+      "scenarioId": "S09-vim-keyboard-shortcuts-search"
+    },
+    {
+      "action": "typeText",
+      "controlCommand": "syntheticKey",
+      "scenarioId": "S09-vim-keyboard-shortcuts-search"
+    },
+    {
+      "action": "pressKeys",
+      "controlCommand": "syntheticKey",
+      "scenarioId": "S09-vim-keyboard-shortcuts-search"
+    },
+    {
+      "action": "pressShortcut",
+      "controlCommand": "syntheticKey",
+      "scenarioId": "S09-vim-keyboard-shortcuts-search"
+    },
+    {
+      "action": "typeText",
+      "controlCommand": "syntheticKey",
+      "scenarioId": "S09-vim-keyboard-shortcuts-search"
+    },
+    {
+      "action": "captureScreen",
+      "controlCommand": "dumpScreenshot",
+      "scenarioId": "S09-vim-keyboard-shortcuts-search"
+    },
+    {
+      "action": "launchApp",
+      "controlCommand": "launchAppWithQaSocket",
+      "scenarioId": "S10-settings-pane-layout"
+    },
+    {
+      "action": "waitForBoardReady",
+      "controlCommand": "queryElement",
+      "scenarioId": "S10-settings-pane-layout"
+    },
+    {
+      "action": "openSettings",
+      "controlCommand": "syntheticClick",
+      "scenarioId": "S10-settings-pane-layout"
+    },
+    {
+      "action": "setAppSetting",
+      "controlCommand": "syntheticClick",
+      "scenarioId": "S10-settings-pane-layout"
+    },
+    {
+      "action": "openPaneLayoutRoute",
+      "controlCommand": "syntheticClick",
+      "scenarioId": "S10-settings-pane-layout"
+    },
+    {
+      "action": "selectPaneLayout",
+      "controlCommand": "syntheticClick",
+      "scenarioId": "S10-settings-pane-layout"
+    },
+    {
+      "action": "captureScreen",
+      "controlCommand": "dumpScreenshot",
+      "scenarioId": "S10-settings-pane-layout"
+    },
+    {
+      "action": "launchApp",
+      "controlCommand": "launchAppWithQaSocket",
+      "scenarioId": "S11-notifications-hooks-background-sync"
+    },
+    {
+      "action": "waitForBoardReady",
+      "controlCommand": "queryElement",
+      "scenarioId": "S11-notifications-hooks-background-sync"
+    },
+    {
+      "action": "openNotificationCenter",
+      "controlCommand": "syntheticClick",
+      "scenarioId": "S11-notifications-hooks-background-sync"
+    },
+    {
+      "action": "openTaskDetail",
+      "controlCommand": "syntheticClick",
+      "scenarioId": "S11-notifications-hooks-background-sync"
+    },
+    {
+      "action": "selectDockItem",
+      "controlCommand": "syntheticClick",
+      "scenarioId": "S11-notifications-hooks-background-sync"
+    },
+    {
+      "action": "captureScreen",
+      "controlCommand": "dumpScreenshot",
+      "scenarioId": "S11-notifications-hooks-background-sync"
+    },
+    {
+      "action": "launchApp",
+      "controlCommand": "launchAppWithQaSocket",
+      "scenarioId": "S12-project-filter-and-done-pagination"
+    },
+    {
+      "action": "waitForBoardReady",
+      "controlCommand": "queryElement",
+      "scenarioId": "S12-project-filter-and-done-pagination"
+    },
+    {
+      "action": "openProjectFilter",
+      "controlCommand": "syntheticClick",
+      "scenarioId": "S12-project-filter-and-done-pagination"
+    },
+    {
+      "action": "selectProjects",
+      "controlCommand": "syntheticClick",
+      "scenarioId": "S12-project-filter-and-done-pagination"
+    },
+    {
+      "action": "captureScreen",
+      "controlCommand": "dumpScreenshot",
+      "scenarioId": "S12-project-filter-and-done-pagination"
+    },
+    {
+      "action": "launchApp",
+      "controlCommand": "launchAppWithQaSocket",
+      "scenarioId": "S13-task-detail-existing-window-focus"
+    },
+    {
+      "action": "waitForBoardReady",
+      "controlCommand": "queryElement",
+      "scenarioId": "S13-task-detail-existing-window-focus"
+    },
+    {
+      "action": "openTaskDetail",
+      "controlCommand": "syntheticClick",
+      "scenarioId": "S13-task-detail-existing-window-focus"
+    },
+    {
+      "action": "recordWindowCount",
+      "controlCommand": "queryText",
+      "scenarioId": "S13-task-detail-existing-window-focus"
+    },
+    {
+      "action": "openTaskDetail",
+      "controlCommand": "syntheticClick",
+      "scenarioId": "S13-task-detail-existing-window-focus"
+    },
+    {
+      "action": "captureScreen",
+      "controlCommand": "dumpScreenshot",
+      "scenarioId": "S13-task-detail-existing-window-focus"
+    },
+    {
+      "action": "launchApp",
+      "controlCommand": "launchAppWithQaSocket",
+      "scenarioId": "S14-remote-session-dependencies"
+    },
+    {
+      "action": "waitForBoardReady",
+      "controlCommand": "queryElement",
+      "scenarioId": "S14-remote-session-dependencies"
+    },
+    {
+      "action": "openTaskDetail",
+      "controlCommand": "syntheticClick",
+      "scenarioId": "S14-remote-session-dependencies"
+    },
+    {
+      "action": "selectDockItem",
+      "controlCommand": "syntheticClick",
+      "scenarioId": "S14-remote-session-dependencies"
+    },
+    {
+      "action": "openSessionDependencyPanel",
+      "controlCommand": "syntheticClick",
+      "scenarioId": "S14-remote-session-dependencies"
+    },
+    {
+      "action": "captureScreen",
+      "controlCommand": "dumpScreenshot",
+      "scenarioId": "S14-remote-session-dependencies"
+    }
+  ],
+  "unsupportedAssertions": [],
+  "unsupportedSteps": []
+}

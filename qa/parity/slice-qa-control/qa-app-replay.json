@@ -1,0 +1,436 @@
+{
+  "appBinary": "/home/crookedbot/Documents/kanvibe/kanvibe__worktrees/perf-rust-backend/native/target/debug/kanvibe-app",
+  "appLaunchAttemptCount": 14,
+  "artifact": "native-app-replay-contract",
+  "blockerCount": 14,
+  "blockers": [
+    "one or more native app processes exited before opening the QA socket"
+  ],
+  "executedCommandCount": 0,
+  "launchActionCount": 0,
+  "missingElementCount": 0,
+  "mode": "externalNativeAppProcessPerScenario",
+  "pendingDispatchCount": 0,
+  "processExitedBeforeSocketCount": 14,
+  "processTimeoutCount": 0,
+  "qaSocketReadyCount": 0,
+  "qaSocketReadyPass": false,
+  "scenarioFileCount": 14,
+  "scenarioResults": [
+    {
+      "appProcess": {
+        "appBinary": "/home/crookedbot/Documents/kanvibe/kanvibe__worktrees/perf-rust-backend/native/target/debug/kanvibe-app",
+        "childEnvKeys": [
+          "KANVIBE_REPO_ROOT",
+          "KANVIBE_DB_PATH",
+          "KANVIBE_LOCALE",
+          "KANVIBE_QA_SOCKET"
+        ],
+        "dbCopyPath": "../qa/parity/native-db/S01-board-load-and-columns.sqlite",
+        "exitStatus": 0,
+        "lastSocketError": "No such file or directory (os error 2)",
+        "processExitedBeforeSocket": true,
+        "qaSocketReady": false,
+        "socketPath": "/tmp/kanvibe-qa-native-app-replay-S01-board-load-and-columns-3160445-1783490369820142760.sock",
+        "stderr": "kanvibe native scaffold mode: HeadlessStub",
+        "stdout": ""
+      },
+      "blockerCount": 1,
+      "blockers": [
+        "native app process exited before opening the QA socket; on this host the app may be a non-macOS headless stub"
+      ],
+      "executedCommandCount": 0,
+      "launchActionCount": 1,
+      "scenarioId": "S01-board-load-and-columns",
+      "status": "BLOCKED",
+      "title": "Board loads all status columns and seeded cards"
+    },
+    {
+      "appProcess": {
+        "appBinary": "/home/crookedbot/Documents/kanvibe/kanvibe__worktrees/perf-rust-backend/native/target/debug/kanvibe-app",
+        "childEnvKeys": [
+          "KANVIBE_REPO_ROOT",
+          "KANVIBE_DB_PATH",
+          "KANVIBE_LOCALE",
+          "KANVIBE_QA_SOCKET"
+        ],
+        "dbCopyPath": "../qa/parity/native-db/S02-create-task-modal.sqlite",
+        "exitStatus": 0,
+        "lastSocketError": "No such file or directory (os error 2)",
+        "processExitedBeforeSocket": true,
+        "qaSocketReady": false,
+        "socketPath": "/tmp/kanvibe-qa-native-app-replay-S02-create-task-modal-3160445-1783490369830661974.sock",
+        "stderr": "kanvibe native scaffold mode: HeadlessStub",
+        "stdout": ""
+      },
+      "blockerCount": 1,
+      "blockers": [
+        "native app process exited before opening the QA socket; on this host the app may be a non-macOS headless stub"
+      ],
+      "executedCommandCount": 0,
+      "launchActionCount": 1,
+      "scenarioId": "S02-create-task-modal",
+      "status": "BLOCKED",
+      "title": "Create task modal writes a todo task without worktree side effects"
+    },
+    {
+      "appProcess": {
+        "appBinary": "/home/crookedbot/Documents/kanvibe/kanvibe__worktrees/perf-rust-backend/native/target/debug/kanvibe-app",
+        "childEnvKeys": [
+          "KANVIBE_REPO_ROOT",
+          "KANVIBE_DB_PATH",
+          "KANVIBE_LOCALE",
+          "KANVIBE_QA_SOCKET"
+        ],
+        "dbCopyPath": "../qa/parity/native-db/S03-task-detail-terminal-dock.sqlite",
+        "exitStatus": 0,
+        "lastSocketError": "No such file or directory (os error 2)",
+        "processExitedBeforeSocket": true,
+        "qaSocketReady": false,
+        "socketPath": "/tmp/kanvibe-qa-native-app-replay-S03-task-detail-terminal-dock-3160445-1783490369841130018.sock",
+        "stderr": "kanvibe native scaffold mode: HeadlessStub",
+        "stdout": ""
+      },
+      "blockerCount": 1,
+      "blockers": [
+        "native app process exited before opening the QA socket; on this host the app may be a non-macOS headless stub"
+      ],
+      "executedCommandCount": 0,
+      "launchActionCount": 1,
+      "scenarioId": "S03-task-detail-terminal-dock",
+      "status": "BLOCKED",
+      "title": "Task detail shows dock, metadata, and terminal attachment state"
+    },
+    {
+      "appProcess": {
+        "appBinary": "/home/crookedbot/Documents/kanvibe/kanvibe__worktrees/perf-rust-backend/native/target/debug/kanvibe-app",
+        "childEnvKeys": [
+          "KANVIBE_REPO_ROOT",
+          "KANVIBE_DB_PATH",
+          "KANVIBE_LOCALE",
+          "KANVIBE_QA_SOCKET"
+        ],
+        "dbCopyPath": "../qa/parity/native-db/S04-task-detail-pr-and-ai-history.sqlite",
+        "exitStatus": 0,
+        "lastSocketError": "No such file or directory (os error 2)",
+        "processExitedBeforeSocket": true,
+        "qaSocketReady": false,
+        "socketPath": "/tmp/kanvibe-qa-native-app-replay-S04-task-detail-pr-and-ai-history-3160445-1783490369851572233.sock",
+        "stderr": "kanvibe native scaffold mode: HeadlessStub",
+        "stdout": ""
+      },
+      "blockerCount": 1,
+      "blockers": [
+        "native app process exited before opening the QA socket; on this host the app may be a non-macOS headless stub"
+      ],
+      "executedCommandCount": 0,
+      "launchActionCount": 1,
+      "scenarioId": "S04-task-detail-pr-and-ai-history",
+      "status": "BLOCKED",
+      "title": "Task detail PR slot and AI session history are visible"
+    },
+    {
+      "appProcess": {
+        "appBinary": "/home/crookedbot/Documents/kanvibe/kanvibe__worktrees/perf-rust-backend/native/target/debug/kanvibe-app",
+        "childEnvKeys": [
+          "KANVIBE_REPO_ROOT",
+          "KANVIBE_DB_PATH",
+          "KANVIBE_LOCALE",
+          "KANVIBE_QA_SOCKET"
+        ],
+        "dbCopyPath": "../qa/parity/native-db/S05-diff-route-file-tree.sqlite",
+        "exitStatus": 0,
+        "lastSocketError": "No such file or directory (os error 2)",
+        "processExitedBeforeSocket": true,
+        "qaSocketReady": false,
+        "socketPath": "/tmp/kanvibe-qa-native-app-replay-S05-diff-route-file-tree-3160445-1783490369861977907.sock",
+        "stderr": "kanvibe native scaffold mode: HeadlessStub",
+        "stdout": ""
+      },
+      "blockerCount": 1,
+      "blockers": [
+        "native app process exited before opening the QA socket; on this host the app may be a non-macOS headless stub"
+      ],
+      "executedCommandCount": 0,
+      "launchActionCount": 1,
+      "scenarioId": "S05-diff-route-file-tree",
+      "status": "BLOCKED",
+      "title": "Diff route shows changed files and file diff pane"
+    },
+    {
+      "appProcess": {
+        "appBinary": "/home/crookedbot/Documents/kanvibe/kanvibe__worktrees/perf-rust-backend/native/target/debug/kanvibe-app",
+        "childEnvKeys": [
+          "KANVIBE_REPO_ROOT",
+          "KANVIBE_DB_PATH",
+          "KANVIBE_LOCALE",
+          "KANVIBE_QA_SOCKET"
+        ],
+        "dbCopyPath": "../qa/parity/native-db/S06-git-worktree-branch-flow.sqlite",
+        "exitStatus": 0,
+        "lastSocketError": "No such file or directory (os error 2)",
+        "processExitedBeforeSocket": true,
+        "qaSocketReady": false,
+        "socketPath": "/tmp/kanvibe-qa-native-app-replay-S06-git-worktree-branch-flow-3160445-1783490369872458561.sock",
+        "stderr": "kanvibe native scaffold mode: HeadlessStub",
+        "stdout": ""
+      },
+      "blockerCount": 1,
+      "blockers": [
+        "native app process exited before opening the QA socket; on this host the app may be a non-macOS headless stub"
+      ],
+      "executedCommandCount": 0,
+      "launchActionCount": 1,
+      "scenarioId": "S06-git-worktree-branch-flow",
+      "status": "BLOCKED",
+      "title": "Branch-from-task flow creates branch metadata and preserves base branch"
+    },
+    {
+      "appProcess": {
+        "appBinary": "/home/crookedbot/Documents/kanvibe/kanvibe__worktrees/perf-rust-backend/native/target/debug/kanvibe-app",
+        "childEnvKeys": [
+          "KANVIBE_REPO_ROOT",
+          "KANVIBE_DB_PATH",
+          "KANVIBE_LOCALE",
+          "KANVIBE_QA_SOCKET"
+        ],
+        "dbCopyPath": "../qa/parity/native-db/S07-board-drag-drop-status.sqlite",
+        "exitStatus": 0,
+        "lastSocketError": "No such file or directory (os error 2)",
+        "processExitedBeforeSocket": true,
+        "qaSocketReady": false,
+        "socketPath": "/tmp/kanvibe-qa-native-app-replay-S07-board-drag-drop-status-3160445-1783490369882932885.sock",
+        "stderr": "kanvibe native scaffold mode: HeadlessStub",
+        "stdout": ""
+      },
+      "blockerCount": 1,
+      "blockers": [
+        "native app process exited before opening the QA socket; on this host the app may be a non-macOS headless stub"
+      ],
+      "executedCommandCount": 0,
+      "launchActionCount": 1,
+      "scenarioId": "S07-board-drag-drop-status",
+      "status": "BLOCKED",
+      "title": "Dragging a card updates status and display order"
+    },
+    {
+      "appProcess": {
+        "appBinary": "/home/crookedbot/Documents/kanvibe/kanvibe__worktrees/perf-rust-backend/native/target/debug/kanvibe-app",
+        "childEnvKeys": [
+          "KANVIBE_REPO_ROOT",
+          "KANVIBE_DB_PATH",
+          "KANVIBE_LOCALE",
+          "KANVIBE_QA_SOCKET"
+        ],
+        "dbCopyPath": "../qa/parity/native-db/S08-context-menu-status-and-delete.sqlite",
+        "exitStatus": 0,
+        "lastSocketError": "No such file or directory (os error 2)",
+        "processExitedBeforeSocket": true,
+        "qaSocketReady": false,
+        "socketPath": "/tmp/kanvibe-qa-native-app-replay-S08-context-menu-status-and-delete-3160445-1783490369893356810.sock",
+        "stderr": "kanvibe native scaffold mode: HeadlessStub",
+        "stdout": ""
+      },
+      "blockerCount": 1,
+      "blockers": [
+        "native app process exited before opening the QA socket; on this host the app may be a non-macOS headless stub"
+      ],
+      "executedCommandCount": 0,
+      "launchActionCount": 1,
+      "scenarioId": "S08-context-menu-status-and-delete",
+      "status": "BLOCKED",
+      "title": "Context menu changes status and delete cleans task row"
+    },
+    {
+      "appProcess": {
+        "appBinary": "/home/crookedbot/Documents/kanvibe/kanvibe__worktrees/perf-rust-backend/native/target/debug/kanvibe-app",
+        "childEnvKeys": [
+          "KANVIBE_REPO_ROOT",
+          "KANVIBE_DB_PATH",
+          "KANVIBE_LOCALE",
+          "KANVIBE_QA_SOCKET"
+        ],
+        "dbCopyPath": "../qa/parity/native-db/S09-vim-keyboard-shortcuts-search.sqlite",
+        "exitStatus": 0,
+        "lastSocketError": "No such file or directory (os error 2)",
+        "processExitedBeforeSocket": true,
+        "qaSocketReady": false,
+        "socketPath": "/tmp/kanvibe-qa-native-app-replay-S09-vim-keyboard-shortcuts-search-3160445-1783490369903774874.sock",
+        "stderr": "kanvibe native scaffold mode: HeadlessStub",
+        "stdout": ""
+      },
+      "blockerCount": 1,
+      "blockers": [
+        "native app process exited before opening the QA socket; on this host the app may be a non-macOS headless stub"
+      ],
+      "executedCommandCount": 0,
+      "launchActionCount": 1,
+      "scenarioId": "S09-vim-keyboard-shortcuts-search",
+      "status": "BLOCKED",
+      "title": "Vim commands and global task search keyboard flows work"
+    },
+    {
+      "appProcess": {
+        "appBinary": "/home/crookedbot/Documents/kanvibe/kanvibe__worktrees/perf-rust-backend/native/target/debug/kanvibe-app",
+        "childEnvKeys": [
+          "KANVIBE_REPO_ROOT",
+          "KANVIBE_DB_PATH",
+          "KANVIBE_LOCALE",
+          "KANVIBE_QA_SOCKET"
+        ],
+        "dbCopyPath": "../qa/parity/native-db/S10-settings-pane-layout.sqlite",
+        "exitStatus": 0,
+        "lastSocketError": "No such file or directory (os error 2)",
+        "processExitedBeforeSocket": true,
+        "qaSocketReady": false,
+        "socketPath": "/tmp/kanvibe-qa-native-app-replay-S10-settings-pane-layout-3160445-1783490369914158198.sock",
+        "stderr": "kanvibe native scaffold mode: HeadlessStub",
+        "stdout": ""
+      },
+      "blockerCount": 1,
+      "blockers": [
+        "native app process exited before opening the QA socket; on this host the app may be a non-macOS headless stub"
+      ],
+      "executedCommandCount": 0,
+      "launchActionCount": 1,
+      "scenarioId": "S10-settings-pane-layout",
+      "status": "BLOCKED",
+      "title": "Settings and pane layout persistence round-trip"
+    },
+    {
+      "appProcess": {
+        "appBinary": "/home/crookedbot/Documents/kanvibe/kanvibe__worktrees/perf-rust-backend/native/target/debug/kanvibe-app",
+        "childEnvKeys": [
+          "KANVIBE_REPO_ROOT",
+          "KANVIBE_DB_PATH",
+          "KANVIBE_LOCALE",
+          "KANVIBE_QA_SOCKET"
+        ],
+        "dbCopyPath": "../qa/parity/native-db/S11-notifications-hooks-background-sync.sqlite",
+        "exitStatus": 0,
+        "lastSocketError": "No such file or directory (os error 2)",
+        "processExitedBeforeSocket": true,
+        "qaSocketReady": false,
+        "socketPath": "/tmp/kanvibe-qa-native-app-replay-S11-notifications-hooks-background-sync-3160445-1783490369924527073.sock",
+        "stderr": "kanvibe native scaffold mode: HeadlessStub",
+        "stdout": ""
+      },
+      "blockerCount": 1,
+      "blockers": [
+        "native app process exited before opening the QA socket; on this host the app may be a non-macOS headless stub"
+      ],
+      "executedCommandCount": 0,
+      "launchActionCount": 1,
+      "scenarioId": "S11-notifications-hooks-background-sync",
+      "status": "BLOCKED",
+      "title": "Notifications, hook status, and background sync settings are visible"
+    },
+    {
+      "appProcess": {
+        "appBinary": "/home/crookedbot/Documents/kanvibe/kanvibe__worktrees/perf-rust-backend/native/target/debug/kanvibe-app",
+        "childEnvKeys": [
+          "KANVIBE_REPO_ROOT",
+          "KANVIBE_DB_PATH",
+          "KANVIBE_LOCALE",
+          "KANVIBE_QA_SOCKET"
+        ],
+        "dbCopyPath": "../qa/parity/native-db/S12-project-filter-and-done-pagination.sqlite",
+        "exitStatus": 0,
+        "lastSocketError": "No such file or directory (os error 2)",
+        "processExitedBeforeSocket": true,
+        "qaSocketReady": false,
+        "socketPath": "/tmp/kanvibe-qa-native-app-replay-S12-project-filter-and-done-pagination-3160445-1783490369934895138.sock",
+        "stderr": "kanvibe native scaffold mode: HeadlessStub",
+        "stdout": ""
+      },
+      "blockerCount": 1,
+      "blockers": [
+        "native app process exited before opening the QA socket; on this host the app may be a non-macOS headless stub"
+      ],
+      "executedCommandCount": 0,
+      "launchActionCount": 1,
+      "scenarioId": "S12-project-filter-and-done-pagination",
+      "status": "BLOCKED",
+      "title": "Project filter narrows board and Done column count remains accurate"
+    },
+    {
+      "appProcess": {
+        "appBinary": "/home/crookedbot/Documents/kanvibe/kanvibe__worktrees/perf-rust-backend/native/target/debug/kanvibe-app",
+        "childEnvKeys": [
+          "KANVIBE_REPO_ROOT",
+          "KANVIBE_DB_PATH",
+          "KANVIBE_LOCALE",
+          "KANVIBE_QA_SOCKET"
+        ],
+        "dbCopyPath": "../qa/parity/native-db/S13-task-detail-existing-window-focus.sqlite",
+        "exitStatus": 0,
+        "lastSocketError": "No such file or directory (os error 2)",
+        "processExitedBeforeSocket": true,
+        "qaSocketReady": false,
+        "socketPath": "/tmp/kanvibe-qa-native-app-replay-S13-task-detail-existing-window-focus-3160445-1783490369945269262.sock",
+        "stderr": "kanvibe native scaffold mode: HeadlessStub",
+        "stdout": ""
+      },
+      "blockerCount": 1,
+      "blockers": [
+        "native app process exited before opening the QA socket; on this host the app may be a non-macOS headless stub"
+      ],
+      "executedCommandCount": 0,
+      "launchActionCount": 1,
+      "scenarioId": "S13-task-detail-existing-window-focus",
+      "status": "BLOCKED",
+      "title": "Opening an already-open task detail focuses the existing route"
+    },
+    {
+      "appProcess": {
+        "appBinary": "/home/crookedbot/Documents/kanvibe/kanvibe__worktrees/perf-rust-backend/native/target/debug/kanvibe-app",
+        "childEnvKeys": [
+          "KANVIBE_REPO_ROOT",
+          "KANVIBE_DB_PATH",
+          "KANVIBE_LOCALE",
+          "KANVIBE_QA_SOCKET"
+        ],
+        "dbCopyPath": "../qa/parity/native-db/S14-remote-session-dependencies.sqlite",
+        "exitStatus": 0,
+        "lastSocketError": "No such file or directory (os error 2)",
+        "processExitedBeforeSocket": true,
+        "qaSocketReady": false,
+        "socketPath": "/tmp/kanvibe-qa-native-app-replay-S14-remote-session-dependencies-3160445-1783490369955670886.sock",
+        "stderr": "kanvibe native scaffold mode: HeadlessStub",
+        "stdout": ""
+      },
+      "blockerCount": 1,
+      "blockers": [
+        "native app process exited before opening the QA socket; on this host the app may be a non-macOS headless stub"
+      ],
+      "executedCommandCount": 0,
+      "launchActionCount": 1,
+      "scenarioId": "S14-remote-session-dependencies",
+      "status": "BLOCKED",
+      "title": "Remote session dependency UI reports SSH-scoped tmux/zellij checks"
+    }
+  ],
+  "scenarioSubset": [
+    "S01-board-load-and-columns",
+    "S02-create-task-modal",
+    "S03-task-detail-terminal-dock",
+    "S04-task-detail-pr-and-ai-history",
+    "S05-diff-route-file-tree",
+    "S06-git-worktree-branch-flow",
+    "S07-board-drag-drop-status",
+    "S08-context-menu-status-and-delete",
+    "S09-vim-keyboard-shortcuts-search",
+    "S10-settings-pane-layout",
+    "S11-notifications-hooks-background-sync",
+    "S12-project-filter-and-done-pagination",
+    "S13-task-detail-existing-window-focus",
+    "S14-remote-session-dependencies"
+  ],
+  "screenshotBlockedCount": 0,
+  "sourceReplayPlanArtifact": "native-qa-control-replay-plan",
+  "status": "BLOCKED",
+  "structuredErrorCount": 0,
+  "transportErrorCount": 0,
+  "transportPass": true,
+  "videoBlockedCount": 0
+}

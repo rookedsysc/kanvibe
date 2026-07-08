@@ -1,0 +1,2707 @@
+{
+  "artifact": "native-qa-control-replay-plan",
+  "client": {
+    "requestShape": "one-json-command-line-one-json-response-line",
+    "type": "QaControlClient",
+    "unixSupportedInThisBuild": true
+  },
+  "coveragePass": true,
+  "launchActionCount": 14,
+  "scenarioFileCount": 14,
+  "scenarioPlans": [
+    {
+      "nativeVideoPath": "qa/parity/native-videos/S01-board-load-and-columns.mp4",
+      "replayItems": [
+        {
+          "action": "launchApp",
+          "dbCopyPath": "qa/parity/native-db/S01-board-load-and-columns.sqlite",
+          "env": {
+            "KANVIBE_DB_PATH": "qa/parity/native-db/S01-board-load-and-columns.sqlite",
+            "KANVIBE_LOCALE": "ko",
+            "KANVIBE_QA_SOCKET": "<per-run-debug-socket-path>"
+          },
+          "kind": "launchApp",
+          "scenarioId": "S01-board-load-and-columns",
+          "sourceSeed": "qa/seed/kanvibe-seed.sqlite",
+          "theme": "dark",
+          "viewport": {
+            "height": 960,
+            "width": 1440
+          }
+        },
+        {
+          "command": {
+            "path": "qa/parity/native-videos/S01-board-load-and-columns.mp4",
+            "type": "startVideoCapture"
+          },
+          "commandType": "startVideoCapture",
+          "kind": "controlCommand",
+          "scenarioId": "S01-board-load-and-columns",
+          "source": {
+            "nativePath": "qa/parity/native-videos/S01-board-load-and-columns.mp4",
+            "phase": "start",
+            "type": "video"
+          },
+          "sourceKind": "artifact",
+          "sourceType": "videoCapture.start"
+        },
+        {
+          "command": {
+            "id": "app.root",
+            "type": "queryElement"
+          },
+          "commandType": "queryElement",
+          "kind": "controlCommand",
+          "scenarioId": "S01-board-load-and-columns",
+          "source": {
+            "action": "waitForBoardReady"
+          },
+          "sourceKind": "step",
+          "sourceType": "waitForBoardReady"
+        },
+        {
+          "command": {
+            "path": "qa/parity/native-screens/S01-board-load-and-columns-board-dark-ko.png",
+            "type": "dumpScreenshot"
+          },
+          "commandType": "dumpScreenshot",
+          "kind": "controlCommand",
+          "scenarioId": "S01-board-load-and-columns",
+          "source": {
+            "action": "captureScreen",
+            "name": "board-dark-ko"
+          },
+          "sourceKind": "step",
+          "sourceType": "captureScreen"
+        },
+        {
+          "command": {
+            "id": "column.todo",
+            "type": "queryElement"
+          },
+          "commandType": "queryElement",
+          "kind": "controlCommand",
+          "scenarioId": "S01-board-load-and-columns",
+          "source": {
+            "statuses": [
+              "todo",
+              "progress",
+              "pending",
+              "review",
+              "done"
+            ],
+            "type": "columns"
+          },
+          "sourceKind": "assertion",
+          "sourceType": "columns"
+        },
+        {
+          "command": {
+            "id": "column.progress",
+            "type": "queryElement"
+          },
+          "commandType": "queryElement",
+          "kind": "controlCommand",
+          "scenarioId": "S01-board-load-and-columns",
+          "source": {
+            "statuses": [
+              "todo",
+              "progress",
+              "pending",
+              "review",
+              "done"
+            ],
+            "type": "columns"
+          },
+          "sourceKind": "assertion",
+          "sourceType": "columns"
+        },
+        {
+          "command": {
+            "id": "column.pending",
+            "type": "queryElement"
+          },
+          "commandType": "queryElement",
+          "kind": "controlCommand",
+          "scenarioId": "S01-board-load-and-columns",
+          "source": {
+            "statuses": [
+              "todo",
+              "progress",
+              "pending",
+              "review",
+              "done"
+            ],
+            "type": "columns"
+          },
+          "sourceKind": "assertion",
+          "sourceType": "columns"
+        },
+        {
+          "command": {
+            "id": "column.review",
+            "type": "queryElement"
+          },
+          "commandType": "queryElement",
+          "kind": "controlCommand",
+          "scenarioId": "S01-board-load-and-columns",
+          "source": {
+            "statuses": [
+              "todo",
+              "progress",
+              "pending",
+              "review",
+              "done"
+            ],
+            "type": "columns"
+          },
+          "sourceKind": "assertion",
+          "sourceType": "columns"
+        },
+        {
+          "command": {
+            "id": "column.done",
+            "type": "queryElement"
+          },
+          "commandType": "queryElement",
+          "kind": "controlCommand",
+          "scenarioId": "S01-board-load-and-columns",
+          "source": {
+            "statuses": [
+              "todo",
+              "progress",
+              "pending",
+              "review",
+              "done"
+            ],
+            "type": "columns"
+          },
+          "sourceKind": "assertion",
+          "sourceType": "columns"
+        },
+        {
+          "command": {
+            "type": "dbSnapshot"
+          },
+          "commandType": "dbSnapshot",
+          "kind": "controlCommand",
+          "scenarioId": "S01-board-load-and-columns",
+          "source": {
+            "expected": {
+              "done": 3,
+              "pending": 3,
+              "progress": 3,
+              "review": 3,
+              "todo": 3
+            },
+            "type": "taskCountByStatus"
+          },
+          "sourceKind": "assertion",
+          "sourceType": "taskCountByStatus"
+        },
+        {
+          "command": {
+            "id": "task.qa-task-todo-local",
+            "type": "queryElement"
+          },
+          "commandType": "queryElement",
+          "kind": "controlCommand",
+          "scenarioId": "S01-board-load-and-columns",
+          "source": {
+            "taskId": "qa-task-todo-local",
+            "title": "Draft native board shell",
+            "type": "taskVisible"
+          },
+          "sourceKind": "assertion",
+          "sourceType": "taskVisible"
+        },
+        {
+          "command": {
+            "type": "dbSnapshot"
+          },
+          "commandType": "dbSnapshot",
+          "kind": "controlCommand",
+          "scenarioId": "S01-board-load-and-columns",
+          "source": {
+            "expected": 3,
+            "table": "projects",
+            "type": "dbCount"
+          },
+          "sourceKind": "assertion",
+          "sourceType": "dbCount"
+        },
+        {
+          "command": {
+            "type": "dbSnapshot"
+          },
+          "commandType": "dbSnapshot",
+          "kind": "controlCommand",
+          "scenarioId": "S01-board-load-and-columns",
+          "source": {
+            "expected": 15,
+            "table": "kanban_tasks",
+            "type": "dbCount"
+          },
+          "sourceKind": "assertion",
+          "sourceType": "dbCount"
+        },
+        {
+          "command": {
+            "path": "qa/parity/native-videos/S01-board-load-and-columns.mp4",
+            "type": "stopVideoCapture"
+          },
+          "commandType": "stopVideoCapture",
+          "kind": "controlCommand",
+          "scenarioId": "S01-board-load-and-columns",
+          "source": {
+            "nativePath": "qa/parity/native-videos/S01-board-load-and-columns.mp4",
+            "phase": "stop",
+            "type": "video"
+          },
+          "sourceKind": "artifact",
+          "sourceType": "videoCapture.stop"
+        }
+      ],
+      "scenarioId": "S01-board-load-and-columns",
+      "title": "Board loads all status columns and seeded cards"
+    },
+    {
+      "nativeVideoPath": "qa/parity/native-videos/S02-create-task-modal.mp4",
+      "replayItems": [
+        {
+          "action": "launchApp",
+          "dbCopyPath": "qa/parity/native-db/S02-create-task-modal.sqlite",
+          "env": {
+            "KANVIBE_DB_PATH": "qa/parity/native-db/S02-create-task-modal.sqlite",
+            "KANVIBE_LOCALE": "ko",
+            "KANVIBE_QA_SOCKET": "<per-run-debug-socket-path>"
+          },
+          "kind": "launchApp",
+          "scenarioId": "S02-create-task-modal",
+          "sourceSeed": "qa/seed/kanvibe-seed.sqlite",
+          "theme": "dark",
+          "viewport": {
+            "height": 960,
+            "width": 1440
+          }
+        },
+        {
+          "command": {
+            "path": "qa/parity/native-videos/S02-create-task-modal.mp4",
+            "type": "startVideoCapture"
+          },
+          "commandType": "startVideoCapture",
+          "kind": "controlCommand",
+          "scenarioId": "S02-create-task-modal",
+          "source": {
+            "nativePath": "qa/parity/native-videos/S02-create-task-modal.mp4",
+            "phase": "start",
+            "type": "video"
+          },
+          "sourceKind": "artifact",
+          "sourceType": "videoCapture.start"
+        },
+        {
+          "command": {
+            "id": "app.root",
+            "type": "queryElement"
+          },
+          "commandType": "queryElement",
+          "kind": "controlCommand",
+          "scenarioId": "S02-create-task-modal",
+          "source": {
+            "action": "waitForBoardReady"
+          },
+          "sourceKind": "step",
+          "sourceType": "waitForBoardReady"
+        },
+        {
+          "command": {
+            "button": "left",
+            "id": "board.primaryAction",
+            "type": "syntheticClick"
+          },
+          "commandType": "syntheticClick",
+          "kind": "controlCommand",
+          "scenarioId": "S02-create-task-modal",
+          "source": {
+            "action": "openCreateTaskModal"
+          },
+          "sourceKind": "step",
+          "sourceType": "openCreateTaskModal"
+        },
+        {
+          "command": {
+            "button": "left",
+            "id": "createTask.form",
+            "type": "syntheticClick"
+          },
+          "commandType": "syntheticClick",
+          "kind": "controlCommand",
+          "scenarioId": "S02-create-task-modal",
+          "source": {
+            "action": "fillTaskForm",
+            "description": "Created by S02",
+            "priority": "medium",
+            "title": "QA created task"
+          },
+          "sourceKind": "step",
+          "sourceType": "fillTaskForm"
+        },
+        {
+          "command": {
+            "button": "left",
+            "id": "createTask.submit",
+            "type": "syntheticClick"
+          },
+          "commandType": "syntheticClick",
+          "kind": "controlCommand",
+          "scenarioId": "S02-create-task-modal",
+          "source": {
+            "action": "submitCreateTask"
+          },
+          "sourceKind": "step",
+          "sourceType": "submitCreateTask"
+        },
+        {
+          "command": {
+            "path": "qa/parity/native-screens/S02-create-task-modal-create-task-result.png",
+            "type": "dumpScreenshot"
+          },
+          "commandType": "dumpScreenshot",
+          "kind": "controlCommand",
+          "scenarioId": "S02-create-task-modal",
+          "source": {
+            "action": "captureScreen",
+            "name": "create-task-result"
+          },
+          "sourceKind": "step",
+          "sourceType": "captureScreen"
+        },
+        {
+          "command": {
+            "id": "taskTitle.qa-created-task",
+            "type": "queryElement"
+          },
+          "commandType": "queryElement",
+          "kind": "controlCommand",
+          "scenarioId": "S02-create-task-modal",
+          "source": {
+            "status": "todo",
+            "title": "QA created task",
+            "type": "taskVisible"
+          },
+          "sourceKind": "assertion",
+          "sourceType": "taskVisible"
+        },
+        {
+          "command": {
+            "type": "dbSnapshot"
+          },
+          "commandType": "dbSnapshot",
+          "kind": "controlCommand",
+          "scenarioId": "S02-create-task-modal",
+          "source": {
+            "expected": {
+              "priority": "medium",
+              "status": "todo"
+            },
+            "table": "kanban_tasks",
+            "type": "dbRow",
+            "where": {
+              "title": "QA created task"
+            }
+          },
+          "sourceKind": "assertion",
+          "sourceType": "dbRow"
+        },
+        {
+          "command": {
+            "type": "dbSnapshot"
+          },
+          "commandType": "dbSnapshot",
+          "kind": "controlCommand",
+          "scenarioId": "S02-create-task-modal",
+          "source": {
+            "title": "QA created task",
+            "type": "noWorktreeCreated"
+          },
+          "sourceKind": "assertion",
+          "sourceType": "noWorktreeCreated"
+        },
+        {
+          "command": {
+            "path": "qa/parity/native-videos/S02-create-task-modal.mp4",
+            "type": "stopVideoCapture"
+          },
+          "commandType": "stopVideoCapture",
+          "kind": "controlCommand",
+          "scenarioId": "S02-create-task-modal",
+          "source": {
+            "nativePath": "qa/parity/native-videos/S02-create-task-modal.mp4",
+            "phase": "stop",
+            "type": "video"
+          },
+          "sourceKind": "artifact",
+          "sourceType": "videoCapture.stop"
+        }
+      ],
+      "scenarioId": "S02-create-task-modal",
+      "title": "Create task modal writes a todo task without worktree side effects"
+    },
+    {
+      "nativeVideoPath": "qa/parity/native-videos/S03-task-detail-terminal-dock.mp4",
+      "replayItems": [
+        {
+          "action": "launchApp",
+          "dbCopyPath": "qa/parity/native-db/S03-task-detail-terminal-dock.sqlite",
+          "env": {
+            "KANVIBE_DB_PATH": "qa/parity/native-db/S03-task-detail-terminal-dock.sqlite",
+            "KANVIBE_LOCALE": "ko",
+            "KANVIBE_QA_SOCKET": "<per-run-debug-socket-path>"
+          },
+          "kind": "launchApp",
+          "scenarioId": "S03-task-detail-terminal-dock",
+          "sourceSeed": "qa/seed/kanvibe-seed.sqlite",
+          "theme": "dark",
+          "viewport": {
+            "height": 960,
+            "width": 1440
+          }
+        },
+        {
+          "command": {
+            "path": "qa/parity/native-videos/S03-task-detail-terminal-dock.mp4",
+            "type": "startVideoCapture"
+          },
+          "commandType": "startVideoCapture",
+          "kind": "controlCommand",
+          "scenarioId": "S03-task-detail-terminal-dock",
+          "source": {
+            "nativePath": "qa/parity/native-videos/S03-task-detail-terminal-dock.mp4",
+            "phase": "start",
+            "type": "video"
+          },
+          "sourceKind": "artifact",
+          "sourceType": "videoCapture.start"
+        },
+        {
+          "command": {
+            "id": "app.root",
+            "type": "queryElement"
+          },
+          "commandType": "queryElement",
+          "kind": "controlCommand",
+          "scenarioId": "S03-task-detail-terminal-dock",
+          "source": {
+            "action": "waitForBoardReady"
+          },
+          "sourceKind": "step",
+          "sourceType": "waitForBoardReady"
+        },
+        {
+          "command": {
+            "button": "left",
+            "id": "task.qa-task-progress-terminal",
+            "type": "syntheticClick"
+          },
+          "commandType": "syntheticClick",
+          "kind": "controlCommand",
+          "scenarioId": "S03-task-detail-terminal-dock",
+          "source": {
+            "action": "openTaskDetail",
+            "taskId": "qa-task-progress-terminal"
+          },
+          "sourceKind": "step",
+          "sourceType": "openTaskDetail"
+        },
+        {
+          "command": {
+            "button": "left",
+            "id": "dock.terminal",
+            "type": "syntheticClick"
+          },
+          "commandType": "syntheticClick",
+          "kind": "controlCommand",
+          "scenarioId": "S03-task-detail-terminal-dock",
+          "source": {
+            "action": "selectDockItem",
+            "item": "terminal"
+          },
+          "sourceKind": "step",
+          "sourceType": "selectDockItem"
+        },
+        {
+          "command": {
+            "path": "qa/parity/native-screens/S03-task-detail-terminal-dock-task-detail-terminal.png",
+            "type": "dumpScreenshot"
+          },
+          "commandType": "dumpScreenshot",
+          "kind": "controlCommand",
+          "scenarioId": "S03-task-detail-terminal-dock",
+          "source": {
+            "action": "captureScreen",
+            "name": "task-detail-terminal"
+          },
+          "sourceKind": "step",
+          "sourceType": "captureScreen"
+        },
+        {
+          "command": {
+            "id": "route.task-qa-task-progress-terminal",
+            "type": "queryText"
+          },
+          "commandType": "queryText",
+          "kind": "controlCommand",
+          "scenarioId": "S03-task-detail-terminal-dock",
+          "source": {
+            "pattern": "/task/qa-task-progress-terminal",
+            "type": "route"
+          },
+          "sourceKind": "assertion",
+          "sourceType": "route"
+        },
+        {
+          "command": {
+            "id": "dock.root",
+            "type": "queryElement"
+          },
+          "commandType": "queryElement",
+          "kind": "controlCommand",
+          "scenarioId": "S03-task-detail-terminal-dock",
+          "source": {
+            "expected": [
+              "overview",
+              "status",
+              "terminal",
+              "chat",
+              "aiSessions"
+            ],
+            "type": "dockItems"
+          },
+          "sourceKind": "assertion",
+          "sourceType": "dockItems"
+        },
+        {
+          "command": {
+            "id": "dock.root",
+            "type": "queryElement"
+          },
+          "commandType": "queryElement",
+          "kind": "controlCommand",
+          "scenarioId": "S03-task-detail-terminal-dock",
+          "source": {
+            "expectedPrefix": "Cmd+",
+            "platform": "macos",
+            "type": "shortcutLabels"
+          },
+          "sourceKind": "assertion",
+          "sourceType": "shortcutLabels"
+        },
+        {
+          "command": {
+            "id": "task.qa-task-progress-terminal.field.session_type",
+            "type": "queryText"
+          },
+          "commandType": "queryText",
+          "kind": "controlCommand",
+          "scenarioId": "S03-task-detail-terminal-dock",
+          "source": {
+            "expected": "tmux",
+            "field": "session_type",
+            "taskId": "qa-task-progress-terminal",
+            "type": "taskField"
+          },
+          "sourceKind": "assertion",
+          "sourceType": "taskField"
+        },
+        {
+          "command": {
+            "path": "qa/parity/native-videos/S03-task-detail-terminal-dock.mp4",
+            "type": "stopVideoCapture"
+          },
+          "commandType": "stopVideoCapture",
+          "kind": "controlCommand",
+          "scenarioId": "S03-task-detail-terminal-dock",
+          "source": {
+            "nativePath": "qa/parity/native-videos/S03-task-detail-terminal-dock.mp4",
+            "phase": "stop",
+            "type": "video"
+          },
+          "sourceKind": "artifact",
+          "sourceType": "videoCapture.stop"
+        }
+      ],
+      "scenarioId": "S03-task-detail-terminal-dock",
+      "title": "Task detail shows dock, metadata, and terminal attachment state"
+    },
+    {
+      "nativeVideoPath": "qa/parity/native-videos/S04-task-detail-pr-and-ai-history.mp4",
+      "replayItems": [
+        {
+          "action": "launchApp",
+          "dbCopyPath": "qa/parity/native-db/S04-task-detail-pr-and-ai-history.sqlite",
+          "env": {
+            "KANVIBE_DB_PATH": "qa/parity/native-db/S04-task-detail-pr-and-ai-history.sqlite",
+            "KANVIBE_LOCALE": "ko",
+            "KANVIBE_QA_SOCKET": "<per-run-debug-socket-path>"
+          },
+          "kind": "launchApp",
+          "scenarioId": "S04-task-detail-pr-and-ai-history",
+          "sourceSeed": "qa/seed/kanvibe-seed.sqlite",
+          "theme": "dark",
+          "viewport": {
+            "height": 960,
+            "width": 1440
+          }
+        },
+        {
+          "command": {
+            "path": "qa/parity/native-videos/S04-task-detail-pr-and-ai-history.mp4",
+            "type": "startVideoCapture"
+          },
+          "commandType": "startVideoCapture",
+          "kind": "controlCommand",
+          "scenarioId": "S04-task-detail-pr-and-ai-history",
+          "source": {
+            "nativePath": "qa/parity/native-videos/S04-task-detail-pr-and-ai-history.mp4",
+            "phase": "start",
+            "type": "video"
+          },
+          "sourceKind": "artifact",
+          "sourceType": "videoCapture.start"
+        },
+        {
+          "command": {
+            "id": "app.root",
+            "type": "queryElement"
+          },
+          "commandType": "queryElement",
+          "kind": "controlCommand",
+          "scenarioId": "S04-task-detail-pr-and-ai-history",
+          "source": {
+            "action": "waitForBoardReady"
+          },
+          "sourceKind": "step",
+          "sourceType": "waitForBoardReady"
+        },
+        {
+          "command": {
+            "button": "left",
+            "id": "task.qa-task-review-diff",
+            "type": "syntheticClick"
+          },
+          "commandType": "syntheticClick",
+          "kind": "controlCommand",
+          "scenarioId": "S04-task-detail-pr-and-ai-history",
+          "source": {
+            "action": "openTaskDetail",
+            "taskId": "qa-task-review-diff"
+          },
+          "sourceKind": "step",
+          "sourceType": "openTaskDetail"
+        },
+        {
+          "command": {
+            "button": "left",
+            "id": "dock.pullRequest",
+            "type": "syntheticClick"
+          },
+          "commandType": "syntheticClick",
+          "kind": "controlCommand",
+          "scenarioId": "S04-task-detail-pr-and-ai-history",
+          "source": {
+            "action": "selectDockItem",
+            "item": "pullRequest"
+          },
+          "sourceKind": "step",
+          "sourceType": "selectDockItem"
+        },
+        {
+          "command": {
+            "button": "left",
+            "id": "dock.aiSessions",
+            "type": "syntheticClick"
+          },
+          "commandType": "syntheticClick",
+          "kind": "controlCommand",
+          "scenarioId": "S04-task-detail-pr-and-ai-history",
+          "source": {
+            "action": "selectDockItem",
+            "item": "aiSessions"
+          },
+          "sourceKind": "step",
+          "sourceType": "selectDockItem"
+        },
+        {
+          "command": {
+            "path": "qa/parity/native-screens/S04-task-detail-pr-and-ai-history-task-detail-pr-ai.png",
+            "type": "dumpScreenshot"
+          },
+          "commandType": "dumpScreenshot",
+          "kind": "controlCommand",
+          "scenarioId": "S04-task-detail-pr-and-ai-history",
+          "source": {
+            "action": "captureScreen",
+            "name": "task-detail-pr-ai"
+          },
+          "sourceKind": "step",
+          "sourceType": "captureScreen"
+        },
+        {
+          "command": {
+            "id": "task.qa-task-review-diff.field.pr_url",
+            "type": "queryText"
+          },
+          "commandType": "queryText",
+          "kind": "controlCommand",
+          "scenarioId": "S04-task-detail-pr-and-ai-history",
+          "source": {
+            "expectedContains": "/pull/302",
+            "field": "pr_url",
+            "taskId": "qa-task-review-diff",
+            "type": "taskField"
+          },
+          "sourceKind": "assertion",
+          "sourceType": "taskField"
+        },
+        {
+          "command": {
+            "id": "dock.root",
+            "type": "queryElement"
+          },
+          "commandType": "queryElement",
+          "kind": "controlCommand",
+          "scenarioId": "S04-task-detail-pr-and-ai-history",
+          "source": {
+            "expected": [
+              "overview",
+              "status",
+              "terminal",
+              "pullRequest",
+              "chat",
+              "aiSessions"
+            ],
+            "type": "dockItems"
+          },
+          "sourceKind": "assertion",
+          "sourceType": "dockItems"
+        },
+        {
+          "command": {
+            "id": "ai.providerFilters",
+            "type": "queryText"
+          },
+          "commandType": "queryText",
+          "kind": "controlCommand",
+          "scenarioId": "S04-task-detail-pr-and-ai-history",
+          "source": {
+            "expected": [
+              "claude",
+              "codex",
+              "gemini",
+              "opencode"
+            ],
+            "type": "aiProviderFilters"
+          },
+          "sourceKind": "assertion",
+          "sourceType": "aiProviderFilters"
+        },
+        {
+          "command": {
+            "path": "qa/parity/native-videos/S04-task-detail-pr-and-ai-history.mp4",
+            "type": "stopVideoCapture"
+          },
+          "commandType": "stopVideoCapture",
+          "kind": "controlCommand",
+          "scenarioId": "S04-task-detail-pr-and-ai-history",
+          "source": {
+            "nativePath": "qa/parity/native-videos/S04-task-detail-pr-and-ai-history.mp4",
+            "phase": "stop",
+            "type": "video"
+          },
+          "sourceKind": "artifact",
+          "sourceType": "videoCapture.stop"
+        }
+      ],
+      "scenarioId": "S04-task-detail-pr-and-ai-history",
+      "title": "Task detail PR slot and AI session history are visible"
+    },
+    {
+      "nativeVideoPath": "qa/parity/native-videos/S05-diff-route-file-tree.mp4",
+      "replayItems": [
+        {
+          "action": "launchApp",
+          "dbCopyPath": "qa/parity/native-db/S05-diff-route-file-tree.sqlite",
+          "env": {
+            "KANVIBE_DB_PATH": "qa/parity/native-db/S05-diff-route-file-tree.sqlite",
+            "KANVIBE_LOCALE": "ko",
+            "KANVIBE_QA_SOCKET": "<per-run-debug-socket-path>"
+          },
+          "kind": "launchApp",
+          "scenarioId": "S05-diff-route-file-tree",
+          "sourceSeed": "qa/seed/kanvibe-seed.sqlite",
+          "theme": "dark",
+          "viewport": {
+            "height": 960,
+            "width": 1440
+          }
+        },
+        {
+          "command": {
+            "path": "qa/parity/native-videos/S05-diff-route-file-tree.mp4",
+            "type": "startVideoCapture"
+          },
+          "commandType": "startVideoCapture",
+          "kind": "controlCommand",
+          "scenarioId": "S05-diff-route-file-tree",
+          "source": {
+            "nativePath": "qa/parity/native-videos/S05-diff-route-file-tree.mp4",
+            "phase": "start",
+            "type": "video"
+          },
+          "sourceKind": "artifact",
+          "sourceType": "videoCapture.start"
+        },
+        {
+          "command": {
+            "id": "app.root",
+            "type": "queryElement"
+          },
+          "commandType": "queryElement",
+          "kind": "controlCommand",
+          "scenarioId": "S05-diff-route-file-tree",
+          "source": {
+            "action": "waitForBoardReady"
+          },
+          "sourceKind": "step",
+          "sourceType": "waitForBoardReady"
+        },
+        {
+          "command": {
+            "button": "left",
+            "id": "task.qa-task-review-diff.diff",
+            "type": "syntheticClick"
+          },
+          "commandType": "syntheticClick",
+          "kind": "controlCommand",
+          "scenarioId": "S05-diff-route-file-tree",
+          "source": {
+            "action": "openDiffRoute",
+            "taskId": "qa-task-review-diff"
+          },
+          "sourceKind": "step",
+          "sourceType": "openDiffRoute"
+        },
+        {
+          "command": {
+            "button": "left",
+            "id": "diff.fileList.firstChangedFile",
+            "type": "syntheticClick"
+          },
+          "commandType": "syntheticClick",
+          "kind": "controlCommand",
+          "scenarioId": "S05-diff-route-file-tree",
+          "source": {
+            "action": "selectFirstChangedFile"
+          },
+          "sourceKind": "step",
+          "sourceType": "selectFirstChangedFile"
+        },
+        {
+          "command": {
+            "path": "qa/parity/native-screens/S05-diff-route-file-tree-diff-route-file-tree.png",
+            "type": "dumpScreenshot"
+          },
+          "commandType": "dumpScreenshot",
+          "kind": "controlCommand",
+          "scenarioId": "S05-diff-route-file-tree",
+          "source": {
+            "action": "captureScreen",
+            "name": "diff-route-file-tree"
+          },
+          "sourceKind": "step",
+          "sourceType": "captureScreen"
+        },
+        {
+          "command": {
+            "id": "route.diff-qa-task-review-diff",
+            "type": "queryText"
+          },
+          "commandType": "queryText",
+          "kind": "controlCommand",
+          "scenarioId": "S05-diff-route-file-tree",
+          "source": {
+            "pattern": "/diff/qa-task-review-diff",
+            "type": "route"
+          },
+          "sourceKind": "assertion",
+          "sourceType": "route"
+        },
+        {
+          "command": {
+            "id": "diff.sidebar",
+            "type": "queryElement"
+          },
+          "commandType": "queryElement",
+          "kind": "controlCommand",
+          "scenarioId": "S05-diff-route-file-tree",
+          "source": {
+            "type": "diffSidebarVisible"
+          },
+          "sourceKind": "assertion",
+          "sourceType": "diffSidebarVisible"
+        },
+        {
+          "command": {
+            "id": "diff.pane",
+            "type": "queryElement"
+          },
+          "commandType": "queryElement",
+          "kind": "controlCommand",
+          "scenarioId": "S05-diff-route-file-tree",
+          "source": {
+            "type": "diffPaneVisible"
+          },
+          "sourceKind": "assertion",
+          "sourceType": "diffPaneVisible"
+        },
+        {
+          "command": {
+            "id": "protocol.blocker.externalTool",
+            "type": "queryText"
+          },
+          "commandType": "queryText",
+          "kind": "controlCommand",
+          "scenarioId": "S05-diff-route-file-tree",
+          "source": {
+            "tools": [
+              "git"
+            ],
+            "type": "externalToolBlockerAllowed"
+          },
+          "sourceKind": "assertion",
+          "sourceType": "externalToolBlockerAllowed"
+        },
+        {
+          "command": {
+            "path": "qa/parity/native-videos/S05-diff-route-file-tree.mp4",
+            "type": "stopVideoCapture"
+          },
+          "commandType": "stopVideoCapture",
+          "kind": "controlCommand",
+          "scenarioId": "S05-diff-route-file-tree",
+          "source": {
+            "nativePath": "qa/parity/native-videos/S05-diff-route-file-tree.mp4",
+            "phase": "stop",
+            "type": "video"
+          },
+          "sourceKind": "artifact",
+          "sourceType": "videoCapture.stop"
+        }
+      ],
+      "scenarioId": "S05-diff-route-file-tree",
+      "title": "Diff route shows changed files and file diff pane"
+    },
+    {
+      "nativeVideoPath": "qa/parity/native-videos/S06-git-worktree-branch-flow.mp4",
+      "replayItems": [
+        {
+          "action": "launchApp",
+          "dbCopyPath": "qa/parity/native-db/S06-git-worktree-branch-flow.sqlite",
+          "env": {
+            "KANVIBE_DB_PATH": "qa/parity/native-db/S06-git-worktree-branch-flow.sqlite",
+            "KANVIBE_LOCALE": "ko",
+            "KANVIBE_QA_SOCKET": "<per-run-debug-socket-path>"
+          },
+          "kind": "launchApp",
+          "scenarioId": "S06-git-worktree-branch-flow",
+          "sourceSeed": "qa/seed/kanvibe-seed.sqlite",
+          "theme": "dark",
+          "viewport": {
+            "height": 960,
+            "width": 1440
+          }
+        },
+        {
+          "command": {
+            "path": "qa/parity/native-videos/S06-git-worktree-branch-flow.mp4",
+            "type": "startVideoCapture"
+          },
+          "commandType": "startVideoCapture",
+          "kind": "controlCommand",
+          "scenarioId": "S06-git-worktree-branch-flow",
+          "source": {
+            "nativePath": "qa/parity/native-videos/S06-git-worktree-branch-flow.mp4",
+            "phase": "start",
+            "type": "video"
+          },
+          "sourceKind": "artifact",
+          "sourceType": "videoCapture.start"
+        },
+        {
+          "command": {
+            "id": "app.root",
+            "type": "queryElement"
+          },
+          "commandType": "queryElement",
+          "kind": "controlCommand",
+          "scenarioId": "S06-git-worktree-branch-flow",
+          "source": {
+            "action": "waitForBoardReady"
+          },
+          "sourceKind": "step",
+          "sourceType": "waitForBoardReady"
+        },
+        {
+          "command": {
+            "button": "left",
+            "id": "task.qa-task-todo-local",
+            "type": "syntheticClick"
+          },
+          "commandType": "syntheticClick",
+          "kind": "controlCommand",
+          "scenarioId": "S06-git-worktree-branch-flow",
+          "source": {
+            "action": "openTaskContextMenu",
+            "taskId": "qa-task-todo-local"
+          },
+          "sourceKind": "step",
+          "sourceType": "openTaskContextMenu"
+        },
+        {
+          "command": {
+            "button": "left",
+            "id": "context.action.branchFromTask",
+            "type": "syntheticClick"
+          },
+          "commandType": "syntheticClick",
+          "kind": "controlCommand",
+          "scenarioId": "S06-git-worktree-branch-flow",
+          "source": {
+            "action": "chooseContextAction",
+            "actionName": "branchFromTask"
+          },
+          "sourceKind": "step",
+          "sourceType": "chooseContextAction"
+        },
+        {
+          "command": {
+            "button": "left",
+            "id": "branchTask.form",
+            "type": "syntheticClick"
+          },
+          "commandType": "syntheticClick",
+          "kind": "controlCommand",
+          "scenarioId": "S06-git-worktree-branch-flow",
+          "source": {
+            "action": "fillBranchTaskForm",
+            "baseBranch": "main",
+            "branchName": "qa/branch-from-task",
+            "projectId": "qa-project-kanvibe",
+            "sessionType": "tmux"
+          },
+          "sourceKind": "step",
+          "sourceType": "fillBranchTaskForm"
+        },
+        {
+          "command": {
+            "button": "left",
+            "id": "branchTask.submit",
+            "type": "syntheticClick"
+          },
+          "commandType": "syntheticClick",
+          "kind": "controlCommand",
+          "scenarioId": "S06-git-worktree-branch-flow",
+          "source": {
+            "action": "submitBranchTask"
+          },
+          "sourceKind": "step",
+          "sourceType": "submitBranchTask"
+        },
+        {
+          "command": {
+            "path": "qa/parity/native-screens/S06-git-worktree-branch-flow-branch-task-result.png",
+            "type": "dumpScreenshot"
+          },
+          "commandType": "dumpScreenshot",
+          "kind": "controlCommand",
+          "scenarioId": "S06-git-worktree-branch-flow",
+          "source": {
+            "action": "captureScreen",
+            "name": "branch-task-result"
+          },
+          "sourceKind": "step",
+          "sourceType": "captureScreen"
+        },
+        {
+          "command": {
+            "type": "dbSnapshot"
+          },
+          "commandType": "dbSnapshot",
+          "kind": "controlCommand",
+          "scenarioId": "S06-git-worktree-branch-flow",
+          "source": {
+            "expected": {
+              "base_branch": "main",
+              "session_type": "tmux",
+              "status": "progress"
+            },
+            "table": "kanban_tasks",
+            "type": "dbRow",
+            "where": {
+              "branch_name": "qa/branch-from-task"
+            }
+          },
+          "sourceKind": "assertion",
+          "sourceType": "dbRow"
+        },
+        {
+          "command": {
+            "id": "taskVisible.target",
+            "type": "queryElement"
+          },
+          "commandType": "queryElement",
+          "kind": "controlCommand",
+          "scenarioId": "S06-git-worktree-branch-flow",
+          "source": {
+            "branchName": "qa/branch-from-task",
+            "status": "progress",
+            "type": "taskVisible"
+          },
+          "sourceKind": "assertion",
+          "sourceType": "taskVisible"
+        },
+        {
+          "command": {
+            "path": "qa/parity/native-videos/S06-git-worktree-branch-flow.mp4",
+            "type": "stopVideoCapture"
+          },
+          "commandType": "stopVideoCapture",
+          "kind": "controlCommand",
+          "scenarioId": "S06-git-worktree-branch-flow",
+          "source": {
+            "nativePath": "qa/parity/native-videos/S06-git-worktree-branch-flow.mp4",
+            "phase": "stop",
+            "type": "video"
+          },
+          "sourceKind": "artifact",
+          "sourceType": "videoCapture.stop"
+        }
+      ],
+      "scenarioId": "S06-git-worktree-branch-flow",
+      "title": "Branch-from-task flow creates branch metadata and preserves base branch"
+    },
+    {
+      "nativeVideoPath": "qa/parity/native-videos/S07-board-drag-drop-status.mp4",
+      "replayItems": [
+        {
+          "action": "launchApp",
+          "dbCopyPath": "qa/parity/native-db/S07-board-drag-drop-status.sqlite",
+          "env": {
+            "KANVIBE_DB_PATH": "qa/parity/native-db/S07-board-drag-drop-status.sqlite",
+            "KANVIBE_LOCALE": "ko",
+            "KANVIBE_QA_SOCKET": "<per-run-debug-socket-path>"
+          },
+          "kind": "launchApp",
+          "scenarioId": "S07-board-drag-drop-status",
+          "sourceSeed": "qa/seed/kanvibe-seed.sqlite",
+          "theme": "dark",
+          "viewport": {
+            "height": 960,
+            "width": 1440
+          }
+        },
+        {
+          "command": {
+            "path": "qa/parity/native-videos/S07-board-drag-drop-status.mp4",
+            "type": "startVideoCapture"
+          },
+          "commandType": "startVideoCapture",
+          "kind": "controlCommand",
+          "scenarioId": "S07-board-drag-drop-status",
+          "source": {
+            "nativePath": "qa/parity/native-videos/S07-board-drag-drop-status.mp4",
+            "phase": "start",
+            "type": "video"
+          },
+          "sourceKind": "artifact",
+          "sourceType": "videoCapture.start"
+        },
+        {
+          "command": {
+            "id": "app.root",
+            "type": "queryElement"
+          },
+          "commandType": "queryElement",
+          "kind": "controlCommand",
+          "scenarioId": "S07-board-drag-drop-status",
+          "source": {
+            "action": "waitForBoardReady"
+          },
+          "sourceKind": "step",
+          "sourceType": "waitForBoardReady"
+        },
+        {
+          "command": {
+            "button": "left",
+            "id": "column.progress.dropTarget",
+            "type": "syntheticClick"
+          },
+          "commandType": "syntheticClick",
+          "kind": "controlCommand",
+          "scenarioId": "S07-board-drag-drop-status",
+          "source": {
+            "action": "dragTaskToColumn",
+            "position": 0,
+            "taskId": "qa-task-todo-local",
+            "toStatus": "progress"
+          },
+          "sourceKind": "step",
+          "sourceType": "dragTaskToColumn"
+        },
+        {
+          "command": {
+            "path": "qa/parity/native-screens/S07-board-drag-drop-status-drag-drop-progress.png",
+            "type": "dumpScreenshot"
+          },
+          "commandType": "dumpScreenshot",
+          "kind": "controlCommand",
+          "scenarioId": "S07-board-drag-drop-status",
+          "source": {
+            "action": "captureScreen",
+            "name": "drag-drop-progress"
+          },
+          "sourceKind": "step",
+          "sourceType": "captureScreen"
+        },
+        {
+          "command": {
+            "id": "task.qa-task-todo-local",
+            "type": "queryElement"
+          },
+          "commandType": "queryElement",
+          "kind": "controlCommand",
+          "scenarioId": "S07-board-drag-drop-status",
+          "source": {
+            "status": "progress",
+            "taskId": "qa-task-todo-local",
+            "type": "taskVisible"
+          },
+          "sourceKind": "assertion",
+          "sourceType": "taskVisible"
+        },
+        {
+          "command": {
+            "type": "dbSnapshot"
+          },
+          "commandType": "dbSnapshot",
+          "kind": "controlCommand",
+          "scenarioId": "S07-board-drag-drop-status",
+          "source": {
+            "expected": {
+              "status": "progress"
+            },
+            "table": "kanban_tasks",
+            "type": "dbRow",
+            "where": {
+              "id": "qa-task-todo-local"
+            }
+          },
+          "sourceKind": "assertion",
+          "sourceType": "dbRow"
+        },
+        {
+          "command": {
+            "path": "qa/parity/native-videos/S07-board-drag-drop-status.mp4",
+            "type": "stopVideoCapture"
+          },
+          "commandType": "stopVideoCapture",
+          "kind": "controlCommand",
+          "scenarioId": "S07-board-drag-drop-status",
+          "source": {
+            "nativePath": "qa/parity/native-videos/S07-board-drag-drop-status.mp4",
+            "phase": "stop",
+            "type": "video"
+          },
+          "sourceKind": "artifact",
+          "sourceType": "videoCapture.stop"
+        }
+      ],
+      "scenarioId": "S07-board-drag-drop-status",
+      "title": "Dragging a card updates status and display order"
+    },
+    {
+      "nativeVideoPath": "qa/parity/native-videos/S08-context-menu-status-and-delete.mp4",
+      "replayItems": [
+        {
+          "action": "launchApp",
+          "dbCopyPath": "qa/parity/native-db/S08-context-menu-status-and-delete.sqlite",
+          "env": {
+            "KANVIBE_DB_PATH": "qa/parity/native-db/S08-context-menu-status-and-delete.sqlite",
+            "KANVIBE_LOCALE": "ko",
+            "KANVIBE_QA_SOCKET": "<per-run-debug-socket-path>"
+          },
+          "kind": "launchApp",
+          "scenarioId": "S08-context-menu-status-and-delete",
+          "sourceSeed": "qa/seed/kanvibe-seed.sqlite",
+          "theme": "dark",
+          "viewport": {
+            "height": 960,
+            "width": 1440
+          }
+        },
+        {
+          "command": {
+            "path": "qa/parity/native-videos/S08-context-menu-status-and-delete.mp4",
+            "type": "startVideoCapture"
+          },
+          "commandType": "startVideoCapture",
+          "kind": "controlCommand",
+          "scenarioId": "S08-context-menu-status-and-delete",
+          "source": {
+            "nativePath": "qa/parity/native-videos/S08-context-menu-status-and-delete.mp4",
+            "phase": "start",
+            "type": "video"
+          },
+          "sourceKind": "artifact",
+          "sourceType": "videoCapture.start"
+        },
+        {
+          "command": {
+            "id": "app.root",
+            "type": "queryElement"
+          },
+          "commandType": "queryElement",
+          "kind": "controlCommand",
+          "scenarioId": "S08-context-menu-status-and-delete",
+          "source": {
+            "action": "waitForBoardReady"
+          },
+          "sourceKind": "step",
+          "sourceType": "waitForBoardReady"
+        },
+        {
+          "command": {
+            "button": "left",
+            "id": "task.qa-task-pending-no-branch",
+            "type": "syntheticClick"
+          },
+          "commandType": "syntheticClick",
+          "kind": "controlCommand",
+          "scenarioId": "S08-context-menu-status-and-delete",
+          "source": {
+            "action": "openTaskContextMenu",
+            "taskId": "qa-task-pending-no-branch"
+          },
+          "sourceKind": "step",
+          "sourceType": "openTaskContextMenu"
+        },
+        {
+          "command": {
+            "button": "left",
+            "id": "context.action.moveToReview",
+            "type": "syntheticClick"
+          },
+          "commandType": "syntheticClick",
+          "kind": "controlCommand",
+          "scenarioId": "S08-context-menu-status-and-delete",
+          "source": {
+            "action": "chooseContextAction",
+            "actionName": "moveToReview"
+          },
+          "sourceKind": "step",
+          "sourceType": "chooseContextAction"
+        },
+        {
+          "command": {
+            "button": "left",
+            "id": "task.qa-task-pending-no-branch",
+            "type": "syntheticClick"
+          },
+          "commandType": "syntheticClick",
+          "kind": "controlCommand",
+          "scenarioId": "S08-context-menu-status-and-delete",
+          "source": {
+            "action": "openTaskContextMenu",
+            "taskId": "qa-task-pending-no-branch"
+          },
+          "sourceKind": "step",
+          "sourceType": "openTaskContextMenu"
+        },
+        {
+          "command": {
+            "button": "left",
+            "id": "context.action.deleteTask",
+            "type": "syntheticClick"
+          },
+          "commandType": "syntheticClick",
+          "kind": "controlCommand",
+          "scenarioId": "S08-context-menu-status-and-delete",
+          "source": {
+            "action": "chooseContextAction",
+            "actionName": "deleteTask"
+          },
+          "sourceKind": "step",
+          "sourceType": "chooseContextAction"
+        },
+        {
+          "command": {
+            "button": "left",
+            "id": "dialog.confirm",
+            "type": "syntheticClick"
+          },
+          "commandType": "syntheticClick",
+          "kind": "controlCommand",
+          "scenarioId": "S08-context-menu-status-and-delete",
+          "source": {
+            "action": "confirmDialog"
+          },
+          "sourceKind": "step",
+          "sourceType": "confirmDialog"
+        },
+        {
+          "command": {
+            "path": "qa/parity/native-screens/S08-context-menu-status-and-delete-context-delete-result.png",
+            "type": "dumpScreenshot"
+          },
+          "commandType": "dumpScreenshot",
+          "kind": "controlCommand",
+          "scenarioId": "S08-context-menu-status-and-delete",
+          "source": {
+            "action": "captureScreen",
+            "name": "context-delete-result"
+          },
+          "sourceKind": "step",
+          "sourceType": "captureScreen"
+        },
+        {
+          "command": {
+            "id": "task.qa-task-pending-no-branch",
+            "type": "queryElement"
+          },
+          "commandType": "queryElement",
+          "kind": "controlCommand",
+          "scenarioId": "S08-context-menu-status-and-delete",
+          "source": {
+            "taskId": "qa-task-pending-no-branch",
+            "type": "taskNotVisible"
+          },
+          "sourceKind": "assertion",
+          "sourceType": "taskNotVisible"
+        },
+        {
+          "command": {
+            "type": "dbSnapshot"
+          },
+          "commandType": "dbSnapshot",
+          "kind": "controlCommand",
+          "scenarioId": "S08-context-menu-status-and-delete",
+          "source": {
+            "table": "kanban_tasks",
+            "type": "dbMissing",
+            "where": {
+              "id": "qa-task-pending-no-branch"
+            }
+          },
+          "sourceKind": "assertion",
+          "sourceType": "dbMissing"
+        },
+        {
+          "command": {
+            "path": "qa/parity/native-videos/S08-context-menu-status-and-delete.mp4",
+            "type": "stopVideoCapture"
+          },
+          "commandType": "stopVideoCapture",
+          "kind": "controlCommand",
+          "scenarioId": "S08-context-menu-status-and-delete",
+          "source": {
+            "nativePath": "qa/parity/native-videos/S08-context-menu-status-and-delete.mp4",
+            "phase": "stop",
+            "type": "video"
+          },
+          "sourceKind": "artifact",
+          "sourceType": "videoCapture.stop"
+        }
+      ],
+      "scenarioId": "S08-context-menu-status-and-delete",
+      "title": "Context menu changes status and delete cleans task row"
+    },
+    {
+      "nativeVideoPath": "qa/parity/native-videos/S09-vim-keyboard-shortcuts-search.mp4",
+      "replayItems": [
+        {
+          "action": "launchApp",
+          "dbCopyPath": "qa/parity/native-db/S09-vim-keyboard-shortcuts-search.sqlite",
+          "env": {
+            "KANVIBE_DB_PATH": "qa/parity/native-db/S09-vim-keyboard-shortcuts-search.sqlite",
+            "KANVIBE_LOCALE": "ko",
+            "KANVIBE_QA_SOCKET": "<per-run-debug-socket-path>"
+          },
+          "kind": "launchApp",
+          "scenarioId": "S09-vim-keyboard-shortcuts-search",
+          "sourceSeed": "qa/seed/kanvibe-seed.sqlite",
+          "theme": "dark",
+          "viewport": {
+            "height": 960,
+            "width": 1440
+          }
+        },
+        {
+          "command": {
+            "path": "qa/parity/native-videos/S09-vim-keyboard-shortcuts-search.mp4",
+            "type": "startVideoCapture"
+          },
+          "commandType": "startVideoCapture",
+          "kind": "controlCommand",
+          "scenarioId": "S09-vim-keyboard-shortcuts-search",
+          "source": {
+            "nativePath": "qa/parity/native-videos/S09-vim-keyboard-shortcuts-search.mp4",
+            "phase": "start",
+            "type": "video"
+          },
+          "sourceKind": "artifact",
+          "sourceType": "videoCapture.start"
+        },
+        {
+          "command": {
+            "id": "app.root",
+            "type": "queryElement"
+          },
+          "commandType": "queryElement",
+          "kind": "controlCommand",
+          "scenarioId": "S09-vim-keyboard-shortcuts-search",
+          "source": {
+            "action": "waitForBoardReady"
+          },
+          "sourceKind": "step",
+          "sourceType": "waitForBoardReady"
+        },
+        {
+          "command": {
+            "button": "left",
+            "id": "task.qa-task-todo-local",
+            "type": "syntheticClick"
+          },
+          "commandType": "syntheticClick",
+          "kind": "controlCommand",
+          "scenarioId": "S09-vim-keyboard-shortcuts-search",
+          "source": {
+            "action": "focusTask",
+            "taskId": "qa-task-todo-local"
+          },
+          "sourceKind": "step",
+          "sourceType": "focusTask"
+        },
+        {
+          "command": {
+            "key": ":",
+            "modifiers": [],
+            "type": "syntheticKey"
+          },
+          "commandType": "syntheticKey",
+          "kind": "controlCommand",
+          "scenarioId": "S09-vim-keyboard-shortcuts-search",
+          "source": {
+            "action": "pressKeys",
+            "keys": [
+              ":"
+            ]
+          },
+          "sourceKind": "step",
+          "sourceType": "pressKeys"
+        },
+        {
+          "command": {
+            "key": "move review",
+            "modifiers": [],
+            "type": "syntheticKey"
+          },
+          "commandType": "syntheticKey",
+          "kind": "controlCommand",
+          "scenarioId": "S09-vim-keyboard-shortcuts-search",
+          "source": {
+            "action": "typeText",
+            "text": "move review"
+          },
+          "sourceKind": "step",
+          "sourceType": "typeText"
+        },
+        {
+          "command": {
+            "key": "Enter",
+            "modifiers": [],
+            "type": "syntheticKey"
+          },
+          "commandType": "syntheticKey",
+          "kind": "controlCommand",
+          "scenarioId": "S09-vim-keyboard-shortcuts-search",
+          "source": {
+            "action": "pressKeys",
+            "keys": [
+              "Enter"
+            ]
+          },
+          "sourceKind": "step",
+          "sourceType": "pressKeys"
+        },
+        {
+          "command": {
+            "key": "taskSearchDefault",
+            "modifiers": [
+              "cmd"
+            ],
+            "type": "syntheticKey"
+          },
+          "commandType": "syntheticKey",
+          "kind": "controlCommand",
+          "scenarioId": "S09-vim-keyboard-shortcuts-search",
+          "source": {
+            "action": "pressShortcut",
+            "command": "taskSearchDefault"
+          },
+          "sourceKind": "step",
+          "sourceType": "pressShortcut"
+        },
+        {
+          "command": {
+            "key": "diff renderer",
+            "modifiers": [],
+            "type": "syntheticKey"
+          },
+          "commandType": "syntheticKey",
+          "kind": "controlCommand",
+          "scenarioId": "S09-vim-keyboard-shortcuts-search",
+          "source": {
+            "action": "typeText",
+            "text": "diff renderer"
+          },
+          "sourceKind": "step",
+          "sourceType": "typeText"
+        },
+        {
+          "command": {
+            "path": "qa/parity/native-screens/S09-vim-keyboard-shortcuts-search-keyboard-search.png",
+            "type": "dumpScreenshot"
+          },
+          "commandType": "dumpScreenshot",
+          "kind": "controlCommand",
+          "scenarioId": "S09-vim-keyboard-shortcuts-search",
+          "source": {
+            "action": "captureScreen",
+            "name": "keyboard-search"
+          },
+          "sourceKind": "step",
+          "sourceType": "captureScreen"
+        },
+        {
+          "command": {
+            "id": "task.qa-task-todo-local",
+            "type": "queryElement"
+          },
+          "commandType": "queryElement",
+          "kind": "controlCommand",
+          "scenarioId": "S09-vim-keyboard-shortcuts-search",
+          "source": {
+            "status": "review",
+            "taskId": "qa-task-todo-local",
+            "type": "taskVisible"
+          },
+          "sourceKind": "assertion",
+          "sourceType": "taskVisible"
+        },
+        {
+          "command": {
+            "id": "task.qa-task-review-diff",
+            "type": "queryElement"
+          },
+          "commandType": "queryElement",
+          "kind": "controlCommand",
+          "scenarioId": "S09-vim-keyboard-shortcuts-search",
+          "source": {
+            "taskId": "qa-task-review-diff",
+            "type": "searchResultVisible"
+          },
+          "sourceKind": "assertion",
+          "sourceType": "searchResultVisible"
+        },
+        {
+          "command": {
+            "type": "dbSnapshot"
+          },
+          "commandType": "dbSnapshot",
+          "kind": "controlCommand",
+          "scenarioId": "S09-vim-keyboard-shortcuts-search",
+          "source": {
+            "expected": {
+              "status": "review"
+            },
+            "table": "kanban_tasks",
+            "type": "dbRow",
+            "where": {
+              "id": "qa-task-todo-local"
+            }
+          },
+          "sourceKind": "assertion",
+          "sourceType": "dbRow"
+        },
+        {
+          "command": {
+            "path": "qa/parity/native-videos/S09-vim-keyboard-shortcuts-search.mp4",
+            "type": "stopVideoCapture"
+          },
+          "commandType": "stopVideoCapture",
+          "kind": "controlCommand",
+          "scenarioId": "S09-vim-keyboard-shortcuts-search",
+          "source": {
+            "nativePath": "qa/parity/native-videos/S09-vim-keyboard-shortcuts-search.mp4",
+            "phase": "stop",
+            "type": "video"
+          },
+          "sourceKind": "artifact",
+          "sourceType": "videoCapture.stop"
+        }
+      ],
+      "scenarioId": "S09-vim-keyboard-shortcuts-search",
+      "title": "Vim commands and global task search keyboard flows work"
+    },
+    {
+      "nativeVideoPath": "qa/parity/native-videos/S10-settings-pane-layout.mp4",
+      "replayItems": [
+        {
+          "action": "launchApp",
+          "dbCopyPath": "qa/parity/native-db/S10-settings-pane-layout.sqlite",
+          "env": {
+            "KANVIBE_DB_PATH": "qa/parity/native-db/S10-settings-pane-layout.sqlite",
+            "KANVIBE_LOCALE": "ko",
+            "KANVIBE_QA_SOCKET": "<per-run-debug-socket-path>"
+          },
+          "kind": "launchApp",
+          "scenarioId": "S10-settings-pane-layout",
+          "sourceSeed": "qa/seed/kanvibe-seed.sqlite",
+          "theme": "dark",
+          "viewport": {
+            "height": 960,
+            "width": 1440
+          }
+        },
+        {
+          "command": {
+            "path": "qa/parity/native-videos/S10-settings-pane-layout.mp4",
+            "type": "startVideoCapture"
+          },
+          "commandType": "startVideoCapture",
+          "kind": "controlCommand",
+          "scenarioId": "S10-settings-pane-layout",
+          "source": {
+            "nativePath": "qa/parity/native-videos/S10-settings-pane-layout.mp4",
+            "phase": "start",
+            "type": "video"
+          },
+          "sourceKind": "artifact",
+          "sourceType": "videoCapture.start"
+        },
+        {
+          "command": {
+            "id": "app.root",
+            "type": "queryElement"
+          },
+          "commandType": "queryElement",
+          "kind": "controlCommand",
+          "scenarioId": "S10-settings-pane-layout",
+          "source": {
+            "action": "waitForBoardReady"
+          },
+          "sourceKind": "step",
+          "sourceType": "waitForBoardReady"
+        },
+        {
+          "command": {
+            "button": "left",
+            "id": "app.settingsButton",
+            "type": "syntheticClick"
+          },
+          "commandType": "syntheticClick",
+          "kind": "controlCommand",
+          "scenarioId": "S10-settings-pane-layout",
+          "source": {
+            "action": "openSettings"
+          },
+          "sourceKind": "step",
+          "sourceType": "openSettings"
+        },
+        {
+          "command": {
+            "button": "left",
+            "id": "settings.vim_mode_enabled",
+            "type": "syntheticClick"
+          },
+          "commandType": "syntheticClick",
+          "kind": "controlCommand",
+          "scenarioId": "S10-settings-pane-layout",
+          "source": {
+            "action": "setAppSetting",
+            "key": "vim_mode_enabled",
+            "value": "false"
+          },
+          "sourceKind": "step",
+          "sourceType": "setAppSetting"
+        },
+        {
+          "command": {
+            "button": "left",
+            "id": "settings.paneLayout",
+            "type": "syntheticClick"
+          },
+          "commandType": "syntheticClick",
+          "kind": "controlCommand",
+          "scenarioId": "S10-settings-pane-layout",
+          "source": {
+            "action": "openPaneLayoutRoute",
+            "projectId": "qa-project-kanvibe"
+          },
+          "sourceKind": "step",
+          "sourceType": "openPaneLayoutRoute"
+        },
+        {
+          "command": {
+            "button": "left",
+            "id": "paneLayout.option.vertical_2",
+            "type": "syntheticClick"
+          },
+          "commandType": "syntheticClick",
+          "kind": "controlCommand",
+          "scenarioId": "S10-settings-pane-layout",
+          "source": {
+            "action": "selectPaneLayout",
+            "layoutType": "vertical_2"
+          },
+          "sourceKind": "step",
+          "sourceType": "selectPaneLayout"
+        },
+        {
+          "command": {
+            "path": "qa/parity/native-screens/S10-settings-pane-layout-settings-pane-layout.png",
+            "type": "dumpScreenshot"
+          },
+          "commandType": "dumpScreenshot",
+          "kind": "controlCommand",
+          "scenarioId": "S10-settings-pane-layout",
+          "source": {
+            "action": "captureScreen",
+            "name": "settings-pane-layout"
+          },
+          "sourceKind": "step",
+          "sourceType": "captureScreen"
+        },
+        {
+          "command": {
+            "type": "dbSnapshot"
+          },
+          "commandType": "dbSnapshot",
+          "kind": "controlCommand",
+          "scenarioId": "S10-settings-pane-layout",
+          "source": {
+            "expected": {
+              "value": "false"
+            },
+            "table": "app_settings",
+            "type": "dbRow",
+            "where": {
+              "key": "vim_mode_enabled"
+            }
+          },
+          "sourceKind": "assertion",
+          "sourceType": "dbRow"
+        },
+        {
+          "command": {
+            "type": "dbSnapshot"
+          },
+          "commandType": "dbSnapshot",
+          "kind": "controlCommand",
+          "scenarioId": "S10-settings-pane-layout",
+          "source": {
+            "expected": {
+              "layout_type": "vertical_2"
+            },
+            "table": "pane_layout_configs",
+            "type": "dbRow",
+            "where": {
+              "project_id": "qa-project-kanvibe"
+            }
+          },
+          "sourceKind": "assertion",
+          "sourceType": "dbRow"
+        },
+        {
+          "command": {
+            "id": "route.pane-layout",
+            "type": "queryText"
+          },
+          "commandType": "queryText",
+          "kind": "controlCommand",
+          "scenarioId": "S10-settings-pane-layout",
+          "source": {
+            "pattern": "/pane-layout",
+            "type": "route"
+          },
+          "sourceKind": "assertion",
+          "sourceType": "route"
+        },
+        {
+          "command": {
+            "path": "qa/parity/native-videos/S10-settings-pane-layout.mp4",
+            "type": "stopVideoCapture"
+          },
+          "commandType": "stopVideoCapture",
+          "kind": "controlCommand",
+          "scenarioId": "S10-settings-pane-layout",
+          "source": {
+            "nativePath": "qa/parity/native-videos/S10-settings-pane-layout.mp4",
+            "phase": "stop",
+            "type": "video"
+          },
+          "sourceKind": "artifact",
+          "sourceType": "videoCapture.stop"
+        }
+      ],
+      "scenarioId": "S10-settings-pane-layout",
+      "title": "Settings and pane layout persistence round-trip"
+    },
+    {
+      "nativeVideoPath": "qa/parity/native-videos/S11-notifications-hooks-background-sync.mp4",
+      "replayItems": [
+        {
+          "action": "launchApp",
+          "dbCopyPath": "qa/parity/native-db/S11-notifications-hooks-background-sync.sqlite",
+          "env": {
+            "KANVIBE_DB_PATH": "qa/parity/native-db/S11-notifications-hooks-background-sync.sqlite",
+            "KANVIBE_LOCALE": "ko",
+            "KANVIBE_QA_SOCKET": "<per-run-debug-socket-path>"
+          },
+          "kind": "launchApp",
+          "scenarioId": "S11-notifications-hooks-background-sync",
+          "sourceSeed": "qa/seed/kanvibe-seed.sqlite",
+          "theme": "dark",
+          "viewport": {
+            "height": 960,
+            "width": 1440
+          }
+        },
+        {
+          "command": {
+            "path": "qa/parity/native-videos/S11-notifications-hooks-background-sync.mp4",
+            "type": "startVideoCapture"
+          },
+          "commandType": "startVideoCapture",
+          "kind": "controlCommand",
+          "scenarioId": "S11-notifications-hooks-background-sync",
+          "source": {
+            "nativePath": "qa/parity/native-videos/S11-notifications-hooks-background-sync.mp4",
+            "phase": "start",
+            "type": "video"
+          },
+          "sourceKind": "artifact",
+          "sourceType": "videoCapture.start"
+        },
+        {
+          "command": {
+            "id": "app.root",
+            "type": "queryElement"
+          },
+          "commandType": "queryElement",
+          "kind": "controlCommand",
+          "scenarioId": "S11-notifications-hooks-background-sync",
+          "source": {
+            "action": "waitForBoardReady"
+          },
+          "sourceKind": "step",
+          "sourceType": "waitForBoardReady"
+        },
+        {
+          "command": {
+            "button": "left",
+            "id": "notification.centerButton",
+            "type": "syntheticClick"
+          },
+          "commandType": "syntheticClick",
+          "kind": "controlCommand",
+          "scenarioId": "S11-notifications-hooks-background-sync",
+          "source": {
+            "action": "openNotificationCenter"
+          },
+          "sourceKind": "step",
+          "sourceType": "openNotificationCenter"
+        },
+        {
+          "command": {
+            "button": "left",
+            "id": "task.qa-task-review-ai-history",
+            "type": "syntheticClick"
+          },
+          "commandType": "syntheticClick",
+          "kind": "controlCommand",
+          "scenarioId": "S11-notifications-hooks-background-sync",
+          "source": {
+            "action": "openTaskDetail",
+            "taskId": "qa-task-review-ai-history"
+          },
+          "sourceKind": "step",
+          "sourceType": "openTaskDetail"
+        },
+        {
+          "command": {
+            "button": "left",
+            "id": "dock.hooks",
+            "type": "syntheticClick"
+          },
+          "commandType": "syntheticClick",
+          "kind": "controlCommand",
+          "scenarioId": "S11-notifications-hooks-background-sync",
+          "source": {
+            "action": "selectDockItem",
+            "item": "hooks"
+          },
+          "sourceKind": "step",
+          "sourceType": "selectDockItem"
+        },
+        {
+          "command": {
+            "path": "qa/parity/native-screens/S11-notifications-hooks-background-sync-notifications-hooks.png",
+            "type": "dumpScreenshot"
+          },
+          "commandType": "dumpScreenshot",
+          "kind": "controlCommand",
+          "scenarioId": "S11-notifications-hooks-background-sync",
+          "source": {
+            "action": "captureScreen",
+            "name": "notifications-hooks"
+          },
+          "sourceKind": "step",
+          "sourceType": "captureScreen"
+        },
+        {
+          "command": {
+            "id": "notification.center",
+            "type": "queryElement"
+          },
+          "commandType": "queryElement",
+          "kind": "controlCommand",
+          "scenarioId": "S11-notifications-hooks-background-sync",
+          "source": {
+            "type": "notificationCenterVisible"
+          },
+          "sourceKind": "assertion",
+          "sourceType": "notificationCenterVisible"
+        },
+        {
+          "command": {
+            "id": "hooks.status.qa-task-review-ai-history",
+            "type": "queryElement"
+          },
+          "commandType": "queryElement",
+          "kind": "controlCommand",
+          "scenarioId": "S11-notifications-hooks-background-sync",
+          "source": {
+            "taskId": "qa-task-review-ai-history",
+            "type": "hookStatusVisible"
+          },
+          "sourceKind": "assertion",
+          "sourceType": "hookStatusVisible"
+        },
+        {
+          "command": {
+            "type": "dbSnapshot"
+          },
+          "commandType": "dbSnapshot",
+          "kind": "controlCommand",
+          "scenarioId": "S11-notifications-hooks-background-sync",
+          "source": {
+            "expected": {
+              "value": "false"
+            },
+            "table": "app_settings",
+            "type": "dbRow",
+            "where": {
+              "key": "background_sync_enabled"
+            }
+          },
+          "sourceKind": "assertion",
+          "sourceType": "dbRow"
+        },
+        {
+          "command": {
+            "path": "qa/parity/native-videos/S11-notifications-hooks-background-sync.mp4",
+            "type": "stopVideoCapture"
+          },
+          "commandType": "stopVideoCapture",
+          "kind": "controlCommand",
+          "scenarioId": "S11-notifications-hooks-background-sync",
+          "source": {
+            "nativePath": "qa/parity/native-videos/S11-notifications-hooks-background-sync.mp4",
+            "phase": "stop",
+            "type": "video"
+          },
+          "sourceKind": "artifact",
+          "sourceType": "videoCapture.stop"
+        }
+      ],
+      "scenarioId": "S11-notifications-hooks-background-sync",
+      "title": "Notifications, hook status, and background sync settings are visible"
+    },
+    {
+      "nativeVideoPath": "qa/parity/native-videos/S12-project-filter-and-done-pagination.mp4",
+      "replayItems": [
+        {
+          "action": "launchApp",
+          "dbCopyPath": "qa/parity/native-db/S12-project-filter-and-done-pagination.sqlite",
+          "env": {
+            "KANVIBE_DB_PATH": "qa/parity/native-db/S12-project-filter-and-done-pagination.sqlite",
+            "KANVIBE_LOCALE": "ko",
+            "KANVIBE_QA_SOCKET": "<per-run-debug-socket-path>"
+          },
+          "kind": "launchApp",
+          "scenarioId": "S12-project-filter-and-done-pagination",
+          "sourceSeed": "qa/seed/kanvibe-seed.sqlite",
+          "theme": "dark",
+          "viewport": {
+            "height": 960,
+            "width": 1440
+          }
+        },
+        {
+          "command": {
+            "path": "qa/parity/native-videos/S12-project-filter-and-done-pagination.mp4",
+            "type": "startVideoCapture"
+          },
+          "commandType": "startVideoCapture",
+          "kind": "controlCommand",
+          "scenarioId": "S12-project-filter-and-done-pagination",
+          "source": {
+            "nativePath": "qa/parity/native-videos/S12-project-filter-and-done-pagination.mp4",
+            "phase": "start",
+            "type": "video"
+          },
+          "sourceKind": "artifact",
+          "sourceType": "videoCapture.start"
+        },
+        {
+          "command": {
+            "id": "app.root",
+            "type": "queryElement"
+          },
+          "commandType": "queryElement",
+          "kind": "controlCommand",
+          "scenarioId": "S12-project-filter-and-done-pagination",
+          "source": {
+            "action": "waitForBoardReady"
+          },
+          "sourceKind": "step",
+          "sourceType": "waitForBoardReady"
+        },
+        {
+          "command": {
+            "button": "left",
+            "id": "board.projectFilter",
+            "type": "syntheticClick"
+          },
+          "commandType": "syntheticClick",
+          "kind": "controlCommand",
+          "scenarioId": "S12-project-filter-and-done-pagination",
+          "source": {
+            "action": "openProjectFilter"
+          },
+          "sourceKind": "step",
+          "sourceType": "openProjectFilter"
+        },
+        {
+          "command": {
+            "button": "left",
+            "id": "projectFilter.selection",
+            "type": "syntheticClick"
+          },
+          "commandType": "syntheticClick",
+          "kind": "controlCommand",
+          "scenarioId": "S12-project-filter-and-done-pagination",
+          "source": {
+            "action": "selectProjects",
+            "projectIds": [
+              "qa-project-api"
+            ]
+          },
+          "sourceKind": "step",
+          "sourceType": "selectProjects"
+        },
+        {
+          "command": {
+            "path": "qa/parity/native-screens/S12-project-filter-and-done-pagination-project-filter-api.png",
+            "type": "dumpScreenshot"
+          },
+          "commandType": "dumpScreenshot",
+          "kind": "controlCommand",
+          "scenarioId": "S12-project-filter-and-done-pagination",
+          "source": {
+            "action": "captureScreen",
+            "name": "project-filter-api"
+          },
+          "sourceKind": "step",
+          "sourceType": "captureScreen"
+        },
+        {
+          "command": {
+            "id": "projectFilter.qa-project-api",
+            "type": "queryElement"
+          },
+          "commandType": "queryElement",
+          "kind": "controlCommand",
+          "scenarioId": "S12-project-filter-and-done-pagination",
+          "source": {
+            "projectId": "qa-project-api",
+            "type": "onlyProjectTasksVisible"
+          },
+          "sourceKind": "assertion",
+          "sourceType": "onlyProjectTasksVisible"
+        },
+        {
+          "command": {
+            "id": "task.qa-task-done-remote",
+            "type": "queryElement"
+          },
+          "commandType": "queryElement",
+          "kind": "controlCommand",
+          "scenarioId": "S12-project-filter-and-done-pagination",
+          "source": {
+            "status": "done",
+            "taskId": "qa-task-done-remote",
+            "type": "taskVisible"
+          },
+          "sourceKind": "assertion",
+          "sourceType": "taskVisible"
+        },
+        {
+          "command": {
+            "id": "task.qa-task-todo-local",
+            "type": "queryElement"
+          },
+          "commandType": "queryElement",
+          "kind": "controlCommand",
+          "scenarioId": "S12-project-filter-and-done-pagination",
+          "source": {
+            "taskId": "qa-task-todo-local",
+            "type": "taskNotVisible"
+          },
+          "sourceKind": "assertion",
+          "sourceType": "taskNotVisible"
+        },
+        {
+          "command": {
+            "path": "qa/parity/native-videos/S12-project-filter-and-done-pagination.mp4",
+            "type": "stopVideoCapture"
+          },
+          "commandType": "stopVideoCapture",
+          "kind": "controlCommand",
+          "scenarioId": "S12-project-filter-and-done-pagination",
+          "source": {
+            "nativePath": "qa/parity/native-videos/S12-project-filter-and-done-pagination.mp4",
+            "phase": "stop",
+            "type": "video"
+          },
+          "sourceKind": "artifact",
+          "sourceType": "videoCapture.stop"
+        }
+      ],
+      "scenarioId": "S12-project-filter-and-done-pagination",
+      "title": "Project filter narrows board and Done column count remains accurate"
+    },
+    {
+      "nativeVideoPath": "qa/parity/native-videos/S13-task-detail-existing-window-focus.mp4",
+      "replayItems": [
+        {
+          "action": "launchApp",
+          "dbCopyPath": "qa/parity/native-db/S13-task-detail-existing-window-focus.sqlite",
+          "env": {
+            "KANVIBE_DB_PATH": "qa/parity/native-db/S13-task-detail-existing-window-focus.sqlite",
+            "KANVIBE_LOCALE": "ko",
+            "KANVIBE_QA_SOCKET": "<per-run-debug-socket-path>"
+          },
+          "kind": "launchApp",
+          "scenarioId": "S13-task-detail-existing-window-focus",
+          "sourceSeed": "qa/seed/kanvibe-seed.sqlite",
+          "theme": "dark",
+          "viewport": {
+            "height": 960,
+            "width": 1440
+          }
+        },
+        {
+          "command": {
+            "path": "qa/parity/native-videos/S13-task-detail-existing-window-focus.mp4",
+            "type": "startVideoCapture"
+          },
+          "commandType": "startVideoCapture",
+          "kind": "controlCommand",
+          "scenarioId": "S13-task-detail-existing-window-focus",
+          "source": {
+            "nativePath": "qa/parity/native-videos/S13-task-detail-existing-window-focus.mp4",
+            "phase": "start",
+            "type": "video"
+          },
+          "sourceKind": "artifact",
+          "sourceType": "videoCapture.start"
+        },
+        {
+          "command": {
+            "id": "app.root",
+            "type": "queryElement"
+          },
+          "commandType": "queryElement",
+          "kind": "controlCommand",
+          "scenarioId": "S13-task-detail-existing-window-focus",
+          "source": {
+            "action": "waitForBoardReady"
+          },
+          "sourceKind": "step",
+          "sourceType": "waitForBoardReady"
+        },
+        {
+          "command": {
+            "button": "left",
+            "id": "task.qa-task-progress-pr",
+            "type": "syntheticClick"
+          },
+          "commandType": "syntheticClick",
+          "kind": "controlCommand",
+          "scenarioId": "S13-task-detail-existing-window-focus",
+          "source": {
+            "action": "openTaskDetail",
+            "taskId": "qa-task-progress-pr"
+          },
+          "sourceKind": "step",
+          "sourceType": "openTaskDetail"
+        },
+        {
+          "command": {
+            "id": "window.count.beforeSecondOpen",
+            "type": "queryText"
+          },
+          "commandType": "queryText",
+          "kind": "controlCommand",
+          "scenarioId": "S13-task-detail-existing-window-focus",
+          "source": {
+            "action": "recordWindowCount",
+            "name": "beforeSecondOpen"
+          },
+          "sourceKind": "step",
+          "sourceType": "recordWindowCount"
+        },
+        {
+          "command": {
+            "button": "left",
+            "id": "task.qa-task-progress-pr",
+            "type": "syntheticClick"
+          },
+          "commandType": "syntheticClick",
+          "kind": "controlCommand",
+          "scenarioId": "S13-task-detail-existing-window-focus",
+          "source": {
+            "action": "openTaskDetail",
+            "taskId": "qa-task-progress-pr"
+          },
+          "sourceKind": "step",
+          "sourceType": "openTaskDetail"
+        },
+        {
+          "command": {
+            "path": "qa/parity/native-screens/S13-task-detail-existing-window-focus-existing-window-focus.png",
+            "type": "dumpScreenshot"
+          },
+          "commandType": "dumpScreenshot",
+          "kind": "controlCommand",
+          "scenarioId": "S13-task-detail-existing-window-focus",
+          "source": {
+            "action": "captureScreen",
+            "name": "existing-window-focus"
+          },
+          "sourceKind": "step",
+          "sourceType": "captureScreen"
+        },
+        {
+          "command": {
+            "id": "window.count.beforeSecondOpen",
+            "type": "queryElement"
+          },
+          "commandType": "queryElement",
+          "kind": "controlCommand",
+          "scenarioId": "S13-task-detail-existing-window-focus",
+          "source": {
+            "baseline": "beforeSecondOpen",
+            "type": "windowCountUnchanged"
+          },
+          "sourceKind": "assertion",
+          "sourceType": "windowCountUnchanged"
+        },
+        {
+          "command": {
+            "id": "route.task-qa-task-progress-pr",
+            "type": "queryText"
+          },
+          "commandType": "queryText",
+          "kind": "controlCommand",
+          "scenarioId": "S13-task-detail-existing-window-focus",
+          "source": {
+            "pattern": "/task/qa-task-progress-pr",
+            "type": "route"
+          },
+          "sourceKind": "assertion",
+          "sourceType": "route"
+        },
+        {
+          "command": {
+            "id": "taskTitle.wire-pr-status-card",
+            "type": "queryElement"
+          },
+          "commandType": "queryElement",
+          "kind": "controlCommand",
+          "scenarioId": "S13-task-detail-existing-window-focus",
+          "source": {
+            "title": "Wire PR status card",
+            "type": "taskTitleVisible"
+          },
+          "sourceKind": "assertion",
+          "sourceType": "taskTitleVisible"
+        },
+        {
+          "command": {
+            "path": "qa/parity/native-videos/S13-task-detail-existing-window-focus.mp4",
+            "type": "stopVideoCapture"
+          },
+          "commandType": "stopVideoCapture",
+          "kind": "controlCommand",
+          "scenarioId": "S13-task-detail-existing-window-focus",
+          "source": {
+            "nativePath": "qa/parity/native-videos/S13-task-detail-existing-window-focus.mp4",
+            "phase": "stop",
+            "type": "video"
+          },
+          "sourceKind": "artifact",
+          "sourceType": "videoCapture.stop"
+        }
+      ],
+      "scenarioId": "S13-task-detail-existing-window-focus",
+      "title": "Opening an already-open task detail focuses the existing route"
+    },
+    {
+      "nativeVideoPath": "qa/parity/native-videos/S14-remote-session-dependencies.mp4",
+      "replayItems": [
+        {
+          "action": "launchApp",
+          "dbCopyPath": "qa/parity/native-db/S14-remote-session-dependencies.sqlite",
+          "env": {
+            "KANVIBE_DB_PATH": "qa/parity/native-db/S14-remote-session-dependencies.sqlite",
+            "KANVIBE_LOCALE": "ko",
+            "KANVIBE_QA_SOCKET": "<per-run-debug-socket-path>"
+          },
+          "kind": "launchApp",
+          "scenarioId": "S14-remote-session-dependencies",
+          "sourceSeed": "qa/seed/kanvibe-seed.sqlite",
+          "theme": "dark",
+          "viewport": {
+            "height": 960,
+            "width": 1440
+          }
+        },
+        {
+          "command": {
+            "path": "qa/parity/native-videos/S14-remote-session-dependencies.mp4",
+            "type": "startVideoCapture"
+          },
+          "commandType": "startVideoCapture",
+          "kind": "controlCommand",
+          "scenarioId": "S14-remote-session-dependencies",
+          "source": {
+            "nativePath": "qa/parity/native-videos/S14-remote-session-dependencies.mp4",
+            "phase": "start",
+            "type": "video"
+          },
+          "sourceKind": "artifact",
+          "sourceType": "videoCapture.start"
+        },
+        {
+          "command": {
+            "id": "app.root",
+            "type": "queryElement"
+          },
+          "commandType": "queryElement",
+          "kind": "controlCommand",
+          "scenarioId": "S14-remote-session-dependencies",
+          "source": {
+            "action": "waitForBoardReady"
+          },
+          "sourceKind": "step",
+          "sourceType": "waitForBoardReady"
+        },
+        {
+          "command": {
+            "button": "left",
+            "id": "task.qa-task-todo-remote",
+            "type": "syntheticClick"
+          },
+          "commandType": "syntheticClick",
+          "kind": "controlCommand",
+          "scenarioId": "S14-remote-session-dependencies",
+          "source": {
+            "action": "openTaskDetail",
+            "taskId": "qa-task-todo-remote"
+          },
+          "sourceKind": "step",
+          "sourceType": "openTaskDetail"
+        },
+        {
+          "command": {
+            "button": "left",
+            "id": "dock.terminal",
+            "type": "syntheticClick"
+          },
+          "commandType": "syntheticClick",
+          "kind": "controlCommand",
+          "scenarioId": "S14-remote-session-dependencies",
+          "source": {
+            "action": "selectDockItem",
+            "item": "terminal"
+          },
+          "sourceKind": "step",
+          "sourceType": "selectDockItem"
+        },
+        {
+          "command": {
+            "button": "left",
+            "id": "sessionDependency.panelTrigger",
+            "type": "syntheticClick"
+          },
+          "commandType": "syntheticClick",
+          "kind": "controlCommand",
+          "scenarioId": "S14-remote-session-dependencies",
+          "source": {
+            "action": "openSessionDependencyPanel"
+          },
+          "sourceKind": "step",
+          "sourceType": "openSessionDependencyPanel"
+        },
+        {
+          "command": {
+            "path": "qa/parity/native-screens/S14-remote-session-dependencies-remote-session-dependencies.png",
+            "type": "dumpScreenshot"
+          },
+          "commandType": "dumpScreenshot",
+          "kind": "controlCommand",
+          "scenarioId": "S14-remote-session-dependencies",
+          "source": {
+            "action": "captureScreen",
+            "name": "remote-session-dependencies"
+          },
+          "sourceKind": "step",
+          "sourceType": "captureScreen"
+        },
+        {
+          "command": {
+            "id": "task.qa-task-todo-remote.field.ssh_host",
+            "type": "queryText"
+          },
+          "commandType": "queryText",
+          "kind": "controlCommand",
+          "scenarioId": "S14-remote-session-dependencies",
+          "source": {
+            "expected": "qa-remote",
+            "field": "ssh_host",
+            "taskId": "qa-task-todo-remote",
+            "type": "taskField"
+          },
+          "sourceKind": "assertion",
+          "sourceType": "taskField"
+        },
+        {
+          "command": {
+            "id": "sessionDependency.zellij",
+            "type": "queryElement"
+          },
+          "commandType": "queryElement",
+          "kind": "controlCommand",
+          "scenarioId": "S14-remote-session-dependencies",
+          "source": {
+            "sessionType": "zellij",
+            "sshHost": "qa-remote",
+            "type": "sessionDependencyVisible"
+          },
+          "sourceKind": "assertion",
+          "sourceType": "sessionDependencyVisible"
+        },
+        {
+          "command": {
+            "type": "dbSnapshot"
+          },
+          "commandType": "dbSnapshot",
+          "kind": "controlCommand",
+          "scenarioId": "S14-remote-session-dependencies",
+          "source": {
+            "forbiddenKeys": [
+              "PORT",
+              "HOST",
+              "NODE_ENV"
+            ],
+            "type": "noGenericEnvLeak"
+          },
+          "sourceKind": "assertion",
+          "sourceType": "noGenericEnvLeak"
+        },
+        {
+          "command": {
+            "path": "qa/parity/native-videos/S14-remote-session-dependencies.mp4",
+            "type": "stopVideoCapture"
+          },
+          "commandType": "stopVideoCapture",
+          "kind": "controlCommand",
+          "scenarioId": "S14-remote-session-dependencies",
+          "source": {
+            "nativePath": "qa/parity/native-videos/S14-remote-session-dependencies.mp4",
+            "phase": "stop",
+            "type": "video"
+          },
+          "sourceKind": "artifact",
+          "sourceType": "videoCapture.stop"
+        }
+      ],
+      "scenarioId": "S14-remote-session-dependencies",
+      "title": "Remote session dependency UI reports SSH-scoped tmux/zellij checks"
+    }
+  ],
+  "scenarioSubset": [
+    "S01-board-load-and-columns",
+    "S02-create-task-modal",
+    "S03-task-detail-terminal-dock",
+    "S04-task-detail-pr-and-ai-history",
+    "S05-diff-route-file-tree",
+    "S06-git-worktree-branch-flow",
+    "S07-board-drag-drop-status",
+    "S08-context-menu-status-and-delete",
+    "S09-vim-keyboard-shortcuts-search",
+    "S10-settings-pane-layout",
+    "S11-notifications-hooks-background-sync",
+    "S12-project-filter-and-done-pagination",
+    "S13-task-detail-existing-window-focus",
+    "S14-remote-session-dependencies"
+  ],
+  "socketCommandCount": 144,
+  "socketEnv": "KANVIBE_QA_SOCKET",
+  "transport": "unix-line-json",
+  "unsupportedAssertions": [],
+  "unsupportedSteps": [],
+  "videoArtifactCount": 14,
+  "videoCapture": {
+    "ffmpegEnv": "KANVIBE_QA_FFMPEG",
+    "linux": "blocked",
+    "macosStrategy": "QA control startVideoCapture/stopVideoCapture records screencapture frames and encodes mp4 with ffmpeg",
+    "outputDir": "qa/parity/native-videos"
+  },
+  "videoCommandCount": 28
+}

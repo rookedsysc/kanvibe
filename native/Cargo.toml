@@ -1,0 +1,49 @@
+[workspace]
+resolver = "3"
+members = [
+    "crates/kanvibe-app",
+    "crates/kanvibe-core",
+    "crates/kanvibe-git",
+    "crates/kanvibe-hooks",
+    "crates/kanvibe-i18n",
+    "crates/kanvibe-pty",
+    "crates/kanvibe-theme",
+    "crates/qa-harness",
+]
+default-members = [
+    "crates/kanvibe-app",
+    "crates/kanvibe-core",
+    "crates/kanvibe-git",
+    "crates/kanvibe-hooks",
+    "crates/kanvibe-i18n",
+    "crates/kanvibe-pty",
+    "crates/kanvibe-theme",
+    "crates/qa-harness",
+]
+
+[workspace.package]
+edition = "2024"
+rust-version = "1.96"
+license = "AGPL-3.0-only"
+
+[workspace.dependencies]
+kanvibe-core = { path = "crates/kanvibe-core" }
+kanvibe-git = { path = "crates/kanvibe-git" }
+kanvibe-hooks = { path = "crates/kanvibe-hooks" }
+kanvibe-i18n = { path = "crates/kanvibe-i18n" }
+kanvibe-pty = { path = "crates/kanvibe-pty" }
+kanvibe-theme = { path = "crates/kanvibe-theme" }
+rusqlite = { version = "=0.40.1", features = ["bundled"] }
+serde = { version = "=1.0.228", features = ["derive"] }
+serde_json = "=1.0.150"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.metadata.kanvibe.gpui]
+registry_gpui = "=0.2.2"
+registry_gpui_component = "=0.5.1"
+registry_gpui_component_assets = "=0.5.1"
+preferred_ui_source = "Crates.io pins are recorded for reproducible scaffold builds; re-check upstream git guidance before enabling the macOS UI slice."
+zed_terminal_alacritty_git = "https://github.com/zed-industries/alacritty"
+zed_terminal_alacritty_rev = "4c129667ce56611becdc82de6e28218c80e2e88f"

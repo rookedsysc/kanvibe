@@ -1,0 +1,44 @@
+{
+  "allProjects": "전체 프로젝트",
+  "artifact": "slice-1-read-only-board",
+  "columns": [
+    {
+      "firstTaskTitle": "Draft native board shell",
+      "label": "Todo",
+      "status": "todo",
+      "taskCount": 3
+    },
+    {
+      "firstTaskTitle": "Port terminal dock",
+      "label": "Progress",
+      "status": "progress",
+      "taskCount": 3
+    },
+    {
+      "firstTaskTitle": "Await design parity review",
+      "label": "Pending",
+      "status": "pending",
+      "taskCount": 3
+    },
+    {
+      "firstTaskTitle": "Review diff renderer",
+      "label": "Review",
+      "status": "review",
+      "taskCount": 3
+    },
+    {
+      "firstTaskTitle": "Document migrated shortcuts",
+      "label": "Done",
+      "status": "done",
+      "taskCount": 3
+    }
+  ],
+  "doneLimit": 20,
+  "doneTotal": 3,
+  "locale": "ko",
+  "newTask": "+ 새 작업",
+  "projectCount": 3,
+  "scenarioSubset": [
+    "S01-board-load-and-columns"
+  ]
+}

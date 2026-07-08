@@ -1,0 +1,824 @@
+{
+  "artifact": "native-visual-parity-evidence",
+  "baselineManifest": {
+    "exists": true,
+    "expectedScenarioCount": 14,
+    "extraScenarioIds": [],
+    "missingScenarioIds": [],
+    "missingScreenCount": 0,
+    "missingScreens": [],
+    "missingVideoCount": 0,
+    "missingVideos": [],
+    "pass": true,
+    "path": "qa/baseline/MANIFEST.md",
+    "rowCount": 14
+  },
+  "blockers": [
+    "native visual review is blocked until 14 screenshots and 14 videos are captured"
+  ],
+  "comparison": {
+    "criteria": [
+      "layout structure",
+      "component presence",
+      "text parity",
+      "brand/status color token parity",
+      "spacing hierarchy"
+    ],
+    "method": "manual-structural-side-by-side",
+    "note": "This artifact inventories baseline/native captures and refuses visual PASS until the native files exist and a structural review is recorded.",
+    "performed": false,
+    "ready": false
+  },
+  "nativeExpectedCaptures": {
+    "artifactRoot": null,
+    "captureReady": false,
+    "expectedScreenCount": 14,
+    "expectedVideoCount": 14,
+    "missingScreenCount": 14,
+    "missingScreens": [
+      {
+        "path": "qa/parity/native-screens/S01-board-load-and-columns-board-dark-ko.png",
+        "scenarioId": "S01-board-load-and-columns"
+      },
+      {
+        "path": "qa/parity/native-screens/S02-create-task-modal-create-task-result.png",
+        "scenarioId": "S02-create-task-modal"
+      },
+      {
+        "path": "qa/parity/native-screens/S03-task-detail-terminal-dock-task-detail-terminal.png",
+        "scenarioId": "S03-task-detail-terminal-dock"
+      },
+      {
+        "path": "qa/parity/native-screens/S04-task-detail-pr-and-ai-history-task-detail-pr-ai.png",
+        "scenarioId": "S04-task-detail-pr-and-ai-history"
+      },
+      {
+        "path": "qa/parity/native-screens/S05-diff-route-file-tree-diff-route-file-tree.png",
+        "scenarioId": "S05-diff-route-file-tree"
+      },
+      {
+        "path": "qa/parity/native-screens/S06-git-worktree-branch-flow-branch-task-result.png",
+        "scenarioId": "S06-git-worktree-branch-flow"
+      },
+      {
+        "path": "qa/parity/native-screens/S07-board-drag-drop-status-drag-drop-progress.png",
+        "scenarioId": "S07-board-drag-drop-status"
+      },
+      {
+        "path": "qa/parity/native-screens/S08-context-menu-status-and-delete-context-delete-result.png",
+        "scenarioId": "S08-context-menu-status-and-delete"
+      },
+      {
+        "path": "qa/parity/native-screens/S09-vim-keyboard-shortcuts-search-keyboard-search.png",
+        "scenarioId": "S09-vim-keyboard-shortcuts-search"
+      },
+      {
+        "path": "qa/parity/native-screens/S10-settings-pane-layout-settings-pane-layout.png",
+        "scenarioId": "S10-settings-pane-layout"
+      },
+      {
+        "path": "qa/parity/native-screens/S11-notifications-hooks-background-sync-notifications-hooks.png",
+        "scenarioId": "S11-notifications-hooks-background-sync"
+      },
+      {
+        "path": "qa/parity/native-screens/S12-project-filter-and-done-pagination-project-filter-api.png",
+        "scenarioId": "S12-project-filter-and-done-pagination"
+      },
+      {
+        "path": "qa/parity/native-screens/S13-task-detail-existing-window-focus-existing-window-focus.png",
+        "scenarioId": "S13-task-detail-existing-window-focus"
+      },
+      {
+        "path": "qa/parity/native-screens/S14-remote-session-dependencies-remote-session-dependencies.png",
+        "scenarioId": "S14-remote-session-dependencies"
+      }
+    ],
+    "missingVideoCount": 14,
+    "missingVideos": [
+      {
+        "path": "qa/parity/native-videos/S01-board-load-and-columns.mp4",
+        "scenarioId": "S01-board-load-and-columns"
+      },
+      {
+        "path": "qa/parity/native-videos/S02-create-task-modal.mp4",
+        "scenarioId": "S02-create-task-modal"
+      },
+      {
+        "path": "qa/parity/native-videos/S03-task-detail-terminal-dock.mp4",
+        "scenarioId": "S03-task-detail-terminal-dock"
+      },
+      {
+        "path": "qa/parity/native-videos/S04-task-detail-pr-and-ai-history.mp4",
+        "scenarioId": "S04-task-detail-pr-and-ai-history"
+      },
+      {
+        "path": "qa/parity/native-videos/S05-diff-route-file-tree.mp4",
+        "scenarioId": "S05-diff-route-file-tree"
+      },
+      {
+        "path": "qa/parity/native-videos/S06-git-worktree-branch-flow.mp4",
+        "scenarioId": "S06-git-worktree-branch-flow"
+      },
+      {
+        "path": "qa/parity/native-videos/S07-board-drag-drop-status.mp4",
+        "scenarioId": "S07-board-drag-drop-status"
+      },
+      {
+        "path": "qa/parity/native-videos/S08-context-menu-status-and-delete.mp4",
+        "scenarioId": "S08-context-menu-status-and-delete"
+      },
+      {
+        "path": "qa/parity/native-videos/S09-vim-keyboard-shortcuts-search.mp4",
+        "scenarioId": "S09-vim-keyboard-shortcuts-search"
+      },
+      {
+        "path": "qa/parity/native-videos/S10-settings-pane-layout.mp4",
+        "scenarioId": "S10-settings-pane-layout"
+      },
+      {
+        "path": "qa/parity/native-videos/S11-notifications-hooks-background-sync.mp4",
+        "scenarioId": "S11-notifications-hooks-background-sync"
+      },
+      {
+        "path": "qa/parity/native-videos/S12-project-filter-and-done-pagination.mp4",
+        "scenarioId": "S12-project-filter-and-done-pagination"
+      },
+      {
+        "path": "qa/parity/native-videos/S13-task-detail-existing-window-focus.mp4",
+        "scenarioId": "S13-task-detail-existing-window-focus"
+      },
+      {
+        "path": "qa/parity/native-videos/S14-remote-session-dependencies.mp4",
+        "scenarioId": "S14-remote-session-dependencies"
+      }
+    ],
+    "screenDir": "qa/parity/native-screens",
+    "videoDir": "qa/parity/native-videos"
+  },
+  "scenarioDeclarations": {
+    "declaredScreenCount": 14,
+    "declaredVideoCount": 14,
+    "manifestScreenMismatchCount": 11,
+    "manifestScreenMismatches": [
+      {
+        "manifestScreen": "screens/S01-board-load-and-columns.png",
+        "scenarioDeclaredScreens": [
+          "screens/S01-board-dark-ko.png"
+        ],
+        "scenarioId": "S01-board-load-and-columns"
+      },
+      {
+        "manifestScreen": "screens/S02-create-task-modal.png",
+        "scenarioDeclaredScreens": [
+          "screens/S02-create-task-result.png"
+        ],
+        "scenarioId": "S02-create-task-modal"
+      },
+      {
+        "manifestScreen": "screens/S03-task-detail-terminal-dock.png",
+        "scenarioDeclaredScreens": [
+          "screens/S03-task-detail-terminal.png"
+        ],
+        "scenarioId": "S03-task-detail-terminal-dock"
+      },
+      {
+        "manifestScreen": "screens/S04-task-detail-pr-and-ai-history.png",
+        "scenarioDeclaredScreens": [
+          "screens/S04-task-detail-pr-ai.png"
+        ],
+        "scenarioId": "S04-task-detail-pr-and-ai-history"
+      },
+      {
+        "manifestScreen": "screens/S06-git-worktree-branch-flow.png",
+        "scenarioDeclaredScreens": [
+          "screens/S06-branch-task-result.png"
+        ],
+        "scenarioId": "S06-git-worktree-branch-flow"
+      },
+      {
+        "manifestScreen": "screens/S07-board-drag-drop-status.png",
+        "scenarioDeclaredScreens": [
+          "screens/S07-drag-drop-progress.png"
+        ],
+        "scenarioId": "S07-board-drag-drop-status"
+      },
+      {
+        "manifestScreen": "screens/S08-context-menu-status-and-delete.png",
+        "scenarioDeclaredScreens": [
+          "screens/S08-context-delete-result.png"
+        ],
+        "scenarioId": "S08-context-menu-status-and-delete"
+      },
+      {
+        "manifestScreen": "screens/S09-vim-keyboard-shortcuts-search.png",
+        "scenarioDeclaredScreens": [
+          "screens/S09-keyboard-search.png"
+        ],
+        "scenarioId": "S09-vim-keyboard-shortcuts-search"
+      },
+      {
+        "manifestScreen": "screens/S11-notifications-hooks-background-sync.png",
+        "scenarioDeclaredScreens": [
+          "screens/S11-notifications-hooks.png"
+        ],
+        "scenarioId": "S11-notifications-hooks-background-sync"
+      },
+      {
+        "manifestScreen": "screens/S12-project-filter-and-done-pagination.png",
+        "scenarioDeclaredScreens": [
+          "screens/S12-project-filter-api.png"
+        ],
+        "scenarioId": "S12-project-filter-and-done-pagination"
+      },
+      {
+        "manifestScreen": "screens/S13-task-detail-existing-window-focus.png",
+        "scenarioDeclaredScreens": [
+          "screens/S13-existing-window-focus.png"
+        ],
+        "scenarioId": "S13-task-detail-existing-window-focus"
+      }
+    ],
+    "manifestVideoMismatchCount": 0,
+    "manifestVideoMismatches": [],
+    "scenarioFileCount": 14
+  },
+  "scenarioMappings": [
+    {
+      "baselineManifest": {
+        "notes": "Board overview",
+        "screen": "qa/baseline/screens/S01-board-load-and-columns.png",
+        "screenExists": true,
+        "source": "S01-board-load-and-columns.json",
+        "video": "qa/baseline/videos/S01-board-load-and-columns.mp4",
+        "videoExists": true
+      },
+      "nativeExpected": {
+        "screens": [
+          {
+            "exists": false,
+            "path": "qa/parity/native-screens/S01-board-load-and-columns-board-dark-ko.png"
+          }
+        ],
+        "videos": [
+          {
+            "exists": false,
+            "path": "qa/parity/native-videos/S01-board-load-and-columns.mp4"
+          }
+        ]
+      },
+      "scenarioDeclaredArtifacts": {
+        "screens": [
+          {
+            "exists": false,
+            "path": "qa/baseline/screens/S01-board-dark-ko.png"
+          }
+        ],
+        "videos": [
+          {
+            "exists": true,
+            "path": "qa/baseline/videos/S01-board-load-and-columns.mp4"
+          }
+        ]
+      },
+      "scenarioId": "S01-board-load-and-columns",
+      "title": "Board loads all status columns and seeded cards"
+    },
+    {
+      "baselineManifest": {
+        "notes": "Create task modal",
+        "screen": "qa/baseline/screens/S02-create-task-modal.png",
+        "screenExists": true,
+        "source": "S02-create-task-modal.json",
+        "video": "qa/baseline/videos/S02-create-task-modal.mp4",
+        "videoExists": true
+      },
+      "nativeExpected": {
+        "screens": [
+          {
+            "exists": false,
+            "path": "qa/parity/native-screens/S02-create-task-modal-create-task-result.png"
+          }
+        ],
+        "videos": [
+          {
+            "exists": false,
+            "path": "qa/parity/native-videos/S02-create-task-modal.mp4"
+          }
+        ]
+      },
+      "scenarioDeclaredArtifacts": {
+        "screens": [
+          {
+            "exists": false,
+            "path": "qa/baseline/screens/S02-create-task-result.png"
+          }
+        ],
+        "videos": [
+          {
+            "exists": true,
+            "path": "qa/baseline/videos/S02-create-task-modal.mp4"
+          }
+        ]
+      },
+      "scenarioId": "S02-create-task-modal",
+      "title": "Create task modal writes a todo task without worktree side effects"
+    },
+    {
+      "baselineManifest": {
+        "notes": "Task detail terminal task",
+        "screen": "qa/baseline/screens/S03-task-detail-terminal-dock.png",
+        "screenExists": true,
+        "source": "S03-task-detail-terminal-dock.json",
+        "video": "qa/baseline/videos/S03-task-detail-terminal-dock.mp4",
+        "videoExists": true
+      },
+      "nativeExpected": {
+        "screens": [
+          {
+            "exists": false,
+            "path": "qa/parity/native-screens/S03-task-detail-terminal-dock-task-detail-terminal.png"
+          }
+        ],
+        "videos": [
+          {
+            "exists": false,
+            "path": "qa/parity/native-videos/S03-task-detail-terminal-dock.mp4"
+          }
+        ]
+      },
+      "scenarioDeclaredArtifacts": {
+        "screens": [
+          {
+            "exists": false,
+            "path": "qa/baseline/screens/S03-task-detail-terminal.png"
+          }
+        ],
+        "videos": [
+          {
+            "exists": true,
+            "path": "qa/baseline/videos/S03-task-detail-terminal-dock.mp4"
+          }
+        ]
+      },
+      "scenarioId": "S03-task-detail-terminal-dock",
+      "title": "Task detail shows dock, metadata, and terminal attachment state"
+    },
+    {
+      "baselineManifest": {
+        "notes": "Task detail PR task",
+        "screen": "qa/baseline/screens/S04-task-detail-pr-and-ai-history.png",
+        "screenExists": true,
+        "source": "S04-task-detail-pr-and-ai-history.json",
+        "video": "qa/baseline/videos/S04-task-detail-pr-and-ai-history.mp4",
+        "videoExists": true
+      },
+      "nativeExpected": {
+        "screens": [
+          {
+            "exists": false,
+            "path": "qa/parity/native-screens/S04-task-detail-pr-and-ai-history-task-detail-pr-ai.png"
+          }
+        ],
+        "videos": [
+          {
+            "exists": false,
+            "path": "qa/parity/native-videos/S04-task-detail-pr-and-ai-history.mp4"
+          }
+        ]
+      },
+      "scenarioDeclaredArtifacts": {
+        "screens": [
+          {
+            "exists": false,
+            "path": "qa/baseline/screens/S04-task-detail-pr-ai.png"
+          }
+        ],
+        "videos": [
+          {
+            "exists": true,
+            "path": "qa/baseline/videos/S04-task-detail-pr-and-ai-history.mp4"
+          }
+        ]
+      },
+      "scenarioId": "S04-task-detail-pr-and-ai-history",
+      "title": "Task detail PR slot and AI session history are visible"
+    },
+    {
+      "baselineManifest": {
+        "notes": "Diff route",
+        "screen": "qa/baseline/screens/S05-diff-route-file-tree.png",
+        "screenExists": true,
+        "source": "S05-diff-route-file-tree.json",
+        "video": "qa/baseline/videos/S05-diff-route-file-tree.mp4",
+        "videoExists": true
+      },
+      "nativeExpected": {
+        "screens": [
+          {
+            "exists": false,
+            "path": "qa/parity/native-screens/S05-diff-route-file-tree-diff-route-file-tree.png"
+          }
+        ],
+        "videos": [
+          {
+            "exists": false,
+            "path": "qa/parity/native-videos/S05-diff-route-file-tree.mp4"
+          }
+        ]
+      },
+      "scenarioDeclaredArtifacts": {
+        "screens": [
+          {
+            "exists": true,
+            "path": "qa/baseline/screens/S05-diff-route-file-tree.png"
+          }
+        ],
+        "videos": [
+          {
+            "exists": true,
+            "path": "qa/baseline/videos/S05-diff-route-file-tree.mp4"
+          }
+        ]
+      },
+      "scenarioId": "S05-diff-route-file-tree",
+      "title": "Diff route shows changed files and file diff pane"
+    },
+    {
+      "baselineManifest": {
+        "notes": "Branch-from-task source card",
+        "screen": "qa/baseline/screens/S06-git-worktree-branch-flow.png",
+        "screenExists": true,
+        "source": "S06-git-worktree-branch-flow.json",
+        "video": "qa/baseline/videos/S06-git-worktree-branch-flow.mp4",
+        "videoExists": true
+      },
+      "nativeExpected": {
+        "screens": [
+          {
+            "exists": false,
+            "path": "qa/parity/native-screens/S06-git-worktree-branch-flow-branch-task-result.png"
+          }
+        ],
+        "videos": [
+          {
+            "exists": false,
+            "path": "qa/parity/native-videos/S06-git-worktree-branch-flow.mp4"
+          }
+        ]
+      },
+      "scenarioDeclaredArtifacts": {
+        "screens": [
+          {
+            "exists": false,
+            "path": "qa/baseline/screens/S06-branch-task-result.png"
+          }
+        ],
+        "videos": [
+          {
+            "exists": true,
+            "path": "qa/baseline/videos/S06-git-worktree-branch-flow.mp4"
+          }
+        ]
+      },
+      "scenarioId": "S06-git-worktree-branch-flow",
+      "title": "Branch-from-task flow creates branch metadata and preserves base branch"
+    },
+    {
+      "baselineManifest": {
+        "notes": "Board drag/drop source state",
+        "screen": "qa/baseline/screens/S07-board-drag-drop-status.png",
+        "screenExists": true,
+        "source": "S07-board-drag-drop-status.json",
+        "video": "qa/baseline/videos/S07-board-drag-drop-status.mp4",
+        "videoExists": true
+      },
+      "nativeExpected": {
+        "screens": [
+          {
+            "exists": false,
+            "path": "qa/parity/native-screens/S07-board-drag-drop-status-drag-drop-progress.png"
+          }
+        ],
+        "videos": [
+          {
+            "exists": false,
+            "path": "qa/parity/native-videos/S07-board-drag-drop-status.mp4"
+          }
+        ]
+      },
+      "scenarioDeclaredArtifacts": {
+        "screens": [
+          {
+            "exists": false,
+            "path": "qa/baseline/screens/S07-drag-drop-progress.png"
+          }
+        ],
+        "videos": [
+          {
+            "exists": true,
+            "path": "qa/baseline/videos/S07-board-drag-drop-status.mp4"
+          }
+        ]
+      },
+      "scenarioId": "S07-board-drag-drop-status",
+      "title": "Dragging a card updates status and display order"
+    },
+    {
+      "baselineManifest": {
+        "notes": "Context menu/delete source state",
+        "screen": "qa/baseline/screens/S08-context-menu-status-and-delete.png",
+        "screenExists": true,
+        "source": "S08-context-menu-status-and-delete.json",
+        "video": "qa/baseline/videos/S08-context-menu-status-and-delete.mp4",
+        "videoExists": true
+      },
+      "nativeExpected": {
+        "screens": [
+          {
+            "exists": false,
+            "path": "qa/parity/native-screens/S08-context-menu-status-and-delete-context-delete-result.png"
+          }
+        ],
+        "videos": [
+          {
+            "exists": false,
+            "path": "qa/parity/native-videos/S08-context-menu-status-and-delete.mp4"
+          }
+        ]
+      },
+      "scenarioDeclaredArtifacts": {
+        "screens": [
+          {
+            "exists": false,
+            "path": "qa/baseline/screens/S08-context-delete-result.png"
+          }
+        ],
+        "videos": [
+          {
+            "exists": true,
+            "path": "qa/baseline/videos/S08-context-menu-status-and-delete.mp4"
+          }
+        ]
+      },
+      "scenarioId": "S08-context-menu-status-and-delete",
+      "title": "Context menu changes status and delete cleans task row"
+    },
+    {
+      "baselineManifest": {
+        "notes": "Vim command entry state",
+        "screen": "qa/baseline/screens/S09-vim-keyboard-shortcuts-search.png",
+        "screenExists": true,
+        "source": "S09-vim-keyboard-shortcuts-search.json",
+        "video": "qa/baseline/videos/S09-vim-keyboard-shortcuts-search.mp4",
+        "videoExists": true
+      },
+      "nativeExpected": {
+        "screens": [
+          {
+            "exists": false,
+            "path": "qa/parity/native-screens/S09-vim-keyboard-shortcuts-search-keyboard-search.png"
+          }
+        ],
+        "videos": [
+          {
+            "exists": false,
+            "path": "qa/parity/native-videos/S09-vim-keyboard-shortcuts-search.mp4"
+          }
+        ]
+      },
+      "scenarioDeclaredArtifacts": {
+        "screens": [
+          {
+            "exists": false,
+            "path": "qa/baseline/screens/S09-keyboard-search.png"
+          }
+        ],
+        "videos": [
+          {
+            "exists": true,
+            "path": "qa/baseline/videos/S09-vim-keyboard-shortcuts-search.mp4"
+          }
+        ]
+      },
+      "scenarioId": "S09-vim-keyboard-shortcuts-search",
+      "title": "Vim commands and global task search keyboard flows work"
+    },
+    {
+      "baselineManifest": {
+        "notes": "Settings route",
+        "screen": "qa/baseline/screens/S10-settings-pane-layout.png",
+        "screenExists": true,
+        "source": "S10-settings-pane-layout.json",
+        "video": "qa/baseline/videos/S10-settings-pane-layout.mp4",
+        "videoExists": true
+      },
+      "nativeExpected": {
+        "screens": [
+          {
+            "exists": false,
+            "path": "qa/parity/native-screens/S10-settings-pane-layout-settings-pane-layout.png"
+          }
+        ],
+        "videos": [
+          {
+            "exists": false,
+            "path": "qa/parity/native-videos/S10-settings-pane-layout.mp4"
+          }
+        ]
+      },
+      "scenarioDeclaredArtifacts": {
+        "screens": [
+          {
+            "exists": true,
+            "path": "qa/baseline/screens/S10-settings-pane-layout.png"
+          }
+        ],
+        "videos": [
+          {
+            "exists": true,
+            "path": "qa/baseline/videos/S10-settings-pane-layout.mp4"
+          }
+        ]
+      },
+      "scenarioId": "S10-settings-pane-layout",
+      "title": "Settings and pane layout persistence round-trip"
+    },
+    {
+      "baselineManifest": {
+        "notes": "Hooks/AI task detail",
+        "screen": "qa/baseline/screens/S11-notifications-hooks-background-sync.png",
+        "screenExists": true,
+        "source": "S11-notifications-hooks-background-sync.json",
+        "video": "qa/baseline/videos/S11-notifications-hooks-background-sync.mp4",
+        "videoExists": true
+      },
+      "nativeExpected": {
+        "screens": [
+          {
+            "exists": false,
+            "path": "qa/parity/native-screens/S11-notifications-hooks-background-sync-notifications-hooks.png"
+          }
+        ],
+        "videos": [
+          {
+            "exists": false,
+            "path": "qa/parity/native-videos/S11-notifications-hooks-background-sync.mp4"
+          }
+        ]
+      },
+      "scenarioDeclaredArtifacts": {
+        "screens": [
+          {
+            "exists": false,
+            "path": "qa/baseline/screens/S11-notifications-hooks.png"
+          }
+        ],
+        "videos": [
+          {
+            "exists": true,
+            "path": "qa/baseline/videos/S11-notifications-hooks-background-sync.mp4"
+          }
+        ]
+      },
+      "scenarioId": "S11-notifications-hooks-background-sync",
+      "title": "Notifications, hook status, and background sync settings are visible"
+    },
+    {
+      "baselineManifest": {
+        "notes": "Project filter source board",
+        "screen": "qa/baseline/screens/S12-project-filter-and-done-pagination.png",
+        "screenExists": true,
+        "source": "S12-project-filter-and-done-pagination.json",
+        "video": "qa/baseline/videos/S12-project-filter-and-done-pagination.mp4",
+        "videoExists": true
+      },
+      "nativeExpected": {
+        "screens": [
+          {
+            "exists": false,
+            "path": "qa/parity/native-screens/S12-project-filter-and-done-pagination-project-filter-api.png"
+          }
+        ],
+        "videos": [
+          {
+            "exists": false,
+            "path": "qa/parity/native-videos/S12-project-filter-and-done-pagination.mp4"
+          }
+        ]
+      },
+      "scenarioDeclaredArtifacts": {
+        "screens": [
+          {
+            "exists": false,
+            "path": "qa/baseline/screens/S12-project-filter-api.png"
+          }
+        ],
+        "videos": [
+          {
+            "exists": true,
+            "path": "qa/baseline/videos/S12-project-filter-and-done-pagination.mp4"
+          }
+        ]
+      },
+      "scenarioId": "S12-project-filter-and-done-pagination",
+      "title": "Project filter narrows board and Done column count remains accurate"
+    },
+    {
+      "baselineManifest": {
+        "notes": "Existing-window focus task detail",
+        "screen": "qa/baseline/screens/S13-task-detail-existing-window-focus.png",
+        "screenExists": true,
+        "source": "S13-task-detail-existing-window-focus.json",
+        "video": "qa/baseline/videos/S13-task-detail-existing-window-focus.mp4",
+        "videoExists": true
+      },
+      "nativeExpected": {
+        "screens": [
+          {
+            "exists": false,
+            "path": "qa/parity/native-screens/S13-task-detail-existing-window-focus-existing-window-focus.png"
+          }
+        ],
+        "videos": [
+          {
+            "exists": false,
+            "path": "qa/parity/native-videos/S13-task-detail-existing-window-focus.mp4"
+          }
+        ]
+      },
+      "scenarioDeclaredArtifacts": {
+        "screens": [
+          {
+            "exists": false,
+            "path": "qa/baseline/screens/S13-existing-window-focus.png"
+          }
+        ],
+        "videos": [
+          {
+            "exists": true,
+            "path": "qa/baseline/videos/S13-task-detail-existing-window-focus.mp4"
+          }
+        ]
+      },
+      "scenarioId": "S13-task-detail-existing-window-focus",
+      "title": "Opening an already-open task detail focuses the existing route"
+    },
+    {
+      "baselineManifest": {
+        "notes": "Remote session task detail",
+        "screen": "qa/baseline/screens/S14-remote-session-dependencies.png",
+        "screenExists": true,
+        "source": "S14-remote-session-dependencies.json",
+        "video": "qa/baseline/videos/S14-remote-session-dependencies.mp4",
+        "videoExists": true
+      },
+      "nativeExpected": {
+        "screens": [
+          {
+            "exists": false,
+            "path": "qa/parity/native-screens/S14-remote-session-dependencies-remote-session-dependencies.png"
+          }
+        ],
+        "videos": [
+          {
+            "exists": false,
+            "path": "qa/parity/native-videos/S14-remote-session-dependencies.mp4"
+          }
+        ]
+      },
+      "scenarioDeclaredArtifacts": {
+        "screens": [
+          {
+            "exists": true,
+            "path": "qa/baseline/screens/S14-remote-session-dependencies.png"
+          }
+        ],
+        "videos": [
+          {
+            "exists": true,
+            "path": "qa/baseline/videos/S14-remote-session-dependencies.mp4"
+          }
+        ]
+      },
+      "scenarioId": "S14-remote-session-dependencies",
+      "title": "Remote session dependency UI reports SSH-scoped tmux/zellij checks"
+    }
+  ],
+  "scenarioSubset": [
+    "S01-board-load-and-columns",
+    "S02-create-task-modal",
+    "S03-task-detail-terminal-dock",
+    "S04-task-detail-pr-and-ai-history",
+    "S05-diff-route-file-tree",
+    "S06-git-worktree-branch-flow",
+    "S07-board-drag-drop-status",
+    "S08-context-menu-status-and-delete",
+    "S09-vim-keyboard-shortcuts-search",
+    "S10-settings-pane-layout",
+    "S11-notifications-hooks-background-sync",
+    "S12-project-filter-and-done-pagination",
+    "S13-task-detail-existing-window-focus",
+    "S14-remote-session-dependencies"
+  ],
+  "status": "BLOCKED"
+}
