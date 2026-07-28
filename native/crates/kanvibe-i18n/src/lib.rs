@@ -14,15 +14,17 @@ use serde_json::Value;
 pub enum Locale {
     Ko,
     En,
+    Zh,
 }
 
 impl Locale {
-    pub const ALL: [Self; 2] = [Self::Ko, Self::En];
+    pub const ALL: [Self; 3] = [Self::Ko, Self::En, Self::Zh];
 
     pub const fn code(self) -> &'static str {
         match self {
             Self::Ko => "ko",
             Self::En => "en",
+            Self::Zh => "zh",
         }
     }
 
@@ -30,15 +32,24 @@ impl Locale {
         match self {
             Self::Ko => "messages/ko.json",
             Self::En => "messages/en.json",
+            Self::Zh => "messages/zh.json",
         }
     }
 
+    /// Electron `getNotificationLocale`과 동일하게 `zh-CN` 같은 지역 태그도 기본 언어로 축약한다.
+    /// 인식하지 못한 코드는 `None`이며, 호출자는 [`DEFAULT_LOCALE`]로 폴백한다.
     pub fn parse(code: &str) -> Option<Self> {
-        match code {
-            "ko" => Some(Self::Ko),
-            "en" => Some(Self::En),
-            _ => None,
+        if code.starts_with("en") {
+            return Some(Self::En);
         }
+        if code.starts_with("zh") {
+            return Some(Self::Zh);
+        }
+        if code.starts_with("ko") {
+            return Some(Self::Ko);
+        }
+
+        None
     }
 }
 
@@ -46,6 +57,7 @@ pub const DEFAULT_LOCALE: Locale = Locale::Ko;
 pub const MESSAGE_CATALOGS: &[(Locale, &str)] = &[
     (Locale::Ko, "messages/ko.json"),
     (Locale::En, "messages/en.json"),
+    (Locale::Zh, "messages/zh.json"),
 ];
 
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
@@ -124,12 +136,21 @@ mod tests {
     use std::path::Path;
 
     #[test]
-    fn native_scope_starts_with_ko_and_en_catalogs() {
+    fn native_scope_covers_every_electron_supported_locale() {
         let locales = Locale::ALL.map(Locale::code);
 
         assert_eq!(DEFAULT_LOCALE, Locale::Ko);
-        assert_eq!(locales, ["ko", "en"]);
-        assert_eq!(MESSAGE_CATALOGS.len(), 2);
+        assert_eq!(locales, ["ko", "en", "zh"]);
+        assert_eq!(MESSAGE_CATALOGS.len(), 3);
+    }
+
+    #[test]
+    fn locale_parsing_matches_electron_prefix_rules() {
+        assert_eq!(Locale::parse("zh"), Some(Locale::Zh));
+        assert_eq!(Locale::parse("zh-CN"), Some(Locale::Zh));
+        assert_eq!(Locale::parse("en-US"), Some(Locale::En));
+        assert_eq!(Locale::parse("ko-KR"), Some(Locale::Ko));
+        assert_eq!(Locale::parse("fr"), None);
     }
 
     #[test]
@@ -137,9 +158,12 @@ mod tests {
         let repo_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..");
         let english = load_board_labels(&repo_root, Locale::En).expect("English board labels");
         let korean = load_board_labels(&repo_root, Locale::Ko).expect("Korean board labels");
+        let chinese = load_board_labels(&repo_root, Locale::Zh).expect("Chinese board labels");
 
         assert_eq!(english.new_task, "+ New Task");
         assert_eq!(korean.new_task, "+ 새 작업");
+        assert_eq!(chinese.new_task, "+ 新任务");
+        assert_eq!(chinese.columns.len(), TaskStatus::ALL.len());
         assert_eq!(
             english
                 .columns

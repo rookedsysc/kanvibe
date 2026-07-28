@@ -11,7 +11,7 @@ This is the parity ledger for the Rust + GPUI migration. Keep every checkbox unc
   - DB assert: SQLite query/result check against the seed DB copy.
   - Unit/integration test: focused Vitest or Cargo test.
   - Artifact inspection: manifest, logs, package output, generated files, or diagnostics.
-- Required locales: `ko` and `en`. `zh` exists in the Electron message catalog and should be recorded as a follow-up unless native scope expands.
+- Required locales: `ko`, `en`, and `zh` — every locale in `SUPPORTED_LOCALES` (`src/desktop/renderer/utils/locales.ts`). The native locale parser mirrors Electron's `getNotificationLocale` prefix rules, so `zh-CN` resolves to `zh`.
 - Required target: macOS first. Linux runtime observations are allowed only as caveats and do not replace macOS evidence.
 
 ## Routes And Shell
