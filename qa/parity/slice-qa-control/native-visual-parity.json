@@ -158,86 +158,8 @@
   "scenarioDeclarations": {
     "declaredScreenCount": 14,
     "declaredVideoCount": 14,
-    "manifestScreenMismatchCount": 11,
-    "manifestScreenMismatches": [
-      {
-        "manifestScreen": "screens/S01-board-load-and-columns.png",
-        "scenarioDeclaredScreens": [
-          "screens/S01-board-dark-ko.png"
-        ],
-        "scenarioId": "S01-board-load-and-columns"
-      },
-      {
-        "manifestScreen": "screens/S02-create-task-modal.png",
-        "scenarioDeclaredScreens": [
-          "screens/S02-create-task-result.png"
-        ],
-        "scenarioId": "S02-create-task-modal"
-      },
-      {
-        "manifestScreen": "screens/S03-task-detail-terminal-dock.png",
-        "scenarioDeclaredScreens": [
-          "screens/S03-task-detail-terminal.png"
-        ],
-        "scenarioId": "S03-task-detail-terminal-dock"
-      },
-      {
-        "manifestScreen": "screens/S04-task-detail-pr-and-ai-history.png",
-        "scenarioDeclaredScreens": [
-          "screens/S04-task-detail-pr-ai.png"
-        ],
-        "scenarioId": "S04-task-detail-pr-and-ai-history"
-      },
-      {
-        "manifestScreen": "screens/S06-git-worktree-branch-flow.png",
-        "scenarioDeclaredScreens": [
-          "screens/S06-branch-task-result.png"
-        ],
-        "scenarioId": "S06-git-worktree-branch-flow"
-      },
-      {
-        "manifestScreen": "screens/S07-board-drag-drop-status.png",
-        "scenarioDeclaredScreens": [
-          "screens/S07-drag-drop-progress.png"
-        ],
-        "scenarioId": "S07-board-drag-drop-status"
-      },
-      {
-        "manifestScreen": "screens/S08-context-menu-status-and-delete.png",
-        "scenarioDeclaredScreens": [
-          "screens/S08-context-delete-result.png"
-        ],
-        "scenarioId": "S08-context-menu-status-and-delete"
-      },
-      {
-        "manifestScreen": "screens/S09-vim-keyboard-shortcuts-search.png",
-        "scenarioDeclaredScreens": [
-          "screens/S09-keyboard-search.png"
-        ],
-        "scenarioId": "S09-vim-keyboard-shortcuts-search"
-      },
-      {
-        "manifestScreen": "screens/S11-notifications-hooks-background-sync.png",
-        "scenarioDeclaredScreens": [
-          "screens/S11-notifications-hooks.png"
-        ],
-        "scenarioId": "S11-notifications-hooks-background-sync"
-      },
-      {
-        "manifestScreen": "screens/S12-project-filter-and-done-pagination.png",
-        "scenarioDeclaredScreens": [
-          "screens/S12-project-filter-api.png"
-        ],
-        "scenarioId": "S12-project-filter-and-done-pagination"
-      },
-      {
-        "manifestScreen": "screens/S13-task-detail-existing-window-focus.png",
-        "scenarioDeclaredScreens": [
-          "screens/S13-existing-window-focus.png"
-        ],
-        "scenarioId": "S13-task-detail-existing-window-focus"
-      }
-    ],
+    "manifestScreenMismatchCount": 0,
+    "manifestScreenMismatches": [],
     "manifestVideoMismatchCount": 0,
     "manifestVideoMismatches": [],
     "scenarioFileCount": 14
@@ -246,7 +168,7 @@
     {
       "baselineManifest": {
         "notes": "Board overview",
-        "screen": "qa/baseline/screens/S01-board-load-and-columns.png",
+        "screen": "qa/baseline/screens/S01-board-dark-ko.png",
         "screenExists": true,
         "source": "S01-board-load-and-columns.json",
         "video": "qa/baseline/videos/S01-board-load-and-columns.mp4",
@@ -269,7 +191,7 @@
       "scenarioDeclaredArtifacts": {
         "screens": [
           {
-            "exists": false,
+            "exists": true,
             "path": "qa/baseline/screens/S01-board-dark-ko.png"
           }
         ],
@@ -286,7 +208,7 @@
     {
       "baselineManifest": {
         "notes": "Create task modal",
-        "screen": "qa/baseline/screens/S02-create-task-modal.png",
+        "screen": "qa/baseline/screens/S02-create-task-result.png",
         "screenExists": true,
         "source": "S02-create-task-modal.json",
         "video": "qa/baseline/videos/S02-create-task-modal.mp4",
@@ -309,7 +231,7 @@
       "scenarioDeclaredArtifacts": {
         "screens": [
           {
-            "exists": false,
+            "exists": true,
             "path": "qa/baseline/screens/S02-create-task-result.png"
           }
         ],
@@ -326,7 +248,7 @@
     {
       "baselineManifest": {
         "notes": "Task detail terminal task",
-        "screen": "qa/baseline/screens/S03-task-detail-terminal-dock.png",
+        "screen": "qa/baseline/screens/S03-task-detail-terminal.png",
         "screenExists": true,
         "source": "S03-task-detail-terminal-dock.json",
         "video": "qa/baseline/videos/S03-task-detail-terminal-dock.mp4",
@@ -349,7 +271,7 @@
       "scenarioDeclaredArtifacts": {
         "screens": [
           {
-            "exists": false,
+            "exists": true,
             "path": "qa/baseline/screens/S03-task-detail-terminal.png"
           }
         ],
@@ -366,7 +288,7 @@
     {
       "baselineManifest": {
         "notes": "Task detail PR task",
-        "screen": "qa/baseline/screens/S04-task-detail-pr-and-ai-history.png",
+        "screen": "qa/baseline/screens/S04-task-detail-pr-ai.png",
         "screenExists": true,
         "source": "S04-task-detail-pr-and-ai-history.json",
         "video": "qa/baseline/videos/S04-task-detail-pr-and-ai-history.mp4",
@@ -389,7 +311,7 @@
       "scenarioDeclaredArtifacts": {
         "screens": [
           {
-            "exists": false,
+            "exists": true,
             "path": "qa/baseline/screens/S04-task-detail-pr-ai.png"
           }
         ],
@@ -446,7 +368,7 @@
     {
       "baselineManifest": {
         "notes": "Branch-from-task source card",
-        "screen": "qa/baseline/screens/S06-git-worktree-branch-flow.png",
+        "screen": "qa/baseline/screens/S06-branch-task-result.png",
         "screenExists": true,
         "source": "S06-git-worktree-branch-flow.json",
         "video": "qa/baseline/videos/S06-git-worktree-branch-flow.mp4",
@@ -469,7 +391,7 @@
       "scenarioDeclaredArtifacts": {
         "screens": [
           {
-            "exists": false,
+            "exists": true,
             "path": "qa/baseline/screens/S06-branch-task-result.png"
           }
         ],
@@ -486,7 +408,7 @@
     {
       "baselineManifest": {
         "notes": "Board drag/drop source state",
-        "screen": "qa/baseline/screens/S07-board-drag-drop-status.png",
+        "screen": "qa/baseline/screens/S07-drag-drop-progress.png",
         "screenExists": true,
         "source": "S07-board-drag-drop-status.json",
         "video": "qa/baseline/videos/S07-board-drag-drop-status.mp4",
@@ -509,7 +431,7 @@
       "scenarioDeclaredArtifacts": {
         "screens": [
           {
-            "exists": false,
+            "exists": true,
             "path": "qa/baseline/screens/S07-drag-drop-progress.png"
           }
         ],
@@ -526,7 +448,7 @@
     {
       "baselineManifest": {
         "notes": "Context menu/delete source state",
-        "screen": "qa/baseline/screens/S08-context-menu-status-and-delete.png",
+        "screen": "qa/baseline/screens/S08-context-delete-result.png",
         "screenExists": true,
         "source": "S08-context-menu-status-and-delete.json",
         "video": "qa/baseline/videos/S08-context-menu-status-and-delete.mp4",
@@ -549,7 +471,7 @@
       "scenarioDeclaredArtifacts": {
         "screens": [
           {
-            "exists": false,
+            "exists": true,
             "path": "qa/baseline/screens/S08-context-delete-result.png"
           }
         ],
@@ -566,7 +488,7 @@
     {
       "baselineManifest": {
         "notes": "Vim command entry state",
-        "screen": "qa/baseline/screens/S09-vim-keyboard-shortcuts-search.png",
+        "screen": "qa/baseline/screens/S09-keyboard-search.png",
         "screenExists": true,
         "source": "S09-vim-keyboard-shortcuts-search.json",
         "video": "qa/baseline/videos/S09-vim-keyboard-shortcuts-search.mp4",
@@ -589,7 +511,7 @@
       "scenarioDeclaredArtifacts": {
         "screens": [
           {
-            "exists": false,
+            "exists": true,
             "path": "qa/baseline/screens/S09-keyboard-search.png"
           }
         ],
@@ -646,7 +568,7 @@
     {
       "baselineManifest": {
         "notes": "Hooks/AI task detail",
-        "screen": "qa/baseline/screens/S11-notifications-hooks-background-sync.png",
+        "screen": "qa/baseline/screens/S11-notifications-hooks.png",
         "screenExists": true,
         "source": "S11-notifications-hooks-background-sync.json",
         "video": "qa/baseline/videos/S11-notifications-hooks-background-sync.mp4",
@@ -669,7 +591,7 @@
       "scenarioDeclaredArtifacts": {
         "screens": [
           {
-            "exists": false,
+            "exists": true,
             "path": "qa/baseline/screens/S11-notifications-hooks.png"
           }
         ],
@@ -686,7 +608,7 @@
     {
       "baselineManifest": {
         "notes": "Project filter source board",
-        "screen": "qa/baseline/screens/S12-project-filter-and-done-pagination.png",
+        "screen": "qa/baseline/screens/S12-project-filter-api.png",
         "screenExists": true,
         "source": "S12-project-filter-and-done-pagination.json",
         "video": "qa/baseline/videos/S12-project-filter-and-done-pagination.mp4",
@@ -709,7 +631,7 @@
       "scenarioDeclaredArtifacts": {
         "screens": [
           {
-            "exists": false,
+            "exists": true,
             "path": "qa/baseline/screens/S12-project-filter-api.png"
           }
         ],
@@ -726,7 +648,7 @@
     {
       "baselineManifest": {
         "notes": "Existing-window focus task detail",
-        "screen": "qa/baseline/screens/S13-task-detail-existing-window-focus.png",
+        "screen": "qa/baseline/screens/S13-existing-window-focus.png",
         "screenExists": true,
         "source": "S13-task-detail-existing-window-focus.json",
         "video": "qa/baseline/videos/S13-task-detail-existing-window-focus.mp4",
@@ -749,7 +671,7 @@
       "scenarioDeclaredArtifacts": {
         "screens": [
           {
-            "exists": false,
+            "exists": true,
             "path": "qa/baseline/screens/S13-existing-window-focus.png"
           }
         ],

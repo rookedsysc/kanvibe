@@ -21,7 +21,7 @@ const viewport = { width: 1440, height: 960 };
 
 const visualStates = {
   "S01": { hash: "#/ko", waitFor: "board", note: "Board overview" },
-  "S02": { hash: "#/ko", waitFor: "board", clickText: "새 작업", note: "Create task modal" },
+  "S02": { hash: "#/ko", waitFor: "board", clickText: "+ 새 작업", expectText: "새 작업 생성", note: "Create task modal" },
   "S03": { hash: "#/ko/task/qa-task-progress-terminal", waitFor: "route", note: "Task detail terminal task" },
   "S04": { hash: "#/ko/task/qa-task-review-diff", waitFor: "route", note: "Task detail PR task" },
   "S05": { hash: "#/ko/task/qa-task-review-diff/diff", waitFor: "route", note: "Diff route" },
@@ -194,6 +194,21 @@ async function waitForRoute(page) {
   await wait(1500);
 }
 
+/**
+ * 릴리스 업데이트 dialog는 GitHub releases API 결과에 따라 나타나므로 캡처 시점마다 달라진다.
+ * 베이스라인이 네트워크 상태에 의존하지 않도록, 화면을 찍기 전에 항상 닫는다.
+ */
+async function dismissReleaseUpdateDialog(page) {
+  const dialog = page.locator("[role='dialog'][aria-labelledby='release-update-title']");
+  if ((await dialog.count()) === 0) {
+    return;
+  }
+
+  await dialog.getByRole("button", { name: "닫기", exact: true }).click({ timeout: 10_000 });
+  await dialog.waitFor({ state: "detached", timeout: 10_000 });
+  await wait(300);
+}
+
 async function prepareVisualState(page, scenario) {
   const prefix = scenario.id.slice(0, 3);
   const state = visualStates[prefix] || visualStates.S01;
@@ -202,19 +217,45 @@ async function prepareVisualState(page, scenario) {
   if (state.waitFor === "board") await waitForBoard(page);
   else await waitForRoute(page);
 
+  await dismissReleaseUpdateDialog(page);
+
+  // 베이스라인은 파리티 판정의 기준값이므로, 준비 동작이 실패하면 잘못된 화면을 기록하는 대신 중단한다.
   if (state.focusTaskId) {
-    await page.locator(`[data-kanban-task-card='true'][data-kanban-task-id='${state.focusTaskId}']`).focus().catch(() => {});
+    await page
+      .locator(`[data-kanban-task-card='true'][data-kanban-task-id='${state.focusTaskId}']`)
+      .focus({ timeout: 10_000 });
   }
   if (state.clickText) {
-    await page.getByText(state.clickText, { exact: true }).first().click().catch(() => {});
+    await page.getByText(state.clickText, { exact: true }).first().click({ timeout: 10_000 });
     await wait(500);
   }
   if (state.press) {
-    await page.keyboard.press(state.press).catch(() => {});
+    await page.keyboard.press(state.press);
     await wait(500);
+  }
+  if (state.expectText) {
+    await page.getByText(state.expectText, { exact: true }).first().waitFor({ timeout: 10_000 });
   }
 
   return state;
+}
+
+/**
+ * 시나리오가 선언한 산출물 경로를 정본으로 사용한다.
+ * 스크립트가 자체 규칙으로 파일명을 만들면 parity 인벤토리가 선언 경로를 찾지 못한다.
+ */
+function resolveDeclaredArtifact(scenario, kind, extension) {
+  const declared = scenario.artifacts?.[kind];
+  const paths = Array.isArray(declared) ? declared.filter((value) => typeof value === "string" && value.length > 0) : [];
+
+  if (paths.length === 0) {
+    return `${kind}/${scenario.id}.${extension}`;
+  }
+  if (paths.length > 1) {
+    console.warn(`[qa:baseline] ${scenario.id} declares ${paths.length} ${kind}; capturing only ${paths[0]}`);
+  }
+
+  return paths[0];
 }
 
 function resetBaselineDirs() {
@@ -255,10 +296,12 @@ async function main() {
   try {
     for (const scenario of scenarios) {
       const id = scenario.id.slice(0, 3);
-      const screen = `screens/${scenario.id}.png`;
-      const video = `videos/${scenario.id}.mp4`;
+      const screen = resolveDeclaredArtifact(scenario, "screens", "png");
+      const video = resolveDeclaredArtifact(scenario, "videos", "mp4");
       const screenPath = path.join(baselineDir, screen);
       const videoPath = path.join(baselineDir, video);
+      fs.mkdirSync(path.dirname(screenPath), { recursive: true });
+      fs.mkdirSync(path.dirname(videoPath), { recursive: true });
       const recorder = startVideo(videoPath);
       const state = await prepareVisualState(app.page, scenario);
       await wait(1000);
