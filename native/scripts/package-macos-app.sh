@@ -46,6 +46,23 @@ mkdir -p "$MACOS_DIR" "$RESOURCES_DIR"
 cp "$NATIVE_ROOT/target/release/kanvibe-app" "$MACOS_DIR/$EXECUTABLE_NAME"
 chmod 755 "$MACOS_DIR/$EXECUTABLE_NAME"
 
+# 앱은 Contents/Resources를 리소스 루트로 해석한다. 환경변수 없이 Finder에서 실행해도
+# 메시지 카탈로그와 최초 실행용 seed DB를 찾을 수 있어야 한다.
+REPO_ROOT="$(cd -- "$NATIVE_ROOT/.." && pwd)"
+if [[ ! -d "$REPO_ROOT/messages" ]]; then
+  echo "message catalogs not found at $REPO_ROOT/messages" >&2
+  exit 66
+fi
+cp -R "$REPO_ROOT/messages" "$RESOURCES_DIR/messages"
+
+BUNDLED_SEED="$REPO_ROOT/resources/database/app.seed.db"
+if [[ ! -f "$BUNDLED_SEED" ]]; then
+  echo "bundled seed database not found at $BUNDLED_SEED. Run pnpm db:prepare first." >&2
+  exit 66
+fi
+mkdir -p "$RESOURCES_DIR/resources/database"
+cp "$BUNDLED_SEED" "$RESOURCES_DIR/resources/database/app.seed.db"
+
 cat > "$CONTENTS_DIR/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">

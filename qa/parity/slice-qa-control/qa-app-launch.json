@@ -16,7 +16,7 @@
   "mode": "externalNativeAppProcess",
   "processExitedBeforeSocket": true,
   "qaSocketReady": false,
-  "socketPath": "/tmp/kanvibe-qa-native-app-launch-3122567-1783489103976120145.sock",
+  "socketPath": "/tmp/kanvibe-qa-native-app-launch-2392225-1785282629902053446.sock",
   "status": "BLOCKED",
   "stderr": "kanvibe native scaffold mode: HeadlessStub",
   "stdout": ""

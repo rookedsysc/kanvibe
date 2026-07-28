@@ -26,12 +26,12 @@
           "KANVIBE_LOCALE",
           "KANVIBE_QA_SOCKET"
         ],
-        "dbCopyPath": "../qa/parity/native-db/S01-board-load-and-columns.sqlite",
+        "dbCopyPath": "../qa/parity/native-db/S01-board-load-and-columns-2392234-1785282630032276300.sqlite",
         "exitStatus": 0,
         "lastSocketError": "No such file or directory (os error 2)",
         "processExitedBeforeSocket": true,
         "qaSocketReady": false,
-        "socketPath": "/tmp/kanvibe-qa-native-app-replay-S01-board-load-and-columns-3160445-1783490369820142760.sock",
+        "socketPath": "/tmp/kanvibe-qa-native-app-replay-S01-board-load-and-columns-2392234-1785282630032373720.sock",
         "stderr": "kanvibe native scaffold mode: HeadlessStub",
         "stdout": ""
       },
@@ -54,12 +54,12 @@
           "KANVIBE_LOCALE",
           "KANVIBE_QA_SOCKET"
         ],
-        "dbCopyPath": "../qa/parity/native-db/S02-create-task-modal.sqlite",
+        "dbCopyPath": "../qa/parity/native-db/S02-create-task-modal-2392234-1785282630042754948.sqlite",
         "exitStatus": 0,
         "lastSocketError": "No such file or directory (os error 2)",
         "processExitedBeforeSocket": true,
         "qaSocketReady": false,
-        "socketPath": "/tmp/kanvibe-qa-native-app-replay-S02-create-task-modal-3160445-1783490369830661974.sock",
+        "socketPath": "/tmp/kanvibe-qa-native-app-replay-S02-create-task-modal-2392234-1785282630042858968.sock",
         "stderr": "kanvibe native scaffold mode: HeadlessStub",
         "stdout": ""
       },
@@ -82,12 +82,12 @@
           "KANVIBE_LOCALE",
           "KANVIBE_QA_SOCKET"
         ],
-        "dbCopyPath": "../qa/parity/native-db/S03-task-detail-terminal-dock.sqlite",
+        "dbCopyPath": "../qa/parity/native-db/S03-task-detail-terminal-dock-2392234-1785282630053140737.sqlite",
         "exitStatus": 0,
         "lastSocketError": "No such file or directory (os error 2)",
         "processExitedBeforeSocket": true,
         "qaSocketReady": false,
-        "socketPath": "/tmp/kanvibe-qa-native-app-replay-S03-task-detail-terminal-dock-3160445-1783490369841130018.sock",
+        "socketPath": "/tmp/kanvibe-qa-native-app-replay-S03-task-detail-terminal-dock-2392234-1785282630053230307.sock",
         "stderr": "kanvibe native scaffold mode: HeadlessStub",
         "stdout": ""
       },
@@ -110,12 +110,12 @@
           "KANVIBE_LOCALE",
           "KANVIBE_QA_SOCKET"
         ],
-        "dbCopyPath": "../qa/parity/native-db/S04-task-detail-pr-and-ai-history.sqlite",
+        "dbCopyPath": "../qa/parity/native-db/S04-task-detail-pr-and-ai-history-2392234-1785282630063508585.sqlite",
         "exitStatus": 0,
         "lastSocketError": "No such file or directory (os error 2)",
         "processExitedBeforeSocket": true,
         "qaSocketReady": false,
-        "socketPath": "/tmp/kanvibe-qa-native-app-replay-S04-task-detail-pr-and-ai-history-3160445-1783490369851572233.sock",
+        "socketPath": "/tmp/kanvibe-qa-native-app-replay-S04-task-detail-pr-and-ai-history-2392234-1785282630063587115.sock",
         "stderr": "kanvibe native scaffold mode: HeadlessStub",
         "stdout": ""
       },
@@ -138,12 +138,12 @@
           "KANVIBE_LOCALE",
           "KANVIBE_QA_SOCKET"
         ],
-        "dbCopyPath": "../qa/parity/native-db/S05-diff-route-file-tree.sqlite",
+        "dbCopyPath": "../qa/parity/native-db/S05-diff-route-file-tree-2392234-1785282630073851724.sqlite",
         "exitStatus": 0,
         "lastSocketError": "No such file or directory (os error 2)",
         "processExitedBeforeSocket": true,
         "qaSocketReady": false,
-        "socketPath": "/tmp/kanvibe-qa-native-app-replay-S05-diff-route-file-tree-3160445-1783490369861977907.sock",
+        "socketPath": "/tmp/kanvibe-qa-native-app-replay-S05-diff-route-file-tree-2392234-1785282630073947084.sock",
         "stderr": "kanvibe native scaffold mode: HeadlessStub",
         "stdout": ""
       },
@@ -166,12 +166,12 @@
           "KANVIBE_LOCALE",
           "KANVIBE_QA_SOCKET"
         ],
-        "dbCopyPath": "../qa/parity/native-db/S06-git-worktree-branch-flow.sqlite",
+        "dbCopyPath": "../qa/parity/native-db/S06-git-worktree-branch-flow-2392234-1785282630084209282.sqlite",
         "exitStatus": 0,
         "lastSocketError": "No such file or directory (os error 2)",
         "processExitedBeforeSocket": true,
         "qaSocketReady": false,
-        "socketPath": "/tmp/kanvibe-qa-native-app-replay-S06-git-worktree-branch-flow-3160445-1783490369872458561.sock",
+        "socketPath": "/tmp/kanvibe-qa-native-app-replay-S06-git-worktree-branch-flow-2392234-1785282630084288562.sock",
         "stderr": "kanvibe native scaffold mode: HeadlessStub",
         "stdout": ""
       },
@@ -194,12 +194,12 @@
           "KANVIBE_LOCALE",
           "KANVIBE_QA_SOCKET"
         ],
-        "dbCopyPath": "../qa/parity/native-db/S07-board-drag-drop-status.sqlite",
+        "dbCopyPath": "../qa/parity/native-db/S07-board-drag-drop-status-2392234-1785282630094529101.sqlite",
         "exitStatus": 0,
         "lastSocketError": "No such file or directory (os error 2)",
         "processExitedBeforeSocket": true,
         "qaSocketReady": false,
-        "socketPath": "/tmp/kanvibe-qa-native-app-replay-S07-board-drag-drop-status-3160445-1783490369882932885.sock",
+        "socketPath": "/tmp/kanvibe-qa-native-app-replay-S07-board-drag-drop-status-2392234-1785282630094609631.sock",
         "stderr": "kanvibe native scaffold mode: HeadlessStub",
         "stdout": ""
       },
@@ -222,12 +222,12 @@
           "KANVIBE_LOCALE",
           "KANVIBE_QA_SOCKET"
         ],
-        "dbCopyPath": "../qa/parity/native-db/S08-context-menu-status-and-delete.sqlite",
+        "dbCopyPath": "../qa/parity/native-db/S08-context-menu-status-and-delete-2392234-1785282630104886419.sqlite",
         "exitStatus": 0,
         "lastSocketError": "No such file or directory (os error 2)",
         "processExitedBeforeSocket": true,
         "qaSocketReady": false,
-        "socketPath": "/tmp/kanvibe-qa-native-app-replay-S08-context-menu-status-and-delete-3160445-1783490369893356810.sock",
+        "socketPath": "/tmp/kanvibe-qa-native-app-replay-S08-context-menu-status-and-delete-2392234-1785282630104972639.sock",
         "stderr": "kanvibe native scaffold mode: HeadlessStub",
         "stdout": ""
       },
@@ -250,12 +250,12 @@
           "KANVIBE_LOCALE",
           "KANVIBE_QA_SOCKET"
         ],
-        "dbCopyPath": "../qa/parity/native-db/S09-vim-keyboard-shortcuts-search.sqlite",
+        "dbCopyPath": "../qa/parity/native-db/S09-vim-keyboard-shortcuts-search-2392234-1785282630115236937.sqlite",
         "exitStatus": 0,
         "lastSocketError": "No such file or directory (os error 2)",
         "processExitedBeforeSocket": true,
         "qaSocketReady": false,
-        "socketPath": "/tmp/kanvibe-qa-native-app-replay-S09-vim-keyboard-shortcuts-search-3160445-1783490369903774874.sock",
+        "socketPath": "/tmp/kanvibe-qa-native-app-replay-S09-vim-keyboard-shortcuts-search-2392234-1785282630115319537.sock",
         "stderr": "kanvibe native scaffold mode: HeadlessStub",
         "stdout": ""
       },
@@ -278,12 +278,12 @@
           "KANVIBE_LOCALE",
           "KANVIBE_QA_SOCKET"
         ],
-        "dbCopyPath": "../qa/parity/native-db/S10-settings-pane-layout.sqlite",
+        "dbCopyPath": "../qa/parity/native-db/S10-settings-pane-layout-2392234-1785282630125557156.sqlite",
         "exitStatus": 0,
         "lastSocketError": "No such file or directory (os error 2)",
         "processExitedBeforeSocket": true,
         "qaSocketReady": false,
-        "socketPath": "/tmp/kanvibe-qa-native-app-replay-S10-settings-pane-layout-3160445-1783490369914158198.sock",
+        "socketPath": "/tmp/kanvibe-qa-native-app-replay-S10-settings-pane-layout-2392234-1785282630125659496.sock",
         "stderr": "kanvibe native scaffold mode: HeadlessStub",
         "stdout": ""
       },
@@ -306,12 +306,12 @@
           "KANVIBE_LOCALE",
           "KANVIBE_QA_SOCKET"
         ],
-        "dbCopyPath": "../qa/parity/native-db/S11-notifications-hooks-background-sync.sqlite",
+        "dbCopyPath": "../qa/parity/native-db/S11-notifications-hooks-background-sync-2392234-1785282630135974124.sqlite",
         "exitStatus": 0,
         "lastSocketError": "No such file or directory (os error 2)",
         "processExitedBeforeSocket": true,
         "qaSocketReady": false,
-        "socketPath": "/tmp/kanvibe-qa-native-app-replay-S11-notifications-hooks-background-sync-3160445-1783490369924527073.sock",
+        "socketPath": "/tmp/kanvibe-qa-native-app-replay-S11-notifications-hooks-background-sync-2392234-1785282630136064984.sock",
         "stderr": "kanvibe native scaffold mode: HeadlessStub",
         "stdout": ""
       },
@@ -334,12 +334,12 @@
           "KANVIBE_LOCALE",
           "KANVIBE_QA_SOCKET"
         ],
-        "dbCopyPath": "../qa/parity/native-db/S12-project-filter-and-done-pagination.sqlite",
+        "dbCopyPath": "../qa/parity/native-db/S12-project-filter-and-done-pagination-2392234-1785282630146364272.sqlite",
         "exitStatus": 0,
         "lastSocketError": "No such file or directory (os error 2)",
         "processExitedBeforeSocket": true,
         "qaSocketReady": false,
-        "socketPath": "/tmp/kanvibe-qa-native-app-replay-S12-project-filter-and-done-pagination-3160445-1783490369934895138.sock",
+        "socketPath": "/tmp/kanvibe-qa-native-app-replay-S12-project-filter-and-done-pagination-2392234-1785282630146468802.sock",
         "stderr": "kanvibe native scaffold mode: HeadlessStub",
         "stdout": ""
       },
@@ -362,12 +362,12 @@
           "KANVIBE_LOCALE",
           "KANVIBE_QA_SOCKET"
         ],
-        "dbCopyPath": "../qa/parity/native-db/S13-task-detail-existing-window-focus.sqlite",
+        "dbCopyPath": "../qa/parity/native-db/S13-task-detail-existing-window-focus-2392234-1785282630156801051.sqlite",
         "exitStatus": 0,
         "lastSocketError": "No such file or directory (os error 2)",
         "processExitedBeforeSocket": true,
         "qaSocketReady": false,
-        "socketPath": "/tmp/kanvibe-qa-native-app-replay-S13-task-detail-existing-window-focus-3160445-1783490369945269262.sock",
+        "socketPath": "/tmp/kanvibe-qa-native-app-replay-S13-task-detail-existing-window-focus-2392234-1785282630156924331.sock",
         "stderr": "kanvibe native scaffold mode: HeadlessStub",
         "stdout": ""
       },
@@ -390,12 +390,12 @@
           "KANVIBE_LOCALE",
           "KANVIBE_QA_SOCKET"
         ],
-        "dbCopyPath": "../qa/parity/native-db/S14-remote-session-dependencies.sqlite",
+        "dbCopyPath": "../qa/parity/native-db/S14-remote-session-dependencies-2392234-1785282630167327099.sqlite",
         "exitStatus": 0,
         "lastSocketError": "No such file or directory (os error 2)",
         "processExitedBeforeSocket": true,
         "qaSocketReady": false,
-        "socketPath": "/tmp/kanvibe-qa-native-app-replay-S14-remote-session-dependencies-3160445-1783490369955670886.sock",
+        "socketPath": "/tmp/kanvibe-qa-native-app-replay-S14-remote-session-dependencies-2392234-1785282630167469229.sock",
         "stderr": "kanvibe native scaffold mode: HeadlessStub",
         "stdout": ""
       },

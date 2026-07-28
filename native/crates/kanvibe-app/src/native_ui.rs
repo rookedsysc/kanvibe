@@ -13,7 +13,8 @@ use crate::{
 
 pub fn run_native_ui() -> Result<(), Box<dyn Error + Send + Sync>> {
     let config = NativeUiLaunchConfig::from_env()?;
-    let bootstrap = load_read_only_board(&config.repo_root, &config.database_path, config.locale)?;
+    let database_path = config.ensure_database_file()?;
+    let bootstrap = load_read_only_board(&config.repo_root, &database_path, config.locale)?;
     let spec = build_native_ui_render_spec(&bootstrap);
     let _qa_socket = crate::qa_control::spawn_debug_qa_socket_from_env(spec.clone())?;
     let app = Application::new();
