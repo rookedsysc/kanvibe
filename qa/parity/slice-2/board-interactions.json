@@ -20,6 +20,11 @@
       "qa-task-done-migrated"
     ]
   },
+  "doneTransitionCleanupPlan": {
+    "hasPlan": true,
+    "hasResourcesToClean": false,
+    "rollbackStatus": "progress"
+  },
   "editedTask": {
     "description": null,
     "priority": "high",

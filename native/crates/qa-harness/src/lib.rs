@@ -21,8 +21,9 @@ use kanvibe_app::{
     task_detail_dock_items, task_detail_href,
 };
 use kanvibe_core::{
-    BoardSnapshot, CreateTaskInput, DONE_PAGE_SIZE, KanvibeDb, PaneCommand, PaneLayoutType,
-    SavePaneLayoutInput, SessionType, TaskPriority, TaskStatus, TaskUpdatePatch, ThemePreference,
+    BoardSnapshot, CreateTaskInput, DONE_PAGE_SIZE, DoneCleanupPlan, KanvibeDb, PaneCommand,
+    PaneLayoutType, SavePaneLayoutInput, SessionType, TaskPriority, TaskStatus, TaskUpdatePatch,
+    ThemePreference,
 };
 use kanvibe_git::{
     changed_files, create_worktree_with_session, current_branch, file_content,
@@ -195,7 +196,7 @@ pub fn board_interaction_report(
     ])?;
     let reordered_todo = database.board_snapshot(DONE_PAGE_SIZE)?;
 
-    database.move_task_to_column(
+    let done_cleanup_plan = database.move_task_to_column(
         &created.id,
         TaskStatus::Done,
         &[
@@ -262,7 +263,16 @@ pub fn board_interaction_report(
             "priority": edited.priority.map(TaskPriority::as_str),
         },
         "movedToProgress": {
-            "status": moved_to_progress.status.as_str(),
+            "status": moved_to_progress.task.status.as_str(),
+        },
+        "doneTransitionCleanupPlan": {
+            "hasPlan": done_cleanup_plan.is_some(),
+            "hasResourcesToClean": done_cleanup_plan
+                .as_ref()
+                .is_some_and(DoneCleanupPlan::has_resources_to_clean),
+            "rollbackStatus": done_cleanup_plan
+                .as_ref()
+                .map(|plan| plan.rollback.status.as_str()),
         },
         "todoOrderAfterReorder": reordered_todo
             .column(TaskStatus::Todo)

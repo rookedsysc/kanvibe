@@ -68,13 +68,26 @@ The script builds `kanvibe-app` with `--features native-ui`, stages `native/dist
 
 The first native UI slice renders the seed board as a GPUI root window with project/task counts, all board columns, first-card titles, and semantic color tokens. Linux verification covers the shared `NativeUiRenderSpec`; macOS visual parity still requires the Phase 5 GPUI screenshot/video run.
 
-Scoped launch overrides:
+### Product Launch Paths
+
+`NativeUiLaunchConfig` resolves product defaults first and treats every `KANVIBE_*` path as a QA-only override, so a packaged `.app` opened from Finder boots without any environment variables:
+
+| Value | Product default | Electron counterpart |
+| --- | --- | --- |
+| Resource root | `Contents/Resources` when the executable sits in `Contents/MacOS`, otherwise the current directory | `app.getAppPath()` / `process.resourcesPath` |
+| Runtime DB | `<userData>/kanvibe.db` — macOS `~/Library/Application Support/KanVibe`, Linux `~/.config/KanVibe` | `getRuntimeDatabasePath()` |
+| First-run DB init | copies `resources/database/app.seed.db` from the resource root | `ensureRuntimeDatabaseFile()` |
+
+`scripts/package-macos-app.sh` stages `messages/` and `resources/database/app.seed.db` into `Contents/Resources` so both lookups resolve inside the bundle. The macOS Finder smoke test (launch the signed `.app` with no environment and confirm the board window opens) still belongs to the Phase 5 macOS run.
+
+Scoped launch overrides (QA only):
 
 | Env var | Purpose |
 | --- | --- |
-| `KANVIBE_REPO_ROOT` | Repository root for message catalogs and QA fixtures |
-| `KANVIBE_DB_PATH` | SQLite DB path for native app launch |
-| `KANVIBE_LOCALE` | `ko` or `en`; falls back to Korean |
+| `KANVIBE_REPO_ROOT` | Resource root override for message catalogs and QA fixtures |
+| `KANVIBE_DB_PATH` | Exact SQLite DB path for native app launch |
+| `KANVIBE_APP_DATA_DIR` | userData directory override; the DB is resolved as `<dir>/kanvibe.db` |
+| `KANVIBE_LOCALE` | `ko`, `en`, or `zh`; unrecognized codes fall back to Korean |
 
 Linux-safe checks:
 
@@ -161,6 +174,8 @@ cargo run -p qa-harness -- readonly-board --repo-root .. --locale ko --output ..
 ## Slice 2 Status
 
 `kanvibe-core` now includes board write contracts for create, edit, status move, drag-style column move, reorder, delete, project color update, and done pagination. These operate on copied SQLite fixtures in tests and do not mutate the shared seed DB.
+
+The Done transition follows Electron's optimistic-cleanup contract. Because moving a task to Done clears `session_type`, `session_name`, and `worktree_path`, the DB would otherwise lose the only record of what needs cleaning. `update_task_status` and `move_task_to_column` therefore return a `DoneCleanupPlan` carrying the pre-transition snapshot; the caller runs the actual session/worktree cleanup and reports the result through `finish_done_cleanup`, which either keeps the cleared row or rolls the task back to its previous status, session, and worktree. A rollback is skipped when the task has already moved off Done in the meantime. Executing the cleanup commands themselves stays with the session/worktree service layer.
 
 Slice 2 QA report:
 

@@ -6,8 +6,9 @@ use std::{
 };
 
 use kanvibe_core::{
-    CreateTaskInput, DONE_PAGE_SIZE, KanvibeDb, REQUIRED_TASK_STATUSES, TABLE_CONTRACTS,
-    TaskPriority, TaskStatus, TaskUpdatePatch, seed_db_path_from_crate_manifest,
+    CreateTaskInput, DONE_PAGE_SIZE, DoneCleanupOutcome, DoneCleanupResult, KanvibeDb,
+    REQUIRED_TASK_STATUSES, TABLE_CONTRACTS, TaskPriority, TaskStatus, TaskUpdatePatch,
+    seed_db_path_from_crate_manifest,
 };
 
 fn sqlite_scalar(db_path: &Path, sql: &str) -> String {
@@ -171,7 +172,8 @@ fn board_write_models_cover_crud_status_move_reorder_and_done_paging() {
         .update_task_status(&created.id, TaskStatus::Progress)
         .expect("status update should succeed")
         .expect("created task should still exist");
-    assert_eq!(moved.status, TaskStatus::Progress);
+    assert_eq!(moved.task.status, TaskStatus::Progress);
+    assert!(moved.done_cleanup.is_none());
 
     let todo_order = vec![
         "qa-task-todo-remote".to_owned(),
@@ -220,6 +222,144 @@ fn board_write_models_cover_crud_status_move_reorder_and_done_paging() {
             .expect("task lookup should succeed")
             .is_none()
     );
+}
+
+/// Done 전환은 세션/worktree 컬럼을 비우므로, 정리 대상을 스냅샷으로 넘겨받지 못하면
+/// 디스크의 worktree와 세션이 영구 고아가 된다. Electron의 optimistic 전환 + 롤백 계약을 검증한다.
+#[test]
+fn done_transition_hands_back_cleanup_targets_and_rolls_back_on_failure() {
+    let db_path = writable_seed_copy("done-cleanup-lifecycle");
+    let database = KanvibeDb::open_read_write(&db_path).expect("writable seed copy should open");
+
+    let before = database
+        .task_by_id("qa-task-review-diff")
+        .expect("task lookup should succeed")
+        .expect("seed task should exist");
+    assert_eq!(before.session_name.as_deref(), Some("kanvibe-native-diff"));
+
+    let update = database
+        .update_task_status("qa-task-review-diff", TaskStatus::Done)
+        .expect("done transition should succeed")
+        .expect("task should exist");
+    let plan = update
+        .done_cleanup
+        .expect("done transition must return a cleanup plan");
+
+    // DB에서는 비워지지만 정리에 필요한 값은 스냅샷에 남는다.
+    assert_eq!(update.task.status, TaskStatus::Done);
+    assert_eq!(update.task.session_name, None);
+    assert_eq!(update.task.worktree_path, None);
+    assert_eq!(update.task.session_type, None);
+    assert_eq!(plan.cleanup_task.session_name, before.session_name);
+    assert_eq!(plan.cleanup_task.worktree_path, before.worktree_path);
+    assert_eq!(plan.cleanup_task.session_type, before.session_type);
+    assert!(plan.has_resources_to_clean());
+
+    // 정리 실패 -> 전환 직전 상태로 롤백된다.
+    assert_eq!(
+        database
+            .finish_done_cleanup(&plan, DoneCleanupResult::Failed)
+            .expect("rollback should succeed"),
+        DoneCleanupOutcome::RolledBack
+    );
+    let restored = database
+        .task_by_id("qa-task-review-diff")
+        .expect("task lookup should succeed")
+        .expect("task should exist after rollback");
+    assert_eq!(restored.status, before.status);
+    assert_eq!(restored.session_type, before.session_type);
+    assert_eq!(restored.session_name, before.session_name);
+    assert_eq!(restored.worktree_path, before.worktree_path);
+    assert_eq!(restored.ssh_host, before.ssh_host);
+
+    // 정리 성공 -> 비워진 Done 상태를 유지한다.
+    let second = database
+        .update_task_status("qa-task-review-diff", TaskStatus::Done)
+        .expect("done transition should succeed")
+        .expect("task should exist")
+        .done_cleanup
+        .expect("done transition must return a cleanup plan");
+    assert_eq!(
+        database
+            .finish_done_cleanup(&second, DoneCleanupResult::Succeeded)
+            .expect("cleanup completion should succeed"),
+        DoneCleanupOutcome::Cleared
+    );
+    let cleared = database
+        .task_by_id("qa-task-review-diff")
+        .expect("task lookup should succeed")
+        .expect("task should exist after cleanup");
+    assert_eq!(cleared.status, TaskStatus::Done);
+    assert_eq!(cleared.session_name, None);
+    assert_eq!(cleared.worktree_path, None);
+}
+
+/// 정리가 진행되는 동안 사용자가 상태를 다시 옮겼다면 롤백이 그 변경을 덮어써서는 안 된다.
+#[test]
+fn done_cleanup_failure_does_not_override_a_later_status_change() {
+    let db_path = writable_seed_copy("done-cleanup-late-change");
+    let database = KanvibeDb::open_read_write(&db_path).expect("writable seed copy should open");
+
+    let plan = database
+        .update_task_status("qa-task-progress-terminal", TaskStatus::Done)
+        .expect("done transition should succeed")
+        .expect("task should exist")
+        .done_cleanup
+        .expect("done transition must return a cleanup plan");
+
+    database
+        .update_task_status("qa-task-progress-terminal", TaskStatus::Todo)
+        .expect("later status change should succeed")
+        .expect("task should exist");
+
+    assert_eq!(
+        database
+            .finish_done_cleanup(&plan, DoneCleanupResult::Failed)
+            .expect("rollback decision should succeed"),
+        DoneCleanupOutcome::SkippedRollback
+    );
+    assert_eq!(
+        database
+            .task_by_id("qa-task-progress-terminal")
+            .expect("task lookup should succeed")
+            .expect("task should exist")
+            .status,
+        TaskStatus::Todo
+    );
+}
+
+/// Done 컬럼으로의 드래그 이동도 같은 정리 계약을 통과해야 한다.
+#[test]
+fn move_task_to_done_column_returns_cleanup_plan() {
+    let db_path = writable_seed_copy("done-column-move-plan");
+    let database = KanvibeDb::open_read_write(&db_path).expect("writable seed copy should open");
+
+    let plan = database
+        .move_task_to_column(
+            "qa-task-pending-review",
+            TaskStatus::Done,
+            &[
+                "qa-task-pending-review".to_owned(),
+                "qa-task-done-migrated".to_owned(),
+            ],
+        )
+        .expect("move to done should succeed")
+        .expect("done column move must return a cleanup plan");
+
+    assert!(plan.has_resources_to_clean());
+    assert_eq!(
+        plan.cleanup_task.session_name.as_deref(),
+        Some("kanvibe-design-parity")
+    );
+
+    let non_done = database
+        .move_task_to_column(
+            "qa-task-todo-local",
+            TaskStatus::Progress,
+            &["qa-task-todo-local".to_owned()],
+        )
+        .expect("move to progress should succeed");
+    assert!(non_done.is_none());
 }
 
 #[test]

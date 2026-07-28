@@ -229,6 +229,77 @@ pub struct KanbanTask {
     pub updated_at: String,
 }
 
+/// Done 전환 실패 시 되돌릴 값. Electron `DoneRollbackSnapshot`과 같은 필드를 보존한다.
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+pub struct DoneRollbackSnapshot {
+    pub id: String,
+    pub status: TaskStatus,
+    pub session_type: Option<SessionType>,
+    pub session_name: Option<String>,
+    pub worktree_path: Option<String>,
+    pub ssh_host: Option<String>,
+    pub project_id: Option<String>,
+    pub branch_name: Option<String>,
+}
+
+impl DoneRollbackSnapshot {
+    fn from_task(task: &KanbanTask) -> Self {
+        Self {
+            id: task.id.clone(),
+            status: task.status,
+            session_type: task.session_type,
+            session_name: task.session_name.clone(),
+            worktree_path: task.worktree_path.clone(),
+            ssh_host: task.ssh_host.clone(),
+            project_id: task.project_id.clone(),
+            branch_name: task.branch_name.clone(),
+        }
+    }
+}
+
+/// Done 전환으로 DB에서 지워진 리소스 정보를 담는다. 이것이 없으면 정리 대상을 복구할 수 없다.
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+pub struct DoneCleanupPlan {
+    /// 전환 직전 스냅샷. 세션/worktree 값이 그대로 남아 있어 정리 실행에 사용한다.
+    pub cleanup_task: KanbanTask,
+    pub rollback: DoneRollbackSnapshot,
+}
+
+impl DoneCleanupPlan {
+    /// 정리할 리소스가 하나라도 있는지. Electron `cleanupTaskResources`의 진입 조건과 같다.
+    pub fn has_resources_to_clean(&self) -> bool {
+        let has_session =
+            self.cleanup_task.session_type.is_some() && self.cleanup_task.session_name.is_some();
+        let has_worktree =
+            self.cleanup_task.branch_name.is_some() && self.cleanup_task.worktree_path.is_some();
+
+        has_session || has_worktree
+    }
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub enum DoneCleanupResult {
+    Succeeded,
+    Failed,
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub enum DoneCleanupOutcome {
+    /// 정리에 성공해 비워진 상태를 유지한다.
+    Cleared,
+    /// 정리에 실패해 전환 직전 상태로 되돌렸다.
+    RolledBack,
+    /// 그 사이 상태가 다시 바뀌어 되돌리지 않았다.
+    SkippedRollback,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+pub struct TaskStatusUpdate {
+    pub task: KanbanTask,
+    /// Done 전환일 때만 존재한다.
+    pub done_cleanup: Option<DoneCleanupPlan>,
+}
+
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub struct BoardColumn {
     pub status: TaskStatus,
@@ -454,29 +525,98 @@ impl KanvibeDb {
             .ok_or_else(|| rusqlite::Error::QueryReturnedNoRows)
     }
 
+    /// Electron `updateTaskStatus`의 포팅.
+    ///
+    /// Done 전환은 세션/worktree 컬럼을 비우기 때문에, 무엇을 정리해야 하는지가 DB에서 사라진다.
+    /// 그래서 Done일 때는 전환 직전 스냅샷을 담은 [`DoneCleanupPlan`]을 함께 돌려주고,
+    /// 호출자가 실제 정리 후 [`KanvibeDb::finish_done_cleanup`]으로 확정 또는 롤백하게 한다.
     pub fn update_task_status(
         &self,
         task_id: &str,
         new_status: TaskStatus,
-    ) -> rusqlite::Result<Option<KanbanTask>> {
-        if new_status == TaskStatus::Done {
-            self.connection.execute(
-                "UPDATE kanban_tasks
-                 SET status = ?1, session_type = NULL, session_name = NULL,
-                     worktree_path = NULL, updated_at = CURRENT_TIMESTAMP
-                 WHERE id = ?2",
-                params![new_status.as_str(), task_id],
-            )?;
-        } else {
+    ) -> rusqlite::Result<Option<TaskStatusUpdate>> {
+        let Some(previous) = self.task_by_id(task_id)? else {
+            return Ok(None);
+        };
+
+        if new_status != TaskStatus::Done {
             self.connection.execute(
                 "UPDATE kanban_tasks
                  SET status = ?1, updated_at = CURRENT_TIMESTAMP
                  WHERE id = ?2",
                 params![new_status.as_str(), task_id],
             )?;
+
+            return Ok(self.task_by_id(task_id)?.map(|task| TaskStatusUpdate {
+                task,
+                done_cleanup: None,
+            }));
         }
 
-        self.task_by_id(task_id)
+        self.connection.execute(
+            "UPDATE kanban_tasks
+             SET status = ?1, session_type = NULL, session_name = NULL,
+                 worktree_path = NULL, updated_at = CURRENT_TIMESTAMP
+             WHERE id = ?2",
+            params![new_status.as_str(), task_id],
+        )?;
+
+        Ok(self.task_by_id(task_id)?.map(|task| TaskStatusUpdate {
+            task,
+            done_cleanup: Some(DoneCleanupPlan {
+                rollback: DoneRollbackSnapshot::from_task(&previous),
+                cleanup_task: previous,
+            }),
+        }))
+    }
+
+    /// 리소스 정리 결과를 반영한다. 실패하면 Electron `rollbackDoneTransition`과 같이 되돌린다.
+    pub fn finish_done_cleanup(
+        &self,
+        plan: &DoneCleanupPlan,
+        result: DoneCleanupResult,
+    ) -> rusqlite::Result<DoneCleanupOutcome> {
+        match result {
+            DoneCleanupResult::Succeeded => Ok(DoneCleanupOutcome::Cleared),
+            DoneCleanupResult::Failed => {
+                if self.rollback_done_transition(&plan.rollback)? {
+                    Ok(DoneCleanupOutcome::RolledBack)
+                } else {
+                    Ok(DoneCleanupOutcome::SkippedRollback)
+                }
+            }
+        }
+    }
+
+    /// 스냅샷 시점 이후 사용자가 상태를 다시 바꿨다면 되돌리지 않는다.
+    pub fn rollback_done_transition(
+        &self,
+        snapshot: &DoneRollbackSnapshot,
+    ) -> rusqlite::Result<bool> {
+        let current = self.task_by_id(&snapshot.id)?;
+        let Some(current) = current else {
+            return Ok(false);
+        };
+        if current.status != TaskStatus::Done {
+            return Ok(false);
+        }
+
+        self.connection.execute(
+            "UPDATE kanban_tasks
+             SET status = ?1, session_type = ?2, session_name = ?3, worktree_path = ?4,
+                 ssh_host = ?5, updated_at = CURRENT_TIMESTAMP
+             WHERE id = ?6",
+            params![
+                snapshot.status.as_str(),
+                snapshot.session_type.map(SessionType::as_str),
+                snapshot.session_name,
+                snapshot.worktree_path,
+                snapshot.ssh_host,
+                snapshot.id,
+            ],
+        )?;
+
+        Ok(true)
     }
 
     pub fn update_task(
@@ -552,14 +692,19 @@ impl KanvibeDb {
         Ok(())
     }
 
+    /// Done 컬럼으로 옮기는 경우 호출자가 리소스 정리를 이어받을 수 있도록 계획을 돌려준다.
     pub fn move_task_to_column(
         &self,
         task_id: &str,
         new_status: TaskStatus,
         dest_ordered_ids: &[String],
-    ) -> rusqlite::Result<()> {
-        self.update_task_status(task_id, new_status)?;
-        self.reorder_tasks(dest_ordered_ids)
+    ) -> rusqlite::Result<Option<DoneCleanupPlan>> {
+        let done_cleanup = self
+            .update_task_status(task_id, new_status)?
+            .and_then(|update| update.done_cleanup);
+        self.reorder_tasks(dest_ordered_ids)?;
+
+        Ok(done_cleanup)
     }
 
     pub fn branch_from_task(
