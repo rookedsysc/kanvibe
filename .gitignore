@@ -45,7 +45,6 @@
 /.kanvibe/
 /.tooling/
 /.omc/
-/resources/database/app.seed.db
 
 # AI agent local state
 /.claude/.notification-context.json

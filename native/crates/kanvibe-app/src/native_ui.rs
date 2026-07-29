@@ -26,8 +26,8 @@ use gpui_component::{
 use gpui_terminal::{TerminalConfig, TerminalView};
 use kanvibe_ai::{AiMessageRole, AiSessionDetail, AiSessionProvider, AiSessionsPage};
 use kanvibe_core::{
-    DONE_PAGE_SIZE, KanvibeDb, PaneLayoutConfig, SessionType, TaskPriority, TaskStatus,
-    ThemePreference,
+    DONE_PAGE_SIZE, KanvibeDb, PaneLayoutConfig, PaneLayoutType, SessionType, TaskPriority,
+    TaskStatus, ThemePreference,
 };
 use kanvibe_hooks::{AppNotification, HookProviderStatus};
 use kanvibe_pty::{
