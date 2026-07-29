@@ -716,15 +716,15 @@ mod tests {
         let bytes = scroll_report(3, point, 0, mode);
         assert!(bytes.is_some());
         let sequence = String::from_utf8(bytes.unwrap()).unwrap();
-        // Wheel up = button 64
-        assert_eq!(sequence, "\x1b[<64;11;6M");
+        // Wheel up = button 64, one report per row
+        assert_eq!(sequence, "\x1b[<64;11;6M".repeat(3));
 
         // Scroll down
         let bytes = scroll_report(-2, point, 0, mode);
         assert!(bytes.is_some());
         let sequence = String::from_utf8(bytes.unwrap()).unwrap();
-        // Wheel down = button 65
-        assert_eq!(sequence, "\x1b[<65;11;6M");
+        // Wheel down = button 65, one report per row
+        assert_eq!(sequence, "\x1b[<65;11;6M".repeat(2));
     }
 
     #[test]
