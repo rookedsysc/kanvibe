@@ -2241,8 +2241,12 @@ mod tests {
         fs::create_dir_all(root.join("plain/directory")).expect("plain directory");
 
         let repositories = scan_git_repositories(&root).expect("scan repositories");
+        let expected = vec![
+            fs::canonicalize(first).expect("canonicalize first repository"),
+            fs::canonicalize(second).expect("canonicalize second repository"),
+        ];
 
-        assert_eq!(repositories, vec![first, second]);
+        assert_eq!(repositories, expected);
         fs::remove_dir_all(root).expect("remove scan fixture");
     }
 
@@ -2841,6 +2845,8 @@ mod tests {
 
         let fixture = create_remote_ssh_fixture("remote-session-files", "exit 1");
         let home = fixture.join("home");
+        fs::create_dir_all(&home).expect("home directory");
+        let home = fs::canonicalize(home).expect("canonicalize home directory");
         let sessions = home.join(".codex/sessions/2026");
         fs::create_dir_all(&sessions).expect("session directory");
         fs::write(
