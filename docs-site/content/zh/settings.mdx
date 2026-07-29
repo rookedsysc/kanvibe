@@ -6,9 +6,13 @@ title: 设置
 
 KanVibe 设置页把项目注册、显示偏好、终端 pane 配置、通知、任务创建默认值和后台 Sync 集中在一个地方管理。设置会保存到应用数据库中，其中多项会在保存后立即反映到看板或任务详情工作区。
 
+<div className="kv-note">
+  本页记录 Electron 一致性基准设置，以及原生 Rust + GPUI 应用必须保留的行为。下图是 Electron 截图。Rust 设置与布局合约已经存在，但完整的 macOS GPUI 设置 UI 和原生视觉捕获仍需 Phase 5 运行时门禁。
+</div>
+
 <figure className="kv-shot">
-  <img src="/screenshots/settings.png" alt="KanVibe 设置页面" />
-  <figcaption>在设置页管理外观、Pane 布局、详情页默认值、通知状态、后台 Sync 和项目注册。</figcaption>
+  <img src="/screenshots/settings.png" alt="KanVibe 设置页面的 Electron 一致性基准界面" />
+  <figcaption>Electron 一致性基准 — 在设置页管理外观、Pane 布局、详情页默认值、通知状态、后台 Sync 和项目注册。</figcaption>
 </figure>
 
 ## 设置页可管理的内容

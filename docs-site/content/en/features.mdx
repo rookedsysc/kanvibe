@@ -6,11 +6,15 @@ title: Features
 
 KanVibe connects the Kanban board, terminal sessions, git worktrees, and AI agent hooks into one workflow.
 
+<div className="kv-note">
+  These features describe the retained Electron parity baseline and the behavior contracts the native app is migrating toward. The Rust workspace already covers portable database, Git, PTY, hooks, theme, localization, application-state, and QA contracts, but complete GPUI runtime and visual parity is not yet claimed. Every screenshot on this page is an Electron baseline capture; native capture remains pending on macOS.
+</div>
+
 ## Real-time Kanban board
 
 <figure className="kv-shot">
-  <img src="/screenshots/board.png" alt="KanVibe main Kanban board" />
-  <figcaption>Manage TODO, PROGRESS, PENDING, REVIEW, and DONE with project colors and task metadata.</figcaption>
+  <img src="/screenshots/board.png" alt="Electron parity baseline of the KanVibe main Kanban board" />
+  <figcaption>Electron parity baseline — manage TODO, PROGRESS, PENDING, REVIEW, and DONE with project colors and task metadata.</figcaption>
 </figure>
 
 <div className="kv-status-flow">
@@ -24,8 +28,8 @@ KanVibe connects the Kanban board, terminal sessions, git worktrees, and AI agen
 ## Task detail workspace
 
 <figure className="kv-shot">
-  <img src="/screenshots/task-detail.png" alt="Per-task terminal workspace" />
-  <figcaption>Each task provides an isolated terminal interface so agent runs, direct commands, builds, and tests stay freely interchangeable.</figcaption>
+  <img src="/screenshots/task-detail.png" alt="Electron parity baseline of the per-task terminal workspace" />
+  <figcaption>Electron parity baseline — each task provides an isolated terminal interface so agent runs, direct commands, builds, and tests stay freely interchangeable.</figcaption>
 </figure>
 
 - Open tmux or zellij sessions in the browser or desktop app.
@@ -37,12 +41,12 @@ KanVibe connects the Kanban board, terminal sessions, git worktrees, and AI agen
 
 <div className="kv-grid">
   <figure className="kv-shot">
-    <img src="/screenshots/ai-chat-provider-filters.png" alt="AI chat provider filter with Claude and Gemini selected together" />
-    <figcaption>Select multiple agents in the left provider icon rail to show all matching sessions with OR semantics.</figcaption>
+    <img src="/screenshots/ai-chat-provider-filters.png" alt="Electron parity baseline of the AI chat provider filter with Claude and Gemini selected together" />
+    <figcaption>Electron parity baseline — select multiple agents in the left provider icon rail to show all matching sessions with OR semantics.</figcaption>
   </figure>
   <figure className="kv-shot">
-    <img src="/screenshots/ai-chat-search.png" alt="AI chat body search result" />
-    <figcaption>Search matches conversation body text as well as session titles, then opens the relevant message context.</figcaption>
+    <img src="/screenshots/ai-chat-search.png" alt="Electron parity baseline of an AI chat body search result" />
+    <figcaption>Electron parity baseline — search matches conversation body text as well as session titles, then opens the relevant message context.</figcaption>
   </figure>
 </div>
 
@@ -54,20 +58,20 @@ KanVibe connects the Kanban board, terminal sessions, git worktrees, and AI agen
 ## Quick task search
 
 <figure className="kv-shot">
-  <img src="/screenshots/quick-search.png" alt="Quick task search dialog" />
-  <figcaption>Search all tasks by branch or project name and jump directly into the task workspace.</figcaption>
+  <img src="/screenshots/quick-search.png" alt="Electron parity baseline of the quick task search dialog" />
+  <figcaption>Electron parity baseline — search all tasks by branch or project name and jump directly into the task workspace.</figcaption>
 </figure>
 
 ## Project filters and notifications
 
 <div className="kv-grid">
   <figure className="kv-shot">
-    <img src="/screenshots/project-filter.png" alt="Project filter" />
-    <figcaption>Toggle visible projects from the keyboard.</figcaption>
+    <img src="/screenshots/project-filter.png" alt="Electron parity baseline of the project filter" />
+    <figcaption>Electron parity baseline — toggle visible projects from the keyboard.</figcaption>
   </figure>
   <figure className="kv-shot">
-    <img src="/screenshots/notifications.png" alt="Notification center" />
-    <figcaption>Click a notification to jump directly to the linked task workspace.</figcaption>
+    <img src="/screenshots/notifications.png" alt="Electron parity baseline of the notification center" />
+    <figcaption>Electron parity baseline — click a notification to jump directly to the linked task workspace.</figcaption>
   </figure>
 </div>
 

@@ -6,11 +6,15 @@ title: 기능
 
 KanVibe는 칸반 보드, 터미널 세션, git worktree, AI 에이전트 hooks를 하나의 워크플로우로 연결합니다.
 
+<div className="kv-note">
+  이 기능들은 유지 중인 Electron 파리티 기준선과 네이티브 앱이 이식할 동작 계약을 설명합니다. Rust 워크스페이스는 DB, Git, PTY, hooks, 테마, 다국어, 앱 상태, QA 계약을 이미 다루지만 완전한 GPUI 런타임 및 시각 파리티를 아직 보장하지 않습니다. 이 페이지의 모든 스크린샷은 Electron 기준 캡처이며 네이티브 캡처는 macOS에서 진행할 예정입니다.
+</div>
+
 ## 실시간 칸반 보드
 
 <figure className="kv-shot">
-  <img src="/screenshots/board.png" alt="KanVibe 메인 칸반 보드" />
-  <figcaption>TODO, PROGRESS, PENDING, REVIEW, DONE 상태를 프로젝트 색상과 함께 관리합니다.</figcaption>
+  <img src="/screenshots/board.png" alt="KanVibe 메인 칸반 보드의 Electron 파리티 기준 화면" />
+  <figcaption>Electron 파리티 기준선 — TODO, PROGRESS, PENDING, REVIEW, DONE 상태를 프로젝트 색상과 함께 관리합니다.</figcaption>
 </figure>
 
 <div className="kv-status-flow">
@@ -24,8 +28,8 @@ KanVibe는 칸반 보드, 터미널 세션, git worktree, AI 에이전트 hooks�
 ## 태스크 상세 워크스페이스
 
 <figure className="kv-shot">
-  <img src="/screenshots/task-detail.png" alt="태스크별 터미널 워크스페이스" />
-  <figcaption>각 태스크는 독립 터미널 인터페이스를 제공해 AI 에이전트 실행, 직접 명령, 빌드/테스트를 자유롭게 오갈 수 있습니다.</figcaption>
+  <img src="/screenshots/task-detail.png" alt="태스크별 터미널 워크스페이스의 Electron 파리티 기준 화면" />
+  <figcaption>Electron 파리티 기준선 — 각 태스크는 독립 터미널 인터페이스를 제공해 AI 에이전트 실행, 직접 명령, 빌드/테스트를 자유롭게 오갈 수 있습니다.</figcaption>
 </figure>
 
 - tmux 또는 zellij 세션을 브라우저/데스크톱에서 열 수 있습니다.
@@ -37,12 +41,12 @@ KanVibe는 칸반 보드, 터미널 세션, git worktree, AI 에이전트 hooks�
 
 <div className="kv-grid">
   <figure className="kv-shot">
-    <img src="/screenshots/ai-chat-provider-filters.png" alt="Claude와 Gemini가 함께 선택된 AI 채팅 provider 필터" />
-    <figcaption>왼쪽 provider 아이콘 rail에서 여러 에이전트를 선택하면 OR 조건으로 Claude와 Gemini 같은 선택된 세션을 함께 보여줍니다.</figcaption>
+    <img src="/screenshots/ai-chat-provider-filters.png" alt="AI 채팅 provider 필터의 Electron 파리티 기준 화면" />
+    <figcaption>Electron 파리티 기준선 — 왼쪽 provider 아이콘 rail에서 여러 에이전트를 선택하면 OR 조건으로 Claude와 Gemini 같은 선택된 세션을 함께 보여줍니다.</figcaption>
   </figure>
   <figure className="kv-shot">
-    <img src="/screenshots/ai-chat-search.png" alt="AI 채팅 본문 검색 결과" />
-    <figcaption>검색어가 세션 제목뿐 아니라 대화 본문까지 매칭해 관련 메시지를 바로 열어 줍니다.</figcaption>
+    <img src="/screenshots/ai-chat-search.png" alt="AI 채팅 본문 검색 결과의 Electron 파리티 기준 화면" />
+    <figcaption>Electron 파리티 기준선 — 검색어가 세션 제목뿐 아니라 대화 본문까지 매칭해 관련 메시지를 바로 열어 줍니다.</figcaption>
   </figure>
 </div>
 
@@ -54,20 +58,20 @@ KanVibe는 칸반 보드, 터미널 세션, git worktree, AI 에이전트 hooks�
 ## 빠른 태스크 검색
 
 <figure className="kv-shot">
-  <img src="/screenshots/quick-search.png" alt="빠른 태스크 검색 다이얼로그" />
-  <figcaption>브랜치명 또는 프로젝트명으로 전체 태스크를 검색하고 바로 상세 화면으로 이동합니다.</figcaption>
+  <img src="/screenshots/quick-search.png" alt="빠른 태스크 검색 다이얼로그의 Electron 파리티 기준 화면" />
+  <figcaption>Electron 파리티 기준선 — 브랜치명 또는 프로젝트명으로 전체 태스크를 검색하고 바로 상세 화면으로 이동합니다.</figcaption>
 </figure>
 
 ## 프로젝트 필터와 알림
 
 <div className="kv-grid">
   <figure className="kv-shot">
-    <img src="/screenshots/project-filter.png" alt="프로젝트 필터" />
-    <figcaption>보드에 표시할 프로젝트를 키보드로 토글합니다.</figcaption>
+    <img src="/screenshots/project-filter.png" alt="프로젝트 필터의 Electron 파리티 기준 화면" />
+    <figcaption>Electron 파리티 기준선 — 보드에 표시할 프로젝트를 키보드로 토글합니다.</figcaption>
   </figure>
   <figure className="kv-shot">
-    <img src="/screenshots/notifications.png" alt="알림 센터" />
-    <figcaption>알림을 클릭하면 연결된 태스크 상세 워크스페이스로 바로 이동합니다.</figcaption>
+    <img src="/screenshots/notifications.png" alt="알림 센터의 Electron 파리티 기준 화면" />
+    <figcaption>Electron 파리티 기준선 — 알림을 클릭하면 연결된 태스크 상세 워크스페이스로 바로 이동합니다.</figcaption>
   </figure>
 </div>
 

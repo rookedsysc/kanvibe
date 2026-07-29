@@ -6,9 +6,13 @@ title: Settings
 
 The KanVibe settings page keeps project registration, display preferences, terminal pane configuration, notifications, task creation defaults, and background sync in one place. Settings are stored in the app database, and several of them update the board or task detail workspace immediately after saving.
 
+<div className="kv-note">
+  This page records the Electron parity-baseline settings and the behavior the native Rust + GPUI app must preserve. The screenshot is an Electron capture. Rust settings and layout contracts exist, but the complete macOS GPUI settings UI and native visual capture still require the Phase 5 runtime gate.
+</div>
+
 <figure className="kv-shot">
-  <img src="/screenshots/settings.png" alt="KanVibe settings page" />
-  <figcaption>Manage appearance, pane layouts, detail-page defaults, notification statuses, background sync, and project registration from Settings.</figcaption>
+  <img src="/screenshots/settings.png" alt="Electron parity baseline of the KanVibe settings page" />
+  <figcaption>Electron parity baseline — manage appearance, pane layouts, detail-page defaults, notification statuses, background sync, and project registration from Settings.</figcaption>
 </figure>
 
 ## What Settings controls

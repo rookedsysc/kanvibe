@@ -6,13 +6,17 @@ title: Quick Start
 
 아래 흐름은 KanVibe에서 AI 에이전트 작업을 시작하고, 진행 상태를 추적한 뒤, 완료 처리하는 기본 루틴입니다.
 
+<div className="kv-note">
+  아래 워크플로우와 모든 스크린샷은 현재 Electron 파리티 기준선을 설명합니다. macOS 우선 Rust + GPUI 앱도 같은 계약을 구현하고 있지만, 실제 네이티브 런타임 및 시각 파리티는 Phase 5 macOS 캡처와 검토가 아직 남아 있습니다.
+</div>
+
 ## 1. 프로젝트 등록
 
 설정 화면에서 로컬 git 저장소를 선택합니다. KanVibe는 등록 시점에 프로젝트의 worktree 상태를 읽고, 지원되는 에이전트에 필요한 hook 파일을 자동 설치합니다.
 
 <figure className="kv-shot">
-  <img src="/screenshots/project-register.png" alt="프로젝트 등록 — 디렉토리 스캔" />
-  <figcaption>설정 → 디렉토리 스캔에서 로컬 git 저장소 경로를 지정하고 "스캔 및 등록"을 누르면 프로젝트가 등록됩니다.</figcaption>
+  <img src="/screenshots/project-register.png" alt="프로젝트 등록 및 디렉토리 스캔의 Electron 파리티 기준 화면" />
+  <figcaption>Electron 파리티 기준선 — 설정 → 디렉토리 스캔에서 로컬 git 저장소 경로를 지정하고 "스캔 및 등록"을 누르면 프로젝트가 등록됩니다.</figcaption>
 </figure>
 
 <div className="kv-note">
@@ -20,8 +24,8 @@ title: Quick Start
 </div>
 
 <figure className="kv-shot">
-  <img src="/screenshots/project-delete.png" alt="등록된 프로젝트 목록 — 삭제 버튼" />
-  <figcaption>등록된 프로젝트 옆 "삭제" 버튼을 누르면 KanVibe 내부 레코드만 제거됩니다.</figcaption>
+  <img src="/screenshots/project-delete.png" alt="등록된 프로젝트 삭제 버튼의 Electron 파리티 기준 화면" />
+  <figcaption>Electron 파리티 기준선 — 등록된 프로젝트 옆 "삭제" 버튼을 누르면 KanVibe 내부 레코드만 제거됩니다.</figcaption>
 </figure>
 
 ## 2. 태스크 만들기
@@ -29,8 +33,8 @@ title: Quick Start
 보드에서 TODO 태스크를 추가합니다. 브랜치명을 입력하면 KanVibe가 git worktree를 만들고, tmux 또는 zellij 세션을 연결합니다.
 
 <figure className="kv-shot">
-  <img src="/screenshots/quick-action.png" alt="빠른 액션으로 새 브랜치 TODO 생성" />
-  <figcaption>빠른 검색 결과에서 현재 컨텍스트를 유지한 채 후속 branch TODO를 만들 수 있습니다.</figcaption>
+  <img src="/screenshots/quick-action.png" alt="빠른 액션으로 새 브랜치 TODO를 만드는 Electron 파리티 기준 화면" />
+  <figcaption>Electron 파리티 기준선 — 빠른 검색 결과에서 현재 컨텍스트를 유지한 채 후속 branch TODO를 만들 수 있습니다.</figcaption>
 </figure>
 
 ## 3. 태스크 상세에서 작업
@@ -38,8 +42,8 @@ title: Quick Start
 태스크 카드를 열면 해당 세션의 터미널 워크스페이스로 이동합니다. 왼쪽 dock에서 작업 정보, hook 상태, AI 채팅, PR 링크를 전환하고, 가운데 터미널에서는 직접 명령 실행과 에이전트 대화를 이어갑니다.
 
 <figure className="kv-shot">
-  <img src="/screenshots/task-detail.png" alt="태스크 상세 워크스페이스" />
-  <figcaption>왼쪽 dock에서 작업 정보와 hook 상태를 확인하고, 오른쪽 터미널에서 에이전트 실행과 직접 명령을 이어갑니다.</figcaption>
+  <img src="/screenshots/task-detail.png" alt="태스크 상세 워크스페이스의 Electron 파리티 기준 화면" />
+  <figcaption>Electron 파리티 기준선 — 왼쪽 dock에서 작업 정보와 hook 상태를 확인하고, 오른쪽 터미널에서 에이전트 실행과 직접 명령을 이어갑니다.</figcaption>
 </figure>
 
 ## 4. AI 에이전트로 상태 추적

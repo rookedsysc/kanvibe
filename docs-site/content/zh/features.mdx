@@ -6,11 +6,15 @@ title: 功能
 
 KanVibe 将看板、终端会话、git worktree 与 AI 代理 hooks 连接成一个工作流。
 
+<div className="kv-note">
+  本页功能描述的是保留中的 Electron 一致性基准，以及原生应用需要迁移的行为合约。Rust 工作区已覆盖数据库、Git、PTY、hooks、主题、本地化、应用状态和 QA 合约，但尚未宣称完整的 GPUI 运行时与视觉一致性。本页所有截图均为 Electron 基准截图；原生截图仍待 macOS 运行。
+</div>
+
 ## 实时看板
 
 <figure className="kv-shot">
-  <img src="/screenshots/board.png" alt="KanVibe 主看板" />
-  <figcaption>用项目颜色和任务元数据管理 TODO、PROGRESS、PENDING、REVIEW、DONE。</figcaption>
+  <img src="/screenshots/board.png" alt="KanVibe 主看板的 Electron 一致性基准界面" />
+  <figcaption>Electron 一致性基准 — 用项目颜色和任务元数据管理 TODO、PROGRESS、PENDING、REVIEW、DONE。</figcaption>
 </figure>
 
 <div className="kv-status-flow">
@@ -24,8 +28,8 @@ KanVibe 将看板、终端会话、git worktree 与 AI 代理 hooks 连接成一
 ## 任务详情工作区
 
 <figure className="kv-shot">
-  <img src="/screenshots/task-detail.png" alt="每个任务的终端工作区" />
-  <figcaption>每个任务都提供独立终端界面，可在 AI 代理执行、直接命令、构建和测试之间自由切换。</figcaption>
+  <img src="/screenshots/task-detail.png" alt="任务终端工作区的 Electron 一致性基准界面" />
+  <figcaption>Electron 一致性基准 — 每个任务都提供独立终端界面，可在 AI 代理执行、直接命令、构建和测试之间自由切换。</figcaption>
 </figure>
 
 - 在浏览器或桌面应用中打开 tmux / zellij 会话。
@@ -37,12 +41,12 @@ KanVibe 将看板、终端会话、git worktree 与 AI 代理 hooks 连接成一
 
 <div className="kv-grid">
   <figure className="kv-shot">
-    <img src="/screenshots/ai-chat-provider-filters.png" alt="同时选择 Claude 和 Gemini 的 AI 聊天 provider 过滤器" />
-    <figcaption>在左侧 provider 图标栏中同时选择多个代理时，会以 OR 条件显示所有匹配会话。</figcaption>
+    <img src="/screenshots/ai-chat-provider-filters.png" alt="AI 聊天 provider 过滤器的 Electron 一致性基准界面" />
+    <figcaption>Electron 一致性基准 — 在左侧 provider 图标栏中同时选择多个代理时，会以 OR 条件显示所有匹配会话。</figcaption>
   </figure>
   <figure className="kv-shot">
-    <img src="/screenshots/ai-chat-search.png" alt="AI 聊天正文搜索结果" />
-    <figcaption>搜索不仅匹配会话标题，也会匹配对话正文，并直接打开相关消息上下文。</figcaption>
+    <img src="/screenshots/ai-chat-search.png" alt="AI 聊天正文搜索结果的 Electron 一致性基准界面" />
+    <figcaption>Electron 一致性基准 — 搜索不仅匹配会话标题，也会匹配对话正文，并直接打开相关消息上下文。</figcaption>
   </figure>
 </div>
 
@@ -54,20 +58,20 @@ KanVibe 将看板、终端会话、git worktree 与 AI 代理 hooks 连接成一
 ## 快速任务搜索
 
 <figure className="kv-shot">
-  <img src="/screenshots/quick-search.png" alt="快速任务搜索对话框" />
-  <figcaption>按分支名或项目名搜索全部任务，并直接进入任务工作区。</figcaption>
+  <img src="/screenshots/quick-search.png" alt="快速任务搜索对话框的 Electron 一致性基准界面" />
+  <figcaption>Electron 一致性基准 — 按分支名或项目名搜索全部任务，并直接进入任务工作区。</figcaption>
 </figure>
 
 ## 项目过滤与通知
 
 <div className="kv-grid">
   <figure className="kv-shot">
-    <img src="/screenshots/project-filter.png" alt="项目过滤" />
-    <figcaption>通过键盘切换看板中可见的项目。</figcaption>
+    <img src="/screenshots/project-filter.png" alt="项目过滤的 Electron 一致性基准界面" />
+    <figcaption>Electron 一致性基准 — 通过键盘切换看板中可见的项目。</figcaption>
   </figure>
   <figure className="kv-shot">
-    <img src="/screenshots/notifications.png" alt="通知中心" />
-    <figcaption>点击通知即可直接进入关联任务的详情工作区。</figcaption>
+    <img src="/screenshots/notifications.png" alt="通知中心的 Electron 一致性基准界面" />
+    <figcaption>Electron 一致性基准 — 点击通知即可直接进入关联任务的详情工作区。</figcaption>
   </figure>
 </div>
 

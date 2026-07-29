@@ -6,6 +6,10 @@ title: 단축키
 
 KanVibe는 터미널 포커스를 깨지 않도록 전역/보드/상세 단축키를 명확히 분리합니다.
 
+<div className="kv-note">
+  이 문서는 유지 중인 Electron 파리티 기준선과 macOS 우선 Rust + GPUI 마이그레이션이 목표로 하는 단축키 동작을 설명합니다. Rust route/focus 및 dock 단축키 계약은 구현되어 있지만, 완전한 네이티브 이벤트 디스패치 파리티는 Phase 5 macOS 런타임 실행이 아직 필요합니다.
+</div>
+
 <div className="kv-kbd-grid">
   <div className="kv-kbd-card"><kbd>Cmd/Ctrl + F</kbd><strong>보드 페이지 검색</strong><p>현재 보이는 프로젝트와 태스크 텍스트를 검색합니다.</p></div>
   <div className="kv-kbd-card"><kbd>Cmd/Ctrl + Shift + O</kbd><strong>빠른 태스크 검색</strong><p>브랜치명 또는 프로젝트명으로 전체 태스크를 찾습니다.</p></div>

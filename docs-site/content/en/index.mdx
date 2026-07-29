@@ -19,14 +19,18 @@ title: KanVibe Docs
   </div>
 </div>
 
+<div className="kv-note">
+  <strong>Migration status:</strong> KanVibe is moving to a macOS-first native Rust + GPUI app. Portable Rust contracts are available under <code>native/</code> and can be verified on Linux CI, while the GPUI product UI remains macOS-gated. Electron is retained as the behavior and visual parity baseline. The screenshots on this site show that Electron baseline; actual native GPUI screenshots and videos are still pending the Phase 5 macOS run.
+</div>
+
 <figure className="kv-shot">
-  <img src="/screenshots/board.png" alt="KanVibe Kanban board" />
-  <figcaption>The KanVibe board shows project colors, priorities, PR badges, and terminal session labels in one view.</figcaption>
+  <img src="/screenshots/board.png" alt="Electron parity baseline of the KanVibe Kanban board" />
+  <figcaption>Electron parity baseline — the KanVibe board shows project colors, priorities, PR badges, and terminal session labels in one view.</figcaption>
 </figure>
 
 <figure className="kv-shot">
-  <img src="/screenshots/task-detail.png" alt="Per-task terminal workspace" />
-  <figcaption>Each task opens an isolated terminal workspace so agent execution and direct shell commands stay equally accessible.</figcaption>
+  <img src="/screenshots/task-detail.png" alt="Electron parity baseline of the per-task terminal workspace" />
+  <figcaption>Electron parity baseline — each task opens an isolated terminal workspace so agent execution and direct shell commands stay equally accessible.</figcaption>
 </figure>
 
 <div className="kv-grid">

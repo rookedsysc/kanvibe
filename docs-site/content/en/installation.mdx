@@ -6,6 +6,10 @@ title: Installation
 
 KanVibe is distributed as a macOS desktop app. The recommended install path is Homebrew Cask.
 
+<div className="kv-note">
+  The currently published cask is the retained Electron parity-baseline app. The replacement product target is a macOS-first Rust + GPUI app; portable Rust contracts already build and test without Electron, Node, or a webview, but the native GPUI package has not yet completed its Phase 5 macOS screenshot/video and visual-parity gate.
+</div>
+
 ## Prerequisites
 
 | Dependency | Required | Why it is needed | Install example |
@@ -27,6 +31,25 @@ After KanVibe is accepted into the official Homebrew Cask repository, the comman
 ```bash
 brew install --cask kanvibe
 ```
+
+## Verify the native migration workspace
+
+On Linux or macOS, verify the portable Rust contracts without enabling the macOS-only GPUI UI:
+
+```bash
+cd native
+cargo test --workspace
+cargo build --workspace
+```
+
+On macOS, the migration/development bundle is built with:
+
+```bash
+cd native
+scripts/package-macos-app.sh
+```
+
+The packaging command builds the GPUI target, but does not by itself prove native visual parity. The actual GPUI screenshot/video capture and side-by-side review remain pending in the Phase 5 macOS run.
 
 ## Update or remove
 

@@ -6,9 +6,13 @@ title: 설정
 
 KanVibe 설정 페이지는 프로젝트 등록, 화면 표시, 터미널 pane 구성, 알림, 작업 생성 기본값, 백그라운드 Sync를 한곳에서 관리합니다. 설정은 앱 내부 SQLite 데이터베이스에 저장되며, 일부 항목은 저장 즉시 보드와 태스크 상세 화면에 반영됩니다.
 
+<div className="kv-note">
+  이 페이지는 Electron 파리티 기준 설정과 네이티브 Rust + GPUI 앱이 유지해야 할 동작을 기록합니다. 아래 이미지는 Electron 캡처입니다. Rust 설정 및 레이아웃 계약은 구현되어 있지만, 완전한 macOS GPUI 설정 UI와 네이티브 시각 캡처는 Phase 5 런타임 게이트가 아직 필요합니다.
+</div>
+
 <figure className="kv-shot">
-  <img src="/screenshots/settings.png" alt="KanVibe 설정 페이지" />
-  <figcaption>설정 페이지에서 외관, Pane 레이아웃, 상세 페이지 기본값, 알림 상태, 백그라운드 Sync, 프로젝트 등록을 관리합니다.</figcaption>
+  <img src="/screenshots/settings.png" alt="KanVibe 설정 페이지의 Electron 파리티 기준 화면" />
+  <figcaption>Electron 파리티 기준선 — 설정 페이지에서 외관, Pane 레이아웃, 상세 페이지 기본값, 알림 상태, 백그라운드 Sync, 프로젝트 등록을 관리합니다.</figcaption>
 </figure>
 
 ## 설정 페이지에서 관리하는 것

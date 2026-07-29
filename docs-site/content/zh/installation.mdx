@@ -6,6 +6,10 @@ title: 安装
 
 KanVibe 以 macOS 桌面应用形式分发，推荐通过 Homebrew Cask 安装。
 
+<div className="kv-note">
+  当前发布的 cask 是保留中的 Electron 一致性基准应用。替代产品目标是 macOS 优先的 Rust + GPUI 应用；可移植 Rust 合约已可在没有 Electron、Node 或 webview 的情况下构建和测试，但原生 GPUI 包尚未完成 Phase 5 macOS 截图/视频与视觉一致性门禁。
+</div>
+
 ## 前置条件
 
 | 依赖 | 是否必需 | 用途 | 安装示例 |
@@ -27,6 +31,25 @@ open -a KanVibe
 ```bash
 brew install --cask kanvibe
 ```
+
+## 验证原生迁移工作区
+
+在 Linux 或 macOS 上，可以在不启用 macOS 专属 GPUI UI 的情况下验证可移植 Rust 合约：
+
+```bash
+cd native
+cargo test --workspace
+cargo build --workspace
+```
+
+在 macOS 上，通过以下命令构建迁移/开发用应用包：
+
+```bash
+cd native
+scripts/package-macos-app.sh
+```
+
+构建 GPUI 目标本身并不能证明原生视觉一致性。真实 GPUI 截图/视频捕获及并排审查仍需在 Phase 5 macOS 运行中完成。
 
 ## 更新与卸载
 

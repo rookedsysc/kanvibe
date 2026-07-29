@@ -16,6 +16,15 @@ Use shortcuts for project filters, task search, notifications, task detail panel
 
 </div>
 
+## Rust + GPUI Migration Status
+
+KanVibe is being migrated from Electron to a **macOS-first native Rust + GPUI app**.
+
+- The portable Rust contracts for the database, Git/worktrees, PTY sessions, hooks, theme, localization, application state, and QA replay harness live in [`native/`](./native/README.md). They are designed to build and test without Electron, Node, or a webview and can be checked on Linux CI.
+- The product UI is macOS-gated behind the `native-ui` feature. Electron remains in the repository as the behavior and visual parity baseline while the migration is completed; the currently published app and Homebrew instructions below still refer to that Electron baseline.
+- The Rust workspace includes the native board shell, interaction contracts, macOS packaging path, and Phase 5 QA control/capture contracts. This does **not** yet prove complete runtime or visual parity.
+- Actual GPUI screenshots and videos still require the Phase 5 run on macOS. Until those artifacts are captured and reviewed, every product screenshot and demo below is explicitly an **Electron parity-baseline capture**, not a native GPUI capture.
+
 <div align="center">
 
 <table>
@@ -23,12 +32,12 @@ Use shortcuts for project filters, task search, notifications, task detail panel
     <td width="50%">
       <img src="./docs/images/readme/kanvibe-main.png" alt="KanVibe Kanban board" width="100%">
       <br>
-      <strong>Main Kanban board</strong>
+      <strong>Electron parity baseline — main Kanban board</strong>
     </td>
     <td width="50%">
       <img src="./docs/images/readme/kanvibe-detail.png" alt="Task detail terminal workspace" width="100%">
       <br>
-      <strong>Task detail workspace</strong>
+      <strong>Electron parity baseline — task detail workspace</strong>
     </td>
   </tr>
 </table>
@@ -37,13 +46,15 @@ Use shortcuts for project filters, task search, notifications, task detail panel
   <img src="https://img.youtube.com/vi/8JTrvd3T_Z0/maxresdefault.jpg" alt="KanVibe demo video thumbnail" width="100%">
 </a>
 
-<strong><a href="https://www.youtube.com/watch?v=8JTrvd3T_Z0">Watch Demo on YouTube</a></strong>
+<strong><a href="https://www.youtube.com/watch?v=8JTrvd3T_Z0">Watch the Electron baseline demo on YouTube</a></strong>
 
 </div>
 
 ---
 
 ## Key Workflows
+
+> The images and video in this section show the retained Electron parity baseline. They document the behavior the native app must match; native GPUI visual capture is still pending on macOS.
 
 ### 1. Quick Task Search
 
@@ -100,7 +111,7 @@ Turn on Vim-style board controls in **Settings → Keyboard**, then move across 
 
 ### Install with Homebrew
 
-Until KanVibe is accepted into the official Homebrew Cask repository, install it from the KanVibe Homebrew tap:
+The currently published cask installs the retained Electron baseline app. Until KanVibe is accepted into the official Homebrew Cask repository, install it from the KanVibe Homebrew tap:
 
 ```bash
 brew install --cask rookedsysc/kanvibe/kanvibe
@@ -112,6 +123,25 @@ After the official Homebrew Cask is accepted, the install command becomes:
 ```bash
 brew install --cask kanvibe
 ```
+
+### Verify the Native Workspace
+
+Portable Rust contracts can be verified on Linux or macOS without enabling the macOS GPUI product UI:
+
+```bash
+cd native
+cargo test --workspace
+cargo build --workspace
+```
+
+On macOS, build the actual GPUI app bundle through the packaging script:
+
+```bash
+cd native
+scripts/package-macos-app.sh
+```
+
+This package command is a migration/development path, not a claim that Phase 5 native visual parity has passed. See [`native/README.md`](./native/README.md) for the current crate boundaries, QA evidence, and macOS capture handoff.
 
 ### Update or Remove
 
