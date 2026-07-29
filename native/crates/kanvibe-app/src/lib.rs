@@ -5520,6 +5520,7 @@ mod tests {
         time::Duration,
     };
 
+    #[cfg(not(target_os = "macos"))]
     #[test]
     fn non_macos_build_uses_headless_stub() {
         assert_eq!(run(), Ok(RunMode::HeadlessStub));

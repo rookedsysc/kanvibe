@@ -49,6 +49,9 @@ jobs:
             native
             native/crates/kanvibe-terminal
 
+      - name: Install native test dependencies
+        run: brew install tmux
+
       - name: Test native product
         run: ./kanvibe-native test
 
