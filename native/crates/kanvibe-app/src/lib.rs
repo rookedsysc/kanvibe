@@ -7163,6 +7163,8 @@ mod tests {
             "git worktree add: {}",
             String::from_utf8_lossy(&output.stderr)
         );
+        let linked_worktree =
+            std::fs::canonicalize(&linked_worktree).expect("canonicalize linked worktree");
         let live_session_name = format_session_name("api", &linked_branch);
         let tmux = Command::new("tmux")
             .args([
