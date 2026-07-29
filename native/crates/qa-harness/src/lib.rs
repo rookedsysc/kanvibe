@@ -2997,8 +2997,13 @@ fn wait_for_qa_socket(client: &QaControlClient) -> Result<(), Box<dyn Error + Se
 
 #[cfg(unix)]
 fn unique_socket_path(name: &str) -> Result<PathBuf, Box<dyn Error + Send + Sync>> {
-    Ok(std::env::temp_dir().join(format!(
-        "kanvibe-{name}-{}-{}.sock",
+    let short_name = name
+        .chars()
+        .filter(|character| character.is_ascii_alphanumeric() || *character == '-')
+        .take(24)
+        .collect::<String>();
+    Ok(Path::new("/tmp").join(format!(
+        "kanvibe-{short_name}-{}-{}.sock",
         std::process::id(),
         SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos()
     )))
