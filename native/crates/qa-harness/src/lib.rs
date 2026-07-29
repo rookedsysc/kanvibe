@@ -5,7 +5,7 @@ use std::{
     io::{BufRead, BufReader, Write},
     path::{Path, PathBuf},
     process::{Command, Stdio},
-    time::{Duration, SystemTime, UNIX_EPOCH},
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
 #[cfg(all(debug_assertions, unix))]
@@ -48,6 +48,8 @@ pub const NATIVE_REPLAY_DB_DIR_FROM_REPO_ROOT: &str = "qa/parity/native-db";
 pub const KANVIBE_QA_ARTIFACT_ROOT_ENV: &str = "KANVIBE_QA_ARTIFACT_ROOT";
 pub const NATIVE_VIDEO_DIR_FROM_REPO_ROOT: &str = "qa/parity/native-videos";
 pub const NATIVE_APP_BUNDLE_TARGET_BYTES: u64 = 30 * 1024 * 1024;
+const QA_EVENTUAL_ASSERTION_TIMEOUT: Duration = Duration::from_secs(10);
+const QA_EVENTUAL_ASSERTION_POLL_INTERVAL: Duration = Duration::from_millis(100);
 
 pub const SCENARIO_IDS: &[&str] = &[
     "S01-board-load-and-columns",
@@ -541,34 +543,46 @@ pub fn notification_hooks_report(
         AiSession {
             id: "claude-review-history".to_owned(),
             provider: AiSessionProvider::Claude,
-            updated_at: "2026-07-08T00:20:00Z".to_owned(),
-            matched_path: Some("/tmp/kanvibe-qa/repos/kanvibe".to_owned()),
+            started_at: None,
+            updated_at: Some("2026-07-08T00:20:00Z".to_owned()),
+            matched_path: "/tmp/kanvibe-qa/repos/kanvibe".to_owned(),
             title: Some("Review AI session history".to_owned()),
+            first_user_prompt: None,
             message_count: 4,
+            source_ref: "claude.jsonl".to_owned(),
         },
         AiSession {
             id: "codex-native-hooks".to_owned(),
             provider: AiSessionProvider::Codex,
-            updated_at: "2026-07-08T00:30:00Z".to_owned(),
-            matched_path: Some("/tmp/kanvibe-qa/repos/kanvibe".to_owned()),
+            started_at: None,
+            updated_at: Some("2026-07-08T00:30:00Z".to_owned()),
+            matched_path: "/tmp/kanvibe-qa/repos/kanvibe".to_owned(),
             title: Some("Native hook contract".to_owned()),
+            first_user_prompt: None,
             message_count: 3,
+            source_ref: "codex.jsonl".to_owned(),
         },
         AiSession {
             id: "gemini-copy-check".to_owned(),
             provider: AiSessionProvider::Gemini,
-            updated_at: "2026-07-08T00:10:00Z".to_owned(),
-            matched_path: Some("/tmp/kanvibe-qa/repos/kanvibe".to_owned()),
+            started_at: None,
+            updated_at: Some("2026-07-08T00:10:00Z".to_owned()),
+            matched_path: "/tmp/kanvibe-qa/repos/kanvibe".to_owned(),
             title: Some("Copy check".to_owned()),
+            first_user_prompt: None,
             message_count: 2,
+            source_ref: "gemini.json".to_owned(),
         },
         AiSession {
             id: "opencode-remote-flow".to_owned(),
             provider: AiSessionProvider::OpenCode,
-            updated_at: "2026-07-08T00:05:00Z".to_owned(),
-            matched_path: Some("/tmp/kanvibe-qa/repos/kanvibe".to_owned()),
+            started_at: None,
+            updated_at: Some("2026-07-08T00:05:00Z".to_owned()),
+            matched_path: "/tmp/kanvibe-qa/repos/kanvibe".to_owned(),
             title: Some("Remote flow".to_owned()),
+            first_user_prompt: None,
             message_count: 1,
+            source_ref: "opencode-remote-flow".to_owned(),
         },
     ]);
 
@@ -1642,23 +1656,25 @@ pub fn native_visual_parity_report(
         let manifest = manifest_by_scenario.get(scenario_id);
         let manifest_screen = manifest.map(|row| row.screen.clone());
         let manifest_video = manifest.map(|row| row.video.clone());
-        if let Some(screen) = manifest_screen.as_ref() {
-            if !declared_screens.is_empty() && !declared_screens.contains(screen) {
-                scenario_manifest_screen_mismatches.push(json!({
-                    "scenarioId": scenario_id,
-                    "manifestScreen": screen,
-                    "scenarioDeclaredScreens": declared_screens,
-                }));
-            }
+        if let Some(screen) = manifest_screen.as_ref()
+            && !declared_screens.is_empty()
+            && !declared_screens.contains(screen)
+        {
+            scenario_manifest_screen_mismatches.push(json!({
+                "scenarioId": scenario_id,
+                "manifestScreen": screen,
+                "scenarioDeclaredScreens": declared_screens,
+            }));
         }
-        if let Some(video) = manifest_video.as_ref() {
-            if !declared_videos.is_empty() && !declared_videos.contains(video) {
-                scenario_manifest_video_mismatches.push(json!({
-                    "scenarioId": scenario_id,
-                    "manifestVideo": video,
-                    "scenarioDeclaredVideos": declared_videos,
-                }));
-            }
+        if let Some(video) = manifest_video.as_ref()
+            && !declared_videos.is_empty()
+            && !declared_videos.contains(video)
+        {
+            scenario_manifest_video_mismatches.push(json!({
+                "scenarioId": scenario_id,
+                "manifestVideo": video,
+                "scenarioDeclaredVideos": declared_videos,
+            }));
         }
 
         scenario_mappings.push(json!({
@@ -1948,10 +1964,10 @@ fn parse_baseline_manifest_rows(content: &str) -> Vec<BaselineManifestRow> {
 
 fn markdown_cell_value(cell: &str) -> String {
     let cell = cell.trim();
-    if let Some(start) = cell.find('`') {
-        if let Some(end) = cell[start + 1..].find('`') {
-            return cell[start + 1..start + 1 + end].to_owned();
-        }
+    if let Some(start) = cell.find('`')
+        && let Some(end) = cell[start + 1..].find('`')
+    {
+        return cell[start + 1..start + 1 + end].to_owned();
     }
 
     cell.to_owned()
@@ -2268,10 +2284,8 @@ fn execute_qa_control_scenario_plan(
                 totals.executed_command_count += 1;
                 scenario_counters.executed_command_count += 1;
 
-                match client.request(command.clone()) {
-                    Ok(response) => {
-                        let assessment =
-                            assess_control_response_for_item(&command, &response, item);
+                match request_qa_item(client, &command, item) {
+                    Ok((response, assessment)) => {
                         apply_response_counters(
                             &response,
                             &assessment,
@@ -2336,6 +2350,23 @@ fn execute_qa_control_scenario_plan(
     }))
 }
 
+fn request_qa_item(
+    client: &QaControlClient,
+    command: &QaControlCommand,
+    item: &Value,
+) -> Result<(QaControlResponse, ResponseAssessment), Box<dyn Error + Send + Sync>> {
+    let eventually = item["source"]["eventually"].as_bool() == Some(true);
+    let deadline = Instant::now() + QA_EVENTUAL_ASSERTION_TIMEOUT;
+    loop {
+        let response = client.request(command.clone())?;
+        let assessment = assess_control_response_for_item(command, &response, item);
+        if !eventually || assessment.status == "pass" || Instant::now() >= deadline {
+            return Ok((response, assessment));
+        }
+        std::thread::sleep(QA_EVENTUAL_ASSERTION_POLL_INTERVAL);
+    }
+}
+
 fn replay_execution_report_json(
     plan: &Value,
     totals: &ReplayExecutionCounters,
@@ -2366,7 +2397,7 @@ fn replay_execution_report_json(
         "dbSnapshotCount": totals.db_snapshot_count,
         "pongCount": totals.pong_count,
         "blockerCount": totals.blocker_count(),
-        "blockers": replay_execution_blockers(&totals),
+        "blockers": replay_execution_blockers(totals),
         "scenarioResults": scenario_results,
     })
 }
@@ -2545,10 +2576,27 @@ fn assess_query_assertion_response(
             .into_iter()
             .find(|expected| !text_contains(text, expected))
             .map(|expected| format!("dockItems missing `{expected}` in `{}`", text_value(text))),
+        "hookProvidersReady" => expected_array_values(assertion, "expected")
+            .into_iter()
+            .find(|expected| !text_contains(text, expected))
+            .map(|expected| {
+                format!(
+                    "hookProvidersReady missing `{expected}` in `{}`",
+                    text_value(text)
+                )
+            }),
         "route" => assertion["pattern"].as_str().and_then(|expected| {
             (!text_contains(text, expected)).then(|| {
                 format!(
                     "route expected text containing `{expected}`, got `{}`",
+                    text_value(text)
+                )
+            })
+        }),
+        "sessionDependencyState" => assertion["expected"].as_str().and_then(|expected| {
+            (text.as_deref() != Some(expected)).then(|| {
+                format!(
+                    "sessionDependencyState expected `{expected}`, got `{}`",
                     text_value(text)
                 )
             })
@@ -2823,6 +2871,7 @@ fn task_field_value(task: &kanvibe_app::qa_control::QaTaskSnapshot, field: &str)
         "ssh_host" => task.ssh_host.clone(),
         "pr_url" => task.pr_url.clone(),
         "priority" => task.priority.clone(),
+        "project_color" => task.project_color.clone(),
         _ => None,
     }
 }
@@ -3184,6 +3233,14 @@ fn qa_command_for_step(scenario_id: &str, step: &Value) -> Option<QaControlComma
         | "openPaneLayoutRoute"
         | "openProjectFilter"
         | "openSessionDependencyPanel"
+        | "checkSessionDependency"
+        | "checkTaskHooks"
+        | "collapseTaskSidebar"
+        | "dismissSidebarHint"
+        | "installTaskHooks"
+        | "recheckTaskHooks"
+        | "installSessionDependency"
+        | "retrySessionDependency"
         | "openSettings"
         | "openTaskContextMenu"
         | "openTaskDetail"
@@ -3192,10 +3249,12 @@ fn qa_command_for_step(scenario_id: &str, step: &Value) -> Option<QaControlComma
         | "selectPaneLayout"
         | "selectProjects"
         | "setAppSetting"
+        | "setProjectColor"
         | "submitBranchTask"
         | "submitCreateTask" => Some(QaControlCommand::SyntheticClick {
             id: semantic_click_target(action, step),
             button: "left".to_owned(),
+            payload: Some(step.clone()),
         }),
         _ => None,
     }
@@ -3222,7 +3281,11 @@ fn qa_command_for_assertion(assertion: &Value) -> Option<QaControlCommand> {
         | "windowCountUnchanged" => Some(QaControlCommand::QueryElement {
             id: assertion_element_id(assertion_type, assertion),
         }),
-        "aiProviderFilters" | "route" | "taskField" => Some(QaControlCommand::QueryText {
+        "aiProviderFilters"
+        | "hookProvidersReady"
+        | "route"
+        | "sessionDependencyState"
+        | "taskField" => Some(QaControlCommand::QueryText {
             id: assertion_text_id(assertion_type, assertion),
         }),
         "externalToolBlockerAllowed" => Some(QaControlCommand::QueryText {
@@ -3254,6 +3317,14 @@ fn semantic_click_target(action: &str, step: &Value) -> String {
         "openPaneLayoutRoute" => "settings.paneLayout".to_owned(),
         "openProjectFilter" => "board.projectFilter".to_owned(),
         "openSessionDependencyPanel" => "sessionDependency.panelTrigger".to_owned(),
+        "checkSessionDependency" => "sessionDependency.check".to_owned(),
+        "checkTaskHooks" => "taskHooks.check".to_owned(),
+        "collapseTaskSidebar" => "taskSidebar.collapse".to_owned(),
+        "dismissSidebarHint" => "taskSidebar.dismissHint".to_owned(),
+        "installTaskHooks" => "taskHooks.install".to_owned(),
+        "recheckTaskHooks" => "taskHooks.recheck".to_owned(),
+        "installSessionDependency" => "sessionDependency.install".to_owned(),
+        "retrySessionDependency" => "sessionDependency.retry".to_owned(),
         "openSettings" => "app.settingsButton".to_owned(),
         "selectDockItem" => format!("dock.{}", step["item"].as_str().unwrap_or("unknown")),
         "selectFirstChangedFile" => "diff.fileList.firstChangedFile".to_owned(),
@@ -3263,6 +3334,10 @@ fn semantic_click_target(action: &str, step: &Value) -> String {
         ),
         "selectProjects" => "projectFilter.selection".to_owned(),
         "setAppSetting" => format!("settings.{}", step["key"].as_str().unwrap_or("unknown")),
+        "setProjectColor" => format!(
+            "projectColor.{}",
+            step["projectId"].as_str().unwrap_or("unknown")
+        ),
         "submitBranchTask" => "branchTask.submit".to_owned(),
         "submitCreateTask" => "createTask.submit".to_owned(),
         _ => format!("action.{action}"),
@@ -3311,6 +3386,14 @@ fn assertion_element_id(assertion_type: &str, assertion: &Value) -> String {
 fn assertion_text_id(assertion_type: &str, assertion: &Value) -> String {
     match assertion_type {
         "aiProviderFilters" => "ai.providerFilters".to_owned(),
+        "hookProvidersReady" => format!(
+            "hooks.providers.{}",
+            assertion["taskId"].as_str().unwrap_or("current")
+        ),
+        "sessionDependencyState" => format!(
+            "sessionDependency.{}.state",
+            assertion["sessionType"].as_str().unwrap_or("current")
+        ),
         "route" => format!(
             "route.{}",
             slug_fragment(assertion["pattern"].as_str().unwrap_or("current"))
@@ -3381,6 +3464,14 @@ fn control_command_for_step(action: &str) -> Option<&'static str> {
         | "openPaneLayoutRoute"
         | "openProjectFilter"
         | "openSessionDependencyPanel"
+        | "checkSessionDependency"
+        | "checkTaskHooks"
+        | "collapseTaskSidebar"
+        | "dismissSidebarHint"
+        | "installTaskHooks"
+        | "recheckTaskHooks"
+        | "installSessionDependency"
+        | "retrySessionDependency"
         | "openSettings"
         | "openTaskContextMenu"
         | "openTaskDetail"
@@ -3389,6 +3480,7 @@ fn control_command_for_step(action: &str) -> Option<&'static str> {
         | "selectPaneLayout"
         | "selectProjects"
         | "setAppSetting"
+        | "setProjectColor"
         | "submitBranchTask"
         | "submitCreateTask" => Some("syntheticClick"),
         _ => None,
@@ -3413,7 +3505,11 @@ fn control_command_for_assertion(assertion_type: &str) -> Option<&'static str> {
         | "taskTitleVisible"
         | "taskVisible"
         | "windowCountUnchanged" => Some("queryElement"),
-        "aiProviderFilters" | "route" | "taskField" => Some("queryText"),
+        "aiProviderFilters"
+        | "hookProvidersReady"
+        | "route"
+        | "sessionDependencyState"
+        | "taskField" => Some("queryText"),
         "externalToolBlockerAllowed" => Some("protocolRecordedBlocker"),
         _ => None,
     }
@@ -4149,6 +4245,254 @@ mod tests {
                 "path": "qa/parity/native-videos/S01-board-load-and-columns.mp4"
             })
         );
+
+        let create_plan = report["scenarioPlans"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|plan| plan["scenarioId"] == "S02-create-task-modal")
+            .expect("S02 replay plan");
+        let fill_command = create_plan["replayItems"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|item| item["sourceType"] == "fillTaskForm")
+            .expect("fill task command");
+        assert_eq!(
+            fill_command["command"]["payload"]["title"],
+            "QA created task"
+        );
+        assert_eq!(fill_command["command"]["payload"]["priority"], "medium");
+
+        let color_plan = report["scenarioPlans"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|plan| plan["scenarioId"] == "S08-context-menu-status-and-delete")
+            .expect("S08 replay plan");
+        let color_command = color_plan["replayItems"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|item| item["sourceType"] == "setProjectColor")
+            .expect("project color command");
+        assert_eq!(
+            color_command["command"]["id"],
+            "projectColor.qa-project-kanvibe"
+        );
+        assert_eq!(color_command["command"]["payload"]["color"], "#5EEAD4");
+        let color_assertion = color_plan["replayItems"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|item| {
+                item["sourceType"] == "taskField" && item["source"]["field"] == "project_color"
+            })
+            .expect("eventual project color assertion");
+        assert_eq!(color_assertion["source"]["eventually"], true);
+    }
+
+    #[test]
+    fn macos_release_scripts_fail_closed_around_signing_and_notarization() {
+        let package = include_str!("../../../scripts/package-macos-app.sh");
+        let verify = include_str!("../../../scripts/verify-macos-release.sh");
+        let workflow = include_str!("../../../../.github/workflows/native-release-candidate.yml");
+
+        for contract in [
+            "--release",
+            "--sign-identity",
+            "--notary-profile",
+            "--options runtime",
+            "notarytool submit",
+            "stapler staple",
+            "spctl --assess",
+            "notary-app.json",
+            "notary-dmg.json",
+            "shasum -a 256",
+            "DMG_CHECKSUM_PATH",
+            "HELPERS_DIR",
+            "KanVibeUpdater",
+            "KanVibeBuildCommit",
+            "requires a clean source tree",
+            "aarch64-apple-darwin",
+            "x86_64-apple-darwin",
+            "lipo -create",
+        ] {
+            assert!(
+                package.contains(contract),
+                "missing package contract: {contract}"
+            );
+        }
+        for contract in [
+            "Developer ID Application:",
+            "TeamIdentifier=",
+            "Runtime Version=",
+            "stapler validate",
+            "spctl --assess",
+            "hdiutil attach -readonly",
+            "verify_bundle \"$MOUNTED_APP\"",
+            "ACTUAL_DIGEST=",
+            "KanVibeBuildCommit",
+            "TeamIdentifier=$APP_TEAM_ID",
+            "Contents/Helpers/KanVibeUpdater",
+            "lipo -archs",
+        ] {
+            assert!(
+                verify.contains(contract),
+                "missing verifier contract: {contract}"
+            );
+        }
+        for contract in [
+            "workflow_dispatch:",
+            "permissions:\n  contents: read",
+            "aarch64-apple-darwin,x86_64-apple-darwin",
+            "MACOS_CERTIFICATE_P12_BASE64",
+            "notarytool store-credentials",
+            "package-macos-app.sh --release",
+            "verify-macos-release.sh",
+            "actions/upload-artifact@v4",
+            "if: always()",
+            "security delete-keychain",
+        ] {
+            assert!(
+                workflow.contains(contract),
+                "missing native release-candidate workflow contract: {contract}"
+            );
+        }
+    }
+
+    #[test]
+    fn root_native_commands_are_node_free_and_electron_is_explicitly_legacy() {
+        let launcher = include_str!("../../../../kanvibe-native");
+        for contract in [
+            "dev)",
+            "build)",
+            "test)",
+            "check)",
+            "package)",
+            "phase5)",
+            "verify-phase5)",
+            "native/Cargo.toml",
+            "native/crates/kanvibe-terminal/Cargo.toml",
+            "package-macos-app.sh",
+            "phase5-macos-run.sh",
+            "verify-phase5-run.sh",
+        ] {
+            assert!(
+                launcher.contains(contract),
+                "missing root native command contract: {contract}"
+            );
+        }
+        for forbidden in ["node ", "pnpm ", "electron"] {
+            assert!(
+                !launcher.to_ascii_lowercase().contains(forbidden),
+                "root native command unexpectedly depends on legacy runtime: {forbidden}"
+            );
+        }
+
+        let package: Value =
+            serde_json::from_str(include_str!("../../../../package.json")).expect("package.json");
+        let scripts = package["scripts"].as_object().expect("package scripts");
+        for name in [
+            "legacy:electron:dev",
+            "legacy:electron:start",
+            "legacy:electron:build",
+            "legacy:electron:package",
+            "legacy:electron:package:dir",
+            "legacy:electron:deploy",
+            "legacy:electron:qa",
+        ] {
+            assert!(
+                scripts.get(name).and_then(Value::as_str).is_some(),
+                "missing explicit Electron baseline command: {name}"
+            );
+        }
+
+        let workflow = include_str!("../../../../.github/workflows/ci.yml");
+        for contract in [
+            "name: Legacy Electron baseline",
+            "run: ./kanvibe-native check",
+            "run: ./kanvibe-native test",
+            "KANVIBE_BUILD_COMMIT: ${{ github.sha }}",
+            "Contents/Helpers/KanVibeUpdater",
+            "Print :KanVibeBuildCommit",
+        ] {
+            assert!(
+                workflow.contains(contract),
+                "missing native/legacy CI boundary: {contract}"
+            );
+        }
+    }
+
+    #[test]
+    fn native_updater_source_keeps_signature_and_rollback_gates_fail_closed() {
+        let updater = include_str!("../../kanvibe-app/src/native_updater.rs");
+        for contract in [
+            "SHA-256 did not match GitHub metadata",
+            "\"/usr/bin/codesign\"",
+            "\"stapler\", \"validate\"",
+            "\"/usr/sbin/spctl\"",
+            "\"attach\", \"-readonly\", \"-nobrowse\"",
+            "TeamIdentifier=",
+            "CFBundleIdentifier",
+            "CFBundleShortVersionString",
+            "NativeUpdateState::AwaitingHealth",
+            "NativeUpdateState::RolledBack",
+            "finish_or_rollback_update(&mut journal, journal_path, false)",
+        ] {
+            assert!(
+                updater.contains(contract),
+                "missing native updater safety contract: {contract}"
+            );
+        }
+    }
+
+    #[test]
+    fn electron_removal_ledger_covers_every_registered_service_export_and_direct_ipc() {
+        let ledger = include_str!("../../../../qa/ELECTRON_REMOVAL_LEDGER.md");
+        let services = [
+            include_str!("../../../../src/desktop/main/services/appSettingsService.ts"),
+            include_str!("../../../../src/desktop/main/services/diffService.ts"),
+            include_str!("../../../../src/desktop/main/services/githubCliDependencyService.ts"),
+            include_str!("../../../../src/desktop/main/services/hookService.ts"),
+            include_str!("../../../../src/desktop/main/services/kanbanService.ts"),
+            include_str!("../../../../src/desktop/main/services/paneLayoutService.ts"),
+            include_str!("../../../../src/desktop/main/services/projectService.ts"),
+            include_str!("../../../../src/desktop/main/services/releaseUpdateService.ts"),
+            include_str!("../../../../src/desktop/main/services/sessionDependencyService.ts"),
+        ];
+        for source in services {
+            for line in source.lines().map(str::trim) {
+                let declaration = line
+                    .strip_prefix("export async function ")
+                    .or_else(|| line.strip_prefix("export function "));
+                let Some(declaration) = declaration else {
+                    continue;
+                };
+                let name = declaration
+                    .split(['(', '<'])
+                    .next()
+                    .expect("exported function name");
+                assert!(
+                    ledger.contains(&format!("`{name}`")),
+                    "missing Electron service method in removal ledger: {name}"
+                );
+            }
+        }
+
+        let electron_main = include_str!("../../../../electron/main.js");
+        for line in electron_main.lines() {
+            let Some(channel) = line
+                .split_once("ipcMain.handle(\"")
+                .and_then(|(_, suffix)| suffix.split_once('"').map(|(channel, _)| channel))
+            else {
+                continue;
+            };
+            assert!(
+                ledger.contains(&format!("`{channel}`")),
+                "missing direct Electron IPC in removal ledger: {channel}"
+            );
+        }
     }
 
     #[cfg(unix)]
@@ -4208,7 +4552,7 @@ mod tests {
         assert_eq!(report["scenarioFileCount"], 14);
         assert_eq!(report["scenarioSocketCount"], 14);
         assert_eq!(report["launchActionCount"], 14);
-        assert_eq!(report["executedCommandCount"], 144);
+        assert_eq!(report["executedCommandCount"], 158);
         assert_eq!(report["transportErrorCount"], 0);
         assert_eq!(report["structuredErrorCount"], 0);
         assert_eq!(report["screenshotBlockedCount"], 14);
@@ -4223,7 +4567,7 @@ mod tests {
             .flat_map(|scenario| scenario["commandResults"].as_array().unwrap())
             .filter(|command| command["commandType"] == "dbSnapshot")
             .collect::<Vec<_>>();
-        assert_eq!(db_results.len(), 13);
+        assert_eq!(db_results.len(), 14);
         assert!(
             db_results
                 .iter()

@@ -37,6 +37,7 @@
     "prMergeAlert": {
       "title": "检测到 PR 已合并",
       "message": "已确认 worktree PR {branchName} 已被合并。要删除任务“{taskTitle}”及其资源吗？",
+      "batchMessage": "最近一次扫描检测到以下已合并 PR。请选择要删除的任务并统一处理。",
       "prLinkLabel": "PR 链接"
     },
     "backgroundSyncReview": {

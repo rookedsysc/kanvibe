@@ -1,3 +1,5 @@
+#[cfg(target_os = "macos")]
+use std::sync::mpsc::{Receiver, Sender, SyncSender, channel, sync_channel};
 use std::{collections::BTreeMap, io, path::PathBuf, sync::Mutex};
 #[cfg(target_os = "macos")]
 use std::{
@@ -20,19 +22,43 @@ use crate::{NativeUiColumnSpec, NativeUiRenderSpec, ShortcutPlatform, task_detai
 pub const KANVIBE_QA_SOCKET_ENV: &str = "KANVIBE_QA_SOCKET";
 pub const KANVIBE_QA_WINDOW_ID_ENV: &str = "KANVIBE_QA_WINDOW_ID";
 pub const KANVIBE_QA_FFMPEG_ENV: &str = "KANVIBE_QA_FFMPEG";
+#[cfg(all(debug_assertions, target_os = "macos"))]
+const QA_RUNTIME_RESPONSE_TIMEOUT: Duration = Duration::from_secs(5);
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum QaControlCommand {
     Ping,
-    QueryElement { id: String },
-    QueryText { id: String },
-    SyntheticClick { id: String, button: String },
-    SyntheticKey { key: String, modifiers: Vec<String> },
-    SyntheticMouse { x: i32, y: i32, button: String },
-    DumpScreenshot { path: String },
-    StartVideoCapture { path: String },
-    StopVideoCapture { path: String },
+    QueryElement {
+        id: String,
+    },
+    QueryText {
+        id: String,
+    },
+    SyntheticClick {
+        id: String,
+        button: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        payload: Option<Value>,
+    },
+    SyntheticKey {
+        key: String,
+        modifiers: Vec<String>,
+    },
+    SyntheticMouse {
+        x: i32,
+        y: i32,
+        button: String,
+    },
+    DumpScreenshot {
+        path: String,
+    },
+    StartVideoCapture {
+        path: String,
+    },
+    StopVideoCapture {
+        path: String,
+    },
     DbSnapshot,
 }
 
@@ -77,6 +103,25 @@ pub enum QaControlResponse {
     },
 }
 
+#[cfg(target_os = "macos")]
+#[derive(Debug)]
+pub(crate) struct QaRuntimeRequest {
+    pub command: QaControlCommand,
+    response: SyncSender<QaControlResponse>,
+}
+
+#[cfg(target_os = "macos")]
+impl QaRuntimeRequest {
+    pub fn respond(self, response: QaControlResponse) {
+        let _ = self.response.send(response);
+    }
+}
+
+#[cfg(target_os = "macos")]
+pub(crate) fn qa_runtime_channel() -> (Sender<QaRuntimeRequest>, Receiver<QaRuntimeRequest>) {
+    channel()
+}
+
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub struct QaColumnSnapshot {
     pub status: String,
@@ -97,6 +142,7 @@ pub struct QaTaskSnapshot {
     pub ssh_host: Option<String>,
     pub pr_url: Option<String>,
     pub priority: Option<String>,
+    pub project_color: Option<String>,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
@@ -187,6 +233,7 @@ impl QaControlState {
                             ssh_host: card.ssh_host.clone(),
                             pr_url: card.pr_url.clone(),
                             priority: card.priority.clone(),
+                            project_color: card.project_color.clone(),
                         },
                     )
                 })
@@ -215,13 +262,25 @@ impl QaControlState {
         }
     }
 
+    #[cfg(target_os = "macos")]
+    pub(crate) fn from_runtime_snapshots(
+        spec: NativeUiRenderSpec,
+        settings: BTreeMap<String, String>,
+        pane_layouts: Vec<QaPaneLayoutSnapshot>,
+    ) -> Self {
+        let state = Self::new(spec);
+        *state.settings.lock().expect("QA settings lock") = settings;
+        *state.pane_layouts.lock().expect("QA pane layouts lock") = pane_layouts;
+        state
+    }
+
     pub fn handle(&self, command: QaControlCommand) -> QaControlResponse {
         match command {
             QaControlCommand::Ping => QaControlResponse::Pong,
             QaControlCommand::QueryElement { id } => self.query_element(id),
             QaControlCommand::QueryText { id } => self.query_element(id),
-            QaControlCommand::SyntheticClick { id, .. } => {
-                self.apply_synthetic_click(&id);
+            QaControlCommand::SyntheticClick { id, payload, .. } => {
+                self.apply_synthetic_click(&id, payload.as_ref());
                 QaControlResponse::SyntheticInput {
                     accepted: true,
                     dispatch_status: "headless-qa-state-dispatch-applied".to_owned(),
@@ -563,7 +622,7 @@ impl QaControlState {
             .is_none_or(|project_id| task.project_id.as_deref() == Some(project_id))
     }
 
-    fn apply_synthetic_click(&self, id: &str) {
+    fn apply_synthetic_click(&self, id: &str, payload: Option<&serde_json::Value>) {
         let Ok(mut elements) = self.dynamic_elements.lock() else {
             return;
         };
@@ -588,6 +647,7 @@ impl QaControlState {
                     ssh_host: None,
                     pr_url: None,
                     priority: Some("medium".to_owned()),
+                    project_color: None,
                 });
             }
             "task.qa-task-review-diff.diff" => {
@@ -614,9 +674,22 @@ impl QaControlState {
                     task.session_type = Some("tmux".to_owned());
                 });
             }
-            "settings.paneLayout" | "paneLayout.option.vertical_2" => {
+            "settings.paneLayout" => {
                 elements.insert("route.pane-layout".to_owned(), "/pane-layout".to_owned());
-                self.save_pane_layout("qa-project-kanvibe", "vertical_2");
+                if let Some(project_id) = payload.and_then(|payload| payload["projectId"].as_str())
+                {
+                    elements.insert(
+                        "paneLayout.selectedProject".to_owned(),
+                        project_id.to_owned(),
+                    );
+                }
+            }
+            "paneLayout.option.vertical_2" => {
+                let project_id = elements
+                    .get("paneLayout.selectedProject")
+                    .cloned()
+                    .unwrap_or_else(|| "qa-project-kanvibe".to_owned());
+                self.save_pane_layout(&project_id, "vertical_2");
             }
             "notification.centerButton" => {
                 elements.insert("notification.center".to_owned(), "Notifications".to_owned());
@@ -626,6 +699,24 @@ impl QaControlState {
                     "hooks.status.qa-task-review-ai-history".to_owned(),
                     "Hook status".to_owned(),
                 );
+            }
+            "taskHooks.check" => {
+                elements.insert(
+                    "hooks.providers.qa-task-review-ai-history".to_owned(),
+                    "claude:missing,codex:missing,gemini:missing,opencode:missing".to_owned(),
+                );
+            }
+            "taskHooks.install" | "taskHooks.recheck" => {
+                elements.insert(
+                    "hooks.providers.qa-task-review-ai-history".to_owned(),
+                    "claude:ready,codex:ready,gemini:ready,opencode:ready".to_owned(),
+                );
+            }
+            "taskSidebar.collapse" => {
+                elements.insert("taskSidebar.state".to_owned(), "collapsed".to_owned());
+            }
+            "taskSidebar.dismissHint" => {
+                self.set_setting("sidebar_hint_dismissed", "true");
             }
             "dock.aiSessions" => {
                 elements.insert(
@@ -644,6 +735,28 @@ impl QaControlState {
             }
             "sessionDependency.panelTrigger" => {
                 elements.insert("sessionDependency.zellij".to_owned(), "zellij".to_owned());
+                elements.insert(
+                    "sessionDependency.zellij.state".to_owned(),
+                    "not-checked".to_owned(),
+                );
+            }
+            "sessionDependency.check" => {
+                elements.insert(
+                    "sessionDependency.zellij.state".to_owned(),
+                    "not-installed".to_owned(),
+                );
+            }
+            "sessionDependency.install" => {
+                elements.insert(
+                    "sessionDependency.zellij.state".to_owned(),
+                    "available".to_owned(),
+                );
+            }
+            "sessionDependency.retry" => {
+                elements.insert(
+                    "sessionDependency.zellij.state".to_owned(),
+                    "available".to_owned(),
+                );
             }
             "column.progress.dropTarget" => {
                 self.update_task("qa-task-todo-local", |task| {
@@ -662,15 +775,27 @@ impl QaControlState {
                 self.set_setting("vim_mode_enabled", "false");
             }
             _ => {
-                if let Some(task_id) = id.strip_prefix("task.") {
-                    if !task_id.contains('.') && self.elements.contains_key(id) {
-                        elements.insert(
-                            format!("route.{}", slug_fragment(&format!("/task/{task_id}"))),
-                            format!("/task/{task_id}"),
-                        );
-                        if let Some(dock_summary) = self.dock_summary_for_task(task_id) {
-                            elements.insert("dock.root".to_owned(), dock_summary);
+                if let Some(project_id) = id.strip_prefix("projectColor.") {
+                    if let Some(color) = payload.and_then(|payload| payload["color"].as_str())
+                        && let Ok(mut tasks) = self.tasks.lock()
+                    {
+                        for task in tasks
+                            .values_mut()
+                            .filter(|task| task.project_id.as_deref() == Some(project_id))
+                        {
+                            task.project_color = Some(color.to_owned());
                         }
+                    }
+                } else if let Some(task_id) = id.strip_prefix("task.")
+                    && !task_id.contains('.')
+                    && self.elements.contains_key(id)
+                {
+                    elements.insert(
+                        format!("route.{}", slug_fragment(&format!("/task/{task_id}"))),
+                        format!("/task/{task_id}"),
+                    );
+                    if let Some(dock_summary) = self.dock_summary_for_task(task_id) {
+                        elements.insert("dock.root".to_owned(), dock_summary);
                     }
                 }
             }
@@ -758,6 +883,7 @@ fn qa_task_field_value(task: &QaTaskSnapshot, field: &str) -> Option<String> {
         "ssh_host" => task.ssh_host.clone(),
         "pr_url" => task.pr_url.clone(),
         "priority" => task.priority.clone(),
+        "project_color" => task.project_color.clone(),
         _ => None,
     }
 }
@@ -953,6 +1079,35 @@ pub fn handle_json_line(state: &QaControlState, line: &str) -> String {
     serde_json::to_string(&response).expect("QA response should serialize")
 }
 
+#[cfg(all(debug_assertions, target_os = "macos"))]
+fn dispatch_runtime_json_line(sender: &Sender<QaRuntimeRequest>, line: &str) -> String {
+    let response = match serde_json::from_str::<QaControlCommand>(line) {
+        Ok(command) => {
+            let (response_sender, response_receiver) = sync_channel(1);
+            let request = QaRuntimeRequest {
+                command,
+                response: response_sender,
+            };
+            match sender.send(request) {
+                Ok(()) => match response_receiver.recv_timeout(QA_RUNTIME_RESPONSE_TIMEOUT) {
+                    Ok(response) => response,
+                    Err(error) => QaControlResponse::Error {
+                        message: format!("GPUI QA dispatch did not respond: {error}"),
+                    },
+                },
+                Err(error) => QaControlResponse::Error {
+                    message: format!("GPUI QA dispatcher is unavailable: {error}"),
+                },
+            }
+        }
+        Err(error) => QaControlResponse::Error {
+            message: error.to_string(),
+        },
+    };
+
+    serde_json::to_string(&response).expect("QA response should serialize")
+}
+
 pub fn socket_path_from_env() -> Option<PathBuf> {
     if !cfg!(debug_assertions) {
         return None;
@@ -967,6 +1122,8 @@ pub fn protocol_capabilities() -> Value {
     json!({
         "debugOnly": true,
         "socketEnv": KANVIBE_QA_SOCKET_ENV,
+        "runtimeDispatch": "live-gpui-entity-production-actions",
+        "semanticClickPayload": true,
         "screenshotWindowIdEnv": KANVIBE_QA_WINDOW_ID_ENV,
         "transport": "unix-line-json",
         "screenshotCapture": {
@@ -1003,6 +1160,24 @@ pub fn spawn_debug_qa_socket_from_env(
     };
 
     spawn_debug_qa_socket_at_path(socket_path, spec)
+}
+
+#[cfg(all(debug_assertions, target_os = "macos"))]
+pub(crate) fn spawn_debug_qa_runtime_socket_from_env(
+    sender: Sender<QaRuntimeRequest>,
+) -> io::Result<Option<std::thread::JoinHandle<()>>> {
+    let Some(socket_path) = socket_path_from_env() else {
+        return Ok(None);
+    };
+
+    spawn_debug_qa_runtime_socket(socket_path, sender).map(Some)
+}
+
+#[cfg(all(target_os = "macos", not(debug_assertions)))]
+pub(crate) fn spawn_debug_qa_runtime_socket_from_env(
+    _sender: Sender<QaRuntimeRequest>,
+) -> io::Result<Option<std::thread::JoinHandle<()>>> {
+    Ok(None)
 }
 
 #[cfg(not(all(debug_assertions, unix)))]
@@ -1060,6 +1235,44 @@ fn spawn_debug_qa_socket(
                 let reader = BufReader::new(stream);
                 for line in reader.lines().map_while(Result::ok) {
                     let response = handle_json_line(&state, &line);
+                    if writeln!(writer, "{response}").is_err() {
+                        break;
+                    }
+                }
+            });
+        }
+    }))
+}
+
+#[cfg(all(debug_assertions, target_os = "macos"))]
+fn spawn_debug_qa_runtime_socket(
+    socket_path: PathBuf,
+    sender: Sender<QaRuntimeRequest>,
+) -> io::Result<std::thread::JoinHandle<()>> {
+    use std::{
+        io::{BufRead, BufReader, Write},
+        os::unix::net::UnixListener,
+    };
+
+    if socket_path.exists() {
+        std::fs::remove_file(&socket_path)?;
+    }
+    if let Some(parent) = socket_path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+
+    let listener = UnixListener::bind(&socket_path)?;
+    Ok(std::thread::spawn(move || {
+        for stream in listener.incoming().flatten() {
+            let sender = sender.clone();
+            std::thread::spawn(move || {
+                let Ok(writer) = stream.try_clone() else {
+                    return;
+                };
+                let mut writer = writer;
+                let reader = BufReader::new(stream);
+                for line in reader.lines().map_while(Result::ok) {
+                    let response = dispatch_runtime_json_line(&sender, &line);
                     if writeln!(writer, "{response}").is_err() {
                         break;
                     }
@@ -1220,6 +1433,7 @@ mod tests {
             state.handle(QaControlCommand::SyntheticClick {
                 id: "task.qa-task-todo-local".to_owned(),
                 button: "left".to_owned(),
+                payload: None,
             }),
             QaControlResponse::SyntheticInput {
                 accepted: true,
@@ -1281,6 +1495,7 @@ mod tests {
         state.handle(QaControlCommand::SyntheticClick {
             id: "task.qa-task-progress-terminal".to_owned(),
             button: "left".to_owned(),
+            payload: None,
         });
         assert_eq!(
             state.handle(QaControlCommand::QueryText {
@@ -1300,7 +1515,7 @@ mod tests {
                 id: "dock.root".to_owned(),
                 exists: true,
                 text: Some(
-                    "items=overview,status,terminal,chat,aiSessions;shortcuts=Cmd+1,Cmd+2,Cmd+3,Cmd+4,Cmd+5"
+                    "items=overview,status,terminal,chat,aiSessions,hooks;shortcuts=Cmd+1,Cmd+2,Cmd+3,Cmd+4,Cmd+5,Cmd+6"
                         .to_owned()
                 ),
             }
@@ -1309,6 +1524,7 @@ mod tests {
         state.handle(QaControlCommand::SyntheticClick {
             id: "task.qa-task-review-diff.diff".to_owned(),
             button: "left".to_owned(),
+            payload: None,
         });
         assert_eq!(
             state.handle(QaControlCommand::QueryElement {
@@ -1324,6 +1540,7 @@ mod tests {
         state.handle(QaControlCommand::SyntheticClick {
             id: "settings.paneLayout".to_owned(),
             button: "left".to_owned(),
+            payload: None,
         });
         assert_eq!(
             state.handle(QaControlCommand::QueryText {
@@ -1339,6 +1556,7 @@ mod tests {
         state.handle(QaControlCommand::SyntheticClick {
             id: "notification.centerButton".to_owned(),
             button: "left".to_owned(),
+            payload: None,
         });
         assert_eq!(
             state.handle(QaControlCommand::QueryElement {
@@ -1370,6 +1588,7 @@ mod tests {
         state.handle(QaControlCommand::SyntheticClick {
             id: "context.action.deleteTask".to_owned(),
             button: "left".to_owned(),
+            payload: None,
         });
         assert_eq!(
             state.handle(QaControlCommand::QueryElement {
@@ -1385,6 +1604,7 @@ mod tests {
         state.handle(QaControlCommand::SyntheticClick {
             id: "projectFilter.selection".to_owned(),
             button: "left".to_owned(),
+            payload: None,
         });
         assert_eq!(
             state.handle(QaControlCommand::QueryElement {
@@ -1415,14 +1635,17 @@ mod tests {
         state.handle(QaControlCommand::SyntheticClick {
             id: "createTask.submit".to_owned(),
             button: "left".to_owned(),
+            payload: None,
         });
         state.handle(QaControlCommand::SyntheticClick {
             id: "branchTask.submit".to_owned(),
             button: "left".to_owned(),
+            payload: None,
         });
         state.handle(QaControlCommand::SyntheticClick {
             id: "column.progress.dropTarget".to_owned(),
             button: "left".to_owned(),
+            payload: None,
         });
         state.handle(QaControlCommand::SyntheticKey {
             key: "Enter".to_owned(),
@@ -1431,14 +1654,17 @@ mod tests {
         state.handle(QaControlCommand::SyntheticClick {
             id: "context.action.deleteTask".to_owned(),
             button: "left".to_owned(),
+            payload: None,
         });
         state.handle(QaControlCommand::SyntheticClick {
             id: "settings.vim_mode_enabled".to_owned(),
             button: "left".to_owned(),
+            payload: None,
         });
         state.handle(QaControlCommand::SyntheticClick {
             id: "paneLayout.option.vertical_2".to_owned(),
             button: "left".to_owned(),
+            payload: None,
         });
 
         match state.handle(QaControlCommand::DbSnapshot) {
@@ -1488,6 +1714,20 @@ mod tests {
                 text: Some("KanVibe".to_owned()),
             }
         );
+
+        let command = serde_json::from_str::<QaControlCommand>(
+            r#"{"type":"syntheticClick","id":"createTask.form","button":"left",
+                "payload":{"title":"QA created task","priority":"medium"}}"#,
+        )
+        .expect("payload-bearing semantic click");
+        assert!(matches!(
+            command,
+            QaControlCommand::SyntheticClick {
+                payload: Some(payload),
+                ..
+            } if payload["title"] == "QA created task"
+                && payload["priority"] == "medium"
+        ));
 
         let error = handle_json_line(&state, r#"{"type":"missing"}"#);
         assert!(serde_json::from_str::<QaControlResponse>(&error).is_ok());

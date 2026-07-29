@@ -36,6 +36,21 @@
       "action": "openSessionDependencyPanel"
     },
     {
+      "action": "checkSessionDependency",
+      "sessionType": "zellij",
+      "sshHost": "qa-remote"
+    },
+    {
+      "action": "installSessionDependency",
+      "sessionType": "zellij",
+      "sshHost": "qa-remote"
+    },
+    {
+      "action": "retrySessionDependency",
+      "sessionType": "zellij",
+      "sshHost": "qa-remote"
+    },
+    {
       "action": "captureScreen",
       "name": "remote-session-dependencies"
     }
@@ -51,6 +66,13 @@
       "type": "sessionDependencyVisible",
       "sessionType": "zellij",
       "sshHost": "qa-remote"
+    },
+    {
+      "type": "sessionDependencyState",
+      "sessionType": "zellij",
+      "sshHost": "qa-remote",
+      "expected": "available",
+      "eventually": true
     },
     {
       "type": "noGenericEnvLeak",

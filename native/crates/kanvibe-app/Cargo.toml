@@ -1,25 +1,36 @@
 [package]
 name = "kanvibe-app"
-version = "0.1.0"
+version = "1.0.3"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 
 [features]
-default = []
-native-ui = ["dep:gpui", "dep:gpui-component", "dep:gpui-component-assets"]
+default = ["native-ui"]
+native-ui = ["dep:gpui", "dep:gpui-component", "dep:gpui-component-assets", "dep:gpui-terminal", "dep:ureq"]
 
 [dependencies]
+kanvibe-ai.workspace = true
 kanvibe-core.workspace = true
+kanvibe-git.workspace = true
+kanvibe-hooks.workspace = true
 kanvibe-i18n.workspace = true
+kanvibe-pty.workspace = true
 kanvibe-theme.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+sha2.workspace = true
 
 [target.'cfg(target_os = "macos")'.dependencies]
 gpui = { version = "=0.2.2", optional = true, default-features = false, features = ["font-kit"] }
 gpui-component = { version = "=0.5.1", optional = true }
 gpui-component-assets = { version = "=0.5.1", optional = true }
+gpui-terminal = { path = "../kanvibe-terminal", optional = true }
+mac-usernotifications = { version = "=0.3.1" }
+ureq = { workspace = true, optional = true }
+
+[dev-dependencies]
+rusqlite.workspace = true
 
 [lints]
 workspace = true

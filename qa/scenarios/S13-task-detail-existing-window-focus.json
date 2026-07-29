@@ -28,6 +28,12 @@
       "taskId": "qa-task-progress-pr"
     },
     {
+      "action": "collapseTaskSidebar"
+    },
+    {
+      "action": "dismissSidebarHint"
+    },
+    {
       "action": "recordWindowCount",
       "name": "beforeSecondOpen"
     },
@@ -52,6 +58,16 @@
     {
       "type": "taskTitleVisible",
       "title": "Wire PR status card"
+    },
+    {
+      "type": "dbRow",
+      "table": "app_settings",
+      "where": {
+        "key": "sidebar_hint_dismissed"
+      },
+      "expected": {
+        "value": "true"
+      }
     }
   ],
   "artifacts": {

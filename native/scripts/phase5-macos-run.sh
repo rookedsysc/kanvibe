@@ -27,6 +27,7 @@ Runs the macOS Phase 5 native QA handoff:
   2. build the debug native-ui binary used by the QA socket
   3. generate protocol, replay-plan, in-process replay, real-app replay, visual parity, performance, and full-parity artifacts
   4. place capture paths under qa/parity/<run-id>/screens and qa/parity/<run-id>/videos
+  5. copy the mandatory terminal/updater checklists and machine-readable evidence manifest into the run
 USAGE
 }
 
@@ -102,6 +103,16 @@ fi
 RUN_DIR="$REPO_ROOT/qa/parity/$RUN_ID"
 LOG_DIR="$RUN_DIR/logs"
 mkdir -p "$RUN_DIR/screens" "$RUN_DIR/videos" "$LOG_DIR"
+if [[ ! -e "$RUN_DIR/terminal-runtime-checklist.md" ]]; then
+  cp "$REPO_ROOT/qa/checklists/terminal-macos.md" "$RUN_DIR/terminal-runtime-checklist.md"
+fi
+if [[ ! -e "$RUN_DIR/updater-runtime-checklist.md" ]]; then
+  cp "$REPO_ROOT/qa/checklists/updater-macos.md" "$RUN_DIR/updater-runtime-checklist.md"
+fi
+if [[ ! -e "$RUN_DIR/evidence-manifest.json" ]]; then
+  cp "$REPO_ROOT/qa/checklists/phase5-evidence-manifest.template.json" \
+    "$RUN_DIR/evidence-manifest.json"
+fi
 cd "$REPO_ROOT"
 
 if [[ -z "$APP_BINARY" ]]; then
@@ -151,4 +162,6 @@ run_harness native-performance \
 run_harness full-parity \
   full-parity --repo-root "$REPO_ROOT" --output-dir "$RUN_DIR"
 
+echo "Complete the checklist and evidence manifest, then run:" >&2
+echo "  $SCRIPT_DIR/verify-phase5-run.sh --run $RUN_DIR" >&2
 echo "$RUN_DIR"

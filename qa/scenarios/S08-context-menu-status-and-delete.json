@@ -7,7 +7,8 @@
     "context-menu",
     "delete-task",
     "done-confirm",
-    "resource-cleanup"
+    "resource-cleanup",
+    "project-color"
   ],
   "steps": [
     {
@@ -22,6 +23,15 @@
     },
     {
       "action": "waitForBoardReady"
+    },
+    {
+      "action": "openTaskDetail",
+      "taskId": "qa-task-todo-local"
+    },
+    {
+      "action": "setProjectColor",
+      "projectId": "qa-project-kanvibe",
+      "color": "#5EEAD4"
     },
     {
       "action": "openTaskContextMenu",
@@ -48,6 +58,13 @@
     }
   ],
   "assertions": [
+    {
+      "type": "taskField",
+      "taskId": "qa-task-todo-local",
+      "field": "project_color",
+      "expected": "#5EEAD4",
+      "eventually": true
+    },
     {
       "type": "taskNotVisible",
       "taskId": "qa-task-pending-no-branch"

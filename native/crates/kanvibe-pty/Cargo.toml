@@ -7,6 +7,8 @@ license.workspace = true
 
 [dependencies]
 kanvibe-core.workspace = true
+kanvibe-session.workspace = true
+portable-pty.workspace = true
 
 [lints]
 workspace = true

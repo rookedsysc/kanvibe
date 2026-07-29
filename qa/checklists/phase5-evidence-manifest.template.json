@@ -1,0 +1,28 @@
+{
+  "runId": "",
+  "sourceCommit": "",
+  "scenarioDefinitionDigest": "",
+  "appVersion": "",
+  "macosVersion": "",
+  "hardware": "",
+  "operator": "",
+  "executedAt": "",
+  "verdict": "PENDING",
+  "approvedBy": "",
+  "scenarios": {
+    "S01": { "screens": [], "videos": [], "logs": [] },
+    "S02": { "screens": [], "videos": [], "logs": [] },
+    "S03": { "screens": [], "videos": [], "logs": [] },
+    "S04": { "screens": [], "videos": [], "logs": [] },
+    "S05": { "screens": [], "videos": [], "logs": [] },
+    "S06": { "screens": [], "videos": [], "logs": [] },
+    "S07": { "screens": [], "videos": [], "logs": [] },
+    "S08": { "screens": [], "videos": [], "logs": [] },
+    "S09": { "screens": [], "videos": [], "logs": [] },
+    "S10": { "screens": [], "videos": [], "logs": [] },
+    "S11": { "screens": [], "videos": [], "logs": [] },
+    "S12": { "screens": [], "videos": [], "logs": [] },
+    "S13": { "screens": [], "videos": [], "logs": [] },
+    "S14": { "screens": [], "videos": [], "logs": [] }
+  }
+}

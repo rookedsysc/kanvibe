@@ -4,10 +4,424 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use rusqlite::{Connection, OpenFlags, Params, Row, params, types::Type};
+use rusqlite::{
+    Connection, OpenFlags, Params, Row, Transaction, TransactionBehavior, params, types::Type,
+};
 use serde::{Deserialize, Serialize};
 
 pub const DONE_PAGE_SIZE: u32 = 20;
+
+pub fn validate_sqlite_database(
+    database_path: impl AsRef<Path>,
+) -> Result<(), Box<dyn Error + Send + Sync>> {
+    let connection = Connection::open_with_flags(
+        database_path.as_ref(),
+        OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
+    )?;
+    let mut statement = connection.prepare("PRAGMA quick_check")?;
+    let results = statement
+        .query_map([], |row| row.get::<_, String>(0))?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    if results.len() == 1 && results[0] == "ok" {
+        return Ok(());
+    }
+    Err(format!("SQLite quick_check failed: {}", results.join("; ")).into())
+}
+
+pub fn create_sqlite_backup_once(
+    source_path: impl AsRef<Path>,
+    backup_path: impl AsRef<Path>,
+) -> Result<bool, Box<dyn Error + Send + Sync>> {
+    let source_path = source_path.as_ref();
+    let backup_path = backup_path.as_ref();
+    if source_path == backup_path {
+        return Err("SQLite backup path must differ from its source".into());
+    }
+    validate_sqlite_database(source_path)?;
+    if backup_path.exists() {
+        validate_sqlite_database(backup_path)?;
+        return Ok(false);
+    }
+    if let Some(parent) = backup_path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let unique = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)?
+        .as_nanos();
+    let file_name = backup_path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("kanvibe-backup");
+    let temporary_path =
+        backup_path.with_file_name(format!(".{file_name}.{}-{unique}.tmp", std::process::id()));
+
+    let source = Connection::open_with_flags(
+        source_path,
+        OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
+    )?;
+    let backup_result = source.backup(rusqlite::MAIN_DB, &temporary_path, None);
+    if let Err(error) = backup_result {
+        let _ = std::fs::remove_file(&temporary_path);
+        return Err(error.into());
+    }
+    if let Err(error) = validate_sqlite_database(&temporary_path) {
+        let _ = std::fs::remove_file(&temporary_path);
+        return Err(error);
+    }
+
+    match std::fs::hard_link(&temporary_path, backup_path) {
+        Ok(()) => {
+            std::fs::remove_file(&temporary_path)?;
+            Ok(true)
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
+            std::fs::remove_file(&temporary_path)?;
+            validate_sqlite_database(backup_path)?;
+            Ok(false)
+        }
+        Err(error) => {
+            let _ = std::fs::remove_file(&temporary_path);
+            Err(error.into())
+        }
+    }
+}
+
+pub fn restore_sqlite_database_from_backup(
+    database_path: impl AsRef<Path>,
+    backup_path: impl AsRef<Path>,
+) -> Result<PathBuf, Box<dyn Error + Send + Sync>> {
+    let database_path = database_path.as_ref();
+    let backup_path = backup_path.as_ref();
+    validate_sqlite_database(database_path)?;
+    validate_sqlite_database(backup_path)?;
+    let unique = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)?
+        .as_nanos();
+    let database_name = database_path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("kanvibe.db");
+    let native_safety_path = database_path.with_file_name(format!(
+        "{database_name}.native-before-rollback-{}-{unique}",
+        std::process::id()
+    ));
+    create_sqlite_backup_once(database_path, &native_safety_path)?;
+
+    let restore_result = (|| -> rusqlite::Result<()> {
+        let mut destination = Connection::open(database_path)?;
+        destination.busy_timeout(std::time::Duration::from_secs(5))?;
+        destination.restore(
+            rusqlite::MAIN_DB,
+            backup_path,
+            None::<fn(rusqlite::backup::Progress)>,
+        )
+    })();
+    if let Err(restore_error) = restore_result {
+        let recovery_result = (|| -> rusqlite::Result<()> {
+            let mut destination = Connection::open(database_path)?;
+            destination.restore(
+                rusqlite::MAIN_DB,
+                &native_safety_path,
+                None::<fn(rusqlite::backup::Progress)>,
+            )
+        })();
+        return match recovery_result {
+            Ok(()) => Err(format!(
+                "SQLite rollback failed and the native database was recovered: {restore_error}"
+            )
+            .into()),
+            Err(recovery_error) => Err(format!(
+                "SQLite rollback failed ({restore_error}) and native recovery also failed \
+                 ({recovery_error}); safety snapshot: {}",
+                native_safety_path.display()
+            )
+            .into()),
+        };
+    }
+    if let Err(validation_error) = validate_sqlite_database(database_path) {
+        let mut destination = Connection::open(database_path)?;
+        destination.restore(
+            rusqlite::MAIN_DB,
+            &native_safety_path,
+            None::<fn(rusqlite::backup::Progress)>,
+        )?;
+        return Err(format!(
+            "restored Electron database failed integrity validation and the native database was \
+             recovered: {validation_error}"
+        )
+        .into());
+    }
+    Ok(native_safety_path)
+}
+
+const ELECTRON_MIGRATIONS: &[(i64, &str)] = &[
+    (1770854400000, "InitialSchema1770854400000"),
+    (1770854400001, "AddPrUrlToKanbanTasks1770854400001"),
+    (1770854400002, "AddIsWorktreeToProjects1770854400002"),
+    (1771048256887, "AddPaneLayoutConfig1771048256887"),
+    (1771166346785, "AssignDisplayOrder1771166346785"),
+    (1771166907165, "AddAppSettings1771166907165"),
+    (1771171200000, "AddPendingStatus1771171200000"),
+    (1771257600000, "RemoveBranchNameUnique1771257600000"),
+    (1771343199455, "AddColorIndexToProjects1771343199455"),
+    (1771344000000, "AddPriorityToKanbanTasks1771344000000"),
+    (1771388085809, "ReplaceColorIndexWithColor1771388085809"),
+    (1771400000000, "FillEmptyBaseBranch1771400000000"),
+];
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub struct DatabaseMigrationReport {
+    pub baselined_existing_database: bool,
+    pub applied_migrations: usize,
+}
+
+pub fn migrate_electron_database(
+    database_path: impl AsRef<Path>,
+) -> Result<DatabaseMigrationReport, Box<dyn Error + Send + Sync>> {
+    let database_path = database_path.as_ref();
+    let mut connection = Connection::open(database_path)?;
+    connection.busy_timeout(std::time::Duration::from_secs(5))?;
+    connection.pragma_update(None, "foreign_keys", true)?;
+    let had_tasks = sqlite_table_exists(&connection, "kanban_tasks")?;
+    let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+
+    ensure_current_schema(&transaction)?;
+    transaction.execute_batch(
+        "CREATE TABLE IF NOT EXISTS migrations (
+            id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+            timestamp BIGINT NOT NULL,
+            name VARCHAR NOT NULL
+         );",
+    )?;
+    let migration_count = transaction.query_row("SELECT COUNT(1) FROM migrations", [], |row| {
+        row.get::<_, i64>(0)
+    })?;
+    let baselined_existing_database = had_tasks && migration_count == 0;
+    let mut applied_migrations = 0;
+
+    if baselined_existing_database {
+        for (timestamp, name) in ELECTRON_MIGRATIONS {
+            transaction.execute(
+                "INSERT INTO migrations(timestamp, name) VALUES (?1, ?2)",
+                params![timestamp, name],
+            )?;
+        }
+    } else {
+        for (timestamp, name) in ELECTRON_MIGRATIONS {
+            let recorded = transaction.query_row(
+                "SELECT EXISTS(
+                    SELECT 1 FROM migrations WHERE timestamp = ?1 OR name = ?2
+                 )",
+                params![timestamp, name],
+                |row| row.get::<_, bool>(0),
+            )?;
+            if recorded {
+                continue;
+            }
+            apply_electron_migration(&transaction, *timestamp)?;
+            transaction.execute(
+                "INSERT INTO migrations(timestamp, name) VALUES (?1, ?2)",
+                params![timestamp, name],
+            )?;
+            applied_migrations += 1;
+        }
+    }
+
+    transaction.commit()?;
+    validate_sqlite_database(database_path)?;
+    Ok(DatabaseMigrationReport {
+        baselined_existing_database,
+        applied_migrations,
+    })
+}
+
+fn sqlite_table_exists(connection: &Connection, table_name: &str) -> rusqlite::Result<bool> {
+    connection.query_row(
+        "SELECT EXISTS(
+            SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?1
+         )",
+        [table_name],
+        |row| row.get(0),
+    )
+}
+
+fn transaction_table_columns(
+    transaction: &Transaction<'_>,
+    table_name: &str,
+) -> rusqlite::Result<Vec<String>> {
+    let mut statement = transaction.prepare(&format!(
+        "PRAGMA table_info(\"{}\")",
+        table_name.replace('"', "\"\"")
+    ))?;
+    statement
+        .query_map([], |row| row.get::<_, String>("name"))?
+        .collect()
+}
+
+fn ensure_column(
+    transaction: &Transaction<'_>,
+    table_name: &str,
+    column_name: &str,
+    definition: &str,
+) -> rusqlite::Result<()> {
+    if transaction_table_columns(transaction, table_name)?
+        .iter()
+        .any(|column| column == column_name)
+    {
+        return Ok(());
+    }
+    transaction.execute_batch(&format!(
+        "ALTER TABLE \"{}\" ADD COLUMN {definition};",
+        table_name.replace('"', "\"\"")
+    ))
+}
+
+fn ensure_current_schema(transaction: &Transaction<'_>) -> rusqlite::Result<()> {
+    transaction.execute_batch(
+        "CREATE TABLE IF NOT EXISTS projects (
+            id TEXT PRIMARY KEY NOT NULL,
+            name TEXT NOT NULL UNIQUE,
+            repo_path TEXT NOT NULL,
+            default_branch TEXT NOT NULL DEFAULT 'main',
+            ssh_host TEXT,
+            is_worktree INTEGER NOT NULL DEFAULT 0,
+            color TEXT DEFAULT NULL,
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+         );
+         CREATE TABLE IF NOT EXISTS kanban_tasks (
+            id TEXT PRIMARY KEY NOT NULL,
+            title TEXT NOT NULL,
+            description TEXT,
+            status TEXT NOT NULL DEFAULT 'todo',
+            branch_name TEXT,
+            worktree_path TEXT,
+            session_type TEXT,
+            session_name TEXT,
+            ssh_host TEXT,
+            agent_type TEXT,
+            project_id TEXT,
+            base_branch TEXT,
+            pr_url TEXT,
+            priority TEXT DEFAULT NULL,
+            display_order INTEGER NOT NULL DEFAULT 0,
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE SET NULL
+         );
+         CREATE TABLE IF NOT EXISTS pane_layout_configs (
+            id TEXT PRIMARY KEY NOT NULL,
+            layout_type TEXT NOT NULL,
+            panes TEXT NOT NULL,
+            project_id TEXT UNIQUE,
+            is_global INTEGER NOT NULL DEFAULT 0,
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+         );
+         CREATE TABLE IF NOT EXISTS app_settings (
+            id TEXT PRIMARY KEY NOT NULL,
+            key TEXT NOT NULL UNIQUE,
+            value TEXT NOT NULL,
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+         );",
+    )?;
+
+    let project_columns = transaction_table_columns(transaction, "projects")?;
+    if project_columns.iter().any(|column| column == "color_index")
+        && !project_columns.iter().any(|column| column == "color")
+    {
+        transaction.execute_batch("ALTER TABLE projects RENAME COLUMN color_index TO color;")?;
+    }
+    for (name, definition) in [
+        (
+            "default_branch",
+            "default_branch TEXT NOT NULL DEFAULT 'main'",
+        ),
+        ("ssh_host", "ssh_host TEXT"),
+        ("is_worktree", "is_worktree INTEGER NOT NULL DEFAULT 0"),
+        ("color", "color TEXT DEFAULT NULL"),
+        (
+            "created_at",
+            "created_at DATETIME NOT NULL DEFAULT '1970-01-01 00:00:00'",
+        ),
+    ] {
+        ensure_column(transaction, "projects", name, definition)?;
+    }
+    for (name, definition) in [
+        ("description", "description TEXT"),
+        ("status", "status TEXT NOT NULL DEFAULT 'todo'"),
+        ("branch_name", "branch_name TEXT"),
+        ("worktree_path", "worktree_path TEXT"),
+        ("session_type", "session_type TEXT"),
+        ("session_name", "session_name TEXT"),
+        ("ssh_host", "ssh_host TEXT"),
+        ("agent_type", "agent_type TEXT"),
+        ("project_id", "project_id TEXT"),
+        ("base_branch", "base_branch TEXT"),
+        ("pr_url", "pr_url TEXT"),
+        ("priority", "priority TEXT DEFAULT NULL"),
+        ("display_order", "display_order INTEGER NOT NULL DEFAULT 0"),
+        (
+            "created_at",
+            "created_at DATETIME NOT NULL DEFAULT '1970-01-01 00:00:00'",
+        ),
+        (
+            "updated_at",
+            "updated_at DATETIME NOT NULL DEFAULT '1970-01-01 00:00:00'",
+        ),
+    ] {
+        ensure_column(transaction, "kanban_tasks", name, definition)?;
+    }
+    ensure_column(
+        transaction,
+        "pane_layout_configs",
+        "panes",
+        "panes TEXT NOT NULL DEFAULT '[]'",
+    )?;
+    transaction.execute_batch(
+        "CREATE INDEX IF NOT EXISTS idx_kanban_tasks_status_order
+            ON kanban_tasks(status, display_order, created_at);
+         CREATE INDEX IF NOT EXISTS idx_kanban_tasks_project_branch
+            ON kanban_tasks(project_id, branch_name);
+         DROP INDEX IF EXISTS UQ_kanban_tasks_branch_name;",
+    )
+}
+
+fn apply_electron_migration(transaction: &Transaction<'_>, timestamp: i64) -> rusqlite::Result<()> {
+    match timestamp {
+        1771166346785 => transaction.execute_batch(
+            "UPDATE kanban_tasks
+             SET display_order = (
+                SELECT COUNT(*)
+                FROM kanban_tasks t2
+                WHERE t2.status = kanban_tasks.status
+                  AND (
+                    t2.created_at < kanban_tasks.created_at
+                    OR (
+                        t2.created_at = kanban_tasks.created_at
+                        AND t2.id < kanban_tasks.id
+                    )
+                  )
+             )
+             WHERE display_order = 0;",
+        ),
+        1771257600000 => {
+            transaction.execute_batch("DROP INDEX IF EXISTS UQ_kanban_tasks_branch_name;")
+        }
+        1771400000000 => transaction.execute_batch(
+            "UPDATE kanban_tasks
+             SET base_branch = (
+                SELECT projects.default_branch
+                FROM projects
+                WHERE projects.id = kanban_tasks.project_id
+             )
+             WHERE project_id IS NOT NULL
+               AND (base_branch IS NULL OR base_branch = '');",
+        ),
+        _ => Ok(()),
+    }
+}
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -118,6 +532,15 @@ pub enum PaneLayoutType {
 }
 
 impl PaneLayoutType {
+    pub const fn pane_count(self) -> usize {
+        match self {
+            Self::Single => 1,
+            Self::Horizontal2 | Self::Vertical2 => 2,
+            Self::LeftRightTb | Self::LeftTbRight => 3,
+            Self::Quad => 4,
+        }
+    }
+
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::Single => "single",
@@ -331,10 +754,14 @@ pub struct CreateTaskInput {
     pub id: Option<String>,
     pub title: Option<String>,
     pub description: Option<String>,
+    pub status: Option<TaskStatus>,
     pub branch_name: Option<String>,
     pub base_branch: Option<String>,
+    pub worktree_path: Option<String>,
     pub session_type: Option<SessionType>,
+    pub session_name: Option<String>,
     pub ssh_host: Option<String>,
+    pub agent_type: Option<String>,
     pub project_id: Option<String>,
     pub priority: Option<TaskPriority>,
 }
@@ -391,13 +818,22 @@ impl KanvibeDb {
             path,
             OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
         )?;
+        connection.busy_timeout(std::time::Duration::from_secs(5))?;
         connection.pragma_update(None, "foreign_keys", true)?;
 
         Ok(Self { connection })
     }
 
     pub fn open_read_write(path: impl AsRef<Path>) -> rusqlite::Result<Self> {
+        Self::open_read_write_with_timeout(path, std::time::Duration::from_secs(5))
+    }
+
+    fn open_read_write_with_timeout(
+        path: impl AsRef<Path>,
+        busy_timeout: std::time::Duration,
+    ) -> rusqlite::Result<Self> {
         let connection = Connection::open(path)?;
+        connection.busy_timeout(busy_timeout)?;
         connection.pragma_update(None, "foreign_keys", true)?;
 
         Ok(Self { connection })
@@ -415,6 +851,95 @@ impl KanvibeDb {
             .collect::<rusqlite::Result<Vec<_>>>()
     }
 
+    pub fn project_by_id(&self, project_id: &str) -> rusqlite::Result<Option<Project>> {
+        let mut statement = self.connection.prepare(
+            "SELECT id, name, repo_path, default_branch, ssh_host, is_worktree, color, created_at
+             FROM projects WHERE id = ?1",
+        )?;
+        let mut rows = statement.query([project_id])?;
+        rows.next()?.map(map_project).transpose()
+    }
+
+    pub fn register_project(
+        &self,
+        name: &str,
+        repo_path: &str,
+        default_branch: &str,
+        ssh_host: Option<&str>,
+        color: Option<&str>,
+    ) -> rusqlite::Result<Project> {
+        let id = self
+            .connection
+            .query_row("SELECT lower(hex(randomblob(16)))", [], |row| {
+                row.get::<_, String>(0)
+            })?;
+        self.connection.execute(
+            "INSERT INTO projects (
+                id, name, repo_path, default_branch, ssh_host, is_worktree, color
+             ) VALUES (?1, ?2, ?3, ?4, ?5, 0, ?6)",
+            params![id, name, repo_path, default_branch, ssh_host, color],
+        )?;
+        self.project_by_id(&id)?
+            .ok_or(rusqlite::Error::QueryReturnedNoRows)
+    }
+
+    pub fn create_project_root_task(
+        &self,
+        project: &Project,
+        session_type: SessionType,
+        session_name: &str,
+    ) -> rusqlite::Result<KanbanTask> {
+        let id = self
+            .connection
+            .query_row("SELECT lower(hex(randomblob(16)))", [], |row| {
+                row.get::<_, String>(0)
+            })?;
+        let display_order = self.connection.query_row(
+            "SELECT COALESCE(MAX(display_order), -1) + 1 FROM kanban_tasks WHERE status = 'todo'",
+            [],
+            |row| row.get::<_, i64>(0),
+        )?;
+        self.connection.execute(
+            "INSERT INTO kanban_tasks (
+                id, title, status, branch_name, worktree_path, session_type, session_name,
+                ssh_host, project_id, base_branch, display_order
+             ) VALUES (?1, ?2, 'todo', ?2, ?3, ?4, ?5, ?6, ?7, ?2, ?8)",
+            params![
+                id,
+                project.default_branch,
+                project.repo_path,
+                session_type.as_str(),
+                session_name,
+                project.ssh_host,
+                project.id,
+                display_order,
+            ],
+        )?;
+        self.task_by_id(&id)?
+            .ok_or(rusqlite::Error::QueryReturnedNoRows)
+    }
+
+    /// Deletes project-owned task rows and the project record atomically, without touching Git.
+    pub fn delete_project(&mut self, project_id: &str) -> rusqlite::Result<bool> {
+        let transaction = self.connection.transaction()?;
+        let exists = transaction.query_row(
+            "SELECT EXISTS(SELECT 1 FROM projects WHERE id = ?1)",
+            [project_id],
+            |row| row.get::<_, bool>(0),
+        )?;
+        if !exists {
+            transaction.rollback()?;
+            return Ok(false);
+        }
+        transaction.execute(
+            "DELETE FROM kanban_tasks WHERE project_id = ?1",
+            [project_id],
+        )?;
+        transaction.execute("DELETE FROM projects WHERE id = ?1", [project_id])?;
+        transaction.commit()?;
+        Ok(true)
+    }
+
     pub fn task_by_id(&self, task_id: &str) -> rusqlite::Result<Option<KanbanTask>> {
         let mut statement = self.connection.prepare(
             "SELECT id, title, description, status, branch_name, worktree_path, session_type,
@@ -426,6 +951,108 @@ impl KanvibeDb {
         let mut rows = statement.query([task_id])?;
 
         rows.next()?.map(map_task).transpose()
+    }
+
+    pub fn active_tasks(&self) -> rusqlite::Result<Vec<KanbanTask>> {
+        self.tasks_where(
+            "WHERE status != 'done'
+             ORDER BY updated_at ASC, created_at ASC",
+            [],
+        )
+    }
+
+    pub fn set_task_pr_url_if_changed(
+        &self,
+        task_id: &str,
+        pr_url: &str,
+    ) -> rusqlite::Result<bool> {
+        let changed = self.connection.execute(
+            "UPDATE kanban_tasks
+             SET pr_url = ?1, updated_at = CURRENT_TIMESTAMP
+             WHERE id = ?2 AND pr_url IS NOT ?1",
+            params![pr_url, task_id],
+        )?;
+        Ok(changed > 0)
+    }
+
+    pub fn task_by_project_branch(
+        &self,
+        project_id: &str,
+        branch_name: &str,
+    ) -> rusqlite::Result<Option<KanbanTask>> {
+        let mut statement = self.connection.prepare(
+            "SELECT id, title, description, status, branch_name, worktree_path, session_type,
+                    session_name, ssh_host, agent_type, project_id, base_branch, pr_url, priority,
+                    display_order, created_at, updated_at
+             FROM kanban_tasks
+             WHERE project_id = ?1 AND branch_name = ?2
+             ORDER BY created_at ASC
+             LIMIT 1",
+        )?;
+        let mut rows = statement.query(params![project_id, branch_name])?;
+        rows.next()?.map(map_task).transpose()
+    }
+
+    pub fn orphan_task_by_branch_and_path(
+        &self,
+        branch_name: &str,
+        worktree_path: &str,
+    ) -> rusqlite::Result<Option<KanbanTask>> {
+        self.orphan_task_by_location(branch_name, worktree_path, None)
+    }
+
+    pub fn orphan_task_by_location(
+        &self,
+        branch_name: &str,
+        worktree_path: &str,
+        ssh_host: Option<&str>,
+    ) -> rusqlite::Result<Option<KanbanTask>> {
+        let mut statement = self.connection.prepare(
+            "SELECT id, title, description, status, branch_name, worktree_path, session_type,
+                    session_name, ssh_host, agent_type, project_id, base_branch, pr_url, priority,
+                    display_order, created_at, updated_at
+             FROM kanban_tasks
+             WHERE project_id IS NULL AND branch_name = ?1 AND worktree_path = ?2
+                   AND ssh_host IS ?3
+             ORDER BY created_at ASC
+             LIMIT 1",
+        )?;
+        let mut rows = statement.query(params![branch_name, worktree_path, ssh_host])?;
+        rows.next()?.map(map_task).transpose()
+    }
+
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "the arguments mirror the persisted worktree synchronization contract"
+    )]
+    pub fn bind_task_to_worktree(
+        &self,
+        task_id: &str,
+        project_id: &str,
+        branch_name: &str,
+        worktree_path: &str,
+        base_branch: &str,
+        ssh_host: Option<&str>,
+        status: TaskStatus,
+    ) -> rusqlite::Result<Option<KanbanTask>> {
+        self.connection.execute(
+            "UPDATE kanban_tasks
+             SET title = ?1, project_id = ?2, branch_name = ?3, worktree_path = ?4,
+                 base_branch = ?5, ssh_host = ?6, status = ?7,
+                 updated_at = CURRENT_TIMESTAMP
+             WHERE id = ?8",
+            params![
+                branch_name,
+                project_id,
+                branch_name,
+                worktree_path,
+                base_branch,
+                ssh_host,
+                status.as_str(),
+                task_id,
+            ],
+        )?;
+        self.task_by_id(task_id)
     }
 
     pub fn board_snapshot(&self, done_limit: u32) -> rusqlite::Result<BoardSnapshot> {
@@ -494,35 +1121,56 @@ impl KanvibeDb {
             .filter(|title| !title.trim().is_empty())
             .or_else(|| input.branch_name.clone())
             .unwrap_or_else(|| "Untitled".to_owned());
-        let display_order = self.connection.query_row(
-            "SELECT COALESCE(MAX(display_order), -1) + 1 FROM kanban_tasks WHERE status = 'todo'",
-            [],
-            |row| row.get::<_, i64>(0),
-        )?;
+        let status = input.status.unwrap_or(TaskStatus::Todo);
         let session_type = input.session_type.map(SessionType::as_str);
         let priority = input.priority.map(TaskPriority::as_str);
 
         self.connection.execute(
             "INSERT INTO kanban_tasks (
-                id, title, description, status, branch_name, base_branch, session_type,
-                ssh_host, project_id, priority, display_order
-             ) VALUES (?1, ?2, ?3, 'todo', ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+                id, title, description, status, branch_name, base_branch, worktree_path,
+                session_type, session_name, ssh_host, agent_type, project_id, priority, display_order
+             ) VALUES (
+                ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13,
+                (SELECT COALESCE(MAX(display_order), -1) + 1
+                 FROM kanban_tasks WHERE status = ?4)
+             )",
             params![
                 id,
                 title,
                 input.description,
+                status.as_str(),
                 input.branch_name,
                 input.base_branch,
+                input.worktree_path,
                 session_type,
+                input.session_name,
                 input.ssh_host,
+                input.agent_type,
                 input.project_id,
                 priority,
-                display_order,
             ],
         )?;
 
         self.task_by_id(&id)?
             .ok_or_else(|| rusqlite::Error::QueryReturnedNoRows)
+    }
+
+    /// Hook status updates intentionally retain session/worktree metadata, including for Done.
+    ///
+    /// Electron's hook service saves only the status field; unlike an interactive board move it
+    /// does not clean up resources. This separate method keeps that externally observable contract.
+    pub fn set_task_status_preserving_resources(
+        &self,
+        task_id: &str,
+        new_status: TaskStatus,
+    ) -> rusqlite::Result<Option<KanbanTask>> {
+        self.connection.execute(
+            "UPDATE kanban_tasks
+             SET status = ?1, updated_at = CURRENT_TIMESTAMP
+             WHERE id = ?2",
+            params![new_status.as_str(), task_id],
+        )?;
+        self.task_by_id(task_id)
     }
 
     /// Electron `updateTaskStatus`의 포팅.
@@ -699,14 +1347,33 @@ impl KanvibeDb {
         new_status: TaskStatus,
         dest_ordered_ids: &[String],
     ) -> rusqlite::Result<Option<DoneCleanupPlan>> {
-        let done_cleanup = self
-            .update_task_status(task_id, new_status)?
-            .and_then(|update| update.done_cleanup);
-        self.reorder_tasks(dest_ordered_ids)?;
-
-        Ok(done_cleanup)
+        self.connection.execute_batch("BEGIN IMMEDIATE")?;
+        let operation = (|| {
+            let done_cleanup = self
+                .update_task_status(task_id, new_status)?
+                .and_then(|update| update.done_cleanup);
+            self.reorder_tasks(dest_ordered_ids)?;
+            Ok(done_cleanup)
+        })();
+        match operation {
+            Ok(done_cleanup) => {
+                if let Err(commit_error) = self.connection.execute_batch("COMMIT") {
+                    self.connection.execute_batch("ROLLBACK")?;
+                    return Err(commit_error);
+                }
+                Ok(done_cleanup)
+            }
+            Err(operation_error) => {
+                self.connection.execute_batch("ROLLBACK")?;
+                Err(operation_error)
+            }
+        }
     }
 
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "the arguments mirror the persisted branch-task contract"
+    )]
     pub fn branch_from_task(
         &self,
         task_id: &str,
@@ -741,6 +1408,59 @@ impl KanvibeDb {
             ],
         )?;
 
+        self.task_by_id(task_id)
+    }
+
+    pub fn restore_task_branch_binding(
+        &self,
+        original: &KanbanTask,
+    ) -> rusqlite::Result<Option<KanbanTask>> {
+        self.connection.execute(
+            "UPDATE kanban_tasks
+             SET project_id = ?1, branch_name = ?2, base_branch = ?3,
+                 session_type = ?4, session_name = ?5, worktree_path = ?6,
+                 ssh_host = ?7, status = ?8, updated_at = CURRENT_TIMESTAMP
+             WHERE id = ?9",
+            params![
+                original.project_id,
+                original.branch_name,
+                original.base_branch,
+                original.session_type.map(SessionType::as_str),
+                original.session_name,
+                original.worktree_path,
+                original.ssh_host,
+                original.status.as_str(),
+                original.id,
+            ],
+        )?;
+        self.task_by_id(&original.id)
+    }
+
+    pub fn bind_live_session_if_unassigned(
+        &self,
+        task_id: &str,
+        session_type: SessionType,
+        session_name: &str,
+        worktree_path: &str,
+        ssh_host: Option<&str>,
+    ) -> rusqlite::Result<Option<KanbanTask>> {
+        self.connection.execute(
+            "UPDATE kanban_tasks
+             SET session_type = ?1, session_name = ?2, worktree_path = ?3, ssh_host = ?4,
+                 updated_at = CURRENT_TIMESTAMP
+             WHERE id = ?5 AND (
+                 session_type IS NULL
+                 OR session_name IS NULL OR session_name = ''
+                 OR worktree_path IS NULL OR worktree_path = ''
+             )",
+            params![
+                session_type.as_str(),
+                session_name,
+                worktree_path,
+                ssh_host,
+                task_id,
+            ],
+        )?;
         self.task_by_id(task_id)
     }
 
@@ -959,6 +1679,32 @@ impl KanvibeDb {
         )
     }
 
+    pub fn notification_enabled(&self) -> rusqlite::Result<bool> {
+        self.app_setting_bool("notification_enabled", true)
+    }
+
+    pub fn set_notification_enabled(&self, enabled: bool) -> rusqlite::Result<()> {
+        self.set_app_setting(
+            "notification_enabled",
+            if enabled { "true" } else { "false" },
+        )
+    }
+
+    pub fn set_notification_statuses(&self, statuses: &[String]) -> rusqlite::Result<()> {
+        let mut normalized = Vec::new();
+        for status in statuses {
+            let parsed = TaskStatus::parse(status)
+                .map_err(|error| rusqlite::Error::ToSqlConversionFailure(Box::new(error)))?;
+            let value = parsed.as_str().to_owned();
+            if !normalized.contains(&value) {
+                normalized.push(value);
+            }
+        }
+        let serialized = serde_json::to_string(&normalized)
+            .map_err(|error| rusqlite::Error::ToSqlConversionFailure(Box::new(error)))?;
+        self.set_app_setting("notification_statuses", &serialized)
+    }
+
     pub fn get_global_pane_layout(&self) -> rusqlite::Result<Option<PaneLayoutConfig>> {
         self.query_optional_pane_layout(
             "WHERE is_global = 1
@@ -984,10 +1730,10 @@ impl KanvibeDb {
         &self,
         project_id: Option<&str>,
     ) -> rusqlite::Result<Option<PaneLayoutConfig>> {
-        if let Some(project_id) = project_id {
-            if let Some(config) = self.get_project_pane_layout(project_id)? {
-                return Ok(Some(config));
-            }
+        if let Some(project_id) = project_id
+            && let Some(config) = self.get_project_pane_layout(project_id)?
+        {
+            return Ok(Some(config));
         }
 
         self.get_global_pane_layout()
@@ -1009,6 +1755,18 @@ impl KanvibeDb {
         &self,
         input: SavePaneLayoutInput,
     ) -> rusqlite::Result<PaneLayoutConfig> {
+        if input.panes.len() != input.layout_type.pane_count()
+            || input
+                .panes
+                .iter()
+                .enumerate()
+                .any(|(index, pane)| pane.position != index as u32)
+        {
+            return Err(rusqlite::Error::InvalidParameterName(
+                "pane layout commands must match the layout count and contiguous positions"
+                    .to_owned(),
+            ));
+        }
         let existing = if input.is_global {
             self.get_global_pane_layout()?
         } else if let Some(project_id) = input.project_id.as_deref() {
@@ -1259,9 +2017,481 @@ fn parse_optional_enum<T>(
 mod tests {
     use super::*;
     use std::{
+        collections::BTreeSet,
         fs,
+        sync::{Arc, Barrier},
+        thread,
+        time::Duration,
         time::{SystemTime, UNIX_EPOCH},
     };
+
+    #[test]
+    fn pull_request_url_updates_only_when_value_changes_and_done_tasks_are_inactive() {
+        let path = writable_seed_copy("pull-request-sync");
+        let database = KanvibeDb::open_read_write(&path).expect("open PR fixture");
+        let task = database
+            .active_tasks()
+            .expect("active tasks")
+            .into_iter()
+            .next()
+            .expect("seed active task");
+        let pull_request_url = "https://github.com/acme/repo/pull/310";
+
+        assert!(
+            database
+                .set_task_pr_url_if_changed(&task.id, pull_request_url)
+                .expect("first URL update")
+        );
+        assert!(
+            !database
+                .set_task_pr_url_if_changed(&task.id, pull_request_url)
+                .expect("idempotent URL update")
+        );
+        assert_eq!(
+            database
+                .task_by_id(&task.id)
+                .expect("updated task")
+                .expect("task exists")
+                .pr_url
+                .as_deref(),
+            Some(pull_request_url)
+        );
+        database
+            .set_task_status_preserving_resources(&task.id, TaskStatus::Done)
+            .expect("mark task done");
+        assert!(
+            database
+                .active_tasks()
+                .expect("active tasks after done")
+                .iter()
+                .all(|active| active.id != task.id)
+        );
+        fs::remove_file(path).expect("remove PR fixture");
+    }
+
+    #[test]
+    fn locked_and_full_database_writes_fail_without_partial_task_rows() {
+        let locked_path = writable_seed_copy("locked-write");
+        let locker = Connection::open(&locked_path).expect("open lock owner");
+        locker
+            .execute_batch("BEGIN EXCLUSIVE")
+            .expect("acquire exclusive lock");
+        let locked_database = KanvibeDb::open_read_write_with_timeout(&locked_path, Duration::ZERO)
+            .expect("open zero-timeout database");
+        let locked_error = locked_database
+            .create_task(CreateTaskInput {
+                id: Some("qa-locked-write".to_owned()),
+                title: Some("Locked write".to_owned()),
+                ..CreateTaskInput::default()
+            })
+            .expect_err("exclusive lock must reject the write");
+        assert!(matches!(
+            locked_error.sqlite_error_code(),
+            Some(rusqlite::ErrorCode::DatabaseBusy | rusqlite::ErrorCode::DatabaseLocked)
+        ));
+        locker.execute_batch("ROLLBACK").expect("release lock");
+        let locked_reader = Connection::open(&locked_path).expect("inspect locked fixture");
+        assert_eq!(
+            locked_reader
+                .query_row(
+                    "SELECT COUNT(1) FROM kanban_tasks WHERE id = 'qa-locked-write'",
+                    [],
+                    |row| row.get::<_, i64>(0),
+                )
+                .expect("locked row count"),
+            0
+        );
+
+        let full_path = writable_seed_copy("full-write");
+        let full_database = KanvibeDb::open_read_write(&full_path).expect("open capped database");
+        let page_count = full_database
+            .connection
+            .query_row("PRAGMA page_count", [], |row| row.get::<_, i64>(0))
+            .expect("read page count");
+        full_database
+            .connection
+            .pragma_update(None, "max_page_count", page_count)
+            .expect("cap database pages");
+        let full_result = full_database.create_task(CreateTaskInput {
+            id: Some("qa-full-write".to_owned()),
+            title: Some("Full write".to_owned()),
+            description: Some("x".repeat(2 * 1024 * 1024)),
+            ..CreateTaskInput::default()
+        });
+        let Err(full_error) = full_result else {
+            panic!("page cap must reject the write");
+        };
+        assert_eq!(
+            full_error.sqlite_error_code(),
+            Some(rusqlite::ErrorCode::DiskFull)
+        );
+        let full_reader = Connection::open(&full_path).expect("inspect full fixture");
+        assert_eq!(
+            full_reader
+                .query_row(
+                    "SELECT COUNT(1) FROM kanban_tasks WHERE id = 'qa-full-write'",
+                    [],
+                    |row| row.get::<_, i64>(0),
+                )
+                .expect("full row count"),
+            0
+        );
+        fs::remove_file(locked_path).expect("remove locked fixture");
+        fs::remove_file(full_path).expect("remove full fixture");
+    }
+
+    #[test]
+    fn concurrent_task_creates_keep_unique_per_status_display_order() {
+        const WRITERS: usize = 12;
+        let path = writable_seed_copy("concurrent-create");
+        let barrier = Arc::new(Barrier::new(WRITERS));
+        let handles = (0..WRITERS)
+            .map(|index| {
+                let path = path.clone();
+                let barrier = Arc::clone(&barrier);
+                thread::spawn(move || {
+                    let database =
+                        KanvibeDb::open_read_write(path).expect("open concurrent writer");
+                    barrier.wait();
+                    database.create_task(CreateTaskInput {
+                        id: Some(format!("qa-concurrent-{index}")),
+                        title: Some(format!("Concurrent {index}")),
+                        status: Some(TaskStatus::Todo),
+                        ..CreateTaskInput::default()
+                    })
+                })
+            })
+            .collect::<Vec<_>>();
+        for handle in handles {
+            handle
+                .join()
+                .expect("concurrent writer thread")
+                .expect("concurrent task create");
+        }
+        let reader = Connection::open(&path).expect("inspect concurrent fixture");
+        let orders = reader
+            .prepare(
+                "SELECT display_order FROM kanban_tasks
+                 WHERE id LIKE 'qa-concurrent-%' ORDER BY id",
+            )
+            .expect("prepare concurrent orders")
+            .query_map([], |row| row.get::<_, i64>(0))
+            .expect("query concurrent orders")
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .expect("collect concurrent orders");
+        assert_eq!(orders.len(), WRITERS);
+        assert_eq!(
+            orders.iter().copied().collect::<BTreeSet<_>>().len(),
+            WRITERS,
+            "concurrent creates must not reuse display_order"
+        );
+        drop(reader);
+        fs::remove_file(path).expect("remove concurrent fixture");
+    }
+
+    #[test]
+    fn move_task_rolls_back_status_when_reorder_write_fails() {
+        let path = writable_seed_copy("move-rollback");
+        let database = KanvibeDb::open_read_write(&path).expect("open move fixture");
+        let task = database
+            .board_snapshot(DONE_PAGE_SIZE)
+            .expect("read move fixture")
+            .column(TaskStatus::Todo)
+            .expect("todo column")
+            .tasks[0]
+            .clone();
+        database
+            .connection
+            .execute_batch(&format!(
+                "CREATE TRIGGER fail_qa_reorder
+                 BEFORE UPDATE OF display_order ON kanban_tasks
+                 WHEN NEW.id = '{}'
+                 BEGIN SELECT RAISE(ABORT, 'injected reorder failure'); END;",
+                task.id.replace('\'', "''")
+            ))
+            .expect("install reorder failure trigger");
+
+        database
+            .move_task_to_column(&task.id, TaskStatus::Review, std::slice::from_ref(&task.id))
+            .expect_err("injected reorder failure must abort the move");
+
+        assert_eq!(
+            database
+                .task_by_id(&task.id)
+                .expect("read task after failed move")
+                .expect("task remains")
+                .status,
+            TaskStatus::Todo,
+            "status and reorder writes must roll back together"
+        );
+        drop(database);
+        fs::remove_file(path).expect("remove move rollback fixture");
+    }
+
+    #[test]
+    fn sqlite_backup_captures_wal_state_and_is_never_overwritten() {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock should be monotonic")
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!(
+            "kanvibe-sqlite-backup-{}-{unique}",
+            std::process::id()
+        ));
+        fs::create_dir_all(&root).expect("backup test directory");
+        let source_path = root.join("source.sqlite");
+        let backup_path = root.join("source.sqlite.electron-backup");
+        let source = Connection::open(&source_path).expect("open WAL source");
+        source
+            .pragma_update(None, "journal_mode", "WAL")
+            .expect("enable WAL");
+        source
+            .execute_batch(
+                "CREATE TABLE values_table (value TEXT NOT NULL);
+                 INSERT INTO values_table (value) VALUES ('before');",
+            )
+            .expect("seed WAL source");
+
+        assert!(
+            create_sqlite_backup_once(&source_path, &backup_path).expect("create first backup")
+        );
+        source
+            .execute("INSERT INTO values_table (value) VALUES ('after')", [])
+            .expect("mutate source after backup");
+        assert!(
+            !create_sqlite_backup_once(&source_path, &backup_path)
+                .expect("repeat backup must reuse snapshot")
+        );
+
+        let backup = Connection::open_with_flags(&backup_path, OpenFlags::SQLITE_OPEN_READ_ONLY)
+            .expect("open backup");
+        let values = backup
+            .prepare("SELECT value FROM values_table ORDER BY rowid")
+            .expect("prepare backup query")
+            .query_map([], |row| row.get::<_, String>(0))
+            .expect("query backup")
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .expect("backup values");
+        assert_eq!(values, vec!["before"]);
+        drop(backup);
+        drop(source);
+        fs::remove_dir_all(root).expect("remove backup fixture");
+    }
+
+    #[test]
+    fn native_migration_baselines_legacy_bootstrap_without_losing_rows() {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock should be monotonic")
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!(
+            "kanvibe-legacy-baseline-{}-{unique}.sqlite",
+            std::process::id()
+        ));
+        let connection = Connection::open(&path).expect("legacy database");
+        connection
+            .execute_batch(
+                "CREATE TABLE projects (
+                    id TEXT PRIMARY KEY NOT NULL,
+                    name TEXT NOT NULL UNIQUE,
+                    repo_path TEXT NOT NULL,
+                    default_branch TEXT NOT NULL DEFAULT 'main',
+                    ssh_host TEXT,
+                    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+                 );
+                 CREATE TABLE kanban_tasks (
+                    id TEXT PRIMARY KEY NOT NULL,
+                    title TEXT NOT NULL,
+                    status TEXT NOT NULL DEFAULT 'todo',
+                    branch_name TEXT,
+                    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+                 );
+                 CREATE TABLE pane_layout_configs (
+                    id TEXT PRIMARY KEY NOT NULL,
+                    layout_type TEXT NOT NULL,
+                    project_id TEXT UNIQUE,
+                    is_global INTEGER NOT NULL DEFAULT 0,
+                    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+                 );
+                 CREATE UNIQUE INDEX UQ_kanban_tasks_branch_name
+                    ON kanban_tasks(branch_name);
+                 INSERT INTO projects(id, name, repo_path, default_branch)
+                    VALUES ('project-1', 'Legacy', '/workspace/legacy', 'main');
+                 INSERT INTO kanban_tasks(id, title, status, branch_name)
+                    VALUES ('task-1', 'Legacy task', 'todo', 'main');",
+            )
+            .expect("legacy schema and rows");
+        drop(connection);
+
+        let report = migrate_electron_database(&path).expect("baseline legacy database");
+        assert!(report.baselined_existing_database);
+        assert_eq!(report.applied_migrations, 0);
+        let database = KanvibeDb::open_read_only(&path).expect("open migrated database");
+        let task = database
+            .task_by_id("task-1")
+            .expect("read legacy task")
+            .expect("legacy task survives");
+        assert_eq!(task.title, "Legacy task");
+        assert_eq!(task.status, TaskStatus::Todo);
+        drop(database);
+        let connection = Connection::open(&path).expect("inspect migrated database");
+        assert_eq!(
+            connection
+                .query_row("SELECT COUNT(1) FROM migrations", [], |row| {
+                    row.get::<_, i64>(0)
+                })
+                .expect("migration count"),
+            ELECTRON_MIGRATIONS.len() as i64
+        );
+        assert!(
+            !connection
+                .prepare("PRAGMA index_list('kanban_tasks')")
+                .expect("task indexes")
+                .query_map([], |row| row.get::<_, String>("name"))
+                .expect("query indexes")
+                .collect::<rusqlite::Result<Vec<_>>>()
+                .expect("index names")
+                .contains(&"UQ_kanban_tasks_branch_name".to_owned())
+        );
+        drop(connection);
+        let repeat = migrate_electron_database(&path).expect("repeat migration");
+        assert!(!repeat.baselined_existing_database);
+        assert_eq!(repeat.applied_migrations, 0);
+        fs::remove_file(path).expect("remove legacy fixture");
+    }
+
+    #[test]
+    fn native_migration_resumes_partial_typeorm_history_transactionally() {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock should be monotonic")
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!(
+            "kanvibe-partial-migrations-{}-{unique}.sqlite",
+            std::process::id()
+        ));
+        migrate_electron_database(&path).expect("create current schema");
+        let connection = Connection::open(&path).expect("prepare partial history");
+        connection
+            .execute(
+                "DELETE FROM migrations WHERE timestamp >= ?1",
+                [1771166346785_i64],
+            )
+            .expect("truncate migration history");
+        connection
+            .execute(
+                "INSERT INTO projects(id, name, repo_path, default_branch)
+                 VALUES ('project-1', 'Partial', '/workspace/partial', 'develop')",
+                [],
+            )
+            .expect("partial project");
+        for (id, created_at) in [
+            ("task-b", "2026-01-01T00:00:00.000Z"),
+            ("task-a", "2026-01-01T00:00:00.000Z"),
+        ] {
+            connection
+                .execute(
+                    "INSERT INTO kanban_tasks(
+                        id, title, status, branch_name, project_id, display_order,
+                        created_at, updated_at
+                     ) VALUES (?1, ?1, 'todo', ?1, 'project-1', 0, ?2, ?2)",
+                    params![id, created_at],
+                )
+                .expect("partial task");
+        }
+        drop(connection);
+
+        let report = migrate_electron_database(&path).expect("resume migrations");
+        assert!(!report.baselined_existing_database);
+        assert_eq!(report.applied_migrations, 8);
+        let connection = Connection::open(&path).expect("inspect resumed migration");
+        let rows = connection
+            .prepare(
+                "SELECT id, display_order, base_branch
+                 FROM kanban_tasks ORDER BY id",
+            )
+            .expect("prepare migrated tasks")
+            .query_map([], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, i64>(1)?,
+                    row.get::<_, String>(2)?,
+                ))
+            })
+            .expect("query migrated tasks")
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .expect("migrated task rows");
+        assert_eq!(
+            rows,
+            vec![
+                ("task-a".to_owned(), 0, "develop".to_owned()),
+                ("task-b".to_owned(), 1, "develop".to_owned()),
+            ]
+        );
+        drop(connection);
+        fs::remove_file(path).expect("remove partial fixture");
+    }
+
+    #[test]
+    fn native_migration_rolls_back_all_schema_changes_after_mid_transaction_failure() {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock should be monotonic")
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!(
+            "kanvibe-failed-migration-{}-{unique}.sqlite",
+            std::process::id()
+        ));
+        let connection = Connection::open(&path).expect("failed migration fixture");
+        connection
+            .execute_batch(
+                "CREATE TABLE projects (
+                    id TEXT PRIMARY KEY NOT NULL,
+                    name TEXT NOT NULL UNIQUE,
+                    repo_path TEXT NOT NULL,
+                    default_branch TEXT NOT NULL DEFAULT 'main'
+                 );
+                 CREATE TABLE kanban_tasks (
+                    id TEXT PRIMARY KEY NOT NULL,
+                    title TEXT NOT NULL
+                 );
+                 CREATE TABLE migrations (unexpected_column TEXT);",
+            )
+            .expect("incompatible migration history");
+        drop(connection);
+
+        assert!(
+            migrate_electron_database(&path)
+                .expect_err("invalid migration table must fail")
+                .to_string()
+                .contains("timestamp")
+        );
+
+        let connection = Connection::open(&path).expect("inspect rolled back database");
+        let project_columns = connection
+            .prepare("PRAGMA table_info('projects')")
+            .expect("project columns")
+            .query_map([], |row| row.get::<_, String>("name"))
+            .expect("query project columns")
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .expect("project column names");
+        assert!(
+            !project_columns.contains(&"is_worktree".to_owned()),
+            "schema repair before the failure must roll back"
+        );
+        let migration_columns = connection
+            .prepare("PRAGMA table_info('migrations')")
+            .expect("migration columns")
+            .query_map([], |row| row.get::<_, String>("name"))
+            .expect("query migration columns")
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .expect("migration column names");
+        assert_eq!(migration_columns, vec!["unexpected_column"]);
+        drop(connection);
+        fs::remove_file(path).expect("remove failed migration fixture");
+    }
 
     #[test]
     fn schema_contract_tracks_electron_seed_tables() {

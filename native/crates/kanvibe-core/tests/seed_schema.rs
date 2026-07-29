@@ -47,8 +47,9 @@ fn writable_seed_copy(test_name: &str) -> PathBuf {
 
 #[test]
 fn electron_seed_database_matches_initial_rust_schema_contract() {
-    let seed = seed_db_path_from_crate_manifest(env!("CARGO_MANIFEST_DIR"));
-    assert!(seed.exists(), "missing seed DB at {}", seed.display());
+    let source = seed_db_path_from_crate_manifest(env!("CARGO_MANIFEST_DIR"));
+    assert!(source.exists(), "missing seed DB at {}", source.display());
+    let seed = writable_seed_copy("schema-contract");
 
     assert_eq!(sqlite_scalar(&seed, "PRAGMA integrity_check;"), "ok");
     assert_eq!(sqlite_scalar(&seed, "PRAGMA foreign_key_check;"), "");
@@ -101,7 +102,7 @@ fn electron_seed_database_matches_initial_rust_schema_contract() {
 
 #[test]
 fn rust_read_models_load_the_seed_board_snapshot() {
-    let seed = seed_db_path_from_crate_manifest(env!("CARGO_MANIFEST_DIR"));
+    let seed = writable_seed_copy("read-models");
     let database = KanvibeDb::open_read_only(&seed).expect("seed DB should open read-only");
     let snapshot = database
         .board_snapshot(DONE_PAGE_SIZE)
@@ -292,6 +293,77 @@ fn done_transition_hands_back_cleanup_targets_and_rolls_back_on_failure() {
     assert_eq!(cleared.status, TaskStatus::Done);
     assert_eq!(cleared.session_name, None);
     assert_eq!(cleared.worktree_path, None);
+}
+
+#[test]
+fn hook_status_update_to_done_preserves_session_and_worktree_resources() {
+    let db_path = writable_seed_copy("hook-status-preserves-resources");
+    let database = KanvibeDb::open_read_write(&db_path).expect("writable seed copy should open");
+    let before = database
+        .task_by_id("qa-task-review-diff")
+        .expect("task lookup should succeed")
+        .expect("seed task should exist");
+
+    let updated = database
+        .set_task_status_preserving_resources("qa-task-review-diff", TaskStatus::Done)
+        .expect("hook status update should succeed")
+        .expect("task should exist");
+
+    assert_eq!(updated.status, TaskStatus::Done);
+    assert_eq!(updated.session_type, before.session_type);
+    assert_eq!(updated.session_name, before.session_name);
+    assert_eq!(updated.worktree_path, before.worktree_path);
+    assert_eq!(updated.ssh_host, before.ssh_host);
+}
+
+#[test]
+fn live_session_binding_only_fills_unassigned_task_metadata() {
+    let db_path = writable_seed_copy("live-session-binding");
+    let database = KanvibeDb::open_read_write(&db_path).expect("writable seed copy should open");
+    let task = database
+        .create_task(CreateTaskInput {
+            id: Some("live-session-task".to_owned()),
+            title: Some("Discover session".to_owned()),
+            worktree_path: Some("/tmp/discovered-worktree".to_owned()),
+            ..CreateTaskInput::default()
+        })
+        .expect("create unassigned task");
+
+    let bound = database
+        .bind_live_session_if_unassigned(
+            &task.id,
+            kanvibe_core::SessionType::Tmux,
+            "discovered-session",
+            "/tmp/discovered-worktree",
+            None,
+        )
+        .expect("bind discovered session")
+        .expect("task exists");
+    assert_eq!(bound.session_type, Some(kanvibe_core::SessionType::Tmux));
+    assert_eq!(bound.session_name.as_deref(), Some("discovered-session"));
+
+    let preserved = database
+        .bind_live_session_if_unassigned(
+            &task.id,
+            kanvibe_core::SessionType::Zellij,
+            "must-not-replace",
+            "/tmp/other",
+            None,
+        )
+        .expect("repeat session binding")
+        .expect("task exists");
+    assert_eq!(
+        preserved.session_type,
+        Some(kanvibe_core::SessionType::Tmux)
+    );
+    assert_eq!(
+        preserved.session_name.as_deref(),
+        Some("discovered-session")
+    );
+    assert_eq!(
+        preserved.worktree_path.as_deref(),
+        Some("/tmp/discovered-worktree")
+    );
 }
 
 /// 정리가 진행되는 동안 사용자가 상태를 다시 옮겼다면 롤백이 그 변경을 덮어써서는 안 된다.

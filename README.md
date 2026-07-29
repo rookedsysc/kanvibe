@@ -21,7 +21,7 @@ Use shortcuts for project filters, task search, notifications, task detail panel
 KanVibe is being migrated from Electron to a **macOS-first native Rust + GPUI app**.
 
 - The portable Rust contracts for the database, Git/worktrees, PTY sessions, hooks, theme, localization, application state, and QA replay harness live in [`native/`](./native/README.md). They are designed to build and test without Electron, Node, or a webview and can be checked on Linux CI.
-- The product UI is macOS-gated behind the `native-ui` feature. Electron remains in the repository as the behavior and visual parity baseline while the migration is completed; the currently published app and Homebrew instructions below still refer to that Electron baseline.
+- The product UI is macOS-gated and the `native-ui` feature is enabled by default for normal Cargo builds. Electron remains in the repository as the behavior and visual parity baseline until Issue #310's data, QA, release, and stabilization gates pass; the currently published app and Homebrew instructions below still refer to that Electron baseline.
 - The Rust workspace includes the native board shell, interaction contracts, macOS packaging path, and Phase 5 QA control/capture contracts. This does **not** yet prove complete runtime or visual parity.
 - Actual GPUI screenshots and videos still require the Phase 5 run on macOS. Until those artifacts are captured and reviewed, every product screenshot and demo below is explicitly an **Electron parity-baseline capture**, not a native GPUI capture.
 
@@ -126,22 +126,29 @@ brew install --cask kanvibe
 
 ### Verify the Native Workspace
 
-Portable Rust contracts can be verified on Linux or macOS without enabling the macOS GPUI product UI:
+The repository exposes a Node-free native product command surface:
 
 ```bash
-cd native
-cargo test --workspace
-cargo build --workspace
+./kanvibe-native check
+./kanvibe-native test
+./kanvibe-native build
 ```
 
-On macOS, build the actual GPUI app bundle through the packaging script:
+On macOS, run or package the actual GPUI app:
 
 ```bash
-cd native
-scripts/package-macos-app.sh
+./kanvibe-native dev
+./kanvibe-native package
 ```
 
-This package command is a migration/development path, not a claim that Phase 5 native visual parity has passed. See [`native/README.md`](./native/README.md) for the current crate boundaries, QA evidence, and macOS capture handoff.
+These native commands do not install or invoke Node, pnpm, Electron, or a
+webview. The existing package-manager desktop commands still select the
+Electron parity baseline until the real macOS Phase 5, signed release,
+stabilization, and rollback gates pass; use the explicit
+`legacy:electron:*` aliases when intentionally exercising that baseline.
+This is migration readiness, not a claim that native visual parity has
+passed. See [`native/README.md`](./native/README.md) for the current crate
+boundaries, QA evidence, and macOS capture handoff.
 
 ### Update or Remove
 

@@ -1,22 +1,27 @@
 [workspace]
 resolver = "3"
 members = [
+    "crates/kanvibe-ai",
     "crates/kanvibe-app",
     "crates/kanvibe-core",
     "crates/kanvibe-git",
     "crates/kanvibe-hooks",
     "crates/kanvibe-i18n",
     "crates/kanvibe-pty",
+    "crates/kanvibe-session",
     "crates/kanvibe-theme",
     "crates/qa-harness",
 ]
+exclude = ["crates/kanvibe-terminal"]
 default-members = [
+    "crates/kanvibe-ai",
     "crates/kanvibe-app",
     "crates/kanvibe-core",
     "crates/kanvibe-git",
     "crates/kanvibe-hooks",
     "crates/kanvibe-i18n",
     "crates/kanvibe-pty",
+    "crates/kanvibe-session",
     "crates/kanvibe-theme",
     "crates/qa-harness",
 ]
@@ -27,15 +32,22 @@ rust-version = "1.96"
 license = "AGPL-3.0-only"
 
 [workspace.dependencies]
+kanvibe-ai = { path = "crates/kanvibe-ai" }
 kanvibe-core = { path = "crates/kanvibe-core" }
 kanvibe-git = { path = "crates/kanvibe-git" }
 kanvibe-hooks = { path = "crates/kanvibe-hooks" }
 kanvibe-i18n = { path = "crates/kanvibe-i18n" }
 kanvibe-pty = { path = "crates/kanvibe-pty" }
+kanvibe-session = { path = "crates/kanvibe-session" }
 kanvibe-theme = { path = "crates/kanvibe-theme" }
-rusqlite = { version = "=0.40.1", features = ["bundled"] }
+chrono = { version = "=0.4.45", default-features = false, features = ["clock", "std"] }
+portable-pty = "=0.9.0"
+rusqlite = { version = "=0.40.1", features = ["backup", "bundled"] }
 serde = { version = "=1.0.228", features = ["derive"] }
 serde_json = "=1.0.150"
+sha2 = "=0.10.9"
+uuid = { version = "=1.23.4", features = ["v4"] }
+ureq = { version = "=3.3.0", default-features = false, features = ["rustls"] }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"
@@ -45,5 +57,6 @@ registry_gpui = "=0.2.2"
 registry_gpui_component = "=0.5.1"
 registry_gpui_component_assets = "=0.5.1"
 preferred_ui_source = "Crates.io pins are recorded for reproducible scaffold builds; re-check upstream git guidance before enabling the macOS UI slice."
+terminal_fork = "crates/kanvibe-terminal (gpui-terminal 0.1.0-kanvibe.1)"
 zed_terminal_alacritty_git = "https://github.com/zed-industries/alacritty"
 zed_terminal_alacritty_rev = "4c129667ce56611becdc82de6e28218c80e2e88f"

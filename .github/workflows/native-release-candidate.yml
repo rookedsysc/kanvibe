@@ -1,0 +1,109 @@
+name: Native macOS release candidate
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    name: Universal signed candidate
+    runs-on: macos-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.96.0"
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            native
+            native/crates/kanvibe-terminal
+
+      - name: Validate required release credentials
+        env:
+          CERTIFICATE_P12: ${{ secrets.MACOS_CERTIFICATE_P12_BASE64 }}
+          CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          DEVELOPER_ID_IDENTITY: ${{ secrets.APPLE_DEVELOPER_ID_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          for value in \
+            "$CERTIFICATE_P12" \
+            "$CERTIFICATE_PASSWORD" \
+            "$DEVELOPER_ID_IDENTITY" \
+            "$APPLE_ID" \
+            "$APPLE_PASSWORD" \
+            "$APPLE_TEAM_ID"; do
+            test -n "$value"
+          done
+
+      - name: Import Developer ID certificate
+        env:
+          CERTIFICATE_P12: ${{ secrets.MACOS_CERTIFICATE_P12_BASE64 }}
+          CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+        run: |
+          keychain_path="$RUNNER_TEMP/kanvibe-signing.keychain-db"
+          certificate_path="$RUNNER_TEMP/kanvibe-signing.p12"
+          keychain_password="$(openssl rand -hex 24)"
+          /usr/bin/base64 -D <<<"$CERTIFICATE_P12" > "$certificate_path"
+          security create-keychain -p "$keychain_password" "$keychain_path"
+          security set-keychain-settings -lut 21600 "$keychain_path"
+          security unlock-keychain -p "$keychain_password" "$keychain_path"
+          security import "$certificate_path" \
+            -k "$keychain_path" \
+            -P "$CERTIFICATE_PASSWORD" \
+            -T /usr/bin/codesign
+          security set-key-partition-list \
+            -S apple-tool:,apple: \
+            -s \
+            -k "$keychain_password" \
+            "$keychain_path"
+          security list-keychains -d user -s "$keychain_path"
+          echo "KANVIBE_RELEASE_KEYCHAIN=$keychain_path" >> "$GITHUB_ENV"
+
+      - name: Configure notarytool profile
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          xcrun notarytool store-credentials kanvibe-ci \
+            --apple-id "$APPLE_ID" \
+            --password "$APPLE_PASSWORD" \
+            --team-id "$APPLE_TEAM_ID" \
+            --keychain "$KANVIBE_RELEASE_KEYCHAIN"
+
+      - name: Build, sign, notarize, and verify
+        env:
+          KANVIBE_BUILD_COMMIT: ${{ github.sha }}
+          KANVIBE_CODESIGN_IDENTITY: ${{ secrets.APPLE_DEVELOPER_ID_IDENTITY }}
+          KANVIBE_NOTARY_PROFILE: kanvibe-ci
+        run: |
+          native/scripts/package-macos-app.sh --release
+          native/scripts/verify-macos-release.sh
+
+      - name: Upload immutable candidate evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: KanVibe-native-release-${{ github.sha }}
+          if-no-files-found: error
+          retention-days: 14
+          path: |
+            native/dist/KanVibe-*.dmg
+            native/dist/KanVibe-*.dmg.sha256
+            native/dist/notary-app.json
+            native/dist/notary-dmg.json
+
+      - name: Remove temporary signing keychain
+        if: always()
+        run: |
+          if [[ -n "${KANVIBE_RELEASE_KEYCHAIN:-}" ]]; then
+            security delete-keychain "$KANVIBE_RELEASE_KEYCHAIN" || true
+          fi

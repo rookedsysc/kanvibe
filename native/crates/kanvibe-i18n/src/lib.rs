@@ -1,4 +1,5 @@
 use std::{
+    collections::BTreeMap,
     error::Error,
     fmt::{Display, Formatter},
     fs,
@@ -74,6 +75,26 @@ pub struct BoardLabels {
     pub columns: Vec<ColumnLabel>,
 }
 
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+pub struct MessageCatalog {
+    pub locale: Locale,
+    pub strings: BTreeMap<String, String>,
+}
+
+impl MessageCatalog {
+    pub fn text(&self, path: &str) -> Option<&str> {
+        self.strings.get(path).map(String::as_str)
+    }
+
+    pub fn format(&self, path: &str, values: &[(&str, &str)]) -> Option<String> {
+        let mut message = self.text(path)?.to_owned();
+        for (key, value) in values {
+            message = message.replace(&format!("{{{key}}}"), value);
+        }
+        Some(message)
+    }
+}
+
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct I18nError(String);
 
@@ -95,9 +116,7 @@ pub fn load_board_labels(
     repo_root: impl AsRef<Path>,
     locale: Locale,
 ) -> Result<BoardLabels, Box<dyn Error + Send + Sync>> {
-    let catalog_path = repo_root.as_ref().join(locale.catalog_relative_path());
-    let catalog = fs::read_to_string(&catalog_path)?;
-    let json = serde_json::from_str::<Value>(&catalog)?;
+    let json = load_catalog_json(repo_root, locale)?;
 
     let board = json
         .get("board")
@@ -120,6 +139,44 @@ pub fn load_board_labels(
             })
             .collect::<Result<Vec<_>, I18nError>>()?,
     })
+}
+
+pub fn load_message_catalog(
+    repo_root: impl AsRef<Path>,
+    locale: Locale,
+) -> Result<MessageCatalog, Box<dyn Error + Send + Sync>> {
+    let json = load_catalog_json(repo_root, locale)?;
+    let mut strings = BTreeMap::new();
+    flatten_strings("", &json, &mut strings);
+    Ok(MessageCatalog { locale, strings })
+}
+
+fn load_catalog_json(
+    repo_root: impl AsRef<Path>,
+    locale: Locale,
+) -> Result<Value, Box<dyn Error + Send + Sync>> {
+    let catalog_path = repo_root.as_ref().join(locale.catalog_relative_path());
+    let catalog = fs::read_to_string(catalog_path)?;
+    Ok(serde_json::from_str::<Value>(&catalog)?)
+}
+
+fn flatten_strings(prefix: &str, value: &Value, strings: &mut BTreeMap<String, String>) {
+    match value {
+        Value::String(message) => {
+            strings.insert(prefix.to_owned(), message.clone());
+        }
+        Value::Object(values) => {
+            for (key, value) in values {
+                let path = if prefix.is_empty() {
+                    key.clone()
+                } else {
+                    format!("{prefix}.{key}")
+                };
+                flatten_strings(&path, value, strings);
+            }
+        }
+        _ => {}
+    }
 }
 
 fn required_string(parent: &Value, key: &str) -> Result<String, I18nError> {
@@ -171,6 +228,31 @@ mod tests {
                 .map(|column| column.label.as_str())
                 .collect::<Vec<_>>(),
             ["Todo", "Progress", "Pending", "Review", "Done"]
+        );
+    }
+
+    #[test]
+    fn full_message_catalogs_share_keys_and_format_placeholders() {
+        let repo_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..");
+        let english = load_message_catalog(&repo_root, Locale::En).expect("English catalog");
+        let korean = load_message_catalog(&repo_root, Locale::Ko).expect("Korean catalog");
+        let chinese = load_message_catalog(&repo_root, Locale::Zh).expect("Chinese catalog");
+
+        assert_eq!(
+            english.strings.keys().collect::<Vec<_>>(),
+            korean.strings.keys().collect::<Vec<_>>()
+        );
+        assert_eq!(
+            english.strings.keys().collect::<Vec<_>>(),
+            chinese.strings.keys().collect::<Vec<_>>()
+        );
+        assert_eq!(
+            english.format("common.releaseUpdate.title", &[("version", "1.2.0")]),
+            Some("KanVibe 1.2.0 is available".to_owned())
+        );
+        assert_eq!(
+            korean.format("common.unreadCount", &[("count", "3")]),
+            Some("읽지 않음 3개".to_owned())
         );
     }
 }

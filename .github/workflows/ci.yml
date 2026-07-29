@@ -7,8 +7,76 @@ on:
     branches: [main, dev]
 
 jobs:
+  native:
+    name: Native Rust
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.96.0"
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            native
+            native/crates/kanvibe-terminal
+
+      - name: Native checks
+        run: ./kanvibe-native check
+
+      - name: Native tests
+        run: ./kanvibe-native test
+
+      - name: Release build
+        run: cargo build --manifest-path native/Cargo.toml --workspace --release
+
+  native-macos:
+    name: Native macOS bundle
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.96.0"
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            native
+            native/crates/kanvibe-terminal
+
+      - name: Test native product
+        run: ./kanvibe-native test
+
+      - name: Build unsigned app bundle
+        env:
+          KANVIBE_BUILD_COMMIT: ${{ github.sha }}
+        run: native/scripts/package-macos-app.sh --skip-sign --no-dmg
+
+      - name: Verify app bundle
+        run: |
+          test -x native/dist/KanVibe.app/Contents/MacOS/KanVibe
+          test -x native/dist/KanVibe.app/Contents/Helpers/KanVibeUpdater
+          test -f native/dist/KanVibe.app/Contents/Resources/icon.icns
+          test -f native/dist/KanVibe.app/Contents/Resources/resources/database/app.seed.db
+          test -d native/dist/KanVibe.app/Contents/Resources/messages
+          plutil -lint native/dist/KanVibe.app/Contents/Info.plist
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' native/dist/KanVibe.app/Contents/Info.plist)" = "com.kanvibe.desktop"
+          expected_version="$(sed -n 's/^version = "\([^"]*\)"/\1/p' native/crates/kanvibe-app/Cargo.toml | head -n 1)"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' native/dist/KanVibe.app/Contents/Info.plist)" = "$expected_version"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :KanVibeBuildCommit' native/dist/KanVibe.app/Contents/Info.plist)" = "$GITHUB_SHA"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: KanVibe-unsigned-macos
+          path: native/dist/KanVibe.app
+
   check:
-    name: Type Check & Test
+    name: Legacy Electron baseline
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

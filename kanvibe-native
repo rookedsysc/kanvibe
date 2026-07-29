@@ -1,0 +1,103 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+REPO_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+MANIFEST_PATH="$REPO_ROOT/native/Cargo.toml"
+TERMINAL_MANIFEST_PATH="$REPO_ROOT/native/crates/kanvibe-terminal/Cargo.toml"
+CARGO_BIN="${KANVIBE_CARGO_BIN:-cargo}"
+
+usage() {
+  cat <<'USAGE'
+usage: ./kanvibe-native <command> [args]
+
+Node-free native product commands:
+  dev                    Run the native application
+  build                  Build the native application in release mode
+  test                   Test the native workspace and terminal fork
+  check                  Run formatting and Clippy gates
+  package [args]         Build the macOS app/DMG
+  phase5 [args]          Run the real macOS parity handoff
+  verify-phase5 [args]   Verify one or two Phase 5 evidence runs
+  help                   Show this help
+
+Set KANVIBE_CARGO_BIN to select a Cargo executable.
+USAGE
+}
+
+if [[ "$#" -eq 0 ]]; then
+  usage >&2
+  exit 64
+fi
+
+COMMAND="$1"
+shift
+
+case "$COMMAND" in
+  dev)
+    exec "$CARGO_BIN" run \
+      --manifest-path "$MANIFEST_PATH" \
+      -p kanvibe-app \
+      -- "$@"
+    ;;
+  build)
+    exec "$CARGO_BIN" build \
+      --manifest-path "$MANIFEST_PATH" \
+      -p kanvibe-app \
+      --release \
+      --all-features \
+      "$@"
+    ;;
+  test)
+    "$CARGO_BIN" test \
+      --manifest-path "$MANIFEST_PATH" \
+      --workspace \
+      --all-features \
+      "$@"
+    if [[ "$(uname -s)" = "Darwin" ]]; then
+      exec "$CARGO_BIN" test \
+        --manifest-path "$TERMINAL_MANIFEST_PATH" \
+        --locked
+    fi
+    ;;
+  check)
+    "$CARGO_BIN" fmt \
+      --manifest-path "$MANIFEST_PATH" \
+      --all \
+      -- \
+      --check
+    "$CARGO_BIN" fmt \
+      --manifest-path "$TERMINAL_MANIFEST_PATH" \
+      -- \
+      --check
+    "$CARGO_BIN" clippy \
+      --manifest-path "$MANIFEST_PATH" \
+      --workspace \
+      --all-targets \
+      --all-features \
+      -- \
+      -D warnings
+    exec "$CARGO_BIN" clippy \
+      --manifest-path "$TERMINAL_MANIFEST_PATH" \
+      --locked \
+      --all-targets \
+      -- \
+      -D warnings
+    ;;
+  package)
+    exec "$REPO_ROOT/native/scripts/package-macos-app.sh" "$@"
+    ;;
+  phase5)
+    exec "$REPO_ROOT/native/scripts/phase5-macos-run.sh" "$@"
+    ;;
+  verify-phase5)
+    exec "$REPO_ROOT/native/scripts/verify-phase5-run.sh" "$@"
+    ;;
+  help|-h|--help)
+    usage
+    ;;
+  *)
+    echo "unknown native command: $COMMAND" >&2
+    usage >&2
+    exit 64
+    ;;
+esac

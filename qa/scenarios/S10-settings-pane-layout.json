@@ -34,7 +34,7 @@
     },
     {
       "action": "openPaneLayoutRoute",
-      "projectId": "qa-project-kanvibe"
+      "projectId": "qa-project-api"
     },
     {
       "action": "selectPaneLayout",
@@ -60,7 +60,7 @@
       "type": "dbRow",
       "table": "pane_layout_configs",
       "where": {
-        "project_id": "qa-project-kanvibe"
+        "project_id": "qa-project-api"
       },
       "expected": {
         "layout_type": "vertical_2"

@@ -35,6 +35,18 @@
       "item": "hooks"
     },
     {
+      "action": "checkTaskHooks",
+      "taskId": "qa-task-review-ai-history"
+    },
+    {
+      "action": "installTaskHooks",
+      "taskId": "qa-task-review-ai-history"
+    },
+    {
+      "action": "recheckTaskHooks",
+      "taskId": "qa-task-review-ai-history"
+    },
+    {
       "action": "captureScreen",
       "name": "notifications-hooks"
     }
@@ -46,6 +58,17 @@
     {
       "type": "hookStatusVisible",
       "taskId": "qa-task-review-ai-history"
+    },
+    {
+      "type": "hookProvidersReady",
+      "taskId": "qa-task-review-ai-history",
+      "expected": [
+        "claude:ready",
+        "codex:ready",
+        "gemini:ready",
+        "opencode:ready"
+      ],
+      "eventually": true
     },
     {
       "type": "dbRow",

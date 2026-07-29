@@ -1,0 +1,22 @@
+[package]
+name = "gpui-terminal"
+version = "0.1.0-kanvibe.1"
+edition = "2024"
+rust-version = "1.96"
+license = "MIT OR Apache-2.0"
+description = "KanVibe-maintained GPUI terminal fork with selection and scrollback parity"
+repository = "https://github.com/rookedsysc/kanvibe"
+publish = false
+autobins = false
+
+[workspace]
+
+[dependencies]
+alacritty_terminal = "0.25.1"
+anyhow = "1"
+arboard = { version = "3", features = ["wayland-data-control"] }
+flume = "0.12"
+gpui = "0.2.2"
+parking_lot = "0.12"
+portable-pty = "0.9"
+ropey = "1"
