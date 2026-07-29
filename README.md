@@ -32,12 +32,12 @@ KanVibe is being migrated from Electron to a **macOS-first native Rust + GPUI ap
     <td width="50%">
       <img src="./docs/images/readme/kanvibe-main.png" alt="KanVibe Kanban board" width="100%">
       <br>
-      <strong>Electron parity baseline — main Kanban board</strong>
+      <strong>Current KanVibe desktop UI — main Kanban board</strong>
     </td>
     <td width="50%">
       <img src="./docs/images/readme/kanvibe-detail.png" alt="Task detail terminal workspace" width="100%">
       <br>
-      <strong>Electron parity baseline — task detail workspace</strong>
+      <strong>Current KanVibe desktop UI — task detail workspace</strong>
     </td>
   </tr>
 </table>
