@@ -8,6 +8,7 @@ import {
   buildShellTaskIdResolver,
   getShellTaskIdBindingStatus,
   hasShellKanvibeStatusJsonPersistence,
+  hasShellKanvibeTargetFanout,
 } from "@/lib/hookTaskBinding";
 
 /**
@@ -337,6 +338,7 @@ export interface CodexHooksStatus {
   hasExpectedTaskId?: boolean;
   hasStatusMappings?: boolean;
   hasStatusJsonPersistence?: boolean;
+  hasTargetFanout?: boolean;
   hasExpectedHookServerUrl?: boolean;
   hasReachableHookServer?: boolean;
   boundTaskId?: string | null;
@@ -384,6 +386,7 @@ export async function getCodexHooksStatus(repoPath: string, taskId?: string, ssh
     && preToolContent.includes('\\\"status\\\": \\\"progress\\\"')
     && stopContent.includes('\\\"status\\\": \\\"review\\\"');
   const hasStatusJsonPersistence = hookScripts.every(hasShellKanvibeStatusJsonPersistence);
+  const hasTargetFanout = hookScripts.every(hasShellKanvibeTargetFanout);
   const hookServerValidation = await validateHookServerConfiguration(
     hookScripts.map((content) => extractShellHookServerUrl(content)),
     Boolean(taskId),
@@ -409,6 +412,7 @@ export async function getCodexHooksStatus(repoPath: string, taskId?: string, ssh
     && hasExpectedTaskId
     && hasStatusMappings
     && hasStatusJsonPersistence
+    && hasTargetFanout
     && hookServerValidation.hasExpectedHookServerUrl;
 
   return {
@@ -424,6 +428,7 @@ export async function getCodexHooksStatus(repoPath: string, taskId?: string, ssh
     hasExpectedTaskId,
     hasStatusMappings,
     hasStatusJsonPersistence,
+    hasTargetFanout,
     hasExpectedHookServerUrl: hookServerValidation.hasExpectedHookServerUrl,
     hasReachableHookServer: hookServerValidation.hasReachableHookServer,
     boundTaskId,

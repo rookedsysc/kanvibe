@@ -38,6 +38,7 @@ export const KanvibePlugin: Plugin = async ({ client }) => {
   const KANVIBE_REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
   const KANVIBE_STATE_DIR = resolve(KANVIBE_REPO_ROOT, ".kanvibe");
   const KANVIBE_STATUS_FILE = resolve(KANVIBE_STATE_DIR, "status.json");
+  const KANVIBE_TARGETS_FILE = resolve(KANVIBE_STATE_DIR, "targets.json");
   const KANVIBE_STATE_DIR_EXCLUDE_PATTERN = ${JSON.stringify(KANVIBE_STATE_DIR_EXCLUDE_PATTERN)};
   const KANVIBE_GIT_EXCLUDE_MARKER = ${JSON.stringify(KANVIBE_GIT_EXCLUDE_MARKER)};
   const lastStatusBySession = new Map<string, string>();
@@ -79,6 +80,56 @@ export const KanvibePlugin: Plugin = async ({ client }) => {
       );
     } catch {
       /* 파일 쓰기 에러 무시 */
+    }
+  }
+
+  type KanvibeTarget = { url: string; taskId: string };
+
+  function normalizeKanvibeUrl(url: string): string {
+    return url.trim().replace(/\\/+$/, "");
+  }
+
+  function getFallbackKanvibeTarget(): KanvibeTarget[] {
+    return [{ url: normalizeKanvibeUrl(KANVIBE_URL), taskId: TASK_ID }];
+  }
+
+  function readKanvibeTargets(): KanvibeTarget[] {
+    try {
+      const parsed = JSON.parse(readFileSync(KANVIBE_TARGETS_FILE, "utf8"));
+      const targets = Array.isArray(parsed?.targets) ? parsed.targets : [];
+      const seenTaskIds = new Set<string>();
+      const normalizedTargets: KanvibeTarget[] = [];
+
+      for (const target of targets) {
+        const url = typeof target?.url === "string" ? normalizeKanvibeUrl(target.url) : "";
+        const taskId = typeof target?.taskId === "string" ? target.taskId.trim() : "";
+        if (!url || !taskId || seenTaskIds.has(taskId)) continue;
+
+        seenTaskIds.add(taskId);
+        normalizedTargets.push({ url, taskId });
+      }
+
+      return normalizedTargets.length > 0 ? normalizedTargets : getFallbackKanvibeTarget();
+    } catch {
+      return getFallbackKanvibeTarget();
+    }
+  }
+
+  async function postKanvibeStatus(target: KanvibeTarget, status: string): Promise<void> {
+    try {
+      await fetch(target.url + "/api/hooks/status", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ taskId: target.taskId, status }),
+      });
+    } catch {
+      /* 네트워크 에러 무시 */
+    }
+  }
+
+  async function fanoutKanvibeStatus(status: string): Promise<void> {
+    for (const target of readKanvibeTargets()) {
+      await postKanvibeStatus(target, status);
     }
   }
 
@@ -129,17 +180,7 @@ export const KanvibePlugin: Plugin = async ({ client }) => {
     }
 
     writeKanvibeTaskState(status);
-
-    try {
-      const baseUrl = KANVIBE_URL.endsWith("/") ? KANVIBE_URL.slice(0, -1) : KANVIBE_URL;
-      await fetch(baseUrl + "/api/hooks/status", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ taskId: TASK_ID, status }),
-      });
-    } catch {
-      /* 네트워크 에러 무시 */
-    }
+    await fanoutKanvibeStatus(status);
 
     if (sessionID) {
       lastStatusBySession.set(sessionID, status);
@@ -245,6 +286,16 @@ function hasOpenCodeStatusJsonPersistence(pluginContent: string): boolean {
     && pluginContent.includes("JSON.stringify({ schemaVersion: 1, status, updatedAt: new Date().toISOString() }");
 }
 
+function hasOpenCodeTargetFanout(pluginContent: string): boolean {
+  return pluginContent.includes("targets.json")
+    && pluginContent.includes("KANVIBE_TARGETS_FILE")
+    && pluginContent.includes("readKanvibeTargets")
+    && pluginContent.includes("fanoutKanvibeStatus")
+    && pluginContent.includes("postKanvibeStatus")
+    && pluginContent.includes("taskId: target.taskId")
+    && pluginContent.includes("/api/hooks/status");
+}
+
 function extractPluginTaskId(pluginContent: string): string | null {
   const match = pluginContent.match(/const TASK_ID = ("(?:\\.|[^"\\])*");/);
   if (!match) return null;
@@ -290,6 +341,7 @@ export interface OpenCodeHooksStatus {
   hasStatusEndpoint?: boolean;
   hasEventMappings?: boolean;
   hasStatusJsonPersistence?: boolean;
+  hasTargetFanout?: boolean;
   hasMainSessionGuard?: boolean;
   hasDuplicateProgressGuard?: boolean;
   hasExpectedHookServerUrl?: boolean;
@@ -318,6 +370,7 @@ export async function getOpenCodeHooksStatus(repoPath: string, taskId?: string, 
   let hasStatusEndpoint = false;
   let hasEventMappings = false;
   let hasStatusJsonPersistence = false;
+  let hasTargetFanout = false;
   let hasMainSessionGuard = false;
   let hasDuplicateProgressGuard = false;
   let hasRegisteredPlugin = sshHost ? true : false;
@@ -338,6 +391,7 @@ export async function getOpenCodeHooksStatus(repoPath: string, taskId?: string, 
       hasStatusEndpoint = content.includes("/api/hooks/status");
       hasEventMappings = ["progress", "pending", "review", "done", "message.updated", "question.asked", "question.replied", "session.idle", "session.deleted"].every((fragment) => content.includes(fragment));
       hasStatusJsonPersistence = hasOpenCodeStatusJsonPersistence(content);
+      hasTargetFanout = hasOpenCodeTargetFanout(content);
       hasMainSessionGuard = content.includes("isMainSession(message)") && content.includes("isMainSession(event.properties)");
       hasDuplicateProgressGuard = content.includes("lastUserMessageBySession") && content.includes("buildMessageSignature") && content.includes("dedupeMessage: true");
     } catch {
@@ -365,6 +419,7 @@ export async function getOpenCodeHooksStatus(repoPath: string, taskId?: string, 
     && hasStatusEndpoint
     && hasEventMappings
     && hasStatusJsonPersistence
+    && hasTargetFanout
     && hasMainSessionGuard
     && hasDuplicateProgressGuard
     && hasRegisteredPlugin
@@ -380,6 +435,7 @@ export async function getOpenCodeHooksStatus(repoPath: string, taskId?: string, 
     hasStatusEndpoint,
     hasEventMappings,
     hasStatusJsonPersistence,
+    hasTargetFanout,
     hasMainSessionGuard,
     hasDuplicateProgressGuard,
     hasExpectedHookServerUrl: hookServerValidation.hasExpectedHookServerUrl,

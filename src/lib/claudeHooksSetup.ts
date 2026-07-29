@@ -8,6 +8,7 @@ import {
   buildShellTaskIdResolver,
   getShellTaskIdBindingStatus,
   hasShellKanvibeStatusJsonPersistence,
+  hasShellKanvibeTargetFanout,
 } from "@/lib/hookTaskBinding";
 
 /** UserPromptSubmit hook bash 스크립트를 생성한다 */
@@ -212,6 +213,7 @@ export interface ClaudeHooksStatus {
   hasExpectedTaskId?: boolean;
   hasStatusMappings?: boolean;
   hasStatusJsonPersistence?: boolean;
+  hasTargetFanout?: boolean;
   hasExpectedHookServerUrl?: boolean;
   hasReachableHookServer?: boolean;
   boundTaskId?: string | null;
@@ -255,6 +257,7 @@ export async function getClaudeHooksStatus(repoPath: string, taskId?: string, ss
     stopContent.includes('\\\"status\\\": \\\"review\\\"') &&
     questionContent.includes('\\\"status\\\": \\\"pending\\\"');
   const hasStatusJsonPersistence = scriptContents.every(hasShellKanvibeStatusJsonPersistence);
+  const hasTargetFanout = scriptContents.every(hasShellKanvibeTargetFanout);
 
   let hasSettingsEntry = false;
   try {
@@ -279,6 +282,7 @@ export async function getClaudeHooksStatus(repoPath: string, taskId?: string, ss
     && hasExpectedTaskId
     && hasStatusMappings
     && hasStatusJsonPersistence
+    && hasTargetFanout
     && hookServerValidation.hasExpectedHookServerUrl;
 
   return {
@@ -291,6 +295,7 @@ export async function getClaudeHooksStatus(repoPath: string, taskId?: string, ss
     hasExpectedTaskId,
     hasStatusMappings,
     hasStatusJsonPersistence,
+    hasTargetFanout,
     hasExpectedHookServerUrl: hookServerValidation.hasExpectedHookServerUrl,
     hasReachableHookServer: hookServerValidation.hasReachableHookServer,
     boundTaskId,

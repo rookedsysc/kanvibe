@@ -12,20 +12,20 @@ title: Quick Start
 
 ## 1. 注册项目
 
-在设置中选择本地 git 仓库。KanVibe 会读取已有 worktree 状态，并为支持的代理安装必要 hook 文件。
+在主看板中点击位于项目筛选和 + 新任务之间的放大镜目录扫描按钮，打开项目注册对话框。在对话框中选择本地或远程 git 仓库路径并点击"扫描并注册"后，KanVibe 才会注册项目、读取已有 worktree 状态，并为支持的代理安装必要 hook 文件。
 
 <figure className="kv-shot">
   <img src="/screenshots/project-register.png" alt="项目注册和目录扫描的 Electron 一致性基准界面" />
-  <figcaption>Electron 一致性基准 — 前往设置 → 目录扫描，指定本地 git 仓库路径，点击"扫描并注册"即可添加项目。</figcaption>
+  <figcaption>Electron 一致性基准 — 通过看板工具栏的放大镜按钮打开注册对话框，选择路径并点击"扫描并注册"后，才会执行项目注册、worktree 检测和 hook 安装。</figcaption>
 </figure>
 
 <div className="kv-note">
-  删除项目只会移除 KanVibe SQLite 记录，不会删除磁盘上的 git branch、worktree 或文件。
+  删除项目只是将其从 KanVibe 管理中移除。KanVibe 只删除 SQLite 中的项目记录及关联的 KanVibe 任务记录，不会删除磁盘上的 git branch、worktree 或文件。
 </div>
 
 <figure className="kv-shot">
   <img src="/screenshots/project-delete.png" alt="已注册项目删除按钮的 Electron 一致性基准界面" />
-  <figcaption>Electron 一致性基准 — 点击已注册项目旁的"删除"按钮，仅移除 KanVibe 内部记录。</figcaption>
+  <figcaption>Electron 一致性基准 — 在注册对话框底部的已注册项目列表中点击"删除"，只会移除 KanVibe 的项目/任务记录。</figcaption>
 </figure>
 
 ## 2. 创建任务

@@ -55,14 +55,16 @@ describe("openCodeHooksSetup", () => {
       expect(pluginContent).toContain('const TASK_ID = "task-1";');
       expect(pluginContent).not.toContain(".kanvibe/task-id");
       expect(pluginContent).toContain("status.json");
+      expect(pluginContent).toContain("targets.json");
+      expect(pluginContent).toContain("readKanvibeTargets");
+      expect(pluginContent).toContain("seenTaskIds");
       expect(pluginContent).not.toContain("hooks-targets.json");
       expect(pluginContent).not.toContain("task-state.json");
-      expect(pluginContent).not.toContain("readFileSync(KANVIBE_TARGETS_FILE");
       expect(pluginContent).toContain("--git-common-dir");
       expect(pluginContent).toContain(".kanvibe/");
       expect(pluginContent).toContain("writeFileSync(");
       expect(pluginContent).toContain("schemaVersion: 1");
-      expect(pluginContent).toContain("taskId: TASK_ID");
+      expect(pluginContent).toContain("taskId: target.taskId");
     });
 
     it("should generate plugin with all event handlers for status tracking", async () => {
@@ -143,6 +145,7 @@ describe("openCodeHooksSetup", () => {
       const status = await getOpenCodeHooksStatus(repoPath);
       expect(status.installed).toBe(true);
       expect(status.hasStatusJsonPersistence).toBe(true);
+      expect(status.hasTargetFanout).toBe(true);
     });
 
     it("should repair stale branch-bound plugin content on reinstall", async () => {

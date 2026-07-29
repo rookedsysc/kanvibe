@@ -1,14 +1,17 @@
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import App from "@/desktop/renderer/App";
 import type { AppNotification } from "@/desktop/shared/notifications";
 
 const mocks = vi.hoisted(() => ({
   triggerDesktopRefresh: vi.fn(),
+  updateTaskStatus: vi.fn(),
+  deleteTasks: vi.fn().mockResolvedValue([]),
 }));
 
 vi.mock("@/desktop/renderer/actions/kanban", () => ({
-  updateTaskStatus: vi.fn(),
+  updateTaskStatus: mocks.updateTaskStatus,
+  deleteTasks: mocks.deleteTasks,
 }));
 
 vi.mock("@/desktop/renderer/utils/refresh", () => ({
@@ -284,5 +287,12 @@ describe("App", () => {
     expect(screen.getByText("gh auth failed")).toBeTruthy();
     expect(window.kanvibeDesktop.consumePendingNotificationActivation).not.toHaveBeenCalled();
     expect(window.location.hash).toBe("#/en/task/task-1");
+
+    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+
+    await waitFor(() => {
+      expect(mocks.deleteTasks).toHaveBeenCalledWith(["task-1"]);
+    });
+    expect(mocks.updateTaskStatus).not.toHaveBeenCalled();
   });
 });

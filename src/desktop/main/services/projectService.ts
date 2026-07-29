@@ -3,7 +3,7 @@ import { Project } from "@/entities/Project";
 import { validateGitRepo, getDefaultBranch, listBranches, scanGitRepos, listWorktrees, execGit } from "@/lib/gitOperations";
 import { KanbanTask, TaskStatus, SessionType } from "@/entities/KanbanTask";
 import { IsNull } from "typeorm";
-import { isSessionAlive, formatSessionName, createSessionWithoutWorktree } from "@/lib/worktree";
+import { isSessionAlive, formatProjectBranchSessionName, createSessionWithoutWorktree } from "@/lib/worktree";
 import { getClaudeHooksStatus, type ClaudeHooksStatus } from "@/lib/claudeHooksSetup";
 import { getGeminiHooksStatus, type GeminiHooksStatus } from "@/lib/geminiHooksSetup";
 import { getCodexHooksStatus, type CodexHooksStatus } from "@/lib/codexHooksSetup";
@@ -648,7 +648,7 @@ async function syncProjectWorktrees(
       }
 
       /** 브랜치명 기반 독립 세션이 존재하면 연결 정보를 설정한다 */
-      const sessionName = formatSessionName(path.basename(project.repoPath), wt.branch);
+      const sessionName = formatProjectBranchSessionName(project.repoPath, wt.branch);
       const hasSession = await isSessionAlive(
         SessionType.TMUX,
         sessionName,
@@ -696,7 +696,7 @@ async function syncProjectWorktrees(
     });
 
     if (mainBranchTask && !mainBranchTask.sessionType) {
-      const sessionName = formatSessionName(path.basename(project.repoPath), project.defaultBranch);
+      const sessionName = formatProjectBranchSessionName(project.repoPath, project.defaultBranch);
       const hasSession = await isSessionAlive(
         SessionType.TMUX,
         sessionName,

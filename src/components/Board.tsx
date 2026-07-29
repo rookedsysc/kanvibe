@@ -6,6 +6,7 @@ import { DragDropContext, type DropResult } from "@hello-pangea/dnd";
 import BoardPageFindBar from "./BoardPageFindBar";
 import Column from "./Column";
 import CreateTaskModal from "./CreateTaskModal";
+import ProjectRegistryDialog from "./ProjectRegistryDialog";
 import NotificationCenterButton from "./NotificationCenterButton";
 import ProjectSelector from "./ProjectSelector";
 import TaskContextMenu from "./TaskContextMenu";
@@ -502,10 +503,12 @@ export default function Board({
   useAutoRefresh();
   const boardCommands = useBoardCommands();
   const t = useTranslations("board");
+  const ts = useTranslations("settings");
   const tt = useTranslations("task");
   const tc = useTranslations("common");
   const [tasks, setTasks] = useState<TasksByStatus>(initialTasks);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isProjectRegistryOpen, setIsProjectRegistryOpen] = useState(false);
   const [isBranchModalOpen, setIsBranchModalOpen] = useState(false);
   const [isVimCommandOpen, setIsVimCommandOpen] = useState(false);
   const [vimCommandValue, setVimCommandValue] = useState("");
@@ -643,6 +646,7 @@ export default function Board({
     vimModeEnabled,
     contextMenuIsOpen: contextMenu.isOpen,
     isModalOpen,
+    isProjectRegistryOpen,
     isBranchModalOpen,
     isVimCommandOpen,
     hasPendingDoneResult: Boolean(pendingDoneResult),
@@ -654,6 +658,7 @@ export default function Board({
     vimModeEnabled,
     contextMenuIsOpen: contextMenu.isOpen,
     isModalOpen,
+    isProjectRegistryOpen,
     isBranchModalOpen,
     isVimCommandOpen,
     hasPendingDoneResult: Boolean(pendingDoneResult),
@@ -731,7 +736,7 @@ export default function Board({
   useEffect(() => {
     function handleWindowVimShortcut(event: KeyboardEvent) {
       if (!vimModeEnabled) return;
-      if (contextMenu.isOpen || isModalOpen || isBranchModalOpen || pendingDoneResult || isVimCommandOpen) return;
+      if (contextMenu.isOpen || isModalOpen || isProjectRegistryOpen || isBranchModalOpen || pendingDoneResult || isVimCommandOpen) return;
       if (shouldIgnoreBoardVimShortcutEvent(event)) return;
 
       if (isPlainVimShortcutKey(event, VIM_NEW_TASK_KEY)) {
@@ -754,12 +759,12 @@ export default function Board({
 
     window.addEventListener("keydown", handleWindowVimShortcut, true);
     return () => window.removeEventListener("keydown", handleWindowVimShortcut, true);
-  }, [contextMenu.isOpen, isBranchModalOpen, isModalOpen, isVimCommandOpen, pendingDoneResult, vimModeEnabled]);
+  }, [contextMenu.isOpen, isBranchModalOpen, isModalOpen, isProjectRegistryOpen, isVimCommandOpen, pendingDoneResult, vimModeEnabled]);
 
   useEffect(() => {
     function handleWindowTaskFocus(event: KeyboardEvent) {
       if (!isBoardTaskFocusKey(event, vimModeEnabled)) return;
-      if (contextMenu.isOpen || isModalOpen || isBranchModalOpen || pendingDoneResult || isVimCommandOpen) return;
+      if (contextMenu.isOpen || isModalOpen || isProjectRegistryOpen || isBranchModalOpen || pendingDoneResult || isVimCommandOpen) return;
       if (shouldIgnoreBoardTaskFocusEvent(event)) return;
 
       const firstTaskCard = getBoardTaskCards()[0];
@@ -771,7 +776,7 @@ export default function Board({
 
     window.addEventListener("keydown", handleWindowTaskFocus);
     return () => window.removeEventListener("keydown", handleWindowTaskFocus);
-  }, [contextMenu.isOpen, isBranchModalOpen, isModalOpen, isVimCommandOpen, pendingDoneResult, vimModeEnabled]);
+  }, [contextMenu.isOpen, isBranchModalOpen, isModalOpen, isProjectRegistryOpen, isVimCommandOpen, pendingDoneResult, vimModeEnabled]);
 
   const removeTaskFromBoard = useCallback((task: Pick<KanbanTask, "id" | "status">) => {
     setTasks((prev) => removeTaskFromBoardTasks(prev, task.id));
@@ -868,7 +873,7 @@ export default function Board({
       const shouldOpenTaskInNewWindow = isShiftOnlyKeyboardShortcut(event, "Enter");
       const shouldOpenTaskContextMenu = isShiftOnlyKeyboardShortcut(event, "F10");
       if (!shouldOpenTaskInNewWindow && !shouldOpenTaskContextMenu) return;
-      if (contextMenu.isOpen || isModalOpen || isBranchModalOpen || pendingDoneResult || isVimCommandOpen) return;
+      if (contextMenu.isOpen || isModalOpen || isProjectRegistryOpen || isBranchModalOpen || pendingDoneResult || isVimCommandOpen) return;
 
       const taskCard = getTaskCardFromKeyboardEvent(event);
       const taskId = taskCard?.dataset.kanbanTaskId;
@@ -891,7 +896,7 @@ export default function Board({
 
     window.addEventListener("keydown", handleWindowTaskShortcut, true);
     return () => window.removeEventListener("keydown", handleWindowTaskShortcut, true);
-  }, [contextMenu.isOpen, filteredTasks, isBranchModalOpen, isModalOpen, isVimCommandOpen, pendingDoneResult]);
+  }, [contextMenu.isOpen, filteredTasks, isBranchModalOpen, isModalOpen, isProjectRegistryOpen, isVimCommandOpen, pendingDoneResult]);
 
   const handleLoadMoreDone = useCallback(async () => {
     if (isLoadingMore) return;
@@ -1012,7 +1017,7 @@ export default function Board({
       const sourceStatus = source.droppableId as TaskStatus;
       const destStatus = destination.droppableId as TaskStatus;
 
-      /** Done 이동 시 리소스 삭제 경고 (dismissed 아닌 경우만) */
+      /** Done 이동 시 리소스 보존 안내 (dismissed 아닌 경우만) */
       if (destStatus === TaskStatus.DONE && sourceStatus !== destStatus && !isDoneAlertDismissed) {
         const task = tasks[sourceStatus].find((task) => task.id === draggableId);
         const hasCleanableResources = task && (task.branchName || task.sessionType);
@@ -1109,6 +1114,28 @@ export default function Board({
               compact
             />
           </div>
+          <button
+            type="button"
+            onClick={() => setIsProjectRegistryOpen(true)}
+            title={ts("scanTitle")}
+            aria-label={ts("scanTitle")}
+            className="flex shrink-0 items-center justify-center rounded-md border border-border-default bg-bg-surface p-1.5 text-text-secondary transition-colors hover:border-brand-primary hover:text-text-primary"
+          >
+            <svg
+              aria-hidden="true"
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <circle cx="11" cy="11" r="8" />
+              <path d="m21 21-4.35-4.35" />
+            </svg>
+          </button>
           <button
             onClick={() => setIsModalOpen(true)}
             className="px-4 py-1.5 text-sm bg-brand-primary hover:bg-brand-hover text-text-inverse rounded-md font-medium transition-colors"
@@ -1234,6 +1261,15 @@ export default function Board({
         defaultBaseBranch={branchTodoDefaults?.baseBranch}
         defaultSessionType={currentDefaultSessionType}
       />
+
+      {isProjectRegistryOpen ? (
+        <ProjectRegistryDialog
+          isOpen
+          onClose={() => setIsProjectRegistryOpen(false)}
+          projects={projects}
+          sshHosts={sshHosts}
+        />
+      ) : null}
 
       {contextMenu.isOpen && contextMenu.task && (
         <TaskContextMenu
