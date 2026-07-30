@@ -13,6 +13,7 @@ import TaskContextMenu from "./TaskContextMenu";
 import BranchTaskModal from "./BranchTaskModal";
 import DoneConfirmDialog from "./DoneConfirmDialog";
 import { reorderTasks, deleteTask, getMoreDoneTasks, moveTaskToColumn } from "@/desktop/renderer/actions/kanban";
+import { runBackgroundTaskSyncNow } from "@/desktop/renderer/actions/backgroundTaskSync";
 import type { TasksByStatus } from "@/desktop/renderer/actions/kanban";
 import { useBoardCommands } from "@/desktop/renderer/components/BoardCommandProvider";
 import { navigateToTaskDetail } from "@/desktop/renderer/utils/taskNavigation";
@@ -67,6 +68,8 @@ const TASK_DELETE_SEQUENCE_KEY = "d";
 const TASK_DELETE_SEQUENCE_TIMEOUT_MS = 1_000;
 
 const VIM_MOVE_COMMAND_ALIASES = new Set(["move", "m"]);
+const VIM_SYNC_COMMAND_ALIASES = new Set(["sync", "s"]);
+const VIM_COMMAND_NAMES = ["move", "sync"] as const;
 const VIM_MOVE_STATUSES = [
   TaskStatus.TODO,
   TaskStatus.PROGRESS,
@@ -237,19 +240,32 @@ function getFocusedBoardTaskCard() {
     : null;
 }
 
-function parseVimMoveStatus(commandValue: string): TaskStatus | null {
-  const tokens = commandValue
+type ParsedVimCommand =
+  | { type: "move"; destinationStatus: TaskStatus }
+  | { type: "sync" };
+
+function parseVimCommandTokens(commandValue: string) {
+  return commandValue
     .trim()
     .replace(/^:/, "")
     .toLowerCase()
     .split(/\s+/)
     .filter(Boolean);
+}
 
-  if (tokens.length !== 2 || !VIM_MOVE_COMMAND_ALIASES.has(tokens[0])) {
-    return null;
+function parseVimCommand(commandValue: string): ParsedVimCommand | null {
+  const tokens = parseVimCommandTokens(commandValue);
+
+  if (tokens.length === 1 && VIM_SYNC_COMMAND_ALIASES.has(tokens[0])) {
+    return { type: "sync" };
   }
 
-  return VIM_STATUS_ALIASES[tokens[1]] ?? null;
+  if (tokens.length === 2 && VIM_MOVE_COMMAND_ALIASES.has(tokens[0])) {
+    const destinationStatus = VIM_STATUS_ALIASES[tokens[1]];
+    return destinationStatus ? { type: "move", destinationStatus } : null;
+  }
+
+  return null;
 }
 
 function getUniqueVimMoveStatusCompletion(statusPrefix: string): TaskStatus | null {
@@ -270,7 +286,15 @@ function getUniqueVimMoveStatusCompletion(statusPrefix: string): TaskStatus | nu
   return aliasMatches.size === 1 ? Array.from(aliasMatches)[0] : null;
 }
 
-function getVimMoveCommandAutocomplete(commandValue: string): string | null {
+function getUniqueVimCommandCompletion(commandPrefix: string) {
+  const normalizedPrefix = commandPrefix.toLowerCase();
+  if (!normalizedPrefix) return "move";
+
+  const matches = VIM_COMMAND_NAMES.filter((command) => command.startsWith(normalizedPrefix));
+  return matches.length === 1 ? matches[0] : null;
+}
+
+function getVimCommandAutocomplete(commandValue: string): string | null {
   const leadingWhitespace = commandValue.match(/^\s*/)?.[0] ?? "";
   const trimmedStartValue = commandValue.trimStart();
   const hasColonPrefix = trimmedStartValue.startsWith(":");
@@ -279,22 +303,25 @@ function getVimMoveCommandAutocomplete(commandValue: string): string | null {
   const tokens = valueWithoutColon.toLowerCase().split(/\s+/).filter(Boolean);
   const commandToken = tokens[0] ?? "";
 
-  const formatCompletion = (status?: TaskStatus) => {
-    const prefix = `${leadingWhitespace}${hasColonPrefix ? ":" : ""}move`;
+  const commandPrefix = `${leadingWhitespace}${hasColonPrefix ? ":" : ""}`;
+  const formatMoveCompletion = (status?: TaskStatus) => {
+    const prefix = `${commandPrefix}move`;
     return status ? `${prefix} ${status}` : `${prefix} `;
+  };
+  const formatCommandCompletion = (command: typeof VIM_COMMAND_NAMES[number]) => {
+    return command === "move" ? formatMoveCompletion() : `${commandPrefix}${command}`;
   };
 
   if (tokens.length === 0) {
-    return formatCompletion();
+    return formatMoveCompletion();
   }
 
   if (tokens.length === 1 && !hasTrailingWhitespace) {
-    if ("move".startsWith(commandToken) || commandToken === "m") {
-      const completion = formatCompletion();
-      return completion === commandValue ? null : completion;
-    }
+    const completedCommand = getUniqueVimCommandCompletion(commandToken);
+    if (!completedCommand) return null;
 
-    return null;
+    const completion = formatCommandCompletion(completedCommand);
+    return completion === commandValue ? null : completion;
   }
 
   if (!VIM_MOVE_COMMAND_ALIASES.has(commandToken) || tokens.length !== 2) {
@@ -304,7 +331,7 @@ function getVimMoveCommandAutocomplete(commandValue: string): string | null {
   const completedStatus = getUniqueVimMoveStatusCompletion(tokens[1]);
   if (!completedStatus) return null;
 
-  const completion = formatCompletion(completedStatus);
+  const completion = formatMoveCompletion(completedStatus);
   return completion === commandValue ? null : completion;
 }
 
@@ -530,7 +557,7 @@ export default function Board({
   const [currentDefaultSessionType, setCurrentDefaultSessionType] = useState<SessionType>(defaultSessionType);
   const [shouldUseMacTitlebarLayout, setShouldUseMacTitlebarLayout] = useState(false);
   const vimCommandCompletion = useMemo(
-    () => getVimMoveCommandAutocomplete(vimCommandValue),
+    () => getVimCommandAutocomplete(vimCommandValue),
     [vimCommandValue],
   );
   const [, startDragPersistenceTransition] = useTransition();
@@ -990,13 +1017,21 @@ export default function Board({
   }, []);
 
   const submitVimCommand = useCallback(() => {
-    const destinationStatus = parseVimMoveStatus(vimCommandValue);
-    if (!destinationStatus) {
+    const parsedCommand = parseVimCommand(vimCommandValue);
+    if (!parsedCommand) {
       setVimCommandError(t("vimCommand.errors.unknownCommand"));
       return;
     }
 
-    const moveResult = moveFocusedTaskToStatus(destinationStatus, vimCommandTaskId);
+    if (parsedCommand.type === "sync") {
+      closeVimCommand();
+      void runBackgroundTaskSyncNow().catch((error) => {
+        console.error("Failed to run background task sync", error);
+      });
+      return;
+    }
+
+    const moveResult = moveFocusedTaskToStatus(parsedCommand.destinationStatus, vimCommandTaskId);
     if (moveResult === "missing-focus") {
       setVimCommandError(t("vimCommand.errors.noFocusedTask"));
       return;
@@ -1216,7 +1251,7 @@ export default function Board({
               }}
               onKeyDown={(event) => {
                 if (event.key === "Tab" && !event.shiftKey && !event.altKey && !event.ctrlKey && !event.metaKey) {
-                  const completion = getVimMoveCommandAutocomplete(event.currentTarget.value);
+                  const completion = getVimCommandAutocomplete(event.currentTarget.value);
                   if (completion) {
                     event.preventDefault();
                     setVimCommandValue(completion);
