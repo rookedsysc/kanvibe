@@ -121,6 +121,60 @@ describe("backgroundTaskSyncService", () => {
     stop();
   });
 
+  it("manual background sync는 설정 비활성화와 무관하게 동일한 sync cycle을 실행한다", async () => {
+    mocks.getBackgroundSyncEnabled.mockResolvedValue(false);
+
+    const { runBackgroundTaskSyncNow } = await import("@/desktop/main/services/backgroundTaskSyncService");
+
+    await runBackgroundTaskSyncNow();
+
+    expect(mocks.getBackgroundSyncEnabled).not.toHaveBeenCalled();
+    expect(mocks.syncRegisteredProjectWorktrees).toHaveBeenCalledTimes(1);
+    expect(mocks.syncActiveTaskPullRequests).toHaveBeenCalledTimes(1);
+    expect(mocks.syncActiveTaskPulls).toHaveBeenCalledTimes(1);
+  });
+
+  it("manual background sync는 진행 중인 scheduled cycle과 같은 in-flight 작업을 공유한다", async () => {
+    let resolveWorktreeSync: (result: {
+      worktreeTasks: string[];
+      registeredWorktrees: never[];
+      hooksSetup: never[];
+      errors: never[];
+      changed: boolean;
+    }) => void = () => {};
+    mocks.syncRegisteredProjectWorktrees.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveWorktreeSync = resolve;
+      }),
+    );
+
+    const { startBackgroundTaskSync, runBackgroundTaskSyncNow } = await import("@/desktop/main/services/backgroundTaskSyncService");
+
+    const stop = startBackgroundTaskSync();
+    await vi.advanceTimersByTimeAsync(20_000);
+
+    const manualSync = runBackgroundTaskSyncNow();
+
+    expect(mocks.syncRegisteredProjectWorktrees).toHaveBeenCalledTimes(1);
+    expect(mocks.syncActiveTaskPullRequests).not.toHaveBeenCalled();
+    expect(mocks.syncActiveTaskPulls).not.toHaveBeenCalled();
+
+    resolveWorktreeSync({
+      worktreeTasks: [],
+      registeredWorktrees: [],
+      hooksSetup: [],
+      errors: [],
+      changed: false,
+    });
+    await manualSync;
+
+    expect(mocks.syncRegisteredProjectWorktrees).toHaveBeenCalledTimes(1);
+    expect(mocks.syncActiveTaskPullRequests).toHaveBeenCalledTimes(1);
+    expect(mocks.syncActiveTaskPulls).toHaveBeenCalledTimes(1);
+
+    stop();
+  });
+
   it("background task sync는 여러 번 시작해도 하나의 loop만 실행한다", async () => {
     const { startBackgroundTaskSync } = await import("@/desktop/main/services/backgroundTaskSyncService");
 

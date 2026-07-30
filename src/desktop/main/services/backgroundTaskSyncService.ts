@@ -21,6 +21,13 @@ const INITIAL_SYNC_DELAY_MS = 20_000;
 const FALLBACK_SYNC_INTERVAL_MS = 10 * 60_000;
 
 let activeBackgroundTaskSyncStop: (() => void) | null = null;
+let activeBackgroundTaskSyncCycle: Promise<BackgroundTaskSyncRunResult> | null = null;
+const emittedMergeEventKeys = new Set<string>();
+
+export interface BackgroundTaskSyncRunResult {
+  reviewNeeded: boolean;
+  boardUpdated: boolean;
+}
 
 interface BackgroundSyncStageResult<T> {
   result: T;
@@ -84,15 +91,97 @@ async function runBackgroundSyncStage<T>(
   }
 }
 
+async function executeBackgroundTaskSyncCycle(): Promise<BackgroundTaskSyncRunResult> {
+  const worktreeSync = await runBackgroundSyncStage(
+    "worktree sync",
+    syncRegisteredProjectWorktrees,
+    createEmptyWorktreeSyncResult,
+    (reason) => ({
+      operation: "worktree-sync",
+      target: "등록 프로젝트 worktree sync",
+      reason,
+    }),
+  );
+  const prSync = await runBackgroundSyncStage(
+    "pull request sync",
+    () => syncActiveTaskPullRequests(emittedMergeEventKeys),
+    createEmptyPullRequestSyncResult,
+    (reason) => ({
+      operation: "pull-request-sync",
+      target: "PR 상태 sync",
+      reason,
+    }),
+  );
+  const pullSync = await runBackgroundSyncStage(
+    "task pull sync",
+    syncActiveTaskPulls,
+    createEmptyTaskPullSyncResult,
+    (reason) => ({
+      operation: "task-pull-sync",
+      target: "active task pull sync",
+      reason,
+    }),
+  );
+  const worktreeSyncResult = worktreeSync.result;
+  const prSyncResult = prSync.result;
+  const pullSyncResult = pullSync.result;
+  const failures: BackgroundSyncFailurePayload[] = [
+    ...(worktreeSync.failure ? [worktreeSync.failure] : []),
+    ...worktreeSyncResult.errors.map((reason) => ({
+      operation: "worktree-sync" as const,
+      target: "등록 프로젝트 worktree sync",
+      reason,
+    })),
+    ...(prSync.failure ? [prSync.failure] : []),
+    ...(prSyncResult.failures ?? []),
+    ...(pullSync.failure ? [pullSync.failure] : []),
+  ];
+
+  const reviewNeeded = worktreeSyncResult.registeredWorktrees.length > 0
+    || prSyncResult.mergedPullRequests.length > 0
+    || pullSyncResult.pulledTasks.length > 0
+    || failures.length > 0;
+
+  if (reviewNeeded) {
+    broadcastBackgroundSyncReviewNeeded({
+      registeredWorktrees: worktreeSyncResult.registeredWorktrees,
+      mergedPullRequests: prSyncResult.mergedPullRequests,
+      pulledTasks: pullSyncResult.pulledTasks,
+      ...(failures.length > 0 ? { failures } : {}),
+    });
+  }
+
+  const hasUpdatedPulledTasks = pullSyncResult.pulledTasks.some((task) => task.status === "updated");
+  const boardUpdated = worktreeSyncResult.changed || prSyncResult.updatedTaskIds.length > 0 || hasUpdatedPulledTasks;
+  if (boardUpdated) {
+    broadcastBoardUpdate();
+  }
+
+  return { reviewNeeded, boardUpdated };
+}
+
+function runSharedBackgroundTaskSyncCycle(): Promise<BackgroundTaskSyncRunResult> {
+  if (activeBackgroundTaskSyncCycle) {
+    return activeBackgroundTaskSyncCycle;
+  }
+
+  activeBackgroundTaskSyncCycle = executeBackgroundTaskSyncCycle().finally(() => {
+    activeBackgroundTaskSyncCycle = null;
+  });
+  return activeBackgroundTaskSyncCycle;
+}
+
+export function runBackgroundTaskSyncNow(): Promise<BackgroundTaskSyncRunResult> {
+  return runSharedBackgroundTaskSyncCycle();
+}
+
 export function startBackgroundTaskSync() {
   if (activeBackgroundTaskSyncStop) {
     return activeBackgroundTaskSyncStop;
   }
 
   let disposed = false;
-  let running = false;
   let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
-  const emittedMergeEventKeys = new Set<string>();
 
   function scheduleNext(delayMs: number) {
     if (disposed) {
@@ -109,83 +198,14 @@ export function startBackgroundTaskSync() {
       return;
     }
 
-    if (running) {
-      return;
-    }
-
-    running = true;
-
     try {
       const isEnabled = await getBackgroundSyncEnabled();
       if (isEnabled) {
-        const worktreeSync = await runBackgroundSyncStage(
-          "worktree sync",
-          syncRegisteredProjectWorktrees,
-          createEmptyWorktreeSyncResult,
-          (reason) => ({
-            operation: "worktree-sync",
-            target: "등록 프로젝트 worktree sync",
-            reason,
-          }),
-        );
-        const prSync = await runBackgroundSyncStage(
-          "pull request sync",
-          () => syncActiveTaskPullRequests(emittedMergeEventKeys),
-          createEmptyPullRequestSyncResult,
-          (reason) => ({
-            operation: "pull-request-sync",
-            target: "PR 상태 sync",
-            reason,
-          }),
-        );
-        const pullSync = await runBackgroundSyncStage(
-          "task pull sync",
-          syncActiveTaskPulls,
-          createEmptyTaskPullSyncResult,
-          (reason) => ({
-            operation: "task-pull-sync",
-            target: "active task pull sync",
-            reason,
-          }),
-        );
-        const worktreeSyncResult = worktreeSync.result;
-        const prSyncResult = prSync.result;
-        const pullSyncResult = pullSync.result;
-        const failures: BackgroundSyncFailurePayload[] = [
-          ...(worktreeSync.failure ? [worktreeSync.failure] : []),
-          ...worktreeSyncResult.errors.map((reason) => ({
-            operation: "worktree-sync" as const,
-            target: "등록 프로젝트 worktree sync",
-            reason,
-          })),
-          ...(prSync.failure ? [prSync.failure] : []),
-          ...(prSyncResult.failures ?? []),
-          ...(pullSync.failure ? [pullSync.failure] : []),
-        ];
-
-        if (
-          worktreeSyncResult.registeredWorktrees.length > 0
-          || prSyncResult.mergedPullRequests.length > 0
-          || pullSyncResult.pulledTasks.length > 0
-          || failures.length > 0
-        ) {
-          broadcastBackgroundSyncReviewNeeded({
-            registeredWorktrees: worktreeSyncResult.registeredWorktrees,
-            mergedPullRequests: prSyncResult.mergedPullRequests,
-            pulledTasks: pullSyncResult.pulledTasks,
-            ...(failures.length > 0 ? { failures } : {}),
-          });
-        }
-
-        const hasUpdatedPulledTasks = pullSyncResult.pulledTasks.some((task) => task.status === "updated");
-        if (worktreeSyncResult.changed || prSyncResult.updatedTaskIds.length > 0 || hasUpdatedPulledTasks) {
-          broadcastBoardUpdate();
-        }
+        await runSharedBackgroundTaskSyncCycle();
       }
     } catch (error) {
       console.error("[background-task-sync] sync failed:", error);
     } finally {
-      running = false;
       const intervalMs = await getBackgroundSyncIntervalMs().catch(() => FALLBACK_SYNC_INTERVAL_MS);
       scheduleNext(intervalMs);
     }
@@ -194,7 +214,7 @@ export function startBackgroundTaskSync() {
   function reschedule(newIntervalMs: number) {
     if (disposed) return;
     // 사이클 실행 중이면 건너뜀 — finally 블록이 최신 주기를 읽어 스케줄링함
-    if (running) return;
+    if (activeBackgroundTaskSyncCycle) return;
     if (timeoutHandle) {
       clearTimeout(timeoutHandle);
       timeoutHandle = null;
@@ -205,7 +225,7 @@ export function startBackgroundTaskSync() {
   function rescheduleOnEnable(enabled: boolean) {
     if (!enabled) return; // 비활성화 시: 루프는 다음 웨이크업에서 작업을 건너뜀
     if (disposed) return;
-    if (running) return; // 사이클 진행 중: finally 블록이 이어서 스케줄링함
+    if (activeBackgroundTaskSyncCycle) return; // 사이클 진행 중: finally 블록이 이어서 스케줄링함
     if (timeoutHandle) {
       clearTimeout(timeoutHandle);
       timeoutHandle = null;
