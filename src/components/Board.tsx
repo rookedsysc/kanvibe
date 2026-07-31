@@ -13,6 +13,7 @@ import TaskContextMenu from "./TaskContextMenu";
 import BranchTaskModal from "./BranchTaskModal";
 import DoneConfirmDialog from "./DoneConfirmDialog";
 import { reorderTasks, deleteTask, getMoreDoneTasks, moveTaskToColumn } from "@/desktop/renderer/actions/kanban";
+import { runBackgroundTaskSyncNow } from "@/desktop/renderer/actions/backgroundTaskSync";
 import type { TasksByStatus } from "@/desktop/renderer/actions/kanban";
 import { useBoardCommands } from "@/desktop/renderer/components/BoardCommandProvider";
 import { navigateToTaskDetail } from "@/desktop/renderer/utils/taskNavigation";
@@ -20,6 +21,11 @@ import { SessionType, TaskStatus, type KanbanTask } from "@/entities/KanbanTask"
 import type { Project } from "@/entities/Project";
 import { useAutoRefresh } from "@/desktop/renderer/hooks/useAutoRefresh";
 import { useProjectFilterParams } from "@/desktop/renderer/hooks/useProjectFilterParams";
+import {
+  TASK_KIND_FILTER_VALUES,
+  useTaskKindFilterParams,
+  type TaskKindFilter,
+} from "@/desktop/renderer/hooks/useTaskKindFilterParams";
 import { DEFAULT_LOCALE, SUPPORTED_LOCALES } from "@/desktop/renderer/utils/locales";
 import { computeProjectColor } from "@/lib/projectColor";
 import type { NotificationCenterButtonHandle } from "./NotificationCenterButton";
@@ -66,7 +72,11 @@ const VIM_COMMAND_KEY = ":";
 const TASK_DELETE_SEQUENCE_KEY = "d";
 const TASK_DELETE_SEQUENCE_TIMEOUT_MS = 1_000;
 
+type BoardTaskFilter = (task: KanbanTask) => boolean;
+
 const VIM_MOVE_COMMAND_ALIASES = new Set(["move", "m"]);
+const VIM_SYNC_COMMAND_ALIASES = new Set(["sync", "s"]);
+const VIM_COMMAND_NAMES = ["move", "sync"] as const;
 const VIM_MOVE_STATUSES = [
   TaskStatus.TODO,
   TaskStatus.PROGRESS,
@@ -237,19 +247,32 @@ function getFocusedBoardTaskCard() {
     : null;
 }
 
-function parseVimMoveStatus(commandValue: string): TaskStatus | null {
-  const tokens = commandValue
+type ParsedVimCommand =
+  | { type: "move"; destinationStatus: TaskStatus }
+  | { type: "sync" };
+
+function parseVimCommandTokens(commandValue: string) {
+  return commandValue
     .trim()
     .replace(/^:/, "")
     .toLowerCase()
     .split(/\s+/)
     .filter(Boolean);
+}
 
-  if (tokens.length !== 2 || !VIM_MOVE_COMMAND_ALIASES.has(tokens[0])) {
-    return null;
+function parseVimCommand(commandValue: string): ParsedVimCommand | null {
+  const tokens = parseVimCommandTokens(commandValue);
+
+  if (tokens.length === 1 && VIM_SYNC_COMMAND_ALIASES.has(tokens[0])) {
+    return { type: "sync" };
   }
 
-  return VIM_STATUS_ALIASES[tokens[1]] ?? null;
+  if (tokens.length === 2 && VIM_MOVE_COMMAND_ALIASES.has(tokens[0])) {
+    const destinationStatus = VIM_STATUS_ALIASES[tokens[1]];
+    return destinationStatus ? { type: "move", destinationStatus } : null;
+  }
+
+  return null;
 }
 
 function getUniqueVimMoveStatusCompletion(statusPrefix: string): TaskStatus | null {
@@ -270,7 +293,15 @@ function getUniqueVimMoveStatusCompletion(statusPrefix: string): TaskStatus | nu
   return aliasMatches.size === 1 ? Array.from(aliasMatches)[0] : null;
 }
 
-function getVimMoveCommandAutocomplete(commandValue: string): string | null {
+function getUniqueVimCommandCompletion(commandPrefix: string) {
+  const normalizedPrefix = commandPrefix.toLowerCase();
+  if (!normalizedPrefix) return "move";
+
+  const matches = VIM_COMMAND_NAMES.filter((command) => command.startsWith(normalizedPrefix));
+  return matches.length === 1 ? matches[0] : null;
+}
+
+function getVimCommandAutocomplete(commandValue: string): string | null {
   const leadingWhitespace = commandValue.match(/^\s*/)?.[0] ?? "";
   const trimmedStartValue = commandValue.trimStart();
   const hasColonPrefix = trimmedStartValue.startsWith(":");
@@ -279,22 +310,25 @@ function getVimMoveCommandAutocomplete(commandValue: string): string | null {
   const tokens = valueWithoutColon.toLowerCase().split(/\s+/).filter(Boolean);
   const commandToken = tokens[0] ?? "";
 
-  const formatCompletion = (status?: TaskStatus) => {
-    const prefix = `${leadingWhitespace}${hasColonPrefix ? ":" : ""}move`;
+  const commandPrefix = `${leadingWhitespace}${hasColonPrefix ? ":" : ""}`;
+  const formatMoveCompletion = (status?: TaskStatus) => {
+    const prefix = `${commandPrefix}move`;
     return status ? `${prefix} ${status}` : `${prefix} `;
+  };
+  const formatCommandCompletion = (command: typeof VIM_COMMAND_NAMES[number]) => {
+    return command === "move" ? formatMoveCompletion() : `${commandPrefix}${command}`;
   };
 
   if (tokens.length === 0) {
-    return formatCompletion();
+    return formatMoveCompletion();
   }
 
   if (tokens.length === 1 && !hasTrailingWhitespace) {
-    if ("move".startsWith(commandToken) || commandToken === "m") {
-      const completion = formatCompletion();
-      return completion === commandValue ? null : completion;
-    }
+    const completedCommand = getUniqueVimCommandCompletion(commandToken);
+    if (!completedCommand) return null;
 
-    return null;
+    const completion = formatCommandCompletion(completedCommand);
+    return completion === commandValue ? null : completion;
   }
 
   if (!VIM_MOVE_COMMAND_ALIASES.has(commandToken) || tokens.length !== 2) {
@@ -304,7 +338,7 @@ function getVimMoveCommandAutocomplete(commandValue: string): string | null {
   const completedStatus = getUniqueVimMoveStatusCompletion(tokens[1]);
   if (!completedStatus) return null;
 
-  const completion = formatCompletion(completedStatus);
+  const completion = formatMoveCompletion(completedStatus);
   return completion === commandValue ? null : completion;
 }
 
@@ -361,6 +395,28 @@ function extractMainRepoPath(repoPath: string): string | null {
   return repoPath.slice(0, worktreeIndex);
 }
 
+function isProjectRootTask(task: KanbanTask, projectLookup: Map<string, Project>): boolean {
+  if (!task.projectId || !task.branchName) return false;
+
+  const project = projectLookup.get(task.projectId);
+  return Boolean(project && !project.isWorktree && task.branchName === project.defaultBranch);
+}
+
+function matchesTaskKindFilter(
+  task: KanbanTask,
+  taskKindFilter: TaskKindFilter,
+  projectLookup: Map<string, Project>,
+): boolean {
+  if (taskKindFilter === "all") return true;
+
+  const isRootTask = isProjectRootTask(task, projectLookup);
+  return taskKindFilter === "project" ? isRootTask : !isRootTask;
+}
+
+function matchesProjectFilter(task: KanbanTask, projectFilterSet: Set<string> | null): boolean {
+  return !projectFilterSet || Boolean(task.projectId && projectFilterSet.has(task.projectId));
+}
+
 function openSettingsPage() {
   window.location.hash = `#/${getCurrentBoardLocale()}/settings`;
 }
@@ -374,16 +430,16 @@ function insertAtFilteredIndex(
   fullArray: KanbanTask[],
   task: KanbanTask,
   filteredIndex: number,
-  filterSet: Set<string> | null
+  taskFilter: BoardTaskFilter | null
 ): KanbanTask[] {
   const arr = [...fullArray];
 
-  if (!filterSet) {
+  if (!taskFilter) {
     arr.splice(filteredIndex, 0, task);
     return arr;
   }
 
-  const filtered = arr.filter((t) => t.projectId && filterSet.has(t.projectId));
+  const filtered = arr.filter(taskFilter);
 
   if (filteredIndex < filtered.length) {
     const targetTask = filtered[filteredIndex];
@@ -412,7 +468,7 @@ interface DragMovePlan {
 function buildDragMovePlan(
   currentTasks: TasksByStatus,
   result: DropResult,
-  projectFilterSet: Set<string> | null,
+  taskFilter: BoardTaskFilter | null,
 ): DragMovePlan | null {
   const { source, destination, draggableId } = result;
   if (!destination) return null;
@@ -432,14 +488,12 @@ function buildDragMovePlan(
       newSource,
       movedTask,
       destination.index,
-      projectFilterSet,
+      taskFilter,
     );
 
     const orderedIds = (
-      projectFilterSet
-        ? updated[sourceStatus].filter(
-            (task) => task.projectId && projectFilterSet.has(task.projectId),
-          )
+      taskFilter
+        ? updated[sourceStatus].filter(taskFilter)
         : updated[sourceStatus]
     ).map((task) => task.id);
 
@@ -461,14 +515,12 @@ function buildDragMovePlan(
     updated[destStatus],
     updatedTask,
     destination.index,
-    projectFilterSet,
+    taskFilter,
   );
 
   const orderedIds = (
-    projectFilterSet
-      ? updated[destStatus].filter(
-          (task) => task.projectId && projectFilterSet.has(task.projectId),
-        )
+    taskFilter
+      ? updated[destStatus].filter(taskFilter)
       : updated[destStatus]
   ).map((task) => task.id);
 
@@ -522,6 +574,7 @@ export default function Board({
   const [selectedProjectIds, setSelectedProjectIds] = useProjectFilterParams(
     projects.map((p) => p.id),
   );
+  const [taskKindFilter, setTaskKindFilter] = useTaskKindFilterParams();
   const [doneTotal, setDoneTotal] = useState(initialDoneTotal);
   const [doneOffset, setDoneOffset] = useState(initialDoneLimit);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
@@ -530,7 +583,7 @@ export default function Board({
   const [currentDefaultSessionType, setCurrentDefaultSessionType] = useState<SessionType>(defaultSessionType);
   const [shouldUseMacTitlebarLayout, setShouldUseMacTitlebarLayout] = useState(false);
   const vimCommandCompletion = useMemo(
-    () => getVimMoveCommandAutocomplete(vimCommandValue),
+    () => getVimCommandAutocomplete(vimCommandValue),
     [vimCommandValue],
   );
   const [, startDragPersistenceTransition] = useTransition();
@@ -588,6 +641,11 @@ export default function Board({
     return colorMap;
   }, [projectNameMap, projects]);
 
+  const projectLookup = useMemo(
+    () => new Map(projects.map((project) => [project.id, project])),
+    [projects],
+  );
+
   /** 필터 드롭다운에 표시할 메인 프로젝트 목록 (worktree 제외) */
   const filterableProjects = useMemo(
     () => projects.filter((p) => !p.isWorktree),
@@ -615,9 +673,15 @@ export default function Board({
     return matchingIds.size > 0 ? matchingIds : null;
   }, [selectedProjectIds, projects]);
 
-  /** 프로젝트 필터가 적용된 태스크 목록 */
+  /** 프로젝트 + task kind 필터가 적용된 태스크 목록 */
+  const hasActiveBoardTaskFilter = projectFilterSet !== null || taskKindFilter !== "all";
+  const boardTaskFilter = useCallback<BoardTaskFilter>((task) => (
+    matchesProjectFilter(task, projectFilterSet)
+    && matchesTaskKindFilter(task, taskKindFilter, projectLookup)
+  ), [projectFilterSet, projectLookup, taskKindFilter]);
+
   const filteredTasks = useMemo(() => {
-    if (!projectFilterSet) return tasks;
+    if (!hasActiveBoardTaskFilter) return tasks;
 
     const filtered: TasksByStatus = {
       [TaskStatus.TODO]: [],
@@ -628,13 +692,11 @@ export default function Board({
     };
 
     for (const status of Object.values(TaskStatus)) {
-      filtered[status] = tasks[status].filter(
-        (task) => task.projectId && projectFilterSet.has(task.projectId)
-      );
+      filtered[status] = tasks[status].filter(boardTaskFilter);
     }
 
     return filtered;
-  }, [tasks, projectFilterSet]);
+  }, [boardTaskFilter, hasActiveBoardTaskFilter, tasks]);
 
   const [contextMenu, setContextMenu] = useState<ContextMenuState>({
     isOpen: false,
@@ -917,7 +979,11 @@ export default function Board({
   /** 드래그 결과를 받아 state 업데이트 + DB 반영을 수행한다 */
   const executeDragMove = useCallback(
     (result: DropResult) => {
-      const plan = buildDragMovePlan(tasks, result, projectFilterSet);
+      const plan = buildDragMovePlan(
+        tasks,
+        result,
+        hasActiveBoardTaskFilter ? boardTaskFilter : null,
+      );
       if (!plan) return;
 
       setTasks(plan.updatedTasks);
@@ -943,7 +1009,7 @@ export default function Board({
         );
       });
     },
-    [projectFilterSet, startDragPersistenceTransition, tasks]
+    [boardTaskFilter, hasActiveBoardTaskFilter, startDragPersistenceTransition, tasks]
   );
 
   const moveTaskToStatus = useCallback(
@@ -990,13 +1056,21 @@ export default function Board({
   }, []);
 
   const submitVimCommand = useCallback(() => {
-    const destinationStatus = parseVimMoveStatus(vimCommandValue);
-    if (!destinationStatus) {
+    const parsedCommand = parseVimCommand(vimCommandValue);
+    if (!parsedCommand) {
       setVimCommandError(t("vimCommand.errors.unknownCommand"));
       return;
     }
 
-    const moveResult = moveFocusedTaskToStatus(destinationStatus, vimCommandTaskId);
+    if (parsedCommand.type === "sync") {
+      closeVimCommand();
+      void runBackgroundTaskSyncNow().catch((error) => {
+        console.error("Failed to run background task sync", error);
+      });
+      return;
+    }
+
+    const moveResult = moveFocusedTaskToStatus(parsedCommand.destinationStatus, vimCommandTaskId);
     if (moveResult === "missing-focus") {
       setVimCommandError(t("vimCommand.errors.noFocusedTask"));
       return;
@@ -1102,7 +1176,33 @@ export default function Board({
       <BoardPageFindBar vimModeEnabled={vimModeEnabled} />
       <header className={headerClassName}>
         <div className="flex items-center gap-3 [-webkit-app-region:no-drag]">
-          <div className="w-64">
+          <div
+            role="group"
+            aria-label={t("taskKindFilter.label")}
+            className="flex h-[34px] w-[180px] shrink-0 items-stretch rounded-md border border-border-default bg-bg-page p-0.5"
+            data-testid="task-kind-filter"
+          >
+            {TASK_KIND_FILTER_VALUES.map((filter) => {
+              const isActive = taskKindFilter === filter;
+              return (
+                <button
+                  key={filter}
+                  type="button"
+                  aria-pressed={isActive}
+                  title={t(`taskKindFilter.descriptions.${filter}`)}
+                  onClick={() => setTaskKindFilter(filter)}
+                  className={`flex flex-1 items-center justify-center rounded text-sm font-medium transition-colors ${
+                    isActive
+                      ? "bg-brand-primary text-text-inverse shadow-sm"
+                      : "text-text-secondary hover:bg-bg-surface hover:text-text-primary"
+                  }`}
+                >
+                  {t(`taskKindFilter.options.${filter}`)}
+                </button>
+              );
+            })}
+          </div>
+          <div className="w-64" data-testid="project-filter-control">
             <ProjectSelector
               ref={projectSelectorRef}
               multiple
@@ -1216,7 +1316,7 @@ export default function Board({
               }}
               onKeyDown={(event) => {
                 if (event.key === "Tab" && !event.shiftKey && !event.altKey && !event.ctrlKey && !event.metaKey) {
-                  const completion = getVimMoveCommandAutocomplete(event.currentTarget.value);
+                  const completion = getVimCommandAutocomplete(event.currentTarget.value);
                   if (completion) {
                     event.preventDefault();
                     setVimCommandValue(completion);

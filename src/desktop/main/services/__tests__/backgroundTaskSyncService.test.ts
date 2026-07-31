@@ -8,6 +8,8 @@ const mocks = vi.hoisted(() => ({
   broadcastBackgroundSyncReviewNeeded: vi.fn(),
   getBackgroundSyncEnabled: vi.fn().mockResolvedValue(true),
   getBackgroundSyncIntervalMs: vi.fn().mockResolvedValue(10 * 60_000),
+  registerBackgroundSyncIntervalChangedCallback: vi.fn(),
+  registerBackgroundSyncEnabledChangedCallback: vi.fn(),
 }));
 
 vi.mock("@/desktop/main/services/projectService", () => ({
@@ -27,8 +29,8 @@ vi.mock("@/lib/boardNotifier", () => ({
 vi.mock("@/desktop/main/services/appSettingsService", () => ({
   getBackgroundSyncEnabled: mocks.getBackgroundSyncEnabled,
   getBackgroundSyncIntervalMs: mocks.getBackgroundSyncIntervalMs,
-  registerBackgroundSyncIntervalChangedCallback: vi.fn(),
-  registerBackgroundSyncEnabledChangedCallback: vi.fn(),
+  registerBackgroundSyncIntervalChangedCallback: mocks.registerBackgroundSyncIntervalChangedCallback,
+  registerBackgroundSyncEnabledChangedCallback: mocks.registerBackgroundSyncEnabledChangedCallback,
 }));
 
 async function flushBackgroundSyncCycle() {
@@ -117,6 +119,60 @@ describe("backgroundTaskSyncService", () => {
       ],
       pulledTasks: [],
     });
+
+    stop();
+  });
+
+  it("manual background sync는 설정 비활성화와 무관하게 동일한 sync cycle을 실행한다", async () => {
+    mocks.getBackgroundSyncEnabled.mockResolvedValue(false);
+
+    const { runBackgroundTaskSyncNow } = await import("@/desktop/main/services/backgroundTaskSyncService");
+
+    await runBackgroundTaskSyncNow();
+
+    expect(mocks.getBackgroundSyncEnabled).not.toHaveBeenCalled();
+    expect(mocks.syncRegisteredProjectWorktrees).toHaveBeenCalledTimes(1);
+    expect(mocks.syncActiveTaskPullRequests).toHaveBeenCalledTimes(1);
+    expect(mocks.syncActiveTaskPulls).toHaveBeenCalledTimes(1);
+  });
+
+  it("manual background sync는 진행 중인 scheduled cycle과 같은 in-flight 작업을 공유한다", async () => {
+    let resolveWorktreeSync: (result: {
+      worktreeTasks: string[];
+      registeredWorktrees: never[];
+      hooksSetup: never[];
+      errors: never[];
+      changed: boolean;
+    }) => void = () => {};
+    mocks.syncRegisteredProjectWorktrees.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveWorktreeSync = resolve;
+      }),
+    );
+
+    const { startBackgroundTaskSync, runBackgroundTaskSyncNow } = await import("@/desktop/main/services/backgroundTaskSyncService");
+
+    const stop = startBackgroundTaskSync();
+    await vi.advanceTimersByTimeAsync(20_000);
+
+    const manualSync = runBackgroundTaskSyncNow();
+
+    expect(mocks.syncRegisteredProjectWorktrees).toHaveBeenCalledTimes(1);
+    expect(mocks.syncActiveTaskPullRequests).not.toHaveBeenCalled();
+    expect(mocks.syncActiveTaskPulls).not.toHaveBeenCalled();
+
+    resolveWorktreeSync({
+      worktreeTasks: [],
+      registeredWorktrees: [],
+      hooksSetup: [],
+      errors: [],
+      changed: false,
+    });
+    await manualSync;
+
+    expect(mocks.syncRegisteredProjectWorktrees).toHaveBeenCalledTimes(1);
+    expect(mocks.syncActiveTaskPullRequests).toHaveBeenCalledTimes(1);
+    expect(mocks.syncActiveTaskPulls).toHaveBeenCalledTimes(1);
 
     stop();
   });
@@ -308,6 +364,49 @@ describe("backgroundTaskSyncService", () => {
       ],
     });
     expect(mocks.broadcastBoardUpdate).toHaveBeenCalledTimes(1);
+
+    stop();
+  });
+
+  it("manual sync 진행 중에 주기가 바뀌면 새 주기로 다음 sync를 다시 예약한다", async () => {
+    const { startBackgroundTaskSync, runBackgroundTaskSyncNow } = await import("@/desktop/main/services/backgroundTaskSyncService");
+
+    const stop = startBackgroundTaskSync();
+    await vi.advanceTimersByTimeAsync(20_000);
+    await flushBackgroundSyncCycle();
+
+    expect(mocks.syncRegisteredProjectWorktrees).toHaveBeenCalledTimes(1);
+
+    let resolveManualWorktreeSync: () => void = () => {};
+    mocks.syncRegisteredProjectWorktrees.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveManualWorktreeSync = () => resolve({
+          worktreeTasks: [],
+          registeredWorktrees: [],
+          hooksSetup: [],
+          errors: [],
+          changed: false,
+        });
+      }),
+    );
+
+    const manualSync = runBackgroundTaskSyncNow();
+    await flushBackgroundSyncCycle();
+
+    const notifyIntervalChanged = mocks.registerBackgroundSyncIntervalChangedCallback.mock.calls[0][0];
+    mocks.getBackgroundSyncIntervalMs.mockResolvedValue(60_000);
+    notifyIntervalChanged(60_000);
+
+    resolveManualWorktreeSync();
+    await manualSync;
+    await flushBackgroundSyncCycle();
+
+    expect(mocks.syncRegisteredProjectWorktrees).toHaveBeenCalledTimes(2);
+
+    await vi.advanceTimersByTimeAsync(60_000);
+    await flushBackgroundSyncCycle();
+
+    expect(mocks.syncRegisteredProjectWorktrees).toHaveBeenCalledTimes(3);
 
     stop();
   });
