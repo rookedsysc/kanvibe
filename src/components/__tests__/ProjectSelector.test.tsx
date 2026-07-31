@@ -24,6 +24,7 @@ function createProject(id: string, name: string): Project {
     sshHost: null,
     isWorktree: false,
     color: null,
+    iconDataUrl: null,
     createdAt: new Date(),
   };
 }

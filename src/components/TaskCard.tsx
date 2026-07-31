@@ -9,6 +9,7 @@ import {
 } from "@/desktop/renderer/utils/taskNavigation";
 import { TaskStatus, type KanbanTask } from "@/entities/KanbanTask";
 import { TaskPriority } from "@/entities/TaskPriority";
+import ProjectIcon from "@/components/ProjectIcon";
 
 interface ContextMenuPosition {
   x: number;
@@ -21,6 +22,7 @@ interface TaskCardProps {
   onContextMenu: (task: KanbanTask, position: ContextMenuPosition) => void;
   projectName?: string;
   projectColor?: string;
+  projectIconDataUrl?: string | null;
   isBaseProject?: boolean;
   vimModeEnabled?: boolean;
 }
@@ -156,6 +158,7 @@ export default function TaskCard({
   onContextMenu,
   projectName,
   projectColor,
+  projectIconDataUrl,
   isBaseProject,
   vimModeEnabled = true,
 }: TaskCardProps) {
@@ -270,11 +273,18 @@ export default function TaskCard({
                 className="h-1.5 w-1.5 shrink-0 rounded-full"
                 style={{ backgroundColor: projectColor }}
               />
-              <span
-                className="truncate text-xs font-semibold leading-4"
-                style={{ color: projectColor }}
-              >
-                {projectName}
+              <span className="flex min-w-0 items-center gap-1.5">
+                <ProjectIcon
+                  projectName={projectName}
+                  iconDataUrl={projectIconDataUrl}
+                  sizeClassName="h-3.5 w-3.5"
+                />
+                <span
+                  className="truncate text-xs font-semibold leading-4"
+                  style={{ color: projectColor }}
+                >
+                  {projectName}
+                </span>
               </span>
             </div>
           )}

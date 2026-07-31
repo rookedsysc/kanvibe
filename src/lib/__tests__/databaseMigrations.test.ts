@@ -119,7 +119,7 @@ describe("database migrations", () => {
         { id: "task-1", branch_name: "main", display_order: 0 },
         { id: "task-2", branch_name: "main", display_order: 1 },
       ]);
-      expect(migrations).toHaveLength(12);
+      expect(migrations).toHaveLength(13);
       expect(migrations[0]).toEqual({ name: "InitialSchema1770854400000" });
     } finally {
       await dataSource.destroy();
@@ -158,7 +158,7 @@ describe("database migrations", () => {
           display_order: 0,
         },
       ]);
-      expect(migrations).toHaveLength(12);
+      expect(migrations).toHaveLength(13);
     } finally {
       await dataSource.destroy();
     }
@@ -188,7 +188,7 @@ describe("database migrations", () => {
       expect(indexes.map((row: { name: string }) => row.name)).not.toContain(
         "UQ_kanban_tasks_branch_name",
       );
-      expect(migrations).toHaveLength(12);
+      expect(migrations).toHaveLength(13);
     } finally {
       await dataSource.destroy();
     }

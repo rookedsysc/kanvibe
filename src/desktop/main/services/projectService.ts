@@ -13,6 +13,7 @@ import type { AggregatedAiSessionDetail, AggregatedAiSessionsResult, AiMessageRo
 import { homedir } from "os";
 import path from "path";
 import { computeProjectColor } from "@/lib/projectColor";
+import { resolveProjectIconDataUrl } from "@/lib/githubProjectIcon";
 import { broadcastBoardUpdate } from "@/lib/boardNotifier";
 import { getAvailableHosts as readAvailableHosts } from "@/lib/sshConfig";
 import { getDefaultSessionType } from "@/desktop/main/services/appSettingsService";
@@ -498,6 +499,7 @@ export async function registerProject(
     defaultBranch,
     sshHost: sshHost || null,
     color: await resolveProjectColor(normalizedRepoPath, projectName, sshHost || null),
+    iconDataUrl: await resolveProjectIconDataUrl(normalizedRepoPath, sshHost || null),
   });
 
   const saved = await repo.save(project);
@@ -845,6 +847,7 @@ export async function scanAndRegisterProjects(
         defaultBranch,
         sshHost: sshHost || null,
         color: await resolveProjectColor(repoPath, projectName, sshHost || null),
+        iconDataUrl: await resolveProjectIconDataUrl(repoPath, sshHost || null),
       });
 
       const saved = await repo.save(project);

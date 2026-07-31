@@ -56,6 +56,7 @@ function createTask(overrides: Partial<KanbanTask> = {}): KanbanTask {
       sshHost: null,
       isWorktree: false,
       color: null,
+      iconDataUrl: null,
       createdAt: new Date(),
     },
     projectId: "project-1",
@@ -157,6 +158,7 @@ describe("TaskDetailInfoCard - Project Badge Color", () => {
         sshHost: null,
         isWorktree: false,
         color: "#FF0000",
+        iconDataUrl: null,
         createdAt: new Date(),
       },
     });

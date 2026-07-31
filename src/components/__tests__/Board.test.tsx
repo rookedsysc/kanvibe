@@ -181,6 +181,7 @@ function createProject(overrides: Partial<Project> = {}): Project {
     sshHost: null,
     isWorktree: false,
     color: null,
+    iconDataUrl: null,
     createdAt: new Date(),
     ...overrides,
   };

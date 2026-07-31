@@ -650,6 +650,19 @@ export default function Board({
     return colorMap;
   }, [projectNameMap, mainProjectByName]);
 
+  /** 프로젝트명 → GitHub 아이콘 data URL 매핑. 아이콘이 없는 프로젝트는 항목을 만들지 않는다 */
+  const projectIconMap = useMemo(() => {
+    const iconMap: Record<string, string> = {};
+
+    for (const name of new Set(Object.values(projectNameMap))) {
+      const iconDataUrl = mainProjectByName.get(name)?.iconDataUrl;
+      if (iconDataUrl) {
+        iconMap[name] = iconDataUrl;
+      }
+    }
+    return iconMap;
+  }, [projectNameMap, mainProjectByName]);
+
   const projectLookup = useMemo(
     () => new Map(projects.map((project) => [project.id, project])),
     [projects],
@@ -1280,6 +1293,7 @@ export default function Board({
                   onContextMenu={handleContextMenu}
                   projectNameMap={projectNameMap}
                   projectColorMap={projectColorMap}
+                  projectIconMap={projectIconMap}
                   vimModeEnabled={vimModeEnabled}
                   {...(col.status === TaskStatus.DONE && {
                     totalCount: doneTotal,

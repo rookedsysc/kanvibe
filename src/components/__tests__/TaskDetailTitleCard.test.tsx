@@ -68,6 +68,7 @@ function createTask(overrides: Partial<KanbanTask> = {}): KanbanTask {
       sshHost: null,
       isWorktree: false,
       color: null,
+      iconDataUrl: null,
       createdAt: new Date(),
     },
     projectId: "project-1",
