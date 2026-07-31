@@ -181,6 +181,9 @@ export function startBackgroundTaskSync() {
   }
 
   let disposed = false;
+  // 스케줄러가 직접 돌린 사이클만 표시한다. manual sync가 공유 사이클을 점유한 경우와 구분해야
+  // 재예약 책임이 finally 블록에 있는지 콜백에 있는지 판단할 수 있다.
+  let isSchedulerCycleRunning = false;
   let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
 
   function scheduleNext(delayMs: number) {
@@ -198,6 +201,7 @@ export function startBackgroundTaskSync() {
       return;
     }
 
+    isSchedulerCycleRunning = true;
     try {
       const isEnabled = await getBackgroundSyncEnabled();
       if (isEnabled) {
@@ -208,13 +212,14 @@ export function startBackgroundTaskSync() {
     } finally {
       const intervalMs = await getBackgroundSyncIntervalMs().catch(() => FALLBACK_SYNC_INTERVAL_MS);
       scheduleNext(intervalMs);
+      isSchedulerCycleRunning = false;
     }
   }
 
   function reschedule(newIntervalMs: number) {
     if (disposed) return;
-    // 사이클 실행 중이면 건너뜀 — finally 블록이 최신 주기를 읽어 스케줄링함
-    if (activeBackgroundTaskSyncCycle) return;
+    // 스케줄러 사이클 실행 중이면 건너뜀 — finally 블록이 최신 주기를 읽어 스케줄링함
+    if (isSchedulerCycleRunning) return;
     if (timeoutHandle) {
       clearTimeout(timeoutHandle);
       timeoutHandle = null;
@@ -225,7 +230,7 @@ export function startBackgroundTaskSync() {
   function rescheduleOnEnable(enabled: boolean) {
     if (!enabled) return; // 비활성화 시: 루프는 다음 웨이크업에서 작업을 건너뜀
     if (disposed) return;
-    if (activeBackgroundTaskSyncCycle) return; // 사이클 진행 중: finally 블록이 이어서 스케줄링함
+    if (isSchedulerCycleRunning) return; // 스케줄러 사이클 진행 중: finally 블록이 이어서 스케줄링함
     if (timeoutHandle) {
       clearTimeout(timeoutHandle);
       timeoutHandle = null;
