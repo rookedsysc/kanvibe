@@ -63,10 +63,18 @@ function buildReadResults(files: Record<string, string> = {}): Map<string, TextF
   return new Map(Object.entries(files).map(([filePath, content]) => [filePath, { exists: true, content }]));
 }
 
-/** 마지막 쓰기 배치에서 특정 경로의 파일 내용을 찾는다 */
+/** 쓰기는 provider 단위로 격리되므로 한 번의 설치는 provider 수만큼의 쓰기 배치를 만든다 */
+const HOOK_PROVIDER_COUNT = 4;
+
+/** 마지막 설치가 기록한 파일 전체를 provider 배치들에서 모은다 */
+function getLastInstallWrittenFiles(): ShellHookProviderFile[] {
+  return mockWriteHookProviderFiles.mock.calls
+    .slice(-HOOK_PROVIDER_COUNT)
+    .flatMap((call) => (call[0] ?? []) as ShellHookProviderFile[]);
+}
+
 function findWrittenContent(filePath: string): string {
-  const writtenFiles = mockWriteHookProviderFiles.mock.calls.at(-1)?.[0] as ShellHookProviderFile[];
-  const file = writtenFiles?.find((candidate) => candidate.filePath === filePath);
+  const file = getLastInstallWrittenFiles().find((candidate) => candidate.filePath === filePath);
   if (!file) {
     throw new Error(`write payload not found for ${filePath}`);
   }
@@ -75,8 +83,14 @@ function findWrittenContent(filePath: string): string {
 }
 
 function getWrittenFilePaths(): string[] {
-  const writtenFiles = mockWriteHookProviderFiles.mock.calls.at(-1)?.[0] as ShellHookProviderFile[];
-  return (writtenFiles ?? []).map((file) => file.filePath);
+  return getLastInstallWrittenFiles().map((file) => file.filePath);
+}
+
+/** provider별 쓰기가 모두 시작될 때까지 microtask queue를 비운다 */
+async function flushMicrotasks(): Promise<void> {
+  for (let tick = 0; tick < 20; tick += 1) {
+    await Promise.resolve();
+  }
 }
 
 describe("kanvibeHooksInstaller", () => {
@@ -100,7 +114,7 @@ describe("kanvibeHooksInstaller", () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
   });
 
-  it("전체 설치는 모든 provider hook 파일을 한 번의 쓰기 배치로 기록한다", async () => {
+  it("전체 설치는 provider별 쓰기 배치로 모든 hook 파일을 기록한다", async () => {
     // Given
     const { installKanvibeHooks } = await import("@/lib/kanvibeHooksInstaller");
 
@@ -108,7 +122,7 @@ describe("kanvibeHooksInstaller", () => {
     await installKanvibeHooks("/repo", "task-1", null);
 
     // Then
-    expect(mockWriteHookProviderFiles).toHaveBeenCalledTimes(1);
+    expect(mockWriteHookProviderFiles).toHaveBeenCalledTimes(HOOK_PROVIDER_COUNT);
     expect(mockWriteHookProviderFiles).toHaveBeenCalledWith(expect.any(Array), null);
     expect(getWrittenFilePaths()).toEqual(expect.arrayContaining([
       "/repo/.claude/hooks/kanvibe-prompt-hook.sh",
@@ -255,7 +269,7 @@ describe("kanvibeHooksInstaller", () => {
     await installKanvibeHookFiles("/repo", "task-1", null);
 
     // Then
-    expect(mockWriteHookProviderFiles).toHaveBeenCalledTimes(1);
+    expect(mockWriteHookProviderFiles).toHaveBeenCalledTimes(HOOK_PROVIDER_COUNT);
     expect(mockGetClaudeHooksStatus).not.toHaveBeenCalled();
     expect(mockGetGeminiHooksStatus).not.toHaveBeenCalled();
     expect(mockGetCodexHooksStatus).not.toHaveBeenCalled();
@@ -462,7 +476,7 @@ describe("kanvibeHooksInstaller", () => {
 
       // Then
       await result;
-      expect(mockWriteHookProviderFiles).toHaveBeenCalledTimes(2);
+      expect(mockWriteHookProviderFiles).toHaveBeenCalledTimes(HOOK_PROVIDER_COUNT * 2);
     } finally {
       vi.useRealTimers();
     }
@@ -482,7 +496,7 @@ describe("kanvibeHooksInstaller", () => {
 
       // Then
       await result;
-      expect(mockWriteHookProviderFiles).toHaveBeenCalledTimes(3);
+      expect(mockWriteHookProviderFiles).toHaveBeenCalledTimes(HOOK_PROVIDER_COUNT * 3);
     } finally {
       vi.useRealTimers();
     }
@@ -490,22 +504,22 @@ describe("kanvibeHooksInstaller", () => {
 
   it("같은 target/task/host 동시 설치 요청은 하나의 설치 작업을 공유한다", async () => {
     // Given
-    let resolveHookFileWrite: (() => void) | undefined;
+    const pendingHookFileWrites: (() => void)[] = [];
     mockWriteHookProviderFiles.mockImplementation(() => new Promise<void>((resolve) => {
-      resolveHookFileWrite = resolve;
+      pendingHookFileWrites.push(resolve);
     }));
     const { installKanvibeHooks } = await import("@/lib/kanvibeHooksInstaller");
 
     // When
     const firstInstall = installKanvibeHooks("/repo", "task-1", null);
     const secondInstall = installKanvibeHooks("/repo", "task-1", null);
-    await Promise.resolve();
-    await Promise.resolve();
-    await Promise.resolve();
+    await flushMicrotasks();
 
     // Then
-    expect(mockWriteHookProviderFiles).toHaveBeenCalledTimes(1);
-    resolveHookFileWrite?.();
+    expect(mockWriteHookProviderFiles).toHaveBeenCalledTimes(HOOK_PROVIDER_COUNT);
+    for (const resolveHookFileWrite of pendingHookFileWrites) {
+      resolveHookFileWrite();
+    }
     await expect(Promise.all([firstInstall, secondInstall])).resolves.toEqual([undefined, undefined]);
   });
 
@@ -524,7 +538,7 @@ describe("kanvibeHooksInstaller", () => {
       await vi.runAllTimersAsync();
 
       // Then
-      expect(mockWriteHookProviderFiles).toHaveBeenCalledTimes(1);
+      expect(mockWriteHookProviderFiles).toHaveBeenCalledTimes(HOOK_PROVIDER_COUNT);
       expect(onSuccessA).toHaveBeenCalledTimes(1);
       expect(onSuccessB).toHaveBeenCalledTimes(1);
     } finally {

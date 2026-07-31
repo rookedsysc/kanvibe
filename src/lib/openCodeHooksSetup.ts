@@ -45,9 +45,10 @@ export const KanvibePlugin: Plugin = async ({ client }) => {
   const KANVIBE_STATE_DIR = resolve(KANVIBE_REPO_ROOT, ".kanvibe");
   const KANVIBE_STATUS_FILE = resolve(KANVIBE_STATE_DIR, "status.json");
   const KANVIBE_TARGETS_FILE = resolve(KANVIBE_STATE_DIR, "targets.json");
+  /** 이미 종료된 client가 targets.json에 남아 있어도 통보가 매달리지 않도록 상한을 둔다 */
+  const KANVIBE_NOTIFY_TIMEOUT_MS = 3000;
   const KANVIBE_STATE_DIR_EXCLUDE_PATTERN = ${JSON.stringify(KANVIBE_STATE_DIR_EXCLUDE_PATTERN)};
   const KANVIBE_GIT_EXCLUDE_MARKER = ${JSON.stringify(KANVIBE_GIT_EXCLUDE_MARKER)};
-  const KANVIBE_PROJECT_COLOR_PATTERN = /^#[0-9a-fA-F]{6}$/;
   const lastStatusBySession = new Map<string, string>();
   const lastUserMessageBySession = new Map<string, string>();
 
@@ -76,21 +77,9 @@ export const KanvibePlugin: Plugin = async ({ client }) => {
     }
   }
 
-  /** 다른 KanVibe client가 기록한 프로젝트 색상은 상태를 덮어쓸 때도 보존한다 */
-  function readKanvibeProjectColor(): string | null {
-    try {
-      const parsed = JSON.parse(readFileSync(KANVIBE_STATUS_FILE, "utf8"));
-      const projectColor = typeof parsed?.projectColor === "string" ? parsed.projectColor.trim() : "";
-      return KANVIBE_PROJECT_COLOR_PATTERN.test(projectColor) ? projectColor : null;
-    } catch {
-      return null;
-    }
-  }
-
   function writeKanvibeTaskState(status: string): void {
     try {
       ensureKanvibeStatusExcluded();
-      const projectColor = readKanvibeProjectColor();
       mkdirSync(KANVIBE_STATE_DIR, { recursive: true });
       writeFileSync(
         KANVIBE_STATUS_FILE,
@@ -98,7 +87,6 @@ export const KanvibePlugin: Plugin = async ({ client }) => {
           schemaVersion: 1,
           status,
           updatedAt: new Date().toISOString(),
-          ...(projectColor ? { projectColor } : {}),
         }, null, 2) + "\\n",
         "utf8",
       );
@@ -146,6 +134,7 @@ export const KanvibePlugin: Plugin = async ({ client }) => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ taskId: target.taskId, status }),
+        signal: AbortSignal.timeout(KANVIBE_NOTIFY_TIMEOUT_MS),
       });
     } catch {
       /* 네트워크 에러 무시 */
@@ -341,7 +330,7 @@ export interface OpenCodeHooksStatus extends Partial<HookTargetRegistrationStatu
   hasStatusEndpoint?: boolean;
   hasEventMappings?: boolean;
   hasStatusJsonPersistence?: boolean;
-  hasProjectColorPersistence?: boolean;
+  hasBoundedNotifyTimeout?: boolean;
   hasTargetFanout?: boolean;
   hasParallelTargetFanout?: boolean;
   hasMainSessionGuard?: boolean;
@@ -386,7 +375,7 @@ export async function getOpenCodeHooksStatus(
   const hasStatusEndpoint = pluginContent.includes("/api/hooks/status");
   const hasEventMappings = OPEN_CODE_EVENT_FRAGMENTS.every((fragment) => pluginContent.includes(fragment));
   const hasStatusJsonPersistence = hasOpenCodeStatusJsonPersistence(pluginContent);
-  const hasProjectColorPersistence = hasOpenCodeProjectColorPersistence(pluginContent);
+  const hasBoundedNotifyTimeout = hasOpenCodeBoundedNotifyTimeout(pluginContent);
   const hasTargetFanout = hasOpenCodeTargetFanout(pluginContent);
   const hasParallelTargetFanout = hasOpenCodeParallelTargetFanout(pluginContent);
   const hasMainSessionGuard = pluginContent.includes("isMainSession(message)")
@@ -402,7 +391,7 @@ export async function getOpenCodeHooksStatus(
     && hasStatusEndpoint
     && hasEventMappings
     && hasStatusJsonPersistence
-    && hasProjectColorPersistence
+    && hasBoundedNotifyTimeout
     && hasTargetFanout
     && hasParallelTargetFanout
     && hasMainSessionGuard
@@ -416,7 +405,7 @@ export async function getOpenCodeHooksStatus(
     hasStatusEndpoint,
     hasEventMappings,
     hasStatusJsonPersistence,
-    hasProjectColorPersistence,
+    hasBoundedNotifyTimeout,
     hasTargetFanout,
     hasParallelTargetFanout,
     hasMainSessionGuard,
@@ -459,10 +448,10 @@ function hasOpenCodeStatusJsonPersistence(pluginContent: string): boolean {
     && pluginContent.includes("updatedAt: new Date().toISOString()");
 }
 
-function hasOpenCodeProjectColorPersistence(pluginContent: string): boolean {
-  return pluginContent.includes("readKanvibeProjectColor")
-    && pluginContent.includes("KANVIBE_PROJECT_COLOR_PATTERN")
-    && pluginContent.includes("projectColor ? { projectColor } : {}");
+/** 응답 없는 client가 plugin을 붙잡지 못하도록 통보에 상한이 걸려 있는지 확인한다 */
+function hasOpenCodeBoundedNotifyTimeout(pluginContent: string): boolean {
+  return pluginContent.includes("KANVIBE_NOTIFY_TIMEOUT_MS")
+    && pluginContent.includes("AbortSignal.timeout(KANVIBE_NOTIFY_TIMEOUT_MS)");
 }
 
 function hasOpenCodeTargetFanout(pluginContent: string): boolean {

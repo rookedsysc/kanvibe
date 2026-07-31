@@ -4,16 +4,26 @@ import { readTextFile, writeTextFile } from "@/lib/hostFileAccess";
 
 export const KANVIBE_DIR_NAME = ".kanvibe";
 export const TASK_STATE_FILE_NAME = "status.json";
+export const PROJECT_STATE_FILE_NAME = "project.json";
 export const TARGETS_FILE_NAME = "targets.json";
 
-/** `#RRGGBB` 형태의 프로젝트 색상만 허용한다. hook shell script가 같은 규칙으로 검증한다 */
+/** `#RRGGBB` 형태의 프로젝트 색상만 허용한다 */
 const PROJECT_COLOR_PATTERN = /^#[0-9a-fA-F]{6}$/;
 
 export interface KanvibeTaskState {
   schemaVersion: 1;
   status: TaskStatus;
   updatedAt?: string;
-  projectColor?: string;
+}
+
+/**
+ * 프로젝트 단위 공유 상태. task 상태와 파일을 분리해 hook(status.json 기록)과
+ * KanVibe client(project.json 기록)가 서로의 값을 덮어쓸 수 없게 한다.
+ */
+export interface KanvibeProjectState {
+  schemaVersion: 1;
+  projectColor: string;
+  updatedAt?: string;
 }
 
 export interface KanvibeHookTarget {
@@ -27,14 +37,12 @@ export interface KanvibeTargetsState {
   updatedAt?: string;
 }
 
-/** status.json에 실제로 담기는 필드. status와 projectColor는 서로 독립적으로 존재할 수 있다 */
-interface KanvibeTaskStateFields {
-  status: TaskStatus | null;
-  projectColor: string | null;
-}
-
 export function getKanvibeTaskStatePath(repoPath: string, sshHost?: string | null): string {
   return getPathModule(sshHost).join(repoPath, KANVIBE_DIR_NAME, TASK_STATE_FILE_NAME);
+}
+
+export function getKanvibeProjectStatePath(repoPath: string, sshHost?: string | null): string {
+  return getPathModule(sshHost).join(repoPath, KANVIBE_DIR_NAME, PROJECT_STATE_FILE_NAME);
 }
 
 export function getKanvibeTargetsPath(repoPath: string, sshHost?: string | null): string {
@@ -49,28 +57,27 @@ export async function readKanvibeTaskState(
   return parseKanvibeTaskState(content);
 }
 
-/**
- * 다른 KanVibe client가 기록한 프로젝트 색상을 읽는다.
- * status가 아직 없는 status.json에서도 색상만 단독으로 읽을 수 있다.
- */
+/** 다른 KanVibe client가 project.json에 기록한 프로젝트 색상을 읽는다 */
 export async function readKanvibeProjectColor(
   repoPath: string,
   sshHost?: string | null,
 ): Promise<string | null> {
-  const content = await readTextFile(getKanvibeTaskStatePath(repoPath, sshHost), sshHost);
-  return parseKanvibeTaskStateFields(content).projectColor;
+  const content = await readTextFile(getKanvibeProjectStatePath(repoPath, sshHost), sshHost);
+  return parseKanvibeProjectState(content)?.projectColor ?? null;
 }
 
-/** task 상태만 갱신하고 다른 client가 기록한 프로젝트 색상은 그대로 보존한다 */
 export async function writeKanvibeTaskStatus(
   repoPath: string,
   status: TaskStatus,
   sshHost?: string | null,
 ): Promise<void> {
-  await mergeKanvibeTaskStateFile(repoPath, sshHost, (current) => ({ ...current, status }));
+  await writeTextFile(
+    getKanvibeTaskStatePath(repoPath, sshHost),
+    buildKanvibeTaskStateContent({ status }),
+    sshHost,
+  );
 }
 
-/** 프로젝트 색상만 갱신하고 기존 task 상태는 그대로 보존한다 */
 export async function writeKanvibeProjectColor(
   repoPath: string,
   projectColor: string,
@@ -81,10 +88,11 @@ export async function writeKanvibeProjectColor(
     return;
   }
 
-  await mergeKanvibeTaskStateFile(repoPath, sshHost, (current) => ({
-    ...current,
-    projectColor: normalizedColor,
-  }));
+  await writeTextFile(
+    getKanvibeProjectStatePath(repoPath, sshHost),
+    buildKanvibeProjectStateContent(normalizedColor),
+    sshHost,
+  );
 }
 
 /**
@@ -121,13 +129,22 @@ export function hasKanvibeHookTarget(content: string, target: KanvibeHookTarget)
 }
 
 export function buildKanvibeTaskStateContent(
-  taskState: Partial<Pick<KanvibeTaskState, "status" | "projectColor">>,
+  taskState: Pick<KanvibeTaskState, "status">,
 ): string {
-  const payload: Partial<KanvibeTaskState> = {
+  const payload: KanvibeTaskState = {
     schemaVersion: 1,
-    ...(taskState.status ? { status: taskState.status } : {}),
+    status: taskState.status,
     updatedAt: new Date().toISOString(),
-    ...(taskState.projectColor ? { projectColor: taskState.projectColor } : {}),
+  };
+
+  return JSON.stringify(payload, null, 2) + "\n";
+}
+
+export function buildKanvibeProjectStateContent(projectColor: string): string {
+  const payload: KanvibeProjectState = {
+    schemaVersion: 1,
+    projectColor,
+    updatedAt: new Date().toISOString(),
   };
 
   return JSON.stringify(payload, null, 2) + "\n";
@@ -144,18 +161,52 @@ export function buildKanvibeTargetsContent(targets: KanvibeHookTarget[]): string
 }
 
 export function parseKanvibeTaskState(content: string): KanvibeTaskState | null {
-  const { status, projectColor } = parseKanvibeTaskStateFields(content);
-  if (!status) {
+  if (typeof content !== "string" || !content.trim()) {
     return null;
   }
 
-  const updatedAt = parseUpdatedAt(content);
-  return {
-    schemaVersion: 1,
-    status,
-    ...(updatedAt ? { updatedAt } : {}),
-    ...(projectColor ? { projectColor } : {}),
-  };
+  const statusFromMarkdown = parseTaskStatus(content.trim());
+  if (statusFromMarkdown) {
+    return { schemaVersion: 1, status: statusFromMarkdown };
+  }
+
+  try {
+    const parsed = JSON.parse(content) as { status?: unknown; updatedAt?: unknown };
+    const status = parseTaskStatus(parsed.status);
+    if (!status) {
+      return null;
+    }
+
+    return {
+      schemaVersion: 1,
+      status,
+      ...(isNonEmptyString(parsed.updatedAt) ? { updatedAt: parsed.updatedAt } : {}),
+    };
+  } catch {
+    return null;
+  }
+}
+
+export function parseKanvibeProjectState(content: string): KanvibeProjectState | null {
+  if (typeof content !== "string" || !content.trim()) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(content) as { projectColor?: unknown; updatedAt?: unknown };
+    const projectColor = parseProjectColor(parsed.projectColor);
+    if (!projectColor) {
+      return null;
+    }
+
+    return {
+      schemaVersion: 1,
+      projectColor,
+      ...(isNonEmptyString(parsed.updatedAt) ? { updatedAt: parsed.updatedAt } : {}),
+    };
+  } catch {
+    return null;
+  }
 }
 
 export function parseKanvibeTargets(content: string): KanvibeTargetsState {
@@ -194,53 +245,8 @@ export function parseProjectColor(value: unknown): string | null {
   return PROJECT_COLOR_PATTERN.test(normalized) ? normalized : null;
 }
 
-async function mergeKanvibeTaskStateFile(
-  repoPath: string,
-  sshHost: string | null | undefined,
-  merge: (current: KanvibeTaskStateFields) => KanvibeTaskStateFields,
-): Promise<void> {
-  const statePath = getKanvibeTaskStatePath(repoPath, sshHost);
-  const currentFields = parseKanvibeTaskStateFields(await readTextFile(statePath, sshHost));
-  const nextFields = merge(currentFields);
-
-  await writeTextFile(
-    statePath,
-    buildKanvibeTaskStateContent({
-      ...(nextFields.status ? { status: nextFields.status } : {}),
-      ...(nextFields.projectColor ? { projectColor: nextFields.projectColor } : {}),
-    }),
-    sshHost,
-  );
-}
-
-function parseKanvibeTaskStateFields(content: string): KanvibeTaskStateFields {
-  if (typeof content !== "string" || !content.trim()) {
-    return { status: null, projectColor: null };
-  }
-
-  const statusFromMarkdown = parseTaskStatus(content.trim());
-  if (statusFromMarkdown) {
-    return { status: statusFromMarkdown, projectColor: null };
-  }
-
-  try {
-    const parsed = JSON.parse(content) as { status?: unknown; projectColor?: unknown };
-    return {
-      status: parseTaskStatus(parsed.status),
-      projectColor: parseProjectColor(parsed.projectColor),
-    };
-  } catch {
-    return { status: null, projectColor: null };
-  }
-}
-
-function parseUpdatedAt(content: string): string | null {
-  try {
-    const parsed = JSON.parse(content) as { updatedAt?: unknown };
-    return typeof parsed.updatedAt === "string" && parsed.updatedAt.length > 0 ? parsed.updatedAt : null;
-  } catch {
-    return null;
-  }
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === "string" && value.length > 0;
 }
 
 function upsertKanvibeTarget(targets: unknown[], target: KanvibeHookTarget): KanvibeHookTarget[] {

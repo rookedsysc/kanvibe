@@ -7,6 +7,7 @@ vi.mock("@/lib/gitOperations", () => ({
 }));
 
 import {
+  clearGitHubOwnerIconCache,
   fetchGitHubOwnerIconDataUrl,
   parseGitHubRepositoryReference,
   resolveProjectIconDataUrl,
@@ -23,6 +24,7 @@ function createIconResponse(contentType: string, bytes: Uint8Array): Response {
 describe("githubProjectIcon", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    clearGitHubOwnerIconCache();
     vi.spyOn(console, "warn").mockImplementation(() => {});
   });
 
@@ -89,5 +91,32 @@ describe("githubProjectIcon", () => {
       "git -C '/remote/repo' config --get remote.origin.url",
       "remote-host",
     );
+  });
+
+  it("같은 owner의 아바타는 한 번만 내려받는다", async () => {
+    const iconFetch = vi.fn().mockResolvedValue(
+      createIconResponse("image/png", new Uint8Array([1, 2, 3])),
+    );
+    vi.stubGlobal("fetch", iconFetch);
+
+    const [first, second] = await Promise.all([
+      fetchGitHubOwnerIconDataUrl("shared-owner"),
+      fetchGitHubOwnerIconDataUrl("shared-owner"),
+    ]);
+    await fetchGitHubOwnerIconDataUrl("shared-owner");
+
+    expect(first).toBe(second);
+    expect(iconFetch).toHaveBeenCalledTimes(1);
+  });
+
+  /** 오프라인에서 저장소마다 5초 타임아웃을 다시 기다리지 않도록 실패도 캐싱한다 */
+  it("아이콘 확보 실패도 owner 단위로 캐싱한다", async () => {
+    const iconFetch = vi.fn().mockRejectedValue(new Error("offline"));
+    vi.stubGlobal("fetch", iconFetch);
+
+    await expect(fetchGitHubOwnerIconDataUrl("offline-owner")).resolves.toBeNull();
+    await expect(fetchGitHubOwnerIconDataUrl("offline-owner")).resolves.toBeNull();
+
+    expect(iconFetch).toHaveBeenCalledTimes(1);
   });
 });

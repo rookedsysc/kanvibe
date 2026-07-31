@@ -594,7 +594,7 @@ function mergeRegisteredProjectWorktreeSyncResult(
 }
 
 /**
- * 다른 KanVibe client가 `.kanvibe/status.json`에 기록한 프로젝트 색상을 DB에 반영한다.
+ * 다른 KanVibe client가 `.kanvibe/project.json`에 기록한 프로젝트 색상을 DB에 반영한다.
  * @returns 색상이 실제로 바뀌어 보드를 갱신해야 하면 true
  */
 async function syncSharedProjectColor(project: Project): Promise<boolean> {
@@ -602,6 +602,28 @@ async function syncSharedProjectColor(project: Project): Promise<boolean> {
     return false;
   }
 
+  const projectRepo = await getProjectRepository();
+  await projectRepo.save(project);
+  return true;
+}
+
+/**
+ * 아직 아이콘이 없는 프로젝트의 GitHub 아이콘을 뒤늦게 채운다.
+ * 이전 버전에서 등록됐거나, 등록 시점에 오프라인이었거나, GitHub remote가 나중에 추가된
+ * 프로젝트도 sync를 거치면 아이콘을 갖게 된다.
+ * @returns 아이콘을 새로 확보해 보드를 갱신해야 하면 true
+ */
+async function syncMissingProjectIcon(project: Project): Promise<boolean> {
+  if (project.iconDataUrl) {
+    return false;
+  }
+
+  const iconDataUrl = await resolveProjectIconDataUrl(project.repoPath, project.sshHost);
+  if (!iconDataUrl) {
+    return false;
+  }
+
+  project.iconDataUrl = iconDataUrl;
   const projectRepo = await getProjectRepository();
   await projectRepo.save(project);
   return true;
@@ -621,6 +643,7 @@ async function syncProjectWorktrees(
 
   try {
     result.changed = await syncSharedProjectColor(project) || result.changed;
+    result.changed = await syncMissingProjectIcon(project) || result.changed;
 
     const { repaired } = await ensureProjectRootTask(project, {
       repairHooks: false,
@@ -847,7 +870,6 @@ export async function scanAndRegisterProjects(
         defaultBranch,
         sshHost: sshHost || null,
         color: await resolveProjectColor(repoPath, projectName, sshHost || null),
-        iconDataUrl: await resolveProjectIconDataUrl(repoPath, sshHost || null),
       });
 
       const saved = await repo.save(project);

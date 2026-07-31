@@ -9,6 +9,16 @@ const MAX_ICON_BYTES = 512 * 1024;
 const ALLOWED_ICON_CONTENT_TYPES = ["image/png", "image/jpeg", "image/gif", "image/webp"];
 /** GitHub 소유자(사용자/조직) 이름 규칙 */
 const GITHUB_OWNER_PATTERN = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$/;
+/**
+ * 같은 owner의 저장소를 연달아 등록할 때 아바타를 반복해서 내려받지 않도록 캐싱한다.
+ * 실패도 캐싱해 오프라인 상태에서 저장소마다 타임아웃을 다시 기다리지 않게 한다.
+ */
+const OWNER_ICON_CACHE_TTL_MS = 10 * 60 * 1000;
+const ownerIconCache = new Map<string, { expiresAt: number; iconDataUrl: Promise<string | null> }>();
+
+export function clearGitHubOwnerIconCache(): void {
+  ownerIconCache.clear();
+}
 
 export interface GitHubRepositoryReference {
   owner: string;
@@ -71,6 +81,17 @@ export async function fetchGitHubOwnerIconDataUrl(owner: string): Promise<string
     return null;
   }
 
+  const cached = ownerIconCache.get(owner);
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.iconDataUrl;
+  }
+
+  const iconDataUrl = downloadGitHubOwnerIconDataUrl(owner);
+  ownerIconCache.set(owner, { expiresAt: Date.now() + OWNER_ICON_CACHE_TTL_MS, iconDataUrl });
+  return iconDataUrl;
+}
+
+async function downloadGitHubOwnerIconDataUrl(owner: string): Promise<string | null> {
   try {
     const response = await fetch(
       `https://github.com/${encodeURIComponent(owner)}.png?size=${ICON_PIXEL_SIZE}`,

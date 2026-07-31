@@ -15,8 +15,8 @@ import {
   buildShellKanvibeStatusUpdater,
   buildShellTaskIdResolver,
   getShellTaskIdBindingStatus,
+  hasShellKanvibeBoundedNotifyTimeout,
   hasShellKanvibeParallelTargetFanout,
-  hasShellKanvibeProjectColorPersistence,
   hasShellKanvibeStatusJsonPersistence,
   hasShellKanvibeTargetFanout,
   type ShellHookStatus,
@@ -47,8 +47,8 @@ export interface ShellHookScriptsStatus extends HookTargetRegistrationStatus {
   hasTaskIdBinding: boolean;
   hasStatusMappings: boolean;
   hasStatusJsonPersistence: boolean;
-  hasProjectColorPersistence: boolean;
   hasTargetFanout: boolean;
+  hasBoundedNotifyTimeout: boolean;
   hasParallelTargetFanout: boolean;
   hasExpectedHookServerUrl: boolean;
   hasReachableHookServer: boolean;
@@ -187,8 +187,8 @@ function buildShellHookScriptsStatus(options: {
       scriptContents[index]?.includes(buildStatusPayloadFragment(definition.status)) ?? false
     )),
     hasStatusJsonPersistence: scriptContents.every(hasShellKanvibeStatusJsonPersistence),
-    hasProjectColorPersistence: scriptContents.every(hasShellKanvibeProjectColorPersistence),
     hasTargetFanout: scriptContents.every(hasShellKanvibeTargetFanout),
+    hasBoundedNotifyTimeout: scriptContents.every(hasShellKanvibeBoundedNotifyTimeout),
     hasParallelTargetFanout: scriptContents.every(hasShellKanvibeParallelTargetFanout),
     hasExpectedHookServerUrl: hookServerValidation.hasExpectedHookServerUrl,
     hasReachableHookServer: hookServerValidation.hasReachableHookServer,
@@ -221,8 +221,8 @@ export function isShellHookProviderInstalled(
     && status.hasRegisteredHookTarget
     && status.hasStatusMappings
     && status.hasStatusJsonPersistence
-    && status.hasProjectColorPersistence
     && status.hasTargetFanout
+    && status.hasBoundedNotifyTimeout
     && status.hasParallelTargetFanout;
 }
 

@@ -11,7 +11,7 @@ import {
   extractShellTaskId,
   getShellTaskIdBindingStatus,
   hasShellKanvibeParallelTargetFanout,
-  hasShellKanvibeProjectColorPersistence,
+  hasShellKanvibeBoundedNotifyTimeout,
   hasShellKanvibeStatusJsonPersistence,
   hasShellKanvibeTargetFanout,
 } from "@/lib/shellHookScript";
@@ -127,12 +127,20 @@ describe("shellHookScript", () => {
     expect(hasShellKanvibeParallelTargetFanout(sequentialUpdater)).toBe(false);
   });
 
-  it("프로젝트 색상 보존 판정은 색상을 다시 쓰지 않는 hook을 거부한다", () => {
+  it("통보 타임아웃 판정은 상한 없는 curl hook을 거부한다", () => {
     const updater = buildShellKanvibeStatusUpdater("review");
-    const updaterWithoutColor = updater.replace(/\nKANVIBE_PROJECT_COLOR=[\s\S]*?esac\n/, "\n");
+    const unboundedUpdater = updater.replace("--max-time 3 ", "");
 
-    expect(hasShellKanvibeProjectColorPersistence(updater)).toBe(true);
-    expect(hasShellKanvibeProjectColorPersistence(updaterWithoutColor)).toBe(false);
+    expect(hasShellKanvibeBoundedNotifyTimeout(updater)).toBe(true);
+    expect(hasShellKanvibeBoundedNotifyTimeout(unboundedUpdater)).toBe(false);
+  });
+
+  /** hook은 색상 파일을 읽지도 쓰지도 않아 client의 색상 갱신과 경합하지 않는다 */
+  it("status 갱신 shell 조각은 프로젝트 색상을 건드리지 않는다", () => {
+    const updater = buildShellKanvibeStatusUpdater("review");
+
+    expect(updater).not.toContain("projectColor");
+    expect(updater).not.toContain("project.json");
   });
 
   it("node·user env 없이도 targets.json의 모든 client에 병렬로 status를 fan-out 한다", async () => {
@@ -158,7 +166,12 @@ describe("shellHookScript", () => {
       );
       await writeFile(
         join(repoPath, ".kanvibe", "status.json"),
-        JSON.stringify({ schemaVersion: 1, status: "todo", projectColor: "#65D08A" }),
+        JSON.stringify({ schemaVersion: 1, status: "todo" }),
+        "utf8",
+      );
+      await writeFile(
+        join(repoPath, ".kanvibe", "project.json"),
+        JSON.stringify({ schemaVersion: 1, projectColor: "#65D08A" }),
         "utf8",
       );
 
@@ -218,8 +231,13 @@ describe("shellHookScript", () => {
         await readFile(join(repoPath, ".kanvibe", "status.json"), "utf8"),
       ) as { status?: string; projectColor?: string };
       expect(status.status).toBe("review");
-      /** 다른 client가 정한 프로젝트 색상은 상태를 덮어써도 남아 있어야 한다 */
-      expect(status.projectColor).toBe("#65D08A");
+      expect(status.projectColor).toBeUndefined();
+
+      /** 색상은 별도 파일이므로 hook의 상태 기록이 건드리지 않는다 */
+      const projectState = JSON.parse(
+        await readFile(join(repoPath, ".kanvibe", "project.json"), "utf8"),
+      ) as { projectColor?: string };
+      expect(projectState.projectColor).toBe("#65D08A");
 
       const curlCalls = (await readFile(curlLogPath, "utf8"))
         .trim()

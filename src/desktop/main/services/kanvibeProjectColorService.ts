@@ -10,7 +10,7 @@ function getErrorMessage(error: unknown): string {
 }
 
 /**
- * 프로젝트 색상을 `.kanvibe/status.json`에 기록해 같은 저장소를 보는 다른 KanVibe client와 공유한다.
+ * 프로젝트 색상을 `.kanvibe/project.json`에 기록해 같은 저장소를 보는 다른 KanVibe client와 공유한다.
  * 프로젝트 루트와 소속 task의 worktree에 모두 기록해 어느 경로로 열어도 같은 색상을 읽게 한다.
  */
 export async function persistProjectColorToKanvibeState(project: ColorSyncProject): Promise<void> {
@@ -19,22 +19,38 @@ export async function persistProjectColorToKanvibeState(project: ColorSyncProjec
     return;
   }
 
-  for (const repoPath of await resolveProjectColorRepoPaths(project)) {
-    try {
-      await addAiToolPatternsToGitExclude(repoPath, project.sshHost);
-      await writeKanvibeProjectColor(repoPath, projectColor, project.sshHost);
-    } catch (error) {
-      console.warn("[project-color] .kanvibe 색상 기록 실패", {
-        repoPath,
-        sshHost: project.sshHost ?? null,
-        error: getErrorMessage(error),
-      });
-    }
+  /** worktree들은 git common dir의 info/exclude를 공유하므로 exclude 갱신은 저장소당 한 번이면 된다 */
+  await excludeKanvibeStateDirectory(project);
+
+  await Promise.all(
+    (await resolveProjectColorRepoPaths(project)).map(async (repoPath) => {
+      try {
+        await writeKanvibeProjectColor(repoPath, projectColor, project.sshHost);
+      } catch (error) {
+        console.warn("[project-color] .kanvibe 색상 기록 실패", {
+          repoPath,
+          sshHost: project.sshHost ?? null,
+          error: getErrorMessage(error),
+        });
+      }
+    }),
+  );
+}
+
+async function excludeKanvibeStateDirectory(project: ColorSyncProject): Promise<void> {
+  try {
+    await addAiToolPatternsToGitExclude(project.repoPath, project.sshHost);
+  } catch (error) {
+    console.warn("[project-color] git exclude 패턴 추가 실패", {
+      repoPath: project.repoPath,
+      sshHost: project.sshHost ?? null,
+      error: getErrorMessage(error),
+    });
   }
 }
 
 /**
- * 다른 client가 `.kanvibe/status.json`에 남긴 프로젝트 색상을 읽는다.
+ * 다른 client가 `.kanvibe/project.json`에 남긴 프로젝트 색상을 읽는다.
  * 프로젝트를 새로 등록할 때 기존 client가 정한 색상을 그대로 이어받기 위해 사용한다.
  */
 export async function readSharedProjectColor(

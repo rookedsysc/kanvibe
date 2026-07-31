@@ -6,6 +6,12 @@ import {
 /** hook이 KanVibe에 통보할 수 있는 task 상태 */
 export type ShellHookStatus = "progress" | "pending" | "review" | "done";
 
+/**
+ * targets.json에는 이미 종료된 client의 주소가 남을 수 있다.
+ * 응답하지 않는 client 하나가 hook 전체를 붙잡지 않도록 통보에 상한을 둔다.
+ */
+const HOOK_NOTIFY_TIMEOUT_SECONDS = 3;
+
 function escapeShellDoubleQuotedValue(value: string) {
   return value
     .replace(/\\/g, "\\\\")
@@ -34,7 +40,7 @@ export interface ShellTaskIdBindingStatus {
 
 /**
  * hook이 상태를 status.json에 기록하고 targets.json의 모든 client에 병렬로 통보하는 shell 조각을 만든다.
- * 다른 client가 기록한 프로젝트 색상은 재기록 시에도 보존한다.
+ * 프로젝트 색상은 project.json에 따로 있으므로 이 경로에서는 건드리지 않는다.
  */
 export function buildShellKanvibeStatusUpdater(status: ShellHookStatus) {
   return `KANVIBE_STATUS="${status}"
@@ -46,14 +52,10 @@ ${buildShellKanvibeStatusExcludeUpdater()}
 
 mkdir -p "\${KANVIBE_STATE_DIR}" 2>/dev/null || true
 KANVIBE_UPDATED_AT="$(date -u +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null || true)"
-${buildShellKanvibeProjectColorReader()}
 
 KANVIBE_TASK_STATE_JSON="{\\"schemaVersion\\":1,\\"status\\":\\"\${KANVIBE_STATUS}\\""
 if [ -n "\${KANVIBE_UPDATED_AT}" ]; then
   KANVIBE_TASK_STATE_JSON="\${KANVIBE_TASK_STATE_JSON},\\"updatedAt\\":\\"\${KANVIBE_UPDATED_AT}\\""
-fi
-if [ -n "\${KANVIBE_PROJECT_COLOR}" ]; then
-  KANVIBE_TASK_STATE_JSON="\${KANVIBE_TASK_STATE_JSON},\\"projectColor\\":\\"\${KANVIBE_PROJECT_COLOR}\\""
 fi
 printf '%s}\\n' "\${KANVIBE_TASK_STATE_JSON}" > "\${KANVIBE_TASK_STATE_FILE}" 2>/dev/null || true
 
@@ -78,30 +80,13 @@ printf '%s\n' "\${KANVIBE_TARGET_ROWS}" | {
     if [ -z "\${KANVIBE_TARGET_URL}" ] || [ -z "\${KANVIBE_TARGET_TASK_ID}" ]; then
       continue
     fi
-    curl -s -X POST "\${KANVIBE_TARGET_URL%/}/api/hooks/status" \
+    curl -s --max-time ${HOOK_NOTIFY_TIMEOUT_SECONDS} -X POST "\${KANVIBE_TARGET_URL%/}/api/hooks/status" \
       -H "Content-Type: application/json" \
       -d "{\\"taskId\\": \\"\${KANVIBE_TARGET_TASK_ID}\\", \\"status\\": \\"${status}\\"}" \
       > /dev/null 2>&1 &
   done
   wait
 }`;
-}
-
-/**
- * status.json에 이미 기록된 프로젝트 색상을 읽어 재기록 시 보존한다.
- * 파일 내용이 shell로 흘러들지 않도록 `#RRGGBB` 형태만 통과시킨다.
- */
-function buildShellKanvibeProjectColorReader() {
-  return `KANVIBE_PROJECT_COLOR="$(
-  if [ -f "\${KANVIBE_TASK_STATE_FILE}" ]; then
-    grep -oE '"projectColor"[[:space:]]*:[[:space:]]*"[^"]*"' "\${KANVIBE_TASK_STATE_FILE}" 2>/dev/null \
-      | sed -E -n 's/.*"([^"]*)"$/\\1/p;q' 2>/dev/null || true
-  fi
-)"
-case "\${KANVIBE_PROJECT_COLOR}" in
-  "#"[0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f]) ;;
-  *) KANVIBE_PROJECT_COLOR="" ;;
-esac`;
 }
 
 function buildShellKanvibeStatusExcludeUpdater() {
@@ -131,12 +116,6 @@ export function hasShellKanvibeStatusJsonPersistence(content: string): boolean {
     && content.includes('\\"status\\":\\"${KANVIBE_STATUS}\\"');
 }
 
-export function hasShellKanvibeProjectColorPersistence(content: string): boolean {
-  return content.includes("KANVIBE_PROJECT_COLOR")
-    && content.includes('"projectColor"')
-    && content.includes('\\"projectColor\\":\\"${KANVIBE_PROJECT_COLOR}\\"');
-}
-
 export function hasShellKanvibeTargetFanout(content: string): boolean {
   return content.includes("targets.json")
     && content.includes("KANVIBE_TARGETS_FILE")
@@ -146,6 +125,11 @@ export function hasShellKanvibeTargetFanout(content: string): boolean {
     && content.includes("while IFS=")
     && content.includes("/api/hooks/status")
     && content.includes("taskId");
+}
+
+/** 응답 없는 client가 hook을 붙잡지 못하도록 통보에 상한이 걸려 있는지 확인한다 */
+export function hasShellKanvibeBoundedNotifyTimeout(content: string): boolean {
+  return content.includes(`--max-time ${HOOK_NOTIFY_TIMEOUT_SECONDS}`);
 }
 
 /** curl fan-out이 순차 실행이 아니라 병렬 실행 후 wait로 수렴하는지 확인한다 */

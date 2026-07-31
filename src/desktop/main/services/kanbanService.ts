@@ -620,7 +620,7 @@ export async function updateTask(
 
 /**
  * 프로젝트의 color(hex)를 변경하고, 같은 repo의 worktree 프로젝트에도 동일하게 반영한다.
- * 변경된 색상은 `.kanvibe/status.json`에도 기록되어 같은 저장소를 보는 다른 client와 동기화된다.
+ * 변경된 색상은 `.kanvibe/project.json`에도 기록되어 같은 저장소를 보는 다른 client와 동기화된다.
  */
 export async function updateProjectColor(
   projectId: string,

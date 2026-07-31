@@ -12,8 +12,10 @@ vi.mock("@/lib/hostFileAccess", () => ({
 }));
 
 import {
+  buildKanvibeProjectStateContent,
   buildKanvibeTargetsContent,
   buildKanvibeTaskStateContent,
+  getKanvibeProjectStatePath,
   getKanvibeTargetsPath,
   getKanvibeTaskStatePath,
   hasKanvibeHookTarget,
@@ -56,17 +58,17 @@ describe("kanvibeProjectState", () => {
     expect(content).not.toContain("url");
   });
 
-  it("status.json에 프로젝트 색상을 함께 담는다", () => {
-    const content = buildKanvibeTaskStateContent({
-      status: TaskStatus.PROGRESS,
-      projectColor: "#65D08A",
-    });
-
-    expect(JSON.parse(content)).toEqual({
+  it("프로젝트 색상은 status.json이 아니라 project.json에 담는다", () => {
+    expect(JSON.parse(buildKanvibeTaskStateContent({ status: TaskStatus.PROGRESS }))).toEqual({
       schemaVersion: 1,
       status: TaskStatus.PROGRESS,
       updatedAt: expect.any(String),
+    });
+
+    expect(JSON.parse(buildKanvibeProjectStateContent("#65D08A"))).toEqual({
+      schemaVersion: 1,
       projectColor: "#65D08A",
+      updatedAt: expect.any(String),
     });
   });
 
@@ -91,11 +93,6 @@ describe("kanvibeProjectState", () => {
       schemaVersion: 1,
       status: TaskStatus.REVIEW,
       updatedAt: "2026-06-03T00:00:00.000Z",
-    });
-    expect(parseKanvibeTaskState(JSON.stringify({ schemaVersion: 1, status: "review", projectColor: "#65D08A" }))).toEqual({
-      schemaVersion: 1,
-      status: TaskStatus.REVIEW,
-      projectColor: "#65D08A",
     });
     expect(parseKanvibeTaskState("DONE\n")).toEqual({
       schemaVersion: 1,
@@ -134,51 +131,42 @@ describe("kanvibeProjectState", () => {
     expect(getKanvibeTaskStatePath("/local/repo")).toBe("/local/repo/.kanvibe/status.json");
   });
 
-  it("상태를 갱신해도 다른 client가 기록한 프로젝트 색상은 보존한다", async () => {
-    mockReadTextFile.mockResolvedValue(JSON.stringify({
-      schemaVersion: 1,
-      status: "todo",
-      projectColor: "#65D08A",
-    }));
+  it("상태 기록과 색상 기록이 서로 다른 파일을 쓴다", async () => {
+    await writeKanvibeTaskStatus("/local/repo", TaskStatus.REVIEW);
+    expect(mockWriteTextFile).toHaveBeenLastCalledWith(
+      "/local/repo/.kanvibe/status.json",
+      expect.any(String),
+      undefined,
+    );
+    expect(getLastWrittenContent()).not.toContain("projectColor");
 
+    await writeKanvibeProjectColor("/local/repo", "#0064FF");
+    expect(mockWriteTextFile).toHaveBeenLastCalledWith(
+      "/local/repo/.kanvibe/project.json",
+      expect.any(String),
+      undefined,
+    );
+    expect(getLastWrittenContent()).not.toContain("status");
+  });
+
+  /** 상태 기록은 색상 파일을 읽지도 쓰지도 않으므로 동시 갱신이 서로를 되돌릴 수 없다 */
+  it("상태 기록은 읽기 없이 status.json만 덮어쓴다", async () => {
     await writeKanvibeTaskStatus("/local/repo", TaskStatus.REVIEW);
 
+    expect(mockReadTextFile).not.toHaveBeenCalled();
     expect(JSON.parse(getLastWrittenContent())).toEqual({
       schemaVersion: 1,
       status: TaskStatus.REVIEW,
       updatedAt: expect.any(String),
-      projectColor: "#65D08A",
     });
   });
 
-  it("프로젝트 색상만 갱신할 때 기존 task 상태를 보존한다", async () => {
-    mockReadTextFile.mockResolvedValue(JSON.stringify({
-      schemaVersion: 1,
-      status: "progress",
-      projectColor: "#65D08A",
-    }));
-
-    await writeKanvibeProjectColor("/local/repo", "#0064FF");
-
-    expect(JSON.parse(getLastWrittenContent())).toEqual({
-      schemaVersion: 1,
-      status: TaskStatus.PROGRESS,
-      updatedAt: expect.any(String),
-      projectColor: "#0064FF",
-    });
-  });
-
-  it("status가 없는 status.json에서도 색상만 읽고 쓸 수 있다", async () => {
-    mockReadTextFile.mockResolvedValue("");
-    await writeKanvibeProjectColor("/local/repo", "#0064FF");
-    expect(JSON.parse(getLastWrittenContent())).toEqual({
-      schemaVersion: 1,
-      updatedAt: expect.any(String),
-      projectColor: "#0064FF",
-    });
-
+  it("색상은 host 별 project.json 경로에서 읽고 쓴다", async () => {
     mockReadTextFile.mockResolvedValue(JSON.stringify({ schemaVersion: 1, projectColor: "#0064FF" }));
-    await expect(readKanvibeProjectColor("/local/repo")).resolves.toBe("#0064FF");
+    await expect(readKanvibeProjectColor("/remote/repo", "ssh-host")).resolves.toBe("#0064FF");
+    expect(mockReadTextFile).toHaveBeenCalledWith("/remote/repo/.kanvibe/project.json", "ssh-host");
+
+    expect(getKanvibeProjectStatePath("/local/repo")).toBe("/local/repo/.kanvibe/project.json");
   });
 
   it("형식이 잘못된 색상은 기록하지 않는다", async () => {

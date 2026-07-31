@@ -245,8 +245,9 @@ async function waitForHookInstallRetry(delayMs: number): Promise<void> {
 }
 
 /**
- * 모든 provider의 hook 파일을 한 번에 만들어 기록한다.
- * 기존 설정 파일 읽기와 파일 쓰기를 각각 한 번으로 묶어 원격 설치의 왕복 횟수를 줄인다.
+ * 모든 provider의 hook 파일을 만들어 기록한다.
+ * 기존 설정 파일 읽기는 한 번으로 묶고, 쓰기는 provider 단위로 격리해
+ * 한 provider가 실패해도 나머지 provider의 hook은 설치되게 한다.
  */
 async function installKanvibeHookFilesOnce(
   targetPath: string,
@@ -262,9 +263,10 @@ async function installKanvibeHookFilesOnce(
     sshHost,
   );
 
-  const buildResults = providerModules.map((providerModule) => {
+  const results = await Promise.allSettled(providerModules.map(async (providerModule) => {
     try {
-      return providerModule.buildFiles(targetPath, taskId, hookServerUrl, existingFiles, sshHost);
+      const files = providerModule.buildFiles(targetPath, taskId, hookServerUrl, existingFiles, sshHost);
+      await writeHookProviderFiles(files, sshHost);
     } catch (error) {
       console.error(`[hooks] ${providerModule.label} install failed`, {
         provider: providerModule.label,
@@ -275,9 +277,25 @@ async function installKanvibeHookFilesOnce(
       });
       throw error;
     }
-  });
+  }));
 
-  await writeHookProviderFiles(buildResults.flat(), sshHost);
+  assertHookProviderInstallResults(results, providerModules.map(({ label }) => label));
+}
+
+/** provider 하나라도 실패하면 실패한 provider를 모두 모아 알린다 */
+function assertHookProviderInstallResults(
+  results: PromiseSettledResult<void>[],
+  providerLabels: string[],
+): void {
+  const failedProviders = results.flatMap((result, index) => (
+    result.status === "rejected"
+      ? [`${providerLabels[index]}(${result.reason instanceof Error ? result.reason.message : String(result.reason)})`]
+      : []
+  ));
+
+  if (failedProviders.length > 0) {
+    throw new Error(`hooks 설치 실패: ${failedProviders.join(", ")}`);
+  }
 }
 
 async function installKanvibeHookProviderOnce(

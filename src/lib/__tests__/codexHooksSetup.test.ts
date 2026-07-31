@@ -233,7 +233,7 @@ describe("codexHooksSetup", () => {
         hasRegisteredHookTarget: true,
         hasStatusMappings: true,
         hasStatusJsonPersistence: true,
-        hasProjectColorPersistence: true,
+        hasBoundedNotifyTimeout: true,
         hasTargetFanout: true,
         hasParallelTargetFanout: true,
         hasExpectedHookServerUrl: true,
