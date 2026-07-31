@@ -21,6 +21,11 @@ import { SessionType, TaskStatus, type KanbanTask } from "@/entities/KanbanTask"
 import type { Project } from "@/entities/Project";
 import { useAutoRefresh } from "@/desktop/renderer/hooks/useAutoRefresh";
 import { useProjectFilterParams } from "@/desktop/renderer/hooks/useProjectFilterParams";
+import {
+  TASK_KIND_FILTER_VALUES,
+  useTaskKindFilterParams,
+  type TaskKindFilter,
+} from "@/desktop/renderer/hooks/useTaskKindFilterParams";
 import { DEFAULT_LOCALE, SUPPORTED_LOCALES } from "@/desktop/renderer/utils/locales";
 import { computeProjectColor } from "@/lib/projectColor";
 import type { NotificationCenterButtonHandle } from "./NotificationCenterButton";
@@ -66,6 +71,8 @@ const VIM_NEW_TASK_KEY = "n";
 const VIM_COMMAND_KEY = ":";
 const TASK_DELETE_SEQUENCE_KEY = "d";
 const TASK_DELETE_SEQUENCE_TIMEOUT_MS = 1_000;
+
+type BoardTaskFilter = (task: KanbanTask) => boolean;
 
 const VIM_MOVE_COMMAND_ALIASES = new Set(["move", "m"]);
 const VIM_SYNC_COMMAND_ALIASES = new Set(["sync", "s"]);
@@ -388,6 +395,28 @@ function extractMainRepoPath(repoPath: string): string | null {
   return repoPath.slice(0, worktreeIndex);
 }
 
+function isProjectRootTask(task: KanbanTask, projectLookup: Map<string, Project>): boolean {
+  if (!task.projectId || !task.branchName) return false;
+
+  const project = projectLookup.get(task.projectId);
+  return Boolean(project && !project.isWorktree && task.branchName === project.defaultBranch);
+}
+
+function matchesTaskKindFilter(
+  task: KanbanTask,
+  taskKindFilter: TaskKindFilter,
+  projectLookup: Map<string, Project>,
+): boolean {
+  if (taskKindFilter === "all") return true;
+
+  const isRootTask = isProjectRootTask(task, projectLookup);
+  return taskKindFilter === "project" ? isRootTask : !isRootTask;
+}
+
+function matchesProjectFilter(task: KanbanTask, projectFilterSet: Set<string> | null): boolean {
+  return !projectFilterSet || Boolean(task.projectId && projectFilterSet.has(task.projectId));
+}
+
 function openSettingsPage() {
   window.location.hash = `#/${getCurrentBoardLocale()}/settings`;
 }
@@ -401,16 +430,16 @@ function insertAtFilteredIndex(
   fullArray: KanbanTask[],
   task: KanbanTask,
   filteredIndex: number,
-  filterSet: Set<string> | null
+  taskFilter: BoardTaskFilter | null
 ): KanbanTask[] {
   const arr = [...fullArray];
 
-  if (!filterSet) {
+  if (!taskFilter) {
     arr.splice(filteredIndex, 0, task);
     return arr;
   }
 
-  const filtered = arr.filter((t) => t.projectId && filterSet.has(t.projectId));
+  const filtered = arr.filter(taskFilter);
 
   if (filteredIndex < filtered.length) {
     const targetTask = filtered[filteredIndex];
@@ -439,7 +468,7 @@ interface DragMovePlan {
 function buildDragMovePlan(
   currentTasks: TasksByStatus,
   result: DropResult,
-  projectFilterSet: Set<string> | null,
+  taskFilter: BoardTaskFilter | null,
 ): DragMovePlan | null {
   const { source, destination, draggableId } = result;
   if (!destination) return null;
@@ -459,14 +488,12 @@ function buildDragMovePlan(
       newSource,
       movedTask,
       destination.index,
-      projectFilterSet,
+      taskFilter,
     );
 
     const orderedIds = (
-      projectFilterSet
-        ? updated[sourceStatus].filter(
-            (task) => task.projectId && projectFilterSet.has(task.projectId),
-          )
+      taskFilter
+        ? updated[sourceStatus].filter(taskFilter)
         : updated[sourceStatus]
     ).map((task) => task.id);
 
@@ -488,14 +515,12 @@ function buildDragMovePlan(
     updated[destStatus],
     updatedTask,
     destination.index,
-    projectFilterSet,
+    taskFilter,
   );
 
   const orderedIds = (
-    projectFilterSet
-      ? updated[destStatus].filter(
-          (task) => task.projectId && projectFilterSet.has(task.projectId),
-        )
+    taskFilter
+      ? updated[destStatus].filter(taskFilter)
       : updated[destStatus]
   ).map((task) => task.id);
 
@@ -549,6 +574,7 @@ export default function Board({
   const [selectedProjectIds, setSelectedProjectIds] = useProjectFilterParams(
     projects.map((p) => p.id),
   );
+  const [taskKindFilter, setTaskKindFilter] = useTaskKindFilterParams();
   const [doneTotal, setDoneTotal] = useState(initialDoneTotal);
   const [doneOffset, setDoneOffset] = useState(initialDoneLimit);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
@@ -615,6 +641,11 @@ export default function Board({
     return colorMap;
   }, [projectNameMap, projects]);
 
+  const projectLookup = useMemo(
+    () => new Map(projects.map((project) => [project.id, project])),
+    [projects],
+  );
+
   /** 필터 드롭다운에 표시할 메인 프로젝트 목록 (worktree 제외) */
   const filterableProjects = useMemo(
     () => projects.filter((p) => !p.isWorktree),
@@ -642,9 +673,15 @@ export default function Board({
     return matchingIds.size > 0 ? matchingIds : null;
   }, [selectedProjectIds, projects]);
 
-  /** 프로젝트 필터가 적용된 태스크 목록 */
+  /** 프로젝트 + task kind 필터가 적용된 태스크 목록 */
+  const hasActiveBoardTaskFilter = projectFilterSet !== null || taskKindFilter !== "all";
+  const boardTaskFilter = useCallback<BoardTaskFilter>((task) => (
+    matchesProjectFilter(task, projectFilterSet)
+    && matchesTaskKindFilter(task, taskKindFilter, projectLookup)
+  ), [projectFilterSet, projectLookup, taskKindFilter]);
+
   const filteredTasks = useMemo(() => {
-    if (!projectFilterSet) return tasks;
+    if (!hasActiveBoardTaskFilter) return tasks;
 
     const filtered: TasksByStatus = {
       [TaskStatus.TODO]: [],
@@ -655,13 +692,11 @@ export default function Board({
     };
 
     for (const status of Object.values(TaskStatus)) {
-      filtered[status] = tasks[status].filter(
-        (task) => task.projectId && projectFilterSet.has(task.projectId)
-      );
+      filtered[status] = tasks[status].filter(boardTaskFilter);
     }
 
     return filtered;
-  }, [tasks, projectFilterSet]);
+  }, [boardTaskFilter, hasActiveBoardTaskFilter, tasks]);
 
   const [contextMenu, setContextMenu] = useState<ContextMenuState>({
     isOpen: false,
@@ -944,7 +979,11 @@ export default function Board({
   /** 드래그 결과를 받아 state 업데이트 + DB 반영을 수행한다 */
   const executeDragMove = useCallback(
     (result: DropResult) => {
-      const plan = buildDragMovePlan(tasks, result, projectFilterSet);
+      const plan = buildDragMovePlan(
+        tasks,
+        result,
+        hasActiveBoardTaskFilter ? boardTaskFilter : null,
+      );
       if (!plan) return;
 
       setTasks(plan.updatedTasks);
@@ -970,7 +1009,7 @@ export default function Board({
         );
       });
     },
-    [projectFilterSet, startDragPersistenceTransition, tasks]
+    [boardTaskFilter, hasActiveBoardTaskFilter, startDragPersistenceTransition, tasks]
   );
 
   const moveTaskToStatus = useCallback(
@@ -1137,7 +1176,33 @@ export default function Board({
       <BoardPageFindBar vimModeEnabled={vimModeEnabled} />
       <header className={headerClassName}>
         <div className="flex items-center gap-3 [-webkit-app-region:no-drag]">
-          <div className="w-64">
+          <div
+            role="group"
+            aria-label={t("taskKindFilter.label")}
+            className="flex h-[34px] w-[180px] shrink-0 items-stretch rounded-md border border-border-default bg-bg-page p-0.5"
+            data-testid="task-kind-filter"
+          >
+            {TASK_KIND_FILTER_VALUES.map((filter) => {
+              const isActive = taskKindFilter === filter;
+              return (
+                <button
+                  key={filter}
+                  type="button"
+                  aria-pressed={isActive}
+                  title={t(`taskKindFilter.descriptions.${filter}`)}
+                  onClick={() => setTaskKindFilter(filter)}
+                  className={`flex flex-1 items-center justify-center rounded text-sm font-medium transition-colors ${
+                    isActive
+                      ? "bg-brand-primary text-text-inverse shadow-sm"
+                      : "text-text-secondary hover:bg-bg-surface hover:text-text-primary"
+                  }`}
+                >
+                  {t(`taskKindFilter.options.${filter}`)}
+                </button>
+              );
+            })}
+          </div>
+          <div className="w-64" data-testid="project-filter-control">
             <ProjectSelector
               ref={projectSelectorRef}
               multiple

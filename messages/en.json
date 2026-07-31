@@ -68,6 +68,19 @@
     "title": "",
     "newTask": "+ New Task",
     "allProjects": "All Projects",
+    "taskKindFilter": {
+      "label": "Task type filter",
+      "options": {
+        "project": "Project",
+        "task": "Task",
+        "all": "All"
+      },
+      "descriptions": {
+        "project": "Show only project-root tasks",
+        "task": "Show tasks except project roots",
+        "all": "Show project roots and tasks"
+      }
+    },
     "pageFind": {
       "label": "Find on board",
       "placeholder": "Find visible text on this board...",

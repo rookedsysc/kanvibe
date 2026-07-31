@@ -5,6 +5,7 @@ import { MemoryRouter } from "react-router-dom";
 import Board from "../Board";
 import { deleteTask, moveTaskToColumn, reorderTasks } from "@/desktop/renderer/actions/kanban";
 import { runBackgroundTaskSyncNow } from "@/desktop/renderer/actions/backgroundTaskSync";
+import { useTaskKindFilterParams } from "@/desktop/renderer/hooks/useTaskKindFilterParams";
 import { SessionType, TaskStatus, type KanbanTask } from "@/entities/KanbanTask";
 import type { Project } from "@/entities/Project";
 import type { TasksByStatus } from "@/desktop/renderer/actions/kanban";
@@ -73,6 +74,11 @@ vi.mock("@/desktop/renderer/hooks/useAutoRefresh", () => ({
 
 vi.mock("@/desktop/renderer/hooks/useProjectFilterParams", () => ({
   useProjectFilterParams: vi.fn().mockReturnValue([[], vi.fn()]),
+}));
+
+vi.mock("@/desktop/renderer/hooks/useTaskKindFilterParams", () => ({
+  TASK_KIND_FILTER_VALUES: ["project", "task", "all"],
+  useTaskKindFilterParams: vi.fn().mockReturnValue(["all", vi.fn()]),
 }));
 
 vi.mock("../Column", () => ({
@@ -166,7 +172,7 @@ vi.mock("../CreateTaskModal", () => ({
   ) : null,
 }));
 
-function createProject(): Project {
+function createProject(overrides: Partial<Project> = {}): Project {
   return {
     id: "project-1",
     name: "kanvibe",
@@ -176,6 +182,28 @@ function createProject(): Project {
     isWorktree: false,
     color: null,
     createdAt: new Date(),
+    ...overrides,
+  };
+}
+
+function createTask(overrides: Partial<KanbanTask> & Pick<KanbanTask, "id" | "title" | "status">): KanbanTask {
+  return {
+    description: null,
+    branchName: null,
+    worktreePath: null,
+    sessionType: null,
+    sessionName: null,
+    sshHost: null,
+    agentType: null,
+    project: null,
+    projectId: "project-1",
+    baseBranch: null,
+    prUrl: null,
+    priority: null,
+    displayOrder: 0,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    ...overrides,
   };
 }
 
@@ -272,6 +300,65 @@ function createTasksWithTodoAndProgress(): TasksByStatus {
   };
 }
 
+function createTaskKindFilterTasks(): TasksByStatus {
+  return {
+    [TaskStatus.TODO]: [
+      createTask({
+        id: "project-root-task",
+        title: "Root Project Task",
+        status: TaskStatus.TODO,
+        branchName: "main",
+        baseBranch: "main",
+      }),
+      createTask({
+        id: "branch-worktree-task",
+        title: "Branch Worktree Task",
+        status: TaskStatus.TODO,
+        branchName: "feat/filter-ui",
+        baseBranch: "main",
+        worktreePath: "/repo/kanvibe__worktrees/feat-filter-ui",
+      }),
+      createTask({
+        id: "plain-task",
+        title: "Plain Task",
+        status: TaskStatus.TODO,
+      }),
+    ],
+    [TaskStatus.PROGRESS]: [],
+    [TaskStatus.PENDING]: [],
+    [TaskStatus.REVIEW]: [],
+    [TaskStatus.DONE]: [],
+  };
+}
+
+function renderBoardForTaskKindFilter() {
+  return render(
+    <Board
+      initialTasks={createTaskKindFilterTasks()}
+      initialDoneTotal={0}
+      initialDoneLimit={20}
+      sshHosts={[]}
+      projects={[createProject()]}
+      sidebarDefaultCollapsed={false}
+      doneAlertDismissed={false}
+      notificationSettings={{ isEnabled: true, enabledStatuses: ["progress", "pending", "review"] }}
+      defaultSessionType={SessionType.TMUX}
+      taskSearchShortcut="Mod+Shift+O"
+    />,
+  );
+}
+
+function expectTaskKindFilterVisibleTasks(names: string[]) {
+  for (const name of ["Root Project Task", "Branch Worktree Task", "Plain Task"]) {
+    const assertion = expect(screen.queryByRole("link", { name }));
+    if (names.includes(name)) {
+      assertion.toBeTruthy();
+    } else {
+      assertion.toBeNull();
+    }
+  }
+}
+
 function BoardCommandRequester() {
   const boardCommands = useBoardCommands();
 
@@ -304,6 +391,7 @@ function BoardShortcutBlocker() {
 describe("Board defaultSessionType sync", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(useTaskKindFilterParams).mockReturnValue(["all", vi.fn()] as const);
     delete window.kanvibeDesktop;
     mockNavigatorPlatform("Linux x86_64");
     mockWindowFind();
@@ -361,7 +449,7 @@ describe("Board defaultSessionType sync", () => {
     expect(window.location.hash).toBe("#/ko/settings");
   });
 
-  it("프로젝트 스캔 아이콘 버튼을 프로젝트 필터와 새 작업 버튼 사이에 렌더링한다", () => {
+  it("프로젝트/태스크 필터를 전체 프로젝트 필터 왼쪽에 같은 높이/포인트 컬러로 렌더링한다", () => {
     render(
       <Board
         initialTasks={createEmptyTasks()}
@@ -377,20 +465,66 @@ describe("Board defaultSessionType sync", () => {
       />,
     );
 
-    const projectSelectorContainer = screen.getByTestId("project-selector").parentElement;
+    const projectSelectorContainer = screen.getByTestId("project-filter-control");
+    const taskKindFilter = screen.getByTestId("task-kind-filter");
     const scanButton = screen.getByRole("button", { name: "scanTitle" });
     const newTaskButton = screen.getByRole("button", { name: "newTask" });
     const toolbarItems = Array.from(scanButton.parentElement?.children ?? []);
+    const allFilterButton = screen.getByRole("button", { name: "taskKindFilter.options.all" });
 
-    expect(projectSelectorContainer).toBeTruthy();
+    expect(taskKindFilter.getAttribute("aria-label")).toBe("taskKindFilter.label");
+    expect(taskKindFilter.className).toContain("h-[34px]");
+    expect(taskKindFilter.className).toContain("w-[180px]");
+    expect(allFilterButton.className).toContain("bg-brand-primary");
+    expect(allFilterButton.className).toContain("text-text-inverse");
+    expect(projectSelectorContainer.className).toContain("w-64");
     expect(scanButton.getAttribute("aria-label")).toBe("scanTitle");
     expect(scanButton.textContent).toBe("");
-    expect(toolbarItems.indexOf(projectSelectorContainer as Element)).toBeLessThan(toolbarItems.indexOf(scanButton));
+    expect(toolbarItems.indexOf(taskKindFilter)).toBeLessThan(toolbarItems.indexOf(projectSelectorContainer));
+    expect(toolbarItems.indexOf(projectSelectorContainer)).toBeLessThan(toolbarItems.indexOf(scanButton));
     expect(toolbarItems.indexOf(scanButton)).toBeLessThan(toolbarItems.indexOf(newTaskButton));
 
     fireEvent.click(scanButton);
 
     expect(screen.getByRole("dialog", { name: "scanTitle" })).toBeTruthy();
+  });
+
+  it("task kind filter 버튼을 프로젝트 필터 옆에 렌더링하고 선택 변경을 요청한다", () => {
+    const setTaskKindFilter = vi.fn();
+    vi.mocked(useTaskKindFilterParams).mockReturnValue(["all", setTaskKindFilter] as const);
+
+    renderBoardForTaskKindFilter();
+
+    expect(screen.getByRole("group", { name: "taskKindFilter.label" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "taskKindFilter.options.all" }).getAttribute("aria-pressed")).toBe("true");
+
+    fireEvent.click(screen.getByRole("button", { name: "taskKindFilter.options.project" }));
+
+    expect(setTaskKindFilter).toHaveBeenCalledWith("project");
+  });
+
+  it("Project 필터 선택 시 기본 브랜치 root task만 표시한다", () => {
+    vi.mocked(useTaskKindFilterParams).mockReturnValue(["project", vi.fn()] as const);
+
+    renderBoardForTaskKindFilter();
+
+    expectTaskKindFilterVisibleTasks(["Root Project Task"]);
+  });
+
+  it("Task 필터 선택 시 project root를 제외한 작업만 표시한다", () => {
+    vi.mocked(useTaskKindFilterParams).mockReturnValue(["task", vi.fn()] as const);
+
+    renderBoardForTaskKindFilter();
+
+    expectTaskKindFilterVisibleTasks(["Branch Worktree Task", "Plain Task"]);
+  });
+
+  it("All 필터 선택 시 project root와 일반 작업을 모두 표시한다", () => {
+    vi.mocked(useTaskKindFilterParams).mockReturnValue(["all", vi.fn()] as const);
+
+    renderBoardForTaskKindFilter();
+
+    expectTaskKindFilterVisibleTasks(["Root Project Task", "Branch Worktree Task", "Plain Task"]);
   });
 
   it("드래그 종료 시 reorder action을 이벤트 이후에 호출한다", async () => {
