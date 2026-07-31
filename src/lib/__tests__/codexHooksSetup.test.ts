@@ -121,7 +121,7 @@ describe("codexHooksSetup", () => {
       expect(promptHookContent).toContain('TASK_ID="task-1"');
       expect(promptHookContent).toContain("taskId");
       expect(promptHookContent).toContain("status.json");
-      expect(promptHookContent).toContain('"schemaVersion":1');
+      expect(promptHookContent).toContain('\\"schemaVersion\\":1');
 
       const configContent = await readFile(join(repoPath, ".codex", "config.toml"), "utf-8");
       expect(configContent).toContain("[features]");
@@ -230,13 +230,16 @@ describe("codexHooksSetup", () => {
         hasHookEntries: true,
         hasConfigEntry: true,
         hasTaskIdBinding: true,
-        hasExpectedTaskId: true,
+        hasRegisteredHookTarget: true,
         hasStatusMappings: true,
         hasStatusJsonPersistence: true,
+        hasProjectColorPersistence: true,
         hasTargetFanout: true,
+        hasParallelTargetFanout: true,
         hasExpectedHookServerUrl: true,
         hasReachableHookServer: true,
         boundTaskId: "task-1",
+        registeredHookTargetUrl: null,
         configuredHookServerUrl: "http://localhost:3000",
         expectedHookServerUrl: null,
       });
@@ -257,7 +260,7 @@ describe("codexHooksSetup", () => {
       vi.unstubAllGlobals();
     });
 
-    it("현재 task id와 다른 Codex hook은 설치된 것으로 보지 않는다", async () => {
+    it("targets.json에 등록되지 않은 task는 설치된 것으로 보지 않는다", async () => {
       const repoPath = tempDir;
       await setupCodexHooks(repoPath, "task-1", "http://localhost:9736");
 
@@ -265,7 +268,7 @@ describe("codexHooksSetup", () => {
 
       expect(status.installed).toBe(false);
       expect(status.hasTaskIdBinding).toBe(true);
-      expect(status.hasExpectedTaskId).toBe(false);
+      expect(status.hasRegisteredHookTarget).toBe(false);
       expect(status.boundTaskId).toBe("task-1");
     });
   });

@@ -1,33 +1,36 @@
-import { writeFile, mkdir, chmod } from "fs/promises";
-import path from "path";
-import { addAiToolPatternsToGitExclude } from "@/lib/gitExclude";
-import { readTextFile, readTextFiles } from "@/lib/hostFileAccess";
-import { extractShellHookServerUrl, validateHookServerConfiguration } from "@/lib/hookServerStatus";
+import { registerKanvibeHookTarget } from "@/lib/hookTargetRegistration";
+import { readTextFiles } from "@/lib/hostFileAccess";
+import { writeHookProviderFiles } from "@/lib/hookFileWriter";
 import {
-  buildShellKanvibeStatusUpdater,
-  buildShellTaskIdResolver,
-  getShellTaskIdBindingStatus,
-  hasShellKanvibeStatusJsonPersistence,
-  hasShellKanvibeTargetFanout,
-} from "@/lib/hookTaskBinding";
+  buildCommandHookEntry,
+  buildMatcherCommandHookEntry,
+  ensureJsonHookBuckets,
+  hasCommandHookEntry,
+  hasMatcherCommandHookEntry,
+  parseJsonHookSettings,
+  serializeJsonHookSettings,
+  upsertJsonHookEntries,
+} from "@/lib/jsonHookSettings";
+import {
+  buildShellHookScriptFiles,
+  generateShellHookScript,
+  isShellHookProviderInstalled,
+  readShellHookProviderState,
+  resolvePathModule,
+  type ShellHookProviderFile,
+  type ShellHookScriptDefinition,
+  type ShellHookScriptsStatus,
+} from "@/lib/shellHookProvider";
 
 /**
  * Codex CLI 최신 hooks 설정은 `.codex/config.toml`의 hooks feature flag와
  * `.codex/hooks.json` 조합을 사용한다.
  */
-
-interface CodexHooksFile {
-  hooks?: Record<string, unknown[]>;
-  [key: string]: unknown;
-}
-
-interface HookEntry {
-  hooks: { type: string; command: string; timeout: number }[];
-}
-
-interface MatcherHookEntry extends HookEntry {
-  matcher: string;
-}
+const AGENT_LABEL = "Codex";
+const CONFIG_DIR_NAME = ".codex";
+const HOOK_TIMEOUT_SECONDS = 10;
+const BASH_MATCHER = "Bash";
+const CODEX_HOOKS_FEATURE_FLAG = "hooks";
 
 export const CONFIG_FILE_NAME = "config.toml";
 export const HOOKS_FILE_NAME = "hooks.json";
@@ -36,114 +39,209 @@ export const PERMISSION_HOOK_SCRIPT_NAME = "kanvibe-permission-hook.sh";
 export const PRE_TOOL_HOOK_SCRIPT_NAME = "kanvibe-pre-tool-hook.sh";
 export const STOP_HOOK_SCRIPT_NAME = "kanvibe-stop-hook.sh";
 
-const CODEX_PROMPT_COMMAND = `bash "$(git rev-parse --show-toplevel)/.codex/hooks/${PROMPT_HOOK_SCRIPT_NAME}"`;
-const CODEX_PERMISSION_COMMAND = `bash "$(git rev-parse --show-toplevel)/.codex/hooks/${PERMISSION_HOOK_SCRIPT_NAME}"`;
-const CODEX_PRE_TOOL_COMMAND = `bash "$(git rev-parse --show-toplevel)/.codex/hooks/${PRE_TOOL_HOOK_SCRIPT_NAME}"`;
-const CODEX_STOP_COMMAND = `bash "$(git rev-parse --show-toplevel)/.codex/hooks/${STOP_HOOK_SCRIPT_NAME}"`;
-const CODEX_HOOKS_FEATURE_FLAG = "hooks";
+const CODEX_PROMPT_COMMAND = buildCodexHookCommand(PROMPT_HOOK_SCRIPT_NAME);
+const CODEX_PERMISSION_COMMAND = buildCodexHookCommand(PERMISSION_HOOK_SCRIPT_NAME);
+const CODEX_PRE_TOOL_COMMAND = buildCodexHookCommand(PRE_TOOL_HOOK_SCRIPT_NAME);
+const CODEX_STOP_COMMAND = buildCodexHookCommand(STOP_HOOK_SCRIPT_NAME);
 
-function generateStatusHookScript(
-  eventLabel: string,
-  description: string,
-  status: "progress" | "pending" | "review",
-  kanvibeUrl: string,
-  taskId: string,
-): string {
-  return `#!/bin/bash
+const CODEX_HOOK_SCRIPTS: ShellHookScriptDefinition[] = [
+  {
+    fileName: PROMPT_HOOK_SCRIPT_NAME,
+    eventLabel: "UserPromptSubmit",
+    description: "사용자가 prompt를 입력하면 현재 task를 PROGRESS로 변경한다.",
+    status: "progress",
+  },
+  {
+    fileName: PERMISSION_HOOK_SCRIPT_NAME,
+    eventLabel: `PermissionRequest(${BASH_MATCHER})`,
+    description: "Codex가 Bash 실행 승인을 요청하면 현재 task를 PENDING으로 변경한다.",
+    status: "pending",
+  },
+  {
+    fileName: PRE_TOOL_HOOK_SCRIPT_NAME,
+    eventLabel: `PreToolUse(${BASH_MATCHER})`,
+    description: "Codex가 Bash 실행을 재개하면 현재 task를 PROGRESS로 변경한다.",
+    status: "progress",
+  },
+  {
+    fileName: STOP_HOOK_SCRIPT_NAME,
+    eventLabel: "Stop",
+    description: "Codex 응답이 완료되면 현재 task를 REVIEW로 변경한다.",
+    status: "review",
+  },
+];
 
-# KanVibe Codex Hook: ${eventLabel}
-# ${description}
-
-KANVIBE_URL="${kanvibeUrl}"
-${buildShellTaskIdResolver(taskId)}
-${buildShellKanvibeStatusUpdater(status)}
-
-exit 0
-`;
+export interface CodexHooksStatus extends Partial<ShellHookScriptsStatus> {
+  installed: boolean;
+  hasPromptHook: boolean;
+  hasPermissionHook: boolean;
+  hasPreToolHook: boolean;
+  hasStopHook: boolean;
+  hasHooksFile: boolean;
+  hasHookEntries: boolean;
+  hasConfigEntry: boolean;
 }
 
 /** UserPromptSubmit hook bash 스크립트를 생성한다 */
 export function generatePromptHookScript(kanvibeUrl: string, taskId: string): string {
-  return generateStatusHookScript(
-    "UserPromptSubmit",
-    "사용자가 prompt를 입력하면 현재 task를 PROGRESS로 변경한다.",
-    "progress",
-    kanvibeUrl,
-    taskId,
-  );
+  return generateShellHookScript(AGENT_LABEL, CODEX_HOOK_SCRIPTS[0], kanvibeUrl, taskId);
 }
 
 /** PermissionRequest(Bash) hook bash 스크립트를 생성한다 */
 export function generatePermissionHookScript(kanvibeUrl: string, taskId: string): string {
-  return generateStatusHookScript(
-    "PermissionRequest(Bash)",
-    "Codex가 Bash 실행 승인을 요청하면 현재 task를 PENDING으로 변경한다.",
-    "pending",
-    kanvibeUrl,
-    taskId,
-  );
+  return generateShellHookScript(AGENT_LABEL, CODEX_HOOK_SCRIPTS[1], kanvibeUrl, taskId);
 }
 
 /** PreToolUse(Bash) hook bash 스크립트를 생성한다 */
 export function generatePreToolHookScript(kanvibeUrl: string, taskId: string): string {
-  return generateStatusHookScript(
-    "PreToolUse(Bash)",
-    "Codex가 Bash 실행을 재개하면 현재 task를 PROGRESS로 변경한다.",
-    "progress",
-    kanvibeUrl,
-    taskId,
-  );
+  return generateShellHookScript(AGENT_LABEL, CODEX_HOOK_SCRIPTS[2], kanvibeUrl, taskId);
 }
 
 /** Stop hook bash 스크립트를 생성한다 */
 export function generateStopHookScript(kanvibeUrl: string, taskId: string): string {
-  return generateStatusHookScript(
-    "Stop",
-    "Codex 응답이 완료되면 현재 task를 REVIEW로 변경한다.",
-    "review",
-    kanvibeUrl,
-    taskId,
+  return generateShellHookScript(AGENT_LABEL, CODEX_HOOK_SCRIPTS[3], kanvibeUrl, taskId);
+}
+
+/** 설치 파일을 만들기 전에 읽어야 하는 기존 설정 파일 경로 */
+export function getCodexHookInstallInputPaths(repoPath: string, sshHost?: string | null): string[] {
+  return [getCodexConfigPath(repoPath, sshHost), getCodexHooksPath(repoPath, sshHost)];
+}
+
+/**
+ * Codex CLI hooks 설치 산출물을 만든다.
+ * 기존 config.toml / hooks.json이 있으면 KanVibe 관련 항목만 갱신하고 나머지는 보존한다.
+ */
+export function buildCodexHookFiles(
+  repoPath: string,
+  taskId: string,
+  kanvibeUrl: string,
+  configContent: string,
+  hooksContent: string,
+  sshHost?: string | null,
+): ShellHookProviderFile[] {
+  const pathModule = resolvePathModule(sshHost);
+  const hooksDir = pathModule.join(repoPath, CONFIG_DIR_NAME, "hooks");
+
+  return [
+    ...buildShellHookScriptFiles(hooksDir, AGENT_LABEL, CODEX_HOOK_SCRIPTS, kanvibeUrl, taskId, sshHost),
+    {
+      filePath: getCodexConfigPath(repoPath, sshHost),
+      content: upsertCodexConfigToml(configContent),
+    },
+    {
+      filePath: getCodexHooksPath(repoPath, sshHost),
+      content: upsertCodexHooksJson(hooksContent),
+    },
+  ];
+}
+
+export function upsertCodexHooksJson(hooksContent: string): string {
+  const settings = parseJsonHookSettings(hooksContent);
+  const hooks = ensureJsonHookBuckets(settings);
+
+  hooks.UserPromptSubmit = upsertJsonHookEntries(
+    hooks.UserPromptSubmit,
+    PROMPT_HOOK_SCRIPT_NAME,
+    buildCommandHookEntry(CODEX_PROMPT_COMMAND, HOOK_TIMEOUT_SECONDS),
   );
+  hooks.PermissionRequest = upsertJsonHookEntries(
+    hooks.PermissionRequest,
+    PERMISSION_HOOK_SCRIPT_NAME,
+    buildMatcherCommandHookEntry(BASH_MATCHER, CODEX_PERMISSION_COMMAND, HOOK_TIMEOUT_SECONDS),
+  );
+  hooks.PreToolUse = upsertJsonHookEntries(
+    hooks.PreToolUse,
+    PRE_TOOL_HOOK_SCRIPT_NAME,
+    buildMatcherCommandHookEntry(BASH_MATCHER, CODEX_PRE_TOOL_COMMAND, HOOK_TIMEOUT_SECONDS),
+  );
+  hooks.Stop = upsertJsonHookEntries(
+    hooks.Stop,
+    STOP_HOOK_SCRIPT_NAME,
+    buildCommandHookEntry(CODEX_STOP_COMMAND, HOOK_TIMEOUT_SECONDS),
+  );
+
+  return serializeJsonHookSettings(settings);
 }
 
-function parseHooksJson(content: string): CodexHooksFile {
-  if (!content) {
-    return {};
-  }
+/** 지정된 repo에 Codex CLI hooks를 설정한다. 로컬과 원격 repo 모두 같은 산출물을 기록한다 */
+export async function setupCodexHooks(
+  repoPath: string,
+  taskId: string,
+  kanvibeUrl: string,
+  sshHost?: string | null,
+): Promise<void> {
+  const configPath = getCodexConfigPath(repoPath, sshHost);
+  const hooksPath = getCodexHooksPath(repoPath, sshHost);
+  const existingFiles = await readTextFiles([configPath, hooksPath], sshHost);
 
-  try {
-    return JSON.parse(content) as CodexHooksFile;
-  } catch {
-    return {};
-  }
+  await writeHookProviderFiles(
+    buildCodexHookFiles(
+      repoPath,
+      taskId,
+      kanvibeUrl,
+      existingFiles.get(configPath)?.content ?? "",
+      existingFiles.get(hooksPath)?.content ?? "",
+      sshHost,
+    ),
+    sshHost,
+  );
+
+  await registerKanvibeHookTarget(repoPath, taskId, kanvibeUrl, sshHost);
 }
 
-function hasCommandHook(hookEntries: unknown[], command: string): boolean {
-  if (!Array.isArray(hookEntries)) return false;
-  return hookEntries.some((entry) => {
-    const typed = entry as HookEntry;
-    return typed.hooks?.some((hook) => hook.type === "command" && hook.command === command);
+/** 지정된 repo의 Codex CLI hooks 설치 상태를 확인한다 */
+export async function getCodexHooksStatus(
+  repoPath: string,
+  taskId?: string,
+  sshHost?: string | null,
+): Promise<CodexHooksStatus> {
+  const configPath = getCodexConfigPath(repoPath, sshHost);
+  const hooksPath = getCodexHooksPath(repoPath, sshHost);
+  const state = await readShellHookProviderState({
+    repoPath,
+    hooksDir: resolvePathModule(sshHost).join(repoPath, CONFIG_DIR_NAME, "hooks"),
+    definitions: CODEX_HOOK_SCRIPTS,
+    extraFilePaths: [configPath, hooksPath],
+    taskId,
+    sshHost,
   });
+  const [promptScript, permissionScript, preToolScript, stopScript] = state.scriptFiles;
+  const hooksFile = state.files.get(hooksPath) ?? { exists: false, content: "" };
+  const hasHookEntries = hasCodexHookEntries(hooksFile.content);
+  const hasConfigEntry = hasCodexFeatureFlag(state.files.get(configPath)?.content ?? "");
+
+  return {
+    installed: isShellHookProviderInstalled(state, [hooksFile.exists, hasHookEntries, hasConfigEntry]),
+    hasPromptHook: promptScript.exists,
+    hasPermissionHook: permissionScript.exists,
+    hasPreToolHook: preToolScript.exists,
+    hasStopHook: stopScript.exists,
+    hasHooksFile: hooksFile.exists,
+    hasHookEntries,
+    hasConfigEntry,
+    ...state.status,
+  };
 }
 
-function hasMatcherCommandHook(hookEntries: unknown[], matcher: string, command: string): boolean {
-  if (!Array.isArray(hookEntries)) return false;
-  return hookEntries.some((entry) => {
-    const typed = entry as MatcherHookEntry;
-    return typed.matcher === matcher && typed.hooks?.some((hook) => hook.type === "command" && hook.command === command);
-  });
+function hasCodexHookEntries(hooksContent: string): boolean {
+  const hooks = parseJsonHookSettings(hooksContent).hooks || {};
+
+  return hasCommandHookEntry(hooks.UserPromptSubmit || [], CODEX_PROMPT_COMMAND)
+    && hasMatcherCommandHookEntry(hooks.PermissionRequest || [], BASH_MATCHER, CODEX_PERMISSION_COMMAND)
+    && hasMatcherCommandHookEntry(hooks.PreToolUse || [], BASH_MATCHER, CODEX_PRE_TOOL_COMMAND)
+    && hasCommandHookEntry(hooks.Stop || [], CODEX_STOP_COMMAND);
 }
 
-function referencesScriptName(entry: unknown, scriptName: string): boolean {
-  return JSON.stringify(entry).includes(scriptName);
+function buildCodexHookCommand(scriptName: string): string {
+  return `bash "$(git rev-parse --show-toplevel)/${CONFIG_DIR_NAME}/hooks/${scriptName}"`;
 }
 
-function upsertHookEntries<T>(hookEntries: unknown[] | undefined, scriptName: string, nextEntry: T): T[] {
-  const preservedEntries = Array.isArray(hookEntries)
-    ? hookEntries.filter((entry) => !referencesScriptName(entry, scriptName)) as T[]
-    : [];
-  preservedEntries.push(nextEntry);
-  return preservedEntries;
+function getCodexConfigPath(repoPath: string, sshHost?: string | null): string {
+  return resolvePathModule(sshHost).join(repoPath, CONFIG_DIR_NAME, CONFIG_FILE_NAME);
+}
+
+function getCodexHooksPath(repoPath: string, sshHost?: string | null): string {
+  return resolvePathModule(sshHost).join(repoPath, CONFIG_DIR_NAME, HOOKS_FILE_NAME);
 }
 
 function isSectionHeader(line: string): boolean {
@@ -227,212 +325,4 @@ function hasCodexFeatureFlag(configContent: string): boolean {
       && index < featuresSection.end
       && /^\s*hooks\s*=\s*true\s*$/.test(line),
   );
-}
-
-export function upsertCodexHooksJson(hooksContent: string): string {
-  const settings = parseHooksJson(hooksContent);
-  if (!settings.hooks) {
-    settings.hooks = {};
-  }
-
-  const hooks = settings.hooks as Record<string, unknown[]>;
-
-  hooks.UserPromptSubmit = upsertHookEntries<HookEntry>(hooks.UserPromptSubmit, PROMPT_HOOK_SCRIPT_NAME, {
-    hooks: [
-      {
-        type: "command",
-        command: CODEX_PROMPT_COMMAND,
-        timeout: 10,
-      },
-    ],
-  });
-
-  hooks.PermissionRequest = upsertHookEntries<MatcherHookEntry>(hooks.PermissionRequest, PERMISSION_HOOK_SCRIPT_NAME, {
-    matcher: "Bash",
-    hooks: [
-      {
-        type: "command",
-        command: CODEX_PERMISSION_COMMAND,
-        timeout: 10,
-      },
-    ],
-  });
-
-  hooks.PreToolUse = upsertHookEntries<MatcherHookEntry>(hooks.PreToolUse, PRE_TOOL_HOOK_SCRIPT_NAME, {
-    matcher: "Bash",
-    hooks: [
-      {
-        type: "command",
-        command: CODEX_PRE_TOOL_COMMAND,
-        timeout: 10,
-      },
-    ],
-  });
-
-  hooks.Stop = upsertHookEntries<HookEntry>(hooks.Stop, STOP_HOOK_SCRIPT_NAME, {
-    hooks: [
-      {
-        type: "command",
-        command: CODEX_STOP_COMMAND,
-        timeout: 10,
-      },
-    ],
-  });
-
-  return `${JSON.stringify(settings, null, 2)}\n`;
-}
-
-/**
- * 지정된 repo에 Codex CLI hooks를 설정한다.
- * 기존 config.toml / hooks.json이 있으면 KanVibe 관련 항목만 갱신하고 나머지는 보존한다.
- */
-export async function setupCodexHooks(
-  repoPath: string,
-  taskId: string,
-  kanvibeUrl: string,
-): Promise<void> {
-  const codexDir = path.join(repoPath, ".codex");
-  const hooksDir = path.join(codexDir, "hooks");
-  const configPath = path.join(codexDir, CONFIG_FILE_NAME);
-  const hooksFilePath = path.join(codexDir, HOOKS_FILE_NAME);
-
-  await mkdir(hooksDir, { recursive: true });
-
-  const promptScriptPath = path.join(hooksDir, PROMPT_HOOK_SCRIPT_NAME);
-  const permissionScriptPath = path.join(hooksDir, PERMISSION_HOOK_SCRIPT_NAME);
-  const preToolScriptPath = path.join(hooksDir, PRE_TOOL_HOOK_SCRIPT_NAME);
-  const stopScriptPath = path.join(hooksDir, STOP_HOOK_SCRIPT_NAME);
-
-  await writeFile(promptScriptPath, generatePromptHookScript(kanvibeUrl, taskId), "utf-8");
-  await writeFile(permissionScriptPath, generatePermissionHookScript(kanvibeUrl, taskId), "utf-8");
-  await writeFile(preToolScriptPath, generatePreToolHookScript(kanvibeUrl, taskId), "utf-8");
-  await writeFile(stopScriptPath, generateStopHookScript(kanvibeUrl, taskId), "utf-8");
-  await chmod(promptScriptPath, 0o755);
-  await chmod(permissionScriptPath, 0o755);
-  await chmod(preToolScriptPath, 0o755);
-  await chmod(stopScriptPath, 0o755);
-
-  const configContent = await readTextFile(configPath);
-  await writeFile(configPath, upsertCodexConfigToml(configContent), "utf-8");
-
-  const hooksContent = await readTextFile(hooksFilePath);
-  await writeFile(hooksFilePath, upsertCodexHooksJson(hooksContent), "utf-8");
-
-  try {
-    await addAiToolPatternsToGitExclude(repoPath);
-  } catch (error) {
-    console.error("git exclude 패턴 추가 실패:", error);
-  }
-}
-
-export interface CodexHooksStatus {
-  installed: boolean;
-  hasPromptHook: boolean;
-  hasPermissionHook: boolean;
-  hasPreToolHook: boolean;
-  hasStopHook: boolean;
-  hasHooksFile: boolean;
-  hasHookEntries: boolean;
-  hasConfigEntry: boolean;
-  hasTaskIdBinding?: boolean;
-  hasExpectedTaskId?: boolean;
-  hasStatusMappings?: boolean;
-  hasStatusJsonPersistence?: boolean;
-  hasTargetFanout?: boolean;
-  hasExpectedHookServerUrl?: boolean;
-  hasReachableHookServer?: boolean;
-  boundTaskId?: string | null;
-  configuredHookServerUrl?: string | null;
-  expectedHookServerUrl?: string | null;
-}
-
-/** 지정된 repo의 Codex CLI hooks 설치 상태를 확인한다 */
-export async function getCodexHooksStatus(repoPath: string, taskId?: string, sshHost?: string | null): Promise<CodexHooksStatus> {
-  const pathModule = sshHost ? path.posix : path;
-  const codexDir = pathModule.join(repoPath, ".codex");
-  const hooksDir = pathModule.join(codexDir, "hooks");
-  const configPath = pathModule.join(codexDir, CONFIG_FILE_NAME);
-  const hooksFilePath = pathModule.join(codexDir, HOOKS_FILE_NAME);
-  const promptScriptPath = pathModule.join(hooksDir, PROMPT_HOOK_SCRIPT_NAME);
-  const permissionScriptPath = pathModule.join(hooksDir, PERMISSION_HOOK_SCRIPT_NAME);
-  const preToolScriptPath = pathModule.join(hooksDir, PRE_TOOL_HOOK_SCRIPT_NAME);
-  const stopScriptPath = pathModule.join(hooksDir, STOP_HOOK_SCRIPT_NAME);
-
-  const files = await readTextFiles([
-    promptScriptPath,
-    permissionScriptPath,
-    preToolScriptPath,
-    stopScriptPath,
-    hooksFilePath,
-    configPath,
-  ], sshHost);
-  const promptScript = files.get(promptScriptPath) ?? { exists: false, content: "" };
-  const permissionScript = files.get(permissionScriptPath) ?? { exists: false, content: "" };
-  const preToolScript = files.get(preToolScriptPath) ?? { exists: false, content: "" };
-  const stopScript = files.get(stopScriptPath) ?? { exists: false, content: "" };
-  const hooksFile = files.get(hooksFilePath) ?? { exists: false, content: "" };
-  const configFile = files.get(configPath) ?? { exists: false, content: "" };
-  const promptContent = promptScript.content;
-  const permissionContent = permissionScript.content;
-  const preToolContent = preToolScript.content;
-  const stopContent = stopScript.content;
-  const hooksContent = hooksFile.content;
-  const configContent = configFile.content;
-
-  const hookScripts = [promptContent, permissionContent, preToolContent, stopContent];
-  const { boundTaskId, hasTaskIdBinding, hasExpectedTaskId } = getShellTaskIdBindingStatus(hookScripts, taskId);
-  const hasStatusMappings = promptContent.includes('\\\"status\\\": \\\"progress\\\"')
-    && permissionContent.includes('\\\"status\\\": \\\"pending\\\"')
-    && preToolContent.includes('\\\"status\\\": \\\"progress\\\"')
-    && stopContent.includes('\\\"status\\\": \\\"review\\\"');
-  const hasStatusJsonPersistence = hookScripts.every(hasShellKanvibeStatusJsonPersistence);
-  const hasTargetFanout = hookScripts.every(hasShellKanvibeTargetFanout);
-  const hookServerValidation = await validateHookServerConfiguration(
-    hookScripts.map((content) => extractShellHookServerUrl(content)),
-    Boolean(taskId),
-    sshHost,
-  );
-
-  const settings = parseHooksJson(hooksContent);
-  const hooks = settings.hooks || {};
-  const hasHookEntries = hasCommandHook(hooks.UserPromptSubmit || [], CODEX_PROMPT_COMMAND)
-    && hasMatcherCommandHook(hooks.PermissionRequest || [], "Bash", CODEX_PERMISSION_COMMAND)
-    && hasMatcherCommandHook(hooks.PreToolUse || [], "Bash", CODEX_PRE_TOOL_COMMAND)
-    && hasCommandHook(hooks.Stop || [], CODEX_STOP_COMMAND);
-  const hasConfigEntry = hasCodexFeatureFlag(configContent);
-
-  const installed = promptScript.exists
-    && permissionScript.exists
-    && preToolScript.exists
-    && stopScript.exists
-    && hooksFile.exists
-    && hasHookEntries
-    && hasConfigEntry
-    && hasTaskIdBinding
-    && hasExpectedTaskId
-    && hasStatusMappings
-    && hasStatusJsonPersistence
-    && hasTargetFanout
-    && hookServerValidation.hasExpectedHookServerUrl;
-
-  return {
-    installed,
-    hasPromptHook: promptScript.exists,
-    hasPermissionHook: permissionScript.exists,
-    hasPreToolHook: preToolScript.exists,
-    hasStopHook: stopScript.exists,
-    hasHooksFile: hooksFile.exists,
-    hasHookEntries,
-    hasConfigEntry,
-    hasTaskIdBinding,
-    hasExpectedTaskId,
-    hasStatusMappings,
-    hasStatusJsonPersistence,
-    hasTargetFanout,
-    hasExpectedHookServerUrl: hookServerValidation.hasExpectedHookServerUrl,
-    hasReachableHookServer: hookServerValidation.hasReachableHookServer,
-    boundTaskId,
-    configuredHookServerUrl: hookServerValidation.configuredHookServerUrl,
-    expectedHookServerUrl: hookServerValidation.expectedHookServerUrl,
-  };
 }

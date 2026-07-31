@@ -130,7 +130,7 @@ describe("claudeHooksSetup", () => {
     vi.unstubAllGlobals();
   });
 
-  it("현재 task id와 다른 Claude hook은 설치된 것으로 보지 않는다", async () => {
+  it("targets.json에 등록되지 않은 task는 설치된 것으로 보지 않는다", async () => {
     const repoPath = tempDir;
 
     await setupClaudeHooks(repoPath, "task-1", "http://localhost:9736");
@@ -138,7 +138,22 @@ describe("claudeHooksSetup", () => {
 
     expect(status.installed).toBe(false);
     expect(status.hasTaskIdBinding).toBe(true);
-    expect(status.hasExpectedTaskId).toBe(false);
+    expect(status.hasRegisteredHookTarget).toBe(false);
     expect(status.boundTaskId).toBe("task-1");
+  });
+
+  it("다른 client가 hook script를 덮어써도 targets.json에 등록된 client는 설치 상태를 유지한다", async () => {
+    const repoPath = tempDir;
+
+    await setupClaudeHooks(repoPath, "task-1", "http://localhost:9736");
+    /** 같은 worktree를 보는 다른 client가 자기 URL과 task로 hook script를 다시 기록한다 */
+    await setupClaudeHooks(repoPath, "task-9", "http://10.0.0.5:9736");
+
+    const status = await getClaudeHooksStatus(repoPath, "task-1");
+
+    expect(status.installed).toBe(true);
+    expect(status.hasRegisteredHookTarget).toBe(true);
+    expect(status.registeredHookTargetUrl).toBe("http://localhost:9736");
+    expect(status.boundTaskId).toBe("task-9");
   });
 });

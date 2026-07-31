@@ -1,14 +1,19 @@
-import { writeFile, mkdir } from "fs/promises";
-import path from "path";
 import { pathToFileURL } from "node:url";
 import {
-  addAiToolPatternsToGitExclude,
   KANVIBE_GIT_EXCLUDE_MARKER,
   KANVIBE_STATE_DIR_EXCLUDE_PATTERN,
 } from "@/lib/gitExclude";
 import { readTextFiles } from "@/lib/hostFileAccess";
+import { writeHookProviderFiles } from "@/lib/hookFileWriter";
 import { extractPluginHookServerUrl, validateHookServerConfiguration } from "@/lib/hookServerStatus";
+import {
+  registerKanvibeHookTarget,
+  verifyHookTargetRegistration,
+  type HookTargetRegistrationStatus,
+} from "@/lib/hookTargetRegistration";
+import { getKanvibeTargetsPath } from "@/lib/kanvibeProjectState";
 import { getOpenCodeRegisteredKanvibePluginUrls } from "@/lib/openCodePluginRegistry";
+import { resolvePathModule, type ShellHookProviderFile } from "@/lib/shellHookProvider";
 
 /**
  * OpenCode는 `.opencode/plugins/` 디렉토리에 TypeScript 플러그인을 배치하여 hooks를 등록한다.
@@ -18,6 +23,7 @@ import { getOpenCodeRegisteredKanvibePluginUrls } from "@/lib/openCodePluginRegi
 
 export const PLUGIN_FILE_NAME = "kanvibe-plugin.ts";
 export const PLUGIN_DIR_NAME = "plugins";
+const CONFIG_DIR_NAME = ".opencode";
 
 /** OpenCode plugin TypeScript 파일 내용을 생성한다 */
 export function generatePluginScript(kanvibeUrl: string, taskId: string): string {
@@ -41,6 +47,7 @@ export const KanvibePlugin: Plugin = async ({ client }) => {
   const KANVIBE_TARGETS_FILE = resolve(KANVIBE_STATE_DIR, "targets.json");
   const KANVIBE_STATE_DIR_EXCLUDE_PATTERN = ${JSON.stringify(KANVIBE_STATE_DIR_EXCLUDE_PATTERN)};
   const KANVIBE_GIT_EXCLUDE_MARKER = ${JSON.stringify(KANVIBE_GIT_EXCLUDE_MARKER)};
+  const KANVIBE_PROJECT_COLOR_PATTERN = /^#[0-9a-fA-F]{6}$/;
   const lastStatusBySession = new Map<string, string>();
   const lastUserMessageBySession = new Map<string, string>();
 
@@ -69,13 +76,30 @@ export const KanvibePlugin: Plugin = async ({ client }) => {
     }
   }
 
+  /** 다른 KanVibe client가 기록한 프로젝트 색상은 상태를 덮어쓸 때도 보존한다 */
+  function readKanvibeProjectColor(): string | null {
+    try {
+      const parsed = JSON.parse(readFileSync(KANVIBE_STATUS_FILE, "utf8"));
+      const projectColor = typeof parsed?.projectColor === "string" ? parsed.projectColor.trim() : "";
+      return KANVIBE_PROJECT_COLOR_PATTERN.test(projectColor) ? projectColor : null;
+    } catch {
+      return null;
+    }
+  }
+
   function writeKanvibeTaskState(status: string): void {
     try {
       ensureKanvibeStatusExcluded();
+      const projectColor = readKanvibeProjectColor();
       mkdirSync(KANVIBE_STATE_DIR, { recursive: true });
       writeFileSync(
         KANVIBE_STATUS_FILE,
-        JSON.stringify({ schemaVersion: 1, status, updatedAt: new Date().toISOString() }, null, 2) + "\\n",
+        JSON.stringify({
+          schemaVersion: 1,
+          status,
+          updatedAt: new Date().toISOString(),
+          ...(projectColor ? { projectColor } : {}),
+        }, null, 2) + "\\n",
         "utf8",
       );
     } catch {
@@ -93,19 +117,20 @@ export const KanvibePlugin: Plugin = async ({ client }) => {
     return [{ url: normalizeKanvibeUrl(KANVIBE_URL), taskId: TASK_ID }];
   }
 
+  /** targets.json은 client(url) 단위로 등록되므로 같은 url의 중복 항목만 제거한다 */
   function readKanvibeTargets(): KanvibeTarget[] {
     try {
       const parsed = JSON.parse(readFileSync(KANVIBE_TARGETS_FILE, "utf8"));
       const targets = Array.isArray(parsed?.targets) ? parsed.targets : [];
-      const seenTaskIds = new Set<string>();
+      const seenUrls = new Set<string>();
       const normalizedTargets: KanvibeTarget[] = [];
 
       for (const target of targets) {
         const url = typeof target?.url === "string" ? normalizeKanvibeUrl(target.url) : "";
         const taskId = typeof target?.taskId === "string" ? target.taskId.trim() : "";
-        if (!url || !taskId || seenTaskIds.has(taskId)) continue;
+        if (!url || !taskId || seenUrls.has(url)) continue;
 
-        seenTaskIds.add(taskId);
+        seenUrls.add(url);
         normalizedTargets.push({ url, taskId });
       }
 
@@ -127,10 +152,9 @@ export const KanvibePlugin: Plugin = async ({ client }) => {
     }
   }
 
+  /** 등록된 모든 client에 병렬로 통보한다. 느린 client가 다른 client를 막지 않는다 */
   async function fanoutKanvibeStatus(status: string): Promise<void> {
-    for (const target of readKanvibeTargets()) {
-      await postKanvibeStatus(target, status);
-    }
+    await Promise.all(readKanvibeTargets().map((target) => postKanvibeStatus(target, status)));
   }
 
   function getSessionID(source: any): string | undefined {
@@ -273,38 +297,24 @@ export const KanvibePlugin: Plugin = async ({ client }) => {
 `;
 }
 
-/** 플러그인 파일에 kanvibe 관련 코드가 포함되어 있는지 확인한다 */
-function hasKanvibePlugin(pluginContent: string): boolean {
-  return pluginContent.includes("KanvibePlugin") && pluginContent.includes("/api/hooks/status");
+/** OpenCode plugin은 기존 설정 파일을 병합하지 않으므로 미리 읽어야 할 파일이 없다 */
+export function getOpenCodeHookInstallInputPaths(): string[] {
+  return [];
 }
 
-function hasOpenCodeStatusJsonPersistence(pluginContent: string): boolean {
-  return pluginContent.includes("status.json")
-    && pluginContent.includes("KANVIBE_STATE_DIR_EXCLUDE_PATTERN")
-    && pluginContent.includes("--git-common-dir")
-    && pluginContent.includes("includes(KANVIBE_STATE_DIR_EXCLUDE_PATTERN)")
-    && pluginContent.includes("JSON.stringify({ schemaVersion: 1, status, updatedAt: new Date().toISOString() }");
-}
-
-function hasOpenCodeTargetFanout(pluginContent: string): boolean {
-  return pluginContent.includes("targets.json")
-    && pluginContent.includes("KANVIBE_TARGETS_FILE")
-    && pluginContent.includes("readKanvibeTargets")
-    && pluginContent.includes("fanoutKanvibeStatus")
-    && pluginContent.includes("postKanvibeStatus")
-    && pluginContent.includes("taskId: target.taskId")
-    && pluginContent.includes("/api/hooks/status");
-}
-
-function extractPluginTaskId(pluginContent: string): string | null {
-  const match = pluginContent.match(/const TASK_ID = ("(?:\\.|[^"\\])*");/);
-  if (!match) return null;
-
-  try {
-    return JSON.parse(match[1]) as string;
-  } catch {
-    return null;
-  }
+/** OpenCode plugin 설치 산출물을 만든다 */
+export function buildOpenCodeHookFiles(
+  repoPath: string,
+  taskId: string,
+  kanvibeUrl: string,
+  sshHost?: string | null,
+): ShellHookProviderFile[] {
+  return [
+    {
+      filePath: getOpenCodePluginPath(repoPath, sshHost),
+      content: generatePluginScript(kanvibeUrl, taskId),
+    },
+  ];
 }
 
 /**
@@ -315,33 +325,25 @@ export async function setupOpenCodeHooks(
   repoPath: string,
   taskId: string,
   kanvibeUrl: string,
+  sshHost?: string | null,
 ): Promise<void> {
-  const openCodeDir = path.join(repoPath, ".opencode");
-  const pluginsDir = path.join(openCodeDir, PLUGIN_DIR_NAME);
+  await writeHookProviderFiles(buildOpenCodeHookFiles(repoPath, taskId, kanvibeUrl, sshHost), sshHost);
 
-  await mkdir(pluginsDir, { recursive: true });
-
-  const pluginPath = path.join(pluginsDir, PLUGIN_FILE_NAME);
-  await writeFile(pluginPath, generatePluginScript(kanvibeUrl, taskId), "utf-8");
-
-  try {
-    await addAiToolPatternsToGitExclude(repoPath);
-  } catch (error) {
-    console.error("git exclude 패턴 추가 실패:", error);
-  }
+  await registerKanvibeHookTarget(repoPath, taskId, kanvibeUrl, sshHost);
 }
 
-export interface OpenCodeHooksStatus {
+export interface OpenCodeHooksStatus extends Partial<HookTargetRegistrationStatus> {
   installed: boolean;
   hasPlugin: boolean;
   hasRegisteredPlugin?: boolean;
   hasDuplicateKanvibePlugins?: boolean;
   hasTaskIdBinding?: boolean;
-  hasExpectedTaskId?: boolean;
   hasStatusEndpoint?: boolean;
   hasEventMappings?: boolean;
   hasStatusJsonPersistence?: boolean;
+  hasProjectColorPersistence?: boolean;
   hasTargetFanout?: boolean;
+  hasParallelTargetFanout?: boolean;
   hasMainSessionGuard?: boolean;
   hasDuplicateProgressGuard?: boolean;
   hasExpectedHookServerUrl?: boolean;
@@ -355,87 +357,68 @@ export interface OpenCodeHooksStatus {
 }
 
 /** 지정된 repo의 OpenCode plugin 설치 상태를 확인한다 */
-export async function getOpenCodeHooksStatus(repoPath: string, taskId?: string, sshHost?: string | null): Promise<OpenCodeHooksStatus> {
-  const pathModule = sshHost ? path.posix : path;
-  const openCodeDir = pathModule.join(repoPath, ".opencode");
-  const pluginsDir = pathModule.join(openCodeDir, PLUGIN_DIR_NAME);
-  const pluginPath = pathModule.join(pluginsDir, PLUGIN_FILE_NAME);
-
-  const files = await readTextFiles([pluginPath], sshHost);
+export async function getOpenCodeHooksStatus(
+  repoPath: string,
+  taskId?: string,
+  sshHost?: string | null,
+): Promise<OpenCodeHooksStatus> {
+  const pluginPath = getOpenCodePluginPath(repoPath, sshHost);
+  const targetsPath = getKanvibeTargetsPath(repoPath, sshHost);
+  const files = await readTextFiles([pluginPath, targetsPath], sshHost);
   const pluginFile = files.get(pluginPath) ?? { exists: false, content: "" };
+  const pluginContent = pluginFile.content;
 
-  let hasPlugin = false;
-  let boundTaskId: string | null = null;
-  let hasTaskIdBinding = false;
-  let hasStatusEndpoint = false;
-  let hasEventMappings = false;
-  let hasStatusJsonPersistence = false;
-  let hasTargetFanout = false;
-  let hasMainSessionGuard = false;
-  let hasDuplicateProgressGuard = false;
-  let hasRegisteredPlugin = sshHost ? true : false;
-  let hasDuplicateKanvibePlugins = false;
-  let registeredPluginUrls: string[] = [];
-  let configuredHookServerUrl: string | null = null;
-  let hasExpectedTaskId = false;
-  if (pluginFile.exists) {
-    try {
-      const content = pluginFile.content;
-      hasPlugin = hasKanvibePlugin(content);
-      configuredHookServerUrl = extractPluginHookServerUrl(content);
-      boundTaskId = extractPluginTaskId(content);
-      hasTaskIdBinding =
-        boundTaskId !== null
-        && content.includes("taskId: TASK_ID");
-      hasExpectedTaskId = hasTaskIdBinding && (!taskId || boundTaskId === taskId);
-      hasStatusEndpoint = content.includes("/api/hooks/status");
-      hasEventMappings = ["progress", "pending", "review", "done", "message.updated", "question.asked", "question.replied", "session.idle", "session.deleted"].every((fragment) => content.includes(fragment));
-      hasStatusJsonPersistence = hasOpenCodeStatusJsonPersistence(content);
-      hasTargetFanout = hasOpenCodeTargetFanout(content);
-      hasMainSessionGuard = content.includes("isMainSession(message)") && content.includes("isMainSession(event.properties)");
-      hasDuplicateProgressGuard = content.includes("lastUserMessageBySession") && content.includes("buildMessageSignature") && content.includes("dedupeMessage: true");
-    } catch {
-      /* 파일 읽기 실패 */
-    }
-  }
-
-  if (!sshHost) {
-    const expectedPluginUrl = pathToFileURL(pluginPath).href;
-    registeredPluginUrls = await getOpenCodeRegisteredKanvibePluginUrls(repoPath);
-    hasRegisteredPlugin = registeredPluginUrls.some((value) => value === expectedPluginUrl);
-    hasDuplicateKanvibePlugins = registeredPluginUrls.length > 1;
-  }
-
+  const boundTaskId = extractPluginTaskId(pluginContent);
+  const hasTaskIdBinding = boundTaskId !== null && pluginContent.includes("taskId: TASK_ID");
+  const pluginRegistration = await resolveOpenCodePluginRegistration(repoPath, pluginPath, sshHost);
   const hookServerValidation = await validateHookServerConfiguration(
-    [configuredHookServerUrl],
+    [extractPluginHookServerUrl(pluginContent)],
     Boolean(taskId),
     sshHost,
   );
+  const targetRegistration = verifyHookTargetRegistration(
+    files.get(targetsPath)?.content ?? "",
+    taskId,
+    hookServerValidation.expectedHookServerUrl,
+  );
+
+  const hasPlugin = hasKanvibePlugin(pluginContent);
+  const hasStatusEndpoint = pluginContent.includes("/api/hooks/status");
+  const hasEventMappings = OPEN_CODE_EVENT_FRAGMENTS.every((fragment) => pluginContent.includes(fragment));
+  const hasStatusJsonPersistence = hasOpenCodeStatusJsonPersistence(pluginContent);
+  const hasProjectColorPersistence = hasOpenCodeProjectColorPersistence(pluginContent);
+  const hasTargetFanout = hasOpenCodeTargetFanout(pluginContent);
+  const hasParallelTargetFanout = hasOpenCodeParallelTargetFanout(pluginContent);
+  const hasMainSessionGuard = pluginContent.includes("isMainSession(message)")
+    && pluginContent.includes("isMainSession(event.properties)");
+  const hasDuplicateProgressGuard = pluginContent.includes("lastUserMessageBySession")
+    && pluginContent.includes("buildMessageSignature")
+    && pluginContent.includes("dedupeMessage: true");
 
   const installed = pluginFile.exists
     && hasPlugin
     && hasTaskIdBinding
-    && hasExpectedTaskId
+    && targetRegistration.hasRegisteredHookTarget
     && hasStatusEndpoint
     && hasEventMappings
     && hasStatusJsonPersistence
+    && hasProjectColorPersistence
     && hasTargetFanout
+    && hasParallelTargetFanout
     && hasMainSessionGuard
     && hasDuplicateProgressGuard
-    && hasRegisteredPlugin
-    && hookServerValidation.hasExpectedHookServerUrl;
+    && pluginRegistration.hasRegisteredPlugin;
 
   return {
     installed,
     hasPlugin,
-    hasRegisteredPlugin,
-    hasDuplicateKanvibePlugins,
     hasTaskIdBinding,
-    hasExpectedTaskId,
     hasStatusEndpoint,
     hasEventMappings,
     hasStatusJsonPersistence,
+    hasProjectColorPersistence,
     hasTargetFanout,
+    hasParallelTargetFanout,
     hasMainSessionGuard,
     hasDuplicateProgressGuard,
     hasExpectedHookServerUrl: hookServerValidation.hasExpectedHookServerUrl,
@@ -443,8 +426,92 @@ export async function getOpenCodeHooksStatus(repoPath: string, taskId?: string, 
     boundTaskId,
     targetPath: repoPath,
     pluginPath,
-    registeredPluginUrls,
     configuredHookServerUrl: hookServerValidation.configuredHookServerUrl,
     expectedHookServerUrl: hookServerValidation.expectedHookServerUrl,
+    ...pluginRegistration,
+    ...targetRegistration,
   };
+}
+
+const OPEN_CODE_EVENT_FRAGMENTS = [
+  "progress",
+  "pending",
+  "review",
+  "done",
+  "message.updated",
+  "question.asked",
+  "question.replied",
+  "session.idle",
+  "session.deleted",
+];
+
+/** 플러그인 파일에 kanvibe 관련 코드가 포함되어 있는지 확인한다 */
+function hasKanvibePlugin(pluginContent: string): boolean {
+  return pluginContent.includes("KanvibePlugin") && pluginContent.includes("/api/hooks/status");
+}
+
+function hasOpenCodeStatusJsonPersistence(pluginContent: string): boolean {
+  return pluginContent.includes("status.json")
+    && pluginContent.includes("KANVIBE_STATE_DIR_EXCLUDE_PATTERN")
+    && pluginContent.includes("--git-common-dir")
+    && pluginContent.includes("includes(KANVIBE_STATE_DIR_EXCLUDE_PATTERN)")
+    && pluginContent.includes("schemaVersion: 1")
+    && pluginContent.includes("updatedAt: new Date().toISOString()");
+}
+
+function hasOpenCodeProjectColorPersistence(pluginContent: string): boolean {
+  return pluginContent.includes("readKanvibeProjectColor")
+    && pluginContent.includes("KANVIBE_PROJECT_COLOR_PATTERN")
+    && pluginContent.includes("projectColor ? { projectColor } : {}");
+}
+
+function hasOpenCodeTargetFanout(pluginContent: string): boolean {
+  return pluginContent.includes("targets.json")
+    && pluginContent.includes("KANVIBE_TARGETS_FILE")
+    && pluginContent.includes("readKanvibeTargets")
+    && pluginContent.includes("fanoutKanvibeStatus")
+    && pluginContent.includes("postKanvibeStatus")
+    && pluginContent.includes("taskId: target.taskId")
+    && pluginContent.includes("/api/hooks/status");
+}
+
+/** fan-out이 순차 await 루프가 아니라 Promise.all 병렬 호출인지 확인한다 */
+function hasOpenCodeParallelTargetFanout(pluginContent: string): boolean {
+  return pluginContent.includes("await Promise.all(readKanvibeTargets().map(");
+}
+
+function extractPluginTaskId(pluginContent: string): string | null {
+  const match = pluginContent.match(/const TASK_ID = ("(?:\\.|[^"\\])*");/);
+  if (!match) return null;
+
+  try {
+    return JSON.parse(match[1]) as string;
+  } catch {
+    return null;
+  }
+}
+
+async function resolveOpenCodePluginRegistration(
+  repoPath: string,
+  pluginPath: string,
+  sshHost?: string | null,
+): Promise<{ hasRegisteredPlugin: boolean; hasDuplicateKanvibePlugins: boolean; registeredPluginUrls: string[] }> {
+  /** 원격 repo는 OpenCode 설정 레지스트리를 조회할 수 없으므로 등록 여부를 검증하지 않는다 */
+  if (sshHost) {
+    return { hasRegisteredPlugin: true, hasDuplicateKanvibePlugins: false, registeredPluginUrls: [] };
+  }
+
+  const expectedPluginUrl = pathToFileURL(pluginPath).href;
+  const registeredPluginUrls = await getOpenCodeRegisteredKanvibePluginUrls(repoPath);
+
+  return {
+    hasRegisteredPlugin: registeredPluginUrls.some((value) => value === expectedPluginUrl),
+    hasDuplicateKanvibePlugins: registeredPluginUrls.length > 1,
+    registeredPluginUrls,
+  };
+}
+
+function getOpenCodePluginPath(repoPath: string, sshHost?: string | null): string {
+  const pathModule = resolvePathModule(sshHost);
+  return pathModule.join(repoPath, CONFIG_DIR_NAME, PLUGIN_DIR_NAME, PLUGIN_FILE_NAME);
 }

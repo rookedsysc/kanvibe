@@ -1,35 +1,22 @@
-import path from "node:path";
-import { execGit } from "@/lib/gitOperations";
-import { setupClaudeHooks, getClaudeHooksStatus, generatePromptHookScript as generateClaudePromptHookScript, generateStopHookScript as generateClaudeStopHookScript, generateQuestionHookScript as generateClaudeQuestionHookScript, type ClaudeHooksStatus } from "@/lib/claudeHooksSetup";
-import { setupGeminiHooks, getGeminiHooksStatus, generatePromptHookScript as generateGeminiPromptHookScript, generateStopHookScript as generateGeminiStopHookScript, type GeminiHooksStatus } from "@/lib/geminiHooksSetup";
-import {
-  setupCodexHooks,
-  getCodexHooksStatus,
-  generatePromptHookScript as generateCodexPromptHookScript,
-  generatePermissionHookScript as generateCodexPermissionHookScript,
-  generatePreToolHookScript as generateCodexPreToolHookScript,
-  generateStopHookScript as generateCodexStopHookScript,
-  upsertCodexConfigToml,
-  upsertCodexHooksJson,
-  PROMPT_HOOK_SCRIPT_NAME,
-  PERMISSION_HOOK_SCRIPT_NAME,
-  PRE_TOOL_HOOK_SCRIPT_NAME,
-  STOP_HOOK_SCRIPT_NAME,
-  HOOKS_FILE_NAME,
-  CONFIG_FILE_NAME,
-  type CodexHooksStatus,
-} from "@/lib/codexHooksSetup";
-import { setupOpenCodeHooks, getOpenCodeHooksStatus, generatePluginScript, PLUGIN_DIR_NAME, PLUGIN_FILE_NAME, type OpenCodeHooksStatus } from "@/lib/openCodeHooksSetup";
+import { readTextFiles } from "@/lib/hostFileAccess";
 import { getHookServerUrl } from "@/lib/hookEndpoint";
-import { addAiToolPatternsToGitExclude } from "@/lib/gitExclude";
-import { quoteShellArgument, readTextFiles } from "@/lib/hostFileAccess";
-import { upsertKanvibeHookTarget } from "@/lib/kanvibeProjectState";
+import { writeHookProviderFiles } from "@/lib/hookFileWriter";
+import { registerKanvibeHookTarget } from "@/lib/hookTargetRegistration";
+import {
+  getKanvibeHookProviderModules,
+  KANVIBE_HOOK_PROVIDER_MODULES,
+  type KanvibeHookProvider,
+  type KanvibeHookProviderModule,
+  type KanvibeHookStatus,
+} from "@/lib/kanvibeHookProviders";
 
 const HOOK_INSTALL_MAX_ATTEMPTS = 3;
 const HOOK_INSTALL_RETRY_DELAY_MS = 500;
 const NON_BLOCKING_HOOK_STATUS_CHECKS = new Set([
   "hasReachableHookServer",
   "hasDuplicateKanvibePlugins",
+  /** script의 KANVIBE_URL은 targets.json이 없을 때만 쓰는 fallback이므로 설치 실패로 보지 않는다 */
+  "hasExpectedHookServerUrl",
 ]);
 const OPEN_CODE_NON_BLOCKING_INSTALL_CHECKS = new Set([
   "hasRegisteredPlugin",
@@ -38,7 +25,7 @@ const activeHookInstallJobs = new Map<string, Promise<void>>();
 const activeHookFileInstallJobs = new Map<string, Promise<void>>();
 const scheduledHookInstallJobs = new Map<string, ScheduledHookInstallJob>();
 
-export type KanvibeHookProvider = "claude" | "gemini" | "codex" | "openCode";
+export type { KanvibeHookProvider };
 
 interface HookInstallScheduleOptions {
   delayMs?: number;
@@ -60,21 +47,18 @@ export async function installKanvibeHooks(
   taskId: string,
   sshHost?: string | null,
 ): Promise<void> {
-  const installKey = buildHookInstallKey(targetPath, taskId, sshHost, "all");
-  const activeJob = activeHookInstallJobs.get(installKey);
-  if (activeJob) {
-    return activeJob;
-  }
-
-  const installJob = runKanvibeHooksInstallWithRetry(targetPath, taskId, sshHost)
-    .finally(() => {
-      if (activeHookInstallJobs.get(installKey) === installJob) {
-        activeHookInstallJobs.delete(installKey);
-      }
-    });
-
-  activeHookInstallJobs.set(installKey, installJob);
-  return installJob;
+  return runDeduplicatedHookInstall(
+    activeHookInstallJobs,
+    buildHookInstallKey(targetPath, taskId, sshHost, "all"),
+    () => runHookInstallWithRetry(
+      "install",
+      { targetPath, taskId, sshHost },
+      async () => {
+        await installKanvibeHookFilesOnce(targetPath, taskId, sshHost);
+        await verifyHookInstallation(targetPath, taskId, sshHost);
+      },
+    ),
+  );
 }
 
 export async function installKanvibeHookFiles(
@@ -82,21 +66,15 @@ export async function installKanvibeHookFiles(
   taskId: string,
   sshHost?: string | null,
 ): Promise<void> {
-  const installKey = buildHookInstallKey(targetPath, taskId, sshHost, "all-files");
-  const activeJob = activeHookFileInstallJobs.get(installKey);
-  if (activeJob) {
-    return activeJob;
-  }
-
-  const installJob = runKanvibeHookFilesInstallWithRetry(targetPath, taskId, sshHost)
-    .finally(() => {
-      if (activeHookFileInstallJobs.get(installKey) === installJob) {
-        activeHookFileInstallJobs.delete(installKey);
-      }
-    });
-
-  activeHookFileInstallJobs.set(installKey, installJob);
-  return installJob;
+  return runDeduplicatedHookInstall(
+    activeHookFileInstallJobs,
+    buildHookInstallKey(targetPath, taskId, sshHost, "all-files"),
+    () => runHookInstallWithRetry(
+      "file install",
+      { targetPath, taskId, sshHost },
+      () => installKanvibeHookFilesOnce(targetPath, taskId, sshHost),
+    ),
+  );
 }
 
 export async function installKanvibeHookProvider(
@@ -105,21 +83,17 @@ export async function installKanvibeHookProvider(
   provider: KanvibeHookProvider,
   sshHost?: string | null,
 ): Promise<void> {
-  const installKey = buildHookInstallKey(targetPath, taskId, sshHost, provider);
-  const activeJob = activeHookInstallJobs.get(installKey);
-  if (activeJob) {
-    return activeJob;
-  }
+  const providerModule = KANVIBE_HOOK_PROVIDER_MODULES[provider];
 
-  const installJob = runKanvibeHookProviderInstallWithRetry(targetPath, taskId, provider, sshHost)
-    .finally(() => {
-      if (activeHookInstallJobs.get(installKey) === installJob) {
-        activeHookInstallJobs.delete(installKey);
-      }
-    });
-
-  activeHookInstallJobs.set(installKey, installJob);
-  return installJob;
+  return runDeduplicatedHookInstall(
+    activeHookInstallJobs,
+    buildHookInstallKey(targetPath, taskId, sshHost, provider),
+    () => runHookInstallWithRetry(
+      "provider install",
+      { targetPath, taskId, sshHost, provider: providerModule.label },
+      () => installKanvibeHookProviderOnce(providerModule, targetPath, taskId, sshHost),
+    ),
+  );
 }
 
 export function scheduleKanvibeHooksInstall(
@@ -173,6 +147,27 @@ export function scheduleKanvibeHooksVerification(
   }, options.delayMs ?? 0);
 }
 
+/** 같은 대상에 대한 설치 요청은 진행 중인 작업을 공유한다 */
+async function runDeduplicatedHookInstall(
+  activeJobs: Map<string, Promise<void>>,
+  installKey: string,
+  startJob: () => Promise<void>,
+): Promise<void> {
+  const activeJob = activeJobs.get(installKey);
+  if (activeJob) {
+    return activeJob;
+  }
+
+  const installJob = startJob().finally(() => {
+    if (activeJobs.get(installKey) === installJob) {
+      activeJobs.delete(installKey);
+    }
+  });
+
+  activeJobs.set(installKey, installJob);
+  return installJob;
+}
+
 function buildHookInstallKey(
   targetPath: string,
   taskId: string,
@@ -204,51 +199,23 @@ function runHookInstallCallback(callback: () => void): void {
   }
 }
 
-async function runKanvibeHooksInstallWithRetry(
-  targetPath: string,
-  taskId: string,
-  sshHost?: string | null,
-): Promise<void> {
-  let lastError: unknown;
-
-  for (let attempt = 1; attempt <= HOOK_INSTALL_MAX_ATTEMPTS; attempt += 1) {
-    try {
-      await installKanvibeHooksOnce(targetPath, taskId, sshHost);
-      return;
-    } catch (error) {
-      lastError = error;
-
-      if (attempt === HOOK_INSTALL_MAX_ATTEMPTS) {
-        throw error;
-      }
-
-      const retryDelayMs = HOOK_INSTALL_RETRY_DELAY_MS * attempt;
-      console.warn("[hooks] install failed; retrying", {
-        targetPath,
-        taskId,
-        sshHost: sshHost ?? null,
-        attempt,
-        maxAttempts: HOOK_INSTALL_MAX_ATTEMPTS,
-        nextAttemptInMs: retryDelayMs,
-        error: error instanceof Error ? error.message : String(error),
-      });
-      await waitForHookInstallRetry(retryDelayMs);
-    }
-  }
-
-  throw lastError instanceof Error ? lastError : new Error("hooks 설정 실패");
+interface HookInstallContext {
+  targetPath: string;
+  taskId: string;
+  sshHost?: string | null;
+  provider?: string;
 }
 
-async function runKanvibeHookFilesInstallWithRetry(
-  targetPath: string,
-  taskId: string,
-  sshHost?: string | null,
+async function runHookInstallWithRetry(
+  operationLabel: string,
+  context: HookInstallContext,
+  install: () => Promise<void>,
 ): Promise<void> {
   let lastError: unknown;
 
   for (let attempt = 1; attempt <= HOOK_INSTALL_MAX_ATTEMPTS; attempt += 1) {
     try {
-      await installKanvibeHookFilesOnce(targetPath, taskId, sshHost);
+      await install();
       return;
     } catch (error) {
       lastError = error;
@@ -258,47 +225,9 @@ async function runKanvibeHookFilesInstallWithRetry(
       }
 
       const retryDelayMs = HOOK_INSTALL_RETRY_DELAY_MS * attempt;
-      console.warn("[hooks] file install failed; retrying", {
-        targetPath,
-        taskId,
-        sshHost: sshHost ?? null,
-        attempt,
-        maxAttempts: HOOK_INSTALL_MAX_ATTEMPTS,
-        nextAttemptInMs: retryDelayMs,
-        error: error instanceof Error ? error.message : String(error),
-      });
-      await waitForHookInstallRetry(retryDelayMs);
-    }
-  }
-
-  throw lastError instanceof Error ? lastError : new Error("hooks 파일 설정 실패");
-}
-
-async function runKanvibeHookProviderInstallWithRetry(
-  targetPath: string,
-  taskId: string,
-  provider: KanvibeHookProvider,
-  sshHost?: string | null,
-): Promise<void> {
-  let lastError: unknown;
-
-  for (let attempt = 1; attempt <= HOOK_INSTALL_MAX_ATTEMPTS; attempt += 1) {
-    try {
-      await installKanvibeHookProviderOnce(targetPath, taskId, provider, sshHost);
-      return;
-    } catch (error) {
-      lastError = error;
-
-      if (attempt === HOOK_INSTALL_MAX_ATTEMPTS) {
-        throw error;
-      }
-
-      const retryDelayMs = HOOK_INSTALL_RETRY_DELAY_MS * attempt;
-      console.warn("[hooks] provider install failed; retrying", {
-        provider,
-        targetPath,
-        taskId,
-        sshHost: sshHost ?? null,
+      console.warn(`[hooks] ${operationLabel} failed; retrying`, {
+        ...context,
+        sshHost: context.sshHost ?? null,
         attempt,
         maxAttempts: HOOK_INSTALL_MAX_ATTEMPTS,
         nextAttemptInMs: retryDelayMs,
@@ -315,436 +244,53 @@ async function waitForHookInstallRetry(delayMs: number): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, delayMs));
 }
 
-interface HookProviderInstaller {
-  provider: KanvibeHookProvider;
-  label: string;
-  install: () => Promise<void>;
-  verify: () => Promise<HookVerificationStatus>;
-}
-
-function createHookProviderInstallers(
-  targetPath: string,
-  taskId: string,
-  hookServerUrl: string,
-  sshHost?: string | null,
-): Record<KanvibeHookProvider, HookProviderInstaller> {
-  return {
-    claude: {
-      provider: "claude",
-      label: "Claude",
-      install: () => sshHost
-        ? setupRemoteClaudeHooks(targetPath, taskId, hookServerUrl, sshHost)
-        : setupClaudeHooks(targetPath, taskId, hookServerUrl),
-      verify: () => getClaudeHooksStatus(targetPath, taskId, sshHost),
-    },
-    gemini: {
-      provider: "gemini",
-      label: "Gemini",
-      install: () => sshHost
-        ? setupRemoteGeminiHooks(targetPath, taskId, hookServerUrl, sshHost)
-        : setupGeminiHooks(targetPath, taskId, hookServerUrl),
-      verify: () => getGeminiHooksStatus(targetPath, taskId, sshHost),
-    },
-    codex: {
-      provider: "codex",
-      label: "Codex",
-      install: () => sshHost
-        ? setupRemoteCodexHooks(targetPath, taskId, hookServerUrl, sshHost)
-        : setupCodexHooks(targetPath, taskId, hookServerUrl),
-      verify: () => getCodexHooksStatus(targetPath, taskId, sshHost),
-    },
-    openCode: {
-      provider: "openCode",
-      label: "OpenCode",
-      install: () => sshHost
-        ? setupRemoteOpenCodeHooks(targetPath, taskId, hookServerUrl, sshHost)
-        : setupOpenCodeHooks(targetPath, taskId, hookServerUrl),
-      verify: () => getOpenCodeHooksStatus(targetPath, taskId, sshHost),
-    },
-  };
-}
-
-async function installKanvibeHooksOnce(
-  targetPath: string,
-  taskId: string,
-  sshHost?: string | null,
-): Promise<void> {
-  await installKanvibeHookFilesOnce(targetPath, taskId, sshHost);
-  await verifyHookInstallation(targetPath, taskId, sshHost);
-}
-
+/**
+ * 모든 provider의 hook 파일을 한 번에 만들어 기록한다.
+ * 기존 설정 파일 읽기와 파일 쓰기를 각각 한 번으로 묶어 원격 설치의 왕복 횟수를 줄인다.
+ */
 async function installKanvibeHookFilesOnce(
   targetPath: string,
   taskId: string,
   sshHost?: string | null,
 ): Promise<void> {
   const hookServerUrl = await getHookServerUrl(sshHost);
-  await upsertKanvibeHookTarget(targetPath, { url: hookServerUrl, taskId }, sshHost);
+  await registerKanvibeHookTarget(targetPath, taskId, hookServerUrl, sshHost);
 
-  if (!sshHost) {
-    const installers = Object.values(createHookProviderInstallers(targetPath, taskId, hookServerUrl, sshHost));
-    const results = await Promise.allSettled(installers.map(({ install }) => install()));
-    assertHookInstallResults(results, installers.map(({ label }) => label));
-  } else {
+  const providerModules = getKanvibeHookProviderModules();
+  const existingFiles = await readTextFiles(
+    providerModules.flatMap((providerModule) => providerModule.getInstallInputPaths(targetPath, sshHost)),
+    sshHost,
+  );
+
+  const buildResults = providerModules.map((providerModule) => {
     try {
-      await addAiToolPatternsToGitExclude(targetPath, sshHost);
+      return providerModule.buildFiles(targetPath, taskId, hookServerUrl, existingFiles, sshHost);
     } catch (error) {
-      console.warn("[hooks] remote git exclude update failed", {
+      console.error(`[hooks] ${providerModule.label} install failed`, {
+        provider: providerModule.label,
         targetPath,
-        sshHost,
-        error: error instanceof Error ? error.message : String(error),
-      });
-    }
-
-    await setupRemoteKanvibeHooks(targetPath, taskId, hookServerUrl, sshHost);
-  }
-}
-
-async function installKanvibeHookProviderOnce(
-  targetPath: string,
-  taskId: string,
-  provider: KanvibeHookProvider,
-  sshHost?: string | null,
-): Promise<void> {
-  const hookServerUrl = await getHookServerUrl(sshHost);
-  await upsertKanvibeHookTarget(targetPath, { url: hookServerUrl, taskId }, sshHost);
-  const installer = createHookProviderInstallers(targetPath, taskId, hookServerUrl, sshHost)[provider];
-
-  if (sshHost) {
-    try {
-      await addAiToolPatternsToGitExclude(targetPath, sshHost);
-    } catch (error) {
-      console.warn("[hooks] remote git exclude update failed", {
-        provider: installer.label,
-        targetPath,
-        sshHost,
-        error: error instanceof Error ? error.message : String(error),
-      });
-    }
-  }
-
-  await installer.install();
-  await verifyHookProviderInstallation(installer, targetPath, taskId, sshHost);
-}
-
-async function setupRemoteClaudeHooks(repoPath: string, taskId: string, hookServerUrl: string, sshHost: string) {
-  const claudeDir = path.posix.join(repoPath, ".claude");
-  const settingsPath = path.posix.join(claudeDir, "settings.json");
-  const existingFiles = await readRemoteHookInstallInputs(sshHost, [settingsPath]);
-
-  await writeRemoteTextFiles(
-    [
-      ...buildRemoteClaudeHookFiles(repoPath, taskId, hookServerUrl, existingFiles.get(settingsPath)?.content ?? ""),
-    ],
-    sshHost,
-  );
-}
-
-async function setupRemoteGeminiHooks(repoPath: string, taskId: string, hookServerUrl: string, sshHost: string) {
-  const geminiDir = path.posix.join(repoPath, ".gemini");
-  const settingsPath = path.posix.join(geminiDir, "settings.json");
-  const existingFiles = await readRemoteHookInstallInputs(sshHost, [settingsPath]);
-
-  await writeRemoteTextFiles(
-    [
-      ...buildRemoteGeminiHookFiles(repoPath, taskId, hookServerUrl, existingFiles.get(settingsPath)?.content ?? ""),
-    ],
-    sshHost,
-  );
-}
-
-async function setupRemoteCodexHooks(repoPath: string, taskId: string, hookServerUrl: string, sshHost: string) {
-  const codexDir = path.posix.join(repoPath, ".codex");
-  const configPath = path.posix.join(codexDir, CONFIG_FILE_NAME);
-  const hooksPath = path.posix.join(codexDir, HOOKS_FILE_NAME);
-  const existingFiles = await readRemoteHookInstallInputs(sshHost, [configPath, hooksPath]);
-
-  await writeRemoteTextFiles(
-    [
-      ...buildRemoteCodexHookFiles(
-        repoPath,
         taskId,
-        hookServerUrl,
-        existingFiles.get(configPath)?.content ?? "",
-        existingFiles.get(hooksPath)?.content ?? "",
-      ),
-    ],
-    sshHost,
-  );
-}
-
-async function setupRemoteOpenCodeHooks(repoPath: string, taskId: string, hookServerUrl: string, sshHost: string) {
-  await writeRemoteTextFiles(buildRemoteOpenCodeHookFiles(repoPath, taskId, hookServerUrl), sshHost);
-}
-
-async function setupRemoteKanvibeHooks(repoPath: string, taskId: string, hookServerUrl: string, sshHost: string) {
-  const claudeSettingsPath = path.posix.join(repoPath, ".claude", "settings.json");
-  const geminiSettingsPath = path.posix.join(repoPath, ".gemini", "settings.json");
-  const codexConfigPath = path.posix.join(repoPath, ".codex", CONFIG_FILE_NAME);
-  const codexHooksPath = path.posix.join(repoPath, ".codex", HOOKS_FILE_NAME);
-  const existingFiles = await readRemoteHookInstallInputs(
-    sshHost,
-    [claudeSettingsPath, geminiSettingsPath, codexConfigPath, codexHooksPath],
-  );
-  const plans = [
-    {
-      label: "Claude",
-      files: buildRemoteClaudeHookFiles(repoPath, taskId, hookServerUrl, existingFiles.get(claudeSettingsPath)?.content ?? ""),
-    },
-    {
-      label: "Gemini",
-      files: buildRemoteGeminiHookFiles(repoPath, taskId, hookServerUrl, existingFiles.get(geminiSettingsPath)?.content ?? ""),
-    },
-    {
-      label: "Codex",
-      files: buildRemoteCodexHookFiles(
-        repoPath,
-        taskId,
-        hookServerUrl,
-        existingFiles.get(codexConfigPath)?.content ?? "",
-        existingFiles.get(codexHooksPath)?.content ?? "",
-      ),
-    },
-    {
-      label: "OpenCode",
-      files: buildRemoteOpenCodeHookFiles(repoPath, taskId, hookServerUrl),
-    },
-  ];
-
-  const results = await Promise.allSettled(plans.map(async ({ label, files }) => {
-    try {
-      await writeRemoteTextFiles(files, sshHost);
-    } catch (error) {
-      console.error(`[hooks] ${label} install failed`, {
-        targetPath: repoPath,
-        taskId,
-        sshHost,
+        sshHost: sshHost ?? null,
         error: error instanceof Error ? error.message : String(error),
       });
       throw error;
     }
-  }));
-  assertHookInstallResults(results, plans.map(({ label }) => label));
+  });
+
+  await writeHookProviderFiles(buildResults.flat(), sshHost);
 }
 
-async function readRemoteHookInstallInputs(
-  sshHost: string,
-  filePaths: string[] = [],
-): Promise<Awaited<ReturnType<typeof readTextFiles>>> {
-  return readTextFiles(filePaths, sshHost);
-}
-
-function buildRemoteClaudeHookFiles(
-  repoPath: string,
+async function installKanvibeHookProviderOnce(
+  providerModule: KanvibeHookProviderModule,
+  targetPath: string,
   taskId: string,
-  hookServerUrl: string,
-  settingsContent: string,
-): RemoteTextFile[] {
-  const claudeDir = path.posix.join(repoPath, ".claude");
-  const hooksDir = path.posix.join(claudeDir, "hooks");
-  const settingsPath = path.posix.join(claudeDir, "settings.json");
-  const settings = parseRemoteJsonObject(settingsContent);
-  const hooks = ((settings.hooks as Record<string, unknown[]>) || {});
-  settings.hooks = hooks;
+  sshHost?: string | null,
+): Promise<void> {
+  const hookServerUrl = await getHookServerUrl(sshHost);
 
-  upsertHookEntry(hooks, "UserPromptSubmit", "kanvibe-prompt-hook.sh", {
-    hooks: [{ type: "command", command: '"$CLAUDE_PROJECT_DIR"/.claude/hooks/kanvibe-prompt-hook.sh', timeout: 10 }],
-  });
-  upsertHookEntry(hooks, "PreToolUse", "kanvibe-question-hook.sh", {
-    matcher: "AskUserQuestion",
-    hooks: [{ type: "command", command: '"$CLAUDE_PROJECT_DIR"/.claude/hooks/kanvibe-question-hook.sh', timeout: 10 }],
-  });
-  upsertHookEntry(hooks, "PostToolUse", "kanvibe-prompt-hook.sh", {
-    matcher: "AskUserQuestion",
-    hooks: [{ type: "command", command: '"$CLAUDE_PROJECT_DIR"/.claude/hooks/kanvibe-prompt-hook.sh', timeout: 10 }],
-  });
-  upsertHookEntry(hooks, "Stop", "kanvibe-stop-hook.sh", {
-    hooks: [{ type: "command", command: '"$CLAUDE_PROJECT_DIR"/.claude/hooks/kanvibe-stop-hook.sh', timeout: 10 }],
-  });
-
-  return [
-    {
-      filePath: path.posix.join(hooksDir, "kanvibe-prompt-hook.sh"),
-      content: generateClaudePromptHookScript(hookServerUrl, taskId),
-      mode: 0o755,
-    },
-    {
-      filePath: path.posix.join(hooksDir, "kanvibe-stop-hook.sh"),
-      content: generateClaudeStopHookScript(hookServerUrl, taskId),
-      mode: 0o755,
-    },
-    {
-      filePath: path.posix.join(hooksDir, "kanvibe-question-hook.sh"),
-      content: generateClaudeQuestionHookScript(hookServerUrl, taskId),
-      mode: 0o755,
-    },
-    {
-      filePath: settingsPath,
-      content: JSON.stringify(settings, null, 2) + "\n",
-    },
-  ];
+  await providerModule.install(targetPath, taskId, hookServerUrl, sshHost);
+  await verifyHookProviderInstallation(providerModule, targetPath, taskId, sshHost);
 }
-
-function buildRemoteGeminiHookFiles(
-  repoPath: string,
-  taskId: string,
-  hookServerUrl: string,
-  settingsContent: string,
-): RemoteTextFile[] {
-  const geminiDir = path.posix.join(repoPath, ".gemini");
-  const hooksDir = path.posix.join(geminiDir, "hooks");
-  const settingsPath = path.posix.join(geminiDir, "settings.json");
-  const settings = parseRemoteJsonObject(settingsContent);
-  const hooks = ((settings.hooks as Record<string, unknown[]>) || {});
-  settings.hooks = hooks;
-
-  upsertHookEntry(hooks, "BeforeAgent", "kanvibe-prompt-hook.sh", {
-    matcher: "*",
-    hooks: [{ type: "command", command: '"$GEMINI_PROJECT_DIR"/.gemini/hooks/kanvibe-prompt-hook.sh', timeout: 10000 }],
-  });
-  upsertHookEntry(hooks, "AfterAgent", "kanvibe-stop-hook.sh", {
-    matcher: "*",
-    hooks: [{ type: "command", command: '"$GEMINI_PROJECT_DIR"/.gemini/hooks/kanvibe-stop-hook.sh', timeout: 10000 }],
-  });
-
-  return [
-    {
-      filePath: path.posix.join(hooksDir, "kanvibe-prompt-hook.sh"),
-      content: generateGeminiPromptHookScript(hookServerUrl, taskId),
-      mode: 0o755,
-    },
-    {
-      filePath: path.posix.join(hooksDir, "kanvibe-stop-hook.sh"),
-      content: generateGeminiStopHookScript(hookServerUrl, taskId),
-      mode: 0o755,
-    },
-    {
-      filePath: settingsPath,
-      content: JSON.stringify(settings, null, 2) + "\n",
-    },
-  ];
-}
-
-function buildRemoteCodexHookFiles(
-  repoPath: string,
-  taskId: string,
-  hookServerUrl: string,
-  configContent: string,
-  hooksContent: string,
-): RemoteTextFile[] {
-  const codexDir = path.posix.join(repoPath, ".codex");
-  const hooksDir = path.posix.join(codexDir, "hooks");
-  const configPath = path.posix.join(codexDir, CONFIG_FILE_NAME);
-  const hooksPath = path.posix.join(codexDir, HOOKS_FILE_NAME);
-
-  return [
-    {
-      filePath: path.posix.join(hooksDir, PROMPT_HOOK_SCRIPT_NAME),
-      content: generateCodexPromptHookScript(hookServerUrl, taskId),
-      mode: 0o755,
-    },
-    {
-      filePath: path.posix.join(hooksDir, PERMISSION_HOOK_SCRIPT_NAME),
-      content: generateCodexPermissionHookScript(hookServerUrl, taskId),
-      mode: 0o755,
-    },
-    {
-      filePath: path.posix.join(hooksDir, PRE_TOOL_HOOK_SCRIPT_NAME),
-      content: generateCodexPreToolHookScript(hookServerUrl, taskId),
-      mode: 0o755,
-    },
-    {
-      filePath: path.posix.join(hooksDir, STOP_HOOK_SCRIPT_NAME),
-      content: generateCodexStopHookScript(hookServerUrl, taskId),
-      mode: 0o755,
-    },
-    {
-      filePath: configPath,
-      content: upsertCodexConfigToml(configContent),
-    },
-    {
-      filePath: hooksPath,
-      content: upsertCodexHooksJson(hooksContent),
-    },
-  ];
-}
-
-function buildRemoteOpenCodeHookFiles(
-  repoPath: string,
-  taskId: string,
-  hookServerUrl: string,
-): RemoteTextFile[] {
-  const pluginDir = path.posix.join(repoPath, ".opencode", PLUGIN_DIR_NAME);
-  return [
-    {
-      filePath: path.posix.join(pluginDir, PLUGIN_FILE_NAME),
-      content: generatePluginScript(hookServerUrl, taskId),
-    },
-  ];
-}
-
-function parseRemoteJsonObject(content: string): Record<string, unknown> {
-  if (!content) {
-    return {};
-  }
-
-  try {
-    return JSON.parse(content) as Record<string, unknown>;
-  } catch {
-    return {};
-  }
-}
-
-interface RemoteTextFile {
-  filePath: string;
-  content: string;
-  mode?: number;
-}
-
-async function writeRemoteTextFiles(files: RemoteTextFile[], sshHost: string): Promise<void> {
-  const command = files.map(({ filePath, content, mode }) => {
-    const encodedContent = Buffer.from(content, "utf-8").toString("base64");
-    const parts = [
-      `mkdir -p ${quoteShellArgument(path.posix.dirname(filePath))}`,
-      `printf '%s' ${quoteShellArgument(encodedContent)} | (base64 -d 2>/dev/null || base64 -D) > ${quoteShellArgument(filePath)}`,
-    ];
-
-    if (mode) {
-      parts.push(`chmod ${mode.toString(8)} ${quoteShellArgument(filePath)}`);
-    }
-
-    return parts.join(" && ");
-  }).join(" && ");
-
-  await execGit(command, sshHost);
-}
-
-function upsertHookEntry(
-  hooks: Record<string, unknown[]>,
-  bucket: string,
-  scriptName: string,
-  entry: Record<string, unknown>,
-) {
-  const currentEntries = Array.isArray(hooks[bucket]) ? hooks[bucket] : [];
-  hooks[bucket] = currentEntries.filter((value) => !JSON.stringify(value).includes(scriptName));
-  hooks[bucket].push(entry);
-}
-
-function assertHookInstallResults(results: PromiseSettledResult<unknown>[], providers: string[]) {
-  const failureIndex = results.findIndex((result) => result.status === "rejected");
-  if (failureIndex === -1) {
-    return;
-  }
-
-  const failure = results[failureIndex] as PromiseRejectedResult;
-  console.error(`[hooks] ${providers[failureIndex]} install failed`, {
-    provider: providers[failureIndex],
-    error: failure.reason instanceof Error ? failure.reason.message : String(failure.reason),
-  });
-  throw failure.reason instanceof Error ? failure.reason : new Error("hooks 설정 실패");
-}
-
-type HookVerificationStatus = ClaudeHooksStatus | GeminiHooksStatus | CodexHooksStatus | OpenCodeHooksStatus;
 
 interface HookVerificationFailure {
   provider: string;
@@ -760,12 +306,12 @@ async function verifyHookInstallation(targetPath: string, taskId: string, sshHos
 }
 
 async function verifyHookProviderInstallation(
-  installer: HookProviderInstaller,
+  providerModule: KanvibeHookProviderModule,
   targetPath: string,
   taskId: string,
   sshHost?: string | null,
 ) {
-  const failure = await logHookProviderVerificationStatus(installer, targetPath, taskId, sshHost);
+  const failure = await logHookProviderVerificationStatus(providerModule, targetPath, taskId, sshHost);
   if (failure) {
     throw new Error(`hooks 검증 실패: ${formatHookVerificationFailures([failure])}`);
   }
@@ -776,23 +322,18 @@ async function logHookVerificationStatuses(
   taskId: string,
   sshHost?: string | null,
 ): Promise<HookVerificationFailure[]> {
-  const verifiers = [
-    { provider: "Claude", verify: getClaudeHooksStatus },
-    { provider: "Gemini", verify: getGeminiHooksStatus },
-    { provider: "Codex", verify: getCodexHooksStatus },
-    { provider: "OpenCode", verify: getOpenCodeHooksStatus },
-  ] as const;
-
-  const results = await Promise.allSettled(verifiers.map(({ verify }) => verify(targetPath, taskId, sshHost)));
+  const providerModules = getKanvibeHookProviderModules();
+  const results = await Promise.allSettled(
+    providerModules.map((providerModule) => providerModule.getStatus(targetPath, taskId, sshHost)),
+  );
   const failures: HookVerificationFailure[] = [];
 
   for (const [index, result] of results.entries()) {
-    const provider = verifiers[index].provider;
+    const provider = providerModules[index].label;
     if (result.status === "fulfilled") {
-      const failedChecks = logHookVerificationStatus(provider, result.value, targetPath, taskId, sshHost);
-      const fatalFailedChecks = getFatalHookVerificationFailedChecks(provider, result.value, failedChecks);
-      if (shouldFailHookVerification(result.value, failedChecks, fatalFailedChecks)) {
-        failures.push({ provider, failedChecks: fatalFailedChecks });
+      const failure = evaluateHookVerificationStatus(provider, result.value, targetPath, taskId, sshHost);
+      if (failure) {
+        failures.push(failure);
       }
       continue;
     }
@@ -811,33 +352,44 @@ async function logHookVerificationStatuses(
 }
 
 async function logHookProviderVerificationStatus(
-  installer: HookProviderInstaller,
+  providerModule: KanvibeHookProviderModule,
   targetPath: string,
   taskId: string,
   sshHost?: string | null,
 ): Promise<HookVerificationFailure | null> {
   try {
-    const status = await installer.verify();
-    const failedChecks = logHookVerificationStatus(installer.label, status, targetPath, taskId, sshHost);
-    const fatalFailedChecks = getFatalHookVerificationFailedChecks(installer.label, status, failedChecks);
-    return shouldFailHookVerification(status, failedChecks, fatalFailedChecks)
-      ? { provider: installer.label, failedChecks: fatalFailedChecks }
-      : null;
+    const status = await providerModule.getStatus(targetPath, taskId, sshHost);
+    return evaluateHookVerificationStatus(providerModule.label, status, targetPath, taskId, sshHost);
   } catch (error) {
-    console.warn(`[hooks] ${installer.label} verification unavailable`, {
-      provider: installer.label,
+    console.warn(`[hooks] ${providerModule.label} verification unavailable`, {
+      provider: providerModule.label,
       targetPath,
       taskId,
       sshHost: sshHost ?? null,
       error: error instanceof Error ? error.message : String(error),
     });
-    return { provider: installer.label, error };
+    return { provider: providerModule.label, error };
   }
+}
+
+function evaluateHookVerificationStatus(
+  provider: string,
+  status: KanvibeHookStatus,
+  targetPath: string,
+  taskId: string,
+  sshHost?: string | null,
+): HookVerificationFailure | null {
+  const failedChecks = logHookVerificationStatus(provider, status, targetPath, taskId, sshHost);
+  const fatalFailedChecks = getFatalHookVerificationFailedChecks(provider, status, failedChecks);
+
+  return shouldFailHookVerification(status, failedChecks, fatalFailedChecks)
+    ? { provider, failedChecks: fatalFailedChecks }
+    : null;
 }
 
 function logHookVerificationStatus(
   provider: string,
-  status: HookVerificationStatus,
+  status: KanvibeHookStatus,
   targetPath: string,
   taskId: string,
   sshHost?: string | null,
@@ -851,6 +403,7 @@ function logHookVerificationStatus(
     installed: status.installed,
     failedChecks,
     boundTaskId: status.boundTaskId ?? null,
+    registeredHookTargetUrl: status.registeredHookTargetUrl ?? null,
     configuredHookServerUrl: status.configuredHookServerUrl ?? null,
     expectedHookServerUrl: status.expectedHookServerUrl ?? null,
     registeredPluginUrls: "registeredPluginUrls" in status && Array.isArray(status.registeredPluginUrls)
@@ -867,7 +420,7 @@ function logHookVerificationStatus(
   return failedChecks;
 }
 
-function getHookVerificationFailedChecks(status: HookVerificationStatus): string[] {
+function getHookVerificationFailedChecks(status: KanvibeHookStatus): string[] {
   return Object.entries(status)
     .filter(([key, value]) => key.startsWith("has") && value === false)
     .filter(([key]) => !NON_BLOCKING_HOOK_STATUS_CHECKS.has(key))
@@ -876,7 +429,7 @@ function getHookVerificationFailedChecks(status: HookVerificationStatus): string
 
 function getFatalHookVerificationFailedChecks(
   provider: string,
-  status: HookVerificationStatus,
+  status: KanvibeHookStatus,
   failedChecks: string[],
 ): string[] {
   if (status.installed || provider !== "OpenCode") {
@@ -887,7 +440,7 @@ function getFatalHookVerificationFailedChecks(
 }
 
 function shouldFailHookVerification(
-  status: HookVerificationStatus,
+  status: KanvibeHookStatus,
   failedChecks: string[],
   fatalFailedChecks: string[],
 ): boolean {
