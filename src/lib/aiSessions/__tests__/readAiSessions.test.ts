@@ -711,7 +711,10 @@ conn.close()
   });
 
   it("treats OpenCode body search wildcard characters as literal text", async () => {
-    const worktreePath = path.join(tempHome, "repo", "task");
+    // 세션 필터는 directory 값에도 부분 문자열 매칭을 하므로, OS 임시 경로에 우연히 `_`나 `%`가
+    // 들어 있으면 모든 행이 걸려 검증이 무의미해진다. macOS의 /var/folders/... 경로가 실제로
+    // 그렇기 때문에 이 테스트만 와일드카드 문자가 없는 고정 경로를 쓴다.
+    const worktreePath = "/kanvibe-opencode-fixture/repo/task";
     const rows = [
       {
         id: "literal-percent",
