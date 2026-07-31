@@ -96,12 +96,28 @@ describe("kanvibeProjectColorService", () => {
     await expect(syncProjectColorWithKanvibeState(project)).resolves.toBe(false);
   });
 
-  it("공유 색상이 반영되거나 이미 같으면 공유 파일을 다시 쓰지 않는다", async () => {
+  it("이미 같은 색상이 기록된 경로는 다시 쓰지 않는다", async () => {
     mocks.readKanvibeProjectColor.mockResolvedValue("#65D08A");
 
     await expect(syncProjectColorWithKanvibeState(createProject())).resolves.toBe(false);
 
     expect(mocks.writeKanvibeProjectColor).not.toHaveBeenCalled();
+  });
+
+  it("색상 확정 이후 생긴 worktree에도 공유 색상을 뒤늦게 기록한다", async () => {
+    mocks.taskRepo.findBy.mockResolvedValue([
+      { worktreePath: "/workspace/kanvibe__worktrees/feature" },
+    ]);
+    /** 프로젝트 루트에는 색상이 있지만 나중에 생긴 worktree에는 아직 없다 */
+    mocks.readKanvibeProjectColor.mockImplementation(async (repoPath: string) =>
+      repoPath === "/workspace/kanvibe" ? "#65D08A" : null,
+    );
+
+    await expect(syncProjectColorWithKanvibeState(createProject())).resolves.toBe(false);
+
+    expect(mocks.writeKanvibeProjectColor.mock.calls).toEqual([
+      ["/workspace/kanvibe__worktrees/feature", "#65D08A", null],
+    ]);
   });
 
   it("공유 색상이 없으면 기존 색상을 유지한 채 씨앗으로 기록한다", async () => {

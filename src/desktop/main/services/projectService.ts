@@ -606,9 +606,7 @@ async function syncSharedProjectColor(project: Project): Promise<boolean> {
     return false;
   }
 
-  const projectRepo = await getProjectRepository();
-  await projectRepo.save(project);
-  return true;
+  return await updateExistingProject(project.id, { color: project.color });
 }
 
 /**
@@ -627,10 +625,27 @@ async function syncMissingProjectIcon(project: Project): Promise<boolean> {
     return false;
   }
 
+  if (!await updateExistingProject(project.id, { iconDataUrl })) {
+    return false;
+  }
+
   project.iconDataUrl = iconDataUrl;
-  const projectRepo = await getProjectRepository();
-  await projectRepo.save(project);
   return true;
+}
+
+/**
+ * 이미 존재하는 프로젝트 행에만 변경분을 반영한다.
+ * sync/backfill은 오래 걸리는 git·GitHub 요청을 기다리는 동안 프로젝트가 삭제될 수 있는데,
+ * `save`는 사라진 행을 원래 id 그대로 다시 insert해 task 없는 프로젝트를 되살리므로 조건부 update를 쓴다.
+ * @returns 실제로 갱신된 행이 있어 보드를 갱신해야 하면 true
+ */
+async function updateExistingProject(
+  projectId: string,
+  changes: Partial<Pick<Project, "color" | "iconDataUrl">>,
+): Promise<boolean> {
+  const projectRepo = await getProjectRepository();
+  const { affected } = await projectRepo.update({ id: projectId }, changes);
+  return affected !== 0;
 }
 
 /**

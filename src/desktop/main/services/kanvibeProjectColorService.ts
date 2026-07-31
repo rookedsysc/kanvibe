@@ -24,6 +24,11 @@ export async function persistProjectColorToKanvibeState(project: ColorSyncProjec
 
   await Promise.all(
     (await resolveProjectColorRepoPaths(project)).map(async (repoPath) => {
+      /** 이미 같은 색상이 기록된 경로는 건너뛰어 sync 주기마다 파일이 다시 쓰이지 않게 한다 */
+      if (await readSharedProjectColor(repoPath, project.sshHost) === projectColor) {
+        return;
+      }
+
       try {
         await writeKanvibeProjectColor(repoPath, projectColor, project.sshHost);
       } catch (error) {
@@ -73,21 +78,18 @@ export async function readSharedProjectColor(
  * 프로젝트 색상을 `.kanvibe/project.json`과 양방향으로 맞춘다.
  * 공유 색상이 있으면 그 값을 프로젝트에 반영하고, 공유 파일이 아직 없으면 현재 색상을 씨앗으로 기록한다.
  * 씨앗 기록이 없으면 이 기능 이전에 등록된 프로젝트끼리는 서로 다른 DB 색상을 계속 유지하게 된다.
+ * 색상이 이미 확정된 뒤에 생긴 worktree도 sync를 거치면 같은 색상 파일을 갖게 된다.
  * @returns 색상이 실제로 바뀌어 DB에 저장해야 하면 true
  */
 export async function syncProjectColorWithKanvibeState(project: Project): Promise<boolean> {
   const sharedColor = await readSharedProjectColor(project.repoPath, project.sshHost);
-  if (!sharedColor) {
-    await persistProjectColorToKanvibeState(project);
-    return false;
+  const hasAdoptedSharedColor = Boolean(sharedColor) && sharedColor !== project.color;
+  if (hasAdoptedSharedColor) {
+    project.color = sharedColor;
   }
 
-  if (sharedColor === project.color) {
-    return false;
-  }
-
-  project.color = sharedColor;
-  return true;
+  await persistProjectColorToKanvibeState(project);
+  return hasAdoptedSharedColor;
 }
 
 /** 색상을 기록할 저장소 경로 목록. 프로젝트 루트와 소속 task worktree를 포함한다 */

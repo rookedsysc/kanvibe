@@ -572,10 +572,12 @@ describe("projectService remote registration flow", () => {
     });
 
     const projectSave = vi.fn(async (value) => ({ id: "project-1", ...value }));
+    const projectUpdate = vi.fn(async () => ({ affected: 1 }));
     mocks.getProjectRepository.mockResolvedValue({
       find: vi.fn().mockResolvedValue([]),
       create: vi.fn((value) => value),
       save: projectSave,
+      update: projectUpdate,
       remove: vi.fn(),
     });
     mocks.getTaskRepository.mockResolvedValue({
@@ -599,9 +601,50 @@ describe("projectService remote registration flow", () => {
       releaseIconGate?.();
       await new Promise((resolve) => setTimeout(resolve, 0));
 
-      expect(projectSave).toHaveBeenLastCalledWith(expect.objectContaining({
-        iconDataUrl: "data:image/png;base64,icon",
-      }));
+      /** 아이콘은 이미 존재하는 행에만 반영해 조회 중 삭제된 프로젝트가 되살아나지 않게 한다 */
+      expect(projectSave).toHaveBeenCalledTimes(1);
+      expect(projectUpdate).toHaveBeenCalledWith(
+        { id: "project-1" },
+        { iconDataUrl: "data:image/png;base64,icon" },
+      );
+    } finally {
+      mocks.resolveProjectIconDataUrl.mockImplementation(async () => null);
+    }
+  });
+
+  it("아이콘 조회 도중 프로젝트가 삭제되면 아이콘을 다시 저장하지 않는다", async () => {
+    // Given
+    mocks.validateGitRepo.mockResolvedValue(true);
+    mocks.getDefaultBranch.mockResolvedValue("main");
+    mocks.createSessionWithoutWorktree.mockResolvedValue({ sessionName: "api-main" });
+    mocks.resolveProjectIconDataUrl.mockImplementation(async () => "data:image/png;base64,icon");
+
+    /** 삭제된 프로젝트라 조건부 update가 어떤 행도 건드리지 못한 상황 */
+    const projectUpdate = vi.fn(async () => ({ affected: 0 }));
+    mocks.getProjectRepository.mockResolvedValue({
+      find: vi.fn().mockResolvedValue([]),
+      create: vi.fn((value) => value),
+      save: vi.fn(async (value) => ({ id: "project-1", ...value })),
+      update: projectUpdate,
+      remove: vi.fn(),
+    });
+    mocks.getTaskRepository.mockResolvedValue({
+      findOneBy: vi.fn().mockResolvedValue(null),
+      create: vi.fn((value) => value),
+      save: vi.fn(async (value) => ({ id: "task-1", ...value })),
+    });
+
+    try {
+      const { registerProject } = await import("@/desktop/main/services/projectService");
+
+      // When
+      await registerProject("api", "/workspace/api");
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      // Then
+      expect(projectUpdate).toHaveBeenCalledTimes(1);
+      /** 등록 직후 1회만 갱신되고, 반영되지 못한 아이콘으로 보드를 다시 갱신하지 않는다 */
+      expect(mocks.broadcastBoardUpdate).toHaveBeenCalledTimes(1);
     } finally {
       mocks.resolveProjectIconDataUrl.mockImplementation(async () => null);
     }
@@ -2214,8 +2257,8 @@ describe("projectService local hook installation", () => {
       return `data:image/png;base64,${repoPath}`;
     });
 
-    const projectSave = vi.fn(async (value) => value);
-    mocks.getProjectRepository.mockResolvedValue({ save: projectSave });
+    const projectUpdate = vi.fn(async () => ({ affected: 1 }));
+    mocks.getProjectRepository.mockResolvedValue({ save: vi.fn(async (value) => value), update: projectUpdate });
     mocks.getTaskRepository.mockResolvedValue({
       findOneBy: vi.fn(async (criteria: { branchName?: string; projectId?: string | null }) => ({
         id: `task-${criteria.projectId}`,
@@ -2252,7 +2295,11 @@ describe("projectService local hook installation", () => {
 
       expect(result.changed).toBe(true);
       expect(projects[2].iconDataUrl).toBe("data:image/png;base64,kept");
-      expect(projectSave).toHaveBeenCalledTimes(2);
+      /** 아이콘은 이미 존재하는 행에만 조건부로 반영한다 */
+      expect(projectUpdate.mock.calls).toEqual([
+        [{ id: "project-a" }, { iconDataUrl: "data:image/png;base64,/workspace/api-a" }],
+        [{ id: "project-b" }, { iconDataUrl: "data:image/png;base64,/workspace/api-b" }],
+      ]);
     } finally {
       mocks.resolveProjectIconDataUrl.mockImplementation(async () => null);
     }
