@@ -23,23 +23,27 @@ export async function persistProjectColorToKanvibeState(project: ColorSyncProjec
   await excludeKanvibeStateDirectory(project);
 
   await Promise.all(
-    (await resolveProjectColorRepoPaths(project)).map(async (repoPath) => {
-      /** 이미 같은 색상이 기록된 경로는 건너뛰어 sync 주기마다 파일이 다시 쓰이지 않게 한다 */
-      if (await readSharedProjectColor(repoPath, project.sshHost) === projectColor) {
-        return;
-      }
-
-      try {
-        await writeKanvibeProjectColor(repoPath, projectColor, project.sshHost);
-      } catch (error) {
-        console.warn("[project-color] .kanvibe 색상 기록 실패", {
-          repoPath,
-          sshHost: project.sshHost ?? null,
-          error: getErrorMessage(error),
-        });
-      }
-    }),
+    (await resolveProjectColorRepoPaths(project)).map(
+      (repoPath) => writeProjectColorQuietly(repoPath, projectColor, project.sshHost),
+    ),
   );
+}
+
+/** 한 경로의 색상 기록 실패가 나머지 경로 기록을 막지 않도록 경고만 남긴다 */
+async function writeProjectColorQuietly(
+  repoPath: string,
+  projectColor: string,
+  sshHost?: string | null,
+): Promise<void> {
+  try {
+    await writeKanvibeProjectColor(repoPath, projectColor, sshHost);
+  } catch (error) {
+    console.warn("[project-color] .kanvibe 색상 기록 실패", {
+      repoPath,
+      sshHost: sshHost ?? null,
+      error: getErrorMessage(error),
+    });
+  }
 }
 
 async function excludeKanvibeStateDirectory(project: ColorSyncProject): Promise<void> {
@@ -83,13 +87,52 @@ export async function readSharedProjectColor(
  */
 export async function syncProjectColorWithKanvibeState(project: Project): Promise<boolean> {
   const sharedColor = await readSharedProjectColor(project.repoPath, project.sshHost);
-  const hasAdoptedSharedColor = Boolean(sharedColor) && sharedColor !== project.color;
-  if (hasAdoptedSharedColor) {
-    project.color = sharedColor;
+  if (!sharedColor) {
+    await persistProjectColorToKanvibeState(project);
+    return false;
   }
 
-  await persistProjectColorToKanvibeState(project);
-  return hasAdoptedSharedColor;
+  await propagateSharedProjectColorToWorktrees(project, sharedColor);
+
+  if (sharedColor === project.color) {
+    return false;
+  }
+
+  project.color = sharedColor;
+  return true;
+}
+
+/**
+ * 프로젝트 루트에 기록된 공유 색상을 소속 worktree들에 퍼뜨린다.
+ * 색상이 확정된 뒤에 생긴 worktree는 공유 파일을 받지 못한 채 남아, 그 경로를 직접 등록한
+ * 다른 client가 다른 색상을 계산하게 된다.
+ *
+ * 기록하는 값은 방금 루트에서 읽은 색상이다. 메모리의 프로젝트 색상은 sync가 시작될 때 읽은
+ * 값이라 그 사이 사용자가 색을 바꿨으면 이미 낡았고, 그 낡은 값을 퍼뜨리면 방금 고른 색이 밀린다.
+ * 루트 파일은 사용자 편집과 씨앗 기록만 쓰는 권위 경로이므로 여기서는 건드리지 않는다.
+ */
+async function propagateSharedProjectColorToWorktrees(
+  project: ColorSyncProject,
+  sharedColor: string,
+): Promise<void> {
+  const worktreePaths = (await resolveProjectColorRepoPaths(project))
+    .filter((repoPath) => repoPath !== project.repoPath);
+
+  const outdatedPaths = (await Promise.all(
+    worktreePaths.map(async (repoPath) => (
+      await readSharedProjectColor(repoPath, project.sshHost) === sharedColor ? null : repoPath
+    )),
+  )).filter((repoPath): repoPath is string => repoPath !== null);
+
+  /** 이미 같은 색상인 경로만 남으면 sync 주기마다 파일을 다시 쓰지 않는다 */
+  if (outdatedPaths.length === 0) {
+    return;
+  }
+
+  await excludeKanvibeStateDirectory(project);
+  await Promise.all(
+    outdatedPaths.map((repoPath) => writeProjectColorQuietly(repoPath, sharedColor, project.sshHost)),
+  );
 }
 
 /** 색상을 기록할 저장소 경로 목록. 프로젝트 루트와 소속 task worktree를 포함한다 */

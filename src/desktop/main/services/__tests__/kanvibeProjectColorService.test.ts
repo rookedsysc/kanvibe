@@ -97,11 +97,15 @@ describe("kanvibeProjectColorService", () => {
   });
 
   it("이미 같은 색상이 기록된 경로는 다시 쓰지 않는다", async () => {
+    mocks.taskRepo.findBy.mockResolvedValue([
+      { worktreePath: "/workspace/kanvibe__worktrees/feature" },
+    ]);
     mocks.readKanvibeProjectColor.mockResolvedValue("#65D08A");
 
     await expect(syncProjectColorWithKanvibeState(createProject())).resolves.toBe(false);
 
     expect(mocks.writeKanvibeProjectColor).not.toHaveBeenCalled();
+    expect(mocks.addAiToolPatternsToGitExclude).not.toHaveBeenCalled();
   });
 
   it("색상 확정 이후 생긴 worktree에도 공유 색상을 뒤늦게 기록한다", async () => {
@@ -117,6 +121,38 @@ describe("kanvibeProjectColorService", () => {
 
     expect(mocks.writeKanvibeProjectColor.mock.calls).toEqual([
       ["/workspace/kanvibe__worktrees/feature", "#65D08A", null],
+    ]);
+  });
+
+  it("sync 중 사용자가 색을 바꾸면 낡은 색이 아니라 루트의 새 색상을 퍼뜨린다", async () => {
+    mocks.taskRepo.findBy.mockResolvedValue([
+      { worktreePath: "/workspace/kanvibe__worktrees/feature" },
+    ]);
+    /** sync가 시작된 뒤 사용자가 #0064FF로 바꿔 루트와 worktree에 이미 기록된 상태 */
+    mocks.readKanvibeProjectColor.mockResolvedValue("#0064FF");
+    /** 메모리의 project.color는 sync 시작 시점의 낡은 값 */
+    const project = createProject({ color: "#65D08A" });
+
+    await expect(syncProjectColorWithKanvibeState(project)).resolves.toBe(true);
+
+    expect(mocks.writeKanvibeProjectColor).not.toHaveBeenCalled();
+    expect(project.color).toBe("#0064FF");
+  });
+
+  it("프로젝트 루트 색상 파일은 sync 전파 대상에서 제외한다", async () => {
+    mocks.taskRepo.findBy.mockResolvedValue([
+      { worktreePath: "/workspace/kanvibe" },
+      { worktreePath: "/workspace/kanvibe__worktrees/feature" },
+    ]);
+    /** 루트는 새 색상, worktree는 아직 옛 색상인 전파 직전 상태 */
+    mocks.readKanvibeProjectColor.mockImplementation(async (repoPath: string) =>
+      repoPath === "/workspace/kanvibe" ? "#0064FF" : "#65D08A",
+    );
+
+    await syncProjectColorWithKanvibeState(createProject({ color: "#0064FF" }));
+
+    expect(mocks.writeKanvibeProjectColor.mock.calls).toEqual([
+      ["/workspace/kanvibe__worktrees/feature", "#0064FF", null],
     ]);
   });
 
