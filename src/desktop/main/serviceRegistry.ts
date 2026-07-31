@@ -1,4 +1,5 @@
 import * as appSettings from "@/desktop/main/services/appSettingsService";
+import { runBackgroundTaskSyncNow } from "@/desktop/main/services/backgroundTaskSyncService";
 import * as diff from "@/desktop/main/services/diffService";
 import * as githubCliDependency from "@/desktop/main/services/githubCliDependencyService";
 import * as hooks from "@/desktop/main/services/hookService";
@@ -8,8 +9,11 @@ import * as project from "@/desktop/main/services/projectService";
 import * as releaseUpdates from "@/desktop/main/services/releaseUpdateService";
 import * as sessionDependency from "@/desktop/main/services/sessionDependencyService";
 
+const backgroundTaskSync = { runBackgroundTaskSyncNow };
+
 export const desktopServices = {
   appSettings,
+  backgroundTaskSync,
   diff,
   githubCliDependency,
   hooks,

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { mapWithConcurrency, normalizeText, sortMessagesDescending } from "@/lib/aiSessions/shared";
+import { extractPlainText, makePreviewMessage, mapWithConcurrency, normalizeText, sortMessagesDescending } from "@/lib/aiSessions/shared";
 
 describe("sortMessagesDescending", () => {
   it("should sort session detail messages from newest to oldest", () => {
@@ -18,6 +18,35 @@ describe("normalizeText", () => {
     const result = normalizeText(`Fix hook state\n[Pasted ~33 lines]\n[remote-ssh] command failed {\nsshHost: 'roky-home'\nerror: 'server exited unexpectedly'\n    at createSessionWithoutWorktree (/tmp/worktree.js:1:1)\nmain branch tmux session failed`);
 
     expect(result).toBe("Fix hook state main branch tmux session failed");
+  });
+});
+
+describe("AI session message text", () => {
+  it("should preserve markdown and mermaid line breaks for detail rendering while keeping a flat preview", () => {
+    const source = {
+      text: `## Markdown summary
+
+- **Strong** list item
+- Safe [link](https://example.com)
+
+\`\`\`ts
+const rendered = true;
+\`\`\`
+
+\`\`\`mermaid
+graph TD
+  A[AI history loaded] --> B[Markdown rendered]
+  B --> C[Mermaid SVG rendered]
+\`\`\``,
+    };
+
+    const fullText = extractPlainText(source);
+    const previewMessage = makePreviewMessage("assistant", "2026-01-01T00:00:00.000Z", fullText);
+
+    expect(fullText).toContain("## Markdown summary\n");
+    expect(fullText).toContain("```mermaid\ngraph TD");
+    expect(previewMessage?.text).toContain("## Markdown summary - **Strong** list item");
+    expect(previewMessage?.fullText).toBe(fullText);
   });
 });
 

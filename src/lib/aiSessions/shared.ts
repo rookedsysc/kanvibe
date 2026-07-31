@@ -78,23 +78,32 @@ export function limitPreviewMessages(messages: AggregatedAiMessage[]): Aggregate
   return messages.slice(0, MAX_PREVIEW_MESSAGES);
 }
 
-export function normalizeText(value: string): string {
-  const sanitized = value
-    .replace(/\[Pasted ~\d+ lines\]/g, " ")
-    .split(/\r?\n/)
-    .filter((line) => {
-      const trimmed = line.trim();
-      if (!trimmed) return false;
+function isTransportNoiseLine(trimmedLine: string): boolean {
+  return [
+    /^\[(?:remote-ssh|터미널|terminal)\]/,
+    /^sshHost:/,
+    /^command:/,
+    /^sshArgs:/,
+    /^error:/,
+    /^at\s+.*:\d+:\d+\)?$/,
+  ].some((pattern) => pattern.test(trimmedLine));
+}
 
-      return ![
-        /^\[(?:remote-ssh|터미널|terminal)\]/,
-        /^sshHost:/,
-        /^command:/,
-        /^sshArgs:/,
-        /^error:/,
-        /^at\s+.*:\d+:\d+\)?$/,
-      ].some((pattern) => pattern.test(trimmed));
-    })
+export function preserveMessageText(value: string): string {
+  return value
+    .replace(/\[Pasted ~\d+ lines\]/g, "\n")
+    .split(/\r?\n/)
+    .filter((line) => !isTransportNoiseLine(line.trim()))
+    .join("\n")
+    .replace(/[ \t]+$/gm, "")
+    .trim();
+}
+
+export function normalizeText(value: string): string {
+  const sanitized = preserveMessageText(value)
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
     .join(" ");
 
   return sanitized.replace(/\s+/g, " ").trim();
@@ -111,13 +120,13 @@ function createTruncatedText(value: string, maxLength = MAX_PREVIEW_TEXT_LENGTH)
   previewText: string;
   isTruncated: boolean;
 } {
-  const fullText = normalizeText(value);
+  const fullText = preserveMessageText(value);
   const previewText = truncateText(fullText, maxLength);
 
   return {
     fullText,
     previewText,
-    isTruncated: previewText.length < fullText.length,
+    isTruncated: previewText.length < normalizeText(fullText).length,
   };
 }
 
@@ -220,11 +229,11 @@ export function safeJsonParse<T>(value: string): T | null {
 
 export function extractPlainText(value: unknown): string {
   if (typeof value === "string") {
-    return normalizeText(value);
+    return preserveMessageText(value);
   }
 
   if (Array.isArray(value)) {
-    return normalizeText(value.map(extractPlainText).filter(Boolean).join(" "));
+    return preserveMessageText(value.map(extractPlainText).filter(Boolean).join("\n"));
   }
 
   if (!value || typeof value !== "object") {
@@ -236,7 +245,7 @@ export function extractPlainText(value: unknown): string {
   const directKeys = ["text", "input_text", "output_text", "display", "description", "subject", "output", "result"];
   for (const key of directKeys) {
     if (typeof record[key] === "string") {
-      return normalizeText(record[key] as string);
+      return preserveMessageText(record[key] as string);
     }
   }
 
@@ -251,7 +260,7 @@ export function extractPlainText(value: unknown): string {
   }
 
   if (record.title && typeof record.title === "string") {
-    return normalizeText(record.title);
+    return preserveMessageText(record.title);
   }
 
   return "";
