@@ -4,6 +4,7 @@ import { createEvent, fireEvent, render, screen, waitFor } from "@testing-librar
 import { MemoryRouter } from "react-router-dom";
 import Board from "../Board";
 import { deleteTask, moveTaskToColumn, reorderTasks } from "@/desktop/renderer/actions/kanban";
+import { runBackgroundTaskSyncNow } from "@/desktop/renderer/actions/backgroundTaskSync";
 import { SessionType, TaskStatus, type KanbanTask } from "@/entities/KanbanTask";
 import type { Project } from "@/entities/Project";
 import type { TasksByStatus } from "@/desktop/renderer/actions/kanban";
@@ -60,6 +61,10 @@ vi.mock("@/desktop/renderer/actions/kanban", () => ({
   deleteTask: vi.fn(),
   getMoreDoneTasks: vi.fn().mockResolvedValue({ tasks: [], doneTotal: 0 }),
   moveTaskToColumn: vi.fn(),
+}));
+
+vi.mock("@/desktop/renderer/actions/backgroundTaskSync", () => ({
+  runBackgroundTaskSyncNow: vi.fn().mockResolvedValue({ reviewNeeded: false, boardUpdated: false }),
 }));
 
 vi.mock("@/desktop/renderer/hooks/useAutoRefresh", () => ({
@@ -1004,6 +1009,68 @@ describe("Board defaultSessionType sync", () => {
 
     await waitFor(() => {
       expect(moveTaskToColumn).toHaveBeenCalledWith("task-1", TaskStatus.REVIEW, ["task-1"]);
+    });
+  });
+
+  it(":sync 명령으로 background task sync를 백그라운드 실행한다", async () => {
+    render(
+      <Board
+        initialTasks={createEmptyTasks()}
+        initialDoneTotal={0}
+        initialDoneLimit={20}
+        sshHosts={[]}
+        projects={[createProject()]}
+        sidebarDefaultCollapsed={false}
+        doneAlertDismissed={false}
+        notificationSettings={{ isEnabled: true, enabledStatuses: ["progress", "pending", "review"] }}
+        defaultSessionType={SessionType.TMUX}
+        taskSearchShortcut="Mod+Shift+O"
+      />,
+    );
+
+    const openCommandEvent = createEvent.keyDown(window, { key: ":" });
+    fireEvent(window, openCommandEvent);
+
+    expect(openCommandEvent.defaultPrevented).toBe(true);
+
+    const commandInput = await screen.findByRole("textbox", { name: "vimCommand.label" });
+    fireEvent.change(commandInput, { target: { value: "sync" } });
+    fireEvent.keyDown(commandInput, { key: "Enter" });
+
+    expect(runBackgroundTaskSyncNow).toHaveBeenCalledTimes(1);
+    expect(moveTaskToColumn).not.toHaveBeenCalled();
+    await waitFor(() => {
+      expect(screen.queryByRole("textbox", { name: "vimCommand.label" })).toBeNull();
+    });
+  });
+
+  it(":sync 명령은 Tab 자동 완성으로 입력할 수 있다", async () => {
+    render(
+      <Board
+        initialTasks={createEmptyTasks()}
+        initialDoneTotal={0}
+        initialDoneLimit={20}
+        sshHosts={[]}
+        projects={[createProject()]}
+        sidebarDefaultCollapsed={false}
+        doneAlertDismissed={false}
+        notificationSettings={{ isEnabled: true, enabledStatuses: ["progress", "pending", "review"] }}
+        defaultSessionType={SessionType.TMUX}
+        taskSearchShortcut="Mod+Shift+O"
+      />,
+    );
+
+    fireEvent.keyDown(window, { key: ":" });
+
+    const commandInput = await screen.findByRole("textbox", { name: "vimCommand.label" });
+    fireEvent.change(commandInput, { target: { value: "s" } });
+
+    const autocompleteEvent = createEvent.keyDown(commandInput, { key: "Tab" });
+    fireEvent(commandInput, autocompleteEvent);
+
+    expect(autocompleteEvent.defaultPrevented).toBe(true);
+    await waitFor(() => {
+      expect((commandInput as HTMLInputElement).value).toBe("sync");
     });
   });
 
