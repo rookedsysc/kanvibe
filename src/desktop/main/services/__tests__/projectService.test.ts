@@ -555,6 +555,57 @@ describe("projectService remote registration flow", () => {
       error: "이미 등록된 프로젝트입니다.",
     });
   });
+
+  it("프로젝트 등록은 GitHub 아이콘 조회를 기다리지 않고 저장을 마친 뒤 백그라운드로 아이콘을 채운다", async () => {
+    // Given
+    mocks.validateGitRepo.mockResolvedValue(true);
+    mocks.getDefaultBranch.mockResolvedValue("main");
+    mocks.createSessionWithoutWorktree.mockResolvedValue({ sessionName: "api-main" });
+
+    let releaseIconGate: (() => void) | undefined;
+    const iconGate = new Promise<void>((resolve) => {
+      releaseIconGate = resolve;
+    });
+    mocks.resolveProjectIconDataUrl.mockImplementation(async () => {
+      await iconGate;
+      return "data:image/png;base64,icon";
+    });
+
+    const projectSave = vi.fn(async (value) => ({ id: "project-1", ...value }));
+    mocks.getProjectRepository.mockResolvedValue({
+      find: vi.fn().mockResolvedValue([]),
+      create: vi.fn((value) => value),
+      save: projectSave,
+      remove: vi.fn(),
+    });
+    mocks.getTaskRepository.mockResolvedValue({
+      findOneBy: vi.fn().mockResolvedValue(null),
+      create: vi.fn((value) => value),
+      save: vi.fn(async (value) => ({ id: "task-1", ...value })),
+    });
+
+    try {
+      const { registerProject } = await import("@/desktop/main/services/projectService");
+
+      // When
+      const result = await registerProject("api", "/workspace/api");
+
+      // Then
+      /** 아이콘 조회가 아직 끝나지 않아도 등록과 DB 저장은 완료된다 */
+      expect(result.success).toBe(true);
+      expect(projectSave).toHaveBeenCalledTimes(1);
+      expect(projectSave.mock.calls[0][0].iconDataUrl).toBeUndefined();
+
+      releaseIconGate?.();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(projectSave).toHaveBeenLastCalledWith(expect.objectContaining({
+        iconDataUrl: "data:image/png;base64,icon",
+      }));
+    } finally {
+      mocks.resolveProjectIconDataUrl.mockImplementation(async () => null);
+    }
+  });
 });
 
 describe("projectService local hook installation", () => {

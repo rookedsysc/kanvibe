@@ -503,7 +503,6 @@ export async function registerProject(
     defaultBranch,
     sshHost: sshHost || null,
     color: await resolveProjectColor(normalizedRepoPath, projectName, sshHost || null),
-    iconDataUrl: await resolveProjectIconDataUrl(normalizedRepoPath, sshHost || null),
   });
 
   const saved = await repo.save(project);
@@ -521,6 +520,7 @@ export async function registerProject(
     };
   }
 
+  scheduleProjectIconBackfill(saved);
   broadcastBoardUpdate();
   return { success: true, project: serialize(saved) };
 }
@@ -631,6 +631,25 @@ async function syncMissingProjectIcon(project: Project): Promise<boolean> {
   const projectRepo = await getProjectRepository();
   await projectRepo.save(project);
   return true;
+}
+
+/**
+ * 새로 등록한 프로젝트의 GitHub 아이콘 확보를 백그라운드로 넘긴다.
+ * 아이콘 조회는 GitHub 네트워크 요청이라 느리거나 끊긴 회선에서는 타임아웃까지 대기하게 되므로,
+ * 프로젝트 저장과 등록 응답이 그 시간만큼 막히지 않도록 저장이 끝난 뒤에 따로 실행한다.
+ */
+function scheduleProjectIconBackfill(project: Project): void {
+  void (async () => {
+    try {
+      if (await syncMissingProjectIcon(project)) {
+        broadcastBoardUpdate();
+      }
+    } catch (error) {
+      if (!isRemoteConnectionError(error)) {
+        console.warn(`${project.name} 아이콘 백그라운드 확보 실패:`, error);
+      }
+    }
+  })();
 }
 
 /**
