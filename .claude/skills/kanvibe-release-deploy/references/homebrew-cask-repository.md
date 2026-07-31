@@ -4,7 +4,7 @@ Use this reference whenever the `kanvibe-release-deploy` skill needs to update t
 
 ## Repository Location
 
-- Local checkout: `/home/rookedsysc/Documents/kanvibe/homebrew-kanvibe`
+- Local checkout: `~/Documents/kanvibe/homebrew-kanvibe` (on the release Mac this resolves to `/Users/rookedsysc/Documents/kanvibe/homebrew-kanvibe`; the release build is macOS-only, so do not use a `/home/...` path)
 - GitHub repository: `https://github.com/rookedsysc/homebrew-kanvibe`
 - Default branch: `main`
 - Tap name: `rookedsysc/kanvibe`
@@ -28,7 +28,7 @@ url "https://github.com/rookedsysc/kanvibe/releases/download/#{version}/KanVibe-
 ## Normal Commands
 
 ```bash
-CASK_REPO="/home/rookedsysc/Documents/kanvibe/homebrew-kanvibe"
+CASK_REPO="$HOME/Documents/kanvibe/homebrew-kanvibe"
 CASK_FILE="$CASK_REPO/Casks/kanvibe.rb"
 
 git -C "$CASK_REPO" status --short --branch
@@ -44,4 +44,21 @@ git -C "$CASK_REPO" diff -- Casks/kanvibe.rb
 git -C "$CASK_REPO" add Casks/kanvibe.rb
 git -C "$CASK_REPO" commit -m "Update KanVibe cask to ${VERSION}"
 git -C "$CASK_REPO" push origin main
+```
+
+## Verifying the Cask
+
+`brew fetch --cask "$CASK_FILE"` does not work: Homebrew rejects casks outside a tap with `Homebrew requires casks to be in a tap`. Verify in two stages instead.
+
+Before pushing, prove the checksum against the bytes GitHub actually serves:
+
+```bash
+curl -sL "https://github.com/rookedsysc/kanvibe/releases/download/${VERSION}/KanVibe-${VERSION}.dmg" | shasum -a 256
+```
+
+That value must match the `sha256` in the cask. After pushing, verify through the tap name:
+
+```bash
+brew update
+brew fetch --cask rookedsysc/kanvibe/kanvibe   # expect: ✔︎ Cask kanvibe (<version>)
 ```
