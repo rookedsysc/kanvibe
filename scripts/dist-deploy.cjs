@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 const { execFileSync } = require("node:child_process");
-const { existsSync, readFileSync, readdirSync, statSync } = require("node:fs");
+const { closeSync, existsSync, openSync, readFileSync, readdirSync, readSync, statSync } = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 
@@ -17,6 +17,12 @@ const notarizationEnvironmentKeys = [
   "APPLE_KEYCHAIN",
   "APPLE_KEYCHAIN_PROFILE",
 ];
+
+// electron-builder가 실행 환경에서 패키지 매니저를 추론할 때 참고하는 값들이다.
+const packageManagerHintKeys = ["npm_config_user_agent", "npm_execpath", "npm_lifecycle_event", "npm_lifecycle_script"];
+
+// 앱 기동에 필요하지만 잘못된 수집 경로에서 누락된 적이 있는 전이 의존성이다.
+const requiredPackagedModules = ["ms", "scheduler", "ansi-regex", "decimal.js", "string_decoder", "util-deprecate", "wrappy", "typeorm", "better-sqlite3"];
 
 function stripInlineComment(value) {
   const commentIndex = value.search(/\s#/);
@@ -175,6 +181,83 @@ function createBuildEnvironment() {
   return buildEnvironment;
 }
 
+/**
+ * electron-builder는 락 파일이 여러 개면 패키지 매니저를 판정하지 못하고 실행 환경 변수를 보고
+ * 결정한다. 이 저장소에는 pnpm-lock.yaml과 package-lock.json이 함께 있어, pnpm이 띄운 프로세스에서
+ * 패키징하면 pnpm 수집기가 선택되고 전이 의존성 일부가 asar에서 누락된다. 패키징에만 쓰는 환경에서
+ * 패키지 매니저 힌트를 지워 항상 같은 수집 경로를 타도록 고정한다.
+ *
+ * @param {NodeJS.ProcessEnv} buildEnvironment 빌드용 환경
+ * @returns {NodeJS.ProcessEnv} 패키지 매니저 힌트를 제거한 패키징 전용 환경
+ */
+function createPackagingEnvironment(buildEnvironment) {
+  const packagingEnvironment = { ...buildEnvironment };
+
+  for (const key of packageManagerHintKeys) {
+    delete packagingEnvironment[key];
+  }
+
+  return packagingEnvironment;
+}
+
+/**
+ * 패키징 결과물이 앱 실행에 필요한 의존성을 실제로 담고 있는지 검사한다. 서명·공증이 모두 성공해도
+ * 의존성이 빠진 채로 배포될 수 있어, 발행 전에 여기서 끊는다.
+ *
+ * @param {string} appBundlePath 검사할 앱 번들 경로
+ */
+function ensurePackagedDependencies(appBundlePath) {
+  const asarPath = path.join(appBundlePath, "Contents", "Resources", "app.asar");
+  const packaged = readAsarNodeModuleNames(asarPath);
+  const missing = requiredPackagedModules.filter((name) => !packaged.has(name));
+
+  if (missing.length > 0) {
+    throw new Error(
+      `packaged app.asar is missing required modules: ${missing.join(", ")}. ` +
+        "This usually means electron-builder collected dependencies with the wrong package manager."
+    );
+  }
+
+  console.log(`\n[kanvibe] packaged node_modules verified: ${packaged.size} packages`);
+}
+
+/**
+ * asar 헤더만 읽어 최상위 node_modules 패키지 이름을 모은다.
+ *
+ * @param {string} asarPath 대상 asar 경로
+ * @returns {Set<string>} 패키징된 최상위 패키지 이름 집합
+ */
+function readAsarNodeModuleNames(asarPath) {
+  const descriptor = openSync(asarPath, "r");
+
+  try {
+    const sizeBuffer = Buffer.alloc(16);
+    readSync(descriptor, sizeBuffer, 0, 16, 0);
+
+    const headerSize = sizeBuffer.readUInt32LE(12);
+    const headerBuffer = Buffer.alloc(headerSize);
+    readSync(descriptor, headerBuffer, 0, headerSize, 16);
+
+    const header = JSON.parse(headerBuffer.toString("utf8").replace(/\0+$/, ""));
+    const names = new Set();
+
+    for (const [name, entry] of Object.entries(header.files?.node_modules?.files ?? {})) {
+      if (name.startsWith("@")) {
+        for (const scoped of Object.keys(entry.files ?? {})) {
+          names.add(`${name}/${scoped}`);
+        }
+        continue;
+      }
+
+      names.add(name);
+    }
+
+    return names;
+  } finally {
+    closeSync(descriptor);
+  }
+}
+
 function ensureBuildArtifacts(version) {
   const dmgPath = path.join(projectRoot, "dist", `KanVibe-${version}.dmg`);
   const appBundlePath = findAppBundle(path.join(projectRoot, "dist"));
@@ -222,10 +305,18 @@ function main() {
     const version = getPackageVersion();
     const buildEnvironment = createBuildEnvironment();
 
-    runCommand("pnpm", ["dist"], { env: buildEnvironment });
+    runCommand("pnpm", ["db:prepare"], { env: buildEnvironment });
+    runCommand("pnpm", ["build"], { env: buildEnvironment });
+    runCommand("pnpm", ["rebuild:native:electron"], { env: buildEnvironment });
+
+    // electron-builder는 pnpm이 띄운 프로세스에서 실행하면 전이 의존성을 누락시키므로 직접 호출한다.
+    runCommand(path.join(projectRoot, "node_modules", ".bin", "electron-builder"), ["--mac", "dmg"], {
+      env: createPackagingEnvironment(buildEnvironment),
+    });
 
     const { appBundlePath, dmgPath } = ensureBuildArtifacts(version);
 
+    ensurePackagedDependencies(appBundlePath);
     runCommand("codesign", ["--verify", "--deep", "--strict", "--verbose=2", appBundlePath]);
     submitDmgForNotarization(dmgPath);
     runCommand("xcrun", ["stapler", "staple", dmgPath]);
