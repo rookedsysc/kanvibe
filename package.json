@@ -36,7 +36,9 @@
     "qa:move-autocomplete": "pnpm exec vitest run src/components/__tests__/Board.test.tsx -t \"자동 완성\" && pnpm qa:electron:prepare && bash scripts/qa-move-autocomplete-video.sh",
     "qa:ai-session-history": "pnpm exec vitest run src/lib/aiSessions && pnpm exec vitest run src/desktop/renderer/routes/__tests__/TaskDetailRoute.test.tsx && pnpm qa:electron:prepare && bash scripts/qa-ai-session-history-video.sh",
     "qa:pr275-pr276": "bash scripts/qa-pr275-pr276.sh",
+    "pretest": "node scripts/ensure-native-runtime.cjs",
     "test": "vitest run",
+    "pretest:watch": "node scripts/ensure-native-runtime.cjs",
     "test:watch": "vitest",
     "postinstall": "node scripts/postinstall.cjs"
   },
@@ -101,5 +103,6 @@
     "typescript-eslint": "^8.33.1",
     "vite": "^7.1.10",
     "vitest": "^4.0.18"
-  }
+  },
+  "packageManager": "pnpm@10.34.5+sha512.a4ee05f2f73658255bd6a89859c065a45c28a57daefae2c893a168ee2b73168c37b91e83e57ea67654ad03f03031746430e8bce38e362e042605fb8abc80192e"
 }
