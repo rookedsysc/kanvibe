@@ -623,23 +623,32 @@ export default function Board({
     return nameMap;
   }, [projects]);
 
-  /** 프로젝트명 → hex 색상 매핑. DB color 우선, 없으면 해시 기반 프리셋 할당 */
-  const projectColorMap = useMemo(() => {
-    const colorMap: Record<string, string> = {};
-
+  /** 프로젝트명 → 해당 이름의 메인 프로젝트(worktree 제외) 매핑 */
+  const mainProjectByName = useMemo(() => {
     const uniqueNames = new Set(Object.values(projectNameMap));
+    const mainProjects = new Map<string, Project>();
+
     for (const name of uniqueNames) {
       const mainProject = projects.find(
         (p) => p.name === name && !extractMainRepoPath(p.repoPath)
       );
-      if (mainProject?.color) {
-        colorMap[name] = mainProject.color;
-      } else {
-        colorMap[name] = computeProjectColor(name);
+      if (mainProject) {
+        mainProjects.set(name, mainProject);
       }
     }
-    return colorMap;
+
+    return mainProjects;
   }, [projectNameMap, projects]);
+
+  /** 프로젝트명 → hex 색상 매핑. DB color 우선, 없으면 해시 기반 프리셋 할당 */
+  const projectColorMap = useMemo(() => {
+    const colorMap: Record<string, string> = {};
+
+    for (const name of new Set(Object.values(projectNameMap))) {
+      colorMap[name] = mainProjectByName.get(name)?.color || computeProjectColor(name);
+    }
+    return colorMap;
+  }, [projectNameMap, mainProjectByName]);
 
   const projectLookup = useMemo(
     () => new Map(projects.map((project) => [project.id, project])),

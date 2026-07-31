@@ -21,6 +21,24 @@ import {
   persistTaskStateAtPath as persistTaskState,
   readPersistedTaskStatusAtPath as readPersistedTaskStatus,
 } from "@/desktop/main/services/kanvibeTaskStateService";
+import {
+  applySharedProjectColor,
+  persistProjectColorToKanvibeState,
+  readSharedProjectColor,
+} from "@/desktop/main/services/kanvibeProjectColorService";
+
+/**
+ * 프로젝트 색상을 결정한다.
+ * 같은 저장소를 이미 보고 있는 다른 KanVibe client가 정한 색상이 있으면 이어받고,
+ * 없으면 프로젝트명 기반 색상을 새로 계산한다.
+ */
+async function resolveProjectColor(
+  repoPath: string,
+  projectName: string,
+  sshHost?: string | null,
+): Promise<string> {
+  return await readSharedProjectColor(repoPath, sshHost) ?? computeProjectColor(projectName);
+}
 
 function matchesTaskLocation(task: { worktreePath?: string | null; sshHost?: string | null }, expectedPath: string, sshHost?: string | null): boolean {
   return task.worktreePath === expectedPath && (task.sshHost || null) === (sshHost || null);
@@ -479,10 +497,11 @@ export async function registerProject(
     repoPath: normalizedRepoPath,
     defaultBranch,
     sshHost: sshHost || null,
-    color: computeProjectColor(projectName),
+    color: await resolveProjectColor(normalizedRepoPath, projectName, sshHost || null),
   });
 
   const saved = await repo.save(project);
+  await persistProjectColorToKanvibeState(saved);
   try {
     await ensureProjectRootTask(saved, {
       repairHooks: !saved.sshHost,
@@ -572,6 +591,20 @@ function mergeRegisteredProjectWorktreeSyncResult(
   target.hooksSetup.push(...next.hooksSetup.filter((name) => !target.hooksSetup.includes(name)));
 }
 
+/**
+ * 다른 KanVibe client가 `.kanvibe/status.json`에 기록한 프로젝트 색상을 DB에 반영한다.
+ * @returns 색상이 실제로 바뀌어 보드를 갱신해야 하면 true
+ */
+async function syncSharedProjectColor(project: Project): Promise<boolean> {
+  if (!await applySharedProjectColor(project)) {
+    return false;
+  }
+
+  const projectRepo = await getProjectRepository();
+  await projectRepo.save(project);
+  return true;
+}
+
 async function syncProjectWorktrees(
   project: Project,
   taskRepo: Awaited<ReturnType<typeof getTaskRepository>>,
@@ -585,6 +618,8 @@ async function syncProjectWorktrees(
   };
 
   try {
+    result.changed = await syncSharedProjectColor(project) || result.changed;
+
     const { repaired } = await ensureProjectRootTask(project, {
       repairHooks: false,
       throwOnHookRepairFailure: false,
@@ -809,10 +844,11 @@ export async function scanAndRegisterProjects(
         repoPath,
         defaultBranch,
         sshHost: sshHost || null,
-        color: computeProjectColor(projectName),
+        color: await resolveProjectColor(repoPath, projectName, sshHost || null),
       });
 
       const saved = await repo.save(project);
+      await persistProjectColorToKanvibeState(saved);
       existingPaths.add(pathKey);
       result.registered.push(projectName);
 

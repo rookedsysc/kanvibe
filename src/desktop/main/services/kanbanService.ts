@@ -20,6 +20,7 @@ import {
 import { execGit, pullCurrentBranch, remoteBranchExists } from "@/lib/gitOperations";
 import { detachSession } from "@/lib/terminal";
 import { persistTaskStateForTask as persistTaskState } from "@/desktop/main/services/kanvibeTaskStateService";
+import { persistProjectColorToKanvibeState } from "@/desktop/main/services/kanvibeProjectColorService";
 
 export type TasksByStatus = Record<TaskStatus, KanbanTask[]>;
 
@@ -617,7 +618,10 @@ export async function updateTask(
   return serialize(saved);
 }
 
-/** 프로젝트의 color(hex)를 변경하고, 같은 repo의 worktree 프로젝트에도 동일하게 반영한다 */
+/**
+ * 프로젝트의 color(hex)를 변경하고, 같은 repo의 worktree 프로젝트에도 동일하게 반영한다.
+ * 변경된 색상은 `.kanvibe/status.json`에도 기록되어 같은 저장소를 보는 다른 client와 동기화된다.
+ */
 export async function updateProjectColor(
   projectId: string,
   color: string
@@ -638,10 +642,16 @@ export async function updateProjectColor(
     where: { repoPath: Like(`${mainRepoPath}%`) },
   });
 
+  const recoloredProjects = [project];
   for (const related of relatedProjects) {
     if (related.id === projectId) continue;
     related.color = color;
     await repo.save(related);
+    recoloredProjects.push(related);
+  }
+
+  for (const recolored of recoloredProjects) {
+    await persistProjectColorToKanvibeState(recolored);
   }
 
   broadcastBoardUpdate();
