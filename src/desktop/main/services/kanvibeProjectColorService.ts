@@ -70,12 +70,19 @@ export async function readSharedProjectColor(
 }
 
 /**
- * 다른 client가 바꾼 색상을 프로젝트에 반영한다.
- * @returns 색상이 실제로 바뀌었으면 true
+ * 프로젝트 색상을 `.kanvibe/project.json`과 양방향으로 맞춘다.
+ * 공유 색상이 있으면 그 값을 프로젝트에 반영하고, 공유 파일이 아직 없으면 현재 색상을 씨앗으로 기록한다.
+ * 씨앗 기록이 없으면 이 기능 이전에 등록된 프로젝트끼리는 서로 다른 DB 색상을 계속 유지하게 된다.
+ * @returns 색상이 실제로 바뀌어 DB에 저장해야 하면 true
  */
-export async function applySharedProjectColor(project: Project): Promise<boolean> {
+export async function syncProjectColorWithKanvibeState(project: Project): Promise<boolean> {
   const sharedColor = await readSharedProjectColor(project.repoPath, project.sshHost);
-  if (!sharedColor || sharedColor === project.color) {
+  if (!sharedColor) {
+    await persistProjectColorToKanvibeState(project);
+    return false;
+  }
+
+  if (sharedColor === project.color) {
     return false;
   }
 

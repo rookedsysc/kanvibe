@@ -23,10 +23,14 @@ import {
   readPersistedTaskStatusAtPath as readPersistedTaskStatus,
 } from "@/desktop/main/services/kanvibeTaskStateService";
 import {
-  applySharedProjectColor,
   persistProjectColorToKanvibeState,
   readSharedProjectColor,
+  syncProjectColorWithKanvibeState,
 } from "@/desktop/main/services/kanvibeProjectColorService";
+import { mapWithConcurrency } from "@/lib/aiSessions/shared";
+
+/** 아이콘 backfill 동시 실행 수. GitHub에 과도한 동시 요청을 보내지 않으면서 순차 대기를 줄이는 값 */
+const PROJECT_ICON_BACKFILL_CONCURRENCY = 8;
 
 /**
  * 프로젝트 색상을 결정한다.
@@ -598,7 +602,7 @@ function mergeRegisteredProjectWorktreeSyncResult(
  * @returns 색상이 실제로 바뀌어 보드를 갱신해야 하면 true
  */
 async function syncSharedProjectColor(project: Project): Promise<boolean> {
-  if (!await applySharedProjectColor(project)) {
+  if (!await syncProjectColorWithKanvibeState(project)) {
     return false;
   }
 
@@ -629,6 +633,23 @@ async function syncMissingProjectIcon(project: Project): Promise<boolean> {
   return true;
 }
 
+/**
+ * 아이콘이 없는 프로젝트들의 아이콘 확보를 병렬로 처리한다.
+ * 아이콘 조회는 GitHub 네트워크 요청이라 느리거나 끊긴 회선에서는 프로젝트마다 타임아웃을 기다리게 되므로,
+ * worktree 스캔의 순차 루프 안에서 프로젝트 수만큼 대기 시간이 누적되지 않도록 분리해서 실행한다.
+ * @returns 아이콘을 새로 확보한 프로젝트가 있어 보드를 갱신해야 하면 true
+ */
+async function backfillMissingProjectIcons(projects: Project[]): Promise<boolean> {
+  const projectsWithoutIcon = projects.filter((project) => !project.iconDataUrl);
+  const iconResults = await mapWithConcurrency(
+    projectsWithoutIcon,
+    PROJECT_ICON_BACKFILL_CONCURRENCY,
+    (project) => syncMissingProjectIcon(project),
+  );
+
+  return iconResults.some(Boolean);
+}
+
 async function syncProjectWorktrees(
   project: Project,
   taskRepo: Awaited<ReturnType<typeof getTaskRepository>>,
@@ -643,7 +664,6 @@ async function syncProjectWorktrees(
 
   try {
     result.changed = await syncSharedProjectColor(project) || result.changed;
-    result.changed = await syncMissingProjectIcon(project) || result.changed;
 
     const { repaired } = await ensureProjectRootTask(project, {
       repairHooks: false,
@@ -798,6 +818,8 @@ export async function syncRegisteredProjectWorktrees(
     errors: [],
     changed: false,
   };
+
+  mergedResult.changed = await backfillMissingProjectIcons(projects);
 
   const projectResults: RegisteredProjectWorktreeSyncResult[] = [];
   for (const project of projects) {

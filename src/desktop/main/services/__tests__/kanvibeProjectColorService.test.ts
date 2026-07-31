@@ -24,9 +24,9 @@ vi.mock("@/lib/kanvibeProjectState", async (importOriginal) => ({
 
 import type { Project } from "@/entities/Project";
 import {
-  applySharedProjectColor,
   persistProjectColorToKanvibeState,
   readSharedProjectColor,
+  syncProjectColorWithKanvibeState,
 } from "@/desktop/main/services/kanvibeProjectColorService";
 
 function createProject(overrides: Partial<Project> = {}): Project {
@@ -89,19 +89,29 @@ describe("kanvibeProjectColorService", () => {
     mocks.readKanvibeProjectColor.mockResolvedValue("#0064FF");
     const project = createProject();
 
-    await expect(applySharedProjectColor(project)).resolves.toBe(true);
+    await expect(syncProjectColorWithKanvibeState(project)).resolves.toBe(true);
     expect(project.color).toBe("#0064FF");
 
     mocks.readKanvibeProjectColor.mockResolvedValue("#0064FF");
-    await expect(applySharedProjectColor(project)).resolves.toBe(false);
+    await expect(syncProjectColorWithKanvibeState(project)).resolves.toBe(false);
   });
 
-  it("공유 색상이 없으면 기존 색상을 유지한다", async () => {
+  it("공유 색상이 반영되거나 이미 같으면 공유 파일을 다시 쓰지 않는다", async () => {
+    mocks.readKanvibeProjectColor.mockResolvedValue("#65D08A");
+
+    await expect(syncProjectColorWithKanvibeState(createProject())).resolves.toBe(false);
+
+    expect(mocks.writeKanvibeProjectColor).not.toHaveBeenCalled();
+  });
+
+  it("공유 색상이 없으면 기존 색상을 유지한 채 씨앗으로 기록한다", async () => {
     mocks.readKanvibeProjectColor.mockResolvedValue(null);
     const project = createProject();
 
-    await expect(applySharedProjectColor(project)).resolves.toBe(false);
+    await expect(syncProjectColorWithKanvibeState(project)).resolves.toBe(false);
+
     expect(project.color).toBe("#65D08A");
+    expect(mocks.writeKanvibeProjectColor).toHaveBeenCalledWith("/workspace/kanvibe", "#65D08A", null);
   });
 
   it("색상 읽기 실패는 등록 흐름을 막지 않는다", async () => {
