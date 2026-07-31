@@ -28,6 +28,7 @@ import {
   getTaskOpenCodeHooksStatus,
   getAllProjects,
 } from "@/desktop/renderer/actions/project";
+import { AiSessionMessageContent } from "@/desktop/renderer/components/AiSessionMessageContent";
 import {
   useBoardCommands,
   useHasBoardShortcutBlocker,
@@ -785,7 +786,7 @@ function InlineAiChatMessage({ message, provider }: { message: AggregatedAiMessa
           <AiSessionProviderIcon provider={provider} testId={false} />
           <span>{message.role}</span>
         </div>
-        <p className="whitespace-pre-wrap break-words">{displayedText}</p>
+        <AiSessionMessageContent text={displayedText} isUserMessage={isUserMessage} />
       </div>
     </div>
   );
