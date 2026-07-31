@@ -1,14 +1,16 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { TaskStatus } from "@/entities/KanbanTask";
 
-const { mockReadTextFile, mockWriteTextFile } = vi.hoisted(() => ({
+const { mockReadTextFile, mockWriteTextFile, mockWriteTextFileIfAbsent } = vi.hoisted(() => ({
   mockReadTextFile: vi.fn(),
   mockWriteTextFile: vi.fn(),
+  mockWriteTextFileIfAbsent: vi.fn(),
 }));
 
 vi.mock("@/lib/hostFileAccess", () => ({
   readTextFile: (...args: unknown[]) => mockReadTextFile(...args),
   writeTextFile: (...args: unknown[]) => mockWriteTextFile(...args),
+  writeTextFileIfAbsent: (...args: unknown[]) => mockWriteTextFileIfAbsent(...args),
 }));
 
 import {
@@ -27,6 +29,7 @@ import {
   readKanvibeTaskState,
   upsertKanvibeHookTarget,
   writeKanvibeProjectColor,
+  writeKanvibeProjectColorIfAbsent,
   writeKanvibeTaskStatus,
 } from "@/lib/kanvibeProjectState";
 
@@ -173,6 +176,24 @@ describe("kanvibeProjectState", () => {
     await writeKanvibeProjectColor("/local/repo", "not-a-color");
 
     expect(mockWriteTextFile).not.toHaveBeenCalled();
+  });
+
+  /** 씨앗 기록은 권위 파일을 만드는 것이지 이미 있는 값을 바꾸는 것이 아니다 */
+  it("씨앗 색상은 파일이 없을 때만 기록하는 경로로 쓴다", async () => {
+    await writeKanvibeProjectColorIfAbsent("/local/repo", "#0064FF");
+
+    expect(mockWriteTextFileIfAbsent).toHaveBeenLastCalledWith(
+      "/local/repo/.kanvibe/project.json",
+      expect.stringContaining("#0064FF"),
+      undefined,
+    );
+    expect(mockWriteTextFile).not.toHaveBeenCalled();
+  });
+
+  it("형식이 어긋난 씨앗 색상은 기록하지 않는다", async () => {
+    await writeKanvibeProjectColorIfAbsent("/local/repo", "not-a-color");
+
+    expect(mockWriteTextFileIfAbsent).not.toHaveBeenCalled();
   });
 
   it("builds and parses .kanvibe/targets.json as client url to task id mappings", () => {

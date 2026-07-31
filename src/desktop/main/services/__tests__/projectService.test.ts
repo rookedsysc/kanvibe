@@ -33,6 +33,7 @@ const mocks = vi.hoisted(() => ({
   broadcastBoardUpdate: vi.fn(),
   readTextFile: vi.fn(),
   writeTextFile: vi.fn(),
+  writeTextFileIfAbsent: vi.fn(),
   quoteShellArgument: vi.fn((value: string) => `'${value}'`),
 }));
 
@@ -149,6 +150,7 @@ vi.mock("@/lib/kanvibeHooksInstaller", () => ({
 vi.mock("@/lib/hostFileAccess", () => ({
   readTextFile: mocks.readTextFile,
   writeTextFile: mocks.writeTextFile,
+  writeTextFileIfAbsent: mocks.writeTextFileIfAbsent,
   quoteShellArgument: mocks.quoteShellArgument,
 }));
 
@@ -655,6 +657,8 @@ describe("projectService local hook installation", () => {
   beforeEach(() => {
     vi.resetModules();
     vi.clearAllMocks();
+    /** 파일 읽기 구현은 테스트마다 다르므로 이전 테스트의 구현이 남지 않도록 되돌린다 */
+    mocks.readTextFile.mockReset();
     mocks.execGit.mockResolvedValue("");
     mocks.getDefaultSessionType.mockResolvedValue("tmux");
     mocks.getClaudeHooksStatus.mockResolvedValue({ installed: false });
@@ -1587,6 +1591,100 @@ describe("projectService local hook installation", () => {
     expect(mocks.getCodexHooksStatus).not.toHaveBeenCalled();
     expect(mocks.getOpenCodeHooksStatus).not.toHaveBeenCalled();
     expect(mocks.installKanvibeHooks).not.toHaveBeenCalled();
+  });
+
+  /**
+   * 공유 색상 파일을 읽는 동안 사용자가 색을 바꿀 수 있으므로, sync가 읽어둔 색상이 아직 DB에
+   * 남아 있을 때만 덮어써야 방금 고른 색이 되돌아가지 않는다.
+   */
+  function mockProjectColorSyncRepositories(
+    project: { id: string; color: string },
+    update: ReturnType<typeof vi.fn>,
+  ): void {
+    mocks.getProjectRepository.mockResolvedValue({
+      find: vi.fn().mockResolvedValue([project]),
+      findOneBy: vi.fn().mockResolvedValue(project),
+      update,
+    });
+
+    mocks.getTaskRepository.mockResolvedValue({
+      findBy: vi.fn().mockResolvedValue([]),
+      findOneBy: vi.fn(async (criteria: { branchName?: string; projectId?: string | null }) => (
+        criteria.projectId === project.id && criteria.branchName === "main"
+          ? {
+            id: "task-main",
+            branchName: "main",
+            projectId: project.id,
+            baseBranch: "main",
+            worktreePath: "/workspace/api",
+            sshHost: null,
+          }
+          : null
+      )),
+      create: vi.fn((value) => value),
+      save: vi.fn(async (value) => value),
+    });
+  }
+
+  function mockSharedProjectColorFile(sharedColor: string): void {
+    mocks.listWorktrees.mockResolvedValue([
+      { path: "/workspace/api", branch: "main", isBare: false },
+    ]);
+    mocks.readTextFile.mockImplementation(async (filePath: string) => (
+      filePath === "/workspace/api/.kanvibe/project.json"
+        ? JSON.stringify({ schemaVersion: 1, projectColor: sharedColor })
+        : ""
+    ));
+  }
+
+  it("공유 색상을 DB에 반영하는 사이 사용자가 색을 바꾸면 그 값을 덮지 않는다", async () => {
+    // Given
+    mockSharedProjectColorFile("#0064FF");
+    const project = {
+      id: "project-1",
+      name: "api",
+      repoPath: "/workspace/api",
+      defaultBranch: "main",
+      sshHost: null,
+      color: "#65D08A",
+    };
+    /** affected 0은 sync가 읽어둔 색상이 더 이상 DB에 없다는 뜻, 즉 사용자 편집이 먼저 반영된 상태다 */
+    const update = vi.fn().mockResolvedValue({ affected: 0 });
+    mockProjectColorSyncRepositories(project, update);
+
+    const { syncRegisteredProjectWorktrees } = await import("@/desktop/main/services/projectService");
+
+    // When
+    const result = await syncRegisteredProjectWorktrees();
+
+    // Then
+    expect(update).toHaveBeenCalledWith({ id: "project-1", color: "#65D08A" }, { color: "#0064FF" });
+    expect(result.changed).toBe(false);
+    expect(project.color).toBe("#65D08A");
+  });
+
+  it("공유 색상이 그대로 남아 있으면 DB와 보드에 반영한다", async () => {
+    // Given
+    mockSharedProjectColorFile("#0064FF");
+    const project = {
+      id: "project-1",
+      name: "api",
+      repoPath: "/workspace/api",
+      defaultBranch: "main",
+      sshHost: null,
+      color: "#65D08A",
+    };
+    const update = vi.fn().mockResolvedValue({ affected: 1 });
+    mockProjectColorSyncRepositories(project, update);
+
+    const { syncRegisteredProjectWorktrees } = await import("@/desktop/main/services/projectService");
+
+    // When
+    const result = await syncRegisteredProjectWorktrees();
+
+    // Then
+    expect(result.changed).toBe(true);
+    expect(project.color).toBe("#0064FF");
   });
 
   it("등록된 원격 프로젝트 background sync는 기존 root hook 복구를 예약하지 않는다", async () => {

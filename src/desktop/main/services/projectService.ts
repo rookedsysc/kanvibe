@@ -599,14 +599,23 @@ function mergeRegisteredProjectWorktreeSyncResult(
 
 /**
  * 다른 KanVibe client가 `.kanvibe/project.json`에 기록한 프로젝트 색상을 DB에 반영한다.
+ *
+ * 공유 파일을 읽는 동안 사용자가 색을 바꿨을 수 있으므로, 읽어둔 색상이 아직 DB에 남아 있을 때만
+ * 덮어쓴다. 조건 없이 쓰면 방금 고른 색이 공유 파일에서 읽은 이전 색으로 되돌아간다.
  * @returns 색상이 실제로 바뀌어 보드를 갱신해야 하면 true
  */
 async function syncSharedProjectColor(project: Project): Promise<boolean> {
-  if (!await syncProjectColorWithKanvibeState(project)) {
+  const sharedColor = await syncProjectColorWithKanvibeState(project);
+  if (!sharedColor) {
     return false;
   }
 
-  return await updateExistingProject(project.id, { color: project.color });
+  if (!await updateExistingProject(project.id, { color: sharedColor }, { color: project.color })) {
+    return false;
+  }
+
+  project.color = sharedColor;
+  return true;
 }
 
 /**
@@ -637,14 +646,22 @@ async function syncMissingProjectIcon(project: Project): Promise<boolean> {
  * 이미 존재하는 프로젝트 행에만 변경분을 반영한다.
  * sync/backfill은 오래 걸리는 git·GitHub 요청을 기다리는 동안 프로젝트가 삭제될 수 있는데,
  * `save`는 사라진 행을 원래 id 그대로 다시 insert해 task 없는 프로젝트를 되살리므로 조건부 update를 쓴다.
+ * @param expectedColor 이 색상이 아직 DB에 남아 있을 때만 갱신한다. 그 사이 들어온 사용자 편집을 덮지 않기 위한 조건
  * @returns 실제로 갱신된 행이 있어 보드를 갱신해야 하면 true
  */
 async function updateExistingProject(
   projectId: string,
   changes: Partial<Pick<Project, "color" | "iconDataUrl">>,
+  expected: { color?: string | null } = {},
 ): Promise<boolean> {
   const projectRepo = await getProjectRepository();
-  const { affected } = await projectRepo.update({ id: projectId }, changes);
+  const { affected } = await projectRepo.update(
+    {
+      id: projectId,
+      ...("color" in expected ? { color: expected.color ?? IsNull() } : {}),
+    },
+    changes,
+  );
   return affected !== 0;
 }
 

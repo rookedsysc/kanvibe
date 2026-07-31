@@ -1,6 +1,6 @@
 import path from "path";
 import { TaskStatus } from "@/entities/KanbanTask";
-import { readTextFile, writeTextFile } from "@/lib/hostFileAccess";
+import { readTextFile, writeTextFile, writeTextFileIfAbsent } from "@/lib/hostFileAccess";
 
 export const KANVIBE_DIR_NAME = ".kanvibe";
 export const TASK_STATE_FILE_NAME = "status.json";
@@ -89,6 +89,27 @@ export async function writeKanvibeProjectColor(
   }
 
   await writeTextFile(
+    getKanvibeProjectStatePath(repoPath, sshHost),
+    buildKanvibeProjectStateContent(normalizedColor),
+    sshHost,
+  );
+}
+
+/**
+ * 아직 색상 파일이 없는 저장소에만 씨앗 색상을 기록한다.
+ * 이미 파일이 있으면 그 값이 권위이므로 기록하지 않는다.
+ */
+export async function writeKanvibeProjectColorIfAbsent(
+  repoPath: string,
+  projectColor: string,
+  sshHost?: string | null,
+): Promise<void> {
+  const normalizedColor = parseProjectColor(projectColor);
+  if (!normalizedColor) {
+    return;
+  }
+
+  await writeTextFileIfAbsent(
     getKanvibeProjectStatePath(repoPath, sshHost),
     buildKanvibeProjectStateContent(normalizedColor),
     sshHost,
