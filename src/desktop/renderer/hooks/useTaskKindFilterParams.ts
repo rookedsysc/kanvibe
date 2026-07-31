@@ -48,6 +48,10 @@ export function useTaskKindFilterParams() {
     if (paramValue) {
       const normalizedParam = normalizeTaskKindFilter(paramValue);
       if (normalizedParam !== paramValue) {
+        // 저장된 필터를 함께 기본값으로 되돌린다. 지우지 않으면 query를 제거한 다음 렌더에서
+        // 세션 복원이 일어나 잘못된 값으로 진입한 사용자가 이전 필터로 끌려간다.
+        syncToSessionStorage(normalizedParam);
+
         const nextParams = new URLSearchParams(searchParams);
         nextParams.delete(QUERY_PARAM_KEY);
         setSearchParams(nextParams, { replace: true });

@@ -85,4 +85,16 @@ describe("useTaskKindFilterParams", () => {
       expect(screen.getByTestId("query").textContent).toBe("");
     });
   });
+
+  it("알 수 없는 query 값으로 진입하면 sessionStorage에 남은 필터도 함께 비운다", async () => {
+    sessionStorage.setItem("kanvibe_task_kind_filter", "project");
+
+    renderHarness("/ko?taskKind=unknown");
+
+    await waitFor(() => {
+      expect(screen.getByTestId("filter").textContent).toBe("all");
+      expect(screen.getByTestId("query").textContent).toBe("");
+    });
+    expect(sessionStorage.getItem("kanvibe_task_kind_filter")).toBeNull();
+  });
 });
