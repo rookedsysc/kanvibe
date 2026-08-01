@@ -2,6 +2,7 @@
 
 import { forwardRef, useState, useEffect, useRef, useCallback, useImperativeHandle, useMemo } from "react";
 import type { Project } from "@/entities/Project";
+import ProjectIcon from "@/components/ProjectIcon";
 
 const MAX_VISIBLE_CHIPS = 2;
 const EMPTY_SELECTED_PROJECT_IDS: string[] = [];
@@ -388,6 +389,7 @@ const ProjectSelector = forwardRef<ProjectSelectorHandle, ProjectSelectorProps>(
                           </svg>
                         )}
                       </span>
+                      <ProjectIcon projectName={project.name} iconDataUrl={project.iconDataUrl} />
                       <span className="truncate">
                         {project.name}
                         {project.sshHost && (
@@ -546,18 +548,21 @@ const ProjectSelector = forwardRef<ProjectSelectorHandle, ProjectSelectorProps>(
                       handleToggle(project.id);
                     }}
                     onMouseEnter={() => setHighlightedIndex(itemIndex)}
-                    className={`px-3 py-2 text-sm cursor-pointer transition-colors ${
+                    className={`flex items-center gap-2 px-3 py-2 text-sm cursor-pointer transition-colors ${
                       itemIndex === normalizedHighlightedIndex
                         ? "bg-brand-primary/10 text-text-primary"
                         : "text-text-primary hover:bg-bg-page"
                     } ${project.id === selectedProjectId ? "font-medium" : ""}`}
                   >
-                    {project.name}
-                    {project.sshHost && (
-                      <span className="text-text-muted ml-1">
-                        ({project.sshHost})
-                      </span>
-                    )}
+                    <ProjectIcon projectName={project.name} iconDataUrl={project.iconDataUrl} />
+                    <span className="truncate">
+                      {project.name}
+                      {project.sshHost && (
+                        <span className="text-text-muted ml-1">
+                          ({project.sshHost})
+                        </span>
+                      )}
+                    </span>
                   </li>
                 );
               })

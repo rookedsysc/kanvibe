@@ -1,6 +1,6 @@
 {
   "name": "kanvibe",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "private": true,
   "description": "AI agent task management Kanban board with embedded SQLite desktop packaging.",
   "author": "rookedsysc",
@@ -42,6 +42,13 @@
     "pretest:watch": "node scripts/ensure-native-runtime.cjs",
     "test:watch": "vitest",
     "postinstall": "node scripts/postinstall.cjs"
+  },
+  "devEngines": {
+    "packageManager": {
+      "name": "pnpm",
+      "version": "10.34.5",
+      "onFail": "error"
+    }
   },
   "pnpm": {
     "onlyBuiltDependencies": [

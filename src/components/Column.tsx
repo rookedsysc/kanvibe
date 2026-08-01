@@ -15,6 +15,7 @@ interface ColumnProps {
   onContextMenu: (task: KanbanTask, position: { x: number; y: number }) => void;
   projectNameMap: Record<string, string>;
   projectColorMap: Record<string, string>;
+  projectIconMap: Record<string, string>;
   totalCount?: number;
   hasMore?: boolean;
   onLoadMore?: () => void;
@@ -77,6 +78,7 @@ export default function Column({
   onContextMenu,
   projectNameMap,
   projectColorMap,
+  projectIconMap,
   totalCount,
   hasMore,
   onLoadMore,
@@ -151,6 +153,7 @@ export default function Column({
               }
 
               const color = projectColorMap[group.projectName] ?? "#93C5FD";
+              const iconDataUrl = projectIconMap[group.projectName] ?? null;
 
               return (
                 <ProjectTaskGroup
@@ -164,6 +167,7 @@ export default function Column({
                       onContextMenu={onContextMenu}
                       projectName={group.projectName ?? undefined}
                       projectColor={color}
+                      projectIconDataUrl={iconDataUrl}
                       isBaseProject={
                         !!task.worktreePath &&
                         !task.worktreePath.includes("__worktrees")

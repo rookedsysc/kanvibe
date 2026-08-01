@@ -7,7 +7,9 @@ description: "Use this skill whenever releasing or deploying KanVibe desktop fro
 
 ## Overview
 
-This skill coordinates the KanVibe desktop release workflow from version selection to DMG publication, Homebrew cask update, release PR creation, and automatic merge. It is intentionally release-operator focused and may only be invoked from a clean, up-to-date local `dev` checkout: read and report the current `package.json` version, ask the user for the target release version, update the package version, run the `pnpm run deploy` DMG build, get explicit approval for the release notes, upload the exact DMG artifact to the `rookedsysc/kanvibe` GitHub release, update the separate Homebrew cask repository with the same version and SHA-256, create the KanVibe release PR, then merge the release and promotion PRs automatically once checks and review-thread gates pass.
+This skill coordinates the KanVibe desktop release workflow from version selection to DMG publication, Homebrew cask update, release PR creation, and automatic merge. It is intentionally release-operator focused and may only be invoked from a clean, up-to-date local `dev` checkout: read and report the current `package.json` version, ask the user for the target release version, update the package version, run the `pnpm run deploy` DMG build, **launch the built app and confirm it actually starts**, get explicit approval for the release notes, upload the exact DMG artifact to the `rookedsysc/kanvibe` GitHub release, update the separate Homebrew cask repository with the same version and SHA-256, create the KanVibe release PR, then merge the release and promotion PRs automatically once checks and review-thread gates pass.
+
+The smoke test in step 3.5 is not optional. Signing, notarization, stapling, and checksum verification all pass on a bundle whose app cannot start, and shipping one of those is how KanVibe 1.0.4 reached users.
 
 The only routine user gates are target-version selection and release-note approval. After those are approved, do not ask for additional confirmation for build, release publication, cask update, PR creation, auto-merge enablement, or merge completion unless a blocker or branch-policy violation appears.
 
@@ -33,8 +35,11 @@ Do not use this skill for docs-site deploys, Linux-only package checks, routine 
 - The DMG filename is `KanVibe-<version>.dmg` because `electron-builder.yml` sets `dmg.artifactName: "KanVibe-${version}.${ext}"`.
 - The cask URL expects the same raw version tag: `https://github.com/rookedsysc/kanvibe/releases/download/#{version}/KanVibe-#{version}.dmg`.
 - Use the SHA-256 of the final DMG produced after the version bump and `pnpm run deploy`, not an earlier artifact.
-- `pnpm run deploy` is the release build command for this workflow. It runs `scripts/dist-deploy.cjs`, which builds the DMG, codesigns, notarizes, staples, and prints the SHA-256.
+- `pnpm run deploy` is the release build command for this workflow. It runs `scripts/dist-deploy.cjs`, which builds the DMG, codesigns, notarizes, staples, verifies the packaged dependencies, and prints the SHA-256.
 - `pnpm run deploy` performs macOS signing/notarization, so it must run on macOS with Apple signing tools configured. Do not fabricate build, notarization, or checksum output from Linux.
+- **A signed, notarized, correctly-checksummed DMG can still be an app that cannot start.** Signing and notarization say nothing about whether the bundle contains the dependencies it needs. Never publish without launching the built app (step 3.5).
+- **Never add a `packageManager` field to `package.json`.** electron-builder resolves the package manager from that field before anything else, which selects a dependency collector that drops transitive dependencies from `app.asar` and ships an app that crashes on startup. Pin the pnpm version through `pnpm/action-setup`'s `version` input in CI instead.
+- Run the release under **pnpm 10**. Because there is no `packageManager` pin, corepack may resolve pnpm 11, which ignores `pnpm.onlyBuiltDependencies` and skips every native build script. Verify with `pnpm --version` during preflight.
 - Invoke this skill only from a clean, up-to-date local `dev` checkout. Stop on `main`, feature branches, existing release branches, detached HEADs, dirty worktrees, or a local `dev` HEAD that differs from `origin/dev`.
 - The release source is always `origin/dev`. Do not accept, infer, or ask about alternate source branches for this workflow.
 - The user's target-version selection and release-note approval authorize the remaining release actions. After those two gates, the AI should continue through release publication, cask update, release PR creation, auto-merge enablement, and pinned release-branch promotion to `main` without asking for another confirmation.
@@ -66,9 +71,28 @@ git status --short --branch
 node -p "process.version"
 CURRENT_VERSION=$(node -p "require('./package.json').version")
 printf 'Current KanVibe version: %s\n' "$CURRENT_VERSION"
+
+# The release build must run under pnpm 10; pnpm 11 ignores pnpm.onlyBuiltDependencies
+# and silently skips every native build script.
+PNPM_VERSION=$(pnpm --version)
+printf 'pnpm: %s\n' "$PNPM_VERSION"
+case "$PNPM_VERSION" in
+  10.*) ;;
+  *) echo "Release build requires pnpm 10; found ${PNPM_VERSION}." >&2; exit 1 ;;
+esac
+
+# package.json must NOT carry a packageManager field: it forces electron-builder into a
+# dependency collector that drops transitive dependencies from app.asar.
+if node -p "require('./package.json').packageManager" | grep -qv undefined; then
+  echo "package.json has a packageManager field; remove it before releasing." >&2
+  exit 1
+fi
+
 gh auth status
 gh release list --limit 5 --repo rookedsysc/kanvibe
 ```
+
+If `pnpm --version` is not 10.x, do not silently continue and do not add a `packageManager` field to fix it. Install or select pnpm 10 for this shell, then rerun preflight.
 
 After printing the current version, ask the user which version to release before editing files:
 
@@ -169,7 +193,79 @@ test -f "$DMG"
 shasum -a 256 "$DMG"
 ```
 
-Keep the checksum from this final DMG for the cask update.
+Keep the checksum from this final DMG for the cask update. If you rebuild for any reason, the checksum changes — always re-hash the artifact you are actually publishing.
+
+`scripts/dist-deploy.cjs` prints the dependency-collection mode and a packaging guard result. Both lines must appear and must look like this:
+
+```text
+• searching for node modules  pm=npm  searchDir=/Users/<user>/Documents/kanvibe/kanvibe
+[kanvibe] packaged node_modules verified: 278 packages
+```
+
+If the collector reports `pm=pnpm`, the build is wrong even though it will succeed: that collector silently omits transitive dependencies. Check that `package.json` has no `packageManager` field and that the deploy script is invoking electron-builder directly, then rebuild. The guard aborts the deploy when required modules are missing, but treat `pm=pnpm` itself as a failure signal.
+
+### Notarization blocked by an Apple agreement
+
+When `pnpm run deploy` fails with `HTTP status code: 403. A required agreement is missing or has expired`, this is an Apple account state problem, not a build problem. Do not rebuild to retry — check the credential cheaply instead:
+
+```bash
+xcrun notarytool history --key "$APPLE_API_KEY" --key-id "$APPLE_API_KEY_ID" --issuer "$APPLE_API_ISSUER"
+```
+
+If a previous release notarized successfully with the same key and team, the configuration is fine and only the agreement changed. The Account Holder must accept the pending agreement at developer.apple.com, and propagation to the notary service takes a few minutes. Poll the command above and resume the build once it returns history.
+
+## 3.5. Smoke-Test the Built App (hard gate)
+
+**Do not publish a release without this step.** Code signing, notarization, stapling, and checksum verification all pass on a bundle whose app cannot start. KanVibe 1.0.4 shipped exactly that way: the DMG was signed, notarized, stapled, and its checksum matched, but `app.asar` was missing seven transitive dependencies and the app died on launch with `Cannot find module 'ms'`.
+
+Mount the DMG you are about to publish, copy the app out, launch it, and read the app's own diagnostics log:
+
+```bash
+VERSION=$(node -p "require('./package.json').version")
+LOG="$HOME/Library/Application Support/kanvibe/logs/kanvibe-desktop.log"
+rm -f "$LOG"
+
+hdiutil attach "dist/KanVibe-${VERSION}.dmg" -nobrowse -readonly -quiet
+MOUNT="/Volumes/KanVibe ${VERSION}-arm64"
+spctl -a -t exec -vv "$MOUNT/KanVibe.app"
+rm -rf /tmp/KanVibe-smoke.app
+cp -R "$MOUNT/KanVibe.app" /tmp/KanVibe-smoke.app
+hdiutil detach "$MOUNT" -quiet
+
+open -a /tmp/KanVibe-smoke.app
+sleep 15
+
+pgrep -f "KanVibe-smoke.app/Contents/MacOS/KanVibe" >/dev/null || { echo "app exited during startup" >&2; exit 1; }
+grep -icE "cannot find module|MODULE_NOT_FOUND|unhandled rejection" "$LOG"
+grep -c "invoke-succeeded" "$LOG"
+
+pkill -f "KanVibe-smoke.app"
+rm -rf /tmp/KanVibe-smoke.app
+```
+
+The release may proceed only when all four hold:
+
+1. `spctl -a -t exec` reports `accepted` and `source=Notarized Developer ID`.
+2. The process is still alive after the sleep.
+3. The module-error count is `0`.
+4. The `invoke-succeeded` count is greater than zero, which proves the database and IPC layer actually came up rather than the window merely opening.
+
+Launch the app with `open -a`, not by executing the binary directly. Running the binary as a child of the terminal makes macOS attribute the app's file-access prompts to the terminal process, and a denial there revokes the whole process tree's access to `~/Documents` — which blocks the rest of the release.
+
+If the smoke test fails, stop. Do not publish, do not update the cask, and do not open PRs. Diagnose the bundle first; `app.asar` contents can be listed from its header:
+
+```bash
+node -e '
+const fs=require("fs");
+const p="dist/mac-arm64/KanVibe.app/Contents/Resources/app.asar";
+const fd=fs.openSync(p,"r");
+const b=Buffer.alloc(16); fs.readSync(fd,b,0,16,0);
+const hb=Buffer.alloc(b.readUInt32LE(12)); fs.readSync(fd,hb,0,hb.length,16);
+const h=JSON.parse(hb.toString("utf8").replace(/\0+$/,""));
+console.log(Object.keys(h.files.node_modules.files).length, "top-level packages");
+fs.closeSync(fd);
+'
+```
 
 ## 4. Create or Update the GitHub Release
 
@@ -308,14 +404,21 @@ git -C "$CASK_REPO" commit -m "Update KanVibe cask to ${VERSION}"
 git -C "$CASK_REPO" push origin main
 ```
 
-Optional macOS/Homebrew validation from inside the tap checkout:
+Homebrew rejects casks that live outside a tap, so `brew fetch --cask Casks/kanvibe.rb` against the local checkout fails with `Homebrew requires casks to be in a tap`. Verify in two stages instead.
+
+Before pushing, check the syntax and prove the checksum against the bytes GitHub actually serves:
 
 ```bash
-brew audit --cask Casks/kanvibe.rb
-brew fetch --cask Casks/kanvibe.rb
+ruby -c "$CASK_FILE"
+curl -sL "https://github.com/rookedsysc/kanvibe/releases/download/${VERSION}/KanVibe-${VERSION}.dmg" | shasum -a 256
 ```
 
-If Homebrew cannot run in the current environment, still verify Ruby syntax, the release asset URL, and the exact cask diff before pushing.
+That hash must equal the `sha256` written into the cask. After pushing, verify through the real tap name:
+
+```bash
+brew update
+brew fetch --cask rookedsysc/kanvibe/kanvibe   # expect: ✔︎ Cask kanvibe (<version>)
+```
 
 ## 6. Create and Auto-Merge the Release PRs
 
@@ -351,6 +454,8 @@ printf 'Release PR head SHA: %s\n' "$RELEASE_HEAD_SHA"
 ```
 
 Verify the release PR file list before merging. It should normally contain only `package.json` and `package-lock.json`. If a release-specific file is intentionally added, name it in the PR body and final handoff; otherwise stop.
+
+This file-scope check applies **only to the release PR into `dev`**. The promotion PR into `main` legitimately carries every commit that `main` is behind by, so a large diff there is expected and is not a blocker.
 
 ```bash
 gh pr view "$RELEASE_PR" --repo rookedsysc/kanvibe --json files --jq '.files[].path'
@@ -460,9 +565,11 @@ fi
 Before reporting success, collect real output for:
 
 - dev-only preflight evidence: current branch `dev`, clean status, and local `HEAD` matching `origin/dev` before the release branch was cut;
+- `pnpm --version` showing 10.x and `package.json` carrying no `packageManager` field;
 - current version printed before the bump and the user-selected target version;
 - `git diff -- package.json package-lock.json` or commit evidence showing the version bump in both files;
-- `pnpm run deploy` completion;
+- `pnpm run deploy` completion, including the `pm=npm` collector line and the `packaged node_modules verified: N packages` guard line;
+- **smoke-test evidence from step 3.5**: `spctl` verdict, process alive after launch, module-error count `0`, and a non-zero `invoke-succeeded` count;
 - `test -f dist/KanVibe-<version>.dmg` and `shasum -a 256`;
 - user approval of the release notes, confirming both the English original and the Korean translation were shown before publishing;
 - `gh release view <version>` showing the `KanVibe-<version>.dmg` asset;
@@ -483,6 +590,8 @@ Final handoff format:
 - Release version: <target version selected by user>
 - DMG: `dist/KanVibe-<version>.dmg`
 - SHA-256: `<sha256>`
+- Packaging guard: <collector mode + verified package count>
+- Smoke test: <app alive / module errors / invoke-succeeded count>
 - GitHub release: <release URL>
 - Homebrew cask: <commit SHA or branch/status>
 - Release PR: <URL> → <merged/auto-merge/blocker>
@@ -509,3 +618,10 @@ Final handoff format:
 12. **Promoting moving `dev`.** Do not create the `main` promotion PR with `--head dev`; use the pinned release branch/SHA so commits that land on `dev` after the DMG build cannot ride along into `main`.
 13. **Starting from a non-`dev` checkout.** This workflow is dev-only at invocation. Stop instead of switching branches, inferring a different source, or running directly from `main`, feature branches, release branches, or detached HEADs.
 14. **Invoking the build as `pnpm deploy`.** `deploy` is a reserved pnpm command (workspace deploy), so `pnpm deploy` fails with `ERR_PNPM_CANNOT_DEPLOY` and never runs the release script. Always invoke the release build as `pnpm run deploy`.
+15. **Treating signing and notarization as proof the app works.** They verify provenance, not completeness. KanVibe 1.0.4 was signed, notarized, stapled, and checksum-matched, and still could not start because `app.asar` was missing seven transitive dependencies. Step 3.5 is the only check that catches this class of failure.
+16. **Adding a `packageManager` field to `package.json`.** electron-builder reads it before lock files and before the environment, which selects a dependency collector that drops transitive dependencies in this repository's hoisted layout. This is what broke 1.0.4. Pin pnpm through CI's `pnpm/action-setup` `version` input instead.
+17. **Ignoring the `pm=` collector line.** The build succeeds either way, so `pm=pnpm` is easy to scroll past. It means the artifact is probably incomplete — treat it as a failure, not a detail.
+18. **Rebuilding to retry an Apple agreement 403.** The failure is account state, not build state. Re-check with `xcrun notarytool history` and, if an earlier release succeeded with the same key, wait for propagation rather than spending build cycles.
+19. **Launching the app by executing its binary directly.** Use `open -a`. Running `KanVibe.app/Contents/MacOS/KanVibe` as a child of the terminal makes macOS attribute the app's file-access prompt to the terminal process; a denial there revokes `~/Documents` access for the whole process tree and blocks the rest of the release.
+20. **Blocking on the promotion PR's diff size.** The file-scope guard belongs to the release PR into `dev`. The promotion PR into `main` carries every commit `main` is behind by, so a wide diff there is normal.
+21. **Misreading DMG verification signals.** `spctl -a -t open` on the DMG reports `rejected / no usable signature` and the app inside reports "does not have a ticket stapled" even for a correct release — the ticket is stapled to the DMG, and the disk image itself is not Developer ID signed. Judge with `xcrun stapler validate <dmg>` and `spctl -a -t exec` on the app.

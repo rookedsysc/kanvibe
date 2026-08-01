@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => ({
   isSessionAlive: vi.fn(),
   formatSessionName: vi.fn(),
   computeProjectColor: vi.fn(() => "blue"),
+  resolveProjectIconDataUrl: vi.fn<(repoPath: string, sshHost?: string | null) => Promise<string | null>>(async () => null),
   getDefaultSessionType: vi.fn(),
   setupClaudeHooks: vi.fn(),
   getClaudeHooksStatus: vi.fn(),
@@ -32,6 +33,7 @@ const mocks = vi.hoisted(() => ({
   broadcastBoardUpdate: vi.fn(),
   readTextFile: vi.fn(),
   writeTextFile: vi.fn(),
+  writeTextFileIfAbsent: vi.fn(),
   quoteShellArgument: vi.fn((value: string) => `'${value}'`),
 }));
 
@@ -119,6 +121,10 @@ vi.mock("@/lib/projectColor", () => ({
   computeProjectColor: mocks.computeProjectColor,
 }));
 
+vi.mock("@/lib/githubProjectIcon", () => ({
+  resolveProjectIconDataUrl: mocks.resolveProjectIconDataUrl,
+}));
+
 vi.mock("@/lib/boardNotifier", () => ({
   broadcastBoardUpdate: mocks.broadcastBoardUpdate,
 }));
@@ -144,6 +150,7 @@ vi.mock("@/lib/kanvibeHooksInstaller", () => ({
 vi.mock("@/lib/hostFileAccess", () => ({
   readTextFile: mocks.readTextFile,
   writeTextFile: mocks.writeTextFile,
+  writeTextFileIfAbsent: mocks.writeTextFileIfAbsent,
   quoteShellArgument: mocks.quoteShellArgument,
 }));
 
@@ -550,12 +557,108 @@ describe("projectService remote registration flow", () => {
       error: "이미 등록된 프로젝트입니다.",
     });
   });
+
+  it("프로젝트 등록은 GitHub 아이콘 조회를 기다리지 않고 저장을 마친 뒤 백그라운드로 아이콘을 채운다", async () => {
+    // Given
+    mocks.validateGitRepo.mockResolvedValue(true);
+    mocks.getDefaultBranch.mockResolvedValue("main");
+    mocks.createSessionWithoutWorktree.mockResolvedValue({ sessionName: "api-main" });
+
+    let releaseIconGate: (() => void) | undefined;
+    const iconGate = new Promise<void>((resolve) => {
+      releaseIconGate = resolve;
+    });
+    mocks.resolveProjectIconDataUrl.mockImplementation(async () => {
+      await iconGate;
+      return "data:image/png;base64,icon";
+    });
+
+    const projectSave = vi.fn(async (value) => ({ id: "project-1", ...value }));
+    const projectUpdate = vi.fn(async () => ({ affected: 1 }));
+    mocks.getProjectRepository.mockResolvedValue({
+      find: vi.fn().mockResolvedValue([]),
+      create: vi.fn((value) => value),
+      save: projectSave,
+      update: projectUpdate,
+      remove: vi.fn(),
+    });
+    mocks.getTaskRepository.mockResolvedValue({
+      findOneBy: vi.fn().mockResolvedValue(null),
+      create: vi.fn((value) => value),
+      save: vi.fn(async (value) => ({ id: "task-1", ...value })),
+    });
+
+    try {
+      const { registerProject } = await import("@/desktop/main/services/projectService");
+
+      // When
+      const result = await registerProject("api", "/workspace/api");
+
+      // Then
+      /** 아이콘 조회가 아직 끝나지 않아도 등록과 DB 저장은 완료된다 */
+      expect(result.success).toBe(true);
+      expect(projectSave).toHaveBeenCalledTimes(1);
+      expect(projectSave.mock.calls[0][0].iconDataUrl).toBeUndefined();
+
+      releaseIconGate?.();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      /** 아이콘은 이미 존재하는 행에만 반영해 조회 중 삭제된 프로젝트가 되살아나지 않게 한다 */
+      expect(projectSave).toHaveBeenCalledTimes(1);
+      expect(projectUpdate).toHaveBeenCalledWith(
+        { id: "project-1" },
+        { iconDataUrl: "data:image/png;base64,icon" },
+      );
+    } finally {
+      mocks.resolveProjectIconDataUrl.mockImplementation(async () => null);
+    }
+  });
+
+  it("아이콘 조회 도중 프로젝트가 삭제되면 아이콘을 다시 저장하지 않는다", async () => {
+    // Given
+    mocks.validateGitRepo.mockResolvedValue(true);
+    mocks.getDefaultBranch.mockResolvedValue("main");
+    mocks.createSessionWithoutWorktree.mockResolvedValue({ sessionName: "api-main" });
+    mocks.resolveProjectIconDataUrl.mockImplementation(async () => "data:image/png;base64,icon");
+
+    /** 삭제된 프로젝트라 조건부 update가 어떤 행도 건드리지 못한 상황 */
+    const projectUpdate = vi.fn(async () => ({ affected: 0 }));
+    mocks.getProjectRepository.mockResolvedValue({
+      find: vi.fn().mockResolvedValue([]),
+      create: vi.fn((value) => value),
+      save: vi.fn(async (value) => ({ id: "project-1", ...value })),
+      update: projectUpdate,
+      remove: vi.fn(),
+    });
+    mocks.getTaskRepository.mockResolvedValue({
+      findOneBy: vi.fn().mockResolvedValue(null),
+      create: vi.fn((value) => value),
+      save: vi.fn(async (value) => ({ id: "task-1", ...value })),
+    });
+
+    try {
+      const { registerProject } = await import("@/desktop/main/services/projectService");
+
+      // When
+      await registerProject("api", "/workspace/api");
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      // Then
+      expect(projectUpdate).toHaveBeenCalledTimes(1);
+      /** 등록 직후 1회만 갱신되고, 반영되지 못한 아이콘으로 보드를 다시 갱신하지 않는다 */
+      expect(mocks.broadcastBoardUpdate).toHaveBeenCalledTimes(1);
+    } finally {
+      mocks.resolveProjectIconDataUrl.mockImplementation(async () => null);
+    }
+  });
 });
 
 describe("projectService local hook installation", () => {
   beforeEach(() => {
     vi.resetModules();
     vi.clearAllMocks();
+    /** 파일 읽기 구현은 테스트마다 다르므로 이전 테스트의 구현이 남지 않도록 되돌린다 */
+    mocks.readTextFile.mockReset();
     mocks.execGit.mockResolvedValue("");
     mocks.getDefaultSessionType.mockResolvedValue("tmux");
     mocks.getClaudeHooksStatus.mockResolvedValue({ installed: false });
@@ -1490,6 +1593,100 @@ describe("projectService local hook installation", () => {
     expect(mocks.installKanvibeHooks).not.toHaveBeenCalled();
   });
 
+  /**
+   * 공유 색상 파일을 읽는 동안 사용자가 색을 바꿀 수 있으므로, sync가 읽어둔 색상이 아직 DB에
+   * 남아 있을 때만 덮어써야 방금 고른 색이 되돌아가지 않는다.
+   */
+  function mockProjectColorSyncRepositories(
+    project: { id: string; color: string },
+    update: ReturnType<typeof vi.fn>,
+  ): void {
+    mocks.getProjectRepository.mockResolvedValue({
+      find: vi.fn().mockResolvedValue([project]),
+      findOneBy: vi.fn().mockResolvedValue(project),
+      update,
+    });
+
+    mocks.getTaskRepository.mockResolvedValue({
+      findBy: vi.fn().mockResolvedValue([]),
+      findOneBy: vi.fn(async (criteria: { branchName?: string; projectId?: string | null }) => (
+        criteria.projectId === project.id && criteria.branchName === "main"
+          ? {
+            id: "task-main",
+            branchName: "main",
+            projectId: project.id,
+            baseBranch: "main",
+            worktreePath: "/workspace/api",
+            sshHost: null,
+          }
+          : null
+      )),
+      create: vi.fn((value) => value),
+      save: vi.fn(async (value) => value),
+    });
+  }
+
+  function mockSharedProjectColorFile(sharedColor: string): void {
+    mocks.listWorktrees.mockResolvedValue([
+      { path: "/workspace/api", branch: "main", isBare: false },
+    ]);
+    mocks.readTextFile.mockImplementation(async (filePath: string) => (
+      filePath === "/workspace/api/.kanvibe/project.json"
+        ? JSON.stringify({ schemaVersion: 1, projectColor: sharedColor })
+        : ""
+    ));
+  }
+
+  it("공유 색상을 DB에 반영하는 사이 사용자가 색을 바꾸면 그 값을 덮지 않는다", async () => {
+    // Given
+    mockSharedProjectColorFile("#0064FF");
+    const project = {
+      id: "project-1",
+      name: "api",
+      repoPath: "/workspace/api",
+      defaultBranch: "main",
+      sshHost: null,
+      color: "#65D08A",
+    };
+    /** affected 0은 sync가 읽어둔 색상이 더 이상 DB에 없다는 뜻, 즉 사용자 편집이 먼저 반영된 상태다 */
+    const update = vi.fn().mockResolvedValue({ affected: 0 });
+    mockProjectColorSyncRepositories(project, update);
+
+    const { syncRegisteredProjectWorktrees } = await import("@/desktop/main/services/projectService");
+
+    // When
+    const result = await syncRegisteredProjectWorktrees();
+
+    // Then
+    expect(update).toHaveBeenCalledWith({ id: "project-1", color: "#65D08A" }, { color: "#0064FF" });
+    expect(result.changed).toBe(false);
+    expect(project.color).toBe("#65D08A");
+  });
+
+  it("공유 색상이 그대로 남아 있으면 DB와 보드에 반영한다", async () => {
+    // Given
+    mockSharedProjectColorFile("#0064FF");
+    const project = {
+      id: "project-1",
+      name: "api",
+      repoPath: "/workspace/api",
+      defaultBranch: "main",
+      sshHost: null,
+      color: "#65D08A",
+    };
+    const update = vi.fn().mockResolvedValue({ affected: 1 });
+    mockProjectColorSyncRepositories(project, update);
+
+    const { syncRegisteredProjectWorktrees } = await import("@/desktop/main/services/projectService");
+
+    // When
+    const result = await syncRegisteredProjectWorktrees();
+
+    // Then
+    expect(result.changed).toBe(true);
+    expect(project.color).toBe("#0064FF");
+  });
+
   it("등록된 원격 프로젝트 background sync는 기존 root hook 복구를 예약하지 않는다", async () => {
     vi.useFakeTimers();
 
@@ -2140,6 +2337,70 @@ describe("projectService local hook installation", () => {
     await syncPromise;
 
     expect(Array.from(firstCalls).filter((repoPath) => repoPath.startsWith("/workspace/api-"))).toEqual(["/workspace/api-a", "/workspace/api-b"]);
+  });
+
+  it("등록된 프로젝트 background sync는 아이콘 backfill을 순차 worktree 스캔과 분리해 병렬로 실행한다", async () => {
+    // Given
+    mocks.isSessionAlive.mockResolvedValue(false);
+    mocks.listWorktrees.mockResolvedValue([]);
+
+    const iconLookupPaths: string[] = [];
+    let releaseIconGate: (() => void) | undefined;
+    const iconGate = new Promise<void>((resolve) => {
+      releaseIconGate = resolve;
+    });
+    mocks.resolveProjectIconDataUrl.mockImplementation(async (repoPath: string) => {
+      iconLookupPaths.push(repoPath);
+      await iconGate;
+      return `data:image/png;base64,${repoPath}`;
+    });
+
+    const projectUpdate = vi.fn(async () => ({ affected: 1 }));
+    mocks.getProjectRepository.mockResolvedValue({ save: vi.fn(async (value) => value), update: projectUpdate });
+    mocks.getTaskRepository.mockResolvedValue({
+      findOneBy: vi.fn(async (criteria: { branchName?: string; projectId?: string | null }) => ({
+        id: `task-${criteria.projectId}`,
+        branchName: criteria.branchName,
+        projectId: criteria.projectId,
+        baseBranch: criteria.branchName,
+        worktreePath: null,
+        sshHost: null,
+      })),
+      create: vi.fn((value) => value),
+      save: vi.fn(async (value) => value),
+    });
+
+    const projects = [
+      { id: "project-a", name: "api-a", repoPath: "/workspace/api-a", defaultBranch: "main", sshHost: null, iconDataUrl: null },
+      { id: "project-b", name: "api-b", repoPath: "/workspace/api-b", defaultBranch: "main", sshHost: null, iconDataUrl: null },
+      { id: "project-c", name: "api-c", repoPath: "/workspace/api-c", defaultBranch: "main", sshHost: null, iconDataUrl: "data:image/png;base64,kept" },
+    ];
+
+    try {
+      const { syncRegisteredProjectWorktrees } = await import("@/desktop/main/services/projectService");
+
+      // When
+      const syncPromise = syncRegisteredProjectWorktrees(projects as never);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      // Then
+      /** 아이콘이 없는 두 프로젝트의 조회가 서로를 기다리지 않고 동시에 진행된다 */
+      expect(iconLookupPaths).toEqual(["/workspace/api-a", "/workspace/api-b"]);
+      expect(mocks.listWorktrees).not.toHaveBeenCalled();
+
+      releaseIconGate?.();
+      const result = await syncPromise;
+
+      expect(result.changed).toBe(true);
+      expect(projects[2].iconDataUrl).toBe("data:image/png;base64,kept");
+      /** 아이콘은 이미 존재하는 행에만 조건부로 반영한다 */
+      expect(projectUpdate.mock.calls).toEqual([
+        [{ id: "project-a" }, { iconDataUrl: "data:image/png;base64,/workspace/api-a" }],
+        [{ id: "project-b" }, { iconDataUrl: "data:image/png;base64,/workspace/api-b" }],
+      ]);
+    } finally {
+      mocks.resolveProjectIconDataUrl.mockImplementation(async () => null);
+    }
   });
 });
 

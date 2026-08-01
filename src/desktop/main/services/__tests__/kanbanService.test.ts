@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => ({
     find: vi.fn(),
     findOneBy: vi.fn(),
     save: vi.fn(),
+    update: vi.fn(),
   },
   execFile: vi.fn(),
   createWorktreeWithSession: vi.fn(),
@@ -1109,7 +1110,7 @@ describe("kanbanService.createTask", () => {
     };
     mocks.projectRepo.findOneBy.mockResolvedValue(project);
     mocks.projectRepo.find.mockResolvedValue([]);
-    mocks.projectRepo.save.mockImplementation(async (value) => value);
+    mocks.projectRepo.update.mockResolvedValue({ affected: 1 });
 
     const { updateProjectColor } = await import("@/desktop/main/services/kanbanService");
 
@@ -1117,11 +1118,41 @@ describe("kanbanService.createTask", () => {
     await updateProjectColor("project-1", "#93C5FD");
 
     // Then
-    expect(mocks.projectRepo.save).toHaveBeenCalledWith(expect.objectContaining({
-      id: "project-1",
-      color: "#93C5FD",
-    }));
+    expect(mocks.projectRepo.update).toHaveBeenCalledWith(
+      expect.anything(),
+      { color: "#93C5FD" },
+    );
     expect(mocks.broadcastBoardUpdate).toHaveBeenCalledTimes(1);
+  });
+
+  it("프로젝트 색상 수정은 DB보다 권위 파일인 .kanvibe 상태를 먼저 기록한다", async () => {
+    // Given
+    mocks.projectRepo.findOneBy.mockResolvedValue({
+      id: "project-1",
+      repoPath: "/workspace/repo",
+      color: "#65D08A",
+    });
+    mocks.projectRepo.find.mockResolvedValue([]);
+    mocks.projectRepo.update.mockResolvedValue({ affected: 1 });
+
+    const writeOrder: string[] = [];
+    mocks.writeTextFile.mockImplementation(async () => {
+      writeOrder.push("kanvibe-state");
+    });
+    mocks.projectRepo.update.mockImplementation(async () => {
+      writeOrder.push("database");
+      return { affected: 1 };
+    });
+
+    const { updateProjectColor } = await import("@/desktop/main/services/kanbanService");
+
+    // When
+    await updateProjectColor("project-1", "#0064FF");
+
+    // Then
+    /** DB가 먼저 바뀌면 그 사이 도는 background sync가 아직 낡은 공유 파일을 읽어 색을 되돌린다 */
+    expect(writeOrder.indexOf("kanvibe-state")).toBeGreaterThanOrEqual(0);
+    expect(writeOrder.indexOf("kanvibe-state")).toBeLessThan(writeOrder.indexOf("database"));
   });
 
   it("컬럼 내 task 순서 변경 후 board update를 브로드캐스트한다", async () => {

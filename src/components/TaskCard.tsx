@@ -9,6 +9,7 @@ import {
 } from "@/desktop/renderer/utils/taskNavigation";
 import { TaskStatus, type KanbanTask } from "@/entities/KanbanTask";
 import { TaskPriority } from "@/entities/TaskPriority";
+import ProjectIcon from "@/components/ProjectIcon";
 
 interface ContextMenuPosition {
   x: number;
@@ -21,6 +22,7 @@ interface TaskCardProps {
   onContextMenu: (task: KanbanTask, position: ContextMenuPosition) => void;
   projectName?: string;
   projectColor?: string;
+  projectIconDataUrl?: string | null;
   isBaseProject?: boolean;
   vimModeEnabled?: boolean;
 }
@@ -38,6 +40,8 @@ const priorityConfig: Record<TaskPriority, { label: string; colorClass: string }
 };
 
 const badgeClassName = "inline-flex items-center rounded border border-border-subtle px-1.5 py-0.5 text-[10px]";
+/** 프로젝트 마커 열 + 본문 열. 마커 폭은 ProjectIcon 기본 크기(h-3.5 w-3.5 = 14px)와 맞춘다 */
+const PROJECT_MARKER_GRID_COLUMNS = "grid-cols-[14px_minmax(0,1fr)]";
 
 const KANBAN_STATUS_ORDER = [
   TaskStatus.TODO,
@@ -156,6 +160,7 @@ export default function TaskCard({
   onContextMenu,
   projectName,
   projectColor,
+  projectIconDataUrl,
   isBaseProject,
   vimModeEnabled = true,
 }: TaskCardProps) {
@@ -265,10 +270,11 @@ export default function TaskCard({
           )}
 
           {projectName && (
-            <div className="mb-1 grid grid-cols-[6px_minmax(0,1fr)] items-center gap-2">
-              <span
-                className="h-1.5 w-1.5 shrink-0 rounded-full"
-                style={{ backgroundColor: projectColor }}
+            <div className={`mb-1 grid ${PROJECT_MARKER_GRID_COLUMNS} items-center gap-2`}>
+              <ProjectIcon
+                projectName={projectName}
+                iconDataUrl={projectIconDataUrl}
+                color={projectColor}
               />
               <span
                 className="truncate text-xs font-semibold leading-4"
@@ -279,7 +285,7 @@ export default function TaskCard({
             </div>
           )}
 
-          <div className={projectName ? "grid grid-cols-[6px_minmax(0,1fr)] items-start gap-2" : "block"}>
+          <div className={projectName ? `grid ${PROJECT_MARKER_GRID_COLUMNS} items-start gap-2` : "block"}>
             {projectName ? <span aria-hidden="true" /> : null}
             <div className="min-w-0">
               <h3 className="truncate text-[13px] font-medium leading-5 text-text-primary">

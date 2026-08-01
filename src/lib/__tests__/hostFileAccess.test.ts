@@ -105,3 +105,62 @@ describe("hostFileAccess.readTextFiles", () => {
     expect(files.get(finalFilePath)).toEqual({ exists: true, content: finalContent });
   });
 });
+
+describe("hostFileAccess.writeTextFileIfAbsent", () => {
+  let tempDir: string;
+
+  beforeEach(async () => {
+    tempDir = await mkdtemp(path.join(tmpdir(), "kanvibe-write-if-absent-"));
+    mocks.execGit.mockReset();
+  });
+
+  afterEach(async () => {
+    await rm(tempDir, { recursive: true, force: true });
+  });
+
+  it("파일이 없으면 상위 디렉터리까지 만들어 기록한다", async () => {
+    // Given
+    const targetPath = path.join(tempDir, "nested", "project.json");
+    const { writeTextFileIfAbsent } = await import("@/lib/hostFileAccess");
+
+    // When
+    await writeTextFileIfAbsent(targetPath, "seed\n");
+
+    // Then
+    await expect(readFile(targetPath, "utf-8")).resolves.toBe("seed\n");
+  });
+
+  /** 이미 만들어진 값은 다른 주체가 확정한 권위 값이므로 씨앗 기록이 덮으면 안 된다 */
+  it("이미 있는 파일은 덮지 않는다", async () => {
+    // Given
+    const targetPath = path.join(tempDir, "project.json");
+    await writeFile(targetPath, "authoritative\n", "utf-8");
+    const { writeTextFileIfAbsent } = await import("@/lib/hostFileAccess");
+
+    // When
+    await writeTextFileIfAbsent(targetPath, "seed\n");
+
+    // Then
+    await expect(readFile(targetPath, "utf-8")).resolves.toBe("authoritative\n");
+  });
+
+  it("원격 기록 명령은 POSIX sh에서 실행 가능하고 기존 파일을 덮지 않는다", async () => {
+    // Given
+    const createdPath = path.join(tempDir, "created's file.json");
+    const existingPath = path.join(tempDir, "existing.json");
+    await writeFile(existingPath, "authoritative\n", "utf-8");
+    mocks.execGit.mockImplementation(async (command: string) => {
+      const { stdout } = await execFileAsync("sh", ["-lc", wrapLikeRemoteExecGit(command)]);
+      return stdout;
+    });
+    const { writeTextFileIfAbsent } = await import("@/lib/hostFileAccess");
+
+    // When
+    await writeTextFileIfAbsent(createdPath, "seed\n", "remote-host");
+    await writeTextFileIfAbsent(existingPath, "seed\n", "remote-host");
+
+    // Then
+    await expect(readFile(createdPath, "utf-8")).resolves.toBe("seed\n");
+    await expect(readFile(existingPath, "utf-8")).resolves.toBe("authoritative\n");
+  });
+});

@@ -820,6 +820,7 @@ export default function TaskDetailRoute() {
   const [mainView, setMainView] = useState<MainView>("terminal");
   const notificationCenterRef = useRef<NotificationCenterButtonHandle>(null);
   const currentTaskIdRef = useRef(id);
+  const dockItemsRef = useRef<TaskDetailDockItem[]>([]);
   const commonTranslationsRef = useRef(tc);
   const hasTerminal = !!(state?.task.sessionType && state.task.sessionName);
   const shortcutPlatform = getCurrentShortcutPlatform();
@@ -918,19 +919,23 @@ export default function TaskDetailRoute() {
     return items;
   }, [mainView, state, statusPanelLabel, t, toggleChatView, toggleDetailPanel, visiblePanel]);
 
+  // dock 항목을 렌더 시점에 ref로 넘겨두면 shortcut 구독을 다시 등록하지 않아도 항상 최신 dock을 실행한다.
+  // 구독을 dock 변경마다 재등록하면 커밋과 effect flush 사이에 들어온 shortcut이 이전 dock(빈 배열)을 보고 무시된다.
+  dockItemsRef.current = dockItems;
+
   const activateDockItem = useCallback((shortcutIndex: number) => {
     if (!Number.isInteger(shortcutIndex)) {
       return false;
     }
 
-    const item = dockItems[shortcutIndex - 1];
+    const item = dockItemsRef.current[shortcutIndex - 1];
     if (!item) {
       return false;
     }
 
     item.onActivate();
     return true;
-  }, [dockItems]);
+  }, []);
 
   useEffect(() => {
     if (id) {

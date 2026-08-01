@@ -17,6 +17,7 @@ import { AddColorIndexToProjects1771343199455 } from "../migrations/177134319945
 import { AddPriorityToKanbanTasks1771344000000 } from "../migrations/1771344000000-AddPriorityToKanbanTasks";
 import { ReplaceColorIndexWithColor1771388085809 } from "../migrations/1771388085809-ReplaceColorIndexWithColor";
 import { FillEmptyBaseBranch1771400000000 } from "../migrations/1771400000000-FillEmptyBaseBranch";
+import { AddIconDataUrlToProjects1771500000000 } from "../migrations/1771500000000-AddIconDataUrlToProjects";
 
 /** TypeORM CLI 전용 DataSource 설정. 내장 SQLite DB를 조회하거나 ad-hoc 점검할 때 사용한다. */
 export default new DataSource({
@@ -36,6 +37,7 @@ export default new DataSource({
     AddPriorityToKanbanTasks1771344000000,
     ReplaceColorIndexWithColor1771388085809,
     FillEmptyBaseBranch1771400000000,
+    AddIconDataUrlToProjects1771500000000,
   ],
   synchronize: false,
   logging: process.env.TYPEORM_LOGGING === "true",

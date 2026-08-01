@@ -13,6 +13,7 @@ import type { AggregatedAiSessionDetail, AggregatedAiSessionsResult, AiMessageRo
 import { homedir } from "os";
 import path from "path";
 import { computeProjectColor } from "@/lib/projectColor";
+import { resolveProjectIconDataUrl } from "@/lib/githubProjectIcon";
 import { broadcastBoardUpdate } from "@/lib/boardNotifier";
 import { getAvailableHosts as readAvailableHosts } from "@/lib/sshConfig";
 import { getDefaultSessionType } from "@/desktop/main/services/appSettingsService";
@@ -21,6 +22,28 @@ import {
   persistTaskStateAtPath as persistTaskState,
   readPersistedTaskStatusAtPath as readPersistedTaskStatus,
 } from "@/desktop/main/services/kanvibeTaskStateService";
+import {
+  persistProjectColorToKanvibeState,
+  readSharedProjectColor,
+  syncProjectColorWithKanvibeState,
+} from "@/desktop/main/services/kanvibeProjectColorService";
+import { mapWithConcurrency } from "@/lib/aiSessions/shared";
+
+/** 아이콘 backfill 동시 실행 수. GitHub에 과도한 동시 요청을 보내지 않으면서 순차 대기를 줄이는 값 */
+const PROJECT_ICON_BACKFILL_CONCURRENCY = 8;
+
+/**
+ * 프로젝트 색상을 결정한다.
+ * 같은 저장소를 이미 보고 있는 다른 KanVibe client가 정한 색상이 있으면 이어받고,
+ * 없으면 프로젝트명 기반 색상을 새로 계산한다.
+ */
+async function resolveProjectColor(
+  repoPath: string,
+  projectName: string,
+  sshHost?: string | null,
+): Promise<string> {
+  return await readSharedProjectColor(repoPath, sshHost) ?? computeProjectColor(projectName);
+}
 
 function matchesTaskLocation(task: { worktreePath?: string | null; sshHost?: string | null }, expectedPath: string, sshHost?: string | null): boolean {
   return task.worktreePath === expectedPath && (task.sshHost || null) === (sshHost || null);
@@ -479,10 +502,11 @@ export async function registerProject(
     repoPath: normalizedRepoPath,
     defaultBranch,
     sshHost: sshHost || null,
-    color: computeProjectColor(projectName),
+    color: await resolveProjectColor(normalizedRepoPath, projectName, sshHost || null),
   });
 
   const saved = await repo.save(project);
+  await persistProjectColorToKanvibeState(saved);
   try {
     await ensureProjectRootTask(saved, {
       repairHooks: !saved.sshHost,
@@ -496,6 +520,7 @@ export async function registerProject(
     };
   }
 
+  scheduleProjectIconBackfill(saved);
   broadcastBoardUpdate();
   return { success: true, project: serialize(saved) };
 }
@@ -572,6 +597,110 @@ function mergeRegisteredProjectWorktreeSyncResult(
   target.hooksSetup.push(...next.hooksSetup.filter((name) => !target.hooksSetup.includes(name)));
 }
 
+/**
+ * 다른 KanVibe client가 `.kanvibe/project.json`에 기록한 프로젝트 색상을 DB에 반영한다.
+ *
+ * 공유 파일을 읽는 동안 사용자가 색을 바꿨을 수 있으므로, 읽어둔 색상이 아직 DB에 남아 있을 때만
+ * 덮어쓴다. 조건 없이 쓰면 방금 고른 색이 공유 파일에서 읽은 이전 색으로 되돌아간다.
+ * @returns 색상이 실제로 바뀌어 보드를 갱신해야 하면 true
+ */
+async function syncSharedProjectColor(project: Project): Promise<boolean> {
+  const sharedColor = await syncProjectColorWithKanvibeState(project);
+  if (!sharedColor) {
+    return false;
+  }
+
+  if (!await updateExistingProject(project.id, { color: sharedColor }, { color: project.color })) {
+    return false;
+  }
+
+  project.color = sharedColor;
+  return true;
+}
+
+/**
+ * 아직 아이콘이 없는 프로젝트의 GitHub 아이콘을 뒤늦게 채운다.
+ * 이전 버전에서 등록됐거나, 등록 시점에 오프라인이었거나, GitHub remote가 나중에 추가된
+ * 프로젝트도 sync를 거치면 아이콘을 갖게 된다.
+ * @returns 아이콘을 새로 확보해 보드를 갱신해야 하면 true
+ */
+async function syncMissingProjectIcon(project: Project): Promise<boolean> {
+  if (project.iconDataUrl) {
+    return false;
+  }
+
+  const iconDataUrl = await resolveProjectIconDataUrl(project.repoPath, project.sshHost);
+  if (!iconDataUrl) {
+    return false;
+  }
+
+  if (!await updateExistingProject(project.id, { iconDataUrl })) {
+    return false;
+  }
+
+  project.iconDataUrl = iconDataUrl;
+  return true;
+}
+
+/**
+ * 이미 존재하는 프로젝트 행에만 변경분을 반영한다.
+ * sync/backfill은 오래 걸리는 git·GitHub 요청을 기다리는 동안 프로젝트가 삭제될 수 있는데,
+ * `save`는 사라진 행을 원래 id 그대로 다시 insert해 task 없는 프로젝트를 되살리므로 조건부 update를 쓴다.
+ * @param expectedColor 이 색상이 아직 DB에 남아 있을 때만 갱신한다. 그 사이 들어온 사용자 편집을 덮지 않기 위한 조건
+ * @returns 실제로 갱신된 행이 있어 보드를 갱신해야 하면 true
+ */
+async function updateExistingProject(
+  projectId: string,
+  changes: Partial<Pick<Project, "color" | "iconDataUrl">>,
+  expected: { color?: string | null } = {},
+): Promise<boolean> {
+  const projectRepo = await getProjectRepository();
+  const { affected } = await projectRepo.update(
+    {
+      id: projectId,
+      ...("color" in expected ? { color: expected.color ?? IsNull() } : {}),
+    },
+    changes,
+  );
+  return affected !== 0;
+}
+
+/**
+ * 새로 등록한 프로젝트의 GitHub 아이콘 확보를 백그라운드로 넘긴다.
+ * 아이콘 조회는 GitHub 네트워크 요청이라 느리거나 끊긴 회선에서는 타임아웃까지 대기하게 되므로,
+ * 프로젝트 저장과 등록 응답이 그 시간만큼 막히지 않도록 저장이 끝난 뒤에 따로 실행한다.
+ */
+function scheduleProjectIconBackfill(project: Project): void {
+  void (async () => {
+    try {
+      if (await syncMissingProjectIcon(project)) {
+        broadcastBoardUpdate();
+      }
+    } catch (error) {
+      if (!isRemoteConnectionError(error)) {
+        console.warn(`${project.name} 아이콘 백그라운드 확보 실패:`, error);
+      }
+    }
+  })();
+}
+
+/**
+ * 아이콘이 없는 프로젝트들의 아이콘 확보를 병렬로 처리한다.
+ * 아이콘 조회는 GitHub 네트워크 요청이라 느리거나 끊긴 회선에서는 프로젝트마다 타임아웃을 기다리게 되므로,
+ * worktree 스캔의 순차 루프 안에서 프로젝트 수만큼 대기 시간이 누적되지 않도록 분리해서 실행한다.
+ * @returns 아이콘을 새로 확보한 프로젝트가 있어 보드를 갱신해야 하면 true
+ */
+async function backfillMissingProjectIcons(projects: Project[]): Promise<boolean> {
+  const projectsWithoutIcon = projects.filter((project) => !project.iconDataUrl);
+  const iconResults = await mapWithConcurrency(
+    projectsWithoutIcon,
+    PROJECT_ICON_BACKFILL_CONCURRENCY,
+    (project) => syncMissingProjectIcon(project),
+  );
+
+  return iconResults.some(Boolean);
+}
+
 async function syncProjectWorktrees(
   project: Project,
   taskRepo: Awaited<ReturnType<typeof getTaskRepository>>,
@@ -585,6 +714,8 @@ async function syncProjectWorktrees(
   };
 
   try {
+    result.changed = await syncSharedProjectColor(project) || result.changed;
+
     const { repaired } = await ensureProjectRootTask(project, {
       repairHooks: false,
       throwOnHookRepairFailure: false,
@@ -739,6 +870,8 @@ export async function syncRegisteredProjectWorktrees(
     changed: false,
   };
 
+  mergedResult.changed = await backfillMissingProjectIcons(projects);
+
   const projectResults: RegisteredProjectWorktreeSyncResult[] = [];
   for (const project of projects) {
     projectResults.push(await syncProjectWorktrees(project, taskRepo));
@@ -809,10 +942,11 @@ export async function scanAndRegisterProjects(
         repoPath,
         defaultBranch,
         sshHost: sshHost || null,
-        color: computeProjectColor(projectName),
+        color: await resolveProjectColor(repoPath, projectName, sshHost || null),
       });
 
       const saved = await repo.save(project);
+      await persistProjectColorToKanvibeState(saved);
       existingPaths.add(pathKey);
       result.registered.push(projectName);
 

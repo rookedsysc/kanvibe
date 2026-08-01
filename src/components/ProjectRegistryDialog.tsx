@@ -10,6 +10,7 @@ import {
 import { useBoardCommands } from "@/desktop/renderer/components/BoardCommandProvider";
 import type { Project } from "@/entities/Project";
 import FolderSearchInput from "@/components/FolderSearchInput";
+import ProjectIcon from "@/components/ProjectIcon";
 import { useEscapeKey } from "@/hooks/useEscapeKey";
 
 interface ProjectRegistryDialogProps {
@@ -200,7 +201,8 @@ export default function ProjectRegistryDialog({
                   >
                     <div className="flex items-center justify-between gap-3">
                       <div className="min-w-0">
-                        <p className="truncate text-sm font-medium text-text-primary">
+                        <p className="flex items-center gap-1.5 truncate text-sm font-medium text-text-primary">
+                          <ProjectIcon projectName={project.name} iconDataUrl={project.iconDataUrl} />
                           {project.name}
                         </p>
                         <p className="truncate font-mono text-xs text-text-muted">
