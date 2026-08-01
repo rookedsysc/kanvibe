@@ -34,7 +34,7 @@ describe("geminiHooksSetup", () => {
       expect(promptScript).toContain(taskId);
       expect(promptScript).toContain("taskId");
       expect(promptScript).toContain("status.json");
-      expect(promptScript).toContain('"schemaVersion":1');
+      expect(promptScript).toContain('\\"schemaVersion\\":1');
       expect(promptScript).toContain("echo '{}'");
 
       expect(stopScript).toContain("#!/bin/bash");
@@ -181,14 +181,14 @@ describe("geminiHooksSetup", () => {
       expect(status.installed).toBe(false);
     });
 
-    it("현재 task id와 다른 Gemini hook은 설치된 것으로 보지 않는다", async () => {
+    it("targets.json에 등록되지 않은 task는 설치된 것으로 보지 않는다", async () => {
       await setupGeminiHooks(tmpDir, "task-1", "http://localhost:9736");
 
       const status = await getGeminiHooksStatus(tmpDir, "task-2");
 
       expect(status.installed).toBe(false);
       expect(status.hasTaskIdBinding).toBe(true);
-      expect(status.hasExpectedTaskId).toBe(false);
+      expect(status.hasRegisteredHookTarget).toBe(false);
       expect(status.boundTaskId).toBe("task-1");
     });
   });

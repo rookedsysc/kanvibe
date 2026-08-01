@@ -153,6 +153,36 @@ export async function writeTextFile(targetPath: string, content: string, sshHost
   );
 }
 
+/**
+ * 대상 파일이 아직 없을 때만 기록한다.
+ * 이미 존재하는 파일은 다른 주체가 확정한 값이므로 검사와 기록 사이에 끼어든 쓰기도 덮지 않아야 한다.
+ * 그래서 로컬은 `wx` 플래그로, 원격은 존재 검사와 기록을 한 셸 명령으로 묶어 원자성을 확보한다.
+ */
+export async function writeTextFileIfAbsent(
+  targetPath: string,
+  content: string,
+  sshHost?: string | null,
+): Promise<void> {
+  if (!sshHost) {
+    await mkdir(path.dirname(targetPath), { recursive: true });
+    try {
+      await writeFile(targetPath, content, { encoding: "utf-8", flag: "wx" });
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "EEXIST") {
+        throw error;
+      }
+    }
+    return;
+  }
+
+  const encodedContent = Buffer.from(content, "utf-8").toString("base64");
+  const quotedTargetPath = quoteShellArgument(targetPath);
+  await execGit(
+    `mkdir -p ${quoteShellArgument(path.posix.dirname(targetPath))} && if [ -e ${quotedTargetPath} ]; then :; else printf '%s' ${quoteShellArgument(encodedContent)} | (base64 -d 2>/dev/null || base64 -D) > ${quotedTargetPath}; fi`,
+    sshHost,
+  );
+}
+
 export async function readDirectoryFilesBySuffix(
   directoryPath: string,
   suffix: string,

@@ -852,6 +852,49 @@ describe("TaskDetailRoute", () => {
     expect(await screen.findByTestId("hooks-status-card")).toBeTruthy();
   });
 
+  it("최초 등록된 Electron dock shortcut 구독은 task 로드 이후에도 최신 dock 항목을 실행한다", async () => {
+    const dockShortcutListeners: ((index: number) => void)[] = [];
+    window.kanvibeDesktop = {
+      isDesktop: true,
+      onTaskDetailDockShortcut(listener: (index: number) => void) {
+        dockShortcutListeners.push(listener);
+        return () => {};
+      },
+    };
+    mocks.getSidebarDefaultCollapsed.mockResolvedValue(true);
+    mocks.getTaskById.mockResolvedValue({
+      id: "task-1",
+      title: "task title",
+      description: null,
+      branchName: "feat/detail-shortcut",
+      baseBranch: "main",
+      prUrl: null,
+      sessionType: "tmux",
+      sessionName: "task-session",
+      sshHost: null,
+      projectId: "project-1",
+      project: { id: "project-1", name: "kanvibe" },
+      status: "todo",
+      agentType: null,
+      worktreePath: "/repo__worktrees/detail-shortcut",
+    });
+
+    render(
+      <BoardCommandProvider>
+        <TaskDetailRoute />
+      </BoardCommandProvider>,
+    );
+
+    await screen.findByLabelText("terminal input");
+
+    const [initialDockShortcutListener] = dockShortcutListeners;
+    act(() => {
+      initialDockShortcutListener?.(2);
+    });
+
+    expect(await screen.findByTestId("hooks-status-card")).toBeTruthy();
+  });
+
   it("Electron dock shortcut 3은 수동 히스토리 버튼 없이 AI 채팅 첫 페이지를 로드한다", async () => {
     let dockShortcutListener: ((index: number) => void) | null = null;
     window.kanvibeDesktop = {

@@ -33,6 +33,10 @@ export class Project {
   @Column({ name: "color", type: "varchar", length: 7, nullable: true, default: null })
   color!: string | null;
 
+  /** 프로젝트 제목 앞에 표시할 GitHub repo/org 아이콘. 오프라인에서도 쓰도록 data URL로 보관한다 */
+  @Column({ name: "icon_data_url", type: "text", nullable: true, default: null })
+  iconDataUrl!: string | null;
+
   @CreateDateColumn({ name: "created_at" })
   createdAt!: Date;
 }

@@ -65,6 +65,7 @@ function createProject(overrides?: Partial<Project>): Project {
     sshHost: "remote-box",
     isWorktree: false,
     color: null,
+    iconDataUrl: null,
     createdAt: new Date(),
     ...overrides,
   };

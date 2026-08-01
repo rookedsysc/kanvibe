@@ -107,3 +107,22 @@ export async function addAiToolPatternsToGitExclude(
 
   await writeTextFile(excludePath, nextContent, sshHost);
 }
+
+/**
+ * hook 설치 과정에서 git exclude를 갱신한다.
+ * exclude 갱신 실패는 hook 동작을 막지 않으므로 로그만 남기고 설치를 계속한다.
+ */
+export async function ensureAiToolPatternsExcluded(
+  repoPath: string,
+  sshHost?: string | null,
+): Promise<void> {
+  try {
+    await addAiToolPatternsToGitExclude(repoPath, sshHost);
+  } catch (error) {
+    console.warn("[hooks] git exclude 패턴 추가 실패", {
+      repoPath,
+      sshHost: sshHost ?? null,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+}

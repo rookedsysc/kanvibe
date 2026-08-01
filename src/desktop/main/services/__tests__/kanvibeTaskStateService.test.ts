@@ -16,7 +16,7 @@ const mocks = vi.hoisted(() => ({
   },
   getProjectRepository: vi.fn(),
   readKanvibeTaskState: vi.fn(),
-  writeKanvibeTaskState: vi.fn(),
+  writeKanvibeTaskStatus: vi.fn(),
   addAiToolPatternsToGitExclude: vi.fn(),
 }));
 
@@ -28,7 +28,7 @@ vi.mock("@/lib/database", () => ({
 
 vi.mock("@/lib/kanvibeProjectState", () => ({
   readKanvibeTaskState: mocks.readKanvibeTaskState,
-  writeKanvibeTaskState: mocks.writeKanvibeTaskState,
+  writeKanvibeTaskStatus: mocks.writeKanvibeTaskStatus,
 }));
 
 vi.mock("@/lib/gitExclude", () => ({
@@ -44,7 +44,7 @@ describe("kanvibeTaskStateService", () => {
     mocks.getProjectRepository.mockReset();
     mocks.projectRepo.findOneBy.mockReset();
     mocks.readKanvibeTaskState.mockReset();
-    mocks.writeKanvibeTaskState.mockReset();
+    mocks.writeKanvibeTaskStatus.mockReset();
     mocks.addAiToolPatternsToGitExclude.mockReset();
     mocks.getProjectRepository.mockResolvedValue(mocks.projectRepo);
   });
@@ -54,7 +54,7 @@ describe("kanvibeTaskStateService", () => {
 
     await persistTaskStateAtPath(null, { id: "task-1", status: TaskStatus.PROGRESS }, "ssh-host");
 
-    expect(mocks.writeKanvibeTaskState).not.toHaveBeenCalled();
+    expect(mocks.writeKanvibeTaskStatus).not.toHaveBeenCalled();
     expect(mocks.addAiToolPatternsToGitExclude).not.toHaveBeenCalled();
   });
 
@@ -72,11 +72,11 @@ describe("kanvibeTaskStateService", () => {
       "remote-host",
     );
     expect(mocks.addAiToolPatternsToGitExclude.mock.invocationCallOrder[0]).toBeLessThan(
-      mocks.writeKanvibeTaskState.mock.invocationCallOrder[0],
+      mocks.writeKanvibeTaskStatus.mock.invocationCallOrder[0],
     );
-    expect(mocks.writeKanvibeTaskState).toHaveBeenCalledWith(
+    expect(mocks.writeKanvibeTaskStatus).toHaveBeenCalledWith(
       "/remote/repo__worktrees/feature-task",
-      { status: TaskStatus.REVIEW },
+      TaskStatus.REVIEW,
       "remote-host",
     );
   });
@@ -92,9 +92,9 @@ describe("kanvibeTaskStateService", () => {
       null,
     )).resolves.toBeUndefined();
 
-    expect(mocks.writeKanvibeTaskState).toHaveBeenCalledWith(
+    expect(mocks.writeKanvibeTaskStatus).toHaveBeenCalledWith(
       "/workspace/repo",
-      { status: TaskStatus.PROGRESS },
+      TaskStatus.PROGRESS,
       null,
     );
     expect(consoleWarn).toHaveBeenCalledWith(
@@ -110,7 +110,7 @@ describe("kanvibeTaskStateService", () => {
 
   it("path 기반 task 상태 저장은 실패해도 호출자 흐름을 막지 않는다", async () => {
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
-    mocks.writeKanvibeTaskState.mockRejectedValue(new Error("disk full"));
+    mocks.writeKanvibeTaskStatus.mockRejectedValue(new Error("disk full"));
     const { persistTaskStateAtPath } = await import("@/desktop/main/services/kanvibeTaskStateService");
 
     await expect(persistTaskStateAtPath(
@@ -119,9 +119,9 @@ describe("kanvibeTaskStateService", () => {
       "ssh-host",
     )).resolves.toBeUndefined();
 
-    expect(mocks.writeKanvibeTaskState).toHaveBeenCalledWith(
+    expect(mocks.writeKanvibeTaskStatus).toHaveBeenCalledWith(
       "/workspace/repo",
-      { status: TaskStatus.REVIEW },
+      TaskStatus.REVIEW,
       "ssh-host",
     );
     expect(consoleError).toHaveBeenCalledWith(
@@ -150,9 +150,9 @@ describe("kanvibeTaskStateService", () => {
     });
 
     expect(mocks.getProjectRepository).not.toHaveBeenCalled();
-    expect(mocks.writeKanvibeTaskState).toHaveBeenCalledWith(
+    expect(mocks.writeKanvibeTaskStatus).toHaveBeenCalledWith(
       "/workspace/repo__worktrees/task-1",
-      { status: TaskStatus.PENDING },
+      TaskStatus.PENDING,
       "ssh-host",
     );
   });
@@ -176,9 +176,9 @@ describe("kanvibeTaskStateService", () => {
     });
 
     expect(mocks.projectRepo.findOneBy).toHaveBeenCalledWith({ id: "project-1" });
-    expect(mocks.writeKanvibeTaskState).toHaveBeenCalledWith(
+    expect(mocks.writeKanvibeTaskStatus).toHaveBeenCalledWith(
       "/workspace/repo",
-      { status: TaskStatus.TODO },
+      TaskStatus.TODO,
       "project-ssh",
     );
   });
@@ -202,7 +202,7 @@ describe("kanvibeTaskStateService", () => {
     });
 
     expect(mocks.projectRepo.findOneBy).toHaveBeenCalledWith({ id: "project-1" });
-    expect(mocks.writeKanvibeTaskState).not.toHaveBeenCalled();
+    expect(mocks.writeKanvibeTaskStatus).not.toHaveBeenCalled();
   });
 
   it("저장된 task 상태만 읽어 반환한다", async () => {

@@ -19,6 +19,7 @@ import { AddColorIndexToProjects1771343199455 } from "@/migrations/1771343199455
 import { AddPriorityToKanbanTasks1771344000000 } from "@/migrations/1771344000000-AddPriorityToKanbanTasks";
 import { ReplaceColorIndexWithColor1771388085809 } from "@/migrations/1771388085809-ReplaceColorIndexWithColor";
 import { FillEmptyBaseBranch1771400000000 } from "@/migrations/1771400000000-FillEmptyBaseBranch";
+import { AddIconDataUrlToProjects1771500000000 } from "@/migrations/1771500000000-AddIconDataUrlToProjects";
 
 /** TypeORM DataSource 싱글턴. Vite HMR 시 재연결을 방지하기 위해 globalThis에 캐싱한다. */
 const globalForDb = globalThis as unknown as {
@@ -38,6 +39,7 @@ const MIGRATIONS = [
   AddPriorityToKanbanTasks1771344000000,
   ReplaceColorIndexWithColor1771388085809,
   FillEmptyBaseBranch1771400000000,
+  AddIconDataUrlToProjects1771500000000,
 ];
 
 interface MigrationRecord {

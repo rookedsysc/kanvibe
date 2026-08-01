@@ -63,8 +63,8 @@ function createEmptyBoardData(): BoardData {
 function BoardTaskCardSkeleton({ index }: { index: number }) {
   return (
     <div className="rounded-md border border-border-subtle px-2.5 py-2">
-      <div className="mb-2 grid grid-cols-[6px_minmax(0,1fr)] items-center gap-2">
-        <div className="h-1.5 w-1.5 rounded-full bg-border-strong" />
+      <div className="mb-2 grid grid-cols-[14px_minmax(0,1fr)] items-center gap-2">
+        <div className="h-3.5 w-3.5 rounded-sm bg-border-strong" />
         <div className="h-3 w-24 rounded bg-border-subtle" />
       </div>
       <div className={`h-3.5 rounded bg-border-default ${BOARD_SKELETON_TITLE_WIDTHS[index % BOARD_SKELETON_TITLE_WIDTHS.length]}`} />

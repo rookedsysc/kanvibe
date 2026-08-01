@@ -10,9 +10,11 @@ import {
   buildShellTaskIdResolver,
   extractShellTaskId,
   getShellTaskIdBindingStatus,
+  hasShellKanvibeParallelTargetFanout,
+  hasShellKanvibeBoundedNotifyTimeout,
   hasShellKanvibeStatusJsonPersistence,
   hasShellKanvibeTargetFanout,
-} from "@/lib/hookTaskBinding";
+} from "@/lib/shellHookScript";
 
 const execFileAsync = promisify(execFile);
 
@@ -47,7 +49,7 @@ function resolveRealBinary(name: string): string | null {
   return null;
 }
 
-describe("hookTaskBinding", () => {
+describe("shellHookScript", () => {
   it("shell resolver는 hook 파일 안에 task id를 직접 고정한다", () => {
     // Given
 
@@ -98,9 +100,9 @@ describe("hookTaskBinding", () => {
     expect(updater).toContain("/info/exclude");
     expect(updater).toContain(".kanvibe/");
     expect(updater).toContain("grep -qxF");
-    expect(updater).toContain('"schemaVersion":1');
-    expect(updater).toContain('"status":"%s"');
-    expect(updater).toContain('"updatedAt":"%s"');
+    expect(updater).toContain('\\"schemaVersion\\":1');
+    expect(updater).toContain('\\"status\\":\\"${KANVIBE_STATUS}\\"');
+    expect(updater).toContain('\\"updatedAt\\":\\"${KANVIBE_UPDATED_AT}\\"');
     expect(updater).toContain("${KANVIBE_TASK_STATE_FILE}");
     expect(updater).toContain("KANVIBE_TARGET_URL");
     expect(updater).toContain("KANVIBE_TARGET_TASK_ID");
@@ -117,7 +119,31 @@ describe("hookTaskBinding", () => {
     expect(hasShellKanvibeTargetFanout(updaterWithoutTargets)).toBe(false);
   });
 
-  it("node·user env 없이도 targets.json 대상별 task id로 status를 fan-out 한다", async () => {
+  it("병렬 fan-out 판정은 순차 curl 루프 hook을 거부한다", () => {
+    const updater = buildShellKanvibeStatusUpdater("review");
+    const sequentialUpdater = updater.replace("> /dev/null 2>&1 &", "> /dev/null 2>&1 || true");
+
+    expect(hasShellKanvibeParallelTargetFanout(updater)).toBe(true);
+    expect(hasShellKanvibeParallelTargetFanout(sequentialUpdater)).toBe(false);
+  });
+
+  it("통보 타임아웃 판정은 상한 없는 curl hook을 거부한다", () => {
+    const updater = buildShellKanvibeStatusUpdater("review");
+    const unboundedUpdater = updater.replace("--max-time 3 ", "");
+
+    expect(hasShellKanvibeBoundedNotifyTimeout(updater)).toBe(true);
+    expect(hasShellKanvibeBoundedNotifyTimeout(unboundedUpdater)).toBe(false);
+  });
+
+  /** hook은 색상 파일을 읽지도 쓰지도 않아 client의 색상 갱신과 경합하지 않는다 */
+  it("status 갱신 shell 조각은 프로젝트 색상을 건드리지 않는다", () => {
+    const updater = buildShellKanvibeStatusUpdater("review");
+
+    expect(updater).not.toContain("projectColor");
+    expect(updater).not.toContain("project.json");
+  });
+
+  it("node·user env 없이도 targets.json의 모든 client에 병렬로 status를 fan-out 한다", async () => {
     const repoPath = await mkdtemp(join(tmpdir(), "kanvibe-hook-nonode-"));
 
     try {
@@ -133,9 +159,19 @@ describe("hookTaskBinding", () => {
           schemaVersion: 1,
           targets: [
             { url: "http://127.0.0.1:9736/", taskId: "local-task" },
-            { url: "http://127.0.0.1:9736", taskId: "dev-task" },
+            { url: "http://10.0.0.5:9736", taskId: "dev-task" },
           ],
         }),
+        "utf8",
+      );
+      await writeFile(
+        join(repoPath, ".kanvibe", "status.json"),
+        JSON.stringify({ schemaVersion: 1, status: "todo" }),
+        "utf8",
+      );
+      await writeFile(
+        join(repoPath, ".kanvibe", "project.json"),
+        JSON.stringify({ schemaVersion: 1, projectColor: "#65D08A" }),
         "utf8",
       );
 
@@ -193,28 +229,30 @@ describe("hookTaskBinding", () => {
 
       const status = JSON.parse(
         await readFile(join(repoPath, ".kanvibe", "status.json"), "utf8"),
-      ) as { status?: string };
+      ) as { status?: string; projectColor?: string };
       expect(status.status).toBe("review");
+      expect(status.projectColor).toBeUndefined();
+
+      /** 색상은 별도 파일이므로 hook의 상태 기록이 건드리지 않는다 */
+      const projectState = JSON.parse(
+        await readFile(join(repoPath, ".kanvibe", "project.json"), "utf8"),
+      ) as { projectColor?: string };
+      expect(projectState.projectColor).toBe("#65D08A");
 
       const curlCalls = (await readFile(curlLogPath, "utf8"))
         .trim()
         .split("\n")
         .filter((line) => line.length > 0);
-      const postedEndpoints = curlCalls.map((line) =>
-        line.split(/\s+/).find((token) => token.endsWith("/api/hooks/status")),
-      );
-      const payloads = curlCalls.map((line) => ({
+      /** 병렬 실행이므로 도착 순서는 보장되지 않는다. 집합으로 비교한다 */
+      const deliveries = curlCalls.map((line) => ({
+        endpoint: line.split(/\s+/).find((token) => token.endsWith("/api/hooks/status")),
         taskId: line.match(/"taskId":\s*"([^"]+)"/)?.[1],
         status: line.match(/"status":\s*"([^"]+)"/)?.[1],
-      }));
+      })).sort((left, right) => (left.taskId ?? "").localeCompare(right.taskId ?? ""));
 
-      expect(postedEndpoints).toEqual([
-        "http://127.0.0.1:9736/api/hooks/status",
-        "http://127.0.0.1:9736/api/hooks/status",
-      ]);
-      expect(payloads).toEqual([
-        { taskId: "local-task", status: "review" },
-        { taskId: "dev-task", status: "review" },
+      expect(deliveries).toEqual([
+        { endpoint: "http://10.0.0.5:9736/api/hooks/status", taskId: "dev-task", status: "review" },
+        { endpoint: "http://127.0.0.1:9736/api/hooks/status", taskId: "local-task", status: "review" },
       ]);
     } finally {
       await rm(repoPath, { recursive: true, force: true });
@@ -239,7 +277,7 @@ describe("hookTaskBinding", () => {
     expect(hasShellKanvibeStatusJsonPersistence(updaterWithoutCommonExclude)).toBe(false);
   });
 
-  it("모든 shell hook이 같은 현재 task id를 가리키는지 판정한다", () => {
+  it("모든 shell hook이 같은 fallback task id를 고정하는지 판정한다", () => {
     // Given
     const scripts = [
       ['TASK_ID="task-123"', 'curl -d "{\\"taskId\\": \\"${TASK_ID}\\"}"'].join("\n"),
@@ -247,36 +285,11 @@ describe("hookTaskBinding", () => {
     ];
 
     // When
-    const status = getShellTaskIdBindingStatus(scripts, "task-123");
-    const statusWithoutExpectedTask = getShellTaskIdBindingStatus(scripts);
+    const status = getShellTaskIdBindingStatus(scripts);
 
     // Then
     expect(status).toEqual({
       hasTaskIdBinding: true,
-      hasExpectedTaskId: true,
-      boundTaskId: "task-123",
-    });
-    expect(statusWithoutExpectedTask).toEqual({
-      hasTaskIdBinding: true,
-      hasExpectedTaskId: true,
-      boundTaskId: "task-123",
-    });
-  });
-
-  it("shell hook의 task id가 현재 task와 다르면 expected 판정을 실패시킨다", () => {
-    // Given
-    const scripts = [
-      ['TASK_ID="task-123"', 'curl -d "{\\"taskId\\": \\"${TASK_ID}\\"}"'].join("\n"),
-      ['TASK_ID="task-123"', 'curl -d "{\\"taskId\\": \\"${TASK_ID}\\"}"'].join("\n"),
-    ];
-
-    // When
-    const status = getShellTaskIdBindingStatus(scripts, "task-999");
-
-    // Then
-    expect(status).toEqual({
-      hasTaskIdBinding: true,
-      hasExpectedTaskId: false,
       boundTaskId: "task-123",
     });
   });
@@ -289,18 +302,16 @@ describe("hookTaskBinding", () => {
     ];
 
     // When
-    const status = getShellTaskIdBindingStatus(scripts, "task-123");
-    const emptyStatus = getShellTaskIdBindingStatus([], "task-123");
+    const status = getShellTaskIdBindingStatus(scripts);
+    const emptyStatus = getShellTaskIdBindingStatus([]);
 
     // Then
     expect(status).toEqual({
       hasTaskIdBinding: false,
-      hasExpectedTaskId: false,
       boundTaskId: null,
     });
     expect(emptyStatus).toEqual({
       hasTaskIdBinding: false,
-      hasExpectedTaskId: false,
       boundTaskId: null,
     });
   });

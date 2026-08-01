@@ -30,6 +30,7 @@ function ensureBaseTables(database: Database.Database): void {
       ssh_host TEXT,
       is_worktree INTEGER NOT NULL DEFAULT 0,
       color TEXT DEFAULT NULL,
+      icon_data_url TEXT DEFAULT NULL,
       created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
 
@@ -79,6 +80,7 @@ function ensureBaseTables(database: Database.Database): void {
 function ensureColumns(database: Database.Database): void {
   ensureColumn(database, "projects", "is_worktree", "is_worktree INTEGER NOT NULL DEFAULT 0");
   ensureColumn(database, "projects", "color", "color TEXT DEFAULT NULL");
+  ensureColumn(database, "projects", "icon_data_url", "icon_data_url TEXT DEFAULT NULL");
 
   ensureColumn(database, "kanban_tasks", "project_id", "project_id TEXT");
   ensureColumn(database, "kanban_tasks", "base_branch", "base_branch TEXT");

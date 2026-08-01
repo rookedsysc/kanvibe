@@ -2,6 +2,7 @@ import { execFile } from "child_process";
 import { In, Not, Like } from "typeorm";
 import { getTaskRepository } from "@/lib/database";
 import { KanbanTask, TaskStatus, SessionType } from "@/entities/KanbanTask";
+import type { Project } from "@/entities/Project";
 import { TaskPriority } from "@/entities/TaskPriority";
 import { createWorktreeWithSession, removeWorktreeAndBranch, createSessionWithoutWorktree, removeSessionOnly, formatProjectBranchSessionName } from "@/lib/worktree";
 import { getProjectRepository } from "@/lib/database";
@@ -20,6 +21,7 @@ import {
 import { execGit, pullCurrentBranch, remoteBranchExists } from "@/lib/gitOperations";
 import { detachSession } from "@/lib/terminal";
 import { persistTaskStateForTask as persistTaskState } from "@/desktop/main/services/kanvibeTaskStateService";
+import { persistProjectColorToKanvibeState } from "@/desktop/main/services/kanvibeProjectColorService";
 
 export type TasksByStatus = Record<TaskStatus, KanbanTask[]>;
 
@@ -617,7 +619,13 @@ export async function updateTask(
   return serialize(saved);
 }
 
-/** 프로젝트의 color(hex)를 변경하고, 같은 repo의 worktree 프로젝트에도 동일하게 반영한다 */
+/**
+ * 프로젝트의 color(hex)를 변경하고, 같은 repo의 worktree 프로젝트에도 동일하게 반영한다.
+ * 변경된 색상은 `.kanvibe/project.json`에도 기록되어 같은 저장소를 보는 다른 client와 동기화된다.
+ *
+ * 색상의 권위는 프로젝트 루트의 `.kanvibe/project.json`이므로 DB보다 먼저 기록한다. 순서가 뒤집히면
+ * 그 사이 도는 background sync가 아직 이전 색상인 공유 파일을 읽어 방금 고른 색을 DB에서 되돌린다.
+ */
 export async function updateProjectColor(
   projectId: string,
   color: string
@@ -625,9 +633,6 @@ export async function updateProjectColor(
   const repo = await getProjectRepository();
   const project = await repo.findOneBy({ id: projectId });
   if (!project) return;
-
-  project.color = color;
-  await repo.save(project);
 
   // worktree 프로젝트들의 color도 함께 업데이트한다
   const mainRepoPath = project.repoPath.includes("__worktrees")
@@ -638,13 +643,35 @@ export async function updateProjectColor(
     where: { repoPath: Like(`${mainRepoPath}%`) },
   });
 
-  for (const related of relatedProjects) {
-    if (related.id === projectId) continue;
-    related.color = color;
-    await repo.save(related);
+  const recoloredProjects = orderProjectRepoRootFirst(
+    [project, ...relatedProjects.filter((related) => related.id !== projectId)],
+    mainRepoPath,
+  );
+
+  for (const recolored of recoloredProjects) {
+    recolored.color = color;
+    await persistProjectColorToKanvibeState(recolored);
   }
 
+  await repo.update({ id: In(recoloredProjects.map((recolored) => recolored.id)) }, { color });
+
   broadcastBoardUpdate();
+}
+
+/**
+ * 저장소 루트를 보는 프로젝트를 맨 앞으로 옮긴다.
+ * 색상의 권위 파일은 루트에 있으므로 사용자가 worktree 프로젝트에서 색을 바꿨더라도 루트부터 확정해야 한다.
+ */
+function orderProjectRepoRootFirst(projects: Project[], mainRepoPath: string): Project[] {
+  const rootIndex = projects.findIndex((project) => project.repoPath === mainRepoPath);
+  if (rootIndex <= 0) {
+    return projects;
+  }
+
+  return [
+    projects[rootIndex],
+    ...projects.filter((_, index) => index !== rootIndex),
+  ];
 }
 
 /** 작업에 연결된 worktree, 세션, 브랜치를 정리한다. task 레코드는 삭제하지 않는다 */

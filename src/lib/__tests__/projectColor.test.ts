@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { computeProjectColor } from "@/lib/projectColor";
+import { computeProjectColor, getReadableTextColor } from "@/lib/projectColor";
 
 describe("computeProjectColor", () => {
   it("should return a valid hex color string", () => {
@@ -82,5 +82,39 @@ describe("computeProjectColor", () => {
 
     // Then
     expect(presetColors).toContain(result);
+  });
+});
+
+describe("getReadableTextColor", () => {
+  it("파스텔 프리셋 색상 위에서는 어두운 글자를 고른다", () => {
+    // Given
+    const presetColors = [
+      "#F9A8D4", "#93C5FD", "#86EFAC", "#C4B5FD",
+      "#FDBA74", "#FDE047", "#5EEAD4", "#A5B4FC",
+    ];
+
+    // When / Then
+    for (const color of presetColors) {
+      expect(getReadableTextColor(color)).toBe("#111827");
+    }
+  });
+
+  it("어두운 색상 위에서는 흰 글자를 고른다", () => {
+    // Given / When / Then
+    expect(getReadableTextColor("#0064FF")).toBe("#FFFFFF");
+    expect(getReadableTextColor("#000000")).toBe("#FFFFFF");
+    expect(getReadableTextColor("#202632")).toBe("#FFFFFF");
+  });
+
+  it("형식이 잘못된 색상은 어두운 글자로 처리한다", () => {
+    // Given / When / Then
+    expect(getReadableTextColor("not-a-color")).toBe("#111827");
+    expect(getReadableTextColor("#FFF")).toBe("#111827");
+    expect(getReadableTextColor("")).toBe("#111827");
+  });
+
+  it("앞뒤 공백이 있어도 배경 휘도를 그대로 판정한다", () => {
+    // Given / When / Then
+    expect(getReadableTextColor("  #000000  ")).toBe("#FFFFFF");
   });
 });

@@ -57,7 +57,7 @@ describe("openCodeHooksSetup", () => {
       expect(pluginContent).toContain("status.json");
       expect(pluginContent).toContain("targets.json");
       expect(pluginContent).toContain("readKanvibeTargets");
-      expect(pluginContent).toContain("seenTaskIds");
+      expect(pluginContent).toContain("seenUrls");
       expect(pluginContent).not.toContain("hooks-targets.json");
       expect(pluginContent).not.toContain("task-state.json");
       expect(pluginContent).toContain("--git-common-dir");
@@ -302,7 +302,7 @@ export const KanvibePlugin: Plugin = async ({ $ }) => {
       expect(status.registeredPluginUrls).toHaveLength(2);
     });
 
-    it("현재 task id와 다른 OpenCode hook은 설치된 것으로 보지 않는다", async () => {
+    it("targets.json에 등록되지 않은 task는 설치된 것으로 보지 않는다", async () => {
       // Given
       const repoPath = tempDir;
       await setupOpenCodeHooks(repoPath, "task-1", "http://localhost:9736");
@@ -313,7 +313,7 @@ export const KanvibePlugin: Plugin = async ({ $ }) => {
       // Then
       expect(status.installed).toBe(false);
       expect(status.hasTaskIdBinding).toBe(true);
-      expect(status.hasExpectedTaskId).toBe(false);
+      expect(status.hasRegisteredHookTarget).toBe(false);
       expect(status.boundTaskId).toBe("task-1");
     });
   });
