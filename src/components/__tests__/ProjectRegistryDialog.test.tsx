@@ -182,6 +182,30 @@ describe("ProjectRegistryDialog", () => {
 
     expect(screen.getByText("timelabs")).toBeTruthy();
     expect(screen.queryByText("kanvibe")).toBeNull();
+    expect(screen.getByText("projectList (1 / 2)")).toBeTruthy();
+  });
+
+  it("스캔을 실행하면 검색어를 비워 새로 등록된 프로젝트가 가려지지 않게 한다", async () => {
+    render(
+      <ProjectRegistryDialog
+        isOpen
+        onClose={vi.fn()}
+        projects={[createProject()]}
+        sshHosts={[]}
+      />,
+    );
+
+    fireEvent.change(screen.getByTestId("project-registry-search"), {
+      target: { value: "존재하지-않는-프로젝트" },
+    });
+    expect(screen.getByText("noMatchingProjects")).toBeTruthy();
+
+    fireEvent.submit(screen.getByTestId("project-registry-form"));
+
+    await waitFor(() => {
+      expect(screen.getByText("kanvibe")).toBeTruthy();
+    });
+    expect(screen.getByTestId("project-registry-search").getAttribute("value")).toBe("");
     expect(screen.getByText("projectList (1)")).toBeTruthy();
   });
 

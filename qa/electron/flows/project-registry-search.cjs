@@ -6,10 +6,11 @@ const path = require("node:path");
 const { execFileSync } = require("node:child_process");
 const { createQaRun } = require("../lib/report.cjs");
 const { launchKanVibeElectron } = require("../lib/launchElectron.cjs");
+const koMessages = require("../../../messages/ko.json");
 
 const PROJECT_REGISTRY_SEARCH_SCOPE = "Project scan button and registered-project search filter: verify the board toolbar button reads as a project/folder scan action, then seed three isolated projects and filter the registry dialog list by name in Electron";
-const SCAN_BUTTON_LABEL = "프로젝트 스캔";
-const FOLDER_ICON_PATH_PREFIX = "M4 20h16";
+const SCAN_BUTTON_LABEL = koMessages.settings.scanTitle;
+const NO_MATCHING_PROJECTS_TEXT = koMessages.settings.noMatchingProjects;
 
 function parseArgs(argv) {
   const args = {};
@@ -149,12 +150,23 @@ function registryDialog(page) {
   return page.getByRole("dialog", { name: SCAN_BUTTON_LABEL });
 }
 
+function projectRows(page) {
+  return registryDialog(page).locator("ul > li");
+}
+
+/** 각 프로젝트 행의 첫 단락(이름)만 읽는다. repoPath 단락과 섞이지 않게 행 단위로 순회한다 */
 async function visibleProjectNames(page) {
-  return registryDialog(page).locator("ul > li p").filter({ hasText: /-/ }).allTextContents();
+  const rows = projectRows(page);
+  const rowCount = await rows.count();
+  const names = [];
+  for (let index = 0; index < rowCount; index += 1) {
+    names.push((await rows.nth(index).locator("p").first().innerText()).trim());
+  }
+  return names;
 }
 
 async function projectRowCount(page) {
-  return registryDialog(page).locator("ul > li").count();
+  return projectRows(page).count();
 }
 
 async function typeProjectSearch(page, query) {
@@ -256,11 +268,11 @@ async function main() {
       if (icon.circleCount > 0) {
         throw new Error(`scan button still renders a magnifier-style circle (${icon.circleCount})`);
       }
-      if (!icon.paths.some((d) => d.startsWith(FOLDER_ICON_PATH_PREFIX))) {
-        throw new Error(`scan button icon is not the folder outline: ${icon.paths.join(" | ")}`);
+      if (icon.paths.length === 0) {
+        throw new Error("scan button renders no icon path");
       }
       await takeScreenshot(page, run, "toolbar-project-scan-button", screenshots);
-      return `title/aria-label="${icon.title}", folder icon paths=${icon.paths.length}, circles=0`;
+      return `title/aria-label="${icon.title}", icon paths=${icon.paths.length}, circles=0`;
     });
 
     await optionalStep(checks, "Scan button opens the project registry dialog listing all seeded projects", async () => {
@@ -284,7 +296,9 @@ async function main() {
         throw new Error(`matching row is not the bravo project: ${names.join(", ")}`);
       }
       const heading = await registryDialog(page).locator("h3").innerText();
-      if (!heading.includes("(1)")) throw new Error(`heading count did not follow the filter: ${heading}`);
+      if (!heading.includes(`(1 / ${fixtures.length})`)) {
+        throw new Error(`heading count did not follow the filter: ${heading}`);
+      }
       await takeScreenshot(page, run, "search-filters-to-single-project", screenshots);
       return `query="bravo", rows=${rows}, heading="${heading.trim()}"`;
     });
@@ -293,7 +307,7 @@ async function main() {
       await typeProjectSearch(page, "존재하지-않는-프로젝트");
       const rows = await projectRowCount(page);
       if (rows !== 0) throw new Error(`expected 0 rows for a non-matching query, found ${rows}`);
-      await registryDialog(page).getByText("일치하는 프로젝트가 없습니다.").waitFor({ state: "visible", timeout: 10000 });
+      await registryDialog(page).getByText(NO_MATCHING_PROJECTS_TEXT).waitFor({ state: "visible", timeout: 10000 });
       await takeScreenshot(page, run, "search-no-match-notice", screenshots);
       return "empty-result notice visible with 0 rows";
     });

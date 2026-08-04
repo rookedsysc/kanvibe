@@ -178,7 +178,7 @@
     "noGitRepos": "未找到 git 仓库。",
     "scanPathRequired": "请输入要扫描的目录路径。",
     "projectList": "已注册项目",
-    "projectSearchPlaceholder": "按项目名称搜索...",
+    "projectSearchPlaceholder": "搜索项目...",
     "noMatchingProjects": "没有匹配的项目。",
     "noProjects": "没有已注册的项目。",
     "defaultBranch": "默认分支",

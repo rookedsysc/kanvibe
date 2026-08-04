@@ -56,6 +56,7 @@ export default function ProjectRegistryDialog({
     setError(null);
     setSuccessMessage(null);
     setScanResult(null);
+    setProjectSearchQuery("");
 
     const scanPath = formData.get("scanPath") as string;
     if (!scanPath) {
@@ -192,7 +193,11 @@ export default function ProjectRegistryDialog({
 
           <div className="mt-5 space-y-3">
             <h3 className="text-xs uppercase tracking-wide text-text-muted">
-              {t("projectList")} ({filteredProjects.length})
+              {t("projectList")} (
+              {projectSearchQuery.trim()
+                ? `${filteredProjects.length} / ${projects.length}`
+                : projects.length}
+              )
             </h3>
 
             {projects.length > 0 && (

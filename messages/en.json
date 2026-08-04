@@ -179,7 +179,7 @@
     "noGitRepos": "No git repositories found.",
     "scanPathRequired": "Please enter the directory path to scan.",
     "projectList": "Registered Projects",
-    "projectSearchPlaceholder": "Search projects by name...",
+    "projectSearchPlaceholder": "Search projects...",
     "noMatchingProjects": "No matching projects.",
     "noProjects": "No registered projects.",
     "defaultBranch": "Default branch",

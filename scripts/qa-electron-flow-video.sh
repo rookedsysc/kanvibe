@@ -1,7 +1,23 @@
 #!/usr/bin/env bash
+# Electron QA flow 하나를 화면 녹화와 함께 실행한다.
+# 사용법: bash scripts/qa-electron-flow-video.sh <flow-name>
+#   <flow-name>은 qa/electron/flows/<flow-name>.cjs 에 대응한다.
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+FLOW_NAME="${KANVIBE_QA_FLOW:-${1:-}}"
+
+if [[ -z "$FLOW_NAME" ]]; then
+  echo "[kanvibe-qa] usage: bash scripts/qa-electron-flow-video.sh <flow-name>" >&2
+  exit 2
+fi
+
+FLOW_PATH="$ROOT_DIR/qa/electron/flows/$FLOW_NAME.cjs"
+if [[ ! -f "$FLOW_PATH" ]]; then
+  echo "[kanvibe-qa] unknown QA flow: $FLOW_NAME ($FLOW_PATH not found)" >&2
+  exit 2
+fi
+
 RUN_ID="${KANVIBE_QA_RUN_ID:-$(date -u +%Y%m%dT%H%M%SZ)-$$}"
 RUN_DIR="${KANVIBE_QA_RUN_DIR:-$ROOT_DIR/qa-output/$RUN_ID}"
 VIDEO_PATH="$RUN_DIR/run.mp4"
@@ -10,7 +26,7 @@ NODE_BIN="${KANVIBE_QA_NODE_BIN:-${npm_node_execpath:-node}}"
 mkdir -p "$RUN_DIR"
 
 run_flow() {
-  "$NODE_BIN" qa/electron/flows/project-registry-search.cjs --run-dir "$RUN_DIR" --run-id "$RUN_ID"
+  "$NODE_BIN" "$FLOW_PATH" --run-dir "$RUN_DIR" --run-id "$RUN_ID"
 }
 
 record_and_run() {
@@ -55,7 +71,7 @@ if [[ -z "${DISPLAY:-}" && -z "${WAYLAND_DISPLAY:-}" ]]; then
     echo "[kanvibe-qa] xvfb-run is required for headless Electron QA. Install xvfb or run under a desktop DISPLAY." >&2
     exit 127
   fi
-  xvfb-run -a -s "-screen 0 ${KANVIBE_QA_VIDEO_SIZE:-1600x1000}x24" bash -lc "DISPLAY=\$DISPLAY KANVIBE_QA_RUN_ID='$RUN_ID' KANVIBE_QA_RUN_DIR='$RUN_DIR' KANVIBE_QA_NODE_BIN='$NODE_BIN' '$0' --inside-xvfb"
+  xvfb-run -a -s "-screen 0 ${KANVIBE_QA_VIDEO_SIZE:-1600x1000}x24" bash -lc "DISPLAY=\$DISPLAY KANVIBE_QA_FLOW='$FLOW_NAME' KANVIBE_QA_RUN_ID='$RUN_ID' KANVIBE_QA_RUN_DIR='$RUN_DIR' KANVIBE_QA_NODE_BIN='$NODE_BIN' '$0' --inside-xvfb"
   exit "$?"
 fi
 
