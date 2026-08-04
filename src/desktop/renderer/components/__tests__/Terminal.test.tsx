@@ -49,6 +49,7 @@ class MockXTerm {
   focus = mockTerminalFocus;
   onData = vi.fn();
   onResize = vi.fn();
+  parser = { registerOscHandler: vi.fn().mockReturnValue({ dispose: vi.fn() }) };
 }
 
 vi.mock("@xterm/xterm", () => ({
