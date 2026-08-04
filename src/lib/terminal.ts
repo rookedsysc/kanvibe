@@ -6,7 +6,8 @@ import { execSync } from "child_process";
 import type { WebSocket } from "ws";
 import { buildSSHArgs, getKanvibeSSHConnectionHealthOptions, hasLocalX11Display } from "@/lib/sshConfig";
 import {
-  buildTmuxSessionBootstrapCommands,
+  buildTmuxSessionBootstrapCommand,
+  parseAliveZellijSessionNames,
   quoteForPosixShell,
   type TmuxPaneLayoutConfig,
   ZELLIJ_LAYOUT_FILENAME,
@@ -61,9 +62,47 @@ function isZellijSessionAlive(sessionName: string): boolean {
       env: createLocalShellEnvironment(),
       timeout: 3000,
     });
-    return output.split("\n").some((s) => s.trim().startsWith(sessionName));
+    return parseAliveZellijSessionNames(output).includes(sessionName);
   } catch {
     return false;
+  }
+}
+
+/**
+ * tmux 서버 기동은 사용자 설정에 달려 있어 오래 걸릴 수 있다.
+ * 플러그인 관리자를 run-shell로 부르는 설정은 기동에만 수 초가 걸리므로 부트스트랩 상한을 넉넉히 둔다.
+ */
+const TMUX_BOOTSTRAP_TIMEOUT_MS = 30_000;
+
+/**
+ * 로컬 tmux 세션을 만든다.
+ * 사용자 설정이 세션 기동을 막으면 설정 없이 한 번 더 시도해, 소켓을 바꾸지 않고도 세션을 살린다.
+ */
+function bootstrapLocalTmuxSession(
+  sessionName: string,
+  workingDir: string,
+  tmuxPaneLayout: TmuxPaneLayoutConfig | null | undefined,
+  terminalEnvironment: NodeJS.ProcessEnv,
+): void {
+  const paneLayout = tmuxPaneLayout && tmuxPaneLayout.layoutType !== PaneLayoutType.SINGLE
+    ? tmuxPaneLayout
+    : null;
+  const runBootstrap = (ignoreUserConfig: boolean) => {
+    execSync(
+      buildTmuxSessionBootstrapCommand(sessionName, workingDir, paneLayout, { ignoreUserConfig }),
+      { env: terminalEnvironment, timeout: TMUX_BOOTSTRAP_TIMEOUT_MS },
+    );
+  };
+
+  try {
+    runBootstrap(false);
+  } catch (error) {
+    console.warn("[터미널] 사용자 tmux 설정으로 세션 생성에 실패해 설정 없이 재시도합니다:", error);
+    execSync(`tmux kill-session -t ${quoteForPosixShell(sessionName)} 2>/dev/null || true`, {
+      env: terminalEnvironment,
+      timeout: TMUX_BOOTSTRAP_TIMEOUT_MS,
+    });
+    runBootstrap(true);
   }
 }
 
@@ -123,18 +162,12 @@ export async function attachLocalSession(
   if (sessionType === SessionType.TMUX) {
     if (!isTmuxSessionAlive(sessionName)) {
       try {
-        const dir = cwd || process.env.HOME || "/";
-        const bootstrapCommands = buildTmuxSessionBootstrapCommands(
+        bootstrapLocalTmuxSession(
           sessionName,
-          dir,
-          tmuxPaneLayout && tmuxPaneLayout.layoutType !== PaneLayoutType.SINGLE
-            ? tmuxPaneLayout
-            : null,
+          cwd || process.env.HOME || "/",
+          tmuxPaneLayout,
+          terminalEnvironment,
         );
-        execSync(bootstrapCommands.join("; "), {
-          env: terminalEnvironment,
-          timeout: 5000,
-        });
       } catch (error) {
         console.error(`[터미널] tmux 세션 자동 생성 실패:`, error);
         ws.close(1008, "tmux 세션 생성에 실패했습니다.");
@@ -144,18 +177,6 @@ export async function attachLocalSession(
   } else {
     zellijNeedsCreation = !isZellijSessionAlive(sessionName);
     console.log(`[터미널] zellij sessionName="${sessionName}", needsCreation=${zellijNeedsCreation}, cwd=${cwd}`);
-  }
-
-  /** 웹 터미널 크기가 다른 클라이언트에 제한되지 않도록 최근 활성 클라이언트 기준으로 설정 */
-  if (sessionType === SessionType.TMUX) {
-    try {
-      execSync("tmux set-option -g window-size latest", {
-        env: terminalEnvironment,
-        stdio: "ignore",
-      });
-    } catch {
-      // tmux 구버전에서는 window-size 옵션이 없을 수 있음
-    }
   }
 
   const pty = await import("node-pty");
@@ -295,7 +316,7 @@ export async function attachRemoteSession(
   const pty = await import("node-pty");
   const attachCommand = sessionType === SessionType.TMUX
     ? buildRemoteTmuxAttachCommand(sessionName, worktreePath, tmuxPaneLayout)
-    : `exec zellij attach ${quoteForPosixShell(sessionName)}`;
+    : buildRemoteZellijAttachCommand(sessionName, worktreePath);
   const args = [
     ...buildSSHArgs(sshConfig, {
       forceTty: true,
@@ -367,66 +388,63 @@ function buildRemoteShellCommand(command: string): string {
   return `sh -lc ${quoteForPosixShell(command)}`;
 }
 
-const REMOTE_TMUX_SOCKET_NAME = "kanvibe";
-
+/**
+ * 원격 tmux 세션에 붙는 명령을 만든다.
+ * 세션이 이미 있으면 그대로 attach하고, 없으면 생성부터 attach까지를 tmux 호출 한 번으로 처리한다.
+ * 사용자 설정 때문에 실패하면 소켓은 그대로 둔 채 설정 없이 한 번 더 시도한다.
+ */
 function buildRemoteTmuxAttachCommand(
   sessionName: string,
   worktreePath?: string | null,
   tmuxPaneLayout?: TmuxPaneLayoutConfig | null,
 ): string {
-  const tmuxFlow = buildRemoteTmuxSessionFlow(
-    buildRemoteTmuxCommand(),
+  const quotedSessionName = quoteForPosixShell(sessionName);
+  const buildBootstrapCommand = (ignoreUserConfig: boolean) => buildTmuxSessionBootstrapCommand(
     sessionName,
-    worktreePath,
-    tmuxPaneLayout,
+    worktreePath ?? "",
+    tmuxPaneLayout && tmuxPaneLayout.layoutType !== PaneLayoutType.SINGLE
+      ? tmuxPaneLayout
+      : null,
+    { attachAfterBootstrap: true, ignoreUserConfig },
   );
+  const bootstrapWithRetry = [
+    buildBootstrapCommand(false),
+    `{ tmux kill-session -t ${quotedSessionName} 2>/dev/null; ${buildBootstrapCommand(true)}; }`,
+  ].join(" || ");
 
-  return `${tmuxFlow} || { ${buildRemoteInteractiveShellFallbackCommand()}; }`;
+  return [
+    `if tmux has-session -t ${quotedSessionName} 2>/dev/null; then`,
+    `exec tmux attach-session -t ${quotedSessionName};`,
+    `else ${bootstrapWithRetry} || { ${buildRemoteInteractiveShellFallbackCommand()}; };`,
+    "fi",
+  ].join(" ");
 }
 
-function buildRemoteTmuxCommand(): string {
-  return `tmux -L ${quoteForPosixShell(REMOTE_TMUX_SOCKET_NAME)} -f /dev/null`;
-}
-
-function buildRemoteTmuxSessionFlow(
-  tmuxCommand: string,
+/**
+ * 원격 zellij 세션에 붙는 명령을 만든다.
+ * 로컬과 달리 attach만 하면 세션이 없을 때 SSH가 그대로 끊기므로, 로컬처럼 생성과 레이아웃 적용까지 처리한다.
+ */
+function buildRemoteZellijAttachCommand(
   sessionName: string,
   worktreePath?: string | null,
-  tmuxPaneLayout?: TmuxPaneLayoutConfig | null,
 ): string {
   const quotedSessionName = quoteForPosixShell(sessionName);
-  const attachCommand = `${tmuxCommand} attach-session -t ${quotedSessionName}`;
-  const bootstrapCommands = buildRemoteTmuxBootstrapCommands(
-    tmuxCommand,
-    sessionName,
-    worktreePath,
-    tmuxPaneLayout,
-  );
+  const createArguments = ["--session", quotedSessionName];
 
-  return `if ${tmuxCommand} has-session -t ${quotedSessionName} 2>/dev/null; then ${attachCommand}; else ${[
-    ...bootstrapCommands,
-    attachCommand,
-  ].join(" && ")}; fi`;
-}
+  if (worktreePath) {
+    const layoutFile = quoteForPosixShell(path.posix.join(worktreePath, ZELLIJ_LAYOUT_FILENAME));
+    return [
+      `if zellij attach ${quotedSessionName} 2>/dev/null; then exit 0; fi;`,
+      `cd ${quoteForPosixShell(worktreePath)} 2>/dev/null || true;`,
+      `if [ -f ${layoutFile} ]; then`,
+      `exec zellij ${createArguments.join(" ")} --new-session-with-layout ${layoutFile};`,
+      "else",
+      `exec zellij ${createArguments.join(" ")};`,
+      "fi",
+    ].join(" ");
+  }
 
-function buildRemoteTmuxBootstrapCommands(
-  tmuxCommand: string,
-  sessionName: string,
-  worktreePath?: string | null,
-  tmuxPaneLayout?: TmuxPaneLayoutConfig | null,
-): string[] {
-  const quotedSessionName = quoteForPosixShell(sessionName);
-  const defaultBootstrapCommands = worktreePath
-    ? buildTmuxSessionBootstrapCommands(
-        sessionName,
-        worktreePath,
-        tmuxPaneLayout && tmuxPaneLayout.layoutType !== PaneLayoutType.SINGLE
-          ? tmuxPaneLayout
-          : null,
-      )
-    : [`tmux new-session -d -s ${quotedSessionName}`];
-
-  return defaultBootstrapCommands.map((command) => command.replace(/^tmux(?=\s)/, tmuxCommand));
+  return `zellij attach ${quotedSessionName} 2>/dev/null || exec zellij ${createArguments.join(" ")}`;
 }
 
 function buildRemoteInteractiveShellFallbackCommand(): string {

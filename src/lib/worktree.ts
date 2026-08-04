@@ -1,8 +1,8 @@
 import path from "path";
-import { writeFile } from "fs/promises";
 import { SessionType } from "@/entities/KanbanTask";
 import { PaneLayoutType, type PaneCommand } from "@/entities/PaneLayoutConfig";
 import { execGit, listWorktrees, type WorktreeInfo } from "@/lib/gitOperations";
+import { writeTextFile } from "@/lib/hostFileAccess";
 import { getEffectivePaneLayout } from "@/desktop/main/services/paneLayoutService";
 
 interface WorktreeSession {
@@ -52,8 +52,21 @@ export function quoteForPosixShell(value: string): string {
   return `'${value.replace(/'/g, `'"'"'`)}'`;
 }
 
-function buildTmuxCreateSessionCommand(sessionName: string, workingDir: string): string {
-  return `tmux new-session -d -s ${quoteForPosixShell(sessionName)} -c ${quoteForPosixShell(workingDir)}`;
+/**
+ * KanVibe 1.0.6까지 원격 세션이 쓰던 격리 소켓.
+ * 새 세션은 기본 소켓에만 만들고, 조회와 정리에서만 이 소켓에 남은 세션을 흡수한다.
+ */
+const LEGACY_TMUX_SOCKET_NAME = "kanvibe";
+
+/** 세션을 찾아야 하는 tmux 소켓 목록. 기본 소켓이 먼저다 */
+function buildTmuxLookupCommands(): string[] {
+  return ["tmux", `tmux -L ${quoteForPosixShell(LEGACY_TMUX_SOCKET_NAME)}`];
+}
+
+/** 작업 디렉터리를 모르는 원격 세션은 -c 없이 만들어 tmux 기본 디렉터리를 쓰게 한다 */
+function buildTmuxCreateSessionArgument(sessionName: string, workingDir: string): string {
+  const createArgument = `new-session -d -s ${quoteForPosixShell(sessionName)}`;
+  return workingDir ? `${createArgument} -c ${quoteForPosixShell(workingDir)}` : createArgument;
 }
 
 function buildTmuxWindowTarget(sessionName: string): string {
@@ -64,7 +77,7 @@ function buildTmuxPaneTarget(sessionName: string, position: number): string {
   return quoteForPosixShell(`${sessionName}:0.${position}`);
 }
 
-export function buildTmuxPaneLayoutCommands(
+export function buildTmuxPaneLayoutArguments(
   sessionName: string,
   layoutType: PaneLayoutType,
   panes: PaneCommand[],
@@ -72,57 +85,96 @@ export function buildTmuxPaneLayoutCommands(
 ): string[] {
   const target = buildTmuxWindowTarget(sessionName);
 
-  const splitCommands: Record<PaneLayoutType, string[]> = {
+  const splitArguments: Record<PaneLayoutType, string[]> = {
     [PaneLayoutType.SINGLE]: [],
     [PaneLayoutType.HORIZONTAL_2]: [
-      `tmux split-window -v -t ${target} -c ${quoteForPosixShell(worktreePath)}`,
+      `split-window -v -t ${target} -c ${quoteForPosixShell(worktreePath)}`,
     ],
     [PaneLayoutType.VERTICAL_2]: [
-      `tmux split-window -h -t ${target} -c ${quoteForPosixShell(worktreePath)}`,
+      `split-window -h -t ${target} -c ${quoteForPosixShell(worktreePath)}`,
     ],
     [PaneLayoutType.LEFT_RIGHT_TB]: [
-      `tmux split-window -h -t ${target} -c ${quoteForPosixShell(worktreePath)}`,
-      `tmux split-window -v -t ${buildTmuxPaneTarget(sessionName, 1)} -c ${quoteForPosixShell(worktreePath)}`,
+      `split-window -h -t ${target} -c ${quoteForPosixShell(worktreePath)}`,
+      `split-window -v -t ${buildTmuxPaneTarget(sessionName, 1)} -c ${quoteForPosixShell(worktreePath)}`,
     ],
     [PaneLayoutType.LEFT_TB_RIGHT]: [
-      `tmux split-window -h -t ${target} -c ${quoteForPosixShell(worktreePath)}`,
-      `tmux split-window -v -t ${buildTmuxPaneTarget(sessionName, 0)} -c ${quoteForPosixShell(worktreePath)}`,
+      `split-window -h -t ${target} -c ${quoteForPosixShell(worktreePath)}`,
+      `split-window -v -t ${buildTmuxPaneTarget(sessionName, 0)} -c ${quoteForPosixShell(worktreePath)}`,
     ],
     [PaneLayoutType.QUAD]: [
-      `tmux split-window -h -t ${target} -c ${quoteForPosixShell(worktreePath)}`,
-      `tmux split-window -v -t ${buildTmuxPaneTarget(sessionName, 0)} -c ${quoteForPosixShell(worktreePath)}`,
-      `tmux split-window -v -t ${buildTmuxPaneTarget(sessionName, 2)} -c ${quoteForPosixShell(worktreePath)}`,
+      `split-window -h -t ${target} -c ${quoteForPosixShell(worktreePath)}`,
+      `split-window -v -t ${buildTmuxPaneTarget(sessionName, 0)} -c ${quoteForPosixShell(worktreePath)}`,
+      `split-window -v -t ${buildTmuxPaneTarget(sessionName, 2)} -c ${quoteForPosixShell(worktreePath)}`,
     ],
   };
 
-  const sendKeysCommands = panes
+  const sendKeysArguments = panes
     .filter((pane) => pane.command.trim())
     .map((pane) => (
-      `tmux send-keys -t ${buildTmuxPaneTarget(sessionName, pane.position)} -- ${quoteForPosixShell(pane.command)} Enter`
+      `send-keys -t ${buildTmuxPaneTarget(sessionName, pane.position)} -- ${quoteForPosixShell(pane.command)} Enter`
     ));
 
   return [
-    ...splitCommands[layoutType],
-    ...sendKeysCommands,
+    ...splitArguments[layoutType],
+    ...sendKeysArguments,
   ];
 }
 
-export function buildTmuxSessionBootstrapCommands(
+export interface TmuxSessionBootstrapOptions {
+  /** 같은 tmux 호출에서 attach까지 이어간다. 원격 SSH가 단일 명령으로 세션을 열 때 사용한다 */
+  attachAfterBootstrap?: boolean;
+  /** 사용자 tmux 설정이 세션 기동을 막을 때 설정 없이 다시 시도하는 경로 */
+  ignoreUserConfig?: boolean;
+}
+
+/**
+ * KanVibe가 만드는 tmux 세션에만 적용할 안정화·클립보드 옵션.
+ * destroy-unattached를 끄지 않으면 사용자 설정에 따라 detached 부트스트랩 세션이 생성 직후 사라진다.
+ */
+function buildTmuxSessionHardeningArguments(sessionName: string): string[] {
+  const target = quoteForPosixShell(sessionName);
+
+  return [
+    `set-option -t ${target} destroy-unattached off`,
+    /** 웹 터미널 크기가 다른 클라이언트에 묶이지 않도록 최근 활성 클라이언트를 기준으로 삼는다 */
+    `set-option -t ${target} window-size latest`,
+    /**
+     * OSC 52 클립보드 전달 여부는 tmux 서버 옵션이라 세션 단위로 좁힐 수 없다.
+     * 기본값 external은 애플리케이션이 보낸 OSC 52를 바깥 터미널로 넘기지 않아 복사가 동작하지 않는다.
+     */
+    "set-option -s set-clipboard on",
+  ];
+}
+
+/**
+ * 세션 생성과 안정화, 레이아웃, 선택적 attach를 tmux 호출 한 번으로 실행하는 명령을 만든다.
+ * 한 명령 시퀀스로 묶어야 사용자 설정이 세션을 없애기 전에 안정화 옵션이 적용된다.
+ */
+export function buildTmuxSessionBootstrapCommand(
   sessionName: string,
   workingDir: string,
   paneLayout?: TmuxPaneLayoutConfig | null,
-): string[] {
-  return [
-    buildTmuxCreateSessionCommand(sessionName, workingDir),
-    ...(paneLayout && paneLayout.layoutType !== PaneLayoutType.SINGLE
-      ? buildTmuxPaneLayoutCommands(
+  options: TmuxSessionBootstrapOptions = {},
+): string {
+  const tmuxArguments = [
+    buildTmuxCreateSessionArgument(sessionName, workingDir),
+    ...buildTmuxSessionHardeningArguments(sessionName),
+    /** pane 분할은 각 pane의 작업 디렉터리를 지정해야 하므로 작업 디렉터리를 아는 경우에만 적용한다 */
+    ...(workingDir && paneLayout && paneLayout.layoutType !== PaneLayoutType.SINGLE
+      ? buildTmuxPaneLayoutArguments(
           sessionName,
           paneLayout.layoutType,
           paneLayout.panes,
           workingDir,
         )
       : []),
+    ...(options.attachAfterBootstrap
+      ? [`attach-session -t ${quoteForPosixShell(sessionName)}`]
+      : []),
   ];
+
+  const tmuxCommand = options.ignoreUserConfig ? "tmux -f /dev/null" : "tmux";
+  return `${tmuxCommand} ${tmuxArguments.join(" \\; ")}`;
 }
 
 /** KDL 문자열 내 특수문자를 이스케이프한다 */
@@ -227,14 +279,17 @@ export const ZELLIJ_LAYOUT_FILENAME = ".zellij-layout.kdl";
 
 /**
  * KDL 레이아웃 파일을 worktree 디렉토리에 저장한다.
- * 터미널 연결 시 node-pty가 이 파일을 --layout 플래그로 사용한다.
+ * 터미널 연결 시 zellij가 이 파일을 --new-session-with-layout 플래그로 사용한다.
  */
 async function writeLayoutToWorktree(
   worktreePath: string,
   kdlContent: string,
+  sshHost?: string | null,
 ): Promise<void> {
-  const layoutPath = path.join(worktreePath, ZELLIJ_LAYOUT_FILENAME);
-  await writeFile(layoutPath, kdlContent, "utf-8");
+  const layoutPath = sshHost
+    ? path.posix.join(worktreePath, ZELLIJ_LAYOUT_FILENAME)
+    : path.join(worktreePath, ZELLIJ_LAYOUT_FILENAME);
+  await writeTextFile(layoutPath, kdlContent, sshHost);
 }
 
 /**
@@ -269,21 +324,19 @@ export async function createWorktreeWithSession(
        */
       const zellijSessionName = sanitizeZellijSessionName(sessionName);
 
-      /** 로컬 세션인 경우 KDL 레이아웃 파일을 worktree 디렉토리에 저장한다 */
-      if (!sshHost) {
-        try {
-          const layoutConfig = await getEffectivePaneLayout(projectId ?? undefined);
-          if (layoutConfig && layoutConfig.layoutType !== PaneLayoutType.SINGLE) {
-            const kdl = generateZellijLayoutKdl(
-              layoutConfig.layoutType as PaneLayoutType,
-              layoutConfig.panes,
-              worktreePath,
-            );
-            await writeLayoutToWorktree(worktreePath, kdl);
-          }
-        } catch (error) {
-          console.error("Zellij 레이아웃 파일 생성 실패 (레이아웃 없이 세션 생성 예정):", error);
+      /** 원격도 로컬과 같은 레이아웃으로 열리도록 KDL 레이아웃 파일을 worktree 디렉토리에 저장한다 */
+      try {
+        const layoutConfig = await getEffectivePaneLayout(projectId ?? undefined);
+        if (layoutConfig && layoutConfig.layoutType !== PaneLayoutType.SINGLE) {
+          const kdl = generateZellijLayoutKdl(
+            layoutConfig.layoutType as PaneLayoutType,
+            layoutConfig.panes,
+            worktreePath,
+          );
+          await writeLayoutToWorktree(worktreePath, kdl, sshHost);
         }
+      } catch (error) {
+        console.error("Zellij 레이아웃 파일 생성 실패 (레이아웃 없이 세션 생성 예정):", error);
       }
 
       return { worktreePath, sessionName: zellijSessionName };
@@ -545,7 +598,7 @@ export async function removeSessionOnly(
   try {
     if (sessionType === SessionType.TMUX) {
       await execGit(
-        buildTmuxSessionCleanupCommand(sessionName, options.throwOnError === true, sshHost),
+        buildTmuxSessionCleanupCommand(sessionName, options.throwOnError === true),
         sshHost,
       );
     } else {
@@ -565,12 +618,9 @@ export async function removeSessionOnly(
 function buildTmuxSessionCleanupCommand(
   sessionName: string,
   verifyCleanup: boolean,
-  sshHost?: string | null,
 ): string {
   const target = quoteForPosixShell(sessionName);
-  const tmuxCommands = sshHost
-    ? ["tmux -L kanvibe -f /dev/null", "tmux"]
-    : ["tmux"];
+  const tmuxCommands = buildTmuxLookupCommands();
   const killCommands = tmuxCommands.map((tmuxCommand) => (
     `${tmuxCommand} kill-session -t ${target} 2>/dev/null || true`
   ));
@@ -613,11 +663,11 @@ export async function listActiveSessions(
 ): Promise<string[]> {
   try {
     if (sessionType === SessionType.TMUX) {
-      const output = await execGit(
-        `tmux list-sessions -F '#{session_name}'`,
-        sshHost,
-      );
-      return output.split("\n").filter(Boolean);
+      const listCommands = buildTmuxLookupCommands().map((tmuxCommand) => (
+        `${tmuxCommand} list-sessions -F '#{session_name}' 2>/dev/null || true`
+      ));
+      const output = await execGit(listCommands.join("; "), sshHost);
+      return [...new Set(output.split("\n").map((name) => name.trim()).filter(Boolean))];
     } else {
       const output = await execGit("zellij list-sessions", sshHost);
       return output.split("\n").filter(Boolean);
@@ -625,6 +675,16 @@ export async function listActiveSessions(
   } catch {
     return [];
   }
+}
+
+/** zellij list-sessions는 종료된 세션을 `EXITED: <name>`으로 함께 출력하므로 이름만 뽑아 살아있는 세션과 구분한다 */
+export function parseAliveZellijSessionNames(listSessionsOutput: string): string[] {
+  return listSessionsOutput
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line && !line.startsWith("EXITED:"))
+    .map((line) => line.split(/\s+/)[0])
+    .filter(Boolean);
 }
 
 /** 세션이 활성 상태인지 확인한다 */
@@ -635,11 +695,15 @@ export async function isSessionAlive(
 ): Promise<boolean> {
   try {
     if (sessionType === SessionType.TMUX) {
-      await execGit(`tmux has-session -t "${sessionName}" 2>/dev/null`, sshHost);
+      const target = quoteForPosixShell(sessionName);
+      const hasSessionChecks = buildTmuxLookupCommands().map((tmuxCommand) => (
+        `${tmuxCommand} has-session -t ${target} 2>/dev/null && exit 0`
+      ));
+      await execGit([...hasSessionChecks, "exit 1"].join("; "), sshHost);
       return true;
     } else {
       const output = await execGit("zellij list-sessions", sshHost);
-      return output.split("\n").some((s) => s.trim().startsWith(sessionName));
+      return parseAliveZellijSessionNames(output).includes(sessionName);
     }
   } catch {
     return false;

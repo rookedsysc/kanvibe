@@ -21,9 +21,11 @@ vi.mock("@/desktop/main/services/paneLayoutService", () => ({
 }));
 
 const mockWriteFile = vi.fn().mockResolvedValue(undefined);
+const mockMkdir = vi.fn().mockResolvedValue(undefined);
 
 vi.mock("fs/promises", () => ({
   writeFile: (...args: unknown[]) => mockWriteFile(...args),
+  mkdir: (...args: unknown[]) => mockMkdir(...args),
 }));
 
 /** execGit 호출 중 특정 패턴을 포함하는 명령어만 필터링한다 */
@@ -147,9 +149,21 @@ describe("isSessionAlive", () => {
     // Then
     expect(result).toBe(true);
     expect(mockExecGit).toHaveBeenCalledWith(
-      'tmux has-session -t "feat-branch" 2>/dev/null',
+      "tmux has-session -t 'feat-branch' 2>/dev/null && exit 0; tmux -L 'kanvibe' has-session -t 'feat-branch' 2>/dev/null && exit 0; exit 1",
       undefined,
     );
+  });
+
+  it("should also look for the session on the socket used before KanVibe 1.0.6", async () => {
+    // Given
+    mockExecGit.mockResolvedValue("");
+    const { isSessionAlive } = await import("@/lib/worktree");
+
+    // When
+    await isSessionAlive(SessionType.TMUX, "feat-branch");
+
+    // Then
+    expect(mockExecGit.mock.calls[0][0]).toContain("tmux -L 'kanvibe' has-session -t 'feat-branch'");
   });
 
   it("should return false when tmux session does not exist", async () => {
@@ -198,9 +212,33 @@ describe("isSessionAlive", () => {
 
     // Then
     expect(mockExecGit).toHaveBeenCalledWith(
-      'tmux has-session -t "feat-branch" 2>/dev/null',
+      expect.stringContaining("tmux has-session -t 'feat-branch'"),
       "remote-host",
     );
+  });
+
+  it("should treat an exited zellij session as not alive", async () => {
+    // Given
+    mockExecGit.mockResolvedValue("EXITED: feat-branch\nother-session\n");
+    const { isSessionAlive } = await import("@/lib/worktree");
+
+    // When
+    const result = await isSessionAlive(SessionType.ZELLIJ, "feat-branch");
+
+    // Then
+    expect(result).toBe(false);
+  });
+
+  it("should not treat a session name prefix as a match", async () => {
+    // Given
+    mockExecGit.mockResolvedValue("feat-branch-extra [Created 1h ago]\n");
+    const { isSessionAlive } = await import("@/lib/worktree");
+
+    // When
+    const result = await isSessionAlive(SessionType.ZELLIJ, "feat-branch");
+
+    // Then
+    expect(result).toBe(false);
   });
 });
 
@@ -424,7 +462,7 @@ describe("removeSessionOnly", () => {
 
     // Then
     expect(mockExecGit).toHaveBeenCalledWith(
-      "tmux kill-session -t 'feat-branch' 2>/dev/null || true",
+      "tmux kill-session -t 'feat-branch' 2>/dev/null || true; tmux -L 'kanvibe' kill-session -t 'feat-branch' 2>/dev/null || true",
       undefined,
     );
   });
@@ -488,9 +526,9 @@ describe("removeSessionOnly", () => {
     // Then
     const command = mockExecGit.mock.calls[0][0] as string;
     expect(command).toContain("command -v tmux >/dev/null 2>&1");
-    expect(command).toContain("tmux -L kanvibe -f /dev/null kill-session -t 'feat-branch'");
+    expect(command).toContain("tmux -L 'kanvibe' kill-session -t 'feat-branch'");
     expect(command).toContain("tmux kill-session -t 'feat-branch'");
-    expect(command).toContain("if tmux -L kanvibe -f /dev/null has-session -t 'feat-branch' 2>/dev/null; then exit 1; fi");
+    expect(command).toContain("if tmux -L 'kanvibe' has-session -t 'feat-branch' 2>/dev/null; then exit 1; fi");
     expect(command).toContain("if tmux has-session -t 'feat-branch' 2>/dev/null; then exit 1; fi");
     expect(command).not.toContain("tmux list-sessions");
     expect(command).not.toContain("grep -Fx");
@@ -891,7 +929,7 @@ describe("createWorktreeWithSession — Zellij KDL layout file persistence", () 
     expect(mockWriteFile).not.toHaveBeenCalled();
   });
 
-  it("should not write layout file for remote Zellij sessions", async () => {
+  it("should write the layout file to the remote worktree so remote sessions open like local ones", async () => {
     // Given
     mockGetEffectivePaneLayout.mockResolvedValue({
       layoutType: PaneLayoutType.VERTICAL_2,
@@ -914,8 +952,14 @@ describe("createWorktreeWithSession — Zellij KDL layout file persistence", () 
     );
 
     // Then
+    /** 원격 쓰기는 로컬 fs가 아니라 execGit을 통해 나가야 한다 */
     expect(mockWriteFile).not.toHaveBeenCalled();
-    expect(mockGetEffectivePaneLayout).not.toHaveBeenCalled();
+    const remoteLayoutWrites = filterCalls(".zellij-layout.kdl");
+    expect(remoteLayoutWrites).toHaveLength(1);
+    expect(mockExecGit).toHaveBeenCalledWith(
+      expect.stringContaining(".zellij-layout.kdl"),
+      "remote-host",
+    );
   });
 
   it("should fallback gracefully when getEffectivePaneLayout fails", async () => {
