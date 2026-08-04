@@ -13,6 +13,7 @@ import type { AggregatedAiSessionDetail, AggregatedAiSessionsResult, AiMessageRo
 import { homedir } from "os";
 import path from "path";
 import { computeProjectColor } from "@/lib/projectColor";
+import { DUPLICATE_PROJECT_NAME_ERROR, resolveUniqueProjectName } from "@/lib/projectName";
 import { resolveProjectIconDataUrl } from "@/lib/githubProjectIcon";
 import { broadcastBoardUpdate } from "@/lib/boardNotifier";
 import { getAvailableHosts as readAvailableHosts } from "@/lib/sshConfig";
@@ -197,42 +198,13 @@ function scheduleProjectRootTaskRepair(project: Project) {
   }, 0);
 }
 
-/** 프로젝트 표시 이름은 전역적으로 유일해야 하므로 충돌 시 경로 기반 후보명으로 보정한다 */
-function resolveUniqueProjectName(
-  preferredName: string,
-  repoPath: string,
-  existingNames: Set<string>,
-): string {
-  const baseName = path.basename(repoPath);
-  const parentName = path.basename(path.dirname(repoPath));
-  const combinedName = `${parentName}/${baseName}`;
-  const candidates = [preferredName];
-
-  if (baseName && baseName !== preferredName) {
-    candidates.push(baseName);
-  }
-
-  if (combinedName && combinedName !== preferredName) {
-    candidates.push(combinedName);
-  }
-
-  for (const candidate of candidates) {
-    if (existingNames.has(candidate)) {
-      continue;
-    }
-
-    existingNames.add(candidate);
-    return candidate;
-  }
-
-  let counter = 2;
-  while (existingNames.has(`${preferredName}-${counter}`)) {
-    counter++;
-  }
-
-  const numberedName = `${preferredName}-${counter}`;
-  existingNames.add(numberedName);
-  return numberedName;
+/** 프로젝트 이름 중복은 같은 PC 안에서만 따지므로 대상 PC에 등록된 이름만 모은다 */
+function collectProjectNamesOnSameHost(projects: Project[], sshHost: string | null): Set<string> {
+  return new Set(
+    projects
+      .filter((project) => (project.sshHost || null) === sshHost)
+      .map((project) => project.name),
+  );
 }
 
 /** 프로젝트의 메인 브랜치 태스크를 생성하고 tmux 세션을 자동 연결한다 */
@@ -494,8 +466,11 @@ export async function registerProject(
   const projectName = resolveUniqueProjectName(
     name,
     normalizedRepoPath,
-    new Set(existingProjects.map((project) => project.name)),
+    collectProjectNamesOnSameHost(existingProjects, sshHost || null),
   );
+  if (!projectName) {
+    return { success: false, error: DUPLICATE_PROJECT_NAME_ERROR };
+  }
 
   const project = repo.create({
     name: projectName,
@@ -889,7 +864,7 @@ export async function syncRegisteredProjectWorktrees(
 
 /**
  * 지정 디렉토리 하위의 git 저장소를 스캔하여 미등록 프로젝트를 일괄 등록한다.
- * 이미 동일 경로로 등록된 프로젝트는 건너뛰고, 이름 중복 시 상위 디렉토리를 포함하여 구분한다.
+ * 이미 동일 경로로 등록된 프로젝트는 건너뛰고, 같은 PC 안에서 이름이 중복되면 상위 디렉토리를 포함하여 구분한다.
  */
 export async function scanAndRegisterProjects(
   rootPath: string,
@@ -924,7 +899,7 @@ export async function scanAndRegisterProjects(
   const existingPaths = new Set(
     existing.map((project) => buildProjectPathKey(project.repoPath, project.sshHost))
   );
-  const existingNames = new Set(existing.map((p) => p.name));
+  const namesOnSameHost = collectProjectNamesOnSameHost(existing, sshHost || null);
 
   for (const repoPath of repoPaths) {
     const pathKey = buildProjectPathKey(repoPath, sshHost || null);
@@ -935,7 +910,11 @@ export async function scanAndRegisterProjects(
 
     try {
       const defaultBranch = await getDefaultBranch(repoPath, sshHost || null);
-      const projectName = resolveUniqueProjectName(path.basename(repoPath), repoPath, existingNames);
+      const projectName = resolveUniqueProjectName(path.basename(repoPath), repoPath, namesOnSameHost);
+      if (!projectName) {
+        result.errors.push(`${repoPath}: ${DUPLICATE_PROJECT_NAME_ERROR}`);
+        continue;
+      }
 
       const project = repo.create({
         name: projectName,

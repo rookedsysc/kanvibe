@@ -6,6 +6,7 @@ import { DataSource } from "typeorm";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ensureSqliteDatabaseReady } from "@/lib/sqliteSchema";
 import { AssignDisplayOrder1771166346785 } from "@/migrations/1771166346785-AssignDisplayOrder";
+import { RescopeProjectNamesPerHost1771600000000 } from "@/migrations/1771600000000-RescopeProjectNamesPerHost";
 
 const originalKanvibeDbPath = process.env.KANVIBE_DB_PATH;
 
@@ -119,7 +120,7 @@ describe("database migrations", () => {
         { id: "task-1", branch_name: "main", display_order: 0 },
         { id: "task-2", branch_name: "main", display_order: 1 },
       ]);
-      expect(migrations).toHaveLength(13);
+      expect(migrations).toHaveLength(14);
       expect(migrations[0]).toEqual({ name: "InitialSchema1770854400000" });
     } finally {
       await dataSource.destroy();
@@ -158,7 +159,7 @@ describe("database migrations", () => {
           display_order: 0,
         },
       ]);
-      expect(migrations).toHaveLength(13);
+      expect(migrations).toHaveLength(14);
     } finally {
       await dataSource.destroy();
     }
@@ -188,7 +189,145 @@ describe("database migrations", () => {
       expect(indexes.map((row: { name: string }) => row.name)).not.toContain(
         "UQ_kanban_tasks_branch_name",
       );
-      expect(migrations).toHaveLength(13);
+      expect(migrations).toHaveLength(14);
+
+      await dataSource.query(`
+        INSERT INTO projects (id, name, repo_path, ssh_host)
+        VALUES
+          ('project-local', 'kanvibe', '/workspace/kanvibe', NULL),
+          ('project-remote', 'kanvibe', '/workspace/kanvibe', 'remote-host')
+      `);
+      const projectNames = await dataSource.query(`SELECT name FROM projects ORDER BY id`);
+
+      expect(projectNames).toEqual([{ name: "kanvibe" }, { name: "kanvibe" }]);
+    } finally {
+      await dataSource.destroy();
+    }
+  });
+
+  it("drops the legacy global unique project name without unlinking tasks", async () => {
+    const databasePath = createDatabasePath();
+    const dataSource = new DataSource({
+      type: "better-sqlite3",
+      database: databasePath,
+      prepareDatabase: (database) => {
+        database.pragma("foreign_keys = ON");
+      },
+    });
+
+    await dataSource.initialize();
+
+    try {
+      await dataSource.query(`
+        CREATE TABLE projects (
+          id TEXT PRIMARY KEY NOT NULL,
+          name TEXT NOT NULL UNIQUE,
+          repo_path TEXT NOT NULL,
+          default_branch TEXT NOT NULL DEFAULT 'main',
+          ssh_host TEXT,
+          is_worktree INTEGER NOT NULL DEFAULT 0,
+          color TEXT DEFAULT NULL,
+          icon_data_url TEXT DEFAULT NULL,
+          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+      `);
+      await dataSource.query(`
+        CREATE TABLE kanban_tasks (
+          id TEXT PRIMARY KEY NOT NULL,
+          title TEXT NOT NULL,
+          status TEXT NOT NULL DEFAULT 'todo',
+          project_id TEXT,
+          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE SET NULL
+        )
+      `);
+      await dataSource.query(`
+        INSERT INTO projects (id, name, repo_path, ssh_host)
+        VALUES ('project-local', 'kanvibe', '/workspace/kanvibe', NULL)
+      `);
+      await dataSource.query(`
+        INSERT INTO kanban_tasks (id, title, project_id)
+        VALUES ('task-1', 'main', 'project-local')
+      `);
+
+      /** 프로덕션과 같은 순서로 foreign_keys를 끄고 마이그레이션을 실행해 DROP TABLE이 task 연결을 지우지 않는지 확인한다 */
+      const queryRunner = dataSource.createQueryRunner();
+      try {
+        await queryRunner.beforeMigration();
+        await new RescopeProjectNamesPerHost1771600000000().up(queryRunner);
+        await queryRunner.afterMigration();
+      } finally {
+        await queryRunner.release();
+      }
+
+      await dataSource.query(`
+        INSERT INTO projects (id, name, repo_path, ssh_host)
+        VALUES ('project-remote', 'kanvibe', '/workspace/kanvibe', 'remote-host')
+      `);
+
+      const projects = await dataSource.query(`SELECT id, name, ssh_host FROM projects ORDER BY id`);
+      const tasks = await dataSource.query(`SELECT id, project_id FROM kanban_tasks`);
+
+      expect(projects).toEqual([
+        { id: "project-local", name: "kanvibe", ssh_host: null },
+        { id: "project-remote", name: "kanvibe", ssh_host: "remote-host" },
+      ]);
+      expect(tasks).toEqual([{ id: "task-1", project_id: "project-local" }]);
+    } finally {
+      await dataSource.destroy();
+    }
+  });
+
+  it("rescopes names that the global unique rule had padded with a parent folder or a number", async () => {
+    const databasePath = createDatabasePath();
+    const dataSource = new DataSource({
+      type: "better-sqlite3",
+      database: databasePath,
+    });
+
+    await dataSource.initialize();
+
+    try {
+      await dataSource.query(`
+        CREATE TABLE projects (
+          id TEXT PRIMARY KEY NOT NULL,
+          name TEXT NOT NULL UNIQUE,
+          repo_path TEXT NOT NULL,
+          default_branch TEXT NOT NULL DEFAULT 'main',
+          ssh_host TEXT,
+          is_worktree INTEGER NOT NULL DEFAULT 0,
+          color TEXT DEFAULT NULL,
+          icon_data_url TEXT DEFAULT NULL,
+          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+      `);
+      await dataSource.query(`
+        INSERT INTO projects (id, name, repo_path, ssh_host, created_at)
+        VALUES
+          ('project-local', 'kanvibe', '/home/tester/Documents/kanvibe', NULL, '2026-01-01T00:00:00.000Z'),
+          ('project-remote', 'Documents/kanvibe', '/home/tester/Documents/kanvibe', 'remote-host', '2026-01-02T00:00:00.000Z'),
+          ('project-other-remote', 'kanvibe-2', '/home/tester/Documents/kanvibe', 'other-host', '2026-01-03T00:00:00.000Z'),
+          ('project-local-second', 'work/kanvibe', '/home/tester/work/kanvibe', NULL, '2026-01-04T00:00:00.000Z')
+      `);
+
+      const queryRunner = dataSource.createQueryRunner();
+      try {
+        await queryRunner.beforeMigration();
+        await new RescopeProjectNamesPerHost1771600000000().up(queryRunner);
+        await queryRunner.afterMigration();
+      } finally {
+        await queryRunner.release();
+      }
+
+      const projects = await dataSource.query(`SELECT id, name FROM projects ORDER BY created_at`);
+
+      expect(projects).toEqual([
+        { id: "project-local", name: "kanvibe" },
+        { id: "project-remote", name: "kanvibe" },
+        { id: "project-other-remote", name: "kanvibe" },
+        { id: "project-local-second", name: "work/kanvibe" },
+      ]);
     } finally {
       await dataSource.destroy();
     }

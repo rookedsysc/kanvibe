@@ -24,7 +24,7 @@ function ensureBaseTables(database: Database.Database): void {
   database.exec(`
     CREATE TABLE IF NOT EXISTS projects (
       id TEXT PRIMARY KEY NOT NULL,
-      name TEXT NOT NULL UNIQUE,
+      name TEXT NOT NULL,
       repo_path TEXT NOT NULL,
       default_branch TEXT NOT NULL DEFAULT 'main',
       ssh_host TEXT,
