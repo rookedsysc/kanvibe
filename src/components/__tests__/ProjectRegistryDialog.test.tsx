@@ -136,6 +136,35 @@ describe("ProjectRegistryDialog", () => {
     });
   });
 
+  it("등록되지 못한 저장소의 사유를 건수가 아니라 메시지로 보여준다", async () => {
+    projectActionMocks.scanAndRegisterProjects.mockResolvedValue({
+      registered: [],
+      skipped: [],
+      errors: ["/home/tester/c/work/kanvibe: 같은 PC에 이름과 상위 폴더가 모두 같은 프로젝트가 이미 있습니다."],
+      worktreeTasks: [],
+    });
+
+    render(
+      <ProjectRegistryDialog
+        isOpen
+        onClose={vi.fn()}
+        projects={[createProject()]}
+        sshHosts={[]}
+      />,
+    );
+
+    fireEvent.submit(screen.getByTestId("project-registry-form"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(
+          "/home/tester/c/work/kanvibe: 같은 PC에 이름과 상위 폴더가 모두 같은 프로젝트가 이미 있습니다.",
+        ),
+      ).toBeTruthy();
+    });
+    expect(screen.queryByText("noGitRepos")).toBeNull();
+  });
+
   it("삭제 확인 후 등록 프로젝트를 삭제한다", async () => {
     const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
 

@@ -13,6 +13,11 @@ interface IndexInfoEntry {
   name: string;
 }
 
+/** PRAGMA table_info 결과 중 복사 목록을 만드는 데 쓰는 필드 */
+interface TableColumnEntry {
+  name: string;
+}
+
 /** 이름을 다시 계산하는 데 필요한 projects 행 타입 */
 interface ProjectNameRow {
   id: string;
@@ -21,7 +26,37 @@ interface ProjectNameRow {
   ssh_host: string | null;
 }
 
-const PROJECT_COLUMNS = "id, name, repo_path, default_branch, ssh_host, is_worktree, color, icon_data_url, created_at";
+/** 재생성한 테이블이 갖는 컬럼. 여기에 없는 컬럼이 실제 테이블에 있으면 재생성이 그 데이터를 지운다 */
+const REBUILT_PROJECT_COLUMNS = [
+  "id",
+  "name",
+  "repo_path",
+  "default_branch",
+  "ssh_host",
+  "is_worktree",
+  "color",
+  "icon_data_url",
+  "created_at",
+];
+
+/**
+ * 실제 테이블 컬럼을 읽어 복사 목록을 만든다.
+ * 재생성한 테이블이 받아줄 수 없는 컬럼이 있으면 조용히 잃는 대신 마이그레이션을 실패시킨다.
+ */
+async function resolveProjectCopyColumns(queryRunner: QueryRunner): Promise<string> {
+  const columns: TableColumnEntry[] = await queryRunner.query(`PRAGMA table_info("projects")`);
+  const droppedColumns = columns
+    .map((column) => column.name)
+    .filter((name) => !REBUILT_PROJECT_COLUMNS.includes(name));
+
+  if (droppedColumns.length > 0) {
+    throw new Error(
+      `projects 테이블 재생성이 처리할 수 없는 컬럼이 있습니다: ${droppedColumns.join(", ")}`,
+    );
+  }
+
+  return columns.map((column) => `"${column.name}"`).join(", ");
+}
 
 /** name 컬럼 하나만 덮는 UNIQUE 인덱스를 찾는다. 인라인 UNIQUE 제약은 이름 없는 autoindex로 잡히므로 구성 컬럼으로 판별한다 */
 async function findUniqueNameIndex(queryRunner: QueryRunner): Promise<string | null> {
@@ -42,15 +77,17 @@ async function findUniqueNameIndex(queryRunner: QueryRunner): Promise<string | n
 }
 
 /**
- * projects 테이블을 지정한 name 컬럼 정의로 다시 만든다.
+ * projects 테이블을 name의 UNIQUE 없이 다시 만든다.
  * SQLite는 인라인 UNIQUE 제약을 DROP INDEX로 제거할 수 없어 테이블을 재생성해야 한다.
  * 마이그레이션 실행 중에는 TypeORM이 foreign_keys를 꺼두므로 DROP TABLE이 kanban_tasks의 project_id를 지우지 않는다.
  */
-async function rebuildProjectsTable(queryRunner: QueryRunner, nameColumnDefinition: string): Promise<void> {
+async function rebuildProjectsTable(queryRunner: QueryRunner): Promise<void> {
+  const copyColumns = await resolveProjectCopyColumns(queryRunner);
+
   await queryRunner.query(`
     CREATE TABLE "projects_rebuilt" (
       id TEXT PRIMARY KEY NOT NULL,
-      ${nameColumnDefinition},
+      name TEXT NOT NULL,
       repo_path TEXT NOT NULL,
       default_branch TEXT NOT NULL DEFAULT 'main',
       ssh_host TEXT,
@@ -61,7 +98,7 @@ async function rebuildProjectsTable(queryRunner: QueryRunner, nameColumnDefiniti
     )
   `);
   await queryRunner.query(
-    `INSERT INTO "projects_rebuilt" (${PROJECT_COLUMNS}) SELECT ${PROJECT_COLUMNS} FROM "projects"`,
+    `INSERT INTO "projects_rebuilt" (${copyColumns}) SELECT ${copyColumns} FROM "projects"`,
   );
   await queryRunner.query(`DROP TABLE "projects"`);
   await queryRunner.query(`ALTER TABLE "projects_rebuilt" RENAME TO "projects"`);
@@ -112,17 +149,13 @@ export class RescopeProjectNamesPerHost1771600000000 implements MigrationInterfa
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     if (await findUniqueNameIndex(queryRunner)) {
-      await rebuildProjectsTable(queryRunner, "name TEXT NOT NULL");
+      await rebuildProjectsTable(queryRunner);
     }
 
     await rescopeProjectNamesPerHost(queryRunner);
   }
 
-  public async down(queryRunner: QueryRunner): Promise<void> {
-    if (await findUniqueNameIndex(queryRunner)) {
-      return;
-    }
-
-    await rebuildProjectsTable(queryRunner, "name TEXT NOT NULL UNIQUE");
+  public async down(_queryRunner: QueryRunner): Promise<void> {
+    // 전역 UNIQUE를 되살리면 PC 단위로 허용된 동명 프로젝트끼리 충돌하고 재계산 전 이름도 복원할 수 없으므로 rollback은 no-op
   }
 }
