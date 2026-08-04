@@ -18,6 +18,15 @@ vi.mock("child_process", async (importOriginal) => {
   };
 });
 
+/** 원격 경로는 tmux 클립보드 설정 확인을 execGit으로 내보낸다. 기본값은 "사용자 설정 없음" */
+const mockExecGit = vi.fn(async (...args: unknown[]): Promise<string> => {
+  void args;
+  return "";
+});
+vi.mock("@/lib/gitOperations", () => ({
+  execGit: (...args: unknown[]) => mockExecGit(...args),
+}));
+
 const mockExistsSync = vi.fn();
 vi.mock("fs", async (importOriginal) => {
   const actual = await importOriginal<typeof import("fs")>();
@@ -214,7 +223,7 @@ describe("attachLocalSession — tmux 세션 자동 생성", () => {
     expect(findExecSyncCall("new-session")).toContain("set-option -t 'feat-login' window-size latest");
   });
 
-  it("should not change any tmux server option because the default socket is the user's own server", async () => {
+  it("should enable OSC 52 forwarding when the user tmux config says nothing about set-clipboard", async () => {
     // Given
     const { attachLocalSession } = await import("@/lib/terminal");
     mockExecSync.mockImplementation((cmd: string) => {
@@ -226,7 +235,7 @@ describe("attachLocalSession — tmux 세션 자동 생성", () => {
 
     // When
     await attachLocalSession(
-      "task-server-options",
+      "task-clipboard-default",
       SessionType.TMUX,
       "feat-login",
       createMockWs(),
@@ -234,9 +243,61 @@ describe("attachLocalSession — tmux 세션 자동 생성", () => {
     );
 
     // Then
-    const executedCommands = mockExecSync.mock.calls.map((call) => String(call[0]));
-    expect(executedCommands.some((command) => command.includes("set-option -s"))).toBe(false);
-    expect(executedCommands.some((command) => command.includes("set-clipboard"))).toBe(false);
+    expect(findExecSyncCall("new-session")).toContain("set-option -s set-clipboard on");
+  });
+
+  it("should leave set-clipboard alone when the user tmux config already chose a value", async () => {
+    // Given
+    const { attachLocalSession } = await import("@/lib/terminal");
+    mockExecSync.mockImplementation((cmd: string) => {
+      if (typeof cmd === "string" && cmd.includes("has-session")) {
+        throw new Error("session not found");
+      }
+      if (typeof cmd === "string" && cmd.includes("set-clipboard")) {
+        return "kanvibe-user-set-clipboard";
+      }
+      return "";
+    });
+
+    // When
+    await attachLocalSession(
+      "task-clipboard-user-choice",
+      SessionType.TMUX,
+      "feat-login",
+      createMockWs(),
+      "/workspace",
+    );
+
+    // Then
+    const bootstrapCommand = findExecSyncCall("new-session");
+    expect(bootstrapCommand).not.toContain("set-clipboard");
+    expect(bootstrapCommand).toContain("set-option -t 'feat-login' destroy-unattached off");
+  });
+
+  it("should not touch set-clipboard when the preference check itself fails", async () => {
+    // Given
+    const { attachLocalSession } = await import("@/lib/terminal");
+    mockExecSync.mockImplementation((cmd: string) => {
+      if (typeof cmd === "string" && cmd.includes("has-session")) {
+        throw new Error("session not found");
+      }
+      if (typeof cmd === "string" && cmd.includes("set-clipboard")) {
+        throw new Error("grep unavailable");
+      }
+      return "";
+    });
+
+    // When
+    await attachLocalSession(
+      "task-clipboard-check-failure",
+      SessionType.TMUX,
+      "feat-login",
+      createMockWs(),
+      "/workspace",
+    );
+
+    // Then
+    expect(findExecSyncCall("new-session")).not.toContain("set-clipboard");
   });
 
   it("should retry local bootstrap without the user tmux config when the first attempt fails", async () => {
@@ -932,6 +993,72 @@ describe("attachRemoteSession — ssh 바이너리 기반 연결", () => {
     expectValidPosixShellSyntax(remoteShellCommand);
     expectValidPosixShellSyntax(attachCommand);
     expect(mockPtyWrite).not.toHaveBeenCalled();
+  });
+
+  it("should enable OSC 52 forwarding on the remote host the same way it does locally", async () => {
+    // Given
+    mockExecGit.mockResolvedValue("");
+    const { attachRemoteSession } = await import("@/lib/terminal");
+
+    // When
+    await attachRemoteSession(
+      "task-r-clipboard",
+      "remote-host",
+      SessionType.TMUX,
+      "remote-session",
+      createMockWs(),
+      {
+        host: "remote-host",
+        hostname: "example.com",
+        port: 2202,
+        username: "tester",
+        privateKeyPath: "/tmp/test-key",
+      },
+      120,
+      30,
+      "/remote/worktree",
+    );
+
+    // Then
+    const nodePty = await import("node-pty");
+    const sshArgs = vi.mocked(nodePty.spawn).mock.calls[0][1] as string[];
+    const attachCommand = extractRemoteShellPayload(sshArgs.at(-1) ?? "");
+    expect(String(mockExecGit.mock.calls[0][0])).toContain("set-clipboard");
+    expect(mockExecGit.mock.calls[0][1]).toBe("remote-host");
+    expect(attachCommand).toContain("set-option -s set-clipboard on");
+    expectValidPosixShellSyntax(attachCommand);
+  });
+
+  it("should leave the remote set-clipboard alone when the remote tmux config already chose a value", async () => {
+    // Given
+    mockExecGit.mockResolvedValue("kanvibe-user-set-clipboard");
+    const { attachRemoteSession } = await import("@/lib/terminal");
+
+    // When
+    await attachRemoteSession(
+      "task-r-clipboard-user",
+      "remote-host",
+      SessionType.TMUX,
+      "remote-session",
+      createMockWs(),
+      {
+        host: "remote-host",
+        hostname: "example.com",
+        port: 2202,
+        username: "tester",
+        privateKeyPath: "/tmp/test-key",
+      },
+      120,
+      30,
+      "/remote/worktree",
+    );
+
+    // Then
+    const nodePty = await import("node-pty");
+    const sshArgs = vi.mocked(nodePty.spawn).mock.calls[0][1] as string[];
+    const attachCommand = extractRemoteShellPayload(sshArgs.at(-1) ?? "");
+    expect(attachCommand).not.toContain("set-clipboard");
+    expect(attachCommand).toContain("set-option -t 'remote-session' destroy-unattached off");
   });
 
   it("should build POSIX-valid remote tmux attach commands for multiline quoted pane commands", async () => {

@@ -7,11 +7,14 @@ import type { WebSocket } from "ws";
 import { buildSSHArgs, getKanvibeSSHConnectionHealthOptions, hasLocalX11Display } from "@/lib/sshConfig";
 import {
   buildTmuxSessionBootstrapCommand,
+  buildTmuxUserClipboardPreferenceCommand,
+  hasUserTmuxClipboardPreference,
   parseAliveZellijSessionNames,
   quoteForPosixShell,
   type TmuxPaneLayoutConfig,
   ZELLIJ_LAYOUT_FILENAME,
 } from "@/lib/worktree";
+import { execGit } from "@/lib/gitOperations";
 import { createLocalShellEnvironment } from "@/lib/shellEnvironment";
 
 /**
@@ -74,6 +77,39 @@ function isZellijSessionAlive(sessionName: string): boolean {
  */
 const TMUX_BOOTSTRAP_TIMEOUT_MS = 30_000;
 
+/** 설정 파일 grep 한 번이라 부트스트랩보다 훨씬 짧게 잡는다 */
+const TMUX_CLIPBOARD_PREFERENCE_TIMEOUT_MS = 5_000;
+
+/**
+ * OSC 52 전달을 KanVibe가 켜도 되는지 판단한다.
+ * `set-clipboard`는 서버 옵션이라 사용자의 다른 tmux 세션까지 함께 바뀌므로,
+ * 사용자가 자기 설정에서 값을 정해 뒀으면 그 선택을 그대로 둔다.
+ */
+function shouldEnableLocalTmuxClipboard(terminalEnvironment: NodeJS.ProcessEnv): boolean {
+  try {
+    const output = execSync(buildTmuxUserClipboardPreferenceCommand(), {
+      env: terminalEnvironment,
+      encoding: "utf-8",
+      timeout: TMUX_CLIPBOARD_PREFERENCE_TIMEOUT_MS,
+    });
+    return !hasUserTmuxClipboardPreference(output);
+  } catch {
+    /** 확인에 실패하면 사용자 설정을 덮지 않는 쪽으로 기운다 */
+    return false;
+  }
+}
+
+async function shouldEnableRemoteTmuxClipboard(sshHost: string): Promise<boolean> {
+  try {
+    const output = await execGit(buildTmuxUserClipboardPreferenceCommand(), sshHost, {
+      timeoutMs: TMUX_CLIPBOARD_PREFERENCE_TIMEOUT_MS,
+    });
+    return !hasUserTmuxClipboardPreference(output);
+  } catch {
+    return false;
+  }
+}
+
 /**
  * 로컬 tmux 세션을 만든다.
  * 사용자 설정이 세션 기동을 막으면 설정 파일 없이 한 번 더 시도해, 소켓을 바꾸지 않고도 세션을 살린다.
@@ -88,9 +124,13 @@ function bootstrapLocalTmuxSession(
   const paneLayout = tmuxPaneLayout && tmuxPaneLayout.layoutType !== PaneLayoutType.SINGLE
     ? tmuxPaneLayout
     : null;
+  const enableClipboard = shouldEnableLocalTmuxClipboard(terminalEnvironment);
   const runBootstrap = (withoutUserConfigFile: boolean) => {
     execSync(
-      buildTmuxSessionBootstrapCommand(sessionName, workingDir, paneLayout, { withoutUserConfigFile }),
+      buildTmuxSessionBootstrapCommand(sessionName, workingDir, paneLayout, {
+        withoutUserConfigFile,
+        enableClipboard,
+      }),
       { env: terminalEnvironment, timeout: TMUX_BOOTSTRAP_TIMEOUT_MS },
     );
   };
@@ -316,7 +356,12 @@ export async function attachRemoteSession(
 
   const pty = await import("node-pty");
   const attachCommand = sessionType === SessionType.TMUX
-    ? buildRemoteTmuxAttachCommand(sessionName, worktreePath, tmuxPaneLayout)
+    ? buildRemoteTmuxAttachCommand(
+        sessionName,
+        worktreePath,
+        tmuxPaneLayout,
+        await shouldEnableRemoteTmuxClipboard(sshHost),
+      )
     : buildRemoteZellijAttachCommand(sessionName, worktreePath);
   const args = [
     ...buildSSHArgs(sshConfig, {
@@ -399,6 +444,7 @@ function buildRemoteTmuxAttachCommand(
   sessionName: string,
   worktreePath?: string | null,
   tmuxPaneLayout?: TmuxPaneLayoutConfig | null,
+  enableClipboard = false,
 ): string {
   const quotedSessionName = quoteForPosixShell(sessionName);
   const buildBootstrapCommand = (withoutUserConfigFile: boolean) => buildTmuxSessionBootstrapCommand(
@@ -407,7 +453,7 @@ function buildRemoteTmuxAttachCommand(
     tmuxPaneLayout && tmuxPaneLayout.layoutType !== PaneLayoutType.SINGLE
       ? tmuxPaneLayout
       : null,
-    { attachAfterBootstrap: true, withoutUserConfigFile },
+    { attachAfterBootstrap: true, withoutUserConfigFile, enableClipboard },
   );
   const bootstrapWithRetry = [
     buildBootstrapCommand(false),

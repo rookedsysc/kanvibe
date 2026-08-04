@@ -129,24 +129,45 @@ export interface TmuxSessionBootstrapOptions {
    * 사용자가 다른 세션을 쓰고 있어 서버가 살아 있으면 첫 시도와 같은 조건으로 실행된다.
    */
   withoutUserConfigFile?: boolean;
+  /**
+   * OSC 52 전달을 켠다. 서버 스코프 옵션이라 사용자의 다른 세션까지 함께 바뀌므로,
+   * 사용자가 자기 tmux 설정에서 `set-clipboard`를 정해 두지 않았을 때만 켜야 한다.
+   */
+  enableClipboard?: boolean;
+}
+
+/** 사용자가 tmux 설정에서 `set-clipboard`를 직접 정해 뒀을 때 출력되는 표시 */
+export const TMUX_USER_CLIPBOARD_PREFERENCE_MARKER = "kanvibe-user-set-clipboard";
+
+/** 사용자 tmux 설정이 `set-clipboard`를 다루는지 확인하는 명령. 주석 처리된 줄은 세지 않는다 */
+export function buildTmuxUserClipboardPreferenceCommand(): string {
+  const userConfigFiles = ['"$HOME/.tmux.conf"', '"$HOME/.config/tmux/tmux.conf"'];
+  const hasDirective = `grep -qsE '^[[:space:]]*set(-option)?[[:space:]].*set-clipboard' ${userConfigFiles.join(" ")}`;
+
+  return `if ${hasDirective}; then printf '%s' ${quoteForPosixShell(TMUX_USER_CLIPBOARD_PREFERENCE_MARKER)}; fi`;
+}
+
+/** 위 명령의 출력으로 사용자가 `set-clipboard`를 직접 정해 뒀는지 판정한다 */
+export function hasUserTmuxClipboardPreference(preferenceCommandOutput: string): boolean {
+  return preferenceCommandOutput.includes(TMUX_USER_CLIPBOARD_PREFERENCE_MARKER);
 }
 
 /**
- * KanVibe가 만드는 tmux 세션에만 적용할 안정화 옵션.
+ * KanVibe가 만드는 tmux 세션에 적용할 안정화·클립보드 옵션.
  * destroy-unattached를 끄지 않으면 사용자 설정에 따라 detached 부트스트랩 세션이 생성 직후 사라진다.
- *
- * 세션 스코프(`-t`)로 좁힐 수 있는 것만 둔다. 기본 소켓은 사용자 자신의 tmux 서버이므로,
- * 서버 스코프(`-s`) 옵션을 건드리면 KanVibe와 무관한 세션까지 함께 바뀐다.
- * tmux 안에서 애플리케이션의 OSC 52 복사가 동작하려면 서버 옵션 `set-clipboard`가 `on`이어야 하는데,
- * 그 선택은 사용자 `~/.tmux.conf`의 몫으로 남긴다.
  */
-function buildTmuxSessionHardeningArguments(sessionName: string): string[] {
+function buildTmuxSessionHardeningArguments(sessionName: string, enableClipboard: boolean): string[] {
   const target = quoteForPosixShell(sessionName);
 
   return [
     `set-option -t ${target} destroy-unattached off`,
     /** 웹 터미널 크기가 다른 클라이언트에 묶이지 않도록 최근 활성 클라이언트를 기준으로 삼는다 */
     `set-option -t ${target} window-size latest`,
+    /**
+     * 기본값 external은 애플리케이션이 보낸 OSC 52를 클라이언트로 넘기지 않아 복사가 동작하지 않는다.
+     * 세션 스코프로 좁힐 수 없는 서버 옵션이므로, 사용자가 값을 정해 두지 않은 경우에만 켠다.
+     */
+    ...(enableClipboard ? ["set-option -s set-clipboard on"] : []),
   ];
 }
 
@@ -162,7 +183,7 @@ export function buildTmuxSessionBootstrapCommand(
 ): string {
   const tmuxArguments = [
     buildTmuxCreateSessionArgument(sessionName, workingDir),
-    ...buildTmuxSessionHardeningArguments(sessionName),
+    ...buildTmuxSessionHardeningArguments(sessionName, options.enableClipboard === true),
     /** pane 분할은 각 pane의 작업 디렉터리를 지정해야 하므로 작업 디렉터리를 아는 경우에만 적용한다 */
     ...(workingDir && paneLayout && paneLayout.layoutType !== PaneLayoutType.SINGLE
       ? buildTmuxPaneLayoutArguments(
