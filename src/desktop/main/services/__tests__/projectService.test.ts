@@ -497,7 +497,7 @@ describe("projectService remote registration flow", () => {
     }));
   });
 
-  it("같은 이름의 로컬 프로젝트가 있어도 원격 프로젝트는 구분된 이름으로 등록한다", async () => {
+  it("다른 PC에 같은 이름의 프로젝트가 있으면 상위 폴더를 붙이지 않고 그대로 등록한다", async () => {
     mocks.validateGitRepo.mockResolvedValue(true);
     mocks.getDefaultBranch.mockResolvedValue("main");
     mocks.createSessionWithoutWorktree.mockResolvedValue({ sessionName: "kanvibe-main" });
@@ -530,9 +530,112 @@ describe("projectService remote registration flow", () => {
 
     expect(result.success).toBe(true);
     expect(result.project).toMatchObject({
-      name: "kanvibe/kanvibe",
+      name: "kanvibe",
       sshHost: "remote-host",
     });
+  });
+
+  it("같은 PC에 같은 이름의 프로젝트가 있으면 상위 폴더를 붙여 구분한다", async () => {
+    mocks.validateGitRepo.mockResolvedValue(true);
+    mocks.getDefaultBranch.mockResolvedValue("main");
+
+    mocks.getProjectRepository.mockResolvedValue({
+      find: vi.fn().mockResolvedValue([
+        {
+          id: "project-existing",
+          name: "kanvibe",
+          repoPath: "/workspace/kanvibe",
+          sshHost: "remote-host",
+        },
+      ]),
+      create: vi.fn((value) => value),
+      save: vi.fn(async (value) => ({ id: "project-new", ...value })),
+      remove: vi.fn(),
+    });
+    mocks.getTaskRepository.mockResolvedValue({
+      findOneBy: vi.fn().mockResolvedValue(null),
+      create: vi.fn((value) => value),
+      save: vi.fn(async (value) => ({ id: "task-1", ...value })),
+    });
+
+    const { registerProject } = await import("@/desktop/main/services/projectService");
+    const result = await registerProject("kanvibe", "/home/tester/Documents/kanvibe", "remote-host");
+
+    expect(result.success).toBe(true);
+    expect(result.project).toMatchObject({
+      name: "Documents/kanvibe",
+      sshHost: "remote-host",
+    });
+  });
+
+  it("같은 PC에 이름과 상위 폴더가 모두 같은 프로젝트가 있으면 등록하지 않는다", async () => {
+    mocks.validateGitRepo.mockResolvedValue(true);
+    mocks.getDefaultBranch.mockResolvedValue("main");
+
+    const save = vi.fn();
+    mocks.getProjectRepository.mockResolvedValue({
+      find: vi.fn().mockResolvedValue([
+        {
+          id: "project-existing",
+          name: "kanvibe",
+          repoPath: "/home/tester/a/work/kanvibe",
+          sshHost: null,
+        },
+        {
+          id: "project-existing-parent",
+          name: "work/kanvibe",
+          repoPath: "/home/tester/b/work/kanvibe",
+          sshHost: null,
+        },
+      ]),
+      create: vi.fn((value) => value),
+      save,
+      remove: vi.fn(),
+    });
+
+    const { registerProject } = await import("@/desktop/main/services/projectService");
+    const result = await registerProject("kanvibe", "/home/tester/c/work/kanvibe");
+
+    expect(result).toEqual({
+      success: false,
+      error: "같은 PC에 이름과 상위 폴더가 모두 같은 프로젝트가 이미 있습니다.",
+    });
+    expect(save).not.toHaveBeenCalled();
+  });
+
+  it("스캔 중 이름과 상위 폴더가 모두 겹치는 저장소는 숫자를 붙이지 않고 오류로 남긴다", async () => {
+    mocks.scanGitRepos.mockResolvedValue(["/home/tester/c/work/kanvibe"]);
+    mocks.getDefaultBranch.mockResolvedValue("main");
+
+    const save = vi.fn(async (value) => ({ id: "project-new", ...value }));
+    mocks.getProjectRepository.mockResolvedValue({
+      find: vi.fn().mockResolvedValue([
+        {
+          id: "project-existing",
+          name: "kanvibe",
+          repoPath: "/home/tester/a/work/kanvibe",
+          sshHost: null,
+        },
+        {
+          id: "project-existing-parent",
+          name: "work/kanvibe",
+          repoPath: "/home/tester/b/work/kanvibe",
+          sshHost: null,
+        },
+      ]),
+      create: vi.fn((value) => value),
+      save,
+      remove: vi.fn(),
+    });
+
+    const { scanAndRegisterProjects } = await import("@/desktop/main/services/projectService");
+    const result = await scanAndRegisterProjects("/home/tester");
+
+    expect(result.registered).toEqual([]);
+    expect(result.errors).toEqual([
+      "/home/tester/c/work/kanvibe: 같은 PC에 이름과 상위 폴더가 모두 같은 프로젝트가 이미 있습니다.",
+    ]);
+    expect(save).not.toHaveBeenCalled();
   });
 
   it("같은 sshHost와 repoPath 조합은 이름이 달라도 중복 등록하지 않는다", async () => {

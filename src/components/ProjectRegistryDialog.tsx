@@ -84,7 +84,7 @@ export default function ProjectRegistryDialog({
         setSuccessMessage(messages.join(" / "));
       } else if (result.skipped.length > 0) {
         setSuccessMessage(t("noNewProjects"));
-      } else {
+      } else if (result.errors.length === 0) {
         setError(t("noGitRepos"));
       }
     });
@@ -180,7 +180,14 @@ export default function ProjectRegistryDialog({
               )}
               {scanResult.errors.length > 0 && (
                 <div className="text-xs text-status-error">
-                  {t("errors")}: {scanResult.errors.length}{t("errorsSuffix")}
+                  <div>
+                    {t("errors")}: {scanResult.errors.length}{t("errorsSuffix")}
+                  </div>
+                  <ul className="mt-1 list-disc space-y-0.5 pl-4">
+                    {scanResult.errors.map((message) => (
+                      <li key={message}>{message}</li>
+                    ))}
+                  </ul>
                 </div>
               )}
             </div>
