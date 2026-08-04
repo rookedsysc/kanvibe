@@ -123,8 +123,12 @@ export function buildTmuxPaneLayoutArguments(
 export interface TmuxSessionBootstrapOptions {
   /** 같은 tmux 호출에서 attach까지 이어간다. 원격 SSH가 단일 명령으로 세션을 열 때 사용한다 */
   attachAfterBootstrap?: boolean;
-  /** 사용자 tmux 설정이 세션 기동을 막을 때 설정 없이 다시 시도하는 경로 */
-  ignoreUserConfig?: boolean;
+  /**
+   * 사용자 tmux 설정이 세션 기동을 막을 때 `-f /dev/null`로 다시 시도하는 경로.
+   * tmux는 설정 파일을 서버 기동 시 한 번만 읽으므로, 이 플래그는 서버가 아직 없을 때만 실제로 설정을 건너뛴다.
+   * 사용자가 다른 세션을 쓰고 있어 서버가 살아 있으면 첫 시도와 같은 조건으로 실행된다.
+   */
+  withoutUserConfigFile?: boolean;
 }
 
 /**
@@ -173,7 +177,7 @@ export function buildTmuxSessionBootstrapCommand(
       : []),
   ];
 
-  const tmuxCommand = options.ignoreUserConfig ? "tmux -f /dev/null" : "tmux";
+  const tmuxCommand = options.withoutUserConfigFile ? "tmux -f /dev/null" : "tmux";
   return `${tmuxCommand} ${tmuxArguments.join(" \\; ")}`;
 }
 
@@ -654,27 +658,6 @@ function buildZellijSessionCleanupCommand(sessionName: string, verifyCleanup: bo
     ...commands,
     `if zellij list-sessions 2>/dev/null | awk '{ if ($1 == "EXITED:") print $2; else print $1 }' | grep -Fx -- ${target} >/dev/null; then exit 1; fi`,
   ].join("; ");
-}
-
-/** 활성 tmux/zellij 세션 이름 목록을 반환한다 */
-export async function listActiveSessions(
-  sessionType: SessionType,
-  sshHost?: string | null,
-): Promise<string[]> {
-  try {
-    if (sessionType === SessionType.TMUX) {
-      const listCommands = buildTmuxLookupCommands().map((tmuxCommand) => (
-        `${tmuxCommand} list-sessions -F '#{session_name}' 2>/dev/null || true`
-      ));
-      const output = await execGit(listCommands.join("; "), sshHost);
-      return [...new Set(output.split("\n").map((name) => name.trim()).filter(Boolean))];
-    } else {
-      const output = await execGit("zellij list-sessions", sshHost);
-      return output.split("\n").filter(Boolean);
-    }
-  } catch {
-    return [];
-  }
 }
 
 /** zellij list-sessions는 종료된 세션을 `EXITED: <name>`으로 함께 출력하므로 이름만 뽑아 살아있는 세션과 구분한다 */

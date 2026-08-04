@@ -76,7 +76,8 @@ const TMUX_BOOTSTRAP_TIMEOUT_MS = 30_000;
 
 /**
  * 로컬 tmux 세션을 만든다.
- * 사용자 설정이 세션 기동을 막으면 설정 없이 한 번 더 시도해, 소켓을 바꾸지 않고도 세션을 살린다.
+ * 사용자 설정이 세션 기동을 막으면 설정 파일 없이 한 번 더 시도해, 소켓을 바꾸지 않고도 세션을 살린다.
+ * 재시도는 tmux 서버가 아직 없을 때만 설정을 실제로 건너뛴다(`TmuxSessionBootstrapOptions` 참고).
  */
 function bootstrapLocalTmuxSession(
   sessionName: string,
@@ -87,9 +88,9 @@ function bootstrapLocalTmuxSession(
   const paneLayout = tmuxPaneLayout && tmuxPaneLayout.layoutType !== PaneLayoutType.SINGLE
     ? tmuxPaneLayout
     : null;
-  const runBootstrap = (ignoreUserConfig: boolean) => {
+  const runBootstrap = (withoutUserConfigFile: boolean) => {
     execSync(
-      buildTmuxSessionBootstrapCommand(sessionName, workingDir, paneLayout, { ignoreUserConfig }),
+      buildTmuxSessionBootstrapCommand(sessionName, workingDir, paneLayout, { withoutUserConfigFile }),
       { env: terminalEnvironment, timeout: TMUX_BOOTSTRAP_TIMEOUT_MS },
     );
   };
@@ -391,7 +392,8 @@ function buildRemoteShellCommand(command: string): string {
 /**
  * 원격 tmux 세션에 붙는 명령을 만든다.
  * 세션이 이미 있으면 그대로 attach하고, 없으면 생성부터 attach까지를 tmux 호출 한 번으로 처리한다.
- * 사용자 설정 때문에 실패하면 소켓은 그대로 둔 채 설정 없이 한 번 더 시도한다.
+ * 사용자 설정 때문에 실패하면 소켓은 그대로 둔 채 설정 파일 없이 한 번 더 시도한다.
+ * 재시도는 원격에 tmux 서버가 아직 없을 때만 설정을 실제로 건너뛴다(`TmuxSessionBootstrapOptions` 참고).
  */
 function buildRemoteTmuxAttachCommand(
   sessionName: string,
@@ -399,13 +401,13 @@ function buildRemoteTmuxAttachCommand(
   tmuxPaneLayout?: TmuxPaneLayoutConfig | null,
 ): string {
   const quotedSessionName = quoteForPosixShell(sessionName);
-  const buildBootstrapCommand = (ignoreUserConfig: boolean) => buildTmuxSessionBootstrapCommand(
+  const buildBootstrapCommand = (withoutUserConfigFile: boolean) => buildTmuxSessionBootstrapCommand(
     sessionName,
     worktreePath ?? "",
     tmuxPaneLayout && tmuxPaneLayout.layoutType !== PaneLayoutType.SINGLE
       ? tmuxPaneLayout
       : null,
-    { attachAfterBootstrap: true, ignoreUserConfig },
+    { attachAfterBootstrap: true, withoutUserConfigFile },
   );
   const bootstrapWithRetry = [
     buildBootstrapCommand(false),
