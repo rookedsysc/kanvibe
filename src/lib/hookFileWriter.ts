@@ -6,6 +6,7 @@ import {
   buildHookInstallBootstrapCommand,
   HOOK_INSTALL_SUCCESS_MARKER,
   issueHookInstallScript,
+  revokeHookInstallScript,
 } from "@/lib/hookInstallBundle";
 import { quoteShellArgument } from "@/lib/hostFileAccess";
 import type { ShellHookProviderFile } from "@/lib/shellHookProvider";
@@ -63,19 +64,31 @@ async function writeRemoteHookProviderFiles(
   await injectRemoteHookProviderFilesOverSsh(files, sshHost);
 }
 
+/**
+ * 원격이 Hook 서버로 되돌아오지 못하는 구성에서 SSH 주입 폴백이 늦어지지 않도록 두는 상한.
+ * 내려받기 자체에도 상한이 있으므로 이 값은 그보다 뒤에서 받쳐 주는 역할만 한다.
+ */
+const REMOTE_HOOK_INSTALL_TIMEOUT_MS = 30_000;
+
 async function installRemoteHookProviderFilesOverHttp(
   files: ShellHookProviderFile[],
   sshHost: string,
 ): Promise<void> {
   const hookServerUrl = await getHookServerUrl(sshHost);
-  const installToken = issueHookInstallScript(files);
-  const output = await execGit(
-    buildHookInstallBootstrapCommand(hookServerUrl, installToken),
-    sshHost,
-  );
+  const installTicket = issueHookInstallScript(files);
 
-  if (!output.includes(HOOK_INSTALL_SUCCESS_MARKER)) {
-    throw new Error("원격 hook 설치 스크립트가 완료 표시를 남기지 않았습니다.");
+  try {
+    const output = await execGit(
+      buildHookInstallBootstrapCommand(hookServerUrl, installTicket),
+      sshHost,
+      { timeoutMs: REMOTE_HOOK_INSTALL_TIMEOUT_MS },
+    );
+
+    if (!output.includes(HOOK_INSTALL_SUCCESS_MARKER)) {
+      throw new Error("원격 hook 설치 스크립트가 완료 표시를 남기지 않았습니다.");
+    }
+  } finally {
+    revokeHookInstallScript(installTicket.token);
   }
 }
 

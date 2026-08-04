@@ -44,9 +44,55 @@ describe("writeHookProviderFiles — 원격 설치", () => {
     expect(mockExecGit).toHaveBeenCalledTimes(1);
     const [command, sshHost] = mockExecGit.mock.calls[0];
     expect(sshHost).toBe("remote-host");
-    expect(Buffer.byteLength(String(command))).toBeLessThan(400);
+    expect(Buffer.byteLength(String(command))).toBeLessThan(700);
     expect(String(command)).toContain("/api/install/hooks.sh?token=");
     expect(String(command)).not.toContain("base64 -d");
+  });
+
+  it("should bound the install command so an unreachable hook server falls back quickly", async () => {
+    // Given
+    mockExecGit.mockResolvedValue(`${HOOK_INSTALL_SUCCESS_MARKER}\n`);
+    const { writeHookProviderFiles } = await import("@/lib/hookFileWriter");
+
+    // When
+    await writeHookProviderFiles(hookFiles, "remote-host");
+
+    // Then
+    expect(mockExecGit.mock.calls[0][2]).toEqual({ timeoutMs: 30_000 });
+  });
+
+  it("should revoke the install token once the install finishes", async () => {
+    // Given
+    mockExecGit.mockResolvedValue(`${HOOK_INSTALL_SUCCESS_MARKER}\n`);
+    const { writeHookProviderFiles } = await import("@/lib/hookFileWriter");
+    const { readHookInstallScript } = await import("@/lib/hookInstallBundle");
+
+    // When
+    await writeHookProviderFiles(hookFiles, "remote-host");
+
+    // Then
+    const issuedToken = String(mockExecGit.mock.calls[0][0]).match(/token=([0-9a-f]+)/)?.[1];
+    expect(issuedToken).toBeDefined();
+    expect(readHookInstallScript(issuedToken)).toBeNull();
+  });
+
+  it("should revoke the install token even when the HTTP install fails", async () => {
+    // Given
+    mockExecGit
+      .mockRejectedValueOnce(new Error("curl: (7) Failed to connect"))
+      .mockResolvedValueOnce("");
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const { writeHookProviderFiles } = await import("@/lib/hookFileWriter");
+    const { readHookInstallScript } = await import("@/lib/hookInstallBundle");
+
+    // When
+    await writeHookProviderFiles(hookFiles, "remote-host");
+
+    // Then
+    const issuedToken = String(mockExecGit.mock.calls[0][0]).match(/token=([0-9a-f]+)/)?.[1];
+    expect(issuedToken).toBeDefined();
+    expect(readHookInstallScript(issuedToken)).toBeNull();
+    warn.mockRestore();
   });
 
   it("should fall back to SSH injection when the remote cannot reach the hook server", async () => {
