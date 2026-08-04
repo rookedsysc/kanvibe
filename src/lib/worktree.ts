@@ -132,8 +132,13 @@ export interface TmuxSessionBootstrapOptions {
 }
 
 /**
- * KanVibe가 만드는 tmux 세션에만 적용할 안정화·클립보드 옵션.
+ * KanVibe가 만드는 tmux 세션에만 적용할 안정화 옵션.
  * destroy-unattached를 끄지 않으면 사용자 설정에 따라 detached 부트스트랩 세션이 생성 직후 사라진다.
+ *
+ * 세션 스코프(`-t`)로 좁힐 수 있는 것만 둔다. 기본 소켓은 사용자 자신의 tmux 서버이므로,
+ * 서버 스코프(`-s`) 옵션을 건드리면 KanVibe와 무관한 세션까지 함께 바뀐다.
+ * tmux 안에서 애플리케이션의 OSC 52 복사가 동작하려면 서버 옵션 `set-clipboard`가 `on`이어야 하는데,
+ * 그 선택은 사용자 `~/.tmux.conf`의 몫으로 남긴다.
  */
 function buildTmuxSessionHardeningArguments(sessionName: string): string[] {
   const target = quoteForPosixShell(sessionName);
@@ -142,11 +147,6 @@ function buildTmuxSessionHardeningArguments(sessionName: string): string[] {
     `set-option -t ${target} destroy-unattached off`,
     /** 웹 터미널 크기가 다른 클라이언트에 묶이지 않도록 최근 활성 클라이언트를 기준으로 삼는다 */
     `set-option -t ${target} window-size latest`,
-    /**
-     * OSC 52 클립보드 전달 여부는 tmux 서버 옵션이라 세션 단위로 좁힐 수 없다.
-     * 기본값 external은 애플리케이션이 보낸 OSC 52를 바깥 터미널로 넘기지 않아 복사가 동작하지 않는다.
-     */
-    "set-option -s set-clipboard on",
   ];
 }
 

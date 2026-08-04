@@ -214,6 +214,31 @@ describe("attachLocalSession — tmux 세션 자동 생성", () => {
     expect(findExecSyncCall("new-session")).toContain("set-option -t 'feat-login' window-size latest");
   });
 
+  it("should not change any tmux server option because the default socket is the user's own server", async () => {
+    // Given
+    const { attachLocalSession } = await import("@/lib/terminal");
+    mockExecSync.mockImplementation((cmd: string) => {
+      if (typeof cmd === "string" && cmd.includes("has-session")) {
+        throw new Error("session not found");
+      }
+      return "";
+    });
+
+    // When
+    await attachLocalSession(
+      "task-server-options",
+      SessionType.TMUX,
+      "feat-login",
+      createMockWs(),
+      "/workspace",
+    );
+
+    // Then
+    const executedCommands = mockExecSync.mock.calls.map((call) => String(call[0]));
+    expect(executedCommands.some((command) => command.includes("set-option -s"))).toBe(false);
+    expect(executedCommands.some((command) => command.includes("set-clipboard"))).toBe(false);
+  });
+
   it("should retry local bootstrap without the user tmux config when the first attempt fails", async () => {
     // Given
     const { attachLocalSession } = await import("@/lib/terminal");
