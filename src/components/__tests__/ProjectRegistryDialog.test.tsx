@@ -42,7 +42,7 @@ vi.mock("@/desktop/renderer/actions/project", () => ({
   scanAndRegisterProjects: (...args: unknown[]) => projectActionMocks.scanAndRegisterProjects(...args),
 }));
 
-function createProject(): Project {
+function createProject(overrides: Partial<Project> = {}): Project {
   return {
     id: "project-1",
     name: "kanvibe",
@@ -53,6 +53,7 @@ function createProject(): Project {
     color: null,
     iconDataUrl: null,
     createdAt: new Date(),
+    ...overrides,
   };
 }
 
@@ -158,6 +159,87 @@ describe("ProjectRegistryDialog", () => {
     } finally {
       confirmSpy.mockRestore();
     }
+  });
+
+  it("프로젝트 이름을 검색하면 일치하는 프로젝트만 목록에 남긴다", () => {
+    render(
+      <ProjectRegistryDialog
+        isOpen
+        onClose={vi.fn()}
+        projects={[
+          createProject(),
+          createProject({ id: "project-2", name: "timelabs", repoPath: "/repo/timelabs" }),
+        ]}
+        sshHosts={[]}
+      />,
+    );
+
+    expect(screen.getByText("projectList (2)")).toBeTruthy();
+
+    fireEvent.change(screen.getByTestId("project-registry-search"), {
+      target: { value: "timel" },
+    });
+
+    expect(screen.getByText("timelabs")).toBeTruthy();
+    expect(screen.queryByText("kanvibe")).toBeNull();
+    expect(screen.getByText("projectList (1 / 2)")).toBeTruthy();
+  });
+
+  it("스캔을 실행하면 검색어를 비워 새로 등록된 프로젝트가 가려지지 않게 한다", async () => {
+    render(
+      <ProjectRegistryDialog
+        isOpen
+        onClose={vi.fn()}
+        projects={[createProject()]}
+        sshHosts={[]}
+      />,
+    );
+
+    fireEvent.change(screen.getByTestId("project-registry-search"), {
+      target: { value: "존재하지-않는-프로젝트" },
+    });
+    expect(screen.getByText("noMatchingProjects")).toBeTruthy();
+
+    fireEvent.submit(screen.getByTestId("project-registry-form"));
+
+    await waitFor(() => {
+      expect(screen.getByText("kanvibe")).toBeTruthy();
+    });
+    expect(screen.getByTestId("project-registry-search").getAttribute("value")).toBe("");
+    expect(screen.getByText("projectList (1)")).toBeTruthy();
+  });
+
+  it("검색 결과가 없으면 일치 프로젝트 없음 안내를 보여준다", () => {
+    render(
+      <ProjectRegistryDialog
+        isOpen
+        onClose={vi.fn()}
+        projects={[createProject()]}
+        sshHosts={[]}
+      />,
+    );
+
+    fireEvent.change(screen.getByTestId("project-registry-search"), {
+      target: { value: "존재하지-않는-프로젝트" },
+    });
+
+    expect(screen.getByText("noMatchingProjects")).toBeTruthy();
+    expect(screen.queryByText("kanvibe")).toBeNull();
+    expect(screen.queryByText("noProjects")).toBeNull();
+  });
+
+  it("등록된 프로젝트가 없으면 검색 입력을 렌더링하지 않는다", () => {
+    render(
+      <ProjectRegistryDialog
+        isOpen
+        onClose={vi.fn()}
+        projects={[]}
+        sshHosts={[]}
+      />,
+    );
+
+    expect(screen.queryByTestId("project-registry-search")).toBeNull();
+    expect(screen.getByText("noProjects")).toBeTruthy();
   });
 
   it("Escape를 누르면 dialog를 닫는다", () => {

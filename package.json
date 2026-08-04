@@ -35,6 +35,7 @@
     "qa:electron:video": "pnpm qa:electron:prepare && bash scripts/qa-electron-video.sh",
     "qa:move-autocomplete": "pnpm exec vitest run src/components/__tests__/Board.test.tsx -t \"자동 완성\" && pnpm qa:electron:prepare && bash scripts/qa-move-autocomplete-video.sh",
     "qa:task-kind-filter": "pnpm exec vitest run src/components/__tests__/Board.test.tsx src/desktop/renderer/hooks/__tests__/useTaskKindFilterParams.test.tsx && pnpm qa:electron:prepare && bash scripts/qa-task-kind-filter-video.sh",
+    "qa:project-registry-search": "pnpm exec vitest run src/components/__tests__/ProjectRegistryDialog.test.tsx src/components/__tests__/ProjectSelector.test.tsx && pnpm qa:electron:prepare && bash scripts/qa-electron-flow-video.sh project-registry-search",
     "qa:ai-session-history": "pnpm exec vitest run src/lib/aiSessions && pnpm exec vitest run src/desktop/renderer/routes/__tests__/TaskDetailRoute.test.tsx && pnpm qa:electron:prepare && bash scripts/qa-ai-session-history-video.sh",
     "qa:pr275-pr276": "bash scripts/qa-pr275-pr276.sh",
     "pretest": "node scripts/ensure-native-runtime.cjs",
