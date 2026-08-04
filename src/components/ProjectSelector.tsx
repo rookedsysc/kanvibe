@@ -3,6 +3,7 @@
 import { forwardRef, useState, useEffect, useRef, useCallback, useImperativeHandle, useMemo } from "react";
 import type { Project } from "@/entities/Project";
 import ProjectIcon from "@/components/ProjectIcon";
+import { matchesProjectSearch } from "@/utils/projectSearch";
 
 const MAX_VISIBLE_CHIPS = 2;
 const EMPTY_SELECTED_PROJECT_IDS: string[] = [];
@@ -34,17 +35,6 @@ export interface ProjectSelectorHandle {
   close: () => void;
   focus: () => void;
   open: () => void;
-}
-
-function matchesProjectSearch(project: Project, query: string) {
-  const normalizedQuery = query.trim().toLowerCase();
-
-  if (!normalizedQuery) {
-    return true;
-  }
-
-  return [project.name, project.repoPath, project.sshHost ?? ""]
-    .some((value) => value.toLowerCase().includes(normalizedQuery));
 }
 
 const ProjectSelector = forwardRef<ProjectSelectorHandle, ProjectSelectorProps>(function ProjectSelector(props, ref) {

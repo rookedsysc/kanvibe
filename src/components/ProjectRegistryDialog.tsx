@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { useTranslations } from "next-intl";
 import {
   deleteProject,
@@ -12,6 +12,7 @@ import type { Project } from "@/entities/Project";
 import FolderSearchInput from "@/components/FolderSearchInput";
 import ProjectIcon from "@/components/ProjectIcon";
 import { useEscapeKey } from "@/hooks/useEscapeKey";
+import { matchesProjectSearch } from "@/utils/projectSearch";
 
 interface ProjectRegistryDialogProps {
   isOpen: boolean;
@@ -34,6 +35,12 @@ export default function ProjectRegistryDialog({
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [scanResult, setScanResult] = useState<ScanResult | null>(null);
   const [scanSshHost, setScanSshHost] = useState("");
+  const [projectSearchQuery, setProjectSearchQuery] = useState("");
+
+  const filteredProjects = useMemo(
+    () => projects.filter((project) => matchesProjectSearch(project, projectSearchQuery)),
+    [projects, projectSearchQuery],
+  );
 
   useEscapeKey(() => onClose(), { enabled: isOpen });
 
@@ -185,16 +192,33 @@ export default function ProjectRegistryDialog({
 
           <div className="mt-5 space-y-3">
             <h3 className="text-xs uppercase tracking-wide text-text-muted">
-              {t("projectList")} ({projects.length})
+              {t("projectList")} ({filteredProjects.length})
             </h3>
+
+            {projects.length > 0 && (
+              <input
+                type="search"
+                data-testid="project-registry-search"
+                value={projectSearchQuery}
+                onChange={(event) => setProjectSearchQuery(event.target.value)}
+                placeholder={t("projectSearchPlaceholder")}
+                aria-label={t("projectSearchPlaceholder")}
+                autoComplete="off"
+                className="w-full rounded-md border border-border-default bg-bg-page px-3 py-1.5 text-sm text-text-primary transition-colors focus:border-brand-primary focus:outline-none"
+              />
+            )}
 
             {projects.length === 0 ? (
               <p className="text-sm text-text-muted">
                 {t("noProjects")}
               </p>
+            ) : filteredProjects.length === 0 ? (
+              <p className="text-sm text-text-muted">
+                {t("noMatchingProjects")}
+              </p>
             ) : (
               <ul className="space-y-2">
-                {projects.map((project) => (
+                {filteredProjects.map((project) => (
                   <li
                     key={project.id}
                     className="rounded-md bg-bg-page p-2"

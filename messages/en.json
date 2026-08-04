@@ -164,7 +164,7 @@
       "dark": "Dark",
       "light": "Light"
     },
-    "scanTitle": "Directory Scan",
+    "scanTitle": "Project Scan",
     "scanPathPlaceholder": "Directory path to scan (e.g., ~/Documents)",
     "scanButton": "Scan & Register",
     "scanning": "Scanning...",
@@ -179,6 +179,8 @@
     "noGitRepos": "No git repositories found.",
     "scanPathRequired": "Please enter the directory path to scan.",
     "projectList": "Registered Projects",
+    "projectSearchPlaceholder": "Search projects by name...",
+    "noMatchingProjects": "No matching projects.",
     "noProjects": "No registered projects.",
     "defaultBranch": "Default branch",
     "deleteProject": "Delete",
