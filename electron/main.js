@@ -10,6 +10,7 @@ const { pathToFileURL } = require("node:url");
 const { app, BrowserWindow, ipcMain, session, shell } = require("electron");
 const { createDesktopDiagnostics, resolveDesktopLogPath, serializeErrorForLog } = require("./diagnostics");
 const { applyAppDataDirectoryOverride } = require("./runtimeEnvironment");
+const { OPAQUE_TERMINAL_OPACITY, createWindowBackgroundOptions } = require("./windowAppearance");
 
 const DEFAULT_LOCALE = "ko";
 const RENDERER_DEV_URL = process.env.KANVIBE_RENDERER_URL || null;
@@ -47,6 +48,8 @@ let stopBackgroundTaskSync = null;
 let pendingNotificationActivation = null;
 let diagnostics = null;
 let nextIpcRequestId = 1;
+/** 창을 만들 때 쓰는 터미널 투명도. transparent는 창 생성 이후 바꿀 수 없어 시작 시점 값으로 고정한다 */
+let startupTerminalOpacity = OPAQUE_TERMINAL_OPACITY;
 const pendingDiagnosticEvents = [];
 
 function logDiagnostic(event, payload = {}) {
@@ -359,7 +362,7 @@ function createBrowserWindowOptions() {
   return {
     width: 1600,
     height: 1000,
-    backgroundColor: "#ffffff",
+    ...createWindowBackgroundOptions(startupTerminalOpacity),
     autoHideMenuBar: true,
     ...getTitleBarOptions(),
     webPreferences: {
@@ -904,6 +907,17 @@ async function loadRenderer(window, targetUrl = getRendererNavigationUrl()) {
   }
 }
 
+/** 저장된 터미널 투명도를 읽는다. 설정 조회가 실패해도 창은 떠야 하므로 불투명으로 되돌린다 */
+async function loadStartupTerminalOpacity() {
+  try {
+    const { getTerminalOpacity } = require(getRuntimeModulePath(path.join("src", "desktop", "main", "services", "appSettingsService.ts")));
+    return await getTerminalOpacity();
+  } catch (error) {
+    logDiagnostic("main:terminal-opacity-load-failed", { error: serializeErrorForLog(error) });
+    return OPAQUE_TERMINAL_OPACITY;
+  }
+}
+
 async function createAppWindow(target = getRendererNavigationUrl()) {
   const browserWindow = new BrowserWindow(createBrowserWindowOptions());
   registerAppWindow(browserWindow);
@@ -940,6 +954,8 @@ app.whenReady().then(async () => {
   const unsubscribeBoardEvents = registerBoardEventForwarding();
   startHookServer();
   registerNotificationHandlers();
+
+  startupTerminalOpacity = await loadStartupTerminalOpacity();
 
   await createMainWindow();
   const { startBackgroundTaskSync } = require(getRuntimeModulePath(path.join("src", "desktop", "main", "services", "backgroundTaskSyncService.ts")));

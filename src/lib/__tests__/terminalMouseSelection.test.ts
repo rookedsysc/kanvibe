@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { createTerminalOptions, installMacShiftSelectionPatch } from "@/lib/terminalMouseSelection";
+import { createTerminalOptions, createTerminalTheme, installMacShiftSelectionPatch } from "@/lib/terminalMouseSelection";
 
 describe("terminalMouseSelection", () => {
   it("macOS에서 shift 왼쪽 클릭을 xterm 강제 선택으로 판정한다", () => {
@@ -90,5 +90,40 @@ describe("terminalMouseSelection", () => {
     // Then
     expect(options.fontFamily).toBe(fontFamily);
     expect(options.macOptionClickForcesSelection).toBe(true);
+  });
+
+  it("완전 불투명한 터미널은 반투명 렌더링을 켜지 않는다", () => {
+    // Given
+    const fontFamily = "monospace";
+
+    // When
+    const options = createTerminalOptions(fontFamily, 1);
+
+    // Then
+    expect(options.allowTransparency).toBe(false);
+    expect(options.theme?.background).toBe("#0a0a0a");
+  });
+
+  it("반투명 터미널은 배경색에 요청된 불투명도를 alpha로 붙인다", () => {
+    // Given
+    const fontFamily = "monospace";
+
+    // When
+    const options = createTerminalOptions(fontFamily, 0.8);
+
+    // Then
+    expect(options.allowTransparency).toBe(true);
+    expect(options.theme?.background).toBe("#0a0a0acc");
+  });
+
+  it("허용 범위를 벗어난 불투명도는 최소값 alpha로 보정한다", () => {
+    // Given
+    const requestedOpacity = 0;
+
+    // When
+    const theme = createTerminalTheme(requestedOpacity);
+
+    // Then
+    expect(theme.background).toBe("#0a0a0a4d");
   });
 });

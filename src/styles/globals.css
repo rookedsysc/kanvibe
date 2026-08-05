@@ -332,6 +332,19 @@
   --shadow-kanban-task-focus: 0 0 0 1px var(--color-border-brand), 0 0 0 5px rgba(0, 100, 255, 0.18), 0 12px 28px rgba(0, 100, 255, 0.22);
 }
 
+/*
+ * 터미널 투명도가 켜지면 터미널을 덮고 있는 배경만 걷어내 창 뒤가 비쳐 보이게 한다.
+ * 반투명한 배경색 자체는 xterm 테마가 그리므로 여기서는 배경을 없애기만 한다.
+ */
+:root[data-terminal-transparent="true"] {
+  --color-terminal-bg: transparent;
+}
+
+:root[data-terminal-transparent="true"] body,
+:root[data-terminal-transparent="true"] .terminal-transparency-surface {
+  background: transparent;
+}
+
 @theme inline {
   /* Brand */
   --color-brand-primary: var(--color-brand-primary);
