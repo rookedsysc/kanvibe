@@ -2,7 +2,7 @@ import fs from "node:fs";
 import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 const require = createRequire(import.meta.url);
 const tempDirs = [];
@@ -76,6 +76,27 @@ describe("Electron desktop diagnostics", () => {
     expect(content).toContain("main:start");
     expect(getFileSize(logPath)).toBeLessThanOrEqual(maxFileBytes);
     expect(fs.existsSync(`${logPath}.1`)).toBe(false);
+  });
+
+  it("trims an oversized log by reading only the retained tail", () => {
+    const logPath = createTempLogPath();
+    fs.mkdirSync(path.dirname(logPath), { recursive: true });
+    fs.writeFileSync(logPath, `legacy-start\n${"legacy-middle".repeat(50)}\nlegacy-tail\n`, "utf8");
+    const diagnostics = createDiagnostics(logPath, {
+      maxFileBytes: 220,
+      trimToBytes: 150,
+      maxEntryBytes: 180,
+    });
+    const readFileSync = vi.spyOn(fs, "readFileSync");
+
+    diagnostics.log("main:start", { ok: true });
+
+    const wholeFileReads = readFileSync.mock.calls.filter(([target]) => target === logPath);
+    readFileSync.mockRestore();
+    expect(wholeFileReads).toHaveLength(0);
+    const content = fs.readFileSync(logPath, "utf8");
+    expect(content).toContain("legacy-tail");
+    expect(content).toContain("main:start");
   });
 
   it("truncates oversized diagnostic entries before appending them", () => {
