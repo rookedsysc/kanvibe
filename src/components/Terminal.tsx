@@ -3,6 +3,7 @@
 import { useEffect, useRef, useCallback } from "react";
 import "@xterm/xterm/css/xterm.css";
 import { createTerminalOptions, installMacShiftSelectionPatch } from "@/lib/terminalMouseSelection";
+import { installOsc52ClipboardHandler } from "@/lib/terminalClipboard";
 
 interface TerminalProps {
   taskId: string;
@@ -51,6 +52,7 @@ export default function Terminal({ taskId }: TerminalProps) {
     term.loadAddon(new WebLinksAddon());
     term.open(terminalRef.current);
     const disposeMacShiftSelectionPatch = installMacShiftSelectionPatch(term);
+    const osc52ClipboardHandler = installOsc52ClipboardHandler(term);
 
     /** 웹폰트 로드 완료 후 fontFamily를 재설정하여 xterm.js 글리프 캐시를 강제 갱신 */
     term.options.fontFamily = "monospace";
@@ -125,6 +127,7 @@ export default function Terminal({ taskId }: TerminalProps) {
     return () => {
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       disposeMacShiftSelectionPatch();
+      osc52ClipboardHandler.dispose();
       resizeObserver.disconnect();
       ws.close();
       term.dispose();

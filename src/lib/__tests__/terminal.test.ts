@@ -18,6 +18,15 @@ vi.mock("child_process", async (importOriginal) => {
   };
 });
 
+/** 원격 경로는 tmux 클립보드 설정 확인을 execGit으로 내보낸다. 기본값은 "사용자 설정 없음" */
+const mockExecGit = vi.fn(async (...args: unknown[]): Promise<string> => {
+  void args;
+  return "";
+});
+vi.mock("@/lib/gitOperations", () => ({
+  execGit: (...args: unknown[]) => mockExecGit(...args),
+}));
+
 const mockExistsSync = vi.fn();
 vi.mock("fs", async (importOriginal) => {
   const actual = await importOriginal<typeof import("fs")>();
@@ -158,9 +167,173 @@ describe("attachLocalSession — tmux 세션 자동 생성", () => {
     // Then
     const bootstrapCmd = findExecSyncCall("new-session");
     expect(bootstrapCmd).toContain("tmux new-session -d -s 'feat-login' -c '/workspace'");
-    expect(bootstrapCmd).toContain("tmux split-window -h -t 'feat-login:0' -c '/workspace'");
-    expect(bootstrapCmd).toContain("tmux send-keys -t 'feat-login:0.0' -- 'pnpm dev' Enter");
-    expect(bootstrapCmd).toContain("tmux send-keys -t 'feat-login:0.1' -- 'pnpm test' Enter");
+    expect(bootstrapCmd).toContain("split-window -h -t 'feat-login:0' -c '/workspace'");
+    expect(bootstrapCmd).toContain("send-keys -t 'feat-login:0.0' -- 'pnpm dev' Enter");
+    expect(bootstrapCmd).toContain("send-keys -t 'feat-login:0.1' -- 'pnpm test' Enter");
+    /** 사용자 설정이 세션을 지우기 전에 옵션이 적용되도록 한 번의 tmux 호출로 묶여야 한다 */
+    expect(String(bootstrapCmd).split("tmux ").length - 1).toBe(1);
+  });
+
+  it("should keep a local session alive when the user tmux config destroys unattached sessions", async () => {
+    // Given
+    const { attachLocalSession } = await import("@/lib/terminal");
+    mockExecSync.mockImplementation((cmd: string) => {
+      if (typeof cmd === "string" && cmd.includes("has-session")) {
+        throw new Error("session not found");
+      }
+      return "";
+    });
+
+    // When
+    await attachLocalSession(
+      "task-hardening",
+      SessionType.TMUX,
+      "feat-login",
+      createMockWs(),
+      "/workspace",
+    );
+
+    // Then
+    const bootstrapCmd = findExecSyncCall("new-session");
+    expect(bootstrapCmd).toContain("set-option -t 'feat-login' destroy-unattached off");
+  });
+
+  it("should scope the terminal size option to the KanVibe session instead of the user tmux server", async () => {
+    // Given
+    const { attachLocalSession } = await import("@/lib/terminal");
+    mockExecSync.mockImplementation((cmd: string) => {
+      if (typeof cmd === "string" && cmd.includes("has-session")) {
+        throw new Error("session not found");
+      }
+      return "";
+    });
+
+    // When
+    await attachLocalSession(
+      "task-window-size",
+      SessionType.TMUX,
+      "feat-login",
+      createMockWs(),
+      "/workspace",
+    );
+
+    // Then
+    const executedCommands = mockExecSync.mock.calls.map((call) => String(call[0]));
+    expect(executedCommands.some((command) => command.includes("set-option -g window-size"))).toBe(false);
+    expect(findExecSyncCall("new-session")).toContain("set-option -t 'feat-login' window-size latest");
+  });
+
+  it("should enable OSC 52 forwarding when the user tmux config says nothing about set-clipboard", async () => {
+    // Given
+    const { attachLocalSession } = await import("@/lib/terminal");
+    mockExecSync.mockImplementation((cmd: string) => {
+      if (typeof cmd === "string" && cmd.includes("has-session")) {
+        throw new Error("session not found");
+      }
+      return "";
+    });
+
+    // When
+    await attachLocalSession(
+      "task-clipboard-default",
+      SessionType.TMUX,
+      "feat-login",
+      createMockWs(),
+      "/workspace",
+    );
+
+    // Then
+    expect(findExecSyncCall("new-session")).toContain("set-option -s set-clipboard on");
+  });
+
+  it("should leave set-clipboard alone when the user tmux config already chose a value", async () => {
+    // Given
+    const { attachLocalSession } = await import("@/lib/terminal");
+    mockExecSync.mockImplementation((cmd: string) => {
+      if (typeof cmd === "string" && cmd.includes("has-session")) {
+        throw new Error("session not found");
+      }
+      if (typeof cmd === "string" && cmd.includes("set-clipboard")) {
+        return "kanvibe-user-set-clipboard";
+      }
+      return "";
+    });
+
+    // When
+    await attachLocalSession(
+      "task-clipboard-user-choice",
+      SessionType.TMUX,
+      "feat-login",
+      createMockWs(),
+      "/workspace",
+    );
+
+    // Then
+    const bootstrapCommand = findExecSyncCall("new-session");
+    expect(bootstrapCommand).not.toContain("set-clipboard");
+    expect(bootstrapCommand).toContain("set-option -t 'feat-login' destroy-unattached off");
+  });
+
+  it("should not touch set-clipboard when the preference check itself fails", async () => {
+    // Given
+    const { attachLocalSession } = await import("@/lib/terminal");
+    mockExecSync.mockImplementation((cmd: string) => {
+      if (typeof cmd === "string" && cmd.includes("has-session")) {
+        throw new Error("session not found");
+      }
+      if (typeof cmd === "string" && cmd.includes("set-clipboard")) {
+        throw new Error("grep unavailable");
+      }
+      return "";
+    });
+
+    // When
+    await attachLocalSession(
+      "task-clipboard-check-failure",
+      SessionType.TMUX,
+      "feat-login",
+      createMockWs(),
+      "/workspace",
+    );
+
+    // Then
+    expect(findExecSyncCall("new-session")).not.toContain("set-clipboard");
+  });
+
+  it("should retry local bootstrap without the user tmux config when the first attempt fails", async () => {
+    // Given
+    const { attachLocalSession } = await import("@/lib/terminal");
+    let newSessionAttempts = 0;
+    mockExecSync.mockImplementation((cmd: string) => {
+      const command = String(cmd);
+      if (command.includes("has-session")) {
+        throw new Error("session not found");
+      }
+      if (command.includes("new-session")) {
+        newSessionAttempts += 1;
+        if (newSessionAttempts === 1) {
+          throw new Error("no sessions");
+        }
+      }
+      return "";
+    });
+
+    // When
+    await attachLocalSession(
+      "task-retry",
+      SessionType.TMUX,
+      "feat-login",
+      createMockWs(),
+      "/workspace",
+    );
+
+    // Then
+    const bootstrapCommands = mockExecSync.mock.calls
+      .map((call) => String(call[0]))
+      .filter((command) => command.includes("new-session"));
+    expect(bootstrapCommands).toHaveLength(2);
+    expect(bootstrapCommands[0]).not.toContain("-f /dev/null");
+    expect(bootstrapCommands[1]).toContain("tmux -f /dev/null new-session");
   });
 
   it("should build POSIX-valid local tmux bootstrap commands for multiline quoted pane commands", async () => {
@@ -410,6 +583,110 @@ describe("attachLocalSession — zellij 세션 생성 및 레이아웃 적용", 
       expect.any(Object),
     );
   });
+
+  it("should treat an exited local zellij session as missing so it can be recreated", async () => {
+    // Given
+    const { attachLocalSession } = await import("@/lib/terminal");
+    const nodePty = await import("node-pty");
+    mockZellijSessions("EXITED: feat-login\n");
+    mockExistsSync.mockReturnValue(false);
+
+    // When
+    await attachLocalSession(
+      "task-z6",
+      SessionType.ZELLIJ,
+      "feat-login",
+      createMockWs(),
+      "/workspace",
+    );
+
+    // Then
+    expect(nodePty.spawn).toHaveBeenCalledWith(
+      "zellij",
+      ["--session", "feat-login"],
+      expect.objectContaining({ cwd: "/workspace" }),
+    );
+  });
+});
+
+describe("attachRemoteSession — zellij 원격 세션", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.resetModules();
+  });
+
+  it("should create the remote zellij session with its layout when attach finds no session", async () => {
+    // Given
+    const { attachRemoteSession } = await import("@/lib/terminal");
+    const nodePty = await import("node-pty");
+
+    // When
+    await attachRemoteSession(
+      "task-remote-zellij",
+      "remote-host",
+      SessionType.ZELLIJ,
+      "remote-session",
+      createMockWs(),
+      {
+        host: "remote-host",
+        hostname: "example.com",
+        port: 2202,
+        username: "tester",
+        privateKeyPath: "/tmp/test-key",
+      },
+      120,
+      30,
+      "/remote/worktree",
+    );
+
+    // Then
+    const sshArgs = vi.mocked(nodePty.spawn).mock.calls[0][1] as string[];
+    const remoteShellCommand = sshArgs.at(-1) ?? "";
+    const attachCommand = extractRemoteShellPayload(remoteShellCommand);
+    /** 존재 확인에만 stderr를 감춰야 대화형 세션이 내는 zellij 오류가 사용자에게 보인다 */
+    expect(attachCommand).toContain("zellij list-sessions 2>/dev/null");
+    expect(attachCommand).toContain("exec zellij attach 'remote-session';");
+    expect(attachCommand).not.toContain("zellij attach 'remote-session' 2>/dev/null");
+    /** cd 실패를 조용히 넘기면 레이아웃은 맞는데 작업 디렉터리만 엉뚱한 세션이 생긴다 */
+    expect(attachCommand).toContain("cd '/remote/worktree' || printf");
+    expect(attachCommand).toContain("cannot enter /remote/worktree");
+    expect(attachCommand).toContain("exec zellij --session 'remote-session' --new-session-with-layout '/remote/worktree/.zellij-layout.kdl'");
+    expect(attachCommand).toContain("exec zellij --session 'remote-session'");
+    expectValidPosixShellSyntax(remoteShellCommand);
+    expectValidPosixShellSyntax(attachCommand);
+  });
+
+  it("should still create the remote zellij session when no worktree path is known", async () => {
+    // Given
+    const { attachRemoteSession } = await import("@/lib/terminal");
+    const nodePty = await import("node-pty");
+
+    // When
+    await attachRemoteSession(
+      "task-remote-zellij-no-worktree",
+      "remote-host",
+      SessionType.ZELLIJ,
+      "remote-session",
+      createMockWs(),
+      {
+        host: "remote-host",
+        hostname: "example.com",
+        port: 2202,
+        username: "tester",
+        privateKeyPath: "/tmp/test-key",
+      },
+      120,
+      30,
+      null,
+    );
+
+    // Then
+    const sshArgs = vi.mocked(nodePty.spawn).mock.calls[0][1] as string[];
+    const attachCommand = extractRemoteShellPayload(sshArgs.at(-1) ?? "");
+    expect(attachCommand).toContain("| grep -qFx -- 'remote-session'; then exec zellij attach 'remote-session'; fi;");
+    expect(attachCommand).toContain("exec zellij --session 'remote-session'");
+    expectValidPosixShellSyntax(attachCommand);
+  });
 });
 
 describe("focusSession — 렌더러 포커스 처리", () => {
@@ -501,8 +778,8 @@ describe("attachRemoteSession — ssh 바이너리 기반 연결", () => {
       expect(sshArgs).not.toContain("-Y");
       expect(sshArgs).not.toContain("ControlMaster=auto");
       const attachCommand = extractRemoteShellPayload(sshArgs.at(-1) ?? "");
-      expect(attachCommand).toContain("tmux -L 'kanvibe' -f /dev/null has-session -t 'remote-session'");
-      expect(attachCommand).toContain("tmux -L 'kanvibe' -f /dev/null new-session -d -s 'remote-session' -c '/remote/worktree'");
+      expect(attachCommand).toContain("tmux has-session -t 'remote-session'");
+      expect(attachCommand).toContain("tmux new-session -d -s 'remote-session' -c '/remote/worktree'");
       expect(mockPtyWrite).not.toHaveBeenCalled();
     } finally {
       if (originalDisplay === undefined) {
@@ -586,7 +863,7 @@ describe("attachRemoteSession — ssh 바이너리 기반 연결", () => {
       const sshArgs = vi.mocked(nodePty.spawn).mock.calls[0][1] as string[];
       expect(sshArgs.at(-2)).toBe("remote-host");
       expect(sshArgs.at(-1)).toEqual(expect.stringMatching(/^sh -lc /));
-      expect(extractRemoteShellPayload(sshArgs.at(-1) ?? "")).toContain("tmux -L 'kanvibe' -f /dev/null has-session -t 'remote-session'");
+      expect(extractRemoteShellPayload(sshArgs.at(-1) ?? "")).toContain("tmux has-session -t 'remote-session'");
       expect(mockPtyWrite).not.toHaveBeenCalled();
     } finally {
       if (originalDisplay === undefined) {
@@ -665,17 +942,17 @@ describe("attachRemoteSession — ssh 바이너리 기반 연결", () => {
     const nodePty = await import("node-pty");
     const sshArgs = vi.mocked(nodePty.spawn).mock.calls[0][1] as string[];
     const attachCommand = extractRemoteShellPayload(sshArgs.at(-1) ?? "");
-    expect(attachCommand).toContain("tmux -L 'kanvibe' -f /dev/null split-window -h -t 'remote-session:0' -c '/remote/worktree'");
-    expect(attachCommand).toContain("tmux -L 'kanvibe' -f /dev/null send-keys -t 'remote-session:0.0' -- 'pnpm dev' Enter");
-    expect(attachCommand).toContain("tmux -L 'kanvibe' -f /dev/null send-keys -t 'remote-session:0.1' -- 'pnpm test' Enter");
+    expect(attachCommand).toContain("split-window -h -t 'remote-session:0' -c '/remote/worktree'");
+    expect(attachCommand).toContain("send-keys -t 'remote-session:0.0' -- 'pnpm dev' Enter");
+    expect(attachCommand).toContain("send-keys -t 'remote-session:0.1' -- 'pnpm test' Enter");
     expect(mockPtyWrite).not.toHaveBeenCalled();
   });
 
-  it("should use a KanVibe isolated tmux socket without duplicating the bootstrap flow", async () => {
+  it("should bootstrap and attach the default tmux socket in one hardened command sequence", async () => {
     const { attachRemoteSession } = await import("@/lib/terminal");
 
     await attachRemoteSession(
-      "task-r-tmux-isolated",
+      "task-r-tmux-default-socket",
       "remote-host",
       SessionType.TMUX,
       "remote-session",
@@ -703,24 +980,98 @@ describe("attachRemoteSession — ssh 바이너리 기반 연결", () => {
     const remoteShellCommand = sshArgs.at(-1) ?? "";
     const attachCommand = extractRemoteShellPayload(remoteShellCommand);
 
+    /** 사용자가 원격에서 직접 tmux attach를 쳐도 같은 세션에 붙도록 기본 소켓만 쓴다 */
+    expect(attachCommand).not.toContain("-L 'kanvibe'");
+    expect(attachCommand).toContain("if tmux has-session -t 'remote-session' 2>/dev/null;");
+    expect(attachCommand).toContain("exec tmux attach-session -t 'remote-session';");
+    /** 생성부터 attach까지가 하나의 tmux 명령 시퀀스여야 사용자 설정이 세션을 지우기 전에 옵션이 적용된다 */
     expect(attachCommand).toContain(
-      "tmux -L 'kanvibe' -f /dev/null has-session -t 'remote-session'",
+      "tmux new-session -d -s 'remote-session' -c '/remote/worktree' \\; set-option -t 'remote-session' destroy-unattached off",
     );
-    expect(attachCommand).toContain(
-      "tmux -L 'kanvibe' -f /dev/null new-session -d -s 'remote-session' -c '/remote/worktree' && tmux -L 'kanvibe' -f /dev/null split-window",
-    );
-    expect(attachCommand).toContain(
-      "tmux -L 'kanvibe' -f /dev/null attach-session -t 'remote-session'",
-    );
+    expect(attachCommand).toContain("\\; attach-session -t 'remote-session'");
+    /** 사용자 설정 때문에 실패하면 소켓은 그대로 둔 채 설정 없이 한 번 더 시도한다 */
+    expect(attachCommand).toContain("tmux -f /dev/null new-session -d -s 'remote-session'");
     expect(attachCommand).not.toContain("tmux default server failed");
     expect(attachCommand).not.toContain("kanvibe-fallback");
     expect(attachCommand.match(/has-session/g)).toHaveLength(1);
     expect(attachCommand).toContain("tmux session setup failed; leaving the SSH shell open");
     expect(attachCommand).toContain('exec "${SHELL:-/bin/sh}" -l');
-    expect(Buffer.byteLength(attachCommand)).toBeLessThan(1_000);
+    /** 클립보드 판정을 원격 셸로 내리면서 부트스트랩이 켬/끔 두 벌로 늘었다. 왕복은 사라졌지만 길이는 감시한다 */
+    expect(Buffer.byteLength(attachCommand)).toBeLessThan(3_000);
     expectValidPosixShellSyntax(remoteShellCommand);
     expectValidPosixShellSyntax(attachCommand);
     expect(mockPtyWrite).not.toHaveBeenCalled();
+  });
+
+  it("should decide the remote OSC 52 forwarding inside the remote shell without an extra SSH round trip", async () => {
+    // Given
+    const { attachRemoteSession } = await import("@/lib/terminal");
+
+    // When
+    await attachRemoteSession(
+      "task-r-clipboard",
+      "remote-host",
+      SessionType.TMUX,
+      "remote-session",
+      createMockWs(),
+      {
+        host: "remote-host",
+        hostname: "example.com",
+        port: 2202,
+        username: "tester",
+        privateKeyPath: "/tmp/test-key",
+      },
+      120,
+      30,
+      "/remote/worktree",
+    );
+
+    // Then
+    const nodePty = await import("node-pty");
+    const sshArgs = vi.mocked(nodePty.spawn).mock.calls[0][1] as string[];
+    const attachCommand = extractRemoteShellPayload(sshArgs.at(-1) ?? "");
+    /** 재attach가 대부분인데 판정 왕복을 매번 붙이면 터미널이 열리기 전에 순수 지연만 늘어난다 */
+    expect(mockExecGit).not.toHaveBeenCalled();
+    /** 세션이 이미 있으면 판정 자체에 도달하지 않는다 */
+    expect(attachCommand).toContain(
+      "if tmux has-session -t 'remote-session' 2>/dev/null; then exec tmux attach-session -t 'remote-session'; elif ",
+    );
+    expect(attachCommand).toContain("set-option -s set-clipboard on");
+    expectValidPosixShellSyntax(attachCommand);
+  });
+
+  it("should skip the remote set-clipboard branch when the remote tmux config already chose a value", async () => {
+    // Given
+    const { attachRemoteSession } = await import("@/lib/terminal");
+
+    // When
+    await attachRemoteSession(
+      "task-r-clipboard-user",
+      "remote-host",
+      SessionType.TMUX,
+      "remote-session",
+      createMockWs(),
+      {
+        host: "remote-host",
+        hostname: "example.com",
+        port: 2202,
+        username: "tester",
+        privateKeyPath: "/tmp/test-key",
+      },
+      120,
+      30,
+      "/remote/worktree",
+    );
+
+    // Then
+    const nodePty = await import("node-pty");
+    const sshArgs = vi.mocked(nodePty.spawn).mock.calls[0][1] as string[];
+    const attachCommand = extractRemoteShellPayload(sshArgs.at(-1) ?? "");
+    const [userChoseBranch, kanvibeEnablesBranch] = attachCommand.split("; else ");
+    /** 사용자가 값을 정해 뒀을 때 실행되는 분기에는 set-clipboard 변경이 없어야 한다 */
+    expect(userChoseBranch).toContain("set-option -t 'remote-session' destroy-unattached off");
+    expect(userChoseBranch).not.toContain("set-option -s set-clipboard on");
+    expect(kanvibeEnablesBranch).toContain("set-option -s set-clipboard on");
   });
 
   it("should build POSIX-valid remote tmux attach commands for multiline quoted pane commands", async () => {
@@ -797,7 +1148,7 @@ describe("attachRemoteSession — ssh 바이너리 기반 연결", () => {
     expect(sshArgs.at(-2)).toBe("remote-host");
     expect(remoteShellCommand).toEqual(expect.stringMatching(/^sh -lc /));
     expect(attachCommand).toContain("nvm use 24");
-    expect(attachCommand).toContain("tmux -L 'kanvibe' -f /dev/null");
+    expect(attachCommand).not.toContain("-L 'kanvibe'");
     expect(attachCommand).not.toContain("kanvibe-fallback");
     expect(attachCommand).not.toContain("tmux default server failed");
     expect(attachCommand).toContain(sessionName);

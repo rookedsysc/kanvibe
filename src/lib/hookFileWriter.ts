@@ -1,6 +1,13 @@
 import { chmod, mkdir, writeFile } from "fs/promises";
 import path from "path";
 import { execGit } from "@/lib/gitOperations";
+import { getHookServerUrl } from "@/lib/hookEndpoint";
+import {
+  buildHookInstallBootstrapCommand,
+  HOOK_INSTALL_SUCCESS_MARKER,
+  issueHookInstallScript,
+  revokeHookInstallScript,
+} from "@/lib/hookInstallBundle";
 import { quoteShellArgument } from "@/lib/hostFileAccess";
 import type { ShellHookProviderFile } from "@/lib/shellHookProvider";
 
@@ -35,7 +42,57 @@ async function writeLocalHookProviderFiles(files: ShellHookProviderFile[]): Prom
   }
 }
 
+/**
+ * 원격 설치는 Hook 서버에서 설치 스크립트를 내려받아 실행하는 경로를 먼저 쓴다.
+ * 파일 본문을 SSH 명령줄에 싣지 않아 명령이 짧아지고, 인용 처리에 걸릴 여지가 사라진다.
+ * 원격에서 Hook 서버로 오는 경로가 막혀 있으면 기존 SSH 주입 방식으로 물러난다.
+ */
 async function writeRemoteHookProviderFiles(
+  files: ShellHookProviderFile[],
+  sshHost: string,
+): Promise<void> {
+  try {
+    await installRemoteHookProviderFilesOverHttp(files, sshHost);
+    return;
+  } catch (error) {
+    console.warn("[hooks] HTTP 설치 경로 실패, SSH 주입으로 대체합니다", {
+      sshHost,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+
+  await injectRemoteHookProviderFilesOverSsh(files, sshHost);
+}
+
+/**
+ * 원격이 Hook 서버로 되돌아오지 못하는 구성에서 SSH 주입 폴백이 늦어지지 않도록 두는 상한.
+ * 내려받기 자체에도 상한이 있으므로 이 값은 그보다 뒤에서 받쳐 주는 역할만 한다.
+ */
+const REMOTE_HOOK_INSTALL_TIMEOUT_MS = 30_000;
+
+async function installRemoteHookProviderFilesOverHttp(
+  files: ShellHookProviderFile[],
+  sshHost: string,
+): Promise<void> {
+  const hookServerUrl = await getHookServerUrl(sshHost);
+  const installTicket = issueHookInstallScript(files);
+
+  try {
+    const output = await execGit(
+      buildHookInstallBootstrapCommand(hookServerUrl, installTicket),
+      sshHost,
+      { timeoutMs: REMOTE_HOOK_INSTALL_TIMEOUT_MS },
+    );
+
+    if (!output.includes(HOOK_INSTALL_SUCCESS_MARKER)) {
+      throw new Error("원격 hook 설치 스크립트가 완료 표시를 남기지 않았습니다.");
+    }
+  } finally {
+    revokeHookInstallScript(installTicket.token);
+  }
+}
+
+async function injectRemoteHookProviderFilesOverSsh(
   files: ShellHookProviderFile[],
   sshHost: string,
 ): Promise<void> {

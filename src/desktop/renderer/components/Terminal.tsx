@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef } from "react";
 import "@xterm/xterm/css/xterm.css";
 import { createTerminalOptions, installMacShiftSelectionPatch } from "@/lib/terminalMouseSelection";
+import { installOsc52ClipboardHandler } from "@/lib/terminalClipboard";
 import { REQUEST_ACTIVE_TERMINAL_FOCUS_EVENT, hasTerminalFocusBlocker } from "@/desktop/renderer/utils/terminalFocus";
 
 interface TerminalProps {
@@ -84,6 +85,7 @@ export default function Terminal({ taskId }: TerminalProps) {
     terminal.loadAddon(new WebLinksAddon());
     terminal.open(containerRef.current);
     const disposeMacShiftSelectionPatch = installMacShiftSelectionPatch(terminal);
+    const osc52ClipboardHandler = installOsc52ClipboardHandler(terminal);
     terminal.options.fontFamily = FALLBACK_FONT_FAMILY;
 
     const unsubscribeData = window.kanvibeDesktop!.onTerminalData((event: { taskId: string; data: string }) => {
@@ -131,6 +133,7 @@ export default function Terminal({ taskId }: TerminalProps) {
       return () => {
         isTerminalDisposed = true;
         disposeMacShiftSelectionPatch();
+        osc52ClipboardHandler.dispose();
         unsubscribeData();
         unsubscribeClose();
         terminal.dispose();
@@ -187,6 +190,7 @@ export default function Terminal({ taskId }: TerminalProps) {
       window.removeEventListener("focus", handleWindowFocus);
       window.removeEventListener(REQUEST_ACTIVE_TERMINAL_FOCUS_EVENT, handleRequestTerminalFocus);
       disposeMacShiftSelectionPatch();
+      osc52ClipboardHandler.dispose();
       resizeObserver.disconnect();
       unsubscribeData();
       unsubscribeClose();
