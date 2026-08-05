@@ -48,9 +48,25 @@ function trimDesktopLogHead(logPath, bytesToRemove) {
   const keptBytes = fileBytes - bytesToRemove;
   const keptContent = Buffer.alloc(keptBytes);
   const logFileDescriptor = fs.openSync(logPath, "r");
+  // readSync는 요청한 길이를 다 채운다고 보장하지 않는다. 한 번만 읽고 끝내면 짧은 읽기가 발생했을 때
+  // 보존 구간의 뒤쪽, 즉 가장 최신 로그가 잘려나가므로 버퍼가 찰 때까지 이어 읽는다.
   let readBytes = 0;
   try {
-    readBytes = fs.readSync(logFileDescriptor, keptContent, 0, keptBytes, bytesToRemove);
+    while (readBytes < keptBytes) {
+      const chunkBytes = fs.readSync(
+        logFileDescriptor,
+        keptContent,
+        readBytes,
+        keptBytes - readBytes,
+        bytesToRemove + readBytes,
+      );
+      if (chunkBytes === 0) {
+        // 트림 도중 파일이 줄어 EOF에 닿은 경우다.
+        break;
+      }
+
+      readBytes += chunkBytes;
+    }
   } finally {
     fs.closeSync(logFileDescriptor);
   }

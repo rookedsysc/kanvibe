@@ -28,6 +28,7 @@ function getFileSize(filePath) {
 }
 
 afterEach(() => {
+  vi.restoreAllMocks();
   while (tempDirs.length > 0) {
     const tempDir = tempDirs.pop();
     fs.rmSync(tempDir, { recursive: true, force: true });
@@ -68,32 +69,38 @@ describe("Electron desktop diagnostics", () => {
       trimToBytes: 150,
       maxEntryBytes: 180,
     });
+    const readFileSync = vi.spyOn(fs, "readFileSync");
 
     diagnostics.log("main:start", { ok: true });
 
+    // 파일 전체를 한 Buffer에 담으면 2GiB를 넘긴 로그에서 트림이 영구 실패하므로 tail만 읽어야 한다.
+    const wholeFileReads = readFileSync.mock.calls.filter(([target]) => target === logPath);
+    expect(wholeFileReads).toHaveLength(0);
     const content = fs.readFileSync(logPath, "utf8");
     expect(content).not.toContain("legacy-start");
+    expect(content).toContain("legacy-tail");
     expect(content).toContain("main:start");
     expect(getFileSize(logPath)).toBeLessThanOrEqual(maxFileBytes);
     expect(fs.existsSync(`${logPath}.1`)).toBe(false);
   });
 
-  it("trims an oversized log by reading only the retained tail", () => {
+  it("keeps reading until the retained tail is complete when a read returns early", () => {
     const logPath = createTempLogPath();
     fs.mkdirSync(path.dirname(logPath), { recursive: true });
-    fs.writeFileSync(logPath, `legacy-start\n${"legacy-middle".repeat(50)}\nlegacy-tail\n`, "utf8");
+    fs.writeFileSync(logPath, `legacy-start\n${"legacy-middle".repeat(20)}\nlegacy-tail\n`, "utf8");
     const diagnostics = createDiagnostics(logPath, {
       maxFileBytes: 220,
       trimToBytes: 150,
       maxEntryBytes: 180,
     });
-    const readFileSync = vi.spyOn(fs, "readFileSync");
+    const originalReadSync = fs.readSync;
+    vi.spyOn(fs, "readSync").mockImplementationOnce(
+      (fileDescriptor, buffer, offset, length, position) =>
+        originalReadSync(fileDescriptor, buffer, offset, 1, position),
+    );
 
     diagnostics.log("main:start", { ok: true });
 
-    const wholeFileReads = readFileSync.mock.calls.filter(([target]) => target === logPath);
-    readFileSync.mockRestore();
-    expect(wholeFileReads).toHaveLength(0);
     const content = fs.readFileSync(logPath, "utf8");
     expect(content).toContain("legacy-tail");
     expect(content).toContain("main:start");
