@@ -643,7 +643,13 @@ describe("attachRemoteSession — zellij 원격 세션", () => {
     const sshArgs = vi.mocked(nodePty.spawn).mock.calls[0][1] as string[];
     const remoteShellCommand = sshArgs.at(-1) ?? "";
     const attachCommand = extractRemoteShellPayload(remoteShellCommand);
-    expect(attachCommand).toContain("zellij attach 'remote-session'");
+    /** 존재 확인에만 stderr를 감춰야 대화형 세션이 내는 zellij 오류가 사용자에게 보인다 */
+    expect(attachCommand).toContain("zellij list-sessions 2>/dev/null");
+    expect(attachCommand).toContain("exec zellij attach 'remote-session';");
+    expect(attachCommand).not.toContain("zellij attach 'remote-session' 2>/dev/null");
+    /** cd 실패를 조용히 넘기면 레이아웃은 맞는데 작업 디렉터리만 엉뚱한 세션이 생긴다 */
+    expect(attachCommand).toContain("cd '/remote/worktree' || printf");
+    expect(attachCommand).toContain("cannot enter /remote/worktree");
     expect(attachCommand).toContain("exec zellij --session 'remote-session' --new-session-with-layout '/remote/worktree/.zellij-layout.kdl'");
     expect(attachCommand).toContain("exec zellij --session 'remote-session'");
     expectValidPosixShellSyntax(remoteShellCommand);
@@ -677,7 +683,8 @@ describe("attachRemoteSession — zellij 원격 세션", () => {
     // Then
     const sshArgs = vi.mocked(nodePty.spawn).mock.calls[0][1] as string[];
     const attachCommand = extractRemoteShellPayload(sshArgs.at(-1) ?? "");
-    expect(attachCommand).toContain("zellij attach 'remote-session' 2>/dev/null || exec zellij --session 'remote-session'");
+    expect(attachCommand).toContain("| grep -qFx -- 'remote-session'; then exec zellij attach 'remote-session'; fi;");
+    expect(attachCommand).toContain("exec zellij --session 'remote-session'");
     expectValidPosixShellSyntax(attachCommand);
   });
 });
@@ -989,15 +996,15 @@ describe("attachRemoteSession — ssh 바이너리 기반 연결", () => {
     expect(attachCommand.match(/has-session/g)).toHaveLength(1);
     expect(attachCommand).toContain("tmux session setup failed; leaving the SSH shell open");
     expect(attachCommand).toContain('exec "${SHELL:-/bin/sh}" -l');
-    expect(Buffer.byteLength(attachCommand)).toBeLessThan(1_500);
+    /** 클립보드 판정을 원격 셸로 내리면서 부트스트랩이 켬/끔 두 벌로 늘었다. 왕복은 사라졌지만 길이는 감시한다 */
+    expect(Buffer.byteLength(attachCommand)).toBeLessThan(3_000);
     expectValidPosixShellSyntax(remoteShellCommand);
     expectValidPosixShellSyntax(attachCommand);
     expect(mockPtyWrite).not.toHaveBeenCalled();
   });
 
-  it("should enable OSC 52 forwarding on the remote host the same way it does locally", async () => {
+  it("should decide the remote OSC 52 forwarding inside the remote shell without an extra SSH round trip", async () => {
     // Given
-    mockExecGit.mockResolvedValue("");
     const { attachRemoteSession } = await import("@/lib/terminal");
 
     // When
@@ -1023,15 +1030,18 @@ describe("attachRemoteSession — ssh 바이너리 기반 연결", () => {
     const nodePty = await import("node-pty");
     const sshArgs = vi.mocked(nodePty.spawn).mock.calls[0][1] as string[];
     const attachCommand = extractRemoteShellPayload(sshArgs.at(-1) ?? "");
-    expect(String(mockExecGit.mock.calls[0][0])).toContain("set-clipboard");
-    expect(mockExecGit.mock.calls[0][1]).toBe("remote-host");
+    /** 재attach가 대부분인데 판정 왕복을 매번 붙이면 터미널이 열리기 전에 순수 지연만 늘어난다 */
+    expect(mockExecGit).not.toHaveBeenCalled();
+    /** 세션이 이미 있으면 판정 자체에 도달하지 않는다 */
+    expect(attachCommand).toContain(
+      "if tmux has-session -t 'remote-session' 2>/dev/null; then exec tmux attach-session -t 'remote-session'; elif ",
+    );
     expect(attachCommand).toContain("set-option -s set-clipboard on");
     expectValidPosixShellSyntax(attachCommand);
   });
 
-  it("should leave the remote set-clipboard alone when the remote tmux config already chose a value", async () => {
+  it("should skip the remote set-clipboard branch when the remote tmux config already chose a value", async () => {
     // Given
-    mockExecGit.mockResolvedValue("kanvibe-user-set-clipboard");
     const { attachRemoteSession } = await import("@/lib/terminal");
 
     // When
@@ -1057,8 +1067,11 @@ describe("attachRemoteSession — ssh 바이너리 기반 연결", () => {
     const nodePty = await import("node-pty");
     const sshArgs = vi.mocked(nodePty.spawn).mock.calls[0][1] as string[];
     const attachCommand = extractRemoteShellPayload(sshArgs.at(-1) ?? "");
-    expect(attachCommand).not.toContain("set-clipboard");
-    expect(attachCommand).toContain("set-option -t 'remote-session' destroy-unattached off");
+    const [userChoseBranch, kanvibeEnablesBranch] = attachCommand.split("; else ");
+    /** 사용자가 값을 정해 뒀을 때 실행되는 분기에는 set-clipboard 변경이 없어야 한다 */
+    expect(userChoseBranch).toContain("set-option -t 'remote-session' destroy-unattached off");
+    expect(userChoseBranch).not.toContain("set-option -s set-clipboard on");
+    expect(kanvibeEnablesBranch).toContain("set-option -s set-clipboard on");
   });
 
   it("should build POSIX-valid remote tmux attach commands for multiline quoted pane commands", async () => {

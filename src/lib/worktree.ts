@@ -139,10 +139,31 @@ export interface TmuxSessionBootstrapOptions {
 /** 사용자가 tmux 설정에서 `set-clipboard`를 직접 정해 뒀을 때 출력되는 표시 */
 export const TMUX_USER_CLIPBOARD_PREFERENCE_MARKER = "kanvibe-user-set-clipboard";
 
-/** 사용자 tmux 설정이 `set-clipboard`를 다루는지 확인하는 명령. 주석 처리된 줄은 세지 않는다 */
+/**
+ * tmux가 실제로 읽는 설정 파일 목록을 tmux의 검색 순서대로 만든다.
+ * tmux는 `$prefix/etc/tmux.conf`를 먼저 읽고, 그다음 `~/.tmux.conf`나 `$XDG_CONFIG_HOME/tmux/tmux.conf`를 읽는다.
+ * 컴파일 시점 prefix는 알 수 없으므로 실제로 쓰이는 설치 경로를 열거하고,
+ * `XDG_CONFIG_HOME`은 하드코딩하지 않고 tmux와 같은 기본값 규칙으로 전개한다.
+ * `source-file`로 끌어온 파일까지는 따라가지 않는다. 놓친 경우의 비용은 아래 판정 기본값이 흡수한다.
+ */
+function buildTmuxConfigFileCandidates(): string[] {
+  return [
+    '"/etc/tmux.conf"',
+    '"/usr/local/etc/tmux.conf"',
+    '"/opt/homebrew/etc/tmux.conf"',
+    '"$HOME/.tmux.conf"',
+    '"${XDG_CONFIG_HOME:-$HOME/.config}/tmux/tmux.conf"',
+  ];
+}
+
+/** 사용자 tmux 설정이 `set-clipboard`를 다루면 성공(0)을 반환하는 조건 명령. 주석 처리된 줄은 세지 않는다 */
+export function buildTmuxUserClipboardDirectiveTestCommand(): string {
+  return `grep -qsE '^[[:space:]]*set(-option)?[[:space:]].*set-clipboard' ${buildTmuxConfigFileCandidates().join(" ")}`;
+}
+
+/** 위 조건을 별도 프로세스에서 실행할 때 쓰는 명령. 종료 코드 대신 표시 문자열로 결과를 알린다 */
 export function buildTmuxUserClipboardPreferenceCommand(): string {
-  const userConfigFiles = ['"$HOME/.tmux.conf"', '"$HOME/.config/tmux/tmux.conf"'];
-  const hasDirective = `grep -qsE '^[[:space:]]*set(-option)?[[:space:]].*set-clipboard' ${userConfigFiles.join(" ")}`;
+  const hasDirective = buildTmuxUserClipboardDirectiveTestCommand();
 
   return `if ${hasDirective}; then printf '%s' ${quoteForPosixShell(TMUX_USER_CLIPBOARD_PREFERENCE_MARKER)}; fi`;
 }
@@ -166,6 +187,7 @@ function buildTmuxSessionHardeningArguments(sessionName: string, enableClipboard
     /**
      * 기본값 external은 애플리케이션이 보낸 OSC 52를 클라이언트로 넘기지 않아 복사가 동작하지 않는다.
      * 세션 스코프로 좁힐 수 없는 서버 옵션이므로, 사용자가 값을 정해 두지 않은 경우에만 켠다.
+     * 서버 전역 부수효과를 감수하는 근거와 조건은 CLAUDE.md의 tmux `set-clipboard` 예외 항목에 있다.
      */
     ...(enableClipboard ? ["set-option -s set-clipboard on"] : []),
   ];
@@ -679,6 +701,16 @@ function buildZellijSessionCleanupCommand(sessionName: string, verifyCleanup: bo
     ...commands,
     `if zellij list-sessions 2>/dev/null | awk '{ if ($1 == "EXITED:") print $2; else print $1 }' | grep -Fx -- ${target} >/dev/null; then exit 1; fi`,
   ].join("; ");
+}
+
+/**
+ * 살아있는 zellij 세션에 대상 이름이 있으면 성공(0)을 반환하는 조건 명령.
+ * `parseAliveZellijSessionNames`와 같은 규칙으로 종료된 세션을 제외한다.
+ */
+export function buildZellijAliveSessionCheckCommand(sessionName: string): string {
+  const target = quoteForPosixShell(sessionName);
+
+  return `zellij list-sessions 2>/dev/null | awk '$1 != "EXITED:" { print $1 }' | grep -qFx -- ${target}`;
 }
 
 /** zellij list-sessions는 종료된 세션을 `EXITED: <name>`으로 함께 출력하므로 이름만 뽑아 살아있는 세션과 구분한다 */

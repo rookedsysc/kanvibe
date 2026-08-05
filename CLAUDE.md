@@ -12,6 +12,16 @@
 - Route local child process and terminal environment creation through `createLocalShellEnvironment()` so `PORT`, `HOST`, `NODE_ENV`, and KanVibe internal `KANVIBE_*` values are stripped before user-visible shells run.
 - When changing terminal or child process environment handling, add focused tests that assert server/runtime variables do not appear in task terminal environments.
 
+### Approved Exception: tmux `set-clipboard`
+
+The rule above forbids tmux-wide side effects. tmux `set-clipboard` is an approved exception, because OSC 52 clipboard forwarding cannot be delivered without it and tmux offers no narrower scope.
+
+- `set-clipboard` is a tmux **server** option. `-s`, `-g`, and `-t <session>` all land on the same server-wide value, so KanVibe cannot confine it to its own sessions. KanVibe also creates sessions on the default socket, so the effect reaches every session on that server.
+- KanVibe may set `set-clipboard on` only while bootstrapping its own tmux session, and only when the user's tmux configuration does not already choose a value. An explicit user choice always wins and is never overwritten or restored later.
+- Detection must follow tmux's own configuration search order, including the system config and `${XDG_CONFIG_HOME:-$HOME/.config}/tmux/tmux.conf`. Do not hardcode `$HOME/.config`. `source-file` indirection is out of scope.
+- When detection cannot run, treat the result as unknown and leave the option alone. Never treat a failed check as permission to write.
+- Keep this exception narrow. Any other server-wide, user-wide, shell-wide, tmux-wide, or zellij-wide side effect needs its own entry here, with the same three parts: why no narrower scope exists, what guard respects an explicit user choice, and what the failure default is. Do not add one silently.
+
 ## App-Wide UI Settings
 
 - Store app-wide UI preferences in the app settings layer (`appSettingsService` / `AppSettings`), not in route-specific state or route cache.

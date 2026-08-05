@@ -133,6 +133,59 @@ describe("sanitizeZellijSessionName", () => {
   });
 });
 
+describe("buildTmuxUserClipboardDirectiveTestCommand", () => {
+  it("should search every tmux config path in tmux's own lookup order", async () => {
+    // Given
+    const { buildTmuxUserClipboardDirectiveTestCommand } = await import("@/lib/worktree");
+
+    // When
+    const command = buildTmuxUserClipboardDirectiveTestCommand();
+
+    // Then
+    /** XDG_CONFIG_HOME이 기본값이 아니면 하드코딩된 ~/.config는 tmux가 읽지도 않는 파일이다 */
+    expect(command).toContain('"${XDG_CONFIG_HOME:-$HOME/.config}/tmux/tmux.conf"');
+    expect(command).not.toContain('"$HOME/.config/tmux/tmux.conf"');
+    expect(command).toContain('"$HOME/.tmux.conf"');
+    /** tmux는 사용자 설정보다 먼저 $prefix/etc/tmux.conf를 읽는다 */
+    expect(command).toContain('"/etc/tmux.conf"');
+    expect(command).toContain('"/opt/homebrew/etc/tmux.conf"');
+    expect(command).toContain("grep -qsE");
+  });
+
+  it("should reuse the same path list for the marker-printing preference command", async () => {
+    // Given
+    const {
+      buildTmuxUserClipboardDirectiveTestCommand,
+      buildTmuxUserClipboardPreferenceCommand,
+      TMUX_USER_CLIPBOARD_PREFERENCE_MARKER,
+    } = await import("@/lib/worktree");
+
+    // When
+    const preferenceCommand = buildTmuxUserClipboardPreferenceCommand();
+
+    // Then
+    expect(preferenceCommand).toContain(buildTmuxUserClipboardDirectiveTestCommand());
+    expect(preferenceCommand).toContain(TMUX_USER_CLIPBOARD_PREFERENCE_MARKER);
+  });
+});
+
+describe("buildZellijAliveSessionCheckCommand", () => {
+  it("should exclude exited sessions the same way the list output parser does", async () => {
+    // Given
+    const { buildZellijAliveSessionCheckCommand } = await import("@/lib/worktree");
+
+    // When
+    const command = buildZellijAliveSessionCheckCommand("feat-login");
+
+    // Then
+    expect(command).toContain('awk \'$1 != "EXITED:" { print $1 }\'');
+    expect(command).toContain("grep -qFx -- 'feat-login'");
+    /** 판정 명령에만 stderr를 감춘다. attach를 조건문에 두면 대화형 세션 오류까지 사라진다 */
+    expect(command).toContain("zellij list-sessions 2>/dev/null");
+    expect(command).not.toContain("attach");
+  });
+});
+
 describe("isSessionAlive", () => {
   beforeEach(() => {
     vi.clearAllMocks();
