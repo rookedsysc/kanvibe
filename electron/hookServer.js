@@ -1,14 +1,14 @@
 const http = require("node:http");
 const path = require("node:path");
 
-function getHookServiceModulePath() {
+function getRuntimeModulePath(...moduleSegments) {
   const appRoot = path.join(__dirname, "..");
 
   if (process.env.KANVIBE_RENDERER_URL) {
-    return path.join(appRoot, "src", "desktop", "main", "services", "hookService.ts");
+    return path.join(appRoot, "src", ...moduleSegments) + ".ts";
   }
 
-  return path.join(appRoot, "build", "main", "src", "desktop", "main", "services", "hookService.js");
+  return path.join(appRoot, "build", "main", "src", ...moduleSegments) + ".js";
 }
 
 function readJsonBody(request) {
@@ -33,12 +33,32 @@ function writeJson(response, statusCode, payload) {
   response.end(JSON.stringify(payload));
 }
 
+function writeShellScript(response, script) {
+  response.writeHead(200, { "Content-Type": "text/plain; charset=utf-8" });
+  response.end(script);
+}
+
 function createHookServer({ host, port }) {
-  const hookService = require(getHookServiceModulePath());
+  const hookService = require(getRuntimeModulePath("desktop", "main", "services", "hookService"));
+  const hookInstallBundle = require(getRuntimeModulePath("lib", "hookInstallBundle"));
 
   const server = http.createServer(async (request, response) => {
     if (request.method === "GET" && request.url === "/api/hooks/health") {
       writeJson(response, 200, { success: true });
+      return;
+    }
+
+    /** 원격 호스트가 hook 설치 산출물을 직접 내려받는 경로. 토큰이 맞아야만 스크립트를 내준다 */
+    if (request.method === "GET" && request.url.startsWith(hookInstallBundle.HOOK_INSTALL_SCRIPT_PATH)) {
+      const requestUrl = new URL(request.url, `http://${host}:${port}`);
+      const installScript = hookInstallBundle.readHookInstallScript(requestUrl.searchParams.get("token"));
+
+      if (!installScript) {
+        writeJson(response, 404, { success: false, error: "Not found" });
+        return;
+      }
+
+      writeShellScript(response, installScript);
       return;
     }
 

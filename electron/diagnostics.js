@@ -37,13 +37,41 @@ function trimDesktopLogHead(logPath, bytesToRemove) {
     return;
   }
 
-  const content = fs.readFileSync(logPath);
-  if (content.length <= bytesToRemove) {
+  const fileBytes = getFileSize(logPath);
+  if (fileBytes <= bytesToRemove) {
     fs.writeFileSync(logPath, "", "utf8");
     return;
   }
 
-  fs.writeFileSync(logPath, content.subarray(bytesToRemove));
+  // 파일 전체를 한 Buffer에 담으면 2GiB를 넘긴 로그에서는 읽기 자체가 실패해 트림이 영원히 불가능해지므로,
+  // 남길 뒷부분만 읽어 재기록한다. 남길 크기는 항상 trimToBytes 이하라 파일이 아무리 커도 안전하다.
+  const keptBytes = fileBytes - bytesToRemove;
+  const keptContent = Buffer.alloc(keptBytes);
+  const logFileDescriptor = fs.openSync(logPath, "r");
+  // readSync는 요청한 길이를 다 채운다고 보장하지 않는다. 한 번만 읽고 끝내면 짧은 읽기가 발생했을 때
+  // 보존 구간의 뒤쪽, 즉 가장 최신 로그가 잘려나가므로 버퍼가 찰 때까지 이어 읽는다.
+  let readBytes = 0;
+  try {
+    while (readBytes < keptBytes) {
+      const chunkBytes = fs.readSync(
+        logFileDescriptor,
+        keptContent,
+        readBytes,
+        keptBytes - readBytes,
+        bytesToRemove + readBytes,
+      );
+      if (chunkBytes === 0) {
+        // 트림 도중 파일이 줄어 EOF에 닿은 경우다.
+        break;
+      }
+
+      readBytes += chunkBytes;
+    }
+  } finally {
+    fs.closeSync(logFileDescriptor);
+  }
+
+  fs.writeFileSync(logPath, keptContent.subarray(0, readBytes));
 }
 
 function trimDesktopLogIfNeeded(logPath, incomingBytes, maxFileBytes, trimToBytes) {

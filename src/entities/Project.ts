@@ -15,7 +15,8 @@ export class Project {
   @PrimaryGeneratedColumn("uuid")
   id!: string;
 
-  @Column({ type: "varchar", length: 255, unique: true })
+  /** 표시 이름은 같은 PC(sshHost) 안에서만 유일하다. 다른 PC의 같은 이름 프로젝트는 sshHost로 구분한다 */
+  @Column({ type: "varchar", length: 255 })
   name!: string;
 
   @Column({ name: "repo_path", type: "varchar", length: 500 })
