@@ -20,6 +20,7 @@ vi.mock("@/desktop/renderer/utils/refresh", () => ({
 
 vi.mock("@/desktop/renderer/actions/appSettings", () => ({
   getThemePreference: vi.fn().mockResolvedValue("system"),
+  getTerminalOpacity: vi.fn().mockResolvedValue(1),
 }));
 
 vi.mock("@/desktop/renderer/routes/BoardRoute", () => ({
