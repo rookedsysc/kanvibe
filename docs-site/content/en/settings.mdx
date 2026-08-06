@@ -24,7 +24,7 @@ The KanVibe settings page keeps display preferences, terminal pane configuration
   </div>
   <div className="kv-card">
     <h3>Task creation</h3>
-    <p>Select the default session type for new tasks: tmux or zellij.</p>
+    <p>Select the default session type for new tasks: tmux, zellij, or terminal.</p>
   </div>
   <div className="kv-card">
     <h3>Notifications</h3>
@@ -33,6 +33,10 @@ The KanVibe settings page keeps display preferences, terminal pane configuration
   <div className="kv-card">
     <h3>Background Sync</h3>
     <p>Synchronize project worktrees and PR state on a schedule, with an interval from 1 to 1440 minutes.</p>
+  </div>
+  <div className="kv-card">
+    <h3>Keyboard</h3>
+    <p>Decide whether Vim-style board navigation is enabled.</p>
   </div>
 </div>
 
@@ -74,7 +78,7 @@ This only changes how the task detail workspace opens. It does not change task d
 
 | Setting | Options | Behavior |
 | --- | --- | --- |
-| Default session type | `tmux`, `zellij` | Selects the default terminal backend when creating a new task. tmux is the default. zellij requires zellij to be installed in the local or remote target environment. |
+| Default session type | `tmux`, `zellij`, `terminal` | Selects the default terminal backend when creating a new task. tmux is the default. zellij requires zellij to be installed in the local or remote target environment. `terminal` runs a shell directly without a multiplexer, so it needs no extra install — but running work disappears when the app quits or a remote connection drops. |
 
 The session type setting changes the default choice for newly created tasks. It does not rewrite existing tasks.
 
@@ -86,6 +90,14 @@ The session type setting changes the default choice for newly created tasks. It 
 | Notify for statuses | PROGRESS, PENDING, REVIEW | Sends notifications only when a task changes into a selected status. The default set is PROGRESS, PENDING, and REVIEW. TODO and DONE are excluded because they are commonly user-driven states. |
 
 The notification center and system notifications surface AI agent state changes, PR events, and background sync events. Clicking a notification that is linked to a task opens that task detail workspace directly. Restricting statuses keeps attention on events such as PENDING questions or REVIEW-ready work.
+
+## Keyboard
+
+| Setting | Default | Behavior |
+| --- | --- | --- |
+| Vim-style board navigation | On | Enables `h`/`j`/`k`/`l` focus movement, `n` for a new task, `dd` to delete, and `:move` status commands on the board. Arrow-key movement stays available when this is off. |
+
+See the [shortcuts](/en/shortcuts) page for the full key list.
 
 ## Background Sync
 

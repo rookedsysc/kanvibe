@@ -44,7 +44,7 @@ title: KanVibe 文档
   </div>
   <div className="kv-card">
     <h3>任务专属终端界面</h3>
-    <p>每个任务都有自己的 tmux/zellij 会话，可自由交给 AI 代理处理，也可以随时直接运行命令。</p>
+    <p>每个任务都有自己的会话，可在 tmux、zellij 或不使用多路复用器的 terminal 之间选择，既可交给 AI 代理处理，也可随时直接运行命令。</p>
   </div>
   <div className="kv-card">
     <h3>键盘优先 UI</h3>
@@ -67,7 +67,7 @@ title: KanVibe 文档
     <p>后台 Sync 检测到运行中的 tmux/zellij 会话时，自动关联到对应任务并将状态转为 PROGRESS。</p>
   </div>
   <div className="kv-card">
-    <h3>DONE 自动清理</h3>
-    <p>将任务移到 DONE 或删除时，自动在后台清理 git worktree、branch 和 tmux/zellij 会话。项目根分支受保护。</p>
+    <h3>删除时自动清理</h3>
+    <p>删除任务时会在后台自动清理 git worktree、branch 和终端会话。仅移动到 DONE 不会清理任何资源，项目根分支也受保护。</p>
   </div>
 </div>

@@ -28,10 +28,21 @@ KanVibe는 칸반 보드, 터미널 세션, git worktree, AI 에이전트 hooks�
   <figcaption>각 태스크는 독립 터미널 인터페이스를 제공해 AI 에이전트 실행, 직접 명령, 빌드/테스트를 자유롭게 오갈 수 있습니다.</figcaption>
 </figure>
 
-- tmux 또는 zellij 세션을 브라우저/데스크톱에서 열 수 있습니다.
+- 세션 백엔드를 tmux, zellij, 그리고 멀티플렉서 없이 KanVibe가 셸을 직접 띄우는 terminal 중에서 고릅니다.
 - 각 태스크가 자기 터미널을 가지므로 AI에게 맡긴 작업을 그대로 이어서 직접 명령으로 보정할 수 있습니다.
 - 상세 dock 단축키로 정보, hook 상태, AI 채팅, PR을 전환합니다.
-- 작업이 DONE으로 이동하면 branch, worktree, terminal session을 정리합니다.
+- DONE으로 이동해도 branch, worktree, terminal session은 그대로 남습니다. 리소스 정리는 태스크를 삭제할 때만 실행됩니다.
+
+## 터미널 탭
+
+한 태스크 안에서 터미널을 여러 개 열어 서버, 테스트, 에이전트 실행을 나눠 둘 수 있습니다.
+
+- 탭 바에서 탭을 추가·전환·닫고, 더블클릭으로 이름을 바꾸고, 드래그로 순서를 옮깁니다.
+- tmux와 zellij 세션의 탭은 각각 tmux window, zellij tab과 **양방향으로 동기화**됩니다. KanVibe 밖에서 `tmux new-window`로 만든 window도 탭 바에 나타나고, 탭을 클릭하면 멀티플렉서의 활성 대상도 함께 바뀝니다.
+- 멀티플렉서 세션에서는 KanVibe가 자체 탭 바를 그리므로 tmux 상태바와 zellij 탭 바는 KanVibe가 만든 세션에 한해 꺼둡니다.
+- `terminal` 세션에서는 KanVibe가 탭마다 셸을 직접 띄웁니다. 탭을 옮겨 다녀도 각 탭의 스크롤백이 유지되고, 앱이 켜져 있는 동안 셸도 살아 있습니다.
+
+키 조합은 [단축키](/ko/shortcuts) 문서의 터미널 탭 절에 정리돼 있습니다.
 
 ## 태스크별 AI 채팅 히스토리
 
