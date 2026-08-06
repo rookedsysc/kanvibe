@@ -192,7 +192,8 @@ async function readTabs(page) {
   return page.evaluate(() => (
     [...document.querySelectorAll("[data-terminal-tab-id]")].map((element) => ({
       id: element.getAttribute("data-terminal-tab-id"),
-      name: element.textContent.replace(/×$/, "").trim(),
+      /** 탭 안에는 이름 말고 단축키 힌트와 닫기 버튼도 있으므로 이름 노드만 읽는다 */
+      name: (element.querySelector("[data-terminal-tab-name]") ?? element).textContent.trim(),
       isActive: element.getAttribute("aria-selected") === "true",
     }))
   ));
@@ -673,7 +674,11 @@ async function main() {
         checks.push({ name: "Playwright trace artifact", ok: false, detail: error instanceof Error ? error.message : String(error) });
       });
     }
-    if (app) await app.close().catch(() => {});
+    /**
+     * 세션 정리를 앱 종료보다 먼저 한다.
+     * 멀티플렉서 서버는 Electron이 띄운 PTY의 stdio를 물고 살아남아,
+     * 먼저 종료를 기다리면 파이프가 닫히지 않아 `app.close()`가 끝나지 않는다.
+     */
     if (tmuxSessionName) {
       try {
         execFileSync("tmux", ["kill-session", "-t", tmuxSessionName], {
@@ -697,6 +702,7 @@ async function main() {
         }
       }
     }
+    if (app) await app.close().catch(() => {});
   }
 
   await optionalStep(checks, "Playwright trace 아티팩트가 기록됐다", async () => {
