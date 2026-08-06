@@ -1,5 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
+import {
+  TERMINAL_TAB_SHORTCUT_INDEXES,
+  createTerminalTabShortcut,
+  formatShortcutForDisplay,
+  getCurrentShortcutPlatform,
+} from "@/desktop/renderer/utils/keyboardShortcut";
 import type { TerminalTab } from "@/desktop/shared/terminalTabs";
 
 interface TerminalTabBarProps {
@@ -24,6 +30,7 @@ export default function TerminalTabBar({
   onMove,
 }: TerminalTabBarProps) {
   const t = useTranslations("taskDetail");
+  const shortcutPlatform = getCurrentShortcutPlatform();
   const [renamingTabId, setRenamingTabId] = useState<string | null>(null);
   const [draggingTabId, setDraggingTabId] = useState<string | null>(null);
   const renameInputRef = useRef<HTMLInputElement>(null);
@@ -45,11 +52,19 @@ export default function TerminalTabBar({
   return (
     <div
       data-testid="terminal-tab-bar"
-      className="flex items-center gap-1 overflow-x-auto"
+      className="flex min-w-0 flex-1 items-center overflow-x-auto"
       role="tablist"
       aria-label={t("terminalTabs")}
     >
-      {tabs.map((tab, tabIndex) => (
+      {tabs.map((tab, tabIndex) => {
+        const shortcutIndex = TERMINAL_TAB_SHORTCUT_INDEXES[tabIndex];
+        const shortcutText = shortcutIndex
+          ? formatShortcutForDisplay(createTerminalTabShortcut(shortcutIndex), shortcutPlatform)
+          : null;
+        /** 활성 탭의 배경 pill이 이미 경계를 그리므로, 그 양옆에는 구분선을 겹쳐 두지 않는다 */
+        const hasDivider = tabIndex > 0 && !tab.isActive && !tabs[tabIndex - 1].isActive;
+
+        return (
         <div
           key={tab.id}
           data-terminal-tab-id={tab.id}
@@ -73,11 +88,12 @@ export default function TerminalTabBar({
             }
           }}
           onDoubleClick={() => setRenamingTabId(tab.id)}
-          className={`group flex shrink-0 items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-mono transition-colors ${
+          /** 탭은 남는 폭을 균등하게 나눠 갖고, 제목이 읽히지 않을 만큼 좁아지면 바가 가로로 스크롤된다 */
+          className={`group relative flex min-w-44 flex-1 items-center gap-2 rounded-md px-3 py-1 text-xs font-mono transition-colors ${
             tab.isActive
               ? "bg-brand-primary text-text-inverse"
-              : "bg-button-neutral text-terminal-text hover:bg-button-neutral-hover"
-          }`}
+              : "text-terminal-text hover:bg-white/5"
+          } ${hasDivider ? "border-l border-white/10" : "border-l border-transparent"}`}
         >
           {renamingTabId === tab.id ? (
             <input
@@ -97,11 +113,18 @@ export default function TerminalTabBar({
                   setRenamingTabId(null);
                 }
               }}
-              className="w-24 bg-transparent outline-none"
+              className="min-w-0 flex-1 bg-transparent text-center outline-none"
             />
           ) : (
-            <span className="max-w-40 truncate">{tab.name}</span>
+            <span data-terminal-tab-name className="min-w-0 flex-1 truncate text-center">
+              {tab.name}
+            </span>
           )}
+          {shortcutText ? (
+            <span className="shrink-0 text-[10px] opacity-60 transition-opacity group-hover:opacity-0">
+              {shortcutText}
+            </span>
+          ) : null}
           <button
             type="button"
             data-testid={`terminal-tab-close-${tab.id}`}
@@ -110,18 +133,19 @@ export default function TerminalTabBar({
               event.stopPropagation();
               onClose(tab.id);
             }}
-            className="opacity-0 transition-opacity group-hover:opacity-100 focus:opacity-100"
+            className="absolute right-2 opacity-0 transition-opacity group-hover:opacity-100 focus:opacity-100"
           >
             ×
           </button>
         </div>
-      ))}
+        );
+      })}
       <button
         type="button"
         data-testid="terminal-tab-new"
         aria-label={t("newTerminalTab")}
         onClick={onCreate}
-        className="shrink-0 rounded-md px-2 py-1 text-xs text-terminal-text transition-colors hover:bg-button-neutral-hover"
+        className="shrink-0 rounded-md px-2 py-1 text-xs text-terminal-text transition-colors hover:bg-white/10"
       >
         +
       </button>
