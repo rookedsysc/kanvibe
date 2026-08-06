@@ -23,6 +23,7 @@ const {
   mockTerminalFocus,
   mockDisposeMacShiftSelectionPatch,
   mockFit,
+  mockGetTerminalOpacity,
 } = vi.hoisted(() => ({
   mockOpenTerminal: vi.fn(),
   mockFocusTerminal: vi.fn(),
@@ -34,6 +35,7 @@ const {
   mockTerminalFocus: vi.fn(),
   mockDisposeMacShiftSelectionPatch: vi.fn(),
   mockFit: vi.fn(),
+  mockGetTerminalOpacity: vi.fn().mockResolvedValue(1),
 }));
 
 class MockXTerm {
@@ -71,9 +73,14 @@ vi.mock("@/lib/terminalMouseSelection", () => ({
   installMacShiftSelectionPatch: () => mockDisposeMacShiftSelectionPatch,
 }));
 
+vi.mock("@/desktop/renderer/actions/appSettings", () => ({
+  getTerminalOpacity: () => mockGetTerminalOpacity(),
+}));
+
 describe("Desktop Terminal", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockGetTerminalOpacity.mockResolvedValue(1);
 
     Object.defineProperty(document, "fonts", {
       configurable: true,
@@ -213,6 +220,19 @@ describe("Desktop Terminal", () => {
         }
       },
     );
+
+    // When
+    render(<Terminal taskId="task-1" />);
+
+    // Then
+    await waitFor(() => {
+      expect(mockOpenTerminal).toHaveBeenCalledWith("task-1", null, 80, 24);
+    });
+  });
+
+  it("투명도 설정을 읽지 못해도 터미널 연결을 시작한다", async () => {
+    // Given
+    mockGetTerminalOpacity.mockRejectedValue(new Error("설정 조회 실패"));
 
     // When
     render(<Terminal taskId="task-1" />);

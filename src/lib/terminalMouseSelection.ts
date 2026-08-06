@@ -1,4 +1,5 @@
-import type { ITerminalOptions } from "@xterm/xterm";
+import type { ITerminalOptions, ITheme } from "@xterm/xterm";
+import { OPAQUE_TERMINAL_OPACITY, clampTerminalOpacity, isTerminalTransparent } from "@/lib/terminalOpacity";
 
 interface XTermSelectionService {
   shouldForceSelection(event: MouseEvent): boolean;
@@ -18,15 +19,37 @@ const TERMINAL_THEME = {
   selectionBackground: "#3b82f680",
 };
 
-export function createTerminalOptions(fontFamily: string): ITerminalOptions {
+/** 불투명도를 xterm 색상 문자열이 받는 두 자리 alpha hex로 바꾼다 */
+function toAlphaHex(opacity: number): string {
+  return Math.round(opacity * 255).toString(16).padStart(2, "0");
+}
+
+/** 요청된 불투명도를 배경색 alpha로 반영한 xterm 테마를 만든다 */
+export function createTerminalTheme(terminalOpacity: number): ITheme {
+  if (!isTerminalTransparent(terminalOpacity)) {
+    return TERMINAL_THEME;
+  }
+
+  return {
+    ...TERMINAL_THEME,
+    background: `${TERMINAL_THEME.background}${toAlphaHex(clampTerminalOpacity(terminalOpacity))}`,
+  };
+}
+
+export function createTerminalOptions(
+  fontFamily: string,
+  terminalOpacity: number = OPAQUE_TERMINAL_OPACITY,
+): ITerminalOptions {
   return {
     allowProposedApi: true,
+    /** 반투명 배경은 open() 전에 켜야 하므로 터미널 생성 시점의 설정으로 결정한다 */
+    allowTransparency: isTerminalTransparent(terminalOpacity),
     cursorBlink: true,
     fontSize: 14,
     fontFamily,
     rescaleOverlappingGlyphs: true,
     macOptionClickForcesSelection: true,
-    theme: TERMINAL_THEME,
+    theme: createTerminalTheme(terminalOpacity),
   };
 }
 
