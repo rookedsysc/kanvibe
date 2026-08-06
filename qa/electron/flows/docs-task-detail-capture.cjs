@@ -121,17 +121,31 @@ async function captureRetinaScreenshot(app, shotPath) {
   return encodedPng.scaleFactor;
 }
 
-/** 탭 바만 잘라 근접 컷을 만든다. 기능 문서에서 탭 조작을 설명할 때 쓴다 */
-async function captureTabBar(page, shotPath) {
-  const tabBar = page.getByTestId("terminal-tab-bar");
-  const box = await tabBar.boundingBox();
-  if (!box) throw new Error("탭 바 위치를 잡지 못했다");
+/**
+ * 작업 정보 패널은 탭 바와 터미널 왼쪽을 덮으므로, 터미널 전체가 보여야 하는 컷에서는 먼저 닫는다.
+ * 앱이 설계한 해제 방법 그대로 패널 밖 터미널 본문을 누른 뒤,
+ * 탭 바 왼쪽 끝이 실제로 맨 앞에 나올 때까지 기다린다.
+ */
+async function dismissDetailPanel(page) {
+  await page.mouse.click(Math.round(DETAIL_VIEWPORT.width * 0.75), Math.round(DETAIL_VIEWPORT.height * 0.6));
 
-  /** 새 탭 버튼까지가 탭 바이고, 그 오른쪽 알림 아이콘은 탭과 무관하므로 잘라 낸다 */
-  await page.screenshot({
-    path: shotPath,
-    clip: { x: box.x - 8, y: box.y - 10, width: box.width + 16, height: box.height + 20 },
-  });
+  await page.waitForFunction(() => {
+    const tabBar = document.querySelector("[data-testid='terminal-tab-bar']");
+    if (!tabBar) return false;
+    const rect = tabBar.getBoundingClientRect();
+    return tabBar.contains(document.elementFromPoint(rect.left + 8, rect.top + rect.height / 2));
+  }, undefined, { timeout: 10000 });
+}
+
+/** 작업 정보 패널을 다시 띄운다. dock 첫 칸의 단축키가 그대로 토글이다 */
+async function openDetailPanel(page) {
+  await page.keyboard.press(process.platform === "darwin" ? "Meta+1" : "Alt+1");
+  await page.waitForFunction(() => {
+    const tabBar = document.querySelector("[data-testid='terminal-tab-bar']");
+    if (!tabBar) return false;
+    const rect = tabBar.getBoundingClientRect();
+    return !tabBar.contains(document.elementFromPoint(rect.left + 8, rect.top + rect.height / 2));
+  }, undefined, { timeout: 10000 });
 }
 
 async function invokeDesktop(page, namespace, method, ...args) {
@@ -244,6 +258,8 @@ async function main() {
     await page.evaluate((id) => { window.location.hash = `#/ko/task/${id}`; }, task.id);
     await page.getByTestId("terminal-tab-bar").waitFor({ state: "visible", timeout: 30000 });
     await page.waitForTimeout(2500);
+    /** 기본으로 열리는 작업 정보 패널은 탭 바를 덮으므로, 탭을 만들기 전에 먼저 걷는다 */
+    await dismissDetailPanel(page);
 
     for (let tabIndex = 1; tabIndex < TAB_FIXTURES.length; tabIndex += 1) {
       await page.getByTestId("terminal-tab-new").click();
@@ -259,20 +275,25 @@ async function main() {
     /** 첫 탭을 활성으로 되돌려 "여러 탭 중 하나를 보고 있다"가 드러나게 한다 */
     await page.locator(`[data-terminal-tab-id='${tabs[0].id}']`).click();
     /** 탭 위에 커서가 남으면 단축키 힌트가 닫기 버튼으로 바뀐 채 찍힌다 */
-    await page.mouse.move(Math.round(DETAIL_VIEWPORT.width * 0.7), Math.round(DETAIL_VIEWPORT.height * 0.7));
+    await page.mouse.move(Math.round(DETAIL_VIEWPORT.width * 0.5), Math.round(DETAIL_VIEWPORT.height * 0.8));
     await page.waitForTimeout(2000);
 
-    const detailPath = path.join(OUT_DIR, "task-detail.png");
-    const scaleFactor = await captureRetinaScreenshot(app, detailPath);
+    /** 탭 설명용 컷은 탭 바와 그 아래 터미널이 한 화면에 다 들어와야 하므로 패널이 없는 상태로 찍는다 */
+    const tabsPath = path.join(OUT_DIR, "terminal-tabs.png");
+    const scaleFactor = await captureRetinaScreenshot(app, tabsPath);
 
-    const tabBarPath = path.join(OUT_DIR, "terminal-tabs.png");
-    await captureTabBar(page, tabBarPath);
+    /** 워크스페이스 컷은 작업 정보 패널을 다시 띄운 실제 기본 모습으로 찍는다 */
+    await openDetailPanel(page);
+    await page.waitForTimeout(1500);
+
+    const detailPath = path.join(OUT_DIR, "task-detail.png");
+    await captureRetinaScreenshot(app, detailPath);
 
     console.log(JSON.stringify({
       ok: true,
       scaleFactor,
       tabs: (await readTabs(page)).map((tab) => tab.name),
-      screenshots: [detailPath, tabBarPath],
+      screenshots: [detailPath, tabsPath],
     }));
   } catch (error) {
     console.error("[capture] electron output:\n" + (typeof app.output === "function" ? app.output() : ""));
