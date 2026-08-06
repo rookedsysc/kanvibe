@@ -37,6 +37,11 @@ KanVibe는 칸반 보드, 터미널 세션, git worktree, AI 에이전트 hooks�
 
 한 태스크 안에서 터미널을 여러 개 열어 서버, 테스트, 에이전트 실행을 나눠 둘 수 있습니다.
 
+<figure className="kv-shot">
+  <img src="/screenshots/terminal-tabs.png" alt="claude, dev server, test 세 개의 터미널 탭이 열려 있는 탭 바" />
+  <figcaption>터미널 위쪽 탭 바에서 오른쪽 <code>+</code> 버튼으로 탭을 추가합니다. 앞 다섯 개 탭에는 바로 이동하는 단축키가 함께 표시됩니다.</figcaption>
+</figure>
+
 - 탭 바에서 탭을 추가·전환·닫고, 더블클릭으로 이름을 바꾸고, 드래그로 순서를 옮깁니다.
 - tmux와 zellij 세션의 탭은 각각 tmux window, zellij tab과 **양방향으로 동기화**됩니다. KanVibe 밖에서 `tmux new-window`로 만든 window도 탭 바에 나타나고, 탭을 클릭하면 멀티플렉서의 활성 대상도 함께 바뀝니다.
 - 멀티플렉서 세션에서는 KanVibe가 자체 탭 바를 그리므로 tmux 상태바와 zellij 탭 바는 KanVibe가 만든 세션에 한해 꺼둡니다.

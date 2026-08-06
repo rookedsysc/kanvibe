@@ -37,6 +37,11 @@ KanVibe 将看板、终端会话、git worktree 与 AI 代理 hooks 连接成一
 
 可在同一个任务中打开多个终端，把服务器、测试和代理执行分开。
 
+<figure className="kv-shot">
+  <img src="/screenshots/terminal-tabs.png" alt="打开了 claude、dev server、test 三个终端标签页的标签栏" />
+  <figcaption>用终端上方标签栏右端的 <code>+</code> 按钮新增标签页。前五个标签页还会显示直接跳转的快捷键。</figcaption>
+</figure>
+
 - 在标签栏中新增、切换、关闭标签页，双击重命名，拖拽调整顺序。
 - tmux 和 zellij 会话的标签页与 tmux window、zellij tab **双向同步**。在 KanVibe 之外用 `tmux new-window` 创建的 window 也会出现在标签栏中；点击标签页时，多路复用器的活动对象也会随之切换。
 - 由于 KanVibe 自己绘制标签栏，tmux 状态栏和 zellij 标签栏会被关闭 —— 仅限 KanVibe 创建的会话。
