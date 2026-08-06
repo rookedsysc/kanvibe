@@ -488,6 +488,7 @@ describe("kanbanService.createTask", () => {
       "tmux",
       "remote-host",
       "/remote/repo__worktrees/feature-remote",
+      "project-remote",
     );
     expect(mocks.installKanvibeHookFiles.mock.invocationCallOrder[0]).toBeLessThan(
       mocks.scheduleKanvibeHooksVerification.mock.invocationCallOrder[0],
@@ -627,6 +628,7 @@ describe("kanbanService.createTask", () => {
         "tmux",
         "remote-host",
         "/remote/repo__worktrees/feature-slow-hooks",
+        "project-remote",
       );
       expect(mocks.scheduleKanvibeHooksVerification).not.toHaveBeenCalled();
       expect(mocks.broadcastBoardUpdate).toHaveBeenCalledTimes(1);

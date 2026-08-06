@@ -17,19 +17,283 @@ import {
   ZELLIJ_LAYOUT_FILENAME,
 } from "@/lib/worktree";
 import { createLocalShellEnvironment } from "@/lib/shellEnvironment";
+import type { TerminalTab } from "@/desktop/shared/terminalTabs";
 
 /**
  * 활성 터미널 세션을 관리하는 레지스트리.
- * taskId를 키로 PTY 프로세스를 추적한다.
+ * 이 모듈이 PTY의 유일한 소유자다. 탭 조작도 여기 있는 PTY를 통해서만 이뤄진다.
  */
 interface TerminalEntry {
   pty: import("node-pty").IPty;
   clients: Set<WebSocket>;
   sessionType: SessionType;
   sessionName: string;
+  taskId: string;
+  tabId: string | null;
 }
 
 const activeTerminals = new Map<string, TerminalEntry>();
+
+/**
+ * tmux와 zellij는 태스크당 PTY 하나를 멀티플렉서에 붙이고 탭은 멀티플렉서 안에 있다.
+ * terminal 세션만 탭마다 PTY를 따로 가지므로 탭 식별자까지 키에 넣는다.
+ */
+function buildTerminalKey(taskId: string, tabId: string | null): string {
+  return tabId ? `${taskId}#${tabId}` : taskId;
+}
+
+/**
+ * terminal 세션은 화면을 벗어나도 셸을 유지한다.
+ * tmux와 zellij는 PTY를 끊어도 세션이 서버에 남지만, terminal 세션의 PTY는 곧 작업 그 자체다.
+ */
+function shouldSurviveWithoutClients(sessionType: SessionType): boolean {
+  return sessionType === SessionType.TERMINAL;
+}
+
+/**
+ * terminal 세션의 탭 목록.
+ * 탭은 PTY보다 먼저 생기고(렌더러가 붙기 전) PTY보다 늦게까지 남을 수 있어(셸이 죽어도 탭이 보임)
+ * `activeTerminals`와 별도로 관리하되, 소유자는 이 모듈 하나로 유지한다.
+ */
+interface LocalTerminalTabState {
+  tabs: { id: string; name: string }[];
+  activeTabId: string;
+  nextTabNumber: number;
+}
+
+const localTerminalTabs = new Map<string, LocalTerminalTabState>();
+
+/** tmux가 window 이름에 실행 중인 명령을 쓰는 것과 같은 방식으로, 기본 탭 이름은 셸 이름으로 둔다 */
+function getDefaultTabName(): string {
+  const shellPath = process.env.SHELL;
+  return shellPath ? path.basename(shellPath) : "shell";
+}
+
+function createTabState(taskId: string): LocalTerminalTabState {
+  const state: LocalTerminalTabState = {
+    tabs: [{ id: `${taskId}-1`, name: getDefaultTabName() }],
+    activeTabId: `${taskId}-1`,
+    nextTabNumber: 2,
+  };
+  localTerminalTabs.set(taskId, state);
+  return state;
+}
+
+function getTabState(taskId: string): LocalTerminalTabState {
+  return localTerminalTabs.get(taskId) ?? createTabState(taskId);
+}
+
+function toTerminalTabs(state: LocalTerminalTabState): TerminalTab[] {
+  return state.tabs.map((tab, index) => ({
+    id: tab.id,
+    index,
+    name: tab.name,
+    isActive: tab.id === state.activeTabId,
+  }));
+}
+
+/** terminal 세션의 탭 목록을 반환한다. 처음 열리는 태스크는 탭 하나를 만들어 준다 */
+export function listLocalTerminalTabs(taskId: string): TerminalTab[] {
+  return toTerminalTabs(getTabState(taskId));
+}
+
+/** 새 탭을 목록 끝에 추가하고 활성으로 만든다. PTY는 렌더러가 붙을 때 생긴다 */
+export function createLocalTerminalTab(taskId: string): TerminalTab {
+  const state = getTabState(taskId);
+  const createdTab = { id: `${taskId}-${state.nextTabNumber}`, name: getDefaultTabName() };
+
+  state.nextTabNumber += 1;
+  state.tabs.push(createdTab);
+  state.activeTabId = createdTab.id;
+
+  return {
+    id: createdTab.id,
+    index: state.tabs.length - 1,
+    name: createdTab.name,
+    isActive: true,
+  };
+}
+
+/** 탭을 닫고 남은 탭 수를 반환한다. 활성 탭을 닫으면 그 자리를 이어받는 탭이 활성이 된다 */
+export function closeLocalTerminalTab(taskId: string, tabId: string): number {
+  const state = getTabState(taskId);
+  const closedIndex = state.tabs.findIndex((tab) => tab.id === tabId);
+  if (closedIndex === -1) {
+    return state.tabs.length;
+  }
+
+  destroyTerminal(buildTerminalKey(taskId, tabId), "close-terminal-tab");
+  state.tabs.splice(closedIndex, 1);
+
+  if (state.tabs.length === 0) {
+    localTerminalTabs.delete(taskId);
+    return 0;
+  }
+
+  if (state.activeTabId === tabId) {
+    state.activeTabId = state.tabs[Math.min(closedIndex, state.tabs.length - 1)].id;
+  }
+
+  return state.tabs.length;
+}
+
+export function renameLocalTerminalTab(taskId: string, tabId: string, name: string): void {
+  const targetTab = getTabState(taskId).tabs.find((tab) => tab.id === tabId);
+  if (targetTab) {
+    targetTab.name = name;
+  }
+}
+
+export function selectLocalTerminalTab(taskId: string, tabId: string): void {
+  const state = getTabState(taskId);
+  if (state.tabs.some((tab) => tab.id === tabId)) {
+    state.activeTabId = tabId;
+  }
+}
+
+export function moveLocalTerminalTab(taskId: string, tabId: string, targetIndex: number): void {
+  const state = getTabState(taskId);
+  const currentIndex = state.tabs.findIndex((tab) => tab.id === tabId);
+  if (currentIndex === -1 || targetIndex < 0 || targetIndex >= state.tabs.length) {
+    return;
+  }
+
+  const [movedTab] = state.tabs.splice(currentIndex, 1);
+  state.tabs.splice(targetIndex, 0, movedTab);
+}
+
+/** 앱 종료 경로. terminal 세션은 KanVibe가 소유하므로 남겨두면 고아 프로세스가 된다 */
+export function killAllTerminalSessions(): void {
+  for (const terminalKey of [...activeTerminals.keys()]) {
+    destroyTerminal(terminalKey, "app-quit");
+  }
+  localTerminalTabs.clear();
+}
+
+/** WebSocket 하나를 기존 PTY에 연결한다. 같은 PTY를 여러 창이 공유할 수 있다 */
+function attachClientToEntry(terminalKey: string, entry: TerminalEntry, ws: WebSocket): void {
+  entry.clients.add(ws);
+
+  ws.on("message", (message) => {
+    handleTerminalMessage(entry.pty, message.toString());
+  });
+
+  ws.on("close", () => {
+    debugLog("ws.close 발생", { terminalKey, remainingClients: entry.clients.size - 1 });
+    releaseTerminalClient(terminalKey, ws, "ws-close");
+  });
+}
+
+/**
+ * 클라이언트 하나를 떼어낸다.
+ * 마지막 클라이언트가 떠나도 terminal 세션은 살려 두고, 멀티플렉서 세션만 PTY를 끊는다.
+ */
+function releaseTerminalClient(terminalKey: string, ws: WebSocket, triggerLabel: string): void {
+  const entry = activeTerminals.get(terminalKey);
+  if (!entry) {
+    return;
+  }
+
+  entry.clients.delete(ws);
+  if (entry.clients.size > 0) {
+    return;
+  }
+
+  if (shouldSurviveWithoutClients(entry.sessionType)) {
+    debugLog("클라이언트가 모두 떠났지만 terminal 세션은 유지한다", { terminalKey, triggerLabel });
+    return;
+  }
+
+  destroyTerminal(terminalKey, triggerLabel);
+}
+
+/** PTY를 죽이고 붙어 있던 클라이언트를 모두 닫는다 */
+function destroyTerminal(terminalKey: string, triggerLabel?: string): void {
+  const entry = activeTerminals.get(terminalKey);
+  if (!entry) {
+    debugLog("destroyTerminal 호출 (entry 없음)", { terminalKey, triggerLabel });
+    return;
+  }
+
+  debugLog("destroyTerminal 진입", {
+    terminalKey,
+    triggerLabel,
+    sessionName: entry.sessionName,
+    clients: entry.clients.size,
+  });
+
+  try {
+    entry.pty.kill();
+  } catch {
+    // 이미 종료된 경우 무시
+  }
+
+  for (const client of entry.clients) {
+    if (client.readyState === client.OPEN) {
+      client.close();
+    }
+  }
+  entry.clients.clear();
+
+  activeTerminals.delete(terminalKey);
+}
+
+/** PTY 출력을 붙어 있는 모든 클라이언트에 흘리고, PTY가 죽으면 레지스트리에서 지운다 */
+function registerTerminalEntry(
+  terminalKey: string,
+  entry: TerminalEntry,
+  ws: WebSocket,
+  debugLabel: string,
+): void {
+  activeTerminals.set(terminalKey, entry);
+
+  let firstDataLogged = false;
+  entry.pty.onData((data) => {
+    if (!firstDataLogged) {
+      firstDataLogged = true;
+      debugLog(`${debugLabel} PTY 첫 데이터 수신`, { terminalKey, sample: data.slice(0, 200) });
+    }
+    for (const client of entry.clients) {
+      if (client.readyState === client.OPEN) {
+        client.send(data);
+      }
+    }
+  });
+
+  entry.pty.onExit(({ exitCode, signal }) => {
+    debugLog(`${debugLabel} PTY onExit`, { terminalKey, exitCode, signal });
+    destroyTerminal(terminalKey, `${debugLabel}-pty-exit`);
+    /** 셸이 스스로 끝난 탭은 목록에서도 사라져야 사용자가 죽은 탭을 클릭하지 않는다 */
+    if (entry.tabId) {
+      removeClosedTab(entry.taskId, entry.tabId);
+    }
+  });
+
+  attachClientToEntry(terminalKey, entry, ws);
+}
+
+/** PTY가 스스로 끝났을 때 탭 목록만 정리한다. PTY는 이미 없으므로 다시 죽이지 않는다 */
+function removeClosedTab(taskId: string, tabId: string): void {
+  const state = localTerminalTabs.get(taskId);
+  if (!state) {
+    return;
+  }
+
+  const closedIndex = state.tabs.findIndex((tab) => tab.id === tabId);
+  if (closedIndex === -1) {
+    return;
+  }
+
+  state.tabs.splice(closedIndex, 1);
+  if (state.tabs.length === 0) {
+    localTerminalTabs.delete(taskId);
+    return;
+  }
+
+  if (state.activeTabId === tabId) {
+    state.activeTabId = state.tabs[Math.min(closedIndex, state.tabs.length - 1)].id;
+  }
+}
 
 function shouldLogTerminalSpawn(): boolean {
   return process.env.KANVIBE_DEBUG_TERMINAL === "true";
@@ -138,9 +402,60 @@ function bootstrapLocalTmuxSession(
   }
 }
 
-/** 로컬 tmux / zellij 세션에 attach하여 WebSocket과 연결한다 */
+/** 로그인 셸을 그대로 띄워, 사용자가 평소 쓰는 셸 설정을 받게 한다 */
+function resolveLoginShell(): string {
+  return process.env.SHELL || "/bin/sh";
+}
+
+interface LocalPtySpawnPlan {
+  shell: string;
+  args: string[];
+  cwd: string;
+}
+
+/**
+ * 세션 타입별로 어떤 프로세스를 띄울지 정한다.
+ * tmux는 이미 만들어 둔 세션에 attach하고, zellij는 세션이 없으면 생성까지 겸하며,
+ * terminal은 멀티플렉서 없이 로그인 셸을 바로 띄운다.
+ */
+function buildLocalPtySpawnPlan(
+  sessionType: SessionType,
+  sessionName: string,
+  cwd: string | null | undefined,
+  zellijNeedsCreation: boolean,
+): LocalPtySpawnPlan {
+  const homeDirectory = process.env.HOME || "/";
+
+  if (sessionType === SessionType.TERMINAL) {
+    return { shell: resolveLoginShell(), args: ["-l"], cwd: cwd || homeDirectory };
+  }
+
+  if (sessionType === SessionType.TMUX) {
+    return { shell: "tmux", args: ["attach-session", "-t", sessionName], cwd: homeDirectory };
+  }
+
+  if (!zellijNeedsCreation) {
+    return { shell: "zellij", args: ["attach", sessionName], cwd: homeDirectory };
+  }
+
+  /** 세션이 없으면 --session으로 생성과 attach를 동시에 처리한다 */
+  const args = ["--session", sessionName];
+
+  /** worktree 디렉토리에 KDL 레이아웃 파일이 있으면 새 세션 생성 시 적용한다 */
+  if (cwd) {
+    const layoutFile = path.join(cwd, ZELLIJ_LAYOUT_FILENAME);
+    if (existsSync(layoutFile)) {
+      args.push("--new-session-with-layout", layoutFile);
+    }
+  }
+
+  return { shell: "zellij", args, cwd: cwd || homeDirectory };
+}
+
+/** 로컬 tmux / zellij / terminal 세션에 attach하여 WebSocket과 연결한다 */
 export async function attachLocalSession(
   taskId: string,
+  tabId: string | null,
   sessionType: SessionType,
   sessionName: string,
   ws: WebSocket,
@@ -152,42 +467,19 @@ export async function attachLocalSession(
   const initialCols = cols ?? 120;
   const initialRows = rows ?? 30;
   const terminalEnvironment = createLocalShellEnvironment();
+  const terminalKey = buildTerminalKey(taskId, tabId);
 
-  /** 동일 taskId로 이미 활성 PTY가 있으면 기존 PTY를 공유한다 */
-  const existing = activeTerminals.get(taskId);
+  /** 같은 터미널에 이미 활성 PTY가 있으면 기존 PTY를 공유한다 */
+  const existing = activeTerminals.get(terminalKey);
   if (existing) {
-    existing.clients.add(ws);
-
-    ws.on("message", (message) => {
-      const data = message.toString();
-      if (data.startsWith("\x01")) {
-        try {
-          const parsed = JSON.parse(data.slice(1));
-          if (parsed.type === "resize" && parsed.cols && parsed.rows) {
-            existing.pty.resize(parsed.cols, parsed.rows);
-          }
-        } catch {
-          existing.pty.write(data);
-        }
-        return;
-      }
-      existing.pty.write(data);
-    });
-
-    ws.on("close", () => {
-      debugLog("Local ws.close 발생 (기존 세션)", { taskId, remainingClients: existing.clients.size - 1 });
-      existing.clients.delete(ws);
-      if (existing.clients.size === 0) {
-        detachSession(taskId, "local-ws-close-existing");
-      }
-    });
-
+    attachClientToEntry(terminalKey, existing, ws);
     return;
   }
 
   /**
    * tmux: 세션이 없으면 execSync으로 detached 세션을 먼저 생성한다 (TTY 불필요).
    * zellij: TTY 없이 실행 불가하므로, node-pty가 PTY를 제공하며 세션 생성을 처리한다.
+   * terminal: 멀티플렉서가 없으므로 준비할 세션도 없다.
    */
   let zellijNeedsCreation = false;
 
@@ -206,52 +498,27 @@ export async function attachLocalSession(
         throw new Error("tmux 세션 생성에 실패했습니다.");
       }
     }
-  } else {
+  } else if (sessionType === SessionType.ZELLIJ) {
     zellijNeedsCreation = !isZellijSessionAlive(sessionName);
     console.log(`[터미널] zellij sessionName="${sessionName}", needsCreation=${zellijNeedsCreation}, cwd=${cwd}`);
   }
 
   const pty = await import("node-pty");
-
-  let shell: string;
-  let args: string[];
-  let ptyCwd: string;
-
-  if (sessionType === SessionType.TMUX) {
-    shell = "tmux";
-    args = ["attach-session", "-t", sessionName];
-    ptyCwd = process.env.HOME || "/";
-  } else if (zellijNeedsCreation) {
-    /** 세션이 없으면 --session으로 생성과 attach를 동시에 처리한다 */
-    shell = "zellij";
-    args = ["--session", sessionName];
-    ptyCwd = cwd || process.env.HOME || "/";
-
-    /** worktree 디렉토리에 KDL 레이아웃 파일이 있으면 새 세션 생성 시 적용한다 */
-    if (cwd) {
-      const layoutFile = path.join(cwd, ZELLIJ_LAYOUT_FILENAME);
-      if (existsSync(layoutFile)) {
-        args.push("--new-session-with-layout", layoutFile);
-      }
-    }
-  } else {
-    /** 기존 세션에 attach한다 */
-    shell = "zellij";
-    args = ["attach", sessionName];
-    ptyCwd = process.env.HOME || "/";
-  }
+  const spawnPlan = buildLocalPtySpawnPlan(sessionType, sessionName, cwd, zellijNeedsCreation);
 
   if (shouldLogTerminalSpawn()) {
-    console.log(`[터미널] PTY spawn: shell=${shell}, args=${JSON.stringify(args)}, cwd=${ptyCwd}`);
+    console.log(
+      `[터미널] PTY spawn: shell=${spawnPlan.shell}, args=${JSON.stringify(spawnPlan.args)}, cwd=${spawnPlan.cwd}`,
+    );
   }
 
   let ptyProcess: import("node-pty").IPty;
   try {
-    ptyProcess = pty.spawn(shell, args, {
+    ptyProcess = pty.spawn(spawnPlan.shell, spawnPlan.args, {
       name: "xterm-256color",
       cols: initialCols,
       rows: initialRows,
-      cwd: ptyCwd,
+      cwd: spawnPlan.cwd,
       env: terminalEnvironment,
     });
   } catch (error) {
@@ -260,57 +527,18 @@ export async function attachLocalSession(
     throw new Error("터미널 프로세스 생성 실패");
   }
 
-  const entry: TerminalEntry = { pty: ptyProcess, clients: new Set([ws]), sessionType, sessionName };
-  activeTerminals.set(taskId, entry);
-
-  let firstLocalDataLogged = false;
-  ptyProcess.onData((data) => {
-    if (!firstLocalDataLogged) {
-      firstLocalDataLogged = true;
-      debugLog("Local PTY 첫 데이터 수신", { taskId, sample: data.slice(0, 200) });
-    }
-    for (const client of entry.clients) {
-      if (client.readyState === client.OPEN) {
-        client.send(data);
-      }
-    }
-  });
-
-  ptyProcess.onExit(({ exitCode, signal }) => {
-    debugLog("Local PTY onExit", { taskId, exitCode, signal });
-    detachSession(taskId, "local-pty-exit");
-  });
-
-  ws.on("message", (message) => {
-    const data = message.toString();
-
-    if (data.startsWith("\x01")) {
-      try {
-        const parsed = JSON.parse(data.slice(1));
-        if (parsed.type === "resize" && parsed.cols && parsed.rows) {
-          ptyProcess.resize(parsed.cols, parsed.rows);
-        }
-      } catch {
-        ptyProcess.write(data);
-      }
-      return;
-    }
-
-    ptyProcess.write(data);
-  });
-
-  ws.on("close", () => {
-    debugLog("Local ws.close 발생", { taskId, remainingClients: entry.clients.size - 1 });
-    entry.clients.delete(ws);
-    if (entry.clients.size === 0) {
-      detachSession(taskId, "local-ws-close");
-    }
-  });
+  registerTerminalEntry(
+    terminalKey,
+    { pty: ptyProcess, clients: new Set([ws]), sessionType, sessionName, taskId, tabId },
+    ws,
+    "Local",
+  );
 }
 
 /** SSH를 통해 원격 세션에 attach하여 WebSocket과 연결한다 */
 export async function attachRemoteSession(
   taskId: string,
+  tabId: string | null,
   sshHost: string,
   sessionType: SessionType,
   sessionName: string,
@@ -330,25 +558,16 @@ export async function attachRemoteSession(
   const initialCols = cols ?? 120;
   const initialRows = rows ?? 30;
   const terminalEnvironment = createLocalShellEnvironment();
+  const terminalKey = buildTerminalKey(taskId, tabId);
 
-  const existing = activeTerminals.get(taskId);
+  const existing = activeTerminals.get(terminalKey);
   if (existing) {
-    existing.clients.add(ws);
-    ws.on("message", (message) => handleTerminalMessage(existing.pty, message.toString()));
-    ws.on("close", () => {
-      debugLog("Remote ws.close 발생 (기존 세션)", { taskId, remainingClients: existing.clients.size - 1 });
-      existing.clients.delete(ws);
-      if (existing.clients.size === 0) {
-        detachSession(taskId, "remote-ws-close-existing");
-      }
-    });
+    attachClientToEntry(terminalKey, existing, ws);
     return;
   }
 
   const pty = await import("node-pty");
-  const attachCommand = sessionType === SessionType.TMUX
-    ? buildRemoteTmuxAttachCommand(sessionName, worktreePath, tmuxPaneLayout)
-    : buildRemoteZellijAttachCommand(sessionName, worktreePath);
+  const attachCommand = buildRemoteAttachCommand(sessionType, sessionName, worktreePath, tmuxPaneLayout);
   const args = [
     ...buildSSHArgs(sshConfig, {
       forceTty: true,
@@ -379,45 +598,56 @@ export async function attachRemoteSession(
   }
 
   debugLog("Remote PTY spawn 성공", { taskId, pid: ptyProcess.pid });
-
-  const entry: TerminalEntry = { pty: ptyProcess, clients: new Set([ws]), sessionType, sessionName };
-  activeTerminals.set(taskId, entry);
-
-  let firstDataLogged = false;
-  ptyProcess.onData((data) => {
-    if (!firstDataLogged) {
-      firstDataLogged = true;
-      debugLog("Remote PTY 첫 데이터 수신", { taskId, sample: data.slice(0, 200) });
-    }
-    for (const client of entry.clients) {
-      if (client.readyState === client.OPEN) {
-        client.send(data);
-      }
-    }
-  });
-
-  ptyProcess.onExit(({ exitCode, signal }) => {
-    debugLog("Remote PTY onExit", { taskId, exitCode, signal });
-    detachSession(taskId, "remote-pty-exit");
-  });
-
   debugLog("Remote PTY attachCommand 인자 전달 완료", { taskId, byteLength: attachCommand.length });
 
-  ws.on("message", (message) => {
-    handleTerminalMessage(ptyProcess, message.toString());
-  });
-
-  ws.on("close", () => {
-    debugLog("Remote ws.close 발생", { taskId, remainingClients: entry.clients.size - 1 });
-    entry.clients.delete(ws);
-    if (entry.clients.size === 0) {
-      detachSession(taskId, "remote-ws-close");
-    }
-  });
+  registerTerminalEntry(
+    terminalKey,
+    { pty: ptyProcess, clients: new Set([ws]), sessionType, sessionName, taskId, tabId },
+    ws,
+    "Remote",
+  );
 }
 
 function buildRemoteShellCommand(command: string): string {
   return `sh -lc ${quoteForPosixShell(command)}`;
+}
+
+function buildRemoteAttachCommand(
+  sessionType: SessionType,
+  sessionName: string,
+  worktreePath?: string | null,
+  tmuxPaneLayout?: TmuxPaneLayoutConfig | null,
+): string {
+  if (sessionType === SessionType.TMUX) {
+    return buildRemoteTmuxAttachCommand(sessionName, worktreePath, tmuxPaneLayout);
+  }
+
+  if (sessionType === SessionType.ZELLIJ) {
+    return buildRemoteZellijAttachCommand(sessionName, worktreePath);
+  }
+
+  return buildRemotePlainShellCommand(worktreePath);
+}
+
+/**
+ * 멀티플렉서 없이 원격 로그인 셸만 띄운다.
+ * 이 셸은 SSH 연결에 매여 있어 연결이 끊기면 실행 중이던 작업도 함께 사라진다.
+ * 작업을 살려두려면 tmux나 zellij 세션을 써야 한다는 점을 UI가 사용자에게 알린다.
+ */
+function buildRemotePlainShellCommand(worktreePath?: string | null): string {
+  const launchLoginShell = 'exec "${SHELL:-/bin/sh}" -l';
+  if (!worktreePath) {
+    return launchLoginShell;
+  }
+
+  /** 작업 디렉터리로 못 들어가도 셸은 열어 주되, 왜 다른 위치인지 보이도록 남긴다 */
+  return [
+    `cd ${quoteForPosixShell(worktreePath)} ||`,
+    `printf '%s\\n' ${quoteForPosixShell(
+      `KanVibe: cannot enter ${worktreePath}; starting the shell in the default directory.`,
+    )} >&2;`,
+    launchLoginShell,
+  ].join(" ");
 }
 
 /**
@@ -534,40 +764,27 @@ function handleTerminalMessage(ptyProcess: import("node-pty").IPty, data: string
 
 /** 렌더러의 입력 포커스는 xterm DOM에서만 처리한다. 호스트 tmux 클라이언트 전환은 수행하지 않는다 */
 export function focusSession(taskId: string): void {
-  if (!activeTerminals.has(taskId)) {
-    return;
-  }
-
-  return;
+  void taskId;
 }
 
 /**
- * 터미널 세션을 분리하고 PTY 프로세스를 종료한다. 모든 연결된 클라이언트를 닫는다.
- * @param triggerLabel 누가 detach를 호출했는지 표시 (진단용). 예: "remote-pty-exit", "remote-ws-close", "closeWindowTerminals"
+ * 태스크에 딸린 터미널을 모두 종료한다. 탭이 여러 개인 terminal 세션도 함께 정리한다.
+ * @param triggerLabel 누가 detach를 호출했는지 표시 (진단용). 예: "cleanup-task-resources", "closeWindowTerminals"
  */
 export function detachSession(taskId: string, triggerLabel?: string): void {
-  const entry = activeTerminals.get(taskId);
-  if (!entry) {
+  const taskTerminalKeys = [...activeTerminals.entries()]
+    .filter(([, entry]) => entry.taskId === taskId)
+    .map(([terminalKey]) => terminalKey);
+
+  if (taskTerminalKeys.length === 0) {
     debugLog("detachSession 호출 (entry 없음)", { taskId, triggerLabel });
-    return;
   }
 
-  debugLog("detachSession 진입", { taskId, triggerLabel, sessionName: entry.sessionName, clients: entry.clients.size });
-
-  try {
-    entry.pty.kill();
-  } catch {
-    // 이미 종료된 경우 무시
+  for (const terminalKey of taskTerminalKeys) {
+    destroyTerminal(terminalKey, triggerLabel);
   }
 
-  for (const client of entry.clients) {
-    if (client.readyState === client.OPEN) {
-      client.close();
-    }
-  }
-  entry.clients.clear();
-
-  activeTerminals.delete(taskId);
+  localTerminalTabs.delete(taskId);
 }
 
 /** 활성 터미널 수를 반환한다 */

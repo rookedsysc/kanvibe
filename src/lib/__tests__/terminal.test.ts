@@ -115,6 +115,7 @@ describe("attachLocalSession — tmux 세션 자동 생성", () => {
     // When
     await attachLocalSession(
       "task-1",
+      null,
       SessionType.TMUX,
       "feat-login",
       createMockWs(),
@@ -149,6 +150,7 @@ describe("attachLocalSession — tmux 세션 자동 생성", () => {
     // When
     await attachLocalSession(
       "task-layout",
+      null,
       SessionType.TMUX,
       "feat-login",
       createMockWs(),
@@ -187,6 +189,7 @@ describe("attachLocalSession — tmux 세션 자동 생성", () => {
     // When
     await attachLocalSession(
       "task-hardening",
+      null,
       SessionType.TMUX,
       "feat-login",
       createMockWs(),
@@ -196,6 +199,33 @@ describe("attachLocalSession — tmux 세션 자동 생성", () => {
     // Then
     const bootstrapCmd = findExecSyncCall("new-session");
     expect(bootstrapCmd).toContain("set-option -t 'feat-login' destroy-unattached off");
+  });
+
+  it("KanVibe 탭 바가 window 목록을 그리므로 tmux 상태바는 세션 스코프로만 끈다", async () => {
+    // Given
+    const { attachLocalSession } = await import("@/lib/terminal");
+    mockExecSync.mockImplementation((cmd: string) => {
+      if (typeof cmd === "string" && cmd.includes("has-session")) {
+        throw new Error("session not found");
+      }
+      return "";
+    });
+
+    // When
+    await attachLocalSession(
+      "task-1",
+      null,
+      SessionType.TMUX,
+      "feat-login",
+      createMockWs(),
+      "/workspace",
+    );
+
+    // Then
+    const bootstrapCmd = findExecSyncCall("new-session") ?? "";
+    expect(bootstrapCmd).toContain("set-option -t 'feat-login' status off");
+    expect(bootstrapCmd).not.toContain("set-option -g status");
+    expect(bootstrapCmd).not.toContain("set-option -s status");
   });
 
   it("should scope the terminal size option to the KanVibe session instead of the user tmux server", async () => {
@@ -211,6 +241,7 @@ describe("attachLocalSession — tmux 세션 자동 생성", () => {
     // When
     await attachLocalSession(
       "task-window-size",
+      null,
       SessionType.TMUX,
       "feat-login",
       createMockWs(),
@@ -236,6 +267,7 @@ describe("attachLocalSession — tmux 세션 자동 생성", () => {
     // When
     await attachLocalSession(
       "task-clipboard-default",
+      null,
       SessionType.TMUX,
       "feat-login",
       createMockWs(),
@@ -262,6 +294,7 @@ describe("attachLocalSession — tmux 세션 자동 생성", () => {
     // When
     await attachLocalSession(
       "task-clipboard-user-choice",
+      null,
       SessionType.TMUX,
       "feat-login",
       createMockWs(),
@@ -290,6 +323,7 @@ describe("attachLocalSession — tmux 세션 자동 생성", () => {
     // When
     await attachLocalSession(
       "task-clipboard-check-failure",
+      null,
       SessionType.TMUX,
       "feat-login",
       createMockWs(),
@@ -321,6 +355,7 @@ describe("attachLocalSession — tmux 세션 자동 생성", () => {
     // When
     await attachLocalSession(
       "task-retry",
+      null,
       SessionType.TMUX,
       "feat-login",
       createMockWs(),
@@ -349,6 +384,7 @@ describe("attachLocalSession — tmux 세션 자동 생성", () => {
     // When
     await attachLocalSession(
       "task-layout-quoted",
+      null,
       SessionType.TMUX,
       "feat-login",
       createMockWs(),
@@ -380,6 +416,7 @@ describe("attachLocalSession — tmux 세션 자동 생성", () => {
     // When
     await attachLocalSession(
       "task-2",
+      null,
       SessionType.TMUX,
       "feat-login",
       createMockWs(),
@@ -399,6 +436,7 @@ describe("attachLocalSession — tmux 세션 자동 생성", () => {
     // When
     await attachLocalSession(
       "task-3",
+      null,
       SessionType.TMUX,
       "feat-login",
       createMockWs(),
@@ -436,6 +474,7 @@ describe("attachLocalSession — tmux 세션 자동 생성", () => {
     // When
     await expect(attachLocalSession(
       "task-4",
+      null,
       SessionType.TMUX,
       "feat-login",
       ws,
@@ -473,6 +512,7 @@ describe("attachLocalSession — zellij 세션 생성 및 레이아웃 적용", 
     // When
     await attachLocalSession(
       "task-z1",
+      null,
       SessionType.ZELLIJ,
       "feat-login",
       createMockWs(),
@@ -499,6 +539,7 @@ describe("attachLocalSession — zellij 세션 생성 및 레이아웃 적용", 
     // When
     await attachLocalSession(
       "task-z2",
+      null,
       SessionType.ZELLIJ,
       "feat-login",
       createMockWs(),
@@ -522,6 +563,7 @@ describe("attachLocalSession — zellij 세션 생성 및 레이아웃 적용", 
     // When
     await attachLocalSession(
       "task-z3",
+      null,
       SessionType.ZELLIJ,
       "feat-login",
       createMockWs(),
@@ -546,6 +588,7 @@ describe("attachLocalSession — zellij 세션 생성 및 레이아웃 적용", 
     // When
     await attachLocalSession(
       "task-z4",
+      null,
       SessionType.ZELLIJ,
       "feat-login",
       createMockWs(),
@@ -569,6 +612,7 @@ describe("attachLocalSession — zellij 세션 생성 및 레이아웃 적용", 
     // When
     await attachLocalSession(
       "task-z5",
+      null,
       SessionType.ZELLIJ,
       "feat-login",
       createMockWs(),
@@ -594,6 +638,7 @@ describe("attachLocalSession — zellij 세션 생성 및 레이아웃 적용", 
     // When
     await attachLocalSession(
       "task-z6",
+      null,
       SessionType.ZELLIJ,
       "feat-login",
       createMockWs(),
@@ -623,6 +668,7 @@ describe("attachRemoteSession — zellij 원격 세션", () => {
     // When
     await attachRemoteSession(
       "task-remote-zellij",
+      null,
       "remote-host",
       SessionType.ZELLIJ,
       "remote-session",
@@ -664,6 +710,7 @@ describe("attachRemoteSession — zellij 원격 세션", () => {
     // When
     await attachRemoteSession(
       "task-remote-zellij-no-worktree",
+      null,
       "remote-host",
       SessionType.ZELLIJ,
       "remote-session",
@@ -702,6 +749,7 @@ describe("focusSession — 렌더러 포커스 처리", () => {
 
     await attachLocalSession(
       "task-focus",
+      null,
       SessionType.TMUX,
       "feat-login",
       createMockWs(),
@@ -734,6 +782,7 @@ describe("attachRemoteSession — ssh 바이너리 기반 연결", () => {
       // When
       await attachRemoteSession(
         "task-r1",
+        null,
         "remote-host",
         SessionType.TMUX,
         "remote-session",
@@ -800,6 +849,7 @@ describe("attachRemoteSession — ssh 바이너리 기반 연결", () => {
       // When
       await attachRemoteSession(
         "task-r-shell",
+        null,
         "remote-host",
         SessionType.TMUX,
         "remote-session",
@@ -843,6 +893,7 @@ describe("attachRemoteSession — ssh 바이너리 기반 연결", () => {
       // When
       await attachRemoteSession(
         "task-r-interactive",
+        null,
         "remote-host",
         SessionType.TMUX,
         "remote-session",
@@ -885,6 +936,7 @@ describe("attachRemoteSession — ssh 바이너리 기반 연결", () => {
       // When
       await attachRemoteSession(
         "task-r-x11",
+        null,
         "remote-host",
         SessionType.TMUX,
         "remote-session",
@@ -916,6 +968,7 @@ describe("attachRemoteSession — ssh 바이너리 기반 연결", () => {
 
     await attachRemoteSession(
       "task-r2",
+      null,
       "remote-host",
       SessionType.TMUX,
       "remote-session",
@@ -953,6 +1006,7 @@ describe("attachRemoteSession — ssh 바이너리 기반 연결", () => {
 
     await attachRemoteSession(
       "task-r-tmux-default-socket",
+      null,
       "remote-host",
       SessionType.TMUX,
       "remote-session",
@@ -1010,6 +1064,7 @@ describe("attachRemoteSession — ssh 바이너리 기반 연결", () => {
     // When
     await attachRemoteSession(
       "task-r-clipboard",
+      null,
       "remote-host",
       SessionType.TMUX,
       "remote-session",
@@ -1047,6 +1102,7 @@ describe("attachRemoteSession — ssh 바이너리 기반 연결", () => {
     // When
     await attachRemoteSession(
       "task-r-clipboard-user",
+      null,
       "remote-host",
       SessionType.TMUX,
       "remote-session",
@@ -1079,6 +1135,7 @@ describe("attachRemoteSession — ssh 바이너리 기반 연결", () => {
 
     await attachRemoteSession(
       "task-r-quoted",
+      null,
       "remote-host",
       SessionType.TMUX,
       "remote-session",
@@ -1119,6 +1176,7 @@ describe("attachRemoteSession — ssh 바이너리 기반 연결", () => {
 
     await attachRemoteSession(
       "task-r-long-bootstrap",
+      null,
       "remote-host",
       SessionType.TMUX,
       sessionName,

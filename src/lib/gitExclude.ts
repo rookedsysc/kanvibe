@@ -14,6 +14,7 @@ const EXCLUDE_PATTERNS = [
   ".codex/hooks.json",
   ".codex/config.toml",
   ".opencode/plugins/",
+  ".zellij-layout.kdl",
   KANVIBE_STATE_DIR_EXCLUDE_PATTERN,
 ];
 

@@ -1296,7 +1296,6 @@ describe("TaskDetailRoute", () => {
     const wasNotPrevented = fireEvent.keyDown(terminalInput, {
       key: "[",
       ctrlKey: true,
-      shiftKey: true,
     });
     terminalInput.removeEventListener("keydown", terminalKeyDown);
     window.removeEventListener("keydown", windowBubbleKeyDown);
@@ -1309,7 +1308,6 @@ describe("TaskDetailRoute", () => {
     fireEvent.keyDown(terminalInput, {
       key: "]",
       ctrlKey: true,
-      shiftKey: true,
     });
 
     expect(mocks.forward).toHaveBeenCalledTimes(1);
@@ -1349,12 +1347,10 @@ describe("TaskDetailRoute", () => {
     const wasBackNotPrevented = fireEvent.keyDown(terminalInput, {
       key: "[",
       ctrlKey: true,
-      shiftKey: true,
     });
     const wasForwardNotPrevented = fireEvent.keyDown(terminalInput, {
       key: "]",
       ctrlKey: true,
-      shiftKey: true,
     });
 
     expect(wasBackNotPrevented).toBe(false);
