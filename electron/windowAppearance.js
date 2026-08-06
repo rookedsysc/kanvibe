@@ -25,10 +25,6 @@ function createWindowBackgroundOptions(terminalOpacity) {
   return {
     transparent: true,
     backgroundColor: TRANSPARENT_WINDOW_BACKGROUND_COLOR,
-    // Electron 공식 문서: "Transparent windows are not resizable. Setting resizable
-    // to true may make a transparent window stop working on some platforms."
-    // https://www.electronjs.org/docs/latest/tutorial/custom-window-styles
-    resizable: false,
   };
 }
 

@@ -23,7 +23,7 @@ describe("Electron window appearance", () => {
     const options = createWindowBackgroundOptions(0.8);
 
     // Then
-    expect(options).toEqual({ transparent: true, backgroundColor: "#00000001", resizable: false });
+    expect(options).toEqual({ transparent: true, backgroundColor: "#00000001" });
   });
 
   it("투명도를 읽지 못했으면 창을 투명하게 만들지 않는다", () => {
