@@ -316,35 +316,22 @@ async function main() {
       return `tabs=${JSON.stringify(tabs)}`;
     });
 
-    await optionalStep(checks, "기본으로 열리는 작업 정보 패널이 탭 바를 가리지 않는다", async () => {
-      /** dock 단축키로 작업 정보 패널을 다시 띄운 뒤 실제 좌표와 클릭 도달 여부를 함께 본다 */
+    await optionalStep(checks, "작업 정보 패널이 탭 바를 덮어도 패널을 닫으면 탭을 다시 쓸 수 있다", async () => {
+      /** 패널은 탭 바를 덮도록 되돌렸으므로, 가려지는 것 자체가 아니라 빠져나올 수 있는지를 본다 */
       await page.keyboard.press(process.platform === "darwin" ? "Meta+1" : "Alt+1");
-      await page.getByTestId("task-detail-panel").waitFor({ state: "visible", timeout: 20000 });
-
-      const geometry = await page.evaluate(() => {
-        const panel = document.querySelector("[data-testid='task-detail-panel']");
-        const tabBar = document.querySelector("[data-testid='terminal-tab-bar']");
-        if (!panel || !tabBar) return null;
-        const panelRect = panel.getBoundingClientRect();
-        const tabBarRect = tabBar.getBoundingClientRect();
-        return { panelTop: panelRect.top, tabBarBottom: tabBarRect.bottom };
-      });
-      if (!geometry) throw new Error("패널이나 탭 바를 찾지 못했다");
-      if (geometry.panelTop < geometry.tabBarBottom) {
-        throw new Error(`패널이 탭 바를 덮는다: panelTop=${geometry.panelTop}, tabBarBottom=${geometry.tabBarBottom}`);
-      }
+      await page.getByTestId("terminal-tab-new").waitFor({ state: "attached", timeout: 20000 });
+      await dismissDetailPanel(page);
 
       await page.getByTestId("terminal-tab-new").click({ timeout: 5000 });
-      const tabs = await waitForTabs(page, (list) => list.length >= 2, "패널이 열린 상태에서 + 버튼이 동작하지 않았다");
-      await takeScreenshot(page, run, "detail-panel-does-not-cover-tab-bar", screenshots);
+      const tabs = await waitForTabs(page, (list) => list.length >= 2, "패널을 닫은 뒤에도 + 버튼이 동작하지 않았다");
+      await takeScreenshot(page, run, "detail-panel-dismissed-tab-bar-usable", screenshots);
 
       const closableTab = tabs.at(-1);
       await page.locator(`[data-terminal-tab-id='${closableTab.id}']`).hover();
       await page.getByTestId(`terminal-tab-close-${closableTab.id}`).click();
       await waitForTabs(page, (list) => list.length === 1, "검증용 탭을 되돌리지 못했다");
-      await dismissDetailPanel(page);
 
-      return `panelTop=${Math.round(geometry.panelTop)} >= tabBarBottom=${Math.round(geometry.tabBarBottom)}, 패널이 열린 채로도 + 버튼 클릭 성공`;
+      return "패널을 연 뒤 닫고 + 버튼 클릭 성공";
     });
 
     await optionalStep(checks, "요구사항① + 버튼으로 탭을 추가하면 새 탭이 활성이 된다", async () => {

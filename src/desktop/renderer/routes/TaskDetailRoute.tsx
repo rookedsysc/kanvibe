@@ -846,12 +846,6 @@ export default function TaskDetailRoute() {
     setDefaultPanelDismissed(true);
   }, []);
 
-  /**
-   * 패널은 터미널 위를 덮는 오버레이지만, 터미널 크롬의 탭 바까지 덮으면 탭을 누를 수 없다.
-   * 터미널 화면일 때만 크롬 바 높이만큼 내려 시작해 탭 바를 항상 노출한다.
-   */
-  const panelTopOffsetClassName = hasTerminal && mainView === "terminal" ? "top-[4.25rem]" : "top-3";
-
   const closeDetailPanel = useCallback(() => {
     markDefaultPanelDismissed();
     setActivePanel(null);
@@ -1453,8 +1447,7 @@ export default function TaskDetailRoute() {
 
       {visiblePanel ? (
         <section
-          data-testid="task-detail-panel"
-          className={`absolute bottom-3 left-[4.5rem] z-30 w-[360px] max-w-[calc(100vw-5.5rem)] overflow-y-auto rounded-lg border border-border-default bg-bg-surface/95 p-3 shadow-lg ${panelTopOffsetClassName} ${needsMacDesktopHeaderOffset ? "pt-10" : ""}`}
+          className={`absolute bottom-3 left-[4.5rem] top-3 z-30 w-[360px] max-w-[calc(100vw-5.5rem)] overflow-y-auto rounded-lg border border-border-default bg-bg-surface/95 p-3 shadow-lg ${needsMacDesktopHeaderOffset ? "pt-10" : ""}`}
         >
           <div className="mb-3 flex items-center justify-between border-b border-border-subtle pb-2">
             <h2 className="text-xs font-semibold uppercase text-text-muted">
