@@ -18,7 +18,8 @@ export default defineConfig({
       ".gemini/**",
       ".codex/**",
       ".omc/**",
-      "node_modules/**",
+      /** docs-site 같은 하위 워크스페이스에 설치된 의존성의 테스트 파일까지 걷히지 않도록 모든 깊이를 제외한다 */
+      "**/node_modules/**",
       "tests/e2e/**",
     ],
   },
