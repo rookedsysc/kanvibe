@@ -10,7 +10,11 @@ const { pathToFileURL } = require("node:url");
 const { app, BrowserWindow, ipcMain, session, shell } = require("electron");
 const { createDesktopDiagnostics, resolveDesktopLogPath, serializeErrorForLog } = require("./diagnostics");
 const { applyAppDataDirectoryOverride } = require("./runtimeEnvironment");
-const { OPAQUE_TERMINAL_OPACITY, createWindowBackgroundOptions } = require("./windowAppearance");
+const {
+  OPAQUE_TERMINAL_OPACITY,
+  createWindowBackgroundOptions,
+  shouldDisableGpuAccelerationForTransparency,
+} = require("./windowAppearance");
 
 const DEFAULT_LOCALE = "ko";
 const RENDERER_DEV_URL = process.env.KANVIBE_RENDERER_URL || null;
@@ -51,6 +55,52 @@ let nextIpcRequestId = 1;
 /** 창을 만들 때 쓰는 터미널 투명도. transparent는 창 생성 이후 바꿀 수 없어 시작 시점 값으로 고정한다 */
 let startupTerminalOpacity = OPAQUE_TERMINAL_OPACITY;
 const pendingDiagnosticEvents = [];
+
+/**
+ * app.disableHardwareAcceleration()은 app이 ready 되기 전에만 호출할 수 있다. Electron의
+ * 네이티브 ready 이벤트는 JS가 await로 이벤트 루프에 한 번이라도 양보하면 그 사이에 먼저
+ * 발생할 만큼 빠르므로, appSettingsService.getTerminalOpacity()의 TypeORM 비동기 연결을
+ * 기다리면 경합에서 진다(실제로 져서 disableHardwareAcceleration()이 예외를 던졌다).
+ * src/lib/database.ts의 databaseHasTable()과 같은 방식으로 better-sqlite3를 직접,
+ * 동기적으로 읽어 이 경합을 없앤다.
+ */
+function readStartupTerminalOpacitySync() {
+  try {
+    const Database = require("better-sqlite3");
+    const { getRuntimeDatabasePath } = require(getRuntimeModulePath(path.join("src", "lib", "databasePaths.ts")));
+    const { clampTerminalOpacity } = require(getRuntimeModulePath(path.join("src", "lib", "terminalOpacity.ts")));
+    const databasePath = getRuntimeDatabasePath();
+    if (!fs.existsSync(databasePath)) {
+      return OPAQUE_TERMINAL_OPACITY;
+    }
+
+    const database = new Database(databasePath, { readonly: true, fileMustExist: true });
+    try {
+      const row = database.prepare("SELECT value FROM app_settings WHERE key = ?").get("terminal_opacity");
+      return row ? clampTerminalOpacity(Number.parseFloat(row.value)) : OPAQUE_TERMINAL_OPACITY;
+    } finally {
+      database.close();
+    }
+  } catch (error) {
+    logDiagnostic("main:terminal-opacity-sync-read-failed", { error: serializeErrorForLog(error) });
+    return OPAQUE_TERMINAL_OPACITY;
+  }
+}
+
+registerRuntimeAliases();
+startupTerminalOpacity = readStartupTerminalOpacitySync();
+
+/**
+ * Apple Silicon macOS에서 Electron GPU 컴포지터가 transparent 창의 웹 콘텐츠를 불투명하게
+ * 그려버리는 문제가 있다. 터미널을 반투명하게 쓸 때만 GPU 가속을 끄고, 쓰지 않는 사용자는
+ * 기존 GPU 가속 렌더링을 그대로 유지한다. Linux는 별도 이유로 항상 끈다(위 블록 참고).
+ */
+if (process.platform !== "linux" && shouldDisableGpuAccelerationForTransparency(startupTerminalOpacity)) {
+  app.disableHardwareAcceleration();
+  app.commandLine.appendSwitch("disable-gpu");
+  app.commandLine.appendSwitch("disable-gpu-compositing");
+  app.commandLine.appendSwitch("disable-software-rasterizer");
+}
 
 function logDiagnostic(event, payload = {}) {
   if (!diagnostics) {
@@ -907,17 +957,6 @@ async function loadRenderer(window, targetUrl = getRendererNavigationUrl()) {
   }
 }
 
-/** 저장된 터미널 투명도를 읽는다. 설정 조회가 실패해도 창은 떠야 하므로 불투명으로 되돌린다 */
-async function loadStartupTerminalOpacity() {
-  try {
-    const { getTerminalOpacity } = require(getRuntimeModulePath(path.join("src", "desktop", "main", "services", "appSettingsService.ts")));
-    return await getTerminalOpacity();
-  } catch (error) {
-    logDiagnostic("main:terminal-opacity-load-failed", { error: serializeErrorForLog(error) });
-    return OPAQUE_TERMINAL_OPACITY;
-  }
-}
-
 async function createAppWindow(target = getRendererNavigationUrl()) {
   const browserWindow = new BrowserWindow(createBrowserWindowOptions());
   registerAppWindow(browserWindow);
@@ -954,8 +993,6 @@ app.whenReady().then(async () => {
   const unsubscribeBoardEvents = registerBoardEventForwarding();
   startHookServer();
   registerNotificationHandlers();
-
-  startupTerminalOpacity = await loadStartupTerminalOpacity();
 
   await createMainWindow();
   const { startBackgroundTaskSync } = require(getRuntimeModulePath(path.join("src", "desktop", "main", "services", "backgroundTaskSyncService.ts")));

@@ -335,14 +335,30 @@
 /*
  * 터미널 투명도가 켜지면 터미널을 덮고 있는 배경만 걷어내 창 뒤가 비쳐 보이게 한다.
  * 반투명한 배경색 자체는 xterm 테마가 그리므로 여기서는 배경을 없애기만 한다.
+ *
+ * index.html의 인라인 <style>이 React 하이드레이션 전 흰 화면 방지용으로
+ * html/body/#root 모두에 불투명 배경(#090a0d)을 준다. 이 세 요소가 전부
+ * globals.css보다 먼저 로드되는 그 스타일의 영향을 받으므로, 여기서 셋 다
+ * 걷어내지 않으면 그중 하나만 남아도 화면 전체가 계속 가려진다.
  */
 :root[data-terminal-transparent="true"] {
   --color-terminal-bg: transparent;
+  background: transparent;
 }
 
 :root[data-terminal-transparent="true"] body,
+:root[data-terminal-transparent="true"] #root,
 :root[data-terminal-transparent="true"] .terminal-transparency-surface {
   background: transparent;
+}
+
+/*
+ * xterm.js 기본 스타일시트는 .xterm-viewport에 불투명 검정 배경을 강제로 씌운다.
+ * 이 요소가 터미널 캔버스 바로 뒤에서 전체 영역을 덮기 때문에, 걷어내지 않으면
+ * xterm 테마의 alpha가 실제 창 뒤 배경이 아니라 이 불투명 검정과만 섞인다.
+ */
+:root[data-terminal-transparent="true"] .xterm-viewport {
+  background-color: transparent;
 }
 
 @theme inline {
