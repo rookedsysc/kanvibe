@@ -11,6 +11,8 @@ const TERMINAL_TAB_SCOPE = "터미널 탭: terminal 세션에서 탭 생성·전
 
 /** Linux Electron에서 Mod는 Control이다 */
 const MOD_KEY = process.platform === "darwin" ? "Meta" : "Control";
+/** macOS의 `Cmd+숫자`는 탭 이동이 가져갔으므로 dock은 Option을 더해 비켜 간다 */
+const DOCK_SHORTCUT_PREFIX = process.platform === "darwin" ? "Meta+Alt+" : "Alt+";
 
 /** 정리 명령이 응답하지 않아도 QA 실행이 끝나야 한다 */
 const SESSION_CLEANUP_TIMEOUT_MS = 10_000;
@@ -318,7 +320,7 @@ async function main() {
 
     await optionalStep(checks, "작업 정보 패널이 탭 바를 덮어도 패널을 닫으면 탭을 다시 쓸 수 있다", async () => {
       /** 패널은 탭 바를 덮도록 되돌렸으므로, 가려지는 것 자체가 아니라 빠져나올 수 있는지를 본다 */
-      await page.keyboard.press(process.platform === "darwin" ? "Meta+1" : "Alt+1");
+      await page.keyboard.press(DOCK_SHORTCUT_PREFIX + "1");
       await page.getByTestId("terminal-tab-new").waitFor({ state: "attached", timeout: 20000 });
       await dismissDetailPanel(page);
 
@@ -396,6 +398,23 @@ async function main() {
       );
       await takeScreenshot(page, run, "terminal-session-shortcut-new-tab", screenshots);
       return `${before.length} -> ${tabs.length}`;
+    });
+
+    await optionalStep(checks, `요구사항① ${MOD_KEY}+1 로 1번 탭으로 바로 이동한다`, async () => {
+      const before = await readTabs(page);
+      if (before.findIndex((tab) => tab.isActive) === 0) {
+        await page.keyboard.press(`${MOD_KEY}+2`);
+        await waitForTabs(page, (list) => list.findIndex((tab) => tab.isActive) === 1, "2번 탭으로 이동하지 않았다");
+      }
+
+      await page.keyboard.press(`${MOD_KEY}+1`);
+      const tabs = await waitForTabs(
+        page,
+        (list) => list.findIndex((tab) => tab.isActive) === 0,
+        `${MOD_KEY}+1로 1번 탭이 활성이 되지 않았다`,
+      );
+      await takeScreenshot(page, run, "terminal-session-shortcut-go-to-tab", screenshots);
+      return `activeIndex -> ${tabs.findIndex((tab) => tab.isActive)}`;
     });
 
     await optionalStep(checks, `요구사항① ${MOD_KEY}+Shift+[ 로 이전 탭으로 이동한다`, async () => {

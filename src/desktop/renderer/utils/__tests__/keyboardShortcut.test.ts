@@ -5,6 +5,7 @@ import {
   TERMINAL_TAB_SHORTCUT_INDEXES,
   captureShortcutFromEvent,
   createTaskDetailDockShortcut,
+  createTerminalTabShortcut,
   formatShortcutForDisplay,
   getShortcutPlatformFromNavigator,
   isBlockedElectronShortcutInput,
@@ -118,11 +119,23 @@ describe("keyboardShortcut", () => {
       const macEvent = new KeyboardEvent("keydown", {
         key: String(shortcutIndex),
         metaKey: true,
-        shiftKey: true,
       });
 
       expect(matchTerminalTabShortcutEvent(macEvent, "mac")).toBe(shortcutIndex);
       expect(matchTaskDetailDockShortcutEvent(macEvent, "mac")).toBeNull();
+    }
+  });
+
+  /** macOS는 Cmd+Shift+3~5를 스크린샷으로 가져가 앱에 넘기지 않으므로 탭 단축키가 Shift를 쓰면 죽는다 */
+  it("탭 번호 단축키는 macOS 스크린샷 조합인 Cmd+Shift+숫자를 쓰지 않는다", () => {
+    for (const shortcutIndex of TERMINAL_TAB_SHORTCUT_INDEXES) {
+      expect(formatShortcutForDisplay(createTerminalTabShortcut(shortcutIndex), "mac"))
+        .toBe(`Cmd+${shortcutIndex}`);
+      expect(matchShortcutEvent(new KeyboardEvent("keydown", {
+        key: String(shortcutIndex),
+        metaKey: true,
+        shiftKey: true,
+      }), createTerminalTabShortcut(shortcutIndex), "mac")).toBe(false);
     }
   });
 
@@ -133,12 +146,18 @@ describe("keyboardShortcut", () => {
     expect(matchTerminalTabShortcutEvent(dockEvent, "linux")).toBeNull();
   });
 
+  it("macOS dock 입력은 Option이 더해져 탭 번호 단축키와 갈린다", () => {
+    const dockEvent = new KeyboardEvent("keydown", { key: "1", metaKey: true, altKey: true });
+
+    expect(matchTaskDetailDockShortcutEvent(dockEvent, "mac")).toBe(1);
+    expect(matchTerminalTabShortcutEvent(dockEvent, "mac")).toBeNull();
+  });
+
   it("Electron input도 탭 번호 단축키로 매칭한다", () => {
     expect(matchTerminalTabShortcutInput({
       type: "keyDown",
       key: "3",
       control: true,
-      shift: true,
     }, "linux")).toBe(3);
   });
 
@@ -259,14 +278,15 @@ describe("keyboardShortcut", () => {
     }, SHORTCUTS.pageForward, "linux")).toBe(true);
   });
 
-  it("상세 dock shortcut은 macOS Cmd+숫자와 Linux Alt+숫자로 표시하고 매칭한다", () => {
+  it("상세 dock shortcut은 macOS Cmd+Option+숫자와 Linux Alt+숫자로 표시하고 매칭한다", () => {
     expect(TASK_DETAIL_DOCK_SHORTCUT_INDEXES).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9]);
-    expect(formatShortcutForDisplay(createTaskDetailDockShortcut(1), "mac")).toBe("Cmd+1");
+    expect(formatShortcutForDisplay(createTaskDetailDockShortcut(1), "mac")).toBe("Cmd+Option+1");
     expect(formatShortcutForDisplay(createTaskDetailDockShortcut(1), "linux")).toBe("Alt+1");
 
     expect(matchShortcutEvent(new KeyboardEvent("keydown", {
       key: "1",
       metaKey: true,
+      altKey: true,
     }), createTaskDetailDockShortcut(1), "mac")).toBe(true);
     expect(matchShortcutEvent(new KeyboardEvent("keydown", {
       key: "1",
@@ -275,7 +295,6 @@ describe("keyboardShortcut", () => {
     expect(matchShortcutEvent(new KeyboardEvent("keydown", {
       key: "1",
       metaKey: true,
-      shiftKey: true,
     }), createTaskDetailDockShortcut(1), "mac")).toBe(false);
     expect(matchShortcutEvent(new KeyboardEvent("keydown", {
       key: "1",
@@ -292,6 +311,7 @@ describe("keyboardShortcut", () => {
     expect(matchTaskDetailDockShortcutEvent(new KeyboardEvent("keydown", {
       key: "4",
       metaKey: true,
+      altKey: true,
     }), "mac")).toBe(4);
     expect(matchTaskDetailDockShortcutEvent(new KeyboardEvent("keydown", {
       key: "4",
@@ -368,7 +388,7 @@ describe("터미널 탭 단축키 명령 해석", () => {
   });
 
   it("숫자 단축키는 이동할 탭 위치를 담는다", () => {
-    expect(resolveTerminalTabShortcutCommand(macInput("3", { meta: true, shift: true }), "mac", true))
+    expect(resolveTerminalTabShortcutCommand(macInput("3", { meta: true }), "mac", true))
       .toEqual({ type: "go-to-tab", position: 3 });
   });
 
@@ -412,7 +432,7 @@ describe("렌더러 keydown도 같은 탭 명령으로 해석한다", () => {
 
   it("렌더러 경로에서도 탭 번호와 창 닫기를 해석한다", () => {
     expect(resolveTerminalTabShortcutEvent(
-      new KeyboardEvent("keydown", { key: "2", ctrlKey: true, shiftKey: true }),
+      new KeyboardEvent("keydown", { key: "2", ctrlKey: true }),
       "linux",
       true,
     )).toEqual({ type: "go-to-tab", position: 2 });

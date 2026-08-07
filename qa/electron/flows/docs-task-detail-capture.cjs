@@ -139,7 +139,7 @@ async function dismissDetailPanel(page) {
 
 /** 작업 정보 패널을 다시 띄운다. dock 첫 칸의 단축키가 그대로 토글이다 */
 async function openDetailPanel(page) {
-  await page.keyboard.press(process.platform === "darwin" ? "Meta+1" : "Alt+1");
+  await page.keyboard.press(process.platform === "darwin" ? "Meta+Alt+1" : "Alt+1");
   await page.waitForFunction(() => {
     const tabBar = document.querySelector("[data-testid='terminal-tab-bar']");
     if (!tabBar) return false;

@@ -217,6 +217,11 @@ export function formatShortcutForDisplay(shortcut: ShortcutDefinition, platform:
       return shortcutPlatform === "mac" ? "Cmd" : "Meta";
     }
 
+    /** macOS 키캡에는 Alt가 아니라 Option이 새겨져 있다 */
+    if (modifier === "Alt") {
+      return shortcutPlatform === "mac" ? "Option" : "Alt";
+    }
+
     return modifier;
   });
 
@@ -274,9 +279,13 @@ export function matchElectronShortcutInput(
   }, shortcut, platform);
 }
 
+/**
+ * dock 항목 n번을 여는 단축키.
+ * macOS의 `Cmd+숫자`는 터미널 탭 이동이 가져갔으므로 Option을 더해 비켜 간다.
+ */
 export function createTaskDetailDockShortcut(index: TaskDetailDockShortcutIndex): ShortcutDefinition {
   return {
-    mac: `Meta+${index}`,
+    mac: `Meta+Alt+${index}`,
     linux: `Alt+${index}`,
   };
 }
@@ -307,9 +316,12 @@ export function matchTaskDetailDockShortcutInput(
   return null;
 }
 
-/** 터미널 탭 n번으로 바로 이동하는 단축키. dock의 `Meta+숫자`/`Alt+숫자`와 Shift 유무로 구분된다 */
+/**
+ * 터미널 탭 n번으로 바로 이동하는 단축키. 브라우저·터미널 앱이 쓰는 `Mod+숫자` 관례를 따른다.
+ * macOS의 `Cmd+Shift+3~5`는 OS 스크린샷이 먼저 가져가 앱에 도달하지 않으므로 Shift를 쓸 수 없다.
+ */
 export function createTerminalTabShortcut(index: TerminalTabShortcutIndex): ShortcutDefinition {
-  return `Mod+Shift+${index}`;
+  return `Mod+${index}`;
 }
 
 export function matchTerminalTabShortcutEvent(
