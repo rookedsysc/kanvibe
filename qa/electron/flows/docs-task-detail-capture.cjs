@@ -51,7 +51,7 @@ const TAB_FIXTURES = [
       "  - 새 탭        Ctrl+T",
       "  - 탭 닫기      Ctrl+W (마지막 탭이면 창까지)",
       "  - 탭 이동      Ctrl+Shift+[ / ]",
-      "  - 탭 직접 선택 Ctrl+Shift+1 ~ 5",
+      "  - 탭 직접 선택 Ctrl+1 ~ 5",
     ],
     /** 작업 정보 패널이 왼쪽을 가리므로, 읽혀야 할 요약은 오른쪽 pane에 둔다 */
     splitLines: [
