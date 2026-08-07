@@ -81,6 +81,55 @@
         "all": "프로젝트 root와 task 모두 보기"
       }
     },
+    "sort": {
+      "label": "정렬",
+      "hint": "기준을 고른 순서대로 정렬해요. 여러 개를 겹칠 수 있어요.",
+      "fieldListLabel": "정렬 기준",
+      "toggleDirection": "{field} {direction}, 눌러서 방향 바꾸기",
+      "removeField": "{field} 정렬 제거",
+      "clear": "정렬 해제",
+      "done": "완료",
+      "fields": {
+        "priority": "우선순위",
+        "createdAt": "생성일",
+        "updatedAt": "수정일",
+        "title": "제목",
+        "project": "프로젝트"
+      },
+      "directions": {
+        "priority": {
+          "asc": "높은 순",
+          "desc": "낮은 순"
+        },
+        "createdAt": {
+          "asc": "오래된 순",
+          "desc": "최신 순"
+        },
+        "updatedAt": {
+          "asc": "오래된 순",
+          "desc": "최신 순"
+        },
+        "title": {
+          "asc": "ㄱ→ㅎ",
+          "desc": "ㅎ→ㄱ"
+        },
+        "project": {
+          "asc": "ㄱ→ㅎ",
+          "desc": "ㅎ→ㄱ"
+        }
+      },
+      "modeLabel": "수동 배치 순서",
+      "modes": {
+        "manual-first": "수동 순서 우선",
+        "sort-first": "정렬 기준 우선",
+        "manual-off": "수동 순서 사용 안 함"
+      },
+      "modeDescriptions": {
+        "manual-first": "직접 드래그해 자리를 잡은 카드가 위에 그대로 남고, 나머지만 정렬 기준대로 늘어섭니다.",
+        "sort-first": "정렬 기준이 먼저 적용되고 값이 같을 때만 직접 배치한 순서를 따릅니다. 드래그해도 카드가 정렬된 자리로 다시 밀려납니다.",
+        "manual-off": "직접 배치한 순서를 무시하고 정렬 기준만 따릅니다. 같은 컬럼 안에서 순서를 바꾸는 드래그는 막힙니다."
+      }
+    },
     "pageFind": {
       "label": "보드에서 찾기",
       "placeholder": "이 보드에서 보이는 텍스트 찾기...",
@@ -132,7 +181,8 @@
     "priorityLow": "!",
     "priorityMedium": "!!",
     "priorityHigh": "!!!",
-    "priorityNone": "없음"
+    "priorityNone": "없음",
+    "inheritedPriority": "프로젝트 root task에서 물려받은 우선순위입니다."
   },
   "branch": {
     "title": "브랜치 분기",

@@ -76,8 +76,13 @@ export class KanbanTask {
   @Column({ type: "simple-enum", enum: TaskPriority, nullable: true, default: null })
   priority!: TaskPriority | null;
 
-  @Column({ name: "display_order", type: "int", default: 0 })
-  displayOrder!: number;
+  /** 컬럼 안에서의 자리를 나타내는 16진 fractional rank. 카드를 옮길 때 옮긴 행만 갱신한다 */
+  @Column({ name: "display_rank", type: "varchar", length: 64, default: "8" })
+  displayRank!: string;
+
+  /** 사용자가 직접 드래그해 자리를 잡았는지. 자동으로 배정된 순서와 구분해 정렬 필터가 미칠 범위를 정한다 */
+  @Column({ name: "is_manually_ordered", type: "boolean", default: false })
+  isManuallyOrdered!: boolean;
 
   @CreateDateColumn({ name: "created_at" })
   createdAt!: Date;

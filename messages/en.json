@@ -81,6 +81,55 @@
         "all": "Show project roots and tasks"
       }
     },
+    "sort": {
+      "label": "Sort",
+      "hint": "Cards are sorted in the order you pick the criteria. You can stack several.",
+      "fieldListLabel": "Sort criteria",
+      "toggleDirection": "{field} {direction}, press to flip the direction",
+      "removeField": "Remove {field} sorting",
+      "clear": "Clear sorting",
+      "done": "Done",
+      "fields": {
+        "priority": "Priority",
+        "createdAt": "Created",
+        "updatedAt": "Updated",
+        "title": "Title",
+        "project": "Project"
+      },
+      "directions": {
+        "priority": {
+          "asc": "Highest first",
+          "desc": "Lowest first"
+        },
+        "createdAt": {
+          "asc": "Oldest first",
+          "desc": "Newest first"
+        },
+        "updatedAt": {
+          "asc": "Oldest first",
+          "desc": "Newest first"
+        },
+        "title": {
+          "asc": "A→Z",
+          "desc": "Z→A"
+        },
+        "project": {
+          "asc": "A→Z",
+          "desc": "Z→A"
+        }
+      },
+      "modeLabel": "Manual order",
+      "modes": {
+        "manual-first": "Manual order first",
+        "sort-first": "Sort criteria first",
+        "manual-off": "Ignore manual order"
+      },
+      "modeDescriptions": {
+        "manual-first": "Cards you dragged into place stay on top, and only the rest follow the sort criteria.",
+        "sort-first": "Sort criteria come first, and manual order only breaks ties. Dragging a card lets it slide back to its sorted place.",
+        "manual-off": "Manual order is ignored and only the sort criteria apply. Reordering by drag within a column is disabled."
+      }
+    },
     "pageFind": {
       "label": "Find on board",
       "placeholder": "Find visible text on this board...",
@@ -132,7 +181,8 @@
     "priorityLow": "!",
     "priorityMedium": "!!",
     "priorityHigh": "!!!",
-    "priorityNone": "None"
+    "priorityNone": "None",
+    "inheritedPriority": "Priority inherited from the project root task."
   },
   "branch": {
     "title": "Branch Off",

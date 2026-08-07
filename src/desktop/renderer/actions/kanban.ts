@@ -66,8 +66,8 @@ export function connectTerminalSession(taskId: string, sessionType: SessionType)
   return invokeDesktop("kanban", "connectTerminalSession", taskId, sessionType);
 }
 
-export function reorderTasks(status: TaskStatus, orderedIds: string[]): Promise<void> {
-  return invokeDesktop("kanban", "reorderTasks", status, orderedIds);
+export function reorderTasks(status: TaskStatus, movedTaskId: string, orderedIds: string[]): Promise<void> {
+  return invokeDesktop("kanban", "reorderTasks", status, movedTaskId, orderedIds);
 }
 
 export function moveTaskToColumn(taskId: string, newStatus: TaskStatus, destOrderedIds: string[]): Promise<void> {

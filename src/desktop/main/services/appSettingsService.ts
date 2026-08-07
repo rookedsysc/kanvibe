@@ -1,6 +1,11 @@
 import { getAppSettingsRepository } from "@/lib/database";
 import { SessionType } from "@/entities/KanbanTask";
 import { DEFAULT_TASK_SEARCH_SHORTCUT } from "@/desktop/shared/keyboardShortcut";
+import {
+  parseBoardSortPreference,
+  serializeBoardSortPreference,
+  type BoardSortPreference,
+} from "@/desktop/shared/boardSort";
 
 const SIDEBAR_COLLAPSED_KEY = "sidebar_default_collapsed";
 const SIDEBAR_HINT_DISMISSED_KEY = "sidebar_hint_dismissed";
@@ -233,4 +238,16 @@ export async function getVimModeEnabled(): Promise<boolean> {
 /** Vim-style board navigation 활성화 여부를 저장한다 */
 export async function setVimModeEnabled(enabled: boolean): Promise<void> {
   await setAppSetting(VIM_MODE_ENABLED_KEY, String(enabled));
+}
+
+const BOARD_SORT_PREFERENCE_KEY = "board_sort_preference";
+
+/** 보드 정렬 기준과 모드를 조회한다. 앱을 껐다 켜도 유지되도록 app_settings에 둔다 */
+export async function getBoardSortPreference(): Promise<BoardSortPreference> {
+  return parseBoardSortPreference(await getAppSetting(BOARD_SORT_PREFERENCE_KEY));
+}
+
+/** 보드 정렬 기준과 모드를 저장한다 */
+export async function setBoardSortPreference(preference: BoardSortPreference): Promise<void> {
+  await setAppSetting(BOARD_SORT_PREFERENCE_KEY, serializeBoardSortPreference(preference));
 }

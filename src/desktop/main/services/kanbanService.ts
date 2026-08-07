@@ -22,6 +22,7 @@ import { execGit, pullCurrentBranch, remoteBranchExists } from "@/lib/gitOperati
 import { detachSession } from "@/lib/terminal";
 import { persistTaskStateForTask as persistTaskState } from "@/desktop/main/services/kanvibeTaskStateService";
 import { persistProjectColorToKanvibeState } from "@/desktop/main/services/kanvibeProjectColorService";
+import { rankBetween } from "@/desktop/shared/displayRank";
 
 export type TasksByStatus = Record<TaskStatus, KanbanTask[]>;
 
@@ -419,12 +420,12 @@ export async function getTasksByStatus(): Promise<TasksByStatusWithMeta> {
 
   const nonDoneTasks = await repo.find({
     where: { status: Not(TaskStatus.DONE) },
-    order: { displayOrder: "ASC", createdAt: "ASC" },
+    order: { displayRank: "ASC", createdAt: "ASC" },
   });
 
   const [doneTasks, doneTotal] = await repo.findAndCount({
     where: { status: TaskStatus.DONE },
-    order: { displayOrder: "ASC", createdAt: "ASC" },
+    order: { displayRank: "ASC", createdAt: "ASC" },
     take: DONE_PAGE_SIZE,
   });
 
@@ -452,7 +453,7 @@ export async function getMoreDoneTasks(
 
   const [tasks, doneTotal] = await repo.findAndCount({
     where: { status: TaskStatus.DONE },
-    order: { displayOrder: "ASC", createdAt: "ASC" },
+    order: { displayRank: "ASC", createdAt: "ASC" },
     skip: offset,
     take: limit,
   });
@@ -515,11 +516,7 @@ export interface CreateTaskInput {
 /** 새 작업을 생성한다. branchName + projectId가 있으면 worktree와 세션도 함께 생성한다 */
 export async function createTask(input: CreateTaskInput): Promise<KanbanTask> {
   const repo = await getTaskRepository();
-  const maxDisplayOrderPromise = repo
-    .createQueryBuilder("t")
-    .select("MAX(t.displayOrder)", "max")
-    .where("t.status = :status", { status: TaskStatus.TODO })
-    .getRawOne();
+  const lastTodoRankPromise = findLastRank(repo, TaskStatus.TODO);
 
   const task = repo.create({
     title: input.title || input.branchName || "Untitled",
@@ -565,8 +562,7 @@ export async function createTask(input: CreateTaskInput): Promise<KanbanTask> {
     }
   }
 
-  const maxResult = await maxDisplayOrderPromise;
-  task.displayOrder = (maxResult?.max ?? -1) + 1;
+  task.displayRank = rankBetween(await lastTodoRankPromise, null);
 
   const saved = await repo.save(task);
 
@@ -930,18 +926,68 @@ export async function connectTerminalSession(
   }
 }
 
-/** 컬럼 내 작업 순서를 변경한다 */
+interface ManualPlacement {
+  displayRank: string;
+  isManuallyOrdered: boolean;
+}
+
+/** 해당 컬럼에서 가장 뒤에 있는 rank를 찾는다. 없으면 null이라 맨 앞부터 시작한다 */
+async function findLastRank(
+  repo: Awaited<ReturnType<typeof getTaskRepository>>,
+  status: TaskStatus,
+): Promise<string | null> {
+  const lastTask = await repo.findOne({
+    where: { status },
+    order: { displayRank: "DESC" },
+    select: ["displayRank"],
+  });
+
+  return lastTask?.displayRank ?? null;
+}
+
+/**
+ * 드롭한 자리에 해당하는 rank를 앞뒤 카드에서 계산한다.
+ *
+ * 정렬 기준이 켜져 있으면 화면 순서가 rank 순서와 다를 수 있어 앞뒤 rank가 뒤집혀 있을 수 있는데,
+ * 그때는 사이 값을 만들 수 없으므로 컬럼 맨 뒤에 두고 "직접 배치했다"로도 표시하지 않는다.
+ * 화면에 보이는 순서는 어차피 정렬 기준이 정하므로 이 선택이 사용자 눈에 드러나지 않는다.
+ */
+async function resolveManualPlacement(
+  repo: Awaited<ReturnType<typeof getTaskRepository>>,
+  status: TaskStatus,
+  movedTaskId: string,
+  orderedIds: string[],
+): Promise<ManualPlacement> {
+  const movedIndex = orderedIds.indexOf(movedTaskId);
+  const neighborIds = movedIndex < 0
+    ? []
+    : [orderedIds[movedIndex - 1], orderedIds[movedIndex + 1]].filter(Boolean);
+
+  const neighbors = neighborIds.length > 0
+    ? await repo.find({ where: { id: In(neighborIds) }, select: ["id", "displayRank"] })
+    : [];
+  const rankById = new Map(neighbors.map((neighbor) => [neighbor.id, neighbor.displayRank]));
+
+  const previousRank = movedIndex > 0 ? rankById.get(orderedIds[movedIndex - 1]) ?? null : null;
+  const nextRank = movedIndex >= 0 ? rankById.get(orderedIds[movedIndex + 1]) ?? null : null;
+
+  if (movedIndex >= 0 && (previousRank === null || nextRank === null || previousRank < nextRank)) {
+    return { displayRank: rankBetween(previousRank, nextRank), isManuallyOrdered: true };
+  }
+
+  return { displayRank: rankBetween(await findLastRank(repo, status), null), isManuallyOrdered: false };
+}
+
+/** 컬럼 내 작업 순서를 변경한다. rank 덕분에 옮긴 태스크 한 행만 갱신하면 된다 */
 export async function reorderTasks(
   status: TaskStatus,
+  movedTaskId: string,
   orderedIds: string[]
 ): Promise<void> {
   const repo = await getTaskRepository();
+  const placement = await resolveManualPlacement(repo, status, movedTaskId, orderedIds);
 
-  const updates = orderedIds.map((id, index) =>
-    repo.update(id, { displayOrder: index })
-  );
-
-  await Promise.all(updates);
+  await repo.update(movedTaskId, placement);
   broadcastBoardUpdate();
 }
 
@@ -953,11 +999,13 @@ export async function moveTaskToColumn(
 ): Promise<void> {
   const repo = await getTaskRepository();
   const task = await repo.findOneBy({ id: taskId });
+  const placement = await resolveManualPlacement(repo, newStatus, taskId, destOrderedIds);
 
   try {
     if (newStatus === TaskStatus.DONE) {
       if (task) {
         await repo.update(taskId, {
+          ...placement,
           status: newStatus,
           sessionType: task.sessionType,
           sessionName: task.sessionName,
@@ -965,23 +1013,20 @@ export async function moveTaskToColumn(
         });
       }
     } else {
-      await repo.update(taskId, { status: newStatus });
+      await repo.update(taskId, { ...placement, status: newStatus });
     }
 
     if (task) {
       await persistTaskState({ ...task, status: newStatus });
     }
 
-    const reorderUpdates = destOrderedIds.map((id, index) =>
-      repo.update(id, { displayOrder: index })
-    );
-
-    await Promise.all(reorderUpdates);
     broadcastBoardUpdate();
   } catch (error) {
     if (newStatus === TaskStatus.DONE && task) {
       await repo.update(taskId, {
         status: task.status,
+        displayRank: task.displayRank,
+        isManuallyOrdered: task.isManuallyOrdered,
         sessionType: task.sessionType,
         sessionName: task.sessionName,
         worktreePath: task.worktreePath,

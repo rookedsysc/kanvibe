@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import Database from "better-sqlite3";
+import { buildSequentialRanks } from "@/desktop/shared/displayRank";
 
 function quoteSqliteIdentifier(identifier: string): string {
   return `"${identifier.replaceAll("\"", "\"\"")}"`;
@@ -11,13 +12,15 @@ function getColumnNames(database: Database.Database, tableName: string): Set<str
   return new Set(rows.map((row) => row.name));
 }
 
-function ensureColumn(database: Database.Database, tableName: string, columnName: string, definition: string): void {
+/** 컬럼을 새로 추가했으면 true를 준다. 새로 생긴 컬럼만 한 번 채우고 싶을 때 이 값을 본다 */
+function ensureColumn(database: Database.Database, tableName: string, columnName: string, definition: string): boolean {
   const columns = getColumnNames(database, tableName);
   if (columns.has(columnName)) {
-    return;
+    return false;
   }
 
   database.exec(`ALTER TABLE ${quoteSqliteIdentifier(tableName)} ADD COLUMN ${definition}`);
+  return true;
 }
 
 function ensureBaseTables(database: Database.Database): void {
@@ -49,7 +52,8 @@ function ensureBaseTables(database: Database.Database): void {
       base_branch TEXT,
       pr_url TEXT,
       priority TEXT DEFAULT NULL,
-      display_order INTEGER NOT NULL DEFAULT 0,
+      display_rank TEXT NOT NULL DEFAULT '8',
+      is_manually_ordered INTEGER NOT NULL DEFAULT 0,
       created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE SET NULL
@@ -86,9 +90,42 @@ function ensureColumns(database: Database.Database): void {
   ensureColumn(database, "kanban_tasks", "base_branch", "base_branch TEXT");
   ensureColumn(database, "kanban_tasks", "pr_url", "pr_url TEXT");
   ensureColumn(database, "kanban_tasks", "priority", "priority TEXT DEFAULT NULL");
-  ensureColumn(database, "kanban_tasks", "display_order", "display_order INTEGER NOT NULL DEFAULT 0");
+  const didAddDisplayRank = ensureColumn(database, "kanban_tasks", "display_rank", "display_rank TEXT NOT NULL DEFAULT '8'");
+  ensureColumn(database, "kanban_tasks", "is_manually_ordered", "is_manually_ordered INTEGER NOT NULL DEFAULT 0");
+  if (didAddDisplayRank) {
+    assignInitialDisplayRanks(database);
+  }
 
   ensureColumn(database, "pane_layout_configs", "panes", "panes TEXT NOT NULL DEFAULT '[]'");
+}
+
+/**
+ * rank 컬럼이 막 생긴 DB의 기존 카드에 서로 다른 rank를 부여한다.
+ *
+ * 컬럼 기본값만 두면 모든 카드가 같은 값을 갖게 되어 두 카드 사이에 새 자리를 만들 수 없다.
+ * migrations 테이블이 없어 baseline 처리되는 DB는 TypeORM 마이그레이션이 실행되지 않으므로
+ * 여기서 채우지 않으면 사용자가 잡아 둔 카드 순서도 함께 사라진다.
+ */
+function assignInitialDisplayRanks(database: Database.Database): void {
+  const hasDisplayOrder = getColumnNames(database, "kanban_tasks").has("display_order");
+  const previousOrderColumns = hasDisplayOrder ? "display_order ASC, created_at ASC" : "created_at ASC";
+
+  const orderedTasks = database
+    .prepare(`SELECT id, status FROM kanban_tasks ORDER BY status ASC, ${previousOrderColumns}, id ASC`)
+    .all() as Array<{ id: string; status: string }>;
+
+  const idsByStatus = new Map<string, string[]>();
+  for (const task of orderedTasks) {
+    const ids = idsByStatus.get(task.status) ?? [];
+    ids.push(task.id);
+    idsByStatus.set(task.status, ids);
+  }
+
+  const updateRank = database.prepare(`UPDATE kanban_tasks SET display_rank = ? WHERE id = ?`);
+  for (const ids of idsByStatus.values()) {
+    const ranks = buildSequentialRanks(ids.length);
+    ids.forEach((id, index) => updateRank.run(ranks[index], id));
+  }
 }
 
 /** PRAGMA table_info 결과 중 컬럼 정의를 다시 쓰는 데 필요한 필드 */
@@ -172,7 +209,7 @@ function dropGlobalUniqueProjectName(database: Database.Database): void {
 function ensureIndexes(database: Database.Database): void {
   database.exec(`
     CREATE INDEX IF NOT EXISTS idx_kanban_tasks_status_order
-      ON kanban_tasks(status, display_order, created_at);
+      ON kanban_tasks(status, display_rank, created_at);
 
     CREATE INDEX IF NOT EXISTS idx_kanban_tasks_project_branch
       ON kanban_tasks(project_id, branch_name);
