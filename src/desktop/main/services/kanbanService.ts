@@ -962,10 +962,7 @@ async function resolveDisplayRank(
   return rankBetween(previousRank, nextRank);
 }
 
-/**
- * 컬럼 내 작업 순서를 변경한다. rank 덕분에 옮긴 태스크 한 행만 갱신하면 된다.
- * 같은 컬럼 안에서 자리를 바꾸는 길은 드래그뿐이므로, 사용자가 자리를 고른 것으로 기록한다.
- */
+/** 컬럼 내 작업 순서를 변경한다. rank 덕분에 옮긴 태스크 한 행만 갱신하면 된다 */
 export async function reorderTasks(
   status: TaskStatus,
   movedTaskId: string,
@@ -974,30 +971,26 @@ export async function reorderTasks(
   const repo = await getTaskRepository();
   const displayRank = await resolveDisplayRank(repo, status, movedTaskId, orderedIds);
 
-  await repo.update(movedTaskId, { displayRank, isManuallyOrdered: true });
+  await repo.update(movedTaskId, { displayRank });
   broadcastBoardUpdate();
 }
 
 /**
  * 태스크를 다른 컬럼으로 이동할 때 사용한다. revalidation 없이 DB만 갱신한다.
  *
- * `isManuallyOrdered`는 rank 계산의 부산물이 아니라 호출자가 정하는 입력이다.
- * 드래그처럼 사용자가 목적지 자리를 직접 고른 이동만 true이고,
- * vim 단축키나 컨텍스트 메뉴처럼 상태만 바꾸는 이동은 자리를 고른 적이 없으므로 false다.
- * 상태만 바꾼 카드까지 수동 배치로 표시하면 `manual-first` 모드에서 카드가 하나씩 상단 그룹으로 빠져나가
- * 정렬 기준이 결국 아무 카드에도 적용되지 않는다.
+ * 드래그든 vim 단축키든 목적지에서의 자리는 rank 하나로만 남는다.
+ * 드래그는 `destOrderedIds`에 사용자가 고른 자리가 담겨 오고,
+ * 상태만 바꾸는 이동은 목적지 컬럼 끝에 붙은 목록이 담겨 온다.
  */
 export async function moveTaskToColumn(
   taskId: string,
   newStatus: TaskStatus,
-  destOrderedIds: string[],
-  isManuallyOrdered: boolean
+  destOrderedIds: string[]
 ): Promise<void> {
   const repo = await getTaskRepository();
   const task = await repo.findOneBy({ id: taskId });
   const placement = {
     displayRank: await resolveDisplayRank(repo, newStatus, taskId, destOrderedIds),
-    isManuallyOrdered,
   };
 
   try {
@@ -1025,7 +1018,6 @@ export async function moveTaskToColumn(
       await repo.update(taskId, {
         status: task.status,
         displayRank: task.displayRank,
-        isManuallyOrdered: task.isManuallyOrdered,
         sessionType: task.sessionType,
         sessionName: task.sessionName,
         worktreePath: task.worktreePath,

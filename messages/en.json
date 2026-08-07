@@ -118,16 +118,14 @@
           "desc": "Z→A"
         }
       },
-      "modeLabel": "Manual order",
+      "modeLabel": "Card order",
       "modes": {
-        "manual-first": "Manual order first",
-        "sort-first": "Sort criteria first",
-        "manual-off": "Ignore manual order"
+        "rank-first": "Drag order first",
+        "sort-first": "Sort criteria first"
       },
       "modeDescriptions": {
-        "manual-first": "Cards you dragged into place stay on top, and only the rest follow the sort criteria.",
-        "sort-first": "Sort criteria come first, and manual order only breaks ties. Dragging a card lets it slide back to its sorted place.",
-        "manual-off": "Manual order is ignored and only the sort criteria apply. Reordering by drag within a column is disabled."
+        "rank-first": "Cards stay in the order you dragged them, and the sort criteria only break ties.",
+        "sort-first": "Sort criteria come first, and the order you dragged only breaks ties. Dragging a card lets it slide back to its sorted place."
       }
     },
     "pageFind": {

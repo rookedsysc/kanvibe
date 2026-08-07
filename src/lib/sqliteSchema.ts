@@ -53,7 +53,6 @@ function ensureBaseTables(database: Database.Database): void {
       pr_url TEXT,
       priority TEXT DEFAULT NULL,
       display_rank TEXT NOT NULL DEFAULT '8',
-      is_manually_ordered INTEGER NOT NULL DEFAULT 0,
       created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE SET NULL
@@ -91,7 +90,6 @@ function ensureColumns(database: Database.Database): void {
   ensureColumn(database, "kanban_tasks", "pr_url", "pr_url TEXT");
   ensureColumn(database, "kanban_tasks", "priority", "priority TEXT DEFAULT NULL");
   const didAddDisplayRank = ensureColumn(database, "kanban_tasks", "display_rank", "display_rank TEXT NOT NULL DEFAULT '8'");
-  ensureColumn(database, "kanban_tasks", "is_manually_ordered", "is_manually_ordered INTEGER NOT NULL DEFAULT 0");
   if (didAddDisplayRank) {
     assignInitialDisplayRanks(database);
   }

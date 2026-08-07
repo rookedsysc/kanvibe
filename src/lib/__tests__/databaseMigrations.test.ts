@@ -216,7 +216,7 @@ describe("database migrations", () => {
       const taskColumns = await dataSource.query(`PRAGMA table_info("kanban_tasks")`);
       const paneColumns = await dataSource.query(`PRAGMA table_info("pane_layout_configs")`);
       const tasks = await dataSource.query(`
-        SELECT id, project_id, base_branch, pr_url, priority, display_rank, is_manually_ordered
+        SELECT id, project_id, base_branch, pr_url, priority, display_rank
         FROM kanban_tasks
       `);
       const migrations = await dataSource.query(`SELECT name FROM migrations ORDER BY timestamp`);
@@ -234,7 +234,6 @@ describe("database migrations", () => {
           pr_url: null,
           priority: null,
           display_rank: "1",
-          is_manually_ordered: 0,
         },
       ]);
       expect(migrations).toHaveLength(15);
@@ -578,7 +577,7 @@ describe("database migrations", () => {
       // Then
       const columns = await dataSource.query(`PRAGMA table_info("kanban_tasks")`);
       const todoTasks = await dataSource.query(`
-        SELECT id, is_manually_ordered FROM kanban_tasks
+        SELECT id FROM kanban_tasks
         WHERE status = 'todo' ORDER BY display_rank
       `);
       const reviewTasks = await dataSource.query(`
@@ -590,8 +589,6 @@ describe("database migrations", () => {
       expect(todoTasks.map((row: { id: string }) => row.id)).toEqual(["todo-first", "todo-second", "todo-third"]);
       /** 상태마다 따로 번호가 매겨져 있었으므로 rank도 상태 안에서만 이어져야 한다 */
       expect(reviewTasks.map((row: { id: string }) => row.id)).toEqual(["review-first", "review-second"]);
-      /** 자동으로 배정됐던 순번이므로 사용자가 직접 배치한 것으로 표시하지 않는다 */
-      expect(todoTasks.every((row: { is_manually_ordered: number }) => row.is_manually_ordered === 0)).toBe(true);
       expect(indexes.map((row: { name: string }) => row.name)).toContain("idx_kanban_tasks_status_order");
       /** 이름만 보면 옛 컬럼을 가리키는 인덱스도 통과하므로 컬럼 구성까지 확인한다 */
       const indexColumns = await dataSource.query(`PRAGMA index_info("idx_kanban_tasks_status_order")`);

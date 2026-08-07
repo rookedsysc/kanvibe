@@ -117,16 +117,14 @@
           "desc": "Z→A"
         }
       },
-      "modeLabel": "手动排列顺序",
+      "modeLabel": "卡片顺序",
       "modes": {
-        "manual-first": "手动顺序优先",
-        "sort-first": "排序条件优先",
-        "manual-off": "不使用手动顺序"
+        "rank-first": "拖动顺序优先",
+        "sort-first": "排序条件优先"
       },
       "modeDescriptions": {
-        "manual-first": "手动拖动放好的卡片保持在上方，其余卡片按排序条件排列。",
-        "sort-first": "先应用排序条件，取值相同时才按手动顺序。拖动后卡片会滑回排序后的位置。",
-        "manual-off": "忽略手动顺序，只按排序条件排列。同一列内的拖动排序会被禁用。"
+        "rank-first": "保持你拖动出来的顺序，排序条件只在位置相同时才生效。",
+        "sort-first": "先应用排序条件，取值相同时才按拖动顺序。拖动后卡片会滑回排序后的位置。"
       }
     },
     "pageFind": {

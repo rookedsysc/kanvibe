@@ -28,7 +28,6 @@ function buildTask(overrides: Partial<KanbanTask> & { id: string }): KanbanTask 
     prUrl: null,
     priority: null,
     displayRank: "8",
-    isManuallyOrdered: false,
     createdAt: new Date("2026-01-01T00:00:00Z"),
     updatedAt: new Date("2026-01-01T00:00:00Z"),
     ...overrides,
@@ -225,26 +224,27 @@ describe("sortTasksForBoard", () => {
     expect(sorted.map((task) => task.id)).toEqual(["inheriting", "medium"]);
   });
 
-  describe("수동 배치 순서와 겹치는 방식", () => {
-    const pinnedLast = buildTask({ id: "pinned-last", priority: TaskPriority.LOW, displayRank: "6", isManuallyOrdered: true });
-    const pinnedFirst = buildTask({ id: "pinned-first", priority: TaskPriority.LOW, displayRank: "2", isManuallyOrdered: true });
-    const floatingHigh = buildTask({ id: "floating-high", priority: TaskPriority.HIGH, displayRank: "4" });
-    const tasks = [pinnedLast, floatingHigh, pinnedFirst];
+  describe("카드 자리와 정렬 기준의 우선순위", () => {
+    const draggedLast = buildTask({ id: "dragged-last", priority: TaskPriority.LOW, displayRank: "6" });
+    const draggedFirst = buildTask({ id: "dragged-first", priority: TaskPriority.LOW, displayRank: "2" });
+    const highPriority = buildTask({ id: "high-priority", priority: TaskPriority.HIGH, displayRank: "4" });
+    const tasks = [draggedLast, highPriority, draggedFirst];
     const priorityKey = [{ field: "priority" as const, direction: "asc" as const }];
 
-    it("수동 순서 우선이면 직접 배치한 카드가 rank 순으로 위에 남는다", () => {
+    it("rank 우선이면 드래그해 만든 순서가 그대로 유지된다", () => {
       // Given / When
       const sorted = sortTasksForBoard(
         tasks,
-        preference({ keys: priorityKey, mode: "manual-first" }),
+        preference({ keys: priorityKey, mode: "rank-first" }),
         EMPTY_CONTEXT,
       );
 
       // Then
-      expect(sorted.map((task) => task.id)).toEqual(["pinned-first", "pinned-last", "floating-high"]);
+      /** 우선순위가 가장 높은 카드라도 rank가 정한 자리를 넘어서지 못한다 */
+      expect(sorted.map((task) => task.id)).toEqual(["dragged-first", "high-priority", "dragged-last"]);
     });
 
-    it("정렬 기준 우선이면 직접 배치한 카드도 정렬 기준을 따른다", () => {
+    it("정렬 기준 우선이면 기준이 먼저 적용되고 rank는 동점 판정에만 쓰인다", () => {
       // Given / When
       const sorted = sortTasksForBoard(
         tasks,
@@ -253,28 +253,23 @@ describe("sortTasksForBoard", () => {
       );
 
       // Then
-      expect(sorted.map((task) => task.id)).toEqual(["floating-high", "pinned-first", "pinned-last"]);
+      expect(sorted.map((task) => task.id)).toEqual(["high-priority", "dragged-first", "dragged-last"]);
     });
 
-    it("수동 순서를 쓰지 않으면 rank는 동점 판정에서도 빠진다", () => {
+    it("rank가 같은 카드끼리는 rank 우선 모드에서도 정렬 기준으로 갈린다", () => {
       // Given
-      const olderPinned = buildTask({
-        id: "older-pinned",
-        priority: TaskPriority.LOW,
-        displayRank: "f",
-        isManuallyOrdered: true,
-        createdAt: new Date("2025-01-01T00:00:00Z"),
-      });
+      /** 옛 데이터에는 같은 rank를 가진 카드가 나란히 남아 있을 수 있다 */
+      const sameRankLow = buildTask({ id: "same-rank-low", priority: TaskPriority.LOW, displayRank: "4" });
 
       // When
       const sorted = sortTasksForBoard(
-        [pinnedFirst, olderPinned],
-        preference({ keys: priorityKey, mode: "manual-off" }),
+        [sameRankLow, highPriority],
+        preference({ keys: priorityKey, mode: "rank-first" }),
         EMPTY_CONTEXT,
       );
 
       // Then
-      expect(sorted.map((task) => task.id)).toEqual(["older-pinned", "pinned-first"]);
+      expect(sorted.map((task) => task.id)).toEqual(["high-priority", "same-rank-low"]);
     });
   });
 });

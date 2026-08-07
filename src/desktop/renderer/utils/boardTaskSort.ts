@@ -133,7 +133,8 @@ function compareByCreatedAt(left: KanbanTask, right: KanbanTask): number {
  * 한 컬럼의 task를 정렬 설정에 따라 늘어놓는다.
  *
  * 기준이 하나도 없으면 이미 rank 순으로 들어온 목록을 그대로 두어 드래그한 자리가 유지된다.
- * 기준이 있으면 mode가 수동 배치 순서와 겹치는 방식을 정한다.
+ * 기준이 있으면 mode가 카드 자리(rank)와 정렬 기준 중 무엇을 먼저 볼지 정한다.
+ * `rank-first`는 드래그한 순서를 그대로 보여 주고 기준은 저장해 두었다가 rank가 같을 때만 쓴다.
  */
 export function sortTasksForBoard(
   tasks: KanbanTask[],
@@ -144,22 +145,11 @@ export function sortTasksForBoard(
     return tasks;
   }
 
-  const sortByKeys = (candidates: KanbanTask[]) =>
-    [...candidates].sort((left, right) =>
-      compareBySortKeys(left, right, preference.keys, context) || compareByCreatedAt(left, right));
-
-  if (preference.mode === "manual-off") {
-    return sortByKeys(tasks);
-  }
-
-  if (preference.mode === "manual-first") {
-    const pinnedTasks = tasks.filter((task) => task.isManuallyOrdered);
-    const floatingTasks = tasks.filter((task) => !task.isManuallyOrdered);
-
-    const sortedPinnedTasks = [...pinnedTasks].sort((left, right) =>
-      compareDisplayRank(left.displayRank, right.displayRank) || compareByCreatedAt(left, right));
-
-    return [...sortedPinnedTasks, ...sortByKeys(floatingTasks)];
+  if (preference.mode === "rank-first") {
+    return [...tasks].sort((left, right) =>
+      compareDisplayRank(left.displayRank, right.displayRank)
+      || compareBySortKeys(left, right, preference.keys, context)
+      || compareByCreatedAt(left, right));
   }
 
   return [...tasks].sort((left, right) =>

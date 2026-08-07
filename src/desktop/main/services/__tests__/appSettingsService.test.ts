@@ -34,7 +34,7 @@ describe("보드 정렬 설정", () => {
     // Given
     const preference = {
       keys: [{ field: "priority" as const, direction: "desc" as const }],
-      mode: "manual-first" as const,
+      mode: "rank-first" as const,
     };
     const { getBoardSortPreference, setBoardSortPreference } = await import(
       "@/desktop/main/services/appSettingsService"

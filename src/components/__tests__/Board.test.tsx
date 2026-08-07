@@ -222,7 +222,6 @@ function createTask(overrides: Partial<KanbanTask> & Pick<KanbanTask, "id" | "ti
     prUrl: null,
     priority: null,
     displayRank: "8",
-    isManuallyOrdered: false,
     createdAt: new Date(),
     updatedAt: new Date(),
     ...overrides,
@@ -259,7 +258,6 @@ function createTasksWithTodo(): TasksByStatus {
         prUrl: null,
         priority: null,
         displayRank: "8",
-        isManuallyOrdered: false,
         createdAt: new Date(),
         updatedAt: new Date(),
       },
@@ -291,7 +289,6 @@ function createTasksWithTodoAndProgress(): TasksByStatus {
         prUrl: null,
         priority: null,
         displayRank: "8",
-        isManuallyOrdered: false,
         createdAt: new Date(),
         updatedAt: new Date(),
       },
@@ -314,7 +311,6 @@ function createTasksWithTodoAndProgress(): TasksByStatus {
         prUrl: null,
         priority: null,
         displayRank: "8",
-        isManuallyOrdered: false,
         createdAt: new Date(),
         updatedAt: new Date(),
       },
@@ -576,7 +572,7 @@ describe("Board defaultSessionType sync", () => {
     });
   });
 
-  it("드래그로 다른 컬럼에 놓으면 사용자가 자리를 고른 이동으로 저장한다", async () => {
+  it("드래그로 다른 컬럼에 놓으면 목적지에서의 자리까지 함께 저장한다", async () => {
     render(
       <Board
         initialTasks={createTasksWithTodo()}
@@ -595,8 +591,8 @@ describe("Board defaultSessionType sync", () => {
     fireEvent.click(screen.getByRole("button", { name: "trigger-cross-column-drag-end" }));
 
     await waitFor(() => {
-      /** 드래그만이 목적지 자리를 직접 짚는 경로다. vim·컨텍스트 메뉴 이동과 섞이면 안 된다 */
-      expect(moveTaskToColumn).toHaveBeenCalledWith("task-1", TaskStatus.REVIEW, ["task-1"], true);
+      /** 목적지 컬럼에서 사용자가 놓은 자리가 반영된 순서가 그대로 넘어가야 rank를 그 자리로 계산한다 */
+      expect(moveTaskToColumn).toHaveBeenCalledWith("task-1", TaskStatus.REVIEW, ["task-1"]);
     });
   });
 
@@ -1192,7 +1188,7 @@ describe("Board defaultSessionType sync", () => {
     fireEvent.keyDown(commandInput, { key: "Enter" });
 
     await waitFor(() => {
-      expect(moveTaskToColumn).toHaveBeenCalledWith("task-1", TaskStatus.REVIEW, ["task-1"], false);
+      expect(moveTaskToColumn).toHaveBeenCalledWith("task-1", TaskStatus.REVIEW, ["task-1"]);
     });
   });
 
@@ -1293,7 +1289,7 @@ describe("Board defaultSessionType sync", () => {
     fireEvent.keyDown(commandInput, { key: "Enter" });
 
     await waitFor(() => {
-      expect(moveTaskToColumn).toHaveBeenCalledWith("task-1", TaskStatus.REVIEW, ["task-1"], false);
+      expect(moveTaskToColumn).toHaveBeenCalledWith("task-1", TaskStatus.REVIEW, ["task-1"]);
     });
   });
 
@@ -1445,7 +1441,7 @@ describe("Board defaultSessionType sync", () => {
     fireEvent.click(await screen.findByRole("button", { name: "change-status-review" }));
 
     await waitFor(() => {
-      expect(moveTaskToColumn).toHaveBeenCalledWith("task-1", TaskStatus.REVIEW, ["task-1"], false);
+      expect(moveTaskToColumn).toHaveBeenCalledWith("task-1", TaskStatus.REVIEW, ["task-1"]);
     });
   });
 
@@ -1700,10 +1696,32 @@ describe("Board defaultSessionType sync", () => {
       expect(readTodoCardIds()).toEqual(["root-task", "inheriting-task", "medium-task"]);
     });
 
-    it("수동 순서를 쓰지 않는 모드에서는 같은 컬럼 안 재정렬을 저장하지 않는다", async () => {
+    it("rank 우선 모드에서는 정렬 기준이 있어도 드래그해 만든 순서를 지킨다", async () => {
+      // Given
+      const tasks: TasksByStatus = {
+        ...createEmptyTasks(),
+        [TaskStatus.TODO]: [
+          createTask({ id: "low-task", title: "Low", status: TaskStatus.TODO, priority: TaskPriority.LOW, displayRank: "2" }),
+          createTask({ id: "high-task", title: "High", status: TaskStatus.TODO, priority: TaskPriority.HIGH, displayRank: "6" }),
+        ],
+      };
+
+      // When
+      renderBoardWithSortPreference(
+        { keys: [{ field: "priority", direction: "asc" }], mode: "rank-first" },
+        tasks,
+      );
+
+      // Then
+      await waitFor(() => expect(screen.getAllByTestId("column")).toHaveLength(5));
+      /** 우선순위가 높은 카드라도 rank가 정한 자리를 넘어서지 못한다 */
+      expect(readTodoCardIds()).toEqual(["low-task", "high-task"]);
+    });
+
+    it("정렬 기준이 켜져 있어도 같은 컬럼 안 재정렬을 저장한다", async () => {
       // Given
       renderBoardWithSortPreference(
-        { keys: [{ field: "priority", direction: "asc" }], mode: "manual-off" },
+        { keys: [{ field: "priority", direction: "asc" }], mode: "sort-first" },
         createTasksWithTodo(),
       );
       await waitFor(() => expect(screen.getAllByTestId("column")).toHaveLength(5));
@@ -1712,7 +1730,8 @@ describe("Board defaultSessionType sync", () => {
       fireEvent.click(screen.getByRole("button", { name: "trigger-drag-end" }));
 
       // Then
-      expect(reorderTasks).not.toHaveBeenCalled();
+      /** 드래그한 자리는 rank로 남고, 정렬 기준은 그 위에서 다시 적용된다 */
+      expect(reorderTasks).toHaveBeenCalled();
     });
   });
 });

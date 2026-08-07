@@ -1174,7 +1174,6 @@ describe("kanbanService.createTask", () => {
     expect(mocks.taskRepo.update).toHaveBeenCalledTimes(1);
     const [updatedTaskId, patch] = mocks.taskRepo.update.mock.calls[0];
     expect(updatedTaskId).toBe("task-b");
-    expect(patch.isManuallyOrdered).toBe(true);
     expect(patch.displayRank > "2").toBe(true);
     expect(patch.displayRank < "6").toBe(true);
     expect(mocks.broadcastBoardUpdate).toHaveBeenCalledTimes(1);
@@ -1188,33 +1187,14 @@ describe("kanbanService.createTask", () => {
     const { moveTaskToColumn } = await import("@/desktop/main/services/kanbanService");
 
     // When
-    await moveTaskToColumn("task-a", "review" as never, ["task-b", "task-a"], true);
+    await moveTaskToColumn("task-a", "review" as never, ["task-b", "task-a"]);
 
     // Then
     const [updatedTaskId, patch] = mocks.taskRepo.update.mock.calls[0];
     expect(updatedTaskId).toBe("task-a");
     expect(patch.status).toBe("review");
-    expect(patch.isManuallyOrdered).toBe(true);
     expect(patch.displayRank > "4").toBe(true);
     expect(mocks.broadcastBoardUpdate).toHaveBeenCalledTimes(1);
-  });
-
-  it("상태만 바꾸는 이동은 목적지 맨 뒤에 붙어도 수동 배치로 표시하지 않는다", async () => {
-    // Given
-    mocks.taskRepo.update.mockResolvedValue({ affected: 1 });
-    mocks.taskRepo.find.mockResolvedValue([{ id: "task-b", displayRank: "4" }]);
-
-    const { moveTaskToColumn } = await import("@/desktop/main/services/kanbanService");
-
-    // When
-    /** vim 단축키·컨텍스트 메뉴는 목적지 컬럼 끝에 붙일 뿐 사용자가 자리를 고른 적이 없다 */
-    await moveTaskToColumn("task-a", "review" as never, ["task-b", "task-a"], false);
-
-    // Then
-    const [, patch] = mocks.taskRepo.update.mock.calls[0];
-    /** 여기서 true가 되면 컬럼 이동만으로 카드가 하나씩 정렬 대상에서 빠져나간다 */
-    expect(patch.isManuallyOrdered).toBe(false);
-    expect(patch.displayRank > "4").toBe(true);
   });
 
   it("앞뒤 이웃 rank가 뒤집힌 자리에 드롭하면 rank 순서상 앞 이웃 바로 다음 카드와의 사이에 둔다", async () => {
@@ -1239,7 +1219,6 @@ describe("kanbanService.createTask", () => {
     /** 컬럼 맨 뒤로 밀어내지 않고 앞 이웃과 그 다음 카드 사이에 끼운다 */
     expect(patch.displayRank > "8").toBe(true);
     expect(patch.displayRank < "9").toBe(true);
-    expect(patch.isManuallyOrdered).toBe(true);
   });
 
   it("앞뒤 이웃 rank가 같아도 앞 이웃 다음 자리를 지키고 컬럼 맨 뒤로 밀지 않는다", async () => {
@@ -1415,7 +1394,7 @@ describe("kanbanService.createTask", () => {
       const { moveTaskToColumn } = await import("@/desktop/main/services/kanbanService");
 
       // When
-      await moveTaskToColumn("task-done", "done" as never, ["task-a", "task-done"], true);
+      await moveTaskToColumn("task-done", "done" as never, ["task-a", "task-done"]);
 
       // Then
       expect(mocks.taskRepo.update).toHaveBeenCalledWith("task-done", expect.objectContaining({
@@ -1423,7 +1402,6 @@ describe("kanbanService.createTask", () => {
         sessionType: "tmux",
         sessionName: "repo-fix-done",
         worktreePath: "/remote/repo__worktrees/fix-done",
-        isManuallyOrdered: true,
       }));
       /** rank 덕분에 같은 컬럼의 다른 카드를 다시 쓰지 않는다 */
       expect(mocks.taskRepo.update).toHaveBeenCalledTimes(1);
@@ -1467,7 +1445,6 @@ describe("kanbanService.createTask", () => {
         "task-done-move-preserve-resources",
         "done" as never,
         ["task-a", "task-done-move-preserve-resources"],
-        true,
       );
       await vi.runAllTimersAsync();
 
@@ -1520,7 +1497,7 @@ describe("kanbanService.createTask", () => {
     const { moveTaskToColumn } = await import("@/desktop/main/services/kanbanService");
 
     // When & Then
-    await expect(moveTaskToColumn("task-done", "done" as never, ["task-a", "task-done"], true))
+    await expect(moveTaskToColumn("task-done", "done" as never, ["task-a", "task-done"]))
       .rejects
       .toThrow("done move failed");
 

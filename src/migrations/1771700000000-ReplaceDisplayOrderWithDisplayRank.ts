@@ -11,15 +11,13 @@ interface TaskOrderRow {
  * 카드 순서를 정수 display_order에서 16진 fractional rank인 display_rank로 옮긴다.
  * 정수 순번은 카드 하나를 옮길 때마다 컬럼 전체를 다시 번호 매겨야 하지만 rank는 옮긴 행만 갱신하면 된다.
  *
- * 기존 display_order 값은 자동으로 배정된 것이라 "사용자가 직접 배치했다"는 뜻이 아니므로,
- * 순서 자체는 rank로 그대로 보존하되 is_manually_ordered는 모두 false로 둔다.
+ * 카드 자리는 rank 하나로만 표현한다. 순서 자체는 display_order에서 그대로 보존한다.
  */
 export class ReplaceDisplayOrderWithDisplayRank1771700000000 implements MigrationInterface {
   name = "ReplaceDisplayOrderWithDisplayRank1771700000000";
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await addColumnIfNotExists(queryRunner, "kanban_tasks", "display_rank", `"display_rank" TEXT NOT NULL DEFAULT '8'`);
-    await addColumnIfNotExists(queryRunner, "kanban_tasks", "is_manually_ordered", `"is_manually_ordered" INTEGER NOT NULL DEFAULT 0`);
 
     // 새로 만든 DB에는 display_order가 아예 없다. 그때는 옮길 순서도 없으므로 백필을 건너뛴다
     if (await hasColumn(queryRunner, "kanban_tasks", "display_order")) {
@@ -54,7 +52,6 @@ export class ReplaceDisplayOrderWithDisplayRank1771700000000 implements Migratio
 
     await queryRunner.query(`DROP INDEX IF EXISTS "idx_kanban_tasks_status_order"`);
     await dropColumnIfExists(queryRunner, "kanban_tasks", "display_rank");
-    await dropColumnIfExists(queryRunner, "kanban_tasks", "is_manually_ordered");
     await queryRunner.query(`
       CREATE INDEX IF NOT EXISTS "idx_kanban_tasks_status_order"
         ON kanban_tasks(status, display_order, created_at)

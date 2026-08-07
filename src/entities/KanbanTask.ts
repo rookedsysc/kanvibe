@@ -80,10 +80,6 @@ export class KanbanTask {
   @Column({ name: "display_rank", type: "varchar", length: 64, default: "8" })
   displayRank!: string;
 
-  /** 사용자가 직접 드래그해 자리를 잡았는지. 자동으로 배정된 순서와 구분해 정렬 필터가 미칠 범위를 정한다 */
-  @Column({ name: "is_manually_ordered", type: "boolean", default: false })
-  isManuallyOrdered!: boolean;
-
   @CreateDateColumn({ name: "created_at" })
   createdAt!: Date;
 

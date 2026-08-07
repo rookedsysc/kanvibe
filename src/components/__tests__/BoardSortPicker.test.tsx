@@ -80,14 +80,14 @@ describe("BoardSortPicker", () => {
     // Given
     const { onChange, user } = await openPicker({
       keys: [{ field: "title", direction: "desc" }],
-      mode: "manual-first",
+      mode: "rank-first",
     });
 
     // When
     await user.click(screen.getByRole("button", { name: enMessages.board.sort.clear }));
 
     // Then
-    expect(onChange).toHaveBeenCalledWith({ keys: [], mode: "manual-first" });
+    expect(onChange).toHaveBeenCalledWith({ keys: [], mode: "rank-first" });
   });
 
   it("고른 기준이 없으면 정렬 해제를 누를 수 없다", async () => {
@@ -106,10 +106,10 @@ describe("BoardSortPicker", () => {
       .toBe(enMessages.board.sort.modeDescriptions["sort-first"]);
 
     // When
-    await user.click(screen.getByRole("radio", { name: enMessages.board.sort.modes["manual-off"] }));
+    await user.click(screen.getByRole("radio", { name: enMessages.board.sort.modes["rank-first"] }));
 
     // Then
-    expect(onChange).toHaveBeenCalledWith({ keys: [], mode: "manual-off" });
+    expect(onChange).toHaveBeenCalledWith({ keys: [], mode: "rank-first" });
   });
 
   it("고른 기준 개수를 트리거에 표시한다", async () => {

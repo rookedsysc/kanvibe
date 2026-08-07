@@ -64,7 +64,6 @@ function createTask(overrides: Partial<KanbanTask> = {}): KanbanTask {
     prUrl: null,
     priority: null,
     displayRank: "8",
-    isManuallyOrdered: false,
     createdAt: new Date(),
     updatedAt: new Date(),
     ...overrides,
