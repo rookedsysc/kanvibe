@@ -26,7 +26,7 @@ extraResources:
 
 mac:
   icon: resources/icon.icns
-  minimumSystemVersion: "10.15.0"
+  minimumSystemVersion: "12.0.0"
   target:
     - dmg
 
