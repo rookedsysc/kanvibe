@@ -90,6 +90,14 @@ export function setVimModeEnabled(enabled: boolean): Promise<void> {
   return invokeAndRefresh("setVimModeEnabled", enabled);
 }
 
+export function getTerminalOpacity(): Promise<number> {
+  return invokeDesktop("appSettings", "getTerminalOpacity");
+}
+
+export function setTerminalOpacity(opacity: number): Promise<void> {
+  return invokeAndRefresh("setTerminalOpacity", opacity);
+}
+
 export async function getBackgroundSyncSettings(): Promise<{ isEnabled: boolean; intervalMs: number }> {
   const [isEnabled, intervalMs] = await Promise.all([
     invokeDesktop<boolean>("appSettings", "getBackgroundSyncEnabled"),

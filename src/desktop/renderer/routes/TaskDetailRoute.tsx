@@ -1312,7 +1312,7 @@ export default function TaskDetailRoute() {
   }
 
   return (
-    <div className="relative h-screen overflow-hidden bg-bg-page p-3">
+    <div className="terminal-transparency-surface relative h-screen overflow-hidden bg-bg-page p-3">
       <aside className={`absolute bottom-3 left-3 top-3 z-40 flex w-12 flex-col items-center rounded-lg border border-border-default bg-bg-surface/95 p-1.5 shadow-sm ${needsMacDesktopHeaderOffset ? "pt-10" : ""}`}>
         <Link href="/" className="mb-2 rounded-md p-2 text-text-muted transition-colors hover:bg-bg-page hover:text-text-primary" title={t("backToBoard")}>
           <svg width="17" height="17" viewBox="0 0 16 16" fill="none" aria-hidden="true">

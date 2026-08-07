@@ -6,6 +6,7 @@ import {
   serializeBoardSortPreference,
   type BoardSortPreference,
 } from "@/desktop/shared/boardSort";
+import { OPAQUE_TERMINAL_OPACITY, clampTerminalOpacity } from "@/lib/terminalOpacity";
 
 const SIDEBAR_COLLAPSED_KEY = "sidebar_default_collapsed";
 const SIDEBAR_HINT_DISMISSED_KEY = "sidebar_hint_dismissed";
@@ -250,4 +251,21 @@ export async function getBoardSortPreference(): Promise<BoardSortPreference> {
 /** 보드 정렬 기준과 모드를 저장한다 */
 export async function setBoardSortPreference(preference: BoardSortPreference): Promise<void> {
   await setAppSetting(BOARD_SORT_PREFERENCE_KEY, serializeBoardSortPreference(preference));
+}
+
+const TERMINAL_OPACITY_KEY = "terminal_opacity";
+
+/** 터미널 배경 불투명도를 조회한다. 미설정 시 완전 불투명을 반환한다 */
+export async function getTerminalOpacity(): Promise<number> {
+  const value = await getAppSetting(TERMINAL_OPACITY_KEY);
+  if (value === null) {
+    return OPAQUE_TERMINAL_OPACITY;
+  }
+
+  return clampTerminalOpacity(Number.parseFloat(value));
+}
+
+/** 터미널 배경 불투명도를 저장한다 */
+export async function setTerminalOpacity(opacity: number): Promise<void> {
+  await setAppSetting(TERMINAL_OPACITY_KEY, String(clampTerminalOpacity(opacity)));
 }
