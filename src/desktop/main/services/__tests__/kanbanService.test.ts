@@ -1217,7 +1217,7 @@ describe("kanbanService.createTask", () => {
     expect(patch.displayRank > "4").toBe(true);
   });
 
-  it("앞뒤 이웃 rank가 뒤집힌 자리에 드롭해도 앞 이웃 뒤를 지킨다", async () => {
+  it("앞뒤 이웃 rank가 뒤집힌 자리에 드롭하면 rank 순서상 앞 이웃 바로 다음 카드와의 사이에 둔다", async () => {
     // Given
     /** 정렬 기준이 켜진 화면에서는 이웃 rank가 화면 순서와 어긋난다 */
     mocks.taskRepo.update.mockResolvedValue({ affected: 1 });
@@ -1225,6 +1225,8 @@ describe("kanbanService.createTask", () => {
       { id: "task-a", displayRank: "8" },
       { id: "task-c", displayRank: "2" },
     ]);
+    /** rank 순서에서 "8" 바로 뒤에 있는 카드 */
+    mocks.taskRepo.findOne.mockResolvedValue({ displayRank: "9" });
 
     const { reorderTasks } = await import("@/desktop/main/services/kanbanService");
 
@@ -1234,11 +1236,32 @@ describe("kanbanService.createTask", () => {
     // Then
     const [updatedTaskId, patch] = mocks.taskRepo.update.mock.calls[0];
     expect(updatedTaskId).toBe("task-b");
-    /** 컬럼 맨 뒤로 밀어내지 않고 앞 이웃 바로 뒤에 둔다 */
+    /** 컬럼 맨 뒤로 밀어내지 않고 앞 이웃과 그 다음 카드 사이에 끼운다 */
     expect(patch.displayRank > "8").toBe(true);
+    expect(patch.displayRank < "9").toBe(true);
     expect(patch.isManuallyOrdered).toBe(true);
-    /** 맨 뒤 rank를 찾을 일이 없으므로 추가 조회도 하지 않는다 */
-    expect(mocks.taskRepo.findOne).not.toHaveBeenCalled();
+  });
+
+  it("앞뒤 이웃 rank가 같아도 앞 이웃 다음 자리를 지키고 컬럼 맨 뒤로 밀지 않는다", async () => {
+    // Given
+    /** 예전 데이터에는 같은 rank를 가진 카드가 나란히 남아 있을 수 있다 */
+    mocks.taskRepo.update.mockResolvedValue({ affected: 1 });
+    mocks.taskRepo.find.mockResolvedValue([
+      { id: "task-a", displayRank: "8" },
+      { id: "task-c", displayRank: "8" },
+    ]);
+    mocks.taskRepo.findOne.mockResolvedValue({ displayRank: "9" });
+
+    const { reorderTasks } = await import("@/desktop/main/services/kanbanService");
+
+    // When
+    await reorderTasks("todo" as never, "task-b", ["task-a", "task-b", "task-c"]);
+
+    // Then
+    const [, patch] = mocks.taskRepo.update.mock.calls[0];
+    /** 맨 뒤(rankBetween("8", null) = "c")로 튀면 사용자가 놓은 자리가 사라진다 */
+    expect(patch.displayRank > "8").toBe(true);
+    expect(patch.displayRank < "9").toBe(true);
   });
 
   it("worktreePath가 없는 비기본 브랜치 task 상태 변경은 프로젝트 루트 task-state를 덮어쓰지 않는다", async () => {

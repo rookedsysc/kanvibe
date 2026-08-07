@@ -9,28 +9,32 @@ const REFLOW_DURATION_MS = 220;
  *
  * 드래그 라이브러리가 카드에 직접 transform을 걸어 두므로 그 값을 덮어쓰지 않도록
  * Web Animations API로 덧입힌다. animate를 지원하지 않는 환경에서는 전환 없이 바로 자리를 잡는다.
+ *
+ * 자리는 뷰포트가 아니라 컬럼 기준 offset으로 기억한다. 보드는 세로로 스크롤되므로 뷰포트 기준으로 재면
+ * 스크롤한 뒤 정렬 기준을 켰을 때 스크롤한 거리만큼 어긋난 지점에서 카드가 날아온다.
  */
 export function useFlipReflow<T extends HTMLElement>(orderKey: string) {
   const containerRef = useRef<T>(null);
-  const previousTopById = useRef(new Map<string, number>());
+  const previousOffsetById = useRef(new Map<string, number>());
 
   useLayoutEffect(() => {
     const container = containerRef.current;
     if (!container) return;
 
-    const nextTopById = new Map<string, number>();
+    const nextOffsetById = new Map<string, number>();
+    const containerTop = container.getBoundingClientRect().top;
 
     for (const card of container.querySelectorAll<HTMLElement>(TASK_CARD_SELECTOR)) {
       const taskId = card.dataset.kanbanTaskId;
       if (!taskId) continue;
 
-      const nextTop = card.getBoundingClientRect().top;
-      nextTopById.set(taskId, nextTop);
+      const nextOffset = card.getBoundingClientRect().top - containerTop;
+      nextOffsetById.set(taskId, nextOffset);
 
-      const previousTop = previousTopById.current.get(taskId);
-      if (previousTop === undefined || typeof card.animate !== "function") continue;
+      const previousOffset = previousOffsetById.current.get(taskId);
+      if (previousOffset === undefined || typeof card.animate !== "function") continue;
 
-      const shift = previousTop - nextTop;
+      const shift = previousOffset - nextOffset;
       if (Math.abs(shift) < 1) continue;
 
       card.animate(
@@ -39,7 +43,7 @@ export function useFlipReflow<T extends HTMLElement>(orderKey: string) {
       );
     }
 
-    previousTopById.current = nextTopById;
+    previousOffsetById.current = nextOffsetById;
   }, [orderKey]);
 
   return containerRef;

@@ -23,6 +23,7 @@ import { detachSession } from "@/lib/terminal";
 import { persistTaskStateForTask as persistTaskState } from "@/desktop/main/services/kanvibeTaskStateService";
 import { persistProjectColorToKanvibeState } from "@/desktop/main/services/kanvibeProjectColorService";
 import { rankBetween } from "@/desktop/shared/displayRank";
+import { appendDisplayRank, findNextDisplayRank } from "@/desktop/main/services/taskDisplayRankService";
 
 export type TasksByStatus = Record<TaskStatus, KanbanTask[]>;
 
@@ -516,7 +517,7 @@ export interface CreateTaskInput {
 /** 새 작업을 생성한다. branchName + projectId가 있으면 worktree와 세션도 함께 생성한다 */
 export async function createTask(input: CreateTaskInput): Promise<KanbanTask> {
   const repo = await getTaskRepository();
-  const lastTodoRankPromise = findLastRank(repo, TaskStatus.TODO);
+  const todoRankPromise = appendDisplayRank(repo, TaskStatus.TODO);
 
   const task = repo.create({
     title: input.title || input.branchName || "Untitled",
@@ -562,7 +563,7 @@ export async function createTask(input: CreateTaskInput): Promise<KanbanTask> {
     }
   }
 
-  task.displayRank = rankBetween(await lastTodoRankPromise, null);
+  task.displayRank = await todoRankPromise;
 
   const saved = await repo.save(task);
 
@@ -926,26 +927,13 @@ export async function connectTerminalSession(
   }
 }
 
-/** 해당 컬럼에서 가장 뒤에 있는 rank를 찾는다. 없으면 null이라 맨 앞부터 시작한다 */
-async function findLastRank(
-  repo: Awaited<ReturnType<typeof getTaskRepository>>,
-  status: TaskStatus,
-): Promise<string | null> {
-  const lastTask = await repo.findOne({
-    where: { status },
-    order: { displayRank: "DESC" },
-    select: ["displayRank"],
-  });
-
-  return lastTask?.displayRank ?? null;
-}
-
 /**
  * 드롭한 자리에 해당하는 rank를 앞뒤 카드에서 계산한다.
  *
- * 정렬 기준이 켜져 있으면 화면 순서가 rank 순서와 달라 앞뒤 rank가 뒤집혀 있을 수 있는데,
- * 그때는 두 이웃 사이 값을 만들 수 없으므로 앞 이웃 바로 뒤에 둔다.
- * 컬럼 맨 뒤로 보내면 사용자가 놓은 자리가 통째로 사라지지만, 앞 이웃 뒤는 드롭 지점을 그대로 지킨다.
+ * 정렬 기준이 켜져 있으면 화면 순서가 rank 순서와 달라 앞뒤 rank가 뒤집혀 있을 수 있고,
+ * 예전 데이터에는 같은 rank를 가진 카드가 남아 있을 수도 있다.
+ * 그때는 두 이웃 사이 값을 만들 수 없으므로 rank 순서에서 앞 이웃 바로 다음 카드를 찾아 그 사이에 둔다.
+ * 컬럼 맨 뒤로 보내면 사용자가 놓은 자리가 통째로 사라지지만, 앞 이웃 바로 뒤는 드롭 지점을 그대로 지킨다.
  */
 async function resolveDisplayRank(
   repo: Awaited<ReturnType<typeof getTaskRepository>>,
@@ -955,7 +943,7 @@ async function resolveDisplayRank(
 ): Promise<string> {
   const movedIndex = orderedIds.indexOf(movedTaskId);
   if (movedIndex < 0) {
-    return rankBetween(await findLastRank(repo, status), null);
+    return appendDisplayRank(repo, status);
   }
 
   const neighborIds = [orderedIds[movedIndex - 1], orderedIds[movedIndex + 1]].filter(Boolean);
@@ -968,7 +956,7 @@ async function resolveDisplayRank(
   const nextRank = rankById.get(orderedIds[movedIndex + 1]) ?? null;
 
   if (previousRank !== null && nextRank !== null && previousRank >= nextRank) {
-    return rankBetween(previousRank, null);
+    return rankBetween(previousRank, await findNextDisplayRank(repo, status, previousRank));
   }
 
   return rankBetween(previousRank, nextRank);

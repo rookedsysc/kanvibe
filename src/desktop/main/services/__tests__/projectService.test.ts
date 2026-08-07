@@ -39,7 +39,15 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("@/lib/database", () => ({
   getProjectRepository: mocks.getProjectRepository,
-  getTaskRepository: mocks.getTaskRepository,
+  /**
+   * task를 만드는 모든 경로가 display rank 조회(findOne)를 거치는데,
+   * 테스트마다 필요한 메서드만 담아 repo mock을 짜므로 조회 기본값을 여기서 한 번 채워 준다.
+   * 테스트가 직접 findOne을 넘기면 그 값이 이긴다.
+   */
+  getTaskRepository: async () => {
+    const taskRepo = await mocks.getTaskRepository();
+    return { findOne: vi.fn(async () => null), ...taskRepo };
+  },
 }));
 
 vi.mock("@/entities/Project", () => ({
@@ -754,6 +762,38 @@ describe("projectService remote registration flow", () => {
       mocks.resolveProjectIconDataUrl.mockImplementation(async () => null);
     }
   });
+
+  it("프로젝트 등록이 만드는 root task도 컬럼 맨 뒤 자리 rank를 받는다", async () => {
+    // Given
+    mocks.validateGitRepo.mockResolvedValue(true);
+    mocks.getDefaultBranch.mockResolvedValue("main");
+    mocks.createSessionWithoutWorktree.mockResolvedValue({ sessionName: "api-main" });
+    mocks.getProjectRepository.mockResolvedValue({
+      find: vi.fn().mockResolvedValue([]),
+      create: vi.fn((value) => value),
+      save: vi.fn(async (value) => ({ id: "project-1", ...value })),
+      update: vi.fn(async () => ({ affected: 1 })),
+      remove: vi.fn(),
+    });
+    const taskSave = vi.fn(async (value) => ({ id: "task-1", ...value }));
+    mocks.getTaskRepository.mockResolvedValue({
+      /** 컬럼에 이미 rank "8"인 카드가 있다 */
+      findOne: vi.fn(async () => ({ displayRank: "8" })),
+      findOneBy: vi.fn().mockResolvedValue(null),
+      create: vi.fn((value) => value),
+      save: taskSave,
+    });
+
+    const { registerProject } = await import("@/desktop/main/services/projectService");
+
+    // When
+    await registerProject("api", "/workspace/api");
+
+    // Then
+    /** rank를 비워 두면 컬럼 DEFAULT "8"이 들어가 프로젝트를 등록할수록 같은 자리에 카드가 쌓인다 */
+    const [savedTask] = taskSave.mock.calls[0];
+    expect(savedTask.displayRank > "8").toBe(true);
+  });
 });
 
 describe("projectService local hook installation", () => {
@@ -1382,6 +1422,8 @@ describe("projectService local hook installation", () => {
 
     const taskRepoSave = vi.fn(async (value) => ({ id: "task-worktree", ...value }));
     mocks.getTaskRepository.mockResolvedValue({
+      /** 컬럼에 이미 rank "8"인 카드가 있다 */
+      findOne: vi.fn(async () => ({ displayRank: "8" })),
       findOneBy: vi.fn(async (criteria: { branchName?: string; projectId?: string | null }) => {
         if (criteria.projectId === "project-1" && criteria.branchName === "main") {
           return {
@@ -1405,6 +1447,10 @@ describe("projectService local hook installation", () => {
     const result = await scanAndRegisterProjects("/remote/workspace", "remote-host");
 
     expect(result.worktreeTasks).toContain("feature-login");
+    /** worktree 스캔이 만드는 카드도 자기 자리를 받아야 뒤에 오는 드롭 위치 계산이 어긋나지 않는다 */
+    const [savedWorktreeTask] = taskRepoSave.mock.calls[0];
+    expect(savedWorktreeTask.branchName).toBe("feature-login");
+    expect(savedWorktreeTask.displayRank > "8").toBe(true);
     expect(mocks.listWorktrees).toHaveBeenCalledWith("/remote/repo", "remote-host");
     expect(mocks.scheduleKanvibeHooksInstall).toHaveBeenCalledWith(
       "/remote/repo__worktrees/feature-login",
