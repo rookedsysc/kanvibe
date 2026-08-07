@@ -632,7 +632,7 @@ function buildRemoteAttachCommand(
 /**
  * 멀티플렉서 없이 원격 로그인 셸만 띄운다.
  * 이 셸은 SSH 연결에 매여 있어 연결이 끊기면 실행 중이던 작업도 함께 사라진다.
- * 작업을 살려두려면 tmux나 zellij 세션을 써야 한다는 점을 UI가 사용자에게 알린다.
+ * 원격에서 작업을 살려두려면 tmux나 zellij 세션을 골라야 한다.
  */
 function buildRemotePlainShellCommand(worktreePath?: string | null): string {
   const launchLoginShell = 'exec "${SHELL:-/bin/sh}" -l';

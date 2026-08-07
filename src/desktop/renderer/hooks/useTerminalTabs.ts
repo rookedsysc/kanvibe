@@ -17,6 +17,36 @@ import type { TerminalTab } from "@/desktop/shared/terminalTabs";
 const LOCAL_POLL_INTERVAL_MS = 1_000;
 const REMOTE_POLL_INTERVAL_MS = 3_000;
 
+/**
+ * 창이 뒤에 가려져 있으면 탭이 바뀌어도 볼 사람이 없으므로 폴링을 멈춘다.
+ * 창을 여러 개 띄우는 사용 방식이라 창 수만큼 곱해지는 비용이고,
+ * 원격에서는 SSH ControlMaster lease를 점유해 실제 git 작업과 경합한다.
+ *
+ * Electron은 창이 다른 창에 가려진 것만으로는 `visibilitychange`를 내지 않아 포커스도 함께 본다.
+ */
+function useIsWindowActive(): boolean {
+  const [isWindowActive, setIsWindowActive] = useState(true);
+
+  useEffect(() => {
+    const syncWindowActive = () => {
+      setIsWindowActive(document.visibilityState !== "hidden" && document.hasFocus());
+    };
+
+    syncWindowActive();
+    document.addEventListener("visibilitychange", syncWindowActive);
+    window.addEventListener("focus", syncWindowActive);
+    window.addEventListener("blur", syncWindowActive);
+
+    return () => {
+      document.removeEventListener("visibilitychange", syncWindowActive);
+      window.removeEventListener("focus", syncWindowActive);
+      window.removeEventListener("blur", syncWindowActive);
+    };
+  }, []);
+
+  return isWindowActive;
+}
+
 interface UseTerminalTabsOptions {
   taskId: string;
   sessionType: SessionType | null;
@@ -54,6 +84,7 @@ export function useTerminalTabs({
   const [tabs, setTabs] = useState<TerminalTab[]>([]);
   const [error, setError] = useState<string | null>(null);
   const tabsRef = useRef<TerminalTab[]>([]);
+  const isWindowActive = useIsWindowActive();
 
   tabsRef.current = tabs;
 
@@ -84,10 +115,11 @@ export function useTerminalTabs({
       return;
     }
 
+    /** 창이 돌아왔을 때 이 효과가 다시 돌면서 밀린 변화를 한 번에 따라잡는다 */
     void refresh();
 
     /** terminal 세션의 탭은 KanVibe만 바꾸므로 주기 조회가 필요 없다 */
-    if (sessionType === SessionType.TERMINAL) {
+    if (sessionType === SessionType.TERMINAL || !isWindowActive) {
       return;
     }
 
@@ -98,7 +130,23 @@ export function useTerminalTabs({
     return () => {
       window.clearInterval(pollIntervalId);
     };
-  }, [isRemote, isVisible, refresh, sessionType]);
+  }, [isRemote, isVisible, isWindowActive, refresh, sessionType]);
+
+  /**
+   * terminal 세션은 폴링하지 않으므로, 셸이 스스로 끝나 main이 탭을 지운 사실을 알 방법이 없다.
+   * 그대로 두면 되살릴 수 없는 탭이 탭 바에 남는다.
+   */
+  useEffect(() => {
+    if (sessionType !== SessionType.TERMINAL) {
+      return;
+    }
+
+    return window.kanvibeDesktop?.onTerminalClose?.((event: { taskId: string }) => {
+      if (event.taskId === taskId) {
+        void refresh();
+      }
+    });
+  }, [refresh, sessionType, taskId]);
 
   const selectTab = useCallback(async (tabId: string) => {
     /** 폴링을 기다리면 클릭이 굼떠 보이므로 먼저 화면을 바꾸고 실제 상태로 덮어쓴다 */
