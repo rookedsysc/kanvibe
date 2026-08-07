@@ -1005,6 +1005,107 @@ describe("TaskDetailRoute", () => {
     expect(screen.queryByTestId("hooks-status-card")).toBeNull();
   });
 
+  /**
+   * main은 태스크 상세 URL만 보고 close-tab을 보낸다.
+   * 여기서 창 닫기로 되돌리지 않으면 단축키를 삼키고 아무것도 하지 않는다.
+   */
+  it("터미널이 없는 태스크 상세에서 탭 닫기 명령은 창을 닫는다", async () => {
+    let terminalTabShortcutListener: ((command: { type: string }) => void) | null = null;
+    const closeCurrentWindow = vi.fn();
+    window.kanvibeDesktop = {
+      isDesktop: true,
+      closeCurrentWindow,
+      onTerminalTabShortcut(listener: (command: { type: string }) => void) {
+        terminalTabShortcutListener = listener;
+        return () => {
+          terminalTabShortcutListener = null;
+        };
+      },
+    };
+    mocks.getSidebarDefaultCollapsed.mockResolvedValue(true);
+    mocks.getTaskById.mockResolvedValue({
+      id: "task-1",
+      title: "task title",
+      description: null,
+      branchName: "feat/no-terminal",
+      baseBranch: "main",
+      prUrl: null,
+      sessionType: null,
+      sessionName: null,
+      sshHost: null,
+      projectId: "project-1",
+      project: { id: "project-1", name: "kanvibe" },
+      status: "todo",
+      agentType: null,
+      worktreePath: "/repo__worktrees/no-terminal",
+    });
+
+    render(
+      <BoardCommandProvider>
+        <TaskDetailRoute />
+      </BoardCommandProvider>,
+    );
+
+    await screen.findByTestId("connect-terminal-form");
+    expect(screen.queryByLabelText("terminal input")).toBeNull();
+
+    act(() => {
+      terminalTabShortcutListener?.({ type: "close-tab" });
+    });
+
+    expect(closeCurrentWindow).toHaveBeenCalledTimes(1);
+  });
+
+  it("shortcut blocker가 걸려 있으면 Electron이 보낸 탭 명령도 무시한다", async () => {
+    let terminalTabShortcutListener: ((command: { type: string }) => void) | null = null;
+    const closeCurrentWindow = vi.fn();
+    window.kanvibeDesktop = {
+      isDesktop: true,
+      closeCurrentWindow,
+      onTerminalTabShortcut(listener: (command: { type: string }) => void) {
+        terminalTabShortcutListener = listener;
+        return () => {
+          terminalTabShortcutListener = null;
+        };
+      },
+    };
+    mocks.getSidebarDefaultCollapsed.mockResolvedValue(true);
+    mocks.getTaskById.mockResolvedValue({
+      id: "task-1",
+      title: "task title",
+      description: null,
+      branchName: "feat/blocked-tab-shortcut",
+      baseBranch: "main",
+      prUrl: null,
+      sessionType: null,
+      sessionName: null,
+      sshHost: null,
+      projectId: "project-1",
+      project: { id: "project-1", name: "kanvibe" },
+      status: "todo",
+      agentType: null,
+      worktreePath: "/repo__worktrees/blocked-tab-shortcut",
+    });
+
+    render(
+      <BoardCommandProvider>
+        <TaskDetailShortcutBlocker />
+        <TaskDetailRoute />
+      </BoardCommandProvider>,
+    );
+
+    await screen.findByTestId("connect-terminal-form");
+    await waitFor(() => {
+      expect(screen.getByTestId("shortcut-blocker-state").textContent).toBe("blocked");
+    });
+
+    act(() => {
+      terminalTabShortcutListener?.({ type: "close-tab" });
+    });
+
+    expect(closeCurrentWindow).not.toHaveBeenCalled();
+  });
+
   it("채팅 아이콘을 클릭하면 drawer 대신 메인 영역을 AI 채팅 내역으로 전환한다", async () => {
     mocks.getTaskById.mockResolvedValue({
       id: "task-1",

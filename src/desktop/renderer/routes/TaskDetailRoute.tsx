@@ -1050,7 +1050,19 @@ export default function TaskDetailRoute() {
 
   /** `close-window`는 라우트와 무관해 App이 받는다. 여기서는 터미널이 있는 화면의 탭 명령만 다룬다 */
   const runTerminalTabCommand = useCallback((command: TerminalTabShortcutCommand) => {
-    if (!hasTerminal || mainView !== "terminal") {
+    const isTerminalVisible = hasTerminal && mainView === "terminal";
+
+    /**
+     * 탭 닫기는 터미널이 없는 화면에서 일반 앱처럼 창 닫기가 된다.
+     * main은 태스크 상세 URL만 보고 이 명령을 보내므로, 세션이 없거나 채팅 뷰를 보는 중인지는
+     * 여기서만 알 수 있다. 여기서 걸러 내지 않으면 키를 삼키고 아무것도 하지 않는다.
+     */
+    if (command.type === "close-tab" && !isTerminalVisible) {
+      window.kanvibeDesktop?.closeCurrentWindow?.();
+      return;
+    }
+
+    if (!isTerminalVisible) {
       return;
     }
 
@@ -1076,9 +1088,16 @@ export default function TaskDetailRoute() {
     }
   }, [closeTerminalTabOrWindow, hasTerminal, mainView, terminalTabs]);
 
+  /** main은 모달·입력 포커스를 모르므로, 렌더러 keydown 경로와 같은 차단 조건을 여기서도 건다 */
   useEffect(() => (
-    window.kanvibeDesktop?.onTerminalTabShortcut?.(runTerminalTabCommand) ?? undefined
-  ), [runTerminalTabCommand]);
+    window.kanvibeDesktop?.onTerminalTabShortcut?.((command: TerminalTabShortcutCommand) => {
+      if (hasShortcutBlocker) {
+        return;
+      }
+
+      runTerminalTabCommand(command);
+    }) ?? undefined
+  ), [hasShortcutBlocker, runTerminalTabCommand]);
 
   /**
    * main의 `before-input-event`가 놓친 입력을 렌더러가 받는 두 번째 경로.
