@@ -10,9 +10,8 @@ import TaskQuickSearchDialog from "@/desktop/renderer/components/TaskQuickSearch
 import { DEFAULT_LOCALE, getSafeLocale, isSupportedLocale, messagesByLocale } from "@/desktop/renderer/utils/locales";
 import { triggerDesktopRefresh } from "@/desktop/renderer/utils/refresh";
 import BoardRoute from "@/desktop/renderer/routes/BoardRoute";
-import { getTerminalOpacity, getThemePreference, type ThemePreference } from "@/desktop/renderer/actions/appSettings";
+import { getThemePreference, type ThemePreference } from "@/desktop/renderer/actions/appSettings";
 import { applyThemePreference, THEME_PREFERENCE_CHANGED_EVENT } from "@/desktop/renderer/utils/theme";
-import { applyTerminalTransparency } from "@/desktop/renderer/utils/terminalTransparency";
 import {
   getCurrentShortcutPlatform,
   isTaskDetailRouteUrl,
@@ -80,24 +79,6 @@ function ThemeController() {
   return null;
 }
 
-function TerminalTransparencyController() {
-  useEffect(() => {
-    let cancelled = false;
-
-    void getTerminalOpacity().then((terminalOpacity) => {
-      if (!cancelled) {
-        applyTerminalTransparency(terminalOpacity);
-      }
-    });
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  return null;
-}
-
 function LocaleShell() {
   const { locale } = useParams();
   const safeLocale = getSafeLocale(locale);
@@ -110,7 +91,6 @@ function LocaleShell() {
   return (
     <IntlProvider locale={safeLocale} messages={messages}>
       <ThemeController />
-      <TerminalTransparencyController />
       <BoardCommandProvider>
         <TaskQuickSearchDialog />
         <NotificationListener />

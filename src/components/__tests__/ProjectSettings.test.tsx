@@ -13,7 +13,6 @@ const mockSetThemePreference = vi.fn().mockResolvedValue(undefined);
 const mockSetVimModeEnabled = vi.fn().mockResolvedValue(undefined);
 const mockSetBackgroundSyncEnabled = vi.fn().mockResolvedValue(undefined);
 const mockSetBackgroundSyncIntervalMs = vi.fn().mockResolvedValue(undefined);
-const mockSetTerminalOpacity = vi.fn().mockResolvedValue(undefined);
 
 vi.mock("next-intl", () => ({
   useTranslations: (namespace?: string) => (key: string, values?: Record<string, string>) => {
@@ -64,7 +63,6 @@ vi.mock("@/desktop/renderer/actions/appSettings", () => ({
   setVimModeEnabled: (...args: unknown[]) => mockSetVimModeEnabled(...args),
   setBackgroundSyncEnabled: (...args: unknown[]) => mockSetBackgroundSyncEnabled(...args),
   setBackgroundSyncIntervalMs: (...args: unknown[]) => mockSetBackgroundSyncIntervalMs(...args),
-  setTerminalOpacity: (...args: unknown[]) => mockSetTerminalOpacity(...args),
 }));
 
 function createProject(): Project {
@@ -89,7 +87,6 @@ describe("ProjectSettings", () => {
     delete window.kanvibeDesktop;
     document.documentElement.removeAttribute("data-theme");
     document.documentElement.removeAttribute("data-theme-preference");
-    document.documentElement.removeAttribute("data-terminal-transparent");
     Object.defineProperty(window.navigator, "platform", {
       configurable: true,
       value: "Linux x86_64",
@@ -415,66 +412,6 @@ describe("ProjectSettings", () => {
       expect(mockSetBackgroundSyncIntervalMs).toHaveBeenCalledTimes(2);
     });
     expect(mockSetBackgroundSyncIntervalMs).toHaveBeenLastCalledWith(20 * 60_000);
-  });
-
-  it("터미널 투명도를 낮추면 설정을 저장하고 페이지 배경을 투명하게 만든다", async () => {
-    // Given
-    const onTerminalOpacityChange = vi.fn();
-
-    render(
-      <ProjectSettings
-        isOpen
-        onClose={vi.fn()}
-        projects={[createProject()]}
-        sshHosts={[]}
-        sidebarDefaultCollapsed={false}
-        defaultSessionType={SessionType.TMUX}
-        terminalOpacity={1}
-        onTerminalOpacityChange={onTerminalOpacityChange}
-        notificationSettings={{ isEnabled: true, enabledStatuses: ["progress", "pending", "review"] }}
-        backgroundSyncSettings={{ isEnabled: true, intervalMs: 10 * 60_000 }}
-      />,
-    );
-
-    // When
-    const opacitySlider = screen.getByLabelText("terminalOpacity");
-    fireEvent.change(opacitySlider, { target: { value: "80" } });
-
-    // Then
-    expect(onTerminalOpacityChange).toHaveBeenCalledWith(0.8);
-    expect(document.documentElement.dataset.terminalTransparent).toBe("true");
-    expect((opacitySlider as HTMLInputElement).value).toBe("80");
-    expect(screen.getByText("80%").textContent).toBe("80%");
-    await waitFor(() => {
-      expect(mockSetTerminalOpacity).toHaveBeenCalledWith(0.8);
-    });
-  });
-
-  it("터미널 투명도를 완전 불투명으로 되돌리면 페이지 배경 투명 처리를 없앤다", async () => {
-    // Given
-    render(
-      <ProjectSettings
-        isOpen
-        onClose={vi.fn()}
-        projects={[createProject()]}
-        sshHosts={[]}
-        sidebarDefaultCollapsed={false}
-        defaultSessionType={SessionType.TMUX}
-        terminalOpacity={0.8}
-        notificationSettings={{ isEnabled: true, enabledStatuses: ["progress", "pending", "review"] }}
-        backgroundSyncSettings={{ isEnabled: true, intervalMs: 10 * 60_000 }}
-      />,
-    );
-
-    // When
-    const opacitySlider = screen.getByLabelText("terminalOpacity");
-    fireEvent.change(opacitySlider, { target: { value: "100" } });
-
-    // Then
-    expect(document.documentElement.dataset.terminalTransparent).toBeUndefined();
-    await waitFor(() => {
-      expect(mockSetTerminalOpacity).toHaveBeenCalledWith(1);
-    });
   });
 
 });

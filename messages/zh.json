@@ -163,8 +163,6 @@
       "dark": "深色",
       "light": "浅色"
     },
-    "terminalOpacity": "终端透明度",
-    "terminalOpacityDescription": "让终端背景半透明，可以看到后面的画面。首次开启或关闭透明度时需要重启应用才会生效。",
     "scanTitle": "项目扫描",
     "scanPathPlaceholder": "要扫描的目录路径（例如：~/Documents）",
     "scanButton": "扫描并注册",
