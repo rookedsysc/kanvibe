@@ -164,8 +164,6 @@
       "dark": "Dark",
       "light": "Light"
     },
-    "terminalOpacity": "Terminal transparency",
-    "terminalOpacityDescription": "Makes the terminal background translucent so what is behind it shows through. Restart the app the first time you turn transparency on or off.",
     "scanTitle": "Project Scan",
     "scanPathPlaceholder": "Directory path to scan (e.g., ~/Documents)",
     "scanButton": "Scan & Register",

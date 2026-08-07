@@ -5,12 +5,10 @@ import {
   getDefaultSessionType,
   getNotificationSettings,
   getSidebarDefaultCollapsed,
-  getTerminalOpacity,
   getThemePreference,
   getVimModeEnabled,
   type ThemePreference,
 } from "@/desktop/renderer/actions/appSettings";
-import { OPAQUE_TERMINAL_OPACITY } from "@/lib/terminalOpacity";
 import { getAllProjects, getAvailableHosts } from "@/desktop/renderer/actions/project";
 import { useRouter } from "@/desktop/renderer/navigation";
 import { useRefreshSignal } from "@/desktop/renderer/utils/refresh";
@@ -25,7 +23,6 @@ interface SettingsData {
   defaultSessionType: Awaited<ReturnType<typeof getDefaultSessionType>>;
   vimModeEnabled: Awaited<ReturnType<typeof getVimModeEnabled>>;
   themePreference: ThemePreference;
-  terminalOpacity: number;
   backgroundSyncSettings: Awaited<ReturnType<typeof getBackgroundSyncSettings>>;
 }
 
@@ -38,7 +35,6 @@ function createEmptySettingsData(): SettingsData {
     defaultSessionType: SessionType.TMUX,
     vimModeEnabled: true,
     themePreference: "system",
-    terminalOpacity: OPAQUE_TERMINAL_OPACITY,
     backgroundSyncSettings: { isEnabled: true, intervalMs: 10 * 60_000 },
   };
 }
@@ -69,9 +65,8 @@ export default function SettingsRoute() {
       getDefaultSessionType(),
       getVimModeEnabled(),
       getThemePreference(),
-      getTerminalOpacity(),
       getBackgroundSyncSettings(),
-    ]).then(([projects, sshHosts, sidebarDefaultCollapsed, notificationSettings, defaultSessionType, vimModeEnabled, themePreference, terminalOpacity, backgroundSyncSettings]) => {
+    ]).then(([projects, sshHosts, sidebarDefaultCollapsed, notificationSettings, defaultSessionType, vimModeEnabled, themePreference, backgroundSyncSettings]) => {
       window.clearTimeout(loadingTimeout);
       if (!cancelled) {
         setData({
@@ -82,7 +77,6 @@ export default function SettingsRoute() {
           defaultSessionType,
           vimModeEnabled,
           themePreference,
-          terminalOpacity,
           backgroundSyncSettings,
         });
       }
@@ -115,10 +109,6 @@ export default function SettingsRoute() {
       defaultSessionType={data.defaultSessionType}
       vimModeEnabled={data.vimModeEnabled}
       themePreference={data.themePreference}
-      terminalOpacity={data.terminalOpacity}
-      onTerminalOpacityChange={(terminalOpacity) => {
-        setData((currentData) => currentData ? { ...currentData, terminalOpacity } : currentData);
-      }}
       onDefaultSessionTypeChange={(sessionType) => {
         setData((currentData) => currentData ? { ...currentData, defaultSessionType: sessionType } : currentData);
       }}
