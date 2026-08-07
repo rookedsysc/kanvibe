@@ -13,7 +13,7 @@ const { applyAppDataDirectoryOverride } = require("./runtimeEnvironment");
 const {
   OPAQUE_TERMINAL_OPACITY,
   createWindowBackgroundOptions,
-  shouldDisableGpuAccelerationForTransparency,
+  shouldEnableTransparentVisuals,
 } = require("./windowAppearance");
 
 const DEFAULT_LOCALE = "ko";
@@ -57,12 +57,11 @@ let startupTerminalOpacity = OPAQUE_TERMINAL_OPACITY;
 const pendingDiagnosticEvents = [];
 
 /**
- * app.disableHardwareAcceleration()은 app이 ready 되기 전에만 호출할 수 있다. Electron의
+ * app.commandLine.appendSwitch()는 app이 ready 되기 전에 호출해야 반영된다. Electron의
  * 네이티브 ready 이벤트는 JS가 await로 이벤트 루프에 한 번이라도 양보하면 그 사이에 먼저
  * 발생할 만큼 빠르므로, appSettingsService.getTerminalOpacity()의 TypeORM 비동기 연결을
- * 기다리면 경합에서 진다(실제로 져서 disableHardwareAcceleration()이 예외를 던졌다).
- * src/lib/database.ts의 databaseHasTable()과 같은 방식으로 better-sqlite3를 직접,
- * 동기적으로 읽어 이 경합을 없앤다.
+ * 기다리면 경합에서 진다. src/lib/database.ts의 databaseHasTable()과 같은 방식으로
+ * better-sqlite3를 직접, 동기적으로 읽어 이 경합을 없앤다.
  */
 function readStartupTerminalOpacitySync() {
   try {
@@ -90,16 +89,8 @@ function readStartupTerminalOpacitySync() {
 registerRuntimeAliases();
 startupTerminalOpacity = readStartupTerminalOpacitySync();
 
-/**
- * Apple Silicon macOS에서 Electron GPU 컴포지터가 transparent 창의 웹 콘텐츠를 불투명하게
- * 그려버리는 문제가 있다. 터미널을 반투명하게 쓸 때만 GPU 가속을 끄고, 쓰지 않는 사용자는
- * 기존 GPU 가속 렌더링을 그대로 유지한다. Linux는 별도 이유로 항상 끈다(위 블록 참고).
- */
-if (process.platform !== "linux" && shouldDisableGpuAccelerationForTransparency(startupTerminalOpacity)) {
-  app.disableHardwareAcceleration();
-  app.commandLine.appendSwitch("disable-gpu");
-  app.commandLine.appendSwitch("disable-gpu-compositing");
-  app.commandLine.appendSwitch("disable-software-rasterizer");
+if (shouldEnableTransparentVisuals(process.platform, startupTerminalOpacity)) {
+  app.commandLine.appendSwitch("enable-transparent-visuals");
 }
 
 function logDiagnostic(event, payload = {}) {
