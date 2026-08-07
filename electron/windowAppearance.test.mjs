@@ -26,7 +26,7 @@ describe("Electron window appearance", () => {
     expect(options).toEqual({ transparent: true, backgroundColor: "#010a0a0a" });
   });
 
-  it("투명 창 배경색 RGB는 alpha가 무시되는 플랫폼에서도 흰 화면이 되지 않도록 어둡게 둔다", () => {
+  it("투명 창 배경색 RGB는 합성에 실패한 환경에서도 흰 화면이 되지 않도록 어둡게 둔다", () => {
     // Given
     const { createWindowBackgroundOptions } = require("./windowAppearance");
 

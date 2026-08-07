@@ -9,8 +9,8 @@ const OPAQUE_WINDOW_BACKGROUND_COLOR = "#ffffff";
  *
  * RGB는 터미널 배경과 같은 어두운 색으로 둔다. Ghostty는 같은 자리에 흰색을 쓰지만 그 근거는
  * "Terminal.app의 모습에 가깝다"는 밝은 테마 기준이라 다크 앱인 KanVibe에는 옮겨올 수 없다.
- * macOS에서 이 alpha가 무시되고 RGB가 불투명하게 칠해지는 것이 관측됐는데, 흰색이면 화면 전체가
- * 백색으로 뒤집힌다. 어두운 색이면 같은 상황에서도 평소의 불투명 터미널처럼 degrade한다.
+ * 창을 투명하게 합성하지 못하는 환경에서는 이 RGB가 그대로 드러나므로, 어두운 색이어야 평소의
+ * 불투명 터미널처럼 degrade한다.
  */
 const TRANSPARENT_WINDOW_BACKGROUND_COLOR = "#010a0a0a";
 
