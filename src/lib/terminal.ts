@@ -6,6 +6,7 @@ import { execSync } from "child_process";
 import type { WebSocket } from "ws";
 import { buildSSHArgs, getKanvibeSSHConnectionHealthOptions, hasLocalX11Display } from "@/lib/sshConfig";
 import {
+  buildTmuxHideStatusBarCommand,
   buildTmuxSessionBootstrapCommand,
   buildTmuxUserClipboardDirectiveTestCommand,
   buildTmuxUserClipboardPreferenceCommand,
@@ -86,7 +87,7 @@ function getTabState(taskId: string): LocalTerminalTabState {
 function toTerminalTabs(state: LocalTerminalTabState): TerminalTab[] {
   return state.tabs.map((tab, index) => ({
     id: tab.id,
-    index,
+    nativeIndex: index,
     name: tab.name,
     isActive: tab.id === state.activeTabId,
   }));
@@ -108,7 +109,7 @@ export function createLocalTerminalTab(taskId: string): TerminalTab {
 
   return {
     id: createdTab.id,
-    index: state.tabs.length - 1,
+    nativeIndex: state.tabs.length - 1,
     name: createdTab.name,
     isActive: true,
   };
@@ -366,6 +367,26 @@ function shouldEnableLocalTmuxClipboard(terminalEnvironment: NodeJS.ProcessEnv):
 }
 
 /**
+ * 이미 살아 있는 세션에 붙기 전에 tmux 상태바를 끈다.
+ * 부트스트랩을 타지 않는 기존 세션은 이 경로에서만 KanVibe 탭 바와의 중복이 정리된다.
+ * 실패해도 attach는 그대로 진행한다. 표시가 한 줄 겹칠 뿐이라 연결을 막을 이유가 없다.
+ */
+function hideExistingLocalTmuxStatusBar(
+  sessionName: string,
+  terminalEnvironment: NodeJS.ProcessEnv,
+): void {
+  try {
+    execSync(buildTmuxHideStatusBarCommand(sessionName), {
+      env: terminalEnvironment,
+      timeout: TMUX_CLIPBOARD_PREFERENCE_TIMEOUT_MS,
+      stdio: "ignore",
+    });
+  } catch (error) {
+    console.error("[터미널] 기존 tmux 세션 상태바 정리 실패:", error);
+  }
+}
+
+/**
  * 로컬 tmux 세션을 만든다.
  * 사용자 설정이 세션 기동을 막으면 설정 파일 없이 한 번 더 시도해, 소켓을 바꾸지 않고도 세션을 살린다.
  * 재시도는 tmux 서버가 아직 없을 때만 설정을 실제로 건너뛴다(`TmuxSessionBootstrapOptions` 참고).
@@ -497,6 +518,8 @@ export async function attachLocalSession(
         ws.close(1008, "tmux 세션 생성에 실패했습니다.");
         throw new Error("tmux 세션 생성에 실패했습니다.");
       }
+    } else {
+      hideExistingLocalTmuxStatusBar(sessionName, terminalEnvironment);
     }
   } else if (sessionType === SessionType.ZELLIJ) {
     zellijNeedsCreation = !isZellijSessionAlive(sessionName);
@@ -685,6 +708,12 @@ function buildRemoteTmuxAttachCommand(
 
   return [
     `if tmux has-session -t ${quotedSessionName} 2>/dev/null; then`,
+    /**
+     * 기존 세션은 부트스트랩을 타지 않아 상태바가 남는다. attach 직전에 한 번 꺼서
+     * 탭 바가 들어오기 전에 만들어진 세션도 같은 화면이 되게 한다.
+     * 실패는 삼킨다. 표시 문제일 뿐이라 attach를 막을 이유가 없다.
+     */
+    `${buildTmuxHideStatusBarCommand(sessionName)} 2>/dev/null;`,
     `exec tmux attach-session -t ${quotedSessionName};`,
     `elif ${buildTmuxUserClipboardDirectiveTestCommand()}; then ${buildBootstrapWithFallback(false)}`,
     `else ${buildBootstrapWithFallback(true)}`,

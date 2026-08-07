@@ -204,7 +204,7 @@ describe("terminal 세션 탭 레지스트리", () => {
     const tabs = listLocalTerminalTabs("task-1");
 
     expect(tabs).toHaveLength(1);
-    expect(tabs[0]).toMatchObject({ index: 0, isActive: true });
+    expect(tabs[0]).toMatchObject({ nativeIndex: 0, isActive: true });
   });
 
   it("새 탭은 목록 끝에 붙고 활성이 된다", async () => {
@@ -248,7 +248,7 @@ describe("terminal 세션 탭 레지스트리", () => {
     closeLocalTerminalTab("task-1", firstTab.id);
 
     expect(listLocalTerminalTabs("task-1")).toEqual([
-      { id: secondTab.id, index: 0, name: secondTab.name, isActive: true },
+      { id: secondTab.id, nativeIndex: 0, name: secondTab.name, isActive: true },
     ]);
   });
 
@@ -278,9 +278,9 @@ describe("terminal 세션 탭 레지스트리", () => {
     renameLocalTerminalTab("task-1", firstTab.id, "빌드");
     moveLocalTerminalTab("task-1", firstTab.id, 1);
 
-    expect(listLocalTerminalTabs("task-1").map((tab) => ({ id: tab.id, index: tab.index, name: tab.name }))).toEqual([
-      { id: secondTab.id, index: 0, name: secondTab.name },
-      { id: firstTab.id, index: 1, name: "빌드" },
+    expect(listLocalTerminalTabs("task-1").map((tab) => ({ id: tab.id, nativeIndex: tab.nativeIndex, name: tab.name }))).toEqual([
+      { id: secondTab.id, nativeIndex: 0, name: secondTab.name },
+      { id: firstTab.id, nativeIndex: 1, name: "빌드" },
     ]);
   });
 

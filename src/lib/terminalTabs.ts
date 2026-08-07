@@ -53,7 +53,7 @@ function parseTmuxWindowLine(line: string): TerminalTab | null {
 
   return {
     id: windowId,
-    index: parsedIndex,
+    nativeIndex: parsedIndex,
     name: nameFields.join("\t"),
     isActive: windowActive === "1",
   };
@@ -91,8 +91,7 @@ export function buildTmuxRenameWindowCommand(windowId: string, name: string): st
  * 죽이는 옵션이라, 탭을 끌어다 놓을 때마다 놓인 자리의 탭과 그 안에서 돌던 프로세스가 사라진다.
  * 대신 목표 window의 앞(`-b`)이나 뒤(`-a`)에 끼워 넣어 나머지를 밀어낸다.
  *
- * 인덱스는 배열 위치가 아니라 tmux가 매긴 window_index다. `base-index`가 1인 설정에서도
- * 같은 값을 쓰도록 호출자가 탭 목록에서 읽어 넘긴다.
+ * 인덱스는 배열 위치가 아니라 `TerminalTab.nativeIndex`, 즉 tmux가 매긴 window_index를 받는다.
  * 끼워 넣은 뒤 남는 번호 구멍은 `-r`로 다시 채워 탭 순서와 인덱스를 일치시킨다.
  */
 export function buildTmuxMoveWindowCommands(
@@ -199,7 +198,7 @@ export function parseZellijTabList(listTabsJsonOutput: string): TerminalTab[] {
 
       return {
         id: String(tabId),
-        index: position,
+        nativeIndex: position,
         name,
         isActive: entry?.active === true,
       };
@@ -264,7 +263,7 @@ export function parseZellijTabNamesWithFocus(
 
   return tabNames.map((name, index) => ({
     id: String(index),
-    index,
+    nativeIndex: index,
     name,
     isActive: index === resolvedActiveIndex,
   }));

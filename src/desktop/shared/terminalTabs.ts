@@ -5,8 +5,13 @@
 export interface TerminalTab {
   /** 멀티플렉서가 부여한 안정 식별자(tmux window_id, zellij tab id) 또는 KanVibe가 생성한 탭 식별자 */
   id: string;
-  /** 탭 바에 표시할 순서. 0부터 시작한다 */
-  index: number;
+  /**
+   * 멀티플렉서가 매긴 원본 인덱스. 좌표계가 세션 타입마다 달라 표시 순서로 쓰면 안 된다.
+   * tmux는 `window_index`라 `base-index 1` 설정에서 1부터 시작하고 window를 닫으면 번호에 구멍이 생긴다.
+   * zellij는 `position`, terminal 세션은 배열 위치라 둘 다 0부터 빈틈없이 이어진다.
+   * 표시 순서와 `Mod+{n}` 번호는 이 값이 아니라 배열 위치를 쓴다.
+   */
+  nativeIndex: number;
   name: string;
   isActive: boolean;
 }

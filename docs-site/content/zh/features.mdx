@@ -45,7 +45,7 @@ KanVibe 将看板、终端会话、git worktree 与 AI 代理 hooks 连接成一
 - 在标签栏中新增、切换、关闭标签页，双击重命名，拖拽调整顺序。
 - 任务信息面板打开时会遮住标签栏左侧的一部分。点击面板外的终端，或再次按 dock 的任务信息按钮将其关闭，即可显示完整标签栏。
 - tmux 和 zellij 会话的标签页与 tmux window、zellij tab **双向同步**。在 KanVibe 之外用 `tmux new-window` 创建的 window 也会出现在标签栏中；点击标签页时，多路复用器的活动对象也会随之切换。
-- 由于 KanVibe 自己绘制标签栏，tmux 状态栏和 zellij 标签栏会被关闭 —— 仅限 KanVibe 创建的会话。
+- 由于 KanVibe 自己绘制标签栏，tmux 状态栏和 zellij 标签栏会被关闭 —— 仅限 KanVibe 创建的会话。tmux 在每次重新连接时都会关闭，因此标签栏上线前创建的会话也会被整理；zellij 的布局在创建会话时就已确定，所以仅对之后新建的会话生效。
 - 在 `terminal` 会话中，KanVibe 会为每个标签页单独启动 shell。切换标签页时各自的 scrollback 会保留，且只要应用在运行，shell 就会一直存在。
 
 按键组合请参见[快捷键](/zh/shortcuts)文档的终端标签页一节。

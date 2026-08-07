@@ -45,7 +45,7 @@ Open several terminals inside one task to keep a server, a test run, and an agen
 - Add, switch, and close tabs from the tab bar, rename with a double-click, and reorder by dragging.
 - While the task info panel is open it overlays the left portion of the tab bar. Click the terminal outside the panel, or press the task info dock button again, to reveal the whole bar.
 - Tabs on tmux and zellij sessions stay **synchronized in both directions** with tmux windows and zellij tabs. A window created outside KanVibe with `tmux new-window` shows up in the tab bar, and clicking a tab moves the multiplexer's active target too.
-- Because KanVibe draws its own tab bar, the tmux status bar and the zellij tab bar are turned off — only for sessions KanVibe creates.
+- Because KanVibe draws its own tab bar, the tmux status bar and the zellij tab bar are turned off — only for sessions KanVibe creates. tmux is turned off on every reattach, so sessions made before the tab bar shipped get cleaned up too. zellij fixes its layout when the session is created, so it only applies to sessions created after that.
 - On `terminal` sessions KanVibe runs one shell per tab. Each tab keeps its own scrollback across switches, and the shells stay alive while the app is running.
 
 Key combinations are listed in the terminal tabs section of the [shortcuts](/en/shortcuts) page.

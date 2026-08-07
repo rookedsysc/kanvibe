@@ -33,20 +33,20 @@ describe("tmux window 목록 파싱", () => {
     const output = ["@1\t0\t0\tzsh", "@2\t1\t1\tvim"].join("\n");
 
     expect(parseTmuxWindowList(output)).toEqual([
-      { id: "@1", index: 0, name: "zsh", isActive: false },
-      { id: "@2", index: 1, name: "vim", isActive: true },
+      { id: "@1", nativeIndex: 0, name: "zsh", isActive: false },
+      { id: "@2", nativeIndex: 1, name: "vim", isActive: true },
     ]);
   });
 
   it("이름에 구분자로 쓰이지 않는 특수문자가 있어도 그대로 보존한다", () => {
     expect(parseTmuxWindowList("@1\t0\t0\ta|b:c")).toEqual([
-      { id: "@1", index: 0, name: "a|b:c", isActive: false },
+      { id: "@1", nativeIndex: 0, name: "a|b:c", isActive: false },
     ]);
   });
 
   it("이름에 탭 문자가 섞여 들어와도 이름을 자르지 않는다", () => {
     expect(parseTmuxWindowList("@1\t0\t0\ta\tb")).toEqual([
-      { id: "@1", index: 0, name: "a\tb", isActive: false },
+      { id: "@1", nativeIndex: 0, name: "a\tb", isActive: false },
     ]);
   });
 
@@ -58,7 +58,7 @@ describe("tmux window 목록 파싱", () => {
 
   it("CRLF 줄바꿈에서도 마지막 필드가 오염되지 않는다", () => {
     expect(parseTmuxWindowList("@1\t0\t1\tzsh\r\n")).toEqual([
-      { id: "@1", index: 0, name: "zsh", isActive: true },
+      { id: "@1", nativeIndex: 0, name: "zsh", isActive: true },
     ]);
   });
 });
@@ -147,8 +147,8 @@ describe("zellij 탭 목록 파싱", () => {
     ]);
 
     expect(parseZellijTabList(output)).toEqual([
-      { id: "0", index: 0, name: "shell", isActive: false },
-      { id: "1", index: 1, name: "logs", isActive: true },
+      { id: "0", nativeIndex: 0, name: "shell", isActive: false },
+      { id: "1", nativeIndex: 1, name: "logs", isActive: true },
     ]);
   });
 
@@ -163,8 +163,8 @@ describe("zellij 탭 목록 파싱", () => {
     ]);
 
     expect(parseZellijTabList(outputAfterMiddleTabClosed)).toEqual([
-      { id: "0", index: 0, name: "Tab #1", isActive: false },
-      { id: "2", index: 1, name: "logs", isActive: true },
+      { id: "0", nativeIndex: 0, name: "Tab #1", isActive: false },
+      { id: "2", nativeIndex: 1, name: "logs", isActive: true },
     ]);
   });
 
@@ -181,7 +181,7 @@ describe("zellij 탭 목록 파싱", () => {
     ]);
 
     expect(parseZellijTabList(output)).toEqual([
-      { id: "2", index: 2, name: "logs", isActive: false },
+      { id: "2", nativeIndex: 2, name: "logs", isActive: false },
     ]);
   });
 });
@@ -200,15 +200,15 @@ describe("zellij 구버전 폴백 파싱", () => {
 
   it("레이아웃 덤프의 focus=true 탭을 활성으로 표시한다", () => {
     expect(parseZellijTabNamesWithFocus("first\nsecond", layoutWithFocusOnSecondTab)).toEqual([
-      { id: "0", index: 0, name: "first", isActive: false },
-      { id: "1", index: 1, name: "second", isActive: true },
+      { id: "0", nativeIndex: 0, name: "first", isActive: false },
+      { id: "1", nativeIndex: 1, name: "second", isActive: true },
     ]);
   });
 
   it("레이아웃 덤프가 비면 첫 탭을 활성으로 가정하고 목록은 유지한다", () => {
     expect(parseZellijTabNamesWithFocus("first\nsecond", "")).toEqual([
-      { id: "0", index: 0, name: "first", isActive: true },
-      { id: "1", index: 1, name: "second", isActive: false },
+      { id: "0", nativeIndex: 0, name: "first", isActive: true },
+      { id: "1", nativeIndex: 1, name: "second", isActive: false },
     ]);
   });
 

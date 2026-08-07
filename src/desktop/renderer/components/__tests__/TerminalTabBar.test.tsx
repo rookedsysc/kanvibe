@@ -10,8 +10,8 @@ vi.mock("next-intl", () => ({
 }));
 
 const TABS: TerminalTab[] = [
-  { id: "@1", index: 0, name: "shell", isActive: true },
-  { id: "@2", index: 1, name: "logs", isActive: false },
+  { id: "@1", nativeIndex: 0, name: "shell", isActive: true },
+  { id: "@2", nativeIndex: 1, name: "logs", isActive: false },
 ];
 
 function renderTabBar(overrides: Partial<Parameters<typeof TerminalTabBar>[0]> = {}) {
@@ -130,7 +130,7 @@ describe("TerminalTabBar", () => {
   it("6번째 탭부터는 대응하는 단축키가 없어 힌트를 붙이지 않는다", () => {
     const manyTabs = Array.from({ length: 6 }, (_, index) => ({
       id: `@${index + 1}`,
-      index,
+      nativeIndex: index,
       name: `tab-${index + 1}`,
       isActive: index === 0,
     }));
@@ -143,9 +143,9 @@ describe("TerminalTabBar", () => {
 
   it("활성 탭 양옆에는 구분선을 겹쳐 그리지 않는다", () => {
     const threeTabs = [
-      { id: "@1", index: 0, name: "a", isActive: false },
-      { id: "@2", index: 1, name: "b", isActive: true },
-      { id: "@3", index: 2, name: "c", isActive: false },
+      { id: "@1", nativeIndex: 0, name: "a", isActive: false },
+      { id: "@2", nativeIndex: 1, name: "b", isActive: true },
+      { id: "@3", nativeIndex: 2, name: "c", isActive: false },
     ];
     renderTabBar({ tabs: threeTabs });
 
@@ -156,9 +156,9 @@ describe("TerminalTabBar", () => {
 
   it("첫 탭이 아니고 양옆이 모두 비활성이면 구분선을 그린다", () => {
     const threeTabs = [
-      { id: "@1", index: 0, name: "a", isActive: true },
-      { id: "@2", index: 1, name: "b", isActive: false },
-      { id: "@3", index: 2, name: "c", isActive: false },
+      { id: "@1", nativeIndex: 0, name: "a", isActive: true },
+      { id: "@2", nativeIndex: 1, name: "b", isActive: false },
+      { id: "@3", nativeIndex: 2, name: "c", isActive: false },
     ];
     renderTabBar({ tabs: threeTabs });
 

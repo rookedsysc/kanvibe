@@ -64,8 +64,8 @@ describe("탭 목록 조회", () => {
 
     expect(result.ok).toBe(true);
     expect(result.tabs).toEqual([
-      { id: "@1", index: 0, name: "zsh", isActive: true },
-      { id: "@2", index: 1, name: "vim", isActive: false },
+      { id: "@1", nativeIndex: 0, name: "zsh", isActive: true },
+      { id: "@2", nativeIndex: 1, name: "vim", isActive: false },
     ]);
   });
 
@@ -92,7 +92,7 @@ describe("탭 목록 조회", () => {
   it("terminal 세션은 멀티플렉서를 부르지 않고 내부 레지스트리를 읽는다", async () => {
     stubTask({ sessionType: SessionType.TERMINAL });
     mockListLocalTerminalTabs.mockReturnValue([
-      { id: "task-1-1", index: 0, name: "zsh", isActive: true },
+      { id: "task-1-1", nativeIndex: 0, name: "zsh", isActive: true },
     ] as never);
     const { listTerminalTabs } = await importService();
 

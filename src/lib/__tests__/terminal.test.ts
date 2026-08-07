@@ -137,6 +137,52 @@ describe("attachLocalSession — tmux 세션 자동 생성", () => {
     }));
   });
 
+  it("should hide the tmux status bar when attaching to an already alive local session", async () => {
+    // Given
+    /** 부트스트랩은 세션 생성 때만 돌아서, 탭 바 이전에 만든 세션은 상태바가 탭 바와 겹친 채 남는다 */
+    const { attachLocalSession } = await import("@/lib/terminal");
+    mockExecSync.mockReturnValue("");
+
+    // When
+    await attachLocalSession(
+      "task-existing",
+      null,
+      SessionType.TMUX,
+      "feat-login",
+      createMockWs(),
+      "/workspace",
+    );
+
+    // Then
+    expect(findExecSyncCall("new-session")).toBeUndefined();
+    expect(findExecSyncCall("status off")).toBe("tmux set-option -t 'feat-login' status off");
+  });
+
+  it("should keep attaching to an alive local session when hiding the tmux status bar fails", async () => {
+    // Given
+    /** 상태바 정리는 표시 문제라 실패해도 세션 연결을 막지 않는다 */
+    const { attachLocalSession } = await import("@/lib/terminal");
+    mockExecSync.mockImplementation((cmd: string) => {
+      if (typeof cmd === "string" && cmd.includes("status off")) {
+        throw new Error("set-option failed");
+      }
+      return "";
+    });
+
+    // When / Then
+    await expect(attachLocalSession(
+      "task-existing-failure",
+      null,
+      SessionType.TMUX,
+      "feat-login",
+      createMockWs(),
+      "/workspace",
+    )).resolves.not.toThrow();
+
+    const nodePty = await import("node-pty");
+    expect(nodePty.spawn).toHaveBeenCalled();
+  });
+
   it("should apply tmux pane layout commands when creating a local session", async () => {
     // Given
     const { attachLocalSession } = await import("@/lib/terminal");
@@ -1089,7 +1135,9 @@ describe("attachRemoteSession — ssh 바이너리 기반 연결", () => {
     expect(mockExecGit).not.toHaveBeenCalled();
     /** 세션이 이미 있으면 판정 자체에 도달하지 않는다 */
     expect(attachCommand).toContain(
-      "if tmux has-session -t 'remote-session' 2>/dev/null; then exec tmux attach-session -t 'remote-session'; elif ",
+      "if tmux has-session -t 'remote-session' 2>/dev/null;"
+      + " then tmux set-option -t 'remote-session' status off 2>/dev/null;"
+      + " exec tmux attach-session -t 'remote-session'; elif ",
     );
     expect(attachCommand).toContain("set-option -s set-clipboard on");
     expectValidPosixShellSyntax(attachCommand);

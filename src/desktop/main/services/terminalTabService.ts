@@ -351,8 +351,8 @@ export async function moveTerminalTab(
         buildTmuxMoveWindowCommands(
           target.sessionName,
           tabId,
-          currentTab.index,
-          destinationTab.index,
+          currentTab.nativeIndex,
+          destinationTab.nativeIndex,
         ),
         target.sshHost,
       );
@@ -360,8 +360,8 @@ export async function moveTerminalTab(
     }
 
     const moveCommands = await hasZellijTabIdSupport(target.sshHost)
-      ? buildZellijMoveTabByIdCommands(target.sessionName, tabId, currentTab.index, boundedTargetIndex)
-      : buildZellijMoveTabCommands(target.sessionName, currentTab.name, currentTab.index, boundedTargetIndex);
+      ? buildZellijMoveTabByIdCommands(target.sessionName, tabId, currentTab.nativeIndex, boundedTargetIndex)
+      : buildZellijMoveTabCommands(target.sessionName, currentTab.name, currentTab.nativeIndex, boundedTargetIndex);
 
     await runTabCommands(moveCommands, target.sshHost);
     return { ok: true };

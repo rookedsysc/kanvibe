@@ -229,6 +229,18 @@ export function buildTmuxSessionBootstrapCommand(
   return `${tmuxCommand} ${tmuxArguments.join(" \\; ")}`;
 }
 
+/**
+ * 이미 살아 있는 tmux 세션의 상태바를 끈다.
+ *
+ * 부트스트랩은 세션을 새로 만들 때만 돌아서, 탭 바가 들어오기 전에 만들어진 세션은
+ * tmux 상태바와 KanVibe 탭 바가 같은 window 목록을 두 줄로 그린다.
+ * `status`는 세션 스코프 옵션이고 멱등이라, 다시 붙을 때마다 걸어도
+ * 사용자의 다른 tmux 세션에는 영향이 없다.
+ */
+export function buildTmuxHideStatusBarCommand(sessionName: string): string {
+  return `tmux set-option -t ${quoteForPosixShell(sessionName)} status off`;
+}
+
 /** KDL 문자열 내 특수문자를 이스케이프한다 */
 function escapeKdl(value: string): string {
   return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');

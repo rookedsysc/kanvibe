@@ -15,8 +15,8 @@ vi.mock("@/desktop/renderer/components/Terminal", () => ({
 }));
 
 const TABS: TerminalTab[] = [
-  { id: "t1", index: 0, name: "shell", isActive: false },
-  { id: "t2", index: 1, name: "logs", isActive: true },
+  { id: "t1", nativeIndex: 0, name: "shell", isActive: false },
+  { id: "t2", nativeIndex: 1, name: "logs", isActive: true },
 ];
 
 describe("TerminalLoader", () => {
