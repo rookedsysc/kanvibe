@@ -332,22 +332,33 @@ export async function moveTerminalTab(
   }
 
   try {
-    if (target.sessionType === SessionType.TMUX) {
-      await runTabCommands(
-        buildTmuxMoveWindowCommands(target.sessionName, tabId, targetIndex),
-        target.sshHost,
-      );
-      return { ok: true };
-    }
-
-    /** zellij의 move-tab은 방향만 받으므로 현재 위치를 알아야 몇 칸 옮길지 정할 수 있다 */
-    const currentTabs = await readZellijTabs(target);
+    /**
+     * 두 멀티플렉서 모두 "몇 번째로 옮겨라"를 그대로 받지 못한다.
+     * tmux는 목표 window의 앞뒤 중 어디에 끼울지, zellij는 어느 방향으로 몇 칸 밀지 정해야 해서
+     * 현재 목록을 먼저 읽는다. 탭 바가 넘기는 값은 배열 위치이므로 실제 대상도 여기서 고른다.
+     */
+    const currentTabs = await readTabs(target);
     const currentTab = currentTabs.find((tab) => tab.id === tabId);
     if (!currentTab) {
       return { ok: false, error: "탭을 찾을 수 없습니다." };
     }
 
     const boundedTargetIndex = Math.min(targetIndex, currentTabs.length - 1);
+    const destinationTab = currentTabs[boundedTargetIndex];
+
+    if (target.sessionType === SessionType.TMUX) {
+      await runTabCommands(
+        buildTmuxMoveWindowCommands(
+          target.sessionName,
+          tabId,
+          currentTab.index,
+          destinationTab.index,
+        ),
+        target.sshHost,
+      );
+      return { ok: true };
+    }
+
     const moveCommands = await hasZellijTabIdSupport(target.sshHost)
       ? buildZellijMoveTabByIdCommands(target.sessionName, tabId, currentTab.index, boundedTargetIndex)
       : buildZellijMoveTabCommands(target.sessionName, currentTab.name, currentTab.index, boundedTargetIndex);

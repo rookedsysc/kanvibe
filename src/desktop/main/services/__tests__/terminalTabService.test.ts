@@ -231,16 +231,39 @@ describe("탭 이름 변경", () => {
 });
 
 describe("탭 순서 변경", () => {
-  it("tmux는 목표 인덱스로 옮긴 뒤 번호를 다시 채운다", async () => {
+  it("tmux는 목표 window 앞에 끼운 뒤 번호를 다시 채운다", async () => {
     stubTask({});
+    mockExecGit.mockResolvedValue("@1\t0\t0\tzsh\n@2\t1\t0\tvim\n@3\t2\t1\ttop");
     const { moveTerminalTab } = await importService();
 
     await moveTerminalTab("task-1", "@3", 0);
 
-    expect(mockExecGit.mock.calls.map((call) => call[0])).toEqual([
-      "tmux move-window -k -s '@3' -t 'proj-main':0",
+    expect(mockExecGit.mock.calls.map((call) => call[0]).slice(1)).toEqual([
+      "tmux move-window -b -s '@3' -t 'proj-main':0",
       "tmux move-window -r -t 'proj-main'",
     ]);
+  });
+
+  /** 탭 바는 배열 위치를 넘기므로, base-index가 1이면 tmux가 매긴 번호와 어긋난다 */
+  it("tmux 목표 인덱스는 배열 위치가 아니라 그 자리 window의 번호로 옮긴다", async () => {
+    stubTask({});
+    mockExecGit.mockResolvedValue("@1\t1\t0\tzsh\n@2\t2\t0\tvim\n@3\t3\t1\ttop");
+    const { moveTerminalTab } = await importService();
+
+    await moveTerminalTab("task-1", "@3", 0);
+
+    expect(findExecutedCommand("move-window -b")).toBe("tmux move-window -b -s '@3' -t 'proj-main':1");
+  });
+
+  it("목록에 없는 탭은 옮기지 않는다", async () => {
+    stubTask({});
+    mockExecGit.mockResolvedValue("@1\t0\t1\tzsh");
+    const { moveTerminalTab } = await importService();
+
+    const result = await moveTerminalTab("task-1", "@9", 0);
+
+    expect(result.ok).toBe(false);
+    expect(findExecutedCommand("move-window")).toBeUndefined();
   });
 
   it("음수 인덱스는 거부한다", async () => {

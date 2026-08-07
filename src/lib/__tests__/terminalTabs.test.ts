@@ -96,11 +96,32 @@ describe("tmux 탭 명령", () => {
     expect(buildTmuxRenameWindowCommand("@3", "-n")).toBe("tmux rename-window -t '@3' -- '-n'");
   });
 
-  it("순서 변경은 -k로 점유된 인덱스를 허용하고 -r로 번호를 다시 채운다", () => {
-    expect(buildTmuxMoveWindowCommands("proj-main", "@3", 0)).toEqual([
-      "tmux move-window -k -s '@3' -t 'proj-main':0",
+  /** -k는 목표 인덱스의 window를 죽인다. 순서만 바꾸려다 남의 탭을 지우면 안 된다 */
+  it("왼쪽으로 옮길 때는 목표 window 앞에 끼우고 -r로 번호를 다시 채운다", () => {
+    expect(buildTmuxMoveWindowCommands("proj-main", "@3", 2, 0)).toEqual([
+      "tmux move-window -b -s '@3' -t 'proj-main':0",
       "tmux move-window -r -t 'proj-main'",
     ]);
+  });
+
+  it("오른쪽으로 옮길 때는 목표 window 뒤에 끼운다", () => {
+    expect(buildTmuxMoveWindowCommands("proj-main", "@3", 0, 2)).toEqual([
+      "tmux move-window -a -s '@3' -t 'proj-main':2",
+      "tmux move-window -r -t 'proj-main'",
+    ]);
+  });
+
+  it("제자리 이동은 명령을 내지 않는다", () => {
+    expect(buildTmuxMoveWindowCommands("proj-main", "@3", 1, 1)).toEqual([]);
+  });
+
+  it("어떤 방향으로도 -k를 쓰지 않는다", () => {
+    const allCommands = [
+      ...buildTmuxMoveWindowCommands("proj-main", "@3", 2, 0),
+      ...buildTmuxMoveWindowCommands("proj-main", "@3", 0, 2),
+    ];
+
+    expect(allCommands.some((command) => / -k( |$)/.test(command))).toBe(false);
   });
 });
 

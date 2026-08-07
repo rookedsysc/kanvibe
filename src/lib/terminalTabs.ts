@@ -86,18 +86,30 @@ export function buildTmuxRenameWindowCommand(windowId: string, name: string): st
 
 /**
  * window를 목표 인덱스로 옮긴다.
- * 목표 인덱스가 이미 차 있으면 `-k` 없이는 "index in use"로 실패하므로 항상 붙인다.
- * 이동 뒤 남는 번호 구멍은 `-r`로 다시 채워 탭 순서와 인덱스를 일치시킨다.
+ *
+ * `-k`는 쓰지 않는다. tmux에서 `-k`는 자리를 비켜 주는 옵션이 아니라 목표 인덱스에 있던 window를
+ * 죽이는 옵션이라, 탭을 끌어다 놓을 때마다 놓인 자리의 탭과 그 안에서 돌던 프로세스가 사라진다.
+ * 대신 목표 window의 앞(`-b`)이나 뒤(`-a`)에 끼워 넣어 나머지를 밀어낸다.
+ *
+ * 인덱스는 배열 위치가 아니라 tmux가 매긴 window_index다. `base-index`가 1인 설정에서도
+ * 같은 값을 쓰도록 호출자가 탭 목록에서 읽어 넘긴다.
+ * 끼워 넣은 뒤 남는 번호 구멍은 `-r`로 다시 채워 탭 순서와 인덱스를 일치시킨다.
  */
 export function buildTmuxMoveWindowCommands(
   sessionName: string,
   windowId: string,
-  targetIndex: number,
+  currentWindowIndex: number,
+  targetWindowIndex: number,
 ): string[] {
+  if (currentWindowIndex === targetWindowIndex) {
+    return [];
+  }
+
   const quotedSessionName = quoteForPosixShell(sessionName);
+  const insertSide = targetWindowIndex > currentWindowIndex ? "-a" : "-b";
 
   return [
-    `tmux move-window -k -s ${quoteForPosixShell(windowId)} -t ${quotedSessionName}:${targetIndex}`,
+    `tmux move-window ${insertSide} -s ${quoteForPosixShell(windowId)} -t ${quotedSessionName}:${targetWindowIndex}`,
     `tmux move-window -r -t ${quotedSessionName}`,
   ];
 }
@@ -228,6 +240,10 @@ export function parseZellijFocusedTabName(dumpLayoutOutput: string): string | nu
 /**
  * 구버전 zellij용 폴백. 이름 목록에 레이아웃 덤프의 활성 탭을 얹는다.
  * 레이아웃 덤프가 비어도 목록 자체는 쓸 수 있어야 하므로 그때는 첫 탭을 활성으로 본다.
+ *
+ * 이름이 같은 탭은 구분하지 못한다. 이 경로에는 이름 말고 식별자가 없어서 활성 판정도,
+ * 이름으로 대상을 겨냥하는 `go-to-tab-name`·`close-tab`·`rename-tab`도 모두 앞의 탭을 집는다.
+ * zellij 0.44.0 이상은 `tab_id`를 주는 `parseZellijTabList` 경로를 타므로 이 한계가 없다.
  */
 export function parseZellijTabNamesWithFocus(
   queryTabNamesOutput: string,
