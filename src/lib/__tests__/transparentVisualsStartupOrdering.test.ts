@@ -24,6 +24,19 @@ describe("투명 창 시작 순서", () => {
     expect(source).not.toMatch(/async \(\) => \{[\s\S]*?appendSwitch\("enable-transparent-visuals"\)/);
   });
 
+  it("시작 시점 투명도를 읽기 전에 데이터 디렉터리를 확정해 cwd에 기대지 않게 한다", () => {
+    // Given
+    const source = readElectronMainSource();
+
+    // When
+    const appDataDirectoryIndex = source.indexOf("process.env.KANVIBE_APP_DATA_DIR = applyAppDataDirectoryOverride(");
+    const startupOpacityReadIndex = source.indexOf("startupTerminalOpacity = readStartupTerminalOpacitySync();");
+
+    // Then
+    expect(appDataDirectoryIndex).toBeGreaterThan(-1);
+    expect(startupOpacityReadIndex).toBeGreaterThan(appDataDirectoryIndex);
+  });
+
   it("터미널 투명도 때문에 GPU 가속을 끄지 않는다", () => {
     const source = readElectronMainSource();
 

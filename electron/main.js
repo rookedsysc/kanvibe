@@ -28,7 +28,14 @@ const RENDERER_ABORT_RECOVERY_INTERVAL_MS = 50;
 const originalResolveFilename = Module._resolveFilename;
 
 const isHeadlessLinuxRuntime = !process.env.DISPLAY && !process.env.WAYLAND_DISPLAY;
-applyAppDataDirectoryOverride(app, process.env);
+/*
+ * 데이터 디렉터리는 창을 만들기 전에 확정해야 한다. databasePaths.ts는 KANVIBE_APP_DATA_DIR이
+ * 없으면 <process.cwd()>/.kanvibe로 떨어지는데, 이 시점의 cwd는 ensureRuntimeEnvironment()가
+ * app.whenReady() 뒤에 고쳐주기 전 값이라 실제 DB가 있는 곳이 아니다. 이대로 두면
+ * readStartupTerminalOpacitySync()가 DB를 찾지 못해 늘 불투명으로 판단하고, 설정을 제대로 읽은
+ * 렌더러만 배경을 걷어내서 불투명한 창 배경이 화면 전체에 그대로 드러난다.
+ */
+process.env.KANVIBE_APP_DATA_DIR = applyAppDataDirectoryOverride(app, process.env);
 
 if (SHOULD_USE_SOURCE_MODULES) {
   require("tsx/cjs");
@@ -312,7 +319,6 @@ function ensureRuntimeEnvironment() {
   ensureMacLocalCommandPath();
   process.env.KANVIBE_DESKTOP = "true";
   process.env.KANVIBE_HOST = HOOK_SERVER_HOST;
-  process.env.KANVIBE_APP_DATA_DIR = app.getPath("userData");
   process.env.KANVIBE_SEED_DB_PATH = app.isPackaged
     ? path.join(process.resourcesPath, "database", "app.seed.db")
     : path.join(appRoot, "resources", "database", "app.seed.db");
