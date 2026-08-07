@@ -1,11 +1,12 @@
 import path from "path";
 import { TaskStatus } from "@/entities/KanbanTask";
-import { readTextFile, writeTextFile, writeTextFileIfAbsent } from "@/lib/hostFileAccess";
+import { readTextFile, readTextFiles, writeTextFile, writeTextFileIfAbsent } from "@/lib/hostFileAccess";
 
 export const KANVIBE_DIR_NAME = ".kanvibe";
 export const TASK_STATE_FILE_NAME = "status.json";
 export const PROJECT_STATE_FILE_NAME = "project.json";
 export const TARGETS_FILE_NAME = "targets.json";
+export const TASK_DESCRIPTION_FILE_NAME = "task.json";
 
 /** `#RRGGBB` 형태의 프로젝트 색상만 허용한다 */
 const PROJECT_COLOR_PATTERN = /^#[0-9a-fA-F]{6}$/;
@@ -24,6 +25,23 @@ export interface KanvibeProjectState {
   schemaVersion: 1;
   projectColor: string;
   updatedAt?: string;
+}
+
+/**
+ * task 설명 공유 상태. hook이 통째로 재작성하는 status.json과 파일을 분리해
+ * agent가 상태를 기록해도 사용자가 남긴 설명이 지워지지 않게 한다.
+ * description이 null이면 다른 기기에서도 설명을 지우라는 뜻이다.
+ */
+export interface KanvibeTaskDescription {
+  schemaVersion: 1;
+  description: string | null;
+  updatedAt?: string;
+}
+
+/** 다른 기기의 상태를 한 번에 반영하기 위해 함께 읽는 값들. 각 항목의 null은 "기록 없음"이다 */
+export interface KanvibeTaskSyncState {
+  status: TaskStatus | null;
+  description: KanvibeTaskDescription | null;
 }
 
 export interface KanvibeHookTarget {
@@ -49,6 +67,10 @@ export function getKanvibeTargetsPath(repoPath: string, sshHost?: string | null)
   return getPathModule(sshHost).join(repoPath, KANVIBE_DIR_NAME, TARGETS_FILE_NAME);
 }
 
+export function getKanvibeTaskDescriptionPath(repoPath: string, sshHost?: string | null): string {
+  return getPathModule(sshHost).join(repoPath, KANVIBE_DIR_NAME, TASK_DESCRIPTION_FILE_NAME);
+}
+
 export async function readKanvibeTaskState(
   repoPath: string,
   sshHost?: string | null,
@@ -66,6 +88,24 @@ export async function readKanvibeProjectColor(
   return parseKanvibeProjectState(content)?.projectColor ?? null;
 }
 
+/**
+ * 다른 기기가 남긴 task 상태와 설명을 함께 읽는다.
+ * 두 값은 늘 같은 시점에 필요하므로 원격 저장소에서도 한 번의 왕복으로 가져온다.
+ */
+export async function readKanvibeTaskSyncState(
+  repoPath: string,
+  sshHost?: string | null,
+): Promise<KanvibeTaskSyncState> {
+  const taskStatePath = getKanvibeTaskStatePath(repoPath, sshHost);
+  const taskDescriptionPath = getKanvibeTaskDescriptionPath(repoPath, sshHost);
+  const files = await readTextFiles([taskStatePath, taskDescriptionPath], sshHost);
+
+  return {
+    status: parseKanvibeTaskState(files.get(taskStatePath)?.content ?? "")?.status ?? null,
+    description: parseKanvibeTaskDescription(files.get(taskDescriptionPath)?.content ?? ""),
+  };
+}
+
 export async function writeKanvibeTaskStatus(
   repoPath: string,
   status: TaskStatus,
@@ -74,6 +114,18 @@ export async function writeKanvibeTaskStatus(
   await writeTextFile(
     getKanvibeTaskStatePath(repoPath, sshHost),
     buildKanvibeTaskStateContent({ status }),
+    sshHost,
+  );
+}
+
+export async function writeKanvibeTaskDescription(
+  repoPath: string,
+  description: string | null,
+  sshHost?: string | null,
+): Promise<void> {
+  await writeTextFile(
+    getKanvibeTaskDescriptionPath(repoPath, sshHost),
+    buildKanvibeTaskDescriptionContent(description),
     sshHost,
   );
 }
@@ -161,6 +213,16 @@ export function buildKanvibeTaskStateContent(
   return JSON.stringify(payload, null, 2) + "\n";
 }
 
+export function buildKanvibeTaskDescriptionContent(description: string | null): string {
+  const payload: KanvibeTaskDescription = {
+    schemaVersion: 1,
+    description,
+    updatedAt: new Date().toISOString(),
+  };
+
+  return JSON.stringify(payload, null, 2) + "\n";
+}
+
 export function buildKanvibeProjectStateContent(projectColor: string): string {
   const payload: KanvibeProjectState = {
     schemaVersion: 1,
@@ -201,6 +263,31 @@ export function parseKanvibeTaskState(content: string): KanvibeTaskState | null 
     return {
       schemaVersion: 1,
       status,
+      ...(isNonEmptyString(parsed.updatedAt) ? { updatedAt: parsed.updatedAt } : {}),
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * description이 문자열이거나 명시적 null일 때만 유효한 기록으로 본다.
+ * 파일이 없거나 형식이 깨진 경우는 "정보 없음"이므로 null을 돌려 DB 값을 유지하게 한다.
+ */
+export function parseKanvibeTaskDescription(content: string): KanvibeTaskDescription | null {
+  if (typeof content !== "string" || !content.trim()) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(content) as { description?: unknown; updatedAt?: unknown };
+    if (typeof parsed.description !== "string" && parsed.description !== null) {
+      return null;
+    }
+
+    return {
+      schemaVersion: 1,
+      description: parsed.description,
       ...(isNonEmptyString(parsed.updatedAt) ? { updatedAt: parsed.updatedAt } : {}),
     };
   } catch {

@@ -20,7 +20,10 @@ import {
 } from "@/lib/kanvibeHooksInstaller";
 import { execGit, pullCurrentBranch, remoteBranchExists } from "@/lib/gitOperations";
 import { detachSession } from "@/lib/terminal";
-import { persistTaskStateForTask as persistTaskState } from "@/desktop/main/services/kanvibeTaskStateService";
+import {
+  persistTaskDescriptionForTask as persistTaskDescription,
+  persistTaskStateForTask as persistTaskState,
+} from "@/desktop/main/services/kanvibeTaskStateService";
 import { persistProjectColorToKanvibeState } from "@/desktop/main/services/kanvibeProjectColorService";
 
 export type TasksByStatus = Record<TaskStatus, KanbanTask[]>;
@@ -580,6 +583,10 @@ export async function createTask(input: CreateTaskInput): Promise<KanbanTask> {
 
   await persistTaskState(saved);
 
+  if (saved.description) {
+    await persistTaskDescription(saved);
+  }
+
   broadcastBoardUpdate();
 
   return serialize(saved);
@@ -615,6 +622,11 @@ export async function updateTask(
   if (updates.priority !== undefined) task.priority = updates.priority;
 
   const saved = await repo.save(task);
+
+  if (updates.description !== undefined) {
+    await persistTaskDescription(saved);
+  }
+
   broadcastBoardUpdate();
   return serialize(saved);
 }

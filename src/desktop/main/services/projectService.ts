@@ -22,6 +22,7 @@ import { installKanvibeHooks, installKanvibeHookProvider, scheduleKanvibeHooksIn
 import {
   persistTaskStateAtPath as persistTaskState,
   readPersistedTaskStatusAtPath as readPersistedTaskStatus,
+  readPersistedTaskSyncStateAtPath as readPersistedTaskSyncState,
 } from "@/desktop/main/services/kanvibeTaskStateService";
 import {
   persistProjectColorToKanvibeState,
@@ -315,7 +316,10 @@ async function ensureProjectRootTask(
   }
 
   const expectedDefaultBranchWorktreePath = await resolveProjectDefaultBranchWorktreePath(project);
-  const persistedStatus = await readPersistedTaskStatus(expectedDefaultBranchWorktreePath || project.repoPath, project.sshHost);
+  const {
+    status: persistedStatus,
+    description: persistedDescription,
+  } = await readPersistedTaskSyncState(expectedDefaultBranchWorktreePath || project.repoPath, project.sshHost);
 
   let shouldSaveTask = false;
   if (task.baseBranch !== project.defaultBranch) {
@@ -335,6 +339,11 @@ async function ensureProjectRootTask(
 
   if (persistedStatus !== null && task.status !== persistedStatus) {
     task.status = persistedStatus;
+    shouldSaveTask = true;
+  }
+
+  if (persistedDescription !== null && task.description !== persistedDescription.description) {
+    task.description = persistedDescription.description;
     shouldSaveTask = true;
   }
 
@@ -707,11 +716,15 @@ async function syncProjectWorktrees(
 
       /** 해당 프로젝트에 이미 동일 브랜치 태스크가 있으면 건너뛴다 */
       const existingTask = await taskRepo.findOneBy({ branchName: wt.branch, projectId: project.id });
-      const persistedStatus = await readPersistedTaskStatus(wt.path, project.sshHost);
+      const {
+        status: persistedStatus,
+        description: persistedDescription,
+      } = await readPersistedTaskSyncState(wt.path, project.sshHost);
       if (existingTask) {
         const shouldRepairTask = !matchesTaskLocation(existingTask, wt.path, project.sshHost)
           || existingTask.baseBranch !== project.defaultBranch
-          || (persistedStatus !== null && existingTask.status !== persistedStatus);
+          || (persistedStatus !== null && existingTask.status !== persistedStatus)
+          || (persistedDescription !== null && existingTask.description !== persistedDescription.description);
         let taskToPersist = existingTask;
         if (shouldRepairTask) {
           existingTask.worktreePath = wt.path;
@@ -719,6 +732,9 @@ async function syncProjectWorktrees(
           existingTask.baseBranch = project.defaultBranch;
           if (persistedStatus !== null) {
             existingTask.status = persistedStatus;
+          }
+          if (persistedDescription !== null) {
+            existingTask.description = persistedDescription.description;
           }
           const savedTask = await taskRepo.save(existingTask);
           taskToPersist = savedTask;
@@ -738,6 +754,9 @@ async function syncProjectWorktrees(
         orphanTask.sshHost = project.sshHost;
         orphanTask.baseBranch = orphanTask.baseBranch || project.defaultBranch;
         orphanTask.status = persistedStatus ?? TaskStatus.TODO;
+        if (persistedDescription !== null) {
+          orphanTask.description = persistedDescription.description;
+        }
         const savedTask = await taskRepo.save(orphanTask);
         result.changed = true;
         await persistTaskState(wt.path, savedTask, project.sshHost);
@@ -768,6 +787,7 @@ async function syncProjectWorktrees(
         projectId: project.id,
         baseBranch: project.defaultBranch,
         status: persistedStatus ?? TaskStatus.TODO,
+        description: persistedDescription?.description ?? null,
         ...(hasSession && {
           sessionType: SessionType.TMUX,
           sessionName,
