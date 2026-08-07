@@ -23,7 +23,19 @@ describe("Electron window appearance", () => {
     const options = createWindowBackgroundOptions(0.8);
 
     // Then
-    expect(options).toEqual({ transparent: true, backgroundColor: "#01ffffff" });
+    expect(options).toEqual({ transparent: true, backgroundColor: "#010a0a0a" });
+  });
+
+  it("투명 창 배경색 RGB는 alpha가 무시되는 플랫폼에서도 흰 화면이 되지 않도록 어둡게 둔다", () => {
+    // Given
+    const { createWindowBackgroundOptions } = require("./windowAppearance");
+
+    // When
+    const { backgroundColor } = createWindowBackgroundOptions(0.8);
+
+    // Then
+    const [red, green, blue] = [3, 5, 7].map((start) => Number.parseInt(backgroundColor.slice(start, start + 2), 16));
+    expect(Math.max(red, green, blue)).toBeLessThan(64);
   });
 
   it("투명 창 배경색은 Electron의 #AARRGGBB 순서로 0이 아닌 최소 alpha를 앞에 둔다", () => {

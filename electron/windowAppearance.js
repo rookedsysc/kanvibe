@@ -3,15 +3,16 @@ const OPAQUE_TERMINAL_OPACITY = 1;
 
 const OPAQUE_WINDOW_BACKGROUND_COLOR = "#ffffff";
 /**
- * Electron의 backgroundColor는 alpha가 앞에 오는 #AARRGGBB 순서다. 여기서 alpha를 정확히 0으로
- * 주면 macOS 창 서버가 창을 제대로 합성하지 못하고 불투명하게 남는 경우가 있어, 8비트 alpha가
- * 표현할 수 있는 가장 작은 0이 아닌 값(0x01)을 쓴다.
+ * Electron의 backgroundColor는 alpha가 앞에 오는 #AARRGGBB 순서다. alpha를 정확히 0으로 주면
+ * 창 서버가 창을 제대로 합성하지 못하고 불투명하게 남는 경우가 있어, 8비트 alpha가 표현할 수 있는
+ * 가장 작은 0이 아닌 값(0x01)을 쓴다.
  *
- * 색을 검정이 아니라 흰색으로 두는 것도 Ghostty를 그대로 따른 것이다. Ghostty는 `.clear` 대신
- * `.white.withAlphaComponent(0.001)`을 쓰며, 그 이유를 "이게 Terminal.app의 모습에 훨씬 가깝다"고
- * 적어두었다(TerminalWindow.swift).
+ * RGB는 터미널 배경과 같은 어두운 색으로 둔다. Ghostty는 같은 자리에 흰색을 쓰지만 그 근거는
+ * "Terminal.app의 모습에 가깝다"는 밝은 테마 기준이라 다크 앱인 KanVibe에는 옮겨올 수 없다.
+ * macOS에서 이 alpha가 무시되고 RGB가 불투명하게 칠해지는 것이 관측됐는데, 흰색이면 화면 전체가
+ * 백색으로 뒤집힌다. 어두운 색이면 같은 상황에서도 평소의 불투명 터미널처럼 degrade한다.
  */
-const TRANSPARENT_WINDOW_BACKGROUND_COLOR = "#01ffffff";
+const TRANSPARENT_WINDOW_BACKGROUND_COLOR = "#010a0a0a";
 
 /** 터미널 뒤가 비쳐 보여야 하는 설정인지 판단한다. 설정을 읽지 못했으면 불투명으로 본다 */
 function isTransparentTerminal(terminalOpacity) {
