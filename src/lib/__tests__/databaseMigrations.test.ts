@@ -593,6 +593,13 @@ describe("database migrations", () => {
       /** 자동으로 배정됐던 순번이므로 사용자가 직접 배치한 것으로 표시하지 않는다 */
       expect(todoTasks.every((row: { is_manually_ordered: number }) => row.is_manually_ordered === 0)).toBe(true);
       expect(indexes.map((row: { name: string }) => row.name)).toContain("idx_kanban_tasks_status_order");
+      /** 이름만 보면 옛 컬럼을 가리키는 인덱스도 통과하므로 컬럼 구성까지 확인한다 */
+      const indexColumns = await dataSource.query(`PRAGMA index_info("idx_kanban_tasks_status_order")`);
+      expect(indexColumns.map((row: { name: string }) => row.name)).toEqual([
+        "status",
+        "display_rank",
+        "created_at",
+      ]);
     } finally {
       await dataSource.destroy();
     }
@@ -709,6 +716,44 @@ describe("database migrations", () => {
       expect(tasks.map((task) => task.id)).toEqual(["task-1", "task-2", "task-3"]);
       /** 같은 값이 섞이면 두 카드 사이에 새 자리를 만들 수 없어 드래그가 엉뚱한 곳으로 간다 */
       expect(new Set(tasks.map((task) => task.display_rank)).size).toBe(3);
+    } finally {
+      database.close();
+    }
+  });
+
+  it("baseline DB에 남아 있던 옛 컬럼 인덱스를 rank 인덱스로 다시 만든다", async () => {
+    // Given
+    const databasePath = createDatabasePath();
+    insertLegacyDisplayOrderData(databasePath);
+    const legacyDatabase = new Database(databasePath);
+    try {
+      legacyDatabase.exec(`
+        CREATE INDEX idx_kanban_tasks_status_order
+          ON kanban_tasks(status, display_order, created_at)
+      `);
+    } finally {
+      legacyDatabase.close();
+    }
+
+    // When
+    ensureSqliteDatabaseReady(databasePath);
+
+    // Then
+    const database = new Database(databasePath);
+    try {
+      const indexColumns = database
+        .prepare(`PRAGMA index_info("idx_kanban_tasks_status_order")`)
+        .all() as Array<{ name: string }>;
+
+      /**
+       * CREATE INDEX IF NOT EXISTS는 이름이 같으면 정의가 달라도 넘어간다.
+       * 그대로 두면 ORDER BY display_rank가 매번 임시 B-tree 정렬로 떨어진다.
+       */
+      expect(indexColumns.map((column) => column.name)).toEqual([
+        "status",
+        "display_rank",
+        "created_at",
+      ]);
     } finally {
       database.close();
     }

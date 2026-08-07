@@ -16,6 +16,8 @@ export interface BoardSortContext {
   rootPriorityByProjectId: Map<string, TaskPriority>;
   /** projectId → 표시 이름 */
   projectNameById: Map<string, string>;
+  /** 제목·프로젝트 이름을 비교할 때 쓸 콜레이션 로케일. 앱이 보고 있는 언어를 그대로 따른다 */
+  locale: string;
 }
 
 /** 프로젝트의 기본 브랜치를 들고 있는 task가 그 프로젝트의 root task다 */
@@ -91,9 +93,9 @@ function readSortValue(
   }
 }
 
-function compareSortValues(left: string | number, right: string | number): number {
+function compareSortValues(left: string | number, right: string | number, locale: string): number {
   if (typeof left === "string" && typeof right === "string") {
-    return left.localeCompare(right, "ko");
+    return left.localeCompare(right, locale);
   }
   if (left === right) return 0;
   return left < right ? -1 : 1;
@@ -114,7 +116,7 @@ function compareBySortKeys(
       return leftValue === null ? 1 : -1;
     }
 
-    const comparison = compareSortValues(leftValue, rightValue);
+    const comparison = compareSortValues(leftValue, rightValue, context.locale);
     if (comparison !== 0) {
       return direction === "desc" ? -comparison : comparison;
     }

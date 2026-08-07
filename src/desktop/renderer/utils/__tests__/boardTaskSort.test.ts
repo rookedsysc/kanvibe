@@ -52,6 +52,7 @@ function buildProject(overrides: Partial<Project> & { id: string }): Project {
 const EMPTY_CONTEXT: BoardSortContext = {
   rootPriorityByProjectId: new Map(),
   projectNameById: new Map(),
+  locale: "ko",
 };
 
 function preference(overrides: Partial<BoardSortPreference>): BoardSortPreference {
@@ -159,6 +160,30 @@ describe("sortTasksForBoard", () => {
     expect(sorted.map((task) => task.id)).toEqual(["second", "first", "last"]);
   });
 
+  it("제목 정렬은 보고 있는 언어의 콜레이션을 따른다", () => {
+    // Given
+    /** 두 한자는 한국어 콜레이션과 중국어(병음) 콜레이션에서 순서가 뒤집힌다 */
+    const leeTask = buildTask({ id: "lee", title: "李" });
+    const chenTask = buildTask({ id: "chen", title: "陈" });
+    const titleAscending = preference({ keys: [{ field: "title", direction: "asc" }] });
+
+    // When
+    const koreanSorted = sortTasksForBoard(
+      [chenTask, leeTask],
+      titleAscending,
+      { ...EMPTY_CONTEXT, locale: "ko" },
+    );
+    const chineseSorted = sortTasksForBoard(
+      [chenTask, leeTask],
+      titleAscending,
+      { ...EMPTY_CONTEXT, locale: "zh" },
+    );
+
+    // Then
+    expect(koreanSorted.map((task) => task.id)).toEqual(["lee", "chen"]);
+    expect(chineseSorted.map((task) => task.id)).toEqual(["chen", "lee"]);
+  });
+
   it("방향을 뒤집어도 값이 없는 항목은 계속 뒤에 남는다", () => {
     // Given
     const tasks = [noPriorityTask, mediumTask, highTask];
@@ -186,6 +211,7 @@ describe("sortTasksForBoard", () => {
     const context: BoardSortContext = {
       rootPriorityByProjectId: new Map([["project-1", TaskPriority.HIGH]]),
       projectNameById: new Map(),
+      locale: "ko",
     };
 
     // When

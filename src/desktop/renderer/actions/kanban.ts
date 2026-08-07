@@ -70,8 +70,14 @@ export function reorderTasks(status: TaskStatus, movedTaskId: string, orderedIds
   return invokeDesktop("kanban", "reorderTasks", status, movedTaskId, orderedIds);
 }
 
-export function moveTaskToColumn(taskId: string, newStatus: TaskStatus, destOrderedIds: string[]): Promise<void> {
-  return invokeDesktop("kanban", "moveTaskToColumn", taskId, newStatus, destOrderedIds);
+/** `isManuallyOrdered`는 사용자가 목적지 자리를 직접 고른 이동(드래그)인지 여부다 */
+export function moveTaskToColumn(
+  taskId: string,
+  newStatus: TaskStatus,
+  destOrderedIds: string[],
+  isManuallyOrdered: boolean,
+): Promise<void> {
+  return invokeDesktop("kanban", "moveTaskToColumn", taskId, newStatus, destOrderedIds, isManuallyOrdered);
 }
 
 export function fetchAndSavePrUrl(taskId: string): Promise<string | null> {

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback, useEffect, useMemo, useRef, useTransition } from "react";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { DragDropContext, type DropResult } from "@hello-pangea/dnd";
 import BoardPageFindBar from "./BoardPageFindBar";
 import BoardSortPicker from "./BoardSortPicker";
@@ -462,7 +462,28 @@ interface DragMovePlan {
   doneOffsetDelta: number;
   persistence:
     | { type: "reorder"; taskId: string; status: TaskStatus; orderedIds: string[] }
-    | { type: "move"; taskId: string; status: TaskStatus; orderedIds: string[] };
+    | {
+        type: "move";
+        taskId: string;
+        status: TaskStatus;
+        orderedIds: string[];
+        isManuallyOrdered: boolean;
+      };
+}
+
+/**
+ * 이동이 사용자가 자리를 고른 것인지 구분한다.
+ *
+ * 드래그는 사용자가 목적지 자리를 직접 짚은 "placed"이고,
+ * vim 단축키나 컨텍스트 메뉴처럼 상태만 바꾸는 이동은 목적지 컬럼 끝에 붙을 뿐인 "status-only"다.
+ * 저장 쪽이 이 값을 그대로 `isManuallyOrdered`로 쓰므로 두 경로를 섞으면 안 된다.
+ */
+type BoardMovePlacement = "placed" | "status-only";
+
+/** 사용자 안내 후에 실행하기 위해 잡아 둔 Done 이동. 어떤 경로로 왔는지까지 함께 들고 있어야 한다 */
+interface PendingDoneMove {
+  result: DropResult;
+  placement: BoardMovePlacement;
 }
 
 /**
@@ -484,6 +505,7 @@ function buildDragMovePlan(
   displayedTasks: TasksByStatus,
   result: DropResult,
   taskFilter: BoardTaskFilter | null,
+  placement: BoardMovePlacement,
 ): DragMovePlan | null {
   const { source, destination, draggableId } = result;
   if (!destination) return null;
@@ -541,6 +563,7 @@ function buildDragMovePlan(
       taskId: draggableId,
       status: destStatus,
       orderedIds: buildDisplayedOrderIds(displayedTasks[destStatus], draggableId, destination.index),
+      isManuallyOrdered: placement === "placed",
     },
   };
 }
@@ -562,6 +585,7 @@ export default function Board({
   const ts = useTranslations("settings");
   const tt = useTranslations("task");
   const tc = useTranslations("common");
+  const locale = useLocale();
   const [tasks, setTasks] = useState<TasksByStatus>(initialTasks);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isProjectRegistryOpen, setIsProjectRegistryOpen] = useState(false);
@@ -584,7 +608,7 @@ export default function Board({
   const [doneOffset, setDoneOffset] = useState(initialDoneLimit);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [isDoneAlertDismissed, setIsDoneAlertDismissed] = useState(doneAlertDismissed);
-  const [pendingDoneResult, setPendingDoneResult] = useState<DropResult | null>(null);
+  const [pendingDoneResult, setPendingDoneResult] = useState<PendingDoneMove | null>(null);
   const [currentDefaultSessionType, setCurrentDefaultSessionType] = useState<SessionType>(defaultSessionType);
   const [shouldUseMacTitlebarLayout, setShouldUseMacTitlebarLayout] = useState(false);
   const vimCommandCompletion = useMemo(
@@ -738,8 +762,10 @@ export default function Board({
     () => ({
       rootPriorityByProjectId,
       projectNameById: new Map(Object.entries(projectNameMap)),
+      /** 제목·프로젝트 정렬은 보고 있는 언어의 콜레이션을 따라야 한다. 앱은 en/ko/zh를 지원한다 */
+      locale,
     }),
-    [projectNameMap, rootPriorityByProjectId],
+    [locale, projectNameMap, rootPriorityByProjectId],
   );
 
   /** 화면에 실제로 늘어놓을 순서. 필터를 통과한 목록에 정렬 설정을 적용한다 */
@@ -1037,7 +1063,7 @@ export default function Board({
 
   /** 드래그 결과를 받아 state 업데이트 + DB 반영을 수행한다 */
   const executeDragMove = useCallback(
-    (result: DropResult) => {
+    (result: DropResult, placement: BoardMovePlacement) => {
       const isSameColumnReorder = result.destination?.droppableId === result.source.droppableId;
       if (isManualReorderDisabled && isSameColumnReorder) return;
 
@@ -1046,6 +1072,7 @@ export default function Board({
         displayedTasks,
         result,
         hasActiveBoardTaskFilter ? boardTaskFilter : null,
+        placement,
       );
       if (!plan) return;
 
@@ -1073,6 +1100,7 @@ export default function Board({
           plan.persistence.taskId,
           plan.persistence.status,
           plan.persistence.orderedIds,
+          plan.persistence.isManuallyOrdered,
         );
       });
     },
@@ -1091,11 +1119,12 @@ export default function Board({
         !!(task.branchName || task.sessionType);
 
       if (shouldConfirmDoneMove) {
-        setPendingDoneResult(result);
+        setPendingDoneResult({ result, placement: "status-only" });
         return;
       }
 
-      executeDragMove(result);
+      /** 상태만 바꾸는 경로다. 목적지 컬럼 끝에 붙을 뿐 사용자가 자리를 고른 적은 없다 */
+      executeDragMove(result, "status-only");
     },
     [executeDragMove, displayedTasks, isDoneAlertDismissed, tasks],
   );
@@ -1163,19 +1192,19 @@ export default function Board({
         const task = tasks[sourceStatus].find((task) => task.id === draggableId);
         const hasCleanableResources = task && (task.branchName || task.sessionType);
         if (hasCleanableResources) {
-          setPendingDoneResult(result);
+          setPendingDoneResult({ result, placement: "placed" });
           return;
         }
       }
 
-      executeDragMove(result);
+      executeDragMove(result, "placed");
     },
     [tasks, isDoneAlertDismissed, executeDragMove]
   );
 
   const handleDoneConfirm = useCallback(() => {
     if (pendingDoneResult) {
-      executeDragMove(pendingDoneResult);
+      executeDragMove(pendingDoneResult.result, pendingDoneResult.placement);
       setIsDoneAlertDismissed(true);
     }
     setPendingDoneResult(null);

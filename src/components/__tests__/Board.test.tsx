@@ -37,6 +37,7 @@ function mockWindowFind(implementation?: (query: string, ...args: unknown[]) => 
 
 vi.mock("next-intl", () => ({
   useTranslations: () => (key: string) => key,
+  useLocale: () => "ko",
 }));
 
 vi.mock("@hello-pangea/dnd", () => ({
@@ -53,6 +54,18 @@ vi.mock("@hello-pangea/dnd", () => ({
         }
       >
         trigger-drag-end
+      </button>
+      <button
+        type="button"
+        onClick={() =>
+          onDragEnd?.({
+            draggableId: "task-1",
+            source: { droppableId: TaskStatus.TODO, index: 0 },
+            destination: { droppableId: TaskStatus.REVIEW, index: 0 },
+          })
+        }
+      >
+        trigger-cross-column-drag-end
       </button>
       {children}
     </div>
@@ -560,6 +573,30 @@ describe("Board defaultSessionType sync", () => {
 
     await waitFor(() => {
       expect(reorderTasks).toHaveBeenCalledWith(TaskStatus.TODO, "task-1", ["task-1"]);
+    });
+  });
+
+  it("드래그로 다른 컬럼에 놓으면 사용자가 자리를 고른 이동으로 저장한다", async () => {
+    render(
+      <Board
+        initialTasks={createTasksWithTodo()}
+        initialDoneTotal={0}
+        initialDoneLimit={20}
+        sshHosts={[]}
+        projects={[createProject()]}
+        sidebarDefaultCollapsed={false}
+        doneAlertDismissed={false}
+        notificationSettings={{ isEnabled: true, enabledStatuses: ["progress", "pending", "review"] }}
+        defaultSessionType={SessionType.TMUX}
+        taskSearchShortcut="Mod+Shift+O"
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "trigger-cross-column-drag-end" }));
+
+    await waitFor(() => {
+      /** 드래그만이 목적지 자리를 직접 짚는 경로다. vim·컨텍스트 메뉴 이동과 섞이면 안 된다 */
+      expect(moveTaskToColumn).toHaveBeenCalledWith("task-1", TaskStatus.REVIEW, ["task-1"], true);
     });
   });
 
@@ -1155,7 +1192,7 @@ describe("Board defaultSessionType sync", () => {
     fireEvent.keyDown(commandInput, { key: "Enter" });
 
     await waitFor(() => {
-      expect(moveTaskToColumn).toHaveBeenCalledWith("task-1", TaskStatus.REVIEW, ["task-1"]);
+      expect(moveTaskToColumn).toHaveBeenCalledWith("task-1", TaskStatus.REVIEW, ["task-1"], false);
     });
   });
 
@@ -1256,7 +1293,7 @@ describe("Board defaultSessionType sync", () => {
     fireEvent.keyDown(commandInput, { key: "Enter" });
 
     await waitFor(() => {
-      expect(moveTaskToColumn).toHaveBeenCalledWith("task-1", TaskStatus.REVIEW, ["task-1"]);
+      expect(moveTaskToColumn).toHaveBeenCalledWith("task-1", TaskStatus.REVIEW, ["task-1"], false);
     });
   });
 
@@ -1408,7 +1445,7 @@ describe("Board defaultSessionType sync", () => {
     fireEvent.click(await screen.findByRole("button", { name: "change-status-review" }));
 
     await waitFor(() => {
-      expect(moveTaskToColumn).toHaveBeenCalledWith("task-1", TaskStatus.REVIEW, ["task-1"]);
+      expect(moveTaskToColumn).toHaveBeenCalledWith("task-1", TaskStatus.REVIEW, ["task-1"], false);
     });
   });
 
