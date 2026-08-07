@@ -1048,12 +1048,8 @@ export default function TaskDetailRoute() {
     }
   }, [terminalTabs]);
 
+  /** `close-window`는 라우트와 무관해 App이 받는다. 여기서는 터미널이 있는 화면의 탭 명령만 다룬다 */
   const runTerminalTabCommand = useCallback((command: TerminalTabShortcutCommand) => {
-    if (command.type === "close-window") {
-      window.kanvibeDesktop?.closeCurrentWindow?.();
-      return;
-    }
-
     if (!hasTerminal || mainView !== "terminal") {
       return;
     }

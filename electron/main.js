@@ -339,7 +339,7 @@ function getDefaultRoute() {
 }
 
 function isTaskDetailRouteUrl(url) {
-  return /#\/[^/]+\/task\/[^/?#]+(?:[?#]|$)/.test(url || "");
+  return getKeyboardShortcutHelpers().isTaskDetailRouteUrl(url);
 }
 
 function getRendererNavigationUrl(target = getDefaultRoute()) {

@@ -339,6 +339,14 @@ export function matchTerminalTabShortcutInput(
 }
 
 /**
+ * 태스크 상세 화면인지 URL로 판정한다.
+ * 같은 키가 화면에 따라 다른 명령이 되므로 main과 렌더러가 이 판정을 공유해야 한다.
+ */
+export function isTaskDetailRouteUrl(url: string | null | undefined): boolean {
+  return /#\/[^/]+\/task\/[^/?#]+(?:[?#]|$)/.test(url || "");
+}
+
+/**
  * 키 입력을 터미널 탭 명령으로 바꾼다. 해당 없으면 null.
  * 창 닫기는 어느 화면에서나 동작하고, 나머지는 터미널이 있는 태스크 상세에서만 의미가 있다.
  * 탭 닫기는 터미널 밖에서는 일반 앱처럼 창 닫기로 동작한다.
