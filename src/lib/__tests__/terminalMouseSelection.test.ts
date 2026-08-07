@@ -116,7 +116,7 @@ describe("terminalMouseSelection", () => {
     expect(options.theme?.background).toBe("#0a0a0acc");
   });
 
-  it("허용 범위를 벗어난 불투명도는 최소값 alpha로 보정한다", () => {
+  it("불투명도 0은 배경 alpha를 완전히 걷어내 뒤가 그대로 비치게 한다", () => {
     // Given
     const requestedOpacity = 0;
 
@@ -124,6 +124,17 @@ describe("terminalMouseSelection", () => {
     const theme = createTerminalTheme(requestedOpacity);
 
     // Then
-    expect(theme.background).toBe("#0a0a0a4d");
+    expect(theme.background).toBe("#0a0a0a00");
+  });
+
+  it("허용 범위를 넘는 불투명도는 완전 불투명 테마로 되돌린다", () => {
+    // Given
+    const requestedOpacity = 9;
+
+    // When
+    const theme = createTerminalTheme(requestedOpacity);
+
+    // Then
+    expect(theme.background).toBe("#0a0a0a");
   });
 });

@@ -19,7 +19,7 @@ import { Link } from "@/desktop/renderer/navigation";
 import type { Project } from "@/entities/Project";
 import { applyThemePreference, notifyThemePreferenceChanged } from "@/desktop/renderer/utils/theme";
 import { applyTerminalTransparency } from "@/desktop/renderer/utils/terminalTransparency";
-import { MIN_TERMINAL_OPACITY, OPAQUE_TERMINAL_OPACITY } from "@/lib/terminalOpacity";
+import { OPAQUE_TERMINAL_OPACITY, clampTerminalOpacity } from "@/lib/terminalOpacity";
 import { useEscapeKey } from "@/hooks/useEscapeKey";
 
 const MIN_SYNC_INTERVAL_MINUTES = 1;
@@ -28,6 +28,8 @@ const MAX_SYNC_INTERVAL_MINUTES = 1440;
 /** 투명도를 백분율 슬라이더로 다루기 위한 배율과 눈금 간격 */
 const TERMINAL_OPACITY_PERCENT_SCALE = 100;
 const TERMINAL_OPACITY_PERCENT_STEP = 5;
+/** 슬라이더는 0%까지 열어두고, 완전한 0을 피하는 보정은 clampTerminalOpacity가 맡는다 */
+const TERMINAL_OPACITY_MIN_PERCENT = 0;
 
 /** 알림 대상 상태 목록 (사용자가 직접 설정하는 todo/done은 제외) */
 const STATUS_OPTIONS = [
@@ -194,7 +196,7 @@ export default function ProjectSettings({
   }
 
   function handleTerminalOpacityPercentChange(nextOpacityPercent: number) {
-    const nextTerminalOpacity = nextOpacityPercent / TERMINAL_OPACITY_PERCENT_SCALE;
+    const nextTerminalOpacity = clampTerminalOpacity(nextOpacityPercent / TERMINAL_OPACITY_PERCENT_SCALE);
     setLocalTerminalOpacity(nextTerminalOpacity);
     applyTerminalTransparency(nextTerminalOpacity);
     onTerminalOpacityChange?.(nextTerminalOpacity);
@@ -295,7 +297,7 @@ export default function ProjectSettings({
               <input
                 id="terminal-opacity"
                 type="range"
-                min={MIN_TERMINAL_OPACITY * TERMINAL_OPACITY_PERCENT_SCALE}
+                min={TERMINAL_OPACITY_MIN_PERCENT}
                 max={OPAQUE_TERMINAL_OPACITY * TERMINAL_OPACITY_PERCENT_SCALE}
                 step={TERMINAL_OPACITY_PERCENT_STEP}
                 value={Math.round(localTerminalOpacity * TERMINAL_OPACITY_PERCENT_SCALE)}
