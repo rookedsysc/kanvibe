@@ -3,8 +3,6 @@ import "@xterm/xterm/css/xterm.css";
 import { createTerminalOptions, installMacShiftSelectionPatch } from "@/lib/terminalMouseSelection";
 import { installOsc52ClipboardHandler } from "@/lib/terminalClipboard";
 import { REQUEST_ACTIVE_TERMINAL_FOCUS_EVENT, hasTerminalFocusBlocker } from "@/desktop/renderer/utils/terminalFocus";
-import { getTerminalOpacity } from "@/desktop/renderer/actions/appSettings";
-import { OPAQUE_TERMINAL_OPACITY } from "@/lib/terminalOpacity";
 
 interface TerminalProps {
   taskId: string;
@@ -69,11 +67,6 @@ function loadNerdFontFamily(): Promise<string | null> {
   return nerdFontLoadPromise;
 }
 
-/** 설정 조회가 실패해도 터미널은 열려야 하므로 실패 시 불투명 배경으로 되돌린다 */
-function loadTerminalOpacity(): Promise<number> {
-  return getTerminalOpacity().catch(() => OPAQUE_TERMINAL_OPACITY);
-}
-
 export default function Terminal({ taskId }: TerminalProps) {
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -82,13 +75,10 @@ export default function Terminal({ taskId }: TerminalProps) {
       return undefined;
     }
 
-    const [[{ Terminal: XTerm }, { FitAddon }, { WebLinksAddon }], terminalOpacity] = await Promise.all([
-      loadTerminalModules(),
-      loadTerminalOpacity(),
-    ]);
+    const [{ Terminal: XTerm }, { FitAddon }, { WebLinksAddon }] = await loadTerminalModules();
     let isTerminalDisposed = false;
 
-    const terminal = new XTerm(createTerminalOptions(FALLBACK_FONT_FAMILY, terminalOpacity));
+    const terminal = new XTerm(createTerminalOptions(FALLBACK_FONT_FAMILY));
 
     const fitAddon = new FitAddon();
     terminal.loadAddon(fitAddon);
