@@ -322,9 +322,23 @@ export default function TaskCard({
           <div className={projectName ? `grid ${PROJECT_MARKER_GRID_COLUMNS} items-start gap-2` : "block"}>
             {projectName ? <span aria-hidden="true" /> : null}
             <div className="min-w-0">
-              <h3 className="truncate text-[13px] font-medium leading-5 text-text-primary">
-                {task.title}
-              </h3>
+              {/* 미읽음 배지를 제목과 같은 줄 오른쪽 끝에 겹쳐 둔다. 제목이 길면 잘린 끝부분을 배지가 덮는다 */}
+              <div className="relative">
+                <h3 className="truncate text-[13px] font-medium leading-5 text-text-primary">
+                  {task.title}
+                </h3>
+
+                {unreadNotificationCount > 0 && (
+                  <span
+                    className={`${badgeClassName} absolute right-0 top-0 h-5 gap-1 border-transparent bg-brand-primary font-semibold text-text-inverse`}
+                    aria-label={tc("unreadCount", { count: unreadNotificationCount })}
+                    data-testid="unread-notification-badge"
+                  >
+                    <BellIcon />
+                    {unreadNotificationCount}
+                  </span>
+                )}
+              </div>
 
               {task.description && (
                 <p className="mt-0.5 line-clamp-1 text-[11px] leading-4 text-text-muted">
@@ -335,17 +349,6 @@ export default function TaskCard({
           </div>
 
           <div className="mt-1.5 flex items-center gap-1.5 overflow-hidden">
-            {unreadNotificationCount > 0 && (
-              <span
-                className={`${badgeClassName} gap-1 border-transparent bg-brand-primary font-semibold text-text-inverse`}
-                aria-label={tc("unreadCount", { count: unreadNotificationCount })}
-                data-testid="unread-notification-badge"
-              >
-                <BellIcon />
-                {unreadNotificationCount}
-              </span>
-            )}
-
             {task.prUrl && (
               <span
                 role="link"
