@@ -123,8 +123,8 @@ describe("TerminalTabBar", () => {
     renderTabBar();
 
     const [firstTab, secondTab] = screen.getAllByRole("tab");
-    expect(firstTab.textContent).toContain("Ctrl+1");
-    expect(secondTab.textContent).toContain("Ctrl+2");
+    expect(firstTab.textContent).toContain("Ctrl+Alt+1");
+    expect(secondTab.textContent).toContain("Ctrl+Alt+2");
   });
 
   it("6번째 탭부터는 대응하는 단축키가 없어 힌트를 붙이지 않는다", () => {
@@ -137,8 +137,8 @@ describe("TerminalTabBar", () => {
     renderTabBar({ tabs: manyTabs });
 
     const tabs = screen.getAllByRole("tab");
-    expect(tabs[4].textContent).toContain("Ctrl+5");
-    expect(tabs[5].textContent).not.toContain("Ctrl+");
+    expect(tabs[4].textContent).toContain("Ctrl+Alt+5");
+    expect(tabs[5].textContent).not.toContain("Ctrl+Alt+");
   });
 
   it("활성 탭 양옆에는 구분선을 겹쳐 그리지 않는다", () => {

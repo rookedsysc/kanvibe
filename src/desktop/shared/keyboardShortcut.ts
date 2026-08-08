@@ -279,15 +279,9 @@ export function matchElectronShortcutInput(
   }, shortcut, platform);
 }
 
-/**
- * dock 항목 n번을 여는 단축키.
- * macOS의 `Cmd+숫자`는 터미널 탭 이동이 가져갔으므로 Option을 더해 비켜 간다.
- */
+/** dock 항목 n번을 여는 단축키 */
 export function createTaskDetailDockShortcut(index: TaskDetailDockShortcutIndex): ShortcutDefinition {
-  return {
-    mac: `Meta+Alt+${index}`,
-    linux: `Alt+${index}`,
-  };
+  return `Mod+${index}`;
 }
 
 export function matchTaskDetailDockShortcutEvent(
@@ -317,11 +311,11 @@ export function matchTaskDetailDockShortcutInput(
 }
 
 /**
- * 터미널 탭 n번으로 바로 이동하는 단축키. 브라우저·터미널 앱이 쓰는 `Mod+숫자` 관례를 따른다.
- * macOS의 `Cmd+Shift+3~5`는 OS 스크린샷이 먼저 가져가 앱에 도달하지 않으므로 Shift를 쓸 수 없다.
+ * 터미널 탭 n번으로 바로 이동하는 단축키. `Mod+숫자`는 dock 항목이 쓰므로 Alt를 더해 비켜 간다.
+ * macOS의 `Cmd+Shift+3~5`는 OS 스크린샷이 먼저 가져가 앱에 도달하지 않으므로 Shift로는 비켜 갈 수 없다.
  */
 export function createTerminalTabShortcut(index: TerminalTabShortcutIndex): ShortcutDefinition {
-  return `Mod+${index}`;
+  return `Mod+Alt+${index}`;
 }
 
 export function matchTerminalTabShortcutEvent(
