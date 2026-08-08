@@ -681,7 +681,7 @@ describe("TaskDetailRoute", () => {
     expect(mocks.getTaskById).toHaveBeenCalledTimes(taskLoadCountBeforeClose);
   });
 
-  it("터미널 탭 왼쪽에 프로젝트와 태스크 이름 배지를 항상 표시한다", async () => {
+  it("터미널 탭 왼쪽에 태스크 이름 배지를 항상 표시한다", async () => {
     mocks.getTaskById.mockResolvedValue({
       id: "task-1",
       title: "fix tab task name",
@@ -702,8 +702,8 @@ describe("TaskDetailRoute", () => {
     render(<TaskDetailRoute />);
 
     const taskContextBadge = await screen.findByTestId("terminal-task-context");
-    expect(taskContextBadge.textContent).toBe("kanvibe > fix tab task name");
-    expect(taskContextBadge.getAttribute("title")).toBe("kanvibe > fix tab task name");
+    expect(taskContextBadge.textContent).toBe("fix tab task name");
+    expect(taskContextBadge.getAttribute("title")).toBe("fix tab task name");
     expect(taskContextBadge.className).toContain("bg-green-600");
     expect(taskContextBadge.className).toContain("shrink-0");
     expect(taskContextBadge.className).toContain("truncate");

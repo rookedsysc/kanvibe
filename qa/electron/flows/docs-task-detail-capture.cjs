@@ -51,7 +51,7 @@ const TAB_FIXTURES = [
       "  - 새 탭        Ctrl+T",
       "  - 탭 닫기      Ctrl+W (마지막 탭이면 창까지)",
       "  - 탭 이동      Ctrl+Shift+[ / ]",
-      "  - 탭 직접 선택 Ctrl+1 ~ 5",
+      "  - 탭 직접 선택 Ctrl+Alt+1 ~ 5",
     ],
     /** 작업 정보 패널이 왼쪽을 가리므로, 읽혀야 할 요약은 오른쪽 pane에 둔다 */
     splitLines: [
@@ -139,7 +139,7 @@ async function dismissDetailPanel(page) {
 
 /** 작업 정보 패널을 다시 띄운다. dock 첫 칸의 단축키가 그대로 토글이다 */
 async function openDetailPanel(page) {
-  await page.keyboard.press(process.platform === "darwin" ? "Meta+Alt+1" : "Alt+1");
+  await page.keyboard.press(process.platform === "darwin" ? "Meta+1" : "Control+1");
   await page.waitForFunction(() => {
     const tabBar = document.querySelector("[data-testid='terminal-tab-bar']");
     if (!tabBar) return false;
@@ -175,7 +175,13 @@ async function readTabs(page) {
 
 function printLinesInPane(paneTarget, lines) {
   const printfArguments = lines.map((line) => `'${line}'`).join(" ");
-  execTmux(["send-keys", "-t", paneTarget, `clear; printf '%s\\n' ${printfArguments}`, "Enter"]);
+  execTmux([
+    "send-keys",
+    "-t",
+    paneTarget,
+    `clear; printf '%s\\n' ${printfArguments}; while :; do sleep 3600; done`,
+    "Enter",
+  ]);
 }
 
 /** 스크린샷에 빈 프롬프트만 남지 않도록 각 window에 역할다운 출력을 찍어 둔다 */

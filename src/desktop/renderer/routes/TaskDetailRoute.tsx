@@ -828,9 +828,6 @@ export default function TaskDetailRoute() {
   const dockItemsRef = useRef<TaskDetailDockItem[]>([]);
   const commonTranslationsRef = useRef(tc);
   const hasTerminal = !!(state?.task.sessionType && state.task.sessionName);
-  const terminalTaskContext = state?.task.project
-    ? `${state.task.project.name} > ${state.task.title}`
-    : state?.task.title ?? "";
   const terminalTabs = useTerminalTabs({
     taskId: id ?? "",
     sessionType: (state?.task.sessionType as SessionType | undefined) ?? null,
@@ -1560,10 +1557,10 @@ export default function TaskDetailRoute() {
             <div className="bg-terminal-chrome flex items-center gap-3 px-4 py-2.5 shrink-0">
               <span
                 data-testid="terminal-task-context"
-                title={terminalTaskContext}
+                title={state.task.title}
                 className="max-w-64 shrink-0 truncate rounded-md bg-green-600 px-2.5 py-1 text-xs font-semibold text-white"
               >
-                {terminalTaskContext}
+                {state.task.title}
               </span>
               {terminalTabs.tabs.length > 0 ? (
                 <TerminalTabBar
