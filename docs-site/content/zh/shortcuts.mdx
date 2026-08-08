@@ -21,13 +21,30 @@ KanVibe 明确区分全局、看板和任务详情快捷键，让终端焦点保
 | `Cmd/Ctrl+Shift+O` | 全局 | 按分支名/项目名打开快速任务搜索 |
 | `Cmd/Ctrl+Shift+P` | 看板 | 打开项目过滤下拉框 |
 | `Cmd/Ctrl+Shift+I` | 看板 | 打开通知下拉框 |
-| `Cmd+[` / `Cmd+]` (macOS), `Alt+[` / `Alt+]` (Linux) | 全局 | 在应用历史中后退/前进 |
-| `Cmd+1/2/3` (macOS), `Alt+1/2/3` (Linux) | 任务详情 | 激活信息、状态/hooks、AI 聊天 dock 项 |
-| `Cmd+4` (macOS), `Alt+4` (Linux) | 任务详情 | 存在 PR 时在浏览器中打开 PR |
-| `Cmd/Ctrl+N` | 快速任务搜索 | 基于高亮任务创建 branch TODO |
+| `Cmd+[` / `Cmd+]` (macOS), `Ctrl+[` / `Ctrl+]` (Linux) | 全局 | 在应用历史中后退/前进 |
+| `Cmd/Ctrl+Shift+N` | 全局 | 在新窗口中打开当前页面 |
+| `Cmd/Ctrl+1/2/3` | 任务详情 | 激活信息、状态/hooks、AI 聊天 dock 项 |
+| `Cmd/Ctrl+4` | 任务详情 | 存在 PR 时在浏览器中打开 PR |
+| `Cmd/Ctrl+N` | 全局 | 打开新建任务弹窗。在快速任务搜索中则基于高亮任务创建 branch TODO |
 | `↑ / ↓ / Enter / Shift+Enter / Esc` | 快速任务搜索 | 移动选择、打开、新窗口打开、关闭 |
 | `↑ / ↓ / Enter / Esc` | 项目过滤 | 移动选择、切换、关闭 |
-| `↑ / ↓ / Enter / Esc` | 通知 | 移动选择、打开目标、关闭 |
+| `↑ / ↓ / Space / Enter / Esc` | 通知 | 移动选择、标记已读、打开目标、关闭 |
+
+## 终端标签页
+
+标签页操作在任务详情的终端可见时生效，关闭窗口则在任何界面都可用。对 tmux 和 zellij 会话，这些快捷键会直接操作多路复用器自身的 window / tab。
+
+| 快捷键 | 操作 |
+| --- | --- |
+| `Cmd/Ctrl+T` | 新建标签页 |
+| `Cmd/Ctrl+W` | 关闭当前标签页；若是最后一个标签页则只关闭窗口并保留 tmux/zellij 标签页，会话得以留存。在没有终端的界面上则直接关闭窗口 |
+| `Cmd/Ctrl+Shift+W` | 无论有多少标签页都直接关闭窗口 |
+| `Cmd/Ctrl+Shift+[` / `Cmd/Ctrl+Shift+]` | 上一个 / 下一个标签页 |
+| `Cmd+Option+1` ~ `Cmd+Option+5` (macOS), `Ctrl+Alt+1` ~ `Ctrl+Alt+5` (Linux) | 直接跳转到第 1~5 个标签页 |
+
+<div className="kv-note">
+  在 Linux 上这些快捷键使用 `Ctrl` 组合，因此终端内的 `Ctrl+T`（交换字符）、`Ctrl+W`（删除单词）、`Ctrl+[`（ESC）不会再传递给 shell。
+</div>
 
 ## Vim 模式
 

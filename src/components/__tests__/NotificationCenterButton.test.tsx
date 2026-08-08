@@ -339,6 +339,79 @@ describe("NotificationCenterButton", () => {
     expect(mockRedirect).toHaveBeenCalledWith("/en/task/task-2");
   });
 
+  it("marks the highlighted notification read with Space without opening it", async () => {
+    mockListNotifications.mockResolvedValue([
+      {
+        id: "n1",
+        title: "First task",
+        body: "Body",
+        taskId: "task-1",
+        relativePath: "/task/task-1",
+        locale: "en",
+        isRead: false,
+        createdAt: "2026-05-04T00:01:00.000Z",
+        dedupeKey: "k1",
+      },
+      {
+        id: "n2",
+        title: "Second task",
+        body: "Body",
+        taskId: "task-2",
+        relativePath: "/task/task-2",
+        locale: "en",
+        isRead: false,
+        createdAt: "2026-05-04T00:00:00.000Z",
+        dedupeKey: "k2",
+      },
+    ]);
+    mockMarkNotificationRead.mockResolvedValue(undefined);
+
+    render(<NotificationCenterButton />);
+
+    await waitFor(() => {
+      expect(mockListNotifications).toHaveBeenCalled();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "notifications" }));
+    fireEvent.keyDown(window, { key: "ArrowDown" });
+    fireEvent.keyDown(window, { key: " " });
+
+    await waitFor(() => {
+      expect(mockMarkNotificationRead).toHaveBeenCalledWith("n2");
+    });
+
+    expect(mockGetTaskById).not.toHaveBeenCalled();
+    expect(mockRedirect).not.toHaveBeenCalled();
+    expect(screen.getByText("Second task")).toBeTruthy();
+  });
+
+  it("does not call the read bridge again when Space repeats on an already read notification", async () => {
+    mockListNotifications.mockResolvedValue([
+      {
+        id: "n1",
+        title: "Already read",
+        body: "Body",
+        taskId: "task-1",
+        relativePath: "/task/task-1",
+        locale: "en",
+        isRead: true,
+        createdAt: "2026-05-04T00:01:00.000Z",
+        dedupeKey: "k1",
+      },
+    ]);
+
+    render(<NotificationCenterButton />);
+
+    await waitFor(() => {
+      expect(mockListNotifications).toHaveBeenCalled();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "notifications" }));
+    fireEvent.keyDown(window, { key: " " });
+
+    expect(mockMarkNotificationRead).not.toHaveBeenCalled();
+  });
+
   it("opens the highlighted task notification in a new window with Shift+Enter", async () => {
     const openWindow = vi.spyOn(window, "open").mockImplementation(() => null);
     mockListNotifications.mockResolvedValue([

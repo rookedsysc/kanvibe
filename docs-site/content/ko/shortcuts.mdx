@@ -21,13 +21,30 @@ KanVibe는 터미널 포커스를 깨지 않도록 전역/보드/상세 단축�
 | `Cmd/Ctrl+Shift+O` | 전역 | 브랜치명/프로젝트명 기준 빠른 태스크 검색 |
 | `Cmd/Ctrl+Shift+P` | 보드 | 프로젝트 필터 드롭다운 열기 |
 | `Cmd/Ctrl+Shift+I` | 보드 | 알림 드롭다운 열기 |
-| `Cmd+[` / `Cmd+]` (macOS), `Alt+[` / `Alt+]` (Linux) | 전역 | 앱 히스토리 뒤로/앞으로 이동 |
-| `Cmd+1/2/3` (macOS), `Alt+1/2/3` (Linux) | 태스크 상세 | 정보, 상태/hooks, AI 채팅 dock 항목 활성화 |
-| `Cmd+4` (macOS), `Alt+4` (Linux) | 태스크 상세 | PR이 있으면 브라우저에서 PR 열기 |
-| `Cmd/Ctrl+N` | 빠른 태스크 검색 | 하이라이트된 태스크 기준 새 branch TODO 생성 |
+| `Cmd+[` / `Cmd+]` (macOS), `Ctrl+[` / `Ctrl+]` (Linux) | 전역 | 앱 히스토리 뒤로/앞으로 이동 |
+| `Cmd/Ctrl+Shift+N` | 전역 | 현재 화면을 새 창으로 열기 |
+| `Cmd/Ctrl+1/2/3` | 태스크 상세 | 정보, 상태/hooks, AI 채팅 dock 항목 활성화 |
+| `Cmd/Ctrl+4` | 태스크 상세 | PR이 있으면 브라우저에서 PR 열기 |
+| `Cmd/Ctrl+N` | 전역 | 새 작업 모달 열기. 빠른 태스크 검색에서는 하이라이트된 태스크 기준으로 새 branch TODO를 만듭니다 |
 | `↑ / ↓ / Enter / Shift+Enter / Esc` | 빠른 태스크 검색 | 선택 이동, 열기, 새 창 열기, 닫기 |
 | `↑ / ↓ / Enter / Esc` | 프로젝트 필터 | 선택 이동, 토글, 닫기 |
-| `↑ / ↓ / Enter / Esc` | 알림 | 선택 이동, 대상 열기, 닫기 |
+| `↑ / ↓ / Space / Enter / Esc` | 알림 | 선택 이동, 읽음 처리, 대상 열기, 닫기 |
+
+## 터미널 탭
+
+탭 조작은 태스크 상세의 터미널이 보이는 동안 동작하고, 창 닫기는 어느 화면에서나 동작합니다. tmux·zellij 세션에서는 멀티플렉서의 window/tab을 그대로 조작합니다.
+
+| 단축키 | 동작 |
+| --- | --- |
+| `Cmd/Ctrl+T` | 새 탭 |
+| `Cmd/Ctrl+W` | 현재 탭 닫기. 마지막 탭이면 창까지 닫되 tmux·zellij 탭은 지우지 않아 세션이 남습니다. 터미널이 없는 화면에서는 창을 닫습니다 |
+| `Cmd/Ctrl+Shift+W` | 탭과 무관하게 창 닫기 |
+| `Cmd/Ctrl+Shift+[` / `Cmd/Ctrl+Shift+]` | 이전 / 다음 탭 |
+| `Cmd+Option+1` ~ `Cmd+Option+5` (macOS), `Ctrl+Alt+1` ~ `Ctrl+Alt+5` (Linux) | 1~5번 탭으로 바로 이동 |
+
+<div className="kv-note">
+  Linux에서는 이 단축키들이 `Ctrl` 조합이라 터미널 안의 `Ctrl+T`(문자 교환), `Ctrl+W`(단어 삭제), `Ctrl+[`(ESC)가 셸로 전달되지 않습니다.
+</div>
 
 ## Vim 모드
 

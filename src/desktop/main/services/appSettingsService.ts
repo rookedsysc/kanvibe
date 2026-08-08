@@ -1,6 +1,11 @@
 import { getAppSettingsRepository } from "@/lib/database";
 import { SessionType } from "@/entities/KanbanTask";
 import { DEFAULT_TASK_SEARCH_SHORTCUT } from "@/desktop/shared/keyboardShortcut";
+import {
+  parseBoardSortPreference,
+  serializeBoardSortPreference,
+  type BoardSortPreference,
+} from "@/desktop/shared/boardSort";
 
 const SIDEBAR_COLLAPSED_KEY = "sidebar_default_collapsed";
 const SIDEBAR_HINT_DISMISSED_KEY = "sidebar_hint_dismissed";
@@ -201,10 +206,12 @@ const DEFAULT_SESSION_TYPE_KEY = "default_session_type";
 const TASK_SEARCH_SHORTCUT_KEY = "task_search_shortcut";
 const VIM_MODE_ENABLED_KEY = "vim_mode_enabled";
 
-/** 기본 세션 타입을 조회한다. 미설정 시 "tmux"를 반환한다 */
+/** 기본 세션 타입을 조회한다. 미설정이거나 모르는 값이면 "tmux"를 반환한다 */
 export async function getDefaultSessionType(): Promise<SessionType> {
   const value = await getAppSetting(DEFAULT_SESSION_TYPE_KEY);
-  return value === SessionType.ZELLIJ ? SessionType.ZELLIJ : SessionType.TMUX;
+  const knownSessionTypes: string[] = Object.values(SessionType);
+
+  return knownSessionTypes.includes(value ?? "") ? value as SessionType : SessionType.TMUX;
 }
 
 /** 기본 세션 타입을 저장한다 */
@@ -233,4 +240,16 @@ export async function getVimModeEnabled(): Promise<boolean> {
 /** Vim-style board navigation 활성화 여부를 저장한다 */
 export async function setVimModeEnabled(enabled: boolean): Promise<void> {
   await setAppSetting(VIM_MODE_ENABLED_KEY, String(enabled));
+}
+
+const BOARD_SORT_PREFERENCE_KEY = "board_sort_preference";
+
+/** 보드 정렬 기준을 조회한다. 앱을 껐다 켜도 유지되도록 app_settings에 둔다 */
+export async function getBoardSortPreference(): Promise<BoardSortPreference> {
+  return parseBoardSortPreference(await getAppSetting(BOARD_SORT_PREFERENCE_KEY));
+}
+
+/** 보드 정렬 기준을 저장한다 */
+export async function setBoardSortPreference(preference: BoardSortPreference): Promise<void> {
+  await setAppSetting(BOARD_SORT_PREFERENCE_KEY, serializeBoardSortPreference(preference));
 }

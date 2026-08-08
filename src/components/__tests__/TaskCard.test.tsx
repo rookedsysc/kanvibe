@@ -40,6 +40,9 @@ vi.mock("@/desktop/renderer/navigation", () => ({
 
 vi.mock("next-intl", () => ({
   useLocale: () => "ko",
+  useTranslations: () => (key: string, values?: Record<string, unknown>) => (
+    values ? `${key}:${JSON.stringify(values)}` : key
+  ),
 }));
 
 function createTask(overrides: Partial<KanbanTask> = {}): KanbanTask {
@@ -59,7 +62,6 @@ function createTask(overrides: Partial<KanbanTask> = {}): KanbanTask {
     baseBranch: null,
     prUrl: null,
     priority: null,
-    displayOrder: 0,
     createdAt: new Date(),
     updatedAt: new Date(),
     ...overrides,
@@ -165,6 +167,64 @@ describe("TaskCard - Priority Badge", () => {
     expect(remoteBadge.className).toContain("text-tag-ssh-text");
     expect(remoteBadge.className).not.toContain("font-semibold");
     expect(remoteBadge.className).not.toContain("ring-1");
+  });
+
+  it("should not render the unread notification badge when there is no unread notification", () => {
+    const task = createTask();
+
+    render(<TaskCard task={task} index={0} onContextMenu={onContextMenu} unreadNotificationCount={0} />);
+
+    expect(screen.queryByTestId("unread-notification-badge")).toBeNull();
+  });
+
+  it("should render the unread notification count badge with the brand point color", () => {
+    const task = createTask();
+
+    render(<TaskCard task={task} index={0} onContextMenu={onContextMenu} unreadNotificationCount={3} />);
+
+    const badge = screen.getByTestId("unread-notification-badge");
+
+    expect(badge.textContent).toContain("3");
+    expect(badge.className).toContain("bg-brand-primary");
+    expect(badge.className).toContain("text-text-inverse");
+    expect(badge.getAttribute("aria-label")).toBe('unreadCount:{"count":3}');
+  });
+
+  it("should overlay the unread notification badge on the project name line so a long project name is covered", () => {
+    const task = createTask();
+
+    render(
+      <TaskCard
+        task={task}
+        index={0}
+        onContextMenu={onContextMenu}
+        projectName="아주 아주 길어서 카드 폭을 넘겨 잘리는 프로젝트 이름"
+        unreadNotificationCount={3}
+      />,
+    );
+
+    const badge = screen.getByTestId("unread-notification-badge");
+    const projectName = screen.getByText("아주 아주 길어서 카드 폭을 넘겨 잘리는 프로젝트 이름");
+
+    expect(badge.parentElement).toBe(projectName.parentElement);
+    expect(badge.parentElement?.className).toContain("relative");
+    expect(badge.className).toContain("absolute");
+    expect(badge.className).toContain("right-0");
+    expect(badge.className).toContain("top-1/2");
+    expect(badge.className).toContain("-translate-y-1/2");
+    expect(projectName.className).toContain("truncate");
+    expect(projectName.className).toContain("leading-4");
+  });
+
+  it("should fall back to the title line when the card has no project name", () => {
+    const task = createTask();
+
+    render(<TaskCard task={task} index={0} onContextMenu={onContextMenu} unreadNotificationCount={3} />);
+
+    const badge = screen.getByTestId("unread-notification-badge");
+    const title = screen.getByRole("heading", { level: 3 });
+
+    expect(badge.parentElement).toBe(title.parentElement);
   });
 
   it("should render base branch as a compact icon instead of a ribbon label", () => {
@@ -442,5 +502,46 @@ describe("TaskCard - Priority Badge", () => {
       expect(focusExistingInternalRoute).toHaveBeenCalledWith("/ko/task/task-1");
     });
     expect(mocks.push).not.toHaveBeenCalled();
+  });
+  it("프로젝트 root task의 우선순위를 물려받으면 그 배지를 물려받은 표시와 함께 보여준다", () => {
+    // Given
+    const task = createTask({ priority: null, projectId: "project-1" });
+    const rootPriorityByProjectId = new Map([["project-1", TaskPriority.HIGH]]);
+
+    // When
+    render(
+      <TaskCard
+        task={task}
+        index={0}
+        onContextMenu={onContextMenu}
+        rootPriorityByProjectId={rootPriorityByProjectId}
+      />,
+    );
+
+    // Then
+    const badge = screen.getByTestId("task-priority-badge");
+    expect(badge.textContent).toBe("P1");
+    expect(badge.dataset.inheritedPriority).toBe("true");
+  });
+
+  it("task가 자기 우선순위를 가지면 물려받은 값 대신 직접 지정한 배지를 보여준다", () => {
+    // Given
+    const task = createTask({ priority: TaskPriority.LOW, projectId: "project-1" });
+    const rootPriorityByProjectId = new Map([["project-1", TaskPriority.HIGH]]);
+
+    // When
+    render(
+      <TaskCard
+        task={task}
+        index={0}
+        onContextMenu={onContextMenu}
+        rootPriorityByProjectId={rootPriorityByProjectId}
+      />,
+    );
+
+    // Then
+    const badge = screen.getByTestId("task-priority-badge");
+    expect(badge.textContent).toBe("P3");
+    expect(badge.dataset.inheritedPriority).toBe("false");
   });
 });

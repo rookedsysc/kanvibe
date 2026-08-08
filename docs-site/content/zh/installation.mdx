@@ -11,9 +11,11 @@ KanVibe 以 macOS 桌面应用形式分发，推荐通过 Homebrew Cask 安装�
 | 依赖 | 是否必需 | 用途 | 安装示例 |
 | --- | --- | --- | --- |
 | Git | 必需 | 创建和清理 branch、worktree | `brew install git` |
-| tmux | 必需 | 默认终端会话后端 | `brew install tmux` |
+| tmux | 推荐 | 默认会话后端。把会话类型改为 `terminal` 后即可不装 | `brew install tmux` |
 | GitHub CLI `gh` | 必需 | PR URL 查询与 GitHub 工作流 | `brew install gh`，然后 `gh auth login` |
 | zellij | 可选 | 可替代 tmux 的会话后端 | `brew install zellij` |
+
+若不想使用多路复用器，可选择 `terminal` 会话类型。此时 shell 由 KanVibe 直接持有，应用退出或远程连接断开时，正在运行的工作也会一并消失。如果打算让任务长时间无人值守地运行，建议安装 tmux 或 zellij。
 
 ## 使用 Homebrew 安装
 
@@ -49,7 +51,7 @@ brew untap rookedsysc/kanvibe
   </div>
   <div className="kv-card">
     <h3>2. 确认会话类型</h3>
-    <p>默认使用 tmux；如果偏好 zellij，可在设置中切换默认会话类型。</p>
+    <p>默认使用 tmux；偏好 zellij 时可在设置中切换默认会话类型；若完全不想使用多路复用器，可选择 `terminal`。</p>
   </div>
   <div className="kv-card">
     <h3>3. 允许通知</h3>

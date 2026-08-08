@@ -11,9 +11,11 @@ KanVibe is distributed as a macOS desktop app. The recommended install path is H
 | Dependency | Required | Why it is needed | Install example |
 | --- | --- | --- | --- |
 | Git | Required | Branch and worktree creation/cleanup | `brew install git` |
-| tmux | Required | Default terminal session backend | `brew install tmux` |
+| tmux | Recommended | Default session backend. Not needed if you switch the session type to `terminal` | `brew install tmux` |
 | GitHub CLI `gh` | Required | PR URL lookup and GitHub workflows | `brew install gh`, then `gh auth login` |
 | zellij | Optional | Alternative session backend | `brew install zellij` |
+
+To work without a multiplexer, choose the `terminal` session type. KanVibe then owns that shell directly, so running work disappears when the app quits or a remote connection drops. Install tmux or zellij if you plan to leave long-running work unattended.
 
 ## Install with Homebrew
 
@@ -49,7 +51,7 @@ brew untap rookedsysc/kanvibe
   </div>
   <div className="kv-card">
     <h3>2. Confirm session type</h3>
-    <p>Use tmux by default, or switch the default session type if you prefer zellij.</p>
+    <p>Use tmux by default, switch the default session type if you prefer zellij, or choose `terminal` to skip multiplexers entirely.</p>
   </div>
   <div className="kv-card">
     <h3>3. Allow notifications</h3>

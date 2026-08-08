@@ -44,7 +44,11 @@ title: KanVibe Docs
   </div>
   <div className="kv-card">
     <h3>Per-task terminal interface</h3>
-    <p>Every task owns a tmux/zellij session, giving you the freedom to hand work to an AI agent or run shell commands yourself.</p>
+    <p>Every task owns its own session — tmux, zellij, or a plain terminal without a multiplexer — so you can hand work to an AI agent or run shell commands yourself.</p>
+  </div>
+  <div className="kv-card">
+    <h3>Terminal tabs</h3>
+    <p>Split a server, a test run, and an agent session into tabs inside one task. Tabs stay synchronized in both directions with tmux windows and zellij tabs, so a window created outside KanVibe shows up in the tab bar.</p>
   </div>
   <div className="kv-card">
     <h3>Keyboard-first UI</h3>
@@ -67,7 +71,7 @@ title: KanVibe Docs
     <p>Background Sync detects running tmux/zellij sessions and automatically links them to the matching task, moving it to PROGRESS.</p>
   </div>
   <div className="kv-card">
-    <h3>DONE auto-cleanup</h3>
-    <p>Moving a task to DONE or deleting it automatically cleans up the git worktree, branch, and tmux/zellij session in the background. The project root branch is protected.</p>
+    <h3>Delete auto-cleanup</h3>
+    <p>Deleting a task automatically cleans up its git worktree, branch, and terminal session in the background. Moving a task to DONE alone cleans up nothing, and the project root branch is protected.</p>
   </div>
 </div>

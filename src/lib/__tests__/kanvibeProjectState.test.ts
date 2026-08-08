@@ -1,14 +1,16 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { TaskStatus } from "@/entities/KanbanTask";
 
-const { mockReadTextFile, mockWriteTextFile, mockWriteTextFileIfAbsent } = vi.hoisted(() => ({
+const { mockReadTextFile, mockReadTextFiles, mockWriteTextFile, mockWriteTextFileIfAbsent } = vi.hoisted(() => ({
   mockReadTextFile: vi.fn(),
+  mockReadTextFiles: vi.fn(),
   mockWriteTextFile: vi.fn(),
   mockWriteTextFileIfAbsent: vi.fn(),
 }));
 
 vi.mock("@/lib/hostFileAccess", () => ({
   readTextFile: (...args: unknown[]) => mockReadTextFile(...args),
+  readTextFiles: (...args: unknown[]) => mockReadTextFiles(...args),
   writeTextFile: (...args: unknown[]) => mockWriteTextFile(...args),
   writeTextFileIfAbsent: (...args: unknown[]) => mockWriteTextFileIfAbsent(...args),
 }));
@@ -16,20 +18,25 @@ vi.mock("@/lib/hostFileAccess", () => ({
 import {
   buildKanvibeProjectStateContent,
   buildKanvibeTargetsContent,
+  buildKanvibeTaskDescriptionContent,
   buildKanvibeTaskStateContent,
   getKanvibeProjectStatePath,
   getKanvibeTargetsPath,
+  getKanvibeTaskDescriptionPath,
   getKanvibeTaskStatePath,
   hasKanvibeHookTarget,
   parseKanvibeTargets,
+  parseKanvibeTaskDescription,
   parseKanvibeTaskState,
   parseProjectColor,
   parseTaskStatus,
   readKanvibeProjectColor,
   readKanvibeTaskState,
+  readKanvibeTaskSyncState,
   upsertKanvibeHookTarget,
   writeKanvibeProjectColor,
   writeKanvibeProjectColorIfAbsent,
+  writeKanvibeTaskDescription,
   writeKanvibeTaskStatus,
 } from "@/lib/kanvibeProjectState";
 
@@ -272,5 +279,69 @@ describe("kanvibeProjectState", () => {
     expect(hasKanvibeHookTarget(content, { url: "http://127.0.0.1:19736", taskId: "task-2" })).toBe(false);
     expect(hasKanvibeHookTarget(content, { url: "http://10.0.0.5:19736", taskId: "task-1" })).toBe(false);
     expect(hasKanvibeHookTarget("", { url: "http://127.0.0.1:19736", taskId: "task-1" })).toBe(false);
+  });
+
+  it("task 설명을 status.json이 아닌 task.json에 기록한다", async () => {
+    await writeKanvibeTaskDescription("/local/repo", "결제 실패 로그 원인 추적");
+
+    expect(mockWriteTextFile).toHaveBeenCalledWith(
+      "/local/repo/.kanvibe/task.json",
+      expect.any(String),
+      undefined,
+    );
+    expect(JSON.parse(getLastWrittenContent())).toEqual({
+      schemaVersion: 1,
+      description: "결제 실패 로그 원인 추적",
+      updatedAt: expect.any(String),
+    });
+    expect(getKanvibeTaskDescriptionPath("/local/repo")).toBe("/local/repo/.kanvibe/task.json");
+    expect(getKanvibeTaskDescriptionPath("/remote/repo", "build-host")).toBe("/remote/repo/.kanvibe/task.json");
+  });
+
+  it("설명을 지우면 null을 기록해 다른 기기에서도 지워지게 한다", () => {
+    const content = buildKanvibeTaskDescriptionContent(null);
+
+    expect(JSON.parse(content)).toEqual({
+      schemaVersion: 1,
+      description: null,
+      updatedAt: expect.any(String),
+    });
+    expect(parseKanvibeTaskDescription(content)?.description).toBeNull();
+  });
+
+  it("설명 파일이 없거나 형식이 깨지면 정보 없음으로 본다", () => {
+    expect(parseKanvibeTaskDescription("")).toBeNull();
+    expect(parseKanvibeTaskDescription("not json")).toBeNull();
+    expect(parseKanvibeTaskDescription(JSON.stringify({ schemaVersion: 1 }))).toBeNull();
+    expect(parseKanvibeTaskDescription(JSON.stringify({ description: 123 }))).toBeNull();
+  });
+
+  it("상태와 설명을 원격 왕복 한 번으로 함께 읽어온다", async () => {
+    mockReadTextFiles.mockResolvedValue(new Map([
+      ["/local/repo/.kanvibe/status.json", { exists: true, content: JSON.stringify({ status: "review" }) }],
+      ["/local/repo/.kanvibe/task.json", { exists: true, content: JSON.stringify({ description: "결제 실패 로그 원인 추적" }) }],
+    ]));
+
+    const syncState = await readKanvibeTaskSyncState("/local/repo");
+
+    expect(syncState.status).toBe(TaskStatus.REVIEW);
+    expect(syncState.description?.description).toBe("결제 실패 로그 원인 추적");
+    expect(mockReadTextFiles).toHaveBeenCalledTimes(1);
+    expect(mockReadTextFiles).toHaveBeenCalledWith(
+      ["/local/repo/.kanvibe/status.json", "/local/repo/.kanvibe/task.json"],
+      undefined,
+    );
+  });
+
+  it("상태나 설명 파일이 없으면 각각 기록 없음으로 돌려준다", async () => {
+    mockReadTextFiles.mockResolvedValue(new Map([
+      ["/local/repo/.kanvibe/status.json", { exists: true, content: JSON.stringify({ status: "review" }) }],
+      ["/local/repo/.kanvibe/task.json", { exists: false, content: "" }],
+    ]));
+
+    expect(await readKanvibeTaskSyncState("/local/repo")).toEqual({
+      status: TaskStatus.REVIEW,
+      description: null,
+    });
   });
 });

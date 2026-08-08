@@ -64,17 +64,93 @@ vi.mock("@/desktop/renderer/components/BoardEventAlert", () => ({
 
 describe("App", () => {
   let boardEventListener: ((event: { type: string }) => void) | null = null;
+  let terminalTabShortcutListener: ((command: { type: string }) => void) | null = null;
+  const closeCurrentWindow = vi.fn();
 
   beforeEach(() => {
     vi.clearAllMocks();
     boardEventListener = null;
+    terminalTabShortcutListener = null;
     window.kanvibeDesktop = {
       isDesktop: true,
       onBoardEvent: vi.fn((listener: (event: { type: string }) => void) => {
         boardEventListener = listener;
         return vi.fn();
       }),
+      onTerminalTabShortcut: vi.fn((listener: (command: { type: string }) => void) => {
+        terminalTabShortcutListener = listener;
+        return vi.fn();
+      }),
+      closeCurrentWindow,
     } as unknown as NonNullable<typeof window.kanvibeDesktop>;
+  });
+
+  /** 창 닫기 리스너가 태스크 상세에만 있으면 보드에서 Mod+W를 눌러도 창이 닫히지 않는다 */
+  it("보드 화면에서도 창 닫기 명령을 받아 창을 닫는다", async () => {
+    window.location.hash = "#/ko";
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getByText("board route")).toBeTruthy();
+    });
+
+    act(() => {
+      terminalTabShortcutListener?.({ type: "close-window" });
+    });
+
+    expect(closeCurrentWindow).toHaveBeenCalledTimes(1);
+  });
+
+  it("보드에서 Mod+W 키 입력만으로도 창을 닫는다", async () => {
+    window.location.hash = "#/ko";
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getByText("board route")).toBeTruthy();
+    });
+
+    act(() => {
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: "w", ctrlKey: true, bubbles: true }));
+    });
+
+    expect(closeCurrentWindow).toHaveBeenCalledTimes(1);
+  });
+
+  /** 태스크 상세의 Mod+W는 탭만 닫아야 하므로 App이 가로채 창을 닫으면 안 된다 */
+  it("태스크 상세에서 Mod+W를 눌러도 App은 창을 닫지 않는다", async () => {
+    window.location.hash = "#/ko/task/task-1";
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getByText("task detail route")).toBeTruthy();
+    });
+
+    act(() => {
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: "w", ctrlKey: true, bubbles: true }));
+      terminalTabShortcutListener?.({ type: "close-tab" });
+    });
+
+    expect(closeCurrentWindow).not.toHaveBeenCalled();
+  });
+
+  it("창 닫기가 아닌 탭 명령은 App이 처리하지 않는다", async () => {
+    window.location.hash = "#/ko";
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getByText("board route")).toBeTruthy();
+    });
+
+    act(() => {
+      terminalTabShortcutListener?.({ type: "new-tab" });
+      terminalTabShortcutListener?.({ type: "close-tab" });
+    });
+
+    expect(closeCurrentWindow).not.toHaveBeenCalled();
   });
 
   it("shows board route on index", async () => {

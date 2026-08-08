@@ -32,6 +32,7 @@ const mocks = vi.hoisted(() => ({
   getDefaultSessionType: vi.fn(),
   listNotifications: vi.fn(),
   markNotificationRead: vi.fn(),
+  markTaskNotificationsRead: vi.fn(),
   markAllNotificationsRead: vi.fn(),
   activateNotification: vi.fn(),
   fetchPrUrlWithPrompt: vi.fn(),
@@ -150,6 +151,7 @@ vi.mock("@/desktop/renderer/actions/appSettings", () => ({
 vi.mock("@/desktop/renderer/actions/notifications", () => ({
   listNotifications: (...args: unknown[]) => mocks.listNotifications(...args),
   markNotificationRead: (...args: unknown[]) => mocks.markNotificationRead(...args),
+  markTaskNotificationsRead: (...args: unknown[]) => mocks.markTaskNotificationsRead(...args),
   markAllNotificationsRead: (...args: unknown[]) => mocks.markAllNotificationsRead(...args),
   activateNotification: (...args: unknown[]) => mocks.activateNotification(...args),
 }));
@@ -296,6 +298,7 @@ describe("TaskDetailRoute", () => {
     mocks.getDefaultSessionType.mockResolvedValue("tmux");
     mocks.listNotifications.mockResolvedValue([]);
     mocks.markNotificationRead.mockResolvedValue(undefined);
+    mocks.markTaskNotificationsRead.mockResolvedValue(0);
     mocks.markAllNotificationsRead.mockResolvedValue(undefined);
     mocks.activateNotification.mockResolvedValue(true);
     mocks.updateTaskStatus.mockResolvedValue(null);
@@ -423,6 +426,59 @@ describe("TaskDetailRoute", () => {
     await screen.findByTestId("task-title");
 
     expect(JSON.parse(sessionStorage.getItem(BOARD_FOCUS_TASK_CACHE_KEY) ?? "null")).toBe("task-1");
+  });
+
+  const notificationReadTargetTask = {
+    id: "task-1",
+    title: "task title",
+    description: null,
+    branchName: "feat/detail-notifications",
+    baseBranch: "main",
+    prUrl: null,
+    sessionType: null,
+    sessionName: null,
+    sshHost: null,
+    projectId: "project-1",
+    project: { id: "project-1", name: "kanvibe" },
+    status: "todo",
+    agentType: null,
+    worktreePath: "/repo__worktrees/detail-notifications",
+  };
+
+  it("상세 화면에 진입하면 해당 task의 알림을 모두 읽음 처리한다", async () => {
+    mocks.getTaskById.mockResolvedValue(notificationReadTargetTask);
+
+    render(<TaskDetailRoute />);
+
+    await screen.findByTestId("task-title");
+
+    expect(mocks.markTaskNotificationsRead).toHaveBeenCalledWith("task-1");
+  });
+
+  it("알림 읽음 처리가 실패하면 로그를 남기고 상세 화면 렌더는 계속한다", async () => {
+    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    mocks.getTaskById.mockResolvedValue(notificationReadTargetTask);
+    mocks.markTaskNotificationsRead.mockRejectedValue(new Error("app settings write failed"));
+
+    render(<TaskDetailRoute />);
+
+    await screen.findByTestId("task-title");
+
+    await waitFor(() => {
+      expect(consoleErrorSpy).toHaveBeenCalledWith("알림 읽음 처리 실패:", expect.any(Error));
+    });
+
+    consoleErrorSpy.mockRestore();
+  });
+
+  it("존재하지 않는 task로 진입하면 알림을 읽음 처리하지 않는다", async () => {
+    mocks.getTaskById.mockResolvedValue(null);
+
+    render(<TaskDetailRoute />);
+
+    await screen.findByText("taskNotFound");
+
+    expect(mocks.markTaskNotificationsRead).not.toHaveBeenCalled();
   });
 
   it("초기 task 조회가 끝나지 않아도 Loading 화면에 고착되지 않는다", async () => {
@@ -759,7 +815,7 @@ describe("TaskDetailRoute", () => {
 
     const wasNotPrevented = fireEvent.keyDown(terminalInput, {
       key: "1",
-      altKey: true,
+      ctrlKey: true,
     });
     terminalInput.removeEventListener("keydown", terminalKeyDown);
     window.removeEventListener("keydown", windowBubbleKeyDown);
@@ -797,11 +853,11 @@ describe("TaskDetailRoute", () => {
     );
 
     const prLink = await screen.findByRole("link", { name: "PR" });
-    expect(prLink.getAttribute("title")).toContain("Alt+4");
+    expect(prLink.getAttribute("title")).toContain("Ctrl+4");
 
     const wasNotPrevented = fireEvent.keyDown(window, {
       key: "4",
-      altKey: true,
+      ctrlKey: true,
     });
 
     expect(wasNotPrevented).toBe(false);
@@ -995,7 +1051,7 @@ describe("TaskDetailRoute", () => {
 
     const wasNotPrevented = fireEvent.keyDown(window, {
       key: "2",
-      altKey: true,
+      ctrlKey: true,
     });
     act(() => {
       dockShortcutListener?.(2);
@@ -1003,6 +1059,107 @@ describe("TaskDetailRoute", () => {
 
     expect(wasNotPrevented).toBe(false);
     expect(screen.queryByTestId("hooks-status-card")).toBeNull();
+  });
+
+  /**
+   * main은 태스크 상세 URL만 보고 close-tab을 보낸다.
+   * 여기서 창 닫기로 되돌리지 않으면 단축키를 삼키고 아무것도 하지 않는다.
+   */
+  it("터미널이 없는 태스크 상세에서 탭 닫기 명령은 창을 닫는다", async () => {
+    let terminalTabShortcutListener: ((command: { type: string }) => void) | null = null;
+    const closeCurrentWindow = vi.fn();
+    window.kanvibeDesktop = {
+      isDesktop: true,
+      closeCurrentWindow,
+      onTerminalTabShortcut(listener: (command: { type: string }) => void) {
+        terminalTabShortcutListener = listener;
+        return () => {
+          terminalTabShortcutListener = null;
+        };
+      },
+    };
+    mocks.getSidebarDefaultCollapsed.mockResolvedValue(true);
+    mocks.getTaskById.mockResolvedValue({
+      id: "task-1",
+      title: "task title",
+      description: null,
+      branchName: "feat/no-terminal",
+      baseBranch: "main",
+      prUrl: null,
+      sessionType: null,
+      sessionName: null,
+      sshHost: null,
+      projectId: "project-1",
+      project: { id: "project-1", name: "kanvibe" },
+      status: "todo",
+      agentType: null,
+      worktreePath: "/repo__worktrees/no-terminal",
+    });
+
+    render(
+      <BoardCommandProvider>
+        <TaskDetailRoute />
+      </BoardCommandProvider>,
+    );
+
+    await screen.findByTestId("connect-terminal-form");
+    expect(screen.queryByLabelText("terminal input")).toBeNull();
+
+    act(() => {
+      terminalTabShortcutListener?.({ type: "close-tab" });
+    });
+
+    expect(closeCurrentWindow).toHaveBeenCalledTimes(1);
+  });
+
+  it("shortcut blocker가 걸려 있으면 Electron이 보낸 탭 명령도 무시한다", async () => {
+    let terminalTabShortcutListener: ((command: { type: string }) => void) | null = null;
+    const closeCurrentWindow = vi.fn();
+    window.kanvibeDesktop = {
+      isDesktop: true,
+      closeCurrentWindow,
+      onTerminalTabShortcut(listener: (command: { type: string }) => void) {
+        terminalTabShortcutListener = listener;
+        return () => {
+          terminalTabShortcutListener = null;
+        };
+      },
+    };
+    mocks.getSidebarDefaultCollapsed.mockResolvedValue(true);
+    mocks.getTaskById.mockResolvedValue({
+      id: "task-1",
+      title: "task title",
+      description: null,
+      branchName: "feat/blocked-tab-shortcut",
+      baseBranch: "main",
+      prUrl: null,
+      sessionType: null,
+      sessionName: null,
+      sshHost: null,
+      projectId: "project-1",
+      project: { id: "project-1", name: "kanvibe" },
+      status: "todo",
+      agentType: null,
+      worktreePath: "/repo__worktrees/blocked-tab-shortcut",
+    });
+
+    render(
+      <BoardCommandProvider>
+        <TaskDetailShortcutBlocker />
+        <TaskDetailRoute />
+      </BoardCommandProvider>,
+    );
+
+    await screen.findByTestId("connect-terminal-form");
+    await waitFor(() => {
+      expect(screen.getByTestId("shortcut-blocker-state").textContent).toBe("blocked");
+    });
+
+    act(() => {
+      terminalTabShortcutListener?.({ type: "close-tab" });
+    });
+
+    expect(closeCurrentWindow).not.toHaveBeenCalled();
   });
 
   it("채팅 아이콘을 클릭하면 drawer 대신 메인 영역을 AI 채팅 내역으로 전환한다", async () => {
@@ -1296,7 +1453,6 @@ describe("TaskDetailRoute", () => {
     const wasNotPrevented = fireEvent.keyDown(terminalInput, {
       key: "[",
       ctrlKey: true,
-      shiftKey: true,
     });
     terminalInput.removeEventListener("keydown", terminalKeyDown);
     window.removeEventListener("keydown", windowBubbleKeyDown);
@@ -1309,7 +1465,6 @@ describe("TaskDetailRoute", () => {
     fireEvent.keyDown(terminalInput, {
       key: "]",
       ctrlKey: true,
-      shiftKey: true,
     });
 
     expect(mocks.forward).toHaveBeenCalledTimes(1);
@@ -1349,12 +1504,10 @@ describe("TaskDetailRoute", () => {
     const wasBackNotPrevented = fireEvent.keyDown(terminalInput, {
       key: "[",
       ctrlKey: true,
-      shiftKey: true,
     });
     const wasForwardNotPrevented = fireEvent.keyDown(terminalInput, {
       key: "]",
       ctrlKey: true,
-      shiftKey: true,
     });
 
     expect(wasBackNotPrevented).toBe(false);

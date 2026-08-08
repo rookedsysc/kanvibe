@@ -32,6 +32,10 @@ const mocks = vi.hoisted(() => ({
   scheduleKanvibeHooksInstall: vi.fn(),
   broadcastBoardUpdate: vi.fn(),
   readTextFile: vi.fn(),
+  /** 공유 파일이 없는 저장소가 기본값이라 테스트마다 따로 준비하지 않아도 된다 */
+  readTextFiles: vi.fn(async (targetPaths: string[]) => new Map(
+    targetPaths.map((targetPath) => [targetPath, { exists: false, content: "" }]),
+  )),
   writeTextFile: vi.fn(),
   writeTextFileIfAbsent: vi.fn(),
   quoteShellArgument: vi.fn((value: string) => `'${value}'`),
@@ -39,7 +43,15 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("@/lib/database", () => ({
   getProjectRepository: mocks.getProjectRepository,
-  getTaskRepository: mocks.getTaskRepository,
+  /**
+   * task를 만드는 모든 경로가 display rank 조회(findOne)를 거치는데,
+   * 테스트마다 필요한 메서드만 담아 repo mock을 짜므로 조회 기본값을 여기서 한 번 채워 준다.
+   * 테스트가 직접 findOne을 넘기면 그 값이 이긴다.
+   */
+  getTaskRepository: async () => {
+    const taskRepo = await mocks.getTaskRepository();
+    return { findOne: vi.fn(async () => null), ...taskRepo };
+  },
 }));
 
 vi.mock("@/entities/Project", () => ({
@@ -149,6 +161,7 @@ vi.mock("@/lib/kanvibeHooksInstaller", () => ({
 
 vi.mock("@/lib/hostFileAccess", () => ({
   readTextFile: mocks.readTextFile,
+  readTextFiles: mocks.readTextFiles,
   writeTextFile: mocks.writeTextFile,
   writeTextFileIfAbsent: mocks.writeTextFileIfAbsent,
   quoteShellArgument: mocks.quoteShellArgument,
@@ -1405,6 +1418,8 @@ describe("projectService local hook installation", () => {
     const result = await scanAndRegisterProjects("/remote/workspace", "remote-host");
 
     expect(result.worktreeTasks).toContain("feature-login");
+    const [savedWorktreeTask] = taskRepoSave.mock.calls[0];
+    expect(savedWorktreeTask.branchName).toBe("feature-login");
     expect(mocks.listWorktrees).toHaveBeenCalledWith("/remote/repo", "remote-host");
     expect(mocks.scheduleKanvibeHooksInstall).toHaveBeenCalledWith(
       "/remote/repo__worktrees/feature-login",
@@ -1989,6 +2004,21 @@ describe("projectService local hook installation", () => {
     }));
   });
 
+  /** 지정한 저장소 경로의 status.json에만 상태가 기록된 공유 파일 배치 읽기를 준비한다 */
+  function mockSharedTaskStatusFiles(statusByRepoPath: Record<string, string>): void {
+    mocks.readTextFiles.mockImplementation(async (targetPaths: string[]) => new Map(
+      targetPaths.map((targetPath) => {
+        const status = statusByRepoPath[targetPath.replace("/.kanvibe/status.json", "")];
+        return [
+          targetPath,
+          targetPath.endsWith("/.kanvibe/status.json") && status
+            ? { exists: true, content: JSON.stringify({ schemaVersion: 1, status }) }
+            : { exists: false, content: "" },
+        ];
+      }),
+    ));
+  }
+
   it("등록된 프로젝트 background sync는 .kanvibe task 상태가 있으면 그 상태로 새 worktree를 등록한다", async () => {
     mocks.getClaudeHooksStatus.mockResolvedValue({ installed: true });
     mocks.getGeminiHooksStatus.mockResolvedValue({ installed: true });
@@ -2003,7 +2033,7 @@ describe("projectService local hook installation", () => {
     ]);
     mocks.formatSessionName.mockReturnValue("api-feature-review");
     mocks.isSessionAlive.mockResolvedValue(false);
-    mocks.readTextFile.mockResolvedValue(JSON.stringify({ schemaVersion: 1, status: "review", updatedAt: "2026-06-03T00:00:00.000Z" }));
+    mockSharedTaskStatusFiles({ "/workspace/api__worktrees/feature-review": "review" });
 
     mocks.getProjectRepository.mockResolvedValue({
       find: vi.fn().mockResolvedValue([
@@ -2041,8 +2071,11 @@ describe("projectService local hook installation", () => {
 
     await syncRegisteredProjectWorktrees();
 
-    expect(mocks.readTextFile).toHaveBeenCalledWith(
-      "/workspace/api__worktrees/feature-review/.kanvibe/status.json",
+    expect(mocks.readTextFiles).toHaveBeenCalledWith(
+      [
+        "/workspace/api__worktrees/feature-review/.kanvibe/status.json",
+        "/workspace/api__worktrees/feature-review/.kanvibe/task.json",
+      ],
       null,
     );
     expect(taskSave).toHaveBeenCalledWith(expect.objectContaining({
@@ -2063,7 +2096,7 @@ describe("projectService local hook installation", () => {
         isBare: false,
       },
     ]);
-    mocks.readTextFile.mockResolvedValue(JSON.stringify({ schemaVersion: 1, status: "pending" }));
+    mockSharedTaskStatusFiles({ "/workspace/api__worktrees/feature-pending": "pending" });
 
     const existingTask = {
       id: "task-worktree",
@@ -2181,9 +2214,7 @@ describe("projectService local hook installation", () => {
         isBare: false,
       },
     ]);
-    mocks.readTextFile.mockImplementation(async (filePath: string) => (
-      filePath.includes("feature-orphan") ? JSON.stringify({ schemaVersion: 1, status: "done" }) : ""
-    ));
+    mockSharedTaskStatusFiles({ "/workspace/api__worktrees/feature-orphan": "done" });
     mocks.formatSessionName.mockReturnValue("api-feature-orphan");
     mocks.isSessionAlive.mockResolvedValue(false);
 
@@ -2702,5 +2733,124 @@ describe("projectService remote hook and AI session support", () => {
       query: "claude",
       sshHost: "remote-host",
     });
+  });
+});
+
+describe("projectService task description sync", () => {
+  const WORKTREE_PATH = "/workspace/api-worktrees/feature-login";
+
+  beforeEach(() => {
+    vi.resetModules();
+    vi.clearAllMocks();
+    mocks.readTextFile.mockReset();
+    mocks.execGit.mockResolvedValue("");
+    mocks.getDefaultSessionType.mockResolvedValue("tmux");
+    mocks.getClaudeHooksStatus.mockResolvedValue({ installed: true });
+    mocks.getGeminiHooksStatus.mockResolvedValue({ installed: true });
+    mocks.getCodexHooksStatus.mockResolvedValue({ installed: true });
+    mocks.getOpenCodeHooksStatus.mockResolvedValue({ installed: true });
+    mocks.listWorktrees.mockResolvedValue([
+      { path: "/workspace/api", branch: "main", isBare: false },
+      { path: WORKTREE_PATH, branch: "feature/login", isBare: false },
+    ]);
+    mocks.getProjectRepository.mockResolvedValue({
+      find: vi.fn().mockResolvedValue([
+        {
+          id: "project-1",
+          name: "api",
+          repoPath: "/workspace/api",
+          defaultBranch: "main",
+          sshHost: null,
+        },
+      ]),
+    });
+  });
+
+  function mockWorktreeTaskRepository(save: ReturnType<typeof vi.fn>): void {
+    mocks.getTaskRepository.mockResolvedValue({
+      findOneBy: vi.fn(async (criteria: { branchName?: string; projectId?: string | null }) => {
+        if (criteria.projectId !== "project-1") {
+          return null;
+        }
+
+        if (criteria.branchName === "main") {
+          return {
+            id: "task-main",
+            branchName: "main",
+            projectId: "project-1",
+            baseBranch: "main",
+            worktreePath: "/workspace/api",
+            sshHost: null,
+            description: null,
+          };
+        }
+
+        if (criteria.branchName === "feature/login") {
+          return {
+            id: "task-login",
+            branchName: "feature/login",
+            projectId: "project-1",
+            baseBranch: "main",
+            worktreePath: WORKTREE_PATH,
+            sshHost: null,
+            description: "옛 설명",
+          };
+        }
+
+        return null;
+      }),
+      create: vi.fn((value) => value),
+      save,
+    });
+  }
+
+  /** 지정한 경로에만 내용이 있고 나머지 공유 파일은 없는 저장소를 흉내낸다 */
+  function mockSharedTaskFiles(contentByPath: Record<string, string>): void {
+    mocks.readTextFiles.mockImplementation(async (targetPaths: string[]) => new Map(
+      targetPaths.map((targetPath) => [
+        targetPath,
+        { exists: targetPath in contentByPath, content: contentByPath[targetPath] ?? "" },
+      ]),
+    ));
+  }
+
+  it("다른 기기가 task.json에 남긴 설명을 DB로 가져온다", async () => {
+    // Given
+    const save = vi.fn(async (value) => value);
+    mockWorktreeTaskRepository(save);
+    mockSharedTaskFiles({
+      [`${WORKTREE_PATH}/.kanvibe/task.json`]: JSON.stringify({
+        schemaVersion: 1,
+        description: "결제 실패 로그 원인 추적",
+      }),
+    });
+
+    const { syncRegisteredProjectWorktrees } = await import("@/desktop/main/services/projectService");
+
+    // When
+    const result = await syncRegisteredProjectWorktrees();
+
+    // Then
+    expect(result.changed).toBe(true);
+    expect(save).toHaveBeenCalledWith(expect.objectContaining({
+      id: "task-login",
+      description: "결제 실패 로그 원인 추적",
+    }));
+  });
+
+  it("task.json이 없으면 DB에 있던 설명을 지우지 않는다", async () => {
+    // Given
+    const save = vi.fn(async (value) => value);
+    mockWorktreeTaskRepository(save);
+    mockSharedTaskFiles({});
+
+    const { syncRegisteredProjectWorktrees } = await import("@/desktop/main/services/projectService");
+
+    // When
+    const result = await syncRegisteredProjectWorktrees();
+
+    // Then
+    expect(result.changed).toBe(false);
+    expect(save).not.toHaveBeenCalled();
   });
 });

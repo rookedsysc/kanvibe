@@ -61,7 +61,6 @@ function createTask(overrides?: Partial<KanbanTask>): KanbanTask {
     sshHost: null,
     projectId: "project-remote",
     priority: null,
-    displayOrder: 0,
     prUrl: null,
     createdAt: new Date(),
     updatedAt: new Date(),

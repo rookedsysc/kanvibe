@@ -18,6 +18,7 @@ import { Link } from "@/desktop/renderer/navigation";
 import type { Project } from "@/entities/Project";
 import { applyThemePreference, notifyThemePreferenceChanged } from "@/desktop/renderer/utils/theme";
 import { useEscapeKey } from "@/hooks/useEscapeKey";
+import SessionTypeOptions from "./SessionTypeOptions";
 
 const MIN_SYNC_INTERVAL_MINUTES = 1;
 const MAX_SYNC_INTERVAL_MINUTES = 1440;
@@ -331,8 +332,7 @@ export default function ProjectSettings({
               disabled={isPending}
               className="px-2 py-1 text-sm bg-bg-page border border-border-default rounded-md text-text-primary focus:outline-none focus:border-brand-primary transition-colors"
             >
-              <option value="tmux">tmux</option>
-              <option value="zellij">zellij</option>
+              <SessionTypeOptions />
             </select>
           </div>
         </div>
