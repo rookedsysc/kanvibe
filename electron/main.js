@@ -44,6 +44,8 @@ let hookServer = null;
 let windowOpenHelpers = null;
 let keyboardShortcutHelpers = null;
 let stopBackgroundTaskSync = null;
+/** 앱 종료 시 KanVibe가 소유한 PTY를 정리한다. 핸들러 등록 시점에 채워진다 */
+let killAllTerminalSessionsOnQuit = null;
 let pendingNotificationActivation = null;
 let diagnostics = null;
 let nextIpcRequestId = 1;
@@ -284,7 +286,7 @@ function getDefaultRoute() {
 }
 
 function isTaskDetailRouteUrl(url) {
-  return /#\/[^/]+\/task\/[^/?#]+(?:[?#]|$)/.test(url || "");
+  return getKeyboardShortcutHelpers().isTaskDetailRouteUrl(url);
 }
 
 function getRendererNavigationUrl(target = getDefaultRoute()) {
@@ -657,6 +659,7 @@ function attachWindowHandlers(browserWindow) {
       isBlockedElectronShortcutInput,
       matchElectronShortcutInput,
       matchTaskDetailDockShortcutInput,
+      resolveTerminalTabShortcutCommand,
     } = getKeyboardShortcutHelpers();
     const shortcutPlatform = getShortcutPlatformFromProcessPlatform(process.platform);
     const isBlockedShortcut = isBlockedElectronShortcutInput(input, shortcutPlatform);
@@ -697,6 +700,22 @@ function attachWindowHandlers(browserWindow) {
       event.preventDefault();
 
       browserWindow.webContents.send("kanvibe:task-detail-dock-shortcut", taskDetailDockShortcutIndex);
+      return;
+    }
+
+    /**
+     * 탭 단축키는 터미널이 입력을 먼저 먹기 전에 가로채야 한다.
+     * xterm에 먼저 닿으면 셸이 그 키를 소비해 버려 탭 조작이 아예 일어나지 않는다.
+     */
+    const terminalTabCommand = resolveTerminalTabShortcutCommand(
+      input,
+      shortcutPlatform,
+      isTaskDetailRouteUrl(browserWindow.webContents.getURL()),
+    );
+
+    if (terminalTabCommand) {
+      event.preventDefault();
+      browserWindow.webContents.send("kanvibe:terminal-tab-shortcut", terminalTabCommand);
     }
   });
 }
@@ -736,6 +755,8 @@ function registerDesktopHandlers() {
     closeTerminal,
     closeWindowTerminals,
   } = require(getRuntimeModulePath(path.join("src", "desktop", "main", "terminalBridge.ts")));
+  const { killAllTerminalSessions } = require(getRuntimeModulePath(path.join("src", "lib", "terminal.ts")));
+  killAllTerminalSessionsOnQuit = killAllTerminalSessions;
 
   ipcMain.on("kanvibe:renderer-log", (_event, payload) => {
     logDiagnostic("renderer:bridge", payload);
@@ -788,24 +809,31 @@ function registerDesktopHandlers() {
     return focusExistingInternalRoute(relativePath, event.sender);
   });
 
-  ipcMain.handle("kanvibe:terminal-open", async (event, taskId, cols, rows) => {
-    return openTerminal(event.sender, taskId, cols, rows);
+  ipcMain.handle("kanvibe:terminal-open", async (event, taskId, tabId, cols, rows) => {
+    return openTerminal(event.sender, taskId, tabId, cols, rows);
   });
 
-  ipcMain.on("kanvibe:terminal-write", (event, taskId, data) => {
-    writeTerminal(event.sender.id, taskId, data);
+  ipcMain.on("kanvibe:terminal-write", (event, taskId, tabId, data) => {
+    writeTerminal(event.sender.id, taskId, tabId, data);
   });
 
-  ipcMain.on("kanvibe:terminal-resize", (event, taskId, cols, rows) => {
-    resizeTerminal(event.sender.id, taskId, cols, rows);
+  ipcMain.on("kanvibe:terminal-resize", (event, taskId, tabId, cols, rows) => {
+    resizeTerminal(event.sender.id, taskId, tabId, cols, rows);
   });
 
   ipcMain.on("kanvibe:terminal-focus", (_event, taskId) => {
     focusTerminal(taskId);
   });
 
-  ipcMain.on("kanvibe:terminal-close", (event, taskId) => {
-    closeTerminal(event.sender.id, taskId);
+  ipcMain.on("kanvibe:terminal-close", (event, taskId, tabId) => {
+    closeTerminal(event.sender.id, taskId, tabId);
+  });
+
+  ipcMain.on("kanvibe:close-current-window", (event) => {
+    const senderWindow = BrowserWindow.fromWebContents(event.sender);
+    if (senderWindow && !senderWindow.isDestroyed()) {
+      senderWindow.close();
+    }
   });
 
   app.on("web-contents-created", (_createdEvent, webContents) => {
@@ -956,6 +984,8 @@ app.whenReady().then(async () => {
     stopBackgroundTaskSync = null;
     unsubscribeBoardEvents();
     hookServer?.close();
+    /** terminal 세션의 PTY는 KanVibe가 소유하므로 남겨두면 고아 프로세스가 된다 */
+    killAllTerminalSessionsOnQuit?.();
   });
 });
 

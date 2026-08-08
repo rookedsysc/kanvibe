@@ -7,15 +7,24 @@ const SESSION_DEPENDENCY_SUCCESS_CACHE_MS = 60_000;
 
 export interface SessionDependencyStatus {
   sessionType: SessionType;
-  toolName: "tmux" | "zellij";
+  /** 설치가 필요 없는 세션 타입은 null이다 */
+  toolName: "tmux" | "zellij" | null;
   sshHost: string | null;
   isRemote: boolean;
   available: boolean;
   blockedReason: string | null;
 }
 
-function getToolName(sessionType: SessionType): "tmux" | "zellij" {
-  return sessionType === SessionType.TMUX ? "tmux" : "zellij";
+/** terminal 세션은 KanVibe가 셸을 직접 띄우므로 설치할 도구가 없다 */
+function getToolName(sessionType: SessionType): "tmux" | "zellij" | null {
+  switch (sessionType) {
+    case SessionType.TMUX:
+      return "tmux";
+    case SessionType.ZELLIJ:
+      return "zellij";
+    default:
+      return null;
+  }
 }
 
 function buildBlockedTargetKey(toolName: string, sshHost?: string | null): string {
@@ -75,6 +84,17 @@ export async function getSessionDependencyStatus(
   sshHost?: string | null,
 ): Promise<SessionDependencyStatus> {
   const toolName = getToolName(sessionType);
+  if (!toolName) {
+    return {
+      sessionType,
+      toolName,
+      sshHost: sshHost ?? null,
+      isRemote: Boolean(sshHost),
+      available: true,
+      blockedReason: null,
+    };
+  }
+
   const blockedReason = sshHost
     ? blockedTargets.get(buildBlockedTargetKey(toolName, sshHost)) ?? null
     : null;
@@ -105,6 +125,10 @@ export async function installSessionDependency(
   sshHost?: string | null,
 ): Promise<void> {
   const toolName = getToolName(sessionType);
+  if (!toolName) {
+    return;
+  }
+
   const blockedTargetKey = buildBlockedTargetKey(toolName, sshHost);
   blockedTargets.delete(blockedTargetKey);
   availableTargets.delete(blockedTargetKey);

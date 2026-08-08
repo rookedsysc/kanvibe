@@ -26,7 +26,7 @@ On the main board, click the magnifying-glass directory scan button between the 
 
 ## 2. Create a task
 
-Add a TODO task from the board. When you provide a branch name, KanVibe creates a git worktree and attaches a tmux or zellij session.
+Add a TODO task from the board. When you provide a branch name, KanVibe creates a git worktree and attaches a terminal using the session type you picked — tmux, zellij, or terminal.
 
 <figure className="kv-shot">
   <img src="/screenshots/quick-action.png" alt="Create a branch TODO from a quick action" />
@@ -48,4 +48,4 @@ When an agent starts work, the task moves to PROGRESS. If it asks a question, it
 
 ## 5. Finish with DONE
 
-When the task is complete, move it to DONE. KanVibe automatically cleans up the task branch, worktree, and terminal session.
+When the task is complete, move it to DONE. DONE only changes the status; the branch, worktree, and terminal session stay in place. Delete the task when you want those resources cleaned up too.

@@ -28,10 +28,27 @@ KanVibe connects the Kanban board, terminal sessions, git worktrees, and AI agen
   <figcaption>Each task provides an isolated terminal interface so agent runs, direct commands, builds, and tests stay freely interchangeable.</figcaption>
 </figure>
 
-- Open tmux or zellij sessions in the browser or desktop app.
+- Pick the session backend per task: tmux, zellij, or a plain terminal that KanVibe runs without a multiplexer.
 - Every task owns its terminal, so you can continue an AI-run task with direct shell commands whenever needed.
 - Switch info, hook status, AI chat, and PR actions through numbered dock shortcuts.
-- Moving a task to DONE cleans up its branch, worktree, and terminal session.
+- Moving a task to DONE keeps its branch, worktree, and terminal session in place. Cleanup runs only when you delete the task.
+
+## Terminal tabs
+
+Open several terminals inside one task to keep a server, a test run, and an agent session apart.
+
+<figure className="kv-shot">
+  <img src="/screenshots/terminal-tabs.png" alt="Task detail screen with three terminal tabs open: claude, dev server, and test" />
+  <figcaption>Add a tab with the <code>+</code> button at the right end of the tab bar above the terminal. The first five tabs also show the shortcut that jumps straight to them, and the selected tab's terminal fills the area below.</figcaption>
+</figure>
+
+- Add, switch, and close tabs from the tab bar, rename with a double-click, and reorder by dragging.
+- While the task info panel is open it overlays the left portion of the tab bar. Click the terminal outside the panel, or press the task info dock button again, to reveal the whole bar.
+- Tabs on tmux and zellij sessions stay **synchronized in both directions** with tmux windows and zellij tabs. A window created outside KanVibe with `tmux new-window` shows up in the tab bar, and clicking a tab moves the multiplexer's active target too.
+- Because KanVibe draws its own tab bar, the tmux status bar and the zellij tab bar are turned off — only for sessions KanVibe creates. tmux is turned off on every reattach, so sessions made before the tab bar shipped get cleaned up too. zellij fixes its layout when the session is created, so it only applies to sessions created after that.
+- On `terminal` sessions KanVibe runs one shell per tab. Each tab keeps its own scrollback across switches, and the shells stay alive while the app is running.
+
+Key combinations are listed in the terminal tabs section of the [shortcuts](/en/shortcuts) page.
 
 ## Task-scoped AI chat history
 

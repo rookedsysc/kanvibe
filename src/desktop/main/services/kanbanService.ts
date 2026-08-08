@@ -925,6 +925,7 @@ export async function connectTerminalSession(
       sessionType,
       project.sshHost,
       workingDir,
+      task.projectId,
     );
 
     task.sessionType = sessionType;

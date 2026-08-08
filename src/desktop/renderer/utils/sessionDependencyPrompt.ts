@@ -11,16 +11,18 @@ export async function ensureSessionDependencyWithPrompt(
   tCommon: TranslationFn,
 ): Promise<boolean> {
   const status = await getSessionDependencyStatus(sessionType, sshHost ?? null);
-  if (status.available) {
+  /** 설치할 도구가 없는 세션 타입은 확인 없이 통과시킨다 */
+  if (status.available || !status.toolName) {
     return true;
   }
 
+  const toolName = status.toolName;
   const target = status.isRemote
     ? tCommon("sessionDependency.remoteTarget", { host: status.sshHost ?? "remote" })
     : tCommon("sessionDependency.localTarget");
   const shouldInstall = window.confirm(
     tCommon("sessionDependency.installPrompt", {
-      tool: status.toolName,
+      tool: toolName,
       target,
     }),
   );
@@ -33,7 +35,7 @@ export async function ensureSessionDependencyWithPrompt(
   if (!installed.available) {
     throw new Error(
       tCommon("sessionDependency.installFailed", {
-        tool: status.toolName,
+        tool: toolName,
         error: installed.blockedReason ?? "unknown error",
       }),
     );

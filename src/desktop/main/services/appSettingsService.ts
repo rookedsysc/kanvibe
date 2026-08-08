@@ -201,10 +201,12 @@ const DEFAULT_SESSION_TYPE_KEY = "default_session_type";
 const TASK_SEARCH_SHORTCUT_KEY = "task_search_shortcut";
 const VIM_MODE_ENABLED_KEY = "vim_mode_enabled";
 
-/** 기본 세션 타입을 조회한다. 미설정 시 "tmux"를 반환한다 */
+/** 기본 세션 타입을 조회한다. 미설정이거나 모르는 값이면 "tmux"를 반환한다 */
 export async function getDefaultSessionType(): Promise<SessionType> {
   const value = await getAppSetting(DEFAULT_SESSION_TYPE_KEY);
-  return value === SessionType.ZELLIJ ? SessionType.ZELLIJ : SessionType.TMUX;
+  const knownSessionTypes: string[] = Object.values(SessionType);
+
+  return knownSessionTypes.includes(value ?? "") ? value as SessionType : SessionType.TMUX;
 }
 
 /** 기본 세션 타입을 저장한다 */

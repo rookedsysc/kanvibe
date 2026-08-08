@@ -8,6 +8,7 @@ import { SessionType, type KanbanTask } from "@/entities/KanbanTask";
 import type { Project } from "@/entities/Project";
 import { useEscapeKey } from "@/hooks/useEscapeKey";
 import BranchSearchInput from "./BranchSearchInput";
+import SessionTypeOptions from "./SessionTypeOptions";
 
 interface BranchTaskModalProps {
   task: KanbanTask;
@@ -152,8 +153,7 @@ export default function BranchTaskModal({
               onChange={(e) => setSessionType(e.target.value as SessionType)}
               className="w-full px-3 py-2 bg-bg-page border border-border-default rounded-md text-text-primary focus:outline-none focus:border-brand-primary transition-colors"
             >
-              <option value="tmux">tmux</option>
-              <option value="zellij">zellij</option>
+              <SessionTypeOptions />
             </select>
           </div>
 

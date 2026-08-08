@@ -373,7 +373,11 @@
     "dismissHint": "不再显示",
     "viewDiff": "查看差异",
     "diffFiles": "变更文件",
-    "diffFileCount": "{count}个"
+    "diffFileCount": "{count}个",
+    "terminalTabs": "终端标签页",
+    "newTerminalTab": "新建标签页",
+    "closeTerminalTab": "关闭 {name} 标签页",
+    "renameTerminalTab": "重命名标签页"
   },
   "projectBranchTasks": {
     "title": "项目任务",
