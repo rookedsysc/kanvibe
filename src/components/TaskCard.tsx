@@ -202,6 +202,18 @@ export default function TaskCard({
   const effectivePriority = resolveEffectivePriority(task, rootPriorityByProjectId);
   const isPriorityInherited = isInheritedPriority(task, rootPriorityByProjectId);
 
+  /** 프로젝트명 행에 겹쳐 둔다. 프로젝트가 없는 카드에서는 첫 줄인 제목 행으로 내려간다 */
+  const unreadBadge = unreadNotificationCount > 0 ? (
+    <span
+      className={`${badgeClassName} absolute right-0 top-1/2 h-5 -translate-y-1/2 gap-1 border-transparent bg-brand-primary font-semibold text-text-inverse`}
+      aria-label={tc("unreadCount", { count: unreadNotificationCount })}
+      data-testid="unread-notification-badge"
+    >
+      <BellIcon />
+      {unreadNotificationCount}
+    </span>
+  ) : null;
+
   function handleTaskKeyDown(event: React.KeyboardEvent<HTMLAnchorElement>) {
     if (isShiftOnlyKeyboardShortcut(event, "Enter")) {
       event.preventDefault();
@@ -310,34 +322,28 @@ export default function TaskCard({
                 iconDataUrl={projectIconDataUrl}
                 color={projectColor}
               />
-              <span
-                className="truncate text-xs font-semibold leading-4"
-                style={{ color: projectColor }}
-              >
-                {projectName}
-              </span>
+              <div className="relative min-w-0">
+                <span
+                  className="block truncate text-xs font-semibold leading-4"
+                  style={{ color: projectColor }}
+                >
+                  {projectName}
+                </span>
+
+                {unreadBadge}
+              </div>
             </div>
           )}
 
           <div className={projectName ? `grid ${PROJECT_MARKER_GRID_COLUMNS} items-start gap-2` : "block"}>
             {projectName ? <span aria-hidden="true" /> : null}
             <div className="min-w-0">
-              {/* 미읽음 배지를 제목과 같은 줄 오른쪽 끝에 겹쳐 둔다. 제목이 길면 잘린 끝부분을 배지가 덮는다 */}
               <div className="relative">
                 <h3 className="truncate text-[13px] font-medium leading-5 text-text-primary">
                   {task.title}
                 </h3>
 
-                {unreadNotificationCount > 0 && (
-                  <span
-                    className={`${badgeClassName} absolute right-0 top-0 h-5 gap-1 border-transparent bg-brand-primary font-semibold text-text-inverse`}
-                    aria-label={tc("unreadCount", { count: unreadNotificationCount })}
-                    data-testid="unread-notification-badge"
-                  >
-                    <BellIcon />
-                    {unreadNotificationCount}
-                  </span>
-                )}
+                {!projectName && unreadBadge}
               </div>
 
               {task.description && (

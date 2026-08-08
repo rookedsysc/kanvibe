@@ -190,8 +190,34 @@ describe("TaskCard - Priority Badge", () => {
     expect(badge.getAttribute("aria-label")).toBe('unreadCount:{"count":3}');
   });
 
-  it("should overlay the unread notification badge on the title line so a long title is covered", () => {
-    const task = createTask({ title: "아주 아주 길어서 카드 폭을 넘겨 잘리는 태스크 제목" });
+  it("should overlay the unread notification badge on the project name line so a long project name is covered", () => {
+    const task = createTask();
+
+    render(
+      <TaskCard
+        task={task}
+        index={0}
+        onContextMenu={onContextMenu}
+        projectName="아주 아주 길어서 카드 폭을 넘겨 잘리는 프로젝트 이름"
+        unreadNotificationCount={3}
+      />,
+    );
+
+    const badge = screen.getByTestId("unread-notification-badge");
+    const projectName = screen.getByText("아주 아주 길어서 카드 폭을 넘겨 잘리는 프로젝트 이름");
+
+    expect(badge.parentElement).toBe(projectName.parentElement);
+    expect(badge.parentElement?.className).toContain("relative");
+    expect(badge.className).toContain("absolute");
+    expect(badge.className).toContain("right-0");
+    expect(badge.className).toContain("top-1/2");
+    expect(badge.className).toContain("-translate-y-1/2");
+    expect(projectName.className).toContain("truncate");
+    expect(projectName.className).toContain("leading-4");
+  });
+
+  it("should fall back to the title line when the card has no project name", () => {
+    const task = createTask();
 
     render(<TaskCard task={task} index={0} onContextMenu={onContextMenu} unreadNotificationCount={3} />);
 
@@ -199,13 +225,6 @@ describe("TaskCard - Priority Badge", () => {
     const title = screen.getByRole("heading", { level: 3 });
 
     expect(badge.parentElement).toBe(title.parentElement);
-    expect(badge.parentElement?.className).toContain("relative");
-    expect(badge.className).toContain("absolute");
-    expect(badge.className).toContain("right-0");
-    expect(badge.className).toContain("top-0");
-    expect(badge.className).toContain("h-5");
-    expect(title.className).toContain("truncate");
-    expect(title.className).toContain("leading-5");
   });
 
   it("should render base branch as a compact icon instead of a ribbon label", () => {
