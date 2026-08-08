@@ -22,6 +22,7 @@ import { FillEmptyBaseBranch1771400000000 } from "@/migrations/1771400000000-Fil
 import { AddIconDataUrlToProjects1771500000000 } from "@/migrations/1771500000000-AddIconDataUrlToProjects";
 import { RescopeProjectNamesPerHost1771600000000 } from "@/migrations/1771600000000-RescopeProjectNamesPerHost";
 import { AddTerminalSessionType1771700000000 } from "@/migrations/1771700000000-AddTerminalSessionType";
+import { DropDisplayOrderFromKanbanTasks1771800000000 } from "@/migrations/1771800000000-DropDisplayOrderFromKanbanTasks";
 
 /** TypeORM DataSource 싱글턴. Vite HMR 시 재연결을 방지하기 위해 globalThis에 캐싱한다. */
 const globalForDb = globalThis as unknown as {
@@ -44,6 +45,7 @@ const MIGRATIONS = [
   AddIconDataUrlToProjects1771500000000,
   RescopeProjectNamesPerHost1771600000000,
   AddTerminalSessionType1771700000000,
+  DropDisplayOrderFromKanbanTasks1771800000000,
 ];
 
 interface MigrationRecord {

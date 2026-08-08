@@ -1,9 +1,10 @@
 "use client";
 
 import { useState, useCallback, useEffect, useMemo, useRef, useTransition } from "react";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { DragDropContext, type DropResult } from "@hello-pangea/dnd";
 import BoardPageFindBar from "./BoardPageFindBar";
+import BoardSortPicker from "./BoardSortPicker";
 import Column from "./Column";
 import CreateTaskModal from "./CreateTaskModal";
 import ProjectRegistryDialog from "./ProjectRegistryDialog";
@@ -12,7 +13,7 @@ import ProjectSelector from "./ProjectSelector";
 import TaskContextMenu from "./TaskContextMenu";
 import BranchTaskModal from "./BranchTaskModal";
 import DoneConfirmDialog from "./DoneConfirmDialog";
-import { reorderTasks, deleteTask, getMoreDoneTasks, moveTaskToColumn } from "@/desktop/renderer/actions/kanban";
+import { deleteTask, getMoreDoneTasks, moveTaskToColumn } from "@/desktop/renderer/actions/kanban";
 import { runBackgroundTaskSyncNow } from "@/desktop/renderer/actions/backgroundTaskSync";
 import type { TasksByStatus } from "@/desktop/renderer/actions/kanban";
 import { useBoardCommands } from "@/desktop/renderer/components/BoardCommandProvider";
@@ -26,6 +27,12 @@ import {
   useTaskKindFilterParams,
   type TaskKindFilter,
 } from "@/desktop/renderer/hooks/useTaskKindFilterParams";
+import { useBoardSortPreference } from "@/desktop/renderer/hooks/useBoardSortPreference";
+import {
+  buildProjectRootPriorityMap,
+  isProjectRootTask,
+  sortTasksForBoard,
+} from "@/desktop/renderer/utils/boardTaskSort";
 import { DEFAULT_LOCALE, SUPPORTED_LOCALES } from "@/desktop/renderer/utils/locales";
 import { computeProjectColor } from "@/lib/projectColor";
 import type { NotificationCenterButtonHandle } from "./NotificationCenterButton";
@@ -364,7 +371,6 @@ function buildStatusMoveResult(
   task: KanbanTask,
   destinationStatus: TaskStatus,
   currentTasks: TasksByStatus,
-  filteredTasks: TasksByStatus,
 ): DropResult | null {
   if (task.status === destinationStatus) return null;
 
@@ -380,7 +386,7 @@ function buildStatusMoveResult(
     },
     destination: {
       droppableId: destinationStatus,
-      index: filteredTasks[destinationStatus].length,
+      index: 0,
     },
     reason: "DROP",
     mode: "FLUID",
@@ -393,13 +399,6 @@ function extractMainRepoPath(repoPath: string): string | null {
   const worktreeIndex = repoPath.indexOf("__worktrees");
   if (worktreeIndex === -1) return null;
   return repoPath.slice(0, worktreeIndex);
-}
-
-function isProjectRootTask(task: KanbanTask, projectLookup: Map<string, Project>): boolean {
-  if (!task.projectId || !task.branchName) return false;
-
-  const project = projectLookup.get(task.projectId);
-  return Boolean(project && !project.isWorktree && task.branchName === project.defaultBranch);
 }
 
 function matchesTaskKindFilter(
@@ -421,123 +420,46 @@ function openSettingsPage() {
   window.location.hash = `#/${getCurrentBoardLocale()}/settings`;
 }
 
-/**
- * 필터된 인덱스를 전체 배열의 올바른 위치에 매핑하여 태스크를 삽입한다.
- * 프로젝트 필터가 활성화된 상태에서 드래그 인덱스가 필터된 리스트 기준이므로,
- * 전체 배열에서의 정확한 삽입 위치를 계산해야 한다.
- */
-function insertAtFilteredIndex(
-  fullArray: KanbanTask[],
-  task: KanbanTask,
-  filteredIndex: number,
-  taskFilter: BoardTaskFilter | null
-): KanbanTask[] {
-  const arr = [...fullArray];
-
-  if (!taskFilter) {
-    arr.splice(filteredIndex, 0, task);
-    return arr;
-  }
-
-  const filtered = arr.filter(taskFilter);
-
-  if (filteredIndex < filtered.length) {
-    const targetTask = filtered[filteredIndex];
-    const fullIndex = arr.findIndex((t) => t.id === targetTask.id);
-    arr.splice(fullIndex, 0, task);
-  } else if (filtered.length > 0) {
-    const lastTask = filtered[filtered.length - 1];
-    const lastIndex = arr.findIndex((t) => t.id === lastTask.id);
-    arr.splice(lastIndex + 1, 0, task);
-  } else {
-    arr.push(task);
-  }
-
-  return arr;
-}
-
 interface DragMovePlan {
   updatedTasks: TasksByStatus;
   doneTotalDelta: number;
   doneOffsetDelta: number;
-  persistence:
-    | { type: "reorder"; status: TaskStatus; orderedIds: string[] }
-    | { type: "move"; taskId: string; status: TaskStatus; orderedIds: string[] };
+  persistence: { taskId: string; status: TaskStatus };
 }
 
+/**
+ * 드래그 결과를 낙관적 상태 변경과 저장 계획으로 바꾼다.
+ *
+ * 카드 자리를 따로 저장하지 않으므로 같은 컬럼 안에서의 드롭은 아무것도 바꾸지 않는다.
+ * 다른 컬럼으로 옮긴 카드는 방금 수정한 카드가 되므로 목적지 맨 위에 놓는다.
+ */
 function buildDragMovePlan(
   currentTasks: TasksByStatus,
   result: DropResult,
-  taskFilter: BoardTaskFilter | null,
 ): DragMovePlan | null {
   const { source, destination, draggableId } = result;
   if (!destination) return null;
 
   const sourceStatus = source.droppableId as TaskStatus;
   const destStatus = destination.droppableId as TaskStatus;
+  if (sourceStatus === destStatus) return null;
+
+  const movedTask = currentTasks[sourceStatus].find((task) => task.id === draggableId);
+  if (!movedTask) return null;
+
   const updated: TasksByStatus = { ...currentTasks };
+  updated[sourceStatus] = currentTasks[sourceStatus].filter((task) => task.id !== draggableId);
+  updated[destStatus] = [{ ...movedTask, status: destStatus }, ...currentTasks[destStatus]];
 
-  const taskIndex = updated[sourceStatus].findIndex((task) => task.id === draggableId);
-  if (taskIndex === -1) return null;
-
-  const movedTask = updated[sourceStatus][taskIndex];
-  const newSource = updated[sourceStatus].filter((task) => task.id !== draggableId);
-
-  if (sourceStatus === destStatus) {
-    updated[sourceStatus] = insertAtFilteredIndex(
-      newSource,
-      movedTask,
-      destination.index,
-      taskFilter,
-    );
-
-    const orderedIds = (
-      taskFilter
-        ? updated[sourceStatus].filter(taskFilter)
-        : updated[sourceStatus]
-    ).map((task) => task.id);
-
-    return {
-      updatedTasks: updated,
-      doneTotalDelta: 0,
-      doneOffsetDelta: 0,
-      persistence: {
-        type: "reorder",
-        status: sourceStatus,
-        orderedIds,
-      },
-    };
-  }
-
-  updated[sourceStatus] = newSource;
-  const updatedTask: KanbanTask = { ...movedTask, status: destStatus };
-  updated[destStatus] = insertAtFilteredIndex(
-    updated[destStatus],
-    updatedTask,
-    destination.index,
-    taskFilter,
-  );
-
-  const orderedIds = (
-    taskFilter
-      ? updated[destStatus].filter(taskFilter)
-      : updated[destStatus]
-  ).map((task) => task.id);
+  const doneDelta =
+    (destStatus === TaskStatus.DONE ? 1 : 0) -
+    (sourceStatus === TaskStatus.DONE ? 1 : 0);
 
   return {
     updatedTasks: updated,
-    doneTotalDelta:
-      (destStatus === TaskStatus.DONE ? 1 : 0) -
-      (sourceStatus === TaskStatus.DONE ? 1 : 0),
-    doneOffsetDelta:
-      (destStatus === TaskStatus.DONE ? 1 : 0) -
-      (sourceStatus === TaskStatus.DONE ? 1 : 0),
-    persistence: {
-      type: "move",
-      taskId: draggableId,
-      status: destStatus,
-      orderedIds,
-    },
+    doneTotalDelta: doneDelta,
+    doneOffsetDelta: doneDelta,
+    persistence: { taskId: draggableId, status: destStatus },
   };
 }
 
@@ -558,6 +480,7 @@ export default function Board({
   const ts = useTranslations("settings");
   const tt = useTranslations("task");
   const tc = useTranslations("common");
+  const locale = useLocale();
   const [tasks, setTasks] = useState<TasksByStatus>(initialTasks);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isProjectRegistryOpen, setIsProjectRegistryOpen] = useState(false);
@@ -575,10 +498,12 @@ export default function Board({
     projects.map((p) => p.id),
   );
   const [taskKindFilter, setTaskKindFilter] = useTaskKindFilterParams();
+  const [sortPreference, setSortPreference] = useBoardSortPreference();
   const [doneTotal, setDoneTotal] = useState(initialDoneTotal);
   const [doneOffset, setDoneOffset] = useState(initialDoneLimit);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [isDoneAlertDismissed, setIsDoneAlertDismissed] = useState(doneAlertDismissed);
+  /** 사용자 안내 후에 실행하기 위해 잡아 둔 Done 이동 */
   const [pendingDoneResult, setPendingDoneResult] = useState<DropResult | null>(null);
   const [currentDefaultSessionType, setCurrentDefaultSessionType] = useState<SessionType>(defaultSessionType);
   const [shouldUseMacTitlebarLayout, setShouldUseMacTitlebarLayout] = useState(false);
@@ -720,6 +645,37 @@ export default function Board({
     return filtered;
   }, [boardTaskFilter, hasActiveBoardTaskFilter, tasks]);
 
+  /** 프로젝트 root task의 우선순위. 같은 프로젝트의 다른 task가 이 값을 기본값으로 물려받는다 */
+  const rootPriorityByProjectId = useMemo(
+    () => buildProjectRootPriorityMap(
+      Object.values(TaskStatus).flatMap((status) => tasks[status]),
+      projectLookup,
+    ),
+    [projectLookup, tasks],
+  );
+
+  const boardSortContext = useMemo(
+    () => ({
+      rootPriorityByProjectId,
+      projectNameById: new Map(Object.entries(projectNameMap)),
+      /** 제목·프로젝트 정렬은 보고 있는 언어의 콜레이션을 따라야 한다. 앱은 en/ko/zh를 지원한다 */
+      locale,
+    }),
+    [locale, projectNameMap, rootPriorityByProjectId],
+  );
+
+  /** 화면에 실제로 늘어놓을 순서. 필터를 통과한 목록에 정렬 설정을 적용한다 */
+  const displayedTasks = useMemo(() => {
+    if (sortPreference.keys.length === 0) return filteredTasks;
+
+    const sorted: TasksByStatus = { ...filteredTasks };
+    for (const status of Object.values(TaskStatus)) {
+      sorted[status] = sortTasksForBoard(filteredTasks[status], sortPreference, boardSortContext);
+    }
+
+    return sorted;
+  }, [boardSortContext, filteredTasks, sortPreference]);
+
   const [contextMenu, setContextMenu] = useState<ContextMenuState>({
     isOpen: false,
     x: 0,
@@ -734,7 +690,7 @@ export default function Board({
     isBranchModalOpen,
     isVimCommandOpen,
     hasPendingDoneResult: Boolean(pendingDoneResult),
-    filteredTasks,
+    displayedTasks,
     deleteConfirmMessage: tt("deleteConfirm"),
   });
 
@@ -746,7 +702,7 @@ export default function Board({
     isBranchModalOpen,
     isVimCommandOpen,
     hasPendingDoneResult: Boolean(pendingDoneResult),
-    filteredTasks,
+    displayedTasks,
     deleteConfirmMessage: tt("deleteConfirm"),
   };
 
@@ -780,7 +736,7 @@ export default function Board({
       return;
     }
 
-    if (!findTaskById(filteredTasks, initialFocusTaskId)) {
+    if (!findTaskById(displayedTasks, initialFocusTaskId)) {
       return;
     }
 
@@ -791,7 +747,7 @@ export default function Board({
 
     focusBoardTaskCard(targetTaskCard);
     hasAppliedInitialFocusRef.current = true;
-  }, [filteredTasks, initialFocusTaskId, isMounted]);
+  }, [displayedTasks, initialFocusTaskId, isMounted]);
 
   useEffect(() => boardCommands.registerBoardHandlers({
     toggleNotificationCenter() {
@@ -935,7 +891,7 @@ export default function Board({
 
       if (pendingTaskDeleteSequenceRef.current?.taskId === taskId) {
         resetPendingTaskDeleteSequence();
-        const task = findTaskById(runtime.filteredTasks, taskId);
+        const task = findTaskById(runtime.displayedTasks, taskId);
         if (task && confirm(runtime.deleteConfirmMessage)) {
           void deleteTaskFromBoard(task);
         }
@@ -971,7 +927,7 @@ export default function Board({
         return;
       }
 
-      const task = findTaskById(filteredTasks, taskId);
+      const task = findTaskById(displayedTasks, taskId);
       if (!task) return;
 
       const rect = taskCard.getBoundingClientRect();
@@ -980,7 +936,7 @@ export default function Board({
 
     window.addEventListener("keydown", handleWindowTaskShortcut, true);
     return () => window.removeEventListener("keydown", handleWindowTaskShortcut, true);
-  }, [contextMenu.isOpen, filteredTasks, isBranchModalOpen, isModalOpen, isProjectRegistryOpen, isVimCommandOpen, pendingDoneResult]);
+  }, [contextMenu.isOpen, displayedTasks, isBranchModalOpen, isModalOpen, isProjectRegistryOpen, isVimCommandOpen, pendingDoneResult]);
 
   const handleLoadMoreDone = useCallback(async () => {
     if (isLoadingMore) return;
@@ -1001,11 +957,7 @@ export default function Board({
   /** 드래그 결과를 받아 state 업데이트 + DB 반영을 수행한다 */
   const executeDragMove = useCallback(
     (result: DropResult) => {
-      const plan = buildDragMovePlan(
-        tasks,
-        result,
-        hasActiveBoardTaskFilter ? boardTaskFilter : null,
-      );
+      const plan = buildDragMovePlan(tasks, result);
       if (!plan) return;
 
       setTasks(plan.updatedTasks);
@@ -1019,24 +971,15 @@ export default function Board({
       }
 
       startDragPersistenceTransition(async () => {
-        if (plan.persistence.type === "reorder") {
-          await reorderTasks(plan.persistence.status, plan.persistence.orderedIds);
-          return;
-        }
-
-        await moveTaskToColumn(
-          plan.persistence.taskId,
-          plan.persistence.status,
-          plan.persistence.orderedIds,
-        );
+        await moveTaskToColumn(plan.persistence.taskId, plan.persistence.status);
       });
     },
-    [boardTaskFilter, hasActiveBoardTaskFilter, startDragPersistenceTransition, tasks]
+    [startDragPersistenceTransition, tasks]
   );
 
   const moveTaskToStatus = useCallback(
     (task: KanbanTask, newStatus: TaskStatus) => {
-      const result = buildStatusMoveResult(task, newStatus, tasks, filteredTasks);
+      const result = buildStatusMoveResult(task, newStatus, tasks);
       if (!result) return;
 
       const shouldConfirmDoneMove =
@@ -1052,7 +995,7 @@ export default function Board({
 
       executeDragMove(result);
     },
-    [executeDragMove, filteredTasks, isDoneAlertDismissed, tasks],
+    [executeDragMove, displayedTasks, isDoneAlertDismissed, tasks],
   );
 
   const moveFocusedTaskToStatus = useCallback(
@@ -1061,13 +1004,13 @@ export default function Board({
       const taskId = taskIdOverride ?? taskCard?.dataset.kanbanTaskId;
       if (!taskId) return "missing-focus";
 
-      const task = findTaskById(filteredTasks, taskId);
+      const task = findTaskById(displayedTasks, taskId);
       if (!task) return "missing-task";
 
       moveTaskToStatus(task, newStatus);
       return "moved";
     },
-    [filteredTasks, moveTaskToStatus],
+    [displayedTasks, moveTaskToStatus],
   );
 
   const closeVimCommand = useCallback(() => {
@@ -1236,6 +1179,7 @@ export default function Board({
               compact
             />
           </div>
+          <BoardSortPicker preference={sortPreference} onChange={setSortPreference} />
           <button
             type="button"
             onClick={() => setIsProjectRegistryOpen(true)}
@@ -1288,13 +1232,14 @@ export default function Board({
                 <Column
                   key={col.status}
                   status={col.status}
-                  tasks={filteredTasks[col.status]}
+                  tasks={displayedTasks[col.status]}
                   label={t(`columns.${col.labelKey}`)}
                   colorClass={col.colorClass}
                   onContextMenu={handleContextMenu}
                   projectNameMap={projectNameMap}
                   projectColorMap={projectColorMap}
                   projectIconMap={projectIconMap}
+                  rootPriorityByProjectId={rootPriorityByProjectId}
                   vimModeEnabled={vimModeEnabled}
                   {...(col.status === TaskStatus.DONE && {
                     totalCount: doneTotal,

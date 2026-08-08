@@ -43,7 +43,15 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("@/lib/database", () => ({
   getProjectRepository: mocks.getProjectRepository,
-  getTaskRepository: mocks.getTaskRepository,
+  /**
+   * task를 만드는 모든 경로가 display rank 조회(findOne)를 거치는데,
+   * 테스트마다 필요한 메서드만 담아 repo mock을 짜므로 조회 기본값을 여기서 한 번 채워 준다.
+   * 테스트가 직접 findOne을 넘기면 그 값이 이긴다.
+   */
+  getTaskRepository: async () => {
+    const taskRepo = await mocks.getTaskRepository();
+    return { findOne: vi.fn(async () => null), ...taskRepo };
+  },
 }));
 
 vi.mock("@/entities/Project", () => ({
@@ -1410,6 +1418,8 @@ describe("projectService local hook installation", () => {
     const result = await scanAndRegisterProjects("/remote/workspace", "remote-host");
 
     expect(result.worktreeTasks).toContain("feature-login");
+    const [savedWorktreeTask] = taskRepoSave.mock.calls[0];
+    expect(savedWorktreeTask.branchName).toBe("feature-login");
     expect(mocks.listWorktrees).toHaveBeenCalledWith("/remote/repo", "remote-host");
     expect(mocks.scheduleKanvibeHooksInstall).toHaveBeenCalledWith(
       "/remote/repo__worktrees/feature-login",

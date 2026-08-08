@@ -40,6 +40,7 @@ vi.mock("@/desktop/renderer/navigation", () => ({
 
 vi.mock("next-intl", () => ({
   useLocale: () => "ko",
+  useTranslations: () => (key: string) => key,
 }));
 
 function createTask(overrides: Partial<KanbanTask> = {}): KanbanTask {
@@ -59,7 +60,6 @@ function createTask(overrides: Partial<KanbanTask> = {}): KanbanTask {
     baseBranch: null,
     prUrl: null,
     priority: null,
-    displayOrder: 0,
     createdAt: new Date(),
     updatedAt: new Date(),
     ...overrides,
@@ -442,5 +442,46 @@ describe("TaskCard - Priority Badge", () => {
       expect(focusExistingInternalRoute).toHaveBeenCalledWith("/ko/task/task-1");
     });
     expect(mocks.push).not.toHaveBeenCalled();
+  });
+  it("프로젝트 root task의 우선순위를 물려받으면 그 배지를 물려받은 표시와 함께 보여준다", () => {
+    // Given
+    const task = createTask({ priority: null, projectId: "project-1" });
+    const rootPriorityByProjectId = new Map([["project-1", TaskPriority.HIGH]]);
+
+    // When
+    render(
+      <TaskCard
+        task={task}
+        index={0}
+        onContextMenu={onContextMenu}
+        rootPriorityByProjectId={rootPriorityByProjectId}
+      />,
+    );
+
+    // Then
+    const badge = screen.getByTestId("task-priority-badge");
+    expect(badge.textContent).toBe("P1");
+    expect(badge.dataset.inheritedPriority).toBe("true");
+  });
+
+  it("task가 자기 우선순위를 가지면 물려받은 값 대신 직접 지정한 배지를 보여준다", () => {
+    // Given
+    const task = createTask({ priority: TaskPriority.LOW, projectId: "project-1" });
+    const rootPriorityByProjectId = new Map([["project-1", TaskPriority.HIGH]]);
+
+    // When
+    render(
+      <TaskCard
+        task={task}
+        index={0}
+        onContextMenu={onContextMenu}
+        rootPriorityByProjectId={rootPriorityByProjectId}
+      />,
+    );
+
+    // Then
+    const badge = screen.getByTestId("task-priority-badge");
+    expect(badge.textContent).toBe("P3");
+    expect(badge.dataset.inheritedPriority).toBe("false");
   });
 });

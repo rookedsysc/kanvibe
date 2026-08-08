@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
     create: vi.fn(),
     createQueryBuilder: vi.fn(),
     find: vi.fn(),
+    findOne: vi.fn(),
     findOneBy: vi.fn(),
     remove: vi.fn(),
     save: vi.fn(),
@@ -1157,31 +1158,21 @@ describe("kanbanService.createTask", () => {
     expect(writeOrder.indexOf("kanvibe-state")).toBeLessThan(writeOrder.indexOf("database"));
   });
 
-  it("컬럼 내 task 순서 변경 후 board update를 브로드캐스트한다", async () => {
-    // Given
-    mocks.taskRepo.update.mockResolvedValue({ affected: 1 });
-
-    const { reorderTasks } = await import("@/desktop/main/services/kanbanService");
-
-    // When
-    await reorderTasks("todo" as never, ["task-a", "task-b"]);
-
-    // Then
-    expect(mocks.taskRepo.update).toHaveBeenCalledTimes(2);
-    expect(mocks.broadcastBoardUpdate).toHaveBeenCalledTimes(1);
-  });
-
-  it("다른 컬럼으로 task 이동 후 board update를 브로드캐스트한다", async () => {
+  it("다른 컬럼으로 task를 옮기면 상태만 갱신하고 자리는 저장하지 않는다", async () => {
     // Given
     mocks.taskRepo.update.mockResolvedValue({ affected: 1 });
 
     const { moveTaskToColumn } = await import("@/desktop/main/services/kanbanService");
 
     // When
-    await moveTaskToColumn("task-a", "review" as never, ["task-b", "task-a"]);
+    await moveTaskToColumn("task-a", "review" as never);
 
     // Then
-    expect(mocks.taskRepo.update).toHaveBeenCalledWith("task-a", { status: "review" });
+    /** 보드 순서는 정렬 기준과 최근 수정순으로만 정해지므로 저장해 둘 자리가 없다 */
+    const [updatedTaskId, patch] = mocks.taskRepo.update.mock.calls[0];
+    expect(updatedTaskId).toBe("task-a");
+    expect(patch.status).toBe("review");
+    expect(Object.keys(patch)).toEqual(["status"]);
     expect(mocks.broadcastBoardUpdate).toHaveBeenCalledTimes(1);
   });
 
@@ -1336,17 +1327,17 @@ describe("kanbanService.createTask", () => {
       const { moveTaskToColumn } = await import("@/desktop/main/services/kanbanService");
 
       // When
-      await moveTaskToColumn("task-done", "done" as never, ["task-a", "task-done"]);
+      await moveTaskToColumn("task-done", "done" as never);
 
       // Then
-      expect(mocks.taskRepo.update).toHaveBeenCalledWith("task-done", {
+      expect(mocks.taskRepo.update).toHaveBeenCalledWith("task-done", expect.objectContaining({
         status: "done",
         sessionType: "tmux",
         sessionName: "repo-fix-done",
         worktreePath: "/remote/repo__worktrees/fix-done",
-      });
-      expect(mocks.taskRepo.update).toHaveBeenCalledWith("task-a", { displayOrder: 0 });
-      expect(mocks.taskRepo.update).toHaveBeenCalledWith("task-done", { displayOrder: 1 });
+      }));
+      /** rank 덕분에 같은 컬럼의 다른 카드를 다시 쓰지 않는다 */
+      expect(mocks.taskRepo.update).toHaveBeenCalledTimes(1);
       expect(mocks.removeSessionOnly).not.toHaveBeenCalled();
       expect(mocks.broadcastBoardUpdate).toHaveBeenCalledTimes(1);
     } finally {
@@ -1383,23 +1374,19 @@ describe("kanbanService.createTask", () => {
       const { moveTaskToColumn } = await import("@/desktop/main/services/kanbanService");
 
       // When
-      await moveTaskToColumn(
-        "task-done-move-preserve-resources",
-        "done" as never,
-        ["task-a", "task-done-move-preserve-resources"],
-      );
+      await moveTaskToColumn("task-done-move-preserve-resources", "done" as never);
       await vi.runAllTimersAsync();
 
       // Then
       expect(mocks.detachSession).not.toHaveBeenCalled();
       expect(mocks.removeSessionOnly).not.toHaveBeenCalled();
       expect(mocks.removeWorktreeAndBranch).not.toHaveBeenCalled();
-      expect(mocks.taskRepo.update).toHaveBeenCalledWith("task-done-move-preserve-resources", {
+      expect(mocks.taskRepo.update).toHaveBeenCalledWith("task-done-move-preserve-resources", expect.objectContaining({
         status: "done",
         sessionType: "tmux",
         sessionName: "repo-feature-move-preserve-resources",
         worktreePath: "/remote/repo__worktrees/feature-move-preserve-resources",
-      });
+      }));
       expect(mocks.taskRepo.update).not.toHaveBeenCalledWith("task-done-move-preserve-resources", {
         sessionType: null,
         sessionName: null,
@@ -1412,7 +1399,7 @@ describe("kanbanService.createTask", () => {
     }
   });
 
-  it("Done 컬럼 이동 중 순서 저장이 실패하면 이전 상태와 리소스 필드로 롤백한다", async () => {
+  it("Done 컬럼 이동 저장이 실패하면 이전 상태와 리소스 필드로 롤백한다", async () => {
     // Given
     const task = {
       id: "task-done",
@@ -1428,8 +1415,8 @@ describe("kanbanService.createTask", () => {
     };
     mocks.taskRepo.findOneBy.mockResolvedValue(task);
     mocks.taskRepo.update.mockImplementation(async (id, updates) => {
-      if (id === "task-a" && "displayOrder" in updates) {
-        throw new Error("display order failed");
+      if (id === "task-done" && updates.status === "done") {
+        throw new Error("done move failed");
       }
 
       return { affected: 1 };
@@ -1439,17 +1426,17 @@ describe("kanbanService.createTask", () => {
     const { moveTaskToColumn } = await import("@/desktop/main/services/kanbanService");
 
     // When & Then
-    await expect(moveTaskToColumn("task-done", "done" as never, ["task-a", "task-done"]))
+    await expect(moveTaskToColumn("task-done", "done" as never))
       .rejects
-      .toThrow("display order failed");
+      .toThrow("done move failed");
 
-    expect(mocks.taskRepo.update).toHaveBeenCalledWith("task-done", {
+    expect(mocks.taskRepo.update).toHaveBeenCalledWith("task-done", expect.objectContaining({
       status: "review",
       sessionType: "tmux",
       sessionName: "repo-fix-done",
       worktreePath: "/remote/repo__worktrees/fix-done",
       sshHost: "remote-host",
-    });
+    }));
     expect(mocks.removeSessionOnly).not.toHaveBeenCalled();
     expect(mocks.broadcastBoardUpdate).toHaveBeenCalledTimes(1);
 

@@ -422,12 +422,12 @@ export async function getTasksByStatus(): Promise<TasksByStatusWithMeta> {
 
   const nonDoneTasks = await repo.find({
     where: { status: Not(TaskStatus.DONE) },
-    order: { displayOrder: "ASC", createdAt: "ASC" },
+    order: { updatedAt: "DESC" },
   });
 
   const [doneTasks, doneTotal] = await repo.findAndCount({
     where: { status: TaskStatus.DONE },
-    order: { displayOrder: "ASC", createdAt: "ASC" },
+    order: { updatedAt: "DESC" },
     take: DONE_PAGE_SIZE,
   });
 
@@ -455,7 +455,7 @@ export async function getMoreDoneTasks(
 
   const [tasks, doneTotal] = await repo.findAndCount({
     where: { status: TaskStatus.DONE },
-    order: { displayOrder: "ASC", createdAt: "ASC" },
+    order: { updatedAt: "DESC" },
     skip: offset,
     take: limit,
   });
@@ -518,11 +518,6 @@ export interface CreateTaskInput {
 /** 새 작업을 생성한다. branchName + projectId가 있으면 worktree와 세션도 함께 생성한다 */
 export async function createTask(input: CreateTaskInput): Promise<KanbanTask> {
   const repo = await getTaskRepository();
-  const maxDisplayOrderPromise = repo
-    .createQueryBuilder("t")
-    .select("MAX(t.displayOrder)", "max")
-    .where("t.status = :status", { status: TaskStatus.TODO })
-    .getRawOne();
 
   const task = repo.create({
     title: input.title || input.branchName || "Untitled",
@@ -567,9 +562,6 @@ export async function createTask(input: CreateTaskInput): Promise<KanbanTask> {
       }
     }
   }
-
-  const maxResult = await maxDisplayOrderPromise;
-  task.displayOrder = (maxResult?.max ?? -1) + 1;
 
   const saved = await repo.save(task);
 
@@ -943,26 +935,15 @@ export async function connectTerminalSession(
   }
 }
 
-/** 컬럼 내 작업 순서를 변경한다 */
-export async function reorderTasks(
-  status: TaskStatus,
-  orderedIds: string[]
-): Promise<void> {
-  const repo = await getTaskRepository();
-
-  const updates = orderedIds.map((id, index) =>
-    repo.update(id, { displayOrder: index })
-  );
-
-  await Promise.all(updates);
-  broadcastBoardUpdate();
-}
-
-/** 드래그로 태스크를 다른 컬럼으로 이동할 때 사용한다. revalidation 없이 DB만 갱신한다 */
+/**
+ * 태스크를 다른 컬럼으로 이동할 때 사용한다. revalidation 없이 DB만 갱신한다.
+ *
+ * 목적지 컬럼에서의 자리는 저장하지 않는다. 보드 순서는 사용자가 고른 정렬 기준으로만 정해지고,
+ * 기준이 없으면 최근 수정순이므로 방금 옮긴 카드가 목적지 맨 위에 온다.
+ */
 export async function moveTaskToColumn(
   taskId: string,
-  newStatus: TaskStatus,
-  destOrderedIds: string[]
+  newStatus: TaskStatus
 ): Promise<void> {
   const repo = await getTaskRepository();
   const task = await repo.findOneBy({ id: taskId });
@@ -985,11 +966,6 @@ export async function moveTaskToColumn(
       await persistTaskState({ ...task, status: newStatus });
     }
 
-    const reorderUpdates = destOrderedIds.map((id, index) =>
-      repo.update(id, { displayOrder: index })
-    );
-
-    await Promise.all(reorderUpdates);
     broadcastBoardUpdate();
   } catch (error) {
     if (newStatus === TaskStatus.DONE && task) {

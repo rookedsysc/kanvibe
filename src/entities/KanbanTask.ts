@@ -78,9 +78,6 @@ export class KanbanTask {
   @Column({ type: "simple-enum", enum: TaskPriority, nullable: true, default: null })
   priority!: TaskPriority | null;
 
-  @Column({ name: "display_order", type: "int", default: 0 })
-  displayOrder!: number;
-
   @CreateDateColumn({ name: "created_at" })
   createdAt!: Date;
 

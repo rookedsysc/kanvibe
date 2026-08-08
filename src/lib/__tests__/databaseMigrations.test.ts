@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { ensureSqliteDatabaseReady } from "@/lib/sqliteSchema";
 import { AssignDisplayOrder1771166346785 } from "@/migrations/1771166346785-AssignDisplayOrder";
 import { RescopeProjectNamesPerHost1771600000000 } from "@/migrations/1771600000000-RescopeProjectNamesPerHost";
+import { DropDisplayOrderFromKanbanTasks1771800000000 } from "@/migrations/1771800000000-DropDisplayOrderFromKanbanTasks";
 
 const originalKanvibeDbPath = process.env.KANVIBE_DB_PATH;
 
@@ -32,13 +33,12 @@ function insertLegacyBootstrapData(databasePath: string): void {
         status,
         branch_name,
         project_id,
-        display_order,
         created_at,
         updated_at
       )
       VALUES
-        ('task-1', 'Top card', 'todo', 'main', 'project-1', 0, '2026-01-02T00:00:00.000Z', '2026-01-02T00:00:00.000Z'),
-        ('task-2', 'Older card', 'todo', 'main', 'project-2', 1, '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z');
+        ('task-1', 'Top card', 'todo', 'main', 'project-1', '2026-01-02T00:00:00.000Z', '2026-01-02T00:00:00.000Z'),
+        ('task-2', 'Older card', 'todo', 'main', 'project-2', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z');
     `);
   } finally {
     database.close();
@@ -127,6 +127,43 @@ function insertBaselinedLegacyProjectsData(databasePath: string): void {
   }
 }
 
+/** migrations 테이블이 없어 baseline 처리되는, 정수 순번만 들고 있던 오래된 DB */
+function insertLegacyDisplayOrderData(databasePath: string): void {
+  fs.mkdirSync(path.dirname(databasePath), { recursive: true });
+
+  const database = new Database(databasePath);
+  try {
+    database.exec(`
+      CREATE TABLE projects (
+        id TEXT PRIMARY KEY NOT NULL,
+        name TEXT NOT NULL,
+        repo_path TEXT NOT NULL,
+        default_branch TEXT NOT NULL DEFAULT 'main',
+        ssh_host TEXT,
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE kanban_tasks (
+        id TEXT PRIMARY KEY NOT NULL,
+        title TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'todo',
+        branch_name TEXT,
+        display_order INTEGER NOT NULL DEFAULT 0,
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+
+      INSERT INTO kanban_tasks (id, title, status, display_order, created_at, updated_at)
+      VALUES
+        ('task-last', 'Last', 'todo', 2, '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z'),
+        ('task-first', 'First', 'todo', 0, '2026-01-02T00:00:00.000Z', '2026-01-02T00:00:00.000Z'),
+        ('task-middle', 'Middle', 'todo', 1, '2026-01-03T00:00:00.000Z', '2026-01-03T00:00:00.000Z');
+    `);
+  } finally {
+    database.close();
+  }
+}
+
 afterEach(() => {
   if (originalKanvibeDbPath === undefined) {
     delete process.env.KANVIBE_DB_PATH;
@@ -148,17 +185,17 @@ describe("database migrations", () => {
 
     try {
       const tasks = await dataSource.query(`
-        SELECT id, branch_name, display_order
+        SELECT id, branch_name
         FROM kanban_tasks
         ORDER BY id
       `);
       const migrations = await dataSource.query(`SELECT name FROM migrations ORDER BY timestamp`);
 
       expect(tasks).toEqual([
-        { id: "task-1", branch_name: "main", display_order: 0 },
-        { id: "task-2", branch_name: "main", display_order: 1 },
+        { id: "task-1", branch_name: "main" },
+        { id: "task-2", branch_name: "main" },
       ]);
-      expect(migrations).toHaveLength(15);
+      expect(migrations).toHaveLength(16);
       expect(migrations[0]).toEqual({ name: "InitialSchema1770854400000" });
     } finally {
       await dataSource.destroy();
@@ -178,14 +215,15 @@ describe("database migrations", () => {
       const taskColumns = await dataSource.query(`PRAGMA table_info("kanban_tasks")`);
       const paneColumns = await dataSource.query(`PRAGMA table_info("pane_layout_configs")`);
       const tasks = await dataSource.query(`
-        SELECT id, project_id, base_branch, pr_url, priority, display_order
+        SELECT id, project_id, base_branch, pr_url, priority
         FROM kanban_tasks
       `);
       const migrations = await dataSource.query(`SELECT name FROM migrations ORDER BY timestamp`);
 
       expect(taskColumns.map((row: { name: string }) => row.name)).toEqual(
-        expect.arrayContaining(["project_id", "base_branch", "pr_url", "priority", "display_order"]),
+        expect.arrayContaining(["project_id", "base_branch", "pr_url", "priority"]),
       );
+      expect(taskColumns.map((row: { name: string }) => row.name)).not.toContain("display_order");
       expect(paneColumns.map((row: { name: string }) => row.name)).toContain("panes");
       expect(tasks).toEqual([
         {
@@ -194,10 +232,9 @@ describe("database migrations", () => {
           base_branch: null,
           pr_url: null,
           priority: null,
-          display_order: 0,
         },
       ]);
-      expect(migrations).toHaveLength(15);
+      expect(migrations).toHaveLength(16);
     } finally {
       await dataSource.destroy();
     }
@@ -227,7 +264,7 @@ describe("database migrations", () => {
       expect(indexes.map((row: { name: string }) => row.name)).not.toContain(
         "UQ_kanban_tasks_branch_name",
       );
-      expect(migrations).toHaveLength(15);
+      expect(migrations).toHaveLength(16);
 
       await dataSource.query(`
         INSERT INTO projects (id, name, repo_path, ssh_host)
@@ -492,6 +529,130 @@ describe("database migrations", () => {
       ]);
     } finally {
       await dataSource.destroy();
+    }
+  });
+  it("display_order를 떨어뜨리고 인덱스를 새 기본 순서로 다시 만든다", async () => {
+    // Given
+    const databasePath = createDatabasePath();
+    const dataSource = new DataSource({
+      type: "better-sqlite3",
+      database: databasePath,
+    });
+
+    await dataSource.initialize();
+
+    try {
+      await dataSource.query(`
+        CREATE TABLE kanban_tasks (
+          id TEXT PRIMARY KEY NOT NULL,
+          status TEXT NOT NULL,
+          display_order INTEGER NOT NULL DEFAULT 0,
+          created_at DATETIME NOT NULL,
+          updated_at DATETIME NOT NULL
+        )
+      `);
+      await dataSource.query(`
+        CREATE INDEX "idx_kanban_tasks_status_order"
+          ON kanban_tasks(status, display_order, created_at)
+      `);
+
+      // When
+      const queryRunner = dataSource.createQueryRunner();
+      try {
+        await new DropDisplayOrderFromKanbanTasks1771800000000().up(queryRunner);
+      } finally {
+        await queryRunner.release();
+      }
+
+      // Then
+      const columns = await dataSource.query(`PRAGMA table_info("kanban_tasks")`);
+      const indexColumns = await dataSource.query(`PRAGMA index_info("idx_kanban_tasks_status_order")`);
+
+      expect(columns.map((row: { name: string }) => row.name)).not.toContain("display_order");
+      /** 기본 순서가 최근 수정순이므로 인덱스도 그 컬럼을 덮어야 임시 B-tree 정렬로 떨어지지 않는다 */
+      expect(indexColumns.map((row: { name: string }) => row.name)).toEqual(["status", "updated_at"]);
+    } finally {
+      await dataSource.destroy();
+    }
+  });
+
+  it("컬럼을 되살려 마이그레이션을 취소할 수 있다", async () => {
+    // Given
+    const databasePath = createDatabasePath();
+    const dataSource = new DataSource({
+      type: "better-sqlite3",
+      database: databasePath,
+    });
+
+    await dataSource.initialize();
+
+    try {
+      await dataSource.query(`
+        CREATE TABLE kanban_tasks (
+          id TEXT PRIMARY KEY NOT NULL,
+          status TEXT NOT NULL,
+          display_order INTEGER NOT NULL DEFAULT 0,
+          created_at DATETIME NOT NULL,
+          updated_at DATETIME NOT NULL
+        )
+      `);
+
+      // When
+      const queryRunner = dataSource.createQueryRunner();
+      try {
+        const migration = new DropDisplayOrderFromKanbanTasks1771800000000();
+        await migration.up(queryRunner);
+        await migration.down(queryRunner);
+      } finally {
+        await queryRunner.release();
+      }
+
+      // Then
+      const columns = await dataSource.query(`PRAGMA table_info("kanban_tasks")`);
+      const indexColumns = await dataSource.query(`PRAGMA index_info("idx_kanban_tasks_status_order")`);
+
+      expect(columns.map((row: { name: string }) => row.name)).toContain("display_order");
+      expect(indexColumns.map((row: { name: string }) => row.name)).toEqual([
+        "status",
+        "display_order",
+        "created_at",
+      ]);
+    } finally {
+      await dataSource.destroy();
+    }
+  });
+
+  it("baseline DB에 남아 있던 옛 컬럼 인덱스를 기본 순서 인덱스로 다시 만든다", async () => {
+    // Given
+    const databasePath = createDatabasePath();
+    insertLegacyDisplayOrderData(databasePath);
+    const legacyDatabase = new Database(databasePath);
+    try {
+      legacyDatabase.exec(`
+        CREATE INDEX idx_kanban_tasks_status_order
+          ON kanban_tasks(status, display_order, created_at)
+      `);
+    } finally {
+      legacyDatabase.close();
+    }
+
+    // When
+    ensureSqliteDatabaseReady(databasePath);
+
+    // Then
+    const database = new Database(databasePath);
+    try {
+      const indexColumns = database
+        .prepare(`PRAGMA index_info("idx_kanban_tasks_status_order")`)
+        .all() as Array<{ name: string }>;
+
+      /**
+       * CREATE INDEX IF NOT EXISTS는 이름이 같으면 정의가 달라도 넘어간다.
+       * 그대로 두면 ORDER BY updated_at이 매번 임시 B-tree 정렬로 떨어진다.
+       */
+      expect(indexColumns.map((column) => column.name)).toEqual(["status", "updated_at"]);
+    } finally {
+      database.close();
     }
   });
 });

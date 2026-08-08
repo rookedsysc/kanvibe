@@ -44,3 +44,48 @@ describe("기본 세션 타입", () => {
     expect(await getDefaultSessionType()).toBe(SessionType.TMUX);
   });
 });
+
+const BOARD_SORT_PREFERENCE_KEY = "board_sort_preference";
+
+describe("보드 정렬 설정", () => {
+  it("저장한 기준을 앱을 다시 켠 뒤에도 그대로 읽는다", async () => {
+    // Given
+    const preference = {
+      keys: [{ field: "priority" as const, direction: "desc" as const }],
+    };
+    const { getBoardSortPreference, setBoardSortPreference } = await import(
+      "@/desktop/main/services/appSettingsService"
+    );
+
+    // When
+    await setBoardSortPreference(preference);
+    const restored = await getBoardSortPreference();
+
+    // Then
+    expect(storedSettings.has(BOARD_SORT_PREFERENCE_KEY)).toBe(true);
+    expect(restored).toEqual(preference);
+  });
+
+  it("한 번도 저장한 적이 없으면 기준 없이 시작한다", async () => {
+    // Given
+    const { getBoardSortPreference } = await import("@/desktop/main/services/appSettingsService");
+
+    // When
+    const preference = await getBoardSortPreference();
+
+    // Then
+    expect(preference).toEqual({ keys: [] });
+  });
+
+  it("저장된 값이 깨져 있어도 보드를 못 그리는 대신 기본값으로 되돌린다", async () => {
+    // Given
+    storedSettings.set(BOARD_SORT_PREFERENCE_KEY, "{ 깨진 값");
+    const { getBoardSortPreference } = await import("@/desktop/main/services/appSettingsService");
+
+    // When
+    const preference = await getBoardSortPreference();
+
+    // Then
+    expect(preference).toEqual({ keys: [] });
+  });
+});
