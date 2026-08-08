@@ -116,15 +116,6 @@
           "asc": "A→Z",
           "desc": "Z→A"
         }
-      },
-      "modeLabel": "卡片顺序",
-      "modes": {
-        "rank-first": "拖动顺序优先",
-        "sort-first": "排序条件优先"
-      },
-      "modeDescriptions": {
-        "rank-first": "保持你拖动出来的顺序，排序条件只在位置相同时才生效。",
-        "sort-first": "先应用排序条件，取值相同时才按拖动顺序。拖动后卡片会滑回排序后的位置。"
       }
     },
     "pageFind": {

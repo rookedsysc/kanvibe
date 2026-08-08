@@ -13,7 +13,7 @@ import ProjectSelector from "./ProjectSelector";
 import TaskContextMenu from "./TaskContextMenu";
 import BranchTaskModal from "./BranchTaskModal";
 import DoneConfirmDialog from "./DoneConfirmDialog";
-import { reorderTasks, deleteTask, getMoreDoneTasks, moveTaskToColumn } from "@/desktop/renderer/actions/kanban";
+import { deleteTask, getMoreDoneTasks, moveTaskToColumn } from "@/desktop/renderer/actions/kanban";
 import { runBackgroundTaskSyncNow } from "@/desktop/renderer/actions/backgroundTaskSync";
 import type { TasksByStatus } from "@/desktop/renderer/actions/kanban";
 import { useBoardCommands } from "@/desktop/renderer/components/BoardCommandProvider";
@@ -371,7 +371,6 @@ function buildStatusMoveResult(
   task: KanbanTask,
   destinationStatus: TaskStatus,
   currentTasks: TasksByStatus,
-  displayedTasks: TasksByStatus,
 ): DropResult | null {
   if (task.status === destinationStatus) return null;
 
@@ -387,7 +386,7 @@ function buildStatusMoveResult(
     },
     destination: {
       droppableId: destinationStatus,
-      index: displayedTasks[destinationStatus].length,
+      index: 0,
     },
     reason: "DROP",
     mode: "FLUID",
@@ -421,127 +420,46 @@ function openSettingsPage() {
   window.location.hash = `#/${getCurrentBoardLocale()}/settings`;
 }
 
-/**
- * 필터된 인덱스를 전체 배열의 올바른 위치에 매핑하여 태스크를 삽입한다.
- * 프로젝트 필터가 활성화된 상태에서 드래그 인덱스가 필터된 리스트 기준이므로,
- * 전체 배열에서의 정확한 삽입 위치를 계산해야 한다.
- */
-function insertAtFilteredIndex(
-  fullArray: KanbanTask[],
-  task: KanbanTask,
-  filteredIndex: number,
-  taskFilter: BoardTaskFilter | null
-): KanbanTask[] {
-  const arr = [...fullArray];
-
-  if (!taskFilter) {
-    arr.splice(filteredIndex, 0, task);
-    return arr;
-  }
-
-  const filtered = arr.filter(taskFilter);
-
-  if (filteredIndex < filtered.length) {
-    const targetTask = filtered[filteredIndex];
-    const fullIndex = arr.findIndex((t) => t.id === targetTask.id);
-    arr.splice(fullIndex, 0, task);
-  } else if (filtered.length > 0) {
-    const lastTask = filtered[filtered.length - 1];
-    const lastIndex = arr.findIndex((t) => t.id === lastTask.id);
-    arr.splice(lastIndex + 1, 0, task);
-  } else {
-    arr.push(task);
-  }
-
-  return arr;
-}
-
 interface DragMovePlan {
   updatedTasks: TasksByStatus;
   doneTotalDelta: number;
   doneOffsetDelta: number;
-  persistence:
-    | { type: "reorder"; taskId: string; status: TaskStatus; orderedIds: string[] }
-    | { type: "move"; taskId: string; status: TaskStatus; orderedIds: string[] };
+  persistence: { taskId: string; status: TaskStatus };
 }
 
 /**
- * 드롭한 자리의 앞뒤 카드를 화면에 보이는 순서 그대로 넘긴다.
- * 저장 쪽은 이 이웃들의 rank 사이 값을 계산하므로, 필터나 정렬이 걸린 화면에서도 사용자가 놓은 자리와 일치한다.
+ * 드래그 결과를 낙관적 상태 변경과 저장 계획으로 바꾼다.
+ *
+ * 카드 자리를 따로 저장하지 않으므로 같은 컬럼 안에서의 드롭은 아무것도 바꾸지 않는다.
+ * 다른 컬럼으로 옮긴 카드는 방금 수정한 카드가 되므로 목적지 맨 위에 놓는다.
  */
-function buildDisplayedOrderIds(
-  displayedTasks: KanbanTask[],
-  movedTaskId: string,
-  destinationIndex: number,
-): string[] {
-  const withoutMoved = displayedTasks.filter((task) => task.id !== movedTaskId).map((task) => task.id);
-  withoutMoved.splice(destinationIndex, 0, movedTaskId);
-  return withoutMoved;
-}
-
 function buildDragMovePlan(
   currentTasks: TasksByStatus,
-  displayedTasks: TasksByStatus,
   result: DropResult,
-  taskFilter: BoardTaskFilter | null,
 ): DragMovePlan | null {
   const { source, destination, draggableId } = result;
   if (!destination) return null;
 
   const sourceStatus = source.droppableId as TaskStatus;
   const destStatus = destination.droppableId as TaskStatus;
+  if (sourceStatus === destStatus) return null;
+
+  const movedTask = currentTasks[sourceStatus].find((task) => task.id === draggableId);
+  if (!movedTask) return null;
+
   const updated: TasksByStatus = { ...currentTasks };
+  updated[sourceStatus] = currentTasks[sourceStatus].filter((task) => task.id !== draggableId);
+  updated[destStatus] = [{ ...movedTask, status: destStatus }, ...currentTasks[destStatus]];
 
-  const taskIndex = updated[sourceStatus].findIndex((task) => task.id === draggableId);
-  if (taskIndex === -1) return null;
-
-  const movedTask = updated[sourceStatus][taskIndex];
-  const newSource = updated[sourceStatus].filter((task) => task.id !== draggableId);
-
-  if (sourceStatus === destStatus) {
-    updated[sourceStatus] = insertAtFilteredIndex(
-      newSource,
-      movedTask,
-      destination.index,
-      taskFilter,
-    );
-
-    return {
-      updatedTasks: updated,
-      doneTotalDelta: 0,
-      doneOffsetDelta: 0,
-      persistence: {
-        type: "reorder",
-        taskId: draggableId,
-        status: sourceStatus,
-        orderedIds: buildDisplayedOrderIds(displayedTasks[sourceStatus], draggableId, destination.index),
-      },
-    };
-  }
-
-  updated[sourceStatus] = newSource;
-  const updatedTask: KanbanTask = { ...movedTask, status: destStatus };
-  updated[destStatus] = insertAtFilteredIndex(
-    updated[destStatus],
-    updatedTask,
-    destination.index,
-    taskFilter,
-  );
+  const doneDelta =
+    (destStatus === TaskStatus.DONE ? 1 : 0) -
+    (sourceStatus === TaskStatus.DONE ? 1 : 0);
 
   return {
     updatedTasks: updated,
-    doneTotalDelta:
-      (destStatus === TaskStatus.DONE ? 1 : 0) -
-      (sourceStatus === TaskStatus.DONE ? 1 : 0),
-    doneOffsetDelta:
-      (destStatus === TaskStatus.DONE ? 1 : 0) -
-      (sourceStatus === TaskStatus.DONE ? 1 : 0),
-    persistence: {
-      type: "move",
-      taskId: draggableId,
-      status: destStatus,
-      orderedIds: buildDisplayedOrderIds(displayedTasks[destStatus], draggableId, destination.index),
-    },
+    doneTotalDelta: doneDelta,
+    doneOffsetDelta: doneDelta,
+    persistence: { taskId: draggableId, status: destStatus },
   };
 }
 
@@ -1039,12 +957,7 @@ export default function Board({
   /** 드래그 결과를 받아 state 업데이트 + DB 반영을 수행한다 */
   const executeDragMove = useCallback(
     (result: DropResult) => {
-      const plan = buildDragMovePlan(
-        tasks,
-        displayedTasks,
-        result,
-        hasActiveBoardTaskFilter ? boardTaskFilter : null,
-      );
+      const plan = buildDragMovePlan(tasks, result);
       if (!plan) return;
 
       setTasks(plan.updatedTasks);
@@ -1058,28 +971,15 @@ export default function Board({
       }
 
       startDragPersistenceTransition(async () => {
-        if (plan.persistence.type === "reorder") {
-          await reorderTasks(
-            plan.persistence.status,
-            plan.persistence.taskId,
-            plan.persistence.orderedIds,
-          );
-          return;
-        }
-
-        await moveTaskToColumn(
-          plan.persistence.taskId,
-          plan.persistence.status,
-          plan.persistence.orderedIds,
-        );
+        await moveTaskToColumn(plan.persistence.taskId, plan.persistence.status);
       });
     },
-    [boardTaskFilter, displayedTasks, hasActiveBoardTaskFilter, startDragPersistenceTransition, tasks]
+    [startDragPersistenceTransition, tasks]
   );
 
   const moveTaskToStatus = useCallback(
     (task: KanbanTask, newStatus: TaskStatus) => {
-      const result = buildStatusMoveResult(task, newStatus, tasks, displayedTasks);
+      const result = buildStatusMoveResult(task, newStatus, tasks);
       if (!result) return;
 
       const shouldConfirmDoneMove =

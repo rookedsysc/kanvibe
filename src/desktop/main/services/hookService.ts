@@ -3,7 +3,6 @@ import { getProjectRepository, getTaskRepository } from "@/lib/database";
 import { createWorktreeWithSession } from "@/lib/worktree";
 import { broadcastBoardUpdate, broadcastHookStatusTargetMissing, broadcastTaskStatusChanged } from "@/lib/boardNotifier";
 import { installTaskHooksImmediately } from "@/desktop/main/services/kanbanService";
-import { appendDisplayRank } from "@/desktop/main/services/taskDisplayRankService";
 import { persistTaskStateAtPath as persistHookTaskState } from "@/desktop/main/services/kanvibeTaskStateService";
 
 const STATUS_MAP: Record<string, TaskStatus> = {
@@ -45,8 +44,6 @@ export async function startHookTask(input: HookStartInput) {
     baseBranch: input.baseBranch || null,
     status: TaskStatus.TODO,
   });
-  /** hook이 만든 카드도 TODO 맨 뒤 자리를 받아야 다른 카드와 rank가 겹치지 않는다 */
-  const displayRankPromise = appendDisplayRank(repo, TaskStatus.TODO);
 
   if (input.branchName && input.sessionType && input.projectId) {
     try {
@@ -72,8 +69,6 @@ export async function startHookTask(input: HookStartInput) {
       console.error("Hook worktree/세션 생성 실패:", error);
     }
   }
-
-  task.displayRank = await displayRankPromise;
 
   const saved = await repo.save(task);
 

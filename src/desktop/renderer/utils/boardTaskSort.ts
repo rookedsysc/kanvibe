@@ -1,7 +1,6 @@
 import type { KanbanTask } from "@/entities/KanbanTask";
 import type { Project } from "@/entities/Project";
 import { TaskPriority } from "@/entities/TaskPriority";
-import { compareDisplayRank } from "@/desktop/shared/displayRank";
 import type { BoardSortField, BoardSortKey, BoardSortPreference } from "@/desktop/shared/boardSort";
 
 /** 우선순위 오름차순은 "높은 순"이다. 급한 것이 위로 와야 목록이 쓸모 있다 */
@@ -125,16 +124,14 @@ function compareBySortKeys(
   return 0;
 }
 
-function compareByCreatedAt(left: KanbanTask, right: KanbanTask): number {
-  return toTimestamp(left.createdAt) - toTimestamp(right.createdAt);
+/** 고른 기준으로 승부가 나지 않을 때 쓰는 보드 기본 순서. DB가 내려주는 순서와 같아야 화면이 흔들리지 않는다 */
+function compareByRecentlyUpdated(left: KanbanTask, right: KanbanTask): number {
+  return toTimestamp(right.updatedAt) - toTimestamp(left.updatedAt);
 }
 
 /**
  * 한 컬럼의 task를 정렬 설정에 따라 늘어놓는다.
- *
- * 기준이 하나도 없으면 이미 rank 순으로 들어온 목록을 그대로 두어 드래그한 자리가 유지된다.
- * 기준이 있으면 mode가 카드 자리(rank)와 정렬 기준 중 무엇을 먼저 볼지 정한다.
- * `rank-first`는 드래그한 순서를 그대로 보여 주고 기준은 저장해 두었다가 rank가 같을 때만 쓴다.
+ * 기준이 하나도 없으면 이미 최근 수정순으로 들어온 목록을 그대로 둔다.
  */
 export function sortTasksForBoard(
   tasks: KanbanTask[],
@@ -145,15 +142,7 @@ export function sortTasksForBoard(
     return tasks;
   }
 
-  if (preference.mode === "rank-first") {
-    return [...tasks].sort((left, right) =>
-      compareDisplayRank(left.displayRank, right.displayRank)
-      || compareBySortKeys(left, right, preference.keys, context)
-      || compareByCreatedAt(left, right));
-  }
-
   return [...tasks].sort((left, right) =>
     compareBySortKeys(left, right, preference.keys, context)
-    || compareDisplayRank(left.displayRank, right.displayRank)
-    || compareByCreatedAt(left, right));
+    || compareByRecentlyUpdated(left, right));
 }

@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { createEvent, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import Board from "../Board";
-import { deleteTask, moveTaskToColumn, reorderTasks } from "@/desktop/renderer/actions/kanban";
+import { deleteTask, moveTaskToColumn } from "@/desktop/renderer/actions/kanban";
 import { runBackgroundTaskSyncNow } from "@/desktop/renderer/actions/backgroundTaskSync";
 import { useTaskKindFilterParams } from "@/desktop/renderer/hooks/useTaskKindFilterParams";
 import { useBoardSortPreference } from "@/desktop/renderer/hooks/useBoardSortPreference";
@@ -73,7 +73,6 @@ vi.mock("@hello-pangea/dnd", () => ({
 }));
 
 vi.mock("@/desktop/renderer/actions/kanban", () => ({
-  reorderTasks: vi.fn(),
   updateTaskStatus: vi.fn(),
   deleteTask: vi.fn(),
   getMoreDoneTasks: vi.fn().mockResolvedValue({ tasks: [], doneTotal: 0 }),
@@ -98,7 +97,7 @@ vi.mock("@/desktop/renderer/hooks/useTaskKindFilterParams", () => ({
 }));
 
 vi.mock("@/desktop/renderer/hooks/useBoardSortPreference", () => ({
-  useBoardSortPreference: vi.fn().mockReturnValue([{ keys: [], mode: "sort-first" }, vi.fn()]),
+  useBoardSortPreference: vi.fn().mockReturnValue([{ keys: [] }, vi.fn()]),
 }));
 
 vi.mock("../Column", () => ({
@@ -221,7 +220,6 @@ function createTask(overrides: Partial<KanbanTask> & Pick<KanbanTask, "id" | "ti
     baseBranch: null,
     prUrl: null,
     priority: null,
-    displayRank: "8",
     createdAt: new Date(),
     updatedAt: new Date(),
     ...overrides,
@@ -257,8 +255,7 @@ function createTasksWithTodo(): TasksByStatus {
         baseBranch: null,
         prUrl: null,
         priority: null,
-        displayRank: "8",
-        createdAt: new Date(),
+            createdAt: new Date(),
         updatedAt: new Date(),
       },
     ],
@@ -288,8 +285,7 @@ function createTasksWithTodoAndProgress(): TasksByStatus {
         baseBranch: null,
         prUrl: null,
         priority: null,
-        displayRank: "8",
-        createdAt: new Date(),
+            createdAt: new Date(),
         updatedAt: new Date(),
       },
     ],
@@ -310,8 +306,7 @@ function createTasksWithTodoAndProgress(): TasksByStatus {
         baseBranch: null,
         prUrl: null,
         priority: null,
-        displayRank: "8",
-        createdAt: new Date(),
+            createdAt: new Date(),
         updatedAt: new Date(),
       },
     ],
@@ -413,7 +408,7 @@ describe("Board defaultSessionType sync", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(useTaskKindFilterParams).mockReturnValue(["all", vi.fn()] as const);
-    vi.mocked(useBoardSortPreference).mockReturnValue([{ keys: [], mode: "sort-first" }, vi.fn()] as const);
+    vi.mocked(useBoardSortPreference).mockReturnValue([{ keys: [] }, vi.fn()] as const);
     delete window.kanvibeDesktop;
     mockNavigatorPlatform("Linux x86_64");
     mockWindowFind();
@@ -549,7 +544,7 @@ describe("Board defaultSessionType sync", () => {
     expectTaskKindFilterVisibleTasks(["Root Project Task", "Branch Worktree Task", "Plain Task"]);
   });
 
-  it("드래그 종료 시 reorder action을 이벤트 이후에 호출한다", async () => {
+  it("같은 컬럼 안에서 드래그를 끝내도 저장하지 않는다", async () => {
     render(
       <Board
         initialTasks={createTasksWithTodo()}
@@ -567,12 +562,12 @@ describe("Board defaultSessionType sync", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "trigger-drag-end" }));
 
-    await waitFor(() => {
-      expect(reorderTasks).toHaveBeenCalledWith(TaskStatus.TODO, "task-1", ["task-1"]);
-    });
+    /** 카드 자리를 저장하지 않으므로 같은 컬럼 안 드롭은 아무것도 바꾸지 않는다 */
+    await waitFor(() => expect(screen.getAllByTestId("column")).toHaveLength(5));
+    expect(moveTaskToColumn).not.toHaveBeenCalled();
   });
 
-  it("드래그로 다른 컬럼에 놓으면 목적지에서의 자리까지 함께 저장한다", async () => {
+  it("드래그로 다른 컬럼에 놓으면 상태만 저장한다", async () => {
     render(
       <Board
         initialTasks={createTasksWithTodo()}
@@ -591,8 +586,7 @@ describe("Board defaultSessionType sync", () => {
     fireEvent.click(screen.getByRole("button", { name: "trigger-cross-column-drag-end" }));
 
     await waitFor(() => {
-      /** 목적지 컬럼에서 사용자가 놓은 자리가 반영된 순서가 그대로 넘어가야 rank를 그 자리로 계산한다 */
-      expect(moveTaskToColumn).toHaveBeenCalledWith("task-1", TaskStatus.REVIEW, ["task-1"]);
+      expect(moveTaskToColumn).toHaveBeenCalledWith("task-1", TaskStatus.REVIEW);
     });
   });
 
@@ -1188,7 +1182,7 @@ describe("Board defaultSessionType sync", () => {
     fireEvent.keyDown(commandInput, { key: "Enter" });
 
     await waitFor(() => {
-      expect(moveTaskToColumn).toHaveBeenCalledWith("task-1", TaskStatus.REVIEW, ["task-1"]);
+      expect(moveTaskToColumn).toHaveBeenCalledWith("task-1", TaskStatus.REVIEW);
     });
   });
 
@@ -1289,7 +1283,7 @@ describe("Board defaultSessionType sync", () => {
     fireEvent.keyDown(commandInput, { key: "Enter" });
 
     await waitFor(() => {
-      expect(moveTaskToColumn).toHaveBeenCalledWith("task-1", TaskStatus.REVIEW, ["task-1"]);
+      expect(moveTaskToColumn).toHaveBeenCalledWith("task-1", TaskStatus.REVIEW);
     });
   });
 
@@ -1414,7 +1408,7 @@ describe("Board defaultSessionType sync", () => {
     });
   });
 
-  it("컨텍스트 메뉴에서 상태를 선택하면 대상 컬럼 마지막으로 task를 이동한다", async () => {
+  it("컨텍스트 메뉴에서 상태를 선택하면 대상 컬럼으로 task를 이동한다", async () => {
     render(
       <Board
         initialTasks={createTasksWithTodo()}
@@ -1441,7 +1435,7 @@ describe("Board defaultSessionType sync", () => {
     fireEvent.click(await screen.findByRole("button", { name: "change-status-review" }));
 
     await waitFor(() => {
-      expect(moveTaskToColumn).toHaveBeenCalledWith("task-1", TaskStatus.REVIEW, ["task-1"]);
+      expect(moveTaskToColumn).toHaveBeenCalledWith("task-1", TaskStatus.REVIEW);
     });
   });
 
@@ -1637,7 +1631,7 @@ describe("Board defaultSessionType sync", () => {
     it("우선순위 정렬을 켜면 카드가 그 순서로 늘어선다", async () => {
       // Given / When
       renderBoardWithSortPreference(
-        { keys: [{ field: "priority", direction: "asc" }], mode: "sort-first" },
+        { keys: [{ field: "priority", direction: "asc" }] },
         createPrioritizedTodoTasks(),
       );
 
@@ -1647,9 +1641,9 @@ describe("Board defaultSessionType sync", () => {
       expect(readTodoCardIds()).toEqual(["high-task", "low-task", "unset-task"]);
     });
 
-    it("정렬 기준이 없으면 저장된 수동 순서를 그대로 보여준다", async () => {
+    it("정렬 기준이 없으면 DB가 내려준 순서를 그대로 보여준다", async () => {
       // Given / When
-      renderBoardWithSortPreference({ keys: [], mode: "sort-first" }, createPrioritizedTodoTasks());
+      renderBoardWithSortPreference({ keys: [] }, createPrioritizedTodoTasks());
 
       // Then
       await waitFor(() => expect(screen.getAllByTestId("column")).toHaveLength(5));
@@ -1666,13 +1660,13 @@ describe("Board defaultSessionType sync", () => {
             title: "Medium",
             status: TaskStatus.TODO,
             priority: TaskPriority.MEDIUM,
-            createdAt: new Date("2026-01-01T00:00:00Z"),
+            updatedAt: new Date("2026-01-03T00:00:00Z"),
           }),
           createTask({
             id: "inheriting-task",
             title: "Inheriting",
             status: TaskStatus.TODO,
-            createdAt: new Date("2026-01-03T00:00:00Z"),
+            updatedAt: new Date("2026-01-01T00:00:00Z"),
           }),
           createTask({
             id: "root-task",
@@ -1680,14 +1674,14 @@ describe("Board defaultSessionType sync", () => {
             status: TaskStatus.TODO,
             branchName: "main",
             priority: TaskPriority.HIGH,
-            createdAt: new Date("2026-01-02T00:00:00Z"),
+            updatedAt: new Date("2026-01-02T00:00:00Z"),
           }),
         ],
       };
 
       // When
       renderBoardWithSortPreference(
-        { keys: [{ field: "priority", direction: "asc" }], mode: "sort-first" },
+        { keys: [{ field: "priority", direction: "asc" }] },
         tasks,
       );
 
@@ -1696,42 +1690,5 @@ describe("Board defaultSessionType sync", () => {
       expect(readTodoCardIds()).toEqual(["root-task", "inheriting-task", "medium-task"]);
     });
 
-    it("rank 우선 모드에서는 정렬 기준이 있어도 드래그해 만든 순서를 지킨다", async () => {
-      // Given
-      const tasks: TasksByStatus = {
-        ...createEmptyTasks(),
-        [TaskStatus.TODO]: [
-          createTask({ id: "low-task", title: "Low", status: TaskStatus.TODO, priority: TaskPriority.LOW, displayRank: "2" }),
-          createTask({ id: "high-task", title: "High", status: TaskStatus.TODO, priority: TaskPriority.HIGH, displayRank: "6" }),
-        ],
-      };
-
-      // When
-      renderBoardWithSortPreference(
-        { keys: [{ field: "priority", direction: "asc" }], mode: "rank-first" },
-        tasks,
-      );
-
-      // Then
-      await waitFor(() => expect(screen.getAllByTestId("column")).toHaveLength(5));
-      /** 우선순위가 높은 카드라도 rank가 정한 자리를 넘어서지 못한다 */
-      expect(readTodoCardIds()).toEqual(["low-task", "high-task"]);
-    });
-
-    it("정렬 기준이 켜져 있어도 같은 컬럼 안 재정렬을 저장한다", async () => {
-      // Given
-      renderBoardWithSortPreference(
-        { keys: [{ field: "priority", direction: "asc" }], mode: "sort-first" },
-        createTasksWithTodo(),
-      );
-      await waitFor(() => expect(screen.getAllByTestId("column")).toHaveLength(5));
-
-      // When
-      fireEvent.click(screen.getByRole("button", { name: "trigger-drag-end" }));
-
-      // Then
-      /** 드래그한 자리는 rank로 남고, 정렬 기준은 그 위에서 다시 적용된다 */
-      expect(reorderTasks).toHaveBeenCalled();
-    });
   });
 });

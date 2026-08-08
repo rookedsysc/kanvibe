@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef } from "react";
 
 const TASK_CARD_SELECTOR = "[data-kanban-task-id]";
 const REFLOW_DURATION_MS = 220;
@@ -12,27 +12,41 @@ const REFLOW_DURATION_MS = 220;
  *
  * 자리는 뷰포트가 아니라 컬럼 기준 offset으로 기억한다. 보드는 세로로 스크롤되므로 뷰포트 기준으로 재면
  * 스크롤한 뒤 정렬 기준을 켰을 때 스크롤한 거리만큼 어긋난 지점에서 카드가 날아온다.
+ *
+ * 순서가 그대로여도 카드 높이가 바뀌면(PR 배지가 생기거나 프로젝트 이름이 줄바꿈되는 등) 기억해 둔 자리가 낡는다.
+ * 그대로 두면 다음 재정렬에서 카드가 엉뚱한 지점에서 날아오므로, 크기 변화도 함께 보고 자리를 다시 잰다.
  */
 export function useFlipReflow<T extends HTMLElement>(orderKey: string) {
   const containerRef = useRef<T>(null);
   const previousOffsetById = useRef(new Map<string, number>());
 
-  useLayoutEffect(() => {
-    const container = containerRef.current;
-    if (!container) return;
-
-    const nextOffsetById = new Map<string, number>();
+  const readCardOffsets = useCallback((container: T) => {
     const containerTop = container.getBoundingClientRect().top;
+    const offsetById = new Map<string, number>();
 
     for (const card of container.querySelectorAll<HTMLElement>(TASK_CARD_SELECTOR)) {
       const taskId = card.dataset.kanbanTaskId;
       if (!taskId) continue;
 
-      const nextOffset = card.getBoundingClientRect().top - containerTop;
-      nextOffsetById.set(taskId, nextOffset);
+      offsetById.set(taskId, card.getBoundingClientRect().top - containerTop);
+    }
+
+    return offsetById;
+  }, []);
+
+  useLayoutEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const nextOffsetById = readCardOffsets(container);
+
+    for (const card of container.querySelectorAll<HTMLElement>(TASK_CARD_SELECTOR)) {
+      const taskId = card.dataset.kanbanTaskId;
+      if (!taskId || typeof card.animate !== "function") continue;
 
       const previousOffset = previousOffsetById.current.get(taskId);
-      if (previousOffset === undefined || typeof card.animate !== "function") continue;
+      const nextOffset = nextOffsetById.get(taskId);
+      if (previousOffset === undefined || nextOffset === undefined) continue;
 
       const shift = previousOffset - nextOffset;
       if (Math.abs(shift) < 1) continue;
@@ -44,7 +58,23 @@ export function useFlipReflow<T extends HTMLElement>(orderKey: string) {
     }
 
     previousOffsetById.current = nextOffsetById;
-  }, [orderKey]);
+  }, [orderKey, readCardOffsets]);
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container || typeof ResizeObserver !== "function") return;
+
+    const observer = new ResizeObserver(() => {
+      previousOffsetById.current = readCardOffsets(container);
+    });
+
+    observer.observe(container);
+    for (const card of container.querySelectorAll<HTMLElement>(TASK_CARD_SELECTOR)) {
+      observer.observe(card);
+    }
+
+    return () => observer.disconnect();
+  }, [orderKey, readCardOffsets]);
 
   return containerRef;
 }

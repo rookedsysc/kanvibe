@@ -18,7 +18,6 @@ import { resolveProjectIconDataUrl } from "@/lib/githubProjectIcon";
 import { broadcastBoardUpdate } from "@/lib/boardNotifier";
 import { getAvailableHosts as readAvailableHosts } from "@/lib/sshConfig";
 import { getDefaultSessionType } from "@/desktop/main/services/appSettingsService";
-import { appendDisplayRank } from "@/desktop/main/services/taskDisplayRankService";
 import { installKanvibeHooks, installKanvibeHookProvider, scheduleKanvibeHooksInstall } from "@/lib/kanvibeHooksInstaller";
 import {
   persistTaskStateAtPath as persistTaskState,
@@ -243,8 +242,6 @@ async function createDefaultBranchTask(project: Project) {
     projectId: project.id,
     baseBranch: project.defaultBranch,
   });
-  /** rank를 비워 두면 컬럼 DEFAULT 값이 들어가 프로젝트를 등록할수록 같은 자리의 카드가 쌓인다 */
-  task.displayRank = await appendDisplayRank(taskRepo, task.status);
 
   if (!project.sshHost && defaultBranchWorktreePath) {
     try {
@@ -777,8 +774,6 @@ async function syncProjectWorktrees(
           sshHost: project.sshHost,
         }),
       });
-      /** worktree 스캔이 만드는 카드도 자기 자리를 받아야 뒤에 오는 드롭 위치 계산이 어긋나지 않는다 */
-      task.displayRank = await appendDisplayRank(taskRepo, task.status);
       const savedTask = await taskRepo.save(task);
       result.changed = true;
       await persistTaskState(wt.path, savedTask, project.sshHost);

@@ -30,11 +30,10 @@ describe("보드 정렬 설정", () => {
     mocks.appSettingsRepo.findOne.mockResolvedValue(null);
   });
 
-  it("저장한 기준과 모드를 앱을 다시 켠 뒤에도 그대로 읽는다", async () => {
+  it("저장한 기준을 앱을 다시 켠 뒤에도 그대로 읽는다", async () => {
     // Given
     const preference = {
       keys: [{ field: "priority" as const, direction: "desc" as const }],
-      mode: "rank-first" as const,
     };
     const { getBoardSortPreference, setBoardSortPreference } = await import(
       "@/desktop/main/services/appSettingsService"
@@ -51,7 +50,7 @@ describe("보드 정렬 설정", () => {
     expect(restored).toEqual(preference);
   });
 
-  it("한 번도 저장한 적이 없으면 기준 없이 정렬 기준 우선으로 시작한다", async () => {
+  it("한 번도 저장한 적이 없으면 기준 없이 시작한다", async () => {
     // Given
     const { getBoardSortPreference } = await import("@/desktop/main/services/appSettingsService");
 
@@ -59,7 +58,7 @@ describe("보드 정렬 설정", () => {
     const preference = await getBoardSortPreference();
 
     // Then
-    expect(preference).toEqual({ keys: [], mode: "sort-first" });
+    expect(preference).toEqual({ keys: [] });
   });
 
   it("저장된 값이 깨져 있어도 보드를 못 그리는 대신 기본값으로 되돌린다", async () => {
@@ -74,6 +73,6 @@ describe("보드 정렬 설정", () => {
     const preference = await getBoardSortPreference();
 
     // Then
-    expect(preference).toEqual({ keys: [], mode: "sort-first" });
+    expect(preference).toEqual({ keys: [] });
   });
 });

@@ -1156,91 +1156,22 @@ describe("kanbanService.createTask", () => {
     expect(writeOrder.indexOf("kanvibe-state")).toBeLessThan(writeOrder.indexOf("database"));
   });
 
-  it("컬럼 내 순서를 바꾸면 옮긴 task 한 행만 앞뒤 사이 rank로 갱신한다", async () => {
+  it("다른 컬럼으로 task를 옮기면 상태만 갱신하고 자리는 저장하지 않는다", async () => {
     // Given
     mocks.taskRepo.update.mockResolvedValue({ affected: 1 });
-    mocks.taskRepo.find.mockResolvedValue([
-      { id: "task-a", displayRank: "2" },
-      { id: "task-c", displayRank: "6" },
-    ]);
-
-    const { reorderTasks } = await import("@/desktop/main/services/kanbanService");
-
-    // When
-    await reorderTasks("todo" as never, "task-b", ["task-a", "task-b", "task-c"]);
-
-    // Then
-    /** 정수 순번이었다면 컬럼 전체를 다시 써야 했지만 rank는 옮긴 행만 건드린다 */
-    expect(mocks.taskRepo.update).toHaveBeenCalledTimes(1);
-    const [updatedTaskId, patch] = mocks.taskRepo.update.mock.calls[0];
-    expect(updatedTaskId).toBe("task-b");
-    expect(patch.displayRank > "2").toBe(true);
-    expect(patch.displayRank < "6").toBe(true);
-    expect(mocks.broadcastBoardUpdate).toHaveBeenCalledTimes(1);
-  });
-
-  it("다른 컬럼으로 task를 옮기면 상태와 새 자리 rank를 함께 갱신한다", async () => {
-    // Given
-    mocks.taskRepo.update.mockResolvedValue({ affected: 1 });
-    mocks.taskRepo.find.mockResolvedValue([{ id: "task-b", displayRank: "4" }]);
 
     const { moveTaskToColumn } = await import("@/desktop/main/services/kanbanService");
 
     // When
-    await moveTaskToColumn("task-a", "review" as never, ["task-b", "task-a"]);
+    await moveTaskToColumn("task-a", "review" as never);
 
     // Then
+    /** 보드 순서는 정렬 기준과 최근 수정순으로만 정해지므로 저장해 둘 자리가 없다 */
     const [updatedTaskId, patch] = mocks.taskRepo.update.mock.calls[0];
     expect(updatedTaskId).toBe("task-a");
     expect(patch.status).toBe("review");
-    expect(patch.displayRank > "4").toBe(true);
+    expect(Object.keys(patch)).toEqual(["status"]);
     expect(mocks.broadcastBoardUpdate).toHaveBeenCalledTimes(1);
-  });
-
-  it("앞뒤 이웃 rank가 뒤집힌 자리에 드롭하면 rank 순서상 앞 이웃 바로 다음 카드와의 사이에 둔다", async () => {
-    // Given
-    /** 정렬 기준이 켜진 화면에서는 이웃 rank가 화면 순서와 어긋난다 */
-    mocks.taskRepo.update.mockResolvedValue({ affected: 1 });
-    mocks.taskRepo.find.mockResolvedValue([
-      { id: "task-a", displayRank: "8" },
-      { id: "task-c", displayRank: "2" },
-    ]);
-    /** rank 순서에서 "8" 바로 뒤에 있는 카드 */
-    mocks.taskRepo.findOne.mockResolvedValue({ displayRank: "9" });
-
-    const { reorderTasks } = await import("@/desktop/main/services/kanbanService");
-
-    // When
-    await reorderTasks("todo" as never, "task-b", ["task-a", "task-b", "task-c"]);
-
-    // Then
-    const [updatedTaskId, patch] = mocks.taskRepo.update.mock.calls[0];
-    expect(updatedTaskId).toBe("task-b");
-    /** 컬럼 맨 뒤로 밀어내지 않고 앞 이웃과 그 다음 카드 사이에 끼운다 */
-    expect(patch.displayRank > "8").toBe(true);
-    expect(patch.displayRank < "9").toBe(true);
-  });
-
-  it("앞뒤 이웃 rank가 같아도 앞 이웃 다음 자리를 지키고 컬럼 맨 뒤로 밀지 않는다", async () => {
-    // Given
-    /** 예전 데이터에는 같은 rank를 가진 카드가 나란히 남아 있을 수 있다 */
-    mocks.taskRepo.update.mockResolvedValue({ affected: 1 });
-    mocks.taskRepo.find.mockResolvedValue([
-      { id: "task-a", displayRank: "8" },
-      { id: "task-c", displayRank: "8" },
-    ]);
-    mocks.taskRepo.findOne.mockResolvedValue({ displayRank: "9" });
-
-    const { reorderTasks } = await import("@/desktop/main/services/kanbanService");
-
-    // When
-    await reorderTasks("todo" as never, "task-b", ["task-a", "task-b", "task-c"]);
-
-    // Then
-    const [, patch] = mocks.taskRepo.update.mock.calls[0];
-    /** 맨 뒤(rankBetween("8", null) = "c")로 튀면 사용자가 놓은 자리가 사라진다 */
-    expect(patch.displayRank > "8").toBe(true);
-    expect(patch.displayRank < "9").toBe(true);
   });
 
   it("worktreePath가 없는 비기본 브랜치 task 상태 변경은 프로젝트 루트 task-state를 덮어쓰지 않는다", async () => {
@@ -1394,7 +1325,7 @@ describe("kanbanService.createTask", () => {
       const { moveTaskToColumn } = await import("@/desktop/main/services/kanbanService");
 
       // When
-      await moveTaskToColumn("task-done", "done" as never, ["task-a", "task-done"]);
+      await moveTaskToColumn("task-done", "done" as never);
 
       // Then
       expect(mocks.taskRepo.update).toHaveBeenCalledWith("task-done", expect.objectContaining({
@@ -1441,11 +1372,7 @@ describe("kanbanService.createTask", () => {
       const { moveTaskToColumn } = await import("@/desktop/main/services/kanbanService");
 
       // When
-      await moveTaskToColumn(
-        "task-done-move-preserve-resources",
-        "done" as never,
-        ["task-a", "task-done-move-preserve-resources"],
-      );
+      await moveTaskToColumn("task-done-move-preserve-resources", "done" as never);
       await vi.runAllTimersAsync();
 
       // Then
@@ -1497,7 +1424,7 @@ describe("kanbanService.createTask", () => {
     const { moveTaskToColumn } = await import("@/desktop/main/services/kanbanService");
 
     // When & Then
-    await expect(moveTaskToColumn("task-done", "done" as never, ["task-a", "task-done"]))
+    await expect(moveTaskToColumn("task-done", "done" as never))
       .rejects
       .toThrow("done move failed");
 

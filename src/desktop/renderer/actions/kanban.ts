@@ -66,17 +66,8 @@ export function connectTerminalSession(taskId: string, sessionType: SessionType)
   return invokeDesktop("kanban", "connectTerminalSession", taskId, sessionType);
 }
 
-export function reorderTasks(status: TaskStatus, movedTaskId: string, orderedIds: string[]): Promise<void> {
-  return invokeDesktop("kanban", "reorderTasks", status, movedTaskId, orderedIds);
-}
-
-/** `destOrderedIds`는 목적지 컬럼에서 이 카드가 놓일 자리가 반영된 순서다 */
-export function moveTaskToColumn(
-  taskId: string,
-  newStatus: TaskStatus,
-  destOrderedIds: string[],
-): Promise<void> {
-  return invokeDesktop("kanban", "moveTaskToColumn", taskId, newStatus, destOrderedIds);
+export function moveTaskToColumn(taskId: string, newStatus: TaskStatus): Promise<void> {
+  return invokeDesktop("kanban", "moveTaskToColumn", taskId, newStatus);
 }
 
 export function fetchAndSavePrUrl(taskId: string): Promise<string | null> {

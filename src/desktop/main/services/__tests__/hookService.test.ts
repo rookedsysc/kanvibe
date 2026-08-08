@@ -298,23 +298,6 @@ describe("hookService.startHookTask", () => {
     });
   });
 
-  it("hook이 만드는 task도 TODO 컬럼 맨 뒤 자리 rank를 받는다", async () => {
-    // Given
-    /** 컬럼에 이미 rank "8"인 카드가 있다 */
-    mocks.taskRepo.findOne.mockResolvedValue({ displayRank: "8" });
-    mocks.taskRepo.save.mockImplementation(async (value) => ({ id: "task-1", ...value }));
-
-    const { startHookTask } = await import("@/desktop/main/services/hookService");
-
-    // When
-    await startHookTask({ title: "new hook task" });
-
-    // Then
-    /** rank를 비워 두면 컬럼 DEFAULT "8"이 들어가 기존 카드와 자리가 겹친다 */
-    const [savedTask] = mocks.taskRepo.save.mock.calls[0];
-    expect(savedTask.displayRank > "8").toBe(true);
-  });
-
   it("원격 worktree task를 만들면 hooks 설치와 검증 완료를 기다린 뒤 응답한다", async () => {
     const project = {
       id: "project-1",

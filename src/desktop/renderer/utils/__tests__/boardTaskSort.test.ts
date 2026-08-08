@@ -27,7 +27,6 @@ function buildTask(overrides: Partial<KanbanTask> & { id: string }): KanbanTask 
     baseBranch: null,
     prUrl: null,
     priority: null,
-    displayRank: "8",
     createdAt: new Date("2026-01-01T00:00:00Z"),
     updatedAt: new Date("2026-01-01T00:00:00Z"),
     ...overrides,
@@ -55,7 +54,7 @@ const EMPTY_CONTEXT: BoardSortContext = {
 };
 
 function preference(overrides: Partial<BoardSortPreference>): BoardSortPreference {
-  return { keys: [], mode: "sort-first", ...overrides };
+  return { keys: [], ...overrides };
 }
 
 describe("resolveEffectivePriority", () => {
@@ -122,9 +121,9 @@ describe("buildProjectRootPriorityMap", () => {
 });
 
 describe("sortTasksForBoard", () => {
-  const highTask = buildTask({ id: "high", title: "c", priority: TaskPriority.HIGH, displayRank: "6" });
-  const mediumTask = buildTask({ id: "medium", title: "a", priority: TaskPriority.MEDIUM, displayRank: "4" });
-  const noPriorityTask = buildTask({ id: "none", title: "b", displayRank: "2" });
+  const highTask = buildTask({ id: "high", title: "c", priority: TaskPriority.HIGH });
+  const mediumTask = buildTask({ id: "medium", title: "a", priority: TaskPriority.MEDIUM });
+  const noPriorityTask = buildTask({ id: "none", title: "b" });
 
   it("기준이 하나도 없으면 들어온 순서를 그대로 둔다", () => {
     // Given
@@ -224,52 +223,29 @@ describe("sortTasksForBoard", () => {
     expect(sorted.map((task) => task.id)).toEqual(["inheriting", "medium"]);
   });
 
-  describe("카드 자리와 정렬 기준의 우선순위", () => {
-    const draggedLast = buildTask({ id: "dragged-last", priority: TaskPriority.LOW, displayRank: "6" });
-    const draggedFirst = buildTask({ id: "dragged-first", priority: TaskPriority.LOW, displayRank: "2" });
-    const highPriority = buildTask({ id: "high-priority", priority: TaskPriority.HIGH, displayRank: "4" });
-    const tasks = [draggedLast, highPriority, draggedFirst];
-    const priorityKey = [{ field: "priority" as const, direction: "asc" as const }];
-
-    it("rank 우선이면 드래그해 만든 순서가 그대로 유지된다", () => {
-      // Given / When
-      const sorted = sortTasksForBoard(
-        tasks,
-        preference({ keys: priorityKey, mode: "rank-first" }),
-        EMPTY_CONTEXT,
-      );
-
-      // Then
-      /** 우선순위가 가장 높은 카드라도 rank가 정한 자리를 넘어서지 못한다 */
-      expect(sorted.map((task) => task.id)).toEqual(["dragged-first", "high-priority", "dragged-last"]);
+  it("고른 기준으로 승부가 나지 않으면 최근 수정순으로 갈린다", () => {
+    // Given
+    /** 우선순위가 같은 두 카드 — 기준만으로는 순서를 정할 수 없다 */
+    const older = buildTask({
+      id: "older",
+      priority: TaskPriority.HIGH,
+      updatedAt: new Date("2026-01-01T00:00:00Z"),
+    });
+    const newer = buildTask({
+      id: "newer",
+      priority: TaskPriority.HIGH,
+      updatedAt: new Date("2026-02-01T00:00:00Z"),
     });
 
-    it("정렬 기준 우선이면 기준이 먼저 적용되고 rank는 동점 판정에만 쓰인다", () => {
-      // Given / When
-      const sorted = sortTasksForBoard(
-        tasks,
-        preference({ keys: priorityKey, mode: "sort-first" }),
-        EMPTY_CONTEXT,
-      );
+    // When
+    const sorted = sortTasksForBoard(
+      [older, newer],
+      preference({ keys: [{ field: "priority", direction: "asc" }] }),
+      EMPTY_CONTEXT,
+    );
 
-      // Then
-      expect(sorted.map((task) => task.id)).toEqual(["high-priority", "dragged-first", "dragged-last"]);
-    });
-
-    it("rank가 같은 카드끼리는 rank 우선 모드에서도 정렬 기준으로 갈린다", () => {
-      // Given
-      /** 옛 데이터에는 같은 rank를 가진 카드가 나란히 남아 있을 수 있다 */
-      const sameRankLow = buildTask({ id: "same-rank-low", priority: TaskPriority.LOW, displayRank: "4" });
-
-      // When
-      const sorted = sortTasksForBoard(
-        [sameRankLow, highPriority],
-        preference({ keys: priorityKey, mode: "rank-first" }),
-        EMPTY_CONTEXT,
-      );
-
-      // Then
-      expect(sorted.map((task) => task.id)).toEqual(["high-priority", "same-rank-low"]);
-    });
+    // Then
+    /** DB가 내려주는 기본 순서와 같아야 정렬을 켜고 끌 때 화면이 흔들리지 않는다 */
+    expect(sorted.map((task) => task.id)).toEqual(["newer", "older"]);
   });
 });

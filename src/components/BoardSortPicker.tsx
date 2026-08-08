@@ -4,9 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 import {
   BOARD_SORT_FIELDS,
-  BOARD_SORT_MODES,
   type BoardSortField,
-  type BoardSortMode,
   type BoardSortPreference,
 } from "@/desktop/shared/boardSort";
 
@@ -82,10 +80,6 @@ export default function BoardSortPicker({ preference, onChange }: BoardSortPicke
           : key
       )),
     });
-  }
-
-  function changeMode(mode: BoardSortMode) {
-    onChange({ ...preference, mode });
   }
 
   const activeCount = preference.keys.length;
@@ -191,31 +185,6 @@ export default function BoardSortPicker({ preference, onChange }: BoardSortPicke
                 </button>
               );
             })}
-          </div>
-
-          <div className="mt-3 border-t border-border-subtle pt-2">
-            <p className="mb-1.5 text-[11px] font-semibold uppercase text-text-muted">{t("modeLabel")}</p>
-            <div role="radiogroup" aria-label={t("modeLabel")} className="flex flex-col gap-0.5">
-              {BOARD_SORT_MODES.map((mode) => (
-                <button
-                  key={mode}
-                  type="button"
-                  role="radio"
-                  aria-checked={preference.mode === mode}
-                  onClick={() => changeMode(mode)}
-                  className={`rounded px-2 py-1.5 text-left text-sm transition-colors ${
-                    preference.mode === mode
-                      ? "bg-brand-subtle text-text-primary"
-                      : "text-text-secondary hover:bg-bg-page"
-                  }`}
-                >
-                  {t(`modes.${mode}`)}
-                </button>
-              ))}
-            </div>
-            <p data-testid="board-sort-mode-description" className="mt-1.5 text-xs leading-relaxed text-text-muted">
-              {t(`modeDescriptions.${preference.mode}`)}
-            </p>
           </div>
 
           <div className="mt-3 flex items-center justify-between border-t border-border-subtle pt-2">

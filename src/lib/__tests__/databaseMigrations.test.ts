@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { ensureSqliteDatabaseReady } from "@/lib/sqliteSchema";
 import { AssignDisplayOrder1771166346785 } from "@/migrations/1771166346785-AssignDisplayOrder";
 import { RescopeProjectNamesPerHost1771600000000 } from "@/migrations/1771600000000-RescopeProjectNamesPerHost";
-import { ReplaceDisplayOrderWithDisplayRank1771700000000 } from "@/migrations/1771700000000-ReplaceDisplayOrderWithDisplayRank";
+import { DropDisplayOrderFromKanbanTasks1771700000000 } from "@/migrations/1771700000000-DropDisplayOrderFromKanbanTasks";
 
 const originalKanvibeDbPath = process.env.KANVIBE_DB_PATH;
 
@@ -33,13 +33,12 @@ function insertLegacyBootstrapData(databasePath: string): void {
         status,
         branch_name,
         project_id,
-        display_rank,
         created_at,
         updated_at
       )
       VALUES
-        ('task-1', 'Top card', 'todo', 'main', 'project-1', '2', '2026-01-02T00:00:00.000Z', '2026-01-02T00:00:00.000Z'),
-        ('task-2', 'Older card', 'todo', 'main', 'project-2', '4', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z');
+        ('task-1', 'Top card', 'todo', 'main', 'project-1', '2026-01-02T00:00:00.000Z', '2026-01-02T00:00:00.000Z'),
+        ('task-2', 'Older card', 'todo', 'main', 'project-2', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z');
     `);
   } finally {
     database.close();
@@ -186,15 +185,15 @@ describe("database migrations", () => {
 
     try {
       const tasks = await dataSource.query(`
-        SELECT id, branch_name, display_rank
+        SELECT id, branch_name
         FROM kanban_tasks
         ORDER BY id
       `);
       const migrations = await dataSource.query(`SELECT name FROM migrations ORDER BY timestamp`);
 
       expect(tasks).toEqual([
-        { id: "task-1", branch_name: "main", display_rank: "2" },
-        { id: "task-2", branch_name: "main", display_rank: "4" },
+        { id: "task-1", branch_name: "main" },
+        { id: "task-2", branch_name: "main" },
       ]);
       expect(migrations).toHaveLength(15);
       expect(migrations[0]).toEqual({ name: "InitialSchema1770854400000" });
@@ -216,13 +215,13 @@ describe("database migrations", () => {
       const taskColumns = await dataSource.query(`PRAGMA table_info("kanban_tasks")`);
       const paneColumns = await dataSource.query(`PRAGMA table_info("pane_layout_configs")`);
       const tasks = await dataSource.query(`
-        SELECT id, project_id, base_branch, pr_url, priority, display_rank
+        SELECT id, project_id, base_branch, pr_url, priority
         FROM kanban_tasks
       `);
       const migrations = await dataSource.query(`SELECT name FROM migrations ORDER BY timestamp`);
 
       expect(taskColumns.map((row: { name: string }) => row.name)).toEqual(
-        expect.arrayContaining(["project_id", "base_branch", "pr_url", "priority", "display_rank"]),
+        expect.arrayContaining(["project_id", "base_branch", "pr_url", "priority"]),
       );
       expect(taskColumns.map((row: { name: string }) => row.name)).not.toContain("display_order");
       expect(paneColumns.map((row: { name: string }) => row.name)).toContain("panes");
@@ -233,7 +232,6 @@ describe("database migrations", () => {
           base_branch: null,
           pr_url: null,
           priority: null,
-          display_rank: "1",
         },
       ]);
       expect(migrations).toHaveLength(15);
@@ -533,7 +531,7 @@ describe("database migrations", () => {
       await dataSource.destroy();
     }
   });
-  it("정수 순번을 rank로 옮기면서 컬럼별 순서를 그대로 보존하고 display_order를 없앤다", async () => {
+  it("display_order를 떨어뜨리고 인덱스를 새 기본 순서로 다시 만든다", async () => {
     // Given
     const databasePath = createDatabasePath();
     const dataSource = new DataSource({
@@ -549,60 +547,36 @@ describe("database migrations", () => {
           id TEXT PRIMARY KEY NOT NULL,
           status TEXT NOT NULL,
           display_order INTEGER NOT NULL DEFAULT 0,
-          created_at DATETIME NOT NULL
+          created_at DATETIME NOT NULL,
+          updated_at DATETIME NOT NULL
         )
       `);
       await dataSource.query(`
         CREATE INDEX "idx_kanban_tasks_status_order"
           ON kanban_tasks(status, display_order, created_at)
       `);
-      await dataSource.query(`
-        INSERT INTO kanban_tasks (id, status, display_order, created_at)
-        VALUES
-          ('todo-second', 'todo', 1, '2026-01-01T00:00:00.000Z'),
-          ('todo-first', 'todo', 0, '2026-01-02T00:00:00.000Z'),
-          ('todo-third', 'todo', 2, '2026-01-03T00:00:00.000Z'),
-          ('review-second', 'review', 1, '2026-01-01T00:00:00.000Z'),
-          ('review-first', 'review', 0, '2026-01-02T00:00:00.000Z')
-      `);
 
       // When
       const queryRunner = dataSource.createQueryRunner();
       try {
-        await new ReplaceDisplayOrderWithDisplayRank1771700000000().up(queryRunner);
+        await new DropDisplayOrderFromKanbanTasks1771700000000().up(queryRunner);
       } finally {
         await queryRunner.release();
       }
 
       // Then
       const columns = await dataSource.query(`PRAGMA table_info("kanban_tasks")`);
-      const todoTasks = await dataSource.query(`
-        SELECT id FROM kanban_tasks
-        WHERE status = 'todo' ORDER BY display_rank
-      `);
-      const reviewTasks = await dataSource.query(`
-        SELECT id FROM kanban_tasks WHERE status = 'review' ORDER BY display_rank
-      `);
-      const indexes = await dataSource.query(`PRAGMA index_list("kanban_tasks")`);
+      const indexColumns = await dataSource.query(`PRAGMA index_info("idx_kanban_tasks_status_order")`);
 
       expect(columns.map((row: { name: string }) => row.name)).not.toContain("display_order");
-      expect(todoTasks.map((row: { id: string }) => row.id)).toEqual(["todo-first", "todo-second", "todo-third"]);
-      /** 상태마다 따로 번호가 매겨져 있었으므로 rank도 상태 안에서만 이어져야 한다 */
-      expect(reviewTasks.map((row: { id: string }) => row.id)).toEqual(["review-first", "review-second"]);
-      expect(indexes.map((row: { name: string }) => row.name)).toContain("idx_kanban_tasks_status_order");
-      /** 이름만 보면 옛 컬럼을 가리키는 인덱스도 통과하므로 컬럼 구성까지 확인한다 */
-      const indexColumns = await dataSource.query(`PRAGMA index_info("idx_kanban_tasks_status_order")`);
-      expect(indexColumns.map((row: { name: string }) => row.name)).toEqual([
-        "status",
-        "display_rank",
-        "created_at",
-      ]);
+      /** 기본 순서가 최근 수정순이므로 인덱스도 그 컬럼을 덮어야 임시 B-tree 정렬로 떨어지지 않는다 */
+      expect(indexColumns.map((row: { name: string }) => row.name)).toEqual(["status", "updated_at"]);
     } finally {
       await dataSource.destroy();
     }
   });
 
-  it("rank를 다시 정수 순번으로 되돌려 마이그레이션을 취소할 수 있다", async () => {
+  it("컬럼을 되살려 마이그레이션을 취소할 수 있다", async () => {
     // Given
     const databasePath = createDatabasePath();
     const dataSource = new DataSource({
@@ -618,20 +592,15 @@ describe("database migrations", () => {
           id TEXT PRIMARY KEY NOT NULL,
           status TEXT NOT NULL,
           display_order INTEGER NOT NULL DEFAULT 0,
-          created_at DATETIME NOT NULL
+          created_at DATETIME NOT NULL,
+          updated_at DATETIME NOT NULL
         )
-      `);
-      await dataSource.query(`
-        INSERT INTO kanban_tasks (id, status, display_order, created_at)
-        VALUES
-          ('task-a', 'todo', 0, '2026-01-01T00:00:00.000Z'),
-          ('task-b', 'todo', 1, '2026-01-02T00:00:00.000Z')
       `);
 
       // When
       const queryRunner = dataSource.createQueryRunner();
       try {
-        const migration = new ReplaceDisplayOrderWithDisplayRank1771700000000();
+        const migration = new DropDisplayOrderFromKanbanTasks1771700000000();
         await migration.up(queryRunner);
         await migration.down(queryRunner);
       } finally {
@@ -640,85 +609,20 @@ describe("database migrations", () => {
 
       // Then
       const columns = await dataSource.query(`PRAGMA table_info("kanban_tasks")`);
-      const tasks = await dataSource.query(`SELECT id, display_order FROM kanban_tasks ORDER BY display_order`);
+      const indexColumns = await dataSource.query(`PRAGMA index_info("idx_kanban_tasks_status_order")`);
 
-      expect(columns.map((row: { name: string }) => row.name)).not.toContain("display_rank");
-      expect(tasks).toEqual([
-        { id: "task-a", display_order: 0 },
-        { id: "task-b", display_order: 1 },
+      expect(columns.map((row: { name: string }) => row.name)).toContain("display_order");
+      expect(indexColumns.map((row: { name: string }) => row.name)).toEqual([
+        "status",
+        "display_order",
+        "created_at",
       ]);
     } finally {
       await dataSource.destroy();
     }
   });
-  it("baseline 처리되는 오래된 DB의 정수 순번도 rank로 옮겨 카드 순서를 지킨다", async () => {
-    // Given
-    const databasePath = createDatabasePath();
-    insertLegacyDisplayOrderData(databasePath);
-    process.env.KANVIBE_DB_PATH = databasePath;
-    vi.resetModules();
 
-    // When
-    const { getDataSource } = await import("@/lib/database");
-    const dataSource = await getDataSource();
-
-    try {
-      const tasks = await dataSource.query(`SELECT id FROM kanban_tasks ORDER BY display_rank`);
-      const columns = await dataSource.query(`PRAGMA table_info("kanban_tasks")`);
-
-      // Then
-      /** baseline은 마이그레이션을 실행하지 않으므로 부트스트랩 쪽에서 순서를 옮겨 두어야 한다 */
-      expect(tasks.map((row: { id: string }) => row.id)).toEqual(["task-first", "task-middle", "task-last"]);
-      expect(columns.map((row: { name: string }) => row.name)).toContain("display_rank");
-    } finally {
-      await dataSource.destroy();
-    }
-  });
-  it("정수 순번조차 없던 DB의 카드에도 서로 다른 rank를 줘서 사이에 끼워 넣을 수 있게 한다", async () => {
-    // Given
-    const databasePath = createDatabasePath();
-    fs.mkdirSync(path.dirname(databasePath), { recursive: true });
-    const legacyDatabase = new Database(databasePath);
-    try {
-      legacyDatabase.exec(`
-        CREATE TABLE kanban_tasks (
-          id TEXT PRIMARY KEY NOT NULL,
-          title TEXT NOT NULL,
-          status TEXT NOT NULL DEFAULT 'todo',
-          branch_name TEXT,
-          created_at DATETIME NOT NULL,
-          updated_at DATETIME NOT NULL
-        );
-
-        INSERT INTO kanban_tasks (id, title, status, created_at, updated_at)
-        VALUES
-          ('task-1', 'First', 'todo', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z'),
-          ('task-2', 'Second', 'todo', '2026-01-02T00:00:00.000Z', '2026-01-02T00:00:00.000Z'),
-          ('task-3', 'Third', 'todo', '2026-01-03T00:00:00.000Z', '2026-01-03T00:00:00.000Z');
-      `);
-    } finally {
-      legacyDatabase.close();
-    }
-
-    // When
-    ensureSqliteDatabaseReady(databasePath);
-
-    // Then
-    const database = new Database(databasePath);
-    try {
-      const tasks = database
-        .prepare(`SELECT id, display_rank FROM kanban_tasks ORDER BY display_rank`)
-        .all() as Array<{ id: string; display_rank: string }>;
-
-      expect(tasks.map((task) => task.id)).toEqual(["task-1", "task-2", "task-3"]);
-      /** 같은 값이 섞이면 두 카드 사이에 새 자리를 만들 수 없어 드래그가 엉뚱한 곳으로 간다 */
-      expect(new Set(tasks.map((task) => task.display_rank)).size).toBe(3);
-    } finally {
-      database.close();
-    }
-  });
-
-  it("baseline DB에 남아 있던 옛 컬럼 인덱스를 rank 인덱스로 다시 만든다", async () => {
+  it("baseline DB에 남아 있던 옛 컬럼 인덱스를 기본 순서 인덱스로 다시 만든다", async () => {
     // Given
     const databasePath = createDatabasePath();
     insertLegacyDisplayOrderData(databasePath);
@@ -744,13 +648,9 @@ describe("database migrations", () => {
 
       /**
        * CREATE INDEX IF NOT EXISTS는 이름이 같으면 정의가 달라도 넘어간다.
-       * 그대로 두면 ORDER BY display_rank가 매번 임시 B-tree 정렬로 떨어진다.
+       * 그대로 두면 ORDER BY updated_at이 매번 임시 B-tree 정렬로 떨어진다.
        */
-      expect(indexColumns.map((column) => column.name)).toEqual([
-        "status",
-        "display_rank",
-        "created_at",
-      ]);
+      expect(indexColumns.map((column) => column.name)).toEqual(["status", "updated_at"]);
     } finally {
       database.close();
     }

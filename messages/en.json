@@ -117,15 +117,6 @@
           "asc": "A→Z",
           "desc": "Z→A"
         }
-      },
-      "modeLabel": "Card order",
-      "modes": {
-        "rank-first": "Drag order first",
-        "sort-first": "Sort criteria first"
-      },
-      "modeDescriptions": {
-        "rank-first": "Cards stay in the order you dragged them, and the sort criteria only break ties.",
-        "sort-first": "Sort criteria come first, and the order you dragged only breaks ties. Dragging a card lets it slide back to its sorted place."
       }
     },
     "pageFind": {

@@ -22,8 +22,6 @@ import { execGit, pullCurrentBranch, remoteBranchExists } from "@/lib/gitOperati
 import { detachSession } from "@/lib/terminal";
 import { persistTaskStateForTask as persistTaskState } from "@/desktop/main/services/kanvibeTaskStateService";
 import { persistProjectColorToKanvibeState } from "@/desktop/main/services/kanvibeProjectColorService";
-import { rankBetween } from "@/desktop/shared/displayRank";
-import { appendDisplayRank, findNextDisplayRank } from "@/desktop/main/services/taskDisplayRankService";
 
 export type TasksByStatus = Record<TaskStatus, KanbanTask[]>;
 
@@ -421,12 +419,12 @@ export async function getTasksByStatus(): Promise<TasksByStatusWithMeta> {
 
   const nonDoneTasks = await repo.find({
     where: { status: Not(TaskStatus.DONE) },
-    order: { displayRank: "ASC", createdAt: "ASC" },
+    order: { updatedAt: "DESC" },
   });
 
   const [doneTasks, doneTotal] = await repo.findAndCount({
     where: { status: TaskStatus.DONE },
-    order: { displayRank: "ASC", createdAt: "ASC" },
+    order: { updatedAt: "DESC" },
     take: DONE_PAGE_SIZE,
   });
 
@@ -454,7 +452,7 @@ export async function getMoreDoneTasks(
 
   const [tasks, doneTotal] = await repo.findAndCount({
     where: { status: TaskStatus.DONE },
-    order: { displayRank: "ASC", createdAt: "ASC" },
+    order: { updatedAt: "DESC" },
     skip: offset,
     take: limit,
   });
@@ -517,7 +515,6 @@ export interface CreateTaskInput {
 /** 새 작업을 생성한다. branchName + projectId가 있으면 worktree와 세션도 함께 생성한다 */
 export async function createTask(input: CreateTaskInput): Promise<KanbanTask> {
   const repo = await getTaskRepository();
-  const todoRankPromise = appendDisplayRank(repo, TaskStatus.TODO);
 
   const task = repo.create({
     title: input.title || input.branchName || "Untitled",
@@ -562,8 +559,6 @@ export async function createTask(input: CreateTaskInput): Promise<KanbanTask> {
       }
     }
   }
-
-  task.displayRank = await todoRankPromise;
 
   const saved = await repo.save(task);
 
@@ -928,76 +923,22 @@ export async function connectTerminalSession(
 }
 
 /**
- * 드롭한 자리에 해당하는 rank를 앞뒤 카드에서 계산한다.
- *
- * 정렬 기준이 켜져 있으면 화면 순서가 rank 순서와 달라 앞뒤 rank가 뒤집혀 있을 수 있고,
- * 예전 데이터에는 같은 rank를 가진 카드가 남아 있을 수도 있다.
- * 그때는 두 이웃 사이 값을 만들 수 없으므로 rank 순서에서 앞 이웃 바로 다음 카드를 찾아 그 사이에 둔다.
- * 컬럼 맨 뒤로 보내면 사용자가 놓은 자리가 통째로 사라지지만, 앞 이웃 바로 뒤는 드롭 지점을 그대로 지킨다.
- */
-async function resolveDisplayRank(
-  repo: Awaited<ReturnType<typeof getTaskRepository>>,
-  status: TaskStatus,
-  movedTaskId: string,
-  orderedIds: string[],
-): Promise<string> {
-  const movedIndex = orderedIds.indexOf(movedTaskId);
-  if (movedIndex < 0) {
-    return appendDisplayRank(repo, status);
-  }
-
-  const neighborIds = [orderedIds[movedIndex - 1], orderedIds[movedIndex + 1]].filter(Boolean);
-  const neighbors = neighborIds.length > 0
-    ? await repo.find({ where: { id: In(neighborIds) }, select: ["id", "displayRank"] })
-    : [];
-  const rankById = new Map(neighbors.map((neighbor) => [neighbor.id, neighbor.displayRank]));
-
-  const previousRank = movedIndex > 0 ? rankById.get(orderedIds[movedIndex - 1]) ?? null : null;
-  const nextRank = rankById.get(orderedIds[movedIndex + 1]) ?? null;
-
-  if (previousRank !== null && nextRank !== null && previousRank >= nextRank) {
-    return rankBetween(previousRank, await findNextDisplayRank(repo, status, previousRank));
-  }
-
-  return rankBetween(previousRank, nextRank);
-}
-
-/** 컬럼 내 작업 순서를 변경한다. rank 덕분에 옮긴 태스크 한 행만 갱신하면 된다 */
-export async function reorderTasks(
-  status: TaskStatus,
-  movedTaskId: string,
-  orderedIds: string[]
-): Promise<void> {
-  const repo = await getTaskRepository();
-  const displayRank = await resolveDisplayRank(repo, status, movedTaskId, orderedIds);
-
-  await repo.update(movedTaskId, { displayRank });
-  broadcastBoardUpdate();
-}
-
-/**
  * 태스크를 다른 컬럼으로 이동할 때 사용한다. revalidation 없이 DB만 갱신한다.
  *
- * 드래그든 vim 단축키든 목적지에서의 자리는 rank 하나로만 남는다.
- * 드래그는 `destOrderedIds`에 사용자가 고른 자리가 담겨 오고,
- * 상태만 바꾸는 이동은 목적지 컬럼 끝에 붙은 목록이 담겨 온다.
+ * 목적지 컬럼에서의 자리는 저장하지 않는다. 보드 순서는 사용자가 고른 정렬 기준으로만 정해지고,
+ * 기준이 없으면 최근 수정순이므로 방금 옮긴 카드가 목적지 맨 위에 온다.
  */
 export async function moveTaskToColumn(
   taskId: string,
-  newStatus: TaskStatus,
-  destOrderedIds: string[]
+  newStatus: TaskStatus
 ): Promise<void> {
   const repo = await getTaskRepository();
   const task = await repo.findOneBy({ id: taskId });
-  const placement = {
-    displayRank: await resolveDisplayRank(repo, newStatus, taskId, destOrderedIds),
-  };
 
   try {
     if (newStatus === TaskStatus.DONE) {
       if (task) {
         await repo.update(taskId, {
-          ...placement,
           status: newStatus,
           sessionType: task.sessionType,
           sessionName: task.sessionName,
@@ -1005,7 +946,7 @@ export async function moveTaskToColumn(
         });
       }
     } else {
-      await repo.update(taskId, { ...placement, status: newStatus });
+      await repo.update(taskId, { status: newStatus });
     }
 
     if (task) {
@@ -1017,7 +958,6 @@ export async function moveTaskToColumn(
     if (newStatus === TaskStatus.DONE && task) {
       await repo.update(taskId, {
         status: task.status,
-        displayRank: task.displayRank,
         sessionType: task.sessionType,
         sessionName: task.sessionName,
         worktreePath: task.worktreePath,

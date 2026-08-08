@@ -76,10 +76,6 @@ export class KanbanTask {
   @Column({ type: "simple-enum", enum: TaskPriority, nullable: true, default: null })
   priority!: TaskPriority | null;
 
-  /** 컬럼 안에서의 자리를 나타내는 16진 fractional rank. 카드를 옮길 때 옮긴 행만 갱신한다 */
-  @Column({ name: "display_rank", type: "varchar", length: 64, default: "8" })
-  displayRank!: string;
-
   @CreateDateColumn({ name: "created_at" })
   createdAt!: Date;
 
