@@ -144,6 +144,58 @@ describe("ProjectSelector chip truncation", () => {
     expect(screen.queryByText("Local API")).toBeNull();
   });
 
+  it("should filter projects while Korean text is still composing", () => {
+    const selectorProjects = [
+      createProject("korean", "한글 프로젝트"),
+      createProject("english", "English Project"),
+    ];
+
+    render(
+      <ProjectSelector
+        multiple
+        projects={selectorProjects}
+        selectedProjectIds={[]}
+        onSelectionChange={vi.fn()}
+        placeholder="All projects"
+        searchPlaceholder="Search project..."
+      />,
+    );
+
+    fireEvent.click(screen.getByText("All projects"));
+    const searchInput = screen.getByPlaceholderText("Search project...");
+    fireEvent.compositionStart(searchInput);
+    fireEvent.change(searchInput, { target: { value: "한글" } });
+
+    expect(screen.getByText("한글 프로젝트")).toBeTruthy();
+    expect(screen.queryByText("English Project")).toBeNull();
+  });
+
+  it("should keep filtering when English is entered after an unfinished composition", () => {
+    const selectorProjects = [
+      createProject("korean", "한글 프로젝트"),
+      createProject("english", "English Project"),
+    ];
+
+    render(
+      <ProjectSelector
+        multiple
+        projects={selectorProjects}
+        selectedProjectIds={[]}
+        onSelectionChange={vi.fn()}
+        placeholder="All projects"
+        searchPlaceholder="Search project..."
+      />,
+    );
+
+    fireEvent.click(screen.getByText("All projects"));
+    const searchInput = screen.getByPlaceholderText("Search project...");
+    fireEvent.compositionStart(searchInput);
+    fireEvent.change(searchInput, { target: { value: "English" } });
+
+    expect(screen.getByText("English Project")).toBeTruthy();
+    expect(screen.queryByText("한글 프로젝트")).toBeNull();
+  });
+
   it("should keep selected projects at the top and toggle the highlighted project after imperative open", () => {
     const ref = createRef<ProjectSelectorHandle>();
     const onSelectionChange = vi.fn();

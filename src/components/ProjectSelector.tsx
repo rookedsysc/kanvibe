@@ -66,7 +66,6 @@ const ProjectSelector = forwardRef<ProjectSelectorHandle, ProjectSelectorProps>(
   const [searchQuery, setSearchQuery] = useState("");
   const [isOpen, setIsOpen] = useState(false);
   const [highlightedIndex, setHighlightedIndex] = useState(-1);
-  const isComposingRef = useRef(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const optionItemRefs = useRef<Array<HTMLLIElement | null>>([]);
@@ -180,21 +179,7 @@ const ProjectSelector = forwardRef<ProjectSelectorHandle, ProjectSelectorProps>(
 
   const handleSearchInput = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
-      if (isComposingRef.current) return;
       setSearchQuery(e.target.value);
-      setHighlightedIndex(0);
-    },
-    []
-  );
-
-  const handleCompositionStart = useCallback(() => {
-    isComposingRef.current = true;
-  }, []);
-
-  const handleCompositionEnd = useCallback(
-    (e: React.CompositionEvent<HTMLInputElement>) => {
-      isComposingRef.current = false;
-      setSearchQuery(e.currentTarget.value);
       setHighlightedIndex(0);
     },
     []
@@ -323,8 +308,6 @@ const ProjectSelector = forwardRef<ProjectSelectorHandle, ProjectSelectorProps>(
                 ref={searchInputRef}
                 type="text"
                 value={searchQuery}
-                onCompositionStart={handleCompositionStart}
-                onCompositionEnd={handleCompositionEnd}
                 onChange={handleSearchInput}
                 placeholder={searchPlaceholder}
                 className="w-full px-2 py-1 text-sm bg-bg-page border border-border-default rounded text-text-primary focus:outline-none focus:border-brand-primary"
@@ -493,8 +476,6 @@ const ProjectSelector = forwardRef<ProjectSelectorHandle, ProjectSelectorProps>(
               ref={searchInputRef}
               type="text"
               value={searchQuery}
-              onCompositionStart={handleCompositionStart}
-              onCompositionEnd={handleCompositionEnd}
               onChange={handleSearchInput}
               placeholder={searchPlaceholder}
               className="w-full px-2 py-1 text-sm bg-bg-page border border-border-default rounded text-text-primary focus:outline-none focus:border-brand-primary"
