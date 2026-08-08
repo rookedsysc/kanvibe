@@ -10,10 +10,15 @@ import TaskQuickSearchDialog from "@/desktop/renderer/components/TaskQuickSearch
 import { DEFAULT_LOCALE, getSafeLocale, isSupportedLocale, messagesByLocale } from "@/desktop/renderer/utils/locales";
 import { triggerDesktopRefresh } from "@/desktop/renderer/utils/refresh";
 import BoardRoute from "@/desktop/renderer/routes/BoardRoute";
-import { getTerminalOpacity, getThemePreference, type ThemePreference } from "@/desktop/renderer/actions/appSettings";
+import { getThemePreference, type ThemePreference } from "@/desktop/renderer/actions/appSettings";
 import { applyThemePreference, THEME_PREFERENCE_CHANGED_EVENT } from "@/desktop/renderer/utils/theme";
-import { applyTerminalTransparency } from "@/desktop/renderer/utils/terminalTransparency";
+import {
+  getCurrentShortcutPlatform,
+  isTaskDetailRouteUrl,
+  resolveTerminalTabShortcutEvent,
+} from "@/desktop/renderer/utils/keyboardShortcut";
 import type { BoardEventPayload } from "@/lib/boardNotifier";
+import type { TerminalTabShortcutCommand } from "@/desktop/shared/terminalTabs";
 
 const BOARD_REFRESH_DEBOUNCE_MS = 250;
 
@@ -74,24 +79,6 @@ function ThemeController() {
   return null;
 }
 
-function TerminalTransparencyController() {
-  useEffect(() => {
-    let cancelled = false;
-
-    void getTerminalOpacity().then((terminalOpacity) => {
-      if (!cancelled) {
-        applyTerminalTransparency(terminalOpacity);
-      }
-    });
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  return null;
-}
-
 function LocaleShell() {
   const { locale } = useParams();
   const safeLocale = getSafeLocale(locale);
@@ -104,7 +91,6 @@ function LocaleShell() {
   return (
     <IntlProvider locale={safeLocale} messages={messages}>
       <ThemeController />
-      <TerminalTransparencyController />
       <BoardCommandProvider>
         <TaskQuickSearchDialog />
         <NotificationListener />
@@ -144,6 +130,41 @@ export default function App() {
         window.clearTimeout(boardRefreshTimerRef.current);
         boardRefreshTimerRef.current = null;
       }
+    };
+  }, []);
+
+  /**
+   * 창 닫기는 터미널이 없는 화면에서도 동작해야 하므로 라우트가 아니라 여기서 받는다.
+   * 나머지 탭 명령은 터미널을 가진 태스크 상세만 의미가 있어 그쪽에서 처리한다.
+   * 다른 단축키와 같이 Electron `before-input-event`와 렌더러 keydown 두 경로를 모두 받는다.
+   */
+  useEffect(() => {
+    const closeWindowIfRequested = (command: TerminalTabShortcutCommand) => {
+      if (command.type === "close-window") {
+        window.kanvibeDesktop?.closeCurrentWindow?.();
+      }
+    };
+
+    function handleWindowCloseShortcut(event: KeyboardEvent) {
+      const command = resolveTerminalTabShortcutEvent(
+        event,
+        getCurrentShortcutPlatform(),
+        isTaskDetailRouteUrl(window.location.href),
+      );
+      if (command?.type !== "close-window") {
+        return;
+      }
+
+      event.preventDefault();
+      closeWindowIfRequested(command);
+    }
+
+    const unsubscribe = window.kanvibeDesktop?.onTerminalTabShortcut?.(closeWindowIfRequested) ?? (() => {});
+    window.addEventListener("keydown", handleWindowCloseShortcut, { capture: true });
+
+    return () => {
+      unsubscribe();
+      window.removeEventListener("keydown", handleWindowCloseShortcut, { capture: true });
     };
   }, []);
 

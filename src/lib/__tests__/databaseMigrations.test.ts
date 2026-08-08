@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { ensureSqliteDatabaseReady } from "@/lib/sqliteSchema";
 import { AssignDisplayOrder1771166346785 } from "@/migrations/1771166346785-AssignDisplayOrder";
 import { RescopeProjectNamesPerHost1771600000000 } from "@/migrations/1771600000000-RescopeProjectNamesPerHost";
-import { DropDisplayOrderFromKanbanTasks1771700000000 } from "@/migrations/1771700000000-DropDisplayOrderFromKanbanTasks";
+import { DropDisplayOrderFromKanbanTasks1771800000000 } from "@/migrations/1771800000000-DropDisplayOrderFromKanbanTasks";
 
 const originalKanvibeDbPath = process.env.KANVIBE_DB_PATH;
 
@@ -195,7 +195,7 @@ describe("database migrations", () => {
         { id: "task-1", branch_name: "main" },
         { id: "task-2", branch_name: "main" },
       ]);
-      expect(migrations).toHaveLength(15);
+      expect(migrations).toHaveLength(16);
       expect(migrations[0]).toEqual({ name: "InitialSchema1770854400000" });
     } finally {
       await dataSource.destroy();
@@ -234,7 +234,7 @@ describe("database migrations", () => {
           priority: null,
         },
       ]);
-      expect(migrations).toHaveLength(15);
+      expect(migrations).toHaveLength(16);
     } finally {
       await dataSource.destroy();
     }
@@ -264,7 +264,7 @@ describe("database migrations", () => {
       expect(indexes.map((row: { name: string }) => row.name)).not.toContain(
         "UQ_kanban_tasks_branch_name",
       );
-      expect(migrations).toHaveLength(15);
+      expect(migrations).toHaveLength(16);
 
       await dataSource.query(`
         INSERT INTO projects (id, name, repo_path, ssh_host)
@@ -559,7 +559,7 @@ describe("database migrations", () => {
       // When
       const queryRunner = dataSource.createQueryRunner();
       try {
-        await new DropDisplayOrderFromKanbanTasks1771700000000().up(queryRunner);
+        await new DropDisplayOrderFromKanbanTasks1771800000000().up(queryRunner);
       } finally {
         await queryRunner.release();
       }
@@ -600,7 +600,7 @@ describe("database migrations", () => {
       // When
       const queryRunner = dataSource.createQueryRunner();
       try {
-        const migration = new DropDisplayOrderFromKanbanTasks1771700000000();
+        const migration = new DropDisplayOrderFromKanbanTasks1771800000000();
         await migration.up(queryRunner);
         await migration.down(queryRunner);
       } finally {

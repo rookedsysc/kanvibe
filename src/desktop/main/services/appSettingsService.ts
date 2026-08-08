@@ -6,7 +6,6 @@ import {
   serializeBoardSortPreference,
   type BoardSortPreference,
 } from "@/desktop/shared/boardSort";
-import { OPAQUE_TERMINAL_OPACITY, clampTerminalOpacity } from "@/lib/terminalOpacity";
 
 const SIDEBAR_COLLAPSED_KEY = "sidebar_default_collapsed";
 const SIDEBAR_HINT_DISMISSED_KEY = "sidebar_hint_dismissed";
@@ -207,10 +206,12 @@ const DEFAULT_SESSION_TYPE_KEY = "default_session_type";
 const TASK_SEARCH_SHORTCUT_KEY = "task_search_shortcut";
 const VIM_MODE_ENABLED_KEY = "vim_mode_enabled";
 
-/** 기본 세션 타입을 조회한다. 미설정 시 "tmux"를 반환한다 */
+/** 기본 세션 타입을 조회한다. 미설정이거나 모르는 값이면 "tmux"를 반환한다 */
 export async function getDefaultSessionType(): Promise<SessionType> {
   const value = await getAppSetting(DEFAULT_SESSION_TYPE_KEY);
-  return value === SessionType.ZELLIJ ? SessionType.ZELLIJ : SessionType.TMUX;
+  const knownSessionTypes: string[] = Object.values(SessionType);
+
+  return knownSessionTypes.includes(value ?? "") ? value as SessionType : SessionType.TMUX;
 }
 
 /** 기본 세션 타입을 저장한다 */
@@ -243,29 +244,12 @@ export async function setVimModeEnabled(enabled: boolean): Promise<void> {
 
 const BOARD_SORT_PREFERENCE_KEY = "board_sort_preference";
 
-/** 보드 정렬 기준과 모드를 조회한다. 앱을 껐다 켜도 유지되도록 app_settings에 둔다 */
+/** 보드 정렬 기준을 조회한다. 앱을 껐다 켜도 유지되도록 app_settings에 둔다 */
 export async function getBoardSortPreference(): Promise<BoardSortPreference> {
   return parseBoardSortPreference(await getAppSetting(BOARD_SORT_PREFERENCE_KEY));
 }
 
-/** 보드 정렬 기준과 모드를 저장한다 */
+/** 보드 정렬 기준을 저장한다 */
 export async function setBoardSortPreference(preference: BoardSortPreference): Promise<void> {
   await setAppSetting(BOARD_SORT_PREFERENCE_KEY, serializeBoardSortPreference(preference));
-}
-
-const TERMINAL_OPACITY_KEY = "terminal_opacity";
-
-/** 터미널 배경 불투명도를 조회한다. 미설정 시 완전 불투명을 반환한다 */
-export async function getTerminalOpacity(): Promise<number> {
-  const value = await getAppSetting(TERMINAL_OPACITY_KEY);
-  if (value === null) {
-    return OPAQUE_TERMINAL_OPACITY;
-  }
-
-  return clampTerminalOpacity(Number.parseFloat(value));
-}
-
-/** 터미널 배경 불투명도를 저장한다 */
-export async function setTerminalOpacity(opacity: number): Promise<void> {
-  await setAppSetting(TERMINAL_OPACITY_KEY, String(clampTerminalOpacity(opacity)));
 }

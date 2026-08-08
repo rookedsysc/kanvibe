@@ -19,6 +19,7 @@ import { ReplaceColorIndexWithColor1771388085809 } from "../migrations/177138808
 import { FillEmptyBaseBranch1771400000000 } from "../migrations/1771400000000-FillEmptyBaseBranch";
 import { AddIconDataUrlToProjects1771500000000 } from "../migrations/1771500000000-AddIconDataUrlToProjects";
 import { RescopeProjectNamesPerHost1771600000000 } from "../migrations/1771600000000-RescopeProjectNamesPerHost";
+import { AddTerminalSessionType1771700000000 } from "../migrations/1771700000000-AddTerminalSessionType";
 
 /** TypeORM CLI 전용 DataSource 설정. 내장 SQLite DB를 조회하거나 ad-hoc 점검할 때 사용한다. */
 export default new DataSource({
@@ -40,6 +41,7 @@ export default new DataSource({
     FillEmptyBaseBranch1771400000000,
     AddIconDataUrlToProjects1771500000000,
     RescopeProjectNamesPerHost1771600000000,
+  AddTerminalSessionType1771700000000,
   ],
   synchronize: false,
   logging: process.env.TYPEORM_LOGGING === "true",

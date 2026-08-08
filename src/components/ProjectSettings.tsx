@@ -11,23 +11,17 @@ import {
   setVimModeEnabled,
   setBackgroundSyncEnabled,
   setBackgroundSyncIntervalMs,
-  setTerminalOpacity,
   type ThemePreference,
 } from "@/desktop/renderer/actions/appSettings";
 import { SessionType } from "@/entities/KanbanTask";
 import { Link } from "@/desktop/renderer/navigation";
 import type { Project } from "@/entities/Project";
 import { applyThemePreference, notifyThemePreferenceChanged } from "@/desktop/renderer/utils/theme";
-import { applyTerminalTransparency } from "@/desktop/renderer/utils/terminalTransparency";
-import { MIN_TERMINAL_OPACITY, OPAQUE_TERMINAL_OPACITY } from "@/lib/terminalOpacity";
 import { useEscapeKey } from "@/hooks/useEscapeKey";
+import SessionTypeOptions from "./SessionTypeOptions";
 
 const MIN_SYNC_INTERVAL_MINUTES = 1;
 const MAX_SYNC_INTERVAL_MINUTES = 1440;
-
-/** 투명도를 백분율 슬라이더로 다루기 위한 배율과 눈금 간격 */
-const TERMINAL_OPACITY_PERCENT_SCALE = 100;
-const TERMINAL_OPACITY_PERCENT_STEP = 5;
 
 /** 알림 대상 상태 목록 (사용자가 직접 설정하는 todo/done은 제외) */
 const STATUS_OPTIONS = [
@@ -46,11 +40,9 @@ interface ProjectSettingsProps {
   defaultSessionType: SessionType;
   vimModeEnabled?: boolean;
   themePreference?: ThemePreference;
-  terminalOpacity?: number;
   onDefaultSessionTypeChange?: (sessionType: SessionType) => void;
   onVimModeEnabledChange?: (enabled: boolean) => void;
   onThemePreferenceChange?: (themePreference: ThemePreference) => void;
-  onTerminalOpacityChange?: (terminalOpacity: number) => void;
   notificationSettings: { isEnabled: boolean; enabledStatuses: string[] };
   backgroundSyncSettings: { isEnabled: boolean; intervalMs: number };
 }
@@ -97,11 +89,9 @@ export default function ProjectSettings({
   defaultSessionType,
   vimModeEnabled = true,
   themePreference = "system",
-  terminalOpacity = OPAQUE_TERMINAL_OPACITY,
   onDefaultSessionTypeChange,
   onVimModeEnabledChange,
   onThemePreferenceChange,
-  onTerminalOpacityChange,
   notificationSettings,
   backgroundSyncSettings,
 }: ProjectSettingsProps) {
@@ -114,7 +104,6 @@ export default function ProjectSettings({
   const [localNotificationSettings, setLocalNotificationSettings] = useState(notificationSettings);
   const [pendingNotificationSettings, setPendingNotificationSettings] = useState<typeof notificationSettings | null>(null);
   const [localThemePreference, setLocalThemePreference] = useState<ThemePreference>(themePreference);
-  const [localTerminalOpacity, setLocalTerminalOpacity] = useState(terminalOpacity);
   const [localSidebarDefaultCollapsed, setLocalSidebarDefaultCollapsed] = useState(sidebarDefaultCollapsed);
   const [localBackgroundSyncSettings, setLocalBackgroundSyncSettings] = useState(backgroundSyncSettings);
   const [pendingBackgroundSyncSettings, setPendingBackgroundSyncSettings] = useState<typeof backgroundSyncSettings | null>(null);
@@ -161,10 +150,6 @@ export default function ProjectSettings({
   }, [themePreference]);
 
   useEffect(() => {
-    setLocalTerminalOpacity(terminalOpacity);
-  }, [terminalOpacity]);
-
-  useEffect(() => {
     const isDesktopApp = window.kanvibeDesktop?.isDesktop === true;
     const isMacDesktop = navigator.userAgent.includes("Mac") || navigator.platform.toLowerCase().includes("mac");
     setShouldUseMacTitlebarLayout(isDesktopApp && isMacDesktop);
@@ -190,16 +175,6 @@ export default function ProjectSettings({
     onThemePreferenceChange?.(nextThemePreference);
     startTransition(async () => {
       await setThemePreference(nextThemePreference);
-    });
-  }
-
-  function handleTerminalOpacityPercentChange(nextOpacityPercent: number) {
-    const nextTerminalOpacity = nextOpacityPercent / TERMINAL_OPACITY_PERCENT_SCALE;
-    setLocalTerminalOpacity(nextTerminalOpacity);
-    applyTerminalTransparency(nextTerminalOpacity);
-    onTerminalOpacityChange?.(nextTerminalOpacity);
-    startTransition(async () => {
-      await setTerminalOpacity(nextTerminalOpacity);
     });
   }
 
@@ -285,29 +260,6 @@ export default function ProjectSettings({
               ))}
             </div>
           </div>
-
-          <div className="mt-4 flex items-center justify-between gap-4">
-            <div>
-              <label htmlFor="terminal-opacity" className="text-sm text-text-primary">{t("terminalOpacity")}</label>
-              <p className="text-xs text-text-muted mt-0.5">{t("terminalOpacityDescription")}</p>
-            </div>
-            <div className="flex shrink-0 items-center gap-2">
-              <input
-                id="terminal-opacity"
-                type="range"
-                min={MIN_TERMINAL_OPACITY * TERMINAL_OPACITY_PERCENT_SCALE}
-                max={OPAQUE_TERMINAL_OPACITY * TERMINAL_OPACITY_PERCENT_SCALE}
-                step={TERMINAL_OPACITY_PERCENT_STEP}
-                value={Math.round(localTerminalOpacity * TERMINAL_OPACITY_PERCENT_SCALE)}
-                onChange={(event) => handleTerminalOpacityPercentChange(Number(event.target.value))}
-                disabled={isPending}
-                className="w-28 accent-brand-primary"
-              />
-              <span className="w-10 text-right text-xs text-text-muted tabular-nums">
-                {Math.round(localTerminalOpacity * TERMINAL_OPACITY_PERCENT_SCALE)}%
-              </span>
-            </div>
-          </div>
         </div>
 
         {/* Pane 레이아웃 설정 링크 */}
@@ -380,8 +332,7 @@ export default function ProjectSettings({
               disabled={isPending}
               className="px-2 py-1 text-sm bg-bg-page border border-border-default rounded-md text-text-primary focus:outline-none focus:border-brand-primary transition-colors"
             >
-              <option value="tmux">tmux</option>
-              <option value="zellij">zellij</option>
+              <SessionTypeOptions />
             </select>
           </div>
         </div>

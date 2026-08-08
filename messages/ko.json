@@ -203,8 +203,6 @@
       "dark": "다크",
       "light": "라이트"
     },
-    "terminalOpacity": "터미널 투명도",
-    "terminalOpacityDescription": "터미널 배경을 반투명하게 만들어 뒤 화면이 비쳐 보이게 합니다. 투명도를 처음 켜거나 끌 때는 앱을 다시 시작해야 적용됩니다.",
     "scanTitle": "프로젝트 스캔",
     "scanPathPlaceholder": "스캔할 디렉토리 경로 (예: ~/Documents)",
     "scanButton": "스캔 및 등록",
@@ -415,7 +413,11 @@
     "dismissHint": "다시 보지 않기",
     "viewDiff": "Diff 보기",
     "diffFiles": "변경 파일",
-    "diffFileCount": "{count}개"
+    "diffFileCount": "{count}개",
+    "terminalTabs": "터미널 탭",
+    "newTerminalTab": "새 탭",
+    "closeTerminalTab": "{name} 탭 닫기",
+    "renameTerminalTab": "탭 이름 변경"
   },
   "projectBranchTasks": {
     "title": "프로젝트 작업",

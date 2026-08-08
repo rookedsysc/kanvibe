@@ -8,8 +8,8 @@ import { addColumnIfNotExists, dropColumnIfExists } from "./sqliteMigrationUtils
  * 저장해 둘 자리가 없으므로 컬럼과 그 컬럼을 가리키던 인덱스를 함께 정리하고,
  * 새 기본 순서가 임시 B-tree로 떨어지지 않도록 status + updated_at 인덱스를 다시 만든다.
  */
-export class DropDisplayOrderFromKanbanTasks1771700000000 implements MigrationInterface {
-  name = "DropDisplayOrderFromKanbanTasks1771700000000";
+export class DropDisplayOrderFromKanbanTasks1771800000000 implements MigrationInterface {
+  name = "DropDisplayOrderFromKanbanTasks1771800000000";
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`DROP INDEX IF EXISTS "idx_kanban_tasks_status_order"`);

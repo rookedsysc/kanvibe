@@ -203,8 +203,6 @@
       "dark": "Dark",
       "light": "Light"
     },
-    "terminalOpacity": "Terminal transparency",
-    "terminalOpacityDescription": "Makes the terminal background translucent so what is behind it shows through. Restart the app the first time you turn transparency on or off.",
     "scanTitle": "Project Scan",
     "scanPathPlaceholder": "Directory path to scan (e.g., ~/Documents)",
     "scanButton": "Scan & Register",
@@ -415,7 +413,11 @@
     "dismissHint": "Don't show again",
     "viewDiff": "View Diff",
     "diffFiles": "Diff",
-    "diffFileCount": "{count}"
+    "diffFileCount": "{count}",
+    "terminalTabs": "Terminal tabs",
+    "newTerminalTab": "New tab",
+    "closeTerminalTab": "Close {name} tab",
+    "renameTerminalTab": "Rename tab"
   },
   "projectBranchTasks": {
     "title": "Project Tasks",

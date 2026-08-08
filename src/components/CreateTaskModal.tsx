@@ -13,6 +13,7 @@ import { useEscapeKey } from "@/hooks/useEscapeKey";
 import ProjectSelector from "./ProjectSelector";
 import PrioritySelector from "./PrioritySelector";
 import BranchSearchInput from "./BranchSearchInput";
+import SessionTypeOptions from "./SessionTypeOptions";
 
 interface CreateTaskModalProps {
   isOpen: boolean;
@@ -320,8 +321,7 @@ function CreateTaskModalContent({
               defaultValue={defaultSessionType || "tmux"}
               className="w-full px-3 py-2 bg-bg-page border border-border-default rounded-md text-text-primary focus:outline-none focus:border-brand-primary transition-colors"
             >
-              <option value="tmux">tmux</option>
-              <option value="zellij">zellij</option>
+              <SessionTypeOptions />
             </select>
           </div>
 

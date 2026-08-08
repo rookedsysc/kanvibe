@@ -3,11 +3,16 @@ import "@xterm/xterm/css/xterm.css";
 import { createTerminalOptions, installMacShiftSelectionPatch } from "@/lib/terminalMouseSelection";
 import { installOsc52ClipboardHandler } from "@/lib/terminalClipboard";
 import { REQUEST_ACTIVE_TERMINAL_FOCUS_EVENT, hasTerminalFocusBlocker } from "@/desktop/renderer/utils/terminalFocus";
-import { getTerminalOpacity } from "@/desktop/renderer/actions/appSettings";
-import { OPAQUE_TERMINAL_OPACITY } from "@/lib/terminalOpacity";
 
 interface TerminalProps {
   taskId: string;
+  /** terminal 세션은 탭마다 PTY가 따로라 탭 식별자가 필요하다. tmux·zellij 세션은 null이다 */
+  tabId?: string | null;
+  /**
+   * 비활성 탭은 화면에서 숨겨진다.
+   * 숨겨진 컨테이너는 높이·너비가 0이라 fit이 터미널을 2×1로 줄여 버리므로 크기 동기화를 멈춘다.
+   */
+  isHidden?: boolean;
 }
 
 const NERD_FONT_FAMILY = "JetBrainsMono Nerd Font Mono";
@@ -69,26 +74,22 @@ function loadNerdFontFamily(): Promise<string | null> {
   return nerdFontLoadPromise;
 }
 
-/** 설정 조회가 실패해도 터미널은 열려야 하므로 실패 시 불투명 배경으로 되돌린다 */
-function loadTerminalOpacity(): Promise<number> {
-  return getTerminalOpacity().catch(() => OPAQUE_TERMINAL_OPACITY);
-}
-
-export default function Terminal({ taskId }: TerminalProps) {
+export default function Terminal({ taskId, tabId = null, isHidden = false }: TerminalProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  /** connect는 taskId·tabId에만 묶여 있어야 하므로, 표시 여부는 ref로 읽는다 */
+  const isHiddenRef = useRef(isHidden);
+
+  isHiddenRef.current = isHidden;
 
   const connect = useCallback(async () => {
     if (!containerRef.current) {
       return undefined;
     }
 
-    const [[{ Terminal: XTerm }, { FitAddon }, { WebLinksAddon }], terminalOpacity] = await Promise.all([
-      loadTerminalModules(),
-      loadTerminalOpacity(),
-    ]);
+    const [{ Terminal: XTerm }, { FitAddon }, { WebLinksAddon }] = await loadTerminalModules();
     let isTerminalDisposed = false;
 
-    const terminal = new XTerm(createTerminalOptions(FALLBACK_FONT_FAMILY, terminalOpacity));
+    const terminal = new XTerm(createTerminalOptions(FALLBACK_FONT_FAMILY));
 
     const fitAddon = new FitAddon();
     terminal.loadAddon(fitAddon);
@@ -98,21 +99,29 @@ export default function Terminal({ taskId }: TerminalProps) {
     const osc52ClipboardHandler = installOsc52ClipboardHandler(terminal);
     terminal.options.fontFamily = FALLBACK_FONT_FAMILY;
 
-    const unsubscribeData = window.kanvibeDesktop!.onTerminalData((event: { taskId: string; data: string }) => {
-      if (event.taskId === taskId) {
+    const isThisTerminal = (event: { taskId: string; tabId: string | null }) => (
+      event.taskId === taskId && (event.tabId ?? null) === tabId
+    );
+
+    const unsubscribeData = window.kanvibeDesktop!.onTerminalData((event: { taskId: string; tabId: string | null; data: string }) => {
+      if (isThisTerminal(event)) {
         terminal.write(event.data);
       }
     });
 
-    const unsubscribeClose = window.kanvibeDesktop!.onTerminalClose((event: { taskId: string; reason: string | null }) => {
-      if (event.taskId === taskId) {
+    const unsubscribeClose = window.kanvibeDesktop!.onTerminalClose((event: { taskId: string; tabId: string | null; reason: string | null }) => {
+      if (isThisTerminal(event)) {
         terminal.writeln(`\r\n\x1b[31m${event.reason || "연결이 종료되었습니다."}\x1b[0m`);
       }
     });
 
     const syncTerminalSize = () => {
+      if (isHiddenRef.current) {
+        return;
+      }
+
       fitAddon.fit();
-      window.kanvibeDesktop!.resizeTerminal(taskId, terminal.cols, terminal.rows);
+      window.kanvibeDesktop!.resizeTerminal(taskId, tabId, terminal.cols, terminal.rows);
     };
 
     const scheduleTerminalSync = () => {
@@ -132,12 +141,14 @@ export default function Terminal({ taskId }: TerminalProps) {
 
     await new Promise<void>((resolve) => {
       requestAnimationFrame(() => {
-        fitAddon.fit();
+        if (!isHiddenRef.current) {
+          fitAddon.fit();
+        }
         resolve();
       });
     });
 
-    const terminalReady = await window.kanvibeDesktop!.openTerminal(taskId, terminal.cols, terminal.rows);
+    const terminalReady = await window.kanvibeDesktop!.openTerminal(taskId, tabId, terminal.cols, terminal.rows);
     if (!terminalReady.ok) {
       terminal.writeln(`\r\n\x1b[31m${terminalReady.error || "터미널 연결 실패"}\x1b[0m`);
       return () => {
@@ -151,11 +162,11 @@ export default function Terminal({ taskId }: TerminalProps) {
     }
 
     terminal.onData((data) => {
-      window.kanvibeDesktop!.writeTerminal(taskId, data);
+      window.kanvibeDesktop!.writeTerminal(taskId, tabId, data);
     });
 
     terminal.onResize(({ cols, rows }) => {
-      window.kanvibeDesktop!.resizeTerminal(taskId, cols, rows);
+      window.kanvibeDesktop!.resizeTerminal(taskId, tabId, cols, rows);
     });
 
     const focusCurrentTerminal = () => {
@@ -204,10 +215,10 @@ export default function Terminal({ taskId }: TerminalProps) {
       resizeObserver.disconnect();
       unsubscribeData();
       unsubscribeClose();
-      window.kanvibeDesktop!.closeTerminal(taskId);
+      window.kanvibeDesktop!.closeTerminal(taskId, tabId);
       terminal.dispose();
     };
-  }, [taskId]);
+  }, [tabId, taskId]);
 
   useEffect(() => {
     let isDisposed = false;

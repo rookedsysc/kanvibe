@@ -489,6 +489,7 @@ describe("kanbanService.createTask", () => {
       "tmux",
       "remote-host",
       "/remote/repo__worktrees/feature-remote",
+      "project-remote",
     );
     expect(mocks.installKanvibeHookFiles.mock.invocationCallOrder[0]).toBeLessThan(
       mocks.scheduleKanvibeHooksVerification.mock.invocationCallOrder[0],
@@ -628,6 +629,7 @@ describe("kanbanService.createTask", () => {
         "tmux",
         "remote-host",
         "/remote/repo__worktrees/feature-slow-hooks",
+        "project-remote",
       );
       expect(mocks.scheduleKanvibeHooksVerification).not.toHaveBeenCalled();
       expect(mocks.broadcastBoardUpdate).toHaveBeenCalledTimes(1);
@@ -2446,5 +2448,85 @@ describe("kanbanService.getSearchableTasks", () => {
         updatedAt: "2026-05-02T00:00:00.000Z",
       },
     ]);
+  });
+});
+
+describe("kanbanService.updateTask", () => {
+  beforeEach(() => {
+    vi.resetModules();
+    vi.clearAllMocks();
+    mocks.readTextFile.mockResolvedValue("");
+    mocks.taskRepo.save.mockImplementation(async (value) => value);
+  });
+
+  it("설명을 바꾸면 공유 task.json에 기록해 다른 기기와 맞춘다", async () => {
+    // Given
+    mocks.taskRepo.findOneBy.mockResolvedValue({
+      id: "task-1",
+      title: "알림 회귀 수정",
+      description: null,
+      worktreePath: "/workspace/repo-worktrees/task-1",
+      sshHost: null,
+      projectId: "project-1",
+      branchName: "fix/notifications",
+    });
+
+    const { updateTask } = await import("@/desktop/main/services/kanbanService");
+
+    // When
+    await updateTask("task-1", { description: "결제 실패 로그 원인 추적" });
+
+    // Then
+    expect(mocks.writeTextFile).toHaveBeenCalledWith(
+      "/workspace/repo-worktrees/task-1/.kanvibe/task.json",
+      expect.stringContaining('"description": "결제 실패 로그 원인 추적"'),
+      null,
+    );
+  });
+
+  it("설명을 지우면 null을 기록해 다른 기기에서도 지워지게 한다", async () => {
+    // Given
+    mocks.taskRepo.findOneBy.mockResolvedValue({
+      id: "task-1",
+      title: "알림 회귀 수정",
+      description: "결제 실패 로그 원인 추적",
+      worktreePath: "/workspace/repo-worktrees/task-1",
+      sshHost: null,
+      projectId: "project-1",
+      branchName: "fix/notifications",
+    });
+
+    const { updateTask } = await import("@/desktop/main/services/kanbanService");
+
+    // When
+    await updateTask("task-1", { description: null });
+
+    // Then
+    expect(mocks.writeTextFile).toHaveBeenCalledWith(
+      "/workspace/repo-worktrees/task-1/.kanvibe/task.json",
+      expect.stringContaining('"description": null'),
+      null,
+    );
+  });
+
+  it("설명이 빠진 부분 수정은 공유 설명 파일을 건드리지 않는다", async () => {
+    // Given
+    mocks.taskRepo.findOneBy.mockResolvedValue({
+      id: "task-1",
+      title: "알림 회귀 수정",
+      description: "결제 실패 로그 원인 추적",
+      worktreePath: "/workspace/repo-worktrees/task-1",
+      sshHost: null,
+      projectId: "project-1",
+      branchName: "fix/notifications",
+    });
+
+    const { updateTask } = await import("@/desktop/main/services/kanbanService");
+
+    // When
+    await updateTask("task-1", { title: "알림 회귀 재수정" });
+
+    // Then
+    expect(mocks.writeTextFile).not.toHaveBeenCalled();
   });
 });

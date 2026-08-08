@@ -11,9 +11,11 @@ KanVibe는 macOS 데스크톱 앱으로 배포되며, 현재 권장 설치 경�
 | 의존성 | 필수 | 설명 | 설치 예시 |
 | --- | --- | --- | --- |
 | Git | 필수 | branch와 worktree 생성 및 정리 | `brew install git` |
-| tmux | 필수 | 기본 터미널 세션 백엔드 | `brew install tmux` |
+| tmux | 권장 | 기본 세션 백엔드. 세션 타입을 `terminal`로 바꾸면 없어도 동작합니다 | `brew install tmux` |
 | GitHub CLI `gh` | 필수 | PR URL 조회와 GitHub 워크플로우 | `brew install gh` 후 `gh auth login` |
 | zellij | 선택 | tmux 대신 사용할 수 있는 세션 백엔드 | `brew install zellij` |
+
+멀티플렉서 없이 쓰려면 세션 타입을 `terminal`로 고르면 됩니다. 대신 그 세션의 셸은 KanVibe가 직접 들고 있어서, 앱을 끄거나 원격 연결이 끊기면 실행 중이던 작업도 함께 사라집니다. 오래 도는 작업을 맡길 계획이라면 tmux나 zellij를 설치해 두는 편이 안전합니다.
 
 ## Homebrew로 설치
 
@@ -49,7 +51,7 @@ brew untap rookedsysc/kanvibe
   </div>
   <div className="kv-card">
     <h3>2. 세션 타입 확인</h3>
-    <p>tmux를 기본값으로 사용하거나, zellij를 설치했다면 기본 세션 타입을 변경합니다.</p>
+    <p>tmux를 기본값으로 쓰거나, zellij를 설치했다면 기본 세션 타입을 바꿉니다. 멀티플렉서를 쓰지 않겠다면 `terminal`을 고릅니다.</p>
   </div>
   <div className="kv-card">
     <h3>3. 알림 권한 허용</h3>

@@ -6,6 +6,7 @@ import { connectTerminalSession } from "@/desktop/renderer/actions/kanban";
 import { ensureSessionDependencyWithPrompt } from "@/desktop/renderer/utils/sessionDependencyPrompt";
 import type { KanbanTask } from "@/entities/KanbanTask";
 import { SessionType } from "@/entities/KanbanTask";
+import SessionTypeOptions from "./SessionTypeOptions";
 
 interface ConnectTerminalFormProps {
   taskId: string;
@@ -52,8 +53,7 @@ export default function ConnectTerminalForm({ taskId, sshHost, onConnected }: Co
           name="sessionType"
           className="px-3 py-1.5 text-sm bg-bg-page border border-border-default rounded-md text-text-primary focus:outline-none focus:border-brand-primary transition-colors"
         >
-          <option value="tmux">tmux</option>
-          <option value="zellij">zellij</option>
+          <SessionTypeOptions />
         </select>
         <button
           type="submit"
