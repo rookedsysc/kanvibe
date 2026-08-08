@@ -9,6 +9,10 @@ import {
 } from "@/desktop/renderer/utils/taskNavigation";
 import { TaskStatus, type KanbanTask } from "@/entities/KanbanTask";
 import { TaskPriority } from "@/entities/TaskPriority";
+import {
+  isInheritedPriority,
+  resolveEffectivePriority,
+} from "@/desktop/renderer/utils/boardTaskSort";
 import ProjectIcon from "@/components/ProjectIcon";
 
 interface ContextMenuPosition {
@@ -25,6 +29,8 @@ interface TaskCardProps {
   projectIconDataUrl?: string | null;
   isBaseProject?: boolean;
   unreadNotificationCount?: number;
+  /** projectId → 프로젝트 root task의 우선순위. task가 자기 우선순위를 갖지 않을 때 이 값을 물려받는다 */
+  rootPriorityByProjectId?: Map<string, TaskPriority>;
   vimModeEnabled?: boolean;
 }
 
@@ -39,6 +45,8 @@ const priorityConfig: Record<TaskPriority, { label: string; colorClass: string }
   [TaskPriority.MEDIUM]: { label: "P2", colorClass: "bg-priority-medium-bg text-priority-medium-text" },
   [TaskPriority.HIGH]: { label: "P1", colorClass: "bg-priority-high-bg text-priority-high-text" },
 };
+
+const EMPTY_ROOT_PRIORITY_MAP: Map<string, TaskPriority> = new Map();
 
 const badgeClassName = "inline-flex items-center rounded border border-border-subtle px-1.5 py-0.5 text-[10px]";
 /** 프로젝트 마커 열 + 본문 열. 마커 폭은 ProjectIcon 기본 크기(h-3.5 w-3.5 = 14px)와 맞춘다 */
@@ -183,12 +191,16 @@ export default function TaskCard({
   projectIconDataUrl,
   isBaseProject,
   unreadNotificationCount = 0,
+  rootPriorityByProjectId = EMPTY_ROOT_PRIORITY_MAP,
   vimModeEnabled = true,
 }: TaskCardProps) {
   const cardStyle = projectColor ? { borderColor: projectColor } : undefined;
   const locale = useLocale();
-  const t = useTranslations("common");
+  const t = useTranslations("task");
+  const tc = useTranslations("common");
   const router = useRouter();
+  const effectivePriority = resolveEffectivePriority(task, rootPriorityByProjectId);
+  const isPriorityInherited = isInheritedPriority(task, rootPriorityByProjectId);
 
   function handleTaskKeyDown(event: React.KeyboardEvent<HTMLAnchorElement>) {
     if (isShiftOnlyKeyboardShortcut(event, "Enter")) {
@@ -326,7 +338,7 @@ export default function TaskCard({
             {unreadNotificationCount > 0 && (
               <span
                 className={`${badgeClassName} gap-1 border-transparent bg-brand-primary font-semibold text-text-inverse`}
-                aria-label={t("unreadCount", { count: unreadNotificationCount })}
+                aria-label={tc("unreadCount", { count: unreadNotificationCount })}
                 data-testid="unread-notification-badge"
               >
                 <BellIcon />
@@ -371,11 +383,18 @@ export default function TaskCard({
               </span>
             )}
 
-            {task.priority && (
+            {effectivePriority && (
               <span
-                className={`ml-auto rounded border border-border-subtle px-1.5 py-0.5 text-[10px] font-semibold ${priorityConfig[task.priority].colorClass}`}
+                data-testid="task-priority-badge"
+                data-inherited-priority={isPriorityInherited}
+                title={isPriorityInherited ? t("inheritedPriority") : undefined}
+                className={`ml-auto rounded px-1.5 py-0.5 text-[10px] font-semibold ${priorityConfig[effectivePriority].colorClass} ${
+                  isPriorityInherited
+                    ? "border border-dashed border-border-default opacity-70"
+                    : "border border-border-subtle"
+                }`}
               >
-                {priorityConfig[task.priority].label}
+                {priorityConfig[effectivePriority].label}
               </span>
             )}
           </div>

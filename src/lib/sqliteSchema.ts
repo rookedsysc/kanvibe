@@ -49,7 +49,6 @@ function ensureBaseTables(database: Database.Database): void {
       base_branch TEXT,
       pr_url TEXT,
       priority TEXT DEFAULT NULL,
-      display_order INTEGER NOT NULL DEFAULT 0,
       created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE SET NULL
@@ -86,7 +85,6 @@ function ensureColumns(database: Database.Database): void {
   ensureColumn(database, "kanban_tasks", "base_branch", "base_branch TEXT");
   ensureColumn(database, "kanban_tasks", "pr_url", "pr_url TEXT");
   ensureColumn(database, "kanban_tasks", "priority", "priority TEXT DEFAULT NULL");
-  ensureColumn(database, "kanban_tasks", "display_order", "display_order INTEGER NOT NULL DEFAULT 0");
 
   ensureColumn(database, "pane_layout_configs", "panes", "panes TEXT NOT NULL DEFAULT '[]'");
 }
@@ -169,10 +167,47 @@ function dropGlobalUniqueProjectName(database: Database.Database): void {
   }
 }
 
+/**
+ * 컬럼 구성이 달라진 인덱스를 지운다.
+ *
+ * `CREATE INDEX IF NOT EXISTS`는 같은 이름이 이미 있으면 정의가 달라도 아무것도 하지 않는다.
+ * 그래서 인덱스가 가리키는 컬럼을 바꿀 때는 먼저 지워야 한다.
+ * migrations 테이블이 없어 baseline 처리되는 DB는 TypeORM 마이그레이션이 실행되지 않으므로
+ * 여기서 지우지 않으면 인덱스가 영영 옛 컬럼에 남아 정렬이 매번 임시 B-tree로 떨어진다.
+ */
+function dropIndexWithDifferentColumns(
+  database: Database.Database,
+  indexName: string,
+  expectedColumns: string[],
+): void {
+  const rows = database
+    .prepare(`PRAGMA index_info(${quoteSqliteIdentifier(indexName)})`)
+    .all() as Array<{ name: string | null }>;
+
+  if (rows.length === 0) return;
+
+  const actualColumns = rows.map((row) => row.name);
+  const matchesExpected = actualColumns.length === expectedColumns.length
+    && actualColumns.every((columnName, index) => columnName === expectedColumns[index]);
+
+  if (matchesExpected) return;
+
+  database.exec(`DROP INDEX IF EXISTS ${quoteSqliteIdentifier(indexName)}`);
+}
+
 function ensureIndexes(database: Database.Database): void {
+  dropIndexWithDifferentColumns(database, "idx_kanban_tasks_status_order", [
+    "status",
+    "updated_at",
+  ]);
+  dropIndexWithDifferentColumns(database, "idx_kanban_tasks_project_branch", [
+    "project_id",
+    "branch_name",
+  ]);
+
   database.exec(`
     CREATE INDEX IF NOT EXISTS idx_kanban_tasks_status_order
-      ON kanban_tasks(status, display_order, created_at);
+      ON kanban_tasks(status, updated_at);
 
     CREATE INDEX IF NOT EXISTS idx_kanban_tasks_project_branch
       ON kanban_tasks(project_id, branch_name);

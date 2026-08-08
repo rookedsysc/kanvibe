@@ -23,6 +23,7 @@ class ElectronTerminalClient extends EventEmitter {
   constructor(
     private readonly webContents: WebContents,
     private readonly taskId: string,
+    private readonly tabId: string | null,
   ) {
     super();
   }
@@ -34,6 +35,7 @@ class ElectronTerminalClient extends EventEmitter {
 
     this.webContents.send("kanvibe:terminal-data", {
       taskId: this.taskId,
+      tabId: this.tabId,
       data: typeof data === "string" ? data : data.toString(),
     });
   }
@@ -49,6 +51,7 @@ class ElectronTerminalClient extends EventEmitter {
     if (!this.webContents.isDestroyed()) {
       this.webContents.send("kanvibe:terminal-close", {
         taskId: this.taskId,
+        tabId: this.tabId,
         reason: reason ?? null,
       });
     }
@@ -65,21 +68,30 @@ class ElectronTerminalClient extends EventEmitter {
 
 const terminalClients = new Map<string, ElectronTerminalClient>();
 
-function buildClientKey(webContentsId: number, taskId: string): string {
-  return `${webContentsId}:${taskId}`;
+/**
+ * 렌더러는 멀티플렉서 세션에 null을, terminal 세션에 탭 식별자를 넘긴다.
+ * 그래야 tmux·zellij는 창 하나가 PTY 하나를 공유하고, terminal 세션만 탭마다 스트림이 갈린다.
+ */
+function buildClientKey(webContentsId: number, taskId: string, tabId: string | null): string {
+  return `${webContentsId}:${taskId}:${tabId ?? ""}`;
 }
 
-function getClient(webContentsId: number, taskId: string): ElectronTerminalClient | null {
-  return terminalClients.get(buildClientKey(webContentsId, taskId)) ?? null;
+function getClient(
+  webContentsId: number,
+  taskId: string,
+  tabId: string | null,
+): ElectronTerminalClient | null {
+  return terminalClients.get(buildClientKey(webContentsId, taskId, tabId)) ?? null;
 }
 
 export async function openTerminal(
   webContents: WebContents,
   taskId: string,
+  tabId: string | null,
   cols: number,
   rows: number,
 ) {
-  const existingClient = getClient(webContents.id, taskId);
+  const existingClient = getClient(webContents.id, taskId, tabId);
   if (existingClient) {
     existingClient.refCount += 1;
     existingClient.emitMessage(`\x01${JSON.stringify({ type: "resize", cols, rows })}`);
@@ -93,11 +105,11 @@ export async function openTerminal(
     return { ok: false, error: "작업에 연결된 세션이 없습니다." };
   }
 
-  const client = new ElectronTerminalClient(webContents, taskId);
-  terminalClients.set(buildClientKey(webContents.id, taskId), client);
+  const client = new ElectronTerminalClient(webContents, taskId, tabId);
+  terminalClients.set(buildClientKey(webContents.id, taskId, tabId), client);
 
   const finalizeClient = () => {
-    terminalClients.delete(buildClientKey(webContents.id, taskId));
+    terminalClients.delete(buildClientKey(webContents.id, taskId, tabId));
   };
 
   client.once("close", finalizeClient);
@@ -120,6 +132,7 @@ export async function openTerminal(
 
       await attachRemoteSession(
         taskId,
+        tabId,
         task.sshHost,
         task.sessionType as SessionType,
         task.sessionName,
@@ -133,6 +146,7 @@ export async function openTerminal(
     } else {
       await attachLocalSession(
         taskId,
+        tabId,
         task.sessionType as SessionType,
         task.sessionName,
         client as never,
@@ -154,20 +168,32 @@ export async function openTerminal(
   }
 }
 
-export function writeTerminal(webContentsId: number, taskId: string, data: string) {
-  getClient(webContentsId, taskId)?.emitMessage(data);
+export function writeTerminal(
+  webContentsId: number,
+  taskId: string,
+  tabId: string | null,
+  data: string,
+) {
+  getClient(webContentsId, taskId, tabId)?.emitMessage(data);
 }
 
-export function resizeTerminal(webContentsId: number, taskId: string, cols: number, rows: number) {
-  getClient(webContentsId, taskId)?.emitMessage(`\x01${JSON.stringify({ type: "resize", cols, rows })}`);
+export function resizeTerminal(
+  webContentsId: number,
+  taskId: string,
+  tabId: string | null,
+  cols: number,
+  rows: number,
+) {
+  getClient(webContentsId, taskId, tabId)
+    ?.emitMessage(`\x01${JSON.stringify({ type: "resize", cols, rows })}`);
 }
 
 export function focusTerminal(taskId: string) {
   focusSession(taskId);
 }
 
-export function closeTerminal(webContentsId: number, taskId: string) {
-  const client = getClient(webContentsId, taskId);
+export function closeTerminal(webContentsId: number, taskId: string, tabId: string | null) {
+  const client = getClient(webContentsId, taskId, tabId);
   if (!client) {
     return;
   }

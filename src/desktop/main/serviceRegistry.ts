@@ -8,6 +8,7 @@ import * as paneLayout from "@/desktop/main/services/paneLayoutService";
 import * as project from "@/desktop/main/services/projectService";
 import * as releaseUpdates from "@/desktop/main/services/releaseUpdateService";
 import * as sessionDependency from "@/desktop/main/services/sessionDependencyService";
+import * as terminalTabs from "@/desktop/main/services/terminalTabService";
 
 const backgroundTaskSync = { runBackgroundTaskSyncNow };
 
@@ -22,6 +23,7 @@ export const desktopServices = {
   project,
   releaseUpdates,
   sessionDependency,
+  terminalTabs,
 } as const;
 
 export type DesktopServiceNamespace = keyof typeof desktopServices;

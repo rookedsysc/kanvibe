@@ -185,6 +185,11 @@ function buildTmuxSessionHardeningArguments(sessionName: string, enableClipboard
     /** 웹 터미널 크기가 다른 클라이언트에 묶이지 않도록 최근 활성 클라이언트를 기준으로 삼는다 */
     `set-option -t ${target} window-size latest`,
     /**
+     * KanVibe가 자체 탭 바로 window 목록을 그리므로 tmux 상태바는 같은 정보를 한 줄 더 차지한다.
+     * 세션 스코프라 사용자의 다른 tmux 세션에는 영향이 없다.
+     */
+    `set-option -t ${target} status off`,
+    /**
      * 기본값 external은 애플리케이션이 보낸 OSC 52를 클라이언트로 넘기지 않아 복사가 동작하지 않는다.
      * 세션 스코프로 좁힐 수 없는 서버 옵션이므로, 사용자가 값을 정해 두지 않은 경우에만 켠다.
      * 서버 전역 부수효과를 감수하는 근거와 조건은 CLAUDE.md의 tmux `set-clipboard` 예외 항목에 있다.
@@ -222,6 +227,18 @@ export function buildTmuxSessionBootstrapCommand(
 
   const tmuxCommand = options.withoutUserConfigFile ? "tmux -f /dev/null" : "tmux";
   return `${tmuxCommand} ${tmuxArguments.join(" \\; ")}`;
+}
+
+/**
+ * 이미 살아 있는 tmux 세션의 상태바를 끈다.
+ *
+ * 부트스트랩은 세션을 새로 만들 때만 돌아서, 탭 바가 들어오기 전에 만들어진 세션은
+ * tmux 상태바와 KanVibe 탭 바가 같은 window 목록을 두 줄로 그린다.
+ * `status`는 세션 스코프 옵션이고 멱등이라, 다시 붙을 때마다 걸어도
+ * 사용자의 다른 tmux 세션에는 영향이 없다.
+ */
+export function buildTmuxHideStatusBarCommand(sessionName: string): string {
+  return `tmux set-option -t ${quoteForPosixShell(sessionName)} status off`;
 }
 
 /** KDL 문자열 내 특수문자를 이스케이프한다 */
@@ -340,6 +357,39 @@ async function writeLayoutToWorktree(
 }
 
 /**
+ * KanVibe가 만드는 zellij 세션이 쓸 레이아웃 파일을 준비한다.
+ *
+ * pane 분할을 쓰지 않아도 파일을 반드시 남긴다.
+ * 레이아웃을 주지 않으면 zellij가 기본 레이아웃의 tab-bar·status-bar 플러그인을 붙여,
+ * KanVibe 탭 바와 같은 정보가 화면에 두 줄로 나온다.
+ * 이 파일이 정의하는 pane에는 그 플러그인이 없어 zellij 자체 바가 뜨지 않는다.
+ */
+async function prepareZellijLayoutFile(
+  worktreePath: string,
+  projectId?: string | null,
+  sshHost?: string | null,
+): Promise<void> {
+  let layoutType = PaneLayoutType.SINGLE;
+  let panes: PaneCommand[] = [];
+
+  try {
+    const layoutConfig = await getEffectivePaneLayout(projectId ?? undefined);
+    if (layoutConfig) {
+      layoutType = layoutConfig.layoutType as PaneLayoutType;
+      panes = layoutConfig.panes;
+    }
+  } catch (error) {
+    console.error("Zellij pane 레이아웃 조회 실패 (단일 pane으로 생성):", error);
+  }
+
+  await writeLayoutToWorktree(
+    worktreePath,
+    generateZellijLayoutKdl(layoutType, panes, worktreePath),
+    sshHost,
+  );
+}
+
+/**
  * git worktree를 생성하고 브랜치별 독립 세션을 생성한다.
  * 세션은 터미널 연결 시점에 생성한다.
  * 로컬 Zellij 세션인 경우 연결 시점에 사용할 KDL 레이아웃 파일만 준비한다.
@@ -361,33 +411,26 @@ export async function createWorktreeWithSession(
   );
 
   try {
-    if (sessionType === SessionType.TMUX) {
+    /** tmux와 terminal 세션은 연결 시점에 만들어지므로 미리 준비할 파일이 없다 */
+    if (sessionType !== SessionType.ZELLIJ) {
       return { worktreePath, sessionName };
-    } else {
-      /**
-       * Zellij는 TTY 없이 실행 불가하므로 서버에서 세션을 직접 시작하지 않는다.
-       * 세션 이름과 레이아웃 파일만 준비하고, 실제 세션 생성은
-       * 터미널 연결 시 node-pty가 PTY를 제공하며 처리한다.
-       */
-      const zellijSessionName = sanitizeZellijSessionName(sessionName);
-
-      /** 원격도 로컬과 같은 레이아웃으로 열리도록 KDL 레이아웃 파일을 worktree 디렉토리에 저장한다 */
-      try {
-        const layoutConfig = await getEffectivePaneLayout(projectId ?? undefined);
-        if (layoutConfig && layoutConfig.layoutType !== PaneLayoutType.SINGLE) {
-          const kdl = generateZellijLayoutKdl(
-            layoutConfig.layoutType as PaneLayoutType,
-            layoutConfig.panes,
-            worktreePath,
-          );
-          await writeLayoutToWorktree(worktreePath, kdl, sshHost);
-        }
-      } catch (error) {
-        console.error("Zellij 레이아웃 파일 생성 실패 (레이아웃 없이 세션 생성 예정):", error);
-      }
-
-      return { worktreePath, sessionName: zellijSessionName };
     }
+
+    /**
+     * Zellij는 TTY 없이 실행 불가하므로 서버에서 세션을 직접 시작하지 않는다.
+     * 세션 이름과 레이아웃 파일만 준비하고, 실제 세션 생성은
+     * 터미널 연결 시 node-pty가 PTY를 제공하며 처리한다.
+     */
+    const zellijSessionName = sanitizeZellijSessionName(sessionName);
+
+    /** 원격도 로컬과 같은 레이아웃으로 열리도록 KDL 레이아웃 파일을 worktree 디렉토리에 저장한다 */
+    try {
+      await prepareZellijLayoutFile(worktreePath, projectId, sshHost);
+    } catch (error) {
+      console.error("Zellij 레이아웃 파일 생성 실패 (레이아웃 없이 세션 생성 예정):", error);
+    }
+
+    return { worktreePath, sessionName: zellijSessionName };
   } catch (sessionError) {
     /** 세션 생성이 실패하면 이미 생성된 worktree와 브랜치를 정리해 다음 시도가 막히지 않도록 한다 */
     await removeWorktreeAndBranch(projectPath, branchName, sshHost);
@@ -403,24 +446,30 @@ export async function createSessionWithoutWorktree(
   projectPath: string,
   branchName: string,
   sessionType: SessionType,
-  _sshHost?: string | null,
-  _workingDir?: string,
+  sshHost?: string | null,
+  workingDir?: string,
+  projectId?: string | null,
 ): Promise<{ sessionName: string }> {
-  void _sshHost;
-  void _workingDir;
-
   const sessionName = formatProjectBranchSessionName(projectPath, branchName);
 
-  if (sessionType === SessionType.TMUX) {
+  /** tmux와 terminal 세션은 이름만 있으면 되고, 실제 생성은 터미널 연결 시점이다 */
+  if (sessionType !== SessionType.ZELLIJ) {
     return { sessionName };
-  } else {
-    /**
-     * Zellij는 TTY 없이 실행 불가하므로 세션 이름만 반환한다.
-     * 실제 세션 생성은 터미널 연결 시 node-pty가 처리한다.
-     */
-    const zellijSessionName = sanitizeZellijSessionName(sessionName);
-    return { sessionName: zellijSessionName };
   }
+
+  /**
+   * Zellij는 TTY 없이 실행 불가하므로 세션 이름만 반환하고,
+   * 연결 시점에 쓸 레이아웃 파일만 미리 남긴다.
+   */
+  if (workingDir) {
+    try {
+      await prepareZellijLayoutFile(workingDir, projectId, sshHost);
+    } catch (error) {
+      console.error("Zellij 레이아웃 파일 생성 실패 (레이아웃 없이 세션 생성 예정):", error);
+    }
+  }
+
+  return { sessionName: sanitizeZellijSessionName(sessionName) };
 }
 
 interface ResourceCleanupOptions {
@@ -648,12 +697,13 @@ export async function removeSessionOnly(
         buildTmuxSessionCleanupCommand(sessionName, options.throwOnError === true),
         sshHost,
       );
-    } else {
+    } else if (sessionType === SessionType.ZELLIJ) {
       await execGit(
         buildZellijSessionCleanupCommand(sessionName, options.throwOnError === true),
         sshHost,
       );
     }
+    /** terminal 세션은 KanVibe 밖에 존재하지 않으므로 정리할 외부 세션이 없다. PTY는 detachSession이 이미 끊는다 */
   } catch {
     if (options.throwOnError) {
       throw new Error(`세션 정리 실패: ${sessionName}`);
@@ -737,10 +787,15 @@ export async function isSessionAlive(
       ));
       await execGit([...hasSessionChecks, "exit 1"].join("; "), sshHost);
       return true;
-    } else {
+    }
+
+    if (sessionType === SessionType.ZELLIJ) {
       const output = await execGit("zellij list-sessions", sshHost);
       return parseAliveZellijSessionNames(output).includes(sessionName);
     }
+
+    /** terminal 세션은 KanVibe 프로세스 안에만 있어 외부 명령으로는 확인할 수 없다 */
+    return false;
   } catch {
     return false;
   }

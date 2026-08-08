@@ -80,6 +80,44 @@
         "all": "显示项目根和任务"
       }
     },
+    "sort": {
+      "label": "排序",
+      "hint": "按选择顺序依次排序，可以叠加多个条件。",
+      "fieldListLabel": "排序条件",
+      "toggleDirection": "{field} {direction}，点击切换方向",
+      "removeField": "移除 {field} 排序",
+      "clear": "清除排序",
+      "done": "完成",
+      "fields": {
+        "priority": "优先级",
+        "createdAt": "创建时间",
+        "updatedAt": "更新时间",
+        "title": "标题",
+        "project": "项目"
+      },
+      "directions": {
+        "priority": {
+          "asc": "从高到低",
+          "desc": "从低到高"
+        },
+        "createdAt": {
+          "asc": "从旧到新",
+          "desc": "从新到旧"
+        },
+        "updatedAt": {
+          "asc": "从旧到新",
+          "desc": "从新到旧"
+        },
+        "title": {
+          "asc": "A→Z",
+          "desc": "Z→A"
+        },
+        "project": {
+          "asc": "A→Z",
+          "desc": "Z→A"
+        }
+      }
+    },
     "pageFind": {
       "label": "在看板中查找",
       "placeholder": "查找当前看板中可见的文本...",
@@ -131,7 +169,8 @@
     "priorityLow": "!",
     "priorityMedium": "!!",
     "priorityHigh": "!!!",
-    "priorityNone": "无"
+    "priorityNone": "无",
+    "inheritedPriority": "继承自项目根任务的优先级。"
   },
   "branch": {
     "title": "创建分支",
@@ -373,7 +412,11 @@
     "dismissHint": "不再显示",
     "viewDiff": "查看差异",
     "diffFiles": "变更文件",
-    "diffFileCount": "{count}个"
+    "diffFileCount": "{count}个",
+    "terminalTabs": "终端标签页",
+    "newTerminalTab": "新建标签页",
+    "closeTerminalTab": "关闭 {name} 标签页",
+    "renameTerminalTab": "重命名标签页"
   },
   "projectBranchTasks": {
     "title": "项目任务",

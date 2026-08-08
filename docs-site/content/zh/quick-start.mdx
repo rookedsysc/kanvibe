@@ -26,7 +26,7 @@ title: Quick Start
 
 ## 2. 创建任务
 
-在看板中添加 TODO 任务。输入分支名后，KanVibe 会创建 git worktree，并连接 tmux 或 zellij 会话。
+在看板中添加 TODO 任务。输入分支名后，KanVibe 会创建 git worktree，并按所选会话类型（tmux、zellij、terminal）连接终端。
 
 <figure className="kv-shot">
   <img src="/screenshots/quick-action.png" alt="通过快速操作创建 branch TODO" />
@@ -48,4 +48,4 @@ title: Quick Start
 
 ## 5. 用 DONE 完成
 
-任务完成后移动到 DONE。KanVibe 会自动清理该任务的 branch、worktree 与终端会话。
+任务完成后移动到 DONE。DONE 只改变状态，branch、worktree 与终端会话仍会保留。若要一并清理这些资源，请删除该任务。

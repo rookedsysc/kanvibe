@@ -124,7 +124,7 @@ describe("Desktop Terminal", () => {
 
     // When
     await waitFor(() => {
-      expect(mockOpenTerminal).toHaveBeenCalledWith("task-1", 80, 24);
+      expect(mockOpenTerminal).toHaveBeenCalledWith("task-1", null, 80, 24);
     });
 
     // Then
@@ -139,7 +139,7 @@ describe("Desktop Terminal", () => {
     render(<Terminal taskId="task-1" />);
 
     await waitFor(() => {
-      expect(mockOpenTerminal).toHaveBeenCalledWith("task-1", 80, 24);
+      expect(mockOpenTerminal).toHaveBeenCalledWith("task-1", null, 80, 24);
     });
 
     mockFit.mockClear();
@@ -154,14 +154,14 @@ describe("Desktop Terminal", () => {
     await waitFor(() => {
       expect(mockFit).toHaveBeenCalledTimes(1);
     });
-    expect(mockResizeTerminal).toHaveBeenCalledWith("task-1", 80, 24);
+    expect(mockResizeTerminal).toHaveBeenCalledWith("task-1", null, 80, 24);
   });
 
   it("active terminal focus 요청을 받으면 xterm 입력 포커스를 맞춘다", async () => {
     render(<Terminal taskId="task-1" />);
 
     await waitFor(() => {
-      expect(mockOpenTerminal).toHaveBeenCalledWith("task-1", 80, 24);
+      expect(mockOpenTerminal).toHaveBeenCalledWith("task-1", null, 80, 24);
     });
     mockTerminalFocus.mockClear();
 
@@ -178,7 +178,7 @@ describe("Desktop Terminal", () => {
     render(<Terminal taskId="task-1" />);
 
     await waitFor(() => {
-      expect(mockOpenTerminal).toHaveBeenCalledWith("task-1", 80, 24);
+      expect(mockOpenTerminal).toHaveBeenCalledWith("task-1", null, 80, 24);
     });
     mockTerminalFocus.mockClear();
 
@@ -219,7 +219,7 @@ describe("Desktop Terminal", () => {
 
     // Then
     await waitFor(() => {
-      expect(mockOpenTerminal).toHaveBeenCalledWith("task-1", 80, 24);
+      expect(mockOpenTerminal).toHaveBeenCalledWith("task-1", null, 80, 24);
     });
   });
 });

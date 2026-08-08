@@ -959,7 +959,7 @@ describe("createWorktreeWithSession — Zellij KDL layout file persistence", () 
     expect(zellijCalls).toHaveLength(0);
   });
 
-  it("should not write layout file for SINGLE layout type", async () => {
+  it("SINGLE 레이아웃도 파일을 남겨 zellij 자체 탭 바가 뜨지 않게 한다", async () => {
     // Given
     mockGetEffectivePaneLayout.mockResolvedValue({
       layoutType: PaneLayoutType.SINGLE,
@@ -979,7 +979,12 @@ describe("createWorktreeWithSession — Zellij KDL layout file persistence", () 
     );
 
     // Then
-    expect(mockWriteFile).not.toHaveBeenCalled();
+    /** 레이아웃을 주지 않으면 zellij 기본 레이아웃이 tab-bar·status-bar 플러그인을 붙인다 */
+    expect(mockWriteFile).toHaveBeenCalledTimes(1);
+    const writtenKdl = mockWriteFile.mock.calls[0][1] as string;
+    expect(writtenKdl).toContain("pane");
+    expect(writtenKdl).not.toContain("zellij:tab-bar");
+    expect(writtenKdl).not.toContain("zellij:status-bar");
   });
 
   it("should write the layout file to the remote worktree so remote sessions open like local ones", async () => {
@@ -1033,8 +1038,9 @@ describe("createWorktreeWithSession — Zellij KDL layout file persistence", () 
       ),
     ).resolves.not.toThrow();
 
-    /** 레이아웃 파일 없이 세션 이름만 반환되어야 한다 */
-    expect(mockWriteFile).not.toHaveBeenCalled();
+    /** pane 레이아웃 조회가 실패해도 바 없는 단일 pane 레이아웃은 남겨야 한다 */
+    expect(mockWriteFile).toHaveBeenCalledTimes(1);
+    expect(mockWriteFile.mock.calls[0][1] as string).not.toContain("zellij:tab-bar");
   });
 
   it("should write KDL layout with 3-pane configuration to worktree", async () => {

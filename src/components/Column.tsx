@@ -5,8 +5,10 @@ import { useTranslations } from "next-intl";
 import { Droppable } from "@hello-pangea/dnd";
 import TaskCard from "./TaskCard";
 import ProjectTaskGroup from "./ProjectTaskGroup";
+import { useFlipReflow } from "@/desktop/renderer/hooks/useFlipReflow";
 import type { UnreadNotificationCountByTask } from "@/desktop/renderer/hooks/useUnreadNotificationCountByTask";
 import type { KanbanTask, TaskStatus } from "@/entities/KanbanTask";
+import type { TaskPriority } from "@/entities/TaskPriority";
 
 interface ColumnProps {
   status: TaskStatus;
@@ -18,6 +20,7 @@ interface ColumnProps {
   projectColorMap: Record<string, string>;
   projectIconMap: Record<string, string>;
   unreadNotificationCountByTask?: UnreadNotificationCountByTask;
+  rootPriorityByProjectId?: Map<string, TaskPriority>;
   totalCount?: number;
   hasMore?: boolean;
   onLoadMore?: () => void;
@@ -82,6 +85,7 @@ export default function Column({
   projectColorMap,
   projectIconMap,
   unreadNotificationCountByTask,
+  rootPriorityByProjectId,
   totalCount,
   hasMore,
   onLoadMore,
@@ -89,6 +93,7 @@ export default function Column({
   vimModeEnabled = true,
 }: ColumnProps) {
   const t = useTranslations("board");
+  const columnRef = useFlipReflow<HTMLDivElement>(tasks.map((task) => task.id).join(","));
 
   const groups = useMemo(
     () => buildContiguousGroups(tasks, projectNameMap),
@@ -107,7 +112,7 @@ export default function Column({
   }, [groups]);
 
   return (
-    <div className="flex-1 min-w-[284px] max-w-[340px] overflow-hidden rounded-lg border border-border-default bg-transparent">
+    <div ref={columnRef} className="flex-1 min-w-[284px] max-w-[340px] overflow-hidden rounded-lg border border-border-default bg-transparent">
       <div className="flex h-10 items-center gap-2 border-b border-border-subtle px-3">
         <div className={`h-2 w-2 rounded-full ${colorClass}`} />
         <h2 className="text-[11px] font-semibold text-text-secondary uppercase">
@@ -149,6 +154,7 @@ export default function Column({
                           !!task.worktreePath &&
                           !task.worktreePath.includes("__worktrees")
                         }
+                        rootPriorityByProjectId={rootPriorityByProjectId}
                         vimModeEnabled={vimModeEnabled}
                       />
                     ))}
@@ -177,6 +183,7 @@ export default function Column({
                         !!task.worktreePath &&
                         !task.worktreePath.includes("__worktrees")
                       }
+                      rootPriorityByProjectId={rootPriorityByProjectId}
                       vimModeEnabled={vimModeEnabled}
                     />
                   ))}

@@ -1,4 +1,5 @@
 import type { SessionType } from "@/entities/KanbanTask";
+import type { BoardSortPreference } from "@/desktop/shared/boardSort";
 import { invokeDesktop } from "@/desktop/renderer/ipc";
 import { triggerDesktopRefresh } from "@/desktop/renderer/utils/refresh";
 
@@ -103,6 +104,15 @@ export function setBackgroundSyncEnabled(enabled: boolean): Promise<void> {
 
 export function setBackgroundSyncIntervalMs(intervalMs: number): Promise<void> {
   return invokeAndRefresh("setBackgroundSyncIntervalMs", intervalMs);
+}
+
+export function getBoardSortPreference(): Promise<BoardSortPreference> {
+  return invokeDesktop("appSettings", "getBoardSortPreference");
+}
+
+/** 보드가 정렬 상태를 직접 들고 있으므로 설정 refresh를 태우지 않는다. 기준을 누를 때마다 보드를 다시 그리면 깜빡인다 */
+export function setBoardSortPreference(preference: BoardSortPreference): Promise<void> {
+  return invokeDesktop("appSettings", "setBoardSortPreference", preference);
 }
 
 export async function getThemePreference(): Promise<ThemePreference> {

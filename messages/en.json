@@ -81,6 +81,44 @@
         "all": "Show project roots and tasks"
       }
     },
+    "sort": {
+      "label": "Sort",
+      "hint": "Cards are sorted in the order you pick the criteria. You can stack several.",
+      "fieldListLabel": "Sort criteria",
+      "toggleDirection": "{field} {direction}, press to flip the direction",
+      "removeField": "Remove {field} sorting",
+      "clear": "Clear sorting",
+      "done": "Done",
+      "fields": {
+        "priority": "Priority",
+        "createdAt": "Created",
+        "updatedAt": "Updated",
+        "title": "Title",
+        "project": "Project"
+      },
+      "directions": {
+        "priority": {
+          "asc": "Highest first",
+          "desc": "Lowest first"
+        },
+        "createdAt": {
+          "asc": "Oldest first",
+          "desc": "Newest first"
+        },
+        "updatedAt": {
+          "asc": "Oldest first",
+          "desc": "Newest first"
+        },
+        "title": {
+          "asc": "A→Z",
+          "desc": "Z→A"
+        },
+        "project": {
+          "asc": "A→Z",
+          "desc": "Z→A"
+        }
+      }
+    },
     "pageFind": {
       "label": "Find on board",
       "placeholder": "Find visible text on this board...",
@@ -132,7 +170,8 @@
     "priorityLow": "!",
     "priorityMedium": "!!",
     "priorityHigh": "!!!",
-    "priorityNone": "None"
+    "priorityNone": "None",
+    "inheritedPriority": "Priority inherited from the project root task."
   },
   "branch": {
     "title": "Branch Off",
@@ -374,7 +413,11 @@
     "dismissHint": "Don't show again",
     "viewDiff": "View Diff",
     "diffFiles": "Diff",
-    "diffFileCount": "{count}"
+    "diffFileCount": "{count}",
+    "terminalTabs": "Terminal tabs",
+    "newTerminalTab": "New tab",
+    "closeTerminalTab": "Close {name} tab",
+    "renameTerminalTab": "Rename tab"
   },
   "projectBranchTasks": {
     "title": "Project Tasks",

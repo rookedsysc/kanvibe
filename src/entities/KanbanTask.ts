@@ -22,6 +22,8 @@ export enum TaskStatus {
 export enum SessionType {
   TMUX = "tmux",
   ZELLIJ = "zellij",
+  /** 멀티플렉서 없이 KanVibe가 PTY를 직접 소유하는 세션. 탭도 KanVibe가 관리한다 */
+  TERMINAL = "terminal",
 }
 
 /**
@@ -75,9 +77,6 @@ export class KanbanTask {
 
   @Column({ type: "simple-enum", enum: TaskPriority, nullable: true, default: null })
   priority!: TaskPriority | null;
-
-  @Column({ name: "display_order", type: "int", default: 0 })
-  displayOrder!: number;
 
   @CreateDateColumn({ name: "created_at" })
   createdAt!: Date;

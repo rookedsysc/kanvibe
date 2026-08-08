@@ -36,6 +36,9 @@ import {
   type BranchTodoDefaults,
 } from "@/desktop/renderer/components/BoardCommandProvider";
 import TerminalLoader from "@/desktop/renderer/components/TerminalLoader";
+import TerminalTabBar from "@/desktop/renderer/components/TerminalTabBar";
+import { useTerminalTabs } from "@/desktop/renderer/hooks/useTerminalTabs";
+import type { TerminalTabShortcutCommand } from "@/desktop/shared/terminalTabs";
 import { fetchPrUrlWithPrompt } from "@/desktop/renderer/utils/fetchPrUrlWithPrompt";
 import {
   SHORTCUTS,
@@ -44,6 +47,7 @@ import {
   formatShortcutForDisplay,
   getCurrentShortcutPlatform,
   matchShortcutEvent,
+  resolveTerminalTabShortcutEvent,
   matchTaskDetailDockShortcutEvent,
 } from "@/desktop/renderer/utils/keyboardShortcut";
 import { INITIAL_DESKTOP_LOAD_TIMEOUT_MS, logDesktopInitialLoadTimeout } from "@/desktop/renderer/utils/loadingTimeout";
@@ -824,6 +828,12 @@ export default function TaskDetailRoute() {
   const dockItemsRef = useRef<TaskDetailDockItem[]>([]);
   const commonTranslationsRef = useRef(tc);
   const hasTerminal = !!(state?.task.sessionType && state.task.sessionName);
+  const terminalTabs = useTerminalTabs({
+    taskId: id ?? "",
+    sessionType: (state?.task.sessionType as SessionType | undefined) ?? null,
+    isRemote: !!state?.task.sshHost,
+    isVisible: hasTerminal && mainView === "terminal",
+  });
   const shortcutPlatform = getCurrentShortcutPlatform();
   const statusPanelLabel = `${t("actions")} · ${t("hooksStatus")}`;
   currentTaskRef.current = state?.task ?? null;
@@ -1030,6 +1040,92 @@ export default function TaskDetailRoute() {
       window.removeEventListener("keydown", handlePriorityDockShortcut, { capture: true });
     };
   }, [activateDockItem, hasShortcutBlocker, shortcutPlatform]);
+
+  /** 마지막 탭을 닫으면 남길 화면이 없으므로 창까지 닫는다 */
+  const closeTerminalTabOrWindow = useCallback(async (tabId: string) => {
+    const remainingCount = await terminalTabs.closeTab(tabId);
+    if (remainingCount === 0) {
+      window.kanvibeDesktop?.closeCurrentWindow?.();
+    }
+  }, [terminalTabs]);
+
+  /** `close-window`는 라우트와 무관해 App이 받는다. 여기서는 터미널이 있는 화면의 탭 명령만 다룬다 */
+  const runTerminalTabCommand = useCallback((command: TerminalTabShortcutCommand) => {
+    const isTerminalVisible = hasTerminal && mainView === "terminal";
+
+    /**
+     * 탭 닫기는 터미널이 없는 화면에서 일반 앱처럼 창 닫기가 된다.
+     * main은 태스크 상세 URL만 보고 이 명령을 보내므로, 세션이 없거나 채팅 뷰를 보는 중인지는
+     * 여기서만 알 수 있다. 여기서 걸러 내지 않으면 키를 삼키고 아무것도 하지 않는다.
+     */
+    if (command.type === "close-tab" && !isTerminalVisible) {
+      window.kanvibeDesktop?.closeCurrentWindow?.();
+      return;
+    }
+
+    if (!isTerminalVisible) {
+      return;
+    }
+
+    switch (command.type) {
+      case "new-tab":
+        void terminalTabs.createTab();
+        return;
+      case "close-tab": {
+        const activeTabId = terminalTabs.activeTab?.id;
+        if (activeTabId) {
+          void closeTerminalTabOrWindow(activeTabId);
+        }
+        return;
+      }
+      case "previous-tab":
+        void terminalTabs.selectRelativeTab(-1);
+        return;
+      case "next-tab":
+        void terminalTabs.selectRelativeTab(1);
+        return;
+      case "go-to-tab":
+        void terminalTabs.selectTabByPosition(command.position - 1);
+    }
+  }, [closeTerminalTabOrWindow, hasTerminal, mainView, terminalTabs]);
+
+  /** main은 모달·입력 포커스를 모르므로, 렌더러 keydown 경로와 같은 차단 조건을 여기서도 건다 */
+  useEffect(() => (
+    window.kanvibeDesktop?.onTerminalTabShortcut?.((command: TerminalTabShortcutCommand) => {
+      if (hasShortcutBlocker) {
+        return;
+      }
+
+      runTerminalTabCommand(command);
+    }) ?? undefined
+  ), [hasShortcutBlocker, runTerminalTabCommand]);
+
+  /**
+   * main의 `before-input-event`가 놓친 입력을 렌더러가 받는 두 번째 경로.
+   * 여기서 이벤트를 소비해야 xterm이 같은 키를 셸로 흘려보내지 않는다.
+   */
+  useEffect(() => {
+    function handleTerminalTabShortcut(event: KeyboardEvent) {
+      if (hasShortcutBlocker) {
+        return;
+      }
+
+      const command = resolveTerminalTabShortcutEvent(event, shortcutPlatform, true);
+      if (!command) {
+        return;
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation();
+      runTerminalTabCommand(command);
+    }
+
+    window.addEventListener("keydown", handleTerminalTabShortcut, { capture: true });
+    return () => {
+      window.removeEventListener("keydown", handleTerminalTabShortcut, { capture: true });
+    };
+  }, [hasShortcutBlocker, runTerminalTabCommand, shortcutPlatform]);
 
   useEffect(() => (
     window.kanvibeDesktop?.onTaskDetailDockShortcut?.((shortcutIndex: number) => {
@@ -1456,8 +1552,19 @@ export default function TaskDetailRoute() {
           <InlineAiChatView taskId={state.task.id} />
         ) : hasTerminal ? (
           <div className="flex-1 flex flex-col min-h-0 rounded-lg overflow-hidden shadow-md transition-all duration-200 ease-out">
-            <div className="bg-terminal-chrome flex items-center gap-2 px-4 py-2.5 shrink-0">
-              <span className="text-xs text-terminal-text font-mono truncate">{state.task.sessionName ?? t("terminal")}</span>
+            <div className="bg-terminal-chrome flex items-center gap-3 px-4 py-2.5 shrink-0">
+              {terminalTabs.tabs.length > 0 ? (
+                <TerminalTabBar
+                  tabs={terminalTabs.tabs}
+                  onSelect={(tabId) => { void terminalTabs.selectTab(tabId); }}
+                  onCreate={() => { void terminalTabs.createTab(); }}
+                  onClose={(tabId) => { void closeTerminalTabOrWindow(tabId); }}
+                  onRename={(tabId, name) => { void terminalTabs.renameTab(tabId, name); }}
+                  onMove={(tabId, targetIndex) => { void terminalTabs.moveTab(tabId, targetIndex); }}
+                />
+              ) : (
+                <span className="text-xs text-terminal-text font-mono truncate">{state.task.sessionName ?? t("terminal")}</span>
+              )}
               <div className="ml-auto">
                 <NotificationCenterButton ref={notificationCenterRef} buttonClassName="text-terminal-text hover:text-white hover:bg-white/10" panelClassName="mt-3" />
               </div>
@@ -1470,7 +1577,10 @@ export default function TaskDetailRoute() {
                 }
               }}
             >
-              <TerminalLoader taskId={state.task.id} />
+              <TerminalLoader
+                taskId={state.task.id}
+                tabs={state.task.sessionType === SessionType.TERMINAL ? terminalTabs.tabs : undefined}
+              />
             </div>
           </div>
         ) : (
