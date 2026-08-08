@@ -1040,10 +1040,10 @@ export default function TaskDetailRoute() {
     };
   }, [activateDockItem, hasShortcutBlocker, shortcutPlatform]);
 
-  /** 마지막 탭을 닫으면 남길 화면이 없으므로 창까지 닫는다 */
+  /** 탭을 다 닫으면 남길 화면이 없으므로 창까지 닫는다. 창을 닫을지는 세션 타입을 아는 main이 정한다 */
   const closeTerminalTabOrWindow = useCallback(async (tabId: string) => {
-    const remainingCount = await terminalTabs.closeTab(tabId);
-    if (remainingCount === 0) {
+    const shouldCloseWindow = await terminalTabs.closeTab(tabId);
+    if (shouldCloseWindow) {
       window.kanvibeDesktop?.closeCurrentWindow?.();
     }
   }, [terminalTabs]);

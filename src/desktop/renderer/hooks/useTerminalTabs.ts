@@ -63,8 +63,8 @@ export interface TerminalTabsController {
   refresh: () => Promise<void>;
   createTab: () => Promise<void>;
   selectTab: (tabId: string) => Promise<void>;
-  /** 남은 탭 수를 반환한다. 0이면 호출자가 창을 닫는다 */
-  closeTab: (tabId: string) => Promise<number>;
+  /** 창까지 닫아야 하는지를 반환한다 */
+  closeTab: (tabId: string) => Promise<boolean>;
   renameTab: (tabId: string, name: string) => Promise<void>;
   moveTab: (tabId: string, targetIndex: number) => Promise<void>;
   selectRelativeTab: (offset: number) => Promise<void>;
@@ -163,7 +163,7 @@ export function useTerminalTabs({
   const closeTab = useCallback(async (tabId: string) => {
     const result = await closeTerminalTab(taskId, tabId);
     await refresh();
-    return result.remainingCount ?? tabsRef.current.length;
+    return result.shouldCloseWindow ?? false;
   }, [refresh, taskId]);
 
   const renameTab = useCallback(async (tabId: string, name: string) => {
