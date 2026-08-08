@@ -45,8 +45,8 @@ The rule above forbids tmux-wide side effects. tmux `set-clipboard` is an approv
 - Renderer keyboard events and Electron `before-input-event` inputs must be routed through the same shared matcher so macOS and Linux behavior stays consistent.
 - Shortcut capture UIs must store normalized shortcut strings from the shared capture helper, not hand-built modifier strings.
 - When adding or changing a shortcut, cover the shared command definition, display formatting, Electron input matching, renderer global handling, and any user-configurable capture flow with focused tests.
-- Task detail dock shortcuts must use the shared dock shortcut helpers: macOS uses `Cmd+Option+{number}` and Linux uses `Alt+{number}`. Electron `before-input-event` must intercept these before terminal input receives them.
-- Terminal tab shortcuts use `Mod+{number}`, so on macOS plain `Cmd+{number}` belongs to tab navigation and the dock takes `Cmd+Option+{number}`.
+- Task detail dock shortcuts must use the shared dock shortcut helpers and bind to `Mod+{number}`. Electron `before-input-event` must intercept these before terminal input receives them.
+- Terminal tab shortcuts use `Mod+Alt+{number}`, so plain `Mod+{number}` stays with the task detail dock.
 - Do not bind an app shortcut to `Cmd+Shift+{number}` on macOS. The system claims `Cmd+Shift+3/4/5` for screenshots and never delivers them to the app, so such a binding fails silently on some numbers only.
 - Task detail dock numbering excludes the back-to-board button and must be derived from the dock item array order, not hard-coded per item. Keep PR as the conditional slot after the first three dock items: with PR it is slot 4 and later items shift to 5+, without PR the next dock item gets slot 4.
 
