@@ -5,6 +5,7 @@ import { useTranslations } from "next-intl";
 import { Droppable } from "@hello-pangea/dnd";
 import TaskCard from "./TaskCard";
 import ProjectTaskGroup from "./ProjectTaskGroup";
+import type { UnreadNotificationCountByTask } from "@/desktop/renderer/hooks/useUnreadNotificationCountByTask";
 import type { KanbanTask, TaskStatus } from "@/entities/KanbanTask";
 
 interface ColumnProps {
@@ -16,6 +17,7 @@ interface ColumnProps {
   projectNameMap: Record<string, string>;
   projectColorMap: Record<string, string>;
   projectIconMap: Record<string, string>;
+  unreadNotificationCountByTask?: UnreadNotificationCountByTask;
   totalCount?: number;
   hasMore?: boolean;
   onLoadMore?: () => void;
@@ -79,6 +81,7 @@ export default function Column({
   projectNameMap,
   projectColorMap,
   projectIconMap,
+  unreadNotificationCountByTask,
   totalCount,
   hasMore,
   onLoadMore,
@@ -141,6 +144,7 @@ export default function Column({
                         onContextMenu={onContextMenu}
                         projectName={undefined}
                         projectColor={undefined}
+                        unreadNotificationCount={unreadNotificationCountByTask?.[task.id] ?? 0}
                         isBaseProject={
                           !!task.worktreePath &&
                           !task.worktreePath.includes("__worktrees")
@@ -168,6 +172,7 @@ export default function Column({
                       projectName={group.projectName ?? undefined}
                       projectColor={color}
                       projectIconDataUrl={iconDataUrl}
+                      unreadNotificationCount={unreadNotificationCountByTask?.[task.id] ?? 0}
                       isBaseProject={
                         !!task.worktreePath &&
                         !task.worktreePath.includes("__worktrees")

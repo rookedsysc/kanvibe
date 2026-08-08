@@ -1,7 +1,7 @@
 "use client";
 
 import { Draggable } from "@hello-pangea/dnd";
-import { useLocale } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { Link, useRouter } from "@/desktop/renderer/navigation";
 import {
   navigateToTaskDetail,
@@ -24,6 +24,7 @@ interface TaskCardProps {
   projectColor?: string;
   projectIconDataUrl?: string | null;
   isBaseProject?: boolean;
+  unreadNotificationCount?: number;
   vimModeEnabled?: boolean;
 }
 
@@ -68,6 +69,25 @@ function CrownIcon() {
         fill="currentColor"
       />
       <path d="M3.7 13h8.6" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function BellIcon({ size = 11 }: { size?: number }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M15 17h5l-1.4-1.4A2 2 0 0 1 18 14.2V11a6 6 0 1 0-12 0v3.2a2 2 0 0 1-.6 1.4L4 17h5" />
+      <path d="M9 17a3 3 0 0 0 6 0" />
     </svg>
   );
 }
@@ -162,10 +182,12 @@ export default function TaskCard({
   projectColor,
   projectIconDataUrl,
   isBaseProject,
+  unreadNotificationCount = 0,
   vimModeEnabled = true,
 }: TaskCardProps) {
   const cardStyle = projectColor ? { borderColor: projectColor } : undefined;
   const locale = useLocale();
+  const t = useTranslations("common");
   const router = useRouter();
 
   function handleTaskKeyDown(event: React.KeyboardEvent<HTMLAnchorElement>) {
@@ -301,6 +323,17 @@ export default function TaskCard({
           </div>
 
           <div className="mt-1.5 flex items-center gap-1.5 overflow-hidden">
+            {unreadNotificationCount > 0 && (
+              <span
+                className={`${badgeClassName} gap-1 border-transparent bg-brand-primary font-semibold text-text-inverse`}
+                aria-label={t("unreadCount", { count: unreadNotificationCount })}
+                data-testid="unread-notification-badge"
+              >
+                <BellIcon />
+                {unreadNotificationCount}
+              </span>
+            )}
+
             {task.prUrl && (
               <span
                 role="link"

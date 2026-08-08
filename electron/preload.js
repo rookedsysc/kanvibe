@@ -98,6 +98,9 @@ contextBridge.exposeInMainWorld("kanvibeDesktop", {
   markNotificationRead(notificationId) {
     return ipcRenderer.invoke("kanvibe:notifications-mark-read", notificationId);
   },
+  markTaskNotificationsRead(taskId) {
+    return ipcRenderer.invoke("kanvibe:notifications-mark-task-read", taskId);
+  },
   markAllNotificationsRead() {
     return ipcRenderer.invoke("kanvibe:notifications-mark-all-read");
   },

@@ -21,6 +21,7 @@ import { SessionType, TaskStatus, type KanbanTask } from "@/entities/KanbanTask"
 import type { Project } from "@/entities/Project";
 import { useAutoRefresh } from "@/desktop/renderer/hooks/useAutoRefresh";
 import { useProjectFilterParams } from "@/desktop/renderer/hooks/useProjectFilterParams";
+import { useUnreadNotificationCountByTask } from "@/desktop/renderer/hooks/useUnreadNotificationCountByTask";
 import {
   TASK_KIND_FILTER_VALUES,
   useTaskKindFilterParams,
@@ -587,6 +588,7 @@ export default function Board({
     [vimCommandValue],
   );
   const [, startDragPersistenceTransition] = useTransition();
+  const unreadNotificationCountByTask = useUnreadNotificationCountByTask();
   const notificationCenterRef = useRef<NotificationCenterButtonHandle>(null);
   const projectSelectorRef = useRef<ProjectSelectorHandle>(null);
   const vimCommandInputRef = useRef<HTMLInputElement>(null);
@@ -1295,6 +1297,7 @@ export default function Board({
                   projectNameMap={projectNameMap}
                   projectColorMap={projectColorMap}
                   projectIconMap={projectIconMap}
+                  unreadNotificationCountByTask={unreadNotificationCountByTask}
                   vimModeEnabled={vimModeEnabled}
                   {...(col.status === TaskStatus.DONE && {
                     totalCount: doneTotal,

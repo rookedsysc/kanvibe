@@ -159,16 +159,22 @@ const NotificationCenterButton = forwardRef<NotificationCenterButtonHandle, Noti
 
   const unreadCount = useMemo(() => notifications.filter((notification) => !notification.isRead).length, [notifications]);
 
+  const markNotificationAsRead = useCallback(async (notification: AppNotification) => {
+    if (notification.isRead) {
+      return;
+    }
+
+    await markNotificationRead(notification.id);
+    setNotifications((current) => current.map((item) => (
+      item.id === notification.id ? { ...item, isRead: true } : item
+    )));
+  }, []);
+
   const handleNotificationClick = useCallback(async (
     notification: AppNotification,
     { openInNewWindow = false }: { openInNewWindow?: boolean } = {},
   ) => {
-    if (!notification.isRead) {
-      await markNotificationRead(notification.id);
-      setNotifications((current) => current.map((item) => (
-        item.id === notification.id ? { ...item, isRead: true } : item
-      )));
-    }
+    await markNotificationAsRead(notification);
 
     closePanel();
 
@@ -201,11 +207,20 @@ const NotificationCenterButton = forwardRef<NotificationCenterButtonHandle, Noti
     }
 
     redirect(notification.relativePath);
-  }, [closePanel]);
+  }, [closePanel, markNotificationAsRead]);
 
   useEffect(() => {
     if (!isOpen) {
       return;
+    }
+
+    function getHighlightedNotification() {
+      if (notifications.length === 0) {
+        return null;
+      }
+
+      const boundedIndex = Math.min(Math.max(highlightedIndexRef.current, 0), notifications.length - 1);
+      return notifications[boundedIndex] ?? null;
     }
 
     function handleWindowKeyDown(event: KeyboardEvent) {
@@ -240,12 +255,22 @@ const NotificationCenterButton = forwardRef<NotificationCenterButtonHandle, Noti
           break;
         case "Enter":
           {
-            const currentHighlightedIndex = Math.min(Math.max(highlightedIndexRef.current, 0), notifications.length - 1);
-            if (currentHighlightedIndex < 0 || currentHighlightedIndex >= notifications.length) {
+            const highlightedNotification = getHighlightedNotification();
+            if (!highlightedNotification) {
               return;
             }
             event.preventDefault();
-            void handleNotificationClick(notifications[currentHighlightedIndex], { openInNewWindow: event.shiftKey });
+            void handleNotificationClick(highlightedNotification, { openInNewWindow: event.shiftKey });
+            return;
+          }
+        case " ":
+          {
+            const highlightedNotification = getHighlightedNotification();
+            if (!highlightedNotification) {
+              return;
+            }
+            event.preventDefault();
+            void markNotificationAsRead(highlightedNotification);
             return;
           }
         case "Escape":
@@ -259,7 +284,7 @@ const NotificationCenterButton = forwardRef<NotificationCenterButtonHandle, Noti
     return () => {
       window.removeEventListener("keydown", handleWindowKeyDown);
     };
-  }, [closePanel, handleNotificationClick, hasShortcutBlocker, highlightedNotificationIndex, isOpen, notifications]);
+  }, [closePanel, handleNotificationClick, hasShortcutBlocker, highlightedNotificationIndex, isOpen, markNotificationAsRead, notifications]);
 
   async function handleMarkAllRead() {
     await markAllNotificationsRead();

@@ -40,6 +40,9 @@ vi.mock("@/desktop/renderer/navigation", () => ({
 
 vi.mock("next-intl", () => ({
   useLocale: () => "ko",
+  useTranslations: () => (key: string, values?: Record<string, unknown>) => (
+    values ? `${key}:${JSON.stringify(values)}` : key
+  ),
 }));
 
 function createTask(overrides: Partial<KanbanTask> = {}): KanbanTask {
@@ -165,6 +168,27 @@ describe("TaskCard - Priority Badge", () => {
     expect(remoteBadge.className).toContain("text-tag-ssh-text");
     expect(remoteBadge.className).not.toContain("font-semibold");
     expect(remoteBadge.className).not.toContain("ring-1");
+  });
+
+  it("should not render the unread notification badge when there is no unread notification", () => {
+    const task = createTask();
+
+    render(<TaskCard task={task} index={0} onContextMenu={onContextMenu} unreadNotificationCount={0} />);
+
+    expect(screen.queryByTestId("unread-notification-badge")).toBeNull();
+  });
+
+  it("should render the unread notification count badge with the brand point color", () => {
+    const task = createTask();
+
+    render(<TaskCard task={task} index={0} onContextMenu={onContextMenu} unreadNotificationCount={3} />);
+
+    const badge = screen.getByTestId("unread-notification-badge");
+
+    expect(badge.textContent).toContain("3");
+    expect(badge.className).toContain("bg-brand-primary");
+    expect(badge.className).toContain("text-text-inverse");
+    expect(badge.getAttribute("aria-label")).toBe('unreadCount:{"count":3}');
   });
 
   it("should render base branch as a compact icon instead of a ribbon label", () => {

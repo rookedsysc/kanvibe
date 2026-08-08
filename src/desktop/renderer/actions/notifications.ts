@@ -8,6 +8,10 @@ export function markNotificationRead(notificationId: string): Promise<AppNotific
   return window.kanvibeDesktop?.markNotificationRead?.(notificationId) ?? Promise.resolve(null);
 }
 
+export function markTaskNotificationsRead(taskId: string): Promise<number> {
+  return window.kanvibeDesktop?.markTaskNotificationsRead?.(taskId) ?? Promise.resolve(0);
+}
+
 export function markAllNotificationsRead(): Promise<void> {
   return window.kanvibeDesktop?.markAllNotificationsRead?.() ?? Promise.resolve();
 }
