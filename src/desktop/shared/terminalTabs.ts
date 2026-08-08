@@ -36,7 +36,10 @@ export type TerminalTabShortcutCommand =
 
 export interface TerminalTabMutationResult {
   ok: boolean;
-  /** 탭을 닫은 뒤 남은 탭 수. 0이면 호출자가 윈도우를 닫는다 */
-  remainingCount?: number;
+  /**
+   * 탭을 닫은 뒤 KanVibe 창까지 닫아야 하는지.
+   * 남은 탭 수와 같지 않다 — 멀티플렉서의 마지막 탭은 닫지 않고 창만 닫으므로 탭이 하나 남은 채로도 참이다.
+   */
+  shouldCloseWindow?: boolean;
   error?: string;
 }

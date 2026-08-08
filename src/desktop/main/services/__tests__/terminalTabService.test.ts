@@ -134,20 +134,51 @@ describe("탭 생성", () => {
 });
 
 describe("탭 닫기", () => {
-  it("tmux 탭을 닫은 뒤 남은 탭 수를 알려 준다", async () => {
+  it("탭이 남아 있으면 tmux window를 닫고 창은 유지한다", async () => {
     stubTask({});
     mockExecGit.mockImplementation(async (command: string) => (
-      command.includes("list-windows") ? "@2\t0\t1\tvim" : ""
+      command.includes("list-windows") ? "@1\t0\t1\tzsh\n@2\t1\t0\tvim" : ""
     ));
     const { closeTerminalTab } = await importService();
 
     const result = await closeTerminalTab("task-1", "@1");
 
     expect(findExecutedCommand("kill-window")).toBe("tmux kill-window -t '@1'");
-    expect(result).toEqual({ ok: true, remainingCount: 1 });
+    expect(result).toEqual({ ok: true, shouldCloseWindow: false });
   });
 
-  it("마지막 탭을 닫아 세션이 사라지면 남은 탭 0으로 본다", async () => {
+  /** 마지막 window를 죽이면 tmux 세션까지 사라진다. 세션 정리는 태스크 삭제 경로에만 있어야 한다 */
+  it("tmux window가 하나뿐이면 닫지 않고 창만 닫는다", async () => {
+    stubTask({});
+    mockExecGit.mockImplementation(async (command: string) => (
+      command.includes("list-windows") ? "@1\t0\t1\tzsh" : ""
+    ));
+    const { closeTerminalTab } = await importService();
+
+    const result = await closeTerminalTab("task-1", "@1");
+
+    expect(findExecutedCommand("kill-window")).toBeUndefined();
+    expect(result).toEqual({ ok: true, shouldCloseWindow: true });
+  });
+
+  it("zellij tab이 하나뿐이면 닫지 않고 창만 닫는다", async () => {
+    stubTask({ sessionType: SessionType.ZELLIJ });
+    mockExecGit.mockImplementation(async (command: string) => {
+      if (command === "zellij --version") return "zellij 0.44.0";
+      if (command.includes("list-tabs")) {
+        return JSON.stringify([{ tab_id: 0, position: 0, name: "Tab #1", active: true }]);
+      }
+      return "";
+    });
+    const { closeTerminalTab } = await importService();
+
+    const result = await closeTerminalTab("task-1", "0");
+
+    expect(findExecutedCommand("close-tab")).toBeUndefined();
+    expect(result).toEqual({ ok: true, shouldCloseWindow: true });
+  });
+
+  it("세션 목록을 읽지 못하면 아무것도 지우지 않고 창만 닫는다", async () => {
     stubTask({});
     mockExecGit.mockImplementation(async (command: string) => {
       if (command.includes("list-windows")) {
@@ -157,7 +188,10 @@ describe("탭 닫기", () => {
     });
     const { closeTerminalTab } = await importService();
 
-    expect(await closeTerminalTab("task-1", "@1")).toEqual({ ok: true, remainingCount: 0 });
+    const result = await closeTerminalTab("task-1", "@1");
+
+    expect(findExecutedCommand("kill-window")).toBeUndefined();
+    expect(result).toEqual({ ok: true, shouldCloseWindow: true });
   });
 });
 

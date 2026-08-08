@@ -223,6 +223,11 @@ async function buildZellijSelectCommand(
   return buildZellijGoToTabByNameCommand(target.sessionName, tabName);
 }
 
+/**
+ * 멀티플렉서 세션의 마지막 탭은 닫지 않고 창만 닫는다.
+ * 그 탭을 지우면 세션까지 사라지는데, 세션 정리는 태스크 삭제 경로에만 있어야 한다.
+ * 목록을 읽지 못하면 세션이 이미 없는 것으로 보고 역시 아무것도 지우지 않는다.
+ */
 export async function closeTerminalTab(
   taskId: string,
   tabId: string,
@@ -233,10 +238,15 @@ export async function closeTerminalTab(
   }
 
   if (target.sessionType === SessionType.TERMINAL) {
-    return { ok: true, remainingCount: closeLocalTerminalTab(taskId, tabId) };
+    return { ok: true, shouldCloseWindow: closeLocalTerminalTab(taskId, tabId) === 0 };
   }
 
   try {
+    const tabsBeforeClose = await readTabs(target).catch(() => []);
+    if (tabsBeforeClose.length <= 1) {
+      return { ok: true, shouldCloseWindow: true };
+    }
+
     if (target.sessionType === SessionType.TMUX) {
       await runTabCommand(buildTmuxKillWindowCommand(tabId), target.sshHost);
     } else if (await hasZellijTabIdSupport(target.sshHost)) {
@@ -252,12 +262,7 @@ export async function closeTerminalTab(
       );
     }
 
-    /**
-     * 마지막 탭을 닫으면 멀티플렉서 세션 자체가 사라져 목록 조회도 실패한다.
-     * 그 실패를 "남은 탭 0개"로 읽어 호출자가 창을 닫게 한다.
-     */
-    const remainingTabs = await readTabs(target).catch(() => []);
-    return { ok: true, remainingCount: remainingTabs.length };
+    return { ok: true, shouldCloseWindow: false };
   } catch (error) {
     return toFailure(error);
   }
