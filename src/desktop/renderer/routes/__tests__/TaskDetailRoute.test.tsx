@@ -32,6 +32,7 @@ const mocks = vi.hoisted(() => ({
   getDefaultSessionType: vi.fn(),
   listNotifications: vi.fn(),
   markNotificationRead: vi.fn(),
+  markTaskNotificationsRead: vi.fn(),
   markAllNotificationsRead: vi.fn(),
   activateNotification: vi.fn(),
   fetchPrUrlWithPrompt: vi.fn(),
@@ -150,6 +151,7 @@ vi.mock("@/desktop/renderer/actions/appSettings", () => ({
 vi.mock("@/desktop/renderer/actions/notifications", () => ({
   listNotifications: (...args: unknown[]) => mocks.listNotifications(...args),
   markNotificationRead: (...args: unknown[]) => mocks.markNotificationRead(...args),
+  markTaskNotificationsRead: (...args: unknown[]) => mocks.markTaskNotificationsRead(...args),
   markAllNotificationsRead: (...args: unknown[]) => mocks.markAllNotificationsRead(...args),
   activateNotification: (...args: unknown[]) => mocks.activateNotification(...args),
 }));
@@ -296,6 +298,7 @@ describe("TaskDetailRoute", () => {
     mocks.getDefaultSessionType.mockResolvedValue("tmux");
     mocks.listNotifications.mockResolvedValue([]);
     mocks.markNotificationRead.mockResolvedValue(undefined);
+    mocks.markTaskNotificationsRead.mockResolvedValue(0);
     mocks.markAllNotificationsRead.mockResolvedValue(undefined);
     mocks.activateNotification.mockResolvedValue(true);
     mocks.updateTaskStatus.mockResolvedValue(null);
@@ -423,6 +426,59 @@ describe("TaskDetailRoute", () => {
     await screen.findByTestId("task-title");
 
     expect(JSON.parse(sessionStorage.getItem(BOARD_FOCUS_TASK_CACHE_KEY) ?? "null")).toBe("task-1");
+  });
+
+  const notificationReadTargetTask = {
+    id: "task-1",
+    title: "task title",
+    description: null,
+    branchName: "feat/detail-notifications",
+    baseBranch: "main",
+    prUrl: null,
+    sessionType: null,
+    sessionName: null,
+    sshHost: null,
+    projectId: "project-1",
+    project: { id: "project-1", name: "kanvibe" },
+    status: "todo",
+    agentType: null,
+    worktreePath: "/repo__worktrees/detail-notifications",
+  };
+
+  it("상세 화면에 진입하면 해당 task의 알림을 모두 읽음 처리한다", async () => {
+    mocks.getTaskById.mockResolvedValue(notificationReadTargetTask);
+
+    render(<TaskDetailRoute />);
+
+    await screen.findByTestId("task-title");
+
+    expect(mocks.markTaskNotificationsRead).toHaveBeenCalledWith("task-1");
+  });
+
+  it("알림 읽음 처리가 실패하면 로그를 남기고 상세 화면 렌더는 계속한다", async () => {
+    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    mocks.getTaskById.mockResolvedValue(notificationReadTargetTask);
+    mocks.markTaskNotificationsRead.mockRejectedValue(new Error("app settings write failed"));
+
+    render(<TaskDetailRoute />);
+
+    await screen.findByTestId("task-title");
+
+    await waitFor(() => {
+      expect(consoleErrorSpy).toHaveBeenCalledWith("알림 읽음 처리 실패:", expect.any(Error));
+    });
+
+    consoleErrorSpy.mockRestore();
+  });
+
+  it("존재하지 않는 task로 진입하면 알림을 읽음 처리하지 않는다", async () => {
+    mocks.getTaskById.mockResolvedValue(null);
+
+    render(<TaskDetailRoute />);
+
+    await screen.findByText("taskNotFound");
+
+    expect(mocks.markTaskNotificationsRead).not.toHaveBeenCalled();
   });
 
   it("초기 task 조회가 끝나지 않아도 Loading 화면에 고착되지 않는다", async () => {

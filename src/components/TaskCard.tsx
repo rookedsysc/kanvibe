@@ -28,6 +28,7 @@ interface TaskCardProps {
   projectColor?: string;
   projectIconDataUrl?: string | null;
   isBaseProject?: boolean;
+  unreadNotificationCount?: number;
   /** projectId → 프로젝트 root task의 우선순위. task가 자기 우선순위를 갖지 않을 때 이 값을 물려받는다 */
   rootPriorityByProjectId?: Map<string, TaskPriority>;
   vimModeEnabled?: boolean;
@@ -76,6 +77,25 @@ function CrownIcon() {
         fill="currentColor"
       />
       <path d="M3.7 13h8.6" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function BellIcon({ size = 11 }: { size?: number }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M15 17h5l-1.4-1.4A2 2 0 0 1 18 14.2V11a6 6 0 1 0-12 0v3.2a2 2 0 0 1-.6 1.4L4 17h5" />
+      <path d="M9 17a3 3 0 0 0 6 0" />
     </svg>
   );
 }
@@ -170,15 +190,29 @@ export default function TaskCard({
   projectColor,
   projectIconDataUrl,
   isBaseProject,
+  unreadNotificationCount = 0,
   rootPriorityByProjectId = EMPTY_ROOT_PRIORITY_MAP,
   vimModeEnabled = true,
 }: TaskCardProps) {
   const cardStyle = projectColor ? { borderColor: projectColor } : undefined;
   const locale = useLocale();
   const t = useTranslations("task");
+  const tc = useTranslations("common");
   const router = useRouter();
   const effectivePriority = resolveEffectivePriority(task, rootPriorityByProjectId);
   const isPriorityInherited = isInheritedPriority(task, rootPriorityByProjectId);
+
+  /** 프로젝트명 행에 겹쳐 둔다. 프로젝트가 없는 카드에서는 첫 줄인 제목 행으로 내려간다 */
+  const unreadBadge = unreadNotificationCount > 0 ? (
+    <span
+      className={`${badgeClassName} absolute right-0 top-1/2 h-5 -translate-y-1/2 gap-1 border-transparent bg-brand-primary font-semibold text-text-inverse`}
+      aria-label={tc("unreadCount", { count: unreadNotificationCount })}
+      data-testid="unread-notification-badge"
+    >
+      <BellIcon />
+      {unreadNotificationCount}
+    </span>
+  ) : null;
 
   function handleTaskKeyDown(event: React.KeyboardEvent<HTMLAnchorElement>) {
     if (isShiftOnlyKeyboardShortcut(event, "Enter")) {
@@ -288,21 +322,29 @@ export default function TaskCard({
                 iconDataUrl={projectIconDataUrl}
                 color={projectColor}
               />
-              <span
-                className="truncate text-xs font-semibold leading-4"
-                style={{ color: projectColor }}
-              >
-                {projectName}
-              </span>
+              <div className="relative min-w-0">
+                <span
+                  className="block truncate text-xs font-semibold leading-4"
+                  style={{ color: projectColor }}
+                >
+                  {projectName}
+                </span>
+
+                {unreadBadge}
+              </div>
             </div>
           )}
 
           <div className={projectName ? `grid ${PROJECT_MARKER_GRID_COLUMNS} items-start gap-2` : "block"}>
             {projectName ? <span aria-hidden="true" /> : null}
             <div className="min-w-0">
-              <h3 className="truncate text-[13px] font-medium leading-5 text-text-primary">
-                {task.title}
-              </h3>
+              <div className="relative">
+                <h3 className="truncate text-[13px] font-medium leading-5 text-text-primary">
+                  {task.title}
+                </h3>
+
+                {!projectName && unreadBadge}
+              </div>
 
               {task.description && (
                 <p className="mt-0.5 line-clamp-1 text-[11px] leading-4 text-text-muted">
@@ -345,7 +387,7 @@ export default function TaskCard({
             )}
 
             {task.sshHost && (
-              <span className={`${badgeClassName} bg-tag-ssh-bg text-tag-ssh-text`}>
+              <span className={`${badgeClassName} min-w-0 truncate bg-tag-ssh-bg text-tag-ssh-text`}>
                 {task.sshHost}
               </span>
             )}

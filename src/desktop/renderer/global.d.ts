@@ -33,6 +33,7 @@ declare global {
       showNotification?: (payload: DesktopNotificationPayload) => Promise<boolean>;
       listNotifications?: () => Promise<AppNotification[]>;
       markNotificationRead?: (notificationId: string) => Promise<AppNotification | null>;
+      markTaskNotificationsRead?: (taskId: string) => Promise<number>;
       markAllNotificationsRead?: () => Promise<void>;
       onNotificationsChanged?: (listener: () => void) => () => void;
       activateNotification?: (notificationId: string) => Promise<boolean>;

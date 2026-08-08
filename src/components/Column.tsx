@@ -6,6 +6,7 @@ import { Droppable } from "@hello-pangea/dnd";
 import TaskCard from "./TaskCard";
 import ProjectTaskGroup from "./ProjectTaskGroup";
 import { useFlipReflow } from "@/desktop/renderer/hooks/useFlipReflow";
+import type { UnreadNotificationCountByTask } from "@/desktop/renderer/hooks/useUnreadNotificationCountByTask";
 import type { KanbanTask, TaskStatus } from "@/entities/KanbanTask";
 import type { TaskPriority } from "@/entities/TaskPriority";
 
@@ -18,6 +19,7 @@ interface ColumnProps {
   projectNameMap: Record<string, string>;
   projectColorMap: Record<string, string>;
   projectIconMap: Record<string, string>;
+  unreadNotificationCountByTask?: UnreadNotificationCountByTask;
   rootPriorityByProjectId?: Map<string, TaskPriority>;
   totalCount?: number;
   hasMore?: boolean;
@@ -82,6 +84,7 @@ export default function Column({
   projectNameMap,
   projectColorMap,
   projectIconMap,
+  unreadNotificationCountByTask,
   rootPriorityByProjectId,
   totalCount,
   hasMore,
@@ -146,6 +149,7 @@ export default function Column({
                         onContextMenu={onContextMenu}
                         projectName={undefined}
                         projectColor={undefined}
+                        unreadNotificationCount={unreadNotificationCountByTask?.[task.id] ?? 0}
                         isBaseProject={
                           !!task.worktreePath &&
                           !task.worktreePath.includes("__worktrees")
@@ -174,6 +178,7 @@ export default function Column({
                       projectName={group.projectName ?? undefined}
                       projectColor={color}
                       projectIconDataUrl={iconDataUrl}
+                      unreadNotificationCount={unreadNotificationCountByTask?.[task.id] ?? 0}
                       isBaseProject={
                         !!task.worktreePath &&
                         !task.worktreePath.includes("__worktrees")

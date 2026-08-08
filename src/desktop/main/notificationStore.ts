@@ -103,6 +103,27 @@ export async function markNotificationRead(id: string): Promise<AppNotification 
   return updatedNotification;
 }
 
+/** 특정 task에 연결된 미읽음 알림을 모두 읽음 처리하고, 실제로 바뀐 알림 수를 돌려준다 */
+export async function markTaskNotificationsRead(taskId: string): Promise<number> {
+  const notifications = await readNotifications();
+  let updatedCount = 0;
+  const nextNotifications = notifications.map((notification) => {
+    if (notification.taskId !== taskId || notification.isRead) {
+      return notification;
+    }
+
+    updatedCount += 1;
+    return { ...notification, isRead: true };
+  });
+
+  if (updatedCount === 0) {
+    return 0;
+  }
+
+  await writeNotifications(nextNotifications);
+  return updatedCount;
+}
+
 export async function markAllNotificationsRead(): Promise<void> {
   const notifications = await readNotifications();
   await writeNotifications(notifications.map((notification) => ({ ...notification, isRead: true })));

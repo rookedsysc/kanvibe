@@ -582,7 +582,7 @@ async function activateAppNotification(appNotification, options = {}) {
 
 function registerNotificationHandlers() {
   const { deliverDesktopNotification } = require(getRuntimeModulePath(path.join("src", "desktop", "main", "services", "desktopNotificationService.ts")));
-  const { listNotifications, markAllNotificationsRead, markNotificationRead, getNotificationById } = getNotificationStore();
+  const { listNotifications, markAllNotificationsRead, markNotificationRead, markTaskNotificationsRead, getNotificationById } = getNotificationStore();
 
   ipcMain.handle("kanvibe:show-notification", async (_event, payload) => {
     return deliverDesktopNotification(payload, createDesktopNotificationOptions());
@@ -596,6 +596,14 @@ function registerNotificationHandlers() {
     const notification = await markNotificationRead(notificationId);
     broadcastNotificationsChanged();
     return notification;
+  });
+
+  ipcMain.handle("kanvibe:notifications-mark-task-read", async (_event, taskId) => {
+    const updatedCount = await markTaskNotificationsRead(taskId);
+    if (updatedCount > 0) {
+      broadcastNotificationsChanged();
+    }
+    return updatedCount;
   });
 
   ipcMain.handle("kanvibe:notifications-mark-all-read", async () => {
