@@ -1236,7 +1236,9 @@ export default function TaskDetailRoute() {
         }
 
         /** 상세 화면에 들어온 시점에 이 task로 쌓인 알림은 이미 확인한 것으로 본다 */
-        void markTaskNotificationsRead(task.id);
+        void markTaskNotificationsRead(task.id).catch((error) => {
+          console.error("알림 읽음 처리 실패:", error);
+        });
 
         setResolvedSidebarDefaultCollapsed(sidebarDefaultCollapsed);
         setState((current) => current && current.task.id === task.id

@@ -378,7 +378,7 @@ export default function TaskCard({
             )}
 
             {task.sshHost && (
-              <span className={`${badgeClassName} bg-tag-ssh-bg text-tag-ssh-text`}>
+              <span className={`${badgeClassName} min-w-0 truncate bg-tag-ssh-bg text-tag-ssh-text`}>
                 {task.sshHost}
               </span>
             )}
