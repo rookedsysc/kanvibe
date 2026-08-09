@@ -1,11 +1,12 @@
 import type { KanbanTask, TaskStatus } from "@/entities/KanbanTask";
 import { getProjectRepository } from "@/lib/database";
 import { addAiToolPatternsToGitExclude } from "@/lib/gitExclude";
+import { persistProjectPriorityToKanvibeState } from "@/desktop/main/services/kanvibeProjectColorService";
 import type { KanvibeTaskSyncState } from "@/lib/kanvibeProjectState";
 import {
   readKanvibeTaskState,
   readKanvibeTaskSyncState,
-  writeKanvibeTaskDescription,
+  writeKanvibeTaskMetadata,
   writeKanvibeTaskStatus,
 } from "@/lib/kanvibeProjectState";
 
@@ -16,15 +17,16 @@ type TaskWithOptionalLocation = Pick<KanbanTask, "id" | "status" | "worktreePath
   branchName?: string | null;
 };
 
-type TaskDescriptionTask = Pick<KanbanTask, "id" | "description" | "worktreePath" | "sshHost"> & {
+type TaskMetadataTask = Pick<KanbanTask, "id" | "description" | "priority" | "worktreePath" | "sshHost"> & {
   projectId?: string | null;
   branchName?: string | null;
 };
 
 type ProjectTaskStateLocation = {
+  id: string;
   repoPath: string;
   defaultBranch: string;
-  sshHost?: string | null;
+  sshHost: string | null;
 };
 
 function getErrorMessage(error: unknown): string {
@@ -46,12 +48,13 @@ export async function readPersistedTaskStatusAtPath(
 export async function readPersistedTaskSyncStateAtPath(
   repoPath: string | null | undefined,
   sshHost?: string | null,
+  projectRepoPath?: string,
 ): Promise<KanvibeTaskSyncState> {
   if (!repoPath) {
     return { status: null, description: null };
   }
 
-  return readKanvibeTaskSyncState(repoPath, sshHost);
+  return readKanvibeTaskSyncState(repoPath, sshHost, projectRepoPath);
 }
 
 export async function persistTaskStateAtPath(
@@ -98,8 +101,8 @@ export async function persistTaskStateForTask(task: TaskWithOptionalLocation): P
   await persistTaskStateAtPath(resolvedLocation?.repoPath, task, resolvedLocation?.sshHost ?? null);
 }
 
-/** 사용자가 남긴 설명을 공유 파일에 기록해 같은 저장소를 보는 다른 기기와 맞춘다 */
-export async function persistTaskDescriptionForTask(task: TaskDescriptionTask): Promise<void> {
+/** task 설명과 priority를 책임에 맞는 공유 파일에 기록한다 */
+export async function persistTaskMetadataForTask(task: TaskMetadataTask): Promise<void> {
   const resolvedLocation = await resolveTaskStateLocation(task);
   if (!resolvedLocation) {
     return;
@@ -107,13 +110,23 @@ export async function persistTaskDescriptionForTask(task: TaskDescriptionTask): 
 
   try {
     await ensureKanvibeStateDirectoryExcluded(resolvedLocation.repoPath, resolvedLocation.sshHost);
-    await writeKanvibeTaskDescription(
+    const project = await resolveProjectRootTaskStateLocation(task);
+    const isProjectRootTask = project !== null && task.branchName === project.defaultBranch;
+
+    await writeKanvibeTaskMetadata(
       resolvedLocation.repoPath,
-      task.description,
+      {
+        description: task.description,
+        ...(!isProjectRootTask ? { priority: task.priority } : {}),
+      },
       resolvedLocation.sshHost,
     );
+
+    if (isProjectRootTask) {
+      await persistProjectPriorityToKanvibeState(project, task.priority);
+    }
   } catch (error) {
-    console.error(".kanvibe task 설명 저장 실패:", {
+    console.error(".kanvibe task 메타데이터 저장 실패:", {
       repoPath: resolvedLocation.repoPath,
       taskId: task.id,
       sshHost: resolvedLocation.sshHost,

@@ -1,5 +1,6 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { TaskStatus } from "@/entities/KanbanTask";
+import { TaskPriority } from "@/entities/TaskPriority";
 
 const { mockReadTextFile, mockReadTextFiles, mockWriteTextFile, mockWriteTextFileIfAbsent } = vi.hoisted(() => ({
   mockReadTextFile: vi.fn(),
@@ -27,6 +28,7 @@ import {
   hasKanvibeHookTarget,
   parseKanvibeTargets,
   parseKanvibeTaskDescription,
+  parseKanvibeProjectState,
   parseKanvibeTaskState,
   parseProjectColor,
   parseTaskStatus,
@@ -36,7 +38,8 @@ import {
   upsertKanvibeHookTarget,
   writeKanvibeProjectColor,
   writeKanvibeProjectColorIfAbsent,
-  writeKanvibeTaskDescription,
+  writeKanvibeProjectPriority,
+  writeKanvibeTaskMetadata,
   writeKanvibeTaskStatus,
 } from "@/lib/kanvibeProjectState";
 
@@ -78,6 +81,23 @@ describe("kanvibeProjectState", () => {
     expect(JSON.parse(buildKanvibeProjectStateContent("#65D08A"))).toEqual({
       schemaVersion: 1,
       projectColor: "#65D08A",
+      updatedAt: expect.any(String),
+    });
+  });
+
+  it("프로젝트 priority는 project.json에 저장하고 기존 색상과 함께 읽는다", () => {
+    const content = buildKanvibeProjectStateContent("#65D08A", TaskPriority.HIGH);
+
+    expect(JSON.parse(content)).toEqual({
+      schemaVersion: 1,
+      projectColor: "#65D08A",
+      priority: TaskPriority.HIGH,
+      updatedAt: expect.any(String),
+    });
+    expect(parseKanvibeProjectState(content)).toEqual({
+      schemaVersion: 1,
+      projectColor: "#65D08A",
+      priority: TaskPriority.HIGH,
       updatedAt: expect.any(String),
     });
   });
@@ -177,6 +197,24 @@ describe("kanvibeProjectState", () => {
     expect(mockReadTextFile).toHaveBeenCalledWith("/remote/repo/.kanvibe/project.json", "ssh-host");
 
     expect(getKanvibeProjectStatePath("/local/repo")).toBe("/local/repo/.kanvibe/project.json");
+  });
+
+  it("project.json의 색상과 priority를 각각 바꿔도 다른 값을 보존한다", async () => {
+    mockReadTextFile
+      .mockResolvedValueOnce(JSON.stringify({ projectColor: "#65D08A", priority: "low" }))
+      .mockResolvedValueOnce(JSON.stringify({ projectColor: "#0064FF", priority: "low" }));
+
+    await writeKanvibeProjectColor("/local/repo", "#0064FF");
+    expect(JSON.parse(getLastWrittenContent())).toEqual(expect.objectContaining({
+      projectColor: "#0064FF",
+      priority: TaskPriority.LOW,
+    }));
+
+    await writeKanvibeProjectPriority("/local/repo", TaskPriority.HIGH);
+    expect(JSON.parse(getLastWrittenContent())).toEqual(expect.objectContaining({
+      projectColor: "#0064FF",
+      priority: TaskPriority.HIGH,
+    }));
   });
 
   it("형식이 잘못된 색상은 기록하지 않는다", async () => {
@@ -282,7 +320,9 @@ describe("kanvibeProjectState", () => {
   });
 
   it("task 설명을 status.json이 아닌 task.json에 기록한다", async () => {
-    await writeKanvibeTaskDescription("/local/repo", "결제 실패 로그 원인 추적");
+    await writeKanvibeTaskMetadata("/local/repo", {
+      description: "결제 실패 로그 원인 추적",
+    });
 
     expect(mockWriteTextFile).toHaveBeenCalledWith(
       "/local/repo/.kanvibe/task.json",
@@ -296,6 +336,26 @@ describe("kanvibeProjectState", () => {
     });
     expect(getKanvibeTaskDescriptionPath("/local/repo")).toBe("/local/repo/.kanvibe/task.json");
     expect(getKanvibeTaskDescriptionPath("/remote/repo", "build-host")).toBe("/remote/repo/.kanvibe/task.json");
+  });
+
+  it("task priority를 task.json에 설명과 함께 기록한다", () => {
+    const content = buildKanvibeTaskDescriptionContent(
+      "결제 실패 로그 원인 추적",
+      TaskPriority.LOW,
+    );
+
+    expect(JSON.parse(content)).toEqual({
+      schemaVersion: 1,
+      description: "결제 실패 로그 원인 추적",
+      priority: TaskPriority.LOW,
+      updatedAt: expect.any(String),
+    });
+    expect(parseKanvibeTaskDescription(content)).toEqual({
+      schemaVersion: 1,
+      description: "결제 실패 로그 원인 추적",
+      priority: TaskPriority.LOW,
+      updatedAt: expect.any(String),
+    });
   });
 
   it("설명을 지우면 null을 기록해 다른 기기에서도 지워지게 한다", () => {
@@ -328,9 +388,45 @@ describe("kanvibeProjectState", () => {
     expect(syncState.description?.description).toBe("결제 실패 로그 원인 추적");
     expect(mockReadTextFiles).toHaveBeenCalledTimes(1);
     expect(mockReadTextFiles).toHaveBeenCalledWith(
-      ["/local/repo/.kanvibe/status.json", "/local/repo/.kanvibe/task.json"],
+      [
+        "/local/repo/.kanvibe/status.json",
+        "/local/repo/.kanvibe/task.json",
+        "/local/repo/.kanvibe/project.json",
+      ],
       undefined,
     );
+  });
+
+  it("task priority를 우선하고 없으면 project priority를 사용한다", async () => {
+    mockReadTextFiles
+      .mockResolvedValueOnce(new Map([
+        ["/local/repo/.kanvibe/status.json", { exists: false, content: "" }],
+        ["/local/repo/.kanvibe/task.json", { exists: true, content: JSON.stringify({ priority: "low" }) }],
+        ["/project/repo/.kanvibe/project.json", { exists: true, content: JSON.stringify({ priority: "high" }) }],
+      ]))
+      .mockResolvedValueOnce(new Map([
+        ["/local/repo/.kanvibe/status.json", { exists: false, content: "" }],
+        ["/local/repo/.kanvibe/task.json", { exists: true, content: JSON.stringify({ description: null }) }],
+        ["/project/repo/.kanvibe/project.json", { exists: true, content: JSON.stringify({ priority: "high" }) }],
+      ]))
+      .mockResolvedValueOnce(new Map([
+        ["/local/repo/.kanvibe/status.json", { exists: false, content: "" }],
+        ["/local/repo/.kanvibe/task.json", { exists: true, content: JSON.stringify({ priority: null }) }],
+        ["/project/repo/.kanvibe/project.json", { exists: true, content: JSON.stringify({ priority: "high" }) }],
+      ]));
+
+    await expect(readKanvibeTaskSyncState("/local/repo", undefined, "/project/repo"))
+      .resolves.toEqual(expect.objectContaining({
+        priority: TaskPriority.LOW,
+        projectPriority: TaskPriority.HIGH,
+      }));
+    await expect(readKanvibeTaskSyncState("/local/repo", undefined, "/project/repo"))
+      .resolves.toEqual(expect.objectContaining({ projectPriority: TaskPriority.HIGH }));
+    await expect(readKanvibeTaskSyncState("/local/repo", undefined, "/project/repo"))
+      .resolves.toEqual(expect.objectContaining({
+        priority: null,
+        projectPriority: TaskPriority.HIGH,
+      }));
   });
 
   it("상태나 설명 파일이 없으면 각각 기록 없음으로 돌려준다", async () => {
