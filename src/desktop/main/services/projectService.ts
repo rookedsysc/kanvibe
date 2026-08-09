@@ -319,7 +319,12 @@ async function ensureProjectRootTask(
   const {
     status: persistedStatus,
     description: persistedDescription,
-  } = await readPersistedTaskSyncState(expectedDefaultBranchWorktreePath || project.repoPath, project.sshHost);
+    projectPriority: persistedProjectPriority,
+  } = await readPersistedTaskSyncState(
+    expectedDefaultBranchWorktreePath || project.repoPath,
+    project.sshHost,
+    project.repoPath,
+  );
 
   let shouldSaveTask = false;
   if (task.baseBranch !== project.defaultBranch) {
@@ -343,7 +348,12 @@ async function ensureProjectRootTask(
   }
 
   if (persistedDescription !== null && task.description !== persistedDescription.description) {
-    task.description = persistedDescription.description;
+    task.description = persistedDescription.description ?? null;
+    shouldSaveTask = true;
+  }
+
+  if (persistedProjectPriority !== undefined && task.priority !== persistedProjectPriority) {
+    task.priority = persistedProjectPriority;
     shouldSaveTask = true;
   }
 
@@ -719,12 +729,14 @@ async function syncProjectWorktrees(
       const {
         status: persistedStatus,
         description: persistedDescription,
-      } = await readPersistedTaskSyncState(wt.path, project.sshHost);
+        priority: persistedPriority,
+      } = await readPersistedTaskSyncState(wt.path, project.sshHost, project.repoPath);
       if (existingTask) {
         const shouldRepairTask = !matchesTaskLocation(existingTask, wt.path, project.sshHost)
           || existingTask.baseBranch !== project.defaultBranch
           || (persistedStatus !== null && existingTask.status !== persistedStatus)
-          || (persistedDescription !== null && existingTask.description !== persistedDescription.description);
+          || (persistedDescription !== null && existingTask.description !== persistedDescription.description)
+          || (persistedPriority !== undefined && existingTask.priority !== persistedPriority);
         let taskToPersist = existingTask;
         if (shouldRepairTask) {
           existingTask.worktreePath = wt.path;
@@ -734,7 +746,10 @@ async function syncProjectWorktrees(
             existingTask.status = persistedStatus;
           }
           if (persistedDescription !== null) {
-            existingTask.description = persistedDescription.description;
+            existingTask.description = persistedDescription.description ?? null;
+          }
+          if (persistedPriority !== undefined) {
+            existingTask.priority = persistedPriority;
           }
           const savedTask = await taskRepo.save(existingTask);
           taskToPersist = savedTask;
@@ -755,7 +770,10 @@ async function syncProjectWorktrees(
         orphanTask.baseBranch = orphanTask.baseBranch || project.defaultBranch;
         orphanTask.status = persistedStatus ?? TaskStatus.TODO;
         if (persistedDescription !== null) {
-          orphanTask.description = persistedDescription.description;
+          orphanTask.description = persistedDescription.description ?? null;
+        }
+        if (persistedPriority !== undefined) {
+          orphanTask.priority = persistedPriority;
         }
         const savedTask = await taskRepo.save(orphanTask);
         result.changed = true;
@@ -788,6 +806,7 @@ async function syncProjectWorktrees(
         baseBranch: project.defaultBranch,
         status: persistedStatus ?? TaskStatus.TODO,
         description: persistedDescription?.description ?? null,
+        priority: persistedPriority ?? null,
         ...(hasSession && {
           sessionType: SessionType.TMUX,
           sessionName,

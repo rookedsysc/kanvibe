@@ -2075,6 +2075,7 @@ describe("projectService local hook installation", () => {
       [
         "/workspace/api__worktrees/feature-review/.kanvibe/status.json",
         "/workspace/api__worktrees/feature-review/.kanvibe/task.json",
+        "/workspace/api/.kanvibe/project.json",
       ],
       null,
     );
@@ -2852,5 +2853,42 @@ describe("projectService task description sync", () => {
     // Then
     expect(result.changed).toBe(false);
     expect(save).not.toHaveBeenCalled();
+  });
+
+  it("task priority가 있으면 project priority보다 우선해 DB로 가져온다", async () => {
+    const save = vi.fn(async (value) => value);
+    mockWorktreeTaskRepository(save);
+    mockSharedTaskFiles({
+      [`${WORKTREE_PATH}/.kanvibe/task.json`]: JSON.stringify({ priority: "low" }),
+      "/workspace/api/.kanvibe/project.json": JSON.stringify({ priority: "high" }),
+    });
+
+    const { syncRegisteredProjectWorktrees } = await import("@/desktop/main/services/projectService");
+    await syncRegisteredProjectWorktrees();
+
+    expect(save).toHaveBeenCalledWith(expect.objectContaining({
+      id: "task-login",
+      priority: "low",
+    }));
+  });
+
+  it("task priority가 없으면 project priority를 DB로 가져온다", async () => {
+    const save = vi.fn(async (value) => value);
+    mockWorktreeTaskRepository(save);
+    mockSharedTaskFiles({
+      "/workspace/api/.kanvibe/project.json": JSON.stringify({ priority: "high" }),
+    });
+
+    const { syncRegisteredProjectWorktrees } = await import("@/desktop/main/services/projectService");
+    await syncRegisteredProjectWorktrees();
+
+    expect(save).toHaveBeenCalledWith(expect.objectContaining({
+      id: "task-main",
+      priority: "high",
+    }));
+    expect(save).not.toHaveBeenCalledWith(expect.objectContaining({
+      id: "task-login",
+      priority: "high",
+    }));
   });
 });
