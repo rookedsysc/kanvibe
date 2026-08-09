@@ -1,6 +1,6 @@
 {
   "name": "kanvibe",
-  "version": "1.0.9",
+  "version": "1.0.10",
   "private": true,
   "description": "AI agent task management Kanban board with embedded SQLite desktop packaging.",
   "author": "rookedsysc",
