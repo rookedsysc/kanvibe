@@ -681,6 +681,34 @@ describe("TaskDetailRoute", () => {
     expect(mocks.getTaskById).toHaveBeenCalledTimes(taskLoadCountBeforeClose);
   });
 
+  it("터미널 탭 왼쪽에 태스크 이름 배지를 항상 표시한다", async () => {
+    mocks.getTaskById.mockResolvedValue({
+      id: "task-1",
+      title: "fix tab task name",
+      description: null,
+      branchName: "fix/tab-task-name",
+      baseBranch: "main",
+      prUrl: null,
+      sessionType: "tmux",
+      sessionName: "task-session",
+      sshHost: null,
+      projectId: "project-1",
+      project: { id: "project-1", name: "kanvibe" },
+      status: "todo",
+      agentType: null,
+      worktreePath: "/repo__worktrees/fix-tab-task-name",
+    });
+
+    render(<TaskDetailRoute />);
+
+    const taskContextBadge = await screen.findByTestId("terminal-task-context");
+    expect(taskContextBadge.textContent).toBe("fix tab task name");
+    expect(taskContextBadge.getAttribute("title")).toBe("fix tab task name");
+    expect(taskContextBadge.className).toContain("bg-green-600");
+    expect(taskContextBadge.className).toContain("shrink-0");
+    expect(taskContextBadge.className).toContain("truncate");
+  });
+
   it("사용자가 작업 정보 패널을 닫은 뒤 상세 데이터가 새로고침되어도 다시 열지 않는다", async () => {
     let refreshSignal = 0;
     mocks.useRefreshSignal.mockImplementation(() => refreshSignal);

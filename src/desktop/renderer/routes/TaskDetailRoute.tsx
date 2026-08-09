@@ -1555,6 +1555,13 @@ export default function TaskDetailRoute() {
         ) : hasTerminal ? (
           <div className="flex-1 flex flex-col min-h-0 rounded-lg overflow-hidden shadow-md transition-all duration-200 ease-out">
             <div className="bg-terminal-chrome flex items-center gap-3 px-4 py-2.5 shrink-0">
+              <span
+                data-testid="terminal-task-context"
+                title={state.task.title}
+                className="max-w-64 shrink-0 truncate rounded-md bg-green-600 px-2.5 py-1 text-xs font-semibold text-white"
+              >
+                {state.task.title}
+              </span>
               {terminalTabs.tabs.length > 0 ? (
                 <TerminalTabBar
                   tabs={terminalTabs.tabs}
