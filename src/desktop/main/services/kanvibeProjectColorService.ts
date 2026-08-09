@@ -1,4 +1,5 @@
 import type { Project } from "@/entities/Project";
+import type { TaskPriority } from "@/entities/TaskPriority";
 import { getProjectRepository, getTaskRepository } from "@/lib/database";
 import { addAiToolPatternsToGitExclude } from "@/lib/gitExclude";
 import {
@@ -6,6 +7,7 @@ import {
   readKanvibeProjectColor,
   writeKanvibeProjectColor,
   writeKanvibeProjectColorIfAbsent,
+  writeKanvibeProjectPriority,
 } from "@/lib/kanvibeProjectState";
 
 /**
@@ -17,7 +19,8 @@ import {
  * 되돌아간 루트 값이 다음 sync에서 다시 DB로 내려가 색이 왕복하게 된다.
  */
 
-type ColorSyncProject = Pick<Project, "id" | "repoPath" | "sshHost" | "color">;
+type ProjectStateSyncProject = Pick<Project, "id" | "repoPath" | "sshHost">;
+type ColorSyncProject = ProjectStateSyncProject & Pick<Project, "color">;
 
 function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -38,11 +41,31 @@ export async function persistProjectColorToKanvibeState(project: ColorSyncProjec
 
   await writeProjectColorQuietly(project.repoPath, projectColor, project.sshHost);
 
-  const worktreePaths = (await resolveProjectColorRepoPaths(project))
+  const worktreePaths = (await resolveProjectStateRepoPaths(project))
     .filter((repoPath) => repoPath !== project.repoPath);
   await Promise.all(
     worktreePaths.map((repoPath) => writeProjectColorQuietly(repoPath, projectColor, project.sshHost)),
   );
+}
+
+/** root task priority를 프로젝트 공유 값으로 저장하고 소속 worktree에도 전파한다 */
+export async function persistProjectPriorityToKanvibeState(
+  project: ProjectStateSyncProject,
+  priority: TaskPriority | null,
+): Promise<void> {
+  await excludeKanvibeStateDirectory(project);
+  const repoPaths = await resolveProjectStateRepoPaths(project);
+  await Promise.all(repoPaths.map(async (repoPath) => {
+    try {
+      await writeKanvibeProjectPriority(repoPath, priority, project.sshHost);
+    } catch (error) {
+      console.warn("[project-priority] .kanvibe priority 기록 실패", {
+        repoPath,
+        sshHost: project.sshHost ?? null,
+        error: getErrorMessage(error),
+      });
+    }
+  }));
 }
 
 /** 한 경로의 색상 기록 실패가 나머지 경로 기록을 막지 않도록 경고만 남긴다 */
@@ -62,7 +85,7 @@ async function writeProjectColorQuietly(
   }
 }
 
-async function excludeKanvibeStateDirectory(project: ColorSyncProject): Promise<void> {
+async function excludeKanvibeStateDirectory(project: ProjectStateSyncProject): Promise<void> {
   try {
     await addAiToolPatternsToGitExclude(project.repoPath, project.sshHost);
   } catch (error) {
@@ -171,7 +194,7 @@ async function propagateSharedProjectColorToWorktrees(
   project: ColorSyncProject,
   sharedColor: string,
 ): Promise<void> {
-  const worktreePaths = (await resolveProjectColorRepoPaths(project))
+  const worktreePaths = (await resolveProjectStateRepoPaths(project))
     .filter((repoPath) => repoPath !== project.repoPath);
 
   const outdatedPaths = (await Promise.all(
@@ -191,8 +214,8 @@ async function propagateSharedProjectColorToWorktrees(
   );
 }
 
-/** 색상을 기록할 저장소 경로 목록. 프로젝트 루트와 소속 task worktree를 포함한다 */
-async function resolveProjectColorRepoPaths(project: ColorSyncProject): Promise<string[]> {
+/** 프로젝트 공유 상태를 기록할 경로 목록. 프로젝트 루트와 소속 task worktree를 포함한다 */
+async function resolveProjectStateRepoPaths(project: ProjectStateSyncProject): Promise<string[]> {
   const repoPaths = new Set<string>([project.repoPath]);
 
   try {

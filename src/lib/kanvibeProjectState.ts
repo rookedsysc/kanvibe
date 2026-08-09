@@ -1,5 +1,6 @@
 import path from "path";
 import { TaskStatus } from "@/entities/KanbanTask";
+import { TaskPriority } from "@/entities/TaskPriority";
 import { readTextFile, readTextFiles, writeTextFile, writeTextFileIfAbsent } from "@/lib/hostFileAccess";
 
 export const KANVIBE_DIR_NAME = ".kanvibe";
@@ -18,30 +19,34 @@ export interface KanvibeTaskState {
 }
 
 /**
- * 프로젝트 단위 공유 상태. task 상태와 파일을 분리해 hook(status.json 기록)과
+ * 프로젝트 단위 공유 상태. root task priority와 색상을 task 상태 파일에서 분리해 hook(status.json 기록)과
  * KanVibe client(project.json 기록)가 서로의 값을 덮어쓸 수 없게 한다.
  */
 export interface KanvibeProjectState {
   schemaVersion: 1;
-  projectColor: string;
+  projectColor?: string;
+  priority?: TaskPriority | null;
   updatedAt?: string;
 }
 
 /**
- * task 설명 공유 상태. hook이 통째로 재작성하는 status.json과 파일을 분리해
- * agent가 상태를 기록해도 사용자가 남긴 설명이 지워지지 않게 한다.
+ * task 메타데이터 공유 상태. hook이 통째로 재작성하는 status.json과 파일을 분리해
+ * agent가 상태를 기록해도 사용자가 남긴 설명과 priority가 지워지지 않게 한다.
  * description이 null이면 다른 기기에서도 설명을 지우라는 뜻이다.
  */
 export interface KanvibeTaskDescription {
   schemaVersion: 1;
-  description: string | null;
+  description?: string | null;
+  priority?: TaskPriority | null;
   updatedAt?: string;
 }
 
-/** 다른 기기의 상태를 한 번에 반영하기 위해 함께 읽는 값들. 각 항목의 null은 "기록 없음"이다 */
+/** 다른 기기의 상태를 한 번에 반영하기 위해 함께 읽는 값들 */
 export interface KanvibeTaskSyncState {
   status: TaskStatus | null;
   description: KanvibeTaskDescription | null;
+  priority?: TaskPriority | null;
+  projectPriority?: TaskPriority | null;
 }
 
 export interface KanvibeHookTarget {
@@ -95,14 +100,24 @@ export async function readKanvibeProjectColor(
 export async function readKanvibeTaskSyncState(
   repoPath: string,
   sshHost?: string | null,
+  projectRepoPath = repoPath,
 ): Promise<KanvibeTaskSyncState> {
   const taskStatePath = getKanvibeTaskStatePath(repoPath, sshHost);
   const taskDescriptionPath = getKanvibeTaskDescriptionPath(repoPath, sshHost);
-  const files = await readTextFiles([taskStatePath, taskDescriptionPath], sshHost);
+  const projectStatePath = getKanvibeProjectStatePath(projectRepoPath, sshHost);
+  const files = await readTextFiles([taskStatePath, taskDescriptionPath, projectStatePath], sshHost);
+  const taskMetadata = parseKanvibeTaskDescription(files.get(taskDescriptionPath)?.content ?? "");
+  const projectState = parseKanvibeProjectState(files.get(projectStatePath)?.content ?? "");
 
   return {
     status: parseKanvibeTaskState(files.get(taskStatePath)?.content ?? "")?.status ?? null,
-    description: parseKanvibeTaskDescription(files.get(taskDescriptionPath)?.content ?? ""),
+    description: taskMetadata && Object.hasOwn(taskMetadata, "description") ? taskMetadata : null,
+    ...(taskMetadata && Object.hasOwn(taskMetadata, "priority")
+      ? { priority: taskMetadata.priority ?? null }
+      : {}),
+    ...(projectState && Object.hasOwn(projectState, "priority")
+      ? { projectPriority: projectState.priority ?? null }
+      : {}),
   };
 }
 
@@ -118,14 +133,14 @@ export async function writeKanvibeTaskStatus(
   );
 }
 
-export async function writeKanvibeTaskDescription(
+export async function writeKanvibeTaskMetadata(
   repoPath: string,
-  description: string | null,
+  task: Pick<KanvibeTaskDescription, "description" | "priority">,
   sshHost?: string | null,
 ): Promise<void> {
   await writeTextFile(
     getKanvibeTaskDescriptionPath(repoPath, sshHost),
-    buildKanvibeTaskDescriptionContent(description),
+    buildKanvibeTaskDescriptionContent(task.description, task.priority),
     sshHost,
   );
 }
@@ -140,9 +155,26 @@ export async function writeKanvibeProjectColor(
     return;
   }
 
+  const currentState = parseKanvibeProjectState(
+    await readTextFile(getKanvibeProjectStatePath(repoPath, sshHost), sshHost),
+  );
   await writeTextFile(
     getKanvibeProjectStatePath(repoPath, sshHost),
-    buildKanvibeProjectStateContent(normalizedColor),
+    buildKanvibeProjectStateContent(normalizedColor, currentState?.priority),
+    sshHost,
+  );
+}
+
+export async function writeKanvibeProjectPriority(
+  repoPath: string,
+  priority: TaskPriority | null,
+  sshHost?: string | null,
+): Promise<void> {
+  const projectStatePath = getKanvibeProjectStatePath(repoPath, sshHost);
+  const currentState = parseKanvibeProjectState(await readTextFile(projectStatePath, sshHost));
+  await writeTextFile(
+    projectStatePath,
+    buildKanvibeProjectStateContent(currentState?.projectColor, priority),
     sshHost,
   );
 }
@@ -213,20 +245,28 @@ export function buildKanvibeTaskStateContent(
   return JSON.stringify(payload, null, 2) + "\n";
 }
 
-export function buildKanvibeTaskDescriptionContent(description: string | null): string {
+export function buildKanvibeTaskDescriptionContent(
+  description: string | null | undefined,
+  priority?: TaskPriority | null,
+): string {
   const payload: KanvibeTaskDescription = {
     schemaVersion: 1,
-    description,
+    ...(description !== undefined ? { description } : {}),
+    ...(priority !== undefined ? { priority } : {}),
     updatedAt: new Date().toISOString(),
   };
 
   return JSON.stringify(payload, null, 2) + "\n";
 }
 
-export function buildKanvibeProjectStateContent(projectColor: string): string {
+export function buildKanvibeProjectStateContent(
+  projectColor: string | undefined,
+  priority?: TaskPriority | null,
+): string {
   const payload: KanvibeProjectState = {
     schemaVersion: 1,
-    projectColor,
+    ...(projectColor !== undefined ? { projectColor } : {}),
+    ...(priority !== undefined ? { priority } : {}),
     updatedAt: new Date().toISOString(),
   };
 
@@ -280,14 +320,19 @@ export function parseKanvibeTaskDescription(content: string): KanvibeTaskDescrip
   }
 
   try {
-    const parsed = JSON.parse(content) as { description?: unknown; updatedAt?: unknown };
-    if (typeof parsed.description !== "string" && parsed.description !== null) {
+    const parsed = JSON.parse(content) as { description?: unknown; priority?: unknown; updatedAt?: unknown };
+    const hasDescription = Object.hasOwn(parsed, "description")
+      && (typeof parsed.description === "string" || parsed.description === null);
+    const hasPriority = Object.hasOwn(parsed, "priority")
+      && (parsed.priority === null || parseTaskPriority(parsed.priority) !== null);
+    if (!hasDescription && !hasPriority) {
       return null;
     }
 
     return {
       schemaVersion: 1,
-      description: parsed.description,
+      ...(hasDescription ? { description: parsed.description as string | null } : {}),
+      ...(hasPriority ? { priority: parsed.priority === null ? null : parseTaskPriority(parsed.priority)! } : {}),
       ...(isNonEmptyString(parsed.updatedAt) ? { updatedAt: parsed.updatedAt } : {}),
     };
   } catch {
@@ -301,15 +346,18 @@ export function parseKanvibeProjectState(content: string): KanvibeProjectState |
   }
 
   try {
-    const parsed = JSON.parse(content) as { projectColor?: unknown; updatedAt?: unknown };
+    const parsed = JSON.parse(content) as { projectColor?: unknown; priority?: unknown; updatedAt?: unknown };
     const projectColor = parseProjectColor(parsed.projectColor);
-    if (!projectColor) {
+    const hasPriority = Object.hasOwn(parsed, "priority")
+      && (parsed.priority === null || parseTaskPriority(parsed.priority) !== null);
+    if (!projectColor && !hasPriority) {
       return null;
     }
 
     return {
       schemaVersion: 1,
-      projectColor,
+      ...(projectColor ? { projectColor } : {}),
+      ...(hasPriority ? { priority: parsed.priority === null ? null : parseTaskPriority(parsed.priority)! } : {}),
       ...(isNonEmptyString(parsed.updatedAt) ? { updatedAt: parsed.updatedAt } : {}),
     };
   } catch {
@@ -351,6 +399,14 @@ export function parseProjectColor(value: unknown): string | null {
 
   const normalized = value.trim();
   return PROJECT_COLOR_PATTERN.test(normalized) ? normalized : null;
+}
+
+export function parseTaskPriority(value: unknown): TaskPriority | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  return Object.values(TaskPriority).includes(value as TaskPriority) ? value as TaskPriority : null;
 }
 
 function isNonEmptyString(value: unknown): value is string {

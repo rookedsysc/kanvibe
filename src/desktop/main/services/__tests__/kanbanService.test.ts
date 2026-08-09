@@ -2509,6 +2509,56 @@ describe("kanbanService.updateTask", () => {
     );
   });
 
+  it("일반 task priority를 task.json에 기록한다", async () => {
+    mocks.taskRepo.findOneBy.mockResolvedValue({
+      id: "task-1",
+      title: "알림 회귀 수정",
+      description: "설명",
+      priority: null,
+      worktreePath: "/workspace/repo-worktrees/task-1",
+      sshHost: null,
+      projectId: "project-1",
+      branchName: "fix/notifications",
+    });
+
+    const { updateTask } = await import("@/desktop/main/services/kanbanService");
+    await updateTask("task-1", { priority: "high" as never });
+
+    expect(mocks.writeTextFile).toHaveBeenCalledWith(
+      "/workspace/repo-worktrees/task-1/.kanvibe/task.json",
+      expect.stringContaining('"priority": "high"'),
+      null,
+    );
+  });
+
+  it("project root task priority를 project.json에 기록한다", async () => {
+    mocks.taskRepo.findOneBy.mockResolvedValue({
+      id: "task-main",
+      title: "main",
+      description: null,
+      priority: null,
+      worktreePath: "/workspace/repo",
+      sshHost: null,
+      projectId: "project-1",
+      branchName: "main",
+    });
+    mocks.projectRepo.findOneBy.mockResolvedValue({
+      id: "project-1",
+      repoPath: "/workspace/repo",
+      defaultBranch: "main",
+      sshHost: null,
+    });
+
+    const { updateTask } = await import("@/desktop/main/services/kanbanService");
+    await updateTask("task-main", { priority: "medium" as never });
+
+    expect(mocks.writeTextFile).toHaveBeenCalledWith(
+      "/workspace/repo/.kanvibe/project.json",
+      expect.stringContaining('"priority": "medium"'),
+      null,
+    );
+  });
+
   it("설명이 빠진 부분 수정은 공유 설명 파일을 건드리지 않는다", async () => {
     // Given
     mocks.taskRepo.findOneBy.mockResolvedValue({

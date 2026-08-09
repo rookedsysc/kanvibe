@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   readKanvibeProjectColor: vi.fn(),
   writeKanvibeProjectColor: vi.fn(),
   writeKanvibeProjectColorIfAbsent: vi.fn(),
+  writeKanvibeProjectPriority: vi.fn(),
 }));
 
 vi.mock("@/lib/database", () => ({
@@ -25,11 +26,13 @@ vi.mock("@/lib/kanvibeProjectState", async (importOriginal) => ({
   readKanvibeProjectColor: mocks.readKanvibeProjectColor,
   writeKanvibeProjectColor: mocks.writeKanvibeProjectColor,
   writeKanvibeProjectColorIfAbsent: mocks.writeKanvibeProjectColorIfAbsent,
+  writeKanvibeProjectPriority: mocks.writeKanvibeProjectPriority,
 }));
 
 import type { Project } from "@/entities/Project";
 import {
   persistProjectColorToKanvibeState,
+  persistProjectPriorityToKanvibeState,
   readSharedProjectColor,
   syncProjectColorWithKanvibeState,
 } from "@/desktop/main/services/kanvibeProjectColorService";
@@ -59,6 +62,7 @@ describe("kanvibeProjectColorService", () => {
     mocks.addAiToolPatternsToGitExclude.mockResolvedValue(undefined);
     mocks.writeKanvibeProjectColor.mockResolvedValue(undefined);
     mocks.writeKanvibeProjectColorIfAbsent.mockResolvedValue(undefined);
+    mocks.writeKanvibeProjectPriority.mockResolvedValue(undefined);
     vi.spyOn(console, "warn").mockImplementation(() => {});
   });
 
@@ -74,6 +78,20 @@ describe("kanvibeProjectColorService", () => {
     expect(mocks.writeKanvibeProjectColor.mock.calls).toEqual([
       ["/workspace/kanvibe", "#65D08A", "remote-host"],
       ["/workspace/kanvibe__worktrees/feature", "#65D08A", "remote-host"],
+    ]);
+  });
+
+  it("project root task priority를 루트와 소속 worktree에 모두 기록한다", async () => {
+    mocks.taskRepo.findBy.mockResolvedValue([
+      { worktreePath: "/workspace/kanvibe__worktrees/feature" },
+      { worktreePath: null },
+    ]);
+
+    await persistProjectPriorityToKanvibeState(createProject({ sshHost: "remote-host" }), "high" as never);
+
+    expect(mocks.writeKanvibeProjectPriority.mock.calls).toEqual([
+      ["/workspace/kanvibe", "high", "remote-host"],
+      ["/workspace/kanvibe__worktrees/feature", "high", "remote-host"],
     ]);
   });
 
