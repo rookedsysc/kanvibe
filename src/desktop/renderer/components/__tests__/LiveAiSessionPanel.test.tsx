@@ -78,6 +78,17 @@ describe("LiveAiSessionPanel", () => {
     expect(screen.getByText("claude")).toBeTruthy();
   });
 
+  it("실행중 세션에만 진행 표시를 그린다", () => {
+    render(<LiveAiSessionPanel sessions={[
+      createSession(),
+      createSession({ provider: "codex", state: "idle" }),
+    ]} />);
+
+    const progressBars = screen.getAllByTestId("live-ai-session-progress");
+    expect(progressBars).toHaveLength(1);
+    expect(progressBars[0].className).toContain("kv-live-progress");
+  });
+
   it("실행중인 세션이 없으면 빈 안내를 보여준다", () => {
     render(<LiveAiSessionPanel sessions={[]} />);
 

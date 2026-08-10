@@ -84,6 +84,15 @@ function LiveAiSessionRow({
         <div className="flex w-full items-center px-1 py-0.5">{summary}</div>
       )}
 
+      {session.state === "running" && (
+        <div
+          className="kv-live-progress mt-1 ml-6 h-0.5"
+          role="progressbar"
+          aria-label={stateLabel}
+          data-testid="live-ai-session-progress"
+        />
+      )}
+
       {session.runningSubtasks.length > 0 && (
         <ul className="mt-1 space-y-0.5 pl-6">
           {session.runningSubtasks.map((subtask) => (

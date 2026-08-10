@@ -490,3 +490,40 @@ textarea {
   border-color: var(--color-border-brand) !important;
   box-shadow: var(--shadow-kanban-task-focus);
 }
+
+/**
+ * 실행중 AI 세션 표시용 인디터미닛 진행 바.
+ * 남은 작업량을 알 수 없어 비율을 그릴 수 없으므로, 끝을 약속하지 않는 왕복 운동으로 "돌고 있음"만 전달한다.
+ */
+@keyframes kanvibe-live-session-progress {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(300%);
+  }
+}
+
+.kv-live-progress {
+  overflow: hidden;
+  border-radius: 999px;
+  background-color: color-mix(in srgb, var(--color-status-success) 22%, transparent);
+}
+
+.kv-live-progress::after {
+  content: "";
+  display: block;
+  width: 33%;
+  height: 100%;
+  border-radius: inherit;
+  background-color: var(--color-status-success);
+  animation: kanvibe-live-session-progress 1.4s ease-in-out infinite;
+}
+
+/** 움직임을 줄이도록 설정한 사용자에게는 정지한 막대로 상태만 남긴다 */
+@media (prefers-reduced-motion: reduce) {
+  .kv-live-progress::after {
+    width: 100%;
+    animation: none;
+  }
+}
