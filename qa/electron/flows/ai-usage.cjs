@@ -6,7 +6,7 @@ const { execFileSync } = require("node:child_process");
 const { createQaRun } = require("../lib/report.cjs");
 const { launchKanVibeElectron } = require("../lib/launchElectron.cjs");
 
-const AI_USAGE_SCOPE = "AI 사용량 패널: task 상세 좌측 dock 최하단 아이콘과 Mod+0으로 Claude·Codex·Gemini 남은 사용량 패널을 열고, 실제 자격증명으로 조회한 값이 렌더되는지와 dock 번호가 밀리지 않는지를 확인한다";
+const AI_USAGE_SCOPE = "AI 사용량 패널: task 상세 좌측 dock 최하단 아이콘과 Mod+0으로 Claude·Codex·Gemini 남은 사용량 패널을 열고, 실제 자격증명으로 조회한 값이 렌더되는지, dock 번호가 밀리지 않는지, 그리고 패널을 다시 열거나 앱을 재시작했을 때 저장된 값을 먼저 보여주며 위에 갱신 중이라고 알리는지를 확인한다";
 
 /** Linux Electron에서 Mod는 Control이다 */
 const MOD_KEY = process.platform === "darwin" ? "Meta" : "Control";
@@ -161,6 +161,30 @@ async function waitForProviderCards(page, expectedCount) {
   );
 }
 
+/**
+ * 패널이 처음 카드를 그린 순간의 상태를 잡는다.
+ *
+ * 새 조회는 네트워크 왕복이고 저장된 값 읽기는 로컬이라, 캐시를 먼저 붙이는 구현에서는
+ * 카드가 보이는 첫 순간에 갱신 중 표시가 함께 남아 있어야 한다.
+ */
+async function captureFirstPaintedPanelState(page) {
+  const handle = await page.waitForFunction(() => {
+    const panel = document.querySelector("[data-testid='ai-usage-panel']");
+    if (!panel) return null;
+
+    const cards = panel.querySelectorAll("[data-testid^='ai-usage-provider-']");
+    if (cards.length === 0) return null;
+
+    return {
+      cardCount: cards.length,
+      isRefreshing: Boolean(panel.querySelector("[data-testid='ai-usage-refreshing']")),
+      hasPercent: /\d+%/.test(panel.textContent || ""),
+    };
+  }, undefined, { timeout: 30000 });
+
+  return handle.jsonValue();
+}
+
 /** 패널이 실제 데이터를 그렸는지 provider 카드 텍스트로 확인한다 */
 async function readProviderCardTexts(page) {
   return page.evaluate(() => (
@@ -204,16 +228,14 @@ async function main() {
     }
   };
 
-  try {
-    fixture = createFixtureRepository(run);
+  // 재시작 시나리오도 같은 앱 데이터를 봐야 하므로 두 실행이 같은 디렉터리를 쓴다
+  const appDataDir = path.join(run.runDir, "app-data");
 
-    // 실제 사용량을 확인하는 것이 이 QA의 목적이므로 HOME을 가짜로 바꾸지 않는다
-    notes.push(`HOME은 실제 사용자 홈(${process.env.HOME})을 그대로 쓴다. 조회 값은 실행 시점의 실제 구독 사용량이다.`);
-
+  const launchApp = async () => {
     const launched = await launchKanVibeElectron({
       rootDir: process.cwd(),
       outputDir: run.runDir,
-      appDataDir: path.join(run.runDir, "app-data"),
+      appDataDir,
       viewport: { width: 1600, height: 1000 },
     });
     app = launched.app;
@@ -230,6 +252,24 @@ async function main() {
 
     await page.waitForLoadState("domcontentloaded");
     await dismissUpdateDialogIfPresent(page);
+  };
+
+  const openTaskDetail = async (taskId) => {
+    await page.evaluate((id) => {
+      window.location.hash = `#/ko/task/${id}`;
+    }, taskId);
+    await page.waitForTimeout(1200);
+    await dismissUpdateDialogIfPresent(page);
+    await page.locator("[data-testid='task-detail-usage-button']").waitFor({ state: "visible", timeout: 20000 });
+  };
+
+  try {
+    fixture = createFixtureRepository(run);
+
+    // 실제 사용량을 확인하는 것이 이 QA의 목적이므로 HOME을 가짜로 바꾸지 않는다
+    notes.push(`HOME은 실제 사용자 홈(${process.env.HOME})을 그대로 쓴다. 조회 값은 실행 시점의 실제 구독 사용량이다.`);
+
+    await launchApp();
 
     await check("Seed an isolated git project and a KanVibe task", async () => {
       const projectResult = await invokeDesktop(page, "project", "registerProject", "KanVibe AI Usage QA", fixture.repoDir);
@@ -248,13 +288,8 @@ async function main() {
       return `task=${seededTask.id}; repo=${fixture.repoDir}`;
     });
 
-    await setStepOverlay(page, "1/6 task 상세 진입: dock 최하단에 사용량 아이콘이 보여야 함");
-    await page.evaluate((taskId) => {
-      window.location.hash = `#/ko/task/${taskId}`;
-    }, seededTask.id);
-    await page.waitForTimeout(1200);
-    await dismissUpdateDialogIfPresent(page);
-    await page.locator("[data-testid='task-detail-usage-button']").waitFor({ state: "visible", timeout: 20000 });
+    await setStepOverlay(page, "1/8 task 상세 진입: dock 최하단에 사용량 아이콘이 보여야 함");
+    await openTaskDetail(seededTask.id);
     await takeScreenshot(page, run, "task-detail-with-usage-icon", screenshots);
 
     await check("Usage icon carries the Mod+0 hint and does not consume a dock number", async () => {
@@ -276,7 +311,7 @@ async function main() {
       return `usage=${usageTitle}; dock=${JSON.stringify(numberedDockTitles)}`;
     });
 
-    await setStepOverlay(page, `2/6 ${USAGE_SHORTCUT} 입력: 사용량 패널이 열려야 함`);
+    await setStepOverlay(page, `2/8 ${USAGE_SHORTCUT} 입력: 사용량 패널이 열려야 함`);
     await check(`${USAGE_SHORTCUT} opens the AI usage panel`, async () => {
       await setZoomLevel(app, ZOOM_PROBE_LEVEL);
       await page.keyboard.press(USAGE_SHORTCUT);
@@ -293,6 +328,7 @@ async function main() {
       return `panel opened; zoomLevelAfterShortcut=${zoomLevelAfterShortcut}`;
     });
 
+    await setStepOverlay(page, "3/8 provider 카드: 실제 조회한 사용량이 그려져야 함");
     await check("Panel renders one card per provider with real fetched values", async () => {
       await waitForProviderCards(page, 3);
       const cards = await readProviderCardTexts(page);
@@ -315,7 +351,7 @@ async function main() {
     });
     await takeScreenshot(page, run, "ai-usage-panel-open", screenshots);
 
-    await setStepOverlay(page, "4/6 새로고침: 다시 조회해도 값이 유지되어야 함");
+    await setStepOverlay(page, "4/8 새로고침: 다시 조회해도 값이 유지되어야 함");
     await check("Refresh button re-queries usage without emptying the panel", async () => {
       await page.locator("[data-testid='ai-usage-refresh']").click({ timeout: 10000 });
       // 버튼이 다시 눌릴 수 있게 되면 재조회가 끝난 것이다
@@ -331,7 +367,7 @@ async function main() {
     });
     await takeScreenshot(page, run, "ai-usage-panel-after-refresh", screenshots);
 
-    await setStepOverlay(page, "5/6 아이콘 클릭: 패널이 닫혀야 함");
+    await setStepOverlay(page, "5/8 아이콘 클릭: 패널이 닫혀야 함");
     await check("Dock icon toggles the panel closed", async () => {
       await page.locator("[data-testid='task-detail-usage-button']").click({ timeout: 10000 });
       await page.locator("[data-testid='ai-usage-panel']").waitFor({ state: "detached", timeout: 10000 });
@@ -339,13 +375,59 @@ async function main() {
     });
     await takeScreenshot(page, run, "ai-usage-panel-closed", screenshots);
 
-    await setStepOverlay(page, `6/6 ${USAGE_SHORTCUT} 재입력: 다시 열려야 함`);
-    await check(`${USAGE_SHORTCUT} reopens the panel`, async () => {
+    await setStepOverlay(page, `6/8 ${USAGE_SHORTCUT} 재입력: 저장된 값을 먼저 보여주며 위에 갱신 중이라고 알려야 함`);
+    await check(`${USAGE_SHORTCUT} reopens the panel with saved values before the new query lands`, async () => {
       await page.keyboard.press(USAGE_SHORTCUT);
       await page.locator("[data-testid='ai-usage-panel']").waitFor({ state: "visible", timeout: 15000 });
-      return "panel reopened by shortcut";
+
+      const firstPaint = await captureFirstPaintedPanelState(page);
+      if (firstPaint.cardCount < 3) {
+        throw new Error(`panel painted without every provider: ${JSON.stringify(firstPaint)}`);
+      }
+      if (!firstPaint.isRefreshing) {
+        throw new Error(`panel painted without the refreshing notice: ${JSON.stringify(firstPaint)}`);
+      }
+      return `firstPaint=${JSON.stringify(firstPaint)}`;
     });
-    await takeScreenshot(page, run, "ai-usage-panel-reopened", screenshots);
+    await takeScreenshot(page, run, "ai-usage-panel-reopened-from-cache", screenshots);
+
+    await setStepOverlay(page, "7/8 앱 재시작: 저장된 사용량이 앱 데이터에 남아 있어야 함");
+    await check("Saved snapshot survives an app restart", async () => {
+      isExpectedShutdown = true;
+      await app.close().catch(() => {});
+      await launchApp();
+      isExpectedShutdown = false;
+
+      const cachedSnapshot = await invokeDesktop(page, "aiUsage", "getCachedAiUsageSnapshot");
+      if (!cachedSnapshot?.accounts?.length) {
+        throw new Error(`no snapshot survived the restart: ${JSON.stringify(cachedSnapshot)}`);
+      }
+
+      const serializedSnapshot = JSON.stringify(cachedSnapshot);
+      if (/accessToken|refreshToken|access_token/i.test(serializedSnapshot)) {
+        throw new Error("saved snapshot carries credential fields");
+      }
+
+      notes.push(`재시작 후 남아 있던 계정 수: ${cachedSnapshot.accounts.length}`);
+      return `accounts=${cachedSnapshot.accounts.length}; fetchedAt=${cachedSnapshot.fetchedAt}`;
+    });
+
+    await setStepOverlay(page, `8/8 재시작 후 ${USAGE_SHORTCUT}: 빈 화면 대신 저장된 값이 먼저 보여야 함`);
+    await check("Panel opens on saved values right after a restart", async () => {
+      await openTaskDetail(seededTask.id);
+      await page.keyboard.press(USAGE_SHORTCUT);
+      await page.locator("[data-testid='ai-usage-panel']").waitFor({ state: "visible", timeout: 15000 });
+
+      const firstPaint = await captureFirstPaintedPanelState(page);
+      if (!firstPaint.hasPercent) {
+        throw new Error(`restarted panel painted without any saved usage: ${JSON.stringify(firstPaint)}`);
+      }
+      if (!firstPaint.isRefreshing) {
+        throw new Error(`restarted panel painted without the refreshing notice: ${JSON.stringify(firstPaint)}`);
+      }
+      return `firstPaint=${JSON.stringify(firstPaint)}`;
+    });
+    await takeScreenshot(page, run, "ai-usage-panel-after-restart", screenshots);
   } catch (error) {
     errors.push(error instanceof Error ? (error.stack || error.message) : String(error));
   } finally {
