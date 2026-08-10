@@ -13,6 +13,7 @@ import {
   pickLatestFile,
   readJsonLines,
   readJsonLinesHead,
+  readJsonLinesTail,
   REMOTE_SESSION_FILE_PARSE_CONCURRENCY,
   sortMessagesDescending,
   toIsoString,
@@ -316,11 +317,41 @@ export async function readClaudeLiveSession(
 
   return {
     sessionId,
+    currentTask: await readLatestUserRequest(latestSessionFile.filePath, context.sshHost),
     lastActiveAt: new Date(latestSessionFile.mtimeMs).toISOString(),
     runningSubtasks: await Promise.all(runningSubagentFiles.map((file) =>
       toClaudeSubtask(file, context.sshHost))),
   };
 }
+
+/**
+ * 세션이 지금 붙들고 있는 작업으로 가장 최근 사용자 요청을 쓴다.
+ * 첫 프롬프트는 대화가 길어지면 지금 하는 일과 무관해지므로 파일 꼬리에서 거꾸로 찾는다.
+ */
+async function readLatestUserRequest(
+  filePath: string,
+  sshHost: string | null | undefined,
+): Promise<string | null> {
+  try {
+    const events = await readJsonLinesTail(filePath, CLAUDE_TAIL_EVENT_COUNT, sshHost);
+    for (let index = events.length - 1; index >= 0; index -= 1) {
+      const event = events[index] as ClaudeProjectEvent;
+      if (event?.message?.role !== "user") continue;
+
+      const text = extractPlainText(event.message.content);
+      if (text) {
+        return truncateText(text, CLAUDE_CURRENT_TASK_LENGTH);
+      }
+    }
+  } catch {
+    // 세션 기록을 읽지 못해도 실행중 여부는 파일 활동만으로 판정할 수 있다.
+  }
+
+  return null;
+}
+
+const CLAUDE_TAIL_EVENT_COUNT = 60;
+const CLAUDE_CURRENT_TASK_LENGTH = 80;
 
 /** `agent-<agentId>.jsonl`의 첫 줄에는 위임받은 작업 프롬프트가 들어 있어, 이름 대신 그 앞부분을 보여준다 */
 async function toClaudeSubtask(

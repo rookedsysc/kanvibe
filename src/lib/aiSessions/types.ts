@@ -75,6 +75,8 @@ export interface LiveSessionTerminalWindow {
 export interface LiveAiSession {
   provider: AiSessionProvider;
   sessionId: string | null;
+  /** 세션이 지금 붙들고 있는 작업. 가장 최근 사용자 요청에서 뽑는다 */
+  currentTask: string | null;
   state: LiveAiSessionState;
   lastActiveAt: string | null;
   runningSubtasks: LiveAiSubtask[];
@@ -99,6 +101,7 @@ export interface LiveAiSessionWindows {
 /** provider 리더가 돌려주는 실행중 세션 스냅샷 */
 export interface LiveProviderSnapshot {
   sessionId: string | null;
+  currentTask: string | null;
   lastActiveAt: string | null;
   runningSubtasks: LiveAiSubtask[];
 }

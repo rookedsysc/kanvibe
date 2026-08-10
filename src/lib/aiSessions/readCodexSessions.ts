@@ -11,6 +11,7 @@ import {
   pickLatestFile,
   readJsonLines,
   readJsonLinesHead,
+  readJsonLinesTail,
   REMOTE_SESSION_FILE_PARSE_CONCURRENCY,
   sortMessagesDescending,
   toIsoString,
@@ -337,6 +338,7 @@ export async function readCodexLiveSession(
 
   return {
     sessionId: latestOwnThread.meta.threadId,
+    currentTask: await readLatestCodexUserRequest(latestOwnThread.filePath, context.sshHost),
     lastActiveAt: new Date(latestOwnThread.mtimeMs).toISOString(),
     runningSubtasks: threads
       .filter((thread) => thread.meta.parentThreadId === latestOwnThread.meta.threadId)
@@ -348,6 +350,32 @@ export async function readCodexLiveSession(
       })),
   };
 }
+
+/** 세션이 지금 붙들고 있는 작업. rollout 꼬리에서 마지막 사용자 입력을 찾는다 */
+async function readLatestCodexUserRequest(
+  filePath: string,
+  sshHost: string | null | undefined,
+): Promise<string | null> {
+  try {
+    const events = await readJsonLinesTail(filePath, CODEX_TAIL_EVENT_COUNT, sshHost);
+    for (let index = events.length - 1; index >= 0; index -= 1) {
+      const payload = (events[index] as CodexRolloutEvent)?.payload;
+      if (payload?.role !== "user") continue;
+
+      const text = extractPlainText(payload.content);
+      if (text) {
+        return truncateText(text, CODEX_CURRENT_TASK_LENGTH);
+      }
+    }
+  } catch {
+    // rollout을 읽지 못해도 실행중 여부는 파일 활동만으로 판정할 수 있다.
+  }
+
+  return null;
+}
+
+const CODEX_TAIL_EVENT_COUNT = 60;
+const CODEX_CURRENT_TASK_LENGTH = 80;
 
 interface CodexThreadMeta {
   threadId: string;

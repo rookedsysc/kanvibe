@@ -373,6 +373,7 @@ export async function readGeminiLiveSession(
 
   return {
     sessionId: path.basename(latestSessionFile.filePath, ".json"),
+    currentTask: null,
     lastActiveAt: new Date(latestSessionFile.mtimeMs).toISOString(),
     runningSubtasks: [],
   };

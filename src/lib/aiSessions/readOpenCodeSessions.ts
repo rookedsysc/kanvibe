@@ -170,6 +170,7 @@ export async function readOpenCodeLiveSession(
 
   return {
     sessionId: latestSession.id,
+    currentTask: latestSession.title,
     lastActiveAt: toIsoString(latestSession.time_updated),
     runningSubtasks: await readOpenCodeRunningChildren(context, latestSession.id, windows),
   };

@@ -169,6 +169,33 @@ describe("실행중 AI 세션 감지", { timeout: NATIVE_SQLITE_LOAD_TIMEOUT_MS 
     ]);
   });
 
+  it("세션이 지금 하고 있는 작업으로 가장 최근 사용자 요청을 쓴다", async () => {
+    mockTmuxPanes([]);
+    await writeJsonLines(claudeSessionFile("session-a"), [
+      { type: "user", sessionId: "session-a", cwd: worktreePath, message: { role: "user", content: [{ type: "text", text: "처음 요청" }] } },
+      { type: "assistant", sessionId: "session-a", message: { role: "assistant", content: [{ type: "text", text: "답변" }] } },
+      { type: "user", sessionId: "session-a", cwd: worktreePath, message: { role: "user", content: [{ type: "text", text: "지금 하고 있는 요청" }] } },
+    ], 1_000);
+
+    const sessions = await readLiveSessions();
+
+    expect(sessions.find((session) => session.provider === "claude")?.currentTask).toBe("지금 하고 있는 요청");
+  });
+
+  it("Codex 세션도 rollout의 마지막 사용자 입력을 작업으로 쓴다", async () => {
+    mockTmuxPanes([]);
+    const codexSessions = path.join(tempHome, ".codex", "sessions", "2026", "08", "10");
+    await writeJsonLines(path.join(codexSessions, "rollout-parent.jsonl"), [
+      { type: "session_meta", payload: { id: "parent-thread", cwd: worktreePath } },
+      { type: "response_item", payload: { type: "message", role: "user", content: [{ type: "input_text", text: "코덱스 첫 요청" }] } },
+      { type: "response_item", payload: { type: "message", role: "user", content: [{ type: "input_text", text: "코덱스 최근 요청" }] } },
+    ], 1_000);
+
+    const sessions = await readLiveSessions();
+
+    expect(sessions.find((session) => session.provider === "codex")?.currentTask).toBe("코덱스 최근 요청");
+  });
+
   it("세션 기록도 pane도 없는 provider는 목록에서 뺀다", async () => {
     mockTmuxPanes([]);
 

@@ -86,6 +86,7 @@ function toLiveSession(
   return {
     provider,
     sessionId: snapshot?.sessionId ?? null,
+    currentTask: snapshot?.currentTask ?? null,
     state: pane || hasRecentActivity ? "running" : "idle",
     lastActiveAt,
     runningSubtasks: snapshot?.runningSubtasks ?? [],
