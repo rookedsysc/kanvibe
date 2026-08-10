@@ -125,8 +125,9 @@ function ProviderUsageCard({ group }: { group: ProviderAccountGroup }) {
   const showAccountLabels = group.results.length > 1;
 
   return (
+    // 터미널이 반투명이면 배경 없는 카드는 뒤의 터미널 글자와 겹쳐 읽히지 않는다
     <section
-      className="rounded-md border border-border-subtle p-2.5"
+      className="rounded-md border border-border-subtle bg-bg-surface p-2.5"
       data-testid={`ai-usage-provider-${group.provider}`}
     >
       <header className="mb-2 flex items-center gap-1.5">
