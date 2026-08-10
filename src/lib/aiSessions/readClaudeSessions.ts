@@ -10,6 +10,7 @@ import {
   mapWithConcurrency,
   makePreviewMessage,
   paginateItems,
+  pickLatestFile,
   readJsonLines,
   readJsonLinesHead,
   REMOTE_SESSION_FILE_PARSE_CONCURRENCY,
@@ -17,7 +18,13 @@ import {
   toIsoString,
   truncateText,
 } from "@/lib/aiSessions/shared";
-import { getHomeDirectory, listFilesRecursivelyBySuffix, pathExists, readDirectoryFilesBySuffix } from "@/lib/hostFileAccess";
+import {
+  getHomeDirectory,
+  listFilesModifiedWithin,
+  listFilesRecursivelyBySuffix,
+  pathExists,
+  readDirectoryFilesBySuffix,
+} from "@/lib/hostFileAccess";
 import type {
   AggregatedAiMessage,
   AggregatedAiSession,
@@ -25,6 +32,9 @@ import type {
   AiSessionDetailReaderResult,
   AiSessionReaderContext,
   AiSessionReaderResult,
+  LiveAiSessionWindows,
+  LiveAiSubtask,
+  LiveProviderSnapshot,
 } from "@/lib/aiSessions/types";
 
 const DEFAULT_DETAIL_LIMIT = 20;
@@ -267,6 +277,79 @@ function getOrCreateClaudeSession(
   sessions.set(sessionId, accumulator);
   return accumulator;
 }
+
+/**
+ * 이 worktree에서 가장 최근에 움직인 Claude 세션과, 지금 돌고 있는 서브에이전트를 찾는다.
+ *
+ * 세션 본문은 읽지 않는다. 세션 파일 이름이 곧 세션 id이고 서브에이전트는 세션 id 아래 별도 디렉터리에
+ * 파일로 떨어지므로, 수정 시각만 보면 폴링 비용 없이 실행 여부와 개수를 알 수 있다.
+ * 서브에이전트 이름만 첫 줄을 읽어 채우는데, 그 줄에 위임받은 작업 프롬프트가 들어 있기 때문이다.
+ */
+export async function readClaudeLiveSession(
+  context: AiSessionReaderContext,
+  windows: LiveAiSessionWindows,
+): Promise<LiveProviderSnapshot | null> {
+  const projectsDirectory = await getClaudeProjectsDirectory(context);
+  const candidateDirectories = getCandidatePaths(context)
+    .map(toClaudeProjectDirName)
+    .map((directoryName) => path.join(projectsDirectory, directoryName));
+
+  const recentFiles = (await Promise.all(candidateDirectories.map(async (directory) => {
+    const files = await listFilesModifiedWithin(directory, ".jsonl", windows.recentWindowMs, context.sshHost);
+    // 서브에이전트 기록도 같은 트리 아래 있으므로, 세션 파일은 디렉터리 바로 밑에 있는 것만 본다
+    return files.filter((file) => path.dirname(file.filePath) === directory);
+  }))).flat();
+
+  const latestSessionFile = pickLatestFile(recentFiles);
+  if (!latestSessionFile) {
+    return null;
+  }
+
+  const sessionId = path.basename(latestSessionFile.filePath, ".jsonl");
+  const subagentsDirectory = path.join(path.dirname(latestSessionFile.filePath), sessionId, "subagents");
+  const runningSubagentFiles = await listFilesModifiedWithin(
+    subagentsDirectory,
+    ".jsonl",
+    windows.runningWindowMs,
+    context.sshHost,
+  );
+
+  return {
+    sessionId,
+    lastActiveAt: new Date(latestSessionFile.mtimeMs).toISOString(),
+    runningSubtasks: await Promise.all(runningSubagentFiles.map((file) =>
+      toClaudeSubtask(file, context.sshHost))),
+  };
+}
+
+/** `agent-<agentId>.jsonl`의 첫 줄에는 위임받은 작업 프롬프트가 들어 있어, 이름 대신 그 앞부분을 보여준다 */
+async function toClaudeSubtask(
+  file: { filePath: string; mtimeMs: number },
+  sshHost: string | null | undefined,
+): Promise<LiveAiSubtask> {
+  const agentId = path.basename(file.filePath, ".jsonl").replace(/^agent-/, "");
+
+  return {
+    id: agentId,
+    name: await readClaudeSubagentTaskLabel(file.filePath, sshHost),
+    lastActiveAt: new Date(file.mtimeMs).toISOString(),
+  };
+}
+
+async function readClaudeSubagentTaskLabel(
+  filePath: string,
+  sshHost: string | null | undefined,
+): Promise<string | null> {
+  try {
+    const [firstEvent] = await readJsonLinesHead(filePath, 1, sshHost);
+    const promptText = extractPlainText((firstEvent as ClaudeProjectEvent | undefined)?.message?.content);
+    return promptText ? truncateText(promptText, CLAUDE_SUBTASK_LABEL_LENGTH) : null;
+  } catch {
+    return null;
+  }
+}
+
+const CLAUDE_SUBTASK_LABEL_LENGTH = 40;
 
 function matchesClaudeQuery(query: string | undefined, ...values: Array<string | null | undefined>): boolean {
   if (!query) return true;

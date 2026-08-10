@@ -234,6 +234,50 @@ export async function listFilesRecursivelyBySuffix(
   return output.split("\n").map((value) => value.trim()).filter(Boolean);
 }
 
+/**
+ * 최근에 수정된 파일만 골라 절대 경로와 수정 시각을 함께 돌려준다.
+ * 파일 하나씩 mtime을 물어보면 원격에서는 파일 수만큼 SSH 왕복이 생기므로,
+ * 원격 경로는 `find`가 필터링과 시각 출력을 한 번에 끝내게 한다.
+ */
+export async function listFilesModifiedWithin(
+  rootPath: string,
+  suffix: string,
+  withinMs: number,
+  sshHost?: string | null,
+): Promise<{ filePath: string; mtimeMs: number }[]> {
+  const oldestAllowedMs = Date.now() - withinMs;
+
+  if (!sshHost) {
+    const filePaths = await listFilesRecursivelyBySuffix(rootPath, suffix, sshHost);
+    const records = await Promise.all(filePaths.map(async (filePath) => {
+      const mtimeMs = await getFileMtimeMs(filePath, sshHost);
+      return mtimeMs === null ? null : { filePath, mtimeMs };
+    }));
+
+    return records.filter((record): record is { filePath: string; mtimeMs: number } =>
+      record !== null && record.mtimeMs >= oldestAllowedMs);
+  }
+
+  const withinMinutes = Math.max(1, Math.ceil(withinMs / 60_000));
+  const output = await execGit(
+    `test -d ${quoteShellArgument(rootPath)} && find ${quoteShellArgument(rootPath)} -type f -name ${quoteShellArgument(`*${suffix}`)} -mmin -${withinMinutes} -exec sh -c 'for f; do printf "%s\\t%s\\n" "$(stat -c %Y "$f" 2>/dev/null || stat -f %m "$f" 2>/dev/null)" "$f"; done' sh {} + || true`,
+    sshHost,
+  );
+
+  return output
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const separatorIndex = line.indexOf("\t");
+      const secondsValue = Number.parseInt(line.slice(0, separatorIndex), 10);
+      const filePath = line.slice(separatorIndex + 1);
+      return Number.isNaN(secondsValue) || !filePath ? null : { filePath, mtimeMs: secondsValue * 1000 };
+    })
+    .filter((record): record is { filePath: string; mtimeMs: number } =>
+      record !== null && record.mtimeMs >= oldestAllowedMs);
+}
+
 export async function getFileMtimeMs(filePath: string, sshHost?: string | null): Promise<number | null> {
   if (!sshHost) {
     try {

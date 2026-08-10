@@ -50,6 +50,14 @@ export function toSourceStatus(result: AiSessionReaderResult): AiSessionSourceSt
   };
 }
 
+/** 수정 시각이 가장 늦은 파일 하나. 실행중 판정은 "마지막으로 움직인 세션"에서 출발한다 */
+export function pickLatestFile<T extends { mtimeMs: number }>(files: T[]): T | null {
+  return files.reduce<T | null>(
+    (latest, file) => (latest === null || file.mtimeMs > latest.mtimeMs ? file : latest),
+    null,
+  );
+}
+
 export function sortSessionsDescending(sessions: AggregatedAiSession[]): AggregatedAiSession[] {
   return [...sessions].sort((left, right) => {
     const leftValue = Date.parse(left.updatedAt ?? left.startedAt ?? "");

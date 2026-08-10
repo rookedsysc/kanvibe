@@ -6,6 +6,8 @@ import type {
   AggregatedAiSessionsResult,
   AiMessageRole,
   AiSessionProvider,
+  LiveAiSessionsResult,
+  RunningAgentPane,
 } from "@/lib/aiSessions/types";
 import type {
   ClaudeHooksStatus,
@@ -119,6 +121,14 @@ export function installTaskOpenCodeHooks(taskId: string): Promise<{ success: boo
 
 export function getTaskOpenCodeHooksStatus(taskId: string): Promise<OpenCodeHooksStatus | null> {
   return invokeDesktop("project", "getTaskOpenCodeHooksStatus", taskId);
+}
+
+export function getTaskLiveAiSessions(taskId: string): Promise<LiveAiSessionsResult> {
+  return invokeDesktop("project", "getTaskLiveAiSessions", taskId);
+}
+
+export function getRunningAgentPanes(): Promise<RunningAgentPane[]> {
+  return invokeDesktop("project", "getRunningAgentPanes");
 }
 
 export function getTaskAiSessions(

@@ -8,14 +8,30 @@ import {
   mapWithConcurrency,
   makePreviewMessage,
   paginateItems,
+  pickLatestFile,
   readJsonLines,
+  readJsonLinesHead,
   REMOTE_SESSION_FILE_PARSE_CONCURRENCY,
   sortMessagesDescending,
   toIsoString,
   truncateText,
 } from "@/lib/aiSessions/shared";
-import { getHomeDirectory, listFilesRecursivelyBySuffix, pathExists } from "@/lib/hostFileAccess";
-import type { AggregatedAiMessage, AggregatedAiSession, AiMessageRole, AiSessionDetailReaderResult, AiSessionReaderContext, AiSessionReaderResult } from "@/lib/aiSessions/types";
+import {
+  getHomeDirectory,
+  listFilesModifiedWithin,
+  listFilesRecursivelyBySuffix,
+  pathExists,
+} from "@/lib/hostFileAccess";
+import type {
+  AggregatedAiMessage,
+  AggregatedAiSession,
+  AiMessageRole,
+  AiSessionDetailReaderResult,
+  AiSessionReaderContext,
+  AiSessionReaderResult,
+  LiveAiSessionWindows,
+  LiveProviderSnapshot,
+} from "@/lib/aiSessions/types";
 
 const DEFAULT_DETAIL_LIMIT = 20;
 
@@ -281,6 +297,95 @@ function extractCodexPayloadMessages(payload: Record<string, unknown>): Array<{ 
 
   const text = extractPlainText(payload);
   return text ? [{ role: "unknown", text }] : [];
+}
+
+/**
+ * 이 worktree에서 마지막으로 움직인 Codex 스레드와, 그 스레드가 띄운 서브에이전트를 찾는다.
+ *
+ * Codex는 서브에이전트도 자기 rollout 파일을 따로 만들고 첫 줄 `session_meta`에 부모 스레드를 남긴다.
+ * 그래서 최근에 수정된 rollout만 골라 첫 줄만 읽으면 부모·자식 관계를 전부 복원할 수 있다.
+ */
+export async function readCodexLiveSession(
+  context: AiSessionReaderContext,
+  windows: LiveAiSessionWindows,
+): Promise<LiveProviderSnapshot | null> {
+  const recentFiles = await listFilesModifiedWithin(
+    await getCodexSessionsDirectory(context),
+    ".jsonl",
+    windows.recentWindowMs,
+    context.sshHost,
+  );
+
+  const metaByFile = await mapWithConcurrency(
+    recentFiles,
+    context.sshHost ? REMOTE_SESSION_FILE_PARSE_CONCURRENCY : recentFiles.length || 1,
+    async (file) => ({ file, meta: await readCodexSessionMeta(file.filePath, context.sshHost) }),
+  );
+
+  const threads = metaByFile.filter((entry): entry is { file: typeof entry.file; meta: CodexThreadMeta } =>
+    entry.meta !== null);
+
+  const latestOwnThread = pickLatestFile(threads
+    .filter((thread) => !thread.meta.parentThreadId && determineMatchScope(thread.meta.cwd, context))
+    .map((thread) => ({ ...thread.file, meta: thread.meta })));
+
+  if (!latestOwnThread) {
+    return null;
+  }
+
+  const runningSince = Date.now() - windows.runningWindowMs;
+
+  return {
+    sessionId: latestOwnThread.meta.threadId,
+    lastActiveAt: new Date(latestOwnThread.mtimeMs).toISOString(),
+    runningSubtasks: threads
+      .filter((thread) => thread.meta.parentThreadId === latestOwnThread.meta.threadId)
+      .filter((thread) => thread.file.mtimeMs >= runningSince)
+      .map((thread) => ({
+        id: thread.meta.threadId,
+        name: thread.meta.agentNickname,
+        lastActiveAt: new Date(thread.file.mtimeMs).toISOString(),
+      })),
+  };
+}
+
+interface CodexThreadMeta {
+  threadId: string;
+  parentThreadId: string | null;
+  agentNickname: string | null;
+  cwd: string | null;
+}
+
+/** rollout 첫 줄의 `session_meta`만 읽는다. 본문까지 파싱하면 폴링마다 전체 대화를 훑게 된다 */
+async function readCodexSessionMeta(
+  filePath: string,
+  sshHost: string | null | undefined,
+): Promise<CodexThreadMeta | null> {
+  try {
+    const [firstLine] = await readJsonLinesHead(filePath, 1, sshHost);
+    const payload = (firstLine as { type?: string; payload?: Record<string, unknown> } | undefined);
+    if (payload?.type !== "session_meta" || !payload.payload) {
+      return null;
+    }
+
+    const meta = payload.payload;
+    const threadId = typeof meta.id === "string"
+      ? meta.id
+      : typeof meta.session_id === "string" ? meta.session_id : null;
+
+    if (!threadId) {
+      return null;
+    }
+
+    return {
+      threadId,
+      parentThreadId: typeof meta.parent_thread_id === "string" ? meta.parent_thread_id : null,
+      agentNickname: typeof meta.agent_nickname === "string" ? meta.agent_nickname : null,
+      cwd: typeof meta.cwd === "string" ? meta.cwd : null,
+    };
+  } catch {
+    return null;
+  }
 }
 
 function matchesCodexQuery(query: string | undefined, ...values: Array<string | null | undefined>): boolean {

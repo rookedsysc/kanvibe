@@ -9,7 +9,16 @@ import { getGeminiHooksStatus, type GeminiHooksStatus } from "@/lib/geminiHooksS
 import { getCodexHooksStatus, type CodexHooksStatus } from "@/lib/codexHooksSetup";
 import { getOpenCodeHooksStatus, type OpenCodeHooksStatus } from "@/lib/openCodeHooksSetup";
 import { aggregateAiSessions, getAiSessionDetail } from "@/lib/aiSessions/aggregateAiSessions";
-import type { AggregatedAiSessionDetail, AggregatedAiSessionsResult, AiMessageRole, AiSessionProvider } from "@/lib/aiSessions/types";
+import { readLiveAiSessions } from "@/lib/aiSessions/liveAiSessions";
+import { listRunningAgentPanes } from "@/lib/aiSessions/runningAgentPanes";
+import type {
+  AggregatedAiSessionDetail,
+  AggregatedAiSessionsResult,
+  AiMessageRole,
+  AiSessionProvider,
+  LiveAiSessionsResult,
+  RunningAgentPane,
+} from "@/lib/aiSessions/types";
 import { homedir } from "os";
 import path from "path";
 import { computeProjectColor } from "@/lib/projectColor";
@@ -1401,4 +1410,38 @@ export async function getTaskAiSessionDetail(
     cursor,
     limit
   );
+}
+
+/**
+ * 태스크 하나의 실행중 AI 세션과 서브태스크를 조회한다.
+ * 보드 카드에 focus를 올렸을 때와 태스크 상세 패널이 열려 있을 때 짧은 주기로 다시 불린다.
+ */
+export async function getTaskLiveAiSessions(taskId: string): Promise<LiveAiSessionsResult> {
+  const taskRepo = await getTaskRepository();
+  const task = await taskRepo.findOne({
+    where: { id: taskId },
+    relations: ["project"],
+  });
+
+  if (!task?.project) {
+    return { taskId, isRemote: false, sessions: [] };
+  }
+
+  return {
+    taskId,
+    isRemote: Boolean(task.project.sshHost),
+    sessions: await readLiveAiSessions({
+      worktreePath: task.worktreePath || task.project.repoPath,
+      repoPath: task.project.repoPath,
+      sshHost: task.project.sshHost,
+    }),
+  };
+}
+
+/**
+ * 보드 배지가 쓰는 목록. 어느 worktree에서 어떤 에이전트가 도는지만 알려준다.
+ * 카드마다 세션 파일을 뒤지면 보드 전체 폴링이 비싸지므로, 여기서는 tmux pane 조회 한 번으로 끝낸다.
+ */
+export async function getRunningAgentPanes(): Promise<RunningAgentPane[]> {
+  return listRunningAgentPanes();
 }

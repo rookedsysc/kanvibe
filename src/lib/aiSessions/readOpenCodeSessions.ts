@@ -15,7 +15,16 @@ import {
   toIsoString,
   truncateText,
 } from "@/lib/aiSessions/shared";
-import type { AggregatedAiMessage, AiMessageRole, AiSessionDetailReaderResult, AiSessionReaderContext, AiSessionReaderResult } from "@/lib/aiSessions/types";
+import type {
+  AggregatedAiMessage,
+  AiMessageRole,
+  AiSessionDetailReaderResult,
+  AiSessionReaderContext,
+  AiSessionReaderResult,
+  LiveAiSessionWindows,
+  LiveAiSubtask,
+  LiveProviderSnapshot,
+} from "@/lib/aiSessions/types";
 
 const execFileAsync = promisify(execFile);
 const OPEN_CODE_QUERY_LIMIT = 120;
@@ -45,6 +54,12 @@ interface OpenCodeSessionRow {
   part_count?: number | null;
   first_user_part?: string | null;
   matching_part_count?: number | null;
+}
+
+interface OpenCodeChildSessionRow {
+  id: string;
+  title: string | null;
+  time_updated: number | null;
 }
 
 interface OpenCodeDetailRow {
@@ -130,6 +145,61 @@ export async function readOpenCodeSessions(context: AiSessionReaderContext): Pro
     sessions,
     reason: sessions.length === 0 ? "No OpenCode sessions matched this task" : null,
   });
+}
+
+/**
+ * 이 worktree에서 마지막으로 움직인 OpenCode 세션과, 그 세션이 띄운 자식 세션을 찾는다.
+ *
+ * OpenCode는 Task 도구가 만든 서브에이전트를 자식 세션으로 저장하고 부모를 `parent_id`로 가리킨다.
+ * 다만 그 컬럼은 버전에 따라 없을 수 있어, 조회가 실패하면 서브태스크 없이 세션만 돌려준다.
+ */
+export async function readOpenCodeLiveSession(
+  context: AiSessionReaderContext,
+  windows: LiveAiSessionWindows,
+): Promise<LiveProviderSnapshot | null> {
+  const rows = await queryOpenCodeRows<OpenCodeSessionRow>(context,
+    `SELECT s.id, s.directory, s.title, s.time_created, s.time_updated
+      FROM session s
+      ORDER BY s.time_updated DESC
+      LIMIT ${OPEN_CODE_QUERY_LIMIT};`);
+
+  const latestSession = rows?.find((row) => determineMatchScope(row.directory, context));
+  if (!latestSession) {
+    return null;
+  }
+
+  return {
+    sessionId: latestSession.id,
+    lastActiveAt: toIsoString(latestSession.time_updated),
+    runningSubtasks: await readOpenCodeRunningChildren(context, latestSession.id, windows),
+  };
+}
+
+async function readOpenCodeRunningChildren(
+  context: AiSessionReaderContext,
+  parentSessionId: string,
+  windows: LiveAiSessionWindows,
+): Promise<LiveAiSubtask[]> {
+  try {
+    const rows = await queryOpenCodeRows<OpenCodeChildSessionRow>(context,
+      `SELECT s.id, s.title, s.time_updated
+        FROM session s
+        WHERE s.parent_id = @parentSessionId
+        ORDER BY s.time_updated DESC;`,
+      { parentSessionId });
+
+    const runningSince = Date.now() - windows.runningWindowMs;
+
+    return (rows ?? [])
+      .filter((row) => (row.time_updated ?? 0) >= runningSince)
+      .map((row) => ({
+        id: row.id,
+        name: row.title,
+        lastActiveAt: toIsoString(row.time_updated),
+      }));
+  } catch {
+    return [];
+  }
 }
 
 export async function readOpenCodeSessionDetail(
