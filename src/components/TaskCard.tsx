@@ -1,5 +1,6 @@
 "use client";
 
+import { useRef, useState } from "react";
 import { Draggable } from "@hello-pangea/dnd";
 import { useLocale, useTranslations } from "next-intl";
 import { Link, useRouter } from "@/desktop/renderer/navigation";
@@ -14,6 +15,8 @@ import {
   resolveEffectivePriority,
 } from "@/desktop/renderer/utils/boardTaskSort";
 import ProjectIcon from "@/components/ProjectIcon";
+import { TaskCardLiveSessions } from "@/components/TaskCardLiveSessions";
+import type { RunningAgentPane } from "@/lib/aiSessions/types";
 
 interface ContextMenuPosition {
   x: number;
@@ -32,6 +35,8 @@ interface TaskCardProps {
   /** projectId → 프로젝트 root task의 우선순위. task가 자기 우선순위를 갖지 않을 때 이 값을 물려받는다 */
   rootPriorityByProjectId?: Map<string, TaskPriority>;
   vimModeEnabled?: boolean;
+  /** 보드 전체가 한 번만 조회한 실행중 에이전트 목록 */
+  runningAgentPanes?: RunningAgentPane[];
 }
 
 const agentTagColors: Record<string, string> = {
@@ -47,6 +52,8 @@ const priorityConfig: Record<TaskPriority, { label: string; colorClass: string }
 };
 
 const EMPTY_ROOT_PRIORITY_MAP: Map<string, TaskPriority> = new Map();
+const EMPTY_RUNNING_AGENT_PANES: RunningAgentPane[] = [];
+const LIVE_SESSION_PANEL_OPEN_DELAY_MS = 1_200;
 
 const badgeClassName = "inline-flex items-center rounded border border-border-subtle px-1.5 py-0.5 text-[10px]";
 /** 프로젝트 마커 열 + 본문 열. 마커 폭은 ProjectIcon 기본 크기(h-3.5 w-3.5 = 14px)와 맞춘다 */
@@ -193,7 +200,10 @@ export default function TaskCard({
   unreadNotificationCount = 0,
   rootPriorityByProjectId = EMPTY_ROOT_PRIORITY_MAP,
   vimModeEnabled = true,
+  runningAgentPanes = EMPTY_RUNNING_AGENT_PANES,
 }: TaskCardProps) {
+  const [isLiveSessionPanelOpen, setIsLiveSessionPanelOpen] = useState(false);
+  const livePanelOpenTimeoutRef = useRef<number | null>(null);
   const cardStyle = projectColor ? { borderColor: projectColor } : undefined;
   const locale = useLocale();
   const t = useTranslations("task");
@@ -213,6 +223,29 @@ export default function TaskCard({
       {unreadNotificationCount}
     </span>
   ) : null;
+
+  /**
+   * 카드 사이를 훑고 지나갈 때마다 패널이 번쩍이지 않도록 잠깐 머무른 뒤에 연다.
+   * 여는 순간에만 상태를 건드리므로, 스쳐 지나가는 카드는 리렌더도 세션 조회도 일으키지 않는다.
+   */
+  function handleCardActivate() {
+    if (livePanelOpenTimeoutRef.current !== null) {
+      return;
+    }
+
+    livePanelOpenTimeoutRef.current = window.setTimeout(() => {
+      setIsLiveSessionPanelOpen(true);
+    }, LIVE_SESSION_PANEL_OPEN_DELAY_MS);
+  }
+
+  function handleCardDeactivate() {
+    if (livePanelOpenTimeoutRef.current !== null) {
+      window.clearTimeout(livePanelOpenTimeoutRef.current);
+      livePanelOpenTimeoutRef.current = null;
+    }
+
+    setIsLiveSessionPanelOpen(false);
+  }
 
   function handleTaskKeyDown(event: React.KeyboardEvent<HTMLAnchorElement>) {
     if (isShiftOnlyKeyboardShortcut(event, "Enter")) {
@@ -289,6 +322,10 @@ export default function TaskCard({
           data-kanban-index={index}
           onClick={handleTaskClick}
           onKeyDown={handleTaskKeyDown}
+          onFocus={handleCardActivate}
+          onBlur={handleCardDeactivate}
+          onMouseEnter={handleCardActivate}
+          onMouseLeave={handleCardDeactivate}
           onContextMenu={(e) => {
             e.preventDefault();
             onContextMenu(task, { x: e.clientX, y: e.clientY });
@@ -385,6 +422,13 @@ export default function TaskCard({
                 {task.sessionType}
               </span>
             )}
+
+            <TaskCardLiveSessions
+              taskId={task.id}
+              worktreePath={task.worktreePath}
+              runningPanes={runningAgentPanes}
+              isPanelOpen={isLiveSessionPanelOpen}
+            />
 
             {task.sshHost && (
               <span className={`${badgeClassName} min-w-0 truncate bg-tag-ssh-bg text-tag-ssh-text`}>

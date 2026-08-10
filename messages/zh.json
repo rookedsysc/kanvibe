@@ -416,7 +416,16 @@
     "terminalTabs": "终端标签页",
     "newTerminalTab": "新建标签页",
     "closeTerminalTab": "关闭 {name} 标签页",
-    "renameTerminalTab": "重命名标签页"
+    "renameTerminalTab": "重命名标签页",
+    "liveSessions": {
+      "title": "运行中的会话",
+      "empty": "没有正在运行的 AI 会话。",
+      "running": "运行中",
+      "idle": "空闲",
+      "subtaskCount": "{count} 个子任务",
+      "focusTerminal": "跳转到 {window} 终端",
+      "dock": "运行中的会话"
+    }
   },
   "projectBranchTasks": {
     "title": "项目任务",

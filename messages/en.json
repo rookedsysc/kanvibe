@@ -417,7 +417,16 @@
     "terminalTabs": "Terminal tabs",
     "newTerminalTab": "New tab",
     "closeTerminalTab": "Close {name} tab",
-    "renameTerminalTab": "Rename tab"
+    "renameTerminalTab": "Rename tab",
+    "liveSessions": {
+      "title": "Live sessions",
+      "empty": "No AI session is running.",
+      "running": "Running",
+      "idle": "Idle",
+      "subtaskCount": "{count} subtasks",
+      "focusTerminal": "Go to the {window} terminal",
+      "dock": "Live sessions"
+    }
   },
   "projectBranchTasks": {
     "title": "Project Tasks",

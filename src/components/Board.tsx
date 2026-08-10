@@ -22,6 +22,7 @@ import { SessionType, TaskStatus, type KanbanTask } from "@/entities/KanbanTask"
 import type { Project } from "@/entities/Project";
 import { useAutoRefresh } from "@/desktop/renderer/hooks/useAutoRefresh";
 import { useProjectFilterParams } from "@/desktop/renderer/hooks/useProjectFilterParams";
+import { useRunningAgentPanes } from "@/desktop/renderer/hooks/useLiveAiSessions";
 import { useUnreadNotificationCountByTask } from "@/desktop/renderer/hooks/useUnreadNotificationCountByTask";
 import {
   TASK_KIND_FILTER_VALUES,
@@ -495,6 +496,7 @@ export default function Board({
     projectId: string;
   } | null>(null);
   const [isMounted, setIsMounted] = useState(false);
+  const runningAgentPanes = useRunningAgentPanes(isMounted);
   const [selectedProjectIds, setSelectedProjectIds] = useProjectFilterParams(
     projects.map((p) => p.id),
   );
@@ -1244,6 +1246,7 @@ export default function Board({
                   unreadNotificationCountByTask={unreadNotificationCountByTask}
                   rootPriorityByProjectId={rootPriorityByProjectId}
                   vimModeEnabled={vimModeEnabled}
+                  runningAgentPanes={runningAgentPanes}
                   {...(col.status === TaskStatus.DONE && {
                     totalCount: doneTotal,
                     hasMore: doneOffset < doneTotal,
