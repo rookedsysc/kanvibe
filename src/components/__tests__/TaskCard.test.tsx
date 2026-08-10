@@ -571,10 +571,38 @@ describe("TaskCard - Priority Badge", () => {
       expect(screen.getByTestId("task-card-running-agents")).toBeTruthy();
     });
 
-    it("여러 에이전트가 돌아도 아이콘 하나와 개수만 보여준다", () => {
+    it("provider마다 실행중 개수를 따로 보여준다", () => {
       // Given
       const task = createTask({ worktreePath: "/repo/task" });
-      const panes = [runningPane, { ...runningPane, provider: "codex" as const, windowId: "@8" }];
+      const panes = [
+        runningPane,
+        { ...runningPane, windowId: "@8" },
+        { ...runningPane, provider: "codex" as const, windowId: "@9" },
+      ];
+
+      // When
+      render(
+        <TaskCard
+          task={task}
+          index={0}
+          onContextMenu={onContextMenu}
+          runningAgentPanes={panes}
+        />,
+      );
+
+      // Then
+      expect(screen.getByTestId("task-card-running-claude").textContent).toBe("2");
+      expect(screen.getByTestId("task-card-running-codex").textContent).toBe("1");
+    });
+
+    it("배지 순서는 pane 목록 순서가 흔들려도 provider 이름으로 고정한다", () => {
+      // Given
+      const task = createTask({ worktreePath: "/repo/task" });
+      const panes = [
+        { ...runningPane, provider: "opencode" as const, windowId: "@9" },
+        runningPane,
+        { ...runningPane, provider: "codex" as const, windowId: "@8" },
+      ];
 
       // When
       render(
@@ -588,8 +616,13 @@ describe("TaskCard - Priority Badge", () => {
 
       // Then
       const badge = screen.getByTestId("task-card-running-agents");
-      expect(badge.querySelectorAll("img")).toHaveLength(1);
-      expect(badge.textContent).toBe("2");
+      const providers = Array.from(badge.querySelectorAll("[data-testid^='task-card-running-']"))
+        .map((node) => node.getAttribute("data-testid"));
+      expect(providers).toEqual([
+        "task-card-running-claude",
+        "task-card-running-codex",
+        "task-card-running-opencode",
+      ]);
     });
 
     it("다른 worktree에서 도는 에이전트는 배지로 보여주지 않는다", () => {
