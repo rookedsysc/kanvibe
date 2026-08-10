@@ -1,6 +1,10 @@
 import { readFile, readdir } from "fs/promises";
 import { homedir } from "os";
 import path from "path";
+import {
+  readClaudeAccessToken,
+  readClaudeKeychainCredentials,
+} from "@/lib/aiUsage/claudeCredentials";
 import type { AiUsageAccount, AiUsageProvider } from "@/lib/aiUsage/types";
 
 interface ProviderDiscoverySpec {
@@ -144,6 +148,31 @@ function deduplicateAccounts(accounts: AiUsageAccount[]): AiUsageAccount[] {
   });
 }
 
+/**
+ * macOS의 Claude Code는 자격증명을 Keychain에 두고 `.credentials.json`은 폴백으로만 쓴다.
+ * 그래서 config dir에 파일이 하나도 없어도 로그인되어 있을 수 있다.
+ *
+ * Keychain을 읽지 못한 경우에도 계정 자리를 만든다. 조회 단계가 그 사유를 화면에 알려야 하는데,
+ * 여기서 없는 계정으로 처리하면 "로그인되어 있지 않습니다"로 뭉개진다.
+ */
+async function discoverClaudeKeychainAccount(): Promise<AiUsageAccount | null> {
+  const keychainResult = await readClaudeKeychainCredentials();
+  const hasAccount = keychainResult.outcome === "unreadable"
+    || (keychainResult.outcome === "found" && Boolean(readClaudeAccessToken(keychainResult.credentials)));
+  if (!hasAccount) {
+    return null;
+  }
+
+  const configDir = path.join(homedir(), CLAUDE_DISCOVERY.defaultDirectoryName);
+  const identity = await readClaudeAccountIdentity(configDir);
+  return {
+    provider: "claude",
+    accountId: identity.accountId ?? configDir,
+    label: identity.label ?? CLAUDE_DISCOVERY.defaultLabel,
+    configDir,
+  };
+}
+
 export async function discoverClaudeAccounts(): Promise<AiUsageAccount[]> {
   const candidates = await collectConfigDirCandidates(CLAUDE_DISCOVERY);
   const accounts: AiUsageAccount[] = [];
@@ -162,6 +191,14 @@ export async function discoverClaudeAccounts(): Promise<AiUsageAccount[]> {
       label: identity.label ?? CLAUDE_DISCOVERY.defaultLabel,
       configDir,
     });
+  }
+
+  // 파일로 찾은 계정이 있으면 Keychain 승인 프롬프트를 띄울 이유가 없다
+  if (accounts.length === 0) {
+    const keychainAccount = await discoverClaudeKeychainAccount();
+    if (keychainAccount) {
+      accounts.push(keychainAccount);
+    }
   }
 
   return deduplicateAccounts(accounts);

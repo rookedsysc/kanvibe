@@ -12,6 +12,10 @@ import {
   refreshClaudeCredentials,
 } from "@/lib/aiUsage/claudeOAuthRefresh";
 import { writeCredentialsAtomically } from "@/lib/aiUsage/atomicCredentialsWrite";
+import {
+  readClaudeAccessToken,
+  readClaudeKeychainCredentials,
+} from "@/lib/aiUsage/claudeCredentials";
 import type {
   AiUsageAccount,
   AiUsageAccountResult,
@@ -43,20 +47,34 @@ interface ClaudeUsageResponse {
 /**
  * 액세스 토큰이 만료 임박이면 갱신한 뒤 조회한다.
  *
+ * 자격증명 파일이 없으면 macOS Keychain이 원본이다. Keychain은 Claude Code의 소유이고
+ * 회전된 refresh 토큰을 그쪽에 되쓸 안전한 방법이 없어, 그 경우에는 갱신하지 않고 있는 값만 쓴다.
+ * 갱신했는데 되쓰지 못하면 사용자의 CLI 로그인까지 끊기므로 갱신과 되쓰기는 함께 가능할 때만 한다.
+ *
  * refresh 토큰은 한 번 쓰면 회전되므로, 갱신에 성공하면 조회보다 먼저 파일에 되쓴다.
  * 되쓰기가 실패하면 저장된 refresh 토큰은 이미 서버에서 무효가 된 상태라 CLI 재로그인이 필요해진다 —
  * 복구할 방법이 없으므로 최소한 눈에 띄게 남긴다.
  */
-async function readFreshClaudeCredentials(configDir: string): Promise<string> {
+async function readFreshClaudeCredentials(
+  configDir: string,
+): Promise<{ credentials: string; isKeychainUnreadable: boolean }> {
   const credentialsPath = path.join(configDir, ".credentials.json");
   const storedCredentials = await readTextFile(credentialsPath);
-  if (!storedCredentials || !isClaudeTokenExpiring(storedCredentials)) {
-    return storedCredentials;
+  if (!storedCredentials) {
+    const keychainResult = await readClaudeKeychainCredentials();
+    return {
+      credentials: keychainResult.outcome === "found" ? keychainResult.credentials : "",
+      isKeychainUnreadable: keychainResult.outcome === "unreadable",
+    };
+  }
+
+  if (!isClaudeTokenExpiring(storedCredentials)) {
+    return { credentials: storedCredentials, isKeychainUnreadable: false };
   }
 
   const refreshedCredentials = await refreshClaudeCredentials(storedCredentials);
   if (!refreshedCredentials) {
-    return storedCredentials;
+    return { credentials: storedCredentials, isKeychainUnreadable: false };
   }
 
   try {
@@ -68,21 +86,7 @@ async function readFreshClaudeCredentials(configDir: string): Promise<string> {
     );
   }
 
-  return refreshedCredentials;
-}
-
-function readClaudeAccessToken(credentialsJson: string): string | null {
-  if (!credentialsJson) {
-    return null;
-  }
-
-  try {
-    const parsed = JSON.parse(credentialsJson) as { claudeAiOauth?: { accessToken?: unknown } };
-    const accessToken = parsed?.claudeAiOauth?.accessToken;
-    return typeof accessToken === "string" && accessToken.trim() ? accessToken : null;
-  } catch {
-    return null;
-  }
+  return { credentials: refreshedCredentials, isKeychainUnreadable: false };
 }
 
 function toClaudeUsageWindow(
@@ -98,9 +102,13 @@ function toClaudeUsageWindow(
 }
 
 export async function readClaudeUsage(account: AiUsageAccount): Promise<AiUsageAccountResult> {
-  const accessToken = readClaudeAccessToken(await readFreshClaudeCredentials(account.configDir));
+  const { credentials, isKeychainUnreadable } = await readFreshClaudeCredentials(account.configDir);
+  const accessToken = readClaudeAccessToken(credentials);
   if (!accessToken) {
-    return createUnavailableUsage(account, "missing-credentials");
+    return createUnavailableUsage(
+      account,
+      isKeychainUnreadable ? "keychain-unreadable" : "missing-credentials",
+    );
   }
 
   let response: Response;

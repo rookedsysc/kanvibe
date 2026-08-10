@@ -16,6 +16,7 @@ export type AiUsageStatus = "ok" | "unavailable" | "error";
 export type AiUsageFailureReason =
   | "missing-credentials"
   | "expired-credentials"
+  | "keychain-unreadable"
   | "gemini-cli-not-found"
   | "rate-limited"
   | "empty-response"

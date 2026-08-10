@@ -4,6 +4,15 @@ import path from "path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { discoverClaudeAccounts, discoverCodexAccounts } from "@/lib/aiUsage/accountDiscovery";
 
+const { mockReadClaudeKeychainCredentials } = vi.hoisted(() => ({
+  mockReadClaudeKeychainCredentials: vi.fn(),
+}));
+
+vi.mock("@/lib/aiUsage/claudeCredentials", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/aiUsage/claudeCredentials")>()),
+  readClaudeKeychainCredentials: mockReadClaudeKeychainCredentials,
+}));
+
 /** os.homedir()는 POSIX에서 $HOME을 읽으므로 모듈을 모킹하지 않고 환경변수로 홈을 바꾼다 */
 let fakeHome: string;
 
@@ -31,6 +40,7 @@ describe("discoverClaudeAccounts", () => {
   beforeEach(async () => {
     fakeHome = await mkdtemp(path.join(tmpdir(), "kanvibe-home-"));
     vi.stubEnv("HOME", fakeHome);
+    mockReadClaudeKeychainCredentials.mockResolvedValue({ outcome: "absent" });
   });
 
   afterEach(async () => {
@@ -101,6 +111,45 @@ describe("discoverClaudeAccounts", () => {
     await mkdir(path.join(fakeHome, ".claude-empty"), { recursive: true });
 
     expect(await discoverClaudeAccounts()).toEqual([]);
+  });
+
+  it("자격증명 파일이 없어도 Keychain에 있으면 로그인된 계정으로 센다", async () => {
+    vi.stubEnv("CLAUDE_CONFIG_DIR", "");
+    await mkdir(path.join(fakeHome, ".claude"), { recursive: true });
+    await writeFile(
+      path.join(fakeHome, ".claude.json"),
+      JSON.stringify({ oauthAccount: { accountUuid: "uuid-mac", emailAddress: "mac@example.com" } }),
+      "utf-8",
+    );
+    mockReadClaudeKeychainCredentials.mockResolvedValue({
+      outcome: "found",
+      credentials: JSON.stringify({ claudeAiOauth: { accessToken: "keychain-token" } }),
+    });
+
+    const accounts = await discoverClaudeAccounts();
+
+    expect(accounts).toHaveLength(1);
+    expect(accounts[0].accountId).toBe("uuid-mac");
+    expect(accounts[0].label).toBe("mac@example.com");
+    expect(accounts[0].configDir).toBe(path.join(fakeHome, ".claude"));
+  });
+
+  it("Keychain을 읽지 못한 경우에도 계정 자리를 남겨 사유를 알린다", async () => {
+    vi.stubEnv("CLAUDE_CONFIG_DIR", "");
+    await mkdir(path.join(fakeHome, ".claude"), { recursive: true });
+    mockReadClaudeKeychainCredentials.mockResolvedValue({ outcome: "unreadable" });
+
+    expect(await discoverClaudeAccounts()).toHaveLength(1);
+  });
+
+  it("파일에서 이미 찾은 계정이 있으면 Keychain을 다시 묻지 않는다", async () => {
+    vi.stubEnv("CLAUDE_CONFIG_DIR", "");
+    await writeClaudeConfigDir(".claude", { accountUuid: "uuid-file", emailAddress: "file@example.com" });
+
+    const accounts = await discoverClaudeAccounts();
+
+    expect(accounts.map((account) => account.accountId)).toEqual(["uuid-file"]);
+    expect(mockReadClaudeKeychainCredentials).not.toHaveBeenCalled();
   });
 });
 
