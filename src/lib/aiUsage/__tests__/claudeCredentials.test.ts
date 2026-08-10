@@ -83,6 +83,42 @@ describe("readClaudeKeychainCredentials", () => {
     ]);
   });
 
+  it("config dir이 있으면 Claude Code 2.1+의 scoped 서비스를 먼저 조회한다", async () => {
+    resolveExecFileWith(null, createCredentialsJson("scoped-token"));
+
+    await readClaudeKeychainCredentials("/Users/tester/.claude");
+
+    const [, args] = mockExecFile.mock.calls[0];
+    expect(args).toContain("Claude Code-credentials-ee16a9f4");
+    expect(mockExecFile).toHaveBeenCalledTimes(1);
+  });
+
+  it("scoped 항목이 없으면 legacy 서비스의 자격증명으로 폴백한다", async () => {
+    mockExecFile
+      .mockImplementationOnce((_command, _args, _options, callback) => {
+        callback(createSecurityFailure(44), "", "");
+      })
+      .mockImplementationOnce((_command, _args, _options, callback) => {
+        callback(null, createCredentialsJson("legacy-token"), "");
+      });
+
+    const result = await readClaudeKeychainCredentials("/Users/tester/.claude");
+
+    expect(result.outcome).toBe("found");
+    expect(mockExecFile.mock.calls.map(([, args]) => args[4])).toEqual([
+      "Claude Code-credentials-ee16a9f4",
+      "Claude Code-credentials",
+    ]);
+  });
+
+  it("scoped 항목을 읽지 못하면 legacy 항목이 없다고 오인하지 않는다", async () => {
+    resolveExecFileWith(createSecurityFailure(36), "");
+
+    await expect(readClaudeKeychainCredentials("/Users/tester/.claude"))
+      .resolves.toEqual({ outcome: "unreadable" });
+    expect(mockExecFile).toHaveBeenCalledTimes(1);
+  });
+
   it("조회에 성공하면 자격증명 JSON을 돌려준다", async () => {
     resolveExecFileWith(null, `${createCredentialsJson("keychain-token")}\n`);
 

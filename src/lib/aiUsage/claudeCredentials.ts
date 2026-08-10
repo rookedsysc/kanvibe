@@ -1,8 +1,10 @@
 import { execFile } from "node:child_process";
+import { createHash } from "node:crypto";
 import { userInfo } from "node:os";
 
 /** Claude Code가 macOS Keychain에 자격증명을 넣을 때 쓰는 서비스 이름 */
 const CLAUDE_KEYCHAIN_SERVICE = "Claude Code-credentials";
+const CLAUDE_KEYCHAIN_CONFIG_HASH_LENGTH = 8;
 
 /**
  * Keychain 조회는 접근 승인 프롬프트에서 사용자를 기다릴 수 있다.
@@ -50,17 +52,25 @@ export type ClaudeKeychainReadResult =
  *
  * 출력에는 토큰이 들어 있으므로 성공·실패 어느 쪽도 로그로 남기지 않는다.
  */
-export function readClaudeKeychainCredentials(): Promise<ClaudeKeychainReadResult> {
-  if (process.platform !== "darwin") {
-    return Promise.resolve({ outcome: "absent" });
+function getClaudeKeychainServices(configDir?: string): string[] {
+  if (!configDir) {
+    return [CLAUDE_KEYCHAIN_SERVICE];
   }
 
+  const configHash = createHash("sha256")
+    .update(configDir)
+    .digest("hex")
+    .slice(0, CLAUDE_KEYCHAIN_CONFIG_HASH_LENGTH);
+  return [`${CLAUDE_KEYCHAIN_SERVICE}-${configHash}`, CLAUDE_KEYCHAIN_SERVICE];
+}
+
+function readKeychainServiceCredentials(service: string): Promise<ClaudeKeychainReadResult> {
   const keychainArgs = [
     "find-generic-password",
     "-a",
     userInfo().username,
     "-s",
-    CLAUDE_KEYCHAIN_SERVICE,
+    service,
     "-w",
   ];
 
@@ -83,4 +93,21 @@ export function readClaudeKeychainCredentials(): Promise<ClaudeKeychainReadResul
       },
     );
   });
+}
+
+export async function readClaudeKeychainCredentials(
+  configDir?: string,
+): Promise<ClaudeKeychainReadResult> {
+  if (process.platform !== "darwin") {
+    return { outcome: "absent" };
+  }
+
+  for (const service of getClaudeKeychainServices(configDir)) {
+    const result = await readKeychainServiceCredentials(service);
+    if (result.outcome !== "absent") {
+      return result;
+    }
+  }
+
+  return { outcome: "absent" };
 }

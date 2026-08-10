@@ -156,14 +156,14 @@ function deduplicateAccounts(accounts: AiUsageAccount[]): AiUsageAccount[] {
  * 여기서 없는 계정으로 처리하면 "로그인되어 있지 않습니다"로 뭉개진다.
  */
 async function discoverClaudeKeychainAccount(): Promise<AiUsageAccount | null> {
-  const keychainResult = await readClaudeKeychainCredentials();
+  const configDir = path.join(homedir(), CLAUDE_DISCOVERY.defaultDirectoryName);
+  const keychainResult = await readClaudeKeychainCredentials(configDir);
   const hasAccount = keychainResult.outcome === "unreadable"
     || (keychainResult.outcome === "found" && Boolean(readClaudeAccessToken(keychainResult.credentials)));
   if (!hasAccount) {
     return null;
   }
 
-  const configDir = path.join(homedir(), CLAUDE_DISCOVERY.defaultDirectoryName);
   const identity = await readClaudeAccountIdentity(configDir);
   return {
     provider: "claude",

@@ -61,7 +61,7 @@ async function readFreshClaudeCredentials(
   const credentialsPath = path.join(configDir, ".credentials.json");
   const storedCredentials = await readTextFile(credentialsPath);
   if (!storedCredentials) {
-    const keychainResult = await readClaudeKeychainCredentials();
+    const keychainResult = await readClaudeKeychainCredentials(configDir);
     return {
       credentials: keychainResult.outcome === "found" ? keychainResult.credentials : "",
       isKeychainUnreadable: keychainResult.outcome === "unreadable",
