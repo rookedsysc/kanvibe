@@ -73,15 +73,16 @@ Key combinations are listed in the terminal tabs section of the [shortcuts](/en/
 <div className="kv-grid">
   <figure className="kv-shot">
     <img src="/screenshots/live-sessions-board.png" alt="Board cards showing a running agent icon next to the tmux badge" />
-    <figcaption>The icon next to the tmux badge tells you which agent is running on which task, straight from the board.</figcaption>
+    <figcaption>An agent icon and a running count sit next to the tmux badge, so the board shows which task has agents on it and how many.</figcaption>
   </figure>
   <figure className="kv-shot">
     <img src="/screenshots/live-sessions-panel.png" alt="Task detail panel showing a running claude session with two subtasks" />
-    <figcaption>The session panel shows whether a session is running and which subtasks it is driving right now.</figcaption>
+    <figcaption>The session panel shows what each session is working on and which subtasks it is driving right now.</figcaption>
   </figure>
 </div>
 
 - Focus or hover a board card and hold for a moment to open the session panel. Sweeping past cards does not open it.
+- Each session row shows what that session is working on, taken from its most recent user request, so it keeps pointing at the current work in a long conversation.
 - In task detail, the live sessions dock item opens the same panel: `Mod+4` without a PR, `Mod+5` with one.
 - Clicking a session switches to the tmux window that session is attached to and moves input focus to the terminal.
 - Running state combines two signals. An agent attached to a tmux pane counts as running even while it waits for input, and a session whose transcript was just updated counts as running even when no pane is visible.

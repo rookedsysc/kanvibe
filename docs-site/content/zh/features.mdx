@@ -73,15 +73,16 @@ KanVibe 将看板、终端会话、git worktree 与 AI 代理 hooks 连接成一
 <div className="kv-grid">
   <figure className="kv-shot">
     <img src="/screenshots/live-sessions-board.png" alt="看板卡片在 tmux 徽章旁显示运行中的代理图标" />
-    <figcaption>tmux 徽章旁的图标可直接在看板上区分哪个任务正在运行哪个代理。</figcaption>
+    <figcaption>tmux 徽章旁会显示代理图标和运行数量，可直接在看板上看出哪个任务有代理在运行、有几个。</figcaption>
   </figure>
   <figure className="kv-shot">
     <img src="/screenshots/live-sessions-panel.png" alt="任务详情面板显示运行中的 claude 会话及两个子任务" />
-    <figcaption>会话面板同时显示会话是否在运行，以及该会话当前正在执行的子任务。</figcaption>
+    <figcaption>会话面板会显示每个会话当前正在处理的工作，以及正在执行的子任务。</figcaption>
   </figure>
 </div>
 
 - 将焦点或鼠标停留在看板卡片上片刻即可打开会话面板；快速掠过卡片时不会打开。
+- 每个会话行会显示该会话当前正在处理的工作，取自最近一次用户请求，因此在长对话中也能指向当前任务。
 - 在任务详情中，dock 的运行中会话项会打开同一个面板：没有 PR 时为 `Mod+4`，有 PR 时为 `Mod+5`。
 - 点击会话会切换到该会话所在的 tmux window，并把输入焦点移到终端。
 - 运行判定叠加两个依据：代理挂在 tmux pane 上时，即使在等待输入也算运行中；即使看不到 pane，只要会话记录刚刚更新也算运行中。
