@@ -137,6 +137,24 @@ async function dismissDetailPanel(page) {
   }, undefined, { timeout: 10000 });
 }
 
+/**
+ * 사용량 패널을 dock 최하단 버튼으로 연다.
+ *
+ * 조회가 네트워크 왕복이라 카드가 값으로 채워질 때까지 기다린다.
+ * 새로고침 버튼이 다시 눌릴 수 있게 되면 갱신이 끝난 것이므로, 그때 찍어야 "갱신 중"이 남지 않는다.
+ */
+async function openAiUsagePanel(page) {
+  await page.getByTestId("task-detail-usage-button").click();
+
+  await page.waitForFunction(() => {
+    const panel = document.querySelector("[data-testid='ai-usage-panel']");
+    const refreshButton = panel?.querySelector("[data-testid='ai-usage-refresh']");
+    return Boolean(refreshButton)
+      && !refreshButton.hasAttribute("disabled")
+      && /\d+%/.test(panel.textContent || "");
+  }, undefined, { timeout: 40000 });
+}
+
 /** 작업 정보 패널을 다시 띄운다. dock 첫 칸의 단축키가 그대로 토글이다 */
 async function openDetailPanel(page) {
   await page.keyboard.press(process.platform === "darwin" ? "Meta+1" : "Control+1");
@@ -295,11 +313,20 @@ async function main() {
     const detailPath = path.join(OUT_DIR, "task-detail.png");
     await captureRetinaScreenshot(app, detailPath);
 
+    /** 사용량 컷은 같은 화면에서 dock 최하단 버튼을 눌러 실제 사용 경로 그대로 찍는다 */
+    await openAiUsagePanel(page);
+    /** 버튼 위에 커서가 남으면 hover 상태로 찍힌다 */
+    await page.mouse.move(Math.round(DETAIL_VIEWPORT.width * 0.75), Math.round(DETAIL_VIEWPORT.height * 0.6));
+    await page.waitForTimeout(1500);
+
+    const usagePath = path.join(OUT_DIR, "ai-usage.png");
+    await captureRetinaScreenshot(app, usagePath);
+
     console.log(JSON.stringify({
       ok: true,
       scaleFactor,
       tabs: (await readTabs(page)).map((tab) => tab.name),
-      screenshots: [detailPath, tabsPath],
+      screenshots: [detailPath, tabsPath, usagePath],
     }));
   } catch (error) {
     console.error("[capture] electron output:\n" + (typeof app.output === "function" ? app.output() : ""));

@@ -75,7 +75,13 @@ Create follow-up branch TODOs directly from the highlighted search result, prese
 
 <img src="./docs/images/readme/kanvibe-quick-action-shortcut.png" alt="Quick task action shortcut" width="100%">
 
-### 6. Vim-Style Board Controls
+### 6. AI Usage
+
+Press `Cmd/Ctrl+0` on a task detail page, or click the bottom dock icon, to see how much of each Claude, Codex, and Gemini subscription is left without leaving the workspace.
+
+<img src="./docs/images/readme/kanvibe-ai-usage.png" alt="AI usage panel showing remaining Claude, Codex, and Gemini quota" width="100%">
+
+### 7. Vim-Style Board Controls
 
 Turn on Vim-style board controls in **Settings → Keyboard**, then move across task cards with `h/j/k/l`, find visible task text with `/`, open the new-task modal with `n`, move statuses with `:move progress`, and delete a focused task with `dd`.
 
@@ -195,6 +201,14 @@ Each pane can run a custom command (e.g., `vim`, `htop`, `lazygit`, test runner,
 - Use numbered detail shortcuts to switch task info, status/hooks, AI chat, PR, and other dock panels before keystrokes reach the terminal
 - Create a branch TODO directly from quick search with the configured shortcut
 
+### AI Usage
+
+- Read remaining Claude, Codex, and Gemini subscription usage from the task detail dock or `Cmd/Ctrl+0`
+- Uses the sign-in each CLI already stored locally, so no extra API key is required
+- Normalizes each provider's different window shapes (5-hour, 7-day, per-model) into one bar with reset times and plan tier
+- Queries every registered account per provider and labels them when more than one is signed in
+- Shows the last saved result immediately and refreshes above it, so the panel never opens blank after a restart
+
 ### Keyboard Shortcuts
 
 | Shortcut | Scope | Action |
@@ -210,6 +224,7 @@ Each pane can run a custom command (e.g., `vim`, `htop`, `lazygit`, test runner,
 | `Cmd+[` / `Cmd+]` (macOS), `Alt+[` / `Alt+]` (Linux) | Global | Navigate back/forward through app history; back falls back to board home when there is no previous page |
 | `Cmd+1/2/3` (macOS), `Alt+1/2/3` (Linux) | Task detail | Activate the numbered detail dock items: info, status/hooks, and AI chat. These shortcuts are intercepted before terminal input |
 | `Cmd+4` (macOS), `Alt+4` (Linux) | Task detail | Open the task PR in the browser when a PR exists; otherwise the shortcut belongs to the fourth numbered dock item when present |
+| `Cmd/Ctrl+0` | Task detail | Toggle the AI usage panel. It sits outside the numbered dock order, so dock numbering is unaffected |
 | `Cmd/Ctrl+N` | Quick task search | Create a new branch TODO from the currently highlighted task |
 | `↑ / ↓ / Enter / Shift+Enter / Esc` | Quick task search | Move selection, open task, open task in a new window, close dialog |
 | `↑ / ↓ / Enter / Esc` | Project filter dropdown | Move selection, toggle project filter, close dropdown |
