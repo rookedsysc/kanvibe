@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { useEffect, type ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -681,7 +681,7 @@ describe("TaskDetailRoute", () => {
     expect(mocks.getTaskById).toHaveBeenCalledTimes(taskLoadCountBeforeClose);
   });
 
-  it("터미널 탭 왼쪽에 태스크 이름 배지를 항상 표시한다", async () => {
+  it("터미널 탭 왼쪽 배지에 프로젝트 아이콘·이름과 태스크 이름을 함께 표시한다", async () => {
     mocks.getTaskById.mockResolvedValue({
       id: "task-1",
       title: "fix tab task name",
@@ -693,7 +693,89 @@ describe("TaskDetailRoute", () => {
       sessionName: "task-session",
       sshHost: null,
       projectId: "project-1",
-      project: { id: "project-1", name: "kanvibe" },
+      project: { id: "project-1", name: "kanvibe", color: "#86EFAC", iconDataUrl: null },
+      status: "todo",
+      agentType: null,
+      worktreePath: "/repo__worktrees/fix-tab-task-name",
+    });
+
+    render(<TaskDetailRoute />);
+
+    const taskContextBadge = await screen.findByTestId("terminal-task-context");
+    expect(taskContextBadge.textContent).toBe("kkanvibe|fix tab task name");
+    expect(within(taskContextBadge).getByTestId("terminal-task-context-project").textContent).toBe("kanvibe");
+    expect(taskContextBadge.getAttribute("title")).toBe("kanvibe | fix tab task name");
+    expect(taskContextBadge.className).toContain("shrink-0");
+  });
+
+  it("배지 배경을 프로젝트 설정 색으로 칠하고 첫 글자 칩은 대비색으로 반전시킨다", async () => {
+    mocks.getTaskById.mockResolvedValue({
+      id: "task-1",
+      title: "fix tab task name",
+      description: null,
+      branchName: "fix/tab-task-name",
+      baseBranch: "main",
+      prUrl: null,
+      sessionType: "tmux",
+      sessionName: "task-session",
+      sshHost: null,
+      projectId: "project-1",
+      project: { id: "project-1", name: "kanvibe", color: "#86EFAC", iconDataUrl: null },
+      status: "todo",
+      agentType: null,
+      worktreePath: "/repo__worktrees/fix-tab-task-name",
+    });
+
+    render(<TaskDetailRoute />);
+
+    const taskContextBadge = await screen.findByTestId("terminal-task-context");
+    expect(taskContextBadge.style.backgroundColor).toBe("rgb(134, 239, 172)");
+    expect(taskContextBadge.style.color).toBe("rgb(17, 24, 39)");
+    expect(taskContextBadge.className).not.toContain("bg-green-600");
+
+    /** 배지 배경이 프로젝트 색이므로 첫 글자 칩은 같은 색이 아니라 배지 글자색으로 칠해야 읽힌다 */
+    const initialChip = within(taskContextBadge).getByTestId("project-initial-icon");
+    expect(initialChip.style.backgroundColor).toBe("rgb(17, 24, 39)");
+  });
+
+  it("프로젝트에 색이 없으면 프로젝트명 해시 색으로 배지를 칠한다", async () => {
+    mocks.getTaskById.mockResolvedValue({
+      id: "task-1",
+      title: "fix tab task name",
+      description: null,
+      branchName: "fix/tab-task-name",
+      baseBranch: "main",
+      prUrl: null,
+      sessionType: "tmux",
+      sessionName: "task-session",
+      sshHost: null,
+      projectId: "project-1",
+      project: { id: "project-1", name: "kanvibe", color: null, iconDataUrl: null },
+      status: "todo",
+      agentType: null,
+      worktreePath: "/repo__worktrees/fix-tab-task-name",
+    });
+
+    render(<TaskDetailRoute />);
+
+    const taskContextBadge = await screen.findByTestId("terminal-task-context");
+    /** computeProjectColor("kanvibe")가 고르는 프리셋 #5EEAD4. 보드 카드가 쓰는 색과 같아야 한다 */
+    expect(taskContextBadge.style.backgroundColor).toBe("rgb(94, 234, 212)");
+  });
+
+  it("프로젝트가 없는 태스크는 태스크 이름만 초록 배지로 표시한다", async () => {
+    mocks.getTaskById.mockResolvedValue({
+      id: "task-1",
+      title: "fix tab task name",
+      description: null,
+      branchName: "fix/tab-task-name",
+      baseBranch: "main",
+      prUrl: null,
+      sessionType: "tmux",
+      sessionName: "task-session",
+      sshHost: null,
+      projectId: null,
+      project: null,
       status: "todo",
       agentType: null,
       worktreePath: "/repo__worktrees/fix-tab-task-name",
@@ -705,8 +787,8 @@ describe("TaskDetailRoute", () => {
     expect(taskContextBadge.textContent).toBe("fix tab task name");
     expect(taskContextBadge.getAttribute("title")).toBe("fix tab task name");
     expect(taskContextBadge.className).toContain("bg-green-600");
-    expect(taskContextBadge.className).toContain("shrink-0");
-    expect(taskContextBadge.className).toContain("truncate");
+    expect(taskContextBadge.style.backgroundColor).toBe("");
+    expect(within(taskContextBadge).queryByTestId("terminal-task-context-project")).toBeNull();
   });
 
   it("사용자가 작업 정보 패널을 닫은 뒤 상세 데이터가 새로고침되어도 다시 열지 않는다", async () => {
