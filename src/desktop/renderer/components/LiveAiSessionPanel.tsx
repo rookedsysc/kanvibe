@@ -94,14 +94,17 @@ function LiveAiSessionRow({
       )}
 
       {session.runningSubtasks.length > 0 && (
-        <ul className="mt-1 space-y-0.5 pl-6">
-          {session.runningSubtasks.map((subtask) => (
+        <ul className="mt-1 pl-5">
+          {session.runningSubtasks.map((subtask, subtaskIndex) => (
             <li
               key={subtask.id}
-              className="truncate text-[10px] text-text-secondary"
+              className="flex items-start gap-1 text-[10px] text-text-secondary"
               data-testid="live-ai-subtask"
             >
-              {subtask.name ?? subtask.id}
+              <span aria-hidden="true" className="shrink-0 font-mono text-text-muted">
+                {subtaskIndex === session.runningSubtasks.length - 1 ? "└─" : "├─"}
+              </span>
+              <span className="min-w-0 truncate">{subtask.name ?? subtask.id}</span>
             </li>
           ))}
         </ul>

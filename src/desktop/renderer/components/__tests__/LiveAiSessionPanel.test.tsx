@@ -43,7 +43,7 @@ describe("LiveAiSessionPanel", () => {
 
     expect(screen.getByText('subtaskCount:{"count":2}')).toBeTruthy();
     expect(screen.getAllByTestId("live-ai-subtask").map((node) => node.textContent))
-      .toEqual(["Explore", "agent-2"]);
+      .toEqual(["├─Explore", "└─agent-2"]);
   });
 
   it("터미널 창을 찾은 세션만 클릭할 수 있다", () => {
@@ -76,6 +76,32 @@ describe("LiveAiSessionPanel", () => {
     render(<LiveAiSessionPanel sessions={[createSession({ currentTask: null })]} />);
 
     expect(screen.getByText("claude")).toBeTruthy();
+  });
+
+  it("서브태스크를 세션에 매달린 가지로 그리고 마지막만 끝가지로 닫는다", () => {
+    render(<LiveAiSessionPanel sessions={[createSession({
+      runningSubtasks: [
+        { id: "agent-1", name: "코드베이스 조사", lastActiveAt: null },
+        { id: "agent-2", name: "판정 로직 리뷰", lastActiveAt: null },
+        { id: "agent-3", name: "테스트 작성", lastActiveAt: null },
+      ],
+    })]} />);
+
+    const branches = screen.getAllByTestId("live-ai-subtask")
+      .map((node) => node.textContent);
+    expect(branches).toEqual([
+      "├─코드베이스 조사",
+      "├─판정 로직 리뷰",
+      "└─테스트 작성",
+    ]);
+  });
+
+  it("서브태스크가 하나면 끝가지 하나로 닫는다", () => {
+    render(<LiveAiSessionPanel sessions={[createSession({
+      runningSubtasks: [{ id: "agent-1", name: "코드베이스 조사", lastActiveAt: null }],
+    })]} />);
+
+    expect(screen.getByTestId("live-ai-subtask").textContent).toBe("└─코드베이스 조사");
   });
 
   it("실행중 세션에만 진행 표시를 그린다", () => {
