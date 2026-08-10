@@ -317,7 +317,7 @@ export async function readClaudeLiveSession(
 
   return {
     sessionId,
-    currentTask: await readLatestUserRequest(latestSessionFile.filePath, context.sshHost),
+    currentTask: await readCurrentActivity(latestSessionFile.filePath, context.sshHost),
     lastActiveAt: new Date(latestSessionFile.mtimeMs).toISOString(),
     runningSubtasks: await Promise.all(runningSubagentFiles.map((file) =>
       toClaudeSubtask(file, context.sshHost))),
@@ -325,26 +325,32 @@ export async function readClaudeLiveSession(
 }
 
 /**
- * 세션이 지금 붙들고 있는 작업으로 가장 최근 사용자 요청을 쓴다.
- * 첫 프롬프트는 대화가 길어지면 지금 하는 일과 무관해지므로 파일 꼬리에서 거꾸로 찾는다.
+ * 세션이 지금 무엇을 하는지는 마지막 AI 응답이 가장 잘 말해준다.
+ * 사용자 요청은 "무엇을 시켰나"이고 AI 응답은 "지금 무엇을 하는 중인가"라 화면 목적에 더 맞는다.
+ * 아직 응답이 없는 갓 시작한 세션은 마지막 사용자 요청으로 되돌린다.
  */
-async function readLatestUserRequest(
+async function readCurrentActivity(
   filePath: string,
   sshHost: string | null | undefined,
 ): Promise<string | null> {
   try {
     const events = await readJsonLinesTail(filePath, CLAUDE_TAIL_EVENT_COUNT, sshHost);
-    for (let index = events.length - 1; index >= 0; index -= 1) {
-      const event = events[index] as ClaudeProjectEvent;
-      if (event?.message?.role !== "user") continue;
-
-      const text = extractPlainText(event.message.content);
-      if (text) {
-        return truncateText(text, CLAUDE_CURRENT_TASK_LENGTH);
-      }
-    }
+    return findLatestRoleText(events, "assistant") ?? findLatestRoleText(events, "user");
   } catch {
     // 세션 기록을 읽지 못해도 실행중 여부는 파일 활동만으로 판정할 수 있다.
+    return null;
+  }
+}
+
+function findLatestRoleText(events: unknown[], role: "assistant" | "user"): string | null {
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const event = events[index] as ClaudeProjectEvent;
+    if (event?.message?.role !== role) continue;
+
+    const text = extractPlainText(event.message.content);
+    if (text) {
+      return truncateText(text, CLAUDE_CURRENT_TASK_LENGTH);
+    }
   }
 
   return null;

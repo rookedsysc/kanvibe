@@ -338,7 +338,7 @@ export async function readCodexLiveSession(
 
   return {
     sessionId: latestOwnThread.meta.threadId,
-    currentTask: await readLatestCodexUserRequest(latestOwnThread.filePath, context.sshHost),
+    currentTask: await readCodexCurrentActivity(latestOwnThread.filePath, context.sshHost),
     lastActiveAt: new Date(latestOwnThread.mtimeMs).toISOString(),
     runningSubtasks: threads
       .filter((thread) => thread.meta.parentThreadId === latestOwnThread.meta.threadId)
@@ -351,24 +351,32 @@ export async function readCodexLiveSession(
   };
 }
 
-/** 세션이 지금 붙들고 있는 작업. rollout 꼬리에서 마지막 사용자 입력을 찾는다 */
-async function readLatestCodexUserRequest(
+/**
+ * 세션이 지금 무엇을 하는지는 마지막 AI 응답이 가장 잘 말해준다.
+ * 아직 응답이 없는 갓 시작한 세션만 마지막 사용자 입력으로 되돌린다.
+ */
+async function readCodexCurrentActivity(
   filePath: string,
   sshHost: string | null | undefined,
 ): Promise<string | null> {
   try {
     const events = await readJsonLinesTail(filePath, CODEX_TAIL_EVENT_COUNT, sshHost);
-    for (let index = events.length - 1; index >= 0; index -= 1) {
-      const payload = (events[index] as CodexRolloutEvent)?.payload;
-      if (payload?.role !== "user") continue;
-
-      const text = extractPlainText(payload.content);
-      if (text) {
-        return truncateText(text, CODEX_CURRENT_TASK_LENGTH);
-      }
-    }
+    return findLatestCodexRoleText(events, "assistant") ?? findLatestCodexRoleText(events, "user");
   } catch {
     // rollout을 읽지 못해도 실행중 여부는 파일 활동만으로 판정할 수 있다.
+    return null;
+  }
+}
+
+function findLatestCodexRoleText(events: unknown[], role: "assistant" | "user"): string | null {
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const payload = (events[index] as CodexRolloutEvent)?.payload;
+    if (payload?.role !== role) continue;
+
+    const text = extractPlainText(payload.content);
+    if (text) {
+      return truncateText(text, CODEX_CURRENT_TASK_LENGTH);
+    }
   }
 
   return null;
