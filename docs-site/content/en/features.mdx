@@ -68,6 +68,36 @@ Key combinations are listed in the terminal tabs section of the [shortcuts](/en/
 - Chat search narrows both the session list and message detail, while role chips refine user, assistant, system, developer, reasoning, tool, and other messages.
 - Message bubbles include provider badges so mixed-agent context stays readable.
 
+## Live AI sessions and subtasks
+
+<div className="kv-grid">
+  <figure className="kv-shot">
+    <img src="/screenshots/live-sessions-board.png" alt="Board cards showing a running agent icon next to the tmux badge" />
+    <figcaption>The icon next to the tmux badge tells you which agent is running on which task, straight from the board.</figcaption>
+  </figure>
+  <figure className="kv-shot">
+    <img src="/screenshots/live-sessions-panel.png" alt="Task detail panel showing a running claude session with two subtasks" />
+    <figcaption>The session panel shows whether a session is running and which subtasks it is driving right now.</figcaption>
+  </figure>
+</div>
+
+- Focus or hover a board card and hold for a moment to open the session panel. Sweeping past cards does not open it.
+- In task detail, the live sessions dock item opens the same panel: `Mod+4` without a PR, `Mod+5` with one.
+- Clicking a session switches to the tmux window that session is attached to and moves input focus to the terminal.
+- Running state combines two signals. An agent attached to a tmux pane counts as running even while it waits for input, and a session whose transcript was just updated counts as running even when no pane is visible.
+- Session transcripts are read only while the panel is open. Board badges come from a single tmux query, so a crowded board does not cost more.
+
+Subtask counts depend on what each agent records, so support differs.
+
+| Agent | Subtask count |
+| --- | --- |
+| Claude Code | Supported |
+| Codex | Supported |
+| OpenCode | Depends on version |
+| Gemini CLI | Not supported |
+
+zellij and plain terminal sessions are judged by transcript activity alone, so a session waiting for input may appear idle.
+
 ## Quick task search
 
 <figure className="kv-shot">

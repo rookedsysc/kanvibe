@@ -68,6 +68,36 @@ KanVibe 将看板、终端会话、git worktree 与 AI 代理 hooks 连接成一
 - 聊天搜索会同时缩小会话列表和消息详情，role chip 可进一步过滤用户输入、AI 回复、系统输入、开发者输入、推理、工具和其他消息。
 - 每个消息气泡都会显示 provider 徽章，便于区分多代理上下文。
 
+## 运行中的 AI 会话与子任务
+
+<div className="kv-grid">
+  <figure className="kv-shot">
+    <img src="/screenshots/live-sessions-board.png" alt="看板卡片在 tmux 徽章旁显示运行中的代理图标" />
+    <figcaption>tmux 徽章旁的图标可直接在看板上区分哪个任务正在运行哪个代理。</figcaption>
+  </figure>
+  <figure className="kv-shot">
+    <img src="/screenshots/live-sessions-panel.png" alt="任务详情面板显示运行中的 claude 会话及两个子任务" />
+    <figcaption>会话面板同时显示会话是否在运行，以及该会话当前正在执行的子任务。</figcaption>
+  </figure>
+</div>
+
+- 将焦点或鼠标停留在看板卡片上片刻即可打开会话面板；快速掠过卡片时不会打开。
+- 在任务详情中，dock 的运行中会话项会打开同一个面板：没有 PR 时为 `Mod+4`，有 PR 时为 `Mod+5`。
+- 点击会话会切换到该会话所在的 tmux window，并把输入焦点移到终端。
+- 运行判定叠加两个依据：代理挂在 tmux pane 上时，即使在等待输入也算运行中；即使看不到 pane，只要会话记录刚刚更新也算运行中。
+- 只有面板打开时才读取会话记录。看板徽章只需一次 tmux 查询，卡片再多也不会增加开销。
+
+子任务统计依赖各代理记录的内容，因此支持范围不同。
+
+| 代理 | 子任务统计 |
+| --- | --- |
+| Claude Code | 支持 |
+| Codex | 支持 |
+| OpenCode | 视版本而定 |
+| Gemini CLI | 不支持 |
+
+不使用 tmux 的 zellij 和 terminal 会话仅依据记录活动判定，因此等待输入的会话可能显示为空闲。
+
 ## 快速任务搜索
 
 <figure className="kv-shot">
