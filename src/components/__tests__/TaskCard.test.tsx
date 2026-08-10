@@ -571,6 +571,27 @@ describe("TaskCard - Priority Badge", () => {
       expect(screen.getByTestId("task-card-running-agents")).toBeTruthy();
     });
 
+    it("여러 에이전트가 돌아도 아이콘 하나와 개수만 보여준다", () => {
+      // Given
+      const task = createTask({ worktreePath: "/repo/task" });
+      const panes = [runningPane, { ...runningPane, provider: "codex" as const, windowId: "@8" }];
+
+      // When
+      render(
+        <TaskCard
+          task={task}
+          index={0}
+          onContextMenu={onContextMenu}
+          runningAgentPanes={panes}
+        />,
+      );
+
+      // Then
+      const badge = screen.getByTestId("task-card-running-agents");
+      expect(badge.querySelectorAll("img")).toHaveLength(1);
+      expect(badge.textContent).toBe("2");
+    });
+
     it("다른 worktree에서 도는 에이전트는 배지로 보여주지 않는다", () => {
       // Given
       const task = createTask({ worktreePath: "/repo/other" });

@@ -54,9 +54,10 @@ export function TaskCardLiveSessions({
           className="inline-flex items-center gap-0.5"
           data-testid="task-card-running-agents"
         >
-          {taskPanes.map((pane) => (
-            <AiProviderIcon key={pane.provider} provider={pane.provider} size={12} />
-          ))}
+          <AiProviderIcon provider={taskPanes[0].provider} size={12} />
+          <span className="text-[10px] font-semibold leading-none text-text-secondary">
+            {taskPanes.length}
+          </span>
         </span>
       )}
 

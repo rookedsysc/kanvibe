@@ -13,6 +13,7 @@ function createSession(overrides: Partial<LiveAiSession> = {}): LiveAiSession {
   return {
     provider: "claude",
     sessionId: "session-a",
+    currentTask: null,
     state: "running",
     lastActiveAt: "2026-08-10T00:00:00.000Z",
     runningSubtasks: [],
@@ -62,6 +63,19 @@ describe("LiveAiSessionPanel", () => {
 
     fireEvent.click(buttons[0]);
     expect(onSelectSession).toHaveBeenCalledWith(expect.objectContaining({ provider: "claude" }));
+  });
+
+  it("세션이 지금 하고 있는 작업을 provider 이름 대신 보여준다", () => {
+    render(<LiveAiSessionPanel sessions={[createSession({ currentTask: "실행중 세션 패널 구현" })]} />);
+
+    expect(screen.getByText("실행중 세션 패널 구현")).toBeTruthy();
+    expect(screen.queryByText("claude")).toBeNull();
+  });
+
+  it("작업을 읽지 못하면 provider 이름으로 되돌린다", () => {
+    render(<LiveAiSessionPanel sessions={[createSession({ currentTask: null })]} />);
+
+    expect(screen.getByText("claude")).toBeTruthy();
   });
 
   it("실행중인 세션이 없으면 빈 안내를 보여준다", () => {

@@ -47,6 +47,7 @@ describe("TaskCardLiveSessions", () => {
       sessions: [{
         provider: "claude",
         sessionId: "session-a",
+        currentTask: "실행중 세션 패널 구현",
         state: "running",
         lastActiveAt: "2026-08-10T00:00:00.000Z",
         runningSubtasks: [],

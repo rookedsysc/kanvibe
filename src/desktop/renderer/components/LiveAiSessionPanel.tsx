@@ -58,7 +58,9 @@ function LiveAiSessionRow({
     <span className="flex min-w-0 flex-1 items-center gap-2">
       <LiveSessionStateDot state={session.state} label={stateLabel} />
       <AiProviderIcon provider={session.provider} size={14} />
-      <span className="min-w-0 flex-1 truncate text-xs text-text-primary">{session.provider}</span>
+      <span className="min-w-0 flex-1 truncate text-xs text-text-primary" title={session.currentTask ?? session.provider}>
+        {session.currentTask ?? session.provider}
+      </span>
       <span className="shrink-0 text-[10px] text-text-muted">
         {session.runningSubtasks.length > 0
           ? t("subtaskCount", { count: session.runningSubtasks.length })
