@@ -619,6 +619,33 @@ describe("TaskCard - Priority Badge", () => {
       vi.useRealTimers();
     });
 
+    it("세션 패널이 열리면 카드가 넘치는 패널을 잘라내지 않는다", () => {
+      // Given
+      vi.useFakeTimers();
+      const task = createTask({ worktreePath: "/repo/task" });
+      render(
+        <TaskCard
+          task={task}
+          index={0}
+          onContextMenu={onContextMenu}
+          runningAgentPanes={[runningPane]}
+        />,
+      );
+      const card = screen.getByRole("link");
+      expect(card.className).toContain("overflow-hidden");
+
+      // When
+      fireEvent.focus(card);
+      act(() => {
+        vi.advanceTimersByTime(1_500);
+      });
+
+      // Then
+      expect(screen.getByRole("link").className).not.toContain("overflow-hidden");
+
+      vi.useRealTimers();
+    });
+
     it("포커스가 카드를 벗어나면 열려 있던 세션 패널을 닫는다", () => {
       // Given
       vi.useFakeTimers();

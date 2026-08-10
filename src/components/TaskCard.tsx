@@ -334,7 +334,8 @@ export default function TaskCard({
             ...provided.draggableProps.style,
             ...cardStyle,
           }}
-          className={`group relative mb-1.5 block overflow-hidden rounded-md border border-border-subtle px-2.5 py-2 transition-[background-color,border-color,box-shadow] cursor-pointer outline-none focus:border-border-brand focus:bg-bg-surface/90 ${isBaseProject ? "pr-8" : ""} ${
+          /** 세션 패널은 카드 아래로 넘치므로 열려 있는 동안에는 카드가 잘라내지 않게 한다 */
+          className={`group relative mb-1.5 block ${isLiveSessionPanelOpen ? "" : "overflow-hidden"} rounded-md border border-border-subtle px-2.5 py-2 transition-[background-color,border-color,box-shadow] cursor-pointer outline-none focus:border-border-brand focus:bg-bg-surface/90 ${isBaseProject ? "pr-8" : ""} ${
             snapshot.isDragging
               ? "bg-bg-surface shadow-md ring-1 ring-border-brand"
               : "hover:bg-bg-surface/70"
