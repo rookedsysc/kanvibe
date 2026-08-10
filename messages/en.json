@@ -422,6 +422,7 @@
       "title": "AI usage",
       "refresh": "Refresh",
       "loading": "Loading usage",
+      "refreshing": "Refreshing usage",
       "session": "5 hours",
       "weekly": "7 days",
       "resetsAt": "Resets {time}",
@@ -429,7 +430,7 @@
       "snapshotFailed": "Could not load usage.",
       "reasons": {
         "missing-credentials": "Not signed in.",
-        "expired-credentials": "Sign in again.",
+        "expired-credentials": "Authentication expired. Sign in again from the CLI.",
         "gemini-cli-not-found": "Token expired and the Gemini CLI was not found, so it cannot be refreshed.",
         "rate-limited": "Too many requests. Try again shortly.",
         "empty-response": "The response carried no usage data.",

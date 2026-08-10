@@ -1,24 +1,27 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { readGeminiUsage } from "@/lib/aiUsage/readGeminiUsage";
+import type { AiUsageAccount } from "@/lib/aiUsage/types";
 
 const {
-  mockGetHomeDirectory,
   mockReadTextFile,
   mockResolveGeminiOAuthClient,
   mockRefreshGeminiAccessToken,
   mockLoadGeminiProjectId,
 } = vi.hoisted(() => ({
-  mockGetHomeDirectory: vi.fn(),
   mockReadTextFile: vi.fn(),
   mockResolveGeminiOAuthClient: vi.fn(),
   mockRefreshGeminiAccessToken: vi.fn(),
   mockLoadGeminiProjectId: vi.fn(),
 }));
 
-vi.mock("@/lib/hostFileAccess", () => ({
-  getHomeDirectory: mockGetHomeDirectory,
-  readTextFile: mockReadTextFile,
-}));
+vi.mock("@/lib/hostFileAccess", () => ({ readTextFile: mockReadTextFile }));
+
+const ACCOUNT: AiUsageAccount = {
+  provider: "gemini",
+  accountId: "/home/tester/.gemini",
+  label: "Gemini",
+  configDir: "/home/tester/.gemini",
+};
 
 vi.mock("@/lib/aiUsage/geminiOAuthClient", () => ({
   resolveGeminiOAuthClient: mockResolveGeminiOAuthClient,
@@ -41,7 +44,6 @@ describe("readGeminiUsage", () => {
 
   beforeEach(() => {
     vi.stubGlobal("fetch", fetchMock);
-    mockGetHomeDirectory.mockResolvedValue("/home/tester");
   });
 
   afterEach(() => {
@@ -52,7 +54,7 @@ describe("readGeminiUsage", () => {
   it("Gemini CLI 자격증명이 없으면 unavailable을 돌려준다", async () => {
     mockReadTextFile.mockResolvedValue("");
 
-    const result = await readGeminiUsage();
+    const result = await readGeminiUsage(ACCOUNT);
 
     expect(result.status).toBe("unavailable");
     expect(result.reason).toBe("missing-credentials");
@@ -63,7 +65,7 @@ describe("readGeminiUsage", () => {
     mockReadTextFile.mockResolvedValue(createCredentialsJson(Date.now() - ONE_HOUR_MS));
     mockResolveGeminiOAuthClient.mockResolvedValue(null);
 
-    const result = await readGeminiUsage();
+    const result = await readGeminiUsage(ACCOUNT);
 
     expect(result.status).toBe("unavailable");
     expect(result.reason).toBe("gemini-cli-not-found");
@@ -74,7 +76,7 @@ describe("readGeminiUsage", () => {
     mockReadTextFile.mockResolvedValue(createCredentialsJson(Date.now() + ONE_HOUR_MS));
     mockLoadGeminiProjectId.mockResolvedValue(null);
 
-    const result = await readGeminiUsage();
+    const result = await readGeminiUsage(ACCOUNT);
 
     expect(result.status).toBe("error");
     expect(result.reason).toBe("fetch-failed");
@@ -98,7 +100,7 @@ describe("readGeminiUsage", () => {
       }),
     });
 
-    const result = await readGeminiUsage();
+    const result = await readGeminiUsage(ACCOUNT);
 
     expect(result.status).toBe("ok");
     expect(result.windows).toEqual([
@@ -128,7 +130,7 @@ describe("readGeminiUsage", () => {
       }),
     });
 
-    const result = await readGeminiUsage();
+    const result = await readGeminiUsage(ACCOUNT);
 
     expect(result.windows[0].modelName).toBe("4.0 Ultra");
     expect(result.windows[0].usedPercent).toBe(0);

@@ -7,8 +7,13 @@ import {
   createUsageResult,
   createUsageWindow,
 } from "@/lib/aiUsage/shared";
-import type { AiUsageProviderResult, AiUsageWindow, AiUsageWindowKind } from "@/lib/aiUsage/types";
-import { getHomeDirectory, readTextFile } from "@/lib/hostFileAccess";
+import type {
+  AiUsageAccount,
+  AiUsageAccountResult,
+  AiUsageWindow,
+  AiUsageWindowKind,
+} from "@/lib/aiUsage/types";
+import { readTextFile } from "@/lib/hostFileAccess";
 
 const CODEX_USAGE_URL = "https://chatgpt.com/backend-api/wham/usage";
 
@@ -37,9 +42,8 @@ interface CodexCredentials {
   accountId: string | null;
 }
 
-async function readCodexCredentials(): Promise<CodexCredentials | null> {
-  const homeDirectory = await getHomeDirectory();
-  const rawAuth = await readTextFile(path.join(homeDirectory, ".codex", "auth.json"));
+async function readCodexCredentials(configDir: string): Promise<CodexCredentials | null> {
+  const rawAuth = await readTextFile(path.join(configDir, "auth.json"));
   if (!rawAuth) {
     return null;
   }
@@ -96,10 +100,10 @@ function toCodexUsageWindow(raw: CodexRateWindowResponse | null | undefined): Ai
   return createUsageWindow(kind, raw.used_percent, raw.reset_at);
 }
 
-export async function readCodexUsage(): Promise<AiUsageProviderResult> {
-  const credentials = await readCodexCredentials();
+export async function readCodexUsage(account: AiUsageAccount): Promise<AiUsageAccountResult> {
+  const credentials = await readCodexCredentials(account.configDir);
   if (!credentials) {
-    return createUnavailableUsage("codex", "missing-credentials");
+    return createUnavailableUsage(account, "missing-credentials");
   }
 
   const headers: Record<string, string> = {
@@ -116,18 +120,18 @@ export async function readCodexUsage(): Promise<AiUsageProviderResult> {
       signal: AbortSignal.timeout(AI_USAGE_REQUEST_TIMEOUT_MS),
     });
   } catch {
-    return createErrorUsage("codex", "fetch-failed");
+    return createErrorUsage(account, "fetch-failed");
   }
 
   if (!response.ok) {
-    return classifyUsageHttpFailure("codex", response.status);
+    return classifyUsageHttpFailure(account, response.status);
   }
 
   let payload: CodexUsageResponse;
   try {
     payload = (await response.json()) as CodexUsageResponse;
   } catch {
-    return createErrorUsage("codex", "fetch-failed");
+    return createErrorUsage(account, "fetch-failed");
   }
 
   const mappedWindows = [
@@ -141,9 +145,9 @@ export async function readCodexUsage(): Promise<AiUsageProviderResult> {
     .filter((window): window is AiUsageWindow => window !== undefined);
 
   if (windows.length === 0) {
-    return createErrorUsage("codex", "empty-response");
+    return createErrorUsage(account, "empty-response");
   }
 
   const planName = typeof payload.plan_type === "string" ? payload.plan_type : null;
-  return createUsageResult("codex", windows, planName);
+  return createUsageResult(account, windows, planName);
 }

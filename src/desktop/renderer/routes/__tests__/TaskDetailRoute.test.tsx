@@ -101,9 +101,11 @@ vi.mock("@hugeicons/core-free-icons", () => ({
 vi.mock("@/desktop/renderer/actions/aiUsage", () => ({
   getAiUsageSnapshot: vi.fn().mockResolvedValue({
     fetchedAt: "2026-08-10T06:00:00.000Z",
-    providers: [
+    accounts: [
       {
         provider: "claude",
+        accountId: "account-uuid",
+        label: "me@example.com",
         status: "ok",
         planName: null,
         windows: [{ kind: "session", modelName: null, usedPercent: 22, resetsAt: null }],
@@ -112,6 +114,7 @@ vi.mock("@/desktop/renderer/actions/aiUsage", () => ({
       },
     ],
   }),
+  getCachedAiUsageSnapshot: vi.fn().mockResolvedValue(null),
 }));
 
 vi.mock("mermaid", () => ({

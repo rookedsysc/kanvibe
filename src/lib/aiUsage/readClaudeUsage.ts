@@ -7,8 +7,18 @@ import {
   createUsageResult,
   createUsageWindow,
 } from "@/lib/aiUsage/shared";
-import type { AiUsageProviderResult, AiUsageWindow, AiUsageWindowKind } from "@/lib/aiUsage/types";
-import { getHomeDirectory, readTextFile } from "@/lib/hostFileAccess";
+import {
+  isClaudeTokenExpiring,
+  refreshClaudeCredentials,
+} from "@/lib/aiUsage/claudeOAuthRefresh";
+import { writeCredentialsAtomically } from "@/lib/aiUsage/atomicCredentialsWrite";
+import type {
+  AiUsageAccount,
+  AiUsageAccountResult,
+  AiUsageWindow,
+  AiUsageWindowKind,
+} from "@/lib/aiUsage/types";
+import { readTextFile } from "@/lib/hostFileAccess";
 
 const CLAUDE_USAGE_URL = "https://api.anthropic.com/api/oauth/usage";
 
@@ -31,20 +41,43 @@ interface ClaudeUsageResponse {
 }
 
 /**
- * 로컬에 적힌 만료 시각은 이 엔드포인트의 판단 기준이 아니다.
- * 만료로 표시된 자격증명이 여전히 통과하는 경우가 있어 서버 응답으로만 유효성을 가른다.
+ * 액세스 토큰이 만료 임박이면 갱신한 뒤 조회한다.
+ *
+ * refresh 토큰은 한 번 쓰면 회전되므로, 갱신에 성공하면 조회보다 먼저 파일에 되쓴다.
+ * 되쓰기가 실패하면 저장된 refresh 토큰은 이미 서버에서 무효가 된 상태라 CLI 재로그인이 필요해진다 —
+ * 복구할 방법이 없으므로 최소한 눈에 띄게 남긴다.
  */
-async function readClaudeAccessToken(): Promise<string | null> {
-  const homeDirectory = await getHomeDirectory();
-  const rawCredentials = await readTextFile(
-    path.join(homeDirectory, ".claude", ".credentials.json"),
-  );
-  if (!rawCredentials) {
+async function readFreshClaudeCredentials(configDir: string): Promise<string> {
+  const credentialsPath = path.join(configDir, ".credentials.json");
+  const storedCredentials = await readTextFile(credentialsPath);
+  if (!storedCredentials || !isClaudeTokenExpiring(storedCredentials)) {
+    return storedCredentials;
+  }
+
+  const refreshedCredentials = await refreshClaudeCredentials(storedCredentials);
+  if (!refreshedCredentials) {
+    return storedCredentials;
+  }
+
+  try {
+    await writeCredentialsAtomically(credentialsPath, refreshedCredentials);
+  } catch (error) {
+    console.error(
+      `[ai-usage] 갱신한 Claude 자격증명을 저장하지 못했습니다. ${credentialsPath}의 refresh 토큰이 무효일 수 있어 재로그인이 필요할 수 있습니다:`,
+      error instanceof Error ? error.message : error,
+    );
+  }
+
+  return refreshedCredentials;
+}
+
+function readClaudeAccessToken(credentialsJson: string): string | null {
+  if (!credentialsJson) {
     return null;
   }
 
   try {
-    const parsed = JSON.parse(rawCredentials) as { claudeAiOauth?: { accessToken?: unknown } };
+    const parsed = JSON.parse(credentialsJson) as { claudeAiOauth?: { accessToken?: unknown } };
     const accessToken = parsed?.claudeAiOauth?.accessToken;
     return typeof accessToken === "string" && accessToken.trim() ? accessToken : null;
   } catch {
@@ -64,10 +97,10 @@ function toClaudeUsageWindow(
   return createUsageWindow(kind, usedPercent, raw.resets_at);
 }
 
-export async function readClaudeUsage(): Promise<AiUsageProviderResult> {
-  const accessToken = await readClaudeAccessToken();
+export async function readClaudeUsage(account: AiUsageAccount): Promise<AiUsageAccountResult> {
+  const accessToken = readClaudeAccessToken(await readFreshClaudeCredentials(account.configDir));
   if (!accessToken) {
-    return createUnavailableUsage("claude", "missing-credentials");
+    return createUnavailableUsage(account, "missing-credentials");
   }
 
   let response: Response;
@@ -81,18 +114,18 @@ export async function readClaudeUsage(): Promise<AiUsageProviderResult> {
       signal: AbortSignal.timeout(AI_USAGE_REQUEST_TIMEOUT_MS),
     });
   } catch {
-    return createErrorUsage("claude", "fetch-failed");
+    return createErrorUsage(account, "fetch-failed");
   }
 
   if (!response.ok) {
-    return classifyUsageHttpFailure("claude", response.status);
+    return classifyUsageHttpFailure(account, response.status);
   }
 
   let payload: ClaudeUsageResponse;
   try {
     payload = (await response.json()) as ClaudeUsageResponse;
   } catch {
-    return createErrorUsage("claude", "fetch-failed");
+    return createErrorUsage(account, "fetch-failed");
   }
 
   const windows = [
@@ -101,8 +134,8 @@ export async function readClaudeUsage(): Promise<AiUsageProviderResult> {
   ].filter((window): window is AiUsageWindow => window !== null);
 
   if (windows.length === 0) {
-    return createErrorUsage("claude", "empty-response");
+    return createErrorUsage(account, "empty-response");
   }
 
-  return createUsageResult("claude", windows);
+  return createUsageResult(account, windows);
 }

@@ -12,8 +12,8 @@ import {
   createUsageResult,
   createUsageWindow,
 } from "@/lib/aiUsage/shared";
-import type { AiUsageProviderResult, AiUsageWindow } from "@/lib/aiUsage/types";
-import { getHomeDirectory, readTextFile } from "@/lib/hostFileAccess";
+import type { AiUsageAccount, AiUsageAccountResult, AiUsageWindow } from "@/lib/aiUsage/types";
+import { readTextFile } from "@/lib/hostFileAccess";
 
 const RETRIEVE_USER_QUOTA_URL = "https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuota";
 
@@ -85,11 +85,8 @@ function parseQuotaBuckets(payload: unknown): GeminiQuotaBucket[] {
   return Array.isArray(bucketsField) ? bucketsField.filter(isQuotaBucket) : [];
 }
 
-async function readGeminiCredentials(): Promise<GeminiCredentials | null> {
-  const homeDirectory = await getHomeDirectory();
-  const rawCredentials = await readTextFile(
-    path.join(homeDirectory, ".gemini", "oauth_creds.json"),
-  );
+async function readGeminiCredentials(configDir: string): Promise<GeminiCredentials | null> {
+  const rawCredentials = await readTextFile(path.join(configDir, "oauth_creds.json"));
   if (!rawCredentials) {
     return null;
   }
@@ -119,39 +116,40 @@ async function readGeminiCredentials(): Promise<GeminiCredentials | null> {
  * 그 파일은 Gemini CLI의 것이고, KanVibe가 남의 도구 설정을 고치면 CLI 쪽 상태와 어긋날 수 있다.
  */
 async function resolveAccessToken(
+  account: AiUsageAccount,
   credentials: GeminiCredentials,
-): Promise<string | AiUsageProviderResult> {
+): Promise<string | AiUsageAccountResult> {
   if (credentials.expiryDate > Date.now()) {
     return credentials.accessToken;
   }
 
   const oauthClient = await resolveGeminiOAuthClient();
   if (!oauthClient) {
-    return createUnavailableUsage("gemini", "gemini-cli-not-found");
+    return createUnavailableUsage(account, "gemini-cli-not-found");
   }
 
   const refreshed = await refreshGeminiAccessToken(credentials.refreshToken, oauthClient);
   if (!refreshed) {
-    return createUnavailableUsage("gemini", "expired-credentials");
+    return createUnavailableUsage(account, "expired-credentials");
   }
 
   return refreshed.accessToken;
 }
 
-export async function readGeminiUsage(): Promise<AiUsageProviderResult> {
-  const credentials = await readGeminiCredentials();
+export async function readGeminiUsage(account: AiUsageAccount): Promise<AiUsageAccountResult> {
+  const credentials = await readGeminiCredentials(account.configDir);
   if (!credentials) {
-    return createUnavailableUsage("gemini", "missing-credentials");
+    return createUnavailableUsage(account, "missing-credentials");
   }
 
-  const resolvedToken = await resolveAccessToken(credentials);
+  const resolvedToken = await resolveAccessToken(account, credentials);
   if (typeof resolvedToken !== "string") {
     return resolvedToken;
   }
 
   const projectId = await loadGeminiProjectId(resolvedToken);
   if (!projectId) {
-    return createErrorUsage("gemini", "fetch-failed");
+    return createErrorUsage(account, "fetch-failed");
   }
 
   let response: Response;
@@ -166,18 +164,18 @@ export async function readGeminiUsage(): Promise<AiUsageProviderResult> {
       signal: AbortSignal.timeout(AI_USAGE_REQUEST_TIMEOUT_MS),
     });
   } catch {
-    return createErrorUsage("gemini", "fetch-failed");
+    return createErrorUsage(account, "fetch-failed");
   }
 
   if (!response.ok) {
-    return classifyUsageHttpFailure("gemini", response.status);
+    return classifyUsageHttpFailure(account, response.status);
   }
 
   let payload: unknown;
   try {
     payload = await response.json();
   } catch {
-    return createErrorUsage("gemini", "fetch-failed");
+    return createErrorUsage(account, "fetch-failed");
   }
 
   const windows = parseQuotaBuckets(payload)
@@ -185,8 +183,8 @@ export async function readGeminiUsage(): Promise<AiUsageProviderResult> {
     .filter((window): window is AiUsageWindow => window !== null);
 
   if (windows.length === 0) {
-    return createErrorUsage("gemini", "empty-response");
+    return createErrorUsage(account, "empty-response");
   }
 
-  return createUsageResult("gemini", windows);
+  return createUsageResult(account, windows);
 }

@@ -1,15 +1,17 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { readCodexUsage } from "@/lib/aiUsage/readCodexUsage";
+import type { AiUsageAccount } from "@/lib/aiUsage/types";
 
-const { mockGetHomeDirectory, mockReadTextFile } = vi.hoisted(() => ({
-  mockGetHomeDirectory: vi.fn(),
-  mockReadTextFile: vi.fn(),
-}));
+const { mockReadTextFile } = vi.hoisted(() => ({ mockReadTextFile: vi.fn() }));
 
-vi.mock("@/lib/hostFileAccess", () => ({
-  getHomeDirectory: mockGetHomeDirectory,
-  readTextFile: mockReadTextFile,
-}));
+vi.mock("@/lib/hostFileAccess", () => ({ readTextFile: mockReadTextFile }));
+
+const ACCOUNT: AiUsageAccount = {
+  provider: "codex",
+  accountId: "account-id",
+  label: "codex@example.com",
+  configDir: "/home/tester/.codex",
+};
 
 function createAuthJson(): string {
   return JSON.stringify({
@@ -22,7 +24,6 @@ describe("readCodexUsage", () => {
 
   beforeEach(() => {
     vi.stubGlobal("fetch", fetchMock);
-    mockGetHomeDirectory.mockResolvedValue("/home/tester");
   });
 
   afterEach(() => {
@@ -48,7 +49,7 @@ describe("readCodexUsage", () => {
       }),
     });
 
-    const result = await readCodexUsage();
+    const result = await readCodexUsage(ACCOUNT);
 
     expect(result.status).toBe("ok");
     expect(result.planName).toBe("pro");
@@ -76,7 +77,7 @@ describe("readCodexUsage", () => {
       }),
     });
 
-    const result = await readCodexUsage();
+    const result = await readCodexUsage(ACCOUNT);
 
     expect(result.windows.map((window) => window.kind)).toEqual(["session", "weekly"]);
     expect(result.windows.map((window) => window.usedPercent)).toEqual([10, 80]);
@@ -85,7 +86,7 @@ describe("readCodexUsage", () => {
   it("액세스 토큰이 없으면 네트워크를 호출하지 않고 unavailable을 돌려준다", async () => {
     mockReadTextFile.mockResolvedValue(JSON.stringify({ auth_mode: "apikey", tokens: null }));
 
-    const result = await readCodexUsage();
+    const result = await readCodexUsage(ACCOUNT);
 
     expect(result.status).toBe("unavailable");
     expect(result.reason).toBe("missing-credentials");
@@ -103,7 +104,7 @@ describe("readCodexUsage", () => {
       }),
     });
 
-    await readCodexUsage();
+    await readCodexUsage(ACCOUNT);
 
     const [, requestInit] = fetchMock.mock.calls[0];
     expect(requestInit.headers["ChatGPT-Account-Id"]).toBe("account-id");

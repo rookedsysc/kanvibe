@@ -1,7 +1,7 @@
 import type {
+  AiUsageAccount,
+  AiUsageAccountResult,
   AiUsageFailureReason,
-  AiUsageProvider,
-  AiUsageProviderResult,
   AiUsageWindow,
   AiUsageWindowKind,
 } from "@/lib/aiUsage/types";
@@ -78,12 +78,14 @@ export function createUsageWindow(
 }
 
 export function createUsageResult(
-  provider: AiUsageProvider,
+  account: AiUsageAccount,
   windows: AiUsageWindow[],
   planName: string | null = null,
-): AiUsageProviderResult {
+): AiUsageAccountResult {
   return {
-    provider,
+    provider: account.provider,
+    accountId: account.accountId,
+    label: account.label,
     status: "ok",
     planName,
     windows,
@@ -94,27 +96,29 @@ export function createUsageResult(
 
 /** 아직 로그인하지 않았거나 CLI가 없는 정상적인 부재 */
 export function createUnavailableUsage(
-  provider: AiUsageProvider,
+  account: AiUsageAccount,
   reason: AiUsageFailureReason,
-): AiUsageProviderResult {
-  return createFailedUsage(provider, "unavailable", reason);
+): AiUsageAccountResult {
+  return createFailedUsage(account, "unavailable", reason);
 }
 
 /** 호출이 실패했거나 응답을 해석할 수 없는 비정상 상태 */
 export function createErrorUsage(
-  provider: AiUsageProvider,
+  account: AiUsageAccount,
   reason: AiUsageFailureReason,
-): AiUsageProviderResult {
-  return createFailedUsage(provider, "error", reason);
+): AiUsageAccountResult {
+  return createFailedUsage(account, "error", reason);
 }
 
 function createFailedUsage(
-  provider: AiUsageProvider,
+  account: AiUsageAccount,
   status: "unavailable" | "error",
   reason: AiUsageFailureReason,
-): AiUsageProviderResult {
+): AiUsageAccountResult {
   return {
-    provider,
+    provider: account.provider,
+    accountId: account.accountId,
+    label: account.label,
     status,
     planName: null,
     windows: [],
@@ -128,16 +132,16 @@ function createFailedUsage(
  * 나머지 비 2xx는 스키마가 바뀌었을 수도 있으므로 앱을 죽이지 않고 error로만 떨어뜨린다.
  */
 export function classifyUsageHttpFailure(
-  provider: AiUsageProvider,
+  account: AiUsageAccount,
   statusCode: number,
-): AiUsageProviderResult {
+): AiUsageAccountResult {
   if (statusCode === 401 || statusCode === 403) {
-    return createUnavailableUsage(provider, "expired-credentials");
+    return createUnavailableUsage(account, "expired-credentials");
   }
 
   if (statusCode === 429) {
-    return createErrorUsage(provider, "rate-limited");
+    return createErrorUsage(account, "rate-limited");
   }
 
-  return createErrorUsage(provider, "fetch-failed");
+  return createErrorUsage(account, "fetch-failed");
 }

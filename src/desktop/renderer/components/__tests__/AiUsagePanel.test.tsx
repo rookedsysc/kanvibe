@@ -1,7 +1,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import AiUsagePanel from "../AiUsagePanel";
-import type { AiUsageSnapshot } from "@/lib/aiUsage/types";
+import type { AiUsageAccountResult, AiUsageSnapshot } from "@/lib/aiUsage/types";
 
 vi.mock("next-intl", () => ({
   useTranslations: () => (key: string, values?: Record<string, string>) => (
@@ -13,23 +13,32 @@ const { mockUseAiUsage } = vi.hoisted(() => ({ mockUseAiUsage: vi.fn() }));
 
 vi.mock("@/desktop/renderer/hooks/useAiUsage", () => ({ useAiUsage: mockUseAiUsage }));
 
-function createSnapshot(): AiUsageSnapshot {
+function createClaudeAccount(overrides: Partial<AiUsageAccountResult> = {}): AiUsageAccountResult {
+  return {
+    provider: "claude",
+    accountId: "personal",
+    label: "me@example.com",
+    status: "ok",
+    planName: null,
+    windows: [
+      { kind: "session", modelName: null, usedPercent: 22, resetsAt: null },
+      { kind: "weekly", modelName: null, usedPercent: 95, resetsAt: null },
+    ],
+    reason: null,
+    fetchedAt: "2026-08-10T06:00:00.000Z",
+    ...overrides,
+  };
+}
+
+function createSnapshot(accounts?: AiUsageAccountResult[]): AiUsageSnapshot {
   return {
     fetchedAt: "2026-08-10T06:00:00.000Z",
-    providers: [
-      {
-        provider: "claude",
-        status: "ok",
-        planName: null,
-        windows: [
-          { kind: "session", modelName: null, usedPercent: 22, resetsAt: null },
-          { kind: "weekly", modelName: null, usedPercent: 95, resetsAt: null },
-        ],
-        reason: null,
-        fetchedAt: "2026-08-10T06:00:00.000Z",
-      },
+    accounts: accounts ?? [
+      createClaudeAccount(),
       {
         provider: "codex",
+        accountId: "codex-seat",
+        label: "codex@example.com",
         status: "ok",
         planName: "pro",
         windows: [{ kind: "weekly", modelName: null, usedPercent: 35, resetsAt: null }],
@@ -38,6 +47,8 @@ function createSnapshot(): AiUsageSnapshot {
       },
       {
         provider: "gemini",
+        accountId: "gemini",
+        label: "gemini",
         status: "unavailable",
         planName: null,
         windows: [],
@@ -53,6 +64,7 @@ function renderPanel(overrides: Partial<ReturnType<typeof mockUseAiUsage>> = {})
   mockUseAiUsage.mockReturnValue({
     snapshot: createSnapshot(),
     isLoading: false,
+    isRefreshing: false,
     hasFailed: false,
     refresh,
     ...overrides,
@@ -95,6 +107,45 @@ describe("AiUsagePanel", () => {
     expect(geminiCard.querySelector("[style*='width']")).toBeNull();
   });
 
+  it("계정이 하나뿐인 provider는 계정 라벨로 화면을 채우지 않는다", () => {
+    renderPanel();
+
+    expect(screen.getByTestId("ai-usage-provider-claude").textContent).not.toContain("me@example.com");
+  });
+
+  it("한 provider에 계정이 여럿이면 어느 계정의 사용량인지 밝힌다", () => {
+    renderPanel({
+      snapshot: createSnapshot([
+        createClaudeAccount(),
+        createClaudeAccount({
+          accountId: "work",
+          label: "work@example.com",
+          windows: [{ kind: "session", modelName: null, usedPercent: 7, resetsAt: null }],
+        }),
+      ]),
+    });
+
+    const claudeCard = screen.getByTestId("ai-usage-provider-claude");
+
+    expect(claudeCard.textContent).toContain("me@example.com");
+    expect(claudeCard.textContent).toContain("work@example.com");
+    expect(claudeCard.querySelectorAll("[data-testid='ai-usage-account']")).toHaveLength(2);
+  });
+
+  it("저장된 값을 보여주는 동안에는 불러오는 중이 아니라 갱신 중이라고 알린다", () => {
+    renderPanel({ isRefreshing: true, isLoading: false });
+
+    expect(screen.getByTestId("ai-usage-refreshing")).toBeDefined();
+    expect(screen.queryByText("loading")).toBeNull();
+    expect(screen.getByText("22%")).toBeDefined();
+  });
+
+  it("보여줄 값이 없을 때만 불러오는 중이라고 표시한다", () => {
+    renderPanel({ snapshot: null, isLoading: true, isRefreshing: true });
+
+    expect(screen.getByText("loading")).toBeDefined();
+  });
+
   it("새로고침 버튼은 조회를 다시 요청한다", () => {
     const refresh = renderPanel();
 
@@ -104,7 +155,7 @@ describe("AiUsagePanel", () => {
   });
 
   it("조회 중에는 새로고침을 막아 중복 호출을 만들지 않는다", () => {
-    renderPanel({ isLoading: true });
+    renderPanel({ isRefreshing: true });
 
     expect(screen.getByTestId("ai-usage-refresh").hasAttribute("disabled")).toBe(true);
   });

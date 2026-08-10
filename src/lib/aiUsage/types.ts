@@ -21,6 +21,14 @@ export type AiUsageFailureReason =
   | "empty-response"
   | "fetch-failed";
 
+/** 조회 대상 계정 하나. configDir는 조회에만 쓰고 캐시에는 저장하지 않는다 */
+export interface AiUsageAccount {
+  provider: AiUsageProvider;
+  accountId: string;
+  label: string;
+  configDir: string;
+}
+
 export interface AiUsageWindow {
   kind: AiUsageWindowKind;
   /** kind가 "model"일 때만 채워지는 표시용 모델 이름 */
@@ -29,8 +37,11 @@ export interface AiUsageWindow {
   resetsAt: string | null;
 }
 
-export interface AiUsageProviderResult {
+export interface AiUsageAccountResult {
   provider: AiUsageProvider;
+  /** 발견 시점의 계정 식별자. 캐시에 넣을 때는 해시해서 전체 값을 남기지 않는다 */
+  accountId: string;
+  label: string;
   status: AiUsageStatus;
   /** 구독 등급 표시값. Codex의 plan_type처럼 응답이 알려줄 때만 채운다 */
   planName: string | null;
@@ -40,6 +51,6 @@ export interface AiUsageProviderResult {
 }
 
 export interface AiUsageSnapshot {
-  providers: AiUsageProviderResult[];
+  accounts: AiUsageAccountResult[];
   fetchedAt: string;
 }

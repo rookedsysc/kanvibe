@@ -422,6 +422,7 @@
       "title": "AI 사용량",
       "refresh": "새로고침",
       "loading": "사용량을 불러오는 중",
+      "refreshing": "사용량을 갱신하는 중",
       "session": "5시간",
       "weekly": "7일",
       "resetsAt": "{time} 초기화",
@@ -429,7 +430,7 @@
       "snapshotFailed": "사용량을 불러오지 못했습니다.",
       "reasons": {
         "missing-credentials": "로그인되어 있지 않습니다.",
-        "expired-credentials": "다시 로그인해야 합니다.",
+        "expired-credentials": "인증이 만료됐습니다. CLI에서 다시 로그인해 주세요.",
         "gemini-cli-not-found": "토큰이 만료됐고 Gemini CLI를 찾지 못해 갱신할 수 없습니다.",
         "rate-limited": "요청이 너무 잦아 잠시 뒤 다시 시도해야 합니다.",
         "empty-response": "응답에 사용량 정보가 없습니다.",
