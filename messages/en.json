@@ -417,7 +417,25 @@
     "terminalTabs": "Terminal tabs",
     "newTerminalTab": "New tab",
     "closeTerminalTab": "Close {name} tab",
-    "renameTerminalTab": "Rename tab"
+    "renameTerminalTab": "Rename tab",
+    "aiUsage": {
+      "title": "AI usage",
+      "refresh": "Refresh",
+      "loading": "Loading usage",
+      "session": "5 hours",
+      "weekly": "7 days",
+      "resetsAt": "Resets {time}",
+      "updatedAt": "As of {time}",
+      "snapshotFailed": "Could not load usage.",
+      "reasons": {
+        "missing-credentials": "Not signed in.",
+        "expired-credentials": "Sign in again.",
+        "gemini-cli-not-found": "Token expired and the Gemini CLI was not found, so it cannot be refreshed.",
+        "rate-limited": "Too many requests. Try again shortly.",
+        "empty-response": "The response carried no usage data.",
+        "fetch-failed": "Could not fetch usage."
+      }
+    }
   },
   "projectBranchTasks": {
     "title": "Project Tasks",
