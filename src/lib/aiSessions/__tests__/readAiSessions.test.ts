@@ -30,7 +30,7 @@ function claudeProjectDirectoryName(targetPath: string) {
 function setupRemoteFileSystem(files: Record<string, string>) {
   const fileMap = new Map(Object.entries(files));
   const directorySet = new Set<string>();
-  const execCalls: Array<{ command: string; sshHost?: string | null }> = [];
+  const execCalls: Array<{ command: string; sshHost?: string | null; options?: { maxBufferBytes?: number } }> = [];
 
   for (const filePath of fileMap.keys()) {
     let current = path.dirname(filePath);
@@ -50,8 +50,8 @@ function setupRemoteFileSystem(files: Record<string, string>) {
     .join("\n");
 
   vi.doMock("@/lib/gitOperations", () => ({
-    execGit: vi.fn(async (command: string, sshHost?: string | null) => {
-      execCalls.push({ command, sshHost });
+    execGit: vi.fn(async (command: string, sshHost?: string | null, options?: { maxBufferBytes?: number }) => {
+      execCalls.push({ command, sshHost, options });
       if (command === "printf '%s' \"$HOME\"") {
         return "/remote/home";
       }
@@ -70,6 +70,11 @@ function setupRemoteFileSystem(files: Record<string, string>) {
           throw new Error(`cat command path mismatch: ${command}`);
         }
         return fileMap.get(catMatch[1]) ?? "";
+      }
+
+      const tailMatch = command.match(/tail -n (\d+) '([^']+)'/);
+      if (tailMatch) {
+        return (fileMap.get(tailMatch[2]) ?? "").split("\n").slice(-Number(tailMatch[1]) - 1).join("\n");
       }
 
       const statMatch = command.match(/test -e '([^']+)' && \(stat -c %Y '([^']+)'/);
@@ -146,6 +151,9 @@ describe("AI session history readers", () => {
         message: { role: "user", content: [{ type: "tool_result", content: "file contents" }] },
       },
     ]);
+
+    const sessions = await readClaudeSessions({ worktreePath, repoPath: worktreePath });
+    expect(sessions.sessions[0]?.updatedAt).toBe("2026-01-01T00:02:00.000Z");
 
     const detail = await readClaudeSessionDetail(
       { worktreePath, repoPath: worktreePath },
@@ -281,6 +289,38 @@ describe("AI session history readers", () => {
     ]);
   });
 
+  it("uses the latest Codex user or assistant message as the session activity time", async () => {
+    const worktreePath = path.join(tempHome, "repo__worktrees", "task");
+    const sessionFile = path.join(tempHome, ".codex", "sessions", "2026", "codex-activity.jsonl");
+
+    await writeJsonLines(sessionFile, [
+      {
+        type: "session_meta",
+        timestamp: "2026-01-01T00:00:00.000Z",
+        payload: { id: "codex-activity", cwd: worktreePath, timestamp: "2026-01-01T00:00:00.000Z" },
+      },
+      {
+        type: "response_item",
+        timestamp: "2026-01-01T00:01:00.000Z",
+        payload: { type: "message", role: "user", content: [{ type: "input_text", text: "Update the chat." }] },
+      },
+      {
+        type: "response_item",
+        timestamp: "2026-01-01T00:02:00.000Z",
+        payload: { type: "message", role: "assistant", content: [{ type: "output_text", text: "Chat updated." }] },
+      },
+      {
+        type: "response_item",
+        timestamp: "2026-01-01T00:03:00.000Z",
+        payload: { type: "reasoning", text: "Internal follow-up bookkeeping." },
+      },
+    ]);
+
+    const sessions = await readCodexSessions({ worktreePath, repoPath: worktreePath });
+
+    expect(sessions.sessions[0]?.updatedAt).toBe("2026-01-01T00:02:00.000Z");
+  });
+
   it("reads Gemini chat recordings from ~/.gemini/tmp/<project>/chats and classifies responses, thoughts, and tool calls", async () => {
     const worktreePath = path.join(tempHome, "repo__worktrees", "task");
     const chatFile = path.join(tempHome, ".gemini", "tmp", "task", "chats", "session-2026-01-01T00-00-gemini.json");
@@ -316,6 +356,7 @@ describe("AI session history readers", () => {
       id: "gemini-session",
       provider: "gemini",
       title: "make a plan",
+      updatedAt: "2026-01-01T00:02:00.000Z",
       sourceRef: chatFile,
     });
 
@@ -370,6 +411,46 @@ describe("AI session history readers", () => {
     });
   });
 
+  it("reads the latest Claude conversation time beyond the summary head", async () => {
+    const worktreePath = path.join(tempHome, "repo__worktrees", "task");
+    const sessionFile = path.join(
+      tempHome,
+      ".claude",
+      "projects",
+      claudeProjectDirectoryName(worktreePath),
+      "long-claude-session.jsonl",
+    );
+    const toolEvents = Array.from({ length: 65 }, (_, index) => ({
+      type: "progress",
+      sessionId: "long-claude-session",
+      cwd: worktreePath,
+      timestamp: `2026-01-01T00:00:${String(index + 2).padStart(2, "0")}.000Z`,
+      message: { role: "user", content: [{ type: "tool_result", content: `tool ${index} ${"x".repeat(4096)}` }] },
+    }));
+
+    await writeJsonLines(sessionFile, [
+      {
+        type: "user",
+        sessionId: "long-claude-session",
+        cwd: worktreePath,
+        timestamp: "2026-01-01T00:00:00.000Z",
+        message: { role: "user", content: [{ type: "text", text: "Start the long task." }] },
+      },
+      {
+        type: "assistant",
+        sessionId: "long-claude-session",
+        cwd: worktreePath,
+        timestamp: "2026-01-01T00:10:00.000Z",
+        message: { role: "assistant", content: [{ type: "text", text: "The long task is complete." }] },
+      },
+      ...toolEvents,
+    ]);
+
+    const sessions = await readClaudeSessions({ worktreePath, repoPath: worktreePath });
+
+    expect(sessions.sessions[0]?.updatedAt).toBe("2026-01-01T00:10:00.000Z");
+  });
+
   it("uses Gemini CLI .project_root metadata when projects.json does not map the chat directory", async () => {
     const worktreePath = path.join(tempHome, "repo__worktrees", "task");
     const projectDir = path.join(tempHome, ".gemini", "tmp", "project-with-root-file");
@@ -421,7 +502,7 @@ CREATE TABLE session (id TEXT PRIMARY KEY, directory TEXT NOT NULL, title TEXT, 
 CREATE TABLE message (id TEXT PRIMARY KEY, session_id TEXT NOT NULL, data TEXT NOT NULL);
 CREATE TABLE part (id TEXT PRIMARY KEY, session_id TEXT NOT NULL, message_id TEXT NOT NULL, data TEXT NOT NULL, time_created INTEGER NOT NULL);
 """)
-cur.execute("INSERT INTO session VALUES (?, ?, ?, ?, ?)", ("local-open", directory, "Local OpenCode", 1700000000000, 1700000010000))
+cur.execute("INSERT INTO session VALUES (?, ?, ?, ?, ?)", ("local-open", directory, "Local OpenCode", 1700000000000, 1700000100000))
 for message_id, role, text, timestamp in [
     ("user-message", "user", "load local opencode history", 1700000000000),
     ("assistant-message", "assistant", "local opencode history loaded", 1700000010000),
@@ -453,6 +534,7 @@ conn.close()
       matchedPath: worktreePath,
       title: "Local OpenCode",
       firstUserPrompt: "load local opencode history",
+      updatedAt: new Date(1700000010000).toISOString(),
       sourceRef: "local-open",
     });
 
@@ -621,13 +703,13 @@ conn.close()
   it("reads remote OpenCode sessions and detail over SSH", async () => {
     const worktreePath = "/remote/repo__worktrees/task";
     const repoPath = "/remote/repo";
-    const execCalls: Array<{ command: string; sshHost?: string | null }> = [];
+    const execCalls: Array<{ command: string; sshHost?: string | null; options?: { maxBufferBytes?: number } }> = [];
     let remoteSqliteQueryCount = 0;
 
     vi.resetModules();
     vi.doMock("@/lib/gitOperations", () => ({
-      execGit: vi.fn(async (command: string, sshHost?: string | null) => {
-        execCalls.push({ command, sshHost });
+      execGit: vi.fn(async (command: string, sshHost?: string | null, options?: { maxBufferBytes?: number }) => {
+        execCalls.push({ command, sshHost, options });
         if (command === "printf '%s' \"$HOME\"") {
           return "/remote/home";
         }
@@ -707,6 +789,10 @@ conn.close()
       ["user", "fix remote chat"],
     ]);
     expect(execCalls.every((call) => call.sshHost === "remote-host")).toBe(true);
+    expect(execCalls
+      .filter((call) => call.command.includes("python3 -c"))
+      .map((call) => call.options?.maxBufferBytes))
+      .toEqual([64 * 1024 * 1024, 64 * 1024 * 1024]);
     expect(remoteSqliteQueryCount).toBe(2);
   });
 

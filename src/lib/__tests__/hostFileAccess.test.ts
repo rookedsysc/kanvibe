@@ -106,6 +106,31 @@ describe("hostFileAccess.readTextFiles", () => {
   });
 });
 
+describe("hostFileAccess.readTextFile", () => {
+  beforeEach(() => {
+    mocks.execGit.mockReset();
+  });
+
+  it("원격 채팅 파일은 일반 명령보다 큰 출력 한도로 읽는다", async () => {
+    mocks.execGit.mockResolvedValue("remote chat");
+    const { readTextFile } = await import("@/lib/hostFileAccess");
+
+    await expect(readTextFile("/remote/chat.jsonl", "remote-host")).resolves.toBe("remote chat");
+    expect(mocks.execGit).toHaveBeenCalledWith(
+      "test -f '/remote/chat.jsonl' && cat '/remote/chat.jsonl' || true",
+      "remote-host",
+      { maxBufferBytes: 64 * 1024 * 1024 },
+    );
+  });
+
+  it("원격 채팅 파일 읽기 실패를 빈 파일로 숨기지 않는다", async () => {
+    mocks.execGit.mockRejectedValue(new Error("SSH command output exceeded maxBuffer"));
+    const { readTextFile } = await import("@/lib/hostFileAccess");
+
+    await expect(readTextFile("/remote/chat.jsonl", "remote-host")).rejects.toThrow("exceeded maxBuffer");
+  });
+});
+
 describe("hostFileAccess.writeTextFileIfAbsent", () => {
   let tempDir: string;
 

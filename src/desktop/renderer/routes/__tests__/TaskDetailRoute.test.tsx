@@ -12,6 +12,7 @@ import { INITIAL_DESKTOP_LOAD_TIMEOUT_MS } from "@/desktop/renderer/utils/loadin
 const TASK_DETAIL_CACHE_KEY = "kanvibe:route-cache:task-detail:task-1";
 const BOARD_FOCUS_TASK_CACHE_KEY = "kanvibe:route-cache:board-focus-task";
 const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
+const originalClipboardDescriptor = Object.getOwnPropertyDescriptor(navigator, "clipboard");
 
 const mocks = vi.hoisted(() => ({
   getTaskById: vi.fn(),
@@ -46,6 +47,7 @@ const mocks = vi.hoisted(() => ({
   mermaidRender: vi.fn(async (_id: string, definition: string) => ({
     svg: `<svg data-testid="rendered-mermaid-svg"><g onload="alert('svg')"><script>svg-xss</script><text>${definition}</text></g></svg>`,
   })),
+  clipboardWriteText: vi.fn(),
 }));
 
 function createDeferred<T>() {
@@ -304,6 +306,11 @@ describe("TaskDetailRoute", () => {
     mocks.updateTaskStatus.mockResolvedValue(null);
     mocks.deleteTask.mockResolvedValue(true);
     mocks.fetchPrUrlWithPrompt.mockResolvedValue(null);
+    mocks.clipboardWriteText.mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText: mocks.clipboardWriteText },
+    });
   });
 
   afterEach(() => {
@@ -318,6 +325,11 @@ describe("TaskDetailRoute", () => {
       delete (HTMLElement.prototype as Partial<HTMLElement>).scrollIntoView;
     }
     delete window.kanvibeDesktop;
+    if (originalClipboardDescriptor) {
+      Object.defineProperty(navigator, "clipboard", originalClipboardDescriptor);
+    } else {
+      Reflect.deleteProperty(navigator, "clipboard");
+    }
   });
 
   it("캐시가 있으면 stale task detail을 즉시 렌더링하고 이후 최신 데이터로 갱신한다", async () => {
@@ -2193,6 +2205,57 @@ describe("TaskDetailRoute", () => {
       expect(scrollIntoView).toHaveBeenCalledWith({ block: "end" });
     });
     expect(messagePane.textContent?.indexOf("Older prompt")).toBeLessThan(messagePane.textContent?.indexOf("Newest answer") ?? -1);
+  });
+
+  it("채팅 메시지별 복사 버튼으로 원문을 clipboard에 복사한다", async () => {
+    mocks.getSidebarDefaultCollapsed.mockResolvedValue(true);
+    mocks.getTaskById.mockResolvedValue({
+      id: "task-1",
+      title: "task title",
+      description: null,
+      branchName: "fix/chat-copy",
+      baseBranch: "main",
+      prUrl: null,
+      sessionType: null,
+      sessionName: null,
+      sshHost: null,
+      projectId: "project-1",
+      project: { id: "project-1", name: "kanvibe" },
+      status: "todo",
+      agentType: null,
+      worktreePath: "/repo__worktrees/chat-copy",
+    });
+    mocks.getTaskAiSessions.mockResolvedValue({
+      isRemote: false,
+      targetPath: "/repo__worktrees/chat-copy",
+      repoPath: "/repo",
+      sources: [],
+      nextCursor: null,
+      sessions: [
+        { id: "claude-1", provider: "claude", startedAt: null, updatedAt: "2026-01-01T00:03:00.000Z", matchedPath: "/repo__worktrees/chat-copy", matchScope: "worktree", title: "Copy chat", firstUserPrompt: "Copy prompt", messageCount: 1, sourceRef: "claude.jsonl" },
+      ],
+    });
+    mocks.getTaskAiSessionDetail.mockResolvedValue({
+      sessionId: "claude-1",
+      provider: "claude",
+      title: "Copy chat",
+      matchedPath: "/repo__worktrees/chat-copy",
+      sourceRef: "claude.jsonl",
+      nextCursor: null,
+      messages: [
+        { role: "assistant", timestamp: "2026-01-01T00:03:00.000Z", text: "preview", fullText: "Full remote answer\nwith detail", isTruncated: true },
+      ],
+    });
+
+    render(<TaskDetailRoute />);
+    fireEvent.click(await screen.findByRole("button", { name: "aiSessions.inlineChat" }));
+    fireEvent.click(await screen.findByRole("button", { name: /Copy chat/ }));
+    fireEvent.click(await screen.findByRole("button", { name: "aiSessions.copyMessage" }));
+
+    await waitFor(() => {
+      expect(mocks.clipboardWriteText).toHaveBeenCalledWith("Full remote answer\nwith detail");
+    });
+    expect(screen.getByRole("button", { name: "aiSessions.copiedMessage" })).toBeTruthy();
   });
 
   it("채팅 화면에서 Claude/Codex/OpenCode/Gemini 세션을 한 목록에 표시하고 provider를 구분한다", async () => {

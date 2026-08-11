@@ -5,6 +5,8 @@ import { execGit } from "@/lib/gitOperations";
 
 const remoteHomeDirectoryCache = new Map<string, string>();
 const REMOTE_FILE_RECORD_PREFIX = "__KANVIBE_FILE_RECORD__";
+// AI history JSONL can exceed the general 10 MiB command cap; 64 MiB keeps reads bounded while covering large sessions.
+const REMOTE_TEXT_FILE_MAX_BUFFER_BYTES = 64 * 1024 * 1024;
 
 export interface TextFileReadResult {
   exists: boolean;
@@ -55,14 +57,11 @@ export async function readTextFile(targetPath: string, sshHost?: string | null):
     }
   }
 
-  try {
-    return await execGit(
-      `test -f ${quoteShellArgument(targetPath)} && cat ${quoteShellArgument(targetPath)} || true`,
-      sshHost,
-    );
-  } catch {
-    return "";
-  }
+  return execGit(
+    `test -f ${quoteShellArgument(targetPath)} && cat ${quoteShellArgument(targetPath)} || true`,
+    sshHost,
+    { maxBufferBytes: REMOTE_TEXT_FILE_MAX_BUFFER_BYTES },
+  );
 }
 
 export async function readTextFiles(

@@ -1,8 +1,9 @@
 import { createReadStream } from "fs";
-import { readdir, readFile } from "fs/promises";
+import { open, readdir, readFile } from "fs/promises";
 import { createInterface } from "readline";
 import path from "path";
-import { getFileMtimeMs, readTextFile } from "@/lib/hostFileAccess";
+import { execGit } from "@/lib/gitOperations";
+import { getFileMtimeMs, quoteShellArgument, readTextFile } from "@/lib/hostFileAccess";
 import type {
   AggregatedAiMessage,
   AggregatedAiSession,
@@ -416,4 +417,34 @@ export function readJsonLinesHead(filePath: string, maxLines: number, sshHost?: 
     rl.on("error", reject);
     stream.on("error", reject);
   });
+}
+
+export async function readJsonLinesTail(filePath: string, maxLines: number, sshHost?: string | null): Promise<unknown[]> {
+  const content = sshHost
+    ? await execGit(`tail -n ${maxLines} ${quoteShellArgument(filePath)}`, sshHost)
+    : await readLocalFileTail(filePath);
+
+  return content
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .slice(-maxLines)
+    .map((line) => safeJsonParse(line))
+    .filter((value) => value !== null);
+}
+
+// Sixty recent JSONL events commonly include large tool payloads; 128 KiB bounds I/O while leaving room for that window.
+const LOCAL_TAIL_READ_BYTES = 128 * 1024;
+
+async function readLocalFileTail(filePath: string): Promise<string> {
+  const handle = await open(filePath, "r");
+  try {
+    const { size } = await handle.stat();
+    const readLength = Math.min(size, LOCAL_TAIL_READ_BYTES);
+    const buffer = Buffer.alloc(readLength);
+    await handle.read(buffer, 0, readLength, size - readLength);
+    return buffer.toString("utf-8");
+  } finally {
+    await handle.close();
+  }
 }
