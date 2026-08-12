@@ -192,7 +192,18 @@ vi.mock("@/components/DeleteTaskButton", () => ({
 }));
 
 vi.mock("@/components/DoneStatusButton", () => ({
-  default: () => <button type="button">done</button>,
+  default: ({ statusChangeAction }: { statusChangeAction: (formData: FormData) => Promise<void> }) => (
+    <button
+      type="button"
+      onClick={() => {
+        const formData = new FormData();
+        formData.set("status", "done");
+        void statusChangeAction(formData);
+      }}
+    >
+      done
+    </button>
+  ),
 }));
 
 vi.mock("@/components/HooksStatusCard", () => ({
@@ -1436,6 +1447,39 @@ describe("TaskDetailRoute", () => {
 
     expect(await screen.findByTestId("hooks-status-card")).toBeTruthy();
     expect(screen.getByText("done")).toBeTruthy();
+  });
+
+  it("Done 상태로 변경해도 상세 화면을 유지한다", async () => {
+    const task = {
+      id: "task-1",
+      title: "task title",
+      description: null,
+      branchName: "feat/stay-on-detail",
+      baseBranch: "main",
+      prUrl: null,
+      sessionType: null,
+      sessionName: null,
+      sshHost: null,
+      projectId: "project-1",
+      project: { id: "project-1", name: "kanvibe" },
+      status: "todo",
+      agentType: null,
+      worktreePath: "/repo__worktrees/stay-on-detail",
+    };
+    mocks.getTaskById.mockResolvedValue(task);
+    mocks.updateTaskStatus.mockResolvedValue({ ...task, status: "done" });
+
+    render(<TaskDetailRoute />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "actions · hooksStatus" }));
+    fireEvent.click(screen.getByRole("button", { name: "done" }));
+
+    await waitFor(() => {
+      expect(mocks.updateTaskStatus).toHaveBeenCalledWith("task-1", "done");
+      expect(screen.queryByRole("button", { name: "done" })).toBeNull();
+    });
+    expect(mocks.push).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "moveToTodo" })).toBeTruthy();
   });
 
   it("AI 세션 로드가 느려도 hooks 상태는 먼저 갱신한다", async () => {

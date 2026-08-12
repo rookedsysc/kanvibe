@@ -1407,11 +1407,6 @@ export default function TaskDetailRoute() {
   async function handleStatusChange(formData: FormData) {
     const newStatus = formData.get("status") as TaskStatus;
     const updatedTask = await updateTaskStatus(id, newStatus);
-    if (newStatus === TaskStatus.DONE) {
-      router.push("/");
-      return;
-    }
-
     if (updatedTask) {
       setState((current) => current
         ? {
