@@ -777,13 +777,25 @@ function InlineAiChatEmpty({ text, compact = false }: { text: string; compact?: 
 }
 
 function InlineAiChatMessage({ message, provider }: { message: AggregatedAiMessage; provider: AggregatedAiSession["provider"] }) {
+  const t = useTranslations("taskDetail");
   const isUserMessage = message.role === "user";
   const displayedText = message.fullText || message.text;
+  const [copyState, setCopyState] = useState<"idle" | "copied" | "error">("idle");
+  const copyLabel = t(`aiSessions.${copyState === "idle" ? "copyMessage" : copyState === "copied" ? "copiedMessage" : "copyFailed"}`);
+
+  async function copyMessage() {
+    try {
+      await navigator.clipboard.writeText(displayedText);
+      setCopyState("copied");
+    } catch {
+      setCopyState("error");
+    }
+  }
 
   return (
     <div className={`flex ${isUserMessage ? "justify-end" : "justify-start"}`}>
       <div
-        className={`max-w-[74%] rounded-2xl px-4 py-3 text-sm leading-6 shadow-sm ${
+        className={`max-w-[74%] select-text rounded-2xl px-4 py-3 text-sm leading-6 shadow-sm ${
           isUserMessage
             ? "rounded-br-md bg-brand-primary text-white"
             : "rounded-bl-md border border-border-default bg-bg-surface text-text-primary"
@@ -792,6 +804,16 @@ function InlineAiChatMessage({ message, provider }: { message: AggregatedAiMessa
         <div className={`mb-2 flex items-center gap-2 text-[11px] font-semibold ${isUserMessage ? "text-white/75" : "text-text-muted"}`}>
           <AiSessionProviderIcon provider={provider} testId={false} />
           <span>{message.role}</span>
+          <button
+            type="button"
+            onClick={() => void copyMessage()}
+            className={`ml-auto select-none rounded px-2 py-0.5 transition-colors ${
+              isUserMessage ? "hover:bg-white/15 hover:text-white" : "hover:bg-bg-page hover:text-text-primary"
+            }`}
+            aria-label={copyLabel}
+          >
+            {copyLabel}
+          </button>
         </div>
         <AiSessionMessageContent text={displayedText} isUserMessage={isUserMessage} />
       </div>

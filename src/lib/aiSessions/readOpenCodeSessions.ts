@@ -20,6 +20,8 @@ import type { AggregatedAiMessage, AiMessageRole, AiSessionDetailReaderResult, A
 const execFileAsync = promisify(execFile);
 const OPEN_CODE_QUERY_LIMIT = 120;
 const DEFAULT_DETAIL_LIMIT = 20;
+// Remote detail queries return message bodies, so they need the same bounded large-session allowance as JSONL history reads.
+const OPEN_CODE_REMOTE_QUERY_MAX_BUFFER_BYTES = 64 * 1024 * 1024;
 const SQLITE_QUERY_SCRIPT = `
 import base64
 import json
@@ -42,6 +44,7 @@ interface OpenCodeSessionRow {
   title: string | null;
   time_created: number | null;
   time_updated: number | null;
+  last_message_at?: number | null;
   part_count?: number | null;
   first_user_part?: string | null;
   matching_part_count?: number | null;
@@ -70,6 +73,14 @@ export async function readOpenCodeSessions(context: AiSessionReaderContext): Pro
         s.title,
         s.time_created,
         s.time_updated,
+        (
+          SELECT MAX(p.time_created)
+          FROM part p
+          JOIN message m ON m.id = p.message_id
+          WHERE p.session_id = s.id
+            AND json_extract(m.data, '$.role') IN ('user', 'assistant')
+            AND json_extract(p.data, '$.type') = 'text'
+        ) as last_message_at,
         (SELECT COUNT(*) FROM part p WHERE p.session_id = s.id) as part_count,
         (
           SELECT p.data
@@ -85,7 +96,7 @@ export async function readOpenCodeSessions(context: AiSessionReaderContext): Pro
           ? `(SELECT COUNT(*) FROM part p WHERE p.session_id = s.id AND lower(p.data) LIKE '%' || @query || '%' ESCAPE '\\')`
           : '0'} as matching_part_count
       FROM session s
-      ORDER BY s.time_updated DESC
+      ORDER BY COALESCE(last_message_at, s.time_updated) DESC
       LIMIT ${OPEN_CODE_QUERY_LIMIT};`,
       escapedLikeQuery ? { query: escapedLikeQuery } : undefined
     );
@@ -116,7 +127,7 @@ export async function readOpenCodeSessions(context: AiSessionReaderContext): Pro
         id: row.id,
         provider: "opencode" as const,
         startedAt: toIsoString(row.time_created),
-        updatedAt: toIsoString(row.time_updated),
+        updatedAt: toIsoString(row.last_message_at ?? row.time_updated),
         matchedPath: row.directory,
         matchScope: determineMatchScope(row.directory, context)!,
         title: row.title ?? (firstUserPrompt ? truncateText(firstUserPrompt, 80) : null),
@@ -235,6 +246,7 @@ async function queryOpenCodeRows<T>(
   const output = await execGit(
     `python3 -c ${quoteShellArgument(SQLITE_QUERY_SCRIPT)} ${quoteShellArgument(encodeSqliteQueryPayload(dbPath, sql, parameters))}`,
     context.sshHost,
+    { maxBufferBytes: OPEN_CODE_REMOTE_QUERY_MAX_BUFFER_BYTES },
   );
   return parseSqliteQueryRows<T>(output);
 }

@@ -385,7 +385,7 @@
     "aiSessions": {
       "title": "AI Sessions",
       "inlineChat": "AI Chat",
-      "remoteBadge": "Remote unsupported",
+      "remoteBadge": "No remote sessions to display.",
       "noPreview": "No preview is available.",
       "loadMoreSessions": "Load more chats",
       "loadOlderMessages": "Load older messages",
@@ -396,6 +396,9 @@
       "selectSession": "Select an AI session from the list.",
       "loadingDetail": "Loading messages...",
       "detailError": "Failed to load session details.",
+      "copyMessage": "Copy",
+      "copiedMessage": "Copied",
+      "copyFailed": "Copy failed",
       "roles": {
         "user": "User input",
         "assistant": "AI answer",
