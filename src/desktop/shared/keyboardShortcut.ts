@@ -41,6 +41,7 @@ export const SHORTCUTS = {
   terminalWindowClose: "Mod+Shift+W",
   terminalTabPrevious: "Mod+Shift+[",
   terminalTabNext: "Mod+Shift+]",
+  taskDetailUsage: "Mod+0",
 } as const;
 
 export const DESKTOP_SHORTCUTS = {
@@ -308,6 +309,35 @@ export function matchTaskDetailDockShortcutInput(
   }
 
   return null;
+}
+
+/**
+ * AI 사용량 패널 단축키. dock 항목이 아니라 dock 최하단의 독립 슬롯이므로
+ * dock 번호를 파생시키는 `TASK_DETAIL_DOCK_SHORTCUT_INDEXES`에 넣지 않는다.
+ * 0을 그 배열에 넣으면 `dockItems[-1]`을 집게 되고 dock 번호 규칙도 깨진다.
+ */
+export function matchTaskDetailUsageShortcutEvent(
+  event: ShortcutInput,
+  platform: ShortcutPlatformInput,
+): boolean {
+  return matchShortcutEvent(event, SHORTCUTS.taskDetailUsage, platform);
+}
+
+/**
+ * Electron `before-input-event` 입력이 사용량 패널 토글인지 판정한다.
+ * 이 키는 태스크 상세에서만 의미가 있으므로 화면 판정까지 여기서 함께 한다.
+ * 터미널 탭 명령과 같은 구조로 두어야 main과 렌더러가 같은 규칙을 공유한다.
+ */
+export function resolveTaskDetailUsageShortcutInput(
+  input: ElectronShortcutInput,
+  platform: ShortcutPlatformInput,
+  isTaskDetailRoute: boolean,
+): boolean {
+  if (!isTaskDetailRoute) {
+    return false;
+  }
+
+  return matchElectronShortcutInput(input, SHORTCUTS.taskDetailUsage, platform);
 }
 
 /**

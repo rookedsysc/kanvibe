@@ -667,6 +667,7 @@ function attachWindowHandlers(browserWindow) {
       isBlockedElectronShortcutInput,
       matchElectronShortcutInput,
       matchTaskDetailDockShortcutInput,
+      resolveTaskDetailUsageShortcutInput,
       resolveTerminalTabShortcutCommand,
     } = getKeyboardShortcutHelpers();
     const shortcutPlatform = getShortcutPlatformFromProcessPlatform(process.platform);
@@ -708,6 +709,18 @@ function attachWindowHandlers(browserWindow) {
       event.preventDefault();
 
       browserWindow.webContents.send("kanvibe:task-detail-dock-shortcut", taskDetailDockShortcutIndex);
+      return;
+    }
+
+    /** 사용량 단축키도 dock 단축키와 같은 이유로 터미널이 입력을 먹기 전에 가로챈다 */
+    if (resolveTaskDetailUsageShortcutInput(
+      input,
+      shortcutPlatform,
+      isTaskDetailRouteUrl(browserWindow.webContents.getURL()),
+    )) {
+      event.preventDefault();
+
+      browserWindow.webContents.send("kanvibe:task-detail-usage-shortcut");
       return;
     }
 
