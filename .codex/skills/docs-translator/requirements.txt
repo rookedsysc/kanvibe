@@ -1,7 +1,0 @@
-# docs-translator skill dependencies
-
-# HTTP 요청
-requests>=2.31.0
-
-# HTML 파싱
-beautifulsoup4>=4.12.0
