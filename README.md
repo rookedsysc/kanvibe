@@ -31,6 +31,15 @@ Use shortcuts for project filters, task search, notifications, task detail panel
       <strong>Task detail workspace</strong>
     </td>
   </tr>
+  <tr>
+    <td colspan="2">
+      <img src="./docs/images/readme/kanvibe-ai-usage.png" alt="AI usage panel showing remaining Claude, Codex, and Gemini quota per account" width="100%">
+      <br>
+      <strong>AI usage — remaining quota per account, without leaving the terminal</strong>
+      <br>
+      Press <code>Cmd/Ctrl+0</code> on a task detail page, or click the bottom dock icon. Every card names the account and plan it belongs to, and Claude's per-model weekly limits sit under the weekly total they draw from.
+    </td>
+  </tr>
 </table>
 
 <a href="https://www.youtube.com/watch?v=8JTrvd3T_Z0">
@@ -75,13 +84,7 @@ Create follow-up branch TODOs directly from the highlighted search result, prese
 
 <img src="./docs/images/readme/kanvibe-quick-action-shortcut.png" alt="Quick task action shortcut" width="100%">
 
-### 6. AI Usage
-
-Press `Cmd/Ctrl+0` on a task detail page, or click the bottom dock icon, to see how much of each Claude, Codex, and Gemini subscription is left without leaving the workspace.
-
-<img src="./docs/images/readme/kanvibe-ai-usage.png" alt="AI usage panel showing remaining Claude, Codex, and Gemini quota" width="100%">
-
-### 7. Vim-Style Board Controls
+### 6. Vim-Style Board Controls
 
 Turn on Vim-style board controls in **Settings → Keyboard**, then move across task cards with `h/j/k/l`, find visible task text with `/`, open the new-task modal with `n`, move statuses with `:move progress`, and delete a focused task with `dd`.
 
