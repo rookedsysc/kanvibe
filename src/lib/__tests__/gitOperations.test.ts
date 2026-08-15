@@ -259,6 +259,33 @@ describe("gitOperations.resolvePathForShell", () => {
     expect(getSpawnedRemoteCommand()).toContain(REMOTE_COMMAND_EXIT_MARKER);
   });
 
+  it("원격 명령별 출력 한도를 적용한다", async () => {
+    mocks.spawn.mockImplementation(() => {
+      const child = createMockSSHProcess();
+      queueMicrotask(() => completeRemoteCommand(child, "output larger than the command limit"));
+      return child;
+    });
+
+    vi.doMock("@/lib/sshConfig", async (importOriginal) => {
+      const actual = await importOriginal<typeof import("@/lib/sshConfig")>();
+      return {
+        ...actual,
+        parseSSHConfig: vi.fn(async () => [{
+          host: "remote-host",
+          hostname: "example.com",
+          port: 2202,
+          username: "tester",
+          privateKeyPath: "/tmp/test-key",
+        }]),
+      };
+    });
+
+    const { execGit } = await import("@/lib/gitOperations");
+
+    await expect(execGit("cat chat.jsonl", "remote-host", { maxBufferBytes: 16 }))
+      .rejects.toThrow("exceeded maxBuffer");
+  });
+
   it("SSH transport 실패 직후 같은 host의 후속 명령은 새 ssh 프로세스를 만들지 않는다", async () => {
     // Given
     const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});

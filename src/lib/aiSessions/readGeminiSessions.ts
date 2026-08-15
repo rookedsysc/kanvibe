@@ -133,6 +133,9 @@ async function parseGeminiSessionSummary(
 
   const messages = flattenGeminiMessages(parsed.value.messages ?? []);
   const firstUserPrompt = messages.find((message) => message.role === "user")?.fullText ?? null;
+  const latestConversationMessageAt = sortMessagesDescending(
+    messages.filter((message) => message.role === "user" || message.role === "assistant"),
+  )[0]?.timestamp;
   const sessionId = resolveGeminiSessionId(parsed.value, filePath);
   const title = parsed.value.title ?? (firstUserPrompt ? truncateText(firstUserPrompt, 80) : null);
 
@@ -149,7 +152,8 @@ async function parseGeminiSessionSummary(
     id: sessionId,
     provider: "gemini",
     startedAt: toIsoString(parsed.value.startTime ?? parsed.value.createdAt ?? parsed.value.timestamp),
-    updatedAt: toIsoString(parsed.value.lastUpdated ?? parsed.value.updatedAt ?? parsed.value.timestamp),
+    updatedAt: latestConversationMessageAt
+      ?? toIsoString(parsed.value.lastUpdated ?? parsed.value.updatedAt ?? parsed.value.timestamp),
     matchedPath: parsed.matchedPath,
     matchScope: parsed.matchScope,
     title,

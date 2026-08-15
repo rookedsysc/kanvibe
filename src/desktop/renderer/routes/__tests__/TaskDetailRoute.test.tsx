@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { useEffect, type ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -12,6 +12,7 @@ import { INITIAL_DESKTOP_LOAD_TIMEOUT_MS } from "@/desktop/renderer/utils/loadin
 const TASK_DETAIL_CACHE_KEY = "kanvibe:route-cache:task-detail:task-1";
 const BOARD_FOCUS_TASK_CACHE_KEY = "kanvibe:route-cache:board-focus-task";
 const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
+const originalClipboardDescriptor = Object.getOwnPropertyDescriptor(navigator, "clipboard");
 
 const mocks = vi.hoisted(() => ({
   getTaskById: vi.fn(),
@@ -46,6 +47,7 @@ const mocks = vi.hoisted(() => ({
   mermaidRender: vi.fn(async (_id: string, definition: string) => ({
     svg: `<svg data-testid="rendered-mermaid-svg"><g onload="alert('svg')"><script>svg-xss</script><text>${definition}</text></g></svg>`,
   })),
+  clipboardWriteText: vi.fn(),
 }));
 
 function createDeferred<T>() {
@@ -192,7 +194,18 @@ vi.mock("@/components/DeleteTaskButton", () => ({
 }));
 
 vi.mock("@/components/DoneStatusButton", () => ({
-  default: () => <button type="button">done</button>,
+  default: ({ statusChangeAction }: { statusChangeAction: (formData: FormData) => Promise<void> }) => (
+    <button
+      type="button"
+      onClick={() => {
+        const formData = new FormData();
+        formData.set("status", "done");
+        void statusChangeAction(formData);
+      }}
+    >
+      done
+    </button>
+  ),
 }));
 
 vi.mock("@/components/HooksStatusCard", () => ({
@@ -304,6 +317,11 @@ describe("TaskDetailRoute", () => {
     mocks.updateTaskStatus.mockResolvedValue(null);
     mocks.deleteTask.mockResolvedValue(true);
     mocks.fetchPrUrlWithPrompt.mockResolvedValue(null);
+    mocks.clipboardWriteText.mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText: mocks.clipboardWriteText },
+    });
   });
 
   afterEach(() => {
@@ -318,6 +336,11 @@ describe("TaskDetailRoute", () => {
       delete (HTMLElement.prototype as Partial<HTMLElement>).scrollIntoView;
     }
     delete window.kanvibeDesktop;
+    if (originalClipboardDescriptor) {
+      Object.defineProperty(navigator, "clipboard", originalClipboardDescriptor);
+    } else {
+      Reflect.deleteProperty(navigator, "clipboard");
+    }
   });
 
   it("캐시가 있으면 stale task detail을 즉시 렌더링하고 이후 최신 데이터로 갱신한다", async () => {
@@ -681,7 +704,7 @@ describe("TaskDetailRoute", () => {
     expect(mocks.getTaskById).toHaveBeenCalledTimes(taskLoadCountBeforeClose);
   });
 
-  it("터미널 탭 왼쪽에 태스크 이름 배지를 항상 표시한다", async () => {
+  it("터미널 탭 왼쪽 배지에 프로젝트 아이콘·이름과 태스크 이름을 함께 표시한다", async () => {
     mocks.getTaskById.mockResolvedValue({
       id: "task-1",
       title: "fix tab task name",
@@ -693,7 +716,89 @@ describe("TaskDetailRoute", () => {
       sessionName: "task-session",
       sshHost: null,
       projectId: "project-1",
-      project: { id: "project-1", name: "kanvibe" },
+      project: { id: "project-1", name: "kanvibe", color: "#86EFAC", iconDataUrl: null },
+      status: "todo",
+      agentType: null,
+      worktreePath: "/repo__worktrees/fix-tab-task-name",
+    });
+
+    render(<TaskDetailRoute />);
+
+    const taskContextBadge = await screen.findByTestId("terminal-task-context");
+    expect(taskContextBadge.textContent).toBe("kkanvibe|fix tab task name");
+    expect(within(taskContextBadge).getByTestId("terminal-task-context-project").textContent).toBe("kanvibe");
+    expect(taskContextBadge.getAttribute("title")).toBe("kanvibe | fix tab task name");
+    expect(taskContextBadge.className).toContain("shrink-0");
+  });
+
+  it("배지 배경을 프로젝트 설정 색으로 칠하고 첫 글자 칩은 대비색으로 반전시킨다", async () => {
+    mocks.getTaskById.mockResolvedValue({
+      id: "task-1",
+      title: "fix tab task name",
+      description: null,
+      branchName: "fix/tab-task-name",
+      baseBranch: "main",
+      prUrl: null,
+      sessionType: "tmux",
+      sessionName: "task-session",
+      sshHost: null,
+      projectId: "project-1",
+      project: { id: "project-1", name: "kanvibe", color: "#86EFAC", iconDataUrl: null },
+      status: "todo",
+      agentType: null,
+      worktreePath: "/repo__worktrees/fix-tab-task-name",
+    });
+
+    render(<TaskDetailRoute />);
+
+    const taskContextBadge = await screen.findByTestId("terminal-task-context");
+    expect(taskContextBadge.style.backgroundColor).toBe("rgb(134, 239, 172)");
+    expect(taskContextBadge.style.color).toBe("rgb(17, 24, 39)");
+    expect(taskContextBadge.className).not.toContain("bg-green-600");
+
+    /** 배지 배경이 프로젝트 색이므로 첫 글자 칩은 같은 색이 아니라 배지 글자색으로 칠해야 읽힌다 */
+    const initialChip = within(taskContextBadge).getByTestId("project-initial-icon");
+    expect(initialChip.style.backgroundColor).toBe("rgb(17, 24, 39)");
+  });
+
+  it("프로젝트에 색이 없으면 프로젝트명 해시 색으로 배지를 칠한다", async () => {
+    mocks.getTaskById.mockResolvedValue({
+      id: "task-1",
+      title: "fix tab task name",
+      description: null,
+      branchName: "fix/tab-task-name",
+      baseBranch: "main",
+      prUrl: null,
+      sessionType: "tmux",
+      sessionName: "task-session",
+      sshHost: null,
+      projectId: "project-1",
+      project: { id: "project-1", name: "kanvibe", color: null, iconDataUrl: null },
+      status: "todo",
+      agentType: null,
+      worktreePath: "/repo__worktrees/fix-tab-task-name",
+    });
+
+    render(<TaskDetailRoute />);
+
+    const taskContextBadge = await screen.findByTestId("terminal-task-context");
+    /** computeProjectColor("kanvibe")가 고르는 프리셋 #5EEAD4. 보드 카드가 쓰는 색과 같아야 한다 */
+    expect(taskContextBadge.style.backgroundColor).toBe("rgb(94, 234, 212)");
+  });
+
+  it("프로젝트가 없는 태스크는 태스크 이름만 초록 배지로 표시한다", async () => {
+    mocks.getTaskById.mockResolvedValue({
+      id: "task-1",
+      title: "fix tab task name",
+      description: null,
+      branchName: "fix/tab-task-name",
+      baseBranch: "main",
+      prUrl: null,
+      sessionType: "tmux",
+      sessionName: "task-session",
+      sshHost: null,
+      projectId: null,
+      project: null,
       status: "todo",
       agentType: null,
       worktreePath: "/repo__worktrees/fix-tab-task-name",
@@ -705,8 +810,8 @@ describe("TaskDetailRoute", () => {
     expect(taskContextBadge.textContent).toBe("fix tab task name");
     expect(taskContextBadge.getAttribute("title")).toBe("fix tab task name");
     expect(taskContextBadge.className).toContain("bg-green-600");
-    expect(taskContextBadge.className).toContain("shrink-0");
-    expect(taskContextBadge.className).toContain("truncate");
+    expect(taskContextBadge.style.backgroundColor).toBe("");
+    expect(within(taskContextBadge).queryByTestId("terminal-task-context-project")).toBeNull();
   });
 
   it("사용자가 작업 정보 패널을 닫은 뒤 상세 데이터가 새로고침되어도 다시 열지 않는다", async () => {
@@ -1354,6 +1459,39 @@ describe("TaskDetailRoute", () => {
 
     expect(await screen.findByTestId("hooks-status-card")).toBeTruthy();
     expect(screen.getByText("done")).toBeTruthy();
+  });
+
+  it("Done 상태로 변경해도 상세 화면을 유지한다", async () => {
+    const task = {
+      id: "task-1",
+      title: "task title",
+      description: null,
+      branchName: "feat/stay-on-detail",
+      baseBranch: "main",
+      prUrl: null,
+      sessionType: null,
+      sessionName: null,
+      sshHost: null,
+      projectId: "project-1",
+      project: { id: "project-1", name: "kanvibe" },
+      status: "todo",
+      agentType: null,
+      worktreePath: "/repo__worktrees/stay-on-detail",
+    };
+    mocks.getTaskById.mockResolvedValue(task);
+    mocks.updateTaskStatus.mockResolvedValue({ ...task, status: "done" });
+
+    render(<TaskDetailRoute />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "actions · hooksStatus" }));
+    fireEvent.click(screen.getByRole("button", { name: "done" }));
+
+    await waitFor(() => {
+      expect(mocks.updateTaskStatus).toHaveBeenCalledWith("task-1", "done");
+      expect(screen.queryByRole("button", { name: "done" })).toBeNull();
+    });
+    expect(mocks.push).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "moveToTodo" })).toBeTruthy();
   });
 
   it("AI 세션 로드가 느려도 hooks 상태는 먼저 갱신한다", async () => {
@@ -2193,6 +2331,57 @@ describe("TaskDetailRoute", () => {
       expect(scrollIntoView).toHaveBeenCalledWith({ block: "end" });
     });
     expect(messagePane.textContent?.indexOf("Older prompt")).toBeLessThan(messagePane.textContent?.indexOf("Newest answer") ?? -1);
+  });
+
+  it("채팅 메시지별 복사 버튼으로 원문을 clipboard에 복사한다", async () => {
+    mocks.getSidebarDefaultCollapsed.mockResolvedValue(true);
+    mocks.getTaskById.mockResolvedValue({
+      id: "task-1",
+      title: "task title",
+      description: null,
+      branchName: "fix/chat-copy",
+      baseBranch: "main",
+      prUrl: null,
+      sessionType: null,
+      sessionName: null,
+      sshHost: null,
+      projectId: "project-1",
+      project: { id: "project-1", name: "kanvibe" },
+      status: "todo",
+      agentType: null,
+      worktreePath: "/repo__worktrees/chat-copy",
+    });
+    mocks.getTaskAiSessions.mockResolvedValue({
+      isRemote: false,
+      targetPath: "/repo__worktrees/chat-copy",
+      repoPath: "/repo",
+      sources: [],
+      nextCursor: null,
+      sessions: [
+        { id: "claude-1", provider: "claude", startedAt: null, updatedAt: "2026-01-01T00:03:00.000Z", matchedPath: "/repo__worktrees/chat-copy", matchScope: "worktree", title: "Copy chat", firstUserPrompt: "Copy prompt", messageCount: 1, sourceRef: "claude.jsonl" },
+      ],
+    });
+    mocks.getTaskAiSessionDetail.mockResolvedValue({
+      sessionId: "claude-1",
+      provider: "claude",
+      title: "Copy chat",
+      matchedPath: "/repo__worktrees/chat-copy",
+      sourceRef: "claude.jsonl",
+      nextCursor: null,
+      messages: [
+        { role: "assistant", timestamp: "2026-01-01T00:03:00.000Z", text: "preview", fullText: "Full remote answer\nwith detail", isTruncated: true },
+      ],
+    });
+
+    render(<TaskDetailRoute />);
+    fireEvent.click(await screen.findByRole("button", { name: "aiSessions.inlineChat" }));
+    fireEvent.click(await screen.findByRole("button", { name: /Copy chat/ }));
+    fireEvent.click(await screen.findByRole("button", { name: "aiSessions.copyMessage" }));
+
+    await waitFor(() => {
+      expect(mocks.clipboardWriteText).toHaveBeenCalledWith("Full remote answer\nwith detail");
+    });
+    expect(screen.getByRole("button", { name: "aiSessions.copiedMessage" })).toBeTruthy();
   });
 
   it("채팅 화면에서 Claude/Codex/OpenCode/Gemini 세션을 한 목록에 표시하고 provider를 구분한다", async () => {

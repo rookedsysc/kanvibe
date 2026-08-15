@@ -119,7 +119,9 @@ async function parseCodexSessionSummary(filePath: string, context: AiSessionRead
       }
 
       messageCount += 1;
-      updatedAt = toIsoString(event.timestamp) ?? updatedAt;
+      if (message.role === "user" || message.role === "assistant") {
+        updatedAt = toIsoString(event.timestamp) ?? updatedAt;
+      }
     }
   }
 

@@ -13,6 +13,7 @@ import DoneStatusButton from "@/components/DoneStatusButton";
 import HooksStatusCard from "@/components/HooksStatusCard";
 import { AiProviderIcon } from "@/components/AiProviderIcon";
 import NotificationCenterButton, { type NotificationCenterButtonHandle } from "@/components/NotificationCenterButton";
+import ProjectIcon from "@/components/ProjectIcon";
 import TaskDetailInfoCard from "@/components/TaskDetailInfoCard";
 import TaskDetailTitleCard from "@/components/TaskDetailTitleCard";
 import { Link, useRouter } from "@/desktop/renderer/navigation";
@@ -64,6 +65,7 @@ import type {
   AggregatedAiSessionDetail,
   AggregatedAiSessionsResult,
 } from "@/lib/aiSessions/types";
+import { computeProjectColor, getReadableTextColor } from "@/lib/projectColor";
 
 const STATUS_TRANSITIONS = [
   { status: TaskStatus.TODO, labelKey: "moveToTodo" },
@@ -775,13 +777,25 @@ function InlineAiChatEmpty({ text, compact = false }: { text: string; compact?: 
 }
 
 function InlineAiChatMessage({ message, provider }: { message: AggregatedAiMessage; provider: AggregatedAiSession["provider"] }) {
+  const t = useTranslations("taskDetail");
   const isUserMessage = message.role === "user";
   const displayedText = message.fullText || message.text;
+  const [copyState, setCopyState] = useState<"idle" | "copied" | "error">("idle");
+  const copyLabel = t(`aiSessions.${copyState === "idle" ? "copyMessage" : copyState === "copied" ? "copiedMessage" : "copyFailed"}`);
+
+  async function copyMessage() {
+    try {
+      await navigator.clipboard.writeText(displayedText);
+      setCopyState("copied");
+    } catch {
+      setCopyState("error");
+    }
+  }
 
   return (
     <div className={`flex ${isUserMessage ? "justify-end" : "justify-start"}`}>
       <div
-        className={`max-w-[74%] rounded-2xl px-4 py-3 text-sm leading-6 shadow-sm ${
+        className={`max-w-[74%] select-text rounded-2xl px-4 py-3 text-sm leading-6 shadow-sm ${
           isUserMessage
             ? "rounded-br-md bg-brand-primary text-white"
             : "rounded-bl-md border border-border-default bg-bg-surface text-text-primary"
@@ -790,6 +804,16 @@ function InlineAiChatMessage({ message, provider }: { message: AggregatedAiMessa
         <div className={`mb-2 flex items-center gap-2 text-[11px] font-semibold ${isUserMessage ? "text-white/75" : "text-text-muted"}`}>
           <AiSessionProviderIcon provider={provider} testId={false} />
           <span>{message.role}</span>
+          <button
+            type="button"
+            onClick={() => void copyMessage()}
+            className={`ml-auto select-none rounded px-2 py-0.5 transition-colors ${
+              isUserMessage ? "hover:bg-white/15 hover:text-white" : "hover:bg-bg-page hover:text-text-primary"
+            }`}
+            aria-label={copyLabel}
+          >
+            {copyLabel}
+          </button>
         </div>
         <AiSessionMessageContent text={displayedText} isUserMessage={isUserMessage} />
       </div>
@@ -1356,6 +1380,27 @@ export default function TaskDetailRoute() {
     [state?.task.agentType],
   );
 
+  /**
+   * 터미널 헤더 배지에 프로젝트를 함께 보여 주기 위한 표시 값.
+   * 배지 배경을 프로젝트 색으로 칠하므로, 아이콘이 없을 때 그리는 첫 글자 칩을 같은 프로젝트 색으로
+   * 두면 배경에 묻힌다. 칩에는 배경 대비로 고른 글자색을 넘겨 반전시켜 어떤 프로젝트 색에서도 읽히게 한다.
+   */
+  const taskContextProject = useMemo(() => {
+    const project = state?.task.project;
+    if (!project) {
+      return null;
+    }
+
+    const backgroundColor = project.color || computeProjectColor(project.name);
+
+    return {
+      name: project.name,
+      iconDataUrl: project.iconDataUrl,
+      backgroundColor,
+      textColor: getReadableTextColor(backgroundColor),
+    };
+  }, [state?.task.project]);
+
   useEscapeKey(() => {
     closeDetailPanel();
   }, { enabled: visiblePanel !== null });
@@ -1384,11 +1429,6 @@ export default function TaskDetailRoute() {
   async function handleStatusChange(formData: FormData) {
     const newStatus = formData.get("status") as TaskStatus;
     const updatedTask = await updateTaskStatus(id, newStatus);
-    if (newStatus === TaskStatus.DONE) {
-      router.push("/");
-      return;
-    }
-
     if (updatedTask) {
       setState((current) => current
         ? {
@@ -1557,10 +1597,30 @@ export default function TaskDetailRoute() {
             <div className="bg-terminal-chrome flex items-center gap-3 px-4 py-2.5 shrink-0">
               <span
                 data-testid="terminal-task-context"
-                title={state.task.title}
-                className="max-w-64 shrink-0 truncate rounded-md bg-green-600 px-2.5 py-1 text-xs font-semibold text-white"
+                title={taskContextProject ? `${taskContextProject.name} | ${state.task.title}` : state.task.title}
+                className={`flex min-w-0 max-w-96 shrink-0 items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-semibold ${
+                  taskContextProject ? "" : "bg-green-600 text-white"
+                }`}
+                style={
+                  taskContextProject
+                    ? { backgroundColor: taskContextProject.backgroundColor, color: taskContextProject.textColor }
+                    : undefined
+                }
               >
-                {state.task.title}
+                {taskContextProject ? (
+                  <>
+                    <ProjectIcon
+                      projectName={taskContextProject.name}
+                      iconDataUrl={taskContextProject.iconDataUrl}
+                      color={taskContextProject.textColor}
+                    />
+                    <span data-testid="terminal-task-context-project" className="max-w-32 shrink-0 truncate">
+                      {taskContextProject.name}
+                    </span>
+                    <span aria-hidden="true" className="shrink-0 opacity-50">|</span>
+                  </>
+                ) : null}
+                <span className="min-w-0 truncate">{state.task.title}</span>
               </span>
               {terminalTabs.tabs.length > 0 ? (
                 <TerminalTabBar
