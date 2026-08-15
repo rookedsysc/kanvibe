@@ -442,6 +442,27 @@
         "loading": "正在构建调用图…",
         "empty": "该会话没有启动任何子代理。"
       }
+    },
+    "aiUsage": {
+      "title": "AI 用量",
+      "refresh": "刷新",
+      "loading": "正在加载用量",
+      "refreshing": "正在刷新用量",
+      "session": "5 小时",
+      "weekly": "7 天",
+      "monthly": "30 天",
+      "resetsAt": "{time} 重置",
+      "updatedAt": "截至 {time}",
+      "snapshotFailed": "无法加载用量。",
+      "reasons": {
+        "missing-credentials": "尚未登录。",
+        "expired-credentials": "认证已过期。在终端运行一次 claude 即可刷新。",
+        "keychain-unreadable": "无法读取钥匙串。请解锁 Mac 后刷新。",
+        "gemini-cli-not-found": "令牌已过期，且未找到 Gemini CLI，无法刷新。",
+        "rate-limited": "请求过于频繁，请稍后重试。",
+        "empty-response": "响应中没有用量数据。",
+        "fetch-failed": "无法获取用量。"
+      }
     }
   },
   "projectBranchTasks": {

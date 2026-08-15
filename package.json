@@ -1,6 +1,6 @@
 {
   "name": "kanvibe",
-  "version": "1.0.10",
+  "version": "1.1.0",
   "private": true,
   "description": "AI agent task management Kanban board with embedded SQLite desktop packaging.",
   "author": "rookedsysc",
@@ -39,7 +39,8 @@
     "qa:project-registry-search": "pnpm exec vitest run src/components/__tests__/ProjectRegistryDialog.test.tsx src/components/__tests__/ProjectSelector.test.tsx && pnpm qa:electron:prepare && bash scripts/qa-electron-flow-video.sh project-registry-search",
     "qa:terminal-task-context-badge": "pnpm exec vitest run src/desktop/renderer/routes/__tests__/TaskDetailRoute.test.tsx src/components/__tests__/ProjectIcon.test.tsx && pnpm qa:electron:prepare && bash scripts/qa-electron-flow-video.sh terminal-task-context-badge",
     "qa:ai-session-history": "pnpm exec vitest run src/lib/aiSessions && pnpm exec vitest run src/desktop/renderer/routes/__tests__/TaskDetailRoute.test.tsx && pnpm qa:electron:prepare && bash scripts/qa-ai-session-history-video.sh",
-    "qa:live-ai-sessions": "pnpm exec vitest run src/lib/aiSessions src/desktop/renderer/components/__tests__/LiveAiSessionPanel.test.tsx src/components/__tests__/TaskCardLiveSessions.test.tsx && pnpm qa:electron:prepare && bash scripts/qa-electron-flow-video.sh live-ai-sessions",
+    "qa:live-ai-sessions": "pnpm exec vitest run src/lib/aiSessions src/desktop/renderer/components/__tests__/LiveAiSessionPanel.test.tsx src/desktop/renderer/components/__tests__/AgentCallGraphPanel.test.tsx src/components/__tests__/TaskCardLiveSessions.test.tsx && pnpm qa:electron:prepare && bash scripts/qa-electron-flow-video.sh live-ai-sessions",
+    "qa:ai-usage":"pnpm exec vitest run src/lib/aiUsage src/desktop/main/services/__tests__/aiUsageService.test.ts src/desktop/renderer/hooks/__tests__/useAiUsage.test.ts src/desktop/renderer/components/__tests__/AiUsagePanel.test.tsx src/desktop/renderer/routes/__tests__/TaskDetailRoute.test.tsx src/desktop/renderer/utils/__tests__/keyboardShortcut.test.ts src/desktop/main/__tests__/desktopShortcutRouting.test.ts && pnpm qa:electron:prepare && bash scripts/qa-electron-flow-video.sh ai-usage",
     "qa:pr275-pr276": "bash scripts/qa-pr275-pr276.sh",
     "pretest": "node scripts/ensure-native-runtime.cjs",
     "test": "vitest run",

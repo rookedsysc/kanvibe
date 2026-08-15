@@ -12,8 +12,10 @@ import {
   isBlockedShortcutEvent,
   matchElectronShortcutInput,
   matchTaskDetailDockShortcutEvent,
+  matchTaskDetailUsageShortcutEvent,
   matchTerminalTabShortcutEvent,
   matchTerminalTabShortcutInput,
+  resolveTaskDetailUsageShortcutInput,
   resolveTerminalTabShortcutCommand,
   resolveTerminalTabShortcutEvent,
   matchShortcutEvent,
@@ -445,5 +447,47 @@ describe("렌더러 keydown도 같은 탭 명령으로 해석한다", () => {
       "linux",
       false,
     )).toEqual({ type: "close-window" });
+  });
+});
+
+describe("AI 사용량 패널 단축키", () => {
+  it("Mod+0을 사용량 단축키로 인식한다", () => {
+    expect(matchTaskDetailUsageShortcutEvent(
+      new KeyboardEvent("keydown", { key: "0", ctrlKey: true }),
+      "linux",
+    )).toBe(true);
+
+    expect(matchTaskDetailUsageShortcutEvent(
+      new KeyboardEvent("keydown", { key: "0", metaKey: true }),
+      "mac",
+    )).toBe(true);
+  });
+
+  it("dock 번호와 겹치지 않는다", () => {
+    expect(matchTaskDetailUsageShortcutEvent(
+      new KeyboardEvent("keydown", { key: "1", ctrlKey: true }),
+      "linux",
+    )).toBe(false);
+
+    /** dock 번호 배열은 1~9뿐이어야 0이 dock 항목을 집으려 하지 않는다 */
+    expect(TASK_DETAIL_DOCK_SHORTCUT_INDEXES).not.toContain(0);
+    expect(matchTaskDetailDockShortcutEvent(
+      new KeyboardEvent("keydown", { key: "0", ctrlKey: true }),
+      "linux",
+    )).toBeNull();
+  });
+
+  it("터미널 탭 단축키와도 겹치지 않는다", () => {
+    expect(matchTaskDetailUsageShortcutEvent(
+      new KeyboardEvent("keydown", { key: "0", ctrlKey: true, altKey: true }),
+      "linux",
+    )).toBe(false);
+  });
+
+  it("태스크 상세 밖에서는 Electron 입력을 사용량 명령으로 해석하지 않는다", () => {
+    const usageInput = { type: "keyDown", key: "0", control: true };
+
+    expect(resolveTaskDetailUsageShortcutInput(usageInput, "linux", true)).toBe(true);
+    expect(resolveTaskDetailUsageShortcutInput(usageInput, "linux", false)).toBe(false);
   });
 });

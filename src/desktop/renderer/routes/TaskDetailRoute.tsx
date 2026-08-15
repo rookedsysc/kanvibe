@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
   Activity03Icon,
+  ChartHistogramIcon,
   Chatting01Icon,
   InformationCircleIcon,
 } from "@hugeicons/core-free-icons";
@@ -31,6 +32,7 @@ import {
   getTaskOpenCodeHooksStatus,
   getAllProjects,
 } from "@/desktop/renderer/actions/project";
+import AiUsagePanel from "@/desktop/renderer/components/AiUsagePanel";
 import { AiSessionMessageContent } from "@/desktop/renderer/components/AiSessionMessageContent";
 import {
   useBoardCommands,
@@ -54,6 +56,7 @@ import {
   matchShortcutEvent,
   resolveTerminalTabShortcutEvent,
   matchTaskDetailDockShortcutEvent,
+  matchTaskDetailUsageShortcutEvent,
 } from "@/desktop/renderer/utils/keyboardShortcut";
 import { INITIAL_DESKTOP_LOAD_TIMEOUT_MS, logDesktopInitialLoadTimeout } from "@/desktop/renderer/utils/loadingTimeout";
 import { rememberBoardFocusTask } from "@/desktop/renderer/utils/boardFocusTarget";
@@ -88,7 +91,7 @@ const AGENT_TAG_STYLES: Record<string, string> = {
   codex: "bg-tag-codex-bg text-tag-codex-text",
 };
 
-type DetailPanel = "overview" | "status" | "liveSessions";
+type DetailPanel = "overview" | "status" | "liveSessions" | "usage";
 type MainView = "terminal" | "chat";
 type TaskDetailDockItem = {
   id: string;
@@ -1103,6 +1106,29 @@ export default function TaskDetailRoute() {
     };
   }, [activateDockItem, hasShortcutBlocker, shortcutPlatform]);
 
+  useEffect(() => {
+    function handlePriorityUsageShortcut(event: KeyboardEvent) {
+      if (!matchTaskDetailUsageShortcutEvent(event, shortcutPlatform)) {
+        return;
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation();
+
+      if (hasShortcutBlocker) {
+        return;
+      }
+
+      toggleDetailPanel("usage");
+    }
+
+    window.addEventListener("keydown", handlePriorityUsageShortcut, { capture: true });
+    return () => {
+      window.removeEventListener("keydown", handlePriorityUsageShortcut, { capture: true });
+    };
+  }, [hasShortcutBlocker, shortcutPlatform, toggleDetailPanel]);
+
   /** 탭을 다 닫으면 남길 화면이 없으므로 창까지 닫는다. 창을 닫을지는 세션 타입을 아는 main이 정한다 */
   const closeTerminalTabOrWindow = useCallback(async (tabId: string) => {
     const shouldCloseWindow = await terminalTabs.closeTab(tabId);
@@ -1198,6 +1224,16 @@ export default function TaskDetailRoute() {
       activateDockItem(shortcutIndex);
     }) ?? undefined
   ), [activateDockItem, hasShortcutBlocker]);
+
+  useEffect(() => (
+    window.kanvibeDesktop?.onTaskDetailUsageShortcut?.(() => {
+      if (hasShortcutBlocker) {
+        return;
+      }
+
+      toggleDetailPanel("usage");
+    }) ?? undefined
+  ), [hasShortcutBlocker, toggleDetailPanel]);
 
   useEffect(() => {
     if (currentTaskIdRef.current === id) {
@@ -1542,6 +1578,27 @@ export default function TaskDetailRoute() {
         })}
 
         <div className="mt-auto" />
+
+        {/* dock 번호는 배열 순서에서 파생되므로 사용량 버튼은 그 배열에 넣지 않고 하단 슬롯에 따로 둔다 */}
+        <button
+          type="button"
+          onClick={() => toggleDetailPanel("usage")}
+          className={`rounded-md p-2 transition-colors ${
+            visiblePanel === "usage"
+              ? "bg-brand-subtle text-text-brand"
+              : "text-text-muted hover:bg-bg-page hover:text-text-primary"
+          }`}
+          title={`${t("aiUsage.title")} (${formatShortcutForDisplay(SHORTCUTS.taskDetailUsage, shortcutPlatform)})`}
+          aria-label={t("aiUsage.title")}
+          data-testid="task-detail-usage-button"
+        >
+          <HugeiconsIcon
+            icon={ChartHistogramIcon}
+            size={17}
+            strokeWidth={1.6}
+            aria-hidden="true"
+          />
+        </button>
       </aside>
 
       {visiblePanel ? (
@@ -1553,6 +1610,7 @@ export default function TaskDetailRoute() {
               {visiblePanel === "overview" && t("info")}
               {visiblePanel === "status" && statusPanelLabel}
               {visiblePanel === "liveSessions" && t("liveSessions.title")}
+              {visiblePanel === "usage" && t("aiUsage.title")}
             </h2>
             <button
               type="button"
@@ -1642,6 +1700,8 @@ export default function TaskDetailRoute() {
               />
             </div>
           ) : null}
+
+          {visiblePanel === "usage" ? <AiUsagePanel isOpen /> : null}
 
         </section>
       ) : null}

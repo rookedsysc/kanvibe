@@ -443,6 +443,27 @@
         "loading": "Building the call graph…",
         "empty": "This session did not spawn any subagent."
       }
+    },
+    "aiUsage": {
+      "title": "AI usage",
+      "refresh": "Refresh",
+      "loading": "Loading usage",
+      "refreshing": "Refreshing usage",
+      "session": "5 hours",
+      "weekly": "7 days",
+      "monthly": "30 days",
+      "resetsAt": "Resets {time}",
+      "updatedAt": "As of {time}",
+      "snapshotFailed": "Could not load usage.",
+      "reasons": {
+        "missing-credentials": "Not signed in.",
+        "expired-credentials": "Authentication expired. Run claude once in a terminal to refresh it.",
+        "keychain-unreadable": "Could not read the Keychain. Unlock your Mac, then refresh.",
+        "gemini-cli-not-found": "Token expired and the Gemini CLI was not found, so it cannot be refreshed.",
+        "rate-limited": "Too many requests. Try again shortly.",
+        "empty-response": "The response carried no usage data.",
+        "fetch-failed": "Could not fetch usage."
+      }
     }
   },
   "projectBranchTasks": {

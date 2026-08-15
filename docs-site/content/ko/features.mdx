@@ -101,6 +101,19 @@ KanVibe는 칸반 보드, 터미널 세션, git worktree, AI 에이전트 hooks�
 
 tmux를 쓰지 않는 zellij와 terminal 세션은 기록 활동만으로 판정하므로, 입력을 기다리며 대기 중인 세션이 유휴로 보일 수 있습니다.
 
+## AI 사용량
+
+<figure className="kv-shot">
+  <img src="/screenshots/ai-usage.png" alt="Claude, Codex, Gemini의 남은 사용량이 함께 열린 태스크 상세 화면" />
+  <figcaption>dock 최하단 아이콘이나 <code>Cmd/Ctrl+0</code>으로 구독별 남은 사용량을 한 화면에서 확인합니다.</figcaption>
+</figure>
+
+- 각 CLI가 로컬에 남긴 로그인 정보를 그대로 읽어 조회하므로 API 키를 따로 넣지 않습니다.
+- provider마다 다른 창 구조(5시간·7일, 모델별)를 같은 막대로 정규화하고 초기화 시각과 구독 등급을 함께 보여줍니다.
+- 한도에 가까워지면 막대 색이 경고·위험으로 바뀝니다.
+- 계정을 여러 개 등록해 두면 계정마다 따로 조회하고, 어느 계정의 사용량인지 라벨로 구분합니다.
+- 패널을 열면 마지막 조회 결과를 먼저 보여주고 위에서 갱신 중임을 알립니다. 앱을 껐다 켜도 빈 화면으로 열리지 않습니다.
+
 ## 빠른 태스크 검색
 
 <figure className="kv-shot">

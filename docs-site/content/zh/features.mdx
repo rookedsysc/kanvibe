@@ -101,6 +101,19 @@ KanVibe 将看板、终端会话、git worktree 与 AI 代理 hooks 连接成一
 
 不使用 tmux 的 zellij 和 terminal 会话仅依据记录活动判定，因此等待输入的会话可能显示为空闲。
 
+## AI 用量
+
+<figure className="kv-shot">
+  <img src="/screenshots/ai-usage.png" alt="同时显示 Claude、Codex、Gemini 剩余用量的任务详情界面" />
+  <figcaption>通过 dock 最下方的图标或 <code>Cmd/Ctrl+0</code> 在一个界面查看各订阅的剩余用量。</figcaption>
+</figure>
+
+- 直接读取各 CLI 已保存在本地的登录信息，无需另外填写 API Key。
+- 将各 provider 不同的窗口结构（5 小时、7 天、按模型）归一为同样的进度条，并一并显示重置时间与订阅等级。
+- 接近上限时，进度条颜色会变为警告与危险色。
+- 注册了多个账号时会分别查询，并用标签区分是哪个账号的用量。
+- 打开面板会先显示上次的结果并在上方提示正在刷新，重启应用后也不会出现空白界面。
+
 ## 快速任务搜索
 
 <figure className="kv-shot">
