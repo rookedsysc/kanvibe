@@ -425,6 +425,7 @@
       "refreshing": "Refreshing usage",
       "session": "5 hours",
       "weekly": "7 days",
+      "monthly": "30 days",
       "resetsAt": "Resets {time}",
       "updatedAt": "As of {time}",
       "snapshotFailed": "Could not load usage.",

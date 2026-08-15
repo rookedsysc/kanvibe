@@ -107,10 +107,82 @@ describe("AiUsagePanel", () => {
     expect(geminiCard.querySelector("[style*='width']")).toBeNull();
   });
 
-  it("계정이 하나뿐인 provider는 계정 라벨로 화면을 채우지 않는다", () => {
+  it("직전 값을 이어 붙인 카드는 막대와 실패 사유를 함께 보여준다", () => {
+    renderPanel({
+      snapshot: createSnapshot([
+        createClaudeAccount({ status: "error", reason: "rate-limited" }),
+      ]),
+    });
+
+    const claudeCard = screen.getByTestId("ai-usage-provider-claude");
+
+    expect(screen.getByText("22%")).toBeDefined();
+    expect(claudeCard.textContent).toContain("reasons.rate-limited");
+  });
+
+  it("계정이 하나뿐이어도 어느 계정의 사용량인지 밝힌다", () => {
     renderPanel();
 
-    expect(screen.getByTestId("ai-usage-provider-claude").textContent).not.toContain("me@example.com");
+    expect(screen.getByTestId("ai-usage-provider-claude").textContent).toContain("me@example.com");
+  });
+
+  it("등급은 provider가 아니라 계정마다 따로 보여준다", () => {
+    renderPanel({
+      snapshot: createSnapshot([
+        createClaudeAccount({ planName: "max" }),
+        createClaudeAccount({ accountId: "work", label: "work@example.com", planName: "pro" }),
+      ]),
+    });
+
+    const accounts = screen.getAllByTestId("ai-usage-account");
+
+    expect(accounts[0].textContent).toContain("max");
+    expect(accounts[1].textContent).toContain("pro");
+  });
+
+  it("라벨이 provider 이름뿐이면 카드 제목을 되풀이하지 않는다", () => {
+    renderPanel();
+
+    const geminiCard = screen.getByTestId("ai-usage-provider-gemini");
+
+    expect(geminiCard.querySelector("[data-testid='ai-usage-account-label']")).toBeNull();
+  });
+
+  it("모델별 주간 한도는 7일 한도 아래로 묶어 보여준다", () => {
+    renderPanel({
+      snapshot: createSnapshot([
+        createClaudeAccount({
+          windows: [
+            { kind: "session", modelName: null, usedPercent: 22, resetsAt: null },
+            { kind: "weekly", modelName: null, usedPercent: 2, resetsAt: null },
+            { kind: "weekly", modelName: "Fable", usedPercent: 4, resetsAt: null },
+          ],
+        }),
+      ]),
+    });
+
+    const weeklyScope = screen.getByTestId("ai-usage-scoped-weekly");
+
+    expect(weeklyScope.textContent).toContain("Fable");
+    expect(weeklyScope.textContent).not.toContain("weekly");
+  });
+
+  it("딸릴 기간 한도가 없는 모델 창은 들여쓰지 않는다", () => {
+    renderPanel({
+      snapshot: createSnapshot([
+        createClaudeAccount({
+          provider: "gemini",
+          windows: [
+            { kind: "model", modelName: "Pro", usedPercent: 12, resetsAt: null },
+            { kind: "model", modelName: "Flash", usedPercent: 3, resetsAt: null },
+          ],
+        }),
+      ]),
+    });
+
+    expect(screen.queryByTestId("ai-usage-scoped-model")).toBeNull();
+    expect(screen.getByText("Pro")).toBeDefined();
+    expect(screen.getByText("Flash")).toBeDefined();
   });
 
   it("한 provider에 계정이 여럿이면 어느 계정의 사용량인지 밝힌다", () => {

@@ -134,6 +134,20 @@ describe("discoverClaudeAccounts", () => {
     expect(accounts[0].configDir).toBe(path.join(fakeHome, ".claude"));
   });
 
+  it("Keychain 항목 이름은 config dir마다 다르므로 후보를 모두 넘긴다", async () => {
+    const workDir = path.join(fakeHome, ".claude-work");
+    await mkdir(path.join(fakeHome, ".claude"), { recursive: true });
+    await mkdir(workDir, { recursive: true });
+    vi.stubEnv("CLAUDE_CONFIG_DIR", workDir);
+
+    await discoverClaudeAccounts();
+
+    expect(mockReadClaudeKeychainCredentials).toHaveBeenCalledWith([
+      workDir,
+      path.join(fakeHome, ".claude"),
+    ]);
+  });
+
   it("Keychain을 읽지 못한 경우에도 계정 자리를 남겨 사유를 알린다", async () => {
     vi.stubEnv("CLAUDE_CONFIG_DIR", "");
     await mkdir(path.join(fakeHome, ".claude"), { recursive: true });

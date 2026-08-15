@@ -34,6 +34,18 @@ describe("toCacheableSnapshot", () => {
     expect(first?.accounts[0].accountId).toBe(second?.accounts[0].accountId);
   });
 
+  it("30일 창과 모델 창을 담은 스냅샷도 그대로 복원한다", () => {
+    const snapshot = createSnapshot();
+    snapshot.accounts[0].windows = [
+      { kind: "monthly", modelName: null, usedPercent: 29, resetsAt: null },
+      { kind: "model", modelName: "Fable", usedPercent: 4, resetsAt: null },
+    ];
+
+    const restored = fromCachedSnapshot(toCacheableSnapshot(snapshot));
+
+    expect(restored?.accounts[0].windows.map((window) => window.kind)).toEqual(["monthly", "model"]);
+  });
+
   it("화면이 그리는 값은 그대로 살려 둔다", () => {
     const restored = fromCachedSnapshot(toCacheableSnapshot(createSnapshot()));
 

@@ -83,6 +83,53 @@ describe("readCodexUsage", () => {
     expect(result.windows.map((window) => window.usedPercent)).toEqual([10, 80]);
   });
 
+  it("무료 등급이 주는 30일 창을 monthly로 분류한다", async () => {
+    mockReadTextFile.mockResolvedValue(createAuthJson());
+    fetchMock.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        plan_type: "free",
+        rate_limit: {
+          primary_window: { used_percent: 29, limit_window_seconds: 2592000, reset_at: 1789261591 },
+          secondary_window: null,
+        },
+      }),
+    });
+
+    const result = await readCodexUsage(ACCOUNT);
+
+    expect(result.status).toBe("ok");
+    expect(result.windows).toEqual([
+      {
+        kind: "monthly",
+        modelName: null,
+        usedPercent: 29,
+        resetsAt: new Date(1789261591 * 1000).toISOString(),
+      },
+    ]);
+  });
+
+  it("아는 길이가 아닌 창은 사용량 없음으로 남긴다", async () => {
+    mockReadTextFile.mockResolvedValue(createAuthJson());
+    fetchMock.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        plan_type: "free",
+        rate_limit: {
+          primary_window: { used_percent: 29, limit_window_seconds: 86400, reset_at: 1789261591 },
+          secondary_window: null,
+        },
+      }),
+    });
+
+    const result = await readCodexUsage(ACCOUNT);
+
+    expect(result.status).toBe("error");
+    expect(result.reason).toBe("empty-response");
+  });
+
   it("액세스 토큰이 없으면 네트워크를 호출하지 않고 unavailable을 돌려준다", async () => {
     mockReadTextFile.mockResolvedValue(JSON.stringify({ auth_mode: "apikey", tokens: null }));
 

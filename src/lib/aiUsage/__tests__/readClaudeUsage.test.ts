@@ -62,9 +62,25 @@ describe("readClaudeUsage", () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     vi.unstubAllGlobals();
     vi.resetAllMocks();
   });
+
+  /** 429 대기 시각은 모듈이 기억하므로, 그 동작을 보는 테스트는 새 인스턴스를 받아야 서로 오염되지 않는다 */
+  async function loadFreshReadClaudeUsage() {
+    vi.resetModules();
+    return (await import("@/lib/aiUsage/readClaudeUsage")).readClaudeUsage;
+  }
+
+  function stubRateLimitedResponse(retryAfterSeconds: string | null): void {
+    fetchMock.mockResolvedValue({
+      ok: false,
+      status: 429,
+      headers: { get: () => retryAfterSeconds },
+      json: async () => ({}),
+    });
+  }
 
   it("계정의 config dir에서 자격증명을 읽고 결과에 계정 정보를 담는다", async () => {
     mockReadTextFile.mockResolvedValue(createCredentialsJson("access-token"));
@@ -200,6 +216,109 @@ describe("readClaudeUsage", () => {
 
     expect(result.status).toBe("unavailable");
     expect(result.reason).toBe("expired-credentials");
+  });
+
+  it("429를 받으면 retry-after가 지나기 전에는 다시 호출하지 않는다", async () => {
+    mockReadTextFile.mockResolvedValue(createCredentialsJson("access-token"));
+    const readFreshClaudeUsage = await loadFreshReadClaudeUsage();
+    stubRateLimitedResponse("290");
+
+    const first = await readFreshClaudeUsage(ACCOUNT);
+    const second = await readFreshClaudeUsage(ACCOUNT);
+
+    expect(first.reason).toBe("rate-limited");
+    expect(second.reason).toBe("rate-limited");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("retry-after가 지나면 다시 호출한다", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-15T10:00:00.000Z"));
+    mockReadTextFile.mockResolvedValue(createCredentialsJson("access-token"));
+    const readFreshClaudeUsage = await loadFreshReadClaudeUsage();
+    stubRateLimitedResponse("60");
+
+    await readFreshClaudeUsage(ACCOUNT);
+    vi.setSystemTime(new Date("2026-08-15T10:01:01.000Z"));
+    stubUsageResponse();
+    const result = await readFreshClaudeUsage(ACCOUNT);
+
+    expect(result.status).toBe("ok");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("retry-after를 주지 않아도 한동안은 다시 호출하지 않는다", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-15T10:00:00.000Z"));
+    mockReadTextFile.mockResolvedValue(createCredentialsJson("access-token"));
+    const readFreshClaudeUsage = await loadFreshReadClaudeUsage();
+    stubRateLimitedResponse(null);
+
+    await readFreshClaudeUsage(ACCOUNT);
+    vi.setSystemTime(new Date("2026-08-15T10:04:59.000Z"));
+    await readFreshClaudeUsage(ACCOUNT);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("모델별 주간 한도는 7일 창과 같은 종류로 묶고 모델 이름으로 가른다", async () => {
+    mockReadTextFile.mockResolvedValue(createCredentialsJson("access-token"));
+    fetchMock.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        five_hour: { utilization: 9, resets_at: "2026-08-15T15:09:59.000Z" },
+        seven_day: { utilization: 1, resets_at: "2026-08-16T17:59:59.000Z" },
+        limits: [
+          { kind: "session", percent: 9, resets_at: "2026-08-15T15:09:59.000Z", scope: null },
+          { kind: "weekly_all", percent: 1, resets_at: "2026-08-16T17:59:59.000Z", scope: null },
+          {
+            kind: "weekly_scoped",
+            percent: 4,
+            resets_at: null,
+            scope: { model: { id: null, display_name: "Fable" } },
+          },
+        ],
+      }),
+    });
+
+    const result = await readClaudeUsage(ACCOUNT);
+
+    expect(result.windows).toEqual([
+      { kind: "session", modelName: null, usedPercent: 9, resetsAt: "2026-08-15T15:09:59.000Z" },
+      { kind: "weekly", modelName: null, usedPercent: 1, resetsAt: "2026-08-16T17:59:59.000Z" },
+      { kind: "weekly", modelName: "Fable", usedPercent: 4, resetsAt: null },
+    ]);
+  });
+
+  it("이름 없는 모델 창과 모르는 창 이름은 버린다", async () => {
+    mockReadTextFile.mockResolvedValue(createCredentialsJson("access-token"));
+    fetchMock.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        limits: [
+          { kind: "session", percent: 9, resets_at: null, scope: null },
+          { kind: "weekly_scoped", percent: 4, resets_at: null, scope: { model: null } },
+          { kind: "nimbus_quill", percent: 7, resets_at: null, scope: null },
+        ],
+      }),
+    });
+
+    const result = await readClaudeUsage(ACCOUNT);
+
+    expect(result.windows).toEqual([
+      { kind: "session", modelName: null, usedPercent: 9, resetsAt: null },
+    ]);
+  });
+
+  it("자격증명의 구독 등급을 플랜 이름으로 쓴다", async () => {
+    mockReadTextFile.mockResolvedValue(
+      JSON.stringify({ claudeAiOauth: { accessToken: "access-token", subscriptionType: "max" } }),
+    );
+    stubUsageResponse();
+
+    expect((await readClaudeUsage(ACCOUNT)).planName).toBe("max");
   });
 
   it("두 창이 모두 비어 있으면 응답 형식이 바뀐 것으로 보고 error를 돌려준다", async () => {

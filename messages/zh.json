@@ -424,6 +424,7 @@
       "refreshing": "正在刷新用量",
       "session": "5 小时",
       "weekly": "7 天",
+      "monthly": "30 天",
       "resetsAt": "{time} 重置",
       "updatedAt": "截至 {time}",
       "snapshotFailed": "无法加载用量。",

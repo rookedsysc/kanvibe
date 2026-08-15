@@ -20,6 +20,9 @@ const CODEX_USAGE_URL = "https://chatgpt.com/backend-api/wham/usage";
 const CODEX_SESSION_WINDOW_SECONDS = 18_000;
 const CODEX_WEEKLY_WINDOW_SECONDS = 604_800;
 
+/** 무료 등급은 5시간·7일 창 대신 30일 창 하나만 받는다 */
+const CODEX_MONTHLY_WINDOW_SECONDS = 2_592_000;
+
 /** 예전 응답에서 관측된 1분 남짓의 창 길이 흔들림만 흡수하고 다른 길이는 받아들이지 않는다 */
 const CODEX_WINDOW_TOLERANCE_SECONDS = 60;
 
@@ -84,6 +87,10 @@ function classifyCodexWindowKind(limitWindowSeconds: unknown): AiUsageWindowKind
     return "weekly";
   }
 
+  if (Math.abs(limitWindowSeconds - CODEX_MONTHLY_WINDOW_SECONDS) <= CODEX_WINDOW_TOLERANCE_SECONDS) {
+    return "monthly";
+  }
+
   return null;
 }
 
@@ -140,7 +147,7 @@ export async function readCodexUsage(account: AiUsageAccount): Promise<AiUsageAc
   ].filter((window): window is AiUsageWindow => window !== null);
 
   // 응답이 어느 순서로 오든 짧은 창을 먼저 보여줘야 어느 한도가 먼저 닫히는지 바로 읽힌다
-  const windows = (["session", "weekly"] as const)
+  const windows = (["session", "weekly", "monthly"] as const)
     .map((kind) => mappedWindows.find((window) => window.kind === kind))
     .filter((window): window is AiUsageWindow => window !== undefined);
 

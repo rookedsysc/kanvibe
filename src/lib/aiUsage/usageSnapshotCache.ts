@@ -12,7 +12,7 @@ const CACHED_ACCOUNT_ID_LENGTH = 16;
 
 const KNOWN_PROVIDERS = new Set(["claude", "codex", "gemini"]);
 const KNOWN_STATUSES = new Set(["ok", "unavailable", "error"]);
-const KNOWN_WINDOW_KINDS = new Set(["session", "weekly", "model"]);
+const KNOWN_WINDOW_KINDS = new Set(["session", "weekly", "monthly", "model"]);
 
 interface CachedSnapshotEnvelope {
   version: number;
@@ -23,7 +23,7 @@ interface CachedSnapshotEnvelope {
  * 계정 UUID와 config dir 경로는 화면이 쓰지 않는데 디스크에는 남는다.
  * 카드를 이어 붙이는 데 필요한 건 "같은 계정인지"뿐이라 되돌릴 수 없는 요약값으로 바꿔 저장한다.
  */
-function toCachedAccountId(accountId: string): string {
+export function toCachedAccountId(accountId: string): string {
   return createHash("sha256").update(accountId).digest("hex").slice(0, CACHED_ACCOUNT_ID_LENGTH);
 }
 

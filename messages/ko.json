@@ -425,6 +425,7 @@
       "refreshing": "사용량을 갱신하는 중",
       "session": "5시간",
       "weekly": "7일",
+      "monthly": "30일",
       "resetsAt": "{time} 초기화",
       "updatedAt": "{time} 기준",
       "snapshotFailed": "사용량을 불러오지 못했습니다.",

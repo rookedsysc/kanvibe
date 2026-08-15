@@ -6,6 +6,7 @@ import type {
   AiUsageProvider,
   AiUsageSnapshot,
   AiUsageWindow,
+  AiUsageWindowKind,
 } from "@/lib/aiUsage/types";
 
 /** 한도가 가까워지는 구간. 이 위부터는 강조색이 아니라 심각도 색으로 알린다 */
@@ -15,6 +16,14 @@ const ELEVATED_USAGE_PERCENT = 75;
 interface ProviderAccountGroup {
   provider: AiUsageProvider;
   results: AiUsageAccountResult[];
+}
+
+interface UsageWindowGroup {
+  kind: AiUsageWindowKind;
+  /** 기간 전체 한도. 모델 몫만 주는 provider는 비어 있다 */
+  total: AiUsageWindow | null;
+  /** 그 기간 안에서 모델 몫만 따로 센 창 */
+  scoped: AiUsageWindow[];
 }
 
 function getUsageBarClassName(usedPercent: number): string {
@@ -62,13 +71,37 @@ function groupAccountsByProvider(accounts: AiUsageAccountResult[]): ProviderAcco
   return [...groups].map(([provider, results]) => ({ provider, results }));
 }
 
+/**
+ * 같은 기간의 창을 한 묶음으로 모은다.
+ * 모델별 한도는 이름만으로는 어느 기간에 딸린 것인지 드러나지 않아, 그 기간 한도 아래에 세워야 읽힌다.
+ */
+function groupWindowsByPeriod(windows: AiUsageWindow[]): UsageWindowGroup[] {
+  const groups = new Map<AiUsageWindowKind, UsageWindowGroup>();
+
+  for (const usageWindow of windows) {
+    let group = groups.get(usageWindow.kind);
+    if (!group) {
+      group = { kind: usageWindow.kind, total: null, scoped: [] };
+      groups.set(usageWindow.kind, group);
+    }
+
+    if (usageWindow.modelName) {
+      group.scoped.push(usageWindow);
+    } else {
+      group.total = usageWindow;
+    }
+  }
+
+  return [...groups.values()];
+}
+
 function UsageWindowRow({ usageWindow }: { usageWindow: AiUsageWindow }) {
   const t = useTranslations("taskDetail.aiUsage");
-  const label = usageWindow.kind === "model" ? usageWindow.modelName : t(usageWindow.kind);
+  const label = usageWindow.modelName ?? t(usageWindow.kind);
   const resetText = usageWindow.resetsAt ? formatResetTime(usageWindow.resetsAt) : null;
 
   return (
-    <div data-testid={`ai-usage-window-${usageWindow.kind}`}>
+    <div data-testid={`ai-usage-window-${usageWindow.modelName ?? usageWindow.kind}`}>
       <div className="flex items-baseline justify-between text-xs">
         <span className="text-text-secondary">{label}</span>
         <span className="font-medium text-text-primary">{usageWindow.usedPercent}%</span>
@@ -86,44 +119,81 @@ function UsageWindowRow({ usageWindow }: { usageWindow: AiUsageWindow }) {
   );
 }
 
-/** 계정 라벨은 같은 provider에 계정이 여럿일 때만 붙인다. 하나뿐이면 이메일이 자리만 차지한다 */
-function AccountUsageBlock({
-  result,
-  showLabel,
-}: {
-  result: AiUsageAccountResult;
-  showLabel: boolean;
-}) {
+function UsageWindowGroupRows({ group }: { group: UsageWindowGroup }) {
+  const scopedRows = group.scoped.map((usageWindow) => (
+    <UsageWindowRow key={usageWindow.modelName} usageWindow={usageWindow} />
+  ));
+
+  // 딸릴 기간 한도가 없는 모델 쿼터는 들여쓸 대상이 없어 그대로 나열한다
+  if (!group.total) {
+    return <div className="space-y-2">{scopedRows}</div>;
+  }
+
+  return (
+    <div className="space-y-2">
+      <UsageWindowRow usageWindow={group.total} />
+      {scopedRows.length > 0 ? (
+        <div
+          className="space-y-2 border-l border-border-subtle pl-2"
+          data-testid={`ai-usage-scoped-${group.kind}`}
+        >
+          {scopedRows}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+/** 라벨이 provider 이름뿐이면 카드 제목과 같은 말이라 자리만 차지한다 */
+function hasDistinctAccountLabel(result: AiUsageAccountResult): boolean {
+  return result.label.toLowerCase() !== result.provider;
+}
+
+function AccountUsageBlock({ result }: { result: AiUsageAccountResult }) {
   const t = useTranslations("taskDetail.aiUsage");
+  const showLabel = hasDistinctAccountLabel(result);
 
   return (
     <div data-testid="ai-usage-account">
-      {showLabel ? (
-        <p className="mb-1 truncate text-[11px] text-text-muted" title={result.label}>
-          {result.label}
-        </p>
+      {/* 어느 계정의 사용량인지와 그 계정의 등급은 한 줄에 붙어야 계정마다 갈라 읽힌다 */}
+      {showLabel || result.planName ? (
+        <div className="mb-1 flex items-baseline gap-2">
+          {showLabel ? (
+            <p
+              className="truncate text-[11px] text-text-muted"
+              title={result.label}
+              data-testid="ai-usage-account-label"
+            >
+              {result.label}
+            </p>
+          ) : null}
+          {result.planName ? (
+            <span className="ml-auto shrink-0 rounded bg-bg-page px-1.5 py-0.5 text-[10px] uppercase text-text-muted">
+              {result.planName}
+            </span>
+          ) : null}
+        </div>
       ) : null}
 
-      {result.status === "ok" ? (
+      {result.windows.length > 0 ? (
         <div className="space-y-2">
-          {result.windows.map((usageWindow) => (
-            <UsageWindowRow
-              key={`${usageWindow.kind}-${usageWindow.modelName ?? ""}`}
-              usageWindow={usageWindow}
-            />
+          {groupWindowsByPeriod(result.windows).map((group) => (
+            <UsageWindowGroupRows key={group.kind} group={group} />
           ))}
         </div>
-      ) : (
-        <p className="text-xs text-text-muted">{result.reason ? t(`reasons.${result.reason}`) : null}</p>
-      )}
+      ) : null}
+
+      {/* 직전 값을 이어 붙인 카드는 막대와 사유가 함께 보여야 옛 값이 새 값으로 읽히지 않는다 */}
+      {result.reason ? (
+        <p className={`text-xs text-text-muted${result.windows.length > 0 ? " mt-2" : ""}`}>
+          {t(`reasons.${result.reason}`)}
+        </p>
+      ) : null}
     </div>
   );
 }
 
 function ProviderUsageCard({ group }: { group: ProviderAccountGroup }) {
-  const planName = group.results.find((result) => result.planName)?.planName ?? null;
-  const showAccountLabels = group.results.length > 1;
-
   return (
     // 터미널이 반투명이면 배경 없는 카드는 뒤의 터미널 글자와 겹쳐 읽히지 않는다
     <section
@@ -133,20 +203,11 @@ function ProviderUsageCard({ group }: { group: ProviderAccountGroup }) {
       <header className="mb-2 flex items-center gap-1.5">
         <AiProviderIcon provider={group.provider} size={15} />
         <span className="text-xs font-semibold capitalize text-text-primary">{group.provider}</span>
-        {planName ? (
-          <span className="rounded bg-bg-page px-1.5 py-0.5 text-[10px] uppercase text-text-muted">
-            {planName}
-          </span>
-        ) : null}
       </header>
 
       <div className="space-y-2.5">
         {group.results.map((result) => (
-          <AccountUsageBlock
-            key={`${result.provider}-${result.accountId}`}
-            result={result}
-            showLabel={showAccountLabels}
-          />
+          <AccountUsageBlock key={`${result.provider}-${result.accountId}`} result={result} />
         ))}
       </div>
     </section>

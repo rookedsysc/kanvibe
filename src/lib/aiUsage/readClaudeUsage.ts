@@ -15,6 +15,7 @@ import { writeCredentialsAtomically } from "@/lib/aiUsage/atomicCredentialsWrite
 import {
   readClaudeAccessToken,
   readClaudeKeychainCredentials,
+  readClaudeSubscriptionType,
 } from "@/lib/aiUsage/claudeCredentials";
 import type {
   AiUsageAccount,
@@ -33,15 +34,37 @@ const CLAUDE_USAGE_URL = "https://api.anthropic.com/api/oauth/usage";
 const CLAUDE_OAUTH_BETA_HEADER = "oauth-2025-04-20";
 const CLAUDE_CODE_USER_AGENT = "claude-code/2.1.0";
 
+const TOO_MANY_REQUESTS_STATUS = 429;
+
+/** `retry-after`가 비어 있을 때 쓸 간격. 실측 응답이 290초를 줬다 */
+const CLAUDE_RATE_LIMIT_FALLBACK_SECONDS = 300;
+
+/**
+ * 429가 알려준 재시도 가능 시각.
+ *
+ * 이 엔드포인트는 5분에 대여섯 번이면 잠기고, 잠긴 뒤 더 부르면 남은 예산만 태운다.
+ * 계정을 나눠도 한도는 같이 걸리므로 계정별이 아니라 모듈 하나가 기억한다.
+ */
+let usageRetryAllowedAtMs = 0;
+
 interface ClaudeUsageWindowResponse {
   utilization?: unknown;
   used_percentage?: unknown;
   resets_at?: unknown;
 }
 
+/** 새 응답이 창을 담는 자리. 모델별 주간 한도는 여기에만 들어온다 */
+interface ClaudeUsageLimitResponse {
+  kind?: unknown;
+  percent?: unknown;
+  resets_at?: unknown;
+  scope?: { model?: { display_name?: unknown } | null } | null;
+}
+
 interface ClaudeUsageResponse {
   five_hour?: ClaudeUsageWindowResponse;
   seven_day?: ClaudeUsageWindowResponse;
+  limits?: unknown;
 }
 
 /**
@@ -61,7 +84,7 @@ async function readFreshClaudeCredentials(
   const credentialsPath = path.join(configDir, ".credentials.json");
   const storedCredentials = await readTextFile(credentialsPath);
   if (!storedCredentials) {
-    const keychainResult = await readClaudeKeychainCredentials(configDir);
+    const keychainResult = await readClaudeKeychainCredentials([configDir]);
     return {
       credentials: keychainResult.outcome === "found" ? keychainResult.credentials : "",
       isKeychainUnreadable: keychainResult.outcome === "unreadable",
@@ -101,6 +124,62 @@ function toClaudeUsageWindow(
   return createUsageWindow(kind, usedPercent, raw.resets_at);
 }
 
+/**
+ * 응답의 창 이름을 화면이 아는 종류로 옮긴다. 여기 없는 이름은 그릴 라벨이 없어 버린다.
+ *
+ * `weekly_scoped`는 7일 한도 안에서 모델 몫만 따로 센 창이라 `weekly_all`과 같은 7일로 묶는다.
+ * 별도 종류로 두면 화면에서 5시간·7일과 나란히 서서 어느 기간의 한도인지 드러나지 않는다.
+ */
+const CLAUDE_LIMIT_KINDS: Record<string, { kind: AiUsageWindowKind; isModelScoped: boolean }> = {
+  session: { kind: "session", isModelScoped: false },
+  weekly_all: { kind: "weekly", isModelScoped: false },
+  weekly_scoped: { kind: "weekly", isModelScoped: true },
+};
+
+function toClaudeLimitWindow(limit: ClaudeUsageLimitResponse): AiUsageWindow | null {
+  const limitKind = typeof limit.kind === "string" ? CLAUDE_LIMIT_KINDS[limit.kind] : undefined;
+  if (!limitKind) {
+    return null;
+  }
+
+  if (!limitKind.isModelScoped) {
+    return createUsageWindow(limitKind.kind, limit.percent, limit.resets_at);
+  }
+
+  // 모델 창은 모델 이름이 곧 라벨이라, 이름이 없으면 무엇의 한도인지 알릴 방법이 없다
+  const modelName = limit.scope?.model?.display_name;
+  return typeof modelName === "string" && modelName.trim()
+    ? createUsageWindow(limitKind.kind, limit.percent, limit.resets_at, modelName.trim())
+    : null;
+}
+
+/**
+ * 새 응답은 `limits` 배열에 창을 담고, 모델별 주간 한도는 그쪽에만 들어온다.
+ * 배열이 없는 옛 응답도 여전히 오므로 상위 필드를 폴백으로 남긴다.
+ */
+function toClaudeUsageWindows(payload: ClaudeUsageResponse): AiUsageWindow[] {
+  const limits = Array.isArray(payload.limits) ? (payload.limits as ClaudeUsageLimitResponse[]) : [];
+  const limitWindows = limits
+    .map(toClaudeLimitWindow)
+    .filter((window): window is AiUsageWindow => window !== null);
+  if (limitWindows.length > 0) {
+    return limitWindows;
+  }
+
+  return [
+    toClaudeUsageWindow(payload.five_hour, "session"),
+    toClaudeUsageWindow(payload.seven_day, "weekly"),
+  ].filter((window): window is AiUsageWindow => window !== null);
+}
+
+function toRetryAllowedAtMs(response: Response): number {
+  const retryAfterSeconds = Number(response.headers.get("retry-after"));
+  const backoffSeconds = Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0
+    ? retryAfterSeconds
+    : CLAUDE_RATE_LIMIT_FALLBACK_SECONDS;
+  return Date.now() + backoffSeconds * 1000;
+}
+
 export async function readClaudeUsage(account: AiUsageAccount): Promise<AiUsageAccountResult> {
   const { credentials, isKeychainUnreadable } = await readFreshClaudeCredentials(account.configDir);
   const accessToken = readClaudeAccessToken(credentials);
@@ -109,6 +188,10 @@ export async function readClaudeUsage(account: AiUsageAccount): Promise<AiUsageA
       account,
       isKeychainUnreadable ? "keychain-unreadable" : "missing-credentials",
     );
+  }
+
+  if (Date.now() < usageRetryAllowedAtMs) {
+    return createErrorUsage(account, "rate-limited");
   }
 
   let response: Response;
@@ -126,6 +209,9 @@ export async function readClaudeUsage(account: AiUsageAccount): Promise<AiUsageA
   }
 
   if (!response.ok) {
+    if (response.status === TOO_MANY_REQUESTS_STATUS) {
+      usageRetryAllowedAtMs = toRetryAllowedAtMs(response);
+    }
     return classifyUsageHttpFailure(account, response.status);
   }
 
@@ -136,14 +222,10 @@ export async function readClaudeUsage(account: AiUsageAccount): Promise<AiUsageA
     return createErrorUsage(account, "fetch-failed");
   }
 
-  const windows = [
-    toClaudeUsageWindow(payload.five_hour, "session"),
-    toClaudeUsageWindow(payload.seven_day, "weekly"),
-  ].filter((window): window is AiUsageWindow => window !== null);
-
+  const windows = toClaudeUsageWindows(payload);
   if (windows.length === 0) {
     return createErrorUsage(account, "empty-response");
   }
 
-  return createUsageResult(account, windows);
+  return createUsageResult(account, windows, readClaudeSubscriptionType(credentials));
 }

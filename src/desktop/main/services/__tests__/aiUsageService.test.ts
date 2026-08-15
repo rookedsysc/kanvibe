@@ -28,7 +28,7 @@ vi.mock("@/lib/database", () => ({
   }),
 }));
 
-function createSnapshot(usedPercent: number): AiUsageSnapshot {
+function createSnapshot(usedPercent: number, resetsAt: string | null = null): AiUsageSnapshot {
   return {
     fetchedAt: "2026-08-10T06:00:00.000Z",
     accounts: [
@@ -38,9 +38,28 @@ function createSnapshot(usedPercent: number): AiUsageSnapshot {
         label: "me@example.com",
         status: "ok",
         planName: "max",
-        windows: [{ kind: "session", modelName: null, usedPercent, resetsAt: null }],
+        windows: [{ kind: "session", modelName: null, usedPercent, resetsAt }],
         reason: null,
         fetchedAt: "2026-08-10T06:00:00.000Z",
+      },
+    ],
+  };
+}
+
+/** 429처럼 값을 하나도 얻지 못한 조회. 같은 계정이지만 창이 비어 있다 */
+function createRateLimitedSnapshot(fetchedAt: string): AiUsageSnapshot {
+  return {
+    fetchedAt,
+    accounts: [
+      {
+        provider: "claude",
+        accountId: "account-uuid",
+        label: "me@example.com",
+        status: "error",
+        planName: null,
+        windows: [],
+        reason: "rate-limited",
+        fetchedAt,
       },
     ],
   };
@@ -95,6 +114,52 @@ describe("aiUsageService", () => {
     await getAiUsageSnapshot();
 
     expect((await getCachedAiUsageSnapshot())?.accounts[0].windows[0].usedPercent).toBe(80);
+  });
+
+  it("조회가 실패하면 직전 값을 이어 붙이되 실패 사유는 지우지 않는다", async () => {
+    const { getAiUsageSnapshot } = await import("@/desktop/main/services/aiUsageService");
+
+    mockAggregateAiUsage.mockResolvedValue(createSnapshot(22, "2999-01-01T00:00:00.000Z"));
+    await getAiUsageSnapshot();
+    mockAggregateAiUsage.mockResolvedValue(createRateLimitedSnapshot("2026-08-10T06:05:00.000Z"));
+    const snapshot = await getAiUsageSnapshot();
+
+    expect(snapshot.accounts[0].windows[0].usedPercent).toBe(22);
+    expect(snapshot.accounts[0].reason).toBe("rate-limited");
+    expect(snapshot.accounts[0].planName).toBe("max");
+  });
+
+  it("이어 붙인 값에는 그 값이 만들어진 조회 시각을 남긴다", async () => {
+    const { getAiUsageSnapshot } = await import("@/desktop/main/services/aiUsageService");
+
+    mockAggregateAiUsage.mockResolvedValue(createSnapshot(22, "2999-01-01T00:00:00.000Z"));
+    await getAiUsageSnapshot();
+    mockAggregateAiUsage.mockResolvedValue(createRateLimitedSnapshot("2026-08-10T06:05:00.000Z"));
+    const snapshot = await getAiUsageSnapshot();
+
+    expect(snapshot.accounts[0].fetchedAt).toBe("2026-08-10T06:00:00.000Z");
+    expect(snapshot.fetchedAt).toBe("2026-08-10T06:05:00.000Z");
+  });
+
+  it("이미 초기화된 창의 값은 이어 붙이지 않는다", async () => {
+    const { getAiUsageSnapshot } = await import("@/desktop/main/services/aiUsageService");
+
+    mockAggregateAiUsage.mockResolvedValue(createSnapshot(22, "2026-08-10T06:01:00.000Z"));
+    await getAiUsageSnapshot();
+    mockAggregateAiUsage.mockResolvedValue(createRateLimitedSnapshot("2026-08-10T06:05:00.000Z"));
+    const snapshot = await getAiUsageSnapshot();
+
+    expect(snapshot.accounts[0].windows).toEqual([]);
+    expect(snapshot.accounts[0].reason).toBe("rate-limited");
+  });
+
+  it("이어 붙일 직전 값이 없으면 실패 결과를 그대로 둔다", async () => {
+    mockAggregateAiUsage.mockResolvedValue(createRateLimitedSnapshot("2026-08-10T06:05:00.000Z"));
+    const { getAiUsageSnapshot } = await import("@/desktop/main/services/aiUsageService");
+
+    const snapshot = await getAiUsageSnapshot();
+
+    expect(snapshot.accounts[0].windows).toEqual([]);
   });
 
   it("캐시 저장이 실패해도 조회 결과는 그대로 돌려준다", async () => {
