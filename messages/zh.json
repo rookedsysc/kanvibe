@@ -384,7 +384,7 @@
     "aiSessions": {
       "title": "AI 会话",
       "inlineChat": "AI 聊天",
-      "remoteBadge": "不支持远程",
+      "remoteBadge": "没有可显示的远程会话。",
       "noPreview": "没有可显示的预览。",
       "loadMoreSessions": "加载更多聊天",
       "loadOlderMessages": "加载更早消息",
@@ -395,6 +395,9 @@
       "selectSession": "从左侧列表选择 AI 会话。",
       "loadingDetail": "正在加载消息...",
       "detailError": "加载会话详情失败。",
+      "copyMessage": "复制",
+      "copiedMessage": "已复制",
+      "copyFailed": "复制失败",
       "roles": {
         "user": "用户输入",
         "assistant": "AI 回复",

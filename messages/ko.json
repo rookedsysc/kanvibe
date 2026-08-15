@@ -385,7 +385,7 @@
     "aiSessions": {
       "title": "AI 세션",
       "inlineChat": "AI 채팅",
-      "remoteBadge": "원격 미지원",
+      "remoteBadge": "표시할 원격 세션이 없습니다.",
       "noPreview": "표시할 미리보기가 없습니다.",
       "loadMoreSessions": "채팅 더 불러오기",
       "loadOlderMessages": "이전 메시지 더 보기",
@@ -396,6 +396,9 @@
       "selectSession": "왼쪽 목록에서 AI 세션을 선택하세요.",
       "loadingDetail": "메시지를 불러오는 중...",
       "detailError": "세션 상세를 불러오지 못했습니다.",
+      "copyMessage": "복사",
+      "copiedMessage": "복사됨",
+      "copyFailed": "복사 실패",
       "roles": {
         "user": "사용자 입력",
         "assistant": "AI 답변",

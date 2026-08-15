@@ -64,6 +64,7 @@ interface RemoteSSHConnectionLease {
 
 export interface ExecGitOptions {
   timeoutMs?: number;
+  maxBufferBytes?: number;
 }
 
 function collectErrorOutput(error: unknown): string {
@@ -218,7 +219,11 @@ async function execRemote(
     let lastError: Error | null = null;
     for (let attempt = 1; attempt <= REMOTE_SSH_COMMAND_MAX_ATTEMPTS; attempt += 1) {
       try {
-        return await spawnSSHCommand(sshArgs, timeoutMs);
+        return await spawnSSHCommand(
+          sshArgs,
+          timeoutMs,
+          options?.maxBufferBytes ?? REMOTE_COMMAND_MAX_BUFFER_BYTES,
+        );
       } catch (error) {
         const isCommandTimeout = isSSHCommandTimeoutError(error);
         const normalizedError = normalizeSSHExecError(error, sshHost, timeoutMs, isCommandTimeout);
@@ -268,7 +273,7 @@ function isRetriableSSHExecError(error: Error, isCommandTimeout: boolean): boole
   return isCommandTimeout || isSSHTransportError(error);
 }
 
-function spawnSSHCommand(sshArgs: string[], timeoutMs: number): Promise<string> {
+function spawnSSHCommand(sshArgs: string[], timeoutMs: number, maxBufferBytes: number): Promise<string> {
   return new Promise((resolve, reject) => {
     const child = spawn("ssh", sshArgs, {
       env: createLocalShellEnvironment(),
@@ -324,7 +329,7 @@ function spawnSSHCommand(sshArgs: string[], timeoutMs: number): Promise<string> 
     });
 
     function rejectIfOutputIsTooLarge(): void {
-      if (Buffer.byteLength(stdout) + Buffer.byteLength(stderr) <= REMOTE_COMMAND_MAX_BUFFER_BYTES) {
+      if (Buffer.byteLength(stdout) + Buffer.byteLength(stderr) <= maxBufferBytes) {
         return;
       }
 

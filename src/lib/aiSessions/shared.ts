@@ -393,46 +393,6 @@ export async function getCachedOrParseHead<T>(filePath: string, parseFn: () => P
  * @param filePath JSONL 파일 경로
  * @param maxLines 읽을 최대 줄 수
  */
-/**
- * 파일 끝의 최근 줄만 읽는다.
- * 실행중 세션은 폴링마다 다시 읽히고 대화가 길수록 파일이 커지므로, 전체를 파싱하면 주기 조회가 감당되지 않는다.
- * 마지막 줄만 필요한 호출자를 위해 읽는 양을 줄 수로 제한한다.
- */
-export async function readJsonLinesTail(
-  filePath: string,
-  maxLines: number,
-  sshHost?: string | null,
-): Promise<unknown[]> {
-  const content = sshHost
-    ? await execGit(`tail -n ${maxLines} ${quoteShellArgument(filePath)}`, sshHost)
-    : await readLocalFileTail(filePath, maxLines);
-
-  return content
-    .split("\n")
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .slice(-maxLines)
-    .map((line) => safeJsonParse(line))
-    .filter((value) => value !== null);
-}
-
-/** 앞부분이 잘려 깨진 첫 줄은 파싱 단계에서 버려지므로 바이트 창만 잡고 줄 경계는 신경 쓰지 않는다 */
-const LOCAL_TAIL_READ_BYTES = 128 * 1024;
-
-async function readLocalFileTail(filePath: string, maxLines: number): Promise<string> {
-  void maxLines;
-  const handle = await open(filePath, "r");
-  try {
-    const { size } = await handle.stat();
-    const readLength = Math.min(size, LOCAL_TAIL_READ_BYTES);
-    const buffer = Buffer.alloc(readLength);
-    await handle.read(buffer, 0, readLength, size - readLength);
-    return buffer.toString("utf-8");
-  } finally {
-    await handle.close();
-  }
-}
-
 export function readJsonLinesHead(filePath: string, maxLines: number, sshHost?: string | null): Promise<unknown[]> {
   if (sshHost) {
     return readTextFile(filePath, sshHost).then((content) => content
@@ -465,4 +425,34 @@ export function readJsonLinesHead(filePath: string, maxLines: number, sshHost?: 
     rl.on("error", reject);
     stream.on("error", reject);
   });
+}
+
+export async function readJsonLinesTail(filePath: string, maxLines: number, sshHost?: string | null): Promise<unknown[]> {
+  const content = sshHost
+    ? await execGit(`tail -n ${maxLines} ${quoteShellArgument(filePath)}`, sshHost)
+    : await readLocalFileTail(filePath);
+
+  return content
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .slice(-maxLines)
+    .map((line) => safeJsonParse(line))
+    .filter((value) => value !== null);
+}
+
+// Sixty recent JSONL events commonly include large tool payloads; 128 KiB bounds I/O while leaving room for that window.
+const LOCAL_TAIL_READ_BYTES = 128 * 1024;
+
+async function readLocalFileTail(filePath: string): Promise<string> {
+  const handle = await open(filePath, "r");
+  try {
+    const { size } = await handle.stat();
+    const readLength = Math.min(size, LOCAL_TAIL_READ_BYTES);
+    const buffer = Buffer.alloc(readLength);
+    await handle.read(buffer, 0, readLength, size - readLength);
+    return buffer.toString("utf-8");
+  } finally {
+    await handle.close();
+  }
 }

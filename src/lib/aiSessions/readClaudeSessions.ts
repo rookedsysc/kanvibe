@@ -39,6 +39,7 @@ import type {
 } from "@/lib/aiSessions/types";
 
 const DEFAULT_DETAIL_LIMIT = 20;
+const CLAUDE_SUMMARY_EVENT_LIMIT = 60;
 
 interface ClaudeProjectEvent {
   type?: string;
@@ -140,7 +141,7 @@ export async function readClaudeSessionDetail(
   });
 }
 
-/** 단일 JSONL 파일에서 세션 메타데이터를 추출한다. 앞 60줄로 충분하면 조기 종료한다. */
+/** 제목은 파일 앞, 실제 최근 대화 시각은 파일 끝에서 읽어 긴 JSONL 전체 전송을 피한다. */
 async function parseClaudeSessionFromFile(
   filePath: string,
   context: AiSessionReaderContext
@@ -163,15 +164,41 @@ async function parseClaudeSessionFromFile(
 
   const headEvents = await getCachedOrParseHead(
     filePath,
-    () => readJsonLinesHead(filePath, 60, context.sshHost),
+    () => readJsonLinesHead(filePath, CLAUDE_SUMMARY_EVENT_LIMIT, context.sshHost),
     context.sshHost,
   );
 
   const headResult = await parseEvents(headEvents);
-  if (headResult?.firstUserPrompt) return headResult;
+  if (headResult?.firstUserPrompt) {
+    const tailEvents = await readJsonLinesTail(filePath, CLAUDE_SUMMARY_EVENT_LIMIT, context.sshHost);
+    const latestConversationTimestamp = findLatestClaudeConversationTimestamp(tailEvents);
+    if (!latestConversationTimestamp) {
+      const allEvents = await getCachedOrParse(filePath, () => readJsonLines(filePath, context.sshHost), context.sshHost);
+      return parseEvents(allEvents);
+    }
+
+    return {
+      ...headResult,
+      updatedAt: latestConversationTimestamp,
+    };
+  }
 
   const allEvents = await getCachedOrParse(filePath, () => readJsonLines(filePath, context.sshHost), context.sshHost);
   return parseEvents(allEvents);
+}
+
+function findLatestClaudeConversationTimestamp(events: unknown[]): string | null {
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const event = events[index] as ClaudeProjectEvent;
+    const role = resolveClaudeRole(event);
+    if (role !== "user" && role !== "assistant") continue;
+    if (!extractPlainText(event.message?.content)) continue;
+
+    const timestamp = toIsoString(event.timestamp);
+    if (timestamp) return timestamp;
+  }
+
+  return null;
 }
 
 async function findProjectFiles(context: AiSessionReaderContext): Promise<string[]> {
@@ -241,7 +268,7 @@ function consumeClaudeListEvent(
   }
 
   const normalizedTimestamp = toIsoString(event.timestamp);
-  if (normalizedTimestamp) {
+  if (normalizedTimestamp && text && (role === "user" || role === "assistant")) {
     accumulator.session.updatedAt = normalizedTimestamp;
   }
 
