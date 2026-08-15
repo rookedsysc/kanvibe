@@ -99,11 +99,13 @@ function seedClaudeSession(fakeHome, worktreePath) {
 
   writeJsonLines(path.join(projectDir, `${sessionId}.jsonl`), [
     { type: "user", sessionId, cwd: worktreePath, message: { role: "user", content: [{ type: "text", text: "실행중 세션 패널 구현" }] } },
+    { type: "assistant", sessionId, message: { role: "assistant", content: [{ type: "text", text: "서브에이전트 3개로 나눠 조사 중입니다" }] } },
   ], 2_000);
 
   const subagents = [
     ["docs-explore", "코드베이스에서 세션 리더 위치 조사"],
     ["docs-review", "실행중 판정 로직 리뷰"],
+    ["docs-test", "실행중 판정 회귀 테스트 작성"],
   ];
   for (const [agentId, taskLabel] of subagents) {
     writeJsonLines(path.join(projectDir, sessionId, "subagents", `agent-${agentId}.jsonl`), [
@@ -118,6 +120,8 @@ function seedCodexSession(fakeHome, worktreePath) {
 
   writeJsonLines(path.join(sessionsDir, "rollout-docs-parent.jsonl"), [
     sessionMeta({ id: "docs-codex-parent", cwd: worktreePath, source: "cli", thread_source: "user" }),
+    { type: "response_item", payload: { type: "message", role: "user", content: [{ type: "input_text", text: "인증 상세 리팩터링" }] } },
+    { type: "response_item", payload: { type: "message", role: "assistant", content: [{ type: "output_text", text: "토큰 검증 경로를 정리하는 중입니다" }] } },
   ], 3_000);
   writeJsonLines(path.join(sessionsDir, "rollout-docs-child.jsonl"), [
     sessionMeta({
@@ -261,6 +265,8 @@ async function main() {
 
       startAgentWindow(connected.sessionName, connected.worktreePath, fixture.agent);
       if (fixture.agent === "claude") {
+        // 배지가 provider별 개수를 보여주므로 같은 에이전트를 하나 더 띄워 2개로 만든다
+        startAgentWindow(connected.sessionName, connected.worktreePath, fixture.agent);
         seedClaudeSession(fakeHome, connected.worktreePath);
         heroTaskId = created.id;
       } else {

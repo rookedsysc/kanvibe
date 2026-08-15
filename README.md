@@ -85,7 +85,7 @@ Turn on Vim-style board controls in **Settings → Keyboard**, then move across 
 
 ### 7. Live AI Session Tracking
 
-See which AI agent is running on which task straight from the board, then jump into the terminal that owns it. Focus or hover a card and hold for a moment to open the session panel; it lists each running session with what it is working on and the subtasks it is driving right now. Clicking a session switches to the tmux window that session is attached to and moves input focus to the terminal.
+See which AI agents are running on which task, and how many, straight from the board, then jump into the terminal that owns one. Focus or hover a card and hold for a moment to open the session panel; it lists each running session with what it is doing and the subtasks branching off it right now. Clicking a session switches to the tmux window that session is attached to and moves input focus to the terminal.
 
 <img src="./docs/images/readme/kanvibe-live-sessions-board.png" alt="Board card showing a running claude session with two subtasks" width="100%">
 
@@ -200,8 +200,9 @@ Each pane can run a custom command (e.g., `vim`, `htop`, `lazygit`, test runner,
 - Nerd Font rendering support
 
 ### Live AI Session Tracking
-- Board cards show a running-agent icon and a running count next to the tmux badge, so you can tell at a glance which task has agents on it and how many
-- Focus or hover a card to open a session panel that shows what each running session is working on, taken from its most recent user request, along with the subtasks it is driving; sweeping past cards does not open it
+- Board cards show a per-agent icon and count next to the tmux badge, so you can tell at a glance which agents are running on which task and how many
+- Focus or hover a card to open a session panel that shows what each running session is doing, taken from its most recent AI response, along with the subtasks it is driving as branches hanging off the session; sweeping past cards does not open it
+- Running sessions carry a moving progress bar that conveys progress through motion rather than a ratio, and holds still when the environment asks for reduced motion
 - Task detail exposes the same panel through the live sessions dock item (`Mod+4` without a PR, `Mod+5` with one)
 - Clicking a session switches to its tmux window and moves input focus to the terminal
 - Running state combines two signals: an agent attached to a tmux pane counts as running even while it waits for input, and a session whose transcript was just updated counts as running even when no pane is visible
