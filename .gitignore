@@ -39,6 +39,7 @@
 /.omc/
 /.codex/hooks/
 /resources/database/app.seed.db
+/.serena/
 
 # debug
 npm-debug.log*
