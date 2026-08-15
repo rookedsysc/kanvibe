@@ -7,7 +7,7 @@ import {
   makePreviewMessage,
   mapWithConcurrency,
   paginateItems,
-  pickLatestFile,
+  pickLiveSessionFiles,
   REMOTE_SESSION_FILE_PARSE_CONCURRENCY,
   safeJsonParse,
   sortMessagesDescending,
@@ -347,15 +347,15 @@ async function readGeminiProjectPathMap(geminiRoot: string, context: AiSessionRe
 }
 
 /**
- * 이 worktree에서 마지막으로 움직인 Gemini 세션을 찾는다.
+ * 이 worktree에서 지금 돌고 있는 Gemini 세션을 찾는다.
  *
  * Gemini CLI의 세션 기록에는 서브에이전트를 가리키는 필드가 없어 서브태스크는 항상 비어 있다.
  * 세션 파일 경로가 프로젝트 해시라서, 해시를 실제 경로로 되돌리는 `projects.json`을 거쳐 worktree를 맞춘다.
  */
-export async function readGeminiLiveSession(
+export async function readGeminiLiveSessions(
   context: AiSessionReaderContext,
   windows: LiveAiSessionWindows,
-): Promise<LiveProviderSnapshot | null> {
+): Promise<LiveProviderSnapshot[]> {
   const geminiRoot = await getGeminiRootDirectory(context);
   const projectPathById = await readGeminiProjectPathMap(geminiRoot, context).catch(() => new Map<string, string>());
 
@@ -370,17 +370,12 @@ export async function readGeminiLiveSession(
     return determineMatchScope(projectPathById.get(projectHash) ?? null, context) !== null;
   });
 
-  const latestSessionFile = pickLatestFile(recentFiles);
-  if (!latestSessionFile) {
-    return null;
-  }
-
-  return {
-    sessionId: path.basename(latestSessionFile.filePath, ".json"),
+  return pickLiveSessionFiles(recentFiles, windows.runningWindowMs).map((sessionFile) => ({
+    sessionId: path.basename(sessionFile.filePath, ".json"),
     currentTask: null,
-    lastActiveAt: new Date(latestSessionFile.mtimeMs).toISOString(),
+    lastActiveAt: new Date(sessionFile.mtimeMs).toISOString(),
     runningSubtasks: [],
-  };
+  }));
 }
 
 async function getGeminiRootDirectory(context: AiSessionReaderContext): Promise<string> {

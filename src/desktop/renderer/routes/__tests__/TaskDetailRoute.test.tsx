@@ -2737,7 +2737,7 @@ describe("TaskDetailRoute", () => {
 
     expect(await screen.findByTestId("live-ai-session-claude")).toBeTruthy();
     expect(screen.getByTestId("live-ai-session-state-running")).toBeTruthy();
-    expect(screen.getAllByTestId("live-ai-subtask").map((node) => node.textContent)).toEqual(["└─Explore"]);
+    expect(screen.getAllByTestId("live-ai-subtask").map((node) => node.textContent)).toEqual(["Explore"]);
   });
 
   it("PR이 있는 task에서는 실행중 세션 패널이 dock 5번 shortcut으로 밀린다", async () => {

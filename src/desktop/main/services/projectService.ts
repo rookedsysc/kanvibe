@@ -9,9 +9,11 @@ import { getGeminiHooksStatus, type GeminiHooksStatus } from "@/lib/geminiHooksS
 import { getCodexHooksStatus, type CodexHooksStatus } from "@/lib/codexHooksSetup";
 import { getOpenCodeHooksStatus, type OpenCodeHooksStatus } from "@/lib/openCodeHooksSetup";
 import { aggregateAiSessions, getAiSessionDetail } from "@/lib/aiSessions/aggregateAiSessions";
+import { readAgentCallGraph } from "@/lib/aiSessions/agentCallGraph";
 import { readLiveAiSessions } from "@/lib/aiSessions/liveAiSessions";
 import { listRunningAgentPanes } from "@/lib/aiSessions/runningAgentPanes";
 import type {
+  AgentCallGraph,
   AggregatedAiSessionDetail,
   AggregatedAiSessionsResult,
   AiMessageRole,
@@ -1444,4 +1446,30 @@ export async function getTaskLiveAiSessions(taskId: string): Promise<LiveAiSessi
  */
 export async function getRunningAgentPanes(): Promise<RunningAgentPane[]> {
   return listRunningAgentPanes();
+}
+
+/**
+ * 세션 하나가 어떻게 갈라졌는지를 담은 호출 그래프를 조회한다.
+ * 기록 전문을 훑어야 해서 실행중 목록과 달리 폴링하지 않고, 상세보기를 열 때만 불린다.
+ */
+export async function getTaskAgentCallGraph(
+  taskId: string,
+  provider: AiSessionProvider,
+  sessionId: string,
+): Promise<AgentCallGraph | null> {
+  const taskRepo = await getTaskRepository();
+  const task = await taskRepo.findOne({
+    where: { id: taskId },
+    relations: ["project"],
+  });
+
+  if (!task?.project) {
+    return null;
+  }
+
+  return readAgentCallGraph({
+    worktreePath: task.worktreePath || task.project.repoPath,
+    repoPath: task.project.repoPath,
+    sshHost: task.project.sshHost,
+  }, provider, sessionId);
 }

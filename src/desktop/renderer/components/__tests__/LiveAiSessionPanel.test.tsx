@@ -43,7 +43,35 @@ describe("LiveAiSessionPanel", () => {
 
     expect(screen.getByText('subtaskCount:{"count":2}')).toBeTruthy();
     expect(screen.getAllByTestId("live-ai-subtask").map((node) => node.textContent))
-      .toEqual(["├─Explore", "└─agent-2"]);
+      .toEqual(["Explore", "agent-2"]);
+  });
+
+  it("provider별 세션 수를 목록 위에 보여준다", () => {
+    render(<LiveAiSessionPanel sessions={[
+      createSession({ sessionId: "session-a" }),
+      createSession({ sessionId: "session-b" }),
+      createSession({ provider: "codex", sessionId: "session-c" }),
+    ]} />);
+
+    expect(screen.getByTestId("live-ai-session-tally-claude").textContent).toBe("2");
+    expect(screen.getByTestId("live-ai-session-tally-codex").textContent).toBe("1");
+  });
+
+  it("세션 행에 provider를 색띠로 표시한다", () => {
+    render(<LiveAiSessionPanel sessions={[createSession({ provider: "codex" })]} />);
+
+    const row = screen.getByTestId("live-ai-session-codex");
+    expect(row.className).toContain("kv-agent-rail");
+    expect(row.getAttribute("data-agent")).toBe("codex");
+  });
+
+  it("마지막 활동으로부터 지난 시간을 보여준다", () => {
+    render(<LiveAiSessionPanel sessions={[createSession({
+      lastActiveAt: new Date(Date.now() - 4 * 60_000).toISOString(),
+    })]} />);
+
+    expect(screen.getByTestId("live-ai-session-elapsed").textContent)
+      .toBe('elapsedMinutes:{"minutes":4}');
   });
 
   it("터미널 창을 찾은 세션만 클릭할 수 있다", () => {
@@ -87,21 +115,24 @@ describe("LiveAiSessionPanel", () => {
       ],
     })]} />);
 
-    const branches = screen.getAllByTestId("live-ai-subtask")
-      .map((node) => node.textContent);
-    expect(branches).toEqual([
-      "├─코드베이스 조사",
-      "├─판정 로직 리뷰",
-      "└─테스트 작성",
+    const branches = screen.getAllByTestId("live-ai-subtask");
+    expect(branches.map((node) => node.textContent)).toEqual([
+      "코드베이스 조사",
+      "판정 로직 리뷰",
+      "테스트 작성",
     ]);
+    expect(branches.map((node) => node.getAttribute("data-last")))
+      .toEqual(["false", "false", "true"]);
   });
 
-  it("서브태스크가 하나면 끝가지 하나로 닫는다", () => {
+  it("서브태스크가 하나면 그 하나가 끝가지가 된다", () => {
     render(<LiveAiSessionPanel sessions={[createSession({
       runningSubtasks: [{ id: "agent-1", name: "코드베이스 조사", lastActiveAt: null }],
     })]} />);
 
-    expect(screen.getByTestId("live-ai-subtask").textContent).toBe("└─코드베이스 조사");
+    const branch = screen.getByTestId("live-ai-subtask");
+    expect(branch.textContent).toBe("코드베이스 조사");
+    expect(branch.getAttribute("data-last")).toBe("true");
   });
 
   it("실행중 세션에만 진행 표시를 그린다", () => {
@@ -113,6 +144,20 @@ describe("LiveAiSessionPanel", () => {
     const progressBars = screen.getAllByTestId("live-ai-session-progress");
     expect(progressBars).toHaveLength(1);
     expect(progressBars[0].className).toContain("kv-live-progress");
+  });
+
+  it("호출 그래프를 열 수 있으면 세션마다 그래프 버튼을 붙인다", () => {
+    const onOpenGraph = vi.fn();
+    render(<LiveAiSessionPanel sessions={[createSession()]} onOpenGraph={onOpenGraph} />);
+
+    fireEvent.click(screen.getByTestId("live-ai-session-open-graph"));
+    expect(onOpenGraph).toHaveBeenCalledWith(expect.objectContaining({ sessionId: "session-a" }));
+  });
+
+  it("세션 id를 못 읽었으면 그래프 버튼을 붙이지 않는다", () => {
+    render(<LiveAiSessionPanel sessions={[createSession({ sessionId: null })]} onOpenGraph={vi.fn()} />);
+
+    expect(screen.queryByTestId("live-ai-session-open-graph")).toBeNull();
   });
 
   it("실행중인 세션이 없으면 빈 안내를 보여준다", () => {

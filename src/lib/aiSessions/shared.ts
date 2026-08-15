@@ -59,6 +59,28 @@ export function pickLatestFile<T extends { mtimeMs: number }>(files: T[]): T | n
   );
 }
 
+/**
+ * 실행중으로 볼 세션 후보를 고른다.
+ *
+ * 같은 에이전트를 여러 pane에서 돌리면 세션 기록도 그만큼 생기므로, "claude 몇 개"를 세려면
+ * 창 안에서 움직인 기록을 하나로 줄이지 말고 전부 돌려줘야 한다.
+ * 창 안에 아무것도 없을 때만 가장 최근 하나를 남겨, 유휴 상태의 세션도 화면에서 사라지지 않게 한다.
+ */
+export function pickLiveSessionFiles<T extends { mtimeMs: number }>(
+  files: T[],
+  runningWindowMs: number,
+): T[] {
+  const runningSince = Date.now() - runningWindowMs;
+  const runningFiles = files.filter((file) => file.mtimeMs >= runningSince);
+
+  if (runningFiles.length > 0) {
+    return [...runningFiles].sort((left, right) => right.mtimeMs - left.mtimeMs);
+  }
+
+  const latestFile = pickLatestFile(files);
+  return latestFile ? [latestFile] : [];
+}
+
 export function sortSessionsDescending(sessions: AggregatedAiSession[]): AggregatedAiSession[] {
   return [...sessions].sort((left, right) => {
     const leftValue = Date.parse(left.updatedAt ?? left.startedAt ?? "");

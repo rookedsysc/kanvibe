@@ -427,8 +427,22 @@
       "running": "실행중",
       "idle": "유휴",
       "subtaskCount": "subtask {count}개",
+      "providerSessionCount": "{provider} 세션 {count}개",
+      "elapsedSeconds": "{seconds}초 전",
+      "elapsedMinutes": "{minutes}분 전",
+      "elapsedHours": "{hours}시간 전",
       "focusTerminal": "{window} 터미널로 이동",
-      "dock": "실행중 세션"
+      "dock": "실행중 세션",
+      "graph": {
+        "open": "그래프",
+        "back": "← 목록",
+        "summary": "서브 {total} · 실행중 {running} · 깊이 {depth}",
+        "lineage": "호출 계보",
+        "start": "시작",
+        "now": "지금",
+        "loading": "그래프를 만드는 중입니다.",
+        "empty": "이 세션은 서브에이전트를 띄우지 않았습니다."
+      }
     }
   },
   "projectBranchTasks": {

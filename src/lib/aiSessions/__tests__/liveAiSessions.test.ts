@@ -60,6 +60,37 @@ async function readLiveSessions() {
   return readLiveAiSessions({ worktreePath, repoPath: worktreePath });
 }
 
+async function readClaudeCallGraph(sessionId: string) {
+  const { readAgentCallGraph } = await import("@/lib/aiSessions/agentCallGraph");
+  return readAgentCallGraph({ worktreePath, repoPath: worktreePath }, "claude", sessionId);
+}
+
+/** 서브에이전트를 띄우는 호출과, 그 호출이 끝났다는 기록을 부모 기록에 심는다 */
+function claudeAgentCall(toolUseId: string, agentType: string, task: string, prompt: string, startedAt: string) {
+  return {
+    type: "assistant",
+    timestamp: startedAt,
+    message: {
+      role: "assistant",
+      content: [{
+        type: "tool_use",
+        id: toolUseId,
+        name: "Agent",
+        input: { subagent_type: agentType, description: task, prompt },
+      }],
+    },
+  };
+}
+
+function claudeAgentResult(toolUseId: string, agentId: string, endedAt: string) {
+  return {
+    type: "user",
+    timestamp: endedAt,
+    message: { role: "user", content: [{ type: "tool_result", tool_use_id: toolUseId }] },
+    toolUseResult: { agentId },
+  };
+}
+
 /**
  * OpenCode 리더가 better-sqlite3 네이티브 모듈을 처음 불러올 때 몇 초가 걸린다.
  * 그 비용은 파일에서 먼저 도는 테스트 하나가 통째로 떠안으므로 기본 5초로는 부족하다.
@@ -100,6 +131,84 @@ describe("실행중 AI 세션 감지", { timeout: NATIVE_SQLITE_LOAD_TIMEOUT_MS 
     const sessions = await readLiveSessions();
 
     expect(sessions.find((session) => session.provider === "claude")?.state).toBe("idle");
+  });
+
+  it("같은 provider를 여러 개 돌리면 세션을 각각 최근 순으로 돌려준다", async () => {
+    mockTmuxPanes([]);
+    await writeJsonLines(claudeSessionFile("session-a"), [{ type: "user" }], 5_000);
+    await writeJsonLines(claudeSessionFile("session-b"), [{ type: "user" }], 1_000);
+
+    const sessions = await readLiveSessions();
+    const claudeSessions = sessions.filter((session) => session.provider === "claude");
+
+    expect(claudeSessions.map((session) => session.sessionId)).toEqual(["session-b", "session-a"]);
+    expect(claudeSessions.every((session) => session.state === "running")).toBe(true);
+  });
+
+  it("실행중인 기록이 하나도 없으면 가장 최근 하나만 유휴로 남긴다", async () => {
+    mockTmuxPanes([]);
+    await writeJsonLines(claudeSessionFile("session-a"), [{ type: "user" }], RUNNING_WINDOW_MS + 120_000);
+    await writeJsonLines(claudeSessionFile("session-b"), [{ type: "user" }], RUNNING_WINDOW_MS + 60_000);
+
+    const claudeSessions = (await readLiveSessions())
+      .filter((session) => session.provider === "claude");
+
+    expect(claudeSessions).toHaveLength(1);
+    expect(claudeSessions[0].sessionId).toBe("session-b");
+    expect(claudeSessions[0].state).toBe("idle");
+  });
+
+  it("pane보다 세션이 많으면 남는 세션에는 터미널 이동을 붙이지 않는다", async () => {
+    mockTmuxPanes([`kanvibe-task\t@7\t0\tclaude\t${worktreePath}\tclaude`]);
+    await writeJsonLines(claudeSessionFile("session-a"), [{ type: "user" }], 5_000);
+    await writeJsonLines(claudeSessionFile("session-b"), [{ type: "user" }], 1_000);
+
+    const claudeSessions = (await readLiveSessions())
+      .filter((session) => session.provider === "claude");
+
+    expect(claudeSessions[0].terminalWindow?.windowId).toBe("@7");
+    expect(claudeSessions[1].terminalWindow).toBeNull();
+  });
+
+  it("끝난 서브에이전트는 결과 기록으로, 아직 도는 서브에이전트는 위임 프롬프트로 이어 붙인다", async () => {
+    mockTmuxPanes([]);
+    await writeJsonLines(claudeSessionFile("session-a"), [
+      claudeAgentCall("toolu-1", "general-purpose", "판정 로직 리뷰", "리뷰해라", "2026-08-15T00:00:00.000Z"),
+      claudeAgentResult("toolu-1", "a1", "2026-08-15T00:07:00.000Z"),
+    ]);
+    await writeJsonLines(claudeSubagentFile("session-a", "a1"), [
+      { agentId: "a1", attributionSkill: "context-loader", message: { role: "user", content: "리뷰해라" } },
+      claudeAgentCall("toolu-2", "Explore", "머지 이력 조회", "이력 봐라", "2026-08-15T00:03:00.000Z"),
+    ]);
+    await writeJsonLines(claudeSubagentFile("session-a", "a2"), [
+      { agentId: "a2", message: { role: "user", content: "이력 봐라" } },
+    ]);
+
+    const graph = await readClaudeCallGraph("session-a");
+
+    expect(graph.roots).toHaveLength(1);
+    expect(graph.roots[0]).toMatchObject({
+      id: "a1",
+      agentType: "general-purpose",
+      skill: "context-loader",
+      task: "판정 로직 리뷰",
+      startedAt: "2026-08-15T00:00:00.000Z",
+      endedAt: "2026-08-15T00:07:00.000Z",
+    });
+    expect(graph.roots[0].children).toHaveLength(1);
+    expect(graph.roots[0].children[0]).toMatchObject({
+      id: "a2",
+      agentType: "Explore",
+      task: "머지 이력 조회",
+      endedAt: null,
+    });
+  });
+
+  it("서브에이전트를 띄우지 않은 세션은 빈 그래프가 된다", async () => {
+    mockTmuxPanes([]);
+    await writeJsonLines(claudeSessionFile("session-a"), [{ type: "user" }]);
+
+    expect((await readClaudeCallGraph("session-a")).roots).toEqual([]);
   });
 
   it("입력을 기다리며 놀고 있어도 tmux pane이 붙어 있으면 실행중으로 본다", async () => {

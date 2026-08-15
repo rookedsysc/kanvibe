@@ -37,10 +37,11 @@ import {
   useHasBoardShortcutBlocker,
   type BranchTodoDefaults,
 } from "@/desktop/renderer/components/BoardCommandProvider";
+import { AgentCallGraphPanel } from "@/desktop/renderer/components/AgentCallGraphPanel";
 import { LiveAiSessionPanel } from "@/desktop/renderer/components/LiveAiSessionPanel";
 import TerminalLoader from "@/desktop/renderer/components/TerminalLoader";
 import TerminalTabBar from "@/desktop/renderer/components/TerminalTabBar";
-import { useTaskLiveAiSessions } from "@/desktop/renderer/hooks/useLiveAiSessions";
+import { useTaskAgentCallGraph, useTaskLiveAiSessions } from "@/desktop/renderer/hooks/useLiveAiSessions";
 import { useTerminalTabs } from "@/desktop/renderer/hooks/useTerminalTabs";
 import type { TerminalTabShortcutCommand } from "@/desktop/shared/terminalTabs";
 import { fetchPrUrlWithPrompt } from "@/desktop/renderer/utils/fetchPrUrlWithPrompt";
@@ -888,6 +889,10 @@ export default function TaskDetailRoute() {
 
   const liveSessions = useTaskLiveAiSessions(id ?? null, visiblePanel === "liveSessions");
 
+  /** 호출 그래프를 펼쳐 둔 세션. 목록과 그래프는 같은 dock 자리를 번갈아 쓴다 */
+  const [graphSession, setGraphSession] = useState<LiveAiSession | null>(null);
+  const agentCallGraph = useTaskAgentCallGraph(id ?? null, graphSession);
+
   /**
    * 세션이 붙어 있는 tmux window로 옮기고 입력 포커스를 터미널로 넘긴다.
    * 태스크 상세는 이미 그 태스크의 터미널을 띄우고 있으므로 window만 바꾸면 화면이 따라온다.
@@ -1572,11 +1577,21 @@ export default function TaskDetailRoute() {
           ) : null}
 
           {visiblePanel === "liveSessions" ? (
-            <LiveAiSessionPanel
-              sessions={liveSessions}
-              onSelectSession={focusSessionTerminal}
-              className="rounded-lg border border-border-default bg-bg-surface"
-            />
+            graphSession ? (
+              <AgentCallGraphPanel
+                session={graphSession}
+                graph={agentCallGraph}
+                onBack={() => setGraphSession(null)}
+                className="rounded-lg border border-border-default bg-bg-surface"
+              />
+            ) : (
+              <LiveAiSessionPanel
+                sessions={liveSessions}
+                onSelectSession={focusSessionTerminal}
+                onOpenGraph={setGraphSession}
+                className="rounded-lg border border-border-default bg-bg-surface"
+              />
+            )
           ) : null}
 
           {visiblePanel === "status" ? (

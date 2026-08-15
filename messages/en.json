@@ -427,8 +427,22 @@
       "running": "Running",
       "idle": "Idle",
       "subtaskCount": "{count} subtasks",
+      "providerSessionCount": "{provider} sessions: {count}",
+      "elapsedSeconds": "{seconds}s ago",
+      "elapsedMinutes": "{minutes}m ago",
+      "elapsedHours": "{hours}h ago",
       "focusTerminal": "Go to the {window} terminal",
-      "dock": "Live sessions"
+      "dock": "Live sessions",
+      "graph": {
+        "open": "Graph",
+        "back": "← Back",
+        "summary": "{total} sub · {running} running · depth {depth}",
+        "lineage": "Call lineage",
+        "start": "Start",
+        "now": "Now",
+        "loading": "Building the call graph…",
+        "empty": "This session did not spawn any subagent."
+      }
     }
   },
   "projectBranchTasks": {

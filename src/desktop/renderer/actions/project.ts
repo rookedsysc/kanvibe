@@ -2,6 +2,7 @@ import { invokeDesktop } from "@/desktop/renderer/ipc";
 import { triggerDesktopRefresh } from "@/desktop/renderer/utils/refresh";
 import type { Project } from "@/entities/Project";
 import type {
+  AgentCallGraph,
   AggregatedAiSessionDetail,
   AggregatedAiSessionsResult,
   AiMessageRole,
@@ -129,6 +130,14 @@ export function getTaskLiveAiSessions(taskId: string): Promise<LiveAiSessionsRes
 
 export function getRunningAgentPanes(): Promise<RunningAgentPane[]> {
   return invokeDesktop("project", "getRunningAgentPanes");
+}
+
+export function getTaskAgentCallGraph(
+  taskId: string,
+  provider: AiSessionProvider,
+  sessionId: string,
+): Promise<AgentCallGraph | null> {
+  return invokeDesktop("project", "getTaskAgentCallGraph", taskId, provider, sessionId);
 }
 
 export function getTaskAiSessions(
