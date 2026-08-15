@@ -155,6 +155,32 @@ async function openAiUsagePanel(page) {
   }, undefined, { timeout: 40000 });
 }
 
+/**
+ * 실제 계정 이메일이 문서 이미지에 남지 않도록 계정 라벨만 예시 주소로 바꾼다.
+ *
+ * 퍼센트·등급·초기화 시각은 실제 조회 결과 그대로 둔다. 화면 전체를 꾸며 놓으면
+ * 이 컷이 증명해야 할 "진짜 구독 사용량이 보인다"가 무너진다.
+ *
+ * 라벨을 하나도 못 찾으면 실패시킨다. 조용히 넘어가면 실제 이메일이 그대로 찍힌 이미지가
+ * 문서에 커밋되는데, 그건 캡처가 끝난 뒤에는 되돌릴 수 없는 종류의 실수다.
+ */
+async function maskAccountEmails(page) {
+  const maskedLabelCount = await page.evaluate(() => {
+    const labels = [...document.querySelectorAll("[data-testid='ai-usage-account-label']")];
+    for (const label of labels) {
+      label.textContent = "you@example.com";
+      label.setAttribute("title", "you@example.com");
+    }
+    return labels.length;
+  });
+
+  if (maskedLabelCount === 0) {
+    throw new Error("사용량 카드에서 가릴 계정 라벨을 찾지 못했습니다");
+  }
+
+  return maskedLabelCount;
+}
+
 /** 작업 정보 패널을 다시 띄운다. dock 첫 칸의 단축키가 그대로 토글이다 */
 async function openDetailPanel(page) {
   await page.keyboard.press(process.platform === "darwin" ? "Meta+1" : "Control+1");
@@ -173,13 +199,22 @@ async function invokeDesktop(page, namespace, method, ...args) {
   );
 }
 
+/**
+ * 릴리스 노트 다이얼로그가 떠 있으면 걷는다.
+ *
+ * `닫기`라는 이름의 버튼은 작업 정보 패널에도 있다. 이름만으로 찾으면 모달 backdrop 뒤에
+ * 깔린 쪽을 집어 클릭이 가로막히고, 그 실패가 여기서 조용히 삼켜져 다이얼로그가 남는다.
+ * 남은 backdrop은 전체 화면을 덮으므로 이후 모든 클릭이 먹혀 캡처가 통째로 어긋난다.
+ */
 async function dismissDialogIfPresent(page) {
+  const dialog = page.getByRole("dialog");
   try {
-    await page.getByRole("button", { name: "닫기" }).first().click({ timeout: 2500 });
-    await page.waitForTimeout(500);
+    await dialog.getByRole("button", { name: "닫기" }).click({ timeout: 2500 });
   } catch {
-    // 릴리스 노트 다이얼로그는 없을 수도 있다.
+    return;
   }
+
+  await dialog.waitFor({ state: "hidden", timeout: 10000 });
 }
 
 async function readTabs(page) {
@@ -260,7 +295,6 @@ async function main() {
   try {
     await page.waitForLoadState("domcontentloaded");
     await page.waitForTimeout(2500);
-    await dismissDialogIfPresent(page);
 
     const projectResult = await invokeDesktop(page, "project", "registerProject", PROJECT_NAME, projectDir);
     if (!projectResult?.success) throw new Error(projectResult?.error || "프로젝트 등록 실패");
@@ -282,6 +316,12 @@ async function main() {
     await page.evaluate((id) => { window.location.hash = `#/ko/task/${id}`; }, task.id);
     await page.getByTestId("terminal-tab-bar").waitFor({ state: "visible", timeout: 30000 });
     await page.waitForTimeout(2500);
+    /**
+     * 릴리스 노트는 앱을 처음 켠 뒤 한 박자 늦게 뜨고, 뜬 뒤에는 스스로 사라지지 않는다.
+     * 그래서 첫 클릭 직전에 한 번 걷는다. 더 일찍 부르면 아직 없는 다이얼로그를 찾다가
+     * 그냥 지나치고, 이후 모든 클릭을 전체 화면 backdrop이 삼킨다.
+     */
+    await dismissDialogIfPresent(page);
     /** 기본으로 열리는 작업 정보 패널은 탭 바를 덮으므로, 탭을 만들기 전에 먼저 걷는다 */
     await dismissDetailPanel(page);
 
@@ -315,6 +355,7 @@ async function main() {
 
     /** 사용량 컷은 같은 화면에서 dock 최하단 버튼을 눌러 실제 사용 경로 그대로 찍는다 */
     await openAiUsagePanel(page);
+    const maskedLabelCount = await maskAccountEmails(page);
     /** 버튼 위에 커서가 남으면 hover 상태로 찍힌다 */
     await page.mouse.move(Math.round(DETAIL_VIEWPORT.width * 0.75), Math.round(DETAIL_VIEWPORT.height * 0.6));
     await page.waitForTimeout(1500);
@@ -325,6 +366,7 @@ async function main() {
     console.log(JSON.stringify({
       ok: true,
       scaleFactor,
+      maskedLabelCount,
       tabs: (await readTabs(page)).map((tab) => tab.name),
       screenshots: [detailPath, tabsPath, usagePath],
     }));
