@@ -10,12 +10,23 @@ import {
   determineMatchScope,
   extractPlainText,
   makePreviewMessage,
+  pickLiveSessionFiles,
   safeJsonParse,
   sortMessagesDescending,
   toIsoString,
   truncateText,
 } from "@/lib/aiSessions/shared";
-import type { AggregatedAiMessage, AiMessageRole, AiSessionDetailReaderResult, AiSessionReaderContext, AiSessionReaderResult } from "@/lib/aiSessions/types";
+import type {
+  AgentCallNode,
+  AggregatedAiMessage,
+  AiMessageRole,
+  AiSessionDetailReaderResult,
+  AiSessionReaderContext,
+  AiSessionReaderResult,
+  LiveAiSessionWindows,
+  LiveAiSubtask,
+  LiveProviderSnapshot,
+} from "@/lib/aiSessions/types";
 
 const execFileAsync = promisify(execFile);
 const OPEN_CODE_QUERY_LIMIT = 120;
@@ -48,6 +59,12 @@ interface OpenCodeSessionRow {
   part_count?: number | null;
   first_user_part?: string | null;
   matching_part_count?: number | null;
+}
+
+interface OpenCodeChildSessionRow {
+  id: string;
+  title: string | null;
+  time_updated: number | null;
 }
 
 interface OpenCodeDetailRow {
@@ -141,6 +158,64 @@ export async function readOpenCodeSessions(context: AiSessionReaderContext): Pro
     sessions,
     reason: sessions.length === 0 ? "No OpenCode sessions matched this task" : null,
   });
+}
+
+/**
+ * 이 worktree에서 지금 돌고 있는 OpenCode 세션과, 각 세션이 띄운 자식 세션을 찾는다.
+ *
+ * OpenCode는 Task 도구가 만든 서브에이전트를 자식 세션으로 저장하고 부모를 `parent_id`로 가리킨다.
+ * 다만 그 컬럼은 버전에 따라 없을 수 있어, 조회가 실패하면 서브태스크 없이 세션만 돌려준다.
+ */
+export async function readOpenCodeLiveSessions(
+  context: AiSessionReaderContext,
+  windows: LiveAiSessionWindows,
+): Promise<LiveProviderSnapshot[]> {
+  const rows = await queryOpenCodeRows<OpenCodeSessionRow>(context,
+    `SELECT s.id, s.directory, s.title, s.time_created, s.time_updated
+      FROM session s
+      ORDER BY s.time_updated DESC
+      LIMIT ${OPEN_CODE_QUERY_LIMIT};`);
+
+  const ownSessions = pickLiveSessionFiles(
+    (rows ?? [])
+      .filter((row) => determineMatchScope(row.directory, context))
+      .map((row) => ({ ...row, mtimeMs: row.time_updated ?? 0 })),
+    windows.runningWindowMs,
+  );
+
+  return Promise.all(ownSessions.map(async (session) => ({
+    sessionId: session.id,
+    currentTask: session.title,
+    lastActiveAt: toIsoString(session.time_updated),
+    runningSubtasks: await readOpenCodeRunningChildren(context, session.id, windows),
+  })));
+}
+
+async function readOpenCodeRunningChildren(
+  context: AiSessionReaderContext,
+  parentSessionId: string,
+  windows: LiveAiSessionWindows,
+): Promise<LiveAiSubtask[]> {
+  try {
+    const rows = await queryOpenCodeRows<OpenCodeChildSessionRow>(context,
+      `SELECT s.id, s.title, s.time_updated
+        FROM session s
+        WHERE s.parent_id = @parentSessionId
+        ORDER BY s.time_updated DESC;`,
+      { parentSessionId });
+
+    const runningSince = Date.now() - windows.runningWindowMs;
+
+    return (rows ?? [])
+      .filter((row) => (row.time_updated ?? 0) >= runningSince)
+      .map((row) => ({
+        id: row.id,
+        name: row.title,
+        lastActiveAt: toIsoString(row.time_updated),
+      }));
+  } catch {
+    return [];
+  }
 }
 
 export async function readOpenCodeSessionDetail(
@@ -333,4 +408,97 @@ function escapeSqliteLikePattern(value: string): string {
     .replaceAll("\\", "\\\\")
     .replaceAll("%", "\\%")
     .replaceAll("_", "\\_");
+}
+
+/** 그래프가 내려가는 최대 깊이. 기록이 서로를 부모로 가리켜도 재귀 질의가 멈춰야 한다 */
+const OPEN_CODE_MAX_GRAPH_DEPTH = 10;
+
+/**
+ * 세션 하나가 띄운 OpenCode 서브에이전트 호출 그래프를 만든다.
+ *
+ * 자식 세션이 부모를 `parent_id`로 가리키므로 재귀 질의 한 번이면 손자 이하까지 한꺼번에 나온다.
+ * 그 컬럼은 버전에 따라 없을 수 있어, 질의가 실패하면 그래프 없이 빈 목록을 돌려준다.
+ * 끝났다는 기록은 없으므로 한동안 움직이지 않은 세션을 끝난 것으로 본다.
+ */
+export async function readOpenCodeAgentCallGraph(
+  context: AiSessionReaderContext,
+  sessionId: string,
+  windows: LiveAiSessionWindows,
+): Promise<AgentCallNode[]> {
+  const rows = await queryOpenCodeDescendantSessions(context, sessionId);
+
+  const childrenByParentId = new Map<string, OpenCodeDescendantSessionRow[]>();
+  for (const row of rows) {
+    const siblings = childrenByParentId.get(row.parent_id) ?? [];
+    siblings.push(row);
+    childrenByParentId.set(row.parent_id, siblings);
+  }
+
+  return toOpenCodeAgentCallNodes(sessionId, {
+    childrenByParentId,
+    runningSince: Date.now() - windows.runningWindowMs,
+    visitedSessionIds: new Set<string>(),
+  });
+}
+
+interface OpenCodeGraphIndex {
+  childrenByParentId: Map<string, OpenCodeDescendantSessionRow[]>;
+  runningSince: number;
+  /** 세션이 서로를 부모로 가리켜도 재귀가 멈추도록 이미 그린 세션을 기억한다 */
+  visitedSessionIds: Set<string>;
+}
+
+async function queryOpenCodeDescendantSessions(
+  context: AiSessionReaderContext,
+  rootSessionId: string,
+): Promise<OpenCodeDescendantSessionRow[]> {
+  try {
+    return await queryOpenCodeRows<OpenCodeDescendantSessionRow>(context,
+      `WITH RECURSIVE descendant(id, parent_id, title, time_created, time_updated, depth) AS (
+          SELECT s.id, s.parent_id, s.title, s.time_created, s.time_updated, 0
+            FROM session s
+            WHERE s.parent_id = @rootSessionId
+          UNION ALL
+          SELECT s.id, s.parent_id, s.title, s.time_created, s.time_updated, descendant.depth + 1
+            FROM session s
+            JOIN descendant ON s.parent_id = descendant.id
+            WHERE descendant.depth < ${OPEN_CODE_MAX_GRAPH_DEPTH}
+        )
+        SELECT id, parent_id, title, time_created, time_updated
+          FROM descendant
+          ORDER BY time_created;`,
+      { rootSessionId }) ?? [];
+  } catch {
+    return [];
+  }
+}
+
+function toOpenCodeAgentCallNodes(
+  parentSessionId: string,
+  index: OpenCodeGraphIndex,
+): AgentCallNode[] {
+  const childRows = (index.childrenByParentId.get(parentSessionId) ?? [])
+    .filter((row) => !index.visitedSessionIds.has(row.id));
+
+  return childRows.map((row) => {
+    index.visitedSessionIds.add(row.id);
+
+    return {
+      id: row.id,
+      agentType: null,
+      skill: null,
+      task: row.title,
+      startedAt: toIsoString(row.time_created),
+      endedAt: (row.time_updated ?? 0) >= index.runningSince ? null : toIsoString(row.time_updated),
+      children: toOpenCodeAgentCallNodes(row.id, index),
+    };
+  });
+}
+
+interface OpenCodeDescendantSessionRow {
+  id: string;
+  parent_id: string;
+  title: string | null;
+  time_created: number | null;
+  time_updated: number | null;
 }

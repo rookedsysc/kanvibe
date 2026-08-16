@@ -10,6 +10,7 @@ import {
   mapWithConcurrency,
   makePreviewMessage,
   paginateItems,
+  pickLiveSessionFiles,
   readJsonLines,
   readJsonLinesHead,
   readJsonLinesTail,
@@ -18,14 +19,24 @@ import {
   toIsoString,
   truncateText,
 } from "@/lib/aiSessions/shared";
-import { getHomeDirectory, listFilesRecursivelyBySuffix, pathExists, readDirectoryFilesBySuffix } from "@/lib/hostFileAccess";
+import {
+  getHomeDirectory,
+  listFilesModifiedWithin,
+  listFilesRecursivelyBySuffix,
+  pathExists,
+  readDirectoryFilesBySuffix,
+} from "@/lib/hostFileAccess";
 import type {
+  AgentCallNode,
   AggregatedAiMessage,
   AggregatedAiSession,
   AiMessageRole,
   AiSessionDetailReaderResult,
   AiSessionReaderContext,
   AiSessionReaderResult,
+  LiveAiSessionWindows,
+  LiveAiSubtask,
+  LiveProviderSnapshot,
 } from "@/lib/aiSessions/types";
 
 const DEFAULT_DETAIL_LIMIT = 20;
@@ -296,6 +307,119 @@ function getOrCreateClaudeSession(
   return accumulator;
 }
 
+/**
+ * 이 worktree에서 지금 돌고 있는 Claude 세션과, 각 세션이 띄운 서브에이전트를 찾는다.
+ *
+ * 세션 본문은 읽지 않는다. 세션 파일 이름이 곧 세션 id이고 서브에이전트는 세션 id 아래 별도 디렉터리에
+ * 파일로 떨어지므로, 수정 시각만 보면 폴링 비용 없이 실행 여부와 개수를 알 수 있다.
+ * 서브에이전트 이름만 첫 줄을 읽어 채우는데, 그 줄에 위임받은 작업 프롬프트가 들어 있기 때문이다.
+ */
+export async function readClaudeLiveSessions(
+  context: AiSessionReaderContext,
+  windows: LiveAiSessionWindows,
+): Promise<LiveProviderSnapshot[]> {
+  const projectsDirectory = await getClaudeProjectsDirectory(context);
+  const candidateDirectories = getCandidatePaths(context)
+    .map(toClaudeProjectDirName)
+    .map((directoryName) => path.join(projectsDirectory, directoryName));
+
+  const recentFiles = (await Promise.all(candidateDirectories.map(async (directory) => {
+    const files = await listFilesModifiedWithin(directory, ".jsonl", windows.recentWindowMs, context.sshHost);
+    // 서브에이전트 기록도 같은 트리 아래 있으므로, 세션 파일은 디렉터리 바로 밑에 있는 것만 본다
+    return files.filter((file) => path.dirname(file.filePath) === directory);
+  }))).flat();
+
+  return Promise.all(pickLiveSessionFiles(recentFiles, windows.runningWindowMs)
+    .map((sessionFile) => toClaudeLiveSnapshot(sessionFile, windows, context)));
+}
+
+async function toClaudeLiveSnapshot(
+  sessionFile: { filePath: string; mtimeMs: number },
+  windows: LiveAiSessionWindows,
+  context: AiSessionReaderContext,
+): Promise<LiveProviderSnapshot> {
+  const sessionId = path.basename(sessionFile.filePath, ".jsonl");
+  const subagentsDirectory = path.join(path.dirname(sessionFile.filePath), sessionId, "subagents");
+  const runningSubagentFiles = await listFilesModifiedWithin(
+    subagentsDirectory,
+    ".jsonl",
+    windows.runningWindowMs,
+    context.sshHost,
+  );
+
+  return {
+    sessionId,
+    currentTask: await readCurrentActivity(sessionFile.filePath, context.sshHost),
+    lastActiveAt: new Date(sessionFile.mtimeMs).toISOString(),
+    runningSubtasks: await Promise.all(runningSubagentFiles.map((file) =>
+      toClaudeSubtask(file, context.sshHost))),
+  };
+}
+
+/**
+ * 세션이 지금 무엇을 하는지는 마지막 AI 응답이 가장 잘 말해준다.
+ * 사용자 요청은 "무엇을 시켰나"이고 AI 응답은 "지금 무엇을 하는 중인가"라 화면 목적에 더 맞는다.
+ * 아직 응답이 없는 갓 시작한 세션은 마지막 사용자 요청으로 되돌린다.
+ */
+async function readCurrentActivity(
+  filePath: string,
+  sshHost: string | null | undefined,
+): Promise<string | null> {
+  try {
+    const events = await readJsonLinesTail(filePath, CLAUDE_TAIL_EVENT_COUNT, sshHost);
+    return findLatestRoleText(events, "assistant") ?? findLatestRoleText(events, "user");
+  } catch {
+    // 세션 기록을 읽지 못해도 실행중 여부는 파일 활동만으로 판정할 수 있다.
+    return null;
+  }
+}
+
+function findLatestRoleText(events: unknown[], role: "assistant" | "user"): string | null {
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const event = events[index] as ClaudeProjectEvent;
+    if (event?.message?.role !== role) continue;
+
+    const text = extractPlainText(event.message.content);
+    if (text) {
+      return truncateText(text, CLAUDE_CURRENT_TASK_LENGTH);
+    }
+  }
+
+  return null;
+}
+
+const CLAUDE_TAIL_EVENT_COUNT = 60;
+const CLAUDE_CURRENT_TASK_LENGTH = 80;
+
+/** `agent-<agentId>.jsonl`의 첫 줄에는 위임받은 작업 프롬프트가 들어 있어, 이름 대신 그 앞부분을 보여준다 */
+async function toClaudeSubtask(
+  file: { filePath: string; mtimeMs: number },
+  sshHost: string | null | undefined,
+): Promise<LiveAiSubtask> {
+  const agentId = path.basename(file.filePath, ".jsonl").replace(/^agent-/, "");
+
+  return {
+    id: agentId,
+    name: await readClaudeSubagentTaskLabel(file.filePath, sshHost),
+    lastActiveAt: new Date(file.mtimeMs).toISOString(),
+  };
+}
+
+async function readClaudeSubagentTaskLabel(
+  filePath: string,
+  sshHost: string | null | undefined,
+): Promise<string | null> {
+  try {
+    const [firstEvent] = await readJsonLinesHead(filePath, 1, sshHost);
+    const promptText = extractPlainText((firstEvent as ClaudeProjectEvent | undefined)?.message?.content);
+    return promptText ? truncateText(promptText, CLAUDE_SUBTASK_LABEL_LENGTH) : null;
+  } catch {
+    return null;
+  }
+}
+
+const CLAUDE_SUBTASK_LABEL_LENGTH = 40;
+
 function matchesClaudeQuery(query: string | undefined, ...values: Array<string | null | undefined>): boolean {
   if (!query) return true;
   const normalizedQuery = query.toLowerCase();
@@ -321,4 +445,244 @@ function hasClaudeContentPartType(content: unknown, partType: string): boolean {
     typeof part === "object" &&
     (part as Record<string, unknown>).type === partType,
   ));
+}
+
+/**
+ * 세션 하나가 띄운 서브에이전트 호출 그래프를 만든다.
+ *
+ * 간선은 두 가지로 이어지고 둘 다 추측이 없다. 끝난 자식은 부모 기록의 `toolUseResult.agentId`가
+ * 자식 기록 파일 이름을 그대로 가리키고, 아직 도는 자식은 부모가 넘긴 위임 프롬프트가 자식 기록의
+ * 첫 줄과 같은 문자열이다. 서브에이전트 기록도 자기가 띄운 자식을 같은 규칙으로 가리키므로,
+ * 깊이를 따로 다루지 않아도 손자 이하까지 저절로 이어진다.
+ *
+ * 기록 전문을 훑어야 하므로 주기 조회에 얹지 않는다. 상세보기를 열 때만 부른다.
+ */
+export async function readClaudeAgentCallGraph(
+  context: AiSessionReaderContext,
+  sessionId: string,
+  windows: LiveAiSessionWindows,
+): Promise<AgentCallNode[]> {
+  const sessionDirectory = await findClaudeSessionDirectory(context, sessionId);
+  if (!sessionDirectory) {
+    return [];
+  }
+
+  const subagentFiles = await listFilesModifiedWithin(
+    path.join(sessionDirectory, sessionId, "subagents"),
+    ".jsonl",
+    windows.recentWindowMs,
+    context.sshHost,
+  );
+
+  const [sessionTranscript, ...subagentTranscripts] = await Promise.all(
+    [{ filePath: path.join(sessionDirectory, `${sessionId}.jsonl`), mtimeMs: 0 }, ...subagentFiles]
+      .map(async (file) => ({
+        ...await readClaudeTranscript(file.filePath, context.sshHost),
+        mtimeMs: file.mtimeMs,
+      })),
+  );
+
+  const identifiedTranscripts = subagentTranscripts
+    .filter((transcript) => transcript.agentId !== null);
+
+  return toClaudeAgentCallNodes(sessionTranscript, {
+    transcriptsByAgentId: new Map(identifiedTranscripts
+      .map((transcript) => [transcript.agentId as string, transcript])),
+    agentIdByDelegatedPrompt: new Map(identifiedTranscripts
+      .filter((transcript) => transcript.delegatedPrompt !== null)
+      .map((transcript) => [transcript.delegatedPrompt as string, transcript.agentId as string])),
+    runningSince: Date.now() - windows.runningWindowMs,
+    visitedAgentIds: new Set<string>(),
+  });
+}
+
+interface ClaudeGraphIndex {
+  transcriptsByAgentId: Map<string, ClaudeTranscript>;
+  agentIdByDelegatedPrompt: Map<string, string>;
+  runningSince: number;
+  /** 기록이 서로를 가리키는 이상한 경우에도 재귀가 멈추도록 이미 그린 에이전트를 기억한다 */
+  visitedAgentIds: Set<string>;
+}
+
+function toClaudeAgentCallNodes(
+  transcript: ClaudeTranscript,
+  index: ClaudeGraphIndex,
+): AgentCallNode[] {
+  const nodes: AgentCallNode[] = [];
+
+  for (const call of transcript.calls) {
+    const finishedCall = transcript.finishedCallsByToolUseId.get(call.toolUseId);
+    const agentId = finishedCall?.agentId
+      ?? (call.prompt === null ? undefined : index.agentIdByDelegatedPrompt.get(call.prompt));
+
+    if (!agentId || index.visitedAgentIds.has(agentId)) {
+      continue;
+    }
+
+    index.visitedAgentIds.add(agentId);
+    const childTranscript = index.transcriptsByAgentId.get(agentId);
+
+    nodes.push({
+      id: agentId,
+      agentType: call.agentType,
+      skill: childTranscript?.skill ?? null,
+      task: call.task,
+      startedAt: call.startedAt,
+      endedAt: finishedCall?.endedAt ?? toClaudeAbandonedEndedAt(childTranscript, index.runningSince),
+      children: childTranscript ? toClaudeAgentCallNodes(childTranscript, index) : [],
+    });
+  }
+
+  return nodes;
+}
+
+/**
+ * 완료 기록이 없는 자식의 끝 시각.
+ *
+ * 부모가 결과를 적기 전에 세션이 끊기면 자식은 영원히 도는 것처럼 보인다.
+ * 그 기록이 한동안 움직이지 않았다면 마지막 활동을 끝으로 보고, 아직 움직이고 있으면 끝을 비워 둔다.
+ */
+function toClaudeAbandonedEndedAt(
+  transcript: ClaudeTranscript | undefined,
+  runningSince: number,
+): string | null {
+  if (!transcript || transcript.mtimeMs >= runningSince) {
+    return null;
+  }
+
+  return new Date(transcript.mtimeMs).toISOString();
+}
+
+/** 기록 파일 하나가 띄운 서브에이전트들. 세션 본체와 서브에이전트 기록이 같은 모양이라 한 타입으로 다룬다 */
+interface ClaudeTranscript {
+  /** 세션 본체면 null */
+  agentId: string | null;
+  mtimeMs: number;
+  /** 이 기록이 위임받은 프롬프트. 부모의 미완료 호출과 이어 붙이는 열쇠다 */
+  delegatedPrompt: string | null;
+  skill: string | null;
+  calls: ClaudeAgentCall[];
+  finishedCallsByToolUseId: Map<string, { agentId: string; endedAt: string | null }>;
+}
+
+interface ClaudeAgentCall {
+  toolUseId: string;
+  agentType: string | null;
+  task: string | null;
+  prompt: string | null;
+  startedAt: string | null;
+}
+
+interface ClaudeAgentEvent extends ClaudeProjectEvent {
+  agentId?: string;
+  attributionSkill?: string;
+  toolUseResult?: { agentId?: string };
+}
+
+interface ClaudeContentPart {
+  type?: string;
+  id?: string;
+  name?: string;
+  input?: Record<string, unknown>;
+  tool_use_id?: string;
+}
+
+async function readClaudeTranscript(
+  filePath: string,
+  sshHost: string | null | undefined,
+): Promise<Omit<ClaudeTranscript, "mtimeMs">> {
+  const transcript: Omit<ClaudeTranscript, "mtimeMs"> = {
+    agentId: null,
+    delegatedPrompt: null,
+    skill: null,
+    calls: [],
+    finishedCallsByToolUseId: new Map(),
+  };
+
+  const events = await readJsonLines(filePath, sshHost).catch(() => [] as unknown[]);
+
+  for (const value of events) {
+    const event = value as ClaudeAgentEvent;
+
+    if (transcript.agentId === null && typeof event.agentId === "string") {
+      transcript.agentId = event.agentId;
+    }
+    if (transcript.skill === null && typeof event.attributionSkill === "string") {
+      transcript.skill = event.attributionSkill;
+    }
+    if (transcript.delegatedPrompt === null && typeof event.message?.content === "string") {
+      transcript.delegatedPrompt = event.message.content;
+    }
+
+    for (const part of toClaudeContentParts(event.message?.content)) {
+      const call = toClaudeAgentCall(event, part);
+      if (call) {
+        transcript.calls.push(call);
+      }
+    }
+
+    const finishedCall = toClaudeFinishedCall(event);
+    if (finishedCall) {
+      transcript.finishedCallsByToolUseId.set(finishedCall.toolUseId, finishedCall);
+    }
+  }
+
+  return transcript;
+}
+
+/** 서브에이전트를 띄우는 도구 이름. 배포판에 따라 둘 중 하나로 기록된다 */
+const CLAUDE_SUBAGENT_TOOL_NAMES = new Set(["Agent", "Task"]);
+
+function toClaudeAgentCall(event: ClaudeAgentEvent, part: ClaudeContentPart): ClaudeAgentCall | null {
+  if (part.type !== "tool_use" || !part.id || !CLAUDE_SUBAGENT_TOOL_NAMES.has(part.name ?? "")) {
+    return null;
+  }
+
+  const input = part.input ?? {};
+
+  return {
+    toolUseId: part.id,
+    agentType: typeof input.subagent_type === "string" ? input.subagent_type : null,
+    task: typeof input.description === "string"
+      ? truncateText(input.description, CLAUDE_SUBTASK_LABEL_LENGTH)
+      : null,
+    prompt: typeof input.prompt === "string" ? input.prompt : null,
+    startedAt: event.timestamp ?? null,
+  };
+}
+
+function toClaudeFinishedCall(
+  event: ClaudeAgentEvent,
+): { toolUseId: string; agentId: string; endedAt: string | null } | null {
+  const agentId = event.toolUseResult?.agentId;
+  if (typeof agentId !== "string") {
+    return null;
+  }
+
+  const toolUseId = toClaudeContentParts(event.message?.content)
+    .find((part) => part.type === "tool_result")?.tool_use_id;
+
+  return typeof toolUseId === "string"
+    ? { toolUseId, agentId, endedAt: event.timestamp ?? null }
+    : null;
+}
+
+function toClaudeContentParts(content: unknown): ClaudeContentPart[] {
+  return Array.isArray(content) ? content as ClaudeContentPart[] : [];
+}
+
+async function findClaudeSessionDirectory(
+  context: AiSessionReaderContext,
+  sessionId: string,
+): Promise<string | null> {
+  const projectsDirectory = await getClaudeProjectsDirectory(context);
+
+  for (const candidatePath of getCandidatePaths(context)) {
+    const directory = path.join(projectsDirectory, toClaudeProjectDirName(candidatePath));
+    if (await pathExists(path.join(directory, `${sessionId}.jsonl`), context.sshHost)) {
+      return directory;
+    }
+  }
+
+  return null;
 }

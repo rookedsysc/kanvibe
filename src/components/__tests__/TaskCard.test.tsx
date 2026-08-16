@@ -1,6 +1,6 @@
 import { forwardRef } from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { createEvent, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, createEvent, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import TaskCard from "../TaskCard";
 import { TaskPriority } from "@/entities/TaskPriority";
 import { SessionType, TaskStatus } from "@/entities/KanbanTask";
@@ -543,5 +543,188 @@ describe("TaskCard - Priority Badge", () => {
     const badge = screen.getByTestId("task-priority-badge");
     expect(badge.textContent).toBe("P3");
     expect(badge.dataset.inheritedPriority).toBe("false");
+  });
+  describe("실행중 AI 세션 표시", () => {
+    const runningPane = {
+      provider: "claude" as const,
+      worktreePath: "/repo/task",
+      sessionName: "kanvibe-task",
+      windowId: "@7",
+      windowName: "claude",
+    };
+
+    it("같은 worktree에서 도는 에이전트를 카드 배지로 보여준다", () => {
+      // Given
+      const task = createTask({ worktreePath: "/repo/task" });
+
+      // When
+      render(
+        <TaskCard
+          task={task}
+          index={0}
+          onContextMenu={onContextMenu}
+          runningAgentPanes={[runningPane]}
+        />,
+      );
+
+      // Then
+      expect(screen.getByTestId("task-card-running-agents")).toBeTruthy();
+    });
+
+    it("provider마다 실행중 개수를 따로 보여준다", () => {
+      // Given
+      const task = createTask({ worktreePath: "/repo/task" });
+      const panes = [
+        runningPane,
+        { ...runningPane, windowId: "@8" },
+        { ...runningPane, provider: "codex" as const, windowId: "@9" },
+      ];
+
+      // When
+      render(
+        <TaskCard
+          task={task}
+          index={0}
+          onContextMenu={onContextMenu}
+          runningAgentPanes={panes}
+        />,
+      );
+
+      // Then
+      expect(screen.getByTestId("task-card-running-claude").textContent).toBe("2");
+      expect(screen.getByTestId("task-card-running-codex").textContent).toBe("1");
+    });
+
+    it("배지 순서는 pane 목록 순서가 흔들려도 provider 이름으로 고정한다", () => {
+      // Given
+      const task = createTask({ worktreePath: "/repo/task" });
+      const panes = [
+        { ...runningPane, provider: "opencode" as const, windowId: "@9" },
+        runningPane,
+        { ...runningPane, provider: "codex" as const, windowId: "@8" },
+      ];
+
+      // When
+      render(
+        <TaskCard
+          task={task}
+          index={0}
+          onContextMenu={onContextMenu}
+          runningAgentPanes={panes}
+        />,
+      );
+
+      // Then
+      const badge = screen.getByTestId("task-card-running-agents");
+      const providers = Array.from(badge.querySelectorAll("[data-testid^='task-card-running-']"))
+        .map((node) => node.getAttribute("data-testid"));
+      expect(providers).toEqual([
+        "task-card-running-claude",
+        "task-card-running-codex",
+        "task-card-running-opencode",
+      ]);
+    });
+
+    it("다른 worktree에서 도는 에이전트는 배지로 보여주지 않는다", () => {
+      // Given
+      const task = createTask({ worktreePath: "/repo/other" });
+
+      // When
+      render(
+        <TaskCard
+          task={task}
+          index={0}
+          onContextMenu={onContextMenu}
+          runningAgentPanes={[runningPane]}
+        />,
+      );
+
+      // Then
+      expect(screen.queryByTestId("task-card-running-agents")).toBeNull();
+    });
+
+    it("카드에 포커스가 잠시 머무른 뒤에야 세션 패널을 연다", () => {
+      // Given
+      vi.useFakeTimers();
+      const task = createTask({ worktreePath: "/repo/task" });
+      render(
+        <TaskCard
+          task={task}
+          index={0}
+          onContextMenu={onContextMenu}
+          runningAgentPanes={[runningPane]}
+        />,
+      );
+
+      // When
+      fireEvent.focus(screen.getByRole("link"));
+      act(() => {
+        vi.advanceTimersByTime(1_000);
+      });
+
+      // Then
+      expect(screen.queryByTestId("task-card-live-session-popover")).toBeNull();
+
+      act(() => {
+        vi.advanceTimersByTime(500);
+      });
+      expect(screen.getByTestId("task-card-live-session-popover")).toBeTruthy();
+
+      vi.useRealTimers();
+    });
+
+    it("세션 패널이 열리면 카드가 넘치는 패널을 잘라내지 않는다", () => {
+      // Given
+      vi.useFakeTimers();
+      const task = createTask({ worktreePath: "/repo/task" });
+      render(
+        <TaskCard
+          task={task}
+          index={0}
+          onContextMenu={onContextMenu}
+          runningAgentPanes={[runningPane]}
+        />,
+      );
+      const card = screen.getByRole("link");
+      expect(card.className).toContain("overflow-hidden");
+
+      // When
+      fireEvent.focus(card);
+      act(() => {
+        vi.advanceTimersByTime(1_500);
+      });
+
+      // Then
+      expect(screen.getByRole("link").className).not.toContain("overflow-hidden");
+
+      vi.useRealTimers();
+    });
+
+    it("포커스가 카드를 벗어나면 열려 있던 세션 패널을 닫는다", () => {
+      // Given
+      vi.useFakeTimers();
+      const task = createTask({ worktreePath: "/repo/task" });
+      render(
+        <TaskCard
+          task={task}
+          index={0}
+          onContextMenu={onContextMenu}
+          runningAgentPanes={[runningPane]}
+        />,
+      );
+      const card = screen.getByRole("link");
+      fireEvent.focus(card);
+      act(() => {
+        vi.advanceTimersByTime(1_500);
+      });
+
+      // When
+      fireEvent.blur(card);
+
+      // Then
+      expect(screen.queryByTestId("task-card-live-session-popover")).toBeNull();
+
+      vi.useRealTimers();
+    });
   });
 });

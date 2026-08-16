@@ -7,13 +7,20 @@ import {
   makePreviewMessage,
   mapWithConcurrency,
   paginateItems,
+  pickLiveSessionFiles,
   REMOTE_SESSION_FILE_PARSE_CONCURRENCY,
   safeJsonParse,
   sortMessagesDescending,
   toIsoString,
   truncateText,
 } from "@/lib/aiSessions/shared";
-import { getHomeDirectory, listFilesRecursivelyBySuffix, pathExists, readTextFile } from "@/lib/hostFileAccess";
+import {
+  getHomeDirectory,
+  listFilesModifiedWithin,
+  listFilesRecursivelyBySuffix,
+  pathExists,
+  readTextFile,
+} from "@/lib/hostFileAccess";
 import type {
   AggregatedAiMessage,
   AggregatedAiSession,
@@ -21,6 +28,8 @@ import type {
   AiSessionDetailReaderResult,
   AiSessionReaderContext,
   AiSessionReaderResult,
+  LiveAiSessionWindows,
+  LiveProviderSnapshot,
 } from "@/lib/aiSessions/types";
 
 const DEFAULT_DETAIL_LIMIT = 20;
@@ -335,6 +344,38 @@ async function readGeminiProjectPathMap(geminiRoot: string, context: AiSessionRe
   }
 
   return map;
+}
+
+/**
+ * 이 worktree에서 지금 돌고 있는 Gemini 세션을 찾는다.
+ *
+ * Gemini CLI의 세션 기록에는 서브에이전트를 가리키는 필드가 없어 서브태스크는 항상 비어 있다.
+ * 세션 파일 경로가 프로젝트 해시라서, 해시를 실제 경로로 되돌리는 `projects.json`을 거쳐 worktree를 맞춘다.
+ */
+export async function readGeminiLiveSessions(
+  context: AiSessionReaderContext,
+  windows: LiveAiSessionWindows,
+): Promise<LiveProviderSnapshot[]> {
+  const geminiRoot = await getGeminiRootDirectory(context);
+  const projectPathById = await readGeminiProjectPathMap(geminiRoot, context).catch(() => new Map<string, string>());
+
+  const recentFiles = (await listFilesModifiedWithin(
+    path.join(geminiRoot, "tmp"),
+    ".json",
+    windows.recentWindowMs,
+    context.sshHost,
+  )).filter((file) => {
+    if (path.basename(path.dirname(file.filePath)) !== "chats") return false;
+    const projectHash = path.basename(path.dirname(path.dirname(file.filePath)));
+    return determineMatchScope(projectPathById.get(projectHash) ?? null, context) !== null;
+  });
+
+  return pickLiveSessionFiles(recentFiles, windows.runningWindowMs).map((sessionFile) => ({
+    sessionId: path.basename(sessionFile.filePath, ".json"),
+    currentTask: null,
+    lastActiveAt: new Date(sessionFile.mtimeMs).toISOString(),
+    runningSubtasks: [],
+  }));
 }
 
 async function getGeminiRootDirectory(context: AiSessionReaderContext): Promise<string> {

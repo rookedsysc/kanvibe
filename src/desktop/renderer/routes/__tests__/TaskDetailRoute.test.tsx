@@ -26,6 +26,7 @@ const mocks = vi.hoisted(() => ({
   getTaskOpenCodeHooksStatus: vi.fn(),
   getTaskAiSessions: vi.fn(),
   getTaskAiSessionDetail: vi.fn(),
+  getTaskLiveAiSessions: vi.fn(),
   getAllProjects: vi.fn(),
   getSidebarDefaultCollapsed: vi.fn(),
   getSidebarHintDismissed: vi.fn(),
@@ -95,6 +96,7 @@ vi.mock("@hugeicons/react", () => ({
 }));
 
 vi.mock("@hugeicons/core-free-icons", () => ({
+  Activity03Icon: { __iconName: "Activity03Icon" },
   ChartHistogramIcon: { __iconName: "ChartHistogramIcon" },
   Chatting01Icon: { __iconName: "Chatting01Icon" },
   InformationCircleIcon: { __iconName: "InformationCircleIcon" },
@@ -160,6 +162,7 @@ vi.mock("@/desktop/renderer/actions/project", () => ({
   getTaskOpenCodeHooksStatus: (...args: unknown[]) => mocks.getTaskOpenCodeHooksStatus(...args),
   getTaskAiSessions: (...args: unknown[]) => mocks.getTaskAiSessions(...args),
   getTaskAiSessionDetail: (...args: unknown[]) => mocks.getTaskAiSessionDetail(...args),
+  getTaskLiveAiSessions: (...args: unknown[]) => mocks.getTaskLiveAiSessions(...args),
   getAllProjects: (...args: unknown[]) => mocks.getAllProjects(...args),
 }));
 
@@ -304,6 +307,11 @@ describe("TaskDetailRoute", () => {
       repoPath: null,
       sessions: [],
       sources: [],
+    });
+    mocks.getTaskLiveAiSessions.mockResolvedValue({
+      taskId: "task-1",
+      isRemote: false,
+      sessions: [],
     });
     mocks.getTaskAiSessionDetail.mockResolvedValue({
       sessionId: "empty-session",
@@ -2706,6 +2714,85 @@ describe("TaskDetailRoute", () => {
     expect(screen.getByRole("button", { name: "aiSessions.roles.tool" })).toBeTruthy();
   });
 
+  it("PR이 없는 task는 dock 4번 shortcut으로 실행중 세션 패널을 연다", async () => {
+    mocks.getSidebarDefaultCollapsed.mockResolvedValue(true);
+    mocks.getTaskLiveAiSessions.mockResolvedValue({
+      taskId: "task-1",
+      isRemote: false,
+      sessions: [{
+        provider: "claude",
+        sessionId: "session-a",
+        currentTask: "실행중 세션 패널 구현",
+        state: "running",
+        lastActiveAt: "2026-08-10T00:00:00.000Z",
+        runningSubtasks: [{ id: "agent-1", name: "Explore", lastActiveAt: null }],
+        terminalWindow: { sessionName: "kanvibe-task", windowId: "@7", windowName: "claude" },
+      }],
+    });
+    mocks.getTaskById.mockResolvedValue({
+      id: "task-1",
+      title: "task title",
+      description: null,
+      branchName: "feat/live-sessions",
+      baseBranch: "main",
+      prUrl: null,
+      sessionType: "tmux",
+      sessionName: "task-session",
+      sshHost: null,
+      projectId: "project-1",
+      project: { id: "project-1", name: "kanvibe" },
+      status: "todo",
+      agentType: null,
+      worktreePath: "/repo__worktrees/live-sessions",
+    });
+
+    render(
+      <BoardCommandProvider>
+        <TaskDetailRoute />
+      </BoardCommandProvider>,
+    );
+
+    await screen.findByLabelText("terminal input");
+
+    fireEvent.keyDown(window, { key: "4", ctrlKey: true });
+
+    expect(await screen.findByTestId("live-ai-session-claude")).toBeTruthy();
+    expect(screen.getByTestId("live-ai-session-state-running")).toBeTruthy();
+    expect(screen.getAllByTestId("live-ai-subtask").map((node) => node.textContent)).toEqual(["Explore"]);
+  });
+
+  it("PR이 있는 task에서는 실행중 세션 패널이 dock 5번 shortcut으로 밀린다", async () => {
+    mocks.getSidebarDefaultCollapsed.mockResolvedValue(true);
+    mocks.getTaskById.mockResolvedValue({
+      id: "task-1",
+      title: "task title",
+      description: null,
+      branchName: "feat/live-sessions",
+      baseBranch: "main",
+      prUrl: "https://github.com/kanvibe/kanvibe/pull/348",
+      sessionType: "tmux",
+      sessionName: "task-session",
+      sshHost: null,
+      projectId: "project-1",
+      project: { id: "project-1", name: "kanvibe" },
+      status: "todo",
+      agentType: null,
+      worktreePath: "/repo__worktrees/live-sessions",
+    });
+
+    render(
+      <BoardCommandProvider>
+        <TaskDetailRoute />
+      </BoardCommandProvider>,
+    );
+
+    await screen.findByLabelText("terminal input");
+
+    fireEvent.keyDown(window, { key: "5", ctrlKey: true });
+
+    expect(await screen.findByTestId("live-ai-session-panel")).toBeTruthy();
+  });
+
   const usagePanelTargetTask = {
     id: "task-1",
     title: "task title",
@@ -2773,5 +2860,4 @@ describe("TaskDetailRoute", () => {
 
     expect(await screen.findByTestId("ai-usage-panel")).toBeTruthy();
   });
-
 });

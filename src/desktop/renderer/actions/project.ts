@@ -2,10 +2,13 @@ import { invokeDesktop } from "@/desktop/renderer/ipc";
 import { triggerDesktopRefresh } from "@/desktop/renderer/utils/refresh";
 import type { Project } from "@/entities/Project";
 import type {
+  AgentCallGraph,
   AggregatedAiSessionDetail,
   AggregatedAiSessionsResult,
   AiMessageRole,
   AiSessionProvider,
+  LiveAiSessionsResult,
+  RunningAgentPane,
 } from "@/lib/aiSessions/types";
 import type {
   ClaudeHooksStatus,
@@ -119,6 +122,22 @@ export function installTaskOpenCodeHooks(taskId: string): Promise<{ success: boo
 
 export function getTaskOpenCodeHooksStatus(taskId: string): Promise<OpenCodeHooksStatus | null> {
   return invokeDesktop("project", "getTaskOpenCodeHooksStatus", taskId);
+}
+
+export function getTaskLiveAiSessions(taskId: string): Promise<LiveAiSessionsResult> {
+  return invokeDesktop("project", "getTaskLiveAiSessions", taskId);
+}
+
+export function getRunningAgentPanes(): Promise<RunningAgentPane[]> {
+  return invokeDesktop("project", "getRunningAgentPanes");
+}
+
+export function getTaskAgentCallGraph(
+  taskId: string,
+  provider: AiSessionProvider,
+  sessionId: string,
+): Promise<AgentCallGraph | null> {
+  return invokeDesktop("project", "getTaskAgentCallGraph", taskId, provider, sessionId);
 }
 
 export function getTaskAiSessions(

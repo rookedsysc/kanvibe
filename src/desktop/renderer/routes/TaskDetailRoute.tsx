@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
+  Activity03Icon,
   ChartHistogramIcon,
   Chatting01Icon,
   InformationCircleIcon,
@@ -38,8 +39,11 @@ import {
   useHasBoardShortcutBlocker,
   type BranchTodoDefaults,
 } from "@/desktop/renderer/components/BoardCommandProvider";
+import { AgentCallGraphPanel } from "@/desktop/renderer/components/AgentCallGraphPanel";
+import { LiveAiSessionPanel } from "@/desktop/renderer/components/LiveAiSessionPanel";
 import TerminalLoader from "@/desktop/renderer/components/TerminalLoader";
 import TerminalTabBar from "@/desktop/renderer/components/TerminalTabBar";
+import { useTaskAgentCallGraph, useTaskLiveAiSessions } from "@/desktop/renderer/hooks/useLiveAiSessions";
 import { useTerminalTabs } from "@/desktop/renderer/hooks/useTerminalTabs";
 import type { TerminalTabShortcutCommand } from "@/desktop/shared/terminalTabs";
 import { fetchPrUrlWithPrompt } from "@/desktop/renderer/utils/fetchPrUrlWithPrompt";
@@ -67,6 +71,7 @@ import type {
   AggregatedAiSession,
   AggregatedAiSessionDetail,
   AggregatedAiSessionsResult,
+  LiveAiSession,
 } from "@/lib/aiSessions/types";
 import { computeProjectColor, getReadableTextColor } from "@/lib/projectColor";
 
@@ -86,7 +91,7 @@ const AGENT_TAG_STYLES: Record<string, string> = {
   codex: "bg-tag-codex-bg text-tag-codex-text",
 };
 
-type DetailPanel = "overview" | "status" | "usage";
+type DetailPanel = "overview" | "status" | "liveSessions" | "usage";
 type MainView = "terminal" | "chat";
 type TaskDetailDockItem = {
   id: string;
@@ -885,6 +890,25 @@ export default function TaskDetailRoute() {
     setActivePanel(visiblePanel === panel ? null : panel);
   }, [markDefaultPanelDismissed, visiblePanel]);
 
+  const liveSessions = useTaskLiveAiSessions(id ?? null, visiblePanel === "liveSessions");
+
+  /** 호출 그래프를 펼쳐 둔 세션. 목록과 그래프는 같은 dock 자리를 번갈아 쓴다 */
+  const [graphSession, setGraphSession] = useState<LiveAiSession | null>(null);
+  const agentCallGraph = useTaskAgentCallGraph(id ?? null, graphSession);
+
+  /**
+   * 세션이 붙어 있는 tmux window로 옮기고 입력 포커스를 터미널로 넘긴다.
+   * 태스크 상세는 이미 그 태스크의 터미널을 띄우고 있으므로 window만 바꾸면 화면이 따라온다.
+   */
+  const focusSessionTerminal = useCallback(async (session: LiveAiSession) => {
+    if (!id || !session.terminalWindow) {
+      return;
+    }
+
+    await terminalTabs.selectTab(session.terminalWindow.windowId);
+    requestActiveTerminalFocusAfterUiSettles();
+  }, [id, terminalTabs]);
+
   const toggleChatView = useCallback(() => {
     setMainView((current) => {
       const nextView = current === "chat" ? "terminal" : "chat";
@@ -938,6 +962,20 @@ export default function TaskDetailRoute() {
           />
         ),
         onActivate: toggleChatView,
+      },
+      {
+        id: "live-sessions",
+        label: t("liveSessions.dock"),
+        isActive: visiblePanel === "liveSessions",
+        renderIcon: () => (
+          <HugeiconsIcon
+            icon={Activity03Icon}
+            size={17}
+            strokeWidth={1.6}
+            aria-hidden="true"
+          />
+        ),
+        onActivate: () => toggleDetailPanel("liveSessions"),
       },
     ];
 
@@ -1571,6 +1609,7 @@ export default function TaskDetailRoute() {
             <h2 className="text-xs font-semibold uppercase text-text-muted">
               {visiblePanel === "overview" && t("info")}
               {visiblePanel === "status" && statusPanelLabel}
+              {visiblePanel === "liveSessions" && t("liveSessions.title")}
               {visiblePanel === "usage" && t("aiUsage.title")}
             </h2>
             <button
@@ -1593,6 +1632,24 @@ export default function TaskDetailRoute() {
                 diffFileCount={state.diffFiles.length}
               />
             </div>
+          ) : null}
+
+          {visiblePanel === "liveSessions" ? (
+            graphSession ? (
+              <AgentCallGraphPanel
+                session={graphSession}
+                graph={agentCallGraph}
+                onBack={() => setGraphSession(null)}
+                className="rounded-lg border border-border-default bg-bg-surface"
+              />
+            ) : (
+              <LiveAiSessionPanel
+                sessions={liveSessions}
+                onSelectSession={focusSessionTerminal}
+                onOpenGraph={setGraphSession}
+                className="rounded-lg border border-border-default bg-bg-surface"
+              />
+            )
           ) : null}
 
           {visiblePanel === "status" ? (

@@ -60,6 +60,69 @@ function parseTmuxWindowLine(line: string): TerminalTab | null {
 }
 
 /**
+ * tmux 서버 전체의 pane을 한 번에 조회하는 명령.
+ * 세션을 지정하지 않는 이유는, 어떤 worktree에서 어떤 에이전트가 도는지 알아내려면
+ * 태스크별로 세션을 하나씩 물어보는 대신 서버 전체를 한 번만 훑는 편이 싸기 때문이다.
+ */
+const TMUX_PANE_LIST_FORMAT = [
+  "#{session_name}",
+  "#{window_id}",
+  "#{window_index}",
+  "#{pane_current_command}",
+  "#{pane_current_path}",
+  "#{window_name}",
+].join("\t");
+
+const TMUX_PANE_LIST_FIELD_COUNT = 6;
+
+/** tmux 서버의 모든 pane을 조회하는 명령. 세션이 하나도 없으면 tmux가 실패하므로 호출자가 빈 출력으로 다뤄야 한다 */
+export function buildTmuxListPanesCommand(): string {
+  return `tmux list-panes -a -F ${quoteForPosixShell(TMUX_PANE_LIST_FORMAT)}`;
+}
+
+/** tmux pane 하나가 어느 세션·window에서 무슨 명령을 어떤 경로로 돌리는지 */
+export interface TmuxPaneSnapshot {
+  sessionName: string;
+  windowId: string;
+  windowIndex: number;
+  windowName: string;
+  command: string;
+  currentPath: string;
+}
+
+/** `buildTmuxListPanesCommand` 출력을 pane 목록으로 바꾼다 */
+export function parseTmuxPaneList(listPanesOutput: string): TmuxPaneSnapshot[] {
+  return listPanesOutput
+    .split("\n")
+    .map((line) => line.replace(/\r$/, ""))
+    .filter((line) => line.length > 0)
+    .map(parseTmuxPaneLine)
+    .filter((pane): pane is TmuxPaneSnapshot => pane !== null);
+}
+
+function parseTmuxPaneLine(line: string): TmuxPaneSnapshot | null {
+  const fields = line.split("\t");
+  if (fields.length < TMUX_PANE_LIST_FIELD_COUNT) {
+    return null;
+  }
+
+  const [sessionName, windowId, windowIndex, command, currentPath, ...nameFields] = fields;
+  const parsedIndex = Number.parseInt(windowIndex, 10);
+  if (!windowId || !currentPath || !Number.isInteger(parsedIndex)) {
+    return null;
+  }
+
+  return {
+    sessionName,
+    windowId,
+    windowIndex: parsedIndex,
+    windowName: nameFields.join("\t"),
+    command,
+    currentPath,
+  };
+}
+
+/**
  * tmux window id는 서버 전역에서 유일하므로 세션 접두사 없이 그대로 대상으로 쓴다.
  * 인덱스를 쓰면 다른 window가 닫힐 때 번호가 밀려 엉뚱한 탭을 조작하게 된다.
  */
