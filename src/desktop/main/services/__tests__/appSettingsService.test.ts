@@ -45,6 +45,46 @@ describe("기본 세션 타입", () => {
   });
 });
 
+describe("알림 안읽음만 보기 설정", () => {
+  it("켠 상태를 앱을 다시 켠 뒤에도 그대로 읽는다", async () => {
+    // Given
+    const { getNotificationUnreadOnlyEnabled, setNotificationUnreadOnlyEnabled } = await import(
+      "@/desktop/main/services/appSettingsService"
+    );
+
+    // When
+    await setNotificationUnreadOnlyEnabled(true);
+
+    // Then
+    expect(await getNotificationUnreadOnlyEnabled()).toBe(true);
+  });
+
+  it("껐다면 전체 보기로 되돌린다", async () => {
+    // Given
+    const { getNotificationUnreadOnlyEnabled, setNotificationUnreadOnlyEnabled } = await import(
+      "@/desktop/main/services/appSettingsService"
+    );
+    await setNotificationUnreadOnlyEnabled(true);
+
+    // When
+    await setNotificationUnreadOnlyEnabled(false);
+
+    // Then
+    expect(await getNotificationUnreadOnlyEnabled()).toBe(false);
+  });
+
+  it("한 번도 저장한 적이 없으면 전체 보기로 시작한다", async () => {
+    // Given
+    const { getNotificationUnreadOnlyEnabled } = await import("@/desktop/main/services/appSettingsService");
+
+    // When
+    const isUnreadOnly = await getNotificationUnreadOnlyEnabled();
+
+    // Then
+    expect(isUnreadOnly).toBe(false);
+  });
+});
+
 const BOARD_SORT_PREFERENCE_KEY = "board_sort_preference";
 
 describe("보드 정렬 설정", () => {
