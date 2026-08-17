@@ -36,7 +36,11 @@ export function TaskCardLiveSessions({
   const runningCountByProvider = useMemo(() => countByProvider(taskPanes), [taskPanes]);
   const sessions = useTaskLiveAiSessions(taskId, isPanelOpen);
 
-  if (taskPanes.length === 0 && !isPanelOpen) {
+  /**
+   * 보여줄 게 없으면 배지도 패널도 그리지 않는다.
+   * 빈 팝오버라도 카드 아래로 펼쳐지면 다음 카드를 덮고, 그 위 클릭을 삼켜 상세로 가지 못하게 한다.
+   */
+  if (taskPanes.length === 0 && sessions.length === 0) {
     return null;
   }
 

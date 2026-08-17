@@ -87,6 +87,25 @@ describe("TaskCardLiveSessions", () => {
     });
   });
 
+  it("패널이 열려도 실행중인 게 없으면 팝오버를 그리지 않는다", async () => {
+    mocks.getTaskLiveAiSessions.mockResolvedValue({ taskId: "task-1", isRemote: false, sessions: [] });
+
+    render(
+      <TaskCardLiveSessions
+        taskId="task-1"
+        worktreePath="/repo/other"
+        runningPanes={[runningPane]}
+        isPanelOpen
+      />,
+    );
+
+    await waitFor(() => {
+      expect(mocks.getTaskLiveAiSessions).toHaveBeenCalledWith("task-1");
+    });
+
+    expect(screen.queryByTestId("task-card-live-session-popover")).toBeNull();
+  });
+
   it("실행중 에이전트도 열린 패널도 없으면 아무것도 그리지 않는다", () => {
     const { container } = render(
       <TaskCardLiveSessions

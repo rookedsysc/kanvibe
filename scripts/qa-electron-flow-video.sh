@@ -5,6 +5,8 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck source=scripts/qa-electron-prepare.sh
+source "$ROOT_DIR/scripts/qa-electron-prepare.sh"
 FLOW_NAME="${KANVIBE_QA_FLOW:-${1:-}}"
 
 if [[ -z "$FLOW_NAME" ]]; then
@@ -65,6 +67,8 @@ record_and_run() {
 }
 
 cd "$ROOT_DIR"
+
+ensure_qa_electron_prepared "${1:-}"
 
 if [[ -z "${DISPLAY:-}" && -z "${WAYLAND_DISPLAY:-}" ]]; then
   if ! command -v xvfb-run >/dev/null 2>&1; then

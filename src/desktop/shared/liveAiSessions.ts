@@ -1,4 +1,4 @@
-import type { AiSessionProvider, RunningAgentPane } from "@/lib/aiSessions/types";
+import type { AgentCallNode, AiSessionProvider, RunningAgentPane } from "@/lib/aiSessions/types";
 
 /**
  * 같은 worktree에서 도는 pane만 남긴다. 하위 디렉터리에서 실행한 에이전트도 그 worktree의 것으로 본다.
@@ -33,4 +33,14 @@ export function countByProvider<T extends { provider: AiSessionProvider }>(
   }
 
   return [...counts.entries()].sort(([left], [right]) => left.localeCompare(right));
+}
+
+/**
+ * 호출 그래프의 트리를 깊이 우선 순서의 평면 목록으로 편다.
+ *
+ * main은 가장 이른 시작 시각을 찾을 때, 렌더러는 그래프 패널의 행을 그릴 때 같은 순서를 봐야 한다.
+ * 세션 기록 리더는 Node 전용 모듈을 끌고 오므로, 두 쪽이 공유하는 이 순수 함수만 여기에 둔다.
+ */
+export function flattenAgentCallNodes(nodes: AgentCallNode[]): AgentCallNode[] {
+  return nodes.flatMap((node) => [node, ...flattenAgentCallNodes(node.children)]);
 }
