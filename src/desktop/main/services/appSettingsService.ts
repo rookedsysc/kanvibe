@@ -11,6 +11,7 @@ const SIDEBAR_COLLAPSED_KEY = "sidebar_default_collapsed";
 const SIDEBAR_HINT_DISMISSED_KEY = "sidebar_hint_dismissed";
 const NOTIFICATION_ENABLED_KEY = "notification_enabled";
 const NOTIFICATION_STATUSES_KEY = "notification_statuses";
+const NOTIFICATION_UNREAD_ONLY_KEY = "notification_unread_only";
 const RELEASE_UPDATE_DISMISSED_VERSIONS_KEY = "release_update_dismissed_versions";
 
 /** 기본 알림 대상 상태 (사용자가 직접 설정하는 todo/done은 제외) */
@@ -157,6 +158,17 @@ export async function setNotificationEnabled(enabled: boolean): Promise<void> {
 /** 알림 수신 대상 상태 목록을 저장한다 */
 export async function setNotificationStatuses(statuses: string[]): Promise<void> {
   await setAppSetting(NOTIFICATION_STATUSES_KEY, JSON.stringify(statuses));
+}
+
+/** 알림 목록을 안읽음만 보기로 볼지 조회한다. 미설정 시 전체 보기로 시작한다 */
+export async function getNotificationUnreadOnlyEnabled(): Promise<boolean> {
+  const value = await getAppSetting(NOTIFICATION_UNREAD_ONLY_KEY);
+  return value === "true";
+}
+
+/** 알림 목록의 안읽음만 보기 여부를 저장한다. 앱을 껐다 켜도 유지되도록 app_settings에 둔다 */
+export async function setNotificationUnreadOnlyEnabled(enabled: boolean): Promise<void> {
+  await setAppSetting(NOTIFICATION_UNREAD_ONLY_KEY, String(enabled));
 }
 
 const BACKGROUND_SYNC_ENABLED_KEY = "background_sync_enabled";
