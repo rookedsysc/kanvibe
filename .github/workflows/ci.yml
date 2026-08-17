@@ -29,3 +29,8 @@ jobs:
 
       - name: Test
         run: pnpm test
+
+      # 렌더러는 브라우저 번들이라 main 전용 Node 모듈을 끌어오면 여기서만 깨진다.
+      # tsc와 vitest는 Node 해상도로 돌아 그 위반을 통과시키므로 빌드를 따로 게이트로 둔다.
+      - name: Build
+        run: pnpm build
