@@ -3,14 +3,26 @@ import { useEffect, useRef } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import NotificationCenterButton, { type NotificationCenterButtonHandle } from "@/components/NotificationCenterButton";
 import { BoardCommandProvider, useBoardCommands } from "@/desktop/renderer/components/BoardCommandProvider";
+import type { AppNotification } from "@/desktop/shared/notifications";
 
-const { mockListNotifications, mockMarkNotificationRead, mockMarkAllNotificationsRead, mockActivateNotification, mockGetTaskById, mockRedirect } = vi.hoisted(() => ({
+const {
+  mockListNotifications,
+  mockMarkNotificationRead,
+  mockMarkAllNotificationsRead,
+  mockActivateNotification,
+  mockGetTaskById,
+  mockRedirect,
+  mockGetNotificationUnreadOnlyEnabled,
+  mockSetNotificationUnreadOnlyEnabled,
+} = vi.hoisted(() => ({
   mockListNotifications: vi.fn(),
   mockMarkNotificationRead: vi.fn(),
   mockMarkAllNotificationsRead: vi.fn(),
   mockActivateNotification: vi.fn(),
   mockGetTaskById: vi.fn(),
   mockRedirect: vi.fn(),
+  mockGetNotificationUnreadOnlyEnabled: vi.fn(),
+  mockSetNotificationUnreadOnlyEnabled: vi.fn(),
 }));
 
 vi.mock("next-intl", async () => {
@@ -32,6 +44,11 @@ vi.mock("@/desktop/renderer/actions/kanban", () => ({
   getTaskById: mockGetTaskById,
 }));
 
+vi.mock("@/desktop/renderer/actions/appSettings", () => ({
+  getNotificationUnreadOnlyEnabled: mockGetNotificationUnreadOnlyEnabled,
+  setNotificationUnreadOnlyEnabled: mockSetNotificationUnreadOnlyEnabled,
+}));
+
 vi.mock("@/desktop/renderer/navigation", () => ({
   localizeHref: (href: string, currentLocale = "ko") => (
     href.startsWith("/") ? `/${currentLocale}${href}` : href
@@ -43,6 +60,23 @@ vi.mock("@/desktop/renderer/navigation", () => ({
     push: vi.fn(),
   }),
 }));
+
+function createNotification(
+  id: string,
+  { isRead, createdAt }: { isRead: boolean; createdAt: string },
+): AppNotification {
+  return {
+    id,
+    title: `${id} title`,
+    body: "Body",
+    taskId: `task-${id}`,
+    relativePath: `/task/task-${id}`,
+    locale: "en",
+    isRead,
+    createdAt,
+    dedupeKey: `k-${id}`,
+  };
+}
 
 function NotificationShortcutHarness() {
   const notificationCenterRef = useRef<NotificationCenterButtonHandle>(null);
@@ -77,6 +111,8 @@ function BlockedNotificationShortcutHarness() {
 describe("NotificationCenterButton", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockGetNotificationUnreadOnlyEnabled.mockResolvedValue(false);
+    mockSetNotificationUnreadOnlyEnabled.mockResolvedValue(undefined);
     window.history.replaceState({}, "", "/#/en");
     window.kanvibeDesktop = {
       onNotificationsChanged: vi.fn(() => undefined),
@@ -542,6 +578,112 @@ describe("NotificationCenterButton", () => {
 
     await waitFor(() => {
       expect(screen.queryByText("Only task")).toBeNull();
+    });
+  });
+
+  describe("안읽음만 보기 필터", () => {
+    const unreadNewest = createNotification("unread-newest", { isRead: false, createdAt: "2026-05-04T00:02:00.000Z" });
+    const readMiddle = createNotification("read-middle", { isRead: true, createdAt: "2026-05-04T00:01:00.000Z" });
+    const unreadOldest = createNotification("unread-oldest", { isRead: false, createdAt: "2026-05-04T00:00:00.000Z" });
+
+    async function renderOpenedPanel(notifications: AppNotification[]) {
+      mockListNotifications.mockResolvedValue(notifications);
+      mockMarkNotificationRead.mockResolvedValue(undefined);
+
+      render(<NotificationCenterButton />);
+
+      await waitFor(() => {
+        expect(mockListNotifications).toHaveBeenCalled();
+      });
+
+      fireEvent.click(screen.getByRole("button", { name: "notifications" }));
+    }
+
+    it("안읽음 탭을 누르면 읽은 알림만 목록에서 사라진다", async () => {
+      await renderOpenedPanel([unreadNewest, readMiddle, unreadOldest]);
+
+      fireEvent.click(screen.getByRole("button", { name: /notificationFilterUnread/ }));
+
+      await waitFor(() => {
+        expect(screen.queryByText("read-middle title")).toBeNull();
+      });
+      expect(screen.getByText("unread-newest title")).toBeTruthy();
+      expect(screen.getByText("unread-oldest title")).toBeTruthy();
+    });
+
+    it("고른 필터를 앱 설정에 저장한다", async () => {
+      await renderOpenedPanel([unreadNewest, readMiddle]);
+
+      fireEvent.click(screen.getByRole("button", { name: /notificationFilterUnread/ }));
+
+      await waitFor(() => {
+        expect(mockSetNotificationUnreadOnlyEnabled).toHaveBeenCalledWith(true);
+      });
+
+      fireEvent.click(screen.getByRole("button", { name: "notificationFilterAll" }));
+
+      await waitFor(() => {
+        expect(mockSetNotificationUnreadOnlyEnabled).toHaveBeenLastCalledWith(false);
+      });
+    });
+
+    it("저장된 필터가 켜져 있으면 팝업을 열 때부터 안읽음만 보여준다", async () => {
+      mockGetNotificationUnreadOnlyEnabled.mockResolvedValue(true);
+
+      await renderOpenedPanel([unreadNewest, readMiddle]);
+
+      await waitFor(() => {
+        expect(screen.getByText("unread-newest title")).toBeTruthy();
+      });
+      expect(screen.queryByText("read-middle title")).toBeNull();
+    });
+
+    it("안읽음만 보기에서는 키보드 이동이 읽은 알림을 건너뛴다", async () => {
+      mockGetNotificationUnreadOnlyEnabled.mockResolvedValue(true);
+      mockGetTaskById.mockImplementation(async (taskId: string) => ({ id: taskId }));
+
+      await renderOpenedPanel([unreadNewest, readMiddle, unreadOldest]);
+
+      await waitFor(() => {
+        expect(screen.queryByText("read-middle title")).toBeNull();
+      });
+
+      fireEvent.keyDown(window, { key: "ArrowDown" });
+      fireEvent.keyDown(window, { key: "Enter" });
+
+      await waitFor(() => {
+        expect(mockGetTaskById).toHaveBeenCalledWith("task-unread-oldest");
+      });
+      expect(mockGetTaskById).not.toHaveBeenCalledWith("task-read-middle");
+    });
+
+    it("안읽음만 보기에서 Space로 읽음 처리하면 목록에서 바로 빠진다", async () => {
+      mockGetNotificationUnreadOnlyEnabled.mockResolvedValue(true);
+
+      await renderOpenedPanel([unreadNewest, unreadOldest]);
+
+      await waitFor(() => {
+        expect(screen.getByText("unread-newest title")).toBeTruthy();
+      });
+
+      fireEvent.keyDown(window, { key: " " });
+
+      await waitFor(() => {
+        expect(screen.queryByText("unread-newest title")).toBeNull();
+      });
+      expect(mockMarkNotificationRead).toHaveBeenCalledWith("unread-newest");
+      expect(screen.getByText("unread-oldest title")).toBeTruthy();
+    });
+
+    it("안읽은 알림이 없으면 알림이 아예 없을 때와 다른 안내를 보여준다", async () => {
+      mockGetNotificationUnreadOnlyEnabled.mockResolvedValue(true);
+
+      await renderOpenedPanel([readMiddle]);
+
+      await waitFor(() => {
+        expect(screen.getByText("noUnreadNotifications")).toBeTruthy();
+      });
+      expect(screen.queryByText("noNotifications")).toBeNull();
     });
   });
 });

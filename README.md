@@ -31,6 +31,15 @@ Use shortcuts for project filters, task search, notifications, task detail panel
       <strong>Task detail workspace</strong>
     </td>
   </tr>
+  <tr>
+    <td colspan="2">
+      <img src="./docs/images/readme/kanvibe-ai-usage.png" alt="AI usage panel showing remaining Claude, Codex, and Gemini quota per account" width="100%">
+      <br>
+      <strong>AI usage — remaining quota per account, without leaving the terminal</strong>
+      <br>
+      Press <code>Cmd/Ctrl+0</code> on a task detail page, or click the bottom dock icon. Every card names the account and plan it belongs to, and Claude's per-model weekly limits sit under the weekly total they draw from.
+    </td>
+  </tr>
 </table>
 
 <a href="https://www.youtube.com/watch?v=8JTrvd3T_Z0">
@@ -82,6 +91,16 @@ Turn on Vim-style board controls in **Settings → Keyboard**, then move across 
 <video src="./docs/images/readme/kanvibe-vim-controls.mp4" poster="./docs/images/readme/kanvibe-vim-controls.png" controls muted playsinline width="100%"></video>
 
 [Open the Vim controls demo video](./docs/images/readme/kanvibe-vim-controls.mp4)
+
+### 7. Live AI Session Tracking
+
+See which AI agents are running on which task, and how many, straight from the board, then jump into the terminal that owns one. Focus or hover a card and hold for a moment to open the session panel; it lists each running session with what it is doing and the subtasks branching off it right now. Clicking a session switches to the tmux window that session is attached to and moves input focus to the terminal.
+
+<img src="./docs/images/readme/kanvibe-live-sessions-board.png" alt="Board card showing a running claude session with two subtasks" width="100%">
+
+The same panel opens from the task detail dock, so you can keep watching subtasks while you work in the terminal.
+
+<img src="./docs/images/readme/kanvibe-live-sessions-panel.png" alt="Task detail live session panel with running claude session" width="100%">
 
 ---
 
@@ -189,11 +208,29 @@ Each pane can run a custom command (e.g., `vim`, `htop`, `lazygit`, test runner,
 - Remote terminal attach executes tmux/zellij directly over SSH; trusted X11 forwarding (`ssh -Y`) is requested only when local `DISPLAY`, remote `X11Forwarding`, and `xauth` are available
 - Nerd Font rendering support
 
+### Live AI Session Tracking
+- Board cards show a per-agent icon and count next to the tmux badge, so you can tell at a glance which agents are running on which task and how many
+- Focus or hover a card to open a session panel that shows what each running session is doing, taken from its most recent AI response, along with the subtasks it is driving as branches hanging off the session; sweeping past cards does not open it
+- Running sessions carry a moving progress bar that conveys progress through motion rather than a ratio, and holds still when the environment asks for reduced motion
+- Task detail exposes the same panel through the live sessions dock item (`Mod+4` without a PR, `Mod+5` with one)
+- Clicking a session switches to its tmux window and moves input focus to the terminal
+- Running state combines two signals: an agent attached to a tmux pane counts as running even while it waits for input, and a session whose transcript was just updated counts as running even when no pane is visible
+- Subtask counts are available for Claude Code and Codex, depend on version for OpenCode, and are not available for Gemini CLI
+- Sessions outside tmux (zellij, plain terminal) are judged by transcript activity alone, so one waiting for input may appear idle
+
 ### Keyboard-First Controls
 - Open quick task search by branch or project name from anywhere
 - Filter projects, inspect notifications, and trigger task actions without leaving the board
 - Use numbered detail shortcuts to switch task info, status/hooks, AI chat, PR, and other dock panels before keystrokes reach the terminal
 - Create a branch TODO directly from quick search with the configured shortcut
+
+### AI Usage
+
+- Read remaining Claude, Codex, and Gemini subscription usage from the task detail dock or `Cmd/Ctrl+0`
+- Uses the sign-in each CLI already stored locally, so no extra API key is required
+- Normalizes each provider's different window shapes (5-hour, 7-day, per-model) into one bar with reset times and plan tier
+- Queries every registered account per provider and labels them when more than one is signed in
+- Shows the last saved result immediately and refreshes above it, so the panel never opens blank after a restart
 
 ### Keyboard Shortcuts
 
@@ -210,6 +247,7 @@ Each pane can run a custom command (e.g., `vim`, `htop`, `lazygit`, test runner,
 | `Cmd+[` / `Cmd+]` (macOS), `Alt+[` / `Alt+]` (Linux) | Global | Navigate back/forward through app history; back falls back to board home when there is no previous page |
 | `Cmd+1/2/3` (macOS), `Alt+1/2/3` (Linux) | Task detail | Activate the numbered detail dock items: info, status/hooks, and AI chat. These shortcuts are intercepted before terminal input |
 | `Cmd+4` (macOS), `Alt+4` (Linux) | Task detail | Open the task PR in the browser when a PR exists; otherwise the shortcut belongs to the fourth numbered dock item when present |
+| `Cmd/Ctrl+0` | Task detail | Toggle the AI usage panel. It sits outside the numbered dock order, so dock numbering is unaffected |
 | `Cmd/Ctrl+N` | Quick task search | Create a new branch TODO from the currently highlighted task |
 | `↑ / ↓ / Enter / Shift+Enter / Esc` | Quick task search | Move selection, open task, open task in a new window, close dialog |
 | `↑ / ↓ / Enter / Esc` | Project filter dropdown | Move selection, toggle project filter, close dropdown |

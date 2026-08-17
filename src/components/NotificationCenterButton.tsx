@@ -2,6 +2,10 @@
 
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
+import {
+  getNotificationUnreadOnlyEnabled,
+  setNotificationUnreadOnlyEnabled,
+} from "@/desktop/renderer/actions/appSettings";
 import { getTaskById } from "@/desktop/renderer/actions/kanban";
 import {
   activateNotification,
@@ -54,6 +58,33 @@ function sortNotificationsByNewestFirst(notifications: AppNotification[]) {
   return [...notifications].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
 
+interface NotificationFilterTabProps {
+  isSelected: boolean;
+  label: string;
+  count?: number;
+  onSelect: () => void;
+}
+
+function NotificationFilterTab({ isSelected, label, count, onSelect }: NotificationFilterTabProps) {
+  return (
+    <button
+      type="button"
+      aria-pressed={isSelected}
+      onClick={onSelect}
+      className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
+        isSelected
+          ? "bg-brand-primary text-text-inverse"
+          : "text-text-secondary hover:text-text-primary"
+      }`}
+    >
+      {label}
+      {count ? (
+        <span className={`ml-1.5 ${isSelected ? "text-text-inverse/80" : "text-text-muted"}`}>{count}</span>
+      ) : null}
+    </button>
+  );
+}
+
 const NotificationCenterButton = forwardRef<NotificationCenterButtonHandle, NotificationCenterButtonProps>(function NotificationCenterButton(
   { buttonClassName = "", panelClassName = "" },
   ref,
@@ -67,6 +98,7 @@ const NotificationCenterButton = forwardRef<NotificationCenterButtonHandle, Noti
   const highlightedIndexRef = useRef(0);
   const [isOpen, setIsOpen] = useState(false);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
+  const [isUnreadOnly, setIsUnreadOnly] = useState(false);
   const [highlightedIndex, setHighlightedIndex] = useState(0);
   const [missingTaskNotification, setMissingTaskNotification] = useState<AppNotification | null>(null);
 
@@ -123,6 +155,14 @@ const NotificationCenterButton = forwardRef<NotificationCenterButtonHandle, Noti
   }, []);
 
   useEffect(() => {
+    async function restoreUnreadOnlyFilter() {
+      setIsUnreadOnly(await getNotificationUnreadOnlyEnabled());
+    }
+
+    void restoreUnreadOnlyFilter();
+  }, []);
+
+  useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (!containerRef.current?.contains(event.target as Node)) {
         closePanel();
@@ -135,8 +175,12 @@ const NotificationCenterButton = forwardRef<NotificationCenterButtonHandle, Noti
     };
   }, [closePanel]);
 
-  const highlightedNotificationIndex = isOpen && notifications.length > 0
-    ? Math.min(Math.max(highlightedIndex, 0), notifications.length - 1)
+  const visibleNotifications = useMemo(() => (
+    isUnreadOnly ? notifications.filter((notification) => !notification.isRead) : notifications
+  ), [isUnreadOnly, notifications]);
+
+  const highlightedNotificationIndex = isOpen && visibleNotifications.length > 0
+    ? Math.min(Math.max(highlightedIndex, 0), visibleNotifications.length - 1)
     : -1;
 
   useEffect(() => {
@@ -158,6 +202,13 @@ const NotificationCenterButton = forwardRef<NotificationCenterButtonHandle, Noti
   }, [highlightedNotificationIndex]);
 
   const unreadCount = useMemo(() => notifications.filter((notification) => !notification.isRead).length, [notifications]);
+
+  const changeUnreadOnlyFilter = useCallback(async (nextIsUnreadOnly: boolean) => {
+    highlightedIndexRef.current = 0;
+    setHighlightedIndex(0);
+    setIsUnreadOnly(nextIsUnreadOnly);
+    await setNotificationUnreadOnlyEnabled(nextIsUnreadOnly);
+  }, []);
 
   const markNotificationAsRead = useCallback(async (notification: AppNotification) => {
     if (notification.isRead) {
@@ -215,12 +266,12 @@ const NotificationCenterButton = forwardRef<NotificationCenterButtonHandle, Noti
     }
 
     function getHighlightedNotification() {
-      if (notifications.length === 0) {
+      if (visibleNotifications.length === 0) {
         return null;
       }
 
-      const boundedIndex = Math.min(Math.max(highlightedIndexRef.current, 0), notifications.length - 1);
-      return notifications[boundedIndex] ?? null;
+      const boundedIndex = Math.min(Math.max(highlightedIndexRef.current, 0), visibleNotifications.length - 1);
+      return visibleNotifications[boundedIndex] ?? null;
     }
 
     function handleWindowKeyDown(event: KeyboardEvent) {
@@ -234,23 +285,23 @@ const NotificationCenterButton = forwardRef<NotificationCenterButtonHandle, Noti
 
       switch (event.key) {
         case "ArrowDown":
-          if (notifications.length === 0) {
+          if (visibleNotifications.length === 0) {
             return;
           }
           event.preventDefault();
-          highlightedIndexRef.current = highlightedIndexRef.current < notifications.length - 1
+          highlightedIndexRef.current = highlightedIndexRef.current < visibleNotifications.length - 1
             ? highlightedIndexRef.current + 1
             : 0;
           setHighlightedIndex(highlightedIndexRef.current);
           break;
         case "ArrowUp":
-          if (notifications.length === 0) {
+          if (visibleNotifications.length === 0) {
             return;
           }
           event.preventDefault();
           highlightedIndexRef.current = highlightedIndexRef.current > 0
             ? highlightedIndexRef.current - 1
-            : notifications.length - 1;
+            : visibleNotifications.length - 1;
           setHighlightedIndex(highlightedIndexRef.current);
           break;
         case "Enter":
@@ -284,7 +335,7 @@ const NotificationCenterButton = forwardRef<NotificationCenterButtonHandle, Noti
     return () => {
       window.removeEventListener("keydown", handleWindowKeyDown);
     };
-  }, [closePanel, handleNotificationClick, hasShortcutBlocker, highlightedNotificationIndex, isOpen, markNotificationAsRead, notifications]);
+  }, [closePanel, handleNotificationClick, hasShortcutBlocker, highlightedNotificationIndex, isOpen, markNotificationAsRead, visibleNotifications]);
 
   async function handleMarkAllRead() {
     await markAllNotificationsRead();
@@ -320,22 +371,40 @@ const NotificationCenterButton = forwardRef<NotificationCenterButtonHandle, Noti
           data-terminal-focus-blocker="true"
           className={`absolute right-0 z-50 mt-2 w-96 max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl border border-border-default bg-bg-surface shadow-xl ${panelClassName}`.trim()}
         >
-          <div className="flex items-center justify-between border-b border-border-default px-4 py-3">
-            <div>
-              <h3 className="text-sm font-semibold text-text-primary">{t("notifications")}</h3>
-              <p className="text-xs text-text-muted">
-                {unreadCount > 0 ? t("unreadCount", { count: unreadCount }) : t("allCaughtUp")}
-              </p>
+          <div className="border-b border-border-default px-4 py-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-sm font-semibold text-text-primary">{t("notifications")}</h3>
+                <p className="text-xs text-text-muted">
+                  {unreadCount > 0 ? t("unreadCount", { count: unreadCount }) : t("allCaughtUp")}
+                </p>
+              </div>
+              <button type="button" onClick={handleMarkAllRead} className="text-xs text-text-secondary hover:text-text-primary transition-colors">
+                {t("markAllRead")}
+              </button>
             </div>
-            <button type="button" onClick={handleMarkAllRead} className="text-xs text-text-secondary hover:text-text-primary transition-colors">
-              {t("markAllRead")}
-            </button>
+
+            <div role="group" className="mt-3 flex w-fit gap-0.5 rounded-lg bg-bg-page p-0.5">
+              <NotificationFilterTab
+                isSelected={!isUnreadOnly}
+                label={t("notificationFilterAll")}
+                onSelect={() => void changeUnreadOnlyFilter(false)}
+              />
+              <NotificationFilterTab
+                isSelected={isUnreadOnly}
+                label={t("notificationFilterUnread")}
+                count={unreadCount}
+                onSelect={() => void changeUnreadOnlyFilter(true)}
+              />
+            </div>
           </div>
 
           <div className="max-h-[28rem] overflow-y-auto">
-            {notifications.length === 0 ? (
-              <div className="px-4 py-8 text-center text-sm text-text-muted">{t("noNotifications")}</div>
-            ) : notifications.map((notification, index) => (
+            {visibleNotifications.length === 0 ? (
+              <div className="px-4 py-8 text-center text-sm text-text-muted">
+                {isUnreadOnly ? t("noUnreadNotifications") : t("noNotifications")}
+              </div>
+            ) : visibleNotifications.map((notification, index) => (
               <button
                 key={notification.id}
                 ref={(node) => {

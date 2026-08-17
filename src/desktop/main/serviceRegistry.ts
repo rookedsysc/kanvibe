@@ -1,3 +1,4 @@
+import * as aiUsage from "@/desktop/main/services/aiUsageService";
 import * as appSettings from "@/desktop/main/services/appSettingsService";
 import { runBackgroundTaskSyncNow } from "@/desktop/main/services/backgroundTaskSyncService";
 import * as diff from "@/desktop/main/services/diffService";
@@ -13,6 +14,7 @@ import * as terminalTabs from "@/desktop/main/services/terminalTabService";
 const backgroundTaskSync = { runBackgroundTaskSyncNow };
 
 export const desktopServices = {
+  aiUsage,
   appSettings,
   backgroundTaskSync,
   diff,

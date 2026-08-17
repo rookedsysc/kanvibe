@@ -19,6 +19,7 @@ import {
   buildZellijNewTabCommand,
   buildZellijRenameFocusedTabCommands,
   buildZellijRenameTabByIdCommand,
+  parseTmuxPaneList,
   parseTmuxWindowList,
   parseZellijFocusedTabName,
   parseZellijTabList,
@@ -27,6 +28,47 @@ import {
 } from "@/lib/terminalTabs";
 
 const INJECTION_SESSION_NAME = "a'; rm -rf /; '";
+
+describe("tmux pane 목록 파싱", () => {
+  it("세션·window·실행 명령·작업 경로를 읽는다", () => {
+    const output = [
+      "kanvibe-task\t@155\t0\tclaude\t/repo/task\tclaude",
+      "kanvibe-dev\t@1\t2\tzsh\t/repo\tzsh",
+    ].join("\n");
+
+    expect(parseTmuxPaneList(output)).toEqual([
+      {
+        sessionName: "kanvibe-task",
+        windowId: "@155",
+        windowIndex: 0,
+        windowName: "claude",
+        command: "claude",
+        currentPath: "/repo/task",
+      },
+      {
+        sessionName: "kanvibe-dev",
+        windowId: "@1",
+        windowIndex: 2,
+        windowName: "zsh",
+        command: "zsh",
+        currentPath: "/repo",
+      },
+    ]);
+  });
+
+  it("window 이름에 탭 문자가 섞여도 이름을 자르지 않는다", () => {
+    expect(parseTmuxPaneList("s\t@1\t0\tzsh\t/repo\ta\tb")[0].windowName).toBe("a\tb");
+  });
+
+  it("빈 출력과 필드가 모자란 줄은 건너뛴다", () => {
+    expect(parseTmuxPaneList("")).toEqual([]);
+    expect(parseTmuxPaneList("s\t@1\t0\tzsh")).toEqual([]);
+  });
+
+  it("CRLF 줄바꿈에서도 마지막 필드가 오염되지 않는다", () => {
+    expect(parseTmuxPaneList("s\t@1\t0\tclaude\t/repo\tclaude\r\n")[0].windowName).toBe("claude");
+  });
+});
 
 describe("tmux window 목록 파싱", () => {
   it("id·인덱스·이름·활성 여부를 읽는다", () => {

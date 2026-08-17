@@ -8,14 +8,32 @@ import {
   mapWithConcurrency,
   makePreviewMessage,
   paginateItems,
+  pickLiveSessionFiles,
   readJsonLines,
+  readJsonLinesHead,
+  readJsonLinesTail,
   REMOTE_SESSION_FILE_PARSE_CONCURRENCY,
   sortMessagesDescending,
   toIsoString,
   truncateText,
 } from "@/lib/aiSessions/shared";
-import { getHomeDirectory, listFilesRecursivelyBySuffix, pathExists } from "@/lib/hostFileAccess";
-import type { AggregatedAiMessage, AggregatedAiSession, AiMessageRole, AiSessionDetailReaderResult, AiSessionReaderContext, AiSessionReaderResult } from "@/lib/aiSessions/types";
+import {
+  getHomeDirectory,
+  listFilesModifiedWithin,
+  listFilesRecursivelyBySuffix,
+  pathExists,
+} from "@/lib/hostFileAccess";
+import type {
+  AgentCallNode,
+  AggregatedAiMessage,
+  AggregatedAiSession,
+  AiMessageRole,
+  AiSessionDetailReaderResult,
+  AiSessionReaderContext,
+  AiSessionReaderResult,
+  LiveAiSessionWindows,
+  LiveProviderSnapshot,
+} from "@/lib/aiSessions/types";
 
 const DEFAULT_DETAIL_LIMIT = 20;
 
@@ -285,6 +303,131 @@ function extractCodexPayloadMessages(payload: Record<string, unknown>): Array<{ 
   return text ? [{ role: "unknown", text }] : [];
 }
 
+/**
+ * 이 worktree에서 지금 돌고 있는 Codex 스레드와, 각 스레드가 띄운 서브에이전트를 찾는다.
+ *
+ * Codex는 서브에이전트도 자기 rollout 파일을 따로 만들고 첫 줄 `session_meta`에 부모 스레드를 남긴다.
+ * 그래서 최근에 수정된 rollout만 골라 첫 줄만 읽으면 부모·자식 관계를 전부 복원할 수 있다.
+ */
+export async function readCodexLiveSessions(
+  context: AiSessionReaderContext,
+  windows: LiveAiSessionWindows,
+): Promise<LiveProviderSnapshot[]> {
+  const recentFiles = await listFilesModifiedWithin(
+    await getCodexSessionsDirectory(context),
+    ".jsonl",
+    windows.recentWindowMs,
+    context.sshHost,
+  );
+
+  const metaByFile = await mapWithConcurrency(
+    recentFiles,
+    context.sshHost ? REMOTE_SESSION_FILE_PARSE_CONCURRENCY : recentFiles.length || 1,
+    async (file) => ({ file, meta: await readCodexSessionMeta(file.filePath, context.sshHost) }),
+  );
+
+  const threads = metaByFile.filter((entry): entry is { file: typeof entry.file; meta: CodexThreadMeta } =>
+    entry.meta !== null);
+
+  const ownThreads = pickLiveSessionFiles(
+    threads
+      .filter((thread) => !thread.meta.parentThreadId && determineMatchScope(thread.meta.cwd, context))
+      .map((thread) => ({ ...thread.file, meta: thread.meta })),
+    windows.runningWindowMs,
+  );
+
+  const runningSince = Date.now() - windows.runningWindowMs;
+
+  return Promise.all(ownThreads.map(async (ownThread) => ({
+    sessionId: ownThread.meta.threadId,
+    currentTask: await readCodexCurrentActivity(ownThread.filePath, context.sshHost),
+    lastActiveAt: new Date(ownThread.mtimeMs).toISOString(),
+    runningSubtasks: threads
+      .filter((thread) => thread.meta.parentThreadId === ownThread.meta.threadId)
+      .filter((thread) => thread.file.mtimeMs >= runningSince)
+      .map((thread) => ({
+        id: thread.meta.threadId,
+        name: thread.meta.agentNickname,
+        lastActiveAt: new Date(thread.file.mtimeMs).toISOString(),
+      })),
+  })));
+}
+
+/**
+ * 세션이 지금 무엇을 하는지는 마지막 AI 응답이 가장 잘 말해준다.
+ * 아직 응답이 없는 갓 시작한 세션만 마지막 사용자 입력으로 되돌린다.
+ */
+async function readCodexCurrentActivity(
+  filePath: string,
+  sshHost: string | null | undefined,
+): Promise<string | null> {
+  try {
+    const events = await readJsonLinesTail(filePath, CODEX_TAIL_EVENT_COUNT, sshHost);
+    return findLatestCodexRoleText(events, "assistant") ?? findLatestCodexRoleText(events, "user");
+  } catch {
+    // rollout을 읽지 못해도 실행중 여부는 파일 활동만으로 판정할 수 있다.
+    return null;
+  }
+}
+
+function findLatestCodexRoleText(events: unknown[], role: "assistant" | "user"): string | null {
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const payload = (events[index] as CodexRolloutEvent)?.payload;
+    if (payload?.role !== role) continue;
+
+    const text = extractPlainText(payload.content);
+    if (text) {
+      return truncateText(text, CODEX_CURRENT_TASK_LENGTH);
+    }
+  }
+
+  return null;
+}
+
+const CODEX_TAIL_EVENT_COUNT = 60;
+const CODEX_CURRENT_TASK_LENGTH = 80;
+
+interface CodexThreadMeta {
+  threadId: string;
+  parentThreadId: string | null;
+  agentNickname: string | null;
+  cwd: string | null;
+  startedAt: string | null;
+}
+
+/** rollout 첫 줄의 `session_meta`만 읽는다. 본문까지 파싱하면 폴링마다 전체 대화를 훑게 된다 */
+async function readCodexSessionMeta(
+  filePath: string,
+  sshHost: string | null | undefined,
+): Promise<CodexThreadMeta | null> {
+  try {
+    const [firstLine] = await readJsonLinesHead(filePath, 1, sshHost);
+    const payload = (firstLine as { type?: string; payload?: Record<string, unknown> } | undefined);
+    if (payload?.type !== "session_meta" || !payload.payload) {
+      return null;
+    }
+
+    const meta = payload.payload;
+    const threadId = typeof meta.id === "string"
+      ? meta.id
+      : typeof meta.session_id === "string" ? meta.session_id : null;
+
+    if (!threadId) {
+      return null;
+    }
+
+    return {
+      threadId,
+      parentThreadId: typeof meta.parent_thread_id === "string" ? meta.parent_thread_id : null,
+      agentNickname: typeof meta.agent_nickname === "string" ? meta.agent_nickname : null,
+      cwd: typeof meta.cwd === "string" ? meta.cwd : null,
+      startedAt: toIsoString(meta.timestamp),
+    };
+  } catch {
+    return null;
+  }
+}
+
 function matchesCodexQuery(query: string | undefined, ...values: Array<string | null | undefined>): boolean {
   if (!query) return true;
   const normalizedQuery = query.toLowerCase();
@@ -302,4 +445,78 @@ function resolveCodexMessageRole(role: unknown): AiMessageRole {
 
 async function getCodexSessionsDirectory(context: AiSessionReaderContext): Promise<string> {
   return path.join(await getHomeDirectory(context.sshHost), ".codex", "sessions");
+}
+
+/**
+ * 스레드 하나가 띄운 Codex 서브에이전트 호출 그래프를 만든다.
+ *
+ * 서브에이전트도 자기 rollout을 만들고 첫 줄 `session_meta.parent_thread_id`로 부모를 가리키므로,
+ * 그 포인터를 계속 타고 내려가면 깊이 제한 없이 그래프가 복원된다.
+ * 다만 끝났다는 기록은 남기지 않아, 한동안 움직이지 않은 스레드를 끝난 것으로 본다.
+ */
+export async function readCodexAgentCallGraph(
+  context: AiSessionReaderContext,
+  sessionId: string,
+  windows: LiveAiSessionWindows,
+): Promise<AgentCallNode[]> {
+  const recentFiles = await listFilesModifiedWithin(
+    await getCodexSessionsDirectory(context),
+    ".jsonl",
+    windows.recentWindowMs,
+    context.sshHost,
+  );
+
+  const metaByFile = await mapWithConcurrency(
+    recentFiles,
+    context.sshHost ? REMOTE_SESSION_FILE_PARSE_CONCURRENCY : recentFiles.length || 1,
+    async (file) => ({ file, meta: await readCodexSessionMeta(file.filePath, context.sshHost) }),
+  );
+
+  const threadsByParentId = new Map<string, CodexChildThread[]>();
+  for (const { file, meta } of metaByFile) {
+    if (!meta?.parentThreadId) {
+      continue;
+    }
+
+    const siblings = threadsByParentId.get(meta.parentThreadId) ?? [];
+    siblings.push({ meta, mtimeMs: file.mtimeMs });
+    threadsByParentId.set(meta.parentThreadId, siblings);
+  }
+
+  return toCodexAgentCallNodes(sessionId, {
+    threadsByParentId,
+    runningSince: Date.now() - windows.runningWindowMs,
+    visitedThreadIds: new Set<string>(),
+  });
+}
+
+interface CodexChildThread {
+  meta: CodexThreadMeta;
+  mtimeMs: number;
+}
+
+interface CodexGraphIndex {
+  threadsByParentId: Map<string, CodexChildThread[]>;
+  runningSince: number;
+  /** 기록이 서로를 부모로 가리키는 이상한 경우에도 재귀가 멈추도록 이미 그린 스레드를 기억한다 */
+  visitedThreadIds: Set<string>;
+}
+
+function toCodexAgentCallNodes(parentThreadId: string, index: CodexGraphIndex): AgentCallNode[] {
+  const childThreads = (index.threadsByParentId.get(parentThreadId) ?? [])
+    .filter((child) => !index.visitedThreadIds.has(child.meta.threadId));
+
+  return childThreads.map((child) => {
+    index.visitedThreadIds.add(child.meta.threadId);
+
+    return {
+      id: child.meta.threadId,
+      agentType: null,
+      skill: null,
+      task: child.meta.agentNickname,
+      startedAt: child.meta.startedAt,
+      endedAt: child.mtimeMs >= index.runningSince ? null : new Date(child.mtimeMs).toISOString(),
+      children: toCodexAgentCallNodes(child.meta.threadId, index),
+    };
+  });
 }

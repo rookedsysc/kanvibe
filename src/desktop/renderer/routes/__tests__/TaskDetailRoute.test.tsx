@@ -26,11 +26,14 @@ const mocks = vi.hoisted(() => ({
   getTaskOpenCodeHooksStatus: vi.fn(),
   getTaskAiSessions: vi.fn(),
   getTaskAiSessionDetail: vi.fn(),
+  getTaskLiveAiSessions: vi.fn(),
   getAllProjects: vi.fn(),
   getSidebarDefaultCollapsed: vi.fn(),
   getSidebarHintDismissed: vi.fn(),
   getDoneAlertDismissed: vi.fn(),
   getDefaultSessionType: vi.fn(),
+  getNotificationUnreadOnlyEnabled: vi.fn(),
+  setNotificationUnreadOnlyEnabled: vi.fn(),
   listNotifications: vi.fn(),
   markNotificationRead: vi.fn(),
   markTaskNotificationsRead: vi.fn(),
@@ -95,8 +98,29 @@ vi.mock("@hugeicons/react", () => ({
 }));
 
 vi.mock("@hugeicons/core-free-icons", () => ({
+  Activity03Icon: { __iconName: "Activity03Icon" },
+  ChartHistogramIcon: { __iconName: "ChartHistogramIcon" },
   Chatting01Icon: { __iconName: "Chatting01Icon" },
   InformationCircleIcon: { __iconName: "InformationCircleIcon" },
+}));
+
+vi.mock("@/desktop/renderer/actions/aiUsage", () => ({
+  getAiUsageSnapshot: vi.fn().mockResolvedValue({
+    fetchedAt: "2026-08-10T06:00:00.000Z",
+    accounts: [
+      {
+        provider: "claude",
+        accountId: "account-uuid",
+        label: "me@example.com",
+        status: "ok",
+        planName: null,
+        windows: [{ kind: "session", modelName: null, usedPercent: 22, resetsAt: null }],
+        reason: null,
+        fetchedAt: "2026-08-10T06:00:00.000Z",
+      },
+    ],
+  }),
+  getCachedAiUsageSnapshot: vi.fn().mockResolvedValue(null),
 }));
 
 vi.mock("mermaid", () => ({
@@ -140,6 +164,7 @@ vi.mock("@/desktop/renderer/actions/project", () => ({
   getTaskOpenCodeHooksStatus: (...args: unknown[]) => mocks.getTaskOpenCodeHooksStatus(...args),
   getTaskAiSessions: (...args: unknown[]) => mocks.getTaskAiSessions(...args),
   getTaskAiSessionDetail: (...args: unknown[]) => mocks.getTaskAiSessionDetail(...args),
+  getTaskLiveAiSessions: (...args: unknown[]) => mocks.getTaskLiveAiSessions(...args),
   getAllProjects: (...args: unknown[]) => mocks.getAllProjects(...args),
 }));
 
@@ -148,6 +173,8 @@ vi.mock("@/desktop/renderer/actions/appSettings", () => ({
   getSidebarHintDismissed: (...args: unknown[]) => mocks.getSidebarHintDismissed(...args),
   getDoneAlertDismissed: (...args: unknown[]) => mocks.getDoneAlertDismissed(...args),
   getDefaultSessionType: (...args: unknown[]) => mocks.getDefaultSessionType(...args),
+  getNotificationUnreadOnlyEnabled: (...args: unknown[]) => mocks.getNotificationUnreadOnlyEnabled(...args),
+  setNotificationUnreadOnlyEnabled: (...args: unknown[]) => mocks.setNotificationUnreadOnlyEnabled(...args),
 }));
 
 vi.mock("@/desktop/renderer/actions/notifications", () => ({
@@ -285,6 +312,11 @@ describe("TaskDetailRoute", () => {
       sessions: [],
       sources: [],
     });
+    mocks.getTaskLiveAiSessions.mockResolvedValue({
+      taskId: "task-1",
+      isRemote: false,
+      sessions: [],
+    });
     mocks.getTaskAiSessionDetail.mockResolvedValue({
       sessionId: "empty-session",
       provider: "claude",
@@ -309,6 +341,8 @@ describe("TaskDetailRoute", () => {
     mocks.getSidebarHintDismissed.mockResolvedValue(false);
     mocks.getDoneAlertDismissed.mockResolvedValue(false);
     mocks.getDefaultSessionType.mockResolvedValue("tmux");
+    mocks.getNotificationUnreadOnlyEnabled.mockResolvedValue(false);
+    mocks.setNotificationUnreadOnlyEnabled.mockResolvedValue(undefined);
     mocks.listNotifications.mockResolvedValue([]);
     mocks.markNotificationRead.mockResolvedValue(undefined);
     mocks.markTaskNotificationsRead.mockResolvedValue(0);
@@ -2684,5 +2718,152 @@ describe("TaskDetailRoute", () => {
     expect(screen.getByRole("button", { name: "aiSessions.roles.developer" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "aiSessions.roles.reasoning" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "aiSessions.roles.tool" })).toBeTruthy();
+  });
+
+  it("PR이 없는 task는 dock 4번 shortcut으로 실행중 세션 패널을 연다", async () => {
+    mocks.getSidebarDefaultCollapsed.mockResolvedValue(true);
+    mocks.getTaskLiveAiSessions.mockResolvedValue({
+      taskId: "task-1",
+      isRemote: false,
+      sessions: [{
+        provider: "claude",
+        sessionId: "session-a",
+        currentTask: "실행중 세션 패널 구현",
+        state: "running",
+        lastActiveAt: "2026-08-10T00:00:00.000Z",
+        runningSubtasks: [{ id: "agent-1", name: "Explore", lastActiveAt: null }],
+        terminalWindow: { sessionName: "kanvibe-task", windowId: "@7", windowName: "claude" },
+      }],
+    });
+    mocks.getTaskById.mockResolvedValue({
+      id: "task-1",
+      title: "task title",
+      description: null,
+      branchName: "feat/live-sessions",
+      baseBranch: "main",
+      prUrl: null,
+      sessionType: "tmux",
+      sessionName: "task-session",
+      sshHost: null,
+      projectId: "project-1",
+      project: { id: "project-1", name: "kanvibe" },
+      status: "todo",
+      agentType: null,
+      worktreePath: "/repo__worktrees/live-sessions",
+    });
+
+    render(
+      <BoardCommandProvider>
+        <TaskDetailRoute />
+      </BoardCommandProvider>,
+    );
+
+    await screen.findByLabelText("terminal input");
+
+    fireEvent.keyDown(window, { key: "4", ctrlKey: true });
+
+    expect(await screen.findByTestId("live-ai-session-claude")).toBeTruthy();
+    expect(screen.getByTestId("live-ai-session-state-running")).toBeTruthy();
+    expect(screen.getAllByTestId("live-ai-subtask").map((node) => node.textContent)).toEqual(["Explore"]);
+  });
+
+  it("PR이 있는 task에서는 실행중 세션 패널이 dock 5번 shortcut으로 밀린다", async () => {
+    mocks.getSidebarDefaultCollapsed.mockResolvedValue(true);
+    mocks.getTaskById.mockResolvedValue({
+      id: "task-1",
+      title: "task title",
+      description: null,
+      branchName: "feat/live-sessions",
+      baseBranch: "main",
+      prUrl: "https://github.com/kanvibe/kanvibe/pull/348",
+      sessionType: "tmux",
+      sessionName: "task-session",
+      sshHost: null,
+      projectId: "project-1",
+      project: { id: "project-1", name: "kanvibe" },
+      status: "todo",
+      agentType: null,
+      worktreePath: "/repo__worktrees/live-sessions",
+    });
+
+    render(
+      <BoardCommandProvider>
+        <TaskDetailRoute />
+      </BoardCommandProvider>,
+    );
+
+    await screen.findByLabelText("terminal input");
+
+    fireEvent.keyDown(window, { key: "5", ctrlKey: true });
+
+    expect(await screen.findByTestId("live-ai-session-panel")).toBeTruthy();
+  });
+
+  const usagePanelTargetTask = {
+    id: "task-1",
+    title: "task title",
+    description: null,
+    branchName: "feat/ai-usage",
+    baseBranch: "main",
+    prUrl: "https://example.com/pull/1",
+    sessionType: null,
+    sessionName: null,
+    sshHost: null,
+    projectId: "project-1",
+    project: { id: "project-1", name: "kanvibe" },
+    status: "todo",
+    agentType: null,
+    worktreePath: "/repo__worktrees/ai-usage",
+  };
+
+  it("사용량 버튼은 dock 번호를 밀지 않고 Mod+0을 쓴다", async () => {
+    mocks.getTaskById.mockResolvedValue(usagePanelTargetTask);
+
+    render(<TaskDetailRoute />);
+    await screen.findByTestId("task-title");
+
+    expect(screen.getByTitle("info (Ctrl+1)")).toBeTruthy();
+    expect(screen.getByTitle("actions · hooksStatus (Ctrl+2)")).toBeTruthy();
+    expect(screen.getByTitle("aiSessions.inlineChat (Ctrl+3)")).toBeTruthy();
+    expect(screen.getByTitle("PR (Ctrl+4)")).toBeTruthy();
+    expect(screen.getByTestId("task-detail-usage-button").getAttribute("title"))
+      .toBe("aiUsage.title (Ctrl+0)");
+  });
+
+  it("Mod+0으로 사용량 패널을 열고 다시 눌러 닫는다", async () => {
+    mocks.getTaskById.mockResolvedValue(usagePanelTargetTask);
+
+    render(<TaskDetailRoute />);
+    await screen.findByTestId("task-title");
+
+    expect(screen.queryByTestId("ai-usage-panel")).toBeNull();
+
+    fireEvent.keyDown(window, { key: "0", ctrlKey: true });
+    expect(await screen.findByTestId("ai-usage-panel")).toBeTruthy();
+
+    fireEvent.keyDown(window, { key: "0", ctrlKey: true });
+    await waitFor(() => {
+      expect(screen.queryByTestId("ai-usage-panel")).toBeNull();
+    });
+  });
+
+  it("Electron이 보낸 사용량 단축키로도 패널이 열린다", async () => {
+    mocks.getTaskById.mockResolvedValue(usagePanelTargetTask);
+    let sendUsageShortcut: (() => void) | null = null;
+    window.kanvibeDesktop = {
+      onTaskDetailUsageShortcut: (listener: () => void) => {
+        sendUsageShortcut = listener;
+        return () => {};
+      },
+    };
+
+    render(<TaskDetailRoute />);
+    await screen.findByTestId("task-title");
+
+    act(() => {
+      sendUsageShortcut?.();
+    });
+
+    expect(await screen.findByTestId("ai-usage-panel")).toBeTruthy();
   });
 });

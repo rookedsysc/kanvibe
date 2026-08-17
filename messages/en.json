@@ -13,8 +13,11 @@
     "notifications": "Notifications",
     "markAllRead": "Mark all read",
     "noNotifications": "No notifications yet.",
+    "noUnreadNotifications": "No unread notifications.",
     "allCaughtUp": "All caught up.",
     "unreadCount": "{count} unread",
+    "notificationFilterAll": "All",
+    "notificationFilterUnread": "Unread",
     "notificationTaskMissingTitle": "Task not found",
     "notificationTaskMissingBody": "This notification targets a task that has already been deleted or no longer exists.",
     "goBack": "Go back",
@@ -420,7 +423,51 @@
     "terminalTabs": "Terminal tabs",
     "newTerminalTab": "New tab",
     "closeTerminalTab": "Close {name} tab",
-    "renameTerminalTab": "Rename tab"
+    "renameTerminalTab": "Rename tab",
+    "liveSessions": {
+      "title": "Live sessions",
+      "empty": "No AI session is running.",
+      "running": "Running",
+      "idle": "Idle",
+      "subtaskCount": "{count} subtasks",
+      "providerSessionCount": "{provider} sessions: {count}",
+      "elapsedSeconds": "{seconds}s ago",
+      "elapsedMinutes": "{minutes}m ago",
+      "elapsedHours": "{hours}h ago",
+      "focusTerminal": "Go to the {window} terminal",
+      "dock": "Live sessions",
+      "graph": {
+        "open": "Graph",
+        "back": "← Back",
+        "summary": "{total} sub · {running} running · depth {depth}",
+        "lineage": "Call lineage",
+        "start": "Start",
+        "now": "Now",
+        "loading": "Building the call graph…",
+        "empty": "This session did not spawn any subagent."
+      }
+    },
+    "aiUsage": {
+      "title": "AI usage",
+      "refresh": "Refresh",
+      "loading": "Loading usage",
+      "refreshing": "Refreshing usage",
+      "session": "5 hours",
+      "weekly": "7 days",
+      "monthly": "30 days",
+      "resetsAt": "Resets {time}",
+      "updatedAt": "As of {time}",
+      "snapshotFailed": "Could not load usage.",
+      "reasons": {
+        "missing-credentials": "Not signed in.",
+        "expired-credentials": "Authentication expired. Run claude once in a terminal to refresh it.",
+        "keychain-unreadable": "Could not read the Keychain. Unlock your Mac, then refresh.",
+        "gemini-cli-not-found": "Token expired and the Gemini CLI was not found, so it cannot be refreshed.",
+        "rate-limited": "Too many requests. Try again shortly.",
+        "empty-response": "The response carried no usage data.",
+        "fetch-failed": "Could not fetch usage."
+      }
+    }
   },
   "projectBranchTasks": {
     "title": "Project Tasks",

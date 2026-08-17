@@ -9,6 +9,7 @@ import { useFlipReflow } from "@/desktop/renderer/hooks/useFlipReflow";
 import type { UnreadNotificationCountByTask } from "@/desktop/renderer/hooks/useUnreadNotificationCountByTask";
 import type { KanbanTask, TaskStatus } from "@/entities/KanbanTask";
 import type { TaskPriority } from "@/entities/TaskPriority";
+import type { RunningAgentPane } from "@/lib/aiSessions/types";
 
 interface ColumnProps {
   status: TaskStatus;
@@ -26,6 +27,8 @@ interface ColumnProps {
   onLoadMore?: () => void;
   isLoadingMore?: boolean;
   vimModeEnabled?: boolean;
+  /** 보드가 한 번만 조회해 모든 카드가 나눠 쓰는 실행중 에이전트 목록 */
+  runningAgentPanes?: RunningAgentPane[];
 }
 
 interface TaskGroup {
@@ -91,6 +94,7 @@ export default function Column({
   onLoadMore,
   isLoadingMore,
   vimModeEnabled = true,
+  runningAgentPanes,
 }: ColumnProps) {
   const t = useTranslations("board");
   const columnRef = useFlipReflow<HTMLDivElement>(tasks.map((task) => task.id).join(","));
@@ -156,6 +160,7 @@ export default function Column({
                         }
                         rootPriorityByProjectId={rootPriorityByProjectId}
                         vimModeEnabled={vimModeEnabled}
+                        runningAgentPanes={runningAgentPanes}
                       />
                     ))}
                   </Fragment>
@@ -185,6 +190,7 @@ export default function Column({
                       }
                       rootPriorityByProjectId={rootPriorityByProjectId}
                       vimModeEnabled={vimModeEnabled}
+                      runningAgentPanes={runningAgentPanes}
                     />
                   ))}
                 </ProjectTaskGroup>
