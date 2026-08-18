@@ -1,6 +1,7 @@
 import { execFile } from "node:child_process";
 import {
   AI_PROVIDER_CONFIG_DIR_SPECS,
+  toDefaultAccountRoot,
   type AiProviderConfigDirSpec,
 } from "@/lib/aiUsage/providerConfigDir";
 import { createLocalShellEnvironment } from "@/lib/shellEnvironment";
@@ -104,12 +105,24 @@ const AI_PROVIDER_CLI_SPECS: Record<AiUsageProvider, AiProviderCliSpec> = {
  * 계정 위치를 알리는 변수 하나만 얹은 자식 프로세스 환경을 만든다.
  *
  * 서버 런타임 값이 CLI로 새지 않도록 로컬 셸 환경 규칙을 그대로 쓰고, 그 위에 provider 변수만 더한다.
+ *
+ * 기본 루트일 때는 그 변수를 얹는 대신 지운다. CLI가 스스로 고르는 자리와 같은 값이지만, Claude Code는
+ * `CLAUDE_CONFIG_DIR`가 있으면 설정 파일을 홈이 아니라 config dir 안에 새로 만든다.
+ * 그러면 같은 계정의 신원이 홈과 config dir 두 곳으로 갈려, 탐색이 계정 이메일을 잃는다.
+ * 사용자가 셸에서 내보낸 값이 그대로 상속돼 있을 수 있으므로, 얹지 않는 것으로는 모자라고 지워야
+ * 이 호출이 겨냥한 계정과 CLI가 여는 계정이 어긋나지 않는다.
  */
 export function createProviderCliEnvironment(
   spec: AiProviderConfigDirSpec,
   accountRoot: string,
 ): Record<string, string> {
-  return { ...createLocalShellEnvironment(), [spec.homeEnvVar]: accountRoot };
+  const environment = createLocalShellEnvironment();
+  if (accountRoot === toDefaultAccountRoot(spec)) {
+    delete environment[spec.homeEnvVar];
+    return environment;
+  }
+
+  return { ...environment, [spec.homeEnvVar]: accountRoot };
 }
 
 /** 로그인 세션이 띄울 명령. PTY를 다루는 쪽이 실행 방식을 정하므로 여기서는 이름과 인자만 준다 */

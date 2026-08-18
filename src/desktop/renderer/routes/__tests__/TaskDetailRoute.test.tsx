@@ -502,7 +502,8 @@ describe("TaskDetailRoute", () => {
     worktreePath: "/repo__worktrees/detail-notifications",
   };
 
-  it("상세 화면에 진입하면 해당 task의 알림을 모두 읽음 처리한다", async () => {
+  it("창이 활성인 상태로 상세 화면에 진입하면 해당 task의 알림을 모두 읽음 처리한다", async () => {
+    vi.spyOn(document, "hasFocus").mockReturnValue(true);
     mocks.getTaskById.mockResolvedValue(notificationReadTargetTask);
 
     render(<TaskDetailRoute />);
@@ -512,8 +513,48 @@ describe("TaskDetailRoute", () => {
     expect(mocks.markTaskNotificationsRead).toHaveBeenCalledWith("task-1");
   });
 
+  it("창이 비활성이면 상세 화면이 새로고침돼도 알림을 읽음 처리하지 않는다", async () => {
+    vi.spyOn(document, "hasFocus").mockReturnValue(false);
+    let refreshSignal = 0;
+    mocks.useRefreshSignal.mockImplementation(() => refreshSignal);
+    mocks.getTaskById.mockResolvedValue(notificationReadTargetTask);
+
+    const { rerender } = render(<TaskDetailRoute />);
+
+    await screen.findByTestId("task-title");
+
+    refreshSignal = 1;
+    rerender(<TaskDetailRoute />);
+
+    await waitFor(() => {
+      expect(mocks.getTaskById).toHaveBeenCalledTimes(2);
+    });
+
+    expect(mocks.markTaskNotificationsRead).not.toHaveBeenCalled();
+  });
+
+  it("비활성으로 열려 있던 상세 화면이 포커스를 받으면 그때 알림을 읽음 처리한다", async () => {
+    const hasFocusSpy = vi.spyOn(document, "hasFocus").mockReturnValue(false);
+    mocks.getTaskById.mockResolvedValue(notificationReadTargetTask);
+
+    render(<TaskDetailRoute />);
+
+    await screen.findByTestId("task-title");
+    expect(mocks.markTaskNotificationsRead).not.toHaveBeenCalled();
+
+    hasFocusSpy.mockReturnValue(true);
+    act(() => {
+      window.dispatchEvent(new Event("focus"));
+    });
+
+    await waitFor(() => {
+      expect(mocks.markTaskNotificationsRead).toHaveBeenCalledWith("task-1");
+    });
+  });
+
   it("알림 읽음 처리가 실패하면 로그를 남기고 상세 화면 렌더는 계속한다", async () => {
     const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.spyOn(document, "hasFocus").mockReturnValue(true);
     mocks.getTaskById.mockResolvedValue(notificationReadTargetTask);
     mocks.markTaskNotificationsRead.mockRejectedValue(new Error("app settings write failed"));
 
@@ -529,6 +570,7 @@ describe("TaskDetailRoute", () => {
   });
 
   it("존재하지 않는 task로 진입하면 알림을 읽음 처리하지 않는다", async () => {
+    vi.spyOn(document, "hasFocus").mockReturnValue(true);
     mocks.getTaskById.mockResolvedValue(null);
 
     render(<TaskDetailRoute />);

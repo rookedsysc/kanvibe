@@ -156,6 +156,49 @@ describe("discoverProviderAccounts(claude)", () => {
     expect(await discoverProviderAccounts("claude")).toHaveLength(1);
   });
 
+  it("기본 루트의 설정 파일에 계정 정보가 없으면 홈 설정에서 계정을 읽는다", async () => {
+    vi.stubEnv("CLAUDE_CONFIG_DIR", "");
+    const configDir = path.join(fakeHome, ".claude");
+    await mkdir(configDir, { recursive: true });
+    // CLAUDE_CONFIG_DIR를 얹어 CLI를 부르면 Claude Code가 로그인 정보 없는 설정 파일을 여기에 만든다
+    await writeFile(path.join(configDir, ".claude.json"), JSON.stringify({ numStartups: 1 }), "utf-8");
+    await writeFile(
+      path.join(fakeHome, ".claude.json"),
+      JSON.stringify({ oauthAccount: { accountUuid: "uuid-mac", emailAddress: "mac@example.com" } }),
+      "utf-8",
+    );
+    mockReadClaudeKeychainCredentials.mockResolvedValue({
+      outcome: "found",
+      credentials: JSON.stringify({ claudeAiOauth: { accessToken: "keychain-token" } }),
+    });
+
+    const accounts = await discoverProviderAccounts("claude");
+
+    expect(accounts).toHaveLength(1);
+    expect(accounts[0].accountId).toBe("uuid-mac");
+    expect(accounts[0].label).toBe("mac@example.com");
+  });
+
+  it("형제 루트는 계정 정보가 없어도 홈 계정의 신원을 물려받지 않는다", async () => {
+    vi.stubEnv("CLAUDE_CONFIG_DIR", "");
+    await writeClaudeConfigDir(".claude", { accountUuid: "uuid-home", emailAddress: "home@example.com" });
+    const workDir = path.join(fakeHome, ".claude-work");
+    await mkdir(workDir, { recursive: true });
+    await writeFile(
+      path.join(workDir, ".credentials.json"),
+      JSON.stringify({ claudeAiOauth: { accessToken: "token" } }),
+      "utf-8",
+    );
+    await writeFile(path.join(workDir, ".claude.json"), JSON.stringify({ numStartups: 1 }), "utf-8");
+
+    const accounts = await discoverProviderAccounts("claude");
+
+    expect(accounts).toHaveLength(2);
+    const workAccount = accounts.find((account) => account.accountRoot === workDir);
+    expect(workAccount?.accountId).toBe(workDir);
+    expect(workAccount?.label).toBe("work");
+  });
+
   it("파일에서 이미 찾은 계정이 있으면 Keychain을 다시 묻지 않는다", async () => {
     vi.stubEnv("CLAUDE_CONFIG_DIR", "");
     await writeClaudeConfigDir(".claude", { accountUuid: "uuid-file", emailAddress: "file@example.com" });
