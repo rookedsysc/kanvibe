@@ -114,6 +114,19 @@ zellij and plain terminal sessions are judged by transcript activity alone, so a
 - When several accounts are registered, each one is queried separately and labeled so you can tell them apart.
 - Opening the panel shows the last result first and reports refreshing above it, so it never opens blank after a restart.
 
+## AI accounts
+
+<figure className="kv-shot">
+  <img src="/screenshots/ai-accounts.png" alt="AI accounts screen showing sign-in state, plan tier, and remaining usage for Claude, Codex, and Gemini" />
+  <figcaption>Register accounts per provider under Settings → AI accounts, and read remaining usage on the same screen.</figcaption>
+</figure>
+
+- Adding an account creates its home and launches that CLI's own sign-in command in an in-app terminal, pointed at it. You never leave for a terminal.
+- When a sign-in expires, the app asks that CLI to refresh and reads the result back. KanVibe never rewrites the CLI's stored credentials itself.
+- Account homes follow the sibling-directory convention (`~/.claude-work` and so on), so the same account works from a terminal by switching one environment variable.
+- Signed-out accounts stay in the list so there is still somewhere to sign in again.
+- Removing an account signs out through that CLI, then deletes only the account home KanVibe created. Directories you made yourself are left alone.
+
 ## Quick task search
 
 <figure className="kv-shot">
