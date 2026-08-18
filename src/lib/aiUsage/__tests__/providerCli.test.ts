@@ -50,14 +50,49 @@ describe("createProviderCliEnvironment", () => {
 
     const environment = createProviderCliEnvironment(
       AI_PROVIDER_CONFIG_DIR_SPECS.claude,
-      "/home/tester/.claude",
+      "/home/tester/.claude-work",
     );
 
     expect(environment.PORT).toBeUndefined();
     expect(environment.HOST).toBeUndefined();
     expect(environment.NODE_ENV).toBeUndefined();
     expect(environment.KANVIBE_INTERNAL_TOKEN).toBeUndefined();
-    expect(environment.CLAUDE_CONFIG_DIR).toBe("/home/tester/.claude");
+    expect(environment.CLAUDE_CONFIG_DIR).toBe("/home/tester/.claude-work");
+  });
+
+  // 기본 루트를 지정하면 Claude Code가 설정 파일을 config dir 안에 새로 만들어 계정 신원이 갈린다
+  it("기본 루트에는 계정 위치 변수를 얹지 않는다", () => {
+    vi.stubEnv("HOME", "/home/tester");
+
+    const environment = createProviderCliEnvironment(
+      AI_PROVIDER_CONFIG_DIR_SPECS.claude,
+      "/home/tester/.claude",
+    );
+
+    expect(environment.CLAUDE_CONFIG_DIR).toBeUndefined();
+  });
+
+  it("셸에서 물려받은 계정 위치 변수도 기본 루트 호출에서는 지운다", () => {
+    vi.stubEnv("HOME", "/home/tester");
+    vi.stubEnv("CLAUDE_CONFIG_DIR", "/home/tester/.claude-work");
+
+    const environment = createProviderCliEnvironment(
+      AI_PROVIDER_CONFIG_DIR_SPECS.claude,
+      "/home/tester/.claude",
+    );
+
+    expect(environment.CLAUDE_CONFIG_DIR).toBeUndefined();
+  });
+
+  it("홈 자체가 기본 루트인 provider도 변수를 얹지 않는다", () => {
+    vi.stubEnv("HOME", "/home/tester");
+
+    const environment = createProviderCliEnvironment(
+      AI_PROVIDER_CONFIG_DIR_SPECS.gemini,
+      "/home/tester",
+    );
+
+    expect(environment.GEMINI_CLI_HOME).toBeUndefined();
   });
 });
 
