@@ -19,9 +19,11 @@ const {
 }));
 
 vi.mock("@/lib/aiUsage/accountDiscovery", () => ({
-  discoverClaudeAccounts: mockDiscoverClaudeAccounts,
-  discoverCodexAccounts: mockDiscoverCodexAccounts,
-  discoverGeminiAccounts: mockDiscoverGeminiAccounts,
+  discoverProviderAccounts: (provider: AiUsageProvider) => ({
+    claude: mockDiscoverClaudeAccounts,
+    codex: mockDiscoverCodexAccounts,
+    gemini: mockDiscoverGeminiAccounts,
+  })[provider](),
 }));
 
 vi.mock("@/lib/aiUsage/readClaudeUsage", () => ({ readClaudeUsage: mockReadClaudeUsage }));
@@ -29,7 +31,13 @@ vi.mock("@/lib/aiUsage/readCodexUsage", () => ({ readCodexUsage: mockReadCodexUs
 vi.mock("@/lib/aiUsage/readGeminiUsage", () => ({ readGeminiUsage: mockReadGeminiUsage }));
 
 function createAccount(provider: AiUsageProvider, accountId: string): AiUsageAccount {
-  return { provider, accountId, label: `${accountId}@example.com`, configDir: `/home/tester/${accountId}` };
+  return {
+    provider,
+    accountId,
+    label: `${accountId}@example.com`,
+    configDir: `/home/tester/${accountId}`,
+    accountRoot: `/home/tester/${accountId}`,
+  };
 }
 
 function createOkResult(account: AiUsageAccount): AiUsageAccountResult {

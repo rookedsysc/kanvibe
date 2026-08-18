@@ -114,6 +114,19 @@ KanVibe 将看板、终端会话、git worktree 与 AI 代理 hooks 连接成一
 - 注册了多个账号时会分别查询，并用标签区分是哪个账号的用量。
 - 打开面板会先显示上次的结果并在上方提示正在刷新，重启应用后也不会出现空白界面。
 
+## AI 账号
+
+<figure className="kv-shot">
+  <img src="/screenshots/ai-accounts.png" alt="显示 Claude、Codex、Gemini 登录状态、订阅等级与剩余用量的 AI 账号界面" />
+  <figcaption>在设置 → AI 账号中按 provider 注册账号，并在同一界面查看剩余用量。</figcaption>
+</figure>
+
+- 添加账号时，KanVibe 会创建账号目录，并指定该位置在应用内终端中启动各 CLI 自带的登录命令，无需切换到外部终端。
+- 认证过期时，应用会委托对应的 CLI 刷新并重新读取结果，KanVibe 不会直接改写 CLI 保存的凭据。
+- 账号目录沿用主目录的同级目录惯例（如 `~/.claude-work`），因此在终端中只需切换一个环境变量即可使用同一账号。
+- 已登出的账号仍保留在列表中，随时可以重新登录。
+- 移除账号时会先通过该 CLI 登出，然后只删除 KanVibe 创建的账号目录，你自己创建的目录会保留。
+
 ## 快速任务搜索
 
 <figure className="kv-shot">

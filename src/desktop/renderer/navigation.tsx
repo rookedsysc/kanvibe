@@ -14,6 +14,10 @@ function getRefreshScope(pathname: string) {
     return "task-detail" as const;
   }
 
+  if (pathname.endsWith("/ai-accounts")) {
+    return "ai-accounts" as const;
+  }
+
   if (pathname.endsWith("/pane-layout")) {
     return "pane-layout" as const;
   }

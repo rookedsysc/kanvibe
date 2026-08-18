@@ -24,6 +24,7 @@ const BOARD_REFRESH_DEBOUNCE_MS = 250;
 
 const DiffRoute = lazy(() => import("@/desktop/renderer/routes/DiffRoute"));
 const NotFoundRoute = lazy(() => import("@/desktop/renderer/routes/NotFoundRoute"));
+const AiAccountsRoute = lazy(() => import("@/desktop/renderer/routes/AiAccountsRoute"));
 const PaneLayoutRoute = lazy(() => import("@/desktop/renderer/routes/PaneLayoutRoute"));
 const SettingsRoute = lazy(() => import("@/desktop/renderer/routes/SettingsRoute"));
 const TaskDetailRoute = lazy(() => import("@/desktop/renderer/routes/TaskDetailRoute"));
@@ -174,6 +175,7 @@ export default function App() {
         <Route path="/" element={<Navigate to={`/${DEFAULT_LOCALE}`} replace />} />
         <Route path="/:locale" element={<LocaleShell />}>
           <Route index element={<BoardRoute />} />
+          <Route path="ai-accounts" element={<DeferredRoute><AiAccountsRoute /></DeferredRoute>} />
           <Route path="pane-layout" element={<DeferredRoute><PaneLayoutRoute /></DeferredRoute>} />
           <Route path="settings" element={<DeferredRoute><SettingsRoute /></DeferredRoute>} />
           <Route path="task/:id" element={<DeferredRoute><TaskDetailRoute /></DeferredRoute>} />

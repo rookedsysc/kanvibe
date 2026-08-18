@@ -776,6 +776,13 @@ function registerDesktopHandlers() {
     closeTerminal,
     closeWindowTerminals,
   } = require(getRuntimeModulePath(path.join("src", "desktop", "main", "terminalBridge.ts")));
+  const {
+    openAiAccountLogin,
+    writeAiAccountLogin,
+    resizeAiAccountLogin,
+    closeAiAccountLogin,
+    closeWindowAiAccountLogins,
+  } = require(getRuntimeModulePath(path.join("src", "desktop", "main", "aiAccountLoginBridge.ts")));
   const { killAllTerminalSessions } = require(getRuntimeModulePath(path.join("src", "lib", "terminal.ts")));
   killAllTerminalSessionsOnQuit = killAllTerminalSessions;
 
@@ -850,6 +857,22 @@ function registerDesktopHandlers() {
     closeTerminal(event.sender.id, taskId, tabId);
   });
 
+  ipcMain.handle("kanvibe:ai-login-open", async (event, provider, accountRoot, cols, rows) => {
+    return openAiAccountLogin(event.sender, provider, accountRoot, cols, rows);
+  });
+
+  ipcMain.on("kanvibe:ai-login-write", (event, accountRoot, data) => {
+    writeAiAccountLogin(event.sender.id, accountRoot, data);
+  });
+
+  ipcMain.on("kanvibe:ai-login-resize", (event, accountRoot, cols, rows) => {
+    resizeAiAccountLogin(event.sender.id, accountRoot, cols, rows);
+  });
+
+  ipcMain.on("kanvibe:ai-login-close", (event, accountRoot) => {
+    closeAiAccountLogin(event.sender.id, accountRoot);
+  });
+
   ipcMain.on("kanvibe:close-current-window", (event) => {
     const senderWindow = BrowserWindow.fromWebContents(event.sender);
     if (senderWindow && !senderWindow.isDestroyed()) {
@@ -866,6 +889,7 @@ function registerDesktopHandlers() {
         console.log(`[터미널-진단] webContents.destroyed → closeWindowTerminals 호출: id=${webContents.id}`);
       }
       closeWindowTerminals(webContents.id);
+      closeWindowAiAccountLogins(webContents.id);
     });
     /** dev 환경에서 vite HMR이 페이지 reload 시 어떤 이벤트를 발생시키는지 추적 */
     if (process.env.KANVIBE_DEBUG_TERMINAL === "true") {

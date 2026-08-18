@@ -1,4 +1,5 @@
 import { fireEvent, render, screen } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import AiUsagePanel from "../AiUsagePanel";
 import type { AiUsageAccountResult, AiUsageSnapshot } from "@/lib/aiUsage/types";
@@ -70,7 +71,12 @@ function renderPanel(overrides: Partial<ReturnType<typeof mockUseAiUsage>> = {})
     ...overrides,
   });
 
-  render(<AiUsagePanel isOpen />);
+  // 계정 화면으로 가는 링크가 붙어 패널도 라우터 컨텍스트를 요구한다
+  render(
+    <MemoryRouter initialEntries={["/ko"]}>
+      <AiUsagePanel isOpen />
+    </MemoryRouter>,
+  );
   return refresh;
 }
 
@@ -236,5 +242,31 @@ describe("AiUsagePanel", () => {
     renderPanel({ snapshot: null, hasFailed: true });
 
     expect(screen.getByText("snapshotFailed")).toBeDefined();
+  });
+});
+
+describe("AiUsagePanel 계정 동선", () => {
+  afterEach(() => {
+    vi.resetAllMocks();
+  });
+
+  it("로그인으로 풀리는 사유에는 계정 화면으로 가는 길을 함께 보여준다", () => {
+    renderPanel({
+      snapshot: createSnapshot([
+        createClaudeAccount({ status: "unavailable", windows: [], reason: "expired-credentials" }),
+      ]),
+    });
+
+    expect(screen.queryByTestId("ai-usage-manage-accounts")).not.toBeNull();
+  });
+
+  it("로그인과 무관한 사유에는 계정 화면으로 보내지 않는다", () => {
+    renderPanel({
+      snapshot: createSnapshot([
+        createClaudeAccount({ status: "error", windows: [], reason: "rate-limited" }),
+      ]),
+    });
+
+    expect(screen.queryByTestId("ai-usage-manage-accounts")).toBeNull();
   });
 });

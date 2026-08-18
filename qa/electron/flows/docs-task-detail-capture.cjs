@@ -9,6 +9,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { execFileSync } = require("node:child_process");
 const { launchKanVibeElectron } = require("../lib/launchElectron.cjs");
+const { maskAccountLabels } = require("../lib/accountLabelMask.cjs");
 
 const ROOT_DIR = process.env.KANVIBE_ROOT_DIR;
 const OUT_DIR = process.env.CAPTURE_OUT_DIR;
@@ -153,32 +154,6 @@ async function openAiUsagePanel(page) {
       && !refreshButton.hasAttribute("disabled")
       && /\d+%/.test(panel.textContent || "");
   }, undefined, { timeout: 40000 });
-}
-
-/**
- * 실제 계정 이메일이 문서 이미지에 남지 않도록 계정 라벨만 예시 주소로 바꾼다.
- *
- * 퍼센트·등급·초기화 시각은 실제 조회 결과 그대로 둔다. 화면 전체를 꾸며 놓으면
- * 이 컷이 증명해야 할 "진짜 구독 사용량이 보인다"가 무너진다.
- *
- * 라벨을 하나도 못 찾으면 실패시킨다. 조용히 넘어가면 실제 이메일이 그대로 찍힌 이미지가
- * 문서에 커밋되는데, 그건 캡처가 끝난 뒤에는 되돌릴 수 없는 종류의 실수다.
- */
-async function maskAccountEmails(page) {
-  const maskedLabelCount = await page.evaluate(() => {
-    const labels = [...document.querySelectorAll("[data-testid='ai-usage-account-label']")];
-    for (const label of labels) {
-      label.textContent = "you@example.com";
-      label.setAttribute("title", "you@example.com");
-    }
-    return labels.length;
-  });
-
-  if (maskedLabelCount === 0) {
-    throw new Error("사용량 카드에서 가릴 계정 라벨을 찾지 못했습니다");
-  }
-
-  return maskedLabelCount;
 }
 
 /** 작업 정보 패널을 다시 띄운다. dock 첫 칸의 단축키가 그대로 토글이다 */
@@ -355,7 +330,7 @@ async function main() {
 
     /** 사용량 컷은 같은 화면에서 dock 최하단 버튼을 눌러 실제 사용 경로 그대로 찍는다 */
     await openAiUsagePanel(page);
-    const maskedLabelCount = await maskAccountEmails(page);
+    const maskedLabelCount = await maskAccountLabels(page, ["ai-usage-account-label"]);
     /** 버튼 위에 커서가 남으면 hover 상태로 찍힌다 */
     await page.mouse.move(Math.round(DETAIL_VIEWPORT.width * 0.75), Math.round(DETAIL_VIEWPORT.height * 0.6));
     await page.waitForTimeout(1500);

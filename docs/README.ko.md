@@ -31,6 +31,24 @@ KanVibe는 AI 코딩 작업이 여러 터미널 탭에 흩어지지 않도록 �
       <strong>태스크 상세 워크스페이스</strong>
     </td>
   </tr>
+  <tr>
+    <td colspan="2">
+      <img src="./images/readme/kanvibe-ai-usage.png" alt="계정별 Claude, Codex, Gemini 남은 사용량을 보여주는 AI 사용량 패널" width="100%">
+      <br>
+      <strong>AI 사용량 — 터미널을 떠나지 않고 계정별 남은 한도 확인</strong>
+      <br>
+      태스크 상세에서 <code>Cmd/Ctrl+0</code>을 누르거나 dock 최하단 아이콘을 클릭합니다. 카드마다 어느 계정의 어떤 등급인지 밝히고, Claude의 모델별 주간 한도는 그 몫을 끌어다 쓰는 7일 한도 아래에 섭니다.
+    </td>
+  </tr>
+  <tr>
+    <td colspan="2">
+      <img src="./images/readme/kanvibe-ai-accounts.png" alt="Claude, Codex, Gemini 계정의 로그인 상태와 구독 등급, 남은 사용량이 함께 보이는 AI 계정 화면" width="100%">
+      <br>
+      <strong>AI 계정 — 앱에서 한 번 로그인해 두고 모든 계정을 한눈에</strong>
+      <br>
+      <strong>설정 → AI 계정</strong>에서 엽니다. provider마다 찾은 계정을 로그인 상태·구독 등급과 함께 나열하고, 남은 사용량도 같은 화면에 섭니다. 로그인은 각 CLI의 공식 로그인 명령을 앱 안 터미널로 띄우므로, 인증이 만료돼도 터미널로 나갈 일이 없습니다.
+    </td>
+  </tr>
 </table>
 
 <a href="https://www.youtube.com/watch?v=8JTrvd3T_Z0">
@@ -194,6 +212,19 @@ brew untap rookedsysc/kanvibe
 - 보드를 떠나지 않고 프로젝트 필터링, 알림 확인, 태스크 액션 실행
 - 키 입력이 터미널에 도달하기 전에 번호형 상세 단축키로 태스크 정보, 상태/hooks, AI 채팅, PR 및 다른 dock 패널 전환
 - 설정된 단축키로 빠른 태스크 검색에서 브랜치 TODO 바로 생성
+
+### AI 사용량과 계정
+
+- 태스크 상세 dock이나 `Cmd/Ctrl+0`으로 Claude, Codex, Gemini 구독의 남은 사용량을 확인
+- 각 CLI가 로컬에 남긴 로그인 정보를 그대로 읽으므로 API 키를 따로 넣지 않음
+- provider마다 다른 창 구조(5시간, 7일, 모델별)를 같은 막대로 정규화하고 초기화 시각과 구독 등급을 함께 표시
+- provider별로 등록된 모든 계정을 조회하고 여럿이면 계정 라벨로 구분
+- 마지막 조회 결과를 먼저 보여주고 위에서 갱신하므로 재시작 후에도 빈 화면으로 열리지 않음
+- **설정 → AI 계정**에서 provider별 계정 추가, 로그인, 다시 로그인, 제거를 모두 처리
+- 계정을 추가하면 계정 자리를 만들고 그 위치를 지정해 각 CLI의 공식 로그인 명령을 앱 안 터미널로 띄움
+- 인증이 만료되면 해당 CLI에 갱신을 맡기고 결과를 다시 읽음. KanVibe가 CLI의 자격증명을 직접 고쳐 쓰지 않음
+- 계정 자리는 홈의 형제 디렉터리 관행(`~/.claude-work` 등)을 따르므로 터미널에서 환경변수만 바꿔도 같은 계정 사용
+- 로그아웃된 계정도 목록에 남아 다시 로그인할 자리를 지키고, 제거는 KanVibe가 만든 계정 자리만 지움
 
 ### 키보드 단축키
 
