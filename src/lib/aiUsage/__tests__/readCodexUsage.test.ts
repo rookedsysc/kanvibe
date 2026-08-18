@@ -11,6 +11,7 @@ const ACCOUNT: AiUsageAccount = {
   accountId: "account-id",
   label: "codex@example.com",
   configDir: "/home/tester/.codex",
+  accountRoot: "/home/tester/.codex",
 };
 
 function createAuthJson(): string {

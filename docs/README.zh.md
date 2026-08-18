@@ -31,6 +31,24 @@ KanVibe 让 AI 编程工作不再散落在一堆终端标签中。你可以在�
       <strong>任务详情工作区</strong>
     </td>
   </tr>
+  <tr>
+    <td colspan="2">
+      <img src="./images/readme/kanvibe-ai-usage.png" alt="按账号显示 Claude、Codex、Gemini 剩余用量的 AI 用量面板" width="100%">
+      <br>
+      <strong>AI 用量 — 不离开终端即可查看各账号的剩余额度</strong>
+      <br>
+      在任务详情页按 <code>Cmd/Ctrl+0</code> 或点击 dock 最下方的图标。每张卡片都会标明属于哪个账号与订阅等级，Claude 的按模型周限额位于其所属的 7 天限额之下。
+    </td>
+  </tr>
+  <tr>
+    <td colspan="2">
+      <img src="./images/readme/kanvibe-ai-accounts.png" alt="显示 Claude、Codex、Gemini 登录状态、订阅等级与剩余用量的 AI 账号界面" width="100%">
+      <br>
+      <strong>AI 账号 — 在应用内登录一次，所有账号一览无余</strong>
+      <br>
+      从<strong>设置 → AI 账号</strong>打开。每个 provider 会列出找到的账号及其登录状态与订阅等级，剩余用量也在同一界面。登录会在应用内终端启动各 CLI 自带的登录命令，因此认证过期也无需切换到外部终端。
+    </td>
+  </tr>
 </table>
 
 <a href="https://www.youtube.com/watch?v=8JTrvd3T_Z0">
@@ -194,6 +212,19 @@ brew untap rookedsysc/kanvibe
 - 不离开看板即可筛选项目、检查通知并触发任务操作
 - 在按键进入终端之前，使用编号详情快捷键切换任务信息、状态/hooks、AI 聊天、PR 和其他 dock 面板
 - 使用配置的快捷键直接从快速任务搜索创建分支 TODO
+
+### AI 用量与账号
+
+- 通过任务详情 dock 或 `Cmd/Ctrl+0` 查看 Claude、Codex、Gemini 订阅的剩余用量
+- 直接读取各 CLI 已保存在本地的登录信息，无需另外填写 API Key
+- 将各 provider 不同的窗口结构（5 小时、7 天、按模型）归一为同样的进度条，并显示重置时间与订阅等级
+- 分别查询每个 provider 下注册的所有账号，多个账号时以标签区分
+- 先显示上次的结果再在上方刷新，重启后也不会出现空白界面
+- 在**设置 → AI 账号**中完成各 provider 的账号添加、登录、重新登录与移除
+- 添加账号时会创建账号目录，并指定该位置在应用内终端启动各 CLI 自带的登录命令
+- 认证过期时委托对应的 CLI 刷新并重新读取结果，KanVibe 不会直接改写 CLI 保存的凭据
+- 账号目录沿用主目录的同级目录惯例（如 `~/.claude-work`），在终端中只需切换一个环境变量即可使用同一账号
+- 已登出的账号仍保留在列表中以便重新登录，移除时只删除 KanVibe 创建的账号目录
 
 ### 键盘快捷键
 

@@ -75,6 +75,32 @@ contextBridge.exposeInMainWorld("kanvibeDesktop", {
   closeTerminal(taskId, tabId) {
     ipcRenderer.send("kanvibe:terminal-close", taskId, tabId);
   },
+  openAiAccountLogin(provider, accountRoot, cols, rows) {
+    return ipcRenderer.invoke("kanvibe:ai-login-open", provider, accountRoot, cols, rows);
+  },
+  writeAiAccountLogin(accountRoot, data) {
+    ipcRenderer.send("kanvibe:ai-login-write", accountRoot, data);
+  },
+  resizeAiAccountLogin(accountRoot, cols, rows) {
+    ipcRenderer.send("kanvibe:ai-login-resize", accountRoot, cols, rows);
+  },
+  closeAiAccountLogin(accountRoot) {
+    ipcRenderer.send("kanvibe:ai-login-close", accountRoot);
+  },
+  onAiAccountLoginData(listener) {
+    const handler = (_event, payload) => listener(payload);
+    ipcRenderer.on("kanvibe:ai-login-data", handler);
+    return () => {
+      ipcRenderer.removeListener("kanvibe:ai-login-data", handler);
+    };
+  },
+  onAiAccountLoginExit(listener) {
+    const handler = (_event, payload) => listener(payload);
+    ipcRenderer.on("kanvibe:ai-login-exit", handler);
+    return () => {
+      ipcRenderer.removeListener("kanvibe:ai-login-exit", handler);
+    };
+  },
   closeCurrentWindow() {
     ipcRenderer.send("kanvibe:close-current-window");
   },

@@ -2,6 +2,7 @@ import type { DesktopServiceNamespace } from "@/desktop/main/serviceRegistry";
 import type { BoardEventPayload } from "@/lib/boardNotifier";
 import type { AppNotification, DesktopNotificationPayload } from "@/desktop/shared/notifications";
 import type { TerminalTabShortcutCommand } from "@/desktop/shared/terminalTabs";
+import type { AiUsageProvider } from "@/lib/aiUsage/types";
 
 declare global {
   interface Window {
@@ -28,6 +29,22 @@ declare global {
       closeTerminal: (taskId: string, tabId: string | null) => void;
       onTerminalData: (listener: (event: { taskId: string; tabId: string | null; data: string }) => void) => () => void;
       onTerminalClose: (listener: (event: { taskId: string; tabId: string | null; reason: string | null }) => void) => () => void;
+      /** AI 계정 로그인 세션은 태스크에 묶이지 않으므로 계정 루트가 식별자다 */
+      openAiAccountLogin?: (
+        provider: AiUsageProvider,
+        accountRoot: string,
+        cols: number,
+        rows: number,
+      ) => Promise<{ ok: boolean; error?: string }>;
+      writeAiAccountLogin?: (accountRoot: string, data: string) => void;
+      resizeAiAccountLogin?: (accountRoot: string, cols: number, rows: number) => void;
+      closeAiAccountLogin?: (accountRoot: string) => void;
+      onAiAccountLoginData?: (
+        listener: (event: { accountRoot: string; data: string }) => void,
+      ) => () => void;
+      onAiAccountLoginExit?: (
+        listener: (event: { accountRoot: string; exitCode: number }) => void,
+      ) => () => void;
       closeCurrentWindow?: () => void;
       onTerminalTabShortcut?: (listener: (command: TerminalTabShortcutCommand) => void) => () => void;
       showNotification?: (payload: DesktopNotificationPayload) => Promise<boolean>;

@@ -262,6 +262,18 @@ export default function ProjectSettings({
           </div>
         </div>
 
+        {/* AI 계정 관리 링크 */}
+        <div className="p-4 border-b border-border-default">
+          <Link
+            href="/ai-accounts"
+            prefetch={false}
+            className="flex items-center justify-between w-full px-3 py-2 text-sm bg-bg-page border border-border-default rounded-md text-text-primary hover:border-brand-primary transition-colors"
+          >
+            <span>{t("aiAccountsLink")}</span>
+            <span className="text-text-muted">&rarr;</span>
+          </Link>
+        </div>
+
         {/* Pane 레이아웃 설정 링크 */}
         <div className="p-4 border-b border-border-default">
           <Link

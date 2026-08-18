@@ -40,6 +40,15 @@ Use shortcuts for project filters, task search, notifications, task detail panel
       Press <code>Cmd/Ctrl+0</code> on a task detail page, or click the bottom dock icon. Every card names the account and plan it belongs to, and Claude's per-model weekly limits sit under the weekly total they draw from.
     </td>
   </tr>
+  <tr>
+    <td colspan="2">
+      <img src="./docs/images/readme/kanvibe-ai-accounts.png" alt="AI accounts screen listing Claude, Codex, and Gemini accounts with sign-in state, plan tier, and remaining usage" width="100%">
+      <br>
+      <strong>AI accounts — sign in once, in the app, and keep every account visible</strong>
+      <br>
+      Open it from <strong>Settings → AI accounts</strong>. Each provider lists the accounts it found with their sign-in state and plan tier, and remaining usage sits on the same screen. Signing in runs that CLI's own sign-in command in an in-app terminal, so an expired account never sends you back to a terminal.
+    </td>
+  </tr>
 </table>
 
 <a href="https://www.youtube.com/watch?v=8JTrvd3T_Z0">
@@ -224,13 +233,18 @@ Each pane can run a custom command (e.g., `vim`, `htop`, `lazygit`, test runner,
 - Use numbered detail shortcuts to switch task info, status/hooks, AI chat, PR, and other dock panels before keystrokes reach the terminal
 - Create a branch TODO directly from quick search with the configured shortcut
 
-### AI Usage
+### AI Usage and Accounts
 
 - Read remaining Claude, Codex, and Gemini subscription usage from the task detail dock or `Cmd/Ctrl+0`
 - Uses the sign-in each CLI already stored locally, so no extra API key is required
 - Normalizes each provider's different window shapes (5-hour, 7-day, per-model) into one bar with reset times and plan tier
 - Queries every registered account per provider and labels them when more than one is signed in
 - Shows the last saved result immediately and refreshes above it, so the panel never opens blank after a restart
+- Manage accounts under **Settings → AI accounts**: add an account per provider, sign in, sign in again, or remove one
+- Adding an account creates its home and launches that CLI's own sign-in command in an in-app terminal, pointed at it
+- An expired sign-in is refreshed by asking that CLI to do it; KanVibe never rewrites the credentials a CLI stores
+- Account homes follow the sibling-directory convention (`~/.claude-work` and so on), so the same account works from a terminal by switching one environment variable
+- Signed-out accounts stay listed so there is still somewhere to sign in again, and removing one deletes only the account home KanVibe created
 
 ### Keyboard Shortcuts
 

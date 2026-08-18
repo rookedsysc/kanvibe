@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 
 const REFRESH_EVENT_NAME = "kanvibe:navigation-refresh";
 
-export type DesktopRefreshScope = "all" | "board" | "task-detail" | "diff" | "pane-layout" | "settings";
+export type DesktopRefreshScope = "all" | "board" | "task-detail" | "diff" | "ai-accounts" | "pane-layout" | "settings";
 
 interface DesktopRefreshDetail {
   scope: DesktopRefreshScope;

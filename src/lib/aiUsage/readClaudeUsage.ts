@@ -12,6 +12,7 @@ import {
   refreshClaudeCredentials,
 } from "@/lib/aiUsage/claudeOAuthRefresh";
 import { writeCredentialsAtomically } from "@/lib/aiUsage/atomicCredentialsWrite";
+import { refreshCredentialsThroughCli } from "@/lib/aiUsage/providerCli";
 import {
   readClaudeAccessToken,
   readClaudeKeychainCredentials,
@@ -68,15 +69,51 @@ interface ClaudeUsageResponse {
 }
 
 /**
- * 액세스 토큰이 만료 임박이면 갱신한 뒤 조회한다.
+ * Keychain에 있는 자격증명을 갱신한다.
  *
- * 자격증명 파일이 없으면 macOS Keychain이 원본이다. Keychain은 Claude Code의 소유이고
- * 회전된 refresh 토큰을 그쪽에 되쓸 안전한 방법이 없어, 그 경우에는 갱신하지 않고 있는 값만 쓴다.
- * 갱신했는데 되쓰지 못하면 사용자의 CLI 로그인까지 끊기므로 갱신과 되쓰기는 함께 가능할 때만 한다.
+ * Keychain 항목은 Claude Code의 소유라 KanVibe가 회전된 refresh 토큰을 되쓰면 CLI 쪽 로그인이 깨진다.
+ * 그래서 갱신 자체를 소유자에게 맡기고 결과만 다시 읽는다. 예전에는 여기서 포기하고 사용자에게
+ * "터미널에서 claude를 한 번 실행하라"고 떠넘겼는데, 그 실행을 앱이 대신하는 것이 이 함수다.
+ */
+async function refreshKeychainCredentials(configDir: string): Promise<string> {
+  await refreshCredentialsThroughCli("claude", configDir);
+
+  const refreshedResult = await readClaudeKeychainCredentials([configDir]);
+  return refreshedResult.outcome === "found" ? refreshedResult.credentials : "";
+}
+
+/**
+ * 자격증명 파일이 없으면 macOS Keychain이 원본이다.
+ * 만료 임박이 아니면 있는 값을 그대로 쓰고, 만료 임박일 때만 CLI에 갱신을 맡긴다.
+ */
+async function readFreshKeychainCredentials(
+  configDir: string,
+): Promise<{ credentials: string; isKeychainUnreadable: boolean }> {
+  const keychainResult = await readClaudeKeychainCredentials([configDir]);
+  if (keychainResult.outcome !== "found") {
+    return { credentials: "", isKeychainUnreadable: keychainResult.outcome === "unreadable" };
+  }
+
+  if (!isClaudeTokenExpiring(keychainResult.credentials)) {
+    return { credentials: keychainResult.credentials, isKeychainUnreadable: false };
+  }
+
+  const refreshedCredentials = await refreshKeychainCredentials(configDir);
+  return {
+    credentials: refreshedCredentials || keychainResult.credentials,
+    isKeychainUnreadable: false,
+  };
+}
+
+/**
+ * 액세스 토큰이 만료 임박이면 갱신한 뒤 조회한다.
  *
  * refresh 토큰은 한 번 쓰면 회전되므로, 갱신에 성공하면 조회보다 먼저 파일에 되쓴다.
  * 되쓰기가 실패하면 저장된 refresh 토큰은 이미 서버에서 무효가 된 상태라 CLI 재로그인이 필요해진다 —
  * 복구할 방법이 없으므로 최소한 눈에 띄게 남긴다.
+ *
+ * 직접 갱신이 실패하면 CLI에 한 번 맡겨 본다. 저장된 refresh 토큰이 이미 회전된 뒤라면
+ * 최신 값을 아는 쪽은 CLI뿐이고, 그 경우에도 사용자가 터미널로 나갈 이유는 없다.
  */
 async function readFreshClaudeCredentials(
   configDir: string,
@@ -84,11 +121,7 @@ async function readFreshClaudeCredentials(
   const credentialsPath = path.join(configDir, ".credentials.json");
   const storedCredentials = await readTextFile(credentialsPath);
   if (!storedCredentials) {
-    const keychainResult = await readClaudeKeychainCredentials([configDir]);
-    return {
-      credentials: keychainResult.outcome === "found" ? keychainResult.credentials : "",
-      isKeychainUnreadable: keychainResult.outcome === "unreadable",
-    };
+    return readFreshKeychainCredentials(configDir);
   }
 
   if (!isClaudeTokenExpiring(storedCredentials)) {
@@ -97,7 +130,12 @@ async function readFreshClaudeCredentials(
 
   const refreshedCredentials = await refreshClaudeCredentials(storedCredentials);
   if (!refreshedCredentials) {
-    return { credentials: storedCredentials, isKeychainUnreadable: false };
+    await refreshCredentialsThroughCli("claude", configDir);
+    const cliRefreshedCredentials = await readTextFile(credentialsPath);
+    return {
+      credentials: cliRefreshedCredentials || storedCredentials,
+      isKeychainUnreadable: false,
+    };
   }
 
   try {

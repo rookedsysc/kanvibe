@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "fs/promises";
 import { tmpdir } from "os";
 import path from "path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { discoverClaudeAccounts, discoverCodexAccounts } from "@/lib/aiUsage/accountDiscovery";
+import { discoverProviderAccounts } from "@/lib/aiUsage/accountDiscovery";
 
 const { mockReadClaudeKeychainCredentials } = vi.hoisted(() => ({
   mockReadClaudeKeychainCredentials: vi.fn(),
@@ -36,7 +36,7 @@ async function writeClaudeConfigDir(
   return configDir;
 }
 
-describe("discoverClaudeAccounts", () => {
+describe("discoverProviderAccounts(claude)", () => {
   beforeEach(async () => {
     fakeHome = await mkdtemp(path.join(tmpdir(), "kanvibe-home-"));
     vi.stubEnv("HOME", fakeHome);
@@ -57,7 +57,7 @@ describe("discoverClaudeAccounts", () => {
       displayName: "Me",
     });
 
-    const accounts = await discoverClaudeAccounts();
+    const accounts = await discoverProviderAccounts("claude");
 
     expect(accounts).toHaveLength(1);
     expect(accounts[0].provider).toBe("claude");
@@ -70,10 +70,10 @@ describe("discoverClaudeAccounts", () => {
     vi.stubEnv("CLAUDE_CONFIG_DIR", "");
     await writeClaudeConfigDir(".claude", { accountUuid: "uuid-name-only", displayName: "Work Seat" });
 
-    expect((await discoverClaudeAccounts())[0].label).toBe("Work Seat");
+    expect((await discoverProviderAccounts("claude"))[0].label).toBe("Work Seat");
 
     await writeFile(path.join(fakeHome, ".claude.json"), JSON.stringify({}), "utf-8");
-    const withoutIdentity = await discoverClaudeAccounts();
+    const withoutIdentity = await discoverProviderAccounts("claude");
     expect(withoutIdentity[0].label).toBe("Claude");
   });
 
@@ -86,7 +86,7 @@ describe("discoverClaudeAccounts", () => {
       { colocatedConfig: true },
     );
 
-    const labels = (await discoverClaudeAccounts()).map((account) => account.label).sort();
+    const labels = (await discoverProviderAccounts("claude")).map((account) => account.label).sort();
 
     expect(labels).toEqual(["me@example.com", "work@example.com"]);
   });
@@ -100,7 +100,7 @@ describe("discoverClaudeAccounts", () => {
     );
     vi.stubEnv("CLAUDE_CONFIG_DIR", path.join(fakeHome, ".claude"));
 
-    const accounts = await discoverClaudeAccounts();
+    const accounts = await discoverProviderAccounts("claude");
 
     expect(accounts).toHaveLength(1);
     expect(accounts[0].configDir).toBe(path.join(fakeHome, ".claude"));
@@ -110,7 +110,7 @@ describe("discoverClaudeAccounts", () => {
     vi.stubEnv("CLAUDE_CONFIG_DIR", "");
     await mkdir(path.join(fakeHome, ".claude-empty"), { recursive: true });
 
-    expect(await discoverClaudeAccounts()).toEqual([]);
+    expect(await discoverProviderAccounts("claude")).toEqual([]);
   });
 
   it("자격증명 파일이 없어도 Keychain에 있으면 로그인된 계정으로 센다", async () => {
@@ -126,7 +126,7 @@ describe("discoverClaudeAccounts", () => {
       credentials: JSON.stringify({ claudeAiOauth: { accessToken: "keychain-token" } }),
     });
 
-    const accounts = await discoverClaudeAccounts();
+    const accounts = await discoverProviderAccounts("claude");
 
     expect(accounts).toHaveLength(1);
     expect(accounts[0].accountId).toBe("uuid-mac");
@@ -140,7 +140,7 @@ describe("discoverClaudeAccounts", () => {
     await mkdir(workDir, { recursive: true });
     vi.stubEnv("CLAUDE_CONFIG_DIR", workDir);
 
-    await discoverClaudeAccounts();
+    await discoverProviderAccounts("claude");
 
     expect(mockReadClaudeKeychainCredentials).toHaveBeenCalledWith([
       workDir,
@@ -153,21 +153,21 @@ describe("discoverClaudeAccounts", () => {
     await mkdir(path.join(fakeHome, ".claude"), { recursive: true });
     mockReadClaudeKeychainCredentials.mockResolvedValue({ outcome: "unreadable" });
 
-    expect(await discoverClaudeAccounts()).toHaveLength(1);
+    expect(await discoverProviderAccounts("claude")).toHaveLength(1);
   });
 
   it("파일에서 이미 찾은 계정이 있으면 Keychain을 다시 묻지 않는다", async () => {
     vi.stubEnv("CLAUDE_CONFIG_DIR", "");
     await writeClaudeConfigDir(".claude", { accountUuid: "uuid-file", emailAddress: "file@example.com" });
 
-    const accounts = await discoverClaudeAccounts();
+    const accounts = await discoverProviderAccounts("claude");
 
     expect(accounts.map((account) => account.accountId)).toEqual(["uuid-file"]);
     expect(mockReadClaudeKeychainCredentials).not.toHaveBeenCalled();
   });
 });
 
-describe("discoverCodexAccounts", () => {
+describe("discoverProviderAccounts(codex)", () => {
   beforeEach(async () => {
     fakeHome = await mkdtemp(path.join(tmpdir(), "kanvibe-home-"));
     vi.stubEnv("HOME", fakeHome);
@@ -192,7 +192,7 @@ describe("discoverCodexAccounts", () => {
       "utf-8",
     );
 
-    const accounts = await discoverCodexAccounts();
+    const accounts = await discoverProviderAccounts("codex");
 
     expect(accounts).toHaveLength(1);
     expect(accounts[0].accountId).toBe("acct-1");
@@ -204,6 +204,79 @@ describe("discoverCodexAccounts", () => {
     await mkdir(configDir, { recursive: true });
     await writeFile(path.join(configDir, "auth.json"), JSON.stringify({ tokens: null }), "utf-8");
 
-    expect(await discoverCodexAccounts()).toEqual([]);
+    expect(await discoverProviderAccounts("codex")).toEqual([]);
+  });
+});
+
+describe("discoverProviderAccounts(gemini)", () => {
+  beforeEach(async () => {
+    fakeHome = await mkdtemp(path.join(tmpdir(), "kanvibe-home-"));
+    vi.stubEnv("HOME", fakeHome);
+    vi.stubEnv("GEMINI_CLI_HOME", "");
+  });
+
+  afterEach(async () => {
+    await rm(fakeHome, { recursive: true, force: true });
+    vi.unstubAllEnvs();
+    vi.resetAllMocks();
+  });
+
+  async function writeGeminiCredentials(configDir: string) {
+    await mkdir(configDir, { recursive: true });
+    await writeFile(
+      path.join(configDir, "oauth_creds.json"),
+      JSON.stringify({ access_token: "token", refresh_token: "refresh", expiry_date: 0 }),
+      "utf-8",
+    );
+  }
+
+  it("홈 아래 기본 .gemini의 계정을 찾는다", async () => {
+    await writeGeminiCredentials(path.join(fakeHome, ".gemini"));
+
+    const accounts = await discoverProviderAccounts("gemini");
+
+    expect(accounts).toHaveLength(1);
+    expect(accounts[0].configDir).toBe(path.join(fakeHome, ".gemini"));
+    expect(accounts[0].accountRoot).toBe(fakeHome);
+  });
+
+  it("GEMINI_CLI_HOME이 가리키는 루트 아래 .gemini도 계정으로 찾는다", async () => {
+    const workRoot = path.join(fakeHome, ".gemini-work");
+    await writeGeminiCredentials(path.join(workRoot, ".gemini"));
+
+    const accounts = await discoverProviderAccounts("gemini");
+
+    expect(accounts).toHaveLength(1);
+    expect(accounts[0].accountRoot).toBe(workRoot);
+    expect(accounts[0].configDir).toBe(path.join(workRoot, ".gemini"));
+  });
+
+  it("계정이 여러 개면 계정 이름으로 서로를 가른다", async () => {
+    await writeGeminiCredentials(path.join(fakeHome, ".gemini"));
+    await writeGeminiCredentials(path.join(fakeHome, ".gemini-work", ".gemini"));
+
+    const labels = (await discoverProviderAccounts("gemini")).map((account) => account.label);
+
+    expect(labels).toEqual(["Gemini", "work"]);
+  });
+
+  it("등록해 둔 계정은 로그아웃돼 있어도 자리를 지킨다", async () => {
+    const workRoot = path.join(fakeHome, ".gemini-work");
+
+    const accounts = await discoverProviderAccounts("gemini", [
+      { provider: "gemini", accountRoot: workRoot, accountName: "work" },
+    ]);
+
+    expect(accounts).toHaveLength(1);
+    expect(accounts[0].label).toBe("work");
+    expect(accounts[0].configDir).toBe(path.join(workRoot, ".gemini"));
+  });
+
+  it("다른 provider의 등록은 이 provider의 목록에 섞이지 않는다", async () => {
+    const accounts = await discoverProviderAccounts("gemini", [
+      { provider: "claude", accountRoot: path.join(fakeHome, ".claude-work"), accountName: "work" },
+    ]);
+
+    expect(accounts).toEqual([]);
   });
 });

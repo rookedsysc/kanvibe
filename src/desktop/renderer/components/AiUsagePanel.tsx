@@ -1,8 +1,10 @@
 import { useTranslations } from "next-intl";
 import { AiProviderIcon } from "@/components/AiProviderIcon";
+import { Link } from "@/desktop/renderer/navigation";
 import { useAiUsage } from "@/desktop/renderer/hooks/useAiUsage";
 import type {
   AiUsageAccountResult,
+  AiUsageFailureReason,
   AiUsageProvider,
   AiUsageSnapshot,
   AiUsageWindow,
@@ -144,6 +146,13 @@ function UsageWindowGroupRows({ group }: { group: UsageWindowGroup }) {
   );
 }
 
+/** 앱 안에서 로그인하면 풀리는 사유들. 나머지는 로그인과 무관해 계정 화면으로 보낼 이유가 없다 */
+const SIGN_IN_FAILURE_REASONS = new Set<AiUsageFailureReason>([
+  "missing-credentials",
+  "expired-credentials",
+  "gemini-cli-not-found",
+]);
+
 /** 라벨이 provider 이름뿐이면 카드 제목과 같은 말이라 자리만 차지한다 */
 function hasDistinctAccountLabel(result: AiUsageAccountResult): boolean {
   return result.label.toLowerCase() !== result.provider;
@@ -185,9 +194,19 @@ function AccountUsageBlock({ result }: { result: AiUsageAccountResult }) {
 
       {/* 직전 값을 이어 붙인 카드는 막대와 사유가 함께 보여야 옛 값이 새 값으로 읽히지 않는다 */}
       {result.reason ? (
-        <p className={`text-xs text-text-muted${result.windows.length > 0 ? " mt-2" : ""}`}>
-          {t(`reasons.${result.reason}`)}
-        </p>
+        <div className={`text-xs text-text-muted${result.windows.length > 0 ? " mt-2" : ""}`}>
+          <span>{t(`reasons.${result.reason}`)}</span>
+          {/* 로그인으로 풀리는 사유는 문구로 끝내지 않는다. 여기서 계정 화면으로 바로 갈 수 있어야 한다 */}
+          {SIGN_IN_FAILURE_REASONS.has(result.reason) ? (
+            <Link
+              href="/ai-accounts"
+              className="ml-1 text-brand-primary hover:underline"
+              data-testid="ai-usage-manage-accounts"
+            >
+              {t("manageAccounts")}
+            </Link>
+          ) : null}
+        </div>
       ) : null}
     </div>
   );
