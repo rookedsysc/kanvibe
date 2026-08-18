@@ -51,7 +51,11 @@ function AccountRow({
       data-testid="ai-account-row"
     >
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm text-text-primary" title={account.label}>
+        <p
+          className="truncate text-sm text-text-primary"
+          title={account.label}
+          data-testid="ai-account-label"
+        >
           {account.label}
         </p>
         <p className="mt-0.5 text-[11px] text-text-muted">
