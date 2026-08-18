@@ -66,6 +66,15 @@ export function setNotificationStatuses(statuses: string[]): Promise<void> {
   return invokeAndRefresh("setNotificationStatuses", statuses);
 }
 
+export function getNotificationUnreadOnlyEnabled(): Promise<boolean> {
+  return invokeDesktop("appSettings", "getNotificationUnreadOnlyEnabled");
+}
+
+/** 알림 팝업이 필터 상태를 직접 들고 있으므로 설정 refresh를 태우지 않는다. 탭을 누를 때마다 화면을 다시 그리면 깜빡인다 */
+export function setNotificationUnreadOnlyEnabled(enabled: boolean): Promise<void> {
+  return invokeDesktop("appSettings", "setNotificationUnreadOnlyEnabled", enabled);
+}
+
 export function getDefaultSessionType(): Promise<SessionType> {
   return invokeDesktop("appSettings", "getDefaultSessionType");
 }

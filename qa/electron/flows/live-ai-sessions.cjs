@@ -14,10 +14,12 @@ const SCOPE = "실행중 AI 세션 추적: 보드 카드 배지, focus 후 세�
  * 운영자의 기본 소켓과 완전히 분리되므로 실행이 중간에 죽어도 사용자 세션 목록이 더러워지지 않는다.
  */
 const QA_TMUX_SOCKET = "kanvibe-qa";
-const QA_SESSION_PREFIX = "kanvibe-qa-";
 
 /** 실행중으로 보이게 하려면 세션 기록이 이 창 안에 있어야 한다 */
 const RUNNING_WINDOW_MS = 90_000;
+
+/** 종료를 기다리다 리포트도 못 쓰고 매달리느니, 이만큼 기다린 뒤 정리를 이어간다 */
+const APP_CLOSE_TIMEOUT_MS = 15_000;
 
 function parseArgs(argv) {
   const args = {};
@@ -58,18 +60,6 @@ function listQaTmuxSessions() {
   }
 }
 
-/**
- * 파괴적 tmux 명령 이전에 격리를 증명한다.
- * shim이 PATH에서 빠지면 앱이 조용히 기본 소켓을 쓰게 되는데, 그때 이 검사가 남의 세션을 발견하고 멈춘다.
- */
-function assertQaSocketIsolated() {
-  const foreignSessions = listQaTmuxSessions().filter((name) => !name.startsWith(QA_SESSION_PREFIX));
-  if (foreignSessions.length > 0) {
-    throw new Error(`QA tmux 소켓에 예상 밖 세션이 있다: ${foreignSessions.join(", ")}`);
-  }
-  return listQaTmuxSessions();
-}
-
 function createTmuxShim(binDir) {
   fs.mkdirSync(binDir, { recursive: true });
   const shimPath = path.join(binDir, "tmux");
@@ -82,9 +72,15 @@ function createTmuxShim(binDir) {
   return shimPath;
 }
 
+/**
+ * QA 소켓 위의 세션을 모두 지운다.
+ *
+ * 이 소켓에는 PATH shim을 거친 호출만 닿고 운영자의 tmux는 기본 소켓에 있으므로, 격리 경계는
+ * 세션 이름이 아니라 소켓 이름이다. 앱은 세션 이름을 프로젝트와 브랜치로 짓기 때문에
+ * 이름 접두사로 가르면 정리 대상이 하나도 남지 않고, 그 잔여가 다음 실행의 첫 검사를 막는다.
+ */
 function cleanUpQaTmuxSessions() {
   for (const sessionName of listQaTmuxSessions()) {
-    if (!sessionName.startsWith(QA_SESSION_PREFIX)) continue;
     try {
       qaTmux(["kill-session", "-t", sessionName]);
     } catch {
@@ -286,10 +282,11 @@ async function main() {
   };
 
   try {
-    await check("QA 전용 tmux 소켓이 격리되어 있다", async () => {
-      const before = assertQaSocketIsolated();
+    await check("QA 전용 tmux 소켓을 비우고 shim을 건다", async () => {
+      const leftovers = listQaTmuxSessions();
+      cleanUpQaTmuxSessions();
       createTmuxShim(shimDir);
-      return `socket=${QA_TMUX_SOCKET}, 기존 세션=${before.length === 0 ? "없음" : before.join(",")}, shim=${path.join(shimDir, "tmux")}`;
+      return `socket=${QA_TMUX_SOCKET}, 정리한 잔여 세션=${leftovers.length === 0 ? "없음" : leftovers.join(",")}, shim=${path.join(shimDir, "tmux")}`;
     });
 
     fixtureRepoDir = path.join(run.runDir, "fixtures", "live-session-repo");
@@ -351,7 +348,7 @@ async function main() {
 
     await check("태스크 상세를 열면 tmux 세션이 QA 소켓에 생성된다", async () => {
       await openTaskDetail(page, seededTask.id);
-      await page.locator("[aria-label='terminal input']").first().waitFor({ state: "attached", timeout: 30000 });
+      await page.getByTestId("terminal-tab-bar").waitFor({ state: "visible", timeout: 30000 });
 
       for (let attempt = 0; attempt < 20 && !findTaskTmuxSession(taskSessionName); attempt += 1) {
         await page.waitForTimeout(500);
@@ -448,13 +445,12 @@ async function main() {
     console.error(`[kanvibe-qa] live AI session flow failed:\n${detail}`);
   } finally {
     isExpectedShutdown = true;
-    if (app) await app.close().catch(() => {});
+    if (app) await withTimeout(app.close(), APP_CLOSE_TIMEOUT_MS, "Electron 종료").catch(() => {});
     try {
-      assertQaSocketIsolated();
       cleanUpQaTmuxSessions();
       notes.push(`QA tmux 세션 정리 완료 (socket=${QA_TMUX_SOCKET}, 남은 세션=${listQaTmuxSessions().join(",") || "없음"})`);
     } catch (error) {
-      notes.push(`QA tmux 정리를 건너뛴다(격리 확인 실패): ${error instanceof Error ? error.message : String(error)}`);
+      notes.push(`QA tmux 정리 실패: ${error instanceof Error ? error.message : String(error)}`);
     }
     process.env.HOME = previousHome;
     process.env.PATH = previousPath;

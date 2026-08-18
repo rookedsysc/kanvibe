@@ -32,6 +32,8 @@ const mocks = vi.hoisted(() => ({
   getSidebarHintDismissed: vi.fn(),
   getDoneAlertDismissed: vi.fn(),
   getDefaultSessionType: vi.fn(),
+  getNotificationUnreadOnlyEnabled: vi.fn(),
+  setNotificationUnreadOnlyEnabled: vi.fn(),
   listNotifications: vi.fn(),
   markNotificationRead: vi.fn(),
   markTaskNotificationsRead: vi.fn(),
@@ -171,6 +173,8 @@ vi.mock("@/desktop/renderer/actions/appSettings", () => ({
   getSidebarHintDismissed: (...args: unknown[]) => mocks.getSidebarHintDismissed(...args),
   getDoneAlertDismissed: (...args: unknown[]) => mocks.getDoneAlertDismissed(...args),
   getDefaultSessionType: (...args: unknown[]) => mocks.getDefaultSessionType(...args),
+  getNotificationUnreadOnlyEnabled: (...args: unknown[]) => mocks.getNotificationUnreadOnlyEnabled(...args),
+  setNotificationUnreadOnlyEnabled: (...args: unknown[]) => mocks.setNotificationUnreadOnlyEnabled(...args),
 }));
 
 vi.mock("@/desktop/renderer/actions/notifications", () => ({
@@ -337,6 +341,8 @@ describe("TaskDetailRoute", () => {
     mocks.getSidebarHintDismissed.mockResolvedValue(false);
     mocks.getDoneAlertDismissed.mockResolvedValue(false);
     mocks.getDefaultSessionType.mockResolvedValue("tmux");
+    mocks.getNotificationUnreadOnlyEnabled.mockResolvedValue(false);
+    mocks.setNotificationUnreadOnlyEnabled.mockResolvedValue(undefined);
     mocks.listNotifications.mockResolvedValue([]);
     mocks.markNotificationRead.mockResolvedValue(undefined);
     mocks.markTaskNotificationsRead.mockResolvedValue(0);

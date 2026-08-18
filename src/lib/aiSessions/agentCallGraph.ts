@@ -1,3 +1,4 @@
+import { flattenAgentCallNodes } from "@/desktop/shared/liveAiSessions";
 import { LIVE_SESSION_WINDOWS } from "@/lib/aiSessions/liveAiSessions";
 import { readClaudeAgentCallGraph } from "@/lib/aiSessions/readClaudeSessions";
 import { readCodexAgentCallGraph } from "@/lib/aiSessions/readCodexSessions";
@@ -65,8 +66,4 @@ function findEarliestStartedAt(nodes: AgentCallNode[]): string | null {
   return startedAtValues.length > 0
     ? startedAtValues.reduce((earliest, value) => (value < earliest ? value : earliest))
     : null;
-}
-
-export function flattenAgentCallNodes(nodes: AgentCallNode[]): AgentCallNode[] {
-  return nodes.flatMap((node) => [node, ...flattenAgentCallNodes(node.children)]);
 }
