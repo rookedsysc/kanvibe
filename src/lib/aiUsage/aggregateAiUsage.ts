@@ -1,8 +1,5 @@
-import {
-  discoverClaudeAccounts,
-  discoverCodexAccounts,
-  discoverGeminiAccounts,
-} from "@/lib/aiUsage/accountDiscovery";
+import type { AiAccountRegistration } from "@/lib/aiUsage/accountRegistry";
+import { discoverProviderAccounts } from "@/lib/aiUsage/accountDiscovery";
 import { readClaudeUsage } from "@/lib/aiUsage/readClaudeUsage";
 import { readCodexUsage } from "@/lib/aiUsage/readCodexUsage";
 import { readGeminiUsage } from "@/lib/aiUsage/readGeminiUsage";
@@ -16,15 +13,14 @@ import type {
 
 interface ProviderUsageSource {
   provider: AiUsageProvider;
-  discover: () => Promise<AiUsageAccount[]>;
   read: (account: AiUsageAccount) => Promise<AiUsageAccountResult>;
 }
 
 /** 화면 순서는 이 배열이 정한다. 조회 결과에 따라 카드 순서가 바뀌면 눈이 매번 다시 찾아야 한다 */
 const PROVIDER_SOURCES: ProviderUsageSource[] = [
-  { provider: "claude", discover: discoverClaudeAccounts, read: readClaudeUsage },
-  { provider: "codex", discover: discoverCodexAccounts, read: readCodexUsage },
-  { provider: "gemini", discover: discoverGeminiAccounts, read: readGeminiUsage },
+  { provider: "claude", read: readClaudeUsage },
+  { provider: "codex", read: readCodexUsage },
+  { provider: "gemini", read: readGeminiUsage },
 ];
 
 /**
@@ -32,12 +28,15 @@ const PROVIDER_SOURCES: ProviderUsageSource[] = [
  * 카드까지 사라지면 사용자는 "지원하지 않는다"와 "로그인하면 보인다"를 구분할 수 없다.
  */
 function createSignedOutAccount(provider: AiUsageProvider): AiUsageAccount {
-  return { provider, accountId: provider, label: provider, configDir: "" };
+  return { provider, accountId: provider, label: provider, configDir: "", accountRoot: "" };
 }
 
-async function discoverAccountsOrNone(source: ProviderUsageSource): Promise<AiUsageAccount[]> {
+async function discoverAccountsOrNone(
+  source: ProviderUsageSource,
+  registrations: AiAccountRegistration[],
+): Promise<AiUsageAccount[]> {
   try {
-    return await source.discover();
+    return await discoverProviderAccounts(source.provider, registrations);
   } catch {
     // 한 provider의 탐색 실패가 나머지 provider의 사용량까지 가려서는 안 된다
     return [];
@@ -69,8 +68,12 @@ function buildUsageTasks(
  *
  * 계정 하나의 실패가 나머지를 가리지 않도록 결과를 따로 받아 실패한 자리에만 error를 채운다.
  */
-export async function aggregateAiUsage(): Promise<AiUsageSnapshot> {
-  const discoveredAccounts = await Promise.all(PROVIDER_SOURCES.map(discoverAccountsOrNone));
+export async function aggregateAiUsage(
+  registrations: AiAccountRegistration[] = [],
+): Promise<AiUsageSnapshot> {
+  const discoveredAccounts = await Promise.all(
+    PROVIDER_SOURCES.map((source) => discoverAccountsOrNone(source, registrations)),
+  );
   const usageTasks = PROVIDER_SOURCES.flatMap((source, index) => (
     buildUsageTasks(source, discoveredAccounts[index])
   ));

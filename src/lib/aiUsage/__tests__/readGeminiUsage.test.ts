@@ -21,6 +21,7 @@ const ACCOUNT: AiUsageAccount = {
   accountId: "/home/tester/.gemini",
   label: "Gemini",
   configDir: "/home/tester/.gemini",
+  accountRoot: "/home/tester/.gemini",
 };
 
 vi.mock("@/lib/aiUsage/geminiOAuthClient", () => ({

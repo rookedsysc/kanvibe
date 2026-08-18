@@ -23,12 +23,15 @@ export type AiUsageFailureReason =
   | "empty-response"
   | "fetch-failed";
 
-/** 조회 대상 계정 하나. configDir는 조회에만 쓰고 캐시에는 저장하지 않는다 */
+/** 조회 대상 계정 하나. 경로는 조회와 로그인에만 쓰고 캐시에는 저장하지 않는다 */
 export interface AiUsageAccount {
   provider: AiUsageProvider;
   accountId: string;
   label: string;
+  /** 자격증명이 놓인 디렉터리 */
   configDir: string;
+  /** CLI에 계정 위치를 알릴 때 넘기는 루트. provider에 따라 configDir와 같을 수도 있다 */
+  accountRoot: string;
 }
 
 export interface AiUsageWindow {
