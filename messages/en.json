@@ -260,7 +260,8 @@
     "backgroundSyncIntervalUnit": "min",
     "keyboardSection": "Keyboard",
     "vimModeEnabled": "Vim-style board controls",
-    "vimModeEnabledDescription": "Enable h/j/k/l focus movement, n for a new task, dd delete, and :move status commands on the board. Arrow keys stay available when this is off."
+    "vimModeEnabledDescription": "Enable h/j/k/l focus movement, n for a new task, dd delete, and :move status commands on the board. Arrow keys stay available when this is off.",
+    "aiAccountsLink": "AI accounts"
   },
   "taskSearch": {
     "title": "Quick Task Search",
@@ -457,13 +458,14 @@
       "snapshotFailed": "Could not load usage.",
       "reasons": {
         "missing-credentials": "Not signed in.",
-        "expired-credentials": "Authentication expired. Run claude once in a terminal to refresh it.",
+        "expired-credentials": "Sign-in expired. Sign in again on the accounts screen and the app refreshes it.",
         "keychain-unreadable": "Could not read the Keychain. Unlock your Mac, then refresh.",
-        "gemini-cli-not-found": "Token expired and the Gemini CLI was not found, so it cannot be refreshed.",
+        "gemini-cli-not-found": "The token expired and the Gemini CLI could not be found to refresh it.",
         "rate-limited": "Too many requests. Try again shortly.",
         "empty-response": "The response carried no usage data.",
         "fetch-failed": "Could not fetch usage."
-      }
+      },
+      "manageAccounts": "Manage accounts"
     }
   },
   "projectBranchTasks": {
@@ -493,5 +495,28 @@
     "fileCount": "{count} files changed",
     "viewed": "Viewed",
     "markViewed": "Viewed"
+  },
+  "aiAccounts": {
+    "title": "AI accounts",
+    "description": "Sign in to your Claude, Codex, and Gemini accounts here and see their plan and usage together.",
+    "backToSettings": "Back to settings",
+    "loggedIn": "Signed in",
+    "loggedOut": "Sign-in needed",
+    "login": "Sign in",
+    "relogin": "Sign in again",
+    "remove": "Remove",
+    "removeConfirm": "Remove the {label} account? Its sign-in will be erased.",
+    "noAccounts": "No accounts yet.",
+    "addAccount": "Add account",
+    "accountNamePlaceholder": "Account name (e.g. work)",
+    "loginInProgress": "Signing in",
+    "loginHint": "Finish signing in below and the list refreshes on its own. If a browser opens, complete the sign-in there.",
+    "closeLogin": "Close",
+    "errors": {
+      "invalid-name": "Account names may only use letters, numbers, -, _ and .",
+      "already-exists": "An account with that name already exists.",
+      "manual-logout-required": "This account cannot be signed out from the app, so it was only removed from the list."
+    },
+    "usageSection": "Usage"
   }
 }

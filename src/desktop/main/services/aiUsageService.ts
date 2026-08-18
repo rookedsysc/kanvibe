@@ -1,3 +1,4 @@
+import { getAiAccountRegistrations } from "@/desktop/main/services/aiAccountService";
 import { getAppSetting, setAppSetting } from "@/desktop/main/services/appSettingsService";
 import { aggregateAiUsage } from "@/lib/aiUsage/aggregateAiUsage";
 import {
@@ -75,7 +76,11 @@ function withLastKnownWindows(
 }
 
 export async function getAiUsageSnapshot(): Promise<AiUsageSnapshot> {
-  const snapshot = carryLastKnownUsage(await aggregateAiUsage(), await getCachedAiUsageSnapshot());
+  const registrations = await getAiAccountRegistrations();
+  const snapshot = carryLastKnownUsage(
+    await aggregateAiUsage(registrations),
+    await getCachedAiUsageSnapshot(),
+  );
 
   try {
     await setAppSetting(AI_USAGE_SNAPSHOT_CACHE_KEY, toCacheableSnapshot(snapshot));

@@ -259,7 +259,8 @@
     "backgroundSyncIntervalUnit": "分钟",
     "keyboardSection": "键盘",
     "vimModeEnabled": "Vim 风格看板控制",
-    "vimModeEnabledDescription": "在看板中启用 h/j/k/l 焦点移动、n 新建任务、dd 删除和 :move status 命令。关闭后仍可使用方向键移动。"
+    "vimModeEnabledDescription": "在看板中启用 h/j/k/l 焦点移动、n 新建任务、dd 删除和 :move status 命令。关闭后仍可使用方向键移动。",
+    "aiAccountsLink": "AI 账号"
   },
   "taskSearch": {
     "title": "快速任务搜索",
@@ -456,13 +457,14 @@
       "snapshotFailed": "无法加载用量。",
       "reasons": {
         "missing-credentials": "尚未登录。",
-        "expired-credentials": "认证已过期。在终端运行一次 claude 即可刷新。",
+        "expired-credentials": "认证已过期。在账号页面重新登录后，应用会自动刷新。",
         "keychain-unreadable": "无法读取钥匙串。请解锁 Mac 后刷新。",
-        "gemini-cli-not-found": "令牌已过期，且未找到 Gemini CLI，无法刷新。",
+        "gemini-cli-not-found": "令牌已过期，且未找到 Gemini CLI 无法刷新。",
         "rate-limited": "请求过于频繁，请稍后重试。",
         "empty-response": "响应中没有用量数据。",
         "fetch-failed": "无法获取用量。"
-      }
+      },
+      "manageAccounts": "管理账号"
     }
   },
   "projectBranchTasks": {
@@ -492,5 +494,28 @@
     "fileCount": "已更改 {count} 个文件",
     "viewed": "已查看",
     "markViewed": "查看"
+  },
+  "aiAccounts": {
+    "title": "AI 账号",
+    "description": "在应用内登录 Claude、Codex 和 Gemini 账号，并一并查看订阅与用量。",
+    "backToSettings": "返回设置",
+    "loggedIn": "已登录",
+    "loggedOut": "需要登录",
+    "login": "登录",
+    "relogin": "重新登录",
+    "remove": "移除",
+    "removeConfirm": "要移除 {label} 账号吗？该账号的登录信息将被清除。",
+    "noAccounts": "尚未添加账号。",
+    "addAccount": "添加账号",
+    "accountNamePlaceholder": "账号名称（例如 work）",
+    "loginInProgress": "正在登录",
+    "loginHint": "在下方窗口完成登录后，列表会自动刷新。若打开了浏览器，请在浏览器中完成认证。",
+    "closeLogin": "关闭",
+    "errors": {
+      "invalid-name": "账号名称只能使用字母、数字、-、_ 和 . 。",
+      "already-exists": "已存在同名账号。",
+      "manual-logout-required": "该账号无法在应用内登出，因此仅从列表中移除。"
+    },
+    "usageSection": "用量"
   }
 }
