@@ -158,9 +158,18 @@ function hasDistinctAccountLabel(result: AiUsageAccountResult): boolean {
   return result.label.toLowerCase() !== result.provider;
 }
 
+/**
+ * 조회에 실패했는데도 막대가 있으면 그 값은 직전 조회에서 이어 붙인 것이다.
+ * 이월된 창은 이미 초기화된 것부터 빠지므로, 옛 값임을 밝히지 않으면 "한도가 사라졌다"로 읽힌다.
+ */
+function toCarriedUsageTime(result: AiUsageAccountResult): string | null {
+  return result.reason && result.windows.length > 0 ? formatResetTime(result.fetchedAt) : null;
+}
+
 function AccountUsageBlock({ result }: { result: AiUsageAccountResult }) {
   const t = useTranslations("taskDetail.aiUsage");
   const showLabel = hasDistinctAccountLabel(result);
+  const carriedUsageTime = toCarriedUsageTime(result);
 
   return (
     <div data-testid="ai-usage-account">
@@ -195,6 +204,11 @@ function AccountUsageBlock({ result }: { result: AiUsageAccountResult }) {
       {/* 직전 값을 이어 붙인 카드는 막대와 사유가 함께 보여야 옛 값이 새 값으로 읽히지 않는다 */}
       {result.reason ? (
         <div className={`text-xs text-text-muted${result.windows.length > 0 ? " mt-2" : ""}`}>
+          {carriedUsageTime ? (
+            <span className="mr-1" data-testid="ai-usage-carried">
+              {t("carriedValues", { time: carriedUsageTime })}
+            </span>
+          ) : null}
           <span>{t(`reasons.${result.reason}`)}</span>
           {/* 로그인으로 풀리는 사유는 문구로 끝내지 않는다. 여기서 계정 화면으로 바로 갈 수 있어야 한다 */}
           {SIGN_IN_FAILURE_REASONS.has(result.reason) ? (
