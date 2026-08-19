@@ -459,6 +459,7 @@
       "resetsAt": "{time} 초기화",
       "updatedAt": "{time} 기준",
       "snapshotFailed": "사용량을 불러오지 못했습니다.",
+      "carriedValues": "{time} 기준 값입니다.",
       "reasons": {
         "missing-credentials": "로그인되어 있지 않습니다.",
         "expired-credentials": "인증이 만료됐습니다. 계정 화면에서 다시 로그인하면 앱이 갱신합니다.",

@@ -458,6 +458,7 @@
       "resetsAt": "{time} 重置",
       "updatedAt": "截至 {time}",
       "snapshotFailed": "无法加载用量。",
+      "carriedValues": "为 {time} 的数值。",
       "reasons": {
         "missing-credentials": "尚未登录。",
         "expired-credentials": "认证已过期。在账号页面重新登录后，应用会自动刷新。",

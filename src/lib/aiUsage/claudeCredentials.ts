@@ -41,6 +41,15 @@ export function readClaudeAccessToken(credentialsJson: string): string | null {
   return readNonEmptyString(readClaudeOauthSection(credentialsJson)?.accessToken);
 }
 
+/**
+ * 액세스 토큰이 언제까지 유효한지 알려주는 epoch 밀리초.
+ * 자격증명이 두 곳에 있을 때 어느 쪽이 더 신선한지 가리는 유일한 근거다.
+ */
+export function readClaudeTokenExpiresAt(credentialsJson: string): number | null {
+  const expiresAt = readClaudeOauthSection(credentialsJson)?.expiresAt;
+  return typeof expiresAt === "number" && Number.isFinite(expiresAt) ? expiresAt : null;
+}
+
 /** 구독 등급 표시값. 사용량 응답에는 계정 정보가 없어 자격증명이 유일한 출처다 */
 export function readClaudeSubscriptionType(credentialsJson: string): string | null {
   return readNonEmptyString(readClaudeOauthSection(credentialsJson)?.subscriptionType);
