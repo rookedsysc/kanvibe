@@ -459,6 +459,7 @@
       "resetsAt": "Resets {time}",
       "updatedAt": "As of {time}",
       "snapshotFailed": "Could not load usage.",
+      "carriedValues": "Values as of {time}.",
       "reasons": {
         "missing-credentials": "Not signed in.",
         "expired-credentials": "Sign-in expired. Sign in again on the accounts screen and the app refreshes it.",

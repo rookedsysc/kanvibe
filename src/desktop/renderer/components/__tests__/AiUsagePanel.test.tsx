@@ -126,6 +126,26 @@ describe("AiUsagePanel", () => {
     expect(claudeCard.textContent).toContain("reasons.rate-limited");
   });
 
+  it("이어 붙인 값에는 언제 기준인지 함께 밝힌다", () => {
+    renderPanel({
+      snapshot: createSnapshot([
+        createClaudeAccount({
+          status: "error",
+          reason: "rate-limited",
+          fetchedAt: "2026-08-09T01:00:00.000Z",
+        }),
+      ]),
+    });
+
+    expect(screen.getByTestId("ai-usage-carried").textContent).toContain("carriedValues:");
+  });
+
+  it("조회에 성공한 카드에는 이어 붙였다는 표시를 달지 않는다", () => {
+    renderPanel();
+
+    expect(screen.queryByTestId("ai-usage-carried")).toBeNull();
+  });
+
   it("계정이 하나뿐이어도 어느 계정의 사용량인지 밝힌다", () => {
     renderPanel();
 

@@ -139,7 +139,11 @@ If the release worktree path or branch already exists, re-read its status and PR
 
 After the user chooses the target version, update `package.json` before running the build. Use a deterministic script instead of manually editing JSON punctuation.
 
-The same script also keeps the tracked `package-lock.json` in sync, because its top-level `version` and root `packages[""].version` fields otherwise keep advertising the previous release and npm-based install/packaging paths would see conflicting metadata. The regex rejects prerelease/build suffixes so the published tag always matches the desktop update checker.
+The same script also keeps the tracked `package-lock.json` in sync, because its top-level `version` and root `packages[""].version` fields otherwise keep advertising the previous release and npm-based install/packaging paths would see conflicting metadata. The format check rejects prerelease/build suffixes so the published tag always matches the desktop update checker.
+
+Both files contain several `"version"` lines, and only three of them belong to the release. The replacement therefore anchors on **whole-line exact matches** and, inside `package-lock.json`, on the `packages[""]` block boundary. It never matches substrings and never treats indentation as optional.
+
+Every anchor is resolved in memory before the first `writeFileSync`, so a failed anchor leaves both files untouched. That ordering matters: a partial bump would leave `package.json` on the new version while `package-lock.json` stayed on the old one, and the `already at ${version}` guard would then reject the retry until someone manually ran `git checkout -- package.json`.
 
 ```bash
 TARGET_VERSION="<version supplied by user>"
@@ -149,23 +153,91 @@ const version = process.argv[1];
 if (!/^\d+\.\d+\.\d+$/.test(version)) {
   throw new Error(`Invalid release version (expected plain x.y.z, no v/prerelease): ${version}`);
 }
-const packageJson = JSON.parse(fs.readFileSync("package.json", "utf8"));
-packageJson.version = version;
-fs.writeFileSync("package.json", `${JSON.stringify(packageJson, null, 2)}\n`);
-if (fs.existsSync("package-lock.json")) {
-  const lock = JSON.parse(fs.readFileSync("package-lock.json", "utf8"));
-  lock.version = version;
-  if (lock.packages && lock.packages[""]) lock.packages[""].version = version;
-  fs.writeFileSync("package-lock.json", `${JSON.stringify(lock, null, 2)}\n`);
+
+const current = JSON.parse(fs.readFileSync("package.json", "utf8")).version;
+if (current === version) {
+  throw new Error(`package.json is already at ${version}; pick a different target version`);
+}
+
+const rootNeedle = `  "version": "${current}",`;
+const rootReplacement = `  "version": "${version}",`;
+
+const findExactlyOneLine = (label, lines, needle) => {
+  const matches = lines.reduce((indexes, line, index) => (line === needle ? [...indexes, index] : indexes), []);
+  if (matches.length !== 1) {
+    throw new Error(`${label}: expected exactly 1 line matching ${JSON.stringify(needle)}, got ${matches.length}`);
+  }
+  return matches[0];
+};
+
+// package.json: the release version is the only two-space-indented version line.
+// devEngines.packageManager.version is indented deeper and must survive untouched.
+const packageLines = fs.readFileSync("package.json", "utf8").split("\n");
+packageLines[findExactlyOneLine("package.json top-level version", packageLines, rootNeedle)] = rootReplacement;
+
+const hasLock = fs.existsSync("package-lock.json");
+let lockLines = null;
+if (hasLock) {
+  lockLines = fs.readFileSync("package-lock.json", "utf8").split("\n");
+  lockLines[findExactlyOneLine("package-lock.json top-level version", lockLines, rootNeedle)] = rootReplacement;
+
+  // packages[""] is the root package block. Its six-space version line is textually identical
+  // to the one in every dependency that happens to sit on the same version, so scan only
+  // between the block opener and its closing brace.
+  const blockStart = lockLines.indexOf(`    "": {`);
+  if (blockStart === -1) {
+    throw new Error("package-lock.json: packages[\"\"] block opener not found");
+  }
+  const innerNeedle = `      "version": "${current}",`;
+  let innerIndex = -1;
+  for (let i = blockStart + 1; i < lockLines.length; i++) {
+    if (lockLines[i] === "    },") break;
+    if (lockLines[i] === innerNeedle) {
+      innerIndex = i;
+      break;
+    }
+  }
+  if (innerIndex === -1) {
+    throw new Error("package-lock.json: packages[\"\"].version line not found inside the root package block");
+  }
+  lockLines[innerIndex] = `      "version": "${version}",`;
+}
+
+// Every anchor is resolved by this point, so the writes happen together or not at all.
+// Writing package.json before the lock anchors were checked used to leave a half-bumped
+// tree on a lock failure, and the "already at" guard above then refused the retry.
+fs.writeFileSync("package.json", packageLines.join("\n"));
+if (hasLock) {
+  fs.writeFileSync("package-lock.json", lockLines.join("\n"));
 }
 ' "$TARGET_VERSION"
 
 node -p "require('./package.json').version"
-test -f package-lock.json && node -p "require('./package-lock.json').version"
-git diff -- package.json package-lock.json
+node -p "require('./package.json').devEngines.packageManager.version"
+test -f package-lock.json && node -e 'const lock = require("./package-lock.json"); console.log(lock.version, lock.packages[""].version);'
+git diff --numstat -- package.json package-lock.json
 ```
 
-Verify the printed `package.json` and `package-lock.json` versions both match the user-selected target version. Commit the version bump (including `package-lock.json`) with the release changes or ensure the release tag targets a commit that already contains the updated files.
+The bump is correct only when all four hold:
+
+1. `package.json` version and both `package-lock.json` versions print the user-selected target version. Re-reading them through `require` also proves the files still parse as JSON.
+2. `devEngines.packageManager.version` still prints the pnpm pin, not the release version.
+3. `git diff --numstat` reports `1 1 package.json` and `2 2 package-lock.json`. Any other count means the edit escaped its anchors.
+4. Nothing else appears in `git status`.
+
+Commit the version bump (including `package-lock.json`) with the release changes or ensure the release tag targets a commit that already contains the updated files.
+
+### Why the anchors look like this
+
+Three earlier approaches were tried and discarded. Do not reintroduce them.
+
+| Approach | Used in | Defect |
+| --- | --- | --- |
+| `JSON.parse` → `JSON.stringify` round-trip | up to 1.0.8 | Reserializes the whole file, so unrelated lines land in the release diff. |
+| `^(\s*)"version": "\d+\.\d+\.\d+"` regex | 1.0.8 | `\s*` also matches the deeper indentation of `devEngines.packageManager.version`, which rewrites the **pnpm pin** to the release version. |
+| `text.split(<literal indented needle>)` | 1.1.0 | `split` has no concept of line boundaries. A six-space dependency line *contains* the two-space needle as a substring, so the anchor is not isolated. |
+
+The third defect stayed invisible in 1.1.0 only by luck: the then-current version `1.0.10` happened to match no dependency. In 1.2.0 the current version was `1.1.0`, a common value that twenty dependencies in `package-lock.json` also carried, and the two-space needle matched 22 places. The safety of that anchor depended on how rare the current version string happened to be — which is not a property a release procedure may rely on.
 
 ## 3. Build the Versioned DMG
 
@@ -218,12 +290,12 @@ If a previous release notarized successfully with the same key and team, the con
 
 **Do not publish a release without this step.** Code signing, notarization, stapling, and checksum verification all pass on a bundle whose app cannot start. KanVibe 1.0.4 shipped exactly that way: the DMG was signed, notarized, stapled, and its checksum matched, but `app.asar` was missing seven transitive dependencies and the app died on launch with `Cannot find module 'ms'`.
 
-Mount the DMG you are about to publish, copy the app out, launch it, and read the app's own diagnostics log:
+Mount the DMG you are about to publish, copy the app out, launch it against a throwaway data directory, and read that run's own diagnostics log:
 
 ```bash
 VERSION=$(node -p "require('./package.json').version")
-LOG="$HOME/Library/Application Support/kanvibe/logs/kanvibe-desktop.log"
-rm -f "$LOG"
+SMOKE_DATA=$(mktemp -d /tmp/kanvibe-smoke-XXXXXX)
+LOG="$SMOKE_DATA/logs/kanvibe-desktop.log"
 
 hdiutil attach "dist/KanVibe-${VERSION}.dmg" -nobrowse -readonly -quiet
 MOUNT="/Volumes/KanVibe ${VERSION}-arm64"
@@ -232,15 +304,16 @@ rm -rf /tmp/KanVibe-smoke.app
 cp -R "$MOUNT/KanVibe.app" /tmp/KanVibe-smoke.app
 hdiutil detach "$MOUNT" -quiet
 
-open -a /tmp/KanVibe-smoke.app
+open -n --env "KANVIBE_APP_DATA_DIR=$SMOKE_DATA" -a /tmp/KanVibe-smoke.app
 sleep 15
 
 pgrep -f "KanVibe-smoke.app/Contents/MacOS/KanVibe" >/dev/null || { echo "app exited during startup" >&2; exit 1; }
+wc -l "$LOG"
 grep -icE "cannot find module|MODULE_NOT_FOUND|unhandled rejection" "$LOG"
 grep -c "invoke-succeeded" "$LOG"
 
 pkill -f "KanVibe-smoke.app"
-rm -rf /tmp/KanVibe-smoke.app
+rm -rf /tmp/KanVibe-smoke.app "$SMOKE_DATA"
 ```
 
 The release may proceed only when all four hold:
@@ -250,22 +323,38 @@ The release may proceed only when all four hold:
 3. The module-error count is `0`.
 4. The `invoke-succeeded` count is greater than zero, which proves the database and IPC layer actually came up rather than the window merely opening.
 
-Launch the app with `open -a`, not by executing the binary directly. Running the binary as a child of the terminal makes macOS attribute the app's file-access prompts to the terminal process, and a denial there revokes the whole process tree's access to `~/Documents` — which blocks the rest of the release.
+Read the counts from `$LOG` inside `$SMOKE_DATA`, never from `~/Library/Application Support/kanvibe`. Do not delete the user's log to get a clean read.
+
+### Why the smoke run is isolated
+
+`electron/main.js` calls `applyAppDataDirectoryOverride(app, process.env)` at module load, well before `app.whenReady()`. That helper (`electron/runtimeEnvironment.js`) turns `KANVIBE_APP_DATA_DIR` into `app.setPath("userData", ...)`, and the diagnostics log path is derived from `userData` (`electron/diagnostics.js`), so the smoke run's database **and** its log both follow the temporary directory. The user's installed instance, its data, and its existing log are left alone — during the 1.2.0 smoke the verdict came from a 43-line isolated log while `/Applications/KanVibe.app` kept running untouched.
+
+`open --env` applies the variable to the launched app only and does not touch the shell, so this stays inside the repository's runtime-environment safety rules. `open -n` is required: without it macOS just focuses an already-running instance instead of starting the copy under test.
 
 If the smoke test fails, stop. Do not publish, do not update the cask, and do not open PRs. Diagnose the bundle first; `app.asar` contents can be listed from its header:
 
 ```bash
+# Run this twice: once for the candidate bundle, once for a build known to be good.
+ASAR_PATH="dist/mac-arm64/KanVibe.app/Contents/Resources/app.asar"
+# ASAR_PATH="/Applications/KanVibe.app/Contents/Resources/app.asar"
 node -e '
 const fs=require("fs");
-const p="dist/mac-arm64/KanVibe.app/Contents/Resources/app.asar";
+const p=process.argv[1] || "dist/mac-arm64/KanVibe.app/Contents/Resources/app.asar";
 const fd=fs.openSync(p,"r");
 const b=Buffer.alloc(16); fs.readSync(fd,b,0,16,0);
 const hb=Buffer.alloc(b.readUInt32LE(12)); fs.readSync(fd,hb,0,hb.length,16);
 const h=JSON.parse(hb.toString("utf8").replace(/\0+$/,""));
-console.log(Object.keys(h.files.node_modules.files).length, "top-level packages");
 fs.closeSync(fd);
-'
+const entries=Object.entries(h.files.node_modules.files);
+const expanded=entries.reduce((n,[name,entry])=>n+(name.startsWith("@")?Object.keys(entry.files??{}).length:1),0);
+console.log(`${entries.length} top-level entries (scopes counted once)`);
+console.log(`${expanded} packages with scopes expanded  <-- matches the build guard`);
+' "$ASAR_PATH"
 ```
+
+The two numbers are both correct and they are not interchangeable. The build guard line `packaged node_modules verified: N packages` comes from `readAsarNodeModuleNames()` in `scripts/dist-deploy.cjs`, which expands `@scope/name` into one entry per scoped package, so it always reports the larger number. Counting the top-level keys instead reports the smaller one. Reading the smaller number as if it were the guard's makes a healthy build look like the 1.0.4 dependency-loss failure.
+
+Do not judge either number against a remembered absolute value; package counts move whenever dependencies change. Judge by comparison: rerun the same snippet with `ASAR_PATH` pointed at a build known to be good — the installed `/Applications/KanVibe.app/Contents/Resources/app.asar` is the convenient one — and compare it with the candidate bundle. The `||` fallback rather than `??` is deliberate, because an unset `ASAR_PATH` still passes an empty-string argument that `??` would accept as a path.
 
 ## 4. Create or Update the GitHub Release
 
@@ -472,7 +561,7 @@ UNRESOLVED_THREADS=$(gh api graphql \
 test "$UNRESOLVED_THREADS" = "0"
 ```
 
-Merge automatically when checks are green. If checks are still pending but the PR is otherwise mergeable, enable auto-merge and keep watching until the PR becomes `MERGED` before starting the promotion PR. Never enable auto-merge after a failed, cancelled, timed-out, or action-required check.
+Merge automatically when checks are green. If checks are still pending but the PR is otherwise mergeable, enable auto-merge and keep watching until the PR becomes `MERGED` before starting the promotion PR. Never enable auto-merge after a failed, cancelled, timed-out, or action-required check. Auto-merge on this repository can land the PR before the pending checks finish; see the note below.
 
 ```bash
 CHECK_STATE=$(gh pr checks "$RELEASE_PR" --repo rookedsysc/kanvibe --json state --jq '
@@ -496,6 +585,29 @@ esac
 
 gh pr view "$RELEASE_PR" --repo rookedsysc/kanvibe --json state,mergeCommit,mergedBy,headRefName
 ```
+
+#### A pending check does not hold the merge
+
+`dev` has no required status checks:
+
+```bash
+gh api repos/rookedsysc/kanvibe/branches/dev/protection --jq '.required_status_checks.contexts'
+```
+
+This returns an empty list, which means `Type Check & Test` is **not** a merge gate. `gh pr merge --auto` has nothing to wait for, so a PR whose checks read `pending` can merge immediately. Do not read a pending line in `gh pr checks` as "waiting to merge"; it only says the workflow has not finished yet. In the 1.2.0 release, PR #359 merged while this check was still `in_progress` — that followed the procedure, but the merge landed ahead of the CI conclusion.
+
+Because the merge does not wait, confirm the release commit's CI conclusion separately after merging:
+
+```bash
+gh run list --repo rookedsysc/kanvibe --commit "$RELEASE_HEAD_SHA" --json databaseId,name,status,conclusion
+gh run view <databaseId> --repo rookedsysc/kanvibe
+```
+
+`RELEASE_HEAD_SHA` (captured in §6.1) is the right commit to query, because it is the commit the DMG was built from. The merge commit on `dev` is a different SHA with its own runs; it answers "is `dev` green", not "did the released code pass".
+
+Every run for that commit must end with `conclusion: success`. A failed conclusion after a completed merge is a blocker: report it instead of continuing quietly.
+
+Delete release branches only after that conclusion exists. Deleting a branch cancels workflow runs still in progress on it, which destroys the evidence this step depends on.
 
 ### 6.2 Promote the pinned release branch to `main`
 
@@ -554,9 +666,18 @@ git fetch origin main
 MAIN_VERSION=$(git show origin/main:package.json | node -p "JSON.parse(require('fs').readFileSync(0,'utf8')).version")
 test "$MAIN_VERSION" = "$VERSION"
 
-# Clean up the release branch only after the main promotion is actually merged.
+# Clean up the release branch only after the main promotion is merged and the release commit's
+# workflow runs have reached a conclusion. Deleting the branch cancels runs still in progress,
+# so the pending-run count below is the gate, not just something to read.
 if [ "$PROMOTION_STATE" = "MERGED" ]; then
-  git push origin --delete "$PROMOTION_BRANCH" || true
+  gh run list --repo rookedsysc/kanvibe --commit "$RELEASE_HEAD_SHA" --json name,status,conclusion
+  PENDING_RUNS=$(gh run list --repo rookedsysc/kanvibe --commit "$RELEASE_HEAD_SHA" \
+    --json status --jq '[.[] | select(.status != "completed")] | length')
+  if [ "$PENDING_RUNS" != "0" ]; then
+    echo "release commit runs still in progress ($PENDING_RUNS); skip branch cleanup" >&2
+  else
+    git push origin --delete "$PROMOTION_BRANCH" || true
+  fi
 fi
 ```
 
@@ -567,7 +688,7 @@ Before reporting success, collect real output for:
 - dev-only preflight evidence: current branch `dev`, clean status, and local `HEAD` matching `origin/dev` before the release branch was cut;
 - `pnpm --version` showing 10.x and `package.json` carrying no `packageManager` field;
 - current version printed before the bump and the user-selected target version;
-- `git diff -- package.json package-lock.json` or commit evidence showing the version bump in both files;
+- `git diff --numstat -- package.json package-lock.json` showing `1 1 package.json` and `2 2 package-lock.json`, plus `devEngines.packageManager.version` still on the pnpm pin;
 - `pnpm run deploy` completion, including the `pm=npm` collector line and the `packaged node_modules verified: N packages` guard line;
 - **smoke-test evidence from step 3.5**: `spctl` verdict, process alive after launch, module-error count `0`, and a non-zero `invoke-succeeded` count;
 - `test -f dist/KanVibe-<version>.dmg` and `shasum -a 256`;
@@ -577,6 +698,7 @@ Before reporting success, collect real output for:
 - Homebrew cask diff showing only `version` and `sha256` changes, plus the cask repository push result or exact blocker;
 - release branch commit SHA and pushed branch name;
 - release PR URL, file list, check result, unresolved review-thread count, and merge or auto-merge result into `dev`;
+- the release commit's workflow conclusion from `gh run list --commit <sha>`, collected after the merge because a pending check does not hold it;
 - promotion PR URL, check result, unresolved review-thread count, and merge or auto-merge result into `main`;
 - `git show origin/main:package.json` confirming `main` now contains the release version, or the exact blocker if auto-merge is still pending.
 
@@ -595,6 +717,7 @@ Final handoff format:
 - GitHub release: <release URL>
 - Homebrew cask: <commit SHA or branch/status>
 - Release PR: <URL> → <merged/auto-merge/blocker>
+- Release commit CI: <workflow conclusion for the release commit>
 - Promotion PR: <URL> → <merged/auto-merge/blocker>
 - main version: <confirmed version or pending reason>
 - Verification:
