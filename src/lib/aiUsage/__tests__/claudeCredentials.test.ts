@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   readClaudeAccessToken,
   readClaudeKeychainCredentials,
+  readClaudeTokenExpiresAt,
 } from "@/lib/aiUsage/claudeCredentials";
 
 const { mockExecFile } = vi.hoisted(() => ({ mockExecFile: vi.fn() }));
@@ -89,6 +90,20 @@ describe("readClaudeAccessToken", () => {
 
   it("MCP 서버 토큰만 담긴 자격증명은 로그인 토큰으로 보지 않는다", () => {
     expect(readClaudeAccessToken(MCP_ONLY_CREDENTIALS)).toBeNull();
+  });
+});
+
+describe("readClaudeTokenExpiresAt", () => {
+  it("자격증명 JSON에서 만료 시각을 꺼낸다", () => {
+    const credentials = JSON.stringify({ claudeAiOauth: { expiresAt: 1_787_110_963_172 } });
+
+    expect(readClaudeTokenExpiresAt(credentials)).toBe(1_787_110_963_172);
+  });
+
+  it("만료 시각이 없거나 숫자가 아니면 null이다", () => {
+    expect(readClaudeTokenExpiresAt(createCredentialsJson("access-token"))).toBeNull();
+    expect(readClaudeTokenExpiresAt("{not json")).toBeNull();
+    expect(readClaudeTokenExpiresAt(JSON.stringify({ claudeAiOauth: { expiresAt: "곧" } }))).toBeNull();
   });
 });
 

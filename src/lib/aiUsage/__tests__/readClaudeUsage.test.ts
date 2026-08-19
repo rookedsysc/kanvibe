@@ -47,8 +47,10 @@ const ACCOUNT: AiUsageAccount = {
   accountRoot: "/home/tester/.claude",
 };
 
-function createCredentialsJson(accessToken: string): string {
-  return JSON.stringify({ claudeAiOauth: { accessToken, refreshToken: "refresh-token" } });
+function createCredentialsJson(accessToken: string, expiresAt?: number): string {
+  return JSON.stringify({
+    claudeAiOauth: { accessToken, refreshToken: "refresh-token", expiresAt },
+  });
 }
 
 const fetchMock = vi.fn();
@@ -201,6 +203,48 @@ describe("readClaudeUsage", () => {
     const result = await readClaudeUsage(ACCOUNT);
 
     expect(result.status).toBe("ok");
+    const [, requestInit] = fetchMock.mock.calls[0];
+    expect(requestInit.headers.Authorization).toBe("Bearer keychain-token");
+  });
+
+  it("자격증명 파일이 Keychain보다 오래됐으면 Keychain 토큰으로 조회한다", async () => {
+    mockReadTextFile.mockResolvedValue(createCredentialsJson("stale-file-token", 1_000));
+    mockReadClaudeKeychainCredentials.mockResolvedValue({
+      outcome: "found",
+      credentials: createCredentialsJson("fresh-keychain-token", 2_000),
+    });
+    stubUsageResponse();
+
+    await readClaudeUsage(ACCOUNT);
+
+    const [, requestInit] = fetchMock.mock.calls[0];
+    expect(requestInit.headers.Authorization).toBe("Bearer fresh-keychain-token");
+  });
+
+  it("자격증명 파일이 Keychain보다 새로우면 파일 토큰으로 조회한다", async () => {
+    mockReadTextFile.mockResolvedValue(createCredentialsJson("fresh-file-token", 2_000));
+    mockReadClaudeKeychainCredentials.mockResolvedValue({
+      outcome: "found",
+      credentials: createCredentialsJson("stale-keychain-token", 1_000),
+    });
+    stubUsageResponse();
+
+    await readClaudeUsage(ACCOUNT);
+
+    const [, requestInit] = fetchMock.mock.calls[0];
+    expect(requestInit.headers.Authorization).toBe("Bearer fresh-file-token");
+  });
+
+  it("만료 시각을 아는 쪽이 한쪽뿐이면 그쪽을 쓴다", async () => {
+    mockReadTextFile.mockResolvedValue(createCredentialsJson("file-token-without-expiry"));
+    mockReadClaudeKeychainCredentials.mockResolvedValue({
+      outcome: "found",
+      credentials: createCredentialsJson("keychain-token", 1_000),
+    });
+    stubUsageResponse();
+
+    await readClaudeUsage(ACCOUNT);
+
     const [, requestInit] = fetchMock.mock.calls[0];
     expect(requestInit.headers.Authorization).toBe("Bearer keychain-token");
   });

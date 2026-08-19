@@ -17,6 +17,7 @@ import {
   readClaudeAccessToken,
   readClaudeKeychainCredentials,
   readClaudeSubscriptionType,
+  readClaudeTokenExpiresAt,
 } from "@/lib/aiUsage/claudeCredentials";
 import type {
   AiUsageAccount,
@@ -82,31 +83,27 @@ async function refreshKeychainCredentials(configDir: string): Promise<string> {
   return refreshedResult.outcome === "found" ? refreshedResult.credentials : "";
 }
 
-/**
- * 자격증명 파일이 없으면 macOS Keychain이 원본이다.
- * 만료 임박이 아니면 있는 값을 그대로 쓰고, 만료 임박일 때만 CLI에 갱신을 맡긴다.
- */
-async function readFreshKeychainCredentials(
-  configDir: string,
-): Promise<{ credentials: string; isKeychainUnreadable: boolean }> {
-  const keychainResult = await readClaudeKeychainCredentials([configDir]);
-  if (keychainResult.outcome !== "found") {
-    return { credentials: "", isKeychainUnreadable: keychainResult.outcome === "unreadable" };
-  }
-
-  if (!isClaudeTokenExpiring(keychainResult.credentials)) {
-    return { credentials: keychainResult.credentials, isKeychainUnreadable: false };
-  }
-
-  const refreshedCredentials = await refreshKeychainCredentials(configDir);
-  return {
-    credentials: refreshedCredentials || keychainResult.credentials,
-    isKeychainUnreadable: false,
-  };
+function toCredentialsPath(configDir: string): string {
+  return path.join(configDir, ".credentials.json");
 }
 
 /**
- * 액세스 토큰이 만료 임박이면 갱신한 뒤 조회한다.
+ * Keychain이 원본이다. 만료 임박이 아니면 있는 값을 그대로 쓰고, 만료 임박일 때만 CLI에 갱신을 맡긴다.
+ */
+async function refreshExpiringKeychainCredentials(
+  configDir: string,
+  keychainCredentials: string,
+): Promise<string> {
+  if (!isClaudeTokenExpiring(keychainCredentials)) {
+    return keychainCredentials;
+  }
+
+  const refreshedCredentials = await refreshKeychainCredentials(configDir);
+  return refreshedCredentials || keychainCredentials;
+}
+
+/**
+ * 파일이 원본이다. 액세스 토큰이 만료 임박이면 갱신한 뒤 돌려준다.
  *
  * refresh 토큰은 한 번 쓰면 회전되므로, 갱신에 성공하면 조회보다 먼저 파일에 되쓴다.
  * 되쓰기가 실패하면 저장된 refresh 토큰은 이미 서버에서 무효가 된 상태라 CLI 재로그인이 필요해진다 —
@@ -115,27 +112,19 @@ async function readFreshKeychainCredentials(
  * 직접 갱신이 실패하면 CLI에 한 번 맡겨 본다. 저장된 refresh 토큰이 이미 회전된 뒤라면
  * 최신 값을 아는 쪽은 CLI뿐이고, 그 경우에도 사용자가 터미널로 나갈 이유는 없다.
  */
-async function readFreshClaudeCredentials(
+async function refreshExpiringFileCredentials(
   configDir: string,
-): Promise<{ credentials: string; isKeychainUnreadable: boolean }> {
-  const credentialsPath = path.join(configDir, ".credentials.json");
-  const storedCredentials = await readTextFile(credentialsPath);
-  if (!storedCredentials) {
-    return readFreshKeychainCredentials(configDir);
+  fileCredentials: string,
+): Promise<string> {
+  if (!isClaudeTokenExpiring(fileCredentials)) {
+    return fileCredentials;
   }
 
-  if (!isClaudeTokenExpiring(storedCredentials)) {
-    return { credentials: storedCredentials, isKeychainUnreadable: false };
-  }
-
-  const refreshedCredentials = await refreshClaudeCredentials(storedCredentials);
+  const credentialsPath = toCredentialsPath(configDir);
+  const refreshedCredentials = await refreshClaudeCredentials(fileCredentials);
   if (!refreshedCredentials) {
     await refreshCredentialsThroughCli("claude", configDir);
-    const cliRefreshedCredentials = await readTextFile(credentialsPath);
-    return {
-      credentials: cliRefreshedCredentials || storedCredentials,
-      isKeychainUnreadable: false,
-    };
+    return (await readTextFile(credentialsPath)) || fileCredentials;
   }
 
   try {
@@ -147,7 +136,54 @@ async function readFreshClaudeCredentials(
     );
   }
 
-  return { credentials: refreshedCredentials, isKeychainUnreadable: false };
+  return refreshedCredentials;
+}
+
+/**
+ * 두 저장소 중 더 나중까지 쓸 수 있는 쪽을 가른다.
+ *
+ * macOS의 Claude Code는 로그인 결과를 Keychain에 쓰므로, 파일이 있다고 먼저 믿으면
+ * config dir에 남은 묵은 `.credentials.json` 하나 때문에 재로그인해도 죽은 토큰을 계속 보내게 된다.
+ * 만료 시각을 모르는 자격증명은 비교에서 지고, 양쪽 다 모르면 읽기가 싼 파일을 쓴다.
+ */
+function isKeychainFresher(fileCredentials: string, keychainCredentials: string): boolean {
+  if (!keychainCredentials) {
+    return false;
+  }
+
+  if (!fileCredentials) {
+    return true;
+  }
+
+  const keychainExpiresAt = readClaudeTokenExpiresAt(keychainCredentials);
+  const fileExpiresAt = readClaudeTokenExpiresAt(fileCredentials);
+  return keychainExpiresAt !== null && (fileExpiresAt === null || keychainExpiresAt > fileExpiresAt);
+}
+
+/** 파일과 Keychain 중 신선한 쪽을 고르고, 그쪽이 만료 임박이면 그 저장소의 소유자에게 갱신을 맡긴다 */
+async function readFreshClaudeCredentials(
+  configDir: string,
+): Promise<{ credentials: string; isKeychainUnreadable: boolean }> {
+  const fileCredentials = await readTextFile(toCredentialsPath(configDir));
+  const keychainResult = await readClaudeKeychainCredentials([configDir]);
+  const keychainCredentials = keychainResult.outcome === "found" ? keychainResult.credentials : "";
+  const isKeychainUnreadable = keychainResult.outcome === "unreadable";
+
+  if (isKeychainFresher(fileCredentials, keychainCredentials)) {
+    return {
+      credentials: await refreshExpiringKeychainCredentials(configDir, keychainCredentials),
+      isKeychainUnreadable,
+    };
+  }
+
+  if (!fileCredentials) {
+    return { credentials: "", isKeychainUnreadable };
+  }
+
+  return {
+    credentials: await refreshExpiringFileCredentials(configDir, fileCredentials),
+    isKeychainUnreadable,
+  };
 }
 
 function toClaudeUsageWindow(
