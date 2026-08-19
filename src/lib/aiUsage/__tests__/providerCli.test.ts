@@ -43,6 +43,7 @@ describe("createProviderCliEnvironment", () => {
   });
 
   it("서버 런타임 값과 KanVibe 내부 값은 CLI로 넘기지 않는다", () => {
+    vi.stubEnv("HOME", "/home/other");
     vi.stubEnv("PORT", "3000");
     vi.stubEnv("HOST", "0.0.0.0");
     vi.stubEnv("NODE_ENV", "production");
@@ -58,6 +59,40 @@ describe("createProviderCliEnvironment", () => {
     expect(environment.NODE_ENV).toBeUndefined();
     expect(environment.KANVIBE_INTERNAL_TOKEN).toBeUndefined();
     expect(environment.CLAUDE_CONFIG_DIR).toBe("/home/tester/.claude");
+  });
+
+  it("기본 계정에는 위치 변수를 얹지 않아 CLI가 쓰던 설정 파일을 그대로 쓰게 한다", () => {
+    vi.stubEnv("HOME", "/home/tester");
+
+    const environment = createProviderCliEnvironment(
+      AI_PROVIDER_CONFIG_DIR_SPECS.claude,
+      "/home/tester/.claude",
+    );
+
+    expect(environment.CLAUDE_CONFIG_DIR).toBeUndefined();
+  });
+
+  it("기본 계정에서는 셸이 물려준 위치 변수도 지운다", () => {
+    vi.stubEnv("HOME", "/home/tester");
+    vi.stubEnv("CLAUDE_CONFIG_DIR", "/home/tester/.claude-work");
+
+    const environment = createProviderCliEnvironment(
+      AI_PROVIDER_CONFIG_DIR_SPECS.claude,
+      "/home/tester/.claude",
+    );
+
+    expect(environment.CLAUDE_CONFIG_DIR).toBeUndefined();
+  });
+
+  it("홈 자체가 기본 루트인 provider도 위치 변수를 얹지 않는다", () => {
+    vi.stubEnv("HOME", "/home/tester");
+
+    const environment = createProviderCliEnvironment(
+      AI_PROVIDER_CONFIG_DIR_SPECS.gemini,
+      "/home/tester",
+    );
+
+    expect(environment.GEMINI_CLI_HOME).toBeUndefined();
   });
 });
 

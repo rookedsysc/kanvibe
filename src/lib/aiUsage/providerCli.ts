@@ -1,6 +1,7 @@
 import { execFile } from "node:child_process";
 import {
   AI_PROVIDER_CONFIG_DIR_SPECS,
+  toDefaultAccountRoot,
   type AiProviderConfigDirSpec,
 } from "@/lib/aiUsage/providerConfigDir";
 import { createLocalShellEnvironment } from "@/lib/shellEnvironment";
@@ -104,12 +105,22 @@ const AI_PROVIDER_CLI_SPECS: Record<AiUsageProvider, AiProviderCliSpec> = {
  * 계정 위치를 알리는 변수 하나만 얹은 자식 프로세스 환경을 만든다.
  *
  * 서버 런타임 값이 CLI로 새지 않도록 로컬 셸 환경 규칙을 그대로 쓰고, 그 위에 provider 변수만 더한다.
+ *
+ * 기본 계정에는 그 변수를 얹지 않는다. CLI는 변수를 받으면 그 디렉터리 안에 설정 파일을 새로 만들어
+ * 홈에 있던 계정 정보와 갈라놓기 때문에, 기본 위치를 굳이 지정하면 계정 신원만 쪼개진다.
+ * 물려받은 값도 지워야 사용자의 셸이 가리키던 다른 계정으로 실행되지 않는다.
  */
 export function createProviderCliEnvironment(
   spec: AiProviderConfigDirSpec,
   accountRoot: string,
 ): Record<string, string> {
-  return { ...createLocalShellEnvironment(), [spec.homeEnvVar]: accountRoot };
+  const environment = createLocalShellEnvironment();
+  if (accountRoot === toDefaultAccountRoot(spec)) {
+    delete environment[spec.homeEnvVar];
+    return environment;
+  }
+
+  return { ...environment, [spec.homeEnvVar]: accountRoot };
 }
 
 /** 로그인 세션이 띄울 명령. PTY를 다루는 쪽이 실행 방식을 정하므로 여기서는 이름과 인자만 준다 */
