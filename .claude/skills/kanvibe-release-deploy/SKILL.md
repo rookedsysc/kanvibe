@@ -143,6 +143,8 @@ The same script also keeps the tracked `package-lock.json` in sync, because its 
 
 Both files contain several `"version"` lines, and only three of them belong to the release. The replacement therefore anchors on **whole-line exact matches** and, inside `package-lock.json`, on the `packages[""]` block boundary. It never matches substrings and never treats indentation as optional.
 
+Every anchor is resolved in memory before the first `writeFileSync`, so a failed anchor leaves both files untouched. That ordering matters: a partial bump would leave `package.json` on the new version while `package-lock.json` stayed on the old one, and the `already at ${version}` guard would then reject the retry until someone manually ran `git checkout -- package.json`.
+
 ```bash
 TARGET_VERSION="<version supplied by user>"
 node -e '
@@ -172,10 +174,11 @@ const findExactlyOneLine = (label, lines, needle) => {
 // devEngines.packageManager.version is indented deeper and must survive untouched.
 const packageLines = fs.readFileSync("package.json", "utf8").split("\n");
 packageLines[findExactlyOneLine("package.json top-level version", packageLines, rootNeedle)] = rootReplacement;
-fs.writeFileSync("package.json", packageLines.join("\n"));
 
-if (fs.existsSync("package-lock.json")) {
-  const lockLines = fs.readFileSync("package-lock.json", "utf8").split("\n");
+const hasLock = fs.existsSync("package-lock.json");
+let lockLines = null;
+if (hasLock) {
+  lockLines = fs.readFileSync("package-lock.json", "utf8").split("\n");
   lockLines[findExactlyOneLine("package-lock.json top-level version", lockLines, rootNeedle)] = rootReplacement;
 
   // packages[""] is the root package block. Its six-space version line is textually identical
@@ -198,7 +201,13 @@ if (fs.existsSync("package-lock.json")) {
     throw new Error("package-lock.json: packages[\"\"].version line not found inside the root package block");
   }
   lockLines[innerIndex] = `      "version": "${version}",`;
+}
 
+// Every anchor is resolved by this point, so the writes happen together or not at all.
+// Writing package.json before the lock anchors were checked used to leave a half-bumped
+// tree on a lock failure, and the "already at" guard above then refused the retry.
+fs.writeFileSync("package.json", packageLines.join("\n"));
+if (hasLock) {
   fs.writeFileSync("package-lock.json", lockLines.join("\n"));
 }
 ' "$TARGET_VERSION"
@@ -325,9 +334,12 @@ Read the counts from `$LOG` inside `$SMOKE_DATA`, never from `~/Library/Applicat
 If the smoke test fails, stop. Do not publish, do not update the cask, and do not open PRs. Diagnose the bundle first; `app.asar` contents can be listed from its header:
 
 ```bash
+# Run this twice: once for the candidate bundle, once for a build known to be good.
+ASAR_PATH="dist/mac-arm64/KanVibe.app/Contents/Resources/app.asar"
+# ASAR_PATH="/Applications/KanVibe.app/Contents/Resources/app.asar"
 node -e '
 const fs=require("fs");
-const p=process.argv[1] ?? "dist/mac-arm64/KanVibe.app/Contents/Resources/app.asar";
+const p=process.argv[1] || "dist/mac-arm64/KanVibe.app/Contents/Resources/app.asar";
 const fd=fs.openSync(p,"r");
 const b=Buffer.alloc(16); fs.readSync(fd,b,0,16,0);
 const hb=Buffer.alloc(b.readUInt32LE(12)); fs.readSync(fd,hb,0,hb.length,16);
@@ -342,7 +354,7 @@ console.log(`${expanded} packages with scopes expanded  <-- matches the build gu
 
 The two numbers are both correct and they are not interchangeable. The build guard line `packaged node_modules verified: N packages` comes from `readAsarNodeModuleNames()` in `scripts/dist-deploy.cjs`, which expands `@scope/name` into one entry per scoped package, so it always reports the larger number. Counting the top-level keys instead reports the smaller one. Reading the smaller number as if it were the guard's makes a healthy build look like the 1.0.4 dependency-loss failure.
 
-Do not judge either number against a remembered absolute value; package counts move whenever dependencies change. Judge by comparison: run the same snippet against a build known to be good — the installed `/Applications/KanVibe.app/Contents/Resources/app.asar` is the convenient one — and compare it with the candidate bundle.
+Do not judge either number against a remembered absolute value; package counts move whenever dependencies change. Judge by comparison: rerun the same snippet with `ASAR_PATH` pointed at a build known to be good — the installed `/Applications/KanVibe.app/Contents/Resources/app.asar` is the convenient one — and compare it with the candidate bundle. The `||` fallback rather than `??` is deliberate, because an unset `ASAR_PATH` still passes an empty-string argument that `??` would accept as a path.
 
 ## 4. Create or Update the GitHub Release
 
@@ -587,10 +599,11 @@ This returns an empty list, which means `Type Check & Test` is **not** a merge g
 Because the merge does not wait, confirm the release commit's CI conclusion separately after merging:
 
 ```bash
-MERGE_SHA=$(gh pr view "$RELEASE_PR" --repo rookedsysc/kanvibe --json mergeCommit --jq .mergeCommit.oid)
 gh run list --repo rookedsysc/kanvibe --commit "$RELEASE_HEAD_SHA" --json databaseId,name,status,conclusion
 gh run view <databaseId> --repo rookedsysc/kanvibe
 ```
+
+`RELEASE_HEAD_SHA` (captured in §6.1) is the right commit to query, because it is the commit the DMG was built from. The merge commit on `dev` is a different SHA with its own runs; it answers "is `dev` green", not "did the released code pass".
 
 Every run for that commit must end with `conclusion: success`. A failed conclusion after a completed merge is a blocker: report it instead of continuing quietly.
 
@@ -654,10 +667,17 @@ MAIN_VERSION=$(git show origin/main:package.json | node -p "JSON.parse(require('
 test "$MAIN_VERSION" = "$VERSION"
 
 # Clean up the release branch only after the main promotion is merged and the release commit's
-# workflow runs have reached a conclusion. Deleting the branch cancels runs still in progress.
+# workflow runs have reached a conclusion. Deleting the branch cancels runs still in progress,
+# so the pending-run count below is the gate, not just something to read.
 if [ "$PROMOTION_STATE" = "MERGED" ]; then
   gh run list --repo rookedsysc/kanvibe --commit "$RELEASE_HEAD_SHA" --json name,status,conclusion
-  git push origin --delete "$PROMOTION_BRANCH" || true
+  PENDING_RUNS=$(gh run list --repo rookedsysc/kanvibe --commit "$RELEASE_HEAD_SHA" \
+    --json status --jq '[.[] | select(.status != "completed")] | length')
+  if [ "$PENDING_RUNS" != "0" ]; then
+    echo "release commit runs still in progress ($PENDING_RUNS); skip branch cleanup" >&2
+  else
+    git push origin --delete "$PROMOTION_BRANCH" || true
+  fi
 fi
 ```
 
