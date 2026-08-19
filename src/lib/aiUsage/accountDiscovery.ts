@@ -69,13 +69,30 @@ async function readJsonFile(filePath: string): Promise<Record<string, unknown> |
 }
 
 /**
- * Claude는 사용량 응답에 계정 정보를 담지 않아서 `.claude.json`이 유일한 식별·라벨 출처다.
- * config dir를 따로 지정한 계정은 그 안에 `.claude.json`을 함께 두고, 기본 계정만 홈 루트에 둔다.
+ * 계정 정보가 담긴 `oauthAccount`를 찾는다.
+ *
+ * config dir 안에도 같은 이름의 파일이 생기지만 계정 정보 없이 만들어지는 판이 있어,
+ * 파일이 있다는 사실만으로는 계정을 찾았다고 볼 수 없다.
+ * 홈 루트의 파일은 기본 계정의 것이므로 다른 계정에는 빌려주지 않는다.
+ * 빌려주면 계정마다 같은 accountUuid를 달게 되어 중복 제거가 계정 하나를 삼킨다.
  */
-async function readClaudeAccountIdentity(configDir: string): Promise<ProviderAccountIdentity> {
+async function readClaudeOauthAccount(
+  configDir: string,
+): Promise<Record<string, unknown> | undefined> {
   const colocatedConfig = await readJsonFile(path.join(configDir, ".claude.json"));
-  const config = colocatedConfig ?? (await readJsonFile(path.join(homedir(), ".claude.json")));
-  const oauthAccount = config?.oauthAccount as Record<string, unknown> | undefined;
+  const colocatedAccount = colocatedConfig?.oauthAccount as Record<string, unknown> | undefined;
+  const isDefaultAccount = configDir === toDefaultAccountRoot(AI_PROVIDER_CONFIG_DIR_SPECS.claude);
+  if (colocatedAccount || !isDefaultAccount) {
+    return colocatedAccount;
+  }
+
+  const homeConfig = await readJsonFile(path.join(homedir(), ".claude.json"));
+  return homeConfig?.oauthAccount as Record<string, unknown> | undefined;
+}
+
+/** Claude는 사용량 응답에 계정 정보를 담지 않아서 `.claude.json`이 유일한 식별·라벨 출처다 */
+async function readClaudeAccountIdentity(configDir: string): Promise<ProviderAccountIdentity> {
+  const oauthAccount = await readClaudeOauthAccount(configDir);
 
   const accountUuid = oauthAccount?.accountUuid;
   const emailAddress = oauthAccount?.emailAddress;

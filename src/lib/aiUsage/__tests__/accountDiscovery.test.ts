@@ -77,6 +77,43 @@ describe("discoverProviderAccounts(claude)", () => {
     expect(withoutIdentity[0].label).toBe("Claude");
   });
 
+  it("config dir의 설정 파일에 계정 정보가 없으면 홈의 설정 파일에서 읽는다", async () => {
+    vi.stubEnv("CLAUDE_CONFIG_DIR", "");
+    const configDir = await writeClaudeConfigDir(".claude", {
+      accountUuid: "uuid-default",
+      emailAddress: "me@example.com",
+    });
+    // CLI에 config dir를 지정해 실행하면 계정 정보 없는 설정 파일이 그 안에 새로 생긴다
+    await writeFile(
+      path.join(configDir, ".claude.json"),
+      JSON.stringify({ installMethod: "native", machineID: "machine-1" }),
+      "utf-8",
+    );
+
+    const accounts = await discoverProviderAccounts("claude");
+
+    expect(accounts[0].accountId).toBe("uuid-default");
+    expect(accounts[0].label).toBe("me@example.com");
+  });
+
+  it("기본 계정이 아닌 곳에서는 홈의 계정 정보를 빌려오지 않는다", async () => {
+    vi.stubEnv("CLAUDE_CONFIG_DIR", "");
+    await writeClaudeConfigDir(".claude", { accountUuid: "uuid-default", emailAddress: "me@example.com" });
+    const workDir = path.join(fakeHome, ".claude-work");
+    await mkdir(workDir, { recursive: true });
+    await writeFile(
+      path.join(workDir, ".credentials.json"),
+      JSON.stringify({ claudeAiOauth: { accessToken: "work-token" } }),
+      "utf-8",
+    );
+
+    const accounts = await discoverProviderAccounts("claude");
+
+    // 홈 계정 정보를 빌려 오면 두 계정의 accountId가 같아져 하나가 사라진다
+    expect(accounts.map((account) => account.label)).toEqual(["me@example.com", "work"]);
+    expect(accounts[1].accountId).toBe(workDir);
+  });
+
   it("형제 디렉터리에 등록된 두 번째 계정도 찾는다", async () => {
     vi.stubEnv("CLAUDE_CONFIG_DIR", "");
     await writeClaudeConfigDir(".claude", { accountUuid: "uuid-personal", emailAddress: "me@example.com" });
