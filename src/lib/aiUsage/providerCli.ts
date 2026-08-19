@@ -106,9 +106,11 @@ const AI_PROVIDER_CLI_SPECS: Record<AiUsageProvider, AiProviderCliSpec> = {
  *
  * 서버 런타임 값이 CLI로 새지 않도록 로컬 셸 환경 규칙을 그대로 쓰고, 그 위에 provider 변수만 더한다.
  *
- * 기본 계정에는 그 변수를 얹지 않는다. CLI는 변수를 받으면 그 디렉터리 안에 설정 파일을 새로 만들어
- * 홈에 있던 계정 정보와 갈라놓기 때문에, 기본 위치를 굳이 지정하면 계정 신원만 쪼개진다.
- * 물려받은 값도 지워야 사용자의 셸이 가리키던 다른 계정으로 실행되지 않는다.
+ * 기본 루트일 때는 그 변수를 얹는 대신 지운다. CLI가 스스로 고르는 자리와 같은 값이지만, Claude Code는
+ * `CLAUDE_CONFIG_DIR`가 있으면 설정 파일을 홈이 아니라 config dir 안에 새로 만든다.
+ * 그러면 같은 계정의 신원이 홈과 config dir 두 곳으로 갈려, 탐색이 계정 이메일을 잃는다.
+ * 사용자가 셸에서 내보낸 값이 그대로 상속돼 있을 수 있으므로, 얹지 않는 것으로는 모자라고 지워야
+ * 이 호출이 겨냥한 계정과 CLI가 여는 계정이 어긋나지 않는다.
  */
 export function createProviderCliEnvironment(
   spec: AiProviderConfigDirSpec,

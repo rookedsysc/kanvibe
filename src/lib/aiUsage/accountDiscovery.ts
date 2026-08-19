@@ -68,40 +68,48 @@ async function readJsonFile(filePath: string): Promise<Record<string, unknown> |
   }
 }
 
-/**
- * 계정 정보가 담긴 `oauthAccount`를 찾는다.
- *
- * config dir 안에도 같은 이름의 파일이 생기지만 계정 정보 없이 만들어지는 판이 있어,
- * 파일이 있다는 사실만으로는 계정을 찾았다고 볼 수 없다.
- * 홈 루트의 파일은 기본 계정의 것이므로 다른 계정에는 빌려주지 않는다.
- * 빌려주면 계정마다 같은 accountUuid를 달게 되어 중복 제거가 계정 하나를 삼킨다.
- */
-async function readClaudeOauthAccount(
-  configDir: string,
-): Promise<Record<string, unknown> | undefined> {
-  const colocatedConfig = await readJsonFile(path.join(configDir, ".claude.json"));
-  const colocatedAccount = colocatedConfig?.oauthAccount as Record<string, unknown> | undefined;
-  const isDefaultAccount = configDir === toDefaultAccountRoot(AI_PROVIDER_CONFIG_DIR_SPECS.claude);
-  if (colocatedAccount || !isDefaultAccount) {
-    return colocatedAccount;
-  }
+const UNKNOWN_ACCOUNT_IDENTITY: ProviderAccountIdentity = { accountId: null, label: null };
 
-  const homeConfig = await readJsonFile(path.join(homedir(), ".claude.json"));
-  return homeConfig?.oauthAccount as Record<string, unknown> | undefined;
+/** 설정 파일이 로그인한 계정을 알려줄 때만 신원으로 친다. 둘 다 비면 이 파일은 출처가 되지 못한다 */
+function readClaudeConfigIdentity(
+  config: Record<string, unknown> | null,
+): ProviderAccountIdentity | null {
+  const oauthAccount = config?.oauthAccount as Record<string, unknown> | undefined;
+  const identity: ProviderAccountIdentity = {
+    accountId: firstNonEmptyString([oauthAccount?.accountUuid]),
+    label: firstNonEmptyString([oauthAccount?.emailAddress, oauthAccount?.displayName]),
+  };
+
+  return identity.accountId || identity.label ? identity : null;
 }
 
-/** Claude는 사용량 응답에 계정 정보를 담지 않아서 `.claude.json`이 유일한 식별·라벨 출처다 */
+/**
+ * Claude는 사용량 응답에 계정 정보를 담지 않아서 `.claude.json`이 유일한 식별·라벨 출처다.
+ * config dir를 따로 지정한 계정은 그 안에 `.claude.json`을 함께 두고, 기본 계정만 홈 루트에 둔다.
+ *
+ * config dir 안의 `.claude.json`은 로그인 정보 없이도 만들어진다. `CLAUDE_CONFIG_DIR`를 얹어 CLI를
+ * 부르면 Claude Code가 그 자리에 설정 파일을 새로 만들기 때문이라, 파일이 있는지가 아니라
+ * 계정을 알려주는지로 갈라야 기본 계정이 홈에 둔 신원을 잃지 않는다.
+ *
+ * 홈으로 넘어가는 것은 기본 계정뿐이다. 형제 루트까지 넘기면 다른 계정의 이메일과 uuid를 물려받아
+ * 기본 계정과 같은 계정으로 합쳐진다.
+ */
 async function readClaudeAccountIdentity(configDir: string): Promise<ProviderAccountIdentity> {
-  const oauthAccount = await readClaudeOauthAccount(configDir);
+  const colocatedIdentity = readClaudeConfigIdentity(
+    await readJsonFile(path.join(configDir, ".claude.json")),
+  );
+  if (colocatedIdentity) {
+    return colocatedIdentity;
+  }
 
-  const accountUuid = oauthAccount?.accountUuid;
-  const emailAddress = oauthAccount?.emailAddress;
-  const displayName = oauthAccount?.displayName;
+  if (configDir !== toDefaultAccountRoot(AI_PROVIDER_CONFIG_DIR_SPECS.claude)) {
+    return UNKNOWN_ACCOUNT_IDENTITY;
+  }
 
-  return {
-    accountId: typeof accountUuid === "string" && accountUuid.trim() ? accountUuid : null,
-    label: firstNonEmptyString([emailAddress, displayName]),
-  };
+  const homeIdentity = readClaudeConfigIdentity(
+    await readJsonFile(path.join(homedir(), ".claude.json")),
+  );
+  return homeIdentity ?? UNKNOWN_ACCOUNT_IDENTITY;
 }
 
 async function readCodexAccountIdentity(configDir: string): Promise<ProviderAccountIdentity> {
