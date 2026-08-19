@@ -2,7 +2,7 @@
  * @vitest-environment node
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { AiUsageSnapshot } from "@/lib/aiUsage/types";
+import type { AiUsageFailureReason, AiUsageSnapshot } from "@/lib/aiUsage/types";
 
 const { mockAggregateAiUsage, storedSettings, settingsStore } = vi.hoisted(() => ({
   mockAggregateAiUsage: vi.fn(),
@@ -46,8 +46,11 @@ function createSnapshot(usedPercent: number, resetsAt: string | null = null): Ai
   };
 }
 
-/** 429처럼 값을 하나도 얻지 못한 조회. 같은 계정이지만 창이 비어 있다 */
-function createRateLimitedSnapshot(fetchedAt: string): AiUsageSnapshot {
+/** 값을 하나도 얻지 못한 조회. 같은 계정이지만 창이 비어 있다 */
+function createFailedSnapshot(
+  fetchedAt: string,
+  reason: AiUsageFailureReason = "rate-limited",
+): AiUsageSnapshot {
   return {
     fetchedAt,
     accounts: [
@@ -58,7 +61,7 @@ function createRateLimitedSnapshot(fetchedAt: string): AiUsageSnapshot {
         status: "error",
         planName: null,
         windows: [],
-        reason: "rate-limited",
+        reason,
         fetchedAt,
       },
     ],
@@ -121,7 +124,7 @@ describe("aiUsageService", () => {
 
     mockAggregateAiUsage.mockResolvedValue(createSnapshot(22, "2999-01-01T00:00:00.000Z"));
     await getAiUsageSnapshot();
-    mockAggregateAiUsage.mockResolvedValue(createRateLimitedSnapshot("2026-08-10T06:05:00.000Z"));
+    mockAggregateAiUsage.mockResolvedValue(createFailedSnapshot("2026-08-10T06:05:00.000Z"));
     const snapshot = await getAiUsageSnapshot();
 
     expect(snapshot.accounts[0].windows[0].usedPercent).toBe(22);
@@ -129,12 +132,26 @@ describe("aiUsageService", () => {
     expect(snapshot.accounts[0].planName).toBe("max");
   });
 
+  it("다시 로그인해야 풀리는 실패에는 직전 값을 이어 붙이지 않는다", async () => {
+    const { getAiUsageSnapshot } = await import("@/desktop/main/services/aiUsageService");
+
+    mockAggregateAiUsage.mockResolvedValue(createSnapshot(22, "2999-01-01T00:00:00.000Z"));
+    await getAiUsageSnapshot();
+    mockAggregateAiUsage.mockResolvedValue(
+      createFailedSnapshot("2026-08-10T06:05:00.000Z", "expired-credentials"),
+    );
+    const snapshot = await getAiUsageSnapshot();
+
+    expect(snapshot.accounts[0].windows).toEqual([]);
+    expect(snapshot.accounts[0].reason).toBe("expired-credentials");
+  });
+
   it("이어 붙인 값에는 그 값이 만들어진 조회 시각을 남긴다", async () => {
     const { getAiUsageSnapshot } = await import("@/desktop/main/services/aiUsageService");
 
     mockAggregateAiUsage.mockResolvedValue(createSnapshot(22, "2999-01-01T00:00:00.000Z"));
     await getAiUsageSnapshot();
-    mockAggregateAiUsage.mockResolvedValue(createRateLimitedSnapshot("2026-08-10T06:05:00.000Z"));
+    mockAggregateAiUsage.mockResolvedValue(createFailedSnapshot("2026-08-10T06:05:00.000Z"));
     const snapshot = await getAiUsageSnapshot();
 
     expect(snapshot.accounts[0].fetchedAt).toBe("2026-08-10T06:00:00.000Z");
@@ -146,7 +163,7 @@ describe("aiUsageService", () => {
 
     mockAggregateAiUsage.mockResolvedValue(createSnapshot(22, "2026-08-10T06:01:00.000Z"));
     await getAiUsageSnapshot();
-    mockAggregateAiUsage.mockResolvedValue(createRateLimitedSnapshot("2026-08-10T06:05:00.000Z"));
+    mockAggregateAiUsage.mockResolvedValue(createFailedSnapshot("2026-08-10T06:05:00.000Z"));
     const snapshot = await getAiUsageSnapshot();
 
     expect(snapshot.accounts[0].windows).toEqual([]);
@@ -154,7 +171,7 @@ describe("aiUsageService", () => {
   });
 
   it("이어 붙일 직전 값이 없으면 실패 결과를 그대로 둔다", async () => {
-    mockAggregateAiUsage.mockResolvedValue(createRateLimitedSnapshot("2026-08-10T06:05:00.000Z"));
+    mockAggregateAiUsage.mockResolvedValue(createFailedSnapshot("2026-08-10T06:05:00.000Z"));
     const { getAiUsageSnapshot } = await import("@/desktop/main/services/aiUsageService");
 
     const snapshot = await getAiUsageSnapshot();

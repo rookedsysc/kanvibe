@@ -1,6 +1,7 @@
 import { getAiAccountRegistrations } from "@/desktop/main/services/aiAccountService";
 import { getAppSetting, setAppSetting } from "@/desktop/main/services/appSettingsService";
 import { aggregateAiUsage } from "@/lib/aiUsage/aggregateAiUsage";
+import { SIGN_IN_FAILURE_REASONS } from "@/lib/aiUsage/shared";
 import {
   fromCachedSnapshot,
   toCacheableSnapshot,
@@ -51,12 +52,20 @@ function carryLastKnownUsage(
   };
 }
 
+/**
+ * 다시 로그인하기 전까지는 조회가 계속 실패하므로 이월한 값이 끝없이 늙는다.
+ * 잠시 뒤 풀리는 실패와 달리 이월이 옛 값을 지켜 주지 못하고 새 값인 척하게만 만든다.
+ */
+function isSignInFailure(account: AiUsageAccountResult): boolean {
+  return Boolean(account.reason && SIGN_IN_FAILURE_REASONS.has(account.reason));
+}
+
 function withLastKnownWindows(
   account: AiUsageAccountResult,
   cachedAccounts: Map<string, AiUsageAccountResult>,
   nowMs: number,
 ): AiUsageAccountResult {
-  if (account.windows.length > 0) {
+  if (account.windows.length > 0 || isSignInFailure(account)) {
     return account;
   }
 

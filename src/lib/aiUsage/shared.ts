@@ -10,6 +10,17 @@ import type {
 export const AI_USAGE_REQUEST_TIMEOUT_MS = 10_000;
 
 /**
+ * 앱 안에서 로그인하면 풀리는 사유들. 나머지는 로그인과 무관하다.
+ *
+ * 이 사유들은 사람이 다시 로그인하기 전까지 계속 실패하므로, 잠시 뒤 저절로 풀리는 실패와 달리 다룬다.
+ */
+export const SIGN_IN_FAILURE_REASONS: ReadonlySet<AiUsageFailureReason> = new Set([
+  "missing-credentials",
+  "expired-credentials",
+  "gemini-cli-not-found",
+]);
+
+/**
  * 초 단위 epoch와 밀리초 단위 epoch를 가르는 경계.
  * 1e10초는 서기 2286년이고 1e10밀리초는 1970년이므로, 이보다 크면 밀리초로 본다.
  */
