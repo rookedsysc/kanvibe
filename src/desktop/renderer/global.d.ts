@@ -27,6 +27,8 @@ declare global {
       resizeTerminal: (taskId: string, tabId: string | null, cols: number, rows: number) => void;
       focusTerminal: (taskId: string) => void;
       closeTerminal: (taskId: string, tabId: string | null) => void;
+      /** OSC 52 복사를 메인 프로세스에서 처리한다. 렌더러 클립보드 API는 문서 포커스에 묶여 있어 터미널 출력이 촉발하는 복사를 놓친다 */
+      writeSystemClipboard?: (text: string) => Promise<void>;
       onTerminalData: (listener: (event: { taskId: string; tabId: string | null; data: string }) => void) => () => void;
       onTerminalClose: (listener: (event: { taskId: string; tabId: string | null; reason: string | null }) => void) => () => void;
       /** AI 계정 로그인 세션은 태스크에 묶이지 않으므로 계정 루트가 식별자다 */

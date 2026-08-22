@@ -62,8 +62,20 @@ function decodeBase64Utf8(encodedText: string): string | null {
   }
 }
 
+/**
+ * 복사 요청을 시스템 클립보드에 반영한다.
+ * 데스크톱에서는 Electron 메인 프로세스를 거친다. 렌더러의 `navigator.clipboard`는 문서 포커스를 요구하고,
+ * 포커스가 있어도 성공을 반환한 채 클립보드를 그대로 두는 경우가 있어 터미널 출력이 촉발하는 복사를 놓친다.
+ * 데스크톱 브리지가 없는 웹 터미널에서는 렌더러 클립보드 API가 유일한 경로다.
+ */
 async function writeSystemClipboard(clipboardText: string): Promise<void> {
   try {
+    const writeDesktopClipboard = window.kanvibeDesktop?.writeSystemClipboard;
+    if (writeDesktopClipboard) {
+      await writeDesktopClipboard(clipboardText);
+      return;
+    }
+
     await navigator.clipboard.writeText(clipboardText);
   } catch (error) {
     console.warn("터미널 클립보드 복사 실패:", error);
