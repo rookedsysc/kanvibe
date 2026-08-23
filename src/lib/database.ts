@@ -5,6 +5,7 @@ import { KanbanTask } from "@/entities/KanbanTask";
 import { Project } from "@/entities/Project";
 import { PaneLayoutConfig } from "@/entities/PaneLayoutConfig";
 import { AppSettings } from "@/entities/AppSettings";
+import { TaskDiffStatsRecord } from "@/entities/TaskDiffStats";
 import { ensureRuntimeDatabaseFile, getRuntimeDatabasePath } from "@/lib/databasePaths";
 import { ensureSqliteDatabaseReady } from "@/lib/sqliteSchema";
 import { InitialSchema1770854400000 } from "@/migrations/1770854400000-InitialSchema";
@@ -23,6 +24,7 @@ import { AddIconDataUrlToProjects1771500000000 } from "@/migrations/177150000000
 import { RescopeProjectNamesPerHost1771600000000 } from "@/migrations/1771600000000-RescopeProjectNamesPerHost";
 import { AddTerminalSessionType1771700000000 } from "@/migrations/1771700000000-AddTerminalSessionType";
 import { DropDisplayOrderFromKanbanTasks1771800000000 } from "@/migrations/1771800000000-DropDisplayOrderFromKanbanTasks";
+import { AddTaskDiffStats1771900000000 } from "@/migrations/1771900000000-AddTaskDiffStats";
 
 /** TypeORM DataSource 싱글턴. Vite HMR 시 재연결을 방지하기 위해 globalThis에 캐싱한다. */
 const globalForDb = globalThis as unknown as {
@@ -46,6 +48,7 @@ const MIGRATIONS = [
   RescopeProjectNamesPerHost1771600000000,
   AddTerminalSessionType1771700000000,
   DropDisplayOrderFromKanbanTasks1771800000000,
+  AddTaskDiffStats1771900000000,
 ];
 
 interface MigrationRecord {
@@ -140,7 +143,7 @@ function createDataSource(): DataSource {
   return new DataSource({
     type: "better-sqlite3",
     database: databasePath,
-    entities: [KanbanTask, Project, PaneLayoutConfig, AppSettings],
+    entities: [KanbanTask, Project, PaneLayoutConfig, AppSettings, TaskDiffStatsRecord],
     migrations: MIGRATIONS,
     synchronize: false,
     logging: shouldLogSql,
@@ -204,4 +207,9 @@ export async function getPaneLayoutConfigRepository(): Promise<Repository<PaneLa
 export async function getAppSettingsRepository(): Promise<Repository<AppSettings>> {
   const ds = await getDataSource();
   return getRepositoryByTable<AppSettings>(ds, "app_settings");
+}
+
+export async function getTaskDiffStatsRepository(): Promise<Repository<TaskDiffStatsRecord>> {
+  const ds = await getDataSource();
+  return getRepositoryByTable<TaskDiffStatsRecord>(ds, "task_diff_stats");
 }

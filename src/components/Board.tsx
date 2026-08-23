@@ -23,6 +23,7 @@ import type { Project } from "@/entities/Project";
 import { useAutoRefresh } from "@/desktop/renderer/hooks/useAutoRefresh";
 import { useProjectFilterParams } from "@/desktop/renderer/hooks/useProjectFilterParams";
 import { useRunningAgentPanes } from "@/desktop/renderer/hooks/useLiveAiSessions";
+import { useBoardTaskDiffStats } from "@/desktop/renderer/hooks/useTaskDiffStats";
 import { useUnreadNotificationCountByTask } from "@/desktop/renderer/hooks/useUnreadNotificationCountByTask";
 import {
   TASK_KIND_FILTER_VALUES,
@@ -680,6 +681,18 @@ export default function Board({
     return sorted;
   }, [boardSortContext, filteredTasks, sortPreference]);
 
+  /**
+   * git을 다시 돌릴 태스크. 지금 손대고 있는 칸만 새로 집계하고 나머지 칸은 마지막으로 저장된 값을 보여준다.
+   * worktree와 브랜치가 있어야 baseBranch와 견줄 변경이 존재한다.
+   */
+  const taskIdsToRefresh = useMemo(
+    () => displayedTasks[TaskStatus.PROGRESS]
+      .filter((task) => task.branchName && task.worktreePath)
+      .map((task) => task.id),
+    [displayedTasks],
+  );
+  const diffStatsByTaskId = useBoardTaskDiffStats(taskIdsToRefresh, isMounted);
+
   const [contextMenu, setContextMenu] = useState<ContextMenuState>({
     isOpen: false,
     x: 0,
@@ -1247,6 +1260,7 @@ export default function Board({
                   rootPriorityByProjectId={rootPriorityByProjectId}
                   vimModeEnabled={vimModeEnabled}
                   runningAgentPanes={runningAgentPanes}
+                  diffStatsByTaskId={diffStatsByTaskId}
                   {...(col.status === TaskStatus.DONE && {
                     totalCount: doneTotal,
                     hasMore: doneOffset < doneTotal,

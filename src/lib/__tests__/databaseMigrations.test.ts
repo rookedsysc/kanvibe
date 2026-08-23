@@ -195,7 +195,7 @@ describe("database migrations", () => {
         { id: "task-1", branch_name: "main" },
         { id: "task-2", branch_name: "main" },
       ]);
-      expect(migrations).toHaveLength(16);
+      expect(migrations).toHaveLength(17);
       expect(migrations[0]).toEqual({ name: "InitialSchema1770854400000" });
     } finally {
       await dataSource.destroy();
@@ -234,7 +234,7 @@ describe("database migrations", () => {
           priority: null,
         },
       ]);
-      expect(migrations).toHaveLength(16);
+      expect(migrations).toHaveLength(17);
     } finally {
       await dataSource.destroy();
     }
@@ -259,12 +259,12 @@ describe("database migrations", () => {
       const migrations = await dataSource.query(`SELECT name FROM migrations ORDER BY timestamp`);
 
       expect(tables.map((row: { name: string }) => row.name)).toEqual(
-        expect.arrayContaining(["app_settings", "kanban_tasks", "migrations", "pane_layout_configs", "projects"]),
+        expect.arrayContaining(["app_settings", "kanban_tasks", "migrations", "pane_layout_configs", "projects", "task_diff_stats"]),
       );
       expect(indexes.map((row: { name: string }) => row.name)).not.toContain(
         "UQ_kanban_tasks_branch_name",
       );
-      expect(migrations).toHaveLength(16);
+      expect(migrations).toHaveLength(17);
 
       await dataSource.query(`
         INSERT INTO projects (id, name, repo_path, ssh_host)

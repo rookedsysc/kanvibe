@@ -539,6 +539,39 @@ textarea {
 }
 
 /**
+ * 스스로 갱신되는 숫자가 굴러가는 동안 옅은 배경을 깔아, 어느 값이 방금 움직였는지 눈이 따라가게 한다.
+ * 굴러가기가 끝나면 배경만 천천히 빠져 잔광처럼 남는다.
+ */
+.kv-count-up {
+  border-radius: 3px;
+  padding: 0 1px;
+  background-color: transparent;
+  transition: background-color 600ms ease-out;
+}
+
+.kv-count-up[data-counting] {
+  background-color: color-mix(in srgb, var(--color-brand-primary) 22%, transparent);
+  transition-duration: 120ms;
+}
+
+/** 추가와 삭제의 비율 막대. 폴링으로 값이 바뀔 때 폭이 튀지 않고 이어지게 한다 */
+.kv-diff-ratio-fill {
+  transition: width 480ms ease-out;
+}
+
+/** 움직임을 줄이도록 설정한 사용자에게는 잔광과 폭 전환 없이 결과값만 남긴다 */
+@media (prefers-reduced-motion: reduce) {
+  .kv-count-up,
+  .kv-diff-ratio-fill {
+    transition: none;
+  }
+
+  .kv-count-up[data-counting] {
+    background-color: transparent;
+  }
+}
+
+/**
  * 세션 행 왼쪽의 provider 색띠.
  * 아이콘 하나만으로는 목록을 훑을 때 소속이 눈에 안 잡혀서, 행 전체 높이를 쓰는 띠를 따로 둔다.
  */

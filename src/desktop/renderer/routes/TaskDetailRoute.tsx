@@ -20,7 +20,6 @@ import TaskDetailInfoCard from "@/components/TaskDetailInfoCard";
 import TaskDetailTitleCard from "@/components/TaskDetailTitleCard";
 import { Link, useRouter } from "@/desktop/renderer/navigation";
 import { getDefaultSessionType, getDoneAlertDismissed, getSidebarDefaultCollapsed } from "@/desktop/renderer/actions/appSettings";
-import { getGitDiffFiles } from "@/desktop/renderer/actions/diff";
 import { deleteTask, getTaskById, getTaskIdByProjectAndBranch, updateTaskStatus } from "@/desktop/renderer/actions/kanban";
 import {
   getTaskAiSessions,
@@ -44,6 +43,7 @@ import TerminalLoader from "@/desktop/renderer/components/TerminalLoader";
 import TerminalTabBar from "@/desktop/renderer/components/TerminalTabBar";
 import { useMarkTaskNotificationsReadWhenFocused } from "@/desktop/renderer/hooks/useMarkTaskNotificationsReadWhenFocused";
 import { useTaskAgentCallGraph, useTaskLiveAiSessions } from "@/desktop/renderer/hooks/useLiveAiSessions";
+import { useTaskDiffFiles } from "@/desktop/renderer/hooks/useTaskDiffStats";
 import { useTerminalTabs } from "@/desktop/renderer/hooks/useTerminalTabs";
 import type { TerminalTabShortcutCommand } from "@/desktop/shared/terminalTabs";
 import { fetchPrUrlWithPrompt } from "@/desktop/renderer/utils/fetchPrUrlWithPrompt";
@@ -156,7 +156,6 @@ function AntennaSignalIcon({ testId }: { testId?: string }) {
 interface TaskDetailState {
   task: NonNullable<Awaited<ReturnType<typeof getTaskById>>>;
   baseBranchTaskId: string | null;
-  diffFiles: Awaited<ReturnType<typeof getGitDiffFiles>>;
   claudeHooksStatus: Awaited<ReturnType<typeof getTaskHooksStatus>>;
   geminiHooksStatus: Awaited<ReturnType<typeof getTaskGeminiHooksStatus>>;
   codexHooksStatus: Awaited<ReturnType<typeof getTaskCodexHooksStatus>>;
@@ -178,7 +177,6 @@ interface NormalizedTaskDetailRouteCache {
 
 const DEFAULT_DETAIL_STATE: Omit<TaskDetailState, "task"> = {
   baseBranchTaskId: null,
-  diffFiles: [],
   claudeHooksStatus: null,
   geminiHooksStatus: null,
   codexHooksStatus: null,
@@ -212,11 +210,13 @@ function normalizeCachedTaskDetailRouteCache(cachedRoute: TaskDetailRouteCache |
   const routeState = { ...cachedRoute } as TaskDetailRouteCache & {
     sidebarHintDismissed?: boolean;
     aiSessions?: unknown;
+    diffFiles?: unknown;
   };
   const defaultPanelDismissed = routeState.defaultPanelDismissed === true;
   delete routeState.sidebarHintDismissed;
   delete routeState.defaultPanelDismissed;
   delete routeState.aiSessions;
+  delete routeState.diffFiles;
   return {
     state: {
       ...DEFAULT_DETAIL_STATE,
@@ -893,6 +893,10 @@ export default function TaskDetailRoute() {
 
   const liveSessions = useTaskLiveAiSessions(id ?? null, visiblePanel === "liveSessions");
 
+  /** 변경 파일은 작업 정보를 열어 둔 동안에만 읽는다. 조회 한 번이 worktree에서 git을 돌리는 값이라 닫힌 패널을 위해 돌릴 이유가 없다 */
+  const hasWorktreeBranch = Boolean(state?.task.branchName && state?.task.worktreePath);
+  const diffFiles = useTaskDiffFiles(hasWorktreeBranch ? (id ?? null) : null, visiblePanel === "overview");
+
   /** 호출 그래프를 펼쳐 둔 세션. 목록과 그래프는 같은 dock 자리를 번갈아 쓴다 */
   const [graphSession, setGraphSession] = useState<LiveAiSession | null>(null);
   const agentCallGraph = useTaskAgentCallGraph(id ?? null, graphSession);
@@ -1389,9 +1393,8 @@ export default function TaskDetailRoute() {
         void (async () => {
           try {
             const baseBranchName = task.baseBranch ?? "main";
-            const [foundTaskId, diffFiles, projects, defaultSessionType, doneAlertDismissed] = await Promise.all([
+            const [foundTaskId, projects, defaultSessionType, doneAlertDismissed] = await Promise.all([
               task.projectId ? getTaskIdByProjectAndBranch(task.projectId, baseBranchName) : Promise.resolve(null),
-              task.branchName && task.worktreePath ? getGitDiffFiles(id) : Promise.resolve([]),
               getAllProjects(),
               getDefaultSessionType(),
               getDoneAlertDismissed(),
@@ -1400,7 +1403,6 @@ export default function TaskDetailRoute() {
 
             applySupplementalState({
               baseBranchTaskId,
-              diffFiles,
               projects,
               defaultSessionType,
               doneAlertDismissed,
@@ -1625,7 +1627,7 @@ export default function TaskDetailRoute() {
                 task={state.task}
                 agentTagStyle={agentTagStyle}
                 baseBranchTaskId={state.baseBranchTaskId}
-                diffFileCount={state.diffFiles.length}
+                diffFiles={diffFiles}
               />
             </div>
           ) : null}
