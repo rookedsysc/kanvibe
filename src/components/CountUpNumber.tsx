@@ -38,10 +38,13 @@ export function CountUpNumber({ value, className, testId }: CountUpNumberProps) 
       return;
     }
 
-    const startedAt = performance.now();
     setIsCounting(true);
 
+    // 경과 시간은 프레임 타임스탬프끼리만 빼서 잰다. 다른 시계(performance.now 등)와 섞으면
+    // 두 시계의 기준점이 다른 환경에서 경과 시간이 음수로 시작해 굴러가기가 그만큼 늦게 끝난다.
+    let startedAt: number | null = null;
     let frameId = window.requestAnimationFrame(function advanceToNextFrame(now: number) {
+      startedAt ??= now;
       const progress = Math.min((now - startedAt) / COUNT_UP_DURATION_MS, 1);
       const easedProgress = 1 - (1 - progress) ** 3;
       setDisplayedValue(Math.round(startValue + (value - startValue) * easedProgress));

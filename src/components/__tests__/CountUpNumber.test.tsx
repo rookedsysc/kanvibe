@@ -33,12 +33,13 @@ describe("CountUpNumber", () => {
     rerender(<CountUpNumber value={348} testId="count" />);
 
     expect(screen.getByTestId("count").getAttribute("data-counting")).toBe("true");
+    // 굴러가는 시간(420ms)보다 넉넉히 기다린다. 느린 CI 러너에서 기본 1초는 프레임 지연을 흡수하지 못한다
     await waitFor(() => {
       expect(screen.getByTestId("count").textContent).toBe("348");
-    });
+    }, { timeout: 3_000 });
     await waitFor(() => {
       expect(screen.getByTestId("count").getAttribute("data-counting")).toBeNull();
-    });
+    }, { timeout: 3_000 });
   });
 
   it("움직임을 줄이도록 설정했으면 굴리지 않고 새 값으로 바로 바꾼다", () => {
