@@ -64,9 +64,6 @@ const COLUMNS: { status: TaskStatus; labelKey: string; colorClass: string }[] = 
   { status: TaskStatus.DONE, labelKey: "done", colorClass: "bg-status-done" },
 ];
 
-/** 변경 집계를 띄우는 칸. Todo는 아직 손대기 전이고 Done은 더 바뀌지 않아, 카드마다 git을 돌려도 새로 나올 값이 없다 */
-const DIFF_STATS_STATUSES = [TaskStatus.PROGRESS, TaskStatus.PENDING, TaskStatus.REVIEW];
-
 const TASK_CARD_SELECTOR = "[data-kanban-task-card='true']";
 const BOARD_ARROW_TASK_FOCUS_KEYS = new Set([
   "ArrowUp",
@@ -684,14 +681,17 @@ export default function Board({
     return sorted;
   }, [boardSortContext, filteredTasks, sortPreference]);
 
-  /** 집계를 조회할 태스크. worktree와 브랜치가 있어야 baseBranch와 견줄 변경이 존재한다 */
-  const changingTaskIds = useMemo(
-    () => DIFF_STATS_STATUSES.flatMap((status) => displayedTasks[status]
+  /**
+   * git을 다시 돌릴 태스크. 지금 손대고 있는 칸만 새로 집계하고 나머지 칸은 마지막으로 저장된 값을 보여준다.
+   * worktree와 브랜치가 있어야 baseBranch와 견줄 변경이 존재한다.
+   */
+  const taskIdsToRefresh = useMemo(
+    () => displayedTasks[TaskStatus.PROGRESS]
       .filter((task) => task.branchName && task.worktreePath)
-      .map((task) => task.id)),
+      .map((task) => task.id),
     [displayedTasks],
   );
-  const diffStatsByTaskId = useBoardTaskDiffStats(changingTaskIds, isMounted);
+  const diffStatsByTaskId = useBoardTaskDiffStats(taskIdsToRefresh, isMounted);
 
   const [contextMenu, setContextMenu] = useState<ContextMenuState>({
     isOpen: false,

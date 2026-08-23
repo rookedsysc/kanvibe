@@ -4,6 +4,10 @@ const mocks = vi.hoisted(() => ({
   taskRepo: {
     findOne: vi.fn(),
   },
+  taskDiffStatsRepo: {
+    find: vi.fn(),
+    save: vi.fn(),
+  },
   execGit: vi.fn(),
   readTextFile: vi.fn(),
   writeTextFile: vi.fn(),
@@ -11,6 +15,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("@/lib/database", () => ({
   getTaskRepository: vi.fn(async () => mocks.taskRepo),
+  getTaskDiffStatsRepository: vi.fn(async () => mocks.taskDiffStatsRepo),
 }));
 
 vi.mock("@/lib/gitOperations", () => ({
@@ -99,9 +104,8 @@ describe("getTaskDiffStats", () => {
   beforeEach(() => {
     vi.resetModules();
     vi.clearAllMocks();
-  });
-
-  it("여러 태스크의 변경 집계를 한 번에 돌려준다", async () => {
+    mocks.taskDiffStatsRepo.find.mockResolvedValue([]);
+    mocks.taskDiffStatsRepo.save.mockResolvedValue(undefined);
     mocks.taskRepo.findOne.mockImplementation(async ({ where }: { where: { id: string } }) => ({
       id: where.id,
       worktreePath: `/repo__worktrees/${where.id}`,
@@ -109,61 +113,92 @@ describe("getTaskDiffStats", () => {
       baseBranch: "main",
       sshHost: null,
     }));
-    mocks.execGit.mockImplementation(async (command: string) => {
-      const isFirstTask = command.includes("/repo__worktrees/task-1");
-      return isFirstTask
-        ? [
-            "__KANVIBE_DIFF_NAME_STATUS__",
-            "M\tsrc/app.ts",
-            "A\tsrc/new.ts",
-            "__KANVIBE_DIFF_NUMSTAT__",
-            "12\t3\tsrc/app.ts",
-            "88\t0\tsrc/new.ts",
-            "__KANVIBE_DIFF_WORKING_TREE__",
-          ].join("\n")
-        : [
-            "__KANVIBE_DIFF_NAME_STATUS__",
-            "D\tscripts/old.cjs",
-            "__KANVIBE_DIFF_NUMSTAT__",
-            "0\t41\tscripts/old.cjs",
-            "__KANVIBE_DIFF_WORKING_TREE__",
-          ].join("\n");
-    });
-
-    const { getTaskDiffStats } = await import("@/desktop/main/services/diffService");
-
-    await expect(getTaskDiffStats(["task-1", "task-2"])).resolves.toEqual({
-      "task-1": { fileCount: 2, additions: 100, deletions: 3 },
-      "task-2": { fileCount: 1, additions: 0, deletions: 41 },
-    });
   });
 
-  it("조회에 실패한 태스크는 빈 집계로 남기고 나머지는 그대로 돌려준다", async () => {
-    mocks.taskRepo.findOne.mockImplementation(async ({ where }: { where: { id: string } }) => (
-      where.id === "task-without-worktree"
-        ? { id: where.id, worktreePath: null, branchName: null, baseBranch: "main", sshHost: null }
-        : { id: where.id, worktreePath: "/repo__worktrees/ok", branchName: "feat/ok", baseBranch: "main", sshHost: null }
-    ));
-    mocks.execGit.mockResolvedValue([
+  function buildDiffOutput(additions: number, deletions: number) {
+    return [
       "__KANVIBE_DIFF_NAME_STATUS__",
       "M\tsrc/app.ts",
       "__KANVIBE_DIFF_NUMSTAT__",
-      "5\t2\tsrc/app.ts",
+      `${additions}\t${deletions}\tsrc/app.ts`,
       "__KANVIBE_DIFF_WORKING_TREE__",
-    ].join("\n"));
+    ].join("\n");
+  }
+
+  it("넘긴 태스크만 git을 돌리고 그 집계를 저장한다", async () => {
+    mocks.execGit.mockResolvedValue(buildDiffOutput(12, 3));
 
     const { getTaskDiffStats } = await import("@/desktop/main/services/diffService");
 
-    await expect(getTaskDiffStats(["task-without-worktree", "task-ok"])).resolves.toEqual({
-      "task-without-worktree": { fileCount: 0, additions: 0, deletions: 0 },
-      "task-ok": { fileCount: 1, additions: 5, deletions: 2 },
+    await expect(getTaskDiffStats(["task-progress"])).resolves.toEqual({
+      "task-progress": { fileCount: 1, additions: 12, deletions: 3 },
+    });
+    expect(mocks.execGit).toHaveBeenCalledTimes(1);
+    expect(mocks.taskDiffStatsRepo.save).toHaveBeenCalledWith({
+      taskId: "task-progress",
+      fileCount: 1,
+      additions: 12,
+      deletions: 3,
     });
   });
 
-  it("조회할 태스크가 없으면 git을 돌리지 않는다", async () => {
+  it("git을 돌리지 않은 태스크는 저장돼 있던 집계로 채운다", async () => {
+    mocks.taskDiffStatsRepo.find.mockResolvedValue([
+      { taskId: "task-review", fileCount: 4, additions: 40, deletions: 8 },
+      { taskId: "task-progress", fileCount: 1, additions: 1, deletions: 1 },
+    ]);
+    mocks.execGit.mockResolvedValue(buildDiffOutput(12, 3));
+
     const { getTaskDiffStats } = await import("@/desktop/main/services/diffService");
 
-    await expect(getTaskDiffStats([])).resolves.toEqual({});
+    await expect(getTaskDiffStats(["task-progress"])).resolves.toEqual({
+      "task-review": { fileCount: 4, additions: 40, deletions: 8 },
+      "task-progress": { fileCount: 1, additions: 12, deletions: 3 },
+    });
+    expect(mocks.execGit).toHaveBeenCalledTimes(1);
+  });
+
+  it("다시 돌릴 태스크가 없으면 git 없이 저장된 집계만 돌려준다", async () => {
+    mocks.taskDiffStatsRepo.find.mockResolvedValue([
+      { taskId: "task-review", fileCount: 4, additions: 40, deletions: 8 },
+    ]);
+
+    const { getTaskDiffStats } = await import("@/desktop/main/services/diffService");
+
+    await expect(getTaskDiffStats([])).resolves.toEqual({
+      "task-review": { fileCount: 4, additions: 40, deletions: 8 },
+    });
     expect(mocks.execGit).not.toHaveBeenCalled();
+    expect(mocks.taskDiffStatsRepo.save).not.toHaveBeenCalled();
+  });
+
+  it("조회에 실패한 태스크는 저장된 집계를 덮어쓰지 않는다", async () => {
+    mocks.taskDiffStatsRepo.find.mockResolvedValue([
+      { taskId: "task-progress", fileCount: 4, additions: 40, deletions: 8 },
+    ]);
+    mocks.execGit.mockRejectedValue(new Error("git 실행 실패"));
+
+    const { getTaskDiffStats } = await import("@/desktop/main/services/diffService");
+
+    await expect(getTaskDiffStats(["task-progress"])).resolves.toEqual({
+      "task-progress": { fileCount: 4, additions: 40, deletions: 8 },
+    });
+    expect(mocks.taskDiffStatsRepo.save).not.toHaveBeenCalled();
+  });
+
+  it("상세에서 파일 목록을 읽으면 그 태스크의 집계도 갱신된다", async () => {
+    mocks.execGit.mockResolvedValue(buildDiffOutput(7, 2));
+
+    const { getGitDiffFiles } = await import("@/desktop/main/services/diffService");
+
+    await expect(getGitDiffFiles("task-review")).resolves.toEqual([
+      { path: "src/app.ts", status: "modified", additions: 7, deletions: 2 },
+    ]);
+    expect(mocks.taskDiffStatsRepo.save).toHaveBeenCalledWith({
+      taskId: "task-review",
+      fileCount: 1,
+      additions: 7,
+      deletions: 2,
+    });
   });
 });

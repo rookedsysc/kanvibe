@@ -83,6 +83,13 @@ vi.mock("@/desktop/renderer/actions/backgroundTaskSync", () => ({
   runBackgroundTaskSyncNow: vi.fn().mockResolvedValue({ reviewNeeded: false, boardUpdated: false }),
 }));
 
+const diffStatsMock = vi.hoisted(() => vi.fn().mockResolvedValue({}));
+
+vi.mock("@/desktop/renderer/actions/diff", () => ({
+  getTaskDiffStats: (...args: unknown[]) => diffStatsMock(...args),
+  getGitDiffFiles: vi.fn().mockResolvedValue([]),
+}));
+
 vi.mock("@/desktop/renderer/hooks/useAutoRefresh", () => ({
   useAutoRefresh: vi.fn(),
 }));
@@ -101,7 +108,11 @@ vi.mock("@/desktop/renderer/hooks/useBoardSortPreference", () => ({
 }));
 
 vi.mock("../Column", () => ({
-  default: ({ status, tasks }: { status: TaskStatus; tasks: KanbanTask[] }) => (
+  default: ({ status, tasks, diffStatsByTaskId }: {
+    status: TaskStatus;
+    tasks: KanbanTask[];
+    diffStatsByTaskId?: Record<string, { fileCount: number; additions: number; deletions: number }>;
+  }) => (
     <div data-testid="column">
       {tasks.map((task, index) => (
         <a
@@ -111,6 +122,7 @@ vi.mock("../Column", () => ({
           data-kanban-task-id={task.id}
           data-kanban-status={status}
           data-kanban-index={index}
+          data-diff-stats={diffStatsByTaskId?.[task.id] ? JSON.stringify(diffStatsByTaskId[task.id]) : undefined}
         >
           {task.title}
         </a>
@@ -1690,5 +1702,69 @@ describe("Board defaultSessionType sync", () => {
       expect(readTodoCardIds()).toEqual(["root-task", "inheriting-task", "medium-task"]);
     });
 
+  });
+});
+
+describe("Board 변경 집계 배지", () => {
+  function createTasksWithProgressAndReview(): TasksByStatus {
+    const tasks = createEmptyTasks();
+    tasks[TaskStatus.PROGRESS] = [createTask({
+      id: "task-progress",
+      title: "진행 중 작업",
+      status: TaskStatus.PROGRESS,
+      branchName: "feat/progress",
+      worktreePath: "/repo__worktrees/progress",
+    })];
+    tasks[TaskStatus.REVIEW] = [createTask({
+      id: "task-review",
+      title: "리뷰 대기 작업",
+      status: TaskStatus.REVIEW,
+      branchName: "feat/review",
+      worktreePath: "/repo__worktrees/review",
+    })];
+    return tasks;
+  }
+
+  function renderBoardWithDiffStats() {
+    return render(
+      <Board
+        initialTasks={createTasksWithProgressAndReview()}
+        initialDoneTotal={0}
+        initialDoneLimit={20}
+        sshHosts={[]}
+        projects={[createProject()]}
+        sidebarDefaultCollapsed={false}
+        doneAlertDismissed={false}
+        notificationSettings={{ isEnabled: true, enabledStatuses: ["progress", "pending", "review"] }}
+        defaultSessionType={SessionType.TMUX}
+        taskSearchShortcut="Mod+Shift+O"
+      />,
+    );
+  }
+
+  it("진행 중 카드만 다시 집계 대상으로 넘긴다", async () => {
+    diffStatsMock.mockResolvedValue({});
+
+    renderBoardWithDiffStats();
+
+    await waitFor(() => {
+      expect(diffStatsMock).toHaveBeenCalledWith(["task-progress"]);
+    });
+  });
+
+  it("진행 중이 아닌 카드에도 저장된 집계가 전달된다", async () => {
+    diffStatsMock.mockResolvedValue({
+      "task-progress": { fileCount: 2, additions: 12, deletions: 3 },
+      "task-review": { fileCount: 4, additions: 40, deletions: 8 },
+    });
+
+    renderBoardWithDiffStats();
+
+    await waitFor(() => {
+      const reviewCard = document.querySelector('[data-kanban-task-id="task-review"]');
+      expect(reviewCard?.getAttribute("data-diff-stats")).toBe(
+        JSON.stringify({ fileCount: 4, additions: 40, deletions: 8 }),
+      );
+    });
   });
 });

@@ -32,7 +32,7 @@ describe("useBoardTaskDiffStats", () => {
     vi.restoreAllMocks();
   });
 
-  it("보드에 떠 있는 태스크들을 한 번의 조회로 읽는다", async () => {
+  it("다시 돌릴 태스크 목록을 한 번의 조회로 넘긴다", async () => {
     render(<BoardDiffStatsProbe taskIds={["task-1", "task-2"]} isEnabled />);
 
     await waitFor(() => {
@@ -69,10 +69,13 @@ describe("useBoardTaskDiffStats", () => {
     expect(mocks.getTaskDiffStats).not.toHaveBeenCalled();
   });
 
-  it("조회할 태스크가 없으면 조회하지 않는다", () => {
+  it("다시 돌릴 태스크가 없어도 저장된 집계를 받아 온다", async () => {
     render(<BoardDiffStatsProbe taskIds={[]} isEnabled />);
 
-    expect(mocks.getTaskDiffStats).not.toHaveBeenCalled();
+    await waitFor(() => {
+      expect(mocks.getTaskDiffStats).toHaveBeenCalledWith([]);
+    });
+    expect(screen.getByTestId("additions").textContent).toBe("340");
   });
 
   it("호출자가 매 렌더 새 배열을 넘겨도 같은 목록이면 다시 조회하지 않는다", async () => {
