@@ -420,7 +420,13 @@
     "dismissHint": "다시 보지 않기",
     "viewDiff": "Diff 보기",
     "diffFiles": "변경 파일",
-    "diffFileCount": "{count}개",
+    "diffStats": {
+      "summary": "{files}개 파일 변경 · {additions}줄 추가 · {deletions}줄 삭제",
+      "additions": "{count}줄 추가",
+      "deletions": "{count}줄 삭제",
+      "expand": "변경 파일 목록 펼치기",
+      "collapse": "변경 파일 목록 접기"
+    },
     "terminalTabs": "터미널 탭",
     "newTerminalTab": "새 탭",
     "closeTerminalTab": "{name} 탭 닫기",

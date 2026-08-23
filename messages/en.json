@@ -420,7 +420,13 @@
     "dismissHint": "Don't show again",
     "viewDiff": "View Diff",
     "diffFiles": "Diff",
-    "diffFileCount": "{count}",
+    "diffStats": {
+      "summary": "{files} files changed · {additions} lines added · {deletions} lines removed",
+      "additions": "{count} lines added",
+      "deletions": "{count} lines removed",
+      "expand": "Show changed files",
+      "collapse": "Hide changed files"
+    },
     "terminalTabs": "Terminal tabs",
     "newTerminalTab": "New tab",
     "closeTerminalTab": "Close {name} tab",

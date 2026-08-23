@@ -2,6 +2,7 @@ import path from "path";
 import { getTaskRepository } from "@/lib/database";
 import { execGit } from "@/lib/gitOperations";
 import { quoteShellArgument, readTextFile, writeTextFile } from "@/lib/hostFileAccess";
+import { summarizeDiffFiles, type TaskDiffStats } from "@/desktop/shared/taskDiffStats";
 
 export interface DiffFile {
   path: string;
@@ -279,4 +280,23 @@ export async function saveFileContent(
     console.error("파일 저장 실패:", error);
     return { success: false, error: message };
   }
+}
+
+/**
+ * 여러 태스크의 변경 집계를 한 번에 접어 준다.
+ *
+ * 보드는 카드 수만큼 조회가 필요한데 카드마다 IPC를 열면 왕복이 그 수만큼 쌓인다.
+ * 조회하지 못한 태스크는 집계를 비워 두어, 한 태스크의 실패가 나머지 카드까지 지우지 않게 한다.
+ */
+export async function getTaskDiffStats(
+  taskIds: string[]
+): Promise<Record<string, TaskDiffStats>> {
+  const statsEntries = await Promise.all(
+    taskIds.map(async (taskId) => {
+      const files = await getGitDiffFiles(taskId);
+      return [taskId, summarizeDiffFiles(files)] as const;
+    })
+  );
+
+  return Object.fromEntries(statsEntries);
 }

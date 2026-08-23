@@ -16,7 +16,9 @@ import {
 } from "@/desktop/renderer/utils/boardTaskSort";
 import ProjectIcon from "@/components/ProjectIcon";
 import { TaskCardLiveSessions } from "@/components/TaskCardLiveSessions";
+import { TaskDiffStatsBadge } from "@/components/TaskDiffStats";
 import type { RunningAgentPane } from "@/lib/aiSessions/types";
+import type { TaskDiffStats } from "@/desktop/shared/taskDiffStats";
 
 interface ContextMenuPosition {
   x: number;
@@ -37,6 +39,8 @@ interface TaskCardProps {
   vimModeEnabled?: boolean;
   /** 보드 전체가 한 번만 조회한 실행중 에이전트 목록 */
   runningAgentPanes?: RunningAgentPane[];
+  /** 보드 전체가 한 번만 조회한 집계 중 이 태스크의 몫 */
+  diffStats?: TaskDiffStats;
 }
 
 const agentTagColors: Record<string, string> = {
@@ -201,6 +205,7 @@ export default function TaskCard({
   rootPriorityByProjectId = EMPTY_ROOT_PRIORITY_MAP,
   vimModeEnabled = true,
   runningAgentPanes = EMPTY_RUNNING_AGENT_PANES,
+  diffStats,
 }: TaskCardProps) {
   const [isLiveSessionPanelOpen, setIsLiveSessionPanelOpen] = useState(false);
   const livePanelOpenTimeoutRef = useRef<number | null>(null);
@@ -423,6 +428,8 @@ export default function TaskCard({
                 {task.sessionType}
               </span>
             )}
+
+            <TaskDiffStatsBadge stats={diffStats} />
 
             <TaskCardLiveSessions
               taskId={task.id}

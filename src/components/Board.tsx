@@ -23,6 +23,7 @@ import type { Project } from "@/entities/Project";
 import { useAutoRefresh } from "@/desktop/renderer/hooks/useAutoRefresh";
 import { useProjectFilterParams } from "@/desktop/renderer/hooks/useProjectFilterParams";
 import { useRunningAgentPanes } from "@/desktop/renderer/hooks/useLiveAiSessions";
+import { useBoardTaskDiffStats } from "@/desktop/renderer/hooks/useTaskDiffStats";
 import { useUnreadNotificationCountByTask } from "@/desktop/renderer/hooks/useUnreadNotificationCountByTask";
 import {
   TASK_KIND_FILTER_VALUES,
@@ -62,6 +63,9 @@ const COLUMNS: { status: TaskStatus; labelKey: string; colorClass: string }[] = 
   { status: TaskStatus.REVIEW, labelKey: "review", colorClass: "bg-status-review" },
   { status: TaskStatus.DONE, labelKey: "done", colorClass: "bg-status-done" },
 ];
+
+/** 변경 집계를 띄우는 칸. Todo는 아직 손대기 전이고 Done은 더 바뀌지 않아, 카드마다 git을 돌려도 새로 나올 값이 없다 */
+const DIFF_STATS_STATUSES = [TaskStatus.PROGRESS, TaskStatus.PENDING, TaskStatus.REVIEW];
 
 const TASK_CARD_SELECTOR = "[data-kanban-task-card='true']";
 const BOARD_ARROW_TASK_FOCUS_KEYS = new Set([
@@ -680,6 +684,15 @@ export default function Board({
     return sorted;
   }, [boardSortContext, filteredTasks, sortPreference]);
 
+  /** 집계를 조회할 태스크. worktree와 브랜치가 있어야 baseBranch와 견줄 변경이 존재한다 */
+  const changingTaskIds = useMemo(
+    () => DIFF_STATS_STATUSES.flatMap((status) => displayedTasks[status]
+      .filter((task) => task.branchName && task.worktreePath)
+      .map((task) => task.id)),
+    [displayedTasks],
+  );
+  const diffStatsByTaskId = useBoardTaskDiffStats(changingTaskIds, isMounted);
+
   const [contextMenu, setContextMenu] = useState<ContextMenuState>({
     isOpen: false,
     x: 0,
@@ -1247,6 +1260,7 @@ export default function Board({
                   rootPriorityByProjectId={rootPriorityByProjectId}
                   vimModeEnabled={vimModeEnabled}
                   runningAgentPanes={runningAgentPanes}
+                  diffStatsByTaskId={diffStatsByTaskId}
                   {...(col.status === TaskStatus.DONE && {
                     totalCount: doneTotal,
                     hasMore: doneOffset < doneTotal,
