@@ -397,7 +397,7 @@ export default function TaskCard({
             </div>
           </div>
 
-          <div className="mt-1.5 flex items-center gap-1.5 overflow-hidden">
+          <div className="mt-1.5 flex flex-wrap items-center gap-1.5" data-testid="task-card-badges">
             {task.prUrl && (
               <span
                 role="link"
@@ -439,7 +439,7 @@ export default function TaskCard({
             />
 
             {task.sshHost && (
-              <span className={`${badgeClassName} min-w-0 truncate bg-tag-ssh-bg text-tag-ssh-text`}>
+              <span className={`${badgeClassName} break-all bg-tag-ssh-bg text-tag-ssh-text`}>
                 {task.sshHost}
               </span>
             )}
