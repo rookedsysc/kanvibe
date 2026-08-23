@@ -419,7 +419,13 @@
     "dismissHint": "不再显示",
     "viewDiff": "查看差异",
     "diffFiles": "变更文件",
-    "diffFileCount": "{count}个",
+    "diffStats": {
+      "summary": "{files} 个文件变更 · 新增 {additions} 行 · 删除 {deletions} 行",
+      "additions": "新增 {count} 行",
+      "deletions": "删除 {count} 行",
+      "expand": "展开变更文件列表",
+      "collapse": "收起变更文件列表"
+    },
     "terminalTabs": "终端标签页",
     "newTerminalTab": "新建标签页",
     "closeTerminalTab": "关闭 {name} 标签页",

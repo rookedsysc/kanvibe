@@ -10,6 +10,7 @@ import type { UnreadNotificationCountByTask } from "@/desktop/renderer/hooks/use
 import type { KanbanTask, TaskStatus } from "@/entities/KanbanTask";
 import type { TaskPriority } from "@/entities/TaskPriority";
 import type { RunningAgentPane } from "@/lib/aiSessions/types";
+import type { TaskDiffStats } from "@/desktop/shared/taskDiffStats";
 
 interface ColumnProps {
   status: TaskStatus;
@@ -29,6 +30,8 @@ interface ColumnProps {
   vimModeEnabled?: boolean;
   /** 보드가 한 번만 조회해 모든 카드가 나눠 쓰는 실행중 에이전트 목록 */
   runningAgentPanes?: RunningAgentPane[];
+  /** 보드가 한 번만 조회해 카드마다 나눠 쓰는 태스크별 변경 집계 */
+  diffStatsByTaskId?: Record<string, TaskDiffStats>;
 }
 
 interface TaskGroup {
@@ -95,6 +98,7 @@ export default function Column({
   isLoadingMore,
   vimModeEnabled = true,
   runningAgentPanes,
+  diffStatsByTaskId,
 }: ColumnProps) {
   const t = useTranslations("board");
   const columnRef = useFlipReflow<HTMLDivElement>(tasks.map((task) => task.id).join(","));
@@ -161,6 +165,7 @@ export default function Column({
                         rootPriorityByProjectId={rootPriorityByProjectId}
                         vimModeEnabled={vimModeEnabled}
                         runningAgentPanes={runningAgentPanes}
+                        diffStats={diffStatsByTaskId?.[task.id]}
                       />
                     ))}
                   </Fragment>
@@ -191,6 +196,7 @@ export default function Column({
                       rootPriorityByProjectId={rootPriorityByProjectId}
                       vimModeEnabled={vimModeEnabled}
                       runningAgentPanes={runningAgentPanes}
+                      diffStats={diffStatsByTaskId?.[task.id]}
                     />
                   ))}
                 </ProjectTaskGroup>

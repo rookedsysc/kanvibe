@@ -1,7 +1,8 @@
 import path from "path";
-import { getTaskRepository } from "@/lib/database";
+import { getTaskDiffStatsRepository, getTaskRepository } from "@/lib/database";
 import { execGit } from "@/lib/gitOperations";
 import { quoteShellArgument, readTextFile, writeTextFile } from "@/lib/hostFileAccess";
+import { summarizeDiffFiles, type TaskDiffStats } from "@/desktop/shared/taskDiffStats";
 
 export interface DiffFile {
   path: string;
@@ -139,13 +140,10 @@ function parseWorkingTreeStatus(
 }
 
 /**
- * baseBranch와 현재 브랜치 사이에서 변경된 파일 목록을 조회한다.
- * 커밋된 브랜치 차이뿐 아니라 working directory의
- * untracked/unstaged/staged 파일도 포함한다.
+ * 변경 파일 목록을 조회하되 실패를 `null`로 구분해 돌려준다.
+ * 조회에 실패한 것과 정말 아무것도 바뀌지 않은 것을 같은 빈 배열로 뭉치면 캐시를 0으로 덮어쓰게 된다.
  */
-export async function getGitDiffFiles(
-  taskId: string
-): Promise<DiffFile[]> {
+async function readGitDiffFiles(taskId: string): Promise<DiffFile[] | null> {
   try {
     const { worktreePath, branchName, baseBranch, sshHost } =
       await getTaskWorktreeInfo(taskId);
@@ -217,8 +215,28 @@ export async function getGitDiffFiles(
     return Array.from(fileMap.values());
   } catch (error) {
     console.error("git diff 파일 목록 조회 실패:", error);
+    return null;
+  }
+}
+
+/**
+ * baseBranch와 현재 브랜치 사이에서 변경된 파일 목록을 조회한다.
+ * 커밋된 브랜치 차이뿐 아니라 working directory의
+ * untracked/unstaged/staged 파일도 포함한다.
+ *
+ * 조회한 김에 집계 캐시도 갱신한다. 보드는 진행 중이 아닌 태스크의 배지를 이 캐시로 그리므로,
+ * 사용자가 상세를 열어 본 태스크는 그 시점 값으로 최신화된다.
+ */
+export async function getGitDiffFiles(
+  taskId: string
+): Promise<DiffFile[]> {
+  const files = await readGitDiffFiles(taskId);
+  if (!files) {
     return [];
   }
+
+  await saveTaskDiffStats(taskId, summarizeDiffFiles(files));
+  return files;
 }
 
 /** baseBranch 기준의 원본 파일 내용을 조회한다. 파일이 존재하지 않으면 빈 문자열을 반환한다 */
@@ -279,4 +297,59 @@ export async function saveFileContent(
     console.error("파일 저장 실패:", error);
     return { success: false, error: message };
   }
+}
+
+/** 집계 하나를 캐시에 덮어쓴다. 저장에 실패해도 조회 결과는 그대로 쓰이도록 삼킨다 */
+async function saveTaskDiffStats(taskId: string, stats: TaskDiffStats): Promise<void> {
+  try {
+    const repo = await getTaskDiffStatsRepository();
+    await repo.save({ taskId, ...stats });
+  } catch (error) {
+    console.error("변경 집계 저장 실패:", error);
+  }
+}
+
+/** 저장돼 있는 집계 전부. 보드가 진행 중이 아닌 카드의 배지를 그리는 값이다 */
+async function loadCachedTaskDiffStats(): Promise<Record<string, TaskDiffStats>> {
+  try {
+    const repo = await getTaskDiffStatsRepository();
+    const records = await repo.find();
+
+    return Object.fromEntries(records.map((record) => [
+      record.taskId,
+      { fileCount: record.fileCount, additions: record.additions, deletions: record.deletions },
+    ]));
+  } catch (error) {
+    console.error("변경 집계 캐시 조회 실패:", error);
+    return {};
+  }
+}
+
+/**
+ * 태스크별 변경 집계를 돌려준다. `taskIdsToRefresh`에 담긴 태스크만 git을 다시 돌리고 그 결과를 캐시에 남긴다.
+ *
+ * 보드는 진행 중인 태스크만 새로 집계하고 나머지 칸은 마지막으로 저장된 값을 보여주므로,
+ * 반환값에는 방금 계산한 집계와 저장돼 있던 집계가 함께 담긴다.
+ * 카드마다 IPC를 열면 왕복이 카드 수만큼 쌓이므로 조회는 이 한 번으로 끝낸다.
+ *
+ * 다시 돌린 조회가 실패한 태스크는 캐시를 건드리지 않는다. 일시적인 실패로 배지가 0으로 주저앉지 않게 한다.
+ */
+export async function getTaskDiffStats(
+  taskIdsToRefresh: string[]
+): Promise<Record<string, TaskDiffStats>> {
+  const refreshedEntries = await Promise.all(
+    taskIdsToRefresh.map(async (taskId) => {
+      const files = await readGitDiffFiles(taskId);
+      if (!files) {
+        return null;
+      }
+
+      const stats = summarizeDiffFiles(files);
+      await saveTaskDiffStats(taskId, stats);
+      return [taskId, stats] as const;
+    })
+  );
+
+  const cachedStats = await loadCachedTaskDiffStats();
+  return { ...cachedStats, ...Object.fromEntries(refreshedEntries.filter((entry) => entry !== null)) };
 }

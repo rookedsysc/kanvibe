@@ -7,7 +7,7 @@ const os = require("node:os");
 const path = require("node:path");
 const process = require("node:process");
 const { pathToFileURL } = require("node:url");
-const { app, BrowserWindow, ipcMain, session, shell } = require("electron");
+const { app, BrowserWindow, clipboard, ipcMain, session, shell } = require("electron");
 const { createDesktopDiagnostics, resolveDesktopLogPath, serializeErrorForLog } = require("./diagnostics");
 const { applyAppDataDirectoryOverride } = require("./runtimeEnvironment");
 
@@ -855,6 +855,15 @@ function registerDesktopHandlers() {
 
   ipcMain.on("kanvibe:terminal-close", (event, taskId, tabId) => {
     closeTerminal(event.sender.id, taskId, tabId);
+  });
+
+  /**
+   * 터미널 안 프로그램이 OSC 52로 보낸 복사 요청을 시스템 클립보드에 반영한다.
+   * 렌더러의 navigator.clipboard는 문서 포커스를 요구하고, 포커스가 있어도 성공을 반환한 채
+   * 클립보드를 그대로 두는 경우가 있어, 터미널 출력이 촉발하는 복사는 메인 프로세스에서 처리한다.
+   */
+  ipcMain.handle("kanvibe:clipboard-write", (_event, text) => {
+    clipboard.writeText(String(text));
   });
 
   ipcMain.handle("kanvibe:ai-login-open", async (event, provider, accountRoot, cols, rows) => {
