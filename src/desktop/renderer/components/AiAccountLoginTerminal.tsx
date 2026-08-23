@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef } from "react";
 import "@xterm/xterm/css/xterm.css";
 import { createTerminalOptions } from "@/lib/terminalMouseSelection";
+import { installOsc52ClipboardHandler } from "@/lib/terminalClipboard";
 import type { AiUsageProvider } from "@/lib/aiUsage/types";
 
 interface AiAccountLoginTerminalProps {
@@ -42,6 +43,7 @@ export default function AiAccountLoginTerminal({
     const fitAddon = new FitAddon();
     terminal.loadAddon(fitAddon);
     terminal.open(containerRef.current);
+    const osc52ClipboardHandler = installOsc52ClipboardHandler(terminal);
 
     const isThisSession = (event: { accountRoot: string }) => event.accountRoot === accountRoot;
 
@@ -80,6 +82,7 @@ export default function AiAccountLoginTerminal({
     if (!loginReady?.ok) {
       terminal.writeln(`\r\n\x1b[31m${loginReady?.error || "로그인 명령을 실행하지 못했습니다."}\x1b[0m`);
       return () => {
+        osc52ClipboardHandler.dispose();
         unsubscribeData?.();
         unsubscribeExit?.();
         terminal.dispose();
@@ -100,6 +103,7 @@ export default function AiAccountLoginTerminal({
 
     return () => {
       resizeObserver.disconnect();
+      osc52ClipboardHandler.dispose();
       unsubscribeData?.();
       unsubscribeExit?.();
       window.kanvibeDesktop?.closeAiAccountLogin?.(accountRoot);

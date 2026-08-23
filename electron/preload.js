@@ -75,6 +75,9 @@ contextBridge.exposeInMainWorld("kanvibeDesktop", {
   closeTerminal(taskId, tabId) {
     ipcRenderer.send("kanvibe:terminal-close", taskId, tabId);
   },
+  writeSystemClipboard(text) {
+    return ipcRenderer.invoke("kanvibe:clipboard-write", text);
+  },
   openAiAccountLogin(provider, accountRoot, cols, rows) {
     return ipcRenderer.invoke("kanvibe:ai-login-open", provider, accountRoot, cols, rows);
   },
