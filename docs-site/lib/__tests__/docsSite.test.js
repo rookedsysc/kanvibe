@@ -35,9 +35,10 @@ describe('문서 페이지 목록', () => {
   const contentRoot = fileURLToPath(new URL('../../content', import.meta.url))
 
   it.each(DOCS_LOCALES)('%s 로케일의 MDX 파일과 DOCS_PAGE_PATHS가 일치한다', (locale) => {
-    const pagePathsOnDisk = readdirSync(`${contentRoot}/${locale}`)
+    const pagePathsOnDisk = readdirSync(`${contentRoot}/${locale}`, { recursive: true })
       .filter((fileName) => fileName.endsWith('.mdx'))
-      .map((fileName) => (fileName === 'index.mdx' ? '/' : `/${fileName.replace(/\.mdx$/, '')}`))
+      .map((fileName) => fileName.replace(/\.mdx$/, ''))
+      .map((pagePath) => (pagePath === 'index' ? '/' : `/${pagePath}`))
       .sort()
 
     expect(pagePathsOnDisk).toEqual([...DOCS_PAGE_PATHS].sort())
@@ -56,20 +57,31 @@ describe('resolvePinnedSiteUrl', () => {
   it.each([undefined, '', '   '])('%o면 고정 주소가 없다고 본다', (value) => {
     expect(resolvePinnedSiteUrl(value)).toBeUndefined()
   })
+
+  it('스킴이 빠진 값은 변수 이름을 짚어 알려준다', () => {
+    expect(() => resolvePinnedSiteUrl('docs.example.com')).toThrow(/KANVIBE_DOCS_SITE_URL/)
+  })
 })
 
 describe('resolveSiteUrlFromRequestHeaders', () => {
-  it('프록시가 넘긴 호스트와 프로토콜을 우선한다', () => {
+  it('클라이언트가 보낸 x-forwarded-* 대신 실제 Host를 쓴다', () => {
     const siteUrl = resolveSiteUrlFromRequestHeaders(
       stubRequestHeaders({
-        host: 'internal:8788',
-        'x-forwarded-host': 'docs.example.com',
-        'x-forwarded-proto': 'https'
+        host: 'docs.example.com',
+        'x-forwarded-host': 'evil.example',
+        'x-forwarded-proto': 'http'
       })
     )
 
     expect(siteUrl).toBe('https://docs.example.com')
   })
+
+  it.each(['a.example.com, b.example.com', '[bad', 'ex ample.com'])(
+    '%o처럼 깨진 Host에는 500 대신 아무것도 만들지 않는다',
+    (host) => {
+      expect(resolveSiteUrlFromRequestHeaders(stubRequestHeaders({ host }))).toBeUndefined()
+    }
+  )
 
   it('프로토콜 힌트가 없으면 공개 호스트는 https로 본다', () => {
     expect(resolveSiteUrlFromRequestHeaders(stubRequestHeaders({ host: 'docs.example.com' }))).toBe(
@@ -136,6 +148,10 @@ describe('buildDocsSitemapEntries', () => {
     })
   })
 
+  it('출처를 모르면 빈 sitemap을 준다', () => {
+    expect(buildDocsSitemapEntries(undefined)).toEqual([])
+  })
+
   it('Google이 무시하거나 신뢰하지 않는 값은 넣지 않는다', () => {
     for (const entry of buildDocsSitemapEntries(SERVED_SITE_URL)) {
       expect(entry).not.toHaveProperty('priority')
@@ -148,6 +164,13 @@ describe('buildDocsSitemapEntries', () => {
 describe('buildDocsRobots', () => {
   it('sitemap 절대 주소를 알린다', () => {
     expect(buildDocsRobots(SERVED_SITE_URL).sitemap).toBe(`${SERVED_SITE_URL}/sitemap.xml`)
+  })
+
+  it('출처를 모르면 Sitemap 줄을 빼고 크롤링 규칙만 준다', () => {
+    const robots = buildDocsRobots(undefined)
+
+    expect(robots).not.toHaveProperty('sitemap')
+    expect(robots.rules).toHaveLength(2)
   })
 
   it('생성형 검색 크롤러를 허용한다', () => {

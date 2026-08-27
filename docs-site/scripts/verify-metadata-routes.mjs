@@ -1,6 +1,8 @@
 import { spawn } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 
+import { resolvePinnedSiteUrl } from '../lib/docsSite.mjs'
+
 /**
  * 빌드된 서버를 띄워 /sitemap.xml과 /robots.txt가 실제로 응답하는지 확인한다.
  * 로케일 미들웨어가 두 경로를 가로채면 크롤러가 찾지 못하는데,
@@ -55,7 +57,7 @@ const server = spawn('pnpm', ['exec', 'next', 'start', '--port', String(VERIFY_P
 try {
   await waitForServer(baseUrl)
   // 고정 주소가 없으면 두 라우트는 요청을 받은 호스트를 그대로 써야 한다.
-  const expectedSiteUrl = process.env.KANVIBE_DOCS_SITE_URL?.trim().replace(/\/+$/, '') || baseUrl
+  const expectedSiteUrl = resolvePinnedSiteUrl() ?? baseUrl
   await assertRouteServes(baseUrl, '/sitemap.xml', `<loc>${expectedSiteUrl}/ko</loc>`)
   await assertRouteServes(baseUrl, '/robots.txt', `Sitemap: ${expectedSiteUrl}/sitemap.xml`)
   console.log('메타데이터 라우트 검증 통과')

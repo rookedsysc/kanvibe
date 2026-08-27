@@ -34,6 +34,9 @@ export const AI_CRAWLER_USER_AGENTS = [
   'Google-Extended'
 ]
 
+/** 로컬에서 띄운 문서 서버는 https가 아니다. */
+const LOOPBACK_HOST_PATTERN = /^(localhost|127\.|\[::1\])/
+
 function normalizeSiteUrl(rawSiteUrl) {
   const parsedSiteUrl = new URL(rawSiteUrl)
   const basePath = parsedSiteUrl.pathname.replace(/\/+$/, '')
@@ -54,23 +57,38 @@ export function resolvePinnedSiteUrl(pinnedSiteUrl = process.env.KANVIBE_DOCS_SI
   if (!trimmedSiteUrl) {
     return undefined
   }
-  return normalizeSiteUrl(trimmedSiteUrl)
+
+  try {
+    return normalizeSiteUrl(trimmedSiteUrl)
+  } catch {
+    throw new Error(
+      `KANVIBE_DOCS_SITE_URL은 스킴을 포함한 절대 주소여야 합니다: ${trimmedSiteUrl}`
+    )
+  }
 }
 
 /**
  * 요청을 받은 호스트에서 출처를 읽는다.
  * sitemap의 loc은 sitemap 자신과 같은 호스트여야 하므로, 고정 주소가 없을 때는
  * 실제로 응답한 호스트가 언제나 정답이다.
+ *
+ * Cloudflare Worker 앞에는 신뢰할 프록시가 없어 `x-forwarded-*`는 그대로 클라이언트 입력이다.
+ * 그 값을 믿으면 크롤러만 보는 이 두 라우트가 남이 지정한 도메인을 가리키게 되므로,
+ * 요청을 실제로 이 워커까지 라우팅한 Host만 읽는다.
  */
 export function resolveSiteUrlFromRequestHeaders(requestHeaders) {
-  const host = requestHeaders.get('x-forwarded-host') ?? requestHeaders.get('host')
+  const host = requestHeaders.get('host')
   if (!host) {
     return undefined
   }
 
-  const forwardedProtocol = requestHeaders.get('x-forwarded-proto')
-  const protocol = forwardedProtocol ?? (/^(localhost|127\.|\[::1\])/.test(host) ? 'http' : 'https')
-  return normalizeSiteUrl(`${protocol}://${host}`)
+  const protocol = LOOPBACK_HOST_PATTERN.test(host) ? 'http' : 'https'
+  try {
+    return normalizeSiteUrl(`${protocol}://${host}`)
+  } catch {
+    // 깨진 Host에 500을 주면 Google은 robots.txt를 "크롤링 금지"로 읽는다.
+    return undefined
+  }
 }
 
 export function buildDocsPageUrl(siteUrl, locale, pagePath) {
@@ -108,6 +126,10 @@ export function toDocsPagePath(mdxPathSegments) {
  * 부정확한 lastmod는 없느니만 못하다는 것이 Google의 안내라 세 값을 모두 넣지 않는다.
  */
 export function buildDocsSitemapEntries(siteUrl) {
+  if (!siteUrl) {
+    return []
+  }
+
   return DOCS_LOCALES.flatMap((locale) =>
     DOCS_PAGE_PATHS.map((pagePath) => ({
       url: buildDocsPageUrl(siteUrl, locale, pagePath),
@@ -128,6 +150,6 @@ export function buildDocsRobots(siteUrl) {
       { userAgent: '*', allow: '/' },
       { userAgent: AI_CRAWLER_USER_AGENTS, allow: '/' }
     ],
-    sitemap: `${siteUrl}/sitemap.xml`
+    ...(siteUrl ? { sitemap: `${siteUrl}/sitemap.xml` } : {})
   }
 }
