@@ -48,7 +48,7 @@ KanVibe `docs-site`(Next.js 16 App Router + Nextra 4, ko/en/zh, Cloudflare Worke
 
 Google은 lastmod를 신뢰하거나 통째로 무시하거나 둘 중 하나다.
 
-**docs-site 적용안**: 콘텐츠가 MDX 파일이므로 `git log -1 --format=%cI <파일>`의 커밋 시각을 lastmod로 쓰면 실제 변경 시점이라는 조건을 만족한다. 빌드 시각을 쓰면 안 된다.
+**docs-site 적용 결과**: `git log -1 --format=%cI <파일>`의 커밋 시각을 쓰려 했으나 실측에서 접었다. OpenNext가 sitemap 라우트를 요청마다 실행하는데 Worker 런타임에는 파일시스템도 git도 없어, 로컬 빌드에만 lastmod가 붙고 배포본에서는 조용히 사라졌다. 정확하지 않을 바에는 넣지 않는 편이 낫다는 위 안내를 그대로 따라 lastmod를 빼기로 했다.
 
 ### 1-4. Search Console API 제출 스펙
 
@@ -306,7 +306,9 @@ FAQ는 명시적으로 정리된 상태다.
 
 > [OpenNext Cloudflare 문서](https://opennext.js.org/cloudflare)의 지원 목록에는 App Router, "Route Handlers", SSG, SSR, 동적 라우트, ISR, PPR, Composable Caching(`'use cache'`), 미들웨어, `after()`가 있다. 명시적 미지원으로는 15.2에서 도입된 Node Middleware를 든다.
 
-`sitemap.ts`와 `robots.ts`는 2-1·2-3에서 인용했듯 Next.js가 특수 Route Handler로 규정하는 파일이므로, 위 목록에 있는 Route Handlers 지원 범위 안에 들어간다. 다만 문서에 metadata route가 개별 항목으로 명시되어 있지는 않으므로, **`pnpm build:worker` 후 `wrangler dev`로 `/sitemap.xml`과 `/robots.txt`가 200과 올바른 Content-Type을 반환하는지 실제 확인이 필요하다.**
+`sitemap.ts`와 `robots.ts`는 2-1·2-3에서 인용했듯 Next.js가 특수 Route Handler로 규정하는 파일이므로, 위 목록에 있는 Route Handlers 지원 범위 안에 들어간다.
+
+**다만 실측에서 드러난 중요한 차이가 있다.** Next 빌드 로그가 두 라우트를 `○ (Static)`으로 표시해도 **OpenNext는 정적 자산으로 서빙하지 않고 서버 함수로 태운다.** 즉 요청마다 라우트 코드가 다시 실행되며, 그 런타임에는 빌드 환경변수도 파일시스템도 git도 없다. 빌드 시점에만 얻을 수 있는 값에 의존하면 로컬에서는 멀쩡하고 배포본에서만 값이 비거나 500이 난다. 이 두 라우트는 번들에 구워진 데이터나 요청 헤더만으로 동작하도록 짜야 한다. 다만 문서에 metadata route가 개별 항목으로 명시되어 있지는 않으므로, **`pnpm build:worker` 후 `wrangler dev`로 `/sitemap.xml`과 `/robots.txt`가 200과 올바른 Content-Type을 반환하는지 실제 확인이 필요하다.**
 
 빌드 시점에 정적으로 생성되게 하려면 `sitemap.ts`가 요청 시점 API(`headers()`, `cookies()` 등)를 쓰지 않아야 한다. 파일시스템/`git log` 기반 `lastmod`는 빌드 타임에 해결되므로 이 조건을 만족한다.
 

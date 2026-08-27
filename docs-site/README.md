@@ -26,25 +26,29 @@ pnpm start
 - `app/[lang]/[[...mdxPath]]/page.jsx` renders MDX pages and attaches canonical/hreflang metadata.
 - `app/[lang]/software-application-structured-data.jsx` emits the `SoftwareApplication` JSON-LD on the home page.
 - `app/sitemap.js` and `app/robots.js` generate `/sitemap.xml` and `/robots.txt`.
-- `lib/docsSite.mjs` owns the locale list, page list, canonical site URL, and hreflang builders.
-- `lib/docsContent.mjs` reads the content directory and each page's last commit time.
+- `lib/docsSite.mjs` owns the locale list, page list, origin resolution, and the sitemap/robots builders.
+- `app/docsSiteUrl.js` picks the origin for the metadata routes: the pinned URL, or the request host.
 - `lib/docsDictionary.mjs` holds the locale-specific shell copy shared by the layout and structured data.
 - `content/ko`, `content/en`, and `content/zh` contain localized MDX pages.
 - `public/screenshots` contains KanVibe feature screenshots used by the documentation.
 
 ## Site URL configuration
 
-`KANVIBE_DOCS_SITE_URL` is the canonical origin of the deployed docs site. It feeds the sitemap
-`<loc>` values, `rel=canonical`, hreflang alternates, and the `Sitemap:` line in `robots.txt`.
+`/sitemap.xml` and `/robots.txt` run per request, so by default they use the host that served
+them. That is always right for whichever hostname a visitor reached, and needs no configuration.
 
-- Development builds fall back to `http://localhost:3000`.
-- Production builds fail when the value is missing, so a wrong canonical URL can never ship silently.
+`KANVIBE_DOCS_SITE_URL` pins a single canonical origin instead. Set it once the docs site has a
+domain you want search engines to consolidate on — for example when a `workers.dev` address and a
+custom domain both serve the same pages. Pinning it also turns on `rel=canonical` and page-level
+hreflang, which the statically generated pages cannot derive from a request.
 
 ```bash
 KANVIBE_DOCS_SITE_URL=https://docs.example.com pnpm build
 ```
 
-In CI the value comes from the `KANVIBE_DOCS_SITE_URL` repository variable.
+The value has to reach every build path. GitHub Actions reads the `KANVIBE_DOCS_SITE_URL`
+repository variable, but Cloudflare Workers Builds runs its own build and does not see it — set it
+there too, or the deployed site keeps using the request host.
 
 ## Search Console sitemap submission
 
@@ -69,3 +73,7 @@ before the property is set up.
 `lib/docsSite.mjs` lists the documentation pages explicitly. After adding an MDX file to every
 locale, add its path to `DOCS_PAGE_PATHS` — `docs-site/lib/__tests__/docsSite.test.js` fails when
 the list and the content directory disagree.
+
+Keep anything the metadata routes need inside that module. They execute on the Cloudflare Worker
+at request time, where the filesystem and `git` are unavailable — build-time-only data silently
+disappears from the deployed output.

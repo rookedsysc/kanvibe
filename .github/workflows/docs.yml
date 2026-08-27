@@ -18,10 +18,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          # sitemap의 lastmod를 파일별 마지막 커밋 시각에서 읽으므로 얕은 클론으로는
-          # 모든 문서가 같은 날짜를 갖게 되어 Google이 lastmod를 통째로 무시하게 된다.
-          fetch-depth: 0
 
       - uses: pnpm/action-setup@v4
         with:

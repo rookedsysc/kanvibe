@@ -34,50 +34,43 @@ export const AI_CRAWLER_USER_AGENTS = [
   'Google-Extended'
 ]
 
-const DEVELOPMENT_SITE_URL = 'http://localhost:3000'
-
-const MISSING_SITE_URL_MESSAGE =
-  'KANVIBE_DOCS_SITE_URL이 필요합니다. sitemap의 loc과 canonical, hreflang은 문서 사이트의 정규 주소 없이는 만들 수 없습니다. ' +
-  '예: KANVIBE_DOCS_SITE_URL=https://docs.example.com pnpm build'
-
 function normalizeSiteUrl(rawSiteUrl) {
-  let parsedSiteUrl
-  try {
-    parsedSiteUrl = new URL(rawSiteUrl)
-  } catch {
-    throw new Error(`KANVIBE_DOCS_SITE_URL은 절대 URL이어야 합니다: ${rawSiteUrl}`)
-  }
-
-  if (parsedSiteUrl.protocol !== 'https:' && parsedSiteUrl.protocol !== 'http:') {
-    throw new Error(`KANVIBE_DOCS_SITE_URL은 http 또는 https여야 합니다: ${rawSiteUrl}`)
-  }
-
+  const parsedSiteUrl = new URL(rawSiteUrl)
   const basePath = parsedSiteUrl.pathname.replace(/\/+$/, '')
   return `${parsedSiteUrl.origin}${basePath}`
 }
 
 /**
- * 문서 사이트의 정규 주소를 돌려준다.
- * 프로덕션 빌드에서 값이 없으면 잘못된 canonical을 조용히 배포하는 대신 빌드를 세운다.
+ * 문서 사이트를 여러 호스트가 서빙할 때 어느 쪽으로 신호를 모을지 정하는 값이다.
+ * workers.dev 주소와 커스텀 도메인이 같은 문서를 함께 내보내는 상황에서만 의미가 있고,
+ * 값이 정해지기 전까지는 요청을 받은 호스트를 그대로 쓰는 편이 틀린 주소를 박는 것보다 낫다.
  *
  * 기본값을 `process.env` 멤버 접근 그대로 두는 것이 중요하다.
  * next.config의 `env`가 이 참조를 빌드 시점 값으로 치환하기 때문에,
  * Cloudflare Worker 런타임에는 환경변수 없이도 주소가 남는다.
  */
-export function resolveDocsSiteUrl(
-  configuredSiteUrl = process.env.KANVIBE_DOCS_SITE_URL,
-  nodeEnv = process.env.NODE_ENV
-) {
-  const trimmedSiteUrl = configuredSiteUrl?.trim()
-  if (trimmedSiteUrl) {
-    return normalizeSiteUrl(trimmedSiteUrl)
+export function resolvePinnedSiteUrl(pinnedSiteUrl = process.env.KANVIBE_DOCS_SITE_URL) {
+  const trimmedSiteUrl = pinnedSiteUrl?.trim()
+  if (!trimmedSiteUrl) {
+    return undefined
+  }
+  return normalizeSiteUrl(trimmedSiteUrl)
+}
+
+/**
+ * 요청을 받은 호스트에서 출처를 읽는다.
+ * sitemap의 loc은 sitemap 자신과 같은 호스트여야 하므로, 고정 주소가 없을 때는
+ * 실제로 응답한 호스트가 언제나 정답이다.
+ */
+export function resolveSiteUrlFromRequestHeaders(requestHeaders) {
+  const host = requestHeaders.get('x-forwarded-host') ?? requestHeaders.get('host')
+  if (!host) {
+    return undefined
   }
 
-  if (nodeEnv === 'production') {
-    throw new Error(MISSING_SITE_URL_MESSAGE)
-  }
-
-  return DEVELOPMENT_SITE_URL
+  const forwardedProtocol = requestHeaders.get('x-forwarded-proto')
+  const protocol = forwardedProtocol ?? (/^(localhost|127\.|\[::1\])/.test(host) ? 'http' : 'https')
+  return normalizeSiteUrl(`${protocol}://${host}`)
 }
 
 export function buildDocsPageUrl(siteUrl, locale, pagePath) {
@@ -105,4 +98,36 @@ export function toDocsPagePath(mdxPathSegments) {
     return '/'
   }
   return `/${mdxPathSegments.join('/')}`
+}
+
+/**
+ * sitemap 항목을 만든다.
+ *
+ * priority와 changefreq는 Google이 무시한다고 명시했고, lastmod는 정확할 때만 쓰이는데
+ * 이 라우트는 Cloudflare Worker에서 요청마다 다시 실행되어 git 이력을 읽을 수 없다.
+ * 부정확한 lastmod는 없느니만 못하다는 것이 Google의 안내라 세 값을 모두 넣지 않는다.
+ */
+export function buildDocsSitemapEntries(siteUrl) {
+  return DOCS_LOCALES.flatMap((locale) =>
+    DOCS_PAGE_PATHS.map((pagePath) => ({
+      url: buildDocsPageUrl(siteUrl, locale, pagePath),
+      alternates: {
+        languages: buildLanguageAlternates(siteUrl, pagePath)
+      }
+    }))
+  )
+}
+
+/**
+ * Google이 sitemap ping 엔드포인트를 폐기한 뒤로 robots.txt의 Sitemap 줄이
+ * 인증 없이 sitemap을 알릴 수 있는 유일한 경로다.
+ */
+export function buildDocsRobots(siteUrl) {
+  return {
+    rules: [
+      { userAgent: '*', allow: '/' },
+      { userAgent: AI_CRAWLER_USER_AGENTS, allow: '/' }
+    ],
+    sitemap: `${siteUrl}/sitemap.xml`
+  }
 }

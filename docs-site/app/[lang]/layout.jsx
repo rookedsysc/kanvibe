@@ -1,12 +1,12 @@
 import LanguageSwitcher from './language-switcher'
 import { getDocsDictionary } from '../../lib/docsDictionary.mjs'
-import { resolveDocsSiteUrl } from '../../lib/docsSite.mjs'
+import { resolvePinnedSiteUrl } from '../../lib/docsSite.mjs'
 import './styles.css'
 
-const siteUrl = resolveDocsSiteUrl()
+const pinnedSiteUrl = resolvePinnedSiteUrl()
 
 export const metadata = {
-  metadataBase: new URL(siteUrl),
+  ...(pinnedSiteUrl ? { metadataBase: new URL(pinnedSiteUrl) } : {}),
   title: {
     default: 'KanVibe Docs',
     template: '%s · KanVibe Docs'

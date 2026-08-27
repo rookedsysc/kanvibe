@@ -8,7 +8,7 @@ const KANVIBE_LICENSE_URL = `${KANVIBE_REPOSITORY_URL}/blob/main/LICENSE`
  * Google이 Software App 리치 결과를 뽑으려면 offers 또는 평점이 필요해서
  * AGPL-3.0으로 무료 배포된다는 사실을 offers로 표현한다.
  */
-export default function SoftwareApplicationStructuredData({ lang, homeUrl }) {
+export default function SoftwareApplicationStructuredData({ lang }) {
   const structuredData = {
     '@context': 'https://schema.org',
     '@type': 'SoftwareApplication',
@@ -16,8 +16,7 @@ export default function SoftwareApplicationStructuredData({ lang, homeUrl }) {
     description: getDocsDictionary(lang).tagline,
     applicationCategory: 'DeveloperApplication',
     operatingSystem: 'macOS',
-    url: homeUrl,
-    softwareHelp: homeUrl,
+    url: KANVIBE_REPOSITORY_URL,
     codeRepository: KANVIBE_REPOSITORY_URL,
     license: KANVIBE_LICENSE_URL,
     inLanguage: lang,
