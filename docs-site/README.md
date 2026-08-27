@@ -68,6 +68,10 @@ Set these up once:
 Without those values the submit step logs a skip notice and succeeds, so docs CI keeps working
 before the property is set up.
 
+Submission also needs `KANVIBE_DOCS_SITE_URL`. The routes derive their origin from the request,
+but this script has no request to read, so once the property is configured the pinned origin is
+what tells it which sitemap to submit. It fails with that name in the message when it is missing.
+
 ## Adding a page
 
 `lib/docsSite.mjs` lists the documentation pages explicitly. After adding an MDX file to every

@@ -1,7 +1,7 @@
 import { createSign } from 'node:crypto'
 import { pathToFileURL } from 'node:url'
 
-import { resolveDocsSiteUrl } from '../lib/docsSite.mjs'
+import { resolvePinnedSiteUrl } from '../lib/docsSite.mjs'
 
 /**
  * Search Console에 sitemap을 제출한다.
@@ -72,7 +72,17 @@ async function main() {
     return
   }
 
-  const sitemapUrl = `${resolveDocsSiteUrl()}/sitemap.xml`
+  // 라우트와 달리 이 스크립트에는 요청 컨텍스트가 없어 호스트를 유추할 길이 없다.
+  // 고정 주소가 없으면 조용히 "undefined/sitemap.xml"을 제출하게 되므로 여기서 멈춘다.
+  const docsSiteUrl = resolvePinnedSiteUrl()
+  if (!docsSiteUrl) {
+    throw new Error(
+      'KANVIBE_DOCS_SITE_URL이 없어 제출할 sitemap 주소를 정할 수 없습니다. ' +
+        'Search Console 제출을 쓰려면 문서 사이트의 정규 주소를 변수로 설정하세요.'
+    )
+  }
+
+  const sitemapUrl = `${docsSiteUrl}/sitemap.xml`
   const accessToken = await requestAccessToken(JSON.parse(rawCredentials))
 
   const response = await fetch(buildSitemapSubmitUrl(searchConsoleSiteUrl, sitemapUrl), {

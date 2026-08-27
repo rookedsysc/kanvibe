@@ -47,6 +47,13 @@ jobs:
         env:
           KANVIBE_DOCS_SITE_URL: ${{ vars.KANVIBE_DOCS_SITE_URL }}
 
+      # 제출 잡은 push에서만 도는데, 단위 테스트는 Vite가 모듈을 변환해 주므로
+      # 없는 import를 undefined로 넘겨 링크 오류를 잡지 못한다.
+      # 자격 증명 없이 Node로 한 번 돌려 건너뛰기 경로까지 실제로 실행되는지 본다.
+      - name: Verify sitemap submission script loads
+        run: node scripts/submit-sitemap.mjs
+        working-directory: docs-site
+
   submit-sitemap:
     name: Submit Sitemap to Search Console
     needs: build
