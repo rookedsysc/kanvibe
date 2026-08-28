@@ -1,0 +1,76 @@
+name: Docs
+
+on:
+  pull_request:
+    branches: [main, dev]
+    paths:
+      - "docs-site/**"
+      - ".github/workflows/docs.yml"
+  push:
+    branches: [main]
+    paths:
+      - "docs-site/**"
+      - ".github/workflows/docs.yml"
+
+jobs:
+  build:
+    name: Docs Build & Metadata Routes
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: docs-site/pnpm-lock.yaml
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+        working-directory: docs-site
+
+      - name: Build
+        run: pnpm build
+        working-directory: docs-site
+        env:
+          KANVIBE_DOCS_SITE_URL: ${{ vars.KANVIBE_DOCS_SITE_URL }}
+
+      # 로케일 미들웨어가 두 경로를 가로채면 크롤러가 sitemap을 찾지 못하는데,
+      # 이 배선은 단위 테스트로 볼 수 없어 빌드 산출물을 띄워 직접 확인한다.
+      - name: Verify sitemap and robots routes
+        run: node scripts/verify-metadata-routes.mjs
+        working-directory: docs-site
+        env:
+          KANVIBE_DOCS_SITE_URL: ${{ vars.KANVIBE_DOCS_SITE_URL }}
+
+      # 제출 잡은 push에서만 도는데, 단위 테스트는 Vite가 모듈을 변환해 주므로
+      # 없는 import를 undefined로 넘겨 링크 오류를 잡지 못한다.
+      # 자격 증명 없이 Node로 한 번 돌려 건너뛰기 경로까지 실제로 실행되는지 본다.
+      - name: Verify sitemap submission script loads
+        run: node scripts/submit-sitemap.mjs
+        working-directory: docs-site
+
+  submit-sitemap:
+    name: Submit Sitemap to Search Console
+    needs: build
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      # Google이 무인증 ping 엔드포인트를 폐기해서 인증된 Search Console API로만 알릴 수 있다.
+      # 자격 증명이 없으면 실패시키지 않고 건너뛴다. 초기 설정 전에도 문서 배포는 막히면 안 된다.
+      - name: Submit sitemap
+        run: node docs-site/scripts/submit-sitemap.mjs
+        env:
+          KANVIBE_DOCS_SITE_URL: ${{ vars.KANVIBE_DOCS_SITE_URL }}
+          KANVIBE_GSC_SITE_URL: ${{ vars.KANVIBE_GSC_SITE_URL }}
+          KANVIBE_GSC_CREDENTIALS: ${{ secrets.KANVIBE_GSC_CREDENTIALS }}
