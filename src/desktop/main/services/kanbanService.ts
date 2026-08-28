@@ -1,4 +1,3 @@
-import { execFile } from "child_process";
 import { In, Not, Like } from "typeorm";
 import { getTaskRepository } from "@/lib/database";
 import { KanbanTask, TaskStatus, SessionType } from "@/entities/KanbanTask";
@@ -18,7 +17,7 @@ import {
   installKanvibeHookFiles,
   scheduleKanvibeHooksVerification,
 } from "@/lib/kanvibeHooksInstaller";
-import { execGit, pullCurrentBranch, remoteBranchExists } from "@/lib/gitOperations";
+import { execGit, pullCurrentBranch, remoteBranchExists, type ExecGitOptions } from "@/lib/gitOperations";
 import { detachSession } from "@/lib/terminal";
 import {
   persistTaskMetadataForTask as persistTaskMetadata,
@@ -232,43 +231,42 @@ function reportTaskHookInstallFailure(
   });
 }
 
+/**
+ * 저장소 안에서 gh를 실행할 셸 명령을 만든다.
+ *
+ * 등록된 경로가 저장소를 감싼 상위 폴더일 수 있어, `.git`이 없으면 바로 아래에서 저장소를 한 번 더 찾는다.
+ * direnv가 깔려 있으면 그 경로의 `.envrc`를 태워서 gh를 부른다. GitHub 인증을 `.envrc`에 심어 둔 경우
+ * 셸을 거치지 않고 gh를 부르면 인증이 빠진 채로 돌아 권한 없음으로 실패한다.
+ */
+function buildGitHubCliCommand(repoPath: string, ghArguments: string): string {
+  return [
+    `repo=${quoteForShell(repoPath)}`,
+    'if [ ! -e "$repo/.git" ]; then for candidate in "$repo"/*/; do if [ -e "$candidate.git" ]; then repo="${candidate%/}"; break; fi; done; fi',
+    'cd "$repo" || exit 1',
+    `if command -v direnv >/dev/null 2>&1; then direnv exec "$repo" gh ${ghArguments}; else gh ${ghArguments}; fi`,
+  ].join("; ");
+}
+
+/** 로컬만 명령 자체에 제한 시간을 걸고, 원격은 SSH 계층이 쓰는 제한 시간을 그대로 따른다 */
+function getGitHubCliExecOptions(sshHost?: string | null): ExecGitOptions | undefined {
+  return sshHost ? undefined : { timeoutMs: ACTIVE_TASK_PR_GITHUB_CLI_TIMEOUT_MS };
+}
+
 async function getPrUrlFromGitHubCli(branchName: string, cwd: string, sshHost?: string | null): Promise<string | null> {
-  if (sshHost) {
-    try {
-      const output = await execGit(
-        `cd ${quoteForShell(cwd)} && gh pr list --head ${quoteForShell(branchName)} --json url -q '.[0].url'`,
-        sshHost,
-      );
-      return output.trim() || null;
-    } catch (error) {
-      if (isMissingGitHubCli(error)) {
-        return null;
-      }
-
-      throw error;
-    }
-  }
-
-  return new Promise((resolve, reject) => {
-    execFile(
-      "gh",
-      ["pr", "list", "--head", branchName, "--json", "url", "-q", ".[0].url"],
-      { cwd, timeout: ACTIVE_TASK_PR_GITHUB_CLI_TIMEOUT_MS },
-      (error, stdout) => {
-        if (error) {
-          if (isMissingGitHubCli(error)) {
-            resolve(null);
-            return;
-          }
-
-          reject(error);
-          return;
-        }
-
-        resolve(stdout.trim() || null);
-      },
+  try {
+    const output = await execGit(
+      buildGitHubCliCommand(cwd, `pr list --head ${quoteForShell(branchName)} --json url -q '.[0].url'`),
+      sshHost,
+      getGitHubCliExecOptions(sshHost),
     );
-  });
+    return output.trim() || null;
+  } catch (error) {
+    if (isMissingGitHubCli(error)) {
+      return null;
+    }
+
+    throw error;
+  }
 }
 
 function parseGitHubPullRequestInfo(output: string): GitHubPullRequestInfo | null {
@@ -302,50 +300,24 @@ async function getPrInfoFromGitHubCli(
   cwd: string,
   sshHost?: string | null,
 ): Promise<GitHubPullRequestInfo | null> {
-  if (sshHost) {
-    try {
-      const output = await execGit(
-        `cd ${quoteForShell(cwd)} && gh pr list --head ${quoteForShell(branchName)} --state all --json url,state,mergedAt,updatedAt`,
-        sshHost,
-      );
-      if (!output.trim()) {
-        return null;
-      }
-      return parseGitHubPullRequestInfo(output);
-    } catch (error) {
-      if (isMissingGitHubCli(error)) {
-        return null;
-      }
-
-      throw error;
-    }
-  }
-
-  return new Promise((resolve, reject) => {
-    execFile(
-      "gh",
-      ["pr", "list", "--head", branchName, "--state", "all", "--json", "url,state,mergedAt,updatedAt"],
-      { cwd, timeout: ACTIVE_TASK_PR_GITHUB_CLI_TIMEOUT_MS },
-      (error, stdout) => {
-        if (error) {
-          if (isMissingGitHubCli(error)) {
-            resolve(null);
-            return;
-          }
-
-          reject(error);
-          return;
-        }
-
-        if (!stdout.trim()) {
-          resolve(null);
-          return;
-        }
-
-        resolve(parseGitHubPullRequestInfo(stdout));
-      },
+  try {
+    const output = await execGit(
+      buildGitHubCliCommand(cwd, `pr list --head ${quoteForShell(branchName)} --state all --json url,state,mergedAt,updatedAt`),
+      sshHost,
+      getGitHubCliExecOptions(sshHost),
     );
-  });
+    if (!output.trim()) {
+      return null;
+    }
+
+    return parseGitHubPullRequestInfo(output);
+  } catch (error) {
+    if (isMissingGitHubCli(error)) {
+      return null;
+    }
+
+    throw error;
+  }
 }
 
 function isDefaultBranchTask(
