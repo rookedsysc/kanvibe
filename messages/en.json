@@ -276,6 +276,8 @@
       "resetAll": "Reset all to defaults",
       "conflict": "{command} already uses this combination.",
       "unsupported": "Only combinations with at least one modifier key can be used.",
+      "saveFailed": "Failed to save the shortcut.",
+      "loadFailed": "Failed to load saved shortcuts. Reopen this screen after the problem is fixed.",
       "groups": {
         "taskDetailDock": "Task detail dock",
         "taskDetail": "Task detail",

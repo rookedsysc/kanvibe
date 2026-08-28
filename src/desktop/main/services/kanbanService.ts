@@ -232,19 +232,39 @@ function reportTaskHookInstallFailure(
 }
 
 /**
+ * 저장소 경로가 사라졌을 때 셸이 stdout으로 내보내는 표식.
+ *
+ * 경로 없음은 재시도해도 회복되지 않아 사용자에게 sync 실패로 올릴 값이 아니다. 예외로 던지면
+ * gh 인증 실패와 구분되지 않으므로, `remoteBranchExists`가 쓰는 방식대로 표식을 찍고 조용히 건너뛴다.
+ */
+const MISSING_REPOSITORY_MARKER = "kanvibe-missing-repository";
+
+/**
  * 저장소 안에서 gh를 실행할 셸 명령을 만든다.
  *
  * 등록된 경로가 저장소를 감싼 상위 폴더일 수 있어, `.git`이 없으면 바로 아래에서 저장소를 한 번 더 찾는다.
- * direnv가 깔려 있으면 그 경로의 `.envrc`를 태워서 gh를 부른다. GitHub 인증을 `.envrc`에 심어 둔 경우
- * 셸을 거치지 않고 gh를 부르면 인증이 빠진 채로 돌아 권한 없음으로 실패한다.
+ * 후보가 둘 이상이면 어느 쪽이 이 태스크의 저장소인지 알 수 없어 승격하지 않는다. 엉뚱한 저장소의 PR을
+ * 링크하는 것보다 조회가 실패하는 편이 낫다.
+ *
+ * `.envrc`가 있으면 direnv를 태워 gh를 부른다. GitHub 인증을 `.envrc`에 심어 둔 경우 셸을 거치지 않고
+ * gh를 부르면 인증이 빠진 채로 돌아 권한 없음으로 실패한다. direnv 경로 자체가 실패할 수도 있어
+ * (`direnv allow` 안 된 `.envrc` 등) 평범한 gh 호출로 되돌아간다.
+ *
+ * 명령 문자열에 `>/dev/null 2>&1`을 넣지 않는다. `shouldLogRemoteCommandFailure`가 그 패턴을 조용한
+ * probe로 보고 원격 실패 로그를 통째로 지운다.
  */
 function buildGitHubCliCommand(repoPath: string, ghArguments: string): string {
   return [
     `repo=${quoteForShell(repoPath)}`,
-    'if [ ! -e "$repo/.git" ]; then for candidate in "$repo"/*/; do if [ -e "$candidate.git" ]; then repo="${candidate%/}"; break; fi; done; fi',
-    'cd "$repo" || exit 1',
-    `if command -v direnv >/dev/null 2>&1; then direnv exec "$repo" gh ${ghArguments}; else gh ${ghArguments}; fi`,
+    'if [ ! -e "$repo/.git" ]; then nested=""; nestedCount=0; for candidate in "$repo"/*/; do if [ -e "$candidate.git" ]; then nested="${candidate%/}"; nestedCount=$((nestedCount + 1)); fi; done; if [ "$nestedCount" -eq 1 ]; then repo="$nested"; fi; fi',
+    `cd "$repo" || { printf %s ${quoteForShell(MISSING_REPOSITORY_MARKER)}; exit 0; }`,
+    `if [ -f "$repo/.envrc" ] && command -v direnv >/dev/null; then direnv exec "$repo" gh ${ghArguments} || gh ${ghArguments}; else gh ${ghArguments}; fi`,
   ].join("; ");
+}
+
+/** 저장소 경로가 없어 조회를 건너뛰어야 하는 출력인지 본다 */
+function isMissingRepositoryOutput(output: string): boolean {
+  return output.trim() === MISSING_REPOSITORY_MARKER;
 }
 
 /** 로컬만 명령 자체에 제한 시간을 걸고, 원격은 SSH 계층이 쓰는 제한 시간을 그대로 따른다 */
@@ -259,6 +279,10 @@ async function getPrUrlFromGitHubCli(branchName: string, cwd: string, sshHost?: 
       sshHost,
       getGitHubCliExecOptions(sshHost),
     );
+    if (isMissingRepositoryOutput(output)) {
+      return null;
+    }
+
     return output.trim() || null;
   } catch (error) {
     if (isMissingGitHubCli(error)) {
@@ -306,7 +330,7 @@ async function getPrInfoFromGitHubCli(
       sshHost,
       getGitHubCliExecOptions(sshHost),
     );
-    if (!output.trim()) {
+    if (!output.trim() || isMissingRepositoryOutput(output)) {
       return null;
     }
 

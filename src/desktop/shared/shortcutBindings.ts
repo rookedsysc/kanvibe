@@ -2,11 +2,11 @@ import {
   SHORTCUTS,
   TASK_DETAIL_DOCK_SHORTCUT_INDEXES,
   TERMINAL_TAB_SHORTCUT_INDEXES,
+  canonicalizeShortcutForPlatform,
   createTaskDetailDockShortcut,
   createTerminalTabShortcut,
   matchElectronShortcutInput,
   matchShortcutEvent,
-  normalizeShortcut,
   type ElectronShortcutInput,
   type ShortcutPlatformInput,
   type TaskDetailDockShortcutIndex,
@@ -121,8 +121,12 @@ function isShortcutCommandId(candidateId: string): candidateId is ShortcutComman
 /**
  * 저장된 재배정 값을 읽는다. 모르는 명령과 빈 값은 버려서 기본값이 그대로 남게 한다.
  * 저장 형식이 깨져 있어도 앱이 단축키를 통째로 잃지 않아야 하므로 파싱 실패는 빈 재배정으로 본다.
+ * 옛 버전이 남긴 `Meta+…`/`Ctrl+…` 표기는 읽는 순간 canonical 형태로 접어, 이후 비교가 전부 한 기준을 쓰게 한다.
  */
-export function parseShortcutOverrides(rawValue: string | null | undefined): Partial<ShortcutBindings> {
+export function parseShortcutOverrides(
+  rawValue: string | null | undefined,
+  platform: ShortcutPlatformInput,
+): Partial<ShortcutBindings> {
   if (!rawValue) {
     return {};
   }
@@ -144,9 +148,9 @@ export function parseShortcutOverrides(rawValue: string | null | undefined): Par
       continue;
     }
 
-    const normalizedShortcut = normalizeShortcut(shortcut);
-    if (normalizedShortcut) {
-      overrides[commandId] = normalizedShortcut;
+    const canonicalShortcut = canonicalizeShortcutForPlatform(shortcut, platform);
+    if (canonicalShortcut) {
+      overrides[commandId] = canonicalShortcut;
     }
   }
 
@@ -159,12 +163,16 @@ export function resolveShortcutBindings(overrides: Partial<ShortcutBindings>): S
 }
 
 /** 기본값과 같아진 재배정은 저장하지 않는다. 나중에 기본값을 바꿔도 옛 값이 발목을 잡지 않게 한다 */
-export function collectShortcutOverrides(bindings: ShortcutBindings): Partial<ShortcutBindings> {
+export function collectShortcutOverrides(
+  bindings: ShortcutBindings,
+  platform: ShortcutPlatformInput,
+): Partial<ShortcutBindings> {
   const overrides: Partial<ShortcutBindings> = {};
   for (const definition of SHORTCUT_COMMAND_DEFINITIONS) {
-    const shortcut = bindings[definition.id];
-    if (shortcut && shortcut !== definition.defaultShortcut) {
-      overrides[definition.id] = shortcut;
+    const canonicalShortcut = canonicalizeShortcutForPlatform(bindings[definition.id] ?? "", platform);
+    const canonicalDefault = canonicalizeShortcutForPlatform(definition.defaultShortcut, platform);
+    if (canonicalShortcut && canonicalShortcut !== canonicalDefault) {
+      overrides[definition.id] = canonicalShortcut;
     }
   }
 
@@ -176,15 +184,16 @@ export function findShortcutCommandConflict(
   bindings: ShortcutBindings,
   commandId: ShortcutCommandId,
   shortcut: string,
+  platform: ShortcutPlatformInput,
 ): ShortcutCommandId | null {
-  const normalizedShortcut = normalizeShortcut(shortcut);
+  const canonicalShortcut = canonicalizeShortcutForPlatform(shortcut, platform);
 
   for (const definition of SHORTCUT_COMMAND_DEFINITIONS) {
     if (definition.id === commandId) {
       continue;
     }
 
-    if (normalizeShortcut(bindings[definition.id]) === normalizedShortcut) {
+    if (canonicalizeShortcutForPlatform(bindings[definition.id] ?? "", platform) === canonicalShortcut) {
       return definition.id;
     }
   }

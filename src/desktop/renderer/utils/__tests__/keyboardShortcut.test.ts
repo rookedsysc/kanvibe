@@ -304,6 +304,19 @@ describe("keyboardShortcut", () => {
     }), "linux")).toBeNull();
   });
 
+  /**
+   * `+`는 단축키 문자열의 토큰 구분자라 키 자리에 담기지 못한다.
+   * 캡처가 이 값을 통과시키면 `Mod+Shift++`가 다시 파싱될 때 키가 사라져
+   * 저장·매칭·표시가 전부 조용히 실패하고, 사용자는 배정된 줄로 안다.
+   */
+  it("문자열 포맷이 담을 수 없는 + 키는 캡처하지 않는다", () => {
+    expect(captureShortcutFromEvent(new KeyboardEvent("keydown", {
+      key: "+",
+      ctrlKey: true,
+      shiftKey: true,
+    }), "linux")).toBeNull();
+  });
+
   it("modifier만 누른 경우는 캡처하지 않는다", () => {
     const event = new KeyboardEvent("keydown", {
       key: "Meta",

@@ -275,6 +275,8 @@
       "resetAll": "全部恢复默认",
       "conflict": "{command} 已经在使用该组合。",
       "unsupported": "只能使用至少包含一个修饰键的组合。",
+      "saveFailed": "快捷键保存失败。",
+      "loadFailed": "无法读取已保存的快捷键。问题解决后请重新打开此页面。",
       "groups": {
         "taskDetailDock": "任务详情 dock",
         "taskDetail": "任务详情",

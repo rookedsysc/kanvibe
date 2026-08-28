@@ -224,27 +224,76 @@ describe("단축키 재배정", () => {
       taskDetailDock1: "Mod+Shift+K",
       unknownCommand: "Mod+J",
       taskDetailUsage: 7,
-    }))).toEqual({ taskDetailDock1: "Mod+Shift+K" });
+    }), "linux")).toEqual({ taskDetailDock1: "Mod+Shift+K" });
   });
 
   it("저장 형식이 깨져 있으면 재배정 없이 기본값을 쓴다", () => {
-    expect(parseShortcutOverrides("{not json")).toEqual({});
-    expect(resolveShortcutBindings(parseShortcutOverrides(null))).toEqual(DEFAULT_SHORTCUT_BINDINGS);
+    expect(parseShortcutOverrides("{not json", "linux")).toEqual({});
+    expect(resolveShortcutBindings(parseShortcutOverrides(null, "linux"))).toEqual(DEFAULT_SHORTCUT_BINDINGS);
   });
 
   it("기본값과 같아진 항목은 저장하지 않는다", () => {
     expect(collectShortcutOverrides({
       ...DEFAULT_SHORTCUT_BINDINGS,
       taskDetailDock1: "Mod+Shift+K",
-    })).toEqual({ taskDetailDock1: "Mod+Shift+K" });
+    }, "linux")).toEqual({ taskDetailDock1: "Mod+Shift+K" });
   });
 
   it("이미 다른 명령이 쓰는 조합은 충돌로 알린다", () => {
-    expect(findShortcutCommandConflict(DEFAULT_SHORTCUT_BINDINGS, "taskDetailDock1", "Mod+N"))
+    expect(findShortcutCommandConflict(DEFAULT_SHORTCUT_BINDINGS, "taskDetailDock1", "Mod+N", "linux"))
       .toBe("createTask");
-    expect(findShortcutCommandConflict(DEFAULT_SHORTCUT_BINDINGS, "createTask", "Mod+N"))
+    expect(findShortcutCommandConflict(DEFAULT_SHORTCUT_BINDINGS, "createTask", "Mod+N", "linux"))
       .toBeNull();
-    expect(findShortcutCommandConflict(DEFAULT_SHORTCUT_BINDINGS, "taskDetailDock1", "Mod+Shift+K"))
+    expect(findShortcutCommandConflict(DEFAULT_SHORTCUT_BINDINGS, "taskDetailDock1", "Mod+Shift+K", "linux"))
       .toBeNull();
+  });
+
+  /**
+   * 옛 버전은 Mod 없이 플랫폼 표기(`Meta+…`/`Ctrl+…`)로 저장했다.
+   * 그 표기를 접지 않으면 실행 시에는 같은 조합인데 중복 판정만 다른 조합으로 봐서,
+   * 경고 없이 겹치는 배정이 저장되고 정의 순서상 뒤인 명령이 도달 불가능해진다.
+   */
+  it("옛 플랫폼 표기로 저장된 조합도 같은 조합으로 보고 충돌을 알린다", () => {
+    const macBindings = resolveShortcutBindings(
+      parseShortcutOverrides(JSON.stringify({ taskSearch: "Meta+Shift+O" }), "mac"),
+    );
+    expect(macBindings.taskSearch).toBe("Mod+Shift+O");
+    expect(findShortcutCommandConflict(macBindings, "boardProjectFilter", "Mod+Shift+O", "mac"))
+      .toBe("taskSearch");
+
+    const linuxBindings = resolveShortcutBindings(
+      parseShortcutOverrides(JSON.stringify({ taskSearch: "Ctrl+Shift+O" }), "linux"),
+    );
+    expect(linuxBindings.taskSearch).toBe("Mod+Shift+O");
+    expect(findShortcutCommandConflict(linuxBindings, "boardProjectFilter", "Mod+Shift+O", "linux"))
+      .toBe("taskSearch");
+  });
+
+  /** mac의 Ctrl과 linux의 Meta는 Mod와 별개 키라 접으면 안 된다 */
+  it("그 플랫폼에서 Mod가 아닌 수식키는 접지 않는다", () => {
+    expect(findShortcutCommandConflict(
+      resolveShortcutBindings(parseShortcutOverrides(JSON.stringify({ taskSearch: "Ctrl+Shift+O" }), "mac")),
+      "boardProjectFilter",
+      "Mod+Shift+O",
+      "mac",
+    )).toBeNull();
+    expect(findShortcutCommandConflict(
+      resolveShortcutBindings(parseShortcutOverrides(JSON.stringify({ taskSearch: "Meta+Shift+O" }), "linux")),
+      "boardProjectFilter",
+      "Mod+Shift+O",
+      "linux",
+    )).toBeNull();
+  });
+
+  /** 실질적으로 기본값인 옛 표기를 override로 남기면 그 사용자만 향후 기본값 변경을 못 받는다 */
+  it("플랫폼 표기만 다른 기본값은 재배정으로 저장하지 않는다", () => {
+    expect(collectShortcutOverrides({
+      ...DEFAULT_SHORTCUT_BINDINGS,
+      taskSearch: "Meta+Shift+O",
+    }, "mac")).toEqual({});
+    expect(collectShortcutOverrides({
+      ...DEFAULT_SHORTCUT_BINDINGS,
+      taskSearch: "Ctrl+Shift+O",
+    }, "linux")).toEqual({});
   });
 });

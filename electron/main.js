@@ -45,6 +45,8 @@ let windowOpenHelpers = null;
 let keyboardShortcutHelpers = null;
 let shortcutBindingHelpers = null;
 let currentShortcutBindings = null;
+/** 단축키를 녹화 중인 창의 webContents id. 녹화 중에는 그 조합을 명령으로 가로채지 않는다 */
+const shortcutCapturingWebContentsIds = new Set();
 let stopBackgroundTaskSync = null;
 /** 앱 종료 시 KanVibe가 소유한 PTY를 정리한다. 핸들러 등록 시점에 채워진다 */
 let killAllTerminalSessionsOnQuit = null;
@@ -159,6 +161,15 @@ function broadcastNotificationsChanged() {
   for (const window of BrowserWindow.getAllWindows()) {
     if (!window.isDestroyed()) {
       window.webContents.send("kanvibe:notifications-changed");
+    }
+  }
+}
+
+/** 단축키 재배정은 저장한 창만이 아니라 열려 있는 모든 창의 렌더러 캐시에 반영돼야 한다 */
+function broadcastShortcutBindingsChanged() {
+  for (const window of BrowserWindow.getAllWindows()) {
+    if (!window.isDestroyed()) {
+      window.webContents.send("kanvibe:shortcut-bindings-changed");
     }
   }
 }
@@ -475,7 +486,20 @@ function registerAppWindow(browserWindow) {
     }
   });
 
+  const shortcutCapturingWebContentsId = browserWindow.webContents.id;
+
+  /**
+   * 문서가 새로 커밋되면 렌더러의 녹화 상태는 사라지지만 effect cleanup은 돌지 않는다.
+   * 표시를 여기서 지우지 않으면 그 창은 살아 있는 채로 main 단축키 가로채기를 통째로 잃는다.
+   * 해시 이동은 문서를 갈아치우지 않아 did-navigate가 오지 않으므로 녹화 중 표시가 유지된다.
+   */
+  browserWindow.webContents.on("did-navigate", () => {
+    shortcutCapturingWebContentsIds.delete(shortcutCapturingWebContentsId);
+  });
+
   browserWindow.on("closed", () => {
+    shortcutCapturingWebContentsIds.delete(shortcutCapturingWebContentsId);
+
     if (mainWindow === browserWindow) {
       mainWindow = getAvailableWindows()[0] || null;
     }
@@ -706,6 +730,14 @@ function attachWindowHandlers(browserWindow) {
       return;
     }
 
+    /**
+     * 녹화 중에는 명령을 찾지 않고 그대로 렌더러로 흘려보낸다.
+     * 여기서 가로채면 keydown이 렌더러에 닿지 않아 녹화가 실패하고, 그 조합의 원래 동작만 실행된다.
+     */
+    if (shortcutCapturingWebContentsIds.has(browserWindow.webContents.id)) {
+      return;
+    }
+
     const shortcutCommand = findShortcutCommandForElectronInput(
       getCurrentShortcutBindings(),
       input,
@@ -823,7 +855,15 @@ function registerDesktopHandlers() {
   });
 
   ipcMain.on("kanvibe:shortcut-bindings-changed", () => {
-    void refreshShortcutBindings();
+    void refreshShortcutBindings().then(broadcastShortcutBindingsChanged);
+  });
+
+  ipcMain.on("kanvibe:shortcut-capture-changed", (event, isCapturing) => {
+    if (isCapturing) {
+      shortcutCapturingWebContentsIds.add(event.sender.id);
+    } else {
+      shortcutCapturingWebContentsIds.delete(event.sender.id);
+    }
   });
 
   ipcMain.handle("kanvibe:invoke", async (event, namespace, method, args) => {

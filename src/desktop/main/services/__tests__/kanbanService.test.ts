@@ -119,7 +119,8 @@ function expectGitHubCliCommand(command: string, repoPath: string, ghArguments: 
   /** 등록된 경로가 저장소를 감싼 상위 폴더면 바로 아래 저장소로 내려가야 조회가 성립한다 */
   expect(command).toContain('if [ ! -e "$repo/.git" ]');
   /** .envrc에 GitHub 인증을 심어 둔 저장소는 direnv를 태우지 않으면 권한 없이 실패한다 */
-  expect(command).toContain(`direnv exec "$repo" gh ${ghArguments}`);
+  expect(command).toContain(`if [ -f "$repo/.envrc" ] && command -v direnv`);
+  expect(command).toContain(`direnv exec "$repo" gh ${ghArguments} || gh ${ghArguments}`);
   expect(command).toContain(`else gh ${ghArguments}`);
 }
 
@@ -2586,5 +2587,213 @@ describe("kanbanService.updateTask", () => {
 
     // Then
     expect(mocks.writeTextFile).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * gh를 부르는 셸 명령은 문자열 비교만으로는 검증되지 않는다.
+ * 실제 저장소 배치를 만들어 두고 `sh -c`로 돌려, 어느 디렉터리에서 gh가 실행되는지 확인한다.
+ */
+describe("kanbanService gh 실행 셸 명령", () => {
+  const nodeFs = require("node:fs") as typeof import("node:fs");
+  const nodeOs = require("node:os") as typeof import("node:os");
+  const nodePath = require("node:path") as typeof import("node:path");
+  const { execFileSync } = require("node:child_process") as typeof import("node:child_process");
+
+  let workspaceRoot = "";
+
+  beforeEach(() => {
+    vi.resetModules();
+    vi.clearAllMocks();
+    workspaceRoot = nodeFs.mkdtempSync(nodePath.join(nodeOs.tmpdir(), "kanvibe-gh-command-"));
+  });
+
+  /** gh와 direnv를 흉내 내는 stub을 PATH 앞에 두고, 실행된 디렉터리를 stdout으로 받는다 */
+  function createShellStubs({ direnvFails = false }: { direnvFails?: boolean } = {}) {
+    const stubDirectory = nodePath.join(workspaceRoot, "__bin");
+    nodeFs.mkdirSync(stubDirectory, { recursive: true });
+
+    nodeFs.writeFileSync(
+      nodePath.join(stubDirectory, "gh"),
+      '#!/bin/sh\nprintf "gh:%s" "$(pwd)"\n',
+      { mode: 0o755 },
+    );
+    nodeFs.writeFileSync(
+      nodePath.join(stubDirectory, "direnv"),
+      direnvFails
+        ? '#!/bin/sh\necho "direnv: .envrc is blocked" >&2\nexit 1\n'
+        : '#!/bin/sh\nshift 2\nprintf "direnv:%s" "$(pwd)"\n',
+      { mode: 0o755 },
+    );
+
+    return stubDirectory;
+  }
+
+  function runGitHubCliCommand(command: string, stubDirectory: string): string {
+    return execFileSync("sh", ["-c", command], {
+      encoding: "utf8",
+      env: { PATH: `${stubDirectory}:${process.env.PATH ?? ""}` },
+    });
+  }
+
+  async function captureGitHubCliCommand(repoPath: string): Promise<string> {
+    mocks.taskRepo.findOneBy.mockResolvedValue({
+      id: "task-gh",
+      projectId: "project-gh",
+      branchName: "feat/login",
+      prUrl: null,
+    });
+    mocks.projectRepo.findOneBy.mockResolvedValue({ id: "project-gh", repoPath });
+    mocks.taskRepo.save.mockImplementation(async (value: unknown) => value);
+    mocks.execGit.mockResolvedValue("");
+
+    const { fetchAndSavePrUrl } = await import("@/desktop/main/services/kanbanService");
+    await fetchAndSavePrUrl("task-gh");
+
+    return readGitHubCliCall().command;
+  }
+
+  function createRepository(relativePath: string): string {
+    const repositoryPath = nodePath.join(workspaceRoot, relativePath);
+    nodeFs.mkdirSync(nodePath.join(repositoryPath, ".git"), { recursive: true });
+    return repositoryPath;
+  }
+
+  it("등록 경로 아래 저장소가 하나뿐이면 그 저장소에서 gh를 실행한다", async () => {
+    // Given
+    const nestedRepository = createRepository("web");
+    const command = await captureGitHubCliCommand(workspaceRoot);
+
+    // When
+    const output = runGitHubCliCommand(command, createShellStubs());
+
+    // Then
+    expect(output).toBe(`gh:${nestedRepository}`);
+  });
+
+  /** 엉뚱한 저장소의 PR을 task.prUrl로 저장하면 머지 알림까지 잘못 뜬다. 실패가 낫다 */
+  it("등록 경로 아래 저장소가 둘 이상이면 어느 쪽으로도 내려가지 않는다", async () => {
+    // Given
+    createRepository("api");
+    createRepository("web");
+    const command = await captureGitHubCliCommand(workspaceRoot);
+
+    // When
+    const output = runGitHubCliCommand(command, createShellStubs());
+
+    // Then
+    expect(output).toBe(`gh:${workspaceRoot}`);
+  });
+
+  it("등록 경로 자체가 저장소면 하위를 뒤지지 않는다", async () => {
+    // Given
+    const repositoryPath = createRepository("solo");
+    createRepository(nodePath.join("solo", "nested"));
+    const command = await captureGitHubCliCommand(repositoryPath);
+
+    // When
+    const output = runGitHubCliCommand(command, createShellStubs());
+
+    // Then
+    expect(output).toBe(`gh:${repositoryPath}`);
+  });
+
+  it(".envrc가 없으면 direnv가 깔려 있어도 평범한 gh를 부른다", async () => {
+    // Given
+    const repositoryPath = createRepository("plain");
+    const command = await captureGitHubCliCommand(repositoryPath);
+
+    // When
+    const output = runGitHubCliCommand(command, createShellStubs());
+
+    // Then
+    expect(output).toBe(`gh:${repositoryPath}`);
+  });
+
+  it(".envrc가 있으면 direnv를 태워 gh를 부른다", async () => {
+    // Given
+    const repositoryPath = createRepository("direnv-repo");
+    nodeFs.writeFileSync(nodePath.join(repositoryPath, ".envrc"), "export GH_TOKEN=token\n");
+    const command = await captureGitHubCliCommand(repositoryPath);
+
+    // When
+    const output = runGitHubCliCommand(command, createShellStubs());
+
+    // Then
+    expect(output).toBe(`direnv:${repositoryPath}`);
+  });
+
+  /** direnv allow가 안 된 .envrc면 direnv 경로가 늘 실패한다. fallback이 없으면 그 저장소는 영구히 조회 불가다 */
+  it("direnv 경로가 실패하면 평범한 gh로 되돌아간다", async () => {
+    // Given
+    const repositoryPath = createRepository("blocked-envrc");
+    nodeFs.writeFileSync(nodePath.join(repositoryPath, ".envrc"), "export GH_TOKEN=token\n");
+    const command = await captureGitHubCliCommand(repositoryPath);
+
+    // When
+    const output = runGitHubCliCommand(command, createShellStubs({ direnvFails: true }));
+
+    // Then
+    expect(output).toBe(`gh:${repositoryPath}`);
+  });
+
+  /** 경로 없음은 재시도해도 회복되지 않는다. 예외로 올리면 매 background sync마다 실패 창이 뜬다 */
+  it("저장소 경로가 사라졌으면 gh를 부르지 않고 표식만 남기고 정상 종료한다", async () => {
+    // Given
+    const command = await captureGitHubCliCommand(nodePath.join(workspaceRoot, "gone"));
+
+    // When
+    const output = runGitHubCliCommand(command, createShellStubs());
+
+    // Then
+    expect(output).toBe("kanvibe-missing-repository");
+  });
+
+  /**
+   * `shouldLogRemoteCommandFailure`가 이 패턴을 조용한 probe로 보고 원격 실패 로그를 통째로 지운다.
+   * 명령에 섞여 들어가면 SSH 원격 태스크의 PR 조회 실패가 진단 로그에 남지 않는다.
+   */
+  it("원격 실패 로그를 지우는 조용한 probe 패턴을 명령에 넣지 않는다", async () => {
+    // Given
+    const repositoryPath = createRepository("logging");
+
+    // When
+    const command = await captureGitHubCliCommand(repositoryPath);
+
+    // Then
+    expect(command).not.toContain(">/dev/null 2>&1");
+    expect(command).not.toContain("2>/dev/null");
+  });
+});
+
+describe("kanbanService PR 조회 실패 처리", () => {
+  beforeEach(() => {
+    vi.resetModules();
+    vi.clearAllMocks();
+  });
+
+  it("저장소 경로 없음 표식이 오면 PR URL 조회를 조용히 건너뛴다", async () => {
+    // Given
+    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    mocks.taskRepo.findOneBy.mockResolvedValue({
+      id: "task-missing-repo",
+      projectId: "project-1",
+      branchName: "dev",
+      prUrl: null,
+    });
+    mocks.projectRepo.findOneBy.mockResolvedValue({ id: "project-1", repoPath: "/moved/away" });
+    mocks.execGit.mockResolvedValue("kanvibe-missing-repository");
+
+    const { fetchAndSavePrUrl } = await import("@/desktop/main/services/kanbanService");
+
+    // When
+    const result = await fetchAndSavePrUrl("task-missing-repo");
+
+    // Then
+    expect(result).toBeNull();
+    expect(mocks.taskRepo.save).not.toHaveBeenCalled();
+    expect(consoleErrorSpy).not.toHaveBeenCalled();
+
+    consoleErrorSpy.mockRestore();
   });
 });

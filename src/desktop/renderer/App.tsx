@@ -17,6 +17,7 @@ import {
   isTaskDetailRouteUrl,
 } from "@/desktop/renderer/utils/keyboardShortcut";
 import {
+  isShortcutCaptureActive,
   isShortcutCaptureTarget,
   loadShortcutBindings,
   readShortcutBindings,
@@ -113,8 +114,13 @@ function LocaleShell() {
 export default function App() {
   const boardRefreshTimerRef = useRef<number | null>(null);
 
+  /** 다른 창이 단축키를 바꾸면 main이 알려 준다. 그러지 않으면 이 창은 재시작 전까지 옛 조합으로 동작한다 */
   useEffect(() => {
     void loadShortcutBindings();
+
+    return window.kanvibeDesktop?.onShortcutBindingsChanged?.(() => {
+      void loadShortcutBindings();
+    });
   }, []);
 
   useEffect(() => {
@@ -151,14 +157,18 @@ export default function App() {
    */
   useEffect(() => {
     const closeWindowIfRequested = (command: TerminalTabShortcutCommand) => {
+      /** 단축키를 녹화 중이면 그 조합은 명령이 아니라 녹화할 값이다 */
+      if (isShortcutCaptureActive()) {
+        return;
+      }
+
       if (command.type === "close-window") {
         window.kanvibeDesktop?.closeCurrentWindow?.();
       }
     };
 
     function handleWindowCloseShortcut(event: KeyboardEvent) {
-      /** 단축키를 녹화 중이면 그 조합은 명령이 아니라 녹화할 값이다 */
-      if (isShortcutCaptureTarget(event.target)) {
+      if (isShortcutCaptureActive() || isShortcutCaptureTarget(event.target)) {
         return;
       }
 

@@ -946,7 +946,14 @@ export default function TaskDetailRoute() {
       return;
     }
 
-    const prUrl = await fetchPrUrlWithPrompt(task, commonTranslationsRef.current);
+    /** 조회가 던지면 자동 조회 경로와 같이 로그를 남긴다. 삼키면 눌러도 아무 일이 없어 보인다 */
+    let prUrl: string | null = null;
+    try {
+      prUrl = await fetchPrUrlWithPrompt(task, commonTranslationsRef.current);
+    } catch (error) {
+      console.error("PR URL 조회 실패:", error);
+    }
+
     if (!prUrl) {
       window.alert(t("pullRequestNotFound"));
       return;
@@ -964,8 +971,15 @@ export default function TaskDetailRoute() {
       return;
     }
 
-    const result = await openTaskInVsCode(task.id);
-    if (!result.ok) {
+    /** 실행 요청이 던져도 실패 알림으로 합류시킨다. 삼키면 눌러도 아무 일이 없어 보인다 */
+    let opened = false;
+    try {
+      opened = (await openTaskInVsCode(task.id)).ok;
+    } catch (error) {
+      console.error("VS Code 실행 요청 실패:", error);
+    }
+
+    if (!opened) {
       window.alert(t("openInVsCodeFailed"));
     }
   }, [t]);

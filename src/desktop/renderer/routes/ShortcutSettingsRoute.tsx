@@ -6,12 +6,20 @@ import {
   captureShortcutFromEvent,
   formatShortcutForDisplay,
   getCurrentShortcutPlatform,
+  isShortcutModifierKey,
 } from "@/desktop/renderer/utils/keyboardShortcut";
-import { saveShortcutBindings, useShortcutBindings } from "@/desktop/renderer/utils/shortcutBindings";
+import {
+  hasLoadedShortcutBindings,
+  loadShortcutBindings,
+  saveShortcutBindings,
+  setShortcutCaptureActive,
+  useShortcutBindings,
+} from "@/desktop/renderer/utils/shortcutBindings";
 import {
   DEFAULT_SHORTCUT_BINDINGS,
   SHORTCUT_COMMAND_DEFINITIONS,
   findShortcutCommandConflict,
+  type ShortcutBindings,
   type ShortcutCommandDefinition,
   type ShortcutCommandGroup,
   type ShortcutCommandId,
@@ -33,19 +41,70 @@ export default function ShortcutSettingsRoute() {
   const shortcutPlatform = getCurrentShortcutPlatform();
   const [recordingCommandId, setRecordingCommandId] = useState<ShortcutCommandId | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [isBindingsLoaded, setIsBindingsLoaded] = useState(hasLoadedShortcutBindings);
   const commandGroups = useMemo(groupShortcutCommands, []);
 
   useEffect(() => {
-    document.title = "Shortcuts";
-  }, []);
+    document.title = t("title");
+  }, [t]);
+
+  /**
+   * 앱이 뜰 때의 조회 한 번이 실패하면 이 화면은 재배정이 전부 사라진 것처럼 보인다.
+   * 그 위에서 저장하면 표가 기본값으로 치환돼 실제로도 사라지므로, 담긴 표가 없을 때만 한 번 더 읽는다.
+   * 이미 담겨 있는데도 다시 읽으면, 늦게 도착한 응답이 그 사이에 저장한 값을 되돌린다.
+   */
+  useEffect(() => {
+    if (hasLoadedShortcutBindings()) {
+      return;
+    }
+
+    void loadShortcutBindings().then((isLoaded) => {
+      setIsBindingsLoaded(isLoaded);
+      if (!isLoaded) {
+        setErrorMessage(t("loadFailed"));
+      }
+    });
+  }, [t]);
 
   const describeCommand = useCallback((definition: ShortcutCommandDefinition) => (
     t(`commands.${definition.labelKey}`, { index: definition.labelIndex ?? 0 })
   ), [t]);
 
+  /** 저장이 실패하면 화면은 옛 값 그대로다. 조용히 넘기면 사용자는 바뀐 줄 안다 */
+  const persistBindings = useCallback(async (nextBindings: ShortcutBindings) => {
+    /** 저장은 표를 통째로 치환한다. 조회하지 못한 기본값 표를 저장하면 저장돼 있던 재배정이 전부 지워진다 */
+    if (!hasLoadedShortcutBindings()) {
+      setIsBindingsLoaded(false);
+      setErrorMessage(t("loadFailed"));
+      return;
+    }
+
+    try {
+      await saveShortcutBindings(nextBindings);
+    } catch (error) {
+      console.error("단축키 저장 실패:", error);
+      setErrorMessage(t("saveFailed"));
+    }
+  }, [t]);
+
+  /** 겹치는 조합이 붙으면 정의 순서상 뒤인 명령은 렌더러와 main 양쪽에서 도달할 방법이 없어진다 */
+  const describeShortcutConflict = useCallback((commandId: ShortcutCommandId, shortcut: string) => {
+    const conflictingCommandId = findShortcutCommandConflict(bindings, commandId, shortcut, shortcutPlatform);
+    const conflictingCommand = SHORTCUT_COMMAND_DEFINITIONS
+      .find((definition) => definition.id === conflictingCommandId);
+    return conflictingCommand ? t("conflict", { command: describeCommand(conflictingCommand) }) : null;
+  }, [bindings, describeCommand, shortcutPlatform, t]);
+
+  /** 녹화든 개별 되돌리기든 같은 관문을 지나야 중복 배정이 조용히 생기지 않는다 */
   const applyShortcut = useCallback(async (commandId: ShortcutCommandId, shortcut: string) => {
-    await saveShortcutBindings({ ...bindings, [commandId]: shortcut });
-  }, [bindings]);
+    const conflictMessage = describeShortcutConflict(commandId, shortcut);
+    if (conflictMessage) {
+      setErrorMessage(conflictMessage);
+      return;
+    }
+
+    await persistBindings({ ...bindings, [commandId]: shortcut });
+  }, [bindings, describeShortcutConflict, persistBindings]);
 
   /**
    * 녹화 중에는 앱의 다른 단축키 처리를 멈춘다.
@@ -58,6 +117,8 @@ export default function ShortcutSettingsRoute() {
 
     const targetCommandId = recordingCommandId;
     const releaseShortcutBlocker = boardCommands.registerShortcutBlocker();
+    /** Electron main도 녹화 중임을 알아야 한다. 모르면 main이 가로채는 조합은 여기까지 오지 못한다 */
+    setShortcutCaptureActive(true);
 
     function handleRecordingKeyDown(event: KeyboardEvent) {
       event.preventDefault();
@@ -65,7 +126,13 @@ export default function ShortcutSettingsRoute() {
       event.stopImmediatePropagation();
 
       if (event.key === "Escape") {
+        setErrorMessage(null);
         setRecordingCommandId(null);
+        return;
+      }
+
+      /** 조합을 누르는 모든 사용자가 수식키 keydown을 먼저 흘린다. 이걸 오류로 보면 매 녹화마다 거짓 배너가 뜬다 */
+      if (isShortcutModifierKey(event.key)) {
         return;
       }
 
@@ -75,11 +142,9 @@ export default function ShortcutSettingsRoute() {
         return;
       }
 
-      const conflictingCommandId = findShortcutCommandConflict(bindings, targetCommandId, capturedShortcut);
-      const conflictingCommand = SHORTCUT_COMMAND_DEFINITIONS
-        .find((definition) => definition.id === conflictingCommandId);
-      if (conflictingCommand) {
-        setErrorMessage(t("conflict", { command: describeCommand(conflictingCommand) }));
+      const conflictMessage = describeShortcutConflict(targetCommandId, capturedShortcut);
+      if (conflictMessage) {
+        setErrorMessage(conflictMessage);
         return;
       }
 
@@ -91,9 +156,10 @@ export default function ShortcutSettingsRoute() {
     window.addEventListener("keydown", handleRecordingKeyDown, { capture: true });
     return () => {
       window.removeEventListener("keydown", handleRecordingKeyDown, { capture: true });
+      setShortcutCaptureActive(false);
       releaseShortcutBlocker();
     };
-  }, [applyShortcut, bindings, boardCommands, describeCommand, recordingCommandId, shortcutPlatform, t]);
+  }, [applyShortcut, boardCommands, describeShortcutConflict, recordingCommandId, shortcutPlatform, t]);
 
   return (
     <div data-shortcut-capture="true" className="min-h-screen bg-bg-page px-6 py-8">
@@ -111,12 +177,13 @@ export default function ShortcutSettingsRoute() {
           </div>
           <button
             type="button"
+            disabled={!isBindingsLoaded}
             onClick={() => {
               setErrorMessage(null);
               setRecordingCommandId(null);
-              void saveShortcutBindings({ ...DEFAULT_SHORTCUT_BINDINGS });
+              void persistBindings({ ...DEFAULT_SHORTCUT_BINDINGS });
             }}
-            className="shrink-0 rounded-md border border-border-default bg-button-neutral px-3 py-2 text-xs text-text-primary transition-colors hover:border-brand-primary"
+            className="shrink-0 rounded-md border border-border-default bg-button-neutral px-3 py-2 text-xs text-text-primary transition-colors hover:border-brand-primary disabled:cursor-not-allowed disabled:opacity-40"
           >
             {t("resetAll")}
           </button>
@@ -147,11 +214,12 @@ export default function ShortcutSettingsRoute() {
                       </code>
                       <button
                         type="button"
+                        disabled={!isBindingsLoaded}
                         onClick={() => {
                           setErrorMessage(null);
                           setRecordingCommandId(isRecording ? null : definition.id);
                         }}
-                        className={`rounded-md border px-3 py-1 text-xs transition-colors ${
+                        className={`rounded-md border px-3 py-1 text-xs transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
                           isRecording
                             ? "border-brand-primary bg-brand-subtle text-brand-primary"
                             : "border-border-default bg-button-neutral text-text-primary hover:border-brand-primary"
@@ -161,7 +229,7 @@ export default function ShortcutSettingsRoute() {
                       </button>
                       <button
                         type="button"
-                        disabled={!isCustomized}
+                        disabled={!isCustomized || !isBindingsLoaded}
                         onClick={() => {
                           setErrorMessage(null);
                           void applyShortcut(definition.id, definition.defaultShortcut);

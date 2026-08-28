@@ -276,6 +276,8 @@
       "resetAll": "전체 기본값으로",
       "conflict": "{command} 명령이 이미 이 조합을 쓰고 있습니다.",
       "unsupported": "수정 키를 하나 이상 포함한 조합만 쓸 수 있습니다.",
+      "saveFailed": "단축키를 저장하지 못했습니다.",
+      "loadFailed": "저장된 단축키를 불러오지 못했습니다. 문제가 해결된 뒤 이 화면을 다시 열어 주세요.",
       "groups": {
         "taskDetailDock": "작업 상세 도크",
         "taskDetail": "작업 상세",

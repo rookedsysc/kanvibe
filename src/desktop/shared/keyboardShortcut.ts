@@ -197,14 +197,28 @@ function getNormalizedModifierState(event: ShortcutInput) {
   };
 }
 
-/** 표기 흔들림을 걷어낸 정규 단축키 문자열. 재배정 값 비교와 중복 판정이 같은 기준을 쓰게 한다 */
-export function normalizeShortcut(shortcut: string): string {
+/**
+ * 플랫폼에서 Mod가 가리키는 수식키(mac은 Meta, linux는 Ctrl)를 Mod 표기로 접는다.
+ * matchShortcutEvent는 두 표기를 같은 입력으로 보므로 저장과 중복 판정도 같은 기준을 써야 한다.
+ * 그러지 않으면 실제로 겹치는 조합이 서로 다른 명령에 조용히 배정되고, 정의 순서상 뒤인 명령은 도달할 방법이 없어진다.
+ * mac의 Ctrl과 linux의 Meta는 Mod와 별개 키이므로 접지 않는다.
+ */
+export function canonicalizeShortcutForPlatform(
+  shortcut: string,
+  platform: ShortcutPlatformInput,
+): string {
+  const shortcutPlatform = normalizeShortcutPlatform(platform);
   const { modifiers, key } = normalizeShortcutParts(shortcut);
   if (!key) {
     return "";
   }
 
-  return [...modifiers, key].join("+");
+  const platformModifier = shortcutPlatform === "mac" ? "Meta" : "Ctrl";
+  const canonicalModifiers = new Set(
+    modifiers.map((modifier) => (modifier === platformModifier ? "Mod" : modifier)),
+  );
+
+  return [...MODIFIER_ORDER.filter((modifier) => canonicalModifiers.has(modifier)), key].join("+");
 }
 
 export function formatShortcutForDisplay(shortcut: ShortcutDefinition, platform: ShortcutPlatformInput): string {
@@ -321,6 +335,15 @@ export function isBlockedElectronShortcutInput(
   ));
 }
 
+/**
+ * 수식키 단독 입력은 아직 조합이 완성되지 않은 상태다.
+ * captureShortcutFromEvent가 이 경우와 "수식키가 하나도 없는 조합"에 똑같이 null을 돌려주므로,
+ * 녹화 화면이 둘을 구분하려면 이 판별을 밖에서 쓸 수 있어야 한다.
+ */
+export function isShortcutModifierKey(key: string): boolean {
+  return MODIFIER_KEYS.has(key);
+}
+
 export function captureShortcutFromEvent(
   event: ShortcutInput,
   platform?: ShortcutPlatformInput,
@@ -372,6 +395,14 @@ export function captureShortcutFromEvent(
   }
 
   const shortcut = [...MODIFIER_ORDER.filter((modifier) => modifiers.has(modifier)), key].join("+");
+  /**
+   * `+`는 토큰 구분자라 키 자리에 담기지 못한다. 그대로 돌려주면 다시 파싱할 때 키가 통째로 사라져
+   * 저장·매칭·표시가 전부 조용히 실패하고, 녹화 화면에는 배정된 것처럼 보인다.
+   */
+  if (normalizeShortcutParts(shortcut).key !== key) {
+    return null;
+  }
+
   if (platform !== undefined && Object.values(BLOCKED_DESKTOP_SHORTCUTS).some((blockedShortcut) => (
     normalizeShortcutParts(blockedShortcut).key === key
     && matchShortcutEvent(event, blockedShortcut, platform)

@@ -1153,6 +1153,42 @@ describe("TaskDetailRoute", () => {
     });
   });
 
+  /** IPC나 저장소 계층이 던지는 실패도 눌렀을 때 아무 일이 없어 보이면 안 된다 */
+  it("VS Code 실행 요청이 던지면 실패 알림을 띄운다", async () => {
+    const alertSpy = vi.spyOn(window, "alert").mockImplementation(() => {});
+    mocks.openTaskInVsCode.mockRejectedValue(new Error("db down"));
+    mocks.getTaskById.mockResolvedValue({
+      id: "task-1",
+      title: "task title",
+      description: null,
+      branchName: "feat/detail-shortcut",
+      baseBranch: "main",
+      prUrl: null,
+      sessionType: "tmux",
+      sessionName: "task-session",
+      sshHost: null,
+      projectId: "project-1",
+      project: { id: "project-1", name: "kanvibe" },
+      status: "todo",
+      agentType: null,
+      worktreePath: "/repo__worktrees/detail-shortcut",
+    });
+
+    render(
+      <BoardCommandProvider>
+        <TaskDetailRoute />
+      </BoardCommandProvider>,
+    );
+
+    await screen.findByLabelText("terminal input");
+
+    fireEvent.keyDown(window, { key: "6", ctrlKey: true });
+
+    await waitFor(() => {
+      expect(alertSpy).toHaveBeenCalled();
+    });
+  });
+
   it("Electron main에서 전달된 dock shortcut도 같은 dock action을 실행한다", async () => {
     let dockShortcutListener: ((index: number) => void) | null = null;
     window.kanvibeDesktop = {
