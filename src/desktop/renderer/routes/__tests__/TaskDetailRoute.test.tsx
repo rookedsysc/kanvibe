@@ -40,6 +40,7 @@ const mocks = vi.hoisted(() => ({
   markAllNotificationsRead: vi.fn(),
   activateNotification: vi.fn(),
   fetchPrUrlWithPrompt: vi.fn(),
+  openTaskInVsCode: vi.fn(),
   renderHooksStatusCard: vi.fn(),
   useRefreshSignal: vi.fn(() => 0),
   redirect: vi.fn(),
@@ -102,6 +103,7 @@ vi.mock("@hugeicons/core-free-icons", () => ({
   ChartHistogramIcon: { __iconName: "ChartHistogramIcon" },
   Chatting01Icon: { __iconName: "Chatting01Icon" },
   InformationCircleIcon: { __iconName: "InformationCircleIcon" },
+  SourceCodeIcon: { __iconName: "SourceCodeIcon" },
 }));
 
 vi.mock("@/desktop/renderer/actions/aiUsage", () => ({
@@ -187,6 +189,10 @@ vi.mock("@/desktop/renderer/actions/notifications", () => ({
 
 vi.mock("@/desktop/renderer/utils/fetchPrUrlWithPrompt", () => ({
   fetchPrUrlWithPrompt: (...args: unknown[]) => mocks.fetchPrUrlWithPrompt(...args),
+}));
+
+vi.mock("@/desktop/renderer/actions/editor", () => ({
+  openTaskInVsCode: (...args: unknown[]) => mocks.openTaskInVsCode(...args),
 }));
 
 vi.mock("@/components/ConnectTerminalForm", () => ({
@@ -1071,6 +1077,80 @@ describe("TaskDetailRoute", () => {
 
     expect(wasNotPrevented).toBe(false);
     expect(openSpy).toHaveBeenCalledWith(prUrl, "_blank", "noopener,noreferrer");
+  });
+
+  /** PR 자리가 링크 유무로 사라지면 뒤 dock 항목의 번호가 통째로 밀려 근육기억이 깨진다 */
+  it("PR을 찾지 못한 task도 dock 4번 자리를 지키고 눌리면 다시 조회한다", async () => {
+    vi.spyOn(window, "alert").mockImplementation(() => {});
+    mocks.fetchPrUrlWithPrompt.mockResolvedValue(null);
+    mocks.getTaskById.mockResolvedValue({
+      id: "task-1",
+      title: "task title",
+      description: null,
+      branchName: "feat/detail-shortcut",
+      baseBranch: "main",
+      prUrl: null,
+      sessionType: "tmux",
+      sessionName: "task-session",
+      sshHost: null,
+      projectId: "project-1",
+      project: { id: "project-1", name: "kanvibe" },
+      status: "todo",
+      agentType: null,
+      worktreePath: "/repo__worktrees/detail-shortcut",
+    });
+
+    render(
+      <BoardCommandProvider>
+        <TaskDetailRoute />
+      </BoardCommandProvider>,
+    );
+
+    await screen.findByLabelText("terminal input");
+
+    const pullRequestDockButton = screen.getByRole("button", { name: "PR" });
+    expect(pullRequestDockButton.getAttribute("title")).toContain("Ctrl+4");
+
+    const autoLookupCallCount = mocks.fetchPrUrlWithPrompt.mock.calls.length;
+    fireEvent.keyDown(window, { key: "4", ctrlKey: true });
+
+    await waitFor(() => {
+      expect(mocks.fetchPrUrlWithPrompt.mock.calls.length).toBe(autoLookupCallCount + 1);
+    });
+  });
+
+  it("dock 6번 shortcut은 작업 폴더를 VS Code로 연다", async () => {
+    mocks.openTaskInVsCode.mockResolvedValue({ ok: true });
+    mocks.getTaskById.mockResolvedValue({
+      id: "task-1",
+      title: "task title",
+      description: null,
+      branchName: "feat/detail-shortcut",
+      baseBranch: "main",
+      prUrl: null,
+      sessionType: "tmux",
+      sessionName: "task-session",
+      sshHost: null,
+      projectId: "project-1",
+      project: { id: "project-1", name: "kanvibe" },
+      status: "todo",
+      agentType: null,
+      worktreePath: "/repo__worktrees/detail-shortcut",
+    });
+
+    render(
+      <BoardCommandProvider>
+        <TaskDetailRoute />
+      </BoardCommandProvider>,
+    );
+
+    await screen.findByLabelText("terminal input");
+
+    fireEvent.keyDown(window, { key: "6", ctrlKey: true });
+
+    await waitFor(() => {
+      expect(mocks.openTaskInVsCode).toHaveBeenCalledWith("task-1");
+    });
   });
 
   it("Electron main에서 전달된 dock shortcut도 같은 dock action을 실행한다", async () => {
@@ -2762,7 +2842,7 @@ describe("TaskDetailRoute", () => {
     expect(screen.getByRole("button", { name: "aiSessions.roles.tool" })).toBeTruthy();
   });
 
-  it("PR이 없는 task는 dock 4번 shortcut으로 실행중 세션 패널을 연다", async () => {
+  it("PR이 없는 task도 dock 5번 shortcut으로 실행중 세션 패널을 연다", async () => {
     mocks.getSidebarDefaultCollapsed.mockResolvedValue(true);
     mocks.getTaskLiveAiSessions.mockResolvedValue({
       taskId: "task-1",
@@ -2802,7 +2882,7 @@ describe("TaskDetailRoute", () => {
 
     await screen.findByLabelText("terminal input");
 
-    fireEvent.keyDown(window, { key: "4", ctrlKey: true });
+    fireEvent.keyDown(window, { key: "5", ctrlKey: true });
 
     expect(await screen.findByTestId("live-ai-session-claude")).toBeTruthy();
     expect(screen.getByTestId("live-ai-session-state-running")).toBeTruthy();

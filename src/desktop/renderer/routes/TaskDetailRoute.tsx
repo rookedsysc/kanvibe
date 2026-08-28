@@ -5,6 +5,7 @@ import {
   ChartHistogramIcon,
   Chatting01Icon,
   InformationCircleIcon,
+  SourceCodeIcon,
 } from "@hugeicons/core-free-icons";
 import { useTranslations } from "next-intl";
 import { useParams } from "react-router-dom";
@@ -47,17 +48,19 @@ import { useTaskDiffFiles } from "@/desktop/renderer/hooks/useTaskDiffStats";
 import { useTerminalTabs } from "@/desktop/renderer/hooks/useTerminalTabs";
 import type { TerminalTabShortcutCommand } from "@/desktop/shared/terminalTabs";
 import { fetchPrUrlWithPrompt } from "@/desktop/renderer/utils/fetchPrUrlWithPrompt";
+import { openTaskInVsCode } from "@/desktop/renderer/actions/editor";
 import {
-  SHORTCUTS,
   TASK_DETAIL_DOCK_SHORTCUT_INDEXES,
-  createTaskDetailDockShortcut,
   formatShortcutForDisplay,
   getCurrentShortcutPlatform,
-  matchShortcutEvent,
-  resolveTerminalTabShortcutEvent,
-  matchTaskDetailDockShortcutEvent,
-  matchTaskDetailUsageShortcutEvent,
 } from "@/desktop/renderer/utils/keyboardShortcut";
+import { useShortcutBindings } from "@/desktop/renderer/utils/shortcutBindings";
+import {
+  createTaskDetailDockCommandId,
+  findShortcutCommandForEvent,
+  getTaskDetailDockIndexForCommand,
+  resolveTerminalTabCommand,
+} from "@/desktop/shared/shortcutBindings";
 import { INITIAL_DESKTOP_LOAD_TIMEOUT_MS, logDesktopInitialLoadTimeout } from "@/desktop/renderer/utils/loadingTimeout";
 import { rememberBoardFocusTask } from "@/desktop/renderer/utils/boardFocusTarget";
 import { buildRouteCacheKey, readRouteCache, removeRouteCache, writeRouteCache } from "@/desktop/renderer/utils/routeCache";
@@ -868,6 +871,7 @@ export default function TaskDetailRoute() {
   });
   useMarkTaskNotificationsReadWhenFocused(state?.task.id ?? null);
   const shortcutPlatform = getCurrentShortcutPlatform();
+  const shortcutBindings = useShortcutBindings();
   const statusPanelLabel = `${t("actions")} · ${t("hooksStatus")}`;
   currentTaskRef.current = state?.task ?? null;
   const shouldShowDefaultOverviewPanel = !!state
@@ -927,6 +931,45 @@ export default function TaskDetailRoute() {
     });
   }, [markDefaultPanelDismissed]);
 
+  /**
+   * PR 자리를 눌렀을 때 링크가 아직 없으면 그 자리에서 찾아 연다.
+   * 링크가 없다고 자리를 감추면 PR이 붙기 전까지 이 dock 번호를 쓸 수 없다.
+   */
+  const openPullRequest = useCallback(async () => {
+    const task = currentTaskRef.current;
+    if (!task) {
+      return;
+    }
+
+    if (task.prUrl) {
+      window.open(task.prUrl, "_blank", "noopener,noreferrer");
+      return;
+    }
+
+    const prUrl = await fetchPrUrlWithPrompt(task, commonTranslationsRef.current);
+    if (!prUrl) {
+      window.alert(t("pullRequestNotFound"));
+      return;
+    }
+
+    setState((current) => current && current.task.id === task.id
+      ? { ...current, task: { ...current.task, prUrl } }
+      : current);
+    window.open(prUrl, "_blank", "noopener,noreferrer");
+  }, [t]);
+
+  const openInVsCode = useCallback(async () => {
+    const task = currentTaskRef.current;
+    if (!task) {
+      return;
+    }
+
+    const result = await openTaskInVsCode(task.id);
+    if (!result.ok) {
+      window.alert(t("openInVsCodeFailed"));
+    }
+  }, [t]);
+
   const dockItems = useMemo<TaskDetailDockItem[]>(() => {
     if (!state) {
       return [];
@@ -984,21 +1027,37 @@ export default function TaskDetailRoute() {
       },
     ];
 
-    if (state.task.prUrl) {
-      items.splice(PR_DOCK_INSERT_INDEX, 0, {
-        id: "pull-request",
-        label: "PR",
-        isActive: false,
-        renderIcon: () => <PullRequestIcon />,
-        onActivate: () => {
-          window.open(state.task.prUrl!, "_blank", "noopener,noreferrer");
-        },
-        href: state.task.prUrl,
-      });
-    }
+    /** PR 자리는 링크가 아직 없어도 비워 두지 않는다. 자리가 사라지면 뒤 항목의 dock 번호가 통째로 밀린다 */
+    items.splice(PR_DOCK_INSERT_INDEX, 0, {
+      id: "pull-request",
+      label: "PR",
+      isActive: false,
+      renderIcon: () => <PullRequestIcon />,
+      onActivate: () => {
+        void openPullRequest();
+      },
+      href: state.task.prUrl ?? undefined,
+    });
+
+    items.push({
+      id: "vscode",
+      label: t("openInVsCode"),
+      isActive: false,
+      renderIcon: () => (
+        <HugeiconsIcon
+          icon={SourceCodeIcon}
+          size={17}
+          strokeWidth={1.6}
+          aria-hidden="true"
+        />
+      ),
+      onActivate: () => {
+        void openInVsCode();
+      },
+    });
 
     return items;
-  }, [mainView, state, statusPanelLabel, t, toggleChatView, toggleDetailPanel, visiblePanel]);
+  }, [mainView, openInVsCode, openPullRequest, state, statusPanelLabel, t, toggleChatView, toggleDetailPanel, visiblePanel]);
 
   // dock 항목을 렌더 시점에 ref로 넘겨두면 shortcut 구독을 다시 등록하지 않아도 항상 최신 dock을 실행한다.
   // 구독을 dock 변경마다 재등록하면 커밋과 effect flush 사이에 들어온 shortcut이 이전 dock(빈 배열)을 보고 무시된다.
@@ -1051,7 +1110,9 @@ export default function TaskDetailRoute() {
     }
 
     function handlePriorityHistoryShortcut(event: KeyboardEvent) {
-      if (matchShortcutEvent(event, SHORTCUTS.pageBack, shortcutPlatform)) {
+      const shortcutCommand = findShortcutCommandForEvent(shortcutBindings, event, shortcutPlatform);
+
+      if (shortcutCommand === "pageBack") {
         if (hasShortcutBlocker) {
           consumeHistoryShortcut(event);
           return;
@@ -1062,7 +1123,7 @@ export default function TaskDetailRoute() {
         return;
       }
 
-      if (matchShortcutEvent(event, SHORTCUTS.pageForward, shortcutPlatform)) {
+      if (shortcutCommand === "pageForward") {
         if (hasShortcutBlocker) {
           consumeHistoryShortcut(event);
           return;
@@ -1077,7 +1138,7 @@ export default function TaskDetailRoute() {
     return () => {
       window.removeEventListener("keydown", handlePriorityHistoryShortcut, { capture: true });
     };
-  }, [hasShortcutBlocker, router, shortcutPlatform]);
+  }, [hasShortcutBlocker, router, shortcutBindings, shortcutPlatform]);
 
   useEffect(() => {
     function consumeDockShortcut(event: KeyboardEvent) {
@@ -1087,7 +1148,9 @@ export default function TaskDetailRoute() {
     }
 
     function handlePriorityDockShortcut(event: KeyboardEvent) {
-      const shortcutIndex = matchTaskDetailDockShortcutEvent(event, shortcutPlatform);
+      const shortcutIndex = getTaskDetailDockIndexForCommand(
+        findShortcutCommandForEvent(shortcutBindings, event, shortcutPlatform),
+      );
       if (shortcutIndex === null) {
         return;
       }
@@ -1109,11 +1172,11 @@ export default function TaskDetailRoute() {
     return () => {
       window.removeEventListener("keydown", handlePriorityDockShortcut, { capture: true });
     };
-  }, [activateDockItem, hasShortcutBlocker, shortcutPlatform]);
+  }, [activateDockItem, hasShortcutBlocker, shortcutBindings, shortcutPlatform]);
 
   useEffect(() => {
     function handlePriorityUsageShortcut(event: KeyboardEvent) {
-      if (!matchTaskDetailUsageShortcutEvent(event, shortcutPlatform)) {
+      if (findShortcutCommandForEvent(shortcutBindings, event, shortcutPlatform) !== "taskDetailUsage") {
         return;
       }
 
@@ -1132,7 +1195,7 @@ export default function TaskDetailRoute() {
     return () => {
       window.removeEventListener("keydown", handlePriorityUsageShortcut, { capture: true });
     };
-  }, [hasShortcutBlocker, shortcutPlatform, toggleDetailPanel]);
+  }, [hasShortcutBlocker, shortcutBindings, shortcutPlatform, toggleDetailPanel]);
 
   /** 탭을 다 닫으면 남길 화면이 없으므로 창까지 닫는다. 창을 닫을지는 세션 타입을 아는 main이 정한다 */
   const closeTerminalTabOrWindow = useCallback(async (tabId: string) => {
@@ -1203,7 +1266,10 @@ export default function TaskDetailRoute() {
         return;
       }
 
-      const command = resolveTerminalTabShortcutEvent(event, shortcutPlatform, true);
+      const command = resolveTerminalTabCommand(
+        findShortcutCommandForEvent(shortcutBindings, event, shortcutPlatform),
+        true,
+      );
       if (!command) {
         return;
       }
@@ -1218,7 +1284,7 @@ export default function TaskDetailRoute() {
     return () => {
       window.removeEventListener("keydown", handleTerminalTabShortcut, { capture: true });
     };
-  }, [hasShortcutBlocker, runTerminalTabCommand, shortcutPlatform]);
+  }, [hasShortcutBlocker, runTerminalTabCommand, shortcutBindings, shortcutPlatform]);
 
   useEffect(() => (
     window.kanvibeDesktop?.onTaskDetailDockShortcut?.((shortcutIndex: number) => {
@@ -1537,7 +1603,7 @@ export default function TaskDetailRoute() {
         {dockItems.map((item, itemIndex) => {
           const shortcutIndex = TASK_DETAIL_DOCK_SHORTCUT_INDEXES[itemIndex];
           const shortcutText = shortcutIndex
-            ? formatShortcutForDisplay(createTaskDetailDockShortcut(shortcutIndex), shortcutPlatform)
+            ? formatShortcutForDisplay(shortcutBindings[createTaskDetailDockCommandId(shortcutIndex)], shortcutPlatform)
             : null;
           const title = shortcutText ? `${item.label} (${shortcutText})` : item.label;
 
@@ -1586,7 +1652,7 @@ export default function TaskDetailRoute() {
               ? "bg-brand-subtle text-text-brand"
               : "text-text-muted hover:bg-bg-page hover:text-text-primary"
           }`}
-          title={`${t("aiUsage.title")} (${formatShortcutForDisplay(SHORTCUTS.taskDetailUsage, shortcutPlatform)})`}
+          title={`${t("aiUsage.title")} (${formatShortcutForDisplay(shortcutBindings.taskDetailUsage, shortcutPlatform)})`}
           aria-label={t("aiUsage.title")}
           data-testid="task-detail-usage-button"
         >

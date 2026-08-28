@@ -1,5 +1,3 @@
-import type { TerminalTabShortcutCommand } from "@/desktop/shared/terminalTabs";
-
 export type ShortcutPlatform = "mac" | "linux";
 export type ShortcutPlatformInput = ShortcutPlatform | boolean;
 export type ShortcutDefinition = string | Record<ShortcutPlatform, string>;
@@ -42,12 +40,6 @@ export const SHORTCUTS = {
   terminalTabPrevious: "Mod+Shift+[",
   terminalTabNext: "Mod+Shift+]",
   taskDetailUsage: "Mod+0",
-} as const;
-
-export const DESKTOP_SHORTCUTS = {
-  notificationCenter: SHORTCUTS.boardNotification,
-  createTask: SHORTCUTS.createTask,
-  newWindow: SHORTCUTS.newWindow,
 } as const;
 
 export const BLOCKED_DESKTOP_SHORTCUTS = {
@@ -205,6 +197,16 @@ function getNormalizedModifierState(event: ShortcutInput) {
   };
 }
 
+/** 표기 흔들림을 걷어낸 정규 단축키 문자열. 재배정 값 비교와 중복 판정이 같은 기준을 쓰게 한다 */
+export function normalizeShortcut(shortcut: string): string {
+  const { modifiers, key } = normalizeShortcutParts(shortcut);
+  if (!key) {
+    return "";
+  }
+
+  return [...modifiers, key].join("+");
+}
+
 export function formatShortcutForDisplay(shortcut: ShortcutDefinition, platform: ShortcutPlatformInput): string {
   const shortcutPlatform = normalizeShortcutPlatform(platform);
   const resolvedShortcut = resolveShortcutForPlatform(shortcut, shortcutPlatform);
@@ -280,98 +282,17 @@ export function matchElectronShortcutInput(
   }, shortcut, platform);
 }
 
-/** dock 항목 n번을 여는 단축키 */
-export function createTaskDetailDockShortcut(index: TaskDetailDockShortcutIndex): ShortcutDefinition {
+/** dock 항목 n번을 여는 기본 단축키 */
+export function createTaskDetailDockShortcut(index: TaskDetailDockShortcutIndex): string {
   return `Mod+${index}`;
 }
 
-export function matchTaskDetailDockShortcutEvent(
-  event: ShortcutInput,
-  platform: ShortcutPlatformInput,
-): TaskDetailDockShortcutIndex | null {
-  for (const shortcutIndex of TASK_DETAIL_DOCK_SHORTCUT_INDEXES) {
-    if (matchShortcutEvent(event, createTaskDetailDockShortcut(shortcutIndex), platform)) {
-      return shortcutIndex;
-    }
-  }
-
-  return null;
-}
-
-export function matchTaskDetailDockShortcutInput(
-  input: ElectronShortcutInput,
-  platform: ShortcutPlatformInput,
-): TaskDetailDockShortcutIndex | null {
-  for (const shortcutIndex of TASK_DETAIL_DOCK_SHORTCUT_INDEXES) {
-    if (matchElectronShortcutInput(input, createTaskDetailDockShortcut(shortcutIndex), platform)) {
-      return shortcutIndex;
-    }
-  }
-
-  return null;
-}
-
 /**
- * AI 사용량 패널 단축키. dock 항목이 아니라 dock 최하단의 독립 슬롯이므로
- * dock 번호를 파생시키는 `TASK_DETAIL_DOCK_SHORTCUT_INDEXES`에 넣지 않는다.
- * 0을 그 배열에 넣으면 `dockItems[-1]`을 집게 되고 dock 번호 규칙도 깨진다.
- */
-export function matchTaskDetailUsageShortcutEvent(
-  event: ShortcutInput,
-  platform: ShortcutPlatformInput,
-): boolean {
-  return matchShortcutEvent(event, SHORTCUTS.taskDetailUsage, platform);
-}
-
-/**
- * Electron `before-input-event` 입력이 사용량 패널 토글인지 판정한다.
- * 이 키는 태스크 상세에서만 의미가 있으므로 화면 판정까지 여기서 함께 한다.
- * 터미널 탭 명령과 같은 구조로 두어야 main과 렌더러가 같은 규칙을 공유한다.
- */
-export function resolveTaskDetailUsageShortcutInput(
-  input: ElectronShortcutInput,
-  platform: ShortcutPlatformInput,
-  isTaskDetailRoute: boolean,
-): boolean {
-  if (!isTaskDetailRoute) {
-    return false;
-  }
-
-  return matchElectronShortcutInput(input, SHORTCUTS.taskDetailUsage, platform);
-}
-
-/**
- * 터미널 탭 n번으로 바로 이동하는 단축키. `Mod+숫자`는 dock 항목이 쓰므로 Alt를 더해 비켜 간다.
+ * 터미널 탭 n번으로 바로 이동하는 기본 단축키. `Mod+숫자`는 dock 항목이 쓰므로 Alt를 더해 비켜 간다.
  * macOS의 `Cmd+Shift+3~5`는 OS 스크린샷이 먼저 가져가 앱에 도달하지 않으므로 Shift로는 비켜 갈 수 없다.
  */
-export function createTerminalTabShortcut(index: TerminalTabShortcutIndex): ShortcutDefinition {
+export function createTerminalTabShortcut(index: TerminalTabShortcutIndex): string {
   return `Mod+Alt+${index}`;
-}
-
-export function matchTerminalTabShortcutEvent(
-  event: ShortcutInput,
-  platform: ShortcutPlatformInput,
-): TerminalTabShortcutIndex | null {
-  for (const shortcutIndex of TERMINAL_TAB_SHORTCUT_INDEXES) {
-    if (matchShortcutEvent(event, createTerminalTabShortcut(shortcutIndex), platform)) {
-      return shortcutIndex;
-    }
-  }
-
-  return null;
-}
-
-export function matchTerminalTabShortcutInput(
-  input: ElectronShortcutInput,
-  platform: ShortcutPlatformInput,
-): TerminalTabShortcutIndex | null {
-  for (const shortcutIndex of TERMINAL_TAB_SHORTCUT_INDEXES) {
-    if (matchElectronShortcutInput(input, createTerminalTabShortcut(shortcutIndex), platform)) {
-      return shortcutIndex;
-    }
-  }
-
-  return null;
 }
 
 /**
@@ -380,76 +301,6 @@ export function matchTerminalTabShortcutInput(
  */
 export function isTaskDetailRouteUrl(url: string | null | undefined): boolean {
   return /#\/[^/]+\/task\/[^/?#]+(?:[?#]|$)/.test(url || "");
-}
-
-/**
- * 키 입력을 터미널 탭 명령으로 바꾼다. 해당 없으면 null.
- * 창 닫기는 어느 화면에서나 동작하고, 나머지는 터미널이 있는 태스크 상세에서만 의미가 있다.
- * 탭 닫기는 터미널 밖에서는 일반 앱처럼 창 닫기로 동작한다.
- *
- * 렌더러 이벤트와 Electron 입력이 같은 판정을 쓰도록 매칭 방법만 인자로 받는다.
- */
-function resolveTerminalTabCommand(
-  matchesShortcut: (shortcut: ShortcutDefinition) => boolean,
-  matchTabPosition: () => TerminalTabShortcutIndex | null,
-  isTaskDetailRoute: boolean,
-): TerminalTabShortcutCommand | null {
-  if (matchesShortcut(SHORTCUTS.terminalWindowClose)) {
-    return { type: "close-window" };
-  }
-
-  if (matchesShortcut(SHORTCUTS.terminalTabClose)) {
-    return isTaskDetailRoute ? { type: "close-tab" } : { type: "close-window" };
-  }
-
-  if (!isTaskDetailRoute) {
-    return null;
-  }
-
-  if (matchesShortcut(SHORTCUTS.terminalTabNew)) {
-    return { type: "new-tab" };
-  }
-
-  if (matchesShortcut(SHORTCUTS.terminalTabPrevious)) {
-    return { type: "previous-tab" };
-  }
-
-  if (matchesShortcut(SHORTCUTS.terminalTabNext)) {
-    return { type: "next-tab" };
-  }
-
-  const tabPosition = matchTabPosition();
-  return tabPosition === null ? null : { type: "go-to-tab", position: tabPosition };
-}
-
-/** Electron `before-input-event` 입력을 터미널 탭 명령으로 바꾼다. 터미널이 입력을 먹기 전에 가로채는 경로다 */
-export function resolveTerminalTabShortcutCommand(
-  input: ElectronShortcutInput,
-  platform: ShortcutPlatformInput,
-  isTaskDetailRoute: boolean,
-): TerminalTabShortcutCommand | null {
-  return resolveTerminalTabCommand(
-    (shortcut) => matchElectronShortcutInput(input, shortcut, platform),
-    () => matchTerminalTabShortcutInput(input, platform),
-    isTaskDetailRoute,
-  );
-}
-
-/**
- * 렌더러 keydown을 터미널 탭 명령으로 바꾼다.
- * main이 가로채지 못한 입력을 렌더러가 받아 처리하는 두 번째 경로이며,
- * 다른 단축키들과 같은 이중 경로 구조를 따른다.
- */
-export function resolveTerminalTabShortcutEvent(
-  event: ShortcutInput,
-  platform: ShortcutPlatformInput,
-  isTaskDetailRoute: boolean,
-): TerminalTabShortcutCommand | null {
-  return resolveTerminalTabCommand(
-    (shortcut) => matchShortcutEvent(event, shortcut, platform),
-    () => matchTerminalTabShortcutEvent(event, platform),
-    isTaskDetailRoute,
-  );
 }
 
 export function isBlockedShortcutEvent(

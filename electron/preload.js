@@ -191,4 +191,7 @@ contextBridge.exposeInMainWorld("kanvibeDesktop", {
       ipcRenderer.removeListener("kanvibe:task-detail-usage-shortcut", handler);
     };
   },
+  notifyShortcutBindingsChanged() {
+    ipcRenderer.send("kanvibe:shortcut-bindings-changed");
+  },
 });

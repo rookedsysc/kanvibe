@@ -15,8 +15,13 @@ import { applyThemePreference, THEME_PREFERENCE_CHANGED_EVENT } from "@/desktop/
 import {
   getCurrentShortcutPlatform,
   isTaskDetailRouteUrl,
-  resolveTerminalTabShortcutEvent,
 } from "@/desktop/renderer/utils/keyboardShortcut";
+import {
+  isShortcutCaptureTarget,
+  loadShortcutBindings,
+  readShortcutBindings,
+} from "@/desktop/renderer/utils/shortcutBindings";
+import { findShortcutCommandForEvent, resolveTerminalTabCommand } from "@/desktop/shared/shortcutBindings";
 import type { BoardEventPayload } from "@/lib/boardNotifier";
 import type { TerminalTabShortcutCommand } from "@/desktop/shared/terminalTabs";
 
@@ -27,6 +32,7 @@ const NotFoundRoute = lazy(() => import("@/desktop/renderer/routes/NotFoundRoute
 const AiAccountsRoute = lazy(() => import("@/desktop/renderer/routes/AiAccountsRoute"));
 const PaneLayoutRoute = lazy(() => import("@/desktop/renderer/routes/PaneLayoutRoute"));
 const SettingsRoute = lazy(() => import("@/desktop/renderer/routes/SettingsRoute"));
+const ShortcutSettingsRoute = lazy(() => import("@/desktop/renderer/routes/ShortcutSettingsRoute"));
 const TaskDetailRoute = lazy(() => import("@/desktop/renderer/routes/TaskDetailRoute"));
 
 function RouteLoadingFallback() {
@@ -108,6 +114,10 @@ export default function App() {
   const boardRefreshTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
+    void loadShortcutBindings();
+  }, []);
+
+  useEffect(() => {
     const scheduleBoardRefresh = () => {
       if (boardRefreshTimerRef.current !== null) {
         return;
@@ -147,9 +157,13 @@ export default function App() {
     };
 
     function handleWindowCloseShortcut(event: KeyboardEvent) {
-      const command = resolveTerminalTabShortcutEvent(
-        event,
-        getCurrentShortcutPlatform(),
+      /** 단축키를 녹화 중이면 그 조합은 명령이 아니라 녹화할 값이다 */
+      if (isShortcutCaptureTarget(event.target)) {
+        return;
+      }
+
+      const command = resolveTerminalTabCommand(
+        findShortcutCommandForEvent(readShortcutBindings(), event, getCurrentShortcutPlatform()),
         isTaskDetailRouteUrl(window.location.href),
       );
       if (command?.type !== "close-window") {
@@ -178,6 +192,7 @@ export default function App() {
           <Route path="ai-accounts" element={<DeferredRoute><AiAccountsRoute /></DeferredRoute>} />
           <Route path="pane-layout" element={<DeferredRoute><PaneLayoutRoute /></DeferredRoute>} />
           <Route path="settings" element={<DeferredRoute><SettingsRoute /></DeferredRoute>} />
+          <Route path="settings/shortcuts" element={<DeferredRoute><ShortcutSettingsRoute /></DeferredRoute>} />
           <Route path="task/:id" element={<DeferredRoute><TaskDetailRoute /></DeferredRoute>} />
           <Route path="task/:id/diff" element={<DeferredRoute><DiffRoute /></DeferredRoute>} />
           <Route path="*" element={<DeferredRoute><NotFoundRoute /></DeferredRoute>} />

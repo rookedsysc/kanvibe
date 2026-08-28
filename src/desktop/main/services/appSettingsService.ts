@@ -1,6 +1,11 @@
 import { getAppSettingsRepository } from "@/lib/database";
 import { SessionType } from "@/entities/KanbanTask";
-import { DEFAULT_TASK_SEARCH_SHORTCUT } from "@/desktop/shared/keyboardShortcut";
+import {
+  collectShortcutOverrides,
+  parseShortcutOverrides,
+  resolveShortcutBindings,
+  type ShortcutBindings,
+} from "@/desktop/shared/shortcutBindings";
 import {
   parseBoardSortPreference,
   serializeBoardSortPreference,
@@ -215,7 +220,7 @@ export async function setBackgroundSyncIntervalMs(intervalMs: number): Promise<v
 }
 
 const DEFAULT_SESSION_TYPE_KEY = "default_session_type";
-const TASK_SEARCH_SHORTCUT_KEY = "task_search_shortcut";
+const SHORTCUT_BINDINGS_KEY = "shortcut_bindings";
 const VIM_MODE_ENABLED_KEY = "vim_mode_enabled";
 
 /** 기본 세션 타입을 조회한다. 미설정이거나 모르는 값이면 "tmux"를 반환한다 */
@@ -231,16 +236,19 @@ export async function setDefaultSessionType(sessionType: SessionType): Promise<v
   await setAppSetting(DEFAULT_SESSION_TYPE_KEY, sessionType);
 }
 
-/** 태스크 빠른 검색 단축키를 조회한다. 미설정 시 기본값을 반환한다 */
-export async function getTaskSearchShortcut(): Promise<string> {
-  const value = await getAppSetting(TASK_SEARCH_SHORTCUT_KEY);
-  return value?.trim() || DEFAULT_TASK_SEARCH_SHORTCUT;
+/** 사용자가 재배정한 값까지 반영한 단축키 표를 조회한다 */
+export async function getShortcutBindings(): Promise<ShortcutBindings> {
+  return resolveShortcutBindings(parseShortcutOverrides(await getAppSetting(SHORTCUT_BINDINGS_KEY)));
 }
 
-/** 태스크 빠른 검색 단축키를 저장한다 */
-export async function setTaskSearchShortcut(shortcut: string): Promise<void> {
-  const normalizedShortcut = shortcut.trim() || DEFAULT_TASK_SEARCH_SHORTCUT;
-  await setAppSetting(TASK_SEARCH_SHORTCUT_KEY, normalizedShortcut);
+/** 단축키 표를 저장한다. 기본값과 같은 항목은 빼고 재배정만 남긴다 */
+export async function setShortcutBindings(bindings: ShortcutBindings): Promise<void> {
+  await setAppSetting(SHORTCUT_BINDINGS_KEY, JSON.stringify(collectShortcutOverrides(bindings)));
+}
+
+/** 태스크 빠른 검색 단축키를 조회한다. 미설정 시 기본값을 반환한다 */
+export async function getTaskSearchShortcut(): Promise<string> {
+  return (await getShortcutBindings()).taskSearch;
 }
 
 /** Vim-style board navigation 활성화 여부를 조회한다. 미설정 시 활성화 상태를 반환한다 */

@@ -129,3 +129,65 @@ describe("보드 정렬 설정", () => {
     expect(preference).toEqual({ keys: [] });
   });
 });
+
+describe("단축키 재배정 설정", () => {
+  const SHORTCUT_BINDINGS_KEY = "shortcut_bindings";
+
+  it("재배정한 단축키를 앱을 다시 켠 뒤에도 그대로 읽는다", async () => {
+    // Given
+    const { getShortcutBindings, setShortcutBindings } = await import(
+      "@/desktop/main/services/appSettingsService"
+    );
+    const { DEFAULT_SHORTCUT_BINDINGS } = await import("@/desktop/shared/shortcutBindings");
+
+    // When
+    await setShortcutBindings({ ...DEFAULT_SHORTCUT_BINDINGS, taskDetailDock4: "Mod+Shift+K" });
+
+    // Then
+    expect(await getShortcutBindings()).toEqual({
+      ...DEFAULT_SHORTCUT_BINDINGS,
+      taskDetailDock4: "Mod+Shift+K",
+    });
+  });
+
+  /** 기본값까지 통째로 저장해 두면 나중에 기본값을 바꿔도 옛 값이 남아 새 기본값이 적용되지 않는다 */
+  it("기본값과 같은 항목은 저장하지 않는다", async () => {
+    // Given
+    const { setShortcutBindings } = await import("@/desktop/main/services/appSettingsService");
+    const { DEFAULT_SHORTCUT_BINDINGS } = await import("@/desktop/shared/shortcutBindings");
+
+    // When
+    await setShortcutBindings({ ...DEFAULT_SHORTCUT_BINDINGS, createTask: "Mod+Shift+J" });
+
+    // Then
+    expect(JSON.parse(storedSettings.get(SHORTCUT_BINDINGS_KEY) ?? "{}")).toEqual({
+      createTask: "Mod+Shift+J",
+    });
+  });
+
+  it("한 번도 저장한 적이 없으면 기본 단축키를 돌려준다", async () => {
+    // Given
+    const { getShortcutBindings } = await import("@/desktop/main/services/appSettingsService");
+    const { DEFAULT_SHORTCUT_BINDINGS } = await import("@/desktop/shared/shortcutBindings");
+
+    // When
+    const bindings = await getShortcutBindings();
+
+    // Then
+    expect(bindings).toEqual(DEFAULT_SHORTCUT_BINDINGS);
+  });
+
+  it("빠른 검색 단축키도 같은 재배정 표에서 읽는다", async () => {
+    // Given
+    const { getTaskSearchShortcut, setShortcutBindings } = await import(
+      "@/desktop/main/services/appSettingsService"
+    );
+    const { DEFAULT_SHORTCUT_BINDINGS } = await import("@/desktop/shared/shortcutBindings");
+
+    // When
+    await setShortcutBindings({ ...DEFAULT_SHORTCUT_BINDINGS, taskSearch: "Mod+Shift+F" });
+
+    // Then
+    expect(await getTaskSearchShortcut()).toBe("Mod+Shift+F");
+  });
+});

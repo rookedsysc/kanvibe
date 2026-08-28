@@ -32,7 +32,6 @@ vi.mock("@/desktop/renderer/navigation", () => ({
 }));
 
 vi.mock("@/desktop/renderer/components/BoardCommandProvider", () => ({
-  CREATE_BRANCH_TODO_SHORTCUT: "Mod+N",
   useBoardCommands: () => ({
     requestCreateBranchTodo: mocks.requestCreateBranchTodo,
     setTaskQuickSearchOpen: mocks.setTaskQuickSearchOpen,

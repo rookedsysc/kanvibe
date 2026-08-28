@@ -15,6 +15,7 @@ interface KanvibeDesktopApi {
   onCreateTaskShortcut?: (listener: () => void) => () => void;
   onTaskDetailDockShortcut?: (listener: (shortcutIndex: number) => void) => () => void;
   onTaskDetailUsageShortcut?: (listener: () => void) => () => void;
+  notifyShortcutBindingsChanged?: () => void;
   focusExistingInternalRoute?: (route: string) => Promise<boolean>;
   [key: string]: unknown;
 }

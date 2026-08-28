@@ -263,7 +263,43 @@
     "keyboardSection": "键盘",
     "vimModeEnabled": "Vim 风格看板控制",
     "vimModeEnabledDescription": "在看板中启用 h/j/k/l 焦点移动、n 新建任务、dd 删除和 :move status 命令。关闭后仍可使用方向键移动。",
-    "aiAccountsLink": "AI 账号"
+    "aiAccountsLink": "AI 账号",
+    "shortcutsLink": "快捷键设置",
+    "shortcuts": {
+      "title": "快捷键",
+      "pageDescription": "为每个命令按下想要的组合键即可重新绑定。",
+      "record": "录制",
+      "recording": "请按键",
+      "recordHint": "按下的组合会立即保存。按 Esc 取消。",
+      "reset": "默认值",
+      "resetAll": "全部恢复默认",
+      "conflict": "{command} 已经在使用该组合。",
+      "unsupported": "只能使用至少包含一个修饰键的组合。",
+      "groups": {
+        "taskDetailDock": "任务详情 dock",
+        "taskDetail": "任务详情",
+        "board": "看板",
+        "terminal": "终端"
+      },
+      "commands": {
+        "taskDetailDock": "Dock 第 {index} 项",
+        "taskDetailUsage": "AI 用量面板",
+        "taskSearch": "任务快速搜索",
+        "boardNotification": "通知中心",
+        "boardProjectFilter": "项目筛选",
+        "boardPageFind": "页面内查找",
+        "createTask": "创建任务",
+        "newWindow": "新窗口",
+        "pageBack": "后退",
+        "pageForward": "前进",
+        "terminalTabNew": "新建终端标签",
+        "terminalTabClose": "关闭终端标签",
+        "terminalWindowClose": "关闭窗口",
+        "terminalTabPrevious": "上一个终端标签",
+        "terminalTabNext": "下一个终端标签",
+        "terminalTab": "跳到终端标签 {index}"
+      }
+    }
   },
   "taskSearch": {
     "title": "快速任务搜索",
@@ -475,7 +511,10 @@
         "fetch-failed": "无法获取用量。"
       },
       "manageAccounts": "管理账号"
-    }
+    },
+    "openInVsCode": "在 VS Code 中打开",
+    "openInVsCodeFailed": "无法启动 VS Code。请确认 `code` 命令在 PATH 中。",
+    "pullRequestNotFound": "该分支没有关联的 PR。"
   },
   "projectBranchTasks": {
     "title": "项目任务",

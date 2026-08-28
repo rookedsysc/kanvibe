@@ -264,7 +264,43 @@
     "keyboardSection": "Keyboard",
     "vimModeEnabled": "Vim-style board controls",
     "vimModeEnabledDescription": "Enable h/j/k/l focus movement, n for a new task, dd delete, and :move status commands on the board. Arrow keys stay available when this is off.",
-    "aiAccountsLink": "AI accounts"
+    "aiAccountsLink": "AI accounts",
+    "shortcutsLink": "Keyboard shortcuts",
+    "shortcuts": {
+      "title": "Keyboard shortcuts",
+      "pageDescription": "Press the key combination you want for each command to rebind it.",
+      "record": "Record",
+      "recording": "Press keys",
+      "recordHint": "The combination you press is saved immediately. Press Esc to cancel.",
+      "reset": "Default",
+      "resetAll": "Reset all to defaults",
+      "conflict": "{command} already uses this combination.",
+      "unsupported": "Only combinations with at least one modifier key can be used.",
+      "groups": {
+        "taskDetailDock": "Task detail dock",
+        "taskDetail": "Task detail",
+        "board": "Board",
+        "terminal": "Terminal"
+      },
+      "commands": {
+        "taskDetailDock": "Dock item {index}",
+        "taskDetailUsage": "AI usage panel",
+        "taskSearch": "Task quick search",
+        "boardNotification": "Notification center",
+        "boardProjectFilter": "Project filter",
+        "boardPageFind": "Find on page",
+        "createTask": "Create task",
+        "newWindow": "New window",
+        "pageBack": "Go back",
+        "pageForward": "Go forward",
+        "terminalTabNew": "New terminal tab",
+        "terminalTabClose": "Close terminal tab",
+        "terminalWindowClose": "Close window",
+        "terminalTabPrevious": "Previous terminal tab",
+        "terminalTabNext": "Next terminal tab",
+        "terminalTab": "Go to terminal tab {index}"
+      }
+    }
   },
   "taskSearch": {
     "title": "Quick Task Search",
@@ -476,7 +512,10 @@
         "fetch-failed": "Could not fetch usage."
       },
       "manageAccounts": "Manage accounts"
-    }
+    },
+    "openInVsCode": "Open in VS Code",
+    "openInVsCodeFailed": "Could not launch VS Code. Check that the `code` command is on your PATH.",
+    "pullRequestNotFound": "No pull request is linked to this branch."
   },
   "projectBranchTasks": {
     "title": "Project Tasks",

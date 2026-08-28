@@ -22,10 +22,10 @@ import { requestActiveTerminalFocusAfterUiSettles } from "@/desktop/renderer/uti
 import { useEscapeKey } from "@/hooks/useEscapeKey";
 import { fuzzyMatch, type FuzzyMatch } from "@/utils/fuzzySearch";
 import {
-  CREATE_BRANCH_TODO_SHORTCUT,
   useBoardCommands,
   useHasBoardShortcutBlocker,
 } from "@/desktop/renderer/components/BoardCommandProvider";
+import { useShortcutBindings } from "@/desktop/renderer/utils/shortcutBindings";
 
 interface TaskQuickSearchDialogProps {
   shortcut?: string;
@@ -223,6 +223,7 @@ export default function TaskQuickSearchDialog({
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
   const shortcutPlatform = getCurrentShortcutPlatform();
+  const createTaskShortcut = useShortcutBindings().createTask;
 
   const effectiveShortcut = shortcut || savedShortcut;
   const results = useMemo(() => buildSearchResults(tasks, query), [query, tasks]);
@@ -391,7 +392,7 @@ export default function TaskQuickSearchDialog({
   }, [createBranchTodoFromSelection, isOpen]);
 
   function handleInputKeyDown(event: React.KeyboardEvent<HTMLInputElement>) {
-    if (matchShortcutEvent(event, CREATE_BRANCH_TODO_SHORTCUT, shortcutPlatform)) {
+    if (matchShortcutEvent(event, createTaskShortcut, shortcutPlatform)) {
       event.preventDefault();
       createBranchTodoFromSelection();
       return;
@@ -433,7 +434,7 @@ export default function TaskQuickSearchDialog({
     t("hint"),
     boardCommands.canCreateBranchTodo
       ? t("branchTodoHint", {
-          shortcut: formatShortcutForDisplay(CREATE_BRANCH_TODO_SHORTCUT, shortcutPlatform),
+          shortcut: formatShortcutForDisplay(createTaskShortcut, shortcutPlatform),
         })
       : null,
   ].filter(Boolean).join(" · ");

@@ -43,6 +43,8 @@ let mainWindow = null;
 let hookServer = null;
 let windowOpenHelpers = null;
 let keyboardShortcutHelpers = null;
+let shortcutBindingHelpers = null;
+let currentShortcutBindings = null;
 let stopBackgroundTaskSync = null;
 /** 앱 종료 시 KanVibe가 소유한 PTY를 정리한다. 핸들러 등록 시점에 채워진다 */
 let killAllTerminalSessionsOnQuit = null;
@@ -201,6 +203,33 @@ function getKeyboardShortcutHelpers() {
   }
 
   return keyboardShortcutHelpers;
+}
+
+function getShortcutBindingHelpers() {
+  if (!shortcutBindingHelpers) {
+    shortcutBindingHelpers = require(getRuntimeModulePath(path.join("src", "desktop", "shared", "shortcutBindings.ts")));
+  }
+
+  return shortcutBindingHelpers;
+}
+
+/**
+ * `before-input-event`는 동기라 저장된 재배정을 그때그때 읽어올 수 없다.
+ * 그래서 시작할 때 한 번 읽어 두고, 설정 화면이 바꿀 때마다 렌더러가 알려 주면 다시 읽는다.
+ */
+function getCurrentShortcutBindings() {
+  return currentShortcutBindings ?? getShortcutBindingHelpers().DEFAULT_SHORTCUT_BINDINGS;
+}
+
+async function refreshShortcutBindings() {
+  try {
+    const { getShortcutBindings } = require(getRuntimeModulePath(
+      path.join("src", "desktop", "main", "services", "appSettingsService.ts"),
+    ));
+    currentShortcutBindings = await getShortcutBindings();
+  } catch (error) {
+    logDiagnostic("shortcut:bindings-load-failed", { error: serializeErrorForLog(error) });
+  }
 }
 
 function registerRuntimeAliases() {
@@ -662,48 +691,59 @@ function attachWindowHandlers(browserWindow) {
 
   browserWindow.webContents.on("before-input-event", (event, input) => {
     const {
-      DESKTOP_SHORTCUTS,
       getShortcutPlatformFromProcessPlatform,
       isBlockedElectronShortcutInput,
-      matchElectronShortcutInput,
-      matchTaskDetailDockShortcutInput,
-      resolveTaskDetailUsageShortcutInput,
-      resolveTerminalTabShortcutCommand,
     } = getKeyboardShortcutHelpers();
+    const {
+      findShortcutCommandForElectronInput,
+      getTaskDetailDockIndexForCommand,
+      resolveTerminalTabCommand,
+    } = getShortcutBindingHelpers();
     const shortcutPlatform = getShortcutPlatformFromProcessPlatform(process.platform);
-    const isBlockedShortcut = isBlockedElectronShortcutInput(input, shortcutPlatform);
-    const isNotificationShortcut = matchElectronShortcutInput(input, DESKTOP_SHORTCUTS.notificationCenter, shortcutPlatform);
-    const isCreateTaskShortcut = matchElectronShortcutInput(input, DESKTOP_SHORTCUTS.createTask, shortcutPlatform);
-    const isNewWindowShortcut = matchElectronShortcutInput(input, DESKTOP_SHORTCUTS.newWindow, shortcutPlatform);
-    const taskDetailDockShortcutIndex = isTaskDetailRouteUrl(browserWindow.webContents.getURL())
-      ? matchTaskDetailDockShortcutInput(input, shortcutPlatform)
-      : null;
 
-    if (isBlockedShortcut) {
+    if (isBlockedElectronShortcutInput(input, shortcutPlatform)) {
       event.preventDefault();
       return;
     }
 
-    if (isNotificationShortcut) {
+    const shortcutCommand = findShortcutCommandForElectronInput(
+      getCurrentShortcutBindings(),
+      input,
+      shortcutPlatform,
+    );
+
+    if (!shortcutCommand) {
+      return;
+    }
+
+    const isTaskDetailRoute = isTaskDetailRouteUrl(browserWindow.webContents.getURL());
+
+    if (shortcutCommand === "boardNotification") {
       event.preventDefault();
 
       browserWindow.webContents.send("kanvibe:notification-shortcut");
       return;
     }
 
-    if (isCreateTaskShortcut) {
+    if (shortcutCommand === "createTask") {
       event.preventDefault();
 
       browserWindow.webContents.send("kanvibe:create-task-shortcut");
       return;
     }
 
-    if (isNewWindowShortcut) {
+    if (shortcutCommand === "newWindow") {
       event.preventDefault();
 
       const currentUrl = browserWindow.webContents.getURL() || getRendererNavigationUrl();
       void createAppWindow(currentUrl);
+      return;
     }
+
+    /** 화면 판정 없이 dock 번호를 넘기면 보드에서도 숫자 키를 삼켜 버린다 */
+    const taskDetailDockShortcutIndex = isTaskDetailRoute
+      ? getTaskDetailDockIndexForCommand(shortcutCommand)
+      : null;
 
     if (taskDetailDockShortcutIndex !== null) {
       event.preventDefault();
@@ -713,11 +753,7 @@ function attachWindowHandlers(browserWindow) {
     }
 
     /** 사용량 단축키도 dock 단축키와 같은 이유로 터미널이 입력을 먹기 전에 가로챈다 */
-    if (resolveTaskDetailUsageShortcutInput(
-      input,
-      shortcutPlatform,
-      isTaskDetailRouteUrl(browserWindow.webContents.getURL()),
-    )) {
+    if (shortcutCommand === "taskDetailUsage" && isTaskDetailRoute) {
       event.preventDefault();
 
       browserWindow.webContents.send("kanvibe:task-detail-usage-shortcut");
@@ -728,11 +764,7 @@ function attachWindowHandlers(browserWindow) {
      * 탭 단축키는 터미널이 입력을 먼저 먹기 전에 가로채야 한다.
      * xterm에 먼저 닿으면 셸이 그 키를 소비해 버려 탭 조작이 아예 일어나지 않는다.
      */
-    const terminalTabCommand = resolveTerminalTabShortcutCommand(
-      input,
-      shortcutPlatform,
-      isTaskDetailRouteUrl(browserWindow.webContents.getURL()),
-    );
+    const terminalTabCommand = resolveTerminalTabCommand(shortcutCommand, isTaskDetailRoute);
 
     if (terminalTabCommand) {
       event.preventDefault();
@@ -788,6 +820,10 @@ function registerDesktopHandlers() {
 
   ipcMain.on("kanvibe:renderer-log", (_event, payload) => {
     logDiagnostic("renderer:bridge", payload);
+  });
+
+  ipcMain.on("kanvibe:shortcut-bindings-changed", () => {
+    void refreshShortcutBindings();
   });
 
   ipcMain.handle("kanvibe:invoke", async (event, namespace, method, args) => {
@@ -1022,6 +1058,7 @@ app.whenReady().then(async () => {
   const unsubscribeBoardEvents = registerBoardEventForwarding();
   startHookServer();
   registerNotificationHandlers();
+  await refreshShortcutBindings();
 
   await createMainWindow();
   const { startBackgroundTaskSync } = require(getRuntimeModulePath(path.join("src", "desktop", "main", "services", "backgroundTaskSyncService.ts")));
