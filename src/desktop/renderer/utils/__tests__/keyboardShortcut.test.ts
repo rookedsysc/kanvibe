@@ -11,13 +11,6 @@ import {
   isBlockedElectronShortcutInput,
   isBlockedShortcutEvent,
   matchElectronShortcutInput,
-  matchTaskDetailDockShortcutEvent,
-  matchTaskDetailUsageShortcutEvent,
-  matchTerminalTabShortcutEvent,
-  matchTerminalTabShortcutInput,
-  resolveTaskDetailUsageShortcutInput,
-  resolveTerminalTabShortcutCommand,
-  resolveTerminalTabShortcutEvent,
   matchShortcutEvent,
 } from "@/desktop/renderer/utils/keyboardShortcut";
 
@@ -116,19 +109,6 @@ describe("keyboardShortcut", () => {
     expect(matchShortcutEvent(closeWindowEvent, SHORTCUTS.terminalTabClose, "linux")).toBe(false);
   });
 
-  it("탭 번호 단축키는 일치한 번호를 반환하고 dock 단축키와 충돌하지 않는다", () => {
-    for (const shortcutIndex of TERMINAL_TAB_SHORTCUT_INDEXES) {
-      const macEvent = new KeyboardEvent("keydown", {
-        key: String(shortcutIndex),
-        metaKey: true,
-        altKey: true,
-      });
-
-      expect(matchTerminalTabShortcutEvent(macEvent, "mac")).toBe(shortcutIndex);
-      expect(matchTaskDetailDockShortcutEvent(macEvent, "mac")).toBeNull();
-    }
-  });
-
   /** macOS는 Cmd+Shift+3~5를 스크린샷으로 가져가 앱에 넘기지 않으므로 탭 단축키가 Shift를 쓰면 죽는다 */
   it("탭 번호 단축키는 macOS 스크린샷 조합인 Cmd+Shift+숫자를 쓰지 않는다", () => {
     for (const shortcutIndex of TERMINAL_TAB_SHORTCUT_INDEXES) {
@@ -142,29 +122,6 @@ describe("keyboardShortcut", () => {
         shiftKey: true,
       }), createTerminalTabShortcut(shortcutIndex), "mac")).toBe(false);
     }
-  });
-
-  it("dock 번호 입력은 탭 번호 단축키로 매칭하지 않는다", () => {
-    const dockEvent = new KeyboardEvent("keydown", { key: "1", ctrlKey: true });
-
-    expect(matchTaskDetailDockShortcutEvent(dockEvent, "linux")).toBe(1);
-    expect(matchTerminalTabShortcutEvent(dockEvent, "linux")).toBeNull();
-  });
-
-  it("macOS dock 입력은 Option이 없어 탭 번호 단축키와 갈린다", () => {
-    const dockEvent = new KeyboardEvent("keydown", { key: "1", metaKey: true });
-
-    expect(matchTaskDetailDockShortcutEvent(dockEvent, "mac")).toBe(1);
-    expect(matchTerminalTabShortcutEvent(dockEvent, "mac")).toBeNull();
-  });
-
-  it("Electron input도 탭 번호 단축키로 매칭한다", () => {
-    expect(matchTerminalTabShortcutInput({
-      type: "keyDown",
-      key: "3",
-      control: true,
-      alt: true,
-    }, "linux")).toBe(3);
   });
 
   it("추가 modifier가 있으면 단축키가 일치하지 않는다", () => {
@@ -285,7 +242,7 @@ describe("keyboardShortcut", () => {
   });
 
   it("상세 dock shortcut은 macOS Cmd+숫자와 Linux Ctrl+숫자로 표시하고 매칭한다", () => {
-    expect(TASK_DETAIL_DOCK_SHORTCUT_INDEXES).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9]);
+    expect(TASK_DETAIL_DOCK_SHORTCUT_INDEXES).toEqual([1, 2, 3, 4, 5, 6]);
     expect(formatShortcutForDisplay(createTaskDetailDockShortcut(1), "mac")).toBe("Cmd+1");
     expect(formatShortcutForDisplay(createTaskDetailDockShortcut(1), "linux")).toBe("Ctrl+1");
 
@@ -311,21 +268,6 @@ describe("keyboardShortcut", () => {
       key: "1",
       altKey: true,
     }), createTaskDetailDockShortcut(1), "linux")).toBe(false);
-  });
-
-  it("상세 dock shortcut matcher는 일치한 dock 번호를 반환한다", () => {
-    expect(matchTaskDetailDockShortcutEvent(new KeyboardEvent("keydown", {
-      key: "4",
-      metaKey: true,
-    }), "mac")).toBe(4);
-    expect(matchTaskDetailDockShortcutEvent(new KeyboardEvent("keydown", {
-      key: "4",
-      ctrlKey: true,
-    }), "linux")).toBe(4);
-    expect(matchTaskDetailDockShortcutEvent(new KeyboardEvent("keydown", {
-      key: "4",
-      altKey: true,
-    }), "linux")).toBeNull();
   });
 
   it("Cmd/Ctrl+R은 앱에서 차단할 shortcut으로 판별한다", () => {
@@ -362,6 +304,19 @@ describe("keyboardShortcut", () => {
     }), "linux")).toBeNull();
   });
 
+  /**
+   * `+`는 단축키 문자열의 토큰 구분자라 키 자리에 담기지 못한다.
+   * 캡처가 이 값을 통과시키면 `Mod+Shift++`가 다시 파싱될 때 키가 사라져
+   * 저장·매칭·표시가 전부 조용히 실패하고, 사용자는 배정된 줄로 안다.
+   */
+  it("문자열 포맷이 담을 수 없는 + 키는 캡처하지 않는다", () => {
+    expect(captureShortcutFromEvent(new KeyboardEvent("keydown", {
+      key: "+",
+      ctrlKey: true,
+      shiftKey: true,
+    }), "linux")).toBeNull();
+  });
+
   it("modifier만 누른 경우는 캡처하지 않는다", () => {
     const event = new KeyboardEvent("keydown", {
       key: "Meta",
@@ -369,125 +324,5 @@ describe("keyboardShortcut", () => {
     });
 
     expect(captureShortcutFromEvent(event)).toBeNull();
-  });
-});
-
-describe("터미널 탭 단축키 명령 해석", () => {
-  const macInput = (key: string, modifiers: { meta?: boolean; alt?: boolean; shift?: boolean } = {}) => ({
-    type: "keyDown",
-    isAutoRepeat: false,
-    key,
-    meta: modifiers.meta ?? false,
-    control: false,
-    alt: modifiers.alt ?? false,
-    shift: modifiers.shift ?? false,
-  });
-
-  it("태스크 상세에서 새 탭·이전·다음 명령을 만든다", () => {
-    expect(resolveTerminalTabShortcutCommand(macInput("t", { meta: true }), "mac", true))
-      .toEqual({ type: "new-tab" });
-    expect(resolveTerminalTabShortcutCommand(macInput("{", { meta: true, shift: true }), "mac", true))
-      .toEqual({ type: "previous-tab" });
-    expect(resolveTerminalTabShortcutCommand(macInput("}", { meta: true, shift: true }), "mac", true))
-      .toEqual({ type: "next-tab" });
-  });
-
-  it("숫자 단축키는 이동할 탭 위치를 담는다", () => {
-    expect(resolveTerminalTabShortcutCommand(macInput("3", { meta: true, alt: true }), "mac", true))
-      .toEqual({ type: "go-to-tab", position: 3 });
-  });
-
-  it("탭 닫기는 태스크 상세에서만 탭을 닫고 밖에서는 창을 닫는다", () => {
-    expect(resolveTerminalTabShortcutCommand(macInput("w", { meta: true }), "mac", true))
-      .toEqual({ type: "close-tab" });
-    expect(resolveTerminalTabShortcutCommand(macInput("w", { meta: true }), "mac", false))
-      .toEqual({ type: "close-window" });
-  });
-
-  it("창 닫기는 어느 화면에서나 동작한다", () => {
-    expect(resolveTerminalTabShortcutCommand(macInput("w", { meta: true, shift: true }), "mac", false))
-      .toEqual({ type: "close-window" });
-  });
-
-  it("태스크 상세가 아니면 탭 조작 명령을 만들지 않는다", () => {
-    expect(resolveTerminalTabShortcutCommand(macInput("t", { meta: true }), "mac", false)).toBeNull();
-    expect(resolveTerminalTabShortcutCommand(macInput("3", { meta: true, shift: true }), "mac", false)).toBeNull();
-  });
-
-  it("페이지 이동 단축키는 탭 명령으로 새지 않는다", () => {
-    expect(resolveTerminalTabShortcutCommand(macInput("[", { meta: true }), "mac", true)).toBeNull();
-    expect(resolveTerminalTabShortcutCommand(macInput("]", { meta: true }), "mac", true)).toBeNull();
-  });
-});
-
-describe("렌더러 keydown도 같은 탭 명령으로 해석한다", () => {
-  it("Electron 입력과 렌더러 이벤트가 같은 명령을 만든다", () => {
-    const linuxEvent = new KeyboardEvent("keydown", { key: "t", ctrlKey: true });
-    const linuxInput = { type: "keyDown", key: "t", control: true, meta: false, alt: false, shift: false };
-
-    expect(resolveTerminalTabShortcutEvent(linuxEvent, "linux", true)).toEqual({ type: "new-tab" });
-    expect(resolveTerminalTabShortcutCommand(linuxInput, "linux", true)).toEqual({ type: "new-tab" });
-  });
-
-  it("렌더러 경로도 태스크 상세 밖에서는 탭 조작을 만들지 않는다", () => {
-    const newTabEvent = new KeyboardEvent("keydown", { key: "t", ctrlKey: true });
-
-    expect(resolveTerminalTabShortcutEvent(newTabEvent, "linux", false)).toBeNull();
-  });
-
-  it("렌더러 경로에서도 탭 번호와 창 닫기를 해석한다", () => {
-    expect(resolveTerminalTabShortcutEvent(
-      new KeyboardEvent("keydown", { key: "2", ctrlKey: true, altKey: true }),
-      "linux",
-      true,
-    )).toEqual({ type: "go-to-tab", position: 2 });
-
-    expect(resolveTerminalTabShortcutEvent(
-      new KeyboardEvent("keydown", { key: "w", ctrlKey: true, shiftKey: true }),
-      "linux",
-      false,
-    )).toEqual({ type: "close-window" });
-  });
-});
-
-describe("AI 사용량 패널 단축키", () => {
-  it("Mod+0을 사용량 단축키로 인식한다", () => {
-    expect(matchTaskDetailUsageShortcutEvent(
-      new KeyboardEvent("keydown", { key: "0", ctrlKey: true }),
-      "linux",
-    )).toBe(true);
-
-    expect(matchTaskDetailUsageShortcutEvent(
-      new KeyboardEvent("keydown", { key: "0", metaKey: true }),
-      "mac",
-    )).toBe(true);
-  });
-
-  it("dock 번호와 겹치지 않는다", () => {
-    expect(matchTaskDetailUsageShortcutEvent(
-      new KeyboardEvent("keydown", { key: "1", ctrlKey: true }),
-      "linux",
-    )).toBe(false);
-
-    /** dock 번호 배열은 1~9뿐이어야 0이 dock 항목을 집으려 하지 않는다 */
-    expect(TASK_DETAIL_DOCK_SHORTCUT_INDEXES).not.toContain(0);
-    expect(matchTaskDetailDockShortcutEvent(
-      new KeyboardEvent("keydown", { key: "0", ctrlKey: true }),
-      "linux",
-    )).toBeNull();
-  });
-
-  it("터미널 탭 단축키와도 겹치지 않는다", () => {
-    expect(matchTaskDetailUsageShortcutEvent(
-      new KeyboardEvent("keydown", { key: "0", ctrlKey: true, altKey: true }),
-      "linux",
-    )).toBe(false);
-  });
-
-  it("태스크 상세 밖에서는 Electron 입력을 사용량 명령으로 해석하지 않는다", () => {
-    const usageInput = { type: "keyDown", key: "0", control: true };
-
-    expect(resolveTaskDetailUsageShortcutInput(usageInput, "linux", true)).toBe(true);
-    expect(resolveTaskDetailUsageShortcutInput(usageInput, "linux", false)).toBe(false);
   });
 });

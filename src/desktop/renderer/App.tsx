@@ -15,8 +15,14 @@ import { applyThemePreference, THEME_PREFERENCE_CHANGED_EVENT } from "@/desktop/
 import {
   getCurrentShortcutPlatform,
   isTaskDetailRouteUrl,
-  resolveTerminalTabShortcutEvent,
 } from "@/desktop/renderer/utils/keyboardShortcut";
+import {
+  isShortcutCaptureActive,
+  isShortcutCaptureTarget,
+  loadShortcutBindings,
+  readShortcutBindings,
+} from "@/desktop/renderer/utils/shortcutBindings";
+import { findShortcutCommandForEvent, resolveTerminalTabCommand } from "@/desktop/shared/shortcutBindings";
 import type { BoardEventPayload } from "@/lib/boardNotifier";
 import type { TerminalTabShortcutCommand } from "@/desktop/shared/terminalTabs";
 
@@ -27,6 +33,7 @@ const NotFoundRoute = lazy(() => import("@/desktop/renderer/routes/NotFoundRoute
 const AiAccountsRoute = lazy(() => import("@/desktop/renderer/routes/AiAccountsRoute"));
 const PaneLayoutRoute = lazy(() => import("@/desktop/renderer/routes/PaneLayoutRoute"));
 const SettingsRoute = lazy(() => import("@/desktop/renderer/routes/SettingsRoute"));
+const ShortcutSettingsRoute = lazy(() => import("@/desktop/renderer/routes/ShortcutSettingsRoute"));
 const TaskDetailRoute = lazy(() => import("@/desktop/renderer/routes/TaskDetailRoute"));
 
 function RouteLoadingFallback() {
@@ -107,6 +114,15 @@ function LocaleShell() {
 export default function App() {
   const boardRefreshTimerRef = useRef<number | null>(null);
 
+  /** 다른 창이 단축키를 바꾸면 main이 알려 준다. 그러지 않으면 이 창은 재시작 전까지 옛 조합으로 동작한다 */
+  useEffect(() => {
+    void loadShortcutBindings();
+
+    return window.kanvibeDesktop?.onShortcutBindingsChanged?.(() => {
+      void loadShortcutBindings();
+    });
+  }, []);
+
   useEffect(() => {
     const scheduleBoardRefresh = () => {
       if (boardRefreshTimerRef.current !== null) {
@@ -141,15 +157,23 @@ export default function App() {
    */
   useEffect(() => {
     const closeWindowIfRequested = (command: TerminalTabShortcutCommand) => {
+      /** 단축키를 녹화 중이면 그 조합은 명령이 아니라 녹화할 값이다 */
+      if (isShortcutCaptureActive()) {
+        return;
+      }
+
       if (command.type === "close-window") {
         window.kanvibeDesktop?.closeCurrentWindow?.();
       }
     };
 
     function handleWindowCloseShortcut(event: KeyboardEvent) {
-      const command = resolveTerminalTabShortcutEvent(
-        event,
-        getCurrentShortcutPlatform(),
+      if (isShortcutCaptureActive() || isShortcutCaptureTarget(event.target)) {
+        return;
+      }
+
+      const command = resolveTerminalTabCommand(
+        findShortcutCommandForEvent(readShortcutBindings(), event, getCurrentShortcutPlatform()),
         isTaskDetailRouteUrl(window.location.href),
       );
       if (command?.type !== "close-window") {
@@ -178,6 +202,7 @@ export default function App() {
           <Route path="ai-accounts" element={<DeferredRoute><AiAccountsRoute /></DeferredRoute>} />
           <Route path="pane-layout" element={<DeferredRoute><PaneLayoutRoute /></DeferredRoute>} />
           <Route path="settings" element={<DeferredRoute><SettingsRoute /></DeferredRoute>} />
+          <Route path="settings/shortcuts" element={<DeferredRoute><ShortcutSettingsRoute /></DeferredRoute>} />
           <Route path="task/:id" element={<DeferredRoute><TaskDetailRoute /></DeferredRoute>} />
           <Route path="task/:id/diff" element={<DeferredRoute><DiffRoute /></DeferredRoute>} />
           <Route path="*" element={<DeferredRoute><NotFoundRoute /></DeferredRoute>} />

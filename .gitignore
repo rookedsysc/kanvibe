@@ -58,3 +58,7 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 /.claude/plan
+
+# review-resolve-loop artifacts
+/.review-resolve-loop/
+/needs-user.md

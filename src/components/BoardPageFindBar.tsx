@@ -3,9 +3,9 @@
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { useTranslations } from "next-intl";
 import { useHasBoardShortcutBlocker } from "@/desktop/renderer/components/BoardCommandProvider";
-import { SHORTCUTS, getCurrentShortcutPlatform, matchShortcutEvent } from "@/desktop/renderer/utils/keyboardShortcut";
+import { getCurrentShortcutPlatform, matchShortcutEvent } from "@/desktop/renderer/utils/keyboardShortcut";
+import { useShortcutBindings } from "@/desktop/renderer/utils/shortcutBindings";
 
-const BOARD_PAGE_FIND_SHORTCUT = SHORTCUTS.boardPageFind;
 const BOARD_PAGE_VIM_FIND_KEY = "/";
 
 function findPageText(query: string, backwards = false) {
@@ -50,6 +50,7 @@ export default function BoardPageFindBar({ vimModeEnabled }: BoardPageFindBarPro
   const [query, setQuery] = useState("");
   const [hasMatch, setHasMatch] = useState<boolean | null>(null);
   const shortcutPlatform = getCurrentShortcutPlatform();
+  const boardPageFindShortcut = useShortcutBindings().boardPageFind;
 
   const openSearchBar = useCallback(() => {
     setIsOpen(true);
@@ -76,7 +77,7 @@ export default function BoardPageFindBar({ vimModeEnabled }: BoardPageFindBarPro
         return;
       }
 
-      const shouldOpenSearchBar = matchShortcutEvent(event, BOARD_PAGE_FIND_SHORTCUT, shortcutPlatform)
+      const shouldOpenSearchBar = matchShortcutEvent(event, boardPageFindShortcut, shortcutPlatform)
         || (vimModeEnabled && isPlainBoardPageFindKey(event));
       if (!shouldOpenSearchBar) {
         return;
@@ -90,7 +91,7 @@ export default function BoardPageFindBar({ vimModeEnabled }: BoardPageFindBarPro
     return () => {
       window.removeEventListener("keydown", handleGlobalKeyDown);
     };
-  }, [hasShortcutBlocker, openSearchBar, shortcutPlatform, vimModeEnabled]);
+  }, [boardPageFindShortcut, hasShortcutBlocker, openSearchBar, shortcutPlatform, vimModeEnabled]);
 
   function closeSearchBar() {
     setIsOpen(false);

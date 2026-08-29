@@ -1,4 +1,4 @@
-import type { TerminalTabShortcutCommand } from "@/desktop/shared/terminalTabs";
+import { TASK_DETAIL_DOCK_ITEM_IDS } from "@/desktop/shared/taskDetailDock";
 
 export type ShortcutPlatform = "mac" | "linux";
 export type ShortcutPlatformInput = ShortcutPlatform | boolean;
@@ -44,18 +44,18 @@ export const SHORTCUTS = {
   taskDetailUsage: "Mod+0",
 } as const;
 
-export const DESKTOP_SHORTCUTS = {
-  notificationCenter: SHORTCUTS.boardNotification,
-  createTask: SHORTCUTS.createTask,
-  newWindow: SHORTCUTS.newWindow,
-} as const;
-
 export const BLOCKED_DESKTOP_SHORTCUTS = {
   reload: "Mod+R",
 } as const;
 
 export const DEFAULT_TASK_SEARCH_SHORTCUT = SHORTCUTS.taskSearchDefault;
-export const TASK_DETAIL_DOCK_SHORTCUT_INDEXES = [1, 2, 3, 4, 5, 6, 7, 8, 9] as const;
+/**
+ * 도크에 실제로 있는 자리만큼만 번호를 준다. 비어 있는 번호를 노출하면 설정 화면이
+ * 아무것도 실행하지 않는 단축키를 보여 준다. `satisfies`가 도크 항목 수와의 어긋남을 컴파일에서 잡는다.
+ */
+export const TASK_DETAIL_DOCK_SHORTCUT_INDEXES = [1, 2, 3, 4, 5, 6] as const satisfies {
+  length: typeof TASK_DETAIL_DOCK_ITEM_IDS["length"];
+};
 export const TERMINAL_TAB_SHORTCUT_INDEXES = [1, 2, 3, 4, 5] as const;
 
 export type TaskDetailDockShortcutIndex = typeof TASK_DETAIL_DOCK_SHORTCUT_INDEXES[number];
@@ -205,6 +205,30 @@ function getNormalizedModifierState(event: ShortcutInput) {
   };
 }
 
+/**
+ * 플랫폼에서 Mod가 가리키는 수식키(mac은 Meta, linux는 Ctrl)를 Mod 표기로 접는다.
+ * matchShortcutEvent는 두 표기를 같은 입력으로 보므로 저장과 중복 판정도 같은 기준을 써야 한다.
+ * 그러지 않으면 실제로 겹치는 조합이 서로 다른 명령에 조용히 배정되고, 정의 순서상 뒤인 명령은 도달할 방법이 없어진다.
+ * mac의 Ctrl과 linux의 Meta는 Mod와 별개 키이므로 접지 않는다.
+ */
+export function canonicalizeShortcutForPlatform(
+  shortcut: string,
+  platform: ShortcutPlatformInput,
+): string {
+  const shortcutPlatform = normalizeShortcutPlatform(platform);
+  const { modifiers, key } = normalizeShortcutParts(shortcut);
+  if (!key) {
+    return "";
+  }
+
+  const platformModifier = shortcutPlatform === "mac" ? "Meta" : "Ctrl";
+  const canonicalModifiers = new Set(
+    modifiers.map((modifier) => (modifier === platformModifier ? "Mod" : modifier)),
+  );
+
+  return [...MODIFIER_ORDER.filter((modifier) => canonicalModifiers.has(modifier)), key].join("+");
+}
+
 export function formatShortcutForDisplay(shortcut: ShortcutDefinition, platform: ShortcutPlatformInput): string {
   const shortcutPlatform = normalizeShortcutPlatform(platform);
   const resolvedShortcut = resolveShortcutForPlatform(shortcut, shortcutPlatform);
@@ -280,98 +304,17 @@ export function matchElectronShortcutInput(
   }, shortcut, platform);
 }
 
-/** dock 항목 n번을 여는 단축키 */
-export function createTaskDetailDockShortcut(index: TaskDetailDockShortcutIndex): ShortcutDefinition {
+/** dock 항목 n번을 여는 기본 단축키 */
+export function createTaskDetailDockShortcut(index: TaskDetailDockShortcutIndex): string {
   return `Mod+${index}`;
 }
 
-export function matchTaskDetailDockShortcutEvent(
-  event: ShortcutInput,
-  platform: ShortcutPlatformInput,
-): TaskDetailDockShortcutIndex | null {
-  for (const shortcutIndex of TASK_DETAIL_DOCK_SHORTCUT_INDEXES) {
-    if (matchShortcutEvent(event, createTaskDetailDockShortcut(shortcutIndex), platform)) {
-      return shortcutIndex;
-    }
-  }
-
-  return null;
-}
-
-export function matchTaskDetailDockShortcutInput(
-  input: ElectronShortcutInput,
-  platform: ShortcutPlatformInput,
-): TaskDetailDockShortcutIndex | null {
-  for (const shortcutIndex of TASK_DETAIL_DOCK_SHORTCUT_INDEXES) {
-    if (matchElectronShortcutInput(input, createTaskDetailDockShortcut(shortcutIndex), platform)) {
-      return shortcutIndex;
-    }
-  }
-
-  return null;
-}
-
 /**
- * AI 사용량 패널 단축키. dock 항목이 아니라 dock 최하단의 독립 슬롯이므로
- * dock 번호를 파생시키는 `TASK_DETAIL_DOCK_SHORTCUT_INDEXES`에 넣지 않는다.
- * 0을 그 배열에 넣으면 `dockItems[-1]`을 집게 되고 dock 번호 규칙도 깨진다.
- */
-export function matchTaskDetailUsageShortcutEvent(
-  event: ShortcutInput,
-  platform: ShortcutPlatformInput,
-): boolean {
-  return matchShortcutEvent(event, SHORTCUTS.taskDetailUsage, platform);
-}
-
-/**
- * Electron `before-input-event` 입력이 사용량 패널 토글인지 판정한다.
- * 이 키는 태스크 상세에서만 의미가 있으므로 화면 판정까지 여기서 함께 한다.
- * 터미널 탭 명령과 같은 구조로 두어야 main과 렌더러가 같은 규칙을 공유한다.
- */
-export function resolveTaskDetailUsageShortcutInput(
-  input: ElectronShortcutInput,
-  platform: ShortcutPlatformInput,
-  isTaskDetailRoute: boolean,
-): boolean {
-  if (!isTaskDetailRoute) {
-    return false;
-  }
-
-  return matchElectronShortcutInput(input, SHORTCUTS.taskDetailUsage, platform);
-}
-
-/**
- * 터미널 탭 n번으로 바로 이동하는 단축키. `Mod+숫자`는 dock 항목이 쓰므로 Alt를 더해 비켜 간다.
+ * 터미널 탭 n번으로 바로 이동하는 기본 단축키. `Mod+숫자`는 dock 항목이 쓰므로 Alt를 더해 비켜 간다.
  * macOS의 `Cmd+Shift+3~5`는 OS 스크린샷이 먼저 가져가 앱에 도달하지 않으므로 Shift로는 비켜 갈 수 없다.
  */
-export function createTerminalTabShortcut(index: TerminalTabShortcutIndex): ShortcutDefinition {
+export function createTerminalTabShortcut(index: TerminalTabShortcutIndex): string {
   return `Mod+Alt+${index}`;
-}
-
-export function matchTerminalTabShortcutEvent(
-  event: ShortcutInput,
-  platform: ShortcutPlatformInput,
-): TerminalTabShortcutIndex | null {
-  for (const shortcutIndex of TERMINAL_TAB_SHORTCUT_INDEXES) {
-    if (matchShortcutEvent(event, createTerminalTabShortcut(shortcutIndex), platform)) {
-      return shortcutIndex;
-    }
-  }
-
-  return null;
-}
-
-export function matchTerminalTabShortcutInput(
-  input: ElectronShortcutInput,
-  platform: ShortcutPlatformInput,
-): TerminalTabShortcutIndex | null {
-  for (const shortcutIndex of TERMINAL_TAB_SHORTCUT_INDEXES) {
-    if (matchElectronShortcutInput(input, createTerminalTabShortcut(shortcutIndex), platform)) {
-      return shortcutIndex;
-    }
-  }
-
-  return null;
 }
 
 /**
@@ -380,76 +323,6 @@ export function matchTerminalTabShortcutInput(
  */
 export function isTaskDetailRouteUrl(url: string | null | undefined): boolean {
   return /#\/[^/]+\/task\/[^/?#]+(?:[?#]|$)/.test(url || "");
-}
-
-/**
- * 키 입력을 터미널 탭 명령으로 바꾼다. 해당 없으면 null.
- * 창 닫기는 어느 화면에서나 동작하고, 나머지는 터미널이 있는 태스크 상세에서만 의미가 있다.
- * 탭 닫기는 터미널 밖에서는 일반 앱처럼 창 닫기로 동작한다.
- *
- * 렌더러 이벤트와 Electron 입력이 같은 판정을 쓰도록 매칭 방법만 인자로 받는다.
- */
-function resolveTerminalTabCommand(
-  matchesShortcut: (shortcut: ShortcutDefinition) => boolean,
-  matchTabPosition: () => TerminalTabShortcutIndex | null,
-  isTaskDetailRoute: boolean,
-): TerminalTabShortcutCommand | null {
-  if (matchesShortcut(SHORTCUTS.terminalWindowClose)) {
-    return { type: "close-window" };
-  }
-
-  if (matchesShortcut(SHORTCUTS.terminalTabClose)) {
-    return isTaskDetailRoute ? { type: "close-tab" } : { type: "close-window" };
-  }
-
-  if (!isTaskDetailRoute) {
-    return null;
-  }
-
-  if (matchesShortcut(SHORTCUTS.terminalTabNew)) {
-    return { type: "new-tab" };
-  }
-
-  if (matchesShortcut(SHORTCUTS.terminalTabPrevious)) {
-    return { type: "previous-tab" };
-  }
-
-  if (matchesShortcut(SHORTCUTS.terminalTabNext)) {
-    return { type: "next-tab" };
-  }
-
-  const tabPosition = matchTabPosition();
-  return tabPosition === null ? null : { type: "go-to-tab", position: tabPosition };
-}
-
-/** Electron `before-input-event` 입력을 터미널 탭 명령으로 바꾼다. 터미널이 입력을 먹기 전에 가로채는 경로다 */
-export function resolveTerminalTabShortcutCommand(
-  input: ElectronShortcutInput,
-  platform: ShortcutPlatformInput,
-  isTaskDetailRoute: boolean,
-): TerminalTabShortcutCommand | null {
-  return resolveTerminalTabCommand(
-    (shortcut) => matchElectronShortcutInput(input, shortcut, platform),
-    () => matchTerminalTabShortcutInput(input, platform),
-    isTaskDetailRoute,
-  );
-}
-
-/**
- * 렌더러 keydown을 터미널 탭 명령으로 바꾼다.
- * main이 가로채지 못한 입력을 렌더러가 받아 처리하는 두 번째 경로이며,
- * 다른 단축키들과 같은 이중 경로 구조를 따른다.
- */
-export function resolveTerminalTabShortcutEvent(
-  event: ShortcutInput,
-  platform: ShortcutPlatformInput,
-  isTaskDetailRoute: boolean,
-): TerminalTabShortcutCommand | null {
-  return resolveTerminalTabCommand(
-    (shortcut) => matchShortcutEvent(event, shortcut, platform),
-    () => matchTerminalTabShortcutEvent(event, platform),
-    isTaskDetailRoute,
-  );
 }
 
 export function isBlockedShortcutEvent(
@@ -468,6 +341,15 @@ export function isBlockedElectronShortcutInput(
   return Object.values(BLOCKED_DESKTOP_SHORTCUTS).some((shortcut) => (
     matchElectronShortcutInput(input, shortcut, platform)
   ));
+}
+
+/**
+ * 수식키 단독 입력은 아직 조합이 완성되지 않은 상태다.
+ * captureShortcutFromEvent가 이 경우와 "수식키가 하나도 없는 조합"에 똑같이 null을 돌려주므로,
+ * 녹화 화면이 둘을 구분하려면 이 판별을 밖에서 쓸 수 있어야 한다.
+ */
+export function isShortcutModifierKey(key: string): boolean {
+  return MODIFIER_KEYS.has(key);
 }
 
 export function captureShortcutFromEvent(
@@ -521,6 +403,14 @@ export function captureShortcutFromEvent(
   }
 
   const shortcut = [...MODIFIER_ORDER.filter((modifier) => modifiers.has(modifier)), key].join("+");
+  /**
+   * `+`는 토큰 구분자라 키 자리에 담기지 못한다. 그대로 돌려주면 다시 파싱할 때 키가 통째로 사라져
+   * 저장·매칭·표시가 전부 조용히 실패하고, 녹화 화면에는 배정된 것처럼 보인다.
+   */
+  if (normalizeShortcutParts(shortcut).key !== key) {
+    return null;
+  }
+
   if (platform !== undefined && Object.values(BLOCKED_DESKTOP_SHORTCUTS).some((blockedShortcut) => (
     normalizeShortcutParts(blockedShortcut).key === key
     && matchShortcutEvent(event, blockedShortcut, platform)

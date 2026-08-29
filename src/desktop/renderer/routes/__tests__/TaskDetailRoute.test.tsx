@@ -8,6 +8,7 @@ import {
 } from "@/desktop/renderer/components/BoardCommandProvider";
 import TaskDetailRoute from "@/desktop/renderer/routes/TaskDetailRoute";
 import { INITIAL_DESKTOP_LOAD_TIMEOUT_MS } from "@/desktop/renderer/utils/loadingTimeout";
+import { TASK_DETAIL_DOCK_ITEM_IDS, resolveTaskDetailDockLabel } from "@/desktop/shared/taskDetailDock";
 
 const TASK_DETAIL_CACHE_KEY = "kanvibe:route-cache:task-detail:task-1";
 const BOARD_FOCUS_TASK_CACHE_KEY = "kanvibe:route-cache:board-focus-task";
@@ -40,6 +41,7 @@ const mocks = vi.hoisted(() => ({
   markAllNotificationsRead: vi.fn(),
   activateNotification: vi.fn(),
   fetchPrUrlWithPrompt: vi.fn(),
+  openTaskInVsCode: vi.fn(),
   renderHooksStatusCard: vi.fn(),
   useRefreshSignal: vi.fn(() => 0),
   redirect: vi.fn(),
@@ -102,6 +104,7 @@ vi.mock("@hugeicons/core-free-icons", () => ({
   ChartHistogramIcon: { __iconName: "ChartHistogramIcon" },
   Chatting01Icon: { __iconName: "Chatting01Icon" },
   InformationCircleIcon: { __iconName: "InformationCircleIcon" },
+  SourceCodeIcon: { __iconName: "SourceCodeIcon" },
 }));
 
 vi.mock("@/desktop/renderer/actions/aiUsage", () => ({
@@ -187,6 +190,10 @@ vi.mock("@/desktop/renderer/actions/notifications", () => ({
 
 vi.mock("@/desktop/renderer/utils/fetchPrUrlWithPrompt", () => ({
   fetchPrUrlWithPrompt: (...args: unknown[]) => mocks.fetchPrUrlWithPrompt(...args),
+}));
+
+vi.mock("@/desktop/renderer/actions/editor", () => ({
+  openTaskInVsCode: (...args: unknown[]) => mocks.openTaskInVsCode(...args),
 }));
 
 vi.mock("@/components/ConnectTerminalForm", () => ({
@@ -991,6 +998,43 @@ describe("TaskDetailRoute", () => {
     expect(screen.getByTestId("task-detail-pr-icon")).toBeTruthy();
   });
 
+  /**
+   * dock 번호는 이 배열 순서에서 파생되므로, 순서가 공유 목록과 갈라지면
+   * 단축키 설정 화면이 실제와 다른 항목 이름을 보여 주고 근육기억도 깨진다.
+   */
+  it("dock 버튼 순서와 이름이 공유 dock 항목 목록과 일치한다", async () => {
+    mocks.getTaskById.mockResolvedValue({
+      id: "task-1",
+      title: "task title",
+      description: null,
+      branchName: "feat/detail-shortcut",
+      baseBranch: "main",
+      prUrl: "https://github.com/kanvibe/kanvibe/pull/236",
+      sessionType: null,
+      sessionName: null,
+      sshHost: null,
+      projectId: "project-1",
+      project: { id: "project-1", name: "kanvibe" },
+      status: "todo",
+      agentType: null,
+      worktreePath: "/repo__worktrees/detail-shortcut",
+    });
+
+    const { container } = render(<TaskDetailRoute />);
+    await screen.findByRole("link", { name: "PR" });
+
+    const dock = container.querySelector("aside");
+    const dockLabels = Array.from(
+      dock?.querySelectorAll(
+        ":scope > a[aria-label], :scope > button[aria-label]:not([data-testid='task-detail-usage-button'])",
+      ) ?? [],
+    ).map((dockItem) => dockItem.getAttribute("aria-label"));
+
+    expect(dockLabels).toEqual(
+      TASK_DETAIL_DOCK_ITEM_IDS.map((itemId) => resolveTaskDetailDockLabel((key) => key, itemId)),
+    );
+  });
+
   it("상세 dock shortcut은 terminal 입력보다 먼저 capture 단계에서 처리한다", async () => {
     mocks.getSidebarDefaultCollapsed.mockResolvedValue(true);
     mocks.getTaskById.mockResolvedValue({
@@ -1071,6 +1115,116 @@ describe("TaskDetailRoute", () => {
 
     expect(wasNotPrevented).toBe(false);
     expect(openSpy).toHaveBeenCalledWith(prUrl, "_blank", "noopener,noreferrer");
+  });
+
+  /** PR 자리가 링크 유무로 사라지면 뒤 dock 항목의 번호가 통째로 밀려 근육기억이 깨진다 */
+  it("PR을 찾지 못한 task도 dock 4번 자리를 지키고 눌리면 다시 조회한다", async () => {
+    vi.spyOn(window, "alert").mockImplementation(() => {});
+    mocks.fetchPrUrlWithPrompt.mockResolvedValue(null);
+    mocks.getTaskById.mockResolvedValue({
+      id: "task-1",
+      title: "task title",
+      description: null,
+      branchName: "feat/detail-shortcut",
+      baseBranch: "main",
+      prUrl: null,
+      sessionType: "tmux",
+      sessionName: "task-session",
+      sshHost: null,
+      projectId: "project-1",
+      project: { id: "project-1", name: "kanvibe" },
+      status: "todo",
+      agentType: null,
+      worktreePath: "/repo__worktrees/detail-shortcut",
+    });
+
+    render(
+      <BoardCommandProvider>
+        <TaskDetailRoute />
+      </BoardCommandProvider>,
+    );
+
+    await screen.findByLabelText("terminal input");
+
+    const pullRequestDockButton = screen.getByRole("button", { name: "PR" });
+    expect(pullRequestDockButton.getAttribute("title")).toContain("Ctrl+4");
+
+    const autoLookupCallCount = mocks.fetchPrUrlWithPrompt.mock.calls.length;
+    fireEvent.keyDown(window, { key: "4", ctrlKey: true });
+
+    await waitFor(() => {
+      expect(mocks.fetchPrUrlWithPrompt.mock.calls.length).toBe(autoLookupCallCount + 1);
+    });
+  });
+
+  it("dock 6번 shortcut은 작업 폴더를 VS Code로 연다", async () => {
+    mocks.openTaskInVsCode.mockResolvedValue({ ok: true });
+    mocks.getTaskById.mockResolvedValue({
+      id: "task-1",
+      title: "task title",
+      description: null,
+      branchName: "feat/detail-shortcut",
+      baseBranch: "main",
+      prUrl: null,
+      sessionType: "tmux",
+      sessionName: "task-session",
+      sshHost: null,
+      projectId: "project-1",
+      project: { id: "project-1", name: "kanvibe" },
+      status: "todo",
+      agentType: null,
+      worktreePath: "/repo__worktrees/detail-shortcut",
+    });
+
+    render(
+      <BoardCommandProvider>
+        <TaskDetailRoute />
+      </BoardCommandProvider>,
+    );
+
+    await screen.findByLabelText("terminal input");
+
+    fireEvent.keyDown(window, { key: "6", ctrlKey: true });
+
+    await waitFor(() => {
+      expect(mocks.openTaskInVsCode).toHaveBeenCalledWith("task-1");
+    });
+  });
+
+  /** IPC나 저장소 계층이 던지는 실패도 눌렀을 때 아무 일이 없어 보이면 안 된다 */
+  it("VS Code 실행 요청이 던지면 실패 알림을 띄운다", async () => {
+    const alertSpy = vi.spyOn(window, "alert").mockImplementation(() => {});
+    mocks.openTaskInVsCode.mockRejectedValue(new Error("db down"));
+    mocks.getTaskById.mockResolvedValue({
+      id: "task-1",
+      title: "task title",
+      description: null,
+      branchName: "feat/detail-shortcut",
+      baseBranch: "main",
+      prUrl: null,
+      sessionType: "tmux",
+      sessionName: "task-session",
+      sshHost: null,
+      projectId: "project-1",
+      project: { id: "project-1", name: "kanvibe" },
+      status: "todo",
+      agentType: null,
+      worktreePath: "/repo__worktrees/detail-shortcut",
+    });
+
+    render(
+      <BoardCommandProvider>
+        <TaskDetailRoute />
+      </BoardCommandProvider>,
+    );
+
+    await screen.findByLabelText("terminal input");
+
+    fireEvent.keyDown(window, { key: "6", ctrlKey: true });
+
+    await waitFor(() => {
+      expect(alertSpy).toHaveBeenCalled();
+    });
   });
 
   it("Electron main에서 전달된 dock shortcut도 같은 dock action을 실행한다", async () => {
@@ -2762,7 +2916,7 @@ describe("TaskDetailRoute", () => {
     expect(screen.getByRole("button", { name: "aiSessions.roles.tool" })).toBeTruthy();
   });
 
-  it("PR이 없는 task는 dock 4번 shortcut으로 실행중 세션 패널을 연다", async () => {
+  it("PR이 없는 task도 dock 5번 shortcut으로 실행중 세션 패널을 연다", async () => {
     mocks.getSidebarDefaultCollapsed.mockResolvedValue(true);
     mocks.getTaskLiveAiSessions.mockResolvedValue({
       taskId: "task-1",
@@ -2802,7 +2956,7 @@ describe("TaskDetailRoute", () => {
 
     await screen.findByLabelText("terminal input");
 
-    fireEvent.keyDown(window, { key: "4", ctrlKey: true });
+    fireEvent.keyDown(window, { key: "5", ctrlKey: true });
 
     expect(await screen.findByTestId("live-ai-session-claude")).toBeTruthy();
     expect(screen.getByTestId("live-ai-session-state-running")).toBeTruthy();
