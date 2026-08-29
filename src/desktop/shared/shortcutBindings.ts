@@ -12,6 +12,7 @@ import {
   type TaskDetailDockShortcutIndex,
   type TerminalTabShortcutIndex,
 } from "@/desktop/shared/keyboardShortcut";
+import { TASK_DETAIL_DOCK_ITEM_IDS, type TaskDetailDockItemId } from "@/desktop/shared/taskDetailDock";
 import type { TerminalTabShortcutCommand } from "@/desktop/shared/terminalTabs";
 
 /**
@@ -50,6 +51,8 @@ export interface ShortcutCommandDefinition {
   labelKey: string;
   /** 번호로만 구분되는 명령이 라벨에 끼워 넣을 숫자 */
   labelIndex?: number;
+  /** 도크 명령이 가리키는 항목. 설정 화면이 번호 대신 항목 이름을 보여 주는 근거다 */
+  dockItemId?: TaskDetailDockItemId;
 }
 
 export function createTaskDetailDockCommandId(index: TaskDetailDockShortcutIndex): TaskDetailDockCommandId {
@@ -82,6 +85,7 @@ export const SHORTCUT_COMMAND_DEFINITIONS: readonly ShortcutCommandDefinition[] 
     defaultShortcut: createTaskDetailDockShortcut(dockIndex),
     labelKey: "taskDetailDock",
     labelIndex: dockIndex,
+    dockItemId: TASK_DETAIL_DOCK_ITEM_IDS[dockIndex - 1],
   })),
   { id: "taskDetailUsage", group: "taskDetail", defaultShortcut: SHORTCUTS.taskDetailUsage, labelKey: "taskDetailUsage" },
   { id: "taskSearch", group: "board", defaultShortcut: SHORTCUTS.taskSearchDefault, labelKey: "taskSearch" },

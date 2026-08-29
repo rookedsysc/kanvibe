@@ -8,6 +8,7 @@ import {
 } from "@/desktop/renderer/components/BoardCommandProvider";
 import TaskDetailRoute from "@/desktop/renderer/routes/TaskDetailRoute";
 import { INITIAL_DESKTOP_LOAD_TIMEOUT_MS } from "@/desktop/renderer/utils/loadingTimeout";
+import { TASK_DETAIL_DOCK_ITEM_IDS, resolveTaskDetailDockLabel } from "@/desktop/shared/taskDetailDock";
 
 const TASK_DETAIL_CACHE_KEY = "kanvibe:route-cache:task-detail:task-1";
 const BOARD_FOCUS_TASK_CACHE_KEY = "kanvibe:route-cache:board-focus-task";
@@ -995,6 +996,43 @@ describe("TaskDetailRoute", () => {
     expect(prLink.getAttribute("href")).toBe(prUrl);
     expect(prLink.getAttribute("target")).toBe("_blank");
     expect(screen.getByTestId("task-detail-pr-icon")).toBeTruthy();
+  });
+
+  /**
+   * dock 번호는 이 배열 순서에서 파생되므로, 순서가 공유 목록과 갈라지면
+   * 단축키 설정 화면이 실제와 다른 항목 이름을 보여 주고 근육기억도 깨진다.
+   */
+  it("dock 버튼 순서와 이름이 공유 dock 항목 목록과 일치한다", async () => {
+    mocks.getTaskById.mockResolvedValue({
+      id: "task-1",
+      title: "task title",
+      description: null,
+      branchName: "feat/detail-shortcut",
+      baseBranch: "main",
+      prUrl: "https://github.com/kanvibe/kanvibe/pull/236",
+      sessionType: null,
+      sessionName: null,
+      sshHost: null,
+      projectId: "project-1",
+      project: { id: "project-1", name: "kanvibe" },
+      status: "todo",
+      agentType: null,
+      worktreePath: "/repo__worktrees/detail-shortcut",
+    });
+
+    const { container } = render(<TaskDetailRoute />);
+    await screen.findByRole("link", { name: "PR" });
+
+    const dock = container.querySelector("aside");
+    const dockLabels = Array.from(
+      dock?.querySelectorAll(
+        ":scope > a[aria-label], :scope > button[aria-label]:not([data-testid='task-detail-usage-button'])",
+      ) ?? [],
+    ).map((dockItem) => dockItem.getAttribute("aria-label"));
+
+    expect(dockLabels).toEqual(
+      TASK_DETAIL_DOCK_ITEM_IDS.map((itemId) => resolveTaskDetailDockLabel((key) => key, itemId)),
+    );
   });
 
   it("상세 dock shortcut은 terminal 입력보다 먼저 capture 단계에서 처리한다", async () => {

@@ -61,6 +61,7 @@ import {
   getTaskDetailDockIndexForCommand,
   resolveTerminalTabCommand,
 } from "@/desktop/shared/shortcutBindings";
+import { resolveTaskDetailDockLabel, type TaskDetailDockItemId } from "@/desktop/shared/taskDetailDock";
 import { INITIAL_DESKTOP_LOAD_TIMEOUT_MS, logDesktopInitialLoadTimeout } from "@/desktop/renderer/utils/loadingTimeout";
 import { rememberBoardFocusTask } from "@/desktop/renderer/utils/boardFocusTarget";
 import { buildRouteCacheKey, readRouteCache, removeRouteCache, writeRouteCache } from "@/desktop/renderer/utils/routeCache";
@@ -97,7 +98,7 @@ const AGENT_TAG_STYLES: Record<string, string> = {
 type DetailPanel = "overview" | "status" | "liveSessions" | "usage";
 type MainView = "terminal" | "chat";
 type TaskDetailDockItem = {
-  id: string;
+  id: TaskDetailDockItemId;
   label: string;
   isActive: boolean;
   renderIcon: () => ReactNode;
@@ -872,7 +873,7 @@ export default function TaskDetailRoute() {
   useMarkTaskNotificationsReadWhenFocused(state?.task.id ?? null);
   const shortcutPlatform = getCurrentShortcutPlatform();
   const shortcutBindings = useShortcutBindings();
-  const statusPanelLabel = `${t("actions")} · ${t("hooksStatus")}`;
+  const statusPanelLabel = resolveTaskDetailDockLabel(t, "status");
   currentTaskRef.current = state?.task ?? null;
   const shouldShowDefaultOverviewPanel = !!state
     && state !== null
@@ -992,7 +993,7 @@ export default function TaskDetailRoute() {
     const items: TaskDetailDockItem[] = [
       {
         id: "overview",
-        label: t("info"),
+        label: resolveTaskDetailDockLabel(t, "overview"),
         isActive: visiblePanel === "overview",
         renderIcon: () => (
           <HugeiconsIcon
@@ -1013,7 +1014,7 @@ export default function TaskDetailRoute() {
       },
       {
         id: "chat",
-        label: t("aiSessions.inlineChat"),
+        label: resolveTaskDetailDockLabel(t, "chat"),
         isActive: mainView === "chat",
         renderIcon: () => (
           <HugeiconsIcon
@@ -1027,7 +1028,7 @@ export default function TaskDetailRoute() {
       },
       {
         id: "live-sessions",
-        label: t("liveSessions.dock"),
+        label: resolveTaskDetailDockLabel(t, "live-sessions"),
         isActive: visiblePanel === "liveSessions",
         renderIcon: () => (
           <HugeiconsIcon
@@ -1044,7 +1045,7 @@ export default function TaskDetailRoute() {
     /** PR 자리는 링크가 아직 없어도 비워 두지 않는다. 자리가 사라지면 뒤 항목의 dock 번호가 통째로 밀린다 */
     items.splice(PR_DOCK_INSERT_INDEX, 0, {
       id: "pull-request",
-      label: "PR",
+      label: resolveTaskDetailDockLabel(t, "pull-request"),
       isActive: false,
       renderIcon: () => <PullRequestIcon />,
       onActivate: () => {
@@ -1055,7 +1056,7 @@ export default function TaskDetailRoute() {
 
     items.push({
       id: "vscode",
-      label: t("openInVsCode"),
+      label: resolveTaskDetailDockLabel(t, "vscode"),
       isActive: false,
       renderIcon: () => (
         <HugeiconsIcon

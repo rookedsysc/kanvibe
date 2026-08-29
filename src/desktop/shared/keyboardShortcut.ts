@@ -1,3 +1,5 @@
+import { TASK_DETAIL_DOCK_ITEM_IDS } from "@/desktop/shared/taskDetailDock";
+
 export type ShortcutPlatform = "mac" | "linux";
 export type ShortcutPlatformInput = ShortcutPlatform | boolean;
 export type ShortcutDefinition = string | Record<ShortcutPlatform, string>;
@@ -47,7 +49,13 @@ export const BLOCKED_DESKTOP_SHORTCUTS = {
 } as const;
 
 export const DEFAULT_TASK_SEARCH_SHORTCUT = SHORTCUTS.taskSearchDefault;
-export const TASK_DETAIL_DOCK_SHORTCUT_INDEXES = [1, 2, 3, 4, 5, 6, 7, 8, 9] as const;
+/**
+ * 도크에 실제로 있는 자리만큼만 번호를 준다. 비어 있는 번호를 노출하면 설정 화면이
+ * 아무것도 실행하지 않는 단축키를 보여 준다. `satisfies`가 도크 항목 수와의 어긋남을 컴파일에서 잡는다.
+ */
+export const TASK_DETAIL_DOCK_SHORTCUT_INDEXES = [1, 2, 3, 4, 5, 6] as const satisfies {
+  length: typeof TASK_DETAIL_DOCK_ITEM_IDS["length"];
+};
 export const TERMINAL_TAB_SHORTCUT_INDEXES = [1, 2, 3, 4, 5] as const;
 
 export type TaskDetailDockShortcutIndex = typeof TASK_DETAIL_DOCK_SHORTCUT_INDEXES[number];

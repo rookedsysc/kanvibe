@@ -284,7 +284,7 @@
         "terminal": "终端"
       },
       "commands": {
-        "taskDetailDock": "Dock 第 {index} 项",
+        "taskDetailDock": "Dock {index} · {item}",
         "taskDetailUsage": "AI 用量面板",
         "taskSearch": "任务快速搜索",
         "boardNotification": "通知中心",

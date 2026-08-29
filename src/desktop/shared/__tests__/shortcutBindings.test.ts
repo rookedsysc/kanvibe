@@ -18,6 +18,7 @@ import {
   resolveShortcutBindings,
   resolveTerminalTabCommand,
 } from "@/desktop/shared/shortcutBindings";
+import { TASK_DETAIL_DOCK_ITEM_IDS } from "@/desktop/shared/taskDetailDock";
 
 function dockIndexForEvent(event: KeyboardEvent, platform: ShortcutPlatformInput) {
   return getTaskDetailDockIndexForCommand(findShortcutCommandForEvent(DEFAULT_SHORTCUT_BINDINGS, event, platform));
@@ -184,7 +185,7 @@ describe("AI 사용량 패널 단축키", () => {
   });
 
   it("dock 번호와 겹치지 않는다", () => {
-    /** dock 번호 배열은 1~9뿐이어야 0이 dock 항목을 집으려 하지 않는다 */
+    /** dock 번호 배열은 1부터 시작해야 0이 dock 항목을 집으려 하지 않는다 */
     expect(TASK_DETAIL_DOCK_SHORTCUT_INDEXES).not.toContain(0);
     expect(dockIndexForEvent(new KeyboardEvent("keydown", { key: "0", ctrlKey: true }), "linux")).toBeNull();
   });
@@ -199,6 +200,26 @@ describe("AI 사용량 패널 단축키", () => {
 });
 
 describe("단축키 재배정", () => {
+  /**
+   * 도크에 없는 번호까지 명령을 만들면 설정 화면이 눌러도 아무 일이 없는 단축키를 보여 준다.
+   * 반대로 도크 항목보다 번호가 모자라면 마지막 항목을 키로 열 수 없다.
+   */
+  it("dock 명령은 도크에 실제로 있는 항목 수만큼만 있고 각 항목을 가리킨다", () => {
+    const dockDefinitions = SHORTCUT_COMMAND_DEFINITIONS.filter(
+      (definition) => definition.group === "taskDetailDock",
+    );
+
+    expect(dockDefinitions.map((definition) => definition.dockItemId)).toEqual([...TASK_DETAIL_DOCK_ITEM_IDS]);
+    expect(dockIndexForEvent(new KeyboardEvent("keydown", {
+      key: String(TASK_DETAIL_DOCK_ITEM_IDS.length),
+      ctrlKey: true,
+    }), "linux")).toBe(TASK_DETAIL_DOCK_ITEM_IDS.length);
+    expect(findShortcutCommandForEvent(DEFAULT_SHORTCUT_BINDINGS, new KeyboardEvent("keydown", {
+      key: String(TASK_DETAIL_DOCK_ITEM_IDS.length + 1),
+      ctrlKey: true,
+    }), "linux")).toBeNull();
+  });
+
   it("기본 단축키 표에는 중복 조합이 없다", () => {
     const usedShortcuts = new Set<string>();
 

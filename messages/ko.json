@@ -285,7 +285,7 @@
         "terminal": "터미널"
       },
       "commands": {
-        "taskDetailDock": "도크 {index}번 항목",
+        "taskDetailDock": "도크 {index} · {item}",
         "taskDetailUsage": "AI 사용량 패널",
         "taskSearch": "작업 빠른 검색",
         "boardNotification": "알림 센터",

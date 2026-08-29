@@ -15,7 +15,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock("next-intl", () => ({
   useTranslations: () => Object.assign(
     (key: string, values?: Record<string, unknown>) => (
-      values && "index" in values ? `${key}:${values.index}` : key
+      values && "index" in values ? `${key}:${values.index}:${values.item}` : key
     ),
     { rich: (key: string) => key },
   ),
@@ -64,7 +64,7 @@ describe("ShortcutSettingsRoute", () => {
   it("녹화한 조합을 그 명령의 새 단축키로 저장한다", async () => {
     renderShortcutSettings();
 
-    const dockRow = findRecordButtonFor("commands.taskDetailDock:4");
+    const dockRow = findRecordButtonFor("commands.taskDetailDock:4:PR");
     fireEvent.click(within(dockRow).getByText("record"));
     fireEvent.keyDown(window, { key: "k", ctrlKey: true, shiftKey: true });
 
@@ -82,7 +82,7 @@ describe("ShortcutSettingsRoute", () => {
   it("이미 쓰는 조합은 저장하지 않고 어떤 명령과 겹치는지 알린다", async () => {
     renderShortcutSettings();
 
-    const dockRow = findRecordButtonFor("commands.taskDetailDock:1");
+    const dockRow = findRecordButtonFor("commands.taskDetailDock:1:info");
     fireEvent.click(within(dockRow).getByText("record"));
     fireEvent.keyDown(window, { key: "n", ctrlKey: true });
 
@@ -97,7 +97,7 @@ describe("ShortcutSettingsRoute", () => {
   it("개별 기본값 되돌리기가 다른 명령과 겹치면 저장하지 않고 알린다", async () => {
     renderShortcutSettings();
 
-    const firstDockRow = findRecordButtonFor("commands.taskDetailDock:1");
+    const firstDockRow = findRecordButtonFor("commands.taskDetailDock:1:info");
     fireEvent.click(within(firstDockRow).getByText("record"));
     fireEvent.keyDown(window, { key: "j", ctrlKey: true, shiftKey: true });
     await waitFor(() => {
@@ -106,7 +106,7 @@ describe("ShortcutSettingsRoute", () => {
       }));
     });
 
-    const secondDockRow = findRecordButtonFor("commands.taskDetailDock:2");
+    const secondDockRow = findRecordButtonFor("commands.taskDetailDock:2:actions · hooksStatus");
     fireEvent.click(within(secondDockRow).getByText("record"));
     fireEvent.keyDown(window, { key: "1", ctrlKey: true });
     await waitFor(() => {
@@ -116,7 +116,7 @@ describe("ShortcutSettingsRoute", () => {
     });
 
     mocks.setShortcutBindings.mockClear();
-    fireEvent.click(within(findRecordButtonFor("commands.taskDetailDock:1")).getByText("reset"));
+    fireEvent.click(within(findRecordButtonFor("commands.taskDetailDock:1:info")).getByText("reset"));
 
     expect((await screen.findByRole("alert")).textContent).toBe("conflict");
     expect(mocks.setShortcutBindings).not.toHaveBeenCalled();
@@ -125,7 +125,7 @@ describe("ShortcutSettingsRoute", () => {
   it("Esc를 누르면 녹화를 취소한다", async () => {
     renderShortcutSettings();
 
-    const dockRow = findRecordButtonFor("commands.taskDetailDock:1");
+    const dockRow = findRecordButtonFor("commands.taskDetailDock:1:info");
     fireEvent.click(within(dockRow).getByText("record"));
     expect(within(dockRow).getByText("recording")).toBeTruthy();
 
@@ -145,7 +145,7 @@ describe("ShortcutSettingsRoute", () => {
   it("수식 키만 눌린 동안에는 오류를 띄우지 않는다", async () => {
     renderShortcutSettings();
 
-    const dockRow = findRecordButtonFor("commands.taskDetailDock:1");
+    const dockRow = findRecordButtonFor("commands.taskDetailDock:1:info");
     fireEvent.click(within(dockRow).getByText("record"));
     fireEvent.keyDown(window, { key: "Control", ctrlKey: true });
 
@@ -157,7 +157,7 @@ describe("ShortcutSettingsRoute", () => {
   it("담을 수 없는 조합을 녹화하면 저장하지 않고 오류를 알린다", async () => {
     renderShortcutSettings();
 
-    const dockRow = findRecordButtonFor("commands.taskDetailDock:1");
+    const dockRow = findRecordButtonFor("commands.taskDetailDock:1:info");
     fireEvent.click(within(dockRow).getByText("record"));
     fireEvent.keyDown(window, { key: "+", ctrlKey: true, shiftKey: true });
 
@@ -169,7 +169,7 @@ describe("ShortcutSettingsRoute", () => {
   it("Esc로 취소하면 남아 있던 오류 배너를 지운다", async () => {
     renderShortcutSettings();
 
-    const dockRow = findRecordButtonFor("commands.taskDetailDock:1");
+    const dockRow = findRecordButtonFor("commands.taskDetailDock:1:info");
     fireEvent.click(within(dockRow).getByText("record"));
     fireEvent.keyDown(window, { key: "n", ctrlKey: true });
     expect((await screen.findByRole("alert")).textContent).toBe("conflict");
@@ -198,7 +198,7 @@ describe("ShortcutSettingsRoute", () => {
   it("녹화를 시작하고 끝낼 때 Electron main에 알린다", async () => {
     renderShortcutSettings();
 
-    const dockRow = findRecordButtonFor("commands.taskDetailDock:1");
+    const dockRow = findRecordButtonFor("commands.taskDetailDock:1:info");
     fireEvent.click(within(dockRow).getByText("record"));
     expect(mocks.notifyShortcutCaptureChanged).toHaveBeenLastCalledWith(true);
 
@@ -235,7 +235,7 @@ describe("ShortcutSettingsRoute", () => {
 
     expect((await screen.findByRole("alert")).textContent).toBe("loadFailed");
 
-    const dockRow = findRecordButtonFor("commands.taskDetailDock:4");
+    const dockRow = findRecordButtonFor("commands.taskDetailDock:4:PR");
     fireEvent.click(within(dockRow).getByText("record"));
     fireEvent.keyDown(window, { key: "k", ctrlKey: true, shiftKey: true });
 
@@ -245,6 +245,29 @@ describe("ShortcutSettingsRoute", () => {
     expect(mocks.setShortcutBindings).not.toHaveBeenCalled();
 
     consoleErrorSpy.mockRestore();
+  });
+
+  /**
+   * 번호만 보여 주면 "도크 4번 항목"이 무엇을 여는지 이 화면에서는 알 방법이 없고,
+   * 도크에 없는 번호까지 늘어놓으면 눌러도 아무 일이 없는 단축키를 설정하게 된다.
+   */
+  it("도크 명령을 실제 항목 이름으로 도크에 있는 자리만큼만 보여 준다", async () => {
+    renderShortcutSettings();
+
+    const dockSection = (await screen.findByText("groups.taskDetailDock")).closest("section");
+    expect(dockSection).toBeTruthy();
+
+    const dockRowLabels = Array.from(dockSection!.querySelectorAll("li")).map(
+      (row) => row.querySelector("span")?.textContent,
+    );
+    expect(dockRowLabels).toEqual([
+      "commands.taskDetailDock:1:info",
+      "commands.taskDetailDock:2:actions · hooksStatus",
+      "commands.taskDetailDock:3:aiSessions.inlineChat",
+      "commands.taskDetailDock:4:PR",
+      "commands.taskDetailDock:5:liveSessions.dock",
+      "commands.taskDetailDock:6:openInVsCode",
+    ]);
   });
 
   /** 나머지 화면은 3개 로케일이 채워져 있는데 제목만 영어 리터럴이면 그 창만 번역이 빠진다 */

@@ -242,7 +242,7 @@ describe("keyboardShortcut", () => {
   });
 
   it("상세 dock shortcut은 macOS Cmd+숫자와 Linux Ctrl+숫자로 표시하고 매칭한다", () => {
-    expect(TASK_DETAIL_DOCK_SHORTCUT_INDEXES).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9]);
+    expect(TASK_DETAIL_DOCK_SHORTCUT_INDEXES).toEqual([1, 2, 3, 4, 5, 6]);
     expect(formatShortcutForDisplay(createTaskDetailDockShortcut(1), "mac")).toBe("Cmd+1");
     expect(formatShortcutForDisplay(createTaskDetailDockShortcut(1), "linux")).toBe("Ctrl+1");
 

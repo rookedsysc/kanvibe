@@ -285,7 +285,7 @@
         "terminal": "Terminal"
       },
       "commands": {
-        "taskDetailDock": "Dock item {index}",
+        "taskDetailDock": "Dock {index} · {item}",
         "taskDetailUsage": "AI usage panel",
         "taskSearch": "Task quick search",
         "boardNotification": "Notification center",

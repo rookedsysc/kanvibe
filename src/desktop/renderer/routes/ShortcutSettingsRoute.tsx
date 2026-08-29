@@ -24,6 +24,7 @@ import {
   type ShortcutCommandGroup,
   type ShortcutCommandId,
 } from "@/desktop/shared/shortcutBindings";
+import { resolveTaskDetailDockLabel } from "@/desktop/shared/taskDetailDock";
 
 const SHORTCUT_GROUP_ORDER: ShortcutCommandGroup[] = ["taskDetailDock", "taskDetail", "board", "terminal"];
 
@@ -36,6 +37,8 @@ function groupShortcutCommands(): Array<{ group: ShortcutCommandGroup; commands:
 
 export default function ShortcutSettingsRoute() {
   const t = useTranslations("settings.shortcuts");
+  /** 도크 항목 이름은 도크가 쓰는 그 문구를 그대로 가져온다 */
+  const tTaskDetail = useTranslations("taskDetail");
   const bindings = useShortcutBindings();
   const boardCommands = useBoardCommands();
   const shortcutPlatform = getCurrentShortcutPlatform();
@@ -67,8 +70,11 @@ export default function ShortcutSettingsRoute() {
   }, [t]);
 
   const describeCommand = useCallback((definition: ShortcutCommandDefinition) => (
-    t(`commands.${definition.labelKey}`, { index: definition.labelIndex ?? 0 })
-  ), [t]);
+    t(`commands.${definition.labelKey}`, {
+      index: definition.labelIndex ?? 0,
+      item: definition.dockItemId ? resolveTaskDetailDockLabel(tTaskDetail, definition.dockItemId) : "",
+    })
+  ), [t, tTaskDetail]);
 
   /** 저장이 실패하면 화면은 옛 값 그대로다. 조용히 넘기면 사용자는 바뀐 줄 안다 */
   const persistBindings = useCallback(async (nextBindings: ShortcutBindings) => {
