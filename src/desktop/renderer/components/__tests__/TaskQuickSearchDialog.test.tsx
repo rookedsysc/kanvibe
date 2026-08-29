@@ -1,6 +1,8 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import TaskQuickSearchDialog from "@/desktop/renderer/components/TaskQuickSearchDialog";
+import { loadShortcutBindings } from "@/desktop/renderer/utils/shortcutBindings";
+import { DEFAULT_SHORTCUT_BINDINGS } from "@/desktop/shared/shortcutBindings";
 
 const mocks = vi.hoisted(() => ({
   getSearchableTasks: vi.fn(),
@@ -9,6 +11,7 @@ const mocks = vi.hoisted(() => ({
   requestCreateBranchTodo: vi.fn(),
   scrollIntoView: vi.fn(),
   setTaskQuickSearchOpen: vi.fn(),
+  getShortcutBindings: vi.fn(),
   hasShortcutBlocker: false,
 }));
 
@@ -18,6 +21,11 @@ vi.mock("next-intl", () => ({
 
 vi.mock("@/desktop/renderer/actions/kanban", () => ({
   getSearchableTasks: (...args: unknown[]) => mocks.getSearchableTasks(...args),
+}));
+
+vi.mock("@/desktop/renderer/actions/appSettings", () => ({
+  getShortcutBindings: (...args: unknown[]) => mocks.getShortcutBindings(...args),
+  setShortcutBindings: vi.fn(),
 }));
 
 vi.mock("@/desktop/renderer/navigation", () => ({
@@ -32,7 +40,6 @@ vi.mock("@/desktop/renderer/navigation", () => ({
 }));
 
 vi.mock("@/desktop/renderer/components/BoardCommandProvider", () => ({
-  CREATE_BRANCH_TODO_SHORTCUT: "Mod+N",
   useBoardCommands: () => ({
     requestCreateBranchTodo: mocks.requestCreateBranchTodo,
     setTaskQuickSearchOpen: mocks.setTaskQuickSearchOpen,
@@ -42,9 +49,11 @@ vi.mock("@/desktop/renderer/components/BoardCommandProvider", () => ({
 }));
 
 describe("TaskQuickSearchDialog", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.clearAllMocks();
     mocks.hasShortcutBlocker = false;
+    mocks.getShortcutBindings.mockResolvedValue({ ...DEFAULT_SHORTCUT_BINDINGS });
+    await loadShortcutBindings();
     window.history.replaceState({}, "", "/#/en");
     window.kanvibeDesktop = {
       isDesktop: true,
@@ -96,6 +105,30 @@ describe("TaskQuickSearchDialog", () => {
         updatedAt: "2026-04-30T03:00:00.000Z",
       },
     ]);
+  });
+
+  /**
+   * 다른 창이 단축키를 바꾸면 main 알림으로 공유 스토어만 갱신된다.
+   * 이 다이얼로그가 스토어를 안 읽으면 그 창은 앱을 다시 켤 때까지 옛 조합으로 열린다.
+   */
+  it("prop이 없으면 공유 단축키 스토어에 저장된 조합으로 연다", async () => {
+    mocks.getShortcutBindings.mockResolvedValue({
+      ...DEFAULT_SHORTCUT_BINDINGS,
+      taskSearch: "Mod+Shift+J",
+    });
+    await loadShortcutBindings();
+
+    render(<TaskQuickSearchDialog />);
+
+    fireEvent.keyDown(window, {
+      key: "j",
+      ctrlKey: true,
+      shiftKey: true,
+    });
+
+    await waitFor(() => {
+      expect(screen.getByRole("dialog")).toBeTruthy();
+    });
   });
 
   it("단축키를 누르면 검색 다이얼로그를 열고 태스크 목록을 불러온다", async () => {

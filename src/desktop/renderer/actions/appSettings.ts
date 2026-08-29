@@ -1,5 +1,6 @@
 import type { SessionType } from "@/entities/KanbanTask";
 import type { BoardSortPreference } from "@/desktop/shared/boardSort";
+import type { ShortcutBindings } from "@/desktop/shared/shortcutBindings";
 import { invokeDesktop } from "@/desktop/renderer/ipc";
 import { triggerDesktopRefresh } from "@/desktop/renderer/utils/refresh";
 
@@ -87,8 +88,12 @@ export function getTaskSearchShortcut(): Promise<string> {
   return invokeDesktop("appSettings", "getTaskSearchShortcut");
 }
 
-export function setTaskSearchShortcut(shortcut: string): Promise<void> {
-  return invokeAndRefresh("setTaskSearchShortcut", shortcut);
+export function getShortcutBindings(): Promise<ShortcutBindings> {
+  return invokeDesktop("appSettings", "getShortcutBindings");
+}
+
+export function setShortcutBindings(bindings: ShortcutBindings): Promise<void> {
+  return invokeAndRefresh("setShortcutBindings", bindings);
 }
 
 export function getVimModeEnabled(): Promise<boolean> {

@@ -7,12 +7,9 @@ import {
   getSearchableTasks,
   type SearchableTask,
 } from "@/desktop/renderer/actions/kanban";
-import { getTaskSearchShortcut } from "@/desktop/renderer/actions/appSettings";
 import { usePathname, useRouter } from "@/desktop/renderer/navigation";
-import { useRefreshSignal } from "@/desktop/renderer/utils/refresh";
 import { navigateToTaskDetail } from "@/desktop/renderer/utils/taskNavigation";
 import {
-  DEFAULT_TASK_SEARCH_SHORTCUT,
   formatShortcutForDisplay,
   getCurrentShortcutPlatform,
   isBlockedShortcutEvent,
@@ -22,10 +19,10 @@ import { requestActiveTerminalFocusAfterUiSettles } from "@/desktop/renderer/uti
 import { useEscapeKey } from "@/hooks/useEscapeKey";
 import { fuzzyMatch, type FuzzyMatch } from "@/utils/fuzzySearch";
 import {
-  CREATE_BRANCH_TODO_SHORTCUT,
   useBoardCommands,
   useHasBoardShortcutBlocker,
 } from "@/desktop/renderer/components/BoardCommandProvider";
+import { useShortcutBindings } from "@/desktop/renderer/utils/shortcutBindings";
 
 interface TaskQuickSearchDialogProps {
   shortcut?: string;
@@ -213,18 +210,18 @@ export default function TaskQuickSearchDialog({
   const tc = useTranslations("common");
   const router = useRouter();
   const pathname = usePathname();
-  const refreshSignal = useRefreshSignal(["all", "settings"]);
   const inputRef = useRef<HTMLInputElement>(null);
   const resultsListRef = useRef<HTMLDivElement>(null);
-  const [savedShortcut, setSavedShortcut] = useState<string>(DEFAULT_TASK_SEARCH_SHORTCUT);
   const [isOpen, setIsOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [tasks, setTasks] = useState<SearchableTask[]>([]);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
   const shortcutPlatform = getCurrentShortcutPlatform();
+  const shortcutBindings = useShortcutBindings();
+  const createTaskShortcut = shortcutBindings.createTask;
 
-  const effectiveShortcut = shortcut || savedShortcut;
+  const effectiveShortcut = shortcut || shortcutBindings.taskSearch;
   const results = useMemo(() => buildSearchResults(tasks, query), [query, tasks]);
   const selectedResultIndex = results.length === 0
     ? 0
@@ -244,24 +241,6 @@ export default function TaskQuickSearchDialog({
     setIsLoading(false);
     requestActiveTerminalFocusAfterUiSettles();
   }, []);
-
-  useEffect(() => {
-    if (shortcut) {
-      return;
-    }
-
-    let cancelled = false;
-
-    getTaskSearchShortcut().then((nextShortcut) => {
-      if (!cancelled) {
-        setSavedShortcut(nextShortcut || DEFAULT_TASK_SEARCH_SHORTCUT);
-      }
-    });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [refreshSignal, shortcut]);
 
   useEffect(() => {
     function handleGlobalKeyDown(event: KeyboardEvent) {
@@ -391,7 +370,7 @@ export default function TaskQuickSearchDialog({
   }, [createBranchTodoFromSelection, isOpen]);
 
   function handleInputKeyDown(event: React.KeyboardEvent<HTMLInputElement>) {
-    if (matchShortcutEvent(event, CREATE_BRANCH_TODO_SHORTCUT, shortcutPlatform)) {
+    if (matchShortcutEvent(event, createTaskShortcut, shortcutPlatform)) {
       event.preventDefault();
       createBranchTodoFromSelection();
       return;
@@ -433,7 +412,7 @@ export default function TaskQuickSearchDialog({
     t("hint"),
     boardCommands.canCreateBranchTodo
       ? t("branchTodoHint", {
-          shortcut: formatShortcutForDisplay(CREATE_BRANCH_TODO_SHORTCUT, shortcutPlatform),
+          shortcut: formatShortcutForDisplay(createTaskShortcut, shortcutPlatform),
         })
       : null,
   ].filter(Boolean).join(" · ");

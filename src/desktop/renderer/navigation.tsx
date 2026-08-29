@@ -22,7 +22,7 @@ function getRefreshScope(pathname: string) {
     return "pane-layout" as const;
   }
 
-  if (pathname.endsWith("/settings")) {
+  if (pathname.includes("/settings")) {
     return "settings" as const;
   }
 

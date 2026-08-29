@@ -146,6 +146,69 @@ describe("TaskCard - Priority Badge", () => {
     expect(badge.className).toContain("ml-auto");
   });
 
+  describe("배지 줄바꿈", () => {
+    const crowdedTask = createTask({
+      prUrl: "https://github.com/org/repo/pull/1",
+      agentType: "claude",
+      sessionType: SessionType.TMUX,
+      sshHost: "very-long-remote-development-host.example.com",
+      worktreePath: "/repo/task",
+      priority: TaskPriority.HIGH,
+    });
+    const runningPane = {
+      provider: "claude" as const,
+      worktreePath: "/repo/task",
+      sessionName: "kanvibe-task",
+      windowId: "@7",
+      windowName: "claude",
+    };
+
+    it("배지 행이 넘치는 배지를 잘라내지 않고 다음 줄로 흘린다", () => {
+      // Given
+      // When
+      render(<TaskCard task={crowdedTask} index={0} onContextMenu={onContextMenu} />);
+
+      // Then
+      const badgeRow = screen.getByTestId("task-card-badges");
+      expect(badgeRow.className).toContain("flex-wrap");
+      expect(badgeRow.className).not.toContain("overflow-hidden");
+    });
+
+    it("배지가 많아도 어느 하나 생략하지 않고 모두 그린다", () => {
+      // Given
+      // When
+      render(
+        <TaskCard
+          task={crowdedTask}
+          index={0}
+          onContextMenu={onContextMenu}
+          diffStats={{ fileCount: 3, additions: 12, deletions: 4 }}
+          runningAgentPanes={[runningPane]}
+        />,
+      );
+
+      // Then
+      expect(screen.getByText("PR")).toBeTruthy();
+      expect(screen.getByText("claude")).toBeTruthy();
+      expect(screen.getByText("tmux")).toBeTruthy();
+      expect(screen.getByTestId("task-card-diff-stats")).toBeTruthy();
+      expect(screen.getByTestId("task-card-running-agents")).toBeTruthy();
+      expect(screen.getByText("very-long-remote-development-host.example.com")).toBeTruthy();
+      expect(screen.getByTestId("task-priority-badge").textContent).toBe("P1");
+    });
+
+    it("긴 remote 호스트는 말줄임 대신 배지 안에서 줄바꿈해 전체를 보여준다", () => {
+      // Given
+      // When
+      render(<TaskCard task={crowdedTask} index={0} onContextMenu={onContextMenu} />);
+
+      // Then
+      const remoteBadge = screen.getByText("very-long-remote-development-host.example.com");
+      expect(remoteBadge.className).toContain("break-all");
+      expect(remoteBadge.className).not.toContain("truncate");
+    });
+  });
+
   it("should render session and remote badges with PR-aligned badge treatment", () => {
     const task = createTask({
       sessionType: SessionType.TMUX,

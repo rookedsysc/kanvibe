@@ -191,4 +191,17 @@ contextBridge.exposeInMainWorld("kanvibeDesktop", {
       ipcRenderer.removeListener("kanvibe:task-detail-usage-shortcut", handler);
     };
   },
+  notifyShortcutBindingsChanged() {
+    ipcRenderer.send("kanvibe:shortcut-bindings-changed");
+  },
+  onShortcutBindingsChanged(listener) {
+    const handler = () => listener();
+    ipcRenderer.on("kanvibe:shortcut-bindings-changed", handler);
+    return () => {
+      ipcRenderer.removeListener("kanvibe:shortcut-bindings-changed", handler);
+    };
+  },
+  notifyShortcutCaptureChanged(isCapturing) {
+    ipcRenderer.send("kanvibe:shortcut-capture-changed", Boolean(isCapturing));
+  },
 });

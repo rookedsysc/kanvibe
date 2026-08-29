@@ -264,7 +264,45 @@
     "keyboardSection": "키보드",
     "vimModeEnabled": "Vim 스타일 보드 조작",
     "vimModeEnabledDescription": "보드에서 h/j/k/l 포커스 이동, n 새 작업, dd 삭제, :move status 명령을 사용합니다. 꺼도 방향키 이동은 유지됩니다.",
-    "aiAccountsLink": "AI 계정"
+    "aiAccountsLink": "AI 계정",
+    "shortcutsLink": "단축키 설정",
+    "shortcuts": {
+      "title": "단축키",
+      "pageDescription": "명령마다 원하는 키 조합을 눌러 다시 배정합니다.",
+      "record": "녹화",
+      "recording": "키를 누르세요",
+      "recordHint": "바꿀 조합을 누르면 바로 저장됩니다. Esc를 누르면 취소합니다.",
+      "reset": "기본값",
+      "resetAll": "전체 기본값으로",
+      "conflict": "{command} 명령이 이미 이 조합을 쓰고 있습니다.",
+      "unsupported": "수정 키를 하나 이상 포함한 조합만 쓸 수 있습니다.",
+      "saveFailed": "단축키를 저장하지 못했습니다.",
+      "loadFailed": "저장된 단축키를 불러오지 못했습니다. 문제가 해결된 뒤 이 화면을 다시 열어 주세요.",
+      "groups": {
+        "taskDetailDock": "작업 상세 도크",
+        "taskDetail": "작업 상세",
+        "board": "보드",
+        "terminal": "터미널"
+      },
+      "commands": {
+        "taskDetailDock": "도크 {index} · {item}",
+        "taskDetailUsage": "AI 사용량 패널",
+        "taskSearch": "작업 빠른 검색",
+        "boardNotification": "알림 센터",
+        "boardProjectFilter": "프로젝트 필터",
+        "boardPageFind": "페이지 내 검색",
+        "createTask": "작업 생성",
+        "newWindow": "새 창",
+        "pageBack": "뒤로 가기",
+        "pageForward": "앞으로 가기",
+        "terminalTabNew": "터미널 탭 추가",
+        "terminalTabClose": "터미널 탭 닫기",
+        "terminalWindowClose": "창 닫기",
+        "terminalTabPrevious": "이전 터미널 탭",
+        "terminalTabNext": "다음 터미널 탭",
+        "terminalTab": "터미널 탭 {index}번으로 이동"
+      }
+    }
   },
   "taskSearch": {
     "title": "태스크 빠른 검색",
@@ -476,7 +514,10 @@
         "fetch-failed": "사용량을 가져오지 못했습니다."
       },
       "manageAccounts": "계정 관리"
-    }
+    },
+    "openInVsCode": "VS Code에서 열기",
+    "openInVsCodeFailed": "VS Code를 열지 못했습니다. `code` 명령을 PATH에서 찾을 수 있는지 확인하세요.",
+    "pullRequestNotFound": "이 브랜치에 연결된 PR을 찾지 못했습니다."
   },
   "projectBranchTasks": {
     "title": "프로젝트 작업",

@@ -1,6 +1,15 @@
 import { getAppSettingsRepository } from "@/lib/database";
 import { SessionType } from "@/entities/KanbanTask";
-import { DEFAULT_TASK_SEARCH_SHORTCUT } from "@/desktop/shared/keyboardShortcut";
+import {
+  collectShortcutOverrides,
+  parseShortcutOverrides,
+  resolveShortcutBindings,
+  type ShortcutBindings,
+} from "@/desktop/shared/shortcutBindings";
+import {
+  canonicalizeShortcutForPlatform,
+  getShortcutPlatformFromProcessPlatform,
+} from "@/desktop/shared/keyboardShortcut";
 import {
   parseBoardSortPreference,
   serializeBoardSortPreference,
@@ -215,7 +224,9 @@ export async function setBackgroundSyncIntervalMs(intervalMs: number): Promise<v
 }
 
 const DEFAULT_SESSION_TYPE_KEY = "default_session_type";
-const TASK_SEARCH_SHORTCUT_KEY = "task_search_shortcut";
+const SHORTCUT_BINDINGS_KEY = "shortcut_bindings";
+/** 단축키 표가 생기기 전, 빠른 검색 하나만 따로 저장하던 키 */
+const LEGACY_TASK_SEARCH_SHORTCUT_KEY = "task_search_shortcut";
 const VIM_MODE_ENABLED_KEY = "vim_mode_enabled";
 
 /** 기본 세션 타입을 조회한다. 미설정이거나 모르는 값이면 "tmux"를 반환한다 */
@@ -231,16 +242,51 @@ export async function setDefaultSessionType(sessionType: SessionType): Promise<v
   await setAppSetting(DEFAULT_SESSION_TYPE_KEY, sessionType);
 }
 
-/** 태스크 빠른 검색 단축키를 조회한다. 미설정 시 기본값을 반환한다 */
-export async function getTaskSearchShortcut(): Promise<string> {
-  const value = await getAppSetting(TASK_SEARCH_SHORTCUT_KEY);
-  return value?.trim() || DEFAULT_TASK_SEARCH_SHORTCUT;
+/**
+ * 사용자가 재배정한 값까지 반영한 단축키 표를 조회한다.
+ *
+ * 단축키 표가 없으면 옛 `task_search_shortcut` 값을 `taskSearch` 재배정으로 승계한다. 승계하지 않으면
+ * 그 시절에 빠른 검색을 바꿔 둔 사용자의 단축키가 업그레이드 순간 말없이 기본값으로 되돌아간다.
+ * 승계 결과를 한 번 써 두면 이 분기는 다시 타지 않으므로 옛 키는 그대로 두고 읽지 않는다.
+ */
+export async function getShortcutBindings(): Promise<ShortcutBindings> {
+  const shortcutPlatform = getShortcutPlatformFromProcessPlatform(process.platform);
+  const storedOverrides = await getAppSetting(SHORTCUT_BINDINGS_KEY);
+  if (storedOverrides !== null) {
+    return resolveShortcutBindings(parseShortcutOverrides(storedOverrides, shortcutPlatform));
+  }
+
+  const legacyTaskSearchShortcut = await getAppSetting(LEGACY_TASK_SEARCH_SHORTCUT_KEY);
+  if (!legacyTaskSearchShortcut) {
+    return resolveShortcutBindings({});
+  }
+
+  /** 옛 값은 Mod 없이 `Meta+…`/`Ctrl+…`로 저장돼 있어, 접지 않으면 중복 판정이 같은 조합을 못 알아본다 */
+  const migratedTaskSearchShortcut = canonicalizeShortcutForPlatform(
+    legacyTaskSearchShortcut,
+    shortcutPlatform,
+  );
+  /** 옛 값이 파싱 불가면 canonical 결과가 빈 문자열이고, 그대로 얹으면 기본값을 지워 빠른 검색이 사라진다 */
+  const migratedBindings = resolveShortcutBindings(
+    migratedTaskSearchShortcut ? { taskSearch: migratedTaskSearchShortcut } : {},
+  );
+  await setShortcutBindings(migratedBindings);
+
+  return migratedBindings;
 }
 
-/** 태스크 빠른 검색 단축키를 저장한다 */
-export async function setTaskSearchShortcut(shortcut: string): Promise<void> {
-  const normalizedShortcut = shortcut.trim() || DEFAULT_TASK_SEARCH_SHORTCUT;
-  await setAppSetting(TASK_SEARCH_SHORTCUT_KEY, normalizedShortcut);
+/** 단축키 표를 저장한다. 기본값과 같은 항목은 빼고 재배정만 남긴다 */
+export async function setShortcutBindings(bindings: ShortcutBindings): Promise<void> {
+  const shortcutPlatform = getShortcutPlatformFromProcessPlatform(process.platform);
+  await setAppSetting(
+    SHORTCUT_BINDINGS_KEY,
+    JSON.stringify(collectShortcutOverrides(bindings, shortcutPlatform)),
+  );
+}
+
+/** 태스크 빠른 검색 단축키를 조회한다. 미설정 시 기본값을 반환한다 */
+export async function getTaskSearchShortcut(): Promise<string> {
+  return (await getShortcutBindings()).taskSearch;
 }
 
 /** Vim-style board navigation 활성화 여부를 조회한다. 미설정 시 활성화 상태를 반환한다 */

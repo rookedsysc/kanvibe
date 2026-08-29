@@ -12,17 +12,11 @@ import {
 } from "react";
 import { useRouter } from "@/desktop/renderer/navigation";
 import {
-  SHORTCUTS,
   getCurrentShortcutPlatform,
   isBlockedShortcutEvent,
-  matchShortcutEvent,
 } from "@/desktop/renderer/utils/keyboardShortcut";
-
-export const BOARD_NOTIFICATION_SHORTCUT = SHORTCUTS.boardNotification;
-export const BOARD_PROJECT_FILTER_SHORTCUT = SHORTCUTS.boardProjectFilter;
-export const CREATE_BRANCH_TODO_SHORTCUT = SHORTCUTS.createTask;
-export const PAGE_BACK_SHORTCUT = SHORTCUTS.pageBack;
-export const PAGE_FORWARD_SHORTCUT = SHORTCUTS.pageForward;
+import { useShortcutBindings } from "@/desktop/renderer/utils/shortcutBindings";
+import { findShortcutCommandForEvent } from "@/desktop/shared/shortcutBindings";
 
 export interface BranchTodoDefaults {
   projectId: string;
@@ -86,6 +80,7 @@ export function BoardCommandProvider({ children }: PropsWithChildren) {
   const [isTaskQuickSearchOpen, setIsTaskQuickSearchOpen] = useState(false);
   const [shortcutBlockerCount, setShortcutBlockerCount] = useState(0);
   const shortcutPlatform = getCurrentShortcutPlatform();
+  const shortcutBindings = useShortcutBindings();
   const hasShortcutBlocker = shortcutBlockerCount > 0;
 
   const registerBoardHandlers = useCallback((handlers: BoardCommandHandlers) => {
@@ -146,7 +141,9 @@ export function BoardCommandProvider({ children }: PropsWithChildren) {
         return;
       }
 
-      if (matchShortcutEvent(event, BOARD_NOTIFICATION_SHORTCUT, shortcutPlatform)) {
+      const shortcutCommand = findShortcutCommandForEvent(shortcutBindings, event, shortcutPlatform);
+
+      if (shortcutCommand === "boardNotification") {
         if (!notificationCenterHandlerRef.current) {
           return;
         }
@@ -156,7 +153,7 @@ export function BoardCommandProvider({ children }: PropsWithChildren) {
         return;
       }
 
-      if (matchShortcutEvent(event, BOARD_PROJECT_FILTER_SHORTCUT, shortcutPlatform)) {
+      if (shortcutCommand === "boardProjectFilter") {
         if (!handlersRef.current) {
           return;
         }
@@ -166,19 +163,19 @@ export function BoardCommandProvider({ children }: PropsWithChildren) {
         return;
       }
 
-      if (matchShortcutEvent(event, CREATE_BRANCH_TODO_SHORTCUT, shortcutPlatform)) {
+      if (shortcutCommand === "createTask") {
         event.preventDefault();
         handlersRef.current?.openCreateTaskModal();
         return;
       }
 
-      if (matchShortcutEvent(event, PAGE_BACK_SHORTCUT, shortcutPlatform)) {
+      if (shortcutCommand === "pageBack") {
         event.preventDefault();
         router.back();
         return;
       }
 
-      if (matchShortcutEvent(event, PAGE_FORWARD_SHORTCUT, shortcutPlatform)) {
+      if (shortcutCommand === "pageForward") {
         event.preventDefault();
         router.forward();
       }
@@ -188,7 +185,7 @@ export function BoardCommandProvider({ children }: PropsWithChildren) {
     return () => {
       window.removeEventListener("keydown", handleGlobalKeyDown);
     };
-  }, [hasShortcutBlocker, isTaskQuickSearchOpen, router, shortcutPlatform]);
+  }, [hasShortcutBlocker, isTaskQuickSearchOpen, router, shortcutBindings, shortcutPlatform]);
 
   useEffect(() => {
     const unsubscribe = window.kanvibeDesktop?.onCreateTaskShortcut?.(() => {
