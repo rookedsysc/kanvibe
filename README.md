@@ -387,6 +387,14 @@ Review code changes directly in the browser with a GitHub-style diff viewer. Cli
 
 ---
 
+## Project Stats
+
+<img src="./docs/images/readme/downloads-chart.svg" alt="KanVibe cumulative DMG download trend" width="100%">
+
+Updated daily from GitHub Release asset download counts.
+
+---
+
 ## License
 
 This project is licensed under the **AGPL-3.0**. You are free to use, modify, and extend it for open-source purposes. Commercial SaaS distribution is not permitted under this license. See [LICENSE](./LICENSE) for details.
