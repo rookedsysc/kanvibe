@@ -393,6 +393,8 @@ Review code changes directly in the browser with a GitHub-style diff viewer. Cli
 
 Updated daily from GitHub Release asset download counts.
 
+[![Star History Chart](https://api.star-history.com/svg?repos=rookedsysc/kanvibe&type=Date)](https://star-history.com/#rookedsysc/kanvibe&Date)
+
 ---
 
 ## License

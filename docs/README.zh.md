@@ -366,6 +366,16 @@ AI 代理 Hooks 触发的任务状态变更会发送**浏览器通知**，显示
 
 ---
 
+## 项目统计
+
+<img src="./images/readme/downloads-chart.svg" alt="KanVibe 累计 DMG 下载趋势" width="100%">
+
+每日统计 GitHub Release 资产下载次数并更新。
+
+[![Star History Chart](https://api.star-history.com/svg?repos=rookedsysc/kanvibe&type=Date)](https://star-history.com/#rookedsysc/kanvibe&Date)
+
+---
+
 ## 许可证
 
 本项目使用 **AGPL-3.0** 许可证。你可以自由地用于开源目的进行使用、修改和扩展。此许可证不允许商业 SaaS 分发。详情请参阅 [LICENSE](../LICENSE)。
