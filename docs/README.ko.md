@@ -372,7 +372,7 @@ AI 에이전트 Hooks를 통한 태스크 상태 변경이 **브라우저 알림
 
 GitHub Release 자산 다운로드 수를 매일 집계해 반영합니다.
 
-[![Star History Chart](https://api.star-history.com/svg?repos=rookedsysc/kanvibe&type=Date)](https://star-history.com/#rookedsysc/kanvibe&Date)
+<img src="./images/readme/star-history-chart.svg" alt="KanVibe GitHub star 추이" width="100%">
 
 ---
 

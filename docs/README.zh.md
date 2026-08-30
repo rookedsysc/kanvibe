@@ -372,7 +372,7 @@ AI 代理 Hooks 触发的任务状态变更会发送**浏览器通知**，显示
 
 每日统计 GitHub Release 资产下载次数并更新。
 
-[![Star History Chart](https://api.star-history.com/svg?repos=rookedsysc/kanvibe&type=Date)](https://star-history.com/#rookedsysc/kanvibe&Date)
+<img src="./images/readme/star-history-chart.svg" alt="KanVibe GitHub star 数量趋势" width="100%">
 
 ---
 
