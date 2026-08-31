@@ -764,6 +764,17 @@ function attachWindowHandlers(browserWindow) {
       return;
     }
 
+    /**
+     * task 상세 창은 터미널(xterm)이 포커스를 가진 경우가 많아, before-input-event에서
+     * 먼저 가로채지 않으면 keydown이 렌더러 window 리스너에 닿기 전에 소비된다.
+     */
+    if (shortcutCommand === "commandPalette") {
+      event.preventDefault();
+
+      browserWindow.webContents.send("kanvibe:command-palette-shortcut");
+      return;
+    }
+
     if (shortcutCommand === "newWindow") {
       event.preventDefault();
 

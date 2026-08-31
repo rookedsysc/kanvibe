@@ -294,6 +294,20 @@ export function BoardCommandProvider({ children }: PropsWithChildren) {
     };
   }, [hasShortcutBlocker, isCommandPaletteOpen, isTaskQuickSearchOpen]);
 
+  useEffect(() => {
+    const unsubscribe = window.kanvibeDesktop?.onCommandPaletteShortcut?.(() => {
+      if (hasShortcutBlocker || isTaskQuickSearchOpen || isCommandPaletteOpen) {
+        return;
+      }
+
+      openCommandPalette();
+    });
+
+    return () => {
+      unsubscribe?.();
+    };
+  }, [hasShortcutBlocker, isCommandPaletteOpen, isTaskQuickSearchOpen, openCommandPalette]);
+
   const value = useMemo<BoardCommandContextValue>(() => ({
     canCreateBranchTodo,
     registerBoardHandlers,
