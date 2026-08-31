@@ -368,11 +368,21 @@ AI 에이전트 Hooks를 통한 태스크 상태 변경이 **브라우저 알림
 
 ## 프로젝트 통계
 
-<img src="./images/readme/downloads-chart.svg" alt="KanVibe 누적 DMG 다운로드 추이" width="100%">
+<img src="./images/readme/downloads-chart.svg" alt="KanVibe DMG 다운로드 추이 (최근 30일)" width="100%">
 
-GitHub Release 자산 다운로드 수를 매일 집계해 반영합니다.
+다운로드 수, 최근 30일 — GitHub Release 자산 다운로드 수를 매일 집계해 반영합니다.
 
-<img src="./images/readme/star-history-chart.svg" alt="KanVibe GitHub star 추이" width="100%">
+<img src="./images/readme/downloads-chart-monthly.svg" alt="KanVibe DMG 다운로드 추이 (월간)" width="100%">
+
+다운로드 수, 전체 기간 월별 추이.
+
+<img src="./images/readme/star-history-chart.svg" alt="KanVibe GitHub star 추이 (최근 30일)" width="100%">
+
+GitHub star 수, 최근 30일.
+
+<img src="./images/readme/star-history-chart-monthly.svg" alt="KanVibe GitHub star 추이 (월간)" width="100%">
+
+GitHub star 수, 전체 기간 월별 추이.
 
 ---
 
