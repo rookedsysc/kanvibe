@@ -10,7 +10,8 @@ import { TASK_STATUS_ORDER, type TaskStatus } from "@/entities/KanbanTask";
 
 interface CommandItem {
   id: string;
-  label: string;
+  command: string;
+  description: string;
   run: () => void;
 }
 
@@ -70,14 +71,15 @@ export default function CommandPaletteDialog() {
 
   const commands = useMemo<CommandItem[]>(() => {
     const items: CommandItem[] = [
-      { id: "sync", label: t("syncLabel"), run: runSync },
+      { id: "sync", command: "sync", description: t("syncLabel"), run: runSync },
     ];
 
     if (hasMoveTarget) {
       for (const status of moveTargetStatuses) {
         items.push({
           id: `move:${status}`,
-          label: t("moveToStatusLabel", { status: tBoard(`columns.${status}`) }),
+          command: `move ${status}`,
+          description: t("moveToStatusLabel", { status: tBoard(`columns.${status}`) }),
           run: () => selectStatus(status),
         });
       }
@@ -93,7 +95,9 @@ export default function CommandPaletteDialog() {
       return commands;
     }
 
-    return commands.filter((command) => command.label.toLowerCase().includes(normalizedQuery));
+    return commands.filter((command) => (
+      `${command.command} ${command.description}`.toLowerCase().includes(normalizedQuery)
+    ));
   }, [commands, query]);
 
   const selectedResultIndex = results.length === 0
@@ -172,11 +176,12 @@ export default function CommandPaletteDialog() {
                   type="button"
                   onClick={command.run}
                   onMouseEnter={() => setSelectedIndex(index)}
-                  className={`flex w-full items-center px-4 py-2.5 text-left text-sm font-medium text-text-primary transition-colors ${
+                  className={`flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm transition-colors ${
                     index === selectedResultIndex ? "bg-brand-primary/10" : "hover:bg-bg-page"
                   }`}
                 >
-                  {command.label}
+                  <span className="shrink-0 font-mono text-xs font-semibold text-text-primary">{command.command}</span>
+                  <span className="truncate text-text-muted">{command.description}</span>
                 </button>
               ))}
             </div>

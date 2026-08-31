@@ -136,18 +136,7 @@
       "done": "完成"
     },
     "loadMore": "加载更多",
-    "loadingMore": "加载中...",
-    "vimCommand": {
-      "label": "Vim 命令",
-      "placeholder": "sync 或 move review",
-      "hint": "使用 :sync 运行后台同步，或对当前聚焦任务使用 :move todo|progress|pending|review|done。按 Tab 自动补全。",
-      "completionHint": "按 Tab 补全为 {command}。",
-      "errors": {
-        "unknownCommand": "未知命令。请尝试 :sync 或 :move review。",
-        "noFocusedTask": "运行 :move 前请先聚焦一个任务卡片。",
-        "taskNotFound": "当前聚焦的任务已不在可见列表中。"
-      }
-    }
+    "loadingMore": "加载中..."
   },
   "task": {
     "descriptionLabel": "描述",

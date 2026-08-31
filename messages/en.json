@@ -137,18 +137,7 @@
       "done": "Done"
     },
     "loadMore": "Load More",
-    "loadingMore": "Loading...",
-    "vimCommand": {
-      "label": "Vim command",
-      "placeholder": "sync or move review",
-      "hint": "Use :sync to run background sync, or :move todo|progress|pending|review|done for the focused task. Press Tab to autocomplete.",
-      "completionHint": "Press Tab to complete {command}.",
-      "errors": {
-        "unknownCommand": "Unknown command. Try :sync or :move review.",
-        "noFocusedTask": "Focus a task card before running :move.",
-        "taskNotFound": "The focused task is no longer visible."
-      }
-    }
+    "loadingMore": "Loading..."
   },
   "task": {
     "descriptionLabel": "Description",

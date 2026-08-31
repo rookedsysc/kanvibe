@@ -1,8 +1,9 @@
 import { forwardRef, useEffect, useImperativeHandle } from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { createEvent, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { createEvent, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import Board from "../Board";
+import CommandPaletteDialog from "@/desktop/renderer/components/CommandPaletteDialog";
 import { deleteTask, moveTaskToColumn } from "@/desktop/renderer/actions/kanban";
 import { runBackgroundTaskSyncNow } from "@/desktop/renderer/actions/backgroundTaskSync";
 import { useTaskKindFilterParams } from "@/desktop/renderer/hooks/useTaskKindFilterParams";
@@ -1165,20 +1166,25 @@ describe("Board defaultSessionType sync", () => {
     });
   });
 
-  it(":move <status> 명령으로 포커스된 task를 대상 컬럼으로 이동한다", async () => {
+  it(":는 커맨드 팔레트를 열고, 'move review' 입력 후 Enter로 포커스된 task를 대상 컬럼으로 이동한다", async () => {
     render(
-      <Board
-        initialTasks={createTasksWithTodo()}
-        initialDoneTotal={0}
-        initialDoneLimit={20}
-        sshHosts={[]}
-        projects={[createProject()]}
-        sidebarDefaultCollapsed={false}
-        doneAlertDismissed={false}
-        notificationSettings={{ isEnabled: true, enabledStatuses: ["progress", "pending", "review"] }}
-        defaultSessionType={SessionType.TMUX}
-        taskSearchShortcut="Mod+Shift+O"
-      />,
+      <MemoryRouter initialEntries={["/ko"]}>
+        <BoardCommandProvider>
+          <Board
+            initialTasks={createTasksWithTodo()}
+            initialDoneTotal={0}
+            initialDoneLimit={20}
+            sshHosts={[]}
+            projects={[createProject()]}
+            sidebarDefaultCollapsed={false}
+            doneAlertDismissed={false}
+            notificationSettings={{ isEnabled: true, enabledStatuses: ["progress", "pending", "review"] }}
+            defaultSessionType={SessionType.TMUX}
+            taskSearchShortcut="Mod+Shift+O"
+          />
+          <CommandPaletteDialog />
+        </BoardCommandProvider>
+      </MemoryRouter>,
     );
 
     const taskLink = await screen.findByRole("link", { name: "Test Task" });
@@ -1189,29 +1195,34 @@ describe("Board defaultSessionType sync", () => {
 
     expect(openCommandEvent.defaultPrevented).toBe(true);
 
-    const commandInput = await screen.findByRole("textbox", { name: "vimCommand.label" });
-    fireEvent.change(commandInput, { target: { value: "move review" } });
-    fireEvent.keyDown(commandInput, { key: "Enter" });
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.change(within(dialog).getByRole("textbox"), { target: { value: "move review" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: /move review/ }));
 
     await waitFor(() => {
       expect(moveTaskToColumn).toHaveBeenCalledWith("task-1", TaskStatus.REVIEW);
     });
   });
 
-  it(":sync 명령으로 background task sync를 백그라운드 실행한다", async () => {
+  it(":는 커맨드 팔레트를 열고, 'sync' 입력 후 Enter로 background task sync를 백그라운드 실행한다", async () => {
     render(
-      <Board
-        initialTasks={createEmptyTasks()}
-        initialDoneTotal={0}
-        initialDoneLimit={20}
-        sshHosts={[]}
-        projects={[createProject()]}
-        sidebarDefaultCollapsed={false}
-        doneAlertDismissed={false}
-        notificationSettings={{ isEnabled: true, enabledStatuses: ["progress", "pending", "review"] }}
-        defaultSessionType={SessionType.TMUX}
-        taskSearchShortcut="Mod+Shift+O"
-      />,
+      <MemoryRouter initialEntries={["/ko"]}>
+        <BoardCommandProvider>
+          <Board
+            initialTasks={createEmptyTasks()}
+            initialDoneTotal={0}
+            initialDoneLimit={20}
+            sshHosts={[]}
+            projects={[createProject()]}
+            sidebarDefaultCollapsed={false}
+            doneAlertDismissed={false}
+            notificationSettings={{ isEnabled: true, enabledStatuses: ["progress", "pending", "review"] }}
+            defaultSessionType={SessionType.TMUX}
+            taskSearchShortcut="Mod+Shift+O"
+          />
+          <CommandPaletteDialog />
+        </BoardCommandProvider>
+      </MemoryRouter>,
     );
 
     const openCommandEvent = createEvent.keyDown(window, { key: ":" });
@@ -1219,115 +1230,16 @@ describe("Board defaultSessionType sync", () => {
 
     expect(openCommandEvent.defaultPrevented).toBe(true);
 
-    const commandInput = await screen.findByRole("textbox", { name: "vimCommand.label" });
+    const dialog = await screen.findByRole("dialog");
+    const commandInput = within(dialog).getByRole("textbox");
     fireEvent.change(commandInput, { target: { value: "sync" } });
     fireEvent.keyDown(commandInput, { key: "Enter" });
 
     expect(runBackgroundTaskSyncNow).toHaveBeenCalledTimes(1);
     expect(moveTaskToColumn).not.toHaveBeenCalled();
     await waitFor(() => {
-      expect(screen.queryByRole("textbox", { name: "vimCommand.label" })).toBeNull();
+      expect(screen.queryByRole("dialog")).toBeNull();
     });
-  });
-
-  it(":sync 명령은 Tab 자동 완성으로 입력할 수 있다", async () => {
-    render(
-      <Board
-        initialTasks={createEmptyTasks()}
-        initialDoneTotal={0}
-        initialDoneLimit={20}
-        sshHosts={[]}
-        projects={[createProject()]}
-        sidebarDefaultCollapsed={false}
-        doneAlertDismissed={false}
-        notificationSettings={{ isEnabled: true, enabledStatuses: ["progress", "pending", "review"] }}
-        defaultSessionType={SessionType.TMUX}
-        taskSearchShortcut="Mod+Shift+O"
-      />,
-    );
-
-    fireEvent.keyDown(window, { key: ":" });
-
-    const commandInput = await screen.findByRole("textbox", { name: "vimCommand.label" });
-    fireEvent.change(commandInput, { target: { value: "s" } });
-
-    const autocompleteEvent = createEvent.keyDown(commandInput, { key: "Tab" });
-    fireEvent(commandInput, autocompleteEvent);
-
-    expect(autocompleteEvent.defaultPrevented).toBe(true);
-    await waitFor(() => {
-      expect((commandInput as HTMLInputElement).value).toBe("sync");
-    });
-  });
-
-  it(":move 명령에서 Tab으로 상태명을 자동 완성한다", async () => {
-    render(
-      <Board
-        initialTasks={createTasksWithTodo()}
-        initialDoneTotal={0}
-        initialDoneLimit={20}
-        sshHosts={[]}
-        projects={[createProject()]}
-        sidebarDefaultCollapsed={false}
-        doneAlertDismissed={false}
-        notificationSettings={{ isEnabled: true, enabledStatuses: ["progress", "pending", "review"] }}
-        defaultSessionType={SessionType.TMUX}
-        taskSearchShortcut="Mod+Shift+O"
-      />,
-    );
-
-    const taskLink = await screen.findByRole("link", { name: "Test Task" });
-    taskLink.focus();
-
-    fireEvent.keyDown(taskLink, { key: ":" });
-
-    const commandInput = await screen.findByRole("textbox", { name: "vimCommand.label" });
-    fireEvent.change(commandInput, { target: { value: "move re" } });
-
-    const autocompleteEvent = createEvent.keyDown(commandInput, { key: "Tab" });
-    fireEvent(commandInput, autocompleteEvent);
-
-    expect(autocompleteEvent.defaultPrevented).toBe(true);
-    await waitFor(() => {
-      expect((commandInput as HTMLInputElement).value).toBe("move review");
-    });
-
-    fireEvent.keyDown(commandInput, { key: "Enter" });
-
-    await waitFor(() => {
-      expect(moveTaskToColumn).toHaveBeenCalledWith("task-1", TaskStatus.REVIEW);
-    });
-  });
-
-  it(":move 명령 자동 완성 후보가 모호하면 Tab을 소비하지 않는다", async () => {
-    render(
-      <Board
-        initialTasks={createTasksWithTodo()}
-        initialDoneTotal={0}
-        initialDoneLimit={20}
-        sshHosts={[]}
-        projects={[createProject()]}
-        sidebarDefaultCollapsed={false}
-        doneAlertDismissed={false}
-        notificationSettings={{ isEnabled: true, enabledStatuses: ["progress", "pending", "review"] }}
-        defaultSessionType={SessionType.TMUX}
-        taskSearchShortcut="Mod+Shift+O"
-      />,
-    );
-
-    const taskLink = await screen.findByRole("link", { name: "Test Task" });
-    taskLink.focus();
-
-    fireEvent.keyDown(taskLink, { key: ":" });
-
-    const commandInput = await screen.findByRole("textbox", { name: "vimCommand.label" });
-    fireEvent.change(commandInput, { target: { value: "move p" } });
-
-    const autocompleteEvent = createEvent.keyDown(commandInput, { key: "Tab" });
-    fireEvent(commandInput, autocompleteEvent);
-
-    expect(autocompleteEvent.defaultPrevented).toBe(false);
-    expect((commandInput as HTMLInputElement).value).toBe("move p");
   });
 
   it("상세 화면에서 돌아온 task id가 있으면 해당 task로 초기 focus를 시작한다", async () => {

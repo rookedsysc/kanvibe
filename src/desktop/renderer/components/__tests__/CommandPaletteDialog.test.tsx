@@ -159,6 +159,42 @@ describe("CommandPaletteDialog", () => {
     expect(screen.queryByRole("button", { name: /board\.columns\.review/ })).toBeNull();
   });
 
+  it("각 행은 명령어(command)와 설명(description)을 분리된 요소로 렌더링한다", () => {
+    const moveTaskToStatus = vi.fn();
+
+    renderWithRouter(
+      <BoardCommandProvider>
+        <ActiveTaskContextHarness moveTaskToStatus={moveTaskToStatus} />
+        <CommandPaletteDialog />
+      </BoardCommandProvider>,
+    );
+
+    openPalette();
+
+    expect(screen.getByText("sync")).toBeTruthy();
+    expect(screen.getByText("commandPalette.syncLabel")).toBeTruthy();
+    expect(screen.getByText("move review")).toBeTruthy();
+    expect(screen.getByText(/commandPalette\.moveToStatusLabel:board\.columns\.review/)).toBeTruthy();
+  });
+
+  it("명령어 토큰(예: 'move progress')으로 검색하면 해당 행만 남는다", () => {
+    const moveTaskToStatus = vi.fn();
+
+    renderWithRouter(
+      <BoardCommandProvider>
+        <ActiveTaskContextHarness moveTaskToStatus={moveTaskToStatus} />
+        <CommandPaletteDialog />
+      </BoardCommandProvider>,
+    );
+
+    openPalette();
+    fireEvent.change(getSearchInput(), { target: { value: "move progress" } });
+
+    expect(screen.getByText("move progress")).toBeTruthy();
+    expect(screen.queryByText("move review")).toBeNull();
+    expect(screen.queryByText("sync")).toBeNull();
+  });
+
   it("ArrowDown 후 Enter는 두 번째 행을 실행한다", () => {
     const moveTaskToStatus = vi.fn();
 
