@@ -2,6 +2,8 @@
 title: KanVibe Docs
 ---
 
+import { Tabs } from 'nextra/components'
+
 <div className="kv-hero">
   <span className="kv-eyebrow">KanVibe Docs · Nextra 4</span>
   <h1>AI 에이전트 작업을 칸반, 터미널, 브랜치 흐름으로 묶습니다.</h1>
@@ -78,22 +80,32 @@ title: KanVibe Docs
 
 ## 프로젝트 통계
 
-<figure className="kv-shot">
-  <img src="https://raw.githubusercontent.com/rookedsysc/kanvibe/main/docs/images/readme/downloads-chart.svg" alt="KanVibe DMG 다운로드 추이 (최근 30일)" />
-  <figcaption>다운로드 수, 최근 30일 — GitHub Release 자산 다운로드 수를 매일 집계해 반영합니다.</figcaption>
-</figure>
+<Tabs items={['최근 30일', '월간']}>
+  <Tabs.Tab>
+    <figure className="kv-shot">
+      <img src="https://raw.githubusercontent.com/rookedsysc/kanvibe/main/docs/images/readme/downloads-chart.svg" alt="KanVibe DMG 다운로드 추이 (최근 30일)" />
+      <figcaption>다운로드 수, 최근 30일 — GitHub Release 자산 다운로드 수를 매일 집계해 반영합니다.</figcaption>
+    </figure>
+  </Tabs.Tab>
+  <Tabs.Tab>
+    <figure className="kv-shot">
+      <img src="https://raw.githubusercontent.com/rookedsysc/kanvibe/main/docs/images/readme/downloads-chart-monthly.svg" alt="KanVibe DMG 다운로드 추이 (월간)" />
+      <figcaption>다운로드 수, 전체 기간 월별 추이.</figcaption>
+    </figure>
+  </Tabs.Tab>
+</Tabs>
 
-<figure className="kv-shot">
-  <img src="https://raw.githubusercontent.com/rookedsysc/kanvibe/main/docs/images/readme/downloads-chart-monthly.svg" alt="KanVibe DMG 다운로드 추이 (월간)" />
-  <figcaption>다운로드 수, 전체 기간 월별 추이.</figcaption>
-</figure>
-
-<figure className="kv-shot">
-  <img src="https://raw.githubusercontent.com/rookedsysc/kanvibe/main/docs/images/readme/star-history-chart.svg" alt="KanVibe GitHub star 추이 (최근 30일)" />
-  <figcaption>GitHub star 수, 최근 30일.</figcaption>
-</figure>
-
-<figure className="kv-shot">
-  <img src="https://raw.githubusercontent.com/rookedsysc/kanvibe/main/docs/images/readme/star-history-chart-monthly.svg" alt="KanVibe GitHub star 추이 (월간)" />
-  <figcaption>GitHub star 수, 전체 기간 월별 추이.</figcaption>
-</figure>
+<Tabs items={['최근 30일', '월간']}>
+  <Tabs.Tab>
+    <figure className="kv-shot">
+      <img src="https://raw.githubusercontent.com/rookedsysc/kanvibe/main/docs/images/readme/star-history-chart.svg" alt="KanVibe GitHub star 추이 (최근 30일)" />
+      <figcaption>GitHub star 수, 최근 30일.</figcaption>
+    </figure>
+  </Tabs.Tab>
+  <Tabs.Tab>
+    <figure className="kv-shot">
+      <img src="https://raw.githubusercontent.com/rookedsysc/kanvibe/main/docs/images/readme/star-history-chart-monthly.svg" alt="KanVibe GitHub star 추이 (월간)" />
+      <figcaption>GitHub star 수, 전체 기간 월별 추이.</figcaption>
+    </figure>
+  </Tabs.Tab>
+</Tabs>

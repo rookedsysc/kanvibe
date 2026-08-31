@@ -389,21 +389,27 @@ Review code changes directly in the browser with a GitHub-style diff viewer. Cli
 
 ## Project Stats
 
-<img src="./docs/images/readme/downloads-chart.svg" alt="KanVibe DMG download trend (last 30 days)" width="100%">
-
-Downloads, last 30 days — updated daily from GitHub Release asset download counts.
-
 <img src="./docs/images/readme/downloads-chart-monthly.svg" alt="KanVibe DMG download trend (monthly)" width="100%">
 
-Downloads, all-time monthly trend.
+Downloads, all-time monthly trend — updated daily from GitHub Release asset download counts.
 
-<img src="./docs/images/readme/star-history-chart.svg" alt="KanVibe GitHub star trend (last 30 days)" width="100%">
+<details>
+<summary>Last 30 days</summary>
 
-GitHub stars, last 30 days.
+<img src="./docs/images/readme/downloads-chart.svg" alt="KanVibe DMG download trend (last 30 days)" width="100%">
+
+</details>
 
 <img src="./docs/images/readme/star-history-chart-monthly.svg" alt="KanVibe GitHub star trend (monthly)" width="100%">
 
 GitHub stars, all-time monthly trend.
+
+<details>
+<summary>Last 30 days</summary>
+
+<img src="./docs/images/readme/star-history-chart.svg" alt="KanVibe GitHub star trend (last 30 days)" width="100%">
+
+</details>
 
 ---
 
