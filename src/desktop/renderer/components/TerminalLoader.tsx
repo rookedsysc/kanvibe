@@ -8,17 +8,19 @@ interface TerminalLoaderProps {
    * tmux와 zellij는 멀티플렉서가 화면을 하나로 그리므로 비워 두고 xterm 하나만 띄운다.
    */
   tabs?: TerminalTab[];
+  /** 원격(SSH) 세션인지 여부. `Terminal`로 그대로 전달해 클립보드 이미지 붙여넣기 범위를 가른다 */
+  isRemote?: boolean;
 }
 
 /**
  * terminal 세션은 탭마다 xterm을 따로 두고 비활성 탭을 숨기기만 한다.
  * 언마운트하면 그 탭의 스크롤백이 사라져서, 돌아왔을 때 화면이 비어 보인다.
  */
-export default function TerminalLoader({ taskId, tabs }: TerminalLoaderProps) {
+export default function TerminalLoader({ taskId, tabs, isRemote }: TerminalLoaderProps) {
   if (!tabs) {
     return (
       <div className="h-full">
-        <Terminal taskId={taskId} />
+        <Terminal taskId={taskId} isRemote={isRemote} />
       </div>
     );
   }
@@ -35,7 +37,7 @@ export default function TerminalLoader({ taskId, tabs }: TerminalLoaderProps) {
     <div className="h-full">
       {tabs.map((tab) => (
         <div key={tab.id} className={tab.isActive ? "h-full" : "hidden"}>
-          <Terminal taskId={taskId} tabId={tab.id} isHidden={!tab.isActive} />
+          <Terminal taskId={taskId} tabId={tab.id} isHidden={!tab.isActive} isRemote={isRemote} />
         </div>
       ))}
     </div>

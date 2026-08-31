@@ -75,8 +75,14 @@ contextBridge.exposeInMainWorld("kanvibeDesktop", {
   closeTerminal(taskId, tabId) {
     ipcRenderer.send("kanvibe:terminal-close", taskId, tabId);
   },
+  pasteImageToRemoteTerminal(taskId, imageDataUrl) {
+    return ipcRenderer.invoke("kanvibe:terminal-paste-image", taskId, imageDataUrl);
+  },
   writeSystemClipboard(text) {
     return ipcRenderer.invoke("kanvibe:clipboard-write", text);
+  },
+  readClipboardImage() {
+    return ipcRenderer.sendSync("kanvibe:clipboard-read-image");
   },
   openAiAccountLogin(provider, accountRoot, cols, rows) {
     return ipcRenderer.invoke("kanvibe:ai-login-open", provider, accountRoot, cols, rows);
