@@ -366,6 +366,32 @@ AI 에이전트 Hooks를 통한 태스크 상태 변경이 **브라우저 알림
 
 ---
 
+## 프로젝트 통계
+
+<img src="./images/readme/downloads-chart-monthly.svg" alt="KanVibe DMG 다운로드 추이 (월간)" width="100%">
+
+다운로드 수, 전체 기간 월별 추이 — GitHub Release 자산 다운로드 수를 매일 집계해 반영합니다.
+
+<details>
+<summary>최근 30일</summary>
+
+<img src="./images/readme/downloads-chart.svg" alt="KanVibe DMG 다운로드 추이 (최근 30일)" width="100%">
+
+</details>
+
+<img src="./images/readme/star-history-chart-monthly.svg" alt="KanVibe GitHub star 추이 (월간)" width="100%">
+
+GitHub star 수, 전체 기간 월별 추이.
+
+<details>
+<summary>최근 30일</summary>
+
+<img src="./images/readme/star-history-chart.svg" alt="KanVibe GitHub star 추이 (최근 30일)" width="100%">
+
+</details>
+
+---
+
 ## 라이선스
 
 이 프로젝트는 **AGPL-3.0** 라이선스를 따릅니다. 오픈소스 목적으로 자유롭게 사용, 수정, 확장할 수 있습니다. 상업적 SaaS 배포는 이 라이선스에서 허용되지 않습니다. 자세한 내용은 [LICENSE](../LICENSE)를 참조하세요.

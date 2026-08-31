@@ -3,6 +3,8 @@ title: KanVibe Docs
 description: "KanVibe is a macOS desktop app that ties AI coding agent work from Claude Code, Gemini CLI, Codex CLI, and OpenCode to a Kanban board, per-task terminals, and git worktrees."
 ---
 
+import { Tabs } from 'nextra/components'
+
 <div className="kv-hero">
   <span className="kv-eyebrow">KanVibe Docs · Nextra 4</span>
   <h1>Bring AI agent work into one Kanban, terminal, and branch workflow.</h1>
@@ -76,3 +78,35 @@ description: "KanVibe is a macOS desktop app that ties AI coding agent work from
     <p>Deleting a task automatically cleans up its git worktree, branch, and terminal session in the background. Moving a task to DONE alone cleans up nothing, and the project root branch is protected.</p>
   </div>
 </div>
+
+## Project Stats
+
+<Tabs items={['Last 30 Days', 'Monthly']}>
+  <Tabs.Tab>
+    <figure className="kv-shot">
+      <img src="https://raw.githubusercontent.com/rookedsysc/kanvibe/main/docs/images/readme/downloads-chart.svg" alt="KanVibe DMG download trend (last 30 days)" />
+      <figcaption>Downloads, last 30 days — updated daily from GitHub Release asset download counts.</figcaption>
+    </figure>
+  </Tabs.Tab>
+  <Tabs.Tab>
+    <figure className="kv-shot">
+      <img src="https://raw.githubusercontent.com/rookedsysc/kanvibe/main/docs/images/readme/downloads-chart-monthly.svg" alt="KanVibe DMG download trend (monthly)" />
+      <figcaption>Downloads, all-time monthly trend.</figcaption>
+    </figure>
+  </Tabs.Tab>
+</Tabs>
+
+<Tabs items={['Last 30 Days', 'Monthly']}>
+  <Tabs.Tab>
+    <figure className="kv-shot">
+      <img src="https://raw.githubusercontent.com/rookedsysc/kanvibe/main/docs/images/readme/star-history-chart.svg" alt="KanVibe GitHub star trend (last 30 days)" />
+      <figcaption>GitHub stars, last 30 days.</figcaption>
+    </figure>
+  </Tabs.Tab>
+  <Tabs.Tab>
+    <figure className="kv-shot">
+      <img src="https://raw.githubusercontent.com/rookedsysc/kanvibe/main/docs/images/readme/star-history-chart-monthly.svg" alt="KanVibe GitHub star trend (monthly)" />
+      <figcaption>GitHub stars, all-time monthly trend.</figcaption>
+    </figure>
+  </Tabs.Tab>
+</Tabs>

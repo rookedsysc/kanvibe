@@ -3,6 +3,8 @@ title: KanVibe Docs
 description: "KanVibe는 Claude Code, Gemini CLI, Codex CLI, OpenCode 같은 AI 코딩 에이전트 작업을 칸반 보드와 태스크별 터미널, git worktree로 묶는 macOS 데스크톱 앱입니다."
 ---
 
+import { Tabs } from 'nextra/components'
+
 <div className="kv-hero">
   <span className="kv-eyebrow">KanVibe Docs · Nextra 4</span>
   <h1>AI 에이전트 작업을 칸반, 터미널, 브랜치 흐름으로 묶습니다.</h1>
@@ -76,3 +78,35 @@ description: "KanVibe는 Claude Code, Gemini CLI, Codex CLI, OpenCode 같은 AI 
     <p>태스크를 삭제하면 git worktree, branch, 터미널 세션을 백그라운드에서 자동 정리합니다. DONE으로 옮기는 것만으로는 정리하지 않으며, 프로젝트 루트 브랜치는 보호됩니다.</p>
   </div>
 </div>
+
+## 프로젝트 통계
+
+<Tabs items={['최근 30일', '월간']}>
+  <Tabs.Tab>
+    <figure className="kv-shot">
+      <img src="https://raw.githubusercontent.com/rookedsysc/kanvibe/main/docs/images/readme/downloads-chart.svg" alt="KanVibe DMG 다운로드 추이 (최근 30일)" />
+      <figcaption>다운로드 수, 최근 30일 — GitHub Release 자산 다운로드 수를 매일 집계해 반영합니다.</figcaption>
+    </figure>
+  </Tabs.Tab>
+  <Tabs.Tab>
+    <figure className="kv-shot">
+      <img src="https://raw.githubusercontent.com/rookedsysc/kanvibe/main/docs/images/readme/downloads-chart-monthly.svg" alt="KanVibe DMG 다운로드 추이 (월간)" />
+      <figcaption>다운로드 수, 전체 기간 월별 추이.</figcaption>
+    </figure>
+  </Tabs.Tab>
+</Tabs>
+
+<Tabs items={['최근 30일', '월간']}>
+  <Tabs.Tab>
+    <figure className="kv-shot">
+      <img src="https://raw.githubusercontent.com/rookedsysc/kanvibe/main/docs/images/readme/star-history-chart.svg" alt="KanVibe GitHub star 추이 (최근 30일)" />
+      <figcaption>GitHub star 수, 최근 30일.</figcaption>
+    </figure>
+  </Tabs.Tab>
+  <Tabs.Tab>
+    <figure className="kv-shot">
+      <img src="https://raw.githubusercontent.com/rookedsysc/kanvibe/main/docs/images/readme/star-history-chart-monthly.svg" alt="KanVibe GitHub star 추이 (월간)" />
+      <figcaption>GitHub star 수, 전체 기간 월별 추이.</figcaption>
+    </figure>
+  </Tabs.Tab>
+</Tabs>

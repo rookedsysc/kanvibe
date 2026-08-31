@@ -569,6 +569,58 @@ img {
   color: var(--kv-soft);
 }
 
+/*
+ * Nextra's built-in <Tabs> ships Tailwind `x:`-prefixed utility classes, but this
+ * project has no Tailwind build step (see postcss.config.mjs), so those classes
+ * resolve to nothing and the tabs fall back to unstyled native <button>s. Style
+ * via the ARIA roles headlessui renders instead, which stay stable regardless of
+ * Nextra's internal class names.
+ */
+[role='tablist'] {
+  display: inline-flex;
+  flex-wrap: nowrap;
+  gap: 0.3rem;
+  overflow-x: auto;
+  margin: 1.25rem 0 0;
+  border: 1px solid var(--kv-border-soft);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.035);
+  padding: 0.28rem;
+}
+
+[role='tab'] {
+  appearance: none;
+  flex-shrink: 0;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  padding: 0.48rem 1rem;
+  color: var(--kv-muted);
+  font-family: inherit;
+  font-size: 0.86rem;
+  font-weight: 650;
+  cursor: pointer;
+  transition: background 160ms ease, color 160ms ease;
+}
+
+[role='tab']:hover {
+  color: var(--kv-text);
+}
+
+[role='tab'][aria-selected='true'] {
+  background: var(--kv-brand-soft);
+  color: var(--kv-text);
+}
+
+[role='tab']:focus-visible {
+  outline: 2px solid rgba(0, 100, 255, 0.6);
+  outline-offset: 2px;
+}
+
+[role='tabpanel'] {
+  margin: 0;
+}
+
 @media (max-width: 920px) {
   .kv-doc-layout {
     grid-template-columns: 1fr;
