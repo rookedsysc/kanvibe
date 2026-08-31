@@ -30,7 +30,8 @@ const MODIFIER_KEYS = new Set(["Meta", "Control", "Ctrl", "Alt", "Shift"]);
 export const SHORTCUTS = {
   taskSearchDefault: "Mod+Shift+O",
   boardNotification: "Mod+Shift+I",
-  boardProjectFilter: "Mod+Shift+P",
+  boardProjectFilter: "Mod+Shift+F",
+  commandPalette: "Mod+Shift+P",
   createTask: "Mod+N",
   newWindow: "Mod+Shift+N",
   pageBack: "Mod+[",

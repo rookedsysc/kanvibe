@@ -1114,6 +1114,18 @@ export default function TaskDetailRoute() {
   }), [boardCommands]);
 
   useEffect(() => {
+    if (!state?.task) {
+      return;
+    }
+
+    return boardCommands.registerActiveTaskContext({
+      taskId: id,
+      currentStatus: state.task.status,
+      moveTaskToStatus: movePaletteTaskToStatus,
+    });
+  }, [boardCommands, id, state?.task?.status, movePaletteTaskToStatus]);
+
+  useEffect(() => {
     commonTranslationsRef.current = tc;
   }, [tc]);
 
@@ -1579,6 +1591,22 @@ export default function TaskDetailRoute() {
     );
   }
 
+  /** 커맨드 팔레트의 Move가 이 task를 대상으로 호출한다. 폼 액션인 handleStatusChange와 호출 형태가 달라 따로 둔다 */
+  async function movePaletteTaskToStatus(newStatus: TaskStatus) {
+    const updatedTask = await updateTaskStatus(id, newStatus);
+    if (updatedTask) {
+      setState((current) => current
+        ? {
+            ...current,
+            task: {
+              ...current.task,
+              ...updatedTask,
+            },
+          }
+        : current);
+    }
+  }
+
   async function handleStatusChange(formData: FormData) {
     const newStatus = formData.get("status") as TaskStatus;
     const updatedTask = await updateTaskStatus(id, newStatus);
@@ -1845,6 +1873,7 @@ export default function TaskDetailRoute() {
               <TerminalLoader
                 taskId={state.task.id}
                 tabs={state.task.sessionType === SessionType.TERMINAL ? terminalTabs.tabs : undefined}
+                isRemote={Boolean(state.task.sshHost)}
               />
             </div>
           </div>

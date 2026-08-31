@@ -3,9 +3,10 @@ import type { WebContents } from "electron";
 import { getTaskRepository } from "@/lib/database";
 import { SessionType } from "@/entities/KanbanTask";
 import { attachLocalSession, attachRemoteSession, focusSession } from "@/lib/terminal";
-import { parseSSHConfig } from "@/lib/sshConfig";
+import { parseSSHConfig, type SSHHostConfig } from "@/lib/sshConfig";
 import { ensureRemoteSessionDependency } from "@/lib/remoteSessionDependency";
 import { getEffectivePaneLayout } from "@/desktop/main/services/paneLayoutService";
+import { decodeDataUrlToBuffer, transferImageToRemoteHost } from "@/lib/remoteImagePaste";
 
 const OPEN = 1;
 const CLOSED = 3;
@@ -84,6 +85,46 @@ function getClient(
   return terminalClients.get(buildClientKey(webContentsId, taskId, tabId)) ?? null;
 }
 
+/** taskId로 원격 세션 여부와 매칭되는 SSH 접속 정보를 함께 조회한다 */
+async function resolveRemoteSshConfig(
+  taskId: string,
+): Promise<{ ok: true; sshConfig: SSHHostConfig } | { ok: false; error: string }> {
+  const taskRepo = await getTaskRepository();
+  const task = await taskRepo.findOneBy({ id: taskId });
+
+  if (!task || !task.sshHost) {
+    return { ok: false, error: "원격 세션이 아닙니다." };
+  }
+
+  const sshHosts = await parseSSHConfig();
+  const sshConfig = sshHosts.find((host) => host.host === task.sshHost);
+
+  if (!sshConfig) {
+    return { ok: false, error: `SSH 호스트를 찾을 수 없습니다: ${task.sshHost}` };
+  }
+
+  return { ok: true, sshConfig };
+}
+
+/** 클립보드 이미지를 원격 세션에 scp로 전달하고, 성공하면 원격 경로를 반환한다 */
+export async function pasteImageToRemoteTerminal(
+  taskId: string,
+  imageDataUrl: string,
+): Promise<{ ok: true; remotePath: string } | { ok: false; error: string }> {
+  const resolved = await resolveRemoteSshConfig(taskId);
+  if (!resolved.ok) {
+    return resolved;
+  }
+
+  try {
+    const imageBuffer = decodeDataUrlToBuffer(imageDataUrl);
+    const remotePath = await transferImageToRemoteHost(resolved.sshConfig, imageBuffer);
+    return { ok: true, remotePath };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : "이미지 전송 실패" };
+  }
+}
+
 export async function openTerminal(
   webContents: WebContents,
   taskId: string,
@@ -122,12 +163,10 @@ export async function openTerminal(
     if (task.sshHost) {
       await ensureRemoteSessionDependency(task.sessionType as SessionType, task.sshHost);
 
-      const sshHosts = await parseSSHConfig();
-      const sshConfig = sshHosts.find((host) => host.host === task.sshHost);
-
-      if (!sshConfig) {
-        client.close(1008, `SSH 호스트를 찾을 수 없습니다: ${task.sshHost}`);
-        return { ok: false, error: `SSH 호스트를 찾을 수 없습니다: ${task.sshHost}` };
+      const resolved = await resolveRemoteSshConfig(taskId);
+      if (!resolved.ok) {
+        client.close(1008, resolved.error);
+        return { ok: false, error: resolved.error };
       }
 
       await attachRemoteSession(
@@ -137,7 +176,7 @@ export async function openTerminal(
         task.sessionType as SessionType,
         task.sessionName,
         client as never,
-        sshConfig,
+        resolved.sshConfig,
         cols,
         rows,
         task.worktreePath,

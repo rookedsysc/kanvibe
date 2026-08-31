@@ -196,3 +196,38 @@ describe("sshConfig.buildSSHArgs", () => {
     expect(hasLocalX11Display({})).toBe(false);
   });
 });
+
+describe("sshConfig.buildSCPArgs", () => {
+  beforeEach(() => {
+    vi.resetModules();
+    vi.clearAllMocks();
+  });
+
+  it("uses the uppercase port flag and appends host:remotePath as the last argument", async () => {
+    // Given
+    const { buildSCPArgs } = await import("@/lib/sshConfig");
+
+    // When
+    const args = buildSCPArgs({
+      host: "app-prod",
+      hostname: "example.com",
+      port: 2202,
+      username: "tester",
+      privateKeyPath: "/tmp/test-key",
+    }, "/local/tmp/a.png", "/tmp/kanvibe-paste-abc.png");
+
+    // Then
+    expect(args).toEqual([
+      "-i",
+      "/tmp/test-key",
+      "-P",
+      "2202",
+      "-o",
+      "BatchMode=yes",
+      "-o",
+      "IdentitiesOnly=yes",
+      "/local/tmp/a.png",
+      "app-prod:/tmp/kanvibe-paste-abc.png",
+    ]);
+  });
+});

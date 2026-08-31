@@ -7,6 +7,7 @@ import {
   useHasBoardShortcutBlocker,
 } from "@/desktop/renderer/components/BoardCommandProvider";
 import TaskDetailRoute from "@/desktop/renderer/routes/TaskDetailRoute";
+import { TaskStatus } from "@/entities/KanbanTask";
 import { INITIAL_DESKTOP_LOAD_TIMEOUT_MS } from "@/desktop/renderer/utils/loadingTimeout";
 import { TASK_DETAIL_DOCK_ITEM_IDS, resolveTaskDetailDockLabel } from "@/desktop/shared/taskDetailDock";
 
@@ -1722,6 +1723,58 @@ describe("TaskDetailRoute", () => {
     });
     expect(mocks.push).not.toHaveBeenCalled();
     expect(screen.getByRole("button", { name: "moveToTodo" })).toBeTruthy();
+  });
+
+  it("커맨드 팔레트가 이 task를 이동 대상으로 등록하고, Move 실행 시 updateTaskStatus로 화면 상태를 갱신한다", async () => {
+    const task = {
+      id: "task-1",
+      title: "task title",
+      description: null,
+      branchName: "feat/palette-move",
+      baseBranch: "main",
+      prUrl: null,
+      sessionType: null,
+      sessionName: null,
+      sshHost: null,
+      projectId: "project-1",
+      project: { id: "project-1", name: "kanvibe" },
+      status: "todo",
+      agentType: null,
+      worktreePath: "/repo__worktrees/palette-move",
+    };
+    mocks.getTaskById.mockResolvedValue(task);
+    mocks.updateTaskStatus.mockResolvedValue({ ...task, status: "review" });
+
+    function ActiveTaskContextProbe() {
+      const boardCommands = useBoardCommands();
+
+      return (
+        <div>
+          <span data-testid="has-active-task-context">{String(boardCommands.hasActiveTaskContext)}</span>
+          <button type="button" onClick={() => boardCommands.moveActiveTaskToStatus(TaskStatus.REVIEW)}>
+            move via palette
+          </button>
+        </div>
+      );
+    }
+
+    render(
+      <BoardCommandProvider>
+        <ActiveTaskContextProbe />
+        <TaskDetailRoute />
+      </BoardCommandProvider>,
+    );
+
+    await screen.findByTestId("task-title");
+    await waitFor(() => {
+      expect(screen.getByTestId("has-active-task-context").textContent).toBe("true");
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "move via palette" }));
+
+    await waitFor(() => {
+      expect(mocks.updateTaskStatus).toHaveBeenCalledWith("task-1", "review");
+    });
   });
 
   it("AI 세션 로드가 느려도 hooks 상태는 먼저 갱신한다", async () => {

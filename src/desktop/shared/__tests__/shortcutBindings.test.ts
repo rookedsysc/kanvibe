@@ -199,6 +199,22 @@ describe("AI 사용량 패널 단축키", () => {
   });
 });
 
+describe("커맨드 팔레트 단축키", () => {
+  it("Mod+Shift+P는 커맨드 팔레트를, Mod+Shift+F는 프로젝트 필터를 연다", () => {
+    expect(findShortcutCommandForEvent(
+      DEFAULT_SHORTCUT_BINDINGS,
+      new KeyboardEvent("keydown", { key: "p", metaKey: true, shiftKey: true }),
+      "mac",
+    )).toBe("commandPalette");
+
+    expect(findShortcutCommandForEvent(
+      DEFAULT_SHORTCUT_BINDINGS,
+      new KeyboardEvent("keydown", { key: "f", metaKey: true, shiftKey: true }),
+      "mac",
+    )).toBe("boardProjectFilter");
+  });
+});
+
 describe("단축키 재배정", () => {
   /**
    * 도크에 없는 번호까지 명령을 만들면 설정 화면이 눌러도 아무 일이 없는 단축키를 보여 준다.
