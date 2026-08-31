@@ -314,13 +314,11 @@
   },
   "commandPalette": {
     "title": "커맨드 팔레트",
-    "statusListTitle": "이동할 상태",
+    "placeholder": "명령을 입력하세요…",
     "syncLabel": "Sync",
-    "syncDescription": "활성 태스크 전체를 백그라운드 동기화",
-    "moveLabel": "Move",
-    "moveDescription": "대상 태스크를 다른 상태로 이동",
-    "moveDisabledHint": "보드에서 태스크 카드에 포커스하거나 task를 열어야 Move를 쓸 수 있습니다",
-    "hint": "Esc 뒤로/닫기"
+    "moveToStatusLabel": "{status} 상태로 이동",
+    "empty": "일치하는 명령이 없습니다",
+    "hint": "↑↓ 이동 · Enter 실행 · Esc 닫기"
   },
   "paneLayout": {
     "title": "Pane 레이아웃 설정",

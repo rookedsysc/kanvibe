@@ -313,13 +313,11 @@
   },
   "commandPalette": {
     "title": "命令面板",
-    "statusListTitle": "移动到…",
+    "placeholder": "输入命令…",
     "syncLabel": "Sync",
-    "syncDescription": "对所有活动任务运行后台同步",
-    "moveLabel": "Move",
-    "moveDescription": "将目标任务移动到其他状态",
-    "moveDisabledHint": "请先聚焦看板上的任务卡片,或打开一个任务,才能使用 Move",
-    "hint": "Esc 返回/关闭"
+    "moveToStatusLabel": "移动到 {status}",
+    "empty": "没有匹配的命令",
+    "hint": "↑↓ 导航 · Enter 运行 · Esc 关闭"
   },
   "paneLayout": {
     "title": "面板布局设置",

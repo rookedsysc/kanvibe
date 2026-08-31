@@ -11,7 +11,9 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("next-intl", () => ({
-  useTranslations: (namespace: string) => (key: string) => `${namespace}.${key}`,
+  useTranslations: (namespace: string) => (key: string, values?: Record<string, string>) => (
+    values?.status ? `${namespace}.${key}:${values.status}` : `${namespace}.${key}`
+  ),
 }));
 
 vi.mock("@/desktop/renderer/actions/backgroundTaskSync", () => ({
@@ -63,12 +65,16 @@ function openPalette() {
   fireEvent.keyDown(window, { key: "p", ctrlKey: true, shiftKey: true });
 }
 
+function getSearchInput() {
+  return screen.getByRole("textbox");
+}
+
 describe("CommandPaletteDialog", () => {
   afterEach(() => {
     vi.clearAllMocks();
   });
 
-  it("task 컨텍스트도 보드에 포커스된 태스크도 없으면 Move가 비활성 상태다", () => {
+  it("Move 대상이 없으면 Move 관련 행이 하나도 렌더되지 않는다", () => {
     renderWithRouter(
       <BoardCommandProvider>
         <CommandPaletteDialog />
@@ -77,11 +83,11 @@ describe("CommandPaletteDialog", () => {
 
     openPalette();
 
-    const moveButton = screen.getByRole("button", { name: /commandPalette\.moveLabel/ }) as HTMLButtonElement;
-    expect(moveButton.disabled).toBe(true);
+    expect(screen.queryByRole("button", { name: /commandPalette\.moveToStatusLabel/ })).toBeNull();
+    expect(screen.getByRole("button", { name: /commandPalette\.syncLabel/ })).toBeTruthy();
   });
 
-  it("Sync를 클릭하면 백그라운드 동기화를 정확히 1회 호출하고 다이얼로그가 닫힌다", async () => {
+  it("Sync 행을 클릭하면 백그라운드 동기화를 정확히 1회 호출하고 다이얼로그가 닫힌다", async () => {
     mocks.runBackgroundTaskSyncNow.mockResolvedValue(undefined);
 
     renderWithRouter(
@@ -97,7 +103,7 @@ describe("CommandPaletteDialog", () => {
     expect(screen.queryByRole("dialog")).toBeNull();
   });
 
-  it("task 상세 컨텍스트가 있으면 Move에서 고른 상태로 그 task를 이동한다", () => {
+  it("task 상세 컨텍스트가 있으면 'Move to Review' 행 클릭이 그 task를 이동한다", () => {
     const moveTaskToStatus = vi.fn();
 
     renderWithRouter(
@@ -108,8 +114,7 @@ describe("CommandPaletteDialog", () => {
     );
 
     openPalette();
-    fireEvent.click(screen.getByRole("button", { name: /commandPalette\.moveLabel/ }));
-    fireEvent.click(screen.getByRole("button", { name: "board.columns.review" }));
+    fireEvent.click(screen.getByRole("button", { name: /board\.columns\.review/ }));
 
     expect(moveTaskToStatus).toHaveBeenCalledTimes(1);
     expect(moveTaskToStatus).toHaveBeenCalledWith(TaskStatus.REVIEW);
@@ -131,10 +136,59 @@ describe("CommandPaletteDialog", () => {
 
     screen.getByText("focused card").focus();
     openPalette();
-    fireEvent.click(screen.getByRole("button", { name: /commandPalette\.moveLabel/ }));
-    fireEvent.click(screen.getByRole("button", { name: "board.columns.done" }));
+    fireEvent.click(screen.getByRole("button", { name: /board\.columns\.done/ }));
 
     expect(moveFocusedTaskToStatus).toHaveBeenCalledTimes(1);
     expect(moveFocusedTaskToStatus).toHaveBeenCalledWith(TaskStatus.DONE, "task-9");
+  });
+
+  it("검색어를 입력하면 매칭되는 행으로만 목록이 좁혀진다", () => {
+    const moveTaskToStatus = vi.fn();
+
+    renderWithRouter(
+      <BoardCommandProvider>
+        <ActiveTaskContextHarness moveTaskToStatus={moveTaskToStatus} />
+        <CommandPaletteDialog />
+      </BoardCommandProvider>,
+    );
+
+    openPalette();
+    fireEvent.change(getSearchInput(), { target: { value: "sync" } });
+
+    expect(screen.getByRole("button", { name: /commandPalette\.syncLabel/ })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /board\.columns\.review/ })).toBeNull();
+  });
+
+  it("ArrowDown 후 Enter는 두 번째 행을 실행한다", () => {
+    const moveTaskToStatus = vi.fn();
+
+    renderWithRouter(
+      <BoardCommandProvider>
+        <ActiveTaskContextHarness moveTaskToStatus={moveTaskToStatus} />
+        <CommandPaletteDialog />
+      </BoardCommandProvider>,
+    );
+
+    openPalette();
+    const input = getSearchInput();
+    fireEvent.keyDown(input, { key: "ArrowDown" });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    expect(mocks.runBackgroundTaskSyncNow).not.toHaveBeenCalled();
+    expect(moveTaskToStatus).toHaveBeenCalledTimes(1);
+    expect(moveTaskToStatus).toHaveBeenCalledWith(TaskStatus.PROGRESS);
+  });
+
+  it("매칭되는 행이 없으면 빈 상태 문구를 보여준다", () => {
+    renderWithRouter(
+      <BoardCommandProvider>
+        <CommandPaletteDialog />
+      </BoardCommandProvider>,
+    );
+
+    openPalette();
+    fireEvent.change(getSearchInput(), { target: { value: "존재하지않는명령" } });
+
+    expect(screen.getByText("commandPalette.empty")).toBeTruthy();
   });
 });
