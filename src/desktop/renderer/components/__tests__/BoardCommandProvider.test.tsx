@@ -4,6 +4,13 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { BoardCommandProvider, useBoardCommands } from "@/desktop/renderer/components/BoardCommandProvider";
 
+function CommandPaletteHarness() {
+  const boardCommands = useBoardCommands();
+  return (
+    <span>{boardCommands.isCommandPaletteOpen ? "palette-open" : "palette-closed"}</span>
+  );
+}
+
 const mocks = vi.hoisted(() => ({
   triggerDesktopRefresh: vi.fn(),
 }));
@@ -106,7 +113,7 @@ describe("BoardCommandProvider", () => {
       shiftKey: true,
     });
     fireEvent.keyDown(window, {
-      key: "p",
+      key: "f",
       ctrlKey: true,
       shiftKey: true,
     });
@@ -114,6 +121,41 @@ describe("BoardCommandProvider", () => {
     expect(onToggleNotificationCenter).toHaveBeenCalledTimes(1);
     expect(onOpenProjectFilter).toHaveBeenCalledTimes(1);
     expect(screen.getByText("branch-enabled")).toBeTruthy();
+  });
+
+  it("opens the command palette from the global shortcut and blocks other board shortcuts while open", () => {
+    const onToggleNotificationCenter = vi.fn();
+    const onOpenProjectFilter = vi.fn();
+    const onOpenCreateTaskModal = vi.fn();
+
+    renderWithRouter(
+      <BoardCommandProvider>
+        <BoardCommandHarness
+          onToggleNotificationCenter={onToggleNotificationCenter}
+          onOpenProjectFilter={onOpenProjectFilter}
+          onOpenCreateTaskModal={onOpenCreateTaskModal}
+        />
+        <CommandPaletteHarness />
+      </BoardCommandProvider>,
+    );
+
+    expect(screen.getByText("palette-closed")).toBeTruthy();
+
+    fireEvent.keyDown(window, {
+      key: "p",
+      ctrlKey: true,
+      shiftKey: true,
+    });
+
+    expect(screen.getByText("palette-open")).toBeTruthy();
+
+    fireEvent.keyDown(window, {
+      key: "i",
+      ctrlKey: true,
+      shiftKey: true,
+    });
+
+    expect(onToggleNotificationCenter).not.toHaveBeenCalled();
   });
 
   it("ignores board shortcuts while task quick search is open", () => {

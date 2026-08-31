@@ -29,6 +29,7 @@ export type ShortcutCommandId =
   | "taskSearch"
   | "boardNotification"
   | "boardProjectFilter"
+  | "commandPalette"
   | "boardPageFind"
   | "createTask"
   | "newWindow"
@@ -91,6 +92,7 @@ export const SHORTCUT_COMMAND_DEFINITIONS: readonly ShortcutCommandDefinition[] 
   { id: "taskSearch", group: "board", defaultShortcut: SHORTCUTS.taskSearchDefault, labelKey: "taskSearch" },
   { id: "boardNotification", group: "board", defaultShortcut: SHORTCUTS.boardNotification, labelKey: "boardNotification" },
   { id: "boardProjectFilter", group: "board", defaultShortcut: SHORTCUTS.boardProjectFilter, labelKey: "boardProjectFilter" },
+  { id: "commandPalette", group: "board", defaultShortcut: SHORTCUTS.commandPalette, labelKey: "commandPalette" },
   { id: "boardPageFind", group: "board", defaultShortcut: SHORTCUTS.boardPageFind, labelKey: "boardPageFind" },
   { id: "createTask", group: "board", defaultShortcut: SHORTCUTS.createTask, labelKey: "createTask" },
   { id: "newWindow", group: "board", defaultShortcut: SHORTCUTS.newWindow, labelKey: "newWindow" },

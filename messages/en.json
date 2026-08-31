@@ -290,6 +290,7 @@
         "taskSearch": "Task quick search",
         "boardNotification": "Notification center",
         "boardProjectFilter": "Project filter",
+        "commandPalette": "Command palette",
         "boardPageFind": "Find on page",
         "createTask": "Create task",
         "newWindow": "New window",
@@ -310,6 +311,16 @@
     "empty": "No matching tasks found.",
     "hint": "↑↓ Navigate · Enter Open · Shift+Enter New Window · Esc Close",
     "branchTodoHint": "{shortcut} Create branch TODO"
+  },
+  "commandPalette": {
+    "title": "Command Palette",
+    "statusListTitle": "Move to…",
+    "syncLabel": "Sync",
+    "syncDescription": "Run background sync for all active tasks",
+    "moveLabel": "Move",
+    "moveDescription": "Move the target task to another status",
+    "moveDisabledHint": "Focus a task card on the board, or open a task, to use Move",
+    "hint": "Esc Back/Close"
   },
   "paneLayout": {
     "title": "Pane Layout Settings",

@@ -18,7 +18,8 @@ import { runBackgroundTaskSyncNow } from "@/desktop/renderer/actions/backgroundT
 import type { TasksByStatus } from "@/desktop/renderer/actions/kanban";
 import { useBoardCommands } from "@/desktop/renderer/components/BoardCommandProvider";
 import { navigateToTaskDetail } from "@/desktop/renderer/utils/taskNavigation";
-import { SessionType, TaskStatus, type KanbanTask } from "@/entities/KanbanTask";
+import { getFocusedBoardTaskCard } from "@/desktop/renderer/utils/focusedBoardTaskCard";
+import { SessionType, TASK_STATUS_ORDER, TaskStatus, type KanbanTask } from "@/entities/KanbanTask";
 import type { Project } from "@/entities/Project";
 import { useAutoRefresh } from "@/desktop/renderer/hooks/useAutoRefresh";
 import { useProjectFilterParams } from "@/desktop/renderer/hooks/useProjectFilterParams";
@@ -87,13 +88,7 @@ type BoardTaskFilter = (task: KanbanTask) => boolean;
 const VIM_MOVE_COMMAND_ALIASES = new Set(["move", "m"]);
 const VIM_SYNC_COMMAND_ALIASES = new Set(["sync", "s"]);
 const VIM_COMMAND_NAMES = ["move", "sync"] as const;
-const VIM_MOVE_STATUSES = [
-  TaskStatus.TODO,
-  TaskStatus.PROGRESS,
-  TaskStatus.PENDING,
-  TaskStatus.REVIEW,
-  TaskStatus.DONE,
-] as const;
+const VIM_MOVE_STATUSES = TASK_STATUS_ORDER;
 
 const VIM_STATUS_ALIASES: Record<string, TaskStatus> = {
   t: TaskStatus.TODO,
@@ -248,13 +243,6 @@ function isPlainVimShortcutKey(event: KeyboardEvent, key: string) {
 
 function isVimCommandShortcutKey(event: KeyboardEvent) {
   return event.key === VIM_COMMAND_KEY && !event.altKey && !event.ctrlKey && !event.metaKey;
-}
-
-function getFocusedBoardTaskCard() {
-  const activeElement = document.activeElement;
-  return activeElement instanceof Element
-    ? activeElement.closest<HTMLAnchorElement>(TASK_CARD_SELECTOR)
-    : null;
 }
 
 type ParsedVimCommand =
@@ -766,19 +754,6 @@ export default function Board({
     hasAppliedInitialFocusRef.current = true;
   }, [displayedTasks, initialFocusTaskId, isMounted]);
 
-  useEffect(() => boardCommands.registerBoardHandlers({
-    toggleNotificationCenter() {
-      notificationCenterRef.current?.toggle();
-    },
-    openProjectFilter() {
-      projectSelectorRef.current?.open();
-    },
-    openCreateTaskModal(defaults) {
-      setBranchTodoDefaults(defaults ?? null);
-      setIsModalOpen(true);
-    },
-  }), [boardCommands]);
-
   useEffect(() => {
     boardCommands.setTaskQuickSearchOpen(isVimCommandOpen);
     return () => boardCommands.setTaskQuickSearchOpen(false);
@@ -1029,6 +1004,20 @@ export default function Board({
     },
     [displayedTasks, moveTaskToStatus],
   );
+
+  useEffect(() => boardCommands.registerBoardHandlers({
+    toggleNotificationCenter() {
+      notificationCenterRef.current?.toggle();
+    },
+    openProjectFilter() {
+      projectSelectorRef.current?.open();
+    },
+    openCreateTaskModal(defaults) {
+      setBranchTodoDefaults(defaults ?? null);
+      setIsModalOpen(true);
+    },
+    moveFocusedTaskToStatus,
+  }), [boardCommands, moveFocusedTaskToStatus]);
 
   const closeVimCommand = useCallback(() => {
     setIsVimCommandOpen(false);
