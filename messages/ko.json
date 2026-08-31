@@ -137,18 +137,7 @@
       "done": "Done"
     },
     "loadMore": "더 보기",
-    "loadingMore": "불러오는 중...",
-    "vimCommand": {
-      "label": "Vim 명령",
-      "placeholder": "sync 또는 move review",
-      "hint": ":sync로 백그라운드 sync를 실행하거나 포커스된 task에 :move todo|progress|pending|review|done을 사용할 수 있습니다. Tab으로 자동 완성할 수 있습니다.",
-      "completionHint": "Tab을 누르면 {command}(으)로 자동 완성합니다.",
-      "errors": {
-        "unknownCommand": "알 수 없는 명령입니다. :sync 또는 :move review를 시도해 보세요.",
-        "noFocusedTask": ":move 실행 전 task card에 포커스하세요.",
-        "taskNotFound": "포커스했던 task가 현재 보이지 않습니다."
-      }
-    }
+    "loadingMore": "불러오는 중..."
   },
   "task": {
     "descriptionLabel": "설명",
@@ -290,6 +279,7 @@
         "taskSearch": "작업 빠른 검색",
         "boardNotification": "알림 센터",
         "boardProjectFilter": "프로젝트 필터",
+        "commandPalette": "커맨드 팔레트",
         "boardPageFind": "페이지 내 검색",
         "createTask": "작업 생성",
         "newWindow": "새 창",
@@ -310,6 +300,14 @@
     "empty": "일치하는 태스크가 없습니다.",
     "hint": "↑↓ 이동 · Enter 이동 · Shift+Enter 새 창 · Esc 닫기",
     "branchTodoHint": "{shortcut} 새 branch TODO"
+  },
+  "commandPalette": {
+    "title": "커맨드 팔레트",
+    "placeholder": "명령을 입력하세요…",
+    "syncLabel": "Sync",
+    "moveToStatusLabel": "{status} 상태로 이동",
+    "empty": "일치하는 명령이 없습니다",
+    "hint": "↑↓ 이동 · Enter 실행 · Esc 닫기"
   },
   "paneLayout": {
     "title": "Pane 레이아웃 설정",

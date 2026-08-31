@@ -19,6 +19,15 @@ export enum TaskStatus {
   DONE = "done",
 }
 
+/** 보드 컬럼과 동일한 상태 진행 순서. 상태를 순서대로 나열해야 하는 곳(vim 이동 명령, 커맨드 팔레트 등)이 공유한다 */
+export const TASK_STATUS_ORDER: readonly TaskStatus[] = [
+  TaskStatus.TODO,
+  TaskStatus.PROGRESS,
+  TaskStatus.PENDING,
+  TaskStatus.REVIEW,
+  TaskStatus.DONE,
+];
+
 export enum SessionType {
   TMUX = "tmux",
   ZELLIJ = "zellij",

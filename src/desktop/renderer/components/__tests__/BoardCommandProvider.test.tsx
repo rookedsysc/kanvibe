@@ -4,6 +4,13 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { BoardCommandProvider, useBoardCommands } from "@/desktop/renderer/components/BoardCommandProvider";
 
+function CommandPaletteHarness() {
+  const boardCommands = useBoardCommands();
+  return (
+    <span>{boardCommands.isCommandPaletteOpen ? "palette-open" : "palette-closed"}</span>
+  );
+}
+
 const mocks = vi.hoisted(() => ({
   triggerDesktopRefresh: vi.fn(),
 }));
@@ -106,7 +113,7 @@ describe("BoardCommandProvider", () => {
       shiftKey: true,
     });
     fireEvent.keyDown(window, {
-      key: "p",
+      key: "f",
       ctrlKey: true,
       shiftKey: true,
     });
@@ -114,6 +121,41 @@ describe("BoardCommandProvider", () => {
     expect(onToggleNotificationCenter).toHaveBeenCalledTimes(1);
     expect(onOpenProjectFilter).toHaveBeenCalledTimes(1);
     expect(screen.getByText("branch-enabled")).toBeTruthy();
+  });
+
+  it("opens the command palette from the global shortcut and blocks other board shortcuts while open", () => {
+    const onToggleNotificationCenter = vi.fn();
+    const onOpenProjectFilter = vi.fn();
+    const onOpenCreateTaskModal = vi.fn();
+
+    renderWithRouter(
+      <BoardCommandProvider>
+        <BoardCommandHarness
+          onToggleNotificationCenter={onToggleNotificationCenter}
+          onOpenProjectFilter={onOpenProjectFilter}
+          onOpenCreateTaskModal={onOpenCreateTaskModal}
+        />
+        <CommandPaletteHarness />
+      </BoardCommandProvider>,
+    );
+
+    expect(screen.getByText("palette-closed")).toBeTruthy();
+
+    fireEvent.keyDown(window, {
+      key: "p",
+      ctrlKey: true,
+      shiftKey: true,
+    });
+
+    expect(screen.getByText("palette-open")).toBeTruthy();
+
+    fireEvent.keyDown(window, {
+      key: "i",
+      ctrlKey: true,
+      shiftKey: true,
+    });
+
+    expect(onToggleNotificationCenter).not.toHaveBeenCalled();
   });
 
   it("ignores board shortcuts while task quick search is open", () => {
@@ -271,6 +313,7 @@ describe("BoardCommandProvider", () => {
     const onOpenCreateTaskModal = vi.fn();
     let createTaskShortcutListener: (() => void) | null = null;
     let notificationShortcutListener: (() => void) | null = null;
+    let commandPaletteShortcutListener: (() => void) | null = null;
     window.kanvibeDesktop = {
       isDesktop: true,
       onCreateTaskShortcut: vi.fn((listener: () => void) => {
@@ -279,6 +322,10 @@ describe("BoardCommandProvider", () => {
       }),
       onNotificationShortcut: vi.fn((listener: () => void) => {
         notificationShortcutListener = listener;
+        return vi.fn();
+      }),
+      onCommandPaletteShortcut: vi.fn((listener: () => void) => {
+        commandPaletteShortcutListener = listener;
         return vi.fn();
       }),
     } as never;
@@ -291,16 +338,49 @@ describe("BoardCommandProvider", () => {
           onOpenCreateTaskModal={onOpenCreateTaskModal}
           blockShortcuts
         />
+        <CommandPaletteHarness />
       </BoardCommandProvider>,
     );
 
     act(() => {
       createTaskShortcutListener?.();
       notificationShortcutListener?.();
+      commandPaletteShortcutListener?.();
     });
 
     expect(onOpenCreateTaskModal).not.toHaveBeenCalled();
     expect(onToggleNotificationCenter).not.toHaveBeenCalled();
+    expect(screen.getByText("palette-closed")).toBeTruthy();
+  });
+
+  it("forwards the desktop command-palette shortcut event to open the palette", () => {
+    let commandPaletteShortcutListener: (() => void) | null = null;
+    const unsubscribe = vi.fn();
+    window.kanvibeDesktop = {
+      isDesktop: true,
+      onCommandPaletteShortcut: vi.fn((listener: () => void) => {
+        commandPaletteShortcutListener = listener;
+        return unsubscribe;
+      }),
+    } as never;
+
+    const { unmount } = renderWithRouter(
+      <BoardCommandProvider>
+        <CommandPaletteHarness />
+      </BoardCommandProvider>,
+    );
+
+    expect(screen.getByText("palette-closed")).toBeTruthy();
+
+    act(() => {
+      commandPaletteShortcutListener?.();
+    });
+
+    expect(screen.getByText("palette-open")).toBeTruthy();
+
+    unsubscribe.mockClear();
+    unmount();
+    expect(unsubscribe).toHaveBeenCalledTimes(1);
   });
 
   it("dispatches the notification shortcut to a notification-only handler", () => {

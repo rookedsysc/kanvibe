@@ -13,6 +13,7 @@ interface KanvibeDesktopApi {
   onNotificationActivated?: (listener: (notification: AppNotification) => void) => () => void;
   onNotificationShortcut?: (listener: () => void) => () => void;
   onCreateTaskShortcut?: (listener: () => void) => () => void;
+  onCommandPaletteShortcut?: (listener: () => void) => () => void;
   onTaskDetailDockShortcut?: (listener: (shortcutIndex: number) => void) => () => void;
   onTaskDetailUsageShortcut?: (listener: () => void) => () => void;
   notifyShortcutBindingsChanged?: () => void;

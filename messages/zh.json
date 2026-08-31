@@ -136,18 +136,7 @@
       "done": "完成"
     },
     "loadMore": "加载更多",
-    "loadingMore": "加载中...",
-    "vimCommand": {
-      "label": "Vim 命令",
-      "placeholder": "sync 或 move review",
-      "hint": "使用 :sync 运行后台同步，或对当前聚焦任务使用 :move todo|progress|pending|review|done。按 Tab 自动补全。",
-      "completionHint": "按 Tab 补全为 {command}。",
-      "errors": {
-        "unknownCommand": "未知命令。请尝试 :sync 或 :move review。",
-        "noFocusedTask": "运行 :move 前请先聚焦一个任务卡片。",
-        "taskNotFound": "当前聚焦的任务已不在可见列表中。"
-      }
-    }
+    "loadingMore": "加载中..."
   },
   "task": {
     "descriptionLabel": "描述",
@@ -289,6 +278,7 @@
         "taskSearch": "任务快速搜索",
         "boardNotification": "通知中心",
         "boardProjectFilter": "项目筛选",
+        "commandPalette": "命令面板",
         "boardPageFind": "页面内查找",
         "createTask": "创建任务",
         "newWindow": "新窗口",
@@ -309,6 +299,14 @@
     "empty": "没有找到匹配的任务。",
     "hint": "↑↓ 移动 · Enter 打开 · Shift+Enter 新窗口 · Esc 关闭",
     "branchTodoHint": "{shortcut} 创建分支 TODO"
+  },
+  "commandPalette": {
+    "title": "命令面板",
+    "placeholder": "输入命令…",
+    "syncLabel": "Sync",
+    "moveToStatusLabel": "移动到 {status}",
+    "empty": "没有匹配的命令",
+    "hint": "↑↓ 导航 · Enter 运行 · Esc 关闭"
   },
   "paneLayout": {
     "title": "面板布局设置",

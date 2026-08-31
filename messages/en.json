@@ -137,18 +137,7 @@
       "done": "Done"
     },
     "loadMore": "Load More",
-    "loadingMore": "Loading...",
-    "vimCommand": {
-      "label": "Vim command",
-      "placeholder": "sync or move review",
-      "hint": "Use :sync to run background sync, or :move todo|progress|pending|review|done for the focused task. Press Tab to autocomplete.",
-      "completionHint": "Press Tab to complete {command}.",
-      "errors": {
-        "unknownCommand": "Unknown command. Try :sync or :move review.",
-        "noFocusedTask": "Focus a task card before running :move.",
-        "taskNotFound": "The focused task is no longer visible."
-      }
-    }
+    "loadingMore": "Loading..."
   },
   "task": {
     "descriptionLabel": "Description",
@@ -290,6 +279,7 @@
         "taskSearch": "Task quick search",
         "boardNotification": "Notification center",
         "boardProjectFilter": "Project filter",
+        "commandPalette": "Command palette",
         "boardPageFind": "Find on page",
         "createTask": "Create task",
         "newWindow": "New window",
@@ -310,6 +300,14 @@
     "empty": "No matching tasks found.",
     "hint": "↑↓ Navigate · Enter Open · Shift+Enter New Window · Esc Close",
     "branchTodoHint": "{shortcut} Create branch TODO"
+  },
+  "commandPalette": {
+    "title": "Command Palette",
+    "placeholder": "Type a command…",
+    "syncLabel": "Sync",
+    "moveToStatusLabel": "Move to {status}",
+    "empty": "No matching commands",
+    "hint": "↑↓ Navigate · Enter Run · Esc Close"
   },
   "paneLayout": {
     "title": "Pane Layout Settings",
