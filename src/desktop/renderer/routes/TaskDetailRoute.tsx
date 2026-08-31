@@ -1845,6 +1845,7 @@ export default function TaskDetailRoute() {
               <TerminalLoader
                 taskId={state.task.id}
                 tabs={state.task.sessionType === SessionType.TERMINAL ? terminalTabs.tabs : undefined}
+                isRemote={Boolean(state.task.sshHost)}
               />
             </div>
           </div>

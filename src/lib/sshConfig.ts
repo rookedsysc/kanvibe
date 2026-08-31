@@ -95,6 +95,29 @@ export function buildSSHArgs(
   return args;
 }
 
+/**
+ * scp CLI 인자를 만든다. scp는 ssh와 달리 포트 플래그가 `-P`(대문자)이고,
+ * `-p`는 "파일 속성 보존"이라는 다른 의미라 `buildSSHArgs`를 재사용하지 않는다.
+ */
+export function buildSCPArgs(
+  config: Pick<SSHHostConfig, "host" | "hostname" | "port" | "username" | "privateKeyPath">,
+  localPath: string,
+  remotePath: string,
+): string[] {
+  return [
+    "-i",
+    config.privateKeyPath,
+    "-P",
+    String(config.port),
+    "-o",
+    "BatchMode=yes",
+    "-o",
+    "IdentitiesOnly=yes",
+    localPath,
+    `${getSSHDestination(config)}:${remotePath}`,
+  ];
+}
+
 export function getKanvibeSSHControlDirectory(): string {
   return path.join(homedir(), ".kanvibe");
 }

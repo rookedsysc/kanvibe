@@ -839,6 +839,7 @@ function registerDesktopHandlers() {
     focusTerminal,
     closeTerminal,
     closeWindowTerminals,
+    pasteImageToRemoteTerminal,
   } = require(getRuntimeModulePath(path.join("src", "desktop", "main", "terminalBridge.ts")));
   const {
     openAiAccountLogin,
@@ -933,6 +934,10 @@ function registerDesktopHandlers() {
     closeTerminal(event.sender.id, taskId, tabId);
   });
 
+  ipcMain.handle("kanvibe:terminal-paste-image", async (_event, taskId, imageDataUrl) => {
+    return pasteImageToRemoteTerminal(taskId, imageDataUrl);
+  });
+
   /**
    * 터미널 안 프로그램이 OSC 52로 보낸 복사 요청을 시스템 클립보드에 반영한다.
    * 렌더러의 navigator.clipboard는 문서 포커스를 요구하고, 포커스가 있어도 성공을 반환한 채
@@ -940,6 +945,16 @@ function registerDesktopHandlers() {
    */
   ipcMain.handle("kanvibe:clipboard-write", (_event, text) => {
     clipboard.writeText(String(text));
+  });
+
+  /**
+   * Ctrl+V, Ctrl+Shift+V, Shift+Insert, 마우스 중간 클릭은 macOS에서 네이티브 paste 이벤트를
+   * 만들지 않는다. 렌더러가 keydown/클릭 시점에 즉시 xterm 기본 처리를 막을지 정해야 하므로
+   * 동기 채널로 응답한다.
+   */
+  ipcMain.on("kanvibe:clipboard-read-image", (event) => {
+    const image = clipboard.readImage();
+    event.returnValue = image.isEmpty() ? null : `data:image/png;base64,${image.toPNG().toString("base64")}`;
   });
 
   ipcMain.handle("kanvibe:ai-login-open", async (event, provider, accountRoot, cols, rows) => {
