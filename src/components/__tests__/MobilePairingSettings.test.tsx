@@ -2,6 +2,21 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import MobilePairingSettings from "../MobilePairingSettings";
+import enMessages from "../../../messages/en.json";
+
+vi.mock("next-intl", () => ({
+  useTranslations: (namespace: string) => (key: string, values?: Record<string, string>) => {
+    const path = `${namespace}.${key}`.split(".");
+    let node: unknown = enMessages;
+    for (const segment of path) {
+      node = (node as Record<string, unknown> | undefined)?.[segment];
+    }
+
+    return typeof node === "string"
+      ? node.replace(/\{(\w+)\}/g, (_, name: string) => values?.[name] ?? `{${name}}`)
+      : path.join(".");
+  },
+}));
 
 const mockStartMobilePairing = vi.fn();
 const mockStopMobilePairing = vi.fn();
@@ -40,7 +55,7 @@ describe("MobilePairingSettings", () => {
   it("버튼을 누르면 옮겨 적을 코드가 화면에 뜬다", async () => {
     render(<MobilePairingSettings />);
 
-    await userEvent.click(screen.getByRole("button", { name: "연결 코드 만들기" }));
+    await userEvent.click(screen.getByRole("button", { name: "Create pairing code" }));
 
     expect(await screen.findByText("123456")).toBeTruthy();
   });
@@ -48,19 +63,19 @@ describe("MobilePairingSettings", () => {
   it("코드가 떠 있으면 지우는 버튼으로 바뀐다", async () => {
     render(<MobilePairingSettings />);
 
-    await userEvent.click(screen.getByRole("button", { name: "연결 코드 만들기" }));
+    await userEvent.click(screen.getByRole("button", { name: "Create pairing code" }));
     await screen.findByText("123456");
 
-    expect(screen.queryByRole("button", { name: "연결 코드 만들기" })).toBeNull();
-    expect(screen.getByRole("button", { name: "코드 지우기" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Create pairing code" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Clear code" })).toBeTruthy();
   });
 
   it("코드를 지우면 화면에서 사라진다", async () => {
     render(<MobilePairingSettings />);
 
-    await userEvent.click(screen.getByRole("button", { name: "연결 코드 만들기" }));
+    await userEvent.click(screen.getByRole("button", { name: "Create pairing code" }));
     await screen.findByText("123456");
-    await userEvent.click(screen.getByRole("button", { name: "코드 지우기" }));
+    await userEvent.click(screen.getByRole("button", { name: "Clear code" }));
 
     await waitFor(() => expect(screen.queryByText("123456")).toBeNull());
     expect(mockStopMobilePairing).toHaveBeenCalled();
@@ -79,7 +94,7 @@ describe("MobilePairingSettings", () => {
 
     render(<MobilePairingSettings />);
     await screen.findByText("iPhone");
-    await userEvent.click(screen.getByRole("button", { name: "연결 끊기" }));
+    await userEvent.click(screen.getByRole("button", { name: "Disconnect" }));
 
     await waitFor(() => expect(mockUnpairMobileDevice).toHaveBeenCalledWith("d1"));
     expect(mockListPairedMobileDevices).toHaveBeenCalledTimes(2);
@@ -96,7 +111,7 @@ describe("MobilePairingSettings", () => {
 
   it("코드를 띄워 둔 채 화면을 떠나면 그 코드를 거둔다", async () => {
     const { unmount } = render(<MobilePairingSettings />);
-    await userEvent.click(screen.getByRole("button", { name: "연결 코드 만들기" }));
+    await userEvent.click(screen.getByRole("button", { name: "Create pairing code" }));
     await screen.findByText("123456");
 
     unmount();
@@ -109,15 +124,15 @@ describe("MobilePairingSettings", () => {
 
     render(<MobilePairingSettings />);
 
-    expect(await screen.findByRole("button", { name: "연결 코드 만들기" })).toBeTruthy();
+    expect(await screen.findByRole("button", { name: "Create pairing code" })).toBeTruthy();
   });
 
   it("코드 발급이 실패하면 무엇이 안 됐는지 알려 준다", async () => {
     mockStartMobilePairing.mockRejectedValue(new Error("실패"));
 
     render(<MobilePairingSettings />);
-    await userEvent.click(screen.getByRole("button", { name: "연결 코드 만들기" }));
+    await userEvent.click(screen.getByRole("button", { name: "Create pairing code" }));
 
-    expect(await screen.findByText("연결 코드를 만들지 못했습니다.")).toBeTruthy();
+    expect(await screen.findByText("Could not create a pairing code.")).toBeTruthy();
   });
 });

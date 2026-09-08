@@ -199,6 +199,7 @@ export default function ProjectSettings({
                 ["appearance", t("appearanceSection")],
                 ["detail", t("detailPageSection")],
                 ["creation", t("taskCreationSection")],
+                ["mobile", t("mobilePairingSection")],
                 ["notifications", t("notificationSection")],
                 ["background-sync", t("backgroundSyncSection")],
                 ["keyboard", t("keyboardSection")],

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useTranslations } from "next-intl";
 import {
   listPairedMobileDevices,
   startMobilePairing,
@@ -20,6 +21,7 @@ import {
 const COUNTDOWN_TICK_MS = 1_000;
 
 export default function MobilePairingSettings() {
+  const t = useTranslations("settings");
   const [pairingCode, setPairingCode] = useState<string | null>(null);
   const [expiresAt, setExpiresAt] = useState<number | null>(null);
   const [remainingSeconds, setRemainingSeconds] = useState(0);
@@ -107,7 +109,7 @@ export default function MobilePairingSettings() {
       setPairingCode(pairing.code);
       setExpiresAt(pairing.expiresAt);
       await refreshPairedDevices();
-    }, "연결 코드를 만들지 못했습니다.");
+    }, t("mobilePairingIssueCodeFailed"));
 
   const cancelCode = () =>
     runPairingAction(async () => {
@@ -115,23 +117,23 @@ export default function MobilePairingSettings() {
       hasOutstandingCode.current = false;
       setPairingCode(null);
       setExpiresAt(null);
-    }, "코드를 지우지 못했습니다.");
+    }, t("mobilePairingClearCodeFailed"));
 
   const disconnectDevice = (deviceId: string) =>
     runPairingAction(async () => {
       await unpairMobileDevice(deviceId);
       await refreshPairedDevices();
-    }, "연결을 끊지 못했습니다.");
+    }, t("mobilePairingDisconnectFailed"));
 
   return (
     <div id="mobile" className="p-4 border-b border-border-default">
-      <h3 className="text-xs text-text-muted uppercase tracking-wide mb-3">모바일 연결</h3>
+      <h3 className="text-xs text-text-muted uppercase tracking-wide mb-3">{t("mobilePairingSection")}</h3>
 
       <div className="flex items-start justify-between gap-4">
         <div>
-          <span className="text-sm text-text-primary">모바일 앱 연결</span>
+          <span className="text-sm text-text-primary">{t("mobilePairing")}</span>
           <p className="text-xs text-text-muted mt-0.5">
-            KanVibe 모바일에서 이 데스크탑의 주소와 아래 코드를 입력하면 연결됩니다. 한 번 연결하면 계속 유지됩니다.
+            {t("mobilePairingDescription")}
           </p>
         </div>
 
@@ -141,7 +143,7 @@ export default function MobilePairingSettings() {
             onClick={() => void issueCode()}
             className="shrink-0 px-3 py-1.5 text-sm rounded-md bg-brand-primary text-white hover:bg-brand-hover transition-colors"
           >
-            연결 코드 만들기
+            {t("mobilePairingIssueCode")}
           </button>
         ) : (
           <button
@@ -149,7 +151,7 @@ export default function MobilePairingSettings() {
             onClick={() => void cancelCode()}
             className="shrink-0 px-3 py-1.5 text-sm rounded-md bg-button-neutral text-white hover:bg-button-neutral-hover transition-colors"
           >
-            코드 지우기
+            {t("mobilePairingClearCode")}
           </button>
         )}
       </div>
@@ -157,7 +159,7 @@ export default function MobilePairingSettings() {
       {pairingCode !== null && (
         <div className="mt-3 p-3 rounded-md bg-bg-page border border-border-default flex items-center justify-between">
           <span className="text-2xl font-mono tracking-[0.3em] text-text-primary">{pairingCode}</span>
-          <span className="text-xs text-text-muted">{remainingSeconds}초 뒤 만료</span>
+          <span className="text-xs text-text-muted">{t("mobilePairingCodeExpiresIn", { seconds: remainingSeconds })}</span>
         </div>
       )}
 
@@ -175,7 +177,7 @@ export default function MobilePairingSettings() {
               <div>
                 <span className="text-sm text-text-primary">{device.deviceName}</span>
                 <p className="text-xs text-text-muted mt-0.5">
-                  {new Date(device.pairedAt).toLocaleString()} 연결됨
+                  {t("mobilePairingPairedAt", { date: new Date(device.pairedAt).toLocaleString() })}
                 </p>
               </div>
               <button
@@ -183,7 +185,7 @@ export default function MobilePairingSettings() {
                 onClick={() => void disconnectDevice(device.deviceId)}
                 className="px-2 py-1 text-xs rounded-md text-status-error hover:bg-button-neutral-subtle transition-colors"
               >
-                연결 끊기
+                {t("mobilePairingDisconnect")}
               </button>
             </li>
           ))}
