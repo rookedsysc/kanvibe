@@ -41,8 +41,15 @@ function writeShellScript(response, script) {
 function createHookServer({ host, port }) {
   const hookService = require(getRuntimeModulePath("desktop", "main", "services", "hookService"));
   const hookInstallBundle = require(getRuntimeModulePath("lib", "hookInstallBundle"));
+  const mobileBridge = require(getRuntimeModulePath("desktop", "main", "services", "mobileBridgeService"));
+  const { handleMobileRequest, attachMobileStreamServer } = require("./mobileRoutes.js");
 
   const server = http.createServer(async (request, response) => {
+    /** 모바일 경로는 자체 인증을 거치므로 hook 라우팅보다 먼저 가로챈다 */
+    if (await handleMobileRequest(request, response, { bridge: mobileBridge, host, port })) {
+      return;
+    }
+
     if (request.method === "GET" && request.url === "/api/hooks/health") {
       writeJson(response, 200, { success: true });
       return;
@@ -84,6 +91,8 @@ function createHookServer({ host, port }) {
 
     writeJson(response, 404, { success: false, error: "Not found" });
   });
+
+  attachMobileStreamServer(server, { bridge: mobileBridge, host, port });
 
   server.listen(port, host, () => {
     const logUrl = host === "0.0.0.0"
