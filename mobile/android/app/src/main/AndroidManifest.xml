@@ -1,7 +1,13 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <!-- 릴리스 빌드도 데스크탑에 닿아야 한다. debug/profile 매니페스트의 선언은 그 빌드 타입에만 합쳐진다. -->
     <uses-permission android:name="android.permission.INTERNET"/>
+    <!-- 이 앱이 닿는 곳은 사용자가 입력한 데스크탑 한 대뿐이고 그 주소는 평문 http/ws다.
+         targetSdk 28부터 평문이 기본 차단이라 열어 주지 않으면 릴리스 빌드에서 아무 요청도 못 나간다.
+         networkSecurityConfig로 사설 대역만 허용하는 방법은 쓰지 않는다. 데스크탑이 0.0.0.0에 붙어
+         기다리는 대상에는 Tailscale 같은 CGNAT(100.64.0.0/10) 주소도 있고, 그 대역은 RFC1918이
+         아니어서 좁힌 목록이 오히려 정상 연결을 막는다. -->
     <application
+        android:usesCleartextTraffic="true"
         android:label="kanvibe_mobile"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
