@@ -7,6 +7,7 @@ import { SessionType } from "@/entities/KanbanTask";
 const appSettingsStore = new Map<string, string>();
 const execGitMock = vi.fn<(command: string, sshHost?: string | null) => Promise<string>>();
 const findOneByMock = vi.fn();
+const spawnMock = vi.fn();
 
 vi.mock("@/desktop/main/services/appSettingsService", () => ({
   getAppSetting: async (key: string) => appSettingsStore.get(key) ?? null,
@@ -26,6 +27,11 @@ vi.mock("@/lib/database", () => ({
 vi.mock("@/desktop/main/services/kanbanService", () => ({ getTasksByStatus: async () => ({ tasks: {} }) }));
 vi.mock("@/desktop/main/services/projectService", () => ({ getAllProjects: async () => [] }));
 
+vi.mock("child_process", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("child_process")>()),
+  spawn: (...args: unknown[]) => spawnMock(...args),
+}));
+
 const {
   authorizeMobileRequest,
   getTaskSurfaces,
@@ -34,17 +40,58 @@ const {
   readMobilePairingCode,
   startMobilePairing,
   stopMobilePairing,
+  subscribeToPane,
   unpairMobileDevice,
+  writeToPane,
 } = await import("@/desktop/main/services/mobileBridgeService");
 
 const TMUX_TASK = { sessionType: SessionType.TMUX, sessionName: "kanvibe-task", sshHost: null };
+
+/** 이 세션이 가진 pane은 `%19` 하나뿐이다. `%3`은 같은 tmux 서버의 다른 세션에 있는 pane을 가리킨다 */
+const MIRROR_PANE_LINE = "%19\t@10\tbash\t0\t0\t80\t24\tfirst";
 
 beforeEach(() => {
   appSettingsStore.clear();
   execGitMock.mockReset();
   findOneByMock.mockReset();
+  spawnMock.mockReset();
   stopMobilePairing();
 });
+
+/** 세션 pane 목록과 스냅샷만 답하는 tmux 태스크를 세운다 */
+function stubTmuxMirror(): void {
+  findOneByMock.mockResolvedValue(TMUX_TASK);
+  execGitMock.mockImplementation(async (command) =>
+    command.includes("list-panes") ? MIRROR_PANE_LINE : "snapshot",
+  );
+}
+
+function executedCommands(): string[] {
+  return execGitMock.mock.calls.map(([command]) => command);
+}
+
+/**
+ * tmux 스트림을 띄우는 자식 프로세스 대신, 테스트가 직접 출력을 흘려보낼 수 있는 가짜를 세운다.
+ * `pid`를 비워 두면 `process.kill`을 부르지 않아 테스트가 실제 프로세스 그룹을 건드리지 않는다.
+ */
+function stubPaneProcess(): { emit: (chunk: string) => void } {
+  const dataListeners = new Set<(chunk: string) => void>();
+
+  spawnMock.mockReturnValue({
+    pid: undefined,
+    stdout: {
+      setEncoding: () => {},
+      on: (event: string, listener: (chunk: string) => void) => {
+        if (event === "data") {
+          dataListeners.add(listener);
+        }
+      },
+    },
+    kill: () => {},
+  });
+
+  return { emit: (chunk) => dataListeners.forEach((listener) => listener(chunk)) };
+}
 
 async function pairOneDevice(deviceName = "iPhone"): Promise<string> {
   const { code } = startMobilePairing();
@@ -84,6 +131,30 @@ describe("기기 페어링", () => {
     await pairOneDevice();
 
     expect(JSON.stringify(await listPairedMobileDevices())).not.toContain("token");
+  });
+
+  /** 목록은 `app_settings`의 칸 하나라, 읽고-고쳐-쓰기가 겹치면 나중 쓰기가 앞선 토큰을 덮어 지운다 */
+  it("두 기기가 겹쳐 연결해도 토큰이 둘 다 남는다", async () => {
+    const firstPairing = pairMobileDevice(startMobilePairing().code, "iPhone");
+    const secondPairing = pairMobileDevice(startMobilePairing().code, "iPad");
+
+    const [firstToken, secondToken] = await Promise.all([firstPairing, secondPairing]);
+
+    expect(await authorizeMobileRequest(`Bearer ${firstToken}`)).toBe(true);
+    expect(await authorizeMobileRequest(`Bearer ${secondToken}`)).toBe(true);
+    expect(await listPairedMobileDevices()).toHaveLength(2);
+  });
+
+  it("한쪽을 끊는 사이에 연결한 기기는 살아남고 끊은 기기는 되살아나지 않는다", async () => {
+    const removedToken = await pairOneDevice("iPhone");
+    const [removedDevice] = await listPairedMobileDevices();
+
+    const pairing = pairMobileDevice(startMobilePairing().code, "iPad");
+    const unpairing = unpairMobileDevice(removedDevice.deviceId);
+    const [addedToken] = await Promise.all([pairing, unpairing]);
+
+    expect(await authorizeMobileRequest(`Bearer ${addedToken}`)).toBe(true);
+    expect(await authorizeMobileRequest(`Bearer ${removedToken}`)).toBe(false);
   });
 
   it("연결을 끊으면 그 기기의 토큰은 더 이상 통하지 않는다", async () => {
@@ -216,5 +287,86 @@ describe("태스크 pane 조회", () => {
 
     expect(surfaces.tabs[0].panes[0].id).toBe("terminal_1");
     expect(execGitMock.mock.calls.some(([command]) => command.includes("list-panes --json"))).toBe(true);
+  });
+});
+
+/**
+ * tmux pane id는 서버 전역이라 `-t %3`이 세션 경계를 넘는다.
+ * 토큰 하나를 가진 기기가 다른 태스크의 pane까지 읽고 쓰는 것을 막아야 한다.
+ */
+describe("pane 접근 범위", () => {
+  it("세션에 없는 pane은 구독할 수 없다", async () => {
+    stubTmuxMirror();
+
+    await expect(subscribeToPane("task-scope-read", "%3", () => {})).rejects.toMatchObject({
+      reason: "session-not-running",
+    });
+    expect(executedCommands().some((command) => command.includes("capture-pane"))).toBe(false);
+  });
+
+  it("세션에 없는 pane에는 키를 넣을 수 없다", async () => {
+    stubTmuxMirror();
+
+    await expect(writeToPane("task-scope-write", "%3", "ls")).rejects.toMatchObject({
+      reason: "session-not-running",
+    });
+    expect(executedCommands().some((command) => command.includes("send-keys"))).toBe(false);
+  });
+
+  it("세션 안의 pane에는 키가 그대로 들어간다", async () => {
+    stubTmuxMirror();
+
+    await writeToPane("task-scope-write", "%19", "ls");
+
+    expect(executedCommands().some((command) => command.includes("send-keys -t '%19'"))).toBe(true);
+  });
+});
+
+describe("pane 구독 정리", () => {
+  /**
+   * 두 번째 구독자가 자리를 잡은 뒤 콜백을 얹기 전에 첫 구독자가 나가는 순간을 만든다.
+   * 완성된 구독의 listener만 세면 이 틈에서 스트림이 끊기고 두 번째 구독자는 영영 조용해진다.
+   */
+  it("자리를 잡은 구독자가 있으면 앞선 구독자가 나가도 스트림을 끊지 않는다", async () => {
+    stubTmuxMirror();
+    const paneProcess = stubPaneProcess();
+
+    const unsubscribeFirst = await subscribeToPane("task-race", "%19", () => {});
+
+    const receivedChunks: string[] = [];
+    const unsubscribeSecond = await subscribeToPane("task-race", "%19", (chunk) => {
+      if (receivedChunks.length === 0) {
+        queueMicrotask(unsubscribeFirst);
+      }
+      receivedChunks.push(chunk);
+    });
+
+    paneProcess.emit("stream");
+
+    expect(receivedChunks).toEqual(["snapshot", "stream"]);
+    expect(executedCommands()).not.toContain("tmux pipe-pane -t '%19'");
+
+    unsubscribeSecond();
+    expect(executedCommands()).toContain("tmux pipe-pane -t '%19'");
+  });
+
+  it("같은 구독 해제를 두 번 불러도 남은 구독자의 몫을 깎지 않는다", async () => {
+    stubTmuxMirror();
+    const paneProcess = stubPaneProcess();
+
+    const unsubscribeFirst = await subscribeToPane("task-idempotent", "%19", () => {});
+    const receivedChunks: string[] = [];
+    const unsubscribeSecond = await subscribeToPane("task-idempotent", "%19", (chunk) => {
+      receivedChunks.push(chunk);
+    });
+
+    unsubscribeFirst();
+    unsubscribeFirst();
+    paneProcess.emit("stream");
+
+    expect(receivedChunks).toEqual(["snapshot", "stream"]);
+    expect(executedCommands()).not.toContain("tmux pipe-pane -t '%19'");
+
+    unsubscribeSecond();
   });
 });

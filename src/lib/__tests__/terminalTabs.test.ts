@@ -2,7 +2,7 @@
  * @vitest-environment node
  */
 import { spawnSync } from "child_process";
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import {
   buildTmuxKillWindowCommand,
   buildTmuxListWindowsCommand,
@@ -24,6 +24,7 @@ import {
   parseZellijFocusedTabName,
   parseZellijTabList,
   parseZellijTabNamesWithFocus,
+  resolveZellijPaneIdSupport,
   supportsZellijTabIdCommands,
 } from "@/lib/terminalTabs";
 
@@ -178,6 +179,26 @@ describe("zellij 버전 판정", () => {
   it("버전을 읽지 못하면 구버전으로 본다", () => {
     expect(supportsZellijTabIdCommands("")).toBe(false);
     expect(supportsZellijTabIdCommands("command not found")).toBe(false);
+  });
+
+  /** 탭 서비스와 pane 서비스가 각자 캐시를 두면 같은 호스트에 `--version`을 두 번 묻는다 */
+  it("탭 축과 pane 축이 호스트별 판정을 한 번만 하고 함께 쓴다", async () => {
+    const runFromTabService = vi.fn(async () => "zellij 0.44.3");
+    const runFromMirrorService = vi.fn(async () => "zellij 0.43.1");
+
+    expect(await resolveZellijPaneIdSupport("shared-host", runFromTabService)).toBe(true);
+    expect(await resolveZellijPaneIdSupport("shared-host", runFromMirrorService)).toBe(true);
+
+    expect(runFromTabService).toHaveBeenCalledTimes(1);
+    expect(runFromMirrorService).not.toHaveBeenCalled();
+  });
+
+  it("버전 명령이 실패한 호스트는 구버전으로 본다", async () => {
+    const run = vi.fn(async () => {
+      throw new Error("zellij: command not found");
+    });
+
+    expect(await resolveZellijPaneIdSupport("missing-zellij-host", run)).toBe(false);
   });
 });
 

@@ -7,7 +7,8 @@ import { quoteForPosixShell } from "@/lib/worktree";
  * 세션 생성·정리는 `worktree.ts`가 담당하고 이 파일은 탭 축만 다룬다.
  * 두 축은 변경 출처가 달라서(세션 수명 vs 탭 조작) 같은 파일에 두면 함께 커진다.
  *
- * 모든 함수는 부수효과가 없다. 실제 실행은 `terminalTabService`가 맡는다.
+ * 명령 빌더와 파서는 부수효과가 없다. 실제 실행은 `terminalTabService`가 맡고,
+ * 버전 판정만 예외로 [resolveZellijPaneIdSupport]가 실행기를 인자로 받아 답을 캐시한다.
  */
 
 /**
@@ -430,4 +431,35 @@ export function buildZellijMoveTabCommands(
     buildZellijGoToTabByNameCommand(sessionName, tabName),
     ...Array.from({ length: stepCount }, () => moveCommand),
   ];
+}
+
+/** zellij 버전은 세션이 사는 동안 바뀌지 않으므로 호스트별로 한 번만 확인한다 */
+const zellijPaneIdSupportByHost = new Map<string, boolean>();
+
+/**
+ * 이 호스트의 zellij가 탭·pane을 id로 지정하는 명령을 받는지 판정한다.
+ *
+ * 탭 축과 pane 축이 같은 버전 경계를 쓰는데도 서비스마다 캐시를 두면 같은 호스트에 `--version`을 두 번 묻고,
+ * 판정 규칙도 두 곳으로 갈라진다. 그래서 규칙과 캐시를 여기 하나로 둔다.
+ * 명령 실행을 인자로 받는 이유는, 호출자마다 타임아웃과 원격 경로가 달라 이 파일이 직접 실행할 수 없기 때문이다.
+ */
+export async function resolveZellijPaneIdSupport(
+  sshHost: string | null,
+  run: (command: string) => Promise<string>,
+): Promise<boolean> {
+  const hostKey = sshHost ?? "local";
+  const cachedSupport = zellijPaneIdSupportByHost.get(hostKey);
+  if (cachedSupport !== undefined) {
+    return cachedSupport;
+  }
+
+  let isSupported = false;
+  try {
+    isSupported = supportsZellijTabIdCommands(await run(buildZellijVersionCommand()));
+  } catch {
+    /** 버전을 못 읽으면 id 지정 명령이 없는 구버전으로 본다 */
+  }
+
+  zellijPaneIdSupportByHost.set(hostKey, isSupported);
+  return isSupported;
 }
