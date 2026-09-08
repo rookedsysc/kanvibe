@@ -1,6 +1,8 @@
 const http = require("node:http");
 const path = require("node:path");
 
+const { readJsonBody, writeJson } = require("./httpBody.js");
+
 function getRuntimeModulePath(...moduleSegments) {
   const appRoot = path.join(__dirname, "..");
 
@@ -9,28 +11,6 @@ function getRuntimeModulePath(...moduleSegments) {
   }
 
   return path.join(appRoot, "build", "main", "src", ...moduleSegments) + ".js";
-}
-
-function readJsonBody(request) {
-  return new Promise((resolve, reject) => {
-    let body = "";
-    request.on("data", (chunk) => {
-      body += chunk;
-    });
-    request.on("end", () => {
-      try {
-        resolve(body ? JSON.parse(body) : {});
-      } catch (error) {
-        reject(error);
-      }
-    });
-    request.on("error", reject);
-  });
-}
-
-function writeJson(response, statusCode, payload) {
-  response.writeHead(statusCode, { "Content-Type": "application/json" });
-  response.end(JSON.stringify(payload));
 }
 
 function writeShellScript(response, script) {
