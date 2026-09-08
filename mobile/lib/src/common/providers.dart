@@ -58,6 +58,19 @@ final connectionControllerProvider =
       ConnectionController.new,
     );
 
+/// 데스크탑이 기기를 떼어 내면 남은 토큰으로는 어떤 요청도 통과하지 못한다.
+///
+/// 저장된 연결을 지워야 앱이 페어링 화면으로 되돌아가고 사용자가 다시 붙을 수 있다.
+/// 지우는 것은 이 기기에 보관한 값뿐이고 데스크탑에는 아무것도 알리지 않는다.
+Future<void> _forgetRejectedConnection(
+  Ref ref,
+  DesktopRequestException error,
+) async {
+  if (error.isUnauthorized) {
+    await ref.read(connectionControllerProvider.notifier).disconnect();
+  }
+}
+
 /// 보드 내용. 연결이 바뀌면 자동으로 다시 불러온다
 final boardProvider = FutureProvider<BoardSnapshot>((ref) async {
   final connection = await ref.watch(connectionControllerProvider.future);
@@ -65,8 +78,13 @@ final boardProvider = FutureProvider<BoardSnapshot>((ref) async {
     return const BoardSnapshot(tasksByStatus: {});
   }
 
-  final board = await ref.read(desktopClientProvider).fetchBoard(connection);
-  return BoardSnapshot.fromJson(board);
+  try {
+    final board = await ref.read(desktopClientProvider).fetchBoard(connection);
+    return BoardSnapshot.fromJson(board);
+  } on DesktopRequestException catch (error) {
+    await _forgetRejectedConnection(ref, error);
+    rethrow;
+  }
 });
 
 /// 태스크 하나의 탭과 pane. 태스크별로 따로 들고 있어야 두 태스크를 오갈 때 섞이지 않는다
@@ -79,5 +97,12 @@ final surfacesProvider = FutureProvider.family<TaskSurfaces, String>((
     throw const SurfaceUnavailableException(SurfaceUnavailableReason.noSession);
   }
 
-  return ref.read(desktopClientProvider).fetchSurfaces(connection, taskId);
+  try {
+    return await ref
+        .read(desktopClientProvider)
+        .fetchSurfaces(connection, taskId);
+  } on DesktopRequestException catch (error) {
+    await _forgetRejectedConnection(ref, error);
+    rethrow;
+  }
 });

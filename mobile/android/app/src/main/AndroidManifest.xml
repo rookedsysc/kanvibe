@@ -1,4 +1,6 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- 릴리스 빌드도 데스크탑에 닿아야 한다. debug/profile 매니페스트의 선언은 그 빌드 타입에만 합쳐진다. -->
+    <uses-permission android:name="android.permission.INTERNET"/>
     <application
         android:label="kanvibe_mobile"
         android:name="${applicationName}"

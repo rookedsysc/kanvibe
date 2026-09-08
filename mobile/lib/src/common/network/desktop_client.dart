@@ -75,6 +75,12 @@ class DesktopClient {
         )
         .timeout(_requestTimeout);
 
+    /// 200도 409도 아니면 본문이 JSON이라는 보장이 없다. 상태를 먼저 걸러야
+    /// 앞단이 끼워 넣은 HTML 오류 페이지가 [FormatException]으로 둔갑하지 않는다
+    if (response.statusCode != 200 && response.statusCode != 409) {
+      throw DesktopRequestException(response.statusCode);
+    }
+
     final body = jsonDecode(response.body) as Map<String, dynamic>;
 
     /// 세션이 없거나 꺼진 것은 오류가 아니라 화면이 안내해야 하는 상태다
@@ -82,9 +88,6 @@ class DesktopClient {
       throw SurfaceUnavailableException(
         SurfaceUnavailableReason.fromWire(body['reason']?.toString()),
       );
-    }
-    if (response.statusCode != 200) {
-      throw DesktopRequestException(response.statusCode);
     }
 
     return TaskSurfaces.fromJson(body['surfaces'] as Map<String, dynamic>);

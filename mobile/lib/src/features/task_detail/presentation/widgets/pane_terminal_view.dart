@@ -47,11 +47,27 @@ class _PaneTerminalViewState extends ConsumerState<PaneTerminalView> {
     _terminal = xterm.Terminal(maxLines: _scrollbackLines);
     _terminal.resize(widget.pane.width, widget.pane.height);
 
-    if (widget.isInteractive) {
-      _terminal.onOutput = (data) => _stream?.write(data);
-    }
+    _bindInput();
 
     unawaited(_openStream());
+  }
+
+  @override
+  void didUpdateWidget(PaneTerminalView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+
+    /// 태블릿에서 입력 대상이 옮겨 와도 이 위젯은 그대로 살아 있다.
+    /// 키를 어디로 보낼지는 initState에서 한 번 정하고 끝낼 수 없다.
+    if (widget.isInteractive != oldWidget.isInteractive) {
+      _bindInput();
+    }
+  }
+
+  /// 입력을 받기로 한 pane만 키를 데스크탑으로 흘려보낸다
+  void _bindInput() {
+    _terminal.onOutput = widget.isInteractive
+        ? (data) => _stream?.write(data)
+        : null;
   }
 
   /// 데스크탑 터미널이 보관하는 양과 비슷하게 잡는다. 더 늘리면 폰 메모리만 먹는다

@@ -132,21 +132,24 @@ class _PaneFrame extends StatelessWidget {
       child: child,
     );
 
+    /// 초점이 바뀌어도 위젯 종류가 그대로여야 한다. 트리 모양이 달라지면 Flutter가 element를 재사용하지 못해
+    /// [PaneTerminalView]가 통째로 다시 마운트되고, 스크롤백과 소켓과 데스크탑의 pipe-pane이 함께 날아간다.
+    /// 그래서 감쌀 것은 늘 같게 두고 속성만 뒤집는다.
     return Semantics(
       selected: isFocused,
       label: isFocused ? '입력 중인 pane' : '누르면 이 pane에 입력합니다',
-      child: isFocused
-          /// 입력 중인 pane의 탭은 터미널이 직접 받아야 커서 이동과 선택이 동작한다
-          ? framed
-          : GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: onTap,
-              child: IgnorePointer(
-                /// 터미널도 탭을 인식해서, 막지 않으면 제스처 경합에서 터미널이 이겨 입력 대상이 옮겨지지 않는다.
-                /// 어차피 읽기 전용으로 비추는 중이라 포인터를 받을 이유가 없다.
-                child: framed,
-              ),
-            ),
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+
+        /// 입력 중인 pane의 탭은 터미널이 직접 받아야 커서 이동과 선택이 동작한다
+        onTap: isFocused ? null : onTap,
+        child: IgnorePointer(
+          /// 터미널도 탭을 인식해서, 막지 않으면 제스처 경합에서 터미널이 이겨 입력 대상이 옮겨지지 않는다.
+          /// 어차피 읽기 전용으로 비추는 중이라 포인터를 받을 이유가 없다.
+          ignoring: !isFocused,
+          child: framed,
+        ),
+      ),
     );
   }
 }

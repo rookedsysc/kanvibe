@@ -4,6 +4,7 @@ import 'package:kanvibe_mobile/src/features/task_detail/domain/mirror_pane.dart'
 import 'package:kanvibe_mobile/src/features/task_detail/presentation/task_detail_screen.dart';
 import 'package:kanvibe_mobile/src/features/task_detail/presentation/widgets/pane_terminal_view.dart';
 import 'package:kanvibe_mobile/src/features/task_detail/presentation/widgets/window_pane_composition.dart';
+import 'package:xterm/xterm.dart' as xterm;
 
 import '../../../support/fake_desktop.dart';
 
@@ -77,6 +78,16 @@ Future<FakeDesktopClient> pumpDetail(
   return client;
 }
 
+/// pane이 실제로 키를 받는 자리. 입력이 어느 소켓으로 나가는지는 여기서만 확인할 수 있다
+xterm.Terminal terminalIn(WidgetTester tester, String paneId) => tester
+    .widget<xterm.TerminalView>(
+      find.descendant(
+        of: find.byKey(ValueKey(paneId)),
+        matching: find.byType(xterm.TerminalView),
+      ),
+    )
+    .terminal;
+
 void main() {
   testWidgets('폰에서는 모든 window의 pane이 각각 탭이 된다', (tester) async {
     await pumpDetail(tester, size: phoneSize);
@@ -145,18 +156,28 @@ void main() {
     expect(panes[1].isInteractive, isFalse, reason: '입력은 한 pane만 받는다');
   });
 
-  testWidgets('태블릿에서 다른 pane을 누르면 그쪽이 입력을 받는다', (tester) async {
-    await pumpDetail(tester, size: tabletSize);
+  testWidgets('태블릿에서 다른 pane을 누르면 구독은 그대로 두고 입력만 옮겨 간다', (tester) async {
+    final client = await pumpDetail(tester, size: tabletSize);
 
-    await tester.tap(find.byType(PaneTerminalView).last);
+    /// 읽기 전용 pane은 포인터를 막아 두었으므로 탭은 그 자리를 감싼 프레임이 받는다
+    await tester.tapAt(tester.getCenter(find.byKey(const ValueKey('%20'))));
     await tester.pumpAndSettle();
 
-    final panes = tester
-        .widgetList<PaneTerminalView>(find.byType(PaneTerminalView))
-        .toList();
+    expect(
+      client.closedPanes,
+      isEmpty,
+      reason: '입력 대상만 바뀐 것이라 두 pane의 구독과 스크롤백은 살아 있어야 한다',
+    );
 
-    expect(panes[0].isInteractive, isFalse);
-    expect(panes[1].isInteractive, isTrue);
+    terminalIn(tester, '%20').textInput('ls');
+    terminalIn(tester, '%19').textInput('여기로는 가면 안 된다');
+
+    expect(client.writtenInput['%20'], contains('ls'));
+    expect(
+      client.writtenInput['%19'],
+      isNull,
+      reason: '입력을 넘겨준 pane은 더 이상 키를 데스크탑으로 보내지 않는다',
+    );
   });
 
   testWidgets('화면을 떠나면 pane 구독이 닫힌다', (tester) async {
