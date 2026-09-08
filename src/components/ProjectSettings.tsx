@@ -13,6 +13,7 @@ import {
   setBackgroundSyncIntervalMs,
   type ThemePreference,
 } from "@/desktop/renderer/actions/appSettings";
+import MobilePairingSettings from "@/components/MobilePairingSettings";
 import { SessionType } from "@/entities/KanbanTask";
 import { Link } from "@/desktop/renderer/navigation";
 import type { Project } from "@/entities/Project";
@@ -348,6 +349,8 @@ export default function ProjectSettings({
             </select>
           </div>
         </div>
+
+        <MobilePairingSettings />
 
         {/* 알림 설정 */}
         <div id="notifications" className="p-4 border-b border-border-default">
