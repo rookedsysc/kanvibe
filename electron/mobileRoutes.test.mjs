@@ -23,6 +23,7 @@ function createBridge(overrides = {}) {
   return {
     authorizeMobileRequest: vi.fn(async (header) => header === "Bearer good"),
     pairMobileDevice: vi.fn(async () => "paired-token"),
+    unpairMobileDeviceByToken: vi.fn(async () => true),
     getMobileBoard: vi.fn(async () => ({ columns: [] })),
     getTaskSurfaces: vi.fn(async () => ({ panes: [] })),
     subscribeToPane: vi.fn(async () => () => {}),
@@ -133,6 +134,63 @@ describe("모바일 라우트 인증 경계", () => {
 
     expect(response.status).toBe(200);
     expect(response.body).toEqual({ handledBy: "hook-fallthrough" });
+  });
+});
+
+/**
+ * 기기가 자기 연결을 끊는 경로. `/pair`와 달리 인증 뒤에 있어야 지우는 대상이 요청이 증명한 기기 하나로 정해진다.
+ */
+describe("기기 연결 해제 경로", () => {
+  it("자기 토큰으로 부르면 그 토큰만 넘겨 지우고 200을 준다", async () => {
+    const response = await request("/api/mobile/device", {
+      method: "DELETE",
+      headers: { authorization: "Bearer good" },
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({ success: true });
+    expect(bridge.unpairMobileDeviceByToken).toHaveBeenCalledWith("Bearer good");
+  });
+
+  it("토큰 없이는 인증 앞단에서 막혀 아무것도 지우지 않는다", async () => {
+    const response = await request("/api/mobile/device", { method: "DELETE" });
+
+    expect(response.status).toBe(401);
+    expect(bridge.unpairMobileDeviceByToken).not.toHaveBeenCalled();
+  });
+
+  it("모르는 토큰도 인증 앞단에서 막힌다", async () => {
+    const response = await request("/api/mobile/device", {
+      method: "DELETE",
+      headers: { authorization: "Bearer unknown" },
+    });
+
+    expect(response.status).toBe(401);
+    expect(bridge.unpairMobileDeviceByToken).not.toHaveBeenCalled();
+  });
+
+  it("인증과 삭제 사이에 이미 끊긴 기기는 401로 답한다", async () => {
+    bridge.unpairMobileDeviceByToken.mockResolvedValue(false);
+
+    const response = await request("/api/mobile/device", {
+      method: "DELETE",
+      headers: { authorization: "Bearer good" },
+    });
+
+    expect(response.status).toBe(401);
+    expect(response.body).toEqual({ success: false, error: "연결되지 않은 기기입니다" });
+  });
+
+  it("삭제가 던져도 매달리지 않고 500을 돌려준다", async () => {
+    bridge.unpairMobileDeviceByToken.mockRejectedValue(new Error("DB가 닫혔다"));
+
+    const response = await request("/api/mobile/device", {
+      method: "DELETE",
+      headers: { authorization: "Bearer good" },
+    });
+
+    expect(response.status).toBe(500);
+    expect(response.body).toEqual({ success: false, error: "서버 오류" });
   });
 });
 

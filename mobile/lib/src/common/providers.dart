@@ -47,7 +47,31 @@ class ConnectionController extends AsyncNotifier<DesktopConnection?> {
     return null;
   }
 
-  Future<void> disconnect() async {
+  /// 사용자가 끊기를 눌렀다. 데스크탑에 먼저 알리고 기기에서도 지운다.
+  ///
+  /// 데스크탑에 닿지 못해도 기기에 남은 열쇠는 지운다. 여기서 멈추면 앱은 못 쓰는 토큰을 든 채로
+  /// 페어링 화면에도 못 가기 때문이다. 대신 알렸는지 여부를 돌려주어, 데스크탑이 아직 이 기기를
+  /// 들고 있다는 사실을 화면이 말할 수 있게 한다.
+  Future<bool> disconnect() async {
+    final connection = state.value;
+    var toldDesktop = true;
+
+    if (connection != null) {
+      try {
+        await ref.read(desktopClientProvider).unpairDevice(connection);
+      } catch (_) {
+        toldDesktop = false;
+      }
+    }
+
+    await forgetLocally();
+    return toldDesktop;
+  }
+
+  /// 토큰이 이미 죽어 있을 때 쓰는 길. 데스크탑에 알릴 것이 없으니 기기에 남은 값만 지운다.
+  ///
+  /// 거절당한 토큰으로 다시 데스크탑을 부르는 것은 통하지도 않고, 사용자가 누른 끊기와도 뜻이 다르다.
+  Future<void> forgetLocally() async {
     await ref.read(connectionStoreProvider).clear();
     state = const AsyncData(null);
   }
@@ -62,12 +86,13 @@ final connectionControllerProvider =
 ///
 /// 저장된 연결을 지워야 앱이 페어링 화면으로 되돌아가고 사용자가 다시 붙을 수 있다.
 /// 지우는 것은 이 기기에 보관한 값뿐이고 데스크탑에는 아무것도 알리지 않는다.
+/// 이미 거절당한 토큰을 다시 실어 보내 봐야 401만 한 번 더 받을 뿐이다.
 Future<void> _forgetRejectedConnection(
   Ref ref,
   DesktopRequestException error,
 ) async {
   if (error.isUnauthorized) {
-    await ref.read(connectionControllerProvider.notifier).disconnect();
+    await ref.read(connectionControllerProvider.notifier).forgetLocally();
   }
 }
 

@@ -19,12 +19,30 @@ const PAIRING_CODE_DIGITS = 6;
 /** 코드가 화면에 떠 있을 법한 시간. hook 설치 티켓과 같은 값을 쓴다 */
 const PAIRING_CODE_TTL_MS = 5 * 60_000;
 
+/**
+ * 코드 하나가 견디는 실패 횟수. 넘어서면 코드를 버려 데스크탑에서 새로 받아야 한다.
+ *
+ * 오타 한 번에 새 코드를 받으러 가야 하면 못 쓸 물건이 된다는 판단은 그대로 두되, 여유를 무한히 주지는 않는다.
+ * 5회는 사람이 여섯 자리를 옮겨 적다 틀리는 횟수보다 넉넉하고, 10^6 중 다섯 개를 찍는 쪽에는 아무것도 아니다.
+ * 이 상한이 없으면 코드 수명 5분 안에 LAN의 누구나 전체 공간을 훑어 만료되지 않는 기기 토큰을 가져간다.
+ */
+const PAIRING_CODE_MAX_FAILURES = 5;
+
+/**
+ * 실패한 시도만 이만큼 늦춘다. 성공은 늦추지 않는다. 맞게 입력한 사용자까지 기다리게 할 이유가 없다.
+ * 상한 5회가 코드 하나의 훑기를 막고, 이 지연은 코드를 다시 받아 가며 반복하는 쪽의 속도를 떨어뜨린다.
+ * 사람이 한 자리 잘못 눌렀을 때는 눈에 띄지 않는 길이다.
+ */
+const PAIRING_CODE_FAILURE_DELAY_MS = 300;
+
 /** 기기 토큰은 저장되어 계속 쓰이므로 추측 시도를 무의미하게 만들 만큼 길어야 한다 */
 const DEVICE_TOKEN_BYTES = 32;
 
 interface PendingPairing {
   code: string;
   expiresAt: number;
+  /** 이 코드로 틀린 횟수. 코드마다 따로 세므로 새로 발급하면 0에서 다시 시작한다 */
+  failedAttempts: number;
 }
 
 /** 아직 교환되지 않은 페어링 코드. 앱이 꺼지면 같이 사라지는 것이 맞다 */
@@ -68,9 +86,13 @@ function generatePairingCode(): string {
  * 화면에 띄울 페어링 코드를 발급한다.
  * 코드는 한 번에 하나만 살아 있다. 여러 개를 동시에 열어 두면 어느 것이 화면의 값인지 사용자가 알 수 없다.
  */
-export function issuePairingCode(now: number = Date.now()): PendingPairing {
-  pendingPairing = { code: generatePairingCode(), expiresAt: now + PAIRING_CODE_TTL_MS };
-  return pendingPairing;
+export function issuePairingCode(now: number = Date.now()): { code: string; expiresAt: number } {
+  pendingPairing = {
+    code: generatePairingCode(),
+    expiresAt: now + PAIRING_CODE_TTL_MS,
+    failedAttempts: 0,
+  };
+  return { code: pendingPairing.code, expiresAt: pendingPairing.expiresAt };
 }
 
 /** 발급된 코드를 취소한다. 페어링 화면을 닫으면 코드도 죽어야 한다 */
@@ -88,16 +110,36 @@ export function readPendingPairingCode(now: number = Date.now()): string | null 
 
 /**
  * 코드를 확인하고 성공하면 소모한다.
- * 실패해도 소모하지 않는 이유는, 사용자가 한 자리 잘못 눌렀다고 데스크탑에 다시 가서 새 코드를 받아야 하면 못 쓸 물건이 되기 때문이다.
+ * 한 번 틀렸다고 곧바로 소모하지 않는 이유는, 사용자가 한 자리 잘못 눌렀다고 데스크탑에 다시 가서 새 코드를 받아야 하면
+ * 못 쓸 물건이 되기 때문이다. 대신 그 여유를 [PAIRING_CODE_MAX_FAILURES]회로 묶고 실패한 시도만 늦춰,
+ * 사람의 오타는 그대로 넘어가되 코드 공간을 훑는 쪽은 코드를 잃게 한다.
  */
-export function redeemPairingCode(submittedCode: string, now: number = Date.now()): boolean {
+export async function redeemPairingCode(
+  submittedCode: string,
+  now: number = Date.now(),
+): Promise<boolean> {
   const expectedCode = readPendingPairingCode(now);
   if (expectedCode === null || !isEqualSecret(submittedCode, expectedCode)) {
+    /** 지연보다 먼저 센다. 동시에 몰려온 시도가 전부 잠든 사이 코드가 살아 있으면 상한이 의미를 잃는다 */
+    countFailedRedeem();
+    await new Promise((resolve) => setTimeout(resolve, PAIRING_CODE_FAILURE_DELAY_MS));
     return false;
   }
 
   pendingPairing = null;
   return true;
+}
+
+/** 실패를 세고 상한에 닿으면 코드를 버린다. 버린 뒤에는 맞는 코드를 넣어도 통하지 않는 것이 의도다 */
+function countFailedRedeem(): void {
+  if (!pendingPairing) {
+    return;
+  }
+
+  pendingPairing.failedAttempts += 1;
+  if (pendingPairing.failedAttempts >= PAIRING_CODE_MAX_FAILURES) {
+    pendingPairing = null;
+  }
 }
 
 /** 기기가 저장하고 이후 모든 요청에 실어 보낼 토큰 */

@@ -42,6 +42,7 @@ const {
   stopMobilePairing,
   subscribeToPane,
   unpairMobileDevice,
+  unpairMobileDeviceByToken,
   writeToPane,
 } = await import("@/desktop/main/services/mobileBridgeService");
 
@@ -93,6 +94,21 @@ function stubPaneProcess(): { emit: (chunk: string) => void } {
   return { emit: (chunk) => dataListeners.forEach((listener) => listener(chunk)) };
 }
 
+/**
+ * 실패한 페어링은 코드 훑기를 늦추려고 300ms를 기다린다.
+ * 실제로 재우면 실패를 다루는 테스트마다 그만큼 느려지므로 시계를 대신 민다.
+ */
+async function failedPairing(submittedCode: string): Promise<string | null> {
+  vi.useFakeTimers();
+  try {
+    const pairing = pairMobileDevice(submittedCode, "iPhone");
+    await vi.advanceTimersByTimeAsync(300);
+    return await pairing;
+  } finally {
+    vi.useRealTimers();
+  }
+}
+
 async function pairOneDevice(deviceName = "iPhone"): Promise<string> {
   const { code } = startMobilePairing();
   const token = await pairMobileDevice(code, deviceName);
@@ -112,11 +128,11 @@ describe("기기 페어링", () => {
   it("틀린 코드로는 토큰을 받지 못한다", async () => {
     startMobilePairing();
 
-    expect(await pairMobileDevice("000000", "iPhone")).toBeNull();
+    expect(await failedPairing("000000")).toBeNull();
   });
 
   it("코드를 발급하지 않았으면 연결할 수 없다", async () => {
-    expect(await pairMobileDevice(readMobilePairingCode() ?? "123456", "iPhone")).toBeNull();
+    expect(await failedPairing(readMobilePairingCode() ?? "123456")).toBeNull();
   });
 
   it("연결한 기기는 저장되어 목록에 남는다", async () => {
@@ -198,6 +214,54 @@ describe("요청 인증", () => {
     await unpairMobileDevice(devices[1].deviceId);
 
     expect(await authorizeMobileRequest(`Bearer ${keptToken}`)).toBe(true);
+  });
+});
+
+/**
+ * 기기가 자기 저장소만 비우면 데스크탑 항목이 남아 만료되지 않는 토큰이 계속 통과한다.
+ * 그래서 기기가 스스로 지울 수 있어야 하되, 지우는 범위는 요청이 증명한 기기 하나로 묶여 있어야 한다.
+ */
+describe("기기 스스로 연결 끊기", () => {
+  it("토큰의 주인만 지우고 다른 기기는 그대로 둔다", async () => {
+    const removedToken = await pairOneDevice("iPhone");
+    const keptToken = await pairOneDevice("iPad");
+
+    expect(await unpairMobileDeviceByToken(`Bearer ${removedToken}`)).toBe(true);
+
+    expect(await authorizeMobileRequest(`Bearer ${removedToken}`)).toBe(false);
+    expect(await authorizeMobileRequest(`Bearer ${keptToken}`)).toBe(true);
+    expect(await listPairedMobileDevices()).toEqual([
+      { deviceId: expect.any(String), deviceName: "iPad", pairedAt: expect.any(String) },
+    ]);
+  });
+
+  it("모르는 토큰으로는 아무것도 지우지 않는다", async () => {
+    const token = await pairOneDevice();
+
+    expect(await unpairMobileDeviceByToken(`Bearer ${"f".repeat(64)}`)).toBe(false);
+    expect(await authorizeMobileRequest(`Bearer ${token}`)).toBe(true);
+    expect(await listPairedMobileDevices()).toHaveLength(1);
+  });
+
+  it("헤더가 없으면 아무것도 지우지 않는다", async () => {
+    await pairOneDevice();
+
+    expect(await unpairMobileDeviceByToken(undefined)).toBe(false);
+    expect(await listPairedMobileDevices()).toHaveLength(1);
+  });
+
+  /** 이 경로도 [withDeviceList] 줄에 서야, 겹친 연결이 지운 기기를 되살리거나 새 토큰을 함께 지우지 않는다 */
+  it("연결과 겹쳐 끊어도 새 기기는 남고 끊은 기기는 되살아나지 않는다", async () => {
+    const removedToken = await pairOneDevice("iPhone");
+
+    const pairing = pairMobileDevice(startMobilePairing().code, "iPad");
+    const unpairing = unpairMobileDeviceByToken(`Bearer ${removedToken}`);
+    const [addedToken, wasRemoved] = await Promise.all([pairing, unpairing]);
+
+    expect(wasRemoved).toBe(true);
+    expect(await authorizeMobileRequest(`Bearer ${addedToken}`)).toBe(true);
+    expect(await authorizeMobileRequest(`Bearer ${removedToken}`)).toBe(false);
+    expect(await listPairedMobileDevices()).toHaveLength(1);
   });
 });
 

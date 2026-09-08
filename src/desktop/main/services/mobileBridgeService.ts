@@ -192,7 +192,7 @@ async function readPairedDevices(): Promise<PairedDevice[]> {
  * 목록은 `app_settings`의 문자열 칸 하나라 읽고-고쳐-쓰는 사이에 다른 호출이 끼면 한쪽 변경이 통째로 사라진다.
  * 두 기기가 거의 같은 순간에 연결하면 토큰 하나가 없어져 나중에 401이 나고,
  * 한쪽을 끊는 동안 다른 쪽이 연결하면 끊은 기기가 되살아난다. 셀이 하나뿐이라 DB는 이것을 막아 주지 않는다.
- * 목록을 바꾸는 곳은 [pairMobileDevice]와 [unpairMobileDevice] 둘뿐이므로 경계도 이 파일이면 충분하다.
+ * 목록을 바꾸는 곳은 [pairMobileDevice], [unpairMobileDevice], [unpairMobileDeviceByToken]뿐이므로 경계도 이 파일이면 충분하다.
  */
 let devicesWriteQueue: Promise<unknown> = Promise.resolve();
 
@@ -208,7 +208,7 @@ function withDeviceList<T>(mutate: (devices: PairedDevice[]) => Promise<T>): Pro
  * 토큰은 만료시키지 않는다. 한 번 연결한 기기가 계속 쓸 수 있어야 한다는 것이 이 기능의 요구사항이다.
  */
 export async function pairMobileDevice(submittedCode: string, deviceName: string): Promise<string | null> {
-  if (!redeemPairingCode(submittedCode)) {
+  if (!(await redeemPairingCode(submittedCode))) {
     return null;
   }
 
@@ -234,6 +234,34 @@ export async function unpairMobileDevice(deviceId: string): Promise<void> {
       PAIRED_DEVICES_KEY,
       serializePairedDevices(devices.filter((device) => device.deviceId !== deviceId)),
     );
+  });
+}
+
+/**
+ * 요청에 실린 토큰의 주인만 목록에서 지운다. 모바일의 "연결 끊기"가 부르는 경로다.
+ *
+ * 기기가 자기 저장소만 비우면 데스크탑 항목은 그대로 남아 토큰이 계속 통과한다. 토큰은 만료되지 않으므로
+ * 서버 쪽에도 지울 길이 없으면 그 기기는 영원히 인증된다. 그것을 닫는 것이 이 함수의 전부다.
+ *
+ * 지우는 대상은 요청이 증명한 기기 하나뿐이다. 토큰 하나로 남의 기기까지 끊을 수 있으면 없던 권한이 새로 생긴다.
+ * 지운 기기가 있었는지를 돌려주어, 인증과 삭제 사이에 이미 끊긴 경우를 부르는 쪽이 구분할 수 있게 한다.
+ */
+export async function unpairMobileDeviceByToken(
+  authorizationHeader: string | undefined,
+): Promise<boolean> {
+  const token = parseBearerToken(authorizationHeader);
+
+  return withDeviceList(async (devices) => {
+    const device = findPairedDevice(devices, token);
+    if (!device) {
+      return false;
+    }
+
+    await setAppSetting(
+      PAIRED_DEVICES_KEY,
+      serializePairedDevices(devices.filter((candidate) => candidate.deviceId !== device.deviceId)),
+    );
+    return true;
   });
 }
 

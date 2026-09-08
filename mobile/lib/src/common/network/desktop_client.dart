@@ -44,6 +44,23 @@ class DesktopClient {
     return token is String ? token : null;
   }
 
+  /// 이 토큰이 가리키는 기기를 데스크탑의 목록에서도 지운다.
+  ///
+  /// 기기에서만 지우면 데스크탑은 그 토큰을 계속 통과시키므로, 끊었다는 말이 반쪽이 된다.
+  /// 데스크탑은 제시한 토큰의 기기 하나만 지우고, 모르는 토큰에는 401로 답한다.
+  Future<void> unpairDevice(DesktopConnection connection) async {
+    final response = await _httpClient
+        .delete(
+          connection.buildHttpUri('/api/mobile/device'),
+          headers: connection.authorizationHeaders,
+        )
+        .timeout(_requestTimeout);
+
+    if (response.statusCode != 200) {
+      throw DesktopRequestException(response.statusCode);
+    }
+  }
+
   /// 보드 전체를 한 번에 받는다
   Future<Map<String, dynamic>> fetchBoard(DesktopConnection connection) async {
     final response = await _httpClient

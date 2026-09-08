@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:kanvibe_mobile/src/common/network/desktop_client.dart';
 import 'package:kanvibe_mobile/src/features/board/presentation/board_screen.dart';
 
 import '../../../support/fake_desktop.dart';
@@ -78,6 +79,39 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('이 상태에는 태스크가 없습니다.'), findsWidgets);
+  });
+
+  testWidgets('연결 끊기는 데스크탑에도 알린다', (tester) async {
+    await tester.binding.setSurfaceSize(phoneSize);
+    final client = FakeDesktopClient(board: boardWith());
+
+    await tester.pumpWidget(
+      wrapWithApp(const BoardScreen(), client: client, size: phoneSize),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('연결 끊기'));
+    await tester.pumpAndSettle();
+
+    expect(client.unpairCalls, hasLength(1));
+    expect(find.textContaining('데스크탑 설정에서도'), findsNothing);
+  });
+
+  testWidgets('데스크탑에 끊겼다고 알리지 못하면 남은 할 일을 말해 준다', (tester) async {
+    await tester.binding.setSurfaceSize(phoneSize);
+    final client = FakeDesktopClient(
+      board: boardWith(),
+      unpairError: const DesktopRequestException(503),
+    );
+
+    await tester.pumpWidget(
+      wrapWithApp(const BoardScreen(), client: client, size: phoneSize),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('연결 끊기'));
+    await tester.pumpAndSettle();
+
+    /// 앱은 이미 열쇠를 버렸으므로, 데스크탑에 남은 기기를 지울 수 있는 것은 사용자뿐이다
+    expect(find.textContaining('데스크탑 설정에서도 이 기기를 끊어 주세요'), findsOneWidget);
   });
 
   testWidgets('데스크탑에 닿지 못하면 되돌아갈 길을 준다', (tester) async {

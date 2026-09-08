@@ -33,7 +33,10 @@ fvm flutter run
    포트는 패키지된 앱이 `9736`, 개발 빌드가 `19736`이다.
 3. 한 번 연결하면 기기에 열쇠가 저장되어 다음부터는 바로 보드가 열린다.
 
-코드는 5분 뒤 만료되고 한 번 쓰면 사라진다. 연결을 끊으려면 데스크탑 설정의 기기 목록에서 끊는다.
+코드는 5분 뒤 만료되고 한 번 쓰면 사라진다.
+연결을 끊는 것은 앱의 **연결 끊기**나 데스크탑 설정의 기기 목록 어느 쪽에서든 된다.
+앱에서 끊으면 데스크탑의 기기 목록에서도 이 기기가 지워진다. 데스크탑에 닿지 못한 경우에만
+앱이 그 사실을 알려 주고, 그때는 데스크탑 설정에서 한 번 더 지워야 한다.
 
 ## 검증
 
@@ -42,7 +45,11 @@ fvm flutter analyze
 fvm dart format --output=none --set-exit-if-changed lib test
 fvm flutter test
 fvm flutter build apk --debug
+fvm flutter build apk --release
 ```
+
+릴리스 빌드까지 확인하는 이유는, 권한과 평문 트래픽 설정이 debug 매니페스트에만 있어도 `--debug`는
+그대로 통과하기 때문이다. 릴리스에서만 요청이 막히는 결함은 여기서만 드러난다.
 
 `flutter_secure_storage`가 API 37 이상을 요구해서 `android/app/build.gradle.kts`의 `compileSdk`를
 Flutter 기본값보다 한 단계 올려 두었다.

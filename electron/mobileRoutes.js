@@ -40,6 +40,11 @@ async function handleMobileRequest(request, response, { bridge, host, port }) {
       return true;
     }
 
+    if (request.method === "DELETE" && requestUrl.pathname === "/api/mobile/device") {
+      await handleUnpairRequest(request, response, bridge);
+      return true;
+    }
+
     if (request.method === "GET" && requestUrl.pathname === "/api/mobile/board") {
       writeJson(response, 200, { success: true, board: await bridge.getMobileBoard() });
       return true;
@@ -79,6 +84,21 @@ async function handlePairRequest(request, response, bridge) {
   }
 
   writeJson(response, 200, { success: true, token });
+}
+
+/**
+ * 기기가 스스로 연결을 끊는다. `/pair`와 달리 인증 뒤에 있으므로 지우는 대상은 요청에 실린 토큰의 주인 하나로 정해져 있다.
+ *
+ * 인증과 삭제 사이에 설정 화면이 같은 기기를 이미 끊었을 수 있어, 지운 것이 없으면 앞단과 같은 401로 답한다.
+ * 이미 열려 있는 pane 스트림은 여기서 닫지 않는다. 설정 화면의 연결 해제도 닫지 않으므로 둘의 동작을 다르게 만들 이유가 없다.
+ */
+async function handleUnpairRequest(request, response, bridge) {
+  if (await bridge.unpairMobileDeviceByToken(request.headers.authorization)) {
+    writeJson(response, 200, { success: true });
+    return;
+  }
+
+  writeJson(response, 401, { success: false, error: "연결되지 않은 기기입니다" });
 }
 
 async function handleSurfacesRequest(response, bridge, taskId) {

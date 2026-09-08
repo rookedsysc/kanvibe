@@ -39,12 +39,17 @@ class FakeDesktopClient implements DesktopClient {
     this.boardError,
     this.surfaces,
     this.surfacesError,
+    this.unpairError,
   });
 
   final Map<String, dynamic> board;
   final Object? boardError;
   final TaskSurfaces? surfaces;
   final Object? surfacesError;
+  final Object? unpairError;
+
+  /// 데스크탑에 끊겠다고 알린 기록. 이미 거절된 토큰으로는 부르지 말아야 해서 호출 여부까지 본다
+  final unpairCalls = <DesktopConnection>[];
 
   /// pane별로 열린 구독. 테스트가 출력을 밀어 넣고 닫힘 여부를 확인한다
   final openedPanes = <String, StreamController<String>>{};
@@ -52,6 +57,14 @@ class FakeDesktopClient implements DesktopClient {
 
   /// pane별로 모바일이 보낸 입력. 어느 pane이 키를 받았는지까지 봐야 입력 대상이 옮겨졌는지 알 수 있다
   final writtenInput = <String, List<String>>{};
+
+  @override
+  Future<void> unpairDevice(DesktopConnection connection) async {
+    unpairCalls.add(connection);
+    if (unpairError != null) {
+      throw unpairError!;
+    }
+  }
 
   @override
   Future<Map<String, dynamic>> fetchBoard(DesktopConnection connection) async {
