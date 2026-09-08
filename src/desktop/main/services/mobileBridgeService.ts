@@ -227,14 +227,18 @@ export async function listPairedMobileDevices(): Promise<Omit<PairedDevice, "tok
   return devices.map(({ deviceId, deviceName, pairedAt }) => ({ deviceId, deviceName, pairedAt }));
 }
 
-/** 기기 하나의 연결을 끊는다 */
+/** 기기 하나의 연결을 끊는다. 설정 화면이 부르는 경로다 */
 export async function unpairMobileDevice(deviceId: string): Promise<void> {
-  await withDeviceList(async (devices) => {
-    await setAppSetting(
-      PAIRED_DEVICES_KEY,
-      serializePairedDevices(devices.filter((device) => device.deviceId !== deviceId)),
-    );
+  const wasRemoved = await withDeviceList(async (devices) => {
+    const remaining = devices.filter((device) => device.deviceId !== deviceId);
+    await setAppSetting(PAIRED_DEVICES_KEY, serializePairedDevices(remaining));
+    return remaining.length !== devices.length;
   });
+
+  /** 이미 없던 기기까지 알리면 듣는 쪽이 남의 소켓을 닫을 근거로 삼을 수 있어, 정말 지운 경우에만 알린다 */
+  if (wasRemoved) {
+    notifyMobileDeviceUnpaired(deviceId);
+  }
 }
 
 /**
@@ -251,27 +255,62 @@ export async function unpairMobileDeviceByToken(
 ): Promise<boolean> {
   const token = parseBearerToken(authorizationHeader);
 
-  return withDeviceList(async (devices) => {
+  const removedDeviceId = await withDeviceList(async (devices) => {
     const device = findPairedDevice(devices, token);
     if (!device) {
-      return false;
+      return null;
     }
 
     await setAppSetting(
       PAIRED_DEVICES_KEY,
       serializePairedDevices(devices.filter((candidate) => candidate.deviceId !== device.deviceId)),
     );
-    return true;
+    return device.deviceId;
   });
+
+  if (removedDeviceId !== null) {
+    notifyMobileDeviceUnpaired(removedDeviceId);
+  }
+
+  return removedDeviceId !== null;
+}
+
+type MobileDeviceUnpairedListener = (deviceId: string) => void;
+
+const mobileDeviceUnpairedListeners = new Set<MobileDeviceUnpairedListener>();
+
+/**
+ * 기기 연결이 끊겼다는 것을 알려 달라고 등록한다. 돌려주는 함수를 부르면 등록이 풀린다.
+ *
+ * 목록에서 지워도 그 기기가 이미 열어 둔 pane 스트림은 살아 있어 터미널을 계속 비춘다.
+ * 토큰을 지우는 것만으로는 다음 요청부터 막힐 뿐이라, 연결을 끊었다는 말이 열려 있는 화면 앞에서 거짓이 된다.
+ * 소켓은 `mobileRoutes`가 들고 있고 이 서비스는 네트워크 계층을 알지 않기로 되어 있으므로,
+ * 여기서는 지운 기기만 알리고 닫는 일은 소켓을 가진 쪽에 맡긴다.
+ */
+export function onMobileDeviceUnpaired(listener: MobileDeviceUnpairedListener): () => void {
+  mobileDeviceUnpairedListeners.add(listener);
+  return () => {
+    mobileDeviceUnpairedListeners.delete(listener);
+  };
+}
+
+/** 알림은 [withDeviceList] 줄 밖에서 돈다. 듣는 쪽이 오래 걸려도 다음 목록 변경이 그만큼 밀리면 안 된다 */
+function notifyMobileDeviceUnpaired(deviceId: string): void {
+  mobileDeviceUnpairedListeners.forEach((listener) => listener(deviceId));
 }
 
 /**
- * 요청이 연결된 기기에서 온 것인지 확인한다.
+ * 요청이 연결된 기기에서 온 것인지 확인하고, 통과했으면 그 기기의 식별자를 돌려준다. 아니면 null.
  * `/api/hooks/*`는 인증이 없지만 터미널을 읽고 쓰는 경로는 반드시 이 함수를 지나야 한다.
+ *
+ * 통과 여부만 돌려주면 스트림을 연 소켓이 누구 것인지 알 길이 없어, 기기 하나를 끊어도 그 소켓만 골라 닫지 못한다.
+ * 토큰의 주인을 찾는 일은 이미 여기서 하고 있으므로 그 결과를 버리지 않고 그대로 내보낸다.
  */
-export async function authorizeMobileRequest(authorizationHeader: string | undefined): Promise<boolean> {
+export async function authorizeMobileRequest(
+  authorizationHeader: string | undefined,
+): Promise<string | null> {
   const devices = await readPairedDevices();
-  return findPairedDevice(devices, parseBearerToken(authorizationHeader)) !== null;
+  return findPairedDevice(devices, parseBearerToken(authorizationHeader))?.deviceId ?? null;
 }
 
 /** pane 하나를 보고 있는 구독자들 */

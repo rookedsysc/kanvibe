@@ -36,6 +36,7 @@ const {
   authorizeMobileRequest,
   getTaskSurfaces,
   listPairedMobileDevices,
+  onMobileDeviceUnpaired,
   pairMobileDevice,
   readMobilePairingCode,
   startMobilePairing,
@@ -109,6 +110,25 @@ async function failedPairing(submittedCode: string): Promise<string | null> {
   }
 }
 
+/** 인증은 통과 여부와 함께 기기 식별자까지 돌려준다. 통과했는지만 보는 곳은 이 helper를 지난다 */
+async function isAuthorized(authorizationHeader: string | undefined): Promise<boolean> {
+  return (await authorizeMobileRequest(authorizationHeader)) !== null;
+}
+
+/**
+ * 해제 알림 리스너는 모듈 지역에 쌓이므로, 테스트가 끝나면 반드시 등록을 풀어 다음 테스트로 새지 않게 한다.
+ * 등록 해제가 실제로 도는지도 이 helper가 함께 지킨다.
+ */
+async function withUnpairedDeviceIds(run: (unpairedDeviceIds: string[]) => Promise<void>): Promise<void> {
+  const unpairedDeviceIds: string[] = [];
+  const unsubscribe = onMobileDeviceUnpaired((deviceId) => unpairedDeviceIds.push(deviceId));
+  try {
+    await run(unpairedDeviceIds);
+  } finally {
+    unsubscribe();
+  }
+}
+
 async function pairOneDevice(deviceName = "iPhone"): Promise<string> {
   const { code } = startMobilePairing();
   const token = await pairMobileDevice(code, deviceName);
@@ -156,8 +176,8 @@ describe("기기 페어링", () => {
 
     const [firstToken, secondToken] = await Promise.all([firstPairing, secondPairing]);
 
-    expect(await authorizeMobileRequest(`Bearer ${firstToken}`)).toBe(true);
-    expect(await authorizeMobileRequest(`Bearer ${secondToken}`)).toBe(true);
+    expect(await isAuthorized(`Bearer ${firstToken}`)).toBe(true);
+    expect(await isAuthorized(`Bearer ${secondToken}`)).toBe(true);
     expect(await listPairedMobileDevices()).toHaveLength(2);
   });
 
@@ -169,8 +189,8 @@ describe("기기 페어링", () => {
     const unpairing = unpairMobileDevice(removedDevice.deviceId);
     const [addedToken] = await Promise.all([pairing, unpairing]);
 
-    expect(await authorizeMobileRequest(`Bearer ${addedToken}`)).toBe(true);
-    expect(await authorizeMobileRequest(`Bearer ${removedToken}`)).toBe(false);
+    expect(await isAuthorized(`Bearer ${addedToken}`)).toBe(true);
+    expect(await isAuthorized(`Bearer ${removedToken}`)).toBe(false);
   });
 
   it("연결을 끊으면 그 기기의 토큰은 더 이상 통하지 않는다", async () => {
@@ -179,7 +199,7 @@ describe("기기 페어링", () => {
 
     await unpairMobileDevice(device.deviceId);
 
-    expect(await authorizeMobileRequest(`Bearer ${token}`)).toBe(false);
+    expect(await isAuthorized(`Bearer ${token}`)).toBe(false);
   });
 });
 
@@ -187,23 +207,31 @@ describe("요청 인증", () => {
   it("연결된 기기의 토큰은 통과한다", async () => {
     const token = await pairOneDevice();
 
-    expect(await authorizeMobileRequest(`Bearer ${token}`)).toBe(true);
+    expect(await isAuthorized(`Bearer ${token}`)).toBe(true);
   });
 
   it("토큰이 없으면 막는다", async () => {
     await pairOneDevice();
 
-    expect(await authorizeMobileRequest(undefined)).toBe(false);
+    expect(await isAuthorized(undefined)).toBe(false);
   });
 
   it("모르는 토큰은 막는다", async () => {
     await pairOneDevice();
 
-    expect(await authorizeMobileRequest(`Bearer ${"f".repeat(64)}`)).toBe(false);
+    expect(await isAuthorized(`Bearer ${"f".repeat(64)}`)).toBe(false);
   });
 
   it("연결된 기기가 하나도 없으면 무엇도 통과하지 못한다", async () => {
-    expect(await authorizeMobileRequest(`Bearer ${"a".repeat(64)}`)).toBe(false);
+    expect(await isAuthorized(`Bearer ${"a".repeat(64)}`)).toBe(false);
+  });
+
+  /** 통과 여부만 돌려주면 스트림을 연 소켓이 누구 것인지 알 수 없어, 기기 하나를 끊어도 그 소켓만 닫지 못한다 */
+  it("통과한 요청은 그 토큰을 가진 기기의 식별자를 돌려준다", async () => {
+    const token = await pairOneDevice();
+    const [device] = await listPairedMobileDevices();
+
+    expect(await authorizeMobileRequest(`Bearer ${token}`)).toBe(device.deviceId);
   });
 
   it("같은 순간에 연결된 두 기기도 따로 끊긴다", async () => {
@@ -213,7 +241,7 @@ describe("요청 인증", () => {
 
     await unpairMobileDevice(devices[1].deviceId);
 
-    expect(await authorizeMobileRequest(`Bearer ${keptToken}`)).toBe(true);
+    expect(await isAuthorized(`Bearer ${keptToken}`)).toBe(true);
   });
 });
 
@@ -228,8 +256,8 @@ describe("기기 스스로 연결 끊기", () => {
 
     expect(await unpairMobileDeviceByToken(`Bearer ${removedToken}`)).toBe(true);
 
-    expect(await authorizeMobileRequest(`Bearer ${removedToken}`)).toBe(false);
-    expect(await authorizeMobileRequest(`Bearer ${keptToken}`)).toBe(true);
+    expect(await isAuthorized(`Bearer ${removedToken}`)).toBe(false);
+    expect(await isAuthorized(`Bearer ${keptToken}`)).toBe(true);
     expect(await listPairedMobileDevices()).toEqual([
       { deviceId: expect.any(String), deviceName: "iPad", pairedAt: expect.any(String) },
     ]);
@@ -239,7 +267,7 @@ describe("기기 스스로 연결 끊기", () => {
     const token = await pairOneDevice();
 
     expect(await unpairMobileDeviceByToken(`Bearer ${"f".repeat(64)}`)).toBe(false);
-    expect(await authorizeMobileRequest(`Bearer ${token}`)).toBe(true);
+    expect(await isAuthorized(`Bearer ${token}`)).toBe(true);
     expect(await listPairedMobileDevices()).toHaveLength(1);
   });
 
@@ -259,9 +287,62 @@ describe("기기 스스로 연결 끊기", () => {
     const [addedToken, wasRemoved] = await Promise.all([pairing, unpairing]);
 
     expect(wasRemoved).toBe(true);
-    expect(await authorizeMobileRequest(`Bearer ${addedToken}`)).toBe(true);
-    expect(await authorizeMobileRequest(`Bearer ${removedToken}`)).toBe(false);
+    expect(await isAuthorized(`Bearer ${addedToken}`)).toBe(true);
+    expect(await isAuthorized(`Bearer ${removedToken}`)).toBe(false);
     expect(await listPairedMobileDevices()).toHaveLength(1);
+  });
+});
+
+/**
+ * 목록에서 지운 기기라도 이미 열어 둔 pane 스트림은 살아 있어 터미널을 계속 비춘다.
+ * 소켓은 `mobileRoutes`가 들고 있으므로, 이 서비스가 할 일은 지운 기기를 정확히 알리는 것까지다.
+ */
+describe("연결 해제 알림", () => {
+  it("설정 화면이 끊은 기기의 식별자를 알린다", async () => {
+    await pairOneDevice();
+    const [device] = await listPairedMobileDevices();
+
+    await withUnpairedDeviceIds(async (unpairedDeviceIds) => {
+      await unpairMobileDevice(device.deviceId);
+
+      expect(unpairedDeviceIds).toEqual([device.deviceId]);
+    });
+  });
+
+  it("기기가 자기 토큰으로 끊어도 같은 신호가 나간다", async () => {
+    const token = await pairOneDevice();
+    const [device] = await listPairedMobileDevices();
+
+    await withUnpairedDeviceIds(async (unpairedDeviceIds) => {
+      expect(await unpairMobileDeviceByToken(`Bearer ${token}`)).toBe(true);
+
+      expect(unpairedDeviceIds).toEqual([device.deviceId]);
+    });
+  });
+
+  /** 지운 것이 없는데 알리면 듣는 쪽이 아직 연결된 기기의 스트림을 닫을 근거로 삼는다 */
+  it("지운 기기가 없으면 아무것도 알리지 않는다", async () => {
+    const token = await pairOneDevice();
+    const [device] = await listPairedMobileDevices();
+
+    await withUnpairedDeviceIds(async (unpairedDeviceIds) => {
+      await unpairMobileDevice(`${device.deviceId}-없는-기기`);
+      expect(await unpairMobileDeviceByToken(`Bearer ${"f".repeat(64)}`)).toBe(false);
+
+      expect(unpairedDeviceIds).toEqual([]);
+      expect(await isAuthorized(`Bearer ${token}`)).toBe(true);
+    });
+  });
+
+  it("등록을 풀면 더는 알림을 받지 않는다", async () => {
+    await pairOneDevice();
+    const [device] = await listPairedMobileDevices();
+
+    const unpairedDeviceIds: string[] = [];
+    onMobileDeviceUnpaired((deviceId) => unpairedDeviceIds.push(deviceId))();
+    await unpairMobileDevice(device.deviceId);
+
+    expect(unpairedDeviceIds).toEqual([]);
   });
 });
 
