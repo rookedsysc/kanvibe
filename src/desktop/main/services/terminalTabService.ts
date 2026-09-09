@@ -31,7 +31,7 @@ import {
   parseTmuxWindowList,
   parseZellijTabList,
   parseZellijTabNamesWithFocus,
-  resolveZellijPaneIdSupport,
+  resolveZellijIdTargetingSupport,
 } from "@/lib/terminalTabs";
 import type {
   TerminalTab,
@@ -82,7 +82,7 @@ async function runTabCommands(commands: string[], sshHost: string | null): Promi
 }
 
 function hasZellijTabIdSupport(sshHost: string | null): Promise<boolean> {
-  return resolveZellijPaneIdSupport(sshHost, (command) => runTabCommand(command, sshHost));
+  return resolveZellijIdTargetingSupport(sshHost, (command) => runTabCommand(command, sshHost));
 }
 
 async function readZellijTabs(target: TerminalSessionTarget): Promise<TerminalTab[]> {

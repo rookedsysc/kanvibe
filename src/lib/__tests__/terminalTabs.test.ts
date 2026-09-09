@@ -24,7 +24,7 @@ import {
   parseZellijFocusedTabName,
   parseZellijTabList,
   parseZellijTabNamesWithFocus,
-  resolveZellijPaneIdSupport,
+  resolveZellijIdTargetingSupport,
   supportsZellijTabIdCommands,
 } from "@/lib/terminalTabs";
 
@@ -186,8 +186,8 @@ describe("zellij 버전 판정", () => {
     const runFromTabService = vi.fn(async () => "zellij 0.44.3");
     const runFromMirrorService = vi.fn(async () => "zellij 0.43.1");
 
-    expect(await resolveZellijPaneIdSupport("shared-host", runFromTabService)).toBe(true);
-    expect(await resolveZellijPaneIdSupport("shared-host", runFromMirrorService)).toBe(true);
+    expect(await resolveZellijIdTargetingSupport("shared-host", runFromTabService)).toBe(true);
+    expect(await resolveZellijIdTargetingSupport("shared-host", runFromMirrorService)).toBe(true);
 
     expect(runFromTabService).toHaveBeenCalledTimes(1);
     expect(runFromMirrorService).not.toHaveBeenCalled();
@@ -198,7 +198,7 @@ describe("zellij 버전 판정", () => {
       throw new Error("zellij: command not found");
     });
 
-    expect(await resolveZellijPaneIdSupport("missing-zellij-host", run)).toBe(false);
+    expect(await resolveZellijIdTargetingSupport("missing-zellij-host", run)).toBe(false);
   });
 });
 
