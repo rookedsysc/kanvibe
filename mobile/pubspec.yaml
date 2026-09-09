@@ -1,0 +1,29 @@
+name: kanvibe_mobile
+description: KanVibe 데스크탑에 연결해 보드와 터미널 pane을 보는 모바일 클라이언트.
+publish_to: 'none'
+version: 0.1.0+1
+
+environment:
+  sdk: ^3.13.2
+  flutter: '>=3.47.2'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_riverpod: ^3.4.3
+  http: ^1.6.0
+  web_socket_channel: ^3.0.3
+  xterm: ^4.0.0
+  flutter_secure_storage: ^11.0.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
+  fonts:
+    - family: JetBrainsMono
+      fonts:
+        - asset: assets/fonts/JetBrainsMono.ttf

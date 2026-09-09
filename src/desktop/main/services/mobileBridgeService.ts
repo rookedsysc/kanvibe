@@ -1,0 +1,640 @@
+import { spawn, type ChildProcess } from "child_process";
+import { getAppSetting, setAppSetting } from "@/desktop/main/services/appSettingsService";
+import { getTasksByStatus } from "@/desktop/main/services/kanbanService";
+import { getAllProjects } from "@/desktop/main/services/projectService";
+import { SessionType, type KanbanTask } from "@/entities/KanbanTask";
+import { getTaskRepository } from "@/lib/database";
+import { execGit } from "@/lib/gitOperations";
+import {
+  findPairedDevice,
+  issuePairingCode,
+  mintDeviceId,
+  mintDeviceToken,
+  parseBearerToken,
+  parsePairedDevices,
+  readPendingPairingCode,
+  redeemPairingCode,
+  revokePairingCode,
+  serializePairedDevices,
+  type PairedDevice,
+} from "@/lib/mobilePairing";
+import {
+  buildTmuxCancelPipePaneCommand,
+  buildTmuxCapturePaneCommand,
+  buildTmuxListMirrorPanesCommand,
+  buildTmuxPaneStreamCommand,
+  buildTmuxSendKeysCommand,
+  buildZellijDumpPaneCommand,
+  buildZellijListMirrorPanesCommand,
+  buildZellijWritePaneCommand,
+  parseTmuxMirrorPaneList,
+  parseZellijMirrorPaneList,
+  type MirrorPane,
+} from "@/lib/paneMirror";
+import { resolveZellijIdTargetingSupport } from "@/lib/terminalTabs";
+import { buildSSHArgs, getKanvibeSSHConnectionHealthOptions, parseSSHConfig } from "@/lib/sshConfig";
+import { quoteForPosixShell } from "@/lib/worktree";
+
+/**
+ * 모바일 클라이언트가 데스크탑을 읽고 터미널 pane을 비추는 경로.
+ *
+ * 이 서비스는 데스크탑 화면을 바꾸지 않는다. pane을 고르거나 크기를 바꾸는 명령은 하나도 부르지 않고,
+ * 스냅샷과 출력 스트림만 가져다 나눠 보낸다. 근거는 `paneMirror.ts` 머리말에 적어 두었다.
+ *
+ * 부르는 곳이 둘이다. 페어링 코드를 띄우고 기기를 끊는 것은 설정 화면이 `serviceRegistry`를 거쳐 부르고,
+ * 보드와 pane은 hook 서버의 `/api/mobile/*` 경로가 부른다.
+ * 지켜야 하는 경계는 IPC가 아니라 네트워크다. 렌더러는 이미 터미널을 직접 열 수 있으므로 IPC로 더 열리는 것이 없고,
+ * 네트워크에서 들어오는 요청만 [authorizeMobileRequest]를 반드시 지나야 한다.
+ */
+
+/** 조회 명령은 짧게 끝나야 모바일 화면이 멈춘 것처럼 보이지 않는다 */
+const MIRROR_COMMAND_TIMEOUT_MS = 5_000;
+
+/**
+ * zellij에는 tmux `pipe-pane`에 해당하는 출력 스트림이 없어 화면을 주기적으로 다시 뜬다.
+ * 간격은 탭 폴링이 이미 쓰는 값을 그대로 따른다. 같은 이유로 도는 폴링이 서로 다른 주기를 갖는 편이 더 나쁘다.
+ */
+const LOCAL_DUMP_INTERVAL_MS = 1_000;
+const REMOTE_DUMP_INTERVAL_MS = 3_000;
+
+const PAIRED_DEVICES_KEY = "mobile_paired_devices";
+
+/** 태스크 하나의 세션 좌표. `terminalTabService`도 같은 값을 쓰지만 그쪽 조회 함수는 내보내지 않는다 */
+interface MirrorSessionTarget {
+  sessionType: SessionType;
+  sessionName: string;
+  sshHost: string | null;
+}
+
+/**
+ * 모바일이 보는 탭 하나. tmux window 또는 zellij tab에 대응한다.
+ * 태블릿은 이 단위를 통째로 조립하고, 폰은 `panes`를 펼쳐 하나씩 보여 준다.
+ */
+export interface MirrorTab {
+  id: string;
+  name: string;
+  panes: MirrorPane[];
+}
+
+export interface TaskSurfaces {
+  taskId: string;
+  sessionType: SessionType;
+  tabs: MirrorTab[];
+}
+
+/** 세션을 비출 수 없는 이유. 화면이 빈 터미널 대신 이 사유를 보여 준다 */
+export type SurfaceUnavailableReason = "no-session" | "session-not-running" | "zellij-too-old";
+
+export class SurfaceUnavailableError extends Error {
+  constructor(readonly reason: SurfaceUnavailableReason) {
+    super(reason);
+    this.name = "SurfaceUnavailableError";
+  }
+}
+
+async function findMirrorSessionTarget(taskId: string): Promise<MirrorSessionTarget> {
+  const taskRepo = await getTaskRepository();
+  const task: KanbanTask | null = await taskRepo.findOneBy({ id: taskId });
+
+  if (!task?.sessionType || !task.sessionName) {
+    throw new SurfaceUnavailableError("no-session");
+  }
+
+  return { sessionType: task.sessionType, sessionName: task.sessionName, sshHost: task.sshHost };
+}
+
+function runMirrorCommand(command: string, sshHost: string | null): Promise<string> {
+  return execGit(command, sshHost, { timeoutMs: MIRROR_COMMAND_TIMEOUT_MS });
+}
+
+function hasZellijPaneIdSupport(sshHost: string | null): Promise<boolean> {
+  return resolveZellijIdTargetingSupport(sshHost, (command) => runMirrorCommand(command, sshHost));
+}
+
+/**
+ * 태스크의 pane을 탭 단위로 묶어 돌려준다.
+ * 폰은 이 결과의 pane을 전부 펼쳐 탭으로 쓰고, 태블릿은 탭 하나의 pane을 좌표대로 조립한다.
+ */
+export async function getTaskSurfaces(taskId: string): Promise<TaskSurfaces> {
+  const target = await findMirrorSessionTarget(taskId);
+  const panes = await listMirrorPanes(target);
+
+  if (panes.length === 0) {
+    throw new SurfaceUnavailableError("session-not-running");
+  }
+
+  return { taskId, sessionType: target.sessionType, tabs: groupPanesIntoTabs(panes) };
+}
+
+async function listMirrorPanes(target: MirrorSessionTarget): Promise<MirrorPane[]> {
+  if (target.sessionType === SessionType.ZELLIJ) {
+    if (!(await hasZellijPaneIdSupport(target.sshHost))) {
+      throw new SurfaceUnavailableError("zellij-too-old");
+    }
+    const output = await runMirrorCommand(
+      buildZellijListMirrorPanesCommand(target.sessionName),
+      target.sshHost,
+    );
+    return parseZellijMirrorPaneList(output);
+  }
+
+  const output = await runMirrorCommand(
+    buildTmuxListMirrorPanesCommand(target.sessionName),
+    target.sshHost,
+  );
+  return parseTmuxMirrorPaneList(output);
+}
+
+/** pane 목록을 처음 나온 탭 순서대로 묶는다. 멀티플렉서가 이미 정렬해 주므로 다시 정렬하지 않는다 */
+function groupPanesIntoTabs(panes: MirrorPane[]): MirrorTab[] {
+  const tabsById = new Map<string, MirrorTab>();
+
+  for (const pane of panes) {
+    const existingTab = tabsById.get(pane.tabId);
+    if (existingTab) {
+      existingTab.panes.push(pane);
+      continue;
+    }
+    tabsById.set(pane.tabId, { id: pane.tabId, name: pane.tabName, panes: [pane] });
+  }
+
+  return [...tabsById.values()];
+}
+
+/** 모바일 보드가 한 번에 받는 것. 데스크탑 보드와 같은 조회를 쓰므로 정렬과 done 페이지 크기가 같다 */
+export async function getMobileBoard() {
+  const [board, projects] = await Promise.all([getTasksByStatus(), getAllProjects()]);
+  return { ...board, projects };
+}
+
+/** 화면에 띄울 페어링 코드를 발급한다 */
+export function startMobilePairing(): { code: string; expiresAt: number } {
+  return issuePairingCode();
+}
+
+/** 페어링 화면을 닫는다 */
+export function stopMobilePairing(): void {
+  revokePairingCode();
+}
+
+/** 화면에 떠 있는 코드. 데스크탑 UI가 다시 그릴 때 쓴다 */
+export function readMobilePairingCode(): string | null {
+  return readPendingPairingCode();
+}
+
+async function readPairedDevices(): Promise<PairedDevice[]> {
+  return parsePairedDevices(await getAppSetting(PAIRED_DEVICES_KEY));
+}
+
+/**
+ * 기기 목록을 바꾸는 호출을 한 줄로 세운다.
+ *
+ * 목록은 `app_settings`의 문자열 칸 하나라 읽고-고쳐-쓰는 사이에 다른 호출이 끼면 한쪽 변경이 통째로 사라진다.
+ * 두 기기가 거의 같은 순간에 연결하면 토큰 하나가 없어져 나중에 401이 나고,
+ * 한쪽을 끊는 동안 다른 쪽이 연결하면 끊은 기기가 되살아난다. 셀이 하나뿐이라 DB는 이것을 막아 주지 않는다.
+ * 목록을 바꾸는 곳은 [pairMobileDevice], [unpairMobileDevice], [unpairMobileDeviceByToken]뿐이므로 경계도 이 파일이면 충분하다.
+ */
+let devicesWriteQueue: Promise<unknown> = Promise.resolve();
+
+function withDeviceList<T>(mutate: (devices: PairedDevice[]) => Promise<T>): Promise<T> {
+  const next = devicesWriteQueue.then(async () => mutate(await readPairedDevices()));
+  /** 실패를 삼킨 약속을 줄에 남겨야 한 번의 오류가 뒤따르는 호출까지 막지 않는다 */
+  devicesWriteQueue = next.catch(() => {});
+  return next;
+}
+
+/**
+ * 코드를 확인하고 기기 토큰을 발급한다.
+ * 토큰은 만료시키지 않는다. 한 번 연결한 기기가 계속 쓸 수 있어야 한다는 것이 이 기능의 요구사항이다.
+ */
+export async function pairMobileDevice(submittedCode: string, deviceName: string): Promise<string | null> {
+  if (!(await redeemPairingCode(submittedCode))) {
+    return null;
+  }
+
+  const token = mintDeviceToken();
+  await withDeviceList(async (devices) => {
+    devices.push({ deviceId: mintDeviceId(), token, deviceName, pairedAt: new Date().toISOString() });
+    await setAppSetting(PAIRED_DEVICES_KEY, serializePairedDevices(devices));
+  });
+
+  return token;
+}
+
+/** 연결된 기기 목록. 토큰은 대조용이라 화면에 내보내지 않는다 */
+export async function listPairedMobileDevices(): Promise<Omit<PairedDevice, "token">[]> {
+  const devices = await readPairedDevices();
+  return devices.map(({ deviceId, deviceName, pairedAt }) => ({ deviceId, deviceName, pairedAt }));
+}
+
+/** 기기 하나의 연결을 끊는다. 설정 화면이 부르는 경로다 */
+export async function unpairMobileDevice(deviceId: string): Promise<void> {
+  const wasRemoved = await withDeviceList(async (devices) => {
+    const remaining = devices.filter((device) => device.deviceId !== deviceId);
+    await setAppSetting(PAIRED_DEVICES_KEY, serializePairedDevices(remaining));
+    return remaining.length !== devices.length;
+  });
+
+  /** 이미 없던 기기까지 알리면 듣는 쪽이 남의 소켓을 닫을 근거로 삼을 수 있어, 정말 지운 경우에만 알린다 */
+  if (wasRemoved) {
+    notifyMobileDeviceUnpaired(deviceId);
+  }
+}
+
+/**
+ * 요청에 실린 토큰의 주인만 목록에서 지운다. 모바일의 "연결 끊기"가 부르는 경로다.
+ *
+ * 기기가 자기 저장소만 비우면 데스크탑 항목은 그대로 남아 토큰이 계속 통과한다. 토큰은 만료되지 않으므로
+ * 서버 쪽에도 지울 길이 없으면 그 기기는 영원히 인증된다. 그것을 닫는 것이 이 함수의 전부다.
+ *
+ * 지우는 대상은 요청이 증명한 기기 하나뿐이다. 토큰 하나로 남의 기기까지 끊을 수 있으면 없던 권한이 새로 생긴다.
+ * 지운 기기가 있었는지를 돌려주어, 인증과 삭제 사이에 이미 끊긴 경우를 부르는 쪽이 구분할 수 있게 한다.
+ */
+export async function unpairMobileDeviceByToken(
+  authorizationHeader: string | undefined,
+): Promise<boolean> {
+  const token = parseBearerToken(authorizationHeader);
+
+  const removedDeviceId = await withDeviceList(async (devices) => {
+    const device = findPairedDevice(devices, token);
+    if (!device) {
+      return null;
+    }
+
+    await setAppSetting(
+      PAIRED_DEVICES_KEY,
+      serializePairedDevices(devices.filter((candidate) => candidate.deviceId !== device.deviceId)),
+    );
+    return device.deviceId;
+  });
+
+  if (removedDeviceId !== null) {
+    notifyMobileDeviceUnpaired(removedDeviceId);
+  }
+
+  return removedDeviceId !== null;
+}
+
+type MobileDeviceUnpairedListener = (deviceId: string) => void;
+
+const mobileDeviceUnpairedListeners = new Set<MobileDeviceUnpairedListener>();
+
+/**
+ * 기기 연결이 끊겼다는 것을 알려 달라고 등록한다. 돌려주는 함수를 부르면 등록이 풀린다.
+ *
+ * 목록에서 지워도 그 기기가 이미 열어 둔 pane 스트림은 살아 있어 터미널을 계속 비춘다.
+ * 토큰을 지우는 것만으로는 다음 요청부터 막힐 뿐이라, 연결을 끊었다는 말이 열려 있는 화면 앞에서 거짓이 된다.
+ * 소켓은 `mobileRoutes`가 들고 있고 이 서비스는 네트워크 계층을 알지 않기로 되어 있으므로,
+ * 여기서는 지운 기기만 알리고 닫는 일은 소켓을 가진 쪽에 맡긴다.
+ */
+export function onMobileDeviceUnpaired(listener: MobileDeviceUnpairedListener): () => void {
+  mobileDeviceUnpairedListeners.add(listener);
+  return () => {
+    mobileDeviceUnpairedListeners.delete(listener);
+  };
+}
+
+/** 알림은 [withDeviceList] 줄 밖에서 돈다. 듣는 쪽이 오래 걸려도 다음 목록 변경이 그만큼 밀리면 안 된다 */
+function notifyMobileDeviceUnpaired(deviceId: string): void {
+  mobileDeviceUnpairedListeners.forEach((listener) => listener(deviceId));
+}
+
+/**
+ * 요청이 연결된 기기에서 온 것인지 확인하고, 통과했으면 그 기기의 식별자를 돌려준다. 아니면 null.
+ * `/api/hooks/*`는 인증이 없지만 터미널을 읽고 쓰는 경로는 반드시 이 함수를 지나야 한다.
+ *
+ * 통과 여부만 돌려주면 스트림을 연 소켓이 누구 것인지 알 길이 없어, 기기 하나를 끊어도 그 소켓만 골라 닫지 못한다.
+ * 토큰의 주인을 찾는 일은 이미 여기서 하고 있으므로 그 결과를 버리지 않고 그대로 내보낸다.
+ */
+export async function authorizeMobileRequest(
+  authorizationHeader: string | undefined,
+): Promise<string | null> {
+  const devices = await readPairedDevices();
+  return findPairedDevice(devices, parseBearerToken(authorizationHeader))?.deviceId ?? null;
+}
+
+/**
+ * pane 하나를 보고 있는 구독자들.
+ *
+ * 출력과 별개로 종료를 따로 알린다. 서버 쪽 스트림이 스스로 죽으면 화면은 아무것도 받지 못한 채
+ * 멈춘 터미널을 계속 들고 있어, 사용자에게는 조용한 pane과 살아 있는 pane이 똑같이 보인다.
+ */
+interface PaneSubscription {
+  listeners: Set<(chunk: string) => void>;
+  endListeners: Set<() => void>;
+  stop: () => void;
+}
+
+/**
+ * pane 하나에 걸린 구독과 그것을 보고 있는 구독자 수.
+ *
+ * 수를 따로 둔 지도가 아니라 이 객체에 담는 이유는, 스트림이 죽어 구독이 갈리는 순간에 있다.
+ * 키로 세면 앞선 구독자의 퇴장이 그 뒤에 새로 생긴 구독의 수를 깎아 아무도 안 보는 것으로 만든다.
+ *
+ * 완성된 구독이 아니라 만들고 있는 약속을 담는다. 두 기기가 같은 pane을 동시에 열면
+ * 완성값을 담을 경우 둘 다 "아직 없다"를 보고 파이프를 두 번 걸게 된다.
+ */
+interface PaneClaim {
+  subscription: Promise<PaneSubscription>;
+  subscriberCount: number;
+}
+
+/**
+ * pane별 구독. tmux는 pane 하나에 파이프를 하나만 유지하므로 여기서 하나만 걸고 나눠 보낸다.
+ * 두 번째 구독자가 파이프를 다시 걸면 `-o` 토글이 첫 번째 파이프를 꺼 버려 둘 다 조용해진다.
+ *
+ * 이 지도에 자리가 있다는 것은 그 pane이 태스크의 세션에 속한다고 이미 확인됐다는 뜻이기도 하다.
+ * tmux pane id는 서버 전역이라 `-t %17`이 세션 경계를 넘어, 토큰 하나를 가진 기기가 다른 태스크의 pane은 물론
+ * KanVibe가 만들지 않은 pane까지 읽고 쓸 수 있다. zellij 쪽은 명령이 `--session`을 함께 받아 원래 막혀 있다.
+ * 키 입력마다 pane 목록을 다시 조회하면 비싸므로 [writeToPane]은 이 자리의 유무로 확인을 대신한다.
+ */
+const paneSubscriptions = new Map<string, PaneClaim>();
+
+function buildSubscriptionKey(taskId: string, paneId: string): string {
+  return `${taskId}#${paneId}`;
+}
+
+/** 이 pane이 태스크의 세션 안에 있는지 확인한다. 조회 명령은 `getTaskSurfaces`가 쓰는 것과 같다 */
+async function ensurePaneBelongsToSession(
+  target: MirrorSessionTarget,
+  paneId: string,
+): Promise<void> {
+  const panes = await listMirrorPanes(target);
+  if (!panes.some((pane) => pane.id === paneId)) {
+    throw new SurfaceUnavailableError("session-not-running");
+  }
+}
+
+/**
+ * pane 구독 자리를 잡고 구독자 수를 하나 올린다. [paneSubscriptions]를 건드리는 곳은 여기와 [forgetPaneClaim]뿐이다.
+ *
+ * 자리를 잡는 것과 수를 세는 것이 같은 동기 구간 안에서 끝나야 한다. `await`은 이미 풀린 약속이라도
+ * 마이크로태스크 경계라, 뒤에 온 구독자가 약속을 집어 든 뒤 콜백을 얹기 전까지 틈이 생긴다.
+ * 그 틈에 앞선 구독자가 나가면 정리 쪽에서는 아직 아무도 없는 것으로 보여 스트림을 끊고,
+ * 뒤에 온 구독자는 이미 멈춘 구독에 콜백을 얹어 영영 조용해진다.
+ *
+ * 돌려주는 `release`는 마지막 구독자였고 지도가 아직 이 호출이 집어 든 자리를 들고 있을 때만 참이다.
+ * 그 사이 새 구독자가 새 자리를 잡았다면 정리는 그쪽 몫이다.
+ */
+function claimPaneSubscription(
+  key: string,
+  create: (forgetSelf: () => void) => Promise<PaneSubscription>,
+): { claimed: Promise<PaneSubscription>; release: () => boolean } {
+  let claim = paneSubscriptions.get(key);
+  if (!claim) {
+    /** 시작하는 도중에 스트림이 죽어도 자기 자리를 정확히 거둘 수 있도록, 만드는 쪽에 그 길을 함께 넘긴다 */
+    const created: PaneClaim = {
+      subscription: create(() => forgetPaneClaim(key, created)),
+      subscriberCount: 0,
+    };
+    /** 시작에 실패한 약속을 남겨 두면 다음 구독자도 같은 실패를 물려받는다 */
+    void created.subscription.catch(() => forgetPaneClaim(key, created));
+    paneSubscriptions.set(key, created);
+    claim = created;
+  }
+
+  const claimed = claim;
+  claimed.subscriberCount += 1;
+
+  return {
+    claimed: claimed.subscription,
+    release: () => {
+      claimed.subscriberCount -= 1;
+      if (claimed.subscriberCount > 0) {
+        return false;
+      }
+      return forgetPaneClaim(key, claimed);
+    },
+  };
+}
+
+/** 이 자리가 아직 지도에 있을 때만 지운다. 이미 다른 자리로 갈렸다면 그쪽을 건드리면 안 된다 */
+function forgetPaneClaim(key: string, claim: PaneClaim): boolean {
+  if (paneSubscriptions.get(key) !== claim) {
+    return false;
+  }
+
+  paneSubscriptions.delete(key);
+  return true;
+}
+
+/**
+ * 스트림은 오래 살기 때문에 `execGit`의 원격 경로를 쓰지 않는다.
+ * 그쪽은 동시 실행 수를 제한하고 명령이 끝날 때까지 슬롯을 잡으므로, 끝나지 않는 명령을 태우면 슬롯이 영영 반납되지 않는다.
+ */
+async function spawnMirrorProcess(command: string, sshHost: string | null): Promise<ChildProcess> {
+  /** 프로세스 그룹으로 띄워야 종료할 때 `tail`까지 함께 정리된다 */
+  if (!sshHost) {
+    return spawn("sh", ["-lc", command], { detached: true });
+  }
+
+  const hostConfig = (await parseSSHConfig()).find((config) => config.host === sshHost);
+  if (!hostConfig) {
+    throw new Error(`SSH 호스트를 찾을 수 없습니다: ${sshHost}`);
+  }
+
+  const args = [
+    ...buildSSHArgs(hostConfig, { connectionHealth: getKanvibeSSHConnectionHealthOptions() }),
+    `sh -lc ${quoteForPosixShell(command)}`,
+  ];
+  return spawn("ssh", args, { detached: true });
+}
+
+/**
+ * pane 하나를 구독한다. 첫 화면을 한 번 보내고 그 뒤로는 바뀌는 부분만 흘려보낸다.
+ * 반환값을 부르면 구독이 끝나고, 마지막 구독자가 나가면 서버 쪽 파이프와 폴링도 함께 멈춘다.
+ *
+ * [onEnd]는 서버 쪽 스트림이 스스로 죽었을 때만 돈다. 구독자가 [subscribeToPane]을 부른 뒤 나가는 경우가 아니라,
+ * `ssh`가 끊기거나 `tmux pipe-pane`이 실패해 더 이상 아무것도 오지 않게 된 경우를 뜻한다.
+ */
+export async function subscribeToPane(
+  taskId: string,
+  paneId: string,
+  onChunk: (chunk: string) => void,
+  onEnd: () => void,
+): Promise<() => void> {
+  const target = await findMirrorSessionTarget(taskId);
+  const key = buildSubscriptionKey(taskId, paneId);
+
+  await ensurePaneBelongsToSession(target, paneId);
+
+  const snapshot = await readPaneSnapshot(target, paneId);
+  onChunk(snapshot);
+
+  const { claimed, release } = claimPaneSubscription(key, (forgetSelf) =>
+    startPaneSubscription(target, paneId, forgetSelf),
+  );
+
+  let subscription: PaneSubscription;
+  try {
+    subscription = await claimed;
+  } catch (error) {
+    release();
+    throw error;
+  }
+  subscription.listeners.add(onChunk);
+  subscription.endListeners.add(onEnd);
+
+  let isReleased = false;
+  return () => {
+    /** 소켓이 닫히는 경로와 구독 실패 경로가 모두 이 함수를 부를 수 있어, 두 번 불려도 남의 몫을 깎지 않게 한다 */
+    if (isReleased) {
+      return;
+    }
+    isReleased = true;
+
+    subscription.listeners.delete(onChunk);
+    subscription.endListeners.delete(onEnd);
+    if (release()) {
+      subscription.stop();
+    }
+  };
+}
+
+/**
+ * 앱을 끄기 전에 열려 있는 미러를 전부 멈춘다.
+ *
+ * [spawnMirrorProcess]는 자식을 `detached`로 띄우므로 부모가 죽어도 함께 죽지 않는다. 아무도 멈추지 않으면
+ * 고아가 된 `sh`/`ssh`와 `tail`이 남고, 사용자의 pane에는 `pipe-pane`이 걸린 채로 남아 임시 파일이 계속 자란다.
+ * 이 서비스가 데스크탑 화면을 바꾸지 않는다는 약속은 앱이 사라진 뒤에도 지켜져야 한다.
+ */
+export function stopAllPaneMirrors(): void {
+  for (const [key, claim] of [...paneSubscriptions]) {
+    forgetPaneClaim(key, claim);
+    void claim.subscription.then((subscription) => subscription.stop()).catch(() => {});
+  }
+}
+
+async function readPaneSnapshot(target: MirrorSessionTarget, paneId: string): Promise<string> {
+  const command = target.sessionType === SessionType.ZELLIJ
+    ? buildZellijDumpPaneCommand(target.sessionName, paneId)
+    : buildTmuxCapturePaneCommand(paneId);
+
+  return runMirrorCommand(command, target.sshHost);
+}
+
+async function startPaneSubscription(
+  target: MirrorSessionTarget,
+  paneId: string,
+  forgetSelf: () => void,
+): Promise<PaneSubscription> {
+  const listeners = new Set<(chunk: string) => void>();
+  const endListeners = new Set<() => void>();
+  const broadcast = (chunk: string) => listeners.forEach((listener) => listener(chunk));
+
+  /**
+   * 서버 쪽 스트림이 스스로 죽었다. 자리를 거둬야 다음 구독자가 죽은 구독을 물려받지 않고,
+   * 지금 보고 있는 기기에는 끝났다고 알려야 화면이 멈춘 터미널을 살아 있는 것으로 착각하지 않는다.
+   */
+  const handleStreamDeath = () => {
+    forgetSelf();
+
+    const ending = [...endListeners];
+    listeners.clear();
+    endListeners.clear();
+    ending.forEach((listener) => listener());
+  };
+
+  const stop = target.sessionType === SessionType.ZELLIJ
+    ? startZellijDumpPolling(target, paneId, broadcast)
+    : await startTmuxPaneStream(target, paneId, broadcast, handleStreamDeath);
+
+  return { listeners, endListeners, stop };
+}
+
+async function startTmuxPaneStream(
+  target: MirrorSessionTarget,
+  paneId: string,
+  broadcast: (chunk: string) => void,
+  onDead: () => void,
+): Promise<() => void> {
+  const child = await spawnMirrorProcess(buildTmuxPaneStreamCommand(paneId), target.sshHost);
+  child.stdout?.setEncoding("utf8");
+  child.stdout?.on("data", broadcast);
+  /** 읽지 않는 파이프는 64KB에서 차고, 그때부터 자식이 쓰기에서 멈춰 스트림째 선다 */
+  child.stderr?.resume();
+
+  /**
+   * `ChildProcess`는 EventEmitter라 리스너 없는 `error`가 그대로 던져지고, Electron main에는 그것을 받을 곳이 없다.
+   * `ssh` 바이너리가 없거나 프로세스 수 한도에 걸리는 것만으로 모바일에서 pane 하나를 여는 것이 앱 전체를 끈다.
+   * 종료도 함께 받아야 하는데, 자식이 죽어도 자리가 남으면 다음 구독자가 죽은 구독을 집어 들고 영영 조용해지기 때문이다.
+   */
+  child.on("error", (error) => {
+    console.error("[kanvibe] Mirror stream failed:", error);
+    onDead();
+  });
+  child.on("exit", onDead);
+
+  return () => {
+    stopMirrorProcess(child);
+    /**
+     * 프로세스가 트랩을 실행하지 못하고 죽는 경우가 있어 파이프를 한 번 더 끊는다.
+     * 파이프가 남으면 pane이 계속 임시 파일에 쓰고, 다음 구독자가 `-o` 토글에 걸려 아무것도 못 받는다.
+     */
+    void runMirrorCommand(buildTmuxCancelPipePaneCommand(paneId), target.sshHost).catch(() => {});
+  };
+}
+
+function startZellijDumpPolling(
+  target: MirrorSessionTarget,
+  paneId: string,
+  broadcast: (chunk: string) => void,
+): () => void {
+  const intervalMs = target.sshHost ? REMOTE_DUMP_INTERVAL_MS : LOCAL_DUMP_INTERVAL_MS;
+  let lastDump: string | null = null;
+  let isReading = false;
+
+  const readOnce = async () => {
+    /** 앞선 조회가 아직 안 끝났으면 건너뛴다. 느린 호스트에서 요청이 밀려 쌓이는 것을 막는다 */
+    if (isReading) {
+      return;
+    }
+    isReading = true;
+    try {
+      const dump = await readPaneSnapshot(target, paneId);
+      if (dump !== lastDump) {
+        lastDump = dump;
+        broadcast(dump);
+      }
+    } catch {
+      /** 세션이 사라졌을 수 있다. 소켓을 끊는 판단은 화면이 하도록 두고 여기서는 다음 주기를 기다린다 */
+    } finally {
+      isReading = false;
+    }
+  };
+
+  const timer = setInterval(readOnce, intervalMs);
+  return () => clearInterval(timer);
+}
+
+function stopMirrorProcess(child: ChildProcess): void {
+  if (child.pid === undefined) {
+    return;
+  }
+
+  try {
+    /** 음수 pid는 프로세스 그룹 전체를 뜻한다. `sh`만 죽이면 `tail`이 남는다 */
+    process.kill(-child.pid, "SIGTERM");
+  } catch {
+    child.kill("SIGTERM");
+  }
+}
+
+/** 모바일에서 누른 키를 pane에 그대로 넣는다 */
+export async function writeToPane(taskId: string, paneId: string, input: string): Promise<void> {
+  const target = await findMirrorSessionTarget(taskId);
+
+  /**
+   * 구독이 붙기 전에도 소켓은 메시지를 받을 수 있어(`mobileRoutes`가 `message`를 먼저 건다)
+   * 기억해 둔 확인이 없으면 여기서 직접 확인한다.
+   */
+  if (!paneSubscriptions.has(buildSubscriptionKey(taskId, paneId))) {
+    await ensurePaneBelongsToSession(target, paneId);
+  }
+
+  const command = target.sessionType === SessionType.ZELLIJ
+    ? buildZellijWritePaneCommand(target.sessionName, paneId, input)
+    : buildTmuxSendKeysCommand(paneId, input);
+
+  await runMirrorCommand(command, target.sshHost);
+}

@@ -50,6 +50,7 @@ const shortcutCapturingWebContentsIds = new Set();
 let stopBackgroundTaskSync = null;
 /** 앱 종료 시 KanVibe가 소유한 PTY를 정리한다. 핸들러 등록 시점에 채워진다 */
 let killAllTerminalSessionsOnQuit = null;
+let stopAllPaneMirrorsOnQuit = null;
 let pendingNotificationActivation = null;
 let diagnostics = null;
 let nextIpcRequestId = 1;
@@ -861,6 +862,10 @@ function registerDesktopHandlers() {
   } = require(getRuntimeModulePath(path.join("src", "desktop", "main", "aiAccountLoginBridge.ts")));
   const { killAllTerminalSessions } = require(getRuntimeModulePath(path.join("src", "lib", "terminal.ts")));
   killAllTerminalSessionsOnQuit = killAllTerminalSessions;
+  const { stopAllPaneMirrors } = require(getRuntimeModulePath(
+    path.join("src", "desktop", "main", "services", "mobileBridgeService.ts"),
+  ));
+  stopAllPaneMirrorsOnQuit = stopAllPaneMirrors;
 
   ipcMain.on("kanvibe:renderer-log", (_event, payload) => {
     logDiagnostic("renderer:bridge", payload);
@@ -1143,6 +1148,11 @@ app.whenReady().then(async () => {
     hookServer?.close();
     /** terminal 세션의 PTY는 KanVibe가 소유하므로 남겨두면 고아 프로세스가 된다 */
     killAllTerminalSessionsOnQuit?.();
+    /**
+     * 미러 자식은 `detached`로 떠 있어 앱이 죽어도 함께 죽지 않는다.
+     * `hookServer.close()`는 새 연결만 막고 이미 맺어진 WebSocket은 닫지 않으므로 구독 해제 경로도 돌지 않는다.
+     */
+    stopAllPaneMirrorsOnQuit?.();
   });
 });
 
