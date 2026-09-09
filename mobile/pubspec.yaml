@@ -1,7 +1,7 @@
 name: kanvibe_mobile
 description: KanVibe 데스크탑에 연결해 보드와 터미널 pane을 보는 모바일 클라이언트.
 publish_to: 'none'
-version: 0.1.0
+version: 0.1.0+1
 
 environment:
   sdk: ^3.13.2

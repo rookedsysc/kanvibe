@@ -1,8 +1,24 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
 }
+
+/**
+ * 업로드 키는 저장소에 둘 수 없어서 `android/key.properties`로 받는다(`.gitignore` 대상).
+ * 그 안의 `storeFile` 경로는 이 파일이 있는 `android/`를 기준으로 읽는다.
+ */
+val keystoreProperties = Properties().apply {
+    val file = rootProject.file("key.properties")
+    if (file.exists()) file.inputStream().use { load(it) }
+}
+
+/** 반쯤 채워진 key.properties는 그 자리에서 세운다. 조용히 debug로 떨어지면 Play가 거절할 때까지 모른다. */
+fun keystoreProperty(name: String): String =
+    keystoreProperties.getProperty(name)
+        ?: throw GradleException("android/key.properties에 $name 이(가) 없습니다.")
 
 android {
     namespace = "com.kanvibe.kanvibe_mobile"
@@ -33,11 +49,21 @@ android {
         versionName = flutter.versionName
     }
 
+    signingConfigs {
+        if (!keystoreProperties.isEmpty) {
+            create("release") {
+                storeFile = rootProject.file(keystoreProperty("storeFile"))
+                storePassword = keystoreProperty("storePassword")
+                keyAlias = keystoreProperty("keyAlias")
+                keyPassword = keystoreProperty("keyPassword")
+            }
+        }
+    }
+
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            /** keystore를 받지 않은 기기에서도 `flutter run --release`는 돌아가야 한다. */
+            signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
         }
     }
 }

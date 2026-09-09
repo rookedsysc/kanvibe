@@ -54,6 +54,34 @@ fvm flutter build apk --release
 `flutter_secure_storage`가 API 37 이상을 요구해서 `android/app/build.gradle.kts`의 `compileSdk`를
 Flutter 기본값보다 한 단계 올려 두었다.
 
+## 배포용 서명 (Android)
+
+`android/key.properties`가 있으면 릴리스 빌드가 그 키로 서명되고, 없으면 debug 키로 떨어진다.
+Play는 debug 키로 서명된 AAB를 받지 않으므로 배포 전에 업로드 키를 한 번 만들어 둔다.
+
+```bash
+keytool -genkeypair -v -keystore ~/kanvibe-upload.jks -storetype PKCS12 \
+  -keyalg RSA -keysize 2048 -validity 10000 -alias upload
+```
+
+```properties
+# android/key.properties — 저장소에 올라가지 않는다(android/.gitignore)
+storePassword=<위에서 정한 비밀번호>
+keyPassword=<위에서 정한 비밀번호>
+keyAlias=upload
+storeFile=/home/<사용자>/kanvibe-upload.jks
+```
+
+`storeFile`의 상대 경로는 `android/`를 기준으로 읽는다. 항목이 하나라도 빠지면 gradle이 그 자리에서
+멈춘다 — 조용히 debug 키로 떨어지면 Play가 거절할 때까지 서명이 잘못된 줄 모르기 때문이다.
+확인은 `cd android && ./gradlew :app:signingReport`의 `Variant: release` 항목이 `Config: release`인지로 한다.
+
+**이 keystore를 잃으면 같은 앱을 다시 올릴 수 없다.** 비밀번호와 함께 따로 보관한다.
+
+Play에 올릴 때마다 `pubspec.yaml`의 `version:` 뒤 빌드 번호(`0.1.0+1`의 `+1`)를 올려야 한다.
+같은 versionCode는 두 번 받지 않는다. iOS는 `flutter build ipa`가 export 단계에서
+App Store Connect를 조회해 `CFBundleVersion`을 스스로 올리므로 손댈 것이 없다.
+
 ## 데스크탑 화면을 건드리지 않는다
 
 pane을 비출 때 포커스나 크기를 바꾸는 명령은 하나도 쓰지 않는다. tmux는 `capture-pane`과 `pipe-pane`으로,
