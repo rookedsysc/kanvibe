@@ -62,6 +62,9 @@ void main() {
     await pumpPane(tester, _pane, client: client, store: store);
     expect(mountedTerminal(tester).viewWidth, 80);
 
+    client.openedPanes['%19']!.add('먼저 온 출력');
+    await tester.pumpAndSettle();
+
     await pumpPane(
       tester,
       const MirrorPane(
@@ -81,6 +84,11 @@ void main() {
     final terminal = mountedTerminal(tester);
     expect(terminal.viewWidth, 120);
     expect(terminal.viewHeight, 40);
+    expect(
+      terminal.buffer.getText(),
+      contains('먼저 온 출력'),
+      reason: '크기를 다시 재도 이미 받은 화면은 남아야 한다',
+    );
   });
 
   /// 서버는 "이 기기는 더 이상 연결되어 있지 않다"를 4001로 따로 알린다.
