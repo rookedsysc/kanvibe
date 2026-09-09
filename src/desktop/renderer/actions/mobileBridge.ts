@@ -22,6 +22,16 @@ export function stopMobilePairing(): Promise<void> {
   return invokeDesktop("mobileBridge", "stopMobilePairing");
 }
 
+/**
+ * 데스크탑이 아직 들고 있는 코드. 없으면 null.
+ *
+ * 코드는 만료 말고도 사라진다. 실패가 상한에 닿으면 데스크탑이 코드를 버리는데, 화면은 그것을 알 길이 없어
+ * 남은 시간이 흐르는 6자리를 계속 보여 준다. 사용자는 그 코드로 무엇도 연결되지 않는 이유를 찾지 못한다.
+ */
+export function readMobilePairingCode(): Promise<string | null> {
+  return invokeDesktop("mobileBridge", "readMobilePairingCode");
+}
+
 export function listPairedMobileDevices(): Promise<PairedMobileDevice[]> {
   return invokeDesktop("mobileBridge", "listPairedMobileDevices");
 }

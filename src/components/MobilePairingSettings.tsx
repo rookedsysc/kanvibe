@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 import {
   listPairedMobileDevices,
+  readMobilePairingCode,
   startMobilePairing,
   stopMobilePairing,
   unpairMobileDevice,
@@ -85,16 +86,34 @@ export default function MobilePairingSettings() {
       return;
     }
 
+    const forgetCode = () => {
+      /** 데스크탑에서 이미 죽은 코드라 거둘 것이 없다 */
+      hasOutstandingCode.current = false;
+      setPairingCode(null);
+      setExpiresAt(null);
+    };
+
     const updateRemaining = () => {
       const remaining = Math.max(0, Math.ceil((expiresAt - Date.now()) / 1000));
       setRemainingSeconds(remaining);
 
       if (remaining === 0) {
-        /** 만료된 코드는 데스크탑에서도 이미 죽어 있어 거둘 것이 없다 */
-        hasOutstandingCode.current = false;
-        setPairingCode(null);
-        setExpiresAt(null);
+        forgetCode();
+        return;
       }
+
+      /**
+       * 만료 말고도 코드가 사라지는 길이 있다. 실패가 상한에 닿으면 데스크탑이 코드를 버리는데,
+       * 그것을 여기서 확인하지 않으면 남은 시간이 흐르는 6자리가 화면에 그대로 남아
+       * 사용자는 그 코드로 무엇도 연결되지 않는 이유를 찾지 못한다.
+       */
+      void readMobilePairingCode()
+        .then((code) => {
+          if (code === null) {
+            forgetCode();
+          }
+        })
+        .catch(() => {});
     };
 
     updateRemaining();

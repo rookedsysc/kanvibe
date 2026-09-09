@@ -22,12 +22,14 @@ const mockStartMobilePairing = vi.fn();
 const mockStopMobilePairing = vi.fn();
 const mockListPairedMobileDevices = vi.fn();
 const mockUnpairMobileDevice = vi.fn();
+const mockReadMobilePairingCode = vi.fn();
 
 vi.mock("@/desktop/renderer/actions/mobileBridge", () => ({
   startMobilePairing: () => mockStartMobilePairing(),
   stopMobilePairing: () => mockStopMobilePairing(),
   listPairedMobileDevices: () => mockListPairedMobileDevices(),
   unpairMobileDevice: (deviceId: string) => mockUnpairMobileDevice(deviceId),
+  readMobilePairingCode: () => mockReadMobilePairingCode(),
 }));
 
 const PAIRED_DEVICE = {
@@ -42,9 +44,24 @@ beforeEach(() => {
   mockStopMobilePairing.mockResolvedValue(undefined);
   mockListPairedMobileDevices.mockResolvedValue([]);
   mockUnpairMobileDevice.mockResolvedValue(undefined);
+  mockReadMobilePairingCode.mockResolvedValue("123456");
 });
 
 describe("MobilePairingSettings", () => {
+  /**
+   * 코드는 만료 말고도 사라진다. 실패가 상한에 닿으면 데스크탑이 코드를 버리는데,
+   * 화면이 그것을 모르면 남은 시간이 흐르는 6자리가 그대로 남아 사용자가 원인을 찾지 못한다.
+   */
+  it("데스크탑이 버린 코드는 남은 시간이 있어도 화면에서 지운다", async () => {
+    render(<MobilePairingSettings />);
+    await userEvent.click(screen.getByRole("button", { name: "Create pairing code" }));
+    expect(await screen.findByText("123456")).toBeTruthy();
+
+    mockReadMobilePairingCode.mockResolvedValue(null);
+
+    await waitFor(() => expect(screen.queryByText("123456")).toBeNull(), { timeout: 3_000 });
+  });
+
   it("코드를 만들기 전에는 코드가 보이지 않는다", async () => {
     render(<MobilePairingSettings />);
 
