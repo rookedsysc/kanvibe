@@ -8,7 +8,7 @@
          아니어서 좁힌 목록이 오히려 정상 연결을 막는다. -->
     <application
         android:usesCleartextTraffic="true"
-        android:label="kanvibe_mobile"
+        android:label="KanVibe Mobile"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity
