@@ -31,7 +31,7 @@ import {
   parseZellijMirrorPaneList,
   type MirrorPane,
 } from "@/lib/paneMirror";
-import { resolveZellijPaneIdSupport } from "@/lib/terminalTabs";
+import { resolveZellijIdTargetingSupport } from "@/lib/terminalTabs";
 import { buildSSHArgs, getKanvibeSSHConnectionHealthOptions, parseSSHConfig } from "@/lib/sshConfig";
 import { quoteForPosixShell } from "@/lib/worktree";
 
@@ -108,7 +108,7 @@ function runMirrorCommand(command: string, sshHost: string | null): Promise<stri
 }
 
 function hasZellijPaneIdSupport(sshHost: string | null): Promise<boolean> {
-  return resolveZellijPaneIdSupport(sshHost, (command) => runMirrorCommand(command, sshHost));
+  return resolveZellijIdTargetingSupport(sshHost, (command) => runMirrorCommand(command, sshHost));
 }
 
 /**
@@ -313,39 +313,42 @@ export async function authorizeMobileRequest(
   return findPairedDevice(devices, parseBearerToken(authorizationHeader))?.deviceId ?? null;
 }
 
-/** pane 하나를 보고 있는 구독자들 */
+/**
+ * pane 하나를 보고 있는 구독자들.
+ *
+ * 출력과 별개로 종료를 따로 알린다. 서버 쪽 스트림이 스스로 죽으면 화면은 아무것도 받지 못한 채
+ * 멈춘 터미널을 계속 들고 있어, 사용자에게는 조용한 pane과 살아 있는 pane이 똑같이 보인다.
+ */
 interface PaneSubscription {
   listeners: Set<(chunk: string) => void>;
+  endListeners: Set<() => void>;
   stop: () => void;
+}
+
+/**
+ * pane 하나에 걸린 구독과 그것을 보고 있는 구독자 수.
+ *
+ * 수를 따로 둔 지도가 아니라 이 객체에 담는 이유는, 스트림이 죽어 구독이 갈리는 순간에 있다.
+ * 키로 세면 앞선 구독자의 퇴장이 그 뒤에 새로 생긴 구독의 수를 깎아 아무도 안 보는 것으로 만든다.
+ *
+ * 완성된 구독이 아니라 만들고 있는 약속을 담는다. 두 기기가 같은 pane을 동시에 열면
+ * 완성값을 담을 경우 둘 다 "아직 없다"를 보고 파이프를 두 번 걸게 된다.
+ */
+interface PaneClaim {
+  subscription: Promise<PaneSubscription>;
+  subscriberCount: number;
 }
 
 /**
  * pane별 구독. tmux는 pane 하나에 파이프를 하나만 유지하므로 여기서 하나만 걸고 나눠 보낸다.
  * 두 번째 구독자가 파이프를 다시 걸면 `-o` 토글이 첫 번째 파이프를 꺼 버려 둘 다 조용해진다.
  *
- * 완성된 구독이 아니라 만들고 있는 약속을 담는다. 두 기기가 같은 pane을 동시에 열면
- * 완성값을 담을 경우 둘 다 "아직 없다"를 보고 파이프를 두 번 걸게 된다.
+ * 이 지도에 자리가 있다는 것은 그 pane이 태스크의 세션에 속한다고 이미 확인됐다는 뜻이기도 하다.
+ * tmux pane id는 서버 전역이라 `-t %17`이 세션 경계를 넘어, 토큰 하나를 가진 기기가 다른 태스크의 pane은 물론
+ * KanVibe가 만들지 않은 pane까지 읽고 쓸 수 있다. zellij 쪽은 명령이 `--session`을 함께 받아 원래 막혀 있다.
+ * 키 입력마다 pane 목록을 다시 조회하면 비싸므로 [writeToPane]은 이 자리의 유무로 확인을 대신한다.
  */
-const paneSubscriptions = new Map<string, Promise<PaneSubscription>>();
-
-/**
- * 구독자 수. 약속이 풀리기 전에 세는 것이 이 지도의 존재 이유다.
- *
- * `await`은 이미 풀린 약속이라도 마이크로태스크 경계라, 뒤에 온 구독자가 지도에서 약속을 집어 든 뒤
- * 콜백을 얹기 전까지 틈이 생긴다. 그 틈에 앞선 구독자가 나가면, 완성된 구독의 listener만 세는 정리 쪽에서는
- * 아직 아무도 없는 것으로 보여 스트림을 끊는다. 뒤에 온 구독자는 이미 멈춘 구독에 콜백을 얹고 영영 조용해진다.
- * 그래서 자리를 잡는 순간 동기적으로 세고, 그 수가 0이 될 때만 멈춘다.
- */
-const paneSubscriberCounts = new Map<string, number>();
-
-/**
- * pane이 이 태스크의 세션에 속한다고 확인된 키.
- *
- * tmux pane id는 서버 전역이라 `-t %17`이 세션 경계를 넘는다. 토큰 하나를 가진 기기가 다른 태스크의 pane은 물론
- * KanVibe가 만들지 않은 pane까지 읽고 쓸 수 있다는 뜻이다. zellij 쪽은 명령이 `--session`을 함께 받아 원래 막혀 있다.
- * 키 입력마다 pane 목록을 다시 조회하면 비싸므로, 구독이 붙어 있는 동안만 확인 결과를 기억한다.
- */
-const verifiedPaneKeys = new Set<string>();
+const paneSubscriptions = new Map<string, PaneClaim>();
 
 function buildSubscriptionKey(taskId: string, paneId: string): string {
   return `${taskId}#${paneId}`;
@@ -363,19 +366,51 @@ async function ensurePaneBelongsToSession(
 }
 
 /**
- * 구독자 하나를 놓아준다. 마지막 구독자였고 지도가 아직 이 호출이 집어 든 약속을 들고 있을 때만 멈춰야 한다.
- * 그 사이 새 구독자가 새 약속을 걸었다면 정리는 그쪽 몫이다.
+ * pane 구독 자리를 잡고 구독자 수를 하나 올린다. [paneSubscriptions]를 건드리는 곳은 여기와 [forgetPaneClaim]뿐이다.
+ *
+ * 자리를 잡는 것과 수를 세는 것이 같은 동기 구간 안에서 끝나야 한다. `await`은 이미 풀린 약속이라도
+ * 마이크로태스크 경계라, 뒤에 온 구독자가 약속을 집어 든 뒤 콜백을 얹기 전까지 틈이 생긴다.
+ * 그 틈에 앞선 구독자가 나가면 정리 쪽에서는 아직 아무도 없는 것으로 보여 스트림을 끊고,
+ * 뒤에 온 구독자는 이미 멈춘 구독에 콜백을 얹어 영영 조용해진다.
+ *
+ * 돌려주는 `release`는 마지막 구독자였고 지도가 아직 이 호출이 집어 든 자리를 들고 있을 때만 참이다.
+ * 그 사이 새 구독자가 새 자리를 잡았다면 정리는 그쪽 몫이다.
  */
-function releasePaneSubscriber(key: string, claimed: Promise<PaneSubscription>): boolean {
-  const remaining = (paneSubscriberCounts.get(key) ?? 1) - 1;
-  if (remaining > 0) {
-    paneSubscriberCounts.set(key, remaining);
-    return false;
+function claimPaneSubscription(
+  key: string,
+  create: (forgetSelf: () => void) => Promise<PaneSubscription>,
+): { claimed: Promise<PaneSubscription>; release: () => boolean } {
+  let claim = paneSubscriptions.get(key);
+  if (!claim) {
+    /** 시작하는 도중에 스트림이 죽어도 자기 자리를 정확히 거둘 수 있도록, 만드는 쪽에 그 길을 함께 넘긴다 */
+    const created: PaneClaim = {
+      subscription: create(() => forgetPaneClaim(key, created)),
+      subscriberCount: 0,
+    };
+    /** 시작에 실패한 약속을 남겨 두면 다음 구독자도 같은 실패를 물려받는다 */
+    void created.subscription.catch(() => forgetPaneClaim(key, created));
+    paneSubscriptions.set(key, created);
+    claim = created;
   }
 
-  paneSubscriberCounts.delete(key);
-  verifiedPaneKeys.delete(key);
-  if (paneSubscriptions.get(key) !== claimed) {
+  const claimed = claim;
+  claimed.subscriberCount += 1;
+
+  return {
+    claimed: claimed.subscription,
+    release: () => {
+      claimed.subscriberCount -= 1;
+      if (claimed.subscriberCount > 0) {
+        return false;
+      }
+      return forgetPaneClaim(key, claimed);
+    },
+  };
+}
+
+/** 이 자리가 아직 지도에 있을 때만 지운다. 이미 다른 자리로 갈렸다면 그쪽을 건드리면 안 된다 */
+function forgetPaneClaim(key: string, claim: PaneClaim): boolean {
+  if (paneSubscriptions.get(key) !== claim) {
     return false;
   }
 
@@ -408,11 +443,15 @@ async function spawnMirrorProcess(command: string, sshHost: string | null): Prom
 /**
  * pane 하나를 구독한다. 첫 화면을 한 번 보내고 그 뒤로는 바뀌는 부분만 흘려보낸다.
  * 반환값을 부르면 구독이 끝나고, 마지막 구독자가 나가면 서버 쪽 파이프와 폴링도 함께 멈춘다.
+ *
+ * [onEnd]는 서버 쪽 스트림이 스스로 죽었을 때만 돈다. 구독자가 [subscribeToPane]을 부른 뒤 나가는 경우가 아니라,
+ * `ssh`가 끊기거나 `tmux pipe-pane`이 실패해 더 이상 아무것도 오지 않게 된 경우를 뜻한다.
  */
 export async function subscribeToPane(
   taskId: string,
   paneId: string,
   onChunk: (chunk: string) => void,
+  onEnd: () => void,
 ): Promise<() => void> {
   const target = await findMirrorSessionTarget(taskId);
   const key = buildSubscriptionKey(taskId, paneId);
@@ -422,28 +461,19 @@ export async function subscribeToPane(
   const snapshot = await readPaneSnapshot(target, paneId);
   onChunk(snapshot);
 
-  let pendingSubscription = paneSubscriptions.get(key);
-  if (!pendingSubscription) {
-    pendingSubscription = startPaneSubscription(target, paneId);
-    paneSubscriptions.set(key, pendingSubscription);
-  }
-  /** 자리를 잡는 것과 수를 세는 것은 같은 동기 구간 안에서 끝나야 한다 */
-  const claimedSubscription = pendingSubscription;
-  paneSubscriberCounts.set(key, (paneSubscriberCounts.get(key) ?? 0) + 1);
-  verifiedPaneKeys.add(key);
+  const { claimed, release } = claimPaneSubscription(key, (forgetSelf) =>
+    startPaneSubscription(target, paneId, forgetSelf),
+  );
 
   let subscription: PaneSubscription;
   try {
-    subscription = await claimedSubscription;
+    subscription = await claimed;
   } catch (error) {
-    /** 시작에 실패한 약속을 남겨 두면 다음 구독자도 같은 실패를 물려받는다 */
-    if (paneSubscriptions.get(key) === claimedSubscription) {
-      paneSubscriptions.delete(key);
-    }
-    releasePaneSubscriber(key, claimedSubscription);
+    release();
     throw error;
   }
   subscription.listeners.add(onChunk);
+  subscription.endListeners.add(onEnd);
 
   let isReleased = false;
   return () => {
@@ -454,10 +484,25 @@ export async function subscribeToPane(
     isReleased = true;
 
     subscription.listeners.delete(onChunk);
-    if (releasePaneSubscriber(key, claimedSubscription)) {
+    subscription.endListeners.delete(onEnd);
+    if (release()) {
       subscription.stop();
     }
   };
+}
+
+/**
+ * 앱을 끄기 전에 열려 있는 미러를 전부 멈춘다.
+ *
+ * [spawnMirrorProcess]는 자식을 `detached`로 띄우므로 부모가 죽어도 함께 죽지 않는다. 아무도 멈추지 않으면
+ * 고아가 된 `sh`/`ssh`와 `tail`이 남고, 사용자의 pane에는 `pipe-pane`이 걸린 채로 남아 임시 파일이 계속 자란다.
+ * 이 서비스가 데스크탑 화면을 바꾸지 않는다는 약속은 앱이 사라진 뒤에도 지켜져야 한다.
+ */
+export function stopAllPaneMirrors(): void {
+  for (const [key, claim] of [...paneSubscriptions]) {
+    forgetPaneClaim(key, claim);
+    void claim.subscription.then((subscription) => subscription.stop()).catch(() => {});
+  }
 }
 
 async function readPaneSnapshot(target: MirrorSessionTarget, paneId: string): Promise<string> {
@@ -471,25 +516,54 @@ async function readPaneSnapshot(target: MirrorSessionTarget, paneId: string): Pr
 async function startPaneSubscription(
   target: MirrorSessionTarget,
   paneId: string,
+  forgetSelf: () => void,
 ): Promise<PaneSubscription> {
   const listeners = new Set<(chunk: string) => void>();
+  const endListeners = new Set<() => void>();
   const broadcast = (chunk: string) => listeners.forEach((listener) => listener(chunk));
+
+  /**
+   * 서버 쪽 스트림이 스스로 죽었다. 자리를 거둬야 다음 구독자가 죽은 구독을 물려받지 않고,
+   * 지금 보고 있는 기기에는 끝났다고 알려야 화면이 멈춘 터미널을 살아 있는 것으로 착각하지 않는다.
+   */
+  const handleStreamDeath = () => {
+    forgetSelf();
+
+    const ending = [...endListeners];
+    listeners.clear();
+    endListeners.clear();
+    ending.forEach((listener) => listener());
+  };
 
   const stop = target.sessionType === SessionType.ZELLIJ
     ? startZellijDumpPolling(target, paneId, broadcast)
-    : await startTmuxPaneStream(target, paneId, broadcast);
+    : await startTmuxPaneStream(target, paneId, broadcast, handleStreamDeath);
 
-  return { listeners, stop };
+  return { listeners, endListeners, stop };
 }
 
 async function startTmuxPaneStream(
   target: MirrorSessionTarget,
   paneId: string,
   broadcast: (chunk: string) => void,
+  onDead: () => void,
 ): Promise<() => void> {
   const child = await spawnMirrorProcess(buildTmuxPaneStreamCommand(paneId), target.sshHost);
   child.stdout?.setEncoding("utf8");
   child.stdout?.on("data", broadcast);
+  /** 읽지 않는 파이프는 64KB에서 차고, 그때부터 자식이 쓰기에서 멈춰 스트림째 선다 */
+  child.stderr?.resume();
+
+  /**
+   * `ChildProcess`는 EventEmitter라 리스너 없는 `error`가 그대로 던져지고, Electron main에는 그것을 받을 곳이 없다.
+   * `ssh` 바이너리가 없거나 프로세스 수 한도에 걸리는 것만으로 모바일에서 pane 하나를 여는 것이 앱 전체를 끈다.
+   * 종료도 함께 받아야 하는데, 자식이 죽어도 자리가 남으면 다음 구독자가 죽은 구독을 집어 들고 영영 조용해지기 때문이다.
+   */
+  child.on("error", (error) => {
+    console.error("[kanvibe] Mirror stream failed:", error);
+    onDead();
+  });
+  child.on("exit", onDead);
 
   return () => {
     stopMirrorProcess(child);
@@ -554,7 +628,7 @@ export async function writeToPane(taskId: string, paneId: string, input: string)
    * 구독이 붙기 전에도 소켓은 메시지를 받을 수 있어(`mobileRoutes`가 `message`를 먼저 건다)
    * 기억해 둔 확인이 없으면 여기서 직접 확인한다.
    */
-  if (!verifiedPaneKeys.has(buildSubscriptionKey(taskId, paneId))) {
+  if (!paneSubscriptions.has(buildSubscriptionKey(taskId, paneId))) {
     await ensurePaneBelongsToSession(target, paneId);
   }
 

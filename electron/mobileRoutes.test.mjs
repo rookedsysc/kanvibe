@@ -91,14 +91,21 @@ function stubPaneChunks() {
   const chunkListeners = new Set();
   const stops = [];
 
-  bridge.subscribeToPane.mockImplementation(async (taskId, paneId, onChunk) => {
+  const endListeners = new Set();
+
+  bridge.subscribeToPane.mockImplementation(async (taskId, paneId, onChunk, onEnd) => {
     chunkListeners.add(onChunk);
+    endListeners.add(onEnd);
     const stop = vi.fn(() => chunkListeners.delete(onChunk));
     stops.push(stop);
     return stop;
   });
 
-  return { emit: (chunk) => chunkListeners.forEach((listener) => listener(chunk)), stops };
+  return {
+    emit: (chunk) => chunkListeners.forEach((listener) => listener(chunk)),
+    endAll: () => endListeners.forEach((listener) => listener()),
+    stops,
+  };
 }
 
 async function openPaneStreamClient(authorization) {
@@ -407,6 +414,99 @@ describe("pane 스트림 업그레이드", () => {
     releaseSubscription();
     await waitFor(() => stop.mock.calls.length > 0);
     expect(stop).toHaveBeenCalledTimes(1);
+  });
+});
+
+/**
+ * 이 이름은 네트워크에서 오는 값이고 데스크탑 설정 화면에 그대로 그려진다.
+ * 본문 상한까지의 문자열이 저장되면 그 항목이 레이아웃을 밀어 끊기 버튼까지 화면 밖으로 보낸다.
+ */
+describe("기기 이름", () => {
+  it("긴 이름은 잘라서 저장한다", async () => {
+    await request("/api/mobile/pair", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code: "123456", deviceName: "가".repeat(500) }),
+    });
+
+    const [, storedName] = bridge.pairMobileDevice.mock.calls[0];
+    expect(storedName).toBe("가".repeat(64));
+  });
+
+  it("이름이 없으면 기본 이름을 쓴다", async () => {
+    await request("/api/mobile/pair", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code: "123456" }),
+    });
+
+    expect(bridge.pairMobileDevice.mock.calls[0][1]).toBe("모바일 기기");
+  });
+});
+
+describe("키 입력 순서", () => {
+  /**
+   * `writeToPane` 한 번은 DB 왕복과 `sh -c` 프로세스를 지나므로 짧지 않다.
+   * 그대로 띄우면 겹친 두 입력의 도착 순서를 OS 스케줄러가 정해 `ls`가 `sl`로 들어간다.
+   */
+  it("앞선 쓰기가 끝나기 전에는 다음 키를 보내지 않는다", async () => {
+    const completedWrites = [];
+    const pendingWrites = [];
+    bridge.writeToPane.mockImplementation(
+      (taskId, paneId, input) =>
+        new Promise((resolve) => {
+          pendingWrites.push(() => {
+            completedWrites.push(input);
+            resolve();
+          });
+        }),
+    );
+
+    const client = await openPaneStreamClient("Bearer good");
+    client.send("l");
+    client.send("s");
+
+    await waitFor(() => pendingWrites.length === 1);
+    expect(bridge.writeToPane).toHaveBeenCalledTimes(1);
+
+    pendingWrites[0]();
+    await waitFor(() => pendingWrites.length === 2);
+    pendingWrites[1]();
+    await waitFor(() => completedWrites.length === 2);
+
+    expect(completedWrites).toEqual(["l", "s"]);
+    client.close();
+  });
+
+  it("한 번의 쓰기가 실패해도 다음 키가 막히지 않는다", async () => {
+    const receivedInputs = [];
+    bridge.writeToPane.mockImplementation(async (taskId, paneId, input) => {
+      receivedInputs.push(input);
+      if (input === "l") {
+        throw new Error("send-keys 실패");
+      }
+    });
+
+    const client = await openPaneStreamClient("Bearer good");
+    client.send("l");
+    client.send("s");
+
+    await waitFor(() => receivedInputs.length === 2);
+    expect(receivedInputs).toEqual(["l", "s"]);
+    client.close();
+  });
+});
+
+describe("서버 쪽 스트림이 죽는 경우", () => {
+  it("스트림이 죽으면 구독 시작 실패와 같은 코드로 소켓을 닫는다", async () => {
+    const paneChunks = stubPaneChunks();
+    const client = await openPaneStreamClient("Bearer good");
+    await waitFor(() => bridge.subscribeToPane.mock.calls.length === 1);
+
+    const closed = waitForClose(client);
+    paneChunks.endAll();
+
+    expect(await closed).toEqual({ code: 4000, reason: "stream-failed" });
   });
 });
 

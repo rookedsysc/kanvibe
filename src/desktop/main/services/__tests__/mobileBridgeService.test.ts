@@ -41,6 +41,7 @@ const {
   readMobilePairingCode,
   startMobilePairing,
   stopMobilePairing,
+  stopAllPaneMirrors,
   subscribeToPane,
   unpairMobileDevice,
   unpairMobileDeviceByToken,
@@ -73,11 +74,17 @@ function executedCommands(): string[] {
 }
 
 /**
- * tmux 스트림을 띄우는 자식 프로세스 대신, 테스트가 직접 출력을 흘려보낼 수 있는 가짜를 세운다.
+ * tmux 스트림을 띄우는 자식 프로세스 대신, 테스트가 직접 출력을 흘려보내고 죽일 수 있는 가짜를 세운다.
  * `pid`를 비워 두면 `process.kill`을 부르지 않아 테스트가 실제 프로세스 그룹을 건드리지 않는다.
  */
-function stubPaneProcess(): { emit: (chunk: string) => void } {
+function stubPaneProcess(): {
+  emit: (chunk: string) => void;
+  die: (event: "error" | "exit") => void;
+  hasStderrListener: () => boolean;
+} {
   const dataListeners = new Set<(chunk: string) => void>();
+  const processListeners = new Map<string, Set<(payload?: unknown) => void>>();
+  let isStderrDrained = false;
 
   spawnMock.mockReturnValue({
     pid: undefined,
@@ -89,10 +96,24 @@ function stubPaneProcess(): { emit: (chunk: string) => void } {
         }
       },
     },
+    stderr: {
+      resume: () => {
+        isStderrDrained = true;
+      },
+    },
+    on: (event: string, listener: (payload?: unknown) => void) => {
+      const listeners = processListeners.get(event) ?? new Set();
+      listeners.add(listener);
+      processListeners.set(event, listeners);
+    },
     kill: () => {},
   });
 
-  return { emit: (chunk) => dataListeners.forEach((listener) => listener(chunk)) };
+  return {
+    emit: (chunk) => dataListeners.forEach((listener) => listener(chunk)),
+    die: (event) => processListeners.get(event)?.forEach((listener) => listener(new Error("boom"))),
+    hasStderrListener: () => isStderrDrained,
+  };
 }
 
 /**
@@ -443,7 +464,7 @@ describe("pane 접근 범위", () => {
   it("세션에 없는 pane은 구독할 수 없다", async () => {
     stubTmuxMirror();
 
-    await expect(subscribeToPane("task-scope-read", "%3", () => {})).rejects.toMatchObject({
+    await expect(subscribeToPane("task-scope-read", "%3", () => {}, () => {})).rejects.toMatchObject({
       reason: "session-not-running",
     });
     expect(executedCommands().some((command) => command.includes("capture-pane"))).toBe(false);
@@ -467,6 +488,74 @@ describe("pane 접근 범위", () => {
   });
 });
 
+
+/**
+ * 미러 자식은 `detached`로 떠 있어 부모가 죽어도 함께 죽지 않고, spawn 실패의 `error`는
+ * 리스너가 없으면 그대로 던져져 Electron main을 끈다. 두 가지 모두 pane 하나를 여는 것만으로 도달한다.
+ */
+describe("미러 자식 프로세스의 수명", () => {
+  it("자식의 stderr를 흘려보내 파이프가 차서 스트림이 서지 않게 한다", async () => {
+    stubTmuxMirror();
+    const paneProcess = stubPaneProcess();
+
+    const unsubscribe = await subscribeToPane("task-stderr", "%19", () => {}, () => {});
+
+    expect(paneProcess.hasStderrListener()).toBe(true);
+    unsubscribe();
+  });
+
+  it.each(["error", "exit"] as const)("자식이 %s로 죽으면 구독자에게 알린다", async (deathEvent) => {
+    stubTmuxMirror();
+    const paneProcess = stubPaneProcess();
+
+    let hasEnded = false;
+    const unsubscribe = await subscribeToPane("task-death", "%19", () => {}, () => {
+      hasEnded = true;
+    });
+
+    paneProcess.die(deathEvent);
+
+    expect(hasEnded).toBe(true);
+    unsubscribe();
+  });
+
+  it("죽은 구독은 자리를 비워 다음 구독자가 새 스트림을 받는다", async () => {
+    stubTmuxMirror();
+    const firstProcess = stubPaneProcess();
+
+    const unsubscribeFirst = await subscribeToPane("task-revive", "%19", () => {}, () => {});
+    firstProcess.die("exit");
+
+    const secondProcess = stubPaneProcess();
+    const receivedChunks: string[] = [];
+    const unsubscribeSecond = await subscribeToPane(
+      "task-revive",
+      "%19",
+      (chunk) => receivedChunks.push(chunk),
+      () => {},
+    );
+
+    secondProcess.emit("살아 있다");
+
+    expect(receivedChunks).toEqual(["snapshot", "살아 있다"]);
+    unsubscribeFirst();
+    unsubscribeSecond();
+  });
+
+  it("앱을 끌 때 열려 있는 미러의 파이프를 거둔다", async () => {
+    stubTmuxMirror();
+    stubPaneProcess();
+
+    await subscribeToPane("task-quit", "%19", () => {}, () => {});
+    expect(executedCommands()).not.toContain("tmux pipe-pane -t '%19'");
+
+    stopAllPaneMirrors();
+    await Promise.resolve();
+
+    expect(executedCommands()).toContain("tmux pipe-pane -t '%19'");
+  });
+});
+
 describe("pane 구독 정리", () => {
   /**
    * 두 번째 구독자가 자리를 잡은 뒤 콜백을 얹기 전에 첫 구독자가 나가는 순간을 만든다.
@@ -476,15 +565,20 @@ describe("pane 구독 정리", () => {
     stubTmuxMirror();
     const paneProcess = stubPaneProcess();
 
-    const unsubscribeFirst = await subscribeToPane("task-race", "%19", () => {});
+    const unsubscribeFirst = await subscribeToPane("task-race", "%19", () => {}, () => {});
 
     const receivedChunks: string[] = [];
-    const unsubscribeSecond = await subscribeToPane("task-race", "%19", (chunk) => {
-      if (receivedChunks.length === 0) {
-        queueMicrotask(unsubscribeFirst);
-      }
-      receivedChunks.push(chunk);
-    });
+    const unsubscribeSecond = await subscribeToPane(
+      "task-race",
+      "%19",
+      (chunk) => {
+        if (receivedChunks.length === 0) {
+          queueMicrotask(unsubscribeFirst);
+        }
+        receivedChunks.push(chunk);
+      },
+      () => {},
+    );
 
     paneProcess.emit("stream");
 
@@ -499,11 +593,14 @@ describe("pane 구독 정리", () => {
     stubTmuxMirror();
     const paneProcess = stubPaneProcess();
 
-    const unsubscribeFirst = await subscribeToPane("task-idempotent", "%19", () => {});
+    const unsubscribeFirst = await subscribeToPane("task-idempotent", "%19", () => {}, () => {});
     const receivedChunks: string[] = [];
-    const unsubscribeSecond = await subscribeToPane("task-idempotent", "%19", (chunk) => {
-      receivedChunks.push(chunk);
-    });
+    const unsubscribeSecond = await subscribeToPane(
+      "task-idempotent",
+      "%19",
+      (chunk) => receivedChunks.push(chunk),
+      () => {},
+    );
 
     unsubscribeFirst();
     unsubscribeFirst();

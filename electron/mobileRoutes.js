@@ -19,6 +19,13 @@ const STREAM_PATH = "/api/mobile/stream";
  */
 const DEVICE_UNPAIRED_CLOSE_CODE = 4001;
 
+/**
+ * 목록에서 기기를 알아보기 위한 이름이라 사람이 읽을 만한 길이면 충분하다.
+ * 본문 상한(`httpBody.js`)까지의 문자열이 그대로 저장되면 설정 화면의 항목 하나가 레이아웃을 밀어
+ * 그 기기를 끊는 버튼까지 화면 밖으로 보내, 사용자가 지울 수 없는 항목이 된다.
+ */
+const MAX_DEVICE_NAME_LENGTH = 64;
+
 /** 태스크 pane 경로에서 태스크 id를 꺼낸다 */
 const SURFACES_PATH_PATTERN = /^\/api\/mobile\/tasks\/([^/]+)\/surfaces$/;
 
@@ -81,7 +88,8 @@ async function handlePairRequest(request, response, bridge) {
   }
 
   const submittedCode = typeof body.code === "string" ? body.code : "";
-  const deviceName = typeof body.deviceName === "string" && body.deviceName ? body.deviceName : "모바일 기기";
+  const submittedName = typeof body.deviceName === "string" ? body.deviceName.slice(0, MAX_DEVICE_NAME_LENGTH) : "";
+  const deviceName = submittedName || "모바일 기기";
   const token = await bridge.pairMobileDevice(submittedCode, deviceName);
 
   if (!token) {
@@ -238,16 +246,31 @@ async function openPaneStream(webSocket, bridge, taskId, paneId, onClosed) {
     }
   });
 
+  /**
+   * 키 입력을 한 줄로 세운다.
+   *
+   * `writeToPane` 한 번은 세션 조회(DB 왕복)와 `sh -c` 프로세스 하나를 지나므로 짧지 않다. 그대로 띄우면
+   * 겹친 두 입력의 `tmux send-keys` 순서를 OS 스케줄러가 정해, 빠르게 친 `ls`가 `sl`로 들어간다.
+   * 재현이 간헐적이라 사용자가 원인을 짚기 가장 어려운 종류의 결함이다. 줄은 소켓 하나 몫이면 충분하다 —
+   * 서로 다른 기기의 입력 사이에는 지켜야 할 순서가 없다.
+   */
+  let writeQueue = Promise.resolve();
   webSocket.on("message", (data) => {
-    void bridge.writeToPane(taskId, paneId, data.toString()).catch(() => {});
+    writeQueue = writeQueue.then(() => bridge.writeToPane(taskId, paneId, data.toString())).catch(() => {});
   });
 
   try {
-    const stop = await bridge.subscribeToPane(taskId, paneId, (chunk) => {
-      if (webSocket.readyState === webSocket.OPEN) {
-        webSocket.send(chunk);
-      }
-    });
+    const stop = await bridge.subscribeToPane(
+      taskId,
+      paneId,
+      (chunk) => {
+        if (webSocket.readyState === webSocket.OPEN) {
+          webSocket.send(chunk);
+        }
+      },
+      /** 서버 쪽 스트림이 스스로 죽었다. 구독 시작 실패와 같은 코드로 닫아 화면이 같은 안내를 띄우게 한다 */
+      () => webSocket.close(4000, "stream-failed"),
+    );
 
     if (isClosed) {
       stop();
