@@ -128,20 +128,28 @@ class DesktopClient {
       output: channel.stream.map((event) => event.toString()),
       onWrite: channel.sink.add,
       onClose: channel.sink.close,
+      readCloseCode: () => channel.closeCode,
     );
   }
 
   void close() => _httpClient.close();
 }
 
+/// 데스크탑이 이 기기를 목록에서 지워 스트림을 끊었을 때의 종료 코드.
+///
+/// 스트림 실패(4000)와 나누어야 "세션을 못 비춘다"와 "이 기기는 더 이상 연결되어 있지 않다"를 구분할 수 있다.
+/// 서버 쪽 `electron/mobileRoutes.js`의 `DEVICE_UNPAIRED_CLOSE_CODE`와 같은 값이어야 한다.
+const int deviceUnpairedCloseCode = 4001;
+
 /// 열려 있는 pane 구독 하나.
 ///
-/// 소켓을 직접 들지 않고 흐름과 두 동작만 받는다. 터미널 위젯이 소켓 없이도 검증될 수 있어야 하기 때문이다.
+/// 소켓을 직접 들지 않고 흐름과 동작만 받는다. 터미널 위젯이 소켓 없이도 검증될 수 있어야 하기 때문이다.
 class PaneStream {
   const PaneStream({
     required this.output,
     required this.onWrite,
     required this.onClose,
+    required this.readCloseCode,
   });
 
   /// pane이 뱉는 바이트. 터미널이 그대로 먹는다
@@ -151,6 +159,9 @@ class PaneStream {
   final void Function(String input) onWrite;
 
   final Future<void> Function() onClose;
+
+  /// 소켓이 왜 닫혔는지. 서버가 나눠 보낸 사유를 위젯이 읽을 유일한 통로다
+  final int? Function() readCloseCode;
 
   void write(String input) => onWrite(input);
 

@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kanvibe_mobile/src/features/task_detail/domain/mirror_pane.dart';
+import 'package:kanvibe_mobile/src/features/task_detail/presentation/surface_unavailable_message.dart';
 
 void main() {
   group('pane 응답 해석', () {
@@ -67,7 +68,10 @@ void main() {
     });
 
     test('모르는 사유도 안내 문구를 가진다', () {
-      expect(SurfaceUnavailableReason.fromWire('처음 보는 값').message, isNotEmpty);
+      expect(
+        surfaceUnavailableMessage(SurfaceUnavailableReason.fromWire('처음 보는 값')),
+        isNotEmpty,
+      );
     });
   });
 }

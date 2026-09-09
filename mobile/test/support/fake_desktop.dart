@@ -55,6 +55,9 @@ class FakeDesktopClient implements DesktopClient {
   final openedPanes = <String, StreamController<String>>{};
   final closedPanes = <String>[];
 
+  /// pane별 소켓 종료 코드. 서버가 사유를 나눠 보내는 것을 위젯이 읽는지 보려면 테스트가 이 값을 정해야 한다
+  final paneCloseCodes = <String, int>{};
+
   /// pane별로 모바일이 보낸 입력. 어느 pane이 키를 받았는지까지 봐야 입력 대상이 옮겨졌는지 알 수 있다
   final writtenInput = <String, List<String>>{};
 
@@ -101,6 +104,7 @@ class FakeDesktopClient implements DesktopClient {
         closedPanes.add(paneId);
         await controller.close();
       },
+      readCloseCode: () => paneCloseCodes[paneId],
     );
   }
 

@@ -9,6 +9,7 @@ import '../../../../common/constants/app_theme.dart';
 import '../../../../common/network/desktop_client.dart';
 import '../../../../common/providers.dart';
 import '../../domain/mirror_pane.dart';
+import '../surface_unavailable_message.dart';
 
 /// pane 하나를 그대로 비추는 터미널.
 ///
@@ -39,7 +40,7 @@ class _PaneTerminalViewState extends ConsumerState<PaneTerminalView> {
   late final xterm.Terminal _terminal;
   PaneStream? _stream;
   StreamSubscription<String>? _subscription;
-  Object? _failure;
+  SurfaceUnavailableReason? _failureReason;
 
   @override
   void initState() {
@@ -60,6 +61,13 @@ class _PaneTerminalViewState extends ConsumerState<PaneTerminalView> {
     /// 키를 어디로 보낼지는 initState에서 한 번 정하고 끝낼 수 없다.
     if (widget.isInteractive != oldWidget.isInteractive) {
       _bindInput();
+    }
+
+    /// 데스크탑에서 pane을 분할하거나 창 크기를 바꾸면 같은 pane id로 새 좌표가 온다.
+    /// key가 pane id라 element가 재사용되므로, 여기서 다시 재지 않으면 상자만 커지고 격자는 옛 크기로 남는다.
+    if (widget.pane.width != oldWidget.pane.width ||
+        widget.pane.height != oldWidget.pane.height) {
+      _terminal.resize(widget.pane.width, widget.pane.height);
     }
   }
 
@@ -86,18 +94,29 @@ class _PaneTerminalViewState extends ConsumerState<PaneTerminalView> {
     _stream = stream;
     _subscription = stream.output.listen(
       _terminal.write,
-      onError: _failStream,
-      onDone: () => _failStream(
-        const SurfaceUnavailableException(
-          SurfaceUnavailableReason.sessionNotRunning,
-        ),
-      ),
+      onError: (_) => _failStream(SurfaceUnavailableReason.unknown),
+      onDone: _handleStreamClosed,
     );
   }
 
-  void _failStream(Object error) {
+  /// 데스크탑이 이 기기를 끊었다면 다시 페어링하는 것 말고 사용자가 할 일이 없다.
+  ///
+  /// 그것을 세션 문제로 접어 보여 주면 사용자는 데스크탑에서 세션을 여닫으며 원인을 찾게 되고,
+  /// 실제로 해야 할 일은 화면 어디에도 나타나지 않는다. 서버가 종료 코드로 나눠 보낸 사유가 여기서 쓰인다.
+  void _handleStreamClosed() {
+    if (_stream?.readCloseCode() == deviceUnpairedCloseCode) {
+      unawaited(
+        ref.read(connectionControllerProvider.notifier).forgetLocally(),
+      );
+      return;
+    }
+
+    _failStream(SurfaceUnavailableReason.sessionNotRunning);
+  }
+
+  void _failStream(SurfaceUnavailableReason reason) {
     if (mounted) {
-      setState(() => _failure = error);
+      setState(() => _failureReason = reason);
     }
   }
 
@@ -111,8 +130,9 @@ class _PaneTerminalViewState extends ConsumerState<PaneTerminalView> {
 
   @override
   Widget build(BuildContext context) {
-    if (_failure != null) {
-      return const _PaneStreamFailure();
+    final failureReason = _failureReason;
+    if (failureReason != null) {
+      return _PaneStreamFailure(failureReason);
     }
 
     return ColoredBox(
@@ -174,7 +194,9 @@ const _terminalTheme = xterm.TerminalTheme(
 );
 
 class _PaneStreamFailure extends StatelessWidget {
-  const _PaneStreamFailure();
+  const _PaneStreamFailure(this.reason);
+
+  final SurfaceUnavailableReason reason;
 
   @override
   Widget build(BuildContext context) {
@@ -182,7 +204,7 @@ class _PaneStreamFailure extends StatelessWidget {
       color: AppColors.terminalBg,
       child: Center(
         child: Text(
-          '이 pane의 연결이 끊겼습니다.\n데스크탑에서 세션이 살아 있는지 확인해 주세요.',
+          surfaceUnavailableMessage(reason),
           textAlign: TextAlign.center,
           style: Theme.of(context).textTheme.bodySmall,
         ),

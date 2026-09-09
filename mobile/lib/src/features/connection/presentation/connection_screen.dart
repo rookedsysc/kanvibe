@@ -47,7 +47,7 @@ class _ConnectionScreenState extends ConsumerState<ConnectionScreen> {
       _failureMessage = null;
     });
 
-    final failure = await ref
+    final failureReason = await ref
         .read(connectionControllerProvider.notifier)
         .connect(
           host: _hostController.text.trim(),
@@ -60,9 +60,15 @@ class _ConnectionScreenState extends ConsumerState<ConnectionScreen> {
     }
     setState(() {
       _isConnecting = false;
-      _failureMessage = failure;
+      _failureMessage = failureReason == null
+          ? null
+          : _connectFailureMessage(failureReason);
     });
   }
+
+  String _connectFailureMessage(ConnectFailure reason) => switch (reason) {
+    ConnectFailure.rejectedCode => '코드가 맞지 않거나 만료되었습니다.',
+  };
 
   @override
   Widget build(BuildContext context) {

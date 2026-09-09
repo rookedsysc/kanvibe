@@ -21,14 +21,20 @@ final connectionStoreProvider = Provider<ConnectionStore>(
   (ref) => ConnectionStore(),
 );
 
+/// 연결이 성립하지 못한 사유. 화면이 이것을 문구로 옮긴다
+enum ConnectFailure { rejectedCode }
+
 /// 저장된 연결. null이면 아직 페어링하지 않은 상태다
 class ConnectionController extends AsyncNotifier<DesktopConnection?> {
   @override
   Future<DesktopConnection?> build() =>
       ref.read(connectionStoreProvider).read();
 
-  /// 코드를 확인하고 성공하면 연결을 저장한다. 실패 이유를 문자열로 돌려준다
-  Future<String?> connect({
+  /// 코드를 확인하고 성공하면 연결을 저장한다. 성공이면 null, 아니면 실패 사유를 돌려준다.
+  ///
+  /// 문장이 아니라 사유를 돌려주는 이유는, 컨트롤러가 화면 문구를 들고 있으면
+  /// 나중에 번역을 넣을 때 이 계층부터 다시 갈라야 하기 때문이다. 문구는 화면이 고른다.
+  Future<ConnectFailure?> connect({
     required String host,
     required int port,
     required String code,
@@ -38,7 +44,7 @@ class ConnectionController extends AsyncNotifier<DesktopConnection?> {
         .pair(host: host, port: port, code: code, deviceName: 'KanVibe Mobile');
 
     if (token == null) {
-      return '코드가 맞지 않거나 만료되었습니다.';
+      return ConnectFailure.rejectedCode;
     }
 
     final connection = DesktopConnection(host: host, port: port, token: token);
@@ -59,6 +65,10 @@ class ConnectionController extends AsyncNotifier<DesktopConnection?> {
     if (connection != null) {
       try {
         await ref.read(desktopClientProvider).unpairDevice(connection);
+      } on DesktopRequestException catch (error) {
+        /// 401은 데스크탑에 이 토큰의 기기가 이미 없다는 뜻이라 시킬 뒤처리가 없다.
+        /// 실패로 접으면 설정 화면에서 먼저 끊은 사용자에게 이미 끝난 일을 다시 하라고 안내하게 된다.
+        toldDesktop = error.isUnauthorized;
       } catch (_) {
         toldDesktop = false;
       }

@@ -6,6 +6,7 @@ import '../../../common/constants/app_sizes.dart';
 import '../../../common/constants/app_theme.dart';
 import '../../../common/providers.dart';
 import '../domain/mirror_pane.dart';
+import 'surface_unavailable_message.dart';
 import 'widgets/pane_terminal_view.dart';
 import 'widgets/window_pane_composition.dart';
 
@@ -63,8 +64,8 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
 
   Widget _buildSurfaces(TaskSurfaces surfaces, bool isTablet) {
     final tabs = isTablet
-        ? [for (final tab in surfaces.tabs) _SurfaceTab.window(tab)]
-        : [for (final pane in surfaces.allPanes) _SurfaceTab.pane(pane)];
+        ? [for (final tab in surfaces.tabs) _WindowTab(tab)]
+        : [for (final pane in surfaces.allPanes) _PaneTab(pane)];
 
     if (tabs.isEmpty) {
       return _SurfacesUnavailable(
@@ -88,44 +89,43 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
     );
   }
 
-  Widget _buildSelectedSurface(_SurfaceTab tab) {
-    final window = tab.window;
-    if (window != null) {
-      return WindowPaneComposition(taskId: widget.taskId, tab: window);
-    }
-
-    return PaneTerminalView(
+  Widget _buildSelectedSurface(_SurfaceTab tab) => switch (tab) {
+    _WindowTab(:final window) => WindowPaneComposition(
       taskId: widget.taskId,
+      tab: window,
+    ),
 
-      /// 폰에서는 pane이 하나만 보이므로 어디로 입력할지 모호하지 않다
-      pane: tab.pane!,
-      key: ValueKey(tab.pane!.id),
-    );
-  }
+    /// 폰에서는 pane이 하나만 보이므로 어디로 입력할지 모호하지 않다
+    _PaneTab(:final pane) => PaneTerminalView(
+      taskId: widget.taskId,
+      pane: pane,
+      key: ValueKey(pane.id),
+    ),
+  };
 }
 
-/// 탭 바에 놓이는 항목 하나. 폰은 pane을, 태블릿은 window를 담는다
-class _SurfaceTab {
-  const _SurfaceTab._({
-    required this.label,
-    required this.detail,
-    this.pane,
-    this.window,
-  });
-
-  factory _SurfaceTab.pane(MirrorPane pane) =>
-      _SurfaceTab._(label: pane.command, detail: pane.tabName, pane: pane);
-
-  factory _SurfaceTab.window(MirrorTab window) => _SurfaceTab._(
-    label: window.name,
-    detail: '${window.panes.length} pane',
-    window: window,
-  );
+/// 탭 바에 놓이는 항목 하나. 폰은 pane을, 태블릿은 window를 담는다.
+///
+/// 둘 중 하나만 채워지는 nullable 두 칸으로 두면 그 불변식이 타입에 없어 읽는 쪽마다 강제 언랩이 필요하고,
+/// 세 번째 종류가 생겨도 컴파일러가 아무것도 알려 주지 않는다. sealed로 두면 분기가 전수 검사된다.
+sealed class _SurfaceTab {
+  const _SurfaceTab({required this.label, required this.detail});
 
   final String label;
   final String detail;
-  final MirrorPane? pane;
-  final MirrorTab? window;
+}
+
+final class _PaneTab extends _SurfaceTab {
+  _PaneTab(this.pane) : super(label: pane.command, detail: pane.tabName);
+
+  final MirrorPane pane;
+}
+
+final class _WindowTab extends _SurfaceTab {
+  _WindowTab(this.window)
+    : super(label: window.name, detail: '${window.panes.length} pane');
+
+  final MirrorTab window;
 }
 
 class _SurfaceTabBar extends StatelessWidget {
@@ -234,7 +234,7 @@ class _SurfacesUnavailable extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(
-              reason.message,
+              surfaceUnavailableMessage(reason),
               textAlign: TextAlign.center,
               style: Theme.of(context).textTheme.bodyMedium,
             ),

@@ -64,4 +64,22 @@ void main() {
       reason: '여기서 멈추면 앱은 못 쓰는 토큰을 든 채 페어링 화면에도 못 간다',
     );
   });
+
+  /// 401은 데스크탑에 이 토큰의 기기가 이미 없다는 뜻이다.
+  /// 실패로 접으면 설정 화면에서 먼저 끊은 사용자가 이미 끝난 뒤처리를 하라는 안내를 매번 받는다.
+  test('데스크탑이 이미 이 기기를 지웠으면 알린 것으로 센다', () async {
+    final client = FakeDesktopClient(
+      unpairError: const DesktopRequestException(401),
+    );
+    final store = FakeConnectionStore();
+    final container = containerWith(client, store);
+    await container.read(connectionControllerProvider.future);
+
+    final toldDesktop = await container
+        .read(connectionControllerProvider.notifier)
+        .disconnect();
+
+    expect(toldDesktop, isTrue, reason: '사용자에게 시킬 뒤처리가 남아 있지 않다');
+    expect(await store.read(), isNull);
+  });
 }
