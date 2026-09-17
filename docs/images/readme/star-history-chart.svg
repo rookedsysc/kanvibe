@@ -3,27 +3,28 @@
   <text x="380" y="24" text-anchor="middle" font-size="14" font-weight="600" fill="#202632">KanVibe GitHub Stars (Last 30 Days)</text>
   <line x1="60" y1="40" x2="60" y2="220" stroke="#d0d5dd" stroke-width="1" />
   <line x1="60" y1="220" x2="730" y2="220" stroke="#d0d5dd" stroke-width="1" />
-  <path d="M 60.0 220.0 L 99.4 220.0 L 138.8 220.0 L 178.2 220.0 L 217.6 220.0 L 257.1 220.0 L 296.5 160.0 L 335.9 160.0 L 375.3 160.0 L 414.7 40.0 L 454.1 40.0 L 493.5 40.0 L 532.9 40.0 L 572.4 40.0 L 611.8 40.0 L 651.2 40.0 L 690.6 40.0 L 730.0 40.0" fill="none" stroke="#0064FF" stroke-width="2" />
+  <path d="M 60.0 220.0 L 97.2 220.0 L 134.4 220.0 L 171.7 220.0 L 208.9 220.0 L 246.1 220.0 L 283.3 160.0 L 320.6 160.0 L 357.8 160.0 L 395.0 40.0 L 432.2 40.0 L 469.4 40.0 L 506.7 40.0 L 543.9 40.0 L 581.1 40.0 L 618.3 40.0 L 655.6 40.0 L 692.8 40.0 L 730.0 40.0" fill="none" stroke="#0064FF" stroke-width="2" />
   <circle cx="60.0" cy="220.0" r="3" fill="#0064FF" />
-  <circle cx="99.4" cy="220.0" r="3" fill="#0064FF" />
-  <circle cx="138.8" cy="220.0" r="3" fill="#0064FF" />
-  <circle cx="178.2" cy="220.0" r="3" fill="#0064FF" />
-  <circle cx="217.6" cy="220.0" r="3" fill="#0064FF" />
-  <circle cx="257.1" cy="220.0" r="3" fill="#0064FF" />
-  <circle cx="296.5" cy="160.0" r="3" fill="#0064FF" />
-  <circle cx="335.9" cy="160.0" r="3" fill="#0064FF" />
-  <circle cx="375.3" cy="160.0" r="3" fill="#0064FF" />
-  <circle cx="414.7" cy="40.0" r="3" fill="#0064FF" />
-  <circle cx="454.1" cy="40.0" r="3" fill="#0064FF" />
-  <circle cx="493.5" cy="40.0" r="3" fill="#0064FF" />
-  <circle cx="532.9" cy="40.0" r="3" fill="#0064FF" />
-  <circle cx="572.4" cy="40.0" r="3" fill="#0064FF" />
-  <circle cx="611.8" cy="40.0" r="3" fill="#0064FF" />
-  <circle cx="651.2" cy="40.0" r="3" fill="#0064FF" />
-  <circle cx="690.6" cy="40.0" r="3" fill="#0064FF" />
+  <circle cx="97.2" cy="220.0" r="3" fill="#0064FF" />
+  <circle cx="134.4" cy="220.0" r="3" fill="#0064FF" />
+  <circle cx="171.7" cy="220.0" r="3" fill="#0064FF" />
+  <circle cx="208.9" cy="220.0" r="3" fill="#0064FF" />
+  <circle cx="246.1" cy="220.0" r="3" fill="#0064FF" />
+  <circle cx="283.3" cy="160.0" r="3" fill="#0064FF" />
+  <circle cx="320.6" cy="160.0" r="3" fill="#0064FF" />
+  <circle cx="357.8" cy="160.0" r="3" fill="#0064FF" />
+  <circle cx="395.0" cy="40.0" r="3" fill="#0064FF" />
+  <circle cx="432.2" cy="40.0" r="3" fill="#0064FF" />
+  <circle cx="469.4" cy="40.0" r="3" fill="#0064FF" />
+  <circle cx="506.7" cy="40.0" r="3" fill="#0064FF" />
+  <circle cx="543.9" cy="40.0" r="3" fill="#0064FF" />
+  <circle cx="581.1" cy="40.0" r="3" fill="#0064FF" />
+  <circle cx="618.3" cy="40.0" r="3" fill="#0064FF" />
+  <circle cx="655.6" cy="40.0" r="3" fill="#0064FF" />
+  <circle cx="692.8" cy="40.0" r="3" fill="#0064FF" />
   <circle cx="730.0" cy="40.0" r="3" fill="#0064FF" />
   <text x="50" y="44" text-anchor="end" font-size="11" fill="#667085">142</text>
   <text x="50" y="224" text-anchor="end" font-size="11" fill="#667085">139</text>
   <text x="60" y="248" text-anchor="start" font-size="11" fill="#667085">2026-08-30</text>
-  <text x="730" y="248" text-anchor="end" font-size="11" fill="#667085">2026-09-16</text>
+  <text x="730" y="248" text-anchor="end" font-size="11" fill="#667085">2026-09-17</text>
 </svg>
