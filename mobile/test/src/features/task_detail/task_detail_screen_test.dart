@@ -64,6 +64,7 @@ const _task = BoardTask(
   status: TaskStatus.progress,
   branchName: 'feat/kanvibe-mobile',
   baseBranch: 'dev',
+
   /// tmux window 이름과 겹치지 않는 이름을 쓴다. 겹치면 머리글의 프로젝트와 탭 이름을 가려낼 수 없다
   projectName: 'kanvibe-repo',
 );
@@ -251,7 +252,11 @@ void main() {
       await pumpDetail(tester, size: phoneSize);
 
       expect(find.text('kanvibe-repo'), findsOneWidget);
-      expect(find.text('모바일 클라이언트'), findsNWidgets(2), reason: 'AppBar와 머리글 두 곳에 있다');
+      expect(
+        find.text('모바일 클라이언트'),
+        findsNWidgets(2),
+        reason: 'AppBar와 머리글 두 곳에 있다',
+      );
     });
 
     testWidgets('정보를 누르면 데스크탑 정보 패널과 같은 칸이 열린다', (tester) async {
@@ -296,7 +301,11 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Progress(으)로 옮기기'), findsNothing, reason: '지금 상태다');
-      expect(find.text('Pending(으)로 옮기기'), findsNothing, reason: '데스크탑도 내놓지 않는다');
+      expect(
+        find.text('Pending(으)로 옮기기'),
+        findsNothing,
+        reason: '데스크탑도 내놓지 않는다',
+      );
       for (final label in ['Todo', 'Review', 'Done']) {
         expect(find.text('$label(으)로 옮기기'), findsOneWidget);
       }
@@ -333,7 +342,11 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('데스크탑에서 이미 지워진 태스크입니다.'), findsOneWidget);
-      expect(find.text('Done(으)로 옮기기'), findsOneWidget, reason: '시트가 열린 채여야 다시 고를 수 있다');
+      expect(
+        find.text('Done(으)로 옮기기'),
+        findsOneWidget,
+        reason: '시트가 열린 채여야 다시 고를 수 있다',
+      );
     });
   });
 }

@@ -140,10 +140,7 @@ class _CreateTaskScreenState extends ConsumerState<CreateTaskScreen> {
                 decoration: const InputDecoration(labelText: '프로젝트 *'),
                 items: [
                   for (final project in widget.projects)
-                    DropdownMenuItem(
-                      value: project,
-                      child: Text(project.name),
-                    ),
+                    DropdownMenuItem(value: project, child: Text(project.name)),
                 ],
                 onChanged: _isCreating ? null : _selectProject,
                 validator: (project) =>
@@ -212,9 +209,8 @@ class _CreateTaskScreenState extends ConsumerState<CreateTaskScreen> {
                 const SizedBox(height: AppSizes.p16),
                 Text(
                   _failureMessage!,
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: Theme.of(context).colorScheme.error,
-                  ),
+                  style: Theme.of(context).textTheme.bodySmall
+                      ?.copyWith(color: Theme.of(context).colorScheme.error),
                 ),
               ],
               const SizedBox(height: AppSizes.p24),

@@ -42,7 +42,11 @@ class FakeDesktopClient implements DesktopClient {
     this.surfacesError,
     this.unpairError,
     this.branches = const ['main', 'dev'],
-    this.createdTask = const {'id': 'task-new', 'title': 'feat/새-태스크', 'status': 'todo'},
+    this.createdTask = const {
+      'id': 'task-new',
+      'title': 'feat/새-태스크',
+      'status': 'todo',
+    },
     this.createError,
     this.statusError,
   });

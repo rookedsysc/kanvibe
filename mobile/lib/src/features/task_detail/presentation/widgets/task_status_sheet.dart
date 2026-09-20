@@ -117,9 +117,8 @@ class _TaskStatusSheetState extends ConsumerState<TaskStatusSheet> {
               const SizedBox(height: AppSizes.p8),
               Text(
                 _failureMessage!,
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: Theme.of(context).colorScheme.error,
-                ),
+                style: Theme.of(context).textTheme.bodySmall
+                    ?.copyWith(color: Theme.of(context).colorScheme.error),
               ),
             ],
           ],

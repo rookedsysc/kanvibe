@@ -57,7 +57,14 @@ void main() {
   testWidgets('데스크탑 생성 창과 같은 칸을 같은 순서로 묻는다', (tester) async {
     await pumpCreate(tester);
 
-    for (final label in ['프로젝트 *', '베이스 브랜치', '브랜치 이름 *', '설명', '우선순위', '세션 타입']) {
+    for (final label in [
+      '프로젝트 *',
+      '베이스 브랜치',
+      '브랜치 이름 *',
+      '설명',
+      '우선순위',
+      '세션 타입',
+    ]) {
       expect(find.text(label), findsOneWidget, reason: '$label 칸이 있어야 한다');
     }
   });
@@ -134,7 +141,10 @@ void main() {
     await tester.tap(find.text('만들기'));
     await tester.pumpAndSettle();
 
-    expect(find.text('태스크를 만들지 못했습니다. 데스크탑에서 자세한 사유를 확인해 주세요.'), findsOneWidget);
+    expect(
+      find.text('태스크를 만들지 못했습니다. 데스크탑에서 자세한 사유를 확인해 주세요.'),
+      findsOneWidget,
+    );
   });
 
   testWidgets('등록된 프로젝트가 없으면 폼 대신 데스크탑에서 하라고 안내한다', (tester) async {
