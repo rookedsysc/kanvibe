@@ -18,7 +18,7 @@ function writeShellScript(response, script) {
   response.end(script);
 }
 
-function createHookServer({ host, port }) {
+function createHookServer({ host, port, isDevPairingRouteEnabled }) {
   const hookService = require(getRuntimeModulePath("desktop", "main", "services", "hookService"));
   const hookInstallBundle = require(getRuntimeModulePath("lib", "hookInstallBundle"));
   const mobileBridge = require(getRuntimeModulePath("desktop", "main", "services", "mobileBridgeService"));
@@ -26,7 +26,7 @@ function createHookServer({ host, port }) {
 
   const server = http.createServer(async (request, response) => {
     /** 모바일 경로는 자체 인증을 거치므로 hook 라우팅보다 먼저 가로챈다 */
-    if (await handleMobileRequest(request, response, { bridge: mobileBridge, host, port })) {
+    if (await handleMobileRequest(request, response, { bridge: mobileBridge, host, port, isDevPairingRouteEnabled })) {
       return;
     }
 

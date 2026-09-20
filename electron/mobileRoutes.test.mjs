@@ -39,16 +39,17 @@ function createBridge(overrides = {}) {
     getTaskSurfaces: vi.fn(async () => ({ panes: [] })),
     subscribeToPane: vi.fn(async () => () => {}),
     writeToPane: vi.fn(async () => {}),
+    startMobilePairing: vi.fn(() => ({ code: "654321", expiresAt: 1_700_000_000_000 })),
     ...overrides,
   };
 }
 
 /** hookServer와 같은 방식으로 얹어야 "우리 경로가 아니면 false" 계약까지 같이 검증된다 */
-function startServer() {
+function startServer({ isDevPairingRouteEnabled = false } = {}) {
   return new Promise((resolve) => {
     openSockets = [];
     const created = http.createServer(async (request, response) => {
-      if (await handleMobileRequest(request, response, { bridge, host: HOST, port })) {
+      if (await handleMobileRequest(request, response, { bridge, host: HOST, port, isDevPairingRouteEnabled })) {
         return;
       }
       response.writeHead(200, { "Content-Type": "application/json" });
@@ -568,5 +569,51 @@ describe("연결 해제와 열려 있는 스트림", () => {
     await sleep(50);
 
     expect(closeSpy).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * 개발 실행에서 Maestro가 데스크탑 화면 없이 페어링 코드를 받아 가는 경로.
+ * 빌드한 앱과 다른 기기에는 이 경로가 있다는 사실조차 보이면 안 되므로, 막힐 때는 모르는 경로와 똑같이 답해야 한다.
+ */
+describe("개발용 페어링 코드 발급 경로", () => {
+  async function restartServer(options) {
+    for (const socket of openSockets) {
+      socket.destroy();
+    }
+    await new Promise((resolve) => server.close(resolve));
+    server = await startServer(options);
+  }
+
+  it("개발 실행에서 이 머신이 부르면 코드를 발급해 돌려준다", async () => {
+    await restartServer({ isDevPairingRouteEnabled: true });
+
+    const response = await request("/api/mobile/dev/pairing-code", { method: "POST" });
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({ success: true, code: "654321", expiresAt: 1_700_000_000_000 });
+    expect(bridge.startMobilePairing).toHaveBeenCalledTimes(1);
+  });
+
+  it("빌드한 앱에서는 모르는 경로와 같은 응답을 주고 코드를 발급하지 않는다", async () => {
+    const unknownPath = await request("/api/mobile/unknown", { method: "POST" });
+    const devPath = await request("/api/mobile/dev/pairing-code", { method: "POST" });
+
+    expect(devPath).toEqual(unknownPath);
+    expect(bridge.startMobilePairing).not.toHaveBeenCalled();
+  });
+
+  it("개발 실행이라도 다른 기기가 부르면 모르는 경로와 같은 응답을 주고 코드를 발급하지 않는다", async () => {
+    const lanRequest = { url: "/api/mobile/dev/pairing-code", method: "POST", headers: {}, socket: { remoteAddress: "192.168.0.24" } };
+    const unknownRequest = { ...lanRequest, url: "/api/mobile/unknown" };
+    const devResponse = { writeHead: vi.fn(), end: vi.fn() };
+    const unknownResponse = { writeHead: vi.fn(), end: vi.fn() };
+
+    await handleMobileRequest(lanRequest, devResponse, { bridge, host: HOST, port, isDevPairingRouteEnabled: true });
+    await handleMobileRequest(unknownRequest, unknownResponse, { bridge, host: HOST, port, isDevPairingRouteEnabled: true });
+
+    expect(devResponse.writeHead.mock.calls).toEqual(unknownResponse.writeHead.mock.calls);
+    expect(devResponse.end.mock.calls).toEqual(unknownResponse.end.mock.calls);
+    expect(bridge.startMobilePairing).not.toHaveBeenCalled();
   });
 });

@@ -18,6 +18,8 @@ const HOOK_SERVER_HOST = "0.0.0.0";
 const DEV_HOOK_SERVER_PORT = 19736;
 const PACKAGED_HOOK_SERVER_PORT = 9736;
 const HOOK_SERVER_PORT = SHOULD_USE_SOURCE_MODULES ? DEV_HOOK_SERVER_PORT : PACKAGED_HOOK_SERVER_PORT;
+/** 모바일 E2E가 페어링 코드를 직접 받아 가는 경로는 소스로 띄운 개발 실행에서만 연다. `pnpm start`와 패키지된 앱에는 없다 */
+const IS_DEV_PAIRING_ROUTE_ENABLED = SHOULD_USE_SOURCE_MODULES && !app.isPackaged;
 const RENDERER_ABORT_RECOVERY_TIMEOUT_MS = 1000;
 const RENDERER_ABORT_RECOVERY_INTERVAL_MS = 50;
 const originalResolveFilename = Module._resolveFilename;
@@ -1048,7 +1050,11 @@ function registerBoardEventForwarding() {
 
 function startHookServer() {
   const { createHookServer } = require(path.join(app.getAppPath(), "electron", "hookServer.js"));
-  hookServer = createHookServer({ host: HOOK_SERVER_HOST, port: HOOK_SERVER_PORT });
+  hookServer = createHookServer({
+    host: HOOK_SERVER_HOST,
+    port: HOOK_SERVER_PORT,
+    isDevPairingRouteEnabled: IS_DEV_PAIRING_ROUTE_ENABLED,
+  });
 }
 
 function configureHookEndpointPort() {

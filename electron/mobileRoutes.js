@@ -26,6 +26,15 @@ const DEVICE_UNPAIRED_CLOSE_CODE = 4001;
  */
 const MAX_DEVICE_NAME_LENGTH = 64;
 
+/**
+ * 개발 실행에서만 여는 페어링 코드 발급 경로. Maestro가 데스크탑 설정 화면을 누르지 않고 코드를 받아 가려고 쓴다.
+ * 코드 하나가 곧 만료되지 않는 기기 토큰으로 바뀌므로, 빌드한 앱과 다른 기기에는 이 경로가 없는 것처럼 굴어야 한다.
+ */
+const DEV_PAIRING_CODE_PATH = "/api/mobile/dev/pairing-code";
+
+/** hook 서버는 `0.0.0.0`에 열려 있어, 개발 실행이라도 같은 LAN의 기기가 코드를 받아 가지 못하게 이 머신에서 온 요청만 받는다 */
+const LOOPBACK_ADDRESSES = new Set(["127.0.0.1", "::1", "::ffff:127.0.0.1"]);
+
 /** 태스크 pane 경로에서 태스크 id를 꺼낸다 */
 const SURFACES_PATH_PATTERN = /^\/api\/mobile\/tasks\/([^/]+)\/surfaces$/;
 
@@ -35,13 +44,24 @@ const SURFACES_PATH_PATTERN = /^\/api\/mobile\/tasks\/([^/]+)\/surfaces$/;
  * 우리 경로로 판정된 뒤부터는 전부 try로 감싼다. 호출자가 `http.createServer(async ...)` 안에서 await하기 때문에
  * 여기서 던지면 Node가 받아 주지 않아 응답이 영영 안 나가고(기기는 타임아웃까지 매달린다) 처리되지 않은 거부로 메인 프로세스가 죽는다.
  */
-async function handleMobileRequest(request, response, { bridge, host, port }) {
+async function handleMobileRequest(request, response, { bridge, host, port, isDevPairingRouteEnabled = false }) {
   if (!request.url || !request.url.startsWith(MOBILE_PATH_PREFIX)) {
     return false;
   }
 
   try {
     const requestUrl = new URL(request.url, `http://${host}:${port}`);
+
+    /** 조건을 못 채우면 아래 라우팅으로 흘려보내 모르는 경로와 같은 응답을 받게 한다 */
+    if (
+      request.method === "POST" &&
+      requestUrl.pathname === DEV_PAIRING_CODE_PATH &&
+      isDevPairingRouteEnabled &&
+      LOOPBACK_ADDRESSES.has(request.socket?.remoteAddress)
+    ) {
+      writeJson(response, 200, { success: true, ...bridge.startMobilePairing() });
+      return true;
+    }
 
     if (request.method === "POST" && requestUrl.pathname === "/api/mobile/pair") {
       await handlePairRequest(request, response, bridge);
