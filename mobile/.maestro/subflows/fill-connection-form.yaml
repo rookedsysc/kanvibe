@@ -1,0 +1,16 @@
+# 연결 화면의 세 칸을 비우고 채운 뒤 연결을 누른다. 앞선 시도가 남긴 값과 포트 칸의 패키지 앱 기본값을 지우고 쓴다.
+#
+# 키보드를 내리지 않는다. Android에서 hideKeyboard는 back 키를 보내는데, 러너가 IME를 꺼 두므로
+# 내릴 키보드가 없어 그 back이 앱을 닫아 버린다. 키보드가 없으니 연결 버튼도 가려지지 않는다.
+appId: ${APP_ID}
+---
+- tapOn: "데스크탑 주소"
+- eraseText
+- inputText: ${DESKTOP_HOST_FROM_EMULATOR}
+- tapOn: "포트"
+- eraseText
+- inputText: "19736"
+- tapOn: "연결 코드"
+- eraseText
+- inputText: ${PAIRING_CODE}
+- tapOn: "연결"

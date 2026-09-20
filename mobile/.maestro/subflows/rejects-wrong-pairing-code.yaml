@@ -1,0 +1,18 @@
+# 데스크탑이 발급하지 않은 코드로는 보드에 들어가지 못하고, 연결 화면이 이유를 알려 준다.
+appId: ${APP_ID}
+---
+- launchApp:
+    clearState: true
+- extendedWaitUntil:
+    visible: "데스크탑에 연결"
+    timeout: 20000
+- runFlow:
+    file: fill-connection-form.yaml
+    env:
+      PAIRING_CODE: "000000"
+- extendedWaitUntil:
+    visible: "코드가 맞지 않거나 만료되었습니다."
+    timeout: 10000
+- takeScreenshot: 01-거절된-연결-코드
+- assertVisible: "데스크탑에 연결"
+- assertNotVisible: "KanVibe"

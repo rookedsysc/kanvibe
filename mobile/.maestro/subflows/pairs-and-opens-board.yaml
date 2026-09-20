@@ -1,0 +1,19 @@
+# 데스크탑이 발급한 코드로 연결하면 보드가 열리고, 이번 실행에서 만든 태스크가 보인다.
+appId: ${APP_ID}
+---
+- runScript:
+    file: ../scripts/create-fixture-task.js
+- runScript:
+    file: ../scripts/issue-dev-pairing-code.js
+- runFlow:
+    file: fill-connection-form.yaml
+    env:
+      PAIRING_CODE: ${output.pairingCode}
+- extendedWaitUntil:
+    visible: "KanVibe"
+    timeout: 15000
+- scrollUntilVisible:
+    element: ${output.fixtureTaskTitle}
+    direction: DOWN
+    timeout: 15000
+- takeScreenshot: 02-페어링-후-보드
