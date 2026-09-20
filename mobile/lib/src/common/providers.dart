@@ -106,6 +106,14 @@ Future<void> _forgetRejectedConnection(
   }
 }
 
+/// 실패를 되불러 가지 않는다.
+///
+/// Riverpod 3은 provider가 던지면 기본으로 열 번까지 되불러 가고, 그동안 상태를 `AsyncLoading`으로 둔다.
+/// 여기서 던지는 것은 "세션이 없다", "데스크탑에 닿지 못한다"처럼 기다린다고 풀리지 않는 것들이라,
+/// 화면이 곧바로 안내해야 할 자리에 40초 가까이 회전만 돌게 된다. 첫 실패를 그대로 화면에 넘기고
+/// 다시 시도는 사용자가 누르게 한다.
+Duration? _neverRetry(int retryCount, Object error) => null;
+
 /// 보드 내용. 연결이 바뀌면 자동으로 다시 불러온다
 final boardProvider = FutureProvider<BoardSnapshot>((ref) async {
   final connection = await ref.watch(connectionControllerProvider.future);
@@ -120,7 +128,7 @@ final boardProvider = FutureProvider<BoardSnapshot>((ref) async {
     await _forgetRejectedConnection(ref, error);
     rethrow;
   }
-});
+}, retry: _neverRetry);
 
 /// 태스크 하나의 탭과 pane. 태스크별로 따로 들고 있어야 두 태스크를 오갈 때 섞이지 않는다
 final surfacesProvider = FutureProvider.family<TaskSurfaces, String>((
@@ -140,4 +148,4 @@ final surfacesProvider = FutureProvider.family<TaskSurfaces, String>((
     await _forgetRejectedConnection(ref, error);
     rethrow;
   }
-});
+}, retry: _neverRetry);
