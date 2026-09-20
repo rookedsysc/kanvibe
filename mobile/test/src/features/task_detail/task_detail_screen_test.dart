@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:kanvibe_mobile/src/common/network/desktop_client.dart';
+import 'package:kanvibe_mobile/src/features/board/domain/board_task.dart';
+import 'package:kanvibe_mobile/src/features/board/domain/task_status.dart';
 import 'package:kanvibe_mobile/src/features/task_detail/domain/mirror_pane.dart';
 import 'package:kanvibe_mobile/src/features/task_detail/presentation/task_detail_screen.dart';
 import 'package:kanvibe_mobile/src/features/task_detail/presentation/widgets/pane_terminal_view.dart';
@@ -55,21 +58,34 @@ const _secondWindow = MirrorTab(
 
 const _surfaces = TaskSurfaces(tabs: [_twoPaneWindow, _secondWindow]);
 
+const _task = BoardTask(
+  id: 'task-1',
+  title: '모바일 클라이언트',
+  status: TaskStatus.progress,
+  branchName: 'feat/kanvibe-mobile',
+  baseBranch: 'dev',
+  /// tmux window 이름과 겹치지 않는 이름을 쓴다. 겹치면 머리글의 프로젝트와 탭 이름을 가려낼 수 없다
+  projectName: 'kanvibe-repo',
+);
+
 Future<FakeDesktopClient> pumpDetail(
   WidgetTester tester, {
   required Size size,
   TaskSurfaces? surfaces = _surfaces,
   Object? surfacesError,
+  BoardTask task = _task,
+  Object? statusError,
 }) async {
   await tester.binding.setSurfaceSize(size);
   final client = FakeDesktopClient(
     surfaces: surfaces,
     surfacesError: surfacesError,
+    statusError: statusError,
   );
 
   await tester.pumpWidget(
     wrapWithApp(
-      const TaskDetailScreen(taskId: 'task-1', taskTitle: '모바일 클라이언트'),
+      TaskDetailScreen(task: task),
       client: client,
       size: size,
     ),
@@ -228,5 +244,96 @@ void main() {
     );
 
     expect(find.textContaining('세션이 실행 중이 아닙니다'), findsOneWidget);
+  });
+
+  group('데스크탑 태스크 화면에서 옮겨 온 것', () {
+    testWidgets('터미널 위에 프로젝트와 태스크 제목이 함께 붙는다', (tester) async {
+      await pumpDetail(tester, size: phoneSize);
+
+      expect(find.text('kanvibe-repo'), findsOneWidget);
+      expect(find.text('모바일 클라이언트'), findsNWidgets(2), reason: 'AppBar와 머리글 두 곳에 있다');
+    });
+
+    testWidgets('정보를 누르면 데스크탑 정보 패널과 같은 칸이 열린다', (tester) async {
+      await pumpDetail(tester, size: phoneSize);
+
+      await tester.tap(find.byTooltip('정보'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('브랜치'), findsOneWidget);
+      expect(find.text('feat/kanvibe-mobile'), findsOneWidget);
+      expect(find.text('베이스 브랜치'), findsOneWidget);
+      expect(find.text('dev'), findsOneWidget);
+    });
+
+    testWidgets('PR 링크가 없는 태스크에는 PR 버튼이 없다', (tester) async {
+      await pumpDetail(tester, size: phoneSize);
+
+      expect(find.byTooltip('PR 열기'), findsNothing);
+    });
+
+    testWidgets('PR 링크가 있으면 PR 버튼이 생긴다', (tester) async {
+      await pumpDetail(
+        tester,
+        size: phoneSize,
+        task: const BoardTask(
+          id: 'task-1',
+          title: '모바일 클라이언트',
+          status: TaskStatus.progress,
+          prUrl: 'https://github.com/rookedsysc/kanvibe/pull/389',
+        ),
+      );
+
+      expect(find.byTooltip('PR 열기'), findsOneWidget);
+    });
+  });
+
+  group('상태 옮기기', () {
+    testWidgets('지금 상태는 옮길 후보에서 빠지고 Pending도 나오지 않는다', (tester) async {
+      await pumpDetail(tester, size: phoneSize);
+
+      await tester.tap(find.byTooltip('상태 옮기기'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Progress(으)로 옮기기'), findsNothing, reason: '지금 상태다');
+      expect(find.text('Pending(으)로 옮기기'), findsNothing, reason: '데스크탑도 내놓지 않는다');
+      for (final label in ['Todo', 'Review', 'Done']) {
+        expect(find.text('$label(으)로 옮기기'), findsOneWidget);
+      }
+    });
+
+    testWidgets('고른 상태를 데스크탑에 보내고 화면의 태스크도 그 상태가 된다', (tester) async {
+      final client = await pumpDetail(tester, size: phoneSize);
+
+      await tester.tap(find.byTooltip('상태 옮기기'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Review(으)로 옮기기'));
+      await tester.pumpAndSettle();
+
+      expect(client.statusCalls.single.taskId, 'task-1');
+      expect(client.statusCalls.single.status, TaskStatus.review);
+
+      /// 시트를 다시 열면 이제 Review가 후보에서 빠져 있어야 화면이 새 상태를 든 것이다
+      await tester.tap(find.byTooltip('상태 옮기기'));
+      await tester.pumpAndSettle();
+      expect(find.text('Review(으)로 옮기기'), findsNothing);
+      expect(find.text('Progress(으)로 옮기기'), findsOneWidget);
+    });
+
+    testWidgets('데스크탑이 거절하면 시트를 닫지 않고 사유를 남긴다', (tester) async {
+      await pumpDetail(
+        tester,
+        size: phoneSize,
+        statusError: const DesktopRequestException(404),
+      );
+
+      await tester.tap(find.byTooltip('상태 옮기기'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Done(으)로 옮기기'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('데스크탑에서 이미 지워진 태스크입니다.'), findsOneWidget);
+      expect(find.text('Done(으)로 옮기기'), findsOneWidget, reason: '시트가 열린 채여야 다시 고를 수 있다');
+    });
   });
 }

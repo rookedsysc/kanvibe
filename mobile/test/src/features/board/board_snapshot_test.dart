@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kanvibe_mobile/src/features/board/data/board_snapshot.dart';
+import 'package:kanvibe_mobile/src/features/board/domain/task_priority.dart';
 import 'package:kanvibe_mobile/src/features/board/domain/task_status.dart';
 
 void main() {
@@ -98,6 +99,84 @@ void main() {
       final tasks = snapshot.tasksIn(TaskStatus.todo);
       expect(tasks[0].isRemote, isTrue);
       expect(tasks[1].isRemote, isFalse);
+    });
+  });
+
+  group('정보 시트가 그리는 칸', () {
+    test('데스크탑이 함께 보낸 설명과 베이스 브랜치, 우선순위를 읽는다', () {
+      final snapshot = BoardSnapshot.fromJson({
+        'projects': [
+          {'id': 'p1', 'name': 'kanvibe'},
+        ],
+        'tasks': {
+          'todo': [
+            {
+              'id': 't1',
+              'title': '제목',
+              'status': 'todo',
+              'projectId': 'p1',
+              'branchName': 'feat/x',
+              'baseBranch': 'dev',
+              'description': '무엇을 하는 태스크인지',
+              'priority': 'high',
+            },
+          ],
+        },
+      });
+
+      final task = snapshot.tasksIn(TaskStatus.todo).single;
+      expect(task.baseBranch, 'dev');
+      expect(task.description, '무엇을 하는 태스크인지');
+      expect(task.priority, TaskPriority.high);
+    });
+
+    test('모르는 우선순위는 고르지 않은 것으로 본다', () {
+      final snapshot = BoardSnapshot.fromJson({
+        'tasks': {
+          'todo': [
+            {'id': 't1', 'title': '제목', 'status': 'todo', 'priority': 'urgent'},
+          ],
+        },
+      });
+
+      expect(snapshot.tasksIn(TaskStatus.todo).single.priority, isNull);
+    });
+  });
+
+  group('생성 화면이 고를 프로젝트', () {
+    test('데스크탑이 보낸 프로젝트를 기본 브랜치까지 들고 있는다', () {
+      final snapshot = BoardSnapshot.fromJson({
+        'projects': [
+          {'id': 'p1', 'name': 'kanvibe', 'defaultBranch': 'dev'},
+        ],
+        'tasks': const {},
+      });
+
+      expect(snapshot.projects.single.defaultBranch, 'dev');
+    });
+
+    test('기본 브랜치가 안 오면 main으로 둔다', () {
+      final snapshot = BoardSnapshot.fromJson({
+        'projects': [
+          {'id': 'p1', 'name': 'kanvibe'},
+        ],
+        'tasks': const {},
+      });
+
+      expect(snapshot.projects.single.defaultBranch, 'main');
+    });
+
+    test('worktree 프로젝트는 고를 대상에서 뺀다', () {
+      final snapshot = BoardSnapshot.fromJson({
+        'projects': [
+          {'id': 'p1', 'name': 'kanvibe'},
+          {'id': 'p2', 'name': 'kanvibe-worktree', 'isWorktree': true},
+        ],
+        'tasks': const {},
+      });
+
+      expect(snapshot.projects, hasLength(2));
+      expect(snapshot.creatableProjects.single.id, 'p1');
     });
   });
 }

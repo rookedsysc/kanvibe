@@ -8,6 +8,9 @@ const appSettingsStore = new Map<string, string>();
 const execGitMock = vi.fn<(command: string, sshHost?: string | null) => Promise<string>>();
 const findOneByMock = vi.fn();
 const spawnMock = vi.fn();
+const createTaskMock = vi.fn();
+const updateTaskStatusMock = vi.fn();
+const getProjectBranchesMock = vi.fn();
 
 vi.mock("@/desktop/main/services/appSettingsService", () => ({
   getAppSetting: async (key: string) => appSettingsStore.get(key) ?? null,
@@ -24,8 +27,15 @@ vi.mock("@/lib/database", () => ({
   getTaskRepository: async () => ({ findOneBy: findOneByMock }),
 }));
 
-vi.mock("@/desktop/main/services/kanbanService", () => ({ getTasksByStatus: async () => ({ tasks: {} }) }));
-vi.mock("@/desktop/main/services/projectService", () => ({ getAllProjects: async () => [] }));
+vi.mock("@/desktop/main/services/kanbanService", () => ({
+  getTasksByStatus: async () => ({ tasks: {} }),
+  createTask: (input: unknown) => createTaskMock(input),
+  updateTaskStatus: (taskId: string, status: string) => updateTaskStatusMock(taskId, status),
+}));
+vi.mock("@/desktop/main/services/projectService", () => ({
+  getAllProjects: async () => [],
+  getProjectBranches: (projectId: string) => getProjectBranchesMock(projectId),
+}));
 
 vi.mock("child_process", async (importOriginal) => ({
   ...(await importOriginal<typeof import("child_process")>()),
@@ -34,6 +44,8 @@ vi.mock("child_process", async (importOriginal) => ({
 
 const {
   authorizeMobileRequest,
+  createMobileTask,
+  getMobileProjectBranches,
   getTaskSurfaces,
   listPairedMobileDevices,
   onMobileDeviceUnpaired,
@@ -45,6 +57,7 @@ const {
   subscribeToPane,
   unpairMobileDevice,
   unpairMobileDeviceByToken,
+  updateMobileTaskStatus,
   writeToPane,
 } = await import("@/desktop/main/services/mobileBridgeService");
 
@@ -58,6 +71,12 @@ beforeEach(() => {
   execGitMock.mockReset();
   findOneByMock.mockReset();
   spawnMock.mockReset();
+  createTaskMock.mockReset();
+  createTaskMock.mockResolvedValue({ id: "task-1" });
+  updateTaskStatusMock.mockReset();
+  updateTaskStatusMock.mockResolvedValue({ id: "task-1" });
+  getProjectBranchesMock.mockReset();
+  getProjectBranchesMock.mockResolvedValue(["main", "dev"]);
   stopMobilePairing();
 });
 
@@ -610,5 +629,80 @@ describe("pane 구독 정리", () => {
     expect(executedCommands()).not.toContain("tmux pipe-pane -t '%19'");
 
     unsubscribeSecond();
+  });
+});
+
+describe("모바일 태스크 생성", () => {
+  const draft = { projectId: "project-1", branchName: "feat/mobile-create" };
+
+  it("브랜치 이름을 제목으로 삼아 데스크탑 생성 경로로 넘긴다", async () => {
+    await createMobileTask({ ...draft, sessionType: "tmux", priority: "high", baseBranch: "main" });
+
+    expect(createTaskMock).toHaveBeenCalledWith({
+      title: "feat/mobile-create",
+      branchName: "feat/mobile-create",
+      projectId: "project-1",
+      baseBranch: "main",
+      description: undefined,
+      priority: "high",
+      sessionType: "tmux",
+    });
+  });
+
+  it("셸이 펼치는 문자가 든 브랜치 이름은 데스크탑에 닿기 전에 막는다", async () => {
+    await expect(createMobileTask({ ...draft, branchName: 'x"; touch /tmp/pwned; echo "' })).rejects.toThrow(
+      /브랜치 이름/,
+    );
+    await expect(createMobileTask({ ...draft, branchName: "$(id)" })).rejects.toThrow(/브랜치 이름/);
+    await expect(createMobileTask({ ...draft, branchName: "a`id`b" })).rejects.toThrow(/브랜치 이름/);
+
+    expect(createTaskMock).not.toHaveBeenCalled();
+  });
+
+  it("상위 경로를 짚는 브랜치 이름은 막는다", async () => {
+    await expect(createMobileTask({ ...draft, branchName: "../../etc/kanvibe" })).rejects.toThrow(/브랜치 이름/);
+    expect(createTaskMock).not.toHaveBeenCalled();
+  });
+
+  it("베이스 브랜치도 같은 규칙으로 본다", async () => {
+    await expect(createMobileTask({ ...draft, baseBranch: "main;id" })).rejects.toThrow(/베이스 브랜치/);
+    expect(createTaskMock).not.toHaveBeenCalled();
+  });
+
+  it("모르는 세션 타입은 조용히 버리지 않고 막는다", async () => {
+    await expect(createMobileTask({ ...draft, sessionType: "screen" })).rejects.toThrow(/세션 타입/);
+    expect(createTaskMock).not.toHaveBeenCalled();
+  });
+
+  it("모바일 화면에 없는 칸은 데스크탑 요청에 실리지 않는다", async () => {
+    await createMobileTask({ ...draft, sshHost: "prod-box" } as never);
+
+    expect(createTaskMock.mock.calls[0][0]).not.toHaveProperty("sshHost");
+  });
+});
+
+describe("모바일 태스크 상태 이동", () => {
+  it("아는 상태는 데스크탑 경로로 넘긴다", async () => {
+    await updateMobileTaskStatus("task-1", "review");
+
+    expect(updateTaskStatusMock).toHaveBeenCalledWith("task-1", "review");
+  });
+
+  it("모르는 상태는 막는다", async () => {
+    await expect(updateMobileTaskStatus("task-1", "archived")).rejects.toThrow(/상태/);
+    expect(updateTaskStatusMock).not.toHaveBeenCalled();
+  });
+
+  it("데스크탑에서 이미 지워진 태스크는 null로 돌아온다", async () => {
+    updateTaskStatusMock.mockResolvedValue(null);
+
+    expect(await updateMobileTaskStatus("task-1", "done")).toBeNull();
+  });
+});
+
+describe("모바일 프로젝트 브랜치 목록", () => {
+  it("데스크탑 브랜치 조회를 그대로 쓴다", async () => {
+    expect(await getMobileProjectBranches("project-1")).toEqual(["main", "dev"]);
+    expect(getProjectBranchesMock).toHaveBeenCalledWith("project-1");
   });
 });

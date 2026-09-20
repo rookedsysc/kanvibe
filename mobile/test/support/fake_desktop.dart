@@ -6,6 +6,7 @@ import 'package:kanvibe_mobile/src/common/constants/app_theme.dart';
 import 'package:kanvibe_mobile/src/common/network/desktop_client.dart';
 import 'package:kanvibe_mobile/src/common/network/desktop_connection.dart';
 import 'package:kanvibe_mobile/src/common/providers.dart';
+import 'package:kanvibe_mobile/src/features/board/domain/task_status.dart';
 import 'package:kanvibe_mobile/src/features/connection/data/connection_store.dart';
 import 'package:kanvibe_mobile/src/features/task_detail/domain/mirror_pane.dart';
 
@@ -40,6 +41,10 @@ class FakeDesktopClient implements DesktopClient {
     this.surfaces,
     this.surfacesError,
     this.unpairError,
+    this.branches = const ['main', 'dev'],
+    this.createdTask = const {'id': 'task-new', 'title': 'feat/새-태스크', 'status': 'todo'},
+    this.createError,
+    this.statusError,
   });
 
   final Map<String, dynamic> board;
@@ -47,6 +52,16 @@ class FakeDesktopClient implements DesktopClient {
   final TaskSurfaces? surfaces;
   final Object? surfacesError;
   final Object? unpairError;
+  final List<String> branches;
+  final Map<String, dynamic> createdTask;
+  final Object? createError;
+  final Object? statusError;
+
+  /// 데스크탑에 보낸 태스크 초안. 어떤 칸을 실어 보냈는지까지 봐야 데스크탑 생성 창과 같은 요청인지 알 수 있다
+  final createCalls = <Map<String, Object?>>[];
+
+  /// 옮겨 달라고 보낸 상태. 누른 버튼이 실제로 그 상태를 보내는지 본다
+  final statusCalls = <({String taskId, TaskStatus status})>[];
 
   /// 데스크탑에 끊겠다고 알린 기록. 이미 거절된 토큰으로는 부르지 말아야 해서 호출 여부까지 본다
   final unpairCalls = <DesktopConnection>[];
@@ -86,6 +101,49 @@ class FakeDesktopClient implements DesktopClient {
       throw surfacesError!;
     }
     return surfaces ?? const TaskSurfaces(tabs: []);
+  }
+
+  @override
+  Future<List<String>> fetchProjectBranches(
+    DesktopConnection connection,
+    String projectId,
+  ) async => branches;
+
+  @override
+  Future<Map<String, dynamic>> createTask(
+    DesktopConnection connection, {
+    required String projectId,
+    required String branchName,
+    String? baseBranch,
+    String? description,
+    String? priority,
+    required String sessionType,
+  }) async {
+    createCalls.add({
+      'projectId': projectId,
+      'branchName': branchName,
+      'baseBranch': baseBranch,
+      'description': description,
+      'priority': priority,
+      'sessionType': sessionType,
+    });
+
+    if (createError != null) {
+      throw createError!;
+    }
+    return createdTask;
+  }
+
+  @override
+  Future<void> updateTaskStatus(
+    DesktopConnection connection,
+    String taskId,
+    TaskStatus status,
+  ) async {
+    statusCalls.add((taskId: taskId, status: status));
+    if (statusError != null) {
+      throw statusError!;
+    }
   }
 
   @override

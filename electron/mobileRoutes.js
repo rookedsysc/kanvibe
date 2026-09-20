@@ -39,6 +39,16 @@ const LOOPBACK_ADDRESSES = new Set(["127.0.0.1", "::1", "::ffff:127.0.0.1"]);
 const SURFACES_PATH_PATTERN = /^\/api\/mobile\/tasks\/([^/]+)\/surfaces$/;
 
 /**
+ * 데스크탑을 바꾸는 두 경로. 나머지 모바일 경로와 달리 여기를 지나면 이 머신에 worktree와 터미널 세션이 생긴다.
+ * 그래서 둘 다 인증 뒤에 두고, 값 검사는 열거형과 브랜치 이름 규칙을 아는 `mobileBridgeService`가 맡는다.
+ */
+const TASKS_PATH = "/api/mobile/tasks";
+const TASK_STATUS_PATH_PATTERN = /^\/api\/mobile\/tasks\/([^/]+)\/status$/;
+
+/** 생성 화면의 베이스 브랜치 칸을 채우는 경로 */
+const PROJECT_BRANCHES_PATH_PATTERN = /^\/api\/mobile\/projects\/([^/]+)\/branches$/;
+
+/**
  * `/api/mobile/*` 요청을 처리한다. 이 경로가 아니면 false를 돌려 hook 서버가 자기 라우팅을 이어가게 한다.
  *
  * 우리 경로로 판정된 뒤부터는 전부 try로 감싼다. 호출자가 `http.createServer(async ...)` 안에서 await하기 때문에
@@ -89,6 +99,24 @@ async function handleMobileRequest(request, response, { bridge, host, port, isDe
       return true;
     }
 
+    if (request.method === "POST" && requestUrl.pathname === TASKS_PATH) {
+      await handleCreateTaskRequest(request, response, bridge);
+      return true;
+    }
+
+    const statusMatch = requestUrl.pathname.match(TASK_STATUS_PATH_PATTERN);
+    if (request.method === "PATCH" && statusMatch) {
+      await handleTaskStatusRequest(request, response, bridge, decodeURIComponent(statusMatch[1]));
+      return true;
+    }
+
+    const branchesMatch = requestUrl.pathname.match(PROJECT_BRANCHES_PATH_PATTERN);
+    if (request.method === "GET" && branchesMatch) {
+      const branches = await bridge.getMobileProjectBranches(decodeURIComponent(branchesMatch[1]));
+      writeJson(response, 200, { success: true, branches });
+      return true;
+    }
+
     writeJson(response, 404, { success: false, error: "Not found" });
     return true;
   } catch (error) {
@@ -134,6 +162,92 @@ async function handleUnpairRequest(request, response, bridge) {
   }
 
   writeJson(response, 401, { success: false, error: "연결되지 않은 기기입니다" });
+}
+
+/** 모바일이 보낸 문자열 칸. 문자열이 아니거나 비어 있으면 보내지 않은 것으로 본다 */
+function readText(value) {
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+/**
+ * 태스크 쓰기가 실패했다.
+ *
+ * 값이 잘못된 것은 기기가 고칠 수 있으니 사유를 그대로 돌려준다.
+ * 그 밖의 예외 메시지에는 git·tmux 명령줄과 경로가 섞여 있어 네트워크로 내보내지 않고 로그에만 남긴다.
+ */
+function writeTaskWriteFailure(response, error, logLabel) {
+  if (error && error.name === "MobileTaskInputError") {
+    writeJson(response, 400, { success: false, error: error.message });
+    return;
+  }
+
+  console.error(`[kanvibe] ${logLabel}:`, error);
+  writeJson(response, 500, { success: false, error: "서버 오류" });
+}
+
+/**
+ * 태스크를 새로 만든다. 데스크탑 생성 화면과 같은 경로를 지나 worktree와 터미널 세션까지 만들어진다.
+ *
+ * 프로젝트와 브랜치 이름 둘 중 하나라도 비면 데스크탑 `createTask`가 worktree 없이 이름만 있는 태스크를 만든다.
+ * 기기에는 생성에 성공한 것으로 보이고 데스크탑에는 열 수 없는 항목이 남으므로,
+ * 데스크탑 생성 화면이 제출을 막는 것과 같은 두 칸을 여기서 먼저 본다.
+ */
+async function handleCreateTaskRequest(request, response, bridge) {
+  let body;
+  try {
+    body = await readJsonBody(request);
+  } catch {
+    writeJson(response, 400, { success: false, error: "잘못된 요청입니다" });
+    return;
+  }
+
+  const draft = {
+    projectId: readText(body.projectId),
+    branchName: readText(body.branchName),
+    baseBranch: readText(body.baseBranch),
+    description: readText(body.description),
+    priority: readText(body.priority),
+    sessionType: readText(body.sessionType),
+  };
+
+  if (!draft.projectId || !draft.branchName) {
+    writeJson(response, 400, { success: false, error: "프로젝트와 브랜치 이름이 필요합니다" });
+    return;
+  }
+
+  try {
+    writeJson(response, 200, { success: true, task: await bridge.createMobileTask(draft) });
+  } catch (error) {
+    writeTaskWriteFailure(response, error, "Mobile create task request failed");
+  }
+}
+
+/** 태스크를 다른 상태로 옮긴다. 인증과 이동 사이에 데스크탑에서 지워졌으면 404로 답한다 */
+async function handleTaskStatusRequest(request, response, bridge, taskId) {
+  let body;
+  try {
+    body = await readJsonBody(request);
+  } catch {
+    writeJson(response, 400, { success: false, error: "잘못된 요청입니다" });
+    return;
+  }
+
+  const submittedStatus = readText(body.status);
+  if (!submittedStatus) {
+    writeJson(response, 400, { success: false, error: "상태가 필요합니다" });
+    return;
+  }
+
+  try {
+    const task = await bridge.updateMobileTaskStatus(taskId, submittedStatus);
+    if (!task) {
+      writeJson(response, 404, { success: false, error: "없는 태스크입니다" });
+      return;
+    }
+    writeJson(response, 200, { success: true, task });
+  } catch (error) {
+    writeTaskWriteFailure(response, error, "Mobile task status request failed");
+  }
 }
 
 async function handleSurfacesRequest(response, bridge, taskId) {

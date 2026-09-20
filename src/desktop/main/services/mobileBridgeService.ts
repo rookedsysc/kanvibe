@@ -1,8 +1,9 @@
 import { spawn, type ChildProcess } from "child_process";
 import { getAppSetting, setAppSetting } from "@/desktop/main/services/appSettingsService";
-import { getTasksByStatus } from "@/desktop/main/services/kanbanService";
-import { getAllProjects } from "@/desktop/main/services/projectService";
-import { SessionType, type KanbanTask } from "@/entities/KanbanTask";
+import { createTask, getTasksByStatus, updateTaskStatus } from "@/desktop/main/services/kanbanService";
+import { getAllProjects, getProjectBranches } from "@/desktop/main/services/projectService";
+import { SessionType, TaskStatus, type KanbanTask } from "@/entities/KanbanTask";
+import { TaskPriority } from "@/entities/TaskPriority";
 import { getTaskRepository } from "@/lib/database";
 import { execGit } from "@/lib/gitOperations";
 import {
@@ -36,10 +37,15 @@ import { buildSSHArgs, getKanvibeSSHConnectionHealthOptions, parseSSHConfig } fr
 import { quoteForPosixShell } from "@/lib/worktree";
 
 /**
- * 모바일 클라이언트가 데스크탑을 읽고 터미널 pane을 비추는 경로.
+ * 모바일 클라이언트가 데스크탑을 읽고, 터미널 pane을 비추고, 태스크를 만들거나 옮기는 경로.
  *
- * 이 서비스는 데스크탑 화면을 바꾸지 않는다. pane을 고르거나 크기를 바꾸는 명령은 하나도 부르지 않고,
+ * 비추는 쪽은 데스크탑 화면을 바꾸지 않는다. pane을 고르거나 크기를 바꾸는 명령은 하나도 부르지 않고,
  * 스냅샷과 출력 스트림만 가져다 나눠 보낸다. 근거는 `paneMirror.ts` 머리말에 적어 두었다.
+ *
+ * 데스크탑을 바꾸는 것은 [createMobileTask]와 [updateMobileTaskStatus] 둘뿐이고,
+ * 데스크탑 화면이 누르는 것과 같은 `kanbanService` 경로를 지난다. 특히 태스크 생성은 worktree를 만들고
+ * 터미널 세션을 띄우므로, 페어링한 기기가 이 머신에 셸 세션을 열 수 있다는 뜻이다.
+ * 그래서 이 둘은 [authorizeMobileRequest] 뒤에만 놓이고, 화면에 없는 칸은 받지 않는다.
  *
  * 부르는 곳이 둘이다. 페어링 코드를 띄우고 기기를 끊는 것은 설정 화면이 `serviceRegistry`를 거쳐 부르고,
  * 보드와 pane은 hook 서버의 `/api/mobile/*` 경로가 부른다.
@@ -165,6 +171,105 @@ function groupPanesIntoTabs(panes: MirrorPane[]): MirrorTab[] {
 export async function getMobileBoard() {
   const [board, projects] = await Promise.all([getTasksByStatus(), getAllProjects()]);
   return { ...board, projects };
+}
+
+/**
+ * 모바일이 보낸 값이 데스크탑 열거형에 없을 때.
+ *
+ * 서버 오류가 아니라 요청이 잘못된 것이라 라우팅이 이름을 보고 400으로 옮긴다.
+ * 이름으로만 가려내므로 클래스 자체는 이 파일 밖으로 내보내지 않는다 — `serviceRegistry`가 이 모듈을 통째로
+ * IPC에 얹기 때문에, 내보내면 화면이 부를 일이 없는 값이 그 표면에 하나 더 얹힌다.
+ * 모르는 세션 타입을 조용히 버리면 [createTask]가 worktree 없이 이름만 있는 태스크를 만들어,
+ * 기기에는 성공으로 보이고 데스크탑에는 열 수 없는 항목이 남는다.
+ */
+class MobileTaskInputError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "MobileTaskInputError";
+  }
+}
+
+/** 모바일이 보낸 문자열을 데스크탑 열거값으로 옮긴다. 비어 있으면 고르지 않은 것이고, 모르는 값이면 잘못된 요청이다 */
+function readEnumValue<T extends string>(
+  allowedValues: readonly T[],
+  submitted: string | undefined,
+  fieldLabel: string
+): T | undefined {
+  if (!submitted) {
+    return undefined;
+  }
+
+  const matched = allowedValues.find((value) => value === submitted);
+  if (!matched) {
+    throw new MobileTaskInputError(`${fieldLabel} 값이 올바르지 않습니다`);
+  }
+  return matched;
+}
+
+/**
+ * 브랜치 이름으로 받아들일 모양.
+ *
+ * 이 값은 `createWorktreeWithSession`에서 `git ... -b "<이름>"` 꼴로 셸 명령 문자열에 끼워지고,
+ * worktree 경로에도 그대로 들어간다. 큰따옴표 안이라도 셸은 `$(...)`와 백틱을 펼치므로,
+ * 데스크탑 화면에서만 오던 값과 달리 네트워크에서 오는 값은 여기서 막지 않으면
+ * 페어링한 기기가 이 머신에서 임의의 명령을 돌리고 프로젝트 밖 경로를 짚을 수 있다.
+ * git이 받아 주는 이름 중 셸과 경로에 뜻이 없는 문자만 통과시킨다.
+ */
+const SAFE_GIT_REF_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._/-]*$/;
+
+function readGitRef(submitted: string, fieldLabel: string): string {
+  if (!SAFE_GIT_REF_PATTERN.test(submitted) || submitted.includes("..")) {
+    throw new MobileTaskInputError(`${fieldLabel}에 쓸 수 없는 문자가 있습니다`);
+  }
+  return submitted;
+}
+
+/** 태스크 생성 화면의 베이스 브랜치 칸을 채운다 */
+export async function getMobileProjectBranches(projectId: string): Promise<string[]> {
+  return getProjectBranches(projectId);
+}
+
+/**
+ * 모바일 생성 화면이 보내는 태스크 초안.
+ *
+ * 데스크탑 `CreateTaskInput`을 그대로 열지 않는다. 그쪽에는 모바일 화면에 없는 `sshHost`가 있어,
+ * 열어 두면 화면에 없는 경로로 임의의 호스트에 세션을 여는 요청을 만들 수 있다. 화면에 있는 칸만 받는다.
+ */
+export interface MobileTaskDraft {
+  projectId: string;
+  branchName: string;
+  baseBranch?: string;
+  description?: string;
+  priority?: string;
+  sessionType?: string;
+}
+
+/**
+ * 모바일에서 태스크를 만든다.
+ *
+ * 제목을 따로 받지 않고 브랜치 이름을 그대로 쓰는 것은 데스크탑 생성 화면과 같다.
+ * 두 화면이 다른 규칙으로 제목을 정하면 같은 보드에서 어느 쪽에서 만들었는지에 따라 제목 모양이 갈린다.
+ */
+export async function createMobileTask(draft: MobileTaskDraft): Promise<KanbanTask> {
+  return createTask({
+    title: draft.branchName,
+    branchName: readGitRef(draft.branchName, "브랜치 이름"),
+    projectId: draft.projectId,
+    baseBranch: draft.baseBranch ? readGitRef(draft.baseBranch, "베이스 브랜치") : undefined,
+    description: draft.description,
+    priority: readEnumValue(Object.values(TaskPriority), draft.priority, "우선순위"),
+    sessionType: readEnumValue(Object.values(SessionType), draft.sessionType, "세션 타입"),
+  });
+}
+
+/** 모바일에서 태스크를 다른 상태로 옮긴다. 없는 태스크면 null이 나와 라우팅이 404로 옮긴다 */
+export async function updateMobileTaskStatus(taskId: string, submittedStatus: string): Promise<KanbanTask | null> {
+  const status = readEnumValue(Object.values(TaskStatus), submittedStatus, "상태");
+  if (!status) {
+    throw new MobileTaskInputError("상태 값이 올바르지 않습니다");
+  }
+
+  return updateTaskStatus(taskId, status);
 }
 
 /** 화면에 띄울 페어링 코드를 발급한다 */

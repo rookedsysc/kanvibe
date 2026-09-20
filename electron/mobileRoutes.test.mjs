@@ -40,6 +40,9 @@ function createBridge(overrides = {}) {
     subscribeToPane: vi.fn(async () => () => {}),
     writeToPane: vi.fn(async () => {}),
     startMobilePairing: vi.fn(() => ({ code: "654321", expiresAt: 1_700_000_000_000 })),
+    createMobileTask: vi.fn(async () => ({ id: "task-1", title: "feat/from-mobile" })),
+    updateMobileTaskStatus: vi.fn(async () => ({ id: "task-1", status: "review" })),
+    getMobileProjectBranches: vi.fn(async () => ["main", "dev"]),
     ...overrides,
   };
 }
@@ -615,5 +618,139 @@ describe("개발용 페어링 코드 발급 경로", () => {
     expect(devResponse.writeHead.mock.calls).toEqual(unknownResponse.writeHead.mock.calls);
     expect(devResponse.end.mock.calls).toEqual(unknownResponse.end.mock.calls);
     expect(bridge.startMobilePairing).not.toHaveBeenCalled();
+  });
+});
+
+/** 서비스가 던지는 값 오류. 이름으로만 가려내므로 라우팅이 보는 모양 그대로 만든다 */
+function inputError(message) {
+  const error = new Error(message);
+  error.name = "MobileTaskInputError";
+  return error;
+}
+
+describe("태스크 생성 경로", () => {
+  const draft = { projectId: "project-1", branchName: "feat/from-mobile", sessionType: "tmux" };
+
+  function createTask(body, headers = { Authorization: "Bearer good" }) {
+    return request("/api/mobile/tasks", { method: "POST", headers, body: JSON.stringify(body) });
+  }
+
+  it("연결된 기기가 보낸 초안을 서비스로 넘기고 만들어진 태스크를 돌려준다", async () => {
+    const response = await createTask(draft);
+
+    expect(response.status).toBe(200);
+    expect(response.body.task).toEqual({ id: "task-1", title: "feat/from-mobile" });
+    expect(bridge.createMobileTask).toHaveBeenCalledTimes(1);
+    expect(bridge.createMobileTask.mock.calls[0][0]).toMatchObject(draft);
+  });
+
+  it("토큰 없이는 인증 앞단에서 막혀 아무것도 만들지 않는다", async () => {
+    const response = await createTask(draft, {});
+
+    expect(response.status).toBe(401);
+    expect(bridge.createMobileTask).not.toHaveBeenCalled();
+  });
+
+  it("프로젝트나 브랜치 이름이 없으면 서비스를 부르지 않고 400을 준다", async () => {
+    expect((await createTask({ branchName: "feat/x" })).status).toBe(400);
+    expect((await createTask({ projectId: "project-1" })).status).toBe(400);
+    expect((await createTask({ ...draft, branchName: "   " })).status).toBe(400);
+
+    expect(bridge.createMobileTask).not.toHaveBeenCalled();
+  });
+
+  it("본문이 JSON이 아니면 400으로 거절한다", async () => {
+    const response = await createTask("깨진 본문");
+
+    expect(response.status).toBe(400);
+    expect(bridge.createMobileTask).not.toHaveBeenCalled();
+  });
+
+  it("값이 잘못됐다는 서비스 오류는 사유를 그대로 돌려준다", async () => {
+    bridge.createMobileTask.mockRejectedValue(inputError("브랜치 이름에 쓸 수 없는 문자가 있습니다"));
+
+    const response = await createTask(draft);
+
+    expect(response.status).toBe(400);
+    expect(response.body.error).toBe("브랜치 이름에 쓸 수 없는 문자가 있습니다");
+  });
+
+  it("그 밖의 예외는 내부 메시지를 감춘 500으로 나간다", async () => {
+    bridge.createMobileTask.mockRejectedValue(new Error("git -C /home/me/repo worktree add 실패"));
+
+    const response = await createTask(draft);
+
+    expect(response.status).toBe(500);
+    expect(response.body.error).toBe("서버 오류");
+  });
+});
+
+describe("태스크 상태 이동 경로", () => {
+  function moveTask(body, headers = { Authorization: "Bearer good" }) {
+    return request("/api/mobile/tasks/task-1/status", { method: "PATCH", headers, body: JSON.stringify(body) });
+  }
+
+  it("아는 상태를 보내면 서비스로 넘기고 옮겨진 태스크를 돌려준다", async () => {
+    const response = await moveTask({ status: "review" });
+
+    expect(response.status).toBe(200);
+    expect(response.body.task).toEqual({ id: "task-1", status: "review" });
+    expect(bridge.updateMobileTaskStatus).toHaveBeenCalledWith("task-1", "review");
+  });
+
+  it("토큰 없이는 인증 앞단에서 막혀 아무것도 옮기지 않는다", async () => {
+    const response = await moveTask({ status: "review" }, {});
+
+    expect(response.status).toBe(401);
+    expect(bridge.updateMobileTaskStatus).not.toHaveBeenCalled();
+  });
+
+  it("상태가 없으면 서비스를 부르지 않고 400을 준다", async () => {
+    expect((await moveTask({})).status).toBe(400);
+    expect(bridge.updateMobileTaskStatus).not.toHaveBeenCalled();
+  });
+
+  it("인증과 이동 사이에 지워진 태스크는 404로 답한다", async () => {
+    bridge.updateMobileTaskStatus.mockResolvedValue(null);
+
+    expect((await moveTask({ status: "done" })).status).toBe(404);
+  });
+
+  it("모르는 상태라는 서비스 오류는 사유를 그대로 돌려준다", async () => {
+    bridge.updateMobileTaskStatus.mockRejectedValue(inputError("상태 값이 올바르지 않습니다"));
+
+    const response = await moveTask({ status: "archived" });
+
+    expect(response.status).toBe(400);
+    expect(response.body.error).toBe("상태 값이 올바르지 않습니다");
+  });
+});
+
+describe("프로젝트 브랜치 목록 경로", () => {
+  it("연결된 기기에는 브랜치 목록을 준다", async () => {
+    const response = await request("/api/mobile/projects/project-1/branches", {
+      headers: { Authorization: "Bearer good" },
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.body.branches).toEqual(["main", "dev"]);
+    expect(bridge.getMobileProjectBranches).toHaveBeenCalledWith("project-1");
+  });
+
+  it("토큰 없이는 인증 앞단에서 막힌다", async () => {
+    const response = await request("/api/mobile/projects/project-1/branches");
+
+    expect(response.status).toBe(401);
+    expect(bridge.getMobileProjectBranches).not.toHaveBeenCalled();
+  });
+
+  it("브랜치 조회가 던져도 매달리지 않고 500을 돌려준다", async () => {
+    bridge.getMobileProjectBranches.mockRejectedValue(new Error("git 실패"));
+
+    const response = await request("/api/mobile/projects/project-1/branches", {
+      headers: { Authorization: "Bearer good" },
+    });
+
+    expect(response.status).toBe(500);
   });
 });

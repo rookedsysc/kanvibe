@@ -126,6 +126,40 @@ void main() {
     expect(find.textContaining('데스크탑에 연결하지 못했습니다'), findsOneWidget);
     expect(find.text('다시 시도'), findsOneWidget);
   });
+
+  testWidgets('보드에서 새 태스크를 만들러 갈 수 있다', (tester) async {
+    await tester.binding.setSurfaceSize(phoneSize);
+    final client = FakeDesktopClient(board: boardWith());
+
+    await tester.pumpWidget(
+      wrapWithApp(const BoardScreen(), client: client, size: phoneSize),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('새 태스크'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('브랜치 이름 *'), findsOneWidget);
+  });
+
+  testWidgets('보드를 못 불러온 동안에는 만들기 버튼을 내보이지 않는다', (tester) async {
+    await tester.binding.setSurfaceSize(phoneSize);
+
+    await tester.pumpWidget(
+      wrapWithApp(
+        const BoardScreen(),
+        client: _UnreachableDesktopClient(),
+        size: phoneSize,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byType(FloatingActionButton),
+      findsNothing,
+      reason: '고를 프로젝트 목록도 함께 못 받은 상태다',
+    );
+  });
 }
 
 class _UnreachableDesktopClient extends FakeDesktopClient {

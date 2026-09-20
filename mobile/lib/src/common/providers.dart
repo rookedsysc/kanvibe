@@ -149,3 +149,23 @@ final surfacesProvider = FutureProvider.family<TaskSurfaces, String>((
     rethrow;
   }
 }, retry: _neverRetry);
+
+/// 프로젝트 하나의 브랜치 목록. 태스크 생성 화면의 베이스 브랜치 칸이 쓴다
+final projectBranchesProvider = FutureProvider.family<List<String>, String>((
+  ref,
+  projectId,
+) async {
+  final connection = await ref.watch(connectionControllerProvider.future);
+  if (connection == null) {
+    return const [];
+  }
+
+  try {
+    return await ref
+        .read(desktopClientProvider)
+        .fetchProjectBranches(connection, projectId);
+  } on DesktopRequestException catch (error) {
+    await _forgetRejectedConnection(ref, error);
+    rethrow;
+  }
+}, retry: _neverRetry);

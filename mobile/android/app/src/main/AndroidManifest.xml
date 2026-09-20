@@ -49,5 +49,11 @@
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>
         </intent>
+        <!-- PR 링크를 브라우저로 넘기는 데 쓴다. Android 11부터는 여기 적지 않은 인텐트는
+             조회 자체가 실패해서, 링크를 열 앱이 깔려 있어도 없는 것처럼 보인다. -->
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="https"/>
+        </intent>
     </queries>
 </manifest>

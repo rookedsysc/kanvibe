@@ -5,8 +5,10 @@ import '../../../common/constants/app_colors.dart';
 import '../../../common/constants/app_sizes.dart';
 import '../../../common/constants/app_theme.dart';
 import '../../../common/providers.dart';
+import '../../task_create/presentation/create_task_screen.dart';
 import '../../task_detail/presentation/task_detail_screen.dart';
 import '../data/board_snapshot.dart';
+import '../domain/board_project.dart';
 import '../domain/board_task.dart';
 import '../domain/task_status.dart';
 
@@ -38,6 +40,14 @@ class BoardScreen extends ConsumerWidget {
           ),
         ],
       ),
+      floatingActionButton: board.value == null
+          ? null
+          : FloatingActionButton(
+              onPressed: () =>
+                  _createTask(context, board.requireValue.creatableProjects),
+              tooltip: '새 태스크',
+              child: const Icon(Icons.add),
+            ),
       body: SafeArea(
         child: board.when(
           loading: () => const Center(child: CircularProgressIndicator()),
@@ -55,6 +65,28 @@ class BoardScreen extends ConsumerWidget {
       ),
     );
   }
+}
+
+/// 새 태스크를 만들고 곧바로 그 태스크로 들어간다.
+///
+/// 데스크탑도 생성 창을 닫은 뒤 만들어진 태스크의 화면을 연다. 만들자마자 터미널을 보려는 흐름이라
+/// 보드로 돌려보내고 카드를 다시 찾게 하면 한 단계가 더 든다.
+Future<void> _createTask(
+  BuildContext context,
+  List<BoardProject> projects,
+) async {
+  final navigator = Navigator.of(context);
+  final created = await navigator.push<BoardTask>(
+    MaterialPageRoute(builder: (_) => CreateTaskScreen(projects: projects)),
+  );
+
+  if (created == null) {
+    return;
+  }
+
+  await navigator.push(
+    MaterialPageRoute<void>(builder: (_) => TaskDetailScreen(task: created)),
+  );
 }
 
 /// 끊기는 데스크탑의 기기 목록에서도 지워져야 끝난다.
@@ -253,10 +285,7 @@ class _TaskCard extends StatelessWidget {
       child: InkWell(
         borderRadius: BorderRadius.circular(AppSizes.radiusLg),
         onTap: () => Navigator.of(context).push(
-          MaterialPageRoute<void>(
-            builder: (_) =>
-                TaskDetailScreen(taskId: task.id, taskTitle: task.title),
-          ),
+          MaterialPageRoute<void>(builder: (_) => TaskDetailScreen(task: task)),
         ),
         child: Container(
           constraints: const BoxConstraints(minHeight: AppSizes.minTouchTarget),
