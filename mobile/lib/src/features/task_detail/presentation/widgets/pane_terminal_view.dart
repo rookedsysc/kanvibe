@@ -10,6 +10,7 @@ import '../../../../common/network/desktop_client.dart';
 import '../../../../common/providers.dart';
 import '../../domain/mirror_pane.dart';
 import '../surface_unavailable_message.dart';
+import 'terminal_soft_keyboard.dart';
 
 /// pane 하나를 그대로 비추는 터미널.
 ///
@@ -143,23 +144,34 @@ class _PaneTerminalViewState extends ConsumerState<PaneTerminalView> {
         child: SizedBox(
           width: widget.pane.width * _cellWidth,
           height: widget.pane.height * _cellHeight,
-          child: xterm.TerminalView(
-            _terminal,
+          child: _withSoftKeyboard(
+            xterm.TerminalView(
+              _terminal,
 
-            /// 위젯 크기에 맞춰 다시 재면 데스크탑과 줄바꿈이 어긋난다
-            autoResize: false,
-            readOnly: !widget.isInteractive,
-            backgroundOpacity: 0,
-            theme: _terminalTheme,
-            textStyle: const xterm.TerminalStyle(
-              fontSize: _fontSize,
-              fontFamily: monoFontFamily,
+              /// 위젯 크기에 맞춰 다시 재면 데스크탑과 줄바꿈이 어긋난다
+              autoResize: false,
+              readOnly: !widget.isInteractive,
+
+              /// xterm 내장 입력기는 Android에서 글자를 겹쳐 넣는다. 하드웨어 키만 xterm에 맡기고
+              /// 소프트 키보드는 [TerminalSoftKeyboard]가 받는다
+              hardwareKeyboardOnly: true,
+              backgroundOpacity: 0,
+              theme: _terminalTheme,
+              textStyle: const xterm.TerminalStyle(
+                fontSize: _fontSize,
+                fontFamily: monoFontFamily,
+              ),
             ),
           ),
         ),
       ),
     );
   }
+
+  /// 입력을 받는 pane에만 소프트 키보드를 붙인다
+  Widget _withSoftKeyboard(Widget terminalView) => widget.isInteractive
+      ? TerminalSoftKeyboard(terminal: _terminal, child: terminalView)
+      : terminalView;
 
   /// [FittedBox]가 최종 크기를 정하므로 이 값은 비율만 맞으면 된다
   static const _fontSize = 14.0;
