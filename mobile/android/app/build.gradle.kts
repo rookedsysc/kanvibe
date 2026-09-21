@@ -27,6 +27,12 @@ android {
      * 토큰을 안드로이드 키스토어에 두려면 이 의존성이 필요하고, 낮추면 그 저장소를 못 쓴다.
      */
     compileSdk = 37
+
+    /**
+     * 구글이 내놓는 37 플랫폼은 `android-37`이 아니라 `android-37.0`이다.
+     * 부 버전을 적지 않으면 AGP가 `android-37`을 찾다가 없다며 컴파일 전에 멈춘다.
+     */
+    compileSdkMinor = 0
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
