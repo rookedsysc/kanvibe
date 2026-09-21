@@ -1,0 +1,21 @@
+# 세션이 살아 있는 태스크는 카드를 누르면 pane 탭과 터미널이 함께 열린다.
+#
+# 터미널 내용은 xterm이 캔버스로 그려 접근성 트리에 글자가 없다. 그래서 단정할 수 있는 것은
+# 머리글의 프로젝트 이름과 pane 탭까지이고, 데스크탑 pane이 실제로 비쳤는지는 스크린샷과 녹화가 증거다.
+#
+# 셀렉터를 `.*제목.*`으로 감싸는 이유는, Flutter가 카드 한 장의 글자를 하나의 시맨틱스로 합쳐
+# `제목\n프로젝트\n브랜치`가 되고 Maestro의 텍스트 매칭은 부분 일치가 아니라 전체 일치이기 때문이다.
+# `(?s)`는 그 줄바꿈까지 `.`이 먹게 한다.
+appId: ${APP_ID}
+---
+- scrollUntilVisible:
+    element: "(?s).*Maestro Fixture Session.*"
+    direction: DOWN
+    timeout: 15000
+- tapOn: "(?s).*Maestro Fixture Session.*"
+- extendedWaitUntil:
+    visible: "(?s).*kanvibe-qa-fixture.*"
+    timeout: 20000
+- assertVisible: "(?s).*탭.*"
+- assertNotVisible: "이 태스크에는 터미널 세션이 없습니다."
+- takeScreenshot: 06-세션-태스크-터미널

@@ -1,0 +1,10 @@
+# 카드를 누르면 그 태스크의 상세가 열린다. 이 픽스처는 세션 없이 만들었으므로 세션이 없다는 안내가 나와야 한다.
+appId: ${APP_ID}
+---
+- tapOn: "Maestro Fixture NoSession"
+- extendedWaitUntil:
+    visible: "이 태스크에는 터미널 세션이 없습니다."
+    timeout: 20000
+- assertVisible: "Maestro Fixture NoSession"
+- takeScreenshot: 03-태스크-상세-세션-없음
+- runFlow: goes-back-to-board.yaml
