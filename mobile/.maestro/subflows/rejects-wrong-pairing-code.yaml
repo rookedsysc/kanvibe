@@ -1,11 +1,21 @@
 # 데스크탑이 발급하지 않은 코드로는 보드에 들어가지 못하고, 연결 화면이 이유를 알려 준다.
+#
+# iOS에서는 clearState만으로 부족하다. 연결 토큰은 키체인에 있어 앱 데이터를 지워도 남으므로,
+# 지우지 않으면 지난 실행의 토큰으로 곧장 보드가 열려 이 흐름의 전제인 연결 화면이 나오지 않는다.
 appId: ${APP_ID}
 ---
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - clearKeychain
 - launchApp:
     clearState: true
+
+# 앱 데이터를 지운 첫 실행은 캐시가 비어 있어 느리다. 에뮬레이터가 바쁠 때 45초 넘게 걸리는 것을 봤다.
 - extendedWaitUntil:
     visible: "데스크탑에 연결"
-    timeout: 20000
+    timeout: 90000
 - runFlow:
     file: fill-connection-form.yaml
     env:

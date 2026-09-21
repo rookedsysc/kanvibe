@@ -1,14 +1,10 @@
-# 카드를 누르면 그 태스크의 상세가 열린다. 픽스처 태스크는 세션 없이 만들었으므로 세션이 없다는 안내가 나와야 한다.
-#
-# 안내가 뜨기까지 40초 가까이 걸린다. 데스크탑은 즉시 답하지만, 앱이 "세션 없음"을 예외로 던지고
-# Riverpod가 그 예외를 10번(200ms에서 6.4초까지 늘려 가며) 다시 시도한 뒤에야 오류 상태가 화면에 닿는다.
+# 카드를 누르면 그 태스크의 상세가 열린다. 이 픽스처는 세션 없이 만들었으므로 세션이 없다는 안내가 나와야 한다.
 appId: ${APP_ID}
 ---
-- tapOn: ${output.fixtureTaskTitle}
+- tapOn: "Maestro Fixture NoSession"
 - extendedWaitUntil:
     visible: "이 태스크에는 터미널 세션이 없습니다."
-    timeout: 60000
-- assertVisible: ${output.fixtureTaskTitle}
+    timeout: 20000
+- assertVisible: "Maestro Fixture NoSession"
 - takeScreenshot: 03-태스크-상세-세션-없음
-- back
-- assertVisible: "KanVibe"
+- runFlow: goes-back-to-board.yaml

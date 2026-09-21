@@ -1,12 +1,25 @@
 # 연결 화면의 세 칸을 비우고 채운 뒤 연결을 누른다. 앞선 시도가 남긴 값과 포트 칸의 패키지 앱 기본값을 지우고 쓴다.
 #
+# 데스크탑 주소는 기기가 호스트를 무엇이라 부르는지에 달려 있다. 안드로이드 에뮬레이터는 호스트를
+# 10.0.2.2로 보고, iOS 시뮬레이터는 호스트와 네트워크를 공유해 127.0.0.1이 곧 호스트다.
+# 여정에서 env로 넘기지 않고 여기서 가르는 이유는, 주소를 쓰는 자리가 이 파일 하나뿐이기 때문이다.
+#
 # 키보드를 내리지 않는다. Android에서 hideKeyboard는 back 키를 보내는데, 러너가 IME를 꺼 두므로
 # 내릴 키보드가 없어 그 back이 앱을 닫아 버린다. 키보드가 없으니 연결 버튼도 가려지지 않는다.
 appId: ${APP_ID}
 ---
 - tapOn: "데스크탑 주소"
 - eraseText
-- inputText: ${DESKTOP_HOST_FROM_EMULATOR}
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - inputText: "10.0.2.2"
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - inputText: "127.0.0.1"
 - tapOn: "포트"
 - eraseText
 - inputText: "19736"

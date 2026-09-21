@@ -3,8 +3,10 @@ appId: ${APP_ID}
 ---
 - stopApp
 - launchApp
+
+# 껐다 켜는 것도 콜드 스타트라 기기가 바쁘면 수십 초가 걸린다.
 - extendedWaitUntil:
     visible: "KanVibe"
-    timeout: 15000
+    timeout: 90000
 - assertNotVisible: "데스크탑에 연결"
 - takeScreenshot: 04-재실행-후-보드-복원

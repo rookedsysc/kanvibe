@@ -1,14 +1,17 @@
 # 연결부터 끊기까지 한 번에 지나가는 여정. 앞 단계가 남긴 페어링 상태를 뒤 단계가 이어 쓰므로 순서를 바꾸지 않는다.
-# `pnpm dev`로 띄운 데스크탑(hook 서버 19736)과 Android 에뮬레이터가 필요하다. 에뮬레이터 안에서 호스트는 10.0.2.2다.
+# `qa/mobile/lib/prepareQaDesktop.cjs`가 띄운 격리 데스크탑(hook 서버 19736, pane probe 19737)이 필요하다.
 appId: ${APP_ID}
 env:
-  DESKTOP_HOST_FROM_EMULATOR: 10.0.2.2
   DESKTOP_API_FROM_HOST: http://127.0.0.1:19736
+  PROBE_API_FROM_HOST: http://127.0.0.1:19737
 tags:
   - journey
 ---
 - runFlow: ../subflows/rejects-wrong-pairing-code.yaml
 - runFlow: ../subflows/pairs-and-opens-board.yaml
 - runFlow: ../subflows/opens-task-detail.yaml
+- runFlow: ../subflows/opens-session-task-terminal.yaml
+- runFlow: ../subflows/types-into-terminal.yaml
+- runFlow: ../subflows/moves-task-status.yaml
 - runFlow: ../subflows/restores-paired-session.yaml
 - runFlow: ../subflows/disconnects-from-desktop.yaml

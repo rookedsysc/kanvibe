@@ -1,0 +1,24 @@
+# 태스크 상세에서 보드로 돌아간다.
+#
+# 뒤로 가기 키를 쓰지 않고 AppBar의 화살표를 직접 누른다. Android의 back은 터미널이 키보드 포커스를
+# 쥐고 있으면 그쪽으로 먹히고, iOS의 back은 화면 가장자리 스와이프라 라우트를 되돌리지 못한다.
+#
+# 좌표가 플랫폼마다 다른 것은 상태 표시줄 높이가 달라 AppBar가 놓이는 자리가 다르기 때문이다.
+# 화살표에는 글자가 없고 접근성 이름은 기기 언어를 따라가므로 셀렉터로 잡지 않는다.
+appId: ${APP_ID}
+---
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - tapOn:
+          point: "7%,6%"
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - tapOn:
+          point: "7%,10%"
+- extendedWaitUntil:
+    visible: "KanVibe"
+    timeout: 20000
