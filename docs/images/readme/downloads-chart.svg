@@ -3,34 +3,35 @@
   <text x="380" y="24" text-anchor="middle" font-size="14" font-weight="600" fill="#202632">KanVibe DMG Downloads (Last 30 Days)</text>
   <line x1="60" y1="40" x2="60" y2="220" stroke="#d0d5dd" stroke-width="1" />
   <line x1="60" y1="220" x2="730" y2="220" stroke="#d0d5dd" stroke-width="1" />
-  <path d="M 60.0 220.0 L 87.9 220.0 L 115.8 210.5 L 143.8 182.1 L 171.7 182.1 L 199.6 182.1 L 227.5 182.1 L 255.4 182.1 L 283.3 182.1 L 311.3 182.1 L 339.2 163.2 L 367.1 134.7 L 395.0 106.3 L 422.9 96.8 L 450.8 87.4 L 478.8 77.9 L 506.7 58.9 L 534.6 58.9 L 562.5 49.5 L 590.4 40.0 L 618.3 40.0 L 646.3 40.0 L 674.2 40.0 L 702.1 40.0 L 730.0 40.0" fill="none" stroke="#0064FF" stroke-width="2" />
+  <path d="M 60.0 220.0 L 86.8 220.0 L 113.6 210.5 L 140.4 182.1 L 167.2 182.1 L 194.0 182.1 L 220.8 182.1 L 247.6 182.1 L 274.4 182.1 L 301.2 182.1 L 328.0 163.2 L 354.8 134.7 L 381.6 106.3 L 408.4 96.8 L 435.2 87.4 L 462.0 77.9 L 488.8 58.9 L 515.6 58.9 L 542.4 49.5 L 569.2 40.0 L 596.0 40.0 L 622.8 40.0 L 649.6 40.0 L 676.4 40.0 L 703.2 40.0 L 730.0 40.0" fill="none" stroke="#0064FF" stroke-width="2" />
   <circle cx="60.0" cy="220.0" r="3" fill="#0064FF" />
-  <circle cx="87.9" cy="220.0" r="3" fill="#0064FF" />
-  <circle cx="115.8" cy="210.5" r="3" fill="#0064FF" />
-  <circle cx="143.8" cy="182.1" r="3" fill="#0064FF" />
-  <circle cx="171.7" cy="182.1" r="3" fill="#0064FF" />
-  <circle cx="199.6" cy="182.1" r="3" fill="#0064FF" />
-  <circle cx="227.5" cy="182.1" r="3" fill="#0064FF" />
-  <circle cx="255.4" cy="182.1" r="3" fill="#0064FF" />
-  <circle cx="283.3" cy="182.1" r="3" fill="#0064FF" />
-  <circle cx="311.3" cy="182.1" r="3" fill="#0064FF" />
-  <circle cx="339.2" cy="163.2" r="3" fill="#0064FF" />
-  <circle cx="367.1" cy="134.7" r="3" fill="#0064FF" />
-  <circle cx="395.0" cy="106.3" r="3" fill="#0064FF" />
-  <circle cx="422.9" cy="96.8" r="3" fill="#0064FF" />
-  <circle cx="450.8" cy="87.4" r="3" fill="#0064FF" />
-  <circle cx="478.8" cy="77.9" r="3" fill="#0064FF" />
-  <circle cx="506.7" cy="58.9" r="3" fill="#0064FF" />
-  <circle cx="534.6" cy="58.9" r="3" fill="#0064FF" />
-  <circle cx="562.5" cy="49.5" r="3" fill="#0064FF" />
-  <circle cx="590.4" cy="40.0" r="3" fill="#0064FF" />
-  <circle cx="618.3" cy="40.0" r="3" fill="#0064FF" />
-  <circle cx="646.3" cy="40.0" r="3" fill="#0064FF" />
-  <circle cx="674.2" cy="40.0" r="3" fill="#0064FF" />
-  <circle cx="702.1" cy="40.0" r="3" fill="#0064FF" />
+  <circle cx="86.8" cy="220.0" r="3" fill="#0064FF" />
+  <circle cx="113.6" cy="210.5" r="3" fill="#0064FF" />
+  <circle cx="140.4" cy="182.1" r="3" fill="#0064FF" />
+  <circle cx="167.2" cy="182.1" r="3" fill="#0064FF" />
+  <circle cx="194.0" cy="182.1" r="3" fill="#0064FF" />
+  <circle cx="220.8" cy="182.1" r="3" fill="#0064FF" />
+  <circle cx="247.6" cy="182.1" r="3" fill="#0064FF" />
+  <circle cx="274.4" cy="182.1" r="3" fill="#0064FF" />
+  <circle cx="301.2" cy="182.1" r="3" fill="#0064FF" />
+  <circle cx="328.0" cy="163.2" r="3" fill="#0064FF" />
+  <circle cx="354.8" cy="134.7" r="3" fill="#0064FF" />
+  <circle cx="381.6" cy="106.3" r="3" fill="#0064FF" />
+  <circle cx="408.4" cy="96.8" r="3" fill="#0064FF" />
+  <circle cx="435.2" cy="87.4" r="3" fill="#0064FF" />
+  <circle cx="462.0" cy="77.9" r="3" fill="#0064FF" />
+  <circle cx="488.8" cy="58.9" r="3" fill="#0064FF" />
+  <circle cx="515.6" cy="58.9" r="3" fill="#0064FF" />
+  <circle cx="542.4" cy="49.5" r="3" fill="#0064FF" />
+  <circle cx="569.2" cy="40.0" r="3" fill="#0064FF" />
+  <circle cx="596.0" cy="40.0" r="3" fill="#0064FF" />
+  <circle cx="622.8" cy="40.0" r="3" fill="#0064FF" />
+  <circle cx="649.6" cy="40.0" r="3" fill="#0064FF" />
+  <circle cx="676.4" cy="40.0" r="3" fill="#0064FF" />
+  <circle cx="703.2" cy="40.0" r="3" fill="#0064FF" />
   <circle cx="730.0" cy="40.0" r="3" fill="#0064FF" />
   <text x="50" y="44" text-anchor="end" font-size="11" fill="#667085">98</text>
   <text x="50" y="224" text-anchor="end" font-size="11" fill="#667085">79</text>
   <text x="60" y="248" text-anchor="start" font-size="11" fill="#667085">2026-08-29</text>
-  <text x="730" y="248" text-anchor="end" font-size="11" fill="#667085">2026-09-22</text>
+  <text x="730" y="248" text-anchor="end" font-size="11" fill="#667085">2026-09-23</text>
 </svg>
