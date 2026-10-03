@@ -3,12 +3,12 @@
   <text x="380" y="24" text-anchor="middle" font-size="14" font-weight="600" fill="#202632">KanVibe GitHub Stars (Last 30 Days)</text>
   <line x1="60" y1="40" x2="60" y2="220" stroke="#d0d5dd" stroke-width="1" />
   <line x1="60" y1="220" x2="730" y2="220" stroke="#d0d5dd" stroke-width="1" />
-  <path d="M 60.0 220.0 L 83.1 220.0 L 106.2 175.0 L 129.3 175.0 L 152.4 175.0 L 175.5 85.0 L 198.6 85.0 L 221.7 85.0 L 244.8 85.0 L 267.9 85.0 L 291.0 85.0 L 314.1 85.0 L 337.2 85.0 L 360.3 85.0 L 383.4 85.0 L 406.6 85.0 L 429.7 85.0 L 452.8 85.0 L 475.9 85.0 L 499.0 130.0 L 522.1 130.0 L 545.2 130.0 L 568.3 130.0 L 591.4 85.0 L 614.5 40.0 L 637.6 40.0 L 660.7 40.0 L 683.8 40.0 L 706.9 40.0 L 730.0 40.0" fill="none" stroke="#0064FF" stroke-width="2" />
+  <path d="M 60.0 220.0 L 83.1 175.0 L 106.2 175.0 L 129.3 175.0 L 152.4 85.0 L 175.5 85.0 L 198.6 85.0 L 221.7 85.0 L 244.8 85.0 L 267.9 85.0 L 291.0 85.0 L 314.1 85.0 L 337.2 85.0 L 360.3 85.0 L 383.4 85.0 L 406.6 85.0 L 429.7 85.0 L 452.8 85.0 L 475.9 130.0 L 499.0 130.0 L 522.1 130.0 L 545.2 130.0 L 568.3 85.0 L 591.4 40.0 L 614.5 40.0 L 637.6 40.0 L 660.7 40.0 L 683.8 40.0 L 706.9 40.0 L 730.0 40.0" fill="none" stroke="#0064FF" stroke-width="2" />
   <circle cx="60.0" cy="220.0" r="3" fill="#0064FF" />
-  <circle cx="83.1" cy="220.0" r="3" fill="#0064FF" />
+  <circle cx="83.1" cy="175.0" r="3" fill="#0064FF" />
   <circle cx="106.2" cy="175.0" r="3" fill="#0064FF" />
   <circle cx="129.3" cy="175.0" r="3" fill="#0064FF" />
-  <circle cx="152.4" cy="175.0" r="3" fill="#0064FF" />
+  <circle cx="152.4" cy="85.0" r="3" fill="#0064FF" />
   <circle cx="175.5" cy="85.0" r="3" fill="#0064FF" />
   <circle cx="198.6" cy="85.0" r="3" fill="#0064FF" />
   <circle cx="221.7" cy="85.0" r="3" fill="#0064FF" />
@@ -22,12 +22,12 @@
   <circle cx="406.6" cy="85.0" r="3" fill="#0064FF" />
   <circle cx="429.7" cy="85.0" r="3" fill="#0064FF" />
   <circle cx="452.8" cy="85.0" r="3" fill="#0064FF" />
-  <circle cx="475.9" cy="85.0" r="3" fill="#0064FF" />
+  <circle cx="475.9" cy="130.0" r="3" fill="#0064FF" />
   <circle cx="499.0" cy="130.0" r="3" fill="#0064FF" />
   <circle cx="522.1" cy="130.0" r="3" fill="#0064FF" />
   <circle cx="545.2" cy="130.0" r="3" fill="#0064FF" />
-  <circle cx="568.3" cy="130.0" r="3" fill="#0064FF" />
-  <circle cx="591.4" cy="85.0" r="3" fill="#0064FF" />
+  <circle cx="568.3" cy="85.0" r="3" fill="#0064FF" />
+  <circle cx="591.4" cy="40.0" r="3" fill="#0064FF" />
   <circle cx="614.5" cy="40.0" r="3" fill="#0064FF" />
   <circle cx="637.6" cy="40.0" r="3" fill="#0064FF" />
   <circle cx="660.7" cy="40.0" r="3" fill="#0064FF" />
@@ -36,6 +36,6 @@
   <circle cx="730.0" cy="40.0" r="3" fill="#0064FF" />
   <text x="50" y="44" text-anchor="end" font-size="11" fill="#667085">143</text>
   <text x="50" y="224" text-anchor="end" font-size="11" fill="#667085">139</text>
-  <text x="60" y="248" text-anchor="start" font-size="11" fill="#667085">2026-09-03</text>
-  <text x="730" y="248" text-anchor="end" font-size="11" fill="#667085">2026-10-02</text>
+  <text x="60" y="248" text-anchor="start" font-size="11" fill="#667085">2026-09-04</text>
+  <text x="730" y="248" text-anchor="end" font-size="11" fill="#667085">2026-10-03</text>
 </svg>
