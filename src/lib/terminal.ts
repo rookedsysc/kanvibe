@@ -303,6 +303,59 @@ function registerTerminalEntry(
   attachClientToEntry(terminalKey, entry, ws);
 }
 
+/**
+ * 만들어지는 중인 PTY. 키마다 하나다.
+ *
+ * PTY를 띄우는 길은 node-pty를 불러오는 동안 한 번 양보한다. 그 틈에 같은 터미널로 두 번째 요청이 오면
+ * 둘 다 "아직 없음"을 보고 PTY를 하나씩 띄우고, 나중 것이 레지스트리 자리를 덮어 앞의 PTY는 아무도 찾지 못한 채 남는다.
+ * 창 두 개, 폰과 태블릿, 데스크탑과 모바일이 같은 태스크를 함께 여는 경우가 모두 그렇다.
+ * 그래서 첫 요청이 만드는 동안의 약속을 올려 두고, 뒤에 온 요청은 그것을 기다렸다가 같은 PTY에 붙는다.
+ */
+const pendingTerminalCreations = new Map<string, Promise<TerminalEntry | null>>();
+
+/**
+ * 이미 떠 있거나 만들어지는 중인 PTY. 둘 다 없으면 null이다.
+ * 이 조회와 [trackTerminalCreation]의 등록 사이에 `await`이 끼면 위의 경쟁이 다시 생긴다.
+ */
+function findSharedTerminal(terminalKey: string): TerminalEntry | Promise<TerminalEntry | null> | null {
+  return activeTerminals.get(terminalKey) ?? pendingTerminalCreations.get(terminalKey) ?? null;
+}
+
+async function attachToSharedTerminal(
+  terminalKey: string,
+  sharedTerminal: TerminalEntry | Promise<TerminalEntry | null>,
+  ws: WebSocket,
+): Promise<void> {
+  if (!(sharedTerminal instanceof Promise)) {
+    attachClientToEntry(terminalKey, sharedTerminal, ws);
+    return;
+  }
+
+  /** 만들던 쪽이 실패했거나 그 사이 셸이 끝났으면 붙을 PTY가 없다. 실패 사유는 만들던 쪽이 이미 알린다 */
+  const entry = await sharedTerminal.catch(() => null);
+  if (!entry || activeTerminals.get(terminalKey) !== entry) {
+    ws.close(1011, "터미널 연결 실패");
+    throw new Error("터미널 연결 실패");
+  }
+  attachClientToEntry(terminalKey, entry, ws);
+}
+
+/** PTY를 띄우는 동안 그 약속을 올려 두고, 끝나면 내린다. [findSharedTerminal]과 같은 동기 구간에서 불러야 한다 */
+function trackTerminalCreation(terminalKey: string, spawnTerminal: () => Promise<void>): Promise<void> {
+  const spawned = spawnTerminal();
+  const creation = spawned.then(() => activeTerminals.get(terminalKey) ?? null);
+  pendingTerminalCreations.set(terminalKey, creation);
+
+  const forgetCreation = () => {
+    if (pendingTerminalCreations.get(terminalKey) === creation) {
+      pendingTerminalCreations.delete(terminalKey);
+    }
+  };
+  creation.then(forgetCreation, forgetCreation);
+
+  return spawned;
+}
+
 /** PTY가 스스로 끝났을 때 탭 목록만 정리한다. PTY는 이미 없으므로 다시 죽이지 않는다 */
 function removeClosedTab(taskId: string, tabId: string): void {
   const state = localTerminalTabs.get(taskId);
@@ -503,8 +556,32 @@ function buildLocalPtySpawnPlan(
   return { shell: "zellij", args, cwd: cwd || homeDirectory };
 }
 
-/** 로컬 tmux / zellij / terminal 세션에 attach하여 WebSocket과 연결한다 */
+/** 로컬 tmux / zellij / terminal 세션에 attach하여 WebSocket과 연결한다. 같은 터미널의 PTY가 있거나 만들어지는 중이면 그것을 공유한다 */
 export async function attachLocalSession(
+  taskId: string,
+  tabId: string | null,
+  sessionType: SessionType,
+  sessionName: string,
+  ws: WebSocket,
+  cwd?: string | null,
+  cols?: number,
+  rows?: number,
+  tmuxPaneLayout?: TmuxPaneLayoutConfig | null,
+): Promise<void> {
+  const terminalKey = buildTerminalKey(taskId, tabId);
+  const sharedTerminal = findSharedTerminal(terminalKey);
+  if (sharedTerminal) {
+    await attachToSharedTerminal(terminalKey, sharedTerminal, ws);
+    return;
+  }
+
+  await trackTerminalCreation(terminalKey, () =>
+    spawnLocalSession(taskId, tabId, sessionType, sessionName, ws, cwd, cols, rows, tmuxPaneLayout),
+  );
+}
+
+/** 로컬 세션의 PTY를 새로 띄우고 첫 클라이언트를 붙인다 */
+async function spawnLocalSession(
   taskId: string,
   tabId: string | null,
   sessionType: SessionType,
@@ -519,13 +596,6 @@ export async function attachLocalSession(
   const initialRows = rows ?? DEFAULT_TERMINAL_ROWS;
   const terminalEnvironment = createLocalShellEnvironment();
   const terminalKey = buildTerminalKey(taskId, tabId);
-
-  /** 같은 터미널에 이미 활성 PTY가 있으면 기존 PTY를 공유한다 */
-  const existing = activeTerminals.get(terminalKey);
-  if (existing) {
-    attachClientToEntry(terminalKey, existing, ws);
-    return;
-  }
 
   /**
    * tmux: 세션이 없으면 execSync으로 detached 세션을 먼저 생성한다 (TTY 불필요).
@@ -588,7 +658,15 @@ export async function attachLocalSession(
   );
 }
 
-/** SSH를 통해 원격 세션에 attach하여 WebSocket과 연결한다 */
+type RemoteSSHConfig = {
+  host: string;
+  hostname: string;
+  port: number;
+  username: string;
+  privateKeyPath: string;
+};
+
+/** SSH를 통해 원격 세션에 attach하여 WebSocket과 연결한다. 같은 터미널의 PTY가 있거나 만들어지는 중이면 그것을 공유한다 */
 export async function attachRemoteSession(
   taskId: string,
   tabId: string | null,
@@ -596,13 +674,45 @@ export async function attachRemoteSession(
   sessionType: SessionType,
   sessionName: string,
   ws: WebSocket,
-  sshConfig: {
-    host: string;
-    hostname: string;
-    port: number;
-    username: string;
-    privateKeyPath: string;
-  },
+  sshConfig: RemoteSSHConfig,
+  cols?: number,
+  rows?: number,
+  worktreePath?: string | null,
+  tmuxPaneLayout?: TmuxPaneLayoutConfig | null,
+): Promise<void> {
+  const terminalKey = buildTerminalKey(taskId, tabId);
+  const sharedTerminal = findSharedTerminal(terminalKey);
+  if (sharedTerminal) {
+    await attachToSharedTerminal(terminalKey, sharedTerminal, ws);
+    return;
+  }
+
+  await trackTerminalCreation(terminalKey, () =>
+    spawnRemoteSession(
+      taskId,
+      tabId,
+      sshHost,
+      sessionType,
+      sessionName,
+      ws,
+      sshConfig,
+      cols,
+      rows,
+      worktreePath,
+      tmuxPaneLayout,
+    ),
+  );
+}
+
+/** 원격 세션의 ssh PTY를 새로 띄우고 첫 클라이언트를 붙인다 */
+async function spawnRemoteSession(
+  taskId: string,
+  tabId: string | null,
+  sshHost: string,
+  sessionType: SessionType,
+  sessionName: string,
+  ws: WebSocket,
+  sshConfig: RemoteSSHConfig,
   cols?: number,
   rows?: number,
   worktreePath?: string | null,
@@ -612,12 +722,6 @@ export async function attachRemoteSession(
   const initialRows = rows ?? DEFAULT_TERMINAL_ROWS;
   const terminalEnvironment = createLocalShellEnvironment();
   const terminalKey = buildTerminalKey(taskId, tabId);
-
-  const existing = activeTerminals.get(terminalKey);
-  if (existing) {
-    attachClientToEntry(terminalKey, existing, ws);
-    return;
-  }
 
   const pty = await import("node-pty");
   const attachCommand = buildRemoteAttachCommand(sessionType, sessionName, worktreePath, tmuxPaneLayout);

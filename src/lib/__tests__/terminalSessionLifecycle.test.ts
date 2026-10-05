@@ -165,6 +165,89 @@ describe("세션 타입별 수명", () => {
   });
 });
 
+describe("같은 터미널을 동시에 열 때", () => {
+  /** 경쟁이 되살아나 실제 ssh가 뜨더라도 곧바로 거절되도록 닫힌 로컬 포트를 가리킨다 */
+  const SSH_CONFIG = { host: "remote-host", hostname: "127.0.0.1", port: 1, username: "dev", privateKeyPath: "/key" };
+
+  /** node-pty가 등록받은 출력 콜백. PTY가 무언가를 내보내는 상황을 재현할 때 부른다 */
+  function emitPtyOutput(pty: SpawnedPtyStub, chunk: string): void {
+    for (const [handler] of pty.onData.mock.calls) {
+      handler(chunk);
+    }
+  }
+
+  /**
+   * 동시에 일어난 두 번째 `import("node-pty")`는 vitest가 mock이 아닌 실제 모듈을 돌려줄 때가 있다.
+   * 그래서 spawn 횟수가 아니라, 두 클라이언트가 같은 PTY의 출력을 받는지로 판정한다.
+   */
+  it("로컬은 PTY를 하나만 띄우고 두 클라이언트가 모두 출력을 받는다", async () => {
+    const { attachLocalSession, getActiveTerminalCount } = await importTerminalModule();
+    const firstWs = createMockWs();
+    const secondWs = createMockWs();
+
+    await Promise.all([
+      attachLocalSession("task-1", "task-1-1", SessionType.TERMINAL, "proj", firstWs as never, "/work"),
+      attachLocalSession("task-1", "task-1-1", SessionType.TERMINAL, "proj", secondWs as never, "/work"),
+    ]);
+    emitPtyOutput(spawnedPtys[0], "hello");
+
+    expect(getActiveTerminalCount()).toBe(1);
+    expect(firstWs.send).toHaveBeenCalledWith("hello");
+    expect(secondWs.send).toHaveBeenCalledWith("hello");
+  });
+
+  it("원격도 ssh PTY 하나를 두 클라이언트가 함께 쓴다", async () => {
+    const { attachRemoteSession, getActiveTerminalCount } = await importTerminalModule();
+    const firstWs = createMockWs();
+    const secondWs = createMockWs();
+
+    await Promise.all([
+      attachRemoteSession("task-1", null, "remote-host", SessionType.TMUX, "proj-main", firstWs as never, SSH_CONFIG),
+      attachRemoteSession("task-1", null, "remote-host", SessionType.TMUX, "proj-main", secondWs as never, SSH_CONFIG),
+    ]);
+    emitPtyOutput(spawnedPtys[0], "hello");
+
+    expect(getActiveTerminalCount()).toBe(1);
+    expect(firstWs.send).toHaveBeenCalledWith("hello");
+    expect(secondWs.send).toHaveBeenCalledWith("hello");
+  });
+
+  it("먼저 온 쪽이 PTY를 띄우지 못하면 기다리던 쪽도 닫고 거절한다", async () => {
+    const nodePty = await import("node-pty");
+    vi.mocked(nodePty.spawn).mockImplementationOnce(() => {
+      throw new Error("spawn failed");
+    });
+    const { attachLocalSession, getActiveTerminalCount } = await importTerminalModule();
+    const firstWs = createMockWs();
+    const secondWs = createMockWs();
+
+    const results = await Promise.allSettled([
+      attachLocalSession("task-1", "task-1-1", SessionType.TERMINAL, "proj", firstWs as never, "/work"),
+      attachLocalSession("task-1", "task-1-1", SessionType.TERMINAL, "proj", secondWs as never, "/work"),
+    ]);
+
+    expect(results.map((result) => result.status)).toEqual(["rejected", "rejected"]);
+    expect(firstWs.close).toHaveBeenCalledWith(1011, "터미널 프로세스 생성 실패");
+    expect(secondWs.close).toHaveBeenCalledWith(1011, "터미널 연결 실패");
+    expect(getActiveTerminalCount()).toBe(0);
+  });
+
+  it("실패한 뒤 다시 열면 새로 띄운다", async () => {
+    const nodePty = await import("node-pty");
+    vi.mocked(nodePty.spawn).mockImplementationOnce(() => {
+      throw new Error("spawn failed");
+    });
+    const { attachLocalSession } = await importTerminalModule();
+
+    await expect(
+      attachLocalSession("task-1", "task-1-1", SessionType.TERMINAL, "proj", createMockWs() as never, "/work"),
+    ).rejects.toThrow();
+    await attachLocalSession("task-1", "task-1-1", SessionType.TERMINAL, "proj", createMockWs() as never, "/work");
+
+    expect(spawnedPtys).toHaveLength(1);
+  });
+});
+
 describe("terminal 세션 spawn", () => {
   it("로컬은 로그인 셸을 worktree에서 띄운다", async () => {
     process.env.SHELL = "/bin/zsh";
