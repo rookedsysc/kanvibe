@@ -11,9 +11,54 @@ const spawnMock = vi.fn();
 const createTaskMock = vi.fn();
 const updateTaskStatusMock = vi.fn();
 const getProjectBranchesMock = vi.fn();
+const attachTaskTerminalMock = vi.fn();
+let defaultSessionTypeSetting = SessionType.TMUX;
+
+/** 데스크탑 PTY 대신 세우는 가짜. 테스트가 출력을 흘리고 셸을 끝낼 수 있다 */
+interface PtyStub {
+  write: ReturnType<typeof vi.fn>;
+  resize: ReturnType<typeof vi.fn>;
+  kill: ReturnType<typeof vi.fn>;
+  cols: number;
+  rows: number;
+  pid: number;
+  emitOutput: (chunk: string) => void;
+  exit: () => void;
+}
+const spawnedPtys: PtyStub[] = [];
+
+vi.mock("node-pty", () => ({
+  spawn: vi.fn((_shell: string, _args: string[], options: { cols: number; rows: number }) => {
+    const dataHandlers: ((chunk: string) => void)[] = [];
+    const exitHandlers: ((status: { exitCode: number }) => void)[] = [];
+    const pty = {
+      write: vi.fn(),
+      resize: vi.fn(),
+      kill: vi.fn(),
+      cols: options.cols,
+      rows: options.rows,
+      pid: 4000 + spawnedPtys.length,
+      onData: (handler: (chunk: string) => void) => dataHandlers.push(handler),
+      onExit: (handler: (status: { exitCode: number }) => void) => exitHandlers.push(handler),
+      emitOutput: (chunk: string) => dataHandlers.forEach((handler) => handler(chunk)),
+      exit: () => exitHandlers.forEach((handler) => handler({ exitCode: 0 })),
+    };
+    spawnedPtys.push(pty);
+    return pty;
+  }),
+}));
+
+/** 세션을 띄우는 길은 기본으로 실제 함수를 지나고, 멀티플렉서 시작을 보는 테스트만 갈아 끼운다 */
+let realAttachTaskTerminal: (typeof import("@/desktop/main/terminalBridge"))["attachTaskTerminal"];
+vi.mock("@/desktop/main/terminalBridge", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/desktop/main/terminalBridge")>();
+  realAttachTaskTerminal = actual.attachTaskTerminal;
+  return { ...actual, attachTaskTerminal: (...args: unknown[]) => attachTaskTerminalMock(...args) };
+});
 
 vi.mock("@/desktop/main/services/appSettingsService", () => ({
   getAppSetting: async (key: string) => appSettingsStore.get(key) ?? null,
+  getDefaultSessionType: async () => defaultSessionTypeSetting,
   setAppSetting: async (key: string, value: string) => {
     appSettingsStore.set(key, value);
   },
@@ -42,9 +87,12 @@ vi.mock("child_process", async (importOriginal) => ({
   spawn: (...args: unknown[]) => spawnMock(...args),
 }));
 
+const { attachClientToTerminalTab, createLocalTerminalTab, killAllTerminalSessions } = await import("@/lib/terminal");
+const { CallbackTerminalClient } = await import("@/desktop/main/terminalBridge");
 const {
   authorizeMobileRequest,
   createMobileTask,
+  getMobileBoard,
   getMobileProjectBranches,
   getTaskSurfaces,
   listPairedMobileDevices,
@@ -78,6 +126,13 @@ beforeEach(() => {
   getProjectBranchesMock.mockReset();
   getProjectBranchesMock.mockResolvedValue(["main", "dev"]);
   stopMobilePairing();
+  attachTaskTerminalMock.mockReset();
+  attachTaskTerminalMock.mockImplementation((...args: Parameters<typeof realAttachTaskTerminal>) =>
+    realAttachTaskTerminal(...args),
+  );
+  killAllTerminalSessions();
+  spawnedPtys.length = 0;
+  defaultSessionTypeSetting = SessionType.TMUX;
 });
 
 /** 세션 pane 목록과 스냅샷만 답하는 tmux 태스크를 세운다 */
@@ -452,6 +507,9 @@ describe("태스크 pane 조회", () => {
       if (command.includes("--version")) {
         return "zellij 0.44.3";
       }
+      if (command.includes("list-sessions")) {
+        return "kanvibe-zj [Created 1m ago]";
+      }
       return JSON.stringify([
         {
           id: 1,
@@ -704,5 +762,192 @@ describe("모바일 프로젝트 브랜치 목록", () => {
   it("데스크탑 브랜치 조회를 그대로 쓴다", async () => {
     expect(await getMobileProjectBranches("project-1")).toEqual(["main", "dev"]);
     expect(getProjectBranchesMock).toHaveBeenCalledWith("project-1");
+  });
+});
+
+describe("세션이 아직 없는 태스크", () => {
+  /** tmux 세션이 시작되기 전까지는 `has-session`이 실패하고, 시작된 뒤에는 pane 하나를 답한다 */
+  function stubTmuxSessionStartedBy(attach: () => Promise<void>): void {
+    let isSessionStarted = false;
+    findOneByMock.mockResolvedValue(TMUX_TASK);
+    execGitMock.mockImplementation(async (command) => {
+      if (command.includes("has-session")) {
+        if (!isSessionStarted) {
+          throw new Error("can't find session");
+        }
+        return "";
+      }
+      return MIRROR_PANE_LINE;
+    });
+    attachTaskTerminalMock.mockImplementation(async () => {
+      await attach();
+      isSessionStarted = true;
+    });
+  }
+
+  it("데스크탑과 같은 길로 세션을 띄운 뒤 pane을 돌려주고 띄운 클라이언트는 떨어진다", async () => {
+    stubTmuxSessionStartedBy(async () => {});
+
+    const surfaces = await getTaskSurfaces("task-1");
+
+    expect(surfaces.tabs[0].panes[0].id).toBe("%19");
+    expect(attachTaskTerminalMock).toHaveBeenCalledTimes(1);
+    const [startedTask, startedTabId, startupClient] = attachTaskTerminalMock.mock.calls[0];
+    expect(startedTask).toBe(TMUX_TASK);
+    expect(startedTabId).toBeNull();
+    expect(startupClient.readyState).not.toBe(startupClient.OPEN);
+  });
+
+  it("세션을 띄우지 못하면 서버 오류 대신 세션이 꺼져 있다는 사유를 알린다", async () => {
+    stubTmuxSessionStartedBy(async () => {
+      throw new Error("tmux 세션 생성에 실패했습니다.");
+    });
+
+    await expect(getTaskSurfaces("task-1")).rejects.toMatchObject({ reason: "session-not-running" });
+    expect(executedCommands().some((command) => command.includes("list-panes"))).toBe(false);
+    const startupClient = attachTaskTerminalMock.mock.calls[0][2];
+    expect(startupClient.readyState).not.toBe(startupClient.OPEN);
+  });
+
+  it("원격 호스트에 닿지 못하면 세션을 띄우지 않고 연결 실패를 따로 알린다", async () => {
+    findOneByMock.mockResolvedValue({ ...TMUX_TASK, sshHost: "devbox" });
+    execGitMock.mockRejectedValue(new Error("ssh: connect to host devbox port 22: Operation timed out"));
+
+    await expect(getTaskSurfaces("task-1")).rejects.toMatchObject({ reason: "remote-unreachable" });
+    expect(attachTaskTerminalMock).not.toHaveBeenCalled();
+  });
+
+  it("원격 호스트에 닿으면 세션이 없을 때와 같은 길로 띄운다", async () => {
+    stubTmuxSessionStartedBy(async () => {});
+    findOneByMock.mockResolvedValue({ ...TMUX_TASK, sshHost: "devbox" });
+
+    const surfaces = await getTaskSurfaces("task-1");
+
+    expect(surfaces.tabs[0].panes[0].id).toBe("%19");
+    expect(execGitMock).toHaveBeenCalledWith("true", "devbox");
+    expect(attachTaskTerminalMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("세션이 이미 살아 있으면 띄우지 않는다", async () => {
+    stubTmuxMirror();
+
+    await getTaskSurfaces("task-1");
+
+    expect(attachTaskTerminalMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("terminal 세션 미러", () => {
+  const TERMINAL_TASK = {
+    id: "term-task",
+    sessionType: SessionType.TERMINAL,
+    sessionName: "kanvibe-term",
+    sshHost: null,
+    worktreePath: null,
+    projectId: null,
+  };
+  const FIRST_TAB_ID = "term-task-1";
+
+  beforeEach(() => {
+    findOneByMock.mockResolvedValue(TERMINAL_TASK);
+  });
+
+  it("탭 하나를 pane 하나로 펼치고 pane 식별자로 탭 식별자를 쓴다", async () => {
+    const secondTab = createLocalTerminalTab("term-task");
+
+    const surfaces = await getTaskSurfaces("term-task");
+
+    expect(surfaces.sessionType).toBe(SessionType.TERMINAL);
+    expect(surfaces.tabs.map((tab) => tab.panes.map((pane) => pane.id))).toEqual([[FIRST_TAB_ID], [secondTab.id]]);
+    expect(surfaces.tabs[0].panes[0]).toMatchObject({ width: 120, height: 30 });
+  });
+
+  it("PTY가 없으면 만들어 붙고, 이미 있으면 지금 화면을 먼저 받은 뒤 이어지는 출력을 받는다", async () => {
+    const firstChunks: string[] = [];
+    await subscribeToPane("term-task", FIRST_TAB_ID, (chunk) => firstChunks.push(chunk), () => {});
+    expect(spawnedPtys).toHaveLength(1);
+
+    spawnedPtys[0].emitOutput("hello");
+    const laterChunks: string[] = [];
+    await subscribeToPane("term-task", FIRST_TAB_ID, (chunk) => laterChunks.push(chunk), () => {});
+    spawnedPtys[0].emitOutput(" world");
+
+    expect(spawnedPtys).toHaveLength(1);
+    expect(firstChunks).toEqual(["hello", " world"]);
+    expect(laterChunks[0]).toContain("hello");
+    expect(laterChunks.slice(1)).toEqual([" world"]);
+  });
+
+  it("지금 화면을 준비하는 사이 나온 출력은 화면 뒤에 한 번만 이어 보낸다", async () => {
+    await subscribeToPane("term-task", FIRST_TAB_ID, () => {}, () => {});
+    spawnedPtys[0].emitOutput("before");
+    const chunks: string[] = [];
+    const client = new CallbackTerminalClient((chunk) => chunks.push(chunk));
+    client.holdOutput();
+
+    const screenUntilNow = attachClientToTerminalTab("term-task", FIRST_TAB_ID, client as never);
+    spawnedPtys[0].emitOutput("during");
+    client.releaseHeldOutput((await screenUntilNow) ?? "");
+    spawnedPtys[0].emitOutput("after");
+
+    expect(chunks[0]).toContain("before");
+    expect(chunks[0]).not.toContain("during");
+    expect(chunks.slice(1)).toEqual(["during", "after"]);
+  });
+
+  it("PTY를 만들지 못하면 끝을 알리지 않고 사유와 함께 거절한다", async () => {
+    attachTaskTerminalMock.mockImplementation(async (_task, _tabId, client: { close: () => void }) => {
+      client.close();
+      throw new Error("터미널 프로세스 생성 실패");
+    });
+    const onEnd = vi.fn();
+
+    await expect(subscribeToPane("term-task", FIRST_TAB_ID, () => {}, onEnd)).rejects.toThrow("터미널 프로세스 생성 실패");
+    expect(onEnd).not.toHaveBeenCalled();
+  });
+
+  it("입력은 PTY에 그대로 들어가고 크기 변경 명령처럼 생긴 입력도 크기를 바꾸지 않는다", async () => {
+    await subscribeToPane("term-task", FIRST_TAB_ID, () => {}, () => {});
+    const resizeLikeInput = `\x01${JSON.stringify({ type: "resize", cols: 10, rows: 5 })}`;
+
+    await writeToPane("term-task", FIRST_TAB_ID, "ls\r");
+    await writeToPane("term-task", FIRST_TAB_ID, resizeLikeInput);
+
+    expect(spawnedPtys[0].write.mock.calls).toEqual([["ls\r"], [resizeLikeInput]]);
+    expect(spawnedPtys[0].resize).not.toHaveBeenCalled();
+  });
+
+  it("다른 태스크의 탭은 구독하거나 입력할 수 없다", async () => {
+    await expect(subscribeToPane("term-task", "other-task-1", () => {}, () => {})).rejects.toMatchObject({
+      reason: "session-not-running",
+    });
+    await expect(writeToPane("term-task", "other-task-1", "ls")).rejects.toMatchObject({
+      reason: "session-not-running",
+    });
+    expect(spawnedPtys).toHaveLength(0);
+  });
+
+  it("셸이 스스로 끝났을 때만 끝을 알리고, 구독자가 나가도 PTY는 남는다", async () => {
+    const onEnd = vi.fn();
+    const stop = await subscribeToPane("term-task", FIRST_TAB_ID, () => {}, onEnd);
+
+    stop();
+    expect(onEnd).not.toHaveBeenCalled();
+    expect(spawnedPtys[0].kill).not.toHaveBeenCalled();
+
+    const onEndAfterResubscribe = vi.fn();
+    await subscribeToPane("term-task", FIRST_TAB_ID, () => {}, onEndAfterResubscribe);
+    spawnedPtys[0].exit();
+    expect(onEndAfterResubscribe).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("모바일 보드", () => {
+  it("생성 화면이 쓸 데스크탑 기본 세션 타입을 함께 싣는다", async () => {
+    defaultSessionTypeSetting = SessionType.ZELLIJ;
+
+    const board = await getMobileBoard();
+
+    expect(board.defaultSessionType).toBe(SessionType.ZELLIJ);
   });
 });

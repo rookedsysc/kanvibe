@@ -21,6 +21,8 @@ interface SpawnedPtyStub {
   onData: ReturnType<typeof vi.fn>;
   onExit: ReturnType<typeof vi.fn>;
   pid: number;
+  cols: number;
+  rows: number;
   /** node-pty가 등록받은 종료 콜백. 셸이 스스로 끝나는 상황을 재현할 때 부른다 */
   triggerExit: () => void;
 
@@ -30,7 +32,7 @@ const spawnedPtys: SpawnedPtyStub[] = [];
 const spawnCalls: { shell: string; args: string[]; cwd: string }[] = [];
 
 vi.mock("node-pty", () => ({
-  spawn: vi.fn((shell: string, args: string[], options: { cwd: string }) => {
+  spawn: vi.fn((shell: string, args: string[], options: { cwd: string; cols: number; rows: number }) => {
     let exitHandler: ((exitStatus: { exitCode: number; signal?: number }) => void) | null = null;
     const ptyStub: SpawnedPtyStub = {
       kill: vi.fn(),
@@ -41,6 +43,8 @@ vi.mock("node-pty", () => ({
         exitHandler = handler;
       }),
       pid: 1000 + spawnedPtys.length,
+      cols: options.cols,
+      rows: options.rows,
       triggerExit: () => exitHandler?.({ exitCode: 0, signal: undefined }),
     };
 

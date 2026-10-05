@@ -1,7 +1,8 @@
 import { spawn, type ChildProcess } from "child_process";
-import { getAppSetting, setAppSetting } from "@/desktop/main/services/appSettingsService";
+import { getAppSetting, getDefaultSessionType, setAppSetting } from "@/desktop/main/services/appSettingsService";
 import { createTask, getTasksByStatus, updateTaskStatus } from "@/desktop/main/services/kanbanService";
 import { getAllProjects, getProjectBranches } from "@/desktop/main/services/projectService";
+import { attachTaskTerminal, CallbackTerminalClient } from "@/desktop/main/terminalBridge";
 import { SessionType, TaskStatus, type KanbanTask } from "@/entities/KanbanTask";
 import { TaskPriority } from "@/entities/TaskPriority";
 import { getTaskRepository } from "@/lib/database";
@@ -34,7 +35,13 @@ import {
 } from "@/lib/paneMirror";
 import { resolveZellijIdTargetingSupport } from "@/lib/terminalTabs";
 import { buildSSHArgs, getKanvibeSSHConnectionHealthOptions, parseSSHConfig } from "@/lib/sshConfig";
-import { quoteForPosixShell } from "@/lib/worktree";
+import {
+  attachClientToTerminalTab,
+  getTerminalTabSize,
+  listLocalTerminalTabs,
+  writeTerminalTabInput,
+} from "@/lib/terminal";
+import { isSessionAlive, quoteForPosixShell } from "@/lib/worktree";
 
 /**
  * 모바일 클라이언트가 데스크탑을 읽고, 터미널 pane을 비추고, 태스크를 만들거나 옮기는 경로.
@@ -42,10 +49,10 @@ import { quoteForPosixShell } from "@/lib/worktree";
  * 비추는 쪽은 데스크탑 화면을 바꾸지 않는다. pane을 고르거나 크기를 바꾸는 명령은 하나도 부르지 않고,
  * 스냅샷과 출력 스트림만 가져다 나눠 보낸다. 근거는 `paneMirror.ts` 머리말에 적어 두었다.
  *
- * 데스크탑을 바꾸는 것은 [createMobileTask]와 [updateMobileTaskStatus] 둘뿐이고,
- * 데스크탑 화면이 누르는 것과 같은 `kanbanService` 경로를 지난다. 특히 태스크 생성은 worktree를 만들고
- * 터미널 세션을 띄우므로, 페어링한 기기가 이 머신에 셸 세션을 열 수 있다는 뜻이다.
- * 그래서 이 둘은 [authorizeMobileRequest] 뒤에만 놓이고, 화면에 없는 칸은 받지 않는다.
+ * 데스크탑을 바꾸는 것은 [createMobileTask]와 [updateMobileTaskStatus], 그리고 세션이 아직 없는 태스크를 열 때
+ * 세션을 띄우는 일이다. 앞의 둘은 데스크탑 화면이 누르는 것과 같은 `kanbanService` 경로를, 세션은 데스크탑이 태스크를
+ * 열 때와 같은 [attachTaskTerminal]을 지난다. 페어링한 기기가 이 머신에 셸 세션을 열 수 있다는 뜻이라
+ * 이것들은 [authorizeMobileRequest] 뒤에만 놓이고, 화면에 없는 칸은 받지 않는다.
  *
  * 부르는 곳이 둘이다. 페어링 코드를 띄우고 기기를 끊는 것은 설정 화면이 `serviceRegistry`를 거쳐 부르고,
  * 보드와 pane은 hook 서버의 `/api/mobile/*` 경로가 부른다.
@@ -62,6 +69,13 @@ const MIRROR_COMMAND_TIMEOUT_MS = 5_000;
  */
 const LOCAL_DUMP_INTERVAL_MS = 1_000;
 const REMOTE_DUMP_INTERVAL_MS = 3_000;
+
+/**
+ * 세션을 띄운 뒤 살아날 때까지 기다리는 상한과 확인 간격.
+ * zellij와 원격 tmux는 PTY 안에서 비동기로 만들어져 붙는 것만으로는 다 됐는지 알 수 없다.
+ */
+const SESSION_START_TIMEOUT_MS = 15_000;
+const SESSION_START_POLL_INTERVAL_MS = 500;
 
 const PAIRED_DEVICES_KEY = "mobile_paired_devices";
 
@@ -89,7 +103,7 @@ export interface TaskSurfaces {
 }
 
 /** 세션을 비출 수 없는 이유. 화면이 빈 터미널 대신 이 사유를 보여 준다 */
-export type SurfaceUnavailableReason = "no-session" | "session-not-running" | "zellij-too-old";
+export type SurfaceUnavailableReason = "no-session" | "session-not-running" | "zellij-too-old" | "remote-unreachable";
 
 export class SurfaceUnavailableError extends Error {
   constructor(readonly reason: SurfaceUnavailableReason) {
@@ -98,7 +112,8 @@ export class SurfaceUnavailableError extends Error {
   }
 }
 
-async function findMirrorSessionTarget(taskId: string): Promise<MirrorSessionTarget> {
+/** 세션이 지정된 태스크. 세션이 없으면 비출 것도 띄울 것도 없다 */
+async function findMirrorTask(taskId: string): Promise<KanbanTask> {
   const taskRepo = await getTaskRepository();
   const task: KanbanTask | null = await taskRepo.findOneBy({ id: taskId });
 
@@ -106,7 +121,15 @@ async function findMirrorSessionTarget(taskId: string): Promise<MirrorSessionTar
     throw new SurfaceUnavailableError("no-session");
   }
 
-  return { sessionType: task.sessionType, sessionName: task.sessionName, sshHost: task.sshHost };
+  return task;
+}
+
+function toMirrorSessionTarget(task: KanbanTask): MirrorSessionTarget {
+  return { sessionType: task.sessionType as SessionType, sessionName: task.sessionName as string, sshHost: task.sshHost };
+}
+
+async function findMirrorSessionTarget(taskId: string): Promise<MirrorSessionTarget> {
+  return toMirrorSessionTarget(await findMirrorTask(taskId));
 }
 
 function runMirrorCommand(command: string, sshHost: string | null): Promise<string> {
@@ -122,7 +145,18 @@ function hasZellijPaneIdSupport(sshHost: string | null): Promise<boolean> {
  * 폰은 이 결과의 pane을 전부 펼쳐 탭으로 쓰고, 태블릿은 탭 하나의 pane을 좌표대로 조립한다.
  */
 export async function getTaskSurfaces(taskId: string): Promise<TaskSurfaces> {
-  const target = await findMirrorSessionTarget(taskId);
+  const task = await findMirrorTask(taskId);
+  const target = toMirrorSessionTarget(task);
+
+  if (target.sshHost) {
+    await ensureRemoteHostReachable(target.sshHost);
+  }
+
+  if (target.sessionType === SessionType.TERMINAL) {
+    return { taskId, sessionType: target.sessionType, tabs: listTerminalMirrorTabs(taskId) };
+  }
+
+  await startMultiplexerSessionIfMissing(task, target);
   const panes = await listMirrorPanes(target);
 
   if (panes.length === 0) {
@@ -151,6 +185,78 @@ async function listMirrorPanes(target: MirrorSessionTarget): Promise<MirrorPane[
   return parseTmuxMirrorPaneList(output);
 }
 
+/**
+ * 원격 호스트에 닿는지 먼저 본다.
+ *
+ * 세션 확인(`isSessionAlive`)은 연결 실패도 "세션 없음"으로 접는다. 그대로 두면 닿지도 않는 호스트에 세션을 띄우려다
+ * 실패하고, 화면은 세션이 꺼져 있다고 안내한다. 사용자가 할 일은 세션이 아니라 네트워크나 SSH 설정을 보는 것이라
+ * 사유를 따로 둔다. `true`는 연결되면 실패할 수 없는 명령이라, 실패는 곧 연결 실패다.
+ */
+async function ensureRemoteHostReachable(sshHost: string): Promise<void> {
+  try {
+    await runMirrorCommand("true", sshHost);
+  } catch (error) {
+    console.error("[kanvibe] Mobile remote host unreachable:", error);
+    throw new SurfaceUnavailableError("remote-unreachable");
+  }
+}
+
+/**
+ * 세션이 아직 없으면 데스크탑이 태스크를 열 때와 같은 길로 띄운다.
+ *
+ * tmux와 zellij 세션은 데스크탑이 터미널을 붙일 때 생기므로, 모바일에서 만들었거나 데스크탑에서 한 번도 열지 않은
+ * 태스크에는 비출 세션이 없다. 화면 없는 클라이언트로 붙어 세션을 만들고 살아난 것을 확인한 뒤 떨어진다.
+ * 멀티플렉서 세션은 클라이언트가 떨어져도 남고, 데스크탑 화면은 붙어 있지 않았으니 바뀌지 않는다.
+ */
+async function startMultiplexerSessionIfMissing(task: KanbanTask, target: MirrorSessionTarget): Promise<void> {
+  if (await isSessionAlive(target.sessionType, target.sessionName, target.sshHost)) {
+    return;
+  }
+
+  const startupClient = new CallbackTerminalClient(() => {});
+  try {
+    await attachTaskTerminal(task, null, startupClient);
+    await waitUntilSessionAlive(target);
+  } catch (error) {
+    console.error("[kanvibe] Mobile session start failed:", error);
+    throw new SurfaceUnavailableError("session-not-running");
+  } finally {
+    startupClient.close();
+  }
+}
+
+async function waitUntilSessionAlive(target: MirrorSessionTarget): Promise<void> {
+  const deadline = Date.now() + SESSION_START_TIMEOUT_MS;
+
+  while (!(await isSessionAlive(target.sessionType, target.sessionName, target.sshHost))) {
+    if (Date.now() >= deadline) {
+      throw new Error(`세션이 ${SESSION_START_TIMEOUT_MS}ms 안에 살아나지 않았습니다: ${target.sessionName}`);
+    }
+    await new Promise((resolve) => setTimeout(resolve, SESSION_START_POLL_INTERVAL_MS));
+  }
+}
+
+/**
+ * terminal 세션의 탭 목록. 멀티플렉서가 없어 탭 하나가 PTY 하나, 즉 pane 하나다.
+ * pane 식별자로 탭 식별자를 그대로 쓴다.
+ */
+function listTerminalMirrorTabs(taskId: string): MirrorTab[] {
+  return listLocalTerminalTabs(taskId).map((tab) => {
+    const { cols, rows } = getTerminalTabSize(taskId, tab.id);
+    const pane: MirrorPane = {
+      id: tab.id,
+      tabId: tab.id,
+      tabName: tab.name,
+      command: "",
+      left: 0,
+      top: 0,
+      width: cols,
+      height: rows,
+    };
+    return { id: tab.id, name: tab.name, panes: [pane] };
+  });
+}
+
 /** pane 목록을 처음 나온 탭 순서대로 묶는다. 멀티플렉서가 이미 정렬해 주므로 다시 정렬하지 않는다 */
 function groupPanesIntoTabs(panes: MirrorPane[]): MirrorTab[] {
   const tabsById = new Map<string, MirrorTab>();
@@ -169,8 +275,12 @@ function groupPanesIntoTabs(panes: MirrorPane[]): MirrorTab[] {
 
 /** 모바일 보드가 한 번에 받는 것. 데스크탑 보드와 같은 조회를 쓰므로 정렬과 done 페이지 크기가 같다 */
 export async function getMobileBoard() {
-  const [board, projects] = await Promise.all([getTasksByStatus(), getAllProjects()]);
-  return { ...board, projects };
+  const [board, projects, defaultSessionType] = await Promise.all([
+    getTasksByStatus(),
+    getAllProjects(),
+    getDefaultSessionType(),
+  ]);
+  return { ...board, projects, defaultSessionType };
 }
 
 /**
@@ -558,7 +668,12 @@ export async function subscribeToPane(
   onChunk: (chunk: string) => void,
   onEnd: () => void,
 ): Promise<() => void> {
-  const target = await findMirrorSessionTarget(taskId);
+  const task = await findMirrorTask(taskId);
+  if (task.sessionType === SessionType.TERMINAL) {
+    return subscribeToTerminalTab(task, paneId, onChunk, onEnd);
+  }
+
+  const target = toMirrorSessionTarget(task);
   const key = buildSubscriptionKey(taskId, paneId);
 
   await ensurePaneBelongsToSession(target, paneId);
@@ -594,6 +709,62 @@ export async function subscribeToPane(
       subscription.stop();
     }
   };
+}
+
+/**
+ * terminal 세션 탭 하나를 구독한다. 멀티플렉서가 없으니 KanVibe가 들고 있는 PTY에 직접 붙는다.
+ *
+ * PTY가 이미 있으면 지금 화면을 먼저 받고, 없으면 데스크탑이 탭을 열 때와 같은 길로 만든다.
+ * 이 클라이언트는 크기 변경을 보내지 않으므로 데스크탑 화면의 크기는 바뀌지 않는다.
+ * [onEnd]는 PTY가 스스로 끝났을 때만 돈다.
+ */
+async function subscribeToTerminalTab(
+  task: KanbanTask,
+  tabId: string,
+  onChunk: (chunk: string) => void,
+  onEnd: () => void,
+): Promise<() => void> {
+  if (!listLocalTerminalTabs(task.id).some((tab) => tab.id === tabId)) {
+    throw new SurfaceUnavailableError("session-not-running");
+  }
+
+  let isReleased = false;
+  /** 붙기 전에 닫힌 것은 끝이 아니라 실패다. 실패는 던지는 쪽이 알리므로 끝까지 함께 알리면 사유가 덮인다 */
+  let isAttached = false;
+  const client = new CallbackTerminalClient(onChunk);
+  client.once("close", () => {
+    if (isAttached && !isReleased) {
+      onEnd();
+    }
+  });
+  const release = () => {
+    if (isReleased) {
+      return;
+    }
+    isReleased = true;
+    client.close();
+  };
+
+  try {
+    client.holdOutput();
+    const screenUntilNow = attachClientToTerminalTab(task.id, tabId, client as never);
+    if (screenUntilNow) {
+      client.releaseHeldOutput(await screenUntilNow);
+    } else {
+      client.releaseHeldOutput("");
+      await attachTaskTerminal(task, tabId, client);
+    }
+
+    /** 화면을 기다리는 사이 셸이 끝났으면 붙을 PTY가 없다 */
+    if (client.readyState !== client.OPEN) {
+      throw new SurfaceUnavailableError("session-not-running");
+    }
+    isAttached = true;
+    return release;
+  } catch (error) {
+    release();
+    throw error;
+  }
 }
 
 /**
@@ -728,6 +899,13 @@ function stopMirrorProcess(child: ChildProcess): void {
 /** 모바일에서 누른 키를 pane에 그대로 넣는다 */
 export async function writeToPane(taskId: string, paneId: string, input: string): Promise<void> {
   const target = await findMirrorSessionTarget(taskId);
+
+  if (target.sessionType === SessionType.TERMINAL) {
+    if (!writeTerminalTabInput(taskId, paneId, input)) {
+      throw new SurfaceUnavailableError("session-not-running");
+    }
+    return;
+  }
 
   /**
    * 구독이 붙기 전에도 소켓은 메시지를 받을 수 있어(`mobileRoutes`가 `message`를 먼저 건다)
