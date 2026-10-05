@@ -8,4 +8,10 @@ enum SessionType {
   terminal;
 
   String get wireValue => name;
+
+  /// 데스크탑이 보낸 값에 대응하는 세션 종류. 모르는 값은 데스크탑 설정과 같이 tmux로 본다
+  static SessionType fromWire(Object? value) => SessionType.values.firstWhere(
+    (sessionType) => sessionType.wireValue == value,
+    orElse: () => SessionType.tmux,
+  );
 }

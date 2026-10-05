@@ -65,6 +65,10 @@ void main() {
         SurfaceUnavailableReason.fromWire('zellij-too-old'),
         SurfaceUnavailableReason.zellijTooOld,
       );
+      expect(
+        SurfaceUnavailableReason.fromWire('remote-unreachable'),
+        SurfaceUnavailableReason.remoteUnreachable,
+      );
     });
 
     test('모르는 사유도 안내 문구를 가진다', () {

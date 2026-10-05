@@ -1,3 +1,4 @@
+import '../../task_create/domain/session_type.dart';
 import '../domain/board_project.dart';
 import '../domain/board_task.dart';
 import '../domain/task_status.dart';
@@ -6,12 +7,19 @@ import '../domain/task_status.dart';
 ///
 /// 데스크탑과 같은 조회를 쓰므로 정렬(최근 수정 순)과 done 페이지 크기가 데스크탑과 같다.
 class BoardSnapshot {
-  const BoardSnapshot({required this.tasksByStatus, this.projects = const []});
+  const BoardSnapshot({
+    required this.tasksByStatus,
+    this.projects = const [],
+    this.defaultSessionType = SessionType.tmux,
+  });
 
   final Map<TaskStatus, List<BoardTask>> tasksByStatus;
 
   /// 데스크탑에 등록된 프로젝트. 태스크 생성 화면이 고를 대상으로 쓴다
   final List<BoardProject> projects;
+
+  /// 데스크탑 설정의 기본 세션 종류. 생성 화면이 처음 고른 값으로 쓴다
+  final SessionType defaultSessionType;
 
   /// 새 태스크를 만들 수 있는 프로젝트. worktree 프로젝트에서 또 worktree를 치면 안 된다
   List<BoardProject> get creatableProjects =>
@@ -48,7 +56,11 @@ class BoardSnapshot {
           .toList();
     }
 
-    return BoardSnapshot(tasksByStatus: tasksByStatus, projects: projects);
+    return BoardSnapshot(
+      tasksByStatus: tasksByStatus,
+      projects: projects,
+      defaultSessionType: SessionType.fromWire(json['defaultSessionType']),
+    );
   }
 
   /// 목록이 아닌 값이 오면 그 칸만 비운다. 응답 한 곳이 어긋났다고 보드 전체를 못 그리면 안 된다

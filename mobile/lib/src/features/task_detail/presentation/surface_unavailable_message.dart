@@ -10,5 +10,7 @@ String surfaceUnavailableMessage(SurfaceUnavailableReason reason) =>
       SurfaceUnavailableReason.sessionNotRunning =>
         '세션이 실행 중이 아닙니다. 데스크탑에서 태스크를 열면 세션이 시작됩니다.',
       SurfaceUnavailableReason.zellijTooOld => 'zellij 0.44 이상이 필요합니다.',
+      SurfaceUnavailableReason.remoteUnreachable =>
+        '데스크탑이 원격 호스트에 연결하지 못했습니다. 네트워크나 SSH 설정을 확인해 주세요.',
       SurfaceUnavailableReason.unknown => '터미널을 불러오지 못했습니다.',
     };

@@ -224,6 +224,21 @@ void main() {
     expect(find.byType(PaneTerminalView), findsNothing);
   });
 
+  testWidgets('원격 호스트에 닿지 못하면 세션이 아니라 연결을 확인하라고 알려 준다', (tester) async {
+    await pumpDetail(
+      tester,
+      size: phoneSize,
+      surfaces: null,
+      surfacesError: const SurfaceUnavailableException(
+        SurfaceUnavailableReason.remoteUnreachable,
+      ),
+    );
+
+    expect(find.textContaining('원격 호스트에 연결하지 못했습니다'), findsOneWidget);
+    expect(find.textContaining('세션이 실행 중이 아닙니다'), findsNothing);
+    expect(find.text('다시 시도'), findsOneWidget);
+  });
+
   testWidgets('zellij 버전이 낮으면 필요한 버전을 알려 준다', (tester) async {
     await pumpDetail(
       tester,

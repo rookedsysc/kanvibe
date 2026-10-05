@@ -17,10 +17,17 @@ import '../domain/session_type.dart';
 ///
 /// 만들기에 성공하면 만들어진 태스크를 돌려주며 닫힌다. 데스크탑이 그렇듯 곧바로 그 태스크로 들어가기 위해서다.
 class CreateTaskScreen extends ConsumerStatefulWidget {
-  const CreateTaskScreen({required this.projects, super.key});
+  const CreateTaskScreen({
+    required this.projects,
+    required this.defaultSessionType,
+    super.key,
+  });
 
   /// 고를 수 있는 프로젝트. 보드가 이미 받아 둔 목록이라 여기서 다시 부르지 않는다
   final List<BoardProject> projects;
+
+  /// 처음 골라 둘 세션 종류. 데스크탑 생성 창처럼 데스크탑 설정의 기본값을 따른다
+  final SessionType defaultSessionType;
 
   @override
   ConsumerState<CreateTaskScreen> createState() => _CreateTaskScreenState();
@@ -34,7 +41,7 @@ class _CreateTaskScreenState extends ConsumerState<CreateTaskScreen> {
   BoardProject? _selectedProject;
   String? _baseBranch;
   TaskPriority? _priority;
-  SessionType _sessionType = SessionType.tmux;
+  late SessionType _sessionType = widget.defaultSessionType;
 
   bool _isCreating = false;
   String? _failureMessage;

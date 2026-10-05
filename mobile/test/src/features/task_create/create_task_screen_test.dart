@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kanvibe_mobile/src/common/network/desktop_client.dart';
 import 'package:kanvibe_mobile/src/features/board/domain/board_project.dart';
+import 'package:kanvibe_mobile/src/features/task_create/domain/session_type.dart';
 import 'package:kanvibe_mobile/src/features/task_create/presentation/create_task_screen.dart';
 
 import '../../../support/fake_desktop.dart';
@@ -19,6 +20,7 @@ const _projects = [
 Future<FakeDesktopClient> pumpCreate(
   WidgetTester tester, {
   List<BoardProject> projects = _projects,
+  SessionType defaultSessionType = SessionType.tmux,
   Object? createError,
 }) async {
   await tester.binding.setSurfaceSize(phoneSize);
@@ -30,7 +32,10 @@ Future<FakeDesktopClient> pumpCreate(
         builder: (context) => TextButton(
           onPressed: () => Navigator.of(context).push(
             MaterialPageRoute<void>(
-              builder: (_) => CreateTaskScreen(projects: projects),
+              builder: (_) => CreateTaskScreen(
+                projects: projects,
+                defaultSessionType: defaultSessionType,
+              ),
             ),
           ),
           child: const Text('열기'),
@@ -114,6 +119,20 @@ void main() {
       'priority': null,
       'sessionType': 'tmux',
     });
+  });
+
+  testWidgets('세션 타입은 데스크탑 설정의 기본값을 골라 둔 채로 보낸다', (tester) async {
+    final client = await pumpCreate(
+      tester,
+      defaultSessionType: SessionType.zellij,
+    );
+    await selectProject(tester);
+
+    await tester.enterText(find.byType(TextFormField).first, 'feat/x');
+    await tester.tap(find.text('만들기'));
+    await tester.pumpAndSettle();
+
+    expect(client.createCalls.single['sessionType'], 'zellij');
   });
 
   testWidgets('데스크탑이 값을 거절하면 그 사유를 폼에 남긴다', (tester) async {

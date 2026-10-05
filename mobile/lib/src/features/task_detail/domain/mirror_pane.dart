@@ -82,12 +82,14 @@ enum SurfaceUnavailableReason {
   noSession,
   sessionNotRunning,
   zellijTooOld,
+  remoteUnreachable,
   unknown;
 
   static SurfaceUnavailableReason fromWire(String? value) => switch (value) {
     'no-session' => SurfaceUnavailableReason.noSession,
     'session-not-running' => SurfaceUnavailableReason.sessionNotRunning,
     'zellij-too-old' => SurfaceUnavailableReason.zellijTooOld,
+    'remote-unreachable' => SurfaceUnavailableReason.remoteUnreachable,
     _ => SurfaceUnavailableReason.unknown,
   };
 }

@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:kanvibe_mobile/src/features/board/data/board_snapshot.dart';
 import 'package:kanvibe_mobile/src/features/board/domain/task_priority.dart';
 import 'package:kanvibe_mobile/src/features/board/domain/task_status.dart';
+import 'package:kanvibe_mobile/src/features/task_create/domain/session_type.dart';
 
 void main() {
   group('상태 값', () {
@@ -84,6 +85,17 @@ void main() {
 
       expect(snapshot.isEmpty, isTrue);
       expect(snapshot.tasksIn(TaskStatus.review), isEmpty);
+    });
+
+    test('데스크탑 설정의 기본 세션 종류를 읽고, 없거나 모르는 값이면 tmux로 본다', () {
+      SessionType readDefault(Object? value) => BoardSnapshot.fromJson({
+        'tasks': const {},
+        'defaultSessionType': value,
+      }).defaultSessionType;
+
+      expect(readDefault('terminal'), SessionType.terminal);
+      expect(readDefault(null), SessionType.tmux);
+      expect(readDefault('screen'), SessionType.tmux);
     });
 
     test('원격 태스크는 호스트로 구분된다', () {
