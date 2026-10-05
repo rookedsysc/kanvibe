@@ -28,7 +28,7 @@ describe("desktop runtime environment", () => {
     const source = readFileSync(path.join(process.cwd(), "electron", "main.js"), "utf8");
 
     expect(source).not.toContain("process.env.PORT");
-    expect(source).toContain("createHookServer({ host: HOOK_SERVER_HOST, port: HOOK_SERVER_PORT })");
+    expect(source).toContain("host: HOOK_SERVER_HOST,\n    port: HOOK_SERVER_PORT,");
     expect(source).toContain("setHookServerPort(HOOK_SERVER_PORT)");
   });
 

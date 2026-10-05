@@ -7,6 +7,7 @@ import * as editor from "@/desktop/main/services/editorService";
 import * as githubCliDependency from "@/desktop/main/services/githubCliDependencyService";
 import * as hooks from "@/desktop/main/services/hookService";
 import * as kanban from "@/desktop/main/services/kanbanService";
+import * as mobileBridge from "@/desktop/main/services/mobileBridgeService";
 import * as paneLayout from "@/desktop/main/services/paneLayoutService";
 import * as project from "@/desktop/main/services/projectService";
 import * as releaseUpdates from "@/desktop/main/services/releaseUpdateService";
@@ -25,6 +26,7 @@ export const desktopServices = {
   githubCliDependency,
   hooks,
   kanban,
+  mobileBridge,
   paneLayout,
   project,
   releaseUpdates,

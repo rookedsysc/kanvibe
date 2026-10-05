@@ -1,0 +1,19 @@
+# 데스크탑이 발급한 코드로 연결하면 보드가 열리고, 준비 단계가 심어 둔 픽스처 태스크가 보인다.
+appId: ${APP_ID}
+---
+- runScript:
+    file: ../scripts/issue-dev-pairing-code.js
+- runFlow:
+    file: fill-connection-form.yaml
+    env:
+      PAIRING_CODE: ${output.pairingCode}
+# 연결을 누른 뒤 보드가 뜨기까지 두 번의 왕복이 있다. 페어링과 보드 조회가 각각 8초까지 기다리므로
+# 느린 기기에서는 합쳐서 15초를 넘긴다.
+- extendedWaitUntil:
+    visible: "KanVibe"
+    timeout: 40000
+- scrollUntilVisible:
+    element: "Maestro Fixture NoSession"
+    direction: DOWN
+    timeout: 15000
+- takeScreenshot: 02-페어링-후-보드

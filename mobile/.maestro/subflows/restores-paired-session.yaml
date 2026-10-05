@@ -1,0 +1,12 @@
+# 한 번 연결한 기기는 앱을 다시 열어도 연결 화면을 거치지 않고 보드로 들어간다.
+appId: ${APP_ID}
+---
+- stopApp
+- launchApp
+
+# 껐다 켜는 것도 콜드 스타트라 기기가 바쁘면 수십 초가 걸린다.
+- extendedWaitUntil:
+    visible: "KanVibe"
+    timeout: 90000
+- assertNotVisible: "데스크탑에 연결"
+- takeScreenshot: 04-재실행-후-보드-복원

@@ -1,0 +1,49 @@
+# 기기에서 태스크를 만들고, 데스크탑에서 한 번도 열지 않은 채로 그 터미널에 친 명령이 실행되는지 본다.
+#
+# 데스크탑은 세션을 터미널을 여는 시점에 만든다. 그래서 기기에서 만든 태스크에는 처음에 비출 세션이 없고,
+# 기기가 태스크를 열 때 데스크탑과 같은 길로 세션을 띄워야 한다. 픽스처처럼 세션을 미리 띄워 두지 않는 것이 이 흐름의 요점이다.
+#
+# 세션 종류는 SESSION_TYPE으로 받는다. tmux는 데스크탑 기본값이라 고르지 않고, 그 밖의 값만 골라 둔다.
+# 명령이 실행됐는지는 BRANCH_NAME의 worktree에 MARKER 파일이 생겼는지를 probe로 확인한다.
+appId: ${APP_ID}
+---
+- tapOn: "새 태스크"
+- extendedWaitUntil:
+    visible: "프로젝트 \\*"
+    timeout: 10000
+- tapOn: "프로젝트 \\*"
+- tapOn: "kanvibe-qa-fixture"
+- tapOn: "브랜치 이름 \\*"
+- inputText: ${BRANCH_NAME}
+- runFlow:
+    when:
+      true: ${SESSION_TYPE !== 'tmux'}
+    commands:
+      # 키보드는 Enter로 내린다. iOS의 hideKeyboard는 화면을 눌러 내리다 우선순위 드롭다운을 열어 버린다.
+      # 드롭다운은 라벨과 고른 값이 시맨틱스 하나(`세션 타입\ntmux`)로 합쳐져 있어 전체 일치로는 잡히지 않는다
+      - pressKey: Enter
+      - tapOn: "(?s).*세션 타입.*"
+      - tapOn: ${SESSION_TYPE}
+- scrollUntilVisible:
+    element: "만들기"
+    direction: DOWN
+- takeScreenshot: 11-생성-폼-${SESSION_TYPE}
+- tapOn: "만들기"
+- extendedWaitUntil:
+    visible: "(?s).*탭.*"
+    timeout: 40000
+- assertNotVisible: "(?s).*세션이 실행 중이 아닙니다.*"
+- assertNotVisible: "(?s).*터미널을 불러오지 못했습니다.*"
+- takeScreenshot: 12-생성한-태스크-터미널-${SESSION_TYPE}
+- tapOn:
+    point: "50%,25%"
+- inputText: "touch ${MARKER}"
+- pressKey: Enter
+- runScript:
+    file: ../scripts/assert-terminal-command-ran.js
+    env:
+      MARKER: ${MARKER}
+      BRANCH_NAME: ${BRANCH_NAME}
+- assertTrue: ${output.terminalCommandRan}
+- takeScreenshot: 13-생성한-태스크-입력-후-${SESSION_TYPE}
+- runFlow: goes-back-to-board.yaml
