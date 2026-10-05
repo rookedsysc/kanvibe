@@ -181,7 +181,15 @@ async function waitForMarkerFile(worktreePath, marker, timeoutMs) {
  * 친 글자는 그대로 보인다. 그래서 실행되어야만 생기는 파일을 본다. 함께 돌려주는 pane 내용은
  * 실패했을 때 무엇이 찍혔는지 보기 위한 것이다.
  */
-function startCommandProbe(sessionName, worktreePath) {
+/** 데스크탑이 브랜치 하나에 만드는 worktree 경로. `buildManagedWorktreePath`와 같은 규칙이다 */
+function buildFixtureWorktreePath(repoPath, branchName) {
+  return path.join(path.dirname(repoPath), `${path.basename(repoPath)}__worktrees`, branchName.replace(/\//g, "-"));
+}
+
+/**
+ * `branch`를 주면 그 브랜치의 worktree를 본다. 기기에서 새로 만든 태스크는 픽스처와 다른 worktree에서 셸이 돈다.
+ */
+function startCommandProbe(sessionName, repoPath) {
   const server = http.createServer(async (request, response) => {
     const requestUrl = new URL(request.url, `http://127.0.0.1:${PROBE_PORT}`);
 
@@ -191,6 +199,7 @@ function startCommandProbe(sessionName, worktreePath) {
     }
 
     const marker = requestUrl.searchParams.get("marker") ?? "";
+    const worktreePath = buildFixtureWorktreePath(repoPath, requestUrl.searchParams.get("branch") ?? FIXTURE_BRANCH);
     const ran = await waitForMarkerFile(worktreePath, marker, Number(requestUrl.searchParams.get("timeoutMs") ?? 0));
 
     response.writeHead(200, { "Content-Type": "application/json" });
@@ -206,13 +215,31 @@ function startCommandProbe(sessionName, worktreePath) {
  *
  * tmux 세션은 머신 전역의 tmux 서버에 붙고 데스크탑은 프로세스 트리라 여기서 지워야 한다.
  * worktree와 픽스처 저장소는 run 디렉터리 안에 있어 디렉터리를 지우는 것으로 함께 사라진다.
+ *
+ * 세션은 픽스처 하나만이 아니다. 기기에서 만든 태스크의 세션은 데스크탑이 띄우므로 이름을 미리 알 수 없다.
+ * 데스크탑은 세션 이름을 프로젝트 이름으로 시작하게 지으니, 픽스처 프로젝트 이름으로 시작하는 것만 지운다.
+ * 같은 tmux 서버에 사용자의 세션이 함께 있어 그 밖의 것은 건드리지 않는다.
  */
-async function cleanUp({ desktop, sessionName }) {
+function killFixtureSessions() {
+  let sessionNames = [];
   try {
-    run("tmux", ["kill-session", "-t", sessionName]);
+    sessionNames = run("tmux", ["list-sessions", "-F", "#{session_name}"]).split("\n");
   } catch {
-    /** 세션이 이미 없으면 지울 것도 없다 */
+    /** tmux 서버가 없으면 지울 것도 없다 */
+    return;
   }
+
+  for (const sessionName of sessionNames.filter((name) => name.startsWith(`${FIXTURE_PROJECT_NAME}-`))) {
+    try {
+      run("tmux", ["kill-session", "-t", sessionName]);
+    } catch {
+      /** 그 사이 스스로 끝났다 */
+    }
+  }
+}
+
+async function cleanUp({ desktop }) {
+  killFixtureSessions();
 
   try {
     process.kill(-desktop.pid, "SIGTERM");
@@ -263,13 +290,9 @@ async function main() {
       throw new Error("세션 있는 픽스처 태스크에 sessionName이 붙지 않았습니다. 데스크탑 로그를 확인하세요: " + logPath);
     }
 
-    const worktreePath = path.join(
-      path.dirname(repoPath),
-      `${path.basename(repoPath)}__worktrees`,
-      FIXTURE_BRANCH.replace(/\//g, "-"),
-    );
+    const worktreePath = buildFixtureWorktreePath(repoPath, FIXTURE_BRANCH);
     startFixtureSession(sessionTask.sessionName, worktreePath);
-    const probe = startCommandProbe(sessionTask.sessionName, worktreePath);
+    const probe = startCommandProbe(sessionTask.sessionName, repoPath);
 
     const fixture = {
       appDataDir,
@@ -290,13 +313,13 @@ async function main() {
     const stop = () => {
       probe.close();
       devPortHolder.close();
-      cleanUp({ desktop, sessionName: sessionTask.sessionName }).finally(() => process.exit(0));
+      cleanUp({ desktop }).finally(() => process.exit(0));
     };
     process.on("SIGTERM", stop);
     process.on("SIGINT", stop);
   } catch (error) {
     devPortHolder.close();
-    await cleanUp({ desktop, sessionName: "" });
+    await cleanUp({ desktop });
     throw error;
   }
 }

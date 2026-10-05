@@ -13,5 +13,17 @@ tags:
 - runFlow: ../subflows/opens-session-task-terminal.yaml
 - runFlow: ../subflows/types-into-terminal.yaml
 - runFlow: ../subflows/moves-task-status.yaml
+- runFlow:
+    file: ../subflows/creates-task-and-types-into-terminal.yaml
+    env:
+      SESSION_TYPE: tmux
+      BRANCH_NAME: maestro/mobile-tmux
+      MARKER: MAESTRO_TMUX_OK
+- runFlow:
+    file: ../subflows/creates-task-and-types-into-terminal.yaml
+    env:
+      SESSION_TYPE: terminal
+      BRANCH_NAME: maestro/mobile-terminal
+      MARKER: MAESTRO_TERMINAL_OK
 - runFlow: ../subflows/restores-paired-session.yaml
 - runFlow: ../subflows/disconnects-from-desktop.yaml
