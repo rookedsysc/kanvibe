@@ -4,6 +4,8 @@ import { SessionType } from "@/entities/KanbanTask";
 import { PaneLayoutType } from "@/entities/PaneLayoutConfig";
 import { execSync } from "child_process";
 import type { WebSocket } from "ws";
+import { Terminal as HeadlessTerminal } from "@xterm/headless";
+import { SerializeAddon } from "@xterm/addon-serialize";
 import { buildSSHArgs, getKanvibeSSHConnectionHealthOptions, hasLocalX11Display } from "@/lib/sshConfig";
 import {
   buildTmuxHideStatusBarCommand,
@@ -31,9 +33,25 @@ interface TerminalEntry {
   sessionName: string;
   taskId: string;
   tabId: string | null;
+  /** terminal 세션에만 있다. 멀티플렉서 세션은 멀티플렉서가 화면을 들고 있다 */
+  screen?: TerminalScreen;
+}
+
+/**
+ * terminal 세션의 지금 화면.
+ * 멀티플렉서가 없어 나중에 붙는 클라이언트에게 지금 화면을 다시 그려 줄 곳이 없다.
+ * PTY 출력을 headless xterm에도 흘려 두고, 붙는 순간 직렬화해 건넨다.
+ */
+interface TerminalScreen {
+  terminal: HeadlessTerminal;
+  serializer: SerializeAddon;
 }
 
 const activeTerminals = new Map<string, TerminalEntry>();
+
+/** 크기를 받지 못한 PTY가 쓰는 기본 크기. 미러가 아직 없는 PTY의 크기를 미리 알릴 때도 같은 값을 쓴다 */
+const DEFAULT_TERMINAL_COLS = 120;
+const DEFAULT_TERMINAL_ROWS = 30;
 
 /**
  * tmux와 zellij는 태스크당 PTY 하나를 멀티플렉서에 붙이고 탭은 멀티플렉서 안에 있다.
@@ -176,7 +194,7 @@ function attachClientToEntry(terminalKey: string, entry: TerminalEntry, ws: WebS
   entry.clients.add(ws);
 
   ws.on("message", (message) => {
-    handleTerminalMessage(entry.pty, message.toString());
+    handleTerminalMessage(entry, message.toString());
   });
 
   ws.on("close", () => {
@@ -235,8 +253,16 @@ function destroyTerminal(terminalKey: string, triggerLabel?: string): void {
     }
   }
   entry.clients.clear();
+  entry.screen?.terminal.dispose();
 
   activeTerminals.delete(terminalKey);
+}
+
+function createTerminalScreen(cols: number, rows: number): TerminalScreen {
+  const terminal = new HeadlessTerminal({ cols, rows, allowProposedApi: true });
+  const serializer = new SerializeAddon();
+  terminal.loadAddon(serializer);
+  return { terminal, serializer };
 }
 
 /** PTY 출력을 붙어 있는 모든 클라이언트에 흘리고, PTY가 죽으면 레지스트리에서 지운다 */
@@ -246,6 +272,9 @@ function registerTerminalEntry(
   ws: WebSocket,
   debugLabel: string,
 ): void {
+  if (entry.sessionType === SessionType.TERMINAL) {
+    entry.screen = createTerminalScreen(entry.pty.cols, entry.pty.rows);
+  }
   activeTerminals.set(terminalKey, entry);
 
   let firstDataLogged = false;
@@ -254,6 +283,7 @@ function registerTerminalEntry(
       firstDataLogged = true;
       debugLog(`${debugLabel} PTY 첫 데이터 수신`, { terminalKey, sample: data.slice(0, 200) });
     }
+    entry.screen?.terminal.write(data);
     for (const client of entry.clients) {
       if (client.readyState === client.OPEN) {
         client.send(data);
@@ -271,6 +301,59 @@ function registerTerminalEntry(
   });
 
   attachClientToEntry(terminalKey, entry, ws);
+}
+
+/**
+ * 만들어지는 중인 PTY. 키마다 하나다.
+ *
+ * PTY를 띄우는 길은 node-pty를 불러오는 동안 한 번 양보한다. 그 틈에 같은 터미널로 두 번째 요청이 오면
+ * 둘 다 "아직 없음"을 보고 PTY를 하나씩 띄우고, 나중 것이 레지스트리 자리를 덮어 앞의 PTY는 아무도 찾지 못한 채 남는다.
+ * 창 두 개, 폰과 태블릿, 데스크탑과 모바일이 같은 태스크를 함께 여는 경우가 모두 그렇다.
+ * 그래서 첫 요청이 만드는 동안의 약속을 올려 두고, 뒤에 온 요청은 그것을 기다렸다가 같은 PTY에 붙는다.
+ */
+const pendingTerminalCreations = new Map<string, Promise<TerminalEntry | null>>();
+
+/**
+ * 이미 떠 있거나 만들어지는 중인 PTY. 둘 다 없으면 null이다.
+ * 이 조회와 [trackTerminalCreation]의 등록 사이에 `await`이 끼면 위의 경쟁이 다시 생긴다.
+ */
+function findSharedTerminal(terminalKey: string): TerminalEntry | Promise<TerminalEntry | null> | null {
+  return activeTerminals.get(terminalKey) ?? pendingTerminalCreations.get(terminalKey) ?? null;
+}
+
+async function attachToSharedTerminal(
+  terminalKey: string,
+  sharedTerminal: TerminalEntry | Promise<TerminalEntry | null>,
+  ws: WebSocket,
+): Promise<void> {
+  if (!(sharedTerminal instanceof Promise)) {
+    attachClientToEntry(terminalKey, sharedTerminal, ws);
+    return;
+  }
+
+  /** 만들던 쪽이 실패했거나 그 사이 셸이 끝났으면 붙을 PTY가 없다. 실패 사유는 만들던 쪽이 이미 알린다 */
+  const entry = await sharedTerminal.catch(() => null);
+  if (!entry || activeTerminals.get(terminalKey) !== entry) {
+    ws.close(1011, "터미널 연결 실패");
+    throw new Error("터미널 연결 실패");
+  }
+  attachClientToEntry(terminalKey, entry, ws);
+}
+
+/** PTY를 띄우는 동안 그 약속을 올려 두고, 끝나면 내린다. [findSharedTerminal]과 같은 동기 구간에서 불러야 한다 */
+function trackTerminalCreation(terminalKey: string, spawnTerminal: () => Promise<void>): Promise<void> {
+  const spawned = spawnTerminal();
+  const creation = spawned.then(() => activeTerminals.get(terminalKey) ?? null);
+  pendingTerminalCreations.set(terminalKey, creation);
+
+  const forgetCreation = () => {
+    if (pendingTerminalCreations.get(terminalKey) === creation) {
+      pendingTerminalCreations.delete(terminalKey);
+    }
+  };
+  creation.then(forgetCreation, forgetCreation);
+
+  return spawned;
 }
 
 /** PTY가 스스로 끝났을 때 탭 목록만 정리한다. PTY는 이미 없으므로 다시 죽이지 않는다 */
@@ -473,7 +556,7 @@ function buildLocalPtySpawnPlan(
   return { shell: "zellij", args, cwd: cwd || homeDirectory };
 }
 
-/** 로컬 tmux / zellij / terminal 세션에 attach하여 WebSocket과 연결한다 */
+/** 로컬 tmux / zellij / terminal 세션에 attach하여 WebSocket과 연결한다. 같은 터미널의 PTY가 있거나 만들어지는 중이면 그것을 공유한다 */
 export async function attachLocalSession(
   taskId: string,
   tabId: string | null,
@@ -485,17 +568,34 @@ export async function attachLocalSession(
   rows?: number,
   tmuxPaneLayout?: TmuxPaneLayoutConfig | null,
 ): Promise<void> {
-  const initialCols = cols ?? 120;
-  const initialRows = rows ?? 30;
-  const terminalEnvironment = createLocalShellEnvironment();
   const terminalKey = buildTerminalKey(taskId, tabId);
-
-  /** 같은 터미널에 이미 활성 PTY가 있으면 기존 PTY를 공유한다 */
-  const existing = activeTerminals.get(terminalKey);
-  if (existing) {
-    attachClientToEntry(terminalKey, existing, ws);
+  const sharedTerminal = findSharedTerminal(terminalKey);
+  if (sharedTerminal) {
+    await attachToSharedTerminal(terminalKey, sharedTerminal, ws);
     return;
   }
+
+  await trackTerminalCreation(terminalKey, () =>
+    spawnLocalSession(taskId, tabId, sessionType, sessionName, ws, cwd, cols, rows, tmuxPaneLayout),
+  );
+}
+
+/** 로컬 세션의 PTY를 새로 띄우고 첫 클라이언트를 붙인다 */
+async function spawnLocalSession(
+  taskId: string,
+  tabId: string | null,
+  sessionType: SessionType,
+  sessionName: string,
+  ws: WebSocket,
+  cwd?: string | null,
+  cols?: number,
+  rows?: number,
+  tmuxPaneLayout?: TmuxPaneLayoutConfig | null,
+): Promise<void> {
+  const initialCols = cols ?? DEFAULT_TERMINAL_COLS;
+  const initialRows = rows ?? DEFAULT_TERMINAL_ROWS;
+  const terminalEnvironment = createLocalShellEnvironment();
+  const terminalKey = buildTerminalKey(taskId, tabId);
 
   /**
    * tmux: 세션이 없으면 execSync으로 detached 세션을 먼저 생성한다 (TTY 불필요).
@@ -558,7 +658,15 @@ export async function attachLocalSession(
   );
 }
 
-/** SSH를 통해 원격 세션에 attach하여 WebSocket과 연결한다 */
+type RemoteSSHConfig = {
+  host: string;
+  hostname: string;
+  port: number;
+  username: string;
+  privateKeyPath: string;
+};
+
+/** SSH를 통해 원격 세션에 attach하여 WebSocket과 연결한다. 같은 터미널의 PTY가 있거나 만들어지는 중이면 그것을 공유한다 */
 export async function attachRemoteSession(
   taskId: string,
   tabId: string | null,
@@ -566,28 +674,54 @@ export async function attachRemoteSession(
   sessionType: SessionType,
   sessionName: string,
   ws: WebSocket,
-  sshConfig: {
-    host: string;
-    hostname: string;
-    port: number;
-    username: string;
-    privateKeyPath: string;
-  },
+  sshConfig: RemoteSSHConfig,
   cols?: number,
   rows?: number,
   worktreePath?: string | null,
   tmuxPaneLayout?: TmuxPaneLayoutConfig | null,
 ): Promise<void> {
-  const initialCols = cols ?? 120;
-  const initialRows = rows ?? 30;
-  const terminalEnvironment = createLocalShellEnvironment();
   const terminalKey = buildTerminalKey(taskId, tabId);
-
-  const existing = activeTerminals.get(terminalKey);
-  if (existing) {
-    attachClientToEntry(terminalKey, existing, ws);
+  const sharedTerminal = findSharedTerminal(terminalKey);
+  if (sharedTerminal) {
+    await attachToSharedTerminal(terminalKey, sharedTerminal, ws);
     return;
   }
+
+  await trackTerminalCreation(terminalKey, () =>
+    spawnRemoteSession(
+      taskId,
+      tabId,
+      sshHost,
+      sessionType,
+      sessionName,
+      ws,
+      sshConfig,
+      cols,
+      rows,
+      worktreePath,
+      tmuxPaneLayout,
+    ),
+  );
+}
+
+/** 원격 세션의 ssh PTY를 새로 띄우고 첫 클라이언트를 붙인다 */
+async function spawnRemoteSession(
+  taskId: string,
+  tabId: string | null,
+  sshHost: string,
+  sessionType: SessionType,
+  sessionName: string,
+  ws: WebSocket,
+  sshConfig: RemoteSSHConfig,
+  cols?: number,
+  rows?: number,
+  worktreePath?: string | null,
+  tmuxPaneLayout?: TmuxPaneLayoutConfig | null,
+): Promise<void> {
+  const initialCols = cols ?? DEFAULT_TERMINAL_COLS;
+  const initialRows = rows ?? DEFAULT_TERMINAL_ROWS;
+  const terminalEnvironment = createLocalShellEnvironment();
+  const terminalKey = buildTerminalKey(taskId, tabId);
 
   const pty = await import("node-pty");
   const attachCommand = buildRemoteAttachCommand(sessionType, sessionName, worktreePath, tmuxPaneLayout);
@@ -775,20 +909,21 @@ function buildRemoteInteractiveShellFallbackCommand(): string {
   ].join("; ");
 }
 
-function handleTerminalMessage(ptyProcess: import("node-pty").IPty, data: string): void {
+function handleTerminalMessage(entry: TerminalEntry, data: string): void {
   if (data.startsWith("\x01")) {
     try {
       const parsed = JSON.parse(data.slice(1));
       if (parsed.type === "resize" && parsed.cols && parsed.rows) {
-        ptyProcess.resize(parsed.cols, parsed.rows);
+        entry.pty.resize(parsed.cols, parsed.rows);
+        entry.screen?.terminal.resize(parsed.cols, parsed.rows);
       }
     } catch {
-      ptyProcess.write(data);
+      entry.pty.write(data);
     }
     return;
   }
 
-  ptyProcess.write(data);
+  entry.pty.write(data);
 }
 
 /** 렌더러의 입력 포커스는 xterm DOM에서만 처리한다. 호스트 tmux 클라이언트 전환은 수행하지 않는다 */
@@ -819,4 +954,53 @@ export function detachSession(taskId: string, triggerLabel?: string): void {
 /** 활성 터미널 수를 반환한다 */
 export function getActiveTerminalCount(): number {
   return activeTerminals.size;
+}
+
+/**
+ * 이미 떠 있는 terminal 세션 탭에 클라이언트를 붙이고, 붙인 순간까지의 화면을 돌려준다.
+ *
+ * 클라이언트는 곧바로 붙으므로 화면이 준비되는 사이에 나온 출력도 받는다. 그 출력은 화면에 아직 반영되지 않은
+ * 몫이라, 받는 쪽은 돌려받은 화면을 먼저 그리고 그동안 받은 출력을 이어 그려야 빠지거나 겹치지 않는다.
+ * PTY가 없으면 null이다.
+ */
+export function attachClientToTerminalTab(taskId: string, tabId: string, ws: WebSocket): Promise<string> | null {
+  const terminalKey = buildTerminalKey(taskId, tabId);
+  const entry = activeTerminals.get(terminalKey);
+  if (!entry?.screen) {
+    return null;
+  }
+
+  const { terminal, serializer } = entry.screen;
+  const screenUntilNow = new Promise<string>((resolve) => {
+    /** 빈 쓰기의 콜백은 앞서 받은 출력이 모두 반영된 뒤에 돈다 */
+    terminal.write("", () => resolve(serializer.serialize()));
+    /** 그 사이 셸이 끝나면 화면이 버려져 콜백이 돌지 않는다. 기다리는 쪽이 멈춰 있지 않게 빈 화면으로 푼다 */
+    ws.once("close", () => resolve(""));
+  });
+  attachClientToEntry(terminalKey, entry, ws);
+  return screenUntilNow;
+}
+
+/**
+ * terminal 세션 탭에 입력을 그대로 넣는다. PTY가 없으면 false다.
+ * 클라이언트 메시지 경로를 지나지 않으므로 입력이 크기 변경 명령으로 읽히지 않는다.
+ */
+export function writeTerminalTabInput(taskId: string, tabId: string, input: string): boolean {
+  const entry = activeTerminals.get(buildTerminalKey(taskId, tabId));
+  if (!entry) {
+    return false;
+  }
+
+  entry.pty.write(input);
+  return true;
+}
+
+/** terminal 세션 탭의 크기. PTY가 아직 없으면 새로 만들 때 쓸 기본 크기다 */
+export function getTerminalTabSize(taskId: string, tabId: string): { cols: number; rows: number } {
+  const entry = activeTerminals.get(buildTerminalKey(taskId, tabId));
+  if (!entry) {
+    return { cols: DEFAULT_TERMINAL_COLS, rows: DEFAULT_TERMINAL_ROWS };
+  }
+
+  return { cols: entry.pty.cols, rows: entry.pty.rows };
 }

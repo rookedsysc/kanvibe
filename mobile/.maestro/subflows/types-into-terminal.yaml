@@ -1,0 +1,22 @@
+# 모바일에서 친 키가 데스크탑 pane의 셸까지 가서 실행되는지 본다.
+#
+# 친 글자가 화면에 보이는 것만으로는 아무것도 증명되지 않는다. pty는 받은 키를 그대로 되비추므로
+# 소켓을 타고 갔는지와 무관하게 같은 글자가 보인다. 그래서 셸이 실행해야만 생기는 파일을 만들게 하고,
+# 그 파일이 worktree에 생겼는지를 probe로 확인한다.
+#
+# 명령에 `$`나 따옴표를 쓰지 않는다. Android의 텍스트 주입이 `$`를 하나 더 얹어 `$$`로 보내는 것을 봤고,
+# 그러면 셸이 PID로 전개해 버려 무엇이 잘못됐는지가 실행 결과에 묻힌다.
+#
+# 터미널을 누르는 데 좌표를 쓰는 이유는 캔버스에 셀렉터로 잡을 것이 없기 때문이다.
+# 본문 한가운데가 아닌 위쪽을 누르는 것은, 터미널이 데스크탑 pane의 가로세로 비를 지킨 채 축소돼
+# 화면 위쪽 띠만 차지하고 그 아래는 배경이기 때문이다. 배경을 누르면 포커스를 얻지 못한다.
+appId: ${APP_ID}
+---
+- tapOn:
+    point: "50%,25%"
+- inputText: "touch MAESTRO_INPUT_OK"
+- pressKey: Enter
+- runScript:
+    file: ../scripts/assert-terminal-command-ran.js
+- assertTrue: ${output.terminalCommandRan}
+- takeScreenshot: 07-터미널-입력-후

@@ -178,11 +178,30 @@ describe("buildZellijAliveSessionCheckCommand", () => {
     const command = buildZellijAliveSessionCheckCommand("feat-login");
 
     // Then
-    expect(command).toContain('awk \'$1 != "EXITED:" { print $1 }\'');
+    expect(command).toContain('$1 != "EXITED:" { print $1 }');
     expect(command).toContain("grep -qFx -- 'feat-login'");
     /** 판정 명령에만 stderr를 감춘다. attach를 조건문에 두면 대화형 세션 오류까지 사라진다 */
     expect(command).toContain("zellij list-sessions 2>/dev/null");
     expect(command).not.toContain("attach");
+  });
+});
+
+describe("buildZellijAliveSessionCheckCommand를 셸에서 돌리면", () => {
+  /** 원격 호스트가 받는 것과 같은 셸에서, zellij 0.45.1이 파이프로 내보낸 실제 출력을 흉내 내는 함수로 판정한다 */
+  async function runAliveCheck(listSessionsOutput: string, sessionName: string): Promise<number | null> {
+    const { buildZellijAliveSessionCheckCommand } = await import("@/lib/worktree");
+    const { spawnSync } = await import("child_process");
+    const fakeZellij = `zellij() { printf '%b' ${JSON.stringify(listSessionsOutput)}; }`;
+
+    return spawnSync("sh", ["-c", `${fakeZellij}; ${buildZellijAliveSessionCheckCommand(sessionName)}`]).status;
+  }
+
+  it("색이 입혀진 세션 이름도 살아 있는 것으로 본다", async () => {
+    expect(await runAliveCheck("\\033[32;1mfeat-login\\033[m [Created \\033[35;1m2s\\033[m ago] \\n", "feat-login")).toBe(0);
+  });
+
+  it("다른 세션만 있으면 살아 있지 않은 것으로 본다", async () => {
+    expect(await runAliveCheck("\\033[32;1mfeat-login-extra\\033[m [Created 2s ago] \\n", "feat-login")).toBe(1);
   });
 });
 
@@ -280,6 +299,18 @@ describe("isSessionAlive", () => {
 
     // Then
     expect(result).toBe(false);
+  });
+
+  it("should read a session name that zellij colored even when piped", async () => {
+    // Given: zellij 0.45.1이 파이프로 내보낸 실제 출력
+    mockExecGit.mockResolvedValue("\x1b[32;1mfeat-branch\x1b[m [Created \x1b[35;1m2s\x1b[m ago] \n");
+    const { isSessionAlive } = await import("@/lib/worktree");
+
+    // When
+    const result = await isSessionAlive(SessionType.ZELLIJ, "feat-branch");
+
+    // Then
+    expect(result).toBe(true);
   });
 
   it("should not treat a session name prefix as a match", async () => {
