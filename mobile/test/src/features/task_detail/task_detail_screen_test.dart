@@ -263,14 +263,14 @@ void main() {
   });
 
   group('데스크탑 태스크 화면에서 옮겨 온 것', () {
-    testWidgets('터미널 위에 프로젝트와 태스크 제목이 함께 붙는다', (tester) async {
+    testWidgets('터미널 위에는 프로젝트만 붙고 태스크 제목은 AppBar에만 있다', (tester) async {
       await pumpDetail(tester, size: phoneSize);
 
       expect(find.text('kanvibe-repo'), findsOneWidget);
       expect(
         find.text('모바일 클라이언트'),
-        findsNWidgets(2),
-        reason: 'AppBar와 머리글 두 곳에 있다',
+        findsOneWidget,
+        reason: '머리글이 AppBar 제목을 되풀이하지 않는다',
       );
     });
 
