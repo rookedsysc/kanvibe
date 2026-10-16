@@ -246,6 +246,16 @@ Each pane can run a custom command (e.g., `vim`, `htop`, `lazygit`, test runner,
 - Account homes follow the sibling-directory convention (`~/.claude-work` and so on), so the same account works from a terminal by switching one environment variable
 - Signed-out accounts stay listed so there is still somewhere to sign in again, and removing one deletes only the account home KanVibe created
 
+### Mobile Companion (Flutter)
+- Follow the board and step into a task's terminal from your phone or tablet with the Flutter client in [`mobile/`](./mobile/README.md); build it from source for now
+- Phones list tasks in vertical status sections, and tablets (768dp and wider) show the same board as Kanban columns
+- Task detail mirrors the task's tmux/zellij panes: one pane per tab on phones, one window per tab on tablets with panes in the same layout as the desktop
+- Type into the mirrored terminal with the on-screen keyboard, even for tasks the desktop has not opened and for SSH remote tasks
+- Create tasks with the desktop's default session type, move a task to another status, check task info, and open its PR
+- Mirroring only reads panes, so it never changes focus or pane size on the desktop
+- Pair under **Settings → Mobile Connection → Create pairing code**, then enter the desktop's address, port (`9736` for the packaged app), and the 6-digit code; codes expire after 5 minutes and work once
+- The device stays paired until you disconnect it from the app or from the desktop's device list
+
 ### Keyboard Shortcuts
 
 | Shortcut | Scope | Action |
@@ -384,6 +394,7 @@ Review code changes directly in the browser with a GitHub-style diff viewer. Cli
 | Drag & Drop | @hello-pangea/dnd |
 | i18n | next-intl |
 | Desktop Packaging | Electron + Electron Builder |
+| Mobile | Flutter + xterm.dart |
 
 ---
 
