@@ -9,29 +9,14 @@ import '../../../../common/constants/app_theme.dart';
 import '../../../../common/network/desktop_client.dart';
 import '../../../../common/providers.dart';
 import '../../domain/mirror_pane.dart';
-import '../surface_unavailable_message.dart';
 import 'terminal_soft_keyboard.dart';
 
-/// pane 하나를 그대로 비추는 터미널.
-///
-/// 폰은 이것 하나를 화면 가득 띄우고, 태블릿은 window의 pane 개수만큼 늘어놓는다. 두 배치가 같은 위젯을 쓴다.
-///
-/// 터미널 크기는 데스크탑의 pane 크기를 그대로 따르고 화면에 맞춰 늘리거나 줄이지 않는다.
-/// 모바일 화면 크기에 맞춰 다시 재면 줄바꿈이 데스크탑과 어긋나서, 같은 화면을 본다는 전제가 깨진다.
-/// 대신 [FittedBox]로 통째로 축소해 "데스크탑 화면을 작게 보는" 결과가 되게 한다.
+/// 원본 격자를 유지하고 화면보다 큰 출력은 스크롤로 읽는다.
 class PaneTerminalView extends ConsumerStatefulWidget {
-  const PaneTerminalView({
-    required this.taskId,
-    required this.pane,
-    this.isInteractive = true,
-    super.key,
-  });
+  const PaneTerminalView({required this.taskId, required this.pane, super.key});
 
   final String taskId;
   final MirrorPane pane;
-
-  /// 태블릿에서 여러 pane을 늘어놓을 때는 어느 pane에 입력할지 모호해서 읽기 전용으로 둔다
-  final bool isInteractive;
 
   @override
   ConsumerState<PaneTerminalView> createState() => _PaneTerminalViewState();
@@ -41,7 +26,21 @@ class _PaneTerminalViewState extends ConsumerState<PaneTerminalView> {
   late final xterm.Terminal _terminal;
   PaneStream? _stream;
   StreamSubscription<String>? _subscription;
-  SurfaceUnavailableReason? _failureReason;
+  String? _failureMessage;
+  bool _hasOutput = false;
+  Timer? _firstFrameTimer;
+  final _horizontalScroll = ScrollController();
+  final _verticalScroll = ScrollController();
+
+  static const _firstFrameTimeout = Duration(seconds: 15);
+  static final _textStyle = xterm.TerminalStyle(
+    fontSize: 14,
+    fontFamily: monoFontFamily,
+    fontFamilyFallback: [
+      'SymbolsNerdFontMono',
+      ...const xterm.TerminalStyle().fontFamilyFallback,
+    ],
+  );
 
   @override
   void initState() {
@@ -49,7 +48,9 @@ class _PaneTerminalViewState extends ConsumerState<PaneTerminalView> {
     _terminal = xterm.Terminal(maxLines: _scrollbackLines);
     _terminal.resize(widget.pane.width, widget.pane.height);
 
-    _bindInput();
+    _terminal.onOutput = (data) {
+      if (_failureMessage == null) _stream?.write(data);
+    };
 
     unawaited(_openStream());
   }
@@ -57,12 +58,6 @@ class _PaneTerminalViewState extends ConsumerState<PaneTerminalView> {
   @override
   void didUpdateWidget(PaneTerminalView oldWidget) {
     super.didUpdateWidget(oldWidget);
-
-    /// 태블릿에서 입력 대상이 옮겨 와도 이 위젯은 그대로 살아 있다.
-    /// 키를 어디로 보낼지는 initState에서 한 번 정하고 끝낼 수 없다.
-    if (widget.isInteractive != oldWidget.isInteractive) {
-      _bindInput();
-    }
 
     /// 데스크탑에서 pane을 분할하거나 창 크기를 바꾸면 같은 pane id로 새 좌표가 온다.
     /// key가 pane id라 element가 재사용되므로, 여기서 다시 재지 않으면 상자만 커지고 격자는 옛 크기로 남는다.
@@ -72,32 +67,52 @@ class _PaneTerminalViewState extends ConsumerState<PaneTerminalView> {
     }
   }
 
-  /// 입력을 받기로 한 pane만 키를 데스크탑으로 흘려보낸다
-  void _bindInput() {
-    _terminal.onOutput = widget.isInteractive
-        ? (data) => _stream?.write(data)
-        : null;
-  }
-
   /// 데스크탑 터미널이 보관하는 양과 비슷하게 잡는다. 더 늘리면 폰 메모리만 먹는다
   static const _scrollbackLines = 2000;
 
   Future<void> _openStream() async {
-    final connection = await ref.read(connectionControllerProvider.future);
-    if (connection == null || !mounted) {
-      return;
+    _firstFrameTimer = Timer(_firstFrameTimeout, () {
+      _failStream('터미널 응답이 없습니다. 데스크탑 연결을 확인한 뒤 다시 연결해 주세요.');
+    });
+    try {
+      final connection = await ref.read(connectionControllerProvider.future);
+      if (!mounted) return;
+      if (connection == null) {
+        _failStream('데스크탑에 연결되어 있지 않습니다. 다시 페어링해 주세요.');
+        return;
+      }
+      final stream = ref
+          .read(desktopClientProvider)
+          .openPaneStream(connection, widget.taskId, widget.pane.id);
+      _stream = stream;
+      _subscription = stream.output.listen(
+        _receiveOutput,
+        onError: (_) => _failStream('데스크탑과 연결이 끊겼습니다. 네트워크를 확인해 주세요.'),
+        onDone: _handleStreamClosed,
+      );
+    } catch (_) {
+      _failStream('데스크탑에 연결하지 못했습니다. 주소와 네트워크를 확인해 주세요.');
     }
+  }
 
-    final stream = ref
-        .read(desktopClientProvider)
-        .openPaneStream(connection, widget.taskId, widget.pane.id);
+  void _receiveOutput(String data) {
+    if (!mounted || _failureMessage != null || data.isEmpty) return;
+    _firstFrameTimer?.cancel();
+    _terminal.write(data);
+    if (!_hasOutput) setState(() => _hasOutput = true);
+  }
 
-    _stream = stream;
-    _subscription = stream.output.listen(
-      _terminal.write,
-      onError: (_) => _failStream(SurfaceUnavailableReason.unknown),
-      onDone: _handleStreamClosed,
-    );
+  Future<void> _retryStream() async {
+    _firstFrameTimer?.cancel();
+    unawaited(_subscription?.cancel());
+    unawaited(_stream?.close());
+    if (!mounted) return;
+    _stream = null;
+    setState(() {
+      _failureMessage = null;
+      _hasOutput = false;
+    });
+    await _openStream();
   }
 
   /// 데스크탑이 이 기기를 끊었다면 다시 페어링하는 것 말고 사용자가 할 일이 없다.
@@ -112,18 +127,25 @@ class _PaneTerminalViewState extends ConsumerState<PaneTerminalView> {
       return;
     }
 
-    _failStream(SurfaceUnavailableReason.sessionNotRunning);
+    if (_failureMessage != null) return;
+    _failStream(
+      _stream?.readCloseCode() == 4000
+          ? '데스크탑의 터미널 스트림에 오류가 발생했습니다. 세션 상태와 데스크탑 로그를 확인해 주세요.'
+          : '데스크탑과 연결이 끊겼습니다. 네트워크를 확인해 주세요.',
+    );
   }
 
-  void _failStream(SurfaceUnavailableReason reason) {
-    if (mounted) {
-      setState(() => _failureReason = reason);
-    }
+  void _failStream(String message) {
+    _firstFrameTimer?.cancel();
+    if (mounted) setState(() => _failureMessage = message);
   }
 
   @override
   void dispose() {
     /// 마지막 구독자가 나가면 데스크탑이 pane에 걸어 둔 파이프도 함께 풀린다
+    _firstFrameTimer?.cancel();
+    _horizontalScroll.dispose();
+    _verticalScroll.dispose();
     unawaited(_subscription?.cancel());
     unawaited(_stream?.close());
     super.dispose();
@@ -131,58 +153,103 @@ class _PaneTerminalViewState extends ConsumerState<PaneTerminalView> {
 
   @override
   Widget build(BuildContext context) {
-    final failureReason = _failureReason;
-    if (failureReason != null) {
-      return _PaneStreamFailure(failureReason);
+    final failureMessage = _failureMessage;
+    if (failureMessage != null) {
+      return _PaneStreamFailure(message: failureMessage, onRetry: _retryStream);
     }
+
+    final metrics = TextPainter(
+      text: TextSpan(text: 'mmmmmmmmmm', style: _textStyle.toTextStyle()),
+      textDirection: TextDirection.ltr,
+      textScaler: MediaQuery.textScalerOf(context),
+    )..layout();
+    final terminalWidth = (metrics.width / 10 * widget.pane.width)
+        .ceilToDouble();
+    metrics.dispose();
 
     return ColoredBox(
       color: AppColors.terminalBg,
-      child: FittedBox(
-        fit: BoxFit.contain,
-        alignment: Alignment.topLeft,
-        child: SizedBox(
-          width: widget.pane.width * _cellWidth,
-          height: widget.pane.height * _cellHeight,
-          child: _withSoftKeyboard(
-            xterm.TerminalView(
-              _terminal,
-
-              /// 위젯 크기에 맞춰 다시 재면 데스크탑과 줄바꿈이 어긋난다
-              autoResize: false,
-              readOnly: !widget.isInteractive,
-
-              /// xterm 내장 입력기는 Android에서 글자를 겹쳐 넣는다. 하드웨어 키만 xterm에 맡기고
-              /// 소프트 키보드는 [TerminalSoftKeyboard]가 받는다
-              hardwareKeyboardOnly: true,
-              backgroundOpacity: 0,
-              theme: _terminalTheme,
-              textStyle: const xterm.TerminalStyle(
-                fontSize: _fontSize,
-                fontFamily: monoFontFamily,
-              ),
+      child: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.circle,
+                  size: 8,
+                  color: _hasOutput
+                      ? AppColors.statusDone
+                      : AppColors.statusProgress,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  _hasOutput ? '출력 수신 중' : '터미널 연결 중…',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+                const Spacer(),
+                Text(
+                  '좌우·위아래 스크롤',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              ],
             ),
           ),
-        ),
+          Expanded(
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                return Scrollbar(
+                  controller: _horizontalScroll,
+                  thumbVisibility: true,
+                  notificationPredicate: (notification) =>
+                      notification.metrics.axis == Axis.horizontal,
+                  child: SingleChildScrollView(
+                    controller: _horizontalScroll,
+                    scrollDirection: Axis.horizontal,
+                    child: SizedBox(
+                      width: terminalWidth > constraints.maxWidth
+                          ? terminalWidth
+                          : constraints.maxWidth,
+                      height: constraints.maxHeight,
+                      child: MediaQuery.removePadding(
+                        context: context,
+                        removeLeft: true,
+                        removeRight: true,
+                        removeTop: true,
+                        removeBottom: true,
+                        child: TerminalSoftKeyboard(
+                          terminal: _terminal,
+                          child: Semantics(
+                            identifier: 'pane-terminal',
+                            label: '터미널 입력',
+                            child: xterm.TerminalView(
+                              _terminal,
+                              autoResize: false,
+                              hardwareKeyboardOnly: true,
+                              scrollController: _verticalScroll,
+                              backgroundOpacity: 0,
+                              theme: _terminalTheme,
+                              textStyle: _textStyle,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
       ),
     );
   }
-
-  /// 입력을 받는 pane에만 소프트 키보드를 붙인다
-  Widget _withSoftKeyboard(Widget terminalView) => widget.isInteractive
-      ? TerminalSoftKeyboard(terminal: _terminal, child: terminalView)
-      : terminalView;
-
-  /// [FittedBox]가 최종 크기를 정하므로 이 값은 비율만 맞으면 된다
-  static const _fontSize = 14.0;
-  static const _cellWidth = _fontSize * 0.6;
-  static const _cellHeight = _fontSize * 1.35;
 }
 
 const _terminalTheme = xterm.TerminalTheme(
   cursor: AppColors.brandPrimary,
   selection: AppColors.brandSubtle,
-  foreground: AppColors.terminalText,
+  foreground: AppColors.textPrimary,
   background: AppColors.terminalBg,
   black: Color(0xFF3B3F49),
   red: Color(0xFFFF7D73),
@@ -206,19 +273,30 @@ const _terminalTheme = xterm.TerminalTheme(
 );
 
 class _PaneStreamFailure extends StatelessWidget {
-  const _PaneStreamFailure(this.reason);
+  const _PaneStreamFailure({required this.message, required this.onRetry});
 
-  final SurfaceUnavailableReason reason;
+  final String message;
+  final VoidCallback onRetry;
 
   @override
   Widget build(BuildContext context) {
     return ColoredBox(
       color: AppColors.terminalBg,
       child: Center(
-        child: Text(
-          surfaceUnavailableMessage(reason),
-          textAlign: TextAlign.center,
-          style: Theme.of(context).textTheme.bodySmall,
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                message,
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.bodyMedium,
+              ),
+              const SizedBox(height: 16),
+              TextButton(onPressed: onRetry, child: const Text('다시 연결')),
+            ],
+          ),
         ),
       ),
     );

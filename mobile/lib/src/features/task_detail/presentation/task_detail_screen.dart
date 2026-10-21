@@ -14,7 +14,6 @@ import 'widgets/pane_terminal_view.dart';
 import 'widgets/task_info_sheet.dart';
 import 'widgets/task_status_sheet.dart';
 import 'widgets/terminal_chrome_header.dart';
-import 'widgets/window_pane_composition.dart';
 
 /// 태스크 하나의 터미널 화면.
 ///
@@ -23,9 +22,7 @@ import 'widgets/window_pane_composition.dart';
 /// 겹쳐 열리는 패널을 아래에서 올라오는 시트로 옮겼다. 폰에서 세로 레일이나 하단 바를 두면
 /// 터미널이 쓸 세로 공간을 그만큼 잃는다.
 ///
-/// 탭이 무엇을 가리키는지는 기기에 따라 다르다.
-/// 폰에서는 탭 하나가 pane 하나라서, 고른 pane이 화면을 가득 채운다.
-/// 태블릿에서는 탭 하나가 window 하나라서, 그 window의 pane이 데스크탑과 같은 배치로 함께 보인다.
+/// 모든 화면 크기에서 pane 하나를 선택해 본문 전체에 표시한다.
 class TaskDetailScreen extends ConsumerStatefulWidget {
   const TaskDetailScreen({required this.task, super.key});
 
@@ -37,7 +34,7 @@ class TaskDetailScreen extends ConsumerStatefulWidget {
 }
 
 class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
-  /// 고른 탭의 위치. 폰과 태블릿은 탭 목록의 길이가 달라서 화면이 바뀌면 다시 맞춘다
+  /// 고른 pane 탭의 위치
   int _selectedIndex = 0;
 
   /// 화면이 들고 있는 태스크. 상태를 옮기면 보드를 다시 받기 전에 여기부터 갈아 끼운다
@@ -119,7 +116,8 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            TerminalChromeHeader(task: _task),
+            if (MediaQuery.viewInsetsOf(context).bottom == 0)
+              TerminalChromeHeader(task: _task),
             Expanded(
               child: surfaces.when(
                 loading: () => const Center(child: CircularProgressIndicator()),
@@ -129,10 +127,7 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
                       : SurfaceUnavailableReason.unknown,
                   onRetry: () => ref.invalidate(surfacesProvider(_task.id)),
                 ),
-                data: (data) => LayoutBuilder(
-                  builder: (context, constraints) =>
-                      _buildSurfaces(data, isTabletLayout(constraints)),
-                ),
+                data: _buildSurfaces,
               ),
             ),
           ],
@@ -141,10 +136,8 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
     );
   }
 
-  Widget _buildSurfaces(TaskSurfaces surfaces, bool isTablet) {
-    final tabs = isTablet
-        ? [for (final tab in surfaces.tabs) _WindowTab(tab)]
-        : [for (final pane in surfaces.allPanes) _PaneTab(pane)];
+  Widget _buildSurfaces(TaskSurfaces surfaces) {
+    final tabs = surfaces.allPanes;
 
     if (tabs.isEmpty) {
       return _SurfacesUnavailable(
@@ -153,7 +146,7 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
       );
     }
 
-    /// 화면을 돌려 폰과 태블릿 배치를 오가면 탭 개수가 달라진다. 범위를 넘은 선택은 첫 탭으로 되돌린다
+    /// 새 목록에서 선택이 범위를 벗어나면 첫 pane을 표시한다
     final selectedIndex = _selectedIndex < tabs.length ? _selectedIndex : 0;
 
     return Column(
@@ -168,43 +161,8 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
     );
   }
 
-  Widget _buildSelectedSurface(_SurfaceTab tab) => switch (tab) {
-    _WindowTab(:final window) => WindowPaneComposition(
-      taskId: _task.id,
-      tab: window,
-    ),
-
-    /// 폰에서는 pane이 하나만 보이므로 어디로 입력할지 모호하지 않다
-    _PaneTab(:final pane) => PaneTerminalView(
-      taskId: _task.id,
-      pane: pane,
-      key: ValueKey(pane.id),
-    ),
-  };
-}
-
-/// 탭 바에 놓이는 항목 하나. 폰은 pane을, 태블릿은 window를 담는다.
-///
-/// 둘 중 하나만 채워지는 nullable 두 칸으로 두면 그 불변식이 타입에 없어 읽는 쪽마다 강제 언랩이 필요하고,
-/// 세 번째 종류가 생겨도 컴파일러가 아무것도 알려 주지 않는다. sealed로 두면 분기가 전수 검사된다.
-sealed class _SurfaceTab {
-  const _SurfaceTab({required this.label, required this.detail});
-
-  final String label;
-  final String detail;
-}
-
-final class _PaneTab extends _SurfaceTab {
-  _PaneTab(this.pane) : super(label: pane.command, detail: pane.tabName);
-
-  final MirrorPane pane;
-}
-
-final class _WindowTab extends _SurfaceTab {
-  _WindowTab(this.window)
-    : super(label: window.name, detail: '${window.panes.length} pane');
-
-  final MirrorTab window;
+  Widget _buildSelectedSurface(MirrorPane pane) =>
+      PaneTerminalView(taskId: _task.id, pane: pane, key: ValueKey(pane.id));
 }
 
 class _SurfaceTabBar extends StatelessWidget {
@@ -214,7 +172,7 @@ class _SurfaceTabBar extends StatelessWidget {
     required this.onSelected,
   });
 
-  final List<_SurfaceTab> tabs;
+  final List<MirrorPane> tabs;
   final int selectedIndex;
   final ValueChanged<int> onSelected;
 
@@ -247,7 +205,7 @@ class _SurfaceTabButton extends StatelessWidget {
     required this.onTap,
   });
 
-  final _SurfaceTab tab;
+  final MirrorPane tab;
   final bool isSelected;
   final VoidCallback onTap;
 
@@ -256,11 +214,11 @@ class _SurfaceTabButton extends StatelessWidget {
     return Semantics(
       selected: isSelected,
       button: true,
-      label: '${tab.label} 탭',
+      label: '${tab.command.isEmpty ? tab.id : tab.command} ${tab.id} 탭',
       child: InkWell(
         onTap: onTap,
         child: Container(
-          constraints: const BoxConstraints(minWidth: 96),
+          width: 160,
           alignment: Alignment.center,
           padding: const EdgeInsets.symmetric(horizontal: AppSizes.p12),
           decoration: BoxDecoration(
@@ -271,12 +229,13 @@ class _SurfaceTabButton extends StatelessWidget {
               ),
             ),
           ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Flexible(
                 child: Text(
-                  tab.label,
+                  tab.command.isEmpty ? tab.id : tab.command,
                   overflow: TextOverflow.ellipsis,
                   style: monoStyle(
                     fontSize: 13,
@@ -287,8 +246,12 @@ class _SurfaceTabButton extends StatelessWidget {
                   ),
                 ),
               ),
-              const SizedBox(width: AppSizes.p8),
-              Text(tab.detail, style: Theme.of(context).textTheme.labelSmall),
+              const SizedBox(height: 2),
+              Text(
+                '${tab.tabName} ${tab.id}',
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.labelSmall,
+              ),
             ],
           ),
         ),

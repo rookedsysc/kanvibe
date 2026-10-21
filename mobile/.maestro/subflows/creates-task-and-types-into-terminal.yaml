@@ -35,8 +35,11 @@ appId: ${APP_ID}
 - assertNotVisible: "(?s).*세션이 실행 중이 아닙니다.*"
 - assertNotVisible: "(?s).*터미널을 불러오지 못했습니다.*"
 - takeScreenshot: 12-생성한-태스크-터미널-${SESSION_TYPE}
+- extendedWaitUntil:
+    visible: "출력 수신 중"
+    timeout: 20000
 - tapOn:
-    point: "50%,25%"
+    id: "pane-terminal"
 - inputText: "touch ${MARKER}"
 - pressKey: Enter
 - runScript:

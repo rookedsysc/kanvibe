@@ -126,6 +126,84 @@ Future<void> sendImeBuffer(
 }
 
 void main() {
+  testWidgets('첫 출력 전과 수신 후의 연결 상태를 구분한다', (tester) async {
+    final client = FakeDesktopClient();
+    await pumpPane(tester, _pane, client: client, store: FakeConnectionStore());
+    expect(find.text('터미널 연결 중…'), findsOneWidget);
+    client.openedPanes['%19']!.add('ready');
+    await tester.pumpAndSettle();
+    expect(find.text('출력 수신 중'), findsOneWidget);
+    expect(find.text('터미널 연결 중…'), findsNothing);
+  });
+
+  testWidgets('네트워크 오류는 세션 종료와 구분하고 재시도할 수 있다', (tester) async {
+    final client = FakeDesktopClient();
+    await pumpPane(tester, _pane, client: client, store: FakeConnectionStore());
+    client.openedPanes['%19']!.addError(Exception('offline'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('연결이 끊겼습니다'), findsOneWidget);
+    await tester.tap(find.text('다시 연결'));
+    await tester.pumpAndSettle();
+    client.openedPanes['%19']!.add('restored');
+    await tester.pumpAndSettle();
+    expect(find.text('출력 수신 중'), findsOneWidget);
+    expect(mountedTerminal(tester).buffer.getText(), contains('restored'));
+  });
+
+  testWidgets('첫 프레임이 오지 않으면 응답 지연을 알리고 재시도를 제공한다', (tester) async {
+    await pumpPane(
+      tester,
+      _pane,
+      client: FakeDesktopClient(),
+      store: FakeConnectionStore(),
+    );
+    await tester.pump(const Duration(seconds: 15));
+    expect(find.textContaining('터미널 응답이 없습니다'), findsOneWidget);
+    expect(find.text('다시 연결'), findsOneWidget);
+  });
+
+  testWidgets('키보드를 열어도 글자 배율과 원본 터미널 격자는 유지된다', (tester) async {
+    final client = FakeDesktopClient();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          desktopClientProvider.overrideWithValue(client),
+          connectionStoreProvider.overrideWithValue(FakeConnectionStore()),
+        ],
+        child: MaterialApp(
+          theme: buildAppTheme(),
+          home: Scaffold(
+            body: PaneTerminalView(taskId: 'task-1', pane: _pane),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final view = find.byType(xterm.TerminalView);
+    final before = tester.getTopLeft(view);
+    final render = tester.state<xterm.TerminalViewState>(view).renderTerminal;
+    expect(render.size.width, greaterThanOrEqualTo(render.cellSize.width * 80));
+    final unitBefore = tester
+        .state<xterm.TerminalViewState>(view)
+        .renderTerminal
+        .getTransformTo(null)
+        .getMaxScaleOnAxis();
+    tester.view.viewInsets = const FakeViewPadding(bottom: 350);
+    addTearDown(tester.view.resetViewInsets);
+    await tester.pumpAndSettle();
+    final unitAfter = tester
+        .state<xterm.TerminalViewState>(view)
+        .renderTerminal
+        .getTransformTo(null)
+        .getMaxScaleOnAxis();
+    expect(unitBefore, 1);
+    expect(unitAfter, unitBefore);
+    expect(tester.getTopLeft(view).dx, before.dx);
+    expect(mountedTerminal(tester).viewWidth, 80);
+    expect(mountedTerminal(tester).viewHeight, 24);
+    expect(tester.widget<xterm.TerminalView>(view).textStyle.fontSize, 14);
+  });
+
   /// pane id가 같으면 element가 재사용되므로 새 좌표는 `didUpdateWidget`으로만 들어온다.
   /// 여기서 다시 재지 않으면 상자만 커지고 격자는 옛 크기라 [FittedBox]가 잘못된 비율로 늘린다.
   testWidgets('데스크탑에서 pane 크기가 바뀌면 터미널 격자도 따라간다', (tester) async {
@@ -177,7 +255,7 @@ void main() {
     expect(find.textContaining('세션이 실행 중이 아닙니다'), findsNothing);
   });
 
-  testWidgets('그 밖의 이유로 끊기면 연결은 두고 사유만 보여 준다', (tester) async {
+  testWidgets('데스크탑 터미널 오류는 네트워크나 세션 중단으로 단정하지 않는다', (tester) async {
     final client = FakeDesktopClient()..paneCloseCodes['%19'] = 4000;
     final store = FakeConnectionStore();
     await pumpPane(tester, _pane, client: client, store: store);
@@ -186,7 +264,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(await store.read(), isNotNull, reason: '스트림 실패는 페어링을 날릴 이유가 아니다');
-    expect(find.textContaining('세션이 실행 중이 아닙니다'), findsOneWidget);
+    expect(find.textContaining('데스크탑의 터미널 스트림에 오류가 발생했습니다'), findsOneWidget);
+    expect(find.textContaining('세션이 실행 중이 아닙니다'), findsNothing);
   });
 
   /// Gboard는 글자를 자기 버퍼에 쌓아 두고 버퍼 전체를 기준으로 알린다. 앱이 "버퍼를 비워라"를 보내도

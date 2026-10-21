@@ -6,7 +6,6 @@ import 'package:kanvibe_mobile/src/features/board/domain/task_status.dart';
 import 'package:kanvibe_mobile/src/features/task_detail/domain/mirror_pane.dart';
 import 'package:kanvibe_mobile/src/features/task_detail/presentation/task_detail_screen.dart';
 import 'package:kanvibe_mobile/src/features/task_detail/presentation/widgets/pane_terminal_view.dart';
-import 'package:kanvibe_mobile/src/features/task_detail/presentation/widgets/window_pane_composition.dart';
 import 'package:xterm/xterm.dart' as xterm;
 
 import '../../../support/fake_desktop.dart';
@@ -119,7 +118,6 @@ void main() {
     await pumpDetail(tester, size: phoneSize);
 
     expect(find.byType(PaneTerminalView), findsOneWidget);
-    expect(find.byType(WindowPaneComposition), findsNothing);
   });
 
   testWidgets('폰에서 다른 탭을 고르면 그 pane으로 바뀐다', (tester) async {
@@ -136,65 +134,21 @@ void main() {
     expect(client.closedPanes, contains('%19'), reason: '떠난 pane의 구독은 닫혀야 한다');
   });
 
-  testWidgets('태블릿에서는 window가 탭이 되고 pane이 함께 보인다', (tester) async {
+  testWidgets('넓은 화면에서도 pane별 탭과 선택한 pane 하나만 보인다', (tester) async {
     await pumpDetail(tester, size: tabletSize);
-
-    expect(find.text('kanvibe'), findsOneWidget);
-    expect(find.text('second'), findsOneWidget);
-    expect(find.byType(WindowPaneComposition), findsOneWidget);
-    expect(
-      find.byType(PaneTerminalView),
-      findsNWidgets(2),
-      reason: '고른 window의 pane 둘이 함께 보인다',
-    );
+    expect(find.text('claude'), findsOneWidget);
+    expect(find.text('zsh'), findsOneWidget);
+    expect(find.byType(PaneTerminalView), findsOneWidget);
   });
 
-  testWidgets('태블릿은 pane을 데스크탑과 같은 좌우 배치로 놓는다', (tester) async {
-    await pumpDetail(tester, size: tabletSize);
-
-    final panes = tester
-        .widgetList<PaneTerminalView>(find.byType(PaneTerminalView))
-        .toList();
-    final left = tester.getTopLeft(find.byWidget(panes[0]));
-    final right = tester.getTopLeft(find.byWidget(panes[1]));
-
-    expect(right.dx, greaterThan(left.dx), reason: '두 번째 pane이 오른쪽에 온다');
-    expect(right.dy, equals(left.dy), reason: '같은 줄에 놓인다');
-  });
-
-  testWidgets('태블릿은 처음에 첫 pane이 입력을 받는다', (tester) async {
-    await pumpDetail(tester, size: tabletSize);
-
-    final panes = tester
-        .widgetList<PaneTerminalView>(find.byType(PaneTerminalView))
-        .toList();
-
-    expect(panes[0].isInteractive, isTrue);
-    expect(panes[1].isInteractive, isFalse, reason: '입력은 한 pane만 받는다');
-  });
-
-  testWidgets('태블릿에서 다른 pane을 누르면 구독은 그대로 두고 입력만 옮겨 간다', (tester) async {
+  testWidgets('넓은 화면에서 다른 pane 탭을 고르면 입력 대상도 바뀐다', (tester) async {
     final client = await pumpDetail(tester, size: tabletSize);
-
-    /// 읽기 전용 pane은 포인터를 막아 두었으므로 탭은 그 자리를 감싼 프레임이 받는다
-    await tester.tapAt(tester.getCenter(find.byKey(const ValueKey('%20'))));
+    await tester.tap(find.text('zsh'));
     await tester.pumpAndSettle();
-
-    expect(
-      client.closedPanes,
-      isEmpty,
-      reason: '입력 대상만 바뀐 것이라 두 pane의 구독과 스크롤백은 살아 있어야 한다',
-    );
-
+    expect(find.byType(PaneTerminalView), findsOneWidget);
     terminalIn(tester, '%20').textInput('ls');
-    terminalIn(tester, '%19').textInput('여기로는 가면 안 된다');
-
     expect(client.writtenInput['%20'], contains('ls'));
-    expect(
-      client.writtenInput['%19'],
-      isNull,
-      reason: '입력을 넘겨준 pane은 더 이상 키를 데스크탑으로 보내지 않는다',
-    );
+    expect(client.closedPanes, contains('%19'));
   });
 
   testWidgets('화면을 떠나면 pane 구독이 닫힌다', (tester) async {

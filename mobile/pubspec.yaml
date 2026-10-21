@@ -24,7 +24,12 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  assets:
+    - assets/fonts/NerdFontsSymbolsOnly-LICENSE.txt
   fonts:
     - family: JetBrainsMono
       fonts:
         - asset: assets/fonts/JetBrainsMono.ttf
+    - family: SymbolsNerdFontMono
+      fonts:
+        - asset: assets/fonts/SymbolsNerdFontMono-Regular.ttf
