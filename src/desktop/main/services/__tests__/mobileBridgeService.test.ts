@@ -135,6 +135,9 @@ beforeEach(() => {
   defaultSessionTypeSetting = SessionType.TMUX;
 });
 
+/** 스냅샷 "snapshot"이 모바일에 나갈 때의 모양. 커서 줄이 없으니 커서는 옮기지 않는다 */
+const SNAPSHOT_REDRAW = "\x1b[H\x1b[2J\x1b[3Jsnapshot";
+
 /** 세션 pane 목록과 스냅샷만 답하는 tmux 태스크를 세운다 */
 function stubTmuxMirror(): void {
   findOneByMock.mockResolvedValue(TMUX_TASK);
@@ -614,7 +617,7 @@ describe("미러 자식 프로세스의 수명", () => {
 
     secondProcess.emit("살아 있다");
 
-    expect(receivedChunks).toEqual(["snapshot", "살아 있다"]);
+    expect(receivedChunks).toEqual([SNAPSHOT_REDRAW, "살아 있다"]);
     unsubscribeFirst();
     unsubscribeSecond();
   });
@@ -659,7 +662,7 @@ describe("pane 구독 정리", () => {
 
     paneProcess.emit("stream");
 
-    expect(receivedChunks).toEqual(["snapshot", "stream"]);
+    expect(receivedChunks).toEqual([SNAPSHOT_REDRAW, "stream"]);
     expect(executedCommands()).not.toContain("tmux pipe-pane -t '%19'");
 
     unsubscribeSecond();
@@ -683,7 +686,7 @@ describe("pane 구독 정리", () => {
     unsubscribeFirst();
     paneProcess.emit("stream");
 
-    expect(receivedChunks).toEqual(["snapshot", "stream"]);
+    expect(receivedChunks).toEqual([SNAPSHOT_REDRAW, "stream"]);
     expect(executedCommands()).not.toContain("tmux pipe-pane -t '%19'");
 
     unsubscribeSecond();
@@ -949,5 +952,52 @@ describe("모바일 보드", () => {
     const board = await getMobileBoard();
 
     expect(board.defaultSessionType).toBe(SessionType.ZELLIJ);
+  });
+});
+
+describe("첫 화면 스냅샷", () => {
+  it("tmux 스냅샷은 줄마다 줄 처음으로 돌아가고, 마지막에 데스크탑 커서 자리로 간다", async () => {
+    findOneByMock.mockResolvedValue(TMUX_TASK);
+    execGitMock.mockImplementation(async (command) => {
+      if (command.includes("list-panes")) {
+        return MIRROR_PANE_LINE;
+      }
+      if (command.includes("capture-pane")) {
+        /** capture-pane은 pane 높이만큼 줄을 내보내고, 이어서 커서 위치 줄이 온다. execGit은 끝 공백을 다듬는다 */
+        return "$ ls\nREADME.md\n\n2 2";
+      }
+      return "";
+    });
+    stubPaneProcess();
+    const receivedChunks: string[] = [];
+
+    const unsubscribe = await subscribeToPane("task-screen", "%19", (chunk) => receivedChunks.push(chunk), () => {});
+
+    expect(receivedChunks[0]).toBe("\x1b[H\x1b[2J\x1b[3J$ ls\r\nREADME.md\r\n\x1b[3;3H");
+    unsubscribe();
+  });
+
+  it("zellij 화면 덤프도 지운 뒤 다시 그려 덤프가 이어 붙지 않는다", async () => {
+    findOneByMock.mockResolvedValue({ sessionType: SessionType.ZELLIJ, sessionName: "kanvibe-zj", sshHost: null });
+    execGitMock.mockImplementation(async (command) => {
+      if (command.includes("--version")) {
+        return "zellij 0.44.3";
+      }
+      if (command.includes("list-sessions")) {
+        return "kanvibe-zj [Created 1m ago]";
+      }
+      if (command.includes("dump-screen")) {
+        return "$ ls\nREADME.md";
+      }
+      return JSON.stringify([
+        { id: 1, is_plugin: false, tab_id: 0, tab_name: "Tab #1", title: "Pane #1", pane_x: 0, pane_y: 0, pane_rows: 24, pane_columns: 80 },
+      ]);
+    });
+    const receivedChunks: string[] = [];
+
+    const unsubscribe = await subscribeToPane("task-zj-screen", "terminal_1", (chunk) => receivedChunks.push(chunk), () => {});
+
+    expect(receivedChunks[0]).toBe("\x1b[H\x1b[2J\x1b[3J$ ls\r\nREADME.md");
+    unsubscribe();
   });
 });

@@ -21,14 +21,17 @@ import {
   type PairedDevice,
 } from "@/lib/mobilePairing";
 import {
+  buildScreenRedraw,
   buildTmuxCancelPipePaneCommand,
   buildTmuxCapturePaneCommand,
+  buildTmuxCursorPositionCommand,
   buildTmuxListMirrorPanesCommand,
   buildTmuxPaneStreamCommand,
   buildTmuxSendKeysCommand,
   buildZellijDumpPaneCommand,
   buildZellijListMirrorPanesCommand,
   buildZellijWritePaneCommand,
+  parseTmuxCursorPosition,
   parseTmuxMirrorPaneList,
   parseZellijMirrorPaneList,
   type MirrorPane,
@@ -781,12 +784,22 @@ export function stopAllPaneMirrors(): void {
   }
 }
 
+/** pane의 지금 화면을 모바일 터미널이 처음부터 다시 그리는 출력으로 떠 온다 */
 async function readPaneSnapshot(target: MirrorSessionTarget, paneId: string): Promise<string> {
-  const command = target.sessionType === SessionType.ZELLIJ
-    ? buildZellijDumpPaneCommand(target.sessionName, paneId)
-    : buildTmuxCapturePaneCommand(paneId);
+  if (target.sessionType === SessionType.ZELLIJ) {
+    const dump = await runMirrorCommand(buildZellijDumpPaneCommand(target.sessionName, paneId), target.sshHost);
+    return buildScreenRedraw(dump, null);
+  }
 
-  return runMirrorCommand(command, target.sshHost);
+  /** 화면과 커서를 한 번에 읽는다. 원격이면 왕복이 하나 줄고, 둘 사이에 화면이 바뀌는 틈도 좁아진다 */
+  const output = await runMirrorCommand(
+    `${buildTmuxCapturePaneCommand(paneId)} && ${buildTmuxCursorPositionCommand(paneId)}`,
+    target.sshHost,
+  );
+  const cursorLineStart = output.lastIndexOf("\n");
+  const cursor = cursorLineStart === -1 ? null : parseTmuxCursorPosition(output.slice(cursorLineStart + 1));
+  const screen = cursor ? output.slice(0, cursorLineStart) : output;
+  return buildScreenRedraw(screen, cursor);
 }
 
 async function startPaneSubscription(

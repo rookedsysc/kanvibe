@@ -3,14 +3,17 @@
  */
 import { describe, it, expect } from "vitest";
 import {
+  buildScreenRedraw,
   buildTmuxCancelPipePaneCommand,
   buildTmuxCapturePaneCommand,
+  buildTmuxCursorPositionCommand,
   buildTmuxListMirrorPanesCommand,
   buildTmuxPaneStreamCommand,
   buildTmuxSendKeysCommand,
   buildZellijDumpPaneCommand,
   buildZellijListMirrorPanesCommand,
   buildZellijWritePaneCommand,
+  parseTmuxCursorPosition,
   parseTmuxMirrorPaneList,
   parseZellijMirrorPaneList,
 } from "@/lib/paneMirror";
@@ -104,6 +107,32 @@ describe("tmux pane 명령", () => {
 
     expect(command).toBe("tmux capture-pane -pe -t '%1'\"'\"'; rm -rf /; '\"'\"''");
     expect(command).not.toMatch(/;\s*rm -rf \/;?\s*$/);
+  });
+});
+
+describe("화면 다시 그리기", () => {
+  const CLEAR = "\x1b[H\x1b[2J\x1b[3J";
+
+  it("화면과 스크롤백을 지우고, 줄바꿈마다 줄 처음으로 돌아가게 한 뒤 커서를 제자리에 둔다", () => {
+    expect(buildScreenRedraw("$ ls\nREADME.md", { x: 2, y: 2 })).toBe(`${CLEAR}$ ls\r\nREADME.md\x1b[3;3H`);
+  });
+
+  it("이미 CRLF인 줄은 CR을 겹쳐 넣지 않는다", () => {
+    expect(buildScreenRedraw("a\r\nb", null)).toBe(`${CLEAR}a\r\nb`);
+  });
+
+  it("커서를 모르면 옮기지 않는다", () => {
+    expect(buildScreenRedraw("a\nb", null)).toBe(`${CLEAR}a\r\nb`);
+  });
+
+  it("tmux 커서 위치는 포커스를 바꾸지 않는 display-message로 읽는다", () => {
+    expect(buildTmuxCursorPositionCommand("%19")).toBe("tmux display-message -p -t '%19' '#{cursor_x} #{cursor_y}'");
+  });
+
+  it("커서 위치 줄을 읽고, 숫자 두 개가 아니면 모르는 것으로 본다", () => {
+    expect(parseTmuxCursorPosition("8 1")).toEqual({ x: 8, y: 1 });
+    expect(parseTmuxCursorPosition("PANE_A")).toBeNull();
+    expect(parseTmuxCursorPosition("")).toBeNull();
   });
 });
 

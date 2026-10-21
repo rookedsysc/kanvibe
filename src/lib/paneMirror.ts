@@ -106,6 +106,44 @@ function parseGeometry(raw: {
   return { left, top, width, height };
 }
 
+/** 터미널 위의 칸 좌표. 0부터 센다 */
+export interface TerminalCursorPosition {
+  x: number;
+  y: number;
+}
+
+/**
+ * pane의 커서 위치를 읽는다. 스냅샷을 그린 뒤 커서를 같은 자리에 둬야, 이어서 흘러오는 출력이
+ * 데스크탑과 같은 자리에 그려진다. `display-message -p`는 출력만 하고 포커스를 바꾸지 않는다.
+ */
+export function buildTmuxCursorPositionCommand(paneId: string): string {
+  return `tmux display-message -p -t ${quoteForPosixShell(paneId)} '#{cursor_x} #{cursor_y}'`;
+}
+
+/** `buildTmuxCursorPositionCommand` 출력 한 줄을 읽는다. 숫자 두 개가 아니면 모르는 것으로 본다 */
+export function parseTmuxCursorPosition(output: string): TerminalCursorPosition | null {
+  const match = output.trim().match(/^(\d+) (\d+)$/);
+  if (!match) {
+    return null;
+  }
+  return { x: Number(match[1]), y: Number(match[2]) };
+}
+
+/** 화면, 스크롤백을 지우고 커서를 맨 위로 보낸다. 덤프를 받을 때마다 이어 붙이지 않고 다시 그리기 위해서다 */
+const CLEAR_SCREEN_AND_SCROLLBACK = "\x1b[H\x1b[2J\x1b[3J";
+
+/**
+ * 떠 온 화면 텍스트를 터미널이 처음부터 다시 그리는 출력으로 바꾼다.
+ *
+ * `capture-pane`과 `dump-screen`은 줄 끝에 LF만 붙인다. 터미널은 LF를 "아래로 한 칸"으로만 읽으므로 그대로 쓰면
+ * 다음 줄이 앞 줄이 끝난 열에서 시작해 화면이 계단처럼 밀린다. 줄마다 CR을 붙여 줄 처음으로 돌려보낸다.
+ */
+export function buildScreenRedraw(screen: string, cursor: TerminalCursorPosition | null): string {
+  const lines = screen.replace(/\r?\n/g, "\r\n");
+  const cursorMove = cursor ? `\x1b[${cursor.y + 1};${cursor.x + 1}H` : "";
+  return `${CLEAR_SCREEN_AND_SCROLLBACK}${lines}${cursorMove}`;
+}
+
 /**
  * pane의 현재 화면을 ANSI를 살린 채로 한 번 떠 온다.
  * 스트림은 구독 시점 이후만 흘러오므로 첫 화면은 이 스냅샷으로 채워야 빈 터미널이 보이지 않는다.
