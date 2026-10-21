@@ -7,9 +7,9 @@ KanVibe 데스크탑에 연결해 보드를 보고, 태스크의 터미널 pane�
 | | 폰 | 태블릿 |
 | --- | --- | --- |
 | 첫 화면 | 상태별 세로 구획 목록 | 상태별 칸반 |
-| 태스크 상세 | 탭 하나 = pane 하나, 고른 pane이 전체 화면 | 탭 하나 = window 하나, 그 window의 pane이 데스크탑과 같은 배치로 함께 |
+| 태스크 상세 | 탭 하나 = pane 하나, 고른 pane이 전체 화면 | 탭 하나 = pane 하나, 고른 pane이 전체 화면 |
 
-갈림길은 너비 768dp 하나뿐이고(`AppSizes.tabletBreakpoint`), 두 배치가 같은 데이터를 쓴다.
+보드는 너비 768dp에서 배치가 바뀐다(`AppSizes.tabletBreakpoint`). 터미널은 모든 크기에서 pane 하나씩 표시하며, 글자 크기를 유지하고 넘치는 출력은 좌우·위아래 스크롤로 읽는다. 키보드를 열어도 원본 터미널 격자와 글자 크기는 유지된다.
 
 ## 준비
 
@@ -86,3 +86,5 @@ App Store Connect를 조회해 `CFBundleVersion`을 스스로 올리므로 손�
 
 pane을 비출 때 포커스나 크기를 바꾸는 명령은 하나도 쓰지 않는다. tmux는 `capture-pane`과 `pipe-pane`으로,
 zellij는 pane id를 지정한 `dump-screen`으로 읽는다. 이유는 `src/lib/paneMirror.ts` 머리말에 적혀 있다.
+
+터미널의 Powerline/Nerd Font 기호는 [Nerd Fonts Symbols Only v3.5.1](https://github.com/ryanoasis/nerd-fonts/tree/v3.5.1/patched-fonts/NerdFontsSymbolsOnly)을 보조 글꼴로 사용한다. 원본 파일과 MIT 라이선스를 `assets/fonts/`에 포함한다.
