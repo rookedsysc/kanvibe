@@ -251,7 +251,7 @@ void main() {
     await client.openedPanes['%19']!.close();
     await tester.pumpAndSettle();
 
-    expect(await store.read(), isNull);
+    expect((await store.readRegistry()).connections, isEmpty);
     expect(find.textContaining('세션이 실행 중이 아닙니다'), findsNothing);
   });
 
@@ -263,7 +263,11 @@ void main() {
     await client.openedPanes['%19']!.close();
     await tester.pumpAndSettle();
 
-    expect(await store.read(), isNotNull, reason: '스트림 실패는 페어링을 날릴 이유가 아니다');
+    expect(
+      (await store.readRegistry()).connections,
+      isNotEmpty,
+      reason: '스트림 실패는 페어링을 날릴 이유가 아니다',
+    );
     expect(find.textContaining('데스크탑의 터미널 스트림에 오류가 발생했습니다'), findsOneWidget);
     expect(find.textContaining('세션이 실행 중이 아닙니다'), findsNothing);
   });

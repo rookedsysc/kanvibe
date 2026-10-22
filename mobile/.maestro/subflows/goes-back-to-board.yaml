@@ -20,5 +20,5 @@ appId: ${APP_ID}
       - tapOn:
           point: "7%,10%"
 - extendedWaitUntil:
-    visible: "KanVibe"
+    visible: "Todo"
     timeout: 20000

@@ -7,6 +7,7 @@ import 'package:xterm/xterm.dart' as xterm;
 import '../../../../common/constants/app_colors.dart';
 import '../../../../common/constants/app_theme.dart';
 import '../../../../common/network/desktop_client.dart';
+import '../../../../common/network/desktop_connection.dart';
 import '../../../../common/providers.dart';
 import '../../domain/mirror_pane.dart';
 import 'terminal_soft_keyboard.dart';
@@ -25,6 +26,7 @@ class PaneTerminalView extends ConsumerStatefulWidget {
 class _PaneTerminalViewState extends ConsumerState<PaneTerminalView> {
   late final xterm.Terminal _terminal;
   PaneStream? _stream;
+  DesktopConnection? _connection;
   StreamSubscription<String>? _subscription;
   String? _failureMessage;
   bool _hasOutput = false;
@@ -75,7 +77,8 @@ class _PaneTerminalViewState extends ConsumerState<PaneTerminalView> {
       _failStream('터미널 응답이 없습니다. 데스크탑 연결을 확인한 뒤 다시 연결해 주세요.');
     });
     try {
-      final connection = await ref.read(connectionControllerProvider.future);
+      final connection = (await ref.read(connectionControllerProvider.future))
+          .activeConnection;
       if (!mounted) return;
       if (connection == null) {
         _failStream('데스크탑에 연결되어 있지 않습니다. 다시 페어링해 주세요.');
@@ -84,6 +87,7 @@ class _PaneTerminalViewState extends ConsumerState<PaneTerminalView> {
       final stream = ref
           .read(desktopClientProvider)
           .openPaneStream(connection, widget.taskId, widget.pane.id);
+      _connection = connection;
       _stream = stream;
       _subscription = stream.output.listen(
         _receiveOutput,
@@ -121,9 +125,14 @@ class _PaneTerminalViewState extends ConsumerState<PaneTerminalView> {
   /// 실제로 해야 할 일은 화면 어디에도 나타나지 않는다. 서버가 종료 코드로 나눠 보낸 사유가 여기서 쓰인다.
   void _handleStreamClosed() {
     if (_stream?.readCloseCode() == deviceUnpairedCloseCode) {
-      unawaited(
-        ref.read(connectionControllerProvider.notifier).forgetLocally(),
-      );
+      final connection = _connection;
+      if (connection != null) {
+        unawaited(
+          ref
+              .read(connectionControllerProvider.notifier)
+              .forgetLocally(connection.id, connection.token),
+        );
+      }
       return;
     }
 

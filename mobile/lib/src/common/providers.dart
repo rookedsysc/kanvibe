@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../features/board/data/board_snapshot.dart';
 import '../features/connection/data/connection_store.dart';
+import '../features/connection/domain/saved_connections.dart';
 import '../features/task_detail/domain/mirror_pane.dart';
 import 'network/desktop_client.dart';
 import 'network/desktop_connection.dart';
@@ -22,13 +23,15 @@ final connectionStoreProvider = Provider<ConnectionStore>(
 );
 
 /// 연결이 성립하지 못한 사유. 화면이 이것을 문구로 옮긴다
-enum ConnectFailure { rejectedCode }
+enum ConnectFailure { rejectedCode, alreadyPaired }
 
-/// 저장된 연결. null이면 아직 페어링하지 않은 상태다
-class ConnectionController extends AsyncNotifier<DesktopConnection?> {
+/// 저장된 모든 PC와 현재 선택한 PC를 함께 관리한다.
+class ConnectionController extends AsyncNotifier<SavedConnections> {
+  Future<void> _pendingSave = Future.value();
+
   @override
-  Future<DesktopConnection?> build() =>
-      ref.read(connectionStoreProvider).read();
+  Future<SavedConnections> build() =>
+      ref.read(connectionStoreProvider).readRegistry();
 
   /// 코드를 확인하고 성공하면 연결을 저장한다. 성공이면 null, 아니면 실패 사유를 돌려준다.
   ///
@@ -38,7 +41,12 @@ class ConnectionController extends AsyncNotifier<DesktopConnection?> {
     required String host,
     required int port,
     required String code,
+    String name = '',
   }) async {
+    final id = DesktopConnection(host: host, port: port, token: '').id;
+    final current = await future;
+    if (current.find(id) != null) return ConnectFailure.alreadyPaired;
+
     final token = await ref
         .read(desktopClientProvider)
         .pair(host: host, port: port, code: code, deviceName: 'KanVibe Mobile');
@@ -47,62 +55,100 @@ class ConnectionController extends AsyncNotifier<DesktopConnection?> {
       return ConnectFailure.rejectedCode;
     }
 
-    final connection = DesktopConnection(host: host, port: port, token: token);
-    await ref.read(connectionStoreProvider).write(connection);
-    state = AsyncData(connection);
-    return null;
+    final connection = DesktopConnection(
+      host: host,
+      port: port,
+      token: token,
+      name: name.trim(),
+    );
+    var added = false;
+    await _change((registry) {
+      if (registry.find(id) != null) return registry;
+      added = true;
+      return registry.add(connection);
+    });
+    return added ? null : ConnectFailure.alreadyPaired;
   }
 
-  /// 사용자가 끊기를 눌렀다. 데스크탑에 먼저 알리고 기기에서도 지운다.
+  /// 현재 PC만 바꾼다. 다른 PC의 페어링 토큰은 그대로 둔다.
+  Future<void> select(String id) async {
+    await _change(
+      (registry) => registry.activeId == id ? registry : registry.select(id),
+    );
+  }
+
+  /// 지정한 PC를 데스크탑과 이 기기 양쪽에서 제거한다.
   ///
-  /// 데스크탑에 닿지 못해도 기기에 남은 열쇠는 지운다. 여기서 멈추면 앱은 못 쓰는 토큰을 든 채로
-  /// 페어링 화면에도 못 가기 때문이다. 대신 알렸는지 여부를 돌려주어, 데스크탑이 아직 이 기기를
-  /// 들고 있다는 사실을 화면이 말할 수 있게 한다.
-  Future<bool> disconnect() async {
-    final connection = state.value;
+  /// PC가 꺼져 있어도 로컬 목록에서는 제거하고, 원격 해제 실패 여부를 화면에 돌려준다.
+  Future<bool> remove(String id) async {
+    final current = await future;
+    final connection = current.find(id);
+    if (connection == null) return true;
     var toldDesktop = true;
 
-    if (connection != null) {
-      try {
-        await ref.read(desktopClientProvider).unpairDevice(connection);
-      } on DesktopRequestException catch (error) {
-        /// 401은 데스크탑에 이 토큰의 기기가 이미 없다는 뜻이라 시킬 뒤처리가 없다.
-        /// 실패로 접으면 설정 화면에서 먼저 끊은 사용자에게 이미 끝난 일을 다시 하라고 안내하게 된다.
-        toldDesktop = error.isUnauthorized;
-      } catch (_) {
-        toldDesktop = false;
-      }
+    try {
+      await ref.read(desktopClientProvider).unpairDevice(connection);
+    } on DesktopRequestException catch (error) {
+      toldDesktop = error.isUnauthorized;
+    } catch (_) {
+      toldDesktop = false;
     }
 
-    await forgetLocally();
+    await forgetLocally(id, connection.token);
     return toldDesktop;
   }
 
-  /// 토큰이 이미 죽어 있을 때 쓰는 길. 데스크탑에 알릴 것이 없으니 기기에 남은 값만 지운다.
-  ///
-  /// 거절당한 토큰으로 다시 데스크탑을 부르는 것은 통하지도 않고, 사용자가 누른 끊기와도 뜻이 다르다.
-  Future<void> forgetLocally() async {
-    await ref.read(connectionStoreProvider).clear();
-    state = const AsyncData(null);
+  /// 거절된 토큰의 PC만 지운다. 늦게 끝난 요청이 다른 PC 선택을 지우면 안 된다.
+  Future<void> forgetLocally([String? id, String? token]) async {
+    await _change((registry) {
+      final targetId = id ?? registry.activeId;
+      if (targetId == null) return registry;
+      final stored = registry.find(targetId);
+      return stored == null || (token != null && stored.token != token)
+          ? registry
+          : registry.remove(targetId);
+    });
+  }
+
+  /// 저장이 겹쳐도 항상 직전 저장 결과에 변경을 적용한다.
+  Future<SavedConnections> _change(
+    SavedConnections Function(SavedConnections) transform,
+  ) {
+    final result = _pendingSave.then((_) async {
+      final current = await future;
+      final updated = transform(current);
+      if (identical(updated, current)) return current;
+      await ref.read(connectionStoreProvider).writeRegistry(updated);
+      state = AsyncData(updated);
+      return updated;
+    });
+    _pendingSave = result.then<void>(
+      (_) {},
+      onError: (Object error, StackTrace stack) {},
+    );
+    return result;
   }
 }
 
 final connectionControllerProvider =
-    AsyncNotifierProvider<ConnectionController, DesktopConnection?>(
+    AsyncNotifierProvider<ConnectionController, SavedConnections>(
       ConnectionController.new,
     );
 
 /// 데스크탑이 기기를 떼어 내면 남은 토큰으로는 어떤 요청도 통과하지 못한다.
 ///
-/// 저장된 연결을 지워야 앱이 페어링 화면으로 되돌아가고 사용자가 다시 붙을 수 있다.
+/// 거절된 PC만 지워야 다른 PC의 연결을 계속 쓸 수 있다.
 /// 지우는 것은 이 기기에 보관한 값뿐이고 데스크탑에는 아무것도 알리지 않는다.
 /// 이미 거절당한 토큰을 다시 실어 보내 봐야 401만 한 번 더 받을 뿐이다.
 Future<void> _forgetRejectedConnection(
   Ref ref,
   DesktopRequestException error,
+  DesktopConnection connection,
 ) async {
   if (error.isUnauthorized) {
-    await ref.read(connectionControllerProvider.notifier).forgetLocally();
+    await ref
+        .read(connectionControllerProvider.notifier)
+        .forgetLocally(connection.id, connection.token);
   }
 }
 
@@ -116,7 +162,8 @@ Duration? _neverRetry(int retryCount, Object error) => null;
 
 /// 보드 내용. 연결이 바뀌면 자동으로 다시 불러온다
 final boardProvider = FutureProvider<BoardSnapshot>((ref) async {
-  final connection = await ref.watch(connectionControllerProvider.future);
+  final connection = (await ref.watch(connectionControllerProvider.future))
+      .activeConnection;
   if (connection == null) {
     return const BoardSnapshot(tasksByStatus: {});
   }
@@ -125,7 +172,7 @@ final boardProvider = FutureProvider<BoardSnapshot>((ref) async {
     final board = await ref.read(desktopClientProvider).fetchBoard(connection);
     return BoardSnapshot.fromJson(board);
   } on DesktopRequestException catch (error) {
-    await _forgetRejectedConnection(ref, error);
+    await _forgetRejectedConnection(ref, error, connection);
     rethrow;
   }
 }, retry: _neverRetry);
@@ -135,7 +182,8 @@ final surfacesProvider = FutureProvider.family<TaskSurfaces, String>((
   ref,
   taskId,
 ) async {
-  final connection = await ref.watch(connectionControllerProvider.future);
+  final connection = (await ref.watch(connectionControllerProvider.future))
+      .activeConnection;
   if (connection == null) {
     throw const SurfaceUnavailableException(SurfaceUnavailableReason.noSession);
   }
@@ -145,7 +193,7 @@ final surfacesProvider = FutureProvider.family<TaskSurfaces, String>((
         .read(desktopClientProvider)
         .fetchSurfaces(connection, taskId);
   } on DesktopRequestException catch (error) {
-    await _forgetRejectedConnection(ref, error);
+    await _forgetRejectedConnection(ref, error, connection);
     rethrow;
   }
 }, retry: _neverRetry);
@@ -155,7 +203,8 @@ final projectBranchesProvider = FutureProvider.family<List<String>, String>((
   ref,
   projectId,
 ) async {
-  final connection = await ref.watch(connectionControllerProvider.future);
+  final connection = (await ref.watch(connectionControllerProvider.future))
+      .activeConnection;
   if (connection == null) {
     return const [];
   }
@@ -165,7 +214,7 @@ final projectBranchesProvider = FutureProvider.family<List<String>, String>((
         .read(desktopClientProvider)
         .fetchProjectBranches(connection, projectId);
   } on DesktopRequestException catch (error) {
-    await _forgetRejectedConnection(ref, error);
+    await _forgetRejectedConnection(ref, error, connection);
     rethrow;
   }
 }, retry: _neverRetry);

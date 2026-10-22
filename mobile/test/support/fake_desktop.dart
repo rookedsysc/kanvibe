@@ -8,27 +8,35 @@ import 'package:kanvibe_mobile/src/common/network/desktop_connection.dart';
 import 'package:kanvibe_mobile/src/common/providers.dart';
 import 'package:kanvibe_mobile/src/features/board/domain/task_status.dart';
 import 'package:kanvibe_mobile/src/features/connection/data/connection_store.dart';
+import 'package:kanvibe_mobile/src/features/connection/domain/saved_connections.dart';
 import 'package:kanvibe_mobile/src/features/task_detail/domain/mirror_pane.dart';
 
 /// 이미 연결된 상태를 흉내 낸다. 화면 검증은 페어링 이후만 다루므로 저장소에 연결이 하나 들어 있다.
 ///
 /// 실제 저장소처럼 값을 들고 있는 이유는, 토큰이 거절됐을 때 기기에서 지워지는지도 봐야 하기 때문이다.
 class FakeConnectionStore implements ConnectionStore {
-  DesktopConnection? _connection = const DesktopConnection(
-    host: '127.0.0.1',
-    port: 9736,
-    token: 'test-token',
-  );
+  FakeConnectionStore({SavedConnections? initial})
+    : _registry =
+          initial ??
+          const SavedConnections(
+            connections: [
+              DesktopConnection(
+                host: '127.0.0.1',
+                port: 9736,
+                token: 'test-token',
+              ),
+            ],
+            activeId: '127.0.0.1:9736',
+          );
+
+  SavedConnections _registry;
 
   @override
-  Future<DesktopConnection?> read() async => _connection;
+  Future<SavedConnections> readRegistry() async => _registry;
 
   @override
-  Future<void> write(DesktopConnection connection) async =>
-      _connection = connection;
-
-  @override
-  Future<void> clear() async => _connection = null;
+  Future<void> writeRegistry(SavedConnections registry) async =>
+      _registry = registry;
 }
 
 /// 데스크탑 대신 미리 정한 값을 돌려준다.
@@ -37,7 +45,9 @@ class FakeConnectionStore implements ConnectionStore {
 class FakeDesktopClient implements DesktopClient {
   FakeDesktopClient({
     this.board = const {},
+    this.boardsByHost = const {},
     this.boardError,
+    this.pairToken,
     this.surfaces,
     this.surfacesError,
     this.unpairError,
@@ -52,7 +62,9 @@ class FakeDesktopClient implements DesktopClient {
   });
 
   final Map<String, dynamic> board;
+  final Map<String, Map<String, dynamic>> boardsByHost;
   final Object? boardError;
+  final String? pairToken;
   final TaskSurfaces? surfaces;
   final Object? surfacesError;
   final Object? unpairError;
@@ -69,6 +81,7 @@ class FakeDesktopClient implements DesktopClient {
 
   /// 데스크탑에 끊겠다고 알린 기록. 이미 거절된 토큰으로는 부르지 말아야 해서 호출 여부까지 본다
   final unpairCalls = <DesktopConnection>[];
+  final pairCalls = <String>[];
 
   /// pane별로 열린 구독. 테스트가 출력을 밀어 넣고 닫힘 여부를 확인한다
   final openedPanes = <String, StreamController<String>>{};
@@ -93,7 +106,7 @@ class FakeDesktopClient implements DesktopClient {
     if (boardError != null) {
       throw boardError!;
     }
-    return board;
+    return boardsByHost[connection.host] ?? board;
   }
 
   @override
@@ -176,7 +189,10 @@ class FakeDesktopClient implements DesktopClient {
     required int port,
     required String code,
     required String deviceName,
-  }) async => null;
+  }) async {
+    pairCalls.add('$host:$port');
+    return pairToken;
+  }
 
   @override
   void close() {}

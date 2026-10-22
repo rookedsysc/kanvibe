@@ -1,7 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kanvibe_mobile/src/common/network/desktop_client.dart';
 import 'package:kanvibe_mobile/src/common/providers.dart';
+import 'package:kanvibe_mobile/src/features/connection/data/connection_store.dart';
+import 'package:kanvibe_mobile/src/features/connection/domain/saved_connections.dart';
+import 'package:kanvibe_mobile/src/common/network/desktop_connection.dart';
 
 import '../../support/fake_desktop.dart';
 
@@ -26,6 +31,139 @@ ProviderContainer containerWith(
 }
 
 void main() {
+  test('두 PC를 등록하고 전환해도 두 토큰이 남고 원격 해제를 요청하지 않는다', () async {
+    final client = FakeDesktopClient(pairToken: 'token-b');
+    final store = FakeConnectionStore();
+    final container = containerWith(client, store);
+    await container.read(connectionControllerProvider.future);
+
+    final failure = await container
+        .read(connectionControllerProvider.notifier)
+        .connect(
+          host: '192.168.0.11',
+          port: 9736,
+          code: '123456',
+          name: '집 PC',
+        );
+    expect(failure, isNull);
+    expect((await store.readRegistry()).activeConnection?.name, '집 PC');
+
+    await container
+        .read(connectionControllerProvider.notifier)
+        .select('127.0.0.1:9736');
+    expect((await store.readRegistry()).activeConnection?.token, 'test-token');
+    await container
+        .read(connectionControllerProvider.notifier)
+        .select('192.168.0.11:9736');
+    expect((await store.readRegistry()).activeConnection?.token, 'token-b');
+    expect((await store.readRegistry()).connections, hasLength(2));
+    expect(client.unpairCalls, isEmpty);
+  });
+
+  test('같은 주소·포트는 다시 페어링하지 않는다', () async {
+    final client = FakeDesktopClient(pairToken: 'unused');
+    final container = containerWith(client, FakeConnectionStore());
+    await container.read(connectionControllerProvider.future);
+
+    final failure = await container
+        .read(connectionControllerProvider.notifier)
+        .connect(host: '127.0.0.1', port: 9736, code: '123456');
+
+    expect(failure, ConnectFailure.alreadyPaired);
+    expect(client.pairCalls, isEmpty);
+  });
+
+  test('선택한 PC 삭제는 다른 PC를 남기고 자동으로 선택하지 않는다', () async {
+    const pcB = DesktopConnection(
+      host: '192.168.0.11',
+      port: 9736,
+      token: 'token-b',
+    );
+    final store = FakeConnectionStore();
+    final client = FakeDesktopClient(pairToken: 'token-b');
+    final container = containerWith(client, store);
+    await container.read(connectionControllerProvider.future);
+    await container
+        .read(connectionControllerProvider.notifier)
+        .connect(host: pcB.host, port: pcB.port, code: '123456');
+
+    final toldDesktop = await container
+        .read(connectionControllerProvider.notifier)
+        .remove(pcB.id);
+
+    expect(toldDesktop, isTrue);
+    expect(client.unpairCalls.single.id, pcB.id);
+    expect((await store.readRegistry()).connections, hasLength(1));
+    expect((await store.readRegistry()).activeConnection, isNull);
+  });
+
+  test('늦게 도착한 PC A의 401은 지금 선택한 PC B를 지우지 않는다', () async {
+    final store = FakeConnectionStore();
+    final container = containerWith(
+      FakeDesktopClient(pairToken: 'token-b'),
+      store,
+    );
+    await container.read(connectionControllerProvider.future);
+    await container
+        .read(connectionControllerProvider.notifier)
+        .connect(host: '192.168.0.11', port: 9736, code: '123456');
+
+    await container
+        .read(connectionControllerProvider.notifier)
+        .forgetLocally('127.0.0.1:9736');
+
+    expect((await store.readRegistry()).connections, hasLength(1));
+    expect((await store.readRegistry()).activeConnection?.token, 'token-b');
+  });
+
+  test('같은 주소에 다시 페어링한 뒤 도착한 옛 401은 새 토큰을 지우지 않는다', () async {
+    final store = FakeConnectionStore();
+    final client = FakeDesktopClient(pairToken: 'new-token');
+    final container = containerWith(client, store);
+    await container.read(connectionControllerProvider.future);
+    await container
+        .read(connectionControllerProvider.notifier)
+        .remove('127.0.0.1:9736');
+    await container
+        .read(connectionControllerProvider.notifier)
+        .connect(host: '127.0.0.1', port: 9736, code: '123456');
+
+    await container
+        .read(connectionControllerProvider.notifier)
+        .forgetLocally('127.0.0.1:9736', 'test-token');
+
+    expect((await store.readRegistry()).activeConnection?.token, 'new-token');
+  });
+
+  test('전환 저장 중 401이 도착해도 직전 저장 결과를 기준으로 PC를 지운다', () async {
+    const pcA = DesktopConnection(host: '127.0.0.1', port: 9736, token: 'a');
+    const pcB = DesktopConnection(host: '127.0.0.2', port: 9736, token: 'b');
+    final store = _DelayedConnectionStore(
+      SavedConnections(connections: [pcA, pcB], activeId: pcA.id),
+    );
+    final container = ProviderContainer(
+      overrides: [
+        connectionStoreProvider.overrideWithValue(store),
+        desktopClientProvider.overrideWithValue(FakeDesktopClient()),
+      ],
+    );
+    addTearDown(container.dispose);
+    await container.read(connectionControllerProvider.future);
+
+    final selecting = container
+        .read(connectionControllerProvider.notifier)
+        .select(pcB.id);
+    await store.firstWriteStarted.future;
+    final rejecting = container
+        .read(connectionControllerProvider.notifier)
+        .forgetLocally(pcA.id);
+    store.allowFirstWrite.complete();
+    await Future.wait([selecting, rejecting]);
+
+    expect(store.registry.connections.map((pc) => pc.id), [pcB.id]);
+    expect(store.registry.activeConnection?.id, pcB.id);
+  });
+
   test('사용자가 끊으면 데스크탑에 먼저 알리고 기기에서도 지운다', () async {
     final client = FakeDesktopClient();
     final store = FakeConnectionStore();
@@ -34,7 +172,7 @@ void main() {
 
     final toldDesktop = await container
         .read(connectionControllerProvider.notifier)
-        .disconnect();
+        .remove('127.0.0.1:9736');
 
     expect(toldDesktop, isTrue);
     expect(
@@ -42,7 +180,7 @@ void main() {
       'test-token',
       reason: '기기에서만 지우면 데스크탑은 그 토큰을 계속 통과시킨다',
     );
-    expect(await store.read(), isNull);
+    expect((await store.readRegistry()).connections, isEmpty);
   });
 
   test('데스크탑에 알리지 못해도 기기에 남은 열쇠는 지우고 실패를 돌려준다', () async {
@@ -55,12 +193,12 @@ void main() {
 
     final toldDesktop = await container
         .read(connectionControllerProvider.notifier)
-        .disconnect();
+        .remove('127.0.0.1:9736');
 
     expect(toldDesktop, isFalse, reason: '데스크탑이 아직 이 기기를 들고 있다고 화면이 말해야 한다');
     expect(
-      await store.read(),
-      isNull,
+      (await store.readRegistry()).connections,
+      isEmpty,
       reason: '여기서 멈추면 앱은 못 쓰는 토큰을 든 채 페어링 화면에도 못 간다',
     );
   });
@@ -77,9 +215,31 @@ void main() {
 
     final toldDesktop = await container
         .read(connectionControllerProvider.notifier)
-        .disconnect();
+        .remove('127.0.0.1:9736');
 
     expect(toldDesktop, isTrue, reason: '사용자에게 시킬 뒤처리가 남아 있지 않다');
-    expect(await store.read(), isNull);
+    expect((await store.readRegistry()).connections, isEmpty);
   });
+}
+
+class _DelayedConnectionStore implements ConnectionStore {
+  _DelayedConnectionStore(this.registry);
+
+  SavedConnections registry;
+  final firstWriteStarted = Completer<void>();
+  final allowFirstWrite = Completer<void>();
+  var _writes = 0;
+
+  @override
+  Future<SavedConnections> readRegistry() async => registry;
+
+  @override
+  Future<void> writeRegistry(SavedConnections next) async {
+    _writes++;
+    if (_writes == 1) {
+      firstWriteStarted.complete();
+      await allowFirstWrite.future;
+    }
+    registry = next;
+  }
 }

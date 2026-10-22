@@ -4,11 +4,17 @@ class DesktopConnection {
     required this.host,
     required this.port,
     required this.token,
+    this.name = '',
   });
 
   final String host;
   final int port;
   final String token;
+  final String name;
+
+  String get id => '${host.trim().toLowerCase()}:$port';
+  String get displayName => name.trim().isEmpty ? host : name.trim();
+  String get address => '$host:$port';
 
   /// KanVibe가 패키지된 앱에서 여는 포트. 개발 빌드는 19736을 쓴다
   static const defaultPort = 9736;
@@ -28,7 +34,12 @@ class DesktopConnection {
     'Authorization': 'Bearer $token',
   };
 
-  Map<String, dynamic> toJson() => {'host': host, 'port': port, 'token': token};
+  Map<String, dynamic> toJson() => {
+    'host': host,
+    'port': port,
+    'token': token,
+    'name': name,
+  };
 
   static DesktopConnection? fromJson(Map<String, dynamic> json) {
     final host = json['host'];
@@ -38,6 +49,13 @@ class DesktopConnection {
     if (host is! String || token is! String || port is! int) {
       return null;
     }
-    return DesktopConnection(host: host, port: port, token: token);
+    final name = json['name'];
+    if (name != null && name is! String) return null;
+    return DesktopConnection(
+      host: host,
+      port: port,
+      token: token,
+      name: name as String? ?? '',
+    );
   }
 }

@@ -7,6 +7,7 @@ import '../../../common/constants/app_theme.dart';
 import '../../../common/providers.dart';
 import '../../task_create/presentation/create_task_screen.dart';
 import '../../task_detail/presentation/task_detail_screen.dart';
+import '../../connection/presentation/desktop_connections_screen.dart';
 import '../data/board_snapshot.dart';
 import '../domain/board_task.dart';
 import '../domain/task_status.dart';
@@ -22,20 +23,59 @@ class BoardScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final board = ref.watch(boardProvider);
+    final activeConnection = ref
+        .watch(connectionControllerProvider)
+        .value
+        ?.activeConnection;
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('KanVibe'),
+        title: TextButton(
+          onPressed: () => Navigator.of(context).push(
+            MaterialPageRoute<void>(
+              builder: (_) => const DesktopConnectionsScreen(),
+            ),
+          ),
+          style: TextButton.styleFrom(
+            foregroundColor: AppColors.textPrimary,
+            alignment: Alignment.centerLeft,
+            padding: const EdgeInsets.symmetric(horizontal: AppSizes.p8),
+            minimumSize: const Size(48, 48),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Flexible(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      activeConnection?.displayName ?? 'KanVibe',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                    if (activeConnection != null)
+                      Text(
+                        activeConnection.address,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.labelSmall,
+                      ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: AppSizes.p4),
+              const Icon(Icons.keyboard_arrow_down, size: 20),
+            ],
+          ),
+        ),
         actions: [
           IconButton(
             onPressed: () => ref.invalidate(boardProvider),
             icon: const Icon(Icons.refresh),
             tooltip: '새로고침',
-          ),
-          IconButton(
-            onPressed: () => _disconnect(context, ref),
-            icon: const Icon(Icons.link_off),
-            tooltip: '연결 끊기',
           ),
         ],
       ),
@@ -87,26 +127,6 @@ Future<void> _createTask(BuildContext context, BoardSnapshot board) async {
   await navigator.push(
     MaterialPageRoute<void>(builder: (_) => TaskDetailScreen(task: created)),
   );
-}
-
-/// 끊기는 데스크탑의 기기 목록에서도 지워져야 끝난다.
-///
-/// 데스크탑에 닿지 못해도 이 기기의 열쇠는 지워지므로 화면은 곧 페어링으로 되돌아간다.
-/// 그때 남는 일은 사용자만 할 수 있어서, 조용히 넘기지 않고 말로 알린다.
-/// 화면이 사라진 뒤에도 안내가 남도록 messenger를 먼저 붙잡아 둔다.
-Future<void> _disconnect(BuildContext context, WidgetRef ref) async {
-  final messenger = ScaffoldMessenger.of(context);
-  final toldDesktop = await ref
-      .read(connectionControllerProvider.notifier)
-      .disconnect();
-
-  if (!toldDesktop) {
-    messenger.showSnackBar(
-      const SnackBar(
-        content: Text('데스크탑에 알리지 못했습니다. 데스크탑 설정에서도 이 기기를 끊어 주세요.'),
-      ),
-    );
-  }
 }
 
 /// 태블릿 배치. 상태별 칸을 옆으로 늘어놓는다

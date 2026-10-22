@@ -68,7 +68,10 @@ class _CreateTaskScreenState extends ConsumerState<CreateTaskScreen> {
       return;
     }
 
-    final connection = ref.read(connectionControllerProvider).value;
+    final connection = ref
+        .read(connectionControllerProvider)
+        .value
+        ?.activeConnection;
     if (connection == null) {
       return;
     }

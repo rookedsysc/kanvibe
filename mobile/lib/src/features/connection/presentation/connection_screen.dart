@@ -8,11 +8,11 @@ import '../../../common/constants/app_theme.dart';
 import '../../../common/network/desktop_connection.dart';
 import '../../../common/providers.dart';
 
-/// 데스크탑에 처음 연결하는 화면.
-///
-/// 한 번만 지나가는 화면이다. 연결하고 나면 토큰이 기기에 남아 다음부터는 곧바로 보드가 열린다.
+/// 데스크탑을 처음 연결하거나 목록에 새 PC를 추가하는 화면.
 class ConnectionScreen extends ConsumerStatefulWidget {
-  const ConnectionScreen({super.key});
+  const ConnectionScreen({this.isAdding = false, super.key});
+
+  final bool isAdding;
 
   @override
   ConsumerState<ConnectionScreen> createState() => _ConnectionScreenState();
@@ -21,6 +21,7 @@ class ConnectionScreen extends ConsumerStatefulWidget {
 class _ConnectionScreenState extends ConsumerState<ConnectionScreen> {
   final _formKey = GlobalKey<FormState>();
   final _hostController = TextEditingController();
+  final _nameController = TextEditingController();
   final _portController = TextEditingController(
     text: '${DesktopConnection.defaultPort}',
   );
@@ -32,6 +33,7 @@ class _ConnectionScreenState extends ConsumerState<ConnectionScreen> {
   @override
   void dispose() {
     _hostController.dispose();
+    _nameController.dispose();
     _portController.dispose();
     _codeController.dispose();
     super.dispose();
@@ -47,15 +49,31 @@ class _ConnectionScreenState extends ConsumerState<ConnectionScreen> {
       _failureMessage = null;
     });
 
-    final failureReason = await ref
-        .read(connectionControllerProvider.notifier)
-        .connect(
-          host: _hostController.text.trim(),
-          port: int.parse(_portController.text.trim()),
-          code: _codeController.text.trim(),
-        );
+    ConnectFailure? failureReason;
+    try {
+      failureReason = await ref
+          .read(connectionControllerProvider.notifier)
+          .connect(
+            host: _hostController.text.trim(),
+            port: int.parse(_portController.text.trim()),
+            code: _codeController.text.trim(),
+            name: _nameController.text.trim(),
+          );
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _isConnecting = false;
+          _failureMessage = '데스크탑에 연결하지 못했습니다. 주소와 네트워크를 확인해 주세요.';
+        });
+      }
+      return;
+    }
 
     if (!mounted) {
+      return;
+    }
+    if (failureReason == null && widget.isAdding) {
+      Navigator.of(context).popUntil((route) => route.isFirst);
       return;
     }
     setState(() {
@@ -68,11 +86,13 @@ class _ConnectionScreenState extends ConsumerState<ConnectionScreen> {
 
   String _connectFailureMessage(ConnectFailure reason) => switch (reason) {
     ConnectFailure.rejectedCode => '코드가 맞지 않거나 만료되었습니다.',
+    ConnectFailure.alreadyPaired => '이미 등록된 PC입니다. 목록에서 선택해 주세요.',
   };
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      appBar: widget.isAdding ? AppBar(title: const Text('PC 추가')) : null,
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
@@ -85,15 +105,24 @@ class _ConnectionScreenState extends ConsumerState<ConnectionScreen> {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     Text(
-                      '데스크탑에 연결',
+                      widget.isAdding ? '새 PC 연결' : '데스크탑에 연결',
                       style: Theme.of(context).textTheme.titleMedium,
                     ),
                     const SizedBox(height: AppSizes.p8),
                     Text(
-                      'KanVibe 설정에서 연결 코드를 띄운 다음, 여기에 옮겨 적어 주세요. 한 번 연결하면 다음부터는 바로 열립니다.',
+                      'PC의 KanVibe 설정에서 연결 코드를 만든 다음 입력해 주세요. 등록한 PC는 목록에서 다시 선택할 수 있습니다.',
                       style: Theme.of(context).textTheme.bodySmall,
                     ),
                     const SizedBox(height: AppSizes.p24),
+                    TextFormField(
+                      controller: _nameController,
+                      decoration: const InputDecoration(
+                        labelText: 'PC 이름 (선택)',
+                        helperText: '비워 두면 주소가 표시됩니다',
+                      ),
+                      textInputAction: TextInputAction.next,
+                    ),
+                    const SizedBox(height: AppSizes.p16),
                     TextFormField(
                       controller: _hostController,
                       decoration: const InputDecoration(
@@ -119,10 +148,12 @@ class _ConnectionScreenState extends ConsumerState<ConnectionScreen> {
                         fontSize: 14,
                         color: AppColors.textPrimary,
                       ),
-                      validator: (value) =>
-                          int.tryParse((value ?? '').trim()) == null
-                          ? '숫자로 입력해 주세요'
-                          : null,
+                      validator: (value) {
+                        final port = int.tryParse((value ?? '').trim());
+                        return port == null || port < 1 || port > 65535
+                            ? '1~65535 사이의 포트를 입력해 주세요'
+                            : null;
+                      },
                     ),
                     const SizedBox(height: AppSizes.p16),
                     TextFormField(

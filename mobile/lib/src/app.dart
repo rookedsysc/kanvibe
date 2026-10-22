@@ -5,6 +5,7 @@ import 'common/constants/app_theme.dart';
 import 'common/providers.dart';
 import 'features/board/presentation/board_screen.dart';
 import 'features/connection/presentation/connection_screen.dart';
+import 'features/connection/presentation/desktop_connections_screen.dart';
 
 /// 앱 전체. 저장된 연결이 있으면 보드로, 없으면 연결 화면으로 연다
 class KanvibeMobileApp extends ConsumerWidget {
@@ -12,18 +13,21 @@ class KanvibeMobileApp extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final connection = ref.watch(connectionControllerProvider);
+    final connections = ref.watch(connectionControllerProvider);
 
     return MaterialApp(
       title: 'KanVibe',
       debugShowCheckedModeBanner: false,
       theme: buildAppTheme(),
-      home: connection.when(
+      home: connections.when(
         loading: () =>
             const Scaffold(body: Center(child: CircularProgressIndicator())),
         error: (_, _) => const ConnectionScreen(),
-        data: (data) =>
-            data == null ? const ConnectionScreen() : const BoardScreen(),
+        data: (data) => data.connections.isEmpty
+            ? const ConnectionScreen()
+            : data.activeConnection == null
+            ? const DesktopConnectionsScreen()
+            : const BoardScreen(),
       ),
     );
   }

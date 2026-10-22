@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import '../../../common/network/desktop_connection.dart';
+import '../domain/saved_connections.dart';
 
 /// 연결 정보를 기기에 보관한다.
 ///
@@ -15,27 +16,46 @@ class ConnectionStore {
   final FlutterSecureStorage _storage;
 
   static const _connectionKey = 'kanvibe_desktop_connection';
+  static const _connectionsKey = 'kanvibe_desktop_connections';
 
-  Future<DesktopConnection?> read() async {
-    final raw = await _storage.read(key: _connectionKey);
-    if (raw == null) {
-      return null;
+  Future<SavedConnections> readRegistry() async {
+    final registryRaw = await _storage.read(key: _connectionsKey);
+    if (registryRaw != null) {
+      try {
+        return SavedConnections.fromJson(jsonDecode(registryRaw)) ??
+            const SavedConnections();
+      } on FormatException {
+        return const SavedConnections();
+      }
     }
 
+    final raw = await _storage.read(key: _connectionKey);
+    if (raw == null) return const SavedConnections();
+
     try {
-      return DesktopConnection.fromJson(
+      final connection = DesktopConnection.fromJson(
         jsonDecode(raw) as Map<String, dynamic>,
       );
+      if (connection == null) return const SavedConnections();
+      final registry = SavedConnections(
+        connections: [connection],
+        activeId: connection.id,
+      );
+      await writeRegistry(registry);
+      return registry;
     } on FormatException {
-      /// 저장값이 깨졌으면 다시 페어링하면 되는 손실이다
-      return null;
+      return const SavedConnections();
+    } on TypeError {
+      return const SavedConnections();
     }
   }
 
-  Future<void> write(DesktopConnection connection) => _storage.write(
-    key: _connectionKey,
-    value: jsonEncode(connection.toJson()),
-  );
-
-  Future<void> clear() => _storage.delete(key: _connectionKey);
+  /// 새 값의 저장이 성공한 뒤에만 이전 단일 연결을 지운다.
+  Future<void> writeRegistry(SavedConnections registry) async {
+    await _storage.write(
+      key: _connectionsKey,
+      value: jsonEncode(registry.toJson()),
+    );
+    await _storage.delete(key: _connectionKey);
+  }
 }
