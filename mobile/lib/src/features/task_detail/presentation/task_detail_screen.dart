@@ -156,13 +156,20 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
           selectedIndex: selectedIndex,
           onSelected: (index) => setState(() => _selectedIndex = index),
         ),
-        Expanded(child: _buildSelectedSurface(tabs[selectedIndex])),
+        Expanded(
+          child: _buildSelectedSurface(tabs[selectedIndex], surfaces.canResize),
+        ),
       ],
     );
   }
 
-  Widget _buildSelectedSurface(MirrorPane pane) =>
-      PaneTerminalView(taskId: _task.id, pane: pane, key: ValueKey(pane.id));
+  Widget _buildSelectedSurface(MirrorPane pane, bool canResize) =>
+      PaneTerminalView(
+        taskId: _task.id,
+        pane: pane,
+        canResize: canResize,
+        key: ValueKey(pane.id),
+      );
 }
 
 class _SurfaceTabBar extends StatelessWidget {

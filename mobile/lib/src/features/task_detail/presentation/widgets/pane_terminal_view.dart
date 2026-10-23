@@ -12,18 +12,25 @@ import '../../../../common/providers.dart';
 import '../../domain/mirror_pane.dart';
 import 'terminal_soft_keyboard.dart';
 
-/// 원본 격자를 유지하고 화면보다 큰 출력은 스크롤로 읽는다.
+/// 크기 조정이 가능한 세션은 모바일 viewport에 맞추고, 나머지는 원본 격자를 스크롤로 읽는다.
 class PaneTerminalView extends ConsumerStatefulWidget {
-  const PaneTerminalView({required this.taskId, required this.pane, super.key});
+  const PaneTerminalView({
+    required this.taskId,
+    required this.pane,
+    this.canResize = false,
+    super.key,
+  });
 
   final String taskId;
   final MirrorPane pane;
+  final bool canResize;
 
   @override
   ConsumerState<PaneTerminalView> createState() => _PaneTerminalViewState();
 }
 
-class _PaneTerminalViewState extends ConsumerState<PaneTerminalView> {
+class _PaneTerminalViewState extends ConsumerState<PaneTerminalView>
+    with WidgetsBindingObserver {
   late final xterm.Terminal _terminal;
   PaneStream? _stream;
   DesktopConnection? _connection;
@@ -33,6 +40,9 @@ class _PaneTerminalViewState extends ConsumerState<PaneTerminalView> {
   Timer? _firstFrameTimer;
   final _horizontalScroll = ScrollController();
   final _verticalScroll = ScrollController();
+  ({int cols, int rows})? _lastSentSize;
+  bool _isSuspended = false;
+  int _streamGeneration = 0;
 
   static const _firstFrameTimeout = Duration(seconds: 15);
   static final _textStyle = xterm.TerminalStyle(
@@ -47,12 +57,14 @@ class _PaneTerminalViewState extends ConsumerState<PaneTerminalView> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _terminal = xterm.Terminal(maxLines: _scrollbackLines);
     _terminal.resize(widget.pane.width, widget.pane.height);
 
     _terminal.onOutput = (data) {
       if (_failureMessage == null) _stream?.write(data);
     };
+    _terminal.onResize = (cols, rows, _, _) => _sendViewport(cols, rows);
 
     unawaited(_openStream());
   }
@@ -61,10 +73,12 @@ class _PaneTerminalViewState extends ConsumerState<PaneTerminalView> {
   void didUpdateWidget(PaneTerminalView oldWidget) {
     super.didUpdateWidget(oldWidget);
 
-    /// 데스크탑에서 pane을 분할하거나 창 크기를 바꾸면 같은 pane id로 새 좌표가 온다.
+    /// 원본 격자 모드에서 데스크탑 pane을 분할하거나 창 크기를 바꾸면 같은 pane id로 새 좌표가 온다.
     /// key가 pane id라 element가 재사용되므로, 여기서 다시 재지 않으면 상자만 커지고 격자는 옛 크기로 남는다.
-    if (widget.pane.width != oldWidget.pane.width ||
-        widget.pane.height != oldWidget.pane.height) {
+    if (!widget.canResize &&
+        (oldWidget.canResize ||
+            widget.pane.width != oldWidget.pane.width ||
+            widget.pane.height != oldWidget.pane.height)) {
       _terminal.resize(widget.pane.width, widget.pane.height);
     }
   }
@@ -72,14 +86,45 @@ class _PaneTerminalViewState extends ConsumerState<PaneTerminalView> {
   /// 데스크탑 터미널이 보관하는 양과 비슷하게 잡는다. 더 늘리면 폰 메모리만 먹는다
   static const _scrollbackLines = 2000;
 
+  void _sendViewport(int cols, int rows) {
+    final size = (cols: cols, rows: rows);
+    if (!widget.canResize ||
+        _stream == null ||
+        _isSuspended ||
+        _failureMessage != null ||
+        size == _lastSentSize) {
+      return;
+    }
+    _stream!.resize(cols, rows);
+    _lastSentSize = size;
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && _isSuspended) {
+      _isSuspended = false;
+      unawaited(_retryStream());
+    } else if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.hidden ||
+        state == AppLifecycleState.detached) {
+      _isSuspended = true;
+      _streamGeneration += 1;
+      _firstFrameTimer?.cancel();
+      unawaited(_subscription?.cancel());
+      unawaited(_stream?.close());
+      _stream = null;
+    }
+  }
+
   Future<void> _openStream() async {
+    final generation = ++_streamGeneration;
     _firstFrameTimer = Timer(_firstFrameTimeout, () {
       _failStream('터미널 응답이 없습니다. 데스크탑 연결을 확인한 뒤 다시 연결해 주세요.');
     });
     try {
       final connection = (await ref.read(connectionControllerProvider.future))
           .activeConnection;
-      if (!mounted) return;
+      if (!mounted || _isSuspended || generation != _streamGeneration) return;
       if (connection == null) {
         _failStream('데스크탑에 연결되어 있지 않습니다. 다시 페어링해 주세요.');
         return;
@@ -89,13 +134,25 @@ class _PaneTerminalViewState extends ConsumerState<PaneTerminalView> {
           .openPaneStream(connection, widget.taskId, widget.pane.id);
       _connection = connection;
       _stream = stream;
+      _lastSentSize = null;
       _subscription = stream.output.listen(
-        _receiveOutput,
-        onError: (_) => _failStream('데스크탑과 연결이 끊겼습니다. 네트워크를 확인해 주세요.'),
-        onDone: _handleStreamClosed,
+        (data) {
+          if (generation == _streamGeneration) _receiveOutput(data);
+        },
+        onError: (_) {
+          if (generation == _streamGeneration) {
+            _failStream('데스크탑과 연결이 끊겼습니다. 네트워크를 확인해 주세요.');
+          }
+        },
+        onDone: () {
+          if (generation == _streamGeneration) _handleStreamClosed();
+        },
       );
+      _sendViewport(_terminal.viewWidth, _terminal.viewHeight);
     } catch (_) {
-      _failStream('데스크탑에 연결하지 못했습니다. 주소와 네트워크를 확인해 주세요.');
+      if (generation == _streamGeneration) {
+        _failStream('데스크탑에 연결하지 못했습니다. 주소와 네트워크를 확인해 주세요.');
+      }
     }
   }
 
@@ -153,6 +210,8 @@ class _PaneTerminalViewState extends ConsumerState<PaneTerminalView> {
   void dispose() {
     /// 마지막 구독자가 나가면 데스크탑이 pane에 걸어 둔 파이프도 함께 풀린다
     _firstFrameTimer?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
+    _streamGeneration += 1;
     _horizontalScroll.dispose();
     _verticalScroll.dispose();
     unawaited(_subscription?.cancel());
@@ -198,7 +257,7 @@ class _PaneTerminalViewState extends ConsumerState<PaneTerminalView> {
                 ),
                 const Spacer(),
                 Text(
-                  '좌우·위아래 스크롤',
+                  widget.canResize ? '화면 크기에 맞춤' : '좌우·위아래 스크롤',
                   style: Theme.of(context).textTheme.bodySmall,
                 ),
               ],
@@ -216,7 +275,9 @@ class _PaneTerminalViewState extends ConsumerState<PaneTerminalView> {
                     controller: _horizontalScroll,
                     scrollDirection: Axis.horizontal,
                     child: SizedBox(
-                      width: terminalWidth > constraints.maxWidth
+                      width:
+                          !widget.canResize &&
+                              terminalWidth > constraints.maxWidth
                           ? terminalWidth
                           : constraints.maxWidth,
                       height: constraints.maxHeight,
@@ -233,7 +294,7 @@ class _PaneTerminalViewState extends ConsumerState<PaneTerminalView> {
                             label: '터미널 입력',
                             child: xterm.TerminalView(
                               _terminal,
-                              autoResize: false,
+                              autoResize: widget.canResize,
                               hardwareKeyboardOnly: true,
                               scrollController: _verticalScroll,
                               backgroundOpacity: 0,

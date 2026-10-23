@@ -9,7 +9,7 @@ KanVibe 데스크탑에 연결해 보드를 보고, 태스크의 터미널 pane�
 | 첫 화면 | 상태별 세로 구획 목록 | 상태별 칸반 |
 | 태스크 상세 | 탭 하나 = pane 하나, 고른 pane이 전체 화면 | 탭 하나 = pane 하나, 고른 pane이 전체 화면 |
 
-보드는 너비 768dp에서 배치가 바뀐다(`AppSizes.tabletBreakpoint`). 터미널은 모든 크기에서 pane 하나씩 표시하며, 글자 크기를 유지하고 넘치는 출력은 좌우·위아래 스크롤로 읽는다. 키보드를 열어도 원본 터미널 격자와 글자 크기는 유지된다.
+보드는 너비 768dp에서 배치가 바뀐다(`AppSizes.tabletBreakpoint`). 터미널은 모든 크기에서 pane 하나씩 표시한다. tmux와 일반 terminal은 14sp 글자 크기를 유지하면서 모바일의 가용 영역에 맞춰 원본 터미널의 행·열을 조정한다. 화면을 회전하거나 키보드를 열면 새 영역을 반영하며, 이전 출력은 위아래 스크롤로 읽는다. 정확한 행·열 지정을 지원하지 않는 Zellij와 이전 데스크탑 버전은 원본 격자를 유지하고 좌우·위아래 스크롤을 제공한다.
 
 ## 준비
 
@@ -89,9 +89,10 @@ Play에 올릴 때마다 `pubspec.yaml`의 `version:` 뒤 빌드 번호(`0.1.0+1
 같은 versionCode는 두 번 받지 않는다. iOS는 `flutter build ipa`가 export 단계에서
 App Store Connect를 조회해 `CFBundleVersion`을 스스로 올리므로 손댈 것이 없다.
 
-## 데스크탑 화면을 건드리지 않는다
+## 모바일 접속 중 터미널 크기
 
-pane을 비출 때 포커스나 크기를 바꾸는 명령은 하나도 쓰지 않는다. tmux는 `capture-pane`과 `pipe-pane`으로,
-zellij는 pane id를 지정한 `dump-screen`으로 읽는다. 이유는 `src/lib/paneMirror.ts` 머리말에 적혀 있다.
+모바일에서 터미널을 보고 있는 동안 PC의 같은 터미널 크기도 바뀐다. 탭을 벗어나거나 앱을 배경으로 보내거나 연결을 닫으면 PC의 크기로 돌아간다. 여러 모바일이 같은 tmux 창이나 terminal을 보고 있다면 마지막으로 크기를 보낸 기기를 우선하고, 그 기기가 나가면 남은 기기의 크기를 적용한다.
+
+tmux는 창 크기 정책과 분할 배치를 함께 보관했다가 마지막 모바일 연결이 끝날 때 복원한다. 포커스는 바꾸지 않는다. 출력은 tmux의 `capture-pane`/`pipe-pane`, Zellij의 pane id를 지정한 `dump-screen`으로 읽는다. wire의 text 프레임은 키 입력, binary JSON의 `type: resize`는 크기 조정으로 구분한다. 모바일 화면 맞춤에는 이 기능을 지원하는 데스크탑 빌드도 필요하다.
 
 터미널의 Powerline/Nerd Font 기호는 [Nerd Fonts Symbols Only v3.5.1](https://github.com/ryanoasis/nerd-fonts/tree/v3.5.1/patched-fonts/NerdFontsSymbolsOnly)을 보조 글꼴로 사용한다. 원본 파일과 MIT 라이선스를 `assets/fonts/`에 포함한다.

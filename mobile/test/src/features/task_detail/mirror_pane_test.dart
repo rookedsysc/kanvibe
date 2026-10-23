@@ -26,6 +26,11 @@ void main() {
   });
 
   group('폰이 쓰는 pane 목록', () {
+    test('데스크탑이 지원을 명시한 경우에만 화면 크기를 바꾼다', () {
+      expect(TaskSurfaces.fromJson({'canResize': true}).canResize, isTrue);
+      expect(TaskSurfaces.fromJson({'canResize': false}).canResize, isFalse);
+      expect(TaskSurfaces.fromJson(const {}).canResize, isFalse);
+    });
     test('모든 window의 pane을 순서대로 펼친다', () {
       final surfaces = TaskSurfaces.fromJson({
         'tabs': [

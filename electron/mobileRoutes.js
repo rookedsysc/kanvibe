@@ -369,6 +369,9 @@ function attachMobileStreamServer(server, { bridge, host, port }) {
 async function openPaneStream(webSocket, bridge, taskId, paneId, onClosed) {
   let unsubscribe = null;
   let isClosed = false;
+  let viewport = null;
+  let finishSubscribing;
+  let writeQueue = new Promise((resolve) => { finishSubscribing = resolve; });
 
   /** 구독이 붙기 전에 기기가 나가면 파이프를 걸어 둔 채로 남으므로 곧바로 되돌린다 */
   webSocket.on("close", () => {
@@ -378,6 +381,9 @@ async function openPaneStream(webSocket, bridge, taskId, paneId, onClosed) {
       unsubscribe();
       unsubscribe = null;
     }
+    void writeQueue.then(() => viewport?.release()).catch((error) => {
+      console.error("[kanvibe] Mobile viewport restore failed:", error);
+    });
   });
 
   /**
@@ -388,9 +394,32 @@ async function openPaneStream(webSocket, bridge, taskId, paneId, onClosed) {
    * 재현이 간헐적이라 사용자가 원인을 짚기 가장 어려운 종류의 결함이다. 줄은 소켓 하나 몫이면 충분하다 —
    * 서로 다른 기기의 입력 사이에는 지켜야 할 순서가 없다.
    */
-  let writeQueue = Promise.resolve();
-  webSocket.on("message", (data) => {
-    writeQueue = writeQueue.then(() => bridge.writeToPane(taskId, paneId, data.toString())).catch(() => {});
+  webSocket.on("message", (data, isBinary) => {
+    let resize = null;
+    if (isBinary) {
+      try {
+        if (data.length > 256) return;
+        const message = JSON.parse(data.toString());
+        if (message?.type !== "resize" || ![message.cols, message.rows].every((value) => Number.isInteger(value) && value >= 1 && value <= 500)) return;
+        resize = message;
+      } catch {
+        return;
+      }
+    }
+    writeQueue = writeQueue.then(async () => {
+      if (isClosed || webSocket.readyState !== webSocket.OPEN) return;
+      if (resize) {
+        viewport ??= await bridge.claimPaneViewport(taskId, paneId);
+        await viewport.resize(resize.cols, resize.rows);
+      } else {
+        await bridge.writeToPane(taskId, paneId, data.toString());
+      }
+    }).catch((error) => {
+      if (resize) {
+        console.error("[kanvibe] Mobile viewport resize failed:", error);
+        webSocket.close(4000, "resize-failed");
+      }
+    });
   });
 
   try {
@@ -414,6 +443,8 @@ async function openPaneStream(webSocket, bridge, taskId, paneId, onClosed) {
   } catch (error) {
     const reason = error && error.name === "SurfaceUnavailableError" ? error.reason : "stream-failed";
     webSocket.close(4000, reason);
+  } finally {
+    finishSubscribing();
   }
 }
 

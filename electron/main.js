@@ -1147,18 +1147,30 @@ app.whenReady().then(async () => {
     }
   });
 
-  app.on("before-quit", () => {
+  let isPreparingToQuit = false;
+  let isReadyToQuit = false;
+  app.on("before-quit", async (event) => {
+    if (isReadyToQuit) return;
+    event.preventDefault();
+    if (isPreparingToQuit) return;
+    isPreparingToQuit = true;
     stopBackgroundTaskSync?.();
     stopBackgroundTaskSync = null;
     unsubscribeBoardEvents();
     hookServer?.close();
-    /** terminal 세션의 PTY는 KanVibe가 소유하므로 남겨두면 고아 프로세스가 된다 */
-    killAllTerminalSessionsOnQuit?.();
     /**
      * 미러 자식은 `detached`로 떠 있어 앱이 죽어도 함께 죽지 않는다.
      * `hookServer.close()`는 새 연결만 막고 이미 맺어진 WebSocket은 닫지 않으므로 구독 해제 경로도 돌지 않는다.
      */
-    stopAllPaneMirrorsOnQuit?.();
+    try {
+      await stopAllPaneMirrorsOnQuit?.(true);
+    } catch (error) {
+      console.error("[kanvibe] Mobile viewport cleanup failed:", error);
+    }
+    /** 복원을 마친 뒤 PTY를 닫아야 일반 terminal의 마지막 크기 변경도 실행된다. */
+    killAllTerminalSessionsOnQuit?.();
+    isReadyToQuit = true;
+    app.quit();
   });
 });
 

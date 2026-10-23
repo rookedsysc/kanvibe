@@ -91,6 +91,7 @@ const { attachClientToTerminalTab, createLocalTerminalTab, killAllTerminalSessio
 const { CallbackTerminalClient } = await import("@/desktop/main/terminalBridge");
 const {
   authorizeMobileRequest,
+  claimPaneViewport,
   createMobileTask,
   getMobileBoard,
   getMobileProjectBranches,
@@ -113,6 +114,90 @@ const TMUX_TASK = { sessionType: SessionType.TMUX, sessionName: "kanvibe-task", 
 
 /** 이 세션이 가진 pane은 `%19` 하나뿐이다. `%3`은 같은 tmux 서버의 다른 세션에 있는 pane을 가리킨다 */
 const MIRROR_PANE_LINE = "%19\t@10\tbash\t0\t0\t80\t24\tfirst";
+
+describe("모바일 화면 크기", () => {
+  it("tmux는 폰 크기로 바꾸고 마지막 모바일이 나가면 배치와 크기 정책을 복원한다", async () => {
+    stubTmuxMirror();
+    execGitMock.mockImplementation(async (command) => {
+      if (command.includes("list-panes")) return MIRROR_PANE_LINE;
+      if (command.includes("window_layout")) return "80\t24\tlayout-original\n";
+      if (command.includes("window_width")) return "80 24 80 24";
+      return "";
+    });
+
+    const viewport = await claimPaneViewport("task-1", "%19");
+    await viewport.resize(44, 70);
+    expect(executedCommands().some((command) => command.includes("resize-pane") && command.includes("-x 44 -y 70"))).toBe(true);
+    await viewport.release();
+    expect(executedCommands().some((command) => command.includes("select-layout") && command.includes("layout-original"))).toBe(true);
+    expect(executedCommands().some((command) => command.includes("window-size") && command.includes("-u"))).toBe(true);
+  });
+
+  it("일반 터미널도 최신 모바일 크기를 쓰고 퇴장하면 남은 모바일과 PC 크기로 돌아간다", async () => {
+    findOneByMock.mockResolvedValue({ id: "viewport-task", sessionName: "kanvibe-viewport", sessionType: SessionType.TERMINAL, sshHost: null });
+    await subscribeToPane("viewport-task", "viewport-task-1", () => {}, () => {});
+    const first = await claimPaneViewport("viewport-task", "viewport-task-1");
+    const second = await claimPaneViewport("viewport-task", "viewport-task-1");
+    await first.resize(44, 70);
+    await second.resize(80, 35);
+    await second.release();
+    await first.release();
+    expect(spawnedPtys[0].resize.mock.calls).toEqual([[44, 70], [80, 35], [44, 70], [120, 30]]);
+    expect(spawnedPtys[0].write).not.toHaveBeenCalled();
+  });
+
+  it("다른 세션의 pane은 크기를 바꿀 수 없다", async () => {
+    stubTmuxMirror();
+    await expect(claimPaneViewport("task-1", "%3")).rejects.toMatchObject({ reason: "session-not-running" });
+    expect(executedCommands().some((command) => command.includes("resize-"))).toBe(false);
+  });
+
+  it("모바일 접속 중 PC 크기 변경은 보관하고 마지막 모바일 퇴장 때 반영한다", async () => {
+    findOneByMock.mockResolvedValue({ id: "priority-task", sessionName: "kanvibe-priority", sessionType: SessionType.TERMINAL, sshHost: null });
+    const stop = await subscribeToPane("priority-task", "priority-task-1", () => {}, () => {});
+    const desktop = new CallbackTerminalClient(() => {});
+    await attachClientToTerminalTab("priority-task", "priority-task-1", desktop as never);
+    const viewport = await claimPaneViewport("priority-task", "priority-task-1");
+    await viewport.resize(44, 70);
+    desktop.emit("message", Buffer.from(`\x01${JSON.stringify({ type: "resize", cols: 100, rows: 40 })}`));
+    expect(spawnedPtys[0].resize.mock.calls).toEqual([[44, 70]]);
+    await viewport.release();
+    expect(spawnedPtys[0].resize.mock.calls).toEqual([[44, 70], [100, 40]]);
+    desktop.close();
+    stop();
+  });
+
+  it("두 모바일의 동시 퇴장 뒤 재접속한 화면을 이전 복원이 덮어쓰지 않는다", async () => {
+    stubTmuxMirror();
+    let restoreCount = 0;
+    let finishSecondRestore: (() => void) | undefined;
+    execGitMock.mockImplementation(async (command) => {
+      if (command.includes("list-panes")) return MIRROR_PANE_LINE;
+      if (command.includes("window_layout")) return "80\t24\tlayout-original\n";
+      if (command.includes("window_width")) return "80 24 80 24";
+      if (command.includes("select-layout") && ++restoreCount === 2) {
+        await new Promise<void>((resolve) => { finishSecondRestore = resolve; });
+      }
+      return "";
+    });
+    const first = await claimPaneViewport("task-1", "%19");
+    const second = await claimPaneViewport("task-1", "%19");
+    await first.resize(44, 70);
+    const firstRelease = first.release();
+    const secondRelease = second.release();
+    await firstRelease;
+    await vi.waitFor(() => expect(finishSecondRestore).toBeDefined());
+    const reconnected = await claimPaneViewport("task-1", "%19");
+    let resizedBeforeRestore = false;
+    const resize = reconnected.resize(60, 50).then(() => { resizedBeforeRestore = true; });
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    const jumpedQueue = resizedBeforeRestore;
+    finishSecondRestore!();
+    await Promise.all([secondRelease, resize]);
+    await reconnected.release();
+    expect(jumpedQueue).toBe(false);
+  });
+});
 
 beforeEach(() => {
   appSettingsStore.clear();

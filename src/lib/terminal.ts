@@ -33,6 +33,8 @@ interface TerminalEntry {
   sessionName: string;
   taskId: string;
   tabId: string | null;
+  desktopViewportSize?: { cols: number; rows: number };
+  mobileViewportSize?: { cols: number; rows: number };
   /** terminal 세션에만 있다. 멀티플렉서 세션은 멀티플렉서가 화면을 들고 있다 */
   screen?: TerminalScreen;
 }
@@ -914,8 +916,8 @@ function handleTerminalMessage(entry: TerminalEntry, data: string): void {
     try {
       const parsed = JSON.parse(data.slice(1));
       if (parsed.type === "resize" && parsed.cols && parsed.rows) {
-        entry.pty.resize(parsed.cols, parsed.rows);
-        entry.screen?.terminal.resize(parsed.cols, parsed.rows);
+        entry.desktopViewportSize = { cols: parsed.cols, rows: parsed.rows };
+        if (!entry.mobileViewportSize) resizeTerminalEntry(entry, parsed.cols, parsed.rows);
       }
     } catch {
       entry.pty.write(data);
@@ -1003,4 +1005,26 @@ export function getTerminalTabSize(taskId: string, tabId: string): { cols: numbe
   }
 
   return { cols: entry.pty.cols, rows: entry.pty.rows };
+}
+
+export function resizeTerminalTab(taskId: string, tabId: string, cols: number, rows: number): void {
+  const entry = activeTerminals.get(buildTerminalKey(taskId, tabId));
+  if (!entry || entry.sessionType !== SessionType.TERMINAL) {
+    throw new Error("터미널 세션이 실행 중이지 않습니다.");
+  }
+  entry.mobileViewportSize = { cols, rows };
+  resizeTerminalEntry(entry, cols, rows);
+}
+
+export function releaseTerminalTabViewport(taskId: string, tabId: string, cols: number, rows: number): void {
+  const entry = activeTerminals.get(buildTerminalKey(taskId, tabId));
+  if (!entry) return;
+  entry.mobileViewportSize = undefined;
+  const desktop = entry.desktopViewportSize ?? { cols, rows };
+  resizeTerminalEntry(entry, desktop.cols, desktop.rows);
+}
+
+function resizeTerminalEntry(entry: TerminalEntry, cols: number, rows: number): void {
+  entry.pty.resize(cols, rows);
+  entry.screen?.terminal.resize(cols, rows);
 }

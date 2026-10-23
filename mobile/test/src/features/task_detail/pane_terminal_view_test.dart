@@ -28,6 +28,7 @@ Future<void> pumpPane(
   MirrorPane pane, {
   required FakeDesktopClient client,
   required FakeConnectionStore store,
+  bool canResize = false,
 }) async {
   await tester.pumpWidget(
     ProviderScope(
@@ -41,6 +42,7 @@ Future<void> pumpPane(
           width: phoneSize.width,
           height: phoneSize.height,
           child: PaneTerminalView(
+            canResize: canResize,
             taskId: 'task-1',
             pane: pane,
             key: ValueKey(pane.id),
@@ -126,6 +128,115 @@ Future<void> sendImeBuffer(
 }
 
 void main() {
+  testWidgets('폰과 가로 화면의 가용 영역에 맞춘 행·열을 서버에 보낸다', (tester) async {
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.binding.setSurfaceSize(const Size(375, 812));
+    final client = FakeDesktopClient();
+    await pumpPane(
+      tester,
+      _pane,
+      client: client,
+      store: FakeConnectionStore(),
+      canResize: true,
+    );
+    final terminal = mountedTerminal(tester);
+    final portraitCols = terminal.viewWidth;
+    final portraitRows = terminal.viewHeight;
+    expect(portraitCols, lessThan(_pane.width));
+    expect(portraitRows, greaterThan(_pane.height));
+    expect(client.resizedPanes[_pane.id]!.last, (
+      cols: portraitCols,
+      rows: portraitRows,
+    ));
+
+    await tester.binding.setSurfaceSize(const Size(812, 375));
+    await tester.pumpAndSettle();
+    expect(terminal.viewWidth, greaterThan(portraitCols));
+    expect(terminal.viewHeight, lessThan(portraitRows));
+    expect(client.resizedPanes[_pane.id]!.last, (
+      cols: terminal.viewWidth,
+      rows: terminal.viewHeight,
+    ));
+    final render = tester
+        .state<xterm.TerminalViewState>(find.byType(xterm.TerminalView))
+        .renderTerminal;
+    expect(
+      terminal.viewWidth * render.cellSize.width,
+      lessThanOrEqualTo(render.size.width),
+    );
+    expect(
+      (terminal.viewWidth + 1) * render.cellSize.width,
+      greaterThan(render.size.width),
+    );
+    expect(
+      tester
+          .widget<xterm.TerminalView>(find.byType(xterm.TerminalView))
+          .textStyle
+          .fontSize,
+      14,
+    );
+  });
+
+  testWidgets('화면 맞춤 모드에서 키보드를 열면 글자 크기는 유지하고 행 수만 줄인다', (tester) async {
+    final client = FakeDesktopClient();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          desktopClientProvider.overrideWithValue(client),
+          connectionStoreProvider.overrideWithValue(FakeConnectionStore()),
+        ],
+        child: MaterialApp(
+          theme: buildAppTheme(),
+          home: const Scaffold(
+            body: PaneTerminalView(
+              taskId: 'task-1',
+              pane: _pane,
+              canResize: true,
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final terminal = mountedTerminal(tester);
+    final rowsBefore = terminal.viewHeight;
+    final colsBefore = terminal.viewWidth;
+    tester.view.viewInsets = const FakeViewPadding(bottom: 250);
+    addTearDown(tester.view.resetViewInsets);
+    await tester.pumpAndSettle();
+    expect(terminal.viewHeight, lessThan(rowsBefore));
+    expect(terminal.viewWidth, colsBefore);
+    expect(client.resizedPanes[_pane.id]!.last, (
+      cols: colsBefore,
+      rows: terminal.viewHeight,
+    ));
+    expect(
+      tester
+          .widget<xterm.TerminalView>(find.byType(xterm.TerminalView))
+          .textStyle
+          .fontSize,
+      14,
+    );
+  });
+
+  testWidgets('앱이 배경으로 가면 연결을 닫고 돌아올 때 현재 크기를 다시 보낸다', (tester) async {
+    final client = FakeDesktopClient();
+    await pumpPane(
+      tester,
+      _pane,
+      client: client,
+      store: FakeConnectionStore(),
+      canResize: true,
+    );
+    final sentBefore = client.resizedPanes[_pane.id]!.length;
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    await tester.pumpAndSettle();
+    expect(client.closedPanes, contains(_pane.id));
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pumpAndSettle();
+    expect(client.resizedPanes[_pane.id]!.length, greaterThan(sentBefore));
+  });
+
   testWidgets('첫 출력 전과 수신 후의 연결 상태를 구분한다', (tester) async {
     final client = FakeDesktopClient();
     await pumpPane(tester, _pane, client: client, store: FakeConnectionStore());

@@ -92,6 +92,7 @@ class FakeDesktopClient implements DesktopClient {
 
   /// pane별로 모바일이 보낸 입력. 어느 pane이 키를 받았는지까지 봐야 입력 대상이 옮겨졌는지 알 수 있다
   final writtenInput = <String, List<String>>{};
+  final resizedPanes = <String, List<({int cols, int rows})>>{};
 
   @override
   Future<void> unpairDevice(DesktopConnection connection) async {
@@ -175,6 +176,10 @@ class FakeDesktopClient implements DesktopClient {
     return PaneStream(
       output: controller.stream,
       onWrite: (input) => writtenInput.putIfAbsent(paneId, () => []).add(input),
+      onResize: (cols, rows) => resizedPanes.putIfAbsent(paneId, () => []).add((
+        cols: cols,
+        rows: rows,
+      )),
       onClose: () async {
         closedPanes.add(paneId);
         await controller.close();

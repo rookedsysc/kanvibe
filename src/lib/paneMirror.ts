@@ -7,7 +7,7 @@ import { quoteForPosixShell } from "@/lib/worktree";
  * 두 축을 갈라 둔 이유는 조작 대상이 다르기 때문이다. 탭 축은 사용자가 만들고 지우고 이름을 바꾸는 대상이지만,
  * pane 축은 읽어서 비추기만 하는 대상이다.
  *
- * 여기 있는 명령은 어느 것도 포커스나 크기를 바꾸지 않는다. 데스크탑 화면을 건드리지 않고 읽는 것이 이 파일의 전제다.
+ * 읽기 명령은 포커스를 바꾸지 않는다. 모바일 viewport 명령만 연결 수명 동안 크기를 바꾸고 원래 배치를 복원한다.
  * tmux grouped session은 window 객체를 공유해서 `select-pane`이나 `resize-pane -Z`가 데스크탑 화면까지 움직이고,
  * zellij도 pane id를 주지 않으면 포커스된 pane을 대상으로 삼는다. 그래서 모든 명령이 대상을 명시적으로 받는다.
  *
@@ -54,6 +54,57 @@ const TMUX_MIRROR_PANE_FIELD_COUNT = 8;
 export function buildTmuxListMirrorPanesCommand(sessionName: string): string {
   const target = quoteForPosixShell(sessionName);
   return `tmux list-panes -s -t ${target} -F ${quoteForPosixShell(TMUX_MIRROR_PANE_FORMAT)}`;
+}
+
+export interface TmuxViewportState {
+  width: number;
+  height: number;
+  layout: string;
+  windowSize: string | null;
+  zoomed: boolean;
+}
+
+export function buildTmuxReadViewportCommand(windowId: string): string {
+  const target = quoteForPosixShell(windowId);
+  return `tmux display-message -p -t ${target} '#{window_width}\t#{window_height}\t#{window_layout}\t#{window_zoomed_flag}' && tmux show-options -wqv -t ${target} window-size`;
+}
+
+export function parseTmuxViewportState(output: string): TmuxViewportState {
+  const [geometry, windowSize] = output.trimEnd().split("\n");
+  const [width, height, layout, zoomed] = geometry.split("\t");
+  if (!Number.isInteger(Number(width)) || Number(width) < 1 || !Number.isInteger(Number(height)) || Number(height) < 1 || !layout) {
+    throw new Error("tmux 창 크기를 읽지 못했습니다.");
+  }
+  return { width: Number(width), height: Number(height), layout, windowSize: windowSize || null, zoomed: zoomed === "1" };
+}
+
+export function buildTmuxReadPaneGeometryCommand(windowId: string, paneId: string): string {
+  const window = quoteForPosixShell(windowId);
+  const unzoom = quoteForPosixShell(`resize-pane -Z -t ${window}`);
+  return `tmux if-shell -F -t ${window} '#{window_zoomed_flag}' ${unzoom} && tmux display-message -p -t ${quoteForPosixShell(paneId)} '#{window_width} #{window_height} #{pane_width} #{pane_height}'`;
+}
+
+export function buildTmuxResizeViewportCommand(paneId: string, geometry: string, cols: number, rows: number): string {
+  const [windowWidth, windowHeight, paneWidth, paneHeight] = geometry.trim().split(/\s+/).map(Number);
+  if (![windowWidth, windowHeight, paneWidth, paneHeight].every((value) => Number.isInteger(value) && value > 0)) {
+    throw new Error("tmux pane 크기를 읽지 못했습니다.");
+  }
+  const target = quoteForPosixShell(paneId);
+  const width = windowWidth - paneWidth + cols;
+  const height = windowHeight - paneHeight + rows;
+  return `tmux resize-window -t ${target} -x ${width} -y ${height} && tmux resize-pane -t ${target} -x ${cols} -y ${rows}`;
+}
+
+export function buildTmuxRestoreViewportCommand(windowId: string, state: TmuxViewportState): string {
+  const target = quoteForPosixShell(windowId);
+  const policy = state.windowSize === null
+    ? `tmux set-option -w -u -t ${target} window-size`
+    : `tmux set-option -w -t ${target} window-size ${quoteForPosixShell(state.windowSize)}`;
+  const zoom = state.zoomed
+    ? `tmux if-shell -F -t ${target} '#{!:#{window_zoomed_flag}}' ${quoteForPosixShell(`resize-pane -Z -t ${target}`)} || exit $?; `
+    : "";
+  // PC에서 pane을 추가하면 저장한 layout을 적용할 수 없어도 임시 manual 정책은 반드시 풀어야 한다.
+  return `kanvibe_restore_status=0; tmux resize-window -t ${target} -x ${state.width} -y ${state.height} && tmux select-layout -t ${target} ${quoteForPosixShell(state.layout)} || kanvibe_restore_status=$?; ${policy} || exit $?; ${zoom}exit "$kanvibe_restore_status"`;
 }
 
 /** `buildTmuxListMirrorPanesCommand` 출력을 pane 목록으로 바꾼다 */

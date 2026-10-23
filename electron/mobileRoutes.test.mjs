@@ -39,6 +39,7 @@ function createBridge(overrides = {}) {
     getTaskSurfaces: vi.fn(async () => ({ panes: [] })),
     subscribeToPane: vi.fn(async () => () => {}),
     writeToPane: vi.fn(async () => {}),
+    claimPaneViewport: vi.fn(async () => ({ resize: vi.fn(async () => {}), release: vi.fn(async () => {}) })),
     startMobilePairing: vi.fn(() => ({ code: "654321", expiresAt: 1_700_000_000_000 })),
     createMobileTask: vi.fn(async () => ({ id: "task-1", title: "feat/from-mobile" })),
     updateMobileTaskStatus: vi.fn(async () => ({ id: "task-1", status: "review" })),
@@ -449,6 +450,35 @@ describe("기기 이름", () => {
 });
 
 describe("키 입력 순서", () => {
+  it("binary resize만 크기를 바꾸고 같은 JSON의 text 입력은 그대로 보낸다", async () => {
+    const resize = vi.fn(async () => {});
+    const release = vi.fn(async () => {});
+    bridge.claimPaneViewport.mockResolvedValue({ resize, release });
+    const client = await openPaneStreamClient("Bearer good");
+    const message = JSON.stringify({ type: "resize", cols: 44, rows: 70 });
+    client.send(Buffer.from(message));
+    client.send(message);
+    await waitFor(() => bridge.writeToPane.mock.calls.length > 0);
+    expect(bridge.claimPaneViewport).toHaveBeenCalledWith("task-1", "pane-1");
+    expect(resize).toHaveBeenCalledWith(44, 70);
+    expect(bridge.writeToPane).toHaveBeenCalledWith("task-1", "pane-1", message);
+    client.close();
+    await waitFor(() => release.mock.calls.length > 0);
+    expect(release).toHaveBeenCalledTimes(1);
+  });
+
+  it("잘못된 binary 크기와 JSON은 터미널 입력으로 보내지 않는다", async () => {
+    const client = await openPaneStreamClient("Bearer good");
+    for (const message of ["broken-json", ...[0, -1, 1.5, 501, "44"].map((cols) => JSON.stringify({ type: "resize", cols, rows: 70 }))]) {
+      client.send(Buffer.from(message));
+    }
+    client.send("done");
+    await waitFor(() => bridge.writeToPane.mock.calls.length > 0);
+    expect(bridge.claimPaneViewport).not.toHaveBeenCalled();
+    expect(bridge.writeToPane.mock.calls.map((call) => call[2])).toEqual(["done"]);
+    client.close();
+  });
+
   /**
    * `writeToPane` 한 번은 DB 왕복과 `sh -c` 프로세스를 지나므로 짧지 않다.
    * 그대로 띄우면 겹친 두 입력의 도착 순서를 OS 스케줄러가 정해 `ls`가 `sl`로 들어간다.

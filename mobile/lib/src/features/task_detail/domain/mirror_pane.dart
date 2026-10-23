@@ -62,14 +62,16 @@ class MirrorTab {
 
 /// 태스크가 가진 탭과 pane 전부
 class TaskSurfaces {
-  const TaskSurfaces({required this.tabs});
+  const TaskSurfaces({required this.tabs, this.canResize = false});
 
   final List<MirrorTab> tabs;
+  final bool canResize;
 
   /// 폰이 쓰는 목록. 모든 window에 걸친 pane을 순서대로 펼친다
   List<MirrorPane> get allPanes => [for (final tab in tabs) ...tab.panes];
 
   static TaskSurfaces fromJson(Map<String, dynamic> json) => TaskSurfaces(
+    canResize: json['canResize'] == true,
     tabs: (json['tabs'] as List<dynamic>? ?? [])
         .whereType<Map<String, dynamic>>()
         .map(MirrorTab.fromJson)

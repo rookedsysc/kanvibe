@@ -55,7 +55,10 @@ const _secondWindow = MirrorTab(
   ],
 );
 
-const _surfaces = TaskSurfaces(tabs: [_twoPaneWindow, _secondWindow]);
+const _surfaces = TaskSurfaces(
+  tabs: [_twoPaneWindow, _secondWindow],
+  canResize: true,
+);
 
 const _task = BoardTask(
   id: 'task-1',

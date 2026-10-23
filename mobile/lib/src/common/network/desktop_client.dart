@@ -238,6 +238,9 @@ class DesktopClient {
     return PaneStream(
       output: channel.stream.map((event) => event.toString()),
       onWrite: channel.sink.add,
+      onResize: (cols, rows) => channel.sink.add(
+        utf8.encode(jsonEncode({'type': 'resize', 'cols': cols, 'rows': rows})),
+      ),
       onClose: channel.sink.close,
       readCloseCode: () => channel.closeCode,
     );
@@ -259,6 +262,7 @@ class PaneStream {
   const PaneStream({
     required this.output,
     required this.onWrite,
+    required this.onResize,
     required this.onClose,
     required this.readCloseCode,
   });
@@ -269,12 +273,16 @@ class PaneStream {
   /// 모바일에서 누른 키를 pane으로 보낸다
   final void Function(String input) onWrite;
 
+  final void Function(int cols, int rows) onResize;
+
   final Future<void> Function() onClose;
 
   /// 소켓이 왜 닫혔는지. 서버가 나눠 보낸 사유를 위젯이 읽을 유일한 통로다
   final int? Function() readCloseCode;
 
   void write(String input) => onWrite(input);
+
+  void resize(int cols, int rows) => onResize(cols, rows);
 
   Future<void> close() => onClose();
 }

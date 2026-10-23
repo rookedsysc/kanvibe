@@ -27,12 +27,17 @@ import {
   buildTmuxCursorPositionCommand,
   buildTmuxListMirrorPanesCommand,
   buildTmuxPaneStreamCommand,
+  buildTmuxReadPaneGeometryCommand,
+  buildTmuxReadViewportCommand,
+  buildTmuxResizeViewportCommand,
+  buildTmuxRestoreViewportCommand,
   buildTmuxSendKeysCommand,
   buildZellijDumpPaneCommand,
   buildZellijListMirrorPanesCommand,
   buildZellijWritePaneCommand,
   parseTmuxCursorPosition,
   parseTmuxMirrorPaneList,
+  parseTmuxViewportState,
   parseZellijMirrorPaneList,
   type MirrorPane,
 } from "@/lib/paneMirror";
@@ -42,6 +47,8 @@ import {
   attachClientToTerminalTab,
   getTerminalTabSize,
   listLocalTerminalTabs,
+  releaseTerminalTabViewport,
+  resizeTerminalTab,
   writeTerminalTabInput,
 } from "@/lib/terminal";
 import { isSessionAlive, quoteForPosixShell } from "@/lib/worktree";
@@ -49,8 +56,8 @@ import { isSessionAlive, quoteForPosixShell } from "@/lib/worktree";
 /**
  * 모바일 클라이언트가 데스크탑을 읽고, 터미널 pane을 비추고, 태스크를 만들거나 옮기는 경로.
  *
- * 비추는 쪽은 데스크탑 화면을 바꾸지 않는다. pane을 고르거나 크기를 바꾸는 명령은 하나도 부르지 않고,
- * 스냅샷과 출력 스트림만 가져다 나눠 보낸다. 근거는 `paneMirror.ts` 머리말에 적어 두었다.
+ * 스냅샷과 출력 스트림을 나눠 보내며 포커스는 바꾸지 않는다. 크기 조정을 지원하는 세션은
+ * [claimPaneViewport]가 모바일 연결 수명 동안 크기를 소유하고 마지막 연결이 나가면 복원한다.
  *
  * 데스크탑을 바꾸는 것은 [createMobileTask]와 [updateMobileTaskStatus], 그리고 세션이 아직 없는 태스크를 열 때
  * 세션을 띄우는 일이다. 앞의 둘은 데스크탑 화면이 누르는 것과 같은 `kanbanService` 경로를, 세션은 데스크탑이 태스크를
@@ -102,6 +109,7 @@ export interface MirrorTab {
 export interface TaskSurfaces {
   taskId: string;
   sessionType: SessionType;
+  canResize: boolean;
   tabs: MirrorTab[];
 }
 
@@ -156,7 +164,7 @@ export async function getTaskSurfaces(taskId: string): Promise<TaskSurfaces> {
   }
 
   if (target.sessionType === SessionType.TERMINAL) {
-    return { taskId, sessionType: target.sessionType, tabs: listTerminalMirrorTabs(taskId) };
+    return { taskId, sessionType: target.sessionType, canResize: true, tabs: listTerminalMirrorTabs(taskId) };
   }
 
   await startMultiplexerSessionIfMissing(task, target);
@@ -166,7 +174,7 @@ export async function getTaskSurfaces(taskId: string): Promise<TaskSurfaces> {
     throw new SurfaceUnavailableError("session-not-running");
   }
 
-  return { taskId, sessionType: target.sessionType, tabs: groupPanesIntoTabs(panes) };
+  return { taskId, sessionType: target.sessionType, canResize: target.sessionType === SessionType.TMUX, tabs: groupPanesIntoTabs(panes) };
 }
 
 async function listMirrorPanes(target: MirrorSessionTarget): Promise<MirrorPane[]> {
@@ -568,6 +576,115 @@ interface PaneClaim {
  */
 const paneSubscriptions = new Map<string, PaneClaim>();
 
+interface PaneViewportDriver {
+  resize: (paneId: string, cols: number, rows: number) => Promise<void>;
+  restore: () => Promise<void>;
+}
+
+interface PaneViewportRequest {
+  paneId: string;
+  size: { cols: number; rows: number } | null;
+}
+
+interface PaneViewportGroup {
+  driver: Promise<PaneViewportDriver>;
+  pending: Promise<void>;
+  clients: Map<symbol, PaneViewportRequest>;
+}
+
+const paneViewports = new Map<string, PaneViewportGroup>();
+let paneViewportShutdown = false;
+
+function queuePaneViewport(group: PaneViewportGroup, action: (driver: PaneViewportDriver) => Promise<void>): Promise<void> {
+  const operation = group.pending.then(() => group.driver).then(action);
+  group.pending = operation.catch(() => {});
+  return operation;
+}
+
+async function createPaneViewportDriver(target: MirrorSessionTarget, taskId: string, pane: MirrorPane): Promise<PaneViewportDriver> {
+  if (target.sessionType === SessionType.TERMINAL) {
+    const original = getTerminalTabSize(taskId, pane.id);
+    return {
+      resize: async (paneId, cols, rows) => resizeTerminalTab(taskId, paneId, cols, rows),
+      restore: async () => releaseTerminalTabViewport(taskId, pane.id, original.cols, original.rows),
+    };
+  }
+
+  const state = parseTmuxViewportState(await runMirrorCommand(buildTmuxReadViewportCommand(pane.tabId), target.sshHost));
+  return {
+    resize: async (paneId, cols, rows) => {
+      const geometry = await runMirrorCommand(
+        buildTmuxReadPaneGeometryCommand(pane.tabId, paneId),
+        target.sshHost,
+      );
+      await runMirrorCommand(buildTmuxResizeViewportCommand(paneId, geometry, cols, rows), target.sshHost);
+    },
+    restore: async () => { await runMirrorCommand(buildTmuxRestoreViewportCommand(pane.tabId, state), target.sshHost); },
+  };
+}
+
+/** 창 배치를 공유하는 pane은 같은 줄에서 크기를 바꿔야 한 기기의 퇴장이 다른 기기의 화면을 되돌리지 않는다. */
+export async function claimPaneViewport(taskId: string, paneId: string): Promise<{
+  resize: (cols: number, rows: number) => Promise<void>;
+  release: () => Promise<void>;
+}> {
+  if (paneViewportShutdown) throw new Error("데스크탑이 종료 중입니다.");
+  const task = await findMirrorTask(taskId);
+  const target = toMirrorSessionTarget(task);
+  const panes = target.sessionType === SessionType.TERMINAL
+    ? listTerminalMirrorTabs(taskId).flatMap((tab) => tab.panes)
+    : await listMirrorPanes(target);
+  const pane = panes.find((candidate) => candidate.id === paneId);
+  if (paneViewportShutdown) throw new Error("데스크탑이 종료 중입니다.");
+  if (!pane || target.sessionType === SessionType.ZELLIJ) {
+    throw new SurfaceUnavailableError("session-not-running");
+  }
+
+  const key = buildSubscriptionKey(taskId, target.sessionType === SessionType.TERMINAL ? paneId : pane.tabId);
+  let group = paneViewports.get(key);
+  if (!group) {
+    group = { driver: createPaneViewportDriver(target, taskId, pane), pending: Promise.resolve(), clients: new Map() };
+    paneViewports.set(key, group);
+  }
+  const claimed = group;
+  const id = Symbol();
+  const request: PaneViewportRequest = { paneId, size: null };
+  claimed.clients.set(id, request);
+  let released: Promise<void> | null = null;
+
+  return {
+    resize: (cols, rows) => {
+      if (released || !claimed.clients.has(id)) return Promise.resolve();
+      if (![cols, rows].every((value) => Number.isInteger(value) && value >= 1 && value <= 500)) {
+        return Promise.reject(new Error("터미널 크기가 유효하지 않습니다."));
+      }
+      request.size = { cols, rows };
+      claimed.clients.delete(id);
+      claimed.clients.set(id, request);
+      return queuePaneViewport(claimed, async (driver) => {
+        if (claimed.clients.has(id)) await driver.resize(paneId, cols, rows);
+      });
+    },
+    release: () => {
+      if (released) return released;
+      claimed.clients.delete(id);
+      const restoration = queuePaneViewport(claimed, async (driver) => {
+        const remaining = [...claimed.clients.values()].reverse().find((client) => client.size);
+        if (remaining?.size) {
+          await driver.resize(remaining.paneId, remaining.size.cols, remaining.size.rows);
+        } else {
+          await driver.restore();
+        }
+      });
+      const queued = claimed.pending;
+      released = restoration.finally(() => {
+        if (claimed.pending === queued && claimed.clients.size === 0 && paneViewports.get(key) === claimed) paneViewports.delete(key);
+      });
+      return released;
+    },
+  };
+}
+
 function buildSubscriptionKey(taskId: string, paneId: string): string {
   return `${taskId}#${paneId}`;
 }
@@ -718,7 +835,7 @@ export async function subscribeToPane(
  * terminal 세션 탭 하나를 구독한다. 멀티플렉서가 없으니 KanVibe가 들고 있는 PTY에 직접 붙는다.
  *
  * PTY가 이미 있으면 지금 화면을 먼저 받고, 없으면 데스크탑이 탭을 열 때와 같은 길로 만든다.
- * 이 클라이언트는 크기 변경을 보내지 않으므로 데스크탑 화면의 크기는 바뀌지 않는다.
+ * 크기 변경은 출력 구독과 분리해 [claimPaneViewport]가 소유한다.
  * [onEnd]는 PTY가 스스로 끝났을 때만 돈다.
  */
 async function subscribeToTerminalTab(
@@ -775,13 +892,24 @@ async function subscribeToTerminalTab(
  *
  * [spawnMirrorProcess]는 자식을 `detached`로 띄우므로 부모가 죽어도 함께 죽지 않는다. 아무도 멈추지 않으면
  * 고아가 된 `sh`/`ssh`와 `tail`이 남고, 사용자의 pane에는 `pipe-pane`이 걸린 채로 남아 임시 파일이 계속 자란다.
- * 이 서비스가 데스크탑 화면을 바꾸지 않는다는 약속은 앱이 사라진 뒤에도 지켜져야 한다.
+ * 모바일이 소유하던 임시 크기도 함께 복원한다.
  */
-export function stopAllPaneMirrors(): void {
+export async function stopAllPaneMirrors(shutdown = false): Promise<void> {
+  if (shutdown) paneViewportShutdown = true;
+  const restorations: Promise<void>[] = [];
+  for (const [key, group] of paneViewports) {
+    group.clients.clear();
+    const restoration = queuePaneViewport(group, (driver) => driver.restore());
+    const queued = group.pending;
+    restorations.push(restoration
+      .catch((error) => console.error("[kanvibe] Mobile viewport restore failed:", error))
+      .finally(() => { if (group.pending === queued && paneViewports.get(key) === group) paneViewports.delete(key); }));
+  }
   for (const [key, claim] of [...paneSubscriptions]) {
     forgetPaneClaim(key, claim);
     void claim.subscription.then((subscription) => subscription.stop()).catch(() => {});
   }
+  await Promise.all(restorations);
 }
 
 /** pane의 지금 화면을 모바일 터미널이 처음부터 다시 그리는 출력으로 떠 온다 */
