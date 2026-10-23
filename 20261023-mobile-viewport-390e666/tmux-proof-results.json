@@ -1,0 +1,8 @@
+{
+  "ok": true,
+  "reports": [
+    "normal: real PTY 44x70; focus/layout/policy/zoom restored",
+    "PC added pane: layout failure reported, original size policy still restored",
+    "zoomed: real PTY 44x70; focus/layout/policy/zoom restored"
+  ]
+}

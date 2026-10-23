@@ -1,0 +1,26 @@
+{
+  "commit": "390e666895212e900c8385c42301720567a84443",
+  "gateHead": "4bb5a0192aed6c62d26328213f1e1e3966bbaa4b",
+  "gateDiffSha256": "ddb3fc06958c49d4c1e61e7e5e6d2756687cf7003c05fbc47d08764df5a5eac0",
+  "sameTreeAsAllSelectedFinalGates": true,
+  "gateMetadata": "gate-index.json",
+  "files": [
+    "electron/main.js",
+    "electron/mobileRoutes.js",
+    "electron/mobileRoutes.test.mjs",
+    "mobile/README.md",
+    "mobile/lib/src/common/network/desktop_client.dart",
+    "mobile/lib/src/features/task_detail/domain/mirror_pane.dart",
+    "mobile/lib/src/features/task_detail/presentation/task_detail_screen.dart",
+    "mobile/lib/src/features/task_detail/presentation/widgets/pane_terminal_view.dart",
+    "mobile/test/src/common/network/desktop_client_test.dart",
+    "mobile/test/src/features/task_detail/mirror_pane_test.dart",
+    "mobile/test/src/features/task_detail/pane_terminal_view_test.dart",
+    "mobile/test/src/features/task_detail/task_detail_screen_test.dart",
+    "mobile/test/support/fake_desktop.dart",
+    "src/desktop/main/services/__tests__/mobileBridgeService.test.ts",
+    "src/desktop/main/services/mobileBridgeService.ts",
+    "src/lib/paneMirror.ts",
+    "src/lib/terminal.ts"
+  ]
+}

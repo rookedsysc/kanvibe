@@ -1,0 +1,21 @@
+{
+  "command": [
+    "fvm",
+    "flutter",
+    "test",
+    "--reporter",
+    "json"
+  ],
+  "cwd": "mobile",
+  "exit_code": 0,
+  "seconds": 8.4,
+  "before": {
+    "head": "4bb5a0192aed6c62d26328213f1e1e3966bbaa4b",
+    "diff": "ddb3fc06958c49d4c1e61e7e5e6d2756687cf7003c05fbc47d08764df5a5eac0"
+  },
+  "after": {
+    "head": "4bb5a0192aed6c62d26328213f1e1e3966bbaa4b",
+    "diff": "ddb3fc06958c49d4c1e61e7e5e6d2756687cf7003c05fbc47d08764df5a5eac0"
+  },
+  "tree_unchanged": true
+}

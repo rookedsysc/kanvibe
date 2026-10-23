@@ -1,0 +1,26 @@
+{
+  "commit": "390e666895212e900c8385c42301720567a84443",
+  "backend": {
+    "executed": 142,
+    "passed": 142,
+    "failed": 0
+  },
+  "flutter": {
+    "executed": 96,
+    "passed": 96
+  },
+  "baselineShortcuts": {
+    "executed": 18,
+    "passed": 16,
+    "failed": 2
+  },
+  "ciTest": {
+    "passed": 1750,
+    "failed": 2
+  },
+  "newTests": {
+    "backendWire": 7,
+    "flutter": 5
+  },
+  "deviceJourney": "UNVERIFIED_ENVIRONMENT"
+}

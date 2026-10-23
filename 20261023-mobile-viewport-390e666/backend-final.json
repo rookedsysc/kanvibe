@@ -1,0 +1,25 @@
+{
+  "command": [
+    "pnpm",
+    "exec",
+    "vitest",
+    "run",
+    "src/desktop/main/services/__tests__/mobileBridgeService.test.ts",
+    "electron/mobileRoutes.test.mjs",
+    "src/lib/__tests__/paneMirror.test.ts",
+    "--reporter=json",
+    "--outputFile=qa-results/roky-harness/20261023-mobile-viewport/backend-report.json"
+  ],
+  "cwd": ".",
+  "exit_code": 0,
+  "seconds": 0.9,
+  "before": {
+    "head": "4bb5a0192aed6c62d26328213f1e1e3966bbaa4b",
+    "diff": "ddb3fc06958c49d4c1e61e7e5e6d2756687cf7003c05fbc47d08764df5a5eac0"
+  },
+  "after": {
+    "head": "4bb5a0192aed6c62d26328213f1e1e3966bbaa4b",
+    "diff": "ddb3fc06958c49d4c1e61e7e5e6d2756687cf7003c05fbc47d08764df5a5eac0"
+  },
+  "tree_unchanged": true
+}
