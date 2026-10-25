@@ -1,0 +1,46 @@
+# 상태 옮기기는 시트가 닫히는 것으로 끝나지 않는다. 데스크탑이 실제로 옮겨 줬어야 보드가 새 자리에 그린다.
+#
+# 두 가지로 확인한다. 하나는 시트를 다시 열었을 때 지금 상태인 Progress가 고를 수 있는 목록에서 빠지는 것이고,
+# 다른 하나는 보드로 돌아갔을 때 카드가 Progress 구획 안에 있는 것이다. 보드는 데스크탑에서 다시 받아 오므로
+# 뒤쪽이 데스크탑까지 반영됐다는 증거가 된다.
+#
+# 버튼 문구의 괄호는 `\(`로 적는다. Maestro는 셀렉터를 정규식으로 읽어, 괄호를 그대로 두면
+# 묶음으로 해석해 `Progress으로 옮기기`를 찾다가 실제 문구를 못 만난다.
+#
+# 시트를 닫는 것과 보드로 돌아가는 것을 한 동작에 겹치지 않는다. 시트가 열려 있으면 뒤로 가기가 시트만
+# 닫고 화면은 태스크 상세에 남는데, 그 상태는 "보드로 못 갔다"와 구분되지 않는다. 시트 밖을 눌러 닫힌 것을
+# 먼저 단정한 뒤에 보드로 간다. 시트 밖을 누르는 것은 두 플랫폼에서 같게 동작한다.
+appId: ${APP_ID}
+---
+- tapOn: "상태 옮기기"
+- extendedWaitUntil:
+    visible: 'Progress\(으\)로 옮기기'
+    timeout: 10000
+- takeScreenshot: 08-상태-시트
+- tapOn: 'Progress\(으\)로 옮기기'
+- extendedWaitUntil:
+    notVisible: 'Progress\(으\)로 옮기기'
+    timeout: 15000
+- tapOn: "상태 옮기기"
+- extendedWaitUntil:
+    visible: 'Todo\(으\)로 옮기기'
+    timeout: 10000
+- assertNotVisible: 'Progress\(으\)로 옮기기'
+- takeScreenshot: 09-이동-뒤-상태-시트
+- tapOn:
+    point: "50%,40%"
+- extendedWaitUntil:
+    notVisible: 'Todo\(으\)로 옮기기'
+    timeout: 10000
+- runFlow: goes-back-to-board.yaml
+- scrollUntilVisible:
+    element: "(?s).*Maestro Fixture Session.*"
+    direction: DOWN
+    timeout: 15000
+- assertVisible:
+    text: "(?s).*Maestro Fixture Session.*"
+    below:
+      text: "Progress"
+    above:
+      text: "Review"
+- takeScreenshot: 10-보드-Progress-구획

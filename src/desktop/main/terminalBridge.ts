@@ -1,7 +1,7 @@
 import { EventEmitter } from "node:events";
 import type { WebContents } from "electron";
 import { getTaskRepository } from "@/lib/database";
-import { SessionType } from "@/entities/KanbanTask";
+import { SessionType, type KanbanTask } from "@/entities/KanbanTask";
 import { attachLocalSession, attachRemoteSession, focusSession } from "@/lib/terminal";
 import { parseSSHConfig, type SSHHostConfig } from "@/lib/sshConfig";
 import { ensureRemoteSessionDependency } from "@/lib/remoteSessionDependency";
@@ -67,6 +67,55 @@ class ElectronTerminalClient extends EventEmitter {
   }
 }
 
+/**
+ * 화면 없이 세션에 붙는 클라이언트. 받은 출력을 콜백으로 넘긴다.
+ *
+ * 이미 떠 있는 PTY에 붙을 때는 지금 화면을 먼저 그려야 하는데, 그 화면이 준비되는 사이에도 출력이 들어온다.
+ * [holdOutput]으로 그 출력을 모아 두었다가 [releaseHeldOutput]이 화면 뒤에 이어 보낸다.
+ */
+export class CallbackTerminalClient extends EventEmitter {
+  readonly OPEN = OPEN;
+  readyState = OPEN;
+  private heldChunks: string[] | null = null;
+
+  constructor(private readonly onChunk: (chunk: string) => void) {
+    super();
+  }
+
+  send(data: string | Buffer) {
+    const chunk = typeof data === "string" ? data : data.toString();
+    if (this.heldChunks) {
+      this.heldChunks.push(chunk);
+      return;
+    }
+    this.onChunk(chunk);
+  }
+
+  holdOutput() {
+    this.heldChunks ??= [];
+  }
+
+  /** 화면을 먼저 보내고 모아 둔 출력을 이어 보낸다. 이후 출력은 곧바로 흘린다 */
+  releaseHeldOutput(screen: string) {
+    const heldChunks = this.heldChunks ?? [];
+    this.heldChunks = null;
+
+    if (screen) {
+      this.onChunk(screen);
+    }
+    heldChunks.forEach((chunk) => this.onChunk(chunk));
+  }
+
+  close() {
+    if (this.readyState !== OPEN) {
+      return;
+    }
+
+    this.readyState = CLOSED;
+    this.emit("close");
+  }
+}
+
 const terminalClients = new Map<string, ElectronTerminalClient>();
 
 /**
@@ -125,6 +174,61 @@ export async function pasteImageToRemoteTerminal(
   }
 }
 
+/** 세션에 붙는 클라이언트. 터미널 레지스트리는 WebSocket 중 이 부분만 쓴다 */
+export interface TerminalSessionClient extends EventEmitter {
+  readonly OPEN: number;
+  readyState: number;
+  send(data: string | Buffer): void;
+  close(code?: number, reason?: string): void;
+}
+
+/**
+ * 태스크의 세션에 클라이언트를 붙인다. 세션이 없으면 데스크탑이 처음 열 때와 똑같이 만든다.
+ *
+ * 데스크탑 화면과 모바일이 같은 함수를 지나야 pane 레이아웃, 원격 의존성 확인, tmux 부트스트랩이 한쪽에서만 달라지지 않는다.
+ * 원격 접속 정보를 찾지 못하면 클라이언트를 닫고 던진다.
+ */
+export async function attachTaskTerminal(
+  task: KanbanTask,
+  tabId: string | null,
+  client: TerminalSessionClient,
+  cols?: number,
+  rows?: number,
+): Promise<void> {
+  const sessionType = task.sessionType as SessionType;
+  const sessionName = task.sessionName as string;
+  const tmuxPaneLayout = sessionType === SessionType.TMUX
+    ? await getEffectivePaneLayout(task.projectId ?? undefined)
+    : null;
+
+  if (!task.sshHost) {
+    await attachLocalSession(task.id, tabId, sessionType, sessionName, client as never, task.worktreePath, cols, rows, tmuxPaneLayout);
+    return;
+  }
+
+  await ensureRemoteSessionDependency(sessionType, task.sshHost);
+
+  const resolved = await resolveRemoteSshConfig(task.id);
+  if (!resolved.ok) {
+    client.close(1008, resolved.error);
+    throw new Error(resolved.error);
+  }
+
+  await attachRemoteSession(
+    task.id,
+    tabId,
+    task.sshHost,
+    sessionType,
+    sessionName,
+    client as never,
+    resolved.sshConfig,
+    cols,
+    rows,
+    task.worktreePath,
+    tmuxPaneLayout,
+  );
+}
+
 export async function openTerminal(
   webContents: WebContents,
   taskId: string,
@@ -156,46 +260,7 @@ export async function openTerminal(
   client.once("close", finalizeClient);
 
   try {
-    const tmuxPaneLayout = task.sessionType === SessionType.TMUX
-      ? await getEffectivePaneLayout(task.projectId ?? undefined)
-      : null;
-
-    if (task.sshHost) {
-      await ensureRemoteSessionDependency(task.sessionType as SessionType, task.sshHost);
-
-      const resolved = await resolveRemoteSshConfig(taskId);
-      if (!resolved.ok) {
-        client.close(1008, resolved.error);
-        return { ok: false, error: resolved.error };
-      }
-
-      await attachRemoteSession(
-        taskId,
-        tabId,
-        task.sshHost,
-        task.sessionType as SessionType,
-        task.sessionName,
-        client as never,
-        resolved.sshConfig,
-        cols,
-        rows,
-        task.worktreePath,
-        tmuxPaneLayout,
-      );
-    } else {
-      await attachLocalSession(
-        taskId,
-        tabId,
-        task.sessionType as SessionType,
-        task.sessionName,
-        client as never,
-        task.worktreePath,
-        cols,
-        rows,
-        tmuxPaneLayout,
-      );
-    }
-
+    await attachTaskTerminal(task, tabId, client, cols, rows);
     return { ok: true };
   } catch (error) {
     finalizeClient();

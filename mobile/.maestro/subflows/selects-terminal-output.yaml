@@ -1,0 +1,12 @@
+# 일반 텍스트 화면에서 실제 pane 출력을 선택할 수 있는지 확인한다.
+appId: ${APP_ID}
+---
+- tapOn: "텍스트 선택·복사"
+- extendedWaitUntil:
+    visible: "(?s).*MAESTRO_PANE_READY.*"
+    timeout: 10000
+- longPressOn: "(?s).*MAESTRO_PANE_READY.*"
+- takeScreenshot: 06-터미널-텍스트-선택
+- tapOn: "터미널로 돌아가기"
+- assertVisible:
+    id: "pane-terminal"

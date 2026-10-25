@@ -1,0 +1,23 @@
+# 모바일에서 친 키가 데스크탑 pane의 셸까지 가서 실행되는지 본다.
+#
+# 친 글자가 화면에 보이는 것만으로는 아무것도 증명되지 않는다. pty는 받은 키를 그대로 되비추므로
+# 소켓을 타고 갔는지와 무관하게 같은 글자가 보인다. 그래서 셸이 실행해야만 생기는 파일을 만들게 하고,
+# 그 파일이 worktree에 생겼는지를 probe로 확인한다.
+#
+# 명령에 `$`나 따옴표를 쓰지 않는다. Android의 텍스트 주입이 `$`를 하나 더 얹어 `$$`로 보내는 것을 봤고,
+# 그러면 셸이 PID로 전개해 버려 무엇이 잘못됐는지가 실행 결과에 묻힌다.
+#
+# 터미널 입력 영역의 접근성 식별자를 사용해 레이아웃과 키보드 높이에 의존하지 않는다.
+appId: ${APP_ID}
+---
+- extendedWaitUntil:
+    visible: "출력 수신 중"
+    timeout: 20000
+- tapOn:
+    id: "pane-terminal"
+- inputText: "touch MAESTRO_INPUT_OK"
+- pressKey: Enter
+- runScript:
+    file: ../scripts/assert-terminal-command-ran.js
+- assertTrue: ${output.terminalCommandRan}
+- takeScreenshot: 07-터미널-입력-후
