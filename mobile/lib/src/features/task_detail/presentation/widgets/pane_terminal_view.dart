@@ -41,6 +41,7 @@ class _PaneTerminalViewState extends ConsumerState<PaneTerminalView>
   StreamSubscription<String>? _subscription;
   String? _failureMessage;
   bool _hasOutput = false;
+  String? _selectableOutput;
   Timer? _firstFrameTimer;
   final _horizontalScroll = ScrollController();
   final _verticalScroll = ScrollController();
@@ -272,53 +273,65 @@ class _PaneTerminalViewState extends ConsumerState<PaneTerminalView>
         children: [
           _buildControls(),
           Expanded(
-            child: LayoutBuilder(
-              builder: (context, constraints) {
-                return Scrollbar(
-                  controller: _horizontalScroll,
-                  thumbVisibility: true,
-                  notificationPredicate: (notification) =>
-                      notification.metrics.axis == Axis.horizontal,
-                  child: SingleChildScrollView(
-                    controller: _horizontalScroll,
-                    scrollDirection: Axis.horizontal,
-                    child: SizedBox(
-                      width:
-                          (!widget.canResize || _isWideView) &&
-                              terminalWidth > constraints.maxWidth
-                          ? terminalWidth
-                          : constraints.maxWidth,
-                      height: constraints.maxHeight,
-                      child: MediaQuery.removePadding(
-                        context: context,
-                        removeLeft: true,
-                        removeRight: true,
-                        removeTop: true,
-                        removeBottom: true,
-                        child: TerminalSoftKeyboard(
-                          terminal: _terminal,
-                          controller: _terminalController,
-                          child: Semantics(
-                            identifier: 'pane-terminal',
-                            label: '터미널 입력',
-                            child: xterm.TerminalView(
-                              _terminal,
-                              controller: _terminalController,
-                              autoResize: widget.canResize,
-                              hardwareKeyboardOnly: true,
-                              scrollController: _verticalScroll,
-                              backgroundOpacity: 0,
-                              theme: _terminalTheme,
-                              textStyle: _textStyle,
+            child: _selectableOutput != null
+                ? SingleChildScrollView(
+                    padding: const EdgeInsets.all(12),
+                    child: SelectableText(
+                      _selectableOutput!,
+                      key: const ValueKey('terminal-selectable-output'),
+                      style: monoStyle(
+                        fontSize: 14,
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                  )
+                : LayoutBuilder(
+                    builder: (context, constraints) {
+                      return Scrollbar(
+                        controller: _horizontalScroll,
+                        thumbVisibility: true,
+                        notificationPredicate: (notification) =>
+                            notification.metrics.axis == Axis.horizontal,
+                        child: SingleChildScrollView(
+                          controller: _horizontalScroll,
+                          scrollDirection: Axis.horizontal,
+                          child: SizedBox(
+                            width:
+                                (!widget.canResize || _isWideView) &&
+                                    terminalWidth > constraints.maxWidth
+                                ? terminalWidth
+                                : constraints.maxWidth,
+                            height: constraints.maxHeight,
+                            child: MediaQuery.removePadding(
+                              context: context,
+                              removeLeft: true,
+                              removeRight: true,
+                              removeTop: true,
+                              removeBottom: true,
+                              child: TerminalSoftKeyboard(
+                                terminal: _terminal,
+                                controller: _terminalController,
+                                child: Semantics(
+                                  identifier: 'pane-terminal',
+                                  label: '터미널 입력',
+                                  child: xterm.TerminalView(
+                                    _terminal,
+                                    controller: _terminalController,
+                                    autoResize: widget.canResize,
+                                    hardwareKeyboardOnly: true,
+                                    scrollController: _verticalScroll,
+                                    backgroundOpacity: 0,
+                                    theme: _terminalTheme,
+                                    textStyle: _textStyle,
+                                  ),
+                                ),
+                              ),
                             ),
                           ),
                         ),
-                      ),
-                    ),
+                      );
+                    },
                   ),
-                );
-              },
-            ),
           ),
         ],
       ),
@@ -357,6 +370,32 @@ class _PaneTerminalViewState extends ConsumerState<PaneTerminalView>
                 style: Theme.of(context).textTheme.bodySmall,
               ),
             ),
+          IconButton(
+            tooltip: _selectableOutput == null ? '텍스트 선택·복사' : '터미널로 돌아가기',
+            icon: Icon(
+              _selectableOutput == null
+                  ? Icons.text_snippet_outlined
+                  : Icons.terminal,
+            ),
+            onPressed: () {
+              FocusManager.instance.primaryFocus?.unfocus();
+              setState(() {
+                _selectableOutput = _selectableOutput == null
+                    ? _terminal.buffer.getText().trimRight()
+                    : null;
+              });
+            },
+          ),
+          IconButton(
+            tooltip: '붙여넣기',
+            icon: const Icon(Icons.content_paste),
+            onPressed: () async {
+              final clipboard = await Clipboard.getData(Clipboard.kTextPlain);
+              if (!mounted || _failureMessage != null) return;
+              final text = clipboard?.text;
+              if (text != null) _terminal.paste(text);
+            },
+          ),
           ListenableBuilder(
             listenable: _terminalController,
             builder: (context, _) => Semantics(

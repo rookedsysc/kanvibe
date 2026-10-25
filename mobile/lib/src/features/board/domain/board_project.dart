@@ -8,10 +8,12 @@ class BoardProject {
     required this.name,
     required this.defaultBranch,
     required this.isWorktree,
+    this.color,
   });
 
   final String id;
   final String name;
+  final String? color;
 
   /// 베이스 브랜치 칸의 처음 값. 데스크탑 생성 화면도 프로젝트를 고르면 이 값을 먼저 넣는다
   final String defaultBranch;
@@ -30,6 +32,7 @@ class BoardProject {
     return BoardProject(
       id: id,
       name: name,
+      color: json['color'] is String ? json['color'] as String : null,
       defaultBranch: json['defaultBranch'] is String
           ? json['defaultBranch'] as String
           : 'main',

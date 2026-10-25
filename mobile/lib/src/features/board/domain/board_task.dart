@@ -13,6 +13,7 @@ class BoardTask {
     this.baseBranch,
     this.projectId,
     this.projectName,
+    this.projectColor,
     this.description,
     this.priority,
     this.agentType,
@@ -27,6 +28,7 @@ class BoardTask {
   final String? baseBranch;
   final String? projectId;
   final String? projectName;
+  final String? projectColor;
   final String? description;
   final TaskPriority? priority;
   final String? agentType;
@@ -48,6 +50,7 @@ class BoardTask {
     baseBranch: baseBranch,
     projectId: projectId,
     projectName: projectName,
+    projectColor: projectColor,
     description: description,
     priority: priority,
     agentType: agentType,
@@ -57,8 +60,9 @@ class BoardTask {
 
   static BoardTask? fromJson(
     Map<String, dynamic> json,
-    Map<String, String> projectNamesById,
-  ) {
+    Map<String, String> projectNamesById, {
+    Map<String, String> projectColorsById = const {},
+  }) {
     final id = json['id'];
     final title = json['title'];
     final status = TaskStatus.fromWire(json['status']?.toString() ?? '');
@@ -78,6 +82,7 @@ class BoardTask {
       projectName:
           (projectId is String ? projectNamesById[projectId] : null) ??
           _readString(json['projectName']),
+      projectColor: projectId is String ? projectColorsById[projectId] : null,
       description: _readString(json['description']),
       priority: TaskPriority.fromWire(_readString(json['priority'])),
       agentType: _readString(json['agentType']),

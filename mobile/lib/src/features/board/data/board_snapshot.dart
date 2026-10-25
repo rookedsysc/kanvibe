@@ -42,6 +42,10 @@ class BoardSnapshot {
       for (final project in projects) project.id: project.name,
     };
 
+    final projectColorsById = {
+      for (final project in projects)
+        if (project.color != null) project.id: project.color!,
+    };
     final rawTasks = json['tasks'];
     final tasksByStatus = <TaskStatus, List<BoardTask>>{};
 
@@ -51,7 +55,13 @@ class BoardSnapshot {
           : const [];
       tasksByStatus[status] = entries
           .whereType<Map<String, dynamic>>()
-          .map((entry) => BoardTask.fromJson(entry, projectNamesById))
+          .map(
+            (entry) => BoardTask.fromJson(
+              entry,
+              projectNamesById,
+              projectColorsById: projectColorsById,
+            ),
+          )
           .whereType<BoardTask>()
           .toList();
     }

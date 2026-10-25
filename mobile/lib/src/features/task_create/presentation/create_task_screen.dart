@@ -133,7 +133,15 @@ class _CreateTaskScreenState extends ConsumerState<CreateTaskScreen> {
     /// 보드에도 새 태스크가 보여야 돌아갔을 때 빈자리가 아니다
     ref.invalidate(boardProvider);
 
-    navigator.pop(BoardTask.fromJson(created, {project.id: project.name}));
+    navigator.pop(
+      BoardTask.fromJson(
+        created,
+        {project.id: project.name},
+        projectColorsById: {
+          if (project.color != null) project.id: project.color!,
+        },
+      ),
+    );
   }
 
   /// 데스크탑이 값을 거절한 것만 사유를 그대로 옮긴다.
@@ -243,8 +251,9 @@ class _CreateTaskScreenState extends ConsumerState<CreateTaskScreen> {
                 const SizedBox(height: AppSizes.p16),
                 Text(
                   _failureMessage!,
-                  style: Theme.of(context).textTheme.bodySmall
-                      ?.copyWith(color: Theme.of(context).colorScheme.error),
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: Theme.of(context).colorScheme.error,
+                  ),
                 ),
               ],
               const SizedBox(height: AppSizes.p24),

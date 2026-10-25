@@ -145,6 +145,78 @@ Future<void> sendImeBuffer(
 }
 
 void main() {
+  testWidgets('클립보드 내용을 붙여넣으면 터미널로 한 번 전달한다', (tester) async {
+    await pumpPane(
+      tester,
+      _pane,
+      client: FakeDesktopClient(),
+      store: FakeConnectionStore(),
+    );
+    final terminal = mountedTerminal(tester);
+    final output = <String>[];
+    terminal.onOutput = output.add;
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (call) async {
+        if (call.method == 'Clipboard.getData') return {'text': 'echo 붙여넣기'};
+        return null;
+      },
+    );
+    addTearDown(
+      () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        null,
+      ),
+    );
+    await tester.tap(find.byTooltip('붙여넣기'));
+    await tester.pumpAndSettle();
+    expect(output.join(), 'echo 붙여넣기');
+  });
+
+  testWidgets('출력을 일반 텍스트로 선택하고 터미널로 돌아온다', (tester) async {
+    await pumpPane(
+      tester,
+      _pane,
+      client: FakeDesktopClient(),
+      store: FakeConnectionStore(),
+    );
+    final terminal = mountedTerminal(tester);
+    terminal.write('복사할 문장\r\nsecond line');
+    await tester.pump();
+    await tester.tap(find.byTooltip('텍스트 선택·복사'));
+    await tester.pumpAndSettle();
+    final text = tester.widget<SelectableText>(
+      find.byKey(const ValueKey('terminal-selectable-output')),
+    );
+    expect(text.data, contains('복사할 문장'));
+    expect(text.data, contains('second line'));
+    await tester.longPress(find.byType(SelectableText));
+    await tester.pumpAndSettle();
+    expect(find.text('Copy'), findsOneWidget);
+    String? copied;
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (call) async {
+        if (call.method == 'Clipboard.setData') {
+          copied = (call.arguments as Map)['text'] as String;
+        }
+        return null;
+      },
+    );
+    addTearDown(
+      () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        null,
+      ),
+    );
+    await tester.tap(find.text('Copy'));
+    await tester.pumpAndSettle();
+    expect(copied, isNotEmpty);
+    await tester.tap(find.byTooltip('터미널로 돌아가기'));
+    await tester.pumpAndSettle();
+    expect(mountedTerminal(tester), same(terminal));
+  });
+
   for (final splitEveryCharacter in [false, true]) {
     testWidgets(
       'legacy 제목이 포함된 실제 ${splitEveryCharacter ? '한 글자씩 분할한' : '한 청크의'} 출력도 RIGHTEDGE를 80열에 유지한다',

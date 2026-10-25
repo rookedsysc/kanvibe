@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../common/constants/app_colors.dart';
+import '../../../common/constants/project_colors.dart';
 import '../../../common/constants/app_sizes.dart';
 import '../../../common/constants/app_theme.dart';
 import '../../../common/providers.dart';
@@ -311,7 +312,11 @@ class _TaskCard extends StatelessWidget {
           constraints: const BoxConstraints(minHeight: AppSizes.minTouchTarget),
           padding: const EdgeInsets.all(AppSizes.p12),
           decoration: BoxDecoration(
-            border: Border.all(color: AppColors.borderDefault),
+            border: Border.all(
+              color: task.projectName == null
+                  ? AppColors.borderDefault
+                  : projectColor(task.projectName!, task.projectColor),
+            ),
             borderRadius: BorderRadius.circular(AppSizes.radiusLg),
           ),
           child: Column(
@@ -329,11 +334,28 @@ class _TaskCard extends StatelessWidget {
                 runSpacing: AppSizes.p4,
                 children: [
                   if (task.projectName != null)
-                    _TaskBadge(label: task.projectName!),
+                    _TaskBadge(
+                      label: task.projectName!,
+                      color: projectColor(task.projectName!, task.projectColor),
+                      background: projectColor(
+                        task.projectName!,
+                        task.projectColor,
+                      ).withValues(alpha: 0.16),
+                    ),
                   if (task.branchName != null)
-                    _TaskBadge(label: task.branchName!, isMono: true),
+                    _TaskBadge(
+                      label: task.branchName!,
+                      isMono: true,
+                      color: const Color(0xFFAEB3BD),
+                      background: const Color(0x0FFFFFFF),
+                    ),
                   if (task.isRemote)
-                    _TaskBadge(label: task.sshHost!, isMono: true),
+                    _TaskBadge(
+                      label: task.sshHost!,
+                      isMono: true,
+                      color: const Color(0xFF9BE6B4),
+                      background: const Color(0x2965D08A),
+                    ),
                   if (task.prUrl != null)
                     const _TaskBadge(
                       label: 'PR',
@@ -350,18 +372,26 @@ class _TaskCard extends StatelessWidget {
 }
 
 class _TaskBadge extends StatelessWidget {
-  const _TaskBadge({required this.label, this.isMono = false, this.color});
+  const _TaskBadge({
+    required this.label,
+    this.isMono = false,
+    this.color,
+    this.background,
+  });
 
   final String label;
   final bool isMono;
   final Color? color;
+  final Color? background;
 
   @override
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: AppSizes.p8, vertical: 2),
       decoration: BoxDecoration(
-        color: color == null ? AppColors.buttonNeutral : AppColors.brandSubtle,
+        color:
+            background ??
+            (color == null ? AppColors.buttonNeutral : AppColors.brandSubtle),
         borderRadius: BorderRadius.circular(AppSizes.radiusSm),
       ),
       child: Text(

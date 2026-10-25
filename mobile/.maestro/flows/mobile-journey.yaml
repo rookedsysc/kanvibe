@@ -11,6 +11,7 @@ tags:
 - runFlow: ../subflows/pairs-and-opens-board.yaml
 - runFlow: ../subflows/opens-task-detail.yaml
 - runFlow: ../subflows/opens-session-task-terminal.yaml
+- runFlow: ../subflows/selects-terminal-output.yaml
 - runFlow: ../subflows/types-into-terminal.yaml
 - runFlow: ../subflows/moves-task-status.yaml
 - runFlow:

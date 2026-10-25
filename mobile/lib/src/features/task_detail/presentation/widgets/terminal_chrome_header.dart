@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../../common/constants/app_colors.dart';
+import '../../../../common/constants/project_colors.dart';
 import '../../../../common/constants/app_sizes.dart';
 import '../../../board/domain/board_task.dart';
 
@@ -22,11 +23,17 @@ class TerminalChromeHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final projectName = task.projectName;
+    final background = projectName == null
+        ? AppColors.terminalChrome
+        : projectColor(projectName, task.projectColor);
+    final foreground = projectName == null
+        ? AppColors.textPrimary
+        : projectTextColor(background);
     return Container(
       constraints: const BoxConstraints(minHeight: AppSizes.minTouchTarget),
       padding: const EdgeInsets.symmetric(horizontal: AppSizes.p12),
       alignment: Alignment.centerLeft,
-      color: AppColors.terminalChrome,
+      color: background,
       foregroundDecoration: const BoxDecoration(
         border: Border(bottom: BorderSide(color: AppColors.borderDefault)),
       ),
@@ -37,7 +44,8 @@ class TerminalChromeHeader extends StatelessWidget {
               projectName ?? '',
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: Theme.of(context).textTheme.labelSmall,
+              style: Theme.of(context).textTheme.labelSmall
+                  ?.copyWith(color: foreground),
             ),
           ),
           const SizedBox(width: AppSizes.p8),
