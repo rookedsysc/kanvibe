@@ -116,7 +116,7 @@ class _KanvibeMobileAppState extends ConsumerState<KanvibeMobileApp>
     return MaterialApp(
       navigatorKey: _navigatorKey,
       scaffoldMessengerKey: _messengerKey,
-      title: 'KanVibe',
+      title: 'kanvibe',
       debugShowCheckedModeBanner: false,
       theme: buildAppTheme(),
       home: connections.when(
