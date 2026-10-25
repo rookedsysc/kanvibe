@@ -1,0 +1,66 @@
+{
+  "scope": "모바일 hook 상태 알림, task 바로가기, 터미널 표시·복사, 현재 task 기반 생성, kanvibe 표시 이름",
+  "historicalEvidence": {
+    "date": "2026-10-23",
+    "head": "390e666895212e900c8385c42301720567a84443",
+    "workingTreeDiff": "e4e1dba7585645cd51fe1cacf8c83706d9ffe920",
+    "flutterTests": 168,
+    "linuxTests": 1778,
+    "linuxTestFiles": 158,
+    "nativeJourney": {
+      "platform": "Android API36.1 emulator",
+      "screenPixels": [
+        1080,
+        2520
+      ],
+      "density": 420,
+      "maestroPassed": 1,
+      "recordingSeconds": 109.864467,
+      "recordingStatus": "recorded",
+      "skipReason": null,
+      "observed": [
+        "portrait-fit48x41",
+        "portrait-wide80x41",
+        "landscape114x9",
+        "normal-IME48x26/80x26",
+        "RIGHTEDGE 전체 표시",
+        "Android OS clipboard→TextField COPYKANVIBE",
+        "source branch committed sentinel inheritance",
+        "new task terminal command marker",
+        "active tmux pipe + exactly1 DSR reply"
+      ]
+    },
+    "evidenceComment": "https://github.com/rookedsysc/kanvibe/pull/389#issuecomment-6356712300"
+  },
+  "followup": {
+    "date": "2026-10-24",
+    "appLabel": "kanvibe",
+    "changedMetadata": [
+      "Android application label",
+      "iOS CFBundleDisplayName",
+      "iOS CFBundleName",
+      "Flutter MaterialApp title"
+    ],
+    "androidReleaseBuild": "PASS",
+    "androidPackagedLabel": "kanvibe",
+    "iOSPlistLint": "PASS"
+  },
+  "currentCommitVerification": "최신 커밋의 결과는 PR QA 코멘트와 GitHub Actions 참조",
+  "regressionTests": {
+    "new": 47,
+    "affected": 108,
+    "fullFlutter": 168
+  },
+  "automation": [
+    "mobile/.maestro/flows/task-context-terminal.yaml",
+    "mobile/.maestro/scripts/assert-terminal-viewport.js",
+    "mobile/.maestro/scripts/assert-source-branch-inherited.js",
+    "qa/mobile/lib/prepareQaDesktop.cjs"
+  ],
+  "limits": [
+    "Native evidence is from the pre-app-label-change snapshot above; it is not a device rerun of the later commit",
+    "iOS build/device skipped: installed Xcode26.0.1 is below the existing Firebase SDK requirement26.2",
+    "Real Firebase/APNs push delivery requires account/platform configuration and was not verified on a physical device",
+    "Cloudflare external build configuration is verified through its remote check, not reproduced locally"
+  ]
+}
