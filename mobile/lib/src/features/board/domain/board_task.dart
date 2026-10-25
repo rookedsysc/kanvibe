@@ -71,7 +71,9 @@ class BoardTask {
       status: status,
       branchName: _readString(json['branchName']),
       baseBranch: _readString(json['baseBranch']),
-      projectName: projectId is String ? projectNamesById[projectId] : null,
+      projectName:
+          (projectId is String ? projectNamesById[projectId] : null) ??
+          _readString(json['projectName']),
       description: _readString(json['description']),
       priority: TaskPriority.fromWire(_readString(json['priority'])),
       agentType: _readString(json['agentType']),

@@ -8,6 +8,7 @@ import '../../../common/constants/app_theme.dart';
 import '../../../common/providers.dart';
 import '../../board/domain/board_task.dart';
 import '../../board/domain/task_status.dart';
+import '../../notifications/application/mobile_notification_controller.dart';
 import '../domain/mirror_pane.dart';
 import 'surface_unavailable_message.dart';
 import 'widgets/pane_terminal_view.dart';
@@ -85,6 +86,12 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
+    ref.listen(taskNotificationUpdatesProvider(_task.id), (_, next) {
+      final status = TaskStatus.fromWire(next.value?.status ?? '');
+      if (status != null && status != _task.status) {
+        setState(() => _task = _task.withStatus(status));
+      }
+    });
     final surfaces = ref.watch(surfacesProvider(_task.id));
 
     return Scaffold(

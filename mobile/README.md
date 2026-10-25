@@ -45,6 +45,50 @@ PC의 기기 목록에서도 이 기기가 지워지며, 다른 PC의 연결은 
 앱이 그 사실을 알려 주고, 해당 PC의 설정에서 이 기기를 한 번 더 지워야 한다. 현재 PC를 삭제해도
 다른 PC로 자동 전환하지 않으므로 목록에서 다음 PC를 고른다.
 
+## Hook 상태 알림
+
+앱을 사용하는 동안 저장된 모든 PC의 `/api/mobile/events`에 인증된 WebSocket으로 연결한다. hook 상태 변경을 받으면 보드와 열려 있는 태스크의 상태를 갱신하고 시스템 알림을 표시한다. 다른 PC의 알림도 받을 수 있으며, WebSocket과 전경 푸시로 같은 이벤트가 오면 한 번만 표시한다.
+
+알림을 누르면 알림을 보낸 PC를 선택하고 `/api/mobile/tasks/:id`에서 최신 태스크를 조회한 뒤 상세 화면을 연다. 보드의 첫 페이지에 없는 태스크와 앱이 종료된 상태에서 누른 알림도 같은 방식으로 처리한다. 태스크가 삭제되었거나 PC 연결이 해제되었으면 안내를 표시한다.
+
+백그라운드와 화면 잠금에서는 이벤트·터미널 소켓을 닫고 FCM/APNs의 시스템 알림을 사용한다. 앱으로 돌아오면 다시 연결해 보드를 조회한다. Android의 설정에서 강제 종료한 앱은 다시 열기 전까지 푸시를 받지 못하며, iOS의 백그라운드 코드 실행도 보장되지 않는다. 백그라운드에서 앱 코드가 상시 동작하는 것을 전제로 하지 않는다. [FCM 수신 공식 문서](https://firebase.google.com/docs/cloud-messaging/flutter/receive-messages)
+
+### 백그라운드 알림 설정
+
+Firebase 설정 없이도 앱과 전경 WebSocket 알림은 동작한다. **백그라운드 수신에는 모바일 Firebase 설정과 데스크탑의 푸시 중계 연결이 모두 필요하다.**
+
+1. 같은 Firebase 프로젝트에 Android 앱 `com.kanvibe.kanvibe_mobile`과 iOS 앱 `com.kanvibe.kanvibeMobile`을 등록한다. iOS는 Firebase에 APNs 인증 키를 등록하고, Apple Developer의 App ID와 서명 프로파일에도 Push Notifications를 활성화한다. Xcode의 Debug는 development, Profile/Release는 production APNs 환경을 사용한다. [FCM Flutter 설정 공식 문서](https://firebase.google.com/docs/cloud-messaging/flutter/get-started)
+2. [Android 설정 예시](config/firebase.android.example.json) 또는 [iOS 설정 예시](config/firebase.ios.example.json)를 `config/firebase.android.local.json` 또는 `config/firebase.ios.local.json`으로 복사하고 해당 앱의 실제 Firebase 공개 설정값을 넣는다. Android와 iOS의 앱 ID·API 키는 각 앱에 맞는 값을 사용한다. 이 파일에 서비스 계정 비밀 키나 중계 인증 비밀값을 넣지 않는다.
+3. 모바일 디렉터리에서 플랫폼에 맞게 빌드하고 OS의 알림 권한을 허용한다.
+
+```bash
+fvm flutter run --dart-define-from-file=config/firebase.android.local.json
+fvm flutter build apk --release --dart-define-from-file=config/firebase.android.local.json
+fvm flutter run --dart-define-from-file=config/firebase.ios.local.json
+```
+
+Android는 같은 빌드 설정을 네이티브 Firebase 리소스에도 반영하므로 앱 프로세스가 없는 상태에서도 시스템 알림을 받을 수 있다. iOS는 Firebase Messaging 17의 FlutterAppDelegate 알림 처리 수정이 필요하여 Firebase iOS SDK 13을 사용한다. iOS 최소 버전은 기존과 같은 15.0이며, **빌드에는 Xcode 26.2 이상이 필요하다.** Xcode 26.0.1에서는 Swift 패키지 해석 단계에서 실패한다. [Firebase iOS 요구사항](https://firebase.google.com/docs/ios/setup), [알림 처리 수정](https://github.com/firebase/flutterfire/pull/18701)
+
+4. [푸시 중계 서버 설정](../services/mobile-push-relay/README.md)에 따라 서비스 계정을 서버에만 설정한다. 데스크탑 KanVibe를 실행하는 프로세스에 `KANVIBE_MOBILE_PUSH_RELAY_URL`과 `KANVIBE_MOBILE_PUSH_RELAY_TOKEN`을 제공한다. URL은 `/notifications`까지 포함하며 비밀값은 중계 서버의 `relayToken`과 같아야 한다. `.env.example`은 예시이고 데스크탑이 자동으로 읽지 않는다.
+
+```bash
+KANVIBE_MOBILE_PUSH_RELAY_URL=http://127.0.0.1:4890/notifications \
+KANVIBE_MOBILE_PUSH_RELAY_TOKEN='<relay-config-secret>' pnpm dev
+```
+
+위 명령은 저장소 루트에서 실행한다. 외부 중계 서버는 HTTPS 주소를 사용한다. 푸시 토큰은 모바일이 페어링된 PC마다 인증 후 등록하고 갱신하며, PC 연결을 해제하면 해당 PC의 수신 정보도 함께 제거한다. 중계 요청은 페어링 인증 토큰을 포함하지 않는다.
+
+시스템 푸시 수신은 인터넷을 통해 이뤄지지만, 알림을 누른 뒤의 태스크 조회와 터미널 연결은 저장한 PC 주소로 직접 접속한다. 외부 네트워크에서 사용하려면 Tailscale 등으로 해당 주소에 도달할 수 있어야 한다. PC의 KanVibe가 실행 중이어야 새 hook 이벤트를 발송할 수 있다.
+
+### 수신 구조와 확인 방법
+
+- `features/notifications/data/mobile_notifications.dart`: Firebase·네이티브 알림 표시와 초기/전경 클릭을 처리한다.
+- `features/notifications/application/mobile_notification_controller.dart`: PC별 이벤트 구독·재연결·푸시 토큰 갱신·중복 수신을 처리한다.
+- `features/notifications/application/notification_navigation_controller.dart`: 저장된 연결에서만 클릭 목적지를 찾고 최신 태스크를 조회한다.
+- `PUT/DELETE /api/mobile/notifications`: 현재 인증된 기기의 푸시 수신 정보를 등록·제거한다.
+
+실기기에서는 앱 실행 중, 다른 앱 사용 중, 화면 잠금, 앱 종료 후의 네 경우에 PC hook으로 상태를 변경하고 알림 수신·클릭 이동을 확인한다. 다른 PC를 선택해 둔 상태에서도 같은 확인을 한다. 앱을 다시 열었을 때 보드가 최신 상태인지, 삭제된 태스크와 해제된 PC의 알림이 안내로 처리되는지도 확인한다. Firebase/APNs와 실기기가 없는 자동 테스트는 실제 푸시 전달을 검증하지 않는다.
+
 ## 검증
 
 ```bash

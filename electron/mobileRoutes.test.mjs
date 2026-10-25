@@ -20,12 +20,14 @@ let streamServer;
 let port;
 let openSockets;
 let unpairedListeners;
+let mobileEventListeners;
 
 /** 헤더마다 다른 기기가 오게 두어야 스트림 하나를 끊는 것이 다른 기기까지 끊는지 가려낼 수 있다 */
 const DEVICE_IDS = { "Bearer good": "device-good", "Bearer second": "device-second" };
 
 function createBridge(overrides = {}) {
   unpairedListeners = new Set();
+  mobileEventListeners = new Set();
 
   return {
     authorizeMobileRequest: vi.fn(async (header) => DEVICE_IDS[header] ?? null),
@@ -36,6 +38,9 @@ function createBridge(overrides = {}) {
     pairMobileDevice: vi.fn(async () => "paired-token"),
     unpairMobileDeviceByToken: vi.fn(async () => true),
     getMobileBoard: vi.fn(async () => ({ columns: [] })),
+    getMobileTask: vi.fn(async () => ({ id: "task-1", title: "알림 태스크", projectName: "kanvibe" })),
+    updateMobileNotificationSubscription: vi.fn(async () => true),
+    deleteMobileNotificationSubscription: vi.fn(async () => true),
     getTaskSurfaces: vi.fn(async () => ({ panes: [] })),
     subscribeToPane: vi.fn(async () => () => {}),
     writeToPane: vi.fn(async () => {}),
@@ -60,7 +65,17 @@ function startServer({ isDevPairingRouteEnabled = false } = {}) {
       response.end(JSON.stringify({ handledBy: "hook-fallthrough" }));
     });
     created.on("connection", (socket) => openSockets.push(socket));
-    streamServer = attachMobileStreamServer(created, { bridge, host: HOST, port: 0 });
+    streamServer = attachMobileStreamServer(created, {
+      bridge,
+      notifications: {
+        subscribeToMobileEvents: (listener) => {
+          mobileEventListeners.add(listener);
+          return () => mobileEventListeners.delete(listener);
+        },
+      },
+      host: HOST,
+      port: 0,
+    });
     created.listen(0, HOST, () => {
       port = created.address().port;
       resolve(created);
@@ -194,6 +209,94 @@ describe("모바일 라우트 인증 경계", () => {
 
     expect(response.status).toBe(200);
     expect(response.body).toEqual({ handledBy: "hook-fallthrough" });
+  });
+});
+
+describe("모바일 상태 알림 경로", () => {
+  const subscription = { pushToken: "fcm-token", platform: "ios", connectionId: "connection-1" };
+
+  it("알림 등록과 해제, 태스크 조회는 페어링 인증을 통과해야 한다", async () => {
+    const [register, unregister, task] = await Promise.all([
+      request("/api/mobile/notifications", { method: "PUT", body: JSON.stringify(subscription) }),
+      request("/api/mobile/notifications", { method: "DELETE" }),
+      request("/api/mobile/tasks/task-1"),
+    ]);
+    expect([register.status, unregister.status, task.status]).toEqual([401, 401, 401]);
+    expect(bridge.updateMobileNotificationSubscription).not.toHaveBeenCalled();
+  });
+
+  it("알림 토큰은 요청에 인증된 기기에만 등록하고 해제한다", async () => {
+    const headers = { authorization: "Bearer good", "content-type": "application/json" };
+    expect((await request("/api/mobile/notifications", { method: "PUT", headers, body: JSON.stringify(subscription) })).status).toBe(200);
+    expect(bridge.updateMobileNotificationSubscription).toHaveBeenCalledWith("Bearer good", subscription);
+    expect((await request("/api/mobile/notifications", { method: "DELETE", headers })).status).toBe(200);
+    expect(bridge.deleteMobileNotificationSubscription).toHaveBeenCalledWith("Bearer good");
+  });
+
+  it.each([
+    ["null 본문", null],
+    ["빈 토큰", { ...subscription, pushToken: "" }],
+    ["모르는 플랫폼", { ...subscription, platform: "web" }],
+    ["빈 연결 식별자", { ...subscription, connectionId: "" }],
+    ["토큰 길이 초과", { ...subscription, pushToken: "a".repeat(4097) }],
+    ["연결 식별자 바이트 초과", { ...subscription, connectionId: "🚀".repeat(33) }],
+  ])("잘못된 알림 구독은 저장하지 않는다: %s", async (_label, body) => {
+    const response = await request("/api/mobile/notifications", {
+      method: "PUT", headers: { authorization: "Bearer good" }, body: JSON.stringify(body),
+    });
+    expect(response.status).toBe(400);
+    expect(bridge.updateMobileNotificationSubscription).not.toHaveBeenCalled();
+  });
+
+  it("인증 뒤에 해제된 기기는 알림 구독을 등록할 수 없다", async () => {
+    bridge.updateMobileNotificationSubscription.mockResolvedValue(false);
+    const response = await request("/api/mobile/notifications", {
+      method: "PUT", headers: { authorization: "Bearer good" }, body: JSON.stringify(subscription),
+    });
+    expect(response.status).toBe(401);
+  });
+
+  it("보드 첫 페이지 밖의 태스크도 알림 클릭으로 조회하고 없는 태스크는 404를 준다", async () => {
+    const response = await request("/api/mobile/tasks/task-1", { headers: { authorization: "Bearer good" } });
+    expect(response).toEqual({ status: 200, body: { success: true, task: { id: "task-1", title: "알림 태스크", projectName: "kanvibe" } } });
+    bridge.getMobileTask.mockResolvedValue(null);
+    expect((await request("/api/mobile/tasks/missing", { headers: { authorization: "Bearer good" } })).status).toBe(404);
+  });
+
+  it("상태 WebSocket은 연결 확인과 보드·태스크 알림을 보내고 다른 기기 해제에 영향받지 않는다", async () => {
+    const messages = [];
+    const client = new WebSocket(`ws://${HOST}:${port}/api/mobile/events`, { headers: { authorization: "Bearer good" } });
+    client.on("message", (message) => messages.push(JSON.parse(message.toString())));
+    await new Promise((resolve, reject) => { client.once("open", resolve); client.once("error", reject); });
+    await waitFor(() => messages.length === 1);
+    const event = { type: "task-status-changed", eventId: "event-1", taskId: "task-1", title: "kanvibe", body: "review", status: "review", createdAt: "2026-10-23T00:00:00Z" };
+    mobileEventListeners.forEach((listener) => { listener({ type: "board-updated" }); listener(event); });
+    await waitFor(() => messages.length === 3);
+    expect(messages).toEqual([{ type: "connected" }, { type: "board-updated" }, event]);
+    expect(bridge.subscribeToPane).not.toHaveBeenCalled();
+    notifyUnpaired("device-second");
+    expect(client.readyState).toBe(WebSocket.OPEN);
+    const closing = waitForClose(client);
+    notifyUnpaired("device-good");
+    expect(await closing).toEqual({ code: 4001, reason: "device-unpaired" });
+  });
+
+  it("상태 WebSocket은 인증하지 않은 기기의 핸드셰이크를 거절한다", async () => {
+    const client = new WebSocket(`ws://${HOST}:${port}/api/mobile/events`);
+    const status = await new Promise((resolve) => {
+      client.once("unexpected-response", (_request, response) => { resolve(response.statusCode); response.resume(); client.terminate(); });
+      client.on("error", () => {});
+    });
+    expect(status).toBe(401);
+  });
+
+  it("서버 종료는 이벤트 구독과 연결된 상태 소켓을 닫는다", async () => {
+    const client = new WebSocket(`ws://${HOST}:${port}/api/mobile/events`, { headers: { authorization: "Bearer good" } });
+    await new Promise((resolve, reject) => { client.once("open", resolve); client.once("error", reject); });
+    const closing = waitForClose(client);
+    server.close();
+    expect(await closing).toEqual({ code: 1001, reason: "server-shutdown" });
+    expect(mobileEventListeners.size).toBe(0);
   });
 });
 

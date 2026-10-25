@@ -22,6 +22,7 @@ function createHookServer({ host, port, isDevPairingRouteEnabled }) {
   const hookService = require(getRuntimeModulePath("desktop", "main", "services", "hookService"));
   const hookInstallBundle = require(getRuntimeModulePath("lib", "hookInstallBundle"));
   const mobileBridge = require(getRuntimeModulePath("desktop", "main", "services", "mobileBridgeService"));
+  const mobileNotifications = require(getRuntimeModulePath("desktop", "main", "services", "mobileNotificationService"));
   const { handleMobileRequest, attachMobileStreamServer } = require("./mobileRoutes.js");
 
   const server = http.createServer(async (request, response) => {
@@ -72,7 +73,14 @@ function createHookServer({ host, port, isDevPairingRouteEnabled }) {
     writeJson(response, 404, { success: false, error: "Not found" });
   });
 
-  attachMobileStreamServer(server, { bridge: mobileBridge, host, port });
+  mobileNotifications.startMobileNotifications({
+    relayUrl: process.env.KANVIBE_MOBILE_PUSH_RELAY_URL,
+    relayToken: process.env.KANVIBE_MOBILE_PUSH_RELAY_TOKEN,
+    readSubscriptions: mobileBridge.listMobilePushSubscriptions,
+    onUnregistered: mobileBridge.removeUnregisteredMobilePushSubscription,
+  });
+  attachMobileStreamServer(server, { bridge: mobileBridge, notifications: mobileNotifications, host, port });
+  server.once("close", () => mobileNotifications.stopMobileNotifications());
 
   server.listen(port, host, () => {
     const logUrl = host === "0.0.0.0"

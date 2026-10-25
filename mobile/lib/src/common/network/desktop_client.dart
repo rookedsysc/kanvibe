@@ -85,6 +85,68 @@ class DesktopClient {
         as Map<String, dynamic>;
   }
 
+  /// 알림을 누른 시점의 태스크를 다시 읽는다. 삭제된 태스크는 더 이상 열 수 없다.
+  Future<Map<String, dynamic>?> fetchTask(
+    DesktopConnection connection,
+    String taskId,
+  ) async {
+    final response = await _httpClient
+        .get(
+          connection.buildHttpUri(
+            '/api/mobile/tasks/${Uri.encodeComponent(taskId)}',
+          ),
+          headers: connection.authorizationHeaders,
+        )
+        .timeout(_requestTimeout);
+
+    if (response.statusCode == 404) return null;
+    if (response.statusCode != 200) {
+      throw DesktopRequestException(response.statusCode);
+    }
+
+    return (jsonDecode(response.body) as Map<String, dynamic>)['task']
+        as Map<String, dynamic>;
+  }
+
+  /// 푸시에는 페어링 토큰 대신 기기 내부의 연결 식별자만 넣는다.
+  Future<void> registerNotifications(
+    DesktopConnection connection, {
+    required String pushToken,
+    required String platform,
+  }) async {
+    final response = await _httpClient
+        .put(
+          connection.buildHttpUri('/api/mobile/notifications'),
+          headers: {
+            ...connection.authorizationHeaders,
+            'Content-Type': 'application/json',
+          },
+          body: jsonEncode({
+            'pushToken': pushToken,
+            'platform': platform,
+            'connectionId': connection.id,
+          }),
+        )
+        .timeout(_requestTimeout);
+
+    if (response.statusCode != 200) {
+      throw DesktopRequestException(response.statusCode);
+    }
+  }
+
+  Future<void> unregisterNotifications(DesktopConnection connection) async {
+    final response = await _httpClient
+        .delete(
+          connection.buildHttpUri('/api/mobile/notifications'),
+          headers: connection.authorizationHeaders,
+        )
+        .timeout(_requestTimeout);
+
+    if (response.statusCode != 200) {
+      throw DesktopRequestException(response.statusCode);
+    }
+  }
+
   /// 태스크의 탭과 pane 목록
   Future<TaskSurfaces> fetchSurfaces(
     DesktopConnection connection,
@@ -246,6 +308,26 @@ class DesktopClient {
     );
   }
 
+  /// 터미널 화면과 관계없이 hook 상태 변경을 받는다.
+  DesktopEventStream openEventStream(DesktopConnection connection) {
+    final channel = IOWebSocketChannel.connect(
+      connection.buildWebSocketUri('/api/mobile/events', const {}),
+      headers: connection.authorizationHeaders,
+      pingInterval: const Duration(seconds: 25),
+      connectTimeout: _requestTimeout,
+    );
+    // handshake 실패는 events에도 전달된다. 별도 ready Future의 중복 오류만 소비한다.
+    channel.ready.ignore();
+
+    return DesktopEventStream(
+      events: channel.stream.map(
+        (event) => jsonDecode(event.toString()) as Map<String, dynamic>,
+      ),
+      onClose: channel.sink.close,
+      readCloseCode: () => channel.closeCode,
+    );
+  }
+
   void close() => _httpClient.close();
 }
 
@@ -254,6 +336,20 @@ class DesktopClient {
 /// 스트림 실패(4000)와 나누어야 "세션을 못 비춘다"와 "이 기기는 더 이상 연결되어 있지 않다"를 구분할 수 있다.
 /// 서버 쪽 `electron/mobileRoutes.js`의 `DEVICE_UNPAIRED_CLOSE_CODE`와 같은 값이어야 한다.
 const int deviceUnpairedCloseCode = 4001;
+
+class DesktopEventStream {
+  const DesktopEventStream({
+    required this.events,
+    required this.onClose,
+    required this.readCloseCode,
+  });
+
+  final Stream<Map<String, dynamic>> events;
+  final Future<void> Function() onClose;
+  final int? Function() readCloseCode;
+
+  Future<void> close() => onClose();
+}
 
 /// 열려 있는 pane 구독 하나.
 ///

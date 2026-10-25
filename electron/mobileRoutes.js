@@ -12,6 +12,8 @@ const { readJsonBody, writeJson } = require("./httpBody.js");
 
 const MOBILE_PATH_PREFIX = "/api/mobile/";
 const STREAM_PATH = "/api/mobile/stream";
+const EVENTS_PATH = "/api/mobile/events";
+const NOTIFICATIONS_PATH = "/api/mobile/notifications";
 
 /**
  * 연결이 해제되어 끊는 스트림의 종료 코드.
@@ -43,6 +45,7 @@ const SURFACES_PATH_PATTERN = /^\/api\/mobile\/tasks\/([^/]+)\/surfaces$/;
  * 그래서 둘 다 인증 뒤에 두고, 값 검사는 열거형과 브랜치 이름 규칙을 아는 `mobileBridgeService`가 맡는다.
  */
 const TASKS_PATH = "/api/mobile/tasks";
+const TASK_PATH_PATTERN = /^\/api\/mobile\/tasks\/([^/]+)$/;
 const TASK_STATUS_PATH_PATTERN = /^\/api\/mobile\/tasks\/([^/]+)\/status$/;
 
 /** 생성 화면의 베이스 브랜치 칸을 채우는 경로 */
@@ -93,6 +96,18 @@ async function handleMobileRequest(request, response, { bridge, host, port, isDe
       return true;
     }
 
+    if (["PUT", "DELETE"].includes(request.method) && requestUrl.pathname === NOTIFICATIONS_PATH) {
+      await handleNotificationSubscriptionRequest(request, response, bridge);
+      return true;
+    }
+
+    const taskMatch = requestUrl.pathname.match(TASK_PATH_PATTERN);
+    if (request.method === "GET" && taskMatch) {
+      const task = await bridge.getMobileTask(decodeURIComponent(taskMatch[1]));
+      writeJson(response, task ? 200 : 404, task ? { success: true, task } : { success: false, error: "없는 태스크입니다" });
+      return true;
+    }
+
     const surfacesMatch = requestUrl.pathname.match(SURFACES_PATH_PATTERN);
     if (request.method === "GET" && surfacesMatch) {
       await handleSurfacesRequest(response, bridge, decodeURIComponent(surfacesMatch[1]));
@@ -124,6 +139,33 @@ async function handleMobileRequest(request, response, { bridge, host, port, isDe
     writeJson(response, 500, { success: false, error: "서버 오류" });
     return true;
   }
+}
+
+/** 푸시 토큰은 인증된 기기 한 곳에만 저장하고 네트워크에서 온 나머지 필드는 버린다 */
+async function handleNotificationSubscriptionRequest(request, response, bridge) {
+  let registered;
+  if (request.method === "DELETE") {
+    registered = await bridge.deleteMobileNotificationSubscription(request.headers.authorization);
+  } else {
+    let body;
+    try {
+      body = await readJsonBody(request);
+    } catch {
+      writeJson(response, 400, { success: false, error: "잘못된 요청입니다" });
+      return;
+    }
+    if (typeof body?.pushToken !== "string" || !/^\S{1,4096}$/.test(body.pushToken)
+      || !["android", "ios"].includes(body.platform)
+      || typeof body.connectionId !== "string" || !/^\S{1,128}$/.test(body.connectionId)
+      || Buffer.byteLength(body.connectionId) > 128) {
+      writeJson(response, 400, { success: false, error: "알림 구독 값이 올바르지 않습니다" });
+      return;
+    }
+    registered = await bridge.updateMobileNotificationSubscription(request.headers.authorization, {
+      pushToken: body.pushToken, platform: body.platform, connectionId: body.connectionId,
+    });
+  }
+  writeJson(response, registered ? 200 : 401, registered ? { success: true } : { success: false, error: "연결되지 않은 기기입니다" });
 }
 
 async function handlePairRequest(request, response, bridge) {
@@ -271,8 +313,15 @@ async function handleSurfacesRequest(response, bridge, taskId) {
  * `noServer`로 만들고 upgrade를 직접 받는 이유는, 인증을 통과하지 못한 요청에는 WebSocket 핸드셰이크를 아예 열어 주지 않기 위해서다.
  * 핸드셰이크를 먼저 맺고 나서 닫으면 연결이 잠깐이라도 성립한다.
  */
-function attachMobileStreamServer(server, { bridge, host, port }) {
+function attachMobileStreamServer(server, { bridge, notifications, host, port }) {
   const webSocketServer = new WebSocketServer({ noServer: true });
+  const eventSockets = new Set();
+  const stopEvents = notifications?.subscribeToMobileEvents((event) => {
+    const message = JSON.stringify(event);
+    for (const socket of eventSockets) {
+      if (socket.readyState === socket.OPEN) socket.send(message);
+    }
+  });
 
   /**
    * 기기별로 열려 있는 스트림 소켓.
@@ -283,6 +332,9 @@ function attachMobileStreamServer(server, { bridge, host, port }) {
   const socketsByDeviceId = new Map();
 
   function registerDeviceSocket(deviceId, webSocket) {
+    webSocket.isAlive = true;
+    webSocket.on("pong", () => { webSocket.isAlive = true; });
+    webSocket.on("error", () => webSocket.terminate());
     const sockets = socketsByDeviceId.get(deviceId);
     if (sockets) {
       sockets.add(webSocket);
@@ -308,7 +360,7 @@ function attachMobileStreamServer(server, { bridge, host, port }) {
    * 해제된 기기의 소켓만 닫는다. pane 구독은 `taskId#paneId`로 묶여 여러 기기가 나눠 쓰므로 여기서 건드리지 않는다.
    * 남은 기기가 있으면 그 화면은 그대로 흘러야 하고, 마지막 구독자가 나가면 서비스 쪽 참조 수가 스트림을 알아서 멈춘다.
    */
-  bridge.onMobileDeviceUnpaired((deviceId) => {
+  const stopUnpaired = bridge.onMobileDeviceUnpaired((deviceId) => {
     const sockets = socketsByDeviceId.get(deviceId);
     if (!sockets) {
       return;
@@ -320,6 +372,38 @@ function attachMobileStreamServer(server, { bridge, host, port }) {
     }
   });
 
+  /** 죽은 Wi-Fi 연결은 close가 오지 않을 수 있어 다음 연결과 함께 계속 남지 않게 한다 */
+  const heartbeat = setInterval(() => {
+    for (const socket of webSocketServer.clients) {
+      if (!socket.isAlive) {
+        socket.terminate();
+        continue;
+      }
+      socket.isAlive = false;
+      if (socket.readyState === socket.OPEN) socket.ping();
+    }
+  }, 30_000);
+  heartbeat.unref();
+
+  let isClosing = false;
+  const closeMobileConnections = () => {
+    if (isClosing) return;
+    isClosing = true;
+    clearInterval(heartbeat);
+    stopEvents?.();
+    stopUnpaired();
+    notifications?.stopMobileNotifications?.();
+    for (const socket of webSocketServer.clients) socket.close(1001, "server-shutdown");
+    webSocketServer.close();
+  };
+  /** HTTP close 이벤트는 업그레이드된 소켓이 끝날 때까지 오지 않으므로 close 호출 시 먼저 소켓을 거둔다 */
+  const closeServer = server.close.bind(server);
+  server.close = (...args) => {
+    closeMobileConnections();
+    return closeServer(...args);
+  };
+  server.once("close", closeMobileConnections);
+
   /**
    * upgrade 리스너를 달면 소켓 수명이 통째로 우리 몫이 되어 Node가 대신 닫아 주지 않는다.
    * 그래서 스트림 경로가 아니거나 도중에 예외가 나도 반드시 소켓을 끊는다. 인증 앞단이라 그대로 두면 LAN의 아무나 FD를 쌓을 수 있다.
@@ -327,7 +411,7 @@ function attachMobileStreamServer(server, { bridge, host, port }) {
   server.on("upgrade", async (request, socket, head) => {
     try {
       const requestUrl = new URL(request.url || "", `http://${host}:${port}`);
-      if (requestUrl.pathname !== STREAM_PATH) {
+      if (requestUrl.pathname !== STREAM_PATH && requestUrl.pathname !== EVENTS_PATH) {
         socket.destroy();
         return;
       }
@@ -341,7 +425,7 @@ function attachMobileStreamServer(server, { bridge, host, port }) {
 
       const taskId = requestUrl.searchParams.get("taskId");
       const paneId = requestUrl.searchParams.get("paneId");
-      if (!taskId || !paneId) {
+      if (requestUrl.pathname === STREAM_PATH && (!taskId || !paneId)) {
         socket.write("HTTP/1.1 400 Bad Request\r\n\r\n");
         socket.destroy();
         return;
@@ -354,6 +438,19 @@ function attachMobileStreamServer(server, { bridge, host, port }) {
          * 놓친 기기도 다음 요청에서 401을 받아 앱이 페어링 화면으로 돌아간다.
          */
         registerDeviceSocket(deviceId, webSocket);
+        if (requestUrl.pathname === EVENTS_PATH) {
+          eventSockets.add(webSocket);
+          webSocket.once("close", () => {
+            eventSockets.delete(webSocket);
+            forgetDeviceSocket(deviceId, webSocket);
+          });
+          webSocket.send(JSON.stringify({ type: "connected" }));
+          /** 핸드셰이크 중 해제된 기기를 놓쳐도 다음 HTTP 요청 없이 이 소켓을 닫는다 */
+          void bridge.authorizeMobileRequest(request.headers.authorization).then((currentDeviceId) => {
+            if (currentDeviceId !== deviceId) webSocket.close(DEVICE_UNPAIRED_CLOSE_CODE, "device-unpaired");
+          }).catch(() => webSocket.close(DEVICE_UNPAIRED_CLOSE_CODE, "device-unpaired"));
+          return;
+        }
         openPaneStream(webSocket, bridge, taskId, paneId, () => forgetDeviceSocket(deviceId, webSocket));
       });
     } catch (error) {

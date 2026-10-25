@@ -46,6 +46,7 @@ class FakeDesktopClient implements DesktopClient {
   FakeDesktopClient({
     this.board = const {},
     this.boardsByHost = const {},
+    this.tasksById = const {},
     this.boardError,
     this.pairToken,
     this.surfaces,
@@ -63,6 +64,7 @@ class FakeDesktopClient implements DesktopClient {
 
   final Map<String, dynamic> board;
   final Map<String, Map<String, dynamic>> boardsByHost;
+  final Map<String, Map<String, dynamic>> tasksById;
   final Object? boardError;
   final String? pairToken;
   final TaskSurfaces? surfaces;
@@ -82,6 +84,13 @@ class FakeDesktopClient implements DesktopClient {
   /// 데스크탑에 끊겠다고 알린 기록. 이미 거절된 토큰으로는 부르지 말아야 해서 호출 여부까지 본다
   final unpairCalls = <DesktopConnection>[];
   final pairCalls = <String>[];
+
+  final openedEvents = <String, StreamController<Map<String, dynamic>>>{};
+  final closedEvents = <String>[];
+  final eventCloseCodes = <String, int>{};
+  final notificationRegistrations = <Map<String, String>>[];
+  final notificationUnregistrations = <String>[];
+  final fetchedTasks = <String>[];
 
   /// pane별로 열린 구독. 테스트가 출력을 밀어 넣고 닫힘 여부를 확인한다
   final openedPanes = <String, StreamController<String>>{};
@@ -108,6 +117,57 @@ class FakeDesktopClient implements DesktopClient {
       throw boardError!;
     }
     return boardsByHost[connection.host] ?? board;
+  }
+
+  @override
+  Future<Map<String, dynamic>?> fetchTask(
+    DesktopConnection connection,
+    String taskId,
+  ) async {
+    fetchedTasks.add(taskId);
+    if (boardError != null) throw boardError!;
+    if (tasksById.containsKey(taskId)) return tasksById[taskId];
+    final currentBoard = boardsByHost[connection.host] ?? board;
+    final projects = currentBoard['projects'] as List<dynamic>? ?? const [];
+    for (final project in projects.whereType<Map<String, dynamic>>()) {
+      final tasks = project['tasks'] as List<dynamic>? ?? const [];
+      for (final task in tasks.whereType<Map<String, dynamic>>()) {
+        if (task['id'] == taskId) return task;
+      }
+    }
+    return null;
+  }
+
+  @override
+  Future<void> registerNotifications(
+    DesktopConnection connection, {
+    required String pushToken,
+    required String platform,
+  }) async {
+    notificationRegistrations.add({
+      'connectionId': connection.id,
+      'pushToken': pushToken,
+      'platform': platform,
+    });
+  }
+
+  @override
+  Future<void> unregisterNotifications(DesktopConnection connection) async {
+    notificationUnregistrations.add(connection.id);
+  }
+
+  @override
+  DesktopEventStream openEventStream(DesktopConnection connection) {
+    final controller = StreamController<Map<String, dynamic>>.broadcast();
+    openedEvents[connection.id] = controller;
+    return DesktopEventStream(
+      events: controller.stream,
+      onClose: () async {
+        closedEvents.add(connection.id);
+        await controller.close();
+      },
+      readCloseCode: () => eventCloseCodes[connection.id],
+    );
   }
 
   @override

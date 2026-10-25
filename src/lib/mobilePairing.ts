@@ -59,6 +59,23 @@ export interface PairedDevice {
   token: string;
   deviceName: string;
   pairedAt: string;
+  /** 페어링과 같은 수명으로 저장해야 연결 해제 후 푸시 토큰만 남지 않는다 */
+  notification?: MobilePushSubscription;
+}
+
+export interface MobilePushSubscription {
+  pushToken: string;
+  platform: "android" | "ios";
+  connectionId: string;
+}
+
+/** 저장된 구독이 깨져도 페어링은 유지하고 해당 구독만 발송 대상에서 뺀다 */
+export function isMobilePushSubscription(value: unknown): value is MobilePushSubscription {
+  const subscription = value as MobilePushSubscription | null;
+  return typeof subscription?.pushToken === "string" && /^\S{1,4096}$/.test(subscription.pushToken)
+    && (subscription.platform === "android" || subscription.platform === "ios")
+    && typeof subscription.connectionId === "string" && /^\S{1,128}$/.test(subscription.connectionId)
+    && Buffer.byteLength(subscription.connectionId) <= 128;
 }
 
 /** 기기 식별자. 추측을 막을 필요가 없으므로 토큰보다 짧다 */

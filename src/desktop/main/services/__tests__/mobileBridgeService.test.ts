@@ -11,6 +11,7 @@ const spawnMock = vi.fn();
 const createTaskMock = vi.fn();
 const updateTaskStatusMock = vi.fn();
 const getProjectBranchesMock = vi.fn();
+const getTaskByIdMock = vi.fn();
 const attachTaskTerminalMock = vi.fn();
 let defaultSessionTypeSetting = SessionType.TMUX;
 
@@ -73,6 +74,7 @@ vi.mock("@/lib/database", () => ({
 }));
 
 vi.mock("@/desktop/main/services/kanbanService", () => ({
+  getTaskById: (taskId: string) => getTaskByIdMock(taskId),
   getTasksByStatus: async () => ({ tasks: {} }),
   createTask: (input: unknown) => createTaskMock(input),
   updateTaskStatus: (taskId: string, status: string) => updateTaskStatusMock(taskId, status),
@@ -94,6 +96,11 @@ const {
   claimPaneViewport,
   createMobileTask,
   getMobileBoard,
+  getMobileTask,
+  listMobilePushSubscriptions,
+  updateMobileNotificationSubscription,
+  deleteMobileNotificationSubscription,
+  removeUnregisteredMobilePushSubscription,
   getMobileProjectBranches,
   getTaskSurfaces,
   listPairedMobileDevices,
@@ -210,6 +217,7 @@ beforeEach(() => {
   updateTaskStatusMock.mockResolvedValue({ id: "task-1" });
   getProjectBranchesMock.mockReset();
   getProjectBranchesMock.mockResolvedValue(["main", "dev"]);
+  getTaskByIdMock.mockReset();
   stopMobilePairing();
   attachTaskTerminalMock.mockReset();
   attachTaskTerminalMock.mockImplementation((...args: Parameters<typeof realAttachTaskTerminal>) =>
@@ -383,6 +391,106 @@ describe("기기 페어링", () => {
     await unpairMobileDevice(device.deviceId);
 
     expect(await isAuthorized(`Bearer ${token}`)).toBe(false);
+  });
+});
+
+describe("모바일 알림 구독", () => {
+  const subscription = { pushToken: "fcm-token-first", platform: "ios" as const, connectionId: "connection-1" };
+
+  it("현재 기기의 구독을 저장하고 토큰 회전 때 교체하며 페어링 목록에 비밀값을 노출하지 않는다", async () => {
+    const token = await pairOneDevice();
+    const [device] = await listPairedMobileDevices();
+    expect(await updateMobileNotificationSubscription(`Bearer ${token}`, subscription)).toBe(true);
+    expect(await listMobilePushSubscriptions()).toEqual([{ deviceId: device.deviceId, ...subscription }]);
+    const rotated = { ...subscription, pushToken: "fcm-token-rotated" };
+    await updateMobileNotificationSubscription(`Bearer ${token}`, rotated);
+    expect(await listMobilePushSubscriptions()).toEqual([{ deviceId: device.deviceId, ...rotated }]);
+    expect(JSON.stringify(await listPairedMobileDevices())).not.toContain("fcm-token");
+    expect(JSON.stringify(await listMobilePushSubscriptions())).not.toContain(token);
+  });
+
+  it("다른 기기의 구독은 유지하고 자기 구독만 삭제하며 페어링은 유지한다", async () => {
+    const firstToken = await pairOneDevice();
+    const secondToken = await pairOneDevice("iPad");
+    await updateMobileNotificationSubscription(`Bearer ${firstToken}`, subscription);
+    await updateMobileNotificationSubscription(`Bearer ${secondToken}`, { ...subscription, pushToken: "fcm-token-second" });
+    expect(await deleteMobileNotificationSubscription(`Bearer ${firstToken}`)).toBe(true);
+    expect(await listMobilePushSubscriptions()).toEqual([expect.objectContaining({ pushToken: "fcm-token-second" })]);
+    expect(await isAuthorized(`Bearer ${firstToken}`)).toBe(true);
+  });
+
+  it("동시 구독 등록과 연결 해제 후 끊은 기기의 토큰과 구독은 되살아나지 않는다", async () => {
+    const token = await pairOneDevice();
+    const [device] = await listPairedMobileDevices();
+    await Promise.all([
+      updateMobileNotificationSubscription(`Bearer ${token}`, subscription),
+      unpairMobileDevice(device.deviceId),
+    ]);
+    expect(await listMobilePushSubscriptions()).toEqual([]);
+    expect(await updateMobileNotificationSubscription(`Bearer ${token}`, subscription)).toBe(false);
+    expect(await deleteMobileNotificationSubscription(`Bearer ${token}`)).toBe(false);
+    expect(await isAuthorized(`Bearer ${token}`)).toBe(false);
+  });
+
+  it("깨진 구독 데이터는 푸시에 쓰지 않고 기존 페어링은 유지한다", async () => {
+    const token = await pairOneDevice();
+    const saved = JSON.parse(appSettingsStore.get("mobile_paired_devices")!);
+    saved[0].notification = { ...subscription, platform: "web" };
+    appSettingsStore.set("mobile_paired_devices", JSON.stringify(saved));
+    expect(await listMobilePushSubscriptions()).toEqual([]);
+    expect(await isAuthorized(`Bearer ${token}`)).toBe(true);
+  });
+
+  it("만료된 푸시 토큰은 같은 기기의 같은 토큰일 때만 지우고 다른 기기와 페어링은 유지한다", async () => {
+    const firstToken = await pairOneDevice();
+    const [device] = await listPairedMobileDevices();
+    const secondToken = await pairOneDevice("iPad");
+    await updateMobileNotificationSubscription(`Bearer ${firstToken}`, subscription);
+    await updateMobileNotificationSubscription(`Bearer ${secondToken}`, { ...subscription, pushToken: "other-push-token" });
+    await removeUnregisteredMobilePushSubscription(device.deviceId, "older-push-token");
+    expect(await listMobilePushSubscriptions()).toHaveLength(2);
+    await removeUnregisteredMobilePushSubscription(device.deviceId, subscription.pushToken);
+    expect(await listMobilePushSubscriptions()).toEqual([expect.objectContaining({ pushToken: "other-push-token" })]);
+    expect(await isAuthorized(`Bearer ${firstToken}`)).toBe(true);
+  });
+
+  it("늦게 도착한 410 응답은 그 사이 회전된 푸시 토큰을 지우지 않는다", async () => {
+    const { startMobileNotifications, stopMobileNotifications } = await import("@/desktop/main/services/mobileNotificationService");
+    const { broadcastTaskStatusChanged } = await import("@/lib/boardNotifier");
+    const token = await pairOneDevice();
+    await updateMobileNotificationSubscription(`Bearer ${token}`, subscription);
+    let finishRelay!: (response: Response) => void;
+    const fetchRelay = vi.fn<typeof fetch>(() => new Promise((resolve) => { finishRelay = resolve; }));
+    vi.stubGlobal("fetch", fetchRelay);
+    let cleanupCompleted = false;
+    try {
+      startMobileNotifications({
+        relayUrl: "https://relay.example/notifications", relayToken: "relay-secret", readSubscriptions: listMobilePushSubscriptions,
+        onUnregistered: async (deviceId, pushToken) => {
+          await removeUnregisteredMobilePushSubscription(deviceId, pushToken);
+          cleanupCompleted = true;
+        },
+      });
+      broadcastTaskStatusChanged({ projectName: "kanvibe", branchName: "feat/mobile", taskTitle: "모바일 구현", description: null, newStatus: "review", taskId: "task-1" });
+      await vi.waitFor(() => expect(fetchRelay).toHaveBeenCalledTimes(1));
+      await updateMobileNotificationSubscription(`Bearer ${token}`, { ...subscription, pushToken: "rotated-push-token" });
+      finishRelay(new Response(null, { status: 410 }));
+      await vi.waitFor(() => expect(cleanupCompleted).toBe(true));
+      expect(await listMobilePushSubscriptions()).toEqual([expect.objectContaining({ pushToken: "rotated-push-token" })]);
+      expect(await isAuthorized(`Bearer ${token}`)).toBe(true);
+    } finally {
+      stopMobileNotifications();
+      vi.unstubAllGlobals();
+    }
+  });
+});
+
+describe("알림 대상 태스크 조회", () => {
+  it("단일 태스크 조회 결과에 프로젝트 이름을 붙이고 태스크가 없으면 null을 반환한다", async () => {
+    getTaskByIdMock.mockResolvedValue({ id: "done-task", status: "done", project: { name: "kanvibe" } });
+    expect(await getMobileTask("done-task")).toEqual({ id: "done-task", status: "done", project: { name: "kanvibe" }, projectName: "kanvibe" });
+    getTaskByIdMock.mockResolvedValue(null);
+    expect(await getMobileTask("missing")).toBeNull();
   });
 });
 

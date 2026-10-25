@@ -1,6 +1,6 @@
 import { spawn, type ChildProcess } from "child_process";
 import { getAppSetting, getDefaultSessionType, setAppSetting } from "@/desktop/main/services/appSettingsService";
-import { createTask, getTasksByStatus, updateTaskStatus } from "@/desktop/main/services/kanbanService";
+import { createTask, getTaskById, getTasksByStatus, updateTaskStatus } from "@/desktop/main/services/kanbanService";
 import { getAllProjects, getProjectBranches } from "@/desktop/main/services/projectService";
 import { attachTaskTerminal, CallbackTerminalClient } from "@/desktop/main/terminalBridge";
 import { SessionType, TaskStatus, type KanbanTask } from "@/entities/KanbanTask";
@@ -10,6 +10,7 @@ import { execGit } from "@/lib/gitOperations";
 import {
   findPairedDevice,
   issuePairingCode,
+  isMobilePushSubscription,
   mintDeviceId,
   mintDeviceToken,
   parseBearerToken,
@@ -19,6 +20,7 @@ import {
   revokePairingCode,
   serializePairedDevices,
   type PairedDevice,
+  type MobilePushSubscription,
 } from "@/lib/mobilePairing";
 import {
   buildScreenRedraw,
@@ -294,6 +296,12 @@ export async function getMobileBoard() {
   return { ...board, projects, defaultSessionType };
 }
 
+/** 완료 태스크의 보드 페이지와 관계없이 알림이 가리키는 태스크를 직접 조회한다 */
+export async function getMobileTask(taskId: string) {
+  const task = await getTaskById(taskId);
+  return task ? { ...task, projectName: task.project?.name ?? null } : null;
+}
+
 /**
  * 모바일이 보낸 값이 데스크탑 열거형에 없을 때.
  *
@@ -418,7 +426,7 @@ async function readPairedDevices(): Promise<PairedDevice[]> {
  * 목록은 `app_settings`의 문자열 칸 하나라 읽고-고쳐-쓰는 사이에 다른 호출이 끼면 한쪽 변경이 통째로 사라진다.
  * 두 기기가 거의 같은 순간에 연결하면 토큰 하나가 없어져 나중에 401이 나고,
  * 한쪽을 끊는 동안 다른 쪽이 연결하면 끊은 기기가 되살아난다. 셀이 하나뿐이라 DB는 이것을 막아 주지 않는다.
- * 목록을 바꾸는 곳은 [pairMobileDevice], [unpairMobileDevice], [unpairMobileDeviceByToken]뿐이므로 경계도 이 파일이면 충분하다.
+ * 페어링과 푸시 구독을 바꾸는 곳이 모두 이 줄을 지나므로 해제된 기기가 늦은 구독 등록으로 되살아나지 않는다.
  */
 let devicesWriteQueue: Promise<unknown> = Promise.resolve();
 
@@ -451,6 +459,52 @@ export async function pairMobileDevice(submittedCode: string, deviceName: string
 export async function listPairedMobileDevices(): Promise<Omit<PairedDevice, "token">[]> {
   const devices = await readPairedDevices();
   return devices.map(({ deviceId, deviceName, pairedAt }) => ({ deviceId, deviceName, pairedAt }));
+}
+
+/** 요청이 증명한 기기 하나의 푸시 구독을 등록하거나 회전된 토큰으로 바꾼다 */
+export async function updateMobileNotificationSubscription(
+  authorizationHeader: string | undefined,
+  subscription: MobilePushSubscription,
+): Promise<boolean> {
+  if (!isMobilePushSubscription(subscription)) {
+    throw new MobileTaskInputError("알림 구독 값이 올바르지 않습니다");
+  }
+  return withDeviceList(async (devices) => {
+    const device = findPairedDevice(devices, parseBearerToken(authorizationHeader));
+    if (!device) return false;
+    device.notification = { pushToken: subscription.pushToken, platform: subscription.platform, connectionId: subscription.connectionId };
+    await setAppSetting(PAIRED_DEVICES_KEY, serializePairedDevices(devices));
+    return true;
+  });
+}
+
+/** 알림만 끄는 동작은 페어링과 터미널 인증을 유지한다 */
+export async function deleteMobileNotificationSubscription(authorizationHeader: string | undefined): Promise<boolean> {
+  return withDeviceList(async (devices) => {
+    const device = findPairedDevice(devices, parseBearerToken(authorizationHeader));
+    if (!device) return false;
+    delete device.notification;
+    await setAppSetting(PAIRED_DEVICES_KEY, serializePairedDevices(devices));
+    return true;
+  });
+}
+
+/** 푸시 발송 경계에는 페어링 인증 토큰을 넘기지 않는다 */
+export async function listMobilePushSubscriptions(): Promise<Array<MobilePushSubscription & { deviceId: string }>> {
+  const devices = await readPairedDevices();
+  return devices.flatMap(({ deviceId, notification }) => isMobilePushSubscription(notification)
+    ? [{ deviceId, pushToken: notification.pushToken, platform: notification.platform, connectionId: notification.connectionId }]
+    : []);
+}
+
+/** 늦은 FCM 만료 응답이 새로 등록된 토큰을 지우지 않도록 기기와 발송했던 토큰을 함께 대조한다 */
+export async function removeUnregisteredMobilePushSubscription(deviceId: string, pushToken: string): Promise<void> {
+  await withDeviceList(async (devices) => {
+    const device = devices.find((candidate) => candidate.deviceId === deviceId);
+    if (device?.notification?.pushToken !== pushToken) return;
+    delete device.notification;
+    await setAppSetting(PAIRED_DEVICES_KEY, serializePairedDevices(devices));
+  });
 }
 
 /** 기기 하나의 연결을 끊는다. 설정 화면이 부르는 경로다 */

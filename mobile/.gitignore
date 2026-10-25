@@ -49,3 +49,6 @@ app.*.map.json
 
 # FVM Version Cache
 .fvm/
+
+# 프로젝트별 Firebase 빌드 설정은 예시만 버전 관리한다.
+/config/*.local.json

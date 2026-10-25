@@ -32,6 +32,7 @@
   ],
   "exclude": [
     "node_modules",
+    "mobile",
     "docs-site",
     "playwright.config.ts",
     "vitest.config.ts",

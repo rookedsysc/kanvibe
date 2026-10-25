@@ -1,4 +1,5 @@
 import java.util.Properties
+import java.util.Base64
 
 plugins {
     id("com.android.application")
@@ -14,6 +15,22 @@ val keystoreProperties = Properties().apply {
     val file = rootProject.file("key.properties")
     if (file.exists()) file.inputStream().use { load(it) }
 }
+
+/** 프로세스가 종료된 뒤에도 FirebaseInitProvider가 같은 빌드 설정으로 앱을 초기화해야 한다. */
+val kanvibeDartDefines = (project.findProperty("dart-defines") as? String)
+    ?.split(",")
+    ?.filter { it.isNotEmpty() }
+    ?.map { String(Base64.getDecoder().decode(it), Charsets.UTF_8).split("=", limit = 2) }
+    ?.filter { it.size == 2 && it[0].startsWith("KANVIBE_FIREBASE_") }
+    ?.associate { it[0] to it[1] }
+    ?: emptyMap()
+
+val kanvibeFirebaseResources = mapOf(
+    "google_app_id" to "KANVIBE_FIREBASE_APP_ID",
+    "google_api_key" to "KANVIBE_FIREBASE_API_KEY",
+    "gcm_defaultSenderId" to "KANVIBE_FIREBASE_MESSAGING_SENDER_ID",
+    "project_id" to "KANVIBE_FIREBASE_PROJECT_ID",
+)
 
 /** 반쯤 채워진 key.properties는 그 자리에서 세운다. 조용히 debug로 떨어지면 Play가 거절할 때까지 모른다. */
 fun keystoreProperty(name: String): String =
@@ -35,7 +52,12 @@ android {
     compileSdkMinor = 0
     ndkVersion = flutter.ndkVersion
 
+    buildFeatures {
+        resValues = true
+    }
+
     compileOptions {
+        isCoreLibraryDesugaringEnabled = true
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
@@ -53,6 +75,12 @@ android {
         // flag during build.
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+
+        if (kanvibeFirebaseResources.values.all { !kanvibeDartDefines[it].isNullOrEmpty() }) {
+            kanvibeFirebaseResources.forEach { (resource, define) ->
+                resValue("string", resource, kanvibeDartDefines.getValue(define))
+            }
+        }
     }
 
     signingConfigs {
@@ -72,6 +100,10 @@ android {
             signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
         }
     }
+}
+
+dependencies {
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
 }
 
 kotlin {
