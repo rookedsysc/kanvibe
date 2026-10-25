@@ -26,6 +26,17 @@ void main() {
   });
 
   group('폰이 쓰는 pane 목록', () {
+    for (final session in ['tmux', 'terminal', 'zellij', null]) {
+      test('${session ?? 'sessionType 누락'} 응답에서 device query 응답 소유권을 읽는다', () {
+        final surfaces = TaskSurfaces.fromJson({'sessionType': ?session});
+        expect(surfaces.canRespondToDeviceQueries, session == 'terminal');
+      });
+    }
+
+    test('직접 만든 surfaces는 device query에 응답하지 않는 것이 기본이다', () {
+      expect(const TaskSurfaces(tabs: []).canRespondToDeviceQueries, isFalse);
+    });
+
     test('데스크탑이 지원을 명시한 경우에만 화면 크기를 바꾼다', () {
       expect(TaskSurfaces.fromJson({'canResize': true}).canResize, isTrue);
       expect(TaskSurfaces.fromJson({'canResize': false}).canResize, isFalse);

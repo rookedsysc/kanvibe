@@ -1,11 +1,19 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:kanvibe_mobile/src/common/constants/app_theme.dart';
 import 'package:kanvibe_mobile/src/common/network/desktop_client.dart';
+import 'package:kanvibe_mobile/src/common/providers.dart';
+import 'package:kanvibe_mobile/src/features/board/data/board_snapshot.dart';
 import 'package:kanvibe_mobile/src/features/board/domain/board_task.dart';
 import 'package:kanvibe_mobile/src/features/board/domain/task_status.dart';
+import 'package:kanvibe_mobile/src/features/task_create/presentation/create_task_screen.dart';
 import 'package:kanvibe_mobile/src/features/task_detail/domain/mirror_pane.dart';
 import 'package:kanvibe_mobile/src/features/task_detail/presentation/task_detail_screen.dart';
 import 'package:kanvibe_mobile/src/features/task_detail/presentation/widgets/pane_terminal_view.dart';
+import 'package:kanvibe_mobile/src/features/task_detail/presentation/widgets/terminal_chrome_header.dart';
 import 'package:xterm/xterm.dart' as xterm;
 
 import '../../../support/fake_desktop.dart';
@@ -107,7 +115,449 @@ xterm.Terminal terminalIn(WidgetTester tester, String paneId) => tester
     )
     .terminal;
 
+const _creationBoardJson = {
+  'projects': [
+    {'id': 'project-1', 'name': 'kanvibe-repo', 'defaultBranch': 'dev'},
+  ],
+  'tasks': {},
+  'defaultSessionType': 'zellij',
+};
+
+const _creationSource = BoardTask(
+  id: 'source-task',
+  title: '원본 태스크',
+  status: TaskStatus.progress,
+  projectId: 'project-1',
+  projectName: 'kanvibe-repo',
+  branchName: 'feat/source',
+  baseBranch: 'dev',
+);
+
+Future<FakeDesktopClient> _pumpCreationDetail(
+  WidgetTester tester, {
+  BoardTask task = _creationSource,
+  Map<String, dynamic> board = _creationBoardJson,
+  Future<BoardSnapshot> Function()? loadBoard,
+  Object? createError,
+  Size size = phoneSize,
+}) async {
+  await tester.binding.setSurfaceSize(size);
+  final client = FakeDesktopClient(
+    board: board,
+    surfaces: _surfaces,
+    createError: createError,
+    createdTask: const {
+      'id': 'created-task',
+      'title': 'feat/child',
+      'status': 'todo',
+      'projectId': 'project-1',
+      'branchName': 'feat/child',
+    },
+  );
+  final app = ProviderScope(
+    overrides: [
+      desktopClientProvider.overrideWithValue(client),
+      connectionStoreProvider.overrideWithValue(FakeConnectionStore()),
+      if (loadBoard != null) boardProvider.overrideWith((_) => loadBoard()),
+    ],
+    child: MaterialApp(
+      theme: buildAppTheme(),
+      home: Builder(
+        builder: (context) => TextButton(
+          onPressed: () => Navigator.of(context).push(
+            MaterialPageRoute<void>(
+              builder: (_) => TaskDetailScreen(task: task),
+            ),
+          ),
+          child: const Text('보드 화면'),
+        ),
+      ),
+    ),
+  );
+  await tester.pumpWidget(app);
+  await tester.pumpAndSettle();
+  await tester.tap(find.text('보드 화면'));
+  await tester.pumpAndSettle();
+  return client;
+}
+
+Future<void> _openCreation(WidgetTester tester) async {
+  await tester.tap(find.bySemanticsIdentifier('create-task-from-current'));
+  await tester.pumpAndSettle();
+}
+
+Future<void> _submitCreation(WidgetTester tester) async {
+  await tester.ensureVisible(find.widgetWithText(FilledButton, '만들기'));
+  await tester.tap(find.widgetWithText(FilledButton, '만들기'));
+  await tester.pumpAndSettle();
+}
+
 void main() {
+  for (final session in ['tmux', 'terminal', 'zellij', null]) {
+    testWidgets(
+      '${session ?? 'sessionType 누락'} 상세는 서버의 device query 응답 소유권을 전달한다',
+      (tester) async {
+        final surfaces = TaskSurfaces.fromJson({
+          'sessionType': ?session,
+          'tabs': [
+            {
+              'id': '@10',
+              'panes': [
+                {'id': '%19', 'width': 80, 'height': 24},
+              ],
+            },
+          ],
+        });
+        final client = await pumpDetail(
+          tester,
+          size: phoneSize,
+          surfaces: surfaces,
+        );
+        client.openedPanes['%19']!.add('\x1b[6n');
+        await tester.pumpAndSettle();
+        final responses = client.writtenInput['%19'] ?? [];
+        expect(responses, session == 'terminal' ? ['\x1b[0;0R'] : isEmpty);
+        terminalIn(tester, '%19').textInput('user');
+        expect(client.writtenInput['%19']!.last, 'user');
+      },
+    );
+  }
+
+  testWidgets('현재 태스크에서 새 태스크를 열면 source 프로젝트와 브랜치가 선택된다', (tester) async {
+    final client = FakeDesktopClient(
+      board: const {
+        'projects': [
+          {'id': 'project-1', 'name': 'kanvibe-repo', 'defaultBranch': 'dev'},
+        ],
+        'tasks': {},
+        'defaultSessionType': 'zellij',
+      },
+    );
+    final source = BoardTask.fromJson(
+      {
+        'id': 'source-task',
+        'title': '원본 태스크',
+        'status': 'progress',
+        'projectId': 'project-1',
+        'branchName': 'feat/source',
+        'baseBranch': 'dev',
+        'description': '원본 설명',
+        'priority': 'high',
+        'sessionType': 'tmux',
+      },
+      const {'project-1': 'kanvibe-repo'},
+    )!;
+    await tester.binding.setSurfaceSize(phoneSize);
+    await tester.pumpWidget(
+      wrapWithApp(
+        TaskDetailScreen(task: source),
+        client: client,
+        size: phoneSize,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final createAction = find.bySemanticsIdentifier('create-task-from-current');
+    expect(createAction, findsOneWidget);
+    await tester.tap(createAction);
+    await tester.pumpAndSettle();
+
+    expect(find.byType(CreateTaskScreen), findsOneWidget);
+    expect(find.text('kanvibe-repo'), findsOneWidget);
+    expect(find.text('feat/source'), findsOneWidget);
+    for (final field in tester.widgetList<TextFormField>(
+      find.byType(TextFormField),
+    )) {
+      expect(field.controller!.text, isEmpty);
+    }
+    expect(find.text('고르지 않음'), findsOneWidget);
+    expect(find.text('zellij'), findsOneWidget);
+
+    await tester.enterText(find.byType(TextFormField).first, 'feat/child');
+    await _submitCreation(tester);
+
+    expect(client.createCalls.single, {
+      'projectId': 'project-1',
+      'branchName': 'feat/child',
+      'baseBranch': 'feat/source',
+      'description': '',
+      'priority': null,
+      'sessionType': 'zellij',
+    });
+  });
+
+  group('현재 태스크에서 생성', () {
+    for (final (branchName, baseBranch, expectedBase) in [
+      (null, 'release/source', 'release/source'),
+      (null, null, 'dev'),
+    ]) {
+      testWidgets(
+        'source 브랜치 $branchName, base $baseBranch이면 $expectedBase에서 시작한다',
+        (tester) async {
+          await _pumpCreationDetail(
+            tester,
+            task: BoardTask(
+              id: 'source-task',
+              title: '원본 태스크',
+              status: TaskStatus.progress,
+              projectId: 'project-1',
+              projectName: 'kanvibe-repo',
+              branchName: branchName,
+              baseBranch: baseBranch,
+            ),
+          );
+
+          await _openCreation(tester);
+
+          expect(find.byType(CreateTaskScreen), findsOneWidget);
+          expect(find.text(expectedBase), findsOneWidget);
+        },
+      );
+    }
+
+    for (final projectId in [null, 'deleted-project']) {
+      testWidgets('source 프로젝트 $projectId이면 현재 상세에서 원본 프로젝트 확인을 안내한다', (
+        tester,
+      ) async {
+        final client = await _pumpCreationDetail(
+          tester,
+          task: BoardTask(
+            id: 'source-task',
+            title: '원본 태스크',
+            status: TaskStatus.progress,
+            projectId: projectId,
+            branchName: 'feat/source',
+          ),
+        );
+
+        await _openCreation(tester);
+
+        expect(find.byType(CreateTaskScreen), findsNothing);
+        expect(find.text('원본 태스크'), findsOneWidget);
+        expect(find.textContaining('원본 프로젝트를 찾을 수 없습니다'), findsOneWidget);
+        expect(client.createCalls, isEmpty);
+      });
+    }
+
+    testWidgets('worktree 자체로 등록한 프로젝트에서는 다른 프로젝트를 추측하지 않는다', (tester) async {
+      final client = await _pumpCreationDetail(
+        tester,
+        board: const {
+          'projects': [
+            {'id': 'project-1', 'name': 'kanvibe-repo', 'isWorktree': true},
+          ],
+          'tasks': {},
+        },
+      );
+
+      await _openCreation(tester);
+
+      expect(find.byType(CreateTaskScreen), findsNothing);
+      expect(find.textContaining('원본 프로젝트를 찾을 수 없습니다'), findsOneWidget);
+      expect(client.createCalls, isEmpty);
+    });
+
+    testWidgets('최신 보드를 못 받으면 상세를 유지하고 다시 누르면 재시도한다', (tester) async {
+      var loads = 0;
+      await _pumpCreationDetail(
+        tester,
+        loadBoard: () async {
+          if (loads++ == 0) {
+            throw const DesktopRequestException(500);
+          }
+          return BoardSnapshot.fromJson(_creationBoardJson);
+        },
+      );
+
+      await _openCreation(tester);
+
+      expect(find.text('원본 태스크'), findsOneWidget);
+      expect(find.byType(CreateTaskScreen), findsNothing);
+      expect(find.textContaining('프로젝트를 불러오지 못했습니다'), findsOneWidget);
+
+      await _openCreation(tester);
+
+      expect(loads, 2);
+      expect(find.byType(CreateTaskScreen), findsOneWidget);
+    });
+
+    testWidgets('캐시된 보드 뒤에 프로젝트가 지워지면 새로 조회한 결과로 막는다', (tester) async {
+      var loads = 0;
+      await _pumpCreationDetail(
+        tester,
+        loadBoard: () async {
+          loads += 1;
+          return BoardSnapshot.fromJson(
+            loads == 1 ? _creationBoardJson : const {'tasks': {}},
+          );
+        },
+      );
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(TaskDetailScreen)),
+      );
+      await container.read(boardProvider.future);
+
+      await _openCreation(tester);
+
+      expect(loads, 2);
+      expect(find.byType(CreateTaskScreen), findsNothing);
+      expect(find.textContaining('원본 프로젝트를 찾을 수 없습니다'), findsOneWidget);
+    });
+
+    testWidgets('최신 보드를 기다리는 동안 반복해서 눌러도 한 번만 연다', (tester) async {
+      final pendingBoard = Completer<BoardSnapshot>();
+      var loads = 0;
+      await _pumpCreationDetail(
+        tester,
+        loadBoard: () {
+          loads += 1;
+          return pendingBoard.future;
+        },
+      );
+      final action = find.bySemanticsIdentifier('create-task-from-current');
+
+      await tester.tap(action);
+      await tester.pump();
+      expect(find.text('불러오는 중…'), findsOneWidget);
+      expect(tester.getSize(action).height, 48);
+      expect(
+        tester
+            .widget<TextButton>(
+              find.descendant(
+                of: action,
+                matching: find.byWidgetPredicate(
+                  (widget) => widget is TextButton,
+                ),
+              ),
+            )
+            .onPressed,
+        isNull,
+      );
+      await tester.tap(action);
+      await tester.pump();
+      expect(loads, 1);
+
+      pendingBoard.complete(BoardSnapshot.fromJson(_creationBoardJson));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byType(CreateTaskScreen, skipOffstage: false),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('보드 조회 중 상세를 떠나면 조회가 끝나도 생성 화면을 열지 않는다', (tester) async {
+      final pendingBoard = Completer<BoardSnapshot>();
+      await _pumpCreationDetail(tester, loadBoard: () => pendingBoard.future);
+      await tester.tap(find.bySemanticsIdentifier('create-task-from-current'));
+      await tester.pump();
+
+      await tester.pageBack();
+      await tester.pumpAndSettle();
+      pendingBoard.complete(BoardSnapshot.fromJson(_creationBoardJson));
+      await tester.pumpAndSettle();
+
+      expect(find.text('보드 화면'), findsOneWidget);
+      expect(find.byType(CreateTaskScreen), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('취소하면 원래 상세와 터미널 구독을 유지한다', (tester) async {
+      final client = await _pumpCreationDetail(tester);
+      await _openCreation(tester);
+
+      await tester.pageBack();
+      await tester.pumpAndSettle();
+
+      expect(find.text('원본 태스크'), findsOneWidget);
+      expect(client.closedPanes, isEmpty);
+      expect(client.createCalls, isEmpty);
+    });
+
+    testWidgets('생성 오류는 새 입력을 보존하고 취소하면 원래 상세로 돌아간다', (tester) async {
+      await _pumpCreationDetail(
+        tester,
+        createError: const DesktopRequestException(
+          400,
+          message: '브랜치 이름이 중복됩니다.',
+        ),
+      );
+      await _openCreation(tester);
+      await tester.enterText(find.byType(TextFormField).first, 'feat/child');
+
+      await _submitCreation(tester);
+
+      expect(find.text('브랜치 이름이 중복됩니다.'), findsOneWidget);
+      expect(
+        tester
+            .widget<TextFormField>(find.byType(TextFormField).first)
+            .controller!
+            .text,
+        'feat/child',
+      );
+      await tester.pageBack();
+      await tester.pumpAndSettle();
+      expect(find.text('원본 태스크'), findsOneWidget);
+    });
+
+    testWidgets('성공하면 새 상세로 교체하고 옛 구독을 닫아 한 번 뒤로 가면 보드다', (tester) async {
+      final client = await _pumpCreationDetail(tester);
+      await _openCreation(tester);
+      await tester.enterText(find.byType(TextFormField).first, 'feat/child');
+
+      await _submitCreation(tester);
+
+      expect(find.text('feat/child'), findsOneWidget);
+      expect(
+        find.byType(TaskDetailScreen, skipOffstage: false),
+        findsOneWidget,
+      );
+      expect(client.closedPanes, contains('%19'));
+      await tester.pageBack();
+      await tester.pumpAndSettle();
+      expect(find.text('보드 화면'), findsOneWidget);
+      expect(find.byType(TaskDetailScreen, skipOffstage: false), findsNothing);
+    });
+
+    for (final size in [
+      const Size(320, 844),
+      phoneSize,
+      const Size(844, 390),
+    ]) {
+      testWidgets(
+        '${size.width}×${size.height}에서 긴 프로젝트명과 PR이 있어도 생성 버튼이 48dp다',
+        (tester) async {
+          await _pumpCreationDetail(
+            tester,
+            size: size,
+            task: const BoardTask(
+              id: 'source-task',
+              title: '원본 태스크',
+              status: TaskStatus.progress,
+              projectId: 'project-1',
+              projectName: 'very-long-project-name-긴-프로젝트-이름-끝까지',
+              branchName: 'feat/source',
+              prUrl: 'https://github.com/example/kanvibe/pull/1',
+            ),
+          );
+
+          final action = find.bySemanticsIdentifier('create-task-from-current');
+          final bounds = tester.getRect(action);
+          expect(bounds.height, greaterThanOrEqualTo(48));
+          expect(bounds.left, greaterThanOrEqualTo(0));
+          expect(bounds.right, lessThanOrEqualTo(size.width));
+          expect(tester.getSize(find.byType(TerminalChromeHeader)).height, 48);
+          expect(find.byTooltip('PR 열기'), findsOneWidget);
+          expect(tester.takeException(), isNull);
+
+          await _openCreation(tester);
+
+          expect(find.byType(CreateTaskScreen), findsOneWidget);
+        },
+      );
+    }
+  });
+
   testWidgets('폰에서는 모든 window의 pane이 각각 탭이 된다', (tester) async {
     await pumpDetail(tester, size: phoneSize);
 

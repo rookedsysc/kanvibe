@@ -1,10 +1,12 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:xterm/xterm.dart' as xterm;
 
 import '../../../../common/constants/app_colors.dart';
+import '../../../../common/constants/app_sizes.dart';
 import '../../../../common/constants/app_theme.dart';
 import '../../../../common/network/desktop_client.dart';
 import '../../../../common/network/desktop_connection.dart';
@@ -12,18 +14,20 @@ import '../../../../common/providers.dart';
 import '../../domain/mirror_pane.dart';
 import 'terminal_soft_keyboard.dart';
 
-/// 크기 조정이 가능한 세션은 모바일 viewport에 맞추고, 나머지는 원본 격자를 스크롤로 읽는다.
+/// 크기 조정이 가능한 pane은 화면 맞춤과 넓게 보기 사이를 전환할 수 있다.
 class PaneTerminalView extends ConsumerStatefulWidget {
   const PaneTerminalView({
     required this.taskId,
     required this.pane,
     this.canResize = false,
+    this.canRespondToDeviceQueries = false,
     super.key,
   });
 
   final String taskId;
   final MirrorPane pane;
   final bool canResize;
+  final bool canRespondToDeviceQueries;
 
   @override
   ConsumerState<PaneTerminalView> createState() => _PaneTerminalViewState();
@@ -40,11 +44,17 @@ class _PaneTerminalViewState extends ConsumerState<PaneTerminalView>
   Timer? _firstFrameTimer;
   final _horizontalScroll = ScrollController();
   final _verticalScroll = ScrollController();
+  final _terminalController = xterm.TerminalController();
+  bool _isWideView = false;
+  bool _isParsingRemoteOutput = false;
+  String _pendingEscape = '';
   ({int cols, int rows})? _lastSentSize;
   bool _isSuspended = false;
   int _streamGeneration = 0;
 
   static const _firstFrameTimeout = Duration(seconds: 15);
+  // 좁은 TUI가 생략한 내용을 읽을 때만 표준 80열 격자를 가로로 펼친다.
+  static const _wideColumns = 80;
   static final _textStyle = xterm.TerminalStyle(
     fontSize: 14,
     fontFamily: monoFontFamily,
@@ -62,6 +72,8 @@ class _PaneTerminalViewState extends ConsumerState<PaneTerminalView>
     _terminal.resize(widget.pane.width, widget.pane.height);
 
     _terminal.onOutput = (data) {
+      // 멀티플렉서가 응답한 질의 원문도 미러에 남으므로 파싱 중 생긴 자동 응답만 막는다.
+      if (_isParsingRemoteOutput && !widget.canRespondToDeviceQueries) return;
       if (_failureMessage == null) _stream?.write(data);
     };
     _terminal.onResize = (cols, rows, _, _) => _sendViewport(cols, rows);
@@ -118,6 +130,7 @@ class _PaneTerminalViewState extends ConsumerState<PaneTerminalView>
 
   Future<void> _openStream() async {
     final generation = ++_streamGeneration;
+    _pendingEscape = '';
     _firstFrameTimer = Timer(_firstFrameTimeout, () {
       _failStream('터미널 응답이 없습니다. 데스크탑 연결을 확인한 뒤 다시 연결해 주세요.');
     });
@@ -159,8 +172,25 @@ class _PaneTerminalViewState extends ConsumerState<PaneTerminalView>
   void _receiveOutput(String data) {
     if (!mounted || _failureMessage != null || data.isEmpty) return;
     _firstFrameTimer?.cancel();
-    _terminal.write(data);
+    _isParsingRemoteOutput = true;
+    try {
+      _terminal.write(_normalizeLegacyTitles(data));
+    } finally {
+      _isParsingRemoteOutput = false;
+    }
     if (!_hasOutput) setState(() => _hasOutput = true);
+  }
+
+  String _normalizeLegacyTitles(String data) {
+    final combined = '$_pendingEscape$data';
+    _pendingEscape = combined.endsWith('\x1b') ? '\x1b' : '';
+    final ready = combined.substring(
+      0,
+      combined.length - _pendingEscape.length,
+    );
+    // xterm 4는 Screen의 ESC k 제목을 본문으로 그리므로 같은 제목 계약의 OSC 2로 바꾼다.
+    // https://www.gnu.org/software/screen/manual/screen.html#Title-Prompts
+    return ready.replaceAll('\x1bk', '\x1b]2;');
   }
 
   Future<void> _retryStream() async {
@@ -214,6 +244,7 @@ class _PaneTerminalViewState extends ConsumerState<PaneTerminalView>
     _streamGeneration += 1;
     _horizontalScroll.dispose();
     _verticalScroll.dispose();
+    _terminalController.dispose();
     unawaited(_subscription?.cancel());
     unawaited(_stream?.close());
     super.dispose();
@@ -231,38 +262,15 @@ class _PaneTerminalViewState extends ConsumerState<PaneTerminalView>
       textDirection: TextDirection.ltr,
       textScaler: MediaQuery.textScalerOf(context),
     )..layout();
-    final terminalWidth = (metrics.width / 10 * widget.pane.width)
-        .ceilToDouble();
+    final columns = widget.canResize ? _wideColumns : widget.pane.width;
+    final terminalWidth = (metrics.width / 10 * columns).ceilToDouble();
     metrics.dispose();
 
     return ColoredBox(
       color: AppColors.terminalBg,
       child: Column(
         children: [
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-            child: Row(
-              children: [
-                Icon(
-                  Icons.circle,
-                  size: 8,
-                  color: _hasOutput
-                      ? AppColors.statusDone
-                      : AppColors.statusProgress,
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  _hasOutput ? '출력 수신 중' : '터미널 연결 중…',
-                  style: Theme.of(context).textTheme.bodySmall,
-                ),
-                const Spacer(),
-                Text(
-                  widget.canResize ? '화면 크기에 맞춤' : '좌우·위아래 스크롤',
-                  style: Theme.of(context).textTheme.bodySmall,
-                ),
-              ],
-            ),
-          ),
+          _buildControls(),
           Expanded(
             child: LayoutBuilder(
               builder: (context, constraints) {
@@ -276,7 +284,7 @@ class _PaneTerminalViewState extends ConsumerState<PaneTerminalView>
                     scrollDirection: Axis.horizontal,
                     child: SizedBox(
                       width:
-                          !widget.canResize &&
+                          (!widget.canResize || _isWideView) &&
                               terminalWidth > constraints.maxWidth
                           ? terminalWidth
                           : constraints.maxWidth,
@@ -289,11 +297,13 @@ class _PaneTerminalViewState extends ConsumerState<PaneTerminalView>
                         removeBottom: true,
                         child: TerminalSoftKeyboard(
                           terminal: _terminal,
+                          controller: _terminalController,
                           child: Semantics(
                             identifier: 'pane-terminal',
                             label: '터미널 입력',
                             child: xterm.TerminalView(
                               _terminal,
+                              controller: _terminalController,
                               autoResize: widget.canResize,
                               hardwareKeyboardOnly: true,
                               scrollController: _verticalScroll,
@@ -313,6 +323,105 @@ class _PaneTerminalViewState extends ConsumerState<PaneTerminalView>
         ],
       ),
     );
+  }
+
+  Widget _buildControls() => SizedBox(
+    height: AppSizes.minTouchTarget,
+    child: Padding(
+      padding: const EdgeInsets.symmetric(horizontal: AppSizes.p4),
+      child: Row(
+        children: [
+          Icon(
+            Icons.circle,
+            size: AppSizes.p8,
+            color: _hasOutput ? AppColors.statusDone : AppColors.statusProgress,
+          ),
+          const SizedBox(width: AppSizes.p4),
+          Expanded(
+            child: Text(
+              _hasOutput ? '출력 수신 중' : '터미널 연결 중…',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          ),
+          if (widget.canResize) ...[
+            Expanded(child: _buildViewModeButton(wide: false)),
+            Expanded(child: _buildViewModeButton(wide: true)),
+          ] else
+            Expanded(
+              child: Text(
+                '좌우·위아래 스크롤',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+            ),
+          ListenableBuilder(
+            listenable: _terminalController,
+            builder: (context, _) => Semantics(
+              identifier: 'pane-terminal-copy',
+              child: IconButton(
+                constraints: const BoxConstraints.tightFor(
+                  width: AppSizes.minTouchTarget,
+                  height: AppSizes.minTouchTarget,
+                ),
+                tooltip: '선택한 텍스트 복사',
+                onPressed: _terminalController.selection == null
+                    ? null
+                    : _copySelection,
+                icon: const Icon(Icons.copy_outlined),
+              ),
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
+
+  Widget _buildViewModeButton({required bool wide}) {
+    final selected = wide == _isWideView;
+    return Semantics(
+      identifier: wide ? 'pane-terminal-wide-view' : 'pane-terminal-fit-view',
+      selected: selected,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          border: Border(
+            bottom: BorderSide(
+              color: selected ? AppColors.brandPrimary : Colors.transparent,
+            ),
+          ),
+        ),
+        child: TextButton(
+          style: TextButton.styleFrom(
+            foregroundColor: selected
+                ? AppColors.textPrimary
+                : AppColors.textSecondary,
+            minimumSize: const Size(
+              AppSizes.minTouchTarget,
+              AppSizes.minTouchTarget,
+            ),
+            padding: const EdgeInsets.symmetric(horizontal: AppSizes.p4),
+            textStyle: Theme.of(context).textTheme.bodySmall,
+          ),
+          onPressed: () {
+            if (_isWideView != wide) setState(() => _isWideView = wide);
+          },
+          child: Text(
+            wide ? '넓게 보기' : '화면 맞춤',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _copySelection() async {
+    final selection = _terminalController.selection;
+    if (selection == null) return;
+    final text = _terminal.buffer.getText(selection);
+    await Clipboard.setData(ClipboardData(text: text));
   }
 }
 

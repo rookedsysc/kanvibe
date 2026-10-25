@@ -27,6 +27,7 @@ const SESSION_TASK_TITLE = "Maestro Fixture Session";
 
 /** 데스크탑이 비추는 pane에 미리 찍어 두는 표식. 기기 화면에 이 글자가 보이면 미러링이 살아 있는 것이다 */
 const PANE_READY_MARKER = "MAESTRO_PANE_READY";
+const SOURCE_BRANCH_FILE = "SOURCE_BRANCH_ONLY.txt";
 
 const DESKTOP_READY_TIMEOUT_MS = 240_000;
 const DESKTOP_POLL_INTERVAL_MS = 1_000;
@@ -146,6 +147,12 @@ function startFixtureSession(sessionName, worktreePath) {
   run("tmux", ["send-keys", "-t", sessionName, `printf '${PANE_READY_MARKER}\\n'`, "Enter"]);
 }
 
+function commitSourceBranchFixture(worktreePath) {
+  fs.writeFileSync(path.join(worktreePath, SOURCE_BRANCH_FILE), "maestro/fixture source branch\n");
+  run("git", ["add", SOURCE_BRANCH_FILE], { cwd: worktreePath });
+  run("git", ["commit", "-m", "chore: source branch fixture"], { cwd: worktreePath });
+}
+
 function capturePane(sessionName) {
   try {
     return run("tmux", ["capture-pane", "-p", "-t", sessionName]);
@@ -189,9 +196,31 @@ function buildFixtureWorktreePath(repoPath, branchName) {
 /**
  * `branch`를 주면 그 브랜치의 worktree를 본다. 기기에서 새로 만든 태스크는 픽스처와 다른 worktree에서 셸이 돈다.
  */
-function startCommandProbe(sessionName, repoPath) {
+function startCommandProbe(sessionName, repoPath, runDir) {
   const server = http.createServer(async (request, response) => {
     const requestUrl = new URL(request.url, `http://127.0.0.1:${PROBE_PORT}`);
+
+    if (requestUrl.pathname === "/terminal-state") {
+      const minimum = Number(requestUrl.searchParams.get("minColumns") ?? 1);
+      const maximum = Number(requestUrl.searchParams.get("maxColumns") ?? 500);
+      const deadline = Date.now() + 5000;
+      let columns;
+      let rows;
+      do {
+        [columns, rows] = run("tmux", [
+          "display-message", "-p", "-t", sessionName, "#{pane_width},#{pane_height}",
+        ]).split(",").map(Number);
+        if (columns >= minimum && columns <= maximum) break;
+        await new Promise((resolve) => setTimeout(resolve, MARKER_POLL_INTERVAL_MS));
+      } while (Date.now() < deadline);
+      const state = { columns, rows, pane: capturePane(sessionName) };
+      fs.appendFileSync(path.join(runDir, "terminal-observations.jsonl"), `${JSON.stringify({
+        time: new Date().toISOString(), minimum, maximum, ...state,
+      })}\n`);
+      response.writeHead(200, { "Content-Type": "application/json" });
+      response.end(JSON.stringify(state));
+      return;
+    }
 
     if (requestUrl.pathname !== "/command-ran") {
       response.writeHead(404).end();
@@ -203,7 +232,11 @@ function startCommandProbe(sessionName, repoPath) {
     const ran = await waitForMarkerFile(worktreePath, marker, Number(requestUrl.searchParams.get("timeoutMs") ?? 0));
 
     response.writeHead(200, { "Content-Type": "application/json" });
-    response.end(JSON.stringify({ ran, pane: capturePane(sessionName) }));
+    response.end(JSON.stringify({
+      ran,
+      sourceBranchInherited: fs.existsSync(path.join(worktreePath, SOURCE_BRANCH_FILE)),
+      pane: capturePane(sessionName),
+    }));
   });
 
   server.listen(PROBE_PORT, "127.0.0.1");
@@ -291,8 +324,9 @@ async function main() {
     }
 
     const worktreePath = buildFixtureWorktreePath(repoPath, FIXTURE_BRANCH);
+    commitSourceBranchFixture(worktreePath);
     startFixtureSession(sessionTask.sessionName, worktreePath);
-    const probe = startCommandProbe(sessionTask.sessionName, repoPath);
+    const probe = startCommandProbe(sessionTask.sessionName, repoPath, runDir);
 
     const fixture = {
       appDataDir,

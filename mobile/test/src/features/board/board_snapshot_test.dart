@@ -51,7 +51,29 @@ void main() {
         },
       });
 
-      expect(snapshot.tasksIn(TaskStatus.todo).single.projectName, 'kanvibe');
+      final task = snapshot.tasksIn(TaskStatus.todo).single;
+      expect(task.projectName, 'kanvibe');
+      expect(task.projectId, 'p1');
+      expect(task.withStatus(TaskStatus.review).projectId, 'p1');
+    });
+
+    test('프로젝트 ID가 없거나 문자열이 아니면 생성 출처 없이 태스크를 읽는다', () {
+      for (final projectId in [null, '', 42]) {
+        final snapshot = BoardSnapshot.fromJson({
+          'tasks': {
+            'todo': [
+              {
+                'id': 't1',
+                'title': '제목',
+                'status': 'todo',
+                'projectId': projectId,
+              },
+            ],
+          },
+        });
+
+        expect(snapshot.tasksIn(TaskStatus.todo).single.projectId, isNull);
+      }
     });
 
     test('모르는 프로젝트를 가리켜도 태스크는 남는다', () {

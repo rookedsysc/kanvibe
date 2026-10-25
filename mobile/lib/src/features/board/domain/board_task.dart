@@ -3,7 +3,7 @@ import 'task_status.dart';
 
 /// 보드에 놓이는 태스크 하나.
 ///
-/// 데스크탑 `KanbanTask`의 모든 칸을 가져오지 않는다. 목록 카드와 상세 화면의 정보 시트에 실제로 그려지는 것만 담는다.
+/// 데스크탑 `KanbanTask`의 모든 칸을 가져오지 않는다. 목록 카드·상세 정보·태스크 생성에 필요한 칸만 담는다.
 class BoardTask {
   const BoardTask({
     required this.id,
@@ -11,6 +11,7 @@ class BoardTask {
     required this.status,
     this.branchName,
     this.baseBranch,
+    this.projectId,
     this.projectName,
     this.description,
     this.priority,
@@ -24,6 +25,7 @@ class BoardTask {
   final TaskStatus status;
   final String? branchName;
   final String? baseBranch;
+  final String? projectId;
   final String? projectName;
   final String? description;
   final TaskPriority? priority;
@@ -44,6 +46,7 @@ class BoardTask {
     status: status,
     branchName: branchName,
     baseBranch: baseBranch,
+    projectId: projectId,
     projectName: projectName,
     description: description,
     priority: priority,
@@ -71,6 +74,7 @@ class BoardTask {
       status: status,
       branchName: _readString(json['branchName']),
       baseBranch: _readString(json['baseBranch']),
+      projectId: _readString(projectId),
       projectName:
           (projectId is String ? projectNamesById[projectId] : null) ??
           _readString(json['projectName']),

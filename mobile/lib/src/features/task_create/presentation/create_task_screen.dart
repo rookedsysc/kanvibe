@@ -20,6 +20,8 @@ class CreateTaskScreen extends ConsumerStatefulWidget {
   const CreateTaskScreen({
     required this.projects,
     required this.defaultSessionType,
+    this.defaultProjectId,
+    this.defaultBaseBranch,
     super.key,
   });
 
@@ -28,6 +30,9 @@ class CreateTaskScreen extends ConsumerStatefulWidget {
 
   /// 처음 골라 둘 세션 종류. 데스크탑 생성 창처럼 데스크탑 설정의 기본값을 따른다
   final SessionType defaultSessionType;
+
+  final String? defaultProjectId;
+  final String? defaultBaseBranch;
 
   @override
   ConsumerState<CreateTaskScreen> createState() => _CreateTaskScreenState();
@@ -45,6 +50,21 @@ class _CreateTaskScreenState extends ConsumerState<CreateTaskScreen> {
 
   bool _isCreating = false;
   String? _failureMessage;
+
+  @override
+  void initState() {
+    super.initState();
+    final project = widget.projects
+        .where((project) => project.id == widget.defaultProjectId)
+        .firstOrNull;
+    _selectedProject = project;
+    if (project != null) {
+      _baseBranch = widget.defaultBaseBranch;
+      if (_baseBranch == null || _baseBranch!.isEmpty) {
+        _baseBranch = project.defaultBranch;
+      }
+    }
+  }
 
   @override
   void dispose() {
@@ -103,6 +123,10 @@ class _CreateTaskScreenState extends ConsumerState<CreateTaskScreen> {
         _isCreating = false;
         _failureMessage = _createFailureMessage(error);
       });
+      return;
+    }
+
+    if (!mounted) {
       return;
     }
 

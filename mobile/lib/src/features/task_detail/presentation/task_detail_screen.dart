@@ -9,6 +9,7 @@ import '../../../common/providers.dart';
 import '../../board/domain/board_task.dart';
 import '../../board/domain/task_status.dart';
 import '../../notifications/application/mobile_notification_controller.dart';
+import '../../task_create/presentation/create_task_screen.dart';
 import '../domain/mirror_pane.dart';
 import 'surface_unavailable_message.dart';
 import 'widgets/pane_terminal_view.dart';
@@ -40,6 +41,64 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
 
   /// 화면이 들고 있는 태스크. 상태를 옮기면 보드를 다시 받기 전에 여기부터 갈아 끼운다
   late BoardTask _task = widget.task;
+
+  bool _isPreparingCreateTask = false;
+
+  Future<void> _openCreateTask() async {
+    if (_isPreparingCreateTask) {
+      return;
+    }
+    setState(() => _isPreparingCreateTask = true);
+    try {
+      final board = await AsyncValue.guard(
+        () => ref.refresh(boardProvider.future),
+      );
+      if (!mounted) {
+        return;
+      }
+      if (board.hasError) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('프로젝트를 불러오지 못했습니다. 잠시 뒤 다시 시도해 주세요.')),
+        );
+        return;
+      }
+      final snapshot = board.requireValue;
+      final project = snapshot.creatableProjects
+          .where((project) => project.id == _task.projectId)
+          .firstOrNull;
+      if (project == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('이 태스크의 원본 프로젝트를 찾을 수 없습니다. 데스크탑에서 프로젝트를 확인해 주세요.'),
+          ),
+        );
+        return;
+      }
+      final navigator = Navigator.of(context);
+      final created = await navigator.push<BoardTask>(
+        MaterialPageRoute(
+          builder: (_) => CreateTaskScreen(
+            projects: snapshot.creatableProjects,
+            defaultSessionType: snapshot.defaultSessionType,
+            defaultProjectId: project.id,
+            defaultBaseBranch: _task.branchName?.isNotEmpty == true
+                ? _task.branchName
+                : _task.baseBranch,
+          ),
+        ),
+      );
+      if (!mounted || created == null) {
+        return;
+      }
+      navigator.pushReplacement<void, void>(
+        MaterialPageRoute(builder: (_) => TaskDetailScreen(task: created)),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isPreparingCreateTask = false);
+      }
+    }
+  }
 
   Future<void> _openInfoSheet() => showModalBottomSheet<void>(
     context: context,
@@ -124,7 +183,10 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
         child: Column(
           children: [
             if (MediaQuery.viewInsetsOf(context).bottom == 0)
-              TerminalChromeHeader(task: _task),
+              TerminalChromeHeader(
+                task: _task,
+                onCreateTask: _isPreparingCreateTask ? null : _openCreateTask,
+              ),
             Expanded(
               child: surfaces.when(
                 loading: () => const Center(child: CircularProgressIndicator()),
@@ -163,18 +225,17 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
           selectedIndex: selectedIndex,
           onSelected: (index) => setState(() => _selectedIndex = index),
         ),
-        Expanded(
-          child: _buildSelectedSurface(tabs[selectedIndex], surfaces.canResize),
-        ),
+        Expanded(child: _buildSelectedSurface(tabs[selectedIndex], surfaces)),
       ],
     );
   }
 
-  Widget _buildSelectedSurface(MirrorPane pane, bool canResize) =>
+  Widget _buildSelectedSurface(MirrorPane pane, TaskSurfaces surfaces) =>
       PaneTerminalView(
         taskId: _task.id,
         pane: pane,
-        canResize: canResize,
+        canResize: surfaces.canResize,
+        canRespondToDeviceQueries: surfaces.canRespondToDeviceQueries,
         key: ValueKey(pane.id),
       );
 }

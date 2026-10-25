@@ -17,11 +17,13 @@ import 'package:xterm/xterm.dart' as xterm;
 class TerminalSoftKeyboard extends StatefulWidget {
   const TerminalSoftKeyboard({
     required this.terminal,
+    required this.controller,
     required this.child,
     super.key,
   });
 
   final xterm.Terminal terminal;
+  final xterm.TerminalController controller;
   final Widget child;
 
   @override
@@ -34,8 +36,10 @@ class _TerminalSoftKeyboardState extends State<TerminalSoftKeyboard>
   TextInputConnection? _connection;
   TextEditingValue _buffer = _emptyBuffer;
 
-  /// 손가락을 댄 자리. 뗀 자리가 여기서 크게 벗어나면 스크롤한 것이지 누른 것이 아니다
+  final _activePointers = <int>{};
+  int? _tapPointer;
   Offset? _pointerDownPosition;
+  Duration? _pointerDownTime;
 
   /// 빈 버퍼를 공백 두 칸으로 둔다. 지울 글자가 없으면 IME가 백스페이스를 알리지 않고 삼키기 때문이다
   static const _emptyBuffer = TextEditingValue(
@@ -62,22 +66,64 @@ class _TerminalSoftKeyboardState extends State<TerminalSoftKeyboard>
     skipTraversal: true,
     onFocusChange: (hasFocus) {
       if (!hasFocus) {
+        _discardTap();
         _closeKeyboard();
       }
     },
     child: Listener(
-      onPointerDown: (event) => _pointerDownPosition = event.position,
-      onPointerUp: (event) {
-        final downPosition = _pointerDownPosition;
-        _pointerDownPosition = null;
-        if (downPosition != null &&
-            (event.position - downPosition).distance <= kTouchSlop) {
-          _requestKeyboard();
-        }
+      onPointerDown: _onPointerDown,
+      onPointerMove: _onPointerMove,
+      onPointerUp: _onPointerUp,
+      onPointerCancel: (event) {
+        _activePointers.remove(event.pointer);
+        _discardTap();
       },
       child: widget.child,
     ),
   );
+
+  void _onPointerDown(PointerDownEvent event) {
+    _activePointers.add(event.pointer);
+    _discardTap();
+    // xterm은 tapDown에서 선택을 지우므로 손가락을 댈 때 이미 선택 중이었는지 먼저 확인한다.
+    if (_activePointers.length != 1 || widget.controller.selection != null) {
+      return;
+    }
+    _tapPointer = event.pointer;
+    _pointerDownPosition = event.position;
+    _pointerDownTime = event.timeStamp;
+  }
+
+  void _onPointerMove(PointerMoveEvent event) {
+    final start = _pointerDownPosition;
+    if (event.pointer == _tapPointer &&
+        start != null &&
+        (event.position - start).distance > kTouchSlop) {
+      _discardTap();
+    }
+  }
+
+  void _onPointerUp(PointerUpEvent event) {
+    _activePointers.remove(event.pointer);
+    final startedAt = _pointerDownTime;
+    final start = _pointerDownPosition;
+    final isShortTap =
+        event.pointer == _tapPointer &&
+        startedAt != null &&
+        start != null &&
+        (event.position - start).distance <= kTouchSlop &&
+        event.timeStamp - startedAt < kLongPressTimeout &&
+        _activePointers.isEmpty &&
+        widget.controller.selection == null;
+    _discardTap();
+    if (isShortTap) _requestKeyboard();
+  }
+
+  void _discardTap() {
+    _tapPointer = null;
+    _pointerDownPosition = null;
+    _pointerDownTime = null;
+  }
 
   /// 터미널을 눌렀을 때 키보드를 띄운다. 이미 붙어 있으면 내려간 키보드만 다시 올린다
   void _requestKeyboard() {

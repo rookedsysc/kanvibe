@@ -51,10 +51,13 @@ Future<FakeDesktopClient> pumpCreate(
   return client;
 }
 
-Future<void> selectProject(WidgetTester tester) async {
+Future<void> selectProject(
+  WidgetTester tester, {
+  String name = 'kanvibe',
+}) async {
   await tester.tap(find.byType(DropdownButtonFormField<BoardProject>));
   await tester.pumpAndSettle();
-  await tester.tap(find.text('kanvibe').last);
+  await tester.tap(find.text(name).last);
   await tester.pumpAndSettle();
 }
 
@@ -100,6 +103,28 @@ void main() {
     await selectProject(tester);
 
     expect(find.text('dev'), findsOneWidget);
+  });
+
+  testWidgets('다른 프로젝트를 고르면 베이스 브랜치 표시도 새 기본값으로 바뀐다', (tester) async {
+    await pumpCreate(
+      tester,
+      projects: const [
+        ..._projects,
+        BoardProject(
+          id: 'p2',
+          name: 'another-project',
+          defaultBranch: 'release',
+          isWorktree: false,
+        ),
+      ],
+    );
+    await selectProject(tester);
+    expect(find.text('dev'), findsOneWidget);
+
+    await selectProject(tester, name: 'another-project');
+
+    expect(find.text('release'), findsOneWidget);
+    expect(find.text('dev'), findsNothing);
   });
 
   testWidgets('채운 값을 데스크탑 생성 경로가 쓰는 이름 그대로 보낸다', (tester) async {
