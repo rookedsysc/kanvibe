@@ -1,0 +1,27 @@
+{
+  "head": "db1e0b2442dbd2fcb89db174a1b3c28fb8a39bcf",
+  "worktreeDiffSha256": "99e5325287e1dcaf44735577f756ca5b06c739234319035b35bffc35d1195bde",
+  "flutter": {
+    "total": 234,
+    "passed": 234,
+    "new": 48,
+    "related": 91
+  },
+  "node": {
+    "total": 1815,
+    "passed": 1813,
+    "baselineFailed": 2,
+    "newPassed": 26
+  },
+  "native": {
+    "total": 1,
+    "passed": 1,
+    "recording": "required/recorded"
+  },
+  "review": {
+    "files": 31,
+    "hunks": 82,
+    "unmapped": 0,
+    "unrelatedPreserving": 0
+  }
+}
