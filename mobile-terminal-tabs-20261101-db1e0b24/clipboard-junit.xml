@@ -1,0 +1,6 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<testsuites>
+  <testsuite name="Test Suite" device="emulator-5580" tests="1" failures="0" time="84.655" timestamp="2026-11-01T15:37:59">
+    <testcase id="recording-wrapper" name="recording-wrapper" classname="recording-wrapper" file="qa-results/roky-harness/20261101-terminal-header-tabs/device-clipboard-02/recording-wrapper.yaml" time="84.644" timestamp="2026-11-01T15:37:59" status="SUCCESS"/>
+  </testsuite>
+</testsuites>

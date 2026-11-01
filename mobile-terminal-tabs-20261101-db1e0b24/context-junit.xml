@@ -1,0 +1,6 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<testsuites>
+  <testsuite name="Test Suite" device="KanVibeTerminalTabsQA_20261101" tests="1" failures="0" time="128.156" timestamp="2026-11-01T15:32:27">
+    <testcase id="recording-wrapper" name="recording-wrapper" classname="recording-wrapper" file="/Users/rookedsysc/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/feat-kanvibe-mobile/qa-results/roky-harness/20261101-terminal-header-tabs/device-context-01/recording-wrapper.yaml" time="128.143" timestamp="2026-11-01T15:32:27" status="SUCCESS"/>
+  </testsuite>
+</testsuites>
