@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -145,6 +147,188 @@ Future<void> sendImeBuffer(
 }
 
 void main() {
+  group('OSC 52', () {
+    final clipboardWrites = <String>[];
+    final clipboardReads = <MethodCall>[];
+
+    setUp(() {
+      clipboardWrites.clear();
+      clipboardReads.clear();
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(SystemChannels.platform, (call) async {
+            if (call.method == 'Clipboard.setData') {
+              clipboardWrites.add((call.arguments as Map)['text'] as String);
+            } else if (call.method == 'Clipboard.getData') {
+              clipboardReads.add(call);
+              return {'text': '휴대폰에만 있는 내용'};
+            }
+            return null;
+          });
+    });
+
+    tearDown(() {
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(SystemChannels.platform, null);
+    });
+
+    for (final terminator in ['\x07', '\x1b\\']) {
+      testWidgets('종료 ${terminator.codeUnits} 요청은 한글과 줄바꿈을 정확히 한 번 복사한다', (
+        tester,
+      ) async {
+        final client = FakeDesktopClient();
+        await pumpPane(
+          tester,
+          _pane,
+          client: client,
+          store: FakeConnectionStore(),
+        );
+        const text = '  원격 Vim 복사 ✅\nsecond line\n';
+        final encoded = base64Encode(utf8.encode(text));
+
+        client.openedPanes[_pane.id]!.add(
+          'before\r\n\x1b]52;c;$encoded${terminator}after',
+        );
+        await tester.pumpAndSettle();
+
+        expect(clipboardWrites, [text]);
+        expect(clipboardReads, isEmpty);
+        expect(client.writtenInput[_pane.id] ?? [], isEmpty);
+        expect(mountedTerminal(tester).buffer.lines[0].getText(), 'before');
+        expect(mountedTerminal(tester).buffer.lines[1].getText(), 'after');
+      });
+    }
+
+    testWidgets('모든 청크 경계에서 완결된 요청만 한 번씩 복사한다', (tester) async {
+      final client = FakeDesktopClient();
+      await pumpPane(
+        tester,
+        _pane,
+        client: client,
+        store: FakeConnectionStore(),
+      );
+      const text = '한글\nline two';
+      final encoded = base64Encode(utf8.encode(text));
+      final sequence = '\x1b]52;;$encoded\x1b\\';
+
+      for (var boundary = 1; boundary < sequence.length; boundary++) {
+        client.openedPanes[_pane.id]!.add(sequence.substring(0, boundary));
+        await tester.pump();
+        expect(clipboardWrites.length, boundary - 1, reason: 'split $boundary');
+        client.openedPanes[_pane.id]!.add(sequence.substring(boundary));
+        await tester.pump();
+        expect(clipboardWrites.length, boundary, reason: 'split $boundary');
+        expect(clipboardWrites.last, text);
+      }
+      expect(clipboardReads, isEmpty);
+      expect(client.writtenInput[_pane.id] ?? [], isEmpty);
+    });
+
+    testWidgets('읽기·빈값·잘못된 요청은 무시하고 다음 복사와 입력을 처리한다', (tester) async {
+      final client = FakeDesktopClient();
+      await pumpPane(
+        tester,
+        _pane,
+        client: client,
+        store: FakeConnectionStore(),
+        canRespondToDeviceQueries: true,
+      );
+      final encoded = base64Encode(utf8.encode('다음 복사'));
+      client.openedPanes[_pane.id]!.add(
+        '\x1b]52;c;?\x07'
+        '\x1b]52;;?\x1b\\'
+        '\x1b]52;c;\x07'
+        '\x1b]52;c\x07'
+        '\x1b]52;c;!not-base64!\x07'
+        '\x1b]52;c;$encoded;extra\x07'
+        '\x1b]99;c;$encoded\x07'
+        '정상 출력',
+      );
+      await tester.pumpAndSettle();
+      expect(clipboardWrites, isEmpty);
+      expect(clipboardReads, isEmpty);
+      expect(client.writtenInput[_pane.id] ?? [], isEmpty);
+      expect(mountedTerminal(tester).buffer.lines[0].getText(), '정상 출력');
+
+      client.openedPanes[_pane.id]!.add('\x1b]52;p;$encoded\x07');
+      await tester.pump();
+      mountedTerminal(tester).textInput('pwd');
+      expect(clipboardWrites, ['다음 복사']);
+      expect(client.writtenInput[_pane.id], ['pwd']);
+    });
+
+    testWidgets('데스크톱과 같은 상한까지 허용하고 초과 요청은 기존 클립보드를 유지한다', (tester) async {
+      final client = FakeDesktopClient();
+      await pumpPane(
+        tester,
+        _pane,
+        client: client,
+        store: FakeConnectionStore(),
+      );
+      final atLimit = 'A' * 1000000;
+      client.openedPanes[_pane.id]!.add('\x1b]52;c;$atLimit\x07');
+      await tester.pumpAndSettle();
+      expect(clipboardWrites.length, 1);
+      expect(clipboardWrites.single.length, 750000);
+
+      client.openedPanes[_pane.id]!.add('\x1b]52;c;${atLimit}AAAA\x07');
+      await tester.pumpAndSettle();
+      expect(clipboardWrites.length, 1);
+      expect(clipboardReads, isEmpty);
+    });
+
+    testWidgets('UTF-8 오류 바이트는 데스크톱처럼 대체 문자로 복사한다', (tester) async {
+      final client = FakeDesktopClient();
+      await pumpPane(
+        tester,
+        _pane,
+        client: client,
+        store: FakeConnectionStore(),
+      );
+      client.openedPanes[_pane.id]!.add('\x1b]52;c;${base64Encode([255])}\x07');
+      await tester.pumpAndSettle();
+      expect(clipboardWrites, ['\uFFFD']);
+    });
+
+    testWidgets('OS가 복사를 거부해도 다음 복사와 터미널 입력은 계속 동작한다', (tester) async {
+      var attempts = 0;
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(SystemChannels.platform, (call) async {
+            if (call.method == 'Clipboard.setData') {
+              attempts++;
+              if (attempts == 1) {
+                throw PlatformException(code: 'clipboard_denied');
+              }
+              clipboardWrites.add((call.arguments as Map)['text'] as String);
+            }
+            return null;
+          });
+      final client = FakeDesktopClient();
+      await pumpPane(
+        tester,
+        _pane,
+        client: client,
+        store: FakeConnectionStore(),
+      );
+      final encoded = base64Encode(utf8.encode('복사 재시도'));
+      client.openedPanes[_pane.id]!.add('\x1b]52;c;$encoded\x07');
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+
+      client.openedPanes[_pane.id]!.add(
+        '\x1b]52;c;$encoded\x07still connected',
+      );
+      await tester.pumpAndSettle();
+      mountedTerminal(tester).textInput('pwd');
+      expect(clipboardWrites, ['복사 재시도']);
+      expect(client.writtenInput[_pane.id], ['pwd']);
+      expect(
+        mountedTerminal(tester).buffer.lines[0].getText(),
+        'still connected',
+      );
+      expect(find.text('출력 수신 중'), findsOneWidget);
+    });
+  });
+
   testWidgets('클립보드 내용을 붙여넣으면 터미널로 한 번 전달한다', (tester) async {
     await pumpPane(
       tester,

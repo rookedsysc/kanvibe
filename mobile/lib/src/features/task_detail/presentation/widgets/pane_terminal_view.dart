@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -54,6 +55,8 @@ class _PaneTerminalViewState extends ConsumerState<PaneTerminalView>
   int _streamGeneration = 0;
 
   static const _firstFrameTimeout = Duration(seconds: 15);
+  // 데스크톱 terminalClipboard.ts와 같은 base64 상한으로 원격 요청의 디코딩 비용을 제한한다.
+  static const _maxClipboardPayloadLength = 1000000;
   // 좁은 TUI가 생략한 내용을 읽을 때만 표준 80열 격자를 가로로 펼친다.
   static const _wideColumns = 80;
   static final _textStyle = xterm.TerminalStyle(
@@ -78,6 +81,9 @@ class _PaneTerminalViewState extends ConsumerState<PaneTerminalView>
       if (_failureMessage == null) _stream?.write(data);
     };
     _terminal.onResize = (cols, rows, _, _) => _sendViewport(cols, rows);
+    _terminal.onPrivateOSC = (code, args) {
+      unawaited(_copyRemoteClipboard(code, args));
+    };
 
     unawaited(_openStream());
   }
@@ -180,6 +186,24 @@ class _PaneTerminalViewState extends ConsumerState<PaneTerminalView>
       _isParsingRemoteOutput = false;
     }
     if (!_hasOutput) setState(() => _hasOutput = true);
+  }
+
+  Future<void> _copyRemoteClipboard(String code, List<String> args) async {
+    if (!mounted || _isSuspended || code != '52' || args.length != 2) return;
+    final encoded = args[1];
+    if (encoded.isEmpty ||
+        encoded == '?' ||
+        encoded.length > _maxClipboardPayloadLength) {
+      return;
+    }
+    try {
+      final text = utf8.decode(base64Decode(encoded), allowMalformed: true);
+      await Clipboard.setData(ClipboardData(text: text));
+    } on FormatException {
+      // 잘못된 원격 요청 때문에 뒤에 오는 터미널 출력이 끊기지 않도록 무시한다.
+    } on PlatformException catch (error) {
+      debugPrint('터미널 클립보드 복사 실패: ${error.code}');
+    }
   }
 
   String _normalizeLegacyTitles(String data) {
