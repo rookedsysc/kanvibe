@@ -95,6 +95,7 @@ const {
   authorizeMobileRequest,
   claimPaneViewport,
   createMobileTask,
+  createMobileTerminalTab,
   getMobileBoard,
   getMobileTask,
   listMobilePushSubscriptions,
@@ -726,6 +727,109 @@ describe("태스크 pane 조회", () => {
 
     expect(surfaces.tabs[0].panes[0].id).toBe("terminal_1");
     expect(execGitMock.mock.calls.some(([command]) => command.includes("list-panes --json"))).toBe(true);
+  });
+});
+
+describe("모바일 터미널 탭 생성", () => {
+  it("일반 터미널의 기존 탭을 유지하고 새 탭의 pane으로 입력을 보낸다", async () => {
+    findOneByMock.mockResolvedValue({
+      id: "new-tab-task", sessionType: SessionType.TERMINAL, sessionName: "new-tab-session", sshHost: null,
+    });
+
+    const created = await createMobileTerminalTab("new-tab-task");
+
+    expect(created.surfaces.tabs.map((tab) => tab.id)).toEqual(["new-tab-task-1", "new-tab-task-2"]);
+    expect(created.paneId).toBe("new-tab-task-2");
+    const stop = await subscribeToPane("new-tab-task", created.paneId, () => {}, () => {});
+    await writeToPane("new-tab-task", created.paneId, "pwd\r");
+    expect(spawnedPtys).toHaveLength(1);
+    expect(spawnedPtys[0].write).toHaveBeenCalledWith("pwd\r");
+    expect(execGitMock).not.toHaveBeenCalled();
+    stop();
+  });
+
+  it("원격 tmux 생성은 저장된 세션과 worktree를 쓰고 새 window의 pane을 반환한다", async () => {
+    findOneByMock.mockResolvedValue({ ...TMUX_TASK, sshHost: "remote-tab", worktreePath: "/work/my project" });
+    let created = false;
+    execGitMock.mockImplementation(async (command) => {
+      if (command.includes("new-window")) {
+        created = true;
+        return "@11";
+      }
+      if (command.includes("list-panes")) {
+        return created ? `${MIRROR_PANE_LINE}\n%20\t@10\tbash\t0\t0\t80\t24\tfirst\n%21\t@11\tzsh\t0\t0\t80\t24\tsecond` : MIRROR_PANE_LINE;
+      }
+      return "snapshot";
+    });
+
+    const result = await createMobileTerminalTab("task-1");
+
+    expect(result.paneId).toBe("%21");
+    expect(result.surfaces.tabs.map((tab) => tab.id)).toEqual(["@10", "@11"]);
+    const createCalls = execGitMock.mock.calls.filter(([command]) => command.includes("new-window"));
+    expect(createCalls).toEqual([["tmux new-window -t 'kanvibe-task': -P -F '#{window_id}' -c '/work/my project'", "remote-tab"]]);
+  });
+
+  it("zellij 새 탭의 pane이 늦게 나타나도 생성 명령을 반복하지 않고 기다린다", async () => {
+    findOneByMock.mockResolvedValue({ sessionType: SessionType.ZELLIJ, sessionName: "new-tab-zellij", sshHost: null, worktreePath: "/work/tree" });
+    let created = false;
+    let readsAfterCreate = 0;
+    const pane = { id: 1, tab_id: 0, tab_name: "first", is_plugin: false, terminal_command: "zsh", pane_x: 0, pane_y: 0, pane_rows: 24, pane_columns: 80 };
+    execGitMock.mockImplementation(async (command) => {
+      if (command.includes("--version")) return "zellij 0.44.3";
+      if (command.includes("list-sessions")) return "new-tab-zellij [Created 1m ago]";
+      if (command.includes("action new-tab")) {
+        created = true;
+        return "";
+      }
+      if (command.includes("list-panes")) {
+        const ready = created && ++readsAfterCreate > 1;
+        return JSON.stringify(ready ? [pane, { ...pane, id: 2, tab_id: 1, tab_name: "second" }] : [pane]);
+      }
+      return "";
+    });
+
+    const result = await createMobileTerminalTab("task-zellij");
+
+    expect(result.paneId).toBe("terminal_2");
+    expect(result.surfaces.tabs).toHaveLength(2);
+    expect(execGitMock.mock.calls.filter(([command]) => command.includes("action new-tab"))).toEqual([["zellij --session 'new-tab-zellij' action new-tab --cwd '/work/tree'", null]]);
+    expect(readsAfterCreate).toBe(2);
+  });
+
+  it("세션이 없는 태스크에는 생성 명령을 실행하지 않는다", async () => {
+    findOneByMock.mockResolvedValue({ sessionType: null, sessionName: null });
+
+    await expect(createMobileTerminalTab("task-missing")).rejects.toMatchObject({ reason: "no-session" });
+
+    expect(execGitMock).not.toHaveBeenCalled();
+  });
+
+  it("생성 명령이 실패하면 조회와 생성을 반복하지 않는다", async () => {
+    stubTmuxMirror();
+    execGitMock.mockImplementation(async (command) => {
+      if (command.includes("new-window")) throw new Error("tmux create failed");
+      return command.includes("list-panes") ? MIRROR_PANE_LINE : "snapshot";
+    });
+
+    await expect(createMobileTerminalTab("task-1")).rejects.toThrow("tmux create failed");
+
+    expect(executedCommands().filter((command) => command.includes("new-window"))).toHaveLength(1);
+    expect(executedCommands().filter((command) => command.includes("list-panes"))).toHaveLength(1);
+  });
+
+  it("새 pane을 끝내 조회하지 못하면 상한에서 실패하고 생성은 한 번만 한다", async () => {
+    stubTmuxMirror();
+    vi.useFakeTimers();
+    try {
+      const result = createMobileTerminalTab("task-1");
+      const assertion = expect(result).rejects.toThrow("추가한 터미널 탭을 찾을 수 없습니다.");
+      await vi.advanceTimersByTimeAsync(15_000);
+      await assertion;
+      expect(executedCommands().filter((command) => command.includes("new-window"))).toHaveLength(1);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

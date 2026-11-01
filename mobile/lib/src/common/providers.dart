@@ -178,25 +178,82 @@ final boardProvider = FutureProvider<BoardSnapshot>((ref) async {
 }, retry: _neverRetry);
 
 /// 태스크 하나의 탭과 pane. 태스크별로 따로 들고 있어야 두 태스크를 오갈 때 섞이지 않는다
-final surfacesProvider = FutureProvider.family<TaskSurfaces, String>((
-  ref,
-  taskId,
-) async {
-  final connection = (await ref.watch(connectionControllerProvider.future))
-      .activeConnection;
-  if (connection == null) {
-    throw const SurfaceUnavailableException(SurfaceUnavailableReason.noSession);
+final surfacesProvider =
+    AsyncNotifierProvider.family<
+      TaskSurfacesController,
+      TaskSurfacesState,
+      String
+    >(TaskSurfacesController.new, retry: _neverRetry);
+
+class TaskSurfacesState {
+  const TaskSurfacesState(this.surfaces, {this.isCreating = false});
+
+  final TaskSurfaces surfaces;
+  final bool isCreating;
+}
+
+class TaskSurfacesController extends AsyncNotifier<TaskSurfacesState> {
+  TaskSurfacesController(this.taskId);
+
+  final String taskId;
+  int _generation = 0;
+
+  @override
+  Future<TaskSurfacesState> build() async {
+    _generation += 1;
+    final connection = (await ref.watch(connectionControllerProvider.future))
+        .activeConnection;
+    if (connection == null) {
+      throw const SurfaceUnavailableException(
+        SurfaceUnavailableReason.noSession,
+      );
+    }
+    try {
+      final surfaces = await ref
+          .read(desktopClientProvider)
+          .fetchSurfaces(connection, taskId);
+      return TaskSurfacesState(surfaces);
+    } on DesktopRequestException catch (error) {
+      await _forgetRejectedConnection(ref, error, connection);
+      rethrow;
+    }
   }
 
-  try {
-    return await ref
-        .read(desktopClientProvider)
-        .fetchSurfaces(connection, taskId);
-  } on DesktopRequestException catch (error) {
-    await _forgetRejectedConnection(ref, error, connection);
-    rethrow;
+  Future<String?> createTab() async {
+    if (state.isLoading || !state.hasValue || state.requireValue.isCreating) {
+      return null;
+    }
+    final previous = state;
+    final generation = _generation;
+    state = AsyncData(
+      TaskSurfacesState(previous.requireValue.surfaces, isCreating: true),
+    );
+    DesktopConnection? connection;
+    try {
+      connection = (await ref.read(connectionControllerProvider.future))
+          .activeConnection;
+      if (connection == null) {
+        throw const SurfaceUnavailableException(
+          SurfaceUnavailableReason.noSession,
+        );
+      }
+      if (!ref.mounted || generation != _generation) return null;
+      final created = await ref
+          .read(desktopClientProvider)
+          .createTerminalTab(connection, taskId);
+      if (!ref.mounted || generation != _generation) return null;
+      state = AsyncData(TaskSurfacesState(created.surfaces));
+      return created.paneId;
+    } catch (error) {
+      if (!ref.mounted || generation != _generation) return null;
+      state = previous;
+      if (error is DesktopRequestException && connection != null) {
+        await _forgetRejectedConnection(ref, error, connection);
+      }
+      rethrow;
+    }
   }
-}, retry: _neverRetry);
+}
 
 /// 프로젝트 하나의 브랜치 목록. 태스크 생성 화면의 베이스 브랜치 칸이 쓴다
 final projectBranchesProvider = FutureProvider.family<List<String>, String>((

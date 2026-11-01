@@ -20,6 +20,73 @@ DesktopClient clientReplying(int statusCode, String body) => DesktopClient(
 );
 
 void main() {
+  test('터미널 탭 추가는 인증 POST를 보내고 새 pane과 갱신 목록을 받는다', () async {
+    final client = DesktopClient(
+      httpClient: MockClient((request) async {
+        expect(request.method, 'POST');
+        expect(request.url.path, '/api/mobile/tasks/task-1/tabs');
+        expect(request.headers['authorization'], 'Bearer test-token');
+        expect(request.body, isEmpty);
+        return http.Response(
+          jsonEncode({
+            'success': true,
+            'paneId': '%20',
+            'surfaces': {
+              'sessionType': 'tmux',
+              'canResize': true,
+              'tabs': [
+                {
+                  'id': '@2',
+                  'panes': [
+                    {'id': '%20', 'width': 80, 'height': 24},
+                  ],
+                },
+              ],
+            },
+          }),
+          200,
+        );
+      }),
+    );
+    addTearDown(client.close);
+    final created = await client.createTerminalTab(_connection, 'task-1');
+    expect(created.paneId, '%20');
+    expect(created.surfaces.allPanes.single.id, '%20');
+    expect(created.surfaces.canResize, isTrue);
+  });
+
+  test('탭 추가 409는 사용 불가 이유를 보존한다', () async {
+    final client = clientReplying(409, '{"reason":"no-session"}');
+    addTearDown(client.close);
+    await expectLater(
+      client.createTerminalTab(_connection, 'task-1'),
+      throwsA(
+        isA<SurfaceUnavailableException>().having(
+          (e) => e.reason,
+          'reason',
+          SurfaceUnavailableReason.noSession,
+        ),
+      ),
+    );
+  });
+
+  for (final status in [401, 500]) {
+    test('탭 추가 $status의 HTML 오류도 상태 코드로 전달한다', () async {
+      final client = clientReplying(status, '<html>upstream failure</html>');
+      addTearDown(client.close);
+      await expectLater(
+        client.createTerminalTab(_connection, 'task-1'),
+        throwsA(
+          isA<DesktopRequestException>().having(
+            (e) => e.statusCode,
+            'statusCode',
+            status,
+          ),
+        ),
+      );
+    });
+  }
+
   test('상태 이벤트는 pane과 분리한 인증 WebSocket으로 구독한다', () async {
     final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
     addTearDown(() => server.close(force: true));

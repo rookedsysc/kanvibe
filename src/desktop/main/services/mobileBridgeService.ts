@@ -3,6 +3,7 @@ import { getAppSetting, getDefaultSessionType, setAppSetting } from "@/desktop/m
 import { createTask, getTaskById, getTasksByStatus, updateTaskStatus } from "@/desktop/main/services/kanbanService";
 import { getAllProjects, getProjectBranches } from "@/desktop/main/services/projectService";
 import { attachTaskTerminal, CallbackTerminalClient } from "@/desktop/main/terminalBridge";
+import { createTerminalTab } from "@/desktop/main/services/terminalTabService";
 import { SessionType, TaskStatus, type KanbanTask } from "@/entities/KanbanTask";
 import { TaskPriority } from "@/entities/TaskPriority";
 import { getTaskRepository } from "@/lib/database";
@@ -58,11 +59,11 @@ import { isSessionAlive, quoteForPosixShell } from "@/lib/worktree";
 /**
  * 모바일 클라이언트가 데스크탑을 읽고, 터미널 pane을 비추고, 태스크를 만들거나 옮기는 경로.
  *
- * 스냅샷과 출력 스트림을 나눠 보내며 포커스는 바꾸지 않는다. 크기 조정을 지원하는 세션은
+ * 스냅샷과 출력 스트림 조회는 포커스를 바꾸지 않는다. 크기 조정을 지원하는 세션은
  * [claimPaneViewport]가 모바일 연결 수명 동안 크기를 소유하고 마지막 연결이 나가면 복원한다.
  *
- * 데스크탑을 바꾸는 것은 [createMobileTask]와 [updateMobileTaskStatus], 그리고 세션이 아직 없는 태스크를 열 때
- * 세션을 띄우는 일이다. 앞의 둘은 데스크탑 화면이 누르는 것과 같은 `kanbanService` 경로를, 세션은 데스크탑이 태스크를
+ * 데스크탑을 바꾸는 것은 [createMobileTask]와 [updateMobileTaskStatus], [createMobileTerminalTab], 그리고 세션이 아직 없는 태스크를 열 때
+ * 세션을 띄우는 일이다. 태스크 변경은 데스크탑 화면과 같은 `kanbanService`, 탭 생성은 `terminalTabService`를 거치고, 세션은 데스크탑이 태스크를
  * 열 때와 같은 [attachTaskTerminal]을 지난다. 페어링한 기기가 이 머신에 셸 세션을 열 수 있다는 뜻이라
  * 이것들은 [authorizeMobileRequest] 뒤에만 놓이고, 화면에 없는 칸은 받지 않는다.
  *
@@ -83,7 +84,7 @@ const LOCAL_DUMP_INTERVAL_MS = 1_000;
 const REMOTE_DUMP_INTERVAL_MS = 3_000;
 
 /**
- * 세션을 띄운 뒤 살아날 때까지 기다리는 상한과 확인 간격.
+ * 세션이나 탭을 띄운 뒤 pane이 나타날 때까지 기다리는 상한과 확인 간격.
  * zellij와 원격 tmux는 PTY 안에서 비동기로 만들어져 붙는 것만으로는 다 됐는지 알 수 없다.
  */
 const SESSION_START_TIMEOUT_MS = 15_000;
@@ -177,6 +178,28 @@ export async function getTaskSurfaces(taskId: string): Promise<TaskSurfaces> {
   }
 
   return { taskId, sessionType: target.sessionType, canResize: target.sessionType === SessionType.TMUX, tabs: groupPanesIntoTabs(panes) };
+}
+
+export async function createMobileTerminalTab(taskId: string): Promise<{ surfaces: TaskSurfaces; paneId: string }> {
+  const previous = await getTaskSurfaces(taskId);
+  const previousTabIds = new Set(previous.tabs.map((tab) => tab.id));
+  const result = await createTerminalTab(taskId);
+  if (!result.ok) {
+    throw new Error(result.error ?? "터미널 탭 생성 실패");
+  }
+
+  const deadline = Date.now() + SESSION_START_TIMEOUT_MS;
+  while (true) {
+    const surfaces = await getTaskSurfaces(taskId);
+    const created = surfaces.tabs.find((tab) => !previousTabIds.has(tab.id) && tab.panes.length > 0);
+    if (created) {
+      return { surfaces, paneId: created.panes[0].id };
+    }
+    if (Date.now() >= deadline) {
+      throw new Error("추가한 터미널 탭을 찾을 수 없습니다.");
+    }
+    await new Promise((resolve) => setTimeout(resolve, SESSION_START_POLL_INTERVAL_MS));
+  }
 }
 
 async function listMirrorPanes(target: MirrorSessionTarget): Promise<MirrorPane[]> {

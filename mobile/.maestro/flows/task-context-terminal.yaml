@@ -13,7 +13,8 @@ env:
 - runFlow: ../subflows/pairs-and-opens-board.yaml
 - runFlow: ../subflows/opens-session-task-terminal.yaml
 - extendedWaitUntil:
-    visible: "출력 수신 중"
+    visible:
+      id: pane-terminal
     timeout: 20000
 - runScript:
     file: ../scripts/assert-terminal-viewport.js
@@ -21,31 +22,6 @@ env:
       MIN_COLUMNS: 20
       MAX_COLUMNS: 79
 - takeScreenshot: terminal-fit-portrait
-- tapOn:
-    id: pane-terminal-wide-view
-- runScript:
-    file: ../scripts/assert-terminal-viewport.js
-    env:
-      MIN_COLUMNS: 80
-      MAX_COLUMNS: 100
-- tapOn:
-    id: pane-terminal
-- inputText: "clear"
-- pressKey: Enter
-- inputText: "printf %80s RIGHTEDGE"
-- pressKey: Enter
-- hideKeyboard
-- swipe:
-    start: "80%,45%"
-    end: "15%,45%"
-    duration: 400
-- swipe:
-    start: "80%,45%"
-    end: "15%,45%"
-    duration: 400
-- takeScreenshot: terminal-wide-portrait
-- tapOn:
-    id: pane-terminal-fit-view
 - setOrientation: LANDSCAPE_LEFT
 - runScript:
     file: ../scripts/assert-terminal-viewport.js
@@ -55,30 +31,12 @@ env:
 - takeScreenshot: terminal-fit-landscape
 - setOrientation: PORTRAIT
 - tapOn:
-    id: pane-terminal
-- inputText: "yes COPYKANVIBE | head -n 120"
-- pressKey: Enter
-- hideKeyboard
-# xterm 캔버스의 문자는 semantics에 없으므로, 확인한 왼쪽 텍스트 영역을 길게 누른다.
-- longPressOn:
-    point: "10%,60%"
-- assertVisible:
-    text: "선택한 텍스트 복사"
-    enabled: true
-- tapOn: "선택한 텍스트 복사"
-- takeScreenshot: terminal-copied
-- tapOn:
     id: create-task-from-current
 - extendedWaitUntil:
     visible: "(?s).*프로젝트 \\*.*"
     timeout: 15000
 - assertVisible: "(?s).*maestro/fixture.*"
 - tapOn: "브랜치 이름 \\*"
-- longPressOn: "브랜치 이름 \\*"
-- tapOn: "(Paste|붙여넣기)"
-- assertVisible: "(?s).*COPYKANVIBE.*"
-- takeScreenshot: terminal-native-clipboard-pasted
-- eraseText
 - inputText: "maestro/from-current"
 - hideKeyboard
 - scrollUntilVisible:
@@ -87,7 +45,8 @@ env:
 - takeScreenshot: create-from-current-form
 - tapOn: "만들기"
 - extendedWaitUntil:
-    visible: "출력 수신 중"
+    visible:
+      id: pane-terminal
     timeout: 40000
 - takeScreenshot: created-task-detail
 - tapOn:

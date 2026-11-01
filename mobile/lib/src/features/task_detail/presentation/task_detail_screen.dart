@@ -17,14 +17,7 @@ import 'widgets/task_info_sheet.dart';
 import 'widgets/task_status_sheet.dart';
 import 'widgets/terminal_chrome_header.dart';
 
-/// 태스크 하나의 터미널 화면.
-///
-/// 데스크탑 태스크 화면의 구성을 따른다. 그쪽은 왼쪽 레일(dock)에서 정보·상태·PR로 갈라지고
-/// 본문은 `프로젝트 | 제목` 머리글 아래에 탭 바와 터미널을 놓는다. 여기서는 레일을 AppBar 아이콘으로,
-/// 겹쳐 열리는 패널을 아래에서 올라오는 시트로 옮겼다. 폰에서 세로 레일이나 하단 바를 두면
-/// 터미널이 쓸 세로 공간을 그만큼 잃는다.
-///
-/// 모든 화면 크기에서 pane 하나를 선택해 본문 전체에 표시한다.
+/// 프로젝트·브랜치와 태스크 동작을 상단에 모으고 선택한 pane을 표시한다.
 class TaskDetailScreen extends ConsumerStatefulWidget {
   const TaskDetailScreen({required this.task, super.key});
 
@@ -36,8 +29,7 @@ class TaskDetailScreen extends ConsumerStatefulWidget {
 }
 
 class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
-  /// 고른 pane 탭의 위치
-  int _selectedIndex = 0;
+  String? _selectedPaneId;
 
   /// 화면이 들고 있는 태스크. 상태를 옮기면 보드를 다시 받기 전에 여기부터 갈아 끼운다
   late BoardTask _task = widget.task;
@@ -100,6 +92,22 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
     }
   }
 
+  Future<void> _createTerminalTab() async {
+    try {
+      final paneId = await ref
+          .read(surfacesProvider(_task.id).notifier)
+          .createTab();
+      if (mounted && paneId != null) {
+        setState(() => _selectedPaneId = paneId);
+      }
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('터미널 탭을 추가하지 못했습니다. 잠시 뒤 다시 시도해 주세요.')),
+      );
+    }
+  }
+
   Future<void> _openInfoSheet() => showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
@@ -155,11 +163,18 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(
-          _task.title,
-          style: Theme.of(context).textTheme.titleMedium,
-        ),
+        titleSpacing: AppSizes.p8,
+        leadingWidth: AppSizes.minTouchTarget,
+        title: TerminalChromeHeader(task: _task),
         actions: [
+          Semantics(
+            identifier: 'create-task-from-current',
+            child: IconButton(
+              onPressed: _isPreparingCreateTask ? null : _openCreateTask,
+              icon: const Icon(Icons.add_task),
+              tooltip: _isPreparingCreateTask ? '불러오는 중…' : '새 태스크',
+            ),
+          ),
           IconButton(
             onPressed: _openInfoSheet,
             icon: const Icon(Icons.info_outline),
@@ -182,11 +197,6 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            if (MediaQuery.viewInsetsOf(context).bottom == 0)
-              TerminalChromeHeader(
-                task: _task,
-                onCreateTask: _isPreparingCreateTask ? null : _openCreateTask,
-              ),
             Expanded(
               child: surfaces.when(
                 loading: () => const Center(child: CircularProgressIndicator()),
@@ -196,7 +206,10 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
                       : SurfaceUnavailableReason.unknown,
                   onRetry: () => ref.invalidate(surfacesProvider(_task.id)),
                 ),
-                data: _buildSurfaces,
+                data: (value) => _buildSurfaces(
+                  value.surfaces,
+                  isCreating: value.isCreating,
+                ),
               ),
             ),
           ],
@@ -205,7 +218,7 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
     );
   }
 
-  Widget _buildSurfaces(TaskSurfaces surfaces) {
+  Widget _buildSurfaces(TaskSurfaces surfaces, {required bool isCreating}) {
     final tabs = surfaces.allPanes;
 
     if (tabs.isEmpty) {
@@ -215,15 +228,17 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
       );
     }
 
-    /// 새 목록에서 선택이 범위를 벗어나면 첫 pane을 표시한다
-    final selectedIndex = _selectedIndex < tabs.length ? _selectedIndex : 0;
+    final matchingIndex = tabs.indexWhere((pane) => pane.id == _selectedPaneId);
+    final selectedIndex = matchingIndex < 0 ? 0 : matchingIndex;
 
     return Column(
       children: [
         _SurfaceTabBar(
           tabs: tabs,
           selectedIndex: selectedIndex,
-          onSelected: (index) => setState(() => _selectedIndex = index),
+          onSelected: (index) =>
+              setState(() => _selectedPaneId = tabs[index].id),
+          onCreate: isCreating ? null : _createTerminalTab,
         ),
         Expanded(child: _buildSelectedSurface(tabs[selectedIndex], surfaces)),
       ],
@@ -245,29 +260,50 @@ class _SurfaceTabBar extends StatelessWidget {
     required this.tabs,
     required this.selectedIndex,
     required this.onSelected,
+    required this.onCreate,
   });
 
   final List<MirrorPane> tabs;
   final int selectedIndex;
   final ValueChanged<int> onSelected;
+  final VoidCallback? onCreate;
 
   @override
   Widget build(BuildContext context) {
     return Container(
       height: AppSizes.minTouchTarget,
-      decoration: const BoxDecoration(
-        color: AppColors.terminalChrome,
+      color: AppColors.terminalChrome,
+      foregroundDecoration: const BoxDecoration(
         border: Border(bottom: BorderSide(color: AppColors.borderDefault)),
       ),
-      child: ListView.builder(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: AppSizes.p8),
-        itemCount: tabs.length,
-        itemBuilder: (context, index) => _SurfaceTabButton(
-          tab: tabs[index],
-          isSelected: index == selectedIndex,
-          onTap: () => onSelected(index),
-        ),
+      child: Row(
+        children: [
+          Expanded(
+            child: ListView.builder(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: AppSizes.p8),
+              itemCount: tabs.length,
+              itemBuilder: (context, index) => _SurfaceTabButton(
+                tab: tabs[index],
+                isSelected: index == selectedIndex,
+                onTap: () => onSelected(index),
+              ),
+            ),
+          ),
+          Semantics(
+            identifier: 'create-terminal-tab',
+            child: IconButton(
+              onPressed: onCreate,
+              tooltip: onCreate == null ? '터미널 추가 중…' : '터미널 탭 추가',
+              icon: onCreate == null
+                  ? const SizedBox.square(
+                      dimension: AppSizes.p16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.add),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -287,6 +323,7 @@ class _SurfaceTabButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Semantics(
+      identifier: 'terminal-tab-${tab.id}',
       selected: isSelected,
       button: true,
       label: '${tab.command.isEmpty ? tab.id : tab.command} ${tab.id} 탭',

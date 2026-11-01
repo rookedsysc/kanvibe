@@ -68,6 +68,27 @@ const _surfaces = TaskSurfaces(
   canResize: true,
 );
 
+const _createdTab = MirrorTab(
+  id: '@12',
+  name: 'new-shell',
+  panes: [
+    MirrorPane(
+      id: '%22',
+      tabId: '@12',
+      tabName: 'new-shell',
+      command: 'zsh',
+      left: 0,
+      top: 0,
+      width: 80,
+      height: 24,
+    ),
+  ],
+);
+const _createdSurfaces = TaskSurfaces(
+  tabs: [_twoPaneWindow, _secondWindow, _createdTab],
+  canResize: true,
+);
+
 const _task = BoardTask(
   id: 'task-1',
   title: '모바일 클라이언트',
@@ -86,13 +107,16 @@ Future<FakeDesktopClient> pumpDetail(
   Object? surfacesError,
   BoardTask task = _task,
   Object? statusError,
+  FakeDesktopClient? desktopClient,
 }) async {
   await tester.binding.setSurfaceSize(size);
-  final client = FakeDesktopClient(
-    surfaces: surfaces,
-    surfacesError: surfacesError,
-    statusError: statusError,
-  );
+  final client =
+      desktopClient ??
+      FakeDesktopClient(
+        surfaces: surfaces,
+        surfacesError: surfacesError,
+        statusError: statusError,
+      );
 
   await tester.pumpWidget(
     wrapWithApp(
@@ -193,6 +217,81 @@ Future<void> _submitCreation(WidgetTester tester) async {
 }
 
 void main() {
+  testWidgets('탭 추가는 새 pane을 선택하고 새 셸로 입력을 보낸다', (tester) async {
+    final client = FakeDesktopClient(
+      surfaces: _surfaces,
+      onCreateTerminalTab: () async =>
+          (surfaces: _createdSurfaces, paneId: '%22'),
+    );
+    await pumpDetail(tester, size: phoneSize, desktopClient: client);
+    final add = find.bySemanticsIdentifier('create-terminal-tab');
+    expect(tester.getSize(add), const Size(48, 48));
+    await tester.tap(add);
+    await tester.pumpAndSettle();
+    expect(client.createdTabCalls, [
+      (taskId: 'task-1', connectionId: '127.0.0.1:9736'),
+    ]);
+    expect(
+      tester.widget<PaneTerminalView>(find.byType(PaneTerminalView)).pane.id,
+      '%22',
+    );
+    terminalIn(tester, '%22').textInput('pwd');
+    expect(client.writtenInput['%22'], ['pwd']);
+    expect(client.writtenInput['%19'], isNull);
+    expect(client.closedPanes, contains('%19'));
+    expect(find.bySemanticsIdentifier('create-terminal-tab'), findsOneWidget);
+  });
+
+  testWidgets('추가 중 반복 탭은 한 요청이며 실패 후 기존 pane에서 다시 추가할 수 있다', (tester) async {
+    final pending = Completer<({TaskSurfaces surfaces, String paneId})>();
+    var attempts = 0;
+    final client = FakeDesktopClient(
+      surfaces: _surfaces,
+      onCreateTerminalTab: () {
+        attempts += 1;
+        return attempts == 1
+            ? pending.future
+            : Future.value((surfaces: _createdSurfaces, paneId: '%22'));
+      },
+    );
+    await pumpDetail(tester, size: phoneSize, desktopClient: client);
+    final terminal = terminalIn(tester, '%19');
+    final add = find.bySemanticsIdentifier('create-terminal-tab');
+    await tester.tap(add);
+    await tester.pump();
+    await tester.tap(add);
+    await tester.pump();
+    expect(client.createdTabCalls, hasLength(1));
+    expect(terminalIn(tester, '%19'), same(terminal));
+    pending.completeError(const DesktopRequestException(500));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('터미널 탭을 추가하지 못했습니다'), findsOneWidget);
+    expect(terminalIn(tester, '%19'), same(terminal));
+    await tester.tap(add);
+    await tester.pumpAndSettle();
+    expect(client.createdTabCalls, hasLength(2));
+    expect(
+      tester.widget<PaneTerminalView>(find.byType(PaneTerminalView)).pane.id,
+      '%22',
+    );
+  });
+
+  testWidgets('탭 추가 중 화면을 떠나면 완료 응답이 화면을 다시 열지 않는다', (tester) async {
+    final pending = Completer<({TaskSurfaces surfaces, String paneId})>();
+    final client = FakeDesktopClient(
+      surfaces: _surfaces,
+      onCreateTerminalTab: () => pending.future,
+    );
+    await pumpDetail(tester, size: phoneSize, desktopClient: client);
+    await tester.tap(find.bySemanticsIdentifier('create-terminal-tab'));
+    await tester.pump();
+    await tester.pumpWidget(const SizedBox.shrink());
+    pending.complete((surfaces: _createdSurfaces, paneId: '%22'));
+    await tester.pumpAndSettle();
+    expect(find.byType(TaskDetailScreen), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
   for (final session in ['tmux', 'terminal', 'zellij', null]) {
     testWidgets(
       '${session ?? 'sessionType 누락'} 상세는 서버의 device query 응답 소유권을 전달한다',
@@ -333,7 +432,7 @@ void main() {
         await _openCreation(tester);
 
         expect(find.byType(CreateTaskScreen), findsNothing);
-        expect(find.text('원본 태스크'), findsOneWidget);
+        expect(find.text('feat/source'), findsOneWidget);
         expect(find.textContaining('원본 프로젝트를 찾을 수 없습니다'), findsOneWidget);
         expect(client.createCalls, isEmpty);
       });
@@ -371,7 +470,7 @@ void main() {
 
       await _openCreation(tester);
 
-      expect(find.text('원본 태스크'), findsOneWidget);
+      expect(find.text('feat/source'), findsOneWidget);
       expect(find.byType(CreateTaskScreen), findsNothing);
       expect(find.textContaining('프로젝트를 불러오지 못했습니다'), findsOneWidget);
 
@@ -418,15 +517,15 @@ void main() {
 
       await tester.tap(action);
       await tester.pump();
-      expect(find.text('불러오는 중…'), findsOneWidget);
+      expect(find.byTooltip('불러오는 중…'), findsOneWidget);
       expect(tester.getSize(action).height, 48);
       expect(
         tester
-            .widget<TextButton>(
+            .widget<IconButton>(
               find.descendant(
                 of: action,
                 matching: find.byWidgetPredicate(
-                  (widget) => widget is TextButton,
+                  (widget) => widget is IconButton,
                 ),
               ),
             )
@@ -469,7 +568,7 @@ void main() {
       await tester.pageBack();
       await tester.pumpAndSettle();
 
-      expect(find.text('원본 태스크'), findsOneWidget);
+      expect(find.text('feat/source'), findsOneWidget);
       expect(client.closedPanes, isEmpty);
       expect(client.createCalls, isEmpty);
     });
@@ -497,7 +596,7 @@ void main() {
       );
       await tester.pageBack();
       await tester.pumpAndSettle();
-      expect(find.text('원본 태스크'), findsOneWidget);
+      expect(find.text('feat/source'), findsOneWidget);
     });
 
     testWidgets('성공하면 새 상세로 교체하고 옛 구독을 닫아 한 번 뒤로 가면 보드다', (tester) async {
@@ -546,7 +645,13 @@ void main() {
           expect(bounds.height, greaterThanOrEqualTo(48));
           expect(bounds.left, greaterThanOrEqualTo(0));
           expect(bounds.right, lessThanOrEqualTo(size.width));
-          expect(tester.getSize(find.byType(TerminalChromeHeader)).height, 48);
+          expect(
+            find.descendant(
+              of: find.byType(AppBar),
+              matching: find.byType(TerminalChromeHeader),
+            ),
+            findsOneWidget,
+          );
           expect(find.byTooltip('PR 열기'), findsOneWidget);
           expect(tester.takeException(), isNull);
 
@@ -670,15 +775,20 @@ void main() {
   });
 
   group('데스크탑 태스크 화면에서 옮겨 온 것', () {
-    testWidgets('터미널 위에는 프로젝트만 붙고 태스크 제목은 AppBar에만 있다', (tester) async {
+    testWidgets('프로젝트 배지와 브랜치 및 새 태스크는 정보 버튼과 같은 AppBar에 있다', (tester) async {
       await pumpDetail(tester, size: phoneSize);
 
-      expect(find.text('kanvibe-repo'), findsOneWidget);
-      expect(
-        find.text('모바일 클라이언트'),
-        findsOneWidget,
-        reason: '머리글이 AppBar 제목을 되풀이하지 않는다',
-      );
+      final appBar = find.byType(AppBar);
+      for (final target in [
+        find.text('kanvibe-repo'),
+        find.text('feat/kanvibe-mobile'),
+        find.bySemanticsIdentifier('create-task-from-current'),
+        find.byTooltip('정보'),
+      ]) {
+        expect(find.descendant(of: appBar, matching: target), findsOneWidget);
+      }
+      expect(find.text('출력 수신 중'), findsNothing);
+      expect(find.byTooltip('붙여넣기'), findsNothing);
     });
 
     testWidgets('정보를 누르면 데스크탑 정보 패널과 같은 칸이 열린다', (tester) async {
@@ -688,7 +798,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('브랜치'), findsOneWidget);
-      expect(find.text('feat/kanvibe-mobile'), findsOneWidget);
+      expect(find.text('feat/kanvibe-mobile'), findsNWidgets(2));
       expect(find.text('베이스 브랜치'), findsOneWidget);
       expect(find.text('dev'), findsOneWidget);
     });

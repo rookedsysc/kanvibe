@@ -7,7 +7,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:xterm/xterm.dart' as xterm;
 
 import '../../../../common/constants/app_colors.dart';
-import '../../../../common/constants/app_sizes.dart';
 import '../../../../common/constants/app_theme.dart';
 import '../../../../common/network/desktop_client.dart';
 import '../../../../common/network/desktop_connection.dart';
@@ -15,7 +14,7 @@ import '../../../../common/providers.dart';
 import '../../domain/mirror_pane.dart';
 import 'terminal_soft_keyboard.dart';
 
-/// 크기 조정이 가능한 pane은 화면 맞춤과 넓게 보기 사이를 전환할 수 있다.
+/// 선택한 pane을 화면 너비에 맞춰 표시한다.
 class PaneTerminalView extends ConsumerStatefulWidget {
   const PaneTerminalView({
     required this.taskId,
@@ -41,13 +40,10 @@ class _PaneTerminalViewState extends ConsumerState<PaneTerminalView>
   DesktopConnection? _connection;
   StreamSubscription<String>? _subscription;
   String? _failureMessage;
-  bool _hasOutput = false;
-  String? _selectableOutput;
   Timer? _firstFrameTimer;
   final _horizontalScroll = ScrollController();
   final _verticalScroll = ScrollController();
   final _terminalController = xterm.TerminalController();
-  bool _isWideView = false;
   bool _isParsingRemoteOutput = false;
   String _pendingEscape = '';
   ({int cols, int rows})? _lastSentSize;
@@ -57,8 +53,6 @@ class _PaneTerminalViewState extends ConsumerState<PaneTerminalView>
   static const _firstFrameTimeout = Duration(seconds: 15);
   // 데스크톱 terminalClipboard.ts와 같은 base64 상한으로 원격 요청의 디코딩 비용을 제한한다.
   static const _maxClipboardPayloadLength = 1000000;
-  // 좁은 TUI가 생략한 내용을 읽을 때만 표준 80열 격자를 가로로 펼친다.
-  static const _wideColumns = 80;
   static final _textStyle = xterm.TerminalStyle(
     fontSize: 14,
     fontFamily: monoFontFamily,
@@ -185,7 +179,6 @@ class _PaneTerminalViewState extends ConsumerState<PaneTerminalView>
     } finally {
       _isParsingRemoteOutput = false;
     }
-    if (!_hasOutput) setState(() => _hasOutput = true);
   }
 
   Future<void> _copyRemoteClipboard(String code, List<String> args) async {
@@ -226,7 +219,6 @@ class _PaneTerminalViewState extends ConsumerState<PaneTerminalView>
     _stream = null;
     setState(() {
       _failureMessage = null;
-      _hasOutput = false;
     });
     await _openStream();
   }
@@ -287,204 +279,58 @@ class _PaneTerminalViewState extends ConsumerState<PaneTerminalView>
       textDirection: TextDirection.ltr,
       textScaler: MediaQuery.textScalerOf(context),
     )..layout();
-    final columns = widget.canResize ? _wideColumns : widget.pane.width;
-    final terminalWidth = (metrics.width / 10 * columns).ceilToDouble();
+    final terminalWidth = (metrics.width / 10 * widget.pane.width)
+        .ceilToDouble();
     metrics.dispose();
 
     return ColoredBox(
       color: AppColors.terminalBg,
-      child: Column(
-        children: [
-          _buildControls(),
-          Expanded(
-            child: _selectableOutput != null
-                ? SingleChildScrollView(
-                    padding: const EdgeInsets.all(12),
-                    child: SelectableText(
-                      _selectableOutput!,
-                      key: const ValueKey('terminal-selectable-output'),
-                      style: monoStyle(
-                        fontSize: 14,
-                        color: AppColors.textPrimary,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          return Scrollbar(
+            controller: _horizontalScroll,
+            thumbVisibility: true,
+            notificationPredicate: (notification) =>
+                notification.metrics.axis == Axis.horizontal,
+            child: SingleChildScrollView(
+              controller: _horizontalScroll,
+              scrollDirection: Axis.horizontal,
+              child: SizedBox(
+                width: !widget.canResize && terminalWidth > constraints.maxWidth
+                    ? terminalWidth
+                    : constraints.maxWidth,
+                height: constraints.maxHeight,
+                child: MediaQuery.removePadding(
+                  context: context,
+                  removeLeft: true,
+                  removeRight: true,
+                  removeTop: true,
+                  removeBottom: true,
+                  child: TerminalSoftKeyboard(
+                    terminal: _terminal,
+                    controller: _terminalController,
+                    child: Semantics(
+                      identifier: 'pane-terminal',
+                      label: '터미널 입력',
+                      child: xterm.TerminalView(
+                        _terminal,
+                        controller: _terminalController,
+                        autoResize: widget.canResize,
+                        hardwareKeyboardOnly: true,
+                        scrollController: _verticalScroll,
+                        backgroundOpacity: 0,
+                        theme: _terminalTheme,
+                        textStyle: _textStyle,
                       ),
                     ),
-                  )
-                : LayoutBuilder(
-                    builder: (context, constraints) {
-                      return Scrollbar(
-                        controller: _horizontalScroll,
-                        thumbVisibility: true,
-                        notificationPredicate: (notification) =>
-                            notification.metrics.axis == Axis.horizontal,
-                        child: SingleChildScrollView(
-                          controller: _horizontalScroll,
-                          scrollDirection: Axis.horizontal,
-                          child: SizedBox(
-                            width:
-                                (!widget.canResize || _isWideView) &&
-                                    terminalWidth > constraints.maxWidth
-                                ? terminalWidth
-                                : constraints.maxWidth,
-                            height: constraints.maxHeight,
-                            child: MediaQuery.removePadding(
-                              context: context,
-                              removeLeft: true,
-                              removeRight: true,
-                              removeTop: true,
-                              removeBottom: true,
-                              child: TerminalSoftKeyboard(
-                                terminal: _terminal,
-                                controller: _terminalController,
-                                child: Semantics(
-                                  identifier: 'pane-terminal',
-                                  label: '터미널 입력',
-                                  child: xterm.TerminalView(
-                                    _terminal,
-                                    controller: _terminalController,
-                                    autoResize: widget.canResize,
-                                    hardwareKeyboardOnly: true,
-                                    scrollController: _verticalScroll,
-                                    backgroundOpacity: 0,
-                                    theme: _terminalTheme,
-                                    textStyle: _textStyle,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                      );
-                    },
                   ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildControls() => SizedBox(
-    height: AppSizes.minTouchTarget,
-    child: Padding(
-      padding: const EdgeInsets.symmetric(horizontal: AppSizes.p4),
-      child: Row(
-        children: [
-          Icon(
-            Icons.circle,
-            size: AppSizes.p8,
-            color: _hasOutput ? AppColors.statusDone : AppColors.statusProgress,
-          ),
-          const SizedBox(width: AppSizes.p4),
-          Expanded(
-            child: Text(
-              _hasOutput ? '출력 수신 중' : '터미널 연결 중…',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: Theme.of(context).textTheme.bodySmall,
-            ),
-          ),
-          if (widget.canResize) ...[
-            Expanded(child: _buildViewModeButton(wide: false)),
-            Expanded(child: _buildViewModeButton(wide: true)),
-          ] else
-            Expanded(
-              child: Text(
-                '좌우·위아래 스크롤',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: Theme.of(context).textTheme.bodySmall,
-              ),
-            ),
-          IconButton(
-            tooltip: _selectableOutput == null ? '텍스트 선택·복사' : '터미널로 돌아가기',
-            icon: Icon(
-              _selectableOutput == null
-                  ? Icons.text_snippet_outlined
-                  : Icons.terminal,
-            ),
-            onPressed: () {
-              FocusManager.instance.primaryFocus?.unfocus();
-              setState(() {
-                _selectableOutput = _selectableOutput == null
-                    ? _terminal.buffer.getText().trimRight()
-                    : null;
-              });
-            },
-          ),
-          IconButton(
-            tooltip: '붙여넣기',
-            icon: const Icon(Icons.content_paste),
-            onPressed: () async {
-              final clipboard = await Clipboard.getData(Clipboard.kTextPlain);
-              if (!mounted || _failureMessage != null) return;
-              final text = clipboard?.text;
-              if (text != null) _terminal.paste(text);
-            },
-          ),
-          ListenableBuilder(
-            listenable: _terminalController,
-            builder: (context, _) => Semantics(
-              identifier: 'pane-terminal-copy',
-              child: IconButton(
-                constraints: const BoxConstraints.tightFor(
-                  width: AppSizes.minTouchTarget,
-                  height: AppSizes.minTouchTarget,
                 ),
-                tooltip: '선택한 텍스트 복사',
-                onPressed: _terminalController.selection == null
-                    ? null
-                    : _copySelection,
-                icon: const Icon(Icons.copy_outlined),
               ),
             ),
-          ),
-        ],
-      ),
-    ),
-  );
-
-  Widget _buildViewModeButton({required bool wide}) {
-    final selected = wide == _isWideView;
-    return Semantics(
-      identifier: wide ? 'pane-terminal-wide-view' : 'pane-terminal-fit-view',
-      selected: selected,
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          border: Border(
-            bottom: BorderSide(
-              color: selected ? AppColors.brandPrimary : Colors.transparent,
-            ),
-          ),
-        ),
-        child: TextButton(
-          style: TextButton.styleFrom(
-            foregroundColor: selected
-                ? AppColors.textPrimary
-                : AppColors.textSecondary,
-            minimumSize: const Size(
-              AppSizes.minTouchTarget,
-              AppSizes.minTouchTarget,
-            ),
-            padding: const EdgeInsets.symmetric(horizontal: AppSizes.p4),
-            textStyle: Theme.of(context).textTheme.bodySmall,
-          ),
-          onPressed: () {
-            if (_isWideView != wide) setState(() => _isWideView = wide);
-          },
-          child: Text(
-            wide ? '넓게 보기' : '화면 맞춤',
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-        ),
+          );
+        },
       ),
     );
-  }
-
-  Future<void> _copySelection() async {
-    final selection = _terminalController.selection;
-    if (selection == null) return;
-    final text = _terminal.buffer.getText(selection);
-    await Clipboard.setData(ClipboardData(text: text));
   }
 }
 

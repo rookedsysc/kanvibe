@@ -11,9 +11,9 @@ KanVibe 데스크탑에 연결해 보드를 보고, 태스크의 터미널 pane�
 
 보드는 너비 768dp에서 배치가 바뀐다(`AppSizes.tabletBreakpoint`). 터미널은 모든 크기에서 pane 하나씩 표시한다. tmux와 일반 terminal은 14sp 글자 크기를 유지하면서 모바일의 가용 영역에 맞춰 원본 터미널의 행·열을 조정한다. 화면을 회전하거나 키보드를 열면 새 영역을 반영하며, 이전 출력은 위아래 스크롤로 읽는다. 정확한 행·열 지정을 지원하지 않는 Zellij와 이전 데스크탑 버전은 원본 격자를 유지하고 좌우·위아래 스크롤을 제공한다.
 
-터미널의 **텍스트 선택·복사** 버튼을 누르면 현재 출력을 일반 글처럼 읽을 수 있다. 글을 길게 눌러 선택 범위를 조절한 뒤 시스템 메뉴에서 복사한다. 선택 화면은 열었을 때의 출력을 유지하며, **터미널로 돌아가기**를 누르면 실시간 터미널로 돌아온다. **붙여넣기** 버튼은 클립보드 내용을 터미널로 보낸다.
+상단에는 프로젝트 배지와 브랜치를 함께 표시하며, **새 태스크**는 정보·상태·PR 아이콘과 같은 줄에 있다. 탭 바 오른쪽의 **+**를 누르면 현재 태스크의 셸 탭을 추가하고 바로 선택한다. 탭이 많아도 **+**는 고정되어 있으며, 생성에 실패하면 현재 터미널을 유지한다.
 
-tmux·일반 terminal의 실시간 출력에서 원격 Vim 등이 **OSC 52로 복사**하면 선택한 내용이 iOS·Android 클립보드에 들어가 다른 앱에도 붙여넣을 수 있다. 휴대폰 클립보드를 원격 프로그램으로 읽어 보내는 요청에는 응답하지 않는다. 화면 덤프로 전달되는 Zellij에서는 **텍스트 선택·복사**를 사용한다.
+tmux·일반 terminal의 실시간 출력에서 원격 Vim 등이 **OSC 52로 복사**하면 선택한 내용이 iOS·Android 클립보드에 들어가 다른 앱에도 붙여넣을 수 있다. 휴대폰 클립보드를 원격 프로그램으로 읽어 보내는 요청에는 응답하지 않는다. 화면 덤프로 전달되는 Zellij에서는 OSC 52 복사를 전달하지 않는다.
 
 일반 Vim의 `y`는 Vim 내부에만 저장되므로 원격 서버의 Vim 설정이 필요하다. 예를 들어 [vim-oscyank](https://github.com/ojroques/vim-oscyank)를 설치하고 원격 `~/.vimrc`에 다음을 추가하면 `yy`와 비주얼 선택 후 `y`로 휴대폰에 복사한다.
 
@@ -159,3 +159,5 @@ App Store Connect를 조회해 `CFBundleVersion`을 스스로 올리므로 손�
 tmux는 창 크기 정책과 분할 배치를 함께 보관했다가 마지막 모바일 연결이 끝날 때 복원한다. 포커스는 바꾸지 않는다. 출력은 tmux의 `capture-pane`/`pipe-pane`, Zellij의 pane id를 지정한 `dump-screen`으로 읽는다. wire의 text 프레임은 키 입력, binary JSON의 `type: resize`는 크기 조정으로 구분한다. 모바일 화면 맞춤에는 이 기능을 지원하는 데스크탑 빌드도 필요하다.
 
 터미널의 Powerline/Nerd Font 기호는 [Nerd Fonts Symbols Only v3.5.1](https://github.com/ryanoasis/nerd-fonts/tree/v3.5.1/patched-fonts/NerdFontsSymbolsOnly)을 보조 글꼴로 사용한다. 원본 파일과 MIT 라이선스를 `assets/fonts/`에 포함한다.
+
+탭 추가는 인증된 `POST /api/mobile/tasks/:taskId/tabs`를 사용한다. 데스크탑의 기존 탭 생성 서비스를 재사용하며 tmux·Zellij·일반 terminal 및 원격 SSH 대상의 worktree에서 셸을 연다. 탭 추가를 지원하는 데스크탑 빌드가 필요하다. 모바일 목록과 추가 요청 상태는 `common/providers.dart`의 `TaskSurfacesController`가 관리한다.

@@ -26,6 +26,7 @@ class DesktopClient {
   /// 데스크탑이 git worktree를 만들고 hooks 파일까지 깔아야 끝나는 요청이라, 조회와 같은 잣대로 재면
   /// 실제로는 만들어지고 있는데 기기만 먼저 포기한다. 그러면 사용자가 다시 눌러 같은 브랜치를 또 치게 된다.
   static const _createTaskTimeout = Duration(seconds: 60);
+  static const _createTerminalTabTimeout = Duration(seconds: 30);
 
   /// 화면의 6자리 코드를 토큰으로 바꾼다. 성공하면 그 뒤로 코드는 필요 없다
   Future<String?> pair({
@@ -177,6 +178,33 @@ class DesktopClient {
     }
 
     return TaskSurfaces.fromJson(body['surfaces'] as Map<String, dynamic>);
+  }
+
+  Future<({TaskSurfaces surfaces, String paneId})> createTerminalTab(
+    DesktopConnection connection,
+    String taskId,
+  ) async {
+    final response = await _httpClient
+        .post(
+          connection.buildHttpUri(
+            '/api/mobile/tasks/${Uri.encodeComponent(taskId)}/tabs',
+          ),
+          headers: connection.authorizationHeaders,
+        )
+        .timeout(_createTerminalTabTimeout);
+    if (response.statusCode != 200 && response.statusCode != 409) {
+      throw DesktopRequestException(response.statusCode);
+    }
+    final body = jsonDecode(response.body) as Map<String, dynamic>;
+    if (response.statusCode == 409) {
+      throw SurfaceUnavailableException(
+        SurfaceUnavailableReason.fromWire(body['reason']?.toString()),
+      );
+    }
+    return (
+      surfaces: TaskSurfaces.fromJson(body['surfaces'] as Map<String, dynamic>),
+      paneId: body['paneId'] as String,
+    );
   }
 
   /// 태스크 생성 화면의 베이스 브랜치 칸을 채운다

@@ -325,80 +325,29 @@ void main() {
         mountedTerminal(tester).buffer.lines[0].getText(),
         'still connected',
       );
-      expect(find.text('출력 수신 중'), findsOneWidget);
+      expect(find.byType(xterm.TerminalView), findsOneWidget);
     });
   });
 
-  testWidgets('클립보드 내용을 붙여넣으면 터미널로 한 번 전달한다', (tester) async {
+  testWidgets('보조 툴바 없이 터미널이 전체 영역을 사용한다', (tester) async {
     await pumpPane(
       tester,
       _pane,
       client: FakeDesktopClient(),
       store: FakeConnectionStore(),
+      canResize: true,
     );
-    final terminal = mountedTerminal(tester);
-    final output = <String>[];
-    terminal.onOutput = output.add;
-    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
-      SystemChannels.platform,
-      (call) async {
-        if (call.method == 'Clipboard.getData') return {'text': 'echo 붙여넣기'};
-        return null;
-      },
+    expect(find.text('터미널 연결 중…'), findsNothing);
+    expect(find.text('출력 수신 중'), findsNothing);
+    expect(find.byTooltip('붙여넣기'), findsNothing);
+    expect(find.byTooltip('텍스트 선택·복사'), findsNothing);
+    expect(find.byTooltip('선택한 텍스트 복사'), findsNothing);
+    expect(find.text('화면 맞춤'), findsNothing);
+    expect(find.text('넓게 보기'), findsNothing);
+    expect(
+      tester.getRect(find.byType(xterm.TerminalView)).top,
+      tester.getRect(find.byType(PaneTerminalView)).top,
     );
-    addTearDown(
-      () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
-        SystemChannels.platform,
-        null,
-      ),
-    );
-    await tester.tap(find.byTooltip('붙여넣기'));
-    await tester.pumpAndSettle();
-    expect(output.join(), 'echo 붙여넣기');
-  });
-
-  testWidgets('출력을 일반 텍스트로 선택하고 터미널로 돌아온다', (tester) async {
-    await pumpPane(
-      tester,
-      _pane,
-      client: FakeDesktopClient(),
-      store: FakeConnectionStore(),
-    );
-    final terminal = mountedTerminal(tester);
-    terminal.write('복사할 문장\r\nsecond line');
-    await tester.pump();
-    await tester.tap(find.byTooltip('텍스트 선택·복사'));
-    await tester.pumpAndSettle();
-    final text = tester.widget<SelectableText>(
-      find.byKey(const ValueKey('terminal-selectable-output')),
-    );
-    expect(text.data, contains('복사할 문장'));
-    expect(text.data, contains('second line'));
-    await tester.longPress(find.byType(SelectableText));
-    await tester.pumpAndSettle();
-    expect(find.text('Copy'), findsOneWidget);
-    String? copied;
-    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
-      SystemChannels.platform,
-      (call) async {
-        if (call.method == 'Clipboard.setData') {
-          copied = (call.arguments as Map)['text'] as String;
-        }
-        return null;
-      },
-    );
-    addTearDown(
-      () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
-        SystemChannels.platform,
-        null,
-      ),
-    );
-    await tester.tap(find.text('Copy'));
-    await tester.pumpAndSettle();
-    expect(copied, isNotEmpty);
-    await tester.tap(find.byTooltip('터미널로 돌아가기'));
-    await tester.pumpAndSettle();
-    expect(mountedTerminal(tester), same(terminal));
   });
 
   for (final splitEveryCharacter in [false, true]) {
@@ -573,54 +522,7 @@ void main() {
     );
   }
 
-  testWidgets('넓게 보기는 최소 80열을 서버에 보내고 가로 스크롤 후 화면 맞춤으로 돌아간다', (tester) async {
-    addTearDown(() => tester.binding.setSurfaceSize(null));
-    await tester.binding.setSurfaceSize(const Size(411, 960));
-    final client = FakeDesktopClient();
-    await pumpPane(
-      tester,
-      _pane,
-      client: client,
-      store: FakeConnectionStore(),
-      canResize: true,
-    );
-    final view = find.byType(xterm.TerminalView);
-    final terminal = mountedTerminal(tester);
-    final portraitCols = terminal.viewWidth;
-    final portraitRows = terminal.viewHeight;
-    final controllerBefore = tester.widget<xterm.TerminalView>(view).controller;
-    await tester.tap(find.bySemanticsIdentifier('pane-terminal-wide-view'));
-    await tester.pumpAndSettle();
-    expect(terminal.viewWidth, greaterThanOrEqualTo(80));
-    expect(terminal.viewHeight, portraitRows);
-    expect(client.resizedPanes[_pane.id]!.last, (
-      cols: terminal.viewWidth,
-      rows: terminal.viewHeight,
-    ));
-    expect(tester.getSize(view).width, greaterThan(411));
-    expect(tester.widget<xterm.TerminalView>(view).textStyle.fontSize, 14);
-    expect(
-      tester.widget<xterm.TerminalView>(view).controller,
-      controllerBefore,
-    );
-    final beforeScroll = tester.getTopLeft(view).dx;
-    await tester.dragFrom(
-      tester.getCenter(find.byType(PaneTerminalView)),
-      const Offset(-200, 0),
-    );
-    await tester.pumpAndSettle();
-    expect(tester.getTopLeft(view).dx, lessThan(beforeScroll));
-    await tester.tap(find.bySemanticsIdentifier('pane-terminal-fit-view'));
-    await tester.pumpAndSettle();
-    expect(terminal.viewWidth, portraitCols);
-    expect(tester.getTopLeft(view).dx, beforeScroll);
-    expect(client.resizedPanes[_pane.id]!.last, (
-      cols: portraitCols,
-      rows: portraitRows,
-    ));
-  });
-
-  testWidgets('터치로 여러 줄을 선택해 한글·영문·줄바꿈을 그대로 복사하고 격자를 유지한다', (tester) async {
+  testWidgets('툴바 없이 터치로 여러 줄을 선택해도 한글·영문·줄바꿈과 격자를 유지한다', (tester) async {
     final client = FakeDesktopClient();
     await pumpPane(
       tester,
@@ -636,34 +538,6 @@ void main() {
     expect(controller, isNotNull);
     final terminal = mountedTerminal(tester);
     final originalSize = (cols: terminal.viewWidth, rows: terminal.viewHeight);
-    final copy = find.bySemanticsIdentifier('pane-terminal-copy');
-    expect(tester.getSize(copy).height, 48);
-    expect(tester.getSize(copy).width, greaterThanOrEqualTo(48));
-    expect(
-      tester
-          .widget<IconButton>(
-            find.descendant(of: copy, matching: find.byType(IconButton)),
-          )
-          .onPressed,
-      isNull,
-    );
-    String? clipboardText;
-    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
-      SystemChannels.platform,
-      (call) async {
-        if (call.method == 'Clipboard.setData') {
-          clipboardText = (call.arguments as Map)['text'] as String;
-        }
-        if (call.method == 'Clipboard.getData') return {'text': clipboardText};
-        return null;
-      },
-    );
-    addTearDown(
-      () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
-        SystemChannels.platform,
-        null,
-      ),
-    );
     final gesture = await tester.startGesture(
       terminalCellPosition(tester, 1, 0),
     );
@@ -674,14 +548,6 @@ void main() {
     await tester.pumpAndSettle();
     expect(tester.testTextInput.isVisible, isFalse);
     expect(terminal.buffer.getText(controller!.selection), 'alpha 한글\nbeta');
-    expect((cols: terminal.viewWidth, rows: terminal.viewHeight), originalSize);
-    expect(tester.getSize(copy).height, 48);
-    await tester.tap(copy);
-    await tester.pumpAndSettle();
-    expect(
-      (await Clipboard.getData(Clipboard.kTextPlain))?.text,
-      'alpha 한글\nbeta',
-    );
     expect((cols: terminal.viewWidth, rows: terminal.viewHeight), originalSize);
     expect(client.writtenInput[_pane.id], isNull);
   });
@@ -888,16 +754,6 @@ void main() {
     expect(client.resizedPanes[_pane.id]!.length, greaterThan(sentBefore));
   });
 
-  testWidgets('첫 출력 전과 수신 후의 연결 상태를 구분한다', (tester) async {
-    final client = FakeDesktopClient();
-    await pumpPane(tester, _pane, client: client, store: FakeConnectionStore());
-    expect(find.text('터미널 연결 중…'), findsOneWidget);
-    client.openedPanes['%19']!.add('ready');
-    await tester.pumpAndSettle();
-    expect(find.text('출력 수신 중'), findsOneWidget);
-    expect(find.text('터미널 연결 중…'), findsNothing);
-  });
-
   testWidgets('네트워크 오류는 세션 종료와 구분하고 재시도할 수 있다', (tester) async {
     final client = FakeDesktopClient();
     await pumpPane(tester, _pane, client: client, store: FakeConnectionStore());
@@ -908,7 +764,7 @@ void main() {
     await tester.pumpAndSettle();
     client.openedPanes['%19']!.add('restored');
     await tester.pumpAndSettle();
-    expect(find.text('출력 수신 중'), findsOneWidget);
+    expect(find.byType(xterm.TerminalView), findsOneWidget);
     expect(mountedTerminal(tester).buffer.getText(), contains('restored'));
   });
 

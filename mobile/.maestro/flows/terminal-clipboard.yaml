@@ -20,7 +20,8 @@ env:
 - runFlow: ../subflows/pairs-and-opens-board.yaml
 - runFlow: ../subflows/opens-session-task-terminal.yaml
 - extendedWaitUntil:
-    visible: "출력 수신 중"
+    visible:
+      id: pane-terminal
     timeout: 20000
 - tapOn:
     id: pane-terminal

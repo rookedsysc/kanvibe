@@ -32,6 +32,7 @@ const SOURCE_BRANCH_FILE = "SOURCE_BRANCH_ONLY.txt";
 const DESKTOP_READY_TIMEOUT_MS = 240_000;
 const DESKTOP_POLL_INTERVAL_MS = 1_000;
 const MARKER_POLL_INTERVAL_MS = 500;
+const TERMINAL_TAB_PROBE_TIMEOUT_MS = 5_000;
 const DESKTOP_SIGKILL_DELAY_MS = 2_000;
 
 /** `scripts/run-desktop-dev.cjs`가 먼저 노려 보는 vite 포트 */
@@ -197,8 +198,37 @@ function buildFixtureWorktreePath(repoPath, branchName) {
  * `branch`를 주면 그 브랜치의 worktree를 본다. 기기에서 새로 만든 태스크는 픽스처와 다른 worktree에서 셸이 돈다.
  */
 function startCommandProbe(sessionName, repoPath, runDir) {
+  const initialPaneId = run("tmux", ["display-message", "-p", "-t", sessionName, "#{pane_id}"]);
+  const initialTabIds = new Set(run("tmux", ["list-windows", "-t", sessionName, "-F", "#{window_id}"]).split("\n"));
   const server = http.createServer(async (request, response) => {
     const requestUrl = new URL(request.url, `http://127.0.0.1:${PROBE_PORT}`);
+
+    if (requestUrl.pathname === "/terminal-tabs") {
+      const deadline = Date.now() + TERMINAL_TAB_PROBE_TIMEOUT_MS;
+      let panes;
+      let created;
+      do {
+        panes = run("tmux", ["list-panes", "-s", "-t", sessionName, "-F", "#{window_id}\t#{pane_id}"])
+          .split("\n").map((line) => line.split("\t"));
+        created = panes.find(([tabId]) => !initialTabIds.has(tabId));
+        if (created) break;
+        await new Promise((resolve) => setTimeout(resolve, MARKER_POLL_INTERVAL_MS));
+      } while (Date.now() < deadline);
+      const marker = requestUrl.searchParams.get("marker") ?? "";
+      const worktreePath = buildFixtureWorktreePath(repoPath, FIXTURE_BRANCH);
+      const state = {
+        windowCount: new Set(panes.map(([tabId]) => tabId)).size,
+        initialPaneRetained: panes.some(([, paneId]) => paneId === initialPaneId),
+        newPaneId: created?.[1] ?? null,
+        ran: marker ? await waitForMarkerFile(worktreePath, marker, TERMINAL_TAB_PROBE_TIMEOUT_MS) : false,
+        newPaneReceivedMarker: Boolean(marker && created && capturePane(created[1]).includes(marker)),
+        initialPaneReceivedMarker: Boolean(marker && capturePane(initialPaneId).includes(marker)),
+      };
+      fs.appendFileSync(path.join(runDir, "terminal-tab-observations.jsonl"), `${JSON.stringify(state)}\n`);
+      response.writeHead(200, { "Content-Type": "application/json" });
+      response.end(JSON.stringify(state));
+      return;
+    }
 
     if (requestUrl.pathname === "/terminal-state") {
       const minimum = Number(requestUrl.searchParams.get("minColumns") ?? 1);

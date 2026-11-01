@@ -42,6 +42,10 @@ function createBridge(overrides = {}) {
     updateMobileNotificationSubscription: vi.fn(async () => true),
     deleteMobileNotificationSubscription: vi.fn(async () => true),
     getTaskSurfaces: vi.fn(async () => ({ panes: [] })),
+    createMobileTerminalTab: vi.fn(async () => ({
+      surfaces: { taskId: "task-1", sessionType: "tmux", canResize: true, tabs: [] },
+      paneId: "%20",
+    })),
     subscribeToPane: vi.fn(async () => () => {}),
     writeToPane: vi.fn(async () => {}),
     claimPaneViewport: vi.fn(async () => ({ resize: vi.fn(async () => {}), release: vi.fn(async () => {}) })),
@@ -350,6 +354,63 @@ describe("기기 연결 해제 경로", () => {
     const response = await request("/api/mobile/device", {
       method: "DELETE",
       headers: { authorization: "Bearer good" },
+    });
+
+    expect(response.status).toBe(500);
+    expect(response.body).toEqual({ success: false, error: "서버 오류" });
+  });
+});
+
+describe("모바일 터미널 탭 생성", () => {
+  for (const authorization of [undefined, "Bearer unknown"]) {
+    it(`인증되지 않은 ${authorization ?? "빈"} 토큰은 새 탭을 만들지 못한다`, async () => {
+      const response = await request("/api/mobile/tasks/task-1/tabs", {
+        method: "POST",
+        headers: authorization ? { authorization } : {},
+      });
+
+      expect(response.status).toBe(401);
+      expect(bridge.createMobileTerminalTab).not.toHaveBeenCalled();
+    });
+  }
+
+  it("인증한 태스크에 탭을 추가하고 갱신된 목록과 새 pane을 반환한다", async () => {
+    const created = {
+      surfaces: { taskId: "task id", sessionType: "terminal", canResize: true, tabs: [{ id: "tab-2", panes: [{ id: "tab-2" }] }] },
+      paneId: "tab-2",
+    };
+    bridge.createMobileTerminalTab.mockResolvedValue(created);
+
+    const response = await request("/api/mobile/tasks/task%20id/tabs", {
+      method: "POST",
+      headers: { authorization: "Bearer good", "Content-Type": "application/json" },
+      body: JSON.stringify({ sshHost: "injected", command: "injected", worktreePath: "/injected" }),
+    });
+
+    expect(bridge.createMobileTerminalTab).toHaveBeenCalledExactlyOnceWith("task id");
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({ success: true, ...created });
+  });
+
+  it("탭을 만들 세션이 없으면 409와 사유를 반환한다", async () => {
+    bridge.createMobileTerminalTab.mockRejectedValue(Object.assign(new Error("no-session"), {
+      name: "SurfaceUnavailableError",
+      reason: "no-session",
+    }));
+
+    const response = await request("/api/mobile/tasks/task-1/tabs", {
+      method: "POST", headers: { authorization: "Bearer good" },
+    });
+
+    expect(response.status).toBe(409);
+    expect(response.body).toEqual({ success: false, reason: "no-session" });
+  });
+
+  it("탭 생성이 실패해도 SSH 명령과 호스트를 응답에 노출하지 않는다", async () => {
+    bridge.createMobileTerminalTab.mockRejectedValue(new Error("ssh secret-host tmux new-window /secret/path"));
+
+    const response = await request("/api/mobile/tasks/task-1/tabs", {
+      method: "POST", headers: { authorization: "Bearer good" },
     });
 
     expect(response.status).toBe(500);

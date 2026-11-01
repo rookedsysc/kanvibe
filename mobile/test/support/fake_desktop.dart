@@ -51,6 +51,7 @@ class FakeDesktopClient implements DesktopClient {
     this.pairToken,
     this.surfaces,
     this.surfacesError,
+    this.onCreateTerminalTab,
     this.unpairError,
     this.branches = const ['main', 'dev'],
     this.createdTask = const {
@@ -69,6 +70,9 @@ class FakeDesktopClient implements DesktopClient {
   final String? pairToken;
   final TaskSurfaces? surfaces;
   final Object? surfacesError;
+  final Future<({TaskSurfaces surfaces, String paneId})> Function()?
+  onCreateTerminalTab;
+  final createdTabCalls = <({String taskId, String connectionId})>[];
   final Object? unpairError;
   final List<String> branches;
   final Map<String, dynamic> createdTask;
@@ -179,6 +183,15 @@ class FakeDesktopClient implements DesktopClient {
       throw surfacesError!;
     }
     return surfaces ?? const TaskSurfaces(tabs: []);
+  }
+
+  @override
+  Future<({TaskSurfaces surfaces, String paneId})> createTerminalTab(
+    DesktopConnection connection,
+    String taskId,
+  ) async {
+    createdTabCalls.add((taskId: taskId, connectionId: connection.id));
+    return onCreateTerminalTab!();
   }
 
   @override
