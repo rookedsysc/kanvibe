@@ -1,8 +1,9 @@
 /**
  * @vitest-environment node
  */
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { SessionType } from "@/entities/KanbanTask";
+import * as keyboardShortcut from "@/desktop/shared/keyboardShortcut";
 
 const storedSettings = new Map<string, string>();
 
@@ -133,6 +134,15 @@ describe("보드 정렬 설정", () => {
 describe("단축키 재배정 설정", () => {
   const SHORTCUT_BINDINGS_KEY = "shortcut_bindings";
   const LEGACY_TASK_SEARCH_SHORTCUT_KEY = "task_search_shortcut";
+  const platformCases = [
+    { os: "macOS", platform: "mac", primaryModifier: "Meta", oppositeModifier: "Ctrl" },
+    { os: "Linux", platform: "linux", primaryModifier: "Ctrl", oppositeModifier: "Meta" },
+    { os: "Windows", platform: "linux", primaryModifier: "Ctrl", oppositeModifier: "Meta" },
+  ] as const;
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
 
   it("재배정한 단축키를 앱을 다시 켠 뒤에도 그대로 읽는다", async () => {
     // Given
@@ -214,11 +224,12 @@ describe("단축키 재배정 설정", () => {
    * 그 표기를 그대로 승계하면 실행 시에는 같은 조합인데 중복 판정만 다른 조합으로 봐서,
    * 사용자가 같은 물리 조합을 다른 명령에 배정해도 경고 없이 저장된다.
    */
-  it("옛 플랫폼 표기로 저장된 값은 Mod 표기로 접어 승계한다", async () => {
+  it.each(platformCases)("$os: 옛 플랫폼 표기로 저장된 값은 Mod 표기로 접어 승계한다", async ({ platform, primaryModifier }) => {
     // Given
+    vi.spyOn(keyboardShortcut, "getShortcutPlatformFromProcessPlatform").mockReturnValue(platform);
     const { getShortcutBindings } = await import("@/desktop/main/services/appSettingsService");
     const { DEFAULT_SHORTCUT_BINDINGS } = await import("@/desktop/shared/shortcutBindings");
-    storedSettings.set(LEGACY_TASK_SEARCH_SHORTCUT_KEY, "Ctrl+Shift+F");
+    storedSettings.set(LEGACY_TASK_SEARCH_SHORTCUT_KEY, `${primaryModifier}+Shift+F`);
 
     // When
     const bindings = await getShortcutBindings();
@@ -231,11 +242,12 @@ describe("단축키 재배정 설정", () => {
   });
 
   /** 실질적으로 기본값인 옛 표기를 재배정으로 남기면 그 사용자만 향후 기본값 변경을 못 받는다 */
-  it("승계한 값이 플랫폼 표기만 다른 기본값이면 재배정으로 저장하지 않는다", async () => {
+  it.each(platformCases)("$os: 승계한 값이 플랫폼 표기만 다른 기본값이면 재배정으로 저장하지 않는다", async ({ platform, primaryModifier }) => {
     // Given
+    vi.spyOn(keyboardShortcut, "getShortcutPlatformFromProcessPlatform").mockReturnValue(platform);
     const { getShortcutBindings } = await import("@/desktop/main/services/appSettingsService");
     const { DEFAULT_SHORTCUT_BINDINGS } = await import("@/desktop/shared/shortcutBindings");
-    storedSettings.set(LEGACY_TASK_SEARCH_SHORTCUT_KEY, "Ctrl+Shift+O");
+    storedSettings.set(LEGACY_TASK_SEARCH_SHORTCUT_KEY, `${primaryModifier}+Shift+O`);
 
     // When
     const bindings = await getShortcutBindings();
@@ -243,6 +255,21 @@ describe("단축키 재배정 설정", () => {
     // Then
     expect(bindings).toEqual(DEFAULT_SHORTCUT_BINDINGS);
     expect(JSON.parse(storedSettings.get(SHORTCUT_BINDINGS_KEY) ?? "{}")).toEqual({});
+  });
+
+  it.each(platformCases)("$os: Mod와 다른 modifier로 저장된 옛 값은 재배정으로 보존한다", async ({ platform, oppositeModifier }) => {
+    vi.spyOn(keyboardShortcut, "getShortcutPlatformFromProcessPlatform").mockReturnValue(platform);
+    const { getShortcutBindings } = await import("@/desktop/main/services/appSettingsService");
+    const { DEFAULT_SHORTCUT_BINDINGS } = await import("@/desktop/shared/shortcutBindings");
+    const legacyShortcut = `${oppositeModifier}+Shift+O`;
+    storedSettings.set(LEGACY_TASK_SEARCH_SHORTCUT_KEY, legacyShortcut);
+
+    const bindings = await getShortcutBindings();
+
+    expect(bindings).toEqual({ ...DEFAULT_SHORTCUT_BINDINGS, taskSearch: legacyShortcut });
+    expect(JSON.parse(storedSettings.get(SHORTCUT_BINDINGS_KEY) ?? "{}")).toEqual({
+      taskSearch: legacyShortcut,
+    });
   });
 
   /** 옛 화면은 파싱하면 키가 사라지는 값도 저장했다. 그 결과를 그대로 얹으면 빠른 검색 단축키가 통째로 사라진다 */

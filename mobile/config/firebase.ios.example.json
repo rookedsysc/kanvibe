@@ -1,0 +1,7 @@
+{
+  "KANVIBE_FIREBASE_API_KEY": "<firebase-ios-api-key>",
+  "KANVIBE_FIREBASE_APP_ID": "<firebase-ios-app-id>",
+  "KANVIBE_FIREBASE_MESSAGING_SENDER_ID": "<firebase-project-number>",
+  "KANVIBE_FIREBASE_PROJECT_ID": "<firebase-project-id>",
+  "KANVIBE_FIREBASE_IOS_BUNDLE_ID": "com.kanvibe.kanvibeMobile"
+}
