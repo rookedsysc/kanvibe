@@ -62,6 +62,36 @@ Future<void> selectProject(
 }
 
 void main() {
+  for (final size in [const Size(360, 900), const Size(840, 900)]) {
+    testWidgets('긴 프로젝트와 브랜치의 overflow와 중앙 정렬 $size', (tester) async {
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.binding.setSurfaceSize(size);
+      final project = BoardProject(
+        id: 'long',
+        name: 'project-' * 20,
+        defaultBranch: 'feature/' * 20,
+        isWorktree: false,
+      );
+      await tester.pumpWidget(
+        wrapWithApp(
+          CreateTaskScreen(
+            projects: [project],
+            defaultProjectId: project.id,
+            defaultSessionType: SessionType.tmux,
+          ),
+          client: FakeDesktopClient(),
+          size: size,
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      expect(tester.getCenter(find.byType(Form)).dx, size.width / 2);
+      await tester.tap(find.byType(DropdownButtonFormField<BoardProject>));
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+    });
+  }
+
   testWidgets('데스크탑 생성 창과 같은 칸을 같은 순서로 묻는다', (tester) async {
     await pumpCreate(tester);
 

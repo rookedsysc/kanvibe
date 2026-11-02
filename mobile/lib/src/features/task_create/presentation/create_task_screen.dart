@@ -170,104 +170,113 @@ class _CreateTaskScreenState extends ConsumerState<CreateTaskScreen> {
   Widget _buildForm(BuildContext context) {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(AppSizes.p24),
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 420),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              DropdownButtonFormField<BoardProject>(
-                initialValue: _selectedProject,
-                decoration: const InputDecoration(labelText: '프로젝트 *'),
-                items: [
-                  for (final project in widget.projects)
-                    DropdownMenuItem(value: project, child: Text(project.name)),
-                ],
-                onChanged: _isCreating ? null : _selectProject,
-                validator: (project) =>
-                    project == null ? '프로젝트를 골라 주세요.' : null,
-              ),
-              const SizedBox(height: AppSizes.p16),
-              _BaseBranchField(
-                project: _selectedProject,
-                selectedBranch: _baseBranch,
-                isEnabled: !_isCreating,
-                onChanged: (branch) => setState(() => _baseBranch = branch),
-              ),
-              const SizedBox(height: AppSizes.p16),
-              TextFormField(
-                controller: _branchNameController,
-                enabled: !_isCreating,
-                autocorrect: false,
-                decoration: const InputDecoration(
-                  labelText: '브랜치 이름 *',
-                  helperText: '태스크 제목으로도 쓰입니다.',
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 420),
+          child: Form(
+            key: _formKey,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                DropdownButtonFormField<BoardProject>(
+                  isExpanded: true,
+                  initialValue: _selectedProject,
+                  decoration: const InputDecoration(labelText: '프로젝트 *'),
+                  items: [
+                    for (final project in widget.projects)
+                      DropdownMenuItem(
+                        value: project,
+                        child: Text(
+                          project.name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                  ],
+                  onChanged: _isCreating ? null : _selectProject,
+                  validator: (project) =>
+                      project == null ? '프로젝트를 골라 주세요.' : null,
                 ),
-                validator: (value) => value == null || value.trim().isEmpty
-                    ? '브랜치 이름을 적어 주세요.'
-                    : null,
-              ),
-              const SizedBox(height: AppSizes.p16),
-              TextFormField(
-                controller: _descriptionController,
-                enabled: !_isCreating,
-                maxLines: 3,
-                decoration: const InputDecoration(labelText: '설명'),
-              ),
-              const SizedBox(height: AppSizes.p16),
-              DropdownButtonFormField<TaskPriority?>(
-                initialValue: _priority,
-                decoration: const InputDecoration(labelText: '우선순위'),
-                items: [
-                  const DropdownMenuItem(value: null, child: Text('고르지 않음')),
-                  for (final priority in TaskPriority.values)
-                    DropdownMenuItem(
-                      value: priority,
-                      child: Text(priority.label),
-                    ),
-                ],
-                onChanged: _isCreating
-                    ? null
-                    : (priority) => setState(() => _priority = priority),
-              ),
-              const SizedBox(height: AppSizes.p16),
-              DropdownButtonFormField<SessionType>(
-                initialValue: _sessionType,
-                decoration: const InputDecoration(labelText: '세션 타입'),
-                items: [
-                  for (final sessionType in SessionType.values)
-                    DropdownMenuItem(
-                      value: sessionType,
-                      child: Text(sessionType.wireValue),
-                    ),
-                ],
-                onChanged: _isCreating
-                    ? null
-                    : (sessionType) =>
-                          setState(() => _sessionType = sessionType!),
-              ),
-              if (_failureMessage != null) ...[
                 const SizedBox(height: AppSizes.p16),
-                Text(
-                  _failureMessage!,
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: Theme.of(context).colorScheme.error,
+                _BaseBranchField(
+                  project: _selectedProject,
+                  selectedBranch: _baseBranch,
+                  isEnabled: !_isCreating,
+                  onChanged: (branch) => setState(() => _baseBranch = branch),
+                ),
+                const SizedBox(height: AppSizes.p16),
+                TextFormField(
+                  controller: _branchNameController,
+                  enabled: !_isCreating,
+                  autocorrect: false,
+                  decoration: const InputDecoration(
+                    labelText: '브랜치 이름 *',
+                    helperText: '태스크 제목으로도 쓰입니다.',
                   ),
+                  validator: (value) => value == null || value.trim().isEmpty
+                      ? '브랜치 이름을 적어 주세요.'
+                      : null,
+                ),
+                const SizedBox(height: AppSizes.p16),
+                TextFormField(
+                  controller: _descriptionController,
+                  enabled: !_isCreating,
+                  maxLines: 3,
+                  decoration: const InputDecoration(labelText: '설명'),
+                ),
+                const SizedBox(height: AppSizes.p16),
+                DropdownButtonFormField<TaskPriority?>(
+                  initialValue: _priority,
+                  decoration: const InputDecoration(labelText: '우선순위'),
+                  items: [
+                    const DropdownMenuItem(value: null, child: Text('고르지 않음')),
+                    for (final priority in TaskPriority.values)
+                      DropdownMenuItem(
+                        value: priority,
+                        child: Text(priority.label),
+                      ),
+                  ],
+                  onChanged: _isCreating
+                      ? null
+                      : (priority) => setState(() => _priority = priority),
+                ),
+                const SizedBox(height: AppSizes.p16),
+                DropdownButtonFormField<SessionType>(
+                  initialValue: _sessionType,
+                  decoration: const InputDecoration(labelText: '세션 타입'),
+                  items: [
+                    for (final sessionType in SessionType.values)
+                      DropdownMenuItem(
+                        value: sessionType,
+                        child: Text(sessionType.wireValue),
+                      ),
+                  ],
+                  onChanged: _isCreating
+                      ? null
+                      : (sessionType) =>
+                            setState(() => _sessionType = sessionType!),
+                ),
+                if (_failureMessage != null) ...[
+                  const SizedBox(height: AppSizes.p16),
+                  Text(
+                    _failureMessage!,
+                    style: Theme.of(context).textTheme.bodySmall
+                        ?.copyWith(color: Theme.of(context).colorScheme.error),
+                  ),
+                ],
+                const SizedBox(height: AppSizes.p24),
+                FilledButton(
+                  onPressed: _isCreating ? null : _create,
+                  child: Text(_isCreating ? '만드는 중…' : '만들기'),
+                ),
+                const SizedBox(height: AppSizes.p8),
+                Text(
+                  '데스크탑에 worktree와 터미널 세션이 함께 만들어져 조금 걸립니다.',
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.labelSmall,
                 ),
               ],
-              const SizedBox(height: AppSizes.p24),
-              FilledButton(
-                onPressed: _isCreating ? null : _create,
-                child: Text(_isCreating ? '만드는 중…' : '만들기'),
-              ),
-              const SizedBox(height: AppSizes.p8),
-              Text(
-                '데스크탑에 worktree와 터미널 세션이 함께 만들어져 조금 걸립니다.',
-                textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.labelSmall,
-              ),
-            ],
+            ),
           ),
         ),
       ),
@@ -297,6 +306,7 @@ class _BaseBranchField extends ConsumerWidget {
     final currentProject = project;
     if (currentProject == null) {
       return DropdownButtonFormField<String>(
+        isExpanded: true,
         initialValue: null,
         decoration: const InputDecoration(labelText: '베이스 브랜치'),
         items: const [],
@@ -310,11 +320,15 @@ class _BaseBranchField extends ConsumerWidget {
     final options = {?selectedBranch, ...?branches}.toList();
 
     return DropdownButtonFormField<String>(
+      isExpanded: true,
       initialValue: selectedBranch,
       decoration: const InputDecoration(labelText: '베이스 브랜치'),
       items: [
         for (final branch in options)
-          DropdownMenuItem(value: branch, child: Text(branch)),
+          DropdownMenuItem(
+            value: branch,
+            child: Text(branch, maxLines: 1, overflow: TextOverflow.ellipsis),
+          ),
       ],
       onChanged: isEnabled ? onChanged : null,
     );
