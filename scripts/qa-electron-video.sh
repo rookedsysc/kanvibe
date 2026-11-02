@@ -22,6 +22,8 @@ record_and_run() {
       -framerate "${KANVIBE_QA_FRAMERATE:-15}" \
       -f x11grab \
       -i "${DISPLAY}" \
+      -filter_threads 1 \
+      -c:v libx264 -preset ultrafast -threads 2 \
       -pix_fmt yuv420p \
       "$VIDEO_PATH" >"$LOG_PATH" 2>&1 &
     ffmpeg_pid="$!"
@@ -42,7 +44,7 @@ record_and_run() {
     local first_shot
     first_shot="$(find "$RUN_DIR/screenshots" -type f -name '*.png' | sort | head -n 1 || true)"
     if [[ -n "$first_shot" ]]; then
-      ffmpeg -y -loop 1 -i "$first_shot" -t 5 -vf "scale=trunc(iw/2)*2:trunc(ih/2)*2" -pix_fmt yuv420p "$VIDEO_PATH" >>"$LOG_PATH" 2>&1 || true
+      ffmpeg -y -loop 1 -i "$first_shot" -t 5 -vf "scale=trunc(iw/2)*2:trunc(ih/2)*2" -filter_threads 1 -c:v libx264 -preset ultrafast -threads 2 -pix_fmt yuv420p "$VIDEO_PATH" >>"$LOG_PATH" 2>&1 || true
     fi
   fi
 
