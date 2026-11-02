@@ -31,7 +31,7 @@ class TerminalShortcutBar extends ConsumerWidget {
         settings.asData?.value[sessionType] ??
         TerminalShortcutProfile.defaults(sessionType);
     final shortcuts = {
-      for (final shortcut in terminalShortcuts(sessionType))
+      for (final shortcut in profile.shortcuts(sessionType))
         shortcut.id: shortcut,
     };
     return Focus(
@@ -50,8 +50,8 @@ class TerminalShortcutBar extends ConsumerWidget {
                       key: ValueKey(sessionType),
                       scrollDirection: Axis.horizontal,
                       padding: const EdgeInsets.symmetric(
-                        horizontal: 4,
-                        vertical: 4,
+                        horizontal: 2,
+                        vertical: 2,
                       ),
                       child: Row(
                         children: [
@@ -72,6 +72,15 @@ class TerminalShortcutBar extends ConsumerWidget {
             Semantics(
               identifier: 'shortcut-settings',
               child: IconButton(
+                constraints: const BoxConstraints.tightFor(
+                  width: 36,
+                  height: 36,
+                ),
+                padding: const EdgeInsets.all(4),
+                style: IconButton.styleFrom(
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  visualDensity: VisualDensity.standard,
+                ),
                 tooltip: '${sessionType.name} 단축키 설정',
                 onPressed: () => showModalBottomSheet<void>(
                   context: context,
@@ -80,7 +89,7 @@ class TerminalShortcutBar extends ConsumerWidget {
                   builder: (_) =>
                       TerminalShortcutSettingsSheet(sessionType: sessionType),
                 ),
-                icon: const Icon(Icons.tune, size: 20),
+                icon: const Icon(Icons.tune, size: 18),
               ),
             ),
           ],
@@ -97,7 +106,7 @@ class TerminalShortcutBar extends ConsumerWidget {
       identifier: 'shortcut-${shortcut.id}',
       selected: pressed,
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 4),
+        padding: const EdgeInsets.symmetric(horizontal: 2),
         child: Tooltip(
           message: shortcut.description,
           child: TextButton(
@@ -105,8 +114,10 @@ class TerminalShortcutBar extends ConsumerWidget {
                 ? null
                 : () => onShortcut(shortcut),
             style: TextButton.styleFrom(
-              minimumSize: const Size(44, 44),
-              padding: const EdgeInsets.symmetric(horizontal: 12),
+              minimumSize: const Size(40, 32),
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              visualDensity: VisualDensity.standard,
+              padding: const EdgeInsets.symmetric(horizontal: 8),
               foregroundColor: AppColors.textPrimary,
               backgroundColor: AppColors.buttonNeutral,
               shape: RoundedRectangleBorder(
@@ -119,7 +130,7 @@ class TerminalShortcutBar extends ConsumerWidget {
               ),
               textStyle: const TextStyle(
                 fontFamily: monoFontFamily,
-                fontSize: 14,
+                fontSize: 12,
               ),
             ),
             child: Text(shortcut.label),

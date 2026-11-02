@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'terminal_shortcut_combo_editor.dart';
+
 import '../../../../common/constants/app_colors.dart';
 import '../../../task_create/domain/session_type.dart';
 import '../../application/terminal_shortcut_controller.dart';
@@ -20,20 +22,49 @@ class _TerminalShortcutSettingsSheetState
     extends ConsumerState<TerminalShortcutSettingsSheet> {
   List<String>? _order;
   Set<String> _selected = {};
+  List<TerminalShortcut> _combos = [];
   bool _enabled = true;
   bool _isSaving = false;
   String? _error;
 
   void _loadDraft(TerminalShortcutProfile profile) {
     _enabled = profile.enabled;
+    _combos = [...profile.combos];
     _selected = profile.ids.toSet();
     _order = [
       ...profile.ids,
-      ...terminalShortcuts(widget.sessionType)
+      ...profile
+          .shortcuts(widget.sessionType)
           .map((key) => key.id)
           .where((id) => !_selected.contains(id)),
     ];
   }
+
+  Future<void> _editCombo([TerminalShortcut? existing]) async {
+    final combo = await showModalBottomSheet<TerminalShortcut>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (_) => TerminalShortcutComboEditor(combo: existing),
+    );
+    if (!mounted || combo == null) return;
+    setState(() {
+      final index = _combos.indexWhere((entry) => entry.id == combo.id);
+      if (index < 0) {
+        _combos.add(combo);
+        _order!.insert(0, combo.id);
+        _selected.add(combo.id);
+      } else {
+        _combos[index] = combo;
+      }
+    });
+  }
+
+  void _deleteCombo(String id) => setState(() {
+    _combos.removeWhere((combo) => combo.id == id);
+    _order!.remove(id);
+    _selected.remove(id);
+  });
 
   Future<void> _save() async {
     setState(() {
@@ -47,6 +78,7 @@ class _TerminalShortcutSettingsSheetState
             widget.sessionType,
             TerminalShortcutProfile(
               enabled: _enabled,
+              combos: _combos,
               ids: _order!.where(_selected.contains).toList(),
             ),
           );
@@ -69,7 +101,8 @@ class _TerminalShortcutSettingsSheetState
       _loadDraft(profiles[widget.sessionType]!);
     }
     final keys = {
-      for (final key in terminalShortcuts(widget.sessionType)) key.id: key,
+      for (final key in [...terminalShortcuts(widget.sessionType), ..._combos])
+        key.id: key,
     };
     return SizedBox(
       height: MediaQuery.sizeOf(context).height * .8,
@@ -113,6 +146,19 @@ class _TerminalShortcutSettingsSheetState
                   ? null
                   : (value) => setState(() => _enabled = value),
             ),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                child: TextButton.icon(
+                  onPressed: _isSaving || _combos.length >= maxTerminalCombos
+                      ? null
+                      : _editCombo,
+                  icon: const Icon(Icons.add),
+                  label: Text('콤보 추가 (${_combos.length}/$maxTerminalCombos)'),
+                ),
+              ),
+            ),
             const Padding(
               padding: EdgeInsets.symmetric(horizontal: 20, vertical: 8),
               child: Text(
@@ -136,19 +182,50 @@ class _TerminalShortcutSettingsSheetState
                     key: ValueKey(key.id),
                     value: _selected.contains(key.id),
                     title: Text(key.label),
-                    subtitle: Text(key.description),
+                    subtitle: Text(
+                      key.description,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
                     controlAffinity: ListTileControlAffinity.leading,
                     contentPadding: const EdgeInsets.symmetric(horizontal: 8),
-                    secondary: ReorderableDragStartListener(
-                      index: index,
-                      enabled: !_isSaving,
-                      child: Semantics(
-                        label: '${key.label} 순서 변경',
-                        child: const SizedBox.square(
-                          dimension: 48,
-                          child: Icon(Icons.drag_handle),
+                    secondary: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (key.strokes.isNotEmpty)
+                          PopupMenuButton<String>(
+                            tooltip: '${key.label} 콤보 동작',
+                            enabled: !_isSaving,
+                            onSelected: (action) {
+                              if (action == 'edit') {
+                                _editCombo(key);
+                              } else {
+                                _deleteCombo(key.id);
+                              }
+                            },
+                            itemBuilder: (_) => const [
+                              PopupMenuItem(
+                                value: 'edit',
+                                child: Text('콤보 편집'),
+                              ),
+                              PopupMenuItem(
+                                value: 'delete',
+                                child: Text('콤보 삭제'),
+                              ),
+                            ],
+                          ),
+                        ReorderableDragStartListener(
+                          index: index,
+                          enabled: !_isSaving,
+                          child: Semantics(
+                            label: '${key.label} 순서 변경',
+                            child: const SizedBox.square(
+                              dimension: 48,
+                              child: Icon(Icons.drag_handle),
+                            ),
+                          ),
                         ),
-                      ),
+                      ],
                     ),
                     onChanged: _isSaving
                         ? null

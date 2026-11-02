@@ -7,6 +7,7 @@ class TerminalShortcut {
     this.description, {
     this.input,
     this.action,
+    this.strokes = const [],
   });
 
   final String id;
@@ -14,6 +15,16 @@ class TerminalShortcut {
   final String description;
   final String? input;
   final String? action;
+  final List<TerminalShortcutStroke> strokes;
+
+  TerminalShortcut.combo(
+    this.id,
+    this.label,
+    List<TerminalShortcutStroke> strokes,
+  ) : description = strokes.map((stroke) => stroke.label).join(' → '),
+      input = null,
+      action = null,
+      strokes = List.unmodifiable(strokes);
 }
 
 const _commonShortcuts = [
@@ -83,12 +94,84 @@ List<TerminalShortcut> terminalShortcuts(SessionType type) => [
     ),
 ];
 
+const maxTerminalCombos = 12;
+const maxTerminalComboStrokes = 8;
+const maxTerminalComboLabelLength = 12;
+
+List<TerminalShortcut> terminalComboKeys() => [
+  ..._commonShortcuts.where(
+    (key) => key.input == null && key.id != 'ctrl' && key.id != 'alt',
+  ),
+  const TerminalShortcut('enter', 'Enter', 'Enter'),
+  const TerminalShortcut('backspace', 'Backspace', 'Backspace'),
+];
+
+class TerminalShortcutStroke {
+  const TerminalShortcutStroke({
+    required this.key,
+    this.character = '',
+    this.ctrl = false,
+    this.alt = false,
+  });
+
+  final String key;
+  final String character;
+  final bool ctrl;
+  final bool alt;
+
+  bool get isValid {
+    if (key != 'character') {
+      return terminalComboKeys().any((candidate) => candidate.id == key);
+    }
+    if (character.runes.length != 1) return false;
+    final rune = character.runes.single;
+    if (rune < 0x20 || rune == 0x7f) return false;
+    return !ctrl ||
+        (rune >= 0x40 && rune <= 0x7e) ||
+        rune == 0x20 ||
+        rune == 0x3f;
+  }
+
+  String get label {
+    final keyLabel = key == 'character'
+        ? (character == ' ' ? 'Space' : character)
+        : terminalComboKeys()
+                  .where((candidate) => candidate.id == key)
+                  .firstOrNull
+                  ?.label ??
+              key;
+    return [if (ctrl) 'Ctrl', if (alt) 'Alt', keyLabel].join('+');
+  }
+
+  TerminalShortcutStroke copyWith({
+    String? key,
+    String? character,
+    bool? ctrl,
+    bool? alt,
+  }) => TerminalShortcutStroke(
+    key: key ?? this.key,
+    character: character ?? this.character,
+    ctrl: ctrl ?? this.ctrl,
+    alt: alt ?? this.alt,
+  );
+}
+
 class TerminalShortcutProfile {
-  TerminalShortcutProfile({this.enabled = true, required List<String> ids})
-    : ids = List.unmodifiable(ids);
+  TerminalShortcutProfile({
+    this.enabled = true,
+    required List<String> ids,
+    List<TerminalShortcut> combos = const [],
+  }) : ids = List.unmodifiable(ids),
+       combos = List.unmodifiable(combos);
 
   final bool enabled;
   final List<String> ids;
+  final List<TerminalShortcut> combos;
+
+  List<TerminalShortcut> shortcuts(SessionType type) => [
+    ...terminalShortcuts(type),
+    ...combos,
+  ];
 
   factory TerminalShortcutProfile.defaults(SessionType type) =>
       TerminalShortcutProfile(

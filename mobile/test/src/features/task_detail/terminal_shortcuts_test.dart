@@ -173,11 +173,11 @@ void main() {
       expect(tester.takeException(), isNull);
       expect(
         tester.getSize(find.byType(IconButton)).width,
-        greaterThanOrEqualTo(44),
+        greaterThanOrEqualTo(32),
       );
       expect(
         tester.getSize(find.widgetWithText(TextButton, 'Esc')).height,
-        greaterThanOrEqualTo(44),
+        greaterThanOrEqualTo(32),
       );
     },
   );

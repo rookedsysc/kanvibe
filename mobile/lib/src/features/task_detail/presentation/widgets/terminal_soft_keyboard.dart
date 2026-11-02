@@ -78,6 +78,22 @@ class _TerminalSoftKeyboardState extends State<TerminalSoftKeyboard>
   }
 
   void _pressShortcut(TerminalShortcut shortcut) {
+    if (shortcut.strokes.isNotEmpty) {
+      _clearModifiers();
+      for (final stroke in shortcut.strokes) {
+        _ctrlPressed = stroke.ctrl;
+        _altPressed = stroke.alt;
+        if (stroke.key == 'character') {
+          _typeModifiedText(stroke.character);
+        } else {
+          _pressShortcut(
+            TerminalShortcut(stroke.key, stroke.label, stroke.label),
+          );
+        }
+        _clearModifiers();
+      }
+      return;
+    }
     if (shortcut.id == 'ctrl' || shortcut.id == 'alt') {
       setState(() {
         if (shortcut.id == 'ctrl') {
@@ -98,6 +114,8 @@ class _TerminalSoftKeyboardState extends State<TerminalSoftKeyboard>
     } else {
       final key = switch (shortcut.id) {
         'escape' => xterm.TerminalKey.escape,
+        'enter' => xterm.TerminalKey.enter,
+        'backspace' => xterm.TerminalKey.backspace,
         'tab' => xterm.TerminalKey.tab,
         'left' => xterm.TerminalKey.arrowLeft,
         'right' => xterm.TerminalKey.arrowRight,
