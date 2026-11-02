@@ -1,7 +1,11 @@
 import 'package:flutter/gestures.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter/widgets.dart';
+import 'package:flutter/material.dart';
 import 'package:xterm/xterm.dart' as xterm;
+
+import '../../../task_create/domain/session_type.dart';
+import '../../domain/terminal_shortcut.dart';
+import 'terminal_shortcut_bar.dart';
 
 /// 소프트 키보드로 친 글자를 터미널에 넣는다.
 ///
@@ -19,12 +23,18 @@ class TerminalSoftKeyboard extends StatefulWidget {
     required this.terminal,
     required this.controller,
     required this.child,
+    this.sessionType = SessionType.terminal,
+    this.onSessionAction,
+    this.isBusy = false,
     super.key,
   });
 
   final xterm.Terminal terminal;
   final xterm.TerminalController controller;
   final Widget child;
+  final SessionType sessionType;
+  final ValueChanged<String>? onSessionAction;
+  final bool isBusy;
 
   @override
   State<TerminalSoftKeyboard> createState() => _TerminalSoftKeyboardState();
@@ -33,6 +43,8 @@ class TerminalSoftKeyboard extends StatefulWidget {
 class _TerminalSoftKeyboardState extends State<TerminalSoftKeyboard>
     with TextInputClient
     implements DeltaTextInputClient {
+  bool _ctrlPressed = false;
+  bool _altPressed = false;
   TextInputConnection? _connection;
   TextEditingValue _buffer = _emptyBuffer;
 
@@ -56,6 +68,75 @@ class _TerminalSoftKeyboardState extends State<TerminalSoftKeyboard>
     super.dispose();
   }
 
+  @override
+  void didUpdateWidget(TerminalSoftKeyboard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.sessionType != widget.sessionType) {
+      _ctrlPressed = false;
+      _altPressed = false;
+    }
+  }
+
+  void _pressShortcut(TerminalShortcut shortcut) {
+    if (shortcut.id == 'ctrl' || shortcut.id == 'alt') {
+      setState(() {
+        if (shortcut.id == 'ctrl') {
+          _ctrlPressed = !_ctrlPressed;
+        } else {
+          _altPressed = !_altPressed;
+        }
+      });
+      return;
+    }
+    if (shortcut.action case final action?) {
+      _clearModifiers();
+      widget.onSessionAction?.call(action);
+      return;
+    }
+    if (shortcut.input case final input?) {
+      widget.terminal.textInput(input);
+    } else {
+      final key = switch (shortcut.id) {
+        'escape' => xterm.TerminalKey.escape,
+        'tab' => xterm.TerminalKey.tab,
+        'left' => xterm.TerminalKey.arrowLeft,
+        'right' => xterm.TerminalKey.arrowRight,
+        'up' => xterm.TerminalKey.arrowUp,
+        'down' => xterm.TerminalKey.arrowDown,
+        'home' => xterm.TerminalKey.home,
+        'end' => xterm.TerminalKey.end,
+        'pageUp' => xterm.TerminalKey.pageUp,
+        'pageDown' => xterm.TerminalKey.pageDown,
+        _ => null,
+      };
+      final cursorCode = switch (shortcut.id) {
+        'up' => 'A',
+        'down' => 'B',
+        'right' => 'C',
+        'left' => 'D',
+        'home' => 'H',
+        'end' => 'F',
+        _ => null,
+      };
+      if (cursorCode != null && !_ctrlPressed && !_altPressed) {
+        // xterm 4의 기본 입력기는 cursorKeysMode 대신 appKeypadMode를 읽는다.
+        final prefix = widget.terminal.cursorKeysMode ? '\x1bO' : '\x1b[';
+        widget.terminal.textInput('$prefix$cursorCode');
+      } else if (key != null) {
+        widget.terminal.keyInput(key, ctrl: _ctrlPressed, alt: _altPressed);
+      }
+    }
+    _clearModifiers();
+  }
+
+  void _clearModifiers() {
+    if (!_ctrlPressed && !_altPressed) return;
+    setState(() {
+      _ctrlPressed = false;
+      _altPressed = false;
+    });
+  }
+
   /// 제스처 경쟁에 끼지 않는 [Listener]로 본다. 탭 인식기를 하나 더 두면 xterm의 선택·스크롤 제스처와 겨루게 된다.
   ///
   /// 포커스는 xterm이 쥐고 있으므로 따로 만들지 않고 바깥에서 지켜보기만 한다. 상태 시트처럼 다른 화면이
@@ -68,17 +149,31 @@ class _TerminalSoftKeyboardState extends State<TerminalSoftKeyboard>
       if (!hasFocus) {
         _discardTap();
         _closeKeyboard();
+        _clearModifiers();
       }
     },
-    child: Listener(
-      onPointerDown: _onPointerDown,
-      onPointerMove: _onPointerMove,
-      onPointerUp: _onPointerUp,
-      onPointerCancel: (event) {
-        _activePointers.remove(event.pointer);
-        _discardTap();
-      },
-      child: widget.child,
+    child: Column(
+      children: [
+        Expanded(
+          child: Listener(
+            onPointerDown: _onPointerDown,
+            onPointerMove: _onPointerMove,
+            onPointerUp: _onPointerUp,
+            onPointerCancel: (event) {
+              _activePointers.remove(event.pointer);
+              _discardTap();
+            },
+            child: widget.child,
+          ),
+        ),
+        TerminalShortcutBar(
+          sessionType: widget.sessionType,
+          onShortcut: _pressShortcut,
+          ctrlPressed: _ctrlPressed,
+          altPressed: _altPressed,
+          isBusy: widget.isBusy,
+        ),
+      ],
     ),
   );
 
@@ -197,24 +292,52 @@ class _TerminalSoftKeyboardState extends State<TerminalSoftKeyboard>
     final lines = text.split('\n');
     for (var index = 0; index < lines.length; index++) {
       if (index > 0) {
-        widget.terminal.keyInput(xterm.TerminalKey.enter);
+        _pressModifiedKey(xterm.TerminalKey.enter);
       }
       if (lines[index].isNotEmpty) {
-        widget.terminal.textInput(lines[index]);
+        _typeModifiedText(lines[index]);
       }
     }
   }
 
+  void _typeModifiedText(String text) {
+    if (!_ctrlPressed && !_altPressed) {
+      widget.terminal.textInput(text);
+      return;
+    }
+    final runes = text.runes.toList();
+    final first = runes.first;
+    final canControl =
+        (first >= 0x40 && first <= 0x7f) || first == 0x20 || first == 0x3f;
+    if (_ctrlPressed && !canControl) {
+      widget.terminal.textInput(text);
+      return;
+    }
+    final character = _ctrlPressed
+        ? String.fromCharCode(first == 0x3f ? 0x7f : first & 0x1f)
+        : String.fromCharCode(first);
+    widget.terminal.textInput('${_altPressed ? '\x1b' : ''}$character');
+    _clearModifiers();
+    if (runes.length > 1) {
+      widget.terminal.textInput(String.fromCharCodes(runes.skip(1)));
+    }
+  }
+
+  void _pressModifiedKey(xterm.TerminalKey key) {
+    widget.terminal.keyInput(key, ctrl: _ctrlPressed, alt: _altPressed);
+    _clearModifiers();
+  }
+
   void _pressBackspace(int count) {
     for (var index = 0; index < count; index++) {
-      widget.terminal.keyInput(xterm.TerminalKey.backspace);
+      _pressModifiedKey(xterm.TerminalKey.backspace);
     }
   }
 
   @override
   void performAction(TextInputAction action) {
     if (action == TextInputAction.done || action == TextInputAction.newline) {
-      widget.terminal.keyInput(xterm.TerminalKey.enter);
+      _pressModifiedKey(xterm.TerminalKey.enter);
     }
   }
 
@@ -231,6 +354,7 @@ class _TerminalSoftKeyboardState extends State<TerminalSoftKeyboard>
   @override
   void connectionClosed() {
     _connection = null;
+    _clearModifiers();
   }
 
   @override

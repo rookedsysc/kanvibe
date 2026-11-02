@@ -124,6 +124,7 @@ const {
   unpairMobileDeviceByToken,
   updateMobileTaskStatus,
   writeToPane,
+  executeMobileTerminalShortcut,
 } = await import("@/desktop/main/services/mobileBridgeService");
 
 const TMUX_TASK = { sessionType: SessionType.TMUX, sessionName: "kanvibe-task", sshHost: null };
@@ -1396,5 +1397,97 @@ describe("첫 화면 스냅샷", () => {
 
     expect(receivedChunks[0]).toBe("\x1b[H\x1b[2J\x1b[3J$ ls\r\nREADME.md");
     unsubscribe();
+  });
+});
+
+
+describe("모바일 pane 단축키", () => {
+  it("선택 pane만 분할한 뒤 갱신된 목록을 돌려준다", async () => {
+    stubTmuxMirror();
+    let didSplit = false;
+    execGitMock.mockImplementation(async (command) => {
+      if (command.includes("split-window")) didSplit = true;
+      if (command.includes("list-panes")) return didSplit
+        ? `${MIRROR_PANE_LINE}\n%20\t@10\tbash\t40\t0\t40\t24\tfirst`
+        : MIRROR_PANE_LINE;
+      return "snapshot";
+    });
+    const result = await executeMobileTerminalShortcut("shortcut-task", "%19", "split-right");
+    expect(executedCommands()).toContain("tmux split-window -h -d -t '%19'");
+    expect(result.surfaces.sessionType).toBe(SessionType.TMUX);
+    expect(result.surfaces.tabs[0].panes[0].id).toBe("%19");
+    expect(result.screen).toBeUndefined();
+  });
+
+  it("분할이 목록에 늦게 나타나도 명령을 중복 실행하지 않고 기다린다", async () => {
+    vi.useFakeTimers();
+    try {
+      findOneByMock.mockResolvedValue(TMUX_TASK);
+      let listCalls = 0;
+      execGitMock.mockImplementation(async (command) => {
+        if (command.includes("list-panes")) {
+          listCalls += 1;
+          return listCalls > 2 ? `${MIRROR_PANE_LINE}\n%20\t@10\tbash\t40\t0\t40\t24\tfirst` : MIRROR_PANE_LINE;
+        }
+        return "snapshot";
+      });
+      const result = executeMobileTerminalShortcut("shortcut-task", "%19", "split-down");
+      await vi.advanceTimersByTimeAsync(1000);
+      expect((await result).surfaces.tabs[0].panes).toHaveLength(2);
+      expect(executedCommands().filter((command) => command.includes("split-window"))).toHaveLength(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("다른 태스크의 pane에는 단축키 명령을 실행하지 않는다", async () => {
+    stubTmuxMirror();
+    await expect(executeMobileTerminalShortcut("shortcut-task", "%3", "toggle-fullscreen"))
+      .rejects.toMatchObject({ reason: "session-not-running" });
+    expect(executedCommands().some((command) => command.includes("resize-pane"))).toBe(false);
+  });
+
+  it.each(["unknown", "toString", "; rm -rf /"])("알 수 없는 action %s는 셸 명령을 실행하지 않는다", async (action) => {
+    stubTmuxMirror();
+    await expect(executeMobileTerminalShortcut("shortcut-task", "%19", action))
+      .rejects.toMatchObject({ name: "MobileTaskInputError" });
+    expect(executedCommands()).toEqual([]);
+  });
+
+  it("일반 terminal은 멀티플렉서 명령을 거절한다", async () => {
+    findOneByMock.mockResolvedValue({ sessionType: SessionType.TERMINAL, sessionName: "term" });
+    await expect(executeMobileTerminalShortcut("shortcut-task", "term-pane", "split-down"))
+      .rejects.toMatchObject({ name: "MobileTaskInputError" });
+    expect(executedCommands()).toEqual([]);
+  });
+
+  it("tmux 복사 모드 화면은 pipe-pane에 나오지 않으므로 모드 스냅샷도 돌려준다", async () => {
+    stubTmuxMirror();
+    const result = await executeMobileTerminalShortcut("shortcut-task", "%19", "scroll-up");
+    expect(executedCommands()).toContain("tmux capture-pane -peM -t '%19'");
+    expect(result.screen).toBe(SNAPSHOT_REDRAW);
+  });
+
+  it("tmux 스크롤에서 돌아오면 복사 모드를 종료하고 원래 화면을 돌려준다", async () => {
+    stubTmuxMirror();
+    const result = await executeMobileTerminalShortcut("shortcut-task", "%19", "scroll-bottom");
+    expect(executedCommands()).toContain("tmux copy-mode -t '%19' && tmux send-keys -X -t '%19' cancel");
+    expect(executedCommands()).toContain("tmux capture-pane -pe -t '%19'");
+    expect(result.screen).toBe(SNAPSHOT_REDRAW);
+  });
+
+  it("원격 Zellij에서는 선택 pane의 id를 포함한 명령을 같은 호스트에서 실행한다", async () => {
+    const sshHost = "shortcut-zellij-host";
+    findOneByMock.mockResolvedValue({ sessionType: SessionType.ZELLIJ, sessionName: "remote-session", sshHost });
+    execGitMock.mockImplementation(async (command) => {
+      if (command.includes("--version")) return "zellij 0.44.0";
+      if (command.includes("list-sessions")) return "remote-session [Created 1m ago]";
+      if (command.includes("list-panes")) return JSON.stringify([{ id: 3, is_plugin: false, tab_id: 4, pane_x: 0, pane_y: 0, pane_columns: 80, pane_rows: 24 }]);
+      return "";
+    });
+    await executeMobileTerminalShortcut("shortcut-zellij", "terminal_3", "toggle-floating");
+    expect(execGitMock.mock.calls).toContainEqual([
+      "zellij --session 'remote-session' action toggle-pane-embed-or-floating --pane-id 'terminal_3'", sshHost,
+    ]);
   });
 });

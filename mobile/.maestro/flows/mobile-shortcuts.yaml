@@ -1,0 +1,65 @@
+appId: ${APP_ID}
+env:
+  SHORTCUT_DESKTOP_PORT: "39786"
+  SHORTCUT_VIDEO_PATH: qa-results/roky-harness/mobile-shortcuts/android-device
+  DESKTOP_API_FROM_HOST: http://127.0.0.1:39786
+---
+- launchApp:
+    clearState: true
+- startRecording: ${SHORTCUT_VIDEO_PATH}
+- runScript:
+    file: ../scripts/issue-dev-pairing-code.js
+- tapOn: "데스크탑 주소"
+- eraseText
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - inputText: "10.0.2.2"
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - inputText: "127.0.0.1"
+- tapOn: "포트"
+- eraseText
+- inputText: ${SHORTCUT_DESKTOP_PORT}
+- tapOn: "연결 코드"
+- eraseText
+- inputText: ${output.pairingCode}
+- hideKeyboard
+- tapOn: "연결"
+- extendedWaitUntil:
+    visible: "(?s).*Mobile shortcut terminal.*"
+    timeout: 40000
+- tapOn: "(?s).*Mobile shortcut terminal.*"
+- extendedWaitUntil:
+    visible:
+      id: pane-terminal
+    timeout: 20000
+- tapOn:
+    id: pane-terminal
+- assertVisible:
+    id: shortcut-escape
+- takeScreenshot: shortcut-above-keyboard
+- inputText: "printf SHORTCUT_QA_OK"
+- pressKey: Enter
+- tapOn:
+    id: shortcut-ctrl
+- inputText: "l"
+- tapOn:
+    id: shortcut-settings
+- assertVisible: "tmux 단축키"
+- assertVisible: "단축키 바 표시"
+- takeScreenshot: shortcut-settings
+- tapOn: "단축키 바 표시"
+- tapOn: "적용"
+- assertVisible: "tmux · 단축키 꺼짐"
+- tapOn:
+    id: shortcut-settings
+- tapOn: "기본값 복원"
+- tapOn: "적용"
+- assertVisible:
+    id: shortcut-escape
+- takeScreenshot: shortcut-restored
+- stopRecording

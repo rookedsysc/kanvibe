@@ -60,6 +60,7 @@ function createBridge(overrides = {}) {
     })),
     subscribeToPane: vi.fn(async () => () => {}),
     writeToPane: vi.fn(async () => {}),
+    executeMobileTerminalShortcut: vi.fn(async () => ({ surfaces: { tabs: [] }, screen: "screen" })),
     claimPaneViewport: vi.fn(async () => ({ resize: vi.fn(async () => {}), release: vi.fn(async () => {}) })),
     startMobilePairing: vi.fn(() => ({ code: "654321", expiresAt: 1_700_000_000_000 })),
     createMobileTask: vi.fn(async () => ({ id: "task-1", title: "feat/from-mobile" })),
@@ -1040,5 +1041,60 @@ describe("프로젝트 브랜치 목록 경로", () => {
     });
 
     expect(response.status).toBe(500);
+  });
+});
+
+
+describe("모바일 pane 단축키 API", () => {
+  const shortcutPath = "/api/mobile/tasks/task%20id/panes/%2519/shortcuts";
+
+  it("인증 없는 단축키는 실행하지 않는다", async () => {
+    const response = await request(shortcutPath, { method: "POST", body: JSON.stringify({ action: "split-right" }) });
+    expect(response.status).toBe(401);
+    expect(bridge.executeMobileTerminalShortcut).not.toHaveBeenCalled();
+  });
+
+  it("경로의 대상과 action만 서비스로 보내고 화면을 반환한다", async () => {
+    const response = await request(shortcutPath, {
+      method: "POST", headers: { authorization: "Bearer good" },
+      body: JSON.stringify({ action: "split-right", command: "injected", sshHost: "injected" }),
+    });
+    expect(bridge.executeMobileTerminalShortcut).toHaveBeenCalledExactlyOnceWith("task id", "%19", "split-right");
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({ success: true, surfaces: { tabs: [] }, screen: "screen" });
+  });
+
+  it.each([null, {}, { action: 1 }, { action: "" }])("action이 없는 본문 %s는 400으로 거절한다", async (body) => {
+    const response = await request(shortcutPath, {
+      method: "POST", headers: { authorization: "Bearer good" }, body: JSON.stringify(body),
+    });
+    expect(response.status).toBe(400);
+    expect(bridge.executeMobileTerminalShortcut).not.toHaveBeenCalled();
+  });
+
+  it("서비스가 거절한 action은 400으로 반환한다", async () => {
+    bridge.executeMobileTerminalShortcut.mockRejectedValue(Object.assign(new Error("지원하지 않는 단축키입니다"), { name: "MobileTaskInputError" }));
+    const response = await request(shortcutPath, {
+      method: "POST", headers: { authorization: "Bearer good" }, body: JSON.stringify({ action: "unknown" }),
+    });
+    expect(response.status).toBe(400);
+  });
+
+  it("다른 세션 pane은 409로 거절한다", async () => {
+    bridge.executeMobileTerminalShortcut.mockRejectedValue(Object.assign(new Error("missing"), { name: "SurfaceUnavailableError", reason: "session-not-running" }));
+    const response = await request(shortcutPath, {
+      method: "POST", headers: { authorization: "Bearer good" }, body: JSON.stringify({ action: "split-right" }),
+    });
+    expect(response.status).toBe(409);
+    expect(response.body).toEqual({ success: false, reason: "session-not-running" });
+  });
+
+  it("실패한 CLI 명령을 응답에 노출하지 않는다", async () => {
+    bridge.executeMobileTerminalShortcut.mockRejectedValue(new Error("ssh secret-host secret-path"));
+    const response = await request(shortcutPath, {
+      method: "POST", headers: { authorization: "Bearer good" }, body: JSON.stringify({ action: "split-right" }),
+    });
+    expect(response.status).toBe(500);
+    expect(response.body).toEqual({ success: false, error: "서버 오류" });
   });
 });

@@ -238,7 +238,18 @@ export function buildTmuxPaneStreamCommand(paneId: string): string {
  * `-l`은 문자열을 키 이름으로 해석하지 않고 글자 그대로 보내라는 뜻이고, `--`가 있어야 대시로 시작하는 입력이 옵션으로 먹히지 않는다.
  */
 export function buildTmuxSendKeysCommand(paneId: string, input: string): string {
-  return `tmux send-keys -t ${quoteForPosixShell(paneId)} -l -- ${quoteForPosixShell(input)}`;
+  const target = quoteForPosixShell(paneId);
+  if (!input.includes("\0")) {
+    return `tmux send-keys -t ${target} -l -- ${quoteForPosixShell(input)}`;
+  }
+
+  // 프로세스 인자는 NUL을 담을 수 없으므로 그 바이트만 tmux의 이름 있는 키로 전한다.
+  const commands: string[] = [];
+  for (const [index, text] of input.split("\0").entries()) {
+    if (index > 0) commands.push(`tmux send-keys -t ${target} -- C-Space`);
+    if (text) commands.push(`tmux send-keys -t ${target} -l -- ${quoteForPosixShell(text)}`);
+  }
+  return commands.join(" && ");
 }
 
 /**
@@ -337,4 +348,38 @@ export function buildZellijWritePaneCommand(sessionName: string, paneId: string,
   const session = quoteForPosixShell(sessionName);
   const bytes = Array.from(Buffer.from(input, "utf8")).join(" ");
   return `zellij --session ${session} action write -p ${quoteForPosixShell(paneId)} ${bytes}`;
+}
+
+
+export function buildTmuxPaneShortcutCommand(paneId: string, action: string): string | null {
+  const target = quoteForPosixShell(paneId);
+  switch (action) {
+    case "split-right": return `tmux split-window -h -d -t ${target}`;
+    case "split-down": return `tmux split-window -v -d -t ${target}`;
+    case "toggle-fullscreen": return `tmux resize-pane -Z -t ${target}`;
+    case "copy-mode": return `tmux copy-mode -t ${target}`;
+    case "scroll-up": return `tmux copy-mode -t ${target} && tmux send-keys -X -t ${target} page-up`;
+    case "scroll-down": return `tmux copy-mode -t ${target} && tmux send-keys -X -t ${target} page-down`;
+    case "scroll-bottom": return `tmux copy-mode -t ${target} && tmux send-keys -X -t ${target} cancel`;
+    default: return null;
+  }
+}
+
+export function buildZellijPaneShortcutCommand(sessionName: string, paneId: string, tabId: string, action: string): string | null {
+  const prefix = `zellij --session ${quoteForPosixShell(sessionName)} action`;
+  if (action === "split-right" || action === "split-down") {
+    // --pane-id는 in-place 교체 전용이므로 분할은 검증한 탭에 만들고 다른 클라이언트의 포커스를 유지한다.
+    const direction = action === "split-right" ? "right" : "down";
+    return `${prefix} new-pane --direction ${direction} --tab-id ${quoteForPosixShell(tabId)} --no-focus`;
+  }
+  let command: string;
+  switch (action) {
+    case "toggle-fullscreen": command = "toggle-fullscreen"; break;
+    case "toggle-floating": command = "toggle-pane-embed-or-floating"; break;
+    case "scroll-up": command = "page-scroll-up"; break;
+    case "scroll-down": command = "page-scroll-down"; break;
+    case "scroll-bottom": command = "scroll-to-bottom"; break;
+    default: return null;
+  }
+  return `${prefix} ${command} --pane-id ${quoteForPosixShell(paneId)}`;
 }

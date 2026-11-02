@@ -4,6 +4,8 @@
 import { describe, it, expect } from "vitest";
 import {
   buildScreenRedraw,
+  buildTmuxPaneShortcutCommand,
+  buildZellijPaneShortcutCommand,
   buildTmuxCancelPipePaneCommand,
   buildTmuxCapturePaneCommand,
   buildTmuxCursorPositionCommand,
@@ -96,6 +98,17 @@ describe("tmux pane 명령", () => {
 
   it("입력은 키 이름으로 해석되지 않게 글자 그대로 보낸다", () => {
     expect(buildTmuxSendKeysCommand("%19", "Enter")).toBe("tmux send-keys -t '%19' -l -- 'Enter'");
+  });
+
+  it.each([
+    ["\0", "tmux send-keys -t '%19' -- C-Space"],
+    ["\0\0", "tmux send-keys -t '%19' -- C-Space && tmux send-keys -t '%19' -- C-Space"],
+    ["한\0글", "tmux send-keys -t '%19' -l -- '한' && tmux send-keys -t '%19' -- C-Space && tmux send-keys -t '%19' -l -- '글'"],
+    ["\0--version\0", "tmux send-keys -t '%19' -- C-Space && tmux send-keys -t '%19' -l -- '--version' && tmux send-keys -t '%19' -- C-Space"],
+  ])("NUL 입력 %s도 프로세스 인자에 NUL 없이 원래 순서로 보낸다", (input, expected) => {
+    const command = buildTmuxSendKeysCommand("%19", input);
+    expect(command).not.toContain("\0");
+    expect(command).toBe(expected);
   });
 
   it("대시로 시작하는 입력이 tmux 옵션으로 먹히지 않는다", () => {
@@ -206,5 +219,54 @@ describe("zellij pane 명령", () => {
     expect(buildZellijWritePaneCommand("s", "terminal_0", "한")).toBe(
       "zellij --session 's' action write -p 'terminal_0' 237 149 156",
     );
+  });
+});
+
+
+describe("pane 단축키 명령", () => {
+  it.each([
+    ["split-right", "tmux split-window -h -d -t '%19'"],
+    ["split-down", "tmux split-window -v -d -t '%19'"],
+    ["toggle-fullscreen", "tmux resize-pane -Z -t '%19'"],
+    ["copy-mode", "tmux copy-mode -t '%19'"],
+    ["scroll-up", "tmux copy-mode -t '%19' && tmux send-keys -X -t '%19' page-up"],
+    ["scroll-down", "tmux copy-mode -t '%19' && tmux send-keys -X -t '%19' page-down"],
+    ["scroll-bottom", "tmux copy-mode -t '%19' && tmux send-keys -X -t '%19' cancel"],
+  ])("tmux %s는 prefix 대신 지정한 pane을 제어한다", (action, expected) => {
+    expect(buildTmuxPaneShortcutCommand("%19", action)).toBe(expected);
+  });
+
+  it.each(["split-right", "split-down"])("zellij %s는 선택 pane의 탭에 만들고 PC 포커스를 유지한다", (action) => {
+    expect(buildZellijPaneShortcutCommand("session", "terminal_3", "4", action)).toBe(
+      `zellij --session 'session' action new-pane --direction ${action === "split-right" ? "right" : "down"} --tab-id '4' --no-focus`,
+    );
+  });
+
+  it.each([
+    ["toggle-fullscreen", "toggle-fullscreen"],
+    ["toggle-floating", "toggle-pane-embed-or-floating"],
+    ["scroll-up", "page-scroll-up"],
+    ["scroll-down", "page-scroll-down"],
+    ["scroll-bottom", "scroll-to-bottom"],
+  ])("zellij %s는 다른 클라이언트 포커스 대신 pane id를 사용한다", (action, command) => {
+    expect(buildZellijPaneShortcutCommand("session", "terminal_3", "4", action)).toBe(
+      `zellij --session 'session' action ${command} --pane-id 'terminal_3'`,
+    );
+  });
+
+  it("셸 명령과 다른 세션 전용 action을 거절한다", () => {
+    for (const action of ["; rm -rf /", "toString", "unknown"]) {
+      expect(buildTmuxPaneShortcutCommand("%19", action)).toBeNull();
+      expect(buildZellijPaneShortcutCommand("session", "terminal_3", "4", action)).toBeNull();
+    }
+    expect(buildTmuxPaneShortcutCommand("%19", "toggle-floating")).toBeNull();
+    expect(buildZellijPaneShortcutCommand("session", "terminal_3", "4", "copy-mode")).toBeNull();
+  });
+
+  it("대상 이름의 셸 메타문자를 이스케이프한다", () => {
+    expect(buildTmuxPaneShortcutCommand(INJECTION_PANE_ID, "toggle-fullscreen"))
+      .toBe(`tmux resize-pane -Z -t ${"'%1'\"'\"'; rm -rf /; '\"'\"''"}`);
+    expect(buildZellijPaneShortcutCommand("a'b", "terminal_3", "4", "scroll-up"))
+      .toContain(`--session 'a'\"'\"'b'`);
   });
 });

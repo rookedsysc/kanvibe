@@ -10,6 +10,7 @@ import 'package:kanvibe_mobile/src/common/providers.dart';
 import 'package:kanvibe_mobile/src/features/task_detail/domain/mirror_pane.dart';
 import 'package:kanvibe_mobile/src/features/task_detail/presentation/widgets/pane_terminal_view.dart';
 import 'package:xterm/xterm.dart' as xterm;
+import 'package:kanvibe_mobile/src/features/task_detail/presentation/widgets/terminal_shortcut_bar.dart';
 
 import '../../../support/fake_desktop.dart';
 
@@ -1008,5 +1009,87 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(tester.testTextInput.isVisible, isFalse);
+  });
+  testWidgets(
+    'Ctrl and Alt affect one IME character and preserve keyboard focus',
+    (tester) async {
+      final client = FakeDesktopClient();
+      await pumpPane(
+        tester,
+        _pane,
+        client: client,
+        store: FakeConnectionStore(),
+      );
+      final base = await attachSoftKeyboard(tester);
+      await tester.tap(find.widgetWithText(TextButton, 'Ctrl'));
+      await tester.tap(find.widgetWithText(TextButton, 'Alt'));
+      expect(tester.testTextInput.isVisible, isTrue);
+      await sendImeBuffer(tester, base: base, previous: '', next: 'c');
+      await sendImeBuffer(tester, base: base, previous: 'c', next: 'cx');
+      expect(client.writtenInput['%19']?.join(), '\x1b\x03x');
+    },
+  );
+
+  testWidgets('accessory sends Esc Tab and application-mode cursor sequences', (
+    tester,
+  ) async {
+    final client = FakeDesktopClient();
+    await pumpPane(tester, _pane, client: client, store: FakeConnectionStore());
+    await attachSoftKeyboard(tester);
+    await tester.tap(find.widgetWithText(TextButton, 'Esc'));
+    await tester.tap(find.widgetWithText(TextButton, 'Tab'));
+    mountedTerminal(tester).write('\x1b[?1h');
+    await tester.ensureVisible(find.widgetWithText(TextButton, '↑'));
+    await tester.tap(find.widgetWithText(TextButton, '↑'));
+    expect(client.writtenInput['%19']?.join(), '\x1b\t\x1bOA');
+  });
+
+  testWidgets('keyboard inset leaves shortcut bar directly above keyboard', (
+    tester,
+  ) async {
+    tester.view.viewInsets = const FakeViewPadding(bottom: 300);
+    addTearDown(tester.view.resetViewInsets);
+    final client = FakeDesktopClient();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          desktopClientProvider.overrideWithValue(client),
+          connectionStoreProvider.overrideWithValue(FakeConnectionStore()),
+        ],
+        child: MaterialApp(
+          home: const Scaffold(
+            body: PaneTerminalView(taskId: 'task-1', pane: _pane),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final barBottom = tester
+        .getBottomRight(find.byType(TerminalShortcutBar))
+        .dy;
+    expect(
+      barBottom,
+      closeTo(
+        tester.view.physicalSize.height / tester.view.devicePixelRatio -
+            300 / tester.view.devicePixelRatio,
+        5,
+      ),
+    );
+    expect(tester.takeException(), isNull);
+  });
+  testWidgets('IME Backspace and Done consume the pending modifier', (
+    tester,
+  ) async {
+    final client = FakeDesktopClient();
+    await pumpPane(tester, _pane, client: client, store: FakeConnectionStore());
+    final base = await attachSoftKeyboard(tester);
+    await sendImeBuffer(tester, base: base, previous: '', next: 'a');
+    await tester.tap(find.widgetWithText(TextButton, 'Alt'));
+    await sendImeBuffer(tester, base: base, previous: 'a', next: '');
+    await sendImeBuffer(tester, base: base, previous: '', next: 'b');
+    await tester.tap(find.widgetWithText(TextButton, 'Ctrl'));
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await sendImeBuffer(tester, base: base, previous: 'b', next: 'bc');
+    expect(client.writtenInput['%19']?.join(), 'a\x17b\rc');
   });
 }

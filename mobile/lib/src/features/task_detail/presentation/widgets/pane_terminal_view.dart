@@ -12,6 +12,7 @@ import '../../../../common/network/desktop_client.dart';
 import '../../../../common/network/desktop_connection.dart';
 import '../../../../common/providers.dart';
 import '../../domain/mirror_pane.dart';
+import '../../../task_create/domain/session_type.dart';
 import 'terminal_soft_keyboard.dart';
 
 /// 선택한 pane을 화면 너비에 맞춰 표시한다.
@@ -20,10 +21,12 @@ class PaneTerminalView extends ConsumerStatefulWidget {
     required this.taskId,
     required this.pane,
     this.canResize = false,
+    this.sessionType = SessionType.terminal,
     this.canRespondToDeviceQueries = false,
     super.key,
   });
 
+  final SessionType sessionType;
   final String taskId;
   final MirrorPane pane;
   final bool canResize;
@@ -48,6 +51,7 @@ class _PaneTerminalViewState extends ConsumerState<PaneTerminalView>
   String _pendingEscape = '';
   ({int cols, int rows})? _lastSentSize;
   bool _isSuspended = false;
+  bool _isShortcutBusy = false;
   int _streamGeneration = 0;
 
   static const _firstFrameTimeout = Duration(seconds: 15);
@@ -88,6 +92,12 @@ class _PaneTerminalViewState extends ConsumerState<PaneTerminalView>
   @override
   void didUpdateWidget(PaneTerminalView oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (widget.canResize &&
+        (widget.pane.width != oldWidget.pane.width ||
+            widget.pane.height != oldWidget.pane.height)) {
+      _lastSentSize = null;
+      _sendViewport(_terminal.viewWidth, _terminal.viewHeight);
+    }
 
     /// 원본 격자 모드에서 데스크탑 pane을 분할하거나 창 크기를 바꾸면 같은 pane id로 새 좌표가 온다.
     /// key가 pane id라 element가 재사용되므로, 여기서 다시 재지 않으면 상자만 커지고 격자는 옛 크기로 남는다.
@@ -270,6 +280,27 @@ class _PaneTerminalViewState extends ConsumerState<PaneTerminalView>
     super.dispose();
   }
 
+  Future<void> _runShortcut(String action) async {
+    if (_isShortcutBusy || _isSuspended) return;
+    setState(() => _isShortcutBusy = true);
+    try {
+      final screen = await ref
+          .read(surfacesProvider(widget.taskId).notifier)
+          .runShortcut(widget.pane.id, action);
+      if (mounted && screen != null) _receiveOutput(screen);
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('단축키를 실행하지 못했습니다. 연결과 데스크탑 버전을 확인해 주세요.'),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isShortcutBusy = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final failureMessage = _failureMessage;
@@ -286,32 +317,41 @@ class _PaneTerminalViewState extends ConsumerState<PaneTerminalView>
         .ceilToDouble();
     metrics.dispose();
 
-    return ColoredBox(
-      color: AppColors.terminalBg,
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          return Scrollbar(
-            controller: _horizontalScroll,
-            thumbVisibility: true,
-            notificationPredicate: (notification) =>
-                notification.metrics.axis == Axis.horizontal,
-            child: SingleChildScrollView(
+    return TerminalSoftKeyboard(
+      terminal: _terminal,
+      controller: _terminalController,
+      sessionType: widget.sessionType,
+      onSessionAction: _runShortcut,
+      isBusy:
+          _isShortcutBusy ||
+          ref.watch(
+            surfacesProvider(widget.taskId)
+                .select((state) => state.asData?.value.isMutating ?? false),
+          ),
+      child: ColoredBox(
+        color: AppColors.terminalBg,
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            return Scrollbar(
               controller: _horizontalScroll,
-              scrollDirection: Axis.horizontal,
-              child: SizedBox(
-                width: !widget.canResize && terminalWidth > constraints.maxWidth
-                    ? terminalWidth
-                    : constraints.maxWidth,
-                height: constraints.maxHeight,
-                child: MediaQuery.removePadding(
-                  context: context,
-                  removeLeft: true,
-                  removeRight: true,
-                  removeTop: true,
-                  removeBottom: true,
-                  child: TerminalSoftKeyboard(
-                    terminal: _terminal,
-                    controller: _terminalController,
+              thumbVisibility: true,
+              notificationPredicate: (notification) =>
+                  notification.metrics.axis == Axis.horizontal,
+              child: SingleChildScrollView(
+                controller: _horizontalScroll,
+                scrollDirection: Axis.horizontal,
+                child: SizedBox(
+                  width:
+                      !widget.canResize && terminalWidth > constraints.maxWidth
+                      ? terminalWidth
+                      : constraints.maxWidth,
+                  height: constraints.maxHeight,
+                  child: MediaQuery.removePadding(
+                    context: context,
+                    removeLeft: true,
+                    removeRight: true,
+                    removeTop: true,
+                    removeBottom: true,
                     child: Semantics(
                       identifier: 'pane-terminal',
                       label: '터미널 입력',
@@ -329,9 +369,9 @@ class _PaneTerminalViewState extends ConsumerState<PaneTerminalView>
                   ),
                 ),
               ),
-            ),
-          );
-        },
+            );
+          },
+        ),
       ),
     );
   }

@@ -36,6 +36,22 @@ augroup END
 
 보드 상단의 **프로젝트 필터**에서 프로젝트를 검색하고 여러 개 선택할 수 있다. 본 프로젝트를 선택하면 같은 호스트의 연결된 worktree 태스크도 함께 표시한다. **전체 프로젝트**를 선택하면 필터를 해제한다. 선택은 앱 실행 중 PC마다 따로 유지되므로 상세 화면을 다녀오거나 다른 PC로 전환해도 해당 PC의 선택을 복원한다.
 
+## 터미널 단축키
+
+터미널 아래의 단축키 바는 소프트 키보드를 열면 키보드 바로 위에 붙는다. 좌우로 밀어 Esc, Tab, 방향키, Home/End, PgUp/PgDn과 Ctrl+C/D/Z/L을 사용한다. Ctrl·Alt는 켜고 다음 키를 한 번 누르면 해제된다. 두 키를 함께 켤 수도 있다. 한글 입력에는 Ctrl을 적용하지 않고 다음 제어 가능한 키를 기다린다.
+
+바 오른쪽 **설정**에서 현재 세션 종류의 키를 선택하고 오른쪽 손잡이로 순서를 바꾼 뒤 **적용**한다. 표시 여부·키 순서는 이 기기의 일반 terminal / tmux / Zellij별로 저장한다. **기본값 복원** 후 적용하면 초기 구성으로 돌아간다. 바를 꺼도 설정 버튼은 남는다. 설정을 닫으면 적용하지 않은 변경은 버린다.
+
+| 세션 | 추가 단축키 |
+| --- | --- |
+| terminal | 공통 키 |
+| tmux | 좌우·상하 분할, pane 확대, 복사 모드, 이전·다음 출력, 맨 아래 |
+| Zellij | 좌우·상하 분할, pane 확대, 선택 pane의 플로팅 전환, 이전·다음 출력, 맨 아래 |
+
+세션 제어는 키 접두사 대신 인증된 `POST /api/mobile/tasks/:taskId/panes/:paneId/shortcuts`의 허용된 동작을 실행하므로 사용자 키 바인딩과 무관하다. tmux 복사·스크롤 화면은 응답의 캡처로 갱신하며 **맨 아래**로 복귀한다. Zellij 분할은 선택 pane이 속한 탭에 새 pane을 생성하고 PC의 포커스는 유지한다. Zellij는 기존 미러링과 같은 pane ID 지원 버전이 필요하다. 이전 데스크톱 앱에 세션 제어 API가 없으면 실패 안내를 표시한다.
+
+단축키 정의는 `features/task_detail/domain/terminal_shortcut.dart`, 저장은 `data/terminal_shortcut_store.dart`, 공유 설정 상태는 `application/terminal_shortcut_controller.dart`, 버튼과 설정 시트는 `presentation/widgets/terminal_shortcut_*`에 있다. `TerminalSoftKeyboard`가 IME·Ctrl/Alt를 소유하고 `PaneTerminalView`가 스트림과 세션 제어 결과를 반영한다.
+
 ## 준비
 
 Flutter 버전은 `.fvmrc`에 고정되어 있다.

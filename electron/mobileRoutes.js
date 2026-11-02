@@ -40,6 +40,7 @@ const LOOPBACK_ADDRESSES = new Set(["127.0.0.1", "::1", "::ffff:127.0.0.1"]);
 
 /** 태스크 pane 경로에서 태스크 id를 꺼낸다 */
 const SURFACES_PATH_PATTERN = /^\/api\/mobile\/tasks\/([^/]+)\/surfaces$/;
+const PANE_SHORTCUTS_PATH_PATTERN = /^\/api\/mobile\/tasks\/([^/]+)\/panes\/([^/]+)\/shortcuts$/;
 const TASK_TABS_PATH_PATTERN = /^\/api\/mobile\/tasks\/([^/]+)\/tabs$/;
 
 /**
@@ -131,6 +132,12 @@ async function handleMobileRequest(request, response, { bridge, host, port, isDe
     const surfacesMatch = requestUrl.pathname.match(SURFACES_PATH_PATTERN);
     if (request.method === "GET" && surfacesMatch) {
       await handleSurfacesRequest(response, bridge, decodeURIComponent(surfacesMatch[1]));
+      return true;
+    }
+
+    const shortcutsMatch = requestUrl.pathname.match(PANE_SHORTCUTS_PATH_PATTERN);
+    if (request.method === "POST" && shortcutsMatch) {
+      await handlePaneShortcutRequest(request, response, bridge, decodeURIComponent(shortcutsMatch[1]), decodeURIComponent(shortcutsMatch[2]));
       return true;
     }
 
@@ -330,6 +337,30 @@ async function handleSurfacesRequest(response, bridge, taskId) {
     /** 예외 메시지에는 tmux/ssh 명령줄과 호스트 별칭이 섞여 있어 네트워크로 내보내지 않고 로그에만 남긴다 */
     console.error("[kanvibe] Mobile surfaces request failed:", error);
     writeJson(response, 500, { success: false, error: "서버 오류" });
+  }
+}
+
+async function handlePaneShortcutRequest(request, response, bridge, taskId, paneId) {
+  let body;
+  try {
+    body = await readJsonBody(request);
+  } catch {
+    writeJson(response, 400, { success: false, error: "잘못된 요청입니다" });
+    return;
+  }
+  if (typeof body?.action !== "string" || !body.action) {
+    writeJson(response, 400, { success: false, error: "단축키 동작이 필요합니다" });
+    return;
+  }
+  try {
+    const result = await bridge.executeMobileTerminalShortcut(taskId, paneId, body.action);
+    writeJson(response, 200, { success: true, ...result });
+  } catch (error) {
+    if (error && error.name === "SurfaceUnavailableError") {
+      writeJson(response, 409, { success: false, reason: error.reason });
+      return;
+    }
+    writeTaskWriteFailure(response, error, "Mobile pane shortcut failed");
   }
 }
 

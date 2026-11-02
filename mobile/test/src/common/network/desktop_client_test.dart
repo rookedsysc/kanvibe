@@ -20,6 +20,54 @@ DesktopClient clientReplying(int statusCode, String body) => DesktopClient(
 );
 
 void main() {
+  test(
+    'terminal shortcut uses authenticated pane-scoped POST and reads screen',
+    () async {
+      final client = DesktopClient(
+        httpClient: MockClient((request) async {
+          expect(request.method, 'POST');
+          expect(request.url.pathSegments, [
+            'api',
+            'mobile',
+            'tasks',
+            'task-1',
+            'panes',
+            '%19',
+            'shortcuts',
+          ]);
+          expect(request.headers['authorization'], 'Bearer test-token');
+          expect(jsonDecode(request.body), {'action': 'copy-mode'});
+          return http.Response(
+            jsonEncode({
+              'surfaces': {'sessionType': 'tmux', 'tabs': []},
+              'screen': 'copy viewport',
+            }),
+            200,
+          );
+        }),
+      );
+      final result = await client.runTerminalShortcut(
+        _connection,
+        'task-1',
+        '%19',
+        'copy-mode',
+      );
+      expect(result.screen, 'copy viewport');
+      expect(result.surfaces.tabs, isEmpty);
+    },
+  );
+
+  test(
+    'shortcut HTTP errors do not attempt to decode non-JSON bodies',
+    () async {
+      final client = clientReplying(404, '<html>old desktop</html>');
+      expect(
+        client.runTerminalShortcut(_connection, 'task-1', '%19', 'copy-mode'),
+        throwsA(isA<DesktopRequestException>()),
+      );
+    },
+  );
+
   test('터미널 탭 추가는 인증 POST를 보내고 새 pane과 갱신 목록을 받는다', () async {
     final client = DesktopClient(
       httpClient: MockClient((request) async {
