@@ -1,3 +1,4 @@
+import { listHerdrRunningAgentPanes } from "@/lib/herdr";
 import { execGit } from "@/lib/gitOperations";
 import { buildTmuxListPanesCommand, parseTmuxPaneList, type TmuxPaneSnapshot } from "@/lib/terminalTabs";
 import type { AiSessionProvider, RunningAgentPane } from "@/lib/aiSessions/types";
@@ -14,19 +15,19 @@ const PROVIDER_BY_PANE_COMMAND: Record<string, AiSessionProvider> = {
 };
 
 /**
- * tmux 서버 전체를 한 번 훑어 실행중인 에이전트 pane을 모은다.
+ * tmux 서버와 실행 중인 Herdr 세션에서 에이전트 pane을 모은다.
  *
  * 프로세스 목록을 직접 뒤지지 않는 이유는 두 가지다. pane 조회 한 번으로 실행 여부와 작업 경로를
  * 같이 얻을 수 있고, 세션을 클릭했을 때 전환할 window id까지 같은 줄에 들어 있다.
- * 대신 tmux 밖에서 도는 에이전트(zellij, KanVibe terminal 세션, 별도 터미널 앱)는 보이지 않으므로,
+ * zellij, KanVibe terminal 세션, 별도 터미널 앱의 에이전트는 이 조회에 보이지 않으므로,
  * 호출자는 세션 기록의 최근 활동을 폴백으로 함께 봐야 한다.
  */
 export async function listRunningAgentPanes(sshHost?: string | null): Promise<RunningAgentPane[]> {
-  const panes = await listTmuxPanes(sshHost);
-
-  return panes
-    .map(toRunningAgentPane)
-    .filter((pane): pane is RunningAgentPane => pane !== null);
+  const [panes, herdrPanes] = await Promise.all([listTmuxPanes(sshHost), listHerdrRunningAgentPanes(sshHost)]);
+  return [
+    ...panes.map(toRunningAgentPane).filter((pane): pane is RunningAgentPane => pane !== null),
+    ...herdrPanes,
+  ];
 }
 
 /** tmux 세션이 하나도 없으면 tmux는 오류로 끝난다. 실행중인 에이전트가 없는 정상 상태이므로 빈 목록으로 다룬다 */

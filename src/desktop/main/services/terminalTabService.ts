@@ -1,3 +1,4 @@
+import { readHerdrTabs, runHerdrCommand, moveHerdrTab } from "@/lib/herdr";
 import { SessionType, type KanbanTask } from "@/entities/KanbanTask";
 import { getTaskRepository } from "@/lib/database";
 import { execGit } from "@/lib/gitOperations";
@@ -119,6 +120,9 @@ async function readZellijTabs(target: TerminalSessionTarget): Promise<TerminalTa
 }
 
 async function readTabs(target: TerminalSessionTarget): Promise<TerminalTab[]> {
+  if (target.sessionType === SessionType.HERDR) {
+    return readHerdrTabs(target.sessionName, target.sshHost);
+  }
   if (target.sessionType === SessionType.TMUX) {
     return parseTmuxWindowList(
       await runTabCommand(buildTmuxListWindowsCommand(target.sessionName), target.sshHost),
@@ -169,6 +173,14 @@ export async function createTerminalTab(taskId: string): Promise<TerminalTabMuta
   }
 
   try {
+    if (target.sessionType === SessionType.HERDR) {
+      const tabs = await readTabs(target);
+      const workspaceId = (tabs.find((tab) => tab.isActive) ?? tabs[0])?.id.split(":")[0];
+      if (!workspaceId) throw new Error("Herdr 워크스페이스를 찾을 수 없습니다.");
+      await runHerdrCommand(target.sessionName, ["tab", "create", "--workspace", workspaceId,
+        ...(target.worktreePath ? ["--cwd", target.worktreePath] : []), "--focus"], target.sshHost);
+      return { ok: true };
+    }
     const createCommand = target.sessionType === SessionType.TMUX
       ? buildTmuxNewWindowCommand(target.sessionName, target.worktreePath)
       : buildZellijNewTabCommand(target.sessionName, target.worktreePath);
@@ -197,6 +209,11 @@ export async function selectTerminalTab(
   try {
     if (target.sessionType === SessionType.TMUX) {
       await runTabCommand(buildTmuxSelectWindowCommand(tabId), target.sshHost);
+      return { ok: true };
+    }
+
+    if (target.sessionType === SessionType.HERDR) {
+      await runHerdrCommand(target.sessionName, ["tab", "focus", tabId], target.sshHost);
       return { ok: true };
     }
 
@@ -249,6 +266,9 @@ export async function closeTerminalTab(
 
     if (target.sessionType === SessionType.TMUX) {
       await runTabCommand(buildTmuxKillWindowCommand(tabId), target.sshHost);
+    } else if (target.sessionType === SessionType.HERDR) {
+      if (!tabsBeforeClose.some((tab) => tab.id === tabId)) return { ok: false, error: "탭을 찾을 수 없습니다." };
+      await runHerdrCommand(target.sessionName, ["tab", "close", tabId], target.sshHost);
     } else if (await hasZellijTabIdSupport(target.sshHost)) {
       await runTabCommand(buildZellijCloseTabByIdCommand(target.sessionName, tabId), target.sshHost);
     } else {
@@ -291,6 +311,11 @@ export async function renameTerminalTab(
   try {
     if (target.sessionType === SessionType.TMUX) {
       await runTabCommand(buildTmuxRenameWindowCommand(tabId, trimmedName), target.sshHost);
+      return { ok: true };
+    }
+
+    if (target.sessionType === SessionType.HERDR) {
+      await runHerdrCommand(target.sessionName, ["tab", "rename", tabId, trimmedName], target.sshHost);
       return { ok: true };
     }
 
@@ -361,6 +386,19 @@ export async function moveTerminalTab(
         ),
         target.sshHost,
       );
+      return { ok: true };
+    }
+
+    if (target.sessionType === SessionType.HERDR) {
+      const workspaceId = currentTab.id.split(":")[0];
+      if (destinationTab.id.split(":")[0] !== workspaceId) {
+        return { ok: false, error: "Herdr 탭은 같은 워크스페이스 안에서 이동할 수 있습니다." };
+      }
+      const workspaceTabs = currentTabs.filter((tab) => tab.id.split(":")[0] === workspaceId);
+      const currentIndex = workspaceTabs.findIndex((tab) => tab.id === tabId);
+      const destinationIndex = workspaceTabs.findIndex((tab) => tab.id === destinationTab.id);
+      const insertIndex = currentIndex < destinationIndex ? destinationIndex + 1 : destinationIndex;
+      await moveHerdrTab(target.sessionName, tabId, insertIndex, target.sshHost);
       return { ok: true };
     }
 

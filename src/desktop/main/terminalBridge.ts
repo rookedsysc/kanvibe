@@ -156,7 +156,7 @@ export async function openTerminal(
   client.once("close", finalizeClient);
 
   try {
-    const tmuxPaneLayout = task.sessionType === SessionType.TMUX
+    const tmuxPaneLayout = (task.sessionType === SessionType.TMUX || task.sessionType === SessionType.HERDR)
       ? await getEffectivePaneLayout(task.projectId ?? undefined)
       : null;
 

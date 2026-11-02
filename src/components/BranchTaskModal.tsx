@@ -9,6 +9,7 @@ import type { Project } from "@/entities/Project";
 import { useEscapeKey } from "@/hooks/useEscapeKey";
 import BranchSearchInput from "./BranchSearchInput";
 import SessionTypeOptions from "./SessionTypeOptions";
+import { ensureSessionDependencyWithPrompt } from "@/desktop/renderer/utils/sessionDependencyPrompt";
 
 interface BranchTaskModalProps {
   task: KanbanTask;
@@ -66,6 +67,10 @@ export default function BranchTaskModal({
 
     startTransition(async () => {
       try {
+        if (sessionType === SessionType.HERDR && !await ensureSessionDependencyWithPrompt(
+          sessionType, projects.find((project) => project.id === selectedProjectId)?.sshHost, tc,
+        )) return;
+
         await branchFromTask(
           task.id,
           selectedProjectId,

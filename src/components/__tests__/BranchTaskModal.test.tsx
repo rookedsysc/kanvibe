@@ -149,4 +149,17 @@ describe("BranchTaskModal", () => {
     expect(mockEnsureSessionDependencyWithPrompt).not.toHaveBeenCalled();
     expect(onClose).toHaveBeenCalledTimes(1);
   });
+  it.each([true, false])("Herdr 설치 준비 결과 %s를 확인한 후에만 작업을 생성한다", async (ready) => {
+    const onClose = vi.fn();
+    mockEnsureSessionDependencyWithPrompt.mockResolvedValue(ready);
+    mockBranchFromTask.mockResolvedValue({ id: "herdr-task" });
+    render(<BranchTaskModal task={createTask()} projects={[createProject()]} defaultSessionType="herdr" onClose={onClose} />);
+    await waitFor(() => expect(mockGetProjectBranches).toHaveBeenCalled());
+    fireEvent.change(screen.getByPlaceholderText("branchPlaceholder"), { target: { value: "feature-herdr" } });
+    fireEvent.click(screen.getByRole("button", { name: "submit" }));
+    await waitFor(() => expect(mockEnsureSessionDependencyWithPrompt).toHaveBeenCalledWith("herdr", "remote-box", expect.any(Function)));
+    await waitFor(() => expect(mockBranchFromTask).toHaveBeenCalledTimes(ready ? 1 : 0));
+    expect(onClose).toHaveBeenCalledTimes(ready ? 1 : 0);
+  });
+
 });

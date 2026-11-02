@@ -293,3 +293,28 @@ describe("terminal 세션 탭 레지스트리", () => {
     expect(listLocalTerminalTabs("task-1").map((tab) => tab.id)).toEqual([firstTab.id]);
   });
 });
+
+describe("Herdr PTY 수명", () => {
+  it.each([false, true])("동시 %s 원격 연결에서도 PTY 하나를 공유하고 마지막 창만 분리한다", async (remote) => {
+    const git = await import("@/lib/gitOperations");
+    vi.mocked(git.execGit).mockResolvedValue(JSON.stringify({ result: { workspaces: [{ workspace_id: "w1" }] } }));
+    const terminal = await importTerminalModule();
+    const first = createMockWs();
+    const second = createMockWs();
+    const attach = (ws: MockWebSocket) => remote
+      ? terminal.attachRemoteSession("herdr-task", null, "host", SessionType.HERDR, "project-task", ws as never, { host: "host", hostname: "host", port: 22, username: "user", privateKeyPath: "/key" }, 120, 30, "/work")
+      : terminal.attachLocalSession("herdr-task", null, SessionType.HERDR, "project-task", ws as never, "/work");
+    await Promise.all([attach(first), attach(second)]);
+    expect(spawnedPtys).toHaveLength(1);
+    const launchedCommand = spawnCalls[0].args.join(" ");
+    expect(launchedCommand).toContain("--session");
+    expect(launchedCommand).not.toContain("'session' 'attach'");
+    expect(terminal.getActiveTerminalCount()).toBe(1);
+    first.triggerClose();
+    expect(spawnedPtys[0].kill).not.toHaveBeenCalled();
+    second.triggerClose();
+    expect(spawnedPtys[0].kill).toHaveBeenCalledOnce();
+    expect(terminal.getActiveTerminalCount()).toBe(0);
+    expect(vi.mocked(git.execGit).mock.calls.some(([command]) => command.includes("'session' 'stop'"))).toBe(false);
+  });
+});

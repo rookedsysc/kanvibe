@@ -8,7 +8,7 @@ const SESSION_DEPENDENCY_SUCCESS_CACHE_MS = 60_000;
 export interface SessionDependencyStatus {
   sessionType: SessionType;
   /** 설치가 필요 없는 세션 타입은 null이다 */
-  toolName: "tmux" | "zellij" | null;
+  toolName: "tmux" | "zellij" | "herdr" | null;
   sshHost: string | null;
   isRemote: boolean;
   available: boolean;
@@ -16,12 +16,14 @@ export interface SessionDependencyStatus {
 }
 
 /** terminal 세션은 KanVibe가 셸을 직접 띄우므로 설치할 도구가 없다 */
-function getToolName(sessionType: SessionType): "tmux" | "zellij" | null {
+function getToolName(sessionType: SessionType): "tmux" | "zellij" | "herdr" | null {
   switch (sessionType) {
     case SessionType.TMUX:
       return "tmux";
     case SessionType.ZELLIJ:
       return "zellij";
+    case SessionType.HERDR:
+      return "herdr";
     default:
       return null;
   }
@@ -56,6 +58,7 @@ function rememberAvailableTarget(toolName: string, sshHost?: string | null): voi
 export function getBlockedRemoteHostReason(sshHost: string): string | null {
   return blockedTargets.get(buildBlockedTargetKey("tmux", sshHost))
     ?? blockedTargets.get(buildBlockedTargetKey("zellij", sshHost))
+    ?? blockedTargets.get(buildBlockedTargetKey("herdr", sshHost))
     ?? null;
 }
 
@@ -65,7 +68,7 @@ async function hasSessionDependency(toolName: string, sshHost?: string | null): 
   }
 
   try {
-    await execGit(`command -v ${toolName} >/dev/null 2>&1`, sshHost);
+    await execGit(buildDependencyCheckCommand(toolName), sshHost);
     rememberAvailableTarget(toolName, sshHost);
     return true;
   } catch (error) {
@@ -135,7 +138,7 @@ export async function installSessionDependency(
 
   try {
     await execGit(buildInstallCommand(toolName), sshHost);
-    await execGit(`command -v ${toolName} >/dev/null 2>&1`, sshHost);
+    await execGit(buildDependencyCheckCommand(toolName), sshHost);
     rememberAvailableTarget(toolName, sshHost);
   } catch (error) {
     availableTargets.delete(blockedTargetKey);
@@ -182,7 +185,25 @@ export async function ensureRemoteSessionDependency(
   await ensureSessionDependency(sessionType, sshHost);
 }
 
+function buildDependencyCheckCommand(toolName: string): string {
+  if (toolName === "herdr") {
+    return 'command -v herdr >/dev/null 2>&1 || test -x "$HOME/.local/bin/herdr"';
+  }
+  return `command -v ${toolName} >/dev/null 2>&1`;
+}
+
 function buildInstallCommand(toolName: string): string {
+  if (toolName === "herdr") {
+    return [
+      `${buildDependencyCheckCommand(toolName)} && exit 0`,
+      'kanvibe_herdr_installer=$(mktemp) || exit 1',
+      `trap 'rm -f "$kanvibe_herdr_installer"' EXIT`,
+      'curl -fsSL https://herdr.dev/install.sh -o "$kanvibe_herdr_installer" || exit 1',
+      'HERDR_INSTALL_DIR="$HOME/.local/bin" sh "$kanvibe_herdr_installer" || exit 1',
+      buildDependencyCheckCommand(toolName),
+    ].join("\n");
+  }
+
   const installWithPrivilege = toolName === "zellij"
     ? [
         "cargo install --locked zellij",
