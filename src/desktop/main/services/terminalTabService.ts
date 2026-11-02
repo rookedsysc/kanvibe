@@ -29,11 +29,10 @@ import {
   buildZellijQueryTabNamesCommand,
   buildZellijRenameFocusedTabCommands,
   buildZellijRenameTabByIdCommand,
-  buildZellijVersionCommand,
   parseTmuxWindowList,
   parseZellijTabList,
   parseZellijTabNamesWithFocus,
-  supportsZellijTabIdCommands,
+  resolveZellijIdTargetingSupport,
 } from "@/lib/terminalTabs";
 import type {
   TerminalTab,
@@ -49,9 +48,6 @@ import type {
 
 /** 탭 명령은 짧게 끝나야 폴링이 밀리지 않는다 */
 const TAB_COMMAND_TIMEOUT_MS = 5_000;
-
-/** zellij 버전은 세션이 사는 동안 바뀌지 않으므로 호스트별로 한 번만 확인한다 */
-const zellijTabIdSupportByHost = new Map<string, boolean>();
 
 interface TerminalSessionTarget {
   sessionType: SessionType;
@@ -86,22 +82,8 @@ async function runTabCommands(commands: string[], sshHost: string | null): Promi
   }
 }
 
-async function hasZellijTabIdSupport(sshHost: string | null): Promise<boolean> {
-  const hostKey = sshHost ?? "local";
-  const cachedSupport = zellijTabIdSupportByHost.get(hostKey);
-  if (cachedSupport !== undefined) {
-    return cachedSupport;
-  }
-
-  let isSupported = false;
-  try {
-    isSupported = supportsZellijTabIdCommands(await runTabCommand(buildZellijVersionCommand(), sshHost));
-  } catch {
-    /** 버전을 못 읽으면 기능이 적은 구버전 경로로 간다 */
-  }
-
-  zellijTabIdSupportByHost.set(hostKey, isSupported);
-  return isSupported;
+function hasZellijTabIdSupport(sshHost: string | null): Promise<boolean> {
+  return resolveZellijIdTargetingSupport(sshHost, (command) => runTabCommand(command, sshHost));
 }
 
 async function readZellijTabs(target: TerminalSessionTarget): Promise<TerminalTab[]> {

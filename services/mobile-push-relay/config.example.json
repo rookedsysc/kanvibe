@@ -1,0 +1,6 @@
+{
+  "host": "127.0.0.1",
+  "port": 4890,
+  "relayToken": "<replace-with-a-random-secret-at-least-32-characters>",
+  "serviceAccountPath": "/absolute/path/outside/repository/firebase-service-account.json"
+}

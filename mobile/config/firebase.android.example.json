@@ -1,0 +1,6 @@
+{
+  "KANVIBE_FIREBASE_API_KEY": "<firebase-android-api-key>",
+  "KANVIBE_FIREBASE_APP_ID": "<firebase-android-app-id>",
+  "KANVIBE_FIREBASE_MESSAGING_SENDER_ID": "<firebase-project-number>",
+  "KANVIBE_FIREBASE_PROJECT_ID": "<firebase-project-id>"
+}

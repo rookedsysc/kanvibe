@@ -1,0 +1,183 @@
+# prepareNotificationDesktop.cjs의 새 격리 fixture가 필요하다. 정본 러너의 내부 녹화를 사용한다.
+appId: ${APP_ID}
+env:
+  DESKTOP_API_FROM_HOST: http://127.0.0.1:19736
+  PROBE_API_FROM_HOST: http://127.0.0.1:19737
+  EXPECT_UNREAD: "-1"
+  EXPECT_TOTAL: "-1"
+  EXPECT_READ: ""
+  EXPECT_EVENT: "false"
+  DESKTOP_ACTION: ""
+tags:
+  - journey
+---
+- runScript:
+    file: ../scripts/assert-notification-state.js
+    env:
+      EXPECT_UNREAD: "3"
+      EXPECT_TOTAL: "4"
+- launchApp:
+    clearState: true
+- setOrientation: PORTRAIT
+- extendedWaitUntil:
+    visible: "데스크탑에 연결"
+    timeout: 90000
+- runScript:
+    file: ../scripts/issue-dev-pairing-code.js
+- runFlow:
+    file: ../subflows/fill-connection-form.yaml
+    env:
+      PAIRING_CODE: ${output.pairingCode}
+- extendedWaitUntil:
+    visible:
+      id: project-filter
+    timeout: 40000
+- tapOn:
+    id: project-filter
+- tapOn:
+    id: project-filter-option-${output.alphaProjectId}
+- tapOn:
+    id: project-filter-close
+- assertVisible: "(?s).*Maestro Alpha Root.*"
+- assertVisible: "(?s).*Maestro Alpha Worktree.*"
+- assertNotVisible: "(?s).*Maestro Beta Root.*"
+- assertNotVisible: "(?s).*Maestro Open Task Original.*"
+- takeScreenshot: project-filter-alpha-worktree
+# 알림 화면을 오가도 현재 PC의 선택은 유지된다.
+- tapOn:
+    id: notification-center
+- extendedWaitUntil:
+    visible:
+      id: notification-${output.openTaskNotificationId}
+    timeout: 20000
+- pressKey: Back
+- extendedWaitUntil:
+    visible:
+      id: project-filter
+    timeout: 10000
+- assertVisible: "(?s).*Maestro Alpha Worktree.*"
+- assertNotVisible: "(?s).*Maestro Beta Root.*"
+- tapOn:
+    id: project-filter
+- tapOn:
+    id: project-filter-search
+- inputText: "Beta"
+- assertVisible:
+    id: project-filter-option-${output.betaProjectId}
+- assertNotVisible:
+    id: project-filter-option-${output.alphaProjectId}
+- tapOn:
+    id: project-filter-option-${output.betaProjectId}
+- tapOn:
+    id: project-filter-close
+- assertVisible: "(?s).*Maestro Alpha Root.*"
+- assertVisible: "(?s).*Maestro Alpha Worktree.*"
+- assertVisible: "(?s).*Maestro Beta Root.*"
+- takeScreenshot: project-filter-multiple-projects
+- tapOn:
+    id: project-filter
+- tapOn:
+    id: project-filter-all
+- tapOn:
+    id: project-filter-search
+- inputText: "no-matching-fixture"
+- assertVisible: "검색 결과가 없습니다."
+- tapOn:
+    id: project-filter-close
+- assertVisible: "(?s).*Maestro Alpha Worktree.*"
+- assertVisible: "(?s).*Maestro Beta Root.*"
+- tapOn:
+    id: notification-center
+- extendedWaitUntil:
+    visible:
+      id: notification-${output.alreadyReadNotificationId}
+    timeout: 20000
+- tapOn:
+    id: notifications-unread
+- assertNotVisible:
+    id: notification-${output.alreadyReadNotificationId}
+- assertVisible:
+    id: notification-${output.mobileReadNotificationId}
+- takeScreenshot: notifications-unread
+# 모바일 쓰기가 실제 데스크톱 저장소와 renderer 변경 신호까지 도착해야 통과한다.
+- tapOn:
+    id: notification-mark-read-${output.mobileReadNotificationId}
+- extendedWaitUntil:
+    notVisible:
+      id: notification-${output.mobileReadNotificationId}
+    timeout: 10000
+- runScript:
+    file: ../scripts/assert-notification-state.js
+    env:
+      EXPECT_UNREAD: "2"
+      EXPECT_TOTAL: "4"
+      EXPECT_READ: mobileRead
+      EXPECT_EVENT: "true"
+# 데스크톱의 기존 읽음 IPC가 모바일 WebSocket 재조회로 반영돼야 한다.
+- runScript:
+    file: ../scripts/assert-notification-state.js
+    env:
+      DESKTOP_ACTION: read-one
+      EXPECT_UNREAD: "1"
+      EXPECT_READ: desktopRead
+      EXPECT_EVENT: "true"
+- extendedWaitUntil:
+    notVisible:
+      id: notification-${output.desktopReadNotificationId}
+    timeout: 10000
+- runScript:
+    file: ../scripts/assert-notification-state.js
+    env:
+      DESKTOP_ACTION: create
+      EXPECT_UNREAD: "2"
+      EXPECT_TOTAL: "5"
+      EXPECT_EVENT: "true"
+- extendedWaitUntil:
+    visible:
+      id: notification-${output.liveNotificationId}
+    timeout: 10000
+- takeScreenshot: notifications-desktop-live-sync
+- runScript:
+    file: ../scripts/assert-notification-state.js
+    env:
+      DESKTOP_ACTION: update-task
+      EXPECT_UNREAD: "2"
+- tapOn:
+    id: notification-${output.openTaskNotificationId}
+- extendedWaitUntil:
+    visible: "(?s).*${output.latestTaskTitle}.*"
+    timeout: 20000
+- assertVisible: "이 태스크에는 터미널 세션이 없습니다."
+- takeScreenshot: notification-opens-latest-task
+- runScript:
+    file: ../scripts/assert-notification-state.js
+    env:
+      EXPECT_UNREAD: "1"
+      EXPECT_READ: openTask
+      EXPECT_EVENT: "true"
+- pressKey: Back
+- extendedWaitUntil:
+    visible:
+      id: notifications-mark-all-read
+    timeout: 10000
+- tapOn:
+    id: notifications-mark-all-read
+- extendedWaitUntil:
+    visible: "읽지 않은 알림이 없습니다."
+    timeout: 10000
+- runScript:
+    file: ../scripts/assert-notification-state.js
+    env:
+      EXPECT_UNREAD: "0"
+      EXPECT_TOTAL: "5"
+      EXPECT_EVENT: "true"
+- takeScreenshot: notifications-all-read
+- tapOn:
+    id: notifications-all
+- assertVisible:
+    id: notification-${output.alreadyReadNotificationId}
+- scrollUntilVisible:
+    element:
+      id: notification-${output.mobileReadNotificationId}
+    direction: DOWN
+    timeout: 10000

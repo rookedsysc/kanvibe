@@ -1,0 +1,44 @@
+appId: ${APP_ID}
+env:
+  DESKTOP_API_FROM_HOST: http://127.0.0.1:19736
+  PROBE_API_FROM_HOST: http://127.0.0.1:19737
+---
+- launchApp:
+    clearState: true
+- setOrientation: PORTRAIT
+- extendedWaitUntil:
+    visible: "데스크탑에 연결"
+    timeout: 90000
+- runFlow: ../subflows/pairs-and-opens-board.yaml
+- runFlow: ../subflows/opens-session-task-terminal.yaml
+- assertVisible:
+    id: create-task-from-current
+- assertVisible:
+    id: create-terminal-tab
+- assertNotVisible: "출력 수신 중"
+- assertNotVisible: "넓게 보기"
+- assertNotVisible: "붙여넣기"
+- takeScreenshot: terminal-header-portrait
+- setOrientation: LANDSCAPE_LEFT
+- takeScreenshot: terminal-header-landscape
+- setOrientation: PORTRAIT
+- tapOn:
+    id: create-terminal-tab
+- runScript:
+    file: ../scripts/assert-terminal-tab-created.js
+    env:
+      MARKER: ""
+- extendedWaitUntil:
+    visible:
+      id: terminal-tab-${output.createdPaneId}
+    timeout: 10000
+- tapOn:
+    id: pane-terminal
+- inputText: "touch MAESTRO_NEW_TAB_OK"
+- pressKey: Enter
+- runScript:
+    file: ../scripts/assert-terminal-tab-created.js
+    env:
+      MARKER: MAESTRO_NEW_TAB_OK
+- hideKeyboard
+- takeScreenshot: terminal-new-tab-command-ran
