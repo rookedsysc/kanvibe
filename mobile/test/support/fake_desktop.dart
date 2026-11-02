@@ -7,6 +7,7 @@ import 'package:kanvibe_mobile/src/common/network/desktop_client.dart';
 import 'package:kanvibe_mobile/src/common/network/desktop_connection.dart';
 import 'package:kanvibe_mobile/src/common/providers.dart';
 import 'package:kanvibe_mobile/src/features/board/domain/task_status.dart';
+import 'package:kanvibe_mobile/src/features/chat_history/domain/chat_history.dart';
 import 'package:kanvibe_mobile/src/features/connection/data/connection_store.dart';
 import 'package:kanvibe_mobile/src/features/connection/domain/saved_connections.dart';
 import 'package:kanvibe_mobile/src/features/notifications/domain/inbox_notification.dart';
@@ -286,6 +287,22 @@ class FakeDesktopClient implements DesktopClient {
     pairCalls.add('$host:$port');
     return pairToken;
   }
+
+  @override
+  Future<ChatHistoryPage> fetchChatHistory(
+    DesktopConnection connection,
+    String taskId, {
+    String? query,
+    String? cursor,
+  }) async => const ChatHistoryPage(sessions: [], providers: []);
+
+  @override
+  Future<ChatMessagePage> fetchChatMessages(
+    DesktopConnection connection,
+    String taskId,
+    ChatSession session, {
+    String? cursor,
+  }) async => const ChatMessagePage(messages: []);
 
   @override
   void close() {}
