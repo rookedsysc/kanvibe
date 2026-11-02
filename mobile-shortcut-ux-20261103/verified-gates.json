@@ -1,0 +1,137 @@
+{
+  "commit": "8ca89bc7381b5551324eb2f912bfec7832454045",
+  "source_proof": {
+    "source_sha256": "238ffe4ccd65e1843ef0ed9d3ff06d4418b2df46b84594eab2944eb1bdf9df61",
+    "gate_head": "f1ee6562f9ee1996b4b294f6862d09e22736d883",
+    "diff_object_hash": "24e0824aa6412e1f56751a8308f0643631a51e68",
+    "commit": "8ca89bc7381b5551324eb2f912bfec7832454045",
+    "committed_diff_object_hash": "24e0824aa6412e1f56751a8308f0643631a51e68",
+    "committed_source_sha256": "238ffe4ccd65e1843ef0ed9d3ff06d4418b2df46b84594eab2944eb1bdf9df61",
+    "same_content": true
+  },
+  "gates": {
+    "pass-analyze": {
+      "command": [
+        "fvm",
+        "flutter",
+        "analyze",
+        "--no-pub"
+      ],
+      "cwd": "mobile",
+      "head": "f1ee6562f9ee1996b4b294f6862d09e22736d883",
+      "before": "238ffe4ccd65e1843ef0ed9d3ff06d4418b2df46b84594eab2944eb1bdf9df61",
+      "after": "238ffe4ccd65e1843ef0ed9d3ff06d4418b2df46b84594eab2944eb1bdf9df61",
+      "exit": 0,
+      "seconds": 9.047078132629395
+    },
+    "pass-format": {
+      "command": [
+        "fvm",
+        "dart",
+        "format",
+        "--output=none",
+        "--set-exit-if-changed",
+        "lib",
+        "test"
+      ],
+      "cwd": "mobile",
+      "head": "f1ee6562f9ee1996b4b294f6862d09e22736d883",
+      "before": "238ffe4ccd65e1843ef0ed9d3ff06d4418b2df46b84594eab2944eb1bdf9df61",
+      "after": "238ffe4ccd65e1843ef0ed9d3ff06d4418b2df46b84594eab2944eb1bdf9df61",
+      "exit": 0,
+      "seconds": 5.319145917892456
+    },
+    "pass-mobile": {
+      "command": [
+        "fvm",
+        "flutter",
+        "test",
+        "--no-pub",
+        "--concurrency=2",
+        "--reporter",
+        "json"
+      ],
+      "cwd": "mobile",
+      "head": "f1ee6562f9ee1996b4b294f6862d09e22736d883",
+      "before": "238ffe4ccd65e1843ef0ed9d3ff06d4418b2df46b84594eab2944eb1bdf9df61",
+      "after": "238ffe4ccd65e1843ef0ed9d3ff06d4418b2df46b84594eab2944eb1bdf9df61",
+      "exit": 0,
+      "seconds": 162.055114030838
+    },
+    "pass-apk": {
+      "command": [
+        "fvm",
+        "flutter",
+        "build",
+        "apk",
+        "--debug",
+        "--no-pub"
+      ],
+      "cwd": "mobile",
+      "head": "f1ee6562f9ee1996b4b294f6862d09e22736d883",
+      "before": "238ffe4ccd65e1843ef0ed9d3ff06d4418b2df46b84594eab2944eb1bdf9df61",
+      "after": "238ffe4ccd65e1843ef0ed9d3ff06d4418b2df46b84594eab2944eb1bdf9df61",
+      "exit": 0,
+      "seconds": 43.85125517845154
+    },
+    "pass-check": {
+      "command": [
+        "pnpm",
+        "check"
+      ],
+      "cwd": ".",
+      "head": "f1ee6562f9ee1996b4b294f6862d09e22736d883",
+      "before": "238ffe4ccd65e1843ef0ed9d3ff06d4418b2df46b84594eab2944eb1bdf9df61",
+      "after": "238ffe4ccd65e1843ef0ed9d3ff06d4418b2df46b84594eab2944eb1bdf9df61",
+      "exit": 0,
+      "seconds": 5.08509087562561
+    },
+    "pass-node-tests": {
+      "command": [
+        "pnpm",
+        "test"
+      ],
+      "cwd": ".",
+      "head": "f1ee6562f9ee1996b4b294f6862d09e22736d883",
+      "before": "238ffe4ccd65e1843ef0ed9d3ff06d4418b2df46b84594eab2944eb1bdf9df61",
+      "after": "238ffe4ccd65e1843ef0ed9d3ff06d4418b2df46b84594eab2944eb1bdf9df61",
+      "exit": 0,
+      "seconds": 96.5076630115509
+    },
+    "pass-build": {
+      "command": [
+        "pnpm",
+        "build"
+      ],
+      "cwd": ".",
+      "head": "f1ee6562f9ee1996b4b294f6862d09e22736d883",
+      "before": "238ffe4ccd65e1843ef0ed9d3ff06d4418b2df46b84594eab2944eb1bdf9df61",
+      "after": "238ffe4ccd65e1843ef0ed9d3ff06d4418b2df46b84594eab2944eb1bdf9df61",
+      "exit": 0,
+      "seconds": 57.1171760559082
+    },
+    "visual-pass": {
+      "command": [
+        "fvm",
+        "flutter",
+        "test",
+        "../qa-results/roky-harness/shortcut-ux/preview_test.dart",
+        "--no-pub",
+        "--reporter",
+        "json"
+      ],
+      "cwd": "mobile",
+      "head": "f1ee6562f9ee1996b4b294f6862d09e22736d883",
+      "before": "238ffe4ccd65e1843ef0ed9d3ff06d4418b2df46b84594eab2944eb1bdf9df61",
+      "after": "238ffe4ccd65e1843ef0ed9d3ff06d4418b2df46b84594eab2944eb1bdf9df61",
+      "exit": 0,
+      "seconds": 5.478855133056641
+    }
+  },
+  "counts": {
+    "flutter": 273,
+    "node": 1863
+  },
+  "device": "UNVERIFIED; diagnostic run stopped before pairing; no final-tree journey recording",
+  "images": "Flutter widget renders with local test fonts; not native device screenshots"
+}

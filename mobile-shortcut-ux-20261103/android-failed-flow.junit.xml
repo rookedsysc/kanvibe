@@ -1,0 +1,8 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<testsuites>
+  <testsuite name="Test Suite" device="ShortcutUx20261102" tests="1" failures="1" time="105.0">
+    <testcase id="recording-wrapper" name="recording-wrapper" classname="recording-wrapper" file="qa-results/roky-harness/shortcut-ux/recording-wrapper.yaml" time="105.0" status="ERROR">
+      <failure>Element not found: Text matching regex: 데스크탑 주소</failure>
+    </testcase>
+  </testsuite>
+</testsuites>
