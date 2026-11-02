@@ -21,13 +21,18 @@ let port;
 let openSockets;
 let unpairedListeners;
 let mobileEventListeners;
+let notificationChangeListeners;
 
 /** 헤더마다 다른 기기가 오게 두어야 스트림 하나를 끊는 것이 다른 기기까지 끊는지 가려낼 수 있다 */
 const DEVICE_IDS = { "Bearer good": "device-good", "Bearer second": "device-second" };
+const INBOX_NOTIFICATION = {
+  id: "notice-1", title: "리뷰 요청", body: "변경을 확인해 주세요", taskId: "task-1", isRead: false, createdAt: "2026-11-01T00:00:00.000Z",
+};
 
 function createBridge(overrides = {}) {
   unpairedListeners = new Set();
   mobileEventListeners = new Set();
+  notificationChangeListeners = new Set();
 
   return {
     authorizeMobileRequest: vi.fn(async (header) => DEVICE_IDS[header] ?? null),
@@ -39,6 +44,13 @@ function createBridge(overrides = {}) {
     unpairMobileDeviceByToken: vi.fn(async () => true),
     getMobileBoard: vi.fn(async () => ({ columns: [] })),
     getMobileTask: vi.fn(async () => ({ id: "task-1", title: "알림 태스크", projectName: "kanvibe" })),
+    getMobileNotifications: vi.fn(async () => [INBOX_NOTIFICATION]),
+    markMobileNotificationRead: vi.fn(async () => ({ ...INBOX_NOTIFICATION, isRead: true })),
+    markAllMobileNotificationsRead: vi.fn(async () => {}),
+    onMobileNotificationsChanged: vi.fn((listener) => {
+      notificationChangeListeners.add(listener);
+      return () => notificationChangeListeners.delete(listener);
+    }),
     updateMobileNotificationSubscription: vi.fn(async () => true),
     deleteMobileNotificationSubscription: vi.fn(async () => true),
     getTaskSurfaces: vi.fn(async () => ({ panes: [] })),
@@ -301,6 +313,88 @@ describe("모바일 상태 알림 경로", () => {
     server.close();
     expect(await closing).toEqual({ code: 1001, reason: "server-shutdown" });
     expect(mobileEventListeners.size).toBe(0);
+    expect(notificationChangeListeners.size).toBe(0);
+  });
+});
+
+describe("모바일 알림함 경로", () => {
+  const headers = { authorization: "Bearer good" };
+
+  it("저장된 알림 목록을 성공 응답으로 돌려준다", async () => {
+    expect(await request("/api/mobile/notifications", { headers })).toEqual({
+      status: 200, body: { success: true, notifications: [INBOX_NOTIFICATION] },
+    });
+  });
+
+  it("알림이 없으면 빈 목록을 돌려준다", async () => {
+    bridge.getMobileNotifications.mockResolvedValue([]);
+
+    expect(await request("/api/mobile/notifications", { headers })).toEqual({
+      status: 200, body: { success: true, notifications: [] },
+    });
+  });
+
+  it("본문 없는 읽음 요청은 경로의 식별자를 풀어 서비스에 넘기고 변경 알림을 돌려준다", async () => {
+    expect(await request("/api/mobile/notifications/notice%201/read", { method: "PATCH", headers })).toEqual({
+      status: 200, body: { success: true, notification: { ...INBOX_NOTIFICATION, isRead: true } },
+    });
+    expect(bridge.markMobileNotificationRead).toHaveBeenCalledWith("notice 1");
+  });
+
+  it("없는 알림의 읽음 요청은 404로 답한다", async () => {
+    bridge.markMobileNotificationRead.mockResolvedValue(null);
+
+    expect(await request("/api/mobile/notifications/missing/read", { method: "PATCH", headers })).toEqual({
+      status: 404, body: { success: false, error: "없는 알림입니다" },
+    });
+  });
+
+  it("본문 없는 모두 읽음 요청은 성공 응답을 돌려준다", async () => {
+    expect(await request("/api/mobile/notifications/read-all", { method: "POST", headers })).toEqual({
+      status: 200, body: { success: true },
+    });
+    expect(bridge.markAllMobileNotificationsRead).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ["GET", "/api/mobile/notifications", "getMobileNotifications"],
+    ["PATCH", "/api/mobile/notifications/notice-1/read", "markMobileNotificationRead"],
+    ["POST", "/api/mobile/notifications/read-all", "markAllMobileNotificationsRead"],
+  ])("%s %s는 인증 전 서비스를 호출하지 않는다", async (method, path, service) => {
+    expect(await request(path, { method })).toEqual({
+      status: 401, body: { success: false, error: "연결되지 않은 기기입니다" },
+    });
+    expect(bridge[service]).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["GET", "/api/mobile/notifications", "getMobileNotifications"],
+    ["PATCH", "/api/mobile/notifications/notice-1/read", "markMobileNotificationRead"],
+    ["POST", "/api/mobile/notifications/read-all", "markAllMobileNotificationsRead"],
+  ])("%s %s 서비스 오류는 내부 내용을 감춘 500으로 답한다", async (method, path, service) => {
+    bridge[service].mockRejectedValue(new Error("private settings path"));
+
+    expect(await request(path, { method, headers })).toEqual({
+      status: 500, body: { success: false, error: "서버 오류" },
+    });
+  });
+
+  it("알림 저장소 변경은 연결된 기기들에게 invalidation만 보낸다", async () => {
+    const firstMessages = [];
+    const secondMessages = [];
+    const first = new WebSocket(`ws://${HOST}:${port}/api/mobile/events`, { headers });
+    const second = new WebSocket(`ws://${HOST}:${port}/api/mobile/events`, { headers: { authorization: "Bearer second" } });
+    first.on("message", (message) => firstMessages.push(JSON.parse(message.toString())));
+    second.on("message", (message) => secondMessages.push(JSON.parse(message.toString())));
+    await waitFor(() => firstMessages.length === 1 && secondMessages.length === 1);
+
+    notificationChangeListeners.forEach((listener) => listener());
+
+    await waitFor(() => firstMessages.length === 2 && secondMessages.length === 2);
+    expect(firstMessages).toEqual([{ type: "connected" }, { type: "notifications-changed" }]);
+    expect(secondMessages).toEqual(firstMessages);
+    first.close();
+    second.close();
   });
 });
 

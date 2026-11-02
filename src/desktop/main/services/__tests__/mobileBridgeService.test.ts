@@ -3,6 +3,7 @@
  */
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { SessionType } from "@/entities/KanbanTask";
+import type { AppNotification } from "@/desktop/shared/notifications";
 
 const appSettingsStore = new Map<string, string>();
 const execGitMock = vi.fn<(command: string, sshHost?: string | null) => Promise<string>>();
@@ -91,6 +92,7 @@ vi.mock("child_process", async (importOriginal) => ({
 
 const { attachClientToTerminalTab, createLocalTerminalTab, killAllTerminalSessions } = await import("@/lib/terminal");
 const { CallbackTerminalClient } = await import("@/desktop/main/terminalBridge");
+const { createNotification: createDesktopNotification, listNotifications } = await import("@/desktop/main/notificationStore");
 const {
   authorizeMobileRequest,
   claimPaneViewport,
@@ -98,6 +100,10 @@ const {
   createMobileTerminalTab,
   getMobileBoard,
   getMobileTask,
+  getMobileNotifications,
+  markMobileNotificationRead,
+  markAllMobileNotificationsRead,
+  onMobileNotificationsChanged,
   listMobilePushSubscriptions,
   updateMobileNotificationSubscription,
   deleteMobileNotificationSubscription,
@@ -392,6 +398,77 @@ describe("기기 페어링", () => {
     await unpairMobileDevice(device.deviceId);
 
     expect(await isAuthorized(`Bearer ${token}`)).toBe(false);
+  });
+});
+
+describe("모바일 알림함", () => {
+  const notification: AppNotification = {
+    id: "inbox-1", title: "리뷰 요청", body: "변경을 확인해 주세요", taskId: "task-1", isRead: false,
+    createdAt: "2026-11-01T00:00:00.000Z", relativePath: "/ko/task/task-1", locale: "ko", dedupeKey: "inbox-1",
+    action: { type: "background-sync-review", payload: { mergedPullRequests: [], registeredWorktrees: [] } },
+  };
+  const mobileNotification = {
+    id: "inbox-1", title: "리뷰 요청", body: "변경을 확인해 주세요", taskId: "task-1", isRead: false,
+    createdAt: "2026-11-01T00:00:00.000Z",
+  };
+
+  it("같은 데스크탑 저장소를 최신순으로 읽고 경로와 action을 모바일에 노출하지 않는다", async () => {
+    appSettingsStore.set("app_notifications", JSON.stringify([
+      { ...notification, id: "older", taskId: null, createdAt: "2026-10-01T00:00:00.000Z" },
+      notification,
+    ]));
+
+    expect(await getMobileNotifications()).toEqual([
+      mobileNotification,
+      { ...mobileNotification, id: "older", taskId: null, createdAt: "2026-10-01T00:00:00.000Z" },
+    ]);
+  });
+
+  it("저장된 알림이 없으면 빈 목록을 반환한다", async () => {
+    expect(await getMobileNotifications()).toEqual([]);
+  });
+
+  it("하나 읽음은 데스크탑 원본에도 반영되고 반복 읽음과 없는 알림을 구분한다", async () => {
+    appSettingsStore.set("app_notifications", JSON.stringify([notification, { ...notification, id: "inbox-2", taskId: null }]));
+
+    expect(await markMobileNotificationRead("inbox-1")).toEqual({ ...mobileNotification, isRead: true });
+    expect(await markMobileNotificationRead("inbox-1")).toEqual({ ...mobileNotification, isRead: true });
+    expect(await markMobileNotificationRead("missing")).toBeNull();
+    expect(await listNotifications()).toEqual([
+      { ...notification, isRead: true },
+      { ...notification, id: "inbox-2", taskId: null },
+    ]);
+  });
+
+  it("모두 읽음은 task가 없는 알림을 포함해 저장소 전체에 반영된다", async () => {
+    appSettingsStore.set("app_notifications", JSON.stringify([notification, { ...notification, id: "inbox-2", taskId: null }]));
+
+    await markAllMobileNotificationsRead();
+    await markAllMobileNotificationsRead();
+
+    expect(await listNotifications()).toEqual([
+      { ...notification, isRead: true },
+      { ...notification, id: "inbox-2", taskId: null, isRead: true },
+    ]);
+  });
+
+  it("데스크탑 생성과 모바일 읽음의 저장 완료를 알리고 구독을 해제할 수 있다", async () => {
+    const savedReadStates: boolean[][] = [];
+    const stop = onMobileNotificationsChanged(() => {
+      const entries: AppNotification[] = JSON.parse(appSettingsStore.get("app_notifications") ?? "[]");
+      savedReadStates.push(entries.map((entry) => entry.isRead));
+    });
+    try {
+      const { notification: created } = await createDesktopNotification({ title: "모바일 이벤트 연결", body: "본문", locale: "ko" });
+      await markMobileNotificationRead(created.id);
+      await markMobileNotificationRead(created.id);
+      stop();
+      await createDesktopNotification({ title: "연결 해제 후 이벤트", body: "본문", locale: "ko" });
+
+      expect(savedReadStates).toEqual([[false], [true]]);
+    } finally {
+      stop();
+    }
   });
 });
 

@@ -14,6 +14,7 @@ const MOBILE_PATH_PREFIX = "/api/mobile/";
 const STREAM_PATH = "/api/mobile/stream";
 const EVENTS_PATH = "/api/mobile/events";
 const NOTIFICATIONS_PATH = "/api/mobile/notifications";
+const NOTIFICATION_READ_PATH_PATTERN = /^\/api\/mobile\/notifications\/([^/]+)\/read$/;
 
 /**
  * 연결이 해제되어 끊는 스트림의 종료 코드.
@@ -99,6 +100,24 @@ async function handleMobileRequest(request, response, { bridge, host, port, isDe
 
     if (["PUT", "DELETE"].includes(request.method) && requestUrl.pathname === NOTIFICATIONS_PATH) {
       await handleNotificationSubscriptionRequest(request, response, bridge);
+      return true;
+    }
+
+    if (request.method === "GET" && requestUrl.pathname === NOTIFICATIONS_PATH) {
+      writeJson(response, 200, { success: true, notifications: await bridge.getMobileNotifications() });
+      return true;
+    }
+
+    if (request.method === "POST" && requestUrl.pathname === `${NOTIFICATIONS_PATH}/read-all`) {
+      await bridge.markAllMobileNotificationsRead();
+      writeJson(response, 200, { success: true });
+      return true;
+    }
+
+    const notificationReadMatch = requestUrl.pathname.match(NOTIFICATION_READ_PATH_PATTERN);
+    if (request.method === "PATCH" && notificationReadMatch) {
+      const notification = await bridge.markMobileNotificationRead(decodeURIComponent(notificationReadMatch[1]));
+      writeJson(response, notification ? 200 : 404, notification ? { success: true, notification } : { success: false, error: "없는 알림입니다" });
       return true;
     }
 
@@ -336,12 +355,14 @@ async function handleCreateTerminalTabRequest(response, bridge, taskId) {
 function attachMobileStreamServer(server, { bridge, notifications, host, port }) {
   const webSocketServer = new WebSocketServer({ noServer: true });
   const eventSockets = new Set();
-  const stopEvents = notifications?.subscribeToMobileEvents((event) => {
+  const sendMobileEvent = (event) => {
     const message = JSON.stringify(event);
     for (const socket of eventSockets) {
       if (socket.readyState === socket.OPEN) socket.send(message);
     }
-  });
+  };
+  const stopEvents = notifications?.subscribeToMobileEvents(sendMobileEvent);
+  const stopNotifications = bridge.onMobileNotificationsChanged(() => sendMobileEvent({ type: "notifications-changed" }));
 
   /**
    * 기기별로 열려 있는 스트림 소켓.
@@ -411,6 +432,7 @@ function attachMobileStreamServer(server, { bridge, notifications, host, port })
     isClosing = true;
     clearInterval(heartbeat);
     stopEvents?.();
+    stopNotifications();
     stopUnpaired();
     notifications?.stopMobileNotifications?.();
     for (const socket of webSocketServer.clients) socket.close(1001, "server-shutdown");

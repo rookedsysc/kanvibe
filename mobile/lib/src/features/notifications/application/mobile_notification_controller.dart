@@ -82,6 +82,7 @@ class MobileNotificationController {
   final Future<void> Function(DesktopConnection connection) onDeviceUnpaired;
   final _openRequests = StreamController<TaskNotification>.broadcast();
   final _taskUpdates = StreamController<TaskNotification>.broadcast();
+  final _inboxUpdates = StreamController<String>.broadcast();
   final _connections = <String, DesktopConnection>{};
   final _sessions = <String, _EventSession>{};
   final _registrationQueues = <String, Future<void>>{};
@@ -97,6 +98,7 @@ class MobileNotificationController {
 
   Stream<TaskNotification> get openRequests => _openRequests.stream;
   Stream<TaskNotification> get taskUpdates => _taskUpdates.stream;
+  Stream<String> get inboxUpdates => _inboxUpdates.stream;
 
   TaskNotification? takeInitialNotification() {
     final json = notifications.takeInitialNotification();
@@ -140,6 +142,7 @@ class MobileNotificationController {
     for (final connection in _connections.values) {
       _startSession(connection);
       onBoardChanged(connection.id);
+      _inboxUpdates.add(connection.id);
     }
     unawaited(_refreshPushToken());
   }
@@ -191,8 +194,13 @@ class MobileNotificationController {
       session.retrySeconds = 1;
       onBoardChanged(session.connection.id);
       if (json['type'] == 'connected') {
+        _inboxUpdates.add(session.connection.id);
         unawaited(_registerNotifications(session.connection));
       }
+      return;
+    }
+    if (json['type'] == 'notifications-changed') {
+      _inboxUpdates.add(session.connection.id);
       return;
     }
     final notification = TaskNotification.fromJson({
@@ -332,6 +340,7 @@ class MobileNotificationController {
     await _tokenSubscription.cancel();
     await _openRequests.close();
     await _taskUpdates.close();
+    await _inboxUpdates.close();
   }
 }
 

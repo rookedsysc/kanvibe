@@ -448,7 +448,6 @@ function getDesktopNotificationLocale() {
 
 function createDesktopNotificationOptions() {
   return {
-    onNotificationsChanged: broadcastNotificationsChanged,
     onNotificationClick: async (appNotification) => {
       await activateAppNotification(appNotification, { markAsRead: false });
     },
@@ -615,7 +614,6 @@ async function activateAppNotification(appNotification, options = {}) {
     if (updatedNotification) {
       activatedNotification = updatedNotification;
     }
-    broadcastNotificationsChanged();
   }
 
   pendingNotificationActivation = activatedNotification;
@@ -638,7 +636,9 @@ async function activateAppNotification(appNotification, options = {}) {
 
 function registerNotificationHandlers() {
   const { deliverDesktopNotification } = require(getRuntimeModulePath(path.join("src", "desktop", "main", "services", "desktopNotificationService.ts")));
-  const { listNotifications, markAllNotificationsRead, markNotificationRead, markTaskNotificationsRead, getNotificationById } = getNotificationStore();
+  const { listNotifications, markAllNotificationsRead, markNotificationRead, markTaskNotificationsRead, getNotificationById, subscribeToNotificationChanges } = getNotificationStore();
+
+  subscribeToNotificationChanges(broadcastNotificationsChanged);
 
   ipcMain.handle("kanvibe:show-notification", async (_event, payload) => {
     return deliverDesktopNotification(payload, createDesktopNotificationOptions());
@@ -649,22 +649,15 @@ function registerNotificationHandlers() {
   });
 
   ipcMain.handle("kanvibe:notifications-mark-read", async (_event, notificationId) => {
-    const notification = await markNotificationRead(notificationId);
-    broadcastNotificationsChanged();
-    return notification;
+    return markNotificationRead(notificationId);
   });
 
   ipcMain.handle("kanvibe:notifications-mark-task-read", async (_event, taskId) => {
-    const updatedCount = await markTaskNotificationsRead(taskId);
-    if (updatedCount > 0) {
-      broadcastNotificationsChanged();
-    }
-    return updatedCount;
+    return markTaskNotificationsRead(taskId);
   });
 
   ipcMain.handle("kanvibe:notifications-mark-all-read", async () => {
     await markAllNotificationsRead();
-    broadcastNotificationsChanged();
   });
 
   ipcMain.handle("kanvibe:notifications-activate", async (_event, notificationId) => {

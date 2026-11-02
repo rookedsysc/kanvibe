@@ -39,19 +39,27 @@ class NotificationNavigationController {
 
   Future<NotificationTaskDestination?> prepareDestination(
     TaskNotification notification,
-  ) async {
+  ) => prepareTaskDestination(
+    connectionId: notification.connectionId,
+    taskId: notification.taskId,
+  );
+
+  Future<NotificationTaskDestination?> prepareTaskDestination({
+    required String connectionId,
+    required String taskId,
+  }) async {
     final generation = ++_generation;
     DesktopConnection? connection;
     try {
       final registry = await ref.read(connectionControllerProvider.future);
       if (!_isCurrent(generation)) return null;
-      connection = registry.find(notification.connectionId);
+      connection = registry.find(connectionId);
       if (connection == null) {
         throw const NotificationNavigationException('이 알림의 PC 연결이 해제되었습니다.');
       }
       final json = await ref
           .read(desktopClientProvider)
-          .fetchTask(connection, notification.taskId);
+          .fetchTask(connection, taskId);
       if (!_isCurrent(generation)) return null;
       final current = await ref.read(connectionControllerProvider.future);
       if (!_isCurrent(generation) ||
@@ -60,7 +68,7 @@ class NotificationNavigationController {
         return null;
       }
       final task = json == null ? null : BoardTask.fromJson(json, const {});
-      if (task == null || task.id != notification.taskId) {
+      if (task == null || task.id != taskId) {
         throw const NotificationNavigationException(
           '태스크가 삭제되었거나 더 이상 존재하지 않습니다.',
         );

@@ -9,6 +9,7 @@ import 'package:kanvibe_mobile/src/common/providers.dart';
 import 'package:kanvibe_mobile/src/features/board/domain/task_status.dart';
 import 'package:kanvibe_mobile/src/features/connection/data/connection_store.dart';
 import 'package:kanvibe_mobile/src/features/connection/domain/saved_connections.dart';
+import 'package:kanvibe_mobile/src/features/notifications/domain/inbox_notification.dart';
 import 'package:kanvibe_mobile/src/features/task_detail/domain/mirror_pane.dart';
 
 /// 이미 연결된 상태를 흉내 낸다. 화면 검증은 페어링 이후만 다루므로 저장소에 연결이 하나 들어 있다.
@@ -141,6 +142,20 @@ class FakeDesktopClient implements DesktopClient {
     }
     return null;
   }
+
+  @override
+  Future<List<InboxNotification>> fetchNotifications(
+    DesktopConnection connection,
+  ) async => const [];
+
+  @override
+  Future<InboxNotification> markNotificationRead(
+    DesktopConnection connection,
+    String id,
+  ) async => throw const DesktopRequestException(404);
+
+  @override
+  Future<void> markAllNotificationsRead(DesktopConnection connection) async {}
 
   @override
   Future<void> registerNotifications(

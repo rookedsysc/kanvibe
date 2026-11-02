@@ -30,6 +30,8 @@ augroup END
 
 프로젝트 색상은 데스크탑 지정 색상을 사용하며, 지정하지 않았으면 데스크탑과 같은 이름 해시 팔레트를 사용한다. 보드 카드의 테두리·프로젝트 표시와 터미널 헤더에 반영한다.
 
+보드 상단의 **프로젝트 필터**에서 프로젝트를 검색하고 여러 개 선택할 수 있다. 본 프로젝트를 선택하면 같은 호스트의 연결된 worktree 태스크도 함께 표시한다. **전체 프로젝트**를 선택하면 필터를 해제한다. 선택은 앱 실행 중 PC마다 따로 유지되므로 상세 화면을 다녀오거나 다른 PC로 전환해도 해당 PC의 선택을 복원한다.
+
 ## 준비
 
 Flutter 버전은 `.fvmrc`에 고정되어 있다.
@@ -63,6 +65,23 @@ PC 연결을 끊으려면 **연결된 PC** 목록에서 해당 PC의 삭제 버�
 PC의 기기 목록에서도 이 기기가 지워지며, 다른 PC의 연결은 유지된다. PC에 닿지 못한 경우에는
 앱이 그 사실을 알려 주고, 해당 PC의 설정에서 이 기기를 한 번 더 지워야 한다. 현재 PC를 삭제해도
 다른 PC로 자동 전환하지 않으므로 목록에서 다음 PC를 고른다.
+
+## 데스크톱 알림함
+
+보드 상단의 **알림**에서 현재 선택한 PC의 데스크톱 알림함을 확인한다. 배지는 읽지 않은 알림 수이며 **전체 / 안 읽음**, 개별 **읽음 처리**, **모두 읽음**을 지원한다. 목록은 데스크톱이 저장하는 최근 100개 알림을 사용하고 읽음 상태도 공유한다. 데스크톱에서 읽거나 새 알림이 생기면 전경 모바일 목록이 갱신되며, 재연결·앱 복귀 시에도 다시 조회한다.
+
+알림을 누르면 읽음 처리한 뒤 최신 태스크를 조회해 연다. 삭제된 태스크는 안내를 표시하고, 태스크가 없는 알림은 내용을 확인한 뒤 필요한 작업을 데스크톱에서 진행한다. 목록·읽음 처리에 실패하면 다시 시도할 수 있다. 이 기능을 사용하려면 해당 API가 포함된 데스크톱 앱이 필요하다.
+
+| API | 동작 |
+| --- | --- |
+| `GET /api/mobile/notifications` | 인증된 PC의 알림 목록·읽음 상태 조회 |
+| `PATCH /api/mobile/notifications/:id/read` | 해당 알림을 읽음 처리, 없는 알림은 404 |
+| `POST /api/mobile/notifications/read-all` | 전체 읽음 처리 |
+| `/api/mobile/events`의 `notifications-changed` | 저장소 변경 후 목록 재조회 신호 |
+
+필터 상태는 `features/board/application/board_project_filter_controller.dart`, 필터 UI는 `features/board/presentation/widgets/project_filter_button.dart`가 관리한다. 알림함의 조회·읽음 상태는 `features/notifications/application/notification_inbox_controller.dart`, 목록과 배지는 `features/notifications/presentation/notification_center_screen.dart`에 있다. 기존 푸시 구독용 `PUT/DELETE /api/mobile/notifications`도 계속 사용한다.
+
+실제 데스크톱과의 기기 검증은 `qa/mobile/lib/prepareNotificationDesktop.cjs`로 격리된 PC 데이터를 준비한 뒤 `project-filter-notifications` Maestro 흐름을 실행한다. 이 흐름은 프로젝트·worktree 필터와 데스크톱·모바일 양쪽 읽음 상태, 새 알림 수신, 최신 태스크 이동을 확인한다.
 
 ## Hook 상태 알림
 

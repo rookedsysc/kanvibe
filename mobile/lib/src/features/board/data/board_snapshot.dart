@@ -30,6 +30,41 @@ class BoardSnapshot {
 
   bool get isEmpty => tasksByStatus.values.every((tasks) => tasks.isEmpty);
 
+  BoardSnapshot filterByProjectIds(Set<String> selectedIds) {
+    final selectedProjects = creatableProjects
+        .where((project) => selectedIds.contains(project.id))
+        .toList();
+    if (selectedProjects.isEmpty) return this;
+
+    final includedIds = <String>{};
+    for (final selected in selectedProjects) {
+      includedIds.add(selected.id);
+      final repoPath = selected.repoPath;
+      if (repoPath == null) continue;
+      includedIds.addAll(
+        projects
+            .where(
+              (project) =>
+                  project.sshHost == selected.sshHost &&
+                  (project.repoPath?.startsWith('${repoPath}__worktrees') ??
+                      false),
+            )
+            .map((project) => project.id),
+      );
+    }
+
+    return BoardSnapshot(
+      tasksByStatus: {
+        for (final entry in tasksByStatus.entries)
+          entry.key: entry.value
+              .where((task) => includedIds.contains(task.projectId))
+              .toList(),
+      },
+      projects: projects,
+      defaultSessionType: defaultSessionType,
+    );
+  }
+
   /// 데스크탑 `getTasksByStatus()` 응답을 화면이 쓰는 모양으로 바꾼다.
   /// 프로젝트 이름은 별도 목록으로 오므로 여기서 태스크에 붙여 준다.
   static BoardSnapshot fromJson(Map<String, dynamic> json) {

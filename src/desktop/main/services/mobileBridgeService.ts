@@ -4,6 +4,8 @@ import { createTask, getTaskById, getTasksByStatus, updateTaskStatus } from "@/d
 import { getAllProjects, getProjectBranches } from "@/desktop/main/services/projectService";
 import { attachTaskTerminal, CallbackTerminalClient } from "@/desktop/main/terminalBridge";
 import { createTerminalTab } from "@/desktop/main/services/terminalTabService";
+import { listNotifications, markNotificationRead, markAllNotificationsRead, subscribeToNotificationChanges } from "@/desktop/main/notificationStore";
+import type { AppNotification } from "@/desktop/shared/notifications";
 import { SessionType, TaskStatus, type KanbanTask } from "@/entities/KanbanTask";
 import { TaskPriority } from "@/entities/TaskPriority";
 import { getTaskRepository } from "@/lib/database";
@@ -62,7 +64,7 @@ import { isSessionAlive, quoteForPosixShell } from "@/lib/worktree";
  * 스냅샷과 출력 스트림 조회는 포커스를 바꾸지 않는다. 크기 조정을 지원하는 세션은
  * [claimPaneViewport]가 모바일 연결 수명 동안 크기를 소유하고 마지막 연결이 나가면 복원한다.
  *
- * 데스크탑을 바꾸는 것은 [createMobileTask]와 [updateMobileTaskStatus], [createMobileTerminalTab], 그리고 세션이 아직 없는 태스크를 열 때
+ * 태스크와 터미널을 바꾸는 것은 [createMobileTask]와 [updateMobileTaskStatus], [createMobileTerminalTab], 그리고 세션이 아직 없는 태스크를 열 때
  * 세션을 띄우는 일이다. 태스크 변경은 데스크탑 화면과 같은 `kanbanService`, 탭 생성은 `terminalTabService`를 거치고, 세션은 데스크탑이 태스크를
  * 열 때와 같은 [attachTaskTerminal]을 지난다. 페어링한 기기가 이 머신에 셸 세션을 열 수 있다는 뜻이라
  * 이것들은 [authorizeMobileRequest] 뒤에만 놓이고, 화면에 없는 칸은 받지 않는다.
@@ -323,6 +325,29 @@ export async function getMobileBoard() {
 export async function getMobileTask(taskId: string) {
   const task = await getTaskById(taskId);
   return task ? { ...task, projectName: task.project?.name ?? null } : null;
+}
+
+function toMobileNotification(notification: AppNotification) {
+  const { id, title, body, taskId, isRead, createdAt } = notification;
+  return { id, title, body, taskId, isRead, createdAt };
+}
+
+export async function getMobileNotifications() {
+  const notifications = await listNotifications();
+  return notifications.map(toMobileNotification);
+}
+
+export async function markMobileNotificationRead(notificationId: string) {
+  const notification = await markNotificationRead(notificationId);
+  return notification ? toMobileNotification(notification) : null;
+}
+
+export async function markAllMobileNotificationsRead(): Promise<void> {
+  await markAllNotificationsRead();
+}
+
+export function onMobileNotificationsChanged(listener: () => void): () => void {
+  return subscribeToNotificationChanges(listener);
 }
 
 /**

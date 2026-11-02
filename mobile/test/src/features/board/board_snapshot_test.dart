@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kanvibe_mobile/src/features/board/data/board_snapshot.dart';
+import 'package:kanvibe_mobile/src/features/board/domain/board_project.dart';
 import 'package:kanvibe_mobile/src/features/board/domain/task_priority.dart';
 import 'package:kanvibe_mobile/src/features/board/domain/task_status.dart';
 import 'package:kanvibe_mobile/src/features/task_create/domain/session_type.dart';
@@ -211,6 +212,150 @@ void main() {
 
       expect(snapshot.projects, hasLength(2));
       expect(snapshot.creatableProjects.single.id, 'p1');
+    });
+  });
+
+  group('프로젝트 필터', () {
+    final snapshot = BoardSnapshot.fromJson({
+      'defaultSessionType': 'terminal',
+      'projects': [
+        {'id': 'main', 'name': 'same', 'repoPath': '/repo'},
+        {
+          'id': 'worktree',
+          'name': 'feature',
+          'repoPath': '/repo__worktrees/feature',
+          'isWorktree': true,
+        },
+        {
+          'id': 'remote',
+          'name': 'same',
+          'repoPath': '/repo',
+          'sshHost': 'server',
+        },
+        {
+          'id': 'remote-worktree',
+          'name': 'feature',
+          'repoPath': '/repo__worktrees/feature',
+          'sshHost': 'server',
+          'isWorktree': true,
+        },
+        {'id': 'other', 'name': 'other', 'repoPath': '/other'},
+      ],
+      'tasks': {
+        for (final status in TaskStatus.values)
+          status.wireValue: [
+            for (final id in [
+              'other',
+              'main',
+              'remote',
+              'worktree',
+              'remote-worktree',
+            ])
+              {
+                'id': '$id-${status.wireValue}',
+                'title': id,
+                'projectId': id,
+                'status': status.wireValue,
+              },
+            {
+              'id': 'unknown-${status.wireValue}',
+              'title': 'unknown',
+              'status': status.wireValue,
+            },
+          ],
+      },
+    });
+
+    test('경로·호스트를 보존하고 잘못된 선택 필드는 없는 값으로 읽는다', () {
+      expect(snapshot.projects[2].repoPath, '/repo');
+      expect(snapshot.projects[2].sshHost, 'server');
+      for (final value in [null, '', 42]) {
+        final project = BoardProject.fromJson({
+          'id': 'p',
+          'name': 'p',
+          'repoPath': value,
+          'sshHost': value,
+        })!;
+        expect(project.repoPath, isNull);
+        expect(project.sshHost, isNull);
+      }
+    });
+
+    test('같은 호스트의 본 프로젝트와 worktree를 모든 상태에서 순서대로 남긴다', () {
+      final filtered = snapshot.filterByProjectIds({'main'});
+      for (final status in TaskStatus.values) {
+        expect(filtered.tasksIn(status).map((task) => task.projectId), [
+          'main',
+          'worktree',
+        ]);
+      }
+      expect(filtered.projects, same(snapshot.projects));
+      expect(filtered.defaultSessionType, SessionType.terminal);
+      expect(snapshot.tasksIn(TaskStatus.todo), hasLength(6));
+    });
+
+    test('동명·동일 경로라도 다른 호스트의 프로젝트와 worktree는 따로 고른다', () {
+      final filtered = snapshot.filterByProjectIds({'remote'});
+      expect(filtered.tasksIn(TaskStatus.todo).map((task) => task.projectId), [
+        'remote',
+        'remote-worktree',
+      ]);
+    });
+
+    test('여러 본 프로젝트 선택은 합집합이고 모르는 ID는 무시한다', () {
+      final filtered = snapshot.filterByProjectIds({'main', 'other', 'gone'});
+      expect(filtered.tasksIn(TaskStatus.todo).map((task) => task.projectId), [
+        'other',
+        'main',
+        'worktree',
+      ]);
+    });
+
+    test('빈 선택·사라진 선택·worktree만 고른 값은 전체를 보여 준다', () {
+      for (final selected in [
+        <String>{},
+        {'gone'},
+        {'worktree'},
+      ]) {
+        expect(snapshot.filterByProjectIds(selected), same(snapshot));
+      }
+    });
+
+    test('경로가 없는 본 프로젝트는 ID만 비교하고 다른 worktree를 끌어오지 않는다', () {
+      final missingPaths = BoardSnapshot.fromJson({
+        'projects': [
+          {'id': 'main', 'name': 'main'},
+          {
+            'id': 'worktree',
+            'name': 'feature',
+            'repoPath': '__worktrees/feature',
+            'isWorktree': true,
+          },
+        ],
+        'tasks': {
+          'todo': [
+            {
+              'id': 't-main',
+              'title': 'main',
+              'status': 'todo',
+              'projectId': 'main',
+            },
+            {
+              'id': 't-worktree',
+              'title': 'worktree',
+              'status': 'todo',
+              'projectId': 'worktree',
+            },
+          ],
+        },
+      });
+      expect(
+        missingPaths
+            .filterByProjectIds({'main'})
+            .tasksIn(TaskStatus.todo)
+            .map((task) => task.id),
+        ['t-main'],
+      );
     });
   });
 }

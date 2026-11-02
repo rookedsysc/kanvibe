@@ -9,9 +9,12 @@ import '../../../common/providers.dart';
 import '../../task_create/presentation/create_task_screen.dart';
 import '../../task_detail/presentation/task_detail_screen.dart';
 import '../../connection/presentation/desktop_connections_screen.dart';
+import '../../notifications/presentation/notification_center_screen.dart';
+import '../application/board_project_filter_controller.dart';
 import '../data/board_snapshot.dart';
 import '../domain/board_task.dart';
 import '../domain/task_status.dart';
+import 'widgets/project_filter_button.dart';
 
 /// 첫 화면. 태스크를 상태별로 나눠 보여 준다.
 ///
@@ -24,6 +27,7 @@ class BoardScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final board = ref.watch(boardProvider);
+    final filteredBoard = ref.watch(filteredBoardProvider);
     final activeConnection = ref
         .watch(connectionControllerProvider)
         .value
@@ -73,6 +77,8 @@ class BoardScreen extends ConsumerWidget {
           ),
         ),
         actions: [
+          const ProjectFilterButton(),
+          const NotificationCenterButton(),
           IconButton(
             onPressed: () => ref.invalidate(boardProvider),
             icon: const Icon(Icons.refresh),
@@ -88,7 +94,7 @@ class BoardScreen extends ConsumerWidget {
               child: const Icon(Icons.add),
             ),
       body: SafeArea(
-        child: board.when(
+        child: filteredBoard.when(
           loading: () => const Center(child: CircularProgressIndicator()),
           error: (error, _) =>
               _BoardLoadFailure(onRetry: () => ref.invalidate(boardProvider)),

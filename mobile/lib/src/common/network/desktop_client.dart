@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 import 'package:web_socket_channel/io.dart';
 
 import '../../features/board/domain/task_status.dart';
+import '../../features/notifications/domain/inbox_notification.dart';
 import '../../features/task_detail/domain/mirror_pane.dart';
 import 'desktop_connection.dart';
 
@@ -84,6 +85,64 @@ class DesktopClient {
 
     return (jsonDecode(response.body) as Map<String, dynamic>)['board']
         as Map<String, dynamic>;
+  }
+
+  Future<List<InboxNotification>> fetchNotifications(
+    DesktopConnection connection,
+  ) async {
+    final response = await _httpClient
+        .get(
+          connection.buildHttpUri('/api/mobile/notifications'),
+          headers: connection.authorizationHeaders,
+        )
+        .timeout(_requestTimeout);
+    if (response.statusCode != 200) {
+      throw DesktopRequestException(response.statusCode);
+    }
+    final entries =
+        (jsonDecode(response.body) as Map<String, dynamic>)['notifications']
+            as List<dynamic>;
+    return entries
+        .whereType<Map<String, dynamic>>()
+        .map(InboxNotification.fromJson)
+        .whereType<InboxNotification>()
+        .toList();
+  }
+
+  Future<InboxNotification> markNotificationRead(
+    DesktopConnection connection,
+    String id,
+  ) async {
+    final uri = connection
+        .buildHttpUri('/api/mobile/notifications')
+        .replace(pathSegments: ['api', 'mobile', 'notifications', id, 'read']);
+    final response = await _httpClient
+        .patch(uri, headers: connection.authorizationHeaders)
+        .timeout(_requestTimeout);
+    if (response.statusCode != 200) {
+      throw DesktopRequestException(response.statusCode);
+    }
+    final json =
+        (jsonDecode(response.body) as Map<String, dynamic>)['notification'];
+    final notification = json is Map<String, dynamic>
+        ? InboxNotification.fromJson(json)
+        : null;
+    if (notification == null || notification.id != id || !notification.isRead) {
+      throw const FormatException('알림 읽음 응답이 올바르지 않습니다.');
+    }
+    return notification;
+  }
+
+  Future<void> markAllNotificationsRead(DesktopConnection connection) async {
+    final response = await _httpClient
+        .post(
+          connection.buildHttpUri('/api/mobile/notifications/read-all'),
+          headers: connection.authorizationHeaders,
+        )
+        .timeout(_requestTimeout);
+    if (response.statusCode != 200) {
+      throw DesktopRequestException(response.statusCode);
+    }
   }
 
   /// 알림을 누른 시점의 태스크를 다시 읽는다. 삭제된 태스크는 더 이상 열 수 없다.
