@@ -14,6 +14,10 @@ uv run scripts/generate-brand-assets.py
 | Electron 창·개발 실행 Dock | `public/branding/app-icon.png` (1024px, 투명 여백과 흰색 타일) |
 | macOS 앱·DMG | `resources/icon.icns` (32–1024px, 16pt@2x 포함) |
 | 렌더러 favicon | `public/favicon.png` (64px) |
+| README 라이트·다크 로고 | `public/branding/kanvibe-logo{,-light}.png` (alpha 보존) |
+| 문서 사이트 헤더 | `docs-site/public/branding/kanvibe-logo.png` |
+| 문서 사이트 아이콘 | `docs-site/public/favicon.ico` (16–256px), `icon.png` (512px), `apple-icon.png` (180px) |
+| 문서 사이트 공유 이미지 | `docs-site/public/branding/og-image.png` (1200×630px, 고정 사이트 URL 설정 시 metadata 연결) |
 | 모바일 연결 화면 | `mobile/assets/branding/kanvibe-logo.png` |
 | iPhone·iPad·App Store | `mobile/ios/Runner/Assets.xcassets/AppIcon.appiconset/` (Contents.json의 크기, 불투명 RGB) |
 | Android 기존 런처 | `mobile/android/app/src/main/res/mipmap-*/ic_launcher.png` (48/72/96/144/192px) |

@@ -34,6 +34,25 @@ def opaque_icon(emblem: Image.Image, size: int) -> Image.Image:
     return Image.alpha_composite(background, foreground).convert("RGB")
 
 
+def save_docs_assets(logo: Image.Image, emblem: Image.Image) -> None:
+    light_logo = Image.new("RGBA", logo.size, "white")
+    light_logo.putalpha(logo.getchannel("A"))
+    save_png(light_logo, ROOT / "public/branding/kanvibe-logo-light.png")
+    save_png(logo, ROOT / "docs-site/public/branding/kanvibe-logo.png")
+    save_png(opaque_icon(emblem, 512), ROOT / "docs-site/public/icon.png")
+    save_png(opaque_icon(emblem, 180), ROOT / "docs-site/public/apple-icon.png")
+    opaque_icon(emblem, 256).save(
+        ROOT / "docs-site/public/favicon.ico",
+        format="ICO",
+        sizes=[(16, 16), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)],
+    )
+    share_image = Image.new("RGB", (1200, 630), "white")
+    share_logo = ImageOps.contain(logo, (880, 300), Image.Resampling.LANCZOS)
+    position = ((share_image.width - share_logo.width) // 2, (share_image.height - share_logo.height) // 2)
+    share_image.paste(share_logo, position, share_logo)
+    save_png(share_image, ROOT / "docs-site/public/branding/og-image.png")
+
+
 def main() -> None:
     logo = Image.open(BRANDING / "kanvibe-logo.png").convert("RGBA")
     emblem = Image.open(BRANDING / "kanvibe-emblem.png").convert("RGBA")
@@ -43,6 +62,7 @@ def main() -> None:
     for destination in ("public/branding/kanvibe-logo.png", "mobile/assets/branding/kanvibe-logo.png"):
         save_png(logo, ROOT / destination)
     save_png(opaque_icon(emblem, 64), ROOT / "public/favicon.png")
+    save_docs_assets(logo, emblem)
 
     desktop_icon = Image.new("RGBA", (1024, 1024))
     ImageDraw.Draw(desktop_icon).rounded_rectangle((100, 100, 923, 923), radius=184, fill="white")
