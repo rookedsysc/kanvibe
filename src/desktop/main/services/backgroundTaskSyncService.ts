@@ -181,43 +181,45 @@ export function startBackgroundTaskSync() {
   }
 
   let disposed = false;
+  let isEnabled = false;
+  let enabledSettingChanged = false;
   // 스케줄러가 직접 돌린 사이클만 표시한다. manual sync가 공유 사이클을 점유한 경우와 구분해야
   // 재예약 책임이 finally 블록에 있는지 콜백에 있는지 판단할 수 있다.
   let isSchedulerCycleRunning = false;
   let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
 
   function scheduleNext(delayMs: number) {
-    if (disposed) {
+    if (disposed || !isEnabled) {
       return;
     }
 
     timeoutHandle = setTimeout(() => {
+      timeoutHandle = null;
       void runSyncCycle();
     }, delayMs);
   }
 
   async function runSyncCycle() {
-    if (disposed) {
+    if (disposed || !isEnabled) {
       return;
     }
 
     isSchedulerCycleRunning = true;
     try {
-      const isEnabled = await getBackgroundSyncEnabled();
-      if (isEnabled) {
-        await runSharedBackgroundTaskSyncCycle();
-      }
+      await runSharedBackgroundTaskSyncCycle();
     } catch (error) {
       console.error("[background-task-sync] sync failed:", error);
     } finally {
-      const intervalMs = await getBackgroundSyncIntervalMs().catch(() => FALLBACK_SYNC_INTERVAL_MS);
-      scheduleNext(intervalMs);
+      if (!disposed && isEnabled) {
+        const intervalMs = await getBackgroundSyncIntervalMs().catch(() => FALLBACK_SYNC_INTERVAL_MS);
+        scheduleNext(intervalMs);
+      }
       isSchedulerCycleRunning = false;
     }
   }
 
   function reschedule(newIntervalMs: number) {
-    if (disposed) return;
+    if (disposed || !isEnabled) return;
     // 스케줄러 사이클 실행 중이면 건너뜀 — finally 블록이 최신 주기를 읽어 스케줄링함
     if (isSchedulerCycleRunning) return;
     if (timeoutHandle) {
@@ -228,19 +230,26 @@ export function startBackgroundTaskSync() {
   }
 
   function rescheduleOnEnable(enabled: boolean) {
-    if (!enabled) return; // 비활성화 시: 루프는 다음 웨이크업에서 작업을 건너뜀
     if (disposed) return;
-    if (isSchedulerCycleRunning) return; // 스케줄러 사이클 진행 중: finally 블록이 이어서 스케줄링함
+    enabledSettingChanged = true;
+    isEnabled = enabled;
     if (timeoutHandle) {
       clearTimeout(timeoutHandle);
       timeoutHandle = null;
     }
+    if (!enabled || isSchedulerCycleRunning) return;
     scheduleNext(INITIAL_SYNC_DELAY_MS);
   }
 
   registerBackgroundSyncIntervalChangedCallback(reschedule);
   registerBackgroundSyncEnabledChangedCallback(rescheduleOnEnable);
-  scheduleNext(INITIAL_SYNC_DELAY_MS);
+  void getBackgroundSyncEnabled().then((enabled) => {
+    if (!enabledSettingChanged) {
+      rescheduleOnEnable(enabled);
+    }
+  }).catch((error) => {
+    console.error("[background-task-sync] settings load failed:", error);
+  });
 
   function stopBackgroundTaskSync() {
     disposed = true;

@@ -528,4 +528,65 @@ describe("backgroundTaskSyncService", () => {
 
     stop();
   });
+  it("꺼진 동안 타이머와 반복 설정 조회 없이 대기하고 수동 sync는 실행한다", async () => {
+    mocks.getBackgroundSyncEnabled.mockResolvedValue(false);
+    const { startBackgroundTaskSync, runBackgroundTaskSyncNow } = await import("@/desktop/main/services/backgroundTaskSyncService");
+    const stop = startBackgroundTaskSync();
+    await flushBackgroundSyncCycle();
+    expect(vi.getTimerCount()).toBe(0);
+    await vi.advanceTimersByTimeAsync(30 * 60_000);
+    expect(mocks.getBackgroundSyncEnabled).toHaveBeenCalledTimes(1);
+    expect(mocks.getBackgroundSyncIntervalMs).not.toHaveBeenCalled();
+    expect(mocks.syncRegisteredProjectWorktrees).not.toHaveBeenCalled();
+    await runBackgroundTaskSyncNow();
+    expect(mocks.syncRegisteredProjectWorktrees).toHaveBeenCalledTimes(1);
+    expect(vi.getTimerCount()).toBe(0);
+    stop();
+  });
+
+  it("끄면 예약을 취소하고 꺼진 상태의 주기 변경은 예약하지 않는다", async () => {
+    const { startBackgroundTaskSync } = await import("@/desktop/main/services/backgroundTaskSyncService");
+    const stop = startBackgroundTaskSync();
+    await flushBackgroundSyncCycle();
+    const notifyEnabled = mocks.registerBackgroundSyncEnabledChangedCallback.mock.calls[0][0];
+    const notifyInterval = mocks.registerBackgroundSyncIntervalChangedCallback.mock.calls[0][0];
+    notifyEnabled(false);
+    notifyInterval(60_000);
+    expect(vi.getTimerCount()).toBe(0);
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(mocks.syncRegisteredProjectWorktrees).not.toHaveBeenCalled();
+    notifyEnabled(true);
+    await vi.advanceTimersByTimeAsync(19_999);
+    expect(mocks.syncRegisteredProjectWorktrees).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(mocks.syncRegisteredProjectWorktrees).toHaveBeenCalledTimes(1);
+    stop();
+  });
+
+  it("실행 도중 꺼도 완료 후 다음 sync를 예약하지 않는다", async () => {
+    let finishSync!: (value: unknown) => void;
+    mocks.syncRegisteredProjectWorktrees.mockReturnValueOnce(new Promise((resolve) => { finishSync = resolve; }));
+    const { startBackgroundTaskSync } = await import("@/desktop/main/services/backgroundTaskSyncService");
+    const stop = startBackgroundTaskSync();
+    await vi.advanceTimersByTimeAsync(20_000);
+    mocks.registerBackgroundSyncEnabledChangedCallback.mock.calls[0][0](false);
+    finishSync({ worktreeTasks: [], registeredWorktrees: [], hooksSetup: [], errors: [], changed: false });
+    await flushBackgroundSyncCycle();
+    expect(vi.getTimerCount()).toBe(0);
+    expect(mocks.getBackgroundSyncIntervalMs).not.toHaveBeenCalled();
+    stop();
+  });
+
+  it("늦게 읽은 시작 설정이 사용자의 최신 설정을 덮지 않는다", async () => {
+    let finishRead!: (value: boolean) => void;
+    mocks.getBackgroundSyncEnabled.mockReturnValueOnce(new Promise((resolve) => { finishRead = resolve; }));
+    const { startBackgroundTaskSync } = await import("@/desktop/main/services/backgroundTaskSyncService");
+    const stop = startBackgroundTaskSync();
+    mocks.registerBackgroundSyncEnabledChangedCallback.mock.calls[0][0](false);
+    finishRead(true);
+    await flushBackgroundSyncCycle();
+    expect(vi.getTimerCount()).toBe(0);
+    stop();
+  });
+
 });
