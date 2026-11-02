@@ -323,7 +323,7 @@ function CreateTaskModalContent({
             </label>
             <select
               name="sessionType"
-              defaultValue={defaultSessionType || "tmux"}
+              defaultValue={defaultSessionType || SessionType.HERDR}
               className="w-full px-3 py-2 bg-bg-page border border-border-default rounded-md text-text-primary focus:outline-none focus:border-brand-primary transition-colors"
             >
               <SessionTypeOptions />

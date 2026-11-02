@@ -114,6 +114,7 @@ describe("CreateTaskModal", () => {
 
     render(
       <CreateTaskModal
+        defaultSessionType="tmux"
         isOpen
         onClose={onClose}
         sshHosts={["remote-box"]}
@@ -156,6 +157,7 @@ describe("CreateTaskModal", () => {
 
     render(
       <CreateTaskModal
+        defaultSessionType="tmux"
         isOpen
         onClose={onClose}
         sshHosts={["remote-box"]}
@@ -198,6 +200,7 @@ describe("CreateTaskModal", () => {
 
     render(
       <CreateTaskModal
+        defaultSessionType="tmux"
         isOpen
         onClose={onClose}
         sshHosts={["remote-box"]}
@@ -331,6 +334,7 @@ describe("CreateTaskModal", () => {
 
     render(
       <CreateTaskModal
+        defaultSessionType="tmux"
         isOpen
         onClose={onClose}
         sshHosts={["remote-box"]}
@@ -412,6 +416,12 @@ describe("CreateTaskModal", () => {
     await waitFor(() => expect(mockEnsureSessionDependencyWithPrompt).toHaveBeenCalledWith("herdr", "remote-box", expect.any(Function)));
     await waitFor(() => expect(mockCreateTask).toHaveBeenCalledTimes(ready ? 1 : 0));
     expect(onClose).toHaveBeenCalledTimes(ready ? 1 : 0);
+  });
+
+  it("설정이 전달되지 않은 새 작업도 Herdr를 기본 선택한다", async () => {
+    render(<CreateTaskModal isOpen onClose={vi.fn()} sshHosts={[]} projects={[createProject()]} defaultProjectId="project-remote" />);
+    await waitFor(() => expect(mockGetProjectBranches).toHaveBeenCalled());
+    expect((screen.getByRole("combobox") as HTMLSelectElement).value).toBe("herdr");
   });
 
 });

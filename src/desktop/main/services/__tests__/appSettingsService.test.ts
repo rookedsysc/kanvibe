@@ -24,7 +24,7 @@ beforeEach(() => {
 });
 
 describe("기본 세션 타입", () => {
-  it("저장한 세 가지 세션 타입을 그대로 되돌려준다", async () => {
+  it("저장한 세션 타입을 그대로 되돌려준다", async () => {
     const { getDefaultSessionType, setDefaultSessionType } = await import(
       "@/desktop/main/services/appSettingsService"
     );
@@ -35,13 +35,13 @@ describe("기본 세션 타입", () => {
     }
   });
 
-  it("미설정이거나 모르는 값이면 tmux로 되돌린다", async () => {
+  it("미설정이거나 모르는 값이면 Herdr로 되돌린다", async () => {
     const { getDefaultSessionType } = await import("@/desktop/main/services/appSettingsService");
 
-    expect(await getDefaultSessionType()).toBe(SessionType.TMUX);
+    expect(await getDefaultSessionType()).toBe(SessionType.HERDR);
 
     storedSettings.set("default_session_type", "screen");
-    expect(await getDefaultSessionType()).toBe(SessionType.TMUX);
+    expect(await getDefaultSessionType()).toBe(SessionType.HERDR);
   });
 });
 

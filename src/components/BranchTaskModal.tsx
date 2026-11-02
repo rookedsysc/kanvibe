@@ -41,7 +41,7 @@ export default function BranchTaskModal({
   );
   const [branchName, setBranchName] = useState("");
   const [sessionType, setSessionType] = useState<SessionType>(
-    (defaultSessionType as SessionType) || SessionType.TMUX
+    (defaultSessionType as SessionType) || SessionType.HERDR
   );
   const [error, setError] = useState<string | null>(null);
   const selectedProjectName = projects.find((project) => project.id === selectedProjectId)?.name;

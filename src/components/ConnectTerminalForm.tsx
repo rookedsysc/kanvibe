@@ -11,15 +11,17 @@ import SessionTypeOptions from "./SessionTypeOptions";
 interface ConnectTerminalFormProps {
   taskId: string;
   sshHost?: string | null;
+  defaultSessionType?: SessionType;
   onConnected?: (task: KanbanTask) => void;
 }
 
 /** 세션이 없는 태스크에 터미널 세션을 연결하는 폼 */
-export default function ConnectTerminalForm({ taskId, sshHost, onConnected }: ConnectTerminalFormProps) {
+export default function ConnectTerminalForm({ taskId, sshHost, defaultSessionType = SessionType.HERDR, onConnected }: ConnectTerminalFormProps) {
   const t = useTranslations("taskDetail");
   const tc = useTranslations("common");
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  const [selectedSessionType, setSelectedSessionType] = useState<SessionType | null>(null);
 
   function handleSubmit(formData: FormData) {
     const sessionType = formData.get("sessionType") as SessionType;
@@ -51,6 +53,8 @@ export default function ConnectTerminalForm({ taskId, sshHost, onConnected }: Co
         <label className="text-xs text-text-secondary">{t("selectSessionType")}</label>
         <select
           name="sessionType"
+          value={selectedSessionType ?? defaultSessionType}
+          onChange={(event) => setSelectedSessionType(event.target.value as SessionType)}
           className="px-3 py-1.5 text-sm bg-bg-page border border-border-default rounded-md text-text-primary focus:outline-none focus:border-brand-primary transition-colors"
         >
           <SessionTypeOptions />

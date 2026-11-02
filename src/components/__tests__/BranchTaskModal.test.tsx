@@ -162,4 +162,10 @@ describe("BranchTaskModal", () => {
     expect(onClose).toHaveBeenCalledTimes(ready ? 1 : 0);
   });
 
+  it("설정이 전달되지 않은 분기도 Herdr를 기본 선택한다", async () => {
+    render(<BranchTaskModal task={createTask()} projects={[createProject()]} onClose={vi.fn()} />);
+    await waitFor(() => expect(mockGetProjectBranches).toHaveBeenCalled());
+    expect((screen.getByRole("option", { name: "herdr" }) as HTMLOptionElement).selected).toBe(true);
+  });
+
 });
