@@ -2,64 +2,55 @@
 
 # KanVibe
 
-**Keyboard-first Kanban workspace for AI coding agents**
+**Your AI coding work, on one board. Keep it moving from your phone.**
 
-KanVibe keeps AI coding work out of scattered terminal tabs. Track branch-based tasks on a real-time Kanban board, open each task's tmux/zellij/Herdr session in the browser or desktop app, and let Claude Code, Gemini CLI, Codex CLI, and OpenCode hooks move tasks through the workflow automatically.
+Run Claude Code, Codex, Gemini CLI, and OpenCode in task workspaces that keep each branch, git worktree, and terminal together. See progress on one Kanban board, then open the same running terminal from your phone or tablet to read output and send the next command.
 
-Use shortcuts for project filters, task search, notifications, task detail panels, and common task actions without losing terminal focus.
-
-[![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-FFDD00?style=for-the-badge&logo=buy-me-a-coffee&logoColor=black)](https://buymeacoffee.com/rookedsysc)
-
-> Buying me a coffee is nice, but honestly? A contribution would make my day even more. :)
+[Install Desktop](./docs-site/content/en/installation.mdx) · [Start with Mobile](./docs-site/content/en/mobile.mdx) · [Documentation](./docs-site/content/en/index.mdx) · [Demo](https://www.youtube.com/watch?v=8JTrvd3T_Z0)
 
 [KO](./docs/README.ko.md) | [ZH](./docs/README.zh.md)
 
 </div>
 
-<div align="center">
-
 <table>
   <tr>
-    <td width="50%">
-      <img src="./docs/images/readme/kanvibe-main.png" alt="KanVibe Kanban board" width="100%">
-      <br>
-      <strong>Main Kanban board</strong>
+    <td width="70%">
+      <img src="./docs/images/readme/kanvibe-main.png" alt="Desktop: see every task and its status" width="100%">
+      <br><strong>Desktop: see every task and its status</strong>
     </td>
-    <td width="50%">
-      <img src="./docs/images/readme/kanvibe-detail.png" alt="Task detail terminal workspace" width="100%">
-      <br>
-      <strong>Task detail workspace</strong>
-    </td>
-  </tr>
-  <tr>
-    <td colspan="2">
-      <img src="./docs/images/readme/kanvibe-ai-usage.png" alt="AI usage panel showing remaining Claude, Codex, and Gemini quota per account" width="100%">
-      <br>
-      <strong>AI usage — remaining quota per account, without leaving the terminal</strong>
-      <br>
-      Press <code>Cmd/Ctrl+0</code> on a task detail page, or click the bottom dock icon. Every card names the account and plan it belongs to, and Claude's per-model weekly limits sit under the weekly total they draw from.
-    </td>
-  </tr>
-  <tr>
-    <td colspan="2">
-      <img src="./docs/images/readme/kanvibe-ai-accounts.png" alt="AI accounts screen listing Claude, Codex, and Gemini accounts with sign-in state, plan tier, and remaining usage" width="100%">
-      <br>
-      <strong>AI accounts — sign in once, in the app, and keep every account visible</strong>
-      <br>
-      Open it from <strong>Settings → AI accounts</strong>. Each provider lists the accounts it found with their sign-in state and plan tier, and remaining usage sits on the same screen. Signing in runs that CLI's own sign-in command in an in-app terminal, so an expired account never sends you back to a terminal.
+    <td width="30%">
+      <img src="./docs-site/public/screenshots/mobile-board.png" alt="Mobile: keep the board with you" width="100%">
+      <br><strong>Mobile: keep the board with you</strong>
     </td>
   </tr>
 </table>
 
-<a href="https://www.youtube.com/watch?v=8JTrvd3T_Z0">
-  <img src="https://img.youtube.com/vi/8JTrvd3T_Z0/maxresdefault.jpg" alt="KanVibe demo video thumbnail" width="100%">
-</a>
+## Get Started
 
-<strong><a href="https://www.youtube.com/watch?v=8JTrvd3T_Z0">Watch Demo on YouTube</a></strong>
+Install the macOS desktop app from the KanVibe Homebrew tap:
 
-</div>
+```bash
+brew install --cask rookedsysc/kanvibe/kanvibe
+open -a KanVibe
+```
 
----
+**Mobile (iOS / Android):** build the Flutter app from source, then pair it under **Desktop Settings → Mobile Connection** using the PC address, port, and one-time code. Keep KanVibe running on the PC. The phone must reach that address over your local network or a network such as Tailscale. [Connection, usage, and notification guide](./docs-site/content/en/mobile.mdx).
+
+**Mobile terminal compatibility:** use a task with `tmux`, `zellij`, or `terminal`. Desktop now defaults to Herdr for new settings, but the current Mobile terminal bridge does not support Herdr sessions. Select a supported session type when creating or connecting a task you want to use from Mobile.
+
+## From your desk to your phone
+
+1. **See what needs attention.** Agent hooks update the board as work moves through progress, waiting, and review.
+2. **Work in context.** Open a task’s terminal alongside its branch, worktree, chat history, and PR actions. Use shortcuts to move between tasks without hunting through terminal tabs.
+3. **Keep work moving from Mobile.** Check the board, open the running terminal, enter a follow-up, or switch to another paired PC.
+
+<p align="center">
+  <img src="./docs-site/public/screenshots/mobile-terminal.png" alt="Read output and type into the same task terminal" width="320">
+  <br><strong>Read output and type into the same task terminal</strong>
+</p>
+
+<details>
+<summary>Keyboard workflows and screenshots</summary>
 
 ## Key Workflows
 
@@ -111,7 +102,7 @@ The same panel opens from the task detail dock, so you can keep watching subtask
 
 <img src="./docs/images/readme/kanvibe-live-sessions-panel.png" alt="Task detail live session panel with running claude session" width="100%">
 
----
+</details>
 
 ## Prerequisites
 
@@ -122,25 +113,6 @@ The same panel opens from the task detail dock, so you can keep watching subtask
 | [gh](https://cli.github.com/) | latest | Yes | `brew install gh` (requires `gh auth login`) |
 | [zellij](https://github.com/zellij-org/zellij) | latest | No | `brew install zellij` |
 | [Herdr](https://herdr.dev/tui/docs/) | 0.9.5 verified | Default backend | In-app install prompt |
-
----
-
-## Quick Start
-
-### Install with Homebrew
-
-Until KanVibe is accepted into the official Homebrew Cask repository, install it from the KanVibe Homebrew tap:
-
-```bash
-brew install --cask rookedsysc/kanvibe/kanvibe
-open -a KanVibe
-```
-
-After the official Homebrew Cask is accepted, the install command becomes:
-
-```bash
-brew install --cask kanvibe
-```
 
 ### Update or Remove
 
@@ -175,7 +147,7 @@ Add a TODO task from the Kanban board. When creating a task with a branch name, 
 
 Tasks are managed through 5 statuses: **TODO** → **PROGRESS** → **PENDING** → **REVIEW** → **DONE**
 
-Change statuses via drag & drop, or let [AI Agent Hooks](#ai-agent-hooks---automatic-status-tracking) transition them automatically. When a task moves to **DONE**, its branch, worktree, and terminal session are **automatically deleted**.
+Change statuses via drag & drop, or let [AI Agent Hooks](#ai-agent-hooks---automatic-status-tracking) transition them automatically. Moving a task to **DONE** preserves its branch, worktree, and terminal session. Deleting the task triggers resource cleanup; the project root branch is protected.
 
 ### 4. Select Pane Layouts
 
@@ -207,7 +179,7 @@ Each pane can run a custom command (e.g., `vim`, `htop`, `lazygit`, test runner,
 - Create branch TODOs that automatically prepare a git worktree and terminal session
 - Use the board toolbar magnifying-glass scan dialog to register repositories and detect existing worktree branches as TODO tasks
 - Open each task into a dedicated terminal workspace with task metadata, hook controls, chat, and PR actions in the side dock
-- Move a task to DONE to clean up its branch, worktree, and terminal session automatically
+- Keep resources when a task moves to DONE; delete the task to clean up its branch, worktree, and terminal session, with the project root branch protected
 - Delete a project from the scan dialog without touching existing git branches, worktrees, or files on disk
 
 ### Terminal Sessions (tmux / zellij / Herdr)
@@ -253,14 +225,14 @@ Each pane can run a custom command (e.g., `vim`, `htop`, `lazygit`, test runner,
 - Signed-out accounts stay listed so there is still somewhere to sign in again, and removing one deletes only the account home KanVibe created
 
 ### Mobile Companion (Flutter)
-- Follow the board and step into a task's terminal from your phone or tablet with the Flutter client in [`mobile/`](./mobile/README.md); build it from source for now
-- Phones list tasks in vertical status sections, and tablets (768dp and wider) show the same board as Kanban columns
-- Task detail mirrors the task's tmux/zellij panes: one pane per tab on phones, one window per tab on tablets with panes in the same layout as the desktop
-- Type into the mirrored terminal with the on-screen keyboard, even for tasks the desktop has not opened and for SSH remote tasks
-- Create tasks with the desktop's default session type, move a task to another status, check task info, and open its PR
-- Mirroring only reads panes, so it never changes focus or pane size on the desktop
-- Pair under **Settings → Mobile Connection → Create pairing code**, then enter the desktop's address, port (`9736` for the packaged app), and the 6-digit code; codes expire after 5 minutes and work once
-- The device stays paired until you disconnect it from the app or from the desktop's device list
+
+- View tasks by status on phones; tablets at 768dp and wider show Kanban columns. Filter projects and switch between saved PCs.
+- Open the task’s existing tmux, Zellij, or plain terminal session. Each tab shows one pane on both phones and tablets; add a shell tab without returning to the PC.
+- Read terminal output and type with the on-screen keyboard, including in SSH remote tasks. Create tasks, change status, inspect task details, and open the linked PR.
+- tmux and plain terminals adapt their rows and columns to the mobile viewport. The PC’s shared terminal size changes while you view it and restores after you leave; Zellij uses scrolling instead.
+- Pair using a 6-digit, single-use code that expires after five minutes. Save multiple PCs and remove each pairing separately.
+- Read the selected PC’s notification inbox, mark items read, and jump to the related task. Foreground hook updates work over WebSocket; background push requires Firebase/APNs configuration and a desktop push relay.
+- Mobile currently builds from source. The desktop must stay running and reachable over LAN or a network such as Tailscale. See the [Mobile guide](./docs-site/content/en/mobile.mdx) and [build instructions](./mobile/README.md).
 
 ### Keyboard Shortcuts
 
@@ -296,7 +268,7 @@ KanVibe integrates with **Claude Code Hooks**, **Gemini CLI Hooks**, **Codex CLI
 | **PROGRESS** | AI is actively working on the task |
 | **PENDING** | AI asked a follow-up question; waiting for user response (Claude Code only) |
 | **REVIEW** | AI has finished; awaiting review |
-| **DONE** | Task complete — branch, worktree, and terminal session are **automatically deleted** |
+| **DONE** | Task complete — branch, worktree, and terminal session are retained until the task is deleted |
 
 #### Claude Code
 ```
@@ -412,7 +384,7 @@ This project is licensed under the **AGPL-3.0**. You are free to use, modify, an
 
 ## Contributing
 
-See [docs/CONTRIBUTING.md](./docs/CONTRIBUTING.md) for guidelines.
+See [CONTRIBUTING.md](./CONTRIBUTING.md) for guidelines.
 
 ---
 
@@ -420,3 +392,5 @@ See [docs/CONTRIBUTING.md](./docs/CONTRIBUTING.md) for guidelines.
 
 - [workmux](https://github.com/raine/workmux) — tmux workspace manager
 - [vibe-kanban](https://github.com/BloopAI/vibe-kanban) — AI-powered Kanban board
+
+[Buy Me a Coffee](https://buymeacoffee.com/rookedsysc)

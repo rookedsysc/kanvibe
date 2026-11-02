@@ -1,78 +1,69 @@
 ---
-title: KanVibe 文档
-description: "KanVibe 是一款 macOS 桌面应用，把 Claude Code、Gemini CLI、Codex CLI、OpenCode 等 AI 编码代理的工作与看板、任务级终端和 git worktree 连接起来。"
+title: KanVibe
+description: "在一个看板中管理 AI 编程任务，并通过 KanVibe Mobile 在手机或平板上继续使用同一任务的终端。"
 ---
 
 <div className="kv-hero">
-  <span className="kv-eyebrow">KanVibe Docs · Nextra 4</span>
-  <h1>把 AI 代理工作整合进看板、终端和分支流程。</h1>
+  <span className="kv-eyebrow">KanVibe Desktop + Mobile</span>
+  <h1>AI 编程任务，一览无余。离开电脑，也能继续。</h1>
   <div className="kv-hero-copy">
-    KanVibe 可把 Claude Code、Gemini CLI、Codex CLI、OpenCode 的任务连接到真实的 git worktree 与 Herdr/tmux/zellij 会话。每个任务都有自己的终端界面，可在同一流程中自由切换 AI 代理执行、手动命令、构建/测试与日志查看。
+    将 Claude Code、Codex、Gemini CLI 和 OpenCode 的任务集中到一个工作区。为每个分支连接终端，找出需要你处理的任务，再从手机或平板继续使用同一个运行中的会话。
   </div>
   <div className="kv-actions">
-    <a className="kv-button kv-button-primary" href="/zh/installation">开始安装</a>
-    <a className="kv-button" href="/zh/features">查看功能</a>
+    <a className="kv-button kv-button-primary" href="/zh/installation">安装 Desktop</a>
+    <a className="kv-button" href="/zh/mobile">开始使用 Mobile</a>
   </div>
   <div className="kv-chip-row">
-    <span className="kv-chip">한국어 · English · 中文</span>
-    <span className="kv-chip">Next.js 16 + Nextra 4</span>
-    <span className="kv-chip">Keyboard-first</span>
+    <span className="kv-chip">分支独立工作区</span>
+    <span className="kv-chip">实时代理状态</span>
+    <span className="kv-chip">手机上继续同一终端</span>
   </div>
 </div>
 
-<figure className="kv-shot">
-  <img src="/screenshots/board.png" alt="KanVibe 看板界面" />
-  <figcaption>KanVibe 主看板集中展示项目颜色、优先级、PR 徽章和终端会话标签。</figcaption>
-</figure>
+## 看清每个任务的进展
+
+无需逐个寻找终端标签。看板将项目、分支、PR 和会话信息放在一起，支持的代理 hooks 会随工作进展自动更新任务状态。
 
 <figure className="kv-shot">
-  <img src="/screenshots/task-detail.png" alt="每个任务的终端工作区" />
-  <figcaption>每个任务都会打开独立终端工作区，让 AI 代理执行与直接 shell 命令同样容易访问。</figcaption>
+  <img src="/screenshots/board.png" alt="按任务状态分组的 KanVibe Desktop 看板" />
+  <figcaption>在多个项目中，一眼找到正在进行、等待处理和准备审查的任务。</figcaption>
 </figure>
+
+## 在保留任务上下文的终端里继续
+
+基于分支的任务将 git worktree（分支的独立工作目录）与终端会话连接起来。运行代理、查看差异与对话记录，或亲自输入命令。搜索、项目筛选和面板快捷键让下一步操作触手可及。
+
+<figure className="kv-shot">
+  <img src="/screenshots/task-detail.png" alt="包含终端和任务操作面板的 Desktop 工作区" />
+  <figcaption>代理、shell 命令、构建和日志都属于同一个任务，还能在工作区查看各账号的使用量。</figcaption>
+</figure>
+
+[了解 Desktop 功能](/zh/features) · [查看快捷键](/zh/shortcuts)
+
+## 离开电脑，也能继续同一个任务
+
+KanVibe Mobile 连接到运行中的 Desktop 应用。查看看板、打开任务的真实终端并输入命令、添加 shell 标签，或切换已保存的电脑。手机按状态显示任务列表，平板显示看板。
 
 <div className="kv-grid">
-  <div className="kv-card">
-    <h3>基于分支的任务管理</h3>
-    <p>创建任务时，KanVibe 会把 branch、worktree 和 Herdr/tmux/zellij 会话绑定成一个工作单元。</p>
-  </div>
-  <div className="kv-card">
-    <h3>AI 代理 Hooks</h3>
-    <p>Claude、Gemini、Codex、OpenCode 事件会自动推动任务进入 PROGRESS、PENDING、REVIEW。</p>
-  </div>
-  <div className="kv-card">
-    <h3>任务级 AI 聊天历史</h3>
-    <p>在任务中加载 Claude、Gemini、Codex、OpenCode 对话，并通过 provider OR 过滤、正文搜索和 role 过滤找到所需上下文。</p>
-  </div>
-  <div className="kv-card">
-    <h3>任务专属终端界面</h3>
-    <p>每个任务都有自己的会话，可在 Herdr、tmux、zellij 或不使用多路复用器的 terminal 之间选择，既可交给 AI 代理处理，也可随时直接运行命令。</p>
-  </div>
-  <div className="kv-card">
-    <h3>终端标签页</h3>
-    <p>在同一个任务中用标签页分开服务器、测试和代理执行。标签页与 Herdr tab、tmux window、zellij tab 双向同步，在 KanVibe 之外创建的 window 也会出现在标签栏中。</p>
-  </div>
-  <div className="kv-card">
-    <h3>键盘优先 UI</h3>
-    <p>用快捷键打开项目过滤、快速搜索、通知和详情面板，同时保持终端焦点可预测。</p>
-  </div>
-  <div className="kv-card">
-    <h3>新 Worktree 自动检测</h3>
-    <p>后台 Sync 定期扫描项目，发现外部创建的 git worktree 后自动注册为任务并安装 hook。</p>
-  </div>
-  <div className="kv-card">
-    <h3>Merged PR 自动检测</h3>
-    <p>通过 GitHub CLI 定期检查 PR 状态，发现已合并 PR 后发送通知并引导转为 DONE。</p>
-  </div>
-  <div className="kv-card">
-    <h3>通知中心</h3>
-    <p>通过 Cmd+Shift+I 打开通知中心，查看 AI 代理状态变更、PR 合并等事件，并直接跳转到相关任务。</p>
-  </div>
-  <div className="kv-card">
-    <h3>会话自动关联</h3>
-    <p>后台 Sync 检测到运行中的 Herdr/tmux/zellij 会话时，自动关联到对应任务并将状态转为 PROGRESS。</p>
-  </div>
-  <div className="kv-card">
-    <h3>删除时自动清理</h3>
-    <p>删除任务时会在后台自动清理 git worktree、branch 和终端会话。仅移动到 DONE 不会清理任何资源，项目根分支也受保护。</p>
-  </div>
+  <figure className="kv-shot">
+    <img src="/screenshots/mobile-board.png" alt="手机上的 KanVibe Mobile 任务看板" style={{ maxHeight: '36rem', width: 'auto', margin: '0 auto' }} />
+    <figcaption>从手机查看任务状态并筛选项目。</figcaption>
+  </figure>
+  <figure className="kv-shot">
+    <img src="/screenshots/mobile-terminal.png" alt="KanVibe Mobile 中打开的任务终端" style={{ maxHeight: '36rem', width: 'auto', margin: '0 auto' }} />
+    <figcaption>阅读运行中会话的输出，直接向终端输入命令。</figcaption>
+  </figure>
+</div>
+
+Mobile 目前需要从源码构建。Desktop 必须保持运行且能通过网络访问；后台推送需要额外配置。请查看 [Mobile 安装与连接指南](/zh/mobile)。
+
+## 在电脑上开始，在需要的地方继续
+
+1. **注册仓库。** 扫描本地或远程项目，将 worktree 分支加入看板。
+2. **启动任务。** 在分支工作区运行代理，通过看板跟踪状态。
+3. **连接手机。** 输入一次 Desktop 连接码，即可在 Mobile 打开同一批任务和终端。
+
+<div className="kv-actions">
+  <a className="kv-button kv-button-primary" href="/zh/quick-start">创建第一个任务</a>
+  <a className="kv-button" href="/zh/mobile">连接手机</a>
 </div>

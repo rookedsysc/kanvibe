@@ -11,12 +11,12 @@ export const metadata = {
     default: 'KanVibe Docs',
     template: '%s · KanVibe Docs'
   },
-  description: 'KanVibe documentation for installation, quick start, features, settings, and keyboard shortcuts.',
+  description: 'KanVibe Desktop and Mobile guides: installation, pairing, task boards, terminals, notifications, and keyboard shortcuts.',
   applicationName: 'KanVibe Docs',
   generator: 'Nextra',
   openGraph: {
     title: 'KanVibe Docs',
-    description: 'Keyboard-first Kanban workspace for AI coding agents.',
+    description: 'Manage AI coding work on one board and continue from your phone.',
     siteName: 'KanVibe Docs',
     type: 'website'
   }

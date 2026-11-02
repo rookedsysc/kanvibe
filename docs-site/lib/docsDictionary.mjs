@@ -5,12 +5,13 @@
 
 const dictionaries = {
   ko: {
-    tagline: 'AI 에이전트를 위한 키보드 중심 칸반 워크스페이스',
+    tagline: 'AI 코딩 작업을 한눈에. 모바일에서도 이어서.',
     nav: [
       ['/', '홈'],
       ['/installation', '설치'],
       ['/quick-start', 'Quick Start'],
       ['/features', '기능'],
+      ['/mobile', 'Mobile'],
       ['/settings', '설정'],
       ['/shortcuts', '단축키']
     ],
@@ -18,12 +19,13 @@ const dictionaries = {
     poweredBy: 'Nextra 4 기반 문서'
   },
   en: {
-    tagline: 'Keyboard-first Kanban workspace for AI agents',
+    tagline: 'AI coding work on one board. Continue from your phone.',
     nav: [
       ['/', 'Home'],
       ['/installation', 'Installation'],
       ['/quick-start', 'Quick Start'],
       ['/features', 'Features'],
+      ['/mobile', 'Mobile'],
       ['/settings', 'Settings'],
       ['/shortcuts', 'Shortcuts']
     ],
@@ -31,12 +33,13 @@ const dictionaries = {
     poweredBy: 'Documentation powered by Nextra 4'
   },
   zh: {
-    tagline: '面向 AI 代理的键盘优先看板工作区',
+    tagline: 'AI 编程任务一目了然，手机上继续工作。',
     nav: [
       ['/', '首页'],
       ['/installation', '安装'],
       ['/quick-start', 'Quick Start'],
       ['/features', '功能'],
+      ['/mobile', '移动端'],
       ['/settings', '设置'],
       ['/shortcuts', '快捷键']
     ],

@@ -1,11 +1,11 @@
 ---
 title: 安装
-description: "通过 Homebrew Cask 安装 KanVibe 的方法，以及 Git、Herdr、GitHub CLI 等前置条件。"
+description: "通过 Homebrew 安装 macOS 版 KanVibe Desktop，并构建和连接 iOS 或 Android Mobile 应用。"
 ---
 
 # 安装
 
-KanVibe 以 macOS 桌面应用形式分发，推荐通过 Homebrew Cask 安装。
+在 Mac 上安装 KanVibe Desktop 来管理 AI 编程任务，再连接 iOS 或 Android Mobile 应用，从手机或平板继续工作。Desktop 通过 Homebrew Cask 安装；Mobile 目前需要从源码构建。请查看 [Mobile 构建与连接指南](/zh/mobile)。
 
 ## 前置条件
 
@@ -63,3 +63,7 @@ brew untap rookedsysc/kanvibe
   </div>
 </div>
 
+
+## 从手机继续工作
+
+运行 Desktop 后，按照 [Mobile 指南](/zh/mobile)构建应用并输入六位连接码。手机必须能通过本地或私有网络访问电脑地址。后台推送需要另外配置 Firebase/APNs 和 Desktop 中继。
