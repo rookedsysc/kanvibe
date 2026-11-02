@@ -516,6 +516,7 @@ export async function attachLocalSession(
 
   if (sessionType === SessionType.HERDR) {
     await ensureHerdrSession(sessionName, cwd || process.env.HOME || "/", tmuxPaneLayout);
+    if (ws.readyState !== ws.OPEN) return;
   }
 
   if (sessionType === SessionType.TMUX) {
@@ -547,6 +548,10 @@ export async function attachLocalSession(
     console.log(
       `[터미널] PTY spawn: shell=${spawnPlan.shell}, args=${JSON.stringify(spawnPlan.args)}, cwd=${spawnPlan.cwd}`,
     );
+  }
+
+  if (ws.readyState !== ws.OPEN) {
+    return;
   }
 
   const connectedDuringBootstrap = activeTerminals.get(terminalKey);
@@ -611,6 +616,7 @@ export async function attachRemoteSession(
 
   if (sessionType === SessionType.HERDR) {
     await ensureHerdrSession(sessionName, worktreePath || "~", tmuxPaneLayout, sshHost);
+    if (ws.readyState !== ws.OPEN) return;
   }
 
   const pty = await import("node-pty");
@@ -628,6 +634,10 @@ export async function attachRemoteSession(
     console.log(`[터미널] Remote PTY spawn: shell=ssh, args=${JSON.stringify(args)}`);
   }
   debugLog("attachRemoteSession 시작", { taskId, sshHost, sessionName, sessionType, worktreePath, attachCommand });
+
+  if (ws.readyState !== ws.OPEN) {
+    return;
+  }
 
   const connectedDuringBootstrap = activeTerminals.get(terminalKey);
   if (connectedDuringBootstrap) {
