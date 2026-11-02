@@ -66,7 +66,10 @@ class _PaneTerminalViewState extends ConsumerState<PaneTerminalView>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _terminal = xterm.Terminal(maxLines: _scrollbackLines);
+    _terminal = xterm.Terminal(
+      maxLines: _scrollbackLines,
+      mouseHandler: const _TerminalWheelMouseHandler(),
+    );
     _terminal.resize(widget.pane.width, widget.pane.height);
 
     _terminal.onOutput = (data) {
@@ -388,5 +391,30 @@ class _PaneStreamFailure extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+// xterm 4.0.0의 휠 ID에는 Shift 비트가 잘못 포함되어 원격 프로그램이 스크롤을 무시한다.
+// https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h2-Wheel-mice
+class _TerminalWheelMouseHandler extends xterm.TerminalMouseHandler {
+  const _TerminalWheelMouseHandler();
+
+  @override
+  String? call(xterm.TerminalMouseEvent event) {
+    final output = xterm.defaultMouseHandler(event);
+    if (output == null || !event.button.isWheel) return output;
+    final button = event.button.id - 4;
+    return switch (event.state.mouseReportMode) {
+      xterm.MouseReportMode.sgr => output.replaceFirst(
+        '[<${event.button.id};',
+        '[<$button;',
+      ),
+      xterm.MouseReportMode.urxvt => output.replaceFirst(
+        '[${event.button.id + 32};',
+        '[${button + 32};',
+      ),
+      xterm.MouseReportMode.normal || xterm.MouseReportMode.utf =>
+        output.replaceRange(3, 4, String.fromCharCode(button + 32)),
+    };
   }
 }

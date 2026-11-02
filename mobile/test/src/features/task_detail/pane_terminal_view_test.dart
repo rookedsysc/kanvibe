@@ -147,6 +147,65 @@ Future<void> sendImeBuffer(
 }
 
 void main() {
+  for (final mode in [
+    (escape: '\x1b[?1006h', up: '\x1b[<64;', down: '\x1b[<65;'),
+    (escape: '\x1b[?1015h', up: '\x1b[96;', down: '\x1b[97;'),
+    (escape: '', up: '\x1b[M`', down: '\x1b[Ma'),
+    (escape: '\x1b[?1005h', up: '\x1b[M`', down: '\x1b[Ma'),
+  ]) {
+    testWidgets('대체 화면 손가락 스크롤의 휠 코드 ${mode.up}', (tester) async {
+      final client = FakeDesktopClient();
+      await pumpPane(
+        tester,
+        _pane,
+        client: client,
+        store: FakeConnectionStore(),
+        canResize: true,
+      );
+      client.openedPanes[_pane.id]!.add(
+        '\x1b[?1049h\x1b[?1000h${mode.escape}ready',
+      );
+      await tester.pumpAndSettle();
+      await tester.drag(find.byType(xterm.TerminalView), const Offset(0, 250));
+      await tester.pumpAndSettle();
+      expect((client.writtenInput[_pane.id] ?? []).join(), contains(mode.up));
+      await tester.drag(find.byType(xterm.TerminalView), const Offset(0, -250));
+      await tester.pumpAndSettle();
+      expect((client.writtenInput[_pane.id] ?? []).join(), contains(mode.down));
+      expect(tester.testTextInput.isVisible, isFalse);
+    });
+  }
+
+  for (final canResize in [false, true]) {
+    testWidgets('손가락으로 이전 출력과 최신 출력을 왕복한다 resize=$canResize', (tester) async {
+      final client = FakeDesktopClient();
+      await pumpPane(
+        tester,
+        _pane,
+        client: client,
+        store: FakeConnectionStore(),
+        canResize: canResize,
+      );
+      client.openedPanes[_pane.id]!.add(
+        List.generate(180, (i) => 'line-$i\r\n').join(),
+      );
+      await tester.pumpAndSettle();
+      final view = tester.widget<xterm.TerminalView>(
+        find.byType(xterm.TerminalView),
+      );
+      final scroll = view.scrollController!;
+      final bottom = scroll.offset;
+      expect(bottom, greaterThan(0));
+      await tester.drag(find.byType(xterm.TerminalView), const Offset(0, 300));
+      await tester.pumpAndSettle();
+      expect(scroll.offset, lessThan(bottom));
+      expect(tester.testTextInput.isVisible, isFalse);
+      await tester.drag(find.byType(xterm.TerminalView), const Offset(0, -300));
+      await tester.pumpAndSettle();
+      expect(scroll.offset, closeTo(bottom, 1));
+    });
+  }
+
   group('OSC 52', () {
     final clipboardWrites = <String>[];
     final clipboardReads = <MethodCall>[];
