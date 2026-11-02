@@ -4,6 +4,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'terminal_shortcut_combo_editor.dart';
 
 import '../../../../common/constants/app_colors.dart';
+import '../../../../common/constants/app_sizes.dart';
+import '../../../../common/constants/app_theme.dart';
 import '../../../task_create/domain/session_type.dart';
 import '../../application/terminal_shortcut_controller.dart';
 import '../../domain/terminal_shortcut.dart';
@@ -112,6 +114,11 @@ class _TerminalShortcutSettingsSheetState
             padding: const EdgeInsets.fromLTRB(20, 16, 8, 0),
             child: Row(
               children: [
+                IconButton(
+                  tooltip: '닫기',
+                  onPressed: _isSaving ? null : () => Navigator.pop(context),
+                  icon: const Icon(Icons.close),
+                ),
                 Expanded(
                   child: Text(
                     '${widget.sessionType.name} 단축키',
@@ -119,9 +126,14 @@ class _TerminalShortcutSettingsSheetState
                   ),
                 ),
                 IconButton(
-                  tooltip: '닫기',
-                  onPressed: _isSaving ? null : () => Navigator.pop(context),
-                  icon: const Icon(Icons.close),
+                  tooltip: '콤보 추가',
+                  onPressed:
+                      _isSaving ||
+                          _order == null ||
+                          _combos.length >= maxTerminalCombos
+                      ? null
+                      : _editCombo,
+                  icon: const Icon(Icons.add_circle_outline),
                 ),
               ],
             ),
@@ -139,105 +151,206 @@ class _TerminalShortcutSettingsSheetState
               ),
             )
           else ...[
-            SwitchListTile(
-              title: const Text('단축키 바 표시'),
-              value: _enabled,
-              onChanged: _isSaving
-                  ? null
-                  : (value) => setState(() => _enabled = value),
-            ),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 12),
-                child: TextButton.icon(
-                  onPressed: _isSaving || _combos.length >= maxTerminalCombos
-                      ? null
-                      : _editCombo,
-                  icon: const Icon(Icons.add),
-                  label: Text('콤보 추가 (${_combos.length}/$maxTerminalCombos)'),
-                ),
-              ),
-            ),
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-              child: Text(
-                '표시할 키를 선택하고 오른쪽 손잡이를 끌어 순서를 바꾸세요. 이 기기의 같은 세션 종류에 적용됩니다.',
-                style: TextStyle(color: AppColors.textSecondary),
-              ),
-            ),
             Expanded(
-              child: ReorderableListView.builder(
-                itemCount: _order!.length,
-                buildDefaultDragHandles: false,
-                onReorderItem: (oldIndex, newIndex) {
-                  if (_isSaving) return;
-                  setState(() {
-                    _order!.insert(newIndex, _order!.removeAt(oldIndex));
-                  });
-                },
-                itemBuilder: (context, index) {
-                  final key = keys[_order![index]]!;
-                  return CheckboxListTile(
-                    key: ValueKey(key.id),
-                    value: _selected.contains(key.id),
-                    title: Text(key.label),
-                    subtitle: Text(
-                      key.description,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    controlAffinity: ListTileControlAffinity.leading,
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 8),
-                    secondary: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        if (key.strokes.isNotEmpty)
-                          PopupMenuButton<String>(
-                            tooltip: '${key.label} 콤보 동작',
-                            enabled: !_isSaving,
-                            onSelected: (action) {
-                              if (action == 'edit') {
-                                _editCombo(key);
-                              } else {
-                                _deleteCombo(key.id);
-                              }
-                            },
-                            itemBuilder: (_) => const [
-                              PopupMenuItem(
-                                value: 'edit',
-                                child: Text('콤보 편집'),
+              child: Material(
+                type: MaterialType.transparency,
+                clipBehavior: Clip.hardEdge,
+                child: ReorderableListView.builder(
+                  header: Column(
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(
+                          AppSizes.p16,
+                          AppSizes.p12,
+                          AppSizes.p16,
+                          0,
+                        ),
+                        child: Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(AppSizes.p12),
+                          decoration: BoxDecoration(
+                            color: AppColors.buttonNeutral,
+                            borderRadius: BorderRadius.circular(
+                              AppSizes.radiusLg,
+                            ),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                '키보드 미리보기',
+                                style: Theme.of(context).textTheme.bodySmall,
                               ),
-                              PopupMenuItem(
-                                value: 'delete',
-                                child: Text('콤보 삭제'),
-                              ),
+                              const SizedBox(height: AppSizes.p8),
+                              if (!_enabled)
+                                const Text('단축키 바가 숨겨집니다')
+                              else if (_selected.isEmpty)
+                                const Text('아래에서 표시할 키를 선택하세요')
+                              else
+                                SingleChildScrollView(
+                                  scrollDirection: Axis.horizontal,
+                                  child: Row(
+                                    children: [
+                                      for (final id in _order!.where(
+                                        _selected.contains,
+                                      ))
+                                        Padding(
+                                          padding: const EdgeInsets.only(
+                                            right: AppSizes.p8,
+                                          ),
+                                          child: Chip(
+                                            label: Text(
+                                              keys[id]!.label,
+                                              style: monoStyle(
+                                                color: AppColors.textPrimary,
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                    ],
+                                  ),
+                                ),
                             ],
                           ),
-                        ReorderableDragStartListener(
-                          index: index,
-                          enabled: !_isSaving,
-                          child: Semantics(
-                            label: '${key.label} 순서 변경',
-                            child: const SizedBox.square(
-                              dimension: 48,
-                              child: Icon(Icons.drag_handle),
+                        ),
+                      ),
+                      SwitchListTile(
+                        title: const Text('단축키 바 표시'),
+                        value: _enabled,
+                        onChanged: _isSaving
+                            ? null
+                            : (value) => setState(() => _enabled = value),
+                      ),
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 12),
+                          child: TextButton.icon(
+                            onPressed:
+                                _isSaving || _combos.length >= maxTerminalCombos
+                                ? null
+                                : _editCombo,
+                            icon: const Icon(Icons.add),
+                            label: Text(
+                              '콤보 추가 (${_combos.length}/$maxTerminalCombos)',
                             ),
                           ),
                         ),
-                      ],
-                    ),
-                    onChanged: _isSaving
-                        ? null
-                        : (selected) => setState(() {
-                            if (selected == true) {
-                              _selected.add(key.id);
-                            } else {
-                              _selected.remove(key.id);
-                            }
-                          }),
-                  );
-                },
+                      ),
+                      const Padding(
+                        padding: EdgeInsets.symmetric(
+                          horizontal: 20,
+                          vertical: 8,
+                        ),
+                        child: Text(
+                          '표시할 키를 선택하고 오른쪽 손잡이를 끌어 순서를 바꾸세요. 이 기기의 같은 세션 종류에 적용됩니다.',
+                          style: TextStyle(color: AppColors.textSecondary),
+                        ),
+                      ),
+                    ],
+                  ),
+                  itemCount: _order!.length,
+                  buildDefaultDragHandles: false,
+                  onReorderItem: (oldIndex, newIndex) {
+                    if (_isSaving) return;
+                    setState(() {
+                      _order!.insert(newIndex, _order!.removeAt(oldIndex));
+                    });
+                  },
+                  itemBuilder: (context, index) {
+                    final key = keys[_order![index]]!;
+                    return Padding(
+                      key: ValueKey(key.id),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: AppSizes.p12,
+                        vertical: AppSizes.p4,
+                      ),
+                      child: CheckboxListTile(
+                        tileColor: AppColors.buttonNeutral,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(
+                            AppSizes.radiusLg,
+                          ),
+                        ),
+                        value: _selected.contains(key.id),
+                        title: Wrap(
+                          spacing: AppSizes.p8,
+                          crossAxisAlignment: WrapCrossAlignment.center,
+                          children: [
+                            Text(
+                              key.label,
+                              style: monoStyle(color: AppColors.textPrimary),
+                            ),
+                            if (key.strokes.isNotEmpty)
+                              const Text(
+                                '콤보',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: AppColors.textSecondary,
+                                ),
+                              ),
+                          ],
+                        ),
+                        subtitle: Text(
+                          key.description,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        controlAffinity: ListTileControlAffinity.leading,
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                        ),
+                        secondary: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            if (key.strokes.isNotEmpty)
+                              PopupMenuButton<String>(
+                                tooltip: '${key.label} 콤보 동작',
+                                enabled: !_isSaving,
+                                onSelected: (action) {
+                                  if (action == 'edit') {
+                                    _editCombo(key);
+                                  } else {
+                                    _deleteCombo(key.id);
+                                  }
+                                },
+                                itemBuilder: (_) => const [
+                                  PopupMenuItem(
+                                    value: 'edit',
+                                    child: Text('콤보 편집'),
+                                  ),
+                                  PopupMenuItem(
+                                    value: 'delete',
+                                    child: Text('콤보 삭제'),
+                                  ),
+                                ],
+                              ),
+                            ReorderableDragStartListener(
+                              index: index,
+                              enabled: !_isSaving,
+                              child: Semantics(
+                                label: '${key.label} 순서 변경',
+                                child: const SizedBox.square(
+                                  dimension: 48,
+                                  child: Icon(Icons.drag_handle),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        onChanged: _isSaving
+                            ? null
+                            : (selected) => setState(() {
+                                if (selected == true) {
+                                  _selected.add(key.id);
+                                } else {
+                                  _selected.remove(key.id);
+                                }
+                              }),
+                      ),
+                    );
+                  },
+                ),
               ),
             ),
             if (_error != null)
@@ -254,19 +367,20 @@ class _TerminalShortcutSettingsSheetState
                 padding: const EdgeInsets.all(12),
                 child: Row(
                   children: [
-                    TextButton(
-                      onPressed: _isSaving
-                          ? null
-                          : () => setState(
-                              () => _loadDraft(
-                                TerminalShortcutProfile.defaults(
-                                  widget.sessionType,
+                    Expanded(
+                      child: TextButton(
+                        onPressed: _isSaving
+                            ? null
+                            : () => setState(
+                                () => _loadDraft(
+                                  TerminalShortcutProfile.defaults(
+                                    widget.sessionType,
+                                  ),
                                 ),
                               ),
-                            ),
-                      child: const Text('기본값 복원'),
+                        child: const Text('기본값 복원'),
+                      ),
                     ),
-                    const Spacer(),
                     SizedBox(
                       width: 128,
                       child: FilledButton(

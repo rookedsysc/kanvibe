@@ -41,6 +41,207 @@ void main() {
       lessThanOrEqualTo(40),
     );
   });
+  for (final session in SessionType.values) {
+    testWidgets(
+      '${session.name} quick panel routes supported session actions',
+      (tester) async {
+        final pressed = <TerminalShortcut>[];
+        await tester.pumpWidget(
+          ProviderScope(
+            child: MaterialApp(
+              theme: buildAppTheme(),
+              home: Scaffold(
+                body: Align(
+                  alignment: Alignment.bottomCenter,
+                  child: TerminalShortcutBar(
+                    sessionType: session,
+                    onShortcut: pressed.add,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.byTooltip('빠른 단축키'));
+        await tester.pumpAndSettle();
+        if (session == SessionType.terminal) {
+          expect(find.text('패널 제어'), findsNothing);
+          await tester.tap(find.byKey(const ValueKey('panel-key-escape')));
+          expect(pressed.single.id, 'escape');
+        } else {
+          expect(find.text('패널 제어'), findsOneWidget);
+          await tester.tap(find.byKey(const ValueKey('panel-key-split-right')));
+          expect(pressed.single.action, 'split-right');
+          expect(
+            find.byKey(const ValueKey('panel-key-copy-mode')),
+            session == SessionType.tmux ? findsOneWidget : findsNothing,
+          );
+          expect(
+            find.byKey(const ValueKey('panel-key-toggle-floating')),
+            session == SessionType.zellij ? findsOneWidget : findsNothing,
+          );
+        }
+        await tester.tap(find.byTooltip('빠른 단축키 닫기'));
+        await tester.pumpAndSettle();
+        expect(
+          tester.getSize(find.byType(TerminalShortcutBar)).height,
+          lessThanOrEqualTo(40),
+        );
+      },
+    );
+  }
+
+  testWidgets('busy quick panel blocks session controls but permits raw keys', (
+    tester,
+  ) async {
+    final pressed = <TerminalShortcut>[];
+    await tester.pumpWidget(
+      ProviderScope(
+        child: MaterialApp(
+          theme: buildAppTheme(),
+          home: Scaffold(
+            body: TerminalShortcutBar(
+              sessionType: SessionType.tmux,
+              isBusy: true,
+              onShortcut: pressed.add,
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('빠른 단축키'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('panel-key-split-right')));
+    expect(pressed, isEmpty);
+    await tester.tap(find.text('키'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('panel-key-escape')));
+    expect(pressed.single.id, 'escape');
+  });
+
+  testWidgets('selected combo step moves and saves in visible order', (
+    tester,
+  ) async {
+    TerminalShortcut? saved;
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: buildAppTheme(),
+        home: Scaffold(
+          body: Builder(
+            builder: (context) => TextButton(
+              onPressed: () async {
+                saved = await showModalBottomSheet<TerminalShortcut>(
+                  context: context,
+                  isScrollControlled: true,
+                  builder: (_) => TerminalShortcutComboEditor(
+                    combo: TerminalShortcut.combo(
+                      'combo-order',
+                      'Retry',
+                      const [
+                        TerminalShortcutStroke(
+                          key: 'character',
+                          character: 'c',
+                          ctrl: true,
+                        ),
+                        TerminalShortcutStroke(key: 'up'),
+                        TerminalShortcutStroke(key: 'enter'),
+                      ],
+                    ),
+                  ),
+                );
+              },
+              child: const Text('편집'),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('편집'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(InputChip, '2  ↑'));
+    await tester.pump();
+    await tester.ensureVisible(find.text('뒤로'));
+    await tester.tap(find.text('뒤로'));
+    await tester.pump();
+    expect(find.widgetWithText(InputChip, '3  ↑'), findsOneWidget);
+    await tester.tap(find.text('콤보 저장'));
+    await tester.pumpAndSettle();
+    expect(saved!.id, 'combo-order');
+    expect(saved!.strokes.map((step) => step.key), [
+      'character',
+      'enter',
+      'up',
+    ]);
+    expect(saved!.strokes.first.ctrl, isTrue);
+  });
+
+  testWidgets('quick panel fits a small viewport with large text and IME', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(320, 640);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final controller = xterm.TerminalController();
+    addTearDown(controller.dispose);
+    await tester.pumpWidget(
+      ProviderScope(
+        child: MaterialApp(
+          theme: buildAppTheme(),
+          home: MediaQuery(
+            data: const MediaQueryData(
+              size: Size(320, 640),
+              viewInsets: EdgeInsets.only(bottom: 280),
+              textScaler: TextScaler.linear(2),
+            ),
+            child: Scaffold(
+              body: TerminalSoftKeyboard(
+                terminal: xterm.Terminal(),
+                controller: controller,
+                sessionType: SessionType.tmux,
+                child: const SizedBox(),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('빠른 단축키'));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('settings fits a small viewport with large text', (tester) async {
+    tester.view.physicalSize = const Size(320, 640);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await tester.pumpWidget(
+      ProviderScope(
+        child: MaterialApp(
+          theme: buildAppTheme(),
+          home: MediaQuery(
+            data: const MediaQueryData(
+              size: Size(320, 640),
+              textScaler: TextScaler.linear(2),
+            ),
+            child: const Scaffold(
+              body: TerminalShortcutSettingsSheet(
+                sessionType: SessionType.tmux,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    expect(find.text('적용'), findsOneWidget);
+  });
+
   test('legacy profiles keep key order and default to no combos', () async {
     FlutterSecureStorage.setMockInitialValues({
       'kanvibe_terminal_shortcuts_v1':

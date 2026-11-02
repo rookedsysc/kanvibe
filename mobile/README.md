@@ -44,6 +44,10 @@ augroup END
 
 바 오른쪽 **설정**에서 현재 세션 종류의 키를 선택하고 오른쪽 손잡이로 순서를 바꾼 뒤 **적용**한다. 표시 여부·키 순서는 이 기기의 일반 terminal / tmux / Zellij별로 저장한다. **기본값 복원** 후 적용하면 초기 구성으로 돌아간다. 바를 꺼도 설정 버튼은 남는다. 설정을 닫으면 적용하지 않은 변경은 버린다.
 
+키보드 위 **tmux / zellij / 키** 버튼을 누르면 빠른 패널이 열린다. 세션 탭에는 분할·확대·출력 이동과 tmux 복사 모드 또는 Zellij 플로팅 동작을, **키** 탭에는 일반 터미널 키를, **내 콤보** 탭에는 저장한 콤보를 표시한다. 세션 동작은 기존 pane 제어 API를 사용한다. 패널을 닫으면 얇은 단축키 바로 돌아간다.
+
+설정 상단의 **키보드 미리보기**는 선택한 키의 순서를 보여 준다. 카드 오른쪽 손잡이를 끌어 순서를 바꾸고, **+**로 콤보를 추가한다. 콤보 편집에서는 순서 칩을 눌러 한 단계를 선택하고 문자·특수 키·Ctrl/Alt를 설정한다. **앞으로 / 뒤로**로 선택한 단계를 이동하고 칩의 삭제 버튼으로 제거한다.
+
 **콤보 추가**에서 짧은 이름을 정하고 Ctrl·Alt와 문자/특수 키를 단계별로 선택한다. 예를 들어 `Ctrl+C → ↑ → Enter`를 한 버튼으로 등록할 수 있다. 콤보는 세션 종류당 12개, 각 8단계까지 저장하며 새 콤보를 바 맨 앞에 배치한다. 설정 목록의 콤보 메뉴에서 편집·삭제한 뒤 **적용**하면 저장된다. 콤보 입력은 선택한 터미널에 순서대로 전달되며, 분할·확대 같은 세션 제어는 전용 버튼을 사용한다.
 
 | 세션 | 추가 단축키 |
@@ -54,7 +58,7 @@ augroup END
 
 세션 제어는 키 접두사 대신 인증된 `POST /api/mobile/tasks/:taskId/panes/:paneId/shortcuts`의 허용된 동작을 실행하므로 사용자 키 바인딩과 무관하다. tmux 복사·스크롤 화면은 응답의 캡처로 갱신하며 **맨 아래**로 복귀한다. Zellij 분할은 선택 pane이 속한 탭에 새 pane을 생성하고 PC의 포커스는 유지한다. Zellij는 기존 미러링과 같은 pane ID 지원 버전이 필요하다. 이전 데스크톱 앱에 세션 제어 API가 없으면 실패 안내를 표시한다.
 
-단축키 정의는 `features/task_detail/domain/terminal_shortcut.dart`, 저장은 `data/terminal_shortcut_store.dart`, 공유 설정 상태는 `application/terminal_shortcut_controller.dart`, 버튼과 설정 시트는 `presentation/widgets/terminal_shortcut_*`에 있다. `TerminalSoftKeyboard`가 IME·Ctrl/Alt를 소유하고 `PaneTerminalView`가 스트림과 세션 제어 결과를 반영한다.
+단축키 정의는 `features/task_detail/domain/terminal_shortcut.dart`, 저장은 `data/terminal_shortcut_store.dart`, 공유 설정 상태는 `application/terminal_shortcut_controller.dart`, 버튼과 설정 시트는 `presentation/widgets/terminal_shortcut_*`에 있다. `TerminalShortcutBar`가 빠른 패널의 열림 상태를, `TerminalShortcutPanel`이 표시할 탭을, `TerminalShortcutComboEditor`가 선택한 단계와 입력 초안을 소유한다. `TerminalSoftKeyboard`가 IME·Ctrl/Alt를 소유하고 `PaneTerminalView`가 스트림과 세션 제어 결과를 반영한다.
 
 ## 준비
 

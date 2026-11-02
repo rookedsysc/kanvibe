@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../../../common/constants/app_colors.dart';
+import '../../../../common/constants/app_sizes.dart';
+import '../../../../common/constants/app_theme.dart';
 import '../../domain/terminal_shortcut.dart';
 
 class TerminalShortcutComboEditor extends StatefulWidget {
@@ -31,6 +33,7 @@ class _TerminalShortcutComboEditorState
   ];
   int _nextId = 0;
   String? _error;
+  int _selectedIndex = 0;
 
   @override
   void dispose() {
@@ -66,7 +69,10 @@ class _TerminalShortcutComboEditorState
   Widget build(BuildContext context) => Padding(
     padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
     child: SizedBox(
-      height: MediaQuery.sizeOf(context).height * .72,
+      height:
+          (MediaQuery.sizeOf(context).height -
+              MediaQuery.viewInsetsOf(context).bottom) *
+          .9,
       child: Column(
         children: [
           Padding(
@@ -105,28 +111,98 @@ class _TerminalShortcutComboEditorState
                       onChanged: (_) => setState(() => _error = null),
                     ),
                   ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: AppSizes.p16),
                   Text(
-                    _strokes.map((entry) => entry.stroke.label).join(' → '),
-                    style: const TextStyle(color: AppColors.textSecondary),
+                    '키 입력 순서',
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                  const SizedBox(height: AppSizes.p8),
+                  Container(
+                    padding: const EdgeInsets.all(AppSizes.p12),
+                    decoration: BoxDecoration(
+                      color: AppColors.terminalBg,
+                      borderRadius: BorderRadius.circular(AppSizes.radiusLg),
+                      border: Border.all(color: AppColors.borderDefault),
+                    ),
+                    child: Wrap(
+                      spacing: AppSizes.p8,
+                      runSpacing: AppSizes.p8,
+                      children: [
+                        for (var index = 0; index < _strokes.length; index++)
+                          Semantics(
+                            identifier: 'combo-step-${_strokes[index].id}',
+                            child: InputChip(
+                              label: Text(
+                                '${index + 1}  ${_strokes[index].stroke.label}',
+                                style: monoStyle(color: AppColors.textPrimary),
+                              ),
+                              selected: index == _selectedIndex,
+                              selectedColor: AppColors.brandSubtle,
+                              deleteIconColor: AppColors.textSecondary,
+                              checkmarkColor: AppColors.textPrimary,
+                              side: const BorderSide(
+                                color: AppColors.borderStrong,
+                              ),
+                              onPressed: () =>
+                                  setState(() => _selectedIndex = index),
+                              deleteButtonTooltipMessage: '${index + 1}번째 키 삭제',
+                              onDeleted: _strokes.length == 1
+                                  ? null
+                                  : () => setState(() {
+                                      _strokes.removeAt(index);
+                                      if (index < _selectedIndex) {
+                                        _selectedIndex--;
+                                      }
+                                      _selectedIndex = _selectedIndex.clamp(
+                                        0,
+                                        _strokes.length - 1,
+                                      );
+                                      _error = null;
+                                    }),
+                            ),
+                          ),
+                      ],
+                    ),
                   ),
                   const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 12),
-                    child: Text('각 단계의 키를 순서대로 보냅니다. Ctrl·Alt를 함께 선택할 수 있습니다.'),
+                    padding: EdgeInsets.symmetric(vertical: AppSizes.p12),
+                    child: Text(
+                      '키를 눌러 편집하세요. 왼쪽부터 순서대로 전송합니다.',
+                      style: TextStyle(color: AppColors.textSecondary),
+                    ),
                   ),
-                  for (var index = 0; index < _strokes.length; index++)
-                    _strokeEditor(index),
+                  _strokeEditor(_selectedIndex),
+                  Row(
+                    children: [
+                      TextButton.icon(
+                        onPressed: _selectedIndex == 0
+                            ? null
+                            : () => _moveStep(-1),
+                        icon: const Icon(Icons.arrow_back, size: 16),
+                        label: const Text('앞으로'),
+                      ),
+                      TextButton.icon(
+                        onPressed: _selectedIndex == _strokes.length - 1
+                            ? null
+                            : () => _moveStep(1),
+                        icon: const Icon(Icons.arrow_forward, size: 16),
+                        label: const Text('뒤로'),
+                      ),
+                    ],
+                  ),
                   TextButton.icon(
                     onPressed: _strokes.length >= maxTerminalComboStrokes
                         ? null
-                        : () => setState(
-                            () => _strokes.add((
+                        : () => setState(() {
+                            _strokes.add((
                               id: _nextId++,
                               stroke: const TerminalShortcutStroke(
                                 key: 'enter',
                               ),
-                            )),
-                          ),
+                            ));
+                            _selectedIndex = _strokes.length - 1;
+                            _error = null;
+                          }),
                     icon: const Icon(Icons.add),
                     label: Text(
                       '키 단계 추가 (${_strokes.length}/$maxTerminalComboStrokes)',
@@ -158,6 +234,13 @@ class _TerminalShortcutComboEditorState
       ),
     ),
   );
+
+  void _moveStep(int offset) => setState(() {
+    final destination = _selectedIndex + offset;
+    _strokes.insert(destination, _strokes.removeAt(_selectedIndex));
+    _selectedIndex = destination;
+    _error = null;
+  });
 
   Widget _strokeEditor(int index) {
     final entry = _strokes[index];
@@ -200,6 +283,7 @@ class _TerminalShortcutComboEditorState
                   child: Semantics(
                     identifier: 'combo-character-${entry.id}',
                     child: TextFormField(
+                      key: ValueKey('${entry.id}-${stroke.key}'),
                       initialValue: stroke.character,
                       inputFormatters: [LengthLimitingTextInputFormatter(1)],
                       autocorrect: false,
@@ -211,13 +295,6 @@ class _TerminalShortcutComboEditorState
                   ),
                 ),
               ],
-              IconButton(
-                tooltip: '${index + 1}번째 키 삭제',
-                onPressed: _strokes.length == 1
-                    ? null
-                    : () => setState(() => _strokes.removeAt(index)),
-                icon: const Icon(Icons.remove_circle_outline),
-              ),
             ],
           ),
           Wrap(
@@ -226,12 +303,20 @@ class _TerminalShortcutComboEditorState
             children: [
               FilterChip(
                 label: const Text('Ctrl'),
+                selectedColor: AppColors.brandSubtle,
+                checkmarkColor: AppColors.textPrimary,
+                side: const BorderSide(color: AppColors.borderStrong),
+                labelStyle: const TextStyle(color: AppColors.textPrimary),
                 selected: stroke.ctrl,
                 onSelected: (value) =>
                     _change(index, stroke.copyWith(ctrl: value)),
               ),
               FilterChip(
                 label: const Text('Alt'),
+                selectedColor: AppColors.brandSubtle,
+                checkmarkColor: AppColors.textPrimary,
+                side: const BorderSide(color: AppColors.borderStrong),
+                labelStyle: const TextStyle(color: AppColors.textPrimary),
                 selected: stroke.alt,
                 onSelected: (value) =>
                     _change(index, stroke.copyWith(alt: value)),

@@ -7,14 +7,16 @@ import '../../../task_create/domain/session_type.dart';
 import '../../application/terminal_shortcut_controller.dart';
 import '../../domain/terminal_shortcut.dart';
 import 'terminal_shortcut_settings_sheet.dart';
+import 'terminal_shortcut_panel.dart';
 
-class TerminalShortcutBar extends ConsumerWidget {
+class TerminalShortcutBar extends ConsumerStatefulWidget {
   const TerminalShortcutBar({
     required this.sessionType,
     required this.onShortcut,
     this.ctrlPressed = false,
     this.altPressed = false,
     this.isBusy = false,
+    this.maxPanelHeight,
     super.key,
   });
 
@@ -23,15 +25,30 @@ class TerminalShortcutBar extends ConsumerWidget {
   final bool ctrlPressed;
   final bool altPressed;
   final bool isBusy;
+  final double? maxPanelHeight;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<TerminalShortcutBar> createState() =>
+      _TerminalShortcutBarState();
+}
+
+class _TerminalShortcutBarState extends ConsumerState<TerminalShortcutBar> {
+  bool _isPanelOpen = false;
+
+  @override
+  void didUpdateWidget(TerminalShortcutBar oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.sessionType != widget.sessionType) _isPanelOpen = false;
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final settings = ref.watch(terminalShortcutControllerProvider);
     final profile =
-        settings.asData?.value[sessionType] ??
-        TerminalShortcutProfile.defaults(sessionType);
+        settings.asData?.value[widget.sessionType] ??
+        TerminalShortcutProfile.defaults(widget.sessionType);
     final shortcuts = {
-      for (final shortcut in profile.shortcuts(sessionType))
+      for (final shortcut in profile.shortcuts(widget.sessionType))
         shortcut.id: shortcut,
     };
     return Focus(
@@ -42,55 +59,109 @@ class TerminalShortcutBar extends ConsumerWidget {
           color: AppColors.terminalChrome,
           border: Border(top: BorderSide(color: AppColors.borderDefault)),
         ),
-        child: Row(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            Expanded(
-              child: profile.enabled
-                  ? SingleChildScrollView(
-                      key: ValueKey(sessionType),
-                      scrollDirection: Axis.horizontal,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 2,
-                        vertical: 2,
-                      ),
-                      child: Row(
-                        children: [
-                          for (final id in profile.ids)
-                            if (shortcuts[id] case final shortcut?)
-                              _key(shortcut),
-                        ],
-                      ),
-                    )
-                  : Padding(
-                      padding: const EdgeInsets.only(left: 12),
-                      child: Text(
-                        '${sessionType.name} · 단축키 꺼짐',
-                        style: const TextStyle(color: AppColors.textSecondary),
+            if (_isPanelOpen)
+              TerminalShortcutPanel(
+                key: ValueKey(widget.sessionType),
+                sessionType: widget.sessionType,
+                profile: profile,
+                maxHeight: widget.maxPanelHeight,
+                onShortcut: widget.onShortcut,
+                isBusy: widget.isBusy,
+              ),
+            Row(
+              children: [
+                Semantics(
+                  identifier: 'shortcut-panel',
+                  selected: _isPanelOpen,
+                  child: TextButton(
+                    onPressed: () =>
+                        setState(() => _isPanelOpen = !_isPanelOpen),
+                    style: TextButton.styleFrom(
+                      minimumSize: const Size(40, 32),
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      foregroundColor: AppColors.brandPrimary,
+                      textStyle: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
                       ),
                     ),
-            ),
-            Semantics(
-              identifier: 'shortcut-settings',
-              child: IconButton(
-                constraints: const BoxConstraints.tightFor(
-                  width: 36,
-                  height: 36,
+                    child: Tooltip(
+                      message: _isPanelOpen ? '빠른 단축키 닫기' : '빠른 단축키',
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            widget.sessionType == SessionType.terminal
+                                ? '키'
+                                : widget.sessionType.name,
+                          ),
+                          Icon(
+                            _isPanelOpen
+                                ? Icons.keyboard_arrow_down
+                                : Icons.keyboard_arrow_up,
+                            size: 14,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
                 ),
-                padding: const EdgeInsets.all(4),
-                style: IconButton.styleFrom(
-                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  visualDensity: VisualDensity.standard,
+                Expanded(
+                  child: profile.enabled
+                      ? SingleChildScrollView(
+                          key: ValueKey(widget.sessionType),
+                          scrollDirection: Axis.horizontal,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 2,
+                            vertical: 2,
+                          ),
+                          child: Row(
+                            children: [
+                              for (final id in profile.ids)
+                                if (shortcuts[id] case final shortcut?)
+                                  _key(shortcut),
+                            ],
+                          ),
+                        )
+                      : Padding(
+                          padding: const EdgeInsets.only(left: 12),
+                          child: Text(
+                            '${widget.sessionType.name} · 단축키 꺼짐',
+                            style: const TextStyle(
+                              color: AppColors.textSecondary,
+                            ),
+                          ),
+                        ),
                 ),
-                tooltip: '${sessionType.name} 단축키 설정',
-                onPressed: () => showModalBottomSheet<void>(
-                  context: context,
-                  isScrollControlled: true,
-                  useSafeArea: true,
-                  builder: (_) =>
-                      TerminalShortcutSettingsSheet(sessionType: sessionType),
+                Semantics(
+                  identifier: 'shortcut-settings',
+                  child: IconButton(
+                    constraints: const BoxConstraints.tightFor(
+                      width: 36,
+                      height: 36,
+                    ),
+                    padding: const EdgeInsets.all(4),
+                    style: IconButton.styleFrom(
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      visualDensity: VisualDensity.standard,
+                    ),
+                    tooltip: '${widget.sessionType.name} 단축키 설정',
+                    onPressed: () => showModalBottomSheet<void>(
+                      context: context,
+                      isScrollControlled: true,
+                      useSafeArea: true,
+                      builder: (_) => TerminalShortcutSettingsSheet(
+                        sessionType: widget.sessionType,
+                      ),
+                    ),
+                    icon: const Icon(Icons.tune, size: 18),
+                  ),
                 ),
-                icon: const Icon(Icons.tune, size: 18),
-              ),
+              ],
             ),
           ],
         ),
@@ -100,8 +171,8 @@ class TerminalShortcutBar extends ConsumerWidget {
 
   Widget _key(TerminalShortcut shortcut) {
     final pressed =
-        (shortcut.id == 'ctrl' && ctrlPressed) ||
-        (shortcut.id == 'alt' && altPressed);
+        (shortcut.id == 'ctrl' && widget.ctrlPressed) ||
+        (shortcut.id == 'alt' && widget.altPressed);
     return Semantics(
       identifier: 'shortcut-${shortcut.id}',
       selected: pressed,
@@ -110,9 +181,9 @@ class TerminalShortcutBar extends ConsumerWidget {
         child: Tooltip(
           message: shortcut.description,
           child: TextButton(
-            onPressed: isBusy && shortcut.action != null
+            onPressed: widget.isBusy && shortcut.action != null
                 ? null
-                : () => onShortcut(shortcut),
+                : () => widget.onShortcut(shortcut),
             style: TextButton.styleFrom(
               minimumSize: const Size(40, 32),
               tapTargetSize: MaterialTapTargetSize.shrinkWrap,
