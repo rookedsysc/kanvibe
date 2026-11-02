@@ -7,7 +7,7 @@ description: "KanVibe는 Claude Code, Gemini CLI, Codex CLI, OpenCode 같은 AI 
   <span className="kv-eyebrow">KanVibe Docs · Nextra 4</span>
   <h1>AI 에이전트 작업을 칸반, 터미널, 브랜치 흐름으로 묶습니다.</h1>
   <div className="kv-hero-copy">
-    KanVibe는 Claude Code, Gemini CLI, Codex CLI, OpenCode 같은 AI 코딩 에이전트 작업을 실제 git worktree와 tmux/zellij 세션에 연결합니다. 각 태스크마다 터미널 인터페이스를 제공해 에이전트 실행, 수동 명령, 빌드/테스트, 로그 확인을 한 흐름에서 자유롭게 이어갈 수 있습니다.
+    KanVibe는 Claude Code, Gemini CLI, Codex CLI, OpenCode 같은 AI 코딩 에이전트 작업을 실제 git worktree와 Herdr/tmux/zellij 세션에 연결합니다. 각 태스크마다 터미널 인터페이스를 제공해 에이전트 실행, 수동 명령, 빌드/테스트, 로그 확인을 한 흐름에서 자유롭게 이어갈 수 있습니다.
   </div>
   <div className="kv-actions">
     <a className="kv-button kv-button-primary" href="/ko/installation">설치 시작하기</a>
@@ -33,7 +33,7 @@ description: "KanVibe는 Claude Code, Gemini CLI, Codex CLI, OpenCode 같은 AI 
 <div className="kv-grid">
   <div className="kv-card">
     <h3>브랜치 기반 작업 관리</h3>
-    <p>태스크를 만들면 branch, worktree, tmux/zellij 세션을 하나의 작업 단위로 묶습니다.</p>
+    <p>태스크를 만들면 branch, worktree, Herdr/tmux/zellij 세션을 하나의 작업 단위로 묶습니다.</p>
   </div>
   <div className="kv-card">
     <h3>AI 에이전트 Hooks</h3>
@@ -45,11 +45,11 @@ description: "KanVibe는 Claude Code, Gemini CLI, Codex CLI, OpenCode 같은 AI 
   </div>
   <div className="kv-card">
     <h3>태스크별 터미널 인터페이스</h3>
-    <p>모든 태스크가 자기 세션을 가집니다. tmux, zellij, 또는 멀티플렉서 없는 terminal 중에서 고르고 AI에게 맡기거나 직접 명령을 실행합니다.</p>
+    <p>모든 태스크가 자기 세션을 가집니다. Herdr, tmux, zellij, 또는 멀티플렉서 없는 terminal 중에서 고르고 AI에게 맡기거나 직접 명령을 실행합니다.</p>
   </div>
   <div className="kv-card">
     <h3>터미널 탭</h3>
-    <p>한 태스크 안에서 서버, 테스트, 에이전트 실행을 탭으로 나눠 둡니다. tmux window와 zellij tab에 양방향으로 동기화되어, KanVibe 밖에서 만든 window도 탭 바에 그대로 나타납니다.</p>
+    <p>한 태스크 안에서 서버, 테스트, 에이전트 실행을 탭으로 나눠 둡니다. Herdr tab, tmux window, zellij tab에 양방향으로 동기화되어, KanVibe 밖에서 만든 window도 탭 바에 그대로 나타납니다.</p>
   </div>
   <div className="kv-card">
     <h3>키보드 중심 UI</h3>
@@ -69,7 +69,7 @@ description: "KanVibe는 Claude Code, Gemini CLI, Codex CLI, OpenCode 같은 AI 
   </div>
   <div className="kv-card">
     <h3>세션 자동 연결</h3>
-    <p>백그라운드 Sync가 이미 실행 중인 tmux/zellij 세션을 감지하면 해당 태스크에 자동 연결하고 상태를 PROGRESS로 전환합니다.</p>
+    <p>백그라운드 Sync가 이미 실행 중인 Herdr/tmux/zellij 세션을 감지하면 해당 태스크에 자동 연결하고 상태를 PROGRESS로 전환합니다.</p>
   </div>
   <div className="kv-card">
     <h3>삭제 시 자동 정리</h3>

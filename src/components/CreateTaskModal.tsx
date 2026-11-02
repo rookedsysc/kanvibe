@@ -14,6 +14,7 @@ import ProjectSelector from "./ProjectSelector";
 import PrioritySelector from "./PrioritySelector";
 import BranchSearchInput from "./BranchSearchInput";
 import SessionTypeOptions from "./SessionTypeOptions";
+import { ensureSessionDependencyWithPrompt } from "@/desktop/renderer/utils/sessionDependencyPrompt";
 
 interface CreateTaskModalProps {
   isOpen: boolean;
@@ -158,6 +159,10 @@ function CreateTaskModalContent({
     startTransition(async () => {
       try {
         const sessionType = (formData.get("sessionType") as SessionType) || undefined;
+
+        if (sessionType === SessionType.HERDR && !await ensureSessionDependencyWithPrompt(
+          sessionType, projects.find((project) => project.id === selectedProjectId)?.sshHost, tc,
+        )) return;
 
         const created = await createTask({
           title: branchName,
@@ -318,7 +323,7 @@ function CreateTaskModalContent({
             </label>
             <select
               name="sessionType"
-              defaultValue={defaultSessionType || "tmux"}
+              defaultValue={defaultSessionType || SessionType.HERDR}
               className="w-full px-3 py-2 bg-bg-page border border-border-default rounded-md text-text-primary focus:outline-none focus:border-brand-primary transition-colors"
             >
               <SessionTypeOptions />
