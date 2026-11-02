@@ -4,7 +4,7 @@
 
 **AI 코딩 에이전트를 위한 키보드 중심 칸반 워크스페이스**
 
-KanVibe는 AI 코딩 작업이 여러 터미널 탭에 흩어지지 않도록 도와줍니다. 브랜치 기반 태스크를 실시간 칸반 보드에서 추적하고, 각 태스크의 tmux/zellij 세션을 브라우저나 데스크톱 앱에서 열며, Claude Code, Gemini CLI, Codex CLI, OpenCode hooks가 워크플로우에 맞춰 태스크 상태를 자동으로 이동하게 할 수 있습니다.
+KanVibe는 AI 코딩 작업이 여러 터미널 탭에 흩어지지 않도록 도와줍니다. 브랜치 기반 태스크를 실시간 칸반 보드에서 추적하고, 각 태스크의 Herdr/tmux/zellij 세션을 브라우저나 데스크톱 앱에서 열며, Claude Code, Gemini CLI, Codex CLI, OpenCode hooks가 워크플로우에 맞춰 태스크 상태를 자동으로 이동하게 할 수 있습니다.
 
 터미널 포커스를 잃지 않고 프로젝트 필터, 태스크 검색, 알림, 태스크 상세 패널, 자주 쓰는 태스크 액션을 단축키로 실행하세요.
 
@@ -108,9 +108,10 @@ KanVibe는 AI 코딩 작업이 여러 터미널 탭에 흩어지지 않도록 �
 | 의존성 | 버전 | 필수 | 설치 |
 |--------|------|------|------|
 | [git](https://git-scm.com/) | 최신 | Yes | `brew install git` |
-| [tmux](https://github.com/tmux/tmux) | 최신 | Yes | `brew install tmux` |
+| [tmux](https://github.com/tmux/tmux) | 최신 | No | `brew install tmux` |
 | [gh](https://cli.github.com/) | 최신 | Yes | `brew install gh` (`gh auth login` 필요) |
 | [zellij](https://github.com/zellij-org/zellij) | 최신 | No | `brew install zellij` |
+| [Herdr](https://herdr.dev/tui/docs/) | 0.9.5 검증 | 기본 백엔드 | 앱 내 설치 안내 |
 
 ---
 
@@ -157,7 +158,7 @@ brew untap rookedsysc/kanvibe
 
 칸반 보드에서 TODO 태스크를 추가합니다. 브랜치명으로 태스크를 생성하면 KanVibe가 자동으로:
 - 해당 브랜치의 **git worktree**를 생성합니다
-- 세션용 **tmux window** 또는 **zellij tab**을 생성합니다
+- 세션용 **Herdr tab**, **tmux window** 또는 **zellij tab**을 생성합니다
 - 터미널 세션을 태스크에 연결합니다
 
 ### 3. 칸반 보드에서 작업
@@ -199,13 +200,17 @@ brew untap rookedsysc/kanvibe
 - 태스크를 DONE으로 이동하여 브랜치, worktree, 터미널 세션 자동 정리
 - 기존 git 브랜치, worktree, 디스크 파일을 건드리지 않고 디렉터리 스캔 dialog에서 프로젝트 삭제
 
-### 터미널 세션 (tmux / zellij)
-- **tmux**와 **zellij** 모두 터미널 멀티플렉서로 지원
+### 터미널 세션 (Herdr / tmux / zellij)
+- **Herdr**, **tmux**, **zellij** 모두 터미널 멀티플렉서로 지원
 - xterm.js와 WebSocket 기반 브라우저 터미널 스트리밍
 - `~/.ssh/config`를 읽는 SSH 원격 터미널 지원
 - 비대화형 원격 SSH 명령은 `~/.kanvibe` 아래의 앱 전용 ControlMaster 소켓 풀을 재사용하며 host별 동시성을 사용 가능한 CPU 코어 수의 4배까지 제한합니다
-- 원격 터미널 attach는 SSH에서 tmux/zellij를 직접 실행하며, 로컬 `DISPLAY`, 원격 `X11Forwarding`, `xauth`가 준비된 경우에만 trusted X11 forwarding(`ssh -Y`)을 요청합니다
+- 원격 터미널 attach는 SSH에서 Herdr/tmux/zellij를 직접 실행하며, 로컬 `DISPLAY`, 원격 `X11Forwarding`, `xauth`가 준비된 경우에만 trusted X11 forwarding(`ssh -Y`)을 요청합니다
 - Nerd Font 렌더링 지원
+
+- 저장된 유효한 설정이 없으면 Herdr가 기본값이며, 기존 tmux·zellij·terminal 선택은 유지합니다. 태스크마다 이름 있는 영구 세션을 사용합니다. 세션을 처음 만들 때 설정한 6가지 pane 레이아웃과 pane별 시작 명령을 적용하며, 다시 열면 실행 중인 셸을 이어 씁니다.
+- Herdr 탭은 생성·전환·이름 변경·닫기와 workspace 안에서의 드래그 순서 변경을 지원합니다. KanVibe 창을 닫아도 마지막 탭은 유지하며, 태스크를 삭제하면 해당 이름의 세션을 중지하고 삭제합니다. Herdr의 첫 실행 설정과 개인 설정은 Herdr가 관리합니다.
+- 태스크 생성·브랜치 생성·터미널 연결에서 `herdr`를 선택하면 로컬 또는 선택한 SSH 호스트의 설치 여부를 확인합니다. Herdr가 없으면 설치 안내를 승인해 해당 호스트에서 [공식 설치 프로그램](https://herdr.dev/tui/docs/install/)을 실행할 수 있습니다. `~/.local/bin`에 설치하며 셸 시작 파일은 바꾸지 않습니다. 취소하면 태스크는 변경되지 않습니다. 설치에 실패하면 오류를 확인하고 네트워크 연결과 설치 경로의 쓰기 권한을 점검한 뒤 다시 시도합니다.
 
 ### 키보드 중심 조작
 - 어디서든 브랜치명이나 프로젝트명으로 빠른 태스크 검색 열기

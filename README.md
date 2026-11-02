@@ -118,10 +118,10 @@ The same panel opens from the task detail dock, so you can keep watching subtask
 | Dependency | Version | Required | Install |
 |------------|---------|----------|---------|
 | [git](https://git-scm.com/) | latest | Yes | `brew install git` |
-| [tmux](https://github.com/tmux/tmux) | latest | Yes | `brew install tmux` |
+| [tmux](https://github.com/tmux/tmux) | latest | No | `brew install tmux` |
 | [gh](https://cli.github.com/) | latest | Yes | `brew install gh` (requires `gh auth login`) |
 | [zellij](https://github.com/zellij-org/zellij) | latest | No | `brew install zellij` |
-| [Herdr](https://herdr.dev/tui/docs/) | 0.9.5+ | No | In-app install prompt or `brew install herdr` |
+| [Herdr](https://herdr.dev/tui/docs/) | 0.9.5 verified | Default backend | In-app install prompt |
 
 ---
 
@@ -168,7 +168,7 @@ To stop managing a project, delete it from the registered-project list in the re
 
 Add a TODO task from the Kanban board. When creating a task with a branch name, KanVibe automatically:
 - Creates a **git worktree** for the branch
-- Spawns a **tmux window** or **zellij tab** for the session
+- Spawns a **Herdr tab**, **tmux window**, or **zellij tab** for the session
 - Links the terminal session to the task
 
 ### 3. Work with the Kanban Board
@@ -218,7 +218,7 @@ Each pane can run a custom command (e.g., `vim`, `htop`, `lazygit`, test runner,
 - Remote terminal attach executes tmux/zellij/Herdr directly over SSH; trusted X11 forwarding (`ssh -Y`) is requested only when local `DISPLAY`, remote `X11Forwarding`, and `xauth` are available
 - Nerd Font rendering support
 
-- **Herdr** uses a persistent named session per task, supports the six configured pane layouts and startup commands, and preserves running shells when you close and reopen a task.
+- **Herdr** is the default when no valid session preference is saved. Existing tmux, zellij, and terminal preferences are preserved; choose `terminal` to work without a multiplexer. Herdr uses a persistent named session per task, supports the six configured pane layouts and startup commands, and preserves running shells when you close and reopen a task.
 - Select `herdr` when creating, branching, or connecting a task. If it is missing, KanVibe offers to run the [official installer](https://herdr.dev/tui/docs/install/) on the selected local or SSH host; cancelling leaves the task unchanged. The installer uses `~/.local/bin` without changing shell startup files.
 - Herdr tabs support creating, selecting, renaming, closing, and reordering by stable IDs. Reordering stays within each Herdr workspace. The last tab stays alive when the KanVibe window closes; deleting the task stops and deletes its named session.
 - Herdr 0.9.5 is the verified version. Its first-run setup and personal configuration remain managed by Herdr. Tab reordering uses its [local socket API](https://herdr.dev/tui/docs/socket-api/); SSH hosts do not need Python or netcat for this operation.

@@ -1,6 +1,6 @@
 ---
 title: 安装
-description: "通过 Homebrew Cask 安装 KanVibe 的方法，以及 Git、tmux、GitHub CLI 等前置条件。"
+description: "通过 Homebrew Cask 安装 KanVibe 的方法，以及 Git、Herdr、GitHub CLI 等前置条件。"
 ---
 
 # 安装
@@ -12,11 +12,14 @@ KanVibe 以 macOS 桌面应用形式分发，推荐通过 Homebrew Cask 安装�
 | 依赖 | 是否必需 | 用途 | 安装示例 |
 | --- | --- | --- | --- |
 | Git | 必需 | 创建和清理 branch、worktree | `brew install git` |
-| tmux | 推荐 | 默认会话后端。把会话类型改为 `terminal` 后即可不装 | `brew install tmux` |
+| Herdr | 推荐 | 默认会话后端，已在 0.9.5 验证 | 在 KanVibe 中选择 `herdr` 并确认安装提示 |
+| tmux | 可选 | 替代会话后端 | `brew install tmux` |
 | GitHub CLI `gh` | 必需 | PR URL 查询与 GitHub 工作流 | `brew install gh`，然后 `gh auth login` |
-| zellij | 可选 | 可替代 tmux 的会话后端 | `brew install zellij` |
+| zellij | 可选 | 替代会话后端 | `brew install zellij` |
 
-若不想使用多路复用器，可选择 `terminal` 会话类型。此时 shell 由 KanVibe 直接持有，应用退出或远程连接断开时，正在运行的工作也会一并消失。如果打算让任务长时间无人值守地运行，建议安装 tmux 或 zellij。
+若不想使用多路复用器，可选择 `terminal` 会话类型。此时 shell 由 KanVibe 直接持有，应用退出或远程连接断开时，正在运行的工作也会一并消失。如果打算让任务长时间无人值守地运行，建议安装 Herdr、tmux 或 zellij。
+
+创建任务、创建分支或连接终端时选择 `herdr`，KanVibe 会检查本机或选定的 SSH 主机。若未安装，确认提示后会在该主机运行[官方安装程序](https://herdr.dev/tui/docs/install/)，安装到 `~/.local/bin`，不修改 shell 启动文件。取消后任务保持不变。安装失败时会显示错误；请检查网络连接和目录写入权限后重试。
 
 ## 使用 Homebrew 安装
 
@@ -52,7 +55,7 @@ brew untap rookedsysc/kanvibe
   </div>
   <div className="kv-card">
     <h3>2. 确认会话类型</h3>
-    <p>默认使用 tmux；偏好 zellij 时可在设置中切换默认会话类型；若完全不想使用多路复用器，可选择 `terminal`。</p>
+    <p>新设置默认使用 Herdr，已有的会话类型偏好会保留。可在设置中改用 tmux 或 zellij；若不使用多路复用器，可选择 `terminal`。</p>
   </div>
   <div className="kv-card">
     <h3>3. 允许通知</h3>
