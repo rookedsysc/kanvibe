@@ -38,6 +38,13 @@ vi.mock("@/lib/gitOperations", () => ({
   isSSHTransportError: mockIsSSHTransportError,
 }));
 
+vi.mock("@/lib/aiSessions/readAdditionalFileSessions", () => ({
+  readAdditionalFileSessions: vi.fn(async () => []), readAdditionalFileSessionDetail: vi.fn(),
+}));
+vi.mock("@/lib/aiSessions/readSqliteAgentSessions", () => ({
+  readSqliteAgentSessions: vi.fn(async () => []), readSqliteAgentSessionDetail: vi.fn(),
+}));
+
 import { aggregateAiSessions } from "@/lib/aiSessions/aggregateAiSessions";
 
 describe("aggregateAiSessions", () => {
@@ -294,4 +301,14 @@ describe("aggregateAiSessions", () => {
     expect(secondPage.sessions.map((session) => session.id)).toEqual(["oldest"]);
     expect(secondPage.nextCursor).toBeNull();
   });
+  it("isolates a damaged local provider while keeping the remaining histories", async () => {
+    mockReadClaudeSessions.mockRejectedValue(new Error("broken transcript"));
+    for (const [provider, reader] of [["codex", mockReadCodexSessions], ["opencode", mockReadOpenCodeSessions], ["gemini", mockReadGeminiSessions]] as const) {
+      reader.mockResolvedValue({ provider, available: true, sessionCount: 0, reason: null, sessions: [] });
+    }
+    const result = await aggregateAiSessions({ worktreePath: "/repo", repoPath: "/repo" });
+    expect(result.sources.find((source) => source.provider === "claude")?.available).toBe(false);
+    expect(result.sources.filter((source) => source.available)).toHaveLength(3);
+  });
+
 });

@@ -3,6 +3,7 @@ import { homedir } from "os";
 import path from "path";
 import { promisify } from "util";
 import { execGit } from "@/lib/gitOperations";
+import { readLegacyOpenCodeSessions, readLegacyOpenCodeSessionDetail } from "@/lib/aiSessions/readLegacyOpenCodeSessions";
 import { getHomeDirectory, pathExists, quoteShellArgument } from "@/lib/hostFileAccess";
 import {
   createReaderResult,
@@ -79,6 +80,13 @@ interface OpenCodeDetailRow {
 }
 
 export async function readOpenCodeSessions(context: AiSessionReaderContext): Promise<AiSessionReaderResult> {
+  const [sqlite, legacy] = await Promise.all([readOpenCodeSqliteSessions(context), readLegacyOpenCodeSessions(context)]);
+  const sqliteIds = sqlite.knownSessionIds ?? new Set(sqlite.sessions.map((session) => session.id));
+  const sessions = [...sqlite.sessions, ...legacy.sessions.filter((session) => !sqliteIds.has(session.id))];
+  return createReaderResult("opencode", { available: sqlite.available || legacy.available, sessions, reason: sessions.length ? null : sqlite.available || legacy.available ? "No OpenCode sessions matched this task" : sqlite.reason });
+}
+
+async function readOpenCodeSqliteSessions(context: AiSessionReaderContext): Promise<AiSessionReaderResult & { knownSessionIds?: Set<string> }> {
   const normalizedQuery = context.query?.toLowerCase();
   const escapedLikeQuery = normalizedQuery ? escapeSqliteLikePattern(normalizedQuery) : null;
   let rows: OpenCodeSessionRow[] | null;
@@ -154,10 +162,11 @@ export async function readOpenCodeSessions(context: AiSessionReaderContext): Pro
       };
     });
 
-  return createReaderResult("opencode", {
-    sessions,
-    reason: sessions.length === 0 ? "No OpenCode sessions matched this task" : null,
-  });
+  return {
+    ...createReaderResult("opencode", { sessions, reason: sessions.length === 0 ? "No OpenCode sessions matched this task" : null }),
+    // SQLite로 이동한 세션은 이전 파일의 경로·본문이 검색에 맞아도 다시 노출하지 않는다.
+    knownSessionIds: new Set(rows.map((row) => row.id)),
+  };
 }
 
 /**
@@ -219,6 +228,19 @@ async function readOpenCodeRunningChildren(
 }
 
 export async function readOpenCodeSessionDetail(
+  context: AiSessionReaderContext, sessionId: string, sourceRef?: string | null,
+  cursor?: string | null, limit = DEFAULT_DETAIL_LIMIT,
+): Promise<AiSessionDetailReaderResult | null> {
+  try {
+    const detail = await readOpenCodeSqliteSessionDetail(context, sessionId, sourceRef, cursor, limit);
+    if (detail) return detail;
+  } catch {
+    // SQLite 스키마가 없는 이전 설치도 파일 기반 대화를 열 수 있어야 한다.
+  }
+  return readLegacyOpenCodeSessionDetail(context, sessionId, sourceRef, cursor, limit);
+}
+
+async function readOpenCodeSqliteSessionDetail(
   context: AiSessionReaderContext,
   sessionId: string,
   _sourceRef?: string | null,
@@ -245,7 +267,14 @@ export async function readOpenCodeSessionDetail(
     { sessionId: sid }
   );
 
-  if (!allRows || allRows.length === 0) return null;
+  if (!allRows) return null;
+  if (allRows.length === 0) {
+    const rows = await queryOpenCodeRows<OpenCodeSessionRow>(context,
+      "SELECT id, directory, title, time_created, time_updated FROM session WHERE id = @sessionId LIMIT 1;", { sessionId });
+    const session = rows?.[0];
+    if (!session || !determineMatchScope(session.directory, context)) return null;
+    return createSessionDetail({ sessionId, provider: "opencode", title: session.title, matchedPath: session.directory, sourceRef: session.id });
+  }
 
   const firstRow = allRows[0];
   if (!determineMatchScope(firstRow.directory, context)) return null;
