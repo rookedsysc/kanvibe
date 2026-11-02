@@ -1,0 +1,45 @@
+# 격리 desktop fixture의 worktree에 clipboard.vim과 clipboard.txt를 준비한다.
+appId: ${APP_ID}
+env:
+  DESKTOP_API_FROM_HOST: http://127.0.0.1:19736
+---
+- launchApp:
+    clearState: true
+- setOrientation: PORTRAIT
+- extendedWaitUntil:
+    visible: "데스크탑에 연결"
+    timeout: 90000
+# 이전 실행의 클립보드 값으로 통과하지 않도록 OS 복사 메뉴로 먼저 다른 값을 넣는다.
+- tapOn: "PC 이름.*"
+- inputText: "BEFOREYANK"
+- longPressOn: "BEFOREYANK"
+- tapOn: "(Select all|모두 선택)"
+- tapOn: "(Copy|복사)"
+- hideKeyboard
+- takeScreenshot: before-yank-clipboard-reset
+- runFlow: ../subflows/pairs-and-opens-board.yaml
+- runFlow: ../subflows/opens-session-task-terminal.yaml
+- extendedWaitUntil:
+    visible:
+      id: pane-terminal
+    timeout: 20000
+- tapOn:
+    id: pane-terminal
+- inputText: "vim -Nu clipboard.vim clipboard.txt"
+- pressKey: Enter
+- inputText: "ggyy"
+- pressKey: Escape
+- inputText: ":q!"
+- pressKey: Enter
+- hideKeyboard
+- takeScreenshot: vim-yank-complete
+- tapOn:
+    id: create-task-from-current
+- extendedWaitUntil:
+    visible: "브랜치 이름 \\*"
+    timeout: 15000
+- tapOn: "브랜치 이름 \\*"
+- longPressOn: "브랜치 이름 \\*"
+- tapOn: "(Paste|붙여넣기)"
+- assertVisible: "(?s).*VIM_OSC52_NATIVE_OK.*"
+- takeScreenshot: vim-yank-native-clipboard-pasted

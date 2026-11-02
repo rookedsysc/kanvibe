@@ -755,17 +755,22 @@ function buildZellijSessionCleanupCommand(sessionName: string, verifyCleanup: bo
 
 /**
  * 살아있는 zellij 세션에 대상 이름이 있으면 성공(0)을 반환하는 조건 명령.
- * `parseAliveZellijSessionNames`와 같은 규칙으로 종료된 세션을 제외한다.
+ * `parseAliveZellijSessionNames`와 같은 규칙으로 색을 지우고 종료된 세션을 제외한다.
+ * 색은 awk 안에서 지운다. 원격 호스트의 sed가 `\x1b`를 알아듣는다고 기대할 수 없지만 awk의 `\033`은 POSIX다.
  */
 export function buildZellijAliveSessionCheckCommand(sessionName: string): string {
   const target = quoteForPosixShell(sessionName);
 
-  return `zellij list-sessions 2>/dev/null | awk '$1 != "EXITED:" { print $1 }' | grep -qFx -- ${target}`;
+  return `zellij list-sessions 2>/dev/null | awk '{ gsub(/\\033\\[[0-9;]*m/, "") } $1 != "EXITED:" { print $1 }' | grep -qFx -- ${target}`;
 }
+
+/** ANSI 색 지정(SGR) 시퀀스. zellij list-sessions는 파이프로 받아도 세션 이름에 색을 입혀 내보낸다 */
+const ANSI_SGR_PATTERN = /\x1b\[[0-9;]*m/g;
 
 /** zellij list-sessions는 종료된 세션을 `EXITED: <name>`으로 함께 출력하므로 이름만 뽑아 살아있는 세션과 구분한다 */
 export function parseAliveZellijSessionNames(listSessionsOutput: string): string[] {
   return listSessionsOutput
+    .replace(ANSI_SGR_PATTERN, "")
     .split("\n")
     .map((line) => line.trim())
     .filter((line) => line && !line.startsWith("EXITED:"))

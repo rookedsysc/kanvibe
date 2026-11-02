@@ -1,0 +1,98 @@
+appId: ${APP_ID}
+tags:
+  - multi-pc
+---
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - clearKeychain
+- launchApp:
+    clearState: true
+- extendedWaitUntil:
+    visible: "데스크탑에 연결"
+    timeout: 90000
+
+- tapOn: "PC 이름 (선택)"
+- inputText: "Studio"
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - tapOn: "데스크탑 주소"
+      - inputText: "10.0.2.2"
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - tapOn: "데스크탑 주소"
+      - inputText: "127.0.0.1"
+- tapOn: "포트"
+- eraseText
+- inputText: "19836"
+- tapOn: "연결 코드"
+- inputText: "123456"
+- tapOn: "연결"
+- extendedWaitUntil:
+    visible: "Studio task"
+    timeout: 40000
+- takeScreenshot: 01-studio-board
+
+- tapOn: "Studio[\\s\\S]*19836"
+- assertVisible: "연결된 PC"
+- tapOn: "PC 추가"
+- tapOn: "PC 이름 (선택)"
+- inputText: "Home"
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - tapOn: "데스크탑 주소"
+      - inputText: "10.0.2.2"
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - tapOn: "데스크탑 주소"
+      - inputText: "127.0.0.1"
+- tapOn: "포트"
+- eraseText
+- inputText: "19837"
+- tapOn: "연결 코드"
+- inputText: "123456"
+- scrollUntilVisible:
+    element: "연결"
+    direction: DOWN
+    timeout: 10000
+- tapOn: "연결"
+- extendedWaitUntil:
+    visible: "Home task"
+    timeout: 40000
+- takeScreenshot: 02-home-board
+
+- tapOn: "Home[\\s\\S]*19837"
+- assertVisible: "2대의 PC"
+- tapOn: "Studio[\\s\\S]*19836"
+- extendedWaitUntil:
+    visible: "Studio task"
+    timeout: 15000
+- takeScreenshot: 03-switched-to-studio
+
+- stopApp
+- launchApp
+- extendedWaitUntil:
+    visible: "Studio task"
+    timeout: 90000
+- tapOn: "Studio[\\s\\S]*19836"
+- assertVisible: "2대의 PC"
+- tapOn: "Studio 삭제"
+- tapOn: "삭제"
+- extendedWaitUntil:
+    visible: "작업할 PC를 선택해 주세요."
+    timeout: 10000
+- assertVisible: "Home[\\s\\S]*19837"
+- tapOn: "Home[\\s\\S]*19837"
+- extendedWaitUntil:
+    visible: "Home task"
+    timeout: 15000
+- takeScreenshot: 04-restored-and-removed-studio

@@ -71,6 +71,7 @@ async function launchKanVibeElectron(options = {}) {
         KANVIBE_QA_MODE: "1",
         KANVIBE_QA_OUTPUT_DIR: options.outputDir || "",
         KANVIBE_APP_DATA_DIR: options.appDataDir || process.env.KANVIBE_APP_DATA_DIR || "",
+        ...(options.rendererUrl ? { KANVIBE_RENDERER_URL: options.rendererUrl } : {}),
       },
       timeout: options.timeoutMs || 45000,
     });
