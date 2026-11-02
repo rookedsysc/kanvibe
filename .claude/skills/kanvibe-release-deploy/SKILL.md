@@ -1,13 +1,13 @@
 ---
 name: kanvibe-release-deploy
-description: "Use this skill whenever releasing or deploying KanVibe desktop from a clean, up-to-date `dev` checkout: ask only for the target version and release-note approval, then let the AI update package versions, run `pnpm run deploy`, publish the DMG GitHub release, update the Homebrew cask, create the release PR, and auto-merge the release/promotion PRs when checks pass. Always use it for KanVibe release versions, DMG uploads, or Homebrew cask checksum updates."
+description: "Use this skill whenever releasing or deploying KanVibe desktop and mobile from a clean, up-to-date `dev` checkout: ask only for the target version and release-note approval, then let the AI update package versions, run `pnpm run deploy` and the Android APK/AAB and iOS IPA release builds, publish the DMG GitHub release, update the Homebrew cask, create the release PR, and auto-merge the release/promotion PRs when checks pass. Always use it for KanVibe release versions, DMG uploads, or Homebrew cask checksum updates."
 ---
 
 # KanVibe Release Deploy
 
 ## Overview
 
-This skill coordinates the KanVibe desktop release workflow from version selection to DMG publication, Homebrew cask update, release PR creation, and automatic merge. It is intentionally release-operator focused and may only be invoked from a clean, up-to-date local `dev` checkout: read and report the current `package.json` version, ask the user for the target release version, update the package version, run the `pnpm run deploy` DMG build, **launch the built app and confirm it actually starts**, get explicit approval for the release notes, upload the exact DMG artifact to the `rookedsysc/kanvibe` GitHub release, update the separate Homebrew cask repository with the same version and SHA-256, create the KanVibe release PR, then merge the release and promotion PRs automatically once checks and review-thread gates pass.
+This skill coordinates the KanVibe desktop and mobile release workflow from version selection to DMG publication, Homebrew cask update, release PR creation, and automatic merge. It is intentionally release-operator focused and may only be invoked from a clean, up-to-date local `dev` checkout: read and report the current `package.json` version, ask the user for the target release version, update the package version, run the `pnpm run deploy` DMG build, **launch the built app and confirm it actually starts**, build Android APK/AAB and iOS IPA artifacts from the same release source (step 3.6), get explicit approval for the release notes, upload the exact DMG artifact to the `rookedsysc/kanvibe` GitHub release, update the separate Homebrew cask repository with the same version and SHA-256, create the KanVibe release PR, then merge the release and promotion PRs automatically once checks and review-thread gates pass.
 
 The smoke test in step 3.5 is not optional. Signing, notarization, stapling, and checksum verification all pass on a bundle whose app cannot start, and shipping one of those is how KanVibe 1.0.4 reached users.
 
@@ -30,6 +30,9 @@ Use this skill when the user asks to:
 Do not use this skill for docs-site deploys, Linux-only package checks, routine feature PRs that do not publish a desktop release, or any checkout that is not clean, up-to-date `dev`.
 
 ## Release Invariants
+
+- Every release includes the desktop DMG, Android release APK/AAB, and signed iOS IPA builds. Complete all builds before publication; a missing toolchain, signing identity, or artifact is a blocker, not an implicit platform skip. Mobile store uploads and mobile GitHub asset publication require an explicit user request; this workflow builds and reports mobile artifacts locally.
+- Keep the mobile marketing version equal to the target desktop version and increment the committed mobile build number once per release. Build retries reuse that number. All artifacts must use the same release source; source changes after a build require rebuilding affected artifacts before tagging.
 
 - The GitHub release tag is the raw package version, for example `1.0.2`, not `v1.0.2`.
 - The DMG filename is `KanVibe-<version>.dmg` because `electron-builder.yml` sets `dmg.artifactName: "KanVibe-${version}.${ext}"`.
@@ -223,7 +226,7 @@ The bump is correct only when all four hold:
 1. `package.json` version and both `package-lock.json` versions print the user-selected target version. Re-reading them through `require` also proves the files still parse as JSON.
 2. `devEngines.packageManager.version` still prints the pnpm pin, not the release version.
 3. `git diff --numstat` reports `1 1 package.json` and `2 2 package-lock.json`. Any other count means the edit escaped its anchors.
-4. Nothing else appears in `git status`.
+4. Nothing else appears in `git status` at this stage; step 3.6 subsequently changes only the `mobile/pubspec.yaml` version line.
 
 Commit the version bump (including `package-lock.json`) with the release changes or ensure the release tag targets a commit that already contains the updated files.
 
@@ -356,6 +359,58 @@ The two numbers are both correct and they are not interchangeable. The build gua
 
 Do not judge either number against a remembered absolute value; package counts move whenever dependencies change. Judge by comparison: rerun the same snippet with `ASAR_PATH` pointed at a build known to be good — the installed `/Applications/KanVibe.app/Contents/Resources/app.asar` is the convenient one — and compare it with the candidate bundle. The `||` fallback rather than `??` is deliberate, because an unset `ASAR_PATH` still passes an empty-string argument that `??` would accept as a path.
 
+## 3.6 Build Android and iOS Release Artifacts
+
+This step is required before publishing the DMG. Read `mobile/README.md`, `mobile/.fvmrc`, `mobile/pubspec.yaml`, Android signing configuration, and the iOS Runner signing settings first. Use the FVM-pinned Flutter SDK from `mobile/`, not a global Flutter installation.
+
+### Mobile preflight and version
+
+- Run `fvm flutter --version`, `fvm flutter doctor -v`, and `xcodebuild -version` from `mobile/`. Resolve toolchain requirements against the checked-in mobile documentation and build configuration, including the Android SDK and selected Xcode. Do not change global SDK selections or signing settings to bypass a failure.
+- Before invoking raw Gradle, run `fvm flutter pub get`, then `fvm flutter build apk --release --config-only` from `mobile/`. The latter prepares Android build inputs and the ignored Gradle wrapper without producing an APK. Require `.dart_tool/package_config.json`, `.flutter-plugins-dependencies`, `android/local.properties`, executable `android/gradlew`, and `android/gradle/wrapper/gradle-wrapper.jar`; verify `flutter.sdk` points to the FVM-pinned SDK and `sdk.dir` to the available Android SDK before continuing. Keep these generated/local files uncommitted. Stop on preparation failure or unexpected tracked changes.
+- Require `mobile/android/key.properties` and its referenced keystore. Run `./gradlew :app:signingReport` from `mobile/android/` and verify that `Variant: release` uses `Config: release`. The Gradle configuration otherwise falls back to a debug key; `--release` alone does not prove distribution signing.
+- Confirm an iOS distribution identity, provisioning profile, team, and export configuration are available. Stop if signed IPA export cannot run; simulator builds, `--no-codesign`, and an archive without an IPA do not satisfy this release gate.
+- Use the platform-specific Firebase local configuration described in `mobile/README.md` when present. If it is absent, report that background push is unavailable and build without that platform’s `--dart-define-from-file` argument, as supported by the mobile README. Never print config contents or commit local configs, signing keys, or credentials.
+- Read and report the existing `mobile/pubspec.yaml` version. Change only its single top-level `version:` line to `<TARGET_VERSION>+<previous build number + 1>` before building. Preserve other YAML content. Include that file in the release commit. On a retry, reuse the already selected version/build number rather than incrementing again. If distribution history shows that number has already been used, stop and obtain a valid higher number before building.
+
+Run these commands from `mobile/` with fail-fast behavior (`set -e`); retain each command's exit status and log. Run the two platform builds sequentially because they share Flutter build state.
+
+```bash
+set -e
+fvm flutter pub get
+fvm flutter analyze
+fvm flutter test
+
+test -f android/key.properties
+KANVIBE_ANDROID_BUILD_ARGS=()
+KANVIBE_IOS_BUILD_ARGS=()
+if [ -f config/firebase.android.local.json ]; then
+  KANVIBE_ANDROID_BUILD_ARGS+=(--dart-define-from-file=config/firebase.android.local.json)
+fi
+if [ -f config/firebase.ios.local.json ]; then
+  KANVIBE_IOS_BUILD_ARGS+=(--dart-define-from-file=config/firebase.ios.local.json)
+fi
+
+fvm flutter build apk --release "${KANVIBE_ANDROID_BUILD_ARGS[@]}"
+fvm flutter build appbundle --release "${KANVIBE_ANDROID_BUILD_ARGS[@]}"
+fvm flutter build ipa --release "${KANVIBE_IOS_BUILD_ARGS[@]}"
+
+test -s build/app/outputs/flutter-apk/app-release.apk
+test -s build/app/outputs/bundle/release/app-release.aab
+shasum -a 256 build/app/outputs/flutter-apk/app-release.apk
+shasum -a 256 build/app/outputs/bundle/release/app-release.aab
+```
+
+Use the existing iOS export settings; if the project needs an explicit export-options plist, pass the operator's existing file with `--export-options-plist=<path>` and record that path without exposing credentials. Do not invent a signing team, generate keys, or upload to TestFlight/App Store/Google Play as part of building.
+
+After the commands succeed:
+
+1. Identify the IPA produced by this run under `mobile/build/ios/ipa/`; require exactly one nonempty IPA, record its actual filename and SHA-256, and verify the archive under `mobile/build/ios/archive/`. Do not use a wildcard that could silently pick a stale IPA. Preserve or move previous outputs before starting if they would make attribution ambiguous.
+2. Inspect the generated Android and iOS artifact metadata with the installed SDK tools. Confirm the target marketing version, build number, application identifiers, and distribution signing. Record the actual exported iOS build number if export changes it; do not assume an automatic increment occurred.
+3. Check `git status --short`. The only new tracked release change allowed here is `mobile/pubspec.yaml`; unexpected lockfile, generated project, or signing changes are blockers to investigate, not files to silently stage.
+4. Report Android APK/AAB and iOS archive/IPA paths, hashes, build numbers, signing verification, and command exit statuses. A successful build is build evidence; do not claim device smoke testing or push delivery without a real device run.
+
+Return to the repository root before step 4. Keep the existing desktop smoke test in step 3.5 mandatory. Include mobile build results and local artifact locations in release-note review and the release PR Test Plan; mobile binaries stay local unless the user explicitly requests publication.
+
 ## 4. Create or Update the GitHub Release
 
 Draft release notes in a temporary markdown file. Match the existing release-note tone: concise sections such as `## New Features`, `## Improvements and Stability`, and `## Packaging Note`. Include a packaging note naming the exact DMG artifact, for example:
@@ -397,7 +452,7 @@ git diff --name-status "origin/${BASE_BRANCH}"
 node -e '
 const { execSync } = require("node:child_process");
 const baseBranch = process.argv[1];
-const allowed = new Set(["package.json", "package-lock.json"]);
+const allowed = new Set(["package.json", "package-lock.json", "mobile/pubspec.yaml"]);
 const files = execSync(`git diff --name-only origin/${baseBranch}`, { encoding: "utf8" })
   .trim()
   .split(/\n/)
@@ -408,15 +463,15 @@ if (unexpected.length > 0) {
 }
 ' "$BASE_BRANCH"
 
-git add package.json package-lock.json
+git add package.json package-lock.json mobile/pubspec.yaml
 if ! git diff --cached --quiet; then
   git commit -m "chore(release): publish KanVibe ${VERSION}"
 fi
 git push -u origin "$RELEASE_BRANCH"
 
 # Fail fast if the committed release branch does not contain the selected version.
-if ! git diff --quiet -- package.json package-lock.json || ! git diff --cached --quiet -- package.json package-lock.json; then
-  echo "package.json/package-lock.json have uncommitted changes; commit the version bump before tagging the release." >&2
+if ! git diff --quiet -- package.json package-lock.json mobile/pubspec.yaml || ! git diff --cached --quiet -- package.json package-lock.json mobile/pubspec.yaml; then
+  echo "Release version files have uncommitted changes; commit the version bump before tagging the release." >&2
   exit 1
 fi
 HEAD_VERSION=$(git show HEAD:package.json | node -p "JSON.parse(require('fs').readFileSync(0,'utf8')).version")
@@ -542,7 +597,7 @@ RELEASE_HEAD_SHA=$(gh pr view "$RELEASE_PR" --repo rookedsysc/kanvibe --json hea
 printf 'Release PR head SHA: %s\n' "$RELEASE_HEAD_SHA"
 ```
 
-Verify the release PR file list before merging. It should normally contain only `package.json` and `package-lock.json`. If a release-specific file is intentionally added, name it in the PR body and final handoff; otherwise stop.
+Verify the release PR file list before merging. It should contain only `package.json`, `package-lock.json`, and the single version-line change in `mobile/pubspec.yaml`. If a release-specific file is intentionally added, name it in the PR body and final handoff; otherwise stop.
 
 This file-scope check applies **only to the release PR into `dev`**. The promotion PR into `main` legitimately carries every commit that `main` is behind by, so a large diff there is expected and is not a blocker.
 
@@ -692,6 +747,8 @@ Before reporting success, collect real output for:
 - `pnpm run deploy` completion, including the `pm=npm` collector line and the `packaged node_modules verified: N packages` guard line;
 - **smoke-test evidence from step 3.5**: `spctl` verdict, process alive after launch, module-error count `0`, and a non-zero `invoke-succeeded` count;
 - `test -f dist/KanVibe-<version>.dmg` and `shasum -a 256`;
+- **mobile build evidence from step 3.6**: FVM/toolchain versions, `analyze`/`test`/APK/AAB/IPA command exit statuses, Android release signing configuration, exported iOS signing/version metadata, and nonempty APK/AAB/IPA paths with SHA-256;
+- `mobile/pubspec.yaml` diff containing only the target version and incremented build number, committed in the same release source as the desktop bump;
 - user approval of the release notes, confirming both the English original and the Korean translation were shown before publishing;
 - `gh release view <version>` showing the `KanVibe-<version>.dmg` asset;
 - `curl -I -L` against the release asset URL returning an HTTP success/redirect chain rather than a 404;
@@ -712,6 +769,9 @@ Final handoff format:
 - Release version: <target version selected by user>
 - DMG: `dist/KanVibe-<version>.dmg`
 - SHA-256: `<sha256>`
+- Android: <APK/AAB paths, version/build number, signing result, SHA-256>
+- iOS: <archive/IPA paths, exported version/build number, signing result, SHA-256>
+- Mobile build verification: <analyze/test/build command exit statuses; device QA only if run>
 - Packaging guard: <collector mode + verified package count>
 - Smoke test: <app alive / module errors / invoke-succeeded count>
 - GitHub release: <release URL>
@@ -748,3 +808,4 @@ Final handoff format:
 19. **Launching the app by executing its binary directly.** Use `open -a`. Running `KanVibe.app/Contents/MacOS/KanVibe` as a child of the terminal makes macOS attribute the app's file-access prompt to the terminal process; a denial there revokes `~/Documents` access for the whole process tree and blocks the rest of the release.
 20. **Blocking on the promotion PR's diff size.** The file-scope guard belongs to the release PR into `dev`. The promotion PR into `main` carries every commit `main` is behind by, so a wide diff there is normal.
 21. **Misreading DMG verification signals.** `spctl -a -t open` on the DMG reports `rejected / no usable signature` and the app inside reports "does not have a ticket stapled" even for a correct release — the ticket is stapled to the DMG, and the disk image itself is not Developer ID signed. Judge with `xcrun stapler validate <dmg>` and `spctl -a -t exec` on the app.
+22. **Shipping only the DMG after a mobile build fails.** Android APK/AAB and signed iOS IPA builds are required before publication. Missing signing configuration is a blocker; debug-signed Android output, unsigned iOS output, and stale artifacts are not successful release builds.
