@@ -1,6 +1,6 @@
 import { spawn, type ChildProcess } from "child_process";
 import { getAppSetting, getDefaultSessionType, setAppSetting } from "@/desktop/main/services/appSettingsService";
-import { createTask, getTaskById, getTasksByStatus, updateTaskStatus } from "@/desktop/main/services/kanbanService";
+import { connectTerminalSession, createTask, getTaskById, getTasksByStatus, updateTaskStatus } from "@/desktop/main/services/kanbanService";
 import { getAllProjects, getProjectBranches } from "@/desktop/main/services/projectService";
 import { attachTaskTerminal, CallbackTerminalClient } from "@/desktop/main/terminalBridge";
 import { createTerminalTab } from "@/desktop/main/services/terminalTabService";
@@ -128,10 +128,25 @@ export class SurfaceUnavailableError extends Error {
   }
 }
 
-/** 세션이 지정된 태스크. 세션이 없으면 비출 것도 띄울 것도 없다 */
-async function findMirrorTask(taskId: string): Promise<KanbanTask> {
+const pendingSessionConnections = new Map<string, Promise<KanbanTask | null>>();
+
+/** 화면 조회에서만 누락된 세션 정보를 복구하고, 입력 경로에서는 기존 세션을 확인한다. */
+async function findMirrorTask(taskId: string, connectIfMissing = false): Promise<KanbanTask> {
   const taskRepo = await getTaskRepository();
-  const task: KanbanTask | null = await taskRepo.findOneBy({ id: taskId });
+  let task: KanbanTask | null = await taskRepo.findOneBy({ id: taskId });
+
+  if (connectIfMissing && task && (!task.sessionType || !task.sessionName) &&
+      task.projectId && (task.branchName || task.baseBranch)) {
+    let pending = pendingSessionConnections.get(taskId);
+    if (!pending) {
+      const sessionType = task.sessionType;
+      pending = (async () => connectTerminalSession(taskId, sessionType ?? await getDefaultSessionType()))()
+        .finally(() => pendingSessionConnections.delete(taskId));
+      pendingSessionConnections.set(taskId, pending);
+    }
+    task = await pending;
+    if (!task) throw new SurfaceUnavailableError("session-not-running");
+  }
 
   if (!task?.sessionType || !task.sessionName) {
     throw new SurfaceUnavailableError("no-session");
@@ -161,7 +176,7 @@ function hasZellijPaneIdSupport(sshHost: string | null): Promise<boolean> {
  * 폰은 이 결과의 pane을 전부 펼쳐 탭으로 쓰고, 태블릿은 탭 하나의 pane을 좌표대로 조립한다.
  */
 export async function getTaskSurfaces(taskId: string): Promise<TaskSurfaces> {
-  const task = await findMirrorTask(taskId);
+  const task = await findMirrorTask(taskId, true);
   const target = toMirrorSessionTarget(task);
 
   if (target.sshHost) {

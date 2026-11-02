@@ -10,6 +10,7 @@ const execGitMock = vi.fn<(command: string, sshHost?: string | null) => Promise<
 const findOneByMock = vi.fn();
 const spawnMock = vi.fn();
 const createTaskMock = vi.fn();
+const connectTerminalSessionMock = vi.fn();
 const updateTaskStatusMock = vi.fn();
 const getProjectBranchesMock = vi.fn();
 const getTaskByIdMock = vi.fn();
@@ -75,6 +76,7 @@ vi.mock("@/lib/database", () => ({
 }));
 
 vi.mock("@/desktop/main/services/kanbanService", () => ({
+  connectTerminalSession: (...args: unknown[]) => connectTerminalSessionMock(...args),
   getTaskById: (taskId: string) => getTaskByIdMock(taskId),
   getTasksByStatus: async () => ({ tasks: {} }),
   createTask: (input: unknown) => createTaskMock(input),
@@ -750,6 +752,27 @@ describe("태스크 pane 조회", () => {
       width: 49,
       height: 30,
     });
+  });
+
+  it("세션 없는 프로젝트 태스크의 동시 재시도는 기존 연결 경로를 공유한다", async () => {
+    findOneByMock.mockResolvedValue({ id: "task-1", projectId: "p1", branchName: "main", sessionType: null, sessionName: null });
+    connectTerminalSessionMock.mockResolvedValue({ ...TMUX_TASK, id: "task-1" });
+    execGitMock.mockImplementation(async (command) => command.includes("list-panes") ? MIRROR_PANE_LINE : "kanvibe-task");
+
+    const results = await Promise.all([getTaskSurfaces("task-1"), getTaskSurfaces("task-1")]);
+
+    expect(results.every((result) => result.tabs[0].panes[0].id === "%19")).toBe(true);
+    expect(connectTerminalSessionMock).toHaveBeenCalledExactlyOnceWith("task-1", SessionType.TMUX);
+  });
+
+  it("세션 연결 실패 뒤 다시 시도하면 예약을 해제하고 복구한다", async () => {
+    findOneByMock.mockResolvedValue({ id: "task-1", projectId: "p1", baseBranch: "main", sessionType: SessionType.ZELLIJ, sessionName: null });
+    connectTerminalSessionMock.mockResolvedValueOnce(null).mockResolvedValueOnce({ ...TMUX_TASK, id: "task-1" });
+    execGitMock.mockImplementation(async (command) => command.includes("list-panes") ? MIRROR_PANE_LINE : "kanvibe-task");
+
+    await expect(getTaskSurfaces("task-1")).rejects.toMatchObject({ reason: "session-not-running" });
+    expect((await getTaskSurfaces("task-1")).tabs[0].panes[0].id).toBe("%19");
+    expect(connectTerminalSessionMock).toHaveBeenCalledWith("task-1", SessionType.ZELLIJ);
   });
 
   it("세션이 지정되지 않은 태스크는 사유를 알린다", async () => {
