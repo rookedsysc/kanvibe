@@ -1,0 +1,101 @@
+name: QA iOS chat history simulator artifact
+on:
+  push:
+    branches: ["qa-build/ios-chat-history-*"]
+permissions:
+  contents: read
+concurrency:
+  group: qa-ios-chat-history-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  simulator:
+    runs-on: macos-26
+    timeout-minutes: 45
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.1.1.app/Contents/Developer
+      PRODUCT_SHA: f3a7c11c8dcaa884a033de5233065bb43f7777b1
+      EVIDENCE: ${{ runner.temp }}/ios-chat-history
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: f3a7c11c8dcaa884a033de5233065bb43f7777b1
+          persist-credentials: false
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: "3.47.2"
+          architecture: arm64
+          cache: "false"
+          pub-cache: "false"
+      - name: Verify exact source and scoped toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$EVIDENCE"
+          test "$(git rev-parse HEAD)" = "$PRODUCT_SHA"
+          test "$(uname -m)" = arm64
+          test -d "$DEVELOPER_DIR"
+          {
+            git rev-parse HEAD
+            uname -a
+            xcodebuild -version
+            xcrun swift --version
+            flutter --version
+            xcrun --sdk iphonesimulator --show-sdk-version
+            df -h .
+          } | tee "$EVIDENCE/toolchain.log"
+          git ls-files -z mobile/lib mobile/pubspec.yaml mobile/pubspec.lock | xargs -0 shasum -a 256 > "$EVIDENCE/source-sha256.txt"
+      - name: Resolve locked public dependencies
+        working-directory: mobile
+        shell: bash
+        run: |
+          set -euo pipefail
+          flutter pub get --enforce-lockfile 2>&1 | tee "$EVIDENCE/pub-get.log"
+          git diff --exit-code -- pubspec.lock
+      - name: Build simulator with normal ad-hoc signing
+        working-directory: mobile
+        shell: bash
+        run: |
+          set -euo pipefail
+          flutter build ios --simulator --debug --no-pub 2>&1 | tee "$EVIDENCE/flutter-build.log"
+      - name: Verify simulator compatibility and archive bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          APP="$GITHUB_WORKSPACE/mobile/build/ios/iphonesimulator/Runner.app"
+          test -d "$APP"
+          export APP
+          xcrun lipo -archs "$APP/Runner" | tee "$EVIDENCE/architectures.txt"
+          xcrun vtool -arch arm64 -show-build "$APP/Runner" | tee "$EVIDENCE/build-version.txt"
+          codesign -dvv "$APP" > "$EVIDENCE/codesign.txt" 2>&1
+          codesign -d --entitlements :- "$APP" > "$EVIDENCE/entitlements.plist" 2> "$EVIDENCE/entitlements-status.txt"
+          codesign --verify --deep --strict "$APP"
+          python3 - <<'PYVERIFY'
+          import json, os, pathlib, plistlib, re, subprocess
+          app = pathlib.Path(os.environ['APP'])
+          out = pathlib.Path(os.environ['EVIDENCE'])
+          info = plistlib.loads((app / 'Info.plist').read_bytes())
+          minimum = info['MinimumOSVersion']
+          assert tuple(map(int, minimum.split('.'))) <= (26, 0), minimum
+          assert 'iPhoneSimulator' in info['CFBundleSupportedPlatforms']
+          assert info['CFBundleIdentifier'] == 'com.kanvibe.kanvibeMobile'
+          archs = (out / 'architectures.txt').read_text().split()
+          assert 'arm64' in archs, archs
+          version = (out / 'build-version.txt').read_text()
+          assert 'IOSSIMULATOR' in version, version
+          minos = re.search(r'minos\s+([0-9.]+)', version).group(1)
+          assert tuple(map(int, minos.split('.'))) <= (26, 0), minos
+          data = dict(sourceSha=os.environ['PRODUCT_SHA'], bundleId=info['CFBundleIdentifier'], minimumOSVersion=minimum, binaryMinimumOSVersion=minos, architectures=archs, developerDir=os.environ['DEVELOPER_DIR'], signing='normal simulator ad-hoc; see entitlements.plist')
+          (out / 'manifest.json').write_text(json.dumps(data, indent=2) + '\n')
+          PYVERIFY
+          ditto -c -k --sequesterRsrc --keepParent "$APP" "$EVIDENCE/Runner-simulator-arm64.zip"
+          shasum -a 256 "$EVIDENCE/Runner-simulator-arm64.zip" > "$EVIDENCE/Runner-simulator-arm64.zip.sha256"
+      - name: Upload simulator app and build evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-chat-history-f3a7c11-${{ github.run_id }}
+          path: ${{ runner.temp }}/ios-chat-history/
+          retention-days: 1
+          if-no-files-found: error
+          compression-level: 0
