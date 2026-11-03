@@ -187,7 +187,7 @@ const DEFAULT_DETAIL_STATE: Omit<TaskDetailState, "task"> = {
   openCodeHooksStatus: null,
   projects: [],
   sidebarDefaultCollapsed: false,
-  defaultSessionType: SessionType.TMUX,
+  defaultSessionType: SessionType.HERDR,
   doneAlertDismissed: false,
 };
 
@@ -1882,6 +1882,7 @@ export default function TaskDetailRoute() {
             {state.task.projectId ? (
               <ConnectTerminalForm
                 taskId={state.task.id}
+                defaultSessionType={state.defaultSessionType}
                 sshHost={state.task.sshHost}
                 onConnected={(connectedTask) => {
                   setState((current) => current && current.task.id === connectedTask.id

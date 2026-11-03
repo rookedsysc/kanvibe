@@ -197,7 +197,7 @@ export async function attachTaskTerminal(
 ): Promise<void> {
   const sessionType = task.sessionType as SessionType;
   const sessionName = task.sessionName as string;
-  const tmuxPaneLayout = sessionType === SessionType.TMUX
+  const tmuxPaneLayout = (sessionType === SessionType.TMUX || sessionType === SessionType.HERDR)
     ? await getEffectivePaneLayout(task.projectId ?? undefined)
     : null;
 
@@ -261,6 +261,7 @@ export async function openTerminal(
 
   try {
     await attachTaskTerminal(task, tabId, client, cols, rows);
+
     return { ok: true };
   } catch (error) {
     finalizeClient();

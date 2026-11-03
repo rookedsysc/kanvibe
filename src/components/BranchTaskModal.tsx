@@ -9,6 +9,7 @@ import type { Project } from "@/entities/Project";
 import { useEscapeKey } from "@/hooks/useEscapeKey";
 import BranchSearchInput from "./BranchSearchInput";
 import SessionTypeOptions from "./SessionTypeOptions";
+import { ensureSessionDependencyWithPrompt } from "@/desktop/renderer/utils/sessionDependencyPrompt";
 
 interface BranchTaskModalProps {
   task: KanbanTask;
@@ -40,7 +41,7 @@ export default function BranchTaskModal({
   );
   const [branchName, setBranchName] = useState("");
   const [sessionType, setSessionType] = useState<SessionType>(
-    (defaultSessionType as SessionType) || SessionType.TMUX
+    (defaultSessionType as SessionType) || SessionType.HERDR
   );
   const [error, setError] = useState<string | null>(null);
   const selectedProjectName = projects.find((project) => project.id === selectedProjectId)?.name;
@@ -66,6 +67,10 @@ export default function BranchTaskModal({
 
     startTransition(async () => {
       try {
+        if (sessionType === SessionType.HERDR && !await ensureSessionDependencyWithPrompt(
+          sessionType, projects.find((project) => project.id === selectedProjectId)?.sshHost, tc,
+        )) return;
+
         await branchFromTask(
           task.id,
           selectedProjectId,

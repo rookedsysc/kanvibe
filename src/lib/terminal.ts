@@ -1,4 +1,5 @@
 import path from "path";
+import { ensureHerdrSession } from "@/lib/herdr";
 import { existsSync } from "fs";
 import { SessionType } from "@/entities/KanbanTask";
 import { PaneLayoutType } from "@/entities/PaneLayoutConfig";
@@ -8,6 +9,7 @@ import { Terminal as HeadlessTerminal } from "@xterm/headless";
 import { SerializeAddon } from "@xterm/addon-serialize";
 import { buildSSHArgs, getKanvibeSSHConnectionHealthOptions, hasLocalX11Display } from "@/lib/sshConfig";
 import {
+  buildHerdrCommand,
   buildTmuxHideStatusBarCommand,
   buildTmuxSessionBootstrapCommand,
   buildTmuxUserClipboardDirectiveTestCommand,
@@ -193,6 +195,7 @@ export function killAllTerminalSessions(): void {
 
 /** WebSocket 하나를 기존 PTY에 연결한다. 같은 PTY를 여러 창이 공유할 수 있다 */
 function attachClientToEntry(terminalKey: string, entry: TerminalEntry, ws: WebSocket): void {
+  if (ws.readyState !== ws.OPEN) return;
   entry.clients.add(ws);
 
   ws.on("message", (message) => {
@@ -536,6 +539,14 @@ function buildLocalPtySpawnPlan(
     return { shell: resolveLoginShell(), args: ["-l"], cwd: cwd || homeDirectory };
   }
 
+  if (sessionType === SessionType.HERDR) {
+    return {
+      shell: "/bin/sh",
+      args: ["-c", `exec ${buildHerdrCommand(sessionName, [])}`],
+      cwd: cwd || homeDirectory,
+    };
+  }
+
   if (sessionType === SessionType.TMUX) {
     return { shell: "tmux", args: ["attach-session", "-t", sessionName], cwd: homeDirectory };
   }
@@ -573,6 +584,10 @@ export async function attachLocalSession(
   const terminalKey = buildTerminalKey(taskId, tabId);
   const sharedTerminal = findSharedTerminal(terminalKey);
   if (sharedTerminal) {
+    if (sharedTerminal instanceof Promise && await sharedTerminal.catch(() => undefined) === null && ws.readyState === ws.OPEN) {
+      await attachLocalSession(taskId, tabId, sessionType, sessionName, ws, cwd, cols, rows, tmuxPaneLayout);
+      return;
+    }
     await attachToSharedTerminal(terminalKey, sharedTerminal, ws);
     return;
   }
@@ -606,6 +621,11 @@ async function spawnLocalSession(
    */
   let zellijNeedsCreation = false;
 
+  if (sessionType === SessionType.HERDR) {
+    await ensureHerdrSession(sessionName, cwd || process.env.HOME || "/", tmuxPaneLayout);
+    if (ws.readyState !== ws.OPEN) return;
+  }
+
   if (sessionType === SessionType.TMUX) {
     if (!isTmuxSessionAlive(sessionName)) {
       try {
@@ -635,6 +655,16 @@ async function spawnLocalSession(
     console.log(
       `[터미널] PTY spawn: shell=${spawnPlan.shell}, args=${JSON.stringify(spawnPlan.args)}, cwd=${spawnPlan.cwd}`,
     );
+  }
+
+  if (ws.readyState !== ws.OPEN) {
+    return;
+  }
+
+  const connectedDuringBootstrap = activeTerminals.get(terminalKey);
+  if (connectedDuringBootstrap) {
+    attachClientToEntry(terminalKey, connectedDuringBootstrap, ws);
+    return;
   }
 
   let ptyProcess: import("node-pty").IPty;
@@ -685,6 +715,10 @@ export async function attachRemoteSession(
   const terminalKey = buildTerminalKey(taskId, tabId);
   const sharedTerminal = findSharedTerminal(terminalKey);
   if (sharedTerminal) {
+    if (sharedTerminal instanceof Promise && await sharedTerminal.catch(() => undefined) === null && ws.readyState === ws.OPEN) {
+      await attachRemoteSession(taskId, tabId, sshHost, sessionType, sessionName, ws, sshConfig, cols, rows, worktreePath, tmuxPaneLayout);
+      return;
+    }
     await attachToSharedTerminal(terminalKey, sharedTerminal, ws);
     return;
   }
@@ -724,6 +758,11 @@ async function spawnRemoteSession(
   const initialRows = rows ?? DEFAULT_TERMINAL_ROWS;
   const terminalEnvironment = createLocalShellEnvironment();
   const terminalKey = buildTerminalKey(taskId, tabId);
+  if (sessionType === SessionType.HERDR) {
+    await ensureHerdrSession(sessionName, worktreePath || "~", tmuxPaneLayout, sshHost);
+    if (ws.readyState !== ws.OPEN) return;
+  }
+
 
   const pty = await import("node-pty");
   const attachCommand = buildRemoteAttachCommand(sessionType, sessionName, worktreePath, tmuxPaneLayout);
@@ -740,6 +779,16 @@ async function spawnRemoteSession(
     console.log(`[터미널] Remote PTY spawn: shell=ssh, args=${JSON.stringify(args)}`);
   }
   debugLog("attachRemoteSession 시작", { taskId, sshHost, sessionName, sessionType, worktreePath, attachCommand });
+
+  if (ws.readyState !== ws.OPEN) {
+    return;
+  }
+
+  const connectedDuringBootstrap = activeTerminals.get(terminalKey);
+  if (connectedDuringBootstrap) {
+    attachClientToEntry(terminalKey, connectedDuringBootstrap, ws);
+    return;
+  }
 
   let ptyProcess: import("node-pty").IPty;
   try {
@@ -777,6 +826,10 @@ function buildRemoteAttachCommand(
   worktreePath?: string | null,
   tmuxPaneLayout?: TmuxPaneLayoutConfig | null,
 ): string {
+  if (sessionType === SessionType.HERDR) {
+    return `exec ${buildHerdrCommand(sessionName, [])}`;
+  }
+
   if (sessionType === SessionType.TMUX) {
     return buildRemoteTmuxAttachCommand(sessionName, worktreePath, tmuxPaneLayout);
   }

@@ -25,7 +25,7 @@ The KanVibe settings page keeps display preferences, terminal pane configuration
   </div>
   <div className="kv-card">
     <h3>Task creation</h3>
-    <p>Select the default session type for new tasks: tmux, zellij, or terminal.</p>
+    <p>Select the default session type for new tasks: Herdr, tmux, zellij, or terminal.</p>
   </div>
   <div className="kv-card">
     <h3>Notifications</h3>
@@ -59,7 +59,7 @@ Theme changes are applied as soon as they are saved. The same preference is reus
 
 ## Pane layouts
 
-The **Pane Layout Settings** link opens the editor for tmux pane splits and startup commands.
+The **Pane Layout Settings** link opens the editor for tmux and Herdr pane splits and startup commands.
 
 | Setting | Details |
 | --- | --- |
@@ -83,7 +83,7 @@ This only changes how the task detail workspace opens. It does not change task d
 
 | Setting | Options | Behavior |
 | --- | --- | --- |
-| Default session type | `tmux`, `zellij`, `terminal` | Selects the default terminal backend when creating a new task. tmux is the default. zellij requires zellij to be installed in the local or remote target environment. `terminal` runs a shell directly without a multiplexer, so it needs no extra install — but running work disappears when the app quits or a remote connection drops. |
+| Default session type | `herdr`, `tmux`, `zellij`, `terminal` | Selects the default terminal backend when creating a new task. Herdr is the default when no valid preference has been saved. Existing tmux, zellij, and terminal preferences are preserved. Multiplexers must be installed in the local or remote target environment; KanVibe offers installation if the selected tool is missing. `terminal` runs a shell directly without a multiplexer, so it needs no extra install — but running work disappears when the app quits or a remote connection drops. |
 
 The session type setting changes the default choice for newly created tasks. It does not rewrite existing tasks.
 

@@ -26,6 +26,12 @@ vi.mock("@/lib/terminal", () => ({
   moveLocalTerminalTab: vi.fn(),
 }));
 
+const mockMoveHerdrTab = vi.fn();
+vi.mock("@/lib/herdr", async (importOriginal) => ({
+  ...await importOriginal<typeof import("@/lib/herdr")>(),
+  moveHerdrTab: (...args: unknown[]) => mockMoveHerdrTab(...args),
+}));
+
 function stubTask(overrides: Partial<KanbanTask>): void {
   mockFindOneBy.mockResolvedValue({
     id: "task-1",
@@ -308,5 +314,66 @@ describe("탭 순서 변경", () => {
 
     expect(result.ok).toBe(false);
     expect(mockExecGit).not.toHaveBeenCalled();
+  });
+});
+
+
+describe("Herdr 탭", () => {
+  it("네이티브 ID로 동일 이름 탭을 구분하고 활성 상태를 유지한다", async () => {
+    stubTask({ sessionType: "herdr" as SessionType });
+    mockExecGit.mockResolvedValue(JSON.stringify({ result: { tabs: [
+      { tab_id: "w1:t1", number: 1, label: "shell", focused: true },
+      { tab_id: "w1:t2", number: 2, label: "shell", focused: false },
+    ] } }));
+    const { listTerminalTabs } = await importService();
+    await expect(listTerminalTabs("task-1")).resolves.toEqual({ ok: true, tabs: [
+      { id: "w1:t1", nativeIndex: 0, name: "shell", isActive: true },
+      { id: "w1:t2", nativeIndex: 1, name: "shell", isActive: false },
+    ] });
+    expect(findExecutedCommand("--session 'proj-main' 'tab' 'list'")).toBeDefined();
+  });
+});
+
+
+describe("Herdr 탭 조작", () => {
+  const tabs = [
+    { tab_id: "w1:t1", label: "same", focused: false },
+    { tab_id: "w1:t2", label: "same", focused: false },
+    { tab_id: "w2:t1", label: "same", focused: false },
+    { tab_id: "w2:t2", label: "same", focused: true },
+  ];
+  beforeEach(() => {
+    stubTask({ sessionType: SessionType.HERDR, sshHost: "remote-herdr" });
+    mockExecGit.mockResolvedValue(JSON.stringify({ result: { tabs } }));
+  });
+  it("새 탭은 활성 워크스페이스에 생성한다", async () => {
+    const service = await importService();
+    await expect(service.createTerminalTab("task-1")).resolves.toEqual({ ok: true });
+    expect(findExecutedCommand("'tab' 'create' '--workspace' 'w2' '--cwd' '/work/tree' '--focus'")).toBeDefined();
+  });
+  it.each([["w2:t2", 2, 0], ["w2:t1", 3, 2]] as const)("%s 이동은 워크스페이스 내부 삽입 경계 %s로 변환한다", async (id, destination, insertIndex) => {
+    const service = await importService();
+    await expect(service.moveTerminalTab("task-1", id, destination)).resolves.toEqual({ ok: true });
+    expect(mockMoveHerdrTab).toHaveBeenCalledWith("proj-main", id, insertIndex, "remote-herdr");
+  });
+  it("워크스페이스를 가로지르는 이동은 다른 탭을 훼손하지 않고 거절한다", async () => {
+    const service = await importService();
+    await expect(service.moveTerminalTab("task-1", "w2:t2", 0)).resolves.toMatchObject({ ok: false });
+    expect(mockMoveHerdrTab).not.toHaveBeenCalled();
+  });
+  it("마지막 탭은 지우지 않고 창을 닫는다", async () => {
+    mockExecGit.mockResolvedValue(JSON.stringify({ result: { tabs: [tabs[0]] } }));
+    const service = await importService();
+    await expect(service.closeTerminalTab("task-1", "w1:t1")).resolves.toEqual({ ok: true, shouldCloseWindow: true });
+    expect(findExecutedCommand("'tab' 'close'")).toBeUndefined();
+  });
+  it("중복 이름이어도 ID로 정확한 탭을 선택·변경·닫는다", async () => {
+    const service = await importService();
+    await expect(service.selectTerminalTab("task-1", "w2:t2")).resolves.toEqual({ ok: true });
+    await expect(service.renameTerminalTab("task-1", "w2:t2", "new name")).resolves.toEqual({ ok: true });
+    await expect(service.closeTerminalTab("task-1", "w2:t2")).resolves.toEqual({ ok: true, shouldCloseWindow: false });
+    expect(findExecutedCommand("'tab' 'focus' 'w2:t2'")).toBeDefined();
+    expect(findExecutedCommand("'tab' 'rename' 'w2:t2' 'new name'")).toBeDefined();
+    expect(findExecutedCommand("'tab' 'close' 'w2:t2'")).toBeDefined();
   });
 });

@@ -197,10 +197,10 @@ export function registerBackgroundSyncEnabledChangedCallback(callback: (enabled:
   backgroundSyncEnabledChangedCallback = callback;
 }
 
-/** 백그라운드 sync 활성화 여부를 조회한다. 미설정 시 기본값(활성화)을 반환한다 */
+/** 백그라운드 sync는 사용자가 명시적으로 켠 경우에만 활성화한다 */
 export async function getBackgroundSyncEnabled(): Promise<boolean> {
   const value = await getAppSetting(BACKGROUND_SYNC_ENABLED_KEY);
-  return value !== "false";
+  return value === "true";
 }
 
 /** 백그라운드 sync 활성화 여부를 저장하고, 실행 중인 루프에 즉시 반영한다 */
@@ -229,12 +229,12 @@ const SHORTCUT_BINDINGS_KEY = "shortcut_bindings";
 const LEGACY_TASK_SEARCH_SHORTCUT_KEY = "task_search_shortcut";
 const VIM_MODE_ENABLED_KEY = "vim_mode_enabled";
 
-/** 기본 세션 타입을 조회한다. 미설정이거나 모르는 값이면 "tmux"를 반환한다 */
+/** 기본 세션 타입을 조회한다. 미설정이거나 모르는 값이면 "herdr"를 반환한다 */
 export async function getDefaultSessionType(): Promise<SessionType> {
   const value = await getAppSetting(DEFAULT_SESSION_TYPE_KEY);
   const knownSessionTypes: string[] = Object.values(SessionType);
 
-  return knownSessionTypes.includes(value ?? "") ? value as SessionType : SessionType.TMUX;
+  return knownSessionTypes.includes(value ?? "") ? value as SessionType : SessionType.HERDR;
 }
 
 /** 기본 세션 타입을 저장한다 */

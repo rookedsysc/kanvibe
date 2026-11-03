@@ -25,7 +25,7 @@ KanVibe 设置页把显示偏好、终端 pane 配置、通知、任务创建默
   </div>
   <div className="kv-card">
     <h3>任务创建</h3>
-    <p>为新任务选择默认会话类型：tmux、zellij 或 terminal。</p>
+    <p>为新任务选择默认会话类型：Herdr、tmux、zellij 或 terminal。</p>
   </div>
   <div className="kv-card">
     <h3>通知</h3>
@@ -59,7 +59,7 @@ KanVibe 设置页把显示偏好、终端 pane 配置、通知、任务创建默
 
 ## Pane 布局
 
-设置页中的 **面板布局设置** 链接会打开 tmux pane 分割和启动命令编辑器。
+设置页中的 **面板布局设置** 链接会打开 tmux 和 Herdr pane 分割和启动命令编辑器。
 
 | 设置项 | 说明 |
 | --- | --- |
@@ -83,7 +83,7 @@ Pane 布局能让任务终端保持可重复。如果每个 worktree 都需要�
 
 | 设置项 | 选项 | 行为 |
 | --- | --- | --- |
-| 默认会话类型 | `tmux`、`zellij`、`terminal` | 创建新任务时默认选择的终端后端。tmux 是默认值。使用 zellij 时，本机或远程目标环境需要安装 zellij。`terminal` 由 KanVibe 直接启动 shell、不使用多路复用器，无需额外安装；但应用退出或远程连接断开时，正在运行的工作也会一并消失。 |
+| 默认会话类型 | `herdr`、`tmux`、`zellij`、`terminal` | 创建新任务时默认选择的终端后端。未保存有效偏好时默认使用 Herdr，已有的 tmux、zellij、terminal 设置会保留。多路复用器需要安装在本机或远程目标环境中；缺少所选工具时，KanVibe 会提示安装。`terminal` 由 KanVibe 直接启动 shell、不使用多路复用器，无需额外安装；但应用退出或远程连接断开时，正在运行的工作也会一并消失。 |
 
 会话类型设置只改变新建任务的默认选项，不会批量改写已有任务。
 

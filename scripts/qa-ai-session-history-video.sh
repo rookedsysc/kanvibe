@@ -32,6 +32,8 @@ record_and_run() {
       -framerate "${KANVIBE_QA_FRAMERATE:-15}" \
       -f x11grab \
       -i "$DISPLAY" \
+      -filter_threads 1 \
+      -c:v libx264 -preset ultrafast -threads 2 \
       -pix_fmt yuv420p \
       "$VIDEO_PATH" >"$LOG_PATH" 2>&1 &
     ffmpeg_pid="$!"
