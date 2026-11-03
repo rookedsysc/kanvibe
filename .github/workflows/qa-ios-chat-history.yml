@@ -14,12 +14,16 @@ jobs:
     env:
       DEVELOPER_DIR: /Applications/Xcode_26.1.1.app/Contents/Developer
       PRODUCT_SHA: f3a7c11c8dcaa884a033de5233065bb43f7777b1
-      EVIDENCE: ${{ runner.temp }}/ios-chat-history
     steps:
       - uses: actions/checkout@v4
         with:
           ref: f3a7c11c8dcaa884a033de5233065bb43f7777b1
           persist-credentials: false
+      - name: Initialize evidence path
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/ios-chat-history"
+          echo "EVIDENCE=$RUNNER_TEMP/ios-chat-history" >> "$GITHUB_ENV"
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
