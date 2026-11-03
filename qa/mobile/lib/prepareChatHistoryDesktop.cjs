@@ -14,6 +14,12 @@ const runDir = path.resolve(process.argv[runDirIndex + 1]);
 const portIndex = process.argv.indexOf('--port');
 const selectedPort = portIndex >= 0 ? Number(process.argv[portIndex + 1]) : 19738;
 if (!Number.isInteger(selectedPort) || selectedPort < 1024 || selectedPort > 65535) throw new Error('--port must be1024..65535');
+const labelIndex = process.argv.indexOf('--fixture-label');
+const fixtureLabel = labelIndex >= 0 ? process.argv[labelIndex + 1]?.trim() : '';
+if (labelIndex >= 0 && (!fixtureLabel || !/^[\p{L}\p{N}][\p{L}\p{N} _-]{0,39}$/u.test(fixtureLabel))) throw new Error('--fixture-label must contain1..40 letters, digits, spaces, underscores or hyphens');
+const taskTitle = fixtureLabel ? `Chat History Fixture - ${fixtureLabel}` : 'Chat History Fixture';
+const historyPrefix = fixtureLabel ? `History QA ${fixtureLabel}` : 'History QA';
+const hermesTitle = `${historyPrefix} Hermes session`;
 const desktopApi = `http://127.0.0.1:${selectedPort}`;
 const fakeHome = path.join(runDir, 'agent-home');
 const repo = path.join(runDir, 'fixture-repo');
@@ -45,10 +51,19 @@ function seedAgentFiles() {
     const events = [{ type: 'session_meta', payload: { id, cwd: repo } }];
     for (let message = 0; message < 60; message++) events.push({
       type: 'response_item', timestamp: new Date(Date.UTC(2026, 10, 2, 0, i, message)).toISOString(),
-      payload: { type: 'message', role: message % 2 ? 'assistant' : 'user', content: [{ type: 'text', text: message === 0 ? `History QA session ${i}` : `History QA message ${message}` }] },
+      payload: { type: 'message', role: message % 2 ? 'assistant' : 'user', content: [{ type: 'text', text: message === 0 ? `${historyPrefix} session ${i}` : `${historyPrefix} message ${message}` }] },
     });
     fs.writeFileSync(path.join(sessions, `${id}.jsonl`), events.map((entry) => JSON.stringify(entry)).join('\n') + '\n');
   }
+  const hermesDirectory = path.join(fakeHome, '.hermes', 'sessions');
+  fs.mkdirSync(hermesDirectory, { recursive: true });
+  fs.writeFileSync(path.join(hermesDirectory, 'session_qa-hermes.json'), JSON.stringify({
+    session_id: 'qa-hermes', cwd: repo, session_start: '2026-11-02T00:25:00.000Z', last_updated: '2026-11-02T00:25:01.000Z',
+    messages: [
+      { role: 'user', content: hermesTitle, timestamp: '2026-11-02T00:25:00.000Z' },
+      { role: 'assistant', content: `${historyPrefix} Hermes reply`, timestamp: '2026-11-02T00:25:01.000Z' },
+    ],
+  }));
 }
 async function main() {
   if (fs.existsSync(path.join(runDir, 'app-data'))) throw new Error('Use a fresh --run-dir');
@@ -89,20 +104,20 @@ async function main() {
     const invoke = (namespace, method, ...args) => page.evaluate(({ namespace, method, args }) => window.kanvibeDesktop.invoke(namespace, method, args), { namespace, method, args });
     await invoke('appSettings', 'setBackgroundSyncEnabled', false);
     await invoke('appSettings', 'setDefaultSessionType', 'terminal');
-    const project = await invoke('project', 'registerProject', 'History QA', repo);
+    const project = await invoke('project', 'registerProject', historyPrefix, repo);
     if (!project.success) throw new Error(JSON.stringify(project));
-    const task = await invoke('kanban', 'createTask', { title: 'Chat History Fixture', projectId: project.project.id });
+    const task = await invoke('kanban', 'createTask', { title: taskTitle, projectId: project.project.id });
     await waitFor(`${desktopApi}/api/hooks/health`);
     const pairing = await fetch(`${desktopApi}/api/mobile/dev/pairing-code`, { method: 'POST' }).then((r) => r.json());
     const paired = await fetch(`${desktopApi}/api/mobile/pair`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ code: pairing.code, deviceName: 'History contract probe' }) }).then((r) => r.json());
     const response = await fetch(`${desktopApi}/api/mobile/tasks/${task.id}/ai-sessions?limit=20`, { headers: { Authorization: `Bearer ${paired.token}` } });
     const history = await response.json();
     if (response.status !== 200 || history.history.sessions.length !== 20 || !history.history.nextCursor) throw new Error(`Real History contract failed: ${JSON.stringify(history)}`);
-    fs.writeFileSync(path.join(runDir, 'fixture.json'), JSON.stringify({ taskId: task.id, rendererUrl, repo, fakeHome, sessionCount: history.history.sessions.length, desktopPort: selectedPort, desktopApi }, null, 2));
+    fs.writeFileSync(path.join(runDir, 'fixture.json'), JSON.stringify({ taskId: task.id, fixtureLabel, taskTitle, historyPrefix, hermesTitle, rendererUrl, repo, fakeHome, sessionCount: history.history.sessions.length, desktopPort: selectedPort, desktopApi }, null, 2));
     fs.writeFileSync(path.join(runDir, 'http-contract.json'), JSON.stringify(history, null, 2));
     const flowDirectory = path.join(__dirname, '../../../mobile/.maestro/flows');
     const flowTemplate = fs.readFileSync(path.join(flowDirectory, 'chat-history.yaml'), 'utf8');
-    const flow = flowTemplate.replace('DESKTOP_PORT: "19738"', `DESKTOP_PORT: "${selectedPort}"`).replace('http://127.0.0.1:19738', desktopApi).replace('file: ../scripts/issue-dev-pairing-code.js', `file: ${path.resolve(flowDirectory, '../scripts/issue-dev-pairing-code.js')}`);
+    const flow = flowTemplate.replace('TASK_TITLE: \"Chat History Fixture\"', `TASK_TITLE: ${JSON.stringify(taskTitle)}`).replace('HISTORY_PREFIX: \"History QA\"', `HISTORY_PREFIX: ${JSON.stringify(historyPrefix)}`).replace('- eraseText: 21', `- eraseText: ${`${historyPrefix} message 59`.length}`).replace('DESKTOP_PORT: "19738"', `DESKTOP_PORT: "${selectedPort}"`).replace('http://127.0.0.1:19738', desktopApi).replace('file: ../scripts/issue-dev-pairing-code.js', `file: ${path.resolve(flowDirectory, '../scripts/issue-dev-pairing-code.js')}`);
     fs.writeFileSync(path.join(runDir, 'chat-history.yaml'), flow);
 
     if (process.argv.includes('--desktop-ui')) {
@@ -119,25 +134,25 @@ async function main() {
       await page.getByRole('button', { name: 'AI 채팅', exact: true }).click();
       const list = page.getByTestId('ai-session-list');
       await list.waitFor({ state: 'visible', timeout: 30000 });
-      const first = page.getByRole('button', { name: 'Codex History QA session 24', exact: true });
+      const first = page.getByRole('button', { name: `Codex ${historyPrefix} session 24`, exact: true });
       await first.waitFor({ state: 'visible' });
       await page.screenshot({ path: path.join(runDir, 'desktop-history-list.png') });
       await page.getByRole('button', { name: '채팅 더 불러오기', exact: true }).click();
-      await page.getByRole('button', { name: 'Codex History QA session 0', exact: true }).waitFor({ state: 'visible' });
+      await page.getByRole('button', { name: `Codex ${historyPrefix} session 0`, exact: true }).waitFor({ state: 'visible' });
       await first.click();
-      await page.getByText('History QA message 59', { exact: true }).waitFor({ state: 'visible' });
+      await page.getByText(`${historyPrefix} message 59`, { exact: true }).waitFor({ state: 'visible' });
       await page.screenshot({ path: path.join(runDir, 'desktop-history-messages.png') });
       await page.getByRole('button', { name: '이전 메시지 더 보기', exact: true }).click();
-      await page.getByText('History QA message 1', { exact: true }).waitFor({ state: 'visible' });
+      await page.getByText(`${historyPrefix} message 1`, { exact: true }).waitFor({ state: 'visible' });
       await page.screenshot({ path: path.join(runDir, 'desktop-history-older.png') });
       await page.getByRole('button', { name: 'AI 채팅', exact: true }).click();
       await page.getByTestId('inline-ai-chat').waitFor({ state: 'detached' });
       await page.getByRole('button', { name: 'AI 채팅', exact: true }).click();
       await first.waitFor({ state: 'visible' });
       await page.screenshot({ path: path.join(runDir, 'desktop-history-reopen.png') });
-      fs.writeFileSync(path.join(runDir, 'desktop-ui-result.json'), JSON.stringify({ pass: true, checks: ['real pairing HTTP contract', '25sessions paginated', 'selected latest messages', 'older messages', 'reopen History'] }, null, 2));
+      fs.writeFileSync(path.join(runDir, 'desktop-ui-result.json'), JSON.stringify({ pass: true, checks: ['real pairing HTTP contract', '26sessions paginated', 'selected latest messages', 'older messages', 'reopen History'] }, null, 2));
     }
-    console.log(JSON.stringify({ ready: true, taskId: task.id, runDir }));
+    console.log(JSON.stringify({ ready: true, taskId: task.id, fixtureLabel, taskTitle, historyPrefix, runDir }));
   } catch (error) { await stop(); throw error; }
 }
 main().catch((error) => { console.error(error); process.exit(1); });
