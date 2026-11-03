@@ -1,0 +1,132 @@
+{
+  "verifiedAt": "2026-11-03T03:19:47.436163+00:00",
+  "maestroExitCode": 0,
+  "junitTests": 1,
+  "junitFailures": 0,
+  "combinedJourneys": [
+    "main History",
+    "multi-PC History isolation and primary restoration"
+  ],
+  "commandRecordCounts": {
+    "COMPLETED": 147,
+    "SKIPPED": 10
+  },
+  "screenshots": [
+    "qa-results/roky-harness/chat-history/recovery-20261103/final-android-owned-repair-01/run/test-output/2026-11-03_121334/recording-wrapper/takeScreenshot/history-copy-feedback.png",
+    "qa-results/roky-harness/chat-history/recovery-20261103/final-android-owned-repair-01/run/test-output/2026-11-03_121334/recording-wrapper/takeScreenshot/history-list.png",
+    "qa-results/roky-harness/chat-history/recovery-20261103/final-android-owned-repair-01/run/test-output/2026-11-03_121334/recording-wrapper/takeScreenshot/history-messages.png",
+    "qa-results/roky-harness/chat-history/recovery-20261103/final-android-owned-repair-01/run/test-output/2026-11-03_121334/recording-wrapper/takeScreenshot/history-native-clipboard-pasted.png",
+    "qa-results/roky-harness/chat-history/recovery-20261103/final-android-owned-repair-01/run/test-output/2026-11-03_121334/recording-wrapper/takeScreenshot/history-older-messages.png",
+    "qa-results/roky-harness/chat-history/recovery-20261103/final-android-owned-repair-01/run/test-output/2026-11-03_121334/recording-wrapper/takeScreenshot/history-primary-pc-restored.png",
+    "qa-results/roky-harness/chat-history/recovery-20261103/final-android-owned-repair-01/run/test-output/2026-11-03_121334/recording-wrapper/takeScreenshot/history-provider-filter.png",
+    "qa-results/roky-harness/chat-history/recovery-20261103/final-android-owned-repair-01/run/test-output/2026-11-03_121334/recording-wrapper/takeScreenshot/history-reentry.png",
+    "qa-results/roky-harness/chat-history/recovery-20261103/final-android-owned-repair-01/run/test-output/2026-11-03_121334/recording-wrapper/takeScreenshot/history-second-pc-board.png",
+    "qa-results/roky-harness/chat-history/recovery-20261103/final-android-owned-repair-01/run/test-output/2026-11-03_121334/recording-wrapper/takeScreenshot/history-second-pc-messages.png"
+  ],
+  "transcode": {
+    "command": [
+      "ffmpeg",
+      "-nostdin",
+      "-i",
+      "/Users/rookedsysc/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/feat-chat-ui/qa-results/roky-harness/chat-history/recovery-20261103/final-android-owned-repair-01/run/videos/final-android-owned-repair-01-20261103-chat-history-combined.mp4",
+      "-vf",
+      "scale=540:-2",
+      "-c:v",
+      "libx264",
+      "-crf",
+      "28",
+      "-preset",
+      "fast",
+      "-fps_mode",
+      "passthrough",
+      "-enc_time_base",
+      "1:90000",
+      "-movflags",
+      "+faststart",
+      "/Users/rookedsysc/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/feat-chat-ui/qa-results/roky-harness/chat-history/recovery-20261103/final-android-owned-repair-01/run/videos/chat-history-combined-pass-compressed-vfr.mp4"
+    ],
+    "exitCode": 0
+  },
+  "originalVideoProbe": {
+    "programs": [],
+    "stream_groups": [],
+    "streams": [
+      {
+        "codec_name": "h264",
+        "width": 540,
+        "height": 1200,
+        "duration": "272.215611",
+        "nb_frames": "1604"
+      },
+      {
+        "duration": "272.215611",
+        "nb_frames": "1"
+      },
+      {
+        "duration": "272.215611",
+        "nb_frames": "1"
+      }
+    ],
+    "format": {
+      "duration": "272.215611",
+      "size": "16175331"
+    }
+  },
+  "compressedVideoProbe": {
+    "programs": [],
+    "stream_groups": [],
+    "streams": [
+      {
+        "codec_name": "h264",
+        "width": 540,
+        "height": 1200,
+        "duration": "272.215611",
+        "nb_frames": "1604"
+      }
+    ],
+    "format": {
+      "duration": "272.215611",
+      "size": "2318471"
+    }
+  },
+  "sameVideoFrameCount": true,
+  "sameVideoDuration": true,
+  "lastFrameCommand": [
+    "ffmpeg",
+    "-nostdin",
+    "-sseof",
+    "-10",
+    "-i",
+    "/Users/rookedsysc/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/feat-chat-ui/qa-results/roky-harness/chat-history/recovery-20261103/final-android-owned-repair-01/run/videos/chat-history-combined-pass-compressed-vfr.mp4",
+    "-update",
+    "1",
+    "-fps_mode",
+    "passthrough",
+    "qa-results/roky-harness/chat-history/recovery-20261103/final-android-owned-repair-01/video-last-frame.png"
+  ],
+  "lastFrameExitCode": 0,
+  "lastFramePath": "qa-results/roky-harness/chat-history/recovery-20261103/final-android-owned-repair-01/video-last-frame.png",
+  "recordingCoverageLogMarkers": [
+    "12:13:41.389 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandStart: Start recording final-android-owned-repair-01-20261103-chat-history-combined RUNNING",
+    "12:13:41.424 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandFinished: Start recording final-android-owned-repair-01-20261103-chat-history-combined COMPLETED",
+    "12:15:19.928 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandStart: Take screenshot history-native-clipboard-pasted RUNNING",
+    "12:15:19.955 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandFinished: Take screenshot history-native-clipboard-pasted COMPLETED",
+    "12:18:16.719 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandStart: Take screenshot history-primary-pc-restored RUNNING",
+    "12:18:16.811 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandFinished: Take screenshot history-primary-pc-restored COMPLETED",
+    "12:18:16.812 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandStart: Stop recording RUNNING",
+    "12:18:20.213 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandFinished: Stop recording COMPLETED",
+    "12:18:23.297 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandStart: Stop recording RUNNING",
+    "12:18:26.361 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandFinished: Stop recording COMPLETED"
+  ],
+  "recordingTimeLimitProof": "qa-results/roky-harness/chat-history/recovery-20261103/final-android-owned-repair-01/recording-process-evidence.json",
+  "sourceGateStart": "qa-results/roky-harness/chat-history/recovery-20261103/final-android-owned-repair-01/gate-start.json",
+  "sourceGateEnd": "qa-results/roky-harness/chat-history/recovery-20261103/final-android-owned-repair-01/gate-end.json",
+  "treeMatchesStart": true,
+  "sourceFlowsMatchStart": true,
+  "apkMatchesStart": true,
+  "postRunHead": "f3a7c11c8dcaa884a033de5233065bb43f7777b1",
+  "postRunSourceBytesMatchStart": true,
+  "visualLastFrameReview": "PASS — final decoded frame shows primary History QA session 24 and History QA message 59; no Second prefix. Same 1604 frames and272.215611s retained through VFR transcode.",
+  "postRunCommittedDiffSha256": "8ae3089af477a14694d91cc974c6e59039c952ce306b3384a48143299893e084",
+  "postRunCommitContainsSameGateDiff": true
+}

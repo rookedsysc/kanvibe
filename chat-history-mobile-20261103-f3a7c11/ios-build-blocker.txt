@@ -1,0 +1,6 @@
+Xcode failed to resolve Swift Package Manager dependencies:
+2026-11-03 12:02:13.620 xcodebuild[57929:116254854] Writing error result bundle to /var/folders/5_/twty8vcx36b1xwst32879wv00000gn/T/ResultBundle_2026-03-11_12-02-0013.xcresult
+xcodebuild: error: Could not resolve package dependencies:
+  Failed to resolve dependencies Dependencies could not be resolved because 'firebase-ios-sdk' 13.0.0..<13.0.3 contains incompatible tools version (6.2.1) and 'firebase_messaging-17.0.0' depends on 'firebase-ios-sdk' 13.0.0.
+
+

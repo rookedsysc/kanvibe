@@ -1,0 +1,10 @@
+{
+  "finishedAt": "2026-11-03T03:18:29.389837+00:00",
+  "exitCode": 0,
+  "head": "c73e6aa1703ac8d4a6a9c2d6006131b5472c7e9a",
+  "diffBinarySha256": "8ae3089af477a14694d91cc974c6e59039c952ce306b3384a48143299893e084",
+  "freeBytes": 5875511296,
+  "treeMatchesStart": true,
+  "sourceFlowsMatchStart": true,
+  "apkMatchesStart": true
+}

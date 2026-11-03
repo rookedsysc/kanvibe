@@ -1,0 +1,41 @@
+{
+  "startedAt": "2026-11-03T03:13:32.378414+00:00",
+  "startedMonotonic": 0.054584916,
+  "head": "c73e6aa1703ac8d4a6a9c2d6006131b5472c7e9a",
+  "diffBinarySha256": "8ae3089af477a14694d91cc974c6e59039c952ce306b3384a48143299893e084",
+  "trackedChangedFiles": [
+    "mobile/.maestro/flows/chat-history.yaml",
+    "qa/mobile/lib/prepareChatHistoryDesktop.cjs"
+  ],
+  "sourceFlowSha256": {
+    "mobile/.maestro/flows/chat-history.yaml": "07c20d620867150ddda46b930905118cd6484de5e30e7f00e4491029d3c3124e",
+    "qa/mobile/lib/prepareChatHistoryDesktop.cjs": "a00a92d63688692bedd30553b42501582e48976617f46e771cba63c21eb73a06",
+    "qa-results/roky-harness/chat-history/recovery-20261103/desktop-03/chat-history.yaml": "0b4eae7490e099f497c7c5942729a5e1349ed116d8eeda8b64c7ef581568c6c9",
+    "qa-results/roky-harness/chat-history/recovery-20261103/multi-pc-history.yaml": "ad322e3092f615995dfb198236c27122b3cf03b3acecb3e12be28055c556dfda",
+    "qa-results/roky-harness/chat-history/recovery-20261103/final-android-owned-repair-01/combined-chat-history.yaml": "88bc5d6d25f1d29ce1f642f4b0645894d9a579279bfb5618dc6f8458074dac6f",
+    "mobile/scripts/maestro/run-maestro-e2e.sh": "473d2805a62311735247faecb391d5d1b9d2ec216087407001ed725f5099c6fb"
+  },
+  "apkSha256": "5a4f48d27641f3b1e8e4374bd44870f0d90cabe7a5436f5e318e472d38c4722d",
+  "apk": "/Users/rookedsysc/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/feat-chat-ui/mobile/build/app/outputs/flutter-apk/app-debug.apk",
+  "device": "emulator-5556",
+  "avd": "KanVibeHistoryFinal20261103",
+  "platform": "API36.1 arm64, 540x1200/density210",
+  "command": [
+    "bash",
+    "mobile/scripts/maestro/run-maestro-e2e.sh",
+    "chat-history-combined"
+  ],
+  "environment": {
+    "APP_ID": "com.kanvibe.kanvibe_mobile",
+    "ANDROID_SERIAL": "emulator-5556",
+    "MAESTRO_PLATFORM": "android",
+    "MAESTRO_RUN_ID": "final-android-owned-repair-01-20261103",
+    "MAESTRO_OUTPUT_DIR": "/Users/rookedsysc/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/feat-chat-ui/qa-results/roky-harness/chat-history/recovery-20261103/final-android-owned-repair-01/run",
+    "FLOW_PATH": "/Users/rookedsysc/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/feat-chat-ui/qa-results/roky-harness/chat-history/recovery-20261103/final-android-owned-repair-01/combined-chat-history.yaml"
+  },
+  "freeBytes": 6008074240,
+  "precedingNativePasteResume": {
+    "exitCode": 0,
+    "artifact": "/Users/rookedsysc/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/feat-chat-ui/qa-results/roky-harness/chat-history/recovery-20261103/final-android-owned-repair-01/paste-preflight/result.json"
+  }
+}
