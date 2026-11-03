@@ -7,7 +7,7 @@ class TerminalShortcut {
     this.description, {
     this.input,
     this.action,
-    this.strokes = const [],
+    this.chord,
   });
 
   final String id;
@@ -15,16 +15,13 @@ class TerminalShortcut {
   final String description;
   final String? input;
   final String? action;
-  final List<TerminalShortcutStroke> strokes;
+  final TerminalShortcutChord? chord;
 
-  TerminalShortcut.combo(
-    this.id,
-    this.label,
-    List<TerminalShortcutStroke> strokes,
-  ) : description = strokes.map((stroke) => stroke.label).join(' → '),
+  TerminalShortcut.combo(this.id, this.label, TerminalShortcutChord chord)
+    : description = chord.label,
       input = null,
       action = null,
-      strokes = List.unmodifiable(strokes);
+      chord = chord;
 }
 
 const _commonShortcuts = [
@@ -95,36 +92,77 @@ List<TerminalShortcut> terminalShortcuts(SessionType type) => [
 ];
 
 const maxTerminalCombos = 12;
-const maxTerminalComboStrokes = 8;
 const maxTerminalComboLabelLength = 12;
 
 List<TerminalShortcut> terminalComboKeys() => [
   ..._commonShortcuts.where(
     (key) => key.input == null && key.id != 'ctrl' && key.id != 'alt',
   ),
-  const TerminalShortcut('enter', 'Enter', 'Enter'),
-  const TerminalShortcut('backspace', 'Backspace', 'Backspace'),
+  const TerminalShortcut('insert', 'Insert', 'Insert'),
+  const TerminalShortcut('delete', 'Delete', 'Delete'),
+  for (var number = 1; number <= 12; number++)
+    TerminalShortcut('f$number', 'F$number', 'F$number'),
 ];
 
-class TerminalShortcutStroke {
-  const TerminalShortcutStroke({
+class TerminalShortcutChord {
+  const TerminalShortcutChord({
     required this.key,
     this.character = '',
     this.ctrl = false,
     this.alt = false,
+    this.shift = false,
   });
 
   final String key;
   final String character;
   final bool ctrl;
   final bool alt;
+  final bool shift;
+
+  static const _shiftedCharacters = {
+    '1': '!',
+    '2': '@',
+    '3': '#',
+    '4': r'$',
+    '5': '%',
+    '6': '^',
+    '7': '&',
+    '8': '*',
+    '9': '(',
+    '0': ')',
+    '-': '_',
+    '=': '+',
+    '[': '{',
+    ']': '}',
+    r'\': '|',
+    ';': ':',
+    "'": '"',
+    ',': '<',
+    '.': '>',
+    '/': '?',
+    '`': '~',
+  };
+
+  String get characterWithShift {
+    if (!shift) return character;
+    if (_shiftedCharacters[character] case final shifted?) return shifted;
+    if (character.runes.length == 1) {
+      final rune = character.runes.single;
+      if (rune >= 0x61 && rune <= 0x7a) {
+        return String.fromCharCode(rune - 0x20);
+      }
+    }
+    return character;
+  }
 
   bool get isValid {
     if (key != 'character') {
-      return terminalComboKeys().any((candidate) => candidate.id == key);
+      return key == 'enter' ||
+          key == 'backspace' ||
+          terminalComboKeys().any((candidate) => candidate.id == key);
     }
     if (character.runes.length != 1) return false;
-    final rune = character.runes.single;
+    final rune = characterWithShift.runes.single;
     if (rune < 0x20 || rune == 0x7f) return false;
     return !ctrl ||
         (rune >= 0x40 && rune <= 0x7e) ||
@@ -133,26 +171,37 @@ class TerminalShortcutStroke {
   }
 
   String get label {
-    final keyLabel = key == 'character'
-        ? (character == ' ' ? 'Space' : character)
-        : terminalComboKeys()
-                  .where((candidate) => candidate.id == key)
-                  .firstOrNull
-                  ?.label ??
-              key;
-    return [if (ctrl) 'Ctrl', if (alt) 'Alt', keyLabel].join('+');
+    final keyLabel = switch (key) {
+      'character' => character == ' ' ? 'Space' : character,
+      'enter' => 'Enter',
+      'backspace' => 'Backspace',
+      _ =>
+        terminalComboKeys()
+                .where((candidate) => candidate.id == key)
+                .firstOrNull
+                ?.label ??
+            key,
+    };
+    return [
+      if (ctrl) 'Ctrl',
+      if (alt) 'Alt',
+      if (shift) 'Shift',
+      keyLabel,
+    ].join('+');
   }
 
-  TerminalShortcutStroke copyWith({
+  TerminalShortcutChord copyWith({
     String? key,
     String? character,
     bool? ctrl,
     bool? alt,
-  }) => TerminalShortcutStroke(
+    bool? shift,
+  }) => TerminalShortcutChord(
     key: key ?? this.key,
     character: character ?? this.character,
     ctrl: ctrl ?? this.ctrl,
     alt: alt ?? this.alt,
+    shift: shift ?? this.shift,
   );
 }
 
@@ -161,20 +210,15 @@ class TerminalShortcutProfile {
     this.enabled = true,
     required List<String> ids,
     List<TerminalShortcut> combos = const [],
-  }) : ids = List.unmodifiable(ids),
+  }) : ids = List.unmodifiable(
+         ids.where((id) => combos.any((combo) => combo.id == id)).toSet(),
+       ),
        combos = List.unmodifiable(combos);
 
   final bool enabled;
   final List<String> ids;
   final List<TerminalShortcut> combos;
 
-  List<TerminalShortcut> shortcuts(SessionType type) => [
-    ...terminalShortcuts(type),
-    ...combos,
-  ];
-
-  factory TerminalShortcutProfile.defaults(SessionType type) =>
-      TerminalShortcutProfile(
-        ids: terminalShortcuts(type).map((key) => key.id).toList(),
-      );
+  factory TerminalShortcutProfile.defaults() =>
+      TerminalShortcutProfile(ids: []);
 }

@@ -35,8 +35,7 @@ class _TerminalShortcutSettingsSheetState
     _selected = profile.ids.toSet();
     _order = [
       ...profile.ids,
-      ...profile
-          .shortcuts(widget.sessionType)
+      ...profile.combos
           .map((key) => key.id)
           .where((id) => !_selected.contains(id)),
     ];
@@ -102,10 +101,7 @@ class _TerminalShortcutSettingsSheetState
     if (_order == null && profiles != null) {
       _loadDraft(profiles[widget.sessionType]!);
     }
-    final keys = {
-      for (final key in [...terminalShortcuts(widget.sessionType), ..._combos])
-        key.id: key,
-    };
+    final keys = {for (final key in _combos) key.id: key};
     return SizedBox(
       height: MediaQuery.sizeOf(context).height * .8,
       child: Column(
@@ -185,7 +181,7 @@ class _TerminalShortcutSettingsSheetState
                               if (!_enabled)
                                 const Text('단축키 바가 숨겨집니다')
                               else if (_selected.isEmpty)
-                                const Text('아래에서 표시할 키를 선택하세요')
+                                const Text('아래에서 표시할 콤보를 선택하세요')
                               else
                                 SingleChildScrollView(
                                   scrollDirection: Axis.horizontal,
@@ -243,7 +239,7 @@ class _TerminalShortcutSettingsSheetState
                           vertical: 8,
                         ),
                         child: Text(
-                          '표시할 키를 선택하고 오른쪽 손잡이를 끌어 순서를 바꾸세요. 이 기기의 같은 세션 종류에 적용됩니다.',
+                          '표시할 콤보를 선택하고 오른쪽 손잡이를 끌어 순서를 바꾸세요. 이 기기의 같은 세션 종류에 적용됩니다.',
                           style: TextStyle(color: AppColors.textSecondary),
                         ),
                       ),
@@ -281,7 +277,7 @@ class _TerminalShortcutSettingsSheetState
                               key.label,
                               style: monoStyle(color: AppColors.textPrimary),
                             ),
-                            if (key.strokes.isNotEmpty)
+                            if (key.chord != null)
                               const Text(
                                 '콤보',
                                 style: TextStyle(
@@ -303,7 +299,7 @@ class _TerminalShortcutSettingsSheetState
                         secondary: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            if (key.strokes.isNotEmpty)
+                            if (key.chord != null)
                               PopupMenuButton<String>(
                                 tooltip: '${key.label} 콤보 동작',
                                 enabled: !_isSaving,
@@ -373,9 +369,7 @@ class _TerminalShortcutSettingsSheetState
                             ? null
                             : () => setState(
                                 () => _loadDraft(
-                                  TerminalShortcutProfile.defaults(
-                                    widget.sessionType,
-                                  ),
+                                  TerminalShortcutProfile.defaults(),
                                 ),
                               ),
                         child: const Text('기본값 복원'),

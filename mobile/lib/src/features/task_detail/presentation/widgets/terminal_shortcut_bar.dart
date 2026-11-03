@@ -13,8 +13,7 @@ class TerminalShortcutBar extends ConsumerStatefulWidget {
   const TerminalShortcutBar({
     required this.sessionType,
     required this.onShortcut,
-    this.ctrlPressed = false,
-    this.altPressed = false,
+    this.onCollapse,
     this.isBusy = false,
     this.maxPanelHeight,
     super.key,
@@ -22,8 +21,7 @@ class TerminalShortcutBar extends ConsumerStatefulWidget {
 
   final SessionType sessionType;
   final ValueChanged<TerminalShortcut> onShortcut;
-  final bool ctrlPressed;
-  final bool altPressed;
+  final VoidCallback? onCollapse;
   final bool isBusy;
   final double? maxPanelHeight;
 
@@ -46,10 +44,9 @@ class _TerminalShortcutBarState extends ConsumerState<TerminalShortcutBar> {
     final settings = ref.watch(terminalShortcutControllerProvider);
     final profile =
         settings.asData?.value[widget.sessionType] ??
-        TerminalShortcutProfile.defaults(widget.sessionType);
+        TerminalShortcutProfile.defaults();
     final shortcuts = {
-      for (final shortcut in profile.shortcuts(widget.sessionType))
-        shortcut.id: shortcut,
+      for (final shortcut in profile.combos) shortcut.id: shortcut,
     };
     return Focus(
       canRequestFocus: false,
@@ -119,13 +116,24 @@ class _TerminalShortcutBarState extends ConsumerState<TerminalShortcutBar> {
                             horizontal: 2,
                             vertical: 2,
                           ),
-                          child: Row(
-                            children: [
-                              for (final id in profile.ids)
-                                if (shortcuts[id] case final shortcut?)
-                                  _key(shortcut),
-                            ],
-                          ),
+                          child: profile.ids.isEmpty
+                              ? TextButton(
+                                  onPressed: _openSettings,
+                                  style: TextButton.styleFrom(
+                                    minimumSize: const Size(0, 32),
+                                    tapTargetSize:
+                                        MaterialTapTargetSize.shrinkWrap,
+                                    textStyle: const TextStyle(fontSize: 12),
+                                  ),
+                                  child: const Text('콤보 추가'),
+                                )
+                              : Row(
+                                  children: [
+                                    for (final id in profile.ids)
+                                      if (shortcuts[id] case final shortcut?)
+                                        _key(shortcut),
+                                  ],
+                                ),
                         )
                       : Padding(
                           padding: const EdgeInsets.only(left: 12),
@@ -137,30 +145,19 @@ class _TerminalShortcutBarState extends ConsumerState<TerminalShortcutBar> {
                           ),
                         ),
                 ),
-                Semantics(
-                  identifier: 'shortcut-settings',
-                  child: IconButton(
-                    constraints: const BoxConstraints.tightFor(
-                      width: 36,
-                      height: 36,
-                    ),
-                    padding: const EdgeInsets.all(4),
-                    style: IconButton.styleFrom(
-                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                      visualDensity: VisualDensity.standard,
-                    ),
-                    tooltip: '${widget.sessionType.name} 단축키 설정',
-                    onPressed: () => showModalBottomSheet<void>(
-                      context: context,
-                      isScrollControlled: true,
-                      useSafeArea: true,
-                      builder: (_) => TerminalShortcutSettingsSheet(
-                        sessionType: widget.sessionType,
-                      ),
-                    ),
-                    icon: const Icon(Icons.tune, size: 18),
-                  ),
+                _control(
+                  'shortcut-settings',
+                  '${widget.sessionType.name} 단축키 설정',
+                  Icons.tune,
+                  _openSettings,
                 ),
+                if (widget.onCollapse case final onCollapse?)
+                  _control(
+                    'shortcut-collapse',
+                    '단축키 바 접기',
+                    Icons.keyboard_arrow_down,
+                    onCollapse,
+                  ),
               ],
             ),
           ],
@@ -169,21 +166,43 @@ class _TerminalShortcutBarState extends ConsumerState<TerminalShortcutBar> {
     );
   }
 
+  void _openSettings() => showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    useSafeArea: true,
+    builder: (_) =>
+        TerminalShortcutSettingsSheet(sessionType: widget.sessionType),
+  );
+
+  Widget _control(
+    String id,
+    String tooltip,
+    IconData icon,
+    VoidCallback onPressed,
+  ) => Semantics(
+    identifier: id,
+    child: IconButton(
+      constraints: const BoxConstraints.tightFor(width: 36, height: 36),
+      padding: const EdgeInsets.all(4),
+      style: IconButton.styleFrom(
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        visualDensity: VisualDensity.standard,
+      ),
+      tooltip: tooltip,
+      onPressed: onPressed,
+      icon: Icon(icon, size: 18),
+    ),
+  );
+
   Widget _key(TerminalShortcut shortcut) {
-    final pressed =
-        (shortcut.id == 'ctrl' && widget.ctrlPressed) ||
-        (shortcut.id == 'alt' && widget.altPressed);
     return Semantics(
       identifier: 'shortcut-${shortcut.id}',
-      selected: pressed,
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 2),
         child: Tooltip(
           message: shortcut.description,
           child: TextButton(
-            onPressed: widget.isBusy && shortcut.action != null
-                ? null
-                : () => widget.onShortcut(shortcut),
+            onPressed: () => widget.onShortcut(shortcut),
             style: TextButton.styleFrom(
               minimumSize: const Size(40, 32),
               tapTargetSize: MaterialTapTargetSize.shrinkWrap,
@@ -193,11 +212,7 @@ class _TerminalShortcutBarState extends ConsumerState<TerminalShortcutBar> {
               backgroundColor: AppColors.buttonNeutral,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(6),
-                side: BorderSide(
-                  color: pressed
-                      ? AppColors.brandPrimary
-                      : AppColors.borderStrong,
-                ),
+                side: const BorderSide(color: AppColors.borderStrong),
               ),
               textStyle: const TextStyle(
                 fontFamily: monoFontFamily,

@@ -10,10 +10,12 @@ class TerminalShortcutStore {
     : _storage = storage ?? const FlutterSecureStorage();
 
   final FlutterSecureStorage _storage;
-  static const _key = 'kanvibe_terminal_shortcuts_v1';
+  static const _key = 'kanvibe_terminal_shortcuts_v2';
+  static const _legacyKey = 'kanvibe_terminal_shortcuts_v1';
 
   Future<Map<SessionType, TerminalShortcutProfile>> read() async {
-    final raw = await _storage.read(key: _key);
+    final current = await _storage.read(key: _key);
+    final raw = current ?? await _storage.read(key: _legacyKey);
     Object? decoded;
     try {
       decoded = raw == null ? null : jsonDecode(raw);
@@ -21,33 +23,28 @@ class TerminalShortcutStore {
       decoded = null;
     }
     return {
-      for (final type in SessionType.values) type: _readProfile(decoded, type),
+      for (final type in SessionType.values)
+        type: _readProfile(decoded, type, isLegacy: current == null),
     };
   }
 
-  TerminalShortcutProfile _readProfile(Object? decoded, SessionType type) {
+  TerminalShortcutProfile _readProfile(
+    Object? decoded,
+    SessionType type, {
+    required bool isLegacy,
+  }) {
     final profile = decoded is Map ? decoded[type.name] : null;
     if (profile is! Map || profile['ids'] is! List) {
-      return TerminalShortcutProfile.defaults(type);
+      return TerminalShortcutProfile.defaults();
     }
-    final combos = _readCombos(profile['combos']);
-    final allowed = [
-      ...terminalShortcuts(type),
-      ...combos,
-    ].map((shortcut) => shortcut.id).toSet();
-    final ids = (profile['ids'] as List)
-        .whereType<String>()
-        .where(allowed.contains)
-        .toSet()
-        .toList();
     return TerminalShortcutProfile(
       enabled: profile['enabled'] != false,
-      combos: combos,
-      ids: ids,
+      combos: _readCombos(profile['combos'], isLegacy: isLegacy),
+      ids: (profile['ids'] as List).whereType<String>().toList(),
     );
   }
 
-  List<TerminalShortcut> _readCombos(Object? raw) {
+  List<TerminalShortcut> _readCombos(Object? raw, {required bool isLegacy}) {
     if (raw is! List) return [];
     final combos = <TerminalShortcut>[];
     final seen = <String>{};
@@ -55,43 +52,46 @@ class TerminalShortcutStore {
       if (entry is! Map) continue;
       final id = entry['id'];
       final label = entry['label'];
-      final rawStrokes = entry['strokes'];
       if (id is! String ||
           !id.startsWith('combo-') ||
           id.length > 80 ||
           seen.contains(id) ||
           label is! String ||
           label.trim().isEmpty ||
-          label.length > maxTerminalComboLabelLength ||
-          rawStrokes is! List ||
-          rawStrokes.isEmpty ||
-          rawStrokes.length > maxTerminalComboStrokes) {
+          label.length > maxTerminalComboLabelLength) {
         continue;
       }
-      final strokes = <TerminalShortcutStroke>[];
-      for (final rawStroke in rawStrokes) {
-        if (rawStroke is! Map ||
-            rawStroke['key'] is! String ||
-            (rawStroke['character'] != null &&
-                rawStroke['character'] is! String) ||
-            (rawStroke['ctrl'] != null && rawStroke['ctrl'] is! bool) ||
-            (rawStroke['alt'] != null && rawStroke['alt'] is! bool)) {
-          break;
-        }
-        final stroke = TerminalShortcutStroke(
-          key: rawStroke['key'] as String,
-          character: rawStroke['character'] as String? ?? '',
-          ctrl: rawStroke['ctrl'] == true,
-          alt: rawStroke['alt'] == true,
-        );
-        if (!stroke.isValid) break;
-        strokes.add(stroke);
+      Object? rawChord = entry['chord'];
+      if (isLegacy) {
+        final strokes = entry['strokes'];
+        if (strokes is! List || strokes.length != 1) continue;
+        rawChord = strokes.single;
       }
-      if (strokes.length != rawStrokes.length) continue;
+      final chord = _readChord(rawChord);
+      if (chord == null) continue;
       seen.add(id);
-      combos.add(TerminalShortcut.combo(id, label.trim(), strokes));
+      combos.add(TerminalShortcut.combo(id, label.trim(), chord));
     }
     return combos;
+  }
+
+  TerminalShortcutChord? _readChord(Object? raw) {
+    if (raw is! Map ||
+        raw['key'] is! String ||
+        (raw['character'] != null && raw['character'] is! String) ||
+        (raw['ctrl'] != null && raw['ctrl'] is! bool) ||
+        (raw['alt'] != null && raw['alt'] is! bool) ||
+        (raw['shift'] != null && raw['shift'] is! bool)) {
+      return null;
+    }
+    final chord = TerminalShortcutChord(
+      key: raw['key'] as String,
+      character: raw['character'] as String? ?? '',
+      ctrl: raw['ctrl'] == true,
+      alt: raw['alt'] == true,
+      shift: raw['shift'] == true,
+    );
+    return chord.isValid ? chord : null;
   }
 
   Future<void> write(Map<SessionType, TerminalShortcutProfile> profiles) =>
@@ -104,19 +104,18 @@ class TerminalShortcutStore {
               'ids': entry.value.ids,
               'combos': [
                 for (final combo in entry.value.combos)
-                  {
-                    'id': combo.id,
-                    'label': combo.label,
-                    'strokes': [
-                      for (final stroke in combo.strokes)
-                        {
-                          'key': stroke.key,
-                          'character': stroke.character,
-                          'ctrl': stroke.ctrl,
-                          'alt': stroke.alt,
-                        },
-                    ],
-                  },
+                  if (combo.chord case final chord?)
+                    {
+                      'id': combo.id,
+                      'label': combo.label,
+                      'chord': {
+                        'key': chord.key,
+                        'character': chord.character,
+                        'ctrl': chord.ctrl,
+                        'alt': chord.alt,
+                        'shift': chord.shift,
+                      },
+                    },
               ],
             },
         }),

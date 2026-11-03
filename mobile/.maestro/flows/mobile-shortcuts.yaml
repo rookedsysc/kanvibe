@@ -38,13 +38,19 @@ env:
 - tapOn:
     id: pane-terminal
 - assertVisible:
-    id: shortcut-escape
+    id: shortcut-collapse
 - takeScreenshot: shortcut-above-keyboard
 - inputText: "printf SHORTCUT_QA_OK"
 - pressKey: Enter
 - tapOn:
-    id: shortcut-ctrl
-- inputText: "l"
+    id: shortcut-collapse
+- assertVisible:
+    id: shortcut-expand
+- assertNotVisible:
+    id: shortcut-settings
+- takeScreenshot: shortcut-collapsed
+- tapOn:
+    id: shortcut-expand
 - tapOn:
     id: shortcut-settings
 - assertVisible: "tmux 단축키"
@@ -57,8 +63,7 @@ env:
     id: shortcut-settings
 - tapOn: "기본값 복원"
 - tapOn: "적용"
-- assertVisible:
-    id: shortcut-escape
+- assertVisible: "콤보 추가"
 - takeScreenshot: shortcut-restored
 - tapOn:
     id: shortcut-panel
@@ -80,24 +85,19 @@ env:
 - tapOn: "콤보 추가 .*"
 - tapOn:
     id: combo-name
-- inputText: "Again"
-- hideKeyboard
-- scrollUntilVisible:
-    element: "키 단계 추가.*"
-    direction: DOWN
-- tapOn: "키 단계 추가.*"
+- inputText: "Copy"
 - tapOn:
-    id: combo-key-1
-- tapOn: "↑"
-- scrollUntilVisible:
-    element: "키 단계 추가.*"
-    direction: DOWN
-- tapOn: "키 단계 추가.*"
-- takeScreenshot: shortcut-combo-sequence
+    id: combo-key-input
+- inputText: "c"
+- hideKeyboard
+- tapOn: "Ctrl"
+- tapOn: "Shift"
+- assertVisible: 'Ctrl\+Shift\+c'
+- takeScreenshot: shortcut-combo-chord
 - tapOn: "콤보 저장"
 - tapOn: "적용"
-- assertVisible: "Again"
-- tapOn: "Again"
+- assertVisible: "Copy"
+- tapOn: "Copy"
 - tapOn:
     id: shortcut-panel
 - tapOn: "내 콤보"

@@ -50,17 +50,24 @@ void main() {
       final profiles = await store.read();
       profiles[SessionType.tmux] = TerminalShortcutProfile(
         enabled: false,
-        ids: ['interrupt', 'tab'],
+        ids: ['combo-tab'],
+        combos: [
+          TerminalShortcut.combo(
+            'combo-tab',
+            'Tab',
+            const TerminalShortcutChord(key: 'tab'),
+          ),
+        ],
       );
       profiles[SessionType.zellij] = TerminalShortcutProfile(ids: []);
       await store.write(profiles);
       final restored = await TerminalShortcutStore().read();
-      expect(restored[SessionType.tmux]!.ids, ['interrupt', 'tab']);
+      expect(restored[SessionType.tmux]!.ids, ['combo-tab']);
       expect(restored[SessionType.tmux]!.enabled, isFalse);
       expect(restored[SessionType.zellij]!.ids, isEmpty);
       expect(
         restored[SessionType.terminal]!.ids,
-        TerminalShortcutProfile.defaults(SessionType.terminal).ids,
+        TerminalShortcutProfile.defaults().ids,
       );
     },
   );
@@ -73,16 +80,16 @@ void main() {
       });
       expect(
         (await TerminalShortcutStore().read())[SessionType.tmux]!.ids,
-        contains('escape'),
+        isEmpty,
       );
       FlutterSecureStorage.setMockInitialValues({
         'kanvibe_terminal_shortcuts_v1':
             '{"tmux":{"ids":["tab","tab","unknown",5,"escape"]}}',
       });
-      expect((await TerminalShortcutStore().read())[SessionType.tmux]!.ids, [
-        'tab',
-        'escape',
-      ]);
+      expect(
+        (await TerminalShortcutStore().read())[SessionType.tmux]!.ids,
+        isEmpty,
+      );
     },
   );
 
@@ -94,15 +101,36 @@ void main() {
       terminalShortcutControllerProvider.notifier,
     );
     await Future.wait([
-      controller.save(SessionType.tmux, TerminalShortcutProfile(ids: ['tab'])),
+      controller.save(
+        SessionType.tmux,
+        TerminalShortcutProfile(
+          ids: ['combo-tab'],
+          combos: [
+            TerminalShortcut.combo(
+              'combo-tab',
+              'Tab',
+              const TerminalShortcutChord(key: 'tab'),
+            ),
+          ],
+        ),
+      ),
       controller.save(
         SessionType.zellij,
-        TerminalShortcutProfile(ids: ['escape']),
+        TerminalShortcutProfile(
+          ids: ['combo-escape'],
+          combos: [
+            TerminalShortcut.combo(
+              'combo-escape',
+              'Esc',
+              const TerminalShortcutChord(key: 'escape'),
+            ),
+          ],
+        ),
       ),
     ]);
     final profiles = await TerminalShortcutStore().read();
-    expect(profiles[SessionType.tmux]!.ids, ['tab']);
-    expect(profiles[SessionType.zellij]!.ids, ['escape']);
+    expect(profiles[SessionType.tmux]!.ids, ['combo-tab']);
+    expect(profiles[SessionType.zellij]!.ids, ['combo-escape']);
   });
 
   testWidgets(
@@ -176,7 +204,7 @@ void main() {
         greaterThanOrEqualTo(32),
       );
       expect(
-        tester.getSize(find.widgetWithText(TextButton, 'Esc')).height,
+        tester.getSize(find.widgetWithText(TextButton, '콤보 추가')).height,
         greaterThanOrEqualTo(32),
       );
     },

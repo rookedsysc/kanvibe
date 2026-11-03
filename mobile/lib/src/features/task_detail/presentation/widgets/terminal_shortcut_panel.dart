@@ -83,7 +83,7 @@ class _TerminalShortcutPanelState extends State<TerminalShortcutPanel> {
                 padding: const EdgeInsets.symmetric(vertical: AppSizes.p8),
                 child: Text(switch (_group) {
                   '세션' => '패널 제어',
-                  '내 콤보' => '저장한 키 순서를 한 번에 실행',
+                  '내 콤보' => '저장한 키 조합을 실행',
                   _ => '터미널 키',
                 }, style: Theme.of(context).textTheme.bodySmall),
               ),

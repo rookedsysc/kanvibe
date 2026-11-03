@@ -47,15 +47,17 @@ Future<void> pumpPane(
           data: MediaQuery.of(context).copyWith(textScaler: textScaler),
           child: child!,
         ),
-        home: SizedBox(
-          width: phoneSize.width,
-          height: phoneSize.height,
-          child: PaneTerminalView(
-            canResize: canResize,
-            canRespondToDeviceQueries: canRespondToDeviceQueries,
-            taskId: 'task-1',
-            pane: pane,
-            key: ValueKey(pane.id),
+        home: Material(
+          child: SizedBox(
+            width: phoneSize.width,
+            height: phoneSize.height,
+            child: PaneTerminalView(
+              canResize: canResize,
+              canRespondToDeviceQueries: canRespondToDeviceQueries,
+              taskId: 'task-1',
+              pane: pane,
+              key: ValueKey(pane.id),
+            ),
           ),
         ),
       ),
@@ -1010,6 +1012,22 @@ void main() {
 
     expect(tester.testTextInput.isVisible, isFalse);
   });
+  Future<void> openRawKeys(WidgetTester tester) async {
+    await tester.tap(find.byTooltip('빠른 단축키'));
+    await tester.pumpAndSettle();
+    final keysTab = find.widgetWithText(ChoiceChip, '키');
+    await tester.tap(keysTab);
+    await tester.pumpAndSettle();
+  }
+
+  Future<void> tapRawKey(WidgetTester tester, String id) async {
+    final key = find.byKey(ValueKey('panel-key-$id'));
+    await tester.ensureVisible(key);
+    await tester.pumpAndSettle();
+    await tester.tap(key);
+    await tester.pump();
+  }
+
   testWidgets(
     'Ctrl and Alt affect one IME character and preserve keyboard focus',
     (tester) async {
@@ -1021,8 +1039,9 @@ void main() {
         store: FakeConnectionStore(),
       );
       final base = await attachSoftKeyboard(tester);
-      await tester.tap(find.widgetWithText(TextButton, 'Ctrl'));
-      await tester.tap(find.widgetWithText(TextButton, 'Alt'));
+      await openRawKeys(tester);
+      await tapRawKey(tester, 'ctrl');
+      await tapRawKey(tester, 'alt');
       expect(tester.testTextInput.isVisible, isTrue);
       await sendImeBuffer(tester, base: base, previous: '', next: 'c');
       await sendImeBuffer(tester, base: base, previous: 'c', next: 'cx');
@@ -1036,11 +1055,12 @@ void main() {
     final client = FakeDesktopClient();
     await pumpPane(tester, _pane, client: client, store: FakeConnectionStore());
     await attachSoftKeyboard(tester);
-    await tester.tap(find.widgetWithText(TextButton, 'Esc'));
-    await tester.tap(find.widgetWithText(TextButton, 'Tab'));
+    await openRawKeys(tester);
+    await tapRawKey(tester, 'escape');
+    await tapRawKey(tester, 'tab');
     mountedTerminal(tester).write('\x1b[?1h');
-    await tester.ensureVisible(find.widgetWithText(TextButton, '↑'));
-    await tester.tap(find.widgetWithText(TextButton, '↑'));
+
+    await tapRawKey(tester, 'up');
     expect(client.writtenInput['%19']?.join(), '\x1b\t\x1bOA');
   });
 
@@ -1084,10 +1104,11 @@ void main() {
     await pumpPane(tester, _pane, client: client, store: FakeConnectionStore());
     final base = await attachSoftKeyboard(tester);
     await sendImeBuffer(tester, base: base, previous: '', next: 'a');
-    await tester.tap(find.widgetWithText(TextButton, 'Alt'));
+    await openRawKeys(tester);
+    await tapRawKey(tester, 'alt');
     await sendImeBuffer(tester, base: base, previous: 'a', next: '');
     await sendImeBuffer(tester, base: base, previous: '', next: 'b');
-    await tester.tap(find.widgetWithText(TextButton, 'Ctrl'));
+    await tapRawKey(tester, 'ctrl');
     await tester.testTextInput.receiveAction(TextInputAction.done);
     await sendImeBuffer(tester, base: base, previous: 'b', next: 'bc');
     expect(client.writtenInput['%19']?.join(), 'a\x17b\rc');
