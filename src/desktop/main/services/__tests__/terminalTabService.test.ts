@@ -16,8 +16,10 @@ vi.mock("@/lib/gitOperations", () => ({
 
 const mockListLocalTerminalTabs = vi.fn((..._args: unknown[]) => [] as unknown[]);
 const mockCreateLocalTerminalTab = vi.fn((..._args: unknown[]) => undefined);
+const mockGetLocalTerminalTabProcess = vi.fn();
 const mockCloseLocalTerminalTab = vi.fn((..._args: unknown[]) => 2);
 vi.mock("@/lib/terminal", () => ({
+  getLocalTerminalTabProcess: (...args: unknown[]) => mockGetLocalTerminalTabProcess(...args),
   listLocalTerminalTabs: (...args: unknown[]) => mockListLocalTerminalTabs(...args),
   createLocalTerminalTab: (...args: unknown[]) => mockCreateLocalTerminalTab(...args),
   closeLocalTerminalTab: (...args: unknown[]) => mockCloseLocalTerminalTab(...args),
@@ -375,5 +377,88 @@ describe("Herdr 탭 조작", () => {
     expect(findExecutedCommand("'tab' 'focus' 'w2:t2'")).toBeDefined();
     expect(findExecutedCommand("'tab' 'rename' 'w2:t2' 'new name'")).toBeDefined();
     expect(findExecutedCommand("'tab' 'close' 'w2:t2'")).toBeDefined();
+  });
+});
+
+
+describe("탭 닫기 전 확인 정보", () => {
+  it("마지막 멀티플렉서 탭은 프로세스를 건드리지 않고 창만 닫도록 안내한다", async () => {
+    stubTask({});
+    mockExecGit.mockResolvedValue("@1\t0\t1\tzsh");
+    const service = await importService();
+    expect(await service.getTerminalTabCloseInfo("task-1", "@1")).toEqual({
+      ok: true, shouldCloseWindow: true, processNames: null,
+    });
+    expect(findExecutedCommand("kill-window")).toBeUndefined();
+    expect(findExecutedCommand("list-panes")).toBeUndefined();
+  });
+
+  it("현재 탭의 모든 분할 화면에서 프로세스 이름을 모으고 다른 탭은 제외한다", async () => {
+    stubTask({ sshHost: "dev-host" });
+    mockExecGit.mockImplementation(async (command: string) => command.includes("list-windows")
+      ? "@1\t0\t1\twork\n@2\t1\t0\tother"
+      : "%1\t@1\tclaude\t0\t0\t80\t24\twork\n%2\t@1\tnode\t80\t0\t80\t24\twork\n%3\t@2\tvim\t0\t0\t80\t24\tother");
+    const service = await importService();
+    expect(await service.getTerminalTabCloseInfo("task-1", "@1")).toEqual({
+      ok: true, shouldCloseWindow: false, processNames: ["claude", "node"],
+    });
+    expect(mockExecGit.mock.calls.every((call) => call[1] === "dev-host")).toBe(true);
+    expect(findExecutedCommand("kill-window")).toBeUndefined();
+  });
+
+  it("프로세스 조회 실패는 실행 중인 작업이 없다는 뜻으로 바꾸지 않는다", async () => {
+    stubTask({});
+    mockExecGit.mockImplementation(async (command: string) => {
+      if (command.includes("list-windows")) return "@1\t0\t1\twork\n@2\t1\t0\tother";
+      throw new Error("process lookup failed");
+    });
+    const service = await importService();
+    expect(await service.getTerminalTabCloseInfo("task-1", "@1")).toEqual({
+      ok: true, shouldCloseWindow: false, processNames: null,
+    });
+  });
+
+  it("탭 목록 조회 실패는 닫기 허가로 바꾸지 않는다", async () => {
+    stubTask({});
+    mockExecGit.mockRejectedValue(new Error("offline"));
+    const service = await importService();
+    expect(await service.getTerminalTabCloseInfo("task-1", "@1")).toEqual({
+      ok: false, shouldCloseWindow: false, processNames: null, error: "offline",
+    });
+  });
+
+  it("프로세스가 없는 조회 결과도 안전하다고 단정하지 않는다", async () => {
+    stubTask({});
+    mockExecGit.mockImplementation(async (command: string) => command.includes("list-windows")
+      ? "@1\t0\t1\twork\n@2\t1\t0\tother" : "");
+    const service = await importService();
+    expect((await service.getTerminalTabCloseInfo("task-1", "@1")).processNames).toBeNull();
+  });
+
+  it("원격 일반 터미널에서 로컬 SSH 프로세스를 원격 작업 이름으로 표시하지 않는다", async () => {
+    stubTask({ sessionType: SessionType.TERMINAL, sshHost: "dev-host" });
+    mockListLocalTerminalTabs.mockReturnValue([{ id: "tab-1" }]);
+    mockGetLocalTerminalTabProcess.mockReturnValue("ssh");
+    const service = await importService();
+    expect((await service.getTerminalTabCloseInfo("task-1", "tab-1")).processNames).toBeNull();
+    expect(mockGetLocalTerminalTabProcess).not.toHaveBeenCalled();
+  });
+
+  it("존재하지 않는 탭은 닫기 대상으로 인정하지 않는다", async () => {
+    stubTask({});
+    mockExecGit.mockResolvedValue("@1\t0\t1\tzsh");
+    const service = await importService();
+    expect((await service.getTerminalTabCloseInfo("task-1", "@999")).ok).toBe(false);
+  });
+
+  it("일반 터미널은 마지막 탭도 삭제되므로 현재 PTY 프로세스를 경고한다", async () => {
+    stubTask({ sessionType: SessionType.TERMINAL });
+    mockListLocalTerminalTabs.mockReturnValue([{ id: "tab-1" }]);
+    mockGetLocalTerminalTabProcess.mockReturnValue("node");
+    const service = await importService();
+    expect(await service.getTerminalTabCloseInfo("task-1", "tab-1")).toEqual({
+      ok: true, shouldCloseWindow: false, processNames: ["node"],
+    });
+    expect(mockCloseLocalTerminalTab).not.toHaveBeenCalled();
   });
 });

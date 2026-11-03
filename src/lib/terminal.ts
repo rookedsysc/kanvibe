@@ -120,6 +120,10 @@ export function listLocalTerminalTabs(taskId: string): TerminalTab[] {
   return toTerminalTabs(getTabState(taskId));
 }
 
+export function getLocalTerminalTabProcess(taskId: string, tabId: string): string | null {
+  return activeTerminals.get(buildTerminalKey(taskId, tabId))?.pty.process || null;
+}
+
 /** 새 탭을 목록 끝에 추가하고 활성으로 만든다. PTY는 렌더러가 붙을 때 생긴다 */
 export function createLocalTerminalTab(taskId: string): TerminalTab {
   const state = getTabState(taskId);

@@ -46,6 +46,7 @@ import { useMarkTaskNotificationsReadWhenFocused } from "@/desktop/renderer/hook
 import { useTaskAgentCallGraph, useTaskLiveAiSessions } from "@/desktop/renderer/hooks/useLiveAiSessions";
 import { useTaskDiffFiles } from "@/desktop/renderer/hooks/useTaskDiffStats";
 import { useTerminalTabs } from "@/desktop/renderer/hooks/useTerminalTabs";
+import { getTerminalTabCloseInfo } from "@/desktop/renderer/actions/terminalTabs";
 import type { TerminalTabShortcutCommand } from "@/desktop/shared/terminalTabs";
 import { fetchPrUrlWithPrompt } from "@/desktop/renderer/utils/fetchPrUrlWithPrompt";
 import { openTaskInVsCode } from "@/desktop/renderer/actions/editor";
@@ -860,6 +861,7 @@ export default function TaskDetailRoute() {
   const [activePanel, setActivePanel] = useState<DetailPanel | null>(null);
   const [mainView, setMainView] = useState<MainView>("terminal");
   const notificationCenterRef = useRef<NotificationCenterButtonHandle>(null);
+  const isTerminalTabClosingRef = useRef(false);
   const currentTaskIdRef = useRef(id);
   const dockItemsRef = useRef<TaskDetailDockItem[]>([]);
   const commonTranslationsRef = useRef(tc);
@@ -1224,13 +1226,47 @@ export default function TaskDetailRoute() {
     };
   }, [hasShortcutBlocker, shortcutBindings, shortcutPlatform, toggleDetailPanel]);
 
-  /** 탭을 다 닫으면 남길 화면이 없으므로 창까지 닫는다. 창을 닫을지는 세션 타입을 아는 main이 정한다 */
+  useEffect(() => () => {
+    isTerminalTabClosingRef.current = false;
+  }, []);
+
   const closeTerminalTabOrWindow = useCallback(async (tabId: string) => {
-    const shouldCloseWindow = await terminalTabs.closeTab(tabId);
-    if (shouldCloseWindow) {
-      window.kanvibeDesktop?.closeCurrentWindow?.();
+    const taskId = currentTaskRef.current?.id;
+    if (!taskId || isTerminalTabClosingRef.current) {
+      return;
     }
-  }, [terminalTabs]);
+    isTerminalTabClosingRef.current = true;
+    try {
+      const info = await getTerminalTabCloseInfo(taskId, tabId);
+      if (!isTerminalTabClosingRef.current || currentTaskIdRef.current !== taskId) {
+        return;
+      }
+      if (!info.ok) {
+        window.alert(t("terminalTabCloseCheckFailed"));
+        return;
+      }
+      if (info.shouldCloseWindow) {
+        window.kanvibeDesktop?.closeCurrentWindow?.();
+        return;
+      }
+      const confirmed = window.confirm(t("terminalTabCloseConfirm", {
+        processes: info.processNames?.join(", ") || t("terminalTabProcessesUnknown"),
+        shortcut: formatShortcutForDisplay(shortcutBindings.terminalWindowClose, shortcutPlatform),
+      }));
+      if (confirmed) {
+        const shouldCloseWindow = await terminalTabs.closeTab(tabId);
+        if (shouldCloseWindow) {
+          window.kanvibeDesktop?.closeCurrentWindow?.();
+        }
+      }
+    } catch {
+      if (isTerminalTabClosingRef.current && currentTaskIdRef.current === taskId) {
+        window.alert(t("terminalTabCloseCheckFailed"));
+      }
+    } finally {
+      isTerminalTabClosingRef.current = false;
+    }
+  }, [shortcutBindings.terminalWindowClose, shortcutPlatform, t, terminalTabs]);
 
   /** `close-window`는 라우트와 무관해 App이 받는다. 여기서는 터미널이 있는 화면의 탭 명령만 다룬다 */
   const runTerminalTabCommand = useCallback((command: TerminalTabShortcutCommand) => {

@@ -80,7 +80,9 @@ function TaskDetailShortcutBlocker() {
 }
 
 vi.mock("next-intl", () => ({
-  useTranslations: () => (key: string) => key,
+  useTranslations: () => (key: string, values?: Record<string, string>) => (
+    key === "terminalTabCloseConfirm" ? `${key}:${values?.processes}:${values?.shortcut}` : key
+  ),
 }));
 
 vi.mock("@hugeicons/react", () => ({
@@ -1370,6 +1372,94 @@ describe("TaskDetailRoute", () => {
       expect(mocks.getTaskAiSessions).toHaveBeenCalledWith("task-1", undefined, null, 20);
     });
     expect(screen.queryByRole("button", { name: "aiSessions.loadHistory" })).toBeNull();
+  });
+
+  it.each([
+    { label: "취소", source: "ipc", accepted: false, windowOnly: false, processes: ["claude", "node"], lookupFails: false },
+    { label: "확인", source: "ipc", accepted: true, windowOnly: false, processes: ["claude", "node"], lookupFails: false },
+    { label: "프로세스 조회 불가", source: "ipc", accepted: false, windowOnly: false, processes: null, lookupFails: false },
+    { label: "마지막 멀티플렉서 탭", source: "ipc", accepted: false, windowOnly: true, processes: null, lookupFails: false },
+    { label: "실패 응답", source: "failure-result", accepted: true, windowOnly: false, processes: null, lookupFails: false },
+    { label: "조회 중 화면 이탈", source: "unmount", accepted: true, windowOnly: false, processes: ["claude"], lookupFails: false },
+    { label: "탭 조회 실패", source: "ipc", accepted: true, windowOnly: false, processes: null, lookupFails: true },
+    { label: "macOS 키보드 경로", source: "mac", accepted: false, windowOnly: false, processes: ["claude"], lookupFails: false },
+    { label: "키보드 경로", source: "keyboard", accepted: false, windowOnly: false, processes: ["claude"], lookupFails: false },
+    { label: "닫기 버튼", source: "button", accepted: false, windowOnly: false, processes: ["claude"], lookupFails: false },
+  ])("탭 닫기 확인: $label", async ({ source, accepted, windowOnly, processes, lookupFails }) => {
+    if (source === "mac") vi.spyOn(navigator, "platform", "get").mockReturnValue("MacIntel");
+    let shortcutListener: ((command: { type: string }) => void) | null = null;
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(accepted);
+    const alert = vi.spyOn(window, "alert").mockImplementation(() => {});
+    const closeCurrentWindow = vi.fn();
+    const pendingInfo = createDeferred<{ ok: boolean; shouldCloseWindow: boolean; processNames: string[] | null }>();
+    const tabs = [
+      { id: "@1", nativeIndex: 0, name: "work", isActive: true },
+      { id: "@2", nativeIndex: 1, name: "logs", isActive: false },
+    ];
+    const invoke = vi.fn(async (_namespace: string, method: string) => {
+      if (method === "listTerminalTabs") return { ok: true, tabs };
+      if (method === "getTerminalTabCloseInfo") {
+        if (lookupFails) throw new Error("lookup failed");
+        if (source === "unmount") return pendingInfo.promise;
+        if (source === "failure-result") return { ok: false, shouldCloseWindow: false, processNames: null };
+        return { ok: true, shouldCloseWindow: windowOnly, processNames: processes };
+      }
+      if (method === "closeTerminalTab") return { ok: true, shouldCloseWindow: false };
+      return null;
+    });
+    window.kanvibeDesktop = {
+      isDesktop: true, invoke, closeCurrentWindow,
+      onTerminalTabShortcut(listener: (command: { type: string }) => void) {
+        shortcutListener = listener;
+        return () => { shortcutListener = null; };
+      },
+    };
+    mocks.getSidebarDefaultCollapsed.mockResolvedValue(true);
+    mocks.getTaskById.mockResolvedValue({
+      id: "task-1", title: "task title", description: null, branchName: "feat/close-confirm",
+      baseBranch: "main", prUrl: null, sessionType: "tmux", sessionName: "task-session",
+      sshHost: null, projectId: "project-1", project: { id: "project-1", name: "kanvibe" },
+      status: "todo", agentType: null, worktreePath: "/repo__worktrees/close-confirm",
+    });
+    const { unmount } = render(<BoardCommandProvider><TaskDetailRoute /></BoardCommandProvider>);
+    await screen.findByRole("tab", { name: /work/ });
+    await act(async () => {
+      if (source === "keyboard" || source === "mac") {
+        fireEvent.keyDown(window, { key: "w", ctrlKey: source !== "mac", metaKey: source === "mac" });
+      } else if (source === "button") {
+        fireEvent.click(screen.getAllByLabelText("closeTerminalTab")[0]);
+      } else {
+        shortcutListener?.({ type: "close-tab" });
+        shortcutListener?.({ type: "close-tab" });
+      }
+    });
+    if (source === "unmount") {
+      unmount();
+      await act(async () => {
+        pendingInfo.resolve({ ok: true, shouldCloseWindow: false, processNames: processes });
+      });
+    }
+    const closeCalls = invoke.mock.calls.filter((call) => call[1] === "closeTerminalTab");
+    if (source === "unmount") {
+      expect(confirm).not.toHaveBeenCalled();
+      expect(closeCalls).toHaveLength(0);
+      expect(closeCurrentWindow).not.toHaveBeenCalled();
+    } else if (lookupFails || source === "failure-result") {
+      expect(alert).toHaveBeenCalledWith("terminalTabCloseCheckFailed");
+      expect(confirm).not.toHaveBeenCalled();
+      expect(closeCalls).toHaveLength(0);
+    } else if (windowOnly) {
+      expect(closeCurrentWindow).toHaveBeenCalledTimes(1);
+      expect(confirm).not.toHaveBeenCalled();
+      expect(closeCalls).toHaveLength(0);
+    } else {
+      expect(confirm).toHaveBeenCalledTimes(1);
+      expect(confirm).toHaveBeenCalledWith(expect.stringContaining(source === "mac" ? "Cmd+Shift+W" : "Ctrl+Shift+W"));
+      expect(confirm).toHaveBeenCalledWith(expect.stringContaining(processes?.join(", ") ?? "terminalTabProcessesUnknown"));
+      expect(closeCalls).toHaveLength(accepted ? 1 : 0);
+      if (accepted) expect(closeCalls[0]).toEqual(["terminalTabs", "closeTerminalTab", ["task-1", "@1"]]);
+      expect(closeCurrentWindow).not.toHaveBeenCalled();
+    }
   });
 
   it("shortcut blocker가 등록되어 있으면 상세 dock shortcut을 실행하지 않는다", async () => {
