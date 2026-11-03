@@ -1,0 +1,35 @@
+{
+  "commit": "a578d57a7d413d472cf54967f750ee7e460a678e",
+  "base": "dev",
+  "base_commit": "b2bb42a47cc420506401d1cfa2905a14a3dda776",
+  "gate_fingerprint": "c9239a90f356b6289c0594fbf75ed72db431f9bc",
+  "verification": {
+    "pnpm check": 0,
+    "pnpm test --maxWorkers=1": {
+      "exit": 0,
+      "passed": 1902
+    },
+    "pnpm build": 0,
+    "flutter analyze": 0,
+    "flutter test --concurrency=2 --machine": {
+      "exit": 0,
+      "passed": 259
+    },
+    "dart format --output=none --set-exit-if-changed (13 files)": 0,
+    "git diff --check": 0
+  },
+  "native_evidence": {
+    "base_head": "cfe3b319a398902acc899bbc73e22b5d050529f1",
+    "maestro": {
+      "exit": 0,
+      "flows": 1
+    },
+    "replayed_after_dev_integration": false
+  },
+  "unverified": [
+    "iOS Swift toolchain mismatch",
+    "real FCM/APNs delivery",
+    "Zellij mobile native integration",
+    "actual VoiceOver/TalkBack"
+  ]
+}
