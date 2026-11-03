@@ -61,7 +61,11 @@ env:
 - tapOn: "대화 검색"
 - inputText: "session 24"
 - tapOn: "검색"
-- hideKeyboard
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - hideKeyboard
 - extendedWaitUntil:
     visible: "(?s).*${HISTORY_PREFIX} session 24.*"
     timeout: 30000
@@ -99,11 +103,19 @@ env:
       - tapOn: "(Paste|붙여넣기)"
 - assertVisible: "(?s).*${HISTORY_PREFIX} message 58.*"
 - takeScreenshot: history-native-clipboard-pasted
-- tapOn: "대화 검색"
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - tapOn: "대화 검색"
 - eraseText: 21
 - inputText: "session 24"
 - tapOn: "검색"
-- hideKeyboard
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - hideKeyboard
 - extendedWaitUntil:
     visible: "(?s).*${HISTORY_PREFIX} session 24.*"
     timeout: 30000
