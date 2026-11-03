@@ -77,7 +77,8 @@ vi.mock("typeorm", () => ({
   IsNull: vi.fn(),
 }));
 
-vi.mock("@/lib/gitOperations", () => ({
+vi.mock("@/lib/gitOperations", async (importOriginal) => ({
+  resolvePathForShell: (await importOriginal<typeof import("@/lib/gitOperations")>()).resolvePathForShell,
   validateGitRepo: mocks.validateGitRepo,
   getDefaultBranch: mocks.getDefaultBranch,
   listBranches: mocks.listBranches,
@@ -320,7 +321,7 @@ describe("projectService.listSubdirectories", () => {
 
     // Then
     expect(mocks.execGit).toHaveBeenCalledWith(
-      'find "/workspace" -maxdepth 1 -mindepth 1 -type d 2>/dev/null | sort',
+      "find '/workspace' -maxdepth 1 -mindepth 1 -type d 2>/dev/null | sort",
       "remote-host",
     );
     expect(result).toEqual(["api", "web"]);
@@ -336,7 +337,7 @@ describe("projectService.listSubdirectories", () => {
 
     // Then
     expect(mocks.execGit).toHaveBeenCalledWith(
-      'find "/home/tester/" -maxdepth 1 -mindepth 1 -type d 2>/dev/null | sort',
+      "find '/home/tester/' -maxdepth 1 -mindepth 1 -type d 2>/dev/null | sort",
       null,
     );
     expect(result).toEqual(["projects"]);
@@ -352,7 +353,7 @@ describe("projectService.listSubdirectories", () => {
 
     // Then
     expect(mocks.execGit).toHaveBeenCalledWith(
-      'find "$HOME/projects" -maxdepth 1 -mindepth 1 -type d 2>/dev/null | sort',
+      "find \"$HOME\"'/projects' -maxdepth 1 -mindepth 1 -type d 2>/dev/null | sort",
       "remote-host",
     );
     expect(result).toEqual(["projects"]);
@@ -1355,7 +1356,7 @@ describe("projectService local hook installation", () => {
     expect(mocks.getDefaultBranch).not.toHaveBeenCalledWith("/workspace/app/packages/ui", null);
   });
 
-  it("worktree 경로만 스캔돼도 common repo 기준 기존 원격 프로젝트에 TODO 태스크를 등록한다", async () => {
+  it.each([false, true])("worktree 경로만 스캔돼도 원격 호스트를 보존한다 (tmux=%s)", async (hasSession) => {
     mocks.scanGitRepos.mockResolvedValue(["/remote/repo__worktrees/feature-login"]);
     mocks.execGit.mockImplementation(async (command: string) => {
       if (command.includes("rev-parse --path-format=absolute --git-common-dir")) {
@@ -1376,7 +1377,7 @@ describe("projectService local hook installation", () => {
       },
     ]);
     mocks.formatSessionName.mockReturnValue("repo-feature-login");
-    mocks.isSessionAlive.mockResolvedValue(false);
+    mocks.isSessionAlive.mockResolvedValue(hasSession);
 
     mocks.getProjectRepository.mockResolvedValue({
       find: vi.fn().mockResolvedValue([
@@ -1420,6 +1421,8 @@ describe("projectService local hook installation", () => {
     expect(result.worktreeTasks).toContain("feature-login");
     const [savedWorktreeTask] = taskRepoSave.mock.calls[0];
     expect(savedWorktreeTask.branchName).toBe("feature-login");
+    expect(savedWorktreeTask.sshHost).toBe("remote-host");
+    expect(savedWorktreeTask.sessionType).toBe(hasSession ? "tmux" : undefined);
     expect(mocks.listWorktrees).toHaveBeenCalledWith("/remote/repo", "remote-host");
     expect(mocks.scheduleKanvibeHooksInstall).toHaveBeenCalledWith(
       "/remote/repo__worktrees/feature-login",
@@ -2018,6 +2021,55 @@ describe("projectService local hook installation", () => {
       }),
     ));
   }
+
+  it.each([
+    { baseBranch: "feature/parent", persistedStatus: null, expectedBase: "feature/parent" },
+    { baseBranch: "feature/parent", persistedStatus: "review", expectedBase: "feature/parent" },
+    { baseBranch: null, persistedStatus: null, expectedBase: "main" },
+    { baseBranch: "", persistedStatus: null, expectedBase: "main" },
+  ])("worktree sync는 기존 기준 브랜치를 보존하고 누락된 값만 보충한다: $baseBranch / $persistedStatus", async ({ baseBranch, persistedStatus, expectedBase }) => {
+    const worktreePath = "/workspace/api__worktrees/feature-child";
+    const rootTask = {
+      id: "task-main", branchName: "main", projectId: "project-1", baseBranch: "main",
+      worktreePath: "/workspace/api", sshHost: null, status: "todo", sessionType: "tmux", sessionName: "api-main",
+    };
+    const childTask = {
+      id: "task-child", branchName: "feature-child", projectId: "project-1", baseBranch,
+      worktreePath, sshHost: null, status: "todo",
+    };
+    mocks.listWorktrees.mockResolvedValue([
+      { path: "/workspace/api", branch: "main", isBare: false },
+      { path: worktreePath, branch: "feature-child", isBare: false },
+    ]);
+    mockSharedTaskStatusFiles(persistedStatus ? { [worktreePath]: persistedStatus } : {});
+    mocks.getProjectRepository.mockResolvedValue({
+      find: vi.fn().mockResolvedValue([{
+        id: "project-1", name: "api", repoPath: "/workspace/api", defaultBranch: "main",
+        sshHost: null, iconDataUrl: "data:existing",
+      }]),
+    });
+    const taskSave = vi.fn(async (value) => ({ ...value }));
+    mocks.getTaskRepository.mockResolvedValue({
+      findOneBy: vi.fn(async (criteria: { branchName?: string }) => (
+        criteria.branchName === "main" ? rootTask : childTask
+      )),
+      save: taskSave,
+    });
+    const { syncRegisteredProjectWorktrees } = await import("@/desktop/main/services/projectService");
+
+    const result = await syncRegisteredProjectWorktrees();
+
+    expect(result.errors).toEqual([]);
+    expect(childTask.baseBranch).toBe(expectedBase);
+    const childSaves = taskSave.mock.calls.map(([task]) => task).filter((task) => task.id === "task-child");
+    if (persistedStatus || !baseBranch) {
+      expect(childSaves).toEqual([expect.objectContaining({
+        baseBranch: expectedBase, status: persistedStatus ?? "todo",
+      })]);
+    } else {
+      expect(childSaves).toEqual([]);
+    }
+  });
 
   it("등록된 프로젝트 background sync는 .kanvibe task 상태가 있으면 그 상태로 새 worktree를 등록한다", async () => {
     mocks.getClaudeHooksStatus.mockResolvedValue({ installed: true });

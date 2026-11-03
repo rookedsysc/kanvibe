@@ -1,4 +1,5 @@
-import { access, mkdir, readFile, readdir, stat, writeFile } from "fs/promises";
+import { access, mkdir, readFile, readdir, rename, rmdir, stat, unlink, writeFile } from "fs/promises";
+import { randomUUID } from "crypto";
 import { homedir } from "os";
 import path from "path";
 import { execGit } from "@/lib/gitOperations";
@@ -152,10 +153,73 @@ export async function writeTextFile(targetPath: string, content: string, sshHost
   );
 }
 
+/** 저장소 측 잠금으로 여러 프로세스와 SSH client의 읽기·수정·교체를 직렬화한다. */
+export async function updateTextFile(
+  targetPath: string,
+  update: (content: string) => string,
+  sshHost?: string | null,
+): Promise<void> {
+  const lockPath = `${targetPath}.lock`;
+  const temporaryPath = `${targetPath}.${randomUUID()}.tmp`;
+  const directoryPath = (sshHost ? path.posix : path).dirname(targetPath);
+  if (sshHost) {
+    await execGit([
+      `mkdir -p ${quoteShellArgument(directoryPath)} || exit $?;`,
+      `__kanvibe_attempt=0; while ! mkdir ${quoteShellArgument(lockPath)} 2>/dev/null; do`,
+      '__kanvibe_attempt=$((__kanvibe_attempt + 1));',
+      'test "$__kanvibe_attempt" -lt 200 || exit 1; sleep 0.05; done',
+    ].join(" "), sshHost);
+  } else {
+    await mkdir(directoryPath, { recursive: true });
+    for (let attempt = 0; ; attempt++) {
+      try {
+        await mkdir(lockPath);
+        break;
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "EEXIST" || attempt >= 199) throw error;
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      }
+    }
+  }
+
+  try {
+    let currentContent: string;
+    if (sshHost) {
+      const quotedPath = quoteShellArgument(targetPath);
+      currentContent = await execGit(`if test -e ${quotedPath}; then cat ${quotedPath}; fi`, sshHost);
+    } else {
+      currentContent = await readFile(targetPath, "utf-8").catch((error: NodeJS.ErrnoException) => {
+        if (error.code !== "ENOENT") throw error;
+        return "";
+      });
+    }
+    const nextContent = update(currentContent);
+    if (sshHost) {
+      const encodedContent = Buffer.from(nextContent, "utf-8").toString("base64");
+      await execGit(
+        `printf '%s' ${quoteShellArgument(encodedContent)} | (base64 -d 2>/dev/null || base64 -D) > ${quoteShellArgument(temporaryPath)} && mv -f ${quoteShellArgument(temporaryPath)} ${quoteShellArgument(targetPath)}`,
+        sshHost,
+      );
+    } else {
+      await writeFile(temporaryPath, nextContent, { encoding: "utf-8", flag: "wx" });
+      await rename(temporaryPath, targetPath);
+    }
+  } finally {
+    if (sshHost) {
+      await execGit(`rm -f ${quoteShellArgument(temporaryPath)}; rmdir ${quoteShellArgument(lockPath)}`, sshHost);
+    } else {
+      await unlink(temporaryPath).catch((error: NodeJS.ErrnoException) => {
+        if (error.code !== "ENOENT") throw error;
+      });
+      await rmdir(lockPath);
+    }
+  }
+}
+
 /**
  * 대상 파일이 아직 없을 때만 기록한다.
  * 이미 존재하는 파일은 다른 주체가 확정한 값이므로 검사와 기록 사이에 끼어든 쓰기도 덮지 않아야 한다.
- * 그래서 로컬은 `wx` 플래그로, 원격은 존재 검사와 기록을 한 셸 명령으로 묶어 원자성을 확보한다.
+ * 그래서 로컬은 `wx` 플래그로, 원격은 no-clobber redirection으로 생성 시 경합을 막는다.
  */
 export async function writeTextFileIfAbsent(
   targetPath: string,
@@ -177,7 +241,7 @@ export async function writeTextFileIfAbsent(
   const encodedContent = Buffer.from(content, "utf-8").toString("base64");
   const quotedTargetPath = quoteShellArgument(targetPath);
   await execGit(
-    `mkdir -p ${quoteShellArgument(path.posix.dirname(targetPath))} && if [ -e ${quotedTargetPath} ]; then :; else printf '%s' ${quoteShellArgument(encodedContent)} | (base64 -d 2>/dev/null || base64 -D) > ${quotedTargetPath}; fi`,
+    `mkdir -p ${quoteShellArgument(path.posix.dirname(targetPath))} && if [ -e ${quotedTargetPath} ]; then :; else (set -C; printf '%s' ${quoteShellArgument(encodedContent)} | (base64 -d 2>/dev/null || base64 -D) > ${quotedTargetPath}) || test -e ${quotedTargetPath}; fi`,
     sshHost,
   );
 }

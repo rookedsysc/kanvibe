@@ -81,6 +81,7 @@ interface OpenCodeDetailRow {
 export async function readOpenCodeSessions(context: AiSessionReaderContext): Promise<AiSessionReaderResult> {
   const normalizedQuery = context.query?.toLowerCase();
   const escapedLikeQuery = normalizedQuery ? escapeSqliteLikePattern(normalizedQuery) : null;
+  const worktreePath = context.worktreePath ? path.resolve(context.worktreePath) : "";
   let rows: OpenCodeSessionRow[] | null;
   try {
     rows = await queryOpenCodeRows<OpenCodeSessionRow>(context,
@@ -113,9 +114,16 @@ export async function readOpenCodeSessions(context: AiSessionReaderContext): Pro
           ? `(SELECT COUNT(*) FROM part p WHERE p.session_id = s.id AND lower(p.data) LIKE '%' || @query || '%' ESCAPE '\\')`
           : '0'} as matching_part_count
       FROM session s
+      WHERE (@worktreePath != '' AND (s.directory = @worktreePath OR instr(s.directory, @worktreePrefix) = 1))
+        ${escapedLikeQuery ? `AND (
+          lower(COALESCE(s.title, '')) LIKE '%' || @query || '%' ESCAPE '\\'
+          OR lower(s.id) LIKE '%' || @query || '%' ESCAPE '\\'
+          OR lower(s.directory) LIKE '%' || @query || '%' ESCAPE '\\'
+          OR EXISTS (SELECT 1 FROM part p WHERE p.session_id = s.id AND lower(p.data) LIKE '%' || @query || '%' ESCAPE '\\')
+        )` : ''}
       ORDER BY COALESCE(last_message_at, s.time_updated) DESC
       LIMIT ${OPEN_CODE_QUERY_LIMIT};`,
-      escapedLikeQuery ? { query: escapedLikeQuery } : undefined
+      { worktreePath, worktreePrefix: worktreePath === path.sep ? path.sep : `${worktreePath}${path.sep}`, ...(escapedLikeQuery ? { query: escapedLikeQuery } : {}) }
     );
   } catch (error) {
     return createReaderResult("opencode", {
@@ -170,11 +178,14 @@ export async function readOpenCodeLiveSessions(
   context: AiSessionReaderContext,
   windows: LiveAiSessionWindows,
 ): Promise<LiveProviderSnapshot[]> {
+  const worktreePath = context.worktreePath ? path.resolve(context.worktreePath) : "";
   const rows = await queryOpenCodeRows<OpenCodeSessionRow>(context,
     `SELECT s.id, s.directory, s.title, s.time_created, s.time_updated
       FROM session s
+      WHERE (@worktreePath != '' AND (s.directory = @worktreePath OR instr(s.directory, @worktreePrefix) = 1))
       ORDER BY s.time_updated DESC
-      LIMIT ${OPEN_CODE_QUERY_LIMIT};`);
+      LIMIT ${OPEN_CODE_QUERY_LIMIT};`,
+    { worktreePath, worktreePrefix: worktreePath === path.sep ? path.sep : `${worktreePath}${path.sep}` });
 
   const ownSessions = pickLiveSessionFiles(
     (rows ?? [])

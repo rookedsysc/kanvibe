@@ -202,6 +202,32 @@ describe("database migrations", () => {
     }
   });
 
+  it.each([false, true])("repairs missing diff stats for a legacy DB (already baselined=%s)", async (baselined) => {
+    const databasePath = createDatabasePath();
+    insertLegacyBootstrapData(databasePath);
+    process.env.KANVIBE_DB_PATH = databasePath;
+    vi.resetModules();
+    if (baselined) {
+      const previous = await import("@/lib/database");
+      await (await previous.getDataSource()).destroy();
+      vi.resetModules();
+    }
+    const fixture = new Database(databasePath);
+    fixture.exec('DROP TABLE IF EXISTS task_diff_stats');
+    fixture.close();
+    const { getDataSource, getTaskDiffStatsRepository } = await import("@/lib/database");
+    const dataSource = await getDataSource();
+    try {
+      const repository = await getTaskDiffStatsRepository();
+      await repository.save({ taskId: "task-1", fileCount: 3, additions: 7, deletions: 2 });
+      expect(await repository.findOneBy({ taskId: "task-1" })).toMatchObject({ fileCount: 3, additions: 7, deletions: 2 });
+      await dataSource.query("DELETE FROM kanban_tasks WHERE id = ?", ["task-1"]);
+      expect(await repository.findOneBy({ taskId: "task-1" })).toBeNull();
+    } finally {
+      await dataSource.destroy();
+    }
+  });
+
   it("backfills older legacy SQLite columns before baselining migrations", async () => {
     const databasePath = createDatabasePath();
     insertOlderLegacyBootstrapData(databasePath);

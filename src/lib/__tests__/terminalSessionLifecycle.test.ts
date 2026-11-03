@@ -459,3 +459,40 @@ describe("Herdr PTY 수명", () => {
     expect(vi.mocked(git.execGit).mock.calls.some(([command]) => command.includes("'session' 'stop'"))).toBe(false);
   });
 });
+
+describe("attach ownership races", () => {
+  it.each([false, true])("shares one PTY between simultaneous attaches (remote=%s)", async (remote) => {
+    const terminal = await importTerminalModule();
+    const sockets = [createMockWs(), createMockWs()];
+    await Promise.all(sockets.map((ws) => remote
+      ? terminal.attachRemoteSession("race", null, "host", SessionType.TMUX, "session", ws as never,
+        { host: "host", hostname: "host", port: 22, username: "user", privateKeyPath: "" })
+      : terminal.attachLocalSession("race", null, SessionType.TMUX, "session", ws as never)));
+    expect(spawnedPtys).toHaveLength(1);
+    terminal.killAllTerminalSessions();
+    expect(spawnedPtys[0].kill).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not spawn for a client closed during initialization", async () => {
+    const terminal = await importTerminalModule();
+    const ws = createMockWs();
+    const pending = terminal.attachLocalSession("cancel", null, SessionType.TMUX, "session", ws as never);
+    ws.readyState = 3;
+    await pending;
+    expect(spawnedPtys).toHaveLength(0);
+  });
+
+  it("ignores old PTY exit and client close after replacement", async () => {
+    const terminal = await importTerminalModule();
+    const oldWs = createMockWs();
+    await terminal.attachLocalSession("replace", null, SessionType.TMUX, "session", oldWs as never);
+    oldWs.triggerClose();
+    const newWs = createMockWs();
+    await terminal.attachLocalSession("replace", null, SessionType.TMUX, "session", newWs as never);
+    spawnedPtys[0].triggerExit();
+    oldWs.triggerClose();
+    expect(spawnedPtys[1].kill).not.toHaveBeenCalled();
+    expect(terminal.getActiveTerminalCount()).toBe(1);
+    terminal.killAllTerminalSessions();
+  });
+});

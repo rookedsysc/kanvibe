@@ -72,6 +72,11 @@ function setupRemoteFileSystem(files: Record<string, string>) {
         return fileMap.get(catMatch[1]) ?? "";
       }
 
+      const headMatch = command.match(/head -n (\d+) '([^']+)'/);
+      if (headMatch) {
+        return (fileMap.get(headMatch[2]) ?? "").split("\n").slice(0, Number(headMatch[1])).join("\n");
+      }
+
       const tailMatch = command.match(/tail -n (\d+) '([^']+)'/);
       if (tailMatch) {
         return (fileMap.get(tailMatch[2]) ?? "").split("\n").slice(-Number(tailMatch[1]) - 1).join("\n");
@@ -856,15 +861,15 @@ conn.close()
 
     const percentMatches = await readOpenCodeSessions({ worktreePath, repoPath: worktreePath, query: "%" });
     expect(percentMatches.sessions.map((session) => session.id)).toEqual(["literal-percent"]);
-    expect(queryCalls.at(-1)?.parameters).toEqual({ query: "\\%" });
+    expect(queryCalls.at(-1)?.parameters).toMatchObject({ query: "\\%", worktreePath });
 
     const underscoreMatches = await readOpenCodeSessions({ worktreePath, repoPath: worktreePath, query: "_" });
     expect(underscoreMatches.sessions.map((session) => session.id)).toEqual(["literal-underscore"]);
-    expect(queryCalls.at(-1)?.parameters).toEqual({ query: "\\_" });
+    expect(queryCalls.at(-1)?.parameters).toMatchObject({ query: "\\_", worktreePath });
 
     const bodyMatches = await readOpenCodeSessions({ worktreePath, repoPath: worktreePath, query: "database migration" });
     expect(bodyMatches.sessions.map((session) => session.id)).toEqual(["plain-text"]);
-    expect(queryCalls.at(-1)?.parameters).toEqual({ query: "database migration" });
+    expect(queryCalls.at(-1)?.parameters).toMatchObject({ query: "database migration", worktreePath });
 
     expect(queryCalls.every((call) => call.sql.includes("ESCAPE"))).toBe(true);
   });
