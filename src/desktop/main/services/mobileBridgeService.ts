@@ -742,7 +742,7 @@ async function createPaneViewportDriver(target: MirrorSessionTarget, taskId: str
 
 /** 창 배치를 공유하는 pane은 같은 줄에서 크기를 바꿔야 한 기기의 퇴장이 다른 기기의 화면을 되돌리지 않는다. */
 export async function claimPaneViewport(taskId: string, paneId: string): Promise<{
-  resize: (cols: number, rows: number) => Promise<void>;
+  resize: (cols: number, rows: number) => Promise<string | null>;
   release: () => Promise<void>;
 }> {
   if (paneViewportShutdown) throw new Error("데스크탑이 종료 중입니다.");
@@ -770,17 +770,23 @@ export async function claimPaneViewport(taskId: string, paneId: string): Promise
   let released: Promise<void> | null = null;
 
   return {
-    resize: (cols, rows) => {
-      if (released || !claimed.clients.has(id)) return Promise.resolve();
+    resize: async (cols, rows) => {
+      if (released || !claimed.clients.has(id)) return null;
       if (![cols, rows].every((value) => Number.isInteger(value) && value >= 1 && value <= 500)) {
         return Promise.reject(new Error("터미널 크기가 유효하지 않습니다."));
       }
       request.size = { cols, rows };
       claimed.clients.delete(id);
       claimed.clients.set(id, request);
-      return queuePaneViewport(claimed, async (driver) => {
-        if (claimed.clients.has(id)) await driver.resize(paneId, cols, rows);
+      let snapshot: string | null = null;
+      await queuePaneViewport(claimed, async (driver) => {
+        if (!claimed.clients.has(id)) return;
+        await driver.resize(paneId, cols, rows);
+        if (target.sessionType === SessionType.TMUX) {
+          snapshot = await readPaneSnapshot(target, paneId);
+        }
       });
+      return snapshot;
     },
     release: () => {
       if (released) return released;

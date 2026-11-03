@@ -138,11 +138,13 @@ describe("모바일 화면 크기", () => {
       if (command.includes("list-panes")) return MIRROR_PANE_LINE;
       if (command.includes("window_layout")) return "80\t24\tlayout-original\n";
       if (command.includes("window_width")) return "80 24 80 24";
+      if (command.includes("capture-pane")) return "history-through-180\n43 69";
       return "";
     });
 
     const viewport = await claimPaneViewport("task-1", "%19");
-    await viewport.resize(44, 70);
+    expect(await viewport.resize(44, 70)).toContain("history-through-180");
+    expect(executedCommands().findIndex((command) => command.includes("capture-pane"))).toBeGreaterThan(executedCommands().findIndex((command) => command.includes("resize-window")));
     expect(executedCommands().some((command) => command.includes("resize-pane") && command.includes("-x 44 -y 70"))).toBe(true);
     await viewport.release();
     expect(executedCommands().some((command) => command.includes("select-layout") && command.includes("layout-original"))).toBe(true);
@@ -154,7 +156,7 @@ describe("모바일 화면 크기", () => {
     await subscribeToPane("viewport-task", "viewport-task-1", () => {}, () => {});
     const first = await claimPaneViewport("viewport-task", "viewport-task-1");
     const second = await claimPaneViewport("viewport-task", "viewport-task-1");
-    await first.resize(44, 70);
+    expect(await first.resize(44, 70)).toBeNull();
     await second.resize(80, 35);
     await second.release();
     await first.release();

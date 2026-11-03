@@ -182,6 +182,7 @@ export function parseTmuxCursorPosition(output: string): TerminalCursorPosition 
 
 /** 화면, 스크롤백을 지우고 커서를 맨 위로 보낸다. 덤프를 받을 때마다 이어 붙이지 않고 다시 그리기 위해서다 */
 const CLEAR_SCREEN_AND_SCROLLBACK = "\x1b[H\x1b[2J\x1b[3J";
+const MOBILE_SCROLLBACK_LINES = 2000;
 
 /**
  * 떠 온 화면 텍스트를 터미널이 처음부터 다시 그리는 출력으로 바꾼다.
@@ -200,7 +201,7 @@ export function buildScreenRedraw(screen: string, cursor: TerminalCursorPosition
  * 스트림은 구독 시점 이후만 흘러오므로 첫 화면은 이 스냅샷으로 채워야 빈 터미널이 보이지 않는다.
  */
 export function buildTmuxCapturePaneCommand(paneId: string): string {
-  return `tmux capture-pane -pe -t ${quoteForPosixShell(paneId)}`;
+  return `tmux capture-pane -pe -S -${MOBILE_SCROLLBACK_LINES} -t ${quoteForPosixShell(paneId)}`;
 }
 
 /** 흘려보내기를 멈춘다. 명령 인자를 주지 않으면 tmux가 해당 pane의 파이프를 끊는다 */
@@ -325,7 +326,8 @@ function parseZellijMirrorPaneEntry(entry: ZellijPaneJsonEntry): MirrorPane | nu
  */
 export function buildZellijDumpPaneCommand(sessionName: string, paneId: string): string {
   const session = quoteForPosixShell(sessionName);
-  return `zellij --session ${session} action dump-screen -p ${quoteForPosixShell(paneId)} -a`;
+  // 원격 전송량과 exec 버퍼를 제한하되 dump 실패를 tail의 성공으로 덮지 않는다.
+  return `kanvibe_mobile_dump=$(zellij --session ${session} action dump-screen -p ${quoteForPosixShell(paneId)} -a --full) && printf '%s\\n' "$kanvibe_mobile_dump" | tail -n ${MOBILE_SCROLLBACK_LINES}`;
 }
 
 /**

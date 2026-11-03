@@ -549,7 +549,10 @@ async function openPaneStream(webSocket, bridge, taskId, paneId, onClosed) {
       if (isClosed || webSocket.readyState !== webSocket.OPEN) return;
       if (resize) {
         viewport ??= await bridge.claimPaneViewport(taskId, paneId);
-        await viewport.resize(resize.cols, resize.rows);
+        const snapshot = await viewport.resize(resize.cols, resize.rows);
+        if (typeof snapshot === "string" && !isClosed && webSocket.readyState === webSocket.OPEN) {
+          webSocket.send(snapshot);
+        }
       } else {
         await bridge.writeToPane(taskId, paneId, data.toString());
       }

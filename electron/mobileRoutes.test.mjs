@@ -708,6 +708,18 @@ describe("기기 이름", () => {
 });
 
 describe("키 입력 순서", () => {
+  it("크기 변경이 끝난 화면을 다시 보내 마지막 출력을 보존한다", async () => {
+    const resize = vi.fn(async () => "fresh-history-through-180");
+    bridge.claimPaneViewport.mockResolvedValue({ resize, release: vi.fn(async () => {}) });
+    const client = await openPaneStreamClient("Bearer good");
+    const chunks = [];
+    client.on("message", (chunk) => chunks.push(chunk.toString()));
+    client.send(Buffer.from(JSON.stringify({ type: "resize", cols: 47, rows: 48 })));
+    await waitFor(() => chunks.includes("fresh-history-through-180"));
+    expect(resize).toHaveBeenCalledWith(47, 48);
+    client.close();
+  });
+
   it("binary resize만 크기를 바꾸고 같은 JSON의 text 입력은 그대로 보낸다", async () => {
     const resize = vi.fn(async () => {});
     const release = vi.fn(async () => {});

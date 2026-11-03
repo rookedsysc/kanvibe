@@ -66,7 +66,7 @@ describe("tmux pane 명령", () => {
   });
 
   it("스냅샷은 ANSI를 살려서 뜬다", () => {
-    expect(buildTmuxCapturePaneCommand("%19")).toBe("tmux capture-pane -pe -t '%19'");
+    expect(buildTmuxCapturePaneCommand("%19")).toBe("tmux capture-pane -pe -S -2000 -t '%19'");
   });
 
   it("스트림은 파이프를 걸고 임시 파일을 따라간다", () => {
@@ -105,7 +105,7 @@ describe("tmux pane 명령", () => {
   it("pane id에 셸 메타문자가 들어와도 명령이 끊기지 않는다", () => {
     const command = buildTmuxCapturePaneCommand(INJECTION_PANE_ID);
 
-    expect(command).toBe("tmux capture-pane -pe -t '%1'\"'\"'; rm -rf /; '\"'\"''");
+    expect(command).toBe("tmux capture-pane -pe -S -2000 -t '%1'\"'\"'; rm -rf /; '\"'\"''");
     expect(command).not.toMatch(/;\s*rm -rf \/;?\s*$/);
   });
 });
@@ -192,7 +192,7 @@ describe("zellij pane 명령", () => {
 
   it("포커스를 바꾸지 않고 지정한 pane만 뜬다", () => {
     expect(buildZellijDumpPaneCommand("kanvibe-task", "terminal_1")).toBe(
-      "zellij --session 'kanvibe-task' action dump-screen -p 'terminal_1' -a",
+      "kanvibe_mobile_dump=$(zellij --session 'kanvibe-task' action dump-screen -p 'terminal_1' -a --full) && printf '%s\\n' \"$kanvibe_mobile_dump\" | tail -n 2000",
     );
   });
 
