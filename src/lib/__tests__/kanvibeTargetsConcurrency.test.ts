@@ -8,7 +8,13 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 const execFileAsync = promisify(execFile);
 vi.mock("@/lib/gitOperations", () => ({
-  execGit: async (command: string) => (await execFileAsync("sh", ["-c", command])).stdout,
+  execGit: async (command: string) => {
+    // macOS에서도 Linux CI에서 관측한 명령 인자 제한을 재현한다.
+    if (Buffer.byteLength(command) >= 128 * 1024) {
+      throw Object.assign(new Error("spawn E2BIG"), { code: "E2BIG" });
+    }
+    return (await execFileAsync("sh", ["-c", command])).stdout;
+  },
 }));
 import { upsertKanvibeHookTarget } from "@/lib/kanvibeProjectState";
 import { updateTextFile } from "@/lib/hostFileAccess";

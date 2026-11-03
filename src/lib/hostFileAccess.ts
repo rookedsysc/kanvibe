@@ -196,10 +196,20 @@ export async function updateTextFile(
     const nextContent = update(currentContent);
     if (sshHost) {
       const encodedContent = Buffer.from(nextContent, "utf-8").toString("base64");
-      await execGit(
-        `printf '%s' ${quoteShellArgument(encodedContent)} | (base64 -d 2>/dev/null || base64 -D) > ${quoteShellArgument(temporaryPath)} && mv -f ${quoteShellArgument(temporaryPath)} ${quoteShellArgument(targetPath)}`,
-        sshHost,
-      );
+      // 큰 설정도 Linux의 단일 명령 인자 제한을 넘지 않도록 나눠 전송한다.
+      // 잠금을 잡은 임시 파일만 갱신하고 마지막 조각 뒤에 원자적으로 교체한다.
+      const chunkSize = 32 * 1024;
+      for (let offset = 0; offset < encodedContent.length || offset === 0; offset += chunkSize) {
+        const chunk = encodedContent.slice(offset, offset + chunkSize);
+        const redirect = offset === 0 ? ">" : ">>";
+        const publish = offset + chunkSize >= encodedContent.length
+          ? ` && mv -f ${quoteShellArgument(temporaryPath)} ${quoteShellArgument(targetPath)}`
+          : "";
+        await execGit(
+          `printf '%s' ${quoteShellArgument(chunk)} | (base64 -d 2>/dev/null || base64 -D) ${redirect} ${quoteShellArgument(temporaryPath)}${publish}`,
+          sshHost,
+        );
+      }
     } else {
       await writeFile(temporaryPath, nextContent, { encoding: "utf-8", flag: "wx" });
       await rename(temporaryPath, targetPath);
