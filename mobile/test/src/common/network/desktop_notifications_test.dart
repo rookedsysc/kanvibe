@@ -17,6 +17,59 @@ const notificationJson = {
 };
 
 void main() {
+  test('인증된 PC의 알림 설정을 조회하고 상태 선택을 저장한다', () async {
+    final client = DesktopClient(
+      httpClient: MockClient((request) async {
+        expect(request.url.path, '/api/mobile/notification-settings');
+        expect(request.headers['authorization'], 'Bearer t');
+        final settings = request.method == 'GET'
+            ? {
+                'isEnabled': true,
+                'enabledStatuses': ['review'],
+              }
+            : jsonDecode(request.body);
+        return http.Response(jsonEncode({'settings': settings}), 200);
+      }),
+    );
+    addTearDown(client.close);
+    expect(
+      (await client.fetchNotificationSettings(connection)).enabledStatuses,
+      {'review'},
+    );
+    final saved = await client.updateNotificationSettings(
+      connection,
+      isEnabled: false,
+      enabledStatuses: {},
+    );
+    expect(saved.isEnabled, isFalse);
+    expect(saved.enabledStatuses, isEmpty);
+  });
+
+  for (final status in [401, 404, 500]) {
+    test('알림 설정 API $status 오류는 기본값으로 숨기지 않는다', () async {
+      final client = DesktopClient(
+        httpClient: MockClient((_) async => http.Response('{}', status)),
+      );
+      addTearDown(client.close);
+      await expectLater(
+        client.fetchNotificationSettings(connection),
+        throwsA(
+          predicate(
+            (e) => e is DesktopRequestException && e.statusCode == status,
+          ),
+        ),
+      );
+      await expectLater(
+        client.updateNotificationSettings(
+          connection,
+          isEnabled: true,
+          enabledStatuses: {'review'},
+        ),
+        throwsA(isA<DesktopRequestException>()),
+      );
+    });
+  }
+
   test('인증 GET으로 데스크톱 알림 목록과 읽음 상태를 받는다', () async {
     final client = DesktopClient(
       httpClient: MockClient((request) async {

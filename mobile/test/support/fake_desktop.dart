@@ -10,6 +10,7 @@ import 'package:kanvibe_mobile/src/features/board/domain/task_status.dart';
 import 'package:kanvibe_mobile/src/features/connection/data/connection_store.dart';
 import 'package:kanvibe_mobile/src/features/connection/domain/saved_connections.dart';
 import 'package:kanvibe_mobile/src/features/notifications/domain/inbox_notification.dart';
+import 'package:kanvibe_mobile/src/features/notifications/domain/notification_settings.dart';
 import 'package:kanvibe_mobile/src/features/task_detail/domain/mirror_pane.dart';
 
 /// 이미 연결된 상태를 흉내 낸다. 화면 검증은 페어링 이후만 다루므로 저장소에 연결이 하나 들어 있다.
@@ -44,6 +45,36 @@ class FakeConnectionStore implements ConnectionStore {
 ///
 /// 실제 소켓을 열지 않으므로 pane 출력은 테스트가 직접 흘려보낼 수 있다.
 class FakeDesktopClient implements DesktopClient {
+  NotificationSettings notificationSettings = NotificationSettings(
+    isEnabled: true,
+    enabledStatuses: ['progress', 'pending', 'review'],
+  );
+  Object? notificationSettingsError;
+  final savedNotificationSettings = <NotificationSettings>[];
+
+  @override
+  Future<NotificationSettings> fetchNotificationSettings(
+    DesktopConnection connection,
+  ) async {
+    if (notificationSettingsError != null) throw notificationSettingsError!;
+    return notificationSettings;
+  }
+
+  @override
+  Future<NotificationSettings> updateNotificationSettings(
+    DesktopConnection connection, {
+    required bool isEnabled,
+    required Set<String> enabledStatuses,
+  }) async {
+    if (notificationSettingsError != null) throw notificationSettingsError!;
+    notificationSettings = NotificationSettings(
+      isEnabled: isEnabled,
+      enabledStatuses: enabledStatuses,
+    );
+    savedNotificationSettings.add(notificationSettings);
+    return notificationSettings;
+  }
+
   FakeDesktopClient({
     this.board = const {},
     this.boardsByHost = const {},

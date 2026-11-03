@@ -1,5 +1,5 @@
 import { spawn, type ChildProcess } from "child_process";
-import { getAppSetting, getDefaultSessionType, setAppSetting } from "@/desktop/main/services/appSettingsService";
+import { getAppSetting, getDefaultSessionType, getNotificationSettings, setAppSetting, setNotificationEnabled, setNotificationStatuses } from "@/desktop/main/services/appSettingsService";
 import { connectTerminalSession, createTask, getTaskById, getTasksByStatus, updateTaskStatus } from "@/desktop/main/services/kanbanService";
 import { getAllProjects, getProjectBranches } from "@/desktop/main/services/projectService";
 import { attachTaskTerminal, CallbackTerminalClient } from "@/desktop/main/terminalBridge";
@@ -350,6 +350,21 @@ function toMobileNotification(notification: AppNotification) {
 export async function getMobileNotifications() {
   const notifications = await listNotifications();
   return notifications.map(toMobileNotification);
+}
+
+export async function getMobileNotificationSettings() {
+  return getNotificationSettings();
+}
+
+export async function updateMobileNotificationSettings(input: unknown) {
+  const settings = input as { isEnabled?: unknown; enabledStatuses?: unknown } | null;
+  if (!settings || typeof settings.isEnabled !== "boolean" || !Array.isArray(settings.enabledStatuses) ||
+      settings.enabledStatuses.some((status) => !Object.values(TaskStatus).includes(status))) {
+    throw new MobileTaskInputError("알림 상태 설정이 올바르지 않습니다.");
+  }
+  await setNotificationStatuses([...new Set(settings.enabledStatuses)]);
+  await setNotificationEnabled(settings.isEnabled);
+  return getNotificationSettings();
 }
 
 export async function markMobileNotificationRead(notificationId: string) {

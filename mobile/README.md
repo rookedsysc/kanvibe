@@ -184,3 +184,15 @@ tmux는 창 크기 정책과 분할 배치를 함께 보관했다가 마지막 �
 터미널의 Powerline/Nerd Font 기호는 [Nerd Fonts Symbols Only v3.5.1](https://github.com/ryanoasis/nerd-fonts/tree/v3.5.1/patched-fonts/NerdFontsSymbolsOnly)을 보조 글꼴로 사용한다. 원본 파일과 MIT 라이선스를 `assets/fonts/`에 포함한다.
 
 탭 추가는 인증된 `POST /api/mobile/tasks/:taskId/tabs`를 사용한다. 데스크탑의 기존 탭 생성 서비스를 재사용하며 tmux·Zellij·일반 terminal 및 원격 SSH 대상의 worktree에서 셸을 연다. 탭 추가를 지원하는 데스크탑 빌드가 필요하다. 모바일 목록과 추가 요청 상태는 `common/providers.dart`의 `TaskSurfacesController`가 관리한다.
+
+### 알림 상태 선택
+
+**알림 → 알림 설정**에서 현재 PC의 상태 변경 알림을 켜거나 끄고 Todo, Progress, Pending, Review, Done 중 받을 상태를 선택한다. 기본 선택은 Progress·Pending·Review이며, 전체 알림을 꺼도 선택한 상태는 유지한다. 선택한 상태가 없으면 상태 변경 알림을 받지 않는다. 설정은 현재 PC의 데스크탑과 모바일이 공유하고 앱을 다시 열어도 유지된다. 다른 PC는 해당 PC의 설정을 사용한다.
+
+설정은 전경 시스템 알림과 백그라운드 푸시에 적용한다. 알림을 끈 상태도 보드와 열린 태스크는 계속 갱신된다. 기존 알림함과 읽음 상태는 그대로 사용할 수 있다. 백그라운드 푸시는 위의 Firebase·중계 설정이 필요하다.
+
+인증된 `GET/PATCH /api/mobile/notification-settings`는 기존 데스크탑 AppSettings를 읽고 쓴다. PATCH는 `isEnabled: boolean`과 `enabledStatuses: string[]`를 받으며 잘못된 상태는 400으로 거절한다. 구버전 PC에서 설정 조회가 실패하면 데스크탑을 업데이트한다. 설정 화면은 `features/notifications/presentation/notification_settings_screen.dart`, 비동기 상태와 저장은 `application/notification_settings_controller.dart`, 불변 설정 값은 `domain/notification_settings.dart`가 소유한다.
+
+모바일에 연결하기 전에 쌓인 출력도 스크롤할 수 있도록 tmux는 이전 2000줄을 함께 가져오고 Zellij는 `dump-screen --full`로 이전 출력을 가져온다. Zellij는 기존 pane 지정 덤프 API를 지원하는 버전이 필요하며 모바일 터미널은 최대 2000줄을 보관한다. 스크롤 중 화면 덤프가 갱신되어도 기존 xterm 스크롤 위치를 유지한다. tmux는 화면 크기를 바꾼 뒤 새 크기의 화면을 다시 받아 마지막 출력과 커서 위치도 유지한다.
+
+격리 데스크탑 fixture(`qa/mobile/lib/prepareQaDesktop.cjs`)에 이전 출력을 준비하고 모바일을 페어링해 보드를 연 뒤 `mobile/.maestro/flows/terminal-notification-settings.yaml`로 설정 저장·재진입과 터미널 스와이프를 검증한다. 녹화는 흐름 안의 `startRecording`을 사용한다.

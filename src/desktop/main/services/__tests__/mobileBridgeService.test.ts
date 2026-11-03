@@ -60,6 +60,9 @@ vi.mock("@/desktop/main/terminalBridge", async (importOriginal) => {
 });
 
 vi.mock("@/desktop/main/services/appSettingsService", () => ({
+  getNotificationSettings: async () => ({ isEnabled: appSettingsStore.get("notification_enabled") !== "false", enabledStatuses: JSON.parse(appSettingsStore.get("notification_statuses") ?? '["progress","pending","review"]') }),
+  setNotificationEnabled: async (enabled: boolean) => { appSettingsStore.set("notification_enabled", String(enabled)); },
+  setNotificationStatuses: async (statuses: string[]) => { appSettingsStore.set("notification_statuses", JSON.stringify(statuses)); },
   getAppSetting: async (key: string) => appSettingsStore.get(key) ?? null,
   getDefaultSessionType: async () => defaultSessionTypeSetting,
   setAppSetting: async (key: string, value: string) => {
@@ -1398,5 +1401,20 @@ describe("첫 화면 스냅샷", () => {
 
     expect(receivedChunks[0]).toBe("\x1b[H\x1b[2J\x1b[3J$ ls\r\nREADME.md");
     unsubscribe();
+  });
+});
+
+describe("모바일·데스크탑 공유 알림 설정", () => {
+  it("중복을 제거해 기존 AppSettings에 저장하고 빈 상태 목록도 유지한다", async () => {
+    const { updateMobileNotificationSettings, getMobileNotificationSettings } = await import("../mobileBridgeService");
+    expect(await updateMobileNotificationSettings({ isEnabled: true, enabledStatuses: ["review", "review", "done"] })).toEqual({ isEnabled: true, enabledStatuses: ["review", "done"] });
+    expect(appSettingsStore.get("notification_statuses")).toBe('["review","done"]');
+    await updateMobileNotificationSettings({ isEnabled: false, enabledStatuses: [] });
+    expect(await getMobileNotificationSettings()).toEqual({ isEnabled: false, enabledStatuses: [] });
+  });
+  it.each([null, {}, { isEnabled: "false", enabledStatuses: [] }, { isEnabled: true, enabledStatuses: ["unknown"] }, { isEnabled: true, enabledStatuses: [null] }])("잘못된 설정은 저장 전에 거절한다 %j", async (input) => {
+    const { updateMobileNotificationSettings } = await import("../mobileBridgeService");
+    await expect(updateMobileNotificationSettings(input)).rejects.toMatchObject({ name: "MobileTaskInputError" });
+    expect(appSettingsStore.has("notification_statuses")).toBe(false);
   });
 });

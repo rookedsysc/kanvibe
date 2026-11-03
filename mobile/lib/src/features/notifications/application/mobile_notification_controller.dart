@@ -227,7 +227,7 @@ class MobileNotificationController {
     }
     onBoardChanged(notification.connectionId);
     _taskUpdates.add(notification);
-    unawaited(_showNotification(notification));
+    if (notification.shouldNotify) unawaited(_showNotification(notification));
   }
 
   Future<void> _showNotification(TaskNotification notification) async {

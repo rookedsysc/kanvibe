@@ -131,4 +131,17 @@ void main() {
     await container.read(boardProvider.future);
     expect(observed, isNotEmpty);
   });
+  test('알림을 끈 상태도 보드와 상세는 갱신하고 시스템 표시만 건너뛴다', () async {
+    final updates = <Object>[];
+    final controller = container.read(mobileNotificationControllerProvider);
+    final subscription = controller.taskUpdates.listen(updates.add);
+    addTearDown(subscription.cancel);
+    notifications.foreground.add({
+      ...taskNotification(connectionId: pcA.id),
+      'shouldNotify': false,
+    });
+    await flushEvents();
+    expect(updates, hasLength(1));
+    expect(notifications.shown, isEmpty);
+  });
 }

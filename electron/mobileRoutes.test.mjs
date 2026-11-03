@@ -44,6 +44,8 @@ function createBridge(overrides = {}) {
     unpairMobileDeviceByToken: vi.fn(async () => true),
     getMobileBoard: vi.fn(async () => ({ columns: [] })),
     getMobileTask: vi.fn(async () => ({ id: "task-1", title: "알림 태스크", projectName: "kanvibe" })),
+    getMobileNotificationSettings: vi.fn(async () => ({ isEnabled: true, enabledStatuses: ["review"] })),
+    updateMobileNotificationSettings: vi.fn(async (settings) => settings),
     getMobileNotifications: vi.fn(async () => [INBOX_NOTIFICATION]),
     markMobileNotificationRead: vi.fn(async () => ({ ...INBOX_NOTIFICATION, isRead: true })),
     markAllMobileNotificationsRead: vi.fn(async () => {}),
@@ -1052,5 +1054,30 @@ describe("프로젝트 브랜치 목록 경로", () => {
     });
 
     expect(response.status).toBe(500);
+  });
+});
+
+describe("모바일 알림 상태 설정", () => {
+  const headers = { Authorization: "Bearer good" };
+  it("인증한 PC의 알림 상태 설정을 조회한다", async () => {
+    expect(await request("/api/mobile/notification-settings", { headers })).toEqual({
+      status: 200, body: { success: true, settings: { isEnabled: true, enabledStatuses: ["review"] } },
+    });
+  });
+  it.each(["GET", "PATCH"])("%s는 인증 없이 설정을 읽거나 바꾸지 못한다", async (method) => {
+    expect((await request("/api/mobile/notification-settings", { method })).status).toBe(401);
+    expect(bridge.getMobileNotificationSettings).not.toHaveBeenCalled();
+    expect(bridge.updateMobileNotificationSettings).not.toHaveBeenCalled();
+  });
+  it("설정을 저장하고 저장된 값을 반환한다", async () => {
+    const settings = { isEnabled: false, enabledStatuses: [] };
+    const response = await request("/api/mobile/notification-settings", { method: "PATCH", headers, body: JSON.stringify(settings) });
+    expect(response).toEqual({ status: 200, body: { success: true, settings } });
+    expect(bridge.updateMobileNotificationSettings).toHaveBeenCalledWith(settings);
+  });
+  it("잘못된 상태와 JSON은 400으로 거절한다", async () => {
+    bridge.updateMobileNotificationSettings.mockRejectedValue(Object.assign(new Error("잘못된 상태"), { name: "MobileTaskInputError" }));
+    expect((await request("/api/mobile/notification-settings", { method: "PATCH", headers, body: '{"isEnabled":true}' })).status).toBe(400);
+    expect((await request("/api/mobile/notification-settings", { method: "PATCH", headers, body: 'invalid' })).status).toBe(400);
   });
 });
