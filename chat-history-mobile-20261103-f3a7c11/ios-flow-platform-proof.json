@@ -1,0 +1,9 @@
+{
+  "baseHead": "f3a7c11c8dcaa884a033de5233065bb43f7777b1",
+  "androidSelectedCommandSequenceIdentical": true,
+  "iosDifference": "Skip2 Android hides and redundant tap after native Paste; caret stays at end, all assertions retained",
+  "oldFlowSha256": "07c20d620867150ddda46b930905118cd6484de5e30e7f00e4491029d3c3124e",
+  "newFlowSha256": "9e0ca7665ce71ebbc3a806078e268e7155901602fa58564b0f582a9c5b9bdbdd",
+  "iosAppSource": "f3a7c11c8dcaa884a033de5233065bb43f7777b1",
+  "runtimeSourceUnchanged": true
+}

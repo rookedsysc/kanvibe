@@ -1,0 +1,98 @@
+{
+  "result": "PASS",
+  "gate": "iOS combined History and multi-PC gate05",
+  "buildRun": "https://github.com/rookedsysc/kanvibe/actions/runs/41572603891",
+  "buildSourceSha": "f3a7c11c8dcaa884a033de5233065bb43f7777b1",
+  "gateSourceEnd": {
+    "head": "f3a7c11c8dcaa884a033de5233065bb43f7777b1",
+    "trackedDiffSha256": "856c262e5a722a1b66dd039c9fbd6e10a2619c928be39cc9c1f5e4a1938b25cc",
+    "trackedDiffEqualsPreflight": true,
+    "allFlowHashesEqualPreflight": true,
+    "allAppSourceHashesMatchVerifiedRemoteBuild": true,
+    "artifactSha256": "d0dc59241fd0a21029029c161ebec1db7add1a4332170af07d515ca1a866756b",
+    "mainFlowSha256": "9e0ca7665ce71ebbc3a806078e268e7155901602fa58564b0f582a9c5b9bdbdd",
+    "pcFlowSha256": "5c1a7c2e71158c964c596870bd0aa9ed2db53c98d7a091514f77705340788d3a",
+    "result": {
+      "ok": true,
+      "platform": "ios",
+      "durationReported": "3m21s",
+      "recordingStatus": "recorded"
+    },
+    "gitStatus": " A mobile/.maestro/flows/chat-history-multi-pc.yaml\n M mobile/.maestro/flows/chat-history.yaml\n?? orca/\n",
+    "timestampUTC": "2026-11-03T03:59:27.024136Z"
+  },
+  "committedQAShaAfterGate": "3ce1ca884a4aee268a59073565fb859ec83b14ec",
+  "committedQADiffMatchesGate": true,
+  "productionSourceUnchanged": true,
+  "toolchain": {
+    "remoteXcode": "26.2",
+    "remoteSwift": "6.2.3",
+    "flutter": "3.47.2",
+    "localXcode": "26.0.1",
+    "localRuntime": "iOS26.0.1 SE3 ARM64"
+  },
+  "video": {
+    "source": {
+      "programs": [],
+      "stream_groups": [],
+      "streams": [
+        {
+          "codec_name": "h264",
+          "width": 750,
+          "height": 1334,
+          "r_frame_rate": "60/1",
+          "avg_frame_rate": "1918800/59627"
+        }
+      ],
+      "format": {
+        "duration": "198.756667",
+        "size": "38180489"
+      },
+      "path": "/Users/rookedsysc/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/feat-chat-ui/qa-results/roky-harness/chat-history/recovery-20261103/remote-ios-build/gate-05/videos/ios-history-combined-20261103-chat-history-combined.mp4",
+      "sha256": "829d77d3467723ec48e4d9b73f1d0e5774c1e2b0d17f874be4d07bb7bf041757"
+    },
+    "share": {
+      "programs": [],
+      "stream_groups": [],
+      "streams": [
+        {
+          "codec_name": "h264",
+          "width": 540,
+          "height": 960,
+          "r_frame_rate": "15/1",
+          "avg_frame_rate": "15/1"
+        }
+      ],
+      "format": {
+        "duration": "198.733333",
+        "size": "3289885"
+      },
+      "path": "/Users/rookedsysc/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/feat-chat-ui/qa-results/roky-harness/chat-history/recovery-20261103/remote-ios-build/gate-05/videos/ios-history-combined-pass-fps15.mp4",
+      "sha256": "1d05b414d2369a7b6ae776f5d9fa1b5127ca460fec7c0796dbd59cccbff6d12d"
+    },
+    "visuallyVerifiedFrames": {
+      "secondPC59PrimaryAbsent": 173.0,
+      "restoredPrimary59SecondAbsent": 198.0
+    },
+    "fullTimelinePreserved": true
+  },
+  "keychainErrors": {
+    "patterns": [
+      "-34018",
+      "errSecMissingEntitlement"
+    ],
+    "matches": 0
+  },
+  "cleanup": {
+    "ownSimulatorDeleted": "627693E8-86CE-49EC-B69E-3252A71EF7A2",
+    "ownName": "Kanvibe-History-QA-20261103-remote",
+    "extractedOwnAppRemoved": true,
+    "verifiedAppZipPreserved": true,
+    "globalXcodeSelectUnchanged": "/Applications/Xcode.app/Contents/Developer",
+    "freeBytesBefore": 3522805760,
+    "freeBytesAfter": 3761078272
+  },
+  "currentFreeBytes": 6181920768,
+  "qaBranch": "qa-build/ios-chat-history-20261103",
+  "artifactRetentionDays": 1
+}

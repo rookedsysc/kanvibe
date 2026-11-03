@@ -1,0 +1,18 @@
+{
+  "head": "f3a7c11c8dcaa884a033de5233065bb43f7777b1",
+  "trackedDiffSha256": "856c262e5a722a1b66dd039c9fbd6e10a2619c928be39cc9c1f5e4a1938b25cc",
+  "trackedDiffEqualsPreflight": true,
+  "allFlowHashesEqualPreflight": true,
+  "allAppSourceHashesMatchVerifiedRemoteBuild": true,
+  "artifactSha256": "d0dc59241fd0a21029029c161ebec1db7add1a4332170af07d515ca1a866756b",
+  "mainFlowSha256": "9e0ca7665ce71ebbc3a806078e268e7155901602fa58564b0f582a9c5b9bdbdd",
+  "pcFlowSha256": "5c1a7c2e71158c964c596870bd0aa9ed2db53c98d7a091514f77705340788d3a",
+  "result": {
+    "ok": true,
+    "platform": "ios",
+    "durationReported": "3m21s",
+    "recordingStatus": "recorded"
+  },
+  "gitStatus": " A mobile/.maestro/flows/chat-history-multi-pc.yaml\n M mobile/.maestro/flows/chat-history.yaml\n?? orca/\n",
+  "timestampUTC": "2026-11-03T03:59:27.024136Z"
+}

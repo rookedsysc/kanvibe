@@ -1,0 +1,9 @@
+{
+  "androidSelectedCommandSequenceIdentical": true,
+  "androidVerifiedPCFlowSha256": "ad322e3092f615995dfb198236c27122b3cf03b3acecb3e12be28055c556dfda",
+  "newExecutedPCFlowSha256": "142150559fa088be289081adff74d2616fbd4f473139ee42f320dfd0e806816d",
+  "newTrackedTemplateSha256": "5c1a7c2e71158c964c596870bd0aa9ed2db53c98d7a091514f77705340788d3a",
+  "iosChange": "scroll code field into view on SE3 before existing code tap; all assertions retained",
+  "trackedTemplate": "mobile/.maestro/flows/chat-history-multi-pc.yaml",
+  "templateMatchesExecutedExceptHelperAbsolutePath": true
+}

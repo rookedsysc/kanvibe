@@ -1,0 +1,14 @@
+{
+  "head": "3ce1ca884a4aee268a59073565fb859ec83b14ec",
+  "iosGateHead": "f3a7c11c8dcaa884a033de5233065bb43f7777b1",
+  "iosDiffSha256": "856c262e5a722a1b66dd039c9fbd6e10a2619c928be39cc9c1f5e4a1938b25cc",
+  "iosGateTreeMatchesPublished": true,
+  "productHead": "c73e6aa1703ac8d4a6a9c2d6006131b5472c7e9a",
+  "runtimeProductUnchanged": true,
+  "qaOnlyChangedFiles": [
+    "mobile/.maestro/flows/chat-history-multi-pc.yaml",
+    "mobile/.maestro/flows/chat-history.yaml",
+    "qa/mobile/lib/prepareChatHistoryDesktop.cjs"
+  ],
+  "androidCommandSequencesUnchanged": true
+}
