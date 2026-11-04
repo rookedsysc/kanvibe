@@ -11,6 +11,7 @@ import 'package:kanvibe_mobile/src/features/task_detail/domain/terminal_shortcut
 import 'package:kanvibe_mobile/src/features/task_detail/presentation/widgets/terminal_shortcut_bar.dart';
 import 'package:kanvibe_mobile/src/features/task_detail/presentation/widgets/terminal_shortcut_combo_editor.dart';
 import 'package:kanvibe_mobile/src/features/task_detail/presentation/widgets/terminal_shortcut_settings_sheet.dart';
+import 'package:kanvibe_mobile/src/features/task_detail/presentation/widgets/terminal_shortcut_panel.dart';
 import 'package:kanvibe_mobile/src/features/task_detail/presentation/widgets/terminal_soft_keyboard.dart';
 import 'package:xterm/xterm.dart' as xterm;
 
@@ -470,6 +471,10 @@ void main() {
         await _pumpBar(tester, session: session, onShortcut: pressed.add);
         await tester.tap(find.byTooltip('빠른 단축키'));
         await tester.pumpAndSettle();
+        expect(
+          tester.getSize(find.byType(TerminalShortcutPanel)).height,
+          lessThanOrEqualTo(140),
+        );
         if (session == SessionType.terminal) {
           expect(find.text('패널 제어'), findsNothing);
           await tester.tap(find.byKey(const ValueKey('panel-key-escape')));
@@ -641,6 +646,30 @@ void main() {
     expect(find.text('콤보 추가'), findsOneWidget);
   });
 
+  testWidgets('quick panel stays below 104dp and scrolls to the last action', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final pressed = <TerminalShortcut>[];
+    await _pumpBar(tester, onShortcut: pressed.add);
+    await tester.tap(find.byTooltip('빠른 단축키'));
+    await tester.pumpAndSettle();
+    expect(
+      tester.getSize(find.byType(TerminalShortcutPanel)).height,
+      lessThanOrEqualTo(104),
+    );
+    expect(find.text('pane을 좌우로 분할'), findsNothing);
+    final last = find.byKey(const ValueKey('panel-key-copy-mode'));
+    await tester.ensureVisible(last);
+    await tester.pumpAndSettle();
+    await tester.tap(last);
+    expect(pressed.single.action, 'copy-mode');
+    expect(tester.takeException(), isNull);
+  });
+
   for (final screen in ['panel', 'editor', 'settings']) {
     testWidgets('$screen fits small viewport with large text and IME', (
       tester,
@@ -685,6 +714,10 @@ void main() {
       if (screen == 'panel') {
         await tester.tap(find.byTooltip('빠른 단축키'));
         await tester.pumpAndSettle();
+        expect(
+          tester.getSize(find.byType(TerminalShortcutPanel)).height,
+          lessThanOrEqualTo(140),
+        );
       }
       expect(tester.takeException(), isNull);
     });

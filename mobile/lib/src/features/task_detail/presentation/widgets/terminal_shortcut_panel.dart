@@ -26,9 +26,6 @@ class TerminalShortcutPanel extends StatefulWidget {
 }
 
 class _TerminalShortcutPanelState extends State<TerminalShortcutPanel> {
-  static const _availableHeightFraction = .4;
-  static const _keyGridHeightFraction = .25;
-
   late String _group = widget.sessionType == SessionType.terminal ? '키' : '세션';
 
   @override
@@ -44,12 +41,11 @@ class _TerminalShortcutPanelState extends State<TerminalShortcutPanel> {
         MediaQuery.viewInsetsOf(context).bottom;
     return ConstrainedBox(
       constraints: BoxConstraints(
-        maxHeight:
-            widget.maxHeight ?? availableHeight * _availableHeightFraction,
+        maxHeight: widget.maxHeight ?? availableHeight * .4,
       ),
       child: SingleChildScrollView(
         child: Container(
-          padding: const EdgeInsets.all(AppSizes.p12),
+          padding: const EdgeInsets.all(AppSizes.p8),
           decoration: const BoxDecoration(
             color: AppColors.bgSurface,
             border: Border(bottom: BorderSide(color: AppColors.borderDefault)),
@@ -58,106 +54,90 @@ class _TerminalShortcutPanelState extends State<TerminalShortcutPanel> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             mainAxisSize: MainAxisSize.min,
             children: [
-              Wrap(
-                spacing: AppSizes.p8,
-                children: [
-                  for (final group in [
-                    if (widget.sessionType != SessionType.terminal) '세션',
-                    '키',
-                    '내 콤보',
-                  ])
-                    ChoiceChip(
-                      label: Text(
-                        group == '세션' ? widget.sessionType.name : group,
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: [
+                    for (final group in [
+                      if (widget.sessionType != SessionType.terminal) '세션',
+                      '키',
+                      '내 콤보',
+                    ])
+                      Padding(
+                        padding: const EdgeInsets.only(right: AppSizes.p8),
+                        child: ChoiceChip(
+                          label: Text(
+                            group == '세션' ? widget.sessionType.name : group,
+                          ),
+                          selected: _group == group,
+                          selectedColor: AppColors.brandSubtle,
+                          side: const BorderSide(color: AppColors.borderStrong),
+                          labelStyle: const TextStyle(
+                            color: AppColors.textPrimary,
+                            fontSize: 12,
+                          ),
+                          visualDensity: VisualDensity.compact,
+                          materialTapTargetSize:
+                              MaterialTapTargetSize.shrinkWrap,
+                          showCheckmark: false,
+                          onSelected: (_) => setState(() => _group = group),
+                        ),
                       ),
-                      selected: _group == group,
-                      selectedColor: AppColors.brandSubtle,
-                      side: const BorderSide(color: AppColors.borderStrong),
-                      labelStyle: const TextStyle(color: AppColors.textPrimary),
-                      showCheckmark: false,
-                      onSelected: (_) => setState(() => _group = group),
-                    ),
-                ],
+                  ],
+                ),
               ),
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: AppSizes.p8),
-                child: Text(switch (_group) {
-                  '세션' => '패널 제어',
-                  '내 콤보' => '저장한 키 조합을 실행',
-                  _ => '터미널 키',
-                }, style: Theme.of(context).textTheme.bodySmall),
-              ),
+              const SizedBox(height: AppSizes.p8),
               if (shortcuts.isEmpty)
                 const Padding(
-                  padding: EdgeInsets.symmetric(vertical: AppSizes.p16),
+                  padding: EdgeInsets.symmetric(vertical: AppSizes.p8),
                   child: Text('아직 콤보가 없습니다. 단축키 설정의 + 버튼으로 추가하세요.'),
                 )
               else
-                ConstrainedBox(
-                  constraints: BoxConstraints(
-                    maxHeight:
-                        MediaQuery.sizeOf(context).height *
-                        _keyGridHeightFraction,
-                  ),
-                  child: SingleChildScrollView(
-                    child: LayoutBuilder(
-                      builder: (context, constraints) => Wrap(
-                        spacing: AppSizes.p8,
-                        runSpacing: AppSizes.p8,
-                        children: [
-                          for (final shortcut in shortcuts)
-                            SizedBox(
-                              width: (constraints.maxWidth - AppSizes.p8) / 2,
-                              child: Semantics(
-                                identifier: 'panel-key-${shortcut.id}',
-                                child: OutlinedButton(
-                                  key: ValueKey('panel-key-${shortcut.id}'),
-                                  onPressed:
-                                      widget.isBusy && shortcut.action != null
-                                      ? null
-                                      : () => widget.onShortcut(shortcut),
-                                  style: OutlinedButton.styleFrom(
-                                    minimumSize: const Size(
-                                      0,
-                                      AppSizes.minTouchTarget,
-                                    ),
-                                    foregroundColor: AppColors.textPrimary,
-                                    disabledForegroundColor:
-                                        AppColors.textMuted,
-                                    alignment: Alignment.centerLeft,
-                                    padding: const EdgeInsets.all(AppSizes.p12),
-                                    backgroundColor: AppColors.buttonNeutral,
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(
-                                        AppSizes.radiusLg,
-                                      ),
-                                    ),
+                SingleChildScrollView(
+                  key: ValueKey(_group),
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: [
+                      for (final shortcut in shortcuts)
+                        Padding(
+                          padding: const EdgeInsets.only(right: AppSizes.p8),
+                          child: Semantics(
+                            identifier: 'panel-key-${shortcut.id}',
+                            child: Tooltip(
+                              message: shortcut.description,
+                              child: OutlinedButton(
+                                key: ValueKey('panel-key-${shortcut.id}'),
+                                onPressed:
+                                    widget.isBusy && shortcut.action != null
+                                    ? null
+                                    : () => widget.onShortcut(shortcut),
+                                style: OutlinedButton.styleFrom(
+                                  minimumSize: const Size(0, 36),
+                                  tapTargetSize:
+                                      MaterialTapTargetSize.shrinkWrap,
+                                  foregroundColor: AppColors.textPrimary,
+                                  disabledForegroundColor: AppColors.textMuted,
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: AppSizes.p12,
+                                    vertical: AppSizes.p8,
                                   ),
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        shortcut.label,
-                                        style: const TextStyle(
-                                          color: AppColors.textPrimary,
-                                        ),
-                                      ),
-                                      if (_group != '키')
-                                        Text(
-                                          shortcut.description,
-                                          style: Theme.of(context)
-                                              .textTheme
-                                              .bodySmall,
-                                        ),
-                                    ],
+                                  textStyle: Theme.of(context)
+                                      .textTheme
+                                      .labelLarge
+                                      ?.copyWith(fontSize: 12),
+                                  backgroundColor: AppColors.buttonNeutral,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(
+                                      AppSizes.radiusMd,
+                                    ),
                                   ),
                                 ),
+                                child: Text(shortcut.label),
                               ),
                             ),
-                        ],
-                      ),
-                    ),
+                          ),
+                        ),
+                    ],
                   ),
                 ),
             ],

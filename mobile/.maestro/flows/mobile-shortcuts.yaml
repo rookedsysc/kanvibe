@@ -67,7 +67,7 @@ env:
 - takeScreenshot: shortcut-restored
 - tapOn:
     id: shortcut-panel
-- assertVisible: "패널 제어"
+- assertVisible: "좌우 분할"
 - assertVisible:
     id: panel-key-split-right
 - takeScreenshot: shortcut-session-panel
