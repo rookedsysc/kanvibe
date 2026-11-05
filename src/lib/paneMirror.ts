@@ -337,7 +337,8 @@ function parseZellijMirrorPaneEntry(entry: ZellijPaneJsonEntry): MirrorPane | nu
  */
 export function buildZellijDumpPaneCommand(sessionName: string, paneId: string): string {
   const session = quoteForPosixShell(sessionName);
-  return `zellij --session ${session} action dump-screen -p ${quoteForPosixShell(paneId)} -a --full`;
+  // 원격 전송량과 exec 버퍼를 제한하되 dump 실패를 tail의 성공으로 덮지 않는다.
+  return `kanvibe_mobile_dump=$(zellij --session ${session} action dump-screen -p ${quoteForPosixShell(paneId)} -a --full) && printf '%s\\n' "$kanvibe_mobile_dump" | tail -n ${MAX_MIRROR_LINES}`;
 }
 
 /**

@@ -208,7 +208,7 @@ describe("zellij pane 명령", () => {
 
   it("포커스를 바꾸지 않고 지정한 pane만 뜬다", () => {
     expect(buildZellijDumpPaneCommand("kanvibe-task", "terminal_1")).toBe(
-      "zellij --session 'kanvibe-task' action dump-screen -p 'terminal_1' -a --full",
+      "kanvibe_mobile_dump=$(zellij --session 'kanvibe-task' action dump-screen -p 'terminal_1' -a --full) && printf '%s\\n' \"$kanvibe_mobile_dump\" | tail -n 2000",
     );
   });
 

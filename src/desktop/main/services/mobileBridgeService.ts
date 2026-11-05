@@ -1,5 +1,5 @@
 import { spawn, type ChildProcess } from "child_process";
-import { getAppSetting, getDefaultSessionType, setAppSetting } from "@/desktop/main/services/appSettingsService";
+import { getAppSetting, getDefaultSessionType, getNotificationSettings, setAppSetting, setNotificationEnabled, setNotificationStatuses } from "@/desktop/main/services/appSettingsService";
 import { connectTerminalSession, createTask, getTaskById, getTasksByStatus, updateTaskStatus } from "@/desktop/main/services/kanbanService";
 import { getAllProjects, getProjectBranches, getTaskAiSessions, getTaskAiSessionDetail } from "@/desktop/main/services/projectService";
 import { isAiSessionProvider } from "@/lib/aiSessions/providers";
@@ -428,6 +428,21 @@ export async function getMobileNotifications() {
   return notifications.map(toMobileNotification);
 }
 
+export async function getMobileNotificationSettings() {
+  return getNotificationSettings();
+}
+
+export async function updateMobileNotificationSettings(input: unknown) {
+  const settings = input as { isEnabled?: unknown; enabledStatuses?: unknown } | null;
+  if (!settings || typeof settings.isEnabled !== "boolean" || !Array.isArray(settings.enabledStatuses) ||
+      settings.enabledStatuses.some((status) => !Object.values(TaskStatus).includes(status))) {
+    throw new MobileTaskInputError("알림 상태 설정이 올바르지 않습니다.");
+  }
+  await setNotificationStatuses([...new Set(settings.enabledStatuses)]);
+  await setNotificationEnabled(settings.isEnabled);
+  return getNotificationSettings();
+}
+
 export async function markMobileNotificationRead(notificationId: string) {
   const notification = await markNotificationRead(notificationId);
   return notification ? toMobileNotification(notification) : null;
@@ -818,7 +833,7 @@ async function createPaneViewportDriver(target: MirrorSessionTarget, taskId: str
 
 /** 창 배치를 공유하는 pane은 같은 줄에서 크기를 바꿔야 한 기기의 퇴장이 다른 기기의 화면을 되돌리지 않는다. */
 export async function claimPaneViewport(taskId: string, paneId: string): Promise<{
-  resize: (cols: number, rows: number) => Promise<void>;
+  resize: (cols: number, rows: number) => Promise<string | null>;
   release: () => Promise<void>;
 }> {
   if (paneViewportShutdown) throw new Error("데스크탑이 종료 중입니다.");
@@ -846,17 +861,23 @@ export async function claimPaneViewport(taskId: string, paneId: string): Promise
   let released: Promise<void> | null = null;
 
   return {
-    resize: (cols, rows) => {
-      if (released || !claimed.clients.has(id)) return Promise.resolve();
+    resize: async (cols, rows) => {
+      if (released || !claimed.clients.has(id)) return null;
       if (![cols, rows].every((value) => Number.isInteger(value) && value >= 1 && value <= 500)) {
         return Promise.reject(new Error("터미널 크기가 유효하지 않습니다."));
       }
       request.size = { cols, rows };
       claimed.clients.delete(id);
       claimed.clients.set(id, request);
-      return queuePaneViewport(claimed, async (driver) => {
-        if (claimed.clients.has(id)) await driver.resize(paneId, cols, rows);
+      let snapshot: string | null = null;
+      await queuePaneViewport(claimed, async (driver) => {
+        if (!claimed.clients.has(id)) return;
+        await driver.resize(paneId, cols, rows);
+        if (target.sessionType === SessionType.TMUX) {
+          snapshot = await readPaneSnapshot(target, paneId);
+        }
       });
+      return snapshot;
     },
     release: () => {
       if (released) return released;

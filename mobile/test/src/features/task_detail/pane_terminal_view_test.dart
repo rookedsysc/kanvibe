@@ -206,6 +206,27 @@ void main() {
     });
   }
 
+  testWidgets('화면 덤프가 갱신되어도 읽던 이전 출력을 유지한다', (tester) async {
+    final client = FakeDesktopClient();
+    await pumpPane(tester, _pane, client: client, store: FakeConnectionStore());
+    String dump(int count) =>
+        '\x1b[H\x1b[2J\x1b[3J${List.generate(count, (i) => 'history-$i\r\n').join()}';
+    client.openedPanes[_pane.id]!.add(dump(180));
+    await tester.pumpAndSettle();
+    final view = tester.widget<xterm.TerminalView>(
+      find.byType(xterm.TerminalView),
+    );
+    final scroll = view.scrollController!;
+    await tester.drag(find.byType(xterm.TerminalView), const Offset(0, 350));
+    await tester.pumpAndSettle();
+    final readingOffset = scroll.offset;
+    expect(readingOffset, lessThan(scroll.position.maxScrollExtent));
+    client.openedPanes[_pane.id]!.add(dump(181));
+    await tester.pumpAndSettle();
+    expect(scroll.offset, closeTo(readingOffset, 1));
+    expect(client.writtenInput[_pane.id] ?? [], isEmpty);
+  });
+
   testWidgets('이전 출력을 보는 중 전체 덤프가 갱신돼도 스크롤 위치를 유지한다', (tester) async {
     final client = FakeDesktopClient();
     await pumpPane(tester, _pane, client: client, store: FakeConnectionStore());
