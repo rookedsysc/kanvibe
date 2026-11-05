@@ -1,0 +1,42 @@
+[
+  {
+    "name": "check",
+    "command": "pnpm check",
+    "exit": 0,
+    "head": "5edaed5ec5c57c04755211ec93ee2cf102a51df9",
+    "fingerprint": "ad69849d4a6d694005e2b3fccfdf7964bcb9519f",
+    "after": "ad69849d4a6d694005e2b3fccfdf7964bcb9519f"
+  },
+  {
+    "name": "test",
+    "command": "pnpm test",
+    "exit": 0,
+    "head": "5edaed5ec5c57c04755211ec93ee2cf102a51df9",
+    "fingerprint": "ad69849d4a6d694005e2b3fccfdf7964bcb9519f",
+    "after": "ad69849d4a6d694005e2b3fccfdf7964bcb9519f"
+  },
+  {
+    "name": "build",
+    "command": "pnpm build",
+    "exit": 0,
+    "head": "5edaed5ec5c57c04755211ec93ee2cf102a51df9",
+    "fingerprint": "ad69849d4a6d694005e2b3fccfdf7964bcb9519f",
+    "after": "ad69849d4a6d694005e2b3fccfdf7964bcb9519f"
+  },
+  {
+    "name": "prepare",
+    "command": "pnpm qa:electron:prepare",
+    "exit": 0,
+    "head": "5edaed5ec5c57c04755211ec93ee2cf102a51df9",
+    "fingerprint": "ad69849d4a6d694005e2b3fccfdf7964bcb9519f",
+    "after": "ad69849d4a6d694005e2b3fccfdf7964bcb9519f"
+  },
+  {
+    "name": "runtime-final",
+    "command": "node qa/electron/flows/terminal-tab-close-confirm.cjs",
+    "exit": 0,
+    "head": "5edaed5ec5c57c04755211ec93ee2cf102a51df9",
+    "fingerprint": "ad69849d4a6d694005e2b3fccfdf7964bcb9519f",
+    "after": "ad69849d4a6d694005e2b3fccfdf7964bcb9519f"
+  }
+]
