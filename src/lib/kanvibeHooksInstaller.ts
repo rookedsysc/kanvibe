@@ -1,3 +1,4 @@
+import { invalidateOpenCodePluginRegistration } from "@/lib/openCodePluginRegistry";
 import { readTextFiles } from "@/lib/hostFileAccess";
 import { getHookServerUrl } from "@/lib/hookEndpoint";
 import { writeHookProviderFiles } from "@/lib/hookFileWriter";
@@ -276,6 +277,10 @@ async function installKanvibeHookFilesOnce(
         error: error instanceof Error ? error.message : String(error),
       });
       throw error;
+    } finally {
+      if (providerModule.provider === "openCode" && !sshHost) {
+        invalidateOpenCodePluginRegistration(targetPath);
+      }
     }
   }));
 

@@ -157,32 +157,34 @@ function parseGeometry(raw: {
   return { left, top, width, height };
 }
 
-/** 터미널 위의 칸 좌표. 0부터 센다 */
+/** pane 보이는 영역 안의 칸 좌표(0부터)와 그 영역의 높이 */
 export interface TerminalCursorPosition {
   x: number;
   y: number;
+  paneHeight: number;
 }
 
-/**
- * pane의 커서 위치를 읽는다. 스냅샷을 그린 뒤 커서를 같은 자리에 둬야, 이어서 흘러오는 출력이
- * 데스크탑과 같은 자리에 그려진다. `display-message -p`는 출력만 하고 포커스를 바꾸지 않는다.
- */
-export function buildTmuxCursorPositionCommand(paneId: string): string {
-  return `tmux display-message -p -t ${quoteForPosixShell(paneId)} '#{cursor_x} #{cursor_y}'`;
+/** 커서와 접속 전에 활성화된 화면·마우스 모드를 함께 읽는다. */
+export function buildTmuxPaneStateCommand(paneId: string): string {
+  return `tmux display-message -p -t ${quoteForPosixShell(paneId)} '#{cursor_x} #{cursor_y} #{pane_height} #{alternate_on} #{mouse_standard_flag} #{mouse_button_flag} #{mouse_all_flag} #{mouse_sgr_flag} #{mouse_utf8_flag}'`;
 }
 
-/** `buildTmuxCursorPositionCommand` 출력 한 줄을 읽는다. 숫자 두 개가 아니면 모르는 것으로 본다 */
-export function parseTmuxCursorPosition(output: string): TerminalCursorPosition | null {
-  const match = output.trim().match(/^(\d+) (\d+)$/);
-  if (!match) {
-    return null;
-  }
-  return { x: Number(match[1]), y: Number(match[2]) };
+export function parseTmuxPaneState(output: string): { cursor: TerminalCursorPosition; restoreSequences: string } | null {
+  const match = output.trim().match(/^(\d+) (\d+) (\d+) ([01]) ([01]) ([01]) ([01]) ([01]) ([01])$/);
+  if (!match) return null;
+  const [, x, y, paneHeight, alternate, standard, button, all, sgr, utf8] = match;
+  const mouseMode = all === "1" ? 1003 : button === "1" ? 1002 : standard === "1" ? 1000 : null;
+  const mouseEncoding = sgr === "1" ? 1006 : utf8 === "1" ? 1005 : null;
+  let restoreSequences = `\x1b[?1049${alternate === "1" ? "h" : "l"}\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1005l\x1b[?1006l`;
+  if (mouseMode !== null) restoreSequences += `\x1b[?${mouseMode}h`;
+  if (mouseEncoding !== null) restoreSequences += `\x1b[?${mouseEncoding}h`;
+  return { cursor: { x: Number(x), y: Number(y), paneHeight: Number(paneHeight) }, restoreSequences };
 }
+
+const MAX_MIRROR_LINES = 2000;
 
 /** 화면, 스크롤백을 지우고 커서를 맨 위로 보낸다. 덤프를 받을 때마다 이어 붙이지 않고 다시 그리기 위해서다 */
 const CLEAR_SCREEN_AND_SCROLLBACK = "\x1b[H\x1b[2J\x1b[3J";
-const MOBILE_SCROLLBACK_LINES = 2000;
 
 /**
  * 떠 온 화면 텍스트를 터미널이 처음부터 다시 그리는 출력으로 바꾼다.
@@ -191,9 +193,18 @@ const MOBILE_SCROLLBACK_LINES = 2000;
  * 다음 줄이 앞 줄이 끝난 열에서 시작해 화면이 계단처럼 밀린다. 줄마다 CR을 붙여 줄 처음으로 돌려보낸다.
  */
 export function buildScreenRedraw(screen: string, cursor: TerminalCursorPosition | null): string {
-  const lines = screen.replace(/\r?\n/g, "\r\n");
-  const cursorMove = cursor ? `\x1b[${cursor.y + 1};${cursor.x + 1}H` : "";
-  return `${CLEAR_SCREEN_AND_SCROLLBACK}${lines}${cursorMove}`;
+  const lines = screen.split(/\r?\n/).slice(-MAX_MIRROR_LINES).join("\r\n");
+  return `${CLEAR_SCREEN_AND_SCROLLBACK}${lines}${cursor ? buildCursorMoveFromLastLine(cursor) : ""}`;
+}
+
+/**
+ * 덤프 앞에는 스크롤백이 붙고 모바일 화면 높이도 pane과 다를 수 있어, 절대 좌표로는 커서가 놓일 줄을 알 수 없다.
+ * 덤프의 마지막 줄은 언제나 pane 보이는 영역의 맨 아랫줄이므로, 다 쓴 뒤 그 줄에서 위로 올라가 커서 줄을 찾는다.
+ */
+function buildCursorMoveFromLastLine(cursor: TerminalCursorPosition): string {
+  const rowsAboveLastLine = cursor.paneHeight - 1 - cursor.y;
+  const moveUp = rowsAboveLastLine > 0 ? `\x1b[${rowsAboveLastLine}A` : "";
+  return `${moveUp}\x1b[${cursor.x + 1}G`;
 }
 
 /**
@@ -201,7 +212,7 @@ export function buildScreenRedraw(screen: string, cursor: TerminalCursorPosition
  * 스트림은 구독 시점 이후만 흘러오므로 첫 화면은 이 스냅샷으로 채워야 빈 터미널이 보이지 않는다.
  */
 export function buildTmuxCapturePaneCommand(paneId: string): string {
-  return `tmux capture-pane -pe -S -${MOBILE_SCROLLBACK_LINES} -t ${quoteForPosixShell(paneId)}`;
+  return `tmux capture-pane -pe -S -${MAX_MIRROR_LINES} -t ${quoteForPosixShell(paneId)}`;
 }
 
 /** 흘려보내기를 멈춘다. 명령 인자를 주지 않으면 tmux가 해당 pane의 파이프를 끊는다 */
@@ -327,7 +338,7 @@ function parseZellijMirrorPaneEntry(entry: ZellijPaneJsonEntry): MirrorPane | nu
 export function buildZellijDumpPaneCommand(sessionName: string, paneId: string): string {
   const session = quoteForPosixShell(sessionName);
   // 원격 전송량과 exec 버퍼를 제한하되 dump 실패를 tail의 성공으로 덮지 않는다.
-  return `kanvibe_mobile_dump=$(zellij --session ${session} action dump-screen -p ${quoteForPosixShell(paneId)} -a --full) && printf '%s\\n' "$kanvibe_mobile_dump" | tail -n ${MOBILE_SCROLLBACK_LINES}`;
+  return `kanvibe_mobile_dump=$(zellij --session ${session} action dump-screen -p ${quoteForPosixShell(paneId)} -a --full) && printf '%s\\n' "$kanvibe_mobile_dump" | tail -n ${MAX_MIRROR_LINES}`;
 }
 
 /**

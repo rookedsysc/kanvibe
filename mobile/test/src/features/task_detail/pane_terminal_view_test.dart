@@ -227,6 +227,122 @@ void main() {
     expect(client.writtenInput[_pane.id] ?? [], isEmpty);
   });
 
+  testWidgets('이전 출력을 보는 중 전체 덤프가 갱신돼도 스크롤 위치를 유지한다', (tester) async {
+    final client = FakeDesktopClient();
+    await pumpPane(tester, _pane, client: client, store: FakeConnectionStore());
+    final output = List.generate(180, (i) => 'line-$i').join('\r\n');
+    client.openedPanes[_pane.id]!.add('\x1b[H\x1b[2J\x1b[3J$output');
+    await tester.pumpAndSettle();
+    final view = tester.widget<xterm.TerminalView>(
+      find.byType(xterm.TerminalView),
+    );
+    await tester.drag(find.byType(xterm.TerminalView), const Offset(0, 300));
+    await tester.pumpAndSettle();
+    final offset = view.scrollController!.offset;
+    client.openedPanes[_pane.id]!.add(
+      '\x1b[H\x1b[2J\x1b[3J$output\r\nnew-line',
+    );
+    await tester.pumpAndSettle();
+    expect(view.scrollController!.offset, closeTo(offset, 1));
+    expect(tester.testTextInput.isVisible, isFalse);
+  });
+
+  testWidgets('선택 중 덤프 갱신은 복사를 방해하지 않고 해제 후 최신 화면을 적용한다', (tester) async {
+    final client = FakeDesktopClient();
+    await pumpPane(
+      tester,
+      _pane,
+      client: client,
+      store: FakeConnectionStore(),
+      canResize: true,
+    );
+    client.openedPanes[_pane.id]!.add(
+      '\x1b[H\x1b[2J\x1b[3Jalpha 한글\r\nbeta next',
+    );
+    await tester.pumpAndSettle();
+    final gesture = await tester.startGesture(
+      terminalCellPosition(tester, 1, 0),
+    );
+    await tester.pump(kLongPressTimeout + const Duration(milliseconds: 1));
+    await gesture.moveTo(terminalCellPosition(tester, 1, 1));
+    await tester.pump();
+    await gesture.up(timeStamp: kLongPressTimeout);
+    await tester.pumpAndSettle();
+    final terminal = mountedTerminal(tester);
+    final view = tester.widget<xterm.TerminalView>(
+      find.byType(xterm.TerminalView),
+    );
+    client.openedPanes[_pane.id]!.add('\x1b[H\x1b[2J\x1b[3Jintermediate');
+    client.openedPanes[_pane.id]!.add('\x1b[H\x1b[2J\x1b[3Jlatest');
+    await tester.pumpAndSettle();
+    expect(view.controller!.selection, isNotNull);
+    expect(
+      terminal.buffer.getText(view.controller!.selection),
+      'alpha 한글\nbeta',
+    );
+    final copiedText = <String>[];
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (call) async {
+        if (call.method == 'Clipboard.setData') {
+          copiedText.add((call.arguments as Map)['text'] as String);
+        }
+        return null;
+      },
+    );
+    addTearDown(
+      () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        null,
+      ),
+    );
+    await tester.tap(find.widgetWithText(TextButton, '복사'));
+    await tester.pumpAndSettle();
+    expect(copiedText, ['alpha 한글\nbeta']);
+    expect(terminal.buffer.getText(), contains('latest'));
+    expect(terminal.buffer.getText(), isNot(contains('intermediate')));
+    expect(view.controller!.selection, isNull);
+    expect(client.writtenInput[_pane.id], isNull);
+  });
+
+  testWidgets('선택 중 보류한 지우기 청크 뒤의 출력은 해제 후 순서대로 적용된다', (tester) async {
+    final client = FakeDesktopClient();
+    await pumpPane(
+      tester,
+      _pane,
+      client: client,
+      store: FakeConnectionStore(),
+      canResize: true,
+    );
+    client.openedPanes[_pane.id]!.add('alpha 한글\r\nbeta next');
+    await tester.pumpAndSettle();
+    final gesture = await tester.startGesture(
+      terminalCellPosition(tester, 1, 0),
+    );
+    await tester.pump(kLongPressTimeout + const Duration(milliseconds: 1));
+    await gesture.moveTo(terminalCellPosition(tester, 1, 1));
+    await tester.pump();
+    await gesture.up(timeStamp: kLongPressTimeout);
+    await tester.pumpAndSettle();
+    final terminal = mountedTerminal(tester);
+    final view = tester.widget<xterm.TerminalView>(
+      find.byType(xterm.TerminalView),
+    );
+    expect(view.controller!.selection, isNotNull);
+
+    // tmux 원시 스트림에서 clear가 보낸 지우기 시퀀스와 그 뒤 셸 프롬프트가 따로 도착한다.
+    client.openedPanes[_pane.id]!.add('\x1b[H\x1b[2J\x1b[3J');
+    client.openedPanes[_pane.id]!.add(r'$ ');
+    await tester.pumpAndSettle();
+    expect(terminal.buffer.getText(), contains('alpha'));
+
+    view.controller!.clearSelection();
+    await tester.pumpAndSettle();
+    expect(terminal.buffer.getText(), isNot(contains('alpha')));
+    expect(terminal.buffer.getText(), contains(r'$ '));
+    expect(terminal.buffer.cursorX, 2);
+  });
+
   group('OSC 52', () {
     final clipboardWrites = <String>[];
     final clipboardReads = <MethodCall>[];
@@ -602,7 +718,7 @@ void main() {
     );
   }
 
-  testWidgets('툴바 없이 터치로 여러 줄을 선택해도 한글·영문·줄바꿈과 격자를 유지한다', (tester) async {
+  testWidgets('터치로 여러 줄을 선택해 복사하면 한글·영문·줄바꿈과 격자를 유지한다', (tester) async {
     final client = FakeDesktopClient();
     await pumpPane(
       tester,
@@ -630,6 +746,30 @@ void main() {
     expect(terminal.buffer.getText(controller!.selection), 'alpha 한글\nbeta');
     expect((cols: terminal.viewWidth, rows: terminal.viewHeight), originalSize);
     expect(client.writtenInput[_pane.id], isNull);
+    final copiedText = <String>[];
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (call) async {
+        if (call.method == 'Clipboard.setData') {
+          copiedText.add((call.arguments as Map)['text'] as String);
+        }
+        return null;
+      },
+    );
+    addTearDown(() {
+      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        null,
+      );
+    });
+    await tester.tap(find.widgetWithText(TextButton, '복사'));
+    await tester.pumpAndSettle();
+    expect(copiedText, ['alpha 한글\nbeta']);
+    expect(controller.selection, isNull);
+    expect(find.text('복사'), findsNothing);
+    expect((cols: terminal.viewWidth, rows: terminal.viewHeight), originalSize);
+    expect(client.writtenInput[_pane.id], isNull);
+    expect(tester.testTextInput.isVisible, isFalse);
   });
 
   testWidgets('빈 곳을 길게 눌러 선택이 없어도 키보드를 열지 않는다', (tester) async {

@@ -14,16 +14,11 @@ interface PaneLayoutState {
   projectConfigs: Map<string, PaneLayoutConfig | null>;
 }
 
-function createEmptyPaneLayoutState(): PaneLayoutState {
-  return {
-    globalConfig: null,
-    projects: [],
-    projectConfigs: new Map(),
-  };
-}
-
 export default function PaneLayoutRoute() {
   const t = useTranslations("paneLayout");
+  const tc = useTranslations("common");
+  const [retrySignal, setRetrySignal] = useState(0);
+  const [loadFailed, setLoadFailed] = useState(false);
   const refreshSignal = useRefreshSignal(["all", "pane-layout"]);
   const [state, setState] = useState<PaneLayoutState | null>(null);
 
@@ -33,11 +28,12 @@ export default function PaneLayoutRoute() {
 
   useEffect(() => {
     let cancelled = false;
+    setLoadFailed(false);
     let loadingTimeout: number | null = window.setTimeout(() => {
       loadingTimeout = null;
       if (!cancelled) {
         logDesktopInitialLoadTimeout("pane-layout");
-        setState((current) => current ?? createEmptyPaneLayoutState());
+        setLoadFailed(true);
       }
     }, INITIAL_DESKTOP_LOAD_TIMEOUT_MS);
 
@@ -58,20 +54,28 @@ export default function PaneLayoutRoute() {
         await Promise.all(projects.map(async (project) => {
           try {
             projectConfigs.set(project.id, await getProjectPaneLayout(project.id));
-          } catch {
-            projectConfigs.set(project.id, null);
+          } catch (error) {
+            console.error("Failed to load project pane layout:", error);
           }
         }));
 
         clearLoadingTimeout();
         if (!cancelled) {
-          setState({ globalConfig, projects, projectConfigs });
+          setLoadFailed(false);
+          setState((current) => {
+            for (const project of projects) {
+              if (!projectConfigs.has(project.id) && current?.projectConfigs.has(project.id)) {
+                projectConfigs.set(project.id, current.projectConfigs.get(project.id) ?? null);
+              }
+            }
+            return { globalConfig, projects, projectConfigs };
+          });
         }
       } catch (error) {
         clearLoadingTimeout();
         console.error("Failed to load pane layout route data:", error);
         if (!cancelled) {
-          setState((current) => current ?? createEmptyPaneLayoutState());
+          setLoadFailed(true);
         }
       }
     })();
@@ -80,10 +84,21 @@ export default function PaneLayoutRoute() {
       cancelled = true;
       clearLoadingTimeout();
     };
-  }, [refreshSignal]);
+  }, [refreshSignal, retrySignal]);
+
+  const retryButton = (
+    <button type="button" onClick={() => setRetrySignal((current) => current + 1)}
+      className="text-sm text-brand-primary hover:underline">
+      {t("retry")}
+    </button>
+  );
 
   if (!state) {
-    return <div className="min-h-screen flex items-center justify-center bg-bg-page text-text-muted">Loading...</div>;
+    return (
+      <div className="min-h-screen flex flex-col gap-3 items-center justify-center bg-bg-page text-text-muted">
+        {loadFailed ? <><p role="alert">{t("loadError")}</p>{retryButton}</> : tc("loading")}
+      </div>
+    );
   }
 
   return (
@@ -112,20 +127,25 @@ export default function PaneLayoutRoute() {
           ) : (
             <div className="space-y-4">
               {state.projects.map((project) => {
-                const config = state.projectConfigs.get(project.id) ?? null;
+                const config = state.projectConfigs.get(project.id);
+                const hasLoadedConfig = state.projectConfigs.has(project.id);
                 return (
                   <details key={project.id} className="bg-bg-surface rounded-xl border border-border-default">
                     <summary className="flex items-center justify-between p-4 cursor-pointer select-none">
                       <div className="flex items-center gap-2">
                         <span className="text-sm font-medium text-text-primary">{project.name}</span>
                         <span className={`text-xs px-2 py-0.5 rounded-full ${config ? "bg-brand-primary/10 text-brand-primary" : "bg-bg-page text-text-muted"}`}>
-                          {config ? t("hasOverride") : t("usingGlobal")}
+                          {hasLoadedConfig ? (config ? t("hasOverride") : t("usingGlobal")) : t("loadError")}
                         </span>
                       </div>
                       <span className="text-xs text-text-muted">{t("configure")}</span>
                     </summary>
                     <div className="p-4 pt-0 border-t border-border-default">
-                      <PaneLayoutEditor projectId={project.id} initialConfig={config} />
+                      {hasLoadedConfig ? (
+                        <PaneLayoutEditor projectId={project.id} initialConfig={config} />
+                      ) : (
+                        <div className="py-3 space-y-2"><p role="alert" className="text-sm text-status-error">{t("loadError")}</p>{retryButton}</div>
+                      )}
                     </div>
                   </details>
                 );

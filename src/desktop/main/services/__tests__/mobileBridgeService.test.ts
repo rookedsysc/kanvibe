@@ -1372,7 +1372,7 @@ describe("첫 화면 스냅샷", () => {
       }
       if (command.includes("capture-pane")) {
         /** capture-pane은 pane 높이만큼 줄을 내보내고, 이어서 커서 위치 줄이 온다. execGit은 끝 공백을 다듬는다 */
-        return "$ ls\nREADME.md\n\n2 2";
+        return "$ ls\nREADME.md\n\n2 2 3 0 0 0 0 0 0";
       }
       return "";
     });
@@ -1381,7 +1381,25 @@ describe("첫 화면 스냅샷", () => {
 
     const unsubscribe = await subscribeToPane("task-screen", "%19", (chunk) => receivedChunks.push(chunk), () => {});
 
-    expect(receivedChunks[0]).toBe("\x1b[H\x1b[2J\x1b[3J$ ls\r\nREADME.md\r\n\x1b[3;3H");
+    expect(receivedChunks[0]).toBe("\x1b[?1049l\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1005l\x1b[?1006l\x1b[H\x1b[2J\x1b[3J$ ls\r\nREADME.md\r\n\x1b[3G");
+    unsubscribe();
+  });
+
+  it("접속 전에 켜진 tmux 대체 화면과 SGR 마우스 모드를 첫 프레임에서 복원한다", async () => {
+    findOneByMock.mockResolvedValue(TMUX_TASK);
+    execGitMock.mockImplementation(async (command) => {
+      if (command.includes("list-panes")) return MIRROR_PANE_LINE;
+      if (command.includes("capture-pane")) return "ready\n2 0 1 1 1 0 0 1 0";
+      return "";
+    });
+    stubPaneProcess();
+    const receivedChunks: string[] = [];
+    const unsubscribe = await subscribeToPane("task-screen-mouse", "%19", (chunk) => receivedChunks.push(chunk), () => {});
+    expect(receivedChunks[0]).toContain("\x1b[?1049h");
+    expect(receivedChunks[0]).toContain("\x1b[?1000h");
+    expect(receivedChunks[0]).toContain("\x1b[?1006h");
+    expect(receivedChunks[0]).toContain("ready\x1b[3G");
+    expect(receivedChunks[0]).not.toContain("2 0 1 1 1 0 0 1 0");
     unsubscribe();
   });
 

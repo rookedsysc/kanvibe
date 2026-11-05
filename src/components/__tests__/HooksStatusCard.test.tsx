@@ -69,6 +69,7 @@ const messages = {
     geminiHooksInstallSuccess: "Gemini CLI hooks installed",
     codexHooksInstallSuccess: "Codex CLI hooks installed",
     openCodeHooksInstallSuccess: "OpenCode hooks installed",
+    hooksVerificationFailed: "Verification failed",
     hooksInstallIncomplete: "Hooks were installed, but verification is incomplete.",
     hooksInstallFailed: "Hooks installation failed",
     hooksRemoteNotSupported: "Remote projects are not supported",
@@ -170,6 +171,32 @@ describe("HooksStatusCard", () => {
     });
 
     expect(screen.queryByText("Remote projects are not supported")).toBeNull();
+  });
+
+  it("reuses the parent OpenCode status without a mount request", async () => {
+    renderCard({
+      taskId: "task-1",
+      initialClaudeStatus: null,
+      initialGeminiStatus: null,
+      initialCodexStatus: null,
+      initialOpenCodeStatus: { installed: true, hasPlugin: true },
+      isRemote: false,
+    });
+    await waitFor(() => expect(screen.getByRole("button", { name: "Reinstall OpenCode" })).toBeTruthy());
+    expect(mockGetTaskOpenCodeHooksStatus).not.toHaveBeenCalled();
+  });
+
+  it("distinguishes failed OpenCode verification from missing hooks", () => {
+    renderCard({
+      taskId: "task-1",
+      initialClaudeStatus: null,
+      initialGeminiStatus: null,
+      initialCodexStatus: null,
+      initialOpenCodeStatus: { installed: false, hasPlugin: true, pluginRegistrationError: "timeout" },
+      isRemote: false,
+    });
+    expect(screen.getByText("Verification failed")).toBeTruthy();
+    expect(mockGetTaskOpenCodeHooksStatus).not.toHaveBeenCalled();
   });
 
   it("installs Claude hooks from the inline action and updates local status", async () => {

@@ -29,107 +29,128 @@ export default function AiAccountLoginTerminal({
 
   onExitRef.current = onExit;
 
-  const connect = useCallback(async () => {
+  const connect = useCallback(async (signal: AbortSignal, registerCleanup: (cleanup: () => void) => void) => {
     if (!containerRef.current) {
       return undefined;
     }
 
+    const container = containerRef.current;
     const [{ Terminal: XTerm }, { FitAddon }] = await Promise.all([
       import("@xterm/xterm"),
       import("@xterm/addon-fit"),
     ]);
 
-    const terminal = new XTerm(createTerminalOptions(LOGIN_TERMINAL_FONT_FAMILY));
-    const fitAddon = new FitAddon();
-    terminal.loadAddon(fitAddon);
-    terminal.open(containerRef.current);
-    const osc52ClipboardHandler = installOsc52ClipboardHandler(terminal);
-
-    const isThisSession = (event: { accountRoot: string }) => event.accountRoot === accountRoot;
-
-    const unsubscribeData = window.kanvibeDesktop?.onAiAccountLoginData?.((event: {
-      accountRoot: string;
-      data: string;
-    }) => {
-      if (isThisSession(event)) {
-        terminal.write(event.data);
-      }
-    });
-
-    const unsubscribeExit = window.kanvibeDesktop?.onAiAccountLoginExit?.((event: {
-      accountRoot: string;
-      exitCode: number;
-    }) => {
-      if (isThisSession(event)) {
-        onExitRef.current(event.exitCode);
-      }
-    });
-
-    await new Promise<void>((resolve) => {
-      requestAnimationFrame(() => {
-        fitAddon.fit();
-        resolve();
-      });
-    });
-
-    const loginReady = await window.kanvibeDesktop?.openAiAccountLogin?.(
-      provider,
-      accountRoot,
-      terminal.cols,
-      terminal.rows,
-    );
-
-    if (!loginReady?.ok) {
-      terminal.writeln(`\r\n\x1b[31m${loginReady?.error || "로그인 명령을 실행하지 못했습니다."}\x1b[0m`);
-      return () => {
-        osc52ClipboardHandler.dispose();
-        unsubscribeData?.();
-        unsubscribeExit?.();
-        terminal.dispose();
-      };
+    if (signal.aborted) {
+      return;
     }
 
-    terminal.onData((data) => {
-      window.kanvibeDesktop?.writeAiAccountLogin?.(accountRoot, data);
-    });
-
-    terminal.focus();
-
-    const resizeObserver = new ResizeObserver(() => {
-      fitAddon.fit();
-      window.kanvibeDesktop?.resizeAiAccountLogin?.(accountRoot, terminal.cols, terminal.rows);
-    });
-    resizeObserver.observe(containerRef.current);
-
-    return () => {
-      resizeObserver.disconnect();
-      osc52ClipboardHandler.dispose();
-      unsubscribeData?.();
-      unsubscribeExit?.();
-      window.kanvibeDesktop?.closeAiAccountLogin?.(accountRoot);
-      terminal.dispose();
+    const terminal = new XTerm(createTerminalOptions(LOGIN_TERMINAL_FONT_FAMILY));
+    let disposed = false;
+    const cleanups: (() => void)[] = [() => terminal.dispose()];
+    const dispose = () => {
+      if (disposed) {
+        return;
+      }
+      disposed = true;
+      for (const cleanup of cleanups.reverse()) {
+        cleanup();
+      }
     };
+    registerCleanup(dispose);
+    try {
+      const fitAddon = new FitAddon();
+      terminal.loadAddon(fitAddon);
+      terminal.open(container);
+      const osc52ClipboardHandler = installOsc52ClipboardHandler(terminal);
+
+      cleanups.push(() => osc52ClipboardHandler.dispose());
+
+      const isThisSession = (event: { accountRoot: string }) => event.accountRoot === accountRoot;
+
+      const unsubscribeData = window.kanvibeDesktop?.onAiAccountLoginData?.((event: {
+        accountRoot: string;
+        data: string;
+      }) => {
+        if (isThisSession(event)) {
+          terminal.write(event.data);
+        }
+      });
+
+      cleanups.push(() => unsubscribeData?.());
+
+      const unsubscribeExit = window.kanvibeDesktop?.onAiAccountLoginExit?.((event: {
+        accountRoot: string;
+        exitCode: number;
+      }) => {
+        if (isThisSession(event)) {
+          onExitRef.current(event.exitCode);
+        }
+      });
+
+      cleanups.push(() => unsubscribeExit?.());
+
+      await new Promise<void>((resolve, reject) => {
+        requestAnimationFrame(() => {
+          try {
+            if (!signal.aborted) {
+              fitAddon.fit();
+            }
+            resolve();
+          } catch (error) {
+            reject(error);
+          }
+        });
+      });
+
+      if (signal.aborted) {
+        return;
+      }
+      cleanups.push(() => window.kanvibeDesktop?.closeAiAccountLogin?.(accountRoot));
+      const loginReady = await window.kanvibeDesktop?.openAiAccountLogin?.(
+        provider,
+        accountRoot,
+        terminal.cols,
+        terminal.rows,
+      );
+
+      if (signal.aborted) {
+        return;
+      }
+      if (!loginReady?.ok) {
+        terminal.writeln(`\r\n\x1b[31m${loginReady?.error || "로그인 명령을 실행하지 못했습니다."}\x1b[0m`);
+        return;
+      }
+
+      terminal.onData((data) => {
+        window.kanvibeDesktop?.writeAiAccountLogin?.(accountRoot, data);
+      });
+
+      terminal.focus();
+
+      const resizeObserver = new ResizeObserver(() => {
+        fitAddon.fit();
+        window.kanvibeDesktop?.resizeAiAccountLogin?.(accountRoot, terminal.cols, terminal.rows);
+      });
+      cleanups.push(() => resizeObserver.disconnect());
+      resizeObserver.observe(container);
+
+    } catch (error) {
+      dispose();
+      throw error;
+    }
   }, [accountRoot, provider]);
 
   useEffect(() => {
-    let isDisposed = false;
+    const controller = new AbortController();
     let cleanup: (() => void) | undefined;
 
-    void connect()
-      .then((dispose) => {
-        if (isDisposed) {
-          dispose?.();
-          return;
-        }
-
-        cleanup = dispose;
-      })
+    void connect(controller.signal, (dispose) => { cleanup = dispose; })
       .catch((error) => {
         console.error("AI 계정 로그인 터미널 초기화 실패:", error);
       });
 
     return () => {
-      isDisposed = true;
+      controller.abort();
       cleanup?.();
     };
   }, [connect]);

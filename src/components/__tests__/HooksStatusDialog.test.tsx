@@ -58,6 +58,14 @@ describe("HooksStatusDialog", () => {
     vi.restoreAllMocks();
   });
 
+  it("shows verification failure when the OpenCode CLI fails", async () => {
+    const status = { installed: false, hasPlugin: true, pluginRegistrationError: "timeout" };
+    mockGetTaskOpenCodeHooksStatus.mockResolvedValue(status);
+    render(<HooksStatusDialog isOpen onClose={vi.fn()} taskId="task-1"
+      claudeStatus={null} geminiStatus={null} codexStatus={null} openCodeStatus={status} isRemote={false} />);
+    await waitFor(() => expect(screen.getAllByText("hooksVerificationFailed")).toHaveLength(2));
+  });
+
   const renderDialog = (props: ComponentProps<typeof HooksStatusDialog>) => {
     return render(<HooksStatusDialog {...props} />);
   };

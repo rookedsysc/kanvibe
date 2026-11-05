@@ -245,11 +245,11 @@ function getCodexHooksPath(repoPath: string, sshHost?: string | null): string {
 }
 
 function isSectionHeader(line: string): boolean {
-  return /^\s*(?:\[[^\[\]]+\]|\[\[[^\[\]]+\]\])\s*$/.test(line);
+  return /^\s*(?:\[[^\[\]]+\]|\[\[[^\[\]]+\]\])\s*(?:#.*)?$/.test(line);
 }
 
 function findFeaturesSection(lines: string[]) {
-  const start = lines.findIndex((line) => /^\s*\[features\]\s*$/.test(line));
+  const start = lines.findIndex((line) => /^\s*\[features\]\s*(?:#.*)?$/.test(line));
   if (start === -1) {
     return null;
   }

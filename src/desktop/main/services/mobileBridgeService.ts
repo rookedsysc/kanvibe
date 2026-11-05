@@ -31,7 +31,7 @@ import {
   buildScreenRedraw,
   buildTmuxCancelPipePaneCommand,
   buildTmuxCapturePaneCommand,
-  buildTmuxCursorPositionCommand,
+  buildTmuxPaneStateCommand,
   buildTmuxListMirrorPanesCommand,
   buildTmuxPaneStreamCommand,
   buildTmuxReadPaneGeometryCommand,
@@ -42,7 +42,7 @@ import {
   buildZellijDumpPaneCommand,
   buildZellijListMirrorPanesCommand,
   buildZellijWritePaneCommand,
-  parseTmuxCursorPosition,
+  parseTmuxPaneState,
   parseTmuxMirrorPaneList,
   parseTmuxViewportState,
   parseZellijMirrorPaneList,
@@ -1135,13 +1135,13 @@ async function readPaneSnapshot(target: MirrorSessionTarget, paneId: string): Pr
 
   /** 화면과 커서를 한 번에 읽는다. 원격이면 왕복이 하나 줄고, 둘 사이에 화면이 바뀌는 틈도 좁아진다 */
   const output = await runMirrorCommand(
-    `${buildTmuxCapturePaneCommand(paneId)} && ${buildTmuxCursorPositionCommand(paneId)}`,
+    `${buildTmuxCapturePaneCommand(paneId)} && ${buildTmuxPaneStateCommand(paneId)}`,
     target.sshHost,
   );
   const cursorLineStart = output.lastIndexOf("\n");
-  const cursor = cursorLineStart === -1 ? null : parseTmuxCursorPosition(output.slice(cursorLineStart + 1));
-  const screen = cursor ? output.slice(0, cursorLineStart) : output;
-  return buildScreenRedraw(screen, cursor);
+  const state = cursorLineStart === -1 ? null : parseTmuxPaneState(output.slice(cursorLineStart + 1));
+  const screen = state ? output.slice(0, cursorLineStart) : output;
+  return `${state?.restoreSequences ?? ""}${buildScreenRedraw(screen, state?.cursor ?? null)}`;
 }
 
 async function startPaneSubscription(

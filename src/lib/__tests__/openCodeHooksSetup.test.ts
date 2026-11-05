@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { mkdtemp, readFile, rm, mkdir, writeFile } from "fs/promises";
 import { join } from "path";
 import { tmpdir } from "os";
+import { invalidateOpenCodePluginRegistration } from "../openCodePluginRegistry";
 import { setupOpenCodeHooks, getOpenCodeHooksStatus } from "../openCodeHooksSetup";
 
 const { mockGetOpenCodeRegisteredKanvibePluginUrls } = vi.hoisted(() => ({
@@ -10,6 +11,7 @@ const { mockGetOpenCodeRegisteredKanvibePluginUrls } = vi.hoisted(() => ({
 
 vi.mock("@/lib/openCodePluginRegistry", () => ({
   getOpenCodeRegisteredKanvibePluginUrls: mockGetOpenCodeRegisteredKanvibePluginUrls,
+  invalidateOpenCodePluginRegistration: vi.fn(),
 }));
 
 describe("openCodeHooksSetup", () => {
@@ -191,6 +193,29 @@ export const KanvibePlugin: Plugin = async ({ $ }) => {
       expect(status.boundTaskId).toBe("task-2");
       expect(status.hasTaskIdBinding).toBe(true);
     });
+  });
+
+  it("invalidates registration after writing the plugin", async () => {
+    await setupOpenCodeHooks(tempDir, "task-1", "http://localhost:3000");
+    expect(invalidateOpenCodePluginRegistration).toHaveBeenCalledWith(tempDir);
+  });
+
+  it("keeps CLI errors distinct from an unregistered plugin", async () => {
+    mockGetOpenCodeRegisteredKanvibePluginUrls.mockRejectedValueOnce(new Error("OpenCode timeout"));
+    const status = await getOpenCodeHooksStatus(tempDir);
+    expect(status.installed).toBe(false);
+    expect(status.hasRegisteredPlugin).toBeUndefined();
+    expect(status.pluginRegistrationError).toBe("OpenCode timeout");
+  });
+
+  it("preserves global plugin diagnostics even when the local plugin file is missing", async () => {
+    mockGetOpenCodeRegisteredKanvibePluginUrls.mockResolvedValueOnce([
+      "file:///global/kanvibe-plugin.ts", "file:///other/kanvibe-plugin.ts",
+    ]);
+    const status = await getOpenCodeHooksStatus(tempDir);
+    expect(status.hasPlugin).toBe(false);
+    expect(status.hasRegisteredPlugin).toBe(false);
+    expect(status.hasDuplicateKanvibePlugins).toBe(true);
   });
 
   describe("getOpenCodeHooksStatus", () => {
