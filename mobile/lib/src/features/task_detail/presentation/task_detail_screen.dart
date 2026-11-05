@@ -8,6 +8,7 @@ import '../../../common/constants/app_theme.dart';
 import '../../../common/providers.dart';
 import '../../board/domain/board_task.dart';
 import '../../board/domain/task_status.dart';
+import '../../chat_history/presentation/chat_history_screen.dart';
 import '../../notifications/application/mobile_notification_controller.dart';
 import '../../task_create/presentation/create_task_screen.dart';
 import '../domain/mirror_pane.dart';
@@ -173,6 +174,18 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
               onPressed: _isPreparingCreateTask ? null : _openCreateTask,
               icon: const Icon(Icons.add_task),
               tooltip: _isPreparingCreateTask ? '불러오는 중…' : '새 태스크',
+            ),
+          ),
+          Semantics(
+            identifier: 'chat-history',
+            child: IconButton(
+              tooltip: '채팅 History',
+              icon: const Icon(Icons.chat_bubble_outline),
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => ChatHistoryScreen(taskId: _task.id),
+                ),
+              ),
             ),
           ),
           IconButton(

@@ -44,6 +44,9 @@ function createBridge(overrides = {}) {
     unpairMobileDeviceByToken: vi.fn(async () => true),
     getMobileBoard: vi.fn(async () => ({ columns: [] })),
     getMobileTask: vi.fn(async () => ({ id: "task-1", title: "알림 태스크", projectName: "kanvibe" })),
+    isMobileAiSessionProvider: (provider) => ["codex", "hermes"].includes(provider),
+    getMobileAiSessions: vi.fn(async () => ({ sessions: [{ id: "session-1", provider: "hermes" }], sources: [], nextCursor: null })),
+    getMobileAiSessionDetail: vi.fn(async () => ({ sessionId: "session-1", provider: "hermes", messages: [{ role: "assistant", fullText: "기록 본문" }], nextCursor: null })),
     getMobileNotifications: vi.fn(async () => [INBOX_NOTIFICATION]),
     markMobileNotificationRead: vi.fn(async () => ({ ...INBOX_NOTIFICATION, isRead: true })),
     markAllMobileNotificationsRead: vi.fn(async () => {}),
@@ -1097,4 +1100,82 @@ describe("모바일 pane 단축키 API", () => {
     expect(response.status).toBe(500);
     expect(response.body).toEqual({ success: false, error: "서버 오류" });
   });
+});
+
+describe("모바일 AI History", () => {
+  it("목록과 상세 모두 인증을 요구한다", async () => {
+    for (const path of ["/api/mobile/tasks/task-1/ai-sessions", "/api/mobile/tasks/task-1/ai-sessions/hermes/session-1"]) {
+      expect((await request(path)).status).toBe(401);
+    }
+    expect(bridge.getMobileAiSessions).not.toHaveBeenCalled();
+  });
+
+  it("목록의 검색과 페이지 값을 서비스에 전달한다", async () => {
+    const result = await request("/api/mobile/tasks/task-1/ai-sessions?query=fix&cursor=20&limit=10", { headers: { Authorization: "Bearer good" } });
+    expect(result.status).toBe(200);
+    expect(result.body.history.sessions[0]).toEqual({ id: "session-1", provider: "hermes" });
+    expect(bridge.getMobileAiSessions).toHaveBeenCalledWith("task-1", { query: "fix", cursor: "20", limit: 10 });
+  });
+
+  it("상세는 역할 필터를 전달하고 서버의 대화를 돌려준다", async () => {
+    const result = await request("/api/mobile/tasks/task-1/ai-sessions/hermes/session-1?roles=user,assistant", { headers: { Authorization: "Bearer good" } });
+    expect(result.status).toBe(200);
+    expect(result.body.detail.messages[0].fullText).toBe("기록 본문");
+    expect(bridge.getMobileAiSessionDetail).toHaveBeenCalledWith("task-1", "hermes", "session-1", { query: undefined, cursor: undefined, limit: 20, roles: ["user", "assistant"] });
+  });
+
+  it.each(["limit=0", "limit=101", "limit=2x", "cursor=-1", "cursor=garbage", "roles=invalid", "sourceRef=/private/file"])("잘못된 조회 값 %s를 거절한다", async (query) => {
+    const result = await request(`/api/mobile/tasks/task-1/ai-sessions/hermes/session-1?${query}`, { headers: { Authorization: "Bearer good" } });
+    expect(result.status).toBe(400);
+    expect(bridge.getMobileAiSessionDetail).not.toHaveBeenCalled();
+  });
+
+  it("없는 Agent는 400, 없는 태스크나 세션은 404다", async () => {
+    const headers = { Authorization: "Bearer good" };
+    expect((await request("/api/mobile/tasks/task-1/ai-sessions/unknown/s", { headers })).status).toBe(400);
+    bridge.getMobileTask.mockResolvedValueOnce(null);
+    expect((await request("/api/mobile/tasks/deleted/ai-sessions", { headers })).status).toBe(404);
+    bridge.getMobileAiSessionDetail.mockResolvedValueOnce(null);
+    expect((await request("/api/mobile/tasks/task-1/ai-sessions/hermes/deleted", { headers })).status).toBe(404);
+  });
+});
+
+it("실제 Codex fixture 리더의 목록과 상세가 HTTP 계약으로 이어진다", async () => {
+  const { mkdtemp, mkdir, writeFile, rm } = await import("node:fs/promises");
+  const { tmpdir } = await import("node:os");
+  const path = await import("node:path");
+  const home = await mkdtemp(path.join(tmpdir(), "mobile-chat-contract-"));
+  vi.stubEnv("HOME", home);
+  try {
+    const { readCodexSessions, readCodexSessionDetail } = await import("../src/lib/aiSessions/readCodexSessions.ts");
+    const directory = path.join(home, ".codex", "sessions");
+    await mkdir(directory, { recursive: true });
+    const sourceRef = path.join(directory, "fixture.jsonl");
+    const context = { worktreePath: "/qa/chat/repo", repoPath: "/qa/chat/repo" };
+    await writeFile(sourceRef, [
+      { type: "session_meta", payload: { id: "wire-session", cwd: context.worktreePath } },
+      { type: "response_item", timestamp: "2026-11-02T01:00:00Z", payload: { type: "message", role: "user", content: [{ type: "input_text", text: "모바일 계약 질문" }] } },
+      { type: "response_item", timestamp: "2026-11-02T01:00:01Z", payload: { type: "message", role: "assistant", content: [{ type: "output_text", text: "실제 fixture 응답" }] } },
+    ].map((entry) => JSON.stringify(entry)).join("\n") + "\n");
+    bridge.getMobileAiSessions.mockImplementation(async (_taskId, options) => {
+      const result = await readCodexSessions({ ...context, ...options });
+      return { sessions: result.sessions.map(({ sourceRef: _, ...entry }) => entry), sources: [{ provider: result.provider, available: result.available }], nextCursor: null };
+    });
+    bridge.getMobileAiSessionDetail.mockImplementation(async (_taskId, provider, sessionId, options) => {
+      const detail = await readCodexSessionDetail({ ...context, roles: options.roles }, sessionId, sourceRef, options.cursor, options.limit);
+      const { sourceRef: _, ...safeDetail } = detail;
+      return safeDetail;
+    });
+    const headers = { Authorization: "Bearer good" };
+    const list = await request("/api/mobile/tasks/task-1/ai-sessions", { headers });
+    expect(list.status).toBe(200);
+    expect(list.body.history.sessions[0]).toMatchObject({ id: "wire-session", provider: "codex", title: "모바일 계약 질문" });
+    expect(list.body.history.sessions[0]).not.toHaveProperty("sourceRef");
+    const detail = await request("/api/mobile/tasks/task-1/ai-sessions/codex/wire-session?roles=assistant", { headers });
+    expect(detail.status).toBe(200);
+    expect(detail.body.detail.messages.map((entry) => entry.fullText)).toEqual(["실제 fixture 응답"]);
+  } finally {
+    vi.unstubAllEnvs();
+    await rm(home, { recursive: true, force: true });
+  }
 });

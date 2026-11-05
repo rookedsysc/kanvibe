@@ -14,6 +14,8 @@ const connectTerminalSessionMock = vi.fn();
 const updateTaskStatusMock = vi.fn();
 const getProjectBranchesMock = vi.fn();
 const getTaskByIdMock = vi.fn();
+const getTaskAiSessionsMock = vi.fn();
+const getTaskAiSessionDetailMock = vi.fn();
 const attachTaskTerminalMock = vi.fn();
 let defaultSessionTypeSetting = SessionType.TMUX;
 
@@ -84,6 +86,8 @@ vi.mock("@/desktop/main/services/kanbanService", () => ({
 }));
 vi.mock("@/desktop/main/services/projectService", () => ({
   getAllProjects: async () => [],
+  getTaskAiSessions: (...args: unknown[]) => getTaskAiSessionsMock(...args),
+  getTaskAiSessionDetail: (...args: unknown[]) => getTaskAiSessionDetailMock(...args),
   getProjectBranches: (projectId: string) => getProjectBranchesMock(projectId),
 }));
 
@@ -101,6 +105,8 @@ const {
   createMobileTask,
   createMobileTerminalTab,
   getMobileBoard,
+  getMobileAiSessions,
+  getMobileAiSessionDetail,
   getMobileTask,
   getMobileNotifications,
   markMobileNotificationRead,
@@ -1490,4 +1496,61 @@ describe("모바일 pane 단축키", () => {
       "zellij --session 'remote-session' action toggle-pane-embed-or-floating --pane-id 'terminal_3'", sshHost,
     ]);
   });
+});
+
+describe("모바일 History 신뢰 경로 캐시", () => {
+  it("목록에서 발견한 경로를 상세와 이전 페이지에 재사용하고 네트워크 응답에서는 제거한다", async () => {
+    getTaskAiSessionsMock.mockResolvedValue({ sessions: [{ id: "s1", provider: "codex", sourceRef: "/trusted/rollout.jsonl" }], sources: [], nextCursor: null });
+    getTaskAiSessionDetailMock.mockResolvedValue({ sessionId: "s1", provider: "codex", sourceRef: "/trusted/rollout.jsonl", messages: [] });
+    const before = getTaskAiSessionsMock.mock.calls.length;
+    const list = await getMobileAiSessions("history-cache-task", { limit: 20 });
+    expect(list.sessions[0]).not.toHaveProperty("sourceRef");
+    const first = await getMobileAiSessionDetail("history-cache-task", "codex", "s1", { limit: 20 });
+    await getMobileAiSessionDetail("history-cache-task", "codex", "s1", { limit: 20, cursor: "20" });
+    expect(first).not.toHaveProperty("sourceRef");
+    expect(getTaskAiSessionsMock.mock.calls.length - before).toBe(1);
+    expect(getTaskAiSessionDetailMock).toHaveBeenLastCalledWith("history-cache-task", "codex", "s1", "/trusted/rollout.jsonl", "20", 20, undefined, undefined);
+  });
+
+  it("캐시된 파일이 더 이상 세션과 일치하지 않으면 한 번 새 경로를 찾아 검증한다", async () => {
+    getTaskAiSessionsMock.mockResolvedValueOnce({ sessions: [{ id: "s2", provider: "codex", sourceRef: "/old/file" }], sources: [] });
+    await getMobileAiSessions("history-stale-task", { limit: 20 });
+    getTaskAiSessionsMock.mockResolvedValueOnce({ sessions: [{ id: "s2", provider: "codex", sourceRef: "/new/file" }], sources: [] });
+    getTaskAiSessionDetailMock.mockResolvedValueOnce(null).mockResolvedValueOnce({ sessionId: "s2", provider: "codex", messages: [] });
+    expect(await getMobileAiSessionDetail("history-stale-task", "codex", "s2", { limit: 20 })).toMatchObject({ sessionId: "s2" });
+    expect(getTaskAiSessionDetailMock).toHaveBeenLastCalledWith("history-stale-task", "codex", "s2", "/new/file", undefined, 20, undefined, undefined);
+  });
+
+  it("다른 태스크나 Agent의 같은 session id는 캐시를 공유하지 않는다", async () => {
+    getTaskAiSessionsMock.mockResolvedValueOnce({ sessions: [{ id: "same", provider: "codex", sourceRef: "/task-a/file" }], sources: [] });
+    await getMobileAiSessions("history-cache-a", { limit: 20 });
+    getTaskAiSessionsMock.mockResolvedValueOnce({ sessions: [], sources: [] });
+    const before = getTaskAiSessionDetailMock.mock.calls.length;
+    expect(await getMobileAiSessionDetail("history-cache-b", "codex", "same", { limit: 20 })).toBeNull();
+    expect(getTaskAiSessionDetailMock.mock.calls.length).toBe(before);
+  });
+});
+
+it("세션 수가 캐시 상한보다 많아도 선택한 세션의 상세를 읽는다", async () => {
+  getTaskAiSessionsMock.mockResolvedValueOnce({ sessions: Array.from({ length: 600 }, (_, index) => ({ id: `many-${index}`, provider: "codex", sourceRef: `/many/${index}` })), sources: [] });
+  getTaskAiSessionDetailMock.mockResolvedValueOnce({ sessionId: "many-0", provider: "codex", messages: [] });
+  expect(await getMobileAiSessionDetail("history-many-task", "codex", "many-0", { limit: 20 })).toMatchObject({ sessionId: "many-0" });
+  expect(getTaskAiSessionDetailMock).toHaveBeenLastCalledWith("history-many-task", "codex", "many-0", "/many/0", undefined, 20, undefined, undefined);
+});
+
+it("캐시된 파일이 삭제되어 ENOENT가 나도 새 경로를 한 번 찾아 상세를 읽는다", async () => {
+  getTaskAiSessionsMock.mockResolvedValueOnce({ sessions: [{ id: "gone", provider: "codex", sourceRef: "/deleted/file" }], sources: [] });
+  await getMobileAiSessions("history-deleted-file", { limit: 20 });
+  getTaskAiSessionsMock.mockResolvedValueOnce({ sessions: [{ id: "gone", provider: "codex", sourceRef: "/current/file" }], sources: [] });
+  getTaskAiSessionDetailMock.mockRejectedValueOnce(Object.assign(new Error("missing source"), { code: "ENOENT" })).mockResolvedValueOnce({ sessionId: "gone", messages: [] });
+  expect(await getMobileAiSessionDetail("history-deleted-file", "codex", "gone", { limit: 20 })).toMatchObject({ sessionId: "gone" });
+  expect(getTaskAiSessionDetailMock).toHaveBeenLastCalledWith("history-deleted-file", "codex", "gone", "/current/file", undefined, 20, undefined, undefined);
+});
+
+it("파일 삭제가 아닌 읽기 권한 오류는 상세 조회 실패로 유지한다", async () => {
+  getTaskAiSessionsMock.mockResolvedValueOnce({ sessions: [{ id: "denied", provider: "codex", sourceRef: "/denied/file" }], sources: [] });
+  await getMobileAiSessions("history-permission-file", { limit: 20 });
+  const error = Object.assign(new Error("permission denied"), { code: "EACCES" });
+  getTaskAiSessionDetailMock.mockRejectedValueOnce(error);
+  await expect(getMobileAiSessionDetail("history-permission-file", "codex", "denied", { limit: 20 })).rejects.toBe(error);
 });

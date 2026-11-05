@@ -72,6 +72,11 @@ function setupRemoteFileSystem(files: Record<string, string>) {
         return fileMap.get(catMatch[1]) ?? "";
       }
 
+      const headMatch = command.match(/head -n (\d+) '([^']+)'/);
+      if (headMatch) {
+        return (fileMap.get(headMatch[2]) ?? "").split("\n").slice(0, Number(headMatch[1])).join("\n");
+      }
+
       const tailMatch = command.match(/tail -n (\d+) '([^']+)'/);
       if (tailMatch) {
         return (fileMap.get(tailMatch[2]) ?? "").split("\n").slice(-Number(tailMatch[1]) - 1).join("\n");

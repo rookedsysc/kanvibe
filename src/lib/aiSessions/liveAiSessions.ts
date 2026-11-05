@@ -24,10 +24,10 @@ export const LIVE_SESSION_WINDOWS: LiveAiSessionWindows = {
   recentWindowMs: RECENT_WINDOW_MS,
 };
 
-const LIVE_SESSION_READERS: Record<
+const LIVE_SESSION_READERS: Partial<Record<
   AiSessionProvider,
   (context: AiSessionReaderContext, windows: LiveAiSessionWindows) => Promise<LiveProviderSnapshot[]>
-> = {
+>> = {
   claude: readClaudeLiveSessions,
   codex: readCodexLiveSessions,
   opencode: readOpenCodeLiveSessions,
@@ -123,7 +123,8 @@ async function readSnapshotsSafely(
   context: AiSessionReaderContext,
 ): Promise<LiveProviderSnapshot[]> {
   try {
-    return await LIVE_SESSION_READERS[provider](context, LIVE_SESSION_WINDOWS);
+    const reader = LIVE_SESSION_READERS[provider];
+    return reader ? await reader(context, LIVE_SESSION_WINDOWS) : [];
   } catch {
     return [];
   }
