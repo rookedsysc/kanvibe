@@ -20,6 +20,7 @@ import type {
 const MAX_PREVIEW_MESSAGES = 12;
 const MAX_PREVIEW_TEXT_LENGTH = 240;
 export const REMOTE_SESSION_FILE_PARSE_CONCURRENCY = 3;
+export const LOCAL_SESSION_FILE_PARSE_CONCURRENCY = 8;
 
 export function createReaderResult(provider: AiSessionProvider, partial?: Partial<AiSessionReaderResult>): AiSessionReaderResult {
   return {
@@ -347,7 +348,7 @@ export function paginateItems<T>(items: T[], cursor: string | null | undefined, 
 
 interface FileParseCache<T> {
   mtime: number;
-  result: T;
+  result: Promise<T>;
 }
 
 const FILE_PARSE_CACHE_MAX = 200;
@@ -370,43 +371,41 @@ function evictOldestIfNeeded(cache: Map<string, unknown>): void {
  * @param filePath 대상 파일 경로
  * @param parseFn 캐시 miss 시 실행할 파싱 함수
  */
-export async function getCachedOrParse<T>(filePath: string, parseFn: () => Promise<T>, sshHost?: string | null): Promise<T> {
-  const mtime = await getFileMtimeMs(filePath, sshHost);
-  if (mtime === null) {
-    return parseFn();
-  }
-
-  const cached = fileParseCache.get(filePath) as FileParseCache<T> | undefined;
-  if (cached && cached.mtime === mtime) {
-    return cached.result;
-  }
-
-  const result = await parseFn();
-  evictOldestIfNeeded(fileParseCache);
-  fileParseCache.set(filePath, { mtime, result });
-  return result;
+export function getCachedOrParse<T>(filePath: string, parseFn: () => Promise<T>, sshHost?: string | null): Promise<T> {
+  return readWithFileCache(fileParseCache, filePath, parseFn, sshHost);
 }
 
-/**
- * 파일 앞 N줄 파싱 결과를 mtime 기반으로 캐시한다. getCachedOrParse와 달리 실제 파일 경로만 키로 사용해 stat() 오류를 방지한다.
- * @param filePath 대상 파일 경로 (가상 suffix 없이 실제 경로)
- * @param parseFn 캐시 miss 시 실행할 파싱 함수
- */
-export async function getCachedOrParseHead<T>(filePath: string, parseFn: () => Promise<T>, sshHost?: string | null): Promise<T> {
-  const mtime = await getFileMtimeMs(filePath, sshHost);
-  if (mtime === null) {
-    return parseFn();
-  }
+export function getCachedOrParseHead<T>(filePath: string, parseFn: () => Promise<T>, sshHost?: string | null): Promise<T> {
+  return readWithFileCache(headParseCache, filePath, parseFn, sshHost);
+}
 
-  const cached = headParseCache.get(filePath) as FileParseCache<T> | undefined;
+async function readWithFileCache<T>(
+  cache: Map<string, FileParseCache<unknown>>,
+  filePath: string,
+  parseFn: () => Promise<T>,
+  sshHost?: string | null,
+): Promise<T> {
+  const mtime = await getFileMtimeMs(filePath, sshHost);
+  if (mtime === null) return parseFn();
+
+  const key = JSON.stringify([sshHost ?? null, filePath]);
+  const cached = cache.get(key) as FileParseCache<T> | undefined;
   if (cached && cached.mtime === mtime) {
+    cache.delete(key);
+    cache.set(key, cached);
     return cached.result;
   }
 
-  const result = await parseFn();
-  evictOldestIfNeeded(headParseCache);
-  headParseCache.set(filePath, { mtime, result });
-  return result;
+  const result = Promise.resolve().then(parseFn);
+  const entry = { mtime, result };
+  evictOldestIfNeeded(cache);
+  cache.set(key, entry);
+  try {
+    return await result;
+  } catch (error) {
+    if (cache.get(key) === entry) cache.delete(key);
+    throw error;
+  }
 }
 
 /**
@@ -417,7 +416,7 @@ export async function getCachedOrParseHead<T>(filePath: string, parseFn: () => P
  */
 export function readJsonLinesHead(filePath: string, maxLines: number, sshHost?: string | null): Promise<unknown[]> {
   if (sshHost) {
-    return readTextFile(filePath, sshHost).then((content) => content
+    return execGit(`head -n ${maxLines} ${quoteShellArgument(filePath)}`, sshHost).then((content) => content
       .split("\n")
       .map((line) => line.trim())
       .filter(Boolean)

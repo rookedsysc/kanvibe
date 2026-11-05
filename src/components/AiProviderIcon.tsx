@@ -1,9 +1,10 @@
+import { AI_SESSION_PROVIDER_LABELS, type AiSessionProvider } from "@/lib/aiSessions/providers";
 import claudeIconUrl from "@lobehub/icons-static-svg/icons/claude-color.svg";
 import codexIconUrl from "@lobehub/icons-static-svg/icons/codex-color.svg";
 import geminiIconUrl from "@lobehub/icons-static-svg/icons/gemini-color.svg";
 import openCodeIconUrl from "@lobehub/icons-static-svg/icons/opencode.svg";
 
-export type AiProviderIconName = "claude" | "gemini" | "codex" | "opencode";
+export type AiProviderIconName = AiSessionProvider;
 
 const AI_PROVIDER_ICON_META = {
   claude: {
@@ -22,7 +23,7 @@ const AI_PROVIDER_ICON_META = {
     displayName: "OpenCode",
     src: openCodeIconUrl,
   },
-} as const satisfies Record<AiProviderIconName, { displayName: string; src: string }>;
+} as const satisfies Partial<Record<AiProviderIconName, { displayName: string; src: string }>>;
 
 type AiProviderIconProps = {
   provider: AiProviderIconName;
@@ -39,7 +40,18 @@ export function AiProviderIcon({
   imageClassName,
   size = 18,
 }: AiProviderIconProps) {
-  const meta = AI_PROVIDER_ICON_META[provider];
+  const meta = (AI_PROVIDER_ICON_META as Partial<Record<AiProviderIconName, { displayName: string; src: string }>>)[provider];
+  if (!meta) {
+    const label = AI_SESSION_PROVIDER_LABELS[provider];
+    return (
+      <span aria-hidden="true" className={className} data-icon-name={label}
+        data-icon-source="initials" data-testid={testId} title={label}>
+        <span className="inline-flex items-center justify-center text-[10px] font-bold" style={{ width: size, height: size }}>
+          {label.slice(0, 2).toUpperCase()}
+        </span>
+      </span>
+    );
+  }
 
   return (
     <span

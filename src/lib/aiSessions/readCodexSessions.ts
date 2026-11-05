@@ -7,6 +7,7 @@ import {
   getCachedOrParse,
   mapWithConcurrency,
   makePreviewMessage,
+  LOCAL_SESSION_FILE_PARSE_CONCURRENCY,
   paginateItems,
   pickLiveSessionFiles,
   readJsonLines,
@@ -51,7 +52,7 @@ export async function readCodexSessions(context: AiSessionReaderContext): Promis
   }
 
   const rolloutFiles = await listFilesRecursivelyBySuffix(codexSessionsDirectory, ".jsonl", context.sshHost);
-  const parseConcurrency = context.sshHost ? REMOTE_SESSION_FILE_PARSE_CONCURRENCY : rolloutFiles.length || 1;
+  const parseConcurrency = context.sshHost ? REMOTE_SESSION_FILE_PARSE_CONCURRENCY : LOCAL_SESSION_FILE_PARSE_CONCURRENCY;
 
   const results = await mapWithConcurrency(
     rolloutFiles,
@@ -86,6 +87,9 @@ export async function readCodexSessionDetail(
 }
 
 async function parseCodexSessionSummary(filePath: string, context: AiSessionReaderContext): Promise<AggregatedAiSession | null> {
+  const meta = await readCodexSessionMeta(filePath, context.sshHost);
+  if (!meta || !determineMatchScope(meta.cwd, context)) return null;
+
   const events = await getCachedOrParse(filePath, () => readJsonLines(filePath, context.sshHost), context.sshHost);
 
   let sessionId: string | null = null;
@@ -322,7 +326,7 @@ export async function readCodexLiveSessions(
 
   const metaByFile = await mapWithConcurrency(
     recentFiles,
-    context.sshHost ? REMOTE_SESSION_FILE_PARSE_CONCURRENCY : recentFiles.length || 1,
+    context.sshHost ? REMOTE_SESSION_FILE_PARSE_CONCURRENCY : LOCAL_SESSION_FILE_PARSE_CONCURRENCY,
     async (file) => ({ file, meta: await readCodexSessionMeta(file.filePath, context.sshHost) }),
   );
 
@@ -468,7 +472,7 @@ export async function readCodexAgentCallGraph(
 
   const metaByFile = await mapWithConcurrency(
     recentFiles,
-    context.sshHost ? REMOTE_SESSION_FILE_PARSE_CONCURRENCY : recentFiles.length || 1,
+    context.sshHost ? REMOTE_SESSION_FILE_PARSE_CONCURRENCY : LOCAL_SESSION_FILE_PARSE_CONCURRENCY,
     async (file) => ({ file, meta: await readCodexSessionMeta(file.filePath, context.sshHost) }),
   );
 

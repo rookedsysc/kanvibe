@@ -1,0 +1,176 @@
+appId: ${APP_ID}
+env:
+  TASK_TITLE: "Chat History Fixture"
+  HISTORY_PREFIX: "History QA"
+  DESKTOP_PORT: "19738"
+  DESKTOP_API_FROM_HOST: http://127.0.0.1:19738
+---
+- launchApp:
+    clearState: true
+- setOrientation: PORTRAIT
+- extendedWaitUntil:
+    visible: "데스크탑에 연결"
+    timeout: 90000
+- runScript:
+    file: ../scripts/issue-dev-pairing-code.js
+- tapOn: "데스크탑 주소"
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - inputText: "10.0.2.2"
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - inputText: "127.0.0.1"
+- tapOn: "포트"
+- eraseText: 5
+- inputText: ${DESKTOP_PORT}
+- tapOn: "연결 코드"
+- inputText: ${output.pairingCode}
+- scrollUntilVisible:
+    element: "연결"
+    direction: DOWN
+- tapOn: "연결"
+- extendedWaitUntil:
+    visible: "(?s).*${TASK_TITLE}.*"
+    timeout: 40000
+- tapOn: "(?s).*${TASK_TITLE}.*"
+- tapOn:
+    id: chat-history
+- extendedWaitUntil:
+    visible: "(?s).*${HISTORY_PREFIX} session 24.*"
+    timeout: 30000
+- assertVisible: "(?s).*${HISTORY_PREFIX} Hermes session.*"
+- tapOn: "^codex$"
+- assertVisible: "(?s).*${HISTORY_PREFIX} session 24.*"
+- assertNotVisible: "(?s).*${HISTORY_PREFIX} Hermes session.*"
+- tapOn: "^전체$"
+- assertVisible: "(?s).*${HISTORY_PREFIX} Hermes session.*"
+- takeScreenshot: history-provider-filter
+- takeScreenshot: history-list
+- scrollUntilVisible:
+    element: "대화 더 보기"
+    direction: DOWN
+- tapOn: "대화 더 보기"
+- scrollUntilVisible:
+    element: "(?s).*${HISTORY_PREFIX} session 0.*"
+    direction: DOWN
+- assertVisible: "(?s).*${HISTORY_PREFIX} session 0.*"
+- tapOn: "대화 검색"
+- inputText: "session 24"
+- tapOn: "검색"
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - hideKeyboard
+- extendedWaitUntil:
+    visible: "(?s).*${HISTORY_PREFIX} session 24.*"
+    timeout: 30000
+- assertNotVisible: "(?s).*${HISTORY_PREFIX} session 0.*"
+- tapOn: "(?s).*${HISTORY_PREFIX} session 24.*"
+- extendedWaitUntil:
+    visible: "${HISTORY_PREFIX} message 59"
+    timeout: 30000
+- assertVisible: "${HISTORY_PREFIX} message 58"
+- tapOn:
+    text: "메시지 복사"
+    below:
+      text: "${HISTORY_PREFIX} message 58"
+    above:
+      text: "${HISTORY_PREFIX} message 59"
+- assertVisible: "메시지를 복사했습니다."
+- takeScreenshot: history-copy-feedback
+- runFlow:
+    when:
+      visible:
+        id: android:id/input_method_nav_back
+    commands:
+      - tapOn:
+          id: android:id/input_method_nav_back
+- tapOn: "(Back|뒤로)"
+- extendedWaitUntil:
+    visible: "채팅 History"
+    timeout: 10000
+- tapOn: "대화 검색"
+- eraseText: 10
+- retry:
+    maxRetries: 2
+    commands:
+      - longPressOn: "대화 검색"
+      - tapOn: "(Paste|붙여넣기)"
+- assertVisible: "(?s).*${HISTORY_PREFIX} message 58.*"
+- takeScreenshot: history-native-clipboard-pasted
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - tapOn: "대화 검색"
+- eraseText: 21
+- inputText: "session 24"
+- tapOn: "검색"
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - hideKeyboard
+- extendedWaitUntil:
+    visible: "(?s).*${HISTORY_PREFIX} session 24.*"
+    timeout: 30000
+- tapOn: "(?s).*${HISTORY_PREFIX} session 24.*"
+- extendedWaitUntil:
+    visible: "${HISTORY_PREFIX} message 59"
+    timeout: 30000
+- takeScreenshot: history-messages
+- scrollUntilVisible:
+    element: "이전 메시지 보기"
+    direction: UP
+- tapOn: "이전 메시지 보기"
+- scrollUntilVisible:
+    element: "${HISTORY_PREFIX} message 20"
+    direction: UP
+- scrollUntilVisible:
+    element: "이전 메시지 보기"
+    direction: UP
+- tapOn: "이전 메시지 보기"
+- scrollUntilVisible:
+    element: "${HISTORY_PREFIX} message 1"
+    direction: UP
+- assertVisible: "${HISTORY_PREFIX} message 1"
+- assertNotVisible: "이전 메시지 보기"
+- takeScreenshot: history-older-messages
+- runFlow:
+    when:
+      visible:
+        id: android:id/input_method_nav_back
+    commands:
+      - tapOn:
+          id: android:id/input_method_nav_back
+- tapOn: "(Back|뒤로)"
+- extendedWaitUntil:
+    visible: "채팅 History"
+    timeout: 10000
+- runFlow:
+    when:
+      visible:
+        id: android:id/input_method_nav_back
+    commands:
+      - tapOn:
+          id: android:id/input_method_nav_back
+- tapOn: "(Back|뒤로)"
+- extendedWaitUntil:
+    visible:
+      id: chat-history
+    timeout: 10000
+- tapOn:
+    id: chat-history
+- extendedWaitUntil:
+    visible: "(?s).*${HISTORY_PREFIX} session 24.*"
+    timeout: 30000
+- tapOn: "(?s).*${HISTORY_PREFIX} session 24.*"
+- extendedWaitUntil:
+    visible: "${HISTORY_PREFIX} message 59"
+    timeout: 30000
+- takeScreenshot: history-reentry

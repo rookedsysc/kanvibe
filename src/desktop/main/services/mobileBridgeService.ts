@@ -1,7 +1,9 @@
 import { spawn, type ChildProcess } from "child_process";
 import { getAppSetting, getDefaultSessionType, setAppSetting } from "@/desktop/main/services/appSettingsService";
 import { connectTerminalSession, createTask, getTaskById, getTasksByStatus, updateTaskStatus } from "@/desktop/main/services/kanbanService";
-import { getAllProjects, getProjectBranches } from "@/desktop/main/services/projectService";
+import { getAllProjects, getProjectBranches, getTaskAiSessions, getTaskAiSessionDetail } from "@/desktop/main/services/projectService";
+import { isAiSessionProvider } from "@/lib/aiSessions/providers";
+import type { AiMessageRole, AiSessionProvider } from "@/lib/aiSessions/types";
 import { attachTaskTerminal, CallbackTerminalClient } from "@/desktop/main/terminalBridge";
 import { createTerminalTab } from "@/desktop/main/services/terminalTabService";
 import { listNotifications, markNotificationRead, markAllNotificationsRead, subscribeToNotificationChanges } from "@/desktop/main/notificationStore";
@@ -340,6 +342,80 @@ export async function getMobileBoard() {
 export async function getMobileTask(taskId: string) {
   const task = await getTaskById(taskId);
   return task ? { ...task, projectName: task.project?.name ?? null } : null;
+}
+
+export const isMobileAiSessionProvider = isAiSessionProvider;
+
+const MOBILE_AI_SOURCE_CACHE_LIMIT = 500;
+const mobileAiSourceCache = new Map<string, string | null>();
+
+function mobileAiSessionKey(taskId: string, provider: AiSessionProvider, sessionId: string) {
+  return JSON.stringify([taskId, provider, sessionId]);
+}
+
+function rememberMobileAiSources(taskId: string, sessions: Awaited<ReturnType<typeof getTaskAiSessions>>["sessions"]) {
+  for (const session of sessions) {
+    const key = mobileAiSessionKey(taskId, session.provider, session.id);
+    mobileAiSourceCache.delete(key);
+    mobileAiSourceCache.set(key, session.sourceRef ?? null);
+    if (mobileAiSourceCache.size > MOBILE_AI_SOURCE_CACHE_LIMIT) {
+      mobileAiSourceCache.delete(mobileAiSourceCache.keys().next().value!);
+    }
+  }
+}
+
+async function refreshMobileAiSource(taskId: string, provider: AiSessionProvider, sessionId: string) {
+  const history = await getTaskAiSessions(taskId);
+  const session = history.sessions.find((entry) => entry.provider === provider && entry.id === sessionId);
+  if (session) rememberMobileAiSources(taskId, [session]);
+}
+
+interface MobileAiHistoryOptions {
+  query?: string;
+  cursor?: string;
+  limit: number;
+  roles?: AiMessageRole[];
+}
+
+export async function getMobileAiSessions(taskId: string, options: MobileAiHistoryOptions) {
+  const history = await getTaskAiSessions(taskId, options.query, options.cursor, options.limit);
+  rememberMobileAiSources(taskId, history.sessions);
+  return { ...history, sessions: history.sessions.map(({ sourceRef: _sourceRef, ...session }) => session) };
+}
+
+export async function getMobileAiSessionDetail(
+  taskId: string,
+  provider: AiSessionProvider,
+  sessionId: string,
+  options: MobileAiHistoryOptions,
+) {
+  const key = mobileAiSessionKey(taskId, provider, sessionId);
+  const hadCachedSource = mobileAiSourceCache.has(key);
+  if (!hadCachedSource) {
+    await refreshMobileAiSource(taskId, provider, sessionId);
+  }
+  if (!mobileAiSourceCache.has(key)) return null;
+  // 캐시는 탐색 힌트다. 매 상세 조회에서 리더가 현재 태스크 경로와 세션 ID를 다시 검증한다.
+  let detail: Awaited<ReturnType<typeof getTaskAiSessionDetail>>;
+  try {
+    detail = await getTaskAiSessionDetail(taskId, provider, sessionId, mobileAiSourceCache.get(key), options.cursor, options.limit, options.query, options.roles);
+  } catch (error) {
+    if (!(error instanceof Error) || !["ENOENT", "ENOTDIR"].includes((error as NodeJS.ErrnoException).code ?? "")) throw error;
+    detail = null;
+  }
+  if (!detail) {
+    mobileAiSourceCache.delete(key);
+    if (!hadCachedSource) return null;
+    await refreshMobileAiSource(taskId, provider, sessionId);
+    if (!mobileAiSourceCache.has(key)) return null;
+    detail = await getTaskAiSessionDetail(taskId, provider, sessionId, mobileAiSourceCache.get(key), options.cursor, options.limit, options.query, options.roles);
+  }
+  if (!detail) {
+    mobileAiSourceCache.delete(key);
+    return null;
+  }
+  const { sourceRef: _sourceRef, ...safeDetail } = detail;
+  return safeDetail;
 }
 
 function toMobileNotification(notification: AppNotification) {
