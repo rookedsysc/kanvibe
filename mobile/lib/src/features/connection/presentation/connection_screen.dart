@@ -104,6 +104,16 @@ class _ConnectionScreenState extends ConsumerState<ConnectionScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: Image.asset(
+                        'assets/branding/kanvibe-logo.png',
+                        width: 180,
+                        color: AppColors.textPrimary,
+                        semanticLabel: 'KanVibe',
+                      ),
+                    ),
+                    const SizedBox(height: AppSizes.p32),
                     Text(
                       widget.isAdding ? '새 PC 연결' : '데스크탑에 연결',
                       style: Theme.of(context).textTheme.titleMedium,

@@ -1,5 +1,9 @@
 @import "tailwindcss";
 
+:root[data-theme="dark"] .kanvibe-brand-logo {
+  filter: invert(1);
+}
+
 :root {
   /* Primitive: Gray */
   --gray-50: #FAFAFA;

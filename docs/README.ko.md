@@ -1,5 +1,10 @@
 <div align="center">
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../public/branding/kanvibe-logo-light.png">
+  <img src="../public/branding/kanvibe-logo.png" alt="KanVibe" width="320" height="87">
+</picture>
+
 # KanVibe
 
 **AI 코딩 에이전트를 위한 키보드 중심 칸반 워크스페이스**
