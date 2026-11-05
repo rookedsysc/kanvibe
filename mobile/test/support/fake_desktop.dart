@@ -117,8 +117,11 @@ class FakeDesktopClient implements DesktopClient {
     }
   }
 
+  final boardCalls = <String>[];
+
   @override
   Future<Map<String, dynamic>> fetchBoard(DesktopConnection connection) async {
+    boardCalls.add(connection.id);
     if (boardError != null) {
       throw boardError!;
     }
