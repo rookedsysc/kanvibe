@@ -284,6 +284,44 @@ void main() {
     expect(client.writtenInput[_pane.id], isNull);
   });
 
+  testWidgets('선택 중 보류한 지우기 청크 뒤의 출력은 해제 후 순서대로 적용된다', (tester) async {
+    final client = FakeDesktopClient();
+    await pumpPane(
+      tester,
+      _pane,
+      client: client,
+      store: FakeConnectionStore(),
+      canResize: true,
+    );
+    client.openedPanes[_pane.id]!.add('alpha 한글\r\nbeta next');
+    await tester.pumpAndSettle();
+    final gesture = await tester.startGesture(
+      terminalCellPosition(tester, 1, 0),
+    );
+    await tester.pump(kLongPressTimeout + const Duration(milliseconds: 1));
+    await gesture.moveTo(terminalCellPosition(tester, 1, 1));
+    await tester.pump();
+    await gesture.up(timeStamp: kLongPressTimeout);
+    await tester.pumpAndSettle();
+    final terminal = mountedTerminal(tester);
+    final view = tester.widget<xterm.TerminalView>(
+      find.byType(xterm.TerminalView),
+    );
+    expect(view.controller!.selection, isNotNull);
+
+    // tmux 원시 스트림에서 clear가 보낸 지우기 시퀀스와 그 뒤 셸 프롬프트가 따로 도착한다.
+    client.openedPanes[_pane.id]!.add('\x1b[H\x1b[2J\x1b[3J');
+    client.openedPanes[_pane.id]!.add(r'$ ');
+    await tester.pumpAndSettle();
+    expect(terminal.buffer.getText(), contains('alpha'));
+
+    view.controller!.clearSelection();
+    await tester.pumpAndSettle();
+    expect(terminal.buffer.getText(), isNot(contains('alpha')));
+    expect(terminal.buffer.getText(), contains(r'$ '));
+    expect(terminal.buffer.cursorX, 2);
+  });
+
   group('OSC 52', () {
     final clipboardWrites = <String>[];
     final clipboardReads = <MethodCall>[];

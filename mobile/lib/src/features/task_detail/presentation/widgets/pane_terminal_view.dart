@@ -46,7 +46,7 @@ class _PaneTerminalViewState extends ConsumerState<PaneTerminalView>
   final _terminalController = xterm.TerminalController();
   bool _isParsingRemoteOutput = false;
   String _pendingEscape = '';
-  String? _deferredRedraw;
+  final _deferredOutput = <String>[];
   ({int cols, int rows})? _lastSentSize;
   bool _isSuspended = false;
   int _streamGeneration = 0;
@@ -138,7 +138,7 @@ class _PaneTerminalViewState extends ConsumerState<PaneTerminalView>
   Future<void> _openStream() async {
     final generation = ++_streamGeneration;
     _pendingEscape = '';
-    _deferredRedraw = null;
+    _deferredOutput.clear();
     _terminalController.clearSelection();
     _firstFrameTimer = Timer(_firstFrameTimeout, () {
       _failStream('터미널 응답이 없습니다. 데스크탑 연결을 확인한 뒤 다시 연결해 주세요.');
@@ -182,8 +182,11 @@ class _PaneTerminalViewState extends ConsumerState<PaneTerminalView>
     if (!mounted || _failureMessage != null || data.isEmpty) return;
     _firstFrameTimer?.cancel();
     if (_terminalController.selection != null &&
-        data.startsWith(_screenRedrawPrefix)) {
-      _deferredRedraw = data;
+        (_deferredOutput.isNotEmpty || data.startsWith(_screenRedrawPrefix))) {
+      // tmux 원시 스트림의 clear도 같은 접두사로 시작하므로, 보류를 시작한 뒤 오는 청크는 모두 순서대로 쌓는다.
+      // 화면을 처음부터 다시 그리는 청크가 오면 그 앞의 보류분은 화면에 남지 않으므로 버려 메모리를 묶어 둔다.
+      if (data.startsWith(_screenRedrawPrefix)) _deferredOutput.clear();
+      _deferredOutput.add(data);
       return;
     }
     _isParsingRemoteOutput = true;
@@ -196,9 +199,9 @@ class _PaneTerminalViewState extends ConsumerState<PaneTerminalView>
 
   void _applyDeferredRedraw() {
     if (_terminalController.selection != null) return;
-    final redraw = _deferredRedraw;
-    _deferredRedraw = null;
-    if (redraw != null) _receiveOutput(redraw);
+    final deferredOutput = List.of(_deferredOutput);
+    _deferredOutput.clear();
+    deferredOutput.forEach(_receiveOutput);
   }
 
   Future<void> _copyRemoteClipboard(String code, List<String> args) async {
