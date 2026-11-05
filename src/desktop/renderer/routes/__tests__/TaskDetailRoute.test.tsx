@@ -2316,6 +2316,29 @@ describe("TaskDetailRoute", () => {
     expect(await screen.findByRole("button", { name: /Codex older/ })).toBeTruthy();
   });
 
+  it("추가 Agent의 이름·개수·필터·대화를 표시한다", async () => {
+    mocks.getSidebarDefaultCollapsed.mockResolvedValue(true);
+    mocks.getTaskById.mockResolvedValue({ ...notificationReadTargetTask, worktreePath: "/repo" });
+    mocks.getTaskAiSessions.mockResolvedValue({
+      isRemote: false, targetPath: "/repo", repoPath: "/repo", nextCursor: null,
+      sources: [{ provider: "hermes", available: true, sessionCount: 1, reason: null }],
+      sessions: [{ id: "hermes-1", provider: "hermes", title: "New provider chat", firstUserPrompt: "Hello", messageCount: 2, matchedPath: "/repo", matchScope: "worktree", startedAt: null, updatedAt: null }],
+    });
+    mocks.getTaskAiSessionDetail.mockResolvedValue({
+      sessionId: "hermes-1", provider: "hermes", title: "New provider chat", matchedPath: "/repo", nextCursor: null,
+      messages: [{ role: "assistant", timestamp: null, text: "Hermes answer", fullText: "Hermes answer", isTruncated: false }],
+    });
+    render(<TaskDetailRoute />);
+    fireEvent.click(await screen.findByRole("button", { name: "aiSessions.inlineChat" }));
+    const session = await screen.findByRole("button", { name: "Hermes New provider chat" });
+    const filter = screen.getByTestId("ai-session-filter-hermes");
+    expect(filter.textContent).toContain("1");
+    fireEvent.click(filter);
+    expect(filter.getAttribute("aria-pressed")).toBe("true");
+    fireEvent.click(session);
+    expect(await screen.findByText("Hermes answer")).toBeTruthy();
+  });
+
   it("채팅 상세 메시지는 markdown과 mermaid 다이어그램을 렌더링하고 위험한 HTML은 제거한다", async () => {
     mocks.getSidebarDefaultCollapsed.mockResolvedValue(true);
     mocks.getTaskById.mockResolvedValue({

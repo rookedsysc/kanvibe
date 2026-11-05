@@ -1003,6 +1003,13 @@ export default function Board({
     <div className="min-h-screen bg-bg-page">
       <BoardPageFindBar vimModeEnabled={vimModeEnabled} />
       <header className={headerClassName}>
+        <img
+          src="./branding/kanvibe-logo.png"
+          alt="KanVibe"
+          width={118}
+          height={32}
+          className="kanvibe-brand-logo mr-auto hidden h-8 w-auto shrink-0 pr-6 xl:block"
+        />
         <div className="flex items-center gap-3 [-webkit-app-region:no-drag]">
           <div
             role="group"

@@ -1,6 +1,13 @@
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../public/branding/kanvibe-logo-light.png">
+  <img src="../public/branding/kanvibe-logo.png" alt="KanVibe" width="320" height="87">
+</picture>
+
 # KanVibe Mobile
 
 KanVibe 데스크탑에 연결해 보드를 보고, 태스크의 터미널 pane을 그대로 비추는 Flutter 클라이언트.
+
+연결 화면의 가로형 로고와 Android·iOS 앱 아이콘은 공통 브랜드 원본에서 생성한다. 원본 위치, 해상도와 재생성 명령은 [브랜드 자산 안내](../resources/branding/README.md)를 따른다.
 
 ## 화면
 

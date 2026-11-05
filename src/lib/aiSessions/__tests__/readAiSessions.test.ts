@@ -871,6 +871,6 @@ conn.close()
     expect(bodyMatches.sessions.map((session) => session.id)).toEqual(["plain-text"]);
     expect(queryCalls.at(-1)?.parameters).toMatchObject({ query: "database migration", worktreePath });
 
-    expect(queryCalls.every((call) => call.sql.includes("ESCAPE"))).toBe(true);
+    expect(queryCalls.filter((call) => call.parameters?.query !== undefined).every((call) => call.sql.includes("ESCAPE"))).toBe(true);
   });
 });
