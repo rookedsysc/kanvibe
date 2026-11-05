@@ -42,15 +42,19 @@ augroup END
 
 바는 기본 글자 배율에서 약 37dp 높이로 표시하며, 글자 크기를 키우면 내용에 맞춰 높이가 늘어난다. 일시 접힘과 설정의 **단축키 바 표시**는 별개다.
 
-바 오른쪽 **설정**에서 콤보의 표시 여부를 선택하고 손잡이로 순서를 바꾼 뒤 **적용**한다. 표시 여부·순서·콤보는 이 기기의 일반 terminal / tmux / Zellij별로 저장한다. **기본값 복원** 후 적용하면 빈 콤보 구성으로 돌아간다. 설정을 닫으면 적용하지 않은 변경은 버린다.
+바 오른쪽 **설정**은 전체 화면 설정 페이지를 연다. 콤보의 표시 여부를 체크하고 손잡이로 순서를 바꾼 뒤 하단 **적용**을 누른다. 표시 여부·순서·콤보는 이 기기의 일반 terminal / tmux / Zellij별로 저장한다. 오른쪽 위 **초기화** 후 적용하면 빈 콤보 구성으로 돌아간다. 설정을 닫으면 적용하지 않은 변경은 버린다.
 
 키보드 위 **tmux / zellij / 키** 버튼을 누르면 빠른 패널이 열린다. 세션 탭에는 분할·확대·출력 이동과 tmux 복사 모드 또는 Zellij 플로팅 동작을, **키** 탭에는 일반 터미널 키를, **내 콤보** 탭에는 저장한 콤보를 표시한다. 패널은 작은 탭과 가로로 넘기는 버튼 한 줄로 표시하며 기본 배율에서 약 90dp 높이다. 동작 설명은 길게 눌러 확인한다. 세션 동작은 기존 pane 제어 API를 사용한다. 패널의 Ctrl·Alt는 다음 키 한 번에 적용된다.
 
-설정 상단의 **키보드 미리보기**는 선택한 콤보 순서를 보여 준다. 카드 오른쪽 손잡이로 순서를 바꾸고 **+**로 콤보를 추가한다. 편집기에서 짧은 이름을 정하고 Ctrl·Alt·Shift와 기본 키 하나를 조합한다. 예를 들어 `Ctrl+Shift+c`, `Alt+←`, `Shift+Tab`을 등록할 수 있다. 콤보는 여러 키를 동시에 누르는 조합이며 순차 매크로가 아니다.
+설정의 **단축키 바 미리보기**는 체크한 콤보 순서를 보여 준다. 목록 아래 **콤보 추가**는 전체 화면 편집기를 연다. 편집기 위쪽 **특수 키**에서 Ctrl·Alt·Shift와 Esc·Tab·Enter·Backspace·방향키·Home/End·PgUp/PgDn·Insert/Delete·F1–F12를 여러 개 고르고, 아래 **일반 키** 입력란에 글자를 여러 개 입력한다. 고른 키는 모두 한 번에 누르는 조합이며, 키 하나만 골라도 된다. 예를 들어 `Ctrl+b`, `Ctrl+Shift+↑`, `Ctrl+a+b`, `F5`를 등록할 수 있다.
 
-문자·숫자·기호는 **키보드로 입력**에서 한 글자를 입력한다. **특수 키 선택**은 Esc·Tab·방향키·Home/End·PgUp/PgDn·Insert/Delete·F1–F12처럼 모바일 키보드에 없는 키만 제공한다. 입력 내용을 지우면 Backspace를, 빈 입력에서 키보드의 완료를 누르면 Enter를 설정한다. Shift는 영문 소문자와 US 기호 키에 적용된다. 터미널에서 구분할 수 없는 조합(예: Ctrl+c와 Ctrl+Shift+c)은 같은 제어 문자를 보낸다.
+터미널은 보조 키와 키 하나를 한 입력으로 받으므로, 여러 키를 함께 누르면 각 키가 같은 보조 키와 묶여 차례로 전달된다. Ctrl을 누른 채 a와 b를 누른 것과 같다(`Ctrl+a+b` → `\x01\x02`). 같은 글자를 두 번 입력하면 한 번으로 친다.
 
-콤보는 세션 종류당 12개까지 등록한다. 설정 목록의 메뉴에서 편집·삭제한 뒤 **적용**하면 저장된다. 이전 저장 형식의 단일 키 조합은 이전되며, 여러 단계 콤보는 실행 목록에서 제외한다. 이전 원본 설정은 보존한다.
+설정 아래 **다른 세션에서 가져오기**는 다른 세션 종류(예: tmux)에 만든 콤보를 현재 세션 종류(예: Zellij)로 복사한다. 같은 키 조합이 이미 있으면 건너뛰고 12개까지만 가져오며, **적용**해야 저장된다.
+
+Enter와 Backspace는 입력란으로 받을 수 없어 특수 키에서 고른다. Shift는 영문 소문자와 US 기호 키에 적용된다. 터미널에서 구분할 수 없는 조합(예: Ctrl+c와 Ctrl+Shift+c)은 같은 제어 문자를 보낸다.
+
+콤보는 세션 종류당 12개, 콤보 하나에 보조 키를 빼고 8개 키까지 등록한다. 설정 목록의 메뉴에서 편집·삭제한 뒤 **적용**하면 저장된다. 이전 저장 형식(v1·v2)의 단일 키 조합은 키 하나짜리 콤보로 이전되며, v1의 여러 단계 콤보는 실행 목록에서 제외한다. 이전 원본 설정은 보존한다.
 
 | 세션 | 추가 단축키 |
 | --- | --- |
@@ -60,7 +64,7 @@ augroup END
 
 세션 제어는 키 접두사 대신 인증된 `POST /api/mobile/tasks/:taskId/panes/:paneId/shortcuts`의 허용된 동작을 실행하므로 사용자 키 바인딩과 무관하다. tmux 복사·스크롤 화면은 응답의 캡처로 갱신하며 **맨 아래**로 복귀한다. Zellij 분할은 선택 pane이 속한 탭에 새 pane을 생성하고 PC의 포커스는 유지한다. Zellij는 기존 미러링과 같은 pane ID 지원 버전이 필요하다. 이전 데스크톱 앱에 세션 제어 API가 없으면 실패 안내를 표시한다.
 
-단축키 정의는 `features/task_detail/domain/terminal_shortcut.dart`, 저장은 `data/terminal_shortcut_store.dart`, 공유 설정 상태는 `application/terminal_shortcut_controller.dart`, 버튼과 설정 시트는 `presentation/widgets/terminal_shortcut_*`에 있다. `TerminalShortcutBar`가 빠른 패널의 열림 상태를, `TerminalShortcutPanel`이 표시할 탭을, `TerminalShortcutComboEditor`가 단일 조합과 입력 초안을 소유한다. `TerminalSoftKeyboard`가 IME·일시 접힘·빠른 패널의 Ctrl/Alt를 소유하고 `PaneTerminalView`가 스트림과 세션 제어 결과를 반영한다.
+단축키 정의는 `features/task_detail/domain/terminal_shortcut.dart`, 저장은 `data/terminal_shortcut_store.dart`, 공유 설정 상태는 `application/terminal_shortcut_controller.dart`, 버튼과 설정 페이지는 `presentation/widgets/terminal_shortcut_*`에 있다. `TerminalShortcutBar`가 빠른 패널의 열림 상태를, `TerminalShortcutPanel`이 표시할 탭을, `TerminalShortcutSettingsPage`가 적용 전 초안과 세션 간 가져오기를, `TerminalShortcutComboEditor`가 보조 키·특수 키·일반 키 초안을 소유한다. 두 화면의 제목·카드·하단 버튼 골격은 `terminal_shortcut_settings_layout.dart`가 공유한다. `TerminalSoftKeyboard`가 IME·일시 접힘·빠른 패널의 Ctrl/Alt를 소유하고 `PaneTerminalView`가 스트림과 세션 제어 결과를 반영한다.
 
 ## 준비
 
