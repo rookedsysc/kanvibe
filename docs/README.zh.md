@@ -19,11 +19,11 @@ KanVibe 是面向 AI 编程代理、以键盘操作为中心的 macOS 看板工�
 
 <table>
   <tr>
-    <td width="70%">
+    <td width="77%" valign="top">
       <img src="./images/readme/kanvibe-main.png" alt="Desktop：集中查看任务与状态" width="100%">
       <br><strong>Desktop：集中查看任务与状态</strong>
     </td>
-    <td width="30%">
+    <td width="23%" valign="top">
       <img src="../docs-site/public/screenshots/mobile-board.png" alt="Mobile：随身查看同一看板" width="100%">
       <br><strong>Mobile：随身查看同一看板</strong>
     </td>
@@ -32,9 +32,9 @@ KanVibe 是面向 AI 编程代理、以键盘操作为中心的 macOS 看板工�
 
 <p align="center">
   <a href="https://www.youtube.com/watch?v=8JTrvd3T_Z0">
-    <img src="https://img.youtube.com/vi/8JTrvd3T_Z0/maxresdefault.jpg" alt="KanVibe 演示视频缩略图" width="640">
+    <img src="https://img.youtube.com/vi/8JTrvd3T_Z0/maxresdefault.jpg" alt="在 YouTube 上观看 KanVibe Desktop 演示" width="640">
   </a>
-  <br><strong><a href="https://www.youtube.com/watch?v=8JTrvd3T_Z0">在 YouTube 上观看 Desktop 演示</a></strong>
+  <br><strong>在 YouTube 上观看 Desktop 演示</strong>
 </p>
 
 ## 开始使用
@@ -57,7 +57,7 @@ open -a KanVibe
 3. **用 Mobile 继续。** 查看看板和正在运行的终端、发送后续命令，或切换到另一台已配对的电脑。
 
 <p align="center">
-  <img src="../docs-site/public/screenshots/mobile-terminal.png" alt="在同一任务终端中读取输出并输入命令" width="320">
+  <img src="../docs-site/public/screenshots/mobile-terminal.png" alt="在同一任务终端中读取输出并输入命令" width="240">
   <br><strong>在同一任务终端中读取输出并输入命令</strong>
 </p>
 

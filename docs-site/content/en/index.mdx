@@ -11,7 +11,7 @@ description: "KanVibe is a free, open-source macOS Kanban app for Claude Code, C
   </div>
   <div className="kv-actions">
     <a className="kv-button kv-button-primary" href="/en/installation">Install Desktop</a>
-    <a className="kv-button" href="/en/mobile">Build Mobile from source</a>
+    <a className="kv-button" href="/en/mobile">Set up Mobile</a>
   </div>
   <div className="kv-chip-row">
     <span className="kv-chip">Branch-based workspaces</span>
@@ -25,7 +25,7 @@ description: "KanVibe is a free, open-source macOS Kanban app for Claude Code, C
 Stop hunting through terminal tabs. The board brings together project, branch, PR, and session context, while supported agent hooks update task status as work progresses.
 
 <figure className="kv-shot">
-  <img src="/screenshots/board.png" alt="KanVibe Desktop board with tasks grouped by status" />
+  <img src="/screenshots/board.png" width={1440} height={960} loading="lazy" alt="KanVibe Desktop board with tasks grouped by status" />
   <figcaption>See work in progress, waiting tasks, and work ready for review across projects.</figcaption>
 </figure>
 
@@ -34,7 +34,7 @@ Stop hunting through terminal tabs. The board brings together project, branch, P
 Desktop supports Herdr, tmux, zellij, and plain terminal sessions. Each branch-based task connects a git worktree, an isolated working directory for the branch, with its terminal session. Run an agent, check a diff, review conversation history, or type a command yourself. Search, project filters, and dock shortcuts keep the next action close.
 
 <figure className="kv-shot">
-  <img src="/screenshots/task-detail.png" alt="Desktop task workspace with its terminal and task controls" />
+  <img src="/screenshots/task-detail.png" width={1600} height={1000} loading="lazy" alt="Desktop task workspace with its terminal and task controls" />
   <figcaption>Your agent, shell commands, builds, and logs stay attached to the task. See account usage without leaving the workspace.</figcaption>
 </figure>
 
@@ -44,18 +44,20 @@ Desktop supports Herdr, tmux, zellij, and plain terminal sessions. Each branch-b
 
 KanVibe Mobile connects to your running Desktop app. Check the board, open a task's actual terminal, send input, add a shell tab, or switch between saved PCs. The phone shows a compact task list; tablets show a Kanban board.
 
-<div className="kv-grid">
-  <figure className="kv-shot">
-    <img src="/screenshots/mobile-board.png" alt="KanVibe Mobile task board on a phone" width={1080} height={2400} loading="lazy" style={{ maxHeight: '36rem', width: 'auto', height: 'auto', margin: '0 auto' }} />
+<div className="kv-grid kv-grid-phones">
+  <figure className="kv-shot kv-shot-phone">
+    <img src="/screenshots/mobile-board.png" alt="KanVibe Mobile task board on a phone" width={1080} height={2400} loading="lazy" />
     <figcaption>Check task status and filter projects from your phone.</figcaption>
   </figure>
-  <figure className="kv-shot">
-    <img src="/screenshots/mobile-terminal.png" alt="A task terminal open in KanVibe Mobile" width={1080} height={2400} loading="lazy" style={{ maxHeight: '36rem', width: 'auto', height: 'auto', margin: '0 auto' }} />
+  <figure className="kv-shot kv-shot-phone">
+    <img src="/screenshots/mobile-terminal.png" alt="A task terminal open in KanVibe Mobile" width={1080} height={2400} loading="lazy" />
     <figcaption>Read the running session and type directly into its terminal.</figcaption>
   </figure>
 </div>
 
-Mobile is an early preview built from source, with Korean interface labels for now. Desktop must be running and reachable over your network, and the task must use a tmux, zellij, or terminal session; Mobile does not support Herdr, the Desktop default, yet. Background push needs additional setup. [Mobile setup and connection guide](/en/mobile).
+<div className="kv-note">
+  <p>Mobile is an early preview built from source, with Korean interface labels for now. Desktop must be running and reachable over your network, and the task must use a tmux, zellij, or terminal session; Mobile does not support Herdr, the Desktop default, yet. Background push needs additional setup. [Mobile build and pairing guide](/en/mobile).</p>
+</div>
 
 ## Start at your desk. Continue where you are.
 
@@ -65,5 +67,5 @@ Mobile is an early preview built from source, with Korean interface labels for n
 
 <div className="kv-actions">
   <a className="kv-button kv-button-primary" href="/en/quick-start">Create your first task</a>
-  <a className="kv-button" href="/en/mobile">Connect your phone</a>
+  <a className="kv-button" href="/en/mobile">Set up Mobile</a>
 </div>

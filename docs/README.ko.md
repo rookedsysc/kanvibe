@@ -19,11 +19,11 @@ KanVibe는 AI 코딩 에이전트를 위한 키보드 중심 macOS 칸반 워크
 
 <table>
   <tr>
-    <td width="70%">
+    <td width="77%" valign="top">
       <img src="./images/readme/kanvibe-main.png" alt="Desktop: 작업과 진행 상태를 한눈에" width="100%">
       <br><strong>Desktop: 작업과 진행 상태를 한눈에</strong>
     </td>
-    <td width="30%">
+    <td width="23%" valign="top">
       <img src="../docs-site/public/screenshots/mobile-board.png" alt="Mobile: 휴대폰에서도 같은 보드 확인" width="100%">
       <br><strong>Mobile: 휴대폰에서도 같은 보드 확인</strong>
     </td>
@@ -32,9 +32,9 @@ KanVibe는 AI 코딩 에이전트를 위한 키보드 중심 macOS 칸반 워크
 
 <p align="center">
   <a href="https://www.youtube.com/watch?v=8JTrvd3T_Z0">
-    <img src="https://img.youtube.com/vi/8JTrvd3T_Z0/maxresdefault.jpg" alt="KanVibe 데모 영상 썸네일" width="640">
+    <img src="https://img.youtube.com/vi/8JTrvd3T_Z0/maxresdefault.jpg" alt="YouTube에서 KanVibe Desktop 데모 보기" width="640">
   </a>
-  <br><strong><a href="https://www.youtube.com/watch?v=8JTrvd3T_Z0">YouTube에서 Desktop 데모 보기</a></strong>
+  <br><strong>YouTube에서 Desktop 데모 보기</strong>
 </p>
 
 ## 시작하기
@@ -46,7 +46,7 @@ brew install --cask rookedsysc/kanvibe/kanvibe
 open -a KanVibe
 ```
 
-**Mobile (iOS / Android):** Flutter 앱을 소스에서 빌드한 뒤 **Desktop 설정 → 모바일 연결**에서 PC 주소·포트·일회용 코드로 연결합니다. PC의 KanVibe가 실행 중이어야 하며, 휴대폰에서 로컬 네트워크나 Tailscale 등을 통해 해당 주소에 접속할 수 있어야 합니다. [연결·사용·알림 안내](https://kanvibe.rookedsysc.com/ko/mobile).
+**Mobile (iOS / Android):** Flutter 앱을 소스에서 빌드한 뒤 **Desktop 설정 → 모바일 연결**에서 PC 주소·포트·일회용 코드로 연결합니다. PC의 KanVibe가 실행 중이어야 하며, 휴대폰에서 로컬 네트워크나 Tailscale 등을 통해 해당 주소에 접속할 수 있어야 합니다. Mobile은 초기 미리보기이며 화면은 한국어입니다. [연결·사용·알림 안내](https://kanvibe.rookedsysc.com/ko/mobile).
 
 **Mobile 터미널 호환성:** `tmux`, `zellij`, `terminal` 세션을 쓰는 태스크를 선택하세요. Desktop의 신규 설정 기본값은 Herdr지만, 현재 Mobile 터미널 브리지는 Herdr 세션을 지원하지 않습니다. Mobile에서 사용할 태스크를 생성하거나 연결할 때 지원하는 세션 타입을 선택하세요.
 
@@ -57,7 +57,7 @@ open -a KanVibe
 3. **Mobile에서 이어갑니다.** 보드와 실행 중인 터미널을 확인하고 후속 명령을 입력하거나, 연결한 다른 PC로 전환합니다.
 
 <p align="center">
-  <img src="../docs-site/public/screenshots/mobile-terminal.png" alt="같은 태스크 터미널에서 출력 확인과 명령 입력" width="320">
+  <img src="../docs-site/public/screenshots/mobile-terminal.png" alt="같은 태스크 터미널에서 출력 확인과 명령 입력" width="240">
   <br><strong>같은 태스크 터미널에서 출력 확인과 명령 입력</strong>
 </p>
 

@@ -11,7 +11,7 @@ description: "KanVibe 是免费开源的 macOS 看板应用，为 Claude Code、
   </div>
   <div className="kv-actions">
     <a className="kv-button kv-button-primary" href="/zh/installation">安装 Desktop</a>
-    <a className="kv-button" href="/zh/mobile">从源码构建 Mobile</a>
+    <a className="kv-button" href="/zh/mobile">设置 Mobile</a>
   </div>
   <div className="kv-chip-row">
     <span className="kv-chip">分支独立工作区</span>
@@ -25,7 +25,7 @@ description: "KanVibe 是免费开源的 macOS 看板应用，为 Claude Code、
 无需逐个寻找终端标签。看板将项目、分支、PR 和会话信息放在一起，支持的代理 hooks 会随工作进展自动更新任务状态。
 
 <figure className="kv-shot">
-  <img src="/screenshots/board.png" alt="按任务状态分组的 KanVibe Desktop 看板" />
+  <img src="/screenshots/board.png" width={1440} height={960} loading="lazy" alt="按任务状态分组的 KanVibe Desktop 看板" />
   <figcaption>在多个项目中，一眼找到正在进行、等待处理和准备审查的任务。</figcaption>
 </figure>
 
@@ -34,7 +34,7 @@ description: "KanVibe 是免费开源的 macOS 看板应用，为 Claude Code、
 基于分支的任务将 git worktree（分支的独立工作目录）与终端会话连接起来。运行代理、查看差异与对话记录，或亲自输入命令。搜索、项目筛选和面板快捷键让下一步操作触手可及。
 
 <figure className="kv-shot">
-  <img src="/screenshots/task-detail.png" alt="包含终端和任务操作面板的 Desktop 工作区" />
+  <img src="/screenshots/task-detail.png" width={1600} height={1000} loading="lazy" alt="包含终端和任务操作面板的 Desktop 工作区" />
   <figcaption>代理、shell 命令、构建和日志都属于同一个任务，还能在工作区查看各账号的使用量。</figcaption>
 </figure>
 
@@ -44,18 +44,20 @@ description: "KanVibe 是免费开源的 macOS 看板应用，为 Claude Code、
 
 KanVibe Mobile 连接到运行中的 Desktop 应用。查看看板、打开任务的真实终端并输入命令、添加 shell 标签，或切换已保存的电脑。手机按状态显示任务列表，平板显示看板。
 
-<div className="kv-grid">
-  <figure className="kv-shot">
-    <img src="/screenshots/mobile-board.png" alt="手机上的 KanVibe Mobile 任务看板" width={1080} height={2400} loading="lazy" style={{ maxHeight: '36rem', width: 'auto', height: 'auto', margin: '0 auto' }} />
+<div className="kv-grid kv-grid-phones">
+  <figure className="kv-shot kv-shot-phone">
+    <img src="/screenshots/mobile-board.png" alt="手机上的 KanVibe Mobile 任务看板" width={1080} height={2400} loading="lazy" />
     <figcaption>从手机查看任务状态并筛选项目。</figcaption>
   </figure>
-  <figure className="kv-shot">
-    <img src="/screenshots/mobile-terminal.png" alt="KanVibe Mobile 中打开的任务终端" width={1080} height={2400} loading="lazy" style={{ maxHeight: '36rem', width: 'auto', height: 'auto', margin: '0 auto' }} />
+  <figure className="kv-shot kv-shot-phone">
+    <img src="/screenshots/mobile-terminal.png" alt="KanVibe Mobile 中打开的任务终端" width={1080} height={2400} loading="lazy" />
     <figcaption>阅读运行中会话的输出，直接向终端输入命令。</figcaption>
   </figure>
 </div>
 
-Mobile 是需要从源码构建的早期预览版，目前界面为韩文。Desktop 必须保持运行且能通过网络访问，任务须使用 tmux、zellij 或 terminal 会话；Mobile 暂不支持 Desktop 默认的 Herdr。后台推送需要额外配置。请查看 [Mobile 安装与连接指南](/zh/mobile)。
+<div className="kv-note">
+  <p>Mobile 是需要从源码构建的早期预览版，目前界面为韩文。Desktop 必须保持运行且能通过网络访问，任务须使用 tmux、zellij 或 terminal 会话；Mobile 暂不支持 Desktop 默认的 Herdr。后台推送需要额外配置。请查看 [Mobile 构建与连接指南](/zh/mobile)。</p>
+</div>
 
 ## 在电脑上开始，在需要的地方继续
 
@@ -65,5 +67,5 @@ Mobile 是需要从源码构建的早期预览版，目前界面为韩文。Desk
 
 <div className="kv-actions">
   <a className="kv-button kv-button-primary" href="/zh/quick-start">创建第一个任务</a>
-  <a className="kv-button" href="/zh/mobile">连接手机</a>
+  <a className="kv-button" href="/zh/mobile">设置 Mobile</a>
 </div>

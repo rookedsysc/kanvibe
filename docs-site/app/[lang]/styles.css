@@ -360,6 +360,8 @@ img {
   font-size: clamp(2rem, 4vw, 3rem);
   font-weight: 650;
   letter-spacing: -0.044em;
+  text-wrap: balance;
+  word-break: keep-all;
   line-height: 1.06;
 }
 
@@ -584,4 +586,35 @@ img {
     margin-top: -1rem;
     padding: 2rem 1.2rem;
   }
+}
+
+/* 본문 링크는 색만으로 구분되지 않도록 밑줄을 둔다 */
+.kv-content p a,
+.kv-content li a,
+.kv-content td a {
+  text-decoration: underline;
+  text-underline-offset: 0.18em;
+}
+
+/* 세로로 긴 휴대폰 스크린샷은 프레임을 이미지 폭에 맞춰 양옆 빈 공간을 없앤다 */
+.kv-shot-phone {
+  width: fit-content;
+  max-width: 100%;
+  margin-inline: auto;
+}
+
+.kv-shot-phone img {
+  width: auto;
+  max-width: 100%;
+  max-height: 36rem;
+  margin-inline: auto;
+}
+
+.kv-grid > .kv-shot {
+  margin-block: 0;
+}
+
+/* 휴대폰 두 장은 좁은 화면에서도 나란히 두어 세로 스크롤을 줄인다 */
+.kv-grid-phones {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }

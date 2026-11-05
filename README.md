@@ -19,11 +19,11 @@ KanVibe is a keyboard-first macOS Kanban workspace for AI coding agents. Run Cla
 
 <table>
   <tr>
-    <td width="70%">
+    <td width="77%" valign="top">
       <img src="./docs/images/readme/kanvibe-main.png" alt="Desktop: see every task and its status" width="100%">
       <br><strong>Desktop: see every task and its status</strong>
     </td>
-    <td width="30%">
+    <td width="23%" valign="top">
       <img src="./docs-site/public/screenshots/mobile-board.png" alt="Mobile: keep the board with you" width="100%">
       <br><strong>Mobile: keep the board with you</strong>
     </td>
@@ -32,9 +32,9 @@ KanVibe is a keyboard-first macOS Kanban workspace for AI coding agents. Run Cla
 
 <p align="center">
   <a href="https://www.youtube.com/watch?v=8JTrvd3T_Z0">
-    <img src="https://img.youtube.com/vi/8JTrvd3T_Z0/maxresdefault.jpg" alt="KanVibe demo video thumbnail" width="640">
+    <img src="https://img.youtube.com/vi/8JTrvd3T_Z0/maxresdefault.jpg" alt="Watch the KanVibe Desktop demo on YouTube" width="640">
   </a>
-  <br><strong><a href="https://www.youtube.com/watch?v=8JTrvd3T_Z0">Watch the Desktop demo on YouTube</a></strong>
+  <br><strong>Watch the Desktop demo on YouTube</strong>
 </p>
 
 ## Get Started
@@ -57,7 +57,7 @@ open -a KanVibe
 3. **Keep work moving from Mobile.** Check the board, open the running terminal, enter a follow-up, or switch to another paired PC.
 
 <p align="center">
-  <img src="./docs-site/public/screenshots/mobile-terminal.png" alt="Read output and type into the same task terminal" width="320">
+  <img src="./docs-site/public/screenshots/mobile-terminal.png" alt="Read output and type into the same task terminal" width="240">
   <br><strong>Read output and type into the same task terminal</strong>
 </p>
 
