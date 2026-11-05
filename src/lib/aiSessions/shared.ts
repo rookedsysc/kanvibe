@@ -348,15 +348,19 @@ export function paginateItems<T>(items: T[], cursor: string | null | undefined, 
 
 interface FileParseCache<T> {
   mtime: number;
+  parsedAt: number;
+  isMtimeSettled: boolean;
   result: Promise<T>;
 }
 
 const FILE_PARSE_CACHE_MAX = 200;
+// 원격 stat은 초 단위이므로 같은 수정 시각을 한 초 뒤 한 번 더 읽어 마지막 기록을 확정한다.
+const REMOTE_FILE_PARSE_CACHE_TTL_MS = 1_000;
 
-/** filePath → { mtime, result } 형태로 파싱 결과를 캐시한다. 최대 FILE_PARSE_CACHE_MAX개 항목을 유지하고 초과 시 가장 오래된 항목을 제거한다. */
+/** 호스트와 실제 파일 경로별로 파싱 결과를 캐시한다. 최대 FILE_PARSE_CACHE_MAX개 항목을 유지하고 초과 시 가장 오래된 항목을 제거한다. */
 const fileParseCache = new Map<string, FileParseCache<unknown>>();
 
-/** 앞 N줄 파싱 결과 전용 캐시. 실제 파일 경로를 키로 사용하되 전체 캐시와 분리 관리한다. */
+/** 앞 N줄 파싱 결과 전용 캐시. 호스트와 실제 파일 경로를 키로 사용하되 전체 캐시와 분리 관리한다. */
 const headParseCache = new Map<string, FileParseCache<unknown>>();
 
 function evictOldestIfNeeded(cache: Map<string, unknown>): void {
@@ -388,16 +392,21 @@ async function readWithFileCache<T>(
   const mtime = await getFileMtimeMs(filePath, sshHost);
   if (mtime === null) return parseFn();
 
-  const key = JSON.stringify([sshHost ?? null, filePath]);
+  const key = JSON.stringify([sshHost || null, filePath]);
   const cached = cache.get(key) as FileParseCache<T> | undefined;
-  if (cached && cached.mtime === mtime) {
+  if (cached && cached.mtime === mtime
+    && (!sshHost || cached.isMtimeSettled || Date.now() - cached.parsedAt < REMOTE_FILE_PARSE_CACHE_TTL_MS)) {
     cache.delete(key);
     cache.set(key, cached);
     return cached.result;
   }
 
+  const parsedAt = Date.now();
   const result = Promise.resolve().then(parseFn);
-  const entry = { mtime, result };
+  const entry = {
+    mtime, result, parsedAt,
+    isMtimeSettled: cached?.mtime === mtime && parsedAt - cached.parsedAt >= REMOTE_FILE_PARSE_CACHE_TTL_MS,
+  };
   evictOldestIfNeeded(cache);
   cache.set(key, entry);
   try {
@@ -416,7 +425,7 @@ async function readWithFileCache<T>(
  */
 export function readJsonLinesHead(filePath: string, maxLines: number, sshHost?: string | null): Promise<unknown[]> {
   if (sshHost) {
-    return execGit(`head -n ${maxLines} ${quoteShellArgument(filePath)}`, sshHost).then((content) => content
+    return execGit(`head -n ${Math.max(0, Math.floor(maxLines))} ${quoteShellArgument(filePath)}`, sshHost).then((content) => content
       .split("\n")
       .map((line) => line.trim())
       .filter(Boolean)

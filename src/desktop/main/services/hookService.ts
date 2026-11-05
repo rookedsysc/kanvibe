@@ -3,7 +3,7 @@ import { getProjectRepository, getTaskRepository } from "@/lib/database";
 import { createWorktreeWithSession } from "@/lib/worktree";
 import { broadcastBoardUpdate, broadcastHookStatusTargetMissing, broadcastTaskStatusChanged } from "@/lib/boardNotifier";
 import { installTaskHooksImmediately } from "@/desktop/main/services/kanbanService";
-import { persistTaskStateAtPath as persistHookTaskState } from "@/desktop/main/services/kanvibeTaskStateService";
+import { persistTaskStateAtPath as persistHookTaskState, persistTaskStateForTask } from "@/desktop/main/services/kanvibeTaskStateService";
 
 const STATUS_MAP: Record<string, TaskStatus> = {
   todo: TaskStatus.TODO,
@@ -136,15 +136,11 @@ export async function updateHookTaskStatus(input: HookStatusInput) {
   }
 
   const projectName = task.project?.name || task.projectId || "Unknown project";
-  const taskStatePath = task.worktreePath || task.project?.repoPath || null;
-  const taskStateSshHost = task.sshHost || task.project?.sshHost || null;
   task.status = taskStatus;
 
   const saved = await taskRepo.save(task);
 
-  if (taskStatePath) {
-    await persistHookTaskState(taskStatePath, { id: saved.id, status: taskStatus }, taskStateSshHost);
-  }
+  await persistTaskStateForTask(saved);
 
   broadcastBoardUpdate();
   broadcastTaskStatusChanged({

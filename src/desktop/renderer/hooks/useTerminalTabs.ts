@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { SessionType } from "@/entities/KanbanTask";
 import {
   closeTerminalTab,
@@ -59,27 +59,57 @@ export function useTerminalTabs({
 
   tabsRef.current = tabs;
 
-  const refresh = useCallback(async () => {
-    if (!sessionType) {
-      return;
+  const refreshState = useMemo(() => ({
+    active: true,
+    pending: null as Promise<void> | null,
+    queued: false,
+  }), [taskId, sessionType]);
+  const currentRefreshState = useRef(refreshState);
+  currentRefreshState.current = refreshState;
+
+  useEffect(() => {
+    refreshState.active = true;
+    setTabs([]);
+    setError(null);
+    return () => {
+      refreshState.active = false;
+    };
+  }, [refreshState]);
+
+  const refresh = useCallback((queueIfBusy = true): Promise<void> => {
+    const isCurrent = () => refreshState.active && currentRefreshState.current === refreshState;
+    if (!sessionType || !isCurrent()) {
+      return Promise.resolve();
+    }
+    if (refreshState.pending) {
+      refreshState.queued ||= queueIfBusy;
+      return refreshState.pending;
     }
 
-    /** 조회가 실패해도 터미널 자체는 계속 써야 하므로, 탭 바만 접고 화면은 유지한다 */
-    try {
-      const result = await listTerminalTabs(taskId);
-      if (result.ok) {
-        setTabs(result.tabs);
-        setError(null);
-        return;
-      }
-
-      setTabs([]);
-      setError(result.error ?? null);
-    } catch (error) {
-      setTabs([]);
-      setError(error instanceof Error ? error.message : "터미널 탭 목록을 읽지 못했습니다.");
-    }
-  }, [sessionType, taskId]);
+    refreshState.pending = (async () => {
+      do {
+        refreshState.queued = false;
+        /** 조회가 실패해도 터미널 자체는 계속 써야 하므로, 탭 바만 접고 화면은 유지한다 */
+        try {
+          const result = await listTerminalTabs(taskId);
+          if (!isCurrent()) {
+            return;
+          }
+          setTabs(result.ok ? result.tabs : []);
+          setError(result.ok ? null : result.error ?? null);
+        } catch (error) {
+          if (!isCurrent()) {
+            return;
+          }
+          setTabs([]);
+          setError(error instanceof Error ? error.message : "터미널 탭 목록을 읽지 못했습니다.");
+        }
+      } while (refreshState.queued && isCurrent());
+    })().finally(() => {
+      refreshState.pending = null;
+    });
+    return refreshState.pending;
+  }, [refreshState, sessionType, taskId]);
 
   useEffect(() => {
     if (!sessionType || !isVisible) {
@@ -87,7 +117,7 @@ export function useTerminalTabs({
     }
 
     /** 창이 돌아왔을 때 이 효과가 다시 돌면서 밀린 변화를 한 번에 따라잡는다 */
-    void refresh();
+    void refresh(false);
 
     /** terminal 세션의 탭은 KanVibe만 바꾸므로 주기 조회가 필요 없다 */
     if (sessionType === SessionType.TERMINAL || !isWindowActive) {
@@ -95,7 +125,7 @@ export function useTerminalTabs({
     }
 
     const pollIntervalId = window.setInterval(() => {
-      void refresh();
+      void refresh(false);
     }, isRemote ? REMOTE_POLL_INTERVAL_MS : LOCAL_POLL_INTERVAL_MS);
 
     return () => {

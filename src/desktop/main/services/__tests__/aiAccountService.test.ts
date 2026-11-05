@@ -26,6 +26,11 @@ vi.mock("@/desktop/main/services/appSettingsService", () => ({
   setAppSetting: mockSetAppSetting,
 }));
 
+vi.mock("@/lib/aiUsage/claudeCredentials", () => ({
+  readClaudeKeychainCredentials: vi.fn(async () => ({ outcome: "not-found" })),
+  readClaudeAccessToken: vi.fn(() => null),
+}));
+
 vi.mock("@/lib/aiUsage/providerCli", () => ({
   readProviderAuthStatus: mockReadProviderAuthStatus,
   logoutThroughCli: mockLogoutThroughCli,
@@ -193,5 +198,41 @@ describe("removeAiAccount", () => {
     const result = await removeAiAccount("gemini", path.join(fakeHome, ".gemini-manual"));
 
     expect(result.outcome).toBe("manual-logout-required");
+  });
+});
+
+
+describe("account registry mutation ownership", () => {
+  it("동시 추가한 서로 다른 계정을 모두 유지한다", async () => {
+    const results = await Promise.all([addAiAccount("claude", "first"), addAiAccount("codex", "second")]);
+    expect(results.map((result) => result.outcome)).toEqual(["ok", "ok"]);
+    expect((await getAiAccountRegistrations()).map((entry) => entry.accountName)).toEqual(["first", "second"]);
+  });
+
+  it("동일 계정을 동시에 추가해도 한 요청만 등록한다", async () => {
+    const results = await Promise.all([addAiAccount("claude", "same"), addAiAccount("claude", "same")]);
+    expect(results.map((result) => result.outcome)).toEqual(["ok", "already-exists"]);
+    expect(await getAiAccountRegistrations()).toHaveLength(1);
+  });
+
+  it("삭제의 로그아웃 대기 중 추가한 계정을 보존한다", async () => {
+    const { accountRoot } = await addAiAccount("claude", "old");
+    let finishLogout!: (value: boolean) => void;
+    mockLogoutThroughCli.mockReturnValueOnce(new Promise<boolean>((resolve) => { finishLogout = resolve; }));
+    const removal = removeAiAccount("claude", accountRoot!);
+    await vi.waitFor(() => expect(mockLogoutThroughCli).toHaveBeenCalled());
+    const addition = addAiAccount("codex", "new");
+    finishLogout(true);
+    await Promise.all([removal, addition]);
+    expect((await getAiAccountRegistrations()).map((entry) => entry.accountName)).toEqual(["new"]);
+  });
+
+  it("저장이 실패해도 다음 계정 변경을 처리한다", async () => {
+    mockSetAppSetting.mockRejectedValueOnce(new Error("save failed"));
+    const first = addAiAccount("claude", "failed");
+    const second = addAiAccount("codex", "survived");
+    await expect(first).rejects.toThrow("save failed");
+    expect((await second).outcome).toBe("ok");
+    expect((await getAiAccountRegistrations()).map((entry) => entry.accountName)).toEqual(["survived"]);
   });
 });
