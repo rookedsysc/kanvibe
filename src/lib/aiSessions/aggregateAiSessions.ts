@@ -1,3 +1,5 @@
+import { readAdditionalFileSessions, readAdditionalFileSessionDetail } from "@/lib/aiSessions/readAdditionalFileSessions";
+import { readSqliteAgentSessions, readSqliteAgentSessionDetail } from "@/lib/aiSessions/readSqliteAgentSessions";
 import { isSSHTransportError } from "@/lib/gitOperations";
 import { createAggregationResult, createReaderResult, paginateItems, sortSessionsDescending, toSourceStatus } from "@/lib/aiSessions/shared";
 import { readClaudeSessionDetail, readClaudeSessions } from "@/lib/aiSessions/readClaudeSessions";
@@ -7,14 +9,17 @@ import { readOpenCodeSessionDetail, readOpenCodeSessions } from "@/lib/aiSession
 import type { AggregatedAiSessionsResult, AiSessionDetailReaderResult, AiSessionProvider, AiSessionReaderContext, AiSessionReaderResult } from "@/lib/aiSessions/types";
 
 export async function aggregateAiSessions(context: AiSessionReaderContext): Promise<AggregatedAiSessionsResult> {
-  const [claude, codex, openCode, gemini] = await Promise.all([
+  const [claude, codex, openCode, gemini, additional, sqlite] = await Promise.all([
     readReaderSafely("claude", context, readClaudeSessions),
     readReaderSafely("codex", context, readCodexSessions),
     readReaderSafely("opencode", context, readOpenCodeSessions),
     readReaderSafely("gemini", context, readGeminiSessions),
+    readAdditionalFileSessions(context),
+    readSqliteAgentSessions(context),
   ]);
 
-  const allSessions = [...claude.sessions, ...codex.sessions, ...openCode.sessions, ...gemini.sessions];
+  const readers = [claude, codex, openCode, gemini, ...additional, ...sqlite];
+  const allSessions = readers.flatMap((reader) => reader.sessions);
   const sortedSessions = sortSessionsDescending(allSessions);
   const paginatedSessions = context.limit
     ? paginateItems(sortedSessions, context.cursor, context.limit)
@@ -25,7 +30,7 @@ export async function aggregateAiSessions(context: AiSessionReaderContext): Prom
     targetPath: context.worktreePath,
     repoPath: context.repoPath,
     sessions: paginatedSessions.items,
-    sources: [claude, codex, openCode, gemini].map(toSourceStatus),
+    sources: readers.map(toSourceStatus),
     nextCursor: paginatedSessions.nextCursor,
   });
 }
@@ -47,7 +52,7 @@ async function readReaderSafely(
       });
     }
 
-    throw error;
+    return createReaderResult(provider, { available: false, reason: "Session storage could not be read" });
   }
 }
 
@@ -68,7 +73,10 @@ export async function getAiSessionDetail(
       return readOpenCodeSessionDetail(context, sessionId, sourceRef, cursor, limit);
     case "gemini":
       return readGeminiSessionDetail(context, sessionId, sourceRef, cursor, limit);
+    case "opencode2":
+    case "zcode":
+      return readSqliteAgentSessionDetail(context, provider, sessionId, sourceRef, cursor, limit);
     default:
-      return null;
+      return readAdditionalFileSessionDetail(context, provider, sessionId, sourceRef, cursor, limit);
   }
 }

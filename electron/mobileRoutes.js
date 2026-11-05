@@ -49,6 +49,9 @@ const TASK_TABS_PATH_PATTERN = /^\/api\/mobile\/tasks\/([^/]+)\/tabs$/;
 const TASKS_PATH = "/api/mobile/tasks";
 const TASK_PATH_PATTERN = /^\/api\/mobile\/tasks\/([^/]+)$/;
 const TASK_STATUS_PATH_PATTERN = /^\/api\/mobile\/tasks\/([^/]+)\/status$/;
+const AI_SESSIONS_PATH_PATTERN = /^\/api\/mobile\/tasks\/([^/]+)\/ai-sessions(?:\/([^/]+)\/([^/]+))?$/;
+const AI_MESSAGE_ROLES = new Set(["user", "assistant", "tool", "system", "developer", "reasoning", "unknown"]);
+const AI_HISTORY_PAGE_LIMIT = 100;
 
 /** 생성 화면의 베이스 브랜치 칸을 채우는 경로 */
 const PROJECT_BRANCHES_PATH_PATTERN = /^\/api\/mobile\/projects\/([^/]+)\/branches$/;
@@ -140,6 +143,12 @@ async function handleMobileRequest(request, response, { bridge, host, port, isDe
       return true;
     }
 
+    const historyMatch = requestUrl.pathname.match(AI_SESSIONS_PATH_PATTERN);
+    if (request.method === "GET" && historyMatch) {
+      await handleAiHistoryRequest(response, bridge, requestUrl.searchParams, historyMatch);
+      return true;
+    }
+
     const taskMatch = requestUrl.pathname.match(TASK_PATH_PATTERN);
     if (request.method === "GET" && taskMatch) {
       const task = await bridge.getMobileTask(decodeURIComponent(taskMatch[1]));
@@ -188,6 +197,38 @@ async function handleMobileRequest(request, response, { bridge, host, port, isDe
     writeJson(response, 500, { success: false, error: "서버 오류" });
     return true;
   }
+}
+
+async function handleAiHistoryRequest(response, bridge, params, match) {
+  const limitText = params.get("limit") ?? "20";
+  const cursor = params.get("cursor") ?? undefined;
+  const roles = params.has("roles") ? params.get("roles").split(",") : undefined;
+  let taskId, provider, sessionId;
+  try {
+    [taskId, provider, sessionId] = match.slice(1).map((part) => part === undefined ? undefined : decodeURIComponent(part));
+  } catch {
+    writeJson(response, 400, { success: false, error: "잘못된 식별자입니다" });
+    return;
+  }
+  if (!/^\d+$/.test(limitText) || Number(limitText) < 1 || Number(limitText) > AI_HISTORY_PAGE_LIMIT
+    || (cursor !== undefined && (!/^\d+$/.test(cursor) || !Number.isSafeInteger(Number(cursor))))
+    || roles?.some((role) => !AI_MESSAGE_ROLES.has(role))
+    || params.has("sourceRef") || (provider && !bridge.isMobileAiSessionProvider(provider))) {
+    writeJson(response, 400, { success: false, error: "조회 값이 올바르지 않습니다" });
+    return;
+  }
+  if (!(await bridge.getMobileTask(taskId))) {
+    writeJson(response, 404, { success: false, error: "없는 태스크입니다" });
+    return;
+  }
+  const options = { query: params.get("query")?.trim() || undefined, cursor, limit: Number(limitText) };
+  if (!provider) {
+    const history = await bridge.getMobileAiSessions(taskId, options);
+    writeJson(response, 200, { success: true, history });
+    return;
+  }
+  const detail = await bridge.getMobileAiSessionDetail(taskId, provider, sessionId, { ...options, roles });
+  writeJson(response, detail ? 200 : 404, detail ? { success: true, detail } : { success: false, error: "없는 대화입니다" });
 }
 
 /** 푸시 토큰은 인증된 기기 한 곳에만 저장하고 네트워크에서 온 나머지 필드는 버린다 */
