@@ -191,3 +191,9 @@ tmux는 창 크기 정책과 분할 배치를 함께 보관했다가 마지막 �
 터미널의 Powerline/Nerd Font 기호는 [Nerd Fonts Symbols Only v3.5.1](https://github.com/ryanoasis/nerd-fonts/tree/v3.5.1/patched-fonts/NerdFontsSymbolsOnly)을 보조 글꼴로 사용한다. 원본 파일과 MIT 라이선스를 `assets/fonts/`에 포함한다.
 
 탭 추가는 인증된 `POST /api/mobile/tasks/:taskId/tabs`를 사용한다. 데스크탑의 기존 탭 생성 서비스를 재사용하며 tmux·Zellij·일반 terminal 및 원격 SSH 대상의 worktree에서 셸을 연다. 탭 추가를 지원하는 데스크탑 빌드가 필요하다. 모바일 목록과 추가 요청 상태는 `common/providers.dart`의 `TaskSurfacesController`가 관리한다.
+
+## 터미널 글자 선택과 복사
+
+터미널 글자를 길게 누르고 드래그해 범위를 선택한 다음, 오른쪽 위의 **복사**를 누르면 휴대폰 클립보드에 저장한다. 한글과 여러 줄을 함께 복사할 수 있다. 복사 버튼은 선택 중에만 나타나며 터미널 격자 크기를 바꾸지 않는다. 선택과 복사는 `features/task_detail/presentation/widgets/pane_terminal_view.dart`에서 기존 터미널 컨트롤러로 처리한다.
+
+손가락으로 위아래로 밀면 이전 출력과 최신 출력 사이를 스크롤한다. tmux와 Zellij는 접속 전의 이력도 가져오며 모바일에는 최근 2,000줄까지 보관한다. Zellij 화면이 갱신돼도 선택 중인 글자는 유지하고, 복사하거나 선택을 해제하면 최신 화면을 적용한다. 이력·모드 복원에는 이 기능이 포함된 데스크탑 빌드가 필요하다.
