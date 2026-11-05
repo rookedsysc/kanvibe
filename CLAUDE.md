@@ -2,7 +2,7 @@
 
 ## Runtime Environment Safety
 
-- Avoid writing code that mutates generic process or server environment variables, because Electron main, hook servers, shells, tmux, zellij, and spawned child processes can inherit those values.
+- Avoid writing code that mutates generic process or server environment variables, because Tauri Rust backend, hook servers, shells, tmux, zellij, and spawned child processes can inherit those values.
 - Do not set generic environment variables such as `PORT`, `NODE_ENV`, `HOST`, `PATH`, `HOME`, or similar process-wide defaults to express KanVibe runtime state.
 - Treat `PORT`, `HOST`, `NODE_ENV`, `PATH`, `HOME`, and `KANVIBE_*` as examples, not the full boundary. Do not introduce behavior that can affect the overall process-wide, user-wide, shell-wide, tmux-wide, zellij-wide, or agent-wide environment.
 - Avoid global environment side effects such as mutating `process.env` for runtime wiring, writing shell startup files, exporting variables into interactive sessions, changing global package-manager or OS environment config, or forwarding server/runtime environments wholesale.
@@ -38,14 +38,14 @@ The rule above forbids tmux-wide side effects. tmux `set-clipboard` is an approv
 
 ## Shortcut Handling
 
-- Define shortcut commands in shared shortcut utilities with semantic command names, then consume those definitions from renderer components and Electron main handlers.
-- Keep shortcut formatting, capture, browser-event matching, and Electron `before-input-event` matching behind the shared shortcut interface.
+- Define shortcut commands in shared shortcut utilities with semantic command names, then consume those definitions from renderer components and Tauri Rust backend handlers.
+- Keep shortcut formatting, capture, browser-event matching, and Tauri capture-phase keyboard event matching behind the shared shortcut interface.
 - Express cross-platform shortcuts with the `Mod` modifier. `Mod` means `Command` on macOS and `Control` on Linux or other non-macOS platforms.
 - Resolve the active shortcut platform through the shared platform helper instead of checking `navigator.platform`, `process.platform`, `metaKey`, or `ctrlKey` directly in feature code.
-- Renderer keyboard events and Electron `before-input-event` inputs must be routed through the same shared matcher so macOS and Linux behavior stays consistent.
+- Renderer keyboard events and Tauri capture-phase keyboard event inputs must be routed through the same shared matcher so macOS and Linux behavior stays consistent.
 - Shortcut capture UIs must store normalized shortcut strings from the shared capture helper, not hand-built modifier strings.
-- When adding or changing a shortcut, cover the shared command definition, display formatting, Electron input matching, renderer global handling, and any user-configurable capture flow with focused tests.
-- Task detail dock shortcuts must use the shared dock shortcut helpers and bind to `Mod+{number}`. Electron `before-input-event` must intercept these before terminal input receives them.
+- When adding or changing a shortcut, cover the shared command definition, display formatting, desktop bridge keyboard matching, renderer global handling, and any user-configurable capture flow with focused tests.
+- Task detail dock shortcuts must use the shared dock shortcut helpers and bind to `Mod+{number}`. Tauri capture-phase keyboard event must intercept these before terminal input receives them.
 - Terminal tab shortcuts use `Mod+Alt+{number}`, so plain `Mod+{number}` stays with the task detail dock.
 - Do not bind an app shortcut to `Cmd+Shift+{number}` on macOS. The system claims `Cmd+Shift+3/4/5` for screenshots and never delivers them to the app, so such a binding fails silently on some numbers only.
 - Task detail dock numbering excludes the back-to-board button and must be derived from the dock item array order, not hard-coded per item. Keep PR as the conditional slot after the first three dock items: with PR it is slot 4 and later items shift to 5+, without PR the next dock item gets slot 4.
@@ -54,7 +54,7 @@ The rule above forbids tmux-wide side effects. tmux `set-clipboard` is an approv
 
 - Route all task-detail transitions through `navigateToTaskDetail()` in `src/desktop/renderer/utils/taskNavigation.ts`.
 - Before navigating the current window to a task detail route, focus an already-open window for the same task detail route when one exists.
-- Keep explicit new-window actions on `openInternalRouteInNewWindow()` or `navigateToTaskDetail(..., { openInNewWindow: true })` so Electron main can reuse its existing-window focus policy.
+- Keep explicit new-window actions on `openInternalRouteInNewWindow()` or `navigateToTaskDetail(..., { openInNewWindow: true })` so Tauri Rust backend can reuse its existing-window focus policy.
 - Do not hand-roll `router.push("/task/...")`, `redirect("/.../task/...")`, or `window.location.hash` for task detail transitions in feature components.
 
 ## UI Color Tokens
