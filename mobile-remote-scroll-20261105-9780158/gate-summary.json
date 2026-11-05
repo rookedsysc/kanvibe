@@ -1,0 +1,245 @@
+{
+  "status": "PASS",
+  "review_execution": "prompt-separated self-review",
+  "head": "a578d57a7d413d472cf54967f750ee7e460a678e",
+  "diff_fingerprint": "978015807c65af6a57305638bf1bbe80dd8a476a",
+  "uncommitted": true,
+  "files": 18,
+  "hunks": 63,
+  "unmapped": 0,
+  "node_tests": 1925,
+  "flutter_tests": 263,
+  "maestro_flows": 1,
+  "device": "KanvibeRemoteScroll, Android 16 / API36.1 image, emulator-5584",
+  "scroll_positions": [
+    0,
+    26,
+    0
+  ],
+  "native_lines": [
+    "139–180",
+    "113–155",
+    "139–180"
+  ],
+  "gates": [
+    {
+      "name": "verified-check",
+      "head": "a578d57a7d413d472cf54967f750ee7e460a678e",
+      "fingerprint": "978015807c65af6a57305638bf1bbe80dd8a476a",
+      "command": [
+        "pnpm",
+        "check"
+      ],
+      "cwd": "/Users/rookedsysc/Documents/kanvibe/kanvibe__worktrees/feat-kanvibe-notification",
+      "started": "2026-11-05T13:03:14.262053+00:00",
+      "exit_status": 0,
+      "end_tree": {
+        "head": "a578d57a7d413d472cf54967f750ee7e460a678e",
+        "fingerprint": "978015807c65af6a57305638bf1bbe80dd8a476a"
+      },
+      "tree_matches": true
+    },
+    {
+      "name": "verified-build",
+      "head": "a578d57a7d413d472cf54967f750ee7e460a678e",
+      "fingerprint": "978015807c65af6a57305638bf1bbe80dd8a476a",
+      "command": [
+        "pnpm",
+        "build"
+      ],
+      "cwd": "/Users/rookedsysc/Documents/kanvibe/kanvibe__worktrees/feat-kanvibe-notification",
+      "started": "2026-11-05T13:03:17.198169+00:00",
+      "exit_status": 0,
+      "end_tree": {
+        "head": "a578d57a7d413d472cf54967f750ee7e460a678e",
+        "fingerprint": "978015807c65af6a57305638bf1bbe80dd8a476a"
+      },
+      "tree_matches": true
+    },
+    {
+      "name": "verified-tests",
+      "head": "a578d57a7d413d472cf54967f750ee7e460a678e",
+      "fingerprint": "978015807c65af6a57305638bf1bbe80dd8a476a",
+      "command": [
+        "pnpm",
+        "test"
+      ],
+      "cwd": "/Users/rookedsysc/Documents/kanvibe/kanvibe__worktrees/feat-kanvibe-notification",
+      "started": "2026-11-05T13:03:30.767032+00:00",
+      "exit_status": 0,
+      "end_tree": {
+        "head": "a578d57a7d413d472cf54967f750ee7e460a678e",
+        "fingerprint": "978015807c65af6a57305638bf1bbe80dd8a476a"
+      },
+      "tree_matches": true
+    },
+    {
+      "name": "verified-flutter-analyze",
+      "head": "a578d57a7d413d472cf54967f750ee7e460a678e",
+      "fingerprint": "978015807c65af6a57305638bf1bbe80dd8a476a",
+      "command": [
+        "/Users/rookedsysc/fvm/versions/3.47.2/bin/flutter",
+        "analyze"
+      ],
+      "cwd": "/Users/rookedsysc/Documents/kanvibe/kanvibe__worktrees/feat-kanvibe-notification/mobile",
+      "started": "2026-11-05T13:03:54.594434+00:00",
+      "exit_status": 0,
+      "end_tree": {
+        "head": "a578d57a7d413d472cf54967f750ee7e460a678e",
+        "fingerprint": "978015807c65af6a57305638bf1bbe80dd8a476a"
+      },
+      "tree_matches": true
+    },
+    {
+      "name": "verified-flutter-tests",
+      "head": "a578d57a7d413d472cf54967f750ee7e460a678e",
+      "fingerprint": "978015807c65af6a57305638bf1bbe80dd8a476a",
+      "command": [
+        "/Users/rookedsysc/fvm/versions/3.47.2/bin/flutter",
+        "test",
+        "--machine",
+        "--concurrency=2"
+      ],
+      "cwd": "/Users/rookedsysc/Documents/kanvibe/kanvibe__worktrees/feat-kanvibe-notification/mobile",
+      "started": "2026-11-05T13:04:00.853496+00:00",
+      "exit_status": 0,
+      "end_tree": {
+        "head": "a578d57a7d413d472cf54967f750ee7e460a678e",
+        "fingerprint": "978015807c65af6a57305638bf1bbe80dd8a476a"
+      },
+      "tree_matches": true
+    },
+    {
+      "name": "verified-android-build",
+      "head": "a578d57a7d413d472cf54967f750ee7e460a678e",
+      "fingerprint": "978015807c65af6a57305638bf1bbe80dd8a476a",
+      "command": [
+        "/Users/rookedsysc/fvm/versions/3.47.2/bin/flutter",
+        "build",
+        "apk",
+        "--debug"
+      ],
+      "cwd": "/Users/rookedsysc/Documents/kanvibe/kanvibe__worktrees/feat-kanvibe-notification/mobile",
+      "started": "2026-11-05T13:04:47.296641+00:00",
+      "exit_status": 0,
+      "end_tree": {
+        "head": "a578d57a7d413d472cf54967f750ee7e460a678e",
+        "fingerprint": "978015807c65af6a57305638bf1bbe80dd8a476a"
+      },
+      "tree_matches": true
+    },
+    {
+      "name": "verified-format",
+      "head": "a578d57a7d413d472cf54967f750ee7e460a678e",
+      "fingerprint": "978015807c65af6a57305638bf1bbe80dd8a476a",
+      "command": [
+        "/Users/rookedsysc/fvm/versions/3.47.2/bin/dart",
+        "format",
+        "--output=none",
+        "--set-exit-if-changed",
+        "mobile/lib/src/common/network/desktop_client.dart",
+        "mobile/lib/src/features/task_detail/domain/mirror_pane.dart",
+        "mobile/lib/src/features/task_detail/presentation/task_detail_screen.dart",
+        "mobile/lib/src/features/task_detail/presentation/widgets/pane_terminal_view.dart",
+        "mobile/test/support/fake_desktop.dart",
+        "mobile/test/src/common/network/desktop_client_test.dart",
+        "mobile/test/src/features/task_detail/mirror_pane_test.dart",
+        "mobile/test/src/features/task_detail/pane_terminal_view_test.dart"
+      ],
+      "cwd": "/Users/rookedsysc/Documents/kanvibe/kanvibe__worktrees/feat-kanvibe-notification",
+      "started": "2026-11-05T13:08:14.992088+00:00",
+      "exit_status": 0,
+      "end_tree": {
+        "head": "a578d57a7d413d472cf54967f750ee7e460a678e",
+        "fingerprint": "978015807c65af6a57305638bf1bbe80dd8a476a"
+      },
+      "tree_matches": true
+    },
+    {
+      "name": "verified-diff",
+      "head": "a578d57a7d413d472cf54967f750ee7e460a678e",
+      "fingerprint": "978015807c65af6a57305638bf1bbe80dd8a476a",
+      "command": [
+        "git",
+        "diff",
+        "--check"
+      ],
+      "cwd": "/Users/rookedsysc/Documents/kanvibe/kanvibe__worktrees/feat-kanvibe-notification",
+      "started": "2026-11-05T13:08:15.685572+00:00",
+      "exit_status": 0,
+      "end_tree": {
+        "head": "a578d57a7d413d472cf54967f750ee7e460a678e",
+        "fingerprint": "978015807c65af6a57305638bf1bbe80dd8a476a"
+      },
+      "tree_matches": true
+    },
+    {
+      "name": "verified-real-tmux",
+      "head": "a578d57a7d413d472cf54967f750ee7e460a678e",
+      "fingerprint": "978015807c65af6a57305638bf1bbe80dd8a476a",
+      "command": [
+        "python3",
+        "qa-results/roky-harness/mobile-remote-scroll/real_tmux.py"
+      ],
+      "cwd": "/Users/rookedsysc/Documents/kanvibe/kanvibe__worktrees/feat-kanvibe-notification",
+      "started": "2026-11-05T13:08:11.377149+00:00",
+      "exit_status": 0,
+      "end_tree": {
+        "head": "a578d57a7d413d472cf54967f750ee7e460a678e",
+        "fingerprint": "978015807c65af6a57305638bf1bbe80dd8a476a"
+      },
+      "tree_matches": true
+    },
+    {
+      "name": "verified-real-zellij",
+      "head": "a578d57a7d413d472cf54967f750ee7e460a678e",
+      "fingerprint": "978015807c65af6a57305638bf1bbe80dd8a476a",
+      "command": [
+        "python3",
+        "qa-results/roky-harness/mobile-remote-scroll/probe_zellij.py"
+      ],
+      "cwd": "/Users/rookedsysc/Documents/kanvibe/kanvibe__worktrees/feat-kanvibe-notification",
+      "started": "2026-11-05T13:16:20.380867+00:00",
+      "exit_status": 0,
+      "end_tree": {
+        "head": "a578d57a7d413d472cf54967f750ee7e460a678e",
+        "fingerprint": "978015807c65af6a57305638bf1bbe80dd8a476a"
+      },
+      "tree_matches": true
+    },
+    {
+      "name": "verified-device",
+      "head": "a578d57a7d413d472cf54967f750ee7e460a678e",
+      "fingerprint": "978015807c65af6a57305638bf1bbe80dd8a476a",
+      "command": [
+        "maestro",
+        "--device",
+        "emulator-5584",
+        "test",
+        "-e",
+        "APP_ID=com.kanvibe.kanvibe_mobile",
+        "--format",
+        "junit",
+        "--output",
+        "qa-results/roky-harness/mobile-remote-scroll/device-junit.xml",
+        "--test-output-dir",
+        "qa-results/roky-harness/mobile-remote-scroll/device-output",
+        "mobile/.maestro/flows/terminal-remote-scroll.yaml"
+      ],
+      "cwd": "/Users/rookedsysc/Documents/kanvibe/kanvibe__worktrees/feat-kanvibe-notification",
+      "started": "2026-11-05T13:13:01.026051+00:00",
+      "exit_status": 0,
+      "end_tree": {
+        "head": "a578d57a7d413d472cf54967f750ee7e460a678e",
+        "fingerprint": "978015807c65af6a57305638bf1bbe80dd8a476a"
+      },
+      "tree_matches": true
+    }
+  ],
+  "unverified": [
+    "iOS: Xcode26.0.1/Swift6.2 vs Firebase Swift tools6.2.1",
+    "Zellij native Android integration (real CLI nonfocused pane is verified)",
+    "real SSH host (command routing tested with fake SSH config)",
+    "remote CI on this uncommitted diff"
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "head": "a578d57a7d413d472cf54967f750ee7e460a678e",
+  "fingerprint": "978015807c65af6a57305638bf1bbe80dd8a476a",
+  "command": [
+    "python3",
+    "qa-results/roky-harness/mobile-remote-scroll/probe_zellij.py"
+  ],
+  "cwd": "/Users/rookedsysc/Documents/kanvibe/kanvibe__worktrees/feat-kanvibe-notification",
+  "started": "2026-11-05T13:16:20.380867+00:00",
+  "exit_status": 0,
+  "end_tree": {
+    "head": "a578d57a7d413d472cf54967f750ee7e460a678e",
+    "fingerprint": "978015807c65af6a57305638bf1bbe80dd8a476a"
+  },
+  "tree_matches": true
+}

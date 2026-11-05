@@ -1,0 +1,6 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<testsuites>
+  <testsuite name="Test Suite" device="KanvibeRemoteScroll" tests="1" failures="0" time="18.0">
+    <testcase id="terminal-remote-scroll" name="terminal-remote-scroll" classname="terminal-remote-scroll" file="mobile/.maestro/flows/terminal-remote-scroll.yaml" time="18.0" status="SUCCESS"/>
+  </testsuite>
+</testsuites>

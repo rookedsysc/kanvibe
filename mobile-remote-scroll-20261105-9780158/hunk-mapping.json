@@ -1,0 +1,328 @@
+{
+  "files": 18,
+  "hunks": 63,
+  "unmapped": 0,
+  "behavior_preserving": 0,
+  "justified": {
+    "obsolete-by-plan": "history constant/full dump and matching assertions/README replaced by remote viewport scroll",
+    "gate-enabling-repair": 0,
+    "tooling-enforced-format": 0
+  },
+  "mapping": [
+    {
+      "file": "electron/mobileRoutes.js",
+      "hunk": "@@ -15,0 +16 @@ const EVENTS_PATH = \"/api/mobile/events\";",
+      "plan": "D4"
+    },
+    {
+      "file": "electron/mobileRoutes.js",
+      "hunk": "@@ -560,0 +562 @@ async function openPaneStream(webSocket, bridge, taskId, paneId, onClosed) {",
+      "plan": "D4"
+    },
+    {
+      "file": "electron/mobileRoutes.js",
+      "hunk": "@@ -565,2 +567,7 @@ async function openPaneStream(webSocket, bridge, taskId, paneId, onClosed) {",
+      "plan": "D4"
+    },
+    {
+      "file": "electron/mobileRoutes.js",
+      "hunk": "@@ -578,0 +586,2 @@ async function openPaneStream(webSocket, bridge, taskId, paneId, onClosed) {",
+      "plan": "D4"
+    },
+    {
+      "file": "electron/mobileRoutes.js",
+      "hunk": "@@ -585,0 +595,3 @@ async function openPaneStream(webSocket, bridge, taskId, paneId, onClosed) {",
+      "plan": "D4"
+    },
+    {
+      "file": "electron/mobileRoutes.test.mjs",
+      "hunk": "@@ -712,0 +713,24 @@ describe(\"키 입력 순서\", () => {",
+      "plan": "D6 / TC1-TC8"
+    },
+    {
+      "file": "mobile/.maestro/flows/terminal-remote-scroll.yaml",
+      "hunk": "@@ -0,0 +1,41 @@",
+      "plan": "D6 / TC1-TC8"
+    },
+    {
+      "file": "mobile/.maestro/scripts/assert-terminal-scroll.js",
+      "hunk": "@@ -0,0 +1,12 @@",
+      "plan": "D6 / TC1-TC8"
+    },
+    {
+      "file": "mobile/README.md",
+      "hunk": "@@ -196 +196,3 @@ tmux는 창 크기 정책과 분할 배치를 함께 보관했다가 마지막 ",
+      "plan": "D6 / TC1-TC8"
+    },
+    {
+      "file": "mobile/README.md",
+      "hunk": "@@ -198,0 +201,3 @@ tmux는 창 크기 정책과 분할 배치를 함께 보관했다가 마지막 ",
+      "plan": "D6 / TC1-TC8"
+    },
+    {
+      "file": "mobile/lib/src/common/network/desktop_client.dart",
+      "hunk": "@@ -440,0 +441,3 @@ class DesktopClient {",
+      "plan": "D4"
+    },
+    {
+      "file": "mobile/lib/src/common/network/desktop_client.dart",
+      "hunk": "@@ -496,0 +500 @@ class PaneStream {",
+      "plan": "D4"
+    },
+    {
+      "file": "mobile/lib/src/common/network/desktop_client.dart",
+      "hunk": "@@ -507,0 +512 @@ class PaneStream {",
+      "plan": "D4"
+    },
+    {
+      "file": "mobile/lib/src/common/network/desktop_client.dart",
+      "hunk": "@@ -517,0 +523,2 @@ class PaneStream {",
+      "plan": "D4"
+    },
+    {
+      "file": "mobile/lib/src/features/task_detail/domain/mirror_pane.dart",
+      "hunk": "@@ -68,0 +69 @@ class TaskSurfaces {",
+      "plan": "D5"
+    },
+    {
+      "file": "mobile/lib/src/features/task_detail/domain/mirror_pane.dart",
+      "hunk": "@@ -73,0 +75 @@ class TaskSurfaces {",
+      "plan": "D5"
+    },
+    {
+      "file": "mobile/lib/src/features/task_detail/domain/mirror_pane.dart",
+      "hunk": "@@ -80,0 +83 @@ class TaskSurfaces {",
+      "plan": "D5"
+    },
+    {
+      "file": "mobile/lib/src/features/task_detail/presentation/task_detail_screen.dart",
+      "hunk": "@@ -253,0 +254 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {",
+      "plan": "D5"
+    },
+    {
+      "file": "mobile/lib/src/features/task_detail/presentation/widgets/pane_terminal_view.dart",
+      "hunk": "@@ -23,0 +24 @@ class PaneTerminalView extends ConsumerStatefulWidget {",
+      "plan": "D5"
+    },
+    {
+      "file": "mobile/lib/src/features/task_detail/presentation/widgets/pane_terminal_view.dart",
+      "hunk": "@@ -30,0 +32 @@ class PaneTerminalView extends ConsumerStatefulWidget {",
+      "plan": "D5"
+    },
+    {
+      "file": "mobile/lib/src/features/task_detail/presentation/widgets/pane_terminal_view.dart",
+      "hunk": "@@ -51,0 +54,7 @@ class _PaneTerminalViewState extends ConsumerState<PaneTerminalView>",
+      "plan": "D5"
+    },
+    {
+      "file": "mobile/lib/src/features/task_detail/presentation/widgets/pane_terminal_view.dart",
+      "hunk": "@@ -117,0 +127,38 @@ class _PaneTerminalViewState extends ConsumerState<PaneTerminalView>",
+      "plan": "D5"
+    },
+    {
+      "file": "mobile/lib/src/features/task_detail/presentation/widgets/pane_terminal_view.dart",
+      "hunk": "@@ -126,0 +174 @@ class _PaneTerminalViewState extends ConsumerState<PaneTerminalView>",
+      "plan": "D5"
+    },
+    {
+      "file": "mobile/lib/src/features/task_detail/presentation/widgets/pane_terminal_view.dart",
+      "hunk": "@@ -217,0 +266 @@ class _PaneTerminalViewState extends ConsumerState<PaneTerminalView>",
+      "plan": "D5"
+    },
+    {
+      "file": "mobile/lib/src/features/task_detail/presentation/widgets/pane_terminal_view.dart",
+      "hunk": "@@ -260,0 +310,2 @@ class _PaneTerminalViewState extends ConsumerState<PaneTerminalView>",
+      "plan": "D5"
+    },
+    {
+      "file": "mobile/lib/src/features/task_detail/presentation/widgets/pane_terminal_view.dart",
+      "hunk": "@@ -286,0 +338 @@ class _PaneTerminalViewState extends ConsumerState<PaneTerminalView>",
+      "plan": "D5"
+    },
+    {
+      "file": "mobile/lib/src/features/task_detail/presentation/widgets/pane_terminal_view.dart",
+      "hunk": "@@ -318,9 +370,31 @@ class _PaneTerminalViewState extends ConsumerState<PaneTerminalView>",
+      "plan": "D5"
+    },
+    {
+      "file": "mobile/test/src/common/network/desktop_client_test.dart",
+      "hunk": "@@ -223 +223 @@ void main() {",
+      "plan": "D6 / TC1-TC8"
+    },
+    {
+      "file": "mobile/test/src/common/network/desktop_client_test.dart",
+      "hunk": "@@ -233 +233 @@ void main() {",
+      "plan": "D6 / TC1-TC8"
+    },
+    {
+      "file": "mobile/test/src/common/network/desktop_client_test.dart",
+      "hunk": "@@ -252,0 +253 @@ void main() {",
+      "plan": "D6 / TC1-TC8"
+    },
+    {
+      "file": "mobile/test/src/common/network/desktop_client_test.dart",
+      "hunk": "@@ -262,0 +264,4 @@ void main() {",
+      "plan": "D6 / TC1-TC8"
+    },
+    {
+      "file": "mobile/test/src/features/task_detail/mirror_pane_test.dart",
+      "hunk": "@@ -32,0 +33,4 @@ void main() {",
+      "plan": "D6 / TC1-TC8"
+    },
+    {
+      "file": "mobile/test/src/features/task_detail/pane_terminal_view_test.dart",
+      "hunk": "@@ -34,0 +35 @@ Future<void> pumpPane(",
+      "plan": "D6 / TC1-TC8"
+    },
+    {
+      "file": "mobile/test/src/features/task_detail/pane_terminal_view_test.dart",
+      "hunk": "@@ -54,0 +56 @@ Future<void> pumpPane(",
+      "plan": "D6 / TC1-TC8"
+    },
+    {
+      "file": "mobile/test/src/features/task_detail/pane_terminal_view_test.dart",
+      "hunk": "@@ -178,0 +181,36 @@ void main() {",
+      "plan": "D6 / TC1-TC8"
+    },
+    {
+      "file": "mobile/test/src/features/task_detail/pane_terminal_view_test.dart",
+      "hunk": "@@ -208,0 +247,54 @@ void main() {",
+      "plan": "D6 / TC1-TC8"
+    },
+    {
+      "file": "mobile/test/support/fake_desktop.dart",
+      "hunk": "@@ -140,0 +141 @@ class FakeDesktopClient implements DesktopClient {",
+      "plan": "D6 / TC1-TC8"
+    },
+    {
+      "file": "mobile/test/support/fake_desktop.dart",
+      "hunk": "@@ -301,0 +303,2 @@ class FakeDesktopClient implements DesktopClient {",
+      "plan": "D6 / TC1-TC8"
+    },
+    {
+      "file": "qa/mobile/lib/prepareQaDesktop.cjs",
+      "hunk": "@@ -29,0 +30 @@ const PANE_READY_MARKER = \"MAESTRO_PANE_READY\";",
+      "plan": "D6 / TC1-TC8"
+    },
+    {
+      "file": "qa/mobile/lib/prepareQaDesktop.cjs",
+      "hunk": "@@ -147 +148,2 @@ function startFixtureSession(sessionName, worktreePath) {",
+      "plan": "D6 / TC1-TC8"
+    },
+    {
+      "file": "qa/mobile/lib/prepareQaDesktop.cjs",
+      "hunk": "@@ -148,0 +151,3 @@ function startFixtureSession(sessionName, worktreePath) {",
+      "plan": "D6 / TC1-TC8"
+    },
+    {
+      "file": "qa/mobile/lib/prepareQaDesktop.cjs",
+      "hunk": "@@ -205,0 +211,19 @@ function startCommandProbe(sessionName, repoPath, runDir) {",
+      "plan": "D6 / TC1-TC8"
+    },
+    {
+      "file": "src/desktop/main/services/__tests__/mobileBridgeService.test.ts",
+      "hunk": "@@ -19,0 +20,11 @@ let defaultSessionTypeSetting = SessionType.TMUX;",
+      "plan": "D6 / TC1-TC8"
+    },
+    {
+      "file": "src/desktop/main/services/__tests__/mobileBridgeService.test.ts",
+      "hunk": "@@ -125,0 +137 @@ const {",
+      "plan": "D6 / TC1-TC8"
+    },
+    {
+      "file": "src/desktop/main/services/__tests__/mobileBridgeService.test.ts",
+      "hunk": "@@ -136,0 +149,108 @@ const MIRROR_PANE_LINE = \"%19\\t@10\\tbash\\t0\\t0\\t80\\t24\\tfirst\";",
+      "plan": "D6 / TC1-TC8"
+    },
+    {
+      "file": "src/desktop/main/services/mobileBridgeService.ts",
+      "hunk": "@@ -39,0 +40 @@ import {",
+      "plan": "D3"
+    },
+    {
+      "file": "src/desktop/main/services/mobileBridgeService.ts",
+      "hunk": "@@ -42,0 +44 @@ import {",
+      "plan": "D3"
+    },
+    {
+      "file": "src/desktop/main/services/mobileBridgeService.ts",
+      "hunk": "@@ -79,0 +82 @@ const MIRROR_COMMAND_TIMEOUT_MS = 5_000;",
+      "plan": "D3"
+    },
+    {
+      "file": "src/desktop/main/services/mobileBridgeService.ts",
+      "hunk": "@@ -683,0 +687,2 @@ interface PaneSubscription {",
+      "plan": "D3"
+    },
+    {
+      "file": "src/desktop/main/services/mobileBridgeService.ts",
+      "hunk": "@@ -1078,0 +1084,32 @@ async function startPaneSubscription(",
+      "plan": "D3"
+    },
+    {
+      "file": "src/desktop/main/services/mobileBridgeService.ts",
+      "hunk": "@@ -1095 +1132,3 @@ async function startPaneSubscription(",
+      "plan": "D3"
+    },
+    {
+      "file": "src/desktop/main/services/mobileBridgeService.ts",
+      "hunk": "@@ -1097 +1136 @@ async function startPaneSubscription(",
+      "plan": "D3"
+    },
+    {
+      "file": "src/desktop/main/services/mobileBridgeService.ts",
+      "hunk": "@@ -1177,0 +1217,15 @@ function stopMirrorProcess(child: ChildProcess): void {",
+      "plan": "D3"
+    },
+    {
+      "file": "src/desktop/main/services/mobileBridgeService.ts",
+      "hunk": "@@ -1196,0 +1251,3 @@ export async function writeToPane(taskId: string, paneId: string, input: string)",
+      "plan": "D3"
+    },
+    {
+      "file": "src/lib/__tests__/paneMirror.test.ts",
+      "hunk": "@@ -12,0 +13 @@ import {",
+      "plan": "D6 / TC1-TC8"
+    },
+    {
+      "file": "src/lib/__tests__/paneMirror.test.ts",
+      "hunk": "@@ -15,0 +17 @@ import {",
+      "plan": "D6 / TC1-TC8"
+    },
+    {
+      "file": "src/lib/__tests__/paneMirror.test.ts",
+      "hunk": "@@ -69 +71,11 @@ describe(\"tmux pane 명령\", () => {",
+      "plan": "D6 / TC1-TC8"
+    },
+    {
+      "file": "src/lib/__tests__/paneMirror.test.ts",
+      "hunk": "@@ -108 +120 @@ describe(\"tmux pane 명령\", () => {",
+      "plan": "D6 / TC1-TC8"
+    },
+    {
+      "file": "src/lib/__tests__/paneMirror.test.ts",
+      "hunk": "@@ -195 +207 @@ describe(\"zellij pane 명령\", () => {",
+      "plan": "D6 / TC1-TC8"
+    },
+    {
+      "file": "src/lib/__tests__/paneMirror.test.ts",
+      "hunk": "@@ -198,0 +211,7 @@ describe(\"zellij pane 명령\", () => {",
+      "plan": "D6 / TC1-TC8"
+    },
+    {
+      "file": "src/lib/paneMirror.ts",
+      "hunk": "@@ -185 +184,0 @@ const CLEAR_SCREEN_AND_SCROLLBACK = \"\\x1b[H\\x1b[2J\\x1b[3J\";",
+      "plan": "D1/D2"
+    },
+    {
+      "file": "src/lib/paneMirror.ts",
+      "hunk": "@@ -204 +203,9 @@ export function buildTmuxCapturePaneCommand(paneId: string): string {",
+      "plan": "D1/D2"
+    },
+    {
+      "file": "src/lib/paneMirror.ts",
+      "hunk": "@@ -329,2 +336,6 @@ export function buildZellijDumpPaneCommand(sessionName: string, paneId: string):",
+      "plan": "D1/D2"
+    }
+  ]
+}

@@ -1,0 +1,27 @@
+{
+  "head": "a578d57a7d413d472cf54967f750ee7e460a678e",
+  "fingerprint": "978015807c65af6a57305638bf1bbe80dd8a476a",
+  "command": [
+    "maestro",
+    "--device",
+    "emulator-5584",
+    "test",
+    "-e",
+    "APP_ID=com.kanvibe.kanvibe_mobile",
+    "--format",
+    "junit",
+    "--output",
+    "qa-results/roky-harness/mobile-remote-scroll/device-junit.xml",
+    "--test-output-dir",
+    "qa-results/roky-harness/mobile-remote-scroll/device-output",
+    "mobile/.maestro/flows/terminal-remote-scroll.yaml"
+  ],
+  "cwd": "/Users/rookedsysc/Documents/kanvibe/kanvibe__worktrees/feat-kanvibe-notification",
+  "started": "2026-11-05T13:13:01.026051+00:00",
+  "exit_status": 0,
+  "end_tree": {
+    "head": "a578d57a7d413d472cf54967f750ee7e460a678e",
+    "fingerprint": "978015807c65af6a57305638bf1bbe80dd8a476a"
+  },
+  "tree_matches": true
+}
