@@ -10,11 +10,15 @@ class TerminalShortcutStore {
     : _storage = storage ?? const FlutterSecureStorage();
 
   final FlutterSecureStorage _storage;
-  static const _key = 'kanvibe_terminal_shortcuts_v2';
+  static const _key = 'kanvibe_terminal_shortcuts_v3';
+  static const _singleKeyChordKey = 'kanvibe_terminal_shortcuts_v2';
   static const _legacyKey = 'kanvibe_terminal_shortcuts_v1';
 
+  /// 가장 최신 형식부터 찾는다. 앞선 형식은 읽기만 하고 지우지 않으므로, 저장하면 v3로만 쓰인다
   Future<Map<SessionType, TerminalShortcutProfile>> read() async {
-    final current = await _storage.read(key: _key);
+    final current =
+        await _storage.read(key: _key) ??
+        await _storage.read(key: _singleKeyChordKey);
     final raw = current ?? await _storage.read(key: _legacyKey);
     Object? decoded;
     try {
@@ -77,21 +81,37 @@ class TerminalShortcutStore {
 
   TerminalShortcutChord? _readChord(Object? raw) {
     if (raw is! Map ||
-        raw['key'] is! String ||
-        (raw['character'] != null && raw['character'] is! String) ||
         (raw['ctrl'] != null && raw['ctrl'] is! bool) ||
         (raw['alt'] != null && raw['alt'] is! bool) ||
         (raw['shift'] != null && raw['shift'] is! bool)) {
       return null;
     }
+    final keys = _readChordKeys(raw);
+    if (keys == null) return null;
     final chord = TerminalShortcutChord(
-      key: raw['key'] as String,
-      character: raw['character'] as String? ?? '',
+      keys: keys,
       ctrl: raw['ctrl'] == true,
       alt: raw['alt'] == true,
       shift: raw['shift'] == true,
     );
     return chord.isValid ? chord : null;
+  }
+
+  /// v3는 `keys` 목록을, v1·v2는 `key` 하나(입력 문자면 `character`)를 담는다
+  List<String>? _readChordKeys(Map raw) {
+    final keys = raw['keys'];
+    if (keys is List) {
+      return keys.every((key) => key is String) ? keys.cast<String>() : null;
+    }
+    final key = raw['key'];
+    final character = raw['character'];
+    if (key is! String || (character != null && character is! String)) {
+      return null;
+    }
+    if (key != 'character') return [key];
+    return character is String && character.runes.length == 1
+        ? [character]
+        : null;
   }
 
   Future<void> write(Map<SessionType, TerminalShortcutProfile> profiles) =>
@@ -109,8 +129,7 @@ class TerminalShortcutStore {
                       'id': combo.id,
                       'label': combo.label,
                       'chord': {
-                        'key': chord.key,
-                        'character': chord.character,
+                        'keys': chord.keys,
                         'ctrl': chord.ctrl,
                         'alt': chord.alt,
                         'shift': chord.shift,

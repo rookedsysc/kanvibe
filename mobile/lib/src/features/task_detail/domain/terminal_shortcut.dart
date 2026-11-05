@@ -94,27 +94,36 @@ List<TerminalShortcut> terminalShortcuts(SessionType type) => [
 const maxTerminalCombos = 12;
 const maxTerminalComboLabelLength = 12;
 
+/// 한 콤보에 함께 누를 수 있는 키 수. 보조 키(Ctrl·Alt·Shift)는 세지 않는다
+const maxTerminalChordKeys = 8;
+
+/// 콤보 편집기의 특수 키 목록. Enter와 Backspace는 입력란으로 받을 수 없어 여기서 고른다
 List<TerminalShortcut> terminalComboKeys() => [
   ..._commonShortcuts.where(
     (key) => key.input == null && key.id != 'ctrl' && key.id != 'alt',
   ),
+  const TerminalShortcut('enter', 'Enter', 'Enter'),
+  const TerminalShortcut('backspace', 'Backspace', 'Backspace'),
   const TerminalShortcut('insert', 'Insert', 'Insert'),
   const TerminalShortcut('delete', 'Delete', 'Delete'),
   for (var number = 1; number <= 12; number++)
     TerminalShortcut('f$number', 'F$number', 'F$number'),
 ];
 
+/// 보조 키를 누른 채 [keys]를 함께 누르는 조합.
+///
+/// 터미널은 "보조 키 + 키 하나"를 한 단위로 받으므로, 여러 키를 함께 누르면 각 키가 같은 보조 키와 묶여
+/// 차례로 전달된다. 실제 키보드에서 Ctrl을 누른 채 a와 b를 누를 때와 같은 결과다.
+/// [keys]의 각 항목은 한 글자면 입력 문자이고, 그보다 길면 [terminalComboKeys]의 특수 키 id다.
 class TerminalShortcutChord {
   const TerminalShortcutChord({
-    required this.key,
-    this.character = '',
+    required this.keys,
     this.ctrl = false,
     this.alt = false,
     this.shift = false,
   });
 
-  final String key;
-  final String character;
+  final List<String> keys;
   final bool ctrl;
   final bool alt;
   final bool shift;
@@ -143,26 +152,28 @@ class TerminalShortcutChord {
     '`': '~',
   };
 
-  String get characterWithShift {
+  static bool isCharacterKey(String key) => key.runes.length == 1;
+
+  /// Shift를 함께 눌렀을 때 [character] 대신 입력되는 글자
+  String shiftedCharacter(String character) {
     if (!shift) return character;
     if (_shiftedCharacters[character] case final shifted?) return shifted;
-    if (character.runes.length == 1) {
-      final rune = character.runes.single;
-      if (rune >= 0x61 && rune <= 0x7a) {
-        return String.fromCharCode(rune - 0x20);
-      }
-    }
+    final rune = character.runes.single;
+    if (rune >= 0x61 && rune <= 0x7a) return String.fromCharCode(rune - 0x20);
     return character;
   }
 
-  bool get isValid {
-    if (key != 'character') {
-      return key == 'enter' ||
-          key == 'backspace' ||
-          terminalComboKeys().any((candidate) => candidate.id == key);
+  bool get isValid =>
+      keys.isNotEmpty &&
+      keys.length <= maxTerminalChordKeys &&
+      keys.toSet().length == keys.length &&
+      keys.every(_isValidKey);
+
+  bool _isValidKey(String key) {
+    if (!isCharacterKey(key)) {
+      return terminalComboKeys().any((candidate) => candidate.id == key);
     }
-    if (character.runes.length != 1) return false;
-    final rune = characterWithShift.runes.single;
+    final rune = shiftedCharacter(key).runes.single;
     if (rune < 0x20 || rune == 0x7f) return false;
     return !ctrl ||
         (rune >= 0x40 && rune <= 0x7e) ||
@@ -170,39 +181,30 @@ class TerminalShortcutChord {
         rune == 0x3f;
   }
 
-  String get label {
-    final keyLabel = switch (key) {
-      'character' => character == ' ' ? 'Space' : character,
-      'enter' => 'Enter',
-      'backspace' => 'Backspace',
-      _ =>
-        terminalComboKeys()
-                .where((candidate) => candidate.id == key)
-                .firstOrNull
-                ?.label ??
-            key,
-    };
-    return [
-      if (ctrl) 'Ctrl',
-      if (alt) 'Alt',
-      if (shift) 'Shift',
-      keyLabel,
-    ].join('+');
+  String get label => [
+    if (ctrl) 'Ctrl',
+    if (alt) 'Alt',
+    if (shift) 'Shift',
+    for (final key in keys) keyLabel(key),
+  ].join('+');
+
+  static String keyLabel(String key) {
+    if (key == ' ') return 'Space';
+    if (isCharacterKey(key)) return key;
+    return terminalComboKeys()
+            .where((candidate) => candidate.id == key)
+            .firstOrNull
+            ?.label ??
+        key;
   }
 
-  TerminalShortcutChord copyWith({
-    String? key,
-    String? character,
-    bool? ctrl,
-    bool? alt,
-    bool? shift,
-  }) => TerminalShortcutChord(
-    key: key ?? this.key,
-    character: character ?? this.character,
-    ctrl: ctrl ?? this.ctrl,
-    alt: alt ?? this.alt,
-    shift: shift ?? this.shift,
-  );
+  /// 같은 키를 같은 보조 키로 누르는 조합인지. 다른 세션에서 콤보를 가져올 때 중복을 거른다
+  bool isSameChord(TerminalShortcutChord other) =>
+      ctrl == other.ctrl &&
+      alt == other.alt &&
+      shift == other.shift &&
+      keys.length == other.keys.length &&
+      Iterable.generate(keys.length).every((i) => keys[i] == other.keys[i]);
 }
 
 class TerminalShortcutProfile {

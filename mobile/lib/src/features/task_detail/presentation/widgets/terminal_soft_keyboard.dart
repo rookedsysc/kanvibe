@@ -84,19 +84,8 @@ class _TerminalSoftKeyboardState extends State<TerminalSoftKeyboard>
     if (shortcut.chord case final chord?) {
       _clearModifiers();
       if (!chord.isValid) return;
-      if (chord.key == 'character') {
-        final rune = chord.characterWithShift.runes.single;
-        final text = chord.ctrl
-            ? String.fromCharCode(rune == 0x3f ? 0x7f : rune & 0x1f)
-            : chord.characterWithShift;
-        widget.terminal.textInput('${chord.alt ? '\x1b' : ''}$text');
-      } else {
-        _sendTerminalKey(
-          chord.key,
-          ctrl: chord.ctrl,
-          alt: chord.alt,
-          shift: chord.shift,
-        );
+      for (final key in chord.keys) {
+        _sendChordKey(chord, key);
       }
       return;
     }
@@ -121,6 +110,25 @@ class _TerminalSoftKeyboardState extends State<TerminalSoftKeyboard>
       _sendTerminalKey(shortcut.id, ctrl: _ctrlPressed, alt: _altPressed);
     }
     _clearModifiers();
+  }
+
+  /// 콤보의 보조 키를 누른 채 [key] 하나를 누른 입력을 보낸다
+  void _sendChordKey(TerminalShortcutChord chord, String key) {
+    if (!TerminalShortcutChord.isCharacterKey(key)) {
+      _sendTerminalKey(
+        key,
+        ctrl: chord.ctrl,
+        alt: chord.alt,
+        shift: chord.shift,
+      );
+      return;
+    }
+    final character = chord.shiftedCharacter(key);
+    final rune = character.runes.single;
+    final text = chord.ctrl
+        ? String.fromCharCode(rune == 0x3f ? 0x7f : rune & 0x1f)
+        : character;
+    widget.terminal.textInput('${chord.alt ? '\x1b' : ''}$text');
   }
 
   void _sendTerminalKey(

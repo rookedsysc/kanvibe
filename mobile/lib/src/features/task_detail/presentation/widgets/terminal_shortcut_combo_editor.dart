@@ -5,7 +5,12 @@ import '../../../../common/constants/app_colors.dart';
 import '../../../../common/constants/app_sizes.dart';
 import '../../../../common/constants/app_theme.dart';
 import '../../domain/terminal_shortcut.dart';
+import 'terminal_shortcut_settings_layout.dart';
 
+/// 콤보 하나를 만들거나 고치는 전체 화면 편집기.
+///
+/// 위에서 특수 키(보조 키 포함)를 여러 개 고르고, 아래 입력란에 일반 키를 여러 글자 친다.
+/// 고른 키는 모두 한 번에 누르는 조합이 되며, 저장하면 완성된 콤보를 돌려준다.
 class TerminalShortcutComboEditor extends StatefulWidget {
   const TerminalShortcutComboEditor({this.combo, super.key});
 
@@ -19,34 +24,60 @@ class TerminalShortcutComboEditor extends StatefulWidget {
 class _TerminalShortcutComboEditorState
     extends State<TerminalShortcutComboEditor> {
   late final _label = TextEditingController(text: widget.combo?.label ?? '');
-  late final _character = TextEditingController(
-    text: widget.combo?.chord?.character ?? '',
+  late final _characters = TextEditingController(
+    text: _initialChord.keys.where(TerminalShortcutChord.isCharacterKey).join(),
   );
-  late TerminalShortcutChord _chord =
-      widget.combo?.chord ?? const TerminalShortcutChord(key: 'character');
-  late bool _usesSpecialKey = terminalComboKeys().any(
-    (key) => key.id == _chord.key,
-  );
+  late bool _ctrl = _initialChord.ctrl;
+  late bool _alt = _initialChord.alt;
+  late bool _shift = _initialChord.shift;
+  late final List<String> _specialKeys = _initialChord.keys
+      .where((key) => !TerminalShortcutChord.isCharacterKey(key))
+      .toList();
   String? _error;
+
+  TerminalShortcutChord get _initialChord =>
+      widget.combo?.chord ?? const TerminalShortcutChord(keys: []);
+
+  /// 같은 글자를 두 번 친 것은 한 번 누른 것으로 본다. 한 키를 동시에 두 번 누를 수는 없다
+  TerminalShortcutChord get _chord {
+    final typedKeys = _characters.text.characters.toSet();
+    return TerminalShortcutChord(
+      keys: [..._specialKeys, ...typedKeys],
+      ctrl: _ctrl,
+      alt: _alt,
+      shift: _shift,
+    );
+  }
 
   @override
   void dispose() {
     _label.dispose();
-    _character.dispose();
+    _characters.dispose();
     super.dispose();
   }
 
-  void _change(TerminalShortcutChord chord) => setState(() {
-    _chord = chord;
+  void _update(VoidCallback change) => setState(() {
+    change();
     _error = null;
+  });
+
+  void _toggleSpecialKey(String id) => _update(() {
+    if (!_specialKeys.remove(id)) _specialKeys.add(id);
   });
 
   void _submit() {
     final label = _label.text.trim();
-    if (label.isEmpty ||
-        label.length > maxTerminalComboLabelLength ||
-        !_chord.isValid) {
-      setState(() => _error = '이름과 조합할 키를 확인해 주세요. Ctrl 문자는 영문·기호를 사용하세요.');
+    final chord = _chord;
+    if (label.isEmpty) {
+      setState(() => _error = '콤보 이름을 입력해 주세요.');
+      return;
+    }
+    if (!chord.isValid) {
+      setState(
+        () => _error = chord.keys.isEmpty
+            ? '함께 누를 키를 하나 이상 골라 주세요.'
+            : 'Ctrl과 함께 누를 글자는 영문이나 기호만 쓸 수 있어요.',
+      );
       return;
     }
     Navigator.pop(
@@ -54,225 +85,245 @@ class _TerminalShortcutComboEditorState
       TerminalShortcut.combo(
         widget.combo?.id ?? 'combo-${DateTime.now().microsecondsSinceEpoch}',
         label,
-        _chord,
+        chord,
       ),
     );
   }
 
   @override
-  Widget build(BuildContext context) => Padding(
-    padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
-    child: SizedBox(
-      height:
-          (MediaQuery.sizeOf(context).height -
-              MediaQuery.viewInsetsOf(context).bottom) *
-          .9,
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(
+      leading: IconButton(
+        tooltip: '콤보 닫기',
+        onPressed: () => Navigator.pop(context),
+        icon: const Icon(Icons.close),
+      ),
+    ),
+    body: SafeArea(
+      top: false,
       child: Column(
         children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 12, 8, 4),
-            child: Row(
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(
+                AppSizes.p24,
+                0,
+                AppSizes.p24,
+                AppSizes.p24,
+              ),
               children: [
-                Expanded(
-                  child: Text(
-                    widget.combo == null ? '콤보 추가' : '콤보 편집',
-                    style: Theme.of(context).textTheme.titleLarge,
+                SettingsPageTitle(
+                  title: widget.combo == null ? '콤보 추가' : '콤보 편집',
+                  subtitle: '고른 키를 모두 한 번에 눌러요',
+                ),
+                _ChordPreview(chord: _chord),
+                const SettingsSectionLabel('이름'),
+                Semantics(
+                  identifier: 'combo-name',
+                  child: TextField(
+                    controller: _label,
+                    maxLength: maxTerminalComboLabelLength,
+                    decoration: const InputDecoration(
+                      labelText: '콤보 이름',
+                      hintText: '예: 좌우 분할',
+                    ),
+                    onChanged: (_) => setState(() => _error = null),
                   ),
                 ),
-                IconButton(
-                  tooltip: '콤보 닫기',
-                  onPressed: () => Navigator.pop(context),
-                  icon: const Icon(Icons.close),
+                const SettingsSectionLabel(
+                  '특수 키',
+                  caption: '여러 개를 골라 함께 누를 수 있어요',
+                ),
+                _SpecialKeyPicker(
+                  ctrl: _ctrl,
+                  alt: _alt,
+                  shift: _shift,
+                  selectedKeys: _specialKeys,
+                  onCtrl: (value) => _update(() => _ctrl = value),
+                  onAlt: (value) => _update(() => _alt = value),
+                  onShift: (value) => _update(() => _shift = value),
+                  onSpecialKey: _toggleSpecialKey,
+                ),
+                const SettingsSectionLabel(
+                  '일반 키',
+                  caption: '입력한 글자마다 함께 누를 키가 돼요',
+                ),
+                Semantics(
+                  identifier: 'combo-key-input',
+                  child: TextField(
+                    controller: _characters,
+                    autocorrect: false,
+                    enableSuggestions: false,
+                    style: monoStyle(
+                      color: AppColors.textPrimary,
+                      fontSize: 16,
+                    ),
+                    inputFormatters: [
+                      LengthLimitingTextInputFormatter(maxTerminalChordKeys),
+                    ],
+                    decoration: const InputDecoration(
+                      labelText: '입력 키',
+                      hintText: '예: b, %, ab',
+                    ),
+                    onChanged: (_) => _update(() {}),
+                  ),
                 ),
               ],
             ),
           ),
-          Expanded(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.symmetric(horizontal: AppSizes.p16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Semantics(
-                    identifier: 'combo-name',
-                    child: TextField(
-                      controller: _label,
-                      maxLength: maxTerminalComboLabelLength,
-                      decoration: const InputDecoration(
-                        labelText: '콤보 이름',
-                        hintText: '예: 복사',
-                      ),
-                      onChanged: (_) => setState(() => _error = null),
-                    ),
-                  ),
-                  const SizedBox(height: AppSizes.p16),
-                  Text('키 조합', style: Theme.of(context).textTheme.titleMedium),
-                  const SizedBox(height: AppSizes.p8),
-                  Container(
-                    padding: const EdgeInsets.all(AppSizes.p16),
-                    decoration: BoxDecoration(
-                      color: AppColors.terminalBg,
-                      border: Border.all(color: AppColors.borderStrong),
-                      borderRadius: BorderRadius.circular(AppSizes.radiusLg),
-                    ),
-                    child: Semantics(
-                      identifier: 'combo-preview',
-                      child: Text(
-                        _chord.isValid ? _chord.label : '조합할 키를 입력하세요',
-                        style: monoStyle(
-                          color: AppColors.textPrimary,
-                          fontSize: 18,
-                        ),
-                      ),
-                    ),
-                  ),
-                  const Padding(
-                    padding: EdgeInsets.symmetric(vertical: AppSizes.p12),
-                    child: Text(
-                      '보조 키와 입력 키를 동시에 누르는 조합입니다.',
-                      style: TextStyle(color: AppColors.textSecondary),
-                    ),
-                  ),
-                  Wrap(
-                    spacing: AppSizes.p8,
-                    runSpacing: AppSizes.p4,
-                    children: [
-                      _modifier(
-                        'Ctrl',
-                        _chord.ctrl,
-                        (value) => _change(_chord.copyWith(ctrl: value)),
-                      ),
-                      _modifier(
-                        'Alt',
-                        _chord.alt,
-                        (value) => _change(_chord.copyWith(alt: value)),
-                      ),
-                      _modifier(
-                        'Shift',
-                        _chord.shift,
-                        (value) => _change(_chord.copyWith(shift: value)),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: AppSizes.p16),
-                  Wrap(
-                    spacing: AppSizes.p8,
-                    children: [
-                      for (final special in [false, true])
-                        ChoiceChip(
-                          checkmarkColor: AppColors.textPrimary,
-                          label: Text(special ? '특수 키 선택' : '키보드로 입력'),
-                          selected: _usesSpecialKey == special,
-                          selectedColor: AppColors.brandSubtle,
-                          labelStyle: const TextStyle(
-                            color: AppColors.textPrimary,
-                          ),
-                          onSelected: (_) => setState(() {
-                            _usesSpecialKey = special;
-                            _chord = _chord.copyWith(
-                              key: special ? 'escape' : 'character',
-                              character: special ? '' : _character.text,
-                            );
-                            _error = null;
-                          }),
-                        ),
-                    ],
-                  ),
-                  const SizedBox(height: AppSizes.p12),
-                  if (_usesSpecialKey)
-                    Wrap(
-                      spacing: AppSizes.p8,
-                      runSpacing: AppSizes.p4,
-                      children: [
-                        for (final key in terminalComboKeys())
-                          ChoiceChip(
-                            checkmarkColor: AppColors.textPrimary,
-                            key: ValueKey('combo-special-${key.id}'),
-                            label: Text(key.label),
-                            selected: _chord.key == key.id,
-                            selectedColor: AppColors.brandSubtle,
-                            labelStyle: const TextStyle(
-                              color: AppColors.textPrimary,
-                            ),
-                            onSelected: (_) => _change(
-                              _chord.copyWith(key: key.id, character: ''),
-                            ),
-                          ),
-                      ],
-                    )
-                  else
-                    Semantics(
-                      identifier: 'combo-key-input',
-                      child: TextField(
-                        controller: _character,
-                        autocorrect: false,
-                        enableSuggestions: false,
-                        textInputAction: TextInputAction.done,
-                        inputFormatters: [LengthLimitingTextInputFormatter(1)],
-                        decoration: const InputDecoration(
-                          labelText: '입력 키',
-                          hintText: '예: c, 1, /',
-                        ),
-                        onTap: () => _character.selection = TextSelection(
-                          baseOffset: 0,
-                          extentOffset: _character.text.length,
-                        ),
-                        onChanged: (text) => _change(
-                          _chord.copyWith(
-                            key: text.isEmpty ? 'backspace' : 'character',
-                            character: text,
-                          ),
-                        ),
-                        onSubmitted: (_) {
-                          if (_character.text.isEmpty) {
-                            _change(
-                              _chord.copyWith(key: 'enter', character: ''),
-                            );
-                          }
-                        },
-                      ),
-                    ),
-                  const SizedBox(height: AppSizes.p16),
-                ],
-              ),
-            ),
-          ),
-          if (_error != null)
-            Padding(
-              padding: const EdgeInsets.symmetric(
-                horizontal: AppSizes.p16,
-                vertical: AppSizes.p8,
-              ),
-              child: Text(
-                _error!,
-                style: const TextStyle(color: AppColors.statusError),
-              ),
-            ),
-          SafeArea(
-            top: false,
-            child: Padding(
-              padding: const EdgeInsets.all(AppSizes.p16),
-              child: FilledButton(
-                onPressed: _submit,
-                child: const Text('콤보 저장'),
-              ),
-            ),
-          ),
+          SettingsBottomAction(error: _error, label: '저장', onPressed: _submit),
         ],
       ),
     ),
   );
+}
 
-  Widget _modifier(
+class _ChordPreview extends StatelessWidget {
+  const _ChordPreview({required this.chord});
+
+  final TerminalShortcutChord chord;
+
+  @override
+  Widget build(BuildContext context) {
+    final keyLabels = [
+      if (chord.ctrl) 'Ctrl',
+      if (chord.alt) 'Alt',
+      if (chord.shift) 'Shift',
+      for (final key in chord.keys) TerminalShortcutChord.keyLabel(key),
+    ];
+    return Semantics(
+      identifier: 'combo-preview',
+      label: chord.keys.isEmpty ? null : chord.label,
+      child: Container(
+        constraints: const BoxConstraints(minHeight: 88),
+        alignment: Alignment.center,
+        padding: const EdgeInsets.all(AppSizes.p16),
+        decoration: BoxDecoration(
+          color: AppColors.terminalBg,
+          borderRadius: BorderRadius.circular(AppSizes.radiusCard),
+        ),
+        child: chord.keys.isEmpty
+            ? const Text(
+                '함께 누를 키를 골라 주세요',
+                style: TextStyle(color: AppColors.textMuted),
+              )
+            : ExcludeSemantics(
+                child: Wrap(
+                  alignment: WrapAlignment.center,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  spacing: AppSizes.p4,
+                  runSpacing: AppSizes.p8,
+                  children: [
+                    for (final (index, label) in keyLabels.indexed) ...[
+                      if (index > 0)
+                        const Text(
+                          '+',
+                          style: TextStyle(color: AppColors.textMuted),
+                        ),
+                      _Keycap(label),
+                    ],
+                  ],
+                ),
+              ),
+      ),
+    );
+  }
+}
+
+class _Keycap extends StatelessWidget {
+  const _Keycap(this.label);
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.symmetric(
+      horizontal: AppSizes.p12,
+      vertical: AppSizes.p8,
+    ),
+    decoration: BoxDecoration(
+      color: AppColors.buttonNeutral,
+      borderRadius: BorderRadius.circular(AppSizes.radiusLg),
+      border: const Border(
+        bottom: BorderSide(color: AppColors.borderStrong, width: 3),
+      ),
+    ),
+    child: Text(
+      label,
+      style: monoStyle(
+        color: AppColors.textPrimary,
+        fontSize: 16,
+        fontWeight: FontWeight.w600,
+      ),
+    ),
+  );
+}
+
+class _SpecialKeyPicker extends StatelessWidget {
+  const _SpecialKeyPicker({
+    required this.ctrl,
+    required this.alt,
+    required this.shift,
+    required this.selectedKeys,
+    required this.onCtrl,
+    required this.onAlt,
+    required this.onShift,
+    required this.onSpecialKey,
+  });
+
+  final bool ctrl;
+  final bool alt;
+  final bool shift;
+  final List<String> selectedKeys;
+  final ValueChanged<bool> onCtrl;
+  final ValueChanged<bool> onAlt;
+  final ValueChanged<bool> onShift;
+  final ValueChanged<String> onSpecialKey;
+
+  @override
+  Widget build(BuildContext context) => Wrap(
+    spacing: AppSizes.p8,
+    runSpacing: AppSizes.p8,
+    children: [
+      _keyChip('combo-modifier-ctrl', 'Ctrl', ctrl, onCtrl),
+      _keyChip('combo-modifier-alt', 'Alt', alt, onAlt),
+      _keyChip('combo-modifier-shift', 'Shift', shift, onShift),
+      for (final key in terminalComboKeys())
+        _keyChip(
+          'combo-special-${key.id}',
+          key.label,
+          selectedKeys.contains(key.id),
+          (_) => onSpecialKey(key.id),
+        ),
+    ],
+  );
+
+  Widget _keyChip(
+    String id,
     String label,
     bool selected,
     ValueChanged<bool> onSelected,
-  ) => FilterChip(
-    label: Text(label),
-    selected: selected,
-    selectedColor: AppColors.brandSubtle,
-    checkmarkColor: AppColors.textPrimary,
-    labelStyle: const TextStyle(color: AppColors.textPrimary),
-    onSelected: onSelected,
+  ) => Semantics(
+    identifier: id,
+    child: FilterChip(
+      key: ValueKey(id),
+      label: Text(label),
+      selected: selected,
+      showCheckmark: false,
+      selectedColor: AppColors.brandSubtle,
+      backgroundColor: AppColors.buttonNeutral,
+      side: BorderSide(
+        color: selected ? AppColors.brandPrimary : Colors.transparent,
+      ),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AppSizes.radiusLg),
+      ),
+      labelStyle: monoStyle(
+        color: AppColors.textPrimary,
+        fontSize: 14,
+        fontWeight: selected ? FontWeight.w600 : null,
+      ),
+      onSelected: onSelected,
+    ),
   );
 }

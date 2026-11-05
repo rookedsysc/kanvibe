@@ -9,7 +9,7 @@ import 'package:kanvibe_mobile/src/features/task_detail/data/terminal_shortcut_s
 import 'package:kanvibe_mobile/src/features/task_detail/domain/mirror_pane.dart';
 import 'package:kanvibe_mobile/src/features/task_detail/domain/terminal_shortcut.dart';
 import 'package:kanvibe_mobile/src/features/task_detail/presentation/widgets/terminal_shortcut_bar.dart';
-import 'package:kanvibe_mobile/src/features/task_detail/presentation/widgets/terminal_shortcut_settings_sheet.dart';
+import 'package:kanvibe_mobile/src/features/task_detail/presentation/widgets/terminal_shortcut_settings_page.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -55,7 +55,7 @@ void main() {
           TerminalShortcut.combo(
             'combo-tab',
             'Tab',
-            const TerminalShortcutChord(key: 'tab'),
+            const TerminalShortcutChord(keys: ['tab']),
           ),
         ],
       );
@@ -109,7 +109,7 @@ void main() {
             TerminalShortcut.combo(
               'combo-tab',
               'Tab',
-              const TerminalShortcutChord(key: 'tab'),
+              const TerminalShortcutChord(keys: ['tab']),
             ),
           ],
         ),
@@ -122,7 +122,7 @@ void main() {
             TerminalShortcut.combo(
               'combo-escape',
               'Esc',
-              const TerminalShortcutChord(key: 'escape'),
+              const TerminalShortcutChord(keys: ['escape']),
             ),
           ],
         ),
@@ -219,8 +219,8 @@ void main() {
           terminalShortcutStoreProvider.overrideWithValue(_FailingStore()),
         ],
         child: MaterialApp(
-          home: const Scaffold(
-            body: TerminalShortcutSettingsSheet(sessionType: SessionType.tmux),
+          home: const TerminalShortcutSettingsPage(
+            sessionType: SessionType.tmux,
           ),
         ),
       ),
@@ -229,7 +229,7 @@ void main() {
     await tester.tap(find.byType(SwitchListTile));
     await tester.tap(find.text('적용'));
     await tester.pumpAndSettle();
-    expect(find.text('저장하지 못했습니다. 다시 시도해 주세요.'), findsOneWidget);
+    expect(find.text('저장하지 못했어요. 다시 시도해 주세요.'), findsOneWidget);
     expect(
       tester.widget<SwitchListTile>(find.byType(SwitchListTile)).value,
       isFalse,

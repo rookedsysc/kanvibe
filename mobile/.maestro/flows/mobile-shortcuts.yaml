@@ -5,6 +5,10 @@ env:
 ---
 - launchApp:
     clearState: true
+# 에뮬레이터의 디버그 빌드는 첫 화면까지 기본 대기 시간보다 오래 걸린다
+- extendedWaitUntil:
+    visible: "데스크탑 주소"
+    timeout: 90000
 - runScript:
     file: ../scripts/issue-dev-pairing-code.js
 - tapOn: "데스크탑 주소"
@@ -54,14 +58,14 @@ env:
 - tapOn:
     id: shortcut-settings
 - assertVisible: "tmux 단축키"
-- assertVisible: "단축키 바 표시"
+- assertVisible: "(?s)단축키 바 표시.*"
 - takeScreenshot: shortcut-settings
-- tapOn: "단축키 바 표시"
+- tapOn: "(?s)단축키 바 표시.*"
 - tapOn: "적용"
 - assertVisible: "tmux · 단축키 꺼짐"
 - tapOn:
     id: shortcut-settings
-- tapOn: "기본값 복원"
+- tapOn: "초기화"
 - tapOn: "적용"
 - assertVisible: "콤보 추가"
 - takeScreenshot: shortcut-restored
@@ -80,24 +84,46 @@ env:
     id: shortcut-panel
 - tapOn:
     id: shortcut-settings
-- assertVisible: "키보드 미리보기"
-- takeScreenshot: shortcut-keyboard-preview
-- tapOn: "콤보 추가 .*"
+- assertVisible: "단축키 바 미리보기"
+- takeScreenshot: shortcut-settings-page
+- scrollUntilVisible:
+    element:
+      id: combo-add
+- tapOn:
+    id: combo-add
+- assertVisible: "(?s).*고른 키를 모두 한 번에 눌러요.*"
 - tapOn:
     id: combo-name
-- inputText: "Copy"
+- inputText: "Split"
+- hideKeyboard
+- tapOn:
+    id: combo-modifier-ctrl
+- tapOn:
+    id: combo-modifier-shift
+- tapOn:
+    id: combo-special-up
+- scrollUntilVisible:
+    element:
+      id: combo-key-input
 - tapOn:
     id: combo-key-input
-- inputText: "c"
+- inputText: "ab"
 - hideKeyboard
-- tapOn: "Ctrl"
-- tapOn: "Shift"
-- assertVisible: 'Ctrl\+Shift\+c'
-- takeScreenshot: shortcut-combo-chord
-- tapOn: "콤보 저장"
+- scrollUntilVisible:
+    element:
+      id: combo-preview
+    direction: UP
+- assertVisible: 'Ctrl\+Shift\+↑\+a\+b'
+- takeScreenshot: shortcut-combo-editor
+- tapOn: "저장"
+- scrollUntilVisible:
+    element: "(?s)다른 세션에서 가져오기.*"
+- assertVisible:
+    id: combo-import-zellij
+- takeScreenshot: shortcut-settings-import
 - tapOn: "적용"
-- assertVisible: "Copy"
-- tapOn: "Copy"
+- assertVisible: "Split"
+- tapOn: "Split"
 - tapOn:
     id: shortcut-panel
 - tapOn: "내 콤보"

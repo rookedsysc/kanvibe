@@ -6,7 +6,7 @@ import '../../../../common/constants/app_theme.dart';
 import '../../../task_create/domain/session_type.dart';
 import '../../application/terminal_shortcut_controller.dart';
 import '../../domain/terminal_shortcut.dart';
-import 'terminal_shortcut_settings_sheet.dart';
+import 'terminal_shortcut_settings_page.dart';
 import 'terminal_shortcut_panel.dart';
 
 class TerminalShortcutBar extends ConsumerStatefulWidget {
@@ -166,12 +166,12 @@ class _TerminalShortcutBarState extends ConsumerState<TerminalShortcutBar> {
     );
   }
 
-  void _openSettings() => showModalBottomSheet<void>(
-    context: context,
-    isScrollControlled: true,
-    useSafeArea: true,
-    builder: (_) =>
-        TerminalShortcutSettingsSheet(sessionType: widget.sessionType),
+  void _openSettings() => Navigator.of(context).push(
+    MaterialPageRoute<void>(
+      fullscreenDialog: true,
+      builder: (_) =>
+          TerminalShortcutSettingsPage(sessionType: widget.sessionType),
+    ),
   );
 
   Widget _control(

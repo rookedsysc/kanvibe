@@ -10,24 +10,21 @@ import 'package:kanvibe_mobile/src/features/task_detail/data/terminal_shortcut_s
 import 'package:kanvibe_mobile/src/features/task_detail/domain/terminal_shortcut.dart';
 import 'package:kanvibe_mobile/src/features/task_detail/presentation/widgets/terminal_shortcut_bar.dart';
 import 'package:kanvibe_mobile/src/features/task_detail/presentation/widgets/terminal_shortcut_combo_editor.dart';
-import 'package:kanvibe_mobile/src/features/task_detail/presentation/widgets/terminal_shortcut_settings_sheet.dart';
+import 'package:kanvibe_mobile/src/features/task_detail/presentation/widgets/terminal_shortcut_settings_page.dart';
 import 'package:kanvibe_mobile/src/features/task_detail/presentation/widgets/terminal_shortcut_panel.dart';
 import 'package:kanvibe_mobile/src/features/task_detail/presentation/widgets/terminal_soft_keyboard.dart';
 import 'package:xterm/xterm.dart' as xterm;
 
-const _copy = TerminalShortcutChord(
-  key: 'character',
-  character: 'c',
-  ctrl: true,
-);
+const _copy = TerminalShortcutChord(keys: ['c'], ctrl: true);
 
 Future<void> _saveCombos(
   List<TerminalShortcut> combos, {
   List<String>? ids,
+  SessionType session = SessionType.tmux,
 }) async {
   final store = TerminalShortcutStore();
   final profiles = await store.read();
-  profiles[SessionType.tmux] = TerminalShortcutProfile(
+  profiles[session] = TerminalShortcutProfile(
     ids: ids ?? combos.map((combo) => combo.id).toList(),
     combos: combos,
   );
@@ -109,7 +106,7 @@ void main() {
         TerminalShortcut.combo(
           'combo-hide',
           'Hidden',
-          const TerminalShortcutChord(key: 'escape'),
+          const TerminalShortcutChord(keys: ['escape']),
         ),
       ],
       ids: ['tab', 'combo-copy'],
@@ -197,12 +194,59 @@ void main() {
       const storage = FlutterSecureStorage();
       expect(await storage.read(key: 'kanvibe_terminal_shortcuts_v1'), legacy);
       final current = jsonDecode(
-        (await storage.read(key: 'kanvibe_terminal_shortcuts_v2'))!,
+        (await storage.read(key: 'kanvibe_terminal_shortcuts_v3'))!,
       );
       expect(current['tmux']['combos'].first.containsKey('strokes'), isFalse);
       expect(current['tmux']['combos'].first['chord']['ctrl'], isTrue);
+      expect(current['tmux']['combos'].first['chord']['keys'], ['c']);
     },
   );
+
+  test('v2 single-key chords migrate to v3 key lists without loss', () async {
+    final singleKeyChords = jsonEncode({
+      'zellij': {
+        'enabled': true,
+        'ids': ['combo-pane', 'combo-f5'],
+        'combos': [
+          {
+            'id': 'combo-pane',
+            'label': 'Pane',
+            'chord': {'key': 'character', 'character': 'p', 'ctrl': true},
+          },
+          {
+            'id': 'combo-f5',
+            'label': 'F5',
+            'chord': {'key': 'f5', 'character': '', 'alt': true},
+          },
+        ],
+      },
+    });
+    FlutterSecureStorage.setMockInitialValues({
+      'kanvibe_terminal_shortcuts_v2': singleKeyChords,
+    });
+    final store = TerminalShortcutStore();
+    final profiles = await store.read();
+    final combos = profiles[SessionType.zellij]!.combos;
+    expect(combos.map((combo) => combo.chord!.label), ['Ctrl+p', 'Alt+F5']);
+    expect(combos.map((combo) => combo.chord!.keys), [
+      ['p'],
+      ['f5'],
+    ]);
+    await store.write(profiles);
+    const storage = FlutterSecureStorage();
+    expect(
+      await storage.read(key: 'kanvibe_terminal_shortcuts_v2'),
+      singleKeyChords,
+    );
+    final current = jsonDecode(
+      (await storage.read(key: 'kanvibe_terminal_shortcuts_v3'))!,
+    );
+    expect(
+      current['zellij']['combos'].first['chord'].containsKey('key'),
+      isFalse,
+    );
+    expect(current['zellij']['ids'], ['combo-pane', 'combo-f5']);
+  });
 
   test(
     'shift and hidden chords round trip independently per session',
@@ -211,8 +255,7 @@ void main() {
         'combo-copy',
         'Copy',
         const TerminalShortcutChord(
-          key: 'character',
-          character: 'c',
+          keys: ['up', 'c', 'd'],
           ctrl: true,
           alt: true,
           shift: true,
@@ -221,7 +264,8 @@ void main() {
       await _saveCombos([combo], ids: []);
       final profiles = await TerminalShortcutStore().read();
       final restored = profiles[SessionType.tmux]!.combos.single;
-      expect(restored.description, 'Ctrl+Alt+Shift+c');
+      expect(restored.description, 'Ctrl+Alt+Shift+↑+c+d');
+      expect(restored.chord!.keys, ['up', 'c', 'd']);
       expect(restored.chord!.shift, isTrue);
       expect(profiles[SessionType.tmux]!.ids, isEmpty);
       expect(profiles[SessionType.zellij]!.combos, isEmpty);
@@ -306,42 +350,62 @@ void main() {
     },
   );
 
-  test('special picker excludes ordinary mobile keys and validates modified characters', () {
+  test('malformed v3 key lists cannot reach execution', () async {
+    Map<String, Object> combo(String id, Object keys) => {
+      'id': id,
+      'label': id,
+      'chord': {'keys': keys, 'ctrl': true},
+    };
+    FlutterSecureStorage.setMockInitialValues({
+      'kanvibe_terminal_shortcuts_v3': jsonEncode({
+        'tmux': {
+          'ids': ['combo-good'],
+          'combos': [
+            combo('combo-good', ['a', 'b']),
+            combo('combo-empty', <String>[]),
+            combo('combo-dup', ['a', 'a']),
+            combo('combo-type', [1]),
+            combo('combo-action', ['split-right']),
+            combo('combo-hangul', ['한']),
+            combo('combo-many', ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i']),
+          ],
+        },
+      }),
+    });
+    final profile = (await TerminalShortcutStore().read())[SessionType.tmux]!;
+    expect(profile.combos.map((combo) => combo.id), ['combo-good']);
+    expect(profile.combos.single.chord!.label, 'Ctrl+a+b');
+  });
+
+  test('special picker offers keys the text field cannot type and validates characters', () {
     final keys = terminalComboKeys().map((key) => key.id);
     expect(
       keys,
-      containsAll(['escape', 'tab', 'up', 'f12', 'insert', 'delete']),
+      containsAll([
+        'escape',
+        'tab',
+        'up',
+        'f12',
+        'insert',
+        'delete',
+        'enter',
+        'backspace',
+      ]),
     );
-    expect(keys, isNot(contains('enter')));
-    expect(keys, isNot(contains('backspace')));
-    expect(keys, isNot(contains('character')));
+    expect(keys, isNot(contains('ctrl')));
+    expect(keys, isNot(contains('alt')));
+    expect(keys, isNot(contains('interrupt')));
     expect(
-      const TerminalShortcutChord(
-        key: 'character',
-        character: '한',
-        ctrl: true,
-      ).isValid,
+      const TerminalShortcutChord(keys: ['한'], ctrl: true).isValid,
       isFalse,
     );
+    expect(const TerminalShortcutChord(keys: []).isValid, isFalse);
     expect(
-      const TerminalShortcutChord(key: 'character', character: '').isValid,
-      isFalse,
-    );
-    expect(
-      const TerminalShortcutChord(
-        key: 'character',
-        character: '2',
-        ctrl: true,
-        shift: true,
-      ).isValid,
+      const TerminalShortcutChord(keys: ['2'], ctrl: true, shift: true).isValid,
       isTrue,
     );
     expect(
-      const TerminalShortcutChord(
-        key: 'character',
-        character: 'ß',
-        shift: true,
-      ).characterWithShift,
+      const TerminalShortcutChord(keys: [], shift: true).shiftedCharacter('ß'),
       'ß',
     );
   });
@@ -349,66 +413,35 @@ void main() {
   final cases = <(String, TerminalShortcutChord, String)>[
     (
       'Ctrl+Alt+c',
-      const TerminalShortcutChord(
-        key: 'character',
-        character: 'c',
-        ctrl: true,
-        alt: true,
-      ),
+      const TerminalShortcutChord(keys: ['c'], ctrl: true, alt: true),
       '\x1b\x03',
     ),
     (
       'Ctrl+Shift+c',
-      const TerminalShortcutChord(
-        key: 'character',
-        character: 'c',
-        ctrl: true,
-        shift: true,
-      ),
+      const TerminalShortcutChord(keys: ['c'], ctrl: true, shift: true),
       '\x03',
     ),
-    (
-      'Shift+c',
-      const TerminalShortcutChord(
-        key: 'character',
-        character: 'c',
-        shift: true,
-      ),
-      'C',
-    ),
-    (
-      'Shift+1',
-      const TerminalShortcutChord(
-        key: 'character',
-        character: '1',
-        shift: true,
-      ),
-      '!',
-    ),
+    ('Shift+c', const TerminalShortcutChord(keys: ['c'], shift: true), 'C'),
+    ('Shift+1', const TerminalShortcutChord(keys: ['1'], shift: true), '!'),
     (
       'Ctrl+Shift+2',
-      const TerminalShortcutChord(
-        key: 'character',
-        character: '2',
-        ctrl: true,
-        shift: true,
-      ),
+      const TerminalShortcutChord(keys: ['2'], ctrl: true, shift: true),
       '\x00',
     ),
     (
       'Shift+Tab',
-      const TerminalShortcutChord(key: 'tab', shift: true),
+      const TerminalShortcutChord(keys: ['tab'], shift: true),
       '\x1b[Z',
     ),
     (
       'Shift+Up',
-      const TerminalShortcutChord(key: 'up', shift: true),
+      const TerminalShortcutChord(keys: ['up'], shift: true),
       '\x1b[1;2A',
     ),
     (
       'Ctrl+Alt+Shift+Right',
       const TerminalShortcutChord(
-        key: 'right',
+        keys: ['right'],
         ctrl: true,
         alt: true,
         shift: true,
@@ -417,25 +450,53 @@ void main() {
     ),
     (
       'Shift+PgUp',
-      const TerminalShortcutChord(key: 'pageUp', shift: true),
+      const TerminalShortcutChord(keys: ['pageUp'], shift: true),
       '\x1b[5;2~',
     ),
     (
       'Ctrl+F5',
-      const TerminalShortcutChord(key: 'f5', ctrl: true),
+      const TerminalShortcutChord(keys: ['f5'], ctrl: true),
       '\x1b[15;5~',
     ),
-    ('Esc', const TerminalShortcutChord(key: 'escape'), '\x1b'),
-    ('Enter', const TerminalShortcutChord(key: 'enter'), '\r'),
+    (
+      'Alt+F5',
+      const TerminalShortcutChord(keys: ['f5'], alt: true),
+      '\x1b[15;3~',
+    ),
+    ('Esc', const TerminalShortcutChord(keys: ['escape']), '\x1b'),
+    ('Enter', const TerminalShortcutChord(keys: ['enter']), '\r'),
+    ('F5', const TerminalShortcutChord(keys: ['f5']), '\x1b[15~'),
+    (
+      'Ctrl+b (tmux prefix)',
+      const TerminalShortcutChord(keys: ['b'], ctrl: true),
+      '\x02',
+    ),
+    (
+      'Ctrl+a+b',
+      const TerminalShortcutChord(keys: ['a', 'b'], ctrl: true),
+      '\x01\x02',
+    ),
+    (
+      'Ctrl+Shift+Up+Right',
+      const TerminalShortcutChord(
+        keys: ['up', 'right'],
+        ctrl: true,
+        shift: true,
+      ),
+      '\x1b[1;6A\x1b[1;6C',
+    ),
+    ('a+b', const TerminalShortcutChord(keys: ['a', 'b']), 'ab'),
   ];
   for (final (name, chord, expected) in cases) {
-    testWidgets('$name sends one simultaneous chord per press', (tester) async {
+    testWidgets('$name sends every key with the held modifiers per press', (
+      tester,
+    ) async {
       await _saveCombos([TerminalShortcut.combo('combo-wire', 'Wire', chord)]);
       final output = <String>[];
       await _pumpKeyboard(tester, xterm.Terminal()..onOutput = output.add);
       await tester.tap(find.widgetWithText(TextButton, 'Wire'));
       await tester.tap(find.widgetWithText(TextButton, 'Wire'));
-      expect(output, [expected, expected]);
+      expect(output.join(), '$expected$expected');
     });
   }
 
@@ -446,7 +507,7 @@ void main() {
         TerminalShortcut.combo(
           'combo-up',
           'Up',
-          const TerminalShortcutChord(key: 'up'),
+          const TerminalShortcutChord(keys: ['up']),
         ),
       ]);
       final output = <String>[];
@@ -506,84 +567,157 @@ void main() {
     expect(pressed.single.id, 'escape');
   });
 
-  testWidgets('chord editor offers Shift without sequential steps', (
-    tester,
-  ) async {
+  Future<List<TerminalShortcut?>> openEditor(
+    WidgetTester tester, {
+    TerminalShortcut? combo,
+  }) async {
+    final results = <TerminalShortcut?>[];
     await tester.pumpWidget(
       MaterialApp(
         theme: buildAppTheme(),
-        home: const Scaffold(body: TerminalShortcutComboEditor()),
+        home: Builder(
+          builder: (context) => TextButton(
+            onPressed: () async => results.add(
+              await Navigator.of(context).push<TerminalShortcut>(
+                MaterialPageRoute(
+                  builder: (_) => TerminalShortcutComboEditor(combo: combo),
+                ),
+              ),
+            ),
+            child: const Text('open'),
+          ),
+        ),
       ),
     );
+    await tester.tap(find.text('open'));
     await tester.pumpAndSettle();
-    expect(find.text('Shift'), findsOneWidget);
-    expect(find.textContaining('키 단계 추가'), findsNothing);
-    await tester.tap(find.text('콤보 저장'));
-    await tester.pump();
-    expect(find.textContaining('이름과 조합할 키'), findsOneWidget);
-    await tester.enterText(find.widgetWithText(TextField, '콤보 이름'), 'Copy');
-    await tester.enterText(find.widgetWithText(TextField, '입력 키'), 'c');
+    return results;
+  }
+
+  Future<void> typeKeys(WidgetTester tester, String text) async {
+    final field = find.widgetWithText(TextField, '입력 키');
+    await tester.dragUntilVisible(
+      field,
+      find.byType(ListView),
+      const Offset(0, -200),
+    );
+    await tester.enterText(field, text);
     await tester.pumpAndSettle();
-    await tester.tap(find.widgetWithText(FilterChip, 'Ctrl'));
+  }
+
+  Future<void> tapKey(WidgetTester tester, String id) async {
+    final chip = find.byKey(ValueKey(id));
+    await tester.ensureVisible(chip);
     await tester.pumpAndSettle();
-    await tester.tap(find.widgetWithText(FilterChip, 'Shift'));
+    await tester.tap(chip);
     await tester.pumpAndSettle();
-    await tester.pump();
-    expect(find.text('Ctrl+Shift+c'), findsOneWidget);
-    await tester.testTextInput.receiveAction(TextInputAction.done);
-    await tester.pump();
-    expect(find.text('Ctrl+Shift+c'), findsOneWidget);
-  });
+  }
 
   testWidgets(
-    'editor captures Enter and Backspace from keyboard instead of picker',
+    'editor combines several special keys and typed keys into one chord',
     (tester) async {
-      await tester.pumpWidget(
-        MaterialApp(
-          theme: buildAppTheme(),
-          home: const Scaffold(body: TerminalShortcutComboEditor()),
-        ),
-      );
-      await tester.enterText(find.widgetWithText(TextField, '입력 키'), 'c');
-      await tester.enterText(find.widgetWithText(TextField, '입력 키'), '');
-      await tester.pump();
-      expect(find.text('Backspace'), findsOneWidget);
-      await tester.testTextInput.receiveAction(TextInputAction.done);
-      await tester.pump();
-      expect(find.text('Enter'), findsOneWidget);
+      final results = await openEditor(tester);
+      await tester.enterText(find.widgetWithText(TextField, '콤보 이름'), 'Mix');
+      await tapKey(tester, 'combo-modifier-ctrl');
+      await tapKey(tester, 'combo-modifier-shift');
+      await tapKey(tester, 'combo-special-up');
+      await tapKey(tester, 'combo-special-f5');
+      await typeKeys(tester, 'abb');
+      await tester.drag(find.byType(ListView), const Offset(0, 2000));
       await tester.pumpAndSettle();
-      await tester.ensureVisible(find.text('특수 키 선택'));
-      await tester.tap(find.text('특수 키 선택'));
-      await tester.pump();
-      expect(find.text('Enter'), findsNothing);
-      expect(find.text('Backspace'), findsNothing);
-      expect(
-        find.byKey(const ValueKey('combo-special-escape')),
-        findsOneWidget,
-      );
+      expect(find.bySemanticsLabel('Ctrl+Shift+↑+F5+a+b'), findsOneWidget);
+      await tapKey(tester, 'combo-special-f5');
+      await tester.tap(find.text('저장'));
+      await tester.pumpAndSettle();
+      final chord = results.single!.chord!;
+      expect(chord.keys, ['up', 'a', 'b']);
+      expect(chord.ctrl && chord.shift && !chord.alt, isTrue);
+      expect(results.single!.label, 'Mix');
     },
   );
 
-  testWidgets('draft cancel, Apply, edit and delete preserve a single chord', (
+  testWidgets('editor accepts a single key and explains each invalid draft', (
+    tester,
+  ) async {
+    final results = await openEditor(tester);
+    await tester.tap(find.text('저장'));
+    await tester.pump();
+    expect(find.text('콤보 이름을 입력해 주세요.'), findsOneWidget);
+    await tester.enterText(find.widgetWithText(TextField, '콤보 이름'), 'One');
+    await tester.tap(find.text('저장'));
+    await tester.pump();
+    expect(find.text('함께 누를 키를 하나 이상 골라 주세요.'), findsOneWidget);
+    await tapKey(tester, 'combo-modifier-ctrl');
+    await typeKeys(tester, '한');
+    await tester.tap(find.text('저장'));
+    await tester.pump();
+    expect(find.textContaining('영문이나 기호만'), findsOneWidget);
+    expect(results, isEmpty);
+    await typeKeys(tester, '');
+    await tapKey(tester, 'combo-modifier-ctrl');
+    await tapKey(tester, 'combo-special-enter');
+    await tester.tap(find.text('저장'));
+    await tester.pumpAndSettle();
+    expect(results.single!.chord!.label, 'Enter');
+  });
+
+  testWidgets('editing restores the saved modifiers, special and typed keys', (
+    tester,
+  ) async {
+    final results = await openEditor(
+      tester,
+      combo: TerminalShortcut.combo(
+        'combo-edit',
+        'Edit',
+        const TerminalShortcutChord(keys: ['escape', 'x'], alt: true),
+      ),
+    );
+    expect(find.text('콤보 편집'), findsOneWidget);
+    expect(find.bySemanticsLabel('Alt+Esc+x'), findsOneWidget);
+    await tester.tap(find.text('저장'));
+    await tester.pumpAndSettle();
+    expect(results.single!.id, 'combo-edit');
+    expect(results.single!.chord!.keys, ['escape', 'x']);
+  });
+
+  Finder settingsScrollable() => find
+      .descendant(
+        of: find.byType(TerminalShortcutSettingsPage),
+        matching: find.byType(Scrollable),
+      )
+      .first;
+
+  Future<void> tapInSettings(WidgetTester tester, Finder target) async {
+    await tester.scrollUntilVisible(
+      target,
+      200,
+      scrollable: settingsScrollable(),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(target);
+    await tester.pumpAndSettle();
+  }
+
+  testWidgets('draft cancel, Apply, edit and delete preserve the chord', (
     tester,
   ) async {
     await _pumpBar(tester);
+    final addButton = find.descendant(
+      of: find.byType(TerminalShortcutSettingsPage),
+      matching: find.widgetWithText(TextButton, '콤보 추가'),
+    );
     Future<void> addCombo(String name) async {
-      await tester.tap(find.textContaining('콤보 추가 ('));
-      await tester.pumpAndSettle();
+      await tapInSettings(tester, addButton);
       await tester.enterText(find.widgetWithText(TextField, '콤보 이름'), name);
-      await tester.enterText(find.widgetWithText(TextField, '입력 키'), 'c');
-      await tester.pumpAndSettle();
-      await tester.tap(find.widgetWithText(FilterChip, 'Ctrl'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.widgetWithText(FilterChip, 'Shift'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('콤보 저장'));
+      await tapKey(tester, 'combo-modifier-ctrl');
+      await typeKeys(tester, 'b');
+      await tester.tap(find.text('저장'));
       await tester.pumpAndSettle();
     }
 
     await tester.tap(find.byTooltip('tmux 단축키 설정'));
     await tester.pumpAndSettle();
+    expect(find.text('tmux 단축키'), findsOneWidget);
     await addCombo('Cancelled');
     await tester.tap(find.byTooltip('닫기'));
     await tester.pumpAndSettle();
@@ -596,44 +730,35 @@ void main() {
     await addCombo('Saved');
     await tester.tap(find.text('적용'));
     await tester.pumpAndSettle();
+    expect(find.byType(TerminalShortcutSettingsPage), findsNothing);
+    expect(find.widgetWithText(TextButton, 'Saved'), findsOneWidget);
     expect(
       (await TerminalShortcutStore().read())[SessionType.tmux]!
           .combos
           .single
           .chord!
           .label,
-      'Ctrl+Shift+c',
+      'Ctrl+b',
     );
 
     Future<void> openMenu(String label) async {
       await tester.tap(find.byTooltip('tmux 단축키 설정'));
       await tester.pumpAndSettle();
-      await tester.scrollUntilVisible(
-        find.byTooltip('$label 콤보 동작'),
-        200,
-        scrollable: find
-            .descendant(
-              of: find.byType(TerminalShortcutSettingsSheet),
-              matching: find.byType(Scrollable),
-            )
-            .first,
-      );
-      await tester.tap(find.byTooltip('$label 콤보 동작'));
-      await tester.pumpAndSettle();
+      await tapInSettings(tester, find.byTooltip('$label 콤보 동작'));
     }
 
     await openMenu('Saved');
     await tester.tap(find.text('콤보 편집'));
     await tester.pumpAndSettle();
     await tester.enterText(find.widgetWithText(TextField, '콤보 이름'), 'Edited');
-    await tester.enterText(find.widgetWithText(TextField, '입력 키'), 'r');
-    await tester.tap(find.text('콤보 저장'));
+    await typeKeys(tester, 'pn');
+    await tester.tap(find.text('저장'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('적용'));
     await tester.pumpAndSettle();
     final edited =
         (await TerminalShortcutStore().read())[SessionType.tmux]!.combos.single;
-    expect(edited.chord!.label, 'Ctrl+Shift+r');
+    expect(edited.chord!.label, 'Ctrl+p+n');
     await openMenu('Edited');
     await tester.tap(find.text('콤보 삭제'));
     await tester.pumpAndSettle();
@@ -644,6 +769,43 @@ void main() {
       isEmpty,
     );
     expect(find.text('콤보 추가'), findsOneWidget);
+  });
+
+  testWidgets('combos copy across session types once and keep new ids', (
+    tester,
+  ) async {
+    const prefix = TerminalShortcutChord(keys: ['b'], ctrl: true);
+    await _saveCombos([
+      TerminalShortcut.combo('combo-prefix', 'Prefix', prefix),
+      TerminalShortcut.combo(
+        'combo-split',
+        'Split',
+        const TerminalShortcutChord(keys: ['a', 'b'], ctrl: true),
+      ),
+    ]);
+    await _saveCombos([
+      TerminalShortcut.combo('combo-zprefix', 'Mine', prefix),
+    ], session: SessionType.zellij);
+    await _pumpBar(tester, session: SessionType.zellij);
+    await tester.tap(find.byTooltip('zellij 단축키 설정'));
+    await tester.pumpAndSettle();
+    expect(find.text('2개 가져오기'), findsOneWidget);
+    expect(find.text('아직 만든 콤보가 없어요'), findsOneWidget);
+    final tmuxSource = find.widgetWithText(ListTile, 'tmux 콤보');
+    await tapInSettings(tester, tmuxSource);
+    expect(find.text('tmux 콤보 1개를 가져왔어요'), findsOneWidget);
+    await tester.tap(tmuxSource);
+    await tester.pumpAndSettle();
+    expect(find.text('가져올 새 콤보가 없어요'), findsOneWidget);
+    await tester.tap(find.text('적용'));
+    await tester.pumpAndSettle();
+    final profiles = await TerminalShortcutStore().read();
+    final zellij = profiles[SessionType.zellij]!;
+    expect(zellij.combos.map((combo) => combo.label), ['Mine', 'Split']);
+    expect(zellij.ids, hasLength(2));
+    expect(zellij.combos.last.id, isNot('combo-split'));
+    expect(zellij.combos.last.chord!.label, 'Ctrl+a+b');
+    expect(profiles[SessionType.tmux]!.combos, hasLength(2));
   });
 
   testWidgets('quick panel stays below 104dp and scrolls to the last action', (
@@ -688,7 +850,7 @@ void main() {
           child: const SizedBox(),
         ),
         'editor' => const TerminalShortcutComboEditor(),
-        _ => const TerminalShortcutSettingsSheet(sessionType: SessionType.tmux),
+        _ => const TerminalShortcutSettingsPage(sessionType: SessionType.tmux),
       };
       await tester.pumpWidget(
         ProviderScope(
