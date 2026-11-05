@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:kanvibe_mobile/src/features/board/data/board_snapshot.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kanvibe_mobile/src/common/constants/app_theme.dart';
@@ -99,6 +102,64 @@ Future<void> _closeFilter(WidgetTester tester) async {
 }
 
 void main() {
+  testWidgets('연속 입력은 마지막 fuzzy 검색만 적용하고 보드를 추가 요청하지 않는다', (tester) async {
+    final client = FakeDesktopClient(board: _filterBoard());
+    await tester.pumpWidget(_app(client: client));
+    await tester.pumpAndSettle();
+    await _openFilter(tester);
+    await tester.enterText(find.byType(TextField), 'dv');
+    await tester.pump(const Duration(milliseconds: 200));
+    await tester.enterText(find.byType(TextField), 'DVBX');
+    await tester.pump(const Duration(milliseconds: 299));
+    expect(_control('project-filter-option-local'), findsOneWidget);
+    await tester.pump(const Duration(milliseconds: 1));
+    expect(_control('project-filter-option-remote'), findsOneWidget);
+    expect(_control('project-filter-option-local'), findsNothing);
+    expect(client.boardCalls, hasLength(1));
+    await tester.enterText(find.byType(TextField), 'kvb');
+    await _closeFilter(tester);
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('보드 갱신 중에도 검색 결과와 입력을 유지한다', (tester) async {
+    final pending = Completer<BoardSnapshot>();
+    var refreshing = false;
+    final container = ProviderContainer(
+      overrides: [
+        desktopClientProvider.overrideWithValue(FakeDesktopClient()),
+        boardProvider.overrideWith(
+          (ref) => refreshing
+              ? pending.future
+              : Future.value(BoardSnapshot.fromJson(_filterBoard())),
+        ),
+        connectionStoreProvider.overrideWithValue(FakeConnectionStore()),
+      ],
+    );
+    addTearDown(container.dispose);
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(theme: buildAppTheme(), home: const BoardScreen()),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await _openFilter(tester);
+    await tester.enterText(find.byType(TextField), 'kanvibe');
+    await tester.pump(const Duration(milliseconds: 300));
+    refreshing = true;
+    container.invalidate(boardProvider);
+    await tester.pump();
+    expect(_control('project-filter-option-local'), findsOneWidget);
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+    expect(
+      tester.widget<EditableText>(find.byType(EditableText)).controller.text,
+      'kanvibe',
+    );
+    pending.complete(BoardSnapshot.fromJson(_filterBoard()));
+    await tester.pumpAndSettle();
+  });
+
   testWidgets('본 프로젝트와 같은 호스트의 worktree를 복수 선택하고 전체로 복원한다', (tester) async {
     await tester.binding.setSurfaceSize(_smallPhone);
     addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -144,15 +205,18 @@ void main() {
     expect(find.text('devbox · /code/kanvibe'), findsOneWidget);
 
     await tester.enterText(find.byType(TextField), 'DEVBOX');
+    await tester.pump(const Duration(milliseconds: 300));
     await tester.pumpAndSettle();
     expect(_control('project-filter-option-remote'), findsOneWidget);
     expect(_control('project-filter-option-local'), findsNothing);
     await tester.tap(_control('project-filter-option-remote'));
 
     await tester.enterText(find.byType(TextField), '/code/docs');
+    await tester.pump(const Duration(milliseconds: 300));
     await tester.pumpAndSettle();
     expect(_control('project-filter-option-other'), findsOneWidget);
     await tester.enterText(find.byType(TextField), '없는 프로젝트');
+    await tester.pump(const Duration(milliseconds: 300));
     await tester.pumpAndSettle();
     expect(find.text('검색 결과가 없습니다.'), findsOneWidget);
     await _closeFilter(tester);
