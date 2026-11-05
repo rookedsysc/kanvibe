@@ -28,6 +28,7 @@ dev_dependencies:
 flutter:
   uses-material-design: true
   assets:
+    - assets/branding/kanvibe-logo.png
     - assets/fonts/NerdFontsSymbolsOnly-LICENSE.txt
   fonts:
     - family: JetBrainsMono

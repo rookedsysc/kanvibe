@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -72,6 +74,21 @@ class _ProjectFilterSheet extends ConsumerStatefulWidget {
 
 class _ProjectFilterSheetState extends ConsumerState<_ProjectFilterSheet> {
   String _query = '';
+  Timer? _searchDebounce;
+  static const _searchDelay = Duration(milliseconds: 300);
+
+  void _search(String value) {
+    _searchDebounce?.cancel();
+    _searchDebounce = Timer(_searchDelay, () {
+      setState(() => _query = value);
+    });
+  }
+
+  @override
+  void dispose() {
+    _searchDebounce?.cancel();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -88,15 +105,8 @@ class _ProjectFilterSheetState extends ConsumerState<_ProjectFilterSheet> {
     final hasSelection = projects.any(
       (project) => selected.contains(project.id),
     );
-    final query = _query.trim().toLowerCase();
     final matches = projects
-        .where(
-          (project) => [
-            project.name,
-            project.repoPath ?? '',
-            project.sshHost ?? '로컬',
-          ].any((value) => value.toLowerCase().contains(query)),
-        )
+        .where((project) => project.matchesSearch(_query))
         .toList();
 
     return Padding(
@@ -150,8 +160,7 @@ class _ProjectFilterSheetState extends ConsumerState<_ProjectFilterSheet> {
                         child: Semantics(
                           identifier: 'project-filter-search',
                           child: TextField(
-                            onChanged: (value) =>
-                                setState(() => _query = value),
+                            onChanged: _search,
                             decoration: const InputDecoration(
                               labelText: '프로젝트 검색',
                               prefixIcon: Icon(Icons.search),
@@ -182,7 +191,7 @@ class _ProjectFilterSheetState extends ConsumerState<_ProjectFilterSheet> {
                         ),
                       ),
                     ),
-                    if (board.isLoading)
+                    if (board.isLoading && !board.hasValue)
                       const SliverToBoxAdapter(
                         child: Center(child: CircularProgressIndicator()),
                       )

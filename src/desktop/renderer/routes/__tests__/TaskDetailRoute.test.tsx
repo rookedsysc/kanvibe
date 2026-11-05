@@ -17,6 +17,7 @@ const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
 const originalClipboardDescriptor = Object.getOwnPropertyDescriptor(navigator, "clipboard");
 
 const mocks = vi.hoisted(() => ({
+  taskId: "task-1",
   getTaskById: vi.fn(),
   getTaskIdByProjectAndBranch: vi.fn(),
   updateTaskStatus: vi.fn(),
@@ -135,7 +136,7 @@ vi.mock("mermaid", () => ({
 }));
 
 vi.mock("react-router-dom", () => ({
-  useParams: () => ({ id: "task-1" }),
+  useParams: () => ({ id: mocks.taskId }),
 }));
 
 vi.mock("@/desktop/renderer/navigation", () => ({
@@ -306,6 +307,7 @@ vi.mock("@/desktop/renderer/components/TerminalLoader", async () => {
 describe("TaskDetailRoute", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.taskId = "task-1";
     sessionStorage.clear();
     mocks.getTaskIdByProjectAndBranch.mockResolvedValue(null);
     mocks.getGitDiffFiles.mockResolvedValue([]);
@@ -466,6 +468,45 @@ describe("TaskDetailRoute", () => {
     await waitFor(() => {
       expect(screen.getByTestId("task-title").textContent).toBe("fresh task title");
     });
+  });
+
+
+  it("A에서 B로 전환하는 첫 렌더와 조회 실패 뒤 재진입에서 A를 B 캐시에 저장하지 않는다", async () => {
+    const taskA = {
+      id: "task-1", title: "Task A", branchName: "feature-a", baseBranch: "main",
+      projectId: "project-1", project: { id: "project-1", name: "kanvibe" }, status: "todo",
+      sessionType: null, sessionName: null, worktreePath: null,
+    };
+    mocks.getTaskById.mockImplementation((id: string) => id === "task-1"
+      ? Promise.resolve(taskA)
+      : Promise.reject(new Error("B unavailable")));
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const { rerender, unmount } = render(<TaskDetailRoute />);
+    expect((await screen.findByTestId("task-title")).textContent).toBe("Task A");
+    mocks.taskId = "task-2";
+    rerender(<TaskDetailRoute />);
+    expect(screen.queryByText("Task A")).toBeNull();
+    const keyB = "kanvibe:route-cache:task-detail:task-2";
+    expect(sessionStorage.getItem(keyB)).toBeNull();
+    await waitFor(() => { expect(mocks.getTaskById).toHaveBeenCalledWith("task-2"); });
+    await act(async () => {});
+    expect(sessionStorage.getItem(keyB)).toBeNull();
+    unmount();
+    render(<TaskDetailRoute />);
+    expect(screen.queryByText("Task A")).toBeNull();
+    await act(async () => {});
+    expect(sessionStorage.getItem(keyB)).toBeNull();
+  });
+
+  it("현재 route와 task id가 다른 캐시를 읽지 않는다", async () => {
+    sessionStorage.setItem(TASK_DETAIL_CACHE_KEY, JSON.stringify({
+      task: { id: "other-task", title: "Foreign cache", branchName: "foreign" },
+    }));
+    mocks.getTaskById.mockReturnValue(new Promise(() => {}));
+    render(<TaskDetailRoute />);
+    expect(screen.queryByText("Foreign cache")).toBeNull();
+    expect(screen.getByText("Loading...")).toBeTruthy();
+    expect(screen.queryByTestId("task-title")).toBeNull();
   });
 
   it("현재 task id를 보드 복귀 focus target으로 기록한다", async () => {
@@ -2273,6 +2314,29 @@ describe("TaskDetailRoute", () => {
       expect(mocks.getTaskAiSessions).toHaveBeenLastCalledWith("task-1", undefined, "20", 20);
     });
     expect(await screen.findByRole("button", { name: /Codex older/ })).toBeTruthy();
+  });
+
+  it("추가 Agent의 이름·개수·필터·대화를 표시한다", async () => {
+    mocks.getSidebarDefaultCollapsed.mockResolvedValue(true);
+    mocks.getTaskById.mockResolvedValue({ ...notificationReadTargetTask, worktreePath: "/repo" });
+    mocks.getTaskAiSessions.mockResolvedValue({
+      isRemote: false, targetPath: "/repo", repoPath: "/repo", nextCursor: null,
+      sources: [{ provider: "hermes", available: true, sessionCount: 1, reason: null }],
+      sessions: [{ id: "hermes-1", provider: "hermes", title: "New provider chat", firstUserPrompt: "Hello", messageCount: 2, matchedPath: "/repo", matchScope: "worktree", startedAt: null, updatedAt: null }],
+    });
+    mocks.getTaskAiSessionDetail.mockResolvedValue({
+      sessionId: "hermes-1", provider: "hermes", title: "New provider chat", matchedPath: "/repo", nextCursor: null,
+      messages: [{ role: "assistant", timestamp: null, text: "Hermes answer", fullText: "Hermes answer", isTruncated: false }],
+    });
+    render(<TaskDetailRoute />);
+    fireEvent.click(await screen.findByRole("button", { name: "aiSessions.inlineChat" }));
+    const session = await screen.findByRole("button", { name: "Hermes New provider chat" });
+    const filter = screen.getByTestId("ai-session-filter-hermes");
+    expect(filter.textContent).toContain("1");
+    fireEvent.click(filter);
+    expect(filter.getAttribute("aria-pressed")).toBe("true");
+    fireEvent.click(session);
+    expect(await screen.findByText("Hermes answer")).toBeTruthy();
   });
 
   it("채팅 상세 메시지는 markdown과 mermaid 다이어그램을 렌더링하고 위험한 HTML은 제거한다", async () => {

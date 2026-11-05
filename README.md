@@ -1,5 +1,10 @@
 <div align="center">
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="./public/branding/kanvibe-logo-light.png">
+  <img src="./public/branding/kanvibe-logo.png" alt="KanVibe" width="320" height="87">
+</picture>
+
 # KanVibe
 
 **Your AI coding work, on one board. Keep it moving from your phone.**

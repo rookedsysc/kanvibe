@@ -19,6 +19,7 @@ interface ColumnProps {
   colorClass: string;
   onContextMenu: (task: KanbanTask, position: { x: number; y: number }) => void;
   projectNameMap: Record<string, string>;
+  projectGroupMap: Record<string, string>;
   projectColorMap: Record<string, string>;
   projectIconMap: Record<string, string>;
   unreadNotificationCountByTask?: UnreadNotificationCountByTask;
@@ -35,6 +36,7 @@ interface ColumnProps {
 }
 
 interface TaskGroup {
+  projectKey: string | null;
   projectName: string | null;
   tasks: KanbanTask[];
 }
@@ -43,20 +45,23 @@ interface TaskGroup {
 function buildContiguousGroups(
   tasks: KanbanTask[],
   projectNameMap: Record<string, string>,
+  projectGroupMap: Record<string, string>,
 ): TaskGroup[] {
   const groups: TaskGroup[] = [];
-  let current: { name: string | null; tasks: KanbanTask[] } | null = null;
+  let current: { key: string | null; name: string | null; tasks: KanbanTask[] } | null = null;
 
   for (const task of tasks) {
     const name = task.projectId
       ? (projectNameMap[task.projectId] ?? null)
       : null;
 
-    if (current && current.name === name) {
+    const key = task.projectId ? (projectGroupMap[task.projectId] ?? task.projectId) : null;
+
+    if (current && current.key === key) {
       current.tasks.push(task);
     } else {
       if (current) groups.push(finalizeGroup(current));
-      current = { name, tasks: [task] };
+      current = { key, name, tasks: [task] };
     }
   }
   if (current) groups.push(finalizeGroup(current));
@@ -65,16 +70,18 @@ function buildContiguousGroups(
 }
 
 function finalizeGroup(
-  raw: { name: string | null; tasks: KanbanTask[] },
+  raw: { key: string | null; name: string | null; tasks: KanbanTask[] },
 ): TaskGroup {
   if (!raw.name) {
     return {
+      projectKey: raw.key,
       projectName: null,
       tasks: raw.tasks,
     };
   }
 
   return {
+    projectKey: raw.key,
     projectName: raw.name,
     tasks: raw.tasks,
   };
@@ -88,6 +95,7 @@ export default function Column({
   colorClass,
   onContextMenu,
   projectNameMap,
+  projectGroupMap,
   projectColorMap,
   projectIconMap,
   unreadNotificationCountByTask,
@@ -104,8 +112,8 @@ export default function Column({
   const columnRef = useFlipReflow<HTMLDivElement>(tasks.map((task) => task.id).join(","));
 
   const groups = useMemo(
-    () => buildContiguousGroups(tasks, projectNameMap),
-    [tasks, projectNameMap],
+    () => buildContiguousGroups(tasks, projectNameMap, projectGroupMap),
+    [tasks, projectNameMap, projectGroupMap],
   );
 
   /** 그룹 간 연속적인 DnD 인덱스를 부여하기 위한 시작 인덱스 배열 */
@@ -172,12 +180,13 @@ export default function Column({
                 );
               }
 
-              const color = projectColorMap[group.projectName] ?? "#93C5FD";
-              const iconDataUrl = projectIconMap[group.projectName] ?? null;
+              const projectId = group.tasks[0].projectId ?? "";
+              const color = projectColorMap[projectId] ?? "#93C5FD";
+              const iconDataUrl = projectIconMap[projectId] ?? null;
 
               return (
                 <ProjectTaskGroup
-                  key={`${group.projectName}-${groupIdx}`}
+                  key={`${group.projectKey}-${groupIdx}`}
                 >
                   {group.tasks.map((task, localIdx) => (
                     <TaskCard

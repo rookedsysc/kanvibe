@@ -14,6 +14,8 @@ const connectTerminalSessionMock = vi.fn();
 const updateTaskStatusMock = vi.fn();
 const getProjectBranchesMock = vi.fn();
 const getTaskByIdMock = vi.fn();
+const getTaskAiSessionsMock = vi.fn();
+const getTaskAiSessionDetailMock = vi.fn();
 const attachTaskTerminalMock = vi.fn();
 let defaultSessionTypeSetting = SessionType.TMUX;
 
@@ -60,6 +62,9 @@ vi.mock("@/desktop/main/terminalBridge", async (importOriginal) => {
 });
 
 vi.mock("@/desktop/main/services/appSettingsService", () => ({
+  getNotificationSettings: async () => ({ isEnabled: appSettingsStore.get("notification_enabled") !== "false", enabledStatuses: JSON.parse(appSettingsStore.get("notification_statuses") ?? '["progress","pending","review"]') }),
+  setNotificationEnabled: async (enabled: boolean) => { appSettingsStore.set("notification_enabled", String(enabled)); },
+  setNotificationStatuses: async (statuses: string[]) => { appSettingsStore.set("notification_statuses", JSON.stringify(statuses)); },
   getAppSetting: async (key: string) => appSettingsStore.get(key) ?? null,
   getDefaultSessionType: async () => defaultSessionTypeSetting,
   setAppSetting: async (key: string, value: string) => {
@@ -84,6 +89,8 @@ vi.mock("@/desktop/main/services/kanbanService", () => ({
 }));
 vi.mock("@/desktop/main/services/projectService", () => ({
   getAllProjects: async () => [],
+  getTaskAiSessions: (...args: unknown[]) => getTaskAiSessionsMock(...args),
+  getTaskAiSessionDetail: (...args: unknown[]) => getTaskAiSessionDetailMock(...args),
   getProjectBranches: (projectId: string) => getProjectBranchesMock(projectId),
 }));
 
@@ -101,6 +108,8 @@ const {
   createMobileTask,
   createMobileTerminalTab,
   getMobileBoard,
+  getMobileAiSessions,
+  getMobileAiSessionDetail,
   getMobileTask,
   getMobileNotifications,
   markMobileNotificationRead,
@@ -138,11 +147,13 @@ describe("모바일 화면 크기", () => {
       if (command.includes("list-panes")) return MIRROR_PANE_LINE;
       if (command.includes("window_layout")) return "80\t24\tlayout-original\n";
       if (command.includes("window_width")) return "80 24 80 24";
+      if (command.includes("capture-pane")) return "history-through-180\n43 69";
       return "";
     });
 
     const viewport = await claimPaneViewport("task-1", "%19");
-    await viewport.resize(44, 70);
+    expect(await viewport.resize(44, 70)).toContain("history-through-180");
+    expect(executedCommands().findIndex((command) => command.includes("capture-pane"))).toBeGreaterThan(executedCommands().findIndex((command) => command.includes("resize-window")));
     expect(executedCommands().some((command) => command.includes("resize-pane") && command.includes("-x 44 -y 70"))).toBe(true);
     await viewport.release();
     expect(executedCommands().some((command) => command.includes("select-layout") && command.includes("layout-original"))).toBe(true);
@@ -154,7 +165,7 @@ describe("모바일 화면 크기", () => {
     await subscribeToPane("viewport-task", "viewport-task-1", () => {}, () => {});
     const first = await claimPaneViewport("viewport-task", "viewport-task-1");
     const second = await claimPaneViewport("viewport-task", "viewport-task-1");
-    await first.resize(44, 70);
+    expect(await first.resize(44, 70)).toBeNull();
     await second.resize(80, 35);
     await second.release();
     await first.release();
@@ -1361,7 +1372,7 @@ describe("첫 화면 스냅샷", () => {
       }
       if (command.includes("capture-pane")) {
         /** capture-pane은 pane 높이만큼 줄을 내보내고, 이어서 커서 위치 줄이 온다. execGit은 끝 공백을 다듬는다 */
-        return "$ ls\nREADME.md\n\n2 2";
+        return "$ ls\nREADME.md\n\n2 2 3 0 0 0 0 0 0";
       }
       return "";
     });
@@ -1370,7 +1381,25 @@ describe("첫 화면 스냅샷", () => {
 
     const unsubscribe = await subscribeToPane("task-screen", "%19", (chunk) => receivedChunks.push(chunk), () => {});
 
-    expect(receivedChunks[0]).toBe("\x1b[H\x1b[2J\x1b[3J$ ls\r\nREADME.md\r\n\x1b[3;3H");
+    expect(receivedChunks[0]).toBe("\x1b[?1049l\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1005l\x1b[?1006l\x1b[H\x1b[2J\x1b[3J$ ls\r\nREADME.md\r\n\x1b[3G");
+    unsubscribe();
+  });
+
+  it("접속 전에 켜진 tmux 대체 화면과 SGR 마우스 모드를 첫 프레임에서 복원한다", async () => {
+    findOneByMock.mockResolvedValue(TMUX_TASK);
+    execGitMock.mockImplementation(async (command) => {
+      if (command.includes("list-panes")) return MIRROR_PANE_LINE;
+      if (command.includes("capture-pane")) return "ready\n2 0 1 1 1 0 0 1 0";
+      return "";
+    });
+    stubPaneProcess();
+    const receivedChunks: string[] = [];
+    const unsubscribe = await subscribeToPane("task-screen-mouse", "%19", (chunk) => receivedChunks.push(chunk), () => {});
+    expect(receivedChunks[0]).toContain("\x1b[?1049h");
+    expect(receivedChunks[0]).toContain("\x1b[?1000h");
+    expect(receivedChunks[0]).toContain("\x1b[?1006h");
+    expect(receivedChunks[0]).toContain("ready\x1b[3G");
+    expect(receivedChunks[0]).not.toContain("2 0 1 1 1 0 0 1 0");
     unsubscribe();
   });
 
@@ -1397,4 +1426,76 @@ describe("첫 화면 스냅샷", () => {
     expect(receivedChunks[0]).toBe("\x1b[H\x1b[2J\x1b[3J$ ls\r\nREADME.md");
     unsubscribe();
   });
+});
+
+describe("모바일·데스크탑 공유 알림 설정", () => {
+  it("중복을 제거해 기존 AppSettings에 저장하고 빈 상태 목록도 유지한다", async () => {
+    const { updateMobileNotificationSettings, getMobileNotificationSettings } = await import("../mobileBridgeService");
+    expect(await updateMobileNotificationSettings({ isEnabled: true, enabledStatuses: ["review", "review", "done"] })).toEqual({ isEnabled: true, enabledStatuses: ["review", "done"] });
+    expect(appSettingsStore.get("notification_statuses")).toBe('["review","done"]');
+    await updateMobileNotificationSettings({ isEnabled: false, enabledStatuses: [] });
+    expect(await getMobileNotificationSettings()).toEqual({ isEnabled: false, enabledStatuses: [] });
+  });
+  it.each([null, {}, { isEnabled: "false", enabledStatuses: [] }, { isEnabled: true, enabledStatuses: ["unknown"] }, { isEnabled: true, enabledStatuses: [null] }])("잘못된 설정은 저장 전에 거절한다 %j", async (input) => {
+    const { updateMobileNotificationSettings } = await import("../mobileBridgeService");
+    await expect(updateMobileNotificationSettings(input)).rejects.toMatchObject({ name: "MobileTaskInputError" });
+    expect(appSettingsStore.has("notification_statuses")).toBe(false);
+  });
+});
+
+describe("모바일 History 신뢰 경로 캐시", () => {
+  it("목록에서 발견한 경로를 상세와 이전 페이지에 재사용하고 네트워크 응답에서는 제거한다", async () => {
+    getTaskAiSessionsMock.mockResolvedValue({ sessions: [{ id: "s1", provider: "codex", sourceRef: "/trusted/rollout.jsonl" }], sources: [], nextCursor: null });
+    getTaskAiSessionDetailMock.mockResolvedValue({ sessionId: "s1", provider: "codex", sourceRef: "/trusted/rollout.jsonl", messages: [] });
+    const before = getTaskAiSessionsMock.mock.calls.length;
+    const list = await getMobileAiSessions("history-cache-task", { limit: 20 });
+    expect(list.sessions[0]).not.toHaveProperty("sourceRef");
+    const first = await getMobileAiSessionDetail("history-cache-task", "codex", "s1", { limit: 20 });
+    await getMobileAiSessionDetail("history-cache-task", "codex", "s1", { limit: 20, cursor: "20" });
+    expect(first).not.toHaveProperty("sourceRef");
+    expect(getTaskAiSessionsMock.mock.calls.length - before).toBe(1);
+    expect(getTaskAiSessionDetailMock).toHaveBeenLastCalledWith("history-cache-task", "codex", "s1", "/trusted/rollout.jsonl", "20", 20, undefined, undefined);
+  });
+
+  it("캐시된 파일이 더 이상 세션과 일치하지 않으면 한 번 새 경로를 찾아 검증한다", async () => {
+    getTaskAiSessionsMock.mockResolvedValueOnce({ sessions: [{ id: "s2", provider: "codex", sourceRef: "/old/file" }], sources: [] });
+    await getMobileAiSessions("history-stale-task", { limit: 20 });
+    getTaskAiSessionsMock.mockResolvedValueOnce({ sessions: [{ id: "s2", provider: "codex", sourceRef: "/new/file" }], sources: [] });
+    getTaskAiSessionDetailMock.mockResolvedValueOnce(null).mockResolvedValueOnce({ sessionId: "s2", provider: "codex", messages: [] });
+    expect(await getMobileAiSessionDetail("history-stale-task", "codex", "s2", { limit: 20 })).toMatchObject({ sessionId: "s2" });
+    expect(getTaskAiSessionDetailMock).toHaveBeenLastCalledWith("history-stale-task", "codex", "s2", "/new/file", undefined, 20, undefined, undefined);
+  });
+
+  it("다른 태스크나 Agent의 같은 session id는 캐시를 공유하지 않는다", async () => {
+    getTaskAiSessionsMock.mockResolvedValueOnce({ sessions: [{ id: "same", provider: "codex", sourceRef: "/task-a/file" }], sources: [] });
+    await getMobileAiSessions("history-cache-a", { limit: 20 });
+    getTaskAiSessionsMock.mockResolvedValueOnce({ sessions: [], sources: [] });
+    const before = getTaskAiSessionDetailMock.mock.calls.length;
+    expect(await getMobileAiSessionDetail("history-cache-b", "codex", "same", { limit: 20 })).toBeNull();
+    expect(getTaskAiSessionDetailMock.mock.calls.length).toBe(before);
+  });
+});
+
+it("세션 수가 캐시 상한보다 많아도 선택한 세션의 상세를 읽는다", async () => {
+  getTaskAiSessionsMock.mockResolvedValueOnce({ sessions: Array.from({ length: 600 }, (_, index) => ({ id: `many-${index}`, provider: "codex", sourceRef: `/many/${index}` })), sources: [] });
+  getTaskAiSessionDetailMock.mockResolvedValueOnce({ sessionId: "many-0", provider: "codex", messages: [] });
+  expect(await getMobileAiSessionDetail("history-many-task", "codex", "many-0", { limit: 20 })).toMatchObject({ sessionId: "many-0" });
+  expect(getTaskAiSessionDetailMock).toHaveBeenLastCalledWith("history-many-task", "codex", "many-0", "/many/0", undefined, 20, undefined, undefined);
+});
+
+it("캐시된 파일이 삭제되어 ENOENT가 나도 새 경로를 한 번 찾아 상세를 읽는다", async () => {
+  getTaskAiSessionsMock.mockResolvedValueOnce({ sessions: [{ id: "gone", provider: "codex", sourceRef: "/deleted/file" }], sources: [] });
+  await getMobileAiSessions("history-deleted-file", { limit: 20 });
+  getTaskAiSessionsMock.mockResolvedValueOnce({ sessions: [{ id: "gone", provider: "codex", sourceRef: "/current/file" }], sources: [] });
+  getTaskAiSessionDetailMock.mockRejectedValueOnce(Object.assign(new Error("missing source"), { code: "ENOENT" })).mockResolvedValueOnce({ sessionId: "gone", messages: [] });
+  expect(await getMobileAiSessionDetail("history-deleted-file", "codex", "gone", { limit: 20 })).toMatchObject({ sessionId: "gone" });
+  expect(getTaskAiSessionDetailMock).toHaveBeenLastCalledWith("history-deleted-file", "codex", "gone", "/current/file", undefined, 20, undefined, undefined);
+});
+
+it("파일 삭제가 아닌 읽기 권한 오류는 상세 조회 실패로 유지한다", async () => {
+  getTaskAiSessionsMock.mockResolvedValueOnce({ sessions: [{ id: "denied", provider: "codex", sourceRef: "/denied/file" }], sources: [] });
+  await getMobileAiSessions("history-permission-file", { limit: 20 });
+  const error = Object.assign(new Error("permission denied"), { code: "EACCES" });
+  getTaskAiSessionDetailMock.mockRejectedValueOnce(error);
+  await expect(getMobileAiSessionDetail("history-permission-file", "codex", "denied", { limit: 20 })).rejects.toBe(error);
 });

@@ -1,10 +1,10 @@
-import { forwardRef, useEffect, useImperativeHandle } from "react";
+import { act, forwardRef, useEffect, useImperativeHandle } from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { createEvent, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import Board from "../Board";
 import CommandPaletteDialog from "@/desktop/renderer/components/CommandPaletteDialog";
-import { deleteTask, moveTaskToColumn } from "@/desktop/renderer/actions/kanban";
+import { deleteTask, getMoreDoneTasks, moveTaskToColumn } from "@/desktop/renderer/actions/kanban";
 import { runBackgroundTaskSyncNow } from "@/desktop/renderer/actions/backgroundTaskSync";
 import { useTaskKindFilterParams } from "@/desktop/renderer/hooks/useTaskKindFilterParams";
 import { useBoardSortPreference } from "@/desktop/renderer/hooks/useBoardSortPreference";
@@ -109,9 +109,16 @@ vi.mock("@/desktop/renderer/hooks/useBoardSortPreference", () => ({
 }));
 
 vi.mock("../Column", () => ({
-  default: ({ status, tasks, diffStatsByTaskId }: {
+  default: ({ status, tasks, diffStatsByTaskId, projectNameMap, projectColorMap, projectIconMap, projectGroupMap, onLoadMore, hasMore, isLoadingMore }: {
     status: TaskStatus;
     tasks: KanbanTask[];
+    projectNameMap: Record<string, string>;
+    projectColorMap: Record<string, string>;
+    projectIconMap: Record<string, string>;
+    projectGroupMap?: Record<string, string>;
+    onLoadMore?: () => void;
+    hasMore?: boolean;
+    isLoadingMore?: boolean;
     diffStatsByTaskId?: Record<string, { fileCount: number; additions: number; deletions: number }>;
   }) => (
     <div data-testid="column">
@@ -123,11 +130,16 @@ vi.mock("../Column", () => ({
           data-kanban-task-id={task.id}
           data-kanban-status={status}
           data-kanban-index={index}
+          data-project-name={projectNameMap[task.projectId ?? ""]}
+          data-project-color={projectColorMap[task.projectId ?? ""] ?? projectColorMap[projectNameMap[task.projectId ?? ""]]}
+          data-project-icon={projectIconMap[task.projectId ?? ""] ?? projectIconMap[projectNameMap[task.projectId ?? ""]]}
+          data-project-group={projectGroupMap?.[task.projectId ?? ""]}
           data-diff-stats={diffStatsByTaskId?.[task.id] ? JSON.stringify(diffStatsByTaskId[task.id]) : undefined}
         >
           {task.title}
         </a>
       ))}
+      {hasMore && <button onClick={onLoadMore} disabled={isLoadingMore}>load-more-{status}</button>}
     </div>
   ),
 }));
@@ -1678,5 +1690,97 @@ describe("Board 변경 집계 배지", () => {
         JSON.stringify({ fileCount: 4, additions: 40, deletions: 8 }),
       );
     });
+  });
+});
+
+
+describe("Board pagination and project identity regressions", () => {
+  function props() {
+    return {
+      initialTasks: createEmptyTasks(), initialDoneTotal: 80, initialDoneLimit: 20,
+      sshHosts: [], projects: [createProject()], sidebarDefaultCollapsed: false,
+      doneAlertDismissed: false, notificationSettings: { isEnabled: true, enabledStatuses: [] },
+      defaultSessionType: SessionType.TMUX, taskSearchShortcut: "Mod+Shift+O",
+    };
+  }
+  function donePage(start: number) {
+    return Array.from({ length: 20 }, (_, index) => createTask({
+      id: `done-${start + index}`, title: `Done ${start + index}`, status: TaskStatus.DONE,
+    }));
+  }
+  function deferredPage() {
+    let resolve!: (value: { tasks: KanbanTask[]; doneTotal: number }) => void;
+    const promise = new Promise<{ tasks: KanbanTask[]; doneTotal: number }>((done) => { resolve = done; });
+    return { promise, resolve };
+  }
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(getMoreDoneTasks).mockReset();
+    vi.mocked(useTaskKindFilterParams).mockReturnValue(["all", vi.fn()] as const);
+    vi.mocked(useBoardSortPreference).mockReturnValue([{ keys: [] }, vi.fn()] as const);
+  });
+
+  it("discards a pending Done page when refreshed first-page props replace the list", async () => {
+    const stale = deferredPage();
+    vi.mocked(getMoreDoneTasks).mockResolvedValueOnce({ tasks: donePage(20), doneTotal: 80 })
+      .mockReturnValueOnce(stale.promise).mockResolvedValueOnce({ tasks: donePage(20), doneTotal: 80 });
+    const initial = { ...props(), initialTasks: { ...createEmptyTasks(), done: donePage(0) } };
+    const view = render(<Board {...initial} />);
+    fireEvent.click(screen.getByText("load-more-done"));
+    await screen.findByText("Done 20");
+    fireEvent.click(screen.getByText("load-more-done"));
+    view.rerender(<Board {...initial} initialTasks={{ ...createEmptyTasks(), done: donePage(0) }} />);
+    await act(async () => stale.resolve({ tasks: donePage(40), doneTotal: 80 }));
+    expect(screen.queryByText("Done 40")).toBeNull();
+    fireEvent.click(screen.getByText("load-more-done"));
+    await screen.findByText("Done 20");
+    expect(vi.mocked(getMoreDoneTasks).mock.calls.map(([offset]) => offset)).toEqual([20, 40, 20]);
+  });
+
+  it("stale Done finally cannot clear a replacement page loading state", async () => {
+    const stale = deferredPage(), current = deferredPage();
+    vi.mocked(getMoreDoneTasks).mockReturnValueOnce(stale.promise).mockReturnValueOnce(current.promise);
+    const initial = props();
+    const view = render(<Board {...initial} />);
+    fireEvent.click(screen.getByText("load-more-done"));
+    view.rerender(<Board {...initial} initialTasks={createEmptyTasks()} />);
+    expect((screen.getByText("load-more-done") as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(screen.getByText("load-more-done"));
+    await act(async () => stale.resolve({ tasks: donePage(40), doneTotal: 80 }));
+    expect((screen.getByText("load-more-done") as HTMLButtonElement).disabled).toBe(true);
+    await act(async () => current.resolve({ tasks: donePage(20), doneTotal: 80 }));
+    expect((screen.getByText("load-more-done") as HTMLButtonElement).disabled).toBe(false);
+    expect(screen.queryByText("Done 40")).toBeNull();
+  });
+
+  it("deduplicates overlapping Done results while advancing by the fetched page size", async () => {
+    vi.mocked(getMoreDoneTasks).mockResolvedValueOnce({ tasks: donePage(10), doneTotal: 80 })
+      .mockResolvedValueOnce({ tasks: [], doneTotal: 80 });
+    render(<Board {...props()} initialTasks={{ ...createEmptyTasks(), done: donePage(0) }} />);
+    fireEvent.click(screen.getByText("load-more-done"));
+    await screen.findByText("Done 29");
+    expect(screen.getAllByText("Done 10")).toHaveLength(1);
+    fireEvent.click(screen.getByText("load-more-done"));
+    await waitFor(() => expect(getMoreDoneTasks).toHaveBeenLastCalledWith(40));
+  });
+
+  it("uses each host's main project display settings for its worktrees", async () => {
+    const local = createProject({ id: "local", name: "repo", repoPath: "/work/repo", color: "#ff0000", iconDataUrl: "local-icon" });
+    const remote = createProject({ id: "remote", name: "repo", repoPath: "/work/repo", sshHost: "server", color: "#0000ff", iconDataUrl: "remote-icon" });
+    const localWorktree = createProject({ id: "local-wt", name: "local-branch", repoPath: "/work/repo__worktrees/feature", isWorktree: true });
+    const remoteWorktree = createProject({ id: "remote-wt", name: "remote-branch", repoPath: "/work/repo__worktrees/feature", sshHost: "server", isWorktree: true });
+    const projects = [local, remote, localWorktree, remoteWorktree];
+    await act(async () => {
+      render(<Board {...props()} projects={projects} initialTasks={{ ...createEmptyTasks(), todo: projects.map((project) => createTask({ id: project.id, title: project.id, projectId: project.id, status: TaskStatus.TODO })) }} />);
+    });
+    for (const [project, main] of [[local, local], [remote, remote], [localWorktree, local], [remoteWorktree, remote]]) {
+      const card = screen.getByRole("link", { name: project.id });
+      expect(card.getAttribute("data-project-color")).toBe(main.color);
+      expect(card.getAttribute("data-project-icon")).toBe(main.iconDataUrl);
+      expect(card.getAttribute("data-project-name")).toBe("repo");
+      expect(card.getAttribute("data-project-group")).toBe(screen.getByRole("link", { name: main.id }).getAttribute("data-project-group"));
+    }
+    expect(screen.getByRole("link", { name: "local" }).getAttribute("data-project-group"))
+      .not.toBe(screen.getByRole("link", { name: "remote" }).getAttribute("data-project-group"));
   });
 });

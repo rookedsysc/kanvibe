@@ -45,6 +45,44 @@ void main() {
     await notifications.dispose();
   });
 
+  test('보드 이벤트 burst는 마지막 이벤트 300ms 뒤 한 번만 조회한다', () async {
+    final subscription = container.listen(boardProvider, (_, _) {});
+    addTearDown(subscription.close);
+    await container.read(boardProvider.future);
+    client.openedEvents[pcA.id]!.add({'type': 'board-updated'});
+    await flushEvents();
+    await Future<void>.delayed(const Duration(milliseconds: 100));
+    client.openedEvents[pcA.id]!.add({'type': 'board-updated'});
+    await flushEvents();
+    await Future<void>.delayed(const Duration(milliseconds: 100));
+    expect(client.boardCalls, hasLength(1));
+    await Future<void>.delayed(const Duration(milliseconds: 350));
+    await flushEvents();
+    expect(client.boardCalls, hasLength(2));
+    await Future<void>.delayed(const Duration(seconds: 1));
+    expect(client.boardCalls, hasLength(2));
+  });
+
+  test('PC 전환과 provider dispose는 대기 중 갱신을 취소한다', () async {
+    final subscription = container.listen(boardProvider, (_, _) {});
+    addTearDown(subscription.close);
+    await container.read(boardProvider.future);
+    client.openedEvents[pcA.id]!.add({'type': 'board-updated'});
+    await flushEvents();
+    await Future<void>.delayed(const Duration(milliseconds: 100));
+    await container.read(connectionControllerProvider.notifier).select(pcB.id);
+    await container.read(boardProvider.future);
+    final count = client.boardCalls.length;
+    await Future<void>.delayed(const Duration(milliseconds: 300));
+    expect(client.boardCalls, hasLength(count));
+    client.openedEvents[pcB.id]!.add({'type': 'board-updated'});
+    await flushEvents();
+    await Future<void>.delayed(const Duration(milliseconds: 100));
+    container.invalidate(mobileNotificationControllerProvider);
+    await Future<void>.delayed(const Duration(milliseconds: 300));
+    expect(client.boardCalls, hasLength(count));
+  });
+
   test('저장한 모든 PC를 구독하고 전경 푸시와 소켓의 동일 이벤트는 한 번만 표시한다', () async {
     expect(client.openedEvents.keys, containsAll([pcA.id, pcB.id]));
     client.openedEvents[pcA.id]!.add(taskNotification());
@@ -123,12 +161,27 @@ void main() {
     observed.clear();
     client.openedEvents[pcA.id]!.add({'type': 'board-updated'});
     await flushEvents();
+    await Future<void>.delayed(const Duration(milliseconds: 350));
     await container.read(boardProvider.future);
     expect(observed, isNotEmpty);
     observed.clear();
     client.openedEvents[pcA.id]!.add({'type': 'connected'});
     await flushEvents();
+    await Future<void>.delayed(const Duration(milliseconds: 350));
     await container.read(boardProvider.future);
     expect(observed, isNotEmpty);
+  });
+  test('알림을 끈 상태도 보드와 상세는 갱신하고 시스템 표시만 건너뛴다', () async {
+    final updates = <Object>[];
+    final controller = container.read(mobileNotificationControllerProvider);
+    final subscription = controller.taskUpdates.listen(updates.add);
+    addTearDown(subscription.cancel);
+    notifications.foreground.add({
+      ...taskNotification(connectionId: pcA.id),
+      'shouldNotify': false,
+    });
+    await flushEvents();
+    expect(updates, hasLength(1));
+    expect(notifications.shown, isEmpty);
   });
 }

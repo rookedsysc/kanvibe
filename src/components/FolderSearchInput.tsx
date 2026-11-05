@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import { useTranslations } from "next-intl";
 import { fuzzyMatch, type FuzzyMatch } from "@/utils/fuzzySearch";
 import HighlightedText from "@/components/HighlightedText";
@@ -23,11 +23,13 @@ export default function FolderSearchInput({
   const t = useTranslations("settings");
   const [inputValue, setInputValue] = useState("~/");
   const [selectedPath, setSelectedPath] = useState("");
-  const [directories, setDirectories] = useState<string[]>([]);
-  const [filteredDirs, setFilteredDirs] = useState<FuzzyMatch[]>([]);
+  const [directoryResult, setDirectoryResult] = useState<{
+    parentPath: string;
+    sshHost: string | undefined;
+    directories: string[];
+  } | null>(null);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [isOpen, setIsOpen] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -35,43 +37,40 @@ export default function FolderSearchInput({
 
   // inputValue에서 탐색할 부모 경로와 검색어를 파싱한다
   const lastSlash = inputValue.lastIndexOf("/");
-  const parentPath = lastSlash > 0 ? inputValue.substring(0, lastSlash) : "~";
+  const parentPath = lastSlash > 0 ? inputValue.substring(0, lastSlash) : lastSlash === 0 ? "/" : "~";
   const searchTerm = lastSlash >= 0 ? inputValue.substring(lastSlash + 1) : "";
 
-  /** 지정 경로의 하위 디렉토리를 런타임에서 가져온다 */
-  const fetchDirectories = useCallback(async (dirPath: string) => {
-    setIsLoading(true);
-    try {
-      const result = await listSubdirectories(dirPath, sshHost);
-      setDirectories(result);
-    } catch {
-      setDirectories([]);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [sshHost]);
+  const isCurrentResult = directoryResult?.parentPath === parentPath && directoryResult.sshHost === sshHost;
+  const isLoading = !isCurrentResult;
 
-  /** parentPath 변경 시 디렉토리 목록을 다시 가져온다 */
+  /** 경로와 호스트가 바뀌면 이전 요청은 더 이상 이 입력의 결과를 변경하지 않는다 */
   useEffect(() => {
-    fetchDirectories(parentPath);
-  }, [parentPath, fetchDirectories]);
+    let active = true;
+    void (async () => {
+      try {
+        const directories = await listSubdirectories(parentPath, sshHost);
+        if (active) setDirectoryResult({ parentPath, sshHost, directories });
+      } catch {
+        if (active) setDirectoryResult({ parentPath, sshHost, directories: [] });
+      }
+    })();
+    return () => { active = false; };
+  }, [parentPath, sshHost]);
 
-  /** searchTerm 또는 directories 변경 시 fuzzy 필터링을 수행한다 */
-  useEffect(() => {
+  const filteredDirs = useMemo(() => {
+    const directories = isCurrentResult ? directoryResult.directories : [];
     if (!searchTerm) {
-      setFilteredDirs(directories.map((p) => ({ path: p, score: 0, matchedIndices: [] })));
-      setSelectedIndex(0);
-      return;
+      return directories.map((path) => ({ path, score: 0, matchedIndices: [] }));
     }
-
-    const matches = directories
+    return directories
       .map((dirName) => fuzzyMatch(searchTerm, dirName))
-      .filter((m): m is FuzzyMatch => m !== null)
+      .filter((match): match is FuzzyMatch => match !== null)
       .sort((a, b) => b.score - a.score);
+  }, [directoryResult, isCurrentResult, searchTerm]);
 
-    setFilteredDirs(matches);
+  useEffect(() => {
     setSelectedIndex(0);
-  }, [searchTerm, directories]);
+  }, [filteredDirs]);
 
   /** 선택된 항목이 보이도록 스크롤한다 */
   useEffect(() => {
@@ -95,7 +94,7 @@ export default function FolderSearchInput({
 
   /** 폴더를 선택하여 확정한다 */
   function handleSelect(dirName: string) {
-    const fullPath = parentPath === "~" ? `~/${dirName}` : `${parentPath}/${dirName}`;
+    const fullPath = `${parentPath === "/" ? "" : parentPath}/${dirName}`;
     setSelectedPath(fullPath);
     setInputValue(fullPath);
     setIsOpen(false);
@@ -125,7 +124,7 @@ export default function FolderSearchInput({
         if (filteredDirs[selectedIndex]) {
           // Tab으로 하위 폴더에 진입: 선택한 폴더명 뒤에 /를 붙여 하위 탐색
           const dirName = filteredDirs[selectedIndex].path;
-          const newPath = parentPath === "~" ? `~/${dirName}/` : `${parentPath}/${dirName}/`;
+          const newPath = `${parentPath === "/" ? "" : parentPath}/${dirName}/`;
           setInputValue(newPath);
           setSelectedIndex(0);
         }
@@ -167,7 +166,7 @@ export default function FolderSearchInput({
         <div className="absolute z-50 left-0 right-0 mt-1 bg-bg-surface border border-border-default rounded-md shadow-lg max-h-60 overflow-y-auto">
           {/* 현재 경로 breadcrumb */}
           <div className="px-3 py-1.5 text-[10px] text-text-muted font-mono border-b border-border-default">
-            {parentPath}/
+            {parentPath === "/" ? "/" : `${parentPath}/`}
           </div>
 
           {isLoading ? (

@@ -188,4 +188,26 @@ describe("hostFileAccess.writeTextFileIfAbsent", () => {
     await expect(readFile(createdPath, "utf-8")).resolves.toBe("seed\n");
     await expect(readFile(existingPath, "utf-8")).resolves.toBe("authoritative\n");
   });
+
+  it("존재 검사 직후 다른 writer가 만든 원격 파일도 덮지 않는다", async () => {
+    const targetPath = path.join(tempDir, "project's state.json");
+    mocks.execGit.mockImplementation(async (command: string) => {
+      const barrier = `function [() {
+        builtin [ "$@"
+        result=$?
+        if builtin [ "$1" = "-e" ] && builtin [ "$result" -ne 0 ]; then
+          printf 'authoritative\\n' > ${quoteForPosixShell(targetPath)}
+        fi
+        return "$result"
+      }
+`;
+      return (await execFileAsync("bash", ["-c", barrier + command])).stdout;
+    });
+    const { writeTextFileIfAbsent } = await import("@/lib/hostFileAccess");
+
+    await expect(writeTextFileIfAbsent(targetPath, "seed\n", "fixture-host")).resolves.toBeUndefined();
+
+    expect(await readFile(targetPath, "utf8")).toBe("authoritative\n");
+  });
+
 });

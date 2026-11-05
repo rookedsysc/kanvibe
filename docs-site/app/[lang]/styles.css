@@ -106,33 +106,15 @@ img {
   color: inherit;
 }
 
-.kv-logo-mark {
-  display: grid;
-  width: 2rem;
-  height: 2rem;
-  place-items: center;
-  border: 1px solid rgba(0, 100, 255, 0.6);
-  border-radius: 0.65rem;
-  background: linear-gradient(135deg, rgba(0, 100, 255, 0.95), rgba(19, 27, 45, 0.95));
-  color: white;
-  font-weight: 800;
-  box-shadow: 0 12px 36px rgba(0, 100, 255, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.28);
+.kv-logo-image {
+  display: block;
+  width: 8.25rem;
+  height: auto;
+  flex-shrink: 0;
+  filter: invert(1);
 }
 
-.kv-logo-copy {
-  display: flex;
-  min-width: 0;
-  flex-direction: column;
-  line-height: 1.05;
-}
-
-.kv-logo-copy strong {
-  color: var(--kv-text);
-  font-size: 0.98rem;
-  letter-spacing: -0.02em;
-}
-
-.kv-logo-copy small {
+.kv-logo-tagline {
   max-width: 20rem;
   overflow: hidden;
   color: var(--kv-muted);
@@ -589,7 +571,7 @@ img {
     flex-direction: column;
   }
 
-  .kv-logo-copy small {
+  .kv-logo-tagline {
     display: none;
   }
 

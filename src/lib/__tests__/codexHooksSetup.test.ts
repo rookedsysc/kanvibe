@@ -21,6 +21,13 @@ describe("codexHooksSetup", () => {
   });
 
   describe("upsertCodexConfigToml", () => {
+    it("주석이 있는 features와 후속 섹션의 경계를 보존한다", () => {
+      const content = '[features] # user settings\nfast_mode = true\n[other] # next table\nhooks = false\n';
+      const updated = upsertCodexConfigToml(content);
+      expect(updated).toBe('[features] # user settings\nfast_mode = true\nhooks = true\n[other] # next table\nhooks = false\n');
+      expect(upsertCodexConfigToml(updated)).toBe(updated);
+    });
+
     it("should enable the hooks feature flag under the features table", () => {
       const content = 'model = "gpt-5"\n[features]\nfast_mode = true\n';
 

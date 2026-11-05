@@ -110,3 +110,51 @@ describe("terminalBridge.pasteImageToRemoteTerminal", () => {
     expect(result).toEqual({ ok: false, error: "scp 전송 실패 (exit 1): Permission denied" });
   });
 });
+
+describe("terminalBridge pending open ownership", () => {
+  beforeEach(() => { vi.resetModules(); vi.clearAllMocks(); });
+  function windowStub() {
+    return { id: 100, isDestroyed: vi.fn(() => false), send: vi.fn() } as unknown as import("electron").WebContents;
+  }
+  it("shares pending open and keeps one balanced client registration", async () => {
+    let resolveTask!: (task: unknown) => void;
+    mockFindOneBy.mockReturnValue(new Promise((resolve) => { resolveTask = resolve; }));
+    const bridge = await importBridge();
+    const terminal = await import("@/lib/terminal");
+    const window = windowStub();
+    const first = bridge.openTerminal(window, "task", null, 100, 30);
+    const second = bridge.openTerminal(window, "task", null, 100, 30);
+    await vi.waitFor(() => expect(mockFindOneBy).toHaveBeenCalled());
+    resolveTask({ sessionType: "terminal", sessionName: "session" });
+    await Promise.all([first, second]);
+    expect(terminal.attachLocalSession).toHaveBeenCalledTimes(1);
+    const client = vi.mocked(terminal.attachLocalSession).mock.calls[0][4] as unknown as { readyState: number };
+    bridge.closeTerminal(window.id, "task", null);
+    expect(client.readyState).toBe(1);
+    bridge.closeWindowTerminals(window.id);
+    expect(client.readyState).toBe(3);
+  });
+  it.each(["close", "destroy"])("cancels before attach on pending %s", async (mode) => {
+    let resolveTask!: (task: unknown) => void;
+    mockFindOneBy.mockReturnValue(new Promise((resolve) => { resolveTask = resolve; }));
+    const bridge = await importBridge();
+    const terminal = await import("@/lib/terminal");
+    const window = windowStub();
+    const pending = bridge.openTerminal(window, "task", null, 100, 30);
+    await vi.waitFor(() => expect(mockFindOneBy).toHaveBeenCalled());
+    if (mode === "close") bridge.closeTerminal(window.id, "task", null);
+    else bridge.closeWindowTerminals(window.id);
+    resolveTask({ sessionType: "terminal", sessionName: "session" });
+    await pending;
+    expect(terminal.attachLocalSession).not.toHaveBeenCalled();
+  });
+  it("allows retry after failed preparation", async () => {
+    mockFindOneBy.mockRejectedValueOnce(new Error("database unavailable"));
+    const bridge = await importBridge();
+    const window = windowStub();
+    await expect(bridge.openTerminal(window, "task", null, 100, 30)).resolves.toMatchObject({ ok: false });
+    mockFindOneBy.mockResolvedValue({ sessionType: "terminal", sessionName: "session" });
+    await expect(bridge.openTerminal(window, "task", null, 100, 30)).resolves.toEqual({ ok: true });
+    bridge.closeWindowTerminals(window.id);
+  });
+});

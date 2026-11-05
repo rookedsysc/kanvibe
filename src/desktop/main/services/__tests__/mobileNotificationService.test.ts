@@ -4,6 +4,11 @@ import { broadcastBoardUpdate, broadcastTaskStatusChanged } from "@/lib/boardNot
 import { startMobileNotifications, stopMobileNotifications, subscribeToMobileEvents } from "@/desktop/main/services/mobileNotificationService";
 import { createPushRelayServer } from "../../../../../services/mobile-push-relay/server.mjs";
 
+const notificationSettings = vi.hoisted(() => ({ isEnabled: true, enabledStatuses: ["todo", "progress", "pending", "review", "done"] }));
+vi.mock("@/desktop/main/services/appSettingsService", () => ({
+  getNotificationSettings: async () => notificationSettings,
+}));
+
 const statusChange = { projectName: "kanvibe", branchName: "feat/mobile", taskTitle: "모바일 구현", description: null, newStatus: "review", taskId: "task-1" };
 const subscriptions = [
   { deviceId: "device-1", pushToken: "push-1", platform: "ios" as const, connectionId: "connection-1" },
@@ -14,6 +19,8 @@ const nativeFetch = globalThis.fetch;
 let unsubscribe = () => {};
 
 beforeEach(() => {
+  notificationSettings.isEnabled = true;
+  notificationSettings.enabledStatuses = ["todo", "progress", "pending", "review", "done"];
   vi.stubGlobal("fetch", fetchMock);
   fetchMock.mockReset().mockResolvedValue(new Response(null, { status: 200 }));
   vi.spyOn(console, "error").mockImplementation(() => {});
@@ -46,7 +53,8 @@ describe("모바일 hook 상태 이벤트 전달", () => {
       const payload = { ...provider.send.mock.calls[0][0] };
       delete payload.token;
       expect(Buffer.byteLength(JSON.stringify(payload))).toBeLessThanOrEqual(4096);
-      expect(payload.data).toEqual({ ...(events[0] as object), connectionId: "🚀".repeat(32) });
+      const { shouldNotify: _, ...event } = events[0] as Record<string, unknown>;
+      expect(payload.data).toEqual({ ...event, connectionId: "🚀".repeat(32) });
       expect(payload.notification).toEqual(expect.objectContaining({ body: expect.stringContaining("한글") }));
     } finally {
       stopMobileNotifications();
@@ -60,27 +68,30 @@ describe("모바일 hook 상태 이벤트 전달", () => {
     startMobileNotifications({ relayUrl: "https://relay.example/notifications", relayToken: "relay-secret", readSubscriptions: async () => subscriptions });
     broadcastBoardUpdate();
     broadcastTaskStatusChanged(statusChange);
+    await vi.waitFor(() => expect(events).toHaveLength(2));
     expect(events).toEqual([
       { type: "board-updated" },
-      { type: "task-status-changed", eventId: expect.any(String), taskId: "task-1", title: "kanvibe — feat/mobile", body: "모바일 구현: review로 변경", status: "review", createdAt: expect.any(String) },
+      { type: "task-status-changed", eventId: expect.any(String), taskId: "task-1", title: "kanvibe — feat/mobile", body: "모바일 구현: review로 변경", status: "review", createdAt: expect.any(String), shouldNotify: true },
     ]);
     await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
     const payloads = fetchMock.mock.calls.map(([, options]) => JSON.parse(options!.body as string));
+    const { shouldNotify: _, ...event } = events[1] as Record<string, unknown>;
     expect(payloads).toEqual(subscriptions.map((subscription) => ({
       token: subscription.pushToken,
       notification: { title: "kanvibe — feat/mobile", body: "모바일 구현: review로 변경" },
-      data: { ...(events[1] as object), connectionId: subscription.connectionId },
+      data: { ...event, connectionId: subscription.connectionId },
     })));
     expect(fetchMock.mock.calls[0]).toEqual(["https://relay.example/notifications", expect.objectContaining({ method: "POST", headers: { "content-type": "application/json", authorization: "Bearer relay-secret" }, signal: expect.any(AbortSignal) })]);
     expect(Object.values(payloads[0].data).every((value) => typeof value === "string")).toBe(true);
   });
 
-  it("릴레이 설정이 없어도 모든 hook 상태를 WebSocket으로 전달한다", () => {
+  it("릴레이 설정이 없어도 모든 hook 상태를 WebSocket으로 전달한다", async () => {
     const events: unknown[] = [];
     unsubscribe = subscribeToMobileEvents((event) => events.push(event));
     startMobileNotifications({ readSubscriptions: async () => subscriptions });
     broadcastTaskStatusChanged({ ...statusChange, newStatus: "progress" });
     broadcastTaskStatusChanged({ ...statusChange, newStatus: "done" });
+    await vi.waitFor(() => expect(events).toHaveLength(2));
     expect(events).toEqual([expect.objectContaining({ status: "progress" }), expect.objectContaining({ status: "done" })]);
     expect(fetchMock).not.toHaveBeenCalled();
   });
@@ -92,13 +103,13 @@ describe("모바일 hook 상태 이벤트 전달", () => {
     startMobileNotifications({ relayUrl: "https://relay.example/notifications", relayToken: "relay-secret", readSubscriptions: async () => subscriptions.slice(0, 1) });
     broadcastTaskStatusChanged(statusChange);
     broadcastTaskStatusChanged({ ...statusChange, newStatus: "done" });
-    expect(events).toHaveLength(2);
+    await vi.waitFor(() => expect(events).toHaveLength(2));
     await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
     const signal = fetchMock.mock.calls[0][1]!.signal!;
     stopMobileNotifications();
     expect(signal.aborted).toBe(true);
     broadcastTaskStatusChanged(statusChange);
-    expect(events).toHaveLength(2);
+    await vi.waitFor(() => expect(events).toHaveLength(2));
   });
 
   it("실패 응답의 본문과 URL·토큰을 로그에 남기지 않고 다른 기기 푸시를 계속 보낸다", async () => {
@@ -118,9 +129,26 @@ describe("모바일 hook 상태 이벤트 전달", () => {
     let finishRead!: (value: typeof subscriptions) => void;
     startMobileNotifications({ relayUrl: "https://relay.example/notifications", relayToken: "relay-secret", readSubscriptions: () => new Promise((resolve) => { finishRead = resolve; }) });
     broadcastTaskStatusChanged(statusChange);
+    await vi.waitFor(() => expect(finishRead).toBeTypeOf("function"));
     stopMobileNotifications();
     finishRead(subscriptions);
     await Promise.resolve();
     expect(fetchMock).not.toHaveBeenCalled();
   });
+});
+
+it.each([false, true])("알림 활성화=%s일 때 선택한 상태만 푸시하고 모든 상태 동기화는 유지한다", async (isEnabled) => {
+  notificationSettings.isEnabled = isEnabled;
+  notificationSettings.enabledStatuses = ["review"];
+  const events: unknown[] = [];
+  unsubscribe = subscribeToMobileEvents((event) => events.push(event));
+  startMobileNotifications({ relayUrl: "https://relay.example/notifications", relayToken: "relay-secret", readSubscriptions: async () => subscriptions.slice(0, 1) });
+  broadcastTaskStatusChanged(statusChange);
+  broadcastTaskStatusChanged({ ...statusChange, newStatus: "done" });
+  await vi.waitFor(() => expect(events).toHaveLength(2));
+  expect(events).toEqual([
+    expect.objectContaining({ status: "review", shouldNotify: isEnabled }),
+    expect.objectContaining({ status: "done", shouldNotify: false }),
+  ]);
+  expect(fetchMock).toHaveBeenCalledTimes(isEnabled ? 1 : 0);
 });
