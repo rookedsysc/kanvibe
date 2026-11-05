@@ -5,7 +5,7 @@ import {
   getTaskLiveAiSessions,
 } from "@/desktop/renderer/actions/project";
 import { usePolledValue } from "@/desktop/renderer/hooks/usePolledValue";
-import type { AgentCallGraph, LiveAiSession, RunningAgentPane } from "@/lib/aiSessions/types";
+import type { AgentCallGraph, LiveAiSession, RunningAgentPane } from "@/desktop/shared/contracts/lib-aiSessions-types";
 
 /** 세션 패널은 서브태스크가 뜨고 지는 것을 눈으로 따라갈 수 있어야 해서 짧게 돈다 */
 const LIVE_SESSION_POLL_INTERVAL_MS = 2_000;

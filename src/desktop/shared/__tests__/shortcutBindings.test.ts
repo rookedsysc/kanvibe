@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import {
   TASK_DETAIL_DOCK_SHORTCUT_INDEXES,
   TERMINAL_TAB_SHORTCUT_INDEXES,
-  type ElectronShortcutInput,
   type ShortcutPlatformInput,
 } from "@/desktop/shared/keyboardShortcut";
 import {
@@ -10,7 +9,6 @@ import {
   SHORTCUT_COMMAND_DEFINITIONS,
   collectShortcutOverrides,
   findShortcutCommandConflict,
-  findShortcutCommandForElectronInput,
   findShortcutCommandForEvent,
   getTaskDetailDockIndexForCommand,
   getTerminalTabPositionForCommand,
@@ -28,17 +26,6 @@ function tabPositionForEvent(event: KeyboardEvent, platform: ShortcutPlatformInp
   return getTerminalTabPositionForCommand(findShortcutCommandForEvent(DEFAULT_SHORTCUT_BINDINGS, event, platform));
 }
 
-function terminalTabCommandForInput(
-  input: ElectronShortcutInput,
-  platform: ShortcutPlatformInput,
-  isTaskDetailRoute: boolean,
-) {
-  return resolveTerminalTabCommand(
-    findShortcutCommandForElectronInput(DEFAULT_SHORTCUT_BINDINGS, input, platform),
-    isTaskDetailRoute,
-  );
-}
-
 function terminalTabCommandForEvent(
   event: KeyboardEvent,
   platform: ShortcutPlatformInput,
@@ -50,15 +37,7 @@ function terminalTabCommandForEvent(
   );
 }
 
-const macInput = (key: string, modifiers: { meta?: boolean; alt?: boolean; shift?: boolean } = {}) => ({
-  type: "keyDown",
-  isAutoRepeat: false,
-  key,
-  meta: modifiers.meta ?? false,
-  control: false,
-  alt: modifiers.alt ?? false,
-  shift: modifiers.shift ?? false,
-});
+
 
 describe("단축키 명령 판정", () => {
   it("탭 번호 단축키는 일치한 번호를 반환하고 dock 단축키와 충돌하지 않는다", () => {
@@ -88,15 +67,6 @@ describe("단축키 명령 판정", () => {
     expect(tabPositionForEvent(dockEvent, "mac")).toBeNull();
   });
 
-  it("Electron input도 탭 번호 단축키로 매칭한다", () => {
-    expect(getTerminalTabPositionForCommand(findShortcutCommandForElectronInput(DEFAULT_SHORTCUT_BINDINGS, {
-      type: "keyDown",
-      key: "3",
-      control: true,
-      alt: true,
-    }, "linux"))).toBe(3);
-  });
-
   it("상세 dock shortcut matcher는 일치한 dock 번호를 반환한다", () => {
     expect(dockIndexForEvent(new KeyboardEvent("keydown", { key: "4", metaKey: true }), "mac")).toBe(4);
     expect(dockIndexForEvent(new KeyboardEvent("keydown", { key: "4", ctrlKey: true }), "linux")).toBe(4);
@@ -105,49 +75,6 @@ describe("단축키 명령 판정", () => {
 });
 
 describe("터미널 탭 단축키 명령 해석", () => {
-  it("태스크 상세에서 새 탭·이전·다음 명령을 만든다", () => {
-    expect(terminalTabCommandForInput(macInput("t", { meta: true }), "mac", true))
-      .toEqual({ type: "new-tab" });
-    expect(terminalTabCommandForInput(macInput("{", { meta: true, shift: true }), "mac", true))
-      .toEqual({ type: "previous-tab" });
-    expect(terminalTabCommandForInput(macInput("}", { meta: true, shift: true }), "mac", true))
-      .toEqual({ type: "next-tab" });
-  });
-
-  it("숫자 단축키는 이동할 탭 위치를 담는다", () => {
-    expect(terminalTabCommandForInput(macInput("3", { meta: true, alt: true }), "mac", true))
-      .toEqual({ type: "go-to-tab", position: 3 });
-  });
-
-  it("탭 닫기는 태스크 상세에서만 탭을 닫고 밖에서는 창을 닫는다", () => {
-    expect(terminalTabCommandForInput(macInput("w", { meta: true }), "mac", true))
-      .toEqual({ type: "close-tab" });
-    expect(terminalTabCommandForInput(macInput("w", { meta: true }), "mac", false))
-      .toEqual({ type: "close-window" });
-  });
-
-  it("창 닫기는 어느 화면에서나 동작한다", () => {
-    expect(terminalTabCommandForInput(macInput("w", { meta: true, shift: true }), "mac", false))
-      .toEqual({ type: "close-window" });
-  });
-
-  it("태스크 상세가 아니면 탭 조작 명령을 만들지 않는다", () => {
-    expect(terminalTabCommandForInput(macInput("t", { meta: true }), "mac", false)).toBeNull();
-    expect(terminalTabCommandForInput(macInput("3", { meta: true, shift: true }), "mac", false)).toBeNull();
-  });
-
-  it("페이지 이동 단축키는 탭 명령으로 새지 않는다", () => {
-    expect(terminalTabCommandForInput(macInput("[", { meta: true }), "mac", true)).toBeNull();
-    expect(terminalTabCommandForInput(macInput("]", { meta: true }), "mac", true)).toBeNull();
-  });
-
-  it("Electron 입력과 렌더러 이벤트가 같은 명령을 만든다", () => {
-    const linuxEvent = new KeyboardEvent("keydown", { key: "t", ctrlKey: true });
-    const linuxInput = { type: "keyDown", key: "t", control: true, meta: false, alt: false, shift: false };
-
-    expect(terminalTabCommandForEvent(linuxEvent, "linux", true)).toEqual({ type: "new-tab" });
-    expect(terminalTabCommandForInput(linuxInput, "linux", true)).toEqual({ type: "new-tab" });
-  });
 
   it("렌더러 경로도 태스크 상세 밖에서는 탭 조작을 만들지 않는다", () => {
     expect(terminalTabCommandForEvent(new KeyboardEvent("keydown", { key: "t", ctrlKey: true }), "linux", false))

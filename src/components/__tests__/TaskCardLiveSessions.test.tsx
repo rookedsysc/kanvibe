@@ -1,7 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { TaskCardLiveSessions } from "@/components/TaskCardLiveSessions";
-import type { RunningAgentPane } from "@/lib/aiSessions/types";
+import type { RunningAgentPane } from "@/desktop/shared/contracts/lib-aiSessions-types";
 
 const mocks = vi.hoisted(() => ({
   getTaskLiveAiSessions: vi.fn(),

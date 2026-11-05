@@ -164,47 +164,48 @@ export default function Terminal({ taskId, tabId = null, isHidden = false, isRem
      * Claude Code·Codex 같은 CLI는 이 조합도 붙여넣기 시도로 해석하는 경우가 많아 같은 기능을 태운다.
      * 클립보드에 이미지가 없으면 xterm 기본 처리를 그대로 둬야 vim 비주얼 블록 모드 같은 기존 용법이 깨지지 않는다.
      */
-    const tryHandleImagePasteShortcut = (): boolean => {
-      if (!isRemoteRef.current) {
-        return false;
+    let replayingClipboardKey = false;
+    const handleClipboardImage = async (fallback?: () => void, onImage?: () => void) => {
+      try {
+        const imageDataUrl = await window.kanvibeDesktop!.readClipboardImage();
+        if (isTerminalDisposed) return;
+        if (imageDataUrl) {
+          onImage?.();
+          sendImageToRemoteTerminal(imageDataUrl);
+        } else {
+          fallback?.();
+        }
+      } catch {
+        if (!isTerminalDisposed) fallback?.();
       }
-
-      const imageDataUrl = window.kanvibeDesktop!.readClipboardImage();
-      if (!imageDataUrl) {
-        return false;
-      }
-
-      sendImageToRemoteTerminal(imageDataUrl);
-      return true;
     };
 
     terminal.attachCustomKeyEventHandler((event) => {
-      if (event.type !== "keydown") {
-        return true;
-      }
-
-      const isCtrlV = event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey && event.key.toLowerCase() === "v";
-      const isCtrlShiftV = event.ctrlKey && !event.metaKey && event.shiftKey && !event.altKey && event.key.toLowerCase() === "v";
+      if (replayingClipboardKey || event.type !== "keydown" || !isRemoteRef.current) return true;
+      const isCtrlV = event.ctrlKey && !event.metaKey && !event.altKey && event.key.toLowerCase() === "v";
       const isShiftInsert = event.shiftKey && !event.ctrlKey && !event.metaKey && !event.altKey && event.key === "Insert";
+      if (!isCtrlV && !isShiftInsert) return true;
 
-      if (!isCtrlV && !isCtrlShiftV && !isShiftInsert) {
-        return true;
-      }
-
-      return !tryHandleImagePasteShortcut();
+      // 비동기 클립보드 조회 동안 키를 보류하고 이미지가 없으면 xterm의 동일 키 처리를 재실행한다.
+      void handleClipboardImage(() => {
+        replayingClipboardKey = true;
+        try {
+          terminal.textarea?.dispatchEvent(new KeyboardEvent("keydown", {
+            key: event.key, code: event.code, keyCode: event.keyCode,
+            ctrlKey: event.ctrlKey, shiftKey: event.shiftKey, altKey: event.altKey, metaKey: event.metaKey,
+            bubbles: true, cancelable: true,
+          }));
+        } finally {
+          replayingClipboardKey = false;
+        }
+      });
+      return false;
     });
 
-    /** X11 중간 클릭 붙여넣기 관례를 macOS에서도 받아 주기 위한 트리거. 이 저장소에 기존 중간 클릭 처리는 없다 */
     const handleAuxClick = (event: MouseEvent) => {
-      if (event.button !== 1) {
-        return;
-      }
-
-      if (tryHandleImagePasteShortcut()) {
-        event.preventDefault();
-      }
+      if (event.button !== 1 || !isRemoteRef.current) return;
+      void handleClipboardImage(undefined, () => event.preventDefault());
     };
-
     pasteEventTarget.addEventListener("auxclick", handleAuxClick);
 
     const isThisTerminal = (event: { taskId: string; tabId: string | null }) => (

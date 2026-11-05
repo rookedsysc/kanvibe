@@ -1,4 +1,4 @@
-import type { DiffFile } from "@/desktop/main/services/diffService";
+import type { DiffFile } from "@/desktop/shared/contracts/desktop-main-services-diffService";
 
 export interface TaskDiffStats {
   fileCount: number;

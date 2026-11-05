@@ -1,5 +1,5 @@
 import { invokeDesktop } from "@/desktop/renderer/ipc";
-import type { AiUsageSnapshot } from "@/lib/aiUsage/types";
+import type { AiUsageSnapshot } from "@/desktop/shared/contracts/lib-aiUsage-types";
 
 export function getAiUsageSnapshot(): Promise<AiUsageSnapshot> {
   return invokeDesktop("aiUsage", "getAiUsageSnapshot");

@@ -13,10 +13,10 @@ import {
   getTaskOpenCodeHooksStatus,
 } from "@/desktop/renderer/actions/project";
 import { AiProviderIcon, type AiProviderIconName } from "@/components/AiProviderIcon";
-import type { ClaudeHooksStatus } from "@/lib/claudeHooksSetup";
-import type { GeminiHooksStatus } from "@/lib/geminiHooksSetup";
-import type { CodexHooksStatus } from "@/lib/codexHooksSetup";
-import type { OpenCodeHooksStatus } from "@/lib/openCodeHooksSetup";
+import type { ClaudeHooksStatus } from "@/desktop/shared/contracts/lib-claudeHooksSetup";
+import type { GeminiHooksStatus } from "@/desktop/shared/contracts/lib-geminiHooksSetup";
+import type { CodexHooksStatus } from "@/desktop/shared/contracts/lib-codexHooksSetup";
+import type { OpenCodeHooksStatus } from "@/desktop/shared/contracts/lib-openCodeHooksSetup";
 import { useEscapeKey } from "@/hooks/useEscapeKey";
 
 interface HooksStatusDialogProps {

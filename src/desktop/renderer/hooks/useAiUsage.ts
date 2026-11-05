@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getAiUsageSnapshot, getCachedAiUsageSnapshot } from "@/desktop/renderer/actions/aiUsage";
-import type { AiUsageSnapshot } from "@/lib/aiUsage/types";
+import type { AiUsageSnapshot } from "@/desktop/shared/contracts/lib-aiUsage-types";
 
 /**
  * 사용량 엔드포인트는 잦은 호출에 429로 응답하므로 패널을 여닫을 때마다 다시 부르지 않는다.

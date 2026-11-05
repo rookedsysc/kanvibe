@@ -51,7 +51,7 @@ export function isShortcutCaptureActive(): boolean {
   return shortcutCaptureActive;
 }
 
-/** 녹화 시작/종료를 렌더러 전역과 Electron main 양쪽에 알린다 */
+/** 녹화 시작/종료를 렌더러 전역과 Tauri bridge 양쪽에 알린다 */
 export function setShortcutCaptureActive(isActive: boolean): void {
   shortcutCaptureActive = isActive;
   window.kanvibeDesktop?.notifyShortcutCaptureChanged?.(isActive);
@@ -87,7 +87,7 @@ export async function loadShortcutBindings(): Promise<boolean> {
   return shortcutBindingsLoaded;
 }
 
-/** 단축키 표를 저장하고, 렌더러 캐시와 Electron main 캐시를 함께 갱신한다 */
+/** 단축키 표를 저장하고, 렌더러 캐시와 Tauri bridge 캐시를 함께 갱신한다 */
 export async function saveShortcutBindings(bindings: ShortcutBindings): Promise<void> {
   await setShortcutBindings(bindings);
   publishShortcutBindings(bindings);

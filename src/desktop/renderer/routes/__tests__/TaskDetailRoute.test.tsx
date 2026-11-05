@@ -1228,7 +1228,7 @@ describe("TaskDetailRoute", () => {
     });
   });
 
-  it("Electron main에서 전달된 dock shortcut도 같은 dock action을 실행한다", async () => {
+  it("Tauri bridge에서 전달된 dock shortcut도 같은 dock action을 실행한다", async () => {
     let dockShortcutListener: ((index: number) => void) | null = null;
     window.kanvibeDesktop = {
       isDesktop: true,
@@ -1272,7 +1272,7 @@ describe("TaskDetailRoute", () => {
     expect(await screen.findByTestId("hooks-status-card")).toBeTruthy();
   });
 
-  it("최초 등록된 Electron dock shortcut 구독은 task 로드 이후에도 최신 dock 항목을 실행한다", async () => {
+  it("최초 등록된 desktop dock shortcut 구독은 task 로드 이후에도 최신 dock 항목을 실행한다", async () => {
     const dockShortcutListeners: ((index: number) => void)[] = [];
     window.kanvibeDesktop = {
       isDesktop: true,
@@ -1315,7 +1315,7 @@ describe("TaskDetailRoute", () => {
     expect(await screen.findByTestId("hooks-status-card")).toBeTruthy();
   });
 
-  it("Electron dock shortcut 3은 수동 히스토리 버튼 없이 AI 채팅 첫 페이지를 로드한다", async () => {
+  it("desktop dock shortcut 3은 수동 히스토리 버튼 없이 AI 채팅 첫 페이지를 로드한다", async () => {
     let dockShortcutListener: ((index: number) => void) | null = null;
     window.kanvibeDesktop = {
       isDesktop: true,
@@ -1476,7 +1476,7 @@ describe("TaskDetailRoute", () => {
     expect(closeCurrentWindow).toHaveBeenCalledTimes(1);
   });
 
-  it("shortcut blocker가 걸려 있으면 Electron이 보낸 탭 명령도 무시한다", async () => {
+  it("shortcut blocker가 걸려 있으면 데스크톱 브리지가 보낸 탭 명령도 무시한다", async () => {
     let terminalTabShortcutListener: ((command: { type: string }) => void) | null = null;
     const closeCurrentWindow = vi.fn();
     window.kanvibeDesktop = {
@@ -3096,7 +3096,7 @@ describe("TaskDetailRoute", () => {
     });
   });
 
-  it("Electron이 보낸 사용량 단축키로도 패널이 열린다", async () => {
+  it("데스크톱 브리지가 보낸 사용량 단축키로도 패널이 열린다", async () => {
     mocks.getTaskById.mockResolvedValue(usagePanelTargetTask);
     let sendUsageShortcut: (() => void) | null = null;
     window.kanvibeDesktop = {

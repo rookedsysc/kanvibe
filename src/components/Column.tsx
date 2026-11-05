@@ -9,7 +9,7 @@ import { useFlipReflow } from "@/desktop/renderer/hooks/useFlipReflow";
 import type { UnreadNotificationCountByTask } from "@/desktop/renderer/hooks/useUnreadNotificationCountByTask";
 import type { KanbanTask, TaskStatus } from "@/entities/KanbanTask";
 import type { TaskPriority } from "@/entities/TaskPriority";
-import type { RunningAgentPane } from "@/lib/aiSessions/types";
+import type { RunningAgentPane } from "@/desktop/shared/contracts/lib-aiSessions-types";
 import type { TaskDiffStats } from "@/desktop/shared/taskDiffStats";
 
 interface ColumnProps {

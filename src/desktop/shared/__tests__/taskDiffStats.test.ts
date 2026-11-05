@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { summarizeDiffFiles } from "@/desktop/shared/taskDiffStats";
-import type { DiffFile } from "@/desktop/main/services/diffService";
+import type { DiffFile } from "@/desktop/shared/contracts/desktop-main-services-diffService";
 
 function createDiffFile(overrides: Partial<DiffFile> = {}): DiffFile {
   return {

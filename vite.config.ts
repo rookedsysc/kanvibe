@@ -1,6 +1,6 @@
 import path from "node:path";
 import { defineConfig } from "vite";
-import react from "@vitejs/plugin-react";
+import react from "@vitejs/plugin-react-swc";
 
 const resolvePath = (relativePath: string) => path.resolve(__dirname, relativePath);
 

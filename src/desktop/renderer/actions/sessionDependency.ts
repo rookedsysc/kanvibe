@@ -1,6 +1,6 @@
 import type { SessionType } from "@/entities/KanbanTask";
 import { invokeDesktop } from "@/desktop/renderer/ipc";
-import type { SessionDependencyStatus } from "@/lib/remoteSessionDependency";
+import type { SessionDependencyStatus } from "@/desktop/shared/contracts/lib-remoteSessionDependency";
 
 export function getSessionDependencyStatus(
   sessionType: SessionType,

@@ -6,16 +6,6 @@ export type ShortcutDefinition = string | Record<ShortcutPlatform, string>;
 
 type ShortcutInput = Pick<KeyboardEvent, "key" | "metaKey" | "ctrlKey" | "altKey" | "shiftKey">;
 
-export interface ElectronShortcutInput {
-  type?: string;
-  isAutoRepeat?: boolean;
-  key: string;
-  meta?: boolean;
-  control?: boolean;
-  alt?: boolean;
-  shift?: boolean;
-}
-
 export interface NavigatorShortcutSource {
   userAgent?: string;
   platform?: string;
@@ -287,24 +277,6 @@ export function matchShortcutEvent(
     && modifierState.shiftKey === requiresShift;
 }
 
-export function matchElectronShortcutInput(
-  input: ElectronShortcutInput,
-  shortcut: ShortcutDefinition,
-  platform: ShortcutPlatformInput,
-): boolean {
-  if (input.type !== "keyDown" || input.isAutoRepeat) {
-    return false;
-  }
-
-  return matchShortcutEvent({
-    key: input.key,
-    metaKey: Boolean(input.meta),
-    ctrlKey: Boolean(input.control),
-    altKey: Boolean(input.alt),
-    shiftKey: Boolean(input.shift),
-  }, shortcut, platform);
-}
-
 /** dock 항목 n번을 여는 기본 단축키 */
 export function createTaskDetailDockShortcut(index: TaskDetailDockShortcutIndex): string {
   return `Mod+${index}`;
@@ -332,15 +304,6 @@ export function isBlockedShortcutEvent(
 ): boolean {
   return Object.values(BLOCKED_DESKTOP_SHORTCUTS).some((shortcut) => (
     matchShortcutEvent(event, shortcut, platform)
-  ));
-}
-
-export function isBlockedElectronShortcutInput(
-  input: ElectronShortcutInput,
-  platform: ShortcutPlatformInput,
-): boolean {
-  return Object.values(BLOCKED_DESKTOP_SHORTCUTS).some((shortcut) => (
-    matchElectronShortcutInput(input, shortcut, platform)
   ));
 }
 

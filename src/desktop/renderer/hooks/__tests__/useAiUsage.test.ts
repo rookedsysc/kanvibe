@@ -1,7 +1,7 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useAiUsage } from "@/desktop/renderer/hooks/useAiUsage";
-import type { AiUsageSnapshot } from "@/lib/aiUsage/types";
+import type { AiUsageSnapshot } from "@/desktop/shared/contracts/lib-aiUsage-types";
 
 const { mockGetAiUsageSnapshot, mockGetCachedAiUsageSnapshot } = vi.hoisted(() => ({
   mockGetAiUsageSnapshot: vi.fn(),
