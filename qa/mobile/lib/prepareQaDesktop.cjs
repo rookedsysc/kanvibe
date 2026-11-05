@@ -35,8 +35,8 @@ const MARKER_POLL_INTERVAL_MS = 500;
 const TERMINAL_TAB_PROBE_TIMEOUT_MS = 5_000;
 const DESKTOP_SIGKILL_DELAY_MS = 2_000;
 
-/** `scripts/run-desktop-dev.cjs`가 먼저 노려 보는 vite 포트 */
-const PREFERRED_DEV_SERVER_PORT = 5173;
+const ROOT_DIR = path.resolve(__dirname, "../../..");
+const DESKTOP_EXECUTABLE = path.join(ROOT_DIR, "src-tauri", "target", "debug", process.platform === "win32" ? "kanvibe.exe" : "kanvibe");
 
 function run(command, args, options = {}) {
   return execFileSync(command, args, { encoding: "utf8", ...options }).trim();
@@ -56,45 +56,49 @@ function createFixtureRepository(runDir) {
   return repoPath;
 }
 
-/**
- * 데스크탑이 vite 기본 포트를 피해 가게 한다.
- *
- * 5173은 다른 프로젝트의 개발 서버가 흔히 쓰는 자리다. 남이 와일드카드로 잡고 있으면 데스크탑 런처의
- * "빈 포트인가" 검사는 통과하는데 준비 확인 요청은 남의 응답에 걸려, vite가 멀쩡한데도 기동이 실패한다.
- * 우리가 먼저 잡아 두면 런처가 이미 갖춰 둔 대체 포트 경로를 타므로 그 혼선이 아예 생기지 않는다.
- */
-function reservePreferredDevServerPort() {
-  const holder = net.createServer();
-  holder.listen(PREFERRED_DEV_SERVER_PORT, "127.0.0.1");
-  holder.on("error", () => {
-    /** 이미 누가 IPv4로도 잡고 있으면 런처가 알아서 대체 포트를 고른다 */
+async function assertPortAvailable(port) {
+  const server = net.createServer();
+  await new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(port, "127.0.0.1", () => server.close((error) => error ? reject(error) : resolve()));
   });
-  return holder;
 }
 
 function startDesktop(runDir, appDataDir) {
   const logPath = path.join(runDir, "desktop.log");
   const logFile = fs.openSync(logPath, "a");
 
-  const desktop = spawn("pnpm", ["dev"], {
-    cwd: path.resolve(__dirname, "../../.."),
-    env: { ...process.env, KANVIBE_APP_DATA_DIR: appDataDir },
+  const desktop = spawn(DESKTOP_EXECUTABLE, [], {
+    cwd: ROOT_DIR,
+    env: {
+      ...Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith("KANVIBE_"))),
+      KANVIBE_QA_MODE: "1",
+      KANVIBE_APP_DATA_DIR: appDataDir,
+      KANVIBE_DB_PATH: path.join(appDataDir, "kanvibe.db"),
+      KANVIBE_HOOK_PORT: "19736",
+    },
     stdio: ["ignore", logFile, logFile],
 
-    /** vite와 electron을 자식으로 더 낳으므로, 정리할 때 프로세스 그룹째 보내려면 그룹장이어야 한다 */
+    /** 네이티브 앱이 소유한 자식 프로세스까지 격리된 프로세스 그룹으로 정리한다. */
     detached: true,
   });
 
+  fs.closeSync(logFile);
+  desktop.once("error", (error) => { desktop.launchError = error; });
   return { desktop, logPath };
 }
 
-async function waitForDesktop() {
+async function waitForDesktop(desktop) {
   const deadline = Date.now() + DESKTOP_READY_TIMEOUT_MS;
   let lastError = null;
 
   while (Date.now() < deadline) {
+    if (desktop.launchError) throw desktop.launchError;
+    if (desktop.exitCode !== null || desktop.signalCode !== null) {
+      throw new Error(`Tauri가 준비되기 전에 종료되었습니다: ${desktop.exitCode ?? desktop.signalCode}`);
+    }
     try {
-      const response = await fetch(`${DESKTOP_API}/api/hooks/health`);
+      const response = await fetch(`${DESKTOP_API}/api/hooks/health`, { signal: AbortSignal.timeout(1000) });
       if (response.ok) {
         return;
       }
@@ -140,7 +144,7 @@ function insertFixtureProject(appDataDir, repoPath) {
 }
 
 /**
- * 데스크탑은 worktree만 만들고 tmux 세션은 터미널을 여는 시점에 만든다(`src/lib/worktree.ts`).
+ * Rust 백엔드는 worktree를 먼저 만들고 tmux 세션은 터미널을 여는 시점에 만든다.
  * 기기에서 비출 pane이 있으려면 여기서 세션을 직접 띄워야 한다.
  */
 function startFixtureSession(sessionName, worktreePath) {
@@ -304,6 +308,7 @@ function killFixtureSessions() {
 async function cleanUp({ desktop }) {
   killFixtureSessions();
 
+  if (!desktop.pid) return;
   try {
     process.kill(-desktop.pid, "SIGTERM");
   } catch {
@@ -312,8 +317,7 @@ async function cleanUp({ desktop }) {
   }
 
   /**
-   * SIGTERM만 보내고 끝내면 vite가 포트를 쥔 채 남아, 다음 실행의 데스크탑이 화면을 못 찾고 죽는다.
-   * 그 실패는 다음 실행에서야 드러나므로 잠시 기다렸다가 확실히 끊는다.
+   * 정상 종료를 기다린 뒤에도 살아 있는 네이티브 프로세스 그룹만 확실히 정리한다.
    */
   await new Promise((resolve) => setTimeout(resolve, DESKTOP_SIGKILL_DELAY_MS));
   try {
@@ -325,19 +329,38 @@ async function cleanUp({ desktop }) {
 
 async function main() {
   const runDirIndex = process.argv.indexOf("--run-dir");
-  if (runDirIndex === -1) {
+  if (runDirIndex === -1 || !process.argv[runDirIndex + 1]) {
     throw new Error("--run-dir <경로>가 필요합니다");
   }
   const runDir = path.resolve(process.argv[runDirIndex + 1]);
   const appDataDir = path.join(runDir, "app-data");
+  try {
+    fs.accessSync(DESKTOP_EXECUTABLE, fs.constants.X_OK);
+  } catch {
+    throw new Error("Tauri QA 바이너리를 먼저 준비하세요: pnpm qa:tauri:prepare");
+  }
+  if (fs.existsSync(appDataDir)) throw new Error("이전 QA 증거와 데이터를 보존하도록 새로운 --run-dir을 사용하세요.");
+  await assertPortAvailable(19736);
+  await assertPortAvailable(PROBE_PORT);
   fs.mkdirSync(appDataDir, { recursive: true });
 
   const repoPath = createFixtureRepository(runDir);
-  const devPortHolder = reservePreferredDevServerPort();
   const { desktop, logPath } = startDesktop(runDir, appDataDir);
+  let probe;
+  let stopping;
+  const stop = () => {
+    stopping ??= (async () => {
+      probe?.closeAllConnections();
+      probe?.close();
+      await cleanUp({ desktop });
+    })();
+    return stopping;
+  };
+  process.once("SIGTERM", () => { void stop().finally(() => process.exit(0)); });
+  process.once("SIGINT", () => { void stop().finally(() => process.exit(0)); });
 
   try {
-    await waitForDesktop();
+    await waitForDesktop(desktop);
 
     await startHookTask({ title: NO_SESSION_TASK_TITLE });
 
@@ -356,7 +379,7 @@ async function main() {
     const worktreePath = buildFixtureWorktreePath(repoPath, FIXTURE_BRANCH);
     commitSourceBranchFixture(worktreePath);
     startFixtureSession(sessionTask.sessionName, worktreePath);
-    const probe = startCommandProbe(sessionTask.sessionName, repoPath, runDir);
+    probe = startCommandProbe(sessionTask.sessionName, repoPath, runDir);
 
     const fixture = {
       appDataDir,
@@ -370,20 +393,12 @@ async function main() {
       paneReadyMarker: PANE_READY_MARKER,
       probeUrl: `http://127.0.0.1:${PROBE_PORT}`,
       desktopLog: logPath,
+      runtime: "tauri",
     };
     fs.writeFileSync(path.join(runDir, "fixture.json"), `${JSON.stringify(fixture, null, 2)}\n`);
     console.log(JSON.stringify(fixture));
-
-    const stop = () => {
-      probe.close();
-      devPortHolder.close();
-      cleanUp({ desktop }).finally(() => process.exit(0));
-    };
-    process.on("SIGTERM", stop);
-    process.on("SIGINT", stop);
   } catch (error) {
-    devPortHolder.close();
-    await cleanUp({ desktop });
+    await stop();
     throw error;
   }
 }

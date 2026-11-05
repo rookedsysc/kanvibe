@@ -62,3 +62,10 @@ next-env.d.ts
 # review-resolve-loop artifacts
 /.review-resolve-loop/
 /needs-user.md
+
+# Rust/Tauri build output
+/src-tauri/target/
+/src-tauri/gen/
+
+# Local UI migration captures and QA logs
+/qa-results/
