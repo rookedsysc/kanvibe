@@ -5,13 +5,14 @@
 
 const dictionaries = {
   ko: {
-    tagline: 'AI 코딩 작업을 한눈에. 모바일에서도 이어서.',
+    tagline: 'AI 코딩 작업을 한눈에. 휴대폰에서도 이어서.',
+    structuredDataDescription: 'Claude Code, Codex, Gemini CLI, OpenCode 작업을 태스크별 git worktree와 터미널로 관리하는 macOS 칸반 앱입니다. iOS·Android 컴패니언 앱으로 휴대폰에서도 이어서 작업할 수 있습니다.',
     nav: [
       ['/', '홈'],
       ['/installation', '설치'],
       ['/quick-start', 'Quick Start'],
       ['/features', '기능'],
-      ['/mobile', 'Mobile'],
+      ['/mobile', '모바일'],
       ['/settings', '설정'],
       ['/shortcuts', '단축키']
     ],
@@ -20,6 +21,7 @@ const dictionaries = {
   },
   en: {
     tagline: 'AI coding work on one board. Continue from your phone.',
+    structuredDataDescription: 'macOS Kanban app that ties Claude Code, Codex, Gemini CLI, and OpenCode tasks to their own git worktrees and terminals, with an iOS/Android companion to continue from your phone.',
     nav: [
       ['/', 'Home'],
       ['/installation', 'Installation'],
@@ -34,6 +36,7 @@ const dictionaries = {
   },
   zh: {
     tagline: 'AI 编程任务一目了然，手机上继续工作。',
+    structuredDataDescription: '为 Claude Code、Codex、Gemini CLI 和 OpenCode 任务分别连接 git worktree 与终端的 macOS 看板应用，并可通过 iOS/Android 配套应用在手机上继续工作。',
     nav: [
       ['/', '首页'],
       ['/installation', '安装'],

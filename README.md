@@ -4,9 +4,9 @@
 
 **Your AI coding work, on one board. Keep it moving from your phone.**
 
-Run Claude Code, Codex, Gemini CLI, and OpenCode in task workspaces that keep each branch, git worktree, and terminal together. See progress on one Kanban board, then open the same running terminal from your phone or tablet to read output and send the next command.
+KanVibe is a keyboard-first macOS Kanban workspace for AI coding agents. Run Claude Code, Codex, Gemini CLI, and OpenCode in task workspaces that keep each branch, git worktree, and terminal together. See progress on one Kanban board, then open the same running terminal from your phone or tablet to read output and send the next command.
 
-[Install Desktop](./docs-site/content/en/installation.mdx) · [Start with Mobile](./docs-site/content/en/mobile.mdx) · [Documentation](./docs-site/content/en/index.mdx) · [Demo](https://www.youtube.com/watch?v=8JTrvd3T_Z0)
+**[Install Desktop](https://kanvibe.rookedsysc.com/en/installation)** → [Pair your phone](https://kanvibe.rookedsysc.com/en/mobile) · [Documentation](https://kanvibe.rookedsysc.com/en)
 
 [KO](./docs/README.ko.md) | [ZH](./docs/README.zh.md)
 
@@ -25,6 +25,13 @@ Run Claude Code, Codex, Gemini CLI, and OpenCode in task workspaces that keep ea
   </tr>
 </table>
 
+<p align="center">
+  <a href="https://www.youtube.com/watch?v=8JTrvd3T_Z0">
+    <img src="https://img.youtube.com/vi/8JTrvd3T_Z0/maxresdefault.jpg" alt="KanVibe demo video thumbnail" width="640">
+  </a>
+  <br><strong><a href="https://www.youtube.com/watch?v=8JTrvd3T_Z0">Watch the Desktop demo on YouTube</a></strong>
+</p>
+
 ## Get Started
 
 Install the macOS desktop app from the KanVibe Homebrew tap:
@@ -34,9 +41,9 @@ brew install --cask rookedsysc/kanvibe/kanvibe
 open -a KanVibe
 ```
 
-**Mobile (iOS / Android):** build the Flutter app from source, then pair it under **Desktop Settings → Mobile Connection** using the PC address, port, and one-time code. Keep KanVibe running on the PC. The phone must reach that address over your local network or a network such as Tailscale. [Connection, usage, and notification guide](./docs-site/content/en/mobile.mdx).
+**Mobile (iOS / Android):** build the Flutter app from source, then pair it under **Desktop Settings → Mobile Connection** using the PC address, port, and one-time code. Keep KanVibe running on the PC. The phone must reach that address over your local network or a network such as Tailscale. Mobile is an early preview with Korean interface labels for now. [Connection, usage, and notification guide](https://kanvibe.rookedsysc.com/en/mobile).
 
-**Mobile terminal compatibility:** use a task with `tmux`, `zellij`, or `terminal`. Desktop now defaults to Herdr for new settings, but the current Mobile terminal bridge does not support Herdr sessions. Select a supported session type when creating or connecting a task you want to use from Mobile.
+**Mobile terminal compatibility:** use a task with `tmux`, `zellij`, or `terminal`. New Desktop settings default to Herdr, which the Mobile terminal bridge does not support yet. Select a supported session type when creating or connecting a task you want to use from Mobile.
 
 ## From your desk to your phone
 
@@ -109,9 +116,9 @@ The same panel opens from the task detail dock, so you can keep watching subtask
 | Dependency | Version | Required | Install |
 |------------|---------|----------|---------|
 | [git](https://git-scm.com/) | latest | Yes | `brew install git` |
-| [tmux](https://github.com/tmux/tmux) | latest | No | `brew install tmux` |
+| [tmux](https://github.com/tmux/tmux) | latest | For Mobile terminals (or zellij) | `brew install tmux` |
 | [gh](https://cli.github.com/) | latest | Yes | `brew install gh` (requires `gh auth login`) |
-| [zellij](https://github.com/zellij-org/zellij) | latest | No | `brew install zellij` |
+| [zellij](https://github.com/zellij-org/zellij) | latest | For Mobile terminals (or tmux) | `brew install zellij` |
 | [Herdr](https://herdr.dev/tui/docs/) | 0.9.5 verified | Default backend | In-app install prompt |
 
 ### Update or Remove
@@ -232,7 +239,7 @@ Each pane can run a custom command (e.g., `vim`, `htop`, `lazygit`, test runner,
 - tmux and plain terminals adapt their rows and columns to the mobile viewport. The PC’s shared terminal size changes while you view it and restores after you leave; Zellij uses scrolling instead.
 - Pair using a 6-digit, single-use code that expires after five minutes. Save multiple PCs and remove each pairing separately.
 - Read the selected PC’s notification inbox, mark items read, and jump to the related task. Foreground hook updates work over WebSocket; background push requires Firebase/APNs configuration and a desktop push relay.
-- Mobile currently builds from source. The desktop must stay running and reachable over LAN or a network such as Tailscale. See the [Mobile guide](./docs-site/content/en/mobile.mdx) and [build instructions](./mobile/README.md).
+- Mobile currently builds from source. The desktop must stay running and reachable over LAN or a network such as Tailscale. See the [Mobile guide](https://kanvibe.rookedsysc.com/en/mobile) and [build instructions](./mobile/README.md).
 
 ### Keyboard Shortcuts
 

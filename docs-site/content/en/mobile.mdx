@@ -1,21 +1,23 @@
 ---
-title: KanVibe Mobile
+title: KanVibe Mobile Setup and Pairing Guide
 description: "Build KanVibe Mobile, pair it with Desktop, and use task boards, live terminals, saved PCs, and the shared notification inbox from your phone or tablet."
 ---
 
-# Keep your task moving from your phone
+# KanVibe Mobile: keep your task moving from your phone
 
 KanVibe Mobile is the iOS and Android companion to KanVibe Desktop. Check progress, open the same task terminal, send input, and switch between saved PCs. Your repositories and processes stay on the connected PC.
 
-**Mobile terminal compatibility:** use a task with `tmux`, `zellij`, or `terminal`. Desktop now defaults to Herdr for new settings, but the current Mobile terminal bridge does not support Herdr sessions. Select a supported session type when creating or connecting a task you want to use from Mobile.
+**Mobile terminal compatibility:** use a task with `tmux`, `zellij`, or `terminal`. New Desktop settings default to Herdr, which the Mobile terminal bridge does not support yet. Select a supported session type when creating or connecting a task you want to use from Mobile.
+
+**Interface language:** Mobile currently uses Korean interface labels. This guide gives English names with the Korean labels in parentheses.
 
 <div className="kv-grid">
   <figure className="kv-shot">
-    <img src="/screenshots/mobile-board.png" alt="KanVibe Mobile board on a phone" style={{ maxHeight: '36rem', width: 'auto', margin: '0 auto' }} />
+    <img src="/screenshots/mobile-board.png" alt="KanVibe Mobile board on a phone" width={1080} height={2400} style={{ maxHeight: '36rem', width: 'auto', height: 'auto', margin: '0 auto' }} />
     <figcaption>Find tasks by status and project.</figcaption>
   </figure>
   <figure className="kv-shot">
-    <img src="/screenshots/mobile-terminal.png" alt="A live task terminal on a phone" style={{ maxHeight: '36rem', width: 'auto', margin: '0 auto' }} />
+    <img src="/screenshots/mobile-terminal.png" alt="A live task terminal on a phone" width={1080} height={2400} style={{ maxHeight: '36rem', width: 'auto', height: 'auto', margin: '0 auto' }} />
     <figcaption>Continue in the terminal already running on your PC.</figcaption>
   </figure>
 </div>
@@ -39,8 +41,6 @@ The phone must be able to reach the saved PC address and port. Use the same reac
 
 ## Pair your phone once
 
-Mobile currently uses Korean interface labels. The English names below explain the controls; their Korean labels are shown in parentheses.
-
 1. In Desktop, open **Settings → Mobile Connection → Create pairing code**.
 2. In Mobile, enter the PC address, port, and the **six-digit code**. You can also give the PC a name.
 3. Tap **Connect** (연결). The board opens, and Mobile stores the connection in the device's secure storage for future use.
@@ -57,7 +57,7 @@ On a phone, tasks appear as vertical sections grouped by status. On a tablet, th
 - Moving a task to **DONE** keeps its branch, worktree, and terminal session. Deleting a task is the separate resource-cleanup action.
 
 <figure className="kv-shot">
-  <img src="/screenshots/mobile-tablet.png" alt="KanVibe Mobile showing status columns on a tablet" />
+  <img src="/screenshots/mobile-tablet.png" width={2200} height={1300} loading="lazy" style={{ height: 'auto' }} alt="KanVibe Mobile showing status columns on a tablet" />
   <figcaption>A wider screen shows the board as columns; each terminal still opens one pane at a time.</figcaption>
 </figure>
 
@@ -76,7 +76,7 @@ Tap the current PC name at the top of the board to open **Connected PCs** (연�
 Mobile keeps the project filter separately for each PC during the app session. If one PC is offline, return to the PC list and choose another. Each selected board belongs to that PC; switching PCs does not combine their task lists.
 
 <figure className="kv-shot">
-  <img src="/screenshots/mobile-connections.png" alt="Saved PC connections in KanVibe Mobile" style={{ maxHeight: '36rem', width: 'auto', margin: '0 auto' }} />
+  <img src="/screenshots/mobile-connections.png" alt="Saved PC connections in KanVibe Mobile" width={1080} height={2400} loading="lazy" style={{ maxHeight: '36rem', width: 'auto', height: 'auto', margin: '0 auto' }} />
   <figcaption>Save several PC connections and choose the workspace you need.</figcaption>
 </figure>
 
@@ -89,7 +89,7 @@ The board's **Notifications** (알림) button opens the selected PC's Desktop in
 Tap a task notification to mark it read and open the latest task. If the task was deleted, Mobile shows an explanation. Notifications without a task can be read in the inbox; any associated Desktop-only action still needs Desktop.
 
 <figure className="kv-shot">
-  <img src="/screenshots/mobile-notifications.png" alt="KanVibe Mobile notification inbox" style={{ maxHeight: '36rem', width: 'auto', margin: '0 auto' }} />
+  <img src="/screenshots/mobile-notifications.png" alt="KanVibe Mobile notification inbox" width={1080} height={2400} loading="lazy" style={{ maxHeight: '36rem', width: 'auto', height: 'auto', margin: '0 auto' }} />
   <figcaption>Check the current PC's notifications and go back to the relevant work.</figcaption>
 </figure>
 
@@ -97,7 +97,7 @@ Tap a task notification to mark it read and open the latest task. If the task wa
 
 While Mobile is active, it connects to saved PCs over authenticated WebSockets. Hook events update task status and can show system notifications. An event from another saved PC can take you to that PC and its task when tapped.
 
-When Mobile is in the background or the screen is locked, event and terminal sockets close. Background notifications require **both mobile Firebase/APNs configuration and a Desktop push relay**, plus OS notification permission. Source builds without that configuration still support the app and foreground WebSocket updates. Follow the [push setup instructions](https://github.com/rookedsysc/kanvibe/blob/main/mobile/README.md#hook-상태-알림) if you need background delivery.
+When Mobile is in the background or the screen is locked, event and terminal sockets close. Background notifications require **both mobile Firebase/APNs configuration and a Desktop push relay**, plus OS notification permission. Source builds without that configuration still support the app and foreground WebSocket updates. Follow the [push setup instructions](https://github.com/rookedsysc/kanvibe/blob/main/mobile/README.md#백그라운드-알림-설정) if you need background delivery.
 
 The PC must remain running to send new hook events. After tapping a push, task loading and terminal input still connect directly to its saved address. Android force-stop prevents push delivery until you reopen the app. Background execution and notification delivery depend on the OS; this is not a continuously running background terminal.
 

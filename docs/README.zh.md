@@ -2,11 +2,11 @@
 
 # KanVibe
 
-**AI 编码任务，一目了然。离开电脑，也能继续。**
+**AI 编程任务一目了然，手机上继续工作。**
 
-将 Claude Code、Codex、Gemini CLI 和 OpenCode 的任务与分支、git worktree 和终端放在一起。在同一看板中掌握进度，再用手机或平板打开电脑上正在运行的终端，读取输出并输入下一条命令。
+KanVibe 是面向 AI 编程代理、以键盘操作为中心的 macOS 看板工作区。将 Claude Code、Codex、Gemini CLI 和 OpenCode 的任务与分支、git worktree 和终端放在一起。在同一看板中掌握进度，再用手机或平板打开电脑上正在运行的终端，读取输出并输入下一条命令。
 
-[安装 Desktop](../docs-site/content/zh/installation.mdx) · [开始使用 Mobile](../docs-site/content/zh/mobile.mdx) · [文档](../docs-site/content/zh/index.mdx) · [演示](https://www.youtube.com/watch?v=8JTrvd3T_Z0)
+**[安装 Desktop](https://kanvibe.rookedsysc.com/zh/installation)** → [连接手机](https://kanvibe.rookedsysc.com/zh/mobile) · [文档](https://kanvibe.rookedsysc.com/zh)
 
 [EN](../README.md) | [KO](./README.ko.md)
 
@@ -25,6 +25,13 @@
   </tr>
 </table>
 
+<p align="center">
+  <a href="https://www.youtube.com/watch?v=8JTrvd3T_Z0">
+    <img src="https://img.youtube.com/vi/8JTrvd3T_Z0/maxresdefault.jpg" alt="KanVibe 演示视频缩略图" width="640">
+  </a>
+  <br><strong><a href="https://www.youtube.com/watch?v=8JTrvd3T_Z0">在 YouTube 上观看 Desktop 演示</a></strong>
+</p>
+
 ## 开始使用
 
 通过 KanVibe Homebrew tap 安装 macOS Desktop 应用：
@@ -34,7 +41,7 @@ brew install --cask rookedsysc/kanvibe/kanvibe
 open -a KanVibe
 ```
 
-**Mobile（iOS / Android）：** 从源码构建 Flutter 应用，然后在 **Desktop 设置 → 移动端连接** 中使用电脑地址、端口和一次性连接码进行配对。电脑上的 KanVibe 必须保持运行，手机须能通过局域网或 Tailscale 等网络访问该地址。[连接、使用与通知指南](../docs-site/content/zh/mobile.mdx)。
+**Mobile（iOS / Android）：** 从源码构建 Flutter 应用，然后在 **Desktop 设置 → 移动端连接** 中使用电脑地址、端口和一次性连接码进行配对。电脑上的 KanVibe 必须保持运行，手机须能通过局域网或 Tailscale 等网络访问该地址。Mobile 是早期预览版，目前界面为韩文。[连接、使用与通知指南](https://kanvibe.rookedsysc.com/zh/mobile)。
 
 **移动端终端兼容性：**请选择使用 `tmux`、`zellij` 或 `terminal` 的任务。Desktop 的新设置默认使用 Herdr，但当前移动端终端桥接尚不支持 Herdr 会话。创建或连接需要在移动端使用的任务时，请选择受支持的会话类型。
 
@@ -99,9 +106,9 @@ open -a KanVibe
 | 依赖 | 版本 | 必需 | 安装 |
 |------|------|------|------|
 | [git](https://git-scm.com/) | 最新 | Yes | `brew install git` |
-| [tmux](https://github.com/tmux/tmux) | 最新 | No | `brew install tmux` |
+| [tmux](https://github.com/tmux/tmux) | 最新 | 用于 Mobile 终端（或 zellij） | `brew install tmux` |
 | [gh](https://cli.github.com/) | 最新 | Yes | `brew install gh`（需要 `gh auth login`） |
-| [zellij](https://github.com/zellij-org/zellij) | 最新 | No | `brew install zellij` |
+| [zellij](https://github.com/zellij-org/zellij) | 最新 | 用于 Mobile 终端（或 tmux） | `brew install zellij` |
 | [Herdr](https://herdr.dev/tui/docs/) | 已验证 0.9.5 | 默认后端 | 应用内安装提示 |
 
 ### 更新或移除
@@ -211,7 +218,7 @@ brew untap rookedsysc/kanvibe
 - tmux 和普通终端会根据移动屏幕调整行列数，查看期间电脑上的同一终端尺寸也会变化，离开后恢复。Zellij 使用滚动查看。
 - 使用 5 分钟后过期的 6 位一次性连接码配对。可保存多台电脑并分别移除配对。
 - 查看所选电脑的通知中心、同步已读状态并进入相关任务。前台 hook 更新通过 WebSocket 接收；后台推送需要 Firebase/APNs 配置和 Desktop 推送中继。
-- 目前需从源码构建。Desktop 必须保持运行，且手机能通过局域网或 Tailscale 等网络访问该电脑地址。参见 [Mobile 指南](../docs-site/content/zh/mobile.mdx)与[构建说明](../mobile/README.md)。
+- 目前需从源码构建。Desktop 必须保持运行，且手机能通过局域网或 Tailscale 等网络访问该电脑地址。参见 [Mobile 指南](https://kanvibe.rookedsysc.com/zh/mobile)与[构建说明](../mobile/README.md)。
 
 ### 键盘快捷键
 

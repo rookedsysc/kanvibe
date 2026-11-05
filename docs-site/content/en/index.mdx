@@ -1,17 +1,17 @@
 ---
-title: KanVibe
-description: "Manage AI coding work on one Kanban board, then continue the same task terminals from your phone or tablet with KanVibe Mobile."
+title: Kanban for AI Coding Agents
+description: "KanVibe is a free, open-source macOS Kanban app for Claude Code, Codex, Gemini CLI, and OpenCode tasks, with a git worktree and terminal per task. Continue the same terminals from your phone with KanVibe Mobile."
 ---
 
 <div className="kv-hero">
   <span className="kv-eyebrow">KanVibe Desktop + Mobile</span>
   <h1>Your AI coding work, on one board. Keep it moving from your phone.</h1>
   <div className="kv-hero-copy">
-    Bring Claude Code, Codex, Gemini CLI, and OpenCode tasks into one workspace. Give each branch its own terminal, see which work needs you, and return to the same running session from your phone or tablet.
+    KanVibe is a free, open-source macOS Kanban workspace for AI coding agents. Bring Claude Code, Codex, Gemini CLI, and OpenCode tasks into one workspace. Give each branch its own terminal, see which work needs you, and return to the same running session from your phone or tablet.
   </div>
   <div className="kv-actions">
     <a className="kv-button kv-button-primary" href="/en/installation">Install Desktop</a>
-    <a className="kv-button" href="/en/mobile">Get started with Mobile</a>
+    <a className="kv-button" href="/en/mobile">Build Mobile from source</a>
   </div>
   <div className="kv-chip-row">
     <span className="kv-chip">Branch-based workspaces</span>
@@ -46,22 +46,22 @@ KanVibe Mobile connects to your running Desktop app. Check the board, open a tas
 
 <div className="kv-grid">
   <figure className="kv-shot">
-    <img src="/screenshots/mobile-board.png" alt="KanVibe Mobile task board on a phone" style={{ maxHeight: '36rem', width: 'auto', margin: '0 auto' }} />
+    <img src="/screenshots/mobile-board.png" alt="KanVibe Mobile task board on a phone" width={1080} height={2400} loading="lazy" style={{ maxHeight: '36rem', width: 'auto', height: 'auto', margin: '0 auto' }} />
     <figcaption>Check task status and filter projects from your phone.</figcaption>
   </figure>
   <figure className="kv-shot">
-    <img src="/screenshots/mobile-terminal.png" alt="A task terminal open in KanVibe Mobile" style={{ maxHeight: '36rem', width: 'auto', margin: '0 auto' }} />
+    <img src="/screenshots/mobile-terminal.png" alt="A task terminal open in KanVibe Mobile" width={1080} height={2400} loading="lazy" style={{ maxHeight: '36rem', width: 'auto', height: 'auto', margin: '0 auto' }} />
     <figcaption>Read the running session and type directly into its terminal.</figcaption>
   </figure>
 </div>
 
-Mobile is currently built from source. Desktop must be running and reachable over your network; background push needs additional setup. [Mobile setup and connection guide](/en/mobile).
+Mobile is an early preview built from source, with Korean interface labels for now. Desktop must be running and reachable over your network, and the task must use a tmux, zellij, or terminal session; Mobile does not support Herdr, the Desktop default, yet. Background push needs additional setup. [Mobile setup and connection guide](/en/mobile).
 
 ## Start at your desk. Continue where you are.
 
 1. **Register a repository.** Scan a local or remote project and bring its worktree branches onto the board.
 2. **Start a task.** Create a branch workspace, run your agent, and follow its status on the board.
-3. **Pair your phone.** Enter the Desktop connection code once, then open the same tasks and terminals from Mobile.
+3. **Pair your phone.** Enter the Desktop connection code once, then open the same tasks and terminals from Mobile. Use a tmux, zellij, or terminal session for tasks you want on your phone.
 
 <div className="kv-actions">
   <a className="kv-button kv-button-primary" href="/en/quick-start">Create your first task</a>

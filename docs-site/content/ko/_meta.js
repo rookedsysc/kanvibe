@@ -17,7 +17,7 @@ export default {
     title: '기능'
   },
   mobile: {
-    title: 'Mobile'
+    title: '모바일'
   },
   settings: {
     title: '설정'

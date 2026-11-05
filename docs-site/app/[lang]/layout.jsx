@@ -16,7 +16,7 @@ export const metadata = {
   generator: 'Nextra',
   openGraph: {
     title: 'KanVibe Docs',
-    description: 'Manage AI coding work on one board and continue from your phone.',
+    description: 'KanVibe Desktop and Mobile documentation: a Kanban workspace for AI coding agents with git worktrees and terminals.',
     siteName: 'KanVibe Docs',
     type: 'website'
   }

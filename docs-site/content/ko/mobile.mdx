@@ -1,9 +1,9 @@
 ---
-title: KanVibe Mobile
+title: KanVibe Mobile 빌드·연결 가이드
 description: "KanVibe Mobile을 빌드하고 Desktop에 연결해 휴대폰과 태블릿에서 보드, 실행 중인 터미널, 여러 PC와 알림함을 사용하는 방법입니다."
 ---
 
-# 휴대폰에서 같은 작업을 이어가세요
+# KanVibe Mobile: 휴대폰에서 같은 작업 이어가기
 
 KanVibe Mobile은 KanVibe Desktop에 연결하는 iOS·Android 앱입니다. 작업 상태를 확인하고, 같은 태스크의 터미널에 입력하고, 저장된 PC를 전환할 수 있습니다. 저장소와 실행 중인 프로세스는 연결한 PC에 그대로 남습니다.
 
@@ -11,11 +11,11 @@ KanVibe Mobile은 KanVibe Desktop에 연결하는 iOS·Android 앱입니다. 작
 
 <div className="kv-grid">
   <figure className="kv-shot">
-    <img src="/screenshots/mobile-board.png" alt="휴대폰의 KanVibe Mobile 보드" style={{ maxHeight: '36rem', width: 'auto', margin: '0 auto' }} />
+    <img src="/screenshots/mobile-board.png" alt="휴대폰의 KanVibe Mobile 보드" width={1080} height={2400} style={{ maxHeight: '36rem', width: 'auto', height: 'auto', margin: '0 auto' }} />
     <figcaption>상태와 프로젝트로 필요한 태스크를 찾습니다.</figcaption>
   </figure>
   <figure className="kv-shot">
-    <img src="/screenshots/mobile-terminal.png" alt="휴대폰에서 연 실행 중인 태스크 터미널" style={{ maxHeight: '36rem', width: 'auto', margin: '0 auto' }} />
+    <img src="/screenshots/mobile-terminal.png" alt="휴대폰에서 연 실행 중인 태스크 터미널" width={1080} height={2400} style={{ maxHeight: '36rem', width: 'auto', height: 'auto', margin: '0 auto' }} />
     <figcaption>PC에서 실행하던 터미널에서 작업을 이어갑니다.</figcaption>
   </figure>
 </div>
@@ -55,7 +55,7 @@ fvm flutter run
 - **DONE**으로 옮겨도 브랜치, worktree, 터미널 세션은 유지됩니다. 자원을 정리하는 동작은 별도의 태스크 삭제입니다.
 
 <figure className="kv-shot">
-  <img src="/screenshots/mobile-tablet.png" alt="태블릿에서 상태별 열로 표시한 KanVibe Mobile 보드" />
+  <img src="/screenshots/mobile-tablet.png" width={2200} height={1300} loading="lazy" style={{ height: 'auto' }} alt="태블릿에서 상태별 열로 표시한 KanVibe Mobile 보드" />
   <figcaption>넓은 화면에서는 칸반 보드로 표시합니다. 터미널은 화면 크기와 관계없이 pane 하나씩 엽니다.</figcaption>
 </figure>
 
@@ -74,7 +74,7 @@ fvm flutter run
 프로젝트 필터는 앱 실행 중 PC마다 따로 유지합니다. PC가 꺼져 있으면 목록으로 돌아가 다른 PC를 고르세요. 보드는 선택한 PC의 태스크를 보여주며, 여러 PC의 태스크를 하나로 합치지는 않습니다.
 
 <figure className="kv-shot">
-  <img src="/screenshots/mobile-connections.png" alt="KanVibe Mobile에 저장한 PC 연결 목록" style={{ maxHeight: '36rem', width: 'auto', margin: '0 auto' }} />
+  <img src="/screenshots/mobile-connections.png" alt="KanVibe Mobile에 저장한 PC 연결 목록" width={1080} height={2400} loading="lazy" style={{ maxHeight: '36rem', width: 'auto', height: 'auto', margin: '0 auto' }} />
   <figcaption>여러 PC를 저장하고 필요한 작업 공간으로 전환합니다.</figcaption>
 </figure>
 
@@ -87,7 +87,7 @@ fvm flutter run
 태스크 알림을 누르면 읽음 처리하고 최신 태스크를 엽니다. 이미 삭제된 태스크라면 안내를 표시합니다. 태스크가 없는 알림도 내용은 확인할 수 있으며, Desktop 전용 후속 작업은 Desktop에서 진행합니다.
 
 <figure className="kv-shot">
-  <img src="/screenshots/mobile-notifications.png" alt="KanVibe Mobile 알림함" style={{ maxHeight: '36rem', width: 'auto', margin: '0 auto' }} />
+  <img src="/screenshots/mobile-notifications.png" alt="KanVibe Mobile 알림함" width={1080} height={2400} loading="lazy" style={{ maxHeight: '36rem', width: 'auto', height: 'auto', margin: '0 auto' }} />
   <figcaption>현재 PC의 알림을 확인하고 관련 작업으로 돌아갑니다.</figcaption>
 </figure>
 
@@ -95,7 +95,7 @@ fvm flutter run
 
 앱을 사용하는 동안에는 저장된 PC에 인증된 WebSocket으로 연결합니다. Hook 이벤트로 태스크 상태를 갱신하고 시스템 알림을 표시할 수 있습니다. 다른 PC에서 온 알림을 누르면 그 PC와 태스크로 이동할 수 있습니다.
 
-앱을 배경으로 보내거나 화면을 잠그면 이벤트·터미널 소켓을 닫습니다. 백그라운드 알림에는 **모바일 Firebase/APNs 설정과 Desktop의 푸시 중계 설정이 모두 필요**하며, OS 알림 권한도 허용해야 합니다. 해당 설정이 없는 소스 빌드에서도 앱과 전경 WebSocket 갱신은 사용할 수 있습니다. 필요하다면 [푸시 설정 안내](https://github.com/rookedsysc/kanvibe/blob/main/mobile/README.md#hook-상태-알림)를 따르세요.
+앱을 배경으로 보내거나 화면을 잠그면 이벤트·터미널 소켓을 닫습니다. 백그라운드 알림에는 **모바일 Firebase/APNs 설정과 Desktop의 푸시 중계 설정이 모두 필요**하며, OS 알림 권한도 허용해야 합니다. 해당 설정이 없는 소스 빌드에서도 앱과 전경 WebSocket 갱신은 사용할 수 있습니다. 필요하다면 [푸시 설정 안내](https://github.com/rookedsysc/kanvibe/blob/main/mobile/README.md#백그라운드-알림-설정)를 따르세요.
 
 새 hook 이벤트를 보내려면 PC가 실행 중이어야 합니다. 푸시를 누른 뒤 태스크 조회와 터미널 입력은 저장한 PC 주소로 직접 연결합니다. Android에서 앱을 강제 종료했다면 다시 열기 전까지 푸시를 받지 못합니다. 백그라운드 실행과 알림 전달은 OS의 제약을 받으며, 백그라운드에서 터미널 연결을 계속 유지하는 방식은 아닙니다.
 
