@@ -1,7 +1,7 @@
 import path from "path";
 import { TaskStatus } from "@/entities/KanbanTask";
 import { TaskPriority } from "@/entities/TaskPriority";
-import { readTextFile, readTextFiles, writeTextFile, writeTextFileIfAbsent } from "@/lib/hostFileAccess";
+import { readTextFile, readTextFiles, updateTextFile, writeTextFile, writeTextFileIfAbsent } from "@/lib/hostFileAccess";
 
 export const KANVIBE_DIR_NAME = ".kanvibe";
 export const TASK_STATE_FILE_NAME = "status.json";
@@ -155,12 +155,9 @@ export async function writeKanvibeProjectColor(
     return;
   }
 
-  const currentState = parseKanvibeProjectState(
-    await readTextFile(getKanvibeProjectStatePath(repoPath, sshHost), sshHost),
-  );
-  await writeTextFile(
+  await updateTextFile(
     getKanvibeProjectStatePath(repoPath, sshHost),
-    buildKanvibeProjectStateContent(normalizedColor, currentState?.priority),
+    (content) => buildKanvibeProjectStateContent(normalizedColor, parseKanvibeProjectState(content)?.priority),
     sshHost,
   );
 }
@@ -171,10 +168,9 @@ export async function writeKanvibeProjectPriority(
   sshHost?: string | null,
 ): Promise<void> {
   const projectStatePath = getKanvibeProjectStatePath(repoPath, sshHost);
-  const currentState = parseKanvibeProjectState(await readTextFile(projectStatePath, sshHost));
-  await writeTextFile(
+  await updateTextFile(
     projectStatePath,
-    buildKanvibeProjectStateContent(currentState?.projectColor, priority),
+    (content) => buildKanvibeProjectStateContent(parseKanvibeProjectState(content)?.projectColor, priority),
     sshHost,
   );
 }
@@ -209,14 +205,9 @@ export async function upsertKanvibeHookTarget(
   target: KanvibeHookTarget,
   sshHost?: string | null,
 ): Promise<void> {
-  const currentState = parseKanvibeTargets(
-    await readTextFile(getKanvibeTargetsPath(repoPath, sshHost), sshHost),
-  );
-  const nextTargets = upsertKanvibeTarget(currentState.targets, target);
-
-  await writeTextFile(
+  await updateTextFile(
     getKanvibeTargetsPath(repoPath, sshHost),
-    buildKanvibeTargetsContent(nextTargets),
+    (content) => buildKanvibeTargetsContent(upsertKanvibeTarget(parseKanvibeTargets(content).targets, target)),
     sshHost,
   );
 }

@@ -89,6 +89,16 @@ export async function readOpenCodeSessions(context: AiSessionReaderContext): Pro
 async function readOpenCodeSqliteSessions(context: AiSessionReaderContext): Promise<AiSessionReaderResult & { knownSessionIds?: Set<string> }> {
   const normalizedQuery = context.query?.toLowerCase();
   const escapedLikeQuery = normalizedQuery ? escapeSqliteLikePattern(normalizedQuery) : null;
+  const worktreePath = context.worktreePath ? path.resolve(context.worktreePath) : "";
+  const worktreeScope = { worktreePath, worktreePrefix: worktreePath === path.sep ? path.sep : `${worktreePath}${path.sep}` };
+  // 검색어로 거른 행에는 검색에 맞지 않는 SQLite 세션이 빠지므로, 이전 파일 세션을 가릴 ID는 worktree 범위에서 따로 조회한다.
+  const knownSessionIdRows = escapedLikeQuery
+    ? await queryOpenCodeRows<{ id: string }>(context,
+      `SELECT s.id FROM session s
+        WHERE (@worktreePath != '' AND (s.directory = @worktreePath OR instr(s.directory, @worktreePrefix) = 1));`,
+      worktreeScope,
+    ).catch(() => null)
+    : null;
   let rows: OpenCodeSessionRow[] | null;
   try {
     rows = await queryOpenCodeRows<OpenCodeSessionRow>(context,
@@ -121,9 +131,16 @@ async function readOpenCodeSqliteSessions(context: AiSessionReaderContext): Prom
           ? `(SELECT COUNT(*) FROM part p WHERE p.session_id = s.id AND lower(p.data) LIKE '%' || @query || '%' ESCAPE '\\')`
           : '0'} as matching_part_count
       FROM session s
+      WHERE (@worktreePath != '' AND (s.directory = @worktreePath OR instr(s.directory, @worktreePrefix) = 1))
+        ${escapedLikeQuery ? `AND (
+          lower(COALESCE(s.title, '')) LIKE '%' || @query || '%' ESCAPE '\\'
+          OR lower(s.id) LIKE '%' || @query || '%' ESCAPE '\\'
+          OR lower(s.directory) LIKE '%' || @query || '%' ESCAPE '\\'
+          OR EXISTS (SELECT 1 FROM part p WHERE p.session_id = s.id AND lower(p.data) LIKE '%' || @query || '%' ESCAPE '\\')
+        )` : ''}
       ORDER BY COALESCE(last_message_at, s.time_updated) DESC
       LIMIT ${OPEN_CODE_QUERY_LIMIT};`,
-      escapedLikeQuery ? { query: escapedLikeQuery } : undefined
+      { ...worktreeScope, ...(escapedLikeQuery ? { query: escapedLikeQuery } : {}) }
     );
   } catch (error) {
     return createReaderResult("opencode", {
@@ -165,7 +182,7 @@ async function readOpenCodeSqliteSessions(context: AiSessionReaderContext): Prom
   return {
     ...createReaderResult("opencode", { sessions, reason: sessions.length === 0 ? "No OpenCode sessions matched this task" : null }),
     // SQLite로 이동한 세션은 이전 파일의 경로·본문이 검색에 맞아도 다시 노출하지 않는다.
-    knownSessionIds: new Set(rows.map((row) => row.id)),
+    knownSessionIds: new Set((knownSessionIdRows ?? rows).map((row) => row.id)),
   };
 }
 
@@ -179,11 +196,14 @@ export async function readOpenCodeLiveSessions(
   context: AiSessionReaderContext,
   windows: LiveAiSessionWindows,
 ): Promise<LiveProviderSnapshot[]> {
+  const worktreePath = context.worktreePath ? path.resolve(context.worktreePath) : "";
   const rows = await queryOpenCodeRows<OpenCodeSessionRow>(context,
     `SELECT s.id, s.directory, s.title, s.time_created, s.time_updated
       FROM session s
+      WHERE (@worktreePath != '' AND (s.directory = @worktreePath OR instr(s.directory, @worktreePrefix) = 1))
       ORDER BY s.time_updated DESC
-      LIMIT ${OPEN_CODE_QUERY_LIMIT};`);
+      LIMIT ${OPEN_CODE_QUERY_LIMIT};`,
+    { worktreePath, worktreePrefix: worktreePath === path.sep ? path.sep : `${worktreePath}${path.sep}` });
 
   const ownSessions = pickLiveSessionFiles(
     (rows ?? [])

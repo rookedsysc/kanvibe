@@ -1,0 +1,68 @@
+# 격리 desktop fixture와 페어링한 보드에서 시작한다.
+appId: ${APP_ID}
+env:
+  DESKTOP_API_FROM_HOST: http://127.0.0.1:19736
+onFlowComplete:
+  - stopRecording
+---
+- startRecording: terminal-notification-settings
+- assertVisible: "Todo"
+- tapOn:
+    id: notification-center
+- tapOn: "알림 설정"
+- assertVisible: "이 PC의 데스크탑과 모바일에 함께 적용됩니다."
+- takeScreenshot: notification-settings-before
+- tapOn:
+    id: notification-status-todo
+- runScript:
+    file: ../scripts/assert-notification-settings.js
+    env:
+      EXPECT_ENABLED: "true"
+      EXPECT_TODO: "true"
+- takeScreenshot: notification-settings-todo-enabled
+- tapOn:
+    id: notification-enabled
+- runScript:
+    file: ../scripts/assert-notification-settings.js
+    env:
+      EXPECT_ENABLED: "false"
+      EXPECT_TODO: "true"
+- takeScreenshot: notification-settings-disabled
+- tapOn:
+    id: notification-enabled
+- pressKey: Back
+- tapOn: "알림 설정"
+- assertVisible: "알림을 받을 상태"
+- runScript:
+    file: ../scripts/assert-notification-settings.js
+    env:
+      EXPECT_ENABLED: "true"
+      EXPECT_TODO: "true"
+- takeScreenshot: notification-settings-restored
+- pressKey: Back
+- pressKey: Back
+- runFlow: ../subflows/opens-session-task-terminal.yaml
+- extendedWaitUntil:
+    visible:
+      id: pane-terminal
+    timeout: 20000
+- takeScreenshot: terminal-latest-output
+- swipe:
+    start: "50%,35%"
+    end: "50%,85%"
+    duration: 700
+- swipe:
+    start: "50%,35%"
+    end: "50%,85%"
+    duration: 700
+- takeScreenshot: terminal-previous-output
+- swipe:
+    start: "50%,85%"
+    end: "50%,35%"
+    duration: 700
+- swipe:
+    start: "50%,85%"
+    end: "50%,35%"
+    duration: 700
+- takeScreenshot: terminal-back-to-latest
+- stopRecording

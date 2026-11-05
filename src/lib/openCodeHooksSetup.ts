@@ -12,7 +12,7 @@ import {
   type HookTargetRegistrationStatus,
 } from "@/lib/hookTargetRegistration";
 import { getKanvibeTargetsPath } from "@/lib/kanvibeProjectState";
-import { getOpenCodeRegisteredKanvibePluginUrls } from "@/lib/openCodePluginRegistry";
+import { getOpenCodeRegisteredKanvibePluginUrls, invalidateOpenCodePluginRegistration } from "@/lib/openCodePluginRegistry";
 import { resolvePathModule, type ShellHookProviderFile } from "@/lib/shellHookProvider";
 
 /**
@@ -316,15 +316,19 @@ export async function setupOpenCodeHooks(
   kanvibeUrl: string,
   sshHost?: string | null,
 ): Promise<void> {
-  await writeHookProviderFiles(buildOpenCodeHookFiles(repoPath, taskId, kanvibeUrl, sshHost), sshHost);
-
-  await registerKanvibeHookTarget(repoPath, taskId, kanvibeUrl, sshHost);
+  try {
+    await writeHookProviderFiles(buildOpenCodeHookFiles(repoPath, taskId, kanvibeUrl, sshHost), sshHost);
+    await registerKanvibeHookTarget(repoPath, taskId, kanvibeUrl, sshHost);
+  } finally {
+    if (!sshHost) invalidateOpenCodePluginRegistration(repoPath);
+  }
 }
 
 export interface OpenCodeHooksStatus extends Partial<HookTargetRegistrationStatus> {
   installed: boolean;
   hasPlugin: boolean;
   hasRegisteredPlugin?: boolean;
+  pluginRegistrationError?: string;
   hasDuplicateKanvibePlugins?: boolean;
   hasTaskIdBinding?: boolean;
   hasStatusEndpoint?: boolean;
@@ -396,7 +400,7 @@ export async function getOpenCodeHooksStatus(
     && hasParallelTargetFanout
     && hasMainSessionGuard
     && hasDuplicateProgressGuard
-    && pluginRegistration.hasRegisteredPlugin;
+    && pluginRegistration.hasRegisteredPlugin === true;
 
   return {
     installed,
@@ -484,20 +488,25 @@ async function resolveOpenCodePluginRegistration(
   repoPath: string,
   pluginPath: string,
   sshHost?: string | null,
-): Promise<{ hasRegisteredPlugin: boolean; hasDuplicateKanvibePlugins: boolean; registeredPluginUrls: string[] }> {
+): Promise<Pick<OpenCodeHooksStatus, "hasRegisteredPlugin" | "hasDuplicateKanvibePlugins" | "registeredPluginUrls" | "pluginRegistrationError">> {
   /** 원격 repo는 OpenCode 설정 레지스트리를 조회할 수 없으므로 등록 여부를 검증하지 않는다 */
   if (sshHost) {
     return { hasRegisteredPlugin: true, hasDuplicateKanvibePlugins: false, registeredPluginUrls: [] };
   }
 
   const expectedPluginUrl = pathToFileURL(pluginPath).href;
-  const registeredPluginUrls = await getOpenCodeRegisteredKanvibePluginUrls(repoPath);
-
-  return {
-    hasRegisteredPlugin: registeredPluginUrls.some((value) => value === expectedPluginUrl),
-    hasDuplicateKanvibePlugins: registeredPluginUrls.length > 1,
-    registeredPluginUrls,
-  };
+  try {
+    const registeredPluginUrls = await getOpenCodeRegisteredKanvibePluginUrls(repoPath);
+    return {
+      hasRegisteredPlugin: registeredPluginUrls.some((value) => value === expectedPluginUrl),
+      hasDuplicateKanvibePlugins: registeredPluginUrls.length > 1,
+      registeredPluginUrls,
+    };
+  } catch (error) {
+    return {
+      pluginRegistrationError: error instanceof Error ? error.message : String(error),
+    };
+  }
 }
 
 function getOpenCodePluginPath(repoPath: string, sshHost?: string | null): string {

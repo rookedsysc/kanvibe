@@ -204,7 +204,9 @@ function attachClientToEntry(terminalKey: string, entry: TerminalEntry, ws: WebS
 
   ws.on("close", () => {
     debugLog("ws.close 발생", { terminalKey, remainingClients: entry.clients.size - 1 });
-    releaseTerminalClient(terminalKey, ws, "ws-close");
+    if (activeTerminals.get(terminalKey) === entry) {
+      releaseTerminalClient(terminalKey, ws, "ws-close");
+    }
   });
 }
 
@@ -246,6 +248,8 @@ function destroyTerminal(terminalKey: string, triggerLabel?: string): void {
     clients: entry.clients.size,
   });
 
+  activeTerminals.delete(terminalKey);
+
   try {
     entry.pty.kill();
   } catch {
@@ -260,7 +264,6 @@ function destroyTerminal(terminalKey: string, triggerLabel?: string): void {
   entry.clients.clear();
   entry.screen?.terminal.dispose();
 
-  activeTerminals.delete(terminalKey);
 }
 
 function createTerminalScreen(cols: number, rows: number): TerminalScreen {
@@ -297,6 +300,7 @@ function registerTerminalEntry(
   });
 
   entry.pty.onExit(({ exitCode, signal }) => {
+    if (activeTerminals.get(terminalKey) !== entry) return;
     debugLog(`${debugLabel} PTY onExit`, { terminalKey, exitCode, signal });
     destroyTerminal(terminalKey, `${debugLabel}-pty-exit`);
     /** 셸이 스스로 끝난 탭은 목록에서도 사라져야 사용자가 죽은 탭을 클릭하지 않는다 */
@@ -401,7 +405,7 @@ function debugLog(message: string, payload?: Record<string, unknown>): void {
 /** tmux 세션이 존재하는지 확인한다 */
 function isTmuxSessionAlive(sessionName: string): boolean {
   try {
-    execSync(`tmux has-session -t "${sessionName}" 2>/dev/null`, {
+    execSync(`tmux has-session -t ${quoteForPosixShell(sessionName)} 2>/dev/null`, {
       env: createLocalShellEnvironment(),
       timeout: 3000,
     });
@@ -649,6 +653,7 @@ async function spawnLocalSession(
   }
 
   const pty = await import("node-pty");
+  if (ws.readyState !== ws.OPEN) return;
   const spawnPlan = buildLocalPtySpawnPlan(sessionType, sessionName, cwd, zellijNeedsCreation);
 
   if (shouldLogTerminalSpawn()) {
@@ -765,6 +770,7 @@ async function spawnRemoteSession(
 
 
   const pty = await import("node-pty");
+  if (ws.readyState !== ws.OPEN) return;
   const attachCommand = buildRemoteAttachCommand(sessionType, sessionName, worktreePath, tmuxPaneLayout);
   const args = [
     ...buildSSHArgs(sshConfig, {
@@ -904,8 +910,9 @@ function buildRemoteTmuxAttachCommand(
      */
     `${buildTmuxHideStatusBarCommand(sessionName)} 2>/dev/null;`,
     `exec tmux attach-session -t ${quotedSessionName};`,
-    `elif ${buildTmuxUserClipboardDirectiveTestCommand()}; then ${buildBootstrapWithFallback(false)}`,
-    `else ${buildBootstrapWithFallback(true)}`,
+    `else __kanvibe_clipboard_probe=0; ${buildTmuxUserClipboardDirectiveTestCommand()} || __kanvibe_clipboard_probe=$?;`,
+    `if [ "$__kanvibe_clipboard_probe" -eq 1 ]; then ${buildBootstrapWithFallback(true)}`,
+    `else ${buildBootstrapWithFallback(false)} fi;`,
     "fi",
   ].join(" ");
 }

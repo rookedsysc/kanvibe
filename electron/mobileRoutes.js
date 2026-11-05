@@ -112,6 +112,25 @@ async function handleMobileRequest(request, response, { bridge, host, port, isDe
       return true;
     }
 
+    if (requestUrl.pathname === "/api/mobile/notification-settings") {
+      if (request.method === "GET") {
+        writeJson(response, 200, { success: true, settings: await bridge.getMobileNotificationSettings() });
+        return true;
+      }
+      if (request.method === "PATCH") {
+        let body;
+        try {
+          body = await readJsonBody(request);
+        } catch {
+          writeJson(response, 400, { success: false, error: "잘못된 요청입니다" });
+          return true;
+        }
+        const settings = await bridge.updateMobileNotificationSettings(body);
+        writeJson(response, 200, { success: true, settings });
+        return true;
+      }
+    }
+
     if (request.method === "POST" && requestUrl.pathname === `${NOTIFICATIONS_PATH}/read-all`) {
       await bridge.markAllMobileNotificationsRead();
       writeJson(response, 200, { success: true });
@@ -177,6 +196,10 @@ async function handleMobileRequest(request, response, { bridge, host, port, isDe
     writeJson(response, 404, { success: false, error: "Not found" });
     return true;
   } catch (error) {
+    if (error?.name === "MobileTaskInputError") {
+      writeJson(response, 400, { success: false, error: error.message });
+      return true;
+    }
     console.error("[kanvibe] Mobile request failed:", error);
     writeJson(response, 500, { success: false, error: "서버 오류" });
     return true;
@@ -621,7 +644,10 @@ async function openPaneStream(webSocket, bridge, taskId, paneId, onClosed) {
       if (isClosed || webSocket.readyState !== webSocket.OPEN) return;
       if (resize) {
         viewport ??= await bridge.claimPaneViewport(taskId, paneId);
-        await viewport.resize(resize.cols, resize.rows);
+        const snapshot = await viewport.resize(resize.cols, resize.rows);
+        if (typeof snapshot === "string" && !isClosed && webSocket.readyState === webSocket.OPEN) {
+          webSocket.send(snapshot);
+        }
       } else {
         await bridge.writeToPane(taskId, paneId, data.toString());
       }

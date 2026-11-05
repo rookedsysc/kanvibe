@@ -49,11 +49,13 @@ class _PaneTerminalViewState extends ConsumerState<PaneTerminalView>
   final _terminalController = xterm.TerminalController();
   bool _isParsingRemoteOutput = false;
   String _pendingEscape = '';
+  final _deferredOutput = <String>[];
   ({int cols, int rows})? _lastSentSize;
   bool _isSuspended = false;
   bool _isShortcutBusy = false;
   int _streamGeneration = 0;
 
+  static const _screenRedrawPrefix = '\x1b[H\x1b[2J\x1b[3J';
   static const _firstFrameTimeout = Duration(seconds: 15);
   // 데스크톱 terminalClipboard.ts와 같은 base64 상한으로 원격 요청의 디코딩 비용을 제한한다.
   static const _maxClipboardPayloadLength = 1000000;
@@ -75,6 +77,7 @@ class _PaneTerminalViewState extends ConsumerState<PaneTerminalView>
       mouseHandler: const _TerminalWheelMouseHandler(),
     );
     _terminal.resize(widget.pane.width, widget.pane.height);
+    _terminalController.addListener(_applyDeferredRedraw);
 
     _terminal.onOutput = (data) {
       // 멀티플렉서가 응답한 질의 원문도 미러에 남으므로 파싱 중 생긴 자동 응답만 막는다.
@@ -145,6 +148,8 @@ class _PaneTerminalViewState extends ConsumerState<PaneTerminalView>
   Future<void> _openStream() async {
     final generation = ++_streamGeneration;
     _pendingEscape = '';
+    _deferredOutput.clear();
+    _terminalController.clearSelection();
     _firstFrameTimer = Timer(_firstFrameTimeout, () {
       _failStream('터미널 응답이 없습니다. 데스크탑 연결을 확인한 뒤 다시 연결해 주세요.');
     });
@@ -186,12 +191,27 @@ class _PaneTerminalViewState extends ConsumerState<PaneTerminalView>
   void _receiveOutput(String data) {
     if (!mounted || _failureMessage != null || data.isEmpty) return;
     _firstFrameTimer?.cancel();
+    if (_terminalController.selection != null &&
+        (_deferredOutput.isNotEmpty || data.startsWith(_screenRedrawPrefix))) {
+      // tmux 원시 스트림의 clear도 같은 접두사로 시작하므로, 보류를 시작한 뒤 오는 청크는 모두 순서대로 쌓는다.
+      // 화면을 처음부터 다시 그리는 청크가 오면 그 앞의 보류분은 화면에 남지 않으므로 버려 메모리를 묶어 둔다.
+      if (data.startsWith(_screenRedrawPrefix)) _deferredOutput.clear();
+      _deferredOutput.add(data);
+      return;
+    }
     _isParsingRemoteOutput = true;
     try {
       _terminal.write(_normalizeLegacyTitles(data));
     } finally {
       _isParsingRemoteOutput = false;
     }
+  }
+
+  void _applyDeferredRedraw() {
+    if (_terminalController.selection != null) return;
+    final deferredOutput = List.of(_deferredOutput);
+    _deferredOutput.clear();
+    deferredOutput.forEach(_receiveOutput);
   }
 
   Future<void> _copyRemoteClipboard(String code, List<String> args) async {
@@ -209,6 +229,18 @@ class _PaneTerminalViewState extends ConsumerState<PaneTerminalView>
       // 잘못된 원격 요청 때문에 뒤에 오는 터미널 출력이 끊기지 않도록 무시한다.
     } on PlatformException catch (error) {
       debugPrint('터미널 클립보드 복사 실패: ${error.code}');
+    }
+  }
+
+  Future<void> _copySelection() async {
+    final selection = _terminalController.selection;
+    if (selection == null) return;
+    final text = _terminal.buffer.getText(selection);
+    try {
+      await Clipboard.setData(ClipboardData(text: text));
+      if (mounted) _terminalController.clearSelection();
+    } on PlatformException catch (error) {
+      debugPrint('터미널 선택 복사 실패: ${error.code}');
     }
   }
 
@@ -274,6 +306,7 @@ class _PaneTerminalViewState extends ConsumerState<PaneTerminalView>
     _streamGeneration += 1;
     _horizontalScroll.dispose();
     _verticalScroll.dispose();
+    _terminalController.removeListener(_applyDeferredRedraw);
     _terminalController.dispose();
     unawaited(_subscription?.cancel());
     unawaited(_stream?.close());
@@ -317,6 +350,50 @@ class _PaneTerminalViewState extends ConsumerState<PaneTerminalView>
         .ceilToDouble();
     metrics.dispose();
 
+    final terminalView = ColoredBox(
+      color: AppColors.terminalBg,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          return Scrollbar(
+            controller: _horizontalScroll,
+            thumbVisibility: true,
+            notificationPredicate: (notification) =>
+                notification.metrics.axis == Axis.horizontal,
+            child: SingleChildScrollView(
+              controller: _horizontalScroll,
+              scrollDirection: Axis.horizontal,
+              child: SizedBox(
+                width: !widget.canResize && terminalWidth > constraints.maxWidth
+                    ? terminalWidth
+                    : constraints.maxWidth,
+                height: constraints.maxHeight,
+                child: MediaQuery.removePadding(
+                  context: context,
+                  removeLeft: true,
+                  removeRight: true,
+                  removeTop: true,
+                  removeBottom: true,
+                  child: Semantics(
+                    identifier: 'pane-terminal',
+                    label: '터미널 입력',
+                    child: xterm.TerminalView(
+                      _terminal,
+                      controller: _terminalController,
+                      autoResize: widget.canResize,
+                      hardwareKeyboardOnly: true,
+                      scrollController: _verticalScroll,
+                      backgroundOpacity: 0,
+                      theme: _terminalTheme,
+                      textStyle: _textStyle,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
     return TerminalSoftKeyboard(
       terminal: _terminal,
       controller: _terminalController,
@@ -328,50 +405,34 @@ class _PaneTerminalViewState extends ConsumerState<PaneTerminalView>
             surfacesProvider(widget.taskId)
                 .select((state) => state.asData?.value.isMutating ?? false),
           ),
-      child: ColoredBox(
-        color: AppColors.terminalBg,
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            return Scrollbar(
-              controller: _horizontalScroll,
-              thumbVisibility: true,
-              notificationPredicate: (notification) =>
-                  notification.metrics.axis == Axis.horizontal,
-              child: SingleChildScrollView(
-                controller: _horizontalScroll,
-                scrollDirection: Axis.horizontal,
-                child: SizedBox(
-                  width:
-                      !widget.canResize && terminalWidth > constraints.maxWidth
-                      ? terminalWidth
-                      : constraints.maxWidth,
-                  height: constraints.maxHeight,
-                  child: MediaQuery.removePadding(
-                    context: context,
-                    removeLeft: true,
-                    removeRight: true,
-                    removeTop: true,
-                    removeBottom: true,
-                    child: Semantics(
-                      identifier: 'pane-terminal',
-                      label: '터미널 입력',
-                      child: xterm.TerminalView(
-                        _terminal,
-                        controller: _terminalController,
-                        autoResize: widget.canResize,
-                        hardwareKeyboardOnly: true,
-                        scrollController: _verticalScroll,
-                        backgroundOpacity: 0,
-                        theme: _terminalTheme,
-                        textStyle: _textStyle,
-                      ),
+      child: Stack(
+        children: [
+          terminalView,
+          Positioned(
+            top: 8,
+            right: 8,
+            child: ListenableBuilder(
+              listenable: _terminalController,
+              builder: (context, _) {
+                if (_terminalController.selection == null) {
+                  return const SizedBox.shrink();
+                }
+                return Material(
+                  color: AppColors.bgSurface,
+                  borderRadius: BorderRadius.circular(8),
+                  child: TextButton.icon(
+                    onPressed: _copySelection,
+                    style: TextButton.styleFrom(
+                      minimumSize: const Size(48, 48),
                     ),
+                    icon: const Icon(Icons.copy),
+                    label: const Text('복사'),
                   ),
-                ),
-              ),
-            );
-          },
-        ),
+                );
+              },
+            ),
+          ),
+        ],
       ),
     );
   }

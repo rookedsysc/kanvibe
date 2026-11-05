@@ -402,3 +402,29 @@ describe("hookService.startHookTask", () => {
     expect(mocks.broadcastBoardUpdate).not.toHaveBeenCalled();
   });
 });
+
+
+describe("hook 상태 저장 위치 소유권", () => {
+  beforeEach(() => {
+    vi.resetModules();
+    vi.clearAllMocks();
+    mocks.readTextFile.mockResolvedValue("");
+    mocks.execGit.mockResolvedValue(".git");
+    mocks.writeTextFile.mockResolvedValue(undefined);
+    mocks.taskRepo.save.mockImplementation(async (value) => value);
+  });
+
+  it.each(["feature", "main"])("worktree 없는 %s 브랜치는 공통 위치 판정을 따른다", async (branchName) => {
+    const project = { id: "project", name: "repo", repoPath: "/fixture/root", defaultBranch: "main", sshHost: "remote" };
+    mocks.projectRepo.findOneBy.mockResolvedValue(project);
+    mocks.taskRepo.findOne.mockResolvedValue({ id: "task", title: "task", projectId: "project", project, branchName, worktreePath: null, sshHost: null });
+    const { updateHookTaskStatus } = await import("@/desktop/main/services/hookService");
+    expect((await updateHookTaskStatus({ taskId: "task", status: "done" })).success).toBe(true);
+    if (branchName === "main") {
+      expect(mocks.writeTextFile).toHaveBeenCalledWith("/fixture/root/.kanvibe/status.json", expect.stringContaining('"status": "done"'), "remote");
+    } else {
+      expect(mocks.writeTextFile).not.toHaveBeenCalled();
+      expect(mocks.execGit).not.toHaveBeenCalled();
+    }
+  });
+});

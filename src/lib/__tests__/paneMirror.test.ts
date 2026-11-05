@@ -8,14 +8,14 @@ import {
   buildZellijPaneShortcutCommand,
   buildTmuxCancelPipePaneCommand,
   buildTmuxCapturePaneCommand,
-  buildTmuxCursorPositionCommand,
+  buildTmuxPaneStateCommand,
   buildTmuxListMirrorPanesCommand,
   buildTmuxPaneStreamCommand,
   buildTmuxSendKeysCommand,
   buildZellijDumpPaneCommand,
   buildZellijListMirrorPanesCommand,
   buildZellijWritePaneCommand,
-  parseTmuxCursorPosition,
+  parseTmuxPaneState,
   parseTmuxMirrorPaneList,
   parseZellijMirrorPaneList,
 } from "@/lib/paneMirror";
@@ -68,7 +68,7 @@ describe("tmux pane 명령", () => {
   });
 
   it("스냅샷은 ANSI를 살려서 뜬다", () => {
-    expect(buildTmuxCapturePaneCommand("%19")).toBe("tmux capture-pane -pe -t '%19'");
+    expect(buildTmuxCapturePaneCommand("%19")).toBe("tmux capture-pane -pe -S -2000 -t '%19'");
   });
 
   it("스트림은 파이프를 걸고 임시 파일을 따라간다", () => {
@@ -118,7 +118,7 @@ describe("tmux pane 명령", () => {
   it("pane id에 셸 메타문자가 들어와도 명령이 끊기지 않는다", () => {
     const command = buildTmuxCapturePaneCommand(INJECTION_PANE_ID);
 
-    expect(command).toBe("tmux capture-pane -pe -t '%1'\"'\"'; rm -rf /; '\"'\"''");
+    expect(command).toBe("tmux capture-pane -pe -S -2000 -t '%1'\"'\"'; rm -rf /; '\"'\"''");
     expect(command).not.toMatch(/;\s*rm -rf \/;?\s*$/);
   });
 });
@@ -127,7 +127,18 @@ describe("화면 다시 그리기", () => {
   const CLEAR = "\x1b[H\x1b[2J\x1b[3J";
 
   it("화면과 스크롤백을 지우고, 줄바꿈마다 줄 처음으로 돌아가게 한 뒤 커서를 제자리에 둔다", () => {
-    expect(buildScreenRedraw("$ ls\nREADME.md", { x: 2, y: 2 })).toBe(`${CLEAR}$ ls\r\nREADME.md\x1b[3;3H`);
+    expect(buildScreenRedraw("$ ls\nREADME.md\n", { x: 2, y: 2, paneHeight: 3 })).toBe(`${CLEAR}$ ls\r\nREADME.md\r\n\x1b[3G`);
+  });
+
+  it("스크롤백이 앞에 붙어도 커서는 보이는 영역 맨 아랫줄에서 위로 올라가 찾는다", () => {
+    const redraw = buildScreenRedraw("old-1\nold-2\n$ \n\n", { x: 2, y: 0, paneHeight: 3 });
+    expect(redraw).toBe(`${CLEAR}old-1\r\nold-2\r\n$ \r\n\r\n\x1b[2A\x1b[3G`);
+  });
+
+  it("모바일 스크롤백 상한을 넘는 덤프는 마지막 2000줄만 전달한다", () => {
+    const screen = Array.from({ length: 2100 }, (_, i) => `line-${i}`).join("\n");
+    const redraw = buildScreenRedraw(screen, null);
+    expect(redraw).toBe(`${CLEAR}${Array.from({ length: 2000 }, (_, i) => `line-${i + 100}`).join("\r\n")}`);
   });
 
   it("이미 CRLF인 줄은 CR을 겹쳐 넣지 않는다", () => {
@@ -139,13 +150,18 @@ describe("화면 다시 그리기", () => {
   });
 
   it("tmux 커서 위치는 포커스를 바꾸지 않는 display-message로 읽는다", () => {
-    expect(buildTmuxCursorPositionCommand("%19")).toBe("tmux display-message -p -t '%19' '#{cursor_x} #{cursor_y}'");
+    expect(buildTmuxPaneStateCommand("%19")).toBe("tmux display-message -p -t '%19' '#{cursor_x} #{cursor_y} #{pane_height} #{alternate_on} #{mouse_standard_flag} #{mouse_button_flag} #{mouse_all_flag} #{mouse_sgr_flag} #{mouse_utf8_flag}'");
   });
 
-  it("커서 위치 줄을 읽고, 숫자 두 개가 아니면 모르는 것으로 본다", () => {
-    expect(parseTmuxCursorPosition("8 1")).toEqual({ x: 8, y: 1 });
-    expect(parseTmuxCursorPosition("PANE_A")).toBeNull();
-    expect(parseTmuxCursorPosition("")).toBeNull();
+  it("pane 상태를 읽고, 필드가 모자라거나 형식이 다르면 모르는 것으로 본다", () => {
+    expect(parseTmuxPaneState("8 1 24 0 0 0 0 0 0")).toEqual({
+      cursor: { x: 8, y: 1, paneHeight: 24 },
+      restoreSequences: "\x1b[?1049l\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1005l\x1b[?1006l",
+    });
+    expect(parseTmuxPaneState("8 1 0 0 0 0 0 0")).toBeNull();
+    expect(parseTmuxPaneState("8 1")).toBeNull();
+    expect(parseTmuxPaneState("PANE_A")).toBeNull();
+    expect(parseTmuxPaneState("")).toBeNull();
   });
 });
 
@@ -205,7 +221,7 @@ describe("zellij pane 명령", () => {
 
   it("포커스를 바꾸지 않고 지정한 pane만 뜬다", () => {
     expect(buildZellijDumpPaneCommand("kanvibe-task", "terminal_1")).toBe(
-      "zellij --session 'kanvibe-task' action dump-screen -p 'terminal_1' -a",
+      "kanvibe_mobile_dump=$(zellij --session 'kanvibe-task' action dump-screen -p 'terminal_1' -a --full) && printf '%s\\n' \"$kanvibe_mobile_dump\" | tail -n 2000",
     );
   });
 

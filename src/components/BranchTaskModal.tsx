@@ -49,9 +49,13 @@ export default function BranchTaskModal({
   useEffect(() => {
     if (!selectedProjectId) return;
 
+    let active = true;
     getProjectBranches(selectedProjectId).then((result) => {
-      setBranches(result);
+      if (active) setBranches(result);
+    }).catch(() => {
+      if (active) setBranches([]);
     });
+    return () => { active = false; };
   }, [selectedProjectId]);
 
   useEscapeKey(onClose);
