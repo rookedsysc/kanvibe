@@ -5,6 +5,9 @@ import {
   determineMatchScope,
   extractPlainText,
   makePreviewMessage,
+  getCachedOrParse,
+  readJsonLines,
+  LOCAL_SESSION_FILE_PARSE_CONCURRENCY,
   mapWithConcurrency,
   paginateItems,
   pickLiveSessionFiles,
@@ -70,9 +73,8 @@ export async function readGeminiSessions(context: AiSessionReaderContext): Promi
   }
 
   const projectPathById = await readGeminiProjectPathMap(geminiRoot, context);
-  const chatFiles = (await listFilesRecursivelyBySuffix(tmpDirectory, ".json", context.sshHost))
-    .filter((filePath) => path.basename(path.dirname(filePath)) === "chats");
-  const parseConcurrency = context.sshHost ? REMOTE_SESSION_FILE_PARSE_CONCURRENCY : chatFiles.length || 1;
+  const chatFiles = await findGeminiChatFiles(tmpDirectory, context);
+  const parseConcurrency = context.sshHost ? REMOTE_SESSION_FILE_PARSE_CONCURRENCY : LOCAL_SESSION_FILE_PARSE_CONCURRENCY;
   const parsed = await mapWithConcurrency(
     chatFiles,
     parseConcurrency,
@@ -97,8 +99,7 @@ export async function readGeminiSessionDetail(
   const projectPathById = await readGeminiProjectPathMap(geminiRoot, context);
   const chatFiles = sourceRef
     ? [sourceRef]
-    : (await listFilesRecursivelyBySuffix(path.join(geminiRoot, "tmp"), ".json", context.sshHost))
-      .filter((filePath) => path.basename(path.dirname(filePath)) === "chats");
+    : await findGeminiChatFiles(path.join(geminiRoot, "tmp"), context);
 
   for (const filePath of chatFiles) {
     const parsed = await parseGeminiChatFile(filePath, context, projectPathById);
@@ -172,13 +173,34 @@ async function parseGeminiSessionSummary(
   };
 }
 
+async function findGeminiChatFiles(tmpDirectory: string, context: AiSessionReaderContext): Promise<string[]> {
+  const files = await Promise.all([".json", ".jsonl"].map((suffix) => listFilesRecursivelyBySuffix(tmpDirectory, suffix, context.sshHost)));
+  return files.flat().filter((filePath) => path.basename(path.dirname(filePath)) === "chats");
+}
+
 async function parseGeminiChatFile(
   filePath: string,
   context: AiSessionReaderContext,
   projectPathById: Map<string, string>,
 ): Promise<GeminiParsedChat | null> {
-  const content = await readTextFile(filePath, context.sshHost);
-  const value = safeJsonParse<GeminiChatFile>(content);
+  const value = await getCachedOrParse(filePath, async () => {
+    if (!filePath.endsWith(".jsonl")) return safeJsonParse<GeminiChatFile>(await readTextFile(filePath, context.sshHost));
+    const records = await readJsonLines(filePath, context.sshHost);
+    const chat: GeminiChatFile = { messages: [] };
+    for (const raw of records) {
+      if (!raw || typeof raw !== "object") continue;
+      const record = raw as Record<string, unknown>;
+      if (record.$set && typeof record.$set === "object") {
+        Object.assign(chat, record.$set);
+      } else if (typeof record.sessionId === "string") {
+        Object.assign(chat, record);
+      }
+      if (typeof record.type === "string" && resolveGeminiRole(record.type) !== "unknown") {
+        chat.messages!.push(record);
+      }
+    }
+    return chat;
+  }, context.sshHost);
   if (!value || typeof value !== "object") return null;
 
   const projectId = getGeminiProjectIdFromChatPath(filePath);
@@ -285,7 +307,7 @@ function resolveGeminiRole(role: unknown): AiMessageRole {
 }
 
 function resolveGeminiSessionId(value: GeminiChatFile, filePath: string): string {
-  return value.sessionId ?? value.id ?? path.basename(filePath, ".json");
+  return value.sessionId ?? value.id ?? path.basename(filePath, path.extname(filePath));
 }
 
 async function resolveGeminiMatchedPath(
