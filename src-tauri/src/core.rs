@@ -8,6 +8,7 @@ use std::{collections::HashSet, path::Path};
 use tauri::{AppHandle, Emitter, Manager};
 
 const STATUSES: [&str; 5] = ["todo", "progress", "pending", "review", "done"];
+const SESSION_TYPES: [&str; 4] = ["tmux", "zellij", "herdr", "terminal"];
 fn arg(args: &[Value], index: usize) -> &str {
     args.get(index).and_then(Value::as_str).unwrap_or("")
 }
@@ -40,7 +41,7 @@ pub fn settings(db: &Database, method: &str, args: &[Value]) -> Result<Value> {
             "notification_unread_only",
             false,
         ),
-        ("BackgroundSyncEnabled", "background_sync_enabled", true),
+        ("BackgroundSyncEnabled", "background_sync_enabled", false),
         ("VimModeEnabled", "vim_mode_enabled", true),
     ];
     for (name, key, default) in mapping {
@@ -60,7 +61,9 @@ pub fn settings(db: &Database, method: &str, args: &[Value]) -> Result<Value> {
                 },
             )?;
             if key == "background_sync_enabled" {
-                crate::integrations::wake_background();
+                crate::integrations::wake_background(
+                    crate::integrations::BackgroundSyncWake::EnabledChanged,
+                );
             }
             return Ok(Value::Null);
         }
@@ -81,16 +84,14 @@ pub fn settings(db: &Database, method: &str, args: &[Value]) -> Result<Value> {
         }
         "getDefaultSessionType" => {
             let value = db.setting("default_session_type")?.unwrap_or_default();
-            Ok(json!(
-                if ["tmux", "zellij", "terminal"].contains(&value.as_str()) {
-                    value
-                } else {
-                    "tmux".into()
-                }
-            ))
+            Ok(json!(if SESSION_TYPES.contains(&value.as_str()) {
+                value
+            } else {
+                "herdr".into()
+            }))
         }
         "setDefaultSessionType" => {
-            if !["tmux", "zellij", "terminal"].contains(&arg(args, 0)) {
+            if !SESSION_TYPES.contains(&arg(args, 0)) {
                 return Err("유효하지 않은 세션 타입".into());
             }
             db.set_setting("default_session_type", arg(args, 0))?;
@@ -130,7 +131,9 @@ pub fn settings(db: &Database, method: &str, args: &[Value]) -> Result<Value> {
                 .filter(|n| *n > 0)
                 .ok_or("양수 sync 주기 필요")?;
             db.set_setting("background_sync_interval_ms", &n.to_string())?;
-            crate::integrations::wake_background();
+            crate::integrations::wake_background(
+                crate::integrations::BackgroundSyncWake::IntervalChanged,
+            );
             Ok(Value::Null)
         }
         "getReleaseUpdateDismissedVersions" => {
@@ -327,7 +330,7 @@ fn validate_status(status: &str) -> Result<()> {
 fn create_task(app: &AppHandle, input: &Value) -> Result<Value> {
     let db = app.state::<Database>();
     if let Some(session) = input["sessionType"].as_str() {
-        if !["tmux", "zellij", "terminal"].contains(&session) {
+        if !SESSION_TYPES.contains(&session) {
             return Err("유효하지 않은 세션 타입".into());
         }
     }
@@ -359,7 +362,12 @@ fn create_task(app: &AppHandle, input: &Value) -> Result<Value> {
             } else {
                 text(input, "baseBranch")
             };
-            let (path, session) = git::create_worktree(&project, text(input, "branchName"), base)?;
+            let (path, session) = git::create_worktree(
+                &project,
+                text(input, "branchName"),
+                base,
+                text(input, "sessionType"),
+            )?;
             task["baseBranch"] = json!(base);
             task["worktreePath"] = json!(path);
             task["sessionName"] = json!(session);
@@ -409,6 +417,9 @@ fn cleanup_task(app: &AppHandle, task: &Value) -> Result<()> {
                     &format!("zellij delete-session {}", git::quote(session)),
                     host,
                 );
+            }
+            "herdr" => {
+                let _ = git::run(&crate::herdr::cleanup_command(session), host);
             }
             _ => {}
         }
@@ -557,7 +568,8 @@ fn kanban(app: &AppHandle, method: &str, args: &[Value]) -> Result<Value> {
             let Some(project) = db.project(arg(args, 1))? else {
                 return Ok(Value::Null);
             };
-            let (path, session) = git::create_worktree(&project, arg(args, 3), arg(args, 2))?;
+            let (path, session) =
+                git::create_worktree(&project, arg(args, 3), arg(args, 2), arg(args, 4))?;
             task["projectId"] = project["id"].clone();
             task["branchName"] = json!(arg(args, 3));
             task["baseBranch"] = json!(arg(args, 2));
@@ -578,14 +590,18 @@ fn kanban(app: &AppHandle, method: &str, args: &[Value]) -> Result<Value> {
                 return Ok(Value::Null);
             };
             let session_type = arg(args, 1);
-            if !["tmux", "zellij", "terminal"].contains(&session_type) {
+            if !SESSION_TYPES.contains(&session_type) {
                 return Err("유효하지 않은 세션 타입".into());
             }
             let branch = task["branchName"]
                 .as_str()
                 .or_else(|| task["baseBranch"].as_str())
                 .ok_or("브랜치가 없습니다")?;
-            task["sessionName"] = json!(git::session_name(text(&project, "repoPath"), branch));
+            task["sessionName"] = json!(git::session_name_for(
+                session_type,
+                text(&project, "repoPath"),
+                branch
+            ));
             task["sessionType"] = json!(session_type);
             if text(&task, "worktreePath").is_empty() {
                 task["worktreePath"] = project["repoPath"].clone();
@@ -1010,7 +1026,11 @@ fn reconcile_root_task(db: &Database, project: &Value) -> Result<(Value, bool)> 
     }
     if existing.is_none() && text(&task, "sessionType").is_empty() && host.is_none() {
         task["sessionType"] = settings(db, "getDefaultSessionType", &[])?;
-        task["sessionName"] = json!(git::session_name(root, branch));
+        task["sessionName"] = json!(git::session_name_for(
+            text(&task, "sessionType"),
+            root,
+            branch
+        ));
     }
     let changed = task != original || existing.is_none();
     if changed {
@@ -1462,7 +1482,19 @@ mod tests {
     #[test]
     fn settings_defaults_and_restart_persistence_match_renderer_contracts() {
         let (dir, db) = db();
-        assert_eq!(settings(&db, "getDefaultSessionType", &[]).unwrap(), "tmux");
+        assert_eq!(
+            settings(&db, "getDefaultSessionType", &[]).unwrap(),
+            "herdr"
+        );
+        db.set_setting("default_session_type", "screen").unwrap();
+        assert_eq!(
+            settings(&db, "getDefaultSessionType", &[]).unwrap(),
+            "herdr"
+        );
+        for saved in SESSION_TYPES {
+            settings(&db, "setDefaultSessionType", &[json!(saved)]).unwrap();
+            assert_eq!(settings(&db, "getDefaultSessionType", &[]).unwrap(), saved);
+        }
         assert_eq!(
             settings(&db, "getNotificationSettings", &[]).unwrap(),
             json!({"isEnabled":true,"enabledStatuses":["progress","pending","review"]})

@@ -18,11 +18,19 @@ fn script(tool: &str) -> Result<&'static str, String> {
         "gh" => Ok(include_str!("../scripts/install-gh.sh")),
         "tmux" => Ok(include_str!("../scripts/install-tmux.sh")),
         "zellij" => Ok(include_str!("../scripts/install-zellij.sh")),
+        "herdr" => Ok(include_str!("../scripts/install-herdr.sh")),
         _ => Err("지원하지 않는 도구".into()),
     }
 }
-fn transport(error: &str) -> bool {
+pub fn is_ssh_transport_error(error: &str) -> bool {
     error.contains("(exit 255)")
+}
+/// Herdr 공식 설치기는 PATH 밖인 ~/.local/bin에 설치할 수 있어서 그 경로도 설치된 것으로 본다.
+fn availability_command(tool: &str) -> String {
+    if tool == "herdr" {
+        return r#"command -v herdr >/dev/null 2>&1 || test -x "$HOME/.local/bin/herdr""#.into();
+    }
+    format!("command -v {tool} >/dev/null 2>&1")
 }
 pub fn dispatch(namespace: &str, method: &str, args: Vec<Value>) -> Result<Value, String> {
     let (kind, tool, host) = if namespace == "githubCliDependency" {
@@ -37,6 +45,7 @@ pub fn dispatch(namespace: &str, method: &str, args: Vec<Value>) -> Result<Value
             match kind {
                 "tmux" => Some("tmux"),
                 "zellij" => Some("zellij"),
+                "herdr" => Some("herdr"),
                 "terminal" => None,
                 _ => return Err("지원하지 않는 세션 유형".into()),
             },
@@ -53,14 +62,9 @@ pub fn dispatch(namespace: &str, method: &str, args: Vec<Value>) -> Result<Value
         if let Some(tool) = tool {
             let result =
                 crate::runtime::run_shell_timeout(script(tool)?, host, Duration::from_secs(600))
-                    .and_then(|_| {
-                        crate::runtime::run_shell(
-                            &format!("command -v {tool} >/dev/null 2>&1"),
-                            host,
-                        )
-                    });
+                    .and_then(|_| crate::runtime::run_shell(&availability_command(tool), host));
             if let Err(error) = result {
-                if host.is_some() && transport(&error) {
+                if host.is_some() && is_ssh_transport_error(&error) {
                     return Err(error);
                 }
                 let subject = host
@@ -99,7 +103,7 @@ pub fn dispatch(namespace: &str, method: &str, args: Vec<Value>) -> Result<Value
         true
     } else {
         let tool = tool.unwrap();
-        match crate::runtime::run_shell(&format!("command -v {tool} >/dev/null 2>&1"), host) {
+        match crate::runtime::run_shell(&availability_command(tool), host) {
             Ok(_) => {
                 registry()
                     .lock()
@@ -109,7 +113,7 @@ pub fn dispatch(namespace: &str, method: &str, args: Vec<Value>) -> Result<Value
                 true
             }
             Err(error) => {
-                if host.is_some() && transport(&error) {
+                if host.is_some() && is_ssh_transport_error(&error) {
                     return Err(error);
                 }
                 false
@@ -142,13 +146,28 @@ mod tests {
     use super::*;
     #[test]
     fn installer_scripts_are_valid_shell() {
-        for tool in ["gh", "tmux", "zellij"] {
+        for tool in ["gh", "tmux", "zellij", "herdr"] {
             assert!(std::process::Command::new("/bin/sh")
                 .args(["-n", "-c", script(tool).unwrap()])
                 .status()
                 .unwrap()
                 .success());
         }
+    }
+    #[test]
+    fn herdr_installs_from_official_script_into_user_bin_and_rechecks_it() {
+        let installer = script("herdr").unwrap();
+        assert!(installer.contains("https://herdr.dev/install.sh"));
+        assert!(installer.contains(r#"HERDR_INSTALL_DIR="$HOME/.local/bin" sh"#));
+        assert!(installer
+            .trim_end()
+            .ends_with(&availability_command("herdr")));
+        assert!(availability_command("herdr").contains(".local/bin/herdr"));
+        assert!(
+            !installer.contains(".zshrc")
+                && !installer.contains(".bashrc")
+                && !installer.contains(".profile")
+        );
     }
     #[test]
     fn plain_terminal_needs_no_external_tool() {

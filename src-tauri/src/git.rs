@@ -142,10 +142,24 @@ pub fn session_name(repo: &str, branch: &str) -> String {
     )
     .replace('/', "-")
 }
+/// Herdr는 세션 이름 규칙이 좁아서 그 세션 타입일 때만 결정적 이름으로 바꾼다.
+pub fn session_name_for(session_type: &str, repo: &str, branch: &str) -> String {
+    let name = session_name(repo, branch);
+    if session_type == "herdr" {
+        crate::herdr::sanitize_session_name(&name)
+    } else {
+        name
+    }
+}
 pub fn worktree_path(repo: &str, branch: &str) -> String {
     format!("{repo}__worktrees/{}", branch.replace('/', "-"))
 }
-pub fn create_worktree(project: &Value, branch: &str, base: &str) -> Result<(String, String)> {
+pub fn create_worktree(
+    project: &Value,
+    branch: &str,
+    base: &str,
+    session_type: &str,
+) -> Result<(String, String)> {
     let path = text(project, "repoPath");
     let host = project["sshHost"].as_str();
     git(
@@ -164,7 +178,7 @@ pub fn create_worktree(project: &Value, branch: &str, base: &str) -> Result<(Str
         ),
         host,
     )?;
-    Ok((worktree, session_name(path, branch)))
+    Ok((worktree, session_name_for(session_type, path, branch)))
 }
 pub fn worktrees(project: &Value) -> Result<Vec<Value>> {
     let output = git(

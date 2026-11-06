@@ -341,6 +341,10 @@ fn surfaces_for_target(app: &AppHandle, id: &str, t: MirrorTarget) -> Result<Val
         let tabs:Vec<_>=items.iter().map(|tab|{let tabid=text(tab,"id");let (cols,rows)=crate::terminal::dimensions(app,id,Some(tabid)).unwrap_or((80,24));json!({"id":tabid,"name":tab["name"],"panes":[{"id":tabid,"tabId":tabid,"tabName":tab["name"],"command":"","left":0,"top":0,"width":cols,"height":rows}]})}).collect();
         return Ok(json!({"taskId":id,"sessionType":t.kind,"canResize":true,"tabs":tabs}));
     }
+    // 모바일 pane 미러는 tmux·zellij만 지원한다. Herdr 세션을 zellij로 오인해 띄우지 않는다.
+    if t.kind == "herdr" {
+        return Err("session-not-running".into());
+    }
     let (command, fmt) = if t.kind == "tmux" {
         (format!("tmux list-panes -s -t {} -F '#{{pane_id}}\t#{{window_id}}\t#{{window_name}}\t#{{pane_current_command}}\t#{{pane_left}}\t#{{pane_top}}\t#{{pane_width}}\t#{{pane_height}}'",q(&t.name)),true)
     } else {
@@ -694,41 +698,86 @@ fn sync_now(app: &AppHandle) -> Result<Value, String> {
     }
     Ok(json!({"reviewNeeded":review,"boardUpdated":updated}))
 }
-static BACKGROUND: OnceLock<(Mutex<u64>, std::sync::Condvar)> = OnceLock::new();
-pub fn wake_background() {
-    let (generation, wake) = BACKGROUND.get_or_init(|| (Mutex::new(0), std::sync::Condvar::new()));
-    *generation.lock().unwrap() += 1;
+const INITIAL_BACKGROUND_SYNC_DELAY: Duration = Duration::from_secs(20);
+/// 백그라운드 sync 스레드를 깨운 설정 변경. 켜짐 변경은 첫 지연부터, 주기 변경은 새 주기로 다시 예약한다.
+#[derive(Clone, Copy)]
+pub enum BackgroundSyncWake {
+    EnabledChanged,
+    IntervalChanged,
+}
+static BACKGROUND: OnceLock<(Mutex<Option<BackgroundSyncWake>>, std::sync::Condvar)> =
+    OnceLock::new();
+fn background_signal() -> &'static (Mutex<Option<BackgroundSyncWake>>, std::sync::Condvar) {
+    BACKGROUND.get_or_init(|| (Mutex::new(None), std::sync::Condvar::new()))
+}
+pub fn wake_background(reason: BackgroundSyncWake) {
+    let (pending, wake) = background_signal();
+    *pending.lock().unwrap() = Some(reason);
     wake.notify_all();
+}
+/// 자동 sync는 사용자가 명시적으로 켠 경우에만 동작한다.
+fn background_sync_enabled(app: &AppHandle) -> bool {
+    setting(app, "background_sync_enabled")
+        .ok()
+        .flatten()
+        .as_deref()
+        == Some("true")
+}
+fn background_sync_interval(app: &AppHandle) -> Duration {
+    Duration::from_millis(
+        setting(app, "background_sync_interval_ms")
+            .ok()
+            .flatten()
+            .and_then(|s| s.parse::<u64>().ok())
+            .unwrap_or(600000)
+            .max(1000),
+    )
+}
+/// 꺼진 동안에는 타이머 없이 설정 변경 신호만 기다리고, 켜져 있을 때만 다음 sync를 예약한다.
+fn next_background_delay(
+    is_enabled: bool,
+    wake: Option<BackgroundSyncWake>,
+    interval: Duration,
+) -> Option<Duration> {
+    if !is_enabled {
+        return None;
+    }
+    match wake {
+        Some(BackgroundSyncWake::EnabledChanged) => Some(INITIAL_BACKGROUND_SYNC_DELAY),
+        Some(BackgroundSyncWake::IntervalChanged) | None => Some(interval),
+    }
 }
 pub fn start_background(app: AppHandle) {
     std::thread::spawn(move || {
-        let (generation, wake) =
-            BACKGROUND.get_or_init(|| (Mutex::new(0), std::sync::Condvar::new()));
-        let mut delay = Duration::from_secs(20);
+        let (pending, wake) = background_signal();
+        let mut delay = background_sync_enabled(&app).then_some(INITIAL_BACKGROUND_SYNC_DELAY);
         loop {
-            let guard = generation.lock().unwrap();
-            let (guard, timeout) = wake.wait_timeout(guard, delay).unwrap();
+            let guard = pending.lock().unwrap();
+            let (mut guard, timed_out) = match delay {
+                Some(duration) => {
+                    let (guard, timeout) = wake
+                        .wait_timeout_while(guard, duration, |p| p.is_none())
+                        .unwrap();
+                    (guard, timeout.timed_out())
+                }
+                None => (wake.wait_while(guard, |p| p.is_none()).unwrap(), false),
+            };
+            let reason = guard.take();
             drop(guard);
-            if !timeout.timed_out() {
-                delay = Duration::from_secs(20);
+            let is_enabled = background_sync_enabled(&app);
+            if !timed_out || !is_enabled {
+                delay = next_background_delay(is_enabled, reason, background_sync_interval(&app));
                 continue;
             }
-            if setting(&app, "background_sync_enabled")
-                .ok()
-                .flatten()
-                .is_none_or(|s| s != "false")
-            {
-                if let Err(error) = sync_now(&app) {
-                    eprintln!("Background sync failed: {error}");
-                }
+            if let Err(error) = sync_now(&app) {
+                eprintln!("Background sync failed: {error}");
             }
-            delay = Duration::from_millis(
-                setting(&app, "background_sync_interval_ms")
-                    .ok()
-                    .flatten()
-                    .and_then(|s| s.parse::<u64>().ok())
-                    .unwrap_or(600000)
-                    .max(1000),
+            // 실행 중에 온 설정 변경은 아래에서 최신 설정을 다시 읽어 반영하므로 신호는 버린다.
+            pending.lock().unwrap().take();
+            delay = next_background_delay(
+                background_sync_enabled(&app),
+                None,
+                background_sync_interval(&app),
             );
         }
     });
@@ -744,6 +793,24 @@ pub fn dispatch(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn disabled_background_sync_waits_without_timer() {
+        let interval = Duration::from_secs(60);
+        assert_eq!(next_background_delay(false, None, interval), None);
+        assert_eq!(
+            next_background_delay(false, Some(BackgroundSyncWake::IntervalChanged), interval),
+            None
+        );
+        assert_eq!(
+            next_background_delay(true, Some(BackgroundSyncWake::EnabledChanged), interval),
+            Some(INITIAL_BACKGROUND_SYNC_DELAY)
+        );
+        assert_eq!(
+            next_background_delay(true, Some(BackgroundSyncWake::IntervalChanged), interval),
+            Some(interval)
+        );
+        assert_eq!(next_background_delay(true, None, interval), Some(interval));
+    }
     #[test]
     fn pairing_is_single_use_and_limited() {
         let mut p = Pairing {

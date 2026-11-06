@@ -4,7 +4,10 @@ use std::{
     collections::HashMap,
     io::{Read, Write},
     path::Path,
-    sync::{Arc, Mutex},
+    sync::{
+        atomic::{AtomicU64, Ordering},
+        Arc, Mutex,
+    },
 };
 use tauri::{AppHandle, Emitter, Manager};
 
@@ -27,6 +30,32 @@ struct Session {
 pub struct TerminalState {
     sessions: Mutex<HashMap<String, Arc<Mutex<Session>>>>,
     tabs: Mutex<HashMap<String, TabState>>,
+    pending_opens: PendingOpens,
+}
+/// 세션 준비를 PTY 잠금 밖에서 기다리는 연결을 추적해, 준비 중 창이 닫히면 PTY를 만들지 않게 한다.
+#[derive(Default)]
+struct PendingOpens {
+    clients: Mutex<HashMap<u64, String>>,
+    next_ticket: AtomicU64,
+}
+impl PendingOpens {
+    fn begin(&self, client_id: &str) -> Result<u64, String> {
+        let ticket = self.next_ticket.fetch_add(1, Ordering::Relaxed);
+        self.clients
+            .lock()
+            .map_err(err)?
+            .insert(ticket, client_id.into());
+        Ok(ticket)
+    }
+    /// 준비 도중 취소되지 않았으면 true를 돌려주며 대기 표시를 지운다.
+    fn finish(&self, ticket: u64) -> Result<bool, String> {
+        Ok(self.clients.lock().map_err(err)?.remove(&ticket).is_some())
+    }
+    fn cancel_client(&self, client_id: &str) {
+        if let Ok(mut clients) = self.clients.lock() {
+            clients.retain(|_, pending| pending != client_id);
+        }
+    }
 }
 struct TabState {
     entries: Vec<(String, String)>,
@@ -76,8 +105,26 @@ pub fn open(
         .map(String::from)
         .unwrap_or_else(crate::runtime::home);
     let registry = app.state::<TerminalState>();
-    let mut sessions = registry.sessions.lock().map_err(err)?;
     let session_key = key(task_id, tab_id);
+    let host = field(&target, "sshHost");
+    let has_session = registry
+        .sessions
+        .lock()
+        .map_err(err)?
+        .contains_key(&session_key);
+    let herdr_ticket = if kind == "herdr" && !has_session {
+        Some(prepare_herdr(
+            app, &registry, client_id, &target, name, host,
+        )?)
+    } else {
+        None
+    };
+    let mut sessions = registry.sessions.lock().map_err(err)?;
+    if let Some(ticket) = herdr_ticket {
+        if !registry.pending_opens.finish(ticket)? {
+            return Ok(json!({"ok":false,"error":"터미널 연결이 취소되었습니다."}));
+        }
+    }
     if let Some(existing) = sessions.get(&session_key) {
         let mut s = existing.lock().map_err(err)?;
         *s.clients.entry(client_id.to_owned()).or_default() += 1;
@@ -97,7 +144,6 @@ pub fn open(
         "getEffectivePaneLayout",
         vec![target["projectId"].clone()],
     )?;
-    let host = field(&target, "sshHost");
     if kind == "zellij" && !layout.is_null() {
         write_zellij_layout(&cwd, host, &layout)?;
     }
@@ -145,6 +191,43 @@ pub fn open(
     sessions.insert(session_key, entry);
     Ok(json!({"ok":true}))
 }
+/// Herdr 서버 기동과 첫 레이아웃 적용은 수 초가 걸릴 수 있어 다른 터미널을 막지 않도록 세션 잠금 밖에서 끝낸다.
+fn prepare_herdr(
+    app: &AppHandle,
+    registry: &TerminalState,
+    client_id: &str,
+    target: &Value,
+    name: &str,
+    host: Option<&str>,
+) -> Result<u64, String> {
+    let ticket = registry.pending_opens.begin(client_id)?;
+    let prepared = (|| {
+        if let Some(host) = host {
+            crate::dependencies::ensure_remote("herdr", host)?;
+        }
+        let layout = crate::core::dispatch(
+            app,
+            "paneLayout",
+            "getEffectivePaneLayout",
+            vec![target["projectId"].clone()],
+        )?;
+        let cwd = field(target, "worktreePath")
+            .map(String::from)
+            .unwrap_or_else(|| {
+                if host.is_some() {
+                    "~".into()
+                } else {
+                    crate::runtime::home()
+                }
+            });
+        crate::herdr::ensure_session(name, &cwd, &layout, host, &crate::herdr::system_shell)
+    })();
+    if let Err(error) = prepared {
+        registry.pending_opens.finish(ticket)?;
+        return Err(error);
+    }
+    Ok(ticket)
+}
 fn configure_environment(cmd: &mut CommandBuilder) {
     cmd.env_clear();
     for (k, v) in crate::runtime::shell_environment() {
@@ -160,6 +243,7 @@ fn attach_command(kind: &str, name: &str, cwd: &str) -> String {
     let q = crate::runtime::quote;
     match kind{
         "tmux"=>format!("tmux has-session -t {name} 2>/dev/null || tmux new-session -d -s {name} -c {cwd}; tmux set-option -t {name} status off; exec tmux attach-session -t {name}",name=q(name),cwd=q(cwd)),
+        "herdr"=>format!("exec {}",crate::herdr::command(name,&[])),
         "zellij"=>format!("cd {dir} || exit; if zellij list-sessions 2>/dev/null | awk '{{ gsub(/\\033\\[[0-9;]*m/, \"\") }} $1 != \"EXITED:\" {{ print $1 }}' | grep -qFx -- {name}; then exec zellij attach {name}; elif [ -f .zellij-layout.kdl ]; then exec zellij --session {name} --new-session-with-layout .zellij-layout.kdl; else exec zellij --session {name}; fi",dir=q(cwd),name=q(name)),
         _=>format!("cd {} || printf '%s\\n' 'KanVibe: cannot enter working directory' >&2; exec \"${{SHELL:-/bin/sh}}\" -l",q(cwd)),
     }
@@ -541,6 +625,7 @@ fn destroy_session(app: &AppHandle, k: &str) {
 }
 pub fn close_client(app: &AppHandle, label: &str) {
     let state = app.state::<TerminalState>();
+    state.pending_opens.cancel_client(label);
     let entries: Vec<_> = state
         .sessions
         .lock()
@@ -804,6 +889,16 @@ fn multiplex_tabs(
     let name = field(target, "sessionName").ok_or("세션이 없습니다.")?;
     let host = field(target, "sshHost");
     let q = crate::runtime::quote;
+    if kind == "herdr" {
+        return Ok(crate::herdr::tabs_dispatch(
+            method,
+            args,
+            name,
+            field(target, "worktreePath"),
+            host,
+            &crate::herdr::system_shell,
+        ));
+    }
     let tab = args.get(1).and_then(Value::as_str).unwrap_or("");
     let listing = if kind == "tmux" {
         format!("tmux list-windows -t {} -F '#{{window_id}}\t#{{window_index}}\t#{{window_active}}\t#{{window_name}}'",q(name))
@@ -1015,6 +1110,31 @@ mod tests {
         assert_eq!(t[1]["nativeIndex"], 4);
         assert_eq!(t[0]["id"], "@3");
         assert_eq!(t[0]["isActive"], true);
+    }
+    #[test]
+    fn herdr_attach_execs_named_session_client_without_session_attach() {
+        let command = attach_command("herdr", "project-task", "/work");
+        assert!(command.starts_with("exec env -u HERDR_ENV"));
+        assert!(command.contains("--session 'project-task'"));
+        assert!(!command.contains("'session' 'attach'"));
+        assert!(!command.contains("'session' 'stop'"));
+    }
+    #[test]
+    fn window_closed_during_herdr_bootstrap_gets_no_pty_while_live_client_does() {
+        for cancelled_first in [false, true] {
+            let pending = PendingOpens::default();
+            let (cancelled, live) = if cancelled_first {
+                let cancelled = pending.begin("closed-window").unwrap();
+                (cancelled, pending.begin("live-window").unwrap())
+            } else {
+                let live = pending.begin("live-window").unwrap();
+                (pending.begin("closed-window").unwrap(), live)
+            };
+            pending.cancel_client("closed-window");
+            assert!(!pending.finish(cancelled).unwrap());
+            assert!(pending.finish(live).unwrap());
+            assert!(pending.clients.lock().unwrap().is_empty());
+        }
     }
     #[test]
     fn terminal_keys_do_not_collide() {

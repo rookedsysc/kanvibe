@@ -3,6 +3,7 @@ mod core;
 mod database;
 mod dependencies;
 mod git;
+mod herdr;
 mod integrations;
 mod notifications;
 #[cfg(debug_assertions)]

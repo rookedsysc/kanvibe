@@ -148,6 +148,7 @@ async fn endpoint(
 ) -> Response {
     let method = request.method().as_str().to_owned();
     let path = request.uri().path().to_owned();
+    let query = request.uri().query().unwrap_or("").to_owned();
     let auth = request
         .headers()
         .get("authorization")
@@ -175,6 +176,7 @@ async fn endpoint(
             &app,
             &method,
             &path,
+            &query,
             auth.as_deref(),
             payload,
             peer.ip().is_loopback(),
@@ -206,6 +208,7 @@ fn handle(
     app: &AppHandle,
     method: &str,
     path: &str,
+    query: &str,
     auth: Option<&str>,
     payload: Value,
     loopback: bool,
@@ -312,6 +315,13 @@ fn handle(
             Err(e) => Ok((400, json!({"success":false,"error":e}))),
         };
     }
+    if method == "GET"
+        && (parts.len() == 5 || parts.len() == 7)
+        && parts[2] == "tasks"
+        && parts[4] == "ai-sessions"
+    {
+        return ai_history(app, &parts, query);
+    }
     if parts.len() >= 4 && parts[2] == "tasks" {
         let id = decode(parts[3])?;
         if method == "GET" && parts.len() == 4 {
@@ -359,6 +369,124 @@ fn handle(
         return Ok((200, json!({"success":true,"branches":branches})));
     }
     Ok((404, json!({"success":false,"error":"Not found"})))
+}
+const AI_MESSAGE_ROLES: [&str; 7] = [
+    "user",
+    "assistant",
+    "tool",
+    "system",
+    "developer",
+    "reasoning",
+    "unknown",
+];
+const AI_HISTORY_PAGE_LIMIT: u64 = 100;
+const MAX_SAFE_CURSOR: u64 = 9_007_199_254_740_991;
+#[derive(Debug, PartialEq)]
+struct HistoryOptions {
+    query: Option<String>,
+    cursor: Option<String>,
+    limit: u64,
+    roles: Option<Vec<String>>,
+}
+/// 모바일 History 조회 값을 검증한다. 파일 경로(sourceRef)는 네트워크에서 받지 않는다.
+fn history_options(query: &str, provider: Option<&str>) -> Option<HistoryOptions> {
+    let params: Vec<(String, String)> = url::form_urlencoded::parse(query.as_bytes())
+        .into_owned()
+        .collect();
+    let get = |name: &str| {
+        params
+            .iter()
+            .find(|(key, _)| key == name)
+            .map(|(_, value)| value.as_str())
+    };
+    let number = |s: &str| {
+        (!s.is_empty() && s.bytes().all(|b| b.is_ascii_digit()))
+            .then(|| s.parse::<u64>().ok())
+            .flatten()
+    };
+    let limit =
+        number(get("limit").unwrap_or("20")).filter(|n| (1..=AI_HISTORY_PAGE_LIMIT).contains(n))?;
+    let cursor = get("cursor");
+    if cursor.is_some_and(|c| number(c).is_none_or(|n| n > MAX_SAFE_CURSOR)) {
+        return None;
+    }
+    let roles: Option<Vec<String>> =
+        get("roles").map(|r| r.split(',').map(str::to_owned).collect());
+    let invalid_role = roles
+        .iter()
+        .flatten()
+        .any(|role| !AI_MESSAGE_ROLES.contains(&role.as_str()));
+    let unknown_provider = provider.is_some_and(|p| !crate::ai::sessions::PROVIDERS.contains(&p));
+    if invalid_role || unknown_provider || get("sourceRef").is_some() {
+        return None;
+    }
+    Some(HistoryOptions {
+        query: get("query")
+            .map(str::trim)
+            .filter(|q| !q.is_empty())
+            .map(str::to_owned),
+        cursor: cursor.map(str::to_owned),
+        limit,
+        roles,
+    })
+}
+fn without_source_ref(mut value: Value) -> Value {
+    if let Some(record) = value.as_object_mut() {
+        record.remove("sourceRef");
+    }
+    value
+}
+/// 태스크의 Agent 대화 목록(경로 길이 5)과 한 대화의 상세(길이 7)를 돌려준다.
+/// 상세는 리더가 매번 태스크 경로와 세션 ID로 다시 찾으므로 목록의 파일 경로를 기억하지 않는다.
+fn ai_history(app: &AppHandle, parts: &[&str], query: &str) -> Result<(u16, Value), String> {
+    let task_id = decode(parts[3])?;
+    let target = if parts.len() == 7 {
+        Some((decode(parts[5])?, decode(parts[6])?))
+    } else {
+        None
+    };
+    let Some(options) = history_options(query, target.as_ref().map(|(p, _)| p.as_str())) else {
+        return Ok((
+            400,
+            json!({"success":false,"error":"조회 값이 올바르지 않습니다"}),
+        ));
+    };
+    if integrations::mobile_task(app, &task_id)?.is_null() {
+        return Ok((404, json!({"success":false,"error":"없는 태스크입니다"})));
+    }
+    let Some((provider, session_id)) = target else {
+        let args = vec![
+            json!(task_id),
+            json!(options.query),
+            json!(options.cursor),
+            json!(options.limit),
+        ];
+        let mut history = call(app, "project", "getTaskAiSessions", args)?;
+        if let Some(sessions) = history["sessions"].as_array_mut() {
+            for session in sessions.iter_mut() {
+                *session = without_source_ref(session.take());
+            }
+        }
+        return Ok((200, json!({"success":true,"history":history})));
+    };
+    let args = vec![
+        json!(task_id),
+        json!(provider),
+        json!(session_id),
+        Value::Null,
+        json!(options.cursor),
+        json!(options.limit),
+        json!(options.query),
+        json!(options.roles),
+    ];
+    let detail = call(app, "project", "getTaskAiSessionDetail", args)?;
+    if detail.is_null() {
+        return Ok((404, json!({"success":false,"error":"없는 대화입니다"})));
+    }
+    Ok((
+        200,
+        json!({"success":true,"detail":without_source_ref(detail)}),
+    ))
 }
 fn surface_result(result: Result<Value, String>, tab: bool) -> Result<(u16, Value), String> {
     match result {
@@ -796,6 +924,44 @@ mod tests {
     #[test]
     fn decode_does_not_turn_plus_into_space() {
         assert_eq!(decode("a%2Fb+c").unwrap(), "a/b+c");
+    }
+    #[test]
+    fn history_options_pass_search_page_and_roles() {
+        assert_eq!(
+            history_options("query=%20fix%20&cursor=20&limit=10", None),
+            Some(HistoryOptions {
+                query: Some("fix".into()),
+                cursor: Some("20".into()),
+                limit: 10,
+                roles: None
+            })
+        );
+        let detail = history_options("roles=user,assistant", Some("hermes")).unwrap();
+        assert_eq!(detail.limit, 20);
+        assert_eq!(detail.query, None);
+        assert_eq!(detail.roles, Some(vec!["user".into(), "assistant".into()]));
+    }
+    #[test]
+    fn history_options_reject_invalid_values() {
+        for query in [
+            "limit=0",
+            "limit=101",
+            "limit=2x",
+            "cursor=-1",
+            "cursor=garbage",
+            "cursor=9007199254740992",
+            "roles=invalid",
+            "sourceRef=/private/file",
+        ] {
+            assert_eq!(history_options(query, Some("hermes")), None, "{query}");
+        }
+        assert_eq!(history_options("", Some("unknown")), None);
+        assert!(history_options("", Some("zcode")).is_some());
+    }
+    #[test]
+    fn history_responses_hide_source_paths() {
+        let value = without_source_ref(json!({"id":"s1","sourceRef":"/trusted/rollout.jsonl"}));
+        assert_eq!(value, json!({"id":"s1"}));
     }
     #[test]
     fn unavailable_surface_uses_conflict() {

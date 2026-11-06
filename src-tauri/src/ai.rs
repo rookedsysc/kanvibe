@@ -14,7 +14,7 @@ use std::{
 };
 use tauri::{AppHandle, Manager};
 #[path = "ai_sessions.rs"]
-mod sessions;
+pub mod sessions;
 
 pub fn home() -> PathBuf {
     dirs::home_dir().unwrap_or_else(|| PathBuf::from("."))

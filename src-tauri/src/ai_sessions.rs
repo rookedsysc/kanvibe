@@ -10,6 +10,38 @@ use std::{
     time::SystemTime,
 };
 use tauri::{AppHandle, Manager};
+#[path = "ai_session_stores.rs"]
+mod stores;
+/// 집계·출처 상태 순서. 렌더러와 모바일이 받는 25종 Agent History 프로바이더다.
+pub const PROVIDERS: [&str; 25] = [
+    "claude",
+    "codex",
+    "opencode",
+    "gemini",
+    "qoder",
+    "codebuddy",
+    "hermes",
+    "pi",
+    "omp",
+    "prime-agent",
+    "cursor",
+    "antigravity",
+    "rovo",
+    "copilot",
+    "grok",
+    "openclaw",
+    "devin",
+    "droid",
+    "cline",
+    "kimi",
+    "muse",
+    "jcode",
+    "kiro",
+    "opencode2",
+    "zcode",
+];
+/// 실행중 세션과 호출 그래프를 읽을 수 있는 프로바이더
+const LIVE_PROVIDERS: [&str; 4] = ["claude", "codex", "opencode", "gemini"];
 #[derive(Clone)]
 struct Context {
     target: String,
@@ -26,7 +58,13 @@ struct Transcript {
     events: Vec<Value>,
     mtime: i64,
     parent: Option<String>,
+    /// 상세 응답 제목이 목록 제목(80자 미리보기)과 다른 파일 기반 Agent만 채운다.
+    detail_title: Option<Value>,
+    /// 시각을 남기지 않는 기록이 섞여 있어 상세를 시각 정렬 대신 기록 역순으로 보여야 하는 대화
+    is_log_ordered: bool,
 }
+/// 한 프로바이더에서 읽은 대화와 출처 상태
+type ProviderRead = (Vec<Transcript>, Value);
 type FileCache = HashMap<String, (SystemTime, u64, Vec<Value>)>;
 static CACHE: OnceLock<Mutex<FileCache>> = OnceLock::new();
 fn quote(s: &str) -> String {
@@ -96,6 +134,27 @@ fn lines(ctx: &Context, path: &str) -> Vec<Value> {
     }
     cache.insert(path.into(), (modified, meta.len(), parsed.clone()));
     parsed
+}
+/// 메타데이터만 필요할 때 파일 앞부분만 읽어 원격 전송량을 줄인다.
+fn head_lines(ctx: &Context, path: &str, count: usize) -> Vec<Value> {
+    let source = if ctx.host.is_some() {
+        command(ctx, &format!("head -n {count} -- {}", quote(path))).unwrap_or_default()
+    } else {
+        fs::File::open(path)
+            .map(|f| {
+                BufReader::new(f)
+                    .lines()
+                    .map_while(Result::ok)
+                    .take(count)
+                    .collect::<Vec<_>>()
+                    .join("\n")
+            })
+            .unwrap_or_default()
+    };
+    source
+        .lines()
+        .filter_map(|l| serde_json::from_str(l.trim()).ok())
+        .collect()
 }
 fn window_lines(ctx: &Context, path: &str) -> Vec<Value> {
     let source = if ctx.host.is_some() {
@@ -185,55 +244,114 @@ fn plain(v: &Value) -> String {
         _ => String::new(),
     }
 }
+/// 목록·메시지 미리보기 길이. 제목은 TITLE_TEXT_LENGTH로 따로 자른다.
+const PREVIEW_TEXT_LENGTH: usize = 240;
+fn is_transport_noise_line(line: &str) -> bool {
+    static NOISE: OnceLock<regex::Regex> = OnceLock::new();
+    NOISE
+        .get_or_init(|| {
+            regex::Regex::new(
+                r"^(?:\[(?:remote-ssh|터미널|terminal)\]|sshHost:|command:|sshArgs:|error:|at\s+.*:\d+:\d+\)?$)",
+            )
+            .unwrap()
+        })
+        .is_match(line)
+}
+/// 원격 전송 로그 줄과 붙여넣기 표식을 걷어 낸 원문. 줄바꿈은 유지한다.
+fn preserve_message_text(s: &str) -> String {
+    static PASTED: OnceLock<regex::Regex> = OnceLock::new();
+    let pasted = PASTED.get_or_init(|| regex::Regex::new(r"\[Pasted ~\d+ lines\]").unwrap());
+    pasted
+        .replace_all(s, "\n")
+        .lines()
+        .filter(|line| !is_transport_noise_line(line.trim()))
+        .map(str::trim_end)
+        .collect::<Vec<_>>()
+        .join("\n")
+        .trim()
+        .to_string()
+}
+/// 빈 줄을 버리고 모든 공백을 한 칸으로 합친 한 줄 텍스트
+fn normalize_text(s: &str) -> String {
+    preserve_message_text(s)
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+/// 정규화한 텍스트가 max를 넘으면 max-1글자에서 자르고 "..."를 붙인다.
 fn trunc(s: &str, max: usize) -> String {
-    let mut chars = s.chars();
-    let shortened = chars.by_ref().take(max).collect::<String>();
-    if chars.next().is_some() {
-        format!("{shortened}…")
-    } else {
-        shortened
+    let normalized = normalize_text(s);
+    if normalized.chars().count() <= max {
+        return normalized;
     }
+    let head = normalized.chars().take(max - 1).collect::<String>();
+    format!("{}...", head.trim_end())
 }
 fn iso(v: &Value) -> Value {
+    let format = |d: DateTime<Utc>| json!(d.to_rfc3339_opts(chrono::SecondsFormat::Millis, true));
     if let Some(s) = v.as_str() {
-        DateTime::parse_from_rfc3339(s)
-            .map(|d| json!(d.to_rfc3339_opts(chrono::SecondsFormat::Millis, true)))
-            .unwrap_or(Value::Null)
-    } else if let Some(n) = v.as_i64() {
-        DateTime::<Utc>::from_timestamp_millis(n)
-            .map(|d| json!(d.to_rfc3339_opts(chrono::SecondsFormat::Millis, true)))
-            .unwrap_or(Value::Null)
-    } else {
-        Value::Null
+        return iso_text(s).map(format).unwrap_or(Value::Null);
     }
+    // 초 단위와 밀리초 단위 epoch를 모두 받는다.
+    let Some(n) = v.as_f64() else {
+        return Value::Null;
+    };
+    let millis = if n > 1e12 {
+        n
+    } else if n > 1e9 {
+        n * 1000.0
+    } else {
+        return Value::Null;
+    };
+    DateTime::<Utc>::from_timestamp_millis(millis as i64)
+        .map(format)
+        .unwrap_or(Value::Null)
+}
+/// 시간대가 없는 ISO 시각은 JavaScript Date.parse처럼 로컬 시각으로 읽는다.
+fn iso_text(s: &str) -> Option<DateTime<Utc>> {
+    if let Ok(d) = DateTime::parse_from_rfc3339(s) {
+        return Some(d.with_timezone(&Utc));
+    }
+    ["%Y-%m-%dT%H:%M:%S%.f", "%Y-%m-%d %H:%M:%S%.f"]
+        .iter()
+        .find_map(|f| chrono::NaiveDateTime::parse_from_str(s, f).ok())
+        .and_then(|d| d.and_local_timezone(chrono::Local).single())
+        .map(|d| d.with_timezone(&Utc))
 }
 fn message(role: &str, timestamp: &Value, s: String) -> Option<Value> {
-    if s.trim().is_empty() {
+    let full_text = preserve_message_text(&s.replace('\r', ""));
+    if full_text.is_empty() {
         return None;
     }
-    let normalized = s.replace('\r', "");
-    let shortened = trunc(&normalized, 1200);
+    let preview = trunc(&full_text, PREVIEW_TEXT_LENGTH);
+    let is_truncated = preview.chars().count() < normalize_text(&full_text).chars().count();
     Some(
-        json!({"role":role,"timestamp":iso(timestamp),"text":shortened,"fullText":normalized,"isTruncated":normalized.chars().count()>1200}),
+        json!({"role":role,"timestamp":iso(timestamp),"text":preview,"fullText":full_text,"isTruncated":is_truncated}),
     )
 }
-fn matches_path(ctx: &Context, path: &str) -> bool {
-    let normalize = |s: &str| {
-        let mut normalized = std::path::PathBuf::new();
-        for component in Path::new(s).components() {
-            match component {
-                std::path::Component::CurDir => {}
-                std::path::Component::ParentDir => {
-                    normalized.pop();
-                }
-                other => normalized.push(other.as_os_str()),
+fn normalize_path(s: &str) -> std::path::PathBuf {
+    let mut normalized = std::path::PathBuf::new();
+    for component in Path::new(s).components() {
+        match component {
+            std::path::Component::CurDir => {}
+            std::path::Component::ParentDir => {
+                normalized.pop();
             }
+            other => normalized.push(other.as_os_str()),
         }
-        normalized
-    };
+    }
+    normalized
+}
+fn matches_path(ctx: &Context, path: &str) -> bool {
     !path.is_empty()
         && !ctx.target.is_empty()
-        && normalize(path).starts_with(normalize(&ctx.target))
+        && normalize_path(path).starts_with(normalize_path(&ctx.target))
+}
+/// Codex rollout 첫 줄의 session_meta로 다른 작업 기록을 본문을 읽기 전에 걸러낸다.
+fn codex_meta_matches(ctx: &Context, path: &str) -> bool {
+    head_lines(ctx, path, 1).first().is_some_and(|event| {
+        text(event, "type") == "session_meta" && matches_path(ctx, text(&event["payload"], "cwd"))
+    })
 }
 fn skip(role: &str, s: &str) -> bool {
     let s = s.trim();
@@ -252,6 +370,9 @@ fn skip(role: &str, s: &str) -> bool {
             .any(|p| s.contains(p)))
 }
 fn parse_jsonl(ctx: &Context, provider: &str, path: &str) -> Option<Transcript> {
+    if provider == "codex" && !codex_meta_matches(ctx, path) {
+        return None;
+    }
     let events = if ctx.bounded && (provider == "claude" || ctx.recent) {
         window_lines(ctx, path)
     } else {
@@ -383,15 +504,52 @@ fn parse_jsonl(ctx: &Context, provider: &str, path: &str) -> Option<Transcript> 
         file_mtime(ctx, path)
     };
     Some(Transcript {
-        summary: json!({"id":id,"provider":provider,"startedAt":start,"updatedAt":updated,"matchedPath":cwd,"matchScope":"worktree","title":title,"firstUserPrompt":first.map(|s|trunc(s,1200)),"messageCount":messages.len(),"sourceRef":path}),
+        summary: json!({"id":id,"provider":provider,"startedAt":start,"updatedAt":updated,"matchedPath":cwd,"matchScope":"worktree","title":title,"firstUserPrompt":first.map(|s|trunc(s,PREVIEW_TEXT_LENGTH)),"messageCount":messages.len(),"sourceRef":path}),
         messages,
         events,
         mtime,
         parent,
+        detail_title: None,
+        is_log_ordered: false,
     })
 }
+const GEMINI_ROLES: [&str; 10] = [
+    "user",
+    "gemini",
+    "assistant",
+    "model",
+    "system",
+    "info",
+    "tool",
+    "reasoning",
+    "thought",
+    "developer",
+];
+/// Gemini JSON은 그대로, JSONL은 세션 헤더·$set 갱신·메시지 줄을 하나의 대화 문서로 합친다.
+fn gemini_chat(ctx: &Context, path: &str) -> Option<Value> {
+    if !path.ends_with(".jsonl") {
+        return serde_json::from_str(&content(ctx, path).ok()?).ok();
+    }
+    let mut chat = serde_json::Map::new();
+    let mut messages = Vec::new();
+    for record in lines(ctx, path) {
+        if let Some(set) = record["$set"].as_object() {
+            chat.extend(set.clone());
+        } else if let (Some(fields), true) = (record.as_object(), record["sessionId"].is_string()) {
+            chat.extend(fields.clone());
+        }
+        if record["type"]
+            .as_str()
+            .is_some_and(|t| GEMINI_ROLES.contains(&t))
+        {
+            messages.push(record);
+        }
+    }
+    chat.insert("messages".into(), Value::Array(messages));
+    Some(Value::Object(chat))
+}
 fn parse_gemini(ctx: &Context, path: &str) -> Option<Transcript> {
-    let v: Value = serde_json::from_str(&content(ctx, path).ok()?).ok()?;
+    let v = gemini_chat(ctx, path)?;
     let mut cwd = ["projectPath", "cwd", "directory"]
         .iter()
         .map(|k| text(&v, k))
@@ -502,11 +660,13 @@ fn parse_gemini(ctx: &Context, path: &str) -> Option<Transcript> {
         .map(|d| d.timestamp_millis())
         .unwrap_or(0);
     Some(Transcript {
-        summary: json!({"id":id,"provider":"gemini","startedAt":start,"updatedAt":updated,"matchedPath":cwd,"matchScope":"worktree","title":title,"firstUserPrompt":first.map(|s|trunc(s,1200)),"messageCount":messages.len(),"sourceRef":path}),
+        summary: json!({"id":id,"provider":"gemini","startedAt":start,"updatedAt":updated,"matchedPath":cwd,"matchScope":"worktree","title":title,"firstUserPrompt":first.map(|s|trunc(s,PREVIEW_TEXT_LENGTH)),"messageCount":messages.len(),"sourceRef":path}),
         messages,
         events: vec![],
         mtime,
         parent: None,
+        detail_title: None,
+        is_log_ordered: false,
     })
 }
 fn opencode_message(meta: &Value, data: &Value, time: &Value) -> Option<Value> {
@@ -593,7 +753,7 @@ fn open_code(ctx: &Context) -> Result<Vec<Transcript>, String> {
             .find(|m| m["role"] == "user" || m["role"] == "assistant")
             .map(|m| m["timestamp"].clone())
             .unwrap_or_else(|| iso(&json!(updated)));
-        result.push(Transcript{summary:json!({"id":id,"provider":"opencode","startedAt":iso(&json!(start)),"updatedAt":updated,"matchedPath":cwd,"matchScope":"worktree","title":title.or_else(||first.map(|s|trunc(s,80))),"firstUserPrompt":first.map(|s|trunc(s,1200)),"messageCount":messages.len(),"sourceRef":id}),messages,events:vec![],mtime:updated.as_str().and_then(|s|DateTime::parse_from_rfc3339(s).ok()).map(|d|d.timestamp_millis()).unwrap_or(0),parent});
+        result.push(Transcript{summary:json!({"id":id,"provider":"opencode","startedAt":iso(&json!(start)),"updatedAt":updated,"matchedPath":cwd,"matchScope":"worktree","title":title.or_else(||first.map(|s|trunc(s,80))),"firstUserPrompt":first.map(|s|trunc(s,PREVIEW_TEXT_LENGTH)),"messageCount":messages.len(),"sourceRef":id}),messages,events:vec![],mtime:updated.as_str().and_then(|s|DateTime::parse_from_rfc3339(s).ok()).map(|d|d.timestamp_millis()).unwrap_or(0),parent,detail_title:None,is_log_ordered:false});
     }
     Ok(result)
 }
@@ -609,20 +769,49 @@ fn open_code_remote(ctx: &Context, path: &str) -> Result<Vec<Transcript>, String
         ),
     )?;
     let rows: Vec<Value> = serde_json::from_str(&output).map_err(|e| e.to_string())?;
-    Ok(rows.into_iter().map(|r|{let messages:Vec<Value>=r["parts"].as_array().into_iter().flatten().filter_map(|p|{let data:Value=serde_json::from_str(text(p,"data")).ok()?;let meta:Value=serde_json::from_str(text(p,"message_data")).ok()?;opencode_message(&meta,&data,&p["time_created"])}).collect();let first=messages.iter().find(|m|m["role"]=="user").map(|m|text(m,"fullText"));Transcript{summary:json!({"id":r["id"],"provider":"opencode","startedAt":iso(&r["time_created"]),"updatedAt":iso(&r["time_updated"]),"matchedPath":r["directory"],"matchScope":"worktree","title":r["title"],"firstUserPrompt":first.map(|s|trunc(s,1200)),"messageCount":messages.len(),"sourceRef":r["id"]}),messages,events:vec![],mtime:r["time_updated"].as_i64().unwrap_or(0),parent:r["parent_id"].as_str().map(str::to_owned)}}).collect())
+    Ok(rows.into_iter().map(|r|{let messages:Vec<Value>=r["parts"].as_array().into_iter().flatten().filter_map(|p|{let data:Value=serde_json::from_str(text(p,"data")).ok()?;let meta:Value=serde_json::from_str(text(p,"message_data")).ok()?;opencode_message(&meta,&data,&p["time_created"])}).collect();let first=messages.iter().find(|m|m["role"]=="user").map(|m|text(m,"fullText"));Transcript{summary:json!({"id":r["id"],"provider":"opencode","startedAt":iso(&r["time_created"]),"updatedAt":iso(&r["time_updated"]),"matchedPath":r["directory"],"matchScope":"worktree","title":r["title"],"firstUserPrompt":first.map(|s|trunc(s,PREVIEW_TEXT_LENGTH)),"messageCount":messages.len(),"sourceRef":r["id"]}),messages,events:vec![],mtime:r["time_updated"].as_i64().unwrap_or(0),parent:r["parent_id"].as_str().map(str::to_owned),detail_title:None,is_log_ordered:false}}).collect())
+}
+/// SQLite OpenCode와 이전 storage/ 파일 기록을 합친다. SQLite로 옮겨진 세션은 이전 파일로 다시 노출하지 않는다.
+fn read_open_code(ctx: &Context) -> (Vec<Transcript>, Value) {
+    let (mut sessions, sqlite_reason) = match open_code(ctx) {
+        Ok(t) => (t, None),
+        Err(e) => (vec![], Some(e)),
+    };
+    let legacy = if ctx.recent {
+        Err(String::new())
+    } else {
+        stores::read_legacy_open_code(ctx)
+    };
+    let available = sqlite_reason.is_none() || legacy.is_ok();
+    let known: HashSet<String> = sessions
+        .iter()
+        .map(|t| text(&t.summary, "id").to_owned())
+        .collect();
+    sessions.extend(
+        legacy
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|t| !known.contains(text(&t.summary, "id"))),
+    );
+    let reason = if !sessions.is_empty() {
+        Value::Null
+    } else if available {
+        json!("No OpenCode sessions matched this task")
+    } else {
+        json!(sqlite_reason)
+    };
+    let status = json!({"provider":"opencode","available":available,"sessionCount":sessions.len(),"reason":reason});
+    (sessions, status)
 }
 fn read_provider(ctx: &Context, provider: &str) -> (Vec<Transcript>, Value) {
     if provider == "opencode" {
-        return match open_code(ctx) {
-            Ok(t) => {
-                let status = json!({"provider":provider,"available":true,"sessionCount":t.len(),"reason":null});
-                (t, status)
-            }
-            Err(e) => (
-                vec![],
-                json!({"provider":provider,"available":false,"sessionCount":0,"reason":e}),
-            ),
-        };
+        return read_open_code(ctx);
+    }
+    if stores::SQLITE_PROVIDERS.contains(&provider) {
+        return stores::read_sqlite_provider(ctx, provider);
+    }
+    if let Some(result) = stores::read_file_provider(ctx, provider) {
+        return result;
     }
     let (sub, suffix) = match provider {
         "claude" => (".claude/projects", ".jsonl"),
@@ -642,6 +831,9 @@ fn read_provider(ctx: &Context, provider: &str) -> (Vec<Transcript>, Value) {
         );
     }
     let mut paths = files(ctx, &root, suffix);
+    if provider == "gemini" {
+        paths.extend(files(ctx, &root, ".jsonl"));
+    }
     if provider == "claude" {
         paths.retain(|p| !p.contains("/subagents/"));
     }
@@ -693,7 +885,12 @@ fn paginate(items: Vec<Value>, cursor: &Value, limit: usize) -> (Vec<Value>, Val
     )
 }
 pub fn running_panes(host: Option<&str>) -> Vec<Value> {
-    crate::git::run("tmux list-panes -a -F '#{pane_current_command}\t#{pane_current_path}\t#{session_name}\t#{window_id}\t#{window_name}'",host).unwrap_or_default().lines().filter_map(|line|{let fields:Vec<_>=line.split('\t').collect();if fields.len()!=5||!["claude","codex","gemini","opencode"].contains(&fields[0]){return None}Some(json!({"provider":fields[0],"worktreePath":fields[1],"sessionName":fields[2],"windowId":fields[3],"windowName":fields[4]}))}).collect()
+    let mut panes: Vec<Value> = crate::git::run("tmux list-panes -a -F '#{pane_current_command}\t#{pane_current_path}\t#{session_name}\t#{window_id}\t#{window_name}'",host).unwrap_or_default().lines().filter_map(|line|{let fields:Vec<_>=line.split('\t').collect();if fields.len()!=5||!["claude","codex","gemini","opencode"].contains(&fields[0]){return None}Some(json!({"provider":fields[0],"worktreePath":fields[1],"sessionName":fields[2],"windowId":fields[3],"windowName":fields[4]}))}).collect();
+    panes.extend(crate::herdr::running_agent_panes(
+        host,
+        &crate::herdr::system_shell,
+    ));
+    panes
 }
 fn graph_nodes(transcripts: &[Transcript], parent: &str, seen: &mut HashSet<String>) -> Vec<Value> {
     transcripts.iter().filter(|t|t.parent.as_deref()==Some(parent)).filter_map(|t|{let id=text(&t.summary,"id").to_string();if !seen.insert(id.clone()){return None}let ended=if Utc::now().timestamp_millis()-t.mtime<=90000{Value::Null}else{t.summary["updatedAt"].clone()};Some(json!({"id":id,"agentType":t.events.first().and_then(|e|e.pointer("/payload/source/subagent/thread_spawn/agent_type")).cloned().unwrap_or(Value::Null),"skill":null,"task":t.events.first().and_then(|e|e.pointer("/payload/agent_nickname")).cloned().unwrap_or_else(||t.summary["title"].clone()),"startedAt":t.summary["startedAt"],"endedAt":ended,"children":graph_nodes(transcripts,&id,seen)}))}).collect()
@@ -842,6 +1039,64 @@ fn live_selection(transcripts: &[Transcript], now: i64) -> Vec<&Transcript> {
     }
     selected
 }
+/// 상세 대화를 검색어·역할로 거른 뒤 최신 메시지부터 정렬한다.
+/// 검색어가 대화 id·제목·경로·메시지 원문 중 하나에 들어 있는지. query는 소문자여야 한다.
+fn matches_session_query(t: &Transcript, query: &str) -> bool {
+    let contains = |value: &str| value.to_lowercase().contains(query);
+    let matches_summary = ["id", "title", "matchedPath"]
+        .iter()
+        .any(|key| contains(text(&t.summary, key)));
+    query.is_empty() || matches_summary || t.messages.iter().any(|m| contains(text(m, "fullText")))
+}
+fn detail_messages(t: &Transcript, query: &str, roles: Option<&Vec<Value>>) -> Vec<Value> {
+    let query = query.to_lowercase();
+    let mut messages: Vec<_> = t
+        .messages
+        .iter()
+        .filter(|m| {
+            (query.is_empty() || text(m, "fullText").to_lowercase().contains(&query))
+                && roles.is_none_or(|r| r.is_empty() || r.contains(&m["role"]))
+        })
+        .cloned()
+        .collect();
+    // 시각이 없는 대화를 남기는 기록은 기록 순서를 거꾸로 돌려 최신부터 보여준다.
+    if t.is_log_ordered {
+        messages.reverse();
+    } else {
+        messages.sort_by(|a, b| text(b, "timestamp").cmp(text(a, "timestamp")));
+    }
+    messages
+}
+/// 저장소 접근이 디스크·SSH 요청을 폭증시키지 않도록 동시에 읽는 프로바이더 수를 제한한다.
+/// 한 리더가 실패해도 그 출처만 읽을 수 없음으로 표시하고 나머지 기록은 유지한다.
+fn read_providers(ctx: &Context, providers: &[&str]) -> Vec<ProviderRead> {
+    let next = std::sync::atomic::AtomicUsize::new(0);
+    let slots: Vec<Mutex<Option<ProviderRead>>> =
+        providers.iter().map(|_| Mutex::new(None)).collect();
+    let workers = providers.len().min(if ctx.host.is_some() { 4 } else { 8 });
+    std::thread::scope(|scope| {
+        for _ in 0..workers {
+            scope.spawn(|| loop {
+                let index = next.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                let Some(provider) = providers.get(index) else {
+                    break;
+                };
+                let read = std::panic::AssertUnwindSafe(|| read_provider(ctx, provider));
+                let result = std::panic::catch_unwind(read).unwrap_or_else(|_| {
+                    (
+                        vec![],
+                        json!({"provider":provider,"available":false,"sessionCount":0,"reason":"Session storage could not be read"}),
+                    )
+                });
+                *slots[index].lock().unwrap_or_else(|e| e.into_inner()) = Some(result);
+            });
+        }
+    });
+    slots
+        .into_iter()
+        .filter_map(|slot| slot.into_inner().unwrap_or_else(|e| e.into_inner()))
+        .collect()
+}
 pub fn dispatch(app: &AppHandle, method: &str, args: Vec<Value>) -> Result<Value, String> {
     if method == "getRunningAgentPanes" {
         return Ok(json!(running_panes(None)));
@@ -889,26 +1144,24 @@ pub fn dispatch(app: &AppHandle, method: &str, args: Vec<Value>) -> Result<Value
                     .is_none_or(str::is_empty)),
         recent: method == "getTaskLiveAiSessions",
     };
-    let providers = if method == "getTaskAiSessionDetail" || method == "getTaskAgentCallGraph" {
-        vec![args.get(1).and_then(Value::as_str).unwrap_or("")]
-    } else {
-        vec!["claude", "codex", "opencode", "gemini"]
-    };
-    if providers
-        .iter()
-        .any(|p| !["claude", "codex", "opencode", "gemini"].contains(p))
-    {
+    let providers: Vec<&str> =
+        if method == "getTaskAiSessionDetail" || method == "getTaskAgentCallGraph" {
+            vec![args.get(1).and_then(Value::as_str).unwrap_or("")]
+        } else if method == "getTaskLiveAiSessions" {
+            LIVE_PROVIDERS.to_vec()
+        } else {
+            PROVIDERS.to_vec()
+        };
+    if providers.iter().any(|p| !PROVIDERS.contains(p)) {
         return Err("Unknown AI session provider".into());
     }
-    let results = std::thread::scope(|scope| {
-        let jobs: Vec<_> = providers
-            .iter()
-            .map(|p| scope.spawn(|| read_provider(&ctx, p)))
-            .collect();
-        jobs.into_iter()
-            .map(|j| j.join().map_err(|_| "Session reader failed".to_string()))
-            .collect::<Result<Vec<_>, _>>()
-    })?;
+    if method == "getTaskAgentCallGraph" && !LIVE_PROVIDERS.contains(&providers[0]) {
+        let id = args.get(2).and_then(Value::as_str).unwrap_or("");
+        return Ok(
+            json!({"provider":providers[0],"sessionId":id,"startedAt":null,"readAt":now(),"roots":[]}),
+        );
+    }
+    let results = read_providers(&ctx, &providers);
     let sources: Vec<_> = results.iter().map(|(_, status)| status.clone()).collect();
     let mut transcripts: Vec<_> = results.into_iter().flat_map(|(t, _)| t).collect();
     transcripts.sort_by(|a, b| text(&b.summary, "updatedAt").cmp(text(&a.summary, "updatedAt")));
@@ -921,13 +1174,7 @@ pub fn dispatch(app: &AppHandle, method: &str, args: Vec<Value>) -> Result<Value
                 .to_lowercase();
             let sessions: Vec<_> = transcripts
                 .iter()
-                .filter(|t| {
-                    query.is_empty()
-                        || t.summary.to_string().to_lowercase().contains(&query)
-                        || t.messages
-                            .iter()
-                            .any(|m| text(m, "fullText").to_lowercase().contains(&query))
-                })
+                .filter(|t| matches_session_query(t, &query))
                 .map(|t| t.summary.clone())
                 .collect();
             let (items, next) = paginate(
@@ -947,24 +1194,14 @@ pub fn dispatch(app: &AppHandle, method: &str, args: Vec<Value>) -> Result<Value
             let Some(t) = transcripts.iter().find(|t| text(&t.summary, "id") == id) else {
                 return Ok(Value::Null);
             };
-            let query = args
-                .get(6)
-                .and_then(Value::as_str)
-                .unwrap_or("")
-                .to_lowercase();
+            let query = args.get(6).and_then(Value::as_str).unwrap_or("");
+            // 파일 기반 Agent는 검색어에 맞지 않는 대화를 상세에서도 없는 대화로 본다.
+            if t.detail_title.is_some() && !matches_session_query(t, &query.to_lowercase()) {
+                return Ok(Value::Null);
+            }
             let roles = args.get(7).and_then(Value::as_array);
-            let mut messages: Vec<_> = t
-                .messages
-                .iter()
-                .filter(|m| {
-                    (query.is_empty() || text(m, "fullText").to_lowercase().contains(&query))
-                        && roles.is_none_or(|r| r.is_empty() || r.contains(&m["role"]))
-                })
-                .cloned()
-                .collect();
-            messages.sort_by(|a, b| text(b, "timestamp").cmp(text(a, "timestamp")));
             let (items, next) = paginate(
-                messages,
+                detail_messages(t, query, roles),
                 args.get(4).unwrap_or(&Value::Null),
                 args.get(5)
                     .and_then(Value::as_u64)
@@ -972,7 +1209,7 @@ pub fn dispatch(app: &AppHandle, method: &str, args: Vec<Value>) -> Result<Value
                     .clamp(1, 10000) as usize,
             );
             Ok(
-                json!({"sessionId":id,"provider":t.summary["provider"],"title":t.summary["title"],"matchedPath":ctx.target,"sourceRef":t.summary["sourceRef"],"messages":items,"nextCursor":next}),
+                json!({"sessionId":id,"provider":t.summary["provider"],"title":t.detail_title.as_ref().unwrap_or(&t.summary["title"]),"matchedPath":ctx.target,"sourceRef":t.summary["sourceRef"],"messages":items,"nextCursor":next}),
             )
         }
         "getTaskLiveAiSessions" => {
@@ -1067,6 +1304,30 @@ mod tests {
             "<environment_context>cwd</environment_context>"
         ));
         assert!(!skip("user", "implement this"));
+    }
+    #[test]
+    fn message_preview_matches_node_truncation_and_noise_rules() {
+        let long = format!("first line\n\n  second {}", "가".repeat(300));
+        let m = message("user", &Value::Null, long.clone()).unwrap();
+        let preview = text(&m, "text");
+        assert_eq!(preview.chars().count(), 242);
+        assert!(preview.starts_with("first line second 가"));
+        assert!(preview.ends_with("가..."));
+        assert_eq!(m["isTruncated"], true);
+        assert_eq!(
+            text(&m, "fullText"),
+            "first line\n\n  second ".to_string() + &"가".repeat(300)
+        );
+
+        let noisy =
+            "[remote-ssh] connecting\nsshHost: box\nreal question  \n[Pasted ~3 lines]\nafter";
+        let m = message("user", &Value::Null, noisy.into()).unwrap();
+        assert_eq!(text(&m, "fullText"), "real question\n\n\nafter");
+        assert_eq!(text(&m, "text"), "real question after");
+        assert_eq!(m["isTruncated"], false);
+
+        assert!(message("user", &Value::Null, "error: only noise".into()).is_none());
+        assert_eq!(trunc("  a  b  ", 80), "a b");
     }
     #[test]
     fn nested_message_text_survives() {
@@ -1206,6 +1467,8 @@ mod graph_regressions {
             events: vec![],
             mtime: time,
             parent: parent.map(str::to_owned),
+            detail_title: None,
+            is_log_ordered: false,
         };
         let ts = vec![
             transcript("old", 1000, None),
@@ -1281,5 +1544,172 @@ mod descendant_regressions {
         let sessions = open_code(&context(dir.path())).unwrap();
         assert_eq!(sessions.len(), 2);
         assert!(sessions.iter().any(|t| t.summary["id"] == "nested"));
+    }
+}
+
+#[cfg(test)]
+mod history_regressions {
+    use super::*;
+    fn context(home: &Path, target: &str) -> Context {
+        Context {
+            target: target.into(),
+            repo: target.into(),
+            host: None,
+            home: home.to_string_lossy().into(),
+            bounded: false,
+            recent: false,
+        }
+    }
+    fn write(path: &Path, body: String) {
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(path, body).unwrap();
+    }
+    fn jsonl(events: &[Value]) -> String {
+        events
+            .iter()
+            .map(Value::to_string)
+            .collect::<Vec<_>>()
+            .join("\n")
+            + "\n"
+    }
+    fn texts(messages: &[Value]) -> Vec<&str> {
+        messages.iter().map(|m| text(m, "fullText")).collect()
+    }
+
+    #[test]
+    fn gemini_jsonl_is_discovered_and_merged_into_one_chat() {
+        let dir = tempfile::tempdir().unwrap();
+        let chats = dir.path().join(".gemini/tmp/project/chats");
+        write(
+            &chats.join("../.project_root"),
+            "/workspace/gemini-jsonl".into(),
+        );
+        write(
+            &chats.join("session.jsonl"),
+            jsonl(&[
+                json!({"sessionId":"jsonl-session","startTime":"2026-11-01T00:00:00Z"}),
+                json!({"type":"user","timestamp":"2026-11-01T00:01:00Z","content":"Initial question"}),
+                json!({"type":"gemini","timestamp":"2026-11-01T00:02:00Z","content":"Unique answer"}),
+                json!({"$set":{"lastUpdated":"2026-11-01T00:03:00Z"}}),
+            ]),
+        );
+        let (sessions, _) =
+            read_provider(&context(dir.path(), "/workspace/gemini-jsonl"), "gemini");
+        assert_eq!(sessions.len(), 1);
+        let t = &sessions[0];
+        assert_eq!(t.summary["id"], "jsonl-session");
+        assert_eq!(t.summary["title"], "Initial question");
+        assert_eq!(t.summary["messageCount"], 2);
+        assert_eq!(
+            texts(&detail_messages(t, "", None)),
+            vec!["Unique answer", "Initial question"]
+        );
+        assert!(read_provider(&context(dir.path(), "/foreign"), "gemini")
+            .0
+            .is_empty());
+    }
+
+    #[test]
+    fn codex_rollouts_of_other_worktrees_are_skipped_by_header() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("foreign.jsonl");
+        write(
+            &file,
+            jsonl(&[
+                json!({"type":"session_meta","payload":{"id":"foreign","cwd":"/another/worktree"}}),
+            ]),
+        );
+        let ctx = context(dir.path(), "/selected/worktree");
+        assert!(!codex_meta_matches(&ctx, file.to_str().unwrap()));
+        assert!(parse_jsonl(&ctx, "codex", file.to_str().unwrap()).is_none());
+        assert_eq!(head_lines(&ctx, file.to_str().unwrap(), 1).len(), 1);
+    }
+
+    #[test]
+    fn opencode_prefers_sqlite_over_stale_legacy_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let cwd = "/projects/legacy-task";
+        let storage = dir.path().join(".local/share/opencode/storage");
+        write(&storage.join("session/project/ses_shared.json"), json!({"id":"ses_shared","directory":cwd,"title":"Legacy","time":{"created":1793527200000_i64}}).to_string());
+        write(&storage.join("message/ses_shared/legacy.json"), json!({"id":"legacy","sessionID":"ses_shared","role":"user","content":"stale prompt","time":{"created":1793527200000_i64}}).to_string());
+        write(
+            &storage.join("session/project/ses_only.json"),
+            json!({"id":"ses_only","directory":cwd}).to_string(),
+        );
+        let db = dir.path().join(".local/share/opencode/opencode.db");
+        let conn = rusqlite::Connection::open(&db).unwrap();
+        conn.execute_batch(&format!("CREATE TABLE session(id TEXT,directory TEXT,title TEXT,time_created INTEGER,time_updated INTEGER); CREATE TABLE message(id TEXT,session_id TEXT,data TEXT); CREATE TABLE part(id TEXT,message_id TEXT,session_id TEXT,data TEXT,time_created INTEGER); INSERT INTO session VALUES('ses_shared','{cwd}','SQLite session',1793527200000,1793527260000); INSERT INTO message VALUES('msg_sql','ses_shared','{{\"role\":\"user\"}}'); INSERT INTO part VALUES('prt','msg_sql','ses_shared','{{\"type\":\"text\",\"text\":\"current prompt\"}}',1793527260000);")).unwrap();
+        if std::env::var_os("XDG_DATA_HOME").is_some() {
+            return;
+        }
+        let (sessions, status) = read_provider(&context(dir.path(), cwd), "opencode");
+        assert_eq!(status["available"], true);
+        let shared: Vec<_> = sessions
+            .iter()
+            .filter(|t| t.summary["id"] == "ses_shared")
+            .collect();
+        assert_eq!(shared.len(), 1);
+        assert_eq!(shared[0].summary["firstUserPrompt"], "current prompt");
+        assert!(sessions.iter().any(|t| t.summary["id"] == "ses_only"));
+    }
+
+    #[test]
+    fn every_provider_reports_a_source_and_added_history_opens_newest_first() {
+        let dir = tempfile::tempdir().unwrap();
+        let cwd = "/worktree/integration";
+        write(&dir.path().join(".hermes/sessions/session_fixture.json"), json!({"session_id":"hermes-integration","cwd":cwd,"messages":[{"role":"user","content":"Question"},{"role":"assistant","content":"Answer"}]}).to_string());
+        let results = read_providers(&context(dir.path(), cwd), &PROVIDERS);
+        let sources: Vec<_> = results.iter().map(|(_, s)| text(s, "provider")).collect();
+        assert_eq!(sources, PROVIDERS.to_vec());
+        let hermes: Vec<_> = results.iter().flat_map(|(t, _)| t).collect();
+        if std::env::var_os("HERMES_HOME").is_none() {
+            assert_eq!(hermes.len(), 1);
+            assert_eq!(
+                texts(&detail_messages(hermes[0], "", None)),
+                vec!["Answer", "Question"]
+            );
+            let roles = vec![json!("user")];
+            assert_eq!(
+                texts(&detail_messages(hermes[0], "QUEST", Some(&roles))),
+                vec!["Question"]
+            );
+        }
+    }
+
+    #[test]
+    fn file_history_keeps_full_detail_title_and_searches_only_session_text() {
+        let dir = tempfile::tempdir().unwrap();
+        let cwd = "/worktree/search";
+        let long_title = format!("Long {}", "t".repeat(120));
+        write(&dir.path().join(".hermes/sessions/session_search.json"), json!({"session_id":"hermes-search","cwd":cwd,"title":long_title,"messages":[{"role":"user","content":"needle question"}]}).to_string());
+        if std::env::var_os("HERMES_HOME").is_some() {
+            return;
+        }
+        let results = read_providers(&context(dir.path(), cwd), &["hermes"]);
+        let hermes = &results[0].0[0];
+        assert_eq!(text(&hermes.summary, "title").chars().count(), 82);
+        assert_eq!(hermes.detail_title, Some(json!(long_title)));
+        assert!(hermes.is_log_ordered);
+        for query in ["needle", "hermes-search", "/worktree/search", "long ttt"] {
+            assert!(matches_session_query(hermes, query), "{query}");
+        }
+        // 요약 JSON의 키와 다른 필드 값은 검색 대상이 아니다.
+        for query in [
+            "worktree\"",
+            "matchscope",
+            "sourceref",
+            "hermes\"",
+            "session_search.json",
+        ] {
+            assert!(!matches_session_query(hermes, query), "{query}");
+        }
+    }
+
+    #[test]
+    fn epoch_seconds_millis_and_zoneless_times_normalize() {
+        assert_eq!(iso(&json!(1793527200)), "2026-11-01T10:00:00.000Z");
+        assert_eq!(iso(&json!(1793527200000_i64)), "2026-11-01T10:00:00.000Z");
+        assert!(iso(&json!(0)).is_null());
+        assert!(iso(&json!("2026-11-01T10:00:00.123456")).is_string());
     }
 }
