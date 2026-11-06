@@ -14,7 +14,7 @@ export function usePolledValue<T>(
   intervalMs: number,
   isEnabled: boolean,
 ): T {
-  const [value, setValue] = useState<T>(emptyValue);
+  const [result, setResult] = useState<{ read: () => Promise<T>; value: T }>({ read, value: emptyValue });
   const isWindowActive = useIsWindowActive();
 
   useEffect(() => {
@@ -34,7 +34,7 @@ export function usePolledValue<T>(
       try {
         const nextValue = await read();
         if (!isCancelled) {
-          setValue(nextValue);
+          setResult({ read, value: nextValue });
         }
       } catch {
         // 폴링 실패는 다음 주기에 다시 시도한다. 화면을 오류로 덮지 않는다.
@@ -61,5 +61,5 @@ export function usePolledValue<T>(
     };
   }, [intervalMs, isEnabled, isWindowActive, read]);
 
-  return value;
+  return result.read === read ? result.value : emptyValue;
 }

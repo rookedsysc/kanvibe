@@ -1,4 +1,4 @@
-import { render, waitFor } from "@testing-library/react";
+import { act, render, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import AiAccountLoginTerminal from "../AiAccountLoginTerminal";
 
@@ -8,7 +8,12 @@ const { mockRegisterOscHandler, mockDisposeOscHandler, mockFit } = vi.hoisted(()
   mockFit: vi.fn(),
 }));
 
+let latestTerminal: MockXTerm;
+
 class MockXTerm {
+  // 테스트가 컴포넌트 안에서 만들어진 인스턴스를 꺼내 보려면 생성자에서 참조를 남겨야 한다.
+  // eslint-disable-next-line @typescript-eslint/no-this-alias
+  constructor() { latestTerminal = this; }
   cols = 80;
   rows = 24;
 
@@ -97,4 +102,33 @@ describe("AiAccountLoginTerminal", () => {
       expect(mockDisposeOscHandler).toHaveBeenCalled();
     });
   });
+  it("closes a pending login and disposes listeners immediately on unmount", async () => {
+    let resolve!: (value: { ok: boolean }) => void;
+    const pending = new Promise<{ ok: boolean }>((res) => { resolve = res; });
+    const open = vi.mocked(window.kanvibeDesktop!.openAiAccountLogin!);
+    open.mockReturnValue(pending);
+    const { unmount } = render(<AiAccountLoginTerminal provider="claude" accountRoot="/tmp/pending" onExit={vi.fn()} />);
+    await waitFor(() => expect(open).toHaveBeenCalled());
+    unmount();
+    expect(latestTerminal.dispose).toHaveBeenCalledTimes(1);
+    expect(mockDisposeOscHandler).toHaveBeenCalledTimes(1);
+    expect(window.kanvibeDesktop!.closeAiAccountLogin).toHaveBeenCalledWith("/tmp/pending");
+    await act(async () => { resolve({ ok: true }); });
+    expect(latestTerminal.focus).not.toHaveBeenCalled();
+    expect(latestTerminal.dispose).toHaveBeenCalledTimes(1);
+    expect(window.kanvibeDesktop!.closeAiAccountLogin).toHaveBeenCalledTimes(1);
+  });
+
+  it("disposes a rejected login request without leaving subscriptions", async () => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.mocked(window.kanvibeDesktop!.openAiAccountLogin!).mockRejectedValue(new Error("IPC failed"));
+    const { unmount } = render(<AiAccountLoginTerminal provider="claude" accountRoot="/tmp/rejected" onExit={vi.fn()} />);
+    await waitFor(() => expect(latestTerminal.dispose).toHaveBeenCalledTimes(1));
+    expect(mockDisposeOscHandler).toHaveBeenCalledTimes(1);
+    expect(window.kanvibeDesktop!.closeAiAccountLogin).toHaveBeenCalledWith("/tmp/rejected");
+    unmount();
+    expect(latestTerminal.dispose).toHaveBeenCalledTimes(1);
+    log.mockRestore();
+  });
+
 });

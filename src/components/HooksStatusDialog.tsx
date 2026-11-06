@@ -320,6 +320,7 @@ export default function HooksStatusDialog({
 
         <div className="grid gap-4 md:grid-cols-2">
           {hookItems.map((item) => {
+            const registrationFailed = item.key === "openCode" && Boolean(localOpenCodeStatus?.pluginRegistrationError);
             const isInstalled = item.status?.installed === true;
             const isInstalling = installingTools.includes(item.key);
 
@@ -335,14 +336,14 @@ export default function HooksStatusDialog({
                     </span>
                     <div className="min-w-0">
                       <h3 className="truncate text-sm font-semibold text-text-primary">{item.title}</h3>
-                      <p className="mt-1 text-xs text-text-muted">{isInstalled ? t("hooksInstalled") : t("hooksNotInstalled")}</p>
+                      <p className="mt-1 text-xs text-text-muted">{registrationFailed ? t("hooksVerificationFailed") : isInstalled ? t("hooksInstalled") : t("hooksNotInstalled")}</p>
                     </div>
                   </div>
                   <span className={`shrink-0 rounded-full border px-2 py-1 text-[11px] font-medium ${isInstalled
                     ? "border-status-done/20 bg-status-done/15 text-status-done"
                     : "border-status-error/20 bg-status-error/15 text-status-error"
                   }`}>
-                    {isInstalled ? t("hooksInstalled") : t("hooksNotInstalled")}
+                    {registrationFailed ? t("hooksVerificationFailed") : isInstalled ? t("hooksInstalled") : t("hooksNotInstalled")}
                   </span>
                 </div>
 

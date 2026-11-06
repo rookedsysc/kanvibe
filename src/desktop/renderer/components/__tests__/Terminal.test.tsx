@@ -505,4 +505,40 @@ describe("Desktop Terminal", () => {
     expect(event.defaultPrevented).toBe(false);
     expect(mockReadClipboardImage).not.toHaveBeenCalled();
   });
+  it("disposes all resources when unmounted while openTerminal is pending", async () => {
+    const pending = createDeferred<{ ok: boolean }>();
+    mockOpenTerminal.mockReturnValue(pending.promise);
+    const unsubscribeData = vi.fn();
+    const unsubscribeClose = vi.fn();
+    mockOnTerminalData.mockReturnValue(unsubscribeData);
+    mockOnTerminalClose.mockReturnValue(unsubscribeClose);
+    const { unmount } = render(<Terminal taskId="pending" />);
+    await waitFor(() => expect(mockOpenTerminal).toHaveBeenCalled());
+    const terminal = latestXtermInstance!;
+    unmount();
+    expect(terminal.dispose).toHaveBeenCalledTimes(1);
+    expect(unsubscribeData).toHaveBeenCalledTimes(1);
+    expect(unsubscribeClose).toHaveBeenCalledTimes(1);
+    expect(mockCloseTerminal).toHaveBeenCalledWith("pending", null);
+    await act(async () => { pending.resolve({ ok: true }); });
+    expect(terminal.focus).not.toHaveBeenCalled();
+    expect(terminal.dispose).toHaveBeenCalledTimes(1);
+    expect(mockCloseTerminal).toHaveBeenCalledTimes(1);
+  });
+
+  it("cleans up a successful connection if observer setup throws", async () => {
+    const observe = vi.fn(() => { throw new Error("observer setup"); });
+    const disconnect = vi.fn();
+    vi.stubGlobal("ResizeObserver", class { observe = observe; disconnect = disconnect; });
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { unmount } = render(<Terminal taskId="observer-error" />);
+    await waitFor(() => expect(observe).toHaveBeenCalled());
+    expect(mockCloseTerminal).toHaveBeenCalledWith("observer-error", null);
+    expect(latestXtermInstance!.dispose).toHaveBeenCalledTimes(1);
+    expect(disconnect).toHaveBeenCalledTimes(1);
+    unmount();
+    expect(latestXtermInstance!.dispose).toHaveBeenCalledTimes(1);
+    log.mockRestore();
+  });
+
 });

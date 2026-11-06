@@ -4,6 +4,7 @@ export interface OpenCodeHooksStatus extends Partial<HookTargetRegistrationStatu
   installed: boolean;
   hasPlugin: boolean;
   hasRegisteredPlugin?: boolean;
+  pluginRegistrationError?: string;
   hasDuplicateKanvibePlugins?: boolean;
   hasTaskIdBinding?: boolean;
   hasStatusEndpoint?: boolean;

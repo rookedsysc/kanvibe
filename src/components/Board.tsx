@@ -374,6 +374,8 @@ export default function Board({
   const [doneTotal, setDoneTotal] = useState(initialDoneTotal);
   const [doneOffset, setDoneOffset] = useState(initialDoneLimit);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const donePageGenerationRef = useRef(0);
+  const loadingDonePageGenerationRef = useRef<number | null>(null);
   const [isDoneAlertDismissed, setIsDoneAlertDismissed] = useState(doneAlertDismissed);
   /** 사용자 안내 후에 실행하기 위해 잡아 둔 Done 이동 */
   const [pendingDoneResult, setPendingDoneResult] = useState<DropResult | null>(null);
@@ -389,72 +391,45 @@ export default function Board({
     timeoutId: number;
   } | null>(null);
 
-  /** projectId → 표시할 프로젝트 이름 매핑. worktree 프로젝트는 메인 프로젝트 이름으로 resolve한다 */
-  const projectNameMap = useMemo(() => {
-    const nameMap: Record<string, string> = {};
-    const pathToName: Record<string, string> = {};
-
+  const projectDisplayMap = useMemo(() => {
+    const mainProjectsByLocation = new Map(
+      projects.filter((project) => !extractMainRepoPath(project.repoPath)).map((project) => [
+        JSON.stringify([project.sshHost, project.repoPath]), project,
+      ]),
+    );
+    const displayMap = new Map<string, { name: string; groupKey: string; project: Project | undefined }>();
     for (const project of projects) {
       const mainPath = extractMainRepoPath(project.repoPath);
-      if (!mainPath) {
-        pathToName[project.repoPath] = project.name;
-      }
+      const groupKey = JSON.stringify([project.sshHost, mainPath ?? project.repoPath]);
+      const mainProject = mainProjectsByLocation.get(groupKey);
+      displayMap.set(project.id, {
+        name: mainProject?.name ?? (mainPath ? mainPath.split("/").pop() || project.name : project.name),
+        groupKey,
+        project: mainProject,
+      });
     }
-
-    for (const project of projects) {
-      const mainPath = extractMainRepoPath(project.repoPath);
-      if (mainPath && pathToName[mainPath]) {
-        nameMap[project.id] = pathToName[mainPath];
-      } else if (mainPath) {
-        const baseName = mainPath.split("/").pop() || project.name;
-        nameMap[project.id] = baseName;
-      } else {
-        nameMap[project.id] = project.name;
-      }
-    }
-
-    return nameMap;
+    return displayMap;
   }, [projects]);
 
-  /** 프로젝트명 → 해당 이름의 메인 프로젝트(worktree 제외) 매핑 */
-  const mainProjectByName = useMemo(() => {
-    const uniqueNames = new Set(Object.values(projectNameMap));
-    const mainProjects = new Map<string, Project>();
+  const projectNameMap = useMemo(() => Object.fromEntries(
+    [...projectDisplayMap].map(([id, display]) => [id, display.name]),
+  ), [projectDisplayMap]);
 
-    for (const name of uniqueNames) {
-      const mainProject = projects.find(
-        (p) => p.name === name && !extractMainRepoPath(p.repoPath)
-      );
-      if (mainProject) {
-        mainProjects.set(name, mainProject);
-      }
-    }
+  const projectGroupMap = useMemo(() => Object.fromEntries(
+    [...projectDisplayMap].map(([id, display]) => [id, display.groupKey]),
+  ), [projectDisplayMap]);
 
-    return mainProjects;
-  }, [projectNameMap, projects]);
+  const projectColorMap = useMemo(() => Object.fromEntries(
+    [...projectDisplayMap].map(([id, display]) => [
+      id, display.project?.color || computeProjectColor(display.name),
+    ]),
+  ), [projectDisplayMap]);
 
-  /** 프로젝트명 → hex 색상 매핑. DB color 우선, 없으면 해시 기반 프리셋 할당 */
-  const projectColorMap = useMemo(() => {
-    const colorMap: Record<string, string> = {};
-
-    for (const name of new Set(Object.values(projectNameMap))) {
-      colorMap[name] = mainProjectByName.get(name)?.color || computeProjectColor(name);
-    }
-    return colorMap;
-  }, [projectNameMap, mainProjectByName]);
-
-  /** 프로젝트명 → GitHub 아이콘 data URL 매핑. 아이콘이 없는 프로젝트는 항목을 만들지 않는다 */
-  const projectIconMap = useMemo(() => {
-    const iconMap: Record<string, string> = {};
-
-    for (const name of new Set(Object.values(projectNameMap))) {
-      const iconDataUrl = mainProjectByName.get(name)?.iconDataUrl;
-      if (iconDataUrl) {
-        iconMap[name] = iconDataUrl;
-      }
-    }
-    return iconMap;
-  }, [projectNameMap, mainProjectByName]);
+  const projectIconMap = useMemo(() => Object.fromEntries(
+    [...projectDisplayMap].flatMap(([id, display]) => (
+      display.project?.iconDataUrl ? [[id, display.project.iconDataUrl]] : []
+    )),
+  ), [projectDisplayMap]);
 
   const projectLookup = useMemo(
     () => new Map(projects.map((project) => [project.id, project])),
@@ -592,6 +567,9 @@ export default function Board({
 
   /** 서버 revalidation 후 initialTasks가 변경되면 로컬 state에 반영한다 */
   useEffect(() => {
+    donePageGenerationRef.current += 1;
+    loadingDonePageGenerationRef.current = null;
+    setIsLoadingMore(false);
     setTasks(initialTasks);
     setDoneTotal(initialDoneTotal);
     setDoneOffset(initialDoneLimit);
@@ -837,20 +815,28 @@ export default function Board({
   ]);
 
   const handleLoadMoreDone = useCallback(async () => {
-    if (isLoadingMore) return;
+    const generation = donePageGenerationRef.current;
+    if (loadingDonePageGenerationRef.current === generation) return;
+    loadingDonePageGenerationRef.current = generation;
     setIsLoadingMore(true);
     try {
       const result = await getMoreDoneTasks(doneOffset);
+      if (generation !== donePageGenerationRef.current) return;
       setTasks((prev) => ({
         ...prev,
-        [TaskStatus.DONE]: [...prev[TaskStatus.DONE], ...result.tasks],
+        [TaskStatus.DONE]: [...new Map(
+          [...prev[TaskStatus.DONE], ...result.tasks].map((task) => [task.id, task]),
+        ).values()],
       }));
       setDoneOffset((prev) => prev + result.tasks.length);
       setDoneTotal(result.doneTotal);
     } finally {
-      setIsLoadingMore(false);
+      if (generation === donePageGenerationRef.current) {
+        loadingDonePageGenerationRef.current = null;
+        setIsLoadingMore(false);
+      }
     }
-  }, [doneOffset, isLoadingMore]);
+  }, [doneOffset]);
 
   /** 드래그 결과를 받아 state 업데이트 + DB 반영을 수행한다 */
   const executeDragMove = useCallback(
@@ -1121,6 +1107,7 @@ export default function Board({
                   colorClass={col.colorClass}
                   onContextMenu={handleContextMenu}
                   projectNameMap={projectNameMap}
+                  projectGroupMap={projectGroupMap}
                   projectColorMap={projectColorMap}
                   projectIconMap={projectIconMap}
                   unreadNotificationCountByTask={unreadNotificationCountByTask}

@@ -14,6 +14,9 @@ interface DiffPageClientProps {
 }
 
 interface FileContentState {
+  taskId: string;
+  filePath: string | null;
+  error: string | null;
   original: string;
   modified: string;
   loading: boolean;
@@ -49,7 +52,7 @@ export default function DiffPageClient({ taskId, files }: DiffPageClientProps) {
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>("diff");
   const [viewedFiles, setViewedFiles] = useState<Set<string>>(new Set());
-  const [fileContent, setFileContent] = useState<FileContentState>({ original: "", modified: "", loading: false });
+  const [fileContent, setFileContent] = useState<FileContentState>({ taskId, filePath: null, error: null, original: "", modified: "", loading: false });
   const [sidebarWidth, setSidebarWidth] = useState(DEFAULT_SIDEBAR_WIDTH);
   const isResizing = useRef(false);
 
@@ -65,54 +68,62 @@ export default function DiffPageClient({ taskId, files }: DiffPageClientProps) {
     [files],
   );
 
-  const effectiveSelectedFile = selectedFile ?? files[0]?.path ?? null;
+  const effectiveSelectedFile = files.some((file) => file.path === selectedFile)
+    ? selectedFile
+    : files[0]?.path ?? null;
 
-  const handleSelectFile = useCallback(
-    async (filePath: string) => {
-      setSelectedFile(filePath);
-      setViewMode("diff");
-      setFileContent({ original: "", modified: "", loading: true });
-
-      const [original, modified] = await Promise.all([
-        getOriginalFileContent(taskId, filePath),
-        getFileContent(taskId, filePath),
-      ]);
-
-      setFileContent({ original, modified, loading: false });
-    },
-    [taskId],
-  );
+  const handleSelectFile = useCallback((filePath: string) => {
+    setSelectedFile(filePath);
+    setViewMode("diff");
+  }, []);
 
   useEffect(() => {
+    let cancelled = false;
+    const selection = { taskId, filePath: effectiveSelectedFile };
+    setFileContent((previous) => previous.taskId === taskId && previous.filePath === effectiveSelectedFile
+      ? previous
+      : { ...selection, original: "", modified: "", loading: !!effectiveSelectedFile, error: null });
     if (!effectiveSelectedFile) {
-      setFileContent({ original: "", modified: "", loading: false });
       return;
     }
 
-    setFileContent({ original: "", modified: "", loading: true });
-
-    Promise.all([
-      getOriginalFileContent(taskId, effectiveSelectedFile),
+    void Promise.all([
+      getOriginalFileContent(taskId, files.find((file) => file.path === effectiveSelectedFile)?.originalPath ?? effectiveSelectedFile),
       getFileContent(taskId, effectiveSelectedFile),
     ]).then(([original, modified]) => {
-      setFileContent({ original, modified, loading: false });
+      if (!cancelled) {
+        setFileContent({ ...selection, original, modified, loading: false, error: null });
+      }
+    }).catch((error: unknown) => {
+      if (!cancelled) {
+        setFileContent((previous) => previous.taskId === taskId && previous.filePath === effectiveSelectedFile && !previous.loading && !previous.error
+          ? previous
+          : { ...selection, original: "", modified: "", loading: false, error: error instanceof Error ? error.message : String(error) });
+      }
     });
-  }, [effectiveSelectedFile, taskId]);
 
+    return () => {
+      cancelled = true;
+    };
+  }, [effectiveSelectedFile, files, taskId]);
+
+  const isCurrentContent = fileContent.taskId === taskId && fileContent.filePath === effectiveSelectedFile;
   const handleSave = useCallback(
     async (content: string) => {
-      if (!selectedFile) {
-        return;
+      if (!effectiveSelectedFile || !isCurrentContent || fileContent.loading || fileContent.error) {
+        throw new Error(t("saveError"));
       }
 
-      const result = await saveFileContent(taskId, selectedFile, content);
+      const result = await saveFileContent(taskId, effectiveSelectedFile, content);
       if (!result.success) {
         throw new Error(result.error);
       }
 
-      setFileContent((previous) => ({ ...previous, modified: content }));
+      setFileContent((previous) => previous.taskId === taskId && previous.filePath === effectiveSelectedFile
+        ? { ...previous, modified: content }
+        : previous);
     },
-    [selectedFile, taskId],
+    [effectiveSelectedFile, fileContent.error, fileContent.loading, isCurrentContent, t, taskId],
   );
 
   const toggleViewed = useCallback((filePath: string) => {
@@ -183,7 +194,7 @@ export default function DiffPageClient({ taskId, files }: DiffPageClientProps) {
           {files.length === 0 ? (
             <p className="text-xs text-text-muted px-2 py-4 text-center">{t("noChanges")}</p>
           ) : (
-            <DiffFileTree files={files} selectedFile={selectedFile} onSelectFile={handleSelectFile} viewedFiles={viewedFiles} />
+            <DiffFileTree files={files} selectedFile={effectiveSelectedFile} onSelectFile={handleSelectFile} viewedFiles={viewedFiles} />
           )}
         </div>
       </aside>
@@ -225,10 +236,12 @@ export default function DiffPageClient({ taskId, files }: DiffPageClientProps) {
             </div>
 
             <div className="flex-1 min-h-0">
-              {fileContent.loading ? (
+              {!isCurrentContent || fileContent.loading ? (
                 <div className="flex-1 flex items-center justify-center h-full bg-bg-page">
                   <div className="text-text-muted text-sm">Loading...</div>
                 </div>
+              ) : fileContent.error ? (
+                <div role="alert" className="text-text-muted text-sm p-4">{fileContent.error}</div>
               ) : viewMode === "diff" ? (
                 <DiffMonacoViewer originalContent={fileContent.original} modifiedContent={fileContent.modified} filePath={effectiveSelectedFile} />
               ) : (

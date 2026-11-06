@@ -85,273 +85,286 @@ export default function Terminal({ taskId, tabId = null, isHidden = false, isRem
   isHiddenRef.current = isHidden;
   isRemoteRef.current = isRemote;
 
-  const connect = useCallback(async () => {
+  const connect = useCallback(async (signal: AbortSignal, registerCleanup: (cleanup: () => void) => void) => {
     if (!containerRef.current) {
       return undefined;
     }
 
     const pasteEventTarget = containerRef.current;
     const [{ Terminal: XTerm }, { FitAddon }, { WebLinksAddon }] = await loadTerminalModules();
+    if (signal.aborted) {
+      return;
+    }
     let isTerminalDisposed = false;
 
     const terminal = new XTerm(createTerminalOptions(FALLBACK_FONT_FAMILY));
-
-    const fitAddon = new FitAddon();
-    terminal.loadAddon(fitAddon);
-    terminal.loadAddon(new WebLinksAddon());
-    terminal.open(containerRef.current);
-    const disposeMacShiftSelectionPatch = installMacShiftSelectionPatch(terminal);
-    const osc52ClipboardHandler = installOsc52ClipboardHandler(terminal);
-    terminal.options.fontFamily = FALLBACK_FONT_FAMILY;
-
-    /**
-     * 원격 세션의 CLI(예: Claude Code)는 헤드리스 서버라 로컬 클립보드 이미지를 직접 읽을 수 없다.
-     * 그래서 로컬 클립보드 이미지를 감지하면 scp로 원격에 옮기고, 그 경로만 텍스트로 붙여넣는다.
-     */
-    const sendImageToRemoteTerminal = (imageDataUrl: string) => {
-      void window.kanvibeDesktop!.pasteImageToRemoteTerminal(taskId, imageDataUrl).then((result: { ok: boolean; remotePath?: string; error?: string }) => {
-        if (result.ok && result.remotePath) {
-          window.kanvibeDesktop!.writeTerminal(taskId, tabId, result.remotePath);
-        } else {
-          terminal.writeln(`\r\n\x1b[31m${result.error || "이미지 전송 실패"}\x1b[0m`);
-        }
-      });
-    };
-
-    const handleImagePaste = (file: File) => {
-      const reader = new FileReader();
-      reader.onload = () => {
-        const imageDataUrl = reader.result;
-        if (typeof imageDataUrl === "string") {
-          sendImageToRemoteTerminal(imageDataUrl);
-        }
-      };
-      reader.readAsDataURL(file);
-    };
-
-    /** capture 단계로 등록해야 xterm이 자신의 textarea(target)에 붙인 붙여넣기 처리보다 먼저 가로챌 수 있다 */
-    const handlePaste = (event: ClipboardEvent) => {
-      if (!isRemoteRef.current) {
+    const cleanups: (() => void)[] = [() => terminal.dispose()];
+    const dispose = () => {
+      if (isTerminalDisposed) {
         return;
       }
-
-      const items = event.clipboardData?.items;
-      if (!items) {
-        return;
-      }
-
-      const imageItem = Array.from(items).find(
-        (item) => item.kind === "file" && item.type.startsWith("image/"),
-      );
-      if (!imageItem) {
-        return;
-      }
-
-      event.preventDefault();
-      event.stopImmediatePropagation();
-
-      const file = imageItem.getAsFile();
-      if (file) {
-        handleImagePaste(file);
-      }
-    };
-
-    pasteEventTarget.addEventListener("paste", handlePaste, true);
-
-    /**
-     * macOS의 Chromium 편집 동작은 Cmd+V만 붙여넣기로 매핑하므로, Ctrl+V·Ctrl+Shift+V·Shift+Insert는
-     * 네이티브 paste 이벤트를 만들지 않고 xterm이 제어 문자를 그대로 pty에 흘려보낸다.
-     * Claude Code·Codex 같은 CLI는 이 조합도 붙여넣기 시도로 해석하는 경우가 많아 같은 기능을 태운다.
-     * 클립보드에 이미지가 없으면 xterm 기본 처리를 그대로 둬야 vim 비주얼 블록 모드 같은 기존 용법이 깨지지 않는다.
-     */
-    let replayingClipboardKey = false;
-    const handleClipboardImage = async (fallback?: () => void, onImage?: () => void) => {
-      try {
-        const imageDataUrl = await window.kanvibeDesktop!.readClipboardImage();
-        if (isTerminalDisposed) return;
-        if (imageDataUrl) {
-          onImage?.();
-          sendImageToRemoteTerminal(imageDataUrl);
-        } else {
-          fallback?.();
-        }
-      } catch {
-        if (!isTerminalDisposed) fallback?.();
-      }
-    };
-
-    terminal.attachCustomKeyEventHandler((event) => {
-      if (replayingClipboardKey || event.type !== "keydown" || !isRemoteRef.current) return true;
-      const isCtrlV = event.ctrlKey && !event.metaKey && !event.altKey && event.key.toLowerCase() === "v";
-      const isShiftInsert = event.shiftKey && !event.ctrlKey && !event.metaKey && !event.altKey && event.key === "Insert";
-      if (!isCtrlV && !isShiftInsert) return true;
-
-      // 비동기 클립보드 조회 동안 키를 보류하고 이미지가 없으면 xterm의 동일 키 처리를 재실행한다.
-      void handleClipboardImage(() => {
-        replayingClipboardKey = true;
-        try {
-          terminal.textarea?.dispatchEvent(new KeyboardEvent("keydown", {
-            key: event.key, code: event.code, keyCode: event.keyCode,
-            ctrlKey: event.ctrlKey, shiftKey: event.shiftKey, altKey: event.altKey, metaKey: event.metaKey,
-            bubbles: true, cancelable: true,
-          }));
-        } finally {
-          replayingClipboardKey = false;
-        }
-      });
-      return false;
-    });
-
-    const handleAuxClick = (event: MouseEvent) => {
-      if (event.button !== 1 || !isRemoteRef.current) return;
-      void handleClipboardImage(undefined, () => event.preventDefault());
-    };
-    pasteEventTarget.addEventListener("auxclick", handleAuxClick);
-
-    const isThisTerminal = (event: { taskId: string; tabId: string | null }) => (
-      event.taskId === taskId && (event.tabId ?? null) === tabId
-    );
-
-    const unsubscribeData = window.kanvibeDesktop!.onTerminalData((event: { taskId: string; tabId: string | null; data: string }) => {
-      if (isThisTerminal(event)) {
-        terminal.write(event.data);
-      }
-    });
-
-    const unsubscribeClose = window.kanvibeDesktop!.onTerminalClose((event: { taskId: string; tabId: string | null; reason: string | null }) => {
-      if (isThisTerminal(event)) {
-        terminal.writeln(`\r\n\x1b[31m${event.reason || "연결이 종료되었습니다."}\x1b[0m`);
-      }
-    });
-
-    const syncTerminalSize = () => {
-      if (isHiddenRef.current) {
-        return;
-      }
-
-      fitAddon.fit();
-      window.kanvibeDesktop!.resizeTerminal(taskId, tabId, terminal.cols, terminal.rows);
-    };
-
-    const scheduleTerminalSync = () => {
-      requestAnimationFrame(() => {
-        syncTerminalSize();
-      });
-    };
-
-    void loadNerdFontFamily().then((fontFamily) => {
-      if (!fontFamily || isTerminalDisposed) {
-        return;
-      }
-
-      terminal.options.fontFamily = fontFamily;
-      scheduleTerminalSync();
-    });
-
-    await new Promise<void>((resolve) => {
-      requestAnimationFrame(() => {
-        if (!isHiddenRef.current) {
-          fitAddon.fit();
-        }
-        resolve();
-      });
-    });
-
-    const terminalReady = await window.kanvibeDesktop!.openTerminal(taskId, tabId, terminal.cols, terminal.rows);
-    if (!terminalReady.ok) {
-      terminal.writeln(`\r\n\x1b[31m${terminalReady.error || "터미널 연결 실패"}\x1b[0m`);
-      return () => {
-        isTerminalDisposed = true;
-        disposeMacShiftSelectionPatch();
-        osc52ClipboardHandler.dispose();
-        pasteEventTarget.removeEventListener("paste", handlePaste, true);
-        pasteEventTarget.removeEventListener("auxclick", handleAuxClick);
-        unsubscribeData();
-        unsubscribeClose();
-        terminal.dispose();
-      };
-    }
-
-    terminal.onData((data) => {
-      window.kanvibeDesktop!.writeTerminal(taskId, tabId, data);
-    });
-
-    terminal.onResize(({ cols, rows }) => {
-      window.kanvibeDesktop!.resizeTerminal(taskId, tabId, cols, rows);
-    });
-
-    const focusCurrentTerminal = () => {
-      if (hasTerminalFocusBlocker()) {
-        return;
-      }
-
-      terminal.focus();
-    };
-
-    focusCurrentTerminal();
-
-    const resizeObserver = new ResizeObserver(() => {
-      syncTerminalSize();
-    });
-    resizeObserver.observe(containerRef.current);
-
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === "visible") {
-        focusCurrentTerminal();
-        scheduleTerminalSync();
-      }
-    };
-
-    const handleWindowFocus = () => {
-      focusCurrentTerminal();
-      scheduleTerminalSync();
-    };
-
-    const handleRequestTerminalFocus = () => {
-      focusCurrentTerminal();
-      scheduleTerminalSync();
-    };
-
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-    window.addEventListener("focus", handleWindowFocus);
-    window.addEventListener(REQUEST_ACTIVE_TERMINAL_FOCUS_EVENT, handleRequestTerminalFocus);
-
-    return () => {
       isTerminalDisposed = true;
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
-      window.removeEventListener("focus", handleWindowFocus);
-      window.removeEventListener(REQUEST_ACTIVE_TERMINAL_FOCUS_EVENT, handleRequestTerminalFocus);
-      disposeMacShiftSelectionPatch();
-      osc52ClipboardHandler.dispose();
-      pasteEventTarget.removeEventListener("paste", handlePaste, true);
-      pasteEventTarget.removeEventListener("auxclick", handleAuxClick);
-      resizeObserver.disconnect();
-      unsubscribeData();
-      unsubscribeClose();
-      window.kanvibeDesktop!.closeTerminal(taskId, tabId);
-      terminal.dispose();
+      for (const cleanup of cleanups.reverse()) {
+        cleanup();
+      }
     };
-  }, [tabId, taskId]);
+    registerCleanup(dispose);
 
-  useEffect(() => {
-    let isDisposed = false;
-    let cleanup: (() => void) | undefined;
+    try {
 
-    void connect()
-      .then((dispose) => {
-        if (isDisposed) {
-          dispose?.();
+      const fitAddon = new FitAddon();
+      terminal.loadAddon(fitAddon);
+      terminal.loadAddon(new WebLinksAddon());
+      terminal.open(pasteEventTarget);
+      const disposeMacShiftSelectionPatch = installMacShiftSelectionPatch(terminal);
+      cleanups.push(disposeMacShiftSelectionPatch);
+      const osc52ClipboardHandler = installOsc52ClipboardHandler(terminal);
+      cleanups.push(() => osc52ClipboardHandler.dispose());
+      terminal.options.fontFamily = FALLBACK_FONT_FAMILY;
+
+      /**
+       * 원격 세션의 CLI(예: Claude Code)는 헤드리스 서버라 로컬 클립보드 이미지를 직접 읽을 수 없다.
+       * 그래서 로컬 클립보드 이미지를 감지하면 scp로 원격에 옮기고, 그 경로만 텍스트로 붙여넣는다.
+       */
+      const sendImageToRemoteTerminal = (imageDataUrl: string) => {
+        void window.kanvibeDesktop!.pasteImageToRemoteTerminal(taskId, imageDataUrl).then((result: { ok: boolean; remotePath?: string; error?: string }) => {
+          if (result.ok && result.remotePath) {
+            window.kanvibeDesktop!.writeTerminal(taskId, tabId, result.remotePath);
+          } else {
+            terminal.writeln(`\r\n\x1b[31m${result.error || "이미지 전송 실패"}\x1b[0m`);
+          }
+        });
+      };
+
+      const handleImagePaste = (file: File) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const imageDataUrl = reader.result;
+          if (typeof imageDataUrl === "string") {
+            sendImageToRemoteTerminal(imageDataUrl);
+          }
+        };
+        reader.readAsDataURL(file);
+      };
+
+      /** capture 단계로 등록해야 xterm이 자신의 textarea(target)에 붙인 붙여넣기 처리보다 먼저 가로챌 수 있다 */
+      const handlePaste = (event: ClipboardEvent) => {
+        if (!isRemoteRef.current) {
           return;
         }
 
-        cleanup = dispose;
-      })
+        const items = event.clipboardData?.items;
+        if (!items) {
+          return;
+        }
+
+        const imageItem = Array.from(items).find(
+          (item) => item.kind === "file" && item.type.startsWith("image/"),
+        );
+        if (!imageItem) {
+          return;
+        }
+
+        event.preventDefault();
+        event.stopImmediatePropagation();
+
+        const file = imageItem.getAsFile();
+        if (file) {
+          handleImagePaste(file);
+        }
+      };
+
+      pasteEventTarget.addEventListener("paste", handlePaste, true);
+      cleanups.push(() => pasteEventTarget.removeEventListener("paste", handlePaste, true));
+
+      /**
+       * macOS의 Chromium 편집 동작은 Cmd+V만 붙여넣기로 매핑하므로, Ctrl+V·Ctrl+Shift+V·Shift+Insert는
+       * 네이티브 paste 이벤트를 만들지 않고 xterm이 제어 문자를 그대로 pty에 흘려보낸다.
+       * Claude Code·Codex 같은 CLI는 이 조합도 붙여넣기 시도로 해석하는 경우가 많아 같은 기능을 태운다.
+       * 클립보드에 이미지가 없으면 xterm 기본 처리를 그대로 둬야 vim 비주얼 블록 모드 같은 기존 용법이 깨지지 않는다.
+       */
+      let replayingClipboardKey = false;
+      const handleClipboardImage = async (fallback?: () => void, onImage?: () => void) => {
+        try {
+          const imageDataUrl = await window.kanvibeDesktop!.readClipboardImage();
+          if (isTerminalDisposed) return;
+          if (imageDataUrl) {
+            onImage?.();
+            sendImageToRemoteTerminal(imageDataUrl);
+          } else {
+            fallback?.();
+          }
+        } catch {
+          if (!isTerminalDisposed) fallback?.();
+        }
+      };
+
+      terminal.attachCustomKeyEventHandler((event) => {
+        if (replayingClipboardKey || event.type !== "keydown" || !isRemoteRef.current) return true;
+        const isCtrlV = event.ctrlKey && !event.metaKey && !event.altKey && event.key.toLowerCase() === "v";
+        const isShiftInsert = event.shiftKey && !event.ctrlKey && !event.metaKey && !event.altKey && event.key === "Insert";
+        if (!isCtrlV && !isShiftInsert) return true;
+
+        // 비동기 클립보드 조회 동안 키를 보류하고 이미지가 없으면 xterm의 동일 키 처리를 재실행한다.
+        void handleClipboardImage(() => {
+          replayingClipboardKey = true;
+          try {
+            terminal.textarea?.dispatchEvent(new KeyboardEvent("keydown", {
+              key: event.key, code: event.code, keyCode: event.keyCode,
+              ctrlKey: event.ctrlKey, shiftKey: event.shiftKey, altKey: event.altKey, metaKey: event.metaKey,
+              bubbles: true, cancelable: true,
+            }));
+          } finally {
+            replayingClipboardKey = false;
+          }
+        });
+        return false;
+      });
+
+      const handleAuxClick = (event: MouseEvent) => {
+        if (event.button !== 1 || !isRemoteRef.current) return;
+        void handleClipboardImage(undefined, () => event.preventDefault());
+      };
+      pasteEventTarget.addEventListener("auxclick", handleAuxClick);
+      cleanups.push(() => pasteEventTarget.removeEventListener("auxclick", handleAuxClick));
+
+      const isThisTerminal = (event: { taskId: string; tabId: string | null }) => (
+        event.taskId === taskId && (event.tabId ?? null) === tabId
+      );
+
+      const unsubscribeData = window.kanvibeDesktop!.onTerminalData((event: { taskId: string; tabId: string | null; data: string }) => {
+        if (isThisTerminal(event)) {
+          terminal.write(event.data);
+        }
+      });
+
+      cleanups.push(unsubscribeData);
+
+      const unsubscribeClose = window.kanvibeDesktop!.onTerminalClose((event: { taskId: string; tabId: string | null; reason: string | null }) => {
+        if (isThisTerminal(event)) {
+          terminal.writeln(`\r\n\x1b[31m${event.reason || "연결이 종료되었습니다."}\x1b[0m`);
+        }
+      });
+
+      cleanups.push(unsubscribeClose);
+
+      const syncTerminalSize = () => {
+        if (isTerminalDisposed || isHiddenRef.current) {
+          return;
+        }
+
+        fitAddon.fit();
+        window.kanvibeDesktop!.resizeTerminal(taskId, tabId, terminal.cols, terminal.rows);
+      };
+
+      const scheduleTerminalSync = () => {
+        requestAnimationFrame(() => {
+          syncTerminalSize();
+        });
+      };
+
+      void loadNerdFontFamily().then((fontFamily) => {
+        if (!fontFamily || isTerminalDisposed) {
+          return;
+        }
+
+        terminal.options.fontFamily = fontFamily;
+        scheduleTerminalSync();
+      });
+
+      await new Promise<void>((resolve, reject) => {
+        requestAnimationFrame(() => {
+          try {
+            if (!signal.aborted && !isHiddenRef.current) {
+              fitAddon.fit();
+            }
+            resolve();
+          } catch (error) {
+            reject(error);
+          }
+        });
+      });
+
+      if (signal.aborted) {
+        return;
+      }
+      cleanups.push(() => window.kanvibeDesktop!.closeTerminal(taskId, tabId));
+      const terminalReady = await window.kanvibeDesktop!.openTerminal(taskId, tabId, terminal.cols, terminal.rows);
+      if (signal.aborted) {
+        return;
+      }
+      if (!terminalReady.ok) {
+        terminal.writeln(`\r\n\x1b[31m${terminalReady.error || "터미널 연결 실패"}\x1b[0m`);
+        return;
+      }
+
+      terminal.onData((data) => {
+        window.kanvibeDesktop!.writeTerminal(taskId, tabId, data);
+      });
+
+      terminal.onResize(({ cols, rows }) => {
+        window.kanvibeDesktop!.resizeTerminal(taskId, tabId, cols, rows);
+      });
+
+      const focusCurrentTerminal = () => {
+        if (hasTerminalFocusBlocker()) {
+          return;
+        }
+
+        terminal.focus();
+      };
+
+      focusCurrentTerminal();
+
+      const resizeObserver = new ResizeObserver(() => {
+        syncTerminalSize();
+      });
+      cleanups.push(() => resizeObserver.disconnect());
+      resizeObserver.observe(pasteEventTarget);
+
+      const handleVisibilityChange = () => {
+        if (document.visibilityState === "visible") {
+          focusCurrentTerminal();
+          scheduleTerminalSync();
+        }
+      };
+
+      const handleWindowFocus = () => {
+        focusCurrentTerminal();
+        scheduleTerminalSync();
+      };
+
+      const handleRequestTerminalFocus = () => {
+        focusCurrentTerminal();
+        scheduleTerminalSync();
+      };
+
+      document.addEventListener("visibilitychange", handleVisibilityChange);
+      window.addEventListener("focus", handleWindowFocus);
+      window.addEventListener(REQUEST_ACTIVE_TERMINAL_FOCUS_EVENT, handleRequestTerminalFocus);
+
+      cleanups.push(() => {
+        document.removeEventListener("visibilitychange", handleVisibilityChange);
+        window.removeEventListener("focus", handleWindowFocus);
+        window.removeEventListener(REQUEST_ACTIVE_TERMINAL_FOCUS_EVENT, handleRequestTerminalFocus);
+      });
+    } catch (error) {
+      dispose();
+      throw error;
+    }
+  }, [tabId, taskId]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    let cleanup: (() => void) | undefined;
+
+    void connect(controller.signal, (dispose) => { cleanup = dispose; })
       .catch((error) => {
         console.error("데스크톱 터미널 초기화 실패:", error);
       });
 
     return () => {
-      isDisposed = true;
+      controller.abort();
       cleanup?.();
     };
   }, [connect]);

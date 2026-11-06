@@ -85,24 +85,6 @@ export default function HooksStatusCard({
     setOpenCodeStatus(initialOpenCodeStatus);
   }, [initialOpenCodeStatus]);
 
-  useEffect(() => {
-    let cancelled = false;
-
-    void (async () => {
-      const latestStatus = await getTaskOpenCodeHooksStatus(taskId);
-      if (cancelled) {
-        return;
-      }
-
-      setOpenCodeStatus(latestStatus);
-      onStatusesChangeRef.current?.({ openCodeStatus: latestStatus });
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [taskId]);
-
   const hookItems = [
     {
       key: "claude" as const,
@@ -255,6 +237,7 @@ export default function HooksStatusCard({
 
       <div className="space-y-2">
         {hookItems.map((item) => {
+          const registrationFailed = item.key === "openCode" && Boolean(openCodeStatus?.pluginRegistrationError);
           const isInstalled = item.status?.installed === true;
           const isInstalling = installingTools.includes(item.key);
           const actionLabel = isInstalling
@@ -279,7 +262,7 @@ export default function HooksStatusCard({
                       ? "bg-status-done/15 text-status-done"
                       : "bg-status-error/15 text-status-error"
                     }`}>
-                      {isInstalled ? t("hooksInstalled") : t("hooksNotInstalled")}
+                      {registrationFailed ? t("hooksVerificationFailed") : isInstalled ? t("hooksInstalled") : t("hooksNotInstalled")}
                     </span>
                   </div>
                 </div>

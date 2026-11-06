@@ -533,10 +533,10 @@ apt_install() {
 }
 
 install_node_apt() {
-  # NodeSource 22.x LTS
+  # NodeSource 24.x LTS
   $SUDO apt-get update -qq
   $SUDO apt-get install -y ca-certificates curl gnupg
-  curl -fsSL https://deb.nodesource.com/setup_22.x | $SUDO bash -
+  curl -fsSL https://deb.nodesource.com/setup_24.x | $SUDO bash -
   $SUDO apt-get install -y nodejs
 }
 

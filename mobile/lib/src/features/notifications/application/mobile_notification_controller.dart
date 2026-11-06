@@ -17,13 +17,28 @@ final mobileNotificationsProvider = Provider<MobileNotifications>(
 
 final mobileNotificationControllerProvider =
     Provider<MobileNotificationController>((ref) {
+      Timer? boardRefreshDebounce;
+      const boardRefreshDelay = Duration(milliseconds: 300);
+      ref.listen(
+        connectionControllerProvider.select(
+          (value) => value.value?.activeConnection,
+        ),
+        (_, _) => boardRefreshDebounce?.cancel(),
+      );
+      ref.onDispose(() => boardRefreshDebounce?.cancel());
       final controller = MobileNotificationController(
         client: ref.read(desktopClientProvider),
         notifications: ref.read(mobileNotificationsProvider),
         onBoardChanged: (connectionId) {
           if (ref.read(connectionControllerProvider).value?.activeId ==
               connectionId) {
-            ref.invalidate(boardProvider);
+            boardRefreshDebounce?.cancel();
+            boardRefreshDebounce = Timer(boardRefreshDelay, () {
+              if (ref.read(connectionControllerProvider).value?.activeId ==
+                  connectionId) {
+                ref.invalidate(boardProvider);
+              }
+            });
           }
         },
         onDeviceUnpaired: (connection) => ref
@@ -227,7 +242,7 @@ class MobileNotificationController {
     }
     onBoardChanged(notification.connectionId);
     _taskUpdates.add(notification);
-    unawaited(_showNotification(notification));
+    if (notification.shouldNotify) unawaited(_showNotification(notification));
   }
 
   Future<void> _showNotification(TaskNotification notification) async {
