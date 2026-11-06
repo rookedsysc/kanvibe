@@ -68,7 +68,8 @@ def main() -> None:
     ImageDraw.Draw(desktop_icon).rounded_rectangle((100, 100, 923, 923), radius=184, fill="white")
     desktop_icon.alpha_composite(centered_mark(emblem, 1024, 560))
     save_png(desktop_icon, ROOT / "public/branding/app-icon.png")
-    desktop_icon.save(ROOT / "resources/icon.icns", format="ICNS")
+    save_png(desktop_icon, ROOT / "src-tauri/icons/icon.png")
+    desktop_icon.save(ROOT / "src-tauri/icons/icon.icns", format="ICNS")
 
     catalog = json.loads((IOS_ICONS / "Contents.json").read_text())
     for entry in catalog["images"]:

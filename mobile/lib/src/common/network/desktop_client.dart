@@ -532,7 +532,7 @@ class DesktopClient {
 /// 데스크탑이 이 기기를 목록에서 지워 스트림을 끊었을 때의 종료 코드.
 ///
 /// 스트림 실패(4000)와 나누어야 "세션을 못 비춘다"와 "이 기기는 더 이상 연결되어 있지 않다"를 구분할 수 있다.
-/// 서버 쪽 `electron/mobileRoutes.js`의 `DEVICE_UNPAIRED_CLOSE_CODE`와 같은 값이어야 한다.
+/// 서버 쪽 `src-tauri/src/server.rs`가 기기 해제 때 보내는 close code와 같은 값이어야 한다.
 const int deviceUnpairedCloseCode = 4001;
 
 class DesktopEventStream {

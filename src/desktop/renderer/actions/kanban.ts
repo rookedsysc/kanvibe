@@ -1,6 +1,6 @@
 import type { KanbanTask, TaskStatus } from "@/entities/KanbanTask";
 import type { SessionType } from "@/entities/KanbanTask";
-import type { LoadMoreDoneResponse, TasksByStatus, TasksByStatusWithMeta, CreateTaskInput, SearchableTask } from "@/desktop/main/services/kanbanService";
+import type { LoadMoreDoneResponse, TasksByStatus, TasksByStatusWithMeta, CreateTaskInput, SearchableTask } from "@/desktop/shared/contracts/desktop-main-services-kanbanService";
 import { invokeDesktop } from "@/desktop/renderer/ipc";
 
 export type { TasksByStatus, TasksByStatusWithMeta, LoadMoreDoneResponse, CreateTaskInput, SearchableTask };

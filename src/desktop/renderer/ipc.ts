@@ -1,4 +1,4 @@
-import type { DesktopServiceNamespace } from "@/desktop/main/serviceRegistry";
+import type { DesktopServiceNamespace } from "@/desktop/shared/contracts/desktop-main-serviceRegistry";
 
 export function invokeDesktop<T>(
   namespace: DesktopServiceNamespace,

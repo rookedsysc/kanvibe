@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { AgentCallGraphPanel } from "@/desktop/renderer/components/AgentCallGraphPanel";
-import type { AgentCallGraph, AgentCallNode, LiveAiSession } from "@/lib/aiSessions/types";
+import type { AgentCallGraph, AgentCallNode, LiveAiSession } from "@/desktop/shared/contracts/lib-aiSessions-types";
 
 vi.mock("next-intl", () => ({
   useTranslations: () => (key: string, values?: Record<string, unknown>) => (

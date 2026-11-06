@@ -3,7 +3,7 @@
 import { useTranslations } from "next-intl";
 import { AiProviderIcon } from "@/components/AiProviderIcon";
 import { countByProvider } from "@/desktop/shared/liveAiSessions";
-import type { LiveAiSession } from "@/lib/aiSessions/types";
+import type { LiveAiSession } from "@/desktop/shared/contracts/lib-aiSessions-types";
 
 interface LiveAiSessionPanelProps {
   sessions: LiveAiSession[];

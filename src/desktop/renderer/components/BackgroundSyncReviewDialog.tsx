@@ -11,7 +11,7 @@ import type {
   BackgroundSyncRegisteredWorktreePayload,
   BackgroundSyncReviewPayload,
   TaskPrMergedDetectedPayload,
-} from "@/lib/boardNotifier";
+} from "@/desktop/shared/contracts/lib-boardNotifier";
 
 function buildMergedPrEventKey(taskId: string, prUrl: string, mergedAt: string) {
   return `${taskId}:${prUrl}:${mergedAt}`;

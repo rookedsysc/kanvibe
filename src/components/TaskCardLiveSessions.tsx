@@ -8,7 +8,7 @@ import { LiveAiSessionPanel } from "@/desktop/renderer/components/LiveAiSessionP
 import { useTaskLiveAiSessions } from "@/desktop/renderer/hooks/useLiveAiSessions";
 import { navigateToTaskDetail } from "@/desktop/renderer/utils/taskNavigation";
 import { countByProvider, filterPanesByWorktree } from "@/desktop/shared/liveAiSessions";
-import type { LiveAiSession, RunningAgentPane } from "@/lib/aiSessions/types";
+import type { LiveAiSession, RunningAgentPane } from "@/desktop/shared/contracts/lib-aiSessions-types";
 
 interface TaskCardLiveSessionsProps {
   taskId: string;

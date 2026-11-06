@@ -123,7 +123,7 @@ export default function ShortcutSettingsRoute() {
 
     const targetCommandId = recordingCommandId;
     const releaseShortcutBlocker = boardCommands.registerShortcutBlocker();
-    /** Electron main도 녹화 중임을 알아야 한다. 모르면 main이 가로채는 조합은 여기까지 오지 못한다 */
+    /** Tauri bridge도 녹화 중임을 알아야 한다. 모르면 main이 가로채는 조합은 여기까지 오지 못한다 */
     setShortcutCaptureActive(true);
 
     function handleRecordingKeyDown(event: KeyboardEvent) {

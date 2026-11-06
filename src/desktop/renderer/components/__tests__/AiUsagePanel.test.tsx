@@ -2,7 +2,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import AiUsagePanel from "../AiUsagePanel";
-import type { AiUsageAccountResult, AiUsageSnapshot } from "@/lib/aiUsage/types";
+import type { AiUsageAccountResult, AiUsageSnapshot } from "@/desktop/shared/contracts/lib-aiUsage-types";
 
 vi.mock("next-intl", () => ({
   useTranslations: () => (key: string, values?: Record<string, string>) => (

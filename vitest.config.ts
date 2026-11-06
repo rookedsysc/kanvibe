@@ -2,15 +2,11 @@
 (process.env as { [key: string]: string | undefined }).NODE_ENV = "test";
 
 import { defineConfig } from "vitest/config";
-import react from "@vitejs/plugin-react";
+import react from "@vitejs/plugin-react-swc";
 import path from "path";
 
 const nodeTestFiles = [
-  "src/desktop/main/**/*.test.ts",
   "src/lib/aiUsage/**/*.test.ts",
-  "src/lib/aiSessions/**/*.test.ts",
-  "electron/**/*.test.mjs",
-  "qa/electron/**/*.test.mjs",
   "docs-site/**/*.test.js",
 ];
 
@@ -41,6 +37,8 @@ export default defineConfig({
     ],
     exclude: [
       "dist/**",
+      "qa-results/**",
+      "src-tauri/**",
       ".tooling/**",
       ".opencode/**",
       ".claude/**",

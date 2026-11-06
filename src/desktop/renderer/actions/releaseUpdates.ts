@@ -2,7 +2,7 @@ import { invokeDesktop } from "@/desktop/renderer/ipc";
 import type {
   ReleaseUpdate,
   ReleaseUpdateCheckResult,
-} from "@/desktop/main/services/releaseUpdateService";
+} from "@/desktop/shared/contracts/desktop-main-services-releaseUpdateService";
 
 export type {
   ReleaseUpdate,

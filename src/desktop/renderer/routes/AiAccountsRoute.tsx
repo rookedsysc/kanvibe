@@ -9,8 +9,8 @@ import {
   listAiAccounts,
   removeAiAccount,
 } from "@/desktop/renderer/actions/aiAccounts";
-import type { AiAccountSummary } from "@/desktop/main/services/aiAccountService";
-import type { AiUsageProvider } from "@/lib/aiUsage/types";
+import type { AiAccountSummary } from "@/desktop/shared/contracts/desktop-main-services-aiAccountService";
+import type { AiUsageProvider } from "@/desktop/shared/contracts/lib-aiUsage-types";
 
 const AI_USAGE_PROVIDERS: AiUsageProvider[] = ["claude", "codex", "gemini"];
 

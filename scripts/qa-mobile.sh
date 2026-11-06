@@ -4,8 +4,8 @@ set -euo pipefail
 # 모바일 Maestro 여정을 한 플랫폼에서 끝까지 돌린다.
 #
 # 격리 데스크탑을 띄우고, 기기가 붙어 있는지 확인하고, 하네스 러너에 넘긴 뒤,
-# 여정이 끝나면 데스크탑과 tmux 세션을 되돌린다. 앱 빌드와 설치는 이 스크립트가 하지 않는다 —
-# 빌드는 Flutter 툴체인의 몫이고, 여기서 겸하면 실패 원인이 빌드인지 여정인지 로그에서 갈라지지 않는다.
+# 여정이 끝나면 데스크탑과 tmux 세션을 되돌린다. 데스크탑은 정적 UI를 포함한 Tauri debug 바이너리로
+# 한 번 준비한다. 모바일 앱 빌드와 설치는 별도의 Flutter 툴체인에서 수행한다.
 #
 # 쓰는 법: bash scripts/qa-mobile.sh android|ios
 
@@ -28,6 +28,9 @@ if [[ "${PLATFORM}" == "ios" ]] && ! xcrun simctl list devices booted | grep -q 
   echo "부팅된 iOS 시뮬레이터가 없습니다. xcrun simctl boot <이름>으로 먼저 띄우세요." >&2
   exit 3
 fi
+
+# Vite 서버 없이 UI를 포함한 네이티브 바이너리를 한 번 준비한다.
+pnpm qa:tauri:prepare
 
 # Android는 기기를 두 가지로 손봐 둔다.
 #

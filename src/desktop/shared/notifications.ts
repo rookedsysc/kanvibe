@@ -1,4 +1,4 @@
-import type { BackgroundSyncReviewPayload } from "@/lib/boardNotifier";
+import type { BackgroundSyncReviewPayload } from "@/desktop/shared/contracts/lib-boardNotifier";
 
 export interface BackgroundSyncReviewNotificationAction {
   type: "background-sync-review";

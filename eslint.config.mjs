@@ -28,7 +28,6 @@ export default defineConfig([
     "build/**",
     "dist/**",
     "out/**",
-    "electron/**/*.js",
     "scripts/**/*.cjs",
     "qa/**/*.cjs",
     "qa-output/**",

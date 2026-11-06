@@ -24,6 +24,16 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - name: Tauri Linux prerequisites
+        run: sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+
+      - name: Rust tests
+        run: pnpm test:rust
+
       - name: Type Check
         run: pnpm check
 

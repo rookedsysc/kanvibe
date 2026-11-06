@@ -9,7 +9,7 @@
 
 **面向 AI 编程代理的键盘优先 Kanban 工作区**
 
-KanVibe 让 AI 编程工作不再散落在一堆终端标签中。你可以在实时 Kanban 看板上跟踪基于分支的任务，在浏览器或桌面应用中打开每个任务的 Herdr/tmux/zellij 会话，并让 Claude Code、Gemini CLI、Codex CLI 和 OpenCode hooks 自动推动任务在工作流中流转。
+KanVibe 让 AI 编程工作不再散落在一堆终端标签中。你可以在实时 Kanban 看板上跟踪基于分支的任务，在 Tauri 桌面应用中打开每个任务的 Herdr/tmux/zellij 会话，并让 Claude Code、Gemini CLI、Codex CLI 和 OpenCode hooks 自动推动任务在工作流中流转。
 
 使用快捷键处理项目筛选、任务搜索、通知、任务详情面板和常用任务操作，同时不丢失终端焦点。
 
@@ -196,7 +196,7 @@ brew untap rookedsysc/kanvibe
 - 带项目颜色、优先级标记、PR 徽章和会话标签的拖放任务排序
 - 支持键盘搜索可见项目和任务文本的多项目筛选
 - 面向长期项目的 Done 列分页
-- 跨浏览器和桌面窗口的实时 WebSocket 更新
+- 通过 Tauri IPC 在桌面窗口之间实时更新；移动端连接使用 WebSocket
 
 ### 基于分支的任务工作区
 - 创建会自动准备 git worktree 和终端会话的分支 TODO
@@ -207,7 +207,7 @@ brew untap rookedsysc/kanvibe
 
 ### 终端会话（Herdr / tmux / zellij）
 - 支持 **Herdr**、**tmux** 和 **zellij** 作为终端复用器
-- 通过 xterm.js 和 WebSocket 进行基于浏览器的终端流式传输
+- 通过 xterm.js、Tauri IPC 和 Rust PTY 后端进行内置终端流式传输
 - 读取 `~/.ssh/config` 的 SSH 远程终端支持
 - 非交互式远程 SSH 命令会复用 `~/.kanvibe` 下的应用专用 ControlMaster socket 池，并将每个 host 的并发数限制为可用 CPU 核心数的 4 倍
 - 远程终端 attach 会通过 SSH 直接执行 Herdr/tmux/zellij；仅在本地 `DISPLAY`、远程 `X11Forwarding` 和 `xauth` 可用时请求 trusted X11 forwarding（`ssh -Y`）
@@ -322,7 +322,7 @@ AI 提问等待 (question.asked)              → PENDING
 会话空闲 (session.idle)                   → REVIEW
 ```
 
-OpenCode 使用自己的[插件系统](https://opencode.ai/docs/plugins/)，而非 shell 脚本 hooks。KanVibe 在 `.opencode/plugins/kanvibe-plugin.ts` 生成 TypeScript 插件，通过 `@opencode-ai/plugin` SDK 订阅 OpenCode 的原生事件 hooks（`message.updated`、`question.asked`、`question.replied` 和 `session.idle`）。状态更新在进程内处理，无需启动外部 shell 命令。
+OpenCode 使用自己的[插件系统](https://opencode.ai/docs/plugins/)，而非 shell 脚本 hooks。KanVibe 在 `.opencode/plugins/kanvibe-plugin.js` 生成 JavaScript 插件，通过 `@opencode-ai/plugin` SDK 订阅 OpenCode 的原生事件 hooks（`message.updated`、`question.asked`、`question.replied` 和 `session.idle`）。状态更新在进程内处理，无需启动外部 shell 命令。
 
 通过 KanVibe 目录扫描注册项目或创建带有 worktree 的任务时，所有代理 Hook 会**自动安装**。也可以在任务详情页面中单独安装。
 
@@ -333,31 +333,31 @@ OpenCode 使用自己的[插件系统](https://opencode.ai/docs/plugins/)，而�
 | Codex CLI | `.codex/hooks/` | `.codex/config.toml`, `.codex/hooks.json` |
 | OpenCode | `.opencode/plugins/` | 插件自动发现 |
 
-#### 浏览器通知
+#### 桌面通知
 
-AI 代理 Hooks 触发的任务状态变更会发送**浏览器通知**，显示项目名称、分支名称和新状态。**点击通知可直接跳转到对应任务详情页面**。
+AI 代理 Hooks 触发的任务状态变更会发送**操作系统原生通知**，显示项目名称、分支名称和新状态。**点击通知可直接跳转到对应任务详情页面**。
 
 - **实时通知** — 任务状态变更时立即收到通知
 - **后台模式** — KanVibe 不在焦点时也能收到通知
 - **智能导航** — 点击通知 → 任务详情页面（保持当前语言）
 - **可配置** — 按项目启用/禁用，并可按状态筛选（PROGRESS、PENDING、REVIEW、DONE）
 
-设置：首次访问时请允许浏览器通知权限。在**项目设置** → **通知**中配置筛选条件。
+设置：请在操作系统设置中允许 KanVibe 通知。在**项目设置** → **通知**中配置筛选条件。
 
 #### Hook API 端点
 
 | 端点 | 方法 | 说明 |
 |------|------|------|
 | `/api/hooks/start` | POST | 创建新任务 |
-| `/api/hooks/status` | POST | 通过 `branchName` + `projectName` 更新任务状态；如果目标不存在，则只发送浏览器通知并返回 `404`，不会修改状态 |
+| `/api/hooks/status` | POST | 通过 `taskId` 和 `status` 更新任务状态；如果目标不存在，则发送桌面通知并返回 `404`，不会修改状态 |
 
 ### GitHub 风格 Diff 视图
 
-在浏览器中使用 GitHub 风格的 diff 查看器直接审查代码变更。点击任务详情页面上的 **Diff** 徽章，即可查看与 base 分支相比的所有修改文件。
+在桌面应用中使用 GitHub 风格的 diff 查看器直接审查代码变更。点击任务详情页面上的 **Diff** 徽章，即可查看与 base 分支相比的所有修改文件。
 
 - 显示变更文件数量的文件树侧边栏
 - 基于 Monaco Editor 的内联 diff 查看器
-- 可在浏览器中直接修改的编辑模式
+- 可在应用中直接修改的编辑模式
 - 复选框追踪已查看的文件
 
 ### 面板布局编辑器
@@ -371,18 +371,37 @@ AI 代理 Hooks 触发的任务状态变更会发送**浏览器通知**，显示
 
 ---
 
+## 从源码构建
+
+请准备 Rust 1.90 或更新版本、Node.js 24、pnpm 和 [Tauri 平台前置要求](https://v2.tauri.app/start/prerequisites/)。
+
+```bash
+pnpm install
+pnpm dev          # 打开原生 Tauri 桌面窗口
+pnpm check
+pnpm test         # React 行为测试
+pnpm test:rust    # Rust 服务和持久化测试
+pnpm dist         # 生成桌面安装包
+```
+
+运行 `pnpm dev` 会打开原生桌面窗口，并启动用于 React 渲染器的 Vite。`pnpm dist` 生成的安装包位于 `src-tauri/target/release/bundle/`。
+
+React 负责渲染 UI，Rust 负责 SQLite、Git/worktree、PTY/SSH 会话、hooks、AI 集成和移动端 API。发布的应用不包含 Node.js 运行时。现有 `kanvibe.db` 会通过兼容的存储映射读取，也可以使用 `KANVIBE_APP_DATA_DIR` 或 `KANVIBE_DB_PATH` 指定隔离的数据路径。应用启动时，`src-tauri/src/database.rs` 会初始化 schema 并应用兼容性更改，无需单独生成 seed 数据库。
+
+运行时选项请参阅 [.env.example](../.env.example)。请将变量显式传给桌面应用进程；应用不会自动加载 `.env`。`KANVIBE_HOOK_PORT` 用于指定 hook 和移动端 API 端口，开发构建默认 `19736`，发布构建默认 `9736`。
+
 ## 技术栈
 
 | 类别 | 技术 |
 |------|------|
-| 前端/后端 | Next.js 16 (App Router) + React 19 + TypeScript |
-| 数据库 | SQLite + TypeORM + better-sqlite3 |
+| 前端/后端 | React 19 + TypeScript (UI) / Tauri 2 + Rust (backend) |
+| 数据库 | SQLite + rusqlite |
 | 样式 | Tailwind CSS v4 |
-| 终端 | xterm.js + WebSocket + node-pty |
+| 终端 | xterm.js + Tauri IPC + portable-pty |
 | SSH | system ssh binary |
 | 拖放 | @hello-pangea/dnd |
 | 国际化 | next-intl |
-| 桌面打包 | Electron + Electron Builder |
+| 桌面打包 | Tauri 2 + Cargo |
 | 移动端 | Flutter + xterm.dart |
 
 ---

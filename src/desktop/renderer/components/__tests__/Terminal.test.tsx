@@ -47,6 +47,7 @@ function rememberLatestXtermInstance(instance: MockXTerm) {
 }
 
 class MockXTerm {
+  textarea = document.createElement("textarea");
   cols = 80;
   rows = 24;
   options = { fontFamily: "" };
@@ -162,7 +163,7 @@ describe("Desktop Terminal", () => {
     mockOnTerminalData.mockReturnValue(vi.fn());
     mockOnTerminalClose.mockReturnValue(vi.fn());
     mockPasteImageToRemoteTerminal.mockResolvedValue({ ok: true, remotePath: "/tmp/kanvibe-paste-fixed-uuid.png" });
-    mockReadClipboardImage.mockReturnValue(null);
+    mockReadClipboardImage.mockResolvedValue(null);
     vi.stubGlobal("FileReader", MockFileReader);
 
     window.kanvibeDesktop = {
@@ -304,7 +305,7 @@ describe("Desktop Terminal", () => {
     const event = dispatchPasteEvent(target, createImageClipboardData());
 
     // Then
-    expect(event.defaultPrevented).toBe(true);
+    await waitFor(() => expect(event.defaultPrevented).toBe(true));
     await waitFor(() => {
       expect(mockPasteImageToRemoteTerminal).toHaveBeenCalledWith("task-1", "data:image/png;base64,ZmFrZQ==");
     });
@@ -374,7 +375,7 @@ describe("Desktop Terminal", () => {
 
   it("원격 세션에서 Ctrl+V 시 클립보드에 이미지가 있으면 xterm 기본 처리를 막고 이미지를 전송한다", async () => {
     // Given
-    mockReadClipboardImage.mockReturnValue("data:image/png;base64,ZmFrZQ==");
+    mockReadClipboardImage.mockResolvedValue("data:image/png;base64,ZmFrZQ==");
     render(<Terminal taskId="task-1" isRemote />);
     await waitFor(() => {
       expect(mockOpenTerminal).toHaveBeenCalledWith("task-1", null, 80, 24);
@@ -393,24 +394,29 @@ describe("Desktop Terminal", () => {
 
   it("원격 세션에서 Ctrl+V 시 클립보드에 이미지가 없으면 xterm 기본 처리를 그대로 둔다 (vim 비주얼 블록 등 회귀 방지)", async () => {
     // Given
-    mockReadClipboardImage.mockReturnValue(null);
+    mockReadClipboardImage.mockResolvedValue(null);
     render(<Terminal taskId="task-1" isRemote />);
     await waitFor(() => {
       expect(mockOpenTerminal).toHaveBeenCalledWith("task-1", null, 80, 24);
     });
     const handler = getRegisteredKeyEventHandler();
+    const forwardedKey = vi.fn();
+    latestXtermInstance!.textarea.addEventListener("keydown", forwardedKey);
 
     // When
     const handled = handler({ type: "keydown", ctrlKey: true, metaKey: false, shiftKey: false, altKey: false, key: "v" });
 
     // Then
-    expect(handled).toBe(true);
+    expect(handled).toBe(false);
+    await waitFor(() => expect(forwardedKey).toHaveBeenCalledTimes(1));
+    expect(forwardedKey.mock.calls[0][0].ctrlKey).toBe(true);
+    expect(forwardedKey.mock.calls[0][0].key).toBe("v");
     expect(mockPasteImageToRemoteTerminal).not.toHaveBeenCalled();
   });
 
   it("로컬 세션에서는 Ctrl+V가 이미지가 있어도 가로채지 않는다", async () => {
     // Given
-    mockReadClipboardImage.mockReturnValue("data:image/png;base64,ZmFrZQ==");
+    mockReadClipboardImage.mockResolvedValue("data:image/png;base64,ZmFrZQ==");
     render(<Terminal taskId="task-1" />);
     await waitFor(() => {
       expect(mockOpenTerminal).toHaveBeenCalledWith("task-1", null, 80, 24);
@@ -427,7 +433,7 @@ describe("Desktop Terminal", () => {
 
   it("원격 세션에서 Ctrl+Shift+V와 Shift+Insert도 이미지 붙여넣기를 트리거한다", async () => {
     // Given
-    mockReadClipboardImage.mockReturnValue("data:image/png;base64,ZmFrZQ==");
+    mockReadClipboardImage.mockResolvedValue("data:image/png;base64,ZmFrZQ==");
     render(<Terminal taskId="task-1" isRemote />);
     await waitFor(() => {
       expect(mockOpenTerminal).toHaveBeenCalledWith("task-1", null, 80, 24);
@@ -441,12 +447,12 @@ describe("Desktop Terminal", () => {
     // Then
     expect(ctrlShiftVHandled).toBe(false);
     expect(shiftInsertHandled).toBe(false);
-    expect(mockPasteImageToRemoteTerminal).toHaveBeenCalledTimes(2);
+    await waitFor(() => expect(mockPasteImageToRemoteTerminal).toHaveBeenCalledTimes(2));
   });
 
   it("원격 세션에서 마우스 중간 클릭 시 클립보드 이미지를 전송한다", async () => {
     // Given
-    mockReadClipboardImage.mockReturnValue("data:image/png;base64,ZmFrZQ==");
+    mockReadClipboardImage.mockResolvedValue("data:image/png;base64,ZmFrZQ==");
     const { container } = render(<Terminal taskId="task-1" isRemote />);
     await waitFor(() => {
       expect(mockOpenTerminal).toHaveBeenCalledWith("task-1", null, 80, 24);
@@ -458,7 +464,7 @@ describe("Desktop Terminal", () => {
     target.dispatchEvent(event);
 
     // Then
-    expect(event.defaultPrevented).toBe(true);
+    await waitFor(() => expect(event.defaultPrevented).toBe(true));
     await waitFor(() => {
       expect(mockPasteImageToRemoteTerminal).toHaveBeenCalledWith("task-1", "data:image/png;base64,ZmFrZQ==");
     });
@@ -466,7 +472,7 @@ describe("Desktop Terminal", () => {
 
   it("원격 세션에서 마우스 중간 클릭 시 클립보드에 이미지가 없으면 아무 것도 하지 않는다", async () => {
     // Given
-    mockReadClipboardImage.mockReturnValue(null);
+    mockReadClipboardImage.mockResolvedValue(null);
     const { container } = render(<Terminal taskId="task-1" isRemote />);
     await waitFor(() => {
       expect(mockOpenTerminal).toHaveBeenCalledWith("task-1", null, 80, 24);
@@ -484,7 +490,7 @@ describe("Desktop Terminal", () => {
 
   it("로컬 세션에서는 마우스 중간 클릭이 이미지가 있어도 가로채지 않는다", async () => {
     // Given
-    mockReadClipboardImage.mockReturnValue("data:image/png;base64,ZmFrZQ==");
+    mockReadClipboardImage.mockResolvedValue("data:image/png;base64,ZmFrZQ==");
     const { container } = render(<Terminal taskId="task-1" />);
     await waitFor(() => {
       expect(mockOpenTerminal).toHaveBeenCalledWith("task-1", null, 80, 24);

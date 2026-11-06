@@ -74,7 +74,7 @@ describe("ShortcutSettingsRoute", () => {
       }));
     });
 
-    /** main도 같은 표를 들고 있어야 하므로 저장만 하고 알리지 않으면 Electron 경로가 옛 조합으로 남는다 */
+    /** main도 같은 표를 들고 있어야 하므로 저장만 하고 알리지 않으면 desktop 경로가 옛 조합으로 남는다 */
     expect(mocks.notifyShortcutBindingsChanged).toHaveBeenCalled();
   });
 
@@ -195,7 +195,7 @@ describe("ShortcutSettingsRoute", () => {
    * main이 녹화 중임을 모르면 `before-input-event`가 조합을 가로채, 그 조합의 원래 동작만 실행되고
    * keydown은 녹화 처리기까지 오지 못한다.
    */
-  it("녹화를 시작하고 끝낼 때 Electron main에 알린다", async () => {
+  it("녹화를 시작하고 끝낼 때 Tauri bridge에 알린다", async () => {
     renderShortcutSettings();
 
     const dockRow = findRecordButtonFor("commands.taskDetailDock:1:info");

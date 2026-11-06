@@ -886,20 +886,13 @@ cmd_start() {
   stop_log
   step_done 1 $total "$(msg step_deps)"
 
-  # 2. 내장 DB 준비
-  step 2 $total "$(msg step_db)"
-  start_log
-  if ! pnpm db:prepare >> "$LOG_FILE" 2>&1; then
-    stop_log
-    printf "  ${CROSS} $(msg step_db_fail)\n\n"
-    exit 1
-  fi
-  stop_log
-  step_done 2 $total "$(msg step_db_ready)"
+  # Rust 백엔드는 첫 실행에서 기존 DB를 열거나 새 DB를 준비한다.
+  step 2 $total "Rust toolchain"
+  command -v cargo >/dev/null 2>&1 || { printf 'Rust/Cargo is required: https://rustup.rs\n'; exit 1; }
+  step_done 2 $total "Rust toolchain"
 
-  # 3. Next.js 빌드
+  # 3. React + Rust 빌드
   step 3 $total "$(msg step_build)"
-  export NODE_ENV=production
   start_log
   pnpm build >> "$LOG_FILE" 2>&1 || { stop_log; printf "  ${CROSS} $(msg step_build) failed\n\n"; exit 1; }
   stop_log
@@ -923,26 +916,26 @@ cmd_start() {
   esac
 
   local LOG_FILE="$SCRIPT_DIR/logs/kanvibe.log"
-  local app_port="${PORT:-4885}"
+  local desktop_binary="$SCRIPT_DIR/src-tauri/target/release/kanvibe"
 
   case "${run_mode:-1}" in
     2)
       # 백그라운드 실행
       mkdir -p "$SCRIPT_DIR/logs"
-      nohup pnpm start > "$LOG_FILE" 2>&1 &
+      nohup "$desktop_binary" > "$LOG_FILE" 2>&1 &
       local app_pid=$!
       echo "$app_pid" > "$PID_FILE"
       echo ""
       printf "  ${CHECK} $(msg run_bg_started "$app_pid")\n"
-      printf "  ${ARROW} $(msg access_url "$app_port")\n"
+      printf "  ${ARROW} KanVibe desktop\n"
       printf "  ${DIM}  $(msg run_bg_log "$LOG_FILE")${NC}\n"
       printf "  ${DIM}  $(msg stop_hint)${NC}\n\n"
       ;;
     *)
       # 포그라운드 실행
       echo ""
-      printf "  ${ARROW} $(msg access_url "$app_port")\n\n"
-      pnpm start &
+      printf "  ${ARROW} KanVibe desktop\n\n"
+      "$desktop_binary" &
       local app_pid=$!
       echo "$app_pid" > "$PID_FILE"
       wait "$app_pid"

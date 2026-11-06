@@ -1,4 +1,4 @@
-import { AI_SESSION_PROVIDER_LABELS, AI_SESSION_PROVIDERS } from "@/lib/aiSessions/providers";
+import { AI_SESSION_PROVIDER_LABELS, AI_SESSION_PROVIDERS } from "@/desktop/shared/contracts/lib-aiSessions-providers";
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
@@ -77,7 +77,7 @@ import type {
   AggregatedAiSessionDetail,
   AggregatedAiSessionsResult,
   LiveAiSession,
-} from "@/lib/aiSessions/types";
+} from "@/desktop/shared/contracts/lib-aiSessions-types";
 import { computeProjectColor, getReadableTextColor } from "@/lib/projectColor";
 
 const STATUS_TRANSITIONS = [

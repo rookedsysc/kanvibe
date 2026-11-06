@@ -5,9 +5,7 @@ import {
   canonicalizeShortcutForPlatform,
   createTaskDetailDockShortcut,
   createTerminalTabShortcut,
-  matchElectronShortcutInput,
   matchShortcutEvent,
-  type ElectronShortcutInput,
   type ShortcutPlatformInput,
   type TaskDetailDockShortcutIndex,
   type TerminalTabShortcutIndex,
@@ -227,15 +225,6 @@ export function findShortcutCommandForEvent(
   platform: ShortcutPlatformInput,
 ): ShortcutCommandId | null {
   return findShortcutCommand(bindings, (shortcut) => matchShortcutEvent(event, shortcut, platform));
-}
-
-/** Electron `before-input-event` 입력이 어떤 명령인지 판정한다 */
-export function findShortcutCommandForElectronInput(
-  bindings: ShortcutBindings,
-  input: ElectronShortcutInput,
-  platform: ShortcutPlatformInput,
-): ShortcutCommandId | null {
-  return findShortcutCommand(bindings, (shortcut) => matchElectronShortcutInput(input, shortcut, platform));
 }
 
 /**

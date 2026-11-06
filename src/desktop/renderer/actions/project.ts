@@ -9,14 +9,14 @@ import type {
   AiSessionProvider,
   LiveAiSessionsResult,
   RunningAgentPane,
-} from "@/lib/aiSessions/types";
+} from "@/desktop/shared/contracts/lib-aiSessions-types";
 import type {
   ClaudeHooksStatus,
-} from "@/lib/claudeHooksSetup";
-import type { GeminiHooksStatus } from "@/lib/geminiHooksSetup";
-import type { CodexHooksStatus } from "@/lib/codexHooksSetup";
-import type { OpenCodeHooksStatus } from "@/lib/openCodeHooksSetup";
-import type { ScanResult } from "@/desktop/main/services/projectService";
+} from "@/desktop/shared/contracts/lib-claudeHooksSetup";
+import type { GeminiHooksStatus } from "@/desktop/shared/contracts/lib-geminiHooksSetup";
+import type { CodexHooksStatus } from "@/desktop/shared/contracts/lib-codexHooksSetup";
+import type { OpenCodeHooksStatus } from "@/desktop/shared/contracts/lib-openCodeHooksSetup";
+import type { ScanResult } from "@/desktop/shared/contracts/desktop-main-services-projectService";
 
 async function invokeAndRefresh<T>(
   method: string,

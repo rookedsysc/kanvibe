@@ -1,4 +1,4 @@
-import { AI_SESSION_PROVIDER_LABELS, type AiSessionProvider } from "@/lib/aiSessions/providers";
+import { AI_SESSION_PROVIDER_LABELS, type AiSessionProvider } from "@/desktop/shared/contracts/lib-aiSessions-providers";
 import claudeIconUrl from "@lobehub/icons-static-svg/icons/claude-color.svg";
 import codexIconUrl from "@lobehub/icons-static-svg/icons/codex-color.svg";
 import geminiIconUrl from "@lobehub/icons-static-svg/icons/gemini-color.svg";

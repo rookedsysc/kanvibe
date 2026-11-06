@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef } from "react";
 import "@xterm/xterm/css/xterm.css";
 import { createTerminalOptions } from "@/lib/terminalMouseSelection";
 import { installOsc52ClipboardHandler } from "@/lib/terminalClipboard";
-import type { AiUsageProvider } from "@/lib/aiUsage/types";
+import type { AiUsageProvider } from "@/desktop/shared/contracts/lib-aiUsage-types";
 
 interface AiAccountLoginTerminalProps {
   provider: AiUsageProvider;

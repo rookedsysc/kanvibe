@@ -11,6 +11,8 @@ const { mockRegisterOscHandler, mockDisposeOscHandler, mockFit } = vi.hoisted(()
 let latestTerminal: MockXTerm;
 
 class MockXTerm {
+  // 테스트가 컴포넌트 안에서 만들어진 인스턴스를 꺼내 보려면 생성자에서 참조를 남겨야 한다.
+  // eslint-disable-next-line @typescript-eslint/no-this-alias
   constructor() { latestTerminal = this; }
   cols = 80;
   rows = 24;

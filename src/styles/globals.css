@@ -1,10 +1,43 @@
 @import "tailwindcss";
 
+/* WebKit이 작은 텍스트와 설명의 소수 행 높이를 내림하지 않도록 실제 행 높이를 가진 strut를 둔다.
+ * 일반 텍스트만 대상으로 하며, 가상 요소가 배치 항목이나 기존 장식이 되는 경우는 제외한다. */
+:is(:where(button, h2, p, span).text-\[11px\]:not([class*="leading-"]), p.leading-relaxed):not(
+  [class*="flex"],
+  [class*="grid"],
+  [class*="before"],
+  [class*="[display:"],
+  .kv-subtask-branch,
+  .kv-graph-guide
+) {
+  &::before {
+    content: "";
+    display: inline-block;
+    width: 0;
+    height: 1.5em;
+    vertical-align: top;
+  }
+
+  &.leading-relaxed::before {
+    height: calc(1em * var(--leading-relaxed, 1.625));
+  }
+}
+
 :root[data-theme="dark"] .kanvibe-brand-logo {
   filter: invert(1);
 }
 
 :root {
+  /* WebKit의 비율 계산 반올림을 피하고 Tailwind 기본 행 높이를 그대로 유지한다. */
+  --text-xs--line-height: 1rem;
+  --text-sm--line-height: 1.25rem;
+  --text-base--line-height: 1.5rem;
+  --text-lg--line-height: 1.75rem;
+  --text-xl--line-height: 1.75rem;
+  --text-2xl--line-height: 2rem;
+  --text-3xl--line-height: 2.25rem;
+  --text-4xl--line-height: 2.5rem;
+
   /* Primitive: Gray */
   --gray-50: #FAFAFA;
   --gray-100: #F5F5F5;
@@ -473,7 +506,23 @@ body {
 }
 
 * {
-  scrollbar-color: var(--color-border-strong) transparent;
+  scrollbar-color: auto;
+}
+
+::-webkit-scrollbar {
+  width: 15px;
+  height: 15px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-border-strong);
+  border: 3px solid transparent;
+  background-clip: content-box;
+  border-radius: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
 }
 
 ::selection {
@@ -486,6 +535,22 @@ input,
 select,
 textarea {
   letter-spacing: 0;
+}
+
+/* WKWebView의 기본 메뉴 높이를 제거하고 기존 폼의 padding과 line-height를 적용한다. */
+select {
+  appearance: none;
+  -webkit-appearance: none;
+  padding-right: 2rem;
+  line-height: 1.1875rem;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='m3 4.5 3 3 3-3' fill='none' stroke='%2377808f' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-position: right 0.5rem center;
+  background-size: 12px 12px;
+  background-repeat: no-repeat;
+}
+
+select.px-2 {
+  padding-right: 1.75rem;
 }
 
 /* xterm 터미널이 컨테이너를 꽉 채우도록 강제 */

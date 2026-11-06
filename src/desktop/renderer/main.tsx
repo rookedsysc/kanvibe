@@ -1,3 +1,4 @@
+import { initializeDesktopBridge } from "./desktopBridge";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import App from "@/desktop/renderer/App";
@@ -42,6 +43,7 @@ function installRendererDiagnostics() {
   });
 }
 
+await initializeDesktopBridge();
 installRendererDiagnostics();
 
 const container = document.getElementById("root");

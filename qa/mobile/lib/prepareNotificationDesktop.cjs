@@ -4,9 +4,11 @@ const fs = require("node:fs");
 const http = require("node:http");
 const net = require("node:net");
 const path = require("node:path");
-const { execFileSync, spawn } = require("node:child_process");
-const { launchKanVibeElectron } = require("../../electron/lib/launchElectron.cjs");
-const { createLocalShellEnvironment } = require("../../../src/lib/shellEnvironment.ts");
+const { execFileSync } = require("node:child_process");
+const { launchKanVibeTauri } = require("../../tauri/lib/launchTauri.cjs");
+function createLocalShellEnvironment() {
+  return Object.fromEntries(Object.entries(process.env).filter(([key]) => !["PORT", "HOST", "NODE_ENV"].includes(key) && !key.startsWith("KANVIBE_")));
+}
 
 const ROOT_DIR = path.resolve(__dirname, "../../..");
 const DESKTOP_API = "http://127.0.0.1:19736";
@@ -53,7 +55,7 @@ async function waitForUrl(url, child) {
   const deadline = Date.now() + 60_000;
   while (Date.now() < deadline) {
     if (child?.exitCode !== null && child?.exitCode !== undefined) {
-      throw new Error(`Vite exited before readiness: ${child.exitCode}`);
+      throw new Error(`Tauri exited before readiness: ${child.exitCode}`);
     }
     try {
       const response = await fetch(url, { signal: AbortSignal.timeout(1000) });
@@ -64,18 +66,6 @@ async function waitForUrl(url, child) {
     await new Promise((resolve) => setTimeout(resolve, 200));
   }
   throw new Error(`Fixture server did not become ready: ${url}`);
-}
-
-function startVite(runDir, rendererPort) {
-  const logFile = fs.openSync(path.join(runDir, "vite.log"), "a");
-  const child = spawn("pnpm", ["exec", "vite", "--host", "127.0.0.1", "--port", String(rendererPort), "--strictPort"], {
-    cwd: ROOT_DIR,
-    env: createLocalShellEnvironment(),
-    stdio: ["ignore", logFile, logFile],
-    detached: true,
-  });
-  fs.closeSync(logFile);
-  return child;
 }
 
 function invokeDesktop(page, namespace, method, ...args) {
@@ -136,7 +126,7 @@ async function seedDesktop(page, runDir) {
   }
   notifications.alreadyRead = await page.evaluate((id) => window.kanvibeDesktop.markNotificationRead(id), notifications.alreadyRead.id);
   await page.exposeFunction("__captureNotificationQaChange", () => { desktopNotificationEventCount += 1; });
-  // 모바일 빌드 산출물이 Vite reload를 유발해도 실제 IPC 수신 기록은 fixture 프로세스에 남긴다.
+  // WebView가 다시 로드돼도 실제 IPC 수신 기록은 fixture 프로세스에 남긴다.
   await page.addInitScript(() => {
     window.addEventListener("DOMContentLoaded", () => {
       window.kanvibeDesktop.onNotificationsChanged(() => { void window.__captureNotificationQaChange(); });
@@ -215,13 +205,6 @@ async function startProbe(page, fixture, runDir) {
   return server;
 }
 
-async function stopVite(child) {
-  if (!child) return;
-  try { process.kill(-child.pid, "SIGTERM"); } catch { return; }
-  await new Promise((resolve) => setTimeout(resolve, 500));
-  try { process.kill(-child.pid, "SIGKILL"); } catch { /* 이미 자신의 자식이 종료됐다. */ }
-}
-
 async function main() {
   const runDirIndex = process.argv.indexOf("--run-dir");
   if (runDirIndex === -1 || !process.argv[runDirIndex + 1]) throw new Error("--run-dir <fresh directory> is required");
@@ -231,32 +214,29 @@ async function main() {
   await availablePort(19736);
   await availablePort(PROBE_PORT);
   fs.mkdirSync(appDataDir, { recursive: true });
-  const rendererUrl = `http://127.0.0.1:${await availablePort()}`;
-  const vite = startVite(runDir, Number(new URL(rendererUrl).port));
   let app;
   let probe;
-  let stopping = false;
-  const stop = async () => {
-    if (stopping) return;
-    stopping = true;
-    probe?.closeAllConnections();
-    probe?.close();
-    if (app) {
-      fs.writeFileSync(path.join(runDir, "desktop.log"), app.output());
-      await app.close();
-    }
-    await stopVite(vite);
+  let stopping;
+  const stop = () => {
+    stopping ??= (async () => {
+      probe?.closeAllConnections();
+      probe?.close();
+      if (app) {
+        fs.writeFileSync(path.join(runDir, "desktop.log"), app.output());
+        await app.close();
+      }
+    })();
+    return stopping;
   };
   process.once("SIGTERM", () => { void stop().finally(() => process.exit(0)); });
   process.once("SIGINT", () => { void stop().finally(() => process.exit(0)); });
   try {
-    await waitForUrl(rendererUrl, vite);
-    const launched = await launchKanVibeElectron({ rootDir: ROOT_DIR, rendererUrl, outputDir: runDir, appDataDir, timeoutMs: 60_000 });
+    const launched = await launchKanVibeTauri({ rootDir: ROOT_DIR, appDataDir, hookPort: 19736, timeoutMs: 60_000 });
     app = launched.app;
     const page = launched.page;
     await page.waitForFunction(() => Boolean(window.kanvibeDesktop?.listNotifications));
-    await waitForUrl(`${DESKTOP_API}/api/hooks/health`);
-    const fixture = { ...await seedDesktop(page, runDir), appDataDir, rendererUrl, cdpPort: launched.cdpPort };
+    await waitForUrl(`${DESKTOP_API}/api/hooks/health`, app.process());
+    const fixture = { ...await seedDesktop(page, runDir), appDataDir, runtime: "tauri" };
     fs.writeFileSync(path.join(runDir, "fixture.json"), `${JSON.stringify(fixture, null, 2)}\n`);
     await page.screenshot({ path: path.join(runDir, "desktop-fixture.png") });
     probe = await startProbe(page, fixture, runDir);
