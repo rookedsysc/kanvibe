@@ -10,7 +10,7 @@ async function launchKanVibeTauri(options = {}) {
   fs.rmSync(metadataPath, { force: true });
   const child = spawn(options.executablePath || path.join(rootDir, "src-tauri/target/debug/kanvibe"), [], {
     cwd: rootDir,
-    env: { ...process.env, KANVIBE_QA_MODE: "1", KANVIBE_APP_DATA_DIR: appDataDir, KANVIBE_DB_PATH: path.join(appDataDir, "kanvibe.db"), KANVIBE_HOOK_PORT: String(options.hookPort || 19736) },
+    env: { ...(options.env || process.env), KANVIBE_QA_MODE: "1", KANVIBE_APP_DATA_DIR: appDataDir, KANVIBE_DB_PATH: path.join(appDataDir, "kanvibe.db"), KANVIBE_HOOK_PORT: String(options.hookPort || 19736) },
     stdio: ["ignore", "pipe", "pipe"],
   });
   let output = "";

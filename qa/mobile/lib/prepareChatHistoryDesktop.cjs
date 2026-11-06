@@ -2,12 +2,10 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const net = require('node:net');
-const { spawn, execFileSync } = require('node:child_process');
-const { _electron: electron } = require('@playwright/test');
-const { createLocalShellEnvironment } = require('../../../src/lib/shellEnvironment.ts');
+const { execFileSync } = require('node:child_process');
+const { launchKanVibeTauri } = require('../../tauri/lib/launchTauri.cjs');
 
-const workspaceIndex = process.argv.indexOf('--workspace');
-let root = workspaceIndex >= 0 ? path.resolve(process.argv[workspaceIndex + 1]) : path.resolve(__dirname, '../../..');
+const root = path.resolve(__dirname, '../../..');
 const runDirIndex = process.argv.indexOf('--run-dir');
 if (runDirIndex < 0 || !process.argv[runDirIndex + 1]) throw new Error('--run-dir <fresh directory> is required');
 const runDir = path.resolve(process.argv[runDirIndex + 1]);
@@ -38,6 +36,10 @@ async function waitFor(url) {
   }
   throw new Error(`Fixture did not become ready: ${url}`);
 }
+/** 서버·런타임 전용 값이 앱과 그 자식 셸로 새지 않도록 지운 로컬 환경 */
+function createLocalShellEnvironment() {
+  return Object.fromEntries(Object.entries(process.env).filter(([key]) => !['PORT', 'HOST', 'NODE_ENV'].includes(key) && !key.startsWith('KANVIBE_')));
+}
 function isolatedAgentEnvironment() {
   const environment = createLocalShellEnvironment();
   for (const key of ['CODEX_HOME', 'CLAUDE_CONFIG_DIR', 'HERMES_HOME', 'PI_CODING_AGENT_DIR', 'OMP_CODING_AGENT_DIR', 'PRIME_AGENT_SESSION_DIR', 'PRIME_AGENT_CODING_AGENT_SESSION_DIR', 'PRIME_AGENT_CODING_AGENT_DIR', 'COPILOT_HOME', 'GROK_HOME', 'DEVIN_HOME', 'CLINE_SESSION_DATA_DIR', 'OPENCLAW_STATE_DIR', 'KIMI_CODE_HOME', 'JCODE_HOME', 'KIRO_HOME']) delete environment[key];
@@ -65,42 +67,66 @@ function seedAgentFiles() {
     ],
   }));
 }
+/** 접근성 이름(aria-label 또는 공백을 정리한 글자)이 정확히 같은 버튼을 WebView 안에서 찾는다 */
+const FIND_BUTTON = `const find=(name)=>[...document.querySelectorAll('button')].find((button)=>(button.getAttribute('aria-label')||button.textContent.replace(/\\s+/g,' ').trim())===name);`;
+async function waitUntil(page, description, fn, arg) {
+  const deadline = Date.now() + 30000;
+  while (Date.now() < deadline) {
+    if (await page.evaluate(fn, arg)) return;
+    await new Promise((resolve) => setTimeout(resolve, 200));
+  }
+  throw new Error(`Timed out waiting for ${description}`);
+}
+const buttonVisible = (page, name) => waitUntil(page, `button ${name}`, new Function('name', `${FIND_BUTTON}const button=find(name);return Boolean(button&&button.offsetParent);`), name);
+async function clickButton(page, name) {
+  await buttonVisible(page, name);
+  await page.evaluate(new Function('name', `${FIND_BUTTON}find(name).click();return true;`), name);
+}
+const textVisible = (page, text) => waitUntil(page, `text ${text}`, (expected) => [...document.querySelectorAll('body *')].some((element) => element.children.length === 0 && element.textContent.trim() === expected && element.offsetParent), text);
+/** Tauri WebView에서 데스크톱 History 목록·메시지·이전 메시지·재열기를 확인한다 */
+async function runDesktopHistoryJourney(page, taskId) {
+  await page.evaluate(() => window.__TAURI_INTERNALS__.invoke('qa_resize', { width: 1440, height: 960 }));
+  await page.evaluate((id) => { location.hash = `/ko/task/${id}`; return true; }, taskId);
+  await page.evaluate(() => { document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); return true; });
+  await page.evaluate(() => { const close = [...document.querySelectorAll('button')].find((button) => (button.getAttribute('aria-label') || '').includes('업데이트') && (button.getAttribute('aria-label') || '').includes('닫기')); close?.click(); return true; });
+  await clickButton(page, 'AI 채팅');
+  await waitUntil(page, 'ai-session-list', () => Boolean(document.querySelector('[data-testid="ai-session-list"]')));
+  const latestSession = `Codex ${historyPrefix} session 24`;
+  await buttonVisible(page, latestSession);
+  await page.screenshot({ path: path.join(runDir, 'desktop-history-list.png') });
+  await clickButton(page, '채팅 더 불러오기');
+  await buttonVisible(page, `Codex ${historyPrefix} session 0`);
+  await clickButton(page, latestSession);
+  await textVisible(page, `${historyPrefix} message 59`);
+  await page.screenshot({ path: path.join(runDir, 'desktop-history-messages.png') });
+  await clickButton(page, '이전 메시지 더 보기');
+  await textVisible(page, `${historyPrefix} message 1`);
+  await page.screenshot({ path: path.join(runDir, 'desktop-history-older.png') });
+  await clickButton(page, 'AI 채팅');
+  await waitUntil(page, 'inline-ai-chat detached', () => !document.querySelector('[data-testid="inline-ai-chat"]'));
+  await clickButton(page, 'AI 채팅');
+  await buttonVisible(page, latestSession);
+  await page.screenshot({ path: path.join(runDir, 'desktop-history-reopen.png') });
+}
 async function main() {
   if (fs.existsSync(path.join(runDir, 'app-data'))) throw new Error('Use a fresh --run-dir');
   fs.mkdirSync(repo, { recursive: true });
   await freePort(selectedPort);
-  const gatedWorkspace = root;
-  const runtimeWorkspace = path.join(runDir, 'runtime-workspace');
-  fs.cpSync(root, runtimeWorkspace, { recursive: true, filter: (entry) => entry !== path.join(root, 'node_modules') });
-  fs.symlinkSync(fs.realpathSync(path.join(root, 'node_modules')), path.join(runtimeWorkspace, 'node_modules'), 'dir');
-  const mainPath = path.join(runtimeWorkspace, 'electron', 'main.js');
-  const mainSource = fs.readFileSync(mainPath, 'utf8');
-  const originalPort = 'const DEV_HOOK_SERVER_PORT = 19736;';
-  if (!mainSource.includes(originalPort)) throw new Error('QA port override target missing');
-  fs.writeFileSync(mainPath, mainSource.replace(originalPort, `const DEV_HOOK_SERVER_PORT = ${selectedPort};`));
-  fs.writeFileSync(path.join(runDir, 'runtime-port-override.json'), JSON.stringify({ gatedWorkspace, runtimeWorkspace, onlyOverride: { from: originalPort, to: `const DEV_HOOK_SERVER_PORT = ${selectedPort};` } }, null, 2));
-  root = runtimeWorkspace;
   const git = (...args) => execFileSync('git', ['-C', repo, ...args], { env: createLocalShellEnvironment(), stdio: 'pipe' });
   git('init', '-b', 'main');
   git('config', 'user.name', 'KanVibe QA'); git('config', 'user.email', 'qa@kanvibe.local');
   fs.writeFileSync(path.join(repo, 'README.md'), '# Isolated chat History fixture\n');
   git('add', 'README.md'); git('commit', '-m', 'chore: isolated History fixture');
   seedAgentFiles();
-  const rendererPort = await freePort();
-  const rendererUrl = `http://127.0.0.1:${rendererPort}`;
-  const viteLog = fs.openSync(path.join(runDir, 'vite.log'), 'a');
-  const vite = spawn(process.execPath, [path.join(root, 'node_modules/vite/bin/vite.js'), '--host', '127.0.0.1', '--port', String(rendererPort)], { cwd: root, env: createLocalShellEnvironment(), stdio: ['ignore', viteLog, viteLog] });
   let app;
-  const stop = async () => { if (app) await app.close().catch(() => {}); vite.kill('SIGTERM'); };
+  const stop = async () => { if (app) await app.close().catch(() => {}); };
   process.once('SIGTERM', () => { void stop().then(() => process.exit(0)); });
   process.once('SIGINT', () => { void stop().then(() => process.exit(0)); });
   try {
-    await waitFor(rendererUrl);
-    app = await electron.launch({ executablePath: require('electron'), args: ['--no-sandbox', root], cwd: root, env: { ...isolatedAgentEnvironment(), KANVIBE_QA_MODE: '1', KANVIBE_APP_DATA_DIR: path.join(runDir, 'app-data'), KANVIBE_RENDERER_URL: rendererUrl }, timeout: 60000 });
+    let page;
+    ({ app, page } = await launchKanVibeTauri({ rootDir: root, appDataDir: path.join(runDir, 'app-data'), hookPort: selectedPort, env: isolatedAgentEnvironment(), timeoutMs: 60000 }));
     app.process().stdout?.on('data', (data) => fs.appendFileSync(path.join(runDir, 'desktop.log'), data));
     app.process().stderr?.on('data', (data) => fs.appendFileSync(path.join(runDir, 'desktop.log'), data));
-    const page = await app.firstWindow();
-    await page.waitForFunction(() => Boolean(window.kanvibeDesktop?.invoke));
     const invoke = (namespace, method, ...args) => page.evaluate(({ namespace, method, args }) => window.kanvibeDesktop.invoke(namespace, method, args), { namespace, method, args });
     await invoke('appSettings', 'setBackgroundSyncEnabled', false);
     await invoke('appSettings', 'setDefaultSessionType', 'terminal');
@@ -113,7 +139,7 @@ async function main() {
     const response = await fetch(`${desktopApi}/api/mobile/tasks/${task.id}/ai-sessions?limit=20`, { headers: { Authorization: `Bearer ${paired.token}` } });
     const history = await response.json();
     if (response.status !== 200 || history.history.sessions.length !== 20 || !history.history.nextCursor) throw new Error(`Real History contract failed: ${JSON.stringify(history)}`);
-    fs.writeFileSync(path.join(runDir, 'fixture.json'), JSON.stringify({ taskId: task.id, fixtureLabel, taskTitle, historyPrefix, hermesTitle, rendererUrl, repo, fakeHome, sessionCount: history.history.sessions.length, desktopPort: selectedPort, desktopApi }, null, 2));
+    fs.writeFileSync(path.join(runDir, 'fixture.json'), JSON.stringify({ taskId: task.id, fixtureLabel, taskTitle, historyPrefix, hermesTitle, runtime: 'tauri', repo, fakeHome, sessionCount: history.history.sessions.length, desktopPort: selectedPort, desktopApi }, null, 2));
     fs.writeFileSync(path.join(runDir, 'http-contract.json'), JSON.stringify(history, null, 2));
     const flowDirectory = path.join(__dirname, '../../../mobile/.maestro/flows');
     const flowTemplate = fs.readFileSync(path.join(flowDirectory, 'chat-history.yaml'), 'utf8');
@@ -121,35 +147,7 @@ async function main() {
     fs.writeFileSync(path.join(runDir, 'chat-history.yaml'), flow);
 
     if (process.argv.includes('--desktop-ui')) {
-      await page.setViewportSize({ width: 1440, height: 960 });
-      const navigation = await page.evaluate(async (taskId) => {
-        const { navigateToTaskDetail } = await import('/src/desktop/renderer/utils/taskNavigation.ts');
-        await navigateToTaskDetail(taskId, { currentLocale: 'ko' });
-        return true;
-      }, task.id);
-      if (!navigation) throw new Error('Task navigation failed');
-      await page.keyboard.press('Escape');
-      const closeUpdate = page.locator("button[aria-label*='업데이트'][aria-label*='닫기']").first();
-      if (await closeUpdate.isVisible().catch(() => false)) await closeUpdate.click();
-      await page.getByRole('button', { name: 'AI 채팅', exact: true }).click();
-      const list = page.getByTestId('ai-session-list');
-      await list.waitFor({ state: 'visible', timeout: 30000 });
-      const first = page.getByRole('button', { name: `Codex ${historyPrefix} session 24`, exact: true });
-      await first.waitFor({ state: 'visible' });
-      await page.screenshot({ path: path.join(runDir, 'desktop-history-list.png') });
-      await page.getByRole('button', { name: '채팅 더 불러오기', exact: true }).click();
-      await page.getByRole('button', { name: `Codex ${historyPrefix} session 0`, exact: true }).waitFor({ state: 'visible' });
-      await first.click();
-      await page.getByText(`${historyPrefix} message 59`, { exact: true }).waitFor({ state: 'visible' });
-      await page.screenshot({ path: path.join(runDir, 'desktop-history-messages.png') });
-      await page.getByRole('button', { name: '이전 메시지 더 보기', exact: true }).click();
-      await page.getByText(`${historyPrefix} message 1`, { exact: true }).waitFor({ state: 'visible' });
-      await page.screenshot({ path: path.join(runDir, 'desktop-history-older.png') });
-      await page.getByRole('button', { name: 'AI 채팅', exact: true }).click();
-      await page.getByTestId('inline-ai-chat').waitFor({ state: 'detached' });
-      await page.getByRole('button', { name: 'AI 채팅', exact: true }).click();
-      await first.waitFor({ state: 'visible' });
-      await page.screenshot({ path: path.join(runDir, 'desktop-history-reopen.png') });
+      await runDesktopHistoryJourney(page, task.id);
       fs.writeFileSync(path.join(runDir, 'desktop-ui-result.json'), JSON.stringify({ pass: true, checks: ['real pairing HTTP contract', '26sessions paginated', 'selected latest messages', 'older messages', 'reopen History'] }, null, 2));
     }
     console.log(JSON.stringify({ ready: true, taskId: task.id, fixtureLabel, taskTitle, historyPrefix, runDir }));
