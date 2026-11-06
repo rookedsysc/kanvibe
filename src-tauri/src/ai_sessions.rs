@@ -50,6 +50,8 @@ struct Context {
     home: String,
     bounded: bool,
     recent: bool,
+    /// 소문자 목록 검색어. 후보를 자르기 전에 걸러야 하는 SQLite 리더만 쓴다.
+    query: String,
 }
 #[derive(Clone)]
 struct Transcript {
@@ -691,7 +693,35 @@ fn opencode_message(meta: &Value, data: &Value, time: &Value) -> Option<Value> {
     };
     message(role, time, body)
 }
-fn open_code(ctx: &Context) -> Result<Vec<Transcript>, String> {
+/// SQLite에서 읽은 대화와, 이전 파일 기록을 가릴 worktree 범위의 세션 ID.
+/// 검색어로 거른 행에는 검색에 맞지 않는 세션이 빠지므로 그때만 ID를 따로 조회해 채운다.
+struct OpenCodeRead {
+    sessions: Vec<Transcript>,
+    known_session_ids: Option<HashSet<String>>,
+}
+const OPEN_CODE_SCOPE_SQL: &str = "(s.directory=?1 OR substr(s.directory,1,length(?2))=?2)";
+const OPEN_CODE_SEARCH_SQL: &str = " AND (lower(COALESCE(s.title,'')) LIKE '%'||?3||'%' ESCAPE '\\' OR lower(s.id) LIKE '%'||?3||'%' ESCAPE '\\' OR lower(s.directory) LIKE '%'||?3||'%' ESCAPE '\\' OR EXISTS(SELECT 1 FROM part p WHERE p.session_id=s.id AND lower(p.data) LIKE '%'||?3||'%' ESCAPE '\\'))";
+/// worktree 자신과 하위 경로만 후보로 삼는다. 빈 경로는 어떤 세션에도 맞지 않는다.
+fn open_code_scope(ctx: &Context) -> Option<(String, String)> {
+    if ctx.target.is_empty() {
+        return None;
+    }
+    let worktree = normalize_path(&ctx.target).to_string_lossy().into_owned();
+    let prefix = if worktree.ends_with('/') {
+        worktree.clone()
+    } else {
+        format!("{worktree}/")
+    };
+    Some((worktree, prefix))
+}
+/// 검색어의 %와 _를 LIKE 패턴이 아니라 글자 그대로 찾게 한다.
+fn escape_sqlite_like(query: &str) -> String {
+    query
+        .replace('\\', "\\\\")
+        .replace('%', "\\%")
+        .replace('_', "\\_")
+}
+fn open_code(ctx: &Context) -> Result<OpenCodeRead, String> {
     let path = format!("{}/.local/share/opencode/opencode.db", ctx.home);
     if ctx.host.is_some() {
         return open_code_remote(ctx, &path);
@@ -699,27 +729,47 @@ fn open_code(ctx: &Context) -> Result<Vec<Transcript>, String> {
     if !Path::new(&path).exists() {
         return Err("OpenCode database not found".into());
     }
+    let Some((worktree, prefix)) = open_code_scope(ctx) else {
+        return Ok(OpenCodeRead {
+            sessions: vec![],
+            known_session_ids: None,
+        });
+    };
     let conn =
         rusqlite::Connection::open_with_flags(&path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
             .map_err(|e| e.to_string())?;
-    let mut statement=conn.prepare("SELECT id,directory,title,time_created,time_updated,parent_id FROM session WHERE directory=?1 OR substr(directory,1,length(?2))=?2 ORDER BY time_updated DESC LIMIT 120").or_else(|_|conn.prepare("SELECT id,directory,title,time_created,time_updated,NULL FROM session WHERE directory=?1 OR substr(directory,1,length(?2))=?2 ORDER BY time_updated DESC LIMIT 120")).map_err(|e|e.to_string())?;
+    let known_session_ids = if ctx.query.is_empty() {
+        None
+    } else {
+        open_code_known_ids(&conn, &worktree, &prefix).ok()
+    };
+    let search = if ctx.query.is_empty() {
+        ""
+    } else {
+        OPEN_CODE_SEARCH_SQL
+    };
+    let session_sql = |parent: &str| {
+        format!("SELECT s.id,s.directory,s.title,s.time_created,s.time_updated,{parent} FROM session s WHERE {OPEN_CODE_SCOPE_SQL}{search} ORDER BY s.time_updated DESC LIMIT 120")
+    };
+    let mut statement = conn
+        .prepare(&session_sql("s.parent_id"))
+        .or_else(|_| conn.prepare(&session_sql("NULL")))
+        .map_err(|e| e.to_string())?;
+    let mut parameters = vec![worktree, prefix];
+    if !ctx.query.is_empty() {
+        parameters.push(escape_sqlite_like(&ctx.query));
+    }
     let rows = statement
-        .query_map(
-            [
-                ctx.target.trim_end_matches('/'),
-                &format!("{}/", ctx.target.trim_end_matches('/')),
-            ],
-            |row| {
-                Ok((
-                    row.get::<_, String>(0)?,
-                    row.get::<_, String>(1)?,
-                    row.get::<_, Option<String>>(2)?,
-                    row.get::<_, Option<i64>>(3)?,
-                    row.get::<_, Option<i64>>(4)?,
-                    row.get::<_, Option<String>>(5)?,
-                ))
-            },
-        )
+        .query_map(rusqlite::params_from_iter(parameters), |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, Option<String>>(2)?,
+                row.get::<_, Option<i64>>(3)?,
+                row.get::<_, Option<i64>>(4)?,
+                row.get::<_, Option<String>>(5)?,
+            ))
+        })
         .map_err(|e| e.to_string())?;
     let mut result = Vec::new();
     for row in rows {
@@ -755,27 +805,81 @@ fn open_code(ctx: &Context) -> Result<Vec<Transcript>, String> {
             .unwrap_or_else(|| iso(&json!(updated)));
         result.push(Transcript{summary:json!({"id":id,"provider":"opencode","startedAt":iso(&json!(start)),"updatedAt":updated,"matchedPath":cwd,"matchScope":"worktree","title":title.or_else(||first.map(|s|trunc(s,80))),"firstUserPrompt":first.map(|s|trunc(s,PREVIEW_TEXT_LENGTH)),"messageCount":messages.len(),"sourceRef":id}),messages,events:vec![],mtime:updated.as_str().and_then(|s|DateTime::parse_from_rfc3339(s).ok()).map(|d|d.timestamp_millis()).unwrap_or(0),parent,detail_title:None,is_log_ordered:false});
     }
-    Ok(result)
+    Ok(OpenCodeRead {
+        sessions: result,
+        known_session_ids,
+    })
 }
-fn open_code_remote(ctx: &Context, path: &str) -> Result<Vec<Transcript>, String> {
-    let script="import sqlite3,json,sys\nc=sqlite3.connect('file:'+sys.argv[1]+'?mode=ro',uri=True);c.row_factory=sqlite3.Row\ns=[dict(r) for r in c.execute('SELECT * FROM session WHERE directory=? OR substr(directory,1,length(?))=? ORDER BY time_updated DESC LIMIT 120',(sys.argv[2].rstrip('/'),sys.argv[2].rstrip('/')+'/',sys.argv[2].rstrip('/')+'/'))]\nfor r in s:r['parts']=[dict(x) for x in c.execute('SELECT p.data,p.time_created,m.data AS message_data FROM part p JOIN message m ON m.id=p.message_id WHERE p.session_id=? ORDER BY p.time_created',(r['id'],))]\nprint(json.dumps(s))";
+fn open_code_known_ids(
+    conn: &rusqlite::Connection,
+    worktree: &str,
+    prefix: &str,
+) -> Result<HashSet<String>, String> {
+    let mut statement = conn
+        .prepare(&format!(
+            "SELECT s.id FROM session s WHERE {OPEN_CODE_SCOPE_SQL}"
+        ))
+        .map_err(|e| e.to_string())?;
+    let ids = statement
+        .query_map([worktree, prefix], |row| row.get::<_, String>(0))
+        .map_err(|e| e.to_string())?
+        .collect::<Result<_, _>>()
+        .map_err(|e| e.to_string());
+    ids
+}
+const OPEN_CODE_REMOTE_SCRIPT: &str = r#"import sqlite3,json,sys
+c=sqlite3.connect('file:'+sys.argv[1]+'?mode=ro',uri=True);c.row_factory=sqlite3.Row
+w,p,q=sys.argv[2:5]
+scope='(s.directory=? OR substr(s.directory,1,length(?))=?)'
+known=None
+if q:
+    try:known=[r['id'] for r in c.execute('SELECT s.id FROM session s WHERE '+scope,(w,p,p))]
+    except sqlite3.Error:known=None
+like="LIKE '%'||?||'%' ESCAPE '\\'"
+search=" AND (lower(COALESCE(s.title,'')) "+like+" OR lower(s.id) "+like+" OR lower(s.directory) "+like+" OR EXISTS(SELECT 1 FROM part x WHERE x.session_id=s.id AND lower(x.data) "+like+"))" if q else ''
+s=[dict(r) for r in c.execute('SELECT s.* FROM session s WHERE '+scope+search+' ORDER BY s.time_updated DESC LIMIT 120',(w,p,p)+((q,)*4 if q else ()))]
+for r in s:r['parts']=[dict(x) for x in c.execute('SELECT p.data,p.time_created,m.data AS message_data FROM part p JOIN message m ON m.id=p.message_id WHERE p.session_id=? ORDER BY p.time_created',(r['id'],))]
+print(json.dumps({'sessions':s,'knownSessionIds':known}))"#;
+fn open_code_remote(ctx: &Context, path: &str) -> Result<OpenCodeRead, String> {
+    let Some((worktree, prefix)) = open_code_scope(ctx) else {
+        return Ok(OpenCodeRead {
+            sessions: vec![],
+            known_session_ids: None,
+        });
+    };
     let output = command(
         ctx,
         &format!(
-            "python3 -c {} {} {}",
-            quote(script),
+            "python3 -c {} {} {} {} {}",
+            quote(OPEN_CODE_REMOTE_SCRIPT),
             quote(path),
-            quote(&ctx.target)
+            quote(&worktree),
+            quote(&prefix),
+            quote(&escape_sqlite_like(&ctx.query))
         ),
     )?;
-    let rows: Vec<Value> = serde_json::from_str(&output).map_err(|e| e.to_string())?;
-    Ok(rows.into_iter().map(|r|{let messages:Vec<Value>=r["parts"].as_array().into_iter().flatten().filter_map(|p|{let data:Value=serde_json::from_str(text(p,"data")).ok()?;let meta:Value=serde_json::from_str(text(p,"message_data")).ok()?;opencode_message(&meta,&data,&p["time_created"])}).collect();let first=messages.iter().find(|m|m["role"]=="user").map(|m|text(m,"fullText"));Transcript{summary:json!({"id":r["id"],"provider":"opencode","startedAt":iso(&r["time_created"]),"updatedAt":iso(&r["time_updated"]),"matchedPath":r["directory"],"matchScope":"worktree","title":r["title"],"firstUserPrompt":first.map(|s|trunc(s,PREVIEW_TEXT_LENGTH)),"messageCount":messages.len(),"sourceRef":r["id"]}),messages,events:vec![],mtime:r["time_updated"].as_i64().unwrap_or(0),parent:r["parent_id"].as_str().map(str::to_owned),detail_title:None,is_log_ordered:false}}).collect())
+    open_code_remote_sessions(&output)
+}
+fn open_code_remote_sessions(output: &str) -> Result<OpenCodeRead, String> {
+    let response: Value = serde_json::from_str(output).map_err(|e| e.to_string())?;
+    let known_session_ids = response["knownSessionIds"].as_array().map(|ids| {
+        ids.iter()
+            .filter_map(Value::as_str)
+            .map(str::to_owned)
+            .collect()
+    });
+    let rows = response["sessions"].as_array().cloned().unwrap_or_default();
+    let sessions = rows.into_iter().map(|r|{let messages:Vec<Value>=r["parts"].as_array().into_iter().flatten().filter_map(|p|{let data:Value=serde_json::from_str(text(p,"data")).ok()?;let meta:Value=serde_json::from_str(text(p,"message_data")).ok()?;opencode_message(&meta,&data,&p["time_created"])}).collect();let first=messages.iter().find(|m|m["role"]=="user").map(|m|text(m,"fullText"));Transcript{summary:json!({"id":r["id"],"provider":"opencode","startedAt":iso(&r["time_created"]),"updatedAt":iso(&r["time_updated"]),"matchedPath":r["directory"],"matchScope":"worktree","title":r["title"],"firstUserPrompt":first.map(|s|trunc(s,PREVIEW_TEXT_LENGTH)),"messageCount":messages.len(),"sourceRef":r["id"]}),messages,events:vec![],mtime:r["time_updated"].as_i64().unwrap_or(0),parent:r["parent_id"].as_str().map(str::to_owned),detail_title:None,is_log_ordered:false}}).collect();
+    Ok(OpenCodeRead {
+        sessions,
+        known_session_ids,
+    })
 }
 /// SQLite OpenCode와 이전 storage/ 파일 기록을 합친다. SQLite로 옮겨진 세션은 이전 파일로 다시 노출하지 않는다.
 fn read_open_code(ctx: &Context) -> (Vec<Transcript>, Value) {
-    let (mut sessions, sqlite_reason) = match open_code(ctx) {
-        Ok(t) => (t, None),
-        Err(e) => (vec![], Some(e)),
+    let (mut sessions, known_session_ids, sqlite_reason) = match open_code(ctx) {
+        Ok(read) => (read.sessions, read.known_session_ids, None),
+        Err(e) => (vec![], None, Some(e)),
     };
     let legacy = if ctx.recent {
         Err(String::new())
@@ -783,10 +887,12 @@ fn read_open_code(ctx: &Context) -> (Vec<Transcript>, Value) {
         stores::read_legacy_open_code(ctx)
     };
     let available = sqlite_reason.is_none() || legacy.is_ok();
-    let known: HashSet<String> = sessions
-        .iter()
-        .map(|t| text(&t.summary, "id").to_owned())
-        .collect();
+    let known: HashSet<String> = known_session_ids.unwrap_or_else(|| {
+        sessions
+            .iter()
+            .map(|t| text(&t.summary, "id").to_owned())
+            .collect()
+    });
     sessions.extend(
         legacy
             .unwrap_or_default()
@@ -1143,6 +1249,14 @@ pub fn dispatch(app: &AppHandle, method: &str, args: Vec<Value>) -> Result<Value
                     .and_then(Value::as_str)
                     .is_none_or(str::is_empty)),
         recent: method == "getTaskLiveAiSessions",
+        query: if method == "getTaskAiSessions" {
+            args.get(1)
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .to_lowercase()
+        } else {
+            String::new()
+        },
     };
     let providers: Vec<&str> =
         if method == "getTaskAiSessionDetail" || method == "getTaskAgentCallGraph" {
@@ -1286,6 +1400,7 @@ mod tests {
             home: "/home".into(),
             bounded: false,
             recent: false,
+            query: String::new(),
         };
         assert!(matches_path(&ctx, "/repo/work/"));
         assert!(!matches_path(&ctx, "/repo/work-other"));
@@ -1348,6 +1463,7 @@ mod migration_regressions {
             home: home.to_string_lossy().into(),
             bounded: false,
             recent: false,
+            query: String::new(),
         }
     }
     fn write_lines(path: &Path, events: &[Value]) {
@@ -1449,6 +1565,7 @@ mod graph_regressions {
             host: None,
             bounded: false,
             recent: false,
+            query: String::new(),
         };
         let transcript = parse_jsonl(&ctx, "claude", root.to_str().unwrap()).unwrap();
         let nodes = claude_graph(&ctx, &transcript, &mut HashSet::new());
@@ -1492,6 +1609,7 @@ mod descendant_regressions {
             home: home.to_string_lossy().into(),
             bounded: false,
             recent: false,
+            query: String::new(),
         }
     }
     #[test]
@@ -1541,7 +1659,7 @@ mod descendant_regressions {
             )
             .unwrap();
         }
-        let sessions = open_code(&context(dir.path())).unwrap();
+        let sessions = open_code(&context(dir.path())).unwrap().sessions;
         assert_eq!(sessions.len(), 2);
         assert!(sessions.iter().any(|t| t.summary["id"] == "nested"));
     }
@@ -1558,6 +1676,7 @@ mod history_regressions {
             home: home.to_string_lossy().into(),
             bounded: false,
             recent: false,
+            query: String::new(),
         }
     }
     fn write(path: &Path, body: String) {
@@ -1625,6 +1744,250 @@ mod history_regressions {
         assert_eq!(head_lines(&ctx, file.to_str().unwrap(), 1).len(), 1);
     }
 
+    const QUERY_SCOPE_WORKTREE: &str = "/fixtures/repo_%/task";
+    fn open_code_fixture(home: &Path) -> rusqlite::Connection {
+        let db = home.join(".local/share/opencode/opencode.db");
+        fs::create_dir_all(db.parent().unwrap()).unwrap();
+        let conn = rusqlite::Connection::open(db).unwrap();
+        conn.execute_batch("CREATE TABLE session(id TEXT,directory TEXT,title TEXT,time_created INTEGER,time_updated INTEGER,parent_id TEXT); CREATE TABLE message(id TEXT,data TEXT); CREATE TABLE part(session_id TEXT,message_id TEXT,data TEXT,time_created INTEGER);").unwrap();
+        conn
+    }
+    fn insert_open_code(
+        conn: &rusqlite::Connection,
+        id: &str,
+        directory: &str,
+        time: i64,
+        title: &str,
+    ) {
+        conn.execute(
+            "INSERT INTO session VALUES(?1,?2,?3,?4,?4,NULL)",
+            rusqlite::params![id, directory, title, time],
+        )
+        .unwrap();
+    }
+    fn open_code_ids(ctx: &Context) -> Vec<String> {
+        open_code(ctx)
+            .unwrap()
+            .sessions
+            .iter()
+            .map(|t| text(&t.summary, "id").to_owned())
+            .collect()
+    }
+    #[test]
+    fn opencode_filters_worktree_and_descendants_before_limiting_candidates() {
+        let dir = tempfile::tempdir().unwrap();
+        let conn = open_code_fixture(dir.path());
+        insert_open_code(&conn, "target", QUERY_SCOPE_WORKTREE, 1, "Session");
+        insert_open_code(
+            &conn,
+            "nested",
+            &format!("{QUERY_SCOPE_WORKTREE}/nested"),
+            2,
+            "Session",
+        );
+        for index in 0..130 {
+            insert_open_code(
+                &conn,
+                &format!("other-{index}"),
+                "/other/task",
+                100 + index,
+                "Session",
+            );
+        }
+        insert_open_code(
+            &conn,
+            "prefix-neighbor",
+            &format!("{QUERY_SCOPE_WORKTREE}-other"),
+            1000,
+            "Session",
+        );
+        insert_open_code(
+            &conn,
+            "wildcard-neighbor",
+            "/fixtures/repoAX/task",
+            1000,
+            "Session",
+        );
+        let history = context(dir.path(), QUERY_SCOPE_WORKTREE);
+        assert_eq!(open_code_ids(&history), ["nested", "target"]);
+        // 실시간 조회도 같은 리더를 거치므로 범위가 같다.
+        let live = Context {
+            recent: true,
+            bounded: true,
+            ..history
+        };
+        let (sessions, _) = read_open_code(&live);
+        let ids = sessions
+            .iter()
+            .map(|t| text(&t.summary, "id"))
+            .collect::<Vec<_>>();
+        assert_eq!(ids, ["nested", "target"]);
+    }
+    #[test]
+    fn opencode_applies_search_before_limiting_candidates_within_one_worktree() {
+        let dir = tempfile::tempdir().unwrap();
+        let conn = open_code_fixture(dir.path());
+        insert_open_code(&conn, "old-match", QUERY_SCOPE_WORKTREE, 1, "needle");
+        for index in 0..130 {
+            insert_open_code(
+                &conn,
+                &format!("new-{index}"),
+                QUERY_SCOPE_WORKTREE,
+                100 + index,
+                "Session",
+            );
+        }
+        let mut ctx = context(dir.path(), QUERY_SCOPE_WORKTREE);
+        assert_eq!(open_code_ids(&ctx).len(), 120);
+        ctx.query = "needle".into();
+        assert_eq!(open_code_ids(&ctx), ["old-match"]);
+    }
+    #[test]
+    fn opencode_search_matches_title_id_directory_and_part_text_literally() {
+        let dir = tempfile::tempdir().unwrap();
+        let conn = open_code_fixture(dir.path());
+        insert_open_code(&conn, "plain", QUERY_SCOPE_WORKTREE, 4, "Session");
+        insert_open_code(&conn, "percent", QUERY_SCOPE_WORKTREE, 3, "100% done");
+        insert_open_code(&conn, "under", QUERY_SCOPE_WORKTREE, 2, "snake_case");
+        insert_open_code(&conn, "body", QUERY_SCOPE_WORKTREE, 1, "Session");
+        conn.execute(
+            "INSERT INTO part VALUES('body','m','{\"type\":\"text\",\"text\":\"database migration rollback\"}',1)",
+            [],
+        )
+        .unwrap();
+        let mut ctx = context(dir.path(), QUERY_SCOPE_WORKTREE);
+        for (query, expected) in [
+            ("% d", vec!["percent"]),
+            ("e_c", vec!["under"]),
+            ("database migration", vec!["body"]),
+            ("under", vec!["under"]),
+        ] {
+            ctx.query = query.into();
+            assert_eq!(open_code_ids(&ctx), expected, "{query}");
+        }
+    }
+    #[test]
+    fn opencode_empty_worktree_matches_no_session() {
+        let dir = tempfile::tempdir().unwrap();
+        let conn = open_code_fixture(dir.path());
+        insert_open_code(&conn, "other", "/other/task", 1, "Session");
+        assert!(open_code_ids(&context(dir.path(), "")).is_empty());
+    }
+    #[test]
+    fn opencode_search_keeps_legacy_copy_of_non_matching_sqlite_session_hidden() {
+        if std::env::var_os("XDG_DATA_HOME").is_some() {
+            return;
+        }
+        let dir = tempfile::tempdir().unwrap();
+        let cwd = "/projects/legacy-task";
+        let conn = open_code_fixture(dir.path());
+        insert_open_code(&conn, "ses_moved", cwd, 1, "Current title");
+        let storage = dir.path().join(".local/share/opencode/storage");
+        write(
+            &storage.join("session/project/ses_moved.json"),
+            json!({"id":"ses_moved","directory":cwd,"title":"needle legacy"}).to_string(),
+        );
+        write(
+            &storage.join("session/project/ses_file_only.json"),
+            json!({"id":"ses_file_only","directory":cwd,"title":"needle only"}).to_string(),
+        );
+        let mut ctx = context(dir.path(), cwd);
+        ctx.query = "needle".into();
+        let (sessions, _) = read_open_code(&ctx);
+        let ids = sessions
+            .iter()
+            .map(|t| text(&t.summary, "id"))
+            .collect::<Vec<_>>();
+        assert_eq!(ids, ["ses_file_only"]);
+    }
+    #[test]
+    fn remote_opencode_script_applies_the_same_scope_search_and_known_ids() {
+        let dir = tempfile::tempdir().unwrap();
+        let conn = open_code_fixture(dir.path());
+        insert_open_code(&conn, "old-match", QUERY_SCOPE_WORKTREE, 1, "needle");
+        insert_open_code(
+            &conn,
+            "nested",
+            &format!("{QUERY_SCOPE_WORKTREE}/nested"),
+            2,
+            "Session",
+        );
+        insert_open_code(
+            &conn,
+            "neighbor",
+            &format!("{QUERY_SCOPE_WORKTREE}-other"),
+            3,
+            "needle",
+        );
+        insert_open_code(&conn, "wildcard", "/fixtures/repoAX/task", 4, "needle");
+        drop(conn);
+        let db = dir.path().join(".local/share/opencode/opencode.db");
+        let run = |query: &str| {
+            let output = std::process::Command::new("python3")
+                .args([
+                    "-c",
+                    OPEN_CODE_REMOTE_SCRIPT,
+                    db.to_str().unwrap(),
+                    QUERY_SCOPE_WORKTREE,
+                    &format!("{QUERY_SCOPE_WORKTREE}/"),
+                    query,
+                ])
+                .output()
+                .expect("python3");
+            assert!(
+                output.status.success(),
+                "{}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+            open_code_remote_sessions(&String::from_utf8_lossy(&output.stdout)).unwrap()
+        };
+        let all = run("");
+        let ids = all
+            .sessions
+            .iter()
+            .map(|t| text(&t.summary, "id"))
+            .collect::<Vec<_>>();
+        assert_eq!(ids, ["nested", "old-match"]);
+        assert!(all.known_session_ids.is_none());
+        let searched = run("needle");
+        let ids = searched
+            .sessions
+            .iter()
+            .map(|t| text(&t.summary, "id"))
+            .collect::<Vec<_>>();
+        assert_eq!(ids, ["old-match"]);
+        assert_eq!(
+            searched.known_session_ids.unwrap(),
+            HashSet::from(["nested".to_string(), "old-match".to_string()])
+        );
+        assert_eq!(escape_sqlite_like("100%_\\"), "100\\%\\_\\\\");
+    }
+    #[test]
+    fn local_parse_cache_keeps_unchanged_files_and_reparses_changed_ones() {
+        let dir = tempfile::tempdir().unwrap();
+        let ctx = context(dir.path(), "/repo");
+        let path = dir.path().join("session.jsonl");
+        let file = path.to_str().unwrap();
+        fs::write(&path, "{\"source\":\"before\"}\n").unwrap();
+        assert_eq!(lines(&ctx, file)[0]["source"], "before");
+        let stamp = fs::metadata(&path).unwrap().modified().unwrap();
+        // 같은 크기와 수정 시각이면 캐시를 쓴다는 것을 내용만 바꿔 확인한다.
+        fs::write(&path, "{\"source\":\"hidden\"}\n").unwrap();
+        fs::File::options()
+            .write(true)
+            .open(&path)
+            .unwrap()
+            .set_modified(stamp)
+            .unwrap();
+        assert_eq!(lines(&ctx, file)[0]["source"], "before");
+        fs::File::options()
+            .write(true)
+            .open(&path)
+            .unwrap()
+            .set_modified(stamp + std::time::Duration::from_secs(1))
+            .unwrap();
+        assert_eq!(lines(&ctx, file)[0]["source"], "hidden");
+    }
     #[test]
     fn opencode_prefers_sqlite_over_stale_legacy_file() {
         let dir = tempfile::tempdir().unwrap();

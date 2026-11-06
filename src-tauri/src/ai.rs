@@ -88,7 +88,7 @@ pub fn provider_command(
     }
     bounded_output(&mut cmd, Duration::from_secs(30))
 }
-fn bounded_output(
+pub(crate) fn bounded_output(
     command: &mut Command,
     timeout: Duration,
 ) -> Result<std::process::Output, String> {
@@ -117,12 +117,28 @@ fn bounded_output(
             break status;
         }
         if started.elapsed() >= timeout {
+            // 호출자가 프로세스 그룹을 분리한 경우 CLI가 띄운 자식까지 함께 끝낸다.
+            #[cfg(unix)]
+            unsafe {
+                libc::kill(-(child.id() as i32), libc::SIGKILL);
+            }
             let _ = child.kill();
             let _ = child.wait();
             return Err("AI CLI timed out".into());
         }
         std::thread::sleep(Duration::from_millis(20));
     };
+    // 자식이 출력 파이프를 물고 남아 있어도 제한 시간을 넘겨 기다리지 않는다.
+    while !(stdout.is_finished() && stderr.is_finished()) {
+        if started.elapsed() >= timeout {
+            #[cfg(unix)]
+            unsafe {
+                libc::kill(-(child.id() as i32), libc::SIGKILL);
+            }
+            return Err("AI CLI timed out".into());
+        }
+        std::thread::sleep(Duration::from_millis(5));
+    }
     let stdout = stdout.join().map_err(|_| "Command stdout failed")??;
     let stderr = stderr.join().map_err(|_| "Command stderr failed")??;
     if stdout.len() > 1024 * 1024 || stderr.len() > 1024 * 1024 {
@@ -136,7 +152,11 @@ fn bounded_output(
 }
 
 fn registrations(app: &AppHandle) -> Result<Vec<Value>, String> {
-    Ok(setting(app, "ai_accounts")?
+    stored_registrations(&app.state::<crate::database::Database>())
+}
+fn stored_registrations(db: &crate::database::Database) -> Result<Vec<Value>, String> {
+    Ok(db
+        .setting("ai_accounts")?
         .and_then(|s| serde_json::from_str::<Vec<Value>>(&s).ok())
         .unwrap_or_default()
         .into_iter()
@@ -867,6 +887,83 @@ fn usage_snapshot(app: &AppHandle) -> Result<Value, String> {
         .map_err(|e| e.to_string())? = Some((std::time::Instant::now(), snapshot.clone()));
     Ok(snapshot)
 }
+/// 계정 목록은 설정 한 칸을 통째로 읽고 쓴다. 로그아웃을 기다리는 동안 추가된 계정을 낡은 목록으로 덮지 않도록 변경을 줄 세운다.
+fn serialize_account_mutation<Outcome>(mutation: impl FnOnce() -> Outcome) -> Outcome {
+    static ACCOUNT_MUTATION: Mutex<()> = Mutex::new(());
+    let _guard = ACCOUNT_MUTATION
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    mutation()
+}
+fn add_account(
+    db: &crate::database::Database,
+    home: &Path,
+    provider: &str,
+    name: &str,
+) -> Result<Value, String> {
+    let (_, _, prefix, _) = spec(provider)?;
+    if !valid_name(name) {
+        return Ok(json!({"outcome":"invalid-name"}));
+    }
+    let root = home.join(format!("{prefix}{name}"));
+    let mut regs = stored_registrations(db)?;
+    if regs
+        .iter()
+        .any(|r| text(r, "accountRoot") == root.to_string_lossy())
+    {
+        return Ok(json!({"outcome":"already-exists"}));
+    }
+    fs::create_dir_all(config(provider, &root)).map_err(|e| e.to_string())?;
+    regs.push(json!({"provider":provider,"accountRoot":root,"accountName":name}));
+    db.set_setting("ai_accounts", &json!(regs).to_string())?;
+    Ok(json!({"outcome":"ok","accountRoot":root}))
+}
+fn logout_account(provider: &str, root: &Path) -> bool {
+    if provider == "gemini" {
+        return false;
+    }
+    provider_command(
+        provider,
+        root,
+        if provider == "claude" {
+            &["auth", "logout"]
+        } else {
+            &["logout"]
+        },
+    )
+    .is_ok_and(|out| out.status.success())
+}
+fn remove_account(
+    db: &crate::database::Database,
+    home: &Path,
+    provider: &str,
+    root: &Path,
+    logout: impl FnOnce() -> bool,
+) -> Result<Value, String> {
+    let (_, _, prefix, _) = spec(provider)?;
+    let mut regs = stored_registrations(db)?;
+    let owned = regs.iter().any(|r| {
+        text(r, "provider") == provider && text(r, "accountRoot") == root.to_string_lossy()
+    });
+    let did_logout = logout();
+    if owned {
+        let valid = root.parent() == Some(home)
+            && root
+                .file_name()
+                .and_then(|s| s.to_str())
+                .and_then(|s| s.strip_prefix(prefix))
+                .is_some_and(valid_name);
+        if !valid {
+            return Err("Refusing removal outside KanVibe account roots".into());
+        }
+        if root.exists() {
+            fs::remove_dir_all(root).map_err(|e| e.to_string())?;
+        }
+        regs.retain(|r| text(r, "accountRoot") != root.to_string_lossy());
+        db.set_setting("ai_accounts", &json!(regs).to_string())?;
+    }
+    Ok(json!({"outcome":if owned||did_logout{"ok"}else{"manual-logout-required"}}))
+}
 pub fn dispatch(
     app: &AppHandle,
     namespace: &str,
@@ -879,63 +976,27 @@ pub fn dispatch(
         ("aiAccounts", "addAiAccount") => {
             let provider = args.first().and_then(Value::as_str).unwrap_or("");
             let name = args.get(1).and_then(Value::as_str).unwrap_or("");
-            let (_, _, prefix, _) = spec(provider)?;
-            if !valid_name(name) {
-                return Ok(json!({"outcome":"invalid-name"}));
-            }
-            let root = home().join(format!("{prefix}{name}"));
-            let mut regs = registrations(app)?;
-            if regs
-                .iter()
-                .any(|r| text(r, "accountRoot") == root.to_string_lossy())
-            {
-                return Ok(json!({"outcome":"already-exists"}));
-            }
-            fs::create_dir_all(config(provider, &root)).map_err(|e| e.to_string())?;
-            regs.push(json!({"provider":provider,"accountRoot":root,"accountName":name}));
-            set_setting(app, "ai_accounts", &json!(regs).to_string())?;
-            Ok(json!({"outcome":"ok","accountRoot":root}))
+            serialize_account_mutation(|| {
+                add_account(
+                    &app.state::<crate::database::Database>(),
+                    &home(),
+                    provider,
+                    name,
+                )
+            })
         }
         ("aiAccounts", "removeAiAccount") => {
             let provider = args.first().and_then(Value::as_str).unwrap_or("");
             let root = PathBuf::from(args.get(1).and_then(Value::as_str).unwrap_or(""));
-            spec(provider)?;
-            let mut regs = registrations(app)?;
-            let owned = regs.iter().any(|r| {
-                text(r, "provider") == provider && text(r, "accountRoot") == root.to_string_lossy()
-            });
-            let logout = if provider == "gemini" {
-                false
-            } else {
-                provider_command(
+            serialize_account_mutation(|| {
+                remove_account(
+                    &app.state::<crate::database::Database>(),
+                    &home(),
                     provider,
                     &root,
-                    if provider == "claude" {
-                        &["auth", "logout"]
-                    } else {
-                        &["logout"]
-                    },
+                    || logout_account(provider, &root),
                 )
-                .is_ok_and(|out| out.status.success())
-            };
-            if owned {
-                let (_, _, prefix, _) = spec(provider)?;
-                let valid = root.parent() == Some(home().as_path())
-                    && root
-                        .file_name()
-                        .and_then(|s| s.to_str())
-                        .and_then(|s| s.strip_prefix(prefix))
-                        .is_some_and(valid_name);
-                if !valid {
-                    return Err("Refusing removal outside KanVibe account roots".into());
-                }
-                if root.exists() {
-                    fs::remove_dir_all(&root).map_err(|e| e.to_string())?;
-                }
-                regs.retain(|r| text(r, "accountRoot") != root.to_string_lossy());
-                set_setting(app, "ai_accounts", &json!(regs).to_string())?;
-            }
-            Ok(json!({"outcome":if owned||logout{"ok"}else{"manual-logout-required"}}))
+            })
         }
         ("aiUsage", "getCachedAiUsageSnapshot") => cached_snapshot(app),
         ("aiUsage", "getAiUsageSnapshot") => usage_snapshot(app),
@@ -1019,6 +1080,96 @@ mod migration_regressions {
                 0o600
             );
         }
+    }
+    #[test]
+    fn concurrent_credential_writes_leave_one_complete_file_without_temporaries() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join(".credentials.json");
+        let bodies: Vec<Value> = (0..16)
+            .map(|index| json!({"index":index,"token":"x".repeat(10000)}))
+            .collect();
+        std::thread::scope(|scope| {
+            for body in &bodies {
+                let path = &path;
+                scope.spawn(move || atomic_credentials(path, body).unwrap());
+            }
+        });
+        assert!(bodies.contains(&read_json(&path)));
+        assert_eq!(fs::read_dir(dir.path()).unwrap().count(), 1);
+    }
+    fn account_names(db: &crate::database::Database) -> Vec<String> {
+        stored_registrations(db)
+            .unwrap()
+            .iter()
+            .map(|r| text(r, "accountName").to_string())
+            .collect()
+    }
+    fn account_fixture() -> (tempfile::TempDir, crate::database::Database) {
+        let dir = tempfile::tempdir().unwrap();
+        let db = crate::database::Database::open(&dir.path().join("kanvibe.db")).unwrap();
+        (dir, db)
+    }
+    #[test]
+    fn concurrent_additions_keep_distinct_accounts_and_register_one_duplicate() {
+        let (dir, db) = account_fixture();
+        let add = |provider: &'static str, name: &'static str| {
+            let (db, home) = (&db, dir.path());
+            move || serialize_account_mutation(|| add_account(db, home, provider, name).unwrap())
+        };
+        let outcomes = std::thread::scope(|scope| {
+            [
+                scope.spawn(add("claude", "first")),
+                scope.spawn(add("codex", "second")),
+                scope.spawn(add("claude", "same")),
+                scope.spawn(add("claude", "same")),
+            ]
+            .map(|handle| handle.join().unwrap()["outcome"].clone())
+        });
+        assert_eq!(outcomes[0], "ok");
+        assert_eq!(outcomes[1], "ok");
+        assert_eq!(
+            outcomes[2..].iter().filter(|o| **o == "ok").count(),
+            1,
+            "동일 계정은 한 요청만 등록한다"
+        );
+        let mut names = account_names(&db);
+        names.sort();
+        assert_eq!(names, ["first", "same", "second"]);
+    }
+    #[test]
+    fn addition_during_slow_logout_survives_removal() {
+        let (dir, db) = account_fixture();
+        let added = add_account(&db, dir.path(), "claude", "old").unwrap();
+        let root = PathBuf::from(text(&added, "accountRoot"));
+        let (logout_started, wait_logout) = std::sync::mpsc::channel();
+        std::thread::scope(|scope| {
+            let removal = scope.spawn(|| {
+                serialize_account_mutation(|| {
+                    remove_account(&db, dir.path(), "claude", &root, || {
+                        logout_started.send(()).unwrap();
+                        std::thread::sleep(Duration::from_millis(100));
+                        true
+                    })
+                    .unwrap()
+                })
+            });
+            wait_logout.recv().unwrap();
+            let addition = scope.spawn(|| {
+                serialize_account_mutation(|| add_account(&db, dir.path(), "codex", "new").unwrap())
+            });
+            assert_eq!(removal.join().unwrap()["outcome"], "ok");
+            assert_eq!(addition.join().unwrap()["outcome"], "ok");
+        });
+        assert_eq!(account_names(&db), ["new"]);
+    }
+    #[test]
+    fn failed_account_mutation_does_not_block_the_next_one() {
+        let failed: Result<(), String> = serialize_account_mutation(|| Err("save failed".into()));
+        assert!(failed.is_err());
+        let panicked =
+            std::panic::catch_unwind(|| serialize_account_mutation(|| panic!("mutation")));
+        assert!(panicked.is_err());
+        assert_eq!(serialize_account_mutation(|| "survived"), "survived");
     }
     #[test]
     fn gemini_model_labels_and_remaining_fraction_match_ui() {

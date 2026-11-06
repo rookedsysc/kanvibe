@@ -622,18 +622,7 @@ fn kanban(app: &AppHandle, method: &str, args: &[Value]) -> Result<Value> {
             {
                 return Err("유효한 #RRGGBB 색상이 필요합니다".into());
             }
-            let base = text(&project, "repoPath")
-                .split("__worktrees")
-                .next()
-                .unwrap_or("");
-            let mut related = db
-                .projects()?
-                .into_iter()
-                .filter(|p| {
-                    text(p, "repoPath").starts_with(base) && p["sshHost"] == project["sshHost"]
-                })
-                .collect::<Vec<_>>();
-            related.sort_by_key(|p| text(p, "repoPath") != base);
+            let related = projects_sharing_git_directory(&project, db.projects()?);
             for mut p in related {
                 p["color"] = json!(color);
                 git::persist_color(&p)?;
@@ -644,7 +633,7 @@ fn kanban(app: &AppHandle, method: &str, args: &[Value]) -> Result<Value> {
             Ok(Value::Null)
         }
         "fetchAndSavePrUrl" => {
-            let Some(mut task) = db.task(arg(args, 0))? else {
+            let Some(task) = db.task(arg(args, 0))? else {
                 return Ok(Value::Null);
             };
             let project = project_for_task(&db, &task)?;
@@ -668,8 +657,14 @@ fn kanban(app: &AppHandle, method: &str, args: &[Value]) -> Result<Value> {
             );
             if let Ok(url) = output {
                 if !url.trim().is_empty() {
-                    task["prUrl"] = json!(url.trim());
-                    db.save_task(&task)?;
+                    let affected = db.update_task_pr_url(
+                        text(&task, "id"),
+                        text(&task, "branchName"),
+                        url.trim(),
+                    )?;
+                    if affected == 0 {
+                        return Ok(Value::Null);
+                    }
                     board_update(app);
                     return Ok(json!(url.trim()));
                 }
@@ -680,6 +675,36 @@ fn kanban(app: &AppHandle, method: &str, args: &[Value]) -> Result<Value> {
     }
 }
 
+fn git_common_directory(project: &Value) -> Option<String> {
+    let directory = git::git(
+        text(project, "repoPath"),
+        "rev-parse --path-format=absolute --git-common-dir",
+        project["sshHost"].as_str(),
+    )
+    .ok()?;
+    let directory = directory.trim();
+    (!directory.is_empty()).then(|| directory.to_string())
+}
+/// 경로 앞부분이 같을 뿐인 이웃 저장소를 빼기 위해 같은 호스트와 git common directory로 묶는다.
+/// 색상의 권위 파일은 저장소 루트에 있으므로 루트를 맨 앞에 둔다.
+fn projects_sharing_git_directory(project: &Value, candidates: Vec<Value>) -> Vec<Value> {
+    let common_directory = git_common_directory(project);
+    let root = common_directory
+        .as_deref()
+        .and_then(|directory| directory.strip_suffix("/.git"))
+        .unwrap_or(text(project, "repoPath"))
+        .to_string();
+    let mut related = vec![project.clone()];
+    if common_directory.is_some() {
+        related.extend(candidates.into_iter().filter(|candidate| {
+            candidate["id"] != project["id"]
+                && candidate["sshHost"] == project["sshHost"]
+                && git_common_directory(candidate) == common_directory
+        }));
+    }
+    related.sort_by_key(|p| text(p, "repoPath") != root);
+    related
+}
 fn project(app: &AppHandle, method: &str, args: &[Value]) -> Result<Value> {
     let db = app.state::<Database>();
     match method {
@@ -727,7 +752,7 @@ fn project(app: &AppHandle, method: &str, args: &[Value]) -> Result<Value> {
         }
         "listSubdirectories" => {
             let host = args.get(1).and_then(Value::as_str);
-            let root = expand_path(arg(args, 0), host);
+            let root = git::resolve_path_for_shell(arg(args, 0), host);
             let output = git::run(
                 &format!("find {} -mindepth 1 -maxdepth 1 -type d", root),
                 host,
@@ -774,20 +799,6 @@ fn project(app: &AppHandle, method: &str, args: &[Value]) -> Result<Value> {
         | "getTaskAgentCallGraph" => crate::ai::project_dispatch(app, method, args.to_vec()),
         _ if method.contains("Hooks") => project_hooks(app, method, args),
         _ => Err(format!("알 수 없는 프로젝트 메서드: {method}")),
-    }
-}
-fn expand_path(path: &str, host: Option<&str>) -> String {
-    if let Some(suffix) = path.strip_prefix('~') {
-        if host.is_some() {
-            format!("\"$HOME\"{}", git::quote(suffix))
-        } else {
-            git::quote(&format!(
-                "{}{suffix}",
-                dirs::home_dir().unwrap_or_default().to_string_lossy()
-            ))
-        }
-    } else {
-        git::quote(path)
     }
 }
 fn read_ssh_hosts(path: &Path, seen: &mut HashSet<std::path::PathBuf>, hosts: &mut Vec<String>) {
@@ -1049,7 +1060,7 @@ fn scan_projects(app: &AppHandle, path: &str, host: Option<&str>) -> Result<Valu
         let output = git::run(
             &format!(
                 "find {} -maxdepth 5 -name .git -prune",
-                expand_path(path, host)
+                git::resolve_path_for_shell(path, host)
             ),
             host,
         )?;
@@ -1241,6 +1252,12 @@ fn hooks(app: &AppHandle, method: &str, args: &[Value]) -> Result<Value> {
     )
 }
 
+/// 사용자가 정한 기준 브랜치를 프로젝트 기본값으로 되돌리지 않고 비어 있을 때만 채운다.
+fn fill_missing_base_branch(task: &mut Value, project: &Value) {
+    if text(task, "baseBranch").is_empty() {
+        task["baseBranch"] = project["defaultBranch"].clone();
+    }
+}
 pub fn sync_worktrees(app: &AppHandle) -> Result<Value> {
     let db = app.state::<Database>();
     let mut result = json!({"worktreeTasks":[],"registeredWorktrees":[],"hooksSetup":[],"errors":[],"changed":false});
@@ -1292,7 +1309,7 @@ pub fn sync_worktrees(app: &AppHandle) -> Result<Value> {
                 task["projectId"] = project["id"].clone();
                 task["worktreePath"] = json!(path);
                 task["sshHost"] = project["sshHost"].clone();
-                task["baseBranch"] = project["defaultBranch"].clone();
+                fill_missing_base_branch(&mut task, &project);
                 let state = shared_state(path, ".kanvibe/status.json", host);
                 if STATUSES.contains(&text(&state, "status")) {
                     task["status"] = state["status"].clone();
@@ -1359,6 +1376,15 @@ pub fn sync_worktrees(app: &AppHandle) -> Result<Value> {
     }
     Ok(result)
 }
+/// 조회 시점의 task 값으로 행 전체를 덮지 않고 prUrl만 맞춘다. task가 더 이상 그 브랜치에 없으면 None이다.
+fn record_pull_request_url(db: &Database, task: &Value, url: &str) -> Result<Option<bool>> {
+    let (id, branch) = (text(task, "id"), text(task, "branchName"));
+    if task["prUrl"].as_str() != Some(url) {
+        let affected = db.update_task_pr_url(id, branch, url)?;
+        return Ok((affected > 0).then_some(true));
+    }
+    Ok(db.task_exists_on_branch(id, branch)?.then_some(false))
+}
 pub fn sync_pull_requests(app: &AppHandle) -> Result<Value> {
     let db = app.state::<Database>();
     let mut result =
@@ -1366,7 +1392,7 @@ pub fn sync_pull_requests(app: &AppHandle) -> Result<Value> {
     static EMITTED: std::sync::OnceLock<std::sync::Mutex<HashSet<String>>> =
         std::sync::OnceLock::new();
     let emitted = EMITTED.get_or_init(Default::default);
-    for mut task in db
+    for task in db
         .tasks()?
         .into_iter()
         .filter(|t| text(t, "status") != "done" && !text(t, "branchName").is_empty())
@@ -1395,9 +1421,12 @@ pub fn sync_pull_requests(app: &AppHandle) -> Result<Value> {
                 let mut prs: Vec<Value> = serde_json::from_str(&output).unwrap_or_default();
                 prs.sort_by(|a, b| text(b, "updatedAt").cmp(text(a, "updatedAt")));
                 if let Some(pr) = prs.first().filter(|p| !text(p, "url").is_empty()) {
-                    if task["prUrl"] != pr["url"] {
-                        task["prUrl"] = pr["url"].clone();
-                        db.save_task(&task)?;
+                    // 조회 중 삭제됐거나 브랜치가 바뀐 task는 다시 넣지도, 머지 알림을 보내지도 않는다.
+                    let Some(is_updated) = record_pull_request_url(&db, &task, text(pr, "url"))?
+                    else {
+                        continue;
+                    };
+                    if is_updated {
                         result["updatedTaskIds"]
                             .as_array_mut()
                             .unwrap()
@@ -1447,6 +1476,116 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let db = Database::open(&dir.path().join("app.db")).unwrap();
         (dir, db)
+    }
+    #[test]
+    fn color_spreads_only_to_projects_sharing_host_and_git_common_directory() {
+        let dir = tempfile::tempdir().unwrap();
+        let base = std::fs::canonicalize(dir.path()).unwrap();
+        let init = |path: &Path| {
+            std::fs::create_dir_all(path).unwrap();
+            let root = path.to_str().unwrap();
+            git::git(root, "init -b main", None).unwrap();
+            git::git(
+                root,
+                "-c user.name=QA -c user.email=qa@example.test commit --allow-empty -m fixture",
+                None,
+            )
+            .unwrap();
+        };
+        let root = base.join("repo_%");
+        let neighbor = base.join("repo_%-other");
+        let linked = base.join("elsewhere/custom-tree");
+        init(&root);
+        init(&neighbor);
+        git::git(
+            root.to_str().unwrap(),
+            &format!(
+                "worktree add -b linked {}",
+                git::quote(linked.to_str().unwrap())
+            ),
+            None,
+        )
+        .unwrap();
+        let project =
+            |id: &str, path: &Path, host: Value| json!({"id":id,"repoPath":path,"sshHost":host});
+        let projects = vec![
+            project("root", &root, Value::Null),
+            project("linked", &linked, Value::Null),
+            project("neighbor", &neighbor, Value::Null),
+            // 호스트가 다른 프로젝트는 SSH 없이도 후보에서 먼저 빠져야 한다.
+            project("remote", &root, json!("prod")),
+        ];
+        let related = projects_sharing_git_directory(&projects[1], projects.clone());
+        let ids = related.iter().map(|p| text(p, "id")).collect::<Vec<_>>();
+        assert_eq!(ids, ["root", "linked"]);
+    }
+    #[test]
+    fn color_stays_on_the_project_when_its_git_directory_is_unreadable() {
+        let dir = tempfile::tempdir().unwrap();
+        let project = json!({"id":"lonely","repoPath":dir.path(),"sshHost":null});
+        let related = projects_sharing_git_directory(&project, vec![project.clone()]);
+        assert_eq!(related.len(), 1);
+    }
+    #[test]
+    fn pull_request_url_update_preserves_concurrent_edits_and_skips_missing_tasks() {
+        let (_dir, database) = db();
+        let saved = database
+            .save_task(&json!({"title":"initial","status":"progress","branchName":"feature"}))
+            .unwrap();
+        let id = text(&saved, "id").to_string();
+        // 조회 시작 후 사용자가 제목과 상태를 바꾼 상황을 만든다.
+        let mut edited = saved.clone();
+        edited["title"] = json!("user edit");
+        edited["status"] = json!("done");
+        database.save_task(&edited).unwrap();
+        let url = "https://example.invalid/pr/1";
+        assert_eq!(
+            record_pull_request_url(&database, &saved, url).unwrap(),
+            Some(true)
+        );
+        let current = database.task(&id).unwrap().unwrap();
+        assert_eq!(current["title"], "user edit");
+        assert_eq!(current["status"], "done");
+        assert_eq!(current["prUrl"], url);
+        // 같은 URL은 쓰지 않고 task가 그 브랜치에 있는지만 확인한다.
+        assert_eq!(
+            record_pull_request_url(&database, &current, url).unwrap(),
+            Some(false)
+        );
+        let mut moved = current.clone();
+        moved["branchName"] = json!("renamed");
+        database.save_task(&moved).unwrap();
+        assert_eq!(
+            record_pull_request_url(&database, &current, url).unwrap(),
+            None
+        );
+        assert_eq!(
+            record_pull_request_url(&database, &saved, "https://example.invalid/pr/2").unwrap(),
+            None
+        );
+        database
+            .lock()
+            .unwrap()
+            .execute("DELETE FROM kanban_tasks WHERE id=?1", [&id])
+            .unwrap();
+        assert_eq!(database.update_task_pr_url(&id, "renamed", url).unwrap(), 0);
+        assert!(
+            database.task(&id).unwrap().is_none(),
+            "삭제된 task를 다시 넣으면 안 된다"
+        );
+    }
+    #[test]
+    fn worktree_sync_keeps_existing_base_branch_and_fills_only_missing_values() {
+        let project = json!({"defaultBranch":"main"});
+        for (base, expected) in [
+            (json!("feature/parent"), "feature/parent"),
+            (Value::Null, "main"),
+            (json!(""), "main"),
+        ] {
+            let mut task = json!({"baseBranch":base});
+            fill_missing_base_branch(&mut task, &project);
+            assert_eq!(task["baseBranch"], expected);
+        }
     }
     #[test]
     fn root_only_shared_changes_report_changed_without_adding_tasks() {

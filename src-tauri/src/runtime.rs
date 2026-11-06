@@ -222,7 +222,14 @@ pub fn run_shell_input(
         use std::os::unix::process::CommandExt;
         cmd.process_group(0);
     }
-    let mut child = cmd.spawn().map_err(err)?;
+    // macOS에는 pipe2가 없어 파이프 생성과 CLOEXEC 설정 사이에 다른 스레드가 자식을 띄우면 출력 파이프가 그 자식에게 샌다.
+    // 잠금을 기다리는 형제 명령이 파이프를 물면 잠금을 쥔 명령이 끝나지 못해 서로 막히므로 생성 구간을 줄 세운다.
+    static SPAWN_LOCK: Mutex<()> = Mutex::new(());
+    let spawned = {
+        let _guard = SPAWN_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        cmd.spawn()
+    };
+    let mut child = spawned.map_err(err)?;
     let pid = child.id();
     if let Some(input) = input {
         let bytes = input.to_vec();
@@ -338,6 +345,14 @@ fn number(args: &[Value], i: usize, default: u16) -> u16 {
         .unwrap_or(default)
 }
 
+/// 렌더러는 open 응답을 기다리지 않고 입력·크기·닫기를 보낼 수 있다. 아직 없거나 이미 끝난 세션이면 할 일이 없다.
+fn ignore_missing_session(result: Result<(), String>) -> Result<Value, String> {
+    match result {
+        Err(error) if error != crate::terminal::SESSION_NOT_FOUND => Err(error),
+        _ => Ok(Value::Null),
+    }
+}
+
 pub fn native(
     app: &AppHandle,
     window: &WebviewWindow,
@@ -355,30 +370,26 @@ pub fn native(
             number(&args, 3, 30),
         )
         .or_else(|e| Ok(json!({"ok":false,"error":e}))),
-        "writeTerminal" => {
-            crate::terminal::write(
-                app,
-                string(&args, 0)?,
-                optional(&args, 1),
-                string(&args, 2)?,
-            )?;
-            Ok(Value::Null)
-        }
-        "resizeTerminal" => {
-            crate::terminal::resize_client(
-                app,
-                string(&args, 0)?,
-                optional(&args, 1),
-                label,
-                number(&args, 2, 120),
-                number(&args, 3, 30),
-            )?;
-            Ok(Value::Null)
-        }
-        "closeTerminal" => {
-            crate::terminal::detach(app, label, string(&args, 0)?, optional(&args, 1))?;
-            Ok(Value::Null)
-        }
+        "writeTerminal" => ignore_missing_session(crate::terminal::write(
+            app,
+            string(&args, 0)?,
+            optional(&args, 1),
+            string(&args, 2)?,
+        )),
+        "resizeTerminal" => ignore_missing_session(crate::terminal::resize_client(
+            app,
+            string(&args, 0)?,
+            optional(&args, 1),
+            label,
+            number(&args, 2, 120),
+            number(&args, 3, 30),
+        )),
+        "closeTerminal" => ignore_missing_session(crate::terminal::close(
+            app,
+            label,
+            string(&args, 0)?,
+            optional(&args, 1),
+        )),
         "focusTerminal" => {
             window.set_focus().map_err(err)?;
             Ok(Value::Null)
@@ -400,7 +411,7 @@ pub fn native(
             } else {
                 "close"
             };
-            crate::terminal::login_action(
+            ignore_missing_session(crate::terminal::login_action(
                 app,
                 label,
                 string(&args, 0)?,
@@ -408,8 +419,7 @@ pub fn native(
                 optional(&args, 1).unwrap_or(""),
                 number(&args, 1, 120),
                 number(&args, 2, 30),
-            )?;
-            Ok(Value::Null)
+            ))
         }
         "writeSystemClipboard" => {
             arboard::Clipboard::new()
@@ -773,6 +783,16 @@ pub fn dependency_dispatch(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn missing_terminal_session_is_not_a_renderer_error() {
+        let missing = Err(crate::terminal::SESSION_NOT_FOUND.to_string());
+        assert_eq!(ignore_missing_session(missing), Ok(Value::Null));
+        assert_eq!(ignore_missing_session(Ok(())), Ok(Value::Null));
+        assert_eq!(
+            ignore_missing_session(Err("write failed".into())),
+            Err("write failed".to_string())
+        );
+    }
     #[test]
     fn quotes_do_not_expand_shell_metacharacters() {
         assert_eq!(quote("a'$(echo b)"), "'a'\\''$(echo b)'");

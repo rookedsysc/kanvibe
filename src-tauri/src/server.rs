@@ -18,7 +18,7 @@ use std::{
     net::{SocketAddr, ToSocketAddrs, UdpSocket},
     sync::{
         atomic::{AtomicBool, AtomicU16, Ordering},
-        Arc, Mutex, OnceLock,
+        mpsc as std_mpsc, Arc, Mutex, OnceLock,
     },
     time::Duration,
 };
@@ -82,15 +82,13 @@ pub fn start(app: AppHandle) -> Result<(), String> {
     let port = listener.local_addr().map_err(|e| e.to_string())?.port();
     PORT.store(port, Ordering::Relaxed);
     listener.set_nonblocking(true).map_err(|e| e.to_string())?;
-    let app_events = app.clone();
+    let status_events = start_status_event_worker(app.clone());
     app.listen("kanvibe:board-event", move |event| {
         let Ok(event) = serde_json::from_str::<Value>(event.payload()) else {
             return;
         };
         if event["type"] == "task-status-changed" {
-            let mobile = integrations::mobile_notification(&event);
-            broadcast(mobile.clone());
-            integrations::deliver_push(app_events.clone(), mobile);
+            let _ = status_events.send(integrations::mobile_notification(&event));
         } else if event["type"] == "board-updated" {
             broadcast(json!({"type":"board-updated"}));
         }
@@ -134,6 +132,21 @@ pub fn start(app: AppHandle) -> Result<(), String> {
     });
     Ok(())
 }
+/// 알림 설정은 DB에서 읽으므로 이벤트 발행자를 막지 않도록 별도 스레드에서 읽고, 큐로 상태 변경 순서를 지킨다.
+fn start_status_event_worker(app: AppHandle) -> std_mpsc::Sender<Value> {
+    let (sender, events) = std_mpsc::channel::<Value>();
+    std::thread::spawn(move || {
+        for mobile in events {
+            integrations::publish_status_event(
+                mobile,
+                integrations::notification_settings(&app),
+                |event| broadcast(event.clone()),
+                |event| integrations::deliver_push(app.clone(), event),
+            );
+        }
+    });
+    sender
+}
 fn response(status: u16, value: Value) -> Response {
     (
         StatusCode::from_u16(status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
@@ -163,13 +176,9 @@ async fn endpoint(
             )
         }
     };
-    let payload = if body.is_empty() {
-        Value::Null
-    } else {
-        match serde_json::from_slice::<Value>(&body) {
-            Ok(v) if v.is_object() => v,
-            _ => return response(400, json!({"success":false,"error":"잘못된 요청입니다"})),
-        }
+    let body = match parse_request_body(&method, &path, &body) {
+        Some(body) => body,
+        None => return response(400, json!({"success":false,"error":"잘못된 요청입니다"})),
     };
     match tokio::task::spawn_blocking(move || {
         handle(
@@ -178,7 +187,7 @@ async fn endpoint(
             &path,
             &query,
             auth.as_deref(),
-            payload,
+            body,
             peer.ip().is_loopback(),
         )
     })
@@ -193,6 +202,33 @@ async fn endpoint(
             eprintln!("Hook request panicked: {e}");
             response(500, json!({"success":false,"error":"서버 오류"}))
         }
+    }
+}
+const NOTIFICATION_SETTINGS_PATH: &str = "/api/mobile/notification-settings";
+#[derive(Debug, PartialEq)]
+struct RequestBody {
+    payload: Value,
+    is_malformed: bool,
+}
+/// 대부분의 경로는 인증 전에 객체가 아닌 본문을 거절한다. 알림 설정 저장만은 인증과 값 검증 뒤에 응답을 정한다.
+fn parse_request_body(method: &str, path: &str, body: &[u8]) -> Option<RequestBody> {
+    if body.is_empty() {
+        return Some(RequestBody {
+            payload: Value::Null,
+            is_malformed: false,
+        });
+    }
+    let is_settings_update = method == "PATCH" && path == NOTIFICATION_SETTINGS_PATH;
+    match serde_json::from_slice::<Value>(body) {
+        Ok(payload) if payload.is_object() || is_settings_update => Some(RequestBody {
+            payload,
+            is_malformed: false,
+        }),
+        Err(_) if is_settings_update => Some(RequestBody {
+            payload: Value::Null,
+            is_malformed: true,
+        }),
+        _ => None,
     }
 }
 fn call(app: &AppHandle, namespace: &str, method: &str, args: Vec<Value>) -> Result<Value, String> {
@@ -210,9 +246,13 @@ fn handle(
     path: &str,
     query: &str,
     auth: Option<&str>,
-    payload: Value,
+    body: RequestBody,
     loopback: bool,
 ) -> Result<(u16, Value), String> {
+    let RequestBody {
+        payload,
+        is_malformed,
+    } = body;
     if method == "GET" && path == "/api/hooks/health" {
         return Ok((200, json!({"success":true})));
     }
@@ -292,6 +332,24 @@ fn handle(
             }
             _ => Ok((404, json!({"success":false,"error":"Not found"}))),
         };
+    }
+    if path == NOTIFICATION_SETTINGS_PATH && method == "GET" {
+        let settings = integrations::notification_settings(app)?;
+        return Ok((200, json!({"success":true,"settings":settings})));
+    }
+    if path == NOTIFICATION_SETTINGS_PATH && method == "PATCH" {
+        if is_malformed {
+            return Ok((400, json!({"success":false,"error":"잘못된 요청입니다"})));
+        }
+        return Ok(
+            match integrations::update_notification_settings(app, &payload)? {
+                Some(settings) => (200, json!({"success":true,"settings":settings})),
+                None => (
+                    400,
+                    json!({"success":false,"error":"알림 상태 설정이 올바르지 않습니다."}),
+                ),
+            },
+        );
     }
     if method == "POST" && path == "/api/mobile/notifications/read-all" {
         crate::runtime::notification(app, "markAllNotificationsRead", vec![])?;
@@ -623,7 +681,7 @@ fn resize_mobile(
     client: &str,
     cols: u16,
     rows: u16,
-) -> Result<(), String> {
+) -> Result<Option<String>, String> {
     if !(1..=500).contains(&cols) || !(1..=500).contains(&rows) {
         return Err("터미널 크기가 유효하지 않습니다".into());
     }
@@ -665,8 +723,8 @@ fn resize_mobile(
         all.insert(
             key.clone(),
             Viewport {
-                kind: target.kind,
-                host: target.host,
+                kind: target.kind.clone(),
+                host: target.host.clone(),
                 pane: pane.into(),
                 tab,
                 original,
@@ -680,7 +738,21 @@ fn resize_mobile(
         .clients
         .push((client.into(), pane.into(), cols, rows));
     viewport.pane = pane.into();
-    apply_resize(app, task, viewport, cols, rows)
+    apply_resize(app, task, viewport, cols, rows)?;
+    resized_pane_snapshot(&target, |target| {
+        integrations::snapshot_verified(target, pane)
+    })
+}
+/// tmux는 크기가 바뀌면 화면을 다시 배치하므로 바뀐 크기로 다시 읽어 첫 화면부터 어긋나지 않게 한다.
+fn resized_pane_snapshot(
+    target: &integrations::MirrorTarget,
+    read_snapshot: impl FnOnce(&integrations::MirrorTarget) -> Result<String, String>,
+) -> Result<Option<String>, String> {
+    if target.kind == "tmux" {
+        read_snapshot(target).map(Some)
+    } else {
+        Ok(None)
+    }
 }
 fn apply_resize(
     app: &AppHandle,
@@ -905,7 +977,7 @@ async fn pane_socket(
                     Some(bytes)=>{if fifo_overflow.as_ref().is_some_and(|flag|flag.load(Ordering::Acquire)){close(&mut socket,4000,"slow-consumer").await;break}pending_utf8.extend_from_slice(&bytes);let text=decode_utf8(&mut pending_utf8);if !text.is_empty()&&socket.send(Message::Text(text.into())).await.is_err(){break}},
                     None=>{close(&mut socket,4000,"session-not-running").await;break}
                 }
-            },_=poll.tick(),if target.kind=="zellij"=>{let target=target.clone();let p=pane.clone();match tokio::task::spawn_blocking(move||integrations::snapshot_verified(&target,&p)).await{Ok(Ok(snapshot))=>{if snapshot!=previous{previous=snapshot.clone();if socket.send(Message::Text(snapshot.into())).await.is_err(){break}}},_=>{close(&mut socket,4000,"session-not-running").await;break}}},event=events.recv()=>{if let Ok(event)=event{if event["type"]=="device-unpaired"&&text(&event,"deviceId")==device{close(&mut socket,4001,"device-unpaired").await;break}}},message=socket.recv()=>{match message{Some(Ok(Message::Text(input)))=>{let a=app.clone();let t=task.clone();let p=pane.clone();let input=input.to_string();let target=target.clone();let _=tokio::task::spawn_blocking(move||integrations::write_pane_verified(&a,&t,&p,&input,&target)).await;},Some(Ok(Message::Binary(bytes)))=>{if bytes.len()>256{continue}let Ok(v)=serde_json::from_slice::<Value>(&bytes)else{continue};if v["type"]!="resize"{continue}let (Some(cols),Some(rows))=(v["cols"].as_u64(),v["rows"].as_u64())else{continue};if !(1..=500).contains(&cols)||!(1..=500).contains(&rows){continue}let a=app.clone();let t=task.clone();let p=pane.clone();let c=client.clone();if !matches!(tokio::task::spawn_blocking(move||resize_mobile(&a,&t,&p,&c,cols as u16,rows as u16)).await,Ok(Ok(()))){close(&mut socket,4000,"resize-failed").await;break}},Some(Ok(Message::Pong(_)))=>alive=true,Some(Ok(Message::Ping(data)))=>{let _=socket.send(Message::Pong(data)).await;},Some(Ok(Message::Close(_)))|None|Some(Err(_))=>break}},_=ping.tick()=>{if !alive{break}alive=false;if socket.send(Message::Ping(vec![].into())).await.is_err(){break}}}
+            },_=poll.tick(),if target.kind=="zellij"=>{let target=target.clone();let p=pane.clone();match tokio::task::spawn_blocking(move||integrations::snapshot_verified(&target,&p)).await{Ok(Ok(snapshot))=>{if snapshot!=previous{previous=snapshot.clone();if socket.send(Message::Text(snapshot.into())).await.is_err(){break}}},_=>{close(&mut socket,4000,"session-not-running").await;break}}},event=events.recv()=>{if let Ok(event)=event{if event["type"]=="device-unpaired"&&text(&event,"deviceId")==device{close(&mut socket,4001,"device-unpaired").await;break}}},message=socket.recv()=>{match message{Some(Ok(Message::Text(input)))=>{let a=app.clone();let t=task.clone();let p=pane.clone();let input=input.to_string();let target=target.clone();let _=tokio::task::spawn_blocking(move||integrations::write_pane_verified(&a,&t,&p,&input,&target)).await;},Some(Ok(Message::Binary(bytes)))=>{if bytes.len()>256{continue}let Ok(v)=serde_json::from_slice::<Value>(&bytes)else{continue};if v["type"]!="resize"{continue}let (Some(cols),Some(rows))=(v["cols"].as_u64(),v["rows"].as_u64())else{continue};if !(1..=500).contains(&cols)||!(1..=500).contains(&rows){continue}let a=app.clone();let t=task.clone();let p=pane.clone();let c=client.clone();match tokio::task::spawn_blocking(move||resize_mobile(&a,&t,&p,&c,cols as u16,rows as u16)).await{Ok(Ok(Some(snapshot)))=>{if socket.send(Message::Text(snapshot.into())).await.is_err(){break}},Ok(Ok(None))=>{},_=>{close(&mut socket,4000,"resize-failed").await;break}}},Some(Ok(Message::Pong(_)))=>alive=true,Some(Ok(Message::Ping(data)))=>{let _=socket.send(Message::Pong(data)).await;},Some(Ok(Message::Close(_)))|None|Some(Err(_))=>break}},_=ping.tick()=>{if !alive{break}alive=false;if socket.send(Message::Ping(vec![].into())).await.is_err(){break}}}
         }
     }
     if let Some(subscription) = fifo.take() {
@@ -962,6 +1034,60 @@ mod tests {
     fn history_responses_hide_source_paths() {
         let value = without_source_ref(json!({"id":"s1","sourceRef":"/trusted/rollout.jsonl"}));
         assert_eq!(value, json!({"id":"s1"}));
+    }
+    #[test]
+    fn notification_settings_body_distinguishes_malformed_from_invalid() {
+        let parse = |body: &[u8]| parse_request_body("PATCH", NOTIFICATION_SETTINGS_PATH, body);
+        assert_eq!(
+            parse(b"{not-json"),
+            Some(RequestBody {
+                payload: Value::Null,
+                is_malformed: true
+            })
+        );
+        for (body, payload) in [
+            (&b"null"[..], Value::Null),
+            (&b"[]"[..], json!([])),
+            (&b""[..], Value::Null),
+        ] {
+            assert_eq!(
+                parse(body),
+                Some(RequestBody {
+                    payload,
+                    is_malformed: false
+                })
+            );
+        }
+    }
+    #[test]
+    fn other_routes_still_reject_non_object_bodies_before_auth() {
+        for (method, path) in [
+            ("GET", NOTIFICATION_SETTINGS_PATH),
+            ("POST", "/api/mobile/tasks"),
+        ] {
+            assert_eq!(parse_request_body(method, path, b"[]"), None);
+            assert_eq!(parse_request_body(method, path, b"{not-json"), None);
+        }
+    }
+    #[test]
+    fn only_tmux_resize_reads_a_fresh_snapshot() {
+        let target = |kind: &str| integrations::MirrorTarget {
+            kind: kind.into(),
+            name: "session".into(),
+            host: None,
+        };
+        assert_eq!(
+            resized_pane_snapshot(&target("tmux"), |_| Ok("history".into())),
+            Ok(Some("history".into()))
+        );
+        assert_eq!(
+            resized_pane_snapshot(&target("tmux"), |_| Err("capture failed".into())),
+            Err("capture failed".to_string())
+        );
+        assert_eq!(
+            resized_pane_snapshot(&target("terminal"), |_| panic!("must not read")),
+            Ok(None)
+        );
     }
     #[test]
     fn unavailable_surface_uses_conflict() {

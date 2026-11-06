@@ -147,6 +147,25 @@ CREATE TABLE IF NOT EXISTS task_diff_stats(task_id varchar(36) PRIMARY KEY NOT N
         let c = self.lock()?;
         c.query_row("SELECT id,title,description,status,branch_name,worktree_path,session_type,session_name,ssh_host,agent_type,project_id,base_branch,pr_url,priority,created_at,updated_at FROM kanban_tasks WHERE id=?1",[id],task_row).optional().map_err(|e|e.to_string())
     }
+    /// PR 조회를 기다리는 사이 바뀐 다른 값을 덮지 않도록 prUrl 하나만 갱신한다.
+    /// 삭제됐거나 브랜치가 바뀐 task는 건드리지 않고 영향받은 행 수 0으로 알린다.
+    pub fn update_task_pr_url(&self, id: &str, branch: &str, url: &str) -> Result<usize> {
+        self.lock()?
+            .execute(
+                "UPDATE kanban_tasks SET pr_url=?1,updated_at=?2 WHERE id=?3 AND branch_name=?4",
+                params![url, now(), id, branch],
+            )
+            .map_err(|e| e.to_string())
+    }
+    pub fn task_exists_on_branch(&self, id: &str, branch: &str) -> Result<bool> {
+        self.lock()?
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM kanban_tasks WHERE id=?1 AND branch_name=?2)",
+                [id, branch],
+                |r| r.get(0),
+            )
+            .map_err(|e| e.to_string())
+    }
     pub fn save_task(&self, v: &Value) -> Result<Value> {
         let task_id = nullable(v, "id").unwrap_or_else(id);
         let session_name = nullable(v, "sessionName").map(|name| {
@@ -286,6 +305,68 @@ fn task_row(r: &rusqlite::Row<'_>) -> rusqlite::Result<Value> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn opening_a_legacy_database_repairs_missing_diff_stats_and_cascades_deletes() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("app.db");
+        let task_id = {
+            let db = Database::open(&path).unwrap();
+            let task = db
+                .save_task(&json!({"title":"legacy","status":"todo","branchName":"feature"}))
+                .unwrap();
+            db.lock()
+                .unwrap()
+                .execute_batch("DROP TABLE task_diff_stats")
+                .unwrap();
+            text(&task, "id").to_string()
+        };
+        let db = Database::open(&path).unwrap();
+        let connection = db.lock().unwrap();
+        connection
+            .execute(
+                "INSERT INTO task_diff_stats(task_id,file_count,additions,deletions,updated_at) VALUES(?1,3,7,2,?2)",
+                params![task_id, now()],
+            )
+            .unwrap();
+        let additions: i64 = connection
+            .query_row(
+                "SELECT additions FROM task_diff_stats WHERE task_id=?1",
+                [&task_id],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(additions, 7);
+        connection
+            .execute("DELETE FROM kanban_tasks WHERE id=?1", [&task_id])
+            .unwrap();
+        let remaining: i64 = connection
+            .query_row("SELECT COUNT(*) FROM task_diff_stats", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(remaining, 0);
+    }
+    #[test]
+    fn pull_request_url_update_touches_only_the_url_of_the_same_branch() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = Database::open(&dir.path().join("app.db")).unwrap();
+        let task = db
+            .save_task(&json!({"title":"t","status":"todo","branchName":"feature"}))
+            .unwrap();
+        let id = text(&task, "id");
+        assert_eq!(
+            db.update_task_pr_url(id, "other", "https://x/1").unwrap(),
+            0
+        );
+        assert!(!db.task_exists_on_branch(id, "other").unwrap());
+        assert_eq!(
+            db.update_task_pr_url(id, "feature", "https://x/1").unwrap(),
+            1
+        );
+        assert!(db.task_exists_on_branch(id, "feature").unwrap());
+        let current = db.task(id).unwrap().unwrap();
+        assert_eq!(current["prUrl"], "https://x/1");
+        assert_eq!(current["title"], "t");
+        assert!(text(&current, "updatedAt") >= text(&task, "updatedAt"));
+    }
     #[test]
     fn zellij_names_are_limited_at_every_task_save_while_other_types_are_preserved() {
         let dir = tempfile::tempdir().unwrap();

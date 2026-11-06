@@ -1839,6 +1839,7 @@ mod tests {
             home: home.to_string_lossy().into(),
             bounded: false,
             recent: false,
+            query: String::new(),
         }
     }
     fn put(home: &Path, relative: &str, value: &Value, jsonl: bool) -> String {

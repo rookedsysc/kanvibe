@@ -1,9 +1,10 @@
 use crate::database::{self, text, Database, Result};
 use serde_json::{json, Value};
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, HashMap},
     io::Read,
     path::{Component, Path, PathBuf},
+    sync::{Condvar, Mutex, OnceLock, PoisonError},
     time::{Duration, Instant},
 };
 use tauri::{AppHandle, Manager};
@@ -19,7 +20,24 @@ pub fn run_input(command: &str, host: Option<&str>, input: Option<&[u8]>) -> Res
 }
 
 pub fn git(path: &str, args: &str, host: Option<&str>) -> Result<String> {
-    run(&format!("git -C {} {args}", quote(path)), host)
+    run(
+        &format!("git -C {} {args}", resolve_path_for_shell(path, host)),
+        host,
+    )
+}
+/// 경로를 셸 인자로 바꾼다. 앞의 `~`만 홈으로 확장하고 나머지 문자는 어떤 것이든 리터럴로 둔다.
+pub fn resolve_path_for_shell(path: &str, host: Option<&str>) -> String {
+    let Some(suffix) = path.strip_prefix('~') else {
+        return quote(path);
+    };
+    if host.is_some() {
+        format!("\"$HOME\"{}", quote(suffix))
+    } else {
+        quote(&format!(
+            "{}{suffix}",
+            dirs::home_dir().unwrap_or_default().to_string_lossy()
+        ))
+    }
 }
 pub fn read(path: &str, host: Option<&str>) -> Result<String> {
     if host.is_some() {
@@ -94,6 +112,87 @@ pub fn write(path: &str, content: &str, host: Option<&str>, executable: bool) ->
         }
     }
     Ok(())
+}
+/// 저장소 쪽 잠금 디렉터리로 여러 프로세스와 SSH client의 읽기·수정·교체를 직렬화한다.
+/// 파일이 없을 때만 빈 내용으로 넘기고, 읽기 실패는 다른 client의 기록을 덮지 않도록 그대로 실패시킨다.
+pub fn update_text(
+    path: &str,
+    host: Option<&str>,
+    update: impl FnOnce(&str) -> Result<String>,
+) -> Result<()> {
+    match host {
+        Some(host) => update_remote_text(path, update, &|command, input| {
+            run_input(command, Some(host), input)
+        }),
+        None => update_local_text(path, update),
+    }
+}
+fn update_local_text(path: &str, update: impl FnOnce(&str) -> Result<String>) -> Result<()> {
+    let lock = format!("{path}.lock");
+    if let Some(parent) = Path::new(path).parent() {
+        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    let mut attempt = 0;
+    loop {
+        match std::fs::create_dir(&lock) {
+            Ok(()) => break,
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists && attempt < 199 => {
+                attempt += 1;
+                std::thread::sleep(Duration::from_millis(50));
+            }
+            Err(e) => return Err(e.to_string()),
+        }
+    }
+    let updated = read_optional(path, None)
+        .and_then(|content| update(&content.unwrap_or_default()))
+        .and_then(|next| write(path, &next, None, false));
+    let released = std::fs::remove_dir(&lock).map_err(|e| e.to_string());
+    updated.and(released)
+}
+type RemoteCommandRunner<'a> = dyn Fn(&str, Option<&[u8]>) -> Result<String> + 'a;
+/// 큰 내용은 명령 인자가 아니라 표준 입력으로 보내므로 Linux의 인자 길이 제한(E2BIG)에 걸리지 않는다.
+fn update_remote_text(
+    path: &str,
+    update: impl FnOnce(&str) -> Result<String>,
+    run_command: &RemoteCommandRunner<'_>,
+) -> Result<()> {
+    let parent = Path::new(path)
+        .parent()
+        .ok_or("부모 경로 없음")?
+        .to_string_lossy();
+    let lock = quote(&format!("{path}.lock"));
+    let quoted_path = quote(path);
+    run_command(
+        &format!(
+            "mkdir -p -- {} || exit $?; kanvibe_attempt=0; while ! mkdir -- {lock} 2>/dev/null; do kanvibe_attempt=$((kanvibe_attempt + 1)); test \"$kanvibe_attempt\" -lt 200 || exit 1; sleep 0.05; done",
+            quote(&parent)
+        ),
+        None,
+    )?;
+    let updated = run_command(
+        &format!("if test -e {quoted_path}; then cat -- {quoted_path}; fi"),
+        None,
+    )
+    .and_then(|content| update(&content))
+    .and_then(|next| {
+        run_command(&remote_write_command(path, false)?, Some(next.as_bytes())).map(|_| ())
+    });
+    let released = run_command(&format!("rmdir -- {lock}"), None).map(|_| ());
+    updated.and(released)
+}
+/// 공유 상태 파일을 읽는다. 깨졌거나 객체가 아닌 내용은 없는 상태와 같게 다룬다.
+fn parse_json_object(content: &str) -> Value {
+    serde_json::from_str::<Value>(content)
+        .ok()
+        .filter(Value::is_object)
+        .unwrap_or_else(|| json!({}))
+}
+fn merge_project_state(content: &str, key: &str, value: Value) -> String {
+    let mut state = parse_json_object(content);
+    state["schemaVersion"] = json!(1);
+    state[key] = value;
+    state["updatedAt"] = json!(database::now());
+    state.to_string()
 }
 pub fn join(root: &str, relative: &str) -> String {
     Path::new(root)
@@ -172,7 +271,7 @@ pub fn create_worktree(
         path,
         &format!(
             "worktree add {} -b {} {}",
-            quote(&worktree),
+            resolve_path_for_shell(&worktree, host),
             quote(branch),
             quote(base)
         ),
@@ -226,13 +325,13 @@ pub fn persist_task(task: &Value, project: Option<&Value>, metadata: bool) -> Re
         if is_root {
             if let Some(project) = project {
                 let state_path = join(text(project, "repoPath"), ".kanvibe/project.json");
-                let mut state: Value =
-                    serde_json::from_str(&read(&state_path, host).unwrap_or_default())
-                        .unwrap_or(json!({}));
-                state["schemaVersion"] = json!(1);
-                state["priority"] = task["priority"].clone();
-                state["updatedAt"] = json!(database::now());
-                write(&state_path, &state.to_string(), host, false)?;
+                update_text(&state_path, host, |content| {
+                    Ok(merge_project_state(
+                        content,
+                        "priority",
+                        task["priority"].clone(),
+                    ))
+                })?;
             }
         } else {
             v["priority"] = task["priority"].clone();
@@ -336,12 +435,13 @@ pub fn ensure_exclude(path: &str, host: Option<&str>) -> Result<()> {
 pub fn persist_color(project: &Value) -> Result<()> {
     let path = join(text(project, "repoPath"), ".kanvibe/project.json");
     let host = project["sshHost"].as_str();
-    let mut state: Value =
-        serde_json::from_str(&read_optional(&path, host)?.unwrap_or_default()).unwrap_or(json!({}));
-    state["schemaVersion"] = json!(1);
-    state["projectColor"] = project["color"].clone();
-    state["updatedAt"] = json!(database::now());
-    write(&path, &state.to_string(), host, false)?;
+    update_text(&path, host, |content| {
+        Ok(merge_project_state(
+            content,
+            "projectColor",
+            project["color"].clone(),
+        ))
+    })?;
     ensure_exclude(text(project, "repoPath"), host)
 }
 
@@ -386,19 +486,24 @@ pub fn sync_project_state(db: &Database, project: &Value) -> Result<Value> {
         .collect::<std::collections::HashSet<_>>();
     for root in paths {
         let path = join(&root, ".kanvibe/project.json");
-        let mut state: Value =
-            serde_json::from_str(&read_optional(&path, host)?.unwrap_or_default())
-                .unwrap_or(json!({}));
-        let original = state.clone();
-        for key in ["projectColor", "priority"] {
-            if let Some(value) = shared.get(key) {
-                state[key] = value.clone();
-            }
-        }
-        if state != original {
-            state["schemaVersion"] = json!(1);
-            state["updatedAt"] = json!(database::now());
-            write(&path, &state.to_string(), host, false)?;
+        let state = parse_json_object(&read_optional(&path, host)?.unwrap_or_default());
+        let is_propagated = ["projectColor", "priority"].iter().all(|key| {
+            shared
+                .get(*key)
+                .is_none_or(|value| state.get(*key) == Some(value))
+        });
+        if !is_propagated {
+            update_text(&path, host, |content| {
+                let mut state = parse_json_object(content);
+                for key in ["projectColor", "priority"] {
+                    if let Some(value) = shared.get(key) {
+                        state[key] = value.clone();
+                    }
+                }
+                state["schemaVersion"] = json!(1);
+                state["updatedAt"] = json!(database::now());
+                Ok(state.to_string())
+            })?;
         }
     }
     Ok(shared)
@@ -500,50 +605,55 @@ pub fn diff_files(task: &Value) -> Result<Vec<Value>> {
     );
     let mut files: BTreeMap<String, Value> = BTreeMap::new();
     let mut stats = BTreeMap::new();
-    if let Ok(output) = git(root, &format!("diff {} --numstat -z", quote(&range)), host) {
-        let mut fields = output.split('\0');
-        while let Some(field) = fields.next() {
-            if field.is_empty() {
-                continue;
-            }
-            let parts = field.splitn(3, '\t').collect::<Vec<_>>();
-            if parts.len() < 3 {
-                continue;
-            }
-            let mut path = parts[2].to_string();
-            if path.is_empty() {
-                let _ = fields.next();
-                path = fields.next().unwrap_or("").to_string();
-            }
-            stats.insert(
-                path,
-                (
-                    parts[0].parse::<u64>().unwrap_or(0),
-                    parts[1].parse::<u64>().unwrap_or(0),
-                ),
-            );
+    // 잘못된 revision을 빈 diff로 넘기면 저장된 집계가 0으로 덮이므로 조회 실패를 그대로 돌려준다.
+    let output = git(root, &format!("diff {} --numstat -z", quote(&range)), host)?;
+    let mut fields = output.split('\0');
+    while let Some(field) = fields.next() {
+        if field.is_empty() {
+            continue;
         }
+        let parts = field.splitn(3, '\t').collect::<Vec<_>>();
+        if parts.len() < 3 {
+            continue;
+        }
+        let mut path = parts[2].to_string();
+        if path.is_empty() {
+            let _ = fields.next();
+            path = fields.next().unwrap_or("").to_string();
+        }
+        stats.insert(
+            path,
+            (
+                parts[0].parse::<u64>().unwrap_or(0),
+                parts[1].parse::<u64>().unwrap_or(0),
+            ),
+        );
     }
-    if let Ok(output) = git(
+    let output = git(
         root,
         &format!("diff {} --name-status -z", quote(&range)),
         host,
-    ) {
-        let mut fields = output.split('\0');
-        while let Some(status) = fields.next() {
-            if status.is_empty() {
-                continue;
-            }
-            let first = fields.next().unwrap_or("");
-            let p = if status.starts_with('R') || status.starts_with('C') {
-                fields.next().unwrap_or(first)
-            } else {
-                first
-            };
-            let counts = stats.get(p).copied().unwrap_or_default();
-            files.insert(p.into(),json!({"path":p,"status":status_name(status),"additions":counts.0,"deletions":counts.1}));
+    )?;
+    let mut fields = output.split('\0');
+    while let Some(status) = fields.next() {
+        if status.is_empty() {
+            continue;
         }
+        let first = fields.next().unwrap_or("");
+        let is_moved = status.starts_with('R') || status.starts_with('C');
+        let p = if is_moved {
+            fields.next().unwrap_or(first)
+        } else {
+            first
+        };
+        let counts = stats.get(p).copied().unwrap_or_default();
+        let mut file = json!({"path":p,"status":status_name(status),"additions":counts.0,"deletions":counts.1});
+        if is_moved {
+            file["originalPath"] = json!(first);
+        }
+        files.insert(p.into(), file);
     }
+    // -z 상태 출력은 rename 목적지를 먼저 주고 이전 경로를 별도 필드로 준다.
     let output = git(root, "status --porcelain -z --untracked-files=all", host)?;
     let mut fields = output.split('\0');
     while let Some(line) = fields.next() {
@@ -552,14 +662,43 @@ pub fn diff_files(task: &Value) -> Result<Vec<Value>> {
         }
         let xy = &line[..2];
         let p = &line[3..];
-        if xy.contains('R') || xy.contains('C') {
-            let _ = fields.next();
+        let original = if xy.contains('R') || xy.contains('C') {
+            fields.next()
+        } else {
+            None
+        };
+        if files.contains_key(p) {
+            continue;
         }
-        if xy.chars().any(|c| "?ADMR".contains(c)) {
-            files.entry(p.into()).or_insert(json!({"path":p,"status":if xy=="??"{"added"}else{status_name(xy)},"additions":0,"deletions":0}));
+        let Some(status) = working_tree_status(xy) else {
+            continue;
+        };
+        // 커밋된 rename을 다시 옮긴 경우에도 base 브랜치의 원본 경로와 집계를 잃지 않는다.
+        let previous = original.and_then(|path| files.remove(path));
+        let counted = |key: &str| previous.as_ref().map_or(json!(0), |file| file[key].clone());
+        let mut file = json!({"path":p,"status":status,"additions":counted("additions"),"deletions":counted("deletions")});
+        if let Some(original) = original {
+            file["originalPath"] = previous
+                .as_ref()
+                .and_then(|file| file.get("originalPath").cloned())
+                .unwrap_or_else(|| json!(original));
         }
+        files.insert(p.into(), file);
     }
     Ok(files.into_values().collect())
+}
+fn working_tree_status(xy: &str) -> Option<&'static str> {
+    if xy == "??" || xy.contains('A') {
+        Some("added")
+    } else if xy.contains('D') {
+        Some("deleted")
+    } else if xy.contains('M') {
+        Some("modified")
+    } else if xy.contains('R') {
+        Some("renamed")
+    } else {
+        None
+    }
 }
 fn status_name(s: &str) -> &str {
     if s.contains('A') {
@@ -756,7 +895,186 @@ fn read_opencode_plugin(path: &str, host: Option<&str>) -> Result<(String, Strin
     ))
 }
 fn is_opencode_plugin_reference(reference: &str) -> bool {
-    reference.ends_with("/kanvibe-plugin.js") || reference.ends_with("/kanvibe-plugin.ts")
+    regex::Regex::new(r"(?i)/kanvibe-plugin\.(?:[cm]?js|ts)$")
+        .is_ok_and(|pattern| pattern.is_match(reference))
+}
+/// `opencode debug config`의 뒤쪽 구간에는 깨진 JSON이 섞일 수 있어, 그때는 맨 위 plugin 블록만 다시 읽는다.
+fn extract_registered_plugin_urls(output: &str) -> Result<Vec<String>> {
+    let entries = serde_json::from_str::<Value>(output)
+        .ok()
+        .and_then(|config| config["plugin"].as_array().cloned())
+        .unwrap_or_default()
+        .into_iter()
+        .filter_map(|entry| entry.as_str().map(str::to_string))
+        .collect::<Vec<_>>();
+    if !entries.is_empty() {
+        return Ok(entries);
+    }
+    let block = regex::Regex::new(r#""plugin"\s*:\s*\[([\s\S]*?)\]\s*,\s*"[^"]+"\s*:"#)
+        .map_err(|e| e.to_string())?;
+    let Some(captures) = block.captures(output) else {
+        return Ok(vec![]);
+    };
+    regex::Regex::new(r#""((?:\\.|[^"\\])*)""#)
+        .map_err(|e| e.to_string())?
+        .captures_iter(&captures[1])
+        .map(|entry| serde_json::from_str(&format!("\"{}\"", &entry[1])).map_err(|e| e.to_string()))
+        .collect()
+}
+fn read_opencode_debug_config(program: &str, repo: &str, timeout: Duration) -> PluginRegistration {
+    let mut command = std::process::Command::new(program);
+    command
+        .args(["debug", "config"])
+        .current_dir(repo)
+        .stdin(std::process::Stdio::null())
+        .env_clear()
+        .envs(crate::runtime::shell_environment());
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        command.process_group(0);
+    }
+    let output = crate::ai::bounded_output(&mut command, timeout)?;
+    if !output.status.success() {
+        return Err(format!(
+            "{} (exit {})",
+            String::from_utf8_lossy(&output.stderr).trim(),
+            output.status.code().unwrap_or(-1)
+        ));
+    }
+    let urls = extract_registered_plugin_urls(&String::from_utf8_lossy(&output.stdout))?;
+    Ok(urls
+        .into_iter()
+        .filter(|url| is_opencode_plugin_reference(url))
+        .collect())
+}
+type PluginRegistration = Result<Vec<String>>;
+const PLUGIN_REGISTRATION_TTL: Duration = Duration::from_secs(5);
+const OPENCODE_DEBUG_CONFIG_TIMEOUT: Duration = Duration::from_secs(3);
+struct PluginRegistrationQuery {
+    outcome: Option<PluginRegistration>,
+    expires_at: Option<Instant>,
+    is_invalidated: bool,
+}
+/// 보드가 여러 task의 상태를 한꺼번에 물어도 OpenCode CLI는 경로마다 한 번만 돌도록 결과를 공유한다.
+struct PluginRegistrationQueries {
+    queries: Mutex<HashMap<String, PluginRegistrationQuery>>,
+    completed: Condvar,
+    ttl: Duration,
+}
+impl PluginRegistrationQueries {
+    fn new(ttl: Duration) -> Self {
+        Self {
+            queries: Mutex::new(HashMap::new()),
+            completed: Condvar::new(),
+            ttl,
+        }
+    }
+    fn get(&self, key: &str, query: impl FnOnce() -> PluginRegistration) -> PluginRegistration {
+        let mut queries = self.queries.lock().unwrap_or_else(PoisonError::into_inner);
+        loop {
+            match queries.get(key) {
+                // 진행 중인 조회는 끝날 때까지 기다린다. 무효화된 조회도 동시 CLI 실행을 막기 위해 끝난 뒤 새로 시작한다.
+                Some(existing) if existing.outcome.is_none() => {
+                    queries = self
+                        .completed
+                        .wait(queries)
+                        .unwrap_or_else(PoisonError::into_inner);
+                }
+                Some(existing)
+                    if !existing.is_invalidated
+                        && existing.expires_at.is_some_and(|at| at > Instant::now()) =>
+                {
+                    return existing.outcome.clone().unwrap_or_else(|| Ok(vec![]));
+                }
+                _ => break,
+            }
+        }
+        let now = Instant::now();
+        queries.retain(|_, existing| existing.expires_at.is_none_or(|at| at > now));
+        queries.insert(
+            key.to_string(),
+            PluginRegistrationQuery {
+                outcome: None,
+                expires_at: None,
+                is_invalidated: false,
+            },
+        );
+        drop(queries);
+        let outcome = query();
+        let mut queries = self.queries.lock().unwrap_or_else(PoisonError::into_inner);
+        if let Some(existing) = queries.get_mut(key) {
+            existing.outcome = Some(outcome.clone());
+            existing.expires_at = Some(Instant::now() + self.ttl);
+        }
+        self.completed.notify_all();
+        outcome
+    }
+    fn invalidate(&self, key: &str) {
+        let mut queries = self.queries.lock().unwrap_or_else(PoisonError::into_inner);
+        if let Some(existing) = queries.get_mut(key) {
+            existing.is_invalidated = true;
+        }
+    }
+}
+fn plugin_registration_queries() -> &'static PluginRegistrationQueries {
+    static QUERIES: OnceLock<PluginRegistrationQueries> = OnceLock::new();
+    QUERIES.get_or_init(|| PluginRegistrationQueries::new(PLUGIN_REGISTRATION_TTL))
+}
+fn plugin_registration_key(repo: &str) -> String {
+    std::path::absolute(repo)
+        .map(|path| path.to_string_lossy().into_owned())
+        .unwrap_or_else(|_| repo.to_string())
+}
+fn opencode_registered_plugin_urls(repo: &str) -> PluginRegistration {
+    let key = plugin_registration_key(repo);
+    plugin_registration_queries().get(&key, || {
+        read_opencode_debug_config("opencode", &key, OPENCODE_DEBUG_CONFIG_TIMEOUT)
+    })
+}
+fn invalidate_opencode_plugin_registration(repo: &str) {
+    plugin_registration_queries().invalidate(&plugin_registration_key(repo));
+}
+/// 검증 실패를 미등록과 구분해 알리고, 설치 여부에 쓸 등록 판정만 돌려준다.
+fn apply_opencode_plugin_registration(
+    state: &mut Value,
+    expected_plugin: &str,
+    registration: PluginRegistration,
+) -> bool {
+    match registration {
+        Ok(urls) => {
+            let is_registered = urls.iter().any(|url| url == expected_plugin);
+            state["hasRegisteredPlugin"] = json!(is_registered);
+            state["hasDuplicateKanvibePlugins"] = json!(urls.len() > 1);
+            state["registeredPluginUrls"] = json!(urls);
+            is_registered
+        }
+        Err(error) => {
+            state["pluginRegistrationError"] = json!(error);
+            false
+        }
+    }
+}
+/// 다른 client가 같은 순간 등록한 대상을 잃지 않도록 잠금 안에서 최신 내용을 읽어 합친다.
+fn register_hook_target(path: &str, url: &str, task_id: &str, host: Option<&str>) -> Result<()> {
+    update_text(&join(path, ".kanvibe/targets.json"), host, |content| {
+        Ok(merge_hook_target(content, url, task_id))
+    })
+}
+fn merge_hook_target(content: &str, url: &str, task_id: &str) -> String {
+    let mut state = parse_json_object(content);
+    let mut entries = state["targets"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|v| text(v, "url") != url)
+        .collect::<Vec<_>>();
+    entries.push(json!({"url":url,"taskId":task_id}));
+    state["schemaVersion"] = json!(1);
+    state["targets"] = json!(entries);
+    state["updatedAt"] = json!(database::now());
+    state.to_string()
 }
 pub fn install_hooks(
     path: &str,
@@ -766,25 +1084,18 @@ pub fn install_hooks(
 ) -> Result<()> {
     let url = hook_url(host)?;
     ensure_exclude(path, host)?;
-    let targets_path = join(path, ".kanvibe/targets.json");
-    let mut state: Value =
-        serde_json::from_str(&read_optional(&targets_path, host)?.unwrap_or_default())
-            .unwrap_or(json!({"schemaVersion":1,"targets":[]}));
-    let entries = state["targets"].as_array().cloned().unwrap_or_default();
-    let mut entries = entries
-        .into_iter()
-        .filter(|v| text(v, "url") != url)
-        .collect::<Vec<_>>();
-    entries.push(json!({"url":url,"taskId":task_id}));
-    state["targets"] = json!(entries);
-    state["updatedAt"] = json!(database::now());
-    write(&targets_path, &state.to_string(), host, false)?;
+    register_hook_target(path, &url, task_id, host)?;
     for provider in provider
         .map(|s| vec![s])
         .unwrap_or_else(|| vec!["claude", "gemini", "codex", "opencode"])
     {
         if provider == "opencode" {
-            install_opencode_plugin(path, task_id, host, &url)?;
+            let installed = install_opencode_plugin(path, task_id, host, &url);
+            // 실패해도 일부 파일이 바뀌었을 수 있으므로 이전 등록 판정을 재사용하지 않는다.
+            if host.is_none() {
+                invalidate_opencode_plugin_registration(path);
+            }
+            installed?;
             continue;
         }
         let settings_path = join(
@@ -947,39 +1258,19 @@ pub fn hooks_status(
             .ok()
             .map(|u| u.to_string())
             .unwrap_or_default();
-        let plugin_config = if host.is_some() {
-            None
+        // 원격 저장소는 OpenCode 설정 레지스트리를 조회할 수 없으므로 등록 여부를 검증하지 않는다.
+        let plugin_registered = if host.is_some() {
+            state["hasRegisteredPlugin"] = json!(true);
+            state["hasDuplicateKanvibePlugins"] = json!(false);
+            state["registeredPluginUrls"] = json!([]);
+            true
         } else {
-            run(
-                &format!("cd {} && opencode debug config", quote(path)),
-                None,
+            apply_opencode_plugin_registration(
+                &mut state,
+                &expected_plugin,
+                opencode_registered_plugin_urls(path),
             )
-            .ok()
         };
-        let registered_plugins = plugin_config
-            .as_deref()
-            .and_then(|s| {
-                serde_json::from_str::<Value>(s)
-                    .ok()
-                    .and_then(|v| v["plugin"].as_array().cloned())
-                    .or_else(|| {
-                        regex::Regex::new(r#""plugin"\s*:\s*(\[[\s\S]*?\])"#)
-                            .ok()?
-                            .captures(s)
-                            .and_then(|c| {
-                                serde_json::from_str::<Vec<Value>>(c.get(1)?.as_str()).ok()
-                            })
-                    })
-            })
-            .unwrap_or_default()
-            .into_iter()
-            .filter_map(|v| v.as_str().map(str::to_string))
-            .filter(|s| is_opencode_plugin_reference(s))
-            .collect::<Vec<_>>();
-        let plugin_registered = host.is_some() || registered_plugins.contains(&expected_plugin);
-        state["hasRegisteredPlugin"] = json!(plugin_registered);
-        state["hasDuplicateKanvibePlugins"] = json!(registered_plugins.len() > 1);
-        state["registeredPluginUrls"] = json!(registered_plugins);
         all &= plugin_registered;
 
         state["hasPluginEntry"] = json!(source.contains("KanvibePlugin"));
@@ -1030,7 +1321,6 @@ pub fn hooks_status(
 
 pub fn project_icon(project: &Value) -> Option<String> {
     use base64::Engine;
-    use std::sync::{Mutex, OnceLock};
     type CachedOwnerIcons = BTreeMap<String, (Instant, Option<String>)>;
     static CACHE: OnceLock<Mutex<CachedOwnerIcons>> = OnceLock::new();
     let remote = git(
@@ -1439,5 +1729,825 @@ mod opencode_plugin_migration_tests {
         assert!(!is_opencode_plugin_reference(
             "file:///tmp/a/personal-plugin.js"
         ));
+    }
+}
+
+#[cfg(test)]
+mod shared_state_concurrency_tests {
+    use super::*;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    #[derive(Clone, Copy, Debug)]
+    enum Access {
+        Local,
+        Remote,
+    }
+    /// SSH 대신 같은 명령을 로컬 셸에서 돌린다. Linux에서 관측한 명령 인자 제한도 함께 재현한다.
+    fn run_like_ssh(command: &str, input: Option<&[u8]>) -> Result<String> {
+        if command.len() >= 128 * 1024 {
+            return Err("spawn E2BIG".into());
+        }
+        run_input(command, None, input)
+    }
+    fn update_with(
+        access: Access,
+        path: &str,
+        update: impl FnOnce(&str) -> Result<String>,
+    ) -> Result<()> {
+        match access {
+            Access::Local => update_local_text(path, update),
+            Access::Remote => update_remote_text(path, update, &run_like_ssh),
+        }
+    }
+    fn read_state(path: &Path) -> Value {
+        serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap()
+    }
+    fn directory_entries(path: &Path) -> Vec<String> {
+        std::fs::read_dir(path)
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+            .collect()
+    }
+    fn concurrent_targets_survive(accesses: [Access; 8]) {
+        let dir = tempfile::tempdir().unwrap();
+        let repo = dir.path().join("kanvibe-targets-'");
+        let path = repo.join(".kanvibe/targets.json");
+        let target = path.to_str().unwrap();
+        std::thread::scope(|scope| {
+            for (index, access) in accesses.into_iter().enumerate() {
+                scope.spawn(move || {
+                    update_with(access, target, |content| {
+                        Ok(merge_hook_target(
+                            content,
+                            &format!("http://client-{index}:19736"),
+                            &format!("task-{index}"),
+                        ))
+                    })
+                    .unwrap()
+                });
+            }
+        });
+        let state = read_state(&path);
+        assert_eq!(state["schemaVersion"], 1);
+        let targets = state["targets"].as_array().unwrap();
+        assert_eq!(targets.len(), 8);
+        for index in 0..8 {
+            assert!(targets
+                .iter()
+                .any(|t| t["url"] == format!("http://client-{index}:19736")
+                    && t["taskId"] == format!("task-{index}")));
+        }
+        assert_eq!(directory_entries(path.parent().unwrap()), ["targets.json"]);
+    }
+    #[test]
+    fn concurrent_distinct_clients_survive_with_local_repository_access() {
+        concurrent_targets_survive([Access::Local; 8]);
+    }
+    #[test]
+    fn concurrent_distinct_clients_survive_with_remote_repository_access() {
+        concurrent_targets_survive([Access::Remote; 8]);
+    }
+    #[test]
+    fn concurrent_distinct_clients_survive_with_mixed_repository_access() {
+        use Access::{Local, Remote};
+        concurrent_targets_survive([Remote, Local, Remote, Local, Remote, Local, Remote, Local]);
+    }
+    #[test]
+    fn concurrent_color_and_priority_are_both_preserved() {
+        use Access::{Local, Remote};
+        for (color_access, priority_access) in [(Local, Local), (Remote, Remote), (Remote, Local)] {
+            for priority in [json!("high"), Value::Null] {
+                let dir = tempfile::tempdir().unwrap();
+                let path = dir.path().join("kanvibe-project-'/.kanvibe/project.json");
+                let state_path = path.to_str().unwrap();
+                update_with(color_access, state_path, |content| {
+                    Ok(merge_project_state(
+                        content,
+                        "projectColor",
+                        json!("#111111"),
+                    ))
+                })
+                .unwrap();
+                update_with(priority_access, state_path, |content| {
+                    Ok(merge_project_state(content, "priority", json!("low")))
+                })
+                .unwrap();
+                std::thread::scope(|scope| {
+                    scope.spawn(|| {
+                        update_with(color_access, state_path, |content| {
+                            Ok(merge_project_state(
+                                content,
+                                "projectColor",
+                                json!("#222222"),
+                            ))
+                        })
+                        .unwrap()
+                    });
+                    scope.spawn(|| {
+                        update_with(priority_access, state_path, |content| {
+                            Ok(merge_project_state(content, "priority", priority.clone()))
+                        })
+                        .unwrap()
+                    });
+                });
+                let state = read_state(&path);
+                assert_eq!(state["projectColor"], "#222222");
+                assert_eq!(state["priority"], priority);
+                assert_eq!(directory_entries(path.parent().unwrap()), ["project.json"]);
+            }
+        }
+    }
+    #[test]
+    fn independent_processes_keep_each_others_registrations() {
+        // 같은 테스트 바이너리를 작업 프로세스로 다시 띄운다. 값은 자식 프로세스 환경으로만 넘긴다.
+        if let Ok(target) = std::env::var("KANVIBE_TEST_TARGETS_FILE") {
+            let client = std::env::var("KANVIBE_TEST_TARGETS_CLIENT").unwrap();
+            std::thread::scope(|scope| {
+                for index in 0..4 {
+                    let (target, client) = (&target, &client);
+                    scope.spawn(move || {
+                        update_local_text(target, |content| {
+                            Ok(merge_hook_target(
+                                content,
+                                &format!("http://client-{client}-{index}"),
+                                &format!("task-{index}"),
+                            ))
+                        })
+                        .unwrap()
+                    });
+                }
+            });
+            return;
+        }
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("repo/.kanvibe/targets.json");
+        let workers = [0, 1].map(|client| {
+            std::process::Command::new(std::env::current_exe().unwrap())
+                .args([
+                    "--exact",
+                    "git::shared_state_concurrency_tests::independent_processes_keep_each_others_registrations",
+                ])
+                .env("KANVIBE_TEST_TARGETS_FILE", &path)
+                .env("KANVIBE_TEST_TARGETS_CLIENT", client.to_string())
+                .stdout(std::process::Stdio::null())
+                .spawn()
+                .unwrap()
+        });
+        for mut worker in workers {
+            assert!(worker.wait().unwrap().success());
+        }
+        assert_eq!(read_state(&path)["targets"].as_array().unwrap().len(), 8);
+        assert_eq!(directory_entries(path.parent().unwrap()), ["targets.json"]);
+    }
+    #[test]
+    fn failed_update_releases_lock_without_replacing_saved_contents() {
+        for access in [Access::Local, Access::Remote] {
+            let dir = tempfile::tempdir().unwrap();
+            let path = dir.path().join("targets.json");
+            let target = path.to_str().unwrap();
+            std::fs::write(&path, "saved").unwrap();
+            let failed = update_with(access, target, |_| Err("update failed".into()));
+            assert_eq!(failed.unwrap_err(), "update failed");
+            assert_eq!(std::fs::read_to_string(&path).unwrap(), "saved");
+            update_with(access, target, |content| Ok(format!("{content} next"))).unwrap();
+            assert_eq!(std::fs::read_to_string(&path).unwrap(), "saved next");
+            assert_eq!(directory_entries(dir.path()), ["targets.json"]);
+        }
+    }
+    #[test]
+    fn read_failure_is_not_interpreted_as_an_absent_file() {
+        for access in [Access::Local, Access::Remote] {
+            let dir = tempfile::tempdir().unwrap();
+            let path = dir.path().join("targets.json");
+            std::fs::create_dir(&path).unwrap();
+            let is_called = AtomicUsize::new(0);
+            let result = update_with(access, path.to_str().unwrap(), |_| {
+                is_called.fetch_add(1, Ordering::Relaxed);
+                Ok("replacement".into())
+            });
+            assert!(result.is_err(), "{access:?}");
+            assert_eq!(is_called.load(Ordering::Relaxed), 0);
+            assert_eq!(directory_entries(dir.path()), ["targets.json"]);
+        }
+    }
+    #[test]
+    fn readers_only_observe_complete_json_while_large_writes_run() {
+        for access in [Access::Local, Access::Remote] {
+            let dir = tempfile::tempdir().unwrap();
+            let path = dir.path().join(".kanvibe/targets.json");
+            let target = path.to_str().unwrap();
+            update_with(access, target, |content| {
+                Ok(merge_hook_target(content, "http://initial", "initial"))
+            })
+            .unwrap();
+            let is_completed = std::sync::atomic::AtomicBool::new(false);
+            let reads = std::thread::scope(|scope| {
+                let observer = scope.spawn(|| {
+                    let mut reads = 0;
+                    while !is_completed.load(Ordering::Relaxed) {
+                        assert_eq!(read_state(&path)["schemaVersion"], 1);
+                        reads += 1;
+                    }
+                    reads
+                });
+                let writers = (0..4)
+                    .map(|index| {
+                        scope.spawn(move || {
+                            update_with(access, target, |content| {
+                                Ok(merge_hook_target(
+                                    content,
+                                    &format!("http://client-{index}"),
+                                    &"x".repeat(100_000),
+                                ))
+                            })
+                            .unwrap()
+                        })
+                    })
+                    .collect::<Vec<_>>();
+                // 작성자가 실패해도 관찰 스레드가 끝나도록 결과 확인을 뒤로 미룬다.
+                let written = writers
+                    .into_iter()
+                    .map(|writer| writer.join())
+                    .collect::<Vec<_>>();
+                is_completed.store(true, Ordering::Relaxed);
+                assert!(written.iter().all(|result| result.is_ok()));
+                observer.join().unwrap()
+            });
+            assert!(reads > 0);
+            assert_eq!(read_state(&path)["targets"].as_array().unwrap().len(), 5);
+        }
+    }
+    #[test]
+    fn non_object_shared_state_is_replaced_without_panicking() {
+        assert_eq!(
+            serde_json::from_str::<Value>(&merge_hook_target("[1]", "http://a", "t")).unwrap()
+                ["targets"][0]["url"],
+            "http://a"
+        );
+        assert_eq!(
+            serde_json::from_str::<Value>(&merge_project_state("null", "priority", Value::Null))
+                .unwrap()["schemaVersion"],
+            1
+        );
+    }
+}
+
+#[cfg(test)]
+mod opencode_registration_tests {
+    use super::*;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    fn counting_query(count: &AtomicUsize, urls: &[&str]) -> PluginRegistration {
+        count.fetch_add(1, Ordering::SeqCst);
+        Ok(urls.iter().map(|url| url.to_string()).collect())
+    }
+    #[test]
+    fn extracts_plugin_urls_from_json_and_the_plugin_block_of_broken_output() {
+        let valid =
+            json!({"plugin":["file:///tmp/alpha.ts","file:///tmp/kanvibe-plugin.ts"],"agent":{}});
+        assert_eq!(
+            extract_registered_plugin_urls(&valid.to_string()).unwrap(),
+            ["file:///tmp/alpha.ts", "file:///tmp/kanvibe-plugin.ts"]
+        );
+        let broken = "{\n  \"plugin\": [\n    \"file:///tmp/alpha.ts\",\n    \"file:///tmp/kanvibe-plugin.ts\"\n  ],\n  \"agent\": {\n    \"custom\": {\n      \"template\": \"line 1\nline 2\"\n    }\n  }\n}";
+        assert_eq!(
+            extract_registered_plugin_urls(broken).unwrap(),
+            ["file:///tmp/alpha.ts", "file:///tmp/kanvibe-plugin.ts"]
+        );
+        assert!(extract_registered_plugin_urls("not config")
+            .unwrap()
+            .is_empty());
+    }
+    #[test]
+    fn recognizes_every_kanvibe_plugin_extension_case_insensitively() {
+        for url in [
+            "file:///tmp/kanvibe-plugin.ts",
+            "file:///tmp/kanvibe-plugin.js",
+            "file:///tmp/kanvibe-plugin.mjs",
+            "file:///tmp/kanvibe-plugin.cjs",
+            "file:///tmp/KANVIBE-PLUGIN.JS",
+        ] {
+            assert!(is_opencode_plugin_reference(url), "{url}");
+        }
+        assert!(!is_opencode_plugin_reference("file:///tmp/not-kanvibe.ts"));
+    }
+    #[test]
+    fn shares_concurrent_queries_and_caches_until_the_time_limit() {
+        let queries = PluginRegistrationQueries::new(Duration::from_millis(300));
+        let count = AtomicUsize::new(0);
+        std::thread::scope(|scope| {
+            for _ in 0..10 {
+                scope.spawn(|| {
+                    queries
+                        .get("/same/repo", || {
+                            std::thread::sleep(Duration::from_millis(50));
+                            counting_query(&count, &[])
+                        })
+                        .unwrap()
+                });
+            }
+        });
+        queries
+            .get("/same/repo", || counting_query(&count, &[]))
+            .unwrap();
+        assert_eq!(count.load(Ordering::SeqCst), 1);
+        std::thread::sleep(Duration::from_millis(350));
+        queries
+            .get("/same/repo", || counting_query(&count, &[]))
+            .unwrap();
+        assert_eq!(count.load(Ordering::SeqCst), 2);
+        queries
+            .get("/other/repo", || counting_query(&count, &[]))
+            .unwrap();
+        assert_eq!(count.load(Ordering::SeqCst), 3);
+    }
+    #[test]
+    fn normalizes_equivalent_repository_paths_to_one_key() {
+        assert_eq!(
+            plugin_registration_key("/same/repo/."),
+            plugin_registration_key("/same/repo")
+        );
+    }
+    #[test]
+    fn retains_failure_for_the_cache_window_instead_of_reporting_empty_registration() {
+        let queries = PluginRegistrationQueries::new(Duration::from_millis(200));
+        let count = AtomicUsize::new(0);
+        let failing = || {
+            count.fetch_add(1, Ordering::SeqCst);
+            Err("OpenCode timed out".to_string())
+        };
+        assert_eq!(
+            queries.get("/slow", failing).unwrap_err(),
+            "OpenCode timed out"
+        );
+        assert_eq!(
+            queries.get("/slow", failing).unwrap_err(),
+            "OpenCode timed out"
+        );
+        assert_eq!(count.load(Ordering::SeqCst), 1);
+        std::thread::sleep(Duration::from_millis(250));
+        assert!(queries.get("/slow", || Ok(vec![])).unwrap().is_empty());
+    }
+    #[test]
+    fn invalidation_discards_a_completed_query() {
+        let queries = PluginRegistrationQueries::new(Duration::from_secs(5));
+        let count = AtomicUsize::new(0);
+        queries
+            .get("/installed", || counting_query(&count, &[]))
+            .unwrap();
+        queries.invalidate("/installed");
+        let fresh = queries
+            .get("/installed", || counting_query(&count, &["fresh"]))
+            .unwrap();
+        assert_eq!(fresh, ["fresh"]);
+        assert_eq!(count.load(Ordering::SeqCst), 2);
+    }
+    #[test]
+    fn invalidated_query_in_flight_finishes_before_one_fresh_query_is_shared() {
+        let queries = PluginRegistrationQueries::new(Duration::from_secs(5));
+        let count = AtomicUsize::new(0);
+        let (started, wait_started) = std::sync::mpsc::channel();
+        let (finish, wait_finish) = std::sync::mpsc::channel::<()>();
+        std::thread::scope(|scope| {
+            let (shared_queries, shared_count) = (&queries, &count);
+            let old = scope.spawn(move || {
+                shared_queries.get("/installing", || {
+                    started.send(()).unwrap();
+                    wait_finish.recv().unwrap();
+                    counting_query(shared_count, &[])
+                })
+            });
+            wait_started.recv().unwrap();
+            queries.invalidate("/installing");
+            let fresh = [(); 2].map(|_| {
+                scope.spawn(|| {
+                    queries.get("/installing", || {
+                        std::thread::sleep(Duration::from_millis(30));
+                        counting_query(&count, &["fresh"])
+                    })
+                })
+            });
+            // 무효화된 조회가 끝나기 전에는 새 CLI를 띄우지 않는다.
+            std::thread::sleep(Duration::from_millis(50));
+            assert_eq!(count.load(Ordering::SeqCst), 0);
+            finish.send(()).unwrap();
+            assert!(old.join().unwrap().unwrap().is_empty());
+            for query in fresh {
+                assert_eq!(query.join().unwrap().unwrap(), ["fresh"]);
+            }
+        });
+        assert_eq!(count.load(Ordering::SeqCst), 2);
+    }
+    fn fake_opencode(dir: &Path, body: &str) -> String {
+        use std::os::unix::fs::PermissionsExt;
+        let path = dir.join("opencode");
+        std::fs::write(&path, format!("#!/bin/sh\n{body}\n")).unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+        path.to_string_lossy().into_owned()
+    }
+    #[test]
+    fn debug_config_runs_in_the_repository_and_keeps_only_kanvibe_plugins() {
+        let dir = tempfile::tempdir().unwrap();
+        let repo = std::fs::canonicalize(dir.path()).unwrap();
+        let program = fake_opencode(
+            &repo,
+            r#"printf '{"plugin":["file://%s/kanvibe-plugin.js","file:///tmp/alpha.ts"],"argv":"%s"}' "$PWD" "$*""#,
+        );
+        let urls =
+            read_opencode_debug_config(&program, repo.to_str().unwrap(), Duration::from_secs(3))
+                .unwrap();
+        assert_eq!(
+            urls,
+            [format!("file://{}/kanvibe-plugin.js", repo.display())]
+        );
+    }
+    #[test]
+    fn slow_debug_config_is_killed_with_its_children_and_reported_as_failure() {
+        let dir = tempfile::tempdir().unwrap();
+        let marker = dir.path().join("child.pid");
+        let program = fake_opencode(
+            dir.path(),
+            &format!(
+                "sleep 30 &\nprintf '%s' $! > {}\nwait",
+                quote(marker.to_str().unwrap())
+            ),
+        );
+        let started = Instant::now();
+        let error = read_opencode_debug_config(
+            &program,
+            dir.path().to_str().unwrap(),
+            Duration::from_millis(1500),
+        )
+        .unwrap_err();
+        assert!(error.contains("timed out"), "{error}");
+        assert!(started.elapsed() < Duration::from_secs(10));
+        let child = std::fs::read_to_string(&marker).unwrap();
+        let mut is_child_alive = true;
+        for _ in 0..50 {
+            is_child_alive = std::process::Command::new("kill")
+                .args(["-0", child.trim()])
+                .stderr(std::process::Stdio::null())
+                .status()
+                .unwrap()
+                .success();
+            if !is_child_alive {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        assert!(!is_child_alive, "자식 프로세스가 남아 있으면 안 된다");
+    }
+    #[test]
+    fn exited_debug_config_with_lingering_pipe_does_not_outlast_the_time_limit() {
+        let dir = tempfile::tempdir().unwrap();
+        let program = fake_opencode(dir.path(), "sleep 30 &\nexit 0");
+        let started = Instant::now();
+        let error = read_opencode_debug_config(
+            &program,
+            dir.path().to_str().unwrap(),
+            Duration::from_millis(1500),
+        )
+        .unwrap_err();
+        assert!(error.contains("timed out"), "{error}");
+        assert!(started.elapsed() < Duration::from_secs(10));
+    }
+    #[test]
+    fn missing_cli_and_nonzero_exit_are_failures_not_empty_registrations() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().to_str().unwrap();
+        assert!(read_opencode_debug_config(
+            &dir.path().join("absent").to_string_lossy(),
+            root,
+            Duration::from_secs(1)
+        )
+        .is_err());
+        let program = fake_opencode(dir.path(), "echo boom >&2\nexit 3");
+        let error = read_opencode_debug_config(&program, root, Duration::from_secs(3)).unwrap_err();
+        assert!(
+            error.contains("boom") && error.contains("exit 3"),
+            "{error}"
+        );
+    }
+    #[test]
+    fn registration_failure_is_distinct_from_an_unregistered_plugin() {
+        let mut state = json!({});
+        let is_registered = apply_opencode_plugin_registration(
+            &mut state,
+            "file:///repo/kanvibe-plugin.js",
+            Err("OpenCode timeout".into()),
+        );
+        assert!(!is_registered);
+        assert_eq!(state, json!({"pluginRegistrationError":"OpenCode timeout"}));
+    }
+    #[test]
+    fn global_plugin_diagnostics_survive_when_the_local_plugin_is_not_registered() {
+        let mut state = json!({});
+        let is_registered = apply_opencode_plugin_registration(
+            &mut state,
+            "file:///repo/kanvibe-plugin.js",
+            Ok(vec![
+                "file:///global/kanvibe-plugin.ts".into(),
+                "file:///other/kanvibe-plugin.ts".into(),
+            ]),
+        );
+        assert!(!is_registered);
+        assert_eq!(state["hasRegisteredPlugin"], false);
+        assert_eq!(state["hasDuplicateKanvibePlugins"], true);
+        assert!(state.get("pluginRegistrationError").is_none());
+    }
+}
+
+#[cfg(test)]
+mod dev_behaviour_tests {
+    use super::*;
+
+    fn init_repo(root: &Path) -> &str {
+        let path = root.to_str().unwrap();
+        for args in [
+            vec!["init", "-b", "main", path],
+            vec!["-C", path, "config", "user.name", "QA"],
+            vec!["-C", path, "config", "user.email", "qa@example.test"],
+        ] {
+            assert!(std::process::Command::new("git")
+                .args(args)
+                .output()
+                .unwrap()
+                .status
+                .success());
+        }
+        path
+    }
+    fn commit_all(path: &str, message: &str) {
+        git(path, "add .", None).unwrap();
+        git(path, &format!("commit -m {}", quote(message)), None).unwrap();
+    }
+    fn task_on(path: &str, base: &str, branch: &str) -> Value {
+        json!({"worktreePath":path,"baseBranch":base,"branchName":branch})
+    }
+    #[test]
+    fn shell_paths_expand_only_the_leading_home_and_keep_the_rest_literal() {
+        assert_eq!(
+            resolve_path_for_shell("/workspace", Some("host")),
+            "'/workspace'"
+        );
+        assert_eq!(
+            resolve_path_for_shell("~/work", Some("host")),
+            "\"$HOME\"'/work'"
+        );
+        let suffix = "/$ABSENT$(printf nope)`printf nope`\"'";
+        let output = std::process::Command::new("sh")
+            .args([
+                "-c",
+                &format!(
+                    "printf '%s' {}",
+                    resolve_path_for_shell(&format!("~{suffix}"), Some("fixture"))
+                ),
+            ])
+            .env("HOME", "/fixture/home")
+            .output()
+            .unwrap();
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout),
+            format!("/fixture/home{suffix}")
+        );
+    }
+    #[test]
+    fn git_and_worktree_operations_use_hostile_paths_and_branches_literally() {
+        let dir = tempfile::tempdir().unwrap();
+        let base = std::fs::canonicalize(dir.path()).unwrap();
+        let repo = base.join("repo$ABSENT$(printf substituted)`printf tick`\"quote'");
+        std::fs::create_dir(&repo).unwrap();
+        let path = init_repo(&repo);
+        git(path, "commit --allow-empty -m fixture", None).unwrap();
+        assert_eq!(
+            git(path, "rev-parse --is-inside-work-tree", None)
+                .unwrap()
+                .trim(),
+            "true"
+        );
+        assert_eq!(
+            git(path, "symbolic-ref --short HEAD", None).unwrap().trim(),
+            "main"
+        );
+        let project = json!({"repoPath":path,"sshHost":null});
+        assert_eq!(worktrees(&project).unwrap()[0]["path"], path);
+
+        // 명령 치환이 실행됐다면 브랜치 이름에서 $(...) 부분이 사라진다.
+        let hostile = "feature/literal$(printf${IFS}expanded)";
+        let (worktree, _) = create_worktree(&project, hostile, "main", "tmux").unwrap();
+        assert!(Path::new(&worktree).is_dir());
+        assert!(worktrees(&project)
+            .unwrap()
+            .iter()
+            .any(|tree| tree["path"] == json!(worktree) && tree["branch"] == hostile));
+        git(
+            path,
+            &format!(
+                "worktree remove --force {}",
+                resolve_path_for_shell(&worktree, None)
+            ),
+            None,
+        )
+        .unwrap();
+        git(path, &format!("branch -D -- {}", quote(hostile)), None).unwrap();
+        assert_eq!(worktrees(&project).unwrap().len(), 1);
+    }
+    #[test]
+    fn hook_status_follows_the_common_task_state_location() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = init_repo(dir.path());
+        let project = json!({"repoPath":path,"defaultBranch":"main","sshHost":null});
+        let status = dir.path().join(".kanvibe/status.json");
+        let feature = json!({"branchName":"feature","worktreePath":null,"status":"done"});
+        persist_task(&feature, Some(&project), false).unwrap();
+        assert!(!status.exists(), "worktree 없는 브랜치는 저장 위치가 없다");
+        let root = json!({"branchName":"main","worktreePath":null,"status":"done"});
+        persist_task(&root, Some(&project), false).unwrap();
+        assert!(std::fs::read_to_string(status)
+            .unwrap()
+            .contains("\"status\": \"done\""));
+    }
+    #[test]
+    fn commented_codex_sections_keep_their_boundaries() {
+        let content =
+            "[features] # user settings\nfast_mode = true\n[other] # next table\nhooks = false\n";
+        let updated = upsert_codex_config(content);
+        assert_eq!(
+            updated,
+            "[features] # user settings\nfast_mode = true\nhooks = true\n[other] # next table\nhooks = false\n"
+        );
+        assert_eq!(upsert_codex_config(&updated), updated);
+        assert!(codex_hooks_enabled(&updated));
+    }
+    #[test]
+    fn diff_reads_unusual_file_names_and_rename_destinations() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = init_repo(dir.path());
+        std::fs::write(dir.path().join("committed old.txt"), "committed rename\n").unwrap();
+        std::fs::write(dir.path().join("working old.txt"), "working rename\n").unwrap();
+        commit_all(path, "initial");
+        git(path, "checkout -b feature", None).unwrap();
+        git(
+            path,
+            &format!(
+                "mv {} {}",
+                quote("committed old.txt"),
+                quote("committed 한글\tnew.txt")
+            ),
+            None,
+        )
+        .unwrap();
+        std::fs::write(dir.path().join("stats\n\t한글.txt"), "first\nsecond\n").unwrap();
+        commit_all(path, "rename");
+        git(
+            path,
+            &format!(
+                "mv {} {}",
+                quote("working old.txt"),
+                quote("working 새 파일.txt")
+            ),
+            None,
+        )
+        .unwrap();
+        let untracked = [
+            "hello world.txt",
+            "한글.txt",
+            "tab\tfile.txt",
+            "line\nfile.txt",
+        ];
+        for name in untracked {
+            std::fs::write(dir.path().join(name), "original\n").unwrap();
+        }
+        let files = diff_files(&task_on(path, "main", "feature")).unwrap();
+        let mut names = files
+            .iter()
+            .map(|f| text(f, "path").to_string())
+            .collect::<Vec<_>>();
+        names.sort();
+        let mut expected = untracked.map(str::to_string).to_vec();
+        expected.extend([
+            "committed 한글\tnew.txt".into(),
+            "working 새 파일.txt".into(),
+            "stats\n\t한글.txt".into(),
+        ]);
+        expected.sort();
+        assert_eq!(names, expected);
+        let stats = files
+            .iter()
+            .find(|f| f["path"] == "stats\n\t한글.txt")
+            .unwrap();
+        assert_eq!(
+            stats,
+            &json!({"path":"stats\n\t한글.txt","status":"added","additions":2,"deletions":0})
+        );
+        let mut renamed = files
+            .iter()
+            .filter(|f| f["status"] == "renamed")
+            .map(|f| (text(f, "path"), text(f, "originalPath")))
+            .collect::<Vec<_>>();
+        renamed.sort();
+        assert_eq!(
+            renamed,
+            [
+                ("committed 한글\tnew.txt", "committed old.txt"),
+                ("working 새 파일.txt", "working old.txt")
+            ]
+        );
+        for name in &expected {
+            let target = safe_path(path, name, None).unwrap();
+            assert!(!read(&target, None).unwrap().is_empty());
+            write(&target, "updated\n", None, false).unwrap();
+            assert_eq!(
+                std::fs::read_to_string(dir.path().join(name)).unwrap(),
+                "updated\n"
+            );
+        }
+    }
+    #[test]
+    fn rename_keeps_the_base_path_for_committed_staged_and_chained_moves() {
+        let old_path = "old 한글\tfile.txt";
+        let new_path = "new 한글\nfile.txt";
+        let original = (0..12)
+            .map(|i| format!("original line {i}\n"))
+            .collect::<String>();
+        for kind in ["committed", "staged", "chained"] {
+            for is_edited in [false, true] {
+                let dir = tempfile::tempdir().unwrap();
+                let path = init_repo(dir.path());
+                std::fs::write(dir.path().join(old_path), &original).unwrap();
+                commit_all(path, "initial");
+                git(path, "checkout -b feature", None).unwrap();
+                git(
+                    path,
+                    &format!("mv {} {}", quote(old_path), quote(new_path)),
+                    None,
+                )
+                .unwrap();
+                let current = if is_edited {
+                    original.replace("original line 5", "changed line 5")
+                } else {
+                    original.clone()
+                };
+                std::fs::write(dir.path().join(new_path), &current).unwrap();
+                git(path, "add .", None).unwrap();
+                if kind != "staged" {
+                    git(path, "commit -m rename", None).unwrap();
+                }
+                let final_path = if kind == "chained" {
+                    git(path, &format!("mv {} final.txt", quote(new_path)), None).unwrap();
+                    "final.txt"
+                } else {
+                    new_path
+                };
+                let files = diff_files(&task_on(path, "main", "feature")).unwrap();
+                assert_eq!(files.len(), 1, "{kind} {is_edited}: {files:?}");
+                assert_eq!(files[0]["path"], final_path);
+                assert_eq!(files[0]["originalPath"], old_path);
+                assert_eq!(files[0]["status"], "renamed");
+                let shown = git(
+                    path,
+                    &format!("show {}", quote(&format!("main:{old_path}"))),
+                    None,
+                )
+                .unwrap();
+                assert_eq!(shown, original);
+                assert_eq!(
+                    read(&safe_path(path, final_path, None).unwrap(), None).unwrap(),
+                    current
+                );
+            }
+        }
+    }
+    #[test]
+    fn modified_staged_rename_reports_modified_like_the_working_tree_mapping() {
+        assert_eq!(working_tree_status("RM"), Some("modified"));
+        assert_eq!(working_tree_status("R "), Some("renamed"));
+        assert_eq!(working_tree_status("??"), Some("added"));
+        assert_eq!(working_tree_status("UU"), None);
+    }
+    #[test]
+    fn invalid_revision_fails_but_an_empty_diff_succeeds_with_zero_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = init_repo(dir.path());
+        std::fs::write(dir.path().join("tracked.txt"), "initial\n").unwrap();
+        commit_all(path, "initial");
+        assert!(diff_files(&task_on(path, "missing-base", "main")).is_err());
+        assert!(diff_files(&task_on(path, "main", "main"))
+            .unwrap()
+            .is_empty());
+    }
+    #[test]
+    fn dot_dot_prefixed_files_are_inside_the_worktree_but_parents_are_not() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().to_str().unwrap();
+        std::fs::create_dir(dir.path().join("..directory")).unwrap();
+        std::fs::write(dir.path().join("..notes"), "notes\n").unwrap();
+        std::fs::write(dir.path().join("..directory/file"), "nested\n").unwrap();
+        for host in [None, Some("remote-host")] {
+            assert!(safe_path(root, "..notes", host).is_ok());
+            assert!(safe_path(root, "..directory/file", host).is_ok());
+            assert!(safe_path(root, "../outside", host).is_err());
+            assert!(safe_path(root, "/outside", host).is_err());
+        }
     }
 }

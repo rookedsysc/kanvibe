@@ -177,7 +177,40 @@ pub fn mobile_notification(event: &Value) -> Value {
         body.push('\n');
         body.push_str(description);
     }
-    json!({"type":"task-status-changed","eventId":uuid::Uuid::new_v4().to_string(),"taskId":event["taskId"],"title":truncate_encoded(&title,128),"body":truncate_encoded(&body,700),"status":status,"createdAt":now()})
+    json!({"type":"task-status-changed","eventId":uuid::Uuid::new_v4().to_string(),"taskId":event["taskId"],"title":truncate_encoded(&title,128),"body":truncate_encoded(&body,700),"status":status,"createdAt":now(),"shouldNotify":false})
+}
+/// 설정을 읽지 못해도 보드 동기화는 이어져야 하므로 푸시만 막고 이벤트는 그대로 내보낸다.
+pub fn publish_status_event(
+    mut mobile: Value,
+    settings: Result<Value, String>,
+    broadcast: impl FnOnce(&Value),
+    push: impl FnOnce(Value),
+) {
+    let should_notify = match settings {
+        Ok(settings) => {
+            settings["isEnabled"] == true
+                && settings["enabledStatuses"]
+                    .as_array()
+                    .is_some_and(|statuses| statuses.contains(&mobile["status"]))
+        }
+        Err(_) => {
+            eprintln!("[kanvibe] Mobile notification settings could not be read");
+            false
+        }
+    };
+    mobile["shouldNotify"] = json!(should_notify);
+    broadcast(&mobile);
+    if should_notify {
+        push(mobile);
+    }
+}
+fn push_data(event: &Value, connection_id: &Value) -> Value {
+    let mut data = event.clone();
+    if let Some(fields) = data.as_object_mut() {
+        fields.remove("shouldNotify");
+    }
+    data["connectionId"] = connection_id.clone();
+    data
 }
 pub fn deliver_push(app: AppHandle, event: Value) {
     let Ok(url) = std::env::var("KANVIBE_MOBILE_PUSH_RELAY_URL") else {
@@ -196,8 +229,7 @@ pub fn deliver_push(app: AppHandle, event: Value) {
             if !valid_subscription(sub) {
                 continue;
             }
-            let mut data = event.clone();
-            data["connectionId"] = sub["connectionId"].clone();
+            let data = push_data(&event, &sub["connectionId"]);
             let request=client.post(&url).timeout(Duration::from_secs(5)).bearer_auth(&token).json(&json!({"token":sub["pushToken"],"notification":{"title":event["title"],"body":event["body"]},"data":data}));
             if let Ok(response) = request.send() {
                 if response.status().as_u16() == 410 {
@@ -224,6 +256,46 @@ pub fn mobile_board(app: &AppHandle) -> Result<Value, String> {
     board["projects"] = call(app, "project", "getAllProjects", vec![])?;
     board["defaultSessionType"] = call(app, "appSettings", "getDefaultSessionType", vec![])?;
     Ok(board)
+}
+const NOTIFICATION_STATUSES: [&str; 5] = ["todo", "progress", "pending", "review", "done"];
+/// 저장 전에 전체를 검증해 잘못된 값이 설정 일부만 바꾸지 않게 한다.
+fn notification_settings_input(input: &Value) -> Option<(bool, Vec<&str>)> {
+    let is_enabled = input["isEnabled"].as_bool()?;
+    let mut statuses = Vec::new();
+    for status in input["enabledStatuses"].as_array()? {
+        let status = status
+            .as_str()
+            .filter(|status| NOTIFICATION_STATUSES.contains(status))?;
+        if !statuses.contains(&status) {
+            statuses.push(status);
+        }
+    }
+    Some((is_enabled, statuses))
+}
+pub fn notification_settings(app: &AppHandle) -> Result<Value, String> {
+    call(app, "appSettings", "getNotificationSettings", vec![])
+}
+/// 입력이 올바르지 않으면 저장하지 않고 None을 돌려준다.
+pub fn update_notification_settings(
+    app: &AppHandle,
+    input: &Value,
+) -> Result<Option<Value>, String> {
+    let Some((is_enabled, statuses)) = notification_settings_input(input) else {
+        return Ok(None);
+    };
+    call(
+        app,
+        "appSettings",
+        "setNotificationStatuses",
+        vec![json!(statuses)],
+    )?;
+    call(
+        app,
+        "appSettings",
+        "setNotificationEnabled",
+        vec![json!(is_enabled)],
+    )?;
+    notification_settings(app).map(Some)
 }
 pub fn mobile_task(app: &AppHandle, id: &str) -> Result<Value, String> {
     let mut task = call(app, "kanban", "getTaskById", vec![json!(id)])?;
@@ -404,41 +476,131 @@ pub fn verify_pane(app: &AppHandle, task: &str, pane: &str) -> Result<MirrorTarg
     }
     target(app, task)
 }
-pub fn snapshot_verified(target: &MirrorTarget, pane: &str) -> Result<String, String> {
-    let command = if target.kind == "tmux" {
-        format!("tmux capture-pane -p -e -t {pane} && tmux display-message -p -t {pane} '#{{cursor_x}} #{{cursor_y}}'",pane=q(pane))
+const MAX_MIRROR_LINES: usize = 2000;
+/// 화면과 스크롤백을 지우고 커서를 맨 위로 보낸다. 덤프를 받을 때마다 이어 붙이지 않고 다시 그리기 위해서다.
+const CLEAR_SCREEN_AND_SCROLLBACK: &str = "\x1b[H\x1b[2J\x1b[3J";
+/// pane 보이는 영역 안의 칸 좌표(0부터)와 그 영역의 높이.
+#[derive(Debug, PartialEq)]
+struct PaneCursor {
+    x: u32,
+    y: u32,
+    pane_height: u32,
+}
+#[derive(Debug, PartialEq)]
+struct TmuxPaneState {
+    cursor: PaneCursor,
+    restore_sequences: String,
+}
+fn tmux_capture_command(pane: &str) -> String {
+    format!(
+        "tmux capture-pane -pe -S -{MAX_MIRROR_LINES} -t {}",
+        q(pane)
+    )
+}
+/// 커서와 접속 전에 활성화된 화면·마우스 모드를 함께 읽는다.
+fn tmux_pane_state_command(pane: &str) -> String {
+    format!("tmux display-message -p -t {} '#{{cursor_x}} #{{cursor_y}} #{{pane_height}} #{{alternate_on}} #{{mouse_standard_flag}} #{{mouse_button_flag}} #{{mouse_all_flag}} #{{mouse_sgr_flag}} #{{mouse_utf8_flag}}'",q(pane))
+}
+fn parse_tmux_pane_state(output: &str) -> Option<TmuxPaneState> {
+    let captures =
+        regex::Regex::new(r"^(\d+) (\d+) (\d+) ([01]) ([01]) ([01]) ([01]) ([01]) ([01])$")
+            .unwrap()
+            .captures(output.trim())?;
+    let is_on = |index: usize| &captures[index] == "1";
+    let mouse_mode = if is_on(7) {
+        Some(1003)
+    } else if is_on(6) {
+        Some(1002)
+    } else if is_on(5) {
+        Some(1000)
     } else {
-        if pane.trim_start_matches("terminal_").parse::<u64>().is_err() {
-            return Err("session-not-running".into());
-        }
-        format!(
-            "zellij --session {} action dump-screen -p {} -a",
-            q(&target.name),
-            q(pane)
-        )
+        None
     };
-    let output = crate::git::run(&command, target.host.as_deref())?;
-    if target.kind == "tmux" {
-        let output = output.trim_end_matches('\n');
-        if let Some((screen, cursor)) = output.rsplit_once('\n') {
-            let pos: Vec<_> = cursor
-                .split_whitespace()
-                .filter_map(|s| s.parse::<u16>().ok())
-                .collect();
-            if pos.len() == 2 {
-                return Ok(format!(
-                    "\x1b[H\x1b[2J\x1b[3J{}\x1b[{};{}H",
-                    screen.replace('\n', "\r\n"),
-                    pos[1] + 1,
-                    pos[0] + 1
-                ));
-            }
-        }
+    let mouse_encoding = if is_on(8) {
+        Some(1006)
+    } else if is_on(9) {
+        Some(1005)
+    } else {
+        None
+    };
+    let mut restore_sequences = format!(
+        "\x1b[?1049{}\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1005l\x1b[?1006l",
+        if is_on(4) { "h" } else { "l" }
+    );
+    for mode in [mouse_mode, mouse_encoding].into_iter().flatten() {
+        restore_sequences.push_str(&format!("\x1b[?{mode}h"));
     }
-    Ok(format!(
-        "\x1b[H\x1b[2J\x1b[3J{}",
-        output.replace('\n', "\r\n")
-    ))
+    Some(TmuxPaneState {
+        cursor: PaneCursor {
+            x: captures[1].parse().ok()?,
+            y: captures[2].parse().ok()?,
+            pane_height: captures[3].parse().ok()?,
+        },
+        restore_sequences,
+    })
+}
+/// 덤프 앞에는 스크롤백이 붙고 모바일 화면 높이도 pane과 다를 수 있어 절대 좌표로는 커서 줄을 알 수 없다.
+/// 덤프의 마지막 줄은 언제나 pane 보이는 영역의 맨 아랫줄이므로, 다 쓴 뒤 그 줄에서 위로 올라가 커서 줄을 찾는다.
+fn cursor_move_from_last_line(cursor: &PaneCursor) -> String {
+    let rows_above_last_line = i64::from(cursor.pane_height) - 1 - i64::from(cursor.y);
+    let move_up = if rows_above_last_line > 0 {
+        format!("\x1b[{rows_above_last_line}A")
+    } else {
+        String::new()
+    };
+    format!("{move_up}\x1b[{}G", cursor.x + 1)
+}
+/// PTY가 아니면 줄바꿈이 줄 처음으로 돌아가지 않아 화면이 계단처럼 밀리므로 줄마다 CR을 붙인다.
+fn build_screen_redraw(screen: &str, cursor: Option<&PaneCursor>) -> String {
+    let lines: Vec<&str> = screen
+        .split('\n')
+        .map(|line| line.strip_suffix('\r').unwrap_or(line))
+        .collect();
+    let kept_lines = &lines[lines.len().saturating_sub(MAX_MIRROR_LINES)..];
+    format!(
+        "{CLEAR_SCREEN_AND_SCROLLBACK}{}{}",
+        kept_lines.join("\r\n"),
+        cursor.map(cursor_move_from_last_line).unwrap_or_default()
+    )
+}
+fn tmux_snapshot(output: &str) -> String {
+    let parsed = output.rfind('\n').and_then(|line_start| {
+        parse_tmux_pane_state(&output[line_start + 1..]).map(|state| (&output[..line_start], state))
+    });
+    match parsed {
+        Some((screen, state)) => format!(
+            "{}{}",
+            state.restore_sequences,
+            build_screen_redraw(screen, Some(&state.cursor))
+        ),
+        None => build_screen_redraw(output, None),
+    }
+}
+/// 원격 전송량과 실행 버퍼를 제한하되 dump 실패를 tail의 성공으로 덮지 않는다.
+fn zellij_dump_command(session: &str, pane: &str) -> String {
+    format!(
+        "kanvibe_mobile_dump=$(zellij --session {} action dump-screen -p {} -a --full) && printf '%s\\n' \"$kanvibe_mobile_dump\" | tail -n {MAX_MIRROR_LINES}",
+        q(session),
+        q(pane)
+    )
+}
+pub fn snapshot_verified(target: &MirrorTarget, pane: &str) -> Result<String, String> {
+    if target.kind == "tmux" {
+        // 화면과 커서를 한 번에 읽어 원격 왕복을 줄이고 둘 사이에 화면이 바뀌는 틈도 좁힌다.
+        let command = format!(
+            "{} && {}",
+            tmux_capture_command(pane),
+            tmux_pane_state_command(pane)
+        );
+        let output = crate::git::run(&command, target.host.as_deref())?;
+        return Ok(tmux_snapshot(output.trim()));
+    }
+    if pane.trim_start_matches("terminal_").parse::<u64>().is_err() {
+        return Err("session-not-running".into());
+    }
+    let command = zellij_dump_command(&target.name, pane);
+    let output = crate::git::run(&command, target.host.as_deref())?;
+    Ok(build_screen_redraw(output.trim(), None))
 }
 pub fn write_pane_verified(
     app: &AppHandle,
@@ -857,6 +1019,71 @@ mod tests {
 #[cfg(test)]
 mod notification_regressions {
     use super::*;
+    fn publish_for(settings: Result<Value, String>, status: &str) -> (Value, Option<Value>) {
+        let event = mobile_notification(&json!({"taskId":"task","newStatus":status}));
+        let mut broadcasted = Value::Null;
+        let mut pushed = None;
+        publish_status_event(
+            event,
+            settings,
+            |event| broadcasted = event.clone(),
+            |event| pushed = Some(event),
+        );
+        (broadcasted, pushed)
+    }
+    #[test]
+    fn selected_statuses_push_and_every_status_still_broadcasts() {
+        for is_enabled in [false, true] {
+            let settings = json!({"isEnabled":is_enabled,"enabledStatuses":["review"]});
+            let (review, review_push) = publish_for(Ok(settings.clone()), "review");
+            assert_eq!(review["status"], "review");
+            assert_eq!(review["shouldNotify"], is_enabled);
+            assert_eq!(review_push.is_some(), is_enabled);
+            let (done, done_push) = publish_for(Ok(settings), "done");
+            assert_eq!(done["status"], "done");
+            assert_eq!(done["shouldNotify"], false);
+            assert!(done_push.is_none());
+        }
+    }
+    #[test]
+    fn unreadable_settings_broadcast_without_push() {
+        let (event, pushed) = publish_for(Err("database unavailable".into()), "review");
+        assert_eq!(event["type"], "task-status-changed");
+        assert_eq!(event["shouldNotify"], false);
+        assert!(pushed.is_none());
+    }
+    #[test]
+    fn push_data_excludes_should_notify() {
+        let event = json!({"type":"task-status-changed","taskId":"t","shouldNotify":true});
+        assert_eq!(
+            push_data(&event, &json!("connection-1")),
+            json!({"type":"task-status-changed","taskId":"t","connectionId":"connection-1"})
+        );
+    }
+    #[test]
+    fn notification_settings_input_dedupes_and_keeps_empty_statuses() {
+        let input = json!({"isEnabled":true,"enabledStatuses":["review","review","done"]});
+        assert_eq!(
+            notification_settings_input(&input),
+            Some((true, vec!["review", "done"]))
+        );
+        let input = json!({"isEnabled":false,"enabledStatuses":[]});
+        assert_eq!(notification_settings_input(&input), Some((false, vec![])));
+    }
+    #[test]
+    fn notification_settings_input_rejects_invalid_values() {
+        for input in [
+            Value::Null,
+            json!([]),
+            json!({}),
+            json!({"isEnabled":"false","enabledStatuses":[]}),
+            json!({"isEnabled":true,"enabledStatuses":"review"}),
+            json!({"isEnabled":true,"enabledStatuses":["unknown"]}),
+            json!({"isEnabled":true,"enabledStatuses":[null]}),
+        ] {
+            assert_eq!(notification_settings_input(&input), None, "{input}");
+        }
+    }
     #[test]
     fn mobile_notification_text_matches_existing_korean_contract() {
         let event = mobile_notification(
@@ -897,5 +1124,121 @@ mod session_connection_regressions {
         assert!(!needs_session_connection(
             &json!({"projectId":"p","branchName":"main","sessionType":"tmux","sessionName":"existing"})
         ));
+    }
+}
+
+#[cfg(test)]
+mod pane_mirror_regressions {
+    use super::*;
+    const CLEAR: &str = CLEAR_SCREEN_AND_SCROLLBACK;
+    const NO_MODES: &str = "\x1b[?1049l\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1005l\x1b[?1006l";
+    fn cursor(x: u32, y: u32, pane_height: u32) -> PaneCursor {
+        PaneCursor { x, y, pane_height }
+    }
+    #[test]
+    fn capture_keeps_scrollback_and_quotes_pane() {
+        assert_eq!(
+            tmux_capture_command("%19"),
+            "tmux capture-pane -pe -S -2000 -t '%19'"
+        );
+        let command = tmux_capture_command("%1'; rm -rf /; '");
+        assert!(command.starts_with("tmux capture-pane -pe -S -2000 -t '%1'"));
+        assert!(!command.ends_with("rm -rf /;"));
+    }
+    #[test]
+    fn pane_state_command_reads_cursor_height_and_modes() {
+        assert_eq!(
+            tmux_pane_state_command("%19"),
+            "tmux display-message -p -t '%19' '#{cursor_x} #{cursor_y} #{pane_height} #{alternate_on} #{mouse_standard_flag} #{mouse_button_flag} #{mouse_all_flag} #{mouse_sgr_flag} #{mouse_utf8_flag}'"
+        );
+    }
+    #[test]
+    fn pane_state_parses_and_treats_malformed_lines_as_unknown() {
+        assert_eq!(
+            parse_tmux_pane_state("8 1 24 0 0 0 0 0 0"),
+            Some(TmuxPaneState {
+                cursor: cursor(8, 1, 24),
+                restore_sequences: NO_MODES.into()
+            })
+        );
+        for malformed in ["8 1 0 0 0 0 0 0", "8 1", "PANE_A", ""] {
+            assert_eq!(parse_tmux_pane_state(malformed), None, "{malformed}");
+        }
+    }
+    #[test]
+    fn redraw_uses_relative_cursor_from_last_line() {
+        assert_eq!(
+            build_screen_redraw("$ ls\nREADME.md\n", Some(&cursor(2, 2, 3))),
+            format!("{CLEAR}$ ls\r\nREADME.md\r\n\x1b[3G")
+        );
+        assert_eq!(
+            build_screen_redraw("old-1\nold-2\n$ \n\n", Some(&cursor(2, 0, 3))),
+            format!("{CLEAR}old-1\r\nold-2\r\n$ \r\n\r\n\x1b[2A\x1b[3G")
+        );
+    }
+    #[test]
+    fn redraw_keeps_last_2000_lines_without_doubling_cr() {
+        let screen: Vec<String> = (0..2100).map(|line| format!("line-{line}")).collect();
+        let expected: Vec<String> = (100..2100).map(|line| format!("line-{line}")).collect();
+        assert_eq!(
+            build_screen_redraw(&screen.join("\n"), None),
+            format!("{CLEAR}{}", expected.join("\r\n"))
+        );
+        assert_eq!(
+            build_screen_redraw("a\r\nb", None),
+            format!("{CLEAR}a\r\nb")
+        );
+    }
+    #[test]
+    fn tmux_snapshot_restores_modes_before_redraw() {
+        assert_eq!(
+            tmux_snapshot("$ ls\nREADME.md\n\n2 2 3 0 0 0 0 0 0"),
+            format!("{NO_MODES}{CLEAR}$ ls\r\nREADME.md\r\n\x1b[3G")
+        );
+        let snapshot = tmux_snapshot("ready\n2 0 1 1 1 0 0 1 0");
+        assert!(snapshot.starts_with("\x1b[?1049h"));
+        assert!(snapshot.contains("\x1b[?1000h"));
+        assert!(snapshot.contains("\x1b[?1006h"));
+        assert!(snapshot.contains("ready\x1b[3G"));
+        assert!(!snapshot.contains("2 0 1 1 1 0 0 1 0"));
+    }
+    #[test]
+    fn tmux_snapshot_without_state_line_keeps_whole_output() {
+        assert_eq!(
+            tmux_snapshot("only-screen\nsecond"),
+            format!("{CLEAR}only-screen\r\nsecond")
+        );
+    }
+    #[test]
+    fn mouse_mode_prefers_all_events_and_sgr_encoding() {
+        let state = parse_tmux_pane_state("0 0 1 0 1 1 1 1 1").unwrap();
+        assert!(state.restore_sequences.ends_with("\x1b[?1003h\x1b[?1006h"));
+        let state = parse_tmux_pane_state("0 0 1 0 0 1 0 0 1").unwrap();
+        assert!(state.restore_sequences.ends_with("\x1b[?1002h\x1b[?1005h"));
+    }
+    fn run_with_stub(stub: &str, command: &str) -> std::process::Output {
+        std::process::Command::new("/bin/sh")
+            .args(["-c", &format!("{stub}\n{command}")])
+            .output()
+            .unwrap()
+    }
+    #[test]
+    fn zellij_dump_is_full_tailed_and_preserves_dump_failure() {
+        let command = zellij_dump_command("kanvibe-task", "terminal_1");
+        assert_eq!(
+            command,
+            "kanvibe_mobile_dump=$(zellij --session 'kanvibe-task' action dump-screen -p 'terminal_1' -a --full) && printf '%s\\n' \"$kanvibe_mobile_dump\" | tail -n 2000"
+        );
+        let failed = run_with_stub("zellij() { echo partial; return 3; }", &command);
+        assert_eq!(failed.status.code(), Some(3));
+        assert!(failed.stdout.is_empty());
+        let succeeded = run_with_stub(
+            "zellij() { i=0; while [ \"$i\" -lt 2100 ]; do echo \"line-$i\"; i=$((i+1)); done; }",
+            &command,
+        );
+        assert!(succeeded.status.success());
+        let output = String::from_utf8(succeeded.stdout).unwrap();
+        assert_eq!(output.lines().count(), 2000);
+        assert_eq!(output.lines().next(), Some("line-100"));
     }
 }
