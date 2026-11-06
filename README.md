@@ -1,10 +1,15 @@
 <div align="center">
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="./public/branding/kanvibe-logo-light.png">
+  <img src="./public/branding/kanvibe-logo.png" alt="KanVibe" width="320" height="87">
+</picture>
+
 # KanVibe
 
 **Keyboard-first Kanban workspace for AI coding agents**
 
-KanVibe keeps AI coding work out of scattered terminal tabs. Track branch-based tasks on a real-time Kanban board, open each task's tmux/zellij session in the Tauri desktop app, and let Claude Code, Gemini CLI, Codex CLI, and OpenCode hooks move tasks through the workflow automatically.
+KanVibe keeps AI coding work out of scattered terminal tabs. Track branch-based tasks on a real-time Kanban board, open each task's tmux/zellij/Herdr session in the Tauri desktop app, and let Claude Code, Gemini CLI, Codex CLI, and OpenCode hooks move tasks through the workflow automatically.
 
 Use shortcuts for project filters, task search, notifications, task detail panels, and common task actions without losing terminal focus.
 
@@ -103,7 +108,7 @@ Turn on Vim-style board controls in **Settings → Keyboard**, then move across 
 
 ### 7. Live AI Session Tracking
 
-See which AI agents are running on which task, and how many, straight from the board, then jump into the terminal that owns one. Focus or hover a card and hold for a moment to open the session panel; it lists each running session with what it is doing and the subtasks branching off it right now. Clicking a session switches to the tmux window that session is attached to and moves input focus to the terminal.
+See which AI agents are running on which task, and how many, straight from the board, then jump into the terminal that owns one. Focus or hover a card and hold for a moment to open the session panel; it lists each running session with what it is doing and the subtasks branching off it right now. Clicking a session switches to the tmux window or Herdr tab that session is attached to and moves input focus to the terminal.
 
 <img src="./docs/images/readme/kanvibe-live-sessions-board.png" alt="Board card showing a running claude session with two subtasks" width="100%">
 
@@ -118,9 +123,10 @@ The same panel opens from the task detail dock, so you can keep watching subtask
 | Dependency | Version | Required | Install |
 |------------|---------|----------|---------|
 | [git](https://git-scm.com/) | latest | Yes | `brew install git` |
-| [tmux](https://github.com/tmux/tmux) | latest | Yes | `brew install tmux` |
+| [tmux](https://github.com/tmux/tmux) | latest | No | `brew install tmux` |
 | [gh](https://cli.github.com/) | latest | Yes | `brew install gh` (requires `gh auth login`) |
 | [zellij](https://github.com/zellij-org/zellij) | latest | No | `brew install zellij` |
+| [Herdr](https://herdr.dev/tui/docs/) | 0.9.5 verified | Default backend | In-app install prompt |
 
 ---
 
@@ -167,7 +173,7 @@ To stop managing a project, delete it from the registered-project list in the re
 
 Add a TODO task from the Kanban board. When creating a task with a branch name, KanVibe automatically:
 - Creates a **git worktree** for the branch
-- Spawns a **tmux window** or **zellij tab** for the session
+- Spawns a **Herdr tab**, **tmux window**, or **zellij tab** for the session
 - Links the terminal session to the task
 
 ### 3. Work with the Kanban Board
@@ -209,21 +215,26 @@ Each pane can run a custom command (e.g., `vim`, `htop`, `lazygit`, test runner,
 - Move a task to DONE to clean up its branch, worktree, and terminal session automatically
 - Delete a project from the scan dialog without touching existing git branches, worktrees, or files on disk
 
-### Terminal Sessions (tmux / zellij)
-- **tmux** and **zellij** are both supported as terminal multiplexers
+### Terminal Sessions (tmux / zellij / Herdr)
+- **tmux**, **zellij**, and **Herdr** are supported as terminal multiplexers
 - Embedded terminal streaming through xterm.js, Tauri IPC, and the Rust PTY backend
 - SSH remote terminal support that reads `~/.ssh/config`
 - Non-interactive remote SSH commands reuse an app-local ControlMaster socket pool under `~/.kanvibe`, with per-host concurrency capped at 4x available CPU cores
-- Remote terminal attach executes tmux/zellij directly over SSH; trusted X11 forwarding (`ssh -Y`) is requested only when local `DISPLAY`, remote `X11Forwarding`, and `xauth` are available
+- Remote terminal attach executes tmux/zellij/Herdr directly over SSH; trusted X11 forwarding (`ssh -Y`) is requested only when local `DISPLAY`, remote `X11Forwarding`, and `xauth` are available
 - Nerd Font rendering support
+
+- **Herdr** is the default when no valid session preference is saved. Existing tmux, zellij, and terminal preferences are preserved; choose `terminal` to work without a multiplexer. Herdr uses a persistent named session per task, supports the six configured pane layouts and startup commands, and preserves running shells when you close and reopen a task.
+- Select `herdr` when creating, branching, or connecting a task. If it is missing, KanVibe offers to run the [official installer](https://herdr.dev/tui/docs/install/) on the selected local or SSH host; cancelling leaves the task unchanged. The installer uses `~/.local/bin` without changing shell startup files.
+- Herdr tabs support creating, selecting, renaming, closing, and reordering by stable IDs. Reordering stays within each Herdr workspace. The last tab stays alive when the KanVibe window closes; deleting the task stops and deletes its named session.
+- Herdr 0.9.5 is the verified version. Its first-run setup and personal configuration remain managed by Herdr. Tab reordering uses its [local socket API](https://herdr.dev/tui/docs/socket-api/); SSH hosts do not need Python or netcat for this operation.
 
 ### Live AI Session Tracking
 - Board cards show a per-agent icon and count next to the tmux badge, so you can tell at a glance which agents are running on which task and how many
 - Focus or hover a card to open a session panel that shows what each running session is doing, taken from its most recent AI response, along with the subtasks it is driving as branches hanging off the session; sweeping past cards does not open it
 - Running sessions carry a moving progress bar that conveys progress through motion rather than a ratio, and holds still when the environment asks for reduced motion
 - Task detail exposes the same panel through the live sessions dock item (`Mod+4` without a PR, `Mod+5` with one)
-- Clicking a session switches to its tmux window and moves input focus to the terminal
-- Running state combines two signals: an agent attached to a tmux pane counts as running even while it waits for input, and a session whose transcript was just updated counts as running even when no pane is visible
+- Clicking a session switches to its tmux window or Herdr tab and moves input focus to the terminal
+- Running state combines two signals: an agent attached to a tmux or Herdr pane counts as running even while it waits for input, and a session whose transcript was just updated counts as running even when no pane is visible
 - Subtask counts are available for Claude Code and Codex, depend on version for OpenCode, and are not available for Gemini CLI
 - Sessions outside tmux (zellij, plain terminal) are judged by transcript activity alone, so one waiting for input may appear idle
 

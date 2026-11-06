@@ -54,7 +54,7 @@ function createEmptyBoardData(): BoardData {
     sidebarDefaultCollapsed: false,
     doneAlertDismissed: false,
     notificationSettings: { isEnabled: true, enabledStatuses: ["progress", "pending", "review"] },
-    defaultSessionType: SessionType.TMUX,
+    defaultSessionType: SessionType.HERDR,
     taskSearchShortcut: DEFAULT_TASK_SEARCH_SHORTCUT,
     vimModeEnabled: true,
   };

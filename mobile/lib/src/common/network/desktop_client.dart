@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 import 'package:web_socket_channel/io.dart';
 
 import '../../features/board/domain/task_status.dart';
+import '../../features/chat_history/domain/chat_history.dart';
 import '../../features/notifications/domain/inbox_notification.dart';
 import '../../features/task_detail/domain/mirror_pane.dart';
 import 'desktop_connection.dart';
@@ -85,6 +86,68 @@ class DesktopClient {
 
     return (jsonDecode(response.body) as Map<String, dynamic>)['board']
         as Map<String, dynamic>;
+  }
+
+  Future<ChatHistoryPage> fetchChatHistory(
+    DesktopConnection connection,
+    String taskId, {
+    String? query,
+    String? cursor,
+  }) async {
+    final response = await _httpClient
+        .get(
+          connection
+              .buildHttpUri('', {
+                if (query != null && query.isNotEmpty) 'query': query,
+                'cursor': ?cursor,
+                'limit': '20',
+              })
+              .replace(
+                pathSegments: ['api', 'mobile', 'tasks', taskId, 'ai-sessions'],
+              ),
+          headers: connection.authorizationHeaders,
+        )
+        .timeout(_requestTimeout);
+    if (response.statusCode != 200) {
+      throw DesktopRequestException(response.statusCode);
+    }
+    return ChatHistoryPage.fromJson(
+      (jsonDecode(response.body) as Map<String, dynamic>)['history']
+          as Map<String, dynamic>,
+    );
+  }
+
+  Future<ChatMessagePage> fetchChatMessages(
+    DesktopConnection connection,
+    String taskId,
+    ChatSession session, {
+    String? cursor,
+  }) async {
+    final response = await _httpClient
+        .get(
+          connection
+              .buildHttpUri('', {'cursor': ?cursor, 'limit': '20'})
+              .replace(
+                pathSegments: [
+                  'api',
+                  'mobile',
+                  'tasks',
+                  taskId,
+                  'ai-sessions',
+                  session.provider,
+                  session.id,
+                ],
+              ),
+          headers: connection.authorizationHeaders,
+        )
+        .timeout(_requestTimeout);
+    if (response.statusCode != 200) {
+      throw DesktopRequestException(response.statusCode);
+    }
+    return ChatMessagePage.fromJson(
+      (jsonDecode(response.body) as Map<String, dynamic>)['detail']
+          as Map<String, dynamic>,
+    );
   }
 
   Future<List<InboxNotification>> fetchNotifications(
@@ -421,7 +484,7 @@ class DesktopClient {
 /// 데스크탑이 이 기기를 목록에서 지워 스트림을 끊었을 때의 종료 코드.
 ///
 /// 스트림 실패(4000)와 나누어야 "세션을 못 비춘다"와 "이 기기는 더 이상 연결되어 있지 않다"를 구분할 수 있다.
-/// 서버 쪽 `electron/mobileRoutes.js`의 `DEVICE_UNPAIRED_CLOSE_CODE`와 같은 값이어야 한다.
+/// 서버 쪽 `src-tauri/src/server.rs`가 기기 해제 때 보내는 close code와 같은 값이어야 한다.
 const int deviceUnpairedCloseCode = 4001;
 
 class DesktopEventStream {

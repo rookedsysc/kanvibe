@@ -1,10 +1,15 @@
 <div align="center">
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../public/branding/kanvibe-logo-light.png">
+  <img src="../public/branding/kanvibe-logo.png" alt="KanVibe" width="320" height="87">
+</picture>
+
 # KanVibe
 
 **面向 AI 编程代理的键盘优先 Kanban 工作区**
 
-KanVibe 让 AI 编程工作不再散落在一堆终端标签中。你可以在实时 Kanban 看板上跟踪基于分支的任务，在 Tauri 桌面应用中打开每个任务的 tmux/zellij 会话，并让 Claude Code、Gemini CLI、Codex CLI 和 OpenCode hooks 自动推动任务在工作流中流转。
+KanVibe 让 AI 编程工作不再散落在一堆终端标签中。你可以在实时 Kanban 看板上跟踪基于分支的任务，在 Tauri 桌面应用中打开每个任务的 Herdr/tmux/zellij 会话，并让 Claude Code、Gemini CLI、Codex CLI 和 OpenCode hooks 自动推动任务在工作流中流转。
 
 使用快捷键处理项目筛选、任务搜索、通知、任务详情面板和常用任务操作，同时不丢失终端焦点。
 
@@ -108,9 +113,10 @@ KanVibe 让 AI 编程工作不再散落在一堆终端标签中。你可以在�
 | 依赖 | 版本 | 必需 | 安装 |
 |------|------|------|------|
 | [git](https://git-scm.com/) | 最新 | Yes | `brew install git` |
-| [tmux](https://github.com/tmux/tmux) | 最新 | Yes | `brew install tmux` |
+| [tmux](https://github.com/tmux/tmux) | 最新 | No | `brew install tmux` |
 | [gh](https://cli.github.com/) | 最新 | Yes | `brew install gh`（需要 `gh auth login`） |
 | [zellij](https://github.com/zellij-org/zellij) | 最新 | No | `brew install zellij` |
+| [Herdr](https://herdr.dev/tui/docs/) | 已验证 0.9.5 | 默认后端 | 应用内安装提示 |
 
 ---
 
@@ -157,7 +163,7 @@ brew untap rookedsysc/kanvibe
 
 在 Kanban 看板中添加 TODO 任务。使用分支名创建任务时，KanVibe 会自动：
 - 为该分支创建 **git worktree**
-- 为会话生成 **tmux window** 或 **zellij tab**
+- 为会话生成 **Herdr tab**、**tmux window** 或 **zellij tab**
 - 将终端会话链接到任务
 
 ### 3. 在看板中工作
@@ -199,13 +205,17 @@ brew untap rookedsysc/kanvibe
 - 将任务移至 DONE 时自动清理其分支、worktree 和终端会话
 - 在目录扫描对话框中删除项目时，不会触碰现有 git 分支、worktree 或磁盘文件
 
-### 终端会话（tmux / zellij）
-- 同时支持 **tmux** 和 **zellij** 作为终端复用器
+### 终端会话（Herdr / tmux / zellij）
+- 支持 **Herdr**、**tmux** 和 **zellij** 作为终端复用器
 - 通过 xterm.js、Tauri IPC 和 Rust PTY 后端进行内置终端流式传输
 - 读取 `~/.ssh/config` 的 SSH 远程终端支持
 - 非交互式远程 SSH 命令会复用 `~/.kanvibe` 下的应用专用 ControlMaster socket 池，并将每个 host 的并发数限制为可用 CPU 核心数的 4 倍
-- 远程终端 attach 会通过 SSH 直接执行 tmux/zellij；仅在本地 `DISPLAY`、远程 `X11Forwarding` 和 `xauth` 可用时请求 trusted X11 forwarding（`ssh -Y`）
+- 远程终端 attach 会通过 SSH 直接执行 Herdr/tmux/zellij；仅在本地 `DISPLAY`、远程 `X11Forwarding` 和 `xauth` 可用时请求 trusted X11 forwarding（`ssh -Y`）
 - Nerd Font 渲染支持
+
+- 未保存有效偏好时默认使用 Herdr，已有的 tmux、zellij、terminal 选择会保留。每个任务使用独立命名的持久会话；首次创建时应用六种 pane 布局和各 pane 的启动命令，再次打开时继续使用运行中的 shell。
+- Herdr 标签页支持创建、切换、重命名、关闭，以及 workspace 内的拖动排序。关闭 KanVibe 窗口会保留最后一个标签页；删除任务时才会停止并删除对应的命名会话。首次运行设置和个人配置由 Herdr 管理。
+- 创建任务、创建分支或连接终端时选择 `herdr`，KanVibe 会检查本机或选定的 SSH 主机。若未安装，确认提示后会在该主机运行[官方安装程序](https://herdr.dev/tui/docs/install/)，安装到 `~/.local/bin`，不修改 shell 启动文件。取消后任务保持不变。安装失败时会显示错误；请检查网络连接和目录写入权限后重试。
 
 ### 键盘优先控制
 - 从任何位置按分支名或项目名打开快速任务搜索

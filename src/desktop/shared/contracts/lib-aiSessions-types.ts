@@ -1,6 +1,5 @@
-
-
-export type AiSessionProvider = "claude" | "codex" | "opencode" | "gemini";
+import type { AiSessionProvider } from "@/desktop/shared/contracts/lib-aiSessions-providers";
+export type { AiSessionProvider } from "@/desktop/shared/contracts/lib-aiSessions-providers";
 
 export type AiSessionMatchScope = "worktree";
 

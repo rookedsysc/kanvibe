@@ -23,6 +23,10 @@
   }
 }
 
+:root[data-theme="dark"] .kanvibe-brand-logo {
+  filter: invert(1);
+}
+
 :root {
   /* WebKit의 비율 계산 반올림을 피하고 Tailwind 기본 행 높이를 그대로 유지한다. */
   --text-xs--line-height: 1rem;

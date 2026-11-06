@@ -7,7 +7,7 @@ description: "KanVibe 是一款 macOS 桌面应用，把 Claude Code、Gemini CL
   <span className="kv-eyebrow">KanVibe Docs · Nextra 4</span>
   <h1>把 AI 代理工作整合进看板、终端和分支流程。</h1>
   <div className="kv-hero-copy">
-    KanVibe 可把 Claude Code、Gemini CLI、Codex CLI、OpenCode 的任务连接到真实的 git worktree 与 tmux/zellij 会话。每个任务都有自己的终端界面，可在同一流程中自由切换 AI 代理执行、手动命令、构建/测试与日志查看。
+    KanVibe 可把 Claude Code、Gemini CLI、Codex CLI、OpenCode 的任务连接到真实的 git worktree 与 Herdr/tmux/zellij 会话。每个任务都有自己的终端界面，可在同一流程中自由切换 AI 代理执行、手动命令、构建/测试与日志查看。
   </div>
   <div className="kv-actions">
     <a className="kv-button kv-button-primary" href="/zh/installation">开始安装</a>
@@ -33,7 +33,7 @@ description: "KanVibe 是一款 macOS 桌面应用，把 Claude Code、Gemini CL
 <div className="kv-grid">
   <div className="kv-card">
     <h3>基于分支的任务管理</h3>
-    <p>创建任务时，KanVibe 会把 branch、worktree 和 tmux/zellij 会话绑定成一个工作单元。</p>
+    <p>创建任务时，KanVibe 会把 branch、worktree 和 Herdr/tmux/zellij 会话绑定成一个工作单元。</p>
   </div>
   <div className="kv-card">
     <h3>AI 代理 Hooks</h3>
@@ -45,11 +45,11 @@ description: "KanVibe 是一款 macOS 桌面应用，把 Claude Code、Gemini CL
   </div>
   <div className="kv-card">
     <h3>任务专属终端界面</h3>
-    <p>每个任务都有自己的会话，可在 tmux、zellij 或不使用多路复用器的 terminal 之间选择，既可交给 AI 代理处理，也可随时直接运行命令。</p>
+    <p>每个任务都有自己的会话，可在 Herdr、tmux、zellij 或不使用多路复用器的 terminal 之间选择，既可交给 AI 代理处理，也可随时直接运行命令。</p>
   </div>
   <div className="kv-card">
     <h3>终端标签页</h3>
-    <p>在同一个任务中用标签页分开服务器、测试和代理执行。标签页与 tmux window、zellij tab 双向同步，在 KanVibe 之外创建的 window 也会出现在标签栏中。</p>
+    <p>在同一个任务中用标签页分开服务器、测试和代理执行。标签页与 Herdr tab、tmux window、zellij tab 双向同步，在 KanVibe 之外创建的 window 也会出现在标签栏中。</p>
   </div>
   <div className="kv-card">
     <h3>键盘优先 UI</h3>
@@ -69,7 +69,7 @@ description: "KanVibe 是一款 macOS 桌面应用，把 Claude Code、Gemini CL
   </div>
   <div className="kv-card">
     <h3>会话自动关联</h3>
-    <p>后台 Sync 检测到运行中的 tmux/zellij 会话时，自动关联到对应任务并将状态转为 PROGRESS。</p>
+    <p>后台 Sync 检测到运行中的 Herdr/tmux/zellij 会话时，自动关联到对应任务并将状态转为 PROGRESS。</p>
   </div>
   <div className="kv-card">
     <h3>删除时自动清理</h3>

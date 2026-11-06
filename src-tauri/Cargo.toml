@@ -1,6 +1,6 @@
 [package]
 name = "kanvibe"
-version = "1.4.0"
+version = "1.5.0"
 description = "KanVibe desktop"
 edition = "2021"
 rust-version = "1.90"
