@@ -51,7 +51,7 @@ augroup END
 
 바 오른쪽 **설정**은 전체 화면 설정 페이지를 연다. 목록에는 현재 세션 종류의 기본 세팅(공통 키와 tmux·Zellij 동작, `기본` 태그)과 내 콤보(`콤보` 태그)가 바 순서대로 섞여 있다. 표시 여부를 체크하고 손잡이로 순서를 바꾼 뒤 하단 **적용**을 누른다. 기본 세팅은 메뉴에서 삭제할 수 있고, 오른쪽 위 **기본값 복원**은 지운 기본 세팅만 체크 해제 상태로 되살리며 콤보는 그대로 둔다. 표시 여부·순서·삭제한 기본 세팅·콤보는 이 기기의 일반 terminal / tmux / Zellij별로 저장한다. 설정을 닫으면 적용하지 않은 변경은 버린다.
 
-키보드 위 **tmux / zellij / 키** 버튼을 누르면 빠른 패널이 열린다. 세션 탭에는 분할·확대·출력 이동과 tmux 복사 모드 또는 Zellij 플로팅 동작을, **키** 탭에는 일반 터미널 키를, **내 콤보** 탭에는 저장한 콤보를 표시한다. 패널은 작은 탭과 가로로 넘기는 버튼 한 줄로 표시하며 기본 배율에서 약 90dp 높이다. 동작 설명은 길게 눌러 확인한다. 세션 동작은 기존 pane 제어 API를 사용한다. 패널의 Ctrl·Alt는 다음 키 한 번에 적용된다.
+바 왼쪽에는 지금 보고 있는 세션 종류(**tmux / zellij / 키**)가 표시된다. 터미널에서 쓸 수 있는 단축키는 바에 올린 것뿐이며, 다른 키가 필요하면 설정에서 체크하거나 다른 세션에서 가져온다. 동작 설명은 길게 눌러 확인한다. 세션 동작은 기존 pane 제어 API를 사용한다. 바의 Ctrl·Alt는 다음 키 한 번에 적용된다.
 
 설정의 **단축키 바 미리보기**는 체크한 단축키 순서를 보여 준다. 목록 아래 **콤보 추가**는 전체 화면 편집기를 연다. 편집기 위쪽 **특수 키**에서 Ctrl·Alt·Shift와 Esc·Tab·Enter·Backspace·방향키·Home/End·PgUp/PgDn·Insert/Delete·F1–F12를 여러 개 고르고, 아래 **일반 키** 입력란에 글자를 여러 개 입력한다. 고른 키는 모두 한 번에 누르는 조합이며, 키 하나만 골라도 된다. 예를 들어 `Ctrl+b`, `Ctrl+Shift+↑`, `Ctrl+a+b`, `F5`를 등록할 수 있다.
 
@@ -71,7 +71,7 @@ Enter와 Backspace는 입력란으로 받을 수 없어 특수 키에서 고른�
 
 세션 제어는 키 접두사 대신 인증된 `POST /api/mobile/tasks/:taskId/panes/:paneId/shortcuts`의 허용된 동작을 실행하므로 사용자 키 바인딩과 무관하다. tmux 복사·스크롤 화면은 응답의 캡처로 갱신하며 **맨 아래**로 복귀한다. Zellij 분할은 선택 pane이 속한 탭에 새 pane을 생성하고 PC의 포커스는 유지한다. Zellij는 기존 미러링과 같은 pane ID 지원 버전이 필요하다. 이전 데스크톱 앱에 세션 제어 API가 없으면 실패 안내를 표시한다.
 
-단축키 정의는 `features/task_detail/domain/terminal_shortcut.dart`, 저장은 `data/terminal_shortcut_store.dart`, 공유 설정 상태는 `application/terminal_shortcut_controller.dart`, 버튼과 설정 페이지는 `presentation/widgets/terminal_shortcut_*`에 있다. `TerminalShortcutBar`가 빠른 패널의 열림 상태를, `TerminalShortcutPanel`이 표시할 탭을, `TerminalShortcutSettingsPage`가 적용 전 초안과 세션 간 가져오기를, `TerminalShortcutComboEditor`가 보조 키·특수 키·일반 키 초안을 소유한다. 두 화면의 제목·카드·하단 버튼 골격은 `terminal_shortcut_settings_layout.dart`가 공유한다. `TerminalSoftKeyboard`가 IME·일시 접힘·빠른 패널의 Ctrl/Alt를 소유하고 `PaneTerminalView`가 스트림과 세션 제어 결과를 반영한다.
+단축키 정의는 `features/task_detail/domain/terminal_shortcut.dart`, 저장은 `data/terminal_shortcut_store.dart`, 공유 설정 상태는 `application/terminal_shortcut_controller.dart`, 버튼과 설정 페이지는 `presentation/widgets/terminal_shortcut_*`에 있다. `TerminalShortcutSettingsPage`가 적용 전 초안과 세션 간 가져오기를, `TerminalShortcutComboEditor`가 보조 키·특수 키·일반 키 초안을 소유한다. 두 화면의 제목·카드·하단 버튼 골격은 `terminal_shortcut_settings_layout.dart`가 공유한다. `TerminalSoftKeyboard`가 IME·일시 접힘·바의 Ctrl/Alt를 소유하고 `PaneTerminalView`가 스트림과 세션 제어 결과를 반영한다.
 
 ## 준비
 
