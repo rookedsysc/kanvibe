@@ -12,6 +12,19 @@ export interface PairedMobileDevice {
   pairedAt: string;
 }
 
+export interface MobileConnectionSettings {
+  mobileTlsPort: number;
+  isLanPlaintextAllowed: boolean;
+}
+
+export function readMobileConnectionSettings(): Promise<MobileConnectionSettings> {
+  return invokeDesktop("mobileBridge", "readMobileConnectionSettings");
+}
+
+export function updateLanPlaintextAllowed(isAllowed: boolean): Promise<void> {
+  return invokeDesktop("mobileBridge", "updateLanPlaintextAllowed", isAllowed);
+}
+
 /** 화면에 띄울 6자리 코드를 발급한다 */
 export function startMobilePairing(): Promise<{ code: string; expiresAt: number }> {
   return invokeDesktop("mobileBridge", "startMobilePairing");

@@ -44,7 +44,7 @@ describe("writeHookProviderFiles — 원격 설치", () => {
     expect(mockExecGit).toHaveBeenCalledTimes(1);
     const [command, sshHost] = mockExecGit.mock.calls[0];
     expect(sshHost).toBe("remote-host");
-    expect(Buffer.byteLength(String(command))).toBeLessThan(700);
+    expect(Buffer.byteLength(String(command))).toBeLessThan(1000);
     expect(String(command)).toContain("/api/install/hooks.sh?token=");
     expect(String(command)).not.toContain("base64 -d");
   });

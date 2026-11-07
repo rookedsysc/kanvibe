@@ -357,14 +357,20 @@ class FakeDesktopClient implements DesktopClient {
   }
 
   @override
-  Future<String?> pair({
+  Future<PairingResult?> pair({
     required String host,
     required int port,
     required String code,
     required String deviceName,
   }) async {
     pairCalls.add('$host:$port');
-    return pairToken;
+    final token = pairToken;
+    return token == null
+        ? null
+        : PairingResult(
+            token: token,
+            certificateFingerprint: 'fake-fingerprint',
+          );
   }
 
   @override

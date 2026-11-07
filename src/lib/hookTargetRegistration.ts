@@ -1,3 +1,4 @@
+import { ensureHookTunnel } from "@/desktop/main/services/hookTunnelService";
 import { buildTaskCliToken } from "@/desktop/main/services/taskCliTokenService";
 import { ensureAiToolPatternsExcluded } from "@/lib/gitExclude";
 import {
@@ -19,6 +20,9 @@ export async function registerKanvibeHookTarget(
   await ensureAiToolPatternsExcluded(repoPath, sshHost);
   const token = await buildTaskCliToken(taskId);
   await upsertKanvibeHookTarget(repoPath, { url: hookServerUrl, taskId, token }, sshHost);
+  if (sshHost) {
+    ensureHookTunnel(sshHost);
+  }
 }
 
 /**

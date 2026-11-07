@@ -16,7 +16,10 @@ export interface HookStatusInput {
   status: string;
 }
 
-export async function updateHookTaskStatus(input: HookStatusInput) {
+/**
+ * @param sourceSshHost 요청이 들어온 터널의 호스트. 터널로 온 요청은 그 호스트의 task만 바꿀 수 있다
+ */
+export async function updateHookTaskStatus(input: HookStatusInput, sourceSshHost?: string) {
   if (!input.taskId || !input.status) {
     return {
       success: false,
@@ -39,6 +42,14 @@ export async function updateHookTaskStatus(input: HookStatusInput) {
     where: { id: input.taskId },
     relations: ["project"],
   });
+
+  if (task && sourceSshHost && task.sshHost !== sourceSshHost) {
+    return {
+      success: false,
+      error: `작업을 찾을 수 없습니다: ${input.taskId}`,
+      status: 404,
+    };
+  }
 
   if (!task) {
     broadcastHookStatusTargetMissing({

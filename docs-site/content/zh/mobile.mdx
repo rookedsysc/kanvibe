@@ -43,7 +43,7 @@ fvm flutter run
 ## 输入一次连接码
 
 1. 在 Desktop 中打开**设置 → 移动端连接 → 生成连接码**。
-2. 在 Mobile 中输入**桌面地址**（<span lang="ko" translate="no">데스크탑 주소</span>）、**端口**（<span lang="ko" translate="no">포트</span>）和 6 位**连接码**（<span lang="ko" translate="no">연결 코드</span>）。打包的 Desktop 应用使用端口 **9736**，开发构建使用 **19736**。**电脑名称**（<span lang="ko" translate="no">PC 이름</span>）可选填。
+2. 在 Mobile 中输入**桌面地址**（<span lang="ko" translate="no">데스크탑 주소</span>）、**端口**（<span lang="ko" translate="no">포트</span>）和 6 位**连接码**（<span lang="ko" translate="no">연결 코드</span>）。打包的 Desktop 应用使用端口 **9746**，开发构建使用 **19746**。此端口已加密，Mobile 在配对时会固定 Desktop 证书指纹。**电脑名称**（<span lang="ko" translate="no">PC 이름</span>）可选填。
 3. 点击**连接**（<span lang="ko" translate="no">연결</span>），看板随即打开。连接信息保存在设备的安全存储中，下次无需重新输入连接码。
 
 连接码在 **5 分钟**后过期，且只能使用一次。已过期或已使用时，请生成新码。从真实手机连接时，填写电脑的网络地址，而不是 `localhost`。可在 macOS **系统设置 → 网络**中查看，或在电脑上运行 `ipconfig getifaddr en0`。

@@ -1,0 +1,252 @@
+// @vitest-environment node
+import { execFile } from "node:child_process";
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import http from "node:http";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import {
+  buildHookSocketFileName,
+  buildRemoteHookSocketPrepareCommand,
+  buildShellHookSocketResolver,
+  buildShellOwnedHookSocketAssignment,
+} from "@/lib/hookSocketPath";
+import { buildShellKanvibeStatusUpdater } from "@/lib/shellHookScript";
+import { buildTaskCliCommand } from "@/lib/taskCliScript";
+
+const HOOK_URL = "http://10.0.0.5:9736";
+
+interface ReceivedRequest {
+  path: string;
+  body: string;
+}
+
+function runShell(script: string, cwd: string): Promise<{ code: number; stdout: string; stderr: string }> {
+  return new Promise((resolve) => {
+    execFile("bash", ["-c", script], { cwd }, (error, stdout, stderr) => {
+      resolve({ code: error ? Number(error.code ?? 1) : 0, stdout, stderr });
+    });
+  });
+}
+
+function startRecordingServer(received: ReceivedRequest[]): http.Server {
+  return http.createServer((request, response) => {
+    let body = "";
+    request.on("data", (chunk) => {
+      body += chunk;
+    });
+    request.on("end", () => {
+      received.push({ path: request.url ?? "", body });
+      response.end("{}");
+    });
+  });
+}
+
+describe("hook 터널 소켓 전송", () => {
+  let workspace: string;
+  let socketDirectory: string;
+  const openServers: http.Server[] = [];
+
+  /** 실제 /tmp/kv-<uid>에는 실행 중인 앱의 소켓이 있을 수 있어 테스트 디렉터리로 바꿔 실행한다 */
+  const withTestSocketDirectory = (script: string) => script.replaceAll("/tmp/kv-$(id -u)", socketDirectory);
+
+  async function listen(server: http.Server, ...target: [string] | [number, string]): Promise<void> {
+    openServers.push(server);
+    await new Promise<void>((resolve) => {
+      server.listen(...(target as [string]), resolve);
+    });
+  }
+
+  beforeEach(() => {
+    workspace = mkdtempSync(path.join(tmpdir(), "kvs-"));
+    socketDirectory = path.join(workspace, "sock");
+    mkdirSync(socketDirectory, { mode: 0o700 });
+  });
+
+  afterEach(async () => {
+    await Promise.all(openServers.splice(0).map((server) => new Promise((resolve) => server.close(resolve))));
+    rmSync(workspace, { recursive: true, force: true });
+  });
+
+  it("셸이 찾는 소켓 이름과 데스크탑이 만드는 소켓 이름이 같다", async () => {
+    // Given
+    const socketPath = path.join(socketDirectory, buildHookSocketFileName(`${HOOK_URL}/`));
+    await listen(http.createServer(), socketPath);
+
+    // When
+    const result = await runShell(
+      `${withTestSocketDirectory(buildShellHookSocketResolver())}\nkanvibe_hook_socket '${HOOK_URL}/'`,
+      workspace,
+    );
+
+    // Then
+    expect(result.stdout).toBe(socketPath);
+  });
+
+  it("URL에 셸·경로 문자가 있어도 소켓 이름은 디렉터리를 벗어나지 못한다", () => {
+    expect(buildHookSocketFileName("http://../../etc/x;rm:9736")).toBe(".._.._etc_x_rm_9736.sock");
+  });
+
+  it.each([
+    ["다른 사용자도 들어올 수 있는 디렉터리", () => chmodSync(socketDirectory, 0o755)],
+    ["소켓이 아닌 일반 파일", () => writeFileSync(path.join(socketDirectory, buildHookSocketFileName(HOOK_URL)), "")],
+  ])("%s의 소켓에는 토큰을 보내지 않는다", async (_name, arrange) => {
+    // Given
+    if (_name.startsWith("다른")) {
+      await listen(http.createServer(), path.join(socketDirectory, buildHookSocketFileName(HOOK_URL)));
+    }
+    arrange();
+
+    // When
+    const result = await runShell(
+      `${withTestSocketDirectory(buildShellHookSocketResolver())}\nkanvibe_hook_socket '${HOOK_URL}'`,
+      workspace,
+    );
+
+    // Then
+    expect(result.stdout).toBe("");
+  });
+
+  it("소켓 디렉터리가 심볼릭 링크면 쓰지 않는다", async () => {
+    // Given
+    const linkedDirectory = path.join(workspace, "linked");
+    symlinkSync(socketDirectory, linkedDirectory);
+    await listen(http.createServer(), path.join(socketDirectory, buildHookSocketFileName(HOOK_URL)));
+
+    // When
+    const result = await runShell(
+      `${buildShellHookSocketResolver().replaceAll("/tmp/kv-$(id -u)", linkedDirectory)}\nkanvibe_hook_socket '${HOOK_URL}'`,
+      workspace,
+    );
+
+    // Then
+    expect(result.stdout).toBe("");
+  });
+
+  it("준비 명령은 남은 소켓을 지우고 0700 디렉터리를 만든다", async () => {
+    // Given
+    const preparedDirectory = path.join(workspace, "prepared");
+    const script = buildRemoteHookSocketPrepareCommand(HOOK_URL).replaceAll("/tmp/kv-$(id -u)", preparedDirectory);
+    await runShell(`mkdir -m 755 '${preparedDirectory}' && : > '${preparedDirectory}/${buildHookSocketFileName(HOOK_URL)}'`, workspace);
+
+    // When
+    const result = await runShell(`${script}; ls -ld '${preparedDirectory}' | cut -c1-10; ls -A '${preparedDirectory}' | wc -l`, workspace);
+
+    // Then
+    expect(result.stdout.startsWith(path.join(preparedDirectory, buildHookSocketFileName(HOOK_URL)))).toBe(true);
+    expect(result.stdout).toContain("drwx------");
+    expect(result.stdout.trim().endsWith("0")).toBe(true);
+  });
+
+  it("짧은 점검은 본인 소유 소켓일 때만 값을 담는다", async () => {
+    // Given
+    const assignment = withTestSocketDirectory(buildShellOwnedHookSocketAssignment("found", HOOK_URL));
+    const socketPath = path.join(socketDirectory, buildHookSocketFileName(HOOK_URL));
+
+    // When
+    const missing = await runShell(`${assignment}; printf '%s' "$found"`, workspace);
+    await listen(http.createServer(), socketPath);
+    const present = await runShell(`${assignment}; printf '%s' "$found"`, workspace);
+
+    // Then
+    expect(missing.stdout).toBe("");
+    expect(present.stdout).toBe(socketPath);
+  });
+
+  describe("task CLI", () => {
+    function buildCliCommand(targetUrl: string): string {
+      mkdirSync(path.join(workspace, ".kanvibe"), { recursive: true });
+      writeFileSync(
+        path.join(workspace, ".kanvibe", "targets.json"),
+        JSON.stringify({ targets: [{ url: targetUrl, taskId: "task-1", token: "token-1" }] }),
+      );
+      return withTestSocketDirectory(buildTaskCliCommand(workspace, ["delete", "--yes"]));
+    }
+
+    it("소켓이 있으면 HTTP로 보내지 않아 토큰이 평문 포트로 나가지 않는다", async () => {
+      // Given
+      const viaSocket: ReceivedRequest[] = [];
+      const viaHttp: ReceivedRequest[] = [];
+      const httpServer = startRecordingServer(viaHttp);
+      await listen(httpServer, 0, "127.0.0.1");
+      const targetUrl = `http://127.0.0.1:${(httpServer.address() as { port: number }).port}`;
+      await listen(startRecordingServer(viaSocket), path.join(socketDirectory, buildHookSocketFileName(targetUrl)));
+
+      // When
+      const result = await runShell(buildCliCommand(targetUrl), workspace);
+
+      // Then
+      expect(result.code).toBe(0);
+      expect(viaSocket.length).toBe(1);
+      expect(viaHttp).toEqual([]);
+    });
+
+    it("소켓이 없으면 HTTP로 보낸다", async () => {
+      // Given
+      const viaHttp: ReceivedRequest[] = [];
+      const httpServer = startRecordingServer(viaHttp);
+      await listen(httpServer, 0, "127.0.0.1");
+      const targetUrl = `http://127.0.0.1:${(httpServer.address() as { port: number }).port}`;
+
+      // When
+      const result = await runShell(buildCliCommand(targetUrl), workspace);
+
+      // Then
+      expect(result.code).toBe(0);
+      expect(viaHttp.length).toBe(1);
+    });
+  });
+
+  describe("hook 상태 통보", () => {
+    function buildHookScript(targetUrl: string): string {
+      mkdirSync(path.join(workspace, ".kanvibe"), { recursive: true });
+      writeFileSync(
+        path.join(workspace, ".kanvibe", "targets.json"),
+        JSON.stringify({ targets: [{ url: targetUrl, taskId: "task-1" }] }),
+      );
+      return `TASK_ID=task-1\nKANVIBE_URL=${targetUrl}\nset --\ncd '${workspace}'\ngit init -q 2>/dev/null\n${withTestSocketDirectory(buildShellKanvibeStatusUpdater("review"))}`;
+    }
+
+    it("소켓이 있으면 HTTP 대신 소켓으로 보낸다", async () => {
+      // Given
+      const viaSocket: ReceivedRequest[] = [];
+      const viaHttp: ReceivedRequest[] = [];
+      const httpServer = startRecordingServer(viaHttp);
+      await listen(httpServer, 0, "127.0.0.1");
+      const port = (httpServer.address() as { port: number }).port;
+      const targetUrl = `http://127.0.0.1:${port}`;
+      await listen(startRecordingServer(viaSocket), path.join(socketDirectory, buildHookSocketFileName(targetUrl)));
+
+      // When
+      await runShell(buildHookScript(targetUrl), workspace);
+
+      // Then
+      expect(viaSocket.map((request) => request.path)).toEqual(["/api/hooks/status"]);
+      expect(JSON.parse(viaSocket[0].body)).toEqual({ taskId: "task-1", status: "review" });
+      expect(viaHttp).toEqual([]);
+    });
+
+    it("소켓이 끊겨 있으면 HTTP로 넘어간다", async () => {
+      // Given
+      const viaHttp: ReceivedRequest[] = [];
+      const httpServer = startRecordingServer(viaHttp);
+      await listen(httpServer, 0, "127.0.0.1");
+      const port = (httpServer.address() as { port: number }).port;
+      const targetUrl = `http://127.0.0.1:${port}`;
+      const deadSocket = startRecordingServer([]);
+      const socketPath = path.join(socketDirectory, buildHookSocketFileName(targetUrl));
+      await new Promise<void>((resolve) => deadSocket.listen(socketPath, resolve));
+      /** ssh가 죽은 뒤처럼 파일은 남기고 듣는 쪽만 없앤다 */
+      const keptSocketPath = `${socketPath}.kept`;
+      await runShell(`ln '${socketPath}' '${keptSocketPath}'`, workspace);
+      await new Promise((resolve) => deadSocket.close(resolve));
+      await runShell(`mv '${keptSocketPath}' '${socketPath}'`, workspace);
+
+      // When
+      await runShell(buildHookScript(targetUrl), workspace);
+
+      // Then
+      expect(viaHttp.map((request) => request.path)).toEqual(["/api/hooks/status"]);
+    });
+  });
+});

@@ -5,6 +5,7 @@ class DesktopConnection {
     required this.port,
     required this.token,
     this.name = '',
+    this.certificateFingerprint,
   });
 
   final String host;
@@ -12,18 +13,24 @@ class DesktopConnection {
   final String token;
   final String name;
 
+  /// 페어링 때 고정한 데스크탑 인증서의 지문. 없으면 TLS 도입 전에 페어링한 연결이라 평문으로 통신한다
+  final String? certificateFingerprint;
+
+  bool get isEncrypted => certificateFingerprint != null;
+
   String get id => '${host.trim().toLowerCase()}:$port';
   String get displayName => name.trim().isEmpty ? host : name.trim();
   String get address => '$host:$port';
 
-  /// KanVibe가 패키지된 앱에서 여는 포트. 개발 빌드는 19736을 쓴다
-  static const defaultPort = 9736;
+  /// KanVibe가 패키지된 앱에서 여는 TLS 포트. 개발 빌드는 19746을 쓴다
+  static const defaultPort = 9746;
 
-  Uri buildHttpUri(String path, [Map<String, String>? query]) =>
-      Uri.http('$host:$port', path, query);
+  Uri buildHttpUri(String path, [Map<String, String>? query]) => isEncrypted
+      ? Uri.https('$host:$port', path, query)
+      : Uri.http('$host:$port', path, query);
 
   Uri buildWebSocketUri(String path, Map<String, String> query) => Uri(
-    scheme: 'ws',
+    scheme: isEncrypted ? 'wss' : 'ws',
     host: host,
     port: port,
     path: path,
@@ -39,6 +46,7 @@ class DesktopConnection {
     'port': port,
     'token': token,
     'name': name,
+    'certificateFingerprint': ?certificateFingerprint,
   };
 
   static DesktopConnection? fromJson(Map<String, dynamic> json) {
@@ -51,11 +59,16 @@ class DesktopConnection {
     }
     final name = json['name'];
     if (name != null && name is! String) return null;
+    final certificateFingerprint = json['certificateFingerprint'];
+    if (certificateFingerprint != null && certificateFingerprint is! String) {
+      return null;
+    }
     return DesktopConnection(
       host: host,
       port: port,
       token: token,
       name: name as String? ?? '',
+      certificateFingerprint: certificateFingerprint as String?,
     );
   }
 }

@@ -1,5 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
 import path from "node:path";
+import { buildShellOwnedHookSocketAssignment } from "@/lib/hookSocketPath";
 import { quoteShellArgument } from "@/lib/hostFileAccess";
 import type { ShellHookProviderFile } from "@/lib/shellHookProvider";
 
@@ -140,15 +141,20 @@ export function buildHookInstallBootstrapCommand(
   const scriptUrl = quoteShellArgument(
     `${hookServerUrl.replace(/\/+$/, "")}${HOOK_INSTALL_SCRIPT_PATH}?token=${ticket.token}`,
   );
+  const curlOptions = `--connect-timeout ${HOOK_INSTALL_DOWNLOAD_CONNECT_TIMEOUT_SECONDS}`
+    + ` --max-time ${HOOK_INSTALL_DOWNLOAD_MAX_TIMEOUT_SECONDS} -fsSL`;
+  /** 평문 포트가 닫혀 있어도 설치되도록 터널 소켓을 먼저 시도한다 */
   const downloadCommands = [
-    `curl --connect-timeout ${HOOK_INSTALL_DOWNLOAD_CONNECT_TIMEOUT_SECONDS}`
-      + ` --max-time ${HOOK_INSTALL_DOWNLOAD_MAX_TIMEOUT_SECONDS} -fsSL ${scriptUrl} 2>/dev/null`,
-    `wget --timeout=${HOOK_INSTALL_DOWNLOAD_CONNECT_TIMEOUT_SECONDS} --tries=1 -qO- ${scriptUrl} 2>/dev/null`,
+    `{ [ -n "$__kanvibe_socket" ] && curl --unix-socket "$__kanvibe_socket" ${curlOptions} "$__kanvibe_url" 2>/dev/null; }`,
+    `curl ${curlOptions} "$__kanvibe_url" 2>/dev/null`,
+    `wget --timeout=${HOOK_INSTALL_DOWNLOAD_CONNECT_TIMEOUT_SECONDS} --tries=1 -qO- "$__kanvibe_url" 2>/dev/null`,
   ].join(" || ");
   const restoredScript = `printf '%s\\n' "$__kanvibe_install_script"`;
 
   /** 내려받기가 중간에 끊긴 스크립트를 실행하지 않도록, 전부 받은 뒤에 sh로 넘긴다 */
   return [
+    buildShellOwnedHookSocketAssignment("__kanvibe_socket", hookServerUrl),
+    `__kanvibe_url=${scriptUrl}`,
     `__kanvibe_install_script=$(${downloadCommands})`,
     `__kanvibe_install_checksum=$(${restoredScript} | { sha256sum 2>/dev/null || shasum -a 256; } | cut -d' ' -f1)`,
     `[ "$__kanvibe_install_checksum" = ${quoteShellArgument(ticket.scriptSha256)} ]`,

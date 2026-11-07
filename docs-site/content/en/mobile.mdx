@@ -43,7 +43,7 @@ The phone must be able to reach the saved PC address and port. Use the same reac
 ## Pair your phone once
 
 1. In Desktop, open **Settings → Mobile Connection → Create pairing code**.
-2. In Mobile, enter the **Desktop address** (<span lang="ko" translate="no">데스크탑 주소</span>), **Port** (<span lang="ko" translate="no">포트</span>), and the six-digit **pairing code** (<span lang="ko" translate="no">연결 코드</span>). Use port **9736** for a packaged Desktop app or **19736** for a development build. **PC name** (<span lang="ko" translate="no">PC 이름</span>) is optional.
+2. In Mobile, enter the **Desktop address** (<span lang="ko" translate="no">데스크탑 주소</span>), **Port** (<span lang="ko" translate="no">포트</span>), and the six-digit **pairing code** (<span lang="ko" translate="no">연결 코드</span>). Use port **9746** for a packaged Desktop app or **19746** for a development build. This port is encrypted, and Mobile pins the Desktop certificate fingerprint when it pairs. **PC name** (<span lang="ko" translate="no">PC 이름</span>) is optional.
 3. Tap **Connect** (<span lang="ko" translate="no">연결</span>). The board opens, and Mobile stores the connection in the device's secure storage for future use.
 
 The code expires after **five minutes** and can be used once. Create a new code if it expires or has already been used. Enter the PC's network address rather than `localhost` when connecting from a physical phone. Find it in macOS **System Settings → Network**, or run `ipconfig getifaddr en0` on the PC.

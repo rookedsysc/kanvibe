@@ -71,6 +71,21 @@ describe("hookService.updateHookTaskStatus", () => {
     mocks.execGit.mockResolvedValue(".git");
   });
 
+  it("터널로 들어온 요청은 다른 호스트의 작업을 바꾸지 못한다", async () => {
+    const { updateHookTaskStatus } = await import("@/desktop/main/services/hookService");
+    mocks.taskRepo.findOne.mockResolvedValue({
+      id: "task-1",
+      status: TaskStatus.PROGRESS,
+      sshHost: "host-b",
+    });
+
+    const result = await updateHookTaskStatus({ taskId: "task-1", status: TaskStatus.REVIEW }, "host-a");
+
+    expect(result).toMatchObject({ success: false, status: 404 });
+    expect(mocks.taskRepo.save).not.toHaveBeenCalled();
+    expect(mocks.broadcastTaskStatusChanged).not.toHaveBeenCalled();
+  });
+
   it("taskId로 작업 상태를 변경한다", async () => {
     const { updateHookTaskStatus } = await import("@/desktop/main/services/hookService");
     const project = { id: "project-1", name: "kanvibe" };

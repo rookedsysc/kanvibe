@@ -12,6 +12,7 @@ dependencies:
     sdk: flutter
   flutter_riverpod: ^3.4.3
   http: ^1.6.0
+  crypto: ^3.0.0
   web_socket_channel: ^3.0.3
   xterm: ^4.0.0
   flutter_secure_storage: ^11.0.0

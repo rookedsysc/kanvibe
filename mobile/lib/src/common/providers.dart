@@ -47,19 +47,20 @@ class ConnectionController extends AsyncNotifier<SavedConnections> {
     final current = await future;
     if (current.find(id) != null) return ConnectFailure.alreadyPaired;
 
-    final token = await ref
+    final pairing = await ref
         .read(desktopClientProvider)
         .pair(host: host, port: port, code: code, deviceName: 'KanVibe Mobile');
 
-    if (token == null) {
+    if (pairing == null) {
       return ConnectFailure.rejectedCode;
     }
 
     final connection = DesktopConnection(
       host: host,
       port: port,
-      token: token,
+      token: pairing.token,
       name: name.trim(),
+      certificateFingerprint: pairing.certificateFingerprint,
     );
     var added = false;
     await _change((registry) {

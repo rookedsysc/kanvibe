@@ -1,7 +1,9 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:http/http.dart' as http;
+import 'package:http/io_client.dart';
 import 'package:web_socket_channel/io.dart';
 
 import '../../features/board/domain/task_status.dart';
@@ -10,16 +12,49 @@ import '../../features/notifications/domain/inbox_notification.dart';
 import '../../features/notifications/domain/notification_settings.dart';
 import '../../features/task_detail/domain/mirror_pane.dart';
 import 'desktop_connection.dart';
+import 'pinned_http_client.dart';
+
+/// 페어링 결과. 인증서 지문은 다음 요청부터 고정할 값이다
+class PairingResult {
+  const PairingResult({
+    required this.token,
+    required this.certificateFingerprint,
+  });
+
+  final String token;
+  final String certificateFingerprint;
+}
 
 /// 데스크탑의 `/api/mobile/*`와 이야기하는 유일한 통로.
 ///
 /// 페어링만 토큰 없이 호출하고 나머지는 전부 토큰을 실어 보낸다.
 /// 데스크탑에서 `/api/hooks/*`는 인증 없이 열려 있지만 이 클라이언트는 그쪽을 부르지 않는다.
 class DesktopClient {
-  DesktopClient({http.Client? httpClient})
-    : _httpClient = httpClient ?? http.Client();
+  DesktopClient({http.Client? httpClient}) : _injectedHttpClient = httpClient;
 
-  final http.Client _httpClient;
+  /// 테스트가 넣는 클라이언트. 있으면 연결과 무관하게 이것을 쓴다
+  final http.Client? _injectedHttpClient;
+  late final http.Client _legacyPlaintextClient = http.Client();
+
+  /// 지문마다 클라이언트를 재사용해 요청마다 TLS 핸드셰이크를 하지 않는다
+  final Map<String, http.Client> _pinnedClients = {};
+
+  http.Client _clientFor(DesktopConnection connection) {
+    final injected = _injectedHttpClient;
+    if (injected != null) return injected;
+
+    final fingerprint = connection.certificateFingerprint;
+    if (fingerprint == null) return _legacyPlaintextClient;
+    return _pinnedClients.putIfAbsent(
+      fingerprint,
+      () => IOClient(createPinnedHttpClient(fingerprint)),
+    );
+  }
+
+  HttpClient? _webSocketClientFor(DesktopConnection connection) {
+    final fingerprint = connection.certificateFingerprint;
+    return fingerprint == null ? null : createPinnedHttpClient(fingerprint);
+  }
 
   /// 사람이 기다려 줄 만한 시간. 넘어가면 주소가 틀렸을 가능성이 더 크다
   static const _requestTimeout = Duration(seconds: 8);
@@ -35,28 +70,44 @@ class DesktopClient {
   static const _deleteTaskTimeout = Duration(seconds: 90);
   static const _createTerminalTabTimeout = Duration(seconds: 30);
 
-  /// 화면의 6자리 코드를 토큰으로 바꾼다. 성공하면 그 뒤로 코드는 필요 없다
-  Future<String?> pair({
+  /// 화면의 6자리 코드를 토큰으로 바꾼다. 성공하면 그 뒤로 코드는 필요 없다.
+  ///
+  /// 이 요청에서 본 인증서의 지문을 고정한다. 코드를 맞힌 상대가 그 인증서의 주인이므로,
+  /// 페어링이 끝난 뒤에는 다른 인증서로 끼어들 수 없다.
+  Future<PairingResult?> pair({
     required String host,
     required int port,
     required String code,
     required String deviceName,
   }) async {
-    final response = await _httpClient
-        .post(
-          Uri.http('$host:$port', '/api/mobile/pair'),
-          headers: {'Content-Type': 'application/json'},
-          body: jsonEncode({'code': code, 'deviceName': deviceName}),
-        )
-        .timeout(_requestTimeout);
+    String? certificateFingerprint;
+    final pairingClient = IOClient(
+      createFingerprintCapturingHttpClient(
+        (fingerprint) => certificateFingerprint = fingerprint,
+      ),
+    );
+    try {
+      final response = await pairingClient
+          .post(
+            Uri.https('$host:$port', '/api/mobile/pair'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({'code': code, 'deviceName': deviceName}),
+          )
+          .timeout(_requestTimeout);
 
-    if (response.statusCode != 200) {
-      return null;
+      if (response.statusCode != 200) {
+        return null;
+      }
+
+      final body = jsonDecode(response.body) as Map<String, dynamic>;
+      final token = body['token'];
+      final fingerprint = certificateFingerprint;
+      return token is String && fingerprint != null
+          ? PairingResult(token: token, certificateFingerprint: fingerprint)
+          : null;
+    } finally {
+      pairingClient.close();
     }
-
-    final body = jsonDecode(response.body) as Map<String, dynamic>;
-    final token = body['token'];
-    return token is String ? token : null;
   }
 
   /// 이 토큰이 가리키는 기기를 데스크탑의 목록에서도 지운다.
@@ -64,7 +115,7 @@ class DesktopClient {
   /// 기기에서만 지우면 데스크탑은 그 토큰을 계속 통과시키므로, 끊었다는 말이 반쪽이 된다.
   /// 데스크탑은 제시한 토큰의 기기 하나만 지우고, 모르는 토큰에는 401로 답한다.
   Future<void> unpairDevice(DesktopConnection connection) async {
-    final response = await _httpClient
+    final response = await _clientFor(connection)
         .delete(
           connection.buildHttpUri('/api/mobile/device'),
           headers: connection.authorizationHeaders,
@@ -78,7 +129,7 @@ class DesktopClient {
 
   /// 보드 전체를 한 번에 받는다
   Future<Map<String, dynamic>> fetchBoard(DesktopConnection connection) async {
-    final response = await _httpClient
+    final response = await _clientFor(connection)
         .get(
           connection.buildHttpUri('/api/mobile/board'),
           headers: connection.authorizationHeaders,
@@ -99,7 +150,7 @@ class DesktopClient {
     String? query,
     String? cursor,
   }) async {
-    final response = await _httpClient
+    final response = await _clientFor(connection)
         .get(
           connection
               .buildHttpUri('', {
@@ -128,7 +179,7 @@ class DesktopClient {
     ChatSession session, {
     String? cursor,
   }) async {
-    final response = await _httpClient
+    final response = await _clientFor(connection)
         .get(
           connection
               .buildHttpUri('', {'cursor': ?cursor, 'limit': '20'})
@@ -158,7 +209,7 @@ class DesktopClient {
   Future<List<InboxNotification>> fetchNotifications(
     DesktopConnection connection,
   ) async {
-    final response = await _httpClient
+    final response = await _clientFor(connection)
         .get(
           connection.buildHttpUri('/api/mobile/notifications'),
           headers: connection.authorizationHeaders,
@@ -180,7 +231,7 @@ class DesktopClient {
   Future<NotificationSettings> fetchNotificationSettings(
     DesktopConnection connection,
   ) async {
-    final response = await _httpClient
+    final response = await _clientFor(connection)
         .get(
           connection.buildHttpUri('/api/mobile/notification-settings'),
           headers: connection.authorizationHeaders,
@@ -194,7 +245,7 @@ class DesktopClient {
     required bool isEnabled,
     required Set<String> enabledStatuses,
   }) async {
-    final response = await _httpClient
+    final response = await _clientFor(connection)
         .patch(
           connection.buildHttpUri('/api/mobile/notification-settings'),
           headers: {
@@ -231,7 +282,7 @@ class DesktopClient {
     final uri = connection
         .buildHttpUri('/api/mobile/notifications')
         .replace(pathSegments: ['api', 'mobile', 'notifications', id, 'read']);
-    final response = await _httpClient
+    final response = await _clientFor(connection)
         .patch(uri, headers: connection.authorizationHeaders)
         .timeout(_requestTimeout);
     if (response.statusCode != 200) {
@@ -249,7 +300,7 @@ class DesktopClient {
   }
 
   Future<void> markAllNotificationsRead(DesktopConnection connection) async {
-    final response = await _httpClient
+    final response = await _clientFor(connection)
         .post(
           connection.buildHttpUri('/api/mobile/notifications/read-all'),
           headers: connection.authorizationHeaders,
@@ -265,7 +316,7 @@ class DesktopClient {
     DesktopConnection connection,
     String taskId,
   ) async {
-    final response = await _httpClient
+    final response = await _clientFor(connection)
         .get(
           connection.buildHttpUri(
             '/api/mobile/tasks/${Uri.encodeComponent(taskId)}',
@@ -289,7 +340,7 @@ class DesktopClient {
     required String pushToken,
     required String platform,
   }) async {
-    final response = await _httpClient
+    final response = await _clientFor(connection)
         .put(
           connection.buildHttpUri('/api/mobile/notifications'),
           headers: {
@@ -310,7 +361,7 @@ class DesktopClient {
   }
 
   Future<void> unregisterNotifications(DesktopConnection connection) async {
-    final response = await _httpClient
+    final response = await _clientFor(connection)
         .delete(
           connection.buildHttpUri('/api/mobile/notifications'),
           headers: connection.authorizationHeaders,
@@ -328,7 +379,7 @@ class DesktopClient {
     String paneId,
     String action,
   ) async {
-    final response = await _httpClient
+    final response = await _clientFor(connection)
         .post(
           connection
               .buildHttpUri('/')
@@ -365,7 +416,7 @@ class DesktopClient {
     DesktopConnection connection,
     String taskId,
   ) async {
-    final response = await _httpClient
+    final response = await _clientFor(connection)
         .get(
           connection.buildHttpUri(
             '/api/mobile/tasks/${Uri.encodeComponent(taskId)}/surfaces',
@@ -396,7 +447,7 @@ class DesktopClient {
     DesktopConnection connection,
     String taskId,
   ) async {
-    final response = await _httpClient
+    final response = await _clientFor(connection)
         .post(
           connection.buildHttpUri(
             '/api/mobile/tasks/${Uri.encodeComponent(taskId)}/tabs',
@@ -424,7 +475,7 @@ class DesktopClient {
     DesktopConnection connection,
     String projectId,
   ) async {
-    final response = await _httpClient
+    final response = await _clientFor(connection)
         .get(
           connection.buildHttpUri(
             '/api/mobile/projects/${Uri.encodeComponent(projectId)}/branches',
@@ -456,7 +507,7 @@ class DesktopClient {
     String? priority,
     required String sessionType,
   }) async {
-    final response = await _httpClient
+    final response = await _clientFor(connection)
         .post(
           connection.buildHttpUri('/api/mobile/tasks'),
           headers: {
@@ -491,7 +542,7 @@ class DesktopClient {
     String taskId,
     TaskStatus status,
   ) async {
-    final response = await _httpClient
+    final response = await _clientFor(connection)
         .patch(
           connection.buildHttpUri(
             '/api/mobile/tasks/${Uri.encodeComponent(taskId)}/status',
@@ -521,7 +572,7 @@ class DesktopClient {
     String taskId, {
     required bool isForced,
   }) async {
-    final response = await _httpClient
+    final response = await _clientFor(connection)
         .delete(
           connection.buildHttpUri(
             '/api/mobile/tasks/${Uri.encodeComponent(taskId)}',
@@ -566,6 +617,7 @@ class DesktopClient {
         'paneId': paneId,
       }),
       headers: connection.authorizationHeaders,
+      customClient: _webSocketClientFor(connection),
     );
 
     return PaneStream(
@@ -586,6 +638,7 @@ class DesktopClient {
       headers: connection.authorizationHeaders,
       pingInterval: const Duration(seconds: 25),
       connectTimeout: _requestTimeout,
+      customClient: _webSocketClientFor(connection),
     );
     // handshake 실패는 events에도 전달된다. 별도 ready Future의 중복 오류만 소비한다.
     channel.ready.ignore();
@@ -599,7 +652,13 @@ class DesktopClient {
     );
   }
 
-  void close() => _httpClient.close();
+  void close() {
+    _injectedHttpClient?.close();
+    _legacyPlaintextClient.close();
+    for (final client in _pinnedClients.values) {
+      client.close();
+    }
+  }
 }
 
 /// 데스크탑이 이 기기를 목록에서 지워 스트림을 끊었을 때의 종료 코드.

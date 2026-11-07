@@ -1,5 +1,6 @@
 import { spawn, type ChildProcess } from "child_process";
-import { getAppSetting, getDefaultSessionType, getNotificationSettings, setAppSetting, setNotificationEnabled, setNotificationStatuses } from "@/desktop/main/services/appSettingsService";
+import { getAppSetting, getDefaultSessionType, getLanPlaintextAllowed, getNotificationSettings, setAppSetting, setLanPlaintextAllowed, setNotificationEnabled, setNotificationStatuses } from "@/desktop/main/services/appSettingsService";
+import { getMobileTlsPort } from "@/lib/hookEndpoint";
 import {
   connectTerminalSession,
   createTask,
@@ -592,6 +593,21 @@ export async function updateMobileTaskStatus(taskId: string, submittedStatus: st
   }
 
   return updateTaskStatus(taskId, status);
+}
+
+export interface MobileConnectionSettings {
+  mobileTlsPort: number;
+  isLanPlaintextAllowed: boolean;
+}
+
+/** 설정 화면이 보여 줄 모바일 포트와 LAN 평문 허용 여부 */
+export async function readMobileConnectionSettings(): Promise<MobileConnectionSettings> {
+  return { mobileTlsPort: getMobileTlsPort(), isLanPlaintextAllowed: await getLanPlaintextAllowed() };
+}
+
+/** LAN 평문 포트를 임시로 계속 열어 둘지 저장한다. 포트는 앱 시작 때 열리므로 다음 실행부터 적용된다 */
+export async function updateLanPlaintextAllowed(isAllowed: boolean): Promise<void> {
+  await setLanPlaintextAllowed(isAllowed);
 }
 
 /** 화면에 띄울 페어링 코드를 발급한다 */

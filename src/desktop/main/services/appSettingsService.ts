@@ -77,6 +77,37 @@ export async function dismissSidebarHint(): Promise<void> {
   await setAppSetting(SIDEBAR_HINT_DISMISSED_KEY, "true");
 }
 
+const LAN_PLAINTEXT_ALLOWED_KEY = "lan_plaintext_allowed";
+const LAN_PLAINTEXT_OBSERVED_SINCE_KEY = "lan_plaintext_observed_since";
+const LAN_PLAINTEXT_LAST_REQUEST_AT_KEY = "lan_plaintext_last_request_at";
+
+/** 사용자가 LAN 평문 포트를 임시로 계속 열어 두기로 했는지 조회한다 */
+export async function getLanPlaintextAllowed(): Promise<boolean> {
+  return (await getAppSetting(LAN_PLAINTEXT_ALLOWED_KEY)) === "true";
+}
+
+export async function setLanPlaintextAllowed(isAllowed: boolean): Promise<void> {
+  await setAppSetting(LAN_PLAINTEXT_ALLOWED_KEY, String(isAllowed));
+}
+
+/** LAN 평문 사용량을 재기 시작한 시각(ms). 처음 부르면 지금으로 기록한다 */
+export async function getOrStartLanPlaintextObservation(now: number): Promise<number> {
+  const observedSince = Number(await getAppSetting(LAN_PLAINTEXT_OBSERVED_SINCE_KEY));
+  if (observedSince > 0) {
+    return observedSince;
+  }
+  await setAppSetting(LAN_PLAINTEXT_OBSERVED_SINCE_KEY, String(now));
+  return now;
+}
+
+export async function getLanPlaintextLastRequestAt(): Promise<number> {
+  return Number(await getAppSetting(LAN_PLAINTEXT_LAST_REQUEST_AT_KEY)) || 0;
+}
+
+export async function setLanPlaintextLastRequestAt(requestedAt: number): Promise<void> {
+  await setAppSetting(LAN_PLAINTEXT_LAST_REQUEST_AT_KEY, String(requestedAt));
+}
+
 const DONE_ALERT_DISMISSED_KEY = "done_alert_dismissed";
 
 /** Done 이동 경고 다시 묻지 않기 여부를 조회한다 */

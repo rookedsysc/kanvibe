@@ -1,5 +1,6 @@
 import path from "path";
 import { quoteShellArgument } from "@/lib/hostFileAccess";
+import { buildShellHookSocketResolver } from "@/lib/hookSocketPath";
 import { KANVIBE_DIR_NAME } from "@/lib/kanvibeProjectState";
 import type { ShellHookProviderFile } from "@/lib/shellHookProvider";
 
@@ -125,14 +126,31 @@ is_connect_timeout() {
   esac
 }
 
+${buildShellHookSocketResolver()}
+
+# 터널 소켓이 있으면 먼저 쓰고, 소켓에 연결되지 않을 때만 HTTP로 다시 보낸다
+post_json() {
+  local url=$1 token=$2 path=$3 body=$4 socket_path request_status
+  socket_path="$(kanvibe_hook_socket "\${url}")"
+  if [ -n "\${socket_path}" ]; then
+    send_json_request "\${url}" "\${token}" "\${path}" "\${body}" --unix-socket "\${socket_path}"
+    request_status=$?
+    if [ "\${request_status}" -ne "\${KANVIBE_CONNECTION_FAILED}" ]; then
+      return "\${request_status}"
+    fi
+  fi
+  send_json_request "\${url}" "\${token}" "\${path}" "\${body}"
+}
+
 # 성공 응답이면 0, 연결 자체가 안 되면 KANVIBE_CONNECTION_FAILED, 그 밖의 실패는 1을 돌려준다.
 # 토큰은 명령줄 대신 표준 입력으로 curl에 넘겨 ps에 드러나지 않게 한다.
-post_json() {
+send_json_request() {
   local url=$1 token=$2 path=$3 body=$4 response curl_status connect_seconds
+  shift 4
   response="$(printf 'Authorization: Bearer %s\\n' "\${token}" | curl -sS \\
     --connect-timeout "\${KANVIBE_CONNECT_TIMEOUT_SECONDS}" \\
     --max-time "\${KANVIBE_REQUEST_TIMEOUT_SECONDS}" \\
-    -X POST --url "\${url}\${path}" \\
+    "$@" -X POST --url "\${url}\${path}" \\
     -H @- \\
     -H 'Content-Type: application/json' \\
     --data-binary "\${body}" \\
@@ -143,7 +161,8 @@ post_json() {
   connect_seconds="\${response##*$'\\n'}"
   RESPONSE_BODY="\${response%$'\\n'*}"
 
-  if [ "\${curl_status}" -eq 6 ] || [ "\${curl_status}" -eq 7 ] || is_connect_timeout "\${curl_status}" "\${connect_seconds}"; then
+  # 2는 curl이 --unix-socket을 모르는 옛 버전일 때의 종료 코드로, 요청이 나가지 않았다
+  if [ "\${curl_status}" -eq 2 ] || [ "\${curl_status}" -eq 6 ] || [ "\${curl_status}" -eq 7 ] || is_connect_timeout "\${curl_status}" "\${connect_seconds}"; then
     RESPONSE_STATUS="000"
     RESPONSE_BODY="연결할 수 없습니다"
     return "\${KANVIBE_CONNECTION_FAILED}"

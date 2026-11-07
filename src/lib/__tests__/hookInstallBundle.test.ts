@@ -179,7 +179,7 @@ describe("buildHookInstallBootstrapCommand", () => {
     const command = buildHookInstallBootstrapCommand("http://192.168.0.10:9736", ticket);
 
     // Then
-    expect(Buffer.byteLength(command)).toBeLessThan(700);
+    expect(Buffer.byteLength(command)).toBeLessThan(1000);
     expect(command).not.toContain("base64 -d");
     expect(command).toContain(
       `http://192.168.0.10:9736${HOOK_INSTALL_SCRIPT_PATH}?token=${ticket.token}`,
@@ -231,7 +231,7 @@ describe("buildHookInstallBootstrapCommand", () => {
     const command = buildHookInstallBootstrapCommand("http://192.168.0.10:9736", sampleTicket);
 
     // Then
-    expect(command).toMatch(/^__kanvibe_install_script=\$\(/);
+    expect(command).toContain(" && __kanvibe_install_script=$(");
     expect(command).toContain('printf \'%s\\n\' "$__kanvibe_install_script" | sh');
   });
 

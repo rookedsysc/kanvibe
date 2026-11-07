@@ -1,3 +1,4 @@
+import { buildShellHookSocketResolver } from "@/lib/hookSocketPath";
 import {
   KANVIBE_GIT_EXCLUDE_MARKER,
   KANVIBE_STATE_DIR_EXCLUDE_PATTERN,
@@ -75,6 +76,14 @@ if [ -z "\${KANVIBE_TARGET_ROWS}" ]; then
   KANVIBE_TARGET_ROWS="$(printf '%s\t%s\n' "\${KANVIBE_URL%/}" "\${TASK_ID}")"
 fi
 
+${buildShellHookSocketResolver()}
+
+kanvibe_post_status() {
+  curl -s --max-time ${HOOK_NOTIFY_TIMEOUT_SECONDS} -X POST "$@" --url "\${KANVIBE_TARGET_URL%/}/api/hooks/status" \
+    -H "Content-Type: application/json" \
+    -d "{\\"taskId\\": \\"\${KANVIBE_TARGET_TASK_ID}\\", \\"status\\": \\"${status}\\"}"
+}
+
 printf '%s\n' "\${KANVIBE_TARGET_ROWS}" | {
   while IFS="$(printf '\\t')" read -r KANVIBE_TARGET_URL KANVIBE_TARGET_TASK_ID; do
     if [ -z "\${KANVIBE_TARGET_URL}" ] || [ -z "\${KANVIBE_TARGET_TASK_ID}" ]; then
@@ -84,10 +93,12 @@ printf '%s\n' "\${KANVIBE_TARGET_ROWS}" | {
       http://*|https://*) ;;
       *) continue ;;
     esac
-    curl -s --max-time ${HOOK_NOTIFY_TIMEOUT_SECONDS} -X POST --url "\${KANVIBE_TARGET_URL%/}/api/hooks/status" \
-      -H "Content-Type: application/json" \
-      -d "{\\"taskId\\": \\"\${KANVIBE_TARGET_TASK_ID}\\", \\"status\\": \\"${status}\\"}" \
-      > /dev/null 2>&1 &
+    KANVIBE_TARGET_SOCKET="$(kanvibe_hook_socket "\${KANVIBE_TARGET_URL}")"
+    {
+      if [ -z "\${KANVIBE_TARGET_SOCKET}" ] || ! kanvibe_post_status --unix-socket "\${KANVIBE_TARGET_SOCKET}"; then
+        kanvibe_post_status
+      fi
+    } > /dev/null 2>&1 &
   done
   wait
 }`;
@@ -128,6 +139,7 @@ export function hasShellKanvibeTargetFanout(content: string): boolean {
     && content.includes("KANVIBE_TARGET_TASK_ID")
     && content.includes("while IFS=")
     && content.includes('--url "${KANVIBE_TARGET_URL%/}/api/hooks/status"')
+    && content.includes("kanvibe_hook_socket")
     && content.includes("taskId");
 }
 

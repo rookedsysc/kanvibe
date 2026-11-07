@@ -28,7 +28,7 @@ const CONFIG_DIR_NAME = ".opencode";
 /** OpenCode plugin TypeScript 파일 내용을 생성한다 */
 export function generatePluginScript(kanvibeUrl: string, taskId: string): string {
   return `import type { Plugin } from "@opencode-ai/plugin";
-import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
+import { appendFileSync, existsSync, lstatSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import { execFileSync } from "child_process";
 import { dirname, resolve } from "path";
 import { fileURLToPath } from "url";
@@ -128,14 +128,45 @@ export const KanvibePlugin: Plugin = async ({ client }) => {
     }
   }
 
+  /** 이 소켓으로 task 정보가 나가므로, 본인 소유이고 0700인 디렉터리 안의 본인 소유 소켓만 쓴다 */
+  function findKanvibeHookSocket(targetUrl: string): string | undefined {
+    try {
+      const uid = process.getuid?.();
+      const directory = "/tmp/kv-" + uid;
+      const directoryStat = lstatSync(directory);
+      if (!directoryStat.isDirectory() || directoryStat.uid !== uid || (directoryStat.mode & 0o777) !== 0o700) return undefined;
+      const address = targetUrl.replace(/^[a-zA-Z]*:\/\//, "").replace(/\/+$/, "").replace(/[^A-Za-z0-9.-]/g, "_");
+      const socketPath = directory + "/" + address + ".sock";
+      const socketStat = lstatSync(socketPath);
+      return socketStat.isSocket() && socketStat.uid === uid ? socketPath : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
+  async function sendKanvibeStatus(target: KanvibeTarget, status: string, unix?: string): Promise<void> {
+    await fetch(target.url + "/api/hooks/status", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ taskId: target.taskId, status }),
+      signal: AbortSignal.timeout(KANVIBE_NOTIFY_TIMEOUT_MS),
+      ...(unix ? { unix } : {}),
+    } as RequestInit);
+  }
+
+  /** OpenCode가 도는 Bun의 fetch는 unix 옵션으로 소켓에 연결한다. 소켓으로 못 보내면 HTTP로 넘어간다 */
   async function postKanvibeStatus(target: KanvibeTarget, status: string): Promise<void> {
     try {
-      await fetch(target.url + "/api/hooks/status", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ taskId: target.taskId, status }),
-        signal: AbortSignal.timeout(KANVIBE_NOTIFY_TIMEOUT_MS),
-      });
+      const socketPath = findKanvibeHookSocket(target.url);
+      if (socketPath) {
+        try {
+          await sendKanvibeStatus(target, status, socketPath);
+          return;
+        } catch {
+          /* HTTP로 넘어간다 */
+        }
+      }
+      await sendKanvibeStatus(target, status);
     } catch {
       /* 네트워크 에러 무시 */
     }
@@ -464,6 +495,7 @@ function hasOpenCodeTargetFanout(pluginContent: string): boolean {
     && pluginContent.includes("readKanvibeTargets")
     && pluginContent.includes("fanoutKanvibeStatus")
     && pluginContent.includes("postKanvibeStatus")
+    && pluginContent.includes("findKanvibeHookSocket")
     && pluginContent.includes("taskId: target.taskId")
     && pluginContent.includes("/api/hooks/status");
 }
