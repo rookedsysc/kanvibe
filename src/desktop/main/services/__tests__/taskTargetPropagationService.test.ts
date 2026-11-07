@@ -97,4 +97,18 @@ describe("taskTargetPropagationService", () => {
       { url: PEER_URL, isSuccess: false, httpStatus: "000", message: "bash: task.sh: No such file or directory" },
     ]);
   });
+
+  it.each([
+    ["자기 주소를 얻지 못해도", () => mocks.getHookServerUrl.mockRejectedValue(new Error("경로 없음")), "경로 없음"],
+    ["targets.json을 읽지 못해도", () => mocks.readTextFile.mockRejectedValue(new Error("SSH 끊김")), "SSH 끊김"],
+  ])("%s 예외 대신 실패 결과를 돌려준다", async (_name, arrangeFailure, message) => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    arrangeFailure();
+    const { propagateTaskDeletionToPeers } = await import("@/desktop/main/services/taskTargetPropagationService");
+
+    const results = await propagateTaskDeletionToPeers("/remote/repo", "devbox");
+
+    expect(results).toEqual([{ url: "unknown", isSuccess: false, httpStatus: "000", message }]);
+    expect(mocks.execGit).not.toHaveBeenCalled();
+  });
 });

@@ -19,6 +19,9 @@ export interface PeerTargetResult {
  */
 const PEER_PROPAGATION_TIMEOUT_MS = 10 * 60_000;
 
+/** 상대 client 목록을 읽기 전에 실패하면 어느 client인지 알 수 없어, 실패 사실만 이 이름으로 알린다 */
+const UNRESOLVED_PEER_URL = "unknown";
+
 /** 같은 worktree를 공유하는 다른 KanVibe client에 task 삭제를 전파한다. 그 client는 다시 전파하지 않는다 */
 export async function propagateTaskDeletionToPeers(
   worktreePath: string,
@@ -45,13 +48,15 @@ async function runPeerPropagation(
   commandName: "propagate-delete" | "propagate-register",
   extraArguments: string[],
 ): Promise<PeerTargetResult[]> {
-  const ownUrl = await getHookServerUrl(sshHost);
-  const peerUrls = await readPeerTargetUrls(repoPath, ownUrl, sshHost);
-  if (peerUrls.length === 0) {
-    return [];
-  }
+  let peerUrls: string[] = [];
 
   try {
+    const ownUrl = await getHookServerUrl(sshHost);
+    peerUrls = await readPeerTargetUrls(repoPath, ownUrl, sshHost);
+    if (peerUrls.length === 0) {
+      return [];
+    }
+
     const output = await execGit(
       buildTaskCliCommand(repoPath, [commandName, "--exclude-url", ownUrl, ...extraArguments], sshHost),
       sshHost,
@@ -61,7 +66,8 @@ async function runPeerPropagation(
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     console.warn("[task-cli] 다른 client로 전파하지 못했습니다", { repoPath, sshHost: sshHost ?? null, commandName, message });
-    return peerUrls.map((url) => ({ url, isSuccess: false, httpStatus: "000", message }));
+    const failedUrls = peerUrls.length > 0 ? peerUrls : [UNRESOLVED_PEER_URL];
+    return failedUrls.map((url) => ({ url, isSuccess: false, httpStatus: "000", message }));
   }
 }
 
