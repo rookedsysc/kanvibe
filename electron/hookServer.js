@@ -1,6 +1,7 @@
 const http = require("node:http");
 const path = require("node:path");
 
+const { rejectBrowserOriginRequest } = require("./browserOriginGuard.js");
 const { readJsonBody, writeJson } = require("./httpBody.js");
 
 function getRuntimeModulePath(...moduleSegments) {
@@ -28,6 +29,10 @@ function createHookServer({ host, port, isDevPairingRouteEnabled }) {
   const { handleTaskCliRequest } = require("./taskCliRoutes.js");
 
   const server = http.createServer(async (request, response) => {
+    if (rejectBrowserOriginRequest(request, response)) {
+      return;
+    }
+
     /** 모바일 경로는 자체 인증을 거치므로 hook 라우팅보다 먼저 가로챈다 */
     if (await handleMobileRequest(request, response, { bridge: mobileBridge, host, port, isDevPairingRouteEnabled })) {
       return;
@@ -54,16 +59,6 @@ function createHookServer({ host, port, isDevPairingRouteEnabled }) {
       }
 
       writeShellScript(response, installScript);
-      return;
-    }
-
-    if (request.method === "POST" && request.url === "/api/hooks/start") {
-      try {
-        const result = await hookService.startHookTask(await readJsonBody(request));
-        writeJson(response, result.status || 200, result);
-      } catch (error) {
-        writeJson(response, 500, { success: false, error: error instanceof Error ? error.message : "서버 오류" });
-      }
       return;
     }
 

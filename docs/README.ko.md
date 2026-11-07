@@ -349,8 +349,7 @@ AI 에이전트 Hooks를 통한 태스크 상태 변경이 **브라우저 알림
 
 | 엔드포인트 | 메서드 | 설명 |
 |-----------|--------|------|
-| `/api/hooks/start` | POST | 새 태스크 생성 |
-| `/api/hooks/status` | POST | `branchName` + `projectName`으로 태스크 상태를 변경하며, 대상을 못 찾으면 상태는 바꾸지 않고 브라우저 알림만 보낸 뒤 `404`를 반환 |
+| `/api/hooks/status` | POST | `taskId` + `status`로 태스크 상태를 변경하며, 대상을 못 찾으면 상태는 바꾸지 않고 브라우저 알림만 보낸 뒤 `404`를 반환 |
 | `/api/cli/tasks` | POST | task CLI 태스크 생성. `Authorization: Bearer <task 토큰>` 필요 |
 | `/api/cli/tasks/delete` | POST | task CLI 태스크 삭제. `confirmed: true`가 없으면 `400`, 커밋하지 않은 변경이 있으면 `force` 없이 `409` |
 | `/api/cli/tasks/register` | POST | 다른 데스크탑이 만든 태스크를 이 데스크탑에 등록만 함(worktree를 새로 만들지 않음) |
