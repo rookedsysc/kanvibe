@@ -62,6 +62,9 @@ vi.mock("@/desktop/main/terminalBridge", async (importOriginal) => {
 });
 
 vi.mock("@/desktop/main/services/appSettingsService", () => ({
+  getNotificationSettings: async () => ({ isEnabled: appSettingsStore.get("notification_enabled") !== "false", enabledStatuses: JSON.parse(appSettingsStore.get("notification_statuses") ?? '["progress","pending","review"]') }),
+  setNotificationEnabled: async (enabled: boolean) => { appSettingsStore.set("notification_enabled", String(enabled)); },
+  setNotificationStatuses: async (statuses: string[]) => { appSettingsStore.set("notification_statuses", JSON.stringify(statuses)); },
   getAppSetting: async (key: string) => appSettingsStore.get(key) ?? null,
   getDefaultSessionType: async () => defaultSessionTypeSetting,
   setAppSetting: async (key: string, value: string) => {
@@ -144,11 +147,13 @@ describe("모바일 화면 크기", () => {
       if (command.includes("list-panes")) return MIRROR_PANE_LINE;
       if (command.includes("window_layout")) return "80\t24\tlayout-original\n";
       if (command.includes("window_width")) return "80 24 80 24";
+      if (command.includes("capture-pane")) return "history-through-180\n43 69";
       return "";
     });
 
     const viewport = await claimPaneViewport("task-1", "%19");
-    await viewport.resize(44, 70);
+    expect(await viewport.resize(44, 70)).toContain("history-through-180");
+    expect(executedCommands().findIndex((command) => command.includes("capture-pane"))).toBeGreaterThan(executedCommands().findIndex((command) => command.includes("resize-window")));
     expect(executedCommands().some((command) => command.includes("resize-pane") && command.includes("-x 44 -y 70"))).toBe(true);
     await viewport.release();
     expect(executedCommands().some((command) => command.includes("select-layout") && command.includes("layout-original"))).toBe(true);
@@ -160,7 +165,7 @@ describe("모바일 화면 크기", () => {
     await subscribeToPane("viewport-task", "viewport-task-1", () => {}, () => {});
     const first = await claimPaneViewport("viewport-task", "viewport-task-1");
     const second = await claimPaneViewport("viewport-task", "viewport-task-1");
-    await first.resize(44, 70);
+    expect(await first.resize(44, 70)).toBeNull();
     await second.resize(80, 35);
     await second.release();
     await first.release();
@@ -1367,7 +1372,7 @@ describe("첫 화면 스냅샷", () => {
       }
       if (command.includes("capture-pane")) {
         /** capture-pane은 pane 높이만큼 줄을 내보내고, 이어서 커서 위치 줄이 온다. execGit은 끝 공백을 다듬는다 */
-        return "$ ls\nREADME.md\n\n2 2";
+        return "$ ls\nREADME.md\n\n2 2 3 0 0 0 0 0 0";
       }
       return "";
     });
@@ -1376,7 +1381,25 @@ describe("첫 화면 스냅샷", () => {
 
     const unsubscribe = await subscribeToPane("task-screen", "%19", (chunk) => receivedChunks.push(chunk), () => {});
 
-    expect(receivedChunks[0]).toBe("\x1b[H\x1b[2J\x1b[3J$ ls\r\nREADME.md\r\n\x1b[3;3H");
+    expect(receivedChunks[0]).toBe("\x1b[?1049l\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1005l\x1b[?1006l\x1b[H\x1b[2J\x1b[3J$ ls\r\nREADME.md\r\n\x1b[3G");
+    unsubscribe();
+  });
+
+  it("접속 전에 켜진 tmux 대체 화면과 SGR 마우스 모드를 첫 프레임에서 복원한다", async () => {
+    findOneByMock.mockResolvedValue(TMUX_TASK);
+    execGitMock.mockImplementation(async (command) => {
+      if (command.includes("list-panes")) return MIRROR_PANE_LINE;
+      if (command.includes("capture-pane")) return "ready\n2 0 1 1 1 0 0 1 0";
+      return "";
+    });
+    stubPaneProcess();
+    const receivedChunks: string[] = [];
+    const unsubscribe = await subscribeToPane("task-screen-mouse", "%19", (chunk) => receivedChunks.push(chunk), () => {});
+    expect(receivedChunks[0]).toContain("\x1b[?1049h");
+    expect(receivedChunks[0]).toContain("\x1b[?1000h");
+    expect(receivedChunks[0]).toContain("\x1b[?1006h");
+    expect(receivedChunks[0]).toContain("ready\x1b[3G");
+    expect(receivedChunks[0]).not.toContain("2 0 1 1 1 0 0 1 0");
     unsubscribe();
   });
 
@@ -1405,6 +1428,20 @@ describe("첫 화면 스냅샷", () => {
   });
 });
 
+describe("모바일·데스크탑 공유 알림 설정", () => {
+  it("중복을 제거해 기존 AppSettings에 저장하고 빈 상태 목록도 유지한다", async () => {
+    const { updateMobileNotificationSettings, getMobileNotificationSettings } = await import("../mobileBridgeService");
+    expect(await updateMobileNotificationSettings({ isEnabled: true, enabledStatuses: ["review", "review", "done"] })).toEqual({ isEnabled: true, enabledStatuses: ["review", "done"] });
+    expect(appSettingsStore.get("notification_statuses")).toBe('["review","done"]');
+    await updateMobileNotificationSettings({ isEnabled: false, enabledStatuses: [] });
+    expect(await getMobileNotificationSettings()).toEqual({ isEnabled: false, enabledStatuses: [] });
+  });
+  it.each([null, {}, { isEnabled: "false", enabledStatuses: [] }, { isEnabled: true, enabledStatuses: ["unknown"] }, { isEnabled: true, enabledStatuses: [null] }])("잘못된 설정은 저장 전에 거절한다 %j", async (input) => {
+    const { updateMobileNotificationSettings } = await import("../mobileBridgeService");
+    await expect(updateMobileNotificationSettings(input)).rejects.toMatchObject({ name: "MobileTaskInputError" });
+    expect(appSettingsStore.has("notification_statuses")).toBe(false);
+  });
+});
 
 describe("모바일 History 신뢰 경로 캐시", () => {
   it("목록에서 발견한 경로를 상세와 이전 페이지에 재사용하고 네트워크 응답에서는 제거한다", async () => {

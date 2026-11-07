@@ -8,7 +8,8 @@ import { SessionType } from "@/entities/KanbanTask";
 const mockExecGit = vi.fn().mockResolvedValue("");
 const mockListWorktrees = vi.fn().mockResolvedValue([]);
 
-vi.mock("@/lib/gitOperations", () => ({
+vi.mock("@/lib/gitOperations", async (importOriginal) => ({
+  resolvePathForShell: (await importOriginal<typeof import("@/lib/gitOperations")>()).resolvePathForShell,
   execGit: (...args: unknown[]) => mockExecGit(...args),
   listWorktrees: (...args: unknown[]) => mockListWorktrees(...args),
 }));
@@ -149,7 +150,7 @@ describe("buildTmuxUserClipboardDirectiveTestCommand", () => {
     /** tmux는 사용자 설정보다 먼저 $prefix/etc/tmux.conf를 읽는다 */
     expect(command).toContain('"/etc/tmux.conf"');
     expect(command).toContain('"/opt/homebrew/etc/tmux.conf"');
-    expect(command).toContain("grep -qsE");
+    expect(command).toContain("grep -sE");
   });
 
   it("should reuse the same path list for the marker-printing preference command", async () => {
@@ -351,11 +352,11 @@ describe("removeWorktreeAndBranch", () => {
     // Then
     expect(mockListWorktrees).toHaveBeenCalledWith("/workspace/repo", "remote-host");
     expect(mockExecGit).toHaveBeenCalledWith(
-      'git -C "/workspace/repo" worktree remove "/workspace/custom-worktrees/feature-real-path" --force',
+      "git -C '/workspace/repo' worktree remove '/workspace/custom-worktrees/feature-real-path' --force",
       "remote-host",
     );
     expect(mockExecGit).toHaveBeenCalledWith(
-      'git -C "/workspace/repo" branch -D "feature/real-path"',
+      "git -C '/workspace/repo' branch -D 'feature/real-path'",
       "remote-host",
     );
   });
@@ -378,7 +379,7 @@ describe("removeWorktreeAndBranch", () => {
     // Then
     expect(filterCalls("worktree remove")).toHaveLength(0);
     expect(mockExecGit).toHaveBeenCalledWith(
-      'git -C "/workspace/repo" branch -D "feature/missing"',
+      "git -C '/workspace/repo' branch -D 'feature/missing'",
       undefined,
     );
   });
@@ -468,11 +469,11 @@ describe("removeWorktreeAndBranch", () => {
 
     // Then
     expect(mockExecGit).toHaveBeenCalledWith(
-      'git -C "/workspace/repo" worktree remove "/workspace/repo__worktrees/feature-task" --force',
+      "git -C '/workspace/repo' worktree remove '/workspace/repo__worktrees/feature-task' --force",
       "remote-host",
     );
     expect(mockExecGit).toHaveBeenCalledWith(
-      'git -C "/workspace/repo" branch -D "feature/task"',
+      "git -C '/workspace/repo' branch -D 'feature/task'",
       "remote-host",
     );
   });
@@ -505,7 +506,7 @@ describe("removeWorktreeAndBranch", () => {
     // Then
     expect(filterCalls("worktree remove")).toHaveLength(0);
     expect(mockExecGit).toHaveBeenCalledWith(
-      'git -C "/workspace/repo" branch -D "feature/task"',
+      "git -C '/workspace/repo' branch -D 'feature/task'",
       "remote-host",
     );
   });

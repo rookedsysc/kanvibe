@@ -208,8 +208,8 @@ function getTaskDetailRouteCacheKey(taskId: string) {
   return buildRouteCacheKey("task-detail", taskId);
 }
 
-function normalizeCachedTaskDetailRouteCache(cachedRoute: TaskDetailRouteCache | null): NormalizedTaskDetailRouteCache | null {
-  if (!cachedRoute) {
+function normalizeCachedTaskDetailRouteCache(cachedRoute: TaskDetailRouteCache | null, taskId: string): NormalizedTaskDetailRouteCache | null {
+  if (!cachedRoute || cachedRoute.task?.id !== taskId) {
     return null;
   }
 
@@ -826,6 +826,10 @@ function InlineAiChatMessage({ message, provider }: { message: AggregatedAiMessa
 
 export default function TaskDetailRoute() {
   const { id = "" } = useParams();
+  return <TaskDetailContent key={id} id={id} />;
+}
+
+function TaskDetailContent({ id }: { id: string }) {
   const router = useRouter();
   const boardCommands = useBoardCommands();
   const hasShortcutBlocker = useHasBoardShortcutBlocker();
@@ -833,7 +837,7 @@ export default function TaskDetailRoute() {
   const tc = useTranslations("common");
   const refreshSignal = useRefreshSignal(["all", "task-detail"]);
   const cachedRoute = useMemo(
-    () => (id ? normalizeCachedTaskDetailRouteCache(readRouteCache<TaskDetailRouteCache>(getTaskDetailRouteCacheKey(id))) : null),
+    () => (id ? normalizeCachedTaskDetailRouteCache(readRouteCache<TaskDetailRouteCache>(getTaskDetailRouteCacheKey(id)), id) : null),
     [id],
   );
   const cachedState = cachedRoute?.state ?? null;
@@ -852,7 +856,6 @@ export default function TaskDetailRoute() {
   const [mainView, setMainView] = useState<MainView>("terminal");
   const notificationCenterRef = useRef<NotificationCenterButtonHandle>(null);
   const isTerminalTabClosingRef = useRef(false);
-  const currentTaskIdRef = useRef(id);
   const dockItemsRef = useRef<TaskDetailDockItem[]>([]);
   const commonTranslationsRef = useRef(tc);
   const hasTerminal = !!(state?.task.sessionType && state.task.sessionName);
@@ -1228,7 +1231,7 @@ export default function TaskDetailRoute() {
     isTerminalTabClosingRef.current = true;
     try {
       const info = await getTerminalTabCloseInfo(taskId, tabId);
-      if (!isTerminalTabClosingRef.current || currentTaskIdRef.current !== taskId) {
+      if (!isTerminalTabClosingRef.current) {
         return;
       }
       if (!info.ok) {
@@ -1250,7 +1253,7 @@ export default function TaskDetailRoute() {
         }
       }
     } catch {
-      if (isTerminalTabClosingRef.current && currentTaskIdRef.current === taskId) {
+      if (isTerminalTabClosingRef.current) {
         window.alert(t("terminalTabCloseCheckFailed"));
       }
     } finally {
@@ -1358,31 +1361,6 @@ export default function TaskDetailRoute() {
       toggleDetailPanel("usage");
     }) ?? undefined
   ), [hasShortcutBlocker, toggleDetailPanel]);
-
-  useEffect(() => {
-    if (currentTaskIdRef.current === id) {
-      return;
-    }
-
-    currentTaskIdRef.current = id;
-    let cancelled = false;
-    window.queueMicrotask(() => {
-      if (cancelled) {
-        return;
-      }
-
-      setState(cachedState ?? undefined);
-      const nextDefaultPanelDismissed = cachedRoute?.defaultPanelDismissed ?? false;
-      setDefaultPanelDismissed(nextDefaultPanelDismissed);
-      setResolvedSidebarDefaultCollapsed(null);
-      setActivePanel(null);
-      setMainView("terminal");
-    });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [cachedRoute, cachedState, id]);
 
   useEffect(() => {
     if (!state || state === null) {

@@ -23,6 +23,15 @@ const AI_ACCOUNTS_KEY = "ai_accounts";
 
 const AI_USAGE_PROVIDERS: AiUsageProvider[] = ["claude", "codex", "gemini"];
 
+let accountMutationQueue: Promise<unknown> = Promise.resolve();
+
+function serializeAccountMutation<Result>(mutation: () => Promise<Result>): Promise<Result> {
+  const result = accountMutationQueue.then(mutation);
+  accountMutationQueue = result.catch(() => undefined);
+  return result;
+}
+
+
 export interface AiAccountSummary {
   provider: AiUsageProvider;
   /** CLI에 계정 위치를 알릴 때 넘기는 루트이자 이 목록에서 계정을 가리키는 식별자 */
@@ -101,23 +110,25 @@ export async function addAiAccount(
   provider: AiUsageProvider,
   accountName: string,
 ): Promise<AiAccountMutationResult & { accountRoot?: string }> {
-  if (!isValidAccountName(accountName)) {
-    return { outcome: "invalid-name" };
-  }
+  return serializeAccountMutation<AiAccountMutationResult & { accountRoot?: string }>(async () => {
+    if (!isValidAccountName(accountName)) {
+      return { outcome: "invalid-name" };
+    }
 
-  const spec = AI_PROVIDER_CONFIG_DIR_SPECS[provider];
-  const accountRoot = toNamedAccountRoot(spec, accountName);
-  const registrations = await getAiAccountRegistrations();
-  if (registrations.some((registration) => registration.accountRoot === accountRoot)) {
-    return { outcome: "already-exists" };
-  }
+    const spec = AI_PROVIDER_CONFIG_DIR_SPECS[provider];
+    const accountRoot = toNamedAccountRoot(spec, accountName);
+    const registrations = await getAiAccountRegistrations();
+    if (registrations.some((registration) => registration.accountRoot === accountRoot)) {
+      return { outcome: "already-exists" };
+    }
 
-  await mkdir(toAccountConfigDir(spec, accountRoot), { recursive: true });
-  await saveAiAccountRegistrations(
-    addAccountRegistration(registrations, provider, accountName),
-  );
+    await mkdir(toAccountConfigDir(spec, accountRoot), { recursive: true });
+    await saveAiAccountRegistrations(
+      addAccountRegistration(registrations, provider, accountName),
+    );
 
-  return { outcome: "ok", accountRoot };
+    return { outcome: "ok", accountRoot };
+  });
 }
 
 /**
@@ -130,18 +141,20 @@ export async function removeAiAccount(
   provider: AiUsageProvider,
   accountRoot: string,
 ): Promise<AiAccountMutationResult> {
-  const registrations = await getAiAccountRegistrations();
-  const isRegistered = registrations.some(
-    (registration) => registration.accountRoot === accountRoot,
-  );
+  return serializeAccountMutation<AiAccountMutationResult>(async () => {
+    const registrations = await getAiAccountRegistrations();
+    const isRegistered = registrations.some(
+      (registration) => registration.accountRoot === accountRoot,
+    );
 
-  const didLogout = await logoutThroughCli(provider, accountRoot);
+    const didLogout = await logoutThroughCli(provider, accountRoot);
 
-  if (isRegistered) {
-    await rm(accountRoot, { recursive: true, force: true });
-    await saveAiAccountRegistrations(removeAccountRegistration(registrations, accountRoot));
-    return { outcome: "ok" };
-  }
+    if (isRegistered) {
+      await rm(accountRoot, { recursive: true, force: true });
+      await saveAiAccountRegistrations(removeAccountRegistration(registrations, accountRoot));
+      return { outcome: "ok" };
+    }
 
-  return didLogout ? { outcome: "ok" } : { outcome: "manual-logout-required" };
+    return didLogout ? { outcome: "ok" } : { outcome: "manual-logout-required" };
+  });
 }

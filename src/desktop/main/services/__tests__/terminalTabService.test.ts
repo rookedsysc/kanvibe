@@ -169,6 +169,75 @@ describe("탭 닫기", () => {
     expect(result).toEqual({ ok: true, shouldCloseWindow: true });
   });
 
+  it.each([SessionType.TMUX, SessionType.ZELLIJ])("%s의 두 탭을 동시에 닫아도 마지막 탭은 남긴다", async (sessionType) => {
+    stubTask({ sessionType });
+    let tabs = ["1", "2"];
+    mockExecGit.mockImplementation(async (command: string) => {
+      if (command === "zellij --version") return "zellij 0.44.0";
+      if (command.includes("list-windows")) return tabs.map((id, index) => `@${id}\t${index}\t1\tshell`).join("\n");
+      if (command.includes("list-tabs")) return JSON.stringify(tabs.map((id, position) => ({ tab_id: Number(id), position, name: "shell", active: true })));
+      const closedId = command.match(/(?:kill-window -t '@|close-tab-by-id ')(\d+)'/)?.[1];
+      if (closedId) tabs = tabs.filter((id) => id !== closedId);
+      return "";
+    });
+    const { closeTerminalTab } = await importService();
+
+    const results = await Promise.all([
+      closeTerminalTab("task-1", sessionType === SessionType.TMUX ? "@1" : "1"),
+      closeTerminalTab("task-1", sessionType === SessionType.TMUX ? "@2" : "2"),
+    ]);
+
+    expect(tabs).toEqual(["2"]);
+    expect(results).toEqual([{ ok: true, shouldCloseWindow: false }, { ok: true, shouldCloseWindow: true }]);
+  });
+
+  it.each(["host", "session"])("다른 %s의 탭 종료는 앞 세션을 기다리지 않는다", async (boundary) => {
+    let releaseFirst!: () => void;
+    let firstEntered!: () => void;
+    const firstStarted = new Promise<void>((resolve) => { firstEntered = resolve; });
+    const firstGate = new Promise<void>((resolve) => { releaseFirst = resolve; });
+    mockFindOneBy.mockImplementation(async ({ id }: { id: string }) => ({
+      sessionType: SessionType.TMUX,
+      sessionName: boundary === "session" ? id : "same-session",
+      sshHost: boundary === "host" ? id : "same-host",
+      worktreePath: "/work/tree",
+    }));
+    mockExecGit.mockImplementation(async (command: string, host: string) => {
+      if (command.includes("list-windows")) {
+        if (host === "first" || command.includes("'first'")) {
+          firstEntered();
+          await firstGate;
+        }
+        return "@1\t0\t1\tzsh\n@2\t1\t0\tvim";
+      }
+      return "";
+    });
+    const { closeTerminalTab } = await importService();
+    const first = closeTerminalTab("first", "@1");
+    await firstStarted;
+    try {
+      expect(await closeTerminalTab("second", "@1")).toEqual({ ok: true, shouldCloseWindow: false });
+    } finally {
+      releaseFirst();
+    }
+    expect(await first).toEqual({ ok: true, shouldCloseWindow: false });
+  });
+
+  it("앞선 탭 종료가 실패해도 같은 세션의 다음 종료를 처리한다", async () => {
+    stubTask({});
+    mockExecGit.mockImplementation(async (command: string) => {
+      if (command.includes("list-windows")) return "@1\t0\t1\tzsh\n@2\t1\t0\tvim";
+      if (command.includes("'@1'")) throw new Error("close failed");
+      return "";
+    });
+    const { closeTerminalTab } = await importService();
+
+    const results = await Promise.all([closeTerminalTab("task-1", "@1"), closeTerminalTab("task-1", "@2")]);
+
+    expect(results).toEqual([{ ok: false, error: "close failed" }, { ok: true, shouldCloseWindow: false }]);
+    expect(findExecutedCommand("kill-window -t '@2'")).toBeDefined();
+  });
+
   it("zellij tab이 하나뿐이면 닫지 않고 창만 닫는다", async () => {
     stubTask({ sessionType: SessionType.ZELLIJ });
     mockExecGit.mockImplementation(async (command: string) => {

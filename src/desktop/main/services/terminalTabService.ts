@@ -52,6 +52,9 @@ import { buildTmuxListMirrorPanesCommand, parseTmuxMirrorPaneList } from "@/lib/
 /** 탭 명령은 짧게 끝나야 폴링이 밀리지 않는다 */
 const TAB_COMMAND_TIMEOUT_MS = 5_000;
 
+/** 마지막 탭 보호를 위해 같은 호스트·세션의 조회와 종료를 한 작업으로 처리한다 */
+const pendingTabCloses = new Map<string, Promise<TerminalTabMutationResult>>();
+
 interface TerminalSessionTarget {
   sessionType: SessionType;
   sessionName: string;
@@ -284,33 +287,45 @@ export async function closeTerminalTab(
     return { ok: true, shouldCloseWindow: closeLocalTerminalTab(taskId, tabId) === 0 };
   }
 
-  try {
-    const tabsBeforeClose = await readTabs(target).catch(() => []);
-    if (tabsBeforeClose.length <= 1) {
-      return { ok: true, shouldCloseWindow: true };
-    }
-
-    if (target.sessionType === SessionType.TMUX) {
-      await runTabCommand(buildTmuxKillWindowCommand(tabId), target.sshHost);
-    } else if (target.sessionType === SessionType.HERDR) {
-      if (!tabsBeforeClose.some((tab) => tab.id === tabId)) return { ok: false, error: "탭을 찾을 수 없습니다." };
-      await runHerdrCommand(target.sessionName, ["tab", "close", tabId], target.sshHost);
-    } else if (await hasZellijTabIdSupport(target.sshHost)) {
-      await runTabCommand(buildZellijCloseTabByIdCommand(target.sessionName, tabId), target.sshHost);
-    } else {
-      const tabName = findTabName(await readZellijTabs(target), tabId);
-      if (!tabName) {
-        return { ok: false, error: "탭을 찾을 수 없습니다." };
+  const sessionKey = JSON.stringify([target.sshHost, target.sessionType, target.sessionName]);
+  const previousClose = pendingTabCloses.get(sessionKey) ?? Promise.resolve();
+  const closeOperation = previousClose.catch(() => undefined).then(async (): Promise<TerminalTabMutationResult> => {
+    try {
+      const tabsBeforeClose = await readTabs(target).catch(() => []);
+      if (tabsBeforeClose.length <= 1) {
+        return { ok: true, shouldCloseWindow: true };
       }
-      await runTabCommands(
-        buildZellijCloseFocusedTabCommands(target.sessionName, tabName),
-        target.sshHost,
-      );
-    }
 
-    return { ok: true, shouldCloseWindow: false };
-  } catch (error) {
-    return toFailure(error);
+      if (target.sessionType === SessionType.TMUX) {
+        await runTabCommand(buildTmuxKillWindowCommand(tabId), target.sshHost);
+      } else if (target.sessionType === SessionType.HERDR) {
+        if (!tabsBeforeClose.some((tab) => tab.id === tabId)) return { ok: false, error: "탭을 찾을 수 없습니다." };
+        await runHerdrCommand(target.sessionName, ["tab", "close", tabId], target.sshHost);
+      } else if (await hasZellijTabIdSupport(target.sshHost)) {
+        await runTabCommand(buildZellijCloseTabByIdCommand(target.sessionName, tabId), target.sshHost);
+      } else {
+        const tabName = findTabName(await readZellijTabs(target), tabId);
+        if (!tabName) {
+          return { ok: false, error: "탭을 찾을 수 없습니다." };
+        }
+        await runTabCommands(
+          buildZellijCloseFocusedTabCommands(target.sessionName, tabName),
+          target.sshHost,
+        );
+      }
+
+      return { ok: true, shouldCloseWindow: false };
+    } catch (error) {
+      return toFailure(error);
+    }
+  });
+  pendingTabCloses.set(sessionKey, closeOperation);
+  try {
+    return await closeOperation;
+  } finally {
+    if (pendingTabCloses.get(sessionKey) === closeOperation) {
+      pendingTabCloses.delete(sessionKey);
+    }
   }
 }
 
