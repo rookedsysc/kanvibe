@@ -8,7 +8,7 @@ description: "构建 KanVibe Mobile 并与 Desktop 配对，在手机或平板�
 KanVibe Mobile 是连接 KanVibe Desktop 的 iOS 和 Android 应用。查看进度、向同一任务的终端输入命令，并在已保存的电脑之间切换。仓库和运行中的进程仍留在连接的电脑上。
 
 <div className="kv-note">
-  <p><strong>移动端终端兼容性：</strong>请选择使用 <code>tmux</code>、<code>zellij</code> 或 <code>terminal</code> 的任务。Desktop 的新设置默认使用 Herdr，但当前移动端终端桥接尚不支持 Herdr 会话。创建或连接需要在移动端使用的任务时，请选择受支持的会话类型。</p>
+  <p><strong>移动端终端兼容性：</strong>支持 <code>herdr</code>、<code>tmux</code>、<code>zellij</code> 和 <code>terminal</code> 会话。Herdr 会话需要包含此功能的 Desktop 构建，并保留原始网格，通过滚动查看。</p>
   <p><strong>界面语言：</strong>Mobile 目前使用韩文界面。本指南用中文说明操作，括号中保留实际显示的韩文标签。</p>
 </div>
 
@@ -66,9 +66,9 @@ fvm flutter run
 
 每个终端标签显示一个 pane。选择标签阅读输出，再点击终端打开键盘，向实际会话输入内容。点击标签栏右侧的 **+**，为当前任务添加 shell 标签。
 
-滑动可查看之前的输出。对于接收鼠标输入的全屏程序，上下滑动会转换为滚轮事件。支持的 tmux 和普通 terminal 会话会根据手机屏幕、旋转和键盘调整尺寸。这也会改变电脑上同一终端的尺寸；离开标签或将 Mobile 切到后台后，会恢复适用的电脑尺寸。Zellij 和旧版 Desktop 保留原始网格，并提供横向与纵向滚动。
+滑动可查看之前的输出。对于接收鼠标输入的全屏程序，上下滑动会转换为滚轮事件（Herdr 除外，滑动始终只滚动视图）。支持的 tmux 和普通 terminal 会话会根据手机屏幕、旋转和键盘调整尺寸。这也会改变电脑上同一终端的尺寸；离开标签或将 Mobile 切到后台后，会恢复适用的电脑尺寸。Herdr、Zellij 和旧版 Desktop 保留原始网格，并提供横向与纵向滚动。
 
-需要长时间运行的任务应使用 tmux 或 zellij 等持久会话。普通 `terminal` shell 由 Desktop 直接运行，Desktop 应用退出后不会保留。
+需要长时间运行的任务应使用 Herdr、tmux 或 zellij 等持久会话。普通 `terminal` shell 由 Desktop 直接运行，Desktop 应用退出后不会保留。
 
 ## 在多台电脑之间切换
 
@@ -110,7 +110,7 @@ Mobile 在前台运行时，通过经过认证的 WebSocket 连接到已保存�
 | 提示“已注册的电脑”（<span lang="ko" translate="no">이미 등록된 PC입니다</span>） | 无需重新连接，请在**已连接的电脑**（<span lang="ko" translate="no">연결된 PC</span>）列表中选择该电脑。 |
 | 无法连接电脑 | 检查 Desktop 是否运行、地址与端口是否正确，以及本地网络或 Tailscale 路由和防火墙是否允许访问。 |
 | 收到通知却打不开任务 | 手机当前网络也必须能访问保存的电脑地址。 |
-| 提示“无终端会话”（<span lang="ko" translate="no">이 태스크에는 터미널 세션이 없습니다</span>）或终端不可用 | Mobile 不支持 Herdr 任务，请使用 tmux、zellij 或 terminal 会话的任务，并使用支持 Mobile 功能的 Desktop 构建。没有项目或分支的任务无法自动恢复缺失的会话。 |
+| 提示“无终端会话”（<span lang="ko" translate="no">이 태스크에는 터미널 세션이 없습니다</span>）或终端不可用 | 请使用支持 Mobile 功能的 Desktop 构建。如果提示未安装 Herdr，请在 Desktop 上连接 Herdr 会话进行安装。没有项目或分支的任务无法自动恢复缺失的会话。 |
 | 没有后台通知 | 检查 Firebase/APNs、Desktop 中继配置、系统权限，以及 Android 是否强行停止了应用。 |
 | 找不到通知中的任务 | 任务可能已删除，或电脑连接已移除。请从看板或电脑列表选择当前任务。 |
 

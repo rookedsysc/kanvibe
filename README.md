@@ -48,7 +48,7 @@ open -a KanVibe
 
 **Mobile (iOS / Android):** build the Flutter app from source, then pair it under **Desktop Settings → Mobile Connection** using the PC address, port, and one-time code. Keep KanVibe running on the PC. The phone must reach that address over your local network or a network such as Tailscale. Mobile is an early preview with Korean interface labels for now. [Connection, usage, and notification guide](https://kanvibe.rookedsysc.com/en/mobile).
 
-**Mobile terminal compatibility:** use a task with `tmux`, `zellij`, or `terminal`. New Desktop settings default to Herdr, which the Mobile terminal bridge does not support yet. Select a supported session type when creating or connecting a task you want to use from Mobile.
+**Mobile terminal compatibility:** `herdr`, `tmux`, `zellij`, and `terminal` sessions are all supported. Herdr sessions keep their original grid and are read by scrolling.
 
 ## From your desk to your phone
 
@@ -121,9 +121,9 @@ The same panel opens from the task detail dock, so you can keep watching subtask
 | Dependency | Version | Required | Install |
 |------------|---------|----------|---------|
 | [git](https://git-scm.com/) | latest | Yes | `brew install git` |
-| [tmux](https://github.com/tmux/tmux) | latest | For Mobile terminals (or zellij) | `brew install tmux` |
+| [tmux](https://github.com/tmux/tmux) | latest | For Mobile terminals (or Herdr, zellij) | `brew install tmux` |
 | [gh](https://cli.github.com/) | latest | Yes | `brew install gh` (requires `gh auth login`) |
-| [zellij](https://github.com/zellij-org/zellij) | latest | For Mobile terminals (or tmux) | `brew install zellij` |
+| [zellij](https://github.com/zellij-org/zellij) | latest | For Mobile terminals (or Herdr, tmux) | `brew install zellij` |
 | [Herdr](https://herdr.dev/tui/docs/) | 0.9.5 verified | Default backend | In-app install prompt |
 
 ### Update or Remove
@@ -241,7 +241,7 @@ Each pane can run a custom command (e.g., `vim`, `htop`, `lazygit`, test runner,
 - View tasks by status on phones; tablets at 768dp and wider show Kanban columns. Filter projects and switch between saved PCs.
 - Open the task’s existing tmux, Zellij, or plain terminal session. Each tab shows one pane on both phones and tablets; add a shell tab without returning to the PC.
 - Read terminal output and type with the on-screen keyboard, including in SSH remote tasks. Create tasks, change status, inspect task details, and open the linked PR.
-- tmux and plain terminals adapt their rows and columns to the mobile viewport. The PC’s shared terminal size changes while you view it and restores after you leave; Zellij uses scrolling instead.
+- tmux and plain terminals adapt their rows and columns to the mobile viewport. The PC’s shared terminal size changes while you view it and restores after you leave; Herdr and Zellij use scrolling instead.
 - Pair using a 6-digit, single-use code that expires after five minutes. Save multiple PCs and remove each pairing separately.
 - Read the selected PC’s notification inbox, mark items read, and jump to the related task. Foreground hook updates work over WebSocket; background push requires Firebase/APNs configuration and a desktop push relay.
 - Mobile currently builds from source. The desktop must stay running and reachable over LAN or a network such as Tailscale. See the [Mobile guide](https://kanvibe.rookedsysc.com/en/mobile) and [build instructions](./mobile/README.md).
