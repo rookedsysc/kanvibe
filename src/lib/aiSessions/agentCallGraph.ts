@@ -16,14 +16,14 @@ async function readEmptyAgentCallGraph(): Promise<AgentCallNode[]> {
   return [];
 }
 
-const AGENT_CALL_GRAPH_READERS: Record<
+const AGENT_CALL_GRAPH_READERS: Partial<Record<
   AiSessionProvider,
   (
     context: AiSessionReaderContext,
     sessionId: string,
     windows: LiveAiSessionWindows,
   ) => Promise<AgentCallNode[]>
-> = {
+>> = {
   claude: readClaudeAgentCallGraph,
   codex: readCodexAgentCallGraph,
   opencode: readOpenCodeAgentCallGraph,
@@ -42,7 +42,8 @@ export async function readAgentCallGraph(
   provider: AiSessionProvider,
   sessionId: string,
 ): Promise<AgentCallGraph> {
-  const roots = await AGENT_CALL_GRAPH_READERS[provider](context, sessionId, LIVE_SESSION_WINDOWS)
+  const reader = AGENT_CALL_GRAPH_READERS[provider];
+  const roots = await (reader ? reader(context, sessionId, LIVE_SESSION_WINDOWS) : readEmptyAgentCallGraph())
     .catch(() => [] as AgentCallNode[]);
 
   return {

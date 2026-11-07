@@ -5,7 +5,9 @@ import 'package:http/http.dart' as http;
 import 'package:web_socket_channel/io.dart';
 
 import '../../features/board/domain/task_status.dart';
+import '../../features/chat_history/domain/chat_history.dart';
 import '../../features/notifications/domain/inbox_notification.dart';
+import '../../features/notifications/domain/notification_settings.dart';
 import '../../features/task_detail/domain/mirror_pane.dart';
 import 'desktop_connection.dart';
 
@@ -91,6 +93,68 @@ class DesktopClient {
         as Map<String, dynamic>;
   }
 
+  Future<ChatHistoryPage> fetchChatHistory(
+    DesktopConnection connection,
+    String taskId, {
+    String? query,
+    String? cursor,
+  }) async {
+    final response = await _httpClient
+        .get(
+          connection
+              .buildHttpUri('', {
+                if (query != null && query.isNotEmpty) 'query': query,
+                'cursor': ?cursor,
+                'limit': '20',
+              })
+              .replace(
+                pathSegments: ['api', 'mobile', 'tasks', taskId, 'ai-sessions'],
+              ),
+          headers: connection.authorizationHeaders,
+        )
+        .timeout(_requestTimeout);
+    if (response.statusCode != 200) {
+      throw DesktopRequestException(response.statusCode);
+    }
+    return ChatHistoryPage.fromJson(
+      (jsonDecode(response.body) as Map<String, dynamic>)['history']
+          as Map<String, dynamic>,
+    );
+  }
+
+  Future<ChatMessagePage> fetchChatMessages(
+    DesktopConnection connection,
+    String taskId,
+    ChatSession session, {
+    String? cursor,
+  }) async {
+    final response = await _httpClient
+        .get(
+          connection
+              .buildHttpUri('', {'cursor': ?cursor, 'limit': '20'})
+              .replace(
+                pathSegments: [
+                  'api',
+                  'mobile',
+                  'tasks',
+                  taskId,
+                  'ai-sessions',
+                  session.provider,
+                  session.id,
+                ],
+              ),
+          headers: connection.authorizationHeaders,
+        )
+        .timeout(_requestTimeout);
+    if (response.statusCode != 200) {
+      throw DesktopRequestException(response.statusCode);
+    }
+    return ChatMessagePage.fromJson(
+      (jsonDecode(response.body) as Map<String, dynamic>)['detail']
+          as Map<String, dynamic>,
+    );
+  }
+
   Future<List<InboxNotification>> fetchNotifications(
     DesktopConnection connection,
   ) async {
@@ -111,6 +175,53 @@ class DesktopClient {
         .map(InboxNotification.fromJson)
         .whereType<InboxNotification>()
         .toList();
+  }
+
+  Future<NotificationSettings> fetchNotificationSettings(
+    DesktopConnection connection,
+  ) async {
+    final response = await _httpClient
+        .get(
+          connection.buildHttpUri('/api/mobile/notification-settings'),
+          headers: connection.authorizationHeaders,
+        )
+        .timeout(_requestTimeout);
+    return _readNotificationSettings(response);
+  }
+
+  Future<NotificationSettings> updateNotificationSettings(
+    DesktopConnection connection, {
+    required bool isEnabled,
+    required Set<String> enabledStatuses,
+  }) async {
+    final response = await _httpClient
+        .patch(
+          connection.buildHttpUri('/api/mobile/notification-settings'),
+          headers: {
+            ...connection.authorizationHeaders,
+            'Content-Type': 'application/json',
+          },
+          body: jsonEncode({
+            'isEnabled': isEnabled,
+            'enabledStatuses': enabledStatuses.toList(),
+          }),
+        )
+        .timeout(_requestTimeout);
+    return _readNotificationSettings(response);
+  }
+
+  NotificationSettings _readNotificationSettings(http.Response response) {
+    if (response.statusCode != 200) {
+      throw DesktopRequestException(response.statusCode);
+    }
+    final settings =
+        (jsonDecode(response.body) as Map<String, dynamic>)['settings']
+            as Map<String, dynamic>;
+    return NotificationSettings(
+      isEnabled: settings['isEnabled'] as bool,
+      enabledStatuses: (settings['enabledStatuses'] as List<dynamic>)
+          .cast<String>(),
+    );
   }
 
   Future<InboxNotification> markNotificationRead(

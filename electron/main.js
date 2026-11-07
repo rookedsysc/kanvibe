@@ -12,6 +12,7 @@ const { createDesktopDiagnostics, resolveDesktopLogPath, serializeErrorForLog } 
 const { applyAppDataDirectoryOverride } = require("./runtimeEnvironment");
 
 const DEFAULT_LOCALE = "ko";
+const APP_ICON_PATH = path.join(app.getAppPath(), "public", "branding", "app-icon.png");
 const RENDERER_DEV_URL = process.env.KANVIBE_RENDERER_URL || null;
 const SHOULD_USE_SOURCE_MODULES = Boolean(RENDERER_DEV_URL);
 const HOOK_SERVER_HOST = "0.0.0.0";
@@ -402,6 +403,7 @@ function getTitleBarOptions() {
 
 function createBrowserWindowOptions() {
   return {
+    icon: APP_ICON_PATH,
     width: 1600,
     height: 1000,
     backgroundColor: "#ffffff",
@@ -1106,6 +1108,9 @@ async function createMainWindow(target) {
 }
 
 app.whenReady().then(async () => {
+  if (process.platform === "darwin") {
+    app.dock.setIcon(APP_ICON_PATH);
+  }
   initializeDiagnostics();
   ensureRuntimeEnvironment();
   diagnostics.log("main:startup", {

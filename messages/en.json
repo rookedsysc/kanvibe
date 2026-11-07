@@ -323,6 +323,8 @@
     "hint": "↑↓ Navigate · Enter Run · Esc Close"
   },
   "paneLayout": {
+    "loadError": "Failed to load layout settings.",
+    "retry": "Retry",
     "title": "Pane Layout Settings",
     "description": "Configure pane split layout and startup commands for tmux sessions.",
     "backToBoard": "Back to Board",
@@ -406,6 +408,7 @@
     "geminiHooksInstallSuccess": "Gemini CLI hooks installed",
     "codexHooksInstallSuccess": "Codex CLI hooks installed",
     "openCodeHooksInstallSuccess": "OpenCode hooks installed",
+    "hooksVerificationFailed": "Verification failed",
     "hooksInstallIncomplete": "Hooks were installed, but the required verification checks are not all passing yet.",
     "hooksInstallFailed": "Hooks installation failed",
     "hooksRemoteNotSupported": "Remote projects are not supported",

@@ -1,6 +1,13 @@
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../public/branding/kanvibe-logo-light.png">
+  <img src="../public/branding/kanvibe-logo.png" alt="KanVibe" width="320" height="87">
+</picture>
+
 # KanVibe Mobile
 
 KanVibe 데스크탑에 연결해 보드를 보고, 태스크의 터미널 pane을 그대로 비추는 Flutter 클라이언트.
+
+연결 화면의 가로형 로고와 Android·iOS 앱 아이콘은 공통 브랜드 원본에서 생성한다. 원본 위치, 해상도와 재생성 명령은 [브랜드 자산 안내](../resources/branding/README.md)를 따른다.
 
 ## 화면
 
@@ -34,7 +41,7 @@ augroup END
 
 프로젝트 색상은 데스크탑 지정 색상을 사용하며, 지정하지 않았으면 데스크탑과 같은 이름 해시 팔레트를 사용한다. 보드 카드의 테두리·프로젝트 표시와 터미널 헤더에 반영한다.
 
-보드 상단의 **프로젝트 필터**에서 프로젝트를 검색하고 여러 개 선택할 수 있다. 본 프로젝트를 선택하면 같은 호스트의 연결된 worktree 태스크도 함께 표시한다. **전체 프로젝트**를 선택하면 필터를 해제한다. 선택은 앱 실행 중 PC마다 따로 유지되므로 상세 화면을 다녀오거나 다른 PC로 전환해도 해당 PC의 선택을 복원한다.
+보드 상단의 **프로젝트 필터**에서 이름·경로·호스트의 문자를 순서대로 입력해 프로젝트를 검색하고 여러 개 선택할 수 있다(예: `kvb` → `kanvibe`). 입력은 300ms 뒤 로컬 목록에 적용하며 검색을 위한 추가 요청은 보내지 않는다. 연속 보드 갱신 이벤트도 300ms 동안 모아 한 번 조회하고, 갱신 중에는 기존 검색 결과를 유지한다. 본 프로젝트를 선택하면 같은 호스트의 연결된 worktree 태스크도 함께 표시한다. **전체 프로젝트**를 선택하면 필터를 해제한다. 선택은 앱 실행 중 PC마다 따로 유지되므로 상세 화면을 다녀오거나 다른 PC로 전환해도 해당 PC의 선택을 복원한다.
 
 ## 준비
 
@@ -184,3 +191,21 @@ tmux는 창 크기 정책과 분할 배치를 함께 보관했다가 마지막 �
 터미널의 Powerline/Nerd Font 기호는 [Nerd Fonts Symbols Only v3.5.1](https://github.com/ryanoasis/nerd-fonts/tree/v3.5.1/patched-fonts/NerdFontsSymbolsOnly)을 보조 글꼴로 사용한다. 원본 파일과 MIT 라이선스를 `assets/fonts/`에 포함한다.
 
 탭 추가는 인증된 `POST /api/mobile/tasks/:taskId/tabs`를 사용한다. 데스크탑의 기존 탭 생성 서비스를 재사용하며 tmux·Zellij·일반 terminal 및 원격 SSH 대상의 worktree에서 셸을 연다. 탭 추가를 지원하는 데스크탑 빌드가 필요하다. 모바일 목록과 추가 요청 상태는 `common/providers.dart`의 `TaskSurfacesController`가 관리한다.
+
+### 알림 상태 선택
+
+**알림 → 알림 설정**에서 현재 PC의 상태 변경 알림을 켜거나 끄고 Todo, Progress, Pending, Review, Done 중 받을 상태를 선택한다. 기본 선택은 Progress·Pending·Review이며, 전체 알림을 꺼도 선택한 상태는 유지한다. 선택한 상태가 없으면 상태 변경 알림을 받지 않는다. 설정은 현재 PC의 데스크탑과 모바일이 공유하고 앱을 다시 열어도 유지된다. 다른 PC는 해당 PC의 설정을 사용한다.
+
+설정은 전경 시스템 알림과 백그라운드 푸시에 적용한다. 알림을 끈 상태도 보드와 열린 태스크는 계속 갱신된다. 기존 알림함과 읽음 상태는 그대로 사용할 수 있다. 백그라운드 푸시는 위의 Firebase·중계 설정이 필요하다.
+
+인증된 `GET/PATCH /api/mobile/notification-settings`는 기존 데스크탑 AppSettings를 읽고 쓴다. PATCH는 `isEnabled: boolean`과 `enabledStatuses: string[]`를 받으며 잘못된 상태는 400으로 거절한다. 구버전 PC에서 설정 조회가 실패하면 데스크탑을 업데이트한다. 설정 화면은 `features/notifications/presentation/notification_settings_screen.dart`, 비동기 상태와 저장은 `application/notification_settings_controller.dart`, 불변 설정 값은 `domain/notification_settings.dart`가 소유한다.
+
+모바일에 연결하기 전에 쌓인 출력도 스크롤할 수 있도록 tmux는 이전 2000줄을 함께 가져오고 Zellij는 `dump-screen --full`로 이전 출력을 가져온다. Zellij는 기존 pane 지정 덤프 API를 지원하는 버전이 필요하며 모바일 터미널은 최대 2000줄을 보관한다. 스크롤 중 화면 덤프가 갱신되어도 기존 xterm 스크롤 위치를 유지한다. tmux는 화면 크기를 바꾼 뒤 새 크기의 화면을 다시 받아 마지막 출력과 커서 위치도 유지한다.
+
+격리 데스크탑 fixture(`qa/mobile/lib/prepareQaDesktop.cjs`)에 이전 출력을 준비하고 모바일을 페어링해 보드를 연 뒤 `mobile/.maestro/flows/terminal-notification-settings.yaml`로 설정 저장·재진입과 터미널 스와이프를 검증한다. 녹화는 흐름 안의 `startRecording`을 사용한다.
+
+## 터미널 글자 선택과 복사
+
+터미널 글자를 길게 누르고 드래그해 범위를 선택한 다음, 오른쪽 위의 **복사**를 누르면 휴대폰 클립보드에 저장한다. 한글과 여러 줄을 함께 복사할 수 있다. 복사 버튼은 선택 중에만 나타나며 터미널 격자 크기를 바꾸지 않는다. 선택과 복사는 `features/task_detail/presentation/widgets/pane_terminal_view.dart`에서 기존 터미널 컨트롤러로 처리한다.
+
+손가락으로 위아래로 밀면 이전 출력과 최신 출력 사이를 스크롤한다. tmux와 Zellij는 접속 전의 이력도 가져오며 모바일에는 최근 2,000줄까지 보관한다. Zellij 화면이 갱신돼도 선택 중인 글자는 유지하고, 복사하거나 선택을 해제하면 최신 화면을 적용한다. 이력·모드 복원에는 이 기능이 포함된 데스크탑 빌드가 필요하다.

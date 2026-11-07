@@ -1,6 +1,6 @@
 import { getProjectRepository, getTaskRepository } from "@/lib/database";
 import { Project } from "@/entities/Project";
-import { validateGitRepo, getDefaultBranch, listBranches, scanGitRepos, listWorktrees, execGit } from "@/lib/gitOperations";
+import { validateGitRepo, getDefaultBranch, listBranches, scanGitRepos, listWorktrees, execGit, resolvePathForShell } from "@/lib/gitOperations";
 import { KanbanTask, TaskStatus, SessionType } from "@/entities/KanbanTask";
 import { IsNull } from "typeorm";
 import { isSessionAlive, formatProjectBranchSessionName, createSessionWithoutWorktree } from "@/lib/worktree";
@@ -21,7 +21,6 @@ import type {
   LiveAiSessionsResult,
   RunningAgentPane,
 } from "@/lib/aiSessions/types";
-import { homedir } from "os";
 import path from "path";
 import { computeProjectColor } from "@/lib/projectColor";
 import { DUPLICATE_PROJECT_NAME_ERROR, resolveUniqueProjectName } from "@/lib/projectName";
@@ -62,19 +61,6 @@ function matchesTaskLocation(task: { worktreePath?: string | null; sshHost?: str
   return task.worktreePath === expectedPath && (task.sshHost || null) === (sshHost || null);
 }
 
-function resolveDirectorySearchPath(targetPath: string, sshHost?: string): string {
-  if (!targetPath.startsWith("~")) {
-    return `"${targetPath}"`;
-  }
-
-  if (sshHost) {
-    const suffix = targetPath.slice(1);
-    return `"$HOME${suffix}"`;
-  }
-
-  return `"${targetPath.replace(/^~/, homedir())}"`;
-}
-
 /** TypeORM 엔티티를 직렬화 가능한 plain object로 변환한다 */
 function serialize<T>(data: T): T {
   return JSON.parse(JSON.stringify(data));
@@ -88,7 +74,7 @@ async function resolveCommonRepoPath(repoPath: string, sshHost?: string | null):
   try {
     const pathModule = sshHost ? path.posix : path;
     const gitCommonDir = await execGit(
-      `git -C "${repoPath}" rev-parse --path-format=absolute --git-common-dir`,
+      `git -C ${resolvePathForShell(repoPath, sshHost)} rev-parse --path-format=absolute --git-common-dir`,
       sshHost,
     );
     const normalizedCommonDir = gitCommonDir.trim();
@@ -105,7 +91,7 @@ async function resolveCommonRepoPath(repoPath: string, sshHost?: string | null):
 async function isSubmoduleRepoPath(repoPath: string, sshHost?: string | null): Promise<boolean> {
   try {
     const superprojectPath = await execGit(
-      `git -C "${repoPath}" rev-parse --show-superproject-working-tree`,
+      `git -C ${resolvePathForShell(repoPath, sshHost)} rev-parse --show-superproject-working-tree`,
       sshHost,
     );
 
@@ -744,7 +730,7 @@ async function syncProjectWorktrees(
       } = await readPersistedTaskSyncState(wt.path, project.sshHost, project.repoPath);
       if (existingTask) {
         const shouldRepairTask = !matchesTaskLocation(existingTask, wt.path, project.sshHost)
-          || existingTask.baseBranch !== project.defaultBranch
+          || !existingTask.baseBranch
           || (persistedStatus !== null && existingTask.status !== persistedStatus)
           || (persistedDescription !== null && existingTask.description !== persistedDescription.description)
           || (persistedPriority !== undefined && existingTask.priority !== persistedPriority);
@@ -752,7 +738,7 @@ async function syncProjectWorktrees(
         if (shouldRepairTask) {
           existingTask.worktreePath = wt.path;
           existingTask.sshHost = project.sshHost;
-          existingTask.baseBranch = project.defaultBranch;
+          existingTask.baseBranch = existingTask.baseBranch || project.defaultBranch;
           if (persistedStatus !== null) {
             existingTask.status = persistedStatus;
           }
@@ -818,10 +804,10 @@ async function syncProjectWorktrees(
         status: persistedStatus ?? TaskStatus.TODO,
         description: persistedDescription?.description ?? null,
         priority: persistedPriority ?? null,
+        sshHost: project.sshHost,
         ...(hasSession && {
           sessionType: SessionType.TMUX,
           sessionName,
-          sshHost: project.sshHost,
         }),
       });
       const savedTask = await taskRepo.save(task);
@@ -1029,7 +1015,7 @@ export async function listSubdirectories(
   parentPath: string,
   sshHost?: string
 ): Promise<string[]> {
-  const resolvedPath = resolveDirectorySearchPath(parentPath, sshHost);
+  const resolvedPath = resolvePathForShell(parentPath, sshHost);
   const command = `find ${resolvedPath} -maxdepth 1 -mindepth 1 -type d 2>/dev/null | sort`;
 
   try {

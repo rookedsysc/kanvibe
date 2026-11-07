@@ -6,6 +6,7 @@ import { summarizeDiffFiles, type TaskDiffStats } from "@/desktop/shared/taskDif
 
 export interface DiffFile {
   path: string;
+  originalPath?: string;
   status: "added" | "modified" | "deleted" | "renamed";
   additions: number;
   deletions: number;
@@ -37,44 +38,40 @@ const DIFF_WORKING_TREE_MARKER = "__KANVIBE_DIFF_WORKING_TREE__";
 function buildGitDiffFilesCommand(worktreePath: string, baseBranch: string, branchName: string): string {
   const range = quoteShellArgument(`${baseBranch}...${branchName}`);
   return [
-    `printf '%s\\n' ${quoteShellArgument(DIFF_NAME_STATUS_MARKER)}`,
-    `${buildGitCommand(worktreePath, ["diff", range, "--name-status"])} || true`,
-    `printf '%s\\n' ${quoteShellArgument(DIFF_NUMSTAT_MARKER)}`,
-    `${buildGitCommand(worktreePath, ["diff", range, "--numstat"])} || true`,
-    `printf '%s\\n' ${quoteShellArgument(DIFF_WORKING_TREE_MARKER)}`,
-    buildGitCommand(worktreePath, ["status", "--porcelain", "--untracked-files=all"]),
-  ].join("; ");
+    `printf '%s\\0' ${quoteShellArgument(DIFF_NAME_STATUS_MARKER)}`,
+    `${buildGitCommand(worktreePath, ["diff", range, "--name-status", "-z"])}`,
+    `printf '%s\\0' ${quoteShellArgument(DIFF_NUMSTAT_MARKER)}`,
+    `${buildGitCommand(worktreePath, ["diff", range, "--numstat", "-z"])}`,
+    `printf '%s\\0' ${quoteShellArgument(DIFF_WORKING_TREE_MARKER)}`,
+    buildGitCommand(worktreePath, ["status", "--porcelain", "--untracked-files=all", "-z"]),
+  ].join(" && ");
 }
 
 function parseGitDiffFilesCommandOutput(output: string) {
-  const sections = {
-    nameStatus: "",
-    numstat: "",
-    workingTree: "",
+  const sections: Record<"nameStatus" | "numstat" | "workingTree", string[]> = {
+    nameStatus: [], numstat: [], workingTree: [],
   };
   let currentSection: keyof typeof sections | null = null;
-
-  for (const line of output.split("\n")) {
-    if (line === DIFF_NAME_STATUS_MARKER) {
-      currentSection = "nameStatus";
+  const records = output.split("\0");
+  for (let index = 0; index < records.length;) {
+    const record = records[index];
+    if (record === DIFF_NAME_STATUS_MARKER || record === DIFF_NUMSTAT_MARKER || record === DIFF_WORKING_TREE_MARKER) {
+      currentSection = record === DIFF_NAME_STATUS_MARKER ? "nameStatus" : record === DIFF_NUMSTAT_MARKER ? "numstat" : "workingTree";
+      index += 1;
       continue;
     }
-
-    if (line === DIFF_NUMSTAT_MARKER) {
-      currentSection = "numstat";
+    if (!currentSection || !record) {
+      index += 1;
       continue;
     }
-
-    if (line === DIFF_WORKING_TREE_MARKER) {
-      currentSection = "workingTree";
-      continue;
-    }
-
-    if (currentSection) {
-      sections[currentSection] += `${line}\n`;
-    }
+    // rename의 경로 필드는 구간 마커와 같은 이름이어도 경로로 소비해야 한다.
+    let width = 1;
+    if (currentSection === "nameStatus") width = /^[RC]/.test(record) ? 3 : 2;
+    if (currentSection === "numstat" && record.endsWith("\t")) width = 3;
+    if (currentSection === "workingTree" && /[RC]/.test(record.slice(0, 2))) width = 2;
+    sections[currentSection].push(...records.slice(index, index + width));
+    index += width;
   }
-
   return sections;
 }
 
@@ -92,7 +89,7 @@ function validateFilePath(worktreePath: string, filePath: string, sshHost?: stri
 
   const resolvedPath = pathModule.resolve(worktreePath, filePath);
   const relativePath = pathModule.relative(worktreePath, resolvedPath);
-  if (relativePath.startsWith("..") || pathModule.isAbsolute(relativePath)) {
+  if (relativePath === ".." || relativePath.startsWith(`..${pathModule.sep}`) || pathModule.isAbsolute(relativePath)) {
     throw new Error("잘못된 파일 경로: worktree 외부 접근이 감지되었습니다");
   }
 
@@ -159,57 +156,53 @@ async function readGitDiffFiles(taskId: string): Promise<DiffFile[] | null> {
       string,
       { additions: number; deletions: number }
     >();
-    if (diffSections.numstat.trim()) {
-      for (const line of diffSections.numstat.trim().split("\n")) {
-        const [added, deleted, ...pathParts] = line.split("\t");
-        const filePath = pathParts.join("\t");
-        statsByPath.set(filePath, {
-          additions: added === "-" ? 0 : parseInt(added, 10),
-          deletions: deleted === "-" ? 0 : parseInt(deleted, 10),
-        });
+    for (let index = 0; index < diffSections.numstat.length; index += 1) {
+      const [added, deleted, ...pathParts] = diffSections.numstat[index].split("\t");
+      let filePath = pathParts.join("\t");
+      if (!filePath) {
+        filePath = diffSections.numstat[index + 2];
+        index += 2;
       }
+      statsByPath.set(filePath, {
+        additions: added === "-" ? 0 : parseInt(added, 10),
+        deletions: deleted === "-" ? 0 : parseInt(deleted, 10),
+      });
     }
 
     /** 커밋된 브랜치 diff에서 파일 목록을 구성한다 */
     const fileMap = new Map<string, DiffFile>();
-
-    if (diffSections.nameStatus.trim()) {
-      for (const line of diffSections.nameStatus.trim().split("\n")) {
-        const parts = line.split("\t");
-        const statusLetter = parts[0];
-        /** rename의 경우 "R100\told\tnew" 형태이므로 마지막 경로를 사용한다 */
-        const filePath = parts.length >= 3 ? parts[2] : parts[1];
-        const stats = statsByPath.get(filePath) ?? {
-          additions: 0,
-          deletions: 0,
-        };
-        fileMap.set(filePath, {
-          path: filePath,
-          status: parseGitStatus(statusLetter),
-          additions: stats.additions,
-          deletions: stats.deletions,
-        });
-      }
+    for (let index = 0; index < diffSections.nameStatus.length;) {
+      const statusLetter = diffSections.nameStatus[index++];
+      const originalPath = diffSections.nameStatus[index++];
+      const filePath = /^[RC]/.test(statusLetter) ? diffSections.nameStatus[index++] : originalPath;
+      const stats = statsByPath.get(filePath) ?? { additions: 0, deletions: 0 };
+      fileMap.set(filePath, {
+        path: filePath,
+        ...(/^[RC]/.test(statusLetter) ? { originalPath } : {}),
+        status: parseGitStatus(statusLetter),
+        additions: stats.additions,
+        deletions: stats.deletions,
+      });
     }
 
-    /** working directory의 변경/untracked 파일을 추가한다 (커밋된 diff에 없는 파일만) */
-    const workingTreeLines = diffSections.workingTree.replace(/\n$/, "");
-    if (workingTreeLines) {
-      for (const line of workingTreeLines.split("\n")) {
-        const xy = line.substring(0, 2);
-        const filePath = line.substring(3);
-        if (fileMap.has(filePath)) continue;
-
-        const status = parseWorkingTreeStatus(xy);
-        if (!status) continue;
-
-        fileMap.set(filePath, {
-          path: filePath,
-          status,
-          additions: 0,
-          deletions: 0,
-        });
-      }
+    /** -z 상태 출력은 rename 목적지를 먼저 주고 이전 경로를 별도 필드로 준다 */
+    for (let index = 0; index < diffSections.workingTree.length; index += 1) {
+      const record = diffSections.workingTree[index];
+      const xy = record.slice(0, 2);
+      const filePath = record.slice(3);
+      const originalPath = /[RC]/.test(xy) ? diffSections.workingTree[++index] : undefined;
+      if (fileMap.has(filePath)) continue;
+      const status = parseWorkingTreeStatus(xy);
+      if (!status) continue;
+      const previousFile = originalPath ? fileMap.get(originalPath) : undefined;
+      if (originalPath) fileMap.delete(originalPath);
+      fileMap.set(filePath, {
+        path: filePath,
+        ...(originalPath ? { originalPath: previousFile?.originalPath ?? originalPath } : {}),
+        status,
+        additions: previousFile?.additions ?? 0,
+        deletions: previousFile?.deletions ?? 0,
+      });
     }
 
     return Array.from(fileMap.values());

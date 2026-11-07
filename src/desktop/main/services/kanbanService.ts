@@ -1,4 +1,5 @@
-import { In, Not, Like } from "typeorm";
+import { In, Not, IsNull } from "typeorm";
+import { quoteShellArgument } from "@/lib/hostFileAccess";
 import { getTaskRepository } from "@/lib/database";
 import { KanbanTask, TaskStatus, SessionType } from "@/entities/KanbanTask";
 import type { Project } from "@/entities/Project";
@@ -638,19 +639,21 @@ export async function updateProjectColor(
   const project = await repo.findOneBy({ id: projectId });
   if (!project) return;
 
-  // worktree 프로젝트들의 color도 함께 업데이트한다
-  const mainRepoPath = project.repoPath.includes("__worktrees")
-    ? project.repoPath.split("__worktrees")[0]
+  const commonDirectory = await readProjectGitCommonDirectory(project);
+  const candidates = commonDirectory
+    ? await repo.find({ where: { sshHost: project.sshHost ?? IsNull() } })
+    : [];
+  const relatedProjects: Project[] = [];
+  for (const candidate of candidates) {
+    if (candidate.id === projectId || (candidate.sshHost ?? null) !== (project.sshHost ?? null)) continue;
+    if (await readProjectGitCommonDirectory(candidate) === commonDirectory) {
+      relatedProjects.push(candidate);
+    }
+  }
+  const mainRepoPath = commonDirectory?.endsWith("/.git")
+    ? commonDirectory.slice(0, -5)
     : project.repoPath;
-
-  const relatedProjects = await repo.find({
-    where: { repoPath: Like(`${mainRepoPath}%`) },
-  });
-
-  const recoloredProjects = orderProjectRepoRootFirst(
-    [project, ...relatedProjects.filter((related) => related.id !== projectId)],
-    mainRepoPath,
-  );
+  const recoloredProjects = orderProjectRepoRootFirst([project, ...relatedProjects], mainRepoPath);
 
   for (const recolored of recoloredProjects) {
     recolored.color = color;
@@ -660,6 +663,18 @@ export async function updateProjectColor(
   await repo.update({ id: In(recoloredProjects.map((recolored) => recolored.id)) }, { color });
 
   broadcastBoardUpdate();
+}
+
+async function readProjectGitCommonDirectory(project: Project): Promise<string | null> {
+  try {
+    const directory = await execGit(
+      `git -C ${quoteShellArgument(project.repoPath)} rev-parse --path-format=absolute --git-common-dir`,
+      project.sshHost,
+    );
+    return directory.trim() || null;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -1074,8 +1089,11 @@ export async function fetchAndSavePrUrl(taskId: string): Promise<string | null> 
     const prUrl = await getPrUrlFromGitHubCli(task.branchName, cwd, sshHost);
 
     if (prUrl) {
-      task.prUrl = prUrl;
-      await repo.save(task);
+      const updateResult = await repo.update(
+        { id: task.id, branchName: task.branchName },
+        { prUrl },
+      );
+      if (updateResult.affected === 0) return null;
       broadcastBoardUpdate();
       return prUrl;
     }
@@ -1128,9 +1146,16 @@ export async function syncActiveTaskPullRequests(
       const mergedPullRequests: TaskPrMergedDetectedPayload[] = [];
 
       if (task.prUrl !== prInfo.url) {
-        task.prUrl = prInfo.url;
-        await repo.save(task);
+        const updateResult = await repo.update(
+          { id: task.id, branchName: task.branchName },
+          { prUrl: prInfo.url },
+        );
+        if (updateResult.affected === 0) {
+          continue;
+        }
         updatedTaskIds.push(task.id);
+      } else if (!await repo.existsBy({ id: task.id, branchName: task.branchName })) {
+        continue;
       }
 
       if (prInfo.state === "MERGED" && prInfo.mergedAt) {

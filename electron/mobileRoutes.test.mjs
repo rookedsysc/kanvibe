@@ -44,6 +44,11 @@ function createBridge(overrides = {}) {
     unpairMobileDeviceByToken: vi.fn(async () => true),
     getMobileBoard: vi.fn(async () => ({ columns: [] })),
     getMobileTask: vi.fn(async () => ({ id: "task-1", title: "알림 태스크", projectName: "kanvibe" })),
+    getMobileNotificationSettings: vi.fn(async () => ({ isEnabled: true, enabledStatuses: ["review"] })),
+    updateMobileNotificationSettings: vi.fn(async (settings) => settings),
+    isMobileAiSessionProvider: (provider) => ["codex", "hermes"].includes(provider),
+    getMobileAiSessions: vi.fn(async () => ({ sessions: [{ id: "session-1", provider: "hermes" }], sources: [], nextCursor: null })),
+    getMobileAiSessionDetail: vi.fn(async () => ({ sessionId: "session-1", provider: "hermes", messages: [{ role: "assistant", fullText: "기록 본문" }], nextCursor: null })),
     getMobileNotifications: vi.fn(async () => [INBOX_NOTIFICATION]),
     markMobileNotificationRead: vi.fn(async () => ({ ...INBOX_NOTIFICATION, isRead: true })),
     markAllMobileNotificationsRead: vi.fn(async () => {}),
@@ -709,6 +714,18 @@ describe("기기 이름", () => {
 });
 
 describe("키 입력 순서", () => {
+  it("크기 변경이 끝난 화면을 다시 보내 마지막 출력을 보존한다", async () => {
+    const resize = vi.fn(async () => "fresh-history-through-180");
+    bridge.claimPaneViewport.mockResolvedValue({ resize, release: vi.fn(async () => {}) });
+    const client = await openPaneStreamClient("Bearer good");
+    const chunks = [];
+    client.on("message", (chunk) => chunks.push(chunk.toString()));
+    client.send(Buffer.from(JSON.stringify({ type: "resize", cols: 47, rows: 48 })));
+    await waitFor(() => chunks.includes("fresh-history-through-180"));
+    expect(resize).toHaveBeenCalledWith(47, 48);
+    client.close();
+  });
+
   it("binary resize만 크기를 바꾸고 같은 JSON의 text 입력은 그대로 보낸다", async () => {
     const resize = vi.fn(async () => {});
     const release = vi.fn(async () => {});
@@ -1090,4 +1107,107 @@ describe("프로젝트 브랜치 목록 경로", () => {
 
     expect(response.status).toBe(500);
   });
+});
+
+describe("모바일 알림 상태 설정", () => {
+  const headers = { Authorization: "Bearer good" };
+  it("인증한 PC의 알림 상태 설정을 조회한다", async () => {
+    expect(await request("/api/mobile/notification-settings", { headers })).toEqual({
+      status: 200, body: { success: true, settings: { isEnabled: true, enabledStatuses: ["review"] } },
+    });
+  });
+  it.each(["GET", "PATCH"])("%s는 인증 없이 설정을 읽거나 바꾸지 못한다", async (method) => {
+    expect((await request("/api/mobile/notification-settings", { method })).status).toBe(401);
+    expect(bridge.getMobileNotificationSettings).not.toHaveBeenCalled();
+    expect(bridge.updateMobileNotificationSettings).not.toHaveBeenCalled();
+  });
+  it("설정을 저장하고 저장된 값을 반환한다", async () => {
+    const settings = { isEnabled: false, enabledStatuses: [] };
+    const response = await request("/api/mobile/notification-settings", { method: "PATCH", headers, body: JSON.stringify(settings) });
+    expect(response).toEqual({ status: 200, body: { success: true, settings } });
+    expect(bridge.updateMobileNotificationSettings).toHaveBeenCalledWith(settings);
+  });
+  it("잘못된 상태와 JSON은 400으로 거절한다", async () => {
+    bridge.updateMobileNotificationSettings.mockRejectedValue(Object.assign(new Error("잘못된 상태"), { name: "MobileTaskInputError" }));
+    expect((await request("/api/mobile/notification-settings", { method: "PATCH", headers, body: '{"isEnabled":true}' })).status).toBe(400);
+    expect((await request("/api/mobile/notification-settings", { method: "PATCH", headers, body: 'invalid' })).status).toBe(400);
+  });
+});
+
+describe("모바일 AI History", () => {
+  it("목록과 상세 모두 인증을 요구한다", async () => {
+    for (const path of ["/api/mobile/tasks/task-1/ai-sessions", "/api/mobile/tasks/task-1/ai-sessions/hermes/session-1"]) {
+      expect((await request(path)).status).toBe(401);
+    }
+    expect(bridge.getMobileAiSessions).not.toHaveBeenCalled();
+  });
+
+  it("목록의 검색과 페이지 값을 서비스에 전달한다", async () => {
+    const result = await request("/api/mobile/tasks/task-1/ai-sessions?query=fix&cursor=20&limit=10", { headers: { Authorization: "Bearer good" } });
+    expect(result.status).toBe(200);
+    expect(result.body.history.sessions[0]).toEqual({ id: "session-1", provider: "hermes" });
+    expect(bridge.getMobileAiSessions).toHaveBeenCalledWith("task-1", { query: "fix", cursor: "20", limit: 10 });
+  });
+
+  it("상세는 역할 필터를 전달하고 서버의 대화를 돌려준다", async () => {
+    const result = await request("/api/mobile/tasks/task-1/ai-sessions/hermes/session-1?roles=user,assistant", { headers: { Authorization: "Bearer good" } });
+    expect(result.status).toBe(200);
+    expect(result.body.detail.messages[0].fullText).toBe("기록 본문");
+    expect(bridge.getMobileAiSessionDetail).toHaveBeenCalledWith("task-1", "hermes", "session-1", { query: undefined, cursor: undefined, limit: 20, roles: ["user", "assistant"] });
+  });
+
+  it.each(["limit=0", "limit=101", "limit=2x", "cursor=-1", "cursor=garbage", "roles=invalid", "sourceRef=/private/file"])("잘못된 조회 값 %s를 거절한다", async (query) => {
+    const result = await request(`/api/mobile/tasks/task-1/ai-sessions/hermes/session-1?${query}`, { headers: { Authorization: "Bearer good" } });
+    expect(result.status).toBe(400);
+    expect(bridge.getMobileAiSessionDetail).not.toHaveBeenCalled();
+  });
+
+  it("없는 Agent는 400, 없는 태스크나 세션은 404다", async () => {
+    const headers = { Authorization: "Bearer good" };
+    expect((await request("/api/mobile/tasks/task-1/ai-sessions/unknown/s", { headers })).status).toBe(400);
+    bridge.getMobileTask.mockResolvedValueOnce(null);
+    expect((await request("/api/mobile/tasks/deleted/ai-sessions", { headers })).status).toBe(404);
+    bridge.getMobileAiSessionDetail.mockResolvedValueOnce(null);
+    expect((await request("/api/mobile/tasks/task-1/ai-sessions/hermes/deleted", { headers })).status).toBe(404);
+  });
+});
+
+it("실제 Codex fixture 리더의 목록과 상세가 HTTP 계약으로 이어진다", async () => {
+  const { mkdtemp, mkdir, writeFile, rm } = await import("node:fs/promises");
+  const { tmpdir } = await import("node:os");
+  const path = await import("node:path");
+  const home = await mkdtemp(path.join(tmpdir(), "mobile-chat-contract-"));
+  vi.stubEnv("HOME", home);
+  try {
+    const { readCodexSessions, readCodexSessionDetail } = await import("../src/lib/aiSessions/readCodexSessions.ts");
+    const directory = path.join(home, ".codex", "sessions");
+    await mkdir(directory, { recursive: true });
+    const sourceRef = path.join(directory, "fixture.jsonl");
+    const context = { worktreePath: "/qa/chat/repo", repoPath: "/qa/chat/repo" };
+    await writeFile(sourceRef, [
+      { type: "session_meta", payload: { id: "wire-session", cwd: context.worktreePath } },
+      { type: "response_item", timestamp: "2026-11-02T01:00:00Z", payload: { type: "message", role: "user", content: [{ type: "input_text", text: "모바일 계약 질문" }] } },
+      { type: "response_item", timestamp: "2026-11-02T01:00:01Z", payload: { type: "message", role: "assistant", content: [{ type: "output_text", text: "실제 fixture 응답" }] } },
+    ].map((entry) => JSON.stringify(entry)).join("\n") + "\n");
+    bridge.getMobileAiSessions.mockImplementation(async (_taskId, options) => {
+      const result = await readCodexSessions({ ...context, ...options });
+      return { sessions: result.sessions.map(({ sourceRef: _, ...entry }) => entry), sources: [{ provider: result.provider, available: result.available }], nextCursor: null };
+    });
+    bridge.getMobileAiSessionDetail.mockImplementation(async (_taskId, provider, sessionId, options) => {
+      const detail = await readCodexSessionDetail({ ...context, roles: options.roles }, sessionId, sourceRef, options.cursor, options.limit);
+      const { sourceRef: _, ...safeDetail } = detail;
+      return safeDetail;
+    });
+    const headers = { Authorization: "Bearer good" };
+    const list = await request("/api/mobile/tasks/task-1/ai-sessions", { headers });
+    expect(list.status).toBe(200);
+    expect(list.body.history.sessions[0]).toMatchObject({ id: "wire-session", provider: "codex", title: "모바일 계약 질문" });
+    expect(list.body.history.sessions[0]).not.toHaveProperty("sourceRef");
+    const detail = await request("/api/mobile/tasks/task-1/ai-sessions/codex/wire-session?roles=assistant", { headers });
+    expect(detail.status).toBe(200);
+    expect(detail.body.detail.messages.map((entry) => entry.fullText)).toEqual(["실제 fixture 응답"]);
+  } finally {
+    vi.unstubAllEnvs();
+    await rm(home, { recursive: true, force: true });
+  }
 });

@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { buildTaskStatusNotification } from "@/desktop/shared/taskNotifications";
 import { subscribeToBoardEvents } from "@/lib/boardNotifier";
 import type { MobilePushSubscription } from "@/lib/mobilePairing";
+import { getNotificationSettings } from "@/desktop/main/services/appSettingsService";
 
 export type MobileEvent = { type: "board-updated" } | {
   type: "task-status-changed";
@@ -11,6 +12,7 @@ export type MobileEvent = { type: "board-updated" } | {
   body: string;
   status: string;
   createdAt: string;
+  shouldNotify: boolean;
 };
 
 interface MobileNotificationOptions {
@@ -76,15 +78,23 @@ export function startMobileNotifications(options: MobileNotificationOptions): vo
     const mobileEvent: MobileEvent = {
       type: "task-status-changed", eventId: randomUUID(), taskId: event.taskId,
       title: truncateNotificationText(notification.title, 128), body: truncateNotificationText(notification.body, 700),
-      status: event.newStatus, createdAt: new Date().toISOString(),
+      status: event.newStatus, createdAt: new Date().toISOString(), shouldNotify: false,
     };
-    broadcastMobileEvent(mobileEvent);
-    if (options.relayUrl && options.relayToken) {
-      /** hook 응답과 보드 이벤트 발행은 외부 네트워크가 끝나기를 기다리지 않는다 */
-      void deliverPushNotifications(mobileEvent, options, delivery).catch(() => {
-        if (!delivery.isStopped) console.error("[kanvibe] Mobile push subscriptions could not be read");
-      });
-    }
+    void getNotificationSettings().then((settings) => {
+      if (delivery.isStopped) return;
+      mobileEvent.shouldNotify = settings.isEnabled && settings.enabledStatuses.includes(event.newStatus);
+      broadcastMobileEvent(mobileEvent);
+      if (mobileEvent.shouldNotify && options.relayUrl && options.relayToken) {
+        /** hook 응답과 보드 이벤트 발행은 외부 네트워크가 끝나기를 기다리지 않는다 */
+        void deliverPushNotifications(mobileEvent, options, delivery).catch(() => {
+          if (!delivery.isStopped) console.error("[kanvibe] Mobile push subscriptions could not be read");
+        });
+      }
+    }).catch(() => {
+      if (delivery.isStopped) return;
+      broadcastMobileEvent(mobileEvent);
+      console.error("[kanvibe] Mobile notification settings could not be read");
+    });
   });
 }
 
@@ -95,6 +105,7 @@ async function deliverPushNotifications(
 ): Promise<void> {
   const subscriptions = await options.readSubscriptions();
   if (delivery.isStopped) return;
+  const { shouldNotify: _, ...pushEvent } = event;
   await Promise.all(subscriptions.map(async (subscription) => {
     const controller = new AbortController();
     delivery.requests.add(controller);
@@ -107,7 +118,7 @@ async function deliverPushNotifications(
         body: JSON.stringify({
           token: subscription.pushToken,
           notification: { title: event.title, body: event.body },
-          data: { ...event, connectionId: subscription.connectionId },
+          data: { ...pushEvent, connectionId: subscription.connectionId },
         }),
         signal: controller.signal,
       });

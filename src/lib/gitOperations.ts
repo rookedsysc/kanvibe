@@ -626,15 +626,15 @@ function normalizeSSHExecError(
 
 export function resolvePathForShell(targetPath: string, sshHost?: string | null): string {
   if (!targetPath.startsWith("~")) {
-    return `"${targetPath}"`;
+    return quoteForPosixShell(targetPath);
   }
 
   if (sshHost) {
     const suffix = targetPath.slice(1);
-    return `"$HOME${suffix}"`;
+    return `"$HOME"${quoteForPosixShell(suffix)}`;
   }
 
-  return `"${targetPath.replace(/^~/, homedir())}"`;
+  return quoteForPosixShell(targetPath.replace(/^~/, homedir()));
 }
 
 /** 로컬 또는 SSH에서 명령을 실행한다. sshHost가 null이면 로컬 실행 */
@@ -655,7 +655,7 @@ export async function fetchOrigin(
   sshHost?: string | null
 ): Promise<void> {
   try {
-    await execGit(`git -C "${repoPath}" fetch --prune`, sshHost);
+    await execGit(`git -C ${resolvePathForShell(repoPath, sshHost)} fetch --prune`, sshHost);
   } catch {
     /* 네트워크 실패 시에도 로컬 브랜치 목록은 정상 제공해야 하므로 무시한다 */
   }
@@ -667,7 +667,7 @@ export async function pullCurrentBranch(
   sshHost?: string | null,
   options?: ExecGitOptions,
 ): Promise<string> {
-  return execGit(`git -C "${repoPath}" pull --ff-only`, sshHost, options);
+  return execGit(`git -C ${resolvePathForShell(repoPath, sshHost)} pull --ff-only`, sshHost, options);
 }
 
 /** origin에 현재 task 브랜치가 존재하는지 확인한다 */
@@ -708,7 +708,7 @@ export async function listBranches(
   }
 
   const output = await execGit(
-    `git -C "${repoPath}" branch -a --format='%(refname:short)'`,
+    `git -C ${resolvePathForShell(repoPath, sshHost)} branch -a --format='%(refname:short)'`,
     sshHost
   );
 
@@ -740,7 +740,7 @@ export async function validateGitRepo(
 ): Promise<boolean> {
   try {
     await execGit(
-      `git -C "${repoPath}" rev-parse --is-inside-work-tree`,
+      `git -C ${resolvePathForShell(repoPath, sshHost)} rev-parse --is-inside-work-tree`,
       sshHost
     );
     return true;
@@ -756,7 +756,7 @@ export async function getDefaultBranch(
 ): Promise<string> {
   try {
     const output = await execGit(
-      `git -C "${repoPath}" symbolic-ref --short HEAD`,
+      `git -C ${resolvePathForShell(repoPath, sshHost)} symbolic-ref --short HEAD`,
       sshHost
     );
     return output || "main";
@@ -811,7 +811,7 @@ export async function listWorktrees(
 ): Promise<WorktreeInfo[]> {
   try {
     const output = await execGit(
-      `git -C "${repoPath}" worktree list --porcelain`,
+      `git -C ${resolvePathForShell(repoPath, sshHost)} worktree list --porcelain`,
       sshHost
     );
 

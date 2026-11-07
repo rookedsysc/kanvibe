@@ -45,4 +45,13 @@ describe("writeCredentialsAtomically", () => {
 
     expect(await readFile(survivingPath, "utf-8")).toBe("original");
   });
+  it("동시 쓰기마다 완전한 JSON을 기록하고 임시 파일을 남기지 않는다", async () => {
+    const targetPath = path.join(workingDirectory, ".credentials.json");
+    const bodies = Array.from({ length: 16 }, (_, index) => JSON.stringify({ index, token: "x".repeat(10000) }));
+    const results = await Promise.allSettled(bodies.map((body) => writeCredentialsAtomically(targetPath, body)));
+    expect(results.every((result) => result.status === "fulfilled")).toBe(true);
+    expect(bodies).toContain(await readFile(targetPath, "utf-8"));
+    expect(await readdir(workingDirectory)).toEqual([".credentials.json"]);
+  });
+
 });

@@ -322,6 +322,8 @@
     "hint": "↑↓ 导航 · Enter 运行 · Esc 关闭"
   },
   "paneLayout": {
+    "loadError": "无法加载布局设置。",
+    "retry": "重试",
     "title": "面板布局设置",
     "description": "配置 tmux 会话的面板分割方式和各面板的启动命令。",
     "backToBoard": "返回看板",
@@ -405,6 +407,7 @@
     "geminiHooksInstallSuccess": "Gemini CLI hooks 安装完成",
     "codexHooksInstallSuccess": "Codex CLI hooks 安装完成",
     "openCodeHooksInstallSuccess": "OpenCode hooks 安装完成",
+    "hooksVerificationFailed": "验证失败",
     "hooksInstallIncomplete": "Hooks 已安装，但所需的校验项尚未全部通过。",
     "hooksInstallFailed": "Hooks 安装失败",
     "hooksRemoteNotSupported": "不支持远程项目",

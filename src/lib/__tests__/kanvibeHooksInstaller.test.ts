@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { TextFileReadResult } from "@/lib/hostFileAccess";
 import type { ShellHookProviderFile } from "@/lib/shellHookProvider";
 
+const mockInvalidateOpenCodePluginRegistration = vi.fn();
 const mockSetupClaudeHooks = vi.fn();
 const mockSetupGeminiHooks = vi.fn();
 const mockSetupCodexHooks = vi.fn();
@@ -14,6 +15,11 @@ const mockGetHookServerUrl = vi.fn();
 const mockRegisterKanvibeHookTarget = vi.fn();
 const mockReadTextFiles = vi.fn();
 const mockWriteHookProviderFiles = vi.fn();
+
+vi.mock("@/lib/openCodePluginRegistry", () => ({
+  invalidateOpenCodePluginRegistration: (...args: unknown[]) => mockInvalidateOpenCodePluginRegistration(...args),
+  getOpenCodeRegisteredKanvibePluginUrls: vi.fn(),
+}));
 
 vi.mock("@/lib/claudeHooksSetup", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/claudeHooksSetup")>()),
@@ -94,6 +100,12 @@ async function flushMicrotasks(): Promise<void> {
 }
 
 describe("kanvibeHooksInstaller", () => {
+  it("invalidates OpenCode registration after a bulk file installation", async () => {
+    const { installKanvibeHookFiles } = await import("../kanvibeHooksInstaller");
+    await installKanvibeHookFiles("/repo", "task-1");
+    expect(mockInvalidateOpenCodePluginRegistration).toHaveBeenCalledWith("/repo");
+  });
+
   beforeEach(() => {
     vi.resetModules();
     vi.clearAllMocks();
