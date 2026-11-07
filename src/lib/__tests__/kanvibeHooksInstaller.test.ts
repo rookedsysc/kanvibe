@@ -59,6 +59,7 @@ vi.mock("@/lib/hookFileWriter", () => ({
 }));
 
 vi.mock("@/lib/hostFileAccess", () => ({
+  findSymbolicLinkPath: vi.fn(async () => null),
   readTextFile: vi.fn(async () => ""),
   readTextFiles: (...args: unknown[]) => mockReadTextFiles(...args),
   writeTextFile: vi.fn(async () => undefined),

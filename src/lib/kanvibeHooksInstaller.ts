@@ -3,7 +3,8 @@ import { readTextFiles } from "@/lib/hostFileAccess";
 import { getHookServerUrl } from "@/lib/hookEndpoint";
 import { writeHookProviderFiles } from "@/lib/hookFileWriter";
 import { registerKanvibeHookTarget } from "@/lib/hookTargetRegistration";
-import { buildTaskCliFile } from "@/lib/taskCliScript";
+import { assertKanvibeStatePathsAreNotSymlinks } from "@/lib/kanvibeProjectState";
+import { buildTaskCliFile, TASK_CLI_FILE_NAME } from "@/lib/taskCliScript";
 import {
   getKanvibeHookProviderModules,
   KANVIBE_HOOK_PROVIDER_MODULES,
@@ -285,7 +286,8 @@ async function installKanvibeHookFilesOnce(
     }
   });
   /** task CLI는 provider와 무관하게 worktree마다 하나만 두고, 원격 왕복이 늘지 않도록 provider 쓰기와 함께 보낸다 */
-  const taskCliWrite = writeHookProviderFiles([buildTaskCliFile(targetPath, sshHost)], sshHost);
+  const taskCliWrite = assertKanvibeStatePathsAreNotSymlinks(targetPath, [TASK_CLI_FILE_NAME], sshHost)
+    .then(() => writeHookProviderFiles([buildTaskCliFile(targetPath, sshHost)], sshHost));
   const results = await Promise.allSettled([...providerWrites, taskCliWrite]);
 
   assertHookProviderInstallResults(results, [...providerModules.map(({ label }) => label), "task CLI"]);

@@ -1,4 +1,4 @@
-import { access, chmod, mkdir, readFile, readdir, rename, rmdir, stat, unlink, writeFile } from "fs/promises";
+import { access, chmod, lstat, mkdir, readFile, readdir, rename, rmdir, stat, unlink, writeFile } from "fs/promises";
 import { randomUUID } from "crypto";
 import { homedir } from "os";
 import path from "path";
@@ -47,6 +47,26 @@ export async function pathExists(targetPath: string, sshHost?: string | null): P
     sshHost,
   );
   return output.trim() === "1";
+}
+
+/** 경로 가운데 심볼릭 링크인 첫 경로를 돌려준다. 없는 경로는 링크가 아니다 */
+export async function findSymbolicLinkPath(targetPaths: string[], sshHost?: string | null): Promise<string | null> {
+  if (!sshHost) {
+    for (const targetPath of targetPaths) {
+      const isSymbolicLink = await lstat(targetPath).then((entry) => entry.isSymbolicLink()).catch(() => false);
+      if (isSymbolicLink) {
+        return targetPath;
+      }
+    }
+    return null;
+  }
+
+  const quotedPaths = targetPaths.map(quoteShellArgument).join(" ");
+  const output = await execGit(
+    `for __kanvibe_path in ${quotedPaths}; do if test -L "$__kanvibe_path"; then printf '%s' "$__kanvibe_path"; break; fi; done`,
+    sshHost,
+  );
+  return output.trim() || null;
 }
 
 export async function readTextFile(targetPath: string, sshHost?: string | null): Promise<string> {

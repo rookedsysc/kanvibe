@@ -1,7 +1,7 @@
 import path from "path";
 import { TaskStatus } from "@/entities/KanbanTask";
 import { TaskPriority } from "@/entities/TaskPriority";
-import { readTextFile, readTextFiles, updateTextFile, writeTextFile, writeTextFileIfAbsent } from "@/lib/hostFileAccess";
+import { findSymbolicLinkPath, readTextFile, readTextFiles, updateTextFile, writeTextFile, writeTextFileIfAbsent } from "@/lib/hostFileAccess";
 
 export const KANVIBE_DIR_NAME = ".kanvibe";
 export const TASK_STATE_FILE_NAME = "status.json";
@@ -202,6 +202,27 @@ export async function writeKanvibeProjectColorIfAbsent(
 }
 
 /**
+ * `.kanvibe`나 그 안의 파일이 심볼릭 링크면 기록을 거부한다.
+ * 브랜치가 링크를 추적하면 데스크탑이 worktree 밖의 파일을 덮어쓰거나 권한을 바꾸고, 토큰을 그쪽에 남기게 된다.
+ */
+export async function assertKanvibeStatePathsAreNotSymlinks(
+  repoPath: string,
+  fileNames: string[],
+  sshHost?: string | null,
+): Promise<void> {
+  const pathModule = getPathModule(sshHost);
+  const stateDirectory = pathModule.join(repoPath, KANVIBE_DIR_NAME);
+  const symbolicLinkPath = await findSymbolicLinkPath(
+    [stateDirectory, ...fileNames.map((fileName) => pathModule.join(stateDirectory, fileName))],
+    sshHost,
+  );
+
+  if (symbolicLinkPath) {
+    throw new Error(`KanVibe 상태 경로가 심볼릭 링크라 기록하지 않습니다: ${symbolicLinkPath}`);
+  }
+}
+
+/**
  * hook 알림 대상을 client(url) 단위로 등록한다.
  * 같은 client가 다른 task로 재설치하면 taskId만 교체되고, 새로운 client는 뒤에 추가된다.
  */
@@ -210,6 +231,7 @@ export async function upsertKanvibeHookTarget(
   target: KanvibeHookTarget,
   sshHost?: string | null,
 ): Promise<void> {
+  await assertKanvibeStatePathsAreNotSymlinks(repoPath, [], sshHost);
   await updateTextFile(
     getKanvibeTargetsPath(repoPath, sshHost),
     (content) => buildKanvibeTargetsContent(upsertKanvibeTarget(parseKanvibeTargets(content).targets, target)),

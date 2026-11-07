@@ -10,6 +10,7 @@ const { mockReadTextFile, mockReadTextFiles, mockWriteTextFile, mockWriteTextFil
 }));
 
 vi.mock("@/lib/hostFileAccess", () => ({
+  findSymbolicLinkPath: async () => null,
   readTextFile: (...args: unknown[]) => mockReadTextFile(...args),
   readTextFiles: (...args: unknown[]) => mockReadTextFiles(...args),
   updateTextFile: async (targetPath: string, update: (content: string) => string, sshHost?: string | null, mode?: number) => {
