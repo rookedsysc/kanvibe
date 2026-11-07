@@ -156,6 +156,8 @@
     "createFailed": "创建任务失败。",
     "createHooksBackgroundFailedTitle": "自动安装 Hooks 失败",
     "createHooksBackgroundFailedBody": "创建“{taskTitle}”后安装 hooks 失败。你可以在 Hooks 状态区域重新安装。",
+    "peerDeletionFailedTitle": "未能在其他桌面删除",
+    "peerDeletionFailedBody": "“{taskTitle}”已在此桌面删除，但仍保留在 {peerUrls}。请在该桌面恢复在线后手动删除。",
     "deleteConfirm": "确定要删除此任务吗？",
     "priority": "优先级",
     "priorityLow": "!",

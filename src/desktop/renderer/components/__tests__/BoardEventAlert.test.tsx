@@ -85,4 +85,47 @@ describe("BoardEventAlert", () => {
     // Then
     expect(screen.queryByRole("alert")).toBeNull();
   });
+
+  it("다른 데스크탑으로 삭제를 전파하지 못하면 task가 남은 곳을 상단 알럿으로 알린다", async () => {
+    // Given
+    render(<BoardEventAlert />);
+
+    // When
+    await act(async () => {
+      boardEventListener?.({
+        type: "task-peer-deletion-failed",
+        taskId: "task-1",
+        taskTitle: "공유 작업",
+        failedPeerUrls: ["http://10.0.0.9:9736"],
+      });
+    });
+
+    // Then
+    expect(screen.getByRole("alert")).toBeTruthy();
+    expect(screen.getByText("task.peerDeletionFailedTitle")).toBeTruthy();
+    expect(screen.getByText("task.peerDeletionFailedBody:공유 작업")).toBeTruthy();
+  });
+
+  it("task가 남은 데스크탑 알럿은 놓치지 않도록 닫기 전까지 남긴다", async () => {
+    // Given
+    render(<BoardEventAlert />);
+    await act(async () => {
+      boardEventListener?.({
+        type: "task-peer-deletion-failed",
+        taskId: "task-1",
+        taskTitle: "공유 작업",
+        failedPeerUrls: ["http://10.0.0.9:9736"],
+      });
+    });
+
+    // When
+    await act(async () => {
+      vi.advanceTimersByTime(60_000);
+    });
+
+    // Then
+    expect(screen.getByRole("alert")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "common.close" }));
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
 });

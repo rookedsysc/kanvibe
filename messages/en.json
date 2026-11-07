@@ -157,6 +157,8 @@
     "createFailed": "Failed to create task.",
     "createHooksBackgroundFailedTitle": "Automatic hooks install failed",
     "createHooksBackgroundFailedBody": "Hooks installation failed after creating \"{taskTitle}\". You can reinstall it from the Hooks Status section.",
+    "peerDeletionFailedTitle": "Not deleted on other desktops",
+    "peerDeletionFailedBody": "\"{taskTitle}\" was deleted here but remains on {peerUrls}. Delete it there once that desktop is back online.",
     "deleteConfirm": "Are you sure you want to delete this task?",
     "priority": "Priority",
     "priorityLow": "!",
