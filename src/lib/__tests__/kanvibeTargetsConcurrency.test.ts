@@ -14,6 +14,8 @@ vi.mock("@/lib/gitOperations", () => ({
       throw Object.assign(new Error("spawn E2BIG"), { code: "E2BIG" });
     }
     const execution = execFileAsync("sh", ["-c", command]);
+    /** 실제 전송 경로처럼, 명령이 입력을 다 읽기 전에 끝나 생기는 EPIPE는 종료 코드로 판정한다 */
+    execution.child.stdin?.on("error", () => undefined);
     execution.child.stdin?.end(options?.remoteStdin ?? "");
     return (await execution).stdout;
   },
