@@ -322,6 +322,44 @@ class DesktopClient {
     }
   }
 
+  Future<({TaskSurfaces surfaces, String? screen})> runTerminalShortcut(
+    DesktopConnection connection,
+    String taskId,
+    String paneId,
+    String action,
+  ) async {
+    final response = await _httpClient
+        .post(
+          connection
+              .buildHttpUri('/')
+              .replace(
+                pathSegments: [
+                  'api',
+                  'mobile',
+                  'tasks',
+                  taskId,
+                  'panes',
+                  paneId,
+                  'shortcuts',
+                ],
+              ),
+          headers: {
+            ...connection.authorizationHeaders,
+            'Content-Type': 'application/json',
+          },
+          body: jsonEncode({'action': action}),
+        )
+        .timeout(_createTerminalTabTimeout);
+    if (response.statusCode != 200) {
+      throw DesktopRequestException(response.statusCode);
+    }
+    final body = jsonDecode(response.body) as Map<String, dynamic>;
+    return (
+      surfaces: TaskSurfaces.fromJson(body['surfaces'] as Map<String, dynamic>),
+      screen: body['screen'] as String?,
+    );
+  }
+
   /// 태스크의 탭과 pane 목록
   Future<TaskSurfaces> fetchSurfaces(
     DesktopConnection connection,

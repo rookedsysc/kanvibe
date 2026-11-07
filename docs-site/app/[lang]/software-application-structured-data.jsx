@@ -13,7 +13,7 @@ export default function SoftwareApplicationStructuredData({ lang }) {
     '@context': 'https://schema.org',
     '@type': 'SoftwareApplication',
     name: 'KanVibe',
-    description: getDocsDictionary(lang).tagline,
+    description: getDocsDictionary(lang).structuredDataDescription,
     applicationCategory: 'DeveloperApplication',
     operatingSystem: 'macOS',
     url: KANVIBE_REPOSITORY_URL,

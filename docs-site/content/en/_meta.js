@@ -16,6 +16,9 @@ export default {
   features: {
     title: 'Features'
   },
+  mobile: {
+    title: 'Mobile'
+  },
   settings: {
     title: 'Settings'
   },

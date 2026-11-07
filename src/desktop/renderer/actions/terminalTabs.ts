@@ -1,5 +1,9 @@
 import { invokeDesktop } from "@/desktop/renderer/ipc";
-import type { TerminalTabListResult, TerminalTabMutationResult } from "@/desktop/shared/terminalTabs";
+import type { TerminalTabCloseInfo, TerminalTabListResult, TerminalTabMutationResult } from "@/desktop/shared/terminalTabs";
+
+export function getTerminalTabCloseInfo(taskId: string, tabId: string): Promise<TerminalTabCloseInfo> {
+  return invokeDesktop("terminalTabs", "getTerminalTabCloseInfo", taskId, tabId);
+}
 
 export function listTerminalTabs(taskId: string): Promise<TerminalTabListResult> {
   return invokeDesktop("terminalTabs", "listTerminalTabs", taskId);

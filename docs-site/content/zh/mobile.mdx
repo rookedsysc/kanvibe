@@ -1,0 +1,117 @@
+---
+title: KanVibe Mobile 构建与连接指南
+description: "构建 KanVibe Mobile 并与 Desktop 配对，在手机或平板上使用任务看板、实时终端、多台电脑和共享通知收件箱。"
+---
+
+# KanVibe Mobile：从手机继续同一个任务
+
+KanVibe Mobile 是连接 KanVibe Desktop 的 iOS 和 Android 应用。查看进度、向同一任务的终端输入命令，并在已保存的电脑之间切换。仓库和运行中的进程仍留在连接的电脑上。
+
+<div className="kv-note">
+  <p><strong>移动端终端兼容性：</strong>请选择使用 <code>tmux</code>、<code>zellij</code> 或 <code>terminal</code> 的任务。Desktop 的新设置默认使用 Herdr，但当前移动端终端桥接尚不支持 Herdr 会话。创建或连接需要在移动端使用的任务时，请选择受支持的会话类型。</p>
+  <p><strong>界面语言：</strong>Mobile 目前使用韩文界面。本指南用中文说明操作，括号中保留实际显示的韩文标签。</p>
+</div>
+
+<div className="kv-grid kv-grid-phones">
+  <figure className="kv-shot kv-shot-phone">
+    <img src="/screenshots/mobile-board.png" alt="手机上的 KanVibe Mobile 看板" width={1080} height={2400} />
+    <figcaption>按状态和项目找到需要处理的任务。</figcaption>
+  </figure>
+  <figure className="kv-shot kv-shot-phone">
+    <img src="/screenshots/mobile-terminal.png" alt="手机上打开的实时任务终端" width={1080} height={2400} />
+    <figcaption>继续使用电脑上已经运行的终端。</figcaption>
+  </figure>
+</div>
+
+## 构建 Mobile 并准备 Desktop
+
+Mobile 目前需要从源码构建。准备 iOS 或 Android 开发环境，通过 [FVM](https://fvm.app/) 安装 `mobile/.fvmrc` 固定的 Flutter 版本。在 [KanVibe 仓库](https://github.com/rookedsysc/kanvibe)的本地副本中运行：
+
+```bash
+cd mobile
+fvm install
+fvm flutter pub get
+fvm flutter run
+```
+
+出现设备选择提示时，选择连接的手机或模拟器。iOS 构建需要 macOS 和当前移动端依赖要求的 Xcode 版本。最新工具链、发布签名和推送配置请查看 [Mobile 开发者 README（韩文）](https://github.com/rookedsysc/kanvibe/blob/main/mobile/README.md)。
+
+在目标电脑上[安装 Desktop](/zh/installation) 并保持运行。Desktop 构建必须支持 Mobile 连接；添加终端标签、调整终端尺寸和通知收件箱也需要包含相应功能的 Desktop 构建。
+
+手机必须能访问保存的电脑地址和端口。可以使用可互通的本地网络，外出时也可使用 Tailscale 等私有网络。收到互联网推送通知并不会自动让电脑终端变得可访问。
+
+## 输入一次连接码
+
+1. 在 Desktop 中打开**设置 → 移动端连接 → 生成连接码**。
+2. 在 Mobile 中输入**桌面地址**（<span lang="ko" translate="no">데스크탑 주소</span>）、**端口**（<span lang="ko" translate="no">포트</span>）和 6 位**连接码**（<span lang="ko" translate="no">연결 코드</span>）。打包的 Desktop 应用使用端口 **9736**，开发构建使用 **19736**。**电脑名称**（<span lang="ko" translate="no">PC 이름</span>）可选填。
+3. 点击**连接**（<span lang="ko" translate="no">연결</span>），看板随即打开。连接信息保存在设备的安全存储中，下次无需重新输入连接码。
+
+连接码在 **5 分钟**后过期，且只能使用一次。已过期或已使用时，请生成新码。从真实手机连接时，填写电脑的网络地址，而不是 `localhost`。可在 macOS **系统设置 → 网络**中查看，或在电脑上运行 `ipconfig getifaddr en0`。
+
+## 找到需要你处理的任务
+
+手机按状态纵向显示任务列表，平板以横向看板列显示。两者使用相同的 Desktop 任务和项目颜色。
+
+- 打开**项目筛选**（<span lang="ko" translate="no">프로젝트 필터</span>），搜索并选择一个或多个项目。选择主项目时，同一主机上关联的 worktree 任务也会显示。
+- 点击任务，打开详情与终端。通过详情中的状态按钮更改任务状态。
+- 点击**新建任务**（<span lang="ko" translate="no">새 태스크</span>），选择项目和基础分支来创建后续工作。打开任务的顶部也提供新建入口。
+- 移至 **DONE** 会保留分支、worktree 和终端会话。删除任务才是单独的资源清理操作。
+
+<figure className="kv-shot">
+  <img src="/screenshots/mobile-tablet.png" width={2200} height={1300} loading="lazy" style={{ height: 'auto' }} alt="平板上以状态列显示的 KanVibe Mobile 看板" />
+  <figcaption>宽屏显示看板列；终端在任何屏幕尺寸下都一次显示一个 pane。</figcaption>
+</figure>
+
+## 向正在运行的终端输入
+
+每个终端标签显示一个 pane。选择标签阅读输出，再点击终端打开键盘，向实际会话输入内容。点击标签栏右侧的 **+**，为当前任务添加 shell 标签。
+
+滑动可查看之前的输出。对于接收鼠标输入的全屏程序，上下滑动会转换为滚轮事件。支持的 tmux 和普通 terminal 会话会根据手机屏幕、旋转和键盘调整尺寸。这也会改变电脑上同一终端的尺寸；离开标签或将 Mobile 切到后台后，会恢复适用的电脑尺寸。Zellij 和旧版 Desktop 保留原始网格，并提供横向与纵向滚动。
+
+需要长时间运行的任务应使用 tmux 或 zellij 等持久会话。普通 `terminal` shell 由 Desktop 直接运行，Desktop 应用退出后不会保留。
+
+## 在多台电脑之间切换
+
+点击看板顶部的电脑名称，打开**已连接的电脑**（<span lang="ko" translate="no">연결된 PC</span>）列表。选择**添加电脑**（<span lang="ko" translate="no">PC 추가</span>）来配对另一台电脑，并为它设置易于识别的名称。点击已保存的电脑，无需重新输入连接码即可打开其看板。
+
+应用运行期间，每台电脑分别保留项目筛选。某台电脑离线时，可返回电脑列表选择另一台。看板显示当前选中电脑的任务；切换不会合并多台电脑的任务列表。
+
+<figure className="kv-shot kv-shot-phone">
+  <img src="/screenshots/mobile-connections.png" alt="KanVibe Mobile 保存的电脑连接列表" width={1080} height={2400} loading="lazy" />
+  <figcaption>保存多台电脑的连接，选择需要的工作区。</figcaption>
+</figure>
+
+从**已连接的电脑**（<span lang="ko" translate="no">연결된 PC</span>）中删除电脑，会移除保存的连接，并撤销该电脑上此设备的配对。其他电脑的连接不受影响。若无法访问该电脑，稍后还需在它的 Desktop 设置中移除此设备。删除当前电脑后，请自行选择下一台。
+
+## 从通知收件箱返回任务
+
+看板上的**通知**（<span lang="ko" translate="no">알림</span>）按钮打开当前电脑的 Desktop 通知收件箱。角标显示未读数量。可筛选**全部 / 未读**（<span lang="ko" translate="no">전체 / 안 읽음</span>）、将单条通知标记为已读（<span lang="ko" translate="no">읽음 처리</span>）或全部标记为已读（<span lang="ko" translate="no">모두 읽음</span>）。Desktop 与 Mobile 共享最近 100 条通知及已读状态。
+
+点击任务通知，会将其标记为已读并打开最新任务。任务已删除时，Mobile 会显示说明。没有关联任务的通知仍可阅读；后续操作若仅支持 Desktop，需要回到 Desktop 完成。
+
+<figure className="kv-shot kv-shot-phone">
+  <img src="/screenshots/mobile-notifications.png" alt="KanVibe Mobile 通知收件箱" width={1080} height={2400} loading="lazy" />
+  <figcaption>查看当前电脑的通知，返回相关任务。</figcaption>
+</figure>
+
+## 区分前台更新和后台推送
+
+Mobile 在前台运行时，通过经过认证的 WebSocket 连接到已保存的电脑。Hook 事件会更新任务状态，也可显示系统通知。点击来自其他已保存电脑的通知，可切换到那台电脑及其任务。
+
+应用进入后台或屏幕锁定时，事件和终端连接会关闭。后台通知需要**移动端 Firebase/APNs 配置与 Desktop 推送中继配置同时就绪**，并获得系统通知权限。没有这些配置的源码构建仍可使用应用与前台 WebSocket 更新。如需后台通知，请按照[推送配置说明（韩文）](https://github.com/rookedsysc/kanvibe/blob/main/mobile/README.md#백그라운드-알림-설정)设置。
+
+电脑必须保持运行才能发送新的 hook 事件。点击推送后，任务查询和终端输入仍直接连接保存的电脑地址。Android 强行停止应用后，再次打开前无法接收推送。后台执行与通知投递受操作系统限制；Mobile 不会在后台一直保持终端连接。
+
+## 连接失败时检查什么
+
+| 现象 | 检查项 |
+| --- | --- |
+| 提示“连接码错误或已过期”（<span lang="ko" translate="no">코드가 맞지 않거나 만료되었습니다</span>） | 检查是否输错；连接码五分钟后过期且仅能使用一次，请生成新码。 |
+| 提示“已注册的电脑”（<span lang="ko" translate="no">이미 등록된 PC입니다</span>） | 无需重新连接，请在**已连接的电脑**（<span lang="ko" translate="no">연결된 PC</span>）列表中选择该电脑。 |
+| 无法连接电脑 | 检查 Desktop 是否运行、地址与端口是否正确，以及本地网络或 Tailscale 路由和防火墙是否允许访问。 |
+| 收到通知却打不开任务 | 手机当前网络也必须能访问保存的电脑地址。 |
+| 提示“无终端会话”（<span lang="ko" translate="no">이 태스크에는 터미널 세션이 없습니다</span>）或终端不可用 | Mobile 不支持 Herdr 任务，请使用 tmux、zellij 或 terminal 会话的任务，并使用支持 Mobile 功能的 Desktop 构建。没有项目或分支的任务无法自动恢复缺失的会话。 |
+| 没有后台通知 | 检查 Firebase/APNs、Desktop 中继配置、系统权限，以及 Android 是否强行停止了应用。 |
+| 找不到通知中的任务 | 任务可能已删除，或电脑连接已移除。请从看板或电脑列表选择当前任务。 |
+
+[Desktop Quick Start](/zh/quick-start) · [Mobile 开发者 README（韩文）](https://github.com/rookedsysc/kanvibe/blob/main/mobile/README.md)

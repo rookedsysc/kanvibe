@@ -1,11 +1,11 @@
 ---
 title: 기능
-description: "칸반 보드, 태스크별 터미널 세션, git worktree 연동, AI 에이전트 hook, 실행중 세션과 사용량 패널까지 KanVibe의 주요 기능을 설명합니다."
+description: "Desktop의 보드, worktree, 에이전트 상태, 터미널, 사용량 패널로 AI 코딩 작업을 관리하고 Mobile에서 이어갑니다."
 ---
 
 # 기능
 
-KanVibe는 칸반 보드, 터미널 세션, git worktree, AI 에이전트 hooks를 하나의 워크플로우로 연결합니다.
+KanVibe Desktop은 작업 상태, 브랜치별 작업 공간, 터미널, 에이전트 맥락을 하나로 모읍니다. KanVibe Mobile에서는 휴대폰이나 태블릿으로 같은 태스크를 확인하고 터미널에서 작업을 이어갑니다.
 
 ## 실시간 칸반 보드
 
@@ -166,3 +166,9 @@ tmux를 쓰지 않는 zellij와 terminal 세션은 기록 활동만으로 판정
 | Gemini CLI | BeforeAgent → PROGRESS, AfterAgent → REVIEW | `.gemini/hooks/`, `.gemini/settings.json` |
 | Codex CLI | UserPromptSubmit → PROGRESS, PermissionRequest → PENDING, Stop → REVIEW | `.codex/hooks.json`, `.codex/config.toml` |
 | OpenCode | message.updated → PROGRESS, question.asked → PENDING, session.idle → REVIEW | `.opencode/plugins/` |
+
+## Mobile에서 이어가기
+
+보드와 프로젝트 필터로 작업을 찾고, 후속 태스크를 만들고, 실행 중인 터미널에 입력하고, 저장된 PC를 전환합니다. 알림함의 읽음 상태는 Desktop과 공유합니다. Mobile은 현재 소스 빌드로 사용하며, 실행 중이고 네트워크로 접근 가능한 Desktop이 필요합니다. 백그라운드 푸시는 별도 설정이 필요합니다.
+
+[KanVibe Mobile 시작하기](/ko/mobile).

@@ -240,7 +240,7 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
                 ),
                 data: (value) => _buildSurfaces(
                   value.surfaces,
-                  isCreating: value.isCreating,
+                  isCreating: value.isMutating,
                 ),
               ),
             ),
@@ -282,6 +282,7 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
         taskId: _task.id,
         pane: pane,
         canResize: surfaces.canResize,
+        sessionType: surfaces.sessionType,
         canRespondToDeviceQueries: surfaces.canRespondToDeviceQueries,
         key: ValueKey(pane.id),
       );

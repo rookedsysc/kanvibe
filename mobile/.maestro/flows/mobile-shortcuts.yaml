@@ -1,0 +1,132 @@
+appId: ${APP_ID}
+env:
+  SHORTCUT_DESKTOP_PORT: "39786"
+  DESKTOP_API_FROM_HOST: http://127.0.0.1:39786
+---
+- launchApp:
+    clearState: true
+# 에뮬레이터의 디버그 빌드는 첫 화면까지 기본 대기 시간보다 오래 걸린다
+- extendedWaitUntil:
+    visible: "데스크탑 주소"
+    timeout: 90000
+- runScript:
+    file: ../scripts/issue-dev-pairing-code.js
+- tapOn: "데스크탑 주소"
+- eraseText
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - inputText: "10.0.2.2"
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - inputText: "127.0.0.1"
+- tapOn: "포트"
+- eraseText
+- inputText: ${SHORTCUT_DESKTOP_PORT}
+- tapOn: "연결 코드"
+- eraseText
+- inputText: ${output.pairingCode}
+- hideKeyboard
+- tapOn: "연결"
+- extendedWaitUntil:
+    visible: "(?s).*Mobile shortcut terminal.*"
+    timeout: 40000
+- tapOn: "(?s).*Mobile shortcut terminal.*"
+- extendedWaitUntil:
+    visible:
+      id: pane-terminal
+    timeout: 20000
+- tapOn:
+    id: pane-terminal
+- assertVisible:
+    id: shortcut-collapse
+- takeScreenshot: shortcut-above-keyboard
+- inputText: "printf SHORTCUT_QA_OK"
+- pressKey: Enter
+- tapOn:
+    id: shortcut-collapse
+- assertVisible:
+    id: shortcut-expand
+- assertNotVisible:
+    id: shortcut-settings
+- takeScreenshot: shortcut-collapsed
+- tapOn:
+    id: shortcut-expand
+- tapOn:
+    id: shortcut-settings
+- assertVisible: "tmux 단축키"
+- assertVisible: "(?s)단축키 바 표시.*"
+- takeScreenshot: shortcut-settings
+- tapOn: "(?s)단축키 바 표시.*"
+- tapOn: "적용"
+- assertVisible: "tmux · 단축키 꺼짐"
+- tapOn:
+    id: shortcut-settings
+- tapOn: "(?s)단축키 바 표시.*"
+- tapOn: "적용"
+- assertVisible: "단축키 추가"
+- takeScreenshot: shortcut-restored
+# 빠른 패널을 없앴으므로 바 왼쪽 세션 이름은 눌러도 다른 키를 꺼내지 않는다
+- tapOn: "tmux"
+- assertNotVisible: "좌우 분할"
+- tapOn:
+    id: shortcut-settings
+- assertVisible: "단축키 바 미리보기"
+- takeScreenshot: shortcut-settings-page
+- scrollUntilVisible:
+    element:
+      id: combo-add
+- tapOn:
+    id: combo-add
+- assertVisible: "(?s).*고른 키를 모두 한 번에 눌러요.*"
+- tapOn:
+    id: combo-name
+- inputText: "Split"
+- hideKeyboard
+- tapOn:
+    id: combo-modifier-ctrl
+- tapOn:
+    id: combo-modifier-shift
+- tapOn:
+    id: combo-special-up
+- scrollUntilVisible:
+    element:
+      id: combo-key-input
+- tapOn:
+    id: combo-key-input
+- inputText: "ab"
+- hideKeyboard
+- scrollUntilVisible:
+    element:
+      id: combo-preview
+    direction: UP
+- assertVisible: 'Ctrl\+Shift\+↑\+a\+b'
+- takeScreenshot: shortcut-combo-editor
+- tapOn: "저장"
+- scrollUntilVisible:
+    element: "(?s)다른 세션에서 가져오기.*"
+- assertVisible:
+    id: combo-import-zellij
+- takeScreenshot: shortcut-settings-import
+- tapOn: "적용"
+- assertVisible: "Split"
+- tapOn: "Split"
+- assertVisible:
+    id: shortcut-combo-.*
+- takeScreenshot: shortcut-saved-combo
+- tapOn:
+    id: shortcut-settings
+# 기본 세팅도 콤보와 같은 목록에서 체크하면 바에 오른다. 타일 메뉴는 체크 타일에 합쳐져 노드로 드러나지 않아
+# 기본 세팅 삭제·복원은 위젯 테스트가 맡는다
+- assertVisible: "(?s)Esc\n기본.*"
+- tapOn: "(?s)Esc\n기본.*"
+- takeScreenshot: shortcut-default-checked
+- tapOn: "적용"
+- assertVisible:
+    id: shortcut-escape
+- assertVisible:
+    id: shortcut-combo-.*
+- takeScreenshot: shortcut-default-on-bar

@@ -21,6 +21,7 @@ interface SpawnedPtyStub {
   onData: ReturnType<typeof vi.fn>;
   onExit: ReturnType<typeof vi.fn>;
   pid: number;
+  process: string;
   cols: number;
   rows: number;
   /** node-pty가 등록받은 종료 콜백. 셸이 스스로 끝나는 상황을 재현할 때 부른다 */
@@ -43,6 +44,7 @@ vi.mock("node-pty", () => ({
         exitHandler = handler;
       }),
       pid: 1000 + spawnedPtys.length,
+      process: "zsh",
       cols: options.cols,
       rows: options.rows,
       triggerExit: () => exitHandler?.({ exitCode: 0, signal: undefined }),
@@ -457,6 +459,22 @@ describe("Herdr PTY 수명", () => {
     expect(spawnedPtys[0].kill).toHaveBeenCalledOnce();
     expect(terminal.getActiveTerminalCount()).toBe(0);
     expect(vi.mocked(git.execGit).mock.calls.some(([command]) => command.includes("'session' 'stop'"))).toBe(false);
+  });
+});
+
+describe("닫기 경고용 터미널 프로세스 조회", () => {
+  it("해당 탭 PTY의 현재 프로세스를 읽고 사라진 탭은 unknown으로 반환한다", async () => {
+    const terminal = await importTerminalModule();
+    const [first] = terminal.listLocalTerminalTabs("task-1");
+    const second = terminal.createLocalTerminalTab("task-1");
+    await terminal.attachLocalSession("task-1", first.id, SessionType.TERMINAL, "proj", createMockWs() as never, "/work");
+    await terminal.attachLocalSession("task-1", second.id, SessionType.TERMINAL, "proj", createMockWs() as never, "/work");
+    spawnedPtys[0].process = "claude";
+    spawnedPtys[1].process = "node";
+    expect(terminal.getLocalTerminalTabProcess("task-1", first.id)).toBe("claude");
+    expect(terminal.getLocalTerminalTabProcess("task-1", second.id)).toBe("node");
+    terminal.closeLocalTerminalTab("task-1", first.id);
+    expect(terminal.getLocalTerminalTabProcess("task-1", first.id)).toBeNull();
   });
 });
 

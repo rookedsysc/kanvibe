@@ -480,6 +480,9 @@
       "collapse": "변경 파일 목록 접기"
     },
     "terminalTabs": "터미널 탭",
+    "terminalTabCloseConfirm": "이 탭을 닫으면 실행 중인 프로세스가 종료될 수 있습니다.\n\n현재 확인된 프로세스: {processes}\n백그라운드 작업은 이 목록에 표시되지 않을 수 있습니다.\n\n그래도 탭을 닫으시겠습니까?\n창 전체를 닫으려면 {shortcut}를 누르세요.",
+    "terminalTabProcessesUnknown": "프로세스 정보를 확인할 수 없습니다",
+    "terminalTabCloseCheckFailed": "닫을 탭을 확인하지 못했습니다. 탭을 닫지 않았습니다. 잠시 후 다시 시도해 주세요.",
     "newTerminalTab": "새 탭",
     "closeTerminalTab": "{name} 탭 닫기",
     "renameTerminalTab": "탭 이름 변경",
