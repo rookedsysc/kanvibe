@@ -69,6 +69,7 @@ function createBridge(overrides = {}) {
     startMobilePairing: vi.fn(() => ({ code: "654321", expiresAt: 1_700_000_000_000 })),
     createMobileTask: vi.fn(async () => ({ id: "task-1", title: "feat/from-mobile" })),
     updateMobileTaskStatus: vi.fn(async () => ({ id: "task-1", status: "review" })),
+    deleteMobileTask: vi.fn(async () => ({ failedPeerCount: 0 })),
     getMobileProjectBranches: vi.fn(async () => ["main", "dev"]),
     ...overrides,
   };
@@ -1028,6 +1029,54 @@ describe("태스크 상태 이동 경로", () => {
 
     expect(response.status).toBe(400);
     expect(response.body.error).toBe("상태 값이 올바르지 않습니다");
+  });
+});
+
+describe("태스크 삭제 경로", () => {
+  function deleteTask(path = "/api/mobile/tasks/task-1", headers = { Authorization: "Bearer good" }) {
+    return request(path, { method: "DELETE", headers });
+  }
+
+  it("연결된 기기의 삭제는 변경이 있으면 거부하는 기본 정책으로 서비스에 넘긴다", async () => {
+    const response = await deleteTask();
+
+    expect(response).toEqual({ status: 200, body: { success: true, failedPeerCount: 0 } });
+    expect(bridge.deleteMobileTask).toHaveBeenCalledWith("task-1", false);
+  });
+
+  it("다른 데스크탑에 전파하지 못했으면 그 수를 함께 돌려 기기가 경고할 수 있게 한다", async () => {
+    bridge.deleteMobileTask.mockResolvedValueOnce({ failedPeerCount: 2 });
+
+    expect(await deleteTask()).toEqual({ status: 200, body: { success: true, failedPeerCount: 2 } });
+  });
+
+  it("force=true를 붙이면 강제 삭제로 넘긴다", async () => {
+    await deleteTask("/api/mobile/tasks/task-1?force=true");
+
+    expect(bridge.deleteMobileTask).toHaveBeenCalledWith("task-1", true);
+  });
+
+  it("토큰 없이는 인증 앞단에서 막혀 아무것도 지우지 않는다", async () => {
+    expect((await deleteTask(undefined, {})).status).toBe(401);
+    expect(bridge.deleteMobileTask).not.toHaveBeenCalled();
+  });
+
+  it("커밋하지 않은 변경 때문에 멈추면 409와 구분 코드로 기기가 강제 삭제를 고를 수 있게 한다", async () => {
+    bridge.deleteMobileTask.mockRejectedValue(Object.assign(new Error("/secret/path"), { name: "DirtyWorktreeError" }));
+
+    const response = await deleteTask();
+
+    expect(response).toEqual({
+      status: 409,
+      body: { success: false, code: "dirty-worktree", error: "커밋하지 않은 변경이 있습니다" },
+    });
+  });
+
+  it("없는 태스크는 404로, 예상하지 못한 실패는 경로를 숨긴 500으로 답한다", async () => {
+    bridge.deleteMobileTask.mockResolvedValueOnce(null).mockRejectedValueOnce(new Error("git -C /secret/path failed"));
+
+    expect((await deleteTask()).status).toBe(404);
+    expect(await deleteTask()).toEqual({ status: 500, body: { success: false, error: "서버 오류" } });
   });
 });
 

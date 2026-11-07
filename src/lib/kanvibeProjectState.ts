@@ -52,7 +52,12 @@ export interface KanvibeTaskSyncState {
 export interface KanvibeHookTarget {
   url: string;
   taskId: string;
+  /** 이 client가 task CLI 요청을 받을 때 확인하는 task 단위 자격 증명. 파일을 읽을 수 있는 사용자만 쓸 수 있다 */
+  token?: string;
 }
+
+/** targets.json은 task CLI 자격 증명을 담으므로 소유자만 읽게 한다 */
+const TARGETS_FILE_MODE = 0o600;
 
 export interface KanvibeTargetsState {
   schemaVersion: 1;
@@ -209,6 +214,7 @@ export async function upsertKanvibeHookTarget(
     getKanvibeTargetsPath(repoPath, sshHost),
     (content) => buildKanvibeTargetsContent(upsertKanvibeTarget(parseKanvibeTargets(content).targets, target)),
     sshHost,
+    TARGETS_FILE_MODE,
   );
 }
 
@@ -448,7 +454,8 @@ function normalizeKanvibeTarget(target: unknown): KanvibeHookTarget | null {
     return null;
   }
 
-  return { url, taskId };
+  const token = typeof candidate.token === "string" ? candidate.token.trim() : "";
+  return token ? { url, taskId, token } : { url, taskId };
 }
 
 function normalizeKanvibeTargetUrl(url: string): string {

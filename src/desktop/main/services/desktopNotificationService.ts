@@ -89,7 +89,7 @@ export async function deliverBoardEventNotification(
     }).desktopPayload, options);
   }
 
-  if (payload.type === "task-hook-install-failed") {
+  if (payload.type === "task-hook-install-failed" || payload.type === "task-peer-deletion-failed") {
     return false;
   }
 

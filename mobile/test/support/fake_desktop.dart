@@ -94,6 +94,8 @@ class FakeDesktopClient implements DesktopClient {
     },
     this.createError,
     this.statusError,
+    this.deleteErrors = const [],
+    this.failedPeerCount = 0,
   });
 
   final Map<String, dynamic> board;
@@ -112,11 +114,20 @@ class FakeDesktopClient implements DesktopClient {
   final Object? createError;
   final Object? statusError;
 
+  /// 삭제 요청마다 차례로 던질 오류. 칸이 모자라거나 null이면 그 요청은 성공한다
+  final List<Object?> deleteErrors;
+
+  /// 삭제는 됐지만 꺼져 있어 전파받지 못한 다른 데스크탑 수
+  final int failedPeerCount;
+
   /// 데스크탑에 보낸 태스크 초안. 어떤 칸을 실어 보냈는지까지 봐야 데스크탑 생성 창과 같은 요청인지 알 수 있다
   final createCalls = <Map<String, Object?>>[];
 
   /// 옮겨 달라고 보낸 상태. 누른 버튼이 실제로 그 상태를 보내는지 본다
   final statusCalls = <({String taskId, TaskStatus status})>[];
+
+  /// 지워 달라고 보낸 요청. 강제 여부까지 봐야 거절 뒤 강제 삭제로 다시 보냈는지 안다
+  final deleteCalls = <({String taskId, bool isForced})>[];
 
   /// 데스크탑에 끊겠다고 알린 기록. 이미 거절된 토큰으로는 부르지 말아야 해서 호출 여부까지 본다
   final unpairCalls = <DesktopConnection>[];
@@ -285,6 +296,23 @@ class FakeDesktopClient implements DesktopClient {
     if (statusError != null) {
       throw statusError!;
     }
+  }
+
+  @override
+  Future<int> deleteTask(
+    DesktopConnection connection,
+    String taskId, {
+    required bool isForced,
+  }) async {
+    final callIndex = deleteCalls.length;
+    deleteCalls.add((taskId: taskId, isForced: isForced));
+    final error = callIndex < deleteErrors.length
+        ? deleteErrors[callIndex]
+        : null;
+    if (error != null) {
+      throw error;
+    }
+    return failedPeerCount;
   }
 
   @override

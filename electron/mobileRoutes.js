@@ -43,8 +43,8 @@ const SURFACES_PATH_PATTERN = /^\/api\/mobile\/tasks\/([^/]+)\/surfaces$/;
 const TASK_TABS_PATH_PATTERN = /^\/api\/mobile\/tasks\/([^/]+)\/tabs$/;
 
 /**
- * 데스크탑을 바꾸는 두 경로. 나머지 모바일 경로와 달리 여기를 지나면 이 머신에 worktree와 터미널 세션이 생긴다.
- * 그래서 둘 다 인증 뒤에 두고, 값 검사는 열거형과 브랜치 이름 규칙을 아는 `mobileBridgeService`가 맡는다.
+ * 데스크탑을 바꾸는 경로. 나머지 모바일 경로와 달리 여기를 지나면 이 머신에 worktree와 터미널 세션이 생기거나 지워진다.
+ * 그래서 모두 인증 뒤에 두고, 값 검사는 열거형과 브랜치 이름 규칙을 아는 `mobileBridgeService`가 맡는다.
  */
 const TASKS_PATH = "/api/mobile/tasks";
 const TASK_PATH_PATTERN = /^\/api\/mobile\/tasks\/([^/]+)$/;
@@ -153,6 +153,11 @@ async function handleMobileRequest(request, response, { bridge, host, port, isDe
     if (request.method === "GET" && taskMatch) {
       const task = await bridge.getMobileTask(decodeURIComponent(taskMatch[1]));
       writeJson(response, task ? 200 : 404, task ? { success: true, task } : { success: false, error: "없는 태스크입니다" });
+      return true;
+    }
+
+    if (request.method === "DELETE" && taskMatch) {
+      await handleDeleteTaskRequest(response, bridge, decodeURIComponent(taskMatch[1]), requestUrl.searchParams.get("force") === "true");
       return true;
     }
 
@@ -379,6 +384,27 @@ async function handleTaskStatusRequest(request, response, bridge, taskId) {
     writeJson(response, 200, { success: true, task });
   } catch (error) {
     writeTaskWriteFailure(response, error, "Mobile task status request failed");
+  }
+}
+
+/**
+ * 태스크와 그 worktree·브랜치·세션을 지운다. 이 데스크탑이 같은 task를 가진 다른 데스크탑에도 전파한다.
+ * 커밋하지 않은 변경이 있으면 409로 알려, 기기가 데스크탑처럼 강제 삭제(`?force=true`)를 고를 수 있게 한다.
+ */
+async function handleDeleteTaskRequest(response, bridge, taskId, isForced) {
+  try {
+    const deletion = await bridge.deleteMobileTask(taskId, isForced);
+    if (!deletion) {
+      writeJson(response, 404, { success: false, error: "없는 태스크입니다" });
+      return;
+    }
+    writeJson(response, 200, { success: true, failedPeerCount: deletion.failedPeerCount });
+  } catch (error) {
+    if (error && error.name === "DirtyWorktreeError") {
+      writeJson(response, 409, { success: false, code: "dirty-worktree", error: "커밋하지 않은 변경이 있습니다" });
+      return;
+    }
+    writeTaskWriteFailure(response, error, "Mobile delete task request failed");
   }
 }
 
