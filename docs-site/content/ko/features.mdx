@@ -1,11 +1,11 @@
 ---
 title: 기능
-description: "칸반 보드, 태스크별 터미널 세션, git worktree 연동, AI 에이전트 hook, 실행중 세션과 사용량 패널까지 KanVibe의 주요 기능을 설명합니다."
+description: "Desktop의 보드, worktree, 에이전트 상태, 터미널, 사용량 패널로 AI 코딩 작업을 관리하고 Mobile에서 이어갑니다."
 ---
 
 # 기능
 
-KanVibe는 칸반 보드, 터미널 세션, git worktree, AI 에이전트 hooks를 하나의 워크플로우로 연결합니다.
+KanVibe Desktop은 작업 상태, 브랜치별 작업 공간, 터미널, 에이전트 맥락을 하나로 모읍니다. KanVibe Mobile에서는 휴대폰이나 태블릿으로 같은 태스크를 확인하고 터미널에서 작업을 이어갑니다.
 
 ## 실시간 칸반 보드
 
@@ -29,7 +29,7 @@ KanVibe는 칸반 보드, 터미널 세션, git worktree, AI 에이전트 hooks�
   <figcaption>각 태스크는 독립 터미널 인터페이스를 제공해 AI 에이전트 실행, 직접 명령, 빌드/테스트를 자유롭게 오갈 수 있습니다.</figcaption>
 </figure>
 
-- 세션 백엔드를 tmux, zellij, 그리고 멀티플렉서 없이 KanVibe가 셸을 직접 띄우는 terminal 중에서 고릅니다.
+- 세션 백엔드를 Herdr, tmux, zellij, 그리고 멀티플렉서 없이 KanVibe가 셸을 직접 띄우는 terminal 중에서 고릅니다.
 - 각 태스크가 자기 터미널을 가지므로 AI에게 맡긴 작업을 그대로 이어서 직접 명령으로 보정할 수 있습니다.
 - 상세 dock 단축키로 정보, hook 상태, AI 채팅, PR을 전환합니다.
 - DONE으로 이동해도 branch, worktree, terminal session은 그대로 남습니다. 리소스 정리는 태스크를 삭제할 때만 실행됩니다.
@@ -45,8 +45,10 @@ KanVibe는 칸반 보드, 터미널 세션, git worktree, AI 에이전트 hooks�
 
 - 탭 바에서 탭을 추가·전환·닫고, 더블클릭으로 이름을 바꾸고, 드래그로 순서를 옮깁니다.
 - 작업 정보 패널이 열려 있으면 탭 바 왼쪽 일부를 덮습니다. 패널 밖 터미널을 클릭하거나 dock의 작업 정보 버튼을 다시 눌러 닫으면 탭 바 전체가 드러납니다.
-- tmux와 zellij 세션의 탭은 각각 tmux window, zellij tab과 **양방향으로 동기화**됩니다. KanVibe 밖에서 `tmux new-window`로 만든 window도 탭 바에 나타나고, 탭을 클릭하면 멀티플렉서의 활성 대상도 함께 바뀝니다.
+- Herdr, tmux, zellij 세션의 탭은 각각 Herdr tab, tmux window, zellij tab과 **양방향으로 동기화**됩니다. KanVibe 밖에서 `tmux new-window`로 만든 window도 탭 바에 나타나고, 탭을 클릭하면 멀티플렉서의 활성 대상도 함께 바뀝니다.
 - 멀티플렉서 세션에서는 KanVibe가 자체 탭 바를 그리므로 tmux 상태바와 zellij 탭 바는 KanVibe가 만든 세션에 한해 꺼둡니다. tmux는 세션에 다시 붙을 때마다 꺼주므로 탭 바가 들어오기 전에 만든 세션도 정리됩니다. zellij는 레이아웃이 세션을 만들 때 정해져, 그 뒤에 새로 만든 세션부터 적용됩니다.
+- 저장된 유효한 설정이 없으면 Herdr가 기본값입니다. 태스크마다 이름 있는 영구 세션을 사용합니다. 세션을 처음 만들 때 설정한 6가지 pane 레이아웃과 pane별 시작 명령을 적용하며, 다시 열면 실행 중인 셸을 이어 씁니다.
+- Herdr 탭은 생성·전환·이름 변경·닫기와 workspace 안에서의 드래그 순서 변경을 지원합니다. KanVibe 창을 닫아도 마지막 탭은 유지하며, 태스크를 삭제하면 해당 이름의 세션을 중지하고 삭제합니다. Herdr의 첫 실행 설정과 개인 설정은 Herdr가 관리합니다.
 - `terminal` 세션에서는 KanVibe가 탭마다 셸을 직접 띄웁니다. 탭을 옮겨 다녀도 각 탭의 스크롤백이 유지되고, 앱이 켜져 있는 동안 셸도 살아 있습니다.
 
 키 조합은 [단축키](/ko/shortcuts) 문서의 터미널 탭 절에 정리돼 있습니다.
@@ -87,9 +89,9 @@ KanVibe는 칸반 보드, 터미널 세션, git worktree, AI 에이전트 hooks�
 - 실행중인 세션에는 진행 막대가 함께 움직입니다. 남은 작업량을 알 수 없어 비율 대신 움직임으로 진행을 전달하고, 움직임을 줄이도록 설정한 환경에서는 정지한 막대로 상태만 남깁니다.
 - 서브태스크는 세션에 매달린 가지로 그려져, 어느 세션에 속하는지와 목록이 어디서 끝나는지가 보입니다.
 - 태스크 상세에서는 dock의 실행중 세션 항목으로 같은 패널을 엽니다. PR이 없으면 `Mod+4`, PR이 있으면 `Mod+5`입니다.
-- 세션을 클릭하면 그 세션이 붙어 있는 tmux window로 전환하고 터미널에 입력 포커스를 넘깁니다.
-- 실행중 판정은 두 근거를 겹칩니다. tmux pane에 에이전트가 붙어 있으면 입력을 기다리는 중이어도 실행중이고, pane이 보이지 않아도 세션 기록이 방금 갱신됐으면 실행중입니다.
-- 패널이 열려 있는 동안에만 세션 기록을 읽습니다. 보드 배지는 tmux 조회 한 번으로 그려서 카드가 많아도 부담이 늘지 않습니다.
+- 세션을 클릭하면 그 세션이 붙어 있는 tmux window 또는 Herdr tab으로 전환하고 터미널에 입력 포커스를 넘깁니다.
+- 실행중 판정은 두 근거를 겹칩니다. tmux 또는 Herdr pane에 에이전트가 붙어 있으면 입력을 기다리는 중이어도 실행중이고, pane이 보이지 않아도 세션 기록이 방금 갱신됐으면 실행중입니다.
+- 패널이 열려 있는 동안에만 세션 기록을 읽습니다. 보드 배지는 tmux 또는 Herdr pane 정보로 실행 중인 에이전트를 표시합니다.
 
 서브태스크 집계는 에이전트마다 근거가 달라 지원 범위가 나뉩니다.
 
@@ -164,3 +166,9 @@ tmux를 쓰지 않는 zellij와 terminal 세션은 기록 활동만으로 판정
 | Gemini CLI | BeforeAgent → PROGRESS, AfterAgent → REVIEW | `.gemini/hooks/`, `.gemini/settings.json` |
 | Codex CLI | UserPromptSubmit → PROGRESS, PermissionRequest → PENDING, Stop → REVIEW | `.codex/hooks.json`, `.codex/config.toml` |
 | OpenCode | message.updated → PROGRESS, question.asked → PENDING, session.idle → REVIEW | `.opencode/plugins/` |
+
+## Mobile에서 이어가기
+
+보드와 프로젝트 필터로 작업을 찾고, 후속 태스크를 만들고, 실행 중인 터미널에 입력하고, 저장된 PC를 전환합니다. 알림함의 읽음 상태는 Desktop과 공유합니다. Mobile은 현재 소스 빌드로 사용하며, 실행 중이고 네트워크로 접근 가능한 Desktop이 필요합니다. 백그라운드 푸시는 별도 설정이 필요합니다.
+
+[KanVibe Mobile 시작하기](/ko/mobile).

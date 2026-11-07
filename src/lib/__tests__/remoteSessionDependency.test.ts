@@ -151,4 +151,14 @@ describe("remoteSessionDependency", () => {
     await expect(ensureRemoteSessionDependency(SessionType.TMUX, "remote-c")).rejects.toThrow(/원격 접근을 차단/);
     expect(mockExecGit).not.toHaveBeenCalled();
   });
+  it.each([null, "remote-herdr"])("Herdr 미설치를 %s 대상에서 탐지하고 공식 설치 후 재검증한다", async (sshHost) => {
+    mockExecGit.mockRejectedValueOnce(new Error("missing")).mockResolvedValue("");
+    const { getSessionDependencyStatus, installSessionDependency } = await import("@/lib/remoteSessionDependency");
+    const sessionType = "herdr" as SessionType;
+    await expect(getSessionDependencyStatus(sessionType, sshHost)).resolves.toMatchObject({ toolName: "herdr", available: false });
+    await installSessionDependency(sessionType, sshHost);
+    expect(mockExecGit.mock.calls[1][0]).toContain("https://herdr.dev/install.sh");
+    expect(mockExecGit.mock.calls[2][0]).toContain(".local/bin/herdr");
+  });
+
 });

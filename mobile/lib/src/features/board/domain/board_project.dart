@@ -24,6 +24,21 @@ class BoardProject {
   /// worktree로 만들어진 프로젝트. 여기서 또 worktree를 치면 안 되므로 생성 화면의 후보에서 뺀다
   final bool isWorktree;
 
+  bool matchesSearch(String query) {
+    final normalizedQuery = query.trim().toLowerCase();
+    if (normalizedQuery.isEmpty) return true;
+    return [name, repoPath ?? '', sshHost ?? '로컬'].any((value) {
+      final target = value.toLowerCase();
+      var offset = 0;
+      for (final character in normalizedQuery.split('')) {
+        final index = target.indexOf(character, offset);
+        if (index < 0) return false;
+        offset = index + 1;
+      }
+      return true;
+    });
+  }
+
   static BoardProject? fromJson(Map<String, dynamic> json) {
     final id = json['id'];
     final name = json['name'];

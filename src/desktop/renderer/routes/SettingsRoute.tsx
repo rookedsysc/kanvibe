@@ -32,10 +32,10 @@ function createEmptySettingsData(): SettingsData {
     sshHosts: [],
     sidebarDefaultCollapsed: false,
     notificationSettings: { isEnabled: true, enabledStatuses: ["progress", "pending", "review"] },
-    defaultSessionType: SessionType.TMUX,
+    defaultSessionType: SessionType.HERDR,
     vimModeEnabled: true,
     themePreference: "system",
-    backgroundSyncSettings: { isEnabled: true, intervalMs: 10 * 60_000 },
+    backgroundSyncSettings: { isEnabled: false, intervalMs: 10 * 60_000 },
   };
 }
 

@@ -12,6 +12,7 @@ import '../../../../common/network/desktop_client.dart';
 import '../../../../common/network/desktop_connection.dart';
 import '../../../../common/providers.dart';
 import '../../domain/mirror_pane.dart';
+import '../../../task_create/domain/session_type.dart';
 import 'terminal_soft_keyboard.dart';
 
 /// 선택한 pane을 화면 너비에 맞춰 표시한다.
@@ -20,10 +21,12 @@ class PaneTerminalView extends ConsumerStatefulWidget {
     required this.taskId,
     required this.pane,
     this.canResize = false,
+    this.sessionType = SessionType.terminal,
     this.canRespondToDeviceQueries = false,
     super.key,
   });
 
+  final SessionType sessionType;
   final String taskId;
   final MirrorPane pane;
   final bool canResize;
@@ -46,10 +49,13 @@ class _PaneTerminalViewState extends ConsumerState<PaneTerminalView>
   final _terminalController = xterm.TerminalController();
   bool _isParsingRemoteOutput = false;
   String _pendingEscape = '';
+  final _deferredOutput = <String>[];
   ({int cols, int rows})? _lastSentSize;
   bool _isSuspended = false;
+  bool _isShortcutBusy = false;
   int _streamGeneration = 0;
 
+  static const _screenRedrawPrefix = '\x1b[H\x1b[2J\x1b[3J';
   static const _firstFrameTimeout = Duration(seconds: 15);
   // 데스크톱 terminalClipboard.ts와 같은 base64 상한으로 원격 요청의 디코딩 비용을 제한한다.
   static const _maxClipboardPayloadLength = 1000000;
@@ -71,6 +77,7 @@ class _PaneTerminalViewState extends ConsumerState<PaneTerminalView>
       mouseHandler: const _TerminalWheelMouseHandler(),
     );
     _terminal.resize(widget.pane.width, widget.pane.height);
+    _terminalController.addListener(_applyDeferredRedraw);
 
     _terminal.onOutput = (data) {
       // 멀티플렉서가 응답한 질의 원문도 미러에 남으므로 파싱 중 생긴 자동 응답만 막는다.
@@ -88,6 +95,12 @@ class _PaneTerminalViewState extends ConsumerState<PaneTerminalView>
   @override
   void didUpdateWidget(PaneTerminalView oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (widget.canResize &&
+        (widget.pane.width != oldWidget.pane.width ||
+            widget.pane.height != oldWidget.pane.height)) {
+      _lastSentSize = null;
+      _sendViewport(_terminal.viewWidth, _terminal.viewHeight);
+    }
 
     /// 원본 격자 모드에서 데스크탑 pane을 분할하거나 창 크기를 바꾸면 같은 pane id로 새 좌표가 온다.
     /// key가 pane id라 element가 재사용되므로, 여기서 다시 재지 않으면 상자만 커지고 격자는 옛 크기로 남는다.
@@ -135,6 +148,8 @@ class _PaneTerminalViewState extends ConsumerState<PaneTerminalView>
   Future<void> _openStream() async {
     final generation = ++_streamGeneration;
     _pendingEscape = '';
+    _deferredOutput.clear();
+    _terminalController.clearSelection();
     _firstFrameTimer = Timer(_firstFrameTimeout, () {
       _failStream('터미널 응답이 없습니다. 데스크탑 연결을 확인한 뒤 다시 연결해 주세요.');
     });
@@ -176,12 +191,27 @@ class _PaneTerminalViewState extends ConsumerState<PaneTerminalView>
   void _receiveOutput(String data) {
     if (!mounted || _failureMessage != null || data.isEmpty) return;
     _firstFrameTimer?.cancel();
+    if (_terminalController.selection != null &&
+        (_deferredOutput.isNotEmpty || data.startsWith(_screenRedrawPrefix))) {
+      // tmux 원시 스트림의 clear도 같은 접두사로 시작하므로, 보류를 시작한 뒤 오는 청크는 모두 순서대로 쌓는다.
+      // 화면을 처음부터 다시 그리는 청크가 오면 그 앞의 보류분은 화면에 남지 않으므로 버려 메모리를 묶어 둔다.
+      if (data.startsWith(_screenRedrawPrefix)) _deferredOutput.clear();
+      _deferredOutput.add(data);
+      return;
+    }
     _isParsingRemoteOutput = true;
     try {
       _terminal.write(_normalizeLegacyTitles(data));
     } finally {
       _isParsingRemoteOutput = false;
     }
+  }
+
+  void _applyDeferredRedraw() {
+    if (_terminalController.selection != null) return;
+    final deferredOutput = List.of(_deferredOutput);
+    _deferredOutput.clear();
+    deferredOutput.forEach(_receiveOutput);
   }
 
   Future<void> _copyRemoteClipboard(String code, List<String> args) async {
@@ -199,6 +229,18 @@ class _PaneTerminalViewState extends ConsumerState<PaneTerminalView>
       // 잘못된 원격 요청 때문에 뒤에 오는 터미널 출력이 끊기지 않도록 무시한다.
     } on PlatformException catch (error) {
       debugPrint('터미널 클립보드 복사 실패: ${error.code}');
+    }
+  }
+
+  Future<void> _copySelection() async {
+    final selection = _terminalController.selection;
+    if (selection == null) return;
+    final text = _terminal.buffer.getText(selection);
+    try {
+      await Clipboard.setData(ClipboardData(text: text));
+      if (mounted) _terminalController.clearSelection();
+    } on PlatformException catch (error) {
+      debugPrint('터미널 선택 복사 실패: ${error.code}');
     }
   }
 
@@ -264,10 +306,32 @@ class _PaneTerminalViewState extends ConsumerState<PaneTerminalView>
     _streamGeneration += 1;
     _horizontalScroll.dispose();
     _verticalScroll.dispose();
+    _terminalController.removeListener(_applyDeferredRedraw);
     _terminalController.dispose();
     unawaited(_subscription?.cancel());
     unawaited(_stream?.close());
     super.dispose();
+  }
+
+  Future<void> _runShortcut(String action) async {
+    if (_isShortcutBusy || _isSuspended) return;
+    setState(() => _isShortcutBusy = true);
+    try {
+      final screen = await ref
+          .read(surfacesProvider(widget.taskId).notifier)
+          .runShortcut(widget.pane.id, action);
+      if (mounted && screen != null) _receiveOutput(screen);
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('단축키를 실행하지 못했습니다. 연결과 데스크탑 버전을 확인해 주세요.'),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isShortcutBusy = false);
+    }
   }
 
   @override
@@ -286,7 +350,7 @@ class _PaneTerminalViewState extends ConsumerState<PaneTerminalView>
         .ceilToDouble();
     metrics.dispose();
 
-    return ColoredBox(
+    final terminalView = ColoredBox(
       color: AppColors.terminalBg,
       child: LayoutBuilder(
         builder: (context, constraints) {
@@ -309,22 +373,18 @@ class _PaneTerminalViewState extends ConsumerState<PaneTerminalView>
                   removeRight: true,
                   removeTop: true,
                   removeBottom: true,
-                  child: TerminalSoftKeyboard(
-                    terminal: _terminal,
-                    controller: _terminalController,
-                    child: Semantics(
-                      identifier: 'pane-terminal',
-                      label: '터미널 입력',
-                      child: xterm.TerminalView(
-                        _terminal,
-                        controller: _terminalController,
-                        autoResize: widget.canResize,
-                        hardwareKeyboardOnly: true,
-                        scrollController: _verticalScroll,
-                        backgroundOpacity: 0,
-                        theme: _terminalTheme,
-                        textStyle: _textStyle,
-                      ),
+                  child: Semantics(
+                    identifier: 'pane-terminal',
+                    label: '터미널 입력',
+                    child: xterm.TerminalView(
+                      _terminal,
+                      controller: _terminalController,
+                      autoResize: widget.canResize,
+                      hardwareKeyboardOnly: true,
+                      scrollController: _verticalScroll,
+                      backgroundOpacity: 0,
+                      theme: _terminalTheme,
+                      textStyle: _textStyle,
                     ),
                   ),
                 ),
@@ -332,6 +392,47 @@ class _PaneTerminalViewState extends ConsumerState<PaneTerminalView>
             ),
           );
         },
+      ),
+    );
+    return TerminalSoftKeyboard(
+      terminal: _terminal,
+      controller: _terminalController,
+      sessionType: widget.sessionType,
+      onSessionAction: _runShortcut,
+      isBusy:
+          _isShortcutBusy ||
+          ref.watch(
+            surfacesProvider(widget.taskId)
+                .select((state) => state.asData?.value.isMutating ?? false),
+          ),
+      child: Stack(
+        children: [
+          terminalView,
+          Positioned(
+            top: 8,
+            right: 8,
+            child: ListenableBuilder(
+              listenable: _terminalController,
+              builder: (context, _) {
+                if (_terminalController.selection == null) {
+                  return const SizedBox.shrink();
+                }
+                return Material(
+                  color: AppColors.bgSurface,
+                  borderRadius: BorderRadius.circular(8),
+                  child: TextButton.icon(
+                    onPressed: _copySelection,
+                    style: TextButton.styleFrom(
+                      minimumSize: const Size(48, 48),
+                    ),
+                    icon: const Icon(Icons.copy),
+                    label: const Text('복사'),
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
       ),
     );
   }

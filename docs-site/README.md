@@ -1,3 +1,8 @@
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../public/branding/kanvibe-logo-light.png">
+  <img src="../public/branding/kanvibe-logo.png" alt="KanVibe" width="320" height="87">
+</picture>
+
 # KanVibe Docs
 
 Nextra 4 documentation site for KanVibe.
@@ -23,6 +28,8 @@ pnpm start
 ## Structure
 
 - `app/[lang]/layout.jsx` configures the shared Nextra docs layout and language switcher.
+- `app/[lang]/docs-navigation.jsx` renders the sidebar menu and marks the page being read with `aria-current`.
+- `app/[lang]/not-found.jsx` renders the localized 404 page inside the shared shell.
 - `app/[lang]/[[...mdxPath]]/page.jsx` renders MDX pages and attaches canonical/hreflang metadata.
 - `app/[lang]/software-application-structured-data.jsx` emits the `SoftwareApplication` JSON-LD on the home page.
 - `app/sitemap.js` and `app/robots.js` generate `/sitemap.xml` and `/robots.txt`.
@@ -31,6 +38,7 @@ pnpm start
 - `lib/docsDictionary.mjs` holds the locale-specific shell copy shared by the layout and structured data.
 - `content/ko`, `content/en`, and `content/zh` contain localized MDX pages.
 - `public/screenshots` contains KanVibe feature screenshots used by the documentation.
+- `public/branding`, `public/favicon.ico`, `public/icon.png`, and `public/apple-icon.png` contain the official brand assets. Regenerate them from the shared originals with `uv run scripts/generate-brand-assets.py` at the repository root; see [brand assets](../resources/branding/README.md).
 
 ## Site URL configuration
 
@@ -39,8 +47,8 @@ them. That is always right for whichever hostname a visitor reached, and needs n
 
 `KANVIBE_DOCS_SITE_URL` pins a single canonical origin instead. Set it once the docs site has a
 domain you want search engines to consolidate on — for example when a `workers.dev` address and a
-custom domain both serve the same pages. Pinning it also turns on `rel=canonical` and page-level
-hreflang, which the statically generated pages cannot derive from a request.
+custom domain both serve the same pages. Pinning it also turns on `rel=canonical`, page-level
+hreflang, and the branded Open Graph/Twitter image, which need an absolute site URL at build time.
 
 ```bash
 KANVIBE_DOCS_SITE_URL=https://docs.example.com pnpm build

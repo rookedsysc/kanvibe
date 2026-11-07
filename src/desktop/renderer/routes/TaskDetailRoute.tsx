@@ -1,3 +1,4 @@
+import { AI_SESSION_PROVIDER_LABELS, AI_SESSION_PROVIDERS } from "@/lib/aiSessions/providers";
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
@@ -46,6 +47,7 @@ import { useMarkTaskNotificationsReadWhenFocused } from "@/desktop/renderer/hook
 import { useTaskAgentCallGraph, useTaskLiveAiSessions } from "@/desktop/renderer/hooks/useLiveAiSessions";
 import { useTaskDiffFiles } from "@/desktop/renderer/hooks/useTaskDiffStats";
 import { useTerminalTabs } from "@/desktop/renderer/hooks/useTerminalTabs";
+import { getTerminalTabCloseInfo } from "@/desktop/renderer/actions/terminalTabs";
 import type { TerminalTabShortcutCommand } from "@/desktop/shared/terminalTabs";
 import { fetchPrUrlWithPrompt } from "@/desktop/renderer/utils/fetchPrUrlWithPrompt";
 import { openTaskInVsCode } from "@/desktop/renderer/actions/editor";
@@ -187,7 +189,7 @@ const DEFAULT_DETAIL_STATE: Omit<TaskDetailState, "task"> = {
   openCodeHooksStatus: null,
   projects: [],
   sidebarDefaultCollapsed: false,
-  defaultSessionType: SessionType.TMUX,
+  defaultSessionType: SessionType.HERDR,
   doneAlertDismissed: false,
 };
 
@@ -206,8 +208,8 @@ function getTaskDetailRouteCacheKey(taskId: string) {
   return buildRouteCacheKey("task-detail", taskId);
 }
 
-function normalizeCachedTaskDetailRouteCache(cachedRoute: TaskDetailRouteCache | null): NormalizedTaskDetailRouteCache | null {
-  if (!cachedRoute) {
+function normalizeCachedTaskDetailRouteCache(cachedRoute: TaskDetailRouteCache | null, taskId: string): NormalizedTaskDetailRouteCache | null {
+  if (!cachedRoute || cachedRoute.task?.id !== taskId) {
     return null;
   }
 
@@ -231,28 +233,21 @@ function normalizeCachedTaskDetailRouteCache(cachedRoute: TaskDetailRouteCache |
   };
 }
 
-const AI_SESSION_PROVIDER_STYLES: Record<AggregatedAiSession["provider"], string> = {
+const AI_SESSION_PROVIDER_STYLES: Partial<Record<AggregatedAiSession["provider"], string>> = {
   claude: "border-tag-claude-text/30 bg-tag-claude-bg text-tag-claude-text",
   gemini: "border-tag-gemini-text/30 bg-tag-gemini-bg text-tag-gemini-text",
   codex: "border-tag-codex-text/30 bg-tag-codex-bg text-tag-codex-text",
   opencode: "border-tag-neutral-text/30 bg-tag-neutral-bg text-tag-neutral-text",
 };
 
-const AI_SESSION_PROVIDER_ICON_STYLES: Record<AggregatedAiSession["provider"], string> = {
+const AI_SESSION_PROVIDER_ICON_STYLES: Partial<Record<AggregatedAiSession["provider"], string>> = {
   claude: "border-tag-claude-text/40 bg-tag-claude-bg text-tag-claude-text",
   gemini: "border-tag-gemini-text/40 bg-tag-gemini-bg text-tag-gemini-text",
   codex: "border-tag-codex-text/40 bg-tag-codex-bg text-tag-codex-text",
   opencode: "border-tag-neutral-text/40 bg-tag-neutral-bg text-tag-neutral-text",
 };
 
-const AI_SESSION_PROVIDER_ORDER: AggregatedAiSession["provider"][] = ["claude", "opencode", "gemini", "codex"];
-
-const AI_SESSION_PROVIDER_META: Record<AggregatedAiSession["provider"], { label: string }> = {
-  claude: { label: "Claude" },
-  opencode: { label: "OpenCode" },
-  gemini: { label: "Gemini" },
-  codex: { label: "Codex" },
-};
+const AI_SESSION_PROVIDER_ORDER = AI_SESSION_PROVIDERS;
 
 const INLINE_CHAT_ROLE_FILTERS: AiMessageRole[] = [
   "user",
@@ -299,12 +294,7 @@ function InlineAiChatView({ taskId }: { taskId: string }) {
   );
 
   const providerCounts = useMemo(() => {
-    const counts: Record<AggregatedAiSession["provider"], number> = {
-      claude: 0,
-      codex: 0,
-      opencode: 0,
-      gemini: 0,
-    };
+    const counts = Object.fromEntries(AI_SESSION_PROVIDERS.map((provider) => [provider, 0])) as Record<AggregatedAiSession["provider"], number>;
     for (const session of history?.sessions ?? []) {
       counts[session.provider] += 1;
     }
@@ -576,7 +566,7 @@ function InlineAiChatView({ taskId }: { taskId: string }) {
             {selectedSession?.title ?? t("aiSessions.title")}
           </p>
           <p className="mt-0.5 truncate text-[11px] text-terminal-text/70">
-            {selectedSession ? AI_SESSION_PROVIDER_META[selectedSession.provider].label : historyCountLabel}
+            {selectedSession ? AI_SESSION_PROVIDER_LABELS[selectedSession.provider] : historyCountLabel}
           </p>
         </div>
         {selectedSession ? <AiSessionProviderBadge provider={selectedSession.provider} /> : null}
@@ -603,8 +593,9 @@ function InlineAiChatView({ taskId }: { taskId: string }) {
 
       <div className="flex min-h-0 flex-1">
         <div className="flex w-[340px] shrink-0 border-r border-border-default bg-bg-surface/45">
-          <div className="flex w-14 shrink-0 flex-col items-center gap-2 border-r border-border-default bg-bg-page/70 px-2 py-3">
-            {AI_SESSION_PROVIDER_ORDER.map((provider) => {
+          <div className="flex w-14 shrink-0 flex-col items-center gap-2 overflow-x-hidden overflow-y-auto border-r border-border-default bg-bg-page/70 px-2 py-3">
+            {AI_SESSION_PROVIDER_ORDER.filter((provider) => ["claude", "codex", "opencode", "gemini"].includes(provider)
+              || history?.sources.some((source) => source.provider === provider && source.available) || history?.sessions.some((session) => session.provider === provider)).map((provider) => {
               const isActive = activeProviders.includes(provider);
               const count = providerCounts[provider];
               return (
@@ -612,14 +603,14 @@ function InlineAiChatView({ taskId }: { taskId: string }) {
                   key={provider}
                   type="button"
                   data-testid={`ai-session-filter-${provider}`}
-                  aria-label={t("aiSessions.providerFilterLabel", { provider: AI_SESSION_PROVIDER_META[provider].label })}
+                  aria-label={t("aiSessions.providerFilterLabel", { provider: AI_SESSION_PROVIDER_LABELS[provider] })}
                   aria-pressed={isActive}
-                  title={t("aiSessions.providerFilterLabel", { provider: AI_SESSION_PROVIDER_META[provider].label })}
+                  title={t("aiSessions.providerFilterLabel", { provider: AI_SESSION_PROVIDER_LABELS[provider] })}
                   onClick={() => toggleProvider(provider)}
                   className={`relative flex size-10 items-center justify-center rounded-full border text-[11px] font-bold shadow-sm transition-all ${
                     isActive
-                      ? `${AI_SESSION_PROVIDER_ICON_STYLES[provider]} ring-2 ring-brand-primary/45 ring-offset-2 ring-offset-bg-page`
-                      : `${AI_SESSION_PROVIDER_ICON_STYLES[provider]} opacity-65 hover:opacity-100`
+                      ? `${(AI_SESSION_PROVIDER_ICON_STYLES[provider] ?? "border-border-default bg-bg-surface text-text-primary")} ring-2 ring-brand-primary/45 ring-offset-2 ring-offset-bg-page`
+                      : `${(AI_SESSION_PROVIDER_ICON_STYLES[provider] ?? "border-border-default bg-bg-surface text-text-primary")} opacity-65 hover:opacity-100`
                   }`}
                 >
                   <AiProviderIcon
@@ -663,7 +654,7 @@ function InlineAiChatView({ taskId }: { taskId: string }) {
                               ? "border-brand-primary bg-brand-subtle"
                               : "border-border-default bg-bg-page hover:border-brand-primary/70"
                           }`}
-                          aria-label={`${AI_SESSION_PROVIDER_META[session.provider].label} ${session.title ?? session.firstUserPrompt ?? session.id}`}
+                          aria-label={`${AI_SESSION_PROVIDER_LABELS[session.provider]} ${session.title ?? session.firstUserPrompt ?? session.id}`}
                         >
                           <div className="mb-2 flex items-start gap-2">
                             <AiSessionProviderIcon provider={session.provider} />
@@ -760,7 +751,7 @@ function AiSessionProviderIcon({ provider, testId = true }: { provider: Aggregat
     <AiProviderIcon
       provider={provider}
       testId={testId ? `ai-session-provider-${provider}` : undefined}
-      className={`flex size-6 shrink-0 items-center justify-center rounded-full border ${AI_SESSION_PROVIDER_ICON_STYLES[provider]}`}
+      className={`flex size-6 shrink-0 items-center justify-center rounded-full border ${(AI_SESSION_PROVIDER_ICON_STYLES[provider] ?? "border-border-default bg-bg-surface text-text-primary")}`}
       imageClassName="block h-4 w-4 object-contain"
       size={16}
     />
@@ -771,9 +762,9 @@ function AiSessionProviderBadge({ provider }: { provider: AggregatedAiSession["p
   return (
     <span
       data-testid={`ai-session-provider-${provider}`}
-      className={`rounded border px-2 py-0.5 text-[10px] font-semibold ${AI_SESSION_PROVIDER_STYLES[provider]}`}
+      className={`rounded border px-2 py-0.5 text-[10px] font-semibold ${(AI_SESSION_PROVIDER_STYLES[provider] ?? "border-border-default bg-bg-surface text-text-primary")}`}
     >
-      {AI_SESSION_PROVIDER_META[provider].label}
+      {AI_SESSION_PROVIDER_LABELS[provider]}
     </span>
   );
 }
@@ -835,6 +826,10 @@ function InlineAiChatMessage({ message, provider }: { message: AggregatedAiMessa
 
 export default function TaskDetailRoute() {
   const { id = "" } = useParams();
+  return <TaskDetailContent key={id} id={id} />;
+}
+
+function TaskDetailContent({ id }: { id: string }) {
   const router = useRouter();
   const boardCommands = useBoardCommands();
   const hasShortcutBlocker = useHasBoardShortcutBlocker();
@@ -842,7 +837,7 @@ export default function TaskDetailRoute() {
   const tc = useTranslations("common");
   const refreshSignal = useRefreshSignal(["all", "task-detail"]);
   const cachedRoute = useMemo(
-    () => (id ? normalizeCachedTaskDetailRouteCache(readRouteCache<TaskDetailRouteCache>(getTaskDetailRouteCacheKey(id))) : null),
+    () => (id ? normalizeCachedTaskDetailRouteCache(readRouteCache<TaskDetailRouteCache>(getTaskDetailRouteCacheKey(id)), id) : null),
     [id],
   );
   const cachedState = cachedRoute?.state ?? null;
@@ -860,7 +855,7 @@ export default function TaskDetailRoute() {
   const [activePanel, setActivePanel] = useState<DetailPanel | null>(null);
   const [mainView, setMainView] = useState<MainView>("terminal");
   const notificationCenterRef = useRef<NotificationCenterButtonHandle>(null);
-  const currentTaskIdRef = useRef(id);
+  const isTerminalTabClosingRef = useRef(false);
   const dockItemsRef = useRef<TaskDetailDockItem[]>([]);
   const commonTranslationsRef = useRef(tc);
   const hasTerminal = !!(state?.task.sessionType && state.task.sessionName);
@@ -1224,13 +1219,47 @@ export default function TaskDetailRoute() {
     };
   }, [hasShortcutBlocker, shortcutBindings, shortcutPlatform, toggleDetailPanel]);
 
-  /** 탭을 다 닫으면 남길 화면이 없으므로 창까지 닫는다. 창을 닫을지는 세션 타입을 아는 main이 정한다 */
+  useEffect(() => () => {
+    isTerminalTabClosingRef.current = false;
+  }, []);
+
   const closeTerminalTabOrWindow = useCallback(async (tabId: string) => {
-    const shouldCloseWindow = await terminalTabs.closeTab(tabId);
-    if (shouldCloseWindow) {
-      window.kanvibeDesktop?.closeCurrentWindow?.();
+    const taskId = currentTaskRef.current?.id;
+    if (!taskId || isTerminalTabClosingRef.current) {
+      return;
     }
-  }, [terminalTabs]);
+    isTerminalTabClosingRef.current = true;
+    try {
+      const info = await getTerminalTabCloseInfo(taskId, tabId);
+      if (!isTerminalTabClosingRef.current) {
+        return;
+      }
+      if (!info.ok) {
+        window.alert(t("terminalTabCloseCheckFailed"));
+        return;
+      }
+      if (info.shouldCloseWindow) {
+        window.kanvibeDesktop?.closeCurrentWindow?.();
+        return;
+      }
+      const confirmed = window.confirm(t("terminalTabCloseConfirm", {
+        processes: info.processNames?.join(", ") || t("terminalTabProcessesUnknown"),
+        shortcut: formatShortcutForDisplay(shortcutBindings.terminalWindowClose, shortcutPlatform),
+      }));
+      if (confirmed) {
+        const shouldCloseWindow = await terminalTabs.closeTab(tabId);
+        if (shouldCloseWindow) {
+          window.kanvibeDesktop?.closeCurrentWindow?.();
+        }
+      }
+    } catch {
+      if (isTerminalTabClosingRef.current) {
+        window.alert(t("terminalTabCloseCheckFailed"));
+      }
+    } finally {
+      isTerminalTabClosingRef.current = false;
+    }
+  }, [shortcutBindings.terminalWindowClose, shortcutPlatform, t, terminalTabs]);
 
   /** `close-window`는 라우트와 무관해 App이 받는다. 여기서는 터미널이 있는 화면의 탭 명령만 다룬다 */
   const runTerminalTabCommand = useCallback((command: TerminalTabShortcutCommand) => {
@@ -1332,31 +1361,6 @@ export default function TaskDetailRoute() {
       toggleDetailPanel("usage");
     }) ?? undefined
   ), [hasShortcutBlocker, toggleDetailPanel]);
-
-  useEffect(() => {
-    if (currentTaskIdRef.current === id) {
-      return;
-    }
-
-    currentTaskIdRef.current = id;
-    let cancelled = false;
-    window.queueMicrotask(() => {
-      if (cancelled) {
-        return;
-      }
-
-      setState(cachedState ?? undefined);
-      const nextDefaultPanelDismissed = cachedRoute?.defaultPanelDismissed ?? false;
-      setDefaultPanelDismissed(nextDefaultPanelDismissed);
-      setResolvedSidebarDefaultCollapsed(null);
-      setActivePanel(null);
-      setMainView("terminal");
-    });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [cachedRoute, cachedState, id]);
 
   useEffect(() => {
     if (!state || state === null) {
@@ -1882,6 +1886,7 @@ export default function TaskDetailRoute() {
             {state.task.projectId ? (
               <ConnectTerminalForm
                 taskId={state.task.id}
+                defaultSessionType={state.defaultSessionType}
                 sshHost={state.task.sshHost}
                 onConnected={(connectedTask) => {
                   setState((current) => current && current.task.id === connectedTask.id

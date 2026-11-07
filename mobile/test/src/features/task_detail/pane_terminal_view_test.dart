@@ -4,12 +4,14 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kanvibe_mobile/src/common/constants/app_theme.dart';
 import 'package:kanvibe_mobile/src/common/providers.dart';
 import 'package:kanvibe_mobile/src/features/task_detail/domain/mirror_pane.dart';
 import 'package:kanvibe_mobile/src/features/task_detail/presentation/widgets/pane_terminal_view.dart';
 import 'package:xterm/xterm.dart' as xterm;
+import 'package:kanvibe_mobile/src/features/task_detail/presentation/widgets/terminal_shortcut_bar.dart';
 
 import '../../../support/fake_desktop.dart';
 
@@ -46,15 +48,17 @@ Future<void> pumpPane(
           data: MediaQuery.of(context).copyWith(textScaler: textScaler),
           child: child!,
         ),
-        home: SizedBox(
-          width: phoneSize.width,
-          height: phoneSize.height,
-          child: PaneTerminalView(
-            canResize: canResize,
-            canRespondToDeviceQueries: canRespondToDeviceQueries,
-            taskId: 'task-1',
-            pane: pane,
-            key: ValueKey(pane.id),
+        home: Material(
+          child: SizedBox(
+            width: phoneSize.width,
+            height: phoneSize.height,
+            child: PaneTerminalView(
+              canResize: canResize,
+              canRespondToDeviceQueries: canRespondToDeviceQueries,
+              taskId: 'task-1',
+              pane: pane,
+              key: ValueKey(pane.id),
+            ),
           ),
         ),
       ),
@@ -205,6 +209,143 @@ void main() {
       expect(scroll.offset, closeTo(bottom, 1));
     });
   }
+
+  testWidgets('화면 덤프가 갱신되어도 읽던 이전 출력을 유지한다', (tester) async {
+    final client = FakeDesktopClient();
+    await pumpPane(tester, _pane, client: client, store: FakeConnectionStore());
+    String dump(int count) =>
+        '\x1b[H\x1b[2J\x1b[3J${List.generate(count, (i) => 'history-$i\r\n').join()}';
+    client.openedPanes[_pane.id]!.add(dump(180));
+    await tester.pumpAndSettle();
+    final view = tester.widget<xterm.TerminalView>(
+      find.byType(xterm.TerminalView),
+    );
+    final scroll = view.scrollController!;
+    await tester.drag(find.byType(xterm.TerminalView), const Offset(0, 350));
+    await tester.pumpAndSettle();
+    final readingOffset = scroll.offset;
+    expect(readingOffset, lessThan(scroll.position.maxScrollExtent));
+    client.openedPanes[_pane.id]!.add(dump(181));
+    await tester.pumpAndSettle();
+    expect(scroll.offset, closeTo(readingOffset, 1));
+    expect(client.writtenInput[_pane.id] ?? [], isEmpty);
+  });
+
+  testWidgets('이전 출력을 보는 중 전체 덤프가 갱신돼도 스크롤 위치를 유지한다', (tester) async {
+    final client = FakeDesktopClient();
+    await pumpPane(tester, _pane, client: client, store: FakeConnectionStore());
+    final output = List.generate(180, (i) => 'line-$i').join('\r\n');
+    client.openedPanes[_pane.id]!.add('\x1b[H\x1b[2J\x1b[3J$output');
+    await tester.pumpAndSettle();
+    final view = tester.widget<xterm.TerminalView>(
+      find.byType(xterm.TerminalView),
+    );
+    await tester.drag(find.byType(xterm.TerminalView), const Offset(0, 300));
+    await tester.pumpAndSettle();
+    final offset = view.scrollController!.offset;
+    client.openedPanes[_pane.id]!.add(
+      '\x1b[H\x1b[2J\x1b[3J$output\r\nnew-line',
+    );
+    await tester.pumpAndSettle();
+    expect(view.scrollController!.offset, closeTo(offset, 1));
+    expect(tester.testTextInput.isVisible, isFalse);
+  });
+
+  testWidgets('선택 중 덤프 갱신은 복사를 방해하지 않고 해제 후 최신 화면을 적용한다', (tester) async {
+    final client = FakeDesktopClient();
+    await pumpPane(
+      tester,
+      _pane,
+      client: client,
+      store: FakeConnectionStore(),
+      canResize: true,
+    );
+    client.openedPanes[_pane.id]!.add(
+      '\x1b[H\x1b[2J\x1b[3Jalpha 한글\r\nbeta next',
+    );
+    await tester.pumpAndSettle();
+    final gesture = await tester.startGesture(
+      terminalCellPosition(tester, 1, 0),
+    );
+    await tester.pump(kLongPressTimeout + const Duration(milliseconds: 1));
+    await gesture.moveTo(terminalCellPosition(tester, 1, 1));
+    await tester.pump();
+    await gesture.up(timeStamp: kLongPressTimeout);
+    await tester.pumpAndSettle();
+    final terminal = mountedTerminal(tester);
+    final view = tester.widget<xterm.TerminalView>(
+      find.byType(xterm.TerminalView),
+    );
+    client.openedPanes[_pane.id]!.add('\x1b[H\x1b[2J\x1b[3Jintermediate');
+    client.openedPanes[_pane.id]!.add('\x1b[H\x1b[2J\x1b[3Jlatest');
+    await tester.pumpAndSettle();
+    expect(view.controller!.selection, isNotNull);
+    expect(
+      terminal.buffer.getText(view.controller!.selection),
+      'alpha 한글\nbeta',
+    );
+    final copiedText = <String>[];
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (call) async {
+        if (call.method == 'Clipboard.setData') {
+          copiedText.add((call.arguments as Map)['text'] as String);
+        }
+        return null;
+      },
+    );
+    addTearDown(
+      () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        null,
+      ),
+    );
+    await tester.tap(find.widgetWithText(TextButton, '복사'));
+    await tester.pumpAndSettle();
+    expect(copiedText, ['alpha 한글\nbeta']);
+    expect(terminal.buffer.getText(), contains('latest'));
+    expect(terminal.buffer.getText(), isNot(contains('intermediate')));
+    expect(view.controller!.selection, isNull);
+    expect(client.writtenInput[_pane.id], isNull);
+  });
+
+  testWidgets('선택 중 보류한 지우기 청크 뒤의 출력은 해제 후 순서대로 적용된다', (tester) async {
+    final client = FakeDesktopClient();
+    await pumpPane(
+      tester,
+      _pane,
+      client: client,
+      store: FakeConnectionStore(),
+      canResize: true,
+    );
+    client.openedPanes[_pane.id]!.add('alpha 한글\r\nbeta next');
+    await tester.pumpAndSettle();
+    final gesture = await tester.startGesture(
+      terminalCellPosition(tester, 1, 0),
+    );
+    await tester.pump(kLongPressTimeout + const Duration(milliseconds: 1));
+    await gesture.moveTo(terminalCellPosition(tester, 1, 1));
+    await tester.pump();
+    await gesture.up(timeStamp: kLongPressTimeout);
+    await tester.pumpAndSettle();
+    final terminal = mountedTerminal(tester);
+    final view = tester.widget<xterm.TerminalView>(
+      find.byType(xterm.TerminalView),
+    );
+    expect(view.controller!.selection, isNotNull);
+
+    // tmux 원시 스트림에서 clear가 보낸 지우기 시퀀스와 그 뒤 셸 프롬프트가 따로 도착한다.
+    client.openedPanes[_pane.id]!.add('\x1b[H\x1b[2J\x1b[3J');
+    client.openedPanes[_pane.id]!.add(r'$ ');
+    await tester.pumpAndSettle();
+    expect(terminal.buffer.getText(), contains('alpha'));
+
+    view.controller!.clearSelection();
+    await tester.pumpAndSettle();
+    expect(terminal.buffer.getText(), isNot(contains('alpha')));
+    expect(terminal.buffer.getText(), contains(r'$ '));
+    expect(terminal.buffer.cursorX, 2);
+  });
 
   group('OSC 52', () {
     final clipboardWrites = <String>[];
@@ -581,7 +722,7 @@ void main() {
     );
   }
 
-  testWidgets('툴바 없이 터치로 여러 줄을 선택해도 한글·영문·줄바꿈과 격자를 유지한다', (tester) async {
+  testWidgets('터치로 여러 줄을 선택해 복사하면 한글·영문·줄바꿈과 격자를 유지한다', (tester) async {
     final client = FakeDesktopClient();
     await pumpPane(
       tester,
@@ -609,6 +750,30 @@ void main() {
     expect(terminal.buffer.getText(controller!.selection), 'alpha 한글\nbeta');
     expect((cols: terminal.viewWidth, rows: terminal.viewHeight), originalSize);
     expect(client.writtenInput[_pane.id], isNull);
+    final copiedText = <String>[];
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (call) async {
+        if (call.method == 'Clipboard.setData') {
+          copiedText.add((call.arguments as Map)['text'] as String);
+        }
+        return null;
+      },
+    );
+    addTearDown(() {
+      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        null,
+      );
+    });
+    await tester.tap(find.widgetWithText(TextButton, '복사'));
+    await tester.pumpAndSettle();
+    expect(copiedText, ['alpha 한글\nbeta']);
+    expect(controller.selection, isNull);
+    expect(find.text('복사'), findsNothing);
+    expect((cols: terminal.viewWidth, rows: terminal.viewHeight), originalSize);
+    expect(client.writtenInput[_pane.id], isNull);
+    expect(tester.testTextInput.isVisible, isFalse);
   });
 
   testWidgets('빈 곳을 길게 눌러 선택이 없어도 키보드를 열지 않는다', (tester) async {
@@ -1008,5 +1173,113 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(tester.testTextInput.isVisible, isFalse);
+  });
+
+  /// 키 입력 검증에 쓰는 기본 세팅을 모든 세션의 단축키 바에 올려 둔다
+  void putRawKeysOnBar() {
+    final profile = {
+      'enabled': true,
+      'ids': ['ctrl', 'alt', 'escape', 'tab', 'up'],
+      'combos': <Object>[],
+    };
+    FlutterSecureStorage.setMockInitialValues({
+      'kanvibe_terminal_shortcuts_v3': jsonEncode({
+        for (final type in ['terminal', 'tmux', 'zellij']) type: profile,
+      }),
+    });
+  }
+
+  Future<void> tapRawKey(WidgetTester tester, String id) async {
+    final key = find.bySemanticsIdentifier('shortcut-$id');
+    await tester.ensureVisible(key);
+    await tester.pumpAndSettle();
+    await tester.tap(key);
+    await tester.pump();
+  }
+
+  testWidgets(
+    'Ctrl and Alt affect one IME character and preserve keyboard focus',
+    (tester) async {
+      final client = FakeDesktopClient();
+      putRawKeysOnBar();
+      await pumpPane(
+        tester,
+        _pane,
+        client: client,
+        store: FakeConnectionStore(),
+      );
+      final base = await attachSoftKeyboard(tester);
+      await tapRawKey(tester, 'ctrl');
+      await tapRawKey(tester, 'alt');
+      expect(tester.testTextInput.isVisible, isTrue);
+      await sendImeBuffer(tester, base: base, previous: '', next: 'c');
+      await sendImeBuffer(tester, base: base, previous: 'c', next: 'cx');
+      expect(client.writtenInput['%19']?.join(), '\x1b\x03x');
+    },
+  );
+
+  testWidgets('accessory sends Esc Tab and application-mode cursor sequences', (
+    tester,
+  ) async {
+    final client = FakeDesktopClient();
+    putRawKeysOnBar();
+    await pumpPane(tester, _pane, client: client, store: FakeConnectionStore());
+    await attachSoftKeyboard(tester);
+    await tapRawKey(tester, 'escape');
+    await tapRawKey(tester, 'tab');
+    mountedTerminal(tester).write('\x1b[?1h');
+
+    await tapRawKey(tester, 'up');
+    expect(client.writtenInput['%19']?.join(), '\x1b\t\x1bOA');
+  });
+
+  testWidgets('keyboard inset leaves shortcut bar directly above keyboard', (
+    tester,
+  ) async {
+    tester.view.viewInsets = const FakeViewPadding(bottom: 300);
+    addTearDown(tester.view.resetViewInsets);
+    final client = FakeDesktopClient();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          desktopClientProvider.overrideWithValue(client),
+          connectionStoreProvider.overrideWithValue(FakeConnectionStore()),
+        ],
+        child: MaterialApp(
+          home: const Scaffold(
+            body: PaneTerminalView(taskId: 'task-1', pane: _pane),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final barBottom = tester
+        .getBottomRight(find.byType(TerminalShortcutBar))
+        .dy;
+    expect(
+      barBottom,
+      closeTo(
+        tester.view.physicalSize.height / tester.view.devicePixelRatio -
+            300 / tester.view.devicePixelRatio,
+        5,
+      ),
+    );
+    expect(tester.takeException(), isNull);
+  });
+  testWidgets('IME Backspace and Done consume the pending modifier', (
+    tester,
+  ) async {
+    final client = FakeDesktopClient();
+    putRawKeysOnBar();
+    await pumpPane(tester, _pane, client: client, store: FakeConnectionStore());
+    final base = await attachSoftKeyboard(tester);
+    await sendImeBuffer(tester, base: base, previous: '', next: 'a');
+    await tapRawKey(tester, 'alt');
+    await sendImeBuffer(tester, base: base, previous: 'a', next: '');
+    await sendImeBuffer(tester, base: base, previous: '', next: 'b');
+    await tapRawKey(tester, 'ctrl');
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await sendImeBuffer(tester, base: base, previous: 'b', next: 'bc');
+    expect(client.writtenInput['%19']?.join(), 'a\x17b\rc');
   });
 }

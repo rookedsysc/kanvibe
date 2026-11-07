@@ -16,14 +16,22 @@ vi.mock("@/lib/gitOperations", () => ({
 
 const mockListLocalTerminalTabs = vi.fn((..._args: unknown[]) => [] as unknown[]);
 const mockCreateLocalTerminalTab = vi.fn((..._args: unknown[]) => undefined);
+const mockGetLocalTerminalTabProcess = vi.fn();
 const mockCloseLocalTerminalTab = vi.fn((..._args: unknown[]) => 2);
 vi.mock("@/lib/terminal", () => ({
+  getLocalTerminalTabProcess: (...args: unknown[]) => mockGetLocalTerminalTabProcess(...args),
   listLocalTerminalTabs: (...args: unknown[]) => mockListLocalTerminalTabs(...args),
   createLocalTerminalTab: (...args: unknown[]) => mockCreateLocalTerminalTab(...args),
   closeLocalTerminalTab: (...args: unknown[]) => mockCloseLocalTerminalTab(...args),
   renameLocalTerminalTab: vi.fn(),
   selectLocalTerminalTab: vi.fn(),
   moveLocalTerminalTab: vi.fn(),
+}));
+
+const mockMoveHerdrTab = vi.fn();
+vi.mock("@/lib/herdr", async (importOriginal) => ({
+  ...await importOriginal<typeof import("@/lib/herdr")>(),
+  moveHerdrTab: (...args: unknown[]) => mockMoveHerdrTab(...args),
 }));
 
 function stubTask(overrides: Partial<KanbanTask>): void {
@@ -159,6 +167,75 @@ describe("탭 닫기", () => {
 
     expect(findExecutedCommand("kill-window")).toBeUndefined();
     expect(result).toEqual({ ok: true, shouldCloseWindow: true });
+  });
+
+  it.each([SessionType.TMUX, SessionType.ZELLIJ])("%s의 두 탭을 동시에 닫아도 마지막 탭은 남긴다", async (sessionType) => {
+    stubTask({ sessionType });
+    let tabs = ["1", "2"];
+    mockExecGit.mockImplementation(async (command: string) => {
+      if (command === "zellij --version") return "zellij 0.44.0";
+      if (command.includes("list-windows")) return tabs.map((id, index) => `@${id}\t${index}\t1\tshell`).join("\n");
+      if (command.includes("list-tabs")) return JSON.stringify(tabs.map((id, position) => ({ tab_id: Number(id), position, name: "shell", active: true })));
+      const closedId = command.match(/(?:kill-window -t '@|close-tab-by-id ')(\d+)'/)?.[1];
+      if (closedId) tabs = tabs.filter((id) => id !== closedId);
+      return "";
+    });
+    const { closeTerminalTab } = await importService();
+
+    const results = await Promise.all([
+      closeTerminalTab("task-1", sessionType === SessionType.TMUX ? "@1" : "1"),
+      closeTerminalTab("task-1", sessionType === SessionType.TMUX ? "@2" : "2"),
+    ]);
+
+    expect(tabs).toEqual(["2"]);
+    expect(results).toEqual([{ ok: true, shouldCloseWindow: false }, { ok: true, shouldCloseWindow: true }]);
+  });
+
+  it.each(["host", "session"])("다른 %s의 탭 종료는 앞 세션을 기다리지 않는다", async (boundary) => {
+    let releaseFirst!: () => void;
+    let firstEntered!: () => void;
+    const firstStarted = new Promise<void>((resolve) => { firstEntered = resolve; });
+    const firstGate = new Promise<void>((resolve) => { releaseFirst = resolve; });
+    mockFindOneBy.mockImplementation(async ({ id }: { id: string }) => ({
+      sessionType: SessionType.TMUX,
+      sessionName: boundary === "session" ? id : "same-session",
+      sshHost: boundary === "host" ? id : "same-host",
+      worktreePath: "/work/tree",
+    }));
+    mockExecGit.mockImplementation(async (command: string, host: string) => {
+      if (command.includes("list-windows")) {
+        if (host === "first" || command.includes("'first'")) {
+          firstEntered();
+          await firstGate;
+        }
+        return "@1\t0\t1\tzsh\n@2\t1\t0\tvim";
+      }
+      return "";
+    });
+    const { closeTerminalTab } = await importService();
+    const first = closeTerminalTab("first", "@1");
+    await firstStarted;
+    try {
+      expect(await closeTerminalTab("second", "@1")).toEqual({ ok: true, shouldCloseWindow: false });
+    } finally {
+      releaseFirst();
+    }
+    expect(await first).toEqual({ ok: true, shouldCloseWindow: false });
+  });
+
+  it("앞선 탭 종료가 실패해도 같은 세션의 다음 종료를 처리한다", async () => {
+    stubTask({});
+    mockExecGit.mockImplementation(async (command: string) => {
+      if (command.includes("list-windows")) return "@1\t0\t1\tzsh\n@2\t1\t0\tvim";
+      if (command.includes("'@1'")) throw new Error("close failed");
+      return "";
+    });
+    const { closeTerminalTab } = await importService();
+
+    const results = await Promise.all([closeTerminalTab("task-1", "@1"), closeTerminalTab("task-1", "@2")]);
+
+    expect(results).toEqual([{ ok: false, error: "close failed" }, { ok: true, shouldCloseWindow: false }]);
+    expect(findExecutedCommand("kill-window -t '@2'")).toBeDefined();
   });
 
   it("zellij tab이 하나뿐이면 닫지 않고 창만 닫는다", async () => {
@@ -308,5 +385,149 @@ describe("탭 순서 변경", () => {
 
     expect(result.ok).toBe(false);
     expect(mockExecGit).not.toHaveBeenCalled();
+  });
+});
+
+
+describe("Herdr 탭", () => {
+  it("네이티브 ID로 동일 이름 탭을 구분하고 활성 상태를 유지한다", async () => {
+    stubTask({ sessionType: "herdr" as SessionType });
+    mockExecGit.mockResolvedValue(JSON.stringify({ result: { tabs: [
+      { tab_id: "w1:t1", number: 1, label: "shell", focused: true },
+      { tab_id: "w1:t2", number: 2, label: "shell", focused: false },
+    ] } }));
+    const { listTerminalTabs } = await importService();
+    await expect(listTerminalTabs("task-1")).resolves.toEqual({ ok: true, tabs: [
+      { id: "w1:t1", nativeIndex: 0, name: "shell", isActive: true },
+      { id: "w1:t2", nativeIndex: 1, name: "shell", isActive: false },
+    ] });
+    expect(findExecutedCommand("--session 'proj-main' 'tab' 'list'")).toBeDefined();
+  });
+});
+
+
+describe("Herdr 탭 조작", () => {
+  const tabs = [
+    { tab_id: "w1:t1", label: "same", focused: false },
+    { tab_id: "w1:t2", label: "same", focused: false },
+    { tab_id: "w2:t1", label: "same", focused: false },
+    { tab_id: "w2:t2", label: "same", focused: true },
+  ];
+  beforeEach(() => {
+    stubTask({ sessionType: SessionType.HERDR, sshHost: "remote-herdr" });
+    mockExecGit.mockResolvedValue(JSON.stringify({ result: { tabs } }));
+  });
+  it("새 탭은 활성 워크스페이스에 생성한다", async () => {
+    const service = await importService();
+    await expect(service.createTerminalTab("task-1")).resolves.toEqual({ ok: true });
+    expect(findExecutedCommand("'tab' 'create' '--workspace' 'w2' '--cwd' '/work/tree' '--focus'")).toBeDefined();
+  });
+  it.each([["w2:t2", 2, 0], ["w2:t1", 3, 2]] as const)("%s 이동은 워크스페이스 내부 삽입 경계 %s로 변환한다", async (id, destination, insertIndex) => {
+    const service = await importService();
+    await expect(service.moveTerminalTab("task-1", id, destination)).resolves.toEqual({ ok: true });
+    expect(mockMoveHerdrTab).toHaveBeenCalledWith("proj-main", id, insertIndex, "remote-herdr");
+  });
+  it("워크스페이스를 가로지르는 이동은 다른 탭을 훼손하지 않고 거절한다", async () => {
+    const service = await importService();
+    await expect(service.moveTerminalTab("task-1", "w2:t2", 0)).resolves.toMatchObject({ ok: false });
+    expect(mockMoveHerdrTab).not.toHaveBeenCalled();
+  });
+  it("마지막 탭은 지우지 않고 창을 닫는다", async () => {
+    mockExecGit.mockResolvedValue(JSON.stringify({ result: { tabs: [tabs[0]] } }));
+    const service = await importService();
+    await expect(service.closeTerminalTab("task-1", "w1:t1")).resolves.toEqual({ ok: true, shouldCloseWindow: true });
+    expect(findExecutedCommand("'tab' 'close'")).toBeUndefined();
+  });
+  it("중복 이름이어도 ID로 정확한 탭을 선택·변경·닫는다", async () => {
+    const service = await importService();
+    await expect(service.selectTerminalTab("task-1", "w2:t2")).resolves.toEqual({ ok: true });
+    await expect(service.renameTerminalTab("task-1", "w2:t2", "new name")).resolves.toEqual({ ok: true });
+    await expect(service.closeTerminalTab("task-1", "w2:t2")).resolves.toEqual({ ok: true, shouldCloseWindow: false });
+    expect(findExecutedCommand("'tab' 'focus' 'w2:t2'")).toBeDefined();
+    expect(findExecutedCommand("'tab' 'rename' 'w2:t2' 'new name'")).toBeDefined();
+    expect(findExecutedCommand("'tab' 'close' 'w2:t2'")).toBeDefined();
+  });
+});
+
+
+describe("탭 닫기 전 확인 정보", () => {
+  it("마지막 멀티플렉서 탭은 프로세스를 건드리지 않고 창만 닫도록 안내한다", async () => {
+    stubTask({});
+    mockExecGit.mockResolvedValue("@1\t0\t1\tzsh");
+    const service = await importService();
+    expect(await service.getTerminalTabCloseInfo("task-1", "@1")).toEqual({
+      ok: true, shouldCloseWindow: true, processNames: null,
+    });
+    expect(findExecutedCommand("kill-window")).toBeUndefined();
+    expect(findExecutedCommand("list-panes")).toBeUndefined();
+  });
+
+  it("현재 탭의 모든 분할 화면에서 프로세스 이름을 모으고 다른 탭은 제외한다", async () => {
+    stubTask({ sshHost: "dev-host" });
+    mockExecGit.mockImplementation(async (command: string) => command.includes("list-windows")
+      ? "@1\t0\t1\twork\n@2\t1\t0\tother"
+      : "%1\t@1\tclaude\t0\t0\t80\t24\twork\n%2\t@1\tnode\t80\t0\t80\t24\twork\n%3\t@2\tvim\t0\t0\t80\t24\tother");
+    const service = await importService();
+    expect(await service.getTerminalTabCloseInfo("task-1", "@1")).toEqual({
+      ok: true, shouldCloseWindow: false, processNames: ["claude", "node"],
+    });
+    expect(mockExecGit.mock.calls.every((call) => call[1] === "dev-host")).toBe(true);
+    expect(findExecutedCommand("kill-window")).toBeUndefined();
+  });
+
+  it("프로세스 조회 실패는 실행 중인 작업이 없다는 뜻으로 바꾸지 않는다", async () => {
+    stubTask({});
+    mockExecGit.mockImplementation(async (command: string) => {
+      if (command.includes("list-windows")) return "@1\t0\t1\twork\n@2\t1\t0\tother";
+      throw new Error("process lookup failed");
+    });
+    const service = await importService();
+    expect(await service.getTerminalTabCloseInfo("task-1", "@1")).toEqual({
+      ok: true, shouldCloseWindow: false, processNames: null,
+    });
+  });
+
+  it("탭 목록 조회 실패는 닫기 허가로 바꾸지 않는다", async () => {
+    stubTask({});
+    mockExecGit.mockRejectedValue(new Error("offline"));
+    const service = await importService();
+    expect(await service.getTerminalTabCloseInfo("task-1", "@1")).toEqual({
+      ok: false, shouldCloseWindow: false, processNames: null, error: "offline",
+    });
+  });
+
+  it("프로세스가 없는 조회 결과도 안전하다고 단정하지 않는다", async () => {
+    stubTask({});
+    mockExecGit.mockImplementation(async (command: string) => command.includes("list-windows")
+      ? "@1\t0\t1\twork\n@2\t1\t0\tother" : "");
+    const service = await importService();
+    expect((await service.getTerminalTabCloseInfo("task-1", "@1")).processNames).toBeNull();
+  });
+
+  it("원격 일반 터미널에서 로컬 SSH 프로세스를 원격 작업 이름으로 표시하지 않는다", async () => {
+    stubTask({ sessionType: SessionType.TERMINAL, sshHost: "dev-host" });
+    mockListLocalTerminalTabs.mockReturnValue([{ id: "tab-1" }]);
+    mockGetLocalTerminalTabProcess.mockReturnValue("ssh");
+    const service = await importService();
+    expect((await service.getTerminalTabCloseInfo("task-1", "tab-1")).processNames).toBeNull();
+    expect(mockGetLocalTerminalTabProcess).not.toHaveBeenCalled();
+  });
+
+  it("존재하지 않는 탭은 닫기 대상으로 인정하지 않는다", async () => {
+    stubTask({});
+    mockExecGit.mockResolvedValue("@1\t0\t1\tzsh");
+    const service = await importService();
+    expect((await service.getTerminalTabCloseInfo("task-1", "@999")).ok).toBe(false);
+  });
+
+  it("일반 터미널은 마지막 탭도 삭제되므로 현재 PTY 프로세스를 경고한다", async () => {
+    stubTask({ sessionType: SessionType.TERMINAL });
+    mockListLocalTerminalTabs.mockReturnValue([{ id: "tab-1" }]);
+    mockGetLocalTerminalTabProcess.mockReturnValue("node");
+    const service = await importService();
+    expect(await service.getTerminalTabCloseInfo("task-1", "tab-1")).toEqual({
+      ok: true, shouldCloseWindow: false, processNames: ["node"],
+    });
+    expect(mockCloseLocalTerminalTab).not.toHaveBeenCalled();
   });
 });

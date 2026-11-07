@@ -1,4 +1,5 @@
-import { rename, unlink, writeFile } from "fs/promises";
+import { randomUUID } from "crypto";
+import { open, rename, unlink } from "fs/promises";
 import path from "path";
 
 /** 자격증명은 소유자만 읽을 수 있어야 하고, CLI가 쓰는 권한과 같아야 한다 */
@@ -17,12 +18,16 @@ export async function writeCredentialsAtomically(
 ): Promise<void> {
   const temporaryPath = path.join(
     path.dirname(targetPath),
-    `.${path.basename(targetPath)}.kanvibe-${process.pid}.tmp`,
+    `.${path.basename(targetPath)}.kanvibe-${process.pid}-${randomUUID()}.tmp`,
   );
 
-  await writeFile(temporaryPath, contents, { encoding: "utf-8", mode: CREDENTIALS_FILE_MODE });
-
+  const handle = await open(temporaryPath, "wx", CREDENTIALS_FILE_MODE);
   try {
+    try {
+      await handle.writeFile(contents, "utf-8");
+    } finally {
+      await handle.close();
+    }
     await rename(temporaryPath, targetPath);
   } catch (error) {
     await unlink(temporaryPath).catch(() => {});

@@ -1,7 +1,9 @@
 import { spawn, type ChildProcess } from "child_process";
-import { getAppSetting, getDefaultSessionType, setAppSetting } from "@/desktop/main/services/appSettingsService";
+import { getAppSetting, getDefaultSessionType, getNotificationSettings, setAppSetting, setNotificationEnabled, setNotificationStatuses } from "@/desktop/main/services/appSettingsService";
 import { connectTerminalSession, createTask, getTaskById, getTasksByStatus, updateTaskStatus } from "@/desktop/main/services/kanbanService";
-import { getAllProjects, getProjectBranches } from "@/desktop/main/services/projectService";
+import { getAllProjects, getProjectBranches, getTaskAiSessions, getTaskAiSessionDetail } from "@/desktop/main/services/projectService";
+import { isAiSessionProvider } from "@/lib/aiSessions/providers";
+import type { AiMessageRole, AiSessionProvider } from "@/lib/aiSessions/types";
 import { attachTaskTerminal, CallbackTerminalClient } from "@/desktop/main/terminalBridge";
 import { createTerminalTab } from "@/desktop/main/services/terminalTabService";
 import { listNotifications, markNotificationRead, markAllNotificationsRead, subscribeToNotificationChanges } from "@/desktop/main/notificationStore";
@@ -27,9 +29,11 @@ import {
 } from "@/lib/mobilePairing";
 import {
   buildScreenRedraw,
+  buildTmuxPaneShortcutCommand,
+  buildZellijPaneShortcutCommand,
   buildTmuxCancelPipePaneCommand,
   buildTmuxCapturePaneCommand,
-  buildTmuxCursorPositionCommand,
+  buildTmuxPaneStateCommand,
   buildTmuxListMirrorPanesCommand,
   buildTmuxPaneStreamCommand,
   buildTmuxReadPaneGeometryCommand,
@@ -40,7 +44,7 @@ import {
   buildZellijDumpPaneCommand,
   buildZellijListMirrorPanesCommand,
   buildZellijWritePaneCommand,
-  parseTmuxCursorPosition,
+  parseTmuxPaneState,
   parseTmuxMirrorPaneList,
   parseTmuxViewportState,
   parseZellijMirrorPaneList,
@@ -342,6 +346,80 @@ export async function getMobileTask(taskId: string) {
   return task ? { ...task, projectName: task.project?.name ?? null } : null;
 }
 
+export const isMobileAiSessionProvider = isAiSessionProvider;
+
+const MOBILE_AI_SOURCE_CACHE_LIMIT = 500;
+const mobileAiSourceCache = new Map<string, string | null>();
+
+function mobileAiSessionKey(taskId: string, provider: AiSessionProvider, sessionId: string) {
+  return JSON.stringify([taskId, provider, sessionId]);
+}
+
+function rememberMobileAiSources(taskId: string, sessions: Awaited<ReturnType<typeof getTaskAiSessions>>["sessions"]) {
+  for (const session of sessions) {
+    const key = mobileAiSessionKey(taskId, session.provider, session.id);
+    mobileAiSourceCache.delete(key);
+    mobileAiSourceCache.set(key, session.sourceRef ?? null);
+    if (mobileAiSourceCache.size > MOBILE_AI_SOURCE_CACHE_LIMIT) {
+      mobileAiSourceCache.delete(mobileAiSourceCache.keys().next().value!);
+    }
+  }
+}
+
+async function refreshMobileAiSource(taskId: string, provider: AiSessionProvider, sessionId: string) {
+  const history = await getTaskAiSessions(taskId);
+  const session = history.sessions.find((entry) => entry.provider === provider && entry.id === sessionId);
+  if (session) rememberMobileAiSources(taskId, [session]);
+}
+
+interface MobileAiHistoryOptions {
+  query?: string;
+  cursor?: string;
+  limit: number;
+  roles?: AiMessageRole[];
+}
+
+export async function getMobileAiSessions(taskId: string, options: MobileAiHistoryOptions) {
+  const history = await getTaskAiSessions(taskId, options.query, options.cursor, options.limit);
+  rememberMobileAiSources(taskId, history.sessions);
+  return { ...history, sessions: history.sessions.map(({ sourceRef: _sourceRef, ...session }) => session) };
+}
+
+export async function getMobileAiSessionDetail(
+  taskId: string,
+  provider: AiSessionProvider,
+  sessionId: string,
+  options: MobileAiHistoryOptions,
+) {
+  const key = mobileAiSessionKey(taskId, provider, sessionId);
+  const hadCachedSource = mobileAiSourceCache.has(key);
+  if (!hadCachedSource) {
+    await refreshMobileAiSource(taskId, provider, sessionId);
+  }
+  if (!mobileAiSourceCache.has(key)) return null;
+  // 캐시는 탐색 힌트다. 매 상세 조회에서 리더가 현재 태스크 경로와 세션 ID를 다시 검증한다.
+  let detail: Awaited<ReturnType<typeof getTaskAiSessionDetail>>;
+  try {
+    detail = await getTaskAiSessionDetail(taskId, provider, sessionId, mobileAiSourceCache.get(key), options.cursor, options.limit, options.query, options.roles);
+  } catch (error) {
+    if (!(error instanceof Error) || !["ENOENT", "ENOTDIR"].includes((error as NodeJS.ErrnoException).code ?? "")) throw error;
+    detail = null;
+  }
+  if (!detail) {
+    mobileAiSourceCache.delete(key);
+    if (!hadCachedSource) return null;
+    await refreshMobileAiSource(taskId, provider, sessionId);
+    if (!mobileAiSourceCache.has(key)) return null;
+    detail = await getTaskAiSessionDetail(taskId, provider, sessionId, mobileAiSourceCache.get(key), options.cursor, options.limit, options.query, options.roles);
+  }
+  if (!detail) {
+    mobileAiSourceCache.delete(key);
+    return null;
+  }
+  const { sourceRef: _sourceRef, ...safeDetail } = detail;
+  return safeDetail;
+}
+
 function toMobileNotification(notification: AppNotification) {
   const { id, title, body, taskId, isRead, createdAt } = notification;
   return { id, title, body, taskId, isRead, createdAt };
@@ -350,6 +428,21 @@ function toMobileNotification(notification: AppNotification) {
 export async function getMobileNotifications() {
   const notifications = await listNotifications();
   return notifications.map(toMobileNotification);
+}
+
+export async function getMobileNotificationSettings() {
+  return getNotificationSettings();
+}
+
+export async function updateMobileNotificationSettings(input: unknown) {
+  const settings = input as { isEnabled?: unknown; enabledStatuses?: unknown } | null;
+  if (!settings || typeof settings.isEnabled !== "boolean" || !Array.isArray(settings.enabledStatuses) ||
+      settings.enabledStatuses.some((status) => !Object.values(TaskStatus).includes(status))) {
+    throw new MobileTaskInputError("알림 상태 설정이 올바르지 않습니다.");
+  }
+  await setNotificationStatuses([...new Set(settings.enabledStatuses)]);
+  await setNotificationEnabled(settings.isEnabled);
+  return getNotificationSettings();
 }
 
 export async function markMobileNotificationRead(notificationId: string) {
@@ -742,7 +835,7 @@ async function createPaneViewportDriver(target: MirrorSessionTarget, taskId: str
 
 /** 창 배치를 공유하는 pane은 같은 줄에서 크기를 바꿔야 한 기기의 퇴장이 다른 기기의 화면을 되돌리지 않는다. */
 export async function claimPaneViewport(taskId: string, paneId: string): Promise<{
-  resize: (cols: number, rows: number) => Promise<void>;
+  resize: (cols: number, rows: number) => Promise<string | null>;
   release: () => Promise<void>;
 }> {
   if (paneViewportShutdown) throw new Error("데스크탑이 종료 중입니다.");
@@ -770,17 +863,23 @@ export async function claimPaneViewport(taskId: string, paneId: string): Promise
   let released: Promise<void> | null = null;
 
   return {
-    resize: (cols, rows) => {
-      if (released || !claimed.clients.has(id)) return Promise.resolve();
+    resize: async (cols, rows) => {
+      if (released || !claimed.clients.has(id)) return null;
       if (![cols, rows].every((value) => Number.isInteger(value) && value >= 1 && value <= 500)) {
         return Promise.reject(new Error("터미널 크기가 유효하지 않습니다."));
       }
       request.size = { cols, rows };
       claimed.clients.delete(id);
       claimed.clients.set(id, request);
-      return queuePaneViewport(claimed, async (driver) => {
-        if (claimed.clients.has(id)) await driver.resize(paneId, cols, rows);
+      let snapshot: string | null = null;
+      await queuePaneViewport(claimed, async (driver) => {
+        if (!claimed.clients.has(id)) return;
+        await driver.resize(paneId, cols, rows);
+        if (target.sessionType === SessionType.TMUX) {
+          snapshot = await readPaneSnapshot(target, paneId);
+        }
       });
+      return snapshot;
     },
     release: () => {
       if (released) return released;
@@ -1038,13 +1137,13 @@ async function readPaneSnapshot(target: MirrorSessionTarget, paneId: string): Pr
 
   /** 화면과 커서를 한 번에 읽는다. 원격이면 왕복이 하나 줄고, 둘 사이에 화면이 바뀌는 틈도 좁아진다 */
   const output = await runMirrorCommand(
-    `${buildTmuxCapturePaneCommand(paneId)} && ${buildTmuxCursorPositionCommand(paneId)}`,
+    `${buildTmuxCapturePaneCommand(paneId)} && ${buildTmuxPaneStateCommand(paneId)}`,
     target.sshHost,
   );
   const cursorLineStart = output.lastIndexOf("\n");
-  const cursor = cursorLineStart === -1 ? null : parseTmuxCursorPosition(output.slice(cursorLineStart + 1));
-  const screen = cursor ? output.slice(0, cursorLineStart) : output;
-  return buildScreenRedraw(screen, cursor);
+  const state = cursorLineStart === -1 ? null : parseTmuxPaneState(output.slice(cursorLineStart + 1));
+  const screen = state ? output.slice(0, cursorLineStart) : output;
+  return `${state?.restoreSequences ?? ""}${buildScreenRedraw(screen, state?.cursor ?? null)}`;
 }
 
 async function startPaneSubscription(
@@ -1178,4 +1277,47 @@ export async function writeToPane(taskId: string, paneId: string, input: string)
     : buildTmuxSendKeysCommand(paneId, input);
 
   await runMirrorCommand(command, target.sshHost);
+}
+
+
+export async function executeMobileTerminalShortcut(
+  taskId: string,
+  paneId: string,
+  action: string,
+): Promise<{ surfaces: TaskSurfaces; screen?: string }> {
+  if (!buildTmuxPaneShortcutCommand(paneId, action) && !buildZellijPaneShortcutCommand("", paneId, "", action)) {
+    throw new MobileTaskInputError("지원하지 않는 단축키입니다");
+  }
+  const target = await findMirrorSessionTarget(taskId);
+  if (target.sessionType === SessionType.TERMINAL) {
+    throw new MobileTaskInputError("일반 터미널에서는 세션 제어 단축키를 사용할 수 없습니다");
+  }
+  const panes = await listMirrorPanes(target);
+  const pane = panes.find((candidate) => candidate.id === paneId);
+  if (!pane) throw new SurfaceUnavailableError("session-not-running");
+  const command = target.sessionType === SessionType.ZELLIJ
+    ? buildZellijPaneShortcutCommand(target.sessionName, paneId, pane.tabId, action)
+    : buildTmuxPaneShortcutCommand(paneId, action);
+  if (!command) throw new MobileTaskInputError("이 세션에서 지원하지 않는 단축키입니다");
+  await runMirrorCommand(command, target.sshHost);
+
+  let screen: string | undefined;
+  if (target.sessionType === SessionType.TMUX && (action === "copy-mode" || action.startsWith("scroll-"))) {
+    // pipe-pane은 프로그램 출력만 전하므로 복사 모드의 화면은 별도로 떠서 모바일에 돌려준다.
+    const capture = action === "scroll-bottom"
+      ? buildTmuxCapturePaneCommand(paneId)
+      : `tmux capture-pane -peM -t ${quoteForPosixShell(paneId)}`;
+    screen = buildScreenRedraw(await runMirrorCommand(capture, target.sshHost), null);
+  }
+  let surfaces = await getTaskSurfaces(taskId);
+  if (action === "split-right" || action === "split-down") {
+    const previousPaneIds = new Set(panes.map((previous) => previous.id));
+    const deadline = Date.now() + SESSION_START_TIMEOUT_MS;
+    while (!surfaces.tabs.some((tab) => tab.id === pane.tabId && tab.panes.some((created) => !previousPaneIds.has(created.id)))) {
+      if (Date.now() >= deadline) throw new Error("추가한 pane을 찾을 수 없습니다.");
+      await new Promise((resolve) => setTimeout(resolve, SESSION_START_POLL_INTERVAL_MS));
+      surfaces = await getTaskSurfaces(taskId);
+    }
+  }
+  return { surfaces, ...(screen === undefined ? {} : { screen }) };
 }

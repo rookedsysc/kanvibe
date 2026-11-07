@@ -32,6 +32,44 @@ ProviderContainer containerWith(
 }
 
 void main() {
+  test('pending tab creation rejects shortcut dispatch', () async {
+    final pending = Completer<({TaskSurfaces surfaces, String paneId})>();
+    final client = FakeDesktopClient(onCreateTerminalTab: () => pending.future);
+    final container = containerWith(client);
+    container.listen(surfacesProvider('task-1'), (_, _) {});
+    await container.read(surfacesProvider('task-1').future);
+    final controller = container.read(surfacesProvider('task-1').notifier);
+    final creating = controller.createTab();
+    expect(await controller.runShortcut('%19', 'split-right'), isNull);
+    expect(client.shortcutActions, isEmpty);
+    pending.complete((surfaces: const TaskSurfaces(tabs: []), paneId: '%20'));
+    expect(await creating, '%20');
+  });
+
+  test(
+    'shortcut and tab creation never overwrite concurrent surface mutations',
+    () async {
+      final pending = Completer<({TaskSurfaces surfaces, String? screen})>();
+      final client = FakeDesktopClient(
+        onRunTerminalShortcut: () => pending.future,
+        onCreateTerminalTab: () async =>
+            (surfaces: const TaskSurfaces(tabs: []), paneId: '%20'),
+      );
+      final container = containerWith(client);
+      container.listen(surfacesProvider('task-1'), (_, _) {});
+      await container.read(surfacesProvider('task-1').future);
+      final controller = container.read(surfacesProvider('task-1').notifier);
+      final running = controller.runShortcut('%19', 'split-right');
+      await Future<void>.delayed(Duration.zero);
+      expect(await controller.createTab(), isNull);
+      expect(client.createdTabCalls, isEmpty);
+      pending.complete((surfaces: const TaskSurfaces(tabs: []), screen: null));
+      await running;
+      expect(await controller.createTab(), isNotNull);
+      expect(client.createdTabCalls, hasLength(1));
+    },
+  );
+
   test('목록을 다시 불러오는 사이에 시작한 이전 추가 요청은 POST를 보내지 않는다', () async {
     final client = FakeDesktopClient(
       onCreateTerminalTab: () async =>

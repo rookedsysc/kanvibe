@@ -20,6 +20,7 @@ class ElectronTerminalClient extends EventEmitter {
    * 첫 mount의 cleanup이 두 번째 mount가 사용 중인 PTY를 죽이지 않도록 보호한다.
    */
   refCount = 1;
+  openPromise?: Promise<{ ok: boolean; error?: string }>;
 
   constructor(
     private readonly webContents: WebContents,
@@ -197,18 +198,21 @@ export async function attachTaskTerminal(
 ): Promise<void> {
   const sessionType = task.sessionType as SessionType;
   const sessionName = task.sessionName as string;
-  const tmuxPaneLayout = sessionType === SessionType.TMUX
+  const tmuxPaneLayout = (sessionType === SessionType.TMUX || sessionType === SessionType.HERDR)
     ? await getEffectivePaneLayout(task.projectId ?? undefined)
     : null;
 
+  if (client.readyState !== client.OPEN) return;
   if (!task.sshHost) {
     await attachLocalSession(task.id, tabId, sessionType, sessionName, client as never, task.worktreePath, cols, rows, tmuxPaneLayout);
     return;
   }
 
   await ensureRemoteSessionDependency(sessionType, task.sshHost);
+  if (client.readyState !== client.OPEN) return;
 
   const resolved = await resolveRemoteSshConfig(task.id);
+  if (client.readyState !== client.OPEN) return;
   if (!resolved.ok) {
     client.close(1008, resolved.error);
     throw new Error(resolved.error);
@@ -239,36 +243,49 @@ export async function openTerminal(
   const existingClient = getClient(webContents.id, taskId, tabId);
   if (existingClient) {
     existingClient.refCount += 1;
+    const result = await existingClient.openPromise;
     existingClient.emitMessage(`\x01${JSON.stringify({ type: "resize", cols, rows })}`);
-    return { ok: true };
-  }
-
-  const taskRepo = await getTaskRepository();
-  const task = await taskRepo.findOneBy({ id: taskId });
-
-  if (!task || !task.sessionType || !task.sessionName) {
-    return { ok: false, error: "작업에 연결된 세션이 없습니다." };
+    return result ?? { ok: true };
   }
 
   const client = new ElectronTerminalClient(webContents, taskId, tabId);
-  terminalClients.set(buildClientKey(webContents.id, taskId, tabId), client);
+  const clientKey = buildClientKey(webContents.id, taskId, tabId);
+  terminalClients.set(clientKey, client);
+  client.once("close", () => {
+    if (terminalClients.get(clientKey) === client) terminalClients.delete(clientKey);
+  });
+  client.openPromise = initializeTerminal(webContents, taskId, tabId, cols, rows, client);
+  return client.openPromise;
+}
 
-  const finalizeClient = () => {
-    terminalClients.delete(buildClientKey(webContents.id, taskId, tabId));
+async function initializeTerminal(
+  webContents: WebContents,
+  taskId: string,
+  tabId: string | null,
+  cols: number,
+  rows: number,
+  client: ElectronTerminalClient,
+): Promise<{ ok: boolean; error?: string }> {
+  const isClosed = () => client.readyState !== OPEN || webContents.isDestroyed();
+  const cancelled = () => {
+    client.close();
+    return { ok: false, error: "터미널 연결 실패" };
   };
-
-  client.once("close", finalizeClient);
-
   try {
+    const taskRepo = await getTaskRepository();
+    if (isClosed()) return cancelled();
+    const task = await taskRepo.findOneBy({ id: taskId });
+    if (isClosed()) return cancelled();
+    if (!task || !task.sessionType || !task.sessionName) {
+      client.close();
+      return { ok: false, error: "작업에 연결된 세션이 없습니다." };
+    }
     await attachTaskTerminal(task, tabId, client, cols, rows);
+    if (isClosed()) return cancelled();
     return { ok: true };
   } catch (error) {
-    finalizeClient();
     client.close(1011, "터미널 연결 실패");
-    return {
-      ok: false,
-      error: error instanceof Error ? error.message : "터미널 연결 실패",
-    };
+    return { ok: false, error: error instanceof Error ? error.message : "터미널 연결 실패" };
   }
 }
 

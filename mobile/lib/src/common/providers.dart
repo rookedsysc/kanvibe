@@ -186,10 +186,16 @@ final surfacesProvider =
     >(TaskSurfacesController.new, retry: _neverRetry);
 
 class TaskSurfacesState {
-  const TaskSurfacesState(this.surfaces, {this.isCreating = false});
+  const TaskSurfacesState(
+    this.surfaces, {
+    this.isCreating = false,
+    this.isRunningShortcut = false,
+  });
 
   final TaskSurfaces surfaces;
   final bool isCreating;
+  final bool isRunningShortcut;
+  bool get isMutating => isCreating || isRunningShortcut;
 }
 
 class TaskSurfacesController extends AsyncNotifier<TaskSurfacesState> {
@@ -219,8 +225,46 @@ class TaskSurfacesController extends AsyncNotifier<TaskSurfacesState> {
     }
   }
 
+  Future<String?> runShortcut(String paneId, String action) async {
+    if (state.isLoading || !state.hasValue || state.requireValue.isMutating) {
+      return null;
+    }
+    final previous = state;
+    final generation = _generation;
+    state = AsyncData(
+      TaskSurfacesState(
+        previous.requireValue.surfaces,
+        isRunningShortcut: true,
+      ),
+    );
+    DesktopConnection? connection;
+    try {
+      connection = (await ref.read(connectionControllerProvider.future))
+          .activeConnection;
+      if (connection == null) {
+        throw const SurfaceUnavailableException(
+          SurfaceUnavailableReason.noSession,
+        );
+      }
+      if (!ref.mounted || generation != _generation) return null;
+      final result = await ref
+          .read(desktopClientProvider)
+          .runTerminalShortcut(connection, taskId, paneId, action);
+      if (!ref.mounted || generation != _generation) return null;
+      state = AsyncData(TaskSurfacesState(result.surfaces));
+      return result.screen;
+    } catch (error) {
+      if (!ref.mounted || generation != _generation) return null;
+      state = previous;
+      if (error is DesktopRequestException && connection != null) {
+        await _forgetRejectedConnection(ref, error, connection);
+      }
+      rethrow;
+    }
+  }
+
   Future<String?> createTab() async {
-    if (state.isLoading || !state.hasValue || state.requireValue.isCreating) {
+    if (state.isLoading || !state.hasValue || state.requireValue.isMutating) {
       return null;
     }
     final previous = state;

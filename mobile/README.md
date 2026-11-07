@@ -1,6 +1,13 @@
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../public/branding/kanvibe-logo-light.png">
+  <img src="../public/branding/kanvibe-logo.png" alt="KanVibe" width="320" height="87">
+</picture>
+
 # KanVibe Mobile
 
 KanVibe 데스크탑에 연결해 보드를 보고, 태스크의 터미널 pane을 그대로 비추는 Flutter 클라이언트.
+
+연결 화면의 가로형 로고와 Android·iOS 앱 아이콘은 공통 브랜드 원본에서 생성한다. 원본 위치, 해상도와 재생성 명령은 [브랜드 자산 안내](../resources/branding/README.md)를 따른다.
 
 ## 화면
 
@@ -34,7 +41,37 @@ augroup END
 
 프로젝트 색상은 데스크탑 지정 색상을 사용하며, 지정하지 않았으면 데스크탑과 같은 이름 해시 팔레트를 사용한다. 보드 카드의 테두리·프로젝트 표시와 터미널 헤더에 반영한다.
 
-보드 상단의 **프로젝트 필터**에서 프로젝트를 검색하고 여러 개 선택할 수 있다. 본 프로젝트를 선택하면 같은 호스트의 연결된 worktree 태스크도 함께 표시한다. **전체 프로젝트**를 선택하면 필터를 해제한다. 선택은 앱 실행 중 PC마다 따로 유지되므로 상세 화면을 다녀오거나 다른 PC로 전환해도 해당 PC의 선택을 복원한다.
+보드 상단의 **프로젝트 필터**에서 이름·경로·호스트의 문자를 순서대로 입력해 프로젝트를 검색하고 여러 개 선택할 수 있다(예: `kvb` → `kanvibe`). 입력은 300ms 뒤 로컬 목록에 적용하며 검색을 위한 추가 요청은 보내지 않는다. 연속 보드 갱신 이벤트도 300ms 동안 모아 한 번 조회하고, 갱신 중에는 기존 검색 결과를 유지한다. 본 프로젝트를 선택하면 같은 호스트의 연결된 worktree 태스크도 함께 표시한다. **전체 프로젝트**를 선택하면 필터를 해제한다. 선택은 앱 실행 중 PC마다 따로 유지되므로 상세 화면을 다녀오거나 다른 PC로 전환해도 해당 PC의 선택을 복원한다.
+
+## 터미널 단축키
+
+터미널 아래의 단축키 바는 소프트 키보드 바로 위에 붙으며, 설정에서 체크한 기본 세팅과 콤보를 표시한다. 처음에는 아무것도 체크되지 않아 **단축키 추가**가 표시된다. 오른쪽 **접기**를 누르면 바가 즉시 사라지고 터미널 공간이 늘어난다. 키보드는 열린 상태로 유지되며 터미널 오른쪽 아래의 **펼치기**로 바를 다시 연다.
+
+바는 기본 글자 배율에서 약 37dp 높이로 표시하며, 글자 크기를 키우면 내용에 맞춰 높이가 늘어난다. 일시 접힘과 설정의 **단축키 바 표시**는 별개다.
+
+바 오른쪽 **설정**은 전체 화면 설정 페이지를 연다. 목록에는 현재 세션 종류의 기본 세팅(공통 키와 tmux·Zellij 동작, `기본` 태그)과 내 콤보(`콤보` 태그)가 바 순서대로 섞여 있다. 표시 여부를 체크하고 손잡이로 순서를 바꾼 뒤 하단 **적용**을 누른다. 기본 세팅은 메뉴에서 삭제할 수 있고, 오른쪽 위 **기본값 복원**은 지운 기본 세팅만 체크 해제 상태로 되살리며 콤보는 그대로 둔다. 표시 여부·순서·삭제한 기본 세팅·콤보는 이 기기의 일반 terminal / tmux / Zellij별로 저장한다. 설정을 닫으면 적용하지 않은 변경은 버린다.
+
+바 왼쪽에는 지금 보고 있는 세션 종류(**tmux / zellij / 키**)가 표시된다. 터미널에서 쓸 수 있는 단축키는 바에 올린 것뿐이며, 다른 키가 필요하면 설정에서 체크하거나 다른 세션에서 가져온다. 동작 설명은 길게 눌러 확인한다. 세션 동작은 기존 pane 제어 API를 사용한다. 바의 Ctrl·Alt는 다음 키 한 번에 적용된다.
+
+설정의 **단축키 바 미리보기**는 체크한 단축키 순서를 보여 준다. 목록 아래 **콤보 추가**는 전체 화면 편집기를 연다. 편집기 위쪽 **특수 키**에서 Ctrl·Alt·Shift와 Esc·Tab·Enter·Backspace·방향키·Home/End·PgUp/PgDn·Insert/Delete·F1–F12를 여러 개 고르고, 아래 **일반 키** 입력란에 글자를 여러 개 입력한다. 고른 키는 모두 한 번에 누르는 조합이며, 키 하나만 골라도 된다. 예를 들어 `Ctrl+b`, `Ctrl+Shift+↑`, `Ctrl+a+b`, `F5`를 등록할 수 있다.
+
+터미널은 보조 키와 키 하나를 한 입력으로 받으므로, 여러 키를 함께 누르면 각 키가 같은 보조 키와 묶여 차례로 전달된다. Ctrl을 누른 채 a와 b를 누른 것과 같다(`Ctrl+a+b` → `\x01\x02`). 같은 글자를 두 번 입력하면 한 번으로 친다.
+
+설정 아래 **다른 세션에서 가져오기**는 다른 세션 종류(예: tmux)의 저장된 설정을 현재 세션 종류(예: Zellij)로 복사한다. **합치기**는 원본이 바에 띄운 기본 세팅을 체크하고(지웠다면 되살린다), 같은 키 조합이 없는 콤보를 12개까지 더한다. **덮어쓰기**는 콤보·바 순서·삭제한 기본 세팅을 원본과 같게 바꾸고 표시 여부만 지킨다. 어느 쪽이든 현재 세션 종류에 없는 기본 세팅은 건너뛰며, **적용**해야 저장된다.
+
+Enter와 Backspace는 입력란으로 받을 수 없어 특수 키에서 고른다. Shift는 영문 소문자와 US 기호 키에 적용된다. 터미널에서 구분할 수 없는 조합(예: Ctrl+c와 Ctrl+Shift+c)은 같은 제어 문자를 보낸다.
+
+콤보는 세션 종류당 12개, 콤보 하나에 보조 키를 빼고 8개 키까지 등록한다. 설정 목록의 메뉴에서 편집·삭제한 뒤 **적용**하면 저장된다. 이전 저장 형식(v1·v2)의 단일 키 조합은 키 하나짜리 콤보로 이전되며, v1의 여러 단계 콤보는 실행 목록에서 제외한다. 이전 원본 설정은 보존한다.
+
+| 세션 | 추가 단축키 |
+| --- | --- |
+| terminal | 공통 키 |
+| tmux | 좌우·상하 분할, pane 확대, 복사 모드, 이전·다음 출력, 맨 아래 |
+| Zellij | 좌우·상하 분할, pane 확대, 선택 pane의 플로팅 전환, 이전·다음 출력, 맨 아래 |
+
+세션 제어는 키 접두사 대신 인증된 `POST /api/mobile/tasks/:taskId/panes/:paneId/shortcuts`의 허용된 동작을 실행하므로 사용자 키 바인딩과 무관하다. tmux 복사·스크롤 화면은 응답의 캡처로 갱신하며 **맨 아래**로 복귀한다. Zellij 분할은 선택 pane이 속한 탭에 새 pane을 생성하고 PC의 포커스는 유지한다. Zellij는 기존 미러링과 같은 pane ID 지원 버전이 필요하다. 이전 데스크톱 앱에 세션 제어 API가 없으면 실패 안내를 표시한다.
+
+단축키 정의는 `features/task_detail/domain/terminal_shortcut.dart`, 저장은 `data/terminal_shortcut_store.dart`, 공유 설정 상태는 `application/terminal_shortcut_controller.dart`, 버튼과 설정 페이지는 `presentation/widgets/terminal_shortcut_*`에 있다. `TerminalShortcutSettingsPage`가 적용 전 초안과 세션 간 가져오기를, `TerminalShortcutComboEditor`가 보조 키·특수 키·일반 키 초안을 소유한다. 두 화면의 제목·카드·하단 버튼 골격은 `terminal_shortcut_settings_layout.dart`가 공유한다. `TerminalSoftKeyboard`가 IME·일시 접힘·바의 Ctrl/Alt를 소유하고 `PaneTerminalView`가 스트림과 세션 제어 결과를 반영한다.
 
 ## 준비
 
@@ -184,3 +221,21 @@ tmux는 창 크기 정책과 분할 배치를 함께 보관했다가 마지막 �
 터미널의 Powerline/Nerd Font 기호는 [Nerd Fonts Symbols Only v3.5.1](https://github.com/ryanoasis/nerd-fonts/tree/v3.5.1/patched-fonts/NerdFontsSymbolsOnly)을 보조 글꼴로 사용한다. 원본 파일과 MIT 라이선스를 `assets/fonts/`에 포함한다.
 
 탭 추가는 인증된 `POST /api/mobile/tasks/:taskId/tabs`를 사용한다. 데스크탑의 기존 탭 생성 서비스를 재사용하며 tmux·Zellij·일반 terminal 및 원격 SSH 대상의 worktree에서 셸을 연다. 탭 추가를 지원하는 데스크탑 빌드가 필요하다. 모바일 목록과 추가 요청 상태는 `common/providers.dart`의 `TaskSurfacesController`가 관리한다.
+
+### 알림 상태 선택
+
+**알림 → 알림 설정**에서 현재 PC의 상태 변경 알림을 켜거나 끄고 Todo, Progress, Pending, Review, Done 중 받을 상태를 선택한다. 기본 선택은 Progress·Pending·Review이며, 전체 알림을 꺼도 선택한 상태는 유지한다. 선택한 상태가 없으면 상태 변경 알림을 받지 않는다. 설정은 현재 PC의 데스크탑과 모바일이 공유하고 앱을 다시 열어도 유지된다. 다른 PC는 해당 PC의 설정을 사용한다.
+
+설정은 전경 시스템 알림과 백그라운드 푸시에 적용한다. 알림을 끈 상태도 보드와 열린 태스크는 계속 갱신된다. 기존 알림함과 읽음 상태는 그대로 사용할 수 있다. 백그라운드 푸시는 위의 Firebase·중계 설정이 필요하다.
+
+인증된 `GET/PATCH /api/mobile/notification-settings`는 기존 데스크탑 AppSettings를 읽고 쓴다. PATCH는 `isEnabled: boolean`과 `enabledStatuses: string[]`를 받으며 잘못된 상태는 400으로 거절한다. 구버전 PC에서 설정 조회가 실패하면 데스크탑을 업데이트한다. 설정 화면은 `features/notifications/presentation/notification_settings_screen.dart`, 비동기 상태와 저장은 `application/notification_settings_controller.dart`, 불변 설정 값은 `domain/notification_settings.dart`가 소유한다.
+
+모바일에 연결하기 전에 쌓인 출력도 스크롤할 수 있도록 tmux는 이전 2000줄을 함께 가져오고 Zellij는 `dump-screen --full`로 이전 출력을 가져온다. Zellij는 기존 pane 지정 덤프 API를 지원하는 버전이 필요하며 모바일 터미널은 최대 2000줄을 보관한다. 스크롤 중 화면 덤프가 갱신되어도 기존 xterm 스크롤 위치를 유지한다. tmux는 화면 크기를 바꾼 뒤 새 크기의 화면을 다시 받아 마지막 출력과 커서 위치도 유지한다.
+
+격리 데스크탑 fixture(`qa/mobile/lib/prepareQaDesktop.cjs`)에 이전 출력을 준비하고 모바일을 페어링해 보드를 연 뒤 `mobile/.maestro/flows/terminal-notification-settings.yaml`로 설정 저장·재진입과 터미널 스와이프를 검증한다. 녹화는 흐름 안의 `startRecording`을 사용한다.
+
+## 터미널 글자 선택과 복사
+
+터미널 글자를 길게 누르고 드래그해 범위를 선택한 다음, 오른쪽 위의 **복사**를 누르면 휴대폰 클립보드에 저장한다. 한글과 여러 줄을 함께 복사할 수 있다. 복사 버튼은 선택 중에만 나타나며 터미널 격자 크기를 바꾸지 않는다. 선택과 복사는 `features/task_detail/presentation/widgets/pane_terminal_view.dart`에서 기존 터미널 컨트롤러로 처리한다.
+
+손가락으로 위아래로 밀면 이전 출력과 최신 출력 사이를 스크롤한다. tmux와 Zellij는 접속 전의 이력도 가져오며 모바일에는 최근 2,000줄까지 보관한다. Zellij 화면이 갱신돼도 선택 중인 글자는 유지하고, 복사하거나 선택을 해제하면 최신 화면을 적용한다. 이력·모드 복원에는 이 기능이 포함된 데스크탑 빌드가 필요하다.

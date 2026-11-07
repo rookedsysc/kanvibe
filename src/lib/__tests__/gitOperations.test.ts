@@ -135,7 +135,7 @@ describe("gitOperations.resolvePathForShell", () => {
     const result = resolvePathForShell("~/work");
 
     // Then
-    expect(result).toBe('"/home/local-user/work"');
+    expect(result).toBe("'/home/local-user/work'");
   });
 
   it("원격 틸드 경로는 원격 HOME 기준으로 검색한다", async () => {
@@ -146,7 +146,7 @@ describe("gitOperations.resolvePathForShell", () => {
     const result = resolvePathForShell("~/work", "remote-host");
 
     // Then
-    expect(result).toBe('"$HOME/work"');
+    expect(result).toBe("\"$HOME\"'/work'");
   });
 
   it("로컬 명령은 macOS 앱 실행 환경에서 누락되기 쉬운 CLI 경로를 포함한다", async () => {
@@ -954,7 +954,7 @@ describe("gitOperations.resolvePathForShell", () => {
 
     // Then
     expect(mocks.exec).toHaveBeenCalledWith(
-      'find "/workspace" -maxdepth 4 -name ".git" \\( -type d -o -type f \\) 2>/dev/null',
+      "find '/workspace' -maxdepth 4 -name \".git\" \\( -type d -o -type f \\) 2>/dev/null",
       expect.objectContaining({ env: expect.any(Object) }),
       expect.any(Function),
     );

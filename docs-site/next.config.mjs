@@ -16,6 +16,14 @@ const withNextra = nextra({
 
 export default withNextra({
   reactStrictMode: true,
+  async redirects() {
+    return [{
+      source: '/screenshots/icon.png',
+      destination: '/icon.png',
+      permanent: true,
+      locale: false
+    }]
+  },
   // sitemap과 robots는 Cloudflare Worker에서 요청 시점에 실행되는데 그 런타임에는
   // 빌드 환경변수가 없다. 고정 주소를 쓰기로 했다면 빌드 시점에 번들로 구워야 한다.
   env: {

@@ -2,6 +2,7 @@
  * @vitest-environment node
  */
 import path from "path";
+import { mkdtemp, rm, writeFile } from "fs/promises";
 import { spawnSync } from "child_process";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { SessionType } from "@/entities/KanbanTask";
@@ -100,6 +101,20 @@ describe("attachLocalSession — tmux 세션 자동 생성", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.resetModules();
+  });
+
+  it("passes shell metacharacters in a local tmux session name literally", async () => {
+    const { attachLocalSession } = await import("@/lib/terminal");
+    mockExecSync.mockImplementation(() => "");
+    const sessionName = "repo-$(printf SUBSTITUTED)-`printf BACKTICK`-'quoted'";
+
+    await attachLocalSession("task-literal-name", null, SessionType.TMUX, sessionName, createMockWs(), "/workspace");
+
+    const command = findExecSyncCall("has-session");
+    expect(command).toBeDefined();
+    const result = spawnSync("/bin/sh", ["-c", `tmux() { printf '%s\\n' "$3"; }; ${command}`], { encoding: "utf-8" });
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout.trim()).toBe(sessionName);
   });
 
   it("should create session when tmux session does not exist", async () => {
@@ -1137,7 +1152,7 @@ describe("attachRemoteSession — ssh 바이너리 기반 연결", () => {
     expect(attachCommand).toContain(
       "if tmux has-session -t 'remote-session' 2>/dev/null;"
       + " then tmux set-option -t 'remote-session' status off 2>/dev/null;"
-      + " exec tmux attach-session -t 'remote-session'; elif ",
+      + " exec tmux attach-session -t 'remote-session'; else ",
     );
     expect(attachCommand).toContain("set-option -s set-clipboard on");
     expectValidPosixShellSyntax(attachCommand);
@@ -1171,11 +1186,23 @@ describe("attachRemoteSession — ssh 바이너리 기반 연결", () => {
     const nodePty = await import("node-pty");
     const sshArgs = vi.mocked(nodePty.spawn).mock.calls[0][1] as string[];
     const attachCommand = extractRemoteShellPayload(sshArgs.at(-1) ?? "");
-    const [userChoseBranch, kanvibeEnablesBranch] = attachCommand.split("; else ");
-    /** 사용자가 값을 정해 뒀을 때 실행되는 분기에는 set-clipboard 변경이 없어야 한다 */
-    expect(userChoseBranch).toContain("set-option -t 'remote-session' destroy-unattached off");
-    expect(userChoseBranch).not.toContain("set-option -s set-clipboard on");
-    expect(kanvibeEnablesBranch).toContain("set-option -s set-clipboard on");
+    const { tmpdir } = await vi.importActual<typeof import("os")>("os");
+    const directory = await mkdtemp(path.join(tmpdir(), "tmux-probe-"));
+    try {
+      await writeFile(path.join(directory, ".tmux.conf"), "# synthetic config\n");
+      for (const status of [0, 1, 2]) {
+        const stub = `grep() { return ${status}; }; tmux() { case "$1" in has-session) return 1 ;; *) printf '%s\\n' "$*" ;; esac; }; `;
+        const result = spawnSync("sh", ["-c", stub + attachCommand], {
+          env: { HOME: directory, XDG_CONFIG_HOME: path.join(directory, "config") },
+          encoding: "utf8",
+        });
+        expect(result.status, result.stderr).toBe(0);
+        expect(result.stdout.includes("set-option -s set-clipboard on")).toBe(status === 1);
+        expect(result.stdout).toContain("new-session");
+      }
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
   });
 
   it("should build POSIX-valid remote tmux attach commands for multiline quoted pane commands", async () => {

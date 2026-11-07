@@ -1,22 +1,25 @@
 ---
 title: Installation
-description: "How to install KanVibe through Homebrew Cask, plus the Git, tmux, and GitHub CLI prerequisites it depends on."
+description: "Install KanVibe Desktop on macOS with Homebrew and build the Mobile companion for iOS or Android."
 ---
 
 # Installation
 
-KanVibe is distributed as a macOS desktop app. The recommended install path is Homebrew Cask.
+Install KanVibe Desktop on your Mac to manage AI coding work. Then pair the iOS or Android Mobile companion to continue from your phone or tablet. Desktop uses Homebrew Cask; Mobile is currently built from source. [Mobile build and pairing guide](/en/mobile).
 
 ## Prerequisites
 
 | Dependency | Required | Why it is needed | Install example |
 | --- | --- | --- | --- |
 | Git | Required | Branch and worktree creation/cleanup | `brew install git` |
-| tmux | Recommended | Default session backend. Not needed if you switch the session type to `terminal` | `brew install tmux` |
+| Herdr | Recommended | Default session backend; verified with 0.9.5; not supported by Mobile terminals | Select `herdr` in KanVibe and accept the install prompt |
+| tmux | Optional | Alternative session backend | `brew install tmux` |
 | GitHub CLI `gh` | Required | PR URL lookup and GitHub workflows | `brew install gh`, then `gh auth login` |
 | zellij | Optional | Alternative session backend | `brew install zellij` |
 
-To work without a multiplexer, choose the `terminal` session type. KanVibe then owns that shell directly, so running work disappears when the app quits or a remote connection drops. Install tmux or zellij if you plan to leave long-running work unattended.
+To work without a multiplexer, choose the `terminal` session type. KanVibe then owns that shell directly, so running work disappears when the app quits or a remote connection drops. Install Herdr, tmux, or zellij if you plan to leave long-running work unattended.
+
+When creating, branching, or connecting a task with `herdr`, KanVibe checks the selected local or SSH host. If Herdr is missing, accepting the prompt runs the [official installer](https://herdr.dev/tui/docs/install/) on that host into `~/.local/bin`, without changing shell startup files. Cancelling leaves the task unchanged. If installation fails, check the reported error, network access, and directory permissions before retrying.
 
 ## Install with Homebrew
 
@@ -52,7 +55,7 @@ brew untap rookedsysc/kanvibe
   </div>
   <div className="kv-card">
     <h3>2. Confirm session type</h3>
-    <p>Use tmux by default, switch the default session type if you prefer zellij, or choose `terminal` to skip multiplexers entirely.</p>
+    <p>Herdr is the default for new settings. Existing preferences are preserved. Choose tmux or zellij in Settings, or `terminal` to skip multiplexers entirely. Mobile terminals do not support Herdr yet.</p>
   </div>
   <div className="kv-card">
     <h3>3. Allow notifications</h3>
@@ -60,3 +63,7 @@ brew untap rookedsysc/kanvibe
   </div>
 </div>
 
+
+## Continue on your phone
+
+Once Desktop is running, follow the [Mobile build and pairing guide](/en/mobile) to build the companion and pair it with a six-digit code. Your phone must be able to reach the PC address over a local or private network. Background push requires separate Firebase/APNs and Desktop relay setup. Mobile terminals need a tmux, zellij, or terminal session, so choose one of these instead of the default Herdr for tasks you want on your phone.

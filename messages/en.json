@@ -321,6 +321,8 @@
     "hint": "↑↓ Navigate · Enter Run · Esc Close"
   },
   "paneLayout": {
+    "loadError": "Failed to load layout settings.",
+    "retry": "Retry",
     "title": "Pane Layout Settings",
     "description": "Configure pane split layout and startup commands for tmux sessions.",
     "backToBoard": "Back to Board",
@@ -404,6 +406,7 @@
     "geminiHooksInstallSuccess": "Gemini CLI hooks installed",
     "codexHooksInstallSuccess": "Codex CLI hooks installed",
     "openCodeHooksInstallSuccess": "OpenCode hooks installed",
+    "hooksVerificationFailed": "Verification failed",
     "hooksInstallIncomplete": "Hooks were installed, but the required verification checks are not all passing yet.",
     "hooksInstallFailed": "Hooks installation failed",
     "hooksRemoteNotSupported": "Remote projects are not supported",
@@ -475,6 +478,9 @@
       "collapse": "Hide changed files"
     },
     "terminalTabs": "Terminal tabs",
+    "terminalTabCloseConfirm": "Closing this tab may terminate running processes.\n\nCurrently observed processes: {processes}\nBackground jobs may not appear in this list.\n\nClose this tab anyway?\nTo close the entire window, press {shortcut}.",
+    "terminalTabProcessesUnknown": "Process information is unavailable",
+    "terminalTabCloseCheckFailed": "Could not verify the tab to close. The tab was kept open. Please try again shortly.",
     "newTerminalTab": "New tab",
     "closeTerminalTab": "Close {name} tab",
     "renameTerminalTab": "Rename tab",

@@ -1,3 +1,5 @@
+import '../../task_create/domain/session_type.dart';
+
 /// 비출 pane 하나. 좌표는 태블릿이 window 배치를 재현할 때 쓴다
 class MirrorPane {
   const MirrorPane({
@@ -65,17 +67,24 @@ class TaskSurfaces {
   const TaskSurfaces({
     required this.tabs,
     this.canResize = false,
+    this.sessionType = SessionType.terminal,
     this.canRespondToDeviceQueries = false,
   });
 
   final List<MirrorTab> tabs;
   final bool canResize;
+  final SessionType sessionType;
   final bool canRespondToDeviceQueries;
 
   /// 폰이 쓰는 목록. 모든 window에 걸친 pane을 순서대로 펼친다
   List<MirrorPane> get allPanes => [for (final tab in tabs) ...tab.panes];
 
   static TaskSurfaces fromJson(Map<String, dynamic> json) => TaskSurfaces(
+    sessionType:
+        SessionType.values
+            .where((type) => type.name == json['sessionType'])
+            .firstOrNull ??
+        SessionType.terminal,
     canResize: json['canResize'] == true,
     canRespondToDeviceQueries: json['sessionType'] == 'terminal',
     tabs: (json['tabs'] as List<dynamic>? ?? [])

@@ -1,3 +1,4 @@
+import DocsNavigation from './docs-navigation'
 import LanguageSwitcher from './language-switcher'
 import { getDocsDictionary } from '../../lib/docsDictionary.mjs'
 import { resolvePinnedSiteUrl } from '../../lib/docsSite.mjs'
@@ -11,29 +12,38 @@ export const metadata = {
     default: 'KanVibe Docs',
     template: '%s · KanVibe Docs'
   },
-  description: 'KanVibe documentation for installation, quick start, features, settings, and keyboard shortcuts.',
+  description: 'KanVibe Desktop and Mobile guides: installation, pairing, task boards, terminals, notifications, and keyboard shortcuts.',
   applicationName: 'KanVibe Docs',
   generator: 'Nextra',
+  icons: {
+    icon: [
+      { url: '/favicon.ico' },
+      { url: '/icon.png', type: 'image/png', sizes: '512x512' }
+    ],
+    apple: [{ url: '/apple-icon.png', type: 'image/png', sizes: '180x180' }]
+  },
   openGraph: {
     title: 'KanVibe Docs',
-    description: 'Keyboard-first Kanban workspace for AI coding agents.',
+    description: 'KanVibe Desktop and Mobile documentation: a Kanban workspace for AI coding agents with git worktrees and terminals.',
     siteName: 'KanVibe Docs',
-    type: 'website'
-  }
-}
-
-function localizeHref(lang, href) {
-  return href === '/' ? `/${lang}` : `/${lang}${href}`
+    type: 'website',
+    ...(pinnedSiteUrl ? {
+      images: [{ url: '/branding/og-image.png', width: 1200, height: 630, alt: 'KanVibe' }]
+    } : {})
+  },
+  ...(pinnedSiteUrl ? {
+    twitter: {
+      card: 'summary_large_image',
+      images: ['/branding/og-image.png']
+    }
+  } : {})
 }
 
 function KanVibeLogo({ lang, tagline }) {
   return (
     <a className="kv-logo" href={`/${lang}`} aria-label="KanVibe Docs">
-      <span className="kv-logo-mark">K</span>
-      <span className="kv-logo-copy">
-        <strong>KanVibe</strong>
-        <small>{tagline}</small>
-      </span>
+      <img className="kv-logo-image" src="/branding/kanvibe-logo.png" alt="" width="132" height="36" />
+      <span className="kv-logo-tagline">{tagline}</span>
     </a>
   )
 }
@@ -52,11 +62,7 @@ export default async function RootLayout({ children, params }) {
           </header>
           <div className="kv-doc-layout">
             <aside className="kv-sidebar" aria-label="Documentation navigation">
-              <nav>
-                {dictionary.nav.map(([href, label]) => (
-                  <a key={href} href={localizeHref(lang, href)}>{label}</a>
-                ))}
-              </nav>
+              <DocsNavigation lang={lang} navItems={dictionary.nav} />
               <a className="kv-repo-link" href="https://github.com/rookedsysc/kanvibe">
                 {dictionary.repo} ↗
               </a>

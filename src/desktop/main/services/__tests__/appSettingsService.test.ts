@@ -25,7 +25,7 @@ beforeEach(() => {
 });
 
 describe("기본 세션 타입", () => {
-  it("저장한 세 가지 세션 타입을 그대로 되돌려준다", async () => {
+  it("저장한 세션 타입을 그대로 되돌려준다", async () => {
     const { getDefaultSessionType, setDefaultSessionType } = await import(
       "@/desktop/main/services/appSettingsService"
     );
@@ -36,13 +36,13 @@ describe("기본 세션 타입", () => {
     }
   });
 
-  it("미설정이거나 모르는 값이면 tmux로 되돌린다", async () => {
+  it("미설정이거나 모르는 값이면 Herdr로 되돌린다", async () => {
     const { getDefaultSessionType } = await import("@/desktop/main/services/appSettingsService");
 
-    expect(await getDefaultSessionType()).toBe(SessionType.TMUX);
+    expect(await getDefaultSessionType()).toBe(SessionType.HERDR);
 
     storedSettings.set("default_session_type", "screen");
-    expect(await getDefaultSessionType()).toBe(SessionType.TMUX);
+    expect(await getDefaultSessionType()).toBe(SessionType.HERDR);
   });
 });
 
@@ -315,5 +315,19 @@ describe("단축키 재배정 설정", () => {
     // Then
     expect(bindings).toEqual(DEFAULT_SHORTCUT_BINDINGS);
     expect(storedSettings.has(SHORTCUT_BINDINGS_KEY)).toBe(false);
+  });
+});
+
+
+describe("백그라운드 sync 설정", () => {
+  it("미설정이면 자동 sync는 꺼져 있다", async () => {
+    const { getBackgroundSyncEnabled } = await import("@/desktop/main/services/appSettingsService");
+    expect(await getBackgroundSyncEnabled()).toBe(false);
+  });
+
+  it.each([true, false])("저장한 자동 sync 설정 %s를 유지한다", async (enabled) => {
+    const { getBackgroundSyncEnabled, setBackgroundSyncEnabled } = await import("@/desktop/main/services/appSettingsService");
+    await setBackgroundSyncEnabled(enabled);
+    expect(await getBackgroundSyncEnabled()).toBe(enabled);
   });
 });

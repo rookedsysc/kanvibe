@@ -1,7 +1,8 @@
 import path from "path";
+import { createHash } from "crypto";
 import { SessionType } from "@/entities/KanbanTask";
 import { PaneLayoutType, type PaneCommand } from "@/entities/PaneLayoutConfig";
-import { execGit, listWorktrees, type WorktreeInfo } from "@/lib/gitOperations";
+import { execGit, listWorktrees, resolvePathForShell, type WorktreeInfo } from "@/lib/gitOperations";
 import { writeTextFile } from "@/lib/hostFileAccess";
 import { getEffectivePaneLayout } from "@/desktop/main/services/paneLayoutService";
 
@@ -50,6 +51,25 @@ export function sanitizeZellijSessionName(sessionName: string): string {
 
 export function quoteForPosixShell(value: string): string {
   return `'${value.replace(/'/g, `'"'"'`)}'`;
+}
+
+const HERDR_EXECUTABLE = `"$(command -v herdr || printf '%s' "$HOME/.local/bin/herdr")"`;
+
+export function buildHerdrCommand(sessionName: string, arguments_: string[]): string {
+  return `env -u HERDR_ENV -u HERDR_SESSION -u HERDR_SOCKET_PATH -u HERDR_PANE_ID -u HERDR_WORKSPACE_ID -u HERDR_TAB_ID ${HERDR_EXECUTABLE} --session ${quoteForPosixShell(sessionName)} ${arguments_.map(quoteForPosixShell).join(" ")}`;
+}
+
+export function buildHerdrSessionCleanupCommand(sessionName: string): string {
+  return `${buildHerdrCommand(sessionName, ["session", "stop", sessionName])} >/dev/null 2>&1 || true; ${buildHerdrCommand(sessionName, ["session", "delete", sessionName])}`;
+}
+
+export function sanitizeHerdrSessionName(sessionName: string): string {
+  if (/^[a-zA-Z0-9._-]{1,40}$/.test(sessionName) && sessionName !== "." && sessionName !== "..") {
+    return sessionName;
+  }
+  const suffix = createHash("sha256").update(sessionName).digest("hex").slice(0, 16);
+  const prefix = sessionName.replace(/[^a-zA-Z0-9._-]/g, "-").slice(0, 23);
+  return `${prefix}-${suffix}`;
 }
 
 /**
@@ -158,14 +178,14 @@ function buildTmuxConfigFileCandidates(): string[] {
 
 /** 사용자 tmux 설정이 `set-clipboard`를 다루면 성공(0)을 반환하는 조건 명령. 주석 처리된 줄은 세지 않는다 */
 export function buildTmuxUserClipboardDirectiveTestCommand(): string {
-  return `grep -qsE '^[[:space:]]*set(-option)?[[:space:]].*set-clipboard' ${buildTmuxConfigFileCandidates().join(" ")}`;
+  return `(for __kanvibe_tmux_config in ${buildTmuxConfigFileCandidates().join(" ")}; do if [ -e "$__kanvibe_tmux_config" ]; then grep -sE '^[[:space:]]*set(-option)?[[:space:]].*set-clipboard' "$__kanvibe_tmux_config" >/dev/null; __kanvibe_probe_status=$?; case "$__kanvibe_probe_status" in 0) exit 0 ;; 1) ;; *) exit 2 ;; esac; fi; done; exit 1)`;
 }
 
 /** 위 조건을 별도 프로세스에서 실행할 때 쓰는 명령. 종료 코드 대신 표시 문자열로 결과를 알린다 */
 export function buildTmuxUserClipboardPreferenceCommand(): string {
   const hasDirective = buildTmuxUserClipboardDirectiveTestCommand();
 
-  return `if ${hasDirective}; then printf '%s' ${quoteForPosixShell(TMUX_USER_CLIPBOARD_PREFERENCE_MARKER)}; fi`;
+  return `if ${hasDirective}; then printf '%s' ${quoteForPosixShell(TMUX_USER_CLIPBOARD_PREFERENCE_MARKER)}; else __kanvibe_probe_status=$?; if [ \"$__kanvibe_probe_status\" -ne 1 ]; then exit \"$__kanvibe_probe_status\"; fi; fi`;
 }
 
 /** 위 명령의 출력으로 사용자가 `set-clipboard`를 직접 정해 뒀는지 판정한다 */
@@ -403,10 +423,11 @@ export async function createWorktreeWithSession(
   projectId?: string | null,
 ): Promise<WorktreeSession> {
   const worktreePath = buildManagedWorktreePath(projectPath, branchName);
-  const sessionName = formatProjectBranchSessionName(projectPath, branchName);
+  const rawSessionName = formatProjectBranchSessionName(projectPath, branchName);
+  const sessionName = sessionType === SessionType.HERDR ? sanitizeHerdrSessionName(rawSessionName) : rawSessionName;
 
   await execGit(
-    `git -C "${projectPath}" worktree add "${worktreePath}" -b "${branchName}" "${baseBranch}"`,
+    `git -C ${resolvePathForShell(projectPath, sshHost)} worktree add ${resolvePathForShell(worktreePath, sshHost)} -b ${quoteForPosixShell(branchName)} ${quoteForPosixShell(baseBranch)}`,
     sshHost,
   );
 
@@ -450,7 +471,8 @@ export async function createSessionWithoutWorktree(
   workingDir?: string,
   projectId?: string | null,
 ): Promise<{ sessionName: string }> {
-  const sessionName = formatProjectBranchSessionName(projectPath, branchName);
+  const rawSessionName = formatProjectBranchSessionName(projectPath, branchName);
+  const sessionName = sessionType === SessionType.HERDR ? sanitizeHerdrSessionName(rawSessionName) : rawSessionName;
 
   /** tmux와 terminal 세션은 이름만 있으면 되고, 실제 생성은 터미널 연결 시점이다 */
   if (sessionType !== SessionType.ZELLIJ) {
@@ -643,13 +665,13 @@ export async function removeWorktreeAndBranch(
   );
   const worktreePath = resolvedWorktree.path;
   const branchCommand = options.throwOnError
-    ? `if git -C "${projectPath}" show-ref --verify --quiet "refs/heads/${branchName}"; then git -C "${projectPath}" branch -D "${branchName}"; fi`
-    : `git -C "${projectPath}" branch -D "${branchName}"`;
+    ? `if git -C ${resolvePathForShell(projectPath, sshHost)} show-ref --verify --quiet ${quoteForPosixShell(`refs/heads/${branchName}`)}; then git -C ${resolvePathForShell(projectPath, sshHost)} branch -D ${quoteForPosixShell(branchName)}; fi`
+    : `git -C ${resolvePathForShell(projectPath, sshHost)} branch -D ${quoteForPosixShell(branchName)}`;
 
   if (worktreePath) {
     const worktreeCommand = options.throwOnError
-      ? `if git -C "${projectPath}" worktree list --porcelain | grep -Fxq "worktree ${worktreePath}"; then git -C "${projectPath}" worktree remove "${worktreePath}" --force; fi`
-      : `git -C "${projectPath}" worktree remove "${worktreePath}" --force`;
+      ? `if git -C ${resolvePathForShell(projectPath, sshHost)} worktree list --porcelain | grep -Fxq ${quoteForPosixShell(`worktree ${worktreePath}`)}; then git -C ${resolvePathForShell(projectPath, sshHost)} worktree remove ${resolvePathForShell(worktreePath, sshHost)} --force; fi`
+      : `git -C ${resolvePathForShell(projectPath, sshHost)} worktree remove ${resolvePathForShell(worktreePath, sshHost)} --force`;
 
     try {
       await execGit(worktreeCommand, sshHost);
@@ -697,6 +719,8 @@ export async function removeSessionOnly(
         buildTmuxSessionCleanupCommand(sessionName, options.throwOnError === true),
         sshHost,
       );
+    } else if (sessionType === SessionType.HERDR) {
+      await execGit(buildHerdrSessionCleanupCommand(sessionName), sshHost, { timeoutMs: 30_000 });
     } else if (sessionType === SessionType.ZELLIJ) {
       await execGit(
         buildZellijSessionCleanupCommand(sessionName, options.throwOnError === true),
@@ -791,6 +815,11 @@ export async function isSessionAlive(
         `${tmuxCommand} has-session -t ${target} 2>/dev/null && exit 0`
       ));
       await execGit([...hasSessionChecks, "exit 1"].join("; "), sshHost);
+      return true;
+    }
+
+    if (sessionType === SessionType.HERDR) {
+      await execGit(buildHerdrCommand(sessionName, ["workspace", "list"]), sshHost);
       return true;
     }
 

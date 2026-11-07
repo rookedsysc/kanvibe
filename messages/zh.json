@@ -320,6 +320,8 @@
     "hint": "↑↓ 导航 · Enter 运行 · Esc 关闭"
   },
   "paneLayout": {
+    "loadError": "无法加载布局设置。",
+    "retry": "重试",
     "title": "面板布局设置",
     "description": "配置 tmux 会话的面板分割方式和各面板的启动命令。",
     "backToBoard": "返回看板",
@@ -403,6 +405,7 @@
     "geminiHooksInstallSuccess": "Gemini CLI hooks 安装完成",
     "codexHooksInstallSuccess": "Codex CLI hooks 安装完成",
     "openCodeHooksInstallSuccess": "OpenCode hooks 安装完成",
+    "hooksVerificationFailed": "验证失败",
     "hooksInstallIncomplete": "Hooks 已安装，但所需的校验项尚未全部通过。",
     "hooksInstallFailed": "Hooks 安装失败",
     "hooksRemoteNotSupported": "不支持远程项目",
@@ -474,6 +477,9 @@
       "collapse": "收起变更文件列表"
     },
     "terminalTabs": "终端标签页",
+    "terminalTabCloseConfirm": "关闭此标签页可能会终止正在运行的进程。\n\n当前检测到的进程：{processes}\n后台任务可能不会显示在此列表中。\n\n仍要关闭此标签页吗？\n要关闭整个窗口，请按 {shortcut}。",
+    "terminalTabProcessesUnknown": "无法获取进程信息",
+    "terminalTabCloseCheckFailed": "无法确认要关闭的标签页，标签页未关闭。请稍后重试。",
     "newTerminalTab": "新建标签页",
     "closeTerminalTab": "关闭 {name} 标签页",
     "renameTerminalTab": "重命名标签页",

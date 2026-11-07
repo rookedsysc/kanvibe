@@ -1,65 +1,68 @@
 <div align="center">
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../public/branding/kanvibe-logo-light.png">
+  <img src="../public/branding/kanvibe-logo.png" alt="KanVibe" width="320" height="87">
+</picture>
+
 # KanVibe
 
-**AI 코딩 에이전트를 위한 키보드 중심 칸반 워크스페이스**
+**AI 코딩 작업을 한눈에. 휴대폰에서도 이어서.**
 
-KanVibe는 AI 코딩 작업이 여러 터미널 탭에 흩어지지 않도록 도와줍니다. 브랜치 기반 태스크를 실시간 칸반 보드에서 추적하고, 각 태스크의 tmux/zellij 세션을 브라우저나 데스크톱 앱에서 열며, Claude Code, Gemini CLI, Codex CLI, OpenCode hooks가 워크플로우에 맞춰 태스크 상태를 자동으로 이동하게 할 수 있습니다.
+KanVibe는 AI 코딩 에이전트를 위한 키보드 중심 macOS 칸반 워크스페이스입니다. Claude Code, Codex, Gemini CLI, OpenCode 작업을 브랜치·git worktree·터미널이 연결된 태스크로 관리하세요. 칸반 보드에서 진행 상황을 파악하고, 휴대폰이나 태블릿에서 PC의 실행 중인 터미널을 열어 출력을 읽고 다음 명령을 입력할 수 있습니다.
 
-터미널 포커스를 잃지 않고 프로젝트 필터, 태스크 검색, 알림, 태스크 상세 패널, 자주 쓰는 태스크 액션을 단축키로 실행하세요.
-
-[![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-FFDD00?style=for-the-badge&logo=buy-me-a-coffee&logoColor=black)](https://buymeacoffee.com/rookedsysc)
-
-> 커피도 좋지만, 솔직히 Contribution 해주시면 더 좋습니다. :)
+**[Desktop 설치](https://kanvibe.rookedsysc.com/ko/installation)** → [휴대폰 연결](https://kanvibe.rookedsysc.com/ko/mobile) · [문서](https://kanvibe.rookedsysc.com/ko)
 
 [EN](../README.md) | [ZH](./README.zh.md)
 
 </div>
 
-<div align="center">
-
 <table>
   <tr>
-    <td width="50%">
-      <img src="./images/readme/kanvibe-main.png" alt="KanVibe 칸반 보드" width="100%">
-      <br>
-      <strong>메인 칸반 보드</strong>
+    <td width="77%" valign="top">
+      <img src="./images/readme/kanvibe-main.png" alt="Desktop: 작업과 진행 상태를 한눈에" width="100%">
+      <br><strong>Desktop: 작업과 진행 상태를 한눈에</strong>
     </td>
-    <td width="50%">
-      <img src="./images/readme/kanvibe-detail.png" alt="태스크 상세 터미널 워크스페이스" width="100%">
-      <br>
-      <strong>태스크 상세 워크스페이스</strong>
-    </td>
-  </tr>
-  <tr>
-    <td colspan="2">
-      <img src="./images/readme/kanvibe-ai-usage.png" alt="계정별 Claude, Codex, Gemini 남은 사용량을 보여주는 AI 사용량 패널" width="100%">
-      <br>
-      <strong>AI 사용량 — 터미널을 떠나지 않고 계정별 남은 한도 확인</strong>
-      <br>
-      태스크 상세에서 <code>Cmd/Ctrl+0</code>을 누르거나 dock 최하단 아이콘을 클릭합니다. 카드마다 어느 계정의 어떤 등급인지 밝히고, Claude의 모델별 주간 한도는 그 몫을 끌어다 쓰는 7일 한도 아래에 섭니다.
-    </td>
-  </tr>
-  <tr>
-    <td colspan="2">
-      <img src="./images/readme/kanvibe-ai-accounts.png" alt="Claude, Codex, Gemini 계정의 로그인 상태와 구독 등급, 남은 사용량이 함께 보이는 AI 계정 화면" width="100%">
-      <br>
-      <strong>AI 계정 — 앱에서 한 번 로그인해 두고 모든 계정을 한눈에</strong>
-      <br>
-      <strong>설정 → AI 계정</strong>에서 엽니다. provider마다 찾은 계정을 로그인 상태·구독 등급과 함께 나열하고, 남은 사용량도 같은 화면에 섭니다. 로그인은 각 CLI의 공식 로그인 명령을 앱 안 터미널로 띄우므로, 인증이 만료돼도 터미널로 나갈 일이 없습니다.
+    <td width="23%" valign="top">
+      <img src="../docs-site/public/screenshots/mobile-board.png" alt="Mobile: 휴대폰에서도 같은 보드 확인" width="100%">
+      <br><strong>Mobile: 휴대폰에서도 같은 보드 확인</strong>
     </td>
   </tr>
 </table>
 
-<a href="https://www.youtube.com/watch?v=8JTrvd3T_Z0">
-  <img src="https://img.youtube.com/vi/8JTrvd3T_Z0/maxresdefault.jpg" alt="KanVibe 데모 영상 썸네일" width="100%">
-</a>
+<p align="center">
+  <a href="https://www.youtube.com/watch?v=8JTrvd3T_Z0">
+    <img src="https://img.youtube.com/vi/8JTrvd3T_Z0/maxresdefault.jpg" alt="YouTube에서 KanVibe Desktop 데모 보기" width="640">
+  </a>
+  <br><strong>YouTube에서 Desktop 데모 보기</strong>
+</p>
 
-<strong><a href="https://www.youtube.com/watch?v=8JTrvd3T_Z0">YouTube에서 데모 보기</a></strong>
+## 시작하기
 
-</div>
+macOS Desktop 앱은 KanVibe Homebrew tap에서 설치합니다.
 
----
+```bash
+brew install --cask rookedsysc/kanvibe/kanvibe
+open -a KanVibe
+```
+
+**Mobile (iOS / Android):** Flutter 앱을 소스에서 빌드한 뒤 **Desktop 설정 → 모바일 연결**에서 PC 주소·포트·일회용 코드로 연결합니다. PC의 KanVibe가 실행 중이어야 하며, 휴대폰에서 로컬 네트워크나 Tailscale 등을 통해 해당 주소에 접속할 수 있어야 합니다. Mobile은 초기 미리보기이며 화면은 한국어입니다. [연결·사용·알림 안내](https://kanvibe.rookedsysc.com/ko/mobile).
+
+**Mobile 터미널 호환성:** `tmux`, `zellij`, `terminal` 세션을 쓰는 태스크를 선택하세요. Desktop의 신규 설정 기본값은 Herdr지만, 현재 Mobile 터미널 브리지는 Herdr 세션을 지원하지 않습니다. Mobile에서 사용할 태스크를 생성하거나 연결할 때 지원하는 세션 타입을 선택하세요.
+
+## PC에서 시작하고, 휴대폰에서 이어가기
+
+1. **확인이 필요한 작업을 찾습니다.** 에이전트 hooks가 진행·입력 대기·검토 상태를 보드에 반영합니다.
+2. **작업 맥락을 유지합니다.** 태스크의 브랜치·worktree·터미널·채팅 기록·PR 액션을 함께 열고 단축키로 작업 사이를 이동합니다.
+3. **Mobile에서 이어갑니다.** 보드와 실행 중인 터미널을 확인하고 후속 명령을 입력하거나, 연결한 다른 PC로 전환합니다.
+
+<p align="center">
+  <img src="../docs-site/public/screenshots/mobile-terminal.png" alt="같은 태스크 터미널에서 출력 확인과 명령 입력" width="240">
+  <br><strong>같은 태스크 터미널에서 출력 확인과 명령 입력</strong>
+</p>
+
+<details>
+<summary>키보드 워크플로우와 스크린샷</summary>
 
 ## 주요 워크플로우
 
@@ -101,35 +104,17 @@ KanVibe는 AI 코딩 작업이 여러 터미널 탭에 흩어지지 않도록 �
 
 [Vim 조작 데모 영상 열기](./images/readme/kanvibe-vim-controls.mp4)
 
----
+</details>
 
 ## 사전 요구사항
 
 | 의존성 | 버전 | 필수 | 설치 |
 |--------|------|------|------|
 | [git](https://git-scm.com/) | 최신 | Yes | `brew install git` |
-| [tmux](https://github.com/tmux/tmux) | 최신 | Yes | `brew install tmux` |
+| [tmux](https://github.com/tmux/tmux) | 최신 | Mobile 터미널용 (또는 zellij) | `brew install tmux` |
 | [gh](https://cli.github.com/) | 최신 | Yes | `brew install gh` (`gh auth login` 필요) |
-| [zellij](https://github.com/zellij-org/zellij) | 최신 | No | `brew install zellij` |
-
----
-
-## 빠른 시작
-
-### Homebrew로 설치
-
-KanVibe가 공식 Homebrew Cask 저장소에 등록되기 전까지는 KanVibe Homebrew tap에서 설치합니다:
-
-```bash
-brew install --cask rookedsysc/kanvibe/kanvibe
-open -a KanVibe
-```
-
-공식 Homebrew Cask 등록 후에는 아래 한 줄로 설치합니다:
-
-```bash
-brew install --cask kanvibe
-```
+| [zellij](https://github.com/zellij-org/zellij) | 최신 | Mobile 터미널용 (또는 tmux) | `brew install zellij` |
+| [Herdr](https://herdr.dev/tui/docs/) | 0.9.5 검증 | 기본 백엔드 | 앱 내 설치 안내 |
 
 ### 업데이트 또는 제거
 
@@ -157,14 +142,14 @@ brew untap rookedsysc/kanvibe
 
 칸반 보드에서 TODO 태스크를 추가합니다. 브랜치명으로 태스크를 생성하면 KanVibe가 자동으로:
 - 해당 브랜치의 **git worktree**를 생성합니다
-- 세션용 **tmux window** 또는 **zellij tab**을 생성합니다
+- 세션용 **Herdr tab**, **tmux window** 또는 **zellij tab**을 생성합니다
 - 터미널 세션을 태스크에 연결합니다
 
 ### 3. 칸반 보드에서 작업
 
 태스크는 5단계 상태로 관리됩니다: **TODO** → **PROGRESS** → **PENDING** → **REVIEW** → **DONE**
 
-드래그 앤 드롭으로 상태를 변경하거나 [AI 에이전트 Hooks](#ai-에이전트-hooks---자동-상태-추적)가 자동으로 상태를 전환하게 할 수 있습니다. 태스크가 **DONE**으로 이동하면 브랜치, worktree, 터미널 세션이 **자동으로 삭제**됩니다.
+드래그 앤 드롭으로 상태를 변경하거나 [AI 에이전트 Hooks](#ai-에이전트-hooks---자동-상태-추적)가 자동으로 상태를 전환하게 할 수 있습니다. 태스크를 **DONE**으로 이동하면 브랜치·worktree·터미널 세션을 보존합니다. 태스크를 삭제할 때 리소스를 정리하며, 프로젝트 루트 브랜치는 보호합니다.
 
 ### 4. Pane 레이아웃 선택
 
@@ -196,16 +181,20 @@ brew untap rookedsysc/kanvibe
 - git worktree와 터미널 세션을 자동으로 준비하는 브랜치 TODO 생성
 - 보드 toolbar의 돋보기 스캔 dialog로 저장소를 등록하고 기존 worktree 브랜치를 TODO 태스크로 감지
 - 각 태스크를 전용 터미널 워크스페이스로 열고, 사이드 dock에서 태스크 메타데이터, hook 컨트롤, 채팅, PR 액션 사용
-- 태스크를 DONE으로 이동하여 브랜치, worktree, 터미널 세션 자동 정리
+- DONE 이동 시 리소스 보존, 태스크 삭제 시 브랜치·worktree·터미널 세션 정리. 프로젝트 루트 브랜치는 보호
 - 기존 git 브랜치, worktree, 디스크 파일을 건드리지 않고 디렉터리 스캔 dialog에서 프로젝트 삭제
 
-### 터미널 세션 (tmux / zellij)
-- **tmux**와 **zellij** 모두 터미널 멀티플렉서로 지원
+### 터미널 세션 (Herdr / tmux / zellij)
+- **Herdr**, **tmux**, **zellij** 모두 터미널 멀티플렉서로 지원
 - xterm.js와 WebSocket 기반 브라우저 터미널 스트리밍
 - `~/.ssh/config`를 읽는 SSH 원격 터미널 지원
 - 비대화형 원격 SSH 명령은 `~/.kanvibe` 아래의 앱 전용 ControlMaster 소켓 풀을 재사용하며 host별 동시성을 사용 가능한 CPU 코어 수의 4배까지 제한합니다
-- 원격 터미널 attach는 SSH에서 tmux/zellij를 직접 실행하며, 로컬 `DISPLAY`, 원격 `X11Forwarding`, `xauth`가 준비된 경우에만 trusted X11 forwarding(`ssh -Y`)을 요청합니다
+- 원격 터미널 attach는 SSH에서 Herdr/tmux/zellij를 직접 실행하며, 로컬 `DISPLAY`, 원격 `X11Forwarding`, `xauth`가 준비된 경우에만 trusted X11 forwarding(`ssh -Y`)을 요청합니다
 - Nerd Font 렌더링 지원
+
+- 저장된 유효한 설정이 없으면 Herdr가 기본값이며, 기존 tmux·zellij·terminal 선택은 유지합니다. 태스크마다 이름 있는 영구 세션을 사용합니다. 세션을 처음 만들 때 설정한 6가지 pane 레이아웃과 pane별 시작 명령을 적용하며, 다시 열면 실행 중인 셸을 이어 씁니다.
+- Herdr 탭은 생성·전환·이름 변경·닫기와 workspace 안에서의 드래그 순서 변경을 지원합니다. KanVibe 창을 닫아도 마지막 탭은 유지하며, 태스크를 삭제하면 해당 이름의 세션을 중지하고 삭제합니다. Herdr의 첫 실행 설정과 개인 설정은 Herdr가 관리합니다.
+- 태스크 생성·브랜치 생성·터미널 연결에서 `herdr`를 선택하면 로컬 또는 선택한 SSH 호스트의 설치 여부를 확인합니다. Herdr가 없으면 설치 안내를 승인해 해당 호스트에서 [공식 설치 프로그램](https://herdr.dev/tui/docs/install/)을 실행할 수 있습니다. `~/.local/bin`에 설치하며 셸 시작 파일은 바꾸지 않습니다. 취소하면 태스크는 변경되지 않습니다. 설치에 실패하면 오류를 확인하고 네트워크 연결과 설치 경로의 쓰기 권한을 점검한 뒤 다시 시도합니다.
 
 ### 키보드 중심 조작
 - 어디서든 브랜치명이나 프로젝트명으로 빠른 태스크 검색 열기
@@ -227,14 +216,14 @@ brew untap rookedsysc/kanvibe
 - 로그아웃된 계정도 목록에 남아 다시 로그인할 자리를 지키고, 제거는 KanVibe가 만든 계정 자리만 지움
 
 ### 모바일 (Flutter)
-- [`mobile/`](../mobile/README.md)의 Flutter 클라이언트로 폰이나 태블릿에서 보드를 보고 태스크 터미널에 들어감. 지금은 소스에서 직접 빌드
-- 폰은 상태별 세로 구획 목록, 너비 768dp 이상인 태블릿은 같은 보드를 칸반으로 보여 줌
-- 태스크 상세는 그 태스크의 tmux/zellij pane을 그대로 비춤. 폰은 탭 하나가 pane 하나, 태블릿은 탭 하나가 window 하나이고 pane이 데스크탑과 같은 배치로 놓임
-- 화면 키보드로 터미널에 입력 가능. 데스크탑에서 열지 않은 태스크와 SSH 원격 태스크도 마찬가지
-- 데스크탑의 기본 세션 타입으로 태스크 생성, 상태 옮기기, 태스크 정보 확인, PR 열기 지원
-- pane을 읽기만 하므로 데스크탑의 포커스나 pane 크기를 바꾸지 않음
-- **설정 → 모바일 연결 → 연결 코드 만들기**를 누른 뒤 앱에 데스크탑 주소, 포트(패키지된 앱은 `9736`), 6자리 코드를 입력해 연결. 코드는 5분 뒤 만료되고 한 번만 쓸 수 있음
-- 앱의 연결 끊기나 데스크탑 설정의 기기 목록에서 끊기 전까지 연결이 유지됨
+
+- 휴대폰은 상태별 세로 목록, 너비 768dp 이상 태블릿은 칸반으로 보여 줍니다. 프로젝트 필터와 저장한 PC 전환을 지원합니다.
+- 태스크의 기존 tmux·Zellij·일반 터미널 세션을 엽니다. 폰과 태블릿 모두 탭 하나에 pane 하나를 표시하며, PC로 돌아가지 않고 셸 탭을 추가할 수 있습니다.
+- 출력을 읽고 화면 키보드로 입력합니다. SSH 원격 태스크에서도 사용할 수 있으며, 태스크 생성·상태 변경·정보 확인·연결된 PR 열기를 지원합니다.
+- tmux와 일반 터미널은 모바일 화면에 맞춰 행·열을 조정합니다. 보는 동안 PC의 같은 터미널 크기도 바뀌며, 화면을 떠나면 복원됩니다. Zellij는 스크롤로 읽습니다.
+- 5분 뒤 만료되는 6자리 일회용 코드로 연결합니다. PC를 여러 대 저장하고 연결을 각각 해제할 수 있습니다.
+- 선택한 PC의 알림함에서 읽음 상태를 공유하고 관련 태스크로 이동합니다. 전경 hook 갱신은 WebSocket을 사용하며, 백그라운드 푸시에는 Firebase/APNs 설정과 Desktop 푸시 중계가 필요합니다.
+- 현재 소스 빌드로 사용합니다. Desktop이 실행 중이고 LAN이나 Tailscale 등을 통해 해당 PC 주소에 접속할 수 있어야 합니다. [Mobile 가이드](https://kanvibe.rookedsysc.com/ko/mobile)와 [빌드 안내](../mobile/README.md)를 확인하세요.
 
 ### 키보드 단축키
 
@@ -269,7 +258,7 @@ KanVibe는 **Claude Code Hooks**, **Gemini CLI Hooks**, **Codex CLI**, **OpenCod
 | **PROGRESS** | AI가 태스크를 적극적으로 작업 중인 상태 |
 | **PENDING** | AI가 후속 질문을 하여 사용자 응답을 기다리는 상태(Claude Code만 지원) |
 | **REVIEW** | AI 작업이 완료되어 리뷰 대기 중인 상태 |
-| **DONE** | 작업 완료 — 브랜치, worktree, 터미널 세션이 **자동 삭제**됩니다 |
+| **DONE** | 작업 완료 — 태스크 삭제 전까지 브랜치·worktree·터미널 세션을 보존합니다 |
 
 #### Claude Code
 ```
@@ -419,3 +408,5 @@ GitHub star 수, 전체 기간 월별 추이.
 
 - [workmux](https://github.com/raine/workmux) — tmux workspace manager
 - [vibe-kanban](https://github.com/BloopAI/vibe-kanban) — AI-powered Kanban board
+
+[Buy Me a Coffee](https://buymeacoffee.com/rookedsysc)

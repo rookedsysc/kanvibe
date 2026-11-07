@@ -1,9 +1,11 @@
+import { readHerdrTabs, runHerdrCommand, moveHerdrTab } from "@/lib/herdr";
 import { SessionType, type KanbanTask } from "@/entities/KanbanTask";
 import { getTaskRepository } from "@/lib/database";
 import { execGit } from "@/lib/gitOperations";
 import {
   closeLocalTerminalTab,
   createLocalTerminalTab,
+  getLocalTerminalTabProcess,
   listLocalTerminalTabs,
   moveLocalTerminalTab,
   renameLocalTerminalTab,
@@ -35,9 +37,11 @@ import {
 } from "@/lib/terminalTabs";
 import type {
   TerminalTab,
+  TerminalTabCloseInfo,
   TerminalTabListResult,
   TerminalTabMutationResult,
 } from "@/desktop/shared/terminalTabs";
+import { buildTmuxListMirrorPanesCommand, parseTmuxMirrorPaneList } from "@/lib/paneMirror";
 
 /**
  * KanVibe 탭 바가 부르는 진입점.
@@ -47,6 +51,9 @@ import type {
 
 /** 탭 명령은 짧게 끝나야 폴링이 밀리지 않는다 */
 const TAB_COMMAND_TIMEOUT_MS = 5_000;
+
+/** 마지막 탭 보호를 위해 같은 호스트·세션의 조회와 종료를 한 작업으로 처리한다 */
+const pendingTabCloses = new Map<string, Promise<TerminalTabMutationResult>>();
 
 interface TerminalSessionTarget {
   sessionType: SessionType;
@@ -101,6 +108,9 @@ async function readZellijTabs(target: TerminalSessionTarget): Promise<TerminalTa
 }
 
 async function readTabs(target: TerminalSessionTarget): Promise<TerminalTab[]> {
+  if (target.sessionType === SessionType.HERDR) {
+    return readHerdrTabs(target.sessionName, target.sshHost);
+  }
   if (target.sessionType === SessionType.TMUX) {
     return parseTmuxWindowList(
       await runTabCommand(buildTmuxListWindowsCommand(target.sessionName), target.sshHost),
@@ -151,6 +161,14 @@ export async function createTerminalTab(taskId: string): Promise<TerminalTabMuta
   }
 
   try {
+    if (target.sessionType === SessionType.HERDR) {
+      const tabs = await readTabs(target);
+      const workspaceId = (tabs.find((tab) => tab.isActive) ?? tabs[0])?.id.split(":")[0];
+      if (!workspaceId) throw new Error("Herdr 워크스페이스를 찾을 수 없습니다.");
+      await runHerdrCommand(target.sessionName, ["tab", "create", "--workspace", workspaceId,
+        ...(target.worktreePath ? ["--cwd", target.worktreePath] : []), "--focus"], target.sshHost);
+      return { ok: true };
+    }
     const createCommand = target.sessionType === SessionType.TMUX
       ? buildTmuxNewWindowCommand(target.sessionName, target.worktreePath)
       : buildZellijNewTabCommand(target.sessionName, target.worktreePath);
@@ -159,6 +177,47 @@ export async function createTerminalTab(taskId: string): Promise<TerminalTabMuta
     return { ok: true };
   } catch (error) {
     return toFailure(error);
+  }
+}
+
+export async function getTerminalTabCloseInfo(taskId: string, tabId: string): Promise<TerminalTabCloseInfo> {
+  try {
+    const target = await findTerminalSessionTarget(taskId);
+    if (!target) {
+      return { ok: false, shouldCloseWindow: false, processNames: null, error: "작업에 연결된 세션이 없습니다." };
+    }
+
+    const tabs = target.sessionType === SessionType.TERMINAL
+      ? listLocalTerminalTabs(taskId)
+      : await readTabs(target);
+    if (!tabs.some((tab) => tab.id === tabId)) {
+      return { ok: false, shouldCloseWindow: false, processNames: null, error: "탭을 찾을 수 없습니다." };
+    }
+    const shouldCloseWindow = target.sessionType !== SessionType.TERMINAL && tabs.length === 1;
+    if (shouldCloseWindow) {
+      return { ok: true, shouldCloseWindow: true, processNames: null };
+    }
+
+    let processNames: string[] | null = null;
+    try {
+      if (target.sessionType === SessionType.TERMINAL && !target.sshHost) {
+        const processName = getLocalTerminalTabProcess(taskId, tabId);
+        processNames = processName ? [processName] : null;
+      } else if (target.sessionType === SessionType.TMUX) {
+        const output = await runTabCommand(buildTmuxListMirrorPanesCommand(target.sessionName), target.sshHost);
+        const names = parseTmuxMirrorPaneList(output)
+          .filter((pane) => pane.tabId === tabId)
+          .map((pane) => pane.command.trim())
+          .filter(Boolean);
+        processNames = names.length > 0 ? [...new Set(names)] : null;
+      }
+    } catch {
+      // 조회 실패를 작업 없음으로 간주하면 실행 중인 프로세스를 경고 없이 종료할 수 있다.
+      processNames = null;
+    }
+    return { ok: true, shouldCloseWindow: false, processNames };
+  } catch (error) {
+    return { ...toFailure(error), shouldCloseWindow: false, processNames: null };
   }
 }
 
@@ -179,6 +238,11 @@ export async function selectTerminalTab(
   try {
     if (target.sessionType === SessionType.TMUX) {
       await runTabCommand(buildTmuxSelectWindowCommand(tabId), target.sshHost);
+      return { ok: true };
+    }
+
+    if (target.sessionType === SessionType.HERDR) {
+      await runHerdrCommand(target.sessionName, ["tab", "focus", tabId], target.sshHost);
       return { ok: true };
     }
 
@@ -223,30 +287,45 @@ export async function closeTerminalTab(
     return { ok: true, shouldCloseWindow: closeLocalTerminalTab(taskId, tabId) === 0 };
   }
 
-  try {
-    const tabsBeforeClose = await readTabs(target).catch(() => []);
-    if (tabsBeforeClose.length <= 1) {
-      return { ok: true, shouldCloseWindow: true };
-    }
-
-    if (target.sessionType === SessionType.TMUX) {
-      await runTabCommand(buildTmuxKillWindowCommand(tabId), target.sshHost);
-    } else if (await hasZellijTabIdSupport(target.sshHost)) {
-      await runTabCommand(buildZellijCloseTabByIdCommand(target.sessionName, tabId), target.sshHost);
-    } else {
-      const tabName = findTabName(await readZellijTabs(target), tabId);
-      if (!tabName) {
-        return { ok: false, error: "탭을 찾을 수 없습니다." };
+  const sessionKey = JSON.stringify([target.sshHost, target.sessionType, target.sessionName]);
+  const previousClose = pendingTabCloses.get(sessionKey) ?? Promise.resolve();
+  const closeOperation = previousClose.catch(() => undefined).then(async (): Promise<TerminalTabMutationResult> => {
+    try {
+      const tabsBeforeClose = await readTabs(target).catch(() => []);
+      if (tabsBeforeClose.length <= 1) {
+        return { ok: true, shouldCloseWindow: true };
       }
-      await runTabCommands(
-        buildZellijCloseFocusedTabCommands(target.sessionName, tabName),
-        target.sshHost,
-      );
-    }
 
-    return { ok: true, shouldCloseWindow: false };
-  } catch (error) {
-    return toFailure(error);
+      if (target.sessionType === SessionType.TMUX) {
+        await runTabCommand(buildTmuxKillWindowCommand(tabId), target.sshHost);
+      } else if (target.sessionType === SessionType.HERDR) {
+        if (!tabsBeforeClose.some((tab) => tab.id === tabId)) return { ok: false, error: "탭을 찾을 수 없습니다." };
+        await runHerdrCommand(target.sessionName, ["tab", "close", tabId], target.sshHost);
+      } else if (await hasZellijTabIdSupport(target.sshHost)) {
+        await runTabCommand(buildZellijCloseTabByIdCommand(target.sessionName, tabId), target.sshHost);
+      } else {
+        const tabName = findTabName(await readZellijTabs(target), tabId);
+        if (!tabName) {
+          return { ok: false, error: "탭을 찾을 수 없습니다." };
+        }
+        await runTabCommands(
+          buildZellijCloseFocusedTabCommands(target.sessionName, tabName),
+          target.sshHost,
+        );
+      }
+
+      return { ok: true, shouldCloseWindow: false };
+    } catch (error) {
+      return toFailure(error);
+    }
+  });
+  pendingTabCloses.set(sessionKey, closeOperation);
+  try {
+    return await closeOperation;
+  } finally {
+    if (pendingTabCloses.get(sessionKey) === closeOperation) {
+      pendingTabCloses.delete(sessionKey);
+    }
   }
 }
 
@@ -273,6 +352,11 @@ export async function renameTerminalTab(
   try {
     if (target.sessionType === SessionType.TMUX) {
       await runTabCommand(buildTmuxRenameWindowCommand(tabId, trimmedName), target.sshHost);
+      return { ok: true };
+    }
+
+    if (target.sessionType === SessionType.HERDR) {
+      await runHerdrCommand(target.sessionName, ["tab", "rename", tabId, trimmedName], target.sshHost);
       return { ok: true };
     }
 
@@ -343,6 +427,19 @@ export async function moveTerminalTab(
         ),
         target.sshHost,
       );
+      return { ok: true };
+    }
+
+    if (target.sessionType === SessionType.HERDR) {
+      const workspaceId = currentTab.id.split(":")[0];
+      if (destinationTab.id.split(":")[0] !== workspaceId) {
+        return { ok: false, error: "Herdr 탭은 같은 워크스페이스 안에서 이동할 수 있습니다." };
+      }
+      const workspaceTabs = currentTabs.filter((tab) => tab.id.split(":")[0] === workspaceId);
+      const currentIndex = workspaceTabs.findIndex((tab) => tab.id === tabId);
+      const destinationIndex = workspaceTabs.findIndex((tab) => tab.id === destinationTab.id);
+      const insertIndex = currentIndex < destinationIndex ? destinationIndex + 1 : destinationIndex;
+      await moveHerdrTab(target.sessionName, tabId, insertIndex, target.sshHost);
       return { ok: true };
     }
 

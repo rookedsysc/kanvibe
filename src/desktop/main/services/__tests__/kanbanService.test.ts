@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
     find: vi.fn(),
     findOne: vi.fn(),
     findOneBy: vi.fn(),
+    existsBy: vi.fn(),
     remove: vi.fn(),
     save: vi.fn(),
     update: vi.fn(),
@@ -96,6 +97,10 @@ vi.mock("@/lib/gitOperations", () => ({
 
 vi.mock("@/lib/hostFileAccess", () => ({
   readTextFile: mocks.readTextFile,
+  updateTextFile: async (targetPath: string, update: (content: string) => string, sshHost?: string | null) => {
+    const content = await mocks.readTextFile(targetPath, sshHost);
+    await mocks.writeTextFile(targetPath, update(content), sshHost);
+  },
   writeTextFile: mocks.writeTextFile,
   quoteShellArgument: (value: string) => `'${value.replaceAll("'", `'\\''`)}'`,
 }));
@@ -129,6 +134,8 @@ describe("kanbanService.createTask", () => {
     vi.resetModules();
     vi.clearAllMocks();
     mocks.taskRepo.create.mockImplementation((value) => value);
+    mocks.taskRepo.existsBy.mockResolvedValue(true);
+    mocks.taskRepo.update.mockResolvedValue({ affected: 1 });
     mocks.createSessionWithoutWorktree.mockResolvedValue({ sessionName: "repo-feature-remote" });
     mocks.installKanvibeHooks.mockResolvedValue(undefined);
     mocks.installKanvibeHookFiles.mockResolvedValue(undefined);
@@ -1174,6 +1181,31 @@ describe("kanbanService.createTask", () => {
     expect(writeOrder.indexOf("kanvibe-state")).toBeLessThan(writeOrder.indexOf("database"));
   });
 
+  it("색상은 같은 호스트와 git common directory를 공유하는 프로젝트에만 전파한다", async () => {
+    const projects = [
+      { id: "root", repoPath: "/workspace/repo_%", sshHost: null, color: null },
+      { id: "linked", repoPath: "/elsewhere/custom-tree", sshHost: null, color: null },
+      { id: "neighbor", repoPath: "/workspace/repo_%-other", sshHost: null, color: null },
+      { id: "remote", repoPath: "/workspace/repo_%", sshHost: "prod", color: null },
+    ];
+    mocks.projectRepo.findOneBy.mockResolvedValue(projects[1]);
+    mocks.projectRepo.find.mockResolvedValue(projects);
+    mocks.execGit.mockImplementation(async (command: string) => {
+      if (command.includes("--git-common-dir")) {
+        return command.includes("repo_%-other") ? "/workspace/repo_%-other/.git\n" : "/workspace/repo_%/.git\n";
+      }
+      return "";
+    });
+    mocks.projectRepo.update.mockResolvedValue({ affected: 2 });
+    const { updateProjectColor } = await import("@/desktop/main/services/kanbanService");
+    await updateProjectColor("linked", "#0064FF");
+    const criteria = mocks.projectRepo.update.mock.calls[0][0];
+    expect(criteria.id.value).toEqual(["root", "linked"]);
+    expect(projects.map((project) => project.color)).toEqual(["#0064FF", "#0064FF", null, null]);
+    expect(mocks.writeTextFile).not.toHaveBeenCalledWith(expect.stringContaining("repo_%-other"), expect.anything(), expect.anything());
+    expect(mocks.execGit.mock.calls.every((call) => call[1] !== "prod")).toBe(true);
+  });
+
   it("다른 컬럼으로 task를 옮기면 상태만 갱신하고 자리는 저장하지 않는다", async () => {
     // Given
     mocks.taskRepo.update.mockResolvedValue({ affected: 1 });
@@ -1484,10 +1516,10 @@ describe("kanbanService.createTask", () => {
     expectGitHubCliCommand(githubCliCall.command, "/workspace/repo", PR_LIST_URL_ARGUMENTS_FOR("main"));
     expect(githubCliCall.sshHost).toBeNull();
     expect(githubCliCall.options).toEqual({ timeoutMs: 10_000 });
-    expect(mocks.taskRepo.save).toHaveBeenCalledWith(expect.objectContaining({
-      id: "task-4",
-      prUrl: "https://github.com/kanvibe/kanvibe/pull/1",
-    }));
+    expect(mocks.taskRepo.update).toHaveBeenCalledWith(
+      { id: "task-4", branchName: "main" },
+      { prUrl: "https://github.com/kanvibe/kanvibe/pull/1" },
+    );
     expect(mocks.broadcastBoardUpdate).toHaveBeenCalledTimes(1);
     expect(result).toBe("https://github.com/kanvibe/kanvibe/pull/1");
   });
@@ -1549,10 +1581,10 @@ describe("kanbanService.createTask", () => {
     expect(remoteGithubCliCall.sshHost).toBe("remote-host");
     /** 원격은 SSH 계층이 이미 제한 시간을 관리하므로 명령에 따로 걸지 않는다 */
     expect(remoteGithubCliCall.options).toBeUndefined();
-    expect(mocks.taskRepo.save).toHaveBeenCalledWith(expect.objectContaining({
-      id: "task-6",
-      prUrl: "https://github.com/kanvibe/kanvibe/pull/99",
-    }));
+    expect(mocks.taskRepo.update).toHaveBeenCalledWith(
+      { id: "task-6", branchName: "feature/remote-pr" },
+      { prUrl: "https://github.com/kanvibe/kanvibe/pull/99" },
+    );
     expect(mocks.broadcastBoardUpdate).toHaveBeenCalledTimes(1);
     expect(result).toBe("https://github.com/kanvibe/kanvibe/pull/99");
   });
@@ -1581,10 +1613,10 @@ describe("kanbanService.createTask", () => {
       PR_LIST_URL_ARGUMENTS_FOR("feature/fallback-path"),
     );
     expect(fallbackGithubCliCall.sshHost).toBe("remote-host");
-    expect(mocks.taskRepo.save).toHaveBeenCalledWith(expect.objectContaining({
-      id: "task-7",
-      prUrl: "https://github.com/kanvibe/kanvibe/pull/101",
-    }));
+    expect(mocks.taskRepo.update).toHaveBeenCalledWith(
+      { id: "task-7", branchName: "feature/fallback-path" },
+      { prUrl: "https://github.com/kanvibe/kanvibe/pull/101" },
+    );
     expect(mocks.broadcastBoardUpdate).toHaveBeenCalledTimes(1);
     expect(result).toBe("https://github.com/kanvibe/kanvibe/pull/101");
   });
@@ -1652,10 +1684,10 @@ describe("kanbanService.createTask", () => {
 
     // Then
     expect(result.updatedTaskIds).toEqual(["task-9"]);
-    expect(mocks.taskRepo.save).toHaveBeenCalledWith(expect.objectContaining({
-      id: "task-9",
-      prUrl,
-    }));
+    expect(mocks.taskRepo.update).toHaveBeenCalledWith(
+      { id: "task-9", branchName: "feature/pr-sync" },
+      { prUrl },
+    );
     expect(mocks.broadcastTaskPrMergedDetectedBatch).not.toHaveBeenCalled();
   });
 
@@ -2796,4 +2828,65 @@ describe("kanbanService PR 조회 실패 처리", () => {
 
     consoleErrorSpy.mockRestore();
   });
+});
+
+
+describe("PR 조회 중 task 변경 보존", () => {
+  beforeEach(() => {
+    vi.resetModules();
+    vi.resetAllMocks();
+  });
+
+  it.each(["manual", "background"])("%s 조회는 대기 중 수정한 title/status를 보존한다", async (mode) => {
+    const initial = { id: "race", title: "initial", status: "progress", branchName: "feature", projectId: null, worktreePath: "/fixture/repo", sshHost: null, prUrl: null };
+    const current = { ...initial, title: "user edit", status: "done" };
+    mocks.taskRepo.findOneBy.mockResolvedValue({ ...initial });
+    mocks.taskRepo.find.mockResolvedValue([{ ...initial }]);
+    mocks.taskRepo.save.mockImplementation(async (value) => Object.assign(current, value));
+    mocks.taskRepo.update.mockImplementation(async (_criteria, patch) => { Object.assign(current, patch); return { affected: 1 }; });
+    let finish!: (value: string) => void;
+    mocks.execGit.mockReturnValue(new Promise<string>((resolve) => { finish = resolve; }));
+    const service = await import("@/desktop/main/services/kanbanService");
+    const pending = mode === "manual" ? service.fetchAndSavePrUrl("race") : service.syncActiveTaskPullRequests(new Set());
+    await vi.waitFor(() => expect(mocks.execGit).toHaveBeenCalled());
+    finish(mode === "manual" ? "https://example.invalid/pr/1" : JSON.stringify([{ url: "https://example.invalid/pr/1", state: "OPEN" }]));
+    await pending;
+    expect(current).toMatchObject({ title: "user edit", status: "done", prUrl: "https://example.invalid/pr/1" });
+    expect(mocks.taskRepo.save).not.toHaveBeenCalled();
+    expect(mocks.taskRepo.update).toHaveBeenCalledWith({ id: "race", branchName: "feature" }, { prUrl: "https://example.invalid/pr/1" });
+  });
+
+  it.each(["manual", "background"])("%s 조회 중 삭제되거나 브랜치가 바뀌면 재삽입과 알림을 생략한다", async (mode) => {
+    const initial = { id: "deleted", title: "old", status: "progress", branchName: "feature", projectId: null, worktreePath: "/fixture/repo", sshHost: null, prUrl: null };
+    mocks.taskRepo.findOneBy.mockResolvedValue(initial);
+    mocks.taskRepo.find.mockResolvedValue([initial]);
+    mocks.taskRepo.update.mockResolvedValue({ affected: 0 });
+    let finish!: (value: string) => void;
+    mocks.execGit.mockReturnValue(new Promise<string>((resolve) => { finish = resolve; }));
+    const service = await import("@/desktop/main/services/kanbanService");
+    const eventKeys = new Set<string>();
+    const pending = mode === "manual" ? service.fetchAndSavePrUrl("deleted") : service.syncActiveTaskPullRequests(eventKeys);
+    await vi.waitFor(() => expect(mocks.execGit).toHaveBeenCalled());
+    finish(mode === "manual" ? "https://example.invalid/pr/1" : JSON.stringify([{ url: "https://example.invalid/pr/1", state: "MERGED", mergedAt: "2026-11-01T00:00:00Z" }]));
+    const result = await pending;
+    expect(result).toEqual(mode === "manual" ? null : { updatedTaskIds: [], mergeEventKeys: [], mergedPullRequests: [] });
+    expect(mocks.taskRepo.save).not.toHaveBeenCalled();
+    expect(mocks.broadcastBoardUpdate).not.toHaveBeenCalled();
+    expect(mocks.broadcastTaskPrMergedDetectedBatch).not.toHaveBeenCalled();
+    expect(eventKeys.size).toBe(0);
+  });
+
+  it.each([true, false])("동일 URL은 쓰지 않고 현재 task 존재 여부(%s)를 검사한다", async (exists) => {
+    const prUrl = "https://example.invalid/pr/2";
+    mocks.taskRepo.find.mockResolvedValue([{ id: "unchanged", title: "task", branchName: "feature", projectId: null, worktreePath: "/fixture/repo", sshHost: null, prUrl }]);
+    mocks.taskRepo.existsBy.mockResolvedValue(exists);
+    mocks.execGit.mockResolvedValue(JSON.stringify([{ url: prUrl, state: "MERGED", mergedAt: "2026-11-01T00:00:00Z" }]));
+    const { syncActiveTaskPullRequests } = await import("@/desktop/main/services/kanbanService");
+    const result = await syncActiveTaskPullRequests(new Set());
+    expect(result.mergedPullRequests).toHaveLength(exists ? 1 : 0);
+    expect(mocks.taskRepo.existsBy).toHaveBeenCalledWith({ id: "unchanged", branchName: "feature" });
+    expect(mocks.taskRepo.update).not.toHaveBeenCalled();
+    expect(mocks.taskRepo.save).not.toHaveBeenCalled();
+  });
+
 });

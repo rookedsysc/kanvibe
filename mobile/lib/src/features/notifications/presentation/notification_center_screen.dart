@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'notification_settings_screen.dart';
+
 import '../../../common/constants/app_colors.dart';
 import '../../../common/constants/app_sizes.dart';
 import '../../../common/providers.dart';
@@ -177,6 +179,17 @@ class _NotificationCenterScreenState
           ],
         ),
         actions: [
+          IconButton(
+            tooltip: '알림 설정',
+            onPressed: connection == null
+                ? null
+                : () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => const NotificationSettingsScreen(),
+                    ),
+                  ),
+            icon: const Icon(Icons.settings_outlined),
+          ),
           Semantics(
             identifier: 'notifications-mark-all-read',
             child: IconButton(

@@ -8,6 +8,7 @@ class TaskNotification {
     required this.body,
     required this.status,
     required this.createdAt,
+    this.shouldNotify = true,
   });
 
   final String eventId;
@@ -17,6 +18,7 @@ class TaskNotification {
   final String body;
   final String status;
   final String createdAt;
+  final bool shouldNotify;
 
   String get dedupeKey => '$connectionId/$eventId';
 
@@ -29,6 +31,7 @@ class TaskNotification {
     'body': body,
     'status': status,
     'createdAt': createdAt,
+    'shouldNotify': shouldNotify,
   };
 
   static TaskNotification? fromJson(Map<String, dynamic> json) {
@@ -55,6 +58,7 @@ class TaskNotification {
       body: json['body'] as String,
       status: json['status'] as String,
       createdAt: json['createdAt'] as String,
+      shouldNotify: json['shouldNotify'] != false,
     );
   }
 }
