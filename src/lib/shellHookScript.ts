@@ -80,7 +80,11 @@ printf '%s\n' "\${KANVIBE_TARGET_ROWS}" | {
     if [ -z "\${KANVIBE_TARGET_URL}" ] || [ -z "\${KANVIBE_TARGET_TASK_ID}" ]; then
       continue
     fi
-    curl -s --max-time ${HOOK_NOTIFY_TIMEOUT_SECONDS} -X POST "\${KANVIBE_TARGET_URL%/}/api/hooks/status" \
+    case "\${KANVIBE_TARGET_URL}" in
+      http://*|https://*) ;;
+      *) continue ;;
+    esac
+    curl -s --max-time ${HOOK_NOTIFY_TIMEOUT_SECONDS} -X POST --url "\${KANVIBE_TARGET_URL%/}/api/hooks/status" \
       -H "Content-Type: application/json" \
       -d "{\\"taskId\\": \\"\${KANVIBE_TARGET_TASK_ID}\\", \\"status\\": \\"${status}\\"}" \
       > /dev/null 2>&1 &
@@ -123,7 +127,7 @@ export function hasShellKanvibeTargetFanout(content: string): boolean {
     && content.includes("KANVIBE_TARGET_URL")
     && content.includes("KANVIBE_TARGET_TASK_ID")
     && content.includes("while IFS=")
-    && content.includes("/api/hooks/status")
+    && content.includes('--url "${KANVIBE_TARGET_URL%/}/api/hooks/status"')
     && content.includes("taskId");
 }
 

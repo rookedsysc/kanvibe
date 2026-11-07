@@ -486,5 +486,28 @@ describe("task CLI script", () => {
         body: { contextTaskId: "task-peer", branchName: "feat/it's new" },
       });
     });
+
+    it("targets.json의 url이 curl 옵션이나 http가 아닌 주소면 호출하지 않는다", async () => {
+      // Given
+      const curlConfigDir = path.join(workspaceDir, "cfg");
+      const writtenPath = path.join(workspaceDir, "WRITTEN");
+      await mkdir(path.join(curlConfigDir, "api", "cli", "tasks"), { recursive: true });
+      await writeFile(
+        path.join(curlConfigDir, "api", "cli", "tasks", "delete"),
+        `url = "file:///etc/hosts"\noutput = ${JSON.stringify(writtenPath)}\n`,
+      );
+      await writeTargets([
+        { url: `-K${curlConfigDir}`, taskId: "task-option", token: "token" },
+        { url: "file:///etc/hosts", taskId: "task-file", token: "token" },
+      ]);
+      const command = buildTaskCliCommand(repoDir, ["propagate-delete", "--exclude-url", "http://own:9736"]);
+
+      // When
+      const { stdout } = await execFileAsync("sh", ["-c", command]);
+
+      // Then
+      await expect(access(writtenPath)).rejects.toThrow();
+      expect(stdout).not.toContain("__KANVIBE_PEER_RESULT__");
+    });
   });
 });

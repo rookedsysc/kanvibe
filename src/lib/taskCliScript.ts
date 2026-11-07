@@ -77,7 +77,8 @@ json_field() {
   printf ',"%s":%s' "$1" "$(json_string "$2")"
 }
 
-# targets.json의 client마다 "url<TAB>taskId<TAB>token" 한 줄을 출력한다
+# targets.json의 client마다 "url<TAB>taskId<TAB>token" 한 줄을 출력한다.
+# targets.json은 브랜치 checkout으로 바뀔 수 있으므로 http(s) 주소가 아닌 항목은 curl에 넘기지 않는다
 read_target_rows() {
   if [ ! -f "\${KANVIBE_TARGETS_FILE}" ]; then
     return 0
@@ -85,7 +86,7 @@ read_target_rows() {
 
   grep -oE '"(url|taskId|token)"[[:space:]]*:[[:space:]]*"[^"]*"' "\${KANVIBE_TARGETS_FILE}" 2>/dev/null \\
     | awk '
-        function emit() { if (url != "" && taskId != "") print url "\\t" taskId "\\t" token }
+        function emit() { if (url ~ /^https?:\\/\\/[^[:space:]]+$/ && taskId != "") print url "\\t" taskId "\\t" token }
         {
           key = $0; sub(/^"/, "", key); sub(/".*$/, "", key)
           value = $0; sub(/^"[^"]*"[[:space:]]*:[[:space:]]*"/, "", value); sub(/"$/, "", value)
@@ -131,7 +132,7 @@ post_json() {
   response="$(printf 'Authorization: Bearer %s\\n' "\${token}" | curl -sS \\
     --connect-timeout "\${KANVIBE_CONNECT_TIMEOUT_SECONDS}" \\
     --max-time "\${KANVIBE_REQUEST_TIMEOUT_SECONDS}" \\
-    -X POST "\${url}\${path}" \\
+    -X POST --url "\${url}\${path}" \\
     -H @- \\
     -H 'Content-Type: application/json' \\
     --data-binary "\${body}" \\

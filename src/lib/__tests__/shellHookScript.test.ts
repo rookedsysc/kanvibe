@@ -316,3 +316,41 @@ describe("shellHookScript", () => {
     });
   });
 });
+
+describe("hook 통보 대상 주소 검증", () => {
+  it("targets.json의 url이 curl 옵션이나 http가 아닌 주소면 curl에 넘기지 않고 http 주소만 --url로 보낸다", async () => {
+    // Given
+    const workspaceDir = await mkdtemp(join(tmpdir(), "kanvibe-hook-url-"));
+    try {
+      const fakeBinDir = join(workspaceDir, "bin");
+      const curlLogPath = join(workspaceDir, "curl.log");
+      await mkdir(fakeBinDir);
+      await writeFile(join(fakeBinDir, "curl"), `#!/bin/sh\nprintf '%s\\n' "$*" >> ${JSON.stringify(curlLogPath)}\n`);
+      await chmod(join(fakeBinDir, "curl"), 0o755);
+      await execFileAsync("git", ["init", "-q", workspaceDir]);
+      await mkdir(join(workspaceDir, ".kanvibe"));
+      await writeFile(join(workspaceDir, ".kanvibe", "targets.json"), JSON.stringify({
+        schemaVersion: 1,
+        targets: [
+          { url: "-K/tmp/evil", taskId: "task-option" },
+          { url: "file:///etc/hosts", taskId: "task-file" },
+          { url: "http://10.0.0.2:9736", taskId: "task-http" },
+        ],
+      }));
+
+      // When
+      await execFileAsync("bash", ["-c", buildShellKanvibeStatusUpdater("review")], {
+        cwd: workspaceDir,
+        env: { ...process.env, PATH: `${fakeBinDir}:${process.env.PATH ?? ""}` },
+      });
+
+      // Then
+      const curlLog = await readFile(curlLogPath, "utf-8");
+      expect(curlLog.trim().split("\n")).toHaveLength(1);
+      expect(curlLog).toContain("--url http://10.0.0.2:9736/api/hooks/status");
+      expect(curlLog).toContain("task-http");
+    } finally {
+      await rm(workspaceDir, { recursive: true, force: true });
+    }
+  });
+});
