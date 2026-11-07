@@ -29,6 +29,8 @@ import {
 } from "@/lib/mobilePairing";
 import {
   buildScreenRedraw,
+  buildTmuxPaneShortcutCommand,
+  buildZellijPaneShortcutCommand,
   buildTmuxCancelPipePaneCommand,
   buildTmuxCapturePaneCommand,
   buildTmuxPaneStateCommand,
@@ -1275,4 +1277,47 @@ export async function writeToPane(taskId: string, paneId: string, input: string)
     : buildTmuxSendKeysCommand(paneId, input);
 
   await runMirrorCommand(command, target.sshHost);
+}
+
+
+export async function executeMobileTerminalShortcut(
+  taskId: string,
+  paneId: string,
+  action: string,
+): Promise<{ surfaces: TaskSurfaces; screen?: string }> {
+  if (!buildTmuxPaneShortcutCommand(paneId, action) && !buildZellijPaneShortcutCommand("", paneId, "", action)) {
+    throw new MobileTaskInputError("지원하지 않는 단축키입니다");
+  }
+  const target = await findMirrorSessionTarget(taskId);
+  if (target.sessionType === SessionType.TERMINAL) {
+    throw new MobileTaskInputError("일반 터미널에서는 세션 제어 단축키를 사용할 수 없습니다");
+  }
+  const panes = await listMirrorPanes(target);
+  const pane = panes.find((candidate) => candidate.id === paneId);
+  if (!pane) throw new SurfaceUnavailableError("session-not-running");
+  const command = target.sessionType === SessionType.ZELLIJ
+    ? buildZellijPaneShortcutCommand(target.sessionName, paneId, pane.tabId, action)
+    : buildTmuxPaneShortcutCommand(paneId, action);
+  if (!command) throw new MobileTaskInputError("이 세션에서 지원하지 않는 단축키입니다");
+  await runMirrorCommand(command, target.sshHost);
+
+  let screen: string | undefined;
+  if (target.sessionType === SessionType.TMUX && (action === "copy-mode" || action.startsWith("scroll-"))) {
+    // pipe-pane은 프로그램 출력만 전하므로 복사 모드의 화면은 별도로 떠서 모바일에 돌려준다.
+    const capture = action === "scroll-bottom"
+      ? buildTmuxCapturePaneCommand(paneId)
+      : `tmux capture-pane -peM -t ${quoteForPosixShell(paneId)}`;
+    screen = buildScreenRedraw(await runMirrorCommand(capture, target.sshHost), null);
+  }
+  let surfaces = await getTaskSurfaces(taskId);
+  if (action === "split-right" || action === "split-down") {
+    const previousPaneIds = new Set(panes.map((previous) => previous.id));
+    const deadline = Date.now() + SESSION_START_TIMEOUT_MS;
+    while (!surfaces.tabs.some((tab) => tab.id === pane.tabId && tab.panes.some((created) => !previousPaneIds.has(created.id)))) {
+      if (Date.now() >= deadline) throw new Error("추가한 pane을 찾을 수 없습니다.");
+      await new Promise((resolve) => setTimeout(resolve, SESSION_START_POLL_INTERVAL_MS));
+      surfaces = await getTaskSurfaces(taskId);
+    }
+  }
+  return { surfaces, ...(screen === undefined ? {} : { screen }) };
 }

@@ -19,6 +19,9 @@ abstract final class AppSizes {
   static const radiusMd = 6.0;
   static const radiusLg = 8.0;
 
+  /// 설정 화면처럼 묶음 카드로 읽혀야 하는 표면
+  static const radiusCard = 16.0;
+
   /// 이 너비부터 칸반과 window 전체 보기로 바뀐다.
   /// 세로로 든 태블릿도 칸반이어야 해서 흔한 태블릿 세로 너비(768) 아래에 두지 않는다.
   static const tabletBreakpoint = 768.0;
