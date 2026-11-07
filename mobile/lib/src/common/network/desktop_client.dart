@@ -27,6 +27,10 @@ class DesktopClient {
   /// 데스크탑이 git worktree를 만들고 hooks 파일까지 깔아야 끝나는 요청이라, 조회와 같은 잣대로 재면
   /// 실제로는 만들어지고 있는데 기기만 먼저 포기한다. 그러면 사용자가 다시 눌러 같은 브랜치를 또 치게 된다.
   static const _createTaskTimeout = Duration(seconds: 60);
+
+  /// 태스크 삭제도 길게 잡는다. 데스크탑이 worktree·브랜치·세션을 지우고 같은 태스크를 가진 다른 데스크탑에까지
+  /// 전파한 뒤에야 답하므로, 조회 잣대로 재면 지워지는 중인데 기기만 실패로 보게 된다.
+  static const _deleteTaskTimeout = Duration(seconds: 90);
   static const _createTerminalTabTimeout = Duration(seconds: 30);
 
   /// 화면의 6자리 코드를 토큰으로 바꾼다. 성공하면 그 뒤로 코드는 필요 없다
@@ -357,6 +361,37 @@ class DesktopClient {
         message: _readErrorMessage(response.body),
       );
     }
+  }
+
+  /// 태스크와 그 worktree·브랜치·세션을 지운다. 연결된 데스크탑이 같은 태스크를 가진 다른 데스크탑에도 전파한다.
+  ///
+  /// 커밋하지 않은 변경이 있으면 데스크탑이 409로 멈춘다. [isForced]로 다시 보내면 그 변경까지 지운다.
+  /// 꺼져 있어 전파받지 못한 다른 데스크탑 수를 돌려준다. 그 데스크탑에는 태스크가 남아 있다.
+  Future<int> deleteTask(
+    DesktopConnection connection,
+    String taskId, {
+    required bool isForced,
+  }) async {
+    final response = await _httpClient
+        .delete(
+          connection.buildHttpUri(
+            '/api/mobile/tasks/${Uri.encodeComponent(taskId)}',
+            isForced ? const {'force': 'true'} : null,
+          ),
+          headers: connection.authorizationHeaders,
+        )
+        .timeout(_deleteTaskTimeout);
+
+    if (response.statusCode != 200) {
+      throw DesktopRequestException(
+        response.statusCode,
+        message: _readErrorMessage(response.body),
+      );
+    }
+
+    final body = jsonDecode(response.body) as Map<String, dynamic>;
+    final failedPeerCount = body['failedPeerCount'];
+    return failedPeerCount is int ? failedPeerCount : 0;
   }
 
   /// 데스크탑이 실어 보낸 거절 사유. 본문이 JSON이 아닐 수도 있어 실패하면 사유 없이 넘어간다

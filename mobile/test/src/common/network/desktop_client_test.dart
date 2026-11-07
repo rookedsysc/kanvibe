@@ -319,4 +319,70 @@ void main() {
 
     expect(surfaces.tabs.single.name, 'kanvibe');
   });
+  group('태스크 삭제', () {
+    test('인증 DELETE를 보내고 강제 삭제일 때만 force를 붙인다', () async {
+      final requests = <http.Request>[];
+      final client = DesktopClient(
+        httpClient: MockClient((request) async {
+          requests.add(request);
+          return http.Response(jsonEncode({'success': true}), 200);
+        }),
+      );
+
+      await client.deleteTask(_connection, 'task-1', isForced: false);
+      await client.deleteTask(_connection, 'task-1', isForced: true);
+
+      expect(requests.map((request) => request.method), ['DELETE', 'DELETE']);
+      expect(requests.first.url.path, '/api/mobile/tasks/task-1');
+      expect(requests.first.url.queryParameters, isEmpty);
+      expect(requests.last.url.queryParameters, {'force': 'true'});
+      expect(requests.first.headers['authorization'], 'Bearer test-token');
+    });
+
+    test('다른 데스크탑에 전파하지 못한 수를 돌려준다', () async {
+      final client = DesktopClient(
+        httpClient: MockClient(
+          (_) async => http.Response(
+            jsonEncode({'success': true, 'failedPeerCount': 2}),
+            200,
+          ),
+        ),
+      );
+
+      final failedPeerCount = await client.deleteTask(
+        _connection,
+        'task-1',
+        isForced: false,
+      );
+
+      expect(failedPeerCount, 2);
+    });
+
+    test('커밋하지 않은 변경으로 멈추면 409와 데스크탑 사유를 던진다', () async {
+      final client = DesktopClient(
+        httpClient: MockClient(
+          (_) async => http.Response.bytes(
+            utf8.encode(
+              jsonEncode({
+                'success': false,
+                'code': 'dirty-worktree',
+                'error': '커밋하지 않은 변경이 있습니다',
+              }),
+            ),
+            409,
+            headers: {'content-type': 'application/json; charset=utf-8'},
+          ),
+        ),
+      );
+
+      await expectLater(
+        client.deleteTask(_connection, 'task-1', isForced: false),
+        throwsA(
+          isA<DesktopRequestException>()
+              .having((error) => error.statusCode, 'statusCode', 409)
+              .having((error) => error.message, 'message', '커밋하지 않은 변경이 있습니다'),
+        ),
+      );
+    });
+  });
 }

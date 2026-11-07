@@ -1,15 +1,24 @@
 import { spawn, type ChildProcess } from "child_process";
 import { getAppSetting, getDefaultSessionType, setAppSetting } from "@/desktop/main/services/appSettingsService";
-import { connectTerminalSession, createTask, getTaskById, getTasksByStatus, updateTaskStatus } from "@/desktop/main/services/kanbanService";
+import {
+  connectTerminalSession,
+  createTask,
+  deleteTaskAcrossTargets,
+  getTaskById,
+  getTasksByStatus,
+  updateTaskStatus,
+} from "@/desktop/main/services/kanbanService";
 import { getAllProjects, getProjectBranches } from "@/desktop/main/services/projectService";
 import { attachTaskTerminal, CallbackTerminalClient } from "@/desktop/main/terminalBridge";
 import { createTerminalTab } from "@/desktop/main/services/terminalTabService";
+import { propagateTaskRegistrationToPeers } from "@/desktop/main/services/taskTargetPropagationService";
 import { listNotifications, markNotificationRead, markAllNotificationsRead, subscribeToNotificationChanges } from "@/desktop/main/notificationStore";
 import type { AppNotification } from "@/desktop/shared/notifications";
 import { SessionType, TaskStatus, type KanbanTask } from "@/entities/KanbanTask";
 import { TaskPriority } from "@/entities/TaskPriority";
-import { getTaskRepository } from "@/lib/database";
+import { getProjectRepository, getTaskRepository } from "@/lib/database";
 import { execGit } from "@/lib/gitOperations";
+import { isSafeGitRef } from "@/lib/gitRef";
 import {
   findPairedDevice,
   issuePairingCode,
@@ -64,7 +73,7 @@ import { isSessionAlive, quoteForPosixShell } from "@/lib/worktree";
  * 스냅샷과 출력 스트림 조회는 포커스를 바꾸지 않는다. 크기 조정을 지원하는 세션은
  * [claimPaneViewport]가 모바일 연결 수명 동안 크기를 소유하고 마지막 연결이 나가면 복원한다.
  *
- * 태스크와 터미널을 바꾸는 것은 [createMobileTask]와 [updateMobileTaskStatus], [createMobileTerminalTab], 그리고 세션이 아직 없는 태스크를 열 때
+ * 태스크와 터미널을 바꾸는 것은 [createMobileTask]와 [updateMobileTaskStatus], [deleteMobileTask], [createMobileTerminalTab], 그리고 세션이 아직 없는 태스크를 열 때
  * 세션을 띄우는 일이다. 태스크 변경은 데스크탑 화면과 같은 `kanbanService`, 탭 생성은 `terminalTabService`를 거치고, 세션은 데스크탑이 태스크를
  * 열 때와 같은 [attachTaskTerminal]을 지난다. 페어링한 기기가 이 머신에 셸 세션을 열 수 있다는 뜻이라
  * 이것들은 [authorizeMobileRequest] 뒤에만 놓이고, 화면에 없는 칸은 받지 않는다.
@@ -398,19 +407,8 @@ function readEnumValue<T extends string>(
   return matched;
 }
 
-/**
- * 브랜치 이름으로 받아들일 모양.
- *
- * 이 값은 `createWorktreeWithSession`에서 `git ... -b "<이름>"` 꼴로 셸 명령 문자열에 끼워지고,
- * worktree 경로에도 그대로 들어간다. 큰따옴표 안이라도 셸은 `$(...)`와 백틱을 펼치므로,
- * 데스크탑 화면에서만 오던 값과 달리 네트워크에서 오는 값은 여기서 막지 않으면
- * 페어링한 기기가 이 머신에서 임의의 명령을 돌리고 프로젝트 밖 경로를 짚을 수 있다.
- * git이 받아 주는 이름 중 셸과 경로에 뜻이 없는 문자만 통과시킨다.
- */
-const SAFE_GIT_REF_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._/-]*$/;
-
 function readGitRef(submitted: string, fieldLabel: string): string {
-  if (!SAFE_GIT_REF_PATTERN.test(submitted) || submitted.includes("..")) {
+  if (!isSafeGitRef(submitted)) {
     throw new MobileTaskInputError(`${fieldLabel}에 쓸 수 없는 문자가 있습니다`);
   }
   return submitted;
@@ -443,7 +441,7 @@ export interface MobileTaskDraft {
  * 두 화면이 다른 규칙으로 제목을 정하면 같은 보드에서 어느 쪽에서 만들었는지에 따라 제목 모양이 갈린다.
  */
 export async function createMobileTask(draft: MobileTaskDraft): Promise<KanbanTask> {
-  return createTask({
+  const createdTask = await createTask({
     title: draft.branchName,
     branchName: readGitRef(draft.branchName, "브랜치 이름"),
     projectId: draft.projectId,
@@ -452,6 +450,45 @@ export async function createMobileTask(draft: MobileTaskDraft): Promise<KanbanTa
     priority: readEnumValue(Object.values(TaskPriority), draft.priority, "우선순위"),
     sessionType: readEnumValue(Object.values(SessionType), draft.sessionType, "세션 타입"),
   });
+  await registerMobileTaskOnPeerClients(createdTask);
+  return createdTask;
+}
+
+/**
+ * worktree는 연결된 이 데스크탑만 만들고, 같은 프로젝트를 다루는 다른 데스크탑에는 task 등록만 전파한다.
+ * 이미 만든 task를 되돌리지 않도록 전파 실패는 기기에 오류로 돌려주지 않고 로그로만 남긴다.
+ */
+async function registerMobileTaskOnPeerClients(createdTask: KanbanTask): Promise<void> {
+  if (!createdTask.projectId || !createdTask.branchName || !createdTask.worktreePath) {
+    return;
+  }
+
+  const project = await (await getProjectRepository()).findOneBy({ id: createdTask.projectId });
+  if (!project) {
+    return;
+  }
+
+  const peerResults = await propagateTaskRegistrationToPeers(project.repoPath, createdTask.branchName, project.sshHost);
+  const failedPeers = peerResults.filter((result) => !result.isSuccess);
+  if (failedPeers.length > 0) {
+    console.warn("[mobile] 다른 데스크탑에 task를 등록하지 못했습니다", { taskId: createdTask.id, failedPeers });
+  }
+}
+
+/**
+ * 모바일에서 태스크를 지운다. 연결된 이 데스크탑이 지우고 같은 task를 가진 다른 데스크탑으로 전파한다.
+ * 커밋하지 않은 변경이 있으면 `DirtyWorktreeError`로 멈추고, 기기가 강제 삭제를 고르면 그래도 지운다.
+ * 꺼져 있어 전파받지 못한 데스크탑 수를 돌려 기기가 경고하게 하고, 없는 태스크면 null이 나와 라우팅이 404로 옮긴다.
+ */
+export async function deleteMobileTask(taskId: string, isForced: boolean): Promise<{ failedPeerCount: number } | null> {
+  const deletion = await deleteTaskAcrossTargets(taskId, {
+    shouldRejectDirtyWorktree: !isForced,
+    shouldPropagateToPeers: true,
+  });
+  if (!deletion.isDeleted) {
+    return null;
+  }
+  return { failedPeerCount: deletion.peerResults.filter((result) => !result.isSuccess).length };
 }
 
 /** 모바일에서 태스크를 다른 상태로 옮긴다. 없는 태스크면 null이 나와 라우팅이 404로 옮긴다 */
