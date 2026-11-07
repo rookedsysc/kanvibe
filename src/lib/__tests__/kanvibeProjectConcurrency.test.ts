@@ -9,7 +9,11 @@ import { TaskPriority } from "@/entities/TaskPriority";
 
 const execFileAsync = promisify(execFile);
 vi.mock("@/lib/gitOperations", () => ({
-  execGit: async (command: string) => (await execFileAsync("sh", ["-c", command])).stdout,
+  execGit: async (command: string, _sshHost: string, options?: { remoteStdin?: string }) => {
+    const execution = execFileAsync("sh", ["-c", command]);
+    execution.child.stdin?.end(options?.remoteStdin ?? "");
+    return (await execution).stdout;
+  },
 }));
 import { writeKanvibeProjectColor, writeKanvibeProjectPriority } from "@/lib/kanvibeProjectState";
 

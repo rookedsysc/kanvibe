@@ -65,6 +65,8 @@ interface RemoteSSHConnectionLease {
 export interface ExecGitOptions {
   timeoutMs?: number;
   maxBufferBytes?: number;
+  /** 원격 명령의 표준 입력으로 보낼 내용. 자격 증명처럼 프로세스 인자에 남으면 안 되는 값을 싣는다. 재시도마다 다시 보낸다 */
+  remoteStdin?: string;
 }
 
 function collectErrorOutput(error: unknown): string {
@@ -223,6 +225,7 @@ async function execRemote(
           sshArgs,
           timeoutMs,
           options?.maxBufferBytes ?? REMOTE_COMMAND_MAX_BUFFER_BYTES,
+          options?.remoteStdin,
         );
       } catch (error) {
         const isCommandTimeout = isSSHCommandTimeoutError(error);
@@ -273,12 +276,27 @@ function isRetriableSSHExecError(error: Error, isCommandTimeout: boolean): boole
   return isCommandTimeout || isSSHTransportError(error);
 }
 
-function spawnSSHCommand(sshArgs: string[], timeoutMs: number, maxBufferBytes: number): Promise<string> {
+function spawnSSHProcess(sshArgs: string[], remoteStdin?: string) {
+  const env = createLocalShellEnvironment();
+  if (remoteStdin === undefined) {
+    return spawn("ssh", sshArgs, { env, stdio: ["ignore", "pipe", "pipe"] });
+  }
+
+  const child = spawn("ssh", sshArgs, { env, stdio: ["pipe", "pipe", "pipe"] });
+  /** 원격이 입력을 다 읽기 전에 끝나면 EPIPE가 나지만, 실패 판정은 종료 코드가 맡는다 */
+  child.stdin.on("error", () => undefined);
+  child.stdin.end(remoteStdin);
+  return child;
+}
+
+function spawnSSHCommand(
+  sshArgs: string[],
+  timeoutMs: number,
+  maxBufferBytes: number,
+  remoteStdin?: string,
+): Promise<string> {
   return new Promise((resolve, reject) => {
-    const child = spawn("ssh", sshArgs, {
-      env: createLocalShellEnvironment(),
-      stdio: ["ignore", "pipe", "pipe"],
-    });
+    const child = spawnSSHProcess(sshArgs, remoteStdin);
 
     let stdout = "";
     let stderr = "";
