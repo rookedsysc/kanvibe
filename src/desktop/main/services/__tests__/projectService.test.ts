@@ -69,6 +69,7 @@ vi.mock("@/entities/KanbanTask", () => ({
   },
   SessionType: {
     TMUX: "tmux",
+    HERDR: "herdr",
     ZELLIJ: "zellij",
   },
 }));
@@ -89,6 +90,7 @@ vi.mock("@/lib/gitOperations", async (importOriginal) => ({
 
 vi.mock("@/lib/worktree", () => ({
   isSessionAlive: mocks.isSessionAlive,
+  sanitizeHerdrSessionName: (sessionName: string) => `herdr-${sessionName}`,
   formatSessionName: mocks.formatSessionName,
   formatProjectBranchSessionName: mocks.formatSessionName,
   createSessionWithoutWorktree: mocks.createSessionWithoutWorktree,
@@ -1434,6 +1436,76 @@ describe("projectService local hook installation", () => {
       }),
     );
     expect(mocks.installKanvibeHooks).not.toHaveBeenCalled();
+  });
+
+  it("tmux 세션이 없고 Herdr 세션이 살아 있으면 Herdr 세션으로 연결한다", async () => {
+    mocks.scanGitRepos.mockResolvedValue(["/remote/repo__worktrees/feature-login"]);
+    mocks.execGit.mockImplementation(async (command: string) => {
+      if (command.includes("rev-parse --path-format=absolute --git-common-dir")) {
+        return "/remote/repo/.git";
+      }
+      return "";
+    });
+    mocks.getDefaultBranch.mockResolvedValue("main");
+    mocks.getClaudeHooksStatus.mockResolvedValue({ installed: true });
+    mocks.getGeminiHooksStatus.mockResolvedValue({ installed: true });
+    mocks.getCodexHooksStatus.mockResolvedValue({ installed: true });
+    mocks.getOpenCodeHooksStatus.mockResolvedValue({ installed: true });
+    mocks.listWorktrees.mockResolvedValue([
+      {
+        path: "/remote/repo__worktrees/feature-login",
+        branch: "feature-login",
+        isBare: false,
+      },
+    ]);
+    mocks.formatSessionName.mockReturnValue("repo-feature-login");
+    mocks.isSessionAlive.mockImplementation(async (sessionType: string) => sessionType === "herdr");
+
+    mocks.getProjectRepository.mockResolvedValue({
+      find: vi.fn().mockResolvedValue([
+        {
+          id: "project-1",
+          name: "repo",
+          repoPath: "/remote/repo",
+          defaultBranch: "main",
+          sshHost: "remote-host",
+        },
+      ]),
+      create: vi.fn((value) => value),
+      save: vi.fn(async (value) => ({ id: "project-1", ...value })),
+      remove: vi.fn(),
+    });
+
+    const taskRepoSave = vi.fn(async (value) => ({ id: "task-worktree", ...value }));
+    mocks.getTaskRepository.mockResolvedValue({
+      findOneBy: vi.fn(async (criteria: { branchName?: string; projectId?: string | null }) => {
+        if (criteria.projectId === "project-1" && criteria.branchName === "main") {
+          return {
+            id: "task-main",
+            branchName: "main",
+            projectId: "project-1",
+            baseBranch: "main",
+            worktreePath: null,
+            sshHost: "remote-host",
+          };
+        }
+
+        return null;
+      }),
+      create: vi.fn((value) => value),
+      save: taskRepoSave,
+    });
+
+    const { scanAndRegisterProjects } = await import("@/desktop/main/services/projectService");
+
+    const result = await scanAndRegisterProjects("/remote/workspace", "remote-host");
+
+    expect(result.worktreeTasks).toContain("feature-login");
+    const [savedWorktreeTask] = taskRepoSave.mock.calls[0];
+    expect(savedWorktreeTask.branchName).toBe("feature-login");
+    expect(savedWorktreeTask.sshHost).toBe("remote-host");
+    expect(savedWorktreeTask.sessionType).toBe("herdr");
+    expect(savedWorktreeTask.sessionName).toBe("herdr-repo-feature-login");
   });
 
   it("원격 스캔은 root hook 상태 조회 실패와 무관하게 worktree 등록을 계속 진행한다", async () => {
