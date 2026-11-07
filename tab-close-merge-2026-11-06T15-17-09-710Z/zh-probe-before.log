@@ -1,0 +1,4 @@
+taskDetail.terminalTabCloseConfirm
+taskDetail.terminalTabProcessesUnknown
+taskDetail.terminalTabCloseCheckFailed
+errors: ["MISSING_MESSAGE","MISSING_MESSAGE","MISSING_MESSAGE"]

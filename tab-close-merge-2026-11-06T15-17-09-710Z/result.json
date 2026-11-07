@@ -1,0 +1,104 @@
+{
+  "head": "b530f78b6b1018b63aaa21181b0fba5cadfbc578",
+  "unchanged": true,
+  "platform": "darwin",
+  "checks": [
+    {
+      "name": "Cmd+W 취소: 프로세스 이름·창 닫기 안내 표시, 탭과 PID 유지",
+      "ok": true,
+      "detail": {
+        "message": "이 탭을 닫으면 실행 중인 프로세스가 종료될 수 있습니다.\n\n현재 확인된 프로세스: sleep\n백그라운드 작업은 이 목록에 표시되지 않을 수 있습니다.\n\n그래도 탭을 닫으시겠습니까?\n창 전체를 닫으려면 Cmd+Shift+W를 누르세요.",
+        "pid": 27946
+      }
+    },
+    {
+      "name": "닫기 버튼 취소: 실제 프로세스와 탭 유지",
+      "ok": true
+    },
+    {
+      "name": "Cmd+W 확인: 대상 탭 삭제와 실제 PID 종료",
+      "ok": true
+    },
+    {
+      "name": "일반 터미널 마지막 탭: 취소하면 PID 유지",
+      "ok": true
+    },
+    {
+      "name": "Cmd+Shift+W: 확인창 없이 창만 닫고 실제 PID 유지",
+      "ok": true
+    },
+    {
+      "name": "일반 터미널 마지막 탭 확인: 창 닫힘과 PID 종료",
+      "ok": true
+    },
+    {
+      "name": "tmux 분할 화면: sleep·tail 표시 후 취소하면 두 PID 유지",
+      "ok": true
+    },
+    {
+      "name": "tmux 탭 닫기 확인: 두 분할 프로세스 종료",
+      "ok": true
+    },
+    {
+      "name": "tmux 마지막 탭 Cmd+W: 확인창 없이 창 닫기, 세션·탭·PID 유지",
+      "ok": true,
+      "detail": {
+        "lastPid": 28535,
+        "sessionName": "tab-close-2026-11-06T15-17-09-710Z-main"
+      }
+    },
+    {
+      "name": "QA 세션·프로세스 정리 확인",
+      "ok": true,
+      "detail": []
+    }
+  ],
+  "dialogs": [
+    {
+      "type": "confirm",
+      "message": "이 탭을 닫으면 실행 중인 프로세스가 종료될 수 있습니다.\n\n현재 확인된 프로세스: sleep\n백그라운드 작업은 이 목록에 표시되지 않을 수 있습니다.\n\n그래도 탭을 닫으시겠습니까?\n창 전체를 닫으려면 Cmd+Shift+W를 누르세요.",
+      "accept": false,
+      "at": "2026-11-06T15:17:16.349Z"
+    },
+    {
+      "type": "confirm",
+      "message": "이 탭을 닫으면 실행 중인 프로세스가 종료될 수 있습니다.\n\n현재 확인된 프로세스: sleep\n백그라운드 작업은 이 목록에 표시되지 않을 수 있습니다.\n\n그래도 탭을 닫으시겠습니까?\n창 전체를 닫으려면 Cmd+Shift+W를 누르세요.",
+      "accept": false,
+      "at": "2026-11-06T15:17:16.839Z"
+    },
+    {
+      "type": "confirm",
+      "message": "이 탭을 닫으면 실행 중인 프로세스가 종료될 수 있습니다.\n\n현재 확인된 프로세스: sleep\n백그라운드 작업은 이 목록에 표시되지 않을 수 있습니다.\n\n그래도 탭을 닫으시겠습니까?\n창 전체를 닫으려면 Cmd+Shift+W를 누르세요.",
+      "accept": true,
+      "at": "2026-11-06T15:17:16.866Z"
+    },
+    {
+      "type": "confirm",
+      "message": "이 탭을 닫으면 실행 중인 프로세스가 종료될 수 있습니다.\n\n현재 확인된 프로세스: sleep\n백그라운드 작업은 이 목록에 표시되지 않을 수 있습니다.\n\n그래도 탭을 닫으시겠습니까?\n창 전체를 닫으려면 Cmd+Shift+W를 누르세요.",
+      "accept": false,
+      "at": "2026-11-06T15:17:17.396Z"
+    },
+    {
+      "type": "confirm",
+      "message": "이 탭을 닫으면 실행 중인 프로세스가 종료될 수 있습니다.\n\n현재 확인된 프로세스: sleep\n백그라운드 작업은 이 목록에 표시되지 않을 수 있습니다.\n\n그래도 탭을 닫으시겠습니까?\n창 전체를 닫으려면 Cmd+Shift+W를 누르세요.",
+      "accept": true,
+      "at": "2026-11-06T15:17:19.922Z"
+    },
+    {
+      "type": "confirm",
+      "message": "이 탭을 닫으면 실행 중인 프로세스가 종료될 수 있습니다.\n\n현재 확인된 프로세스: sleep, tail\n백그라운드 작업은 이 목록에 표시되지 않을 수 있습니다.\n\n그래도 탭을 닫으시겠습니까?\n창 전체를 닫으려면 Cmd+Shift+W를 누르세요.",
+      "accept": false,
+      "at": "2026-11-06T15:17:22.732Z"
+    },
+    {
+      "type": "confirm",
+      "message": "이 탭을 닫으면 실행 중인 프로세스가 종료될 수 있습니다.\n\n현재 확인된 프로세스: sleep, tail\n백그라운드 작업은 이 목록에 표시되지 않을 수 있습니다.\n\n그래도 탭을 닫으시겠습니까?\n창 전체를 닫으려면 Cmd+Shift+W를 누르세요.",
+      "accept": true,
+      "at": "2026-11-06T15:17:23.183Z"
+    }
+  ],
+  "errors": [],
+  "out": "/Users/rookedsysc/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/dev/qa-results/roky-harness/tab-close-runtime/2026-11-06T15-17-09-710Z",
+  "ok": true,
+  "recording": "Playwright captures actual renderer frames. Native confirmation UI may be absent in video; actual dialog events and text are retained in trace and result.json."
+}
