@@ -61,7 +61,7 @@ describe("taskTargetPropagationService", () => {
 
     expect(mocks.readTextFile).toHaveBeenCalledWith("/remote/repo__worktrees/feat/.kanvibe/targets.json", "devbox");
     expect(mocks.execGit).toHaveBeenCalledWith(
-      `bash '/remote/repo__worktrees/feat/.kanvibe/task.sh' 'propagate-delete' '--exclude-url' '${OWN_URL}'`,
+      expect.stringMatching(new RegExp(`^bash -c .* '/remote/repo__worktrees/feat/\\.kanvibe/task\\.sh' 'propagate-delete' '--exclude-url' '${OWN_URL}'$`, "s")),
       "devbox",
       { timeoutMs: expect.any(Number) },
     );
@@ -79,7 +79,7 @@ describe("taskTargetPropagationService", () => {
     await propagateTaskRegistrationToPeers("/repo", "feat/new", null);
 
     expect(mocks.execGit).toHaveBeenCalledWith(
-      `bash '/repo/.kanvibe/task.sh' 'propagate-register' '--exclude-url' '${OWN_URL}' '--branch' 'feat/new'`,
+      expect.stringMatching(new RegExp(`^bash -c .* '/repo/\\.kanvibe/task\\.sh' 'propagate-register' '--exclude-url' '${OWN_URL}' '--branch' 'feat/new'$`, "s")),
       null,
       { timeoutMs: expect.any(Number) },
     );

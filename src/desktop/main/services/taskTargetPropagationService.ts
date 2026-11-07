@@ -1,8 +1,8 @@
 import { execGit } from "@/lib/gitOperations";
 import { getHookServerUrl } from "@/lib/hookEndpoint";
-import { quoteShellArgument, readTextFile } from "@/lib/hostFileAccess";
+import { readTextFile } from "@/lib/hostFileAccess";
 import { getKanvibeTargetsPath, parseKanvibeTargets } from "@/lib/kanvibeProjectState";
-import { getTaskCliPath, TASK_CLI_PEER_RESULT_PREFIX } from "@/lib/taskCliScript";
+import { buildTaskCliCommand, TASK_CLI_PEER_RESULT_PREFIX } from "@/lib/taskCliScript";
 
 /** 다른 client 하나에 보낸 전파 요청의 결과 */
 export interface PeerTargetResult {
@@ -52,9 +52,8 @@ async function runPeerPropagation(
   }
 
   try {
-    const commandArguments = [commandName, "--exclude-url", ownUrl, ...extraArguments].map(quoteShellArgument).join(" ");
     const output = await execGit(
-      `bash ${quoteShellArgument(getTaskCliPath(repoPath, sshHost))} ${commandArguments}`,
+      buildTaskCliCommand(repoPath, [commandName, "--exclude-url", ownUrl, ...extraArguments], sshHost),
       sshHost,
       { timeoutMs: PEER_PROPAGATION_TIMEOUT_MS },
     );

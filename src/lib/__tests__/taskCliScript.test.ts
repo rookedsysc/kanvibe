@@ -2,14 +2,14 @@
  * @vitest-environment node
  */
 import { execFile } from "node:child_process";
-import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { access, chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import http from "node:http";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { buildTaskCliFile } from "@/lib/taskCliScript";
+import { buildTaskCliCommand, buildTaskCliFile } from "@/lib/taskCliScript";
 
 const execFileAsync = promisify(execFile);
 const require = createRequire(import.meta.url);
@@ -433,5 +433,58 @@ describe("task CLI script", () => {
     expect(content).toContain("printf 'Authorization: Bearer %s\\n' \"${token}\" | curl");
     expect(content).toContain("-H @-");
     expect(content).not.toMatch(/-H\s+["']Authorization/);
+  });
+
+  describe("KanVibe client가 실행하는 경로", () => {
+    const REPLACED_SCRIPT_MARKER = "replaced-script-ran";
+
+    /** 앱이 설치한 task.sh가 ignored 상태일 때 그 파일을 추적하는 브랜치를 checkout해 git이 덮어쓰게 한다 */
+    async function checkoutBranchThatReplacesTaskCli(): Promise<void> {
+      const taskCliPath = path.join(repoDir, ".kanvibe", "task.sh");
+      const trustedScript = await readFile(taskCliPath, "utf-8");
+      const commitArguments = ["-c", "user.name=kanvibe", "-c", "user.email=kanvibe@example.com", "commit", "-q", "-m", "tracked task.sh"];
+      await writeFile(path.join(repoDir, ".git", "info", "exclude"), ".kanvibe/\n");
+      await git(["checkout", "-q", "-b", "untrusted"]);
+      await writeFile(taskCliPath, `#!/bin/bash\ntouch ${JSON.stringify(path.join(workspaceDir, REPLACED_SCRIPT_MARKER))}\n`);
+      await git(["add", "-f", ".kanvibe/task.sh"]);
+      await git(commitArguments);
+      await git(["checkout", "-q", "feat/current"]);
+      await writeFile(taskCliPath, trustedScript);
+      await git(["checkout", "-q", "untrusted"]);
+      expect(await readFile(taskCliPath, "utf-8")).toContain(REPLACED_SCRIPT_MARKER);
+    }
+
+    it("덮어써진 task.sh 대신 앱이 가진 본문을 실행한다", async () => {
+      // Given
+      const peer = await startFakeClient();
+      await writeTargets([{ url: peer.url, taskId: "task-peer", token: "peer-token" }]);
+      await checkoutBranchThatReplacesTaskCli();
+      const command = buildTaskCliCommand(repoDir, ["propagate-delete", "--exclude-url", "http://own:9736"]);
+
+      // When
+      const { stdout } = await execFileAsync("sh", ["-c", command]);
+
+      // Then
+      await expect(access(path.join(workspaceDir, REPLACED_SCRIPT_MARKER))).rejects.toThrow();
+      expect(peer.calls.map((call) => call.functionName)).toEqual(["deleteTaskFromCli"]);
+      expect(stdout).toContain(`__KANVIBE_PEER_RESULT__\t${peer.url}\t200`);
+    });
+
+    it("원격 실행처럼 셸을 두 번 거쳐도 본문과 인자가 그대로 전달된다", async () => {
+      // Given
+      const peer = await startFakeClient();
+      await writeTargets([{ url: peer.url, taskId: "task-peer", token: "peer-token" }]);
+      const command = buildTaskCliCommand(repoDir, ["propagate-register", "--branch", "feat/it's new"]);
+      const quote = (value: string) => `'${value.replace(/'/g, `'"'"'`)}'`;
+
+      // When
+      await execFileAsync("sh", ["-lc", `sh -lc ${quote(`sh -lc ${quote(command)}`)}`]);
+
+      // Then
+      expect(peer.calls[0]).toMatchObject({
+        functionName: "registerTaskFromPeer",
+        body: { contextTaskId: "task-peer", branchName: "feat/it's new" },
+      });
+    });
   });
 });

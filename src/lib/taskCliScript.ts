@@ -1,4 +1,5 @@
 import path from "path";
+import { quoteShellArgument } from "@/lib/hostFileAccess";
 import { KANVIBE_DIR_NAME } from "@/lib/kanvibeProjectState";
 import type { ShellHookProviderFile } from "@/lib/shellHookProvider";
 
@@ -21,7 +22,7 @@ const TASK_CLI_SCRIPT = `#!/bin/bash
 
 set -u
 
-KANVIBE_CLI_DIR="$(cd "$(dirname "\${BASH_SOURCE[0]}")" && pwd)"
+KANVIBE_CLI_DIR="$(cd "$(dirname "\${BASH_SOURCE[0]:-$0}")" && pwd)"
 KANVIBE_REPO_ROOT="$(dirname "\${KANVIBE_CLI_DIR}")"
 KANVIBE_TARGETS_FILE="\${KANVIBE_CLI_DIR}/targets.json"
 KANVIBE_CONNECT_TIMEOUT_SECONDS=3
@@ -328,6 +329,16 @@ esac
 export function getTaskCliPath(repoPath: string, sshHost?: string | null): string {
   const pathModule = sshHost ? path.posix : path;
   return pathModule.join(repoPath, KANVIBE_DIR_NAME, TASK_CLI_FILE_NAME);
+}
+
+/**
+ * KanVibe client가 직접 실행할 task CLI 명령을 만든다.
+ * worktree의 task.sh는 브랜치 checkout으로 덮어써질 수 있으므로 실행하지 않고, 앱이 가진 본문을 `bash -c`로 넘긴다.
+ * `$0`에 task.sh 경로를 주면 파일로 실행할 때와 같은 위치의 targets.json을 읽는다.
+ */
+export function buildTaskCliCommand(repoPath: string, commandArguments: string[], sshHost?: string | null): string {
+  const scriptArguments = [getTaskCliPath(repoPath, sshHost), ...commandArguments].map(quoteShellArgument).join(" ");
+  return `bash -c ${quoteShellArgument(TASK_CLI_SCRIPT)} ${scriptArguments}`;
 }
 
 /** hook 설치 산출물과 같은 writer로 로컬·원격에 기록할 수 있도록 파일 정의로 돌려준다 */
