@@ -43,3 +43,11 @@ export interface TerminalTabMutationResult {
   shouldCloseWindow?: boolean;
   error?: string;
 }
+
+export interface TerminalTabCloseInfo {
+  ok: boolean;
+  shouldCloseWindow: boolean;
+  /** 현재 관측된 프로세스 이름. null은 조회 불가이며 작업이 없다는 뜻이 아니다. */
+  processNames: string[] | null;
+  error?: string;
+}

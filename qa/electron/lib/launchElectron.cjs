@@ -65,6 +65,7 @@ async function launchKanVibeElectron(options = {}) {
         rootDir,
       ],
       cwd: rootDir,
+      recordVideo: options.recordVideo,
       env: {
         ...process.env,
         CI: process.env.CI || "1",

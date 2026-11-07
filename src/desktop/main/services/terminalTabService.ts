@@ -5,6 +5,7 @@ import { execGit } from "@/lib/gitOperations";
 import {
   closeLocalTerminalTab,
   createLocalTerminalTab,
+  getLocalTerminalTabProcess,
   listLocalTerminalTabs,
   moveLocalTerminalTab,
   renameLocalTerminalTab,
@@ -36,9 +37,11 @@ import {
 } from "@/lib/terminalTabs";
 import type {
   TerminalTab,
+  TerminalTabCloseInfo,
   TerminalTabListResult,
   TerminalTabMutationResult,
 } from "@/desktop/shared/terminalTabs";
+import { buildTmuxListMirrorPanesCommand, parseTmuxMirrorPaneList } from "@/lib/paneMirror";
 
 /**
  * KanVibe 탭 바가 부르는 진입점.
@@ -174,6 +177,47 @@ export async function createTerminalTab(taskId: string): Promise<TerminalTabMuta
     return { ok: true };
   } catch (error) {
     return toFailure(error);
+  }
+}
+
+export async function getTerminalTabCloseInfo(taskId: string, tabId: string): Promise<TerminalTabCloseInfo> {
+  try {
+    const target = await findTerminalSessionTarget(taskId);
+    if (!target) {
+      return { ok: false, shouldCloseWindow: false, processNames: null, error: "작업에 연결된 세션이 없습니다." };
+    }
+
+    const tabs = target.sessionType === SessionType.TERMINAL
+      ? listLocalTerminalTabs(taskId)
+      : await readTabs(target);
+    if (!tabs.some((tab) => tab.id === tabId)) {
+      return { ok: false, shouldCloseWindow: false, processNames: null, error: "탭을 찾을 수 없습니다." };
+    }
+    const shouldCloseWindow = target.sessionType !== SessionType.TERMINAL && tabs.length === 1;
+    if (shouldCloseWindow) {
+      return { ok: true, shouldCloseWindow: true, processNames: null };
+    }
+
+    let processNames: string[] | null = null;
+    try {
+      if (target.sessionType === SessionType.TERMINAL && !target.sshHost) {
+        const processName = getLocalTerminalTabProcess(taskId, tabId);
+        processNames = processName ? [processName] : null;
+      } else if (target.sessionType === SessionType.TMUX) {
+        const output = await runTabCommand(buildTmuxListMirrorPanesCommand(target.sessionName), target.sshHost);
+        const names = parseTmuxMirrorPaneList(output)
+          .filter((pane) => pane.tabId === tabId)
+          .map((pane) => pane.command.trim())
+          .filter(Boolean);
+        processNames = names.length > 0 ? [...new Set(names)] : null;
+      }
+    } catch {
+      // 조회 실패를 작업 없음으로 간주하면 실행 중인 프로세스를 경고 없이 종료할 수 있다.
+      processNames = null;
+    }
+    return { ok: true, shouldCloseWindow: false, processNames };
+  } catch (error) {
+    return { ...toFailure(error), shouldCloseWindow: false, processNames: null };
   }
 }
 
