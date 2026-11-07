@@ -1,3 +1,4 @@
+import DocsNavigation from './docs-navigation'
 import LanguageSwitcher from './language-switcher'
 import { getDocsDictionary } from '../../lib/docsDictionary.mjs'
 import { resolvePinnedSiteUrl } from '../../lib/docsSite.mjs'
@@ -38,10 +39,6 @@ export const metadata = {
   } : {})
 }
 
-function localizeHref(lang, href) {
-  return href === '/' ? `/${lang}` : `/${lang}${href}`
-}
-
 function KanVibeLogo({ lang, tagline }) {
   return (
     <a className="kv-logo" href={`/${lang}`} aria-label="KanVibe Docs">
@@ -65,11 +62,7 @@ export default async function RootLayout({ children, params }) {
           </header>
           <div className="kv-doc-layout">
             <aside className="kv-sidebar" aria-label="Documentation navigation">
-              <nav>
-                {dictionary.nav.map(([href, label]) => (
-                  <a key={href} href={localizeHref(lang, href)}>{label}</a>
-                ))}
-              </nav>
+              <DocsNavigation lang={lang} navItems={dictionary.nav} />
               <a className="kv-repo-link" href="https://github.com/rookedsysc/kanvibe">
                 {dictionary.repo} ↗
               </a>

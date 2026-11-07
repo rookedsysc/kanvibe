@@ -187,6 +187,13 @@ img {
   color: var(--kv-text);
 }
 
+/* 색을 구분하기 어려운 사용자도 알아보도록 배경색과 함께 왼쪽 강조선을 둔다 */
+.kv-sidebar a[aria-current='page'] {
+  background: var(--kv-brand-soft);
+  box-shadow: inset 3px 0 0 var(--kv-brand);
+  color: var(--kv-text);
+}
+
 .kv-repo-link {
   margin-top: 0.65rem;
   border: 1px solid rgba(0, 100, 255, 0.22);
