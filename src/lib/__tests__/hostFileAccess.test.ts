@@ -204,6 +204,92 @@ describe("hostFileAccess.writeTextFile 권한", () => {
   });
 });
 
+describe("hostFileAccess.updateTextFile 권한", () => {
+  let tempDir: string;
+
+  beforeEach(async () => {
+    tempDir = await mkdtemp(path.join(tmpdir(), "kanvibe-update-mode-"));
+    mocks.execGit.mockReset();
+    mocks.skipsChmod = false;
+  });
+
+  afterEach(async () => {
+    await rm(tempDir, { recursive: true, force: true });
+  });
+
+  async function readFileMode(targetPath: string): Promise<number> {
+    return (await stat(targetPath)).mode & 0o777;
+  }
+
+  function runRemoteCommandsWithoutChmod(): void {
+    mocks.execGit.mockImplementation(async (command: string) => {
+      const commandWithoutChmod = `umask 022; chmod() { :; }; ${command}`;
+      const { stdout } = await execFileAsync("sh", ["-c", commandWithoutChmod]);
+      return stdout;
+    });
+  }
+
+  it("임시 파일로 교체해도 자격 증명 파일은 처음부터 지정한 권한으로 공개된다", async () => {
+    // Given
+    mocks.skipsChmod = true;
+    const targetPath = path.join(tempDir, "targets.json");
+    const { updateTextFile } = await import("@/lib/hostFileAccess");
+
+    // When
+    await updateTextFile(targetPath, () => "{}", null, 0o600);
+
+    // Then
+    expect(await readFileMode(targetPath)).toBe(0o600);
+    await expect(readFile(targetPath, "utf-8")).resolves.toBe("{}");
+  });
+
+  it("이미 넓은 권한으로 있던 파일을 갱신하면 지정한 권한으로 좁힌다", async () => {
+    // Given
+    const targetPath = path.join(tempDir, "targets.json");
+    await writeFile(targetPath, "old", "utf-8");
+    await chmod(targetPath, 0o644);
+    const { updateTextFile } = await import("@/lib/hostFileAccess");
+
+    // When
+    await updateTextFile(targetPath, (content) => `${content}-next`, null, 0o600);
+
+    // Then
+    expect(await readFileMode(targetPath)).toBe(0o600);
+    await expect(readFile(targetPath, "utf-8")).resolves.toBe("old-next");
+  });
+
+  it("원격 갱신도 chmod 전에 이미 지정한 권한으로 만들어진다", async () => {
+    // Given
+    const targetPath = path.join(tempDir, "targets.json");
+    runRemoteCommandsWithoutChmod();
+    const { updateTextFile } = await import("@/lib/hostFileAccess");
+
+    // When
+    await updateTextFile(targetPath, () => "{\"token\":\"secret\"}", "remote-host", 0o600);
+
+    // Then
+    expect(await readFileMode(targetPath)).toBe(0o600);
+    await expect(readFile(targetPath, "utf-8")).resolves.toBe("{\"token\":\"secret\"}");
+  });
+
+  it("원격의 넓은 권한 파일을 여러 조각으로 갱신해도 내용과 권한이 지정한 대로 남는다", async () => {
+    // Given
+    const targetPath = path.join(tempDir, "targets.json");
+    await writeFile(targetPath, "old", "utf-8");
+    await chmod(targetPath, 0o644);
+    const largeContent = "x".repeat(100 * 1024);
+    runRemoteCommandsWithoutChmod();
+    const { updateTextFile } = await import("@/lib/hostFileAccess");
+
+    // When
+    await updateTextFile(targetPath, () => largeContent, "remote-host", 0o600);
+
+    // Then
+    expect(await readFileMode(targetPath)).toBe(0o600);
+    await expect(readFile(targetPath, "utf-8")).resolves.toBe(largeContent);
+  });
+});
+
 describe("hostFileAccess.writeTextFileIfAbsent", () => {
   let tempDir: string;
 

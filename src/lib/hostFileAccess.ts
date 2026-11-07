@@ -161,18 +161,26 @@ export async function writeTextFile(
   const encodedContent = Buffer.from(content, "utf-8").toString("base64");
   const quotedTargetPath = quoteShellArgument(targetPath);
   const chmodCommand = mode !== undefined ? ` && chmod ${mode.toString(8)} ${quotedTargetPath}` : "";
-  const umaskCommand = mode !== undefined ? `umask ${(~mode & 0o777).toString(8)} && ` : "";
+  const umaskCommand = buildRemoteUmaskCommand(mode);
   await execGit(
     `mkdir -p ${quoteShellArgument(path.posix.dirname(targetPath))} && printf '%s' ${quoteShellArgument(encodedContent)} | (${umaskCommand}(base64 -d 2>/dev/null || base64 -D) > ${quotedTargetPath})${chmodCommand}`,
     sshHost,
   );
 }
 
-/** 저장소 측 잠금으로 여러 프로세스와 SSH client의 읽기·수정·교체를 직렬화한다. */
+function buildRemoteUmaskCommand(mode?: number): string {
+  return mode !== undefined ? `umask ${(~mode & 0o777).toString(8)} && ` : "";
+}
+
+/**
+ * 저장소 측 잠금으로 여러 프로세스와 SSH client의 읽기·수정·교체를 직렬화한다.
+ * `mode`를 주면 내용이 담기는 임시 파일부터 그 권한으로 만들어, 교체 전후 어느 순간에도 넓은 권한으로 열리지 않는다.
+ */
 export async function updateTextFile(
   targetPath: string,
   update: (content: string) => string,
   sshHost?: string | null,
+  mode?: number,
 ): Promise<void> {
   const lockPath = `${targetPath}.lock`;
   const temporaryPath = `${targetPath}.${randomUUID()}.tmp`;
@@ -214,19 +222,24 @@ export async function updateTextFile(
       // 큰 설정도 Linux의 단일 명령 인자 제한을 넘지 않도록 나눠 전송한다.
       // 잠금을 잡은 임시 파일만 갱신하고 마지막 조각 뒤에 원자적으로 교체한다.
       const chunkSize = 32 * 1024;
+      const umaskCommand = buildRemoteUmaskCommand(mode);
+      const chmodCommand = mode !== undefined ? `chmod ${mode.toString(8)} ${quoteShellArgument(temporaryPath)} && ` : "";
       for (let offset = 0; offset < encodedContent.length || offset === 0; offset += chunkSize) {
         const chunk = encodedContent.slice(offset, offset + chunkSize);
         const redirect = offset === 0 ? ">" : ">>";
         const publish = offset + chunkSize >= encodedContent.length
-          ? ` && mv -f ${quoteShellArgument(temporaryPath)} ${quoteShellArgument(targetPath)}`
+          ? ` && ${chmodCommand}mv -f ${quoteShellArgument(temporaryPath)} ${quoteShellArgument(targetPath)}`
           : "";
         await execGit(
-          `printf '%s' ${quoteShellArgument(chunk)} | (base64 -d 2>/dev/null || base64 -D) ${redirect} ${quoteShellArgument(temporaryPath)}${publish}`,
+          `printf '%s' ${quoteShellArgument(chunk)} | (${umaskCommand}(base64 -d 2>/dev/null || base64 -D) ${redirect} ${quoteShellArgument(temporaryPath)})${publish}`,
           sshHost,
         );
       }
     } else {
-      await writeFile(temporaryPath, nextContent, { encoding: "utf-8", flag: "wx" });
+      await writeFile(temporaryPath, nextContent, { encoding: "utf-8", flag: "wx", ...(mode !== undefined ? { mode } : {}) });
+      if (mode !== undefined) {
+        await chmod(temporaryPath, mode);
+      }
       await rename(temporaryPath, targetPath);
     }
   } finally {

@@ -12,9 +12,9 @@ const { mockReadTextFile, mockReadTextFiles, mockWriteTextFile, mockWriteTextFil
 vi.mock("@/lib/hostFileAccess", () => ({
   readTextFile: (...args: unknown[]) => mockReadTextFile(...args),
   readTextFiles: (...args: unknown[]) => mockReadTextFiles(...args),
-  updateTextFile: async (targetPath: string, update: (content: string) => string, sshHost?: string | null) => {
+  updateTextFile: async (targetPath: string, update: (content: string) => string, sshHost?: string | null, mode?: number) => {
     const content = await mockReadTextFile(targetPath, sshHost);
-    await mockWriteTextFile(targetPath, update(content), sshHost);
+    await mockWriteTextFile(targetPath, update(content), sshHost, ...(mode !== undefined ? [mode] : []));
   },
   writeTextFile: (...args: unknown[]) => mockWriteTextFile(...args),
   writeTextFileIfAbsent: (...args: unknown[]) => mockWriteTextFileIfAbsent(...args),
