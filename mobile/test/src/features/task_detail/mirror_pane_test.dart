@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:kanvibe_mobile/src/features/task_create/domain/session_type.dart';
 import 'package:kanvibe_mobile/src/features/task_detail/domain/mirror_pane.dart';
 import 'package:kanvibe_mobile/src/features/task_detail/presentation/surface_unavailable_message.dart';
 
@@ -26,12 +27,19 @@ void main() {
   });
 
   group('폰이 쓰는 pane 목록', () {
-    for (final session in ['tmux', 'terminal', 'zellij', null]) {
+    for (final session in ['tmux', 'terminal', 'zellij', 'herdr', null]) {
       test('${session ?? 'sessionType 누락'} 응답에서 device query 응답 소유권을 읽는다', () {
         final surfaces = TaskSurfaces.fromJson({'sessionType': ?session});
         expect(surfaces.canRespondToDeviceQueries, session == 'terminal');
       });
     }
+
+    test('Herdr 응답을 일반 터미널로 바꾸지 않는다', () {
+      expect(
+        TaskSurfaces.fromJson({'sessionType': 'herdr'}).sessionType,
+        SessionType.herdr,
+      );
+    });
 
     test('직접 만든 surfaces는 device query에 응답하지 않는 것이 기본이다', () {
       expect(const TaskSurfaces(tabs: []).canRespondToDeviceQueries, isFalse);
@@ -80,6 +88,14 @@ void main() {
       expect(
         SurfaceUnavailableReason.fromWire('zellij-too-old'),
         SurfaceUnavailableReason.zellijTooOld,
+      );
+      expect(
+        SurfaceUnavailableReason.fromWire('herdr-missing'),
+        SurfaceUnavailableReason.herdrMissing,
+      );
+      expect(
+        surfaceUnavailableMessage(SurfaceUnavailableReason.herdrMissing),
+        contains('Herdr'),
       );
       expect(
         SurfaceUnavailableReason.fromWire('remote-unreachable'),

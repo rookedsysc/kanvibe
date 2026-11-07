@@ -779,7 +779,8 @@ void main() {
       scrollable: settingsScrollable(),
     );
     expect(find.text('바에 띄운 기본 세팅 0개 · 콤보 2개'), findsOneWidget);
-    expect(find.text('바에 띄운 단축키가 없어요'), findsOneWidget);
+    // 설정이 빈 가져오기 후보는 terminal과 herdr 둘이다
+    expect(find.text('바에 띄운 단축키가 없어요'), findsNWidgets(2));
     await tapInSettings(tester, tmuxSource);
     await tester.tap(find.text('합치기'));
     await tester.pumpAndSettle();
