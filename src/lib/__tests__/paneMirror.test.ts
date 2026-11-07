@@ -2,7 +2,13 @@
  * @vitest-environment node
  */
 import { describe, it, expect } from "vitest";
+import { buildHerdrCommand } from "@/lib/worktree";
 import {
+  buildHerdrObservePaneCommand,
+  buildHerdrPaneShortcutCommand,
+  buildHerdrRecentScreenCommand,
+  buildHerdrWritePaneCommand,
+  parseHerdrObserveRecord,
   buildScreenRedraw,
   buildTmuxPaneShortcutCommand,
   buildZellijPaneShortcutCommand,
@@ -284,5 +290,51 @@ describe("pane 단축키 명령", () => {
       .toBe(`tmux resize-pane -Z -t ${"'%1'\"'\"'; rm -rf /; '\"'\"''"}`);
     expect(buildZellijPaneShortcutCommand("a'b", "terminal_3", "4", "scroll-up"))
       .toContain(`--session 'a'\"'\"'b'`);
+  });
+});
+
+describe("Herdr pane 명령", () => {
+  const herdr = (...args: string[]) => buildHerdrCommand("session", args);
+
+  it("제어 문자와 -로 시작하는 입력을 send-text 인자 하나로 넘긴다", () => {
+    expect(buildHerdrWritePaneCommand("session", "w1:p1", "\x03")).toBe(herdr("pane", "send-text", "w1:p1", "\x03"));
+    expect(buildHerdrWritePaneCommand("session", "w1:p1", "--help")).toBe(herdr("pane", "send-text", "w1:p1", "--help"));
+  });
+
+  it("프로세스 인자에 담을 수 없는 NUL은 Ctrl+Space 키로 보내고 앞뒤 순서를 지킨다", () => {
+    expect(buildHerdrWritePaneCommand("session", "w1:p1", "a\0b")).toBe([
+      herdr("pane", "send-text", "w1:p1", "a"),
+      herdr("pane", "send-keys", "w1:p1", "ctrl+space"),
+      herdr("pane", "send-text", "w1:p1", "b"),
+    ].join(" && "));
+  });
+
+  it("분할은 PC 포커스를 유지하고 확대는 토글한다", () => {
+    expect(buildHerdrPaneShortcutCommand("session", "w1:p1", "split-right")).toBe(herdr("pane", "split", "w1:p1", "--direction", "right", "--no-focus"));
+    expect(buildHerdrPaneShortcutCommand("session", "w1:p1", "split-down")).toBe(herdr("pane", "split", "w1:p1", "--direction", "down", "--no-focus"));
+    expect(buildHerdrPaneShortcutCommand("session", "w1:p1", "toggle-fullscreen")).toBe(herdr("pane", "zoom", "w1:p1", "--toggle"));
+  });
+
+  it.each(["scroll-up", "scroll-down", "scroll-bottom", "copy-mode", "toggle-floating"])("Herdr 명령이 없는 %s는 지원하지 않는다", (action) => {
+    expect(buildHerdrPaneShortcutCommand("session", "w1:p1", action)).toBeNull();
+  });
+
+  it("이력은 ANSI를 살려 최대 2000줄 읽고 observe는 격자 크기를 지정한다", () => {
+    expect(buildHerdrRecentScreenCommand("session", "w1:p1")).toBe(herdr("pane", "read", "w1:p1", "--source", "recent", "--lines", "2000", "--format", "ansi"));
+    expect(buildHerdrObservePaneCommand("session", "w1:p1", 60, 38)).toBe(herdr("terminal", "session", "observe", "w1:p1", "--cols", "60", "--rows", "38"));
+  });
+});
+
+describe("Herdr observe 레코드", () => {
+  it("프레임의 base64를 UTF-8로 풀고 전체 화면 여부를 읽는다", () => {
+    const bytes = Buffer.from("\x1b[1;1H한글").toString("base64");
+    expect(parseHerdrObserveRecord(JSON.stringify({ type: "terminal.frame", bytes, full: true }))).toEqual({ type: "frame", isFullScreen: true, output: "\x1b[1;1H한글" });
+    expect(parseHerdrObserveRecord(JSON.stringify({ type: "terminal.frame", bytes, full: false }))).toMatchObject({ isFullScreen: false });
+  });
+
+  it("종료 레코드를 구분하고 깨진 줄과 모르는 레코드는 무시한다", () => {
+    expect(parseHerdrObserveRecord('{"type":"terminal.closed","reason":"gone"}')).toEqual({ type: "closed" });
+    expect(parseHerdrObserveRecord("{broken")).toBeNull();
+    expect(parseHerdrObserveRecord('{"type":"terminal.other"}')).toBeNull();
   });
 });
