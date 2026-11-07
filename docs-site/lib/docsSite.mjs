@@ -14,6 +14,7 @@ export const DOCS_PAGE_PATHS = [
   '/installation',
   '/quick-start',
   '/features',
+  '/mobile',
   '/settings',
   '/shortcuts'
 ]

@@ -16,6 +16,9 @@ export default {
   features: {
     title: '功能'
   },
+  mobile: {
+    title: '移动端'
+  },
   settings: {
     title: '设置'
   },

@@ -1,78 +1,71 @@
 ---
-title: KanVibe Docs
-description: "KanVibe is a macOS desktop app that ties AI coding agent work from Claude Code, Gemini CLI, Codex CLI, and OpenCode to a Kanban board, per-task terminals, and git worktrees."
+title: Kanban for AI Coding Agents
+description: "KanVibe is a free, open-source macOS Kanban app for Claude Code, Codex, Gemini CLI, and OpenCode tasks, with a git worktree and terminal per task. Continue the same terminals from your phone with KanVibe Mobile."
 ---
 
 <div className="kv-hero">
-  <span className="kv-eyebrow">KanVibe Docs · Nextra 4</span>
-  <h1>Bring AI agent work into one Kanban, terminal, and branch workflow.</h1>
+  <span className="kv-eyebrow">KanVibe Desktop + Mobile</span>
+  <h1>Your AI coding work, on one board. Keep it moving from your phone.</h1>
   <div className="kv-hero-copy">
-    KanVibe connects AI coding agent tasks from Claude Code, Gemini CLI, Codex CLI, and OpenCode to real git worktrees and Herdr/tmux/zellij sessions. Every task gets its own terminal interface, so you can freely move between agent runs, manual commands, builds, tests, and logs in one flow.
+    KanVibe is a free, open-source macOS Kanban workspace for AI coding agents. Bring Claude Code, Codex, Gemini CLI, and OpenCode tasks into one workspace. Give each branch its own terminal, see which work needs you, and return to the same running session from your phone or tablet.
   </div>
   <div className="kv-actions">
-    <a className="kv-button kv-button-primary" href="/en/installation">Start installation</a>
-    <a className="kv-button" href="/en/features">Explore features</a>
+    <a className="kv-button kv-button-primary" href="/en/installation">Install Desktop</a>
+    <a className="kv-button" href="/en/mobile">Set up Mobile</a>
   </div>
   <div className="kv-chip-row">
-    <span className="kv-chip">한국어 · English · 中文</span>
-    <span className="kv-chip">Next.js 16 + Nextra 4</span>
-    <span className="kv-chip">Keyboard-first</span>
+    <span className="kv-chip">Branch-based workspaces</span>
+    <span className="kv-chip">Live agent status</span>
+    <span className="kv-chip">Same terminal, on your phone</span>
   </div>
 </div>
 
-<figure className="kv-shot">
-  <img src="/screenshots/board.png" alt="KanVibe Kanban board" />
-  <figcaption>The KanVibe board shows project colors, priorities, PR badges, and terminal session labels in one view.</figcaption>
-</figure>
+## Know where every task stands
+
+Stop hunting through terminal tabs. The board brings together project, branch, PR, and session context, while supported agent hooks update task status as work progresses.
 
 <figure className="kv-shot">
-  <img src="/screenshots/task-detail.png" alt="Per-task terminal workspace" />
-  <figcaption>Each task opens an isolated terminal workspace so agent execution and direct shell commands stay equally accessible.</figcaption>
+  <img src="/screenshots/board.png" width={1440} height={960} loading="lazy" alt="KanVibe Desktop board with tasks grouped by status" />
+  <figcaption>See work in progress, waiting tasks, and work ready for review across projects.</figcaption>
 </figure>
 
-<div className="kv-grid">
-  <div className="kv-card">
-    <h3>Branch-based task management</h3>
-    <p>Create a task and KanVibe binds the branch, worktree, and Herdr/tmux/zellij session into one work unit.</p>
-  </div>
-  <div className="kv-card">
-    <h3>AI agent hooks</h3>
-    <p>Claude, Gemini, Codex, and OpenCode events automatically move tasks through PROGRESS, PENDING, and REVIEW.</p>
-  </div>
-  <div className="kv-card">
-    <h3>Task-scoped AI chat history</h3>
-    <p>Load Claude, Gemini, Codex, and OpenCode conversations inside a task, then find the right context with provider OR filters, body search, and role filters.</p>
-  </div>
-  <div className="kv-card">
-    <h3>Per-task terminal interface</h3>
-    <p>Every task owns its own session — Herdr, tmux, zellij, or a plain terminal without a multiplexer — so you can hand work to an AI agent or run shell commands yourself.</p>
-  </div>
-  <div className="kv-card">
-    <h3>Terminal tabs</h3>
-    <p>Split a server, a test run, and an agent session into tabs inside one task. Tabs stay synchronized in both directions with Herdr tabs, tmux windows, and zellij tabs, so a window created outside KanVibe shows up in the tab bar.</p>
-  </div>
-  <div className="kv-card">
-    <h3>Keyboard-first UI</h3>
-    <p>Open filters, quick search, notifications, and detail panels with shortcuts while terminal focus stays predictable.</p>
-  </div>
-  <div className="kv-card">
-    <h3>New worktree auto-detection</h3>
-    <p>Background Sync periodically scans projects, discovers externally created git worktrees, and automatically registers them as tasks with hooks installed.</p>
-  </div>
-  <div className="kv-card">
-    <h3>Merged PR auto-detection</h3>
-    <p>Periodically checks PR status via GitHub CLI. When a merged PR is found, KanVibe sends a notification and prompts transition to DONE.</p>
-  </div>
-  <div className="kv-card">
-    <h3>Notification center</h3>
-    <p>Open the notification center with Cmd+Shift+I to see AI agent status changes, PR merges, and jump directly to the relevant task.</p>
-  </div>
-  <div className="kv-card">
-    <h3>Session auto-linking</h3>
-    <p>Background Sync detects running Herdr/tmux/zellij sessions and automatically links them to the matching task, moving it to PROGRESS.</p>
-  </div>
-  <div className="kv-card">
-    <h3>Delete auto-cleanup</h3>
-    <p>Deleting a task automatically cleans up its git worktree, branch, and terminal session in the background. Moving a task to DONE alone cleans up nothing, and the project root branch is protected.</p>
-  </div>
+## Keep the terminal that already has your context
+
+Desktop supports Herdr, tmux, zellij, and plain terminal sessions. Each branch-based task connects a git worktree, an isolated working directory for the branch, with its terminal session. Run an agent, check a diff, review conversation history, or type a command yourself. Search, project filters, and dock shortcuts keep the next action close.
+
+<figure className="kv-shot">
+  <img src="/screenshots/task-detail.png" width={1600} height={1000} loading="lazy" alt="Desktop task workspace with its terminal and task controls" />
+  <figcaption>Your agent, shell commands, builds, and logs stay attached to the task. See account usage without leaving the workspace.</figcaption>
+</figure>
+
+[Explore Desktop features](/en/features) · [Keyboard shortcuts](/en/shortcuts)
+
+## Step away from the desk, stay with the task
+
+KanVibe Mobile connects to your running Desktop app. Check the board, open a task's actual terminal, send input, add a shell tab, or switch between saved PCs. The phone shows a compact task list; tablets show a Kanban board.
+
+<div className="kv-grid kv-grid-phones">
+  <figure className="kv-shot kv-shot-phone">
+    <img src="/screenshots/mobile-board.png" alt="KanVibe Mobile task board on a phone" width={1080} height={2400} loading="lazy" />
+    <figcaption>Check task status and filter projects from your phone.</figcaption>
+  </figure>
+  <figure className="kv-shot kv-shot-phone">
+    <img src="/screenshots/mobile-terminal.png" alt="A task terminal open in KanVibe Mobile" width={1080} height={2400} loading="lazy" />
+    <figcaption>Read the running session and type directly into its terminal.</figcaption>
+  </figure>
+</div>
+
+<div className="kv-note">
+  <p>Mobile is an early preview built from source, with Korean interface labels for now. Desktop must be running and reachable over your network, and the task must use a tmux, zellij, or terminal session; Mobile does not support Herdr, the Desktop default, yet. Background push needs additional setup. [Mobile build and pairing guide](/en/mobile).</p>
+</div>
+
+## Start at your desk. Continue where you are.
+
+1. **Register a repository.** Scan a local or remote project and bring its worktree branches onto the board.
+2. **Start a task.** Create a branch workspace, run your agent, and follow its status on the board.
+3. **Pair your phone.** Enter the Desktop connection code once, then open the same tasks and terminals from Mobile. Use a tmux, zellij, or terminal session for tasks you want on your phone.
+
+<div className="kv-actions">
+  <a className="kv-button kv-button-primary" href="/en/quick-start">Create your first task</a>
+  <a className="kv-button" href="/en/mobile">Set up Mobile</a>
 </div>

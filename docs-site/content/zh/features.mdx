@@ -1,11 +1,11 @@
 ---
 title: 功能
-description: "看板、任务级终端会话、git worktree 集成、AI 代理 hooks、实时会话与用量面板等 KanVibe 的主要功能。"
+description: "通过 Desktop 看板、worktree、代理状态、终端与用量面板管理 AI 编程任务，再从 Mobile 继续。"
 ---
 
 # 功能
 
-KanVibe 将看板、终端会话、git worktree 与 AI 代理 hooks 连接成一个工作流。
+KanVibe Desktop 将任务状态、分支工作区、终端和代理上下文集中到一起。KanVibe Mobile 则让你从手机或平板查看同一批任务，继续使用它们的终端。
 
 ## 实时看板
 
@@ -166,3 +166,9 @@ KanVibe 将看板、终端会话、git worktree 与 AI 代理 hooks 连接成一
 | Gemini CLI | BeforeAgent → PROGRESS，AfterAgent → REVIEW | `.gemini/hooks/`, `.gemini/settings.json` |
 | Codex CLI | UserPromptSubmit → PROGRESS，PermissionRequest → PENDING，Stop → REVIEW | `.codex/hooks.json`, `.codex/config.toml` |
 | OpenCode | message.updated → PROGRESS，question.asked → PENDING，session.idle → REVIEW | `.opencode/plugins/` |
+
+## 从 Mobile 继续
+
+查看看板、筛选项目、创建后续任务、向同一运行中的终端输入内容，并在已保存的电脑间切换。通知收件箱与 Desktop 共享已读状态。Mobile 目前需要从源码构建，并连接运行中且网络可达的 Desktop；后台推送需要额外配置。
+
+[开始使用 KanVibe Mobile](/zh/mobile)。

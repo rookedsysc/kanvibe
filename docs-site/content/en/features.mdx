@@ -1,11 +1,11 @@
 ---
 title: Features
-description: "The Kanban board, per-task terminal sessions, git worktree integration, AI agent hooks, live sessions, and usage panels that make up KanVibe."
+description: "Manage AI coding tasks with Desktop boards, worktrees, live agent sessions, terminals, and usage panels, then continue from Mobile."
 ---
 
 # Features
 
-KanVibe connects the Kanban board, terminal sessions, git worktrees, and AI agent hooks into one workflow.
+KanVibe Desktop brings task status, branch workspaces, terminals, and agent context together. KanVibe Mobile lets you follow those tasks and continue in their terminals from your phone or tablet.
 
 ## Real-time Kanban board
 
@@ -166,3 +166,9 @@ zellij and plain terminal sessions are judged by transcript activity alone, so a
 | Gemini CLI | BeforeAgent → PROGRESS, AfterAgent → REVIEW | `.gemini/hooks/`, `.gemini/settings.json` |
 | Codex CLI | UserPromptSubmit → PROGRESS, PermissionRequest → PENDING, Stop → REVIEW | `.codex/hooks.json`, `.codex/config.toml` |
 | OpenCode | message.updated → PROGRESS, question.asked → PENDING, session.idle → REVIEW | `.opencode/plugins/` |
+
+## Continue from Mobile
+
+Check the board, filter projects, create follow-up tasks, type into the same running terminal, and switch between saved PCs. The notification inbox shares read state with Desktop. Mobile is currently built from source and requires a running, reachable Desktop; background push needs additional configuration.
+
+[Set up KanVibe Mobile](/en/mobile).
