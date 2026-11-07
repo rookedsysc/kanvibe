@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -92,6 +94,120 @@ void main() {
       );
     },
   );
+
+  test(
+    'v3 keeps removed defaults and drops defaults the session lacks',
+    () async {
+      final store = TerminalShortcutStore();
+      final profiles = await store.read();
+      profiles[SessionType.tmux] = TerminalShortcutProfile(
+        ids: ['escape', 'toggle-floating', 'copy-mode', 'tab'],
+        removedDefaultIds: ['copy-mode', 'unknown'],
+      );
+      await store.write(profiles);
+      final tmux = (await TerminalShortcutStore().read())[SessionType.tmux]!;
+      expect(tmux.ids, ['escape', 'tab']);
+      expect(tmux.removedDefaultIds, ['copy-mode']);
+      expect(
+        tmux.remainingDefaults(SessionType.tmux).map((key) => key.id),
+        isNot(contains('copy-mode')),
+      );
+      expect(tmux.visibleShortcuts(SessionType.tmux).map((key) => key.id), [
+        'escape',
+        'tab',
+      ]);
+    },
+  );
+
+  test(
+    'v3 data saved before removable defaults reads as nothing removed',
+    () async {
+      FlutterSecureStorage.setMockInitialValues({
+        'kanvibe_terminal_shortcuts_v3': jsonEncode({
+          'tmux': {'enabled': true, 'ids': <String>[], 'combos': <Object>[]},
+        }),
+      });
+      final tmux = (await TerminalShortcutStore().read())[SessionType.tmux]!;
+      expect(tmux.removedDefaultIds, isEmpty);
+      expect(
+        tmux.remainingDefaults(SessionType.tmux),
+        hasLength(terminalShortcuts(SessionType.tmux).length),
+      );
+    },
+  );
+
+  group('importing another session profile', () {
+    final pane = TerminalShortcut.combo(
+      'combo-pane',
+      'Pane',
+      const TerminalShortcutChord(keys: ['p'], ctrl: true),
+    );
+    final source = TerminalShortcutProfile(
+      ids: ['toggle-floating', 'combo-pane', 'escape', 'tab'],
+      combos: [pane],
+      removedDefaultIds: ['end'],
+    );
+
+    test('merge adds new chords and revives checked defaults', () {
+      final target = TerminalShortcutProfile(
+        enabled: false,
+        ids: ['combo-same'],
+        combos: [TerminalShortcut.combo('combo-same', 'Same', pane.chord!)],
+        removedDefaultIds: ['tab'],
+      );
+      final merged = target.mergedWith(
+        source,
+        SessionType.tmux,
+        newComboIdPrefix: 'combo-new',
+      );
+      expect(merged.enabled, isFalse);
+      expect(merged.combos.map((combo) => combo.id), ['combo-same']);
+      expect(merged.ids, ['combo-same', 'escape', 'tab']);
+      expect(merged.removedDefaultIds, isEmpty);
+    });
+
+    test('merge stops copying chords at the combo limit', () {
+      final full = TerminalShortcutProfile(
+        ids: [],
+        combos: [
+          for (var index = 0; index < maxTerminalCombos; index++)
+            TerminalShortcut.combo(
+              'combo-$index',
+              '$index',
+              TerminalShortcutChord(keys: [String.fromCharCode(0x61 + index)]),
+            ),
+        ],
+      );
+      final merged = full.mergedWith(
+        source,
+        SessionType.tmux,
+        newComboIdPrefix: 'combo-new',
+      );
+      expect(merged.combos, hasLength(maxTerminalCombos));
+      expect(merged.ids, ['escape', 'tab']);
+    });
+
+    test('overwrite mirrors the source but keeps target-only defaults', () {
+      final target = TerminalShortcutProfile(
+        enabled: false,
+        ids: ['copy-mode'],
+        removedDefaultIds: ['home'],
+      );
+      final overwritten = target.overwrittenBy(
+        source,
+        SessionType.tmux,
+        newComboIdPrefix: 'combo-new',
+      );
+      expect(overwritten.enabled, isFalse);
+      expect(overwritten.combos.single.id, 'combo-new-0');
+      expect(overwritten.ids, ['combo-new-0', 'escape', 'tab']);
+      expect(overwritten.removedDefaultIds, ['end']);
+      expect(
+        overwritten.remainingDefaults(SessionType.tmux).map((key) => key.id),
+        contains('copy-mode'),
+      );
+    });
+  });
 
   test('controller preserves latest profile when saves overlap', () async {
     final container = ProviderContainer();
@@ -204,7 +320,7 @@ void main() {
         greaterThanOrEqualTo(32),
       );
       expect(
-        tester.getSize(find.widgetWithText(TextButton, '콤보 추가')).height,
+        tester.getSize(find.widgetWithText(TextButton, '단축키 추가')).height,
         greaterThanOrEqualTo(32),
       );
     },

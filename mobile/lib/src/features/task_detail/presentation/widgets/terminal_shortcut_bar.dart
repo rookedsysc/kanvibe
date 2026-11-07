@@ -45,9 +45,7 @@ class _TerminalShortcutBarState extends ConsumerState<TerminalShortcutBar> {
     final profile =
         settings.asData?.value[widget.sessionType] ??
         TerminalShortcutProfile.defaults();
-    final shortcuts = {
-      for (final shortcut in profile.combos) shortcut.id: shortcut,
-    };
+    final visibleShortcuts = profile.visibleShortcuts(widget.sessionType);
     return Focus(
       canRequestFocus: false,
       descendantsAreFocusable: false,
@@ -116,7 +114,7 @@ class _TerminalShortcutBarState extends ConsumerState<TerminalShortcutBar> {
                             horizontal: 2,
                             vertical: 2,
                           ),
-                          child: profile.ids.isEmpty
+                          child: visibleShortcuts.isEmpty
                               ? TextButton(
                                   onPressed: _openSettings,
                                   style: TextButton.styleFrom(
@@ -125,13 +123,12 @@ class _TerminalShortcutBarState extends ConsumerState<TerminalShortcutBar> {
                                         MaterialTapTargetSize.shrinkWrap,
                                     textStyle: const TextStyle(fontSize: 12),
                                   ),
-                                  child: const Text('콤보 추가'),
+                                  child: const Text('단축키 추가'),
                                 )
                               : Row(
                                   children: [
-                                    for (final id in profile.ids)
-                                      if (shortcuts[id] case final shortcut?)
-                                        _key(shortcut),
+                                    for (final shortcut in visibleShortcuts)
+                                      _key(shortcut),
                                   ],
                                 ),
                         )
@@ -202,7 +199,10 @@ class _TerminalShortcutBarState extends ConsumerState<TerminalShortcutBar> {
         child: Tooltip(
           message: shortcut.description,
           child: TextButton(
-            onPressed: () => widget.onShortcut(shortcut),
+            // 세션 동작은 패널과 같이 다른 pane 제어가 끝날 때까지 막고, 키 입력은 그대로 보낸다
+            onPressed: widget.isBusy && shortcut.action != null
+                ? null
+                : () => widget.onShortcut(shortcut),
             style: TextButton.styleFrom(
               minimumSize: const Size(40, 32),
               tapTargetSize: MaterialTapTargetSize.shrinkWrap,

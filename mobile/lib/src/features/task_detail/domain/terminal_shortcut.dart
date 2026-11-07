@@ -22,6 +22,9 @@ class TerminalShortcut {
       input = null,
       action = null,
       chord = chord;
+
+  /// 사용자가 만든 콤보인지. 아니면 [terminalShortcuts]가 주는 기본 세팅이다
+  bool get isCombo => chord != null;
 }
 
 const _commonShortcuts = [
@@ -207,20 +210,124 @@ class TerminalShortcutChord {
       Iterable.generate(keys.length).every((i) => keys[i] == other.keys[i]);
 }
 
+/// 세션 종류 하나의 단축키 바 구성.
+///
+/// 바에는 [terminalShortcuts]가 주는 기본 세팅과 사용자가 만든 [combos]가 함께 들어간다.
+/// [ids]는 바에 보이는 순서이고, [removedDefaultIds]는 설정에서 지운 기본 세팅이다.
 class TerminalShortcutProfile {
   TerminalShortcutProfile({
     this.enabled = true,
     required List<String> ids,
     List<TerminalShortcut> combos = const [],
-  }) : ids = List.unmodifiable(
-         ids.where((id) => combos.any((combo) => combo.id == id)).toSet(),
+    List<String> removedDefaultIds = const [],
+  }) : removedDefaultIds = List.unmodifiable(removedDefaultIds.toSet()),
+       ids = List.unmodifiable(
+         ids
+             .where(
+               (id) =>
+                   !removedDefaultIds.contains(id) &&
+                   (!_isComboId(id) || combos.any((combo) => combo.id == id)),
+             )
+             .toSet(),
        ),
        combos = List.unmodifiable(combos);
 
   final bool enabled;
   final List<String> ids;
   final List<TerminalShortcut> combos;
+  final List<String> removedDefaultIds;
 
   factory TerminalShortcutProfile.defaults() =>
       TerminalShortcutProfile(ids: []);
+
+  static bool _isComboId(String id) => id.startsWith('combo-');
+
+  /// [type] 세션에서 남아 있는 기본 세팅. 지운 기본 세팅은 빠진다
+  List<TerminalShortcut> remainingDefaults(SessionType type) => [
+    for (final shortcut in terminalShortcuts(type))
+      if (!removedDefaultIds.contains(shortcut.id)) shortcut,
+  ];
+
+  /// [ids] 순서대로 바에 보일 단축키. [type] 세션에 없는 기본 세팅 id는 건너뛴다
+  List<TerminalShortcut> visibleShortcuts(SessionType type) {
+    final shortcutsById = {
+      for (final shortcut in [...remainingDefaults(type), ...combos])
+        shortcut.id: shortcut,
+    };
+    return [for (final id in ids) ?shortcutsById[id]];
+  }
+
+  /// [source] 설정을 이 설정에 합친다.
+  ///
+  /// 같은 키 조합이 이미 있는 콤보는 건너뛰고, 나머지는 [newComboIdPrefix]로 시작하는 새 id로 복사해
+  /// 최대 개수까지 바에 붙인다. [source]가 바에 띄운 기본 세팅은 [type] 세션에도 있으면 지웠더라도 되살려 띄운다.
+  TerminalShortcutProfile mergedWith(
+    TerminalShortcutProfile source,
+    SessionType type, {
+    required String newComboIdPrefix,
+  }) {
+    final mergedCombos = [...combos];
+    final mergedIds = [...ids];
+    final mergedRemovedIds = {...removedDefaultIds};
+    final targetDefaultIds = terminalShortcuts(type).map((key) => key.id);
+    for (final id in source.ids) {
+      if (_isComboId(id) || !targetDefaultIds.contains(id)) continue;
+      mergedRemovedIds.remove(id);
+      if (!mergedIds.contains(id)) mergedIds.add(id);
+    }
+    for (final (index, combo) in source.combos.indexed) {
+      if (mergedCombos.length >= maxTerminalCombos) break;
+      final isDuplicate = mergedCombos.any(
+        (existing) => existing.chord!.isSameChord(combo.chord!),
+      );
+      if (isDuplicate) continue;
+      final copied = TerminalShortcut.combo(
+        '$newComboIdPrefix-$index',
+        combo.label,
+        combo.chord!,
+      );
+      mergedCombos.add(copied);
+      mergedIds.add(copied.id);
+    }
+    return TerminalShortcutProfile(
+      enabled: enabled,
+      ids: mergedIds,
+      combos: mergedCombos,
+      removedDefaultIds: mergedRemovedIds.toList(),
+    );
+  }
+
+  /// 이 설정을 [source]와 같은 구성으로 바꾼다. 표시 여부만 이 설정의 값을 지킨다.
+  ///
+  /// 콤보는 [newComboIdPrefix]로 시작하는 새 id로 복사한다. [type] 세션에 없는 기본 세팅은 건너뛰고,
+  /// [type] 세션에만 있는 기본 세팅은 지우지 않은 채 바에서만 뺀다.
+  TerminalShortcutProfile overwrittenBy(
+    TerminalShortcutProfile source,
+    SessionType type, {
+    required String newComboIdPrefix,
+  }) {
+    final copiedCombos = {
+      for (final (index, combo) in source.combos.indexed)
+        combo.id: TerminalShortcut.combo(
+          '$newComboIdPrefix-$index',
+          combo.label,
+          combo.chord!,
+        ),
+    };
+    final targetDefaultIds = terminalShortcuts(type).map((key) => key.id);
+    return TerminalShortcutProfile(
+      enabled: enabled,
+      combos: copiedCombos.values.toList(),
+      ids: [
+        for (final id in source.ids)
+          if (copiedCombos[id] case final copied?)
+            copied.id
+          else if (targetDefaultIds.contains(id))
+            id,
+      ],
+      removedDefaultIds: source.removedDefaultIds
+          .where(targetDefaultIds.contains)
+          .toList(),
+    );
+  }
 }

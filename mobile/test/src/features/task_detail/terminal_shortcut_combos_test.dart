@@ -84,20 +84,20 @@ Future<void> _pumpKeyboard(WidgetTester tester, xterm.Terminal terminal) async {
 void main() {
   setUp(() => FlutterSecureStorage.setMockInitialValues({}));
 
-  testWidgets('combo-only bar excludes default unregistered keys', (
+  testWidgets('unchecked defaults stay off the bar until chosen', (
     tester,
   ) async {
     await _pumpBar(tester);
     expect(find.widgetWithText(TextButton, 'Esc'), findsNothing);
     expect(find.widgetWithText(TextButton, 'Tab'), findsNothing);
-    expect(find.text('콤보 추가'), findsOneWidget);
+    expect(find.text('단축키 추가'), findsOneWidget);
     expect(
       tester.getSize(find.byType(TerminalShortcutBar)).height,
       lessThanOrEqualTo(40),
     );
   });
 
-  testWidgets('only selected saved chords appear in the shortcut bar', (
+  testWidgets('checked defaults and chords share the bar in saved order', (
     tester,
   ) async {
     await _saveCombos(
@@ -109,12 +109,29 @@ void main() {
           const TerminalShortcutChord(keys: ['escape']),
         ),
       ],
-      ids: ['tab', 'combo-copy'],
+      ids: ['combo-copy', 'tab', 'split-right'],
     );
-    await _pumpBar(tester);
-    expect(find.widgetWithText(TextButton, 'Copy'), findsOneWidget);
+    final pressed = <TerminalShortcut>[];
+    await _pumpBar(tester, onShortcut: pressed.add);
+    final copy = find.widgetWithText(TextButton, 'Copy');
+    final tab = find.widgetWithText(TextButton, 'Tab');
+    final split = find.widgetWithText(TextButton, '좌우 분할');
     expect(find.widgetWithText(TextButton, 'Hidden'), findsNothing);
-    expect(find.widgetWithText(TextButton, 'Tab'), findsNothing);
+    expect(tester.getCenter(copy).dx, lessThan(tester.getCenter(tab).dx));
+    expect(tester.getCenter(tab).dx, lessThan(tester.getCenter(split).dx));
+    await tester.tap(tab);
+    await tester.tap(split);
+    expect(pressed.map((shortcut) => shortcut.id), ['tab', 'split-right']);
+    expect(pressed.last.action, 'split-right');
+  });
+
+  testWidgets('busy bar blocks session actions but keeps keys', (tester) async {
+    await _saveCombos([], ids: ['split-right', 'escape']);
+    final pressed = <TerminalShortcut>[];
+    await _pumpBar(tester, onShortcut: pressed.add, isBusy: true);
+    await tester.tap(find.widgetWithText(TextButton, '좌우 분할'));
+    await tester.tap(find.widgetWithText(TextButton, 'Esc'));
+    expect(pressed.map((shortcut) => shortcut.id), ['escape']);
   });
 
   testWidgets('shortcut bar collapses immediately and can be restored', (
@@ -768,7 +785,7 @@ void main() {
       (await TerminalShortcutStore().read())[SessionType.tmux]!.combos,
       isEmpty,
     );
-    expect(find.text('콤보 추가'), findsOneWidget);
+    expect(find.text('단축키 추가'), findsOneWidget);
   });
 
   testWidgets('combos copy across session types once and keep new ids', (
@@ -789,14 +806,23 @@ void main() {
     await _pumpBar(tester, session: SessionType.zellij);
     await tester.tap(find.byTooltip('zellij 단축키 설정'));
     await tester.pumpAndSettle();
-    expect(find.text('2개 가져오기'), findsOneWidget);
-    expect(find.text('아직 만든 콤보가 없어요'), findsOneWidget);
-    final tmuxSource = find.widgetWithText(ListTile, 'tmux 콤보');
+    final tmuxSource = find.widgetWithText(ListTile, 'tmux 설정');
+    await tester.scrollUntilVisible(
+      tmuxSource,
+      200,
+      scrollable: settingsScrollable(),
+    );
+    expect(find.text('바에 띄운 기본 세팅 0개 · 콤보 2개'), findsOneWidget);
+    expect(find.text('바에 띄운 단축키가 없어요'), findsOneWidget);
     await tapInSettings(tester, tmuxSource);
-    expect(find.text('tmux 콤보 1개를 가져왔어요'), findsOneWidget);
+    await tester.tap(find.text('합치기'));
+    await tester.pumpAndSettle();
+    expect(find.text('tmux 설정에서 1개를 가져왔어요'), findsOneWidget);
     await tester.tap(tmuxSource);
     await tester.pumpAndSettle();
-    expect(find.text('가져올 새 콤보가 없어요'), findsOneWidget);
+    await tester.tap(find.text('합치기'));
+    await tester.pumpAndSettle();
+    expect(find.text('가져올 새 단축키가 없어요'), findsOneWidget);
     await tester.tap(find.text('적용'));
     await tester.pumpAndSettle();
     final profiles = await TerminalShortcutStore().read();
@@ -806,6 +832,121 @@ void main() {
     expect(zellij.combos.last.id, isNot('combo-split'));
     expect(zellij.combos.last.chord!.label, 'Ctrl+a+b');
     expect(profiles[SessionType.tmux]!.combos, hasLength(2));
+  });
+
+  testWidgets(
+    'overwrite import copies checked defaults and skips missing ones',
+    (tester) async {
+      final store = TerminalShortcutStore();
+      final profiles = await store.read();
+      profiles[SessionType.zellij] = TerminalShortcutProfile(
+        ids: ['toggle-floating', 'combo-pane', 'escape'],
+        combos: [TerminalShortcut.combo('combo-pane', 'Pane', _copy)],
+        removedDefaultIds: ['tab'],
+      );
+      profiles[SessionType.tmux] = TerminalShortcutProfile(
+        ids: ['combo-old'],
+        combos: [
+          TerminalShortcut.combo(
+            'combo-old',
+            'Old',
+            const TerminalShortcutChord(keys: ['o'], ctrl: true),
+          ),
+        ],
+      );
+      await store.write(profiles);
+      await _pumpBar(tester);
+      await tester.tap(find.byTooltip('tmux 단축키 설정'));
+      await tester.pumpAndSettle();
+      await tapInSettings(tester, find.widgetWithText(ListTile, 'zellij 설정'));
+      await tester.tap(find.text('덮어쓰기'));
+      await tester.pumpAndSettle();
+      expect(find.text('zellij 설정으로 덮어썼어요'), findsOneWidget);
+      await tester.tap(find.text('적용'));
+      await tester.pumpAndSettle();
+      final tmux = (await TerminalShortcutStore().read())[SessionType.tmux]!;
+      expect(tmux.combos.map((combo) => combo.label), ['Pane']);
+      expect(tmux.combos.single.id, isNot('combo-pane'));
+      expect(tmux.ids, [tmux.combos.single.id, 'escape']);
+      expect(tmux.removedDefaultIds, ['tab']);
+    },
+  );
+
+  testWidgets(
+    'deleting defaults hides them until restore while combos survive',
+    (tester) async {
+      await _saveCombos(
+        [TerminalShortcut.combo('combo-copy', 'Copy', _copy)],
+        ids: ['split-right', 'combo-copy'],
+      );
+      await _pumpBar(tester);
+      await tester.tap(find.byTooltip('tmux 단축키 설정'));
+      await tester.pumpAndSettle();
+      final settings = find.byType(TerminalShortcutSettingsPage);
+      Finder inSettings(Finder finder) =>
+          find.descendant(of: settings, matching: finder);
+      expect(inSettings(find.text('기본')), findsWidgets);
+      expect(inSettings(find.text('콤보')), findsOneWidget);
+      expect(
+        tester
+            .widget<TextButton>(find.widgetWithText(TextButton, '기본값 복원'))
+            .onPressed,
+        isNull,
+      );
+      expect(inSettings(find.text('좌우 분할')), findsNWidgets(2));
+      await tester.tap(find.byTooltip('좌우 분할 기본 세팅 동작'));
+      await tester.pumpAndSettle();
+      expect(find.text('콤보 편집'), findsNothing);
+      await tester.tap(find.text('기본 세팅 삭제'));
+      await tester.pumpAndSettle();
+      expect(inSettings(find.text('좌우 분할')), findsNothing);
+      await tester.tap(find.text('적용'));
+      await tester.pumpAndSettle();
+      var tmux = (await TerminalShortcutStore().read())[SessionType.tmux]!;
+      expect(tmux.removedDefaultIds, ['split-right']);
+      expect(tmux.ids, ['combo-copy']);
+      expect(find.widgetWithText(TextButton, '좌우 분할'), findsNothing);
+
+      await tester.tap(find.byTooltip('tmux 단축키 설정'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('기본값 복원'));
+      await tester.pumpAndSettle();
+      expect(find.text('지운 기본 세팅 1개가 다시 생겨요. 내 콤보는 그대로예요.'), findsOneWidget);
+      await tester.tap(find.text('복원'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('적용'));
+      await tester.pumpAndSettle();
+      tmux = (await TerminalShortcutStore().read())[SessionType.tmux]!;
+      expect(tmux.removedDefaultIds, isEmpty);
+      expect(tmux.ids, ['combo-copy']);
+      expect(tmux.combos.single.id, 'combo-copy');
+      expect(
+        tmux.remainingDefaults(SessionType.tmux).map((key) => key.id),
+        contains('split-right'),
+      );
+    },
+  );
+
+  testWidgets('terminal settings list only keys without session actions', (
+    tester,
+  ) async {
+    await _pumpBar(tester, session: SessionType.terminal);
+    await tester.tap(find.byTooltip('terminal 단축키 설정'));
+    await tester.pumpAndSettle();
+    final settings = find.byType(TerminalShortcutSettingsPage);
+    expect(
+      find.descendant(of: settings, matching: find.text('Esc')),
+      findsOneWidget,
+    );
+    await tester.scrollUntilVisible(
+      find.text('콤보 추가'),
+      200,
+      scrollable: settingsScrollable(),
+    );
+    expect(
+      find.descendant(of: settings, matching: find.text('좌우 분할')),
+      findsNothing,
+    );
   });
 
   testWidgets('quick panel stays below 104dp and scrolls to the last action', (

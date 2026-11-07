@@ -65,9 +65,9 @@ env:
 - assertVisible: "tmux · 단축키 꺼짐"
 - tapOn:
     id: shortcut-settings
-- tapOn: "초기화"
+- tapOn: "(?s)단축키 바 표시.*"
 - tapOn: "적용"
-- assertVisible: "콤보 추가"
+- assertVisible: "단축키 추가"
 - takeScreenshot: shortcut-restored
 - tapOn:
     id: shortcut-panel
@@ -130,3 +130,18 @@ env:
 - assertVisible:
     id: panel-key-combo-.*
 - takeScreenshot: shortcut-saved-combo
+- tapOn:
+    id: shortcut-panel
+- tapOn:
+    id: shortcut-settings
+# 기본 세팅도 콤보와 같은 목록에서 체크하면 바에 오른다. 타일 메뉴는 체크 타일에 합쳐져 노드로 드러나지 않아
+# 기본 세팅 삭제·복원은 위젯 테스트가 맡는다
+- assertVisible: "(?s)Esc\n기본.*"
+- tapOn: "(?s)Esc\n기본.*"
+- takeScreenshot: shortcut-default-checked
+- tapOn: "적용"
+- assertVisible:
+    id: shortcut-escape
+- assertVisible:
+    id: shortcut-combo-.*
+- takeScreenshot: shortcut-default-on-bar
