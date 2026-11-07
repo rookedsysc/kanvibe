@@ -17,7 +17,12 @@ const dictionaries = {
       ['/shortcuts', '단축키']
     ],
     repo: 'GitHub 저장소',
-    poweredBy: 'Nextra 4 기반 문서'
+    poweredBy: 'Nextra 4 기반 문서',
+    notFound: {
+      title: '페이지를 찾을 수 없습니다',
+      description: '주소가 바뀌었거나 없는 페이지입니다. 메뉴에서 다른 문서를 고르거나 문서 홈으로 이동하세요.',
+      homeLink: '문서 홈으로'
+    }
   },
   en: {
     tagline: 'AI coding work on one board. Continue from your phone.',
@@ -32,7 +37,12 @@ const dictionaries = {
       ['/shortcuts', 'Shortcuts']
     ],
     repo: 'GitHub repository',
-    poweredBy: 'Documentation powered by Nextra 4'
+    poweredBy: 'Documentation powered by Nextra 4',
+    notFound: {
+      title: 'Page not found',
+      description: 'This page moved or does not exist. Pick another guide from the menu or go to the docs home.',
+      homeLink: 'Go to docs home'
+    }
   },
   zh: {
     tagline: 'AI 编程任务一目了然，手机上继续工作。',
@@ -47,7 +57,12 @@ const dictionaries = {
       ['/shortcuts', '快捷键']
     ],
     repo: 'GitHub 仓库',
-    poweredBy: '文档由 Nextra 4 驱动'
+    poweredBy: '文档由 Nextra 4 驱动',
+    notFound: {
+      title: '找不到页面',
+      description: '该页面已移动或不存在。请从菜单中选择其他文档，或返回文档首页。',
+      homeLink: '返回文档首页'
+    }
   }
 }
 
