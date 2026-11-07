@@ -23,11 +23,18 @@ function createHookServer({ host, port, isDevPairingRouteEnabled }) {
   const hookInstallBundle = require(getRuntimeModulePath("lib", "hookInstallBundle"));
   const mobileBridge = require(getRuntimeModulePath("desktop", "main", "services", "mobileBridgeService"));
   const mobileNotifications = require(getRuntimeModulePath("desktop", "main", "services", "mobileNotificationService"));
+  const taskCli = require(getRuntimeModulePath("desktop", "main", "services", "taskCliService"));
   const { handleMobileRequest, attachMobileStreamServer } = require("./mobileRoutes.js");
+  const { handleTaskCliRequest } = require("./taskCliRoutes.js");
 
   const server = http.createServer(async (request, response) => {
     /** 모바일 경로는 자체 인증을 거치므로 hook 라우팅보다 먼저 가로챈다 */
     if (await handleMobileRequest(request, response, { bridge: mobileBridge, host, port, isDevPairingRouteEnabled })) {
+      return;
+    }
+
+    /** task CLI 경로는 task 단위 토큰으로 자체 인증한다 */
+    if (await handleTaskCliRequest(request, response, { taskCli })) {
       return;
     }
 

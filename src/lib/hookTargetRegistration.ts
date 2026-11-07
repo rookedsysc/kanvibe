@@ -1,3 +1,4 @@
+import { buildTaskCliToken } from "@/desktop/main/services/taskCliTokenService";
 import { ensureAiToolPatternsExcluded } from "@/lib/gitExclude";
 import {
   hasKanvibeHookTarget,
@@ -7,7 +8,7 @@ import {
 
 /**
  * hook을 설치하는 client를 알림 대상으로 등록하고 `.kanvibe` 상태 디렉터리를 git 추적에서 제외한다.
- * 같은 client가 다시 설치하면 taskId만 교체되고, 다른 client는 targets.json에 추가된다.
+ * 같은 client가 다시 설치하면 taskId와 task CLI 토큰만 교체되고, 다른 client는 targets.json에 추가된다.
  */
 export async function registerKanvibeHookTarget(
   repoPath: string,
@@ -16,7 +17,8 @@ export async function registerKanvibeHookTarget(
   sshHost?: string | null,
 ): Promise<void> {
   await ensureAiToolPatternsExcluded(repoPath, sshHost);
-  await upsertKanvibeHookTarget(repoPath, { url: hookServerUrl, taskId }, sshHost);
+  const token = await buildTaskCliToken(taskId);
+  await upsertKanvibeHookTarget(repoPath, { url: hookServerUrl, taskId, token }, sshHost);
 }
 
 /**
@@ -38,23 +40,25 @@ export function verifyHookTargetRegistration(
     return { hasRegisteredHookTarget: true, registeredHookTargetUrl: null };
   }
 
-  const registeredTarget = parseKanvibeTargets(targetsContent).targets
-    .find((target) => target.taskId === taskId);
+  const registeredTargets = parseKanvibeTargets(targetsContent).targets;
+  const registeredTarget = registeredTargets.find((target) => target.taskId === taskId);
   const registeredHookTargetUrl = registeredTarget?.url ?? null;
 
   /** 원격 hook 서버 주소를 확정하지 못한 경우에는 taskId 등록 여부만으로 판정한다 */
   if (!expectedHookServerUrl) {
     return {
-      hasRegisteredHookTarget: registeredTarget !== undefined,
+      hasRegisteredHookTarget: Boolean(registeredTarget?.token),
       registeredHookTargetUrl,
     };
   }
 
+  /** task CLI 토큰이 없는 예전 등록은 CLI가 쓸 수 없으므로 재설치가 필요한 상태로 본다 */
+  const ownTarget = registeredTargets.find((target) => target.url === expectedHookServerUrl.replace(/\/+$/, ""));
   return {
     hasRegisteredHookTarget: hasKanvibeHookTarget(targetsContent, {
       url: expectedHookServerUrl,
       taskId,
-    }),
+    }) && Boolean(ownTarget?.token),
     registeredHookTargetUrl,
   };
 }

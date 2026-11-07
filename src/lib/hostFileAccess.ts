@@ -1,4 +1,4 @@
-import { access, mkdir, readFile, readdir, stat, writeFile } from "fs/promises";
+import { access, chmod, mkdir, readFile, readdir, stat, writeFile } from "fs/promises";
 import { homedir } from "os";
 import path from "path";
 import { execGit } from "@/lib/gitOperations";
@@ -138,16 +138,31 @@ function parseRemoteTextFiles(
   return files;
 }
 
-export async function writeTextFile(targetPath: string, content: string, sshHost?: string | null): Promise<void> {
+/**
+ * `mode`를 주면 파일을 그 권한으로 만들고, 이미 있던 파일도 기록 후 그 값으로 맞춘다.
+ * 자격 증명이 든 파일을 다른 사용자가 읽지 못하게 할 때 쓰며, 만든 직후 chmod 전까지 넓은 권한으로 열려 있는 틈을 두지 않는다.
+ */
+export async function writeTextFile(
+  targetPath: string,
+  content: string,
+  sshHost?: string | null,
+  mode?: number,
+): Promise<void> {
   if (!sshHost) {
     await mkdir(path.dirname(targetPath), { recursive: true });
-    await writeFile(targetPath, content, "utf-8");
+    await writeFile(targetPath, content, { encoding: "utf-8", ...(mode !== undefined ? { mode } : {}) });
+    if (mode !== undefined) {
+      await chmod(targetPath, mode);
+    }
     return;
   }
 
   const encodedContent = Buffer.from(content, "utf-8").toString("base64");
+  const quotedTargetPath = quoteShellArgument(targetPath);
+  const chmodCommand = mode !== undefined ? ` && chmod ${mode.toString(8)} ${quotedTargetPath}` : "";
+  const umaskCommand = mode !== undefined ? `umask ${(~mode & 0o777).toString(8)} && ` : "";
   await execGit(
-    `mkdir -p ${quoteShellArgument(path.posix.dirname(targetPath))} && printf '%s' ${quoteShellArgument(encodedContent)} | (base64 -d 2>/dev/null || base64 -D) > ${quoteShellArgument(targetPath)}`,
+    `mkdir -p ${quoteShellArgument(path.posix.dirname(targetPath))} && printf '%s' ${quoteShellArgument(encodedContent)} | (${umaskCommand}(base64 -d 2>/dev/null || base64 -D) > ${quotedTargetPath})${chmodCommand}`,
     sshHost,
   );
 }

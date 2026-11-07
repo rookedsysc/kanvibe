@@ -8,6 +8,7 @@ import { getProjectRepository } from "@/lib/database";
 import {
   broadcastBoardUpdate,
   broadcastTaskHookInstallFailed,
+  broadcastTaskPeerDeletionFailed,
   broadcastTaskPrMergedDetectedBatch,
   type BackgroundSyncFailurePayload,
   type TaskPrMergedDetectedPayload,
@@ -24,6 +25,10 @@ import {
   persistTaskStateForTask as persistTaskState,
 } from "@/desktop/main/services/kanvibeTaskStateService";
 import { persistProjectColorToKanvibeState } from "@/desktop/main/services/kanvibeProjectColorService";
+import {
+  propagateTaskDeletionToPeers,
+  type PeerTargetResult,
+} from "@/desktop/main/services/taskTargetPropagationService";
 
 export type TasksByStatus = Record<TaskStatus, KanbanTask[]>;
 
@@ -779,20 +784,96 @@ async function deleteTaskResources(task: KanbanTask): Promise<void> {
   await cleanupTaskResources(task, TASK_RESOURCE_DELETE_CLEANUP_OPTIONS);
 }
 
-/** 작업을 삭제한다. worktree와 세션이 있으면 함께 정리한다 */
+/** 커밋하지 않은 변경이 남은 worktree를 지우지 않으려고 삭제를 멈췄다는 뜻 */
+export class DirtyWorktreeError extends Error {
+  constructor(readonly worktreePath: string) {
+    super(`커밋하지 않은 변경이 있어 삭제하지 않았습니다: ${worktreePath}`);
+    this.name = "DirtyWorktreeError";
+  }
+}
+
+export interface TaskDeletionOptions {
+  shouldRejectDirtyWorktree: boolean;
+  /** 같은 worktree를 공유하는 다른 client에도 삭제를 전파한다. 전파받은 client는 다시 전파하지 않는다 */
+  shouldPropagateToPeers: boolean;
+}
+
+export interface TaskDeletionResult {
+  isDeleted: boolean;
+  peerResults: PeerTargetResult[];
+}
+
+/** 작업을 삭제한다. worktree와 세션이 있으면 함께 정리하고, 같은 task를 가진 다른 client에서도 지운다 */
 export async function deleteTask(taskId: string): Promise<boolean> {
+  const deletion = await deleteTaskAcrossTargets(taskId, {
+    shouldRejectDirtyWorktree: false,
+    shouldPropagateToPeers: true,
+  });
+  return deletion.isDeleted;
+}
+
+/**
+ * 작업을 삭제하면서 다른 client로 전파한다.
+ * 전파는 worktree가 지워지기 전에 해야 한다. 상대 client의 taskId와 토큰이 그 worktree의 targets.json에만 있기 때문이다.
+ * 같은 worktree를 공유하므로 상대가 먼저 worktree·브랜치를 지워도 이 client의 정리는 이미 없는 자원을 건너뛴다.
+ */
+export async function deleteTaskAcrossTargets(
+  taskId: string,
+  options: TaskDeletionOptions,
+): Promise<TaskDeletionResult> {
   const repo = await getTaskRepository();
   const task = await repo.findOneBy({ id: taskId });
-  if (!task) return false;
+  if (!task) {
+    return { isDeleted: false, peerResults: [] };
+  }
+
+  if (options.shouldRejectDirtyWorktree && task.worktreePath) {
+    await assertWorktreeHasNoUncommittedChanges(task.worktreePath, task.sshHost);
+  }
+
+  const peerResults = options.shouldPropagateToPeers
+    ? await propagateDeletionToTaskPeers(task)
+    : [];
 
   await deleteTaskResources(task);
 
   await repo.remove(task);
   broadcastBoardUpdate();
-  return true;
+  return { isDeleted: true, peerResults };
 }
 
-/** 여러 작업을 삭제한다. worktree와 세션이 있으면 함께 정리하고 board update는 한 번만 보낸다 */
+async function assertWorktreeHasNoUncommittedChanges(worktreePath: string, sshHost: string | null): Promise<void> {
+  const quotedWorktreePath = quoteForShell(worktreePath);
+  /** 이미 다른 client가 지운 worktree는 잃을 변경이 없으므로 깨끗한 것으로 본다 */
+  const uncommittedChanges = await execGit(
+    `if [ -d ${quotedWorktreePath} ]; then git -C ${quotedWorktreePath} status --porcelain; fi`,
+    sshHost,
+  );
+
+  if (uncommittedChanges.trim()) {
+    throw new DirtyWorktreeError(worktreePath);
+  }
+}
+
+async function propagateDeletionToTaskPeers(task: KanbanTask): Promise<PeerTargetResult[]> {
+  if (!task.worktreePath) {
+    return [];
+  }
+
+  const peerResults = await propagateTaskDeletionToPeers(task.worktreePath, task.sshHost);
+  const failedPeers = peerResults.filter((result) => !result.isSuccess);
+  if (failedPeers.length > 0) {
+    console.warn("[task-cli] 일부 client에서 task를 지우지 못했습니다", { taskId: task.id, failedPeers });
+    broadcastTaskPeerDeletionFailed({
+      taskId: task.id,
+      taskTitle: task.title,
+      failedPeerUrls: failedPeers.map((result) => result.url),
+    });
+  }
+  return peerResults;
+}
+
+/** 여러 작업을 삭제한다. worktree와 세션이 있으면 함께 정리하고 다른 client로 전파하며, board update는 한 번만 보낸다 */
 export async function deleteTasks(taskIds: string[]): Promise<string[]> {
   const uniqueTaskIds = [...new Set(taskIds)];
   if (uniqueTaskIds.length === 0) {
@@ -813,6 +894,7 @@ export async function deleteTasks(taskIds: string[]): Promise<string[]> {
         continue;
       }
 
+      await propagateDeletionToTaskPeers(task);
       await deleteTaskResources(task);
       await repo.remove(task);
       deletedTaskIds.push(task.id);

@@ -2,6 +2,7 @@ import { readTextFiles } from "@/lib/hostFileAccess";
 import { getHookServerUrl } from "@/lib/hookEndpoint";
 import { writeHookProviderFiles } from "@/lib/hookFileWriter";
 import { registerKanvibeHookTarget } from "@/lib/hookTargetRegistration";
+import { buildTaskCliFile } from "@/lib/taskCliScript";
 import {
   getKanvibeHookProviderModules,
   KANVIBE_HOOK_PROVIDER_MODULES,
@@ -245,7 +246,7 @@ async function waitForHookInstallRetry(delayMs: number): Promise<void> {
 }
 
 /**
- * 모든 provider의 hook 파일을 만들어 기록한다.
+ * 모든 provider의 hook 파일과 task CLI를 만들어 기록한다.
  * 기존 설정 파일 읽기는 한 번으로 묶고, 쓰기는 provider 단위로 격리해
  * 한 provider가 실패해도 나머지 provider의 hook은 설치되게 한다.
  */
@@ -263,7 +264,7 @@ async function installKanvibeHookFilesOnce(
     sshHost,
   );
 
-  const results = await Promise.allSettled(providerModules.map(async (providerModule) => {
+  const providerWrites = providerModules.map(async (providerModule) => {
     try {
       const files = providerModule.buildFiles(targetPath, taskId, hookServerUrl, existingFiles, sshHost);
       await writeHookProviderFiles(files, sshHost);
@@ -277,9 +278,12 @@ async function installKanvibeHookFilesOnce(
       });
       throw error;
     }
-  }));
+  });
+  /** task CLI는 provider와 무관하게 worktree마다 하나만 두고, 원격 왕복이 늘지 않도록 provider 쓰기와 함께 보낸다 */
+  const taskCliWrite = writeHookProviderFiles([buildTaskCliFile(targetPath, sshHost)], sshHost);
+  const results = await Promise.allSettled([...providerWrites, taskCliWrite]);
 
-  assertHookProviderInstallResults(results, providerModules.map(({ label }) => label));
+  assertHookProviderInstallResults(results, [...providerModules.map(({ label }) => label), "task CLI"]);
 }
 
 /** provider 하나라도 실패하면 실패한 provider를 모두 모아 알린다 */
