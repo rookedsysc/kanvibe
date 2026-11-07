@@ -7,7 +7,6 @@ import '../../../task_create/domain/session_type.dart';
 import '../../application/terminal_shortcut_controller.dart';
 import '../../domain/terminal_shortcut.dart';
 import 'terminal_shortcut_settings_page.dart';
-import 'terminal_shortcut_panel.dart';
 
 class TerminalShortcutBar extends ConsumerStatefulWidget {
   const TerminalShortcutBar({
@@ -15,7 +14,6 @@ class TerminalShortcutBar extends ConsumerStatefulWidget {
     required this.onShortcut,
     this.onCollapse,
     this.isBusy = false,
-    this.maxPanelHeight,
     super.key,
   });
 
@@ -23,7 +21,6 @@ class TerminalShortcutBar extends ConsumerStatefulWidget {
   final ValueChanged<TerminalShortcut> onShortcut;
   final VoidCallback? onCollapse;
   final bool isBusy;
-  final double? maxPanelHeight;
 
   @override
   ConsumerState<TerminalShortcutBar> createState() =>
@@ -31,14 +28,6 @@ class TerminalShortcutBar extends ConsumerStatefulWidget {
 }
 
 class _TerminalShortcutBarState extends ConsumerState<TerminalShortcutBar> {
-  bool _isPanelOpen = false;
-
-  @override
-  void didUpdateWidget(TerminalShortcutBar oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.sessionType != widget.sessionType) _isPanelOpen = false;
-  }
-
   @override
   Widget build(BuildContext context) {
     final settings = ref.watch(terminalShortcutControllerProvider);
@@ -54,109 +43,72 @@ class _TerminalShortcutBarState extends ConsumerState<TerminalShortcutBar> {
           color: AppColors.terminalChrome,
           border: Border(top: BorderSide(color: AppColors.borderDefault)),
         ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
+        child: Row(
           children: [
-            if (_isPanelOpen)
-              TerminalShortcutPanel(
-                key: ValueKey(widget.sessionType),
-                sessionType: widget.sessionType,
-                profile: profile,
-                maxHeight: widget.maxPanelHeight,
-                onShortcut: widget.onShortcut,
-                isBusy: widget.isBusy,
+            // 바가 꺼졌을 때 옆의 상태 문구와 한 노드로 합쳐져 함께 읽히지 않도록 경계를 둔다
+            Semantics(
+              container: true,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                child: Text(
+                  widget.sessionType == SessionType.terminal
+                      ? '키'
+                      : widget.sessionType.name,
+                  style: const TextStyle(
+                    color: AppColors.textSecondary,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
               ),
-            Row(
-              children: [
-                Semantics(
-                  identifier: 'shortcut-panel',
-                  selected: _isPanelOpen,
-                  child: TextButton(
-                    onPressed: () =>
-                        setState(() => _isPanelOpen = !_isPanelOpen),
-                    style: TextButton.styleFrom(
-                      minimumSize: const Size(40, 32),
-                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                      padding: const EdgeInsets.symmetric(horizontal: 8),
-                      foregroundColor: AppColors.brandPrimary,
-                      textStyle: const TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    child: Tooltip(
-                      message: _isPanelOpen ? '빠른 단축키 닫기' : '빠른 단축키',
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            widget.sessionType == SessionType.terminal
-                                ? '키'
-                                : widget.sessionType.name,
-                          ),
-                          Icon(
-                            _isPanelOpen
-                                ? Icons.keyboard_arrow_down
-                                : Icons.keyboard_arrow_up,
-                            size: 14,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-                Expanded(
-                  child: profile.enabled
-                      ? SingleChildScrollView(
-                          key: ValueKey(widget.sessionType),
-                          scrollDirection: Axis.horizontal,
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 2,
-                            vertical: 2,
-                          ),
-                          child: visibleShortcuts.isEmpty
-                              ? TextButton(
-                                  onPressed: _openSettings,
-                                  style: TextButton.styleFrom(
-                                    minimumSize: const Size(0, 32),
-                                    tapTargetSize:
-                                        MaterialTapTargetSize.shrinkWrap,
-                                    textStyle: const TextStyle(fontSize: 12),
-                                  ),
-                                  child: const Text('단축키 추가'),
-                                )
-                              : Row(
-                                  children: [
-                                    for (final shortcut in visibleShortcuts)
-                                      _key(shortcut),
-                                  ],
-                                ),
-                        )
-                      : Padding(
-                          padding: const EdgeInsets.only(left: 12),
-                          child: Text(
-                            '${widget.sessionType.name} · 단축키 꺼짐',
-                            style: const TextStyle(
-                              color: AppColors.textSecondary,
-                            ),
-                          ),
-                        ),
-                ),
-                _control(
-                  'shortcut-settings',
-                  '${widget.sessionType.name} 단축키 설정',
-                  Icons.tune,
-                  _openSettings,
-                ),
-                if (widget.onCollapse case final onCollapse?)
-                  _control(
-                    'shortcut-collapse',
-                    '단축키 바 접기',
-                    Icons.keyboard_arrow_down,
-                    onCollapse,
-                  ),
-              ],
             ),
+            Expanded(
+              child: profile.enabled
+                  ? SingleChildScrollView(
+                      key: ValueKey(widget.sessionType),
+                      scrollDirection: Axis.horizontal,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 2,
+                        vertical: 2,
+                      ),
+                      child: visibleShortcuts.isEmpty
+                          ? TextButton(
+                              onPressed: _openSettings,
+                              style: TextButton.styleFrom(
+                                minimumSize: const Size(0, 32),
+                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                textStyle: const TextStyle(fontSize: 12),
+                              ),
+                              child: const Text('단축키 추가'),
+                            )
+                          : Row(
+                              children: [
+                                for (final shortcut in visibleShortcuts)
+                                  _key(shortcut),
+                              ],
+                            ),
+                    )
+                  : Padding(
+                      padding: const EdgeInsets.only(left: 12),
+                      child: Text(
+                        '${widget.sessionType.name} · 단축키 꺼짐',
+                        style: const TextStyle(color: AppColors.textSecondary),
+                      ),
+                    ),
+            ),
+            _control(
+              'shortcut-settings',
+              '${widget.sessionType.name} 단축키 설정',
+              Icons.tune,
+              _openSettings,
+            ),
+            if (widget.onCollapse case final onCollapse?)
+              _control(
+                'shortcut-collapse',
+                '단축키 바 접기',
+                Icons.keyboard_arrow_down,
+                onCollapse,
+              ),
           ],
         ),
       ),
@@ -199,7 +151,7 @@ class _TerminalShortcutBarState extends ConsumerState<TerminalShortcutBar> {
         child: Tooltip(
           message: shortcut.description,
           child: TextButton(
-            // 세션 동작은 패널과 같이 다른 pane 제어가 끝날 때까지 막고, 키 입력은 그대로 보낸다
+            // 세션 동작은 다른 pane 제어가 끝날 때까지 막고, 키 입력은 그대로 보낸다
             onPressed: widget.isBusy && shortcut.action != null
                 ? null
                 : () => widget.onShortcut(shortcut),

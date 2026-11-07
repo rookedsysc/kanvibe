@@ -4,6 +4,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kanvibe_mobile/src/common/constants/app_theme.dart';
 import 'package:kanvibe_mobile/src/common/providers.dart';
@@ -1173,16 +1174,23 @@ void main() {
 
     expect(tester.testTextInput.isVisible, isFalse);
   });
-  Future<void> openRawKeys(WidgetTester tester) async {
-    await tester.tap(find.byTooltip('빠른 단축키'));
-    await tester.pumpAndSettle();
-    final keysTab = find.widgetWithText(ChoiceChip, '키');
-    await tester.tap(keysTab);
-    await tester.pumpAndSettle();
+
+  /// 키 입력 검증에 쓰는 기본 세팅을 모든 세션의 단축키 바에 올려 둔다
+  void putRawKeysOnBar() {
+    final profile = {
+      'enabled': true,
+      'ids': ['ctrl', 'alt', 'escape', 'tab', 'up'],
+      'combos': <Object>[],
+    };
+    FlutterSecureStorage.setMockInitialValues({
+      'kanvibe_terminal_shortcuts_v3': jsonEncode({
+        for (final type in ['terminal', 'tmux', 'zellij']) type: profile,
+      }),
+    });
   }
 
   Future<void> tapRawKey(WidgetTester tester, String id) async {
-    final key = find.byKey(ValueKey('panel-key-$id'));
+    final key = find.bySemanticsIdentifier('shortcut-$id');
     await tester.ensureVisible(key);
     await tester.pumpAndSettle();
     await tester.tap(key);
@@ -1193,6 +1201,7 @@ void main() {
     'Ctrl and Alt affect one IME character and preserve keyboard focus',
     (tester) async {
       final client = FakeDesktopClient();
+      putRawKeysOnBar();
       await pumpPane(
         tester,
         _pane,
@@ -1200,7 +1209,6 @@ void main() {
         store: FakeConnectionStore(),
       );
       final base = await attachSoftKeyboard(tester);
-      await openRawKeys(tester);
       await tapRawKey(tester, 'ctrl');
       await tapRawKey(tester, 'alt');
       expect(tester.testTextInput.isVisible, isTrue);
@@ -1214,9 +1222,9 @@ void main() {
     tester,
   ) async {
     final client = FakeDesktopClient();
+    putRawKeysOnBar();
     await pumpPane(tester, _pane, client: client, store: FakeConnectionStore());
     await attachSoftKeyboard(tester);
-    await openRawKeys(tester);
     await tapRawKey(tester, 'escape');
     await tapRawKey(tester, 'tab');
     mountedTerminal(tester).write('\x1b[?1h');
@@ -1262,10 +1270,10 @@ void main() {
     tester,
   ) async {
     final client = FakeDesktopClient();
+    putRawKeysOnBar();
     await pumpPane(tester, _pane, client: client, store: FakeConnectionStore());
     final base = await attachSoftKeyboard(tester);
     await sendImeBuffer(tester, base: base, previous: '', next: 'a');
-    await openRawKeys(tester);
     await tapRawKey(tester, 'alt');
     await sendImeBuffer(tester, base: base, previous: 'a', next: '');
     await sendImeBuffer(tester, base: base, previous: '', next: 'b');

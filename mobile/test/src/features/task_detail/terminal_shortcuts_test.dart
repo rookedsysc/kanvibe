@@ -281,6 +281,10 @@ void main() {
       await tester.tap(find.text('적용'));
       await tester.pumpAndSettle();
       expect(find.text('tmux · 단축키 꺼짐'), findsOneWidget);
+      expect(
+        tester.getSemantics(find.text('tmux · 단축키 꺼짐')).label,
+        'tmux · 단축키 꺼짐',
+      );
       expect(find.byTooltip('tmux 단축키 설정'), findsOneWidget);
       expect(
         (await TerminalShortcutStore().read())[SessionType.tmux]!.enabled,

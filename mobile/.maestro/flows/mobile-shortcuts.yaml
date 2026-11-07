@@ -69,19 +69,9 @@ env:
 - tapOn: "적용"
 - assertVisible: "단축키 추가"
 - takeScreenshot: shortcut-restored
-- tapOn:
-    id: shortcut-panel
-- assertVisible: "좌우 분할"
-- assertVisible:
-    id: panel-key-split-right
-- takeScreenshot: shortcut-session-panel
-- tapOn: "키"
-- assertVisible:
-    id: panel-key-escape
-- tapOn: "내 콤보"
-- assertVisible: "아직 콤보가 없습니다.*"
-- tapOn:
-    id: shortcut-panel
+# 빠른 패널을 없앴으므로 바 왼쪽 세션 이름은 눌러도 다른 키를 꺼내지 않는다
+- tapOn: "tmux"
+- assertNotVisible: "좌우 분할"
 - tapOn:
     id: shortcut-settings
 - assertVisible: "단축키 바 미리보기"
@@ -124,14 +114,9 @@ env:
 - tapOn: "적용"
 - assertVisible: "Split"
 - tapOn: "Split"
-- tapOn:
-    id: shortcut-panel
-- tapOn: "내 콤보"
 - assertVisible:
-    id: panel-key-combo-.*
+    id: shortcut-combo-.*
 - takeScreenshot: shortcut-saved-combo
-- tapOn:
-    id: shortcut-panel
 - tapOn:
     id: shortcut-settings
 # 기본 세팅도 콤보와 같은 목록에서 체크하면 바에 오른다. 타일 메뉴는 체크 타일에 합쳐져 노드로 드러나지 않아

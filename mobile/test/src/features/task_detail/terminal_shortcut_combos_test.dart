@@ -11,7 +11,6 @@ import 'package:kanvibe_mobile/src/features/task_detail/domain/terminal_shortcut
 import 'package:kanvibe_mobile/src/features/task_detail/presentation/widgets/terminal_shortcut_bar.dart';
 import 'package:kanvibe_mobile/src/features/task_detail/presentation/widgets/terminal_shortcut_combo_editor.dart';
 import 'package:kanvibe_mobile/src/features/task_detail/presentation/widgets/terminal_shortcut_settings_page.dart';
-import 'package:kanvibe_mobile/src/features/task_detail/presentation/widgets/terminal_shortcut_panel.dart';
 import 'package:kanvibe_mobile/src/features/task_detail/presentation/widgets/terminal_soft_keyboard.dart';
 import 'package:xterm/xterm.dart' as xterm;
 
@@ -95,6 +94,17 @@ void main() {
       tester.getSize(find.byType(TerminalShortcutBar)).height,
       lessThanOrEqualTo(40),
     );
+  });
+
+  testWidgets('session label is plain text without a quick panel', (
+    tester,
+  ) async {
+    await _pumpBar(tester);
+    await tester.tap(find.text('tmux'));
+    await tester.pumpAndSettle();
+    expect(find.byTooltip('빠른 단축키'), findsNothing);
+    expect(find.byType(ChoiceChip), findsNothing);
+    expect(find.text('좌우 분할'), findsNothing);
   });
 
   testWidgets('checked defaults and chords share the bar in saved order', (
@@ -520,69 +530,25 @@ void main() {
   testWidgets(
     'plain cursor chord follows cursor mode and consumes old modifiers',
     (tester) async {
-      await _saveCombos([
-        TerminalShortcut.combo(
-          'combo-up',
-          'Up',
-          const TerminalShortcutChord(keys: ['up']),
-        ),
-      ]);
+      await _saveCombos(
+        [
+          TerminalShortcut.combo(
+            'combo-up',
+            'Up',
+            const TerminalShortcutChord(keys: ['up']),
+          ),
+        ],
+        ids: ['ctrl', 'combo-up'],
+      );
       final output = <String>[];
       final terminal = xterm.Terminal()..onOutput = output.add;
       terminal.write('\x1b[?1h');
       await _pumpKeyboard(tester, terminal);
-      await tester.tap(find.byTooltip('빠른 단축키'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('키'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const ValueKey('panel-key-ctrl')));
+      await tester.tap(find.bySemanticsIdentifier('shortcut-ctrl'));
       await tester.tap(find.widgetWithText(TextButton, 'Up'));
       expect(output, ['\x1bOA']);
     },
   );
-
-  for (final session in SessionType.values) {
-    testWidgets(
-      '${session.name} quick panel routes only supported session actions',
-      (tester) async {
-        final pressed = <TerminalShortcut>[];
-        await _pumpBar(tester, session: session, onShortcut: pressed.add);
-        await tester.tap(find.byTooltip('빠른 단축키'));
-        await tester.pumpAndSettle();
-        expect(
-          tester.getSize(find.byType(TerminalShortcutPanel)).height,
-          lessThanOrEqualTo(140),
-        );
-        if (session == SessionType.terminal) {
-          expect(find.text('패널 제어'), findsNothing);
-          await tester.tap(find.byKey(const ValueKey('panel-key-escape')));
-          expect(pressed.single.id, 'escape');
-        } else {
-          await tester.tap(find.byKey(const ValueKey('panel-key-split-right')));
-          expect(pressed.single.action, 'split-right');
-          expect(
-            find.byKey(const ValueKey('panel-key-copy-mode')),
-            session == SessionType.tmux ? findsOneWidget : findsNothing,
-          );
-        }
-      },
-    );
-  }
-
-  testWidgets('busy panel blocks session controls but permits raw keys', (
-    tester,
-  ) async {
-    final pressed = <TerminalShortcut>[];
-    await _pumpBar(tester, onShortcut: pressed.add, isBusy: true);
-    await tester.tap(find.byTooltip('빠른 단축키'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('panel-key-split-right')));
-    expect(pressed, isEmpty);
-    await tester.tap(find.text('키'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('panel-key-escape')));
-    expect(pressed.single.id, 'escape');
-  });
 
   Future<List<TerminalShortcut?>> openEditor(
     WidgetTester tester, {
@@ -949,31 +915,7 @@ void main() {
     );
   });
 
-  testWidgets('quick panel stays below 104dp and scrolls to the last action', (
-    tester,
-  ) async {
-    tester.view.physicalSize = const Size(390, 844);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.resetPhysicalSize);
-    addTearDown(tester.view.resetDevicePixelRatio);
-    final pressed = <TerminalShortcut>[];
-    await _pumpBar(tester, onShortcut: pressed.add);
-    await tester.tap(find.byTooltip('빠른 단축키'));
-    await tester.pumpAndSettle();
-    expect(
-      tester.getSize(find.byType(TerminalShortcutPanel)).height,
-      lessThanOrEqualTo(104),
-    );
-    expect(find.text('pane을 좌우로 분할'), findsNothing);
-    final last = find.byKey(const ValueKey('panel-key-copy-mode'));
-    await tester.ensureVisible(last);
-    await tester.pumpAndSettle();
-    await tester.tap(last);
-    expect(pressed.single.action, 'copy-mode');
-    expect(tester.takeException(), isNull);
-  });
-
-  for (final screen in ['panel', 'editor', 'settings']) {
+  for (final screen in ['bar', 'editor', 'settings']) {
     testWidgets('$screen fits small viewport with large text and IME', (
       tester,
     ) async {
@@ -984,7 +926,7 @@ void main() {
       final controller = xterm.TerminalController();
       addTearDown(controller.dispose);
       final child = switch (screen) {
-        'panel' => TerminalSoftKeyboard(
+        'bar' => TerminalSoftKeyboard(
           terminal: xterm.Terminal(),
           controller: controller,
           sessionType: SessionType.tmux,
@@ -1006,7 +948,7 @@ void main() {
                 textScaler: const TextScaler.linear(2),
               ),
               child: Scaffold(
-                resizeToAvoidBottomInset: screen == 'panel',
+                resizeToAvoidBottomInset: screen == 'bar',
                 body: child,
               ),
             ),
@@ -1014,14 +956,6 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      if (screen == 'panel') {
-        await tester.tap(find.byTooltip('빠른 단축키'));
-        await tester.pumpAndSettle();
-        expect(
-          tester.getSize(find.byType(TerminalShortcutPanel)).height,
-          lessThanOrEqualTo(140),
-        );
-      }
       expect(tester.takeException(), isNull);
     });
   }

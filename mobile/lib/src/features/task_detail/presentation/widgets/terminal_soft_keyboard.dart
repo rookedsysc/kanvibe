@@ -63,7 +63,6 @@ class _TerminalSoftKeyboardState extends State<TerminalSoftKeyboard>
 
   /// IME 버퍼가 이만큼 쌓이면 비운다. 비우지 않으면 한 세션 동안 친 글자가 전부 IME에 남는다
   static const _bufferResetLength = 256;
-  static const _panelHeightFraction = .5;
 
   @override
   void dispose() {
@@ -220,58 +219,55 @@ class _TerminalSoftKeyboardState extends State<TerminalSoftKeyboard>
         _clearModifiers();
       }
     },
-    child: LayoutBuilder(
-      builder: (context, constraints) => Column(
-        children: [
-          Expanded(
-            child: Stack(
-              fit: StackFit.expand,
-              children: [
-                Listener(
-                  onPointerDown: _onPointerDown,
-                  onPointerMove: _onPointerMove,
-                  onPointerUp: _onPointerUp,
-                  onPointerCancel: (event) {
-                    _activePointers.remove(event.pointer);
-                    _discardTap();
-                  },
-                  child: widget.child,
-                ),
-                if (!_isShortcutBarVisible)
-                  Positioned(
-                    right: 8,
-                    bottom: 8,
-                    child: Focus(
-                      canRequestFocus: false,
-                      descendantsAreFocusable: false,
-                      child: Semantics(
-                        identifier: 'shortcut-expand',
-                        child: IconButton.filledTonal(
-                          tooltip: '단축키 바 펼치기',
-                          style: IconButton.styleFrom(
-                            backgroundColor: AppColors.buttonNeutral,
-                            foregroundColor: AppColors.textPrimary,
-                          ),
-                          onPressed: () =>
-                              setState(() => _isShortcutBarVisible = true),
-                          icon: const Icon(Icons.keyboard_arrow_up),
+    child: Column(
+      children: [
+        Expanded(
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              Listener(
+                onPointerDown: _onPointerDown,
+                onPointerMove: _onPointerMove,
+                onPointerUp: _onPointerUp,
+                onPointerCancel: (event) {
+                  _activePointers.remove(event.pointer);
+                  _discardTap();
+                },
+                child: widget.child,
+              ),
+              if (!_isShortcutBarVisible)
+                Positioned(
+                  right: 8,
+                  bottom: 8,
+                  child: Focus(
+                    canRequestFocus: false,
+                    descendantsAreFocusable: false,
+                    child: Semantics(
+                      identifier: 'shortcut-expand',
+                      child: IconButton.filledTonal(
+                        tooltip: '단축키 바 펼치기',
+                        style: IconButton.styleFrom(
+                          backgroundColor: AppColors.buttonNeutral,
+                          foregroundColor: AppColors.textPrimary,
                         ),
+                        onPressed: () =>
+                            setState(() => _isShortcutBarVisible = true),
+                        icon: const Icon(Icons.keyboard_arrow_up),
                       ),
                     ),
                   ),
-              ],
-            ),
+                ),
+            ],
           ),
-          if (_isShortcutBarVisible)
-            TerminalShortcutBar(
-              sessionType: widget.sessionType,
-              onShortcut: _pressShortcut,
-              onCollapse: _collapseShortcutBar,
-              isBusy: widget.isBusy,
-              maxPanelHeight: constraints.maxHeight * _panelHeightFraction,
-            ),
-        ],
-      ),
+        ),
+        if (_isShortcutBarVisible)
+          TerminalShortcutBar(
+            sessionType: widget.sessionType,
+            onShortcut: _pressShortcut,
+            onCollapse: _collapseShortcutBar,
+            isBusy: widget.isBusy,
+          ),
+      ],
     ),
   );
 
