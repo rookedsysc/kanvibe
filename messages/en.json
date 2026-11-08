@@ -32,7 +32,7 @@
     },
     "doneAlert": {
       "title": "Move to Done",
-      "message": "Moving to Done keeps the worktree, branch, and tmux session. Resources are deleted only when you delete the task.",
+      "message": "Moving to Done keeps the worktree, branch, and terminal session. Resources are deleted only when you delete the task.",
       "dontAskAgain": "Don't ask again",
       "confirm": "Move",
       "cancel": "Cancel"
@@ -324,7 +324,7 @@
     "loadError": "Failed to load layout settings.",
     "retry": "Retry",
     "title": "Pane Layout Settings",
-    "description": "Configure pane split layout and startup commands for tmux sessions.",
+    "description": "Configure pane split layout and startup commands for Herdr and tmux sessions.",
     "backToBoard": "Back to Board",
     "globalDefault": "Global Default",
     "globalDescription": "Default layout used when no project-specific setting exists.",

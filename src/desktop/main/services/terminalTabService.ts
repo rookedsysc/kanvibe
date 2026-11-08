@@ -1,4 +1,4 @@
-import { readHerdrTabs, runHerdrCommand, moveHerdrTab } from "@/lib/herdr";
+import { listHerdrMirrorPanes, readHerdrTabs, runHerdrCommand, moveHerdrTab } from "@/lib/herdr";
 import { SessionType, type KanbanTask } from "@/entities/KanbanTask";
 import { getTaskRepository } from "@/lib/database";
 import { execGit } from "@/lib/gitOperations";
@@ -206,6 +206,13 @@ export async function getTerminalTabCloseInfo(taskId: string, tabId: string): Pr
       } else if (target.sessionType === SessionType.TMUX) {
         const output = await runTabCommand(buildTmuxListMirrorPanesCommand(target.sessionName), target.sshHost);
         const names = parseTmuxMirrorPaneList(output)
+          .filter((pane) => pane.tabId === tabId)
+          .map((pane) => pane.command.trim())
+          .filter(Boolean);
+        processNames = names.length > 0 ? [...new Set(names)] : null;
+      } else if (target.sessionType === SessionType.HERDR) {
+        const panes = await listHerdrMirrorPanes(target.sessionName, target.sshHost);
+        const names = panes
           .filter((pane) => pane.tabId === tabId)
           .map((pane) => pane.command.trim())
           .filter(Boolean);

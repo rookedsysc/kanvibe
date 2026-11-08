@@ -12,7 +12,7 @@ Thank you for your interest in contributing to KanVibe! This guide will help you
 
 - Node.js 24.x (see `.nvmrc`)
 - pnpm
-- tmux or zellij (for terminal features)
+- Herdr, tmux, or zellij (for terminal features)
 
 ### Getting Started
 

@@ -12,7 +12,7 @@ KanVibe에 관심을 가져주셔서 감사합니다! 이 가이드가 시작하
 
 - Node.js 24.x (`.nvmrc` 참조)
 - pnpm
-- tmux 또는 zellij (터미널 기능용)
+- Herdr, tmux 또는 zellij (터미널 기능용)
 
 ### 시작하기
 

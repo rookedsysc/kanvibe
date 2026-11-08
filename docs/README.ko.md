@@ -48,7 +48,7 @@ open -a KanVibe
 
 **Mobile (iOS / Android):** Flutter 앱을 소스에서 빌드한 뒤 **Desktop 설정 → 모바일 연결**에서 PC 주소·포트·일회용 코드로 연결합니다. PC의 KanVibe가 실행 중이어야 하며, 휴대폰에서 로컬 네트워크나 Tailscale 등을 통해 해당 주소에 접속할 수 있어야 합니다. Mobile은 초기 미리보기이며 화면은 한국어입니다. [연결·사용·알림 안내](https://kanvibe.rookedsysc.com/ko/mobile).
 
-**Mobile 터미널 호환성:** `tmux`, `zellij`, `terminal` 세션을 쓰는 태스크를 선택하세요. Desktop의 신규 설정 기본값은 Herdr지만, 현재 Mobile 터미널 브리지는 Herdr 세션을 지원하지 않습니다. Mobile에서 사용할 태스크를 생성하거나 연결할 때 지원하는 세션 타입을 선택하세요.
+**Mobile 터미널 호환성:** `herdr`, `tmux`, `zellij`, `terminal` 세션을 모두 지원합니다. Herdr 세션은 원본 격자를 유지한 채 스크롤로 읽습니다.
 
 ## PC에서 시작하고, 휴대폰에서 이어가기
 
@@ -111,9 +111,9 @@ open -a KanVibe
 | 의존성 | 버전 | 필수 | 설치 |
 |--------|------|------|------|
 | [git](https://git-scm.com/) | 최신 | Yes | `brew install git` |
-| [tmux](https://github.com/tmux/tmux) | 최신 | Mobile 터미널용 (또는 zellij) | `brew install tmux` |
+| [tmux](https://github.com/tmux/tmux) | 최신 | Mobile 터미널용 (또는 Herdr, zellij) | `brew install tmux` |
 | [gh](https://cli.github.com/) | 최신 | Yes | `brew install gh` (`gh auth login` 필요) |
-| [zellij](https://github.com/zellij-org/zellij) | 최신 | Mobile 터미널용 (또는 tmux) | `brew install zellij` |
+| [zellij](https://github.com/zellij-org/zellij) | 최신 | Mobile 터미널용 (또는 Herdr, tmux) | `brew install zellij` |
 | [Herdr](https://herdr.dev/tui/docs/) | 0.9.5 검증 | 기본 백엔드 | 앱 내 설치 안내 |
 
 ### 업데이트 또는 제거
@@ -220,7 +220,7 @@ brew untap rookedsysc/kanvibe
 - 휴대폰은 상태별 세로 목록, 너비 768dp 이상 태블릿은 칸반으로 보여 줍니다. 프로젝트 필터와 저장한 PC 전환을 지원합니다.
 - 태스크의 기존 tmux·Zellij·일반 터미널 세션을 엽니다. 폰과 태블릿 모두 탭 하나에 pane 하나를 표시하며, PC로 돌아가지 않고 셸 탭을 추가할 수 있습니다.
 - 출력을 읽고 화면 키보드로 입력합니다. SSH 원격 태스크에서도 사용할 수 있으며, 태스크 생성·상태 변경·정보 확인·연결된 PR 열기를 지원합니다.
-- tmux와 일반 터미널은 모바일 화면에 맞춰 행·열을 조정합니다. 보는 동안 PC의 같은 터미널 크기도 바뀌며, 화면을 떠나면 복원됩니다. Zellij는 스크롤로 읽습니다.
+- tmux와 일반 터미널은 모바일 화면에 맞춰 행·열을 조정합니다. 보는 동안 PC의 같은 터미널 크기도 바뀌며, 화면을 떠나면 복원됩니다. Herdr와 Zellij는 스크롤로 읽습니다.
 - 5분 뒤 만료되는 6자리 일회용 코드로 연결합니다. PC를 여러 대 저장하고 연결을 각각 해제할 수 있습니다.
 - 선택한 PC의 알림함에서 읽음 상태를 공유하고 관련 태스크로 이동합니다. 전경 hook 갱신은 WebSocket을 사용하며, 백그라운드 푸시에는 Firebase/APNs 설정과 Desktop 푸시 중계가 필요합니다.
 - 현재 소스 빌드로 사용합니다. Desktop이 실행 중이고 LAN이나 Tailscale 등을 통해 해당 PC 주소에 접속할 수 있어야 합니다. [Mobile 가이드](https://kanvibe.rookedsysc.com/ko/mobile)와 [빌드 안내](../mobile/README.md)를 확인하세요.

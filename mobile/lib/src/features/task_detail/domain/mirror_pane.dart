@@ -43,7 +43,7 @@ class MirrorPane {
   static int _readInt(Object? value) => value is num ? value.toInt() : 0;
 }
 
-/// tmux window 또는 zellij tab 하나
+/// tmux window, zellij tab 또는 Herdr tab 하나
 class MirrorTab {
   const MirrorTab({required this.id, required this.name, required this.panes});
 
@@ -99,6 +99,7 @@ enum SurfaceUnavailableReason {
   noSession,
   sessionNotRunning,
   zellijTooOld,
+  herdrMissing,
   remoteUnreachable,
   unknown;
 
@@ -106,6 +107,7 @@ enum SurfaceUnavailableReason {
     'no-session' => SurfaceUnavailableReason.noSession,
     'session-not-running' => SurfaceUnavailableReason.sessionNotRunning,
     'zellij-too-old' => SurfaceUnavailableReason.zellijTooOld,
+    'herdr-missing' => SurfaceUnavailableReason.herdrMissing,
     'remote-unreachable' => SurfaceUnavailableReason.remoteUnreachable,
     _ => SurfaceUnavailableReason.unknown,
   };

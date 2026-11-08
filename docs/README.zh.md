@@ -48,7 +48,7 @@ open -a KanVibe
 
 **Mobile（iOS / Android）：** 从源码构建 Flutter 应用，然后在 **Desktop 设置 → 移动端连接** 中使用电脑地址、端口和一次性连接码进行配对。电脑上的 KanVibe 必须保持运行，手机须能通过局域网或 Tailscale 等网络访问该地址。Mobile 是早期预览版，目前界面为韩文。[连接、使用与通知指南](https://kanvibe.rookedsysc.com/zh/mobile)。
 
-**移动端终端兼容性：**请选择使用 `tmux`、`zellij` 或 `terminal` 的任务。Desktop 的新设置默认使用 Herdr，但当前移动端终端桥接尚不支持 Herdr 会话。创建或连接需要在移动端使用的任务时，请选择受支持的会话类型。
+**移动端终端兼容性：**支持 `herdr`、`tmux`、`zellij` 和 `terminal` 会话。Herdr 会话保留原始网格，通过滚动查看。
 
 ## 从电脑开始，在手机上继续
 
@@ -111,9 +111,9 @@ open -a KanVibe
 | 依赖 | 版本 | 必需 | 安装 |
 |------|------|------|------|
 | [git](https://git-scm.com/) | 最新 | Yes | `brew install git` |
-| [tmux](https://github.com/tmux/tmux) | 最新 | 用于 Mobile 终端（或 zellij） | `brew install tmux` |
+| [tmux](https://github.com/tmux/tmux) | 最新 | 用于 Mobile 终端（或 Herdr、zellij） | `brew install tmux` |
 | [gh](https://cli.github.com/) | 最新 | Yes | `brew install gh`（需要 `gh auth login`） |
-| [zellij](https://github.com/zellij-org/zellij) | 最新 | 用于 Mobile 终端（或 tmux） | `brew install zellij` |
+| [zellij](https://github.com/zellij-org/zellij) | 最新 | 用于 Mobile 终端（或 Herdr、tmux） | `brew install zellij` |
 | [Herdr](https://herdr.dev/tui/docs/) | 已验证 0.9.5 | 默认后端 | 应用内安装提示 |
 
 ### 更新或移除
@@ -220,7 +220,7 @@ brew untap rookedsysc/kanvibe
 - 手机按状态纵向列出任务，宽度 768dp 及以上的平板显示看板列。支持项目筛选和切换已保存的电脑。
 - 打开任务现有的 tmux、Zellij 或普通终端会话。手机和平板均在每个标签中显示一个面板；无需回到电脑即可添加 shell 标签。
 - 读取输出并使用屏幕键盘输入，SSH 远程任务也可使用。支持创建任务、更改状态、查看任务信息和打开关联 PR。
-- tmux 和普通终端会根据移动屏幕调整行列数，查看期间电脑上的同一终端尺寸也会变化，离开后恢复。Zellij 使用滚动查看。
+- tmux 和普通终端会根据移动屏幕调整行列数，查看期间电脑上的同一终端尺寸也会变化，离开后恢复。Herdr 和 Zellij 使用滚动查看。
 - 使用 5 分钟后过期的 6 位一次性连接码配对。可保存多台电脑并分别移除配对。
 - 查看所选电脑的通知中心、同步已读状态并进入相关任务。前台 hook 更新通过 WebSocket 接收；后台推送需要 Firebase/APNs 配置和 Desktop 推送中继。
 - 目前需从源码构建。Desktop 必须保持运行，且手机能通过局域网或 Tailscale 等网络访问该电脑地址。参见 [Mobile 指南](https://kanvibe.rookedsysc.com/zh/mobile)与[构建说明](../mobile/README.md)。

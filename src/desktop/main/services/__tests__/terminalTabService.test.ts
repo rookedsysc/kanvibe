@@ -475,6 +475,34 @@ describe("탭 닫기 전 확인 정보", () => {
     expect(findExecutedCommand("kill-window")).toBeUndefined();
   });
 
+  it("Herdr 탭을 닫기 전에 그 탭의 프로세스 이름만 모은다", async () => {
+    stubTask({ sessionType: SessionType.HERDR, sessionName: "herdr-session" });
+    const herdrResult = (value: unknown) => JSON.stringify({ id: "test", result: value });
+    const scroll = { max_offset_from_bottom: 0, viewport_rows: 38 };
+    mockExecGit.mockImplementation(async (command: string) => {
+      if (command.includes("'tab' 'list'")) {
+        return herdrResult({ tabs: [
+          { tab_id: "w1:t1", number: 1, label: "work", focused: true },
+          { tab_id: "w1:t2", number: 2, label: "other", focused: false },
+        ] });
+      }
+      if (command.includes("'pane' 'list'")) {
+        return herdrResult({ panes: [
+          { pane_id: "w1:p1", tab_id: "w1:t1", scroll },
+          { pane_id: "w1:p2", tab_id: "w1:t2", scroll },
+        ] });
+      }
+      if (command.includes("'pane' 'layout'")) {
+        return herdrResult({ layout: { area: { x: 0, y: 0, width: 80, height: 40 }, focused_pane_id: "w1:p1", zoomed: false, panes: [] } });
+      }
+      return herdrResult({ process_info: { foreground_processes: [{ name: command.includes("w1:p1") ? "claude" : "vim" }] } });
+    });
+    const service = await importService();
+    expect(await service.getTerminalTabCloseInfo("task-1", "w1:t1")).toEqual({
+      ok: true, shouldCloseWindow: false, processNames: ["claude"],
+    });
+  });
+
   it("프로세스 조회 실패는 실행 중인 작업이 없다는 뜻으로 바꾸지 않는다", async () => {
     stubTask({});
     mockExecGit.mockImplementation(async (command: string) => {

@@ -45,6 +45,22 @@ void main() {
     expect(zellij.map((key) => key.action), isNot(contains('copy-mode')));
   });
 
+  test('Herdr는 분할과 확대만 제공하고 지난 출력은 손가락으로 읽는다', () {
+    final actions = terminalShortcuts(
+      SessionType.herdr,
+    ).map((key) => key.action).whereType<String>().toList();
+    expect(actions, ['split-right', 'split-down', 'toggle-fullscreen']);
+  });
+
+  test('tmux와 Zellij의 스크롤 단축키는 그대로 남는다', () {
+    for (final type in [SessionType.tmux, SessionType.zellij]) {
+      expect(
+        terminalShortcuts(type).map((key) => key.action),
+        containsAll(['scroll-up', 'scroll-down', 'scroll-bottom']),
+      );
+    }
+  });
+
   test(
     'ordered profiles persist independently including disabled and empty',
     () async {
