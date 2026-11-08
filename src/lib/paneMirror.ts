@@ -1,4 +1,4 @@
-import { quoteForPosixShell } from "@/lib/worktree";
+import { buildHerdrCommand, quoteForPosixShell } from "@/lib/worktree";
 
 /**
  * 모바일 클라이언트에 pane 하나를 그대로 비추기 위한 명령 빌더와 출력 파서.
@@ -14,11 +14,11 @@ import { quoteForPosixShell } from "@/lib/worktree";
  * 모든 함수는 부수효과가 없다. 실제 실행은 `mobileBridgeService`가 맡는다.
  */
 
-/** 비출 pane 하나. tmux pane과 zellij pane을 같은 모양으로 맞춘다 */
+/** 비출 pane 하나. tmux·zellij·Herdr pane을 같은 모양으로 맞춘다 */
 export interface MirrorPane {
-  /** 멀티플렉서가 주는 안정적인 pane 식별자. tmux는 `%17`, zellij는 `terminal_1` */
+  /** 멀티플렉서가 주는 안정적인 pane 식별자. tmux는 `%17`, zellij는 `terminal_1`, Herdr는 `w1:p1` */
   id: string;
-  /** 이 pane이 속한 탭(tmux window / zellij tab)의 식별자 */
+  /** 이 pane이 속한 탭(tmux window / zellij tab / Herdr tab)의 식별자 */
   tabId: string;
   tabName: string;
   /** pane에서 돌고 있는 명령. 알 수 없으면 빈 문자열 */
@@ -395,4 +395,65 @@ export function buildZellijPaneShortcutCommand(sessionName: string, paneId: stri
     default: return null;
   }
   return `${prefix} ${command} --pane-id ${quoteForPosixShell(paneId)}`;
+}
+
+/**
+ * 지나간 출력까지 담은 Herdr pane 내용을 ANSI를 살린 채로 읽는다.
+ * 커서 위치는 주지 않으므로 화면과 커서는 뒤따르는 observe의 전체 프레임이 맞춘다.
+ */
+export function buildHerdrRecentScreenCommand(sessionName: string, paneId: string): string {
+  return buildHerdrCommand(sessionName, ["pane", "read", paneId, "--source", "recent", "--lines", String(MAX_MIRROR_LINES), "--format", "ansi"]);
+}
+
+/**
+ * observe는 크기를 주지 않으면 pane과 무관하게 120x40으로 그린다.
+ * 이 크기는 관찰자 전용 격자라 pane에서 도는 프로그램의 크기를 바꾸지 않는다.
+ */
+export function buildHerdrObservePaneCommand(sessionName: string, paneId: string, cols: number, rows: number): string {
+  return buildHerdrCommand(sessionName, ["terminal", "session", "observe", paneId, "--cols", String(cols), "--rows", String(rows)]);
+}
+
+export type HerdrObserveRecord =
+  | { type: "frame"; isFullScreen: boolean; output: string }
+  | { type: "closed" };
+
+/** observe가 내보내는 NDJSON 한 줄을 읽는다. 모르는 레코드는 null이다 */
+export function parseHerdrObserveRecord(line: string): HerdrObserveRecord | null {
+  let record: { type?: unknown; bytes?: unknown; full?: unknown };
+  try {
+    record = JSON.parse(line);
+  } catch {
+    return null;
+  }
+  if (record.type === "terminal.closed") {
+    return { type: "closed" };
+  }
+  if (record.type !== "terminal.frame" || typeof record.bytes !== "string") {
+    return null;
+  }
+  return { type: "frame", isFullScreen: record.full === true, output: Buffer.from(record.bytes, "base64").toString("utf8") };
+}
+
+/**
+ * 모바일에서 누른 키를 Herdr pane에 넣는다.
+ * `send-text`는 제어 문자와 `--help`처럼 `-`로 시작하는 입력도 원문 그대로 전달하지만,
+ * 프로세스 인자는 NUL을 담을 수 없어 그 바이트만 이름 있는 키로 전한다.
+ */
+export function buildHerdrWritePaneCommand(sessionName: string, paneId: string, input: string): string {
+  const commands: string[] = [];
+  for (const [index, text] of input.split("\0").entries()) {
+    if (index > 0) commands.push(buildHerdrCommand(sessionName, ["pane", "send-keys", paneId, "ctrl+space"]));
+    if (text) commands.push(buildHerdrCommand(sessionName, ["pane", "send-text", paneId, text]));
+  }
+  return commands.join(" && ");
+}
+
+/** Herdr에는 스크롤·복사 모드 명령이 없어 분할과 확대만 지원한다. 지난 출력은 모바일 화면을 손가락으로 밀어 본다 */
+export function buildHerdrPaneShortcutCommand(sessionName: string, paneId: string, action: string): string | null {
+  switch (action) {
+    case "split-right": return buildHerdrCommand(sessionName, ["pane", "split", paneId, "--direction", "right", "--no-focus"]);
+    case "split-down": return buildHerdrCommand(sessionName, ["pane", "split", paneId, "--direction", "down", "--no-focus"]);
+    case "toggle-fullscreen": return buildHerdrCommand(sessionName, ["pane", "zoom", paneId, "--toggle"]);
+    default: return null;
+  }
 }

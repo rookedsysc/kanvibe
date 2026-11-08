@@ -46,7 +46,7 @@ const _commonShortcuts = [
   TerminalShortcut('pageDown', 'PgDn', 'Page Down'),
 ];
 
-const _multiplexerShortcuts = [
+const _paneLayoutShortcuts = [
   TerminalShortcut(
     'split-right',
     '좌우 분할',
@@ -60,6 +60,10 @@ const _multiplexerShortcuts = [
     'pane 확대 전환',
     action: 'toggle-fullscreen',
   ),
+];
+
+/// Herdr에는 스크롤 명령이 없어 지난 출력을 손가락으로만 본다
+const _scrollShortcuts = [
   TerminalShortcut('scroll-up', '이전 출력', '세션 출력 위로 스크롤', action: 'scroll-up'),
   TerminalShortcut(
     'scroll-down',
@@ -77,7 +81,9 @@ const _multiplexerShortcuts = [
 
 List<TerminalShortcut> terminalShortcuts(SessionType type) => [
   ..._commonShortcuts,
-  if (type != SessionType.terminal) ..._multiplexerShortcuts,
+  if (type != SessionType.terminal) ..._paneLayoutShortcuts,
+  if (type == SessionType.tmux || type == SessionType.zellij)
+    ..._scrollShortcuts,
   if (type == SessionType.tmux)
     const TerminalShortcut(
       'copy-mode',

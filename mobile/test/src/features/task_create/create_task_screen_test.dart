@@ -190,6 +190,21 @@ void main() {
     expect(client.createCalls.single['sessionType'], 'zellij');
   });
 
+  testWidgets('데스크탑 기본값이 Herdr면 Herdr로 만든다', (tester) async {
+    expect(SessionType.fromWire('herdr'), SessionType.herdr);
+    final client = await pumpCreate(
+      tester,
+      defaultSessionType: SessionType.fromWire('herdr'),
+    );
+    await selectProject(tester);
+
+    await tester.enterText(find.byType(TextFormField).first, 'feat/x');
+    await tester.tap(find.text('만들기'));
+    await tester.pumpAndSettle();
+
+    expect(client.createCalls.single['sessionType'], 'herdr');
+  });
+
   testWidgets('데스크탑이 값을 거절하면 그 사유를 폼에 남긴다', (tester) async {
     await pumpCreate(
       tester,

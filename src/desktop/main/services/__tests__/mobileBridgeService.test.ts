@@ -1,9 +1,11 @@
 /**
  * @vitest-environment node
  */
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { EventEmitter } from "node:events";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { SessionType } from "@/entities/KanbanTask";
-import { buildTmuxCapturePaneCommand } from "@/lib/paneMirror";
+import { buildHerdrObservePaneCommand, buildScreenRedraw, buildTmuxCapturePaneCommand } from "@/lib/paneMirror";
+import { buildHerdrCommand } from "@/lib/worktree";
 import type { AppNotification } from "@/desktop/shared/notifications";
 
 const appSettingsStore = new Map<string, string>();
@@ -1591,4 +1593,246 @@ it("파일 삭제가 아닌 읽기 권한 오류는 상세 조회 실패로 유�
   const error = Object.assign(new Error("permission denied"), { code: "EACCES" });
   getTaskAiSessionDetailMock.mockRejectedValueOnce(error);
   await expect(getMobileAiSessionDetail("history-permission-file", "codex", "denied", { limit: 20 })).rejects.toBe(error);
+});
+
+describe("Herdr 세션 미러", () => {
+  const HERDR_TASK = { id: "herdr-task", sessionType: SessionType.HERDR, sessionName: "herdr-session", sshHost: null };
+  const herdrCommand = (...args: string[]) => buildHerdrCommand("herdr-session", args);
+  const herdrResult = (value: unknown) => JSON.stringify({ id: "test", result: value });
+  let historyRows = 0;
+
+  const stubHerdrSession = () => execGitMock.mockImplementation(async (command: string) => {
+    if (command === herdrCommand("workspace", "list")) return herdrResult({ workspaces: [{ workspace_id: "w1" }] });
+    if (command === herdrCommand("pane", "list")) {
+      return herdrResult({ panes: [{ pane_id: "w1:p1", tab_id: "w1:t1", scroll: { max_offset_from_bottom: historyRows, viewport_rows: 38 } }] });
+    }
+    if (command === herdrCommand("tab", "list")) return herdrResult({ tabs: [{ tab_id: "w1:t1", number: 1, label: "work", focused: true }] });
+    if (command.includes("'pane' 'layout'")) {
+      return herdrResult({ layout: { area: { x: 0, y: 0, width: 120, height: 40 }, focused_pane_id: "w1:p1", zoomed: false, panes: [{ pane_id: "w1:p1", rect: { x: 0, y: 0, width: 120, height: 40 } }] } });
+    }
+    if (command.includes("'process-info'")) return herdrResult({ process_info: { foreground_processes: [{ name: "claude" }] } });
+    if (command === herdrCommand("pane", "get", "w1:p1")) {
+      return herdrResult({ pane: { pane_id: "w1:p1", tab_id: "w1:t1", scroll: { max_offset_from_bottom: historyRows, viewport_rows: 38 } } });
+    }
+    if (command.includes("'pane' 'read'")) return `history-${historyRows}`;
+    return "";
+  });
+
+  /** observe 자식 프로세스 대역. 테스트가 NDJSON을 원하는 조각으로 흘린다 */
+  const createObserver = () => {
+    const child = Object.assign(new EventEmitter(), {
+      pid: undefined as number | undefined,
+      kill: vi.fn(),
+      stdout: Object.assign(new EventEmitter(), { setEncoding: vi.fn() }),
+      stderr: Object.assign(new EventEmitter(), { resume: vi.fn() }),
+    });
+    return child;
+  };
+  const frame = (text: string, full = false) => `${JSON.stringify({ type: "terminal.frame", bytes: Buffer.from(text).toString("base64"), full })}\n`;
+  const executed = () => execGitMock.mock.calls.map(([command]) => command);
+
+  beforeEach(() => {
+    historyRows = 0;
+    findOneByMock.mockResolvedValue(HERDR_TASK);
+    stubHerdrSession();
+    spawnMock.mockImplementation(() => createObserver());
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("Herdr 태스크의 표면을 Herdr 조회로 만들고 tmux 명령은 실행하지 않는다", async () => {
+    const surfaces = await getTaskSurfaces("herdr-task");
+
+    expect(surfaces).toMatchObject({ sessionType: SessionType.HERDR, canResize: false });
+    expect(surfaces.tabs).toEqual([{ id: "w1:t1", name: "work", panes: [expect.objectContaining({ id: "w1:p1", command: "claude", width: 120, height: 38 })] }]);
+    expect(executed().filter((command) => command.includes("tmux"))).toEqual([]);
+  });
+
+  it("세션이 없고 Herdr도 없으면 설치 안내 사유를 돌려주고 세션을 띄우지 않는다", async () => {
+    execGitMock.mockRejectedValue(new Error("not found"));
+
+    await expect(getTaskSurfaces("herdr-task")).rejects.toMatchObject({ reason: "herdr-missing" });
+    expect(attachTaskTerminalMock).not.toHaveBeenCalled();
+  });
+
+  it("키 입력을 send-text로 보내고 NUL은 Ctrl+Space로 보낸다", async () => {
+    await writeToPane("herdr-task", "w1:p1", "a\0");
+
+    expect(executed()).toContain(`${herdrCommand("pane", "send-text", "w1:p1", "a")} && ${herdrCommand("pane", "send-keys", "w1:p1", "ctrl+space")}`);
+    expect(executed().filter((command) => command.includes("tmux"))).toEqual([]);
+  });
+
+  it("다른 세션에 없는 pane에는 입력을 보내지 않는다", async () => {
+    await expect(writeToPane("herdr-task", "w9:p9", "x")).rejects.toMatchObject({ reason: "session-not-running" });
+    expect(executed().some((command) => command.includes("send-text"))).toBe(false);
+  });
+
+  it("분할 단축키는 새 pane이 나타날 때까지 기다리고 스크롤 단축키는 거절한다", async () => {
+    let split = false;
+    execGitMock.mockImplementation(async (command: string) => {
+      if (command.includes("'pane' 'split'")) { split = true; return ""; }
+      if (split && command === herdrCommand("pane", "list")) {
+        return herdrResult({ panes: [
+          { pane_id: "w1:p1", tab_id: "w1:t1", scroll: { max_offset_from_bottom: 0, viewport_rows: 38 } },
+          { pane_id: "w1:p2", tab_id: "w1:t1", scroll: { max_offset_from_bottom: 0, viewport_rows: 38 } },
+        ] });
+      }
+      if (command === herdrCommand("workspace", "list")) return herdrResult({ workspaces: [{ workspace_id: "w1" }] });
+      if (command === herdrCommand("pane", "list")) return herdrResult({ panes: [{ pane_id: "w1:p1", tab_id: "w1:t1", scroll: { max_offset_from_bottom: 0, viewport_rows: 38 } }] });
+      if (command === herdrCommand("tab", "list")) return herdrResult({ tabs: [{ tab_id: "w1:t1", number: 1, label: "work", focused: true }] });
+      if (command.includes("'pane' 'layout'")) return herdrResult({ layout: { area: { x: 0, y: 0, width: 120, height: 40 }, focused_pane_id: "w1:p1", zoomed: false, panes: [] } });
+      return herdrResult({ process_info: { foreground_processes: [] } });
+    });
+
+    const { surfaces } = await executeMobileTerminalShortcut("herdr-task", "w1:p1", "split-right");
+
+    expect(surfaces.tabs[0].panes.map((pane) => pane.id)).toEqual(["w1:p1", "w1:p2"]);
+    await expect(executeMobileTerminalShortcut("herdr-task", "w1:p1", "scroll-up")).rejects.toThrow(/지원하지 않는/);
+  });
+
+  it("화면 크기 조정은 받지 않는다", async () => {
+    await expect(claimPaneViewport("herdr-task", "w1:p1")).rejects.toMatchObject({ reason: "session-not-running" });
+  });
+
+  it("이력을 먼저 보내고 잘린 NDJSON 줄을 이어 프레임을 전달한다", async () => {
+    const observer = createObserver();
+    spawnMock.mockReturnValue(observer);
+    const chunks: string[] = [];
+
+    const unsubscribe = await subscribeToPane("herdr-task", "w1:p1", (chunk) => chunks.push(chunk), () => {});
+    expect(chunks).toEqual([buildScreenRedraw("history-0", null)]);
+    expect(spawnMock.mock.calls[0][1][1]).toBe(buildHerdrObservePaneCommand("herdr-session", "w1:p1", 120, 38));
+
+    const line = frame("screen", true);
+    observer.stdout.emit("data", line.slice(0, 10));
+    expect(chunks).toHaveLength(1);
+    observer.stdout.emit("data", line.slice(10));
+    expect(chunks.at(-1)).toBe("screen");
+    unsubscribe();
+  });
+
+  it("출력이 잠잠해진 뒤 이력이 늘었으면 이력을 다시 보내고 observe를 새로 띄운다", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const observers = [createObserver(), createObserver()];
+    spawnMock.mockImplementationOnce(() => observers[0]).mockImplementationOnce(() => observers[1]);
+    const chunks: string[] = [];
+    const onEnd = vi.fn();
+    const unsubscribe = await subscribeToPane("herdr-task", "w1:p1", (chunk) => chunks.push(chunk), onEnd);
+
+    historyRows = 5;
+    observers[0].stdout.emit("data", frame("first"));
+    await vi.advanceTimersByTimeAsync(500);
+    observers[0].stdout.emit("data", frame("second"));
+    await vi.advanceTimersByTimeAsync(999);
+    expect(spawnMock).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(1);
+
+    expect(spawnMock).toHaveBeenCalledTimes(2);
+    expect(chunks).toContain(buildScreenRedraw("history-5", null));
+
+    /** 멈춘 observe의 뒤늦은 프레임과 종료는 새 스트림을 흔들지 않는다 */
+    observers[0].stdout.emit("data", frame("stale"));
+    observers[0].emit("exit");
+    expect(chunks).not.toContain("stale");
+    expect(onEnd).not.toHaveBeenCalled();
+
+    /** 새 observe의 첫 전체 프레임이 다시 재시작을 부르면 끝없이 반복된다 */
+    observers[1].stdout.emit("data", frame("repaint", true));
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(chunks.at(-1)).toBe("repaint");
+    expect(spawnMock).toHaveBeenCalledTimes(2);
+    unsubscribe();
+  });
+
+  it("이력이 그대로면 observe를 재시작하지 않는다", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const observer = createObserver();
+    spawnMock.mockReturnValue(observer);
+    const chunks: string[] = [];
+    const unsubscribe = await subscribeToPane("herdr-task", "w1:p1", (chunk) => chunks.push(chunk), () => {});
+
+    observer.stdout.emit("data", frame("typing"));
+    await vi.advanceTimersByTimeAsync(2_000);
+
+    expect(spawnMock).toHaveBeenCalledTimes(1);
+    expect(chunks.at(-1)).toBe("typing");
+    unsubscribe();
+  });
+
+  it("뒤늦게 붙은 구독자가 화면을 받도록 observe를 새로 띄운다", async () => {
+    const observers = [createObserver(), createObserver()];
+    spawnMock.mockImplementationOnce(() => observers[0]).mockImplementationOnce(() => observers[1]);
+    const firstChunks: string[] = [];
+    const secondChunks: string[] = [];
+    const unsubscribeFirst = await subscribeToPane("herdr-task", "w1:p1", (chunk) => firstChunks.push(chunk), () => {});
+    expect(spawnMock).toHaveBeenCalledTimes(1);
+
+    const unsubscribeSecond = await subscribeToPane("herdr-task", "w1:p1", (chunk) => secondChunks.push(chunk), () => {});
+    await vi.waitFor(() => expect(spawnMock).toHaveBeenCalledTimes(2));
+    await vi.waitFor(() => expect(observers[1].stdout.listenerCount("data")).toBe(1));
+
+    observers[1].stdout.emit("data", frame("screen", true));
+    expect(firstChunks.at(-1)).toBe("screen");
+    expect(secondChunks.at(-1)).toBe("screen");
+    unsubscribeFirst();
+    unsubscribeSecond();
+  });
+
+  it("observe가 스스로 끝나면 구독자에게 끝을 알린다", async () => {
+    const observer = createObserver();
+    spawnMock.mockReturnValue(observer);
+    const onEnd = vi.fn();
+    await subscribeToPane("herdr-task", "w1:p1", () => {}, onEnd);
+
+    observer.emit("exit");
+
+    expect(onEnd).toHaveBeenCalledOnce();
+  });
+
+  /** 끝을 알리면 구독 자리가 먼저 지워져 해제 함수가 stop을 부르지 않으므로, 스트림이 스스로 멈춰야 한다 */
+  it("이력 확인이 실패해 끝을 알리면 observe와 다음 확인을 함께 멈춘다", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const killSpy = vi.spyOn(process, "kill").mockImplementation(() => true);
+    const observer = createObserver();
+    observer.pid = 4321;
+    spawnMock.mockReturnValue(observer);
+    const onEnd = vi.fn();
+    const unsubscribe = await subscribeToPane("herdr-task", "w1:p1", () => {}, onEnd);
+
+    const paneGetCommand = herdrCommand("pane", "get", "w1:p1");
+    const countPaneGets = () => executed().filter((command) => command === paneGetCommand).length;
+    const paneGetsBeforeFailure = countPaneGets();
+    execGitMock.mockImplementation(async (command: string) => {
+      if (command === paneGetCommand) throw new Error("ssh disconnected");
+      return "";
+    });
+    observer.stdout.emit("data", frame("output"));
+    await vi.advanceTimersByTimeAsync(1_000);
+
+    expect(onEnd).toHaveBeenCalledOnce();
+    expect(killSpy).toHaveBeenCalledWith(-4321, "SIGTERM");
+
+    unsubscribe();
+    observer.stdout.emit("data", frame("late output"));
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(countPaneGets()).toBe(paneGetsBeforeFailure + 1);
+    killSpy.mockRestore();
+  });
+
+  it("observe가 끝난 뒤에는 앞서 예약한 이력 확인이 observe를 다시 띄우지 않는다", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const observer = createObserver();
+    spawnMock.mockReturnValue(observer);
+    const unsubscribe = await subscribeToPane("herdr-task", "w1:p1", () => {}, () => {});
+
+    historyRows = 5;
+    observer.stdout.emit("data", frame("output"));
+    observer.emit("exit");
+    unsubscribe();
+    await vi.advanceTimersByTimeAsync(5_000);
+
+    expect(spawnMock).toHaveBeenCalledTimes(1);
+  });
 });

@@ -1,0 +1,65 @@
+# Herdr 세션을 기기에서 만들어 입력하고, 손가락 스크롤과 pane 단축키를 확인한다.
+# `qa/mobile/lib/prepareQaDesktop.cjs`가 띄운 격리 데스크탑과, 데스크탑이 찾을 수 있는 herdr가 필요하다.
+appId: ${APP_ID}
+env:
+  DESKTOP_API_FROM_HOST: http://127.0.0.1:19736
+  PROBE_API_FROM_HOST: http://127.0.0.1:19737
+---
+- launchApp:
+    clearState: true
+- runFlow: ../subflows/pairs-and-opens-board.yaml
+- runFlow:
+    file: ../subflows/creates-task-and-types-into-terminal.yaml
+    env:
+      SESSION_TYPE: herdr
+      BRANCH_NAME: maestro/mobile-herdr
+      MARKER: MAESTRO_HERDR_OK
+- scrollUntilVisible:
+    element: "(?s).*maestro/mobile-herdr.*"
+    direction: DOWN
+    timeout: 15000
+- tapOn: "(?s).*maestro/mobile-herdr.*"
+- extendedWaitUntil:
+    visible:
+      id: pane-terminal
+    timeout: 20000
+- tapOn:
+    id: pane-terminal
+- inputText: "seq 1 300 | sed 's/^/herdr-line-/'"
+- pressKey: Enter
+# 출력이 멈춘 뒤 데스크탑이 늘어난 이력을 다시 보낼 때까지 기다린다. 화면에 없는 글자를 기다려 시간만 흘려보낸다.
+- extendedWaitUntil:
+    visible: "기다리기 전용 문구"
+    timeout: 6000
+    optional: true
+- takeScreenshot: herdr-latest-output
+- swipe:
+    from:
+      id: pane-terminal
+    direction: DOWN
+- swipe:
+    from:
+      id: pane-terminal
+    direction: DOWN
+- takeScreenshot: herdr-scrolled-history
+- tapOn:
+    id: shortcut-settings
+- assertVisible: "herdr 단축키"
+- scrollUntilVisible:
+    element: "(?s).*좌우 분할.*"
+- tapOn: "(?s).*좌우 분할.*"
+- scrollUntilVisible:
+    element: "(?s).*확대.*"
+- tapOn: "(?s).*확대.*"
+- takeScreenshot: herdr-shortcut-settings
+- tapOn: "적용"
+- tapOn:
+    id: shortcut-split-right
+- extendedWaitUntil:
+    visible: "(?s).*w1:p2.*"
+    timeout: 15000
+- takeScreenshot: herdr-split-right
+- tapOn:
+    id: shortcut-toggle-fullscreen
+- assertNotVisible: "(?s).*터미널을 불러오지 못했습니다.*"
+- takeScreenshot: herdr-toggle-zoom
