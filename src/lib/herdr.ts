@@ -8,6 +8,7 @@ import { execGit, isSSHTransportError } from "@/lib/gitOperations";
 import { buildHerdrCommand, buildHerdrSessionCleanupCommand, type TmuxPaneLayoutConfig } from "@/lib/worktree";
 import { buildSSHArgs, getKanvibeSSHConnectionHealthOptions, parseSSHConfig } from "@/lib/sshConfig";
 import { createLocalShellEnvironment } from "@/lib/shellEnvironment";
+import type { MirrorPane } from "@/lib/paneMirror";
 import type { TerminalTab } from "@/desktop/shared/terminalTabs";
 import type { AiSessionProvider, RunningAgentPane } from "@/lib/aiSessions/types";
 
@@ -54,6 +55,83 @@ export async function readHerdrTabs(sessionName: string, sshHost?: string | null
     name: tab.label,
     isActive: tab.focused,
   }));
+}
+
+interface HerdrPane {
+  pane_id: string;
+  tab_id: string;
+  /** 작업 경로가 사라져 복원하지 못한 pane에만 있다. 이런 pane에는 터미널도 scroll도 없다 */
+  restore_error?: string;
+  scroll: { max_offset_from_bottom: number; viewport_rows: number };
+}
+
+interface HerdrRect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+interface HerdrTabLayout {
+  area: HerdrRect;
+  focused_pane_id: string;
+  zoomed: boolean;
+  panes: { pane_id: string; rect: HerdrRect }[];
+}
+
+/**
+ * 모바일이 비출 pane을 탭 순서대로 모은다.
+ * `pane list`에는 좌표와 실행 명령이 없어 탭마다 `pane layout`, pane마다 `process-info`를 함께 읽는다.
+ */
+export async function listHerdrMirrorPanes(sessionName: string, sshHost?: string | null): Promise<MirrorPane[]> {
+  const [{ panes }, tabs] = await Promise.all([
+    runHerdrCommand<{ panes: HerdrPane[] }>(sessionName, ["pane", "list"], sshHost),
+    readHerdrTabs(sessionName, sshHost),
+  ]);
+  const panesByTab = await Promise.all(tabs.map(async (tab) => {
+    const tabPanes = panes.filter((pane) => pane.tab_id === tab.id && !pane.restore_error);
+    if (tabPanes.length === 0) return [];
+    const { layout } = await runHerdrCommand<{ layout: HerdrTabLayout }>(sessionName, ["pane", "layout", "--pane", tabPanes[0].pane_id], sshHost);
+    return Promise.all(tabPanes.map(async (pane): Promise<MirrorPane> => {
+      const rect = layout.panes.find((entry) => entry.pane_id === pane.pane_id)?.rect;
+      /** 확대해도 layout의 pane 좌표는 그대로라, 확대된 pane의 너비는 탭 전체 영역에서 읽는다 */
+      const isZoomedPane = layout.zoomed && layout.focused_pane_id === pane.pane_id;
+      return {
+        id: pane.pane_id,
+        tabId: tab.id,
+        tabName: tab.name,
+        command: await readHerdrPaneCommand(sessionName, pane.pane_id, sshHost),
+        left: rect?.x ?? 0,
+        top: rect?.y ?? 0,
+        width: isZoomedPane ? layout.area.width : rect?.width ?? layout.area.width,
+        height: pane.scroll.viewport_rows,
+      };
+    }));
+  }));
+  return panesByTab.flat();
+}
+
+/** 실행 명령은 탭 이름 표시용이라 읽지 못해도 pane 목록을 막지 않는다 */
+async function readHerdrPaneCommand(sessionName: string, paneId: string, sshHost?: string | null): Promise<string> {
+  try {
+    const { process_info: processInfo } = await runHerdrCommand<{ process_info: { foreground_processes?: { name?: string }[] } }>(
+      sessionName, ["pane", "process-info", "--pane", paneId], sshHost,
+    );
+    return processInfo.foreground_processes?.at(-1)?.name ?? "";
+  } catch {
+    return "";
+  }
+}
+
+export interface HerdrPaneExtent {
+  historyRows: number;
+  viewportRows: number;
+}
+
+/** 지난 출력 줄 수와 화면 높이. 모바일 화면을 다시 받아야 하는지 판단할 때 쓴다 */
+export async function readHerdrPaneExtent(sessionName: string, paneId: string, sshHost?: string | null): Promise<HerdrPaneExtent> {
+  const { pane } = await runHerdrCommand<{ pane: HerdrPane }>(sessionName, ["pane", "get", paneId], sshHost);
+  return { historyRows: pane.scroll.max_offset_from_bottom, viewportRows: pane.scroll.viewport_rows };
 }
 
 export function ensureHerdrSession(

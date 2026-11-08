@@ -12,7 +12,7 @@
 
 - Node.js 24.x（参见 `.nvmrc`）
 - pnpm
-- tmux 或 zellij（用于终端功能）
+- Herdr、tmux 或 zellij（用于终端功能）
 
 ### 开始
 

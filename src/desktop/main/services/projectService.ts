@@ -3,7 +3,7 @@ import { Project } from "@/entities/Project";
 import { validateGitRepo, getDefaultBranch, listBranches, scanGitRepos, listWorktrees, execGit, resolvePathForShell } from "@/lib/gitOperations";
 import { KanbanTask, TaskStatus, SessionType } from "@/entities/KanbanTask";
 import { IsNull } from "typeorm";
-import { isSessionAlive, formatProjectBranchSessionName, createSessionWithoutWorktree } from "@/lib/worktree";
+import { isSessionAlive, formatProjectBranchSessionName, createSessionWithoutWorktree, sanitizeHerdrSessionName } from "@/lib/worktree";
 import { getClaudeHooksStatus, type ClaudeHooksStatus } from "@/lib/claudeHooksSetup";
 import { getGeminiHooksStatus, type GeminiHooksStatus } from "@/lib/geminiHooksSetup";
 import { getCodexHooksStatus, type CodexHooksStatus } from "@/lib/codexHooksSetup";
@@ -692,6 +692,21 @@ async function backfillMissingProjectIcons(projects: Project[]): Promise<boolean
   return iconResults.some(Boolean);
 }
 
+/** 브랜치 이름으로 살아 있는 세션을 찾는다. Herdr 세션 이름은 생성할 때처럼 변환해 비교한다 */
+async function findAliveBranchSession(
+  sessionName: string,
+  sshHost?: string | null,
+): Promise<{ sessionType: SessionType; sessionName: string } | null> {
+  if (await isSessionAlive(SessionType.TMUX, sessionName, sshHost)) {
+    return { sessionType: SessionType.TMUX, sessionName };
+  }
+  const herdrSessionName = sanitizeHerdrSessionName(sessionName);
+  if (await isSessionAlive(SessionType.HERDR, herdrSessionName, sshHost)) {
+    return { sessionType: SessionType.HERDR, sessionName: herdrSessionName };
+  }
+  return null;
+}
+
 async function syncProjectWorktrees(
   project: Project,
   taskRepo: Awaited<ReturnType<typeof getTaskRepository>>,
@@ -789,11 +804,7 @@ async function syncProjectWorktrees(
 
       /** 브랜치명 기반 독립 세션이 존재하면 연결 정보를 설정한다 */
       const sessionName = formatProjectBranchSessionName(project.repoPath, wt.branch);
-      const hasSession = await isSessionAlive(
-        SessionType.TMUX,
-        sessionName,
-        project.sshHost,
-      );
+      const aliveSession = await findAliveBranchSession(sessionName, project.sshHost);
 
       const task = taskRepo.create({
         title: wt.branch,
@@ -805,10 +816,7 @@ async function syncProjectWorktrees(
         description: persistedDescription?.description ?? null,
         priority: persistedPriority ?? null,
         sshHost: project.sshHost,
-        ...(hasSession && {
-          sessionType: SessionType.TMUX,
-          sessionName,
-        }),
+        ...aliveSession,
       });
       const savedTask = await taskRepo.save(task);
       result.changed = true;
@@ -829,7 +837,7 @@ async function syncProjectWorktrees(
     );
   }
 
-  /** 메인 브랜치 태스크에 활성 tmux 세션이 있으면 자동 연결한다 */
+  /** 메인 브랜치 태스크에 활성 세션이 있으면 자동 연결한다 */
   try {
     const mainBranchTask = await taskRepo.findOneBy({
       projectId: project.id,
@@ -839,17 +847,13 @@ async function syncProjectWorktrees(
 
     if (mainBranchTask && !mainBranchTask.sessionType) {
       const sessionName = formatProjectBranchSessionName(project.repoPath, project.defaultBranch);
-      const hasSession = await isSessionAlive(
-        SessionType.TMUX,
-        sessionName,
-        project.sshHost,
-      );
+      const aliveSession = await findAliveBranchSession(sessionName, project.sshHost);
 
-      if (hasSession) {
+      if (aliveSession) {
         const defaultBranchWorktreePath = await resolveProjectDefaultBranchWorktreePath(project);
         const persistedStatus = await readPersistedTaskStatus(defaultBranchWorktreePath || project.repoPath, project.sshHost);
-        mainBranchTask.sessionType = SessionType.TMUX;
-        mainBranchTask.sessionName = sessionName;
+        mainBranchTask.sessionType = aliveSession.sessionType;
+        mainBranchTask.sessionName = aliveSession.sessionName;
         mainBranchTask.worktreePath = defaultBranchWorktreePath;
         mainBranchTask.sshHost = project.sshHost;
         if (persistedStatus !== null) {

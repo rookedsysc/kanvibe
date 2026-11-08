@@ -38,6 +38,10 @@ import {
   type MobilePushSubscription,
 } from "@/lib/mobilePairing";
 import {
+  buildHerdrObservePaneCommand,
+  buildHerdrPaneShortcutCommand,
+  buildHerdrRecentScreenCommand,
+  buildHerdrWritePaneCommand,
   buildScreenRedraw,
   buildTmuxPaneShortcutCommand,
   buildZellijPaneShortcutCommand,
@@ -54,6 +58,7 @@ import {
   buildZellijDumpPaneCommand,
   buildZellijListMirrorPanesCommand,
   buildZellijWritePaneCommand,
+  parseHerdrObserveRecord,
   parseTmuxPaneState,
   parseTmuxMirrorPaneList,
   parseTmuxViewportState,
@@ -70,6 +75,8 @@ import {
   resizeTerminalTab,
   writeTerminalTabInput,
 } from "@/lib/terminal";
+import { listHerdrMirrorPanes, readHerdrPaneExtent } from "@/lib/herdr";
+import { getSessionDependencyStatus } from "@/lib/remoteSessionDependency";
 import { isSessionAlive, quoteForPosixShell } from "@/lib/worktree";
 
 /**
@@ -133,7 +140,7 @@ export interface TaskSurfaces {
 }
 
 /** 세션을 비출 수 없는 이유. 화면이 빈 터미널 대신 이 사유를 보여 준다 */
-export type SurfaceUnavailableReason = "no-session" | "session-not-running" | "zellij-too-old" | "remote-unreachable";
+export type SurfaceUnavailableReason = "no-session" | "session-not-running" | "zellij-too-old" | "herdr-missing" | "remote-unreachable";
 
 export class SurfaceUnavailableError extends Error {
   constructor(readonly reason: SurfaceUnavailableReason) {
@@ -234,6 +241,10 @@ export async function createMobileTerminalTab(taskId: string): Promise<{ surface
 }
 
 async function listMirrorPanes(target: MirrorSessionTarget): Promise<MirrorPane[]> {
+  if (target.sessionType === SessionType.HERDR) {
+    return listHerdrMirrorPanes(target.sessionName, target.sshHost);
+  }
+
   if (target.sessionType === SessionType.ZELLIJ) {
     if (!(await hasZellijPaneIdSupport(target.sshHost))) {
       throw new SurfaceUnavailableError("zellij-too-old");
@@ -278,6 +289,11 @@ async function ensureRemoteHostReachable(sshHost: string): Promise<void> {
 async function startMultiplexerSessionIfMissing(task: KanbanTask, target: MirrorSessionTarget): Promise<void> {
   if (await isSessionAlive(target.sessionType, target.sessionName, target.sshHost)) {
     return;
+  }
+
+  /** 설치에는 사용자 동의가 필요해 모바일이 대신 설치하지 않고, 세션 문제와 구분해 안내한다 */
+  if (target.sessionType === SessionType.HERDR && !(await getSessionDependencyStatus(target.sessionType, target.sshHost)).available) {
+    throw new SurfaceUnavailableError("herdr-missing");
   }
 
   const startupClient = new CallbackTerminalClient(() => {});
@@ -812,6 +828,8 @@ interface PaneSubscription {
   listeners: Set<(chunk: string) => void>;
   endListeners: Set<() => void>;
   stop: () => void;
+  /** 스트림이 첫 화면을 스스로 보내는 경우에만 있다. 뒤늦게 붙은 구독자가 화면을 받도록 다시 보낸다 */
+  resendScreen?: () => void;
 }
 
 /**
@@ -899,7 +917,7 @@ export async function claimPaneViewport(taskId: string, paneId: string): Promise
     : await listMirrorPanes(target);
   const pane = panes.find((candidate) => candidate.id === paneId);
   if (paneViewportShutdown) throw new Error("데스크탑이 종료 중입니다.");
-  if (!pane || target.sessionType === SessionType.ZELLIJ) {
+  if (!pane || target.sessionType === SessionType.ZELLIJ || target.sessionType === SessionType.HERDR) {
     throw new SurfaceUnavailableError("session-not-running");
   }
 
@@ -1081,8 +1099,12 @@ export async function subscribeToPane(
     release();
     throw error;
   }
+  const isJoiningLiveStream = subscription.listeners.size > 0;
   subscription.listeners.add(onChunk);
   subscription.endListeners.add(onEnd);
+  if (isJoiningLiveStream) {
+    subscription.resendScreen?.();
+  }
 
   let isReleased = false;
   return () => {
@@ -1188,6 +1210,11 @@ async function readPaneSnapshot(target: MirrorSessionTarget, paneId: string): Pr
     return buildScreenRedraw(dump, null);
   }
 
+  if (target.sessionType === SessionType.HERDR) {
+    const recentScreen = await runMirrorCommand(buildHerdrRecentScreenCommand(target.sessionName, paneId), target.sshHost);
+    return buildScreenRedraw(recentScreen, null);
+  }
+
   /** 화면과 커서를 한 번에 읽는다. 원격이면 왕복이 하나 줄고, 둘 사이에 화면이 바뀌는 틈도 좁아진다 */
   const output = await runMirrorCommand(
     `${buildTmuxCapturePaneCommand(paneId)} && ${buildTmuxPaneStateCommand(paneId)}`,
@@ -1221,11 +1248,163 @@ async function startPaneSubscription(
     ending.forEach((listener) => listener());
   };
 
+  if (target.sessionType === SessionType.HERDR) {
+    const stream = await startHerdrFrameStream(target, paneId, broadcast, handleStreamDeath);
+    return { listeners, endListeners, ...stream };
+  }
+
   const stop = target.sessionType === SessionType.ZELLIJ
     ? startZellijDumpPolling(target, paneId, broadcast)
     : await startTmuxPaneStream(target, paneId, broadcast, handleStreamDeath);
 
   return { listeners, endListeners, stop };
+}
+
+/**
+ * Herdr pane의 화면을 `terminal session observe` 프레임으로 따라간다.
+ *
+ * 변경 프레임은 화면 좌표에 글자를 덮어쓰기만 해서, 위로 밀려난 줄이 모바일 스크롤에 쌓이지 않는다.
+ * 그래서 출력이 잠잠해졌을 때 지난 출력 줄 수가 늘었으면 이력을 다시 보내고 observe를 새로 띄운다.
+ * 새 observe의 첫 프레임은 항상 전체 화면이라, 이력을 받은 화면과 커서를 끊김 없이 맞출 수 있다.
+ * Herdr의 스크롤백이 상한에 닿으면 줄 수가 더 늘지 않아, 그 뒤의 이력은 화면을 다시 열 때 갱신된다.
+ */
+async function startHerdrFrameStream(
+  target: MirrorSessionTarget,
+  paneId: string,
+  broadcast: (chunk: string) => void,
+  onDead: () => void,
+): Promise<{ stop: () => void; resendScreen: () => void }> {
+  const quietPeriodMs = target.sshHost ? REMOTE_DUMP_INTERVAL_MS : LOCAL_DUMP_INTERVAL_MS;
+  let observer: ChildProcess | null = null;
+  let quietTimer: ReturnType<typeof setTimeout> | null = null;
+  let isStopped = false;
+  let isRefreshing = false;
+  let extent = await readHerdrPaneExtent(target.sessionName, paneId, target.sshHost);
+
+  const stopObserver = () => {
+    const stoppingObserver = observer;
+    /** 먼저 비워야 곧이어 오는 종료 이벤트가 스트림의 죽음으로 읽히지 않는다 */
+    observer = null;
+    if (stoppingObserver) {
+      stopMirrorProcess(stoppingObserver);
+    }
+  };
+
+  const stopStream = () => {
+    isStopped = true;
+    if (quietTimer) {
+      clearTimeout(quietTimer);
+    }
+    stopObserver();
+  };
+
+  /** 끝을 알리면 구독 자리가 먼저 지워져 해제 함수가 `stop`을 부르지 않으므로, 알리기 전에 스스로 멈춘다 */
+  const endStream = () => {
+    stopStream();
+    onDead();
+  };
+
+  const handleRecord =(child: ChildProcess, line: string) => {
+    const record = parseHerdrObserveRecord(line);
+    if (record?.type !== "frame" || child !== observer) {
+      return;
+    }
+    broadcast(record.output);
+    /** 전체 프레임은 observe가 시작하며 보내는 것이라 새 출력이 아니다. 여기서도 예약하면 재시작이 끝없이 반복된다 */
+    if (!record.isFullScreen) {
+      scheduleQuietCheck();
+    }
+  };
+
+  const startObserver = async () => {
+    const pane = (await listHerdrMirrorPanes(target.sessionName, target.sshHost)).find((candidate) => candidate.id === paneId);
+    if (!pane) {
+      throw new SurfaceUnavailableError("session-not-running");
+    }
+    const child = await spawnMirrorProcess(
+      buildHerdrObservePaneCommand(target.sessionName, paneId, pane.width, pane.height),
+      target.sshHost,
+    );
+    if (isStopped) {
+      stopMirrorProcess(child);
+      return;
+    }
+    /** 재시작이 겹치면 먼저 뜬 observe가 주인 없이 남으므로 항상 하나만 남긴다 */
+    stopObserver();
+    observer = child;
+
+    let partialLine = "";
+    child.stdout?.setEncoding("utf8");
+    child.stdout?.on("data", (chunk: string) => {
+      const lines = `${partialLine}${chunk}`.split("\n");
+      partialLine = lines.pop() ?? "";
+      lines.forEach((line) => handleRecord(child, line));
+    });
+    child.stderr?.resume();
+
+    const handleObserverEnd = () => {
+      if (child === observer) {
+        endStream();
+      }
+    };
+    child.on("error", (error) => {
+      console.error("[kanvibe] Herdr observe failed:", error);
+      handleObserverEnd();
+    });
+    child.on("exit", handleObserverEnd);
+  };
+
+  const restartObserver = async () => {
+    stopObserver();
+    await startObserver();
+  };
+
+  const failOnRestartError = (error: unknown) => {
+    console.error("[kanvibe] Herdr observe restart failed:", error);
+    if (!isStopped) {
+      endStream();
+    }
+  };
+
+  const refreshHistoryWhenGrown = async () => {
+    if (isRefreshing) {
+      return;
+    }
+    isRefreshing = true;
+    try {
+      const nextExtent = await readHerdrPaneExtent(target.sessionName, paneId, target.sshHost);
+      if (isStopped || (nextExtent.historyRows === extent.historyRows && nextExtent.viewportRows === extent.viewportRows)) {
+        return;
+      }
+      extent = nextExtent;
+      stopObserver();
+      broadcast(await readPaneSnapshot(target, paneId));
+      if (!isStopped) {
+        await startObserver();
+      }
+    } catch (error) {
+      failOnRestartError(error);
+    } finally {
+      isRefreshing = false;
+    }
+  };
+
+  function scheduleQuietCheck() {
+    if (quietTimer) {
+      clearTimeout(quietTimer);
+    }
+    quietTimer = setTimeout(() => void refreshHistoryWhenGrown(), quietPeriodMs);
+  }
+
+  await startObserver();
+
+  return {
+    stop: stopStream,
+    /** 뒤늦게 붙은 구독자에게 전체 화면을 주려면 observe를 새로 띄우는 수밖에 없다. 이미 보던 기기에는 같은 화면이 한 번 더 그려질 뿐이다 */
+    resendScreen: () => {
+      restartObserver().catch(failOnRestartError);
+    },
+  };
 }
 
 async function startTmuxPaneStream(
@@ -1325,9 +1504,14 @@ export async function writeToPane(taskId: string, paneId: string, input: string)
     await ensurePaneBelongsToSession(target, paneId);
   }
 
-  const command = target.sessionType === SessionType.ZELLIJ
-    ? buildZellijWritePaneCommand(target.sessionName, paneId, input)
-    : buildTmuxSendKeysCommand(paneId, input);
+  let command: string;
+  if (target.sessionType === SessionType.HERDR) {
+    command = buildHerdrWritePaneCommand(target.sessionName, paneId, input);
+  } else if (target.sessionType === SessionType.ZELLIJ) {
+    command = buildZellijWritePaneCommand(target.sessionName, paneId, input);
+  } else {
+    command = buildTmuxSendKeysCommand(paneId, input);
+  }
 
   await runMirrorCommand(command, target.sshHost);
 }
@@ -1348,9 +1532,14 @@ export async function executeMobileTerminalShortcut(
   const panes = await listMirrorPanes(target);
   const pane = panes.find((candidate) => candidate.id === paneId);
   if (!pane) throw new SurfaceUnavailableError("session-not-running");
-  const command = target.sessionType === SessionType.ZELLIJ
-    ? buildZellijPaneShortcutCommand(target.sessionName, paneId, pane.tabId, action)
-    : buildTmuxPaneShortcutCommand(paneId, action);
+  let command: string | null;
+  if (target.sessionType === SessionType.HERDR) {
+    command = buildHerdrPaneShortcutCommand(target.sessionName, paneId, action);
+  } else if (target.sessionType === SessionType.ZELLIJ) {
+    command = buildZellijPaneShortcutCommand(target.sessionName, paneId, pane.tabId, action);
+  } else {
+    command = buildTmuxPaneShortcutCommand(paneId, action);
+  }
   if (!command) throw new MobileTaskInputError("이 세션에서 지원하지 않는 단축키입니다");
   await runMirrorCommand(command, target.sshHost);
 

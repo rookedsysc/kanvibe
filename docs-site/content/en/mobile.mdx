@@ -8,7 +8,7 @@ description: "Build KanVibe Mobile, pair it with Desktop, and use task boards, l
 KanVibe Mobile is the iOS and Android companion to KanVibe Desktop. Check progress, open the same task terminal, send input, and switch between saved PCs. Your repositories and processes stay on the connected PC.
 
 <div className="kv-note">
-  <p><strong>Mobile terminal compatibility:</strong> use a task with <code>tmux</code>, <code>zellij</code>, or <code>terminal</code>. New Desktop settings default to Herdr, which the Mobile terminal bridge does not support yet. Select a supported session type when creating or connecting a task you want to use from Mobile.</p>
+  <p><strong>Mobile terminal compatibility:</strong> <code>herdr</code>, <code>tmux</code>, <code>zellij</code>, and <code>terminal</code> sessions are all supported. Herdr sessions need a Desktop build that includes this feature, keep their original grid, and are read by scrolling.</p>
   <p><strong>Interface language:</strong> Mobile currently uses Korean interface labels. This guide gives English names with the Korean labels in parentheses.</p>
 </div>
 
@@ -66,9 +66,9 @@ On a phone, tasks appear as vertical sections grouped by status. On a tablet, th
 
 Each terminal tab displays one pane. Choose a tab to read its output, then tap the terminal to bring up the keyboard and send input to the actual session. Use the **+** at the right of the tab bar to add a shell tab to the current task.
 
-Swipe to read earlier output. In full-screen programs that accept mouse input, vertical swipes become wheel events. With supported tmux and plain-terminal sessions, the terminal resizes to fit the phone, rotation, and keyboard. While Mobile is attached, this also changes the size of that terminal on the PC; leaving the tab or putting Mobile in the background restores the applicable PC size. Zellij and older Desktop builds keep their source grid and allow scrolling in both directions.
+Swipe to read earlier output. In full-screen programs that accept mouse input, vertical swipes become wheel events (except Herdr, where swipes always scroll the view). With supported tmux and plain-terminal sessions, the terminal resizes to fit the phone, rotation, and keyboard. While Mobile is attached, this also changes the size of that terminal on the PC; leaving the tab or putting Mobile in the background restores the applicable PC size. Herdr, Zellij, and older Desktop builds keep their source grid and allow scrolling in both directions.
 
-For unattended work, use a persistent session such as tmux or zellij. A plain `terminal` shell belongs to Desktop and does not survive the Desktop app quitting.
+For unattended work, use a persistent session such as Herdr, tmux, or zellij. A plain `terminal` shell belongs to Desktop and does not survive the Desktop app quitting.
 
 ## Switch between your PCs
 
@@ -110,7 +110,7 @@ The PC must remain running to send new hook events. After tapping a push, task l
 | "Already registered PC" (<span lang="ko" translate="no">이미 등록된 PC입니다</span>) | Choose that PC from **Connected PCs** (<span lang="ko" translate="no">연결된 PC</span>) instead of pairing again. |
 | PC cannot be reached | Desktop is running, the address and port are correct, and local network or Tailscale routing and firewall rules allow access. |
 | Notification arrives but task does not open | The saved PC address must also be reachable from the phone's current network. |
-| "No terminal session" (<span lang="ko" translate="no">이 태스크에는 터미널 세션이 없습니다</span>) or terminal unavailable | Mobile does not support Herdr tasks; use a task with tmux, zellij, or terminal. Also use a Mobile-compatible Desktop build. Tasks without a project or branch cannot restore a missing session automatically. |
+| "No terminal session" (<span lang="ko" translate="no">이 태스크에는 터미널 세션이 없습니다</span>) or terminal unavailable | Use a Mobile-compatible Desktop build. If Mobile says Herdr is not installed, connect a Herdr session on Desktop to install it. Tasks without a project or branch cannot restore a missing session automatically. |
 | No background notifications | Check mobile Firebase/APNs configuration, Desktop relay configuration, OS permission, and whether Android has force-stopped the app. |
 | Task from a notification is missing | The task may have been deleted or its PC connection removed. Open the board or PC list to choose current work. |
 

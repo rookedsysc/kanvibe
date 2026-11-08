@@ -7,7 +7,7 @@ import { once, EventEmitter } from "events";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PaneLayoutType } from "@/entities/PaneLayoutConfig";
 import { buildHerdrCommand, buildHerdrSessionCleanupCommand, sanitizeHerdrSessionName } from "@/lib/worktree";
-import { ensureHerdrSession, listHerdrRunningAgentPanes, moveHerdrTab, readHerdrTabs } from "@/lib/herdr";
+import { ensureHerdrSession, listHerdrMirrorPanes, listHerdrRunningAgentPanes, moveHerdrTab, readHerdrTabs } from "@/lib/herdr";
 
 const { execGit, spawn } = vi.hoisted(() => ({ execGit: vi.fn(), spawn: vi.fn() }));
 vi.mock("child_process", async (importOriginal) => ({ ...await importOriginal<typeof import("child_process")>(), spawn }));
@@ -210,5 +210,68 @@ describe("Herdr 소켓 시간 제한", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe("listHerdrMirrorPanes", () => {
+  const scroll = (rows: number) => ({ max_offset_from_bottom: 0, offset_from_bottom: 0, viewport_rows: rows });
+  const rect = (x: number, width: number) => ({ x, y: 0, width, height: 40 });
+  const panes = [
+    { pane_id: "w1:p2", tab_id: "w1:t2", scroll: scroll(38) },
+    { pane_id: "w1:p1", tab_id: "w1:t1", scroll: scroll(38) },
+    { pane_id: "w1:p3", tab_id: "w1:t1", scroll: scroll(38) },
+  ];
+  const tabs = [
+    { tab_id: "w1:t1", number: 1, label: "work", focused: true },
+    { tab_id: "w1:t2", number: 2, label: "logs", focused: false },
+  ];
+  const stubSession = (zoomed: boolean, processInfo: (paneId: string) => string) => execGit.mockImplementation(async (command: string) => {
+    if (command === commandFor(["pane", "list"])) return result({ panes });
+    if (command === commandFor(["tab", "list"])) return result({ tabs });
+    if (command.includes("'pane' 'layout'")) {
+      return result({ layout: {
+        area: { x: 0, y: 0, width: 120, height: 40 },
+        focused_pane_id: "w1:p1",
+        zoomed,
+        panes: [{ pane_id: "w1:p1", rect: rect(0, 60) }, { pane_id: "w1:p3", rect: rect(60, 60) }, { pane_id: "w1:p2", rect: rect(0, 120) }],
+      } });
+    }
+    const paneId = /'process-info' '--pane' '([^']+)'/.exec(command)?.[1] ?? "";
+    return processInfo(paneId);
+  });
+
+  it("탭 순서대로 좌표와 실행 명령을 합친다", async () => {
+    stubSession(false, (paneId) => result({ process_info: { foreground_processes: [{ name: paneId === "w1:p3" ? "vim" : "zsh" }] } }));
+    expect(await listHerdrMirrorPanes("feature", "remote")).toEqual([
+      { id: "w1:p1", tabId: "w1:t1", tabName: "work", command: "zsh", left: 0, top: 0, width: 60, height: 38 },
+      { id: "w1:p3", tabId: "w1:t1", tabName: "work", command: "vim", left: 60, top: 0, width: 60, height: 38 },
+      { id: "w1:p2", tabId: "w1:t2", tabName: "logs", command: "zsh", left: 0, top: 0, width: 120, height: 38 },
+    ]);
+    expect(execGit.mock.calls.every((call) => call[1] === "remote")).toBe(true);
+  });
+
+  it("확대된 pane은 탭 전체 너비를 쓰고 다른 pane은 그대로 둔다", async () => {
+    stubSession(true, () => result({ process_info: { foreground_processes: [] } }));
+    const mirrorPanes = await listHerdrMirrorPanes("feature");
+    expect(mirrorPanes.find((pane) => pane.id === "w1:p1")?.width).toBe(120);
+    expect(mirrorPanes.find((pane) => pane.id === "w1:p3")?.width).toBe(60);
+  });
+
+  it("실행 명령을 읽지 못해도 pane 목록은 돌려준다", async () => {
+    stubSession(false, () => { throw new Error("process lookup failed"); });
+    expect((await listHerdrMirrorPanes("feature")).map((pane) => pane.command)).toEqual(["", "", ""]);
+  });
+
+  it("작업 경로가 사라져 복원하지 못한 pane은 비출 터미널이 없어 뺀다", async () => {
+    stubSession(false, () => result({ process_info: { foreground_processes: [] } }));
+    const listPanes = execGit.getMockImplementation()!;
+    execGit.mockImplementation(async (command: string) => {
+      if (command !== commandFor(["pane", "list"])) return listPanes(command);
+      return result({ panes: [
+        { pane_id: "w1:p1", tab_id: "w1:t1", restore_error: "Saved directory is unavailable." },
+        ...panes.filter((pane) => pane.pane_id !== "w1:p1"),
+      ] });
+    });
+    expect((await listHerdrMirrorPanes("feature")).map((pane) => pane.id)).toEqual(["w1:p3", "w1:p2"]);
   });
 });
