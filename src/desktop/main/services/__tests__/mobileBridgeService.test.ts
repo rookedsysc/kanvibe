@@ -1621,7 +1621,7 @@ describe("Herdr 세션 미러", () => {
   /** observe 자식 프로세스 대역. 테스트가 NDJSON을 원하는 조각으로 흘린다 */
   const createObserver = () => {
     const child = Object.assign(new EventEmitter(), {
-      pid: undefined,
+      pid: undefined as number | undefined,
       kill: vi.fn(),
       stdout: Object.assign(new EventEmitter(), { setEncoding: vi.fn() }),
       stderr: Object.assign(new EventEmitter(), { resume: vi.fn() }),
@@ -1789,5 +1789,50 @@ describe("Herdr 세션 미러", () => {
     observer.emit("exit");
 
     expect(onEnd).toHaveBeenCalledOnce();
+  });
+
+  /** 끝을 알리면 구독 자리가 먼저 지워져 해제 함수가 stop을 부르지 않으므로, 스트림이 스스로 멈춰야 한다 */
+  it("이력 확인이 실패해 끝을 알리면 observe와 다음 확인을 함께 멈춘다", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const killSpy = vi.spyOn(process, "kill").mockImplementation(() => true);
+    const observer = createObserver();
+    observer.pid = 4321;
+    spawnMock.mockReturnValue(observer);
+    const onEnd = vi.fn();
+    const unsubscribe = await subscribeToPane("herdr-task", "w1:p1", () => {}, onEnd);
+
+    const paneGetCommand = herdrCommand("pane", "get", "w1:p1");
+    const countPaneGets = () => executed().filter((command) => command === paneGetCommand).length;
+    const paneGetsBeforeFailure = countPaneGets();
+    execGitMock.mockImplementation(async (command: string) => {
+      if (command === paneGetCommand) throw new Error("ssh disconnected");
+      return "";
+    });
+    observer.stdout.emit("data", frame("output"));
+    await vi.advanceTimersByTimeAsync(1_000);
+
+    expect(onEnd).toHaveBeenCalledOnce();
+    expect(killSpy).toHaveBeenCalledWith(-4321, "SIGTERM");
+
+    unsubscribe();
+    observer.stdout.emit("data", frame("late output"));
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(countPaneGets()).toBe(paneGetsBeforeFailure + 1);
+    killSpy.mockRestore();
+  });
+
+  it("observe가 끝난 뒤에는 앞서 예약한 이력 확인이 observe를 다시 띄우지 않는다", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const observer = createObserver();
+    spawnMock.mockReturnValue(observer);
+    const unsubscribe = await subscribeToPane("herdr-task", "w1:p1", () => {}, () => {});
+
+    historyRows = 5;
+    observer.stdout.emit("data", frame("output"));
+    observer.emit("exit");
+    unsubscribe();
+    await vi.advanceTimersByTimeAsync(5_000);
+
+    expect(spawnMock).toHaveBeenCalledTimes(1);
   });
 });

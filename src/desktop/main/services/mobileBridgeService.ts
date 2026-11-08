@@ -1237,7 +1237,21 @@ async function startHerdrFrameStream(
     }
   };
 
-  const handleRecord = (child: ChildProcess, line: string) => {
+  const stopStream = () => {
+    isStopped = true;
+    if (quietTimer) {
+      clearTimeout(quietTimer);
+    }
+    stopObserver();
+  };
+
+  /** 끝을 알리면 구독 자리가 먼저 지워져 해제 함수가 `stop`을 부르지 않으므로, 알리기 전에 스스로 멈춘다 */
+  const endStream = () => {
+    stopStream();
+    onDead();
+  };
+
+  const handleRecord =(child: ChildProcess, line: string) => {
     const record = parseHerdrObserveRecord(line);
     if (record?.type !== "frame" || child !== observer) {
       return;
@@ -1277,7 +1291,7 @@ async function startHerdrFrameStream(
 
     const handleObserverEnd = () => {
       if (child === observer) {
-        onDead();
+        endStream();
       }
     };
     child.on("error", (error) => {
@@ -1295,7 +1309,7 @@ async function startHerdrFrameStream(
   const failOnRestartError = (error: unknown) => {
     console.error("[kanvibe] Herdr observe restart failed:", error);
     if (!isStopped) {
-      onDead();
+      endStream();
     }
   };
 
@@ -1332,13 +1346,7 @@ async function startHerdrFrameStream(
   await startObserver();
 
   return {
-    stop: () => {
-      isStopped = true;
-      if (quietTimer) {
-        clearTimeout(quietTimer);
-      }
-      stopObserver();
-    },
+    stop: stopStream,
     /** 뒤늦게 붙은 구독자에게 전체 화면을 주려면 observe를 새로 띄우는 수밖에 없다. 이미 보던 기기에는 같은 화면이 한 번 더 그려질 뿐이다 */
     resendScreen: () => {
       restartObserver().catch(failOnRestartError);
