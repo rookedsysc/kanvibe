@@ -122,6 +122,27 @@ describe("taskCliService", () => {
       expect(mocks.taskRepo.findOneBy).not.toHaveBeenCalled();
     });
 
+    it("다른 호스트의 터널로 들어온 요청은 토큰이 맞아도 401로 거절해 새어 나간 토큰으로 이 호스트의 task를 지우지 못하게 한다", async () => {
+      const body = { contextTaskId: CONTEXT_TASK.id, confirmed: true };
+
+      await expectCliError(deleteTaskFromCli(AUTHORIZATION, body, new Set(["other-host"])), 401);
+      await expectCliError(
+        createTaskFromCli(AUTHORIZATION, { contextTaskId: CONTEXT_TASK.id, branchName: "feat/new", baseBranch: "main" }, new Set(["other-host"])),
+        401,
+      );
+      await expectCliError(registerTaskFromPeer(AUTHORIZATION, { contextTaskId: CONTEXT_TASK.id, branchName: "feat/new" }, new Set(["other-host"])), 401);
+      expect(mocks.deleteTaskAcrossTargets).not.toHaveBeenCalled();
+      expect(mocks.createTask).not.toHaveBeenCalled();
+    });
+
+    it("task의 호스트가 비어 있으면 프로젝트 호스트의 터널에서 온 요청을 받는다", async () => {
+      mocks.deleteTaskAcrossTargets.mockResolvedValue({ isDeleted: true, peerResults: [] });
+
+      await expect(
+        deleteTaskFromCli(AUTHORIZATION, { contextTaskId: CONTEXT_TASK.id, confirmed: true }, new Set([PROJECT.sshHost])),
+      ).resolves.toMatchObject({ id: CONTEXT_TASK.id, deleted: true });
+    });
+
     it("프로젝트에 연결되지 않은 task에서 온 요청은 409로 거절한다", async () => {
       mocks.projectRepo.findOneBy.mockResolvedValue(null);
 

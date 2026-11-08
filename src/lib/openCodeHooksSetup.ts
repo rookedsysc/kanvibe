@@ -95,7 +95,7 @@ export const KanvibePlugin: Plugin = async ({ client }) => {
     }
   }
 
-  type KanvibeTarget = { url: string; taskId: string };
+  type KanvibeTarget = { url: string; taskId: string; clientId?: string };
 
   function normalizeKanvibeUrl(url: string): string {
     return url.trim().replace(/\\/+$/, "");
@@ -105,7 +105,10 @@ export const KanvibePlugin: Plugin = async ({ client }) => {
     return [{ url: normalizeKanvibeUrl(KANVIBE_URL), taskId: TASK_ID }];
   }
 
-  /** targets.json은 client(url) 단위로 등록되므로 같은 url의 중복 항목만 제거한다 */
+  /**
+   * targets.json은 client(url) 단위로 등록되므로 같은 url의 중복 항목만 제거한다.
+   * targets.json은 브랜치 checkout으로 바뀔 수 있으므로 http(s) 주소가 아닌 항목은 fetch에 넘기지 않는다
+   */
   function readKanvibeTargets(): KanvibeTarget[] {
     try {
       const parsed = JSON.parse(readFileSync(KANVIBE_TARGETS_FILE, "utf8"));
@@ -116,10 +119,13 @@ export const KanvibePlugin: Plugin = async ({ client }) => {
       for (const target of targets) {
         const url = typeof target?.url === "string" ? normalizeKanvibeUrl(target.url) : "";
         const taskId = typeof target?.taskId === "string" ? target.taskId.trim() : "";
-        if (!url || !taskId || seenUrls.has(url)) continue;
+        if (!/^https?:\\/\\/\\S+$/.test(url) || !taskId || seenUrls.has(url)) continue;
 
+        const clientId = typeof target?.clientId === "string" && /^[A-Za-z0-9-]+$/.test(target.clientId)
+          ? target.clientId
+          : undefined;
         seenUrls.add(url);
-        normalizedTargets.push({ url, taskId });
+        normalizedTargets.push({ url, taskId, clientId });
       }
 
       return normalizedTargets.length > 0 ? normalizedTargets : getFallbackKanvibeTarget();
@@ -128,15 +134,18 @@ export const KanvibePlugin: Plugin = async ({ client }) => {
     }
   }
 
-  /** 이 소켓으로 task 정보가 나가므로, 본인 소유이고 0700인 디렉터리 안의 본인 소유 소켓만 쓴다 */
-  function findKanvibeHookSocket(targetUrl: string): string | undefined {
+  /**
+   * client ID로 이름 붙인 터널 소켓을 찾는다. ID가 없는 옛 항목은 소켓 없이 HTTP로 보낸다.
+   * 이 소켓으로 task 정보가 나가므로, 본인 소유이고 0700인 디렉터리 안의 본인 소유 소켓만 쓴다
+   */
+  function findKanvibeHookSocket(clientId: string | undefined): string | undefined {
+    if (!clientId) return undefined;
     try {
       const uid = process.getuid?.();
       const directory = "/tmp/kv-" + uid;
       const directoryStat = lstatSync(directory);
       if (!directoryStat.isDirectory() || directoryStat.uid !== uid || (directoryStat.mode & 0o777) !== 0o700) return undefined;
-      const address = targetUrl.replace(/^[a-zA-Z]*:\/\//, "").replace(/\/+$/, "").replace(/[^A-Za-z0-9.-]/g, "_");
-      const socketPath = directory + "/" + address + ".sock";
+      const socketPath = directory + "/" + clientId + ".sock";
       const socketStat = lstatSync(socketPath);
       return socketStat.isSocket() && socketStat.uid === uid ? socketPath : undefined;
     } catch {
@@ -157,7 +166,7 @@ export const KanvibePlugin: Plugin = async ({ client }) => {
   /** OpenCode가 도는 Bun의 fetch는 unix 옵션으로 소켓에 연결한다. 소켓으로 못 보내면 HTTP로 넘어간다 */
   async function postKanvibeStatus(target: KanvibeTarget, status: string): Promise<void> {
     try {
-      const socketPath = findKanvibeHookSocket(target.url);
+      const socketPath = findKanvibeHookSocket(target.clientId);
       if (socketPath) {
         try {
           await sendKanvibeStatus(target, status, socketPath);
@@ -404,6 +413,7 @@ export async function getOpenCodeHooksStatus(
     files.get(targetsPath)?.content ?? "",
     taskId,
     hookServerValidation.expectedHookServerUrl,
+    sshHost,
   );
 
   const hasPlugin = hasKanvibePlugin(pluginContent);
@@ -495,7 +505,7 @@ function hasOpenCodeTargetFanout(pluginContent: string): boolean {
     && pluginContent.includes("readKanvibeTargets")
     && pluginContent.includes("fanoutKanvibeStatus")
     && pluginContent.includes("postKanvibeStatus")
-    && pluginContent.includes("findKanvibeHookSocket")
+    && pluginContent.includes("findKanvibeHookSocket(target.clientId)")
     && pluginContent.includes("taskId: target.taskId")
     && pluginContent.includes("/api/hooks/status");
 }

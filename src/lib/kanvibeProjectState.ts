@@ -1,6 +1,7 @@
 import path from "path";
 import { TaskStatus } from "@/entities/KanbanTask";
 import { TaskPriority } from "@/entities/TaskPriority";
+import { isValidHookClientId } from "@/lib/hookSocketPath";
 import { findSymbolicLinkPath, readTextFile, readTextFiles, updateTextFile, writeTextFile, writeTextFileIfAbsent } from "@/lib/hostFileAccess";
 
 export const KANVIBE_DIR_NAME = ".kanvibe";
@@ -54,6 +55,8 @@ export interface KanvibeHookTarget {
   taskId: string;
   /** 이 client가 task CLI 요청을 받을 때 확인하는 task 단위 자격 증명. 파일을 읽을 수 있는 사용자만 쓸 수 있다 */
   token?: string;
+  /** 원격 hook·CLI가 찾는 이 client의 터널 소켓 이름. IP가 바뀌어도 그대로다 */
+  clientId?: string;
 }
 
 /** targets.json은 task CLI 자격 증명을 담으므로 소유자만 읽게 한다 */
@@ -223,8 +226,11 @@ export async function assertKanvibeStatePathsAreNotSymlinks(
 }
 
 /**
- * hook 알림 대상을 client(url) 단위로 등록한다.
- * 같은 client가 다른 task로 재설치하면 taskId만 교체되고, 새로운 client는 뒤에 추가된다.
+ * hook 알림 대상을 client 단위로 등록한다.
+ * 같은 client가 다시 설치하면 그 항목을 교체하고, 새로운 client는 뒤에 추가된다.
+ * IP가 바뀐 뒤 재설치하면 url이 달라지므로 client ID가 같은 항목과, client ID 없이 같은 taskId를 가진 옛 항목도
+ * 같은 client로 보고 교체한다. taskId는 client가 만드는 값이라 다른 client의 항목과 겹치지 않는다.
+ * 옛 항목을 남기면 CLI가 그 주소로 토큰을 먼저 보낸다.
  */
 export async function upsertKanvibeHookTarget(
   repoPath: string,
@@ -439,12 +445,22 @@ function upsertKanvibeTarget(targets: unknown[], target: KanvibeHookTarget): Kan
   }
 
   const nextTargets = normalizeKanvibeTargets(targets);
-  const targetIndex = nextTargets.findIndex((value) => value.url === normalizedTarget.url);
+  const isSameClient = (value: KanvibeHookTarget) => value.url === normalizedTarget.url
+    || (normalizedTarget.clientId !== undefined && (
+      value.clientId === normalizedTarget.clientId
+      || (value.clientId === undefined && value.taskId === normalizedTarget.taskId)
+    ));
+  const targetIndex = nextTargets.findIndex(isSameClient);
   if (targetIndex === -1) {
     return [...nextTargets, normalizedTarget];
   }
 
-  return nextTargets.map((value, index) => index === targetIndex ? normalizedTarget : value);
+  return nextTargets.flatMap((value, index) => {
+    if (index === targetIndex) {
+      return [normalizedTarget];
+    }
+    return isSameClient(value) ? [] : [value];
+  });
 }
 
 function normalizeKanvibeTargets(targets: unknown[]): KanvibeHookTarget[] {
@@ -477,7 +493,12 @@ function normalizeKanvibeTarget(target: unknown): KanvibeHookTarget | null {
   }
 
   const token = typeof candidate.token === "string" ? candidate.token.trim() : "";
-  return token ? { url, taskId, token } : { url, taskId };
+  return {
+    url,
+    taskId,
+    ...(token ? { token } : {}),
+    ...(isValidHookClientId(candidate.clientId) ? { clientId: candidate.clientId } : {}),
+  };
 }
 
 function normalizeKanvibeTargetUrl(url: string): string {

@@ -41,7 +41,26 @@ function isLoopbackAddress(remoteAddress: string | undefined): boolean {
   return remoteAddress === "127.0.0.1" || remoteAddress === "::1" || remoteAddress === "::ffff:127.0.0.1";
 }
 
-export function recordLanPlaintextRequest(remoteAddress: string | undefined, now = Date.now()): void {
+/** 인증 없이 성공하는 상태 확인 경로. 데스크탑이 원격에서 직접 부르기도 해서 실제 사용으로 보지 않는다 */
+const HOOK_HEALTH_PATH = "/api/hooks/health";
+
+/**
+ * 평문 포트에서 끝난 요청 하나를 LAN 사용으로 셀지 정한다.
+ * 실패한 요청까지 세면 같은 LAN의 스캐너나 공격자가 요청만 보내도 평문 포트가 영영 닫히지 않으므로 성공한 응답만 센다.
+ */
+export function recordLanPlaintextResponse(
+  remoteAddress: string | undefined,
+  requestUrl: string | undefined,
+  statusCode: number,
+  now = Date.now(),
+): void {
+  if (statusCode >= 400 || requestUrl === HOOK_HEALTH_PATH) {
+    return;
+  }
+  recordLanPlaintextRequest(remoteAddress, now);
+}
+
+function recordLanPlaintextRequest(remoteAddress: string | undefined, now: number): void {
   if (isLoopbackAddress(remoteAddress) || now - lastRecordedRequestAt < LAN_PLAINTEXT_RECORD_INTERVAL_MS) {
     return;
   }

@@ -334,6 +334,30 @@ describe("kanvibeProjectState", () => {
     expect(getKanvibeTargetsPath("/local/repo")).toBe("/local/repo/.kanvibe/targets.json");
   });
 
+  it.each([
+    ["client ID가 같은 항목", { url: "http://192.168.0.10:19736", taskId: "my-task", token: "old-token", clientId: "client-a" }],
+    ["client ID가 없던 시절의 같은 task 항목", { url: "http://192.168.0.10:19736", taskId: "my-task", token: "old-token" }],
+  ])("IP가 바뀐 뒤 재설치하면 %s을 옛 주소째 교체해 CLI가 옛 주소로 토큰을 보내지 않게 한다", async (_name, staleTarget) => {
+    mockReadTextFile.mockResolvedValue(JSON.stringify({
+      schemaVersion: 1,
+      targets: [
+        staleTarget,
+        { url: "http://10.0.0.5:19736", taskId: "peer-task", token: "peer-token", clientId: "client-b" },
+      ],
+    }));
+
+    await upsertKanvibeHookTarget(
+      "/remote/repo",
+      { url: "http://192.168.0.23:19736", taskId: "my-task", token: "new-token", clientId: "client-a" },
+      "ssh-host",
+    );
+
+    expect(JSON.parse(getLastWrittenContent()).targets).toEqual([
+      { url: "http://192.168.0.23:19736", taskId: "my-task", token: "new-token", clientId: "client-a" },
+      { url: "http://10.0.0.5:19736", taskId: "peer-task", token: "peer-token", clientId: "client-b" },
+    ]);
+  });
+
   it("client url과 taskId 쌍이 모두 맞아야 등록된 대상으로 본다", () => {
     const content = JSON.stringify({
       schemaVersion: 1,

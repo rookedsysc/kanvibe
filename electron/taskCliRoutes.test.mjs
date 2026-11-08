@@ -66,7 +66,7 @@ describe("taskCliRoutes", () => {
     const result = await send("POST", path, JSON.stringify({ contextTaskId: "task-1" }), { Authorization: "Bearer token-1" });
 
     expect(result).toEqual({ status, body: { success: true, data } });
-    expect(taskCli[functionName]).toHaveBeenCalledWith("Bearer token-1", { contextTaskId: "task-1" });
+    expect(taskCli[functionName]).toHaveBeenCalledWith("Bearer token-1", { contextTaskId: "task-1" }, undefined);
   });
 
   it("서비스가 거절한 요청은 그 응답 코드와 사유로 답한다", async () => {

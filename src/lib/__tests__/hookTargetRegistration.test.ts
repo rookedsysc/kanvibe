@@ -10,6 +10,10 @@ vi.mock("@/desktop/main/services/taskCliTokenService", () => ({
   buildTaskCliToken: mocks.buildTaskCliToken,
 }));
 
+vi.mock("@/desktop/main/services/appSettingsService", () => ({
+  getOrCreateHookClientId: async () => "client-a",
+}));
+
 vi.mock("@/lib/gitExclude", () => ({
   ensureAiToolPatternsExcluded: mocks.ensureAiToolPatternsExcluded,
 }));
@@ -50,9 +54,23 @@ describe("hookTargetRegistration", () => {
     expect(mocks.buildTaskCliToken).toHaveBeenCalledWith("task-1");
     expect(mocks.upsertKanvibeHookTarget).toHaveBeenCalledWith(
       "/repo",
-      { url: "http://127.0.0.1:9736", taskId: "task-1", token: "signed-token" },
+      { url: "http://127.0.0.1:9736", taskId: "task-1", token: "signed-token", clientId: "client-a" },
       "remote-host",
     );
+  });
+
+  it("원격 등록에 client ID가 없으면 터널 소켓을 찾지 못해 토큰이 평문으로 나가므로 재설치 대상으로 본다", () => {
+    expect(verifyHookTargetRegistration(TARGETS_CONTENT, "task-remote", "http://10.0.0.5:9736", "remote-host"))
+      .toMatchObject({ hasRegisteredHookTarget: false });
+    expect(verifyHookTargetRegistration(TARGETS_CONTENT, "task-remote", null, "remote-host"))
+      .toMatchObject({ hasRegisteredHookTarget: false });
+
+    const withClientId = JSON.stringify({
+      schemaVersion: 1,
+      targets: [{ url: "http://10.0.0.5:9736", taskId: "task-remote", token: "token-remote", clientId: "client-a" }],
+    });
+    expect(verifyHookTargetRegistration(withClientId, "task-remote", "http://10.0.0.5:9736", "remote-host"))
+      .toMatchObject({ hasRegisteredHookTarget: true });
   });
 
   it("CLI 토큰 없이 등록된 예전 설치는 재설치가 필요하도록 미설치로 본다", () => {

@@ -6,7 +6,7 @@ const mocks = vi.hoisted(() => ({
   spawn: vi.fn(),
   execGit: vi.fn(),
   find: vi.fn(),
-  getRemoteHookServerUrl: vi.fn(),
+  findProjects: vi.fn(),
   parseSSHConfig: vi.fn(),
   buildSSHArgs: vi.fn(),
 }));
@@ -16,8 +16,13 @@ vi.mock("node:child_process", async (importOriginal) => ({
   spawn: mocks.spawn,
 }));
 vi.mock("@/lib/gitOperations", () => ({ execGit: mocks.execGit }));
-vi.mock("@/lib/database", () => ({ getTaskRepository: async () => ({ find: mocks.find }) }));
-vi.mock("@/lib/hookEndpoint", () => ({ getRemoteHookServerUrl: mocks.getRemoteHookServerUrl }));
+vi.mock("@/lib/database", () => ({
+  getTaskRepository: async () => ({ find: mocks.find }),
+  getProjectRepository: async () => ({ find: mocks.findProjects }),
+}));
+vi.mock("@/desktop/main/services/appSettingsService", () => ({
+  getOrCreateHookClientId: async () => "1b9d6bcd-bbfd-4b2d-9b5d-ab8dfbbd4bed",
+}));
 vi.mock("@/lib/sshConfig", () => ({ parseSSHConfig: mocks.parseSSHConfig, buildSSHArgs: mocks.buildSSHArgs }));
 vi.mock("@/lib/shellEnvironment", () => ({ createLocalShellEnvironment: () => ({}) }));
 
@@ -30,7 +35,7 @@ class FakeSSHProcess extends EventEmitter {
   });
 }
 
-const REMOTE_SOCKET = "/tmp/kv-1000/10.0.0.5_9736.sock";
+const REMOTE_SOCKET = "/tmp/kv-1000/1b9d6bcd-bbfd-4b2d-9b5d-ab8dfbbd4bed.sock";
 
 describe("hookTunnelService", () => {
   let service: typeof import("@/desktop/main/services/hookTunnelService");
@@ -57,10 +62,14 @@ describe("hookTunnelService", () => {
       return process;
     });
     mocks.execGit.mockResolvedValue(REMOTE_SOCKET);
-    mocks.getRemoteHookServerUrl.mockResolvedValue("http://10.0.0.5:9736");
-    mocks.parseSSHConfig.mockResolvedValue([{ host: "host-a" }, { host: "host-b" }]);
+    mocks.parseSSHConfig.mockResolvedValue([
+      { host: "host-a", hostname: "10.0.0.7", port: 22, username: "dev" },
+      { host: "host-a-alias", hostname: "10.0.0.7", port: 22, username: "dev" },
+      { host: "host-b", hostname: "10.0.0.8", port: 22, username: "dev" },
+    ]);
     mocks.buildSSHArgs.mockReturnValue(["-p", "22", "host-a"]);
     mocks.find.mockResolvedValue([{ sshHost: "host-a" }]);
+    mocks.findProjects.mockResolvedValue([]);
     service = await import("@/desktop/main/services/hookTunnelService");
   });
 
@@ -86,6 +95,43 @@ describe("hookTunnelService", () => {
     service.ensureHookTunnel("host-a");
     await flushAsync();
     expect(mocks.spawn).not.toHaveBeenCalled();
+  });
+
+  it("같은 원격 계정을 가리키는 별칭들은 터널 하나를 함께 쓰고, 그 터널은 두 별칭의 요청을 모두 받는다", async () => {
+    // Given
+    const listenerHosts: ReadonlySet<string>[] = [];
+    mocks.find.mockResolvedValue([{ sshHost: "host-a" }, { sshHost: "host-a-alias" }]);
+
+    // When
+    service.startHookTunnels((sshHosts) => {
+      listenerHosts.push(sshHosts);
+      return () => undefined;
+    });
+    await waitForSpawnCount(1);
+    await flushAsync();
+
+    // Then
+    expect(sshProcesses.length).toBe(1);
+    expect([...listenerHosts[0]].sort()).toEqual(["host-a", "host-a-alias"]);
+  });
+
+  it("다른 원격 계정은 터널을 따로 연다", async () => {
+    mocks.find.mockResolvedValue([{ sshHost: "host-a" }, { sshHost: "host-b" }]);
+    service.startHookTunnels(() => () => undefined);
+    await waitForSpawnCount(2);
+  });
+
+  it("완료한 task만 남은 호스트도 worktree의 hook이 쓰도록 터널을 유지한다", async () => {
+    service.startHookTunnels(() => () => undefined);
+    await waitForSpawnCount(1);
+    expect(mocks.find.mock.calls[0][0].where).not.toHaveProperty("status");
+  });
+
+  it("task가 없어도 원격 프로젝트가 있는 호스트의 터널은 연다", async () => {
+    mocks.find.mockResolvedValue([]);
+    mocks.findProjects.mockResolvedValue([{ sshHost: "host-b" }]);
+    service.startHookTunnels(() => () => undefined);
+    await waitForSpawnCount(1);
   });
 
   it("진행 중인 원격 task가 있는 호스트의 터널을 열고, 없어지면 닫는다", async () => {
@@ -174,5 +220,18 @@ describe("hookTunnelService", () => {
     // Then
     expect(sshProcesses[0].kill).toHaveBeenCalled();
     expect(sshProcesses.length).toBe(1);
+  });
+});
+
+describe("isTaskReachableFromTunnel", () => {
+  it.each([
+    ["평문 포트의 요청은 호스트를 묻지 않는다", { sshHost: "host-b" }, null, undefined, true],
+    ["터널이 맡은 호스트의 task", { sshHost: "host-a" }, null, new Set(["host-a"]), true],
+    ["다른 호스트의 task", { sshHost: "host-b" }, null, new Set(["host-a"]), false],
+    ["sshHost가 비어 있는 옛 task는 프로젝트 호스트로 판정한다", { sshHost: null }, { sshHost: "host-a" }, new Set(["host-a"]), true],
+    ["호스트를 알 수 없는 task는 터널로 다루지 못한다", { sshHost: null }, null, new Set(["host-a"]), false],
+  ])("%s", async (_name, task, project, sourceSshHosts, expected) => {
+    const { isTaskReachableFromTunnel } = await import("@/desktop/main/services/hookTunnelService");
+    expect(isTaskReachableFromTunnel(task, project, sourceSshHosts)).toBe(expected);
   });
 });

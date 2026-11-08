@@ -70,16 +70,26 @@ describe("lanPlaintextService", () => {
   });
 
   it.each(["127.0.0.1", "::1", "::ffff:127.0.0.1"])("루프백 요청 %s은 LAN 사용량으로 세지 않는다", async (address) => {
-    const { recordLanPlaintextRequest } = await loadService();
-    recordLanPlaintextRequest(address, NOW);
+    const { recordLanPlaintextResponse } = await loadService();
+    recordLanPlaintextResponse(address, "/api/hooks/status", 200, NOW);
     expect(settings.recorded).toEqual([]);
   });
 
   it("LAN 요청은 기록하되 한 시간에 한 번만 쓴다", async () => {
-    const { recordLanPlaintextRequest } = await loadService();
-    recordLanPlaintextRequest("192.168.0.20", NOW);
-    recordLanPlaintextRequest("192.168.0.20", NOW + 1000);
-    recordLanPlaintextRequest("192.168.0.20", NOW + 60 * 60_000);
+    const { recordLanPlaintextResponse } = await loadService();
+    recordLanPlaintextResponse("192.168.0.20", "/api/hooks/status", 200, NOW);
+    recordLanPlaintextResponse("192.168.0.20", "/api/hooks/status", 200, NOW + 1000);
+    recordLanPlaintextResponse("192.168.0.20", "/api/hooks/status", 200, NOW + 60 * 60_000);
     expect(settings.recorded).toEqual([NOW, NOW + 60 * 60_000]);
+  });
+
+  it.each([
+    ["없는 경로", "/wp-login.php", 404],
+    ["인증 실패", "/api/mobile/board", 401],
+    ["인증 없이 성공하는 상태 확인", "/api/hooks/health", 200],
+  ])("%s 요청은 LAN 사용량으로 세지 않아 스캐너가 평문 포트를 열어 둘 수 없다", async (_name, requestUrl, statusCode) => {
+    const { recordLanPlaintextResponse } = await loadService();
+    recordLanPlaintextResponse("192.168.0.20", requestUrl, statusCode, NOW);
+    expect(settings.recorded).toEqual([]);
   });
 });

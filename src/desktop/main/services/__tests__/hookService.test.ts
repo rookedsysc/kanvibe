@@ -79,7 +79,7 @@ describe("hookService.updateHookTaskStatus", () => {
       sshHost: "host-b",
     });
 
-    const result = await updateHookTaskStatus({ taskId: "task-1", status: TaskStatus.REVIEW }, "host-a");
+    const result = await updateHookTaskStatus({ taskId: "task-1", status: TaskStatus.REVIEW }, new Set(["host-a"]));
 
     expect(result).toMatchObject({ success: false, status: 404 });
     expect(mocks.taskRepo.save).not.toHaveBeenCalled();

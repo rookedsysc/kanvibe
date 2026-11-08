@@ -10,6 +10,7 @@ import {
   DirtyWorktreeError,
   getTaskIdByProjectAndBranch,
 } from "@/desktop/main/services/kanbanService";
+import { isTaskReachableFromTunnel } from "@/desktop/main/services/hookTunnelService";
 import { syncRegisteredProjectWorktrees } from "@/desktop/main/services/projectService";
 import { isValidTaskCliToken } from "@/desktop/main/services/taskCliTokenService";
 import {
@@ -68,8 +69,9 @@ type CliRequestBody = Record<string, unknown>;
 export async function createTaskFromCli(
   authorizationHeader: string | undefined,
   body: CliRequestBody,
+  sourceSshHosts?: ReadonlySet<string>,
 ): Promise<CreatedCliTask> {
-  const { contextTask, project } = await authorizeTaskContext(authorizationHeader, body);
+  const { contextTask, project } = await authorizeTaskContext(authorizationHeader, body, sourceSshHosts);
   const branchName = readGitRefField(body, "branchName");
   const title = readOptionalStringField(body, "title");
   const requestedSessionType = readSessionTypeField(body);
@@ -107,8 +109,9 @@ export async function createTaskFromCli(
 export async function deleteTaskFromCli(
   authorizationHeader: string | undefined,
   body: CliRequestBody,
+  sourceSshHosts?: ReadonlySet<string>,
 ): Promise<DeletedCliTask> {
-  const { contextTask, project } = await authorizeTaskContext(authorizationHeader, body);
+  const { contextTask, project } = await authorizeTaskContext(authorizationHeader, body, sourceSshHosts);
   if (body.confirmed !== true) {
     throw new TaskCliRequestError("삭제를 확인하는 confirmed: true가 필요합니다.", 400);
   }
@@ -141,8 +144,9 @@ export async function deleteTaskFromCli(
 export async function registerTaskFromPeer(
   authorizationHeader: string | undefined,
   body: CliRequestBody,
+  sourceSshHosts?: ReadonlySet<string>,
 ): Promise<RegisteredPeerTask> {
-  const { project } = await authorizeTaskContext(authorizationHeader, body);
+  const { project } = await authorizeTaskContext(authorizationHeader, body, sourceSshHosts);
   const branchName = readGitRefField(body, "branchName");
 
   const existingTaskId = await getTaskIdByProjectAndBranch(project.id, branchName);
@@ -163,10 +167,14 @@ export async function registerTaskFromPeer(
   return { id: registeredTaskId, branchName };
 }
 
-/** 토큰을 먼저 확인해 자격 없는 요청에는 task가 있는지조차 알려 주지 않는다 */
+/**
+ * 토큰을 먼저 확인해 자격 없는 요청에는 task가 있는지조차 알려 주지 않는다.
+ * 터널로 온 요청은 그 터널 호스트의 task 토큰만 인정한다. 다른 호스트에서 새어 나온 토큰으로 이 호스트의 task를 다루지 못하게 한다.
+ */
 async function authorizeTaskContext(
   authorizationHeader: string | undefined,
   body: CliRequestBody,
+  sourceSshHosts: ReadonlySet<string> | undefined,
 ): Promise<AuthorizedTaskContext> {
   const contextTaskId = readRequiredStringField(body, "contextTaskId");
   const token = parseBearerToken(authorizationHeader);
@@ -182,6 +190,9 @@ async function authorizeTaskContext(
   const project = contextTask.projectId
     ? await (await getProjectRepository()).findOneBy({ id: contextTask.projectId })
     : null;
+  if (!isTaskReachableFromTunnel(contextTask, project, sourceSshHosts)) {
+    throw new TaskCliRequestError("task CLI 인증에 실패했습니다. KanVibe에서 hooks를 다시 설치하세요.", 401);
+  }
   if (!project) {
     throw new TaskCliRequestError("프로젝트에 연결되지 않은 task에서는 task를 만들거나 지울 수 없습니다.", 409);
   }

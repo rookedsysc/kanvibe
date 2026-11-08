@@ -62,11 +62,14 @@ printf '%s}\\n' "\${KANVIBE_TASK_STATE_JSON}" > "\${KANVIBE_TASK_STATE_FILE}" 2>
 
 KANVIBE_TARGET_ROWS="$(
   if [ -f "\${KANVIBE_TARGETS_FILE}" ]; then
-    grep -oE '"(url|taskId)"[[:space:]]*:[[:space:]]*"[^"]*"' "\${KANVIBE_TARGETS_FILE}" 2>/dev/null \
+    grep -oE '"(url|taskId|clientId)"[[:space:]]*:[[:space:]]*"[^"]*"' "\${KANVIBE_TARGETS_FILE}" 2>/dev/null \
       | awk '
+          function emit() { if(u!="" && t!="" && !(u in seen)){ seen[u]=1; print u "\\t" t "\\t" c } }
           { s=$0; sub(/^"[^"]*"[[:space:]]*:[[:space:]]*"/,"",s); sub(/"$/,"",s) }
-          /^"url"/ { u=s; sub(/\\/+$/,"",u); haveUrl=1; next }
-          /^"taskId"/ { if(haveUrl){ if(u!="" && s!="" && !(u in seen)){ seen[u]=1; print u "\\t" s } haveUrl=0 } }
+          /^"url"/ { emit(); u=s; sub(/\\/+$/,"",u); t=""; c=""; next }
+          /^"taskId"/ { t=s; next }
+          /^"clientId"/ { c=s; next }
+          END { emit() }
         ' 2>/dev/null || true
   else
     printf '%s\t%s\n' "\${KANVIBE_URL%/}" "\${TASK_ID}"
@@ -85,7 +88,7 @@ kanvibe_post_status() {
 }
 
 printf '%s\n' "\${KANVIBE_TARGET_ROWS}" | {
-  while IFS="$(printf '\\t')" read -r KANVIBE_TARGET_URL KANVIBE_TARGET_TASK_ID; do
+  while IFS="$(printf '\\t')" read -r KANVIBE_TARGET_URL KANVIBE_TARGET_TASK_ID KANVIBE_TARGET_CLIENT_ID; do
     if [ -z "\${KANVIBE_TARGET_URL}" ] || [ -z "\${KANVIBE_TARGET_TASK_ID}" ]; then
       continue
     fi
@@ -93,7 +96,7 @@ printf '%s\n' "\${KANVIBE_TARGET_ROWS}" | {
       http://*|https://*) ;;
       *) continue ;;
     esac
-    KANVIBE_TARGET_SOCKET="$(kanvibe_hook_socket "\${KANVIBE_TARGET_URL}")"
+    KANVIBE_TARGET_SOCKET="$(kanvibe_hook_socket "\${KANVIBE_TARGET_CLIENT_ID}")"
     {
       if [ -z "\${KANVIBE_TARGET_SOCKET}" ] || ! kanvibe_post_status --unix-socket "\${KANVIBE_TARGET_SOCKET}"; then
         kanvibe_post_status
@@ -140,6 +143,7 @@ export function hasShellKanvibeTargetFanout(content: string): boolean {
     && content.includes("while IFS=")
     && content.includes('--url "${KANVIBE_TARGET_URL%/}/api/hooks/status"')
     && content.includes("kanvibe_hook_socket")
+    && content.includes("KANVIBE_TARGET_CLIENT_ID")
     && content.includes("taskId");
 }
 

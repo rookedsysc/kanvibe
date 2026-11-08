@@ -45,10 +45,10 @@ function createHookServer({ host, port, mobileTlsPort, mobileTlsDirectory, isDev
   const { handleMobileRequest, attachMobileStreamServer } = require("./mobileRoutes.js");
   const { handleTaskCliRequest } = require("./taskCliRoutes.js");
 
-  /** @param sourceSshHost 터널로 들어온 요청의 호스트. 평문 포트의 요청에는 없다 */
-  async function handleHookRequest(request, response, sourceSshHost) {
+  /** @param sourceSshHosts 터널로 들어온 요청이면 그 터널이 맡은 호스트 별칭들. 평문 포트의 요청에는 없다 */
+  async function handleHookRequest(request, response, sourceSshHosts) {
     /** task CLI 경로는 task 단위 토큰으로 자체 인증한다 */
-    if (await handleTaskCliRequest(request, response, { taskCli })) {
+    if (await handleTaskCliRequest(request, response, { taskCli, sourceSshHosts })) {
       return;
     }
 
@@ -58,9 +58,8 @@ function createHookServer({ host, port, mobileTlsPort, mobileTlsDirectory, isDev
     }
 
     /** 원격 호스트가 hook 설치 산출물을 직접 내려받는 경로. 토큰이 맞아야만 스크립트를 내준다 */
-    if (request.method === "GET" && request.url.startsWith(hookInstallBundle.HOOK_INSTALL_SCRIPT_PATH)) {
-      const requestUrl = new URL(request.url, `http://${host}:${port}`);
-      const installScript = hookInstallBundle.readHookInstallScript(requestUrl.searchParams.get("token"));
+    if (request.method === "GET" && request.url === hookInstallBundle.HOOK_INSTALL_SCRIPT_PATH) {
+      const installScript = hookInstallBundle.readHookInstallScript(request.headers[hookInstallBundle.HOOK_INSTALL_TOKEN_HEADER]);
 
       if (!installScript) {
         writeJson(response, 404, { success: false, error: "Not found" });
@@ -73,7 +72,7 @@ function createHookServer({ host, port, mobileTlsPort, mobileTlsDirectory, isDev
 
     if (request.method === "POST" && request.url === "/api/hooks/status") {
       try {
-        const result = await hookService.updateHookTaskStatus(await readJsonBody(request), sourceSshHost);
+        const result = await hookService.updateHookTaskStatus(await readJsonBody(request), sourceSshHosts);
         writeJson(response, result.status || 200, result);
       } catch (error) {
         writeJson(response, 500, { success: false, error: error instanceof Error ? error.message : "서버 오류" });
@@ -84,6 +83,13 @@ function createHookServer({ host, port, mobileTlsPort, mobileTlsDirectory, isDev
     writeJson(response, 404, { success: false, error: "Not found" });
   }
 
+  /** 응답 코드를 보고 세야 하므로 응답이 끝난 뒤에 기록한다 */
+  function recordLanPlaintextUsageOnSuccess(request, response) {
+    response.once("finish", () => {
+      lanPlaintext.recordLanPlaintextResponse(request.socket.remoteAddress, request.url, response.statusCode);
+    });
+  }
+
   const mobileRouteOptions = { bridge: mobileBridge, host, port, isDevPairingRouteEnabled };
 
   const server = http.createServer(async (request, response) => {
@@ -91,7 +97,7 @@ function createHookServer({ host, port, mobileTlsPort, mobileTlsDirectory, isDev
       return;
     }
 
-    lanPlaintext.recordLanPlaintextRequest(request.socket.remoteAddress);
+    recordLanPlaintextUsageOnSuccess(request, response);
 
     /** 모바일 경로는 자체 인증을 거치므로 hook 라우팅보다 먼저 가로챈다 */
     if (await handleMobileRequest(request, response, mobileRouteOptions)) {
@@ -102,11 +108,11 @@ function createHookServer({ host, port, mobileTlsPort, mobileTlsDirectory, isDev
   });
 
   /** 터널 소켓은 모바일 경로를 싣지 않는다. 원격 호스트의 프로세스가 기기 인증 경로에 닿을 이유가 없다 */
-  const createTunnelRequestListener = (sshHost) => async (request, response) => {
+  const createTunnelRequestListener = (sshHosts) => async (request, response) => {
     if (rejectBrowserOriginRequest(request, response)) {
       return;
     }
-    await handleHookRequest(request, response, sshHost);
+    await handleHookRequest(request, response, sshHosts);
   };
 
   /** TLS 포트는 모바일 경로만 싣는다. hook 경로는 평문 포트와 터널이 맡는다 */

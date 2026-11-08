@@ -14,7 +14,8 @@ const TASK_CLI_ROUTES = {
  * 인증 뒤의 오류 메시지에 git 출력이 섞여도 요청자가 이미 볼 수 있는 범위를 넘지 않아, CLI가 원인을 보여 줄 수 있게 그대로 돌려준다.
  * 인증 전에 난 내부 오류는 서비스가 원인을 감춘 메시지로 바꿔 보낸다.
  */
-async function handleTaskCliRequest(request, response, { taskCli }) {
+/** @param sourceSshHosts 터널로 들어온 요청이면 그 터널이 맡은 호스트들. 평문 포트의 요청에는 없다 */
+async function handleTaskCliRequest(request, response, { taskCli, sourceSshHosts }) {
   const route = request.method === "POST" ? TASK_CLI_ROUTES[request.url] : undefined;
   if (!route) {
     return false;
@@ -34,7 +35,7 @@ async function handleTaskCliRequest(request, response, { taskCli }) {
   }
 
   try {
-    const data = await taskCli[route.serviceFunctionName](request.headers.authorization, body);
+    const data = await taskCli[route.serviceFunctionName](request.headers.authorization, body, sourceSshHosts);
     writeJson(response, route.successStatus, { success: true, data });
   } catch (error) {
     if (error && error.name === "TaskCliRequestError") {

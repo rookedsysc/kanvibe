@@ -167,6 +167,7 @@ export async function readShellHookProviderState(options: {
       targetsContent: (files.get(targetsPath) ?? emptyFile()).content,
       taskId,
       hookServerValidation,
+      sshHost,
     }),
   };
 }
@@ -177,8 +178,9 @@ function buildShellHookScriptsStatus(options: {
   targetsContent: string;
   taskId?: string;
   hookServerValidation: HookServerValidation;
+  sshHost?: string | null;
 }): ShellHookScriptsStatus {
-  const { definitions, scriptContents, targetsContent, taskId, hookServerValidation } = options;
+  const { definitions, scriptContents, targetsContent, taskId, hookServerValidation, sshHost } = options;
   const { boundTaskId, hasTaskIdBinding } = getShellTaskIdBindingStatus(scriptContents);
 
   return {
@@ -195,7 +197,7 @@ function buildShellHookScriptsStatus(options: {
     boundTaskId,
     configuredHookServerUrl: hookServerValidation.configuredHookServerUrl,
     expectedHookServerUrl: hookServerValidation.expectedHookServerUrl,
-    ...verifyHookTargetRegistration(targetsContent, taskId, hookServerValidation.expectedHookServerUrl),
+    ...verifyHookTargetRegistration(targetsContent, taskId, hookServerValidation.expectedHookServerUrl, sshHost),
   };
 }
 

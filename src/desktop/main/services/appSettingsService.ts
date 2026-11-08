@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { getAppSettingsRepository } from "@/lib/database";
 import { SessionType } from "@/entities/KanbanTask";
 import {
@@ -106,6 +107,29 @@ export async function getLanPlaintextLastRequestAt(): Promise<number> {
 
 export async function setLanPlaintextLastRequestAt(requestedAt: number): Promise<void> {
   await setAppSetting(LAN_PLAINTEXT_LAST_REQUEST_AT_KEY, String(requestedAt));
+}
+
+const HOOK_CLIENT_ID_KEY = "hook_client_id";
+let hookClientIdPromise: Promise<string> | null = null;
+
+/**
+ * 원격 터널 소켓의 이름으로 쓰는 이 설치의 ID. IP가 바뀌어도 그대로라 원격 스크립트가 같은 소켓을 찾는다.
+ * 동시에 처음 불려도 ID가 둘 생기지 않도록 조회를 한 번만 한다.
+ */
+export function getOrCreateHookClientId(): Promise<string> {
+  hookClientIdPromise ??= (async () => {
+    const storedClientId = await getAppSetting(HOOK_CLIENT_ID_KEY);
+    if (storedClientId) {
+      return storedClientId;
+    }
+    const clientId = randomUUID();
+    await setAppSetting(HOOK_CLIENT_ID_KEY, clientId);
+    return clientId;
+  })().catch((error) => {
+    hookClientIdPromise = null;
+    throw error;
+  });
+  return hookClientIdPromise;
 }
 
 const DONE_ALERT_DISMISSED_KEY = "done_alert_dismissed";
