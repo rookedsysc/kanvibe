@@ -28,7 +28,7 @@ class PairingResult {
 /// 데스크탑의 `/api/mobile/*`와 이야기하는 유일한 통로.
 ///
 /// 페어링만 토큰 없이 호출하고 나머지는 전부 토큰을 실어 보낸다.
-/// 데스크탑에서 `/api/hooks/*`는 인증 없이 열려 있지만 이 클라이언트는 그쪽을 부르지 않는다.
+/// 데스크탑의 `/api/hooks/*`는 hook 전용이라 TLS 포트에는 없고, 이 클라이언트도 그쪽을 부르지 않는다.
 class DesktopClient {
   DesktopClient({http.Client? httpClient}) : _injectedHttpClient = httpClient;
 

@@ -35,7 +35,7 @@ const MAX_DEVICE_NAME_LENGTH = 64;
  */
 const DEV_PAIRING_CODE_PATH = "/api/mobile/dev/pairing-code";
 
-/** hook 서버는 `0.0.0.0`에 열려 있어, 개발 실행이라도 같은 LAN의 기기가 코드를 받아 가지 못하게 이 머신에서 온 요청만 받는다 */
+/** 평문 hook 포트와 TLS 포트는 LAN에 열려 있을 수 있어, 개발 실행이라도 같은 LAN의 기기가 코드를 받아 가지 못하게 이 머신에서 온 요청만 받는다 */
 const LOOPBACK_ADDRESSES = new Set(["127.0.0.1", "::1", "::ffff:127.0.0.1"]);
 
 /** 태스크 pane 경로에서 태스크 id를 꺼낸다 */

@@ -63,12 +63,27 @@ class ConnectionController extends AsyncNotifier<SavedConnections> {
       certificateFingerprint: pairing.certificateFingerprint,
     );
     var added = false;
+    var replacedLegacyConnections = const <DesktopConnection>[];
     await _change((registry) {
       if (registry.find(id) != null) return registry;
       added = true;
-      return registry.add(connection);
+      replacedLegacyConnections = registry.legacyConnectionsOf(host);
+      return registry.replaceLegacyConnections(connection);
     });
+    await _unpairReplacedLegacyConnections(replacedLegacyConnections);
     return added ? null : ConnectFailure.alreadyPaired;
+  }
+
+  /// 같은 PC의 평문 연결은 암호화 연결로 바꾼 뒤에도 남아 있으면 토큰을 계속 평문으로 보낸다.
+  /// 기기 목록에서는 이미 지웠으므로, 데스크탑이 꺼져 있거나 평문 포트가 닫혀 알리지 못해도 연결은 성공으로 둔다.
+  Future<void> _unpairReplacedLegacyConnections(
+    List<DesktopConnection> legacyConnections,
+  ) async {
+    for (final legacyConnection in legacyConnections) {
+      try {
+        await ref.read(desktopClientProvider).unpairDevice(legacyConnection);
+      } catch (_) {}
+    }
   }
 
   /// 현재 PC만 바꾼다. 다른 PC의 페어링 토큰은 그대로 둔다.
