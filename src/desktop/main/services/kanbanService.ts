@@ -905,6 +905,10 @@ export async function connectTerminalSession(
   const task = await repo.findOneBy({ id: taskId });
   if (!task || !task.projectId) return null;
 
+  // 화면이 세션 없는 task를 자동으로 연결하므로, 여러 창이 같은 task를 동시에 요청해도 세션은 하나만 남긴다
+  const hasExistingSession = Boolean(task.sessionType && task.sessionName);
+  if (hasExistingSession) return serialize(task);
+
   const branchForSession = task.branchName || task.baseBranch;
   if (!branchForSession) return null;
 

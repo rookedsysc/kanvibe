@@ -317,8 +317,19 @@
     "placeholder": "Type a command…",
     "syncLabel": "Sync",
     "moveToStatusLabel": "Move to {status}",
+    "viewKanbanLabel": "Show as Kanban board",
+    "viewWorkspaceLabel": "Show as workspace (task list + terminal)",
     "empty": "No matching commands",
     "hint": "↑↓ Navigate · Enter Run · Esc Close"
+  },
+  "workspace": {
+    "taskListLabel": "Tasks",
+    "searchPlaceholder": "Search title, branch, project",
+    "statusFilterLabel": "Status filter",
+    "noMatchingTasks": "No tasks match these filters",
+    "emptyTasks": "No tasks yet",
+    "loadMoreDone": "Show more done tasks",
+    "noTaskSelected": "Pick a task on the left to open its terminal"
   },
   "paneLayout": {
     "loadError": "Failed to load layout settings.",
@@ -373,7 +384,6 @@
     "noTerminal": "No terminal session connected to this task.",
     "connectTerminal": "Connect Terminal",
     "connecting": "Connecting...",
-    "selectSessionType": "Session type",
     "connectFailed": "Failed to create terminal session. Check server logs.",
     "info": "Task Info",
     "branch": "Branch",
