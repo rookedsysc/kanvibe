@@ -8,6 +8,7 @@ import '../../features/board/domain/task_status.dart';
 import '../../features/chat_history/domain/chat_history.dart';
 import '../../features/notifications/domain/inbox_notification.dart';
 import '../../features/notifications/domain/notification_settings.dart';
+import '../../features/task_create/domain/session_type.dart';
 import '../../features/task_detail/domain/mirror_pane.dart';
 import 'desktop_connection.dart';
 
@@ -30,6 +31,9 @@ class DesktopClient {
   /// 실제로는 만들어지고 있는데 기기만 먼저 포기한다. 그러면 사용자가 다시 눌러 같은 브랜치를 또 치게 된다.
   static const _createTaskTimeout = Duration(seconds: 60);
   static const _createTerminalTabTimeout = Duration(seconds: 30);
+
+  /// 세션 종류 변경은 데스크탑이 hooks를 깔고 새 세션을 연결한 뒤 이전 세션까지 닫아야 끝난다
+  static const _changeSessionTypeTimeout = Duration(seconds: 30);
 
   /// 화면의 6자리 코드를 토큰으로 바꾼다. 성공하면 그 뒤로 코드는 필요 없다
   Future<String?> pair({
@@ -450,7 +454,6 @@ class DesktopClient {
     String? baseBranch,
     String? description,
     String? priority,
-    required String sessionType,
   }) async {
     final response = await _httpClient
         .post(
@@ -465,7 +468,6 @@ class DesktopClient {
             'baseBranch': baseBranch,
             'description': description,
             'priority': priority,
-            'sessionType': sessionType,
           }),
         )
         .timeout(_createTaskTimeout);
@@ -499,6 +501,59 @@ class DesktopClient {
           body: jsonEncode({'status': status.wireValue}),
         )
         .timeout(_requestTimeout);
+
+    if (response.statusCode != 200) {
+      throw DesktopRequestException(
+        response.statusCode,
+        message: _readErrorMessage(response.body),
+      );
+    }
+  }
+
+  /// 태스크의 기존 세션이 켜져 있는지 묻는다. 켜져 있을 때만 닫을지 물어보기 위해서다
+  Future<bool> fetchTaskSessionAlive(
+    DesktopConnection connection,
+    String taskId,
+  ) async {
+    final response = await _httpClient
+        .get(
+          connection.buildHttpUri(
+            '/api/mobile/tasks/${Uri.encodeComponent(taskId)}/session-alive',
+          ),
+          headers: connection.authorizationHeaders,
+        )
+        .timeout(_requestTimeout);
+
+    if (response.statusCode != 200) {
+      throw DesktopRequestException(response.statusCode);
+    }
+
+    return (jsonDecode(response.body) as Map<String, dynamic>)['isAlive'] ==
+        true;
+  }
+
+  /// 태스크의 세션 종류를 바꾼다. 실제 전환은 데스크탑이 하고, 기기는 결과 세션을 다시 받아 붙는다
+  Future<void> changeTaskSessionType(
+    DesktopConnection connection,
+    String taskId, {
+    required SessionType sessionType,
+    required bool shouldCloseExistingSession,
+  }) async {
+    final response = await _httpClient
+        .patch(
+          connection.buildHttpUri(
+            '/api/mobile/tasks/${Uri.encodeComponent(taskId)}/session-type',
+          ),
+          headers: {
+            ...connection.authorizationHeaders,
+            'Content-Type': 'application/json',
+          },
+          body: jsonEncode({
+            'sessionType': sessionType.wireValue,
+            'shouldCloseExistingSession': shouldCloseExistingSession,
+          }),
+        )
+        .timeout(_changeSessionTypeTimeout);
 
     if (response.statusCode != 200) {
       throw DesktopRequestException(
@@ -572,6 +627,12 @@ class DesktopClient {
 /// 스트림 실패(4000)와 나누어야 "세션을 못 비춘다"와 "이 기기는 더 이상 연결되어 있지 않다"를 구분할 수 있다.
 /// 서버 쪽 `electron/mobileRoutes.js`의 `DEVICE_UNPAIRED_CLOSE_CODE`와 같은 값이어야 한다.
 const int deviceUnpairedCloseCode = 4001;
+
+/// 데스크탑이 태스크의 세션 종류를 바꿔 이전 세션 스트림을 끊었을 때의 종료 코드.
+///
+/// 오류가 아니라 새 세션으로 다시 붙으라는 신호다. 서버 쪽 `electron/mobileRoutes.js`의
+/// `TASK_SESSION_CHANGED_CLOSE_CODE`와 같은 값이어야 한다.
+const int taskSessionChangedCloseCode = 4002;
 
 class DesktopEventStream {
   const DesktopEventStream({

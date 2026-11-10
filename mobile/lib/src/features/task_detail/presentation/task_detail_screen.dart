@@ -10,11 +10,13 @@ import '../../board/domain/board_task.dart';
 import '../../board/domain/task_status.dart';
 import '../../chat_history/presentation/chat_history_screen.dart';
 import '../../notifications/application/mobile_notification_controller.dart';
+import '../../task_create/domain/session_type.dart';
 import '../../task_create/presentation/create_task_screen.dart';
 import '../domain/mirror_pane.dart';
 import 'surface_unavailable_message.dart';
 import 'widgets/pane_terminal_view.dart';
 import 'widgets/task_info_sheet.dart';
+import 'widgets/task_session_type_sheet.dart';
 import 'widgets/task_status_sheet.dart';
 import 'widgets/terminal_chrome_header.dart';
 
@@ -72,7 +74,6 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
         MaterialPageRoute(
           builder: (_) => CreateTaskScreen(
             projects: snapshot.creatableProjects,
-            defaultSessionType: snapshot.defaultSessionType,
             defaultProjectId: project.id,
             defaultBaseBranch: _task.branchName?.isNotEmpty == true
                 ? _task.branchName
@@ -127,6 +128,16 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
       setState(() => _task = _task.withStatus(movedStatus));
     }
   }
+
+  Future<void> _openSessionTypeSheet(SessionType currentSessionType) =>
+      showModalBottomSheet<SessionType>(
+        context: context,
+        backgroundColor: AppColors.bgSurface,
+        builder: (_) => TaskSessionTypeSheet(
+          taskId: _task.id,
+          currentSessionType: currentSessionType,
+        ),
+      );
 
   /// PR은 앱 안에서 열지 않고 브라우저로 넘긴다. 로그인 세션이 이미 거기 있다.
   ///
@@ -198,6 +209,18 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
             icon: const Icon(Icons.swap_horiz),
             tooltip: '상태 옮기기',
           ),
+          Semantics(
+            identifier: 'change-session-type',
+            child: IconButton(
+              onPressed: surfaces.hasValue
+                  ? () => _openSessionTypeSheet(
+                      surfaces.requireValue.surfaces.sessionType,
+                    )
+                  : null,
+              icon: const Icon(Icons.terminal),
+              tooltip: '세션 종류 바꾸기',
+            ),
+          ),
           if (_task.prUrl != null)
             IconButton(
               onPressed: _openPullRequest,
@@ -258,14 +281,18 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
     );
   }
 
+  /// 세션 종류가 바뀌면 pane id가 같더라도 다른 세션이므로 pane 화면을 새로 만들어 스트림을 다시 연다
   Widget _buildSelectedSurface(MirrorPane pane, TaskSurfaces surfaces) =>
-      PaneTerminalView(
-        taskId: _task.id,
-        pane: pane,
-        canResize: surfaces.canResize,
-        sessionType: surfaces.sessionType,
-        canRespondToDeviceQueries: surfaces.canRespondToDeviceQueries,
-        key: ValueKey(pane.id),
+      KeyedSubtree(
+        key: ValueKey(surfaces.sessionType),
+        child: PaneTerminalView(
+          taskId: _task.id,
+          pane: pane,
+          canResize: surfaces.canResize,
+          sessionType: surfaces.sessionType,
+          canRespondToDeviceQueries: surfaces.canRespondToDeviceQueries,
+          key: ValueKey(pane.id),
+        ),
       );
 }
 

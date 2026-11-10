@@ -7,7 +7,6 @@ import '../../../common/providers.dart';
 import '../../board/domain/board_project.dart';
 import '../../board/domain/board_task.dart';
 import '../../board/domain/task_priority.dart';
-import '../domain/session_type.dart';
 
 /// 태스크를 새로 만드는 화면.
 ///
@@ -19,7 +18,6 @@ import '../domain/session_type.dart';
 class CreateTaskScreen extends ConsumerStatefulWidget {
   const CreateTaskScreen({
     required this.projects,
-    required this.defaultSessionType,
     this.defaultProjectId,
     this.defaultBaseBranch,
     super.key,
@@ -27,9 +25,6 @@ class CreateTaskScreen extends ConsumerStatefulWidget {
 
   /// 고를 수 있는 프로젝트. 보드가 이미 받아 둔 목록이라 여기서 다시 부르지 않는다
   final List<BoardProject> projects;
-
-  /// 처음 골라 둘 세션 종류. 데스크탑 생성 창처럼 데스크탑 설정의 기본값을 따른다
-  final SessionType defaultSessionType;
 
   final String? defaultProjectId;
   final String? defaultBaseBranch;
@@ -46,7 +41,6 @@ class _CreateTaskScreenState extends ConsumerState<CreateTaskScreen> {
   BoardProject? _selectedProject;
   String? _baseBranch;
   TaskPriority? _priority;
-  late SessionType _sessionType = widget.defaultSessionType;
 
   bool _isCreating = false;
   String? _failureMessage;
@@ -113,7 +107,6 @@ class _CreateTaskScreenState extends ConsumerState<CreateTaskScreen> {
             baseBranch: _baseBranch,
             description: _descriptionController.text.trim(),
             priority: _priority?.wireValue,
-            sessionType: _sessionType.wireValue,
           );
     } catch (error) {
       if (!mounted) {
@@ -239,22 +232,6 @@ class _CreateTaskScreenState extends ConsumerState<CreateTaskScreen> {
                   onChanged: _isCreating
                       ? null
                       : (priority) => setState(() => _priority = priority),
-                ),
-                const SizedBox(height: AppSizes.p16),
-                DropdownButtonFormField<SessionType>(
-                  initialValue: _sessionType,
-                  decoration: const InputDecoration(labelText: '세션 타입'),
-                  items: [
-                    for (final sessionType in SessionType.values)
-                      DropdownMenuItem(
-                        value: sessionType,
-                        child: Text(sessionType.wireValue),
-                      ),
-                  ],
-                  onChanged: _isCreating
-                      ? null
-                      : (sessionType) =>
-                            setState(() => _sessionType = sessionType!),
                 ),
                 if (_failureMessage != null) ...[
                   const SizedBox(height: AppSizes.p16),

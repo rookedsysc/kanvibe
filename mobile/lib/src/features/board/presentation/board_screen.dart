@@ -120,10 +120,7 @@ Future<void> _createTask(BuildContext context, BoardSnapshot board) async {
   final navigator = Navigator.of(context);
   final created = await navigator.push<BoardTask>(
     MaterialPageRoute(
-      builder: (_) => CreateTaskScreen(
-        projects: board.creatableProjects,
-        defaultSessionType: board.defaultSessionType,
-      ),
+      builder: (_) => CreateTaskScreen(projects: board.creatableProjects),
     ),
   );
 
