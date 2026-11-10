@@ -538,6 +538,38 @@ describe("kanbanService.createTask", () => {
     expect(mocks.broadcastBoardUpdate).toHaveBeenCalledTimes(1);
   });
 
+  it("이미 세션이 있는 task에 터미널 연결을 요청하면 새 세션을 만들지 않고 기존 task를 돌려준다", async () => {
+    // Given
+    const task = {
+      id: "task-connected",
+      title: "이미 연결된 task",
+      projectId: "project-remote",
+      branchName: "feature/connected",
+      baseBranch: "main",
+      worktreePath: "/remote/repo__worktrees/feature-connected",
+      sshHost: null,
+      sessionType: "tmux",
+      sessionName: "repo-feature-connected",
+      status: "progress",
+    };
+    mocks.taskRepo.findOneBy.mockResolvedValue(task);
+
+    const { connectTerminalSession } = await import("@/desktop/main/services/kanbanService");
+
+    // When
+    const result = await connectTerminalSession("task-connected", "zellij" as never);
+
+    // Then
+    expect(result).toEqual(expect.objectContaining({
+      id: "task-connected",
+      sessionType: "tmux",
+      sessionName: "repo-feature-connected",
+    }));
+    expect(mocks.createSessionWithoutWorktree).not.toHaveBeenCalled();
+    expect(mocks.taskRepo.save).not.toHaveBeenCalled();
+    expect(mocks.broadcastBoardUpdate).not.toHaveBeenCalled();
+  });
+
   it("기존 브랜치 task 터미널 연결은 현재 상태를 보존한다", async () => {
     // Given
     const task = {
