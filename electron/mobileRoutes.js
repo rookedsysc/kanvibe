@@ -1,6 +1,7 @@
 const { WebSocketServer } = require("ws");
 
 const { readJsonBody, writeJson } = require("./httpBody.js");
+const { runMobileCommand, SUPPORTED_COMMANDS } = require("./mobileCommands.js");
 
 /**
  * 모바일 클라이언트가 쓰는 `/api/mobile/*` 경로.
@@ -162,11 +163,6 @@ async function handleMobileRequest(request, response, { bridge, host, port, isDe
     if (request.method === "GET" && taskMatch) {
       const task = await bridge.getMobileTask(decodeURIComponent(taskMatch[1]));
       writeJson(response, task ? 200 : 404, task ? { success: true, task } : { success: false, error: "없는 태스크입니다" });
-      return true;
-    }
-
-    if (request.method === "DELETE" && taskMatch) {
-      await handleDeleteTaskRequest(response, bridge, decodeURIComponent(taskMatch[1]), requestUrl.searchParams.get("force") === "true");
       return true;
     }
 
@@ -446,27 +442,6 @@ async function handleTaskSessionTypeRequest(request, response, bridge, taskId) {
   }
 }
 
-/**
- * 태스크와 그 worktree·브랜치·세션을 지운다. 이 데스크탑이 같은 task를 가진 다른 데스크탑에도 전파한다.
- * 커밋하지 않은 변경이 있으면 409로 알려, 기기가 데스크탑처럼 강제 삭제(`?force=true`)를 고를 수 있게 한다.
- */
-async function handleDeleteTaskRequest(response, bridge, taskId, isForced) {
-  try {
-    const deletion = await bridge.deleteMobileTask(taskId, isForced);
-    if (!deletion) {
-      writeJson(response, 404, { success: false, error: "없는 태스크입니다" });
-      return;
-    }
-    writeJson(response, 200, { success: true, failedPeerCount: deletion.failedPeerCount });
-  } catch (error) {
-    if (error && error.name === "DirtyWorktreeError") {
-      writeJson(response, 409, { success: false, code: "dirty-worktree", error: "커밋하지 않은 변경이 있습니다" });
-      return;
-    }
-    writeTaskWriteFailure(response, error, "Mobile delete task request failed");
-  }
-}
-
 async function handleSurfacesRequest(response, bridge, taskId) {
   try {
     writeJson(response, 200, { success: true, surfaces: await bridge.getTaskSurfaces(taskId) });
@@ -659,7 +634,11 @@ function attachMobileStreamServer(server, { bridge, notifications, host, port })
             eventSockets.delete(webSocket);
             forgetDeviceSocket(deviceId, webSocket);
           });
-          webSocket.send(JSON.stringify({ type: "connected" }));
+          /** 앱은 이 목록에 없는 명령을 보내지 않고 업데이트 안내를 띄운다. 모르는 명령을 조용히 버리는 구버전에는 이 필드가 없다 */
+          webSocket.send(JSON.stringify({ type: "connected", commands: SUPPORTED_COMMANDS }));
+          webSocket.on("message", (data, isBinary) => {
+            if (!isBinary) void answerMobileCommand(webSocket, bridge, data);
+          });
           /** 핸드셰이크 중 해제된 기기를 놓쳐도 다음 HTTP 요청 없이 이 소켓을 닫는다 */
           void bridge.authorizeMobileRequest(request.headers.authorization).then((currentDeviceId) => {
             if (currentDeviceId !== deviceId) webSocket.close(DEVICE_UNPAIRED_CLOSE_CODE, "device-unpaired");
@@ -675,6 +654,14 @@ function attachMobileStreamServer(server, { bridge, notifications, host, port })
   });
 
   return webSocketServer;
+}
+
+/** 명령 한 건을 처리해 요청한 소켓 하나에만 응답한다. 처리 중에 소켓이 닫혔으면 응답할 곳이 없다 */
+async function answerMobileCommand(webSocket, bridge, data) {
+  const result = await runMobileCommand(bridge, data);
+  if (result && webSocket.readyState === webSocket.OPEN) {
+    webSocket.send(JSON.stringify(result));
+  }
 }
 
 /** [onClosed]는 닫힌 소켓을 기기 지도에서 지운다. 죽은 소켓이 남아 있으면 나중의 해제가 남의 자리를 뒤진다 */

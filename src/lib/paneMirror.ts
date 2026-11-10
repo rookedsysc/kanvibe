@@ -378,6 +378,14 @@ export function buildTmuxPaneShortcutCommand(paneId: string, action: string): st
   }
 }
 
+/**
+ * pane 하나를 종료한다. 단축 동작 빌더에 넣지 않은 것은 그 경로가 마지막 pane 보호 없이 HTTP로도 열려 있기 때문이다.
+ * 이 빌더들은 마지막 pane을 막는 `closeMobilePane`만 부른다.
+ */
+export function buildTmuxClosePaneCommand(paneId: string): string {
+  return `tmux kill-pane -t ${quoteForPosixShell(paneId)}`;
+}
+
 export function buildZellijPaneShortcutCommand(sessionName: string, paneId: string, tabId: string, action: string): string | null {
   const prefix = `zellij --session ${quoteForPosixShell(sessionName)} action`;
   if (action === "split-right" || action === "split-down") {
@@ -395,6 +403,10 @@ export function buildZellijPaneShortcutCommand(sessionName: string, paneId: stri
     default: return null;
   }
   return `${prefix} ${command} --pane-id ${quoteForPosixShell(paneId)}`;
+}
+
+export function buildZellijClosePaneCommand(sessionName: string, paneId: string): string {
+  return `zellij --session ${quoteForPosixShell(sessionName)} action close-pane --pane-id ${quoteForPosixShell(paneId)}`;
 }
 
 /**
@@ -456,4 +468,8 @@ export function buildHerdrPaneShortcutCommand(sessionName: string, paneId: strin
     case "toggle-fullscreen": return buildHerdrCommand(sessionName, ["pane", "zoom", paneId, "--toggle"]);
     default: return null;
   }
+}
+
+export function buildHerdrClosePaneCommand(sessionName: string, paneId: string): string {
+  return buildHerdrCommand(sessionName, ["pane", "close", paneId]);
 }

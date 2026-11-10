@@ -12,6 +12,9 @@ import {
   buildScreenRedraw,
   buildTmuxPaneShortcutCommand,
   buildZellijPaneShortcutCommand,
+  buildHerdrClosePaneCommand,
+  buildTmuxClosePaneCommand,
+  buildZellijClosePaneCommand,
   buildTmuxCancelPipePaneCommand,
   buildTmuxCapturePaneCommand,
   buildTmuxPaneStateCommand,
@@ -290,6 +293,28 @@ describe("pane 단축키 명령", () => {
       .toBe(`tmux resize-pane -Z -t ${"'%1'\"'\"'; rm -rf /; '\"'\"''"}`);
     expect(buildZellijPaneShortcutCommand("a'b", "terminal_3", "4", "scroll-up"))
       .toContain(`--session 'a'\"'\"'b'`);
+  });
+});
+
+describe("pane 종료 명령", () => {
+  it("tmux는 지정한 pane 하나만 종료한다", () => {
+    expect(buildTmuxClosePaneCommand("%19")).toBe("tmux kill-pane -t '%19'");
+  });
+
+  it("zellij는 포커스 대신 pane id로 지정한다", () => {
+    expect(buildZellijClosePaneCommand("session", "terminal_3"))
+      .toBe("zellij --session 'session' action close-pane --pane-id 'terminal_3'");
+  });
+
+  it("Herdr는 pane close에 pane id를 인자 하나로 넘긴다", () => {
+    expect(buildHerdrClosePaneCommand("session", "w1:p1"))
+      .toBe(buildHerdrCommand("session", ["pane", "close", "w1:p1"]));
+  });
+
+  it("대상 이름의 셸 메타문자를 이스케이프한다", () => {
+    expect(buildTmuxClosePaneCommand(INJECTION_PANE_ID))
+      .toBe(`tmux kill-pane -t ${"'%1'\"'\"'; rm -rf /; '\"'\"''"}`);
+    expect(buildZellijClosePaneCommand("a'b", "terminal_3")).toContain(`--session 'a'\"'\"'b'`);
   });
 });
 

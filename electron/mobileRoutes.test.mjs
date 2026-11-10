@@ -73,6 +73,8 @@ function createBridge(overrides = {}) {
     createMobileTask: vi.fn(async () => ({ id: "task-1", title: "feat/from-mobile" })),
     updateMobileTaskStatus: vi.fn(async () => ({ id: "task-1", status: "review" })),
     deleteMobileTask: vi.fn(async () => ({ failedPeerCount: 0 })),
+    closeMobilePane: vi.fn(async () => ({ surfaces: { tabs: [] } })),
+    getMobilePaneCloseInfo: vi.fn(async () => ({ processNames: [] })),
     getMobileProjectBranches: vi.fn(async () => ["main", "dev"]),
     changeMobileTaskSessionType: vi.fn(async () => ({ id: "task-1", sessionType: "zellij" })),
     isMobileTaskSessionAlive: vi.fn(async () => true),
@@ -310,7 +312,7 @@ describe("모바일 상태 알림 경로", () => {
     const event = { type: "task-status-changed", eventId: "event-1", taskId: "task-1", title: "kanvibe", body: "review", status: "review", createdAt: "2026-10-23T00:00:00Z" };
     mobileEventListeners.forEach((listener) => { listener({ type: "board-updated" }); listener(event); });
     await waitFor(() => messages.length === 3);
-    expect(messages).toEqual([{ type: "connected" }, { type: "board-updated" }, event]);
+    expect(messages).toEqual([{ type: "connected", commands: ["delete-task", "get-tab-close-info", "close-tab"] }, { type: "board-updated" }, event]);
     expect(bridge.subscribeToPane).not.toHaveBeenCalled();
     notifyUnpaired("device-second");
     expect(client.readyState).toBe(WebSocket.OPEN);
@@ -336,6 +338,136 @@ describe("모바일 상태 알림 경로", () => {
     expect(await closing).toEqual({ code: 1001, reason: "server-shutdown" });
     expect(mobileEventListeners.size).toBe(0);
     expect(notificationChangeListeners.size).toBe(0);
+  });
+});
+
+describe("상태 WebSocket 명령", () => {
+  /** 연결 확인(connected)까지 받은 상태로 돌려준다. 이후 도착한 메시지는 messages에 쌓인다 */
+  async function connectEvents(authorization = "Bearer good") {
+    const messages = [];
+    const client = new WebSocket(`ws://${HOST}:${port}/api/mobile/events`, { headers: { authorization } });
+    client.on("message", (message) => messages.push(JSON.parse(message.toString())));
+    await new Promise((resolve, reject) => { client.once("open", resolve); client.once("error", reject); });
+    await waitFor(() => messages.length === 1);
+    return { client, messages };
+  }
+
+  function sendCommand(client, fields, requestId = "r1") {
+    client.send(JSON.stringify({ type: "command", requestId, ...fields }));
+  }
+
+  async function nextResult(messages, requestId = "r1") {
+    await waitFor(() => messages.some((message) => message.requestId === requestId));
+    return messages.find((message) => message.requestId === requestId);
+  }
+
+  it("연결 확인에 지원하는 명령 목록을 싣는다", async () => {
+    const { messages } = await connectEvents();
+
+    expect(messages[0]).toEqual({ type: "connected", commands: ["delete-task", "get-tab-close-info", "close-tab"] });
+  });
+
+  it("삭제 결과는 요청한 소켓에만 돌려주고 다른 기기의 소켓에는 보내지 않는다", async () => {
+    const requester = await connectEvents("Bearer good");
+    const bystander = await connectEvents("Bearer second");
+
+    sendCommand(requester.client, { command: "delete-task", taskId: "task-1", isForced: false });
+    const result = await nextResult(requester.messages);
+    mobileEventListeners.forEach((listener) => listener({ type: "board-updated" }));
+    await waitFor(() => bystander.messages.length === 2);
+
+    expect(result).toEqual({ type: "command-result", requestId: "r1", ok: true, failedPeerCount: 0 });
+    expect(bridge.deleteMobileTask).toHaveBeenCalledExactlyOnceWith("task-1", false);
+    expect(bystander.messages.slice(1)).toEqual([{ type: "board-updated" }]);
+  });
+
+  it("커밋하지 않은 변경이 있으면 dirty-worktree로 알리고 강제 삭제 요청은 isForced를 넘긴다", async () => {
+    const { client, messages } = await connectEvents();
+    bridge.deleteMobileTask.mockRejectedValueOnce(Object.assign(new Error("dirty"), { name: "DirtyWorktreeError" }));
+
+    sendCommand(client, { command: "delete-task", taskId: "task-1" }, "first");
+    sendCommand(client, { command: "delete-task", taskId: "task-1", isForced: true }, "forced");
+
+    expect(await nextResult(messages, "first")).toMatchObject({ ok: false, code: "dirty-worktree" });
+    expect(await nextResult(messages, "forced")).toMatchObject({ ok: true });
+    expect(bridge.deleteMobileTask.mock.calls).toEqual([["task-1", false], ["task-1", true]]);
+  });
+
+  it("없는 태스크는 task-not-found로 알린다", async () => {
+    const { client, messages } = await connectEvents();
+    bridge.deleteMobileTask.mockResolvedValue(null);
+
+    sendCommand(client, { command: "delete-task", taskId: "missing" });
+
+    expect(await nextResult(messages)).toMatchObject({ ok: false, code: "task-not-found" });
+  });
+
+  it("탭 닫기는 지정한 pane만 브리지에 넘기고 닫힌 뒤의 surfaces를 돌려준다", async () => {
+    const { client, messages } = await connectEvents();
+    const surfaces = { taskId: "task-1", sessionType: "tmux", canResize: true, tabs: [] };
+    bridge.closeMobilePane.mockResolvedValue({ surfaces });
+
+    sendCommand(client, { command: "close-tab", taskId: "task-1", paneId: "%20" });
+
+    expect(await nextResult(messages)).toEqual({ type: "command-result", requestId: "r1", ok: true, surfaces });
+    expect(bridge.closeMobilePane).toHaveBeenCalledExactlyOnceWith("task-1", "%20");
+  });
+
+  it.each([
+    ["LastPaneError", "last-tab"],
+    ["PaneNotFoundError", "pane-not-found"],
+    ["SurfaceUnavailableError", "session-unavailable"],
+  ])("탭 닫기 중 %s는 %s로 알린다", async (errorName, code) => {
+    const { client, messages } = await connectEvents();
+    bridge.closeMobilePane.mockRejectedValue(Object.assign(new Error(errorName), { name: errorName, reason: "no-session" }));
+
+    sendCommand(client, { command: "close-tab", taskId: "task-1", paneId: "%20" });
+
+    expect(await nextResult(messages)).toMatchObject({ ok: false, code });
+  });
+
+  it("예상하지 못한 오류는 내부 사유를 숨기고 server-error로 알린다", async () => {
+    const { client, messages } = await connectEvents();
+    bridge.closeMobilePane.mockRejectedValue(new Error("tmux: /private/path failed"));
+
+    sendCommand(client, { command: "close-tab", taskId: "task-1", paneId: "%20" });
+
+    const result = await nextResult(messages);
+    expect(result).toMatchObject({ ok: false, code: "server-error" });
+    expect(JSON.stringify(result)).not.toContain("/private/path");
+  });
+
+  it("탭 닫기 정보는 실행 중인 프로세스 이름을 돌려준다", async () => {
+    const { client, messages } = await connectEvents();
+    bridge.getMobilePaneCloseInfo.mockResolvedValue({ processNames: ["vim"] });
+
+    sendCommand(client, { command: "get-tab-close-info", taskId: "task-1", paneId: "%20" });
+
+    expect(await nextResult(messages)).toEqual({ type: "command-result", requestId: "r1", ok: true, processNames: ["vim"] });
+  });
+
+  it("모르는 명령은 응답하고, requestId 없는 메시지는 응답 없이 소켓을 유지한다", async () => {
+    const { client, messages } = await connectEvents();
+
+    client.send(JSON.stringify({ type: "command", command: "delete-task", taskId: "task-1" }));
+    sendCommand(client, { command: "rename-task", taskId: "task-1" }, "unknown");
+    const unknown = await nextResult(messages, "unknown");
+
+    expect(unknown).toMatchObject({ ok: false, code: "unsupported-command" });
+    expect(messages).toHaveLength(2);
+    expect(client.readyState).toBe(WebSocket.OPEN);
+    expect(bridge.deleteMobileTask).not.toHaveBeenCalled();
+  });
+
+  it("바이너리 프레임은 명령으로 읽지 않는다", async () => {
+    const { client, messages } = await connectEvents();
+
+    client.send(Buffer.from(JSON.stringify({ type: "command", requestId: "bin", command: "delete-task", taskId: "task-1" })));
+    sendCommand(client, { command: "rename-task", taskId: "task-1" }, "after");
+    await nextResult(messages, "after");
+
+    expect(messages.some((message) => message.requestId === "bin")).toBe(false);
+    expect(bridge.deleteMobileTask).not.toHaveBeenCalled();
   });
 });
 
@@ -413,7 +545,7 @@ describe("모바일 알림함 경로", () => {
     notificationChangeListeners.forEach((listener) => listener());
 
     await waitFor(() => firstMessages.length === 2 && secondMessages.length === 2);
-    expect(firstMessages).toEqual([{ type: "connected" }, { type: "notifications-changed" }]);
+    expect(firstMessages).toEqual([{ type: "connected", commands: ["delete-task", "get-tab-close-info", "close-tab"] }, { type: "notifications-changed" }]);
     expect(secondMessages).toEqual(firstMessages);
     first.close();
     second.close();
@@ -1144,54 +1276,6 @@ describe("세션이 바뀐 태스크의 열린 스트림", () => {
     client.close();
     await closed;
     await waitFor(() => sessionChangeWatchers.size === 0);
-  });
-});
-
-describe("태스크 삭제 경로", () => {
-  function deleteTask(path = "/api/mobile/tasks/task-1", headers = { Authorization: "Bearer good" }) {
-    return request(path, { method: "DELETE", headers });
-  }
-
-  it("연결된 기기의 삭제는 변경이 있으면 거부하는 기본 정책으로 서비스에 넘긴다", async () => {
-    const response = await deleteTask();
-
-    expect(response).toEqual({ status: 200, body: { success: true, failedPeerCount: 0 } });
-    expect(bridge.deleteMobileTask).toHaveBeenCalledWith("task-1", false);
-  });
-
-  it("다른 데스크탑에 전파하지 못했으면 그 수를 함께 돌려 기기가 경고할 수 있게 한다", async () => {
-    bridge.deleteMobileTask.mockResolvedValueOnce({ failedPeerCount: 2 });
-
-    expect(await deleteTask()).toEqual({ status: 200, body: { success: true, failedPeerCount: 2 } });
-  });
-
-  it("force=true를 붙이면 강제 삭제로 넘긴다", async () => {
-    await deleteTask("/api/mobile/tasks/task-1?force=true");
-
-    expect(bridge.deleteMobileTask).toHaveBeenCalledWith("task-1", true);
-  });
-
-  it("토큰 없이는 인증 앞단에서 막혀 아무것도 지우지 않는다", async () => {
-    expect((await deleteTask(undefined, {})).status).toBe(401);
-    expect(bridge.deleteMobileTask).not.toHaveBeenCalled();
-  });
-
-  it("커밋하지 않은 변경 때문에 멈추면 409와 구분 코드로 기기가 강제 삭제를 고를 수 있게 한다", async () => {
-    bridge.deleteMobileTask.mockRejectedValue(Object.assign(new Error("/secret/path"), { name: "DirtyWorktreeError" }));
-
-    const response = await deleteTask();
-
-    expect(response).toEqual({
-      status: 409,
-      body: { success: false, code: "dirty-worktree", error: "커밋하지 않은 변경이 있습니다" },
-    });
-  });
-
-  it("없는 태스크는 404로, 예상하지 못한 실패는 경로를 숨긴 500으로 답한다", async () => {
-    bridge.deleteMobileTask.mockResolvedValueOnce(null).mockRejectedValueOnce(new Error("git -C /secret/path failed"));
-
-    expect((await deleteTask()).status).toBe(404);
-    expect(await deleteTask()).toEqual({ status: 500, body: { success: false, error: "서버 오류" } });
   });
 });
 
