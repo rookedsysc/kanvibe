@@ -223,6 +223,17 @@ tmux는 창 크기 정책과 분할 배치를 함께 보관했다가 마지막 �
 
 탭 추가는 인증된 `POST /api/mobile/tasks/:taskId/tabs`를 사용한다. 데스크탑의 기존 탭 생성 서비스를 재사용하며 tmux·Zellij·Herdr·일반 terminal 및 원격 SSH 대상의 worktree에서 셸을 연다. 탭 추가를 지원하는 데스크탑 빌드가 필요하다. 모바일 목록과 추가 요청 상태는 `common/providers.dart`의 `TaskSurfacesController`가 관리한다.
 
+### 태스크 삭제와 탭 닫기
+
+보드 카드를 길게 누르면 태스크를 삭제하고, 터미널 탭의 닫기(×) 버튼은 누른 탭 하나만 닫는다. 두 동작은 HTTP가 아니라 상태 WebSocket(`/api/mobile/events`)으로 데스크탑에 명령을 보낸다. 상태 시트의 삭제도 같은 경로를 쓴다.
+
+- 앱 → 데스크탑: `{type:"command", requestId, command, ...}`. `command`는 `delete-task`(`taskId`, `isForced`), `get-tab-close-info`(`taskId`, `paneId`), `close-tab`(`taskId`, `paneId`)다.
+- 데스크탑 → 앱: 요청한 소켓에만 `{type:"command-result", requestId, ok, ...}`를 보낸다. 실패는 `code`(`dirty-worktree`, `task-not-found`, `pane-not-found`, `last-tab`, `session-unavailable`, `invalid-command`, `unsupported-command`, `server-error`)와 한국어 `error`를 싣는다.
+- 데스크탑은 `connected` 이벤트의 `commands`로 지원하는 명령을 알린다. 이 목록이 없거나 명령이 빠져 있으면 앱은 아무것도 보내지 않고 "데스크탑 앱을 업데이트해 주세요"를 보여 준다. 이벤트 소켓이 열려 있지 않으면 즉시 연결 끊김 안내를 보여 준다.
+- 탭이 하나뿐이면 닫기 버튼이 비활성이고 데스크탑도 `last-tab`으로 거절한다. 실행 중인 프로세스가 있으면(`bash`·`zsh` 같은 유휴 셸 제외) 이름을 보여 주며 한 번 더 묻고, 조회가 실패해도 묻는다.
+
+파일 구성은 `common/network/desktop_command.dart`(명령 값과 예외), `common/network/desktop_client.dart`의 `runCommand`(requestId 매칭과 타임아웃), `common/providers.dart`의 `TaskSurfacesController.closeTab`(탭 목록 상태), `features/board/application/task_deletion.dart`(삭제 결과를 화면 안내로 바꿈)다. 데스크탑 쪽은 `electron/mobileCommands.js`가 명령을 검증해 `mobileBridgeService`에 넘긴다. 태스크 삭제용 HTTP `DELETE /api/mobile/tasks/:id`는 없앴고, 소켓 명령만 쓴다. 기기 검증은 `.maestro/flows/task-delete-tab-close.yaml`이며, 격리 데스크탑 fixture가 필요하다.
+
 ### 알림 상태 선택
 
 **알림 → 알림 설정**에서 현재 PC의 상태 변경 알림을 켜거나 끄고 Todo, Progress, Pending, Review, Done 중 받을 상태를 선택한다. 기본 선택은 Progress·Pending·Review이며, 전체 알림을 꺼도 선택한 상태는 유지한다. 선택한 상태가 없으면 상태 변경 알림을 받지 않는다. 설정은 현재 PC의 데스크탑과 모바일이 공유하고 앱을 다시 열어도 유지된다. 다른 PC는 해당 PC의 설정을 사용한다.

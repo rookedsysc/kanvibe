@@ -5,6 +5,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../../common/constants/app_colors.dart';
 import '../../../common/constants/app_sizes.dart';
 import '../../../common/constants/app_theme.dart';
+import '../../../common/network/desktop_command.dart';
 import '../../../common/providers.dart';
 import '../../board/domain/board_task.dart';
 import '../../board/domain/task_status.dart';
@@ -108,6 +109,93 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
         const SnackBar(content: Text('터미널 탭을 추가하지 못했습니다. 잠시 뒤 다시 시도해 주세요.')),
       );
     }
+  }
+
+  /// 닫아도 되는지 정한다. 실행 중인 프로세스가 있거나 조회가 실패하면 사용자에게 한 번 더 묻는다
+  Future<bool> _confirmCloseTab(MirrorPane tab) async {
+    final controller = ref.read(surfacesProvider(_task.id).notifier);
+    final List<String> processNames;
+    try {
+      processNames = await controller.fetchCloseProcesses(tab.id);
+    } on DesktopUpdateRequiredException {
+      _showNotice(desktopUpdateRequiredMessage);
+      return false;
+    } on DesktopDisconnectedException {
+      _showNotice(desktopDisconnectedMessage);
+      return false;
+    } catch (_) {
+      return _askCloseConfirmation(
+        '실행 중인 프로세스를 확인하지 못했습니다. 탭을 닫으면 그 안의 프로세스가 종료됩니다.',
+      );
+    }
+    if (processNames.isEmpty) {
+      return true;
+    }
+    return _askCloseConfirmation(
+      '${processNames.join(', ')} 실행 중인 탭을 닫으면 종료됩니다',
+    );
+  }
+
+  Future<bool> _askCloseConfirmation(String message) async {
+    if (!mounted) return false;
+    final isConfirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: AppColors.bgSurface,
+        title: const Text('탭을 닫을까요?'),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('취소'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            style: TextButton.styleFrom(foregroundColor: AppColors.statusError),
+            child: const Text('닫기'),
+          ),
+        ],
+      ),
+    );
+    return isConfirmed ?? false;
+  }
+
+  /// 누른 탭 하나만 닫는다. 선택한 탭을 닫으면 앞 탭으로, 맨 앞이면 다음 탭으로 옮긴다
+  Future<void> _closeTab(List<MirrorPane> tabs, MirrorPane tab) async {
+    if (!await _confirmCloseTab(tab) || !mounted) {
+      return;
+    }
+
+    final wasSelected = _selectedPaneId == null
+        ? tabs.first.id == tab.id
+        : _selectedPaneId == tab.id;
+    final closedIndex = tabs.indexWhere((pane) => pane.id == tab.id);
+    try {
+      final surfaces = await ref
+          .read(surfacesProvider(_task.id).notifier)
+          .closeTab(tab.id);
+      if (!mounted || surfaces == null) return;
+      if (wasSelected) {
+        final neighbor = closedIndex > 0
+            ? tabs[closedIndex - 1]
+            : tabs[closedIndex + 1];
+        setState(() => _selectedPaneId = neighbor.id);
+      }
+    } on DesktopCommandFailure catch (failure) {
+      _showNotice(failure.message);
+    } on DesktopUpdateRequiredException {
+      _showNotice(desktopUpdateRequiredMessage);
+    } on DesktopDisconnectedException {
+      _showNotice(desktopDisconnectedMessage);
+    } catch (_) {
+      _showNotice('탭을 닫지 못했습니다. 잠시 뒤 다시 시도해 주세요.');
+    }
+  }
+
+  void _showNotice(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(message)));
   }
 
   Future<void> _openInfoSheet() => showModalBottomSheet<void>(
@@ -294,6 +382,10 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
           onSelected: (index) =>
               setState(() => _selectedPaneId = tabs[index].id),
           onCreate: isCreating ? null : _createTerminalTab,
+          // 탭이 하나뿐이면 세션이 끝나 버리므로 닫을 수 없다
+          onClose: isCreating || tabs.length == 1
+              ? null
+              : (tab) => _closeTab(tabs, tab),
         ),
         Expanded(child: _buildSelectedSurface(tabs[selectedIndex], surfaces)),
       ],
@@ -321,12 +413,14 @@ class _SurfaceTabBar extends StatelessWidget {
     required this.selectedIndex,
     required this.onSelected,
     required this.onCreate,
+    required this.onClose,
   });
 
   final List<MirrorPane> tabs;
   final int selectedIndex;
   final ValueChanged<int> onSelected;
   final VoidCallback? onCreate;
+  final ValueChanged<MirrorPane>? onClose;
 
   @override
   Widget build(BuildContext context) {
@@ -347,6 +441,7 @@ class _SurfaceTabBar extends StatelessWidget {
                 tab: tabs[index],
                 isSelected: index == selectedIndex,
                 onTap: () => onSelected(index),
+                onClose: onClose == null ? null : () => onClose!(tabs[index]),
               ),
             ),
           ),
@@ -374,11 +469,15 @@ class _SurfaceTabButton extends StatelessWidget {
     required this.tab,
     required this.isSelected,
     required this.onTap,
+    required this.onClose,
   });
 
   final MirrorPane tab;
   final bool isSelected;
   final VoidCallback onTap;
+
+  /// null이면 닫을 수 없는 탭이다
+  final VoidCallback? onClose;
 
   @override
   Widget build(BuildContext context) {
@@ -392,8 +491,9 @@ class _SurfaceTabButton extends StatelessWidget {
         child: Container(
           width: 160,
           alignment: Alignment.center,
-          padding: const EdgeInsets.symmetric(horizontal: AppSizes.p12),
-          decoration: BoxDecoration(
+          padding: const EdgeInsets.only(left: AppSizes.p12),
+          // 밑줄이 높이를 차지하면 닫기 버튼이 최소 터치 크기보다 작아져 위에 덧그린다
+          foregroundDecoration: BoxDecoration(
             border: Border(
               bottom: BorderSide(
                 color: isSelected ? AppColors.brandPrimary : Colors.transparent,
@@ -401,28 +501,49 @@ class _SurfaceTabButton extends StatelessWidget {
               ),
             ),
           ),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.start,
+          child: Row(
             children: [
-              Flexible(
-                child: Text(
-                  tab.command.isEmpty ? tab.id : tab.command,
-                  overflow: TextOverflow.ellipsis,
-                  style: monoStyle(
-                    fontSize: 13,
-                    color: isSelected
-                        ? AppColors.textPrimary
-                        : AppColors.textMuted,
-                    fontWeight: isSelected ? FontWeight.w700 : FontWeight.w400,
-                  ),
+              Expanded(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Flexible(
+                      child: Text(
+                        tab.command.isEmpty ? tab.id : tab.command,
+                        overflow: TextOverflow.ellipsis,
+                        style: monoStyle(
+                          fontSize: 13,
+                          color: isSelected
+                              ? AppColors.textPrimary
+                              : AppColors.textMuted,
+                          fontWeight: isSelected
+                              ? FontWeight.w700
+                              : FontWeight.w400,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      '${tab.tabName} ${tab.id}',
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.labelSmall,
+                    ),
+                  ],
                 ),
               ),
-              const SizedBox(height: 2),
-              Text(
-                '${tab.tabName} ${tab.id}',
-                overflow: TextOverflow.ellipsis,
-                style: Theme.of(context).textTheme.labelSmall,
+              Semantics(
+                identifier: 'close-terminal-tab-${tab.id}',
+                child: IconButton(
+                  onPressed: onClose,
+                  tooltip: '탭 닫기',
+                  iconSize: AppSizes.p16,
+                  constraints: const BoxConstraints.tightFor(
+                    width: AppSizes.minTouchTarget,
+                    height: AppSizes.minTouchTarget,
+                  ),
+                  icon: const Icon(Icons.close),
+                ),
               ),
             ],
           ),

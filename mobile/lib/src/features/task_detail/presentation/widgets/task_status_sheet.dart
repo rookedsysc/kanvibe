@@ -5,8 +5,10 @@ import '../../../../common/constants/app_colors.dart';
 import '../../../../common/constants/app_sizes.dart';
 import '../../../../common/network/desktop_client.dart';
 import '../../../../common/providers.dart';
+import '../../../board/application/task_deletion.dart';
 import '../../../board/domain/board_task.dart';
 import '../../../board/domain/task_status.dart';
+import '../../../board/presentation/widgets/task_delete_dialogs.dart';
 
 /// 옮겨 갈 수 있는 상태. 데스크탑 상태 패널이 내놓는 네 가지와 같다.
 ///
@@ -98,11 +100,7 @@ class _TaskStatusSheetState extends ConsumerState<TaskStatusSheet> {
   }
 
   Future<void> _confirmAndDelete() async {
-    final isConfirmed = await _askConfirmation(
-      title: '이 작업을 삭제하시겠습니까?',
-      message: 'worktree·브랜치·세션이 함께 지워지고, 같은 태스크를 가진 다른 데스크탑에서도 삭제됩니다.',
-      confirmLabel: '삭제',
-    );
+    final isConfirmed = await confirmTaskDeletion(context);
     if (isConfirmed) {
       await _delete(isForced: false);
     }
@@ -122,48 +120,32 @@ class _TaskStatusSheetState extends ConsumerState<TaskStatusSheet> {
       _failureMessage = null;
     });
 
-    final int failedPeerCount;
-    try {
-      failedPeerCount = await ref
-          .read(desktopClientProvider)
-          .deleteTask(connection, widget.task.id, isForced: isForced);
-    } on DesktopRequestException catch (error) {
-      if (!mounted) {
-        return;
-      }
-      setState(() => _isDeleting = false);
-      if (error.statusCode == 409 && !isForced) {
-        await _confirmForcedDelete();
-        return;
-      }
-
-      // 이미 지워진 태스크는 지우려던 결과와 같으므로 보드로 돌아간다
-      if (error.statusCode == 404) {
-        _finishDeletion(failedPeerCount: 0);
-        return;
-      }
-      setState(() => _failureMessage = error.message ?? '태스크를 삭제하지 못했습니다.');
-      return;
-    } catch (_) {
-      if (!mounted) {
-        return;
-      }
-      setState(() {
-        _isDeleting = false;
-        _failureMessage = '데스크탑에 닿지 못했습니다. 잠시 뒤 다시 시도해 주세요.';
-      });
+    final outcome = await requestTaskDeletion(
+      ref.read(desktopClientProvider),
+      connection,
+      widget.task.id,
+      isForced: isForced,
+    );
+    if (!mounted) {
       return;
     }
 
-    _finishDeletion(failedPeerCount: failedPeerCount);
+    switch (outcome) {
+      case TaskDeletionSucceeded(:final failedPeerCount):
+        _finishDeletion(failedPeerCount: failedPeerCount);
+      case TaskDeletionNeedsForce():
+        setState(() => _isDeleting = false);
+        await _confirmForcedDelete();
+      case TaskDeletionFailed(:final message):
+        setState(() {
+          _isDeleting = false;
+          _failureMessage = message;
+        });
+    }
   }
 
   Future<void> _confirmForcedDelete() async {
-    final isConfirmed = await _askConfirmation(
-      title: '커밋하지 않은 변경이 있습니다',
-      message: '강제로 삭제하면 이 worktree의 커밋하지 않은 변경도 함께 사라집니다.',
-      confirmLabel: '강제 삭제',
-    );
+    final isConfirmed = await confirmForcedTaskDeletion(context);
     if (isConfirmed) {
       await _delete(isForced: true);
     }
@@ -175,33 +157,6 @@ class _TaskStatusSheetState extends ConsumerState<TaskStatusSheet> {
     if (mounted) {
       Navigator.of(context).pop(TaskDeleted(failedPeerCount: failedPeerCount));
     }
-  }
-
-  Future<bool> _askConfirmation({
-    required String title,
-    required String message,
-    required String confirmLabel,
-  }) async {
-    final isConfirmed = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        backgroundColor: AppColors.bgSurface,
-        title: Text(title),
-        content: Text(message),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('취소'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(true),
-            style: TextButton.styleFrom(foregroundColor: AppColors.statusError),
-            child: Text(confirmLabel),
-          ),
-        ],
-      ),
-    );
-    return isConfirmed ?? false;
   }
 
   String _moveFailureMessage(Object error) {
