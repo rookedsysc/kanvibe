@@ -77,6 +77,11 @@ vi.mock("@/entities/KanbanTask", () => ({
   },
 }));
 
+vi.mock("@/entities/PaneLayoutConfig", () => ({
+  PaneLayoutConfig: class PaneLayoutConfig {},
+  PaneLayoutType: {},
+}));
+
 vi.mock("typeorm", () => ({
   IsNull: vi.fn(),
 }));
