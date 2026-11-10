@@ -4,6 +4,7 @@ import { mkdtemp, rm, stat } from "fs/promises";
 import { tmpdir } from "os";
 import path from "path";
 import { setTimeout as delay } from "timers/promises";
+import { PaneLayoutType } from "@/entities/PaneLayoutConfig";
 import { execGit, isSSHTransportError } from "@/lib/gitOperations";
 import { buildHerdrCommand, buildHerdrSessionCleanupCommand, type TmuxPaneLayoutConfig } from "@/lib/worktree";
 import { buildSSHArgs, getKanvibeSSHConnectionHealthOptions, parseSSHConfig } from "@/lib/sshConfig";
@@ -178,7 +179,6 @@ async function bootstrapHerdrSession(sessionName: string, cwd: string, layout?: 
 
 async function applyHerdrLayout(sessionName: string, rootPaneId: string, cwd: string, layout?: TmuxPaneLayoutConfig | null, sshHost?: string | null): Promise<void> {
   if (!layout) return;
-  const { PaneLayoutType } = await import("@/entities/PaneLayoutConfig");
   const split = async (paneId: string, direction: "right" | "down") => {
     const result = await runHerdrCommand<{ pane: { pane_id: string } }>(sessionName, ["pane", "split", paneId, "--direction", direction, "--cwd", cwd], sshHost);
     return result.pane.pane_id;
