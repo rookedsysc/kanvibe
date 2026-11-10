@@ -20,6 +20,8 @@ DesktopClient clientReplying(int statusCode, String body) => DesktopClient(
 );
 
 void main() {
+  defineTlsPinningTests();
+
   test(
     'terminal shortcut uses authenticated pane-scoped POST and reads screen',
     () async {
@@ -366,5 +368,233 @@ void main() {
     final surfaces = await client.fetchSurfaces(_connection, 'task-1');
 
     expect(surfaces.tabs.single.name, 'kanvibe');
+  });
+  group('태스크 삭제', () {
+    test('인증 DELETE를 보내고 강제 삭제일 때만 force를 붙인다', () async {
+      final requests = <http.Request>[];
+      final client = DesktopClient(
+        httpClient: MockClient((request) async {
+          requests.add(request);
+          return http.Response(jsonEncode({'success': true}), 200);
+        }),
+      );
+
+      await client.deleteTask(_connection, 'task-1', isForced: false);
+      await client.deleteTask(_connection, 'task-1', isForced: true);
+
+      expect(requests.map((request) => request.method), ['DELETE', 'DELETE']);
+      expect(requests.first.url.path, '/api/mobile/tasks/task-1');
+      expect(requests.first.url.queryParameters, isEmpty);
+      expect(requests.last.url.queryParameters, {'force': 'true'});
+      expect(requests.first.headers['authorization'], 'Bearer test-token');
+    });
+
+    test('다른 데스크탑에 전파하지 못한 수를 돌려준다', () async {
+      final client = DesktopClient(
+        httpClient: MockClient(
+          (_) async => http.Response(
+            jsonEncode({'success': true, 'failedPeerCount': 2}),
+            200,
+          ),
+        ),
+      );
+
+      final failedPeerCount = await client.deleteTask(
+        _connection,
+        'task-1',
+        isForced: false,
+      );
+
+      expect(failedPeerCount, 2);
+    });
+
+    test('커밋하지 않은 변경으로 멈추면 409와 데스크탑 사유를 던진다', () async {
+      final client = DesktopClient(
+        httpClient: MockClient(
+          (_) async => http.Response.bytes(
+            utf8.encode(
+              jsonEncode({
+                'success': false,
+                'code': 'dirty-worktree',
+                'error': '커밋하지 않은 변경이 있습니다',
+              }),
+            ),
+            409,
+            headers: {'content-type': 'application/json; charset=utf-8'},
+          ),
+        ),
+      );
+
+      await expectLater(
+        client.deleteTask(_connection, 'task-1', isForced: false),
+        throwsA(
+          isA<DesktopRequestException>()
+              .having((error) => error.statusCode, 'statusCode', 409)
+              .having((error) => error.message, 'message', '커밋하지 않은 변경이 있습니다'),
+        ),
+      );
+    });
+  });
+}
+
+/// 데스크탑과 같은 자체 서명 인증서를 띄운다. 개인키를 저장소에 두지 않으려고 테스트마다 만든다
+Future<({SecurityContext context, String fingerprint})> createSelfSignedTls(
+  String commonName,
+) async {
+  final directory = await Directory.systemTemp.createTemp('kanvibe-tls-');
+  addTearDown(() => directory.delete(recursive: true));
+  final keyPath = '${directory.path}/key.pem';
+  final certificatePath = '${directory.path}/cert.pem';
+  final generated = await Process.run('openssl', [
+    'req',
+    '-x509',
+    '-newkey',
+    'rsa:2048',
+    '-nodes',
+    '-days',
+    '1',
+    '-subj',
+    '/CN=$commonName',
+    '-keyout',
+    keyPath,
+    '-out',
+    certificatePath,
+  ]);
+  expect(generated.exitCode, 0, reason: '${generated.stderr}');
+  final fingerprintOutput = await Process.run('openssl', [
+    'x509',
+    '-in',
+    certificatePath,
+    '-noout',
+    '-fingerprint',
+    '-sha256',
+  ]);
+  final fingerprint = (fingerprintOutput.stdout as String)
+      .split('=')
+      .last
+      .trim()
+      .replaceAll(':', '')
+      .toLowerCase();
+  return (
+    context: SecurityContext()
+      ..useCertificateChain(certificatePath)
+      ..usePrivateKey(keyPath),
+    fingerprint: fingerprint,
+  );
+}
+
+void defineTlsPinningTests() {
+  test('페어링은 TLS로 보내고 그때 본 인증서 지문을 돌려준다', () async {
+    final tls = await createSelfSignedTls('desktop');
+    final server = await HttpServer.bindSecure(
+      InternetAddress.loopbackIPv4,
+      0,
+      tls.context,
+    );
+    addTearDown(() => server.close(force: true));
+    server.listen((request) async {
+      expect(request.uri.path, '/api/mobile/pair');
+      request.response.write(
+        jsonEncode({'success': true, 'token': 'new-token'}),
+      );
+      await request.response.close();
+    });
+    final client = DesktopClient();
+    addTearDown(client.close);
+
+    final result = await client.pair(
+      host: '127.0.0.1',
+      port: server.port,
+      code: '123456',
+      deviceName: 'phone',
+    );
+
+    expect(result?.token, 'new-token');
+    expect(result?.certificateFingerprint, tls.fingerprint);
+  });
+
+  test('고정한 지문과 같은 인증서에는 HTTP와 WebSocket 모두 연결한다', () async {
+    final tls = await createSelfSignedTls('desktop');
+    final server = await HttpServer.bindSecure(
+      InternetAddress.loopbackIPv4,
+      0,
+      tls.context,
+    );
+    addTearDown(() => server.close(force: true));
+    server.listen((request) async {
+      if (WebSocketTransformer.isUpgradeRequest(request)) {
+        final socket = await WebSocketTransformer.upgrade(request);
+        socket.add(jsonEncode({'type': 'ready'}));
+        await socket.close();
+        return;
+      }
+      request.response.write(jsonEncode({'tasks': <Object>[]}));
+      await request.response.close();
+    });
+    final client = DesktopClient();
+    addTearDown(client.close);
+    final connection = DesktopConnection(
+      host: '127.0.0.1',
+      port: server.port,
+      token: 'token',
+      certificateFingerprint: tls.fingerprint,
+    );
+
+    expect(connection.buildHttpUri('/x').scheme, 'https');
+    await client.unpairDevice(connection);
+    final stream = client.openEventStream(connection);
+    addTearDown(stream.close);
+    expect(await stream.events.toList(), [
+      {'type': 'ready'},
+    ]);
+  });
+
+  test('고정한 지문과 다른 인증서면 토큰을 보내기 전에 연결을 끊는다', () async {
+    final tls = await createSelfSignedTls('impostor');
+    final server = await HttpServer.bindSecure(
+      InternetAddress.loopbackIPv4,
+      0,
+      tls.context,
+    );
+    addTearDown(() => server.close(force: true));
+    var receivedRequestCount = 0;
+    server.listen((request) async {
+      receivedRequestCount += 1;
+      await request.response.close();
+    }, onError: (_) {});
+    final client = DesktopClient();
+    addTearDown(client.close);
+    final connection = DesktopConnection(
+      host: '127.0.0.1',
+      port: server.port,
+      token: 'secret-token',
+      certificateFingerprint: 'a' * 64,
+    );
+
+    await expectLater(client.unpairDevice(connection), throwsA(anything));
+    final stream = client.openEventStream(connection);
+    addTearDown(stream.close);
+    await expectLater(stream.events.drain<void>(), throwsA(anything));
+    expect(receivedRequestCount, 0);
+  });
+
+  test('지문을 저장하고 복원한다. 지문 없는 옛 연결은 평문으로 남는다', () {
+    const pinned = DesktopConnection(
+      host: 'pc',
+      port: 9746,
+      token: 't',
+      certificateFingerprint: 'abc',
+    );
+    final restored = DesktopConnection.fromJson(pinned.toJson());
+    expect(restored?.certificateFingerprint, 'abc');
+    expect(restored?.buildWebSocketUri('/s', const {}).scheme, 'wss');
+
+    final legacy = DesktopConnection.fromJson({
+      'host': 'pc',
+      'port': 9736,
+      'token': 't',
+    });
+    expect(legacy?.isEncrypted, isFalse);
+    expect(legacy?.buildHttpUri('/x').scheme, 'http');
   });
 }

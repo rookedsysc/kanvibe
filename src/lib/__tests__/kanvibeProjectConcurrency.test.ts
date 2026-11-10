@@ -9,7 +9,13 @@ import { TaskPriority } from "@/entities/TaskPriority";
 
 const execFileAsync = promisify(execFile);
 vi.mock("@/lib/gitOperations", () => ({
-  execGit: async (command: string) => (await execFileAsync("sh", ["-c", command])).stdout,
+  execGit: async (command: string, _sshHost: string, options?: { remoteStdin?: string }) => {
+    const execution = execFileAsync("sh", ["-c", command]);
+    /** 실제 전송 경로처럼, 명령이 입력을 다 읽기 전에 끝나 생기는 EPIPE는 종료 코드로 판정한다 */
+    execution.child.stdin?.on("error", () => undefined);
+    execution.child.stdin?.end(options?.remoteStdin ?? "");
+    return (await execution).stdout;
+  },
 }));
 import { writeKanvibeProjectColor, writeKanvibeProjectPriority } from "@/lib/kanvibeProjectState";
 

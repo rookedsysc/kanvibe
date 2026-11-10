@@ -17,6 +17,9 @@ const connectTerminalSessionMock = vi.fn();
 const updateTaskStatusMock = vi.fn();
 const getProjectBranchesMock = vi.fn();
 const getTaskByIdMock = vi.fn();
+const deleteTaskAcrossTargetsMock = vi.fn();
+const findProjectOneByMock = vi.fn();
+const propagateTaskRegistrationToPeersMock = vi.fn();
 const getTaskAiSessionsMock = vi.fn();
 const getTaskAiSessionDetailMock = vi.fn();
 const attachTaskTerminalMock = vi.fn();
@@ -81,6 +84,11 @@ vi.mock("@/lib/gitOperations", () => ({
 
 vi.mock("@/lib/database", () => ({
   getTaskRepository: async () => ({ findOneBy: findOneByMock }),
+  getProjectRepository: async () => ({ findOneBy: findProjectOneByMock }),
+}));
+
+vi.mock("@/desktop/main/services/taskTargetPropagationService", () => ({
+  propagateTaskRegistrationToPeers: (...args: unknown[]) => propagateTaskRegistrationToPeersMock(...args),
 }));
 
 vi.mock("@/desktop/main/services/kanbanService", () => ({
@@ -88,6 +96,7 @@ vi.mock("@/desktop/main/services/kanbanService", () => ({
   getTaskById: (taskId: string) => getTaskByIdMock(taskId),
   getTasksByStatus: async () => ({ tasks: {} }),
   createTask: (input: unknown) => createTaskMock(input),
+  deleteTaskAcrossTargets: (...args: unknown[]) => deleteTaskAcrossTargetsMock(...args),
   updateTaskStatus: (taskId: string, status: string) => updateTaskStatusMock(taskId, status),
 }));
 vi.mock("@/desktop/main/services/projectService", () => ({
@@ -110,6 +119,7 @@ const {
   claimPaneViewport,
   createMobileTask,
   createMobileTerminalTab,
+  deleteMobileTask,
   getMobileBoard,
   getMobileAiSessions,
   getMobileAiSessionDetail,
@@ -237,6 +247,10 @@ beforeEach(() => {
   spawnMock.mockReset();
   createTaskMock.mockReset();
   createTaskMock.mockResolvedValue({ id: "task-1" });
+  deleteTaskAcrossTargetsMock.mockReset();
+  findProjectOneByMock.mockReset();
+  propagateTaskRegistrationToPeersMock.mockReset();
+  propagateTaskRegistrationToPeersMock.mockResolvedValue([]);
   updateTaskStatusMock.mockReset();
   updateTaskStatusMock.mockResolvedValue({ id: "task-1" });
   getProjectBranchesMock.mockReset();
@@ -1122,6 +1136,31 @@ describe("모바일 태스크 생성", () => {
     });
   });
 
+  it("연결된 데스크탑이 worktree를 만든 뒤 같은 프로젝트의 다른 데스크탑에는 task 등록만 전파한다", async () => {
+    createTaskMock.mockResolvedValue({
+      id: "task-1",
+      projectId: "project-1",
+      branchName: "feat/mobile-create",
+      worktreePath: "/remote/repo__worktrees/feat-mobile-create",
+    });
+    findProjectOneByMock.mockResolvedValue({ id: "project-1", repoPath: "/remote/repo", sshHost: "devbox" });
+    propagateTaskRegistrationToPeersMock.mockResolvedValue([
+      { url: "http://10.0.0.9:9736", isSuccess: false, httpStatus: "000", message: "연결할 수 없습니다" },
+    ]);
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    const createdTask = await createMobileTask(draft);
+
+    expect(createdTask).toMatchObject({ id: "task-1" });
+    expect(propagateTaskRegistrationToPeersMock).toHaveBeenCalledWith("/remote/repo", "feat/mobile-create", "devbox");
+  });
+
+  it("worktree 없이 만들어진 task는 다른 데스크탑에 전파하지 않는다", async () => {
+    await createMobileTask(draft);
+
+    expect(propagateTaskRegistrationToPeersMock).not.toHaveBeenCalled();
+  });
+
   it("셸이 펼치는 문자가 든 브랜치 이름은 데스크탑에 닿기 전에 막는다", async () => {
     await expect(createMobileTask({ ...draft, branchName: 'x"; touch /tmp/pwned; echo "' })).rejects.toThrow(
       /브랜치 이름/,
@@ -1154,6 +1193,34 @@ describe("모바일 태스크 생성", () => {
   });
 });
 
+
+describe("모바일 태스크 삭제", () => {
+  it("기본 삭제는 커밋하지 않은 변경을 거부하고 다른 데스크탑으로 전파하며, 전파하지 못한 데스크탑 수를 돌려준다", async () => {
+    deleteTaskAcrossTargetsMock.mockResolvedValue({
+      isDeleted: true,
+      peerResults: [
+        { url: "http://10.0.0.7:9736", isSuccess: true, httpStatus: "200", message: "ok" },
+        { url: "http://10.0.0.9:9736", isSuccess: false, httpStatus: "000", message: "연결할 수 없습니다" },
+      ],
+    });
+
+    await expect(deleteMobileTask("task-1", false)).resolves.toEqual({ failedPeerCount: 1 });
+    expect(deleteTaskAcrossTargetsMock).toHaveBeenCalledWith("task-1", {
+      shouldRejectDirtyWorktree: true,
+      shouldPropagateToPeers: true,
+    });
+  });
+
+  it("강제 삭제는 변경이 있어도 지우고, 없는 태스크면 null을 돌려준다", async () => {
+    deleteTaskAcrossTargetsMock.mockResolvedValue({ isDeleted: false, peerResults: [] });
+
+    await expect(deleteMobileTask("missing-task", true)).resolves.toBeNull();
+    expect(deleteTaskAcrossTargetsMock).toHaveBeenCalledWith("missing-task", {
+      shouldRejectDirtyWorktree: false,
+      shouldPropagateToPeers: true,
+    });
+  });
+});
 describe("모바일 태스크 상태 이동", () => {
   it("아는 상태는 데스크탑 경로로 넘긴다", async () => {
     await updateMobileTaskStatus("task-1", "review");

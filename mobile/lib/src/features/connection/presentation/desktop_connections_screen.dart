@@ -159,11 +159,22 @@ class _DesktopConnectionsScreenState
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
-                        subtitle: Text(
-                          connection.address,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: monoStyle(fontSize: 12),
+                        subtitle: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              connection.address,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: monoStyle(fontSize: 12),
+                            ),
+                            if (!connection.isEncrypted)
+                              Text(
+                                '암호화되지 않은 연결입니다. PC에서 새 코드를 받아 다시 연결해 주세요.',
+                                style: Theme.of(context).textTheme.bodySmall
+                                    ?.copyWith(color: AppColors.statusError),
+                              ),
+                          ],
                         ),
                         selected: selected,
                         selectedTileColor: AppColors.brandSubtle,
