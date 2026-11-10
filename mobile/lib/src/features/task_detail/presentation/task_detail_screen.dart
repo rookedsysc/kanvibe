@@ -117,14 +117,33 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
   );
 
   Future<void> _openStatusSheet() async {
-    final movedStatus = await showModalBottomSheet<TaskStatus>(
+    final result = await showModalBottomSheet<TaskStatusSheetResult>(
       context: context,
       backgroundColor: AppColors.bgSurface,
       builder: (_) => TaskStatusSheet(task: _task),
     );
 
-    if (movedStatus != null && mounted) {
-      setState(() => _task = _task.withStatus(movedStatus));
+    if (!mounted) {
+      return;
+    }
+    switch (result) {
+      case TaskStatusMoved(:final status):
+        setState(() => _task = _task.withStatus(status));
+      case TaskDeleted(:final failedPeerCount):
+        // 앱 전체의 messenger에 띄워야 보드로 돌아간 뒤에도 경고가 보인다
+        if (failedPeerCount > 0) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                '다른 데스크탑 $failedPeerCount곳에는 아직 남아 있습니다. 그 데스크탑이 켜지면 직접 삭제해 주세요.',
+              ),
+            ),
+          );
+        }
+        // 지운 태스크의 화면에는 비출 pane이 없으니 보드로 돌아간다
+        Navigator.of(context).pop();
+      case null:
+        break;
     }
   }
 

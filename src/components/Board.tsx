@@ -28,12 +28,13 @@ import { useUnreadNotificationCountByTask } from "@/desktop/renderer/hooks/useUn
 import {
   TASK_KIND_FILTER_VALUES,
   useTaskKindFilterParams,
-  type TaskKindFilter,
 } from "@/desktop/renderer/hooks/useTaskKindFilterParams";
 import { useBoardSortPreference } from "@/desktop/renderer/hooks/useBoardSortPreference";
 import {
+  buildProjectFilterSet,
   buildProjectRootPriorityMap,
-  isProjectRootTask,
+  matchesProjectFilter,
+  matchesTaskKindFilter,
   sortTasksForBoard,
 } from "@/desktop/renderer/utils/boardTaskSort";
 import { DEFAULT_LOCALE, SUPPORTED_LOCALES } from "@/desktop/renderer/utils/locales";
@@ -276,21 +277,6 @@ function extractMainRepoPath(repoPath: string): string | null {
   return repoPath.slice(0, worktreeIndex);
 }
 
-function matchesTaskKindFilter(
-  task: KanbanTask,
-  taskKindFilter: TaskKindFilter,
-  projectLookup: Map<string, Project>,
-): boolean {
-  if (taskKindFilter === "all") return true;
-
-  const isRootTask = isProjectRootTask(task, projectLookup);
-  return taskKindFilter === "project" ? isRootTask : !isRootTask;
-}
-
-function matchesProjectFilter(task: KanbanTask, projectFilterSet: Set<string> | null): boolean {
-  return !projectFilterSet || Boolean(task.projectId && projectFilterSet.has(task.projectId));
-}
-
 function openSettingsPage() {
   window.location.hash = `#/${getCurrentBoardLocale()}/settings`;
 }
@@ -443,25 +429,10 @@ export default function Board({
   );
 
   /** 선택된 프로젝트 + worktree 프로젝트 ID 집합. null이면 전체 표시 */
-  const projectFilterSet = useMemo(() => {
-    if (selectedProjectIds.length === 0) return null;
-
-    const matchingIds = new Set<string>();
-
-    for (const id of selectedProjectIds) {
-      const mainProject = projects.find((p) => p.id === id);
-      if (!mainProject) continue;
-
-      matchingIds.add(mainProject.id);
-      for (const p of projects) {
-        if (p.repoPath.startsWith(mainProject.repoPath + "__worktrees")) {
-          matchingIds.add(p.id);
-        }
-      }
-    }
-
-    return matchingIds.size > 0 ? matchingIds : null;
-  }, [selectedProjectIds, projects]);
+  const projectFilterSet = useMemo(
+    () => buildProjectFilterSet(selectedProjectIds, projects),
+    [selectedProjectIds, projects],
+  );
 
   /** 프로젝트 + task kind 필터가 적용된 태스크 목록 */
   const hasActiveBoardTaskFilter = projectFilterSet !== null || taskKindFilter !== "all";

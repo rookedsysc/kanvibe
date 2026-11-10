@@ -24,12 +24,17 @@ const mockListPairedMobileDevices = vi.fn();
 const mockUnpairMobileDevice = vi.fn();
 const mockReadMobilePairingCode = vi.fn();
 
+const mockReadMobileConnectionSettings = vi.fn(async () => ({ mobileTlsPort: 9746, isLanPlaintextAllowed: false }));
+const mockUpdateLanPlaintextAllowed = vi.fn(async (_isAllowed: boolean) => undefined);
+
 vi.mock("@/desktop/renderer/actions/mobileBridge", () => ({
   startMobilePairing: () => mockStartMobilePairing(),
   stopMobilePairing: () => mockStopMobilePairing(),
   listPairedMobileDevices: () => mockListPairedMobileDevices(),
   unpairMobileDevice: (deviceId: string) => mockUnpairMobileDevice(deviceId),
   readMobilePairingCode: () => mockReadMobilePairingCode(),
+  readMobileConnectionSettings: () => mockReadMobileConnectionSettings(),
+  updateLanPlaintextAllowed: (isAllowed: boolean) => mockUpdateLanPlaintextAllowed(isAllowed),
 }));
 
 const PAIRED_DEVICE = {
@@ -96,6 +101,30 @@ describe("MobilePairingSettings", () => {
 
     await waitFor(() => expect(screen.queryByText("123456")).toBeNull());
     expect(mockStopMobilePairing).toHaveBeenCalled();
+  });
+
+  it("모바일 TLS 포트를 안내하고 LAN 평문 허용을 저장한다", async () => {
+    render(<MobilePairingSettings />);
+
+    const toggle = await screen.findByRole("checkbox");
+    expect(screen.getByText(/9746/)).toBeTruthy();
+    expect((toggle as HTMLInputElement).checked).toBe(false);
+
+    await userEvent.click(toggle);
+
+    expect(mockUpdateLanPlaintextAllowed).toHaveBeenCalledWith(true);
+    await waitFor(() => expect((toggle as HTMLInputElement).checked).toBe(true));
+  });
+
+  it("LAN 평문 설정 저장이 실패하면 무엇이 안 됐는지 알려 주고 체크를 되돌린다", async () => {
+    mockUpdateLanPlaintextAllowed.mockRejectedValueOnce(new Error("db down"));
+    render(<MobilePairingSettings />);
+
+    const toggle = await screen.findByRole("checkbox");
+    await userEvent.click(toggle);
+
+    expect(await screen.findByText("Could not change the LAN plaintext setting.")).toBeTruthy();
+    expect((toggle as HTMLInputElement).checked).toBe(false);
   });
 
   it("연결된 기기를 목록으로 보여 준다", async () => {

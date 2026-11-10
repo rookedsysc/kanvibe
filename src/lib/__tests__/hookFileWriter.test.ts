@@ -10,6 +10,10 @@ vi.mock("@/lib/gitOperations", () => ({
 
 const mockGetHookServerUrl = vi.fn();
 
+vi.mock("@/desktop/main/services/appSettingsService", () => ({
+  getOrCreateHookClientId: async () => "1b9d6bcd-bbfd-4b2d-9b5d-ab8dfbbd4bed",
+}));
+
 vi.mock("@/lib/hookEndpoint", () => ({
   getHookServerUrl: (...args: unknown[]) => mockGetHookServerUrl(...args),
 }));
@@ -44,8 +48,9 @@ describe("writeHookProviderFiles — 원격 설치", () => {
     expect(mockExecGit).toHaveBeenCalledTimes(1);
     const [command, sshHost] = mockExecGit.mock.calls[0];
     expect(sshHost).toBe("remote-host");
-    expect(Buffer.byteLength(String(command))).toBeLessThan(700);
-    expect(String(command)).toContain("/api/install/hooks.sh?token=");
+    expect(Buffer.byteLength(String(command))).toBeLessThan(1500);
+    expect(String(command)).toContain("/api/install/hooks.sh'");
+    expect(String(command)).toContain("1b9d6bcd-bbfd-4b2d-9b5d-ab8dfbbd4bed.sock");
     expect(String(command)).not.toContain("base64 -d");
   });
 
@@ -71,7 +76,7 @@ describe("writeHookProviderFiles — 원격 설치", () => {
     await writeHookProviderFiles(hookFiles, "remote-host");
 
     // Then
-    const issuedToken = String(mockExecGit.mock.calls[0][0]).match(/token=([0-9a-f]+)/)?.[1];
+    const issuedToken = String(mockExecGit.mock.calls[0][0]).match(/x-kanvibe-install-token: ([0-9a-f]+)/)?.[1];
     expect(issuedToken).toBeDefined();
     expect(readHookInstallScript(issuedToken)).toBeNull();
   });
@@ -89,7 +94,7 @@ describe("writeHookProviderFiles — 원격 설치", () => {
     await writeHookProviderFiles(hookFiles, "remote-host");
 
     // Then
-    const issuedToken = String(mockExecGit.mock.calls[0][0]).match(/token=([0-9a-f]+)/)?.[1];
+    const issuedToken = String(mockExecGit.mock.calls[0][0]).match(/x-kanvibe-install-token: ([0-9a-f]+)/)?.[1];
     expect(issuedToken).toBeDefined();
     expect(readHookInstallScript(issuedToken)).toBeNull();
     warn.mockRestore();

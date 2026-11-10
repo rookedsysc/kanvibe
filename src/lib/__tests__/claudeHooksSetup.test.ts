@@ -4,6 +4,13 @@ import { join } from "path";
 import { tmpdir } from "os";
 import { setupClaudeHooks, getClaudeHooksStatus } from "../claudeHooksSetup";
 
+/** 실제로는 데스크탑 설치마다 다른 ID다. 한 프로세스에서 여러 client를 흉내 내므로 부를 때마다 다른 ID를 준다 */
+let nextHookClientNumber = 0;
+vi.mock("@/desktop/main/services/appSettingsService", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/desktop/main/services/appSettingsService")>()),
+  getOrCreateHookClientId: async () => `client-${++nextHookClientNumber}`,
+}));
+
 describe("claudeHooksSetup", () => {
   let tempDir: string;
 

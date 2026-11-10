@@ -1,4 +1,4 @@
-import { access, mkdir, readFile, readdir, rename, rmdir, stat, unlink, writeFile } from "fs/promises";
+import { access, chmod, lstat, mkdir, readFile, readdir, rename, rmdir, stat, unlink, writeFile } from "fs/promises";
 import { randomUUID } from "crypto";
 import { homedir } from "os";
 import path from "path";
@@ -47,6 +47,26 @@ export async function pathExists(targetPath: string, sshHost?: string | null): P
     sshHost,
   );
   return output.trim() === "1";
+}
+
+/** 경로 가운데 심볼릭 링크인 첫 경로를 돌려준다. 없는 경로는 링크가 아니다 */
+export async function findSymbolicLinkPath(targetPaths: string[], sshHost?: string | null): Promise<string | null> {
+  if (!sshHost) {
+    for (const targetPath of targetPaths) {
+      const isSymbolicLink = await lstat(targetPath).then((entry) => entry.isSymbolicLink()).catch(() => false);
+      if (isSymbolicLink) {
+        return targetPath;
+      }
+    }
+    return null;
+  }
+
+  const quotedPaths = targetPaths.map(quoteShellArgument).join(" ");
+  const output = await execGit(
+    `for __kanvibe_path in ${quotedPaths}; do if test -L "$__kanvibe_path"; then printf '%s' "$__kanvibe_path"; break; fi; done`,
+    sshHost,
+  );
+  return output.trim() || null;
 }
 
 export async function readTextFile(targetPath: string, sshHost?: string | null): Promise<string> {
@@ -153,11 +173,19 @@ export async function writeTextFile(targetPath: string, content: string, sshHost
   );
 }
 
-/** 저장소 측 잠금으로 여러 프로세스와 SSH client의 읽기·수정·교체를 직렬화한다. */
+function buildRemoteUmaskCommand(mode?: number): string {
+  return mode !== undefined ? `umask ${(~mode & 0o777).toString(8)} && ` : "";
+}
+
+/**
+ * 저장소 측 잠금으로 여러 프로세스와 SSH client의 읽기·수정·교체를 직렬화한다.
+ * `mode`를 주면 내용이 담기는 임시 파일부터 그 권한으로 만들어, 교체 전후 어느 순간에도 넓은 권한으로 열리지 않는다.
+ */
 export async function updateTextFile(
   targetPath: string,
   update: (content: string) => string,
   sshHost?: string | null,
+  mode?: number,
 ): Promise<void> {
   const lockPath = `${targetPath}.lock`;
   const temporaryPath = `${targetPath}.${randomUUID()}.tmp`;
@@ -195,23 +223,16 @@ export async function updateTextFile(
     }
     const nextContent = update(currentContent);
     if (sshHost) {
-      const encodedContent = Buffer.from(nextContent, "utf-8").toString("base64");
-      // 큰 설정도 Linux의 단일 명령 인자 제한을 넘지 않도록 나눠 전송한다.
-      // 잠금을 잡은 임시 파일만 갱신하고 마지막 조각 뒤에 원자적으로 교체한다.
-      const chunkSize = 32 * 1024;
-      for (let offset = 0; offset < encodedContent.length || offset === 0; offset += chunkSize) {
-        const chunk = encodedContent.slice(offset, offset + chunkSize);
-        const redirect = offset === 0 ? ">" : ">>";
-        const publish = offset + chunkSize >= encodedContent.length
-          ? ` && mv -f ${quoteShellArgument(temporaryPath)} ${quoteShellArgument(targetPath)}`
-          : "";
-        await execGit(
-          `printf '%s' ${quoteShellArgument(chunk)} | (base64 -d 2>/dev/null || base64 -D) ${redirect} ${quoteShellArgument(temporaryPath)}${publish}`,
-          sshHost,
-        );
-      }
+      await execGit(
+        buildRemoteStdinPublishCommand(temporaryPath, targetPath, Buffer.byteLength(nextContent), mode),
+        sshHost,
+        { remoteStdin: Buffer.from(nextContent, "utf-8").toString("base64") },
+      );
     } else {
-      await writeFile(temporaryPath, nextContent, { encoding: "utf-8", flag: "wx" });
+      await writeFile(temporaryPath, nextContent, { encoding: "utf-8", flag: "wx", ...(mode !== undefined ? { mode } : {}) });
+      if (mode !== undefined) {
+        await chmod(temporaryPath, mode);
+      }
       await rename(temporaryPath, targetPath);
     }
   } finally {
@@ -224,6 +245,24 @@ export async function updateTextFile(
       await rmdir(lockPath);
     }
   }
+}
+
+/**
+ * 표준 입력의 base64를 임시 파일에 풀어 대상 파일로 교체하는 명령을 만든다.
+ * 내용을 명령줄에 싣지 않아 `ps`와 프로세스 감사 로그에 자격 증명이 남지 않는다.
+ * 로그인 프로파일이 입력을 먼저 소비하면 빈 파일이 생기므로, 크기가 맞을 때만 교체해 기존 내용을 잃지 않는다.
+ */
+function buildRemoteStdinPublishCommand(
+  temporaryPath: string,
+  targetPath: string,
+  expectedByteLength: number,
+  mode?: number,
+): string {
+  const quotedTemporaryPath = quoteShellArgument(temporaryPath);
+  const chmodCommand = mode !== undefined ? `chmod ${mode.toString(8)} ${quotedTemporaryPath} && ` : "";
+  return `(${buildRemoteUmaskCommand(mode)}(base64 -d 2>/dev/null || base64 -D) > ${quotedTemporaryPath})`
+    + ` && [ "$(wc -c < ${quotedTemporaryPath} | tr -d ' ')" = "${expectedByteLength}" ]`
+    + ` && ${chmodCommand}mv -f ${quotedTemporaryPath} ${quoteShellArgument(targetPath)}`;
 }
 
 /**

@@ -137,3 +137,18 @@ export async function getThemePreference(): Promise<ThemePreference> {
 export function setThemePreference(themePreference: ThemePreference): Promise<void> {
   return setAppSetting(THEME_PREFERENCE_KEY, themePreference);
 }
+
+/** 보드 화면을 칸반 열로 볼지, 왼쪽 task 리스트와 오른쪽 터미널의 워크스페이스로 볼지 */
+export type BoardViewMode = "kanban" | "workspace";
+
+const BOARD_VIEW_MODE_KEY = "board_view_mode";
+const BOARD_VIEW_MODES = new Set<BoardViewMode>(["kanban", "workspace"]);
+
+export async function getBoardViewMode(): Promise<BoardViewMode> {
+  const value = await getAppSetting(BOARD_VIEW_MODE_KEY);
+  return BOARD_VIEW_MODES.has(value as BoardViewMode) ? value as BoardViewMode : "kanban";
+}
+
+export function setBoardViewMode(boardViewMode: BoardViewMode): Promise<void> {
+  return setAppSetting(BOARD_VIEW_MODE_KEY, boardViewMode);
+}

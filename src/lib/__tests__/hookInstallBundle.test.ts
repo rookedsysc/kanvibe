@@ -6,6 +6,7 @@ import {
   buildHookInstallScript,
   clearHookInstallScripts,
   HOOK_INSTALL_SCRIPT_PATH,
+  HOOK_INSTALL_TOKEN_HEADER,
   HOOK_INSTALL_SUCCESS_MARKER,
   issueHookInstallScript,
   readHookInstallScript,
@@ -70,6 +71,7 @@ describe("buildHookInstallScript", () => {
   });
 });
 
+const CLIENT_ID = "1b9d6bcd-bbfd-4b2d-9b5d-ab8dfbbd4bed";
 const sampleTicket = { token: "token-value", scriptSha256: "a".repeat(64) };
 
 describe("issueHookInstallScript / readHookInstallScript", () => {
@@ -176,14 +178,25 @@ describe("buildHookInstallBootstrapCommand", () => {
     const ticket = issueHookInstallScript(hookFiles);
 
     // When
-    const command = buildHookInstallBootstrapCommand("http://192.168.0.10:9736", ticket);
+    const command = buildHookInstallBootstrapCommand("http://192.168.0.10:9736", ticket, CLIENT_ID);
 
     // Then
-    expect(Buffer.byteLength(command)).toBeLessThan(700);
+    expect(Buffer.byteLength(command)).toBeLessThan(1500);
     expect(command).not.toContain("base64 -d");
-    expect(command).toContain(
-      `http://192.168.0.10:9736${HOOK_INSTALL_SCRIPT_PATH}?token=${ticket.token}`,
-    );
+    expect(command).toContain(`http://192.168.0.10:9736${HOOK_INSTALL_SCRIPT_PATH}'`);
+  });
+
+  it("설치 토큰은 URL이 아니라 헤더로 보내 접근 로그에 남지 않게 한다", () => {
+    // Given
+    const ticket = issueHookInstallScript(hookFiles);
+
+    // When
+    const command = buildHookInstallBootstrapCommand("http://192.168.0.10:9736", ticket, CLIENT_ID);
+
+    // Then
+    expect(command).not.toContain("?token=");
+    expect(command).toContain(`-H '${HOOK_INSTALL_TOKEN_HEADER}: ${ticket.token}'`);
+    expect(command).toContain(`--header='${HOOK_INSTALL_TOKEN_HEADER}: ${ticket.token}'`);
   });
 
   it("should keep the SSH command the same size no matter how large the install payload is", () => {
@@ -198,9 +211,10 @@ describe("buildHookInstallBootstrapCommand", () => {
     const smallCommand = buildHookInstallBootstrapCommand(
       "http://192.168.0.10:9736",
       issueHookInstallScript(hookFiles),
+      CLIENT_ID,
     );
     const bulkyTicket = issueHookInstallScript(bulkyFiles);
-    const bulkyCommand = buildHookInstallBootstrapCommand("http://192.168.0.10:9736", bulkyTicket);
+    const bulkyCommand = buildHookInstallBootstrapCommand("http://192.168.0.10:9736", bulkyTicket, CLIENT_ID);
 
     // Then
     expect(Buffer.byteLength(readHookInstallScript(bulkyTicket.token) ?? "")).toBeGreaterThan(100_000);
@@ -209,16 +223,16 @@ describe("buildHookInstallBootstrapCommand", () => {
 
   it("should fall back to wget when curl is missing", () => {
     // When
-    const command = buildHookInstallBootstrapCommand("http://192.168.0.10:9736", sampleTicket);
+    const command = buildHookInstallBootstrapCommand("http://192.168.0.10:9736", sampleTicket, CLIENT_ID);
 
     // Then
     expect(command).toContain("curl --connect-timeout 3 --max-time 10 -fsSL");
-    expect(command).toContain("wget --timeout=3 --tries=1 -qO-");
+    expect(command).toContain("wget --timeout=3 --tries=1 --header=");
   });
 
   it("should bound the download so an unreachable hook server falls back quickly", () => {
     // When
-    const command = buildHookInstallBootstrapCommand("http://192.168.0.10:9736", sampleTicket);
+    const command = buildHookInstallBootstrapCommand("http://192.168.0.10:9736", sampleTicket, CLIENT_ID);
 
     // Then
     expect(command).toContain("--connect-timeout 3");
@@ -228,16 +242,16 @@ describe("buildHookInstallBootstrapCommand", () => {
 
   it("should download fully before executing so a truncated script never runs", () => {
     // When
-    const command = buildHookInstallBootstrapCommand("http://192.168.0.10:9736", sampleTicket);
+    const command = buildHookInstallBootstrapCommand("http://192.168.0.10:9736", sampleTicket, CLIENT_ID);
 
     // Then
-    expect(command).toMatch(/^__kanvibe_install_script=\$\(/);
+    expect(command).toContain(" && __kanvibe_install_script=$(");
     expect(command).toContain('printf \'%s\\n\' "$__kanvibe_install_script" | sh');
   });
 
   it("should execute the downloaded script only after its checksum matches", () => {
     // When
-    const command = buildHookInstallBootstrapCommand("http://192.168.0.10:9736", sampleTicket);
+    const command = buildHookInstallBootstrapCommand("http://192.168.0.10:9736", sampleTicket, CLIENT_ID);
 
     // Then
     const checksumGuardIndex = command.indexOf(
@@ -251,10 +265,10 @@ describe("buildHookInstallBootstrapCommand", () => {
 
   it("should not double the slash when the hook server url has a trailing slash", () => {
     // When
-    const command = buildHookInstallBootstrapCommand("http://192.168.0.10:9736/", sampleTicket);
+    const command = buildHookInstallBootstrapCommand("http://192.168.0.10:9736/", sampleTicket, CLIENT_ID);
 
     // Then
-    expect(command).toContain("http://192.168.0.10:9736/api/install/hooks.sh?token=token-value");
+    expect(command).toContain("http://192.168.0.10:9736/api/install/hooks.sh'");
     expect(command).not.toContain("9736//api");
   });
 });

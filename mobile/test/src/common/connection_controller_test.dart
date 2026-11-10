@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -58,6 +59,42 @@ void main() {
     expect((await store.readRegistry()).activeConnection?.token, 'token-b');
     expect((await store.readRegistry()).connections, hasLength(2));
     expect(client.unpairCalls, isEmpty);
+  });
+
+  test('같은 PC를 TLS 포트로 다시 페어링하면 평문 연결을 지우고 그 토큰을 데스크탑에서도 해제한다', () async {
+    final client = FakeDesktopClient(pairToken: 'token-tls');
+    final store = FakeConnectionStore();
+    final container = containerWith(client, store);
+    await container.read(connectionControllerProvider.future);
+
+    final failure = await container
+        .read(connectionControllerProvider.notifier)
+        .connect(host: '127.0.0.1', port: 9746, code: '123456');
+
+    final registry = await store.readRegistry();
+    expect(failure, isNull);
+    expect(registry.connections.map((pc) => pc.id), ['127.0.0.1:9746']);
+    expect(registry.activeConnection?.isEncrypted, isTrue);
+    expect(client.unpairCalls.map((pc) => pc.token), ['test-token']);
+  });
+
+  test('평문 연결의 해제를 데스크탑에 알리지 못해도 새 암호화 연결은 저장한다', () async {
+    final client = FakeDesktopClient(
+      pairToken: 'token-tls',
+      unpairError: const SocketException('평문 포트가 닫힘'),
+    );
+    final store = FakeConnectionStore();
+    final container = containerWith(client, store);
+    await container.read(connectionControllerProvider.future);
+
+    final failure = await container
+        .read(connectionControllerProvider.notifier)
+        .connect(host: '127.0.0.1', port: 9746, code: '123456');
+
+    expect(failure, isNull);
+    expect((await store.readRegistry()).connections.map((pc) => pc.id), [
+      '127.0.0.1:9746',
+    ]);
   });
 
   test('같은 주소·포트는 다시 페어링하지 않는다', () async {

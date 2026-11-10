@@ -1,6 +1,8 @@
+import { getOrCreateHookClientId } from "@/desktop/main/services/appSettingsService";
 import { execGit, isSSHTransportError } from "@/lib/gitOperations";
 import { quoteShellArgument } from "@/lib/hostFileAccess";
 import { getHookServerPort, getHookServerUrl } from "@/lib/hookEndpoint";
+import { buildShellOwnedHookSocketAssignment } from "@/lib/hookSocketPath";
 
 export interface HookServerValidation {
   hasExpectedHookServerUrl: boolean;
@@ -117,10 +119,7 @@ async function performHookServerReachabilityCheck(healthCheckUrl: string, sshHos
   }
 
   try {
-    await execGit(
-      `command -v curl >/dev/null 2>&1 && curl -fsS --max-time 2 ${quoteShellArgument(healthCheckUrl)} >/dev/null`,
-      sshHost,
-    );
+    await execGit(buildRemoteHookHealthCheckCommand(healthCheckUrl, await getOrCreateHookClientId()), sshHost);
     return true;
   } catch (error) {
     if (isSSHTransportError(error)) {
@@ -128,6 +127,17 @@ async function performHookServerReachabilityCheck(healthCheckUrl: string, sshHos
     }
     return false;
   }
+}
+
+/** 평문 포트가 닫혀 있어도 터널이 살아 있으면 hook은 도달하므로, 터널 소켓을 먼저 확인한다 */
+function buildRemoteHookHealthCheckCommand(healthCheckUrl: string, clientId: string): string {
+  const quotedHealthCheckUrl = quoteShellArgument(healthCheckUrl);
+  return [
+    "command -v curl >/dev/null 2>&1",
+    buildShellOwnedHookSocketAssignment("__kanvibe_socket", clientId),
+    `{ { [ -n "$__kanvibe_socket" ] && curl --unix-socket "$__kanvibe_socket" -fsS --max-time 2 ${quotedHealthCheckUrl} >/dev/null; }`
+      + ` || curl -fsS --max-time 2 ${quotedHealthCheckUrl} >/dev/null; }`,
+  ].join(" && ");
 }
 
 async function getCachedValue<T>(

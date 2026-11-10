@@ -21,10 +21,34 @@ class SavedConnections {
     return null;
   }
 
-  SavedConnections add(DesktopConnection connection) => SavedConnections(
-    connections: [...connections, connection],
-    activeId: connection.id,
-  );
+  /// 같은 PC에 TLS 도입 전에 페어링해 평문으로 통신하는 연결들
+  List<DesktopConnection> legacyConnectionsOf(String host) {
+    final normalizedHost = host.trim().toLowerCase();
+    return connections
+        .where(
+          (connection) =>
+              !connection.isEncrypted &&
+              connection.host.trim().toLowerCase() == normalizedHost,
+        )
+        .toList();
+  }
+
+  /// 암호화 연결을 추가하면서 같은 PC의 평문 연결을 지운다.
+  /// 남겨 두면 알림 스트림이 옛 연결로도 열려 기기 토큰이 계속 평문으로 나간다.
+  SavedConnections replaceLegacyConnections(DesktopConnection connection) {
+    final legacyIds = connection.isEncrypted
+        ? legacyConnectionsOf(connection.host)
+              .map((legacy) => legacy.id)
+              .toSet()
+        : const <String>{};
+    return SavedConnections(
+      connections: [
+        ...connections.where((entry) => !legacyIds.contains(entry.id)),
+        connection,
+      ],
+      activeId: connection.id,
+    );
+  }
 
   SavedConnections select(String id) {
     if (find(id) == null) throw ArgumentError.value(id, 'id');

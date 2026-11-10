@@ -6,6 +6,8 @@ import { parseSSHConfig } from "@/lib/sshConfig";
 
 export const KANVIBE_HOOK_SERVER_PORT = 9736;
 export const KANVIBE_DEV_HOOK_SERVER_PORT = 19736;
+/** 모바일 전용 TLS 포트는 hook 포트에서 이만큼 떨어진 곳에 연다 */
+export const MOBILE_TLS_PORT_OFFSET = 10;
 
 declare global {
   var __KANVIBE_HOOK_SERVER_PORT__: number | undefined;
@@ -17,6 +19,10 @@ export function setHookServerPort(port: number): void {
 
 export function getHookServerPort(): number {
   return globalThis.__KANVIBE_HOOK_SERVER_PORT__ ?? KANVIBE_HOOK_SERVER_PORT;
+}
+
+export function getMobileTlsPort(): number {
+  return getHookServerPort() + MOBILE_TLS_PORT_OFFSET;
 }
 
 export function getLocalHookServerUrl(): string {

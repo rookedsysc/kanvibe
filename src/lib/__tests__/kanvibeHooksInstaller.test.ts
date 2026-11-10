@@ -59,6 +59,7 @@ vi.mock("@/lib/hookFileWriter", () => ({
 }));
 
 vi.mock("@/lib/hostFileAccess", () => ({
+  findSymbolicLinkPath: vi.fn(async () => null),
   readTextFile: vi.fn(async () => ""),
   readTextFiles: (...args: unknown[]) => mockReadTextFiles(...args),
   writeTextFile: vi.fn(async () => undefined),
@@ -69,13 +70,13 @@ function buildReadResults(files: Record<string, string> = {}): Map<string, TextF
   return new Map(Object.entries(files).map(([filePath, content]) => [filePath, { exists: true, content }]));
 }
 
-/** 쓰기는 provider 단위로 격리되므로 한 번의 설치는 provider 수만큼의 쓰기 배치를 만든다 */
-const HOOK_PROVIDER_COUNT = 4;
+/** 쓰기는 provider 단위로 격리되고 task CLI가 한 배치 더 붙으므로, 한 번의 설치는 provider 수 + 1개의 쓰기 배치를 만든다 */
+const HOOK_WRITE_BATCH_COUNT = 5;
 
 /** 마지막 설치가 기록한 파일 전체를 provider 배치들에서 모은다 */
 function getLastInstallWrittenFiles(): ShellHookProviderFile[] {
   return mockWriteHookProviderFiles.mock.calls
-    .slice(-HOOK_PROVIDER_COUNT)
+    .slice(-HOOK_WRITE_BATCH_COUNT)
     .flatMap((call) => (call[0] ?? []) as ShellHookProviderFile[]);
 }
 
@@ -126,6 +127,20 @@ describe("kanvibeHooksInstaller", () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
   });
 
+  it("전체 설치는 worktree의 .kanvibe/task.sh를 실행 권한으로 함께 기록한다", async () => {
+    // Given
+    const { installKanvibeHooks } = await import("@/lib/kanvibeHooksInstaller");
+
+    // When
+    await installKanvibeHooks("/repo", "task-1", "remote-host");
+
+    // Then
+    const taskCliFile = getLastInstallWrittenFiles().find((file) => file.filePath === "/repo/.kanvibe/task.sh");
+    expect(taskCliFile?.mode).toBe(0o755);
+    expect(taskCliFile?.content).toContain("/api/cli/tasks");
+    expect(mockWriteHookProviderFiles).toHaveBeenCalledWith([taskCliFile], "remote-host");
+  });
+
   it("전체 설치는 provider별 쓰기 배치로 모든 hook 파일을 기록한다", async () => {
     // Given
     const { installKanvibeHooks } = await import("@/lib/kanvibeHooksInstaller");
@@ -134,7 +149,7 @@ describe("kanvibeHooksInstaller", () => {
     await installKanvibeHooks("/repo", "task-1", null);
 
     // Then
-    expect(mockWriteHookProviderFiles).toHaveBeenCalledTimes(HOOK_PROVIDER_COUNT);
+    expect(mockWriteHookProviderFiles).toHaveBeenCalledTimes(HOOK_WRITE_BATCH_COUNT);
     expect(mockWriteHookProviderFiles).toHaveBeenCalledWith(expect.any(Array), null);
     expect(getWrittenFilePaths()).toEqual(expect.arrayContaining([
       "/repo/.claude/hooks/kanvibe-prompt-hook.sh",
@@ -281,7 +296,7 @@ describe("kanvibeHooksInstaller", () => {
     await installKanvibeHookFiles("/repo", "task-1", null);
 
     // Then
-    expect(mockWriteHookProviderFiles).toHaveBeenCalledTimes(HOOK_PROVIDER_COUNT);
+    expect(mockWriteHookProviderFiles).toHaveBeenCalledTimes(HOOK_WRITE_BATCH_COUNT);
     expect(mockGetClaudeHooksStatus).not.toHaveBeenCalled();
     expect(mockGetGeminiHooksStatus).not.toHaveBeenCalled();
     expect(mockGetCodexHooksStatus).not.toHaveBeenCalled();
@@ -488,7 +503,7 @@ describe("kanvibeHooksInstaller", () => {
 
       // Then
       await result;
-      expect(mockWriteHookProviderFiles).toHaveBeenCalledTimes(HOOK_PROVIDER_COUNT * 2);
+      expect(mockWriteHookProviderFiles).toHaveBeenCalledTimes(HOOK_WRITE_BATCH_COUNT * 2);
     } finally {
       vi.useRealTimers();
     }
@@ -508,7 +523,7 @@ describe("kanvibeHooksInstaller", () => {
 
       // Then
       await result;
-      expect(mockWriteHookProviderFiles).toHaveBeenCalledTimes(HOOK_PROVIDER_COUNT * 3);
+      expect(mockWriteHookProviderFiles).toHaveBeenCalledTimes(HOOK_WRITE_BATCH_COUNT * 3);
     } finally {
       vi.useRealTimers();
     }
@@ -528,7 +543,7 @@ describe("kanvibeHooksInstaller", () => {
     await flushMicrotasks();
 
     // Then
-    expect(mockWriteHookProviderFiles).toHaveBeenCalledTimes(HOOK_PROVIDER_COUNT);
+    expect(mockWriteHookProviderFiles).toHaveBeenCalledTimes(HOOK_WRITE_BATCH_COUNT);
     for (const resolveHookFileWrite of pendingHookFileWrites) {
       resolveHookFileWrite();
     }
@@ -550,7 +565,7 @@ describe("kanvibeHooksInstaller", () => {
       await vi.runAllTimersAsync();
 
       // Then
-      expect(mockWriteHookProviderFiles).toHaveBeenCalledTimes(HOOK_PROVIDER_COUNT);
+      expect(mockWriteHookProviderFiles).toHaveBeenCalledTimes(HOOK_WRITE_BATCH_COUNT);
       expect(onSuccessA).toHaveBeenCalledTimes(1);
       expect(onSuccessB).toHaveBeenCalledTimes(1);
     } finally {

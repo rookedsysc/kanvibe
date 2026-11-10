@@ -7,7 +7,7 @@ const os = require("node:os");
 const path = require("node:path");
 const process = require("node:process");
 const { pathToFileURL } = require("node:url");
-const { app, BrowserWindow, clipboard, ipcMain, session, shell } = require("electron");
+const { app, BrowserWindow, clipboard, ipcMain, powerMonitor, session, shell } = require("electron");
 const { createDesktopDiagnostics, resolveDesktopLogPath, serializeErrorForLog } = require("./diagnostics");
 const { applyAppDataDirectoryOverride } = require("./runtimeEnvironment");
 
@@ -15,7 +15,6 @@ const DEFAULT_LOCALE = "ko";
 const APP_ICON_PATH = path.join(app.getAppPath(), "public", "branding", "app-icon.png");
 const RENDERER_DEV_URL = process.env.KANVIBE_RENDERER_URL || null;
 const SHOULD_USE_SOURCE_MODULES = Boolean(RENDERER_DEV_URL);
-const HOOK_SERVER_HOST = "0.0.0.0";
 const DEV_HOOK_SERVER_PORT = 19736;
 const PACKAGED_HOOK_SERVER_PORT = 9736;
 const HOOK_SERVER_PORT = SHOULD_USE_SOURCE_MODULES ? DEV_HOOK_SERVER_PORT : PACKAGED_HOOK_SERVER_PORT;
@@ -313,7 +312,6 @@ function ensureRuntimeEnvironment() {
   process.chdir(getRuntimeWorkingDirectory());
   ensureMacLocalCommandPath();
   process.env.KANVIBE_DESKTOP = "true";
-  process.env.KANVIBE_HOST = HOOK_SERVER_HOST;
   process.env.KANVIBE_APP_DATA_DIR = app.getPath("userData");
   process.env.KANVIBE_SEED_DB_PATH = app.isPackaged
     ? path.join(process.resourcesPath, "database", "app.seed.db")
@@ -1043,13 +1041,20 @@ function registerBoardEventForwarding() {
   });
 }
 
-function startHookServer() {
+async function startHookServer() {
   const { createHookServer } = require(path.join(app.getAppPath(), "electron", "hookServer.js"));
+  const { resolveHookServerBindHost } = require(getRuntimeModulePath(path.join("src", "desktop", "main", "services", "lanPlaintextService.ts")));
+  const { getMobileTlsPort } = require(getRuntimeModulePath(path.join("src", "lib", "hookEndpoint.ts")));
   hookServer = createHookServer({
-    host: HOOK_SERVER_HOST,
+    host: await resolveHookServerBindHost(),
     port: HOOK_SERVER_PORT,
+    mobileTlsPort: getMobileTlsPort(),
+    mobileTlsDirectory: path.join(app.getPath("userData"), "mobile-tls"),
     isDevPairingRouteEnabled: IS_DEV_PAIRING_ROUTE_ENABLED,
   });
+
+  const { reconnectHookTunnels } = require(getRuntimeModulePath(path.join("src", "desktop", "main", "services", "hookTunnelService.ts")));
+  powerMonitor.on("resume", reconnectHookTunnels);
 }
 
 function configureHookEndpointPort() {
@@ -1131,7 +1136,7 @@ app.whenReady().then(async () => {
 
   registerDesktopHandlers();
   const unsubscribeBoardEvents = registerBoardEventForwarding();
-  startHookServer();
+  await startHookServer();
   registerNotificationHandlers();
   await refreshShortcutBindings();
 
