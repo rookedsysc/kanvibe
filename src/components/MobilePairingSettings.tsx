@@ -4,10 +4,13 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 import {
   listPairedMobileDevices,
+  readMobileConnectionSettings,
   readMobilePairingCode,
   startMobilePairing,
   stopMobilePairing,
   unpairMobileDevice,
+  updateLanPlaintextAllowed,
+  type MobileConnectionSettings,
   type PairedMobileDevice,
 } from "@/desktop/renderer/actions/mobileBridge";
 
@@ -28,6 +31,7 @@ export default function MobilePairingSettings() {
   const [remainingSeconds, setRemainingSeconds] = useState(0);
   const [pairedDevices, setPairedDevices] = useState<PairedMobileDevice[]>([]);
   const [failureMessage, setFailureMessage] = useState<string | null>(null);
+  const [connectionSettings, setConnectionSettings] = useState<MobileConnectionSettings | null>(null);
 
   /**
    * 발급해 둔 코드가 있는지. 화면을 떠날 때 거둘 것이 있는지 판단하는 데만 쓴다.
@@ -47,6 +51,15 @@ export default function MobilePairingSettings() {
     }
   }, []);
 
+  /** 포트 안내와 평문 설정은 부가 정보이므로 못 읽으면 그 부분만 숨긴다 */
+  const refreshConnectionSettings = useCallback(async () => {
+    try {
+      setConnectionSettings(await readMobileConnectionSettings());
+    } catch {
+      setConnectionSettings(null);
+    }
+  }, []);
+
   /** 사용자가 누른 동작. 실패하면 무엇이 안 됐는지 화면에 남긴다 */
   const runPairingAction = async (action: () => Promise<void>, failureText: string) => {
     try {
@@ -59,7 +72,13 @@ export default function MobilePairingSettings() {
 
   useEffect(() => {
     void refreshPairedDevices();
-  }, [refreshPairedDevices]);
+    void refreshConnectionSettings();
+  }, [refreshPairedDevices, refreshConnectionSettings]);
+
+  const changeLanPlaintextAllowed = (isAllowed: boolean) => runPairingAction(async () => {
+    await updateLanPlaintextAllowed(isAllowed);
+    setConnectionSettings((current) => current && { ...current, isLanPlaintextAllowed: isAllowed });
+  }, t("mobileLanPlaintextUpdateFailed"));
 
   /**
    * 설정 화면을 떠나면 코드를 거둔다. 화면에 없는 코드가 살아 있으면 안 된다.
@@ -154,6 +173,11 @@ export default function MobilePairingSettings() {
           <p className="text-xs text-text-muted mt-0.5">
             {t("mobilePairingDescription")}
           </p>
+          {connectionSettings && (
+            <p className="text-xs text-text-muted mt-0.5">
+              {t("mobilePairingPort", { port: connectionSettings.mobileTlsPort })}
+            </p>
+          )}
         </div>
 
         {pairingCode === null ? (
@@ -209,6 +233,21 @@ export default function MobilePairingSettings() {
             </li>
           ))}
         </ul>
+      )}
+
+      {connectionSettings && (
+        <label className="mt-3 flex items-start justify-between gap-3">
+          <span>
+            <span className="text-sm text-text-primary">{t("mobileLanPlaintextAllow")}</span>
+            <span className="block text-xs text-text-muted mt-0.5">{t("mobileLanPlaintextDescription")}</span>
+          </span>
+          <input
+            type="checkbox"
+            className="mt-1 shrink-0"
+            checked={connectionSettings.isLanPlaintextAllowed}
+            onChange={(event) => void changeLanPlaintextAllowed(event.target.checked)}
+          />
+        </label>
       )}
     </div>
   );

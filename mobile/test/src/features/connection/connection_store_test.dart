@@ -4,6 +4,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kanvibe_mobile/src/common/network/desktop_connection.dart';
 import 'package:kanvibe_mobile/src/features/connection/data/connection_store.dart';
+import 'package:kanvibe_mobile/src/features/connection/domain/saved_connections.dart';
 
 void main() {
   test('기존 한 PC 연결을 목록으로 옮기고 이전 키는 새 값 저장 후 지운다', () async {
@@ -43,7 +44,9 @@ void main() {
       name: '집 PC',
     );
 
-    await store.writeRegistry((await store.readRegistry()).add(pcA).add(pcB));
+    await store.writeRegistry(
+      SavedConnections(connections: [pcA, pcB], activeId: pcB.id),
+    );
     final restored = await ConnectionStore(storage: storage).readRegistry();
 
     expect(restored.connections.map((pc) => pc.name), ['작업실', '집 PC']);

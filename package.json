@@ -91,6 +91,7 @@
     "react-dom": "19.2.3",
     "react-router-dom": "^7.9.4",
     "reflect-metadata": "^0.2.2",
+    "selfsigned": "^5.5.0",
     "tsx": "^4.21.0",
     "typeorm": "^0.3.28",
     "ws": "^8.19.0"

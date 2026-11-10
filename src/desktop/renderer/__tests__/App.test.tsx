@@ -16,10 +16,12 @@ vi.mock("@/desktop/renderer/actions/kanban", () => ({
 
 vi.mock("@/desktop/renderer/utils/refresh", () => ({
   triggerDesktopRefresh: (...args: unknown[]) => mocks.triggerDesktopRefresh(...args),
+  useRefreshSignal: () => 0,
 }));
 
 vi.mock("@/desktop/renderer/actions/appSettings", () => ({
   getThemePreference: vi.fn().mockResolvedValue("system"),
+  getBoardViewMode: vi.fn().mockResolvedValue("kanban"),
 }));
 
 vi.mock("@/desktop/renderer/routes/BoardRoute", () => ({

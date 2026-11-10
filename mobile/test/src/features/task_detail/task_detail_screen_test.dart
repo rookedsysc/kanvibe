@@ -1030,4 +1030,132 @@ void main() {
       expect(find.text('지금은 tmux입니다.'), findsOneWidget);
     });
   });
+
+  group('삭제', () {
+    /// 삭제가 끝나면 상세 화면이 닫혀 보드로 돌아가야 하므로, 보드 자리에서 상세 화면을 띄운다
+    Future<FakeDesktopClient> pumpDetailFromBoard(
+      WidgetTester tester, {
+      List<Object?> deleteErrors = const [],
+      int failedPeerCount = 0,
+    }) async {
+      await tester.binding.setSurfaceSize(phoneSize);
+      final client = FakeDesktopClient(
+        surfaces: _surfaces,
+        deleteErrors: deleteErrors,
+        failedPeerCount: failedPeerCount,
+      );
+      await tester.pumpWidget(
+        wrapWithApp(
+          Builder(
+            builder: (context) => Scaffold(
+              body: Center(
+                child: TextButton(
+                  onPressed: () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => const TaskDetailScreen(task: _task),
+                    ),
+                  ),
+                  child: const Text('보드'),
+                ),
+              ),
+            ),
+          ),
+          client: client,
+          size: phoneSize,
+        ),
+      );
+      await tester.tap(find.text('보드'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('상태 옮기기'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('삭제'));
+      await tester.pumpAndSettle();
+      return client;
+    }
+
+    testWidgets('상태 시트의 삭제는 한 번 더 묻고, 취소하면 아무것도 지우지 않는다', (tester) async {
+      final client = await pumpDetailFromBoard(tester);
+
+      expect(find.text('이 작업을 삭제하시겠습니까?'), findsOneWidget);
+      await tester.tap(find.text('취소'));
+      await tester.pumpAndSettle();
+
+      expect(client.deleteCalls, isEmpty);
+      expect(find.byType(TaskDetailScreen), findsOneWidget);
+    });
+
+    testWidgets('확인하면 변경을 지키는 기본 삭제를 보내고 보드로 돌아간다', (tester) async {
+      final client = await pumpDetailFromBoard(tester);
+
+      await tester.tap(find.widgetWithText(TextButton, '삭제').last);
+      await tester.pumpAndSettle();
+
+      expect(client.deleteCalls, [(taskId: 'task-1', isForced: false)]);
+      expect(find.byType(TaskDetailScreen), findsNothing);
+      expect(find.text('보드'), findsOneWidget);
+      expect(find.byType(SnackBar), findsNothing);
+    });
+
+    testWidgets('꺼져 있던 다른 데스크탑에는 남았다고 보드에서 알린다', (tester) async {
+      await pumpDetailFromBoard(tester, failedPeerCount: 1);
+
+      await tester.tap(find.widgetWithText(TextButton, '삭제').last);
+      await tester.pumpAndSettle();
+
+      expect(find.byType(TaskDetailScreen), findsNothing);
+      expect(
+        find.text('다른 데스크탑 1곳에는 아직 남아 있습니다. 그 데스크탑이 켜지면 직접 삭제해 주세요.'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('커밋하지 않은 변경 때문에 거절되면 데스크탑처럼 강제 삭제를 고를 수 있다', (tester) async {
+      final client = await pumpDetailFromBoard(
+        tester,
+        deleteErrors: const [
+          DesktopRequestException(409, message: '커밋하지 않은 변경이 있습니다'),
+        ],
+      );
+
+      await tester.tap(find.widgetWithText(TextButton, '삭제').last);
+      await tester.pumpAndSettle();
+      expect(find.text('커밋하지 않은 변경이 있습니다'), findsOneWidget);
+      await tester.tap(find.text('강제 삭제'));
+      await tester.pumpAndSettle();
+
+      expect(client.deleteCalls, [
+        (taskId: 'task-1', isForced: false),
+        (taskId: 'task-1', isForced: true),
+      ]);
+      expect(find.byType(TaskDetailScreen), findsNothing);
+    });
+
+    testWidgets('강제 삭제를 취소하면 시트에 남아 아무것도 더 지우지 않는다', (tester) async {
+      final client = await pumpDetailFromBoard(
+        tester,
+        deleteErrors: const [DesktopRequestException(409)],
+      );
+
+      await tester.tap(find.widgetWithText(TextButton, '삭제').last);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('취소'));
+      await tester.pumpAndSettle();
+
+      expect(client.deleteCalls, [(taskId: 'task-1', isForced: false)]);
+      expect(find.byType(TaskDetailScreen), findsOneWidget);
+    });
+
+    testWidgets('그 밖의 실패는 시트를 닫지 않고 데스크탑이 알려 준 사유를 남긴다', (tester) async {
+      await pumpDetailFromBoard(
+        tester,
+        deleteErrors: const [DesktopRequestException(500, message: '서버 오류')],
+      );
+
+      await tester.tap(find.widgetWithText(TextButton, '삭제').last);
+      await tester.pumpAndSettle();
+
+      expect(find.text('서버 오류'), findsOneWidget);
+      expect(find.byType(TaskDetailScreen), findsOneWidget);
+    });
+  });
 }

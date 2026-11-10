@@ -60,6 +60,7 @@ class MockReadableStream {
 }
 
 class MockSSHProcess {
+  stdin = { on: vi.fn(), end: vi.fn() };
   stdout = new MockReadableStream();
   stderr = new MockReadableStream();
   exitCode: number | null = null;
@@ -176,6 +177,33 @@ describe("gitOperations.resolvePathForShell", () => {
     if (process.platform === "darwin") {
       expect(execOptions.env?.PATH).toContain(".opencode/bin");
     }
+  });
+
+  it("표준 입력을 지정하면 파이프로 보내고 명령 인자에는 싣지 않는다", async () => {
+    // Given
+    const child = createMockSSHProcess();
+    mocks.spawn.mockImplementation(() => {
+      queueMicrotask(() => completeRemoteCommand(child, "ok"));
+      return child;
+    });
+    vi.doMock("@/lib/sshConfig", async (importOriginal) => ({
+      ...(await importOriginal<typeof import("@/lib/sshConfig")>()),
+      parseSSHConfig: vi.fn(async () => [{
+        host: "remote-host",
+        hostname: "example.com",
+        port: 22,
+        username: "tester",
+        privateKeyPath: "/tmp/test-key",
+      }]),
+    }));
+    const { execGit } = await import("@/lib/gitOperations");
+
+    // When
+    await execGit("cat > /tmp/target", "remote-host", { remoteStdin: "secret-body" });
+
+    // Then
+    expect(child.stdin.end).toHaveBeenCalledWith("secret-body");
+    expect(getSpawnedSSHArgs().join(" ")).not.toContain("secret-body");
   });
 
   it("원격 명령 실행은 ssh 바이너리와 옵션을 사용한다", async () => {

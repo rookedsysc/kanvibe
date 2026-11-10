@@ -1,9 +1,8 @@
-import { TaskStatus, SessionType } from "@/entities/KanbanTask";
-import { getProjectRepository, getTaskRepository } from "@/lib/database";
-import { createWorktreeWithSession } from "@/lib/worktree";
+import { TaskStatus } from "@/entities/KanbanTask";
+import { getTaskRepository } from "@/lib/database";
 import { broadcastBoardUpdate, broadcastHookStatusTargetMissing, broadcastTaskStatusChanged } from "@/lib/boardNotifier";
-import { installTaskHooksImmediately } from "@/desktop/main/services/kanbanService";
-import { persistTaskStateAtPath as persistHookTaskState, persistTaskStateForTask } from "@/desktop/main/services/kanvibeTaskStateService";
+import { isTaskReachableFromTunnel } from "@/desktop/main/services/hookTunnelService";
+import { persistTaskStateForTask } from "@/desktop/main/services/kanvibeTaskStateService";
 
 const STATUS_MAP: Record<string, TaskStatus> = {
   todo: TaskStatus.TODO,
@@ -13,91 +12,15 @@ const STATUS_MAP: Record<string, TaskStatus> = {
   done: TaskStatus.DONE,
 };
 
-export interface HookStartInput {
-  title: string;
-  branchName?: string;
-  agentType?: string;
-  sessionType?: SessionType;
-  sshHost?: string;
-  projectId?: string;
-  baseBranch?: string;
-}
-
 export interface HookStatusInput {
   taskId: string;
   status: string;
 }
 
-export async function startHookTask(input: HookStartInput) {
-  if (!input.title) {
-    return { success: false, error: "title은 필수입니다.", status: 400 };
-  }
-
-  const repo = await getTaskRepository();
-  const task = repo.create({
-    title: input.title,
-    branchName: input.branchName || null,
-    agentType: input.agentType || null,
-    sessionType: input.sessionType || null,
-    sshHost: input.sshHost || null,
-    projectId: input.projectId || null,
-    baseBranch: input.baseBranch || null,
-    status: TaskStatus.TODO,
-  });
-
-  if (input.branchName && input.sessionType && input.projectId) {
-    try {
-      const projectRepo = await getProjectRepository();
-      const project = await projectRepo.findOneBy({ id: input.projectId });
-
-      if (project) {
-        const baseBranch = input.baseBranch || project.defaultBranch;
-        const session = await createWorktreeWithSession(
-          project.repoPath,
-          input.branchName,
-          baseBranch,
-          input.sessionType,
-          project.sshHost,
-          input.projectId,
-        );
-        task.baseBranch = baseBranch;
-        task.worktreePath = session.worktreePath;
-        task.sessionName = session.sessionName;
-        task.sshHost = project.sshHost;
-      }
-    } catch (error) {
-      console.error("Hook worktree/세션 생성 실패:", error);
-    }
-  }
-
-  const saved = await repo.save(task);
-
-  if (saved.worktreePath) {
-    await installTaskHooksImmediately(
-      saved.worktreePath,
-      {
-        id: saved.id,
-        title: saved.title,
-        sshHost: saved.sshHost,
-      },
-      "새 태스크 hooks 동기 설치 실패",
-    );
-    await persistHookTaskState(saved.worktreePath, { id: saved.id, status: saved.status }, saved.sshHost);
-  }
-
-  broadcastBoardUpdate();
-
-  return {
-    success: true,
-    data: {
-      id: saved.id,
-      status: saved.status,
-      sessionName: saved.sessionName,
-    },
-  };
-}
-
-export async function updateHookTaskStatus(input: HookStatusInput) {
+/**
+ * @param sourceSshHosts 요청이 들어온 터널이 맡은 호스트 별칭들. 터널로 온 요청은 그 호스트의 task만 바꿀 수 있다
+ */
+export async function updateHookTaskStatus(input: HookStatusInput, sourceSshHosts?: ReadonlySet<string>) {
   if (!input.taskId || !input.status) {
     return {
       success: false,
@@ -120,6 +43,14 @@ export async function updateHookTaskStatus(input: HookStatusInput) {
     where: { id: input.taskId },
     relations: ["project"],
   });
+
+  if (task && !isTaskReachableFromTunnel(task, task.project, sourceSshHosts)) {
+    return {
+      success: false,
+      error: `작업을 찾을 수 없습니다: ${input.taskId}`,
+      status: 404,
+    };
+  }
 
   if (!task) {
     broadcastHookStatusTargetMissing({

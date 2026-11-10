@@ -1,5 +1,6 @@
 import { chmod, mkdir, writeFile } from "fs/promises";
 import path from "path";
+import { getOrCreateHookClientId } from "@/desktop/main/services/appSettingsService";
 import { execGit } from "@/lib/gitOperations";
 import { getHookServerUrl } from "@/lib/hookEndpoint";
 import {
@@ -76,10 +77,11 @@ async function installRemoteHookProviderFilesOverHttp(
 ): Promise<void> {
   const hookServerUrl = await getHookServerUrl(sshHost);
   const installTicket = issueHookInstallScript(files);
+  const clientId = await getOrCreateHookClientId();
 
   try {
     const output = await execGit(
-      buildHookInstallBootstrapCommand(hookServerUrl, installTicket),
+      buildHookInstallBootstrapCommand(hookServerUrl, installTicket, clientId),
       sshHost,
       { timeoutMs: REMOTE_HOOK_INSTALL_TIMEOUT_MS },
     );

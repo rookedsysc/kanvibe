@@ -200,8 +200,10 @@ vi.mock("@/desktop/renderer/actions/editor", () => ({
   openTaskInVsCode: (...args: unknown[]) => mocks.openTaskInVsCode(...args),
 }));
 
-vi.mock("@/components/ConnectTerminalForm", () => ({
-  default: () => <div data-testid="connect-terminal-form" />,
+vi.mock("@/components/AutoConnectTerminalSession", () => ({
+  default: ({ taskId, defaultSessionType }: { taskId: string; defaultSessionType?: string }) => (
+    <div data-testid="auto-connect-terminal-session" data-task-id={taskId} data-session-type={defaultSessionType} />
+  ),
 }));
 
 vi.mock("@/components/CreateTaskModal", () => ({
@@ -1597,7 +1599,7 @@ describe("TaskDetailRoute", () => {
       </BoardCommandProvider>,
     );
 
-    await screen.findByTestId("connect-terminal-form");
+    await screen.findByTestId("auto-connect-terminal-session");
     expect(screen.queryByLabelText("terminal input")).toBeNull();
 
     act(() => {
@@ -1645,7 +1647,7 @@ describe("TaskDetailRoute", () => {
       </BoardCommandProvider>,
     );
 
-    await screen.findByTestId("connect-terminal-form");
+    await screen.findByTestId("auto-connect-terminal-session");
     await waitFor(() => {
       expect(screen.getByTestId("shortcut-blocker-state").textContent).toBe("blocked");
     });

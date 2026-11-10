@@ -24,11 +24,9 @@ const mocks = vi.hoisted(() => ({
     save: vi.fn(),
     create: vi.fn(),
   },
-  createWorktreeWithSession: vi.fn(),
   broadcastBoardUpdate: vi.fn(),
   broadcastHookStatusTargetMissing: vi.fn(),
   broadcastTaskStatusChanged: vi.fn(),
-  installTaskHooksImmediately: vi.fn(),
   writeTextFile: vi.fn(),
   readTextFile: vi.fn(),
   execGit: vi.fn(),
@@ -43,18 +41,10 @@ vi.mock("@/lib/database", () => ({
   getTaskRepository: vi.fn(async () => mocks.taskRepo),
 }));
 
-vi.mock("@/lib/worktree", () => ({
-  createWorktreeWithSession: mocks.createWorktreeWithSession,
-}));
-
 vi.mock("@/lib/boardNotifier", () => ({
   broadcastBoardUpdate: mocks.broadcastBoardUpdate,
   broadcastHookStatusTargetMissing: mocks.broadcastHookStatusTargetMissing,
   broadcastTaskStatusChanged: mocks.broadcastTaskStatusChanged,
-}));
-
-vi.mock("@/desktop/main/services/kanbanService", () => ({
-  installTaskHooksImmediately: mocks.installTaskHooksImmediately,
 }));
 
 vi.mock("@/lib/gitOperations", () => ({
@@ -79,6 +69,21 @@ describe("hookService.updateHookTaskStatus", () => {
     vi.clearAllMocks();
     mocks.readTextFile.mockResolvedValue("");
     mocks.execGit.mockResolvedValue(".git");
+  });
+
+  it("터널로 들어온 요청은 다른 호스트의 작업을 바꾸지 못한다", async () => {
+    const { updateHookTaskStatus } = await import("@/desktop/main/services/hookService");
+    mocks.taskRepo.findOne.mockResolvedValue({
+      id: "task-1",
+      status: TaskStatus.PROGRESS,
+      sshHost: "host-b",
+    });
+
+    const result = await updateHookTaskStatus({ taskId: "task-1", status: TaskStatus.REVIEW }, new Set(["host-a"]));
+
+    expect(result).toMatchObject({ success: false, status: 404 });
+    expect(mocks.taskRepo.save).not.toHaveBeenCalled();
+    expect(mocks.broadcastTaskStatusChanged).not.toHaveBeenCalled();
   });
 
   it("taskId로 작업 상태를 변경한다", async () => {
@@ -265,144 +270,6 @@ describe("hookService.updateHookTaskStatus", () => {
     });
   });
 });
-
-describe("hookService.startHookTask", () => {
-  beforeEach(() => {
-    vi.resetModules();
-    vi.clearAllMocks();
-    mocks.taskRepo.create.mockImplementation((value) => value);
-    mocks.installTaskHooksImmediately.mockResolvedValue(undefined);
-    mocks.readTextFile.mockResolvedValue("");
-    mocks.writeTextFile.mockResolvedValue(undefined);
-    mocks.execGit.mockResolvedValue(".git");
-  });
-
-  it("새 hook task는 기존 .kanvibe 상태가 없으면 todo로 생성한다", async () => {
-    mocks.taskRepo.save.mockImplementation(async (value) => ({ id: "task-1", ...value }));
-
-    const { startHookTask } = await import("@/desktop/main/services/hookService");
-
-    const result = await startHookTask({ title: "new hook task" });
-
-    expect(mocks.taskRepo.create).toHaveBeenCalledWith(expect.objectContaining({
-      title: "new hook task",
-      status: TaskStatus.TODO,
-    }));
-    expect(result).toEqual({
-      success: true,
-      data: {
-        id: "task-1",
-        status: TaskStatus.TODO,
-        sessionName: undefined,
-      },
-    });
-  });
-
-  it("원격 worktree task를 만들면 hooks 설치와 검증 완료를 기다린 뒤 응답한다", async () => {
-    const project = {
-      id: "project-1",
-      repoPath: "/remote/repo",
-      defaultBranch: "main",
-      sshHost: "remote-host",
-    };
-    mocks.projectRepo.findOneBy.mockResolvedValue(project);
-    mocks.createWorktreeWithSession.mockResolvedValue({
-      worktreePath: "/remote/repo__worktrees/feature-task",
-      sessionName: "feature-task",
-    });
-    mocks.taskRepo.save.mockImplementation(async (value) => ({ id: "task-1", ...value }));
-    let resolveInstall!: () => void;
-    mocks.installTaskHooksImmediately.mockReturnValue(new Promise<void>((resolve) => {
-      resolveInstall = resolve;
-    }));
-
-    const { startHookTask } = await import("@/desktop/main/services/hookService");
-
-    let resolved = false;
-    const resultPromise = startHookTask({
-      title: "remote task",
-      branchName: "feature-task",
-      sessionType: "tmux" as never,
-      sshHost: "remote-host",
-      projectId: "project-1",
-    }).then((result) => {
-      resolved = true;
-      return result;
-    });
-
-    await flushMicrotasks();
-
-    expect(mocks.installTaskHooksImmediately).toHaveBeenCalledWith(
-      "/remote/repo__worktrees/feature-task",
-      {
-        id: "task-1",
-        title: "remote task",
-        sshHost: "remote-host",
-      },
-      "새 태스크 hooks 동기 설치 실패",
-    );
-    expect(mocks.broadcastBoardUpdate).not.toHaveBeenCalled();
-    expect(resolved).toBe(false);
-
-    resolveInstall();
-    const result = await resultPromise;
-
-    expect(mocks.writeTextFile).toHaveBeenCalledWith(
-      "/remote/repo__worktrees/feature-task/.kanvibe/status.json",
-      expect.stringContaining('"status": "todo"'),
-      "remote-host",
-    );
-    expect(mocks.broadcastBoardUpdate).toHaveBeenCalledTimes(1);
-    expect(resolved).toBe(true);
-    expect(result).toEqual({
-      success: true,
-      data: {
-        id: "task-1",
-        status: TaskStatus.TODO,
-        sessionName: "feature-task",
-      },
-    });
-  });
-
-  it("hooks 설치와 검증이 실패하면 성공 응답과 board update를 보내지 않는다", async () => {
-    const project = {
-      id: "project-1",
-      repoPath: "/remote/repo",
-      defaultBranch: "main",
-      sshHost: "remote-host",
-    };
-    const installError = new Error("hooks verification failed");
-    mocks.projectRepo.findOneBy.mockResolvedValue(project);
-    mocks.createWorktreeWithSession.mockResolvedValue({
-      worktreePath: "/remote/repo__worktrees/feature-task",
-      sessionName: "feature-task",
-    });
-    mocks.taskRepo.save.mockImplementation(async (value) => ({ id: "task-1", ...value }));
-    mocks.installTaskHooksImmediately.mockRejectedValue(installError);
-
-    const { startHookTask } = await import("@/desktop/main/services/hookService");
-
-    await expect(startHookTask({
-      title: "remote task",
-      branchName: "feature-task",
-      sessionType: "tmux" as never,
-      sshHost: "remote-host",
-      projectId: "project-1",
-    })).rejects.toThrow("hooks verification failed");
-
-    expect(mocks.installTaskHooksImmediately).toHaveBeenCalledWith(
-      "/remote/repo__worktrees/feature-task",
-      {
-        id: "task-1",
-        title: "remote task",
-        sshHost: "remote-host",
-      },
-      "새 태스크 hooks 동기 설치 실패",
-    );
-    expect(mocks.broadcastBoardUpdate).not.toHaveBeenCalled();
-  });
-});
-
 
 describe("hook 상태 저장 위치 소유권", () => {
   beforeEach(() => {

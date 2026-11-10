@@ -10,7 +10,7 @@ import TaskQuickSearchDialog from "@/desktop/renderer/components/TaskQuickSearch
 import CommandPaletteDialog from "@/desktop/renderer/components/CommandPaletteDialog";
 import { DEFAULT_LOCALE, getSafeLocale, isSupportedLocale, messagesByLocale } from "@/desktop/renderer/utils/locales";
 import { triggerDesktopRefresh } from "@/desktop/renderer/utils/refresh";
-import BoardRoute from "@/desktop/renderer/routes/BoardRoute";
+import BoardViewRoute from "@/desktop/renderer/routes/BoardViewRoute";
 import { getThemePreference, type ThemePreference } from "@/desktop/renderer/actions/appSettings";
 import { applyThemePreference, THEME_PREFERENCE_CHANGED_EVENT } from "@/desktop/renderer/utils/theme";
 import {
@@ -200,7 +200,7 @@ export default function App() {
       <Routes>
         <Route path="/" element={<Navigate to={`/${DEFAULT_LOCALE}`} replace />} />
         <Route path="/:locale" element={<LocaleShell />}>
-          <Route index element={<BoardRoute />} />
+          <Route index element={<BoardViewRoute />} />
           <Route path="ai-accounts" element={<DeferredRoute><AiAccountsRoute /></DeferredRoute>} />
           <Route path="pane-layout" element={<DeferredRoute><PaneLayoutRoute /></DeferredRoute>} />
           <Route path="settings" element={<DeferredRoute><SettingsRoute /></DeferredRoute>} />

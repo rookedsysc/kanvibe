@@ -33,10 +33,16 @@ const mocks = vi.hoisted(() => ({
   pullCurrentBranch: vi.fn(),
   remoteBranchExists: vi.fn(),
   broadcastTaskHookInstallFailed: vi.fn(),
+  broadcastTaskPeerDeletionFailed: vi.fn(),
   broadcastTaskPrMergedDetectedBatch: vi.fn(),
   broadcastTaskSessionChanged: vi.fn(),
   writeTextFile: vi.fn(),
   readTextFile: vi.fn(),
+  propagateTaskDeletionToPeers: vi.fn(),
+}));
+
+vi.mock("@/desktop/main/services/taskTargetPropagationService", () => ({
+  propagateTaskDeletionToPeers: mocks.propagateTaskDeletionToPeers,
 }));
 
 vi.mock("@/lib/database", () => ({
@@ -91,6 +97,7 @@ vi.mock("@/lib/kanvibeHooksInstaller", () => ({
 vi.mock("@/lib/boardNotifier", () => ({
   broadcastBoardUpdate: mocks.broadcastBoardUpdate,
   broadcastTaskHookInstallFailed: mocks.broadcastTaskHookInstallFailed,
+  broadcastTaskPeerDeletionFailed: mocks.broadcastTaskPeerDeletionFailed,
   broadcastTaskPrMergedDetectedBatch: mocks.broadcastTaskPrMergedDetectedBatch,
   broadcastTaskSessionChanged: mocks.broadcastTaskSessionChanged,
 }));
@@ -163,6 +170,7 @@ describe("kanbanService.createTask", () => {
     mocks.remoteBranchExists.mockResolvedValue(true);
     mocks.execGit.mockResolvedValue("");
     mocks.readTextFile.mockResolvedValue("");
+    mocks.propagateTaskDeletionToPeers.mockResolvedValue([]);
     mocks.taskRepo.createQueryBuilder.mockReturnValue({
       select: vi.fn().mockReturnThis(),
       where: vi.fn().mockReturnThis(),
@@ -542,6 +550,38 @@ describe("kanbanService.createTask", () => {
       "remote-host",
     );
     expect(mocks.broadcastBoardUpdate).toHaveBeenCalledTimes(1);
+  });
+
+  it("이미 세션이 있는 task에 터미널 연결을 요청하면 새 세션을 만들지 않고 기존 task를 돌려준다", async () => {
+    // Given
+    const task = {
+      id: "task-connected",
+      title: "이미 연결된 task",
+      projectId: "project-remote",
+      branchName: "feature/connected",
+      baseBranch: "main",
+      worktreePath: "/remote/repo__worktrees/feature-connected",
+      sshHost: null,
+      sessionType: "tmux",
+      sessionName: "repo-feature-connected",
+      status: "progress",
+    };
+    mocks.taskRepo.findOneBy.mockResolvedValue(task);
+
+    const { connectTerminalSession } = await import("@/desktop/main/services/kanbanService");
+
+    // When
+    const result = await connectTerminalSession("task-connected", "zellij" as never);
+
+    // Then
+    expect(result).toEqual(expect.objectContaining({
+      id: "task-connected",
+      sessionType: "tmux",
+      sessionName: "repo-feature-connected",
+    }));
+    expect(mocks.createSessionWithoutWorktree).not.toHaveBeenCalled();
+    expect(mocks.taskRepo.save).not.toHaveBeenCalled();
+    expect(mocks.broadcastBoardUpdate).not.toHaveBeenCalled();
   });
 
   it("기존 브랜치 task 터미널 연결은 현재 상태를 보존한다", async () => {
@@ -1105,6 +1145,122 @@ describe("kanbanService.createTask", () => {
     expect(mocks.taskRepo.remove).toHaveBeenNthCalledWith(1, taskA);
     expect(mocks.taskRepo.remove).toHaveBeenNthCalledWith(2, taskB);
     expect(mocks.broadcastBoardUpdate).toHaveBeenCalledTimes(1);
+  });
+
+  describe("다른 client로의 삭제 전파", () => {
+    const sharedTask = {
+      id: "task-shared",
+      title: "공유 작업",
+      projectId: "project-1",
+      branchName: "feat/shared",
+      worktreePath: "/remote/repo__worktrees/feat-shared",
+      sshHost: "devbox",
+      sessionType: null,
+      sessionName: null,
+    };
+    const peerResults = [{ url: "http://10.0.0.7:9736", isSuccess: true, httpStatus: "200", message: "ok" }];
+
+    beforeEach(() => {
+      mocks.taskRepo.findOneBy.mockResolvedValue(sharedTask);
+      mocks.taskRepo.remove.mockResolvedValue(sharedTask);
+      mocks.projectRepo.findOneBy.mockResolvedValue({ id: "project-1", repoPath: "/remote/repo", sshHost: "devbox" });
+      mocks.propagateTaskDeletionToPeers.mockResolvedValue(peerResults);
+    });
+
+    it("GUI 삭제는 worktree를 지우기 전에 다른 client로 전파한다", async () => {
+      // Given
+      const callOrder: string[] = [];
+      mocks.propagateTaskDeletionToPeers.mockImplementation(async () => {
+        callOrder.push("propagate");
+        return peerResults;
+      });
+      mocks.removeWorktreeAndBranch.mockImplementation(async () => {
+        callOrder.push("remove-worktree");
+      });
+      const { deleteTask } = await import("@/desktop/main/services/kanbanService");
+
+      // When
+      const isDeleted = await deleteTask("task-shared");
+
+      // Then
+      expect(isDeleted).toBe(true);
+      expect(mocks.propagateTaskDeletionToPeers).toHaveBeenCalledWith("/remote/repo__worktrees/feat-shared", "devbox");
+      expect(callOrder).toEqual(["propagate", "remove-worktree"]);
+      expect(mocks.taskRepo.remove).toHaveBeenCalledWith(sharedTask);
+      expect(mocks.broadcastTaskPeerDeletionFailed).not.toHaveBeenCalled();
+    });
+
+    it("커밋하지 않은 변경을 거부하는 삭제는 변경이 있으면 전파·정리·레코드 삭제를 모두 하지 않는다", async () => {
+      // Given
+      mocks.execGit.mockResolvedValue(" M src/app.ts\n");
+      const { deleteTaskAcrossTargets, DirtyWorktreeError } = await import("@/desktop/main/services/kanbanService");
+
+      // When
+      const deletion = deleteTaskAcrossTargets("task-shared", { shouldRejectDirtyWorktree: true, shouldPropagateToPeers: true });
+
+      // Then
+      await expect(deletion).rejects.toBeInstanceOf(DirtyWorktreeError);
+      expect(mocks.execGit).toHaveBeenCalledWith(
+        "if [ -d '/remote/repo__worktrees/feat-shared' ]; then git -C '/remote/repo__worktrees/feat-shared' status --porcelain; fi",
+        "devbox",
+      );
+      expect(mocks.propagateTaskDeletionToPeers).not.toHaveBeenCalled();
+      expect(mocks.removeWorktreeAndBranch).not.toHaveBeenCalled();
+      expect(mocks.taskRepo.remove).not.toHaveBeenCalled();
+    });
+
+    it("변경이 없으면 지우고 전파 결과를 돌려주며, 전파받은 삭제는 다시 전파하지 않는다", async () => {
+      // Given
+      const { deleteTaskAcrossTargets } = await import("@/desktop/main/services/kanbanService");
+
+      // When
+      const cleanDeletion = await deleteTaskAcrossTargets("task-shared", { shouldRejectDirtyWorktree: true, shouldPropagateToPeers: true });
+      const relayedDeletion = await deleteTaskAcrossTargets("task-shared", { shouldRejectDirtyWorktree: false, shouldPropagateToPeers: false });
+
+      // Then
+      expect(cleanDeletion).toEqual({ isDeleted: true, peerResults });
+      expect(relayedDeletion).toEqual({ isDeleted: true, peerResults: [] });
+      expect(mocks.propagateTaskDeletionToPeers).toHaveBeenCalledTimes(1);
+      expect(mocks.taskRepo.remove).toHaveBeenCalledTimes(2);
+    });
+
+    it("다른 client 일부에서 지우지 못해도 이 client의 삭제는 마치고, task가 남은 client를 화면에 알린다", async () => {
+      // Given
+      vi.spyOn(console, "warn").mockImplementation(() => {});
+      mocks.propagateTaskDeletionToPeers.mockResolvedValue([
+        { url: "http://10.0.0.9:9736", isSuccess: false, httpStatus: "000", message: "연결할 수 없습니다" },
+      ]);
+      const { deleteTask } = await import("@/desktop/main/services/kanbanService");
+
+      // When
+      const isDeleted = await deleteTask("task-shared");
+
+      // Then
+      expect(isDeleted).toBe(true);
+      expect(mocks.taskRepo.remove).toHaveBeenCalledWith(sharedTask);
+      expect(mocks.broadcastTaskPeerDeletionFailed).toHaveBeenCalledWith({
+        taskId: "task-shared",
+        taskTitle: "공유 작업",
+        failedPeerUrls: ["http://10.0.0.9:9736"],
+      });
+    });
+
+    it("일괄 삭제도 task마다 다른 client로 전파한다", async () => {
+      // Given
+      const otherTask = { ...sharedTask, id: "task-other", branchName: "feat/other", worktreePath: "/remote/repo__worktrees/feat-other" };
+      mocks.taskRepo.find.mockResolvedValue([sharedTask, otherTask]);
+      mocks.taskRepo.remove.mockImplementation(async (value) => value);
+      const { deleteTasks } = await import("@/desktop/main/services/kanbanService");
+
+      // When
+      await deleteTasks(["task-shared", "task-other"]);
+
+      // Then
+      expect(mocks.propagateTaskDeletionToPeers.mock.calls).toEqual([
+        ["/remote/repo__worktrees/feat-shared", "devbox"],
+        ["/remote/repo__worktrees/feat-other", "devbox"],
+      ]);
+    });
   });
 
   it("task 내용 수정 후 board update를 브로드캐스트한다", async () => {

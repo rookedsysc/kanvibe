@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { getAppSettingsRepository } from "@/lib/database";
 import { SessionType } from "@/entities/KanbanTask";
 import {
@@ -75,6 +76,60 @@ export async function getSidebarHintDismissed(): Promise<boolean> {
 /** 사이드바 힌트를 다시 보지 않기로 설정한다 */
 export async function dismissSidebarHint(): Promise<void> {
   await setAppSetting(SIDEBAR_HINT_DISMISSED_KEY, "true");
+}
+
+const LAN_PLAINTEXT_ALLOWED_KEY = "lan_plaintext_allowed";
+const LAN_PLAINTEXT_OBSERVED_SINCE_KEY = "lan_plaintext_observed_since";
+const LAN_PLAINTEXT_LAST_REQUEST_AT_KEY = "lan_plaintext_last_request_at";
+
+/** 사용자가 LAN 평문 포트를 임시로 계속 열어 두기로 했는지 조회한다 */
+export async function getLanPlaintextAllowed(): Promise<boolean> {
+  return (await getAppSetting(LAN_PLAINTEXT_ALLOWED_KEY)) === "true";
+}
+
+export async function setLanPlaintextAllowed(isAllowed: boolean): Promise<void> {
+  await setAppSetting(LAN_PLAINTEXT_ALLOWED_KEY, String(isAllowed));
+}
+
+/** LAN 평문 사용량을 재기 시작한 시각(ms). 처음 부르면 지금으로 기록한다 */
+export async function getOrStartLanPlaintextObservation(now: number): Promise<number> {
+  const observedSince = Number(await getAppSetting(LAN_PLAINTEXT_OBSERVED_SINCE_KEY));
+  if (observedSince > 0) {
+    return observedSince;
+  }
+  await setAppSetting(LAN_PLAINTEXT_OBSERVED_SINCE_KEY, String(now));
+  return now;
+}
+
+export async function getLanPlaintextLastRequestAt(): Promise<number> {
+  return Number(await getAppSetting(LAN_PLAINTEXT_LAST_REQUEST_AT_KEY)) || 0;
+}
+
+export async function setLanPlaintextLastRequestAt(requestedAt: number): Promise<void> {
+  await setAppSetting(LAN_PLAINTEXT_LAST_REQUEST_AT_KEY, String(requestedAt));
+}
+
+const HOOK_CLIENT_ID_KEY = "hook_client_id";
+let hookClientIdPromise: Promise<string> | null = null;
+
+/**
+ * 원격 터널 소켓의 이름으로 쓰는 이 설치의 ID. IP가 바뀌어도 그대로라 원격 스크립트가 같은 소켓을 찾는다.
+ * 동시에 처음 불려도 ID가 둘 생기지 않도록 조회를 한 번만 한다.
+ */
+export function getOrCreateHookClientId(): Promise<string> {
+  hookClientIdPromise ??= (async () => {
+    const storedClientId = await getAppSetting(HOOK_CLIENT_ID_KEY);
+    if (storedClientId) {
+      return storedClientId;
+    }
+    const clientId = randomUUID();
+    await setAppSetting(HOOK_CLIENT_ID_KEY, clientId);
+    return clientId;
+  })().catch((error) => {
+    hookClientIdPromise = null;
+    throw error;
+  });
+  return hookClientIdPromise;
 }
 
 const DONE_ALERT_DISMISSED_KEY = "done_alert_dismissed";
