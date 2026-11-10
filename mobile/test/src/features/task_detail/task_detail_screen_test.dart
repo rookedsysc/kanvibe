@@ -1454,6 +1454,31 @@ void main() {
       expect(find.text('데스크탑과 연결이 끊겼습니다. 연결을 확인해 주세요.'), findsOneWidget);
     });
 
+    testWidgets('닫기 응답을 기다리는 동안 고른 다른 탭을 유지한다', (tester) async {
+      final pending = Completer<Map<String, dynamic>>();
+      await pumpClosable(
+        tester,
+        onRunCommand: (command) => command.name == 'get-tab-close-info'
+            ? Future.value({'ok': true, 'processNames': <String>[]})
+            : pending.future,
+      );
+
+      await tester.tap(closeButton('%19'));
+      await tester.pump();
+      await tester.pump();
+      await tester.ensureVisible(find.text('bash'));
+      await tester.pump();
+      await tester.tap(find.text('bash'));
+      await tester.pump();
+      expect(selectedPaneId(tester), '%21');
+
+      pending.complete(closedResult(['%20', '%21']));
+      await tester.pumpAndSettle();
+
+      expect(selectedPaneId(tester), '%21');
+      expect(closeButton('%19'), findsNothing);
+    });
+
     testWidgets('닫는 중 반복해 눌러도 닫기 명령은 한 번만 나간다', (tester) async {
       final pending = Completer<Map<String, dynamic>>();
       final client = await pumpClosable(

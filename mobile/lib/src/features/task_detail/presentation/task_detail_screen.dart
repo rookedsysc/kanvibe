@@ -166,16 +166,14 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
       return;
     }
 
-    final wasSelected = _selectedPaneId == null
-        ? tabs.first.id == tab.id
-        : _selectedPaneId == tab.id;
     final closedIndex = tabs.indexWhere((pane) => pane.id == tab.id);
     try {
       final surfaces = await ref
           .read(surfacesProvider(_task.id).notifier)
           .closeTab(tab.id);
       if (!mounted || surfaces == null) return;
-      if (wasSelected) {
+      final isStillSelected = (_selectedPaneId ?? tabs.first.id) == tab.id;
+      if (isStillSelected) {
         final neighbor = closedIndex > 0
             ? tabs[closedIndex - 1]
             : tabs[closedIndex + 1];
