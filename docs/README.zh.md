@@ -7,64 +7,62 @@
 
 # KanVibe
 
-**面向 AI 编程代理的键盘优先 Kanban 工作区**
+**AI 编程任务一目了然，手机上继续工作。**
 
-KanVibe 让 AI 编程工作不再散落在一堆终端标签中。你可以在实时 Kanban 看板上跟踪基于分支的任务，在 Tauri 桌面应用中打开每个任务的 Herdr/tmux/zellij 会话，并让 Claude Code、Gemini CLI、Codex CLI 和 OpenCode hooks 自动推动任务在工作流中流转。
+KanVibe 是面向 AI 编程代理、以键盘操作为中心的 Tauri macOS 看板工作区。将 Claude Code、Codex、Gemini CLI 和 OpenCode 的任务与分支、git worktree 和终端放在一起。在同一看板中掌握进度，再用手机或平板打开电脑上正在运行的终端，读取输出并输入下一条命令。
 
-使用快捷键处理项目筛选、任务搜索、通知、任务详情面板和常用任务操作，同时不丢失终端焦点。
-
-[![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-FFDD00?style=for-the-badge&logo=buy-me-a-coffee&logoColor=black)](https://buymeacoffee.com/rookedsysc)
-
-> 请我喝杯咖啡也不错，但说实话，贡献代码会让我更开心。:)
+**[安装 Desktop](https://kanvibe.rookedsysc.com/zh/installation)** → [连接手机](https://kanvibe.rookedsysc.com/zh/mobile) · [文档](https://kanvibe.rookedsysc.com/zh)
 
 [EN](../README.md) | [KO](./README.ko.md)
 
 </div>
 
-<div align="center">
-
 <table>
   <tr>
-    <td width="50%">
-      <img src="./images/readme/kanvibe-main.png" alt="KanVibe Kanban 看板" width="100%">
-      <br>
-      <strong>主 Kanban 看板</strong>
+    <td width="77%" valign="top">
+      <img src="./images/readme/kanvibe-main.png" alt="Desktop：集中查看任务与状态" width="100%">
+      <br><strong>Desktop：集中查看任务与状态</strong>
     </td>
-    <td width="50%">
-      <img src="./images/readme/kanvibe-detail.png" alt="任务详情终端工作区" width="100%">
-      <br>
-      <strong>任务详情工作区</strong>
-    </td>
-  </tr>
-  <tr>
-    <td colspan="2">
-      <img src="./images/readme/kanvibe-ai-usage.png" alt="按账号显示 Claude、Codex、Gemini 剩余用量的 AI 用量面板" width="100%">
-      <br>
-      <strong>AI 用量 — 不离开终端即可查看各账号的剩余额度</strong>
-      <br>
-      在任务详情页按 <code>Cmd/Ctrl+0</code> 或点击 dock 最下方的图标。每张卡片都会标明属于哪个账号与订阅等级，Claude 的按模型周限额位于其所属的 7 天限额之下。
-    </td>
-  </tr>
-  <tr>
-    <td colspan="2">
-      <img src="./images/readme/kanvibe-ai-accounts.png" alt="显示 Claude、Codex、Gemini 登录状态、订阅等级与剩余用量的 AI 账号界面" width="100%">
-      <br>
-      <strong>AI 账号 — 在应用内登录一次，所有账号一览无余</strong>
-      <br>
-      从<strong>设置 → AI 账号</strong>打开。每个 provider 会列出找到的账号及其登录状态与订阅等级，剩余用量也在同一界面。登录会在应用内终端启动各 CLI 自带的登录命令，因此认证过期也无需切换到外部终端。
+    <td width="23%" valign="top">
+      <img src="../docs-site/public/screenshots/mobile-board.png" alt="Mobile：随身查看同一看板" width="100%">
+      <br><strong>Mobile：随身查看同一看板</strong>
     </td>
   </tr>
 </table>
 
-<a href="https://www.youtube.com/watch?v=8JTrvd3T_Z0">
-  <img src="https://img.youtube.com/vi/8JTrvd3T_Z0/maxresdefault.jpg" alt="KanVibe 演示视频缩略图" width="100%">
-</a>
+<p align="center">
+  <a href="https://www.youtube.com/watch?v=8JTrvd3T_Z0">
+    <img src="https://img.youtube.com/vi/8JTrvd3T_Z0/maxresdefault.jpg" alt="在 YouTube 上观看 KanVibe Desktop 演示" width="640">
+  </a>
+  <br><strong>在 YouTube 上观看 Desktop 演示</strong>
+</p>
 
-<strong><a href="https://www.youtube.com/watch?v=8JTrvd3T_Z0">在 YouTube 上观看演示</a></strong>
+## 开始使用
 
-</div>
+通过 KanVibe Homebrew tap 安装 macOS Desktop 应用：
 
----
+```bash
+brew install --cask rookedsysc/kanvibe/kanvibe
+open -a KanVibe
+```
+
+**Mobile（iOS / Android）：** 从源码构建 Flutter 应用，然后在 **Desktop 设置 → 移动端连接** 中使用电脑地址、端口和一次性连接码进行配对。电脑上的 KanVibe 必须保持运行，手机须能通过局域网或 Tailscale 等网络访问该地址。Mobile 是早期预览版，目前界面为韩文。[连接、使用与通知指南](https://kanvibe.rookedsysc.com/zh/mobile)。
+
+**移动端终端兼容性：**支持 `herdr`、`tmux`、`zellij` 和 `terminal` 会话。Herdr 会话保留原始网格，通过滚动查看。
+
+## 从电脑开始，在手机上继续
+
+1. **找到需要关注的任务。** 代理 hooks 将进行中、等待输入和待审查的状态更新到看板。
+2. **保留工作上下文。** 在任务中打开分支、worktree、终端、聊天记录和 PR 操作，并使用快捷键切换任务。
+3. **用 Mobile 继续。** 查看看板和正在运行的终端、发送后续命令，或切换到另一台已配对的电脑。
+
+<p align="center">
+  <img src="../docs-site/public/screenshots/mobile-terminal.png" alt="在同一任务终端中读取输出并输入命令" width="240">
+  <br><strong>在同一任务终端中读取输出并输入命令</strong>
+</p>
+
+<details>
+<summary>键盘工作流与截图</summary>
 
 ## 主要工作流
 
@@ -106,36 +104,17 @@ KanVibe 让 AI 编程工作不再散落在一堆终端标签中。你可以在�
 
 [打开 Vim 控制演示视频](./images/readme/kanvibe-vim-controls.mp4)
 
----
+</details>
 
 ## 前置要求
 
 | 依赖 | 版本 | 必需 | 安装 |
 |------|------|------|------|
 | [git](https://git-scm.com/) | 最新 | Yes | `brew install git` |
-| [tmux](https://github.com/tmux/tmux) | 最新 | No | `brew install tmux` |
+| [tmux](https://github.com/tmux/tmux) | 最新 | 用于 Mobile 终端（或 Herdr、zellij） | `brew install tmux` |
 | [gh](https://cli.github.com/) | 最新 | Yes | `brew install gh`（需要 `gh auth login`） |
-| [zellij](https://github.com/zellij-org/zellij) | 最新 | No | `brew install zellij` |
+| [zellij](https://github.com/zellij-org/zellij) | 最新 | 用于 Mobile 终端（或 Herdr、tmux） | `brew install zellij` |
 | [Herdr](https://herdr.dev/tui/docs/) | 已验证 0.9.5 | 默认后端 | 应用内安装提示 |
-
----
-
-## 快速开始
-
-### 使用 Homebrew 安装
-
-在 KanVibe 被官方 Homebrew Cask 仓库收录之前，请从 KanVibe Homebrew tap 安装：
-
-```bash
-brew install --cask rookedsysc/kanvibe/kanvibe
-open -a KanVibe
-```
-
-官方 Homebrew Cask 收录后，安装命令将变为：
-
-```bash
-brew install --cask kanvibe
-```
 
 ### 更新或移除
 
@@ -170,7 +149,7 @@ brew untap rookedsysc/kanvibe
 
 任务通过 5 个状态进行管理：**TODO** → **PROGRESS** → **PENDING** → **REVIEW** → **DONE**
 
-通过拖放更改状态，或让 [AI 代理 Hooks](#ai-代理-hooks---自动状态追踪) 自动转换。当任务移至 **DONE** 时，分支、worktree 和终端会话会**自动删除**。
+通过拖放更改状态，或让 [AI 代理 Hooks](#ai-代理-hooks---自动状态追踪) 自动转换。任务移至 **DONE** 时会保留分支、worktree 和终端会话。删除任务时才清理资源，项目根分支受保护。
 
 ### 4. 选择面板布局
 
@@ -202,7 +181,7 @@ brew untap rookedsysc/kanvibe
 - 创建会自动准备 git worktree 和终端会话的分支 TODO
 - 使用看板工具栏上的放大镜扫描对话框注册仓库，并把现有 worktree 分支检测为 TODO 任务
 - 将每个任务打开到专用终端工作区，并在侧边 dock 中使用任务元数据、hook 控制、聊天和 PR 操作
-- 将任务移至 DONE 时自动清理其分支、worktree 和终端会话
+- 移至 DONE 时保留资源；删除任务时清理分支、worktree 和终端会话，项目根分支受保护
 - 在目录扫描对话框中删除项目时，不会触碰现有 git 分支、worktree 或磁盘文件
 
 ### 终端会话（Herdr / tmux / zellij）
@@ -237,14 +216,14 @@ brew untap rookedsysc/kanvibe
 - 已登出的账号仍保留在列表中以便重新登录，移除时只删除 KanVibe 创建的账号目录
 
 ### 移动端（Flutter）
-- 使用 [`mobile/`](../mobile/README.md) 中的 Flutter 客户端，在手机或平板上查看看板并进入任务终端；目前需要从源码自行构建
-- 手机按状态分段纵向列出任务，宽度 768dp 及以上的平板以 Kanban 列展示同一看板
-- 任务详情直接映射该任务的 tmux/zellij 面板：手机上一个标签对应一个面板，平板上一个标签对应一个窗口，面板布局与桌面端相同
-- 可通过屏幕键盘向终端输入，桌面端未打开的任务和 SSH 远程任务同样可用
-- 支持以桌面端默认会话类型创建任务、移动任务状态、查看任务信息和打开 PR
-- 映射只读取面板，不会改变桌面端的焦点或面板大小
-- 在 **设置 → 移动端连接 → 生成连接码** 生成连接码后，在应用中输入桌面端地址、端口（打包版为 `9736`）和 6 位连接码即可连接；连接码 5 分钟后过期且只能使用一次
-- 在应用中断开连接或在桌面端设备列表中移除之前，连接会一直保持
+
+- 手机按状态纵向列出任务，宽度 768dp 及以上的平板显示看板列。支持项目筛选和切换已保存的电脑。
+- 打开任务现有的 tmux、Zellij 或普通终端会话。手机和平板均在每个标签中显示一个面板；无需回到电脑即可添加 shell 标签。
+- 读取输出并使用屏幕键盘输入，SSH 远程任务也可使用。支持创建任务、更改状态、查看任务信息和打开关联 PR。
+- tmux 和普通终端会根据移动屏幕调整行列数，查看期间电脑上的同一终端尺寸也会变化，离开后恢复。Herdr 和 Zellij 使用滚动查看。
+- 使用 5 分钟后过期的 6 位一次性连接码配对。可保存多台电脑并分别移除配对。
+- 查看所选电脑的通知中心、同步已读状态并进入相关任务。前台 hook 更新通过 WebSocket 接收；后台推送需要 Firebase/APNs 配置和 Desktop 推送中继。
+- 目前需从源码构建。Desktop 必须保持运行，且手机能通过局域网或 Tailscale 等网络访问该电脑地址。参见 [Mobile 指南](https://kanvibe.rookedsysc.com/zh/mobile)与[构建说明](../mobile/README.md)。
 
 ### 键盘快捷键
 
@@ -279,7 +258,7 @@ KanVibe 与 **Claude Code Hooks**、**Gemini CLI Hooks**、**Codex CLI** 和 **O
 | **PROGRESS** | AI 正在主动处理任务 |
 | **PENDING** | AI 提出后续问题，等待用户回复（仅 Claude Code 支持） |
 | **REVIEW** | AI 已完成工作，等待审查 |
-| **DONE** | 任务完成 — 分支、worktree 和终端会话会**自动删除** |
+| **DONE** | 任务完成 — 删除任务前保留分支、worktree 和终端会话 |
 
 #### Claude Code
 ```
@@ -422,3 +401,5 @@ React 负责渲染 UI，Rust 负责 SQLite、Git/worktree、PTY/SSH 会话、hoo
 
 - [workmux](https://github.com/raine/workmux) — tmux workspace manager
 - [vibe-kanban](https://github.com/BloopAI/vibe-kanban) — AI-powered Kanban board
+
+[Buy Me a Coffee](https://buymeacoffee.com/rookedsysc)

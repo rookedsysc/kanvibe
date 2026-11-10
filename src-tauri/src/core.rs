@@ -1035,13 +1035,19 @@ fn reconcile_root_task(db: &Database, project: &Value) -> Result<(Value, bool)> 
     if let Some(priority) = project_state.get("priority") {
         task["priority"] = priority.clone();
     }
-    if existing.is_none() && text(&task, "sessionType").is_empty() && host.is_none() {
-        task["sessionType"] = settings(db, "getDefaultSessionType", &[])?;
-        task["sessionName"] = json!(git::session_name_for(
-            text(&task, "sessionType"),
-            root,
-            branch
-        ));
+    if text(&task, "sessionType").is_empty() {
+        let session = git::session_name(root, branch);
+        if let Some((kind, name)) = find_alive_branch_session(&session, host, &git::run) {
+            task["sessionType"] = json!(kind);
+            task["sessionName"] = json!(name);
+        } else if existing.is_none() && host.is_none() {
+            task["sessionType"] = settings(db, "getDefaultSessionType", &[])?;
+            task["sessionName"] = json!(git::session_name_for(
+                text(&task, "sessionType"),
+                root,
+                branch
+            ));
+        }
     }
     let changed = task != original || existing.is_none();
     if changed {
@@ -1258,6 +1264,28 @@ fn fill_missing_base_branch(task: &mut Value, project: &Value) {
         task["baseBranch"] = project["defaultBranch"].clone();
     }
 }
+fn find_alive_branch_session(
+    session: &str,
+    host: Option<&str>,
+    run: &dyn Fn(&str, Option<&str>) -> Result<String>,
+) -> Option<(String, String)> {
+    if run(
+        &format!("tmux has-session -t {}", git::quote(session)),
+        host,
+    )
+    .is_ok()
+    {
+        return Some(("tmux".into(), session.into()));
+    }
+    let herdr_name = crate::herdr::sanitize_session_name(session);
+    run(
+        &crate::herdr::command(&herdr_name, &["workspace", "list"]),
+        host,
+    )
+    .ok()
+    .map(|_| ("herdr".into(), herdr_name))
+}
+
 pub fn sync_worktrees(app: &AppHandle) -> Result<Value> {
     let db = app.state::<Database>();
     let mut result = json!({"worktreeTasks":[],"registeredWorktrees":[],"hooksSetup":[],"errors":[],"changed":false});
@@ -1325,14 +1353,9 @@ pub fn sync_worktrees(app: &AppHandle) -> Result<Value> {
                 }
                 if is_new && text(&task, "sessionType").is_empty() {
                     let session = git::session_name(text(&project, "repoPath"), branch);
-                    if git::run(
-                        &format!("tmux has-session -t {}", git::quote(&session)),
-                        host,
-                    )
-                    .is_ok()
-                    {
-                        task["sessionType"] = json!("tmux");
-                        task["sessionName"] = json!(session);
+                    if let Some((kind, name)) = find_alive_branch_session(&session, host, &git::run) {
+                        task["sessionType"] = json!(kind);
+                        task["sessionName"] = json!(name);
                     }
                 }
                 if task != original || is_new {
@@ -1574,6 +1597,39 @@ mod tests {
             "삭제된 task를 다시 넣으면 안 된다"
         );
     }
+    #[test]
+    fn branch_session_discovery_prefers_tmux_and_recovers_sanitized_herdr() {
+        let session = "project-feature/foo";
+        let calls = std::cell::RefCell::new(Vec::new());
+        let tmux = find_alive_branch_session(session, Some("dev-host"), &|command, host| {
+            assert_eq!(host, Some("dev-host"));
+            calls.borrow_mut().push(command.to_owned());
+            Ok(String::new())
+        });
+        assert_eq!(tmux, Some(("tmux".into(), session.into())));
+        assert_eq!(calls.borrow().len(), 1);
+        calls.borrow_mut().clear();
+        let herdr = find_alive_branch_session(session, Some("dev-host"), &|command, host| {
+            assert_eq!(host, Some("dev-host"));
+            calls.borrow_mut().push(command.to_owned());
+            if command.starts_with("tmux ") {
+                Err("no tmux".into())
+            } else {
+                Ok("{}".into())
+            }
+        });
+        let sanitized = crate::herdr::sanitize_session_name(session);
+        assert_eq!(herdr, Some(("herdr".into(), sanitized.clone())));
+        assert_eq!(calls.borrow().len(), 2);
+        assert!(
+            calls.borrow()[1].contains(&format!("--session '{}' 'workspace' 'list'", sanitized))
+        );
+        assert_eq!(
+            find_alive_branch_session(session, None, &|_, _| Err("not running".into())),
+            None
+        );
+    }
+
     #[test]
     fn worktree_sync_keeps_existing_base_branch_and_fills_only_missing_values() {
         let project = json!({"defaultBranch":"main"});

@@ -1,3 +1,5 @@
+import '../../task_create/domain/session_type.dart';
+
 /// 비출 pane 하나. 좌표는 태블릿이 window 배치를 재현할 때 쓴다
 class MirrorPane {
   const MirrorPane({
@@ -41,7 +43,7 @@ class MirrorPane {
   static int _readInt(Object? value) => value is num ? value.toInt() : 0;
 }
 
-/// tmux window 또는 zellij tab 하나
+/// tmux window, zellij tab 또는 Herdr tab 하나
 class MirrorTab {
   const MirrorTab({required this.id, required this.name, required this.panes});
 
@@ -65,17 +67,24 @@ class TaskSurfaces {
   const TaskSurfaces({
     required this.tabs,
     this.canResize = false,
+    this.sessionType = SessionType.terminal,
     this.canRespondToDeviceQueries = false,
   });
 
   final List<MirrorTab> tabs;
   final bool canResize;
+  final SessionType sessionType;
   final bool canRespondToDeviceQueries;
 
   /// 폰이 쓰는 목록. 모든 window에 걸친 pane을 순서대로 펼친다
   List<MirrorPane> get allPanes => [for (final tab in tabs) ...tab.panes];
 
   static TaskSurfaces fromJson(Map<String, dynamic> json) => TaskSurfaces(
+    sessionType:
+        SessionType.values
+            .where((type) => type.name == json['sessionType'])
+            .firstOrNull ??
+        SessionType.terminal,
     canResize: json['canResize'] == true,
     canRespondToDeviceQueries: json['sessionType'] == 'terminal',
     tabs: (json['tabs'] as List<dynamic>? ?? [])
@@ -90,6 +99,7 @@ enum SurfaceUnavailableReason {
   noSession,
   sessionNotRunning,
   zellijTooOld,
+  herdrMissing,
   remoteUnreachable,
   unknown;
 
@@ -97,6 +107,7 @@ enum SurfaceUnavailableReason {
     'no-session' => SurfaceUnavailableReason.noSession,
     'session-not-running' => SurfaceUnavailableReason.sessionNotRunning,
     'zellij-too-old' => SurfaceUnavailableReason.zellijTooOld,
+    'herdr-missing' => SurfaceUnavailableReason.herdrMissing,
     'remote-unreachable' => SurfaceUnavailableReason.remoteUnreachable,
     _ => SurfaceUnavailableReason.unknown,
   };

@@ -389,6 +389,29 @@ fn handle(
                 json!({"success":!task.is_null(),"task":task}),
             ));
         }
+        if method == "POST" && parts.len() == 7 && parts[4] == "panes" && parts[6] == "shortcuts" {
+            let action = text(&payload, "action");
+            if action.is_empty() {
+                return Ok((
+                    400,
+                    json!({"success":false,"error":"단축키 동작이 필요합니다"}),
+                ));
+            }
+            let pane = decode(parts[5])?;
+            let result = integrations::mobile_shortcut(app, &id, &pane, action);
+            if let Err(error) = &result {
+                if [
+                    "지원하지 않는 단축키입니다",
+                    "일반 터미널에서는 세션 제어 단축키를 사용할 수 없습니다",
+                    "이 세션에서 지원하지 않는 단축키입니다",
+                ]
+                .contains(&error.as_str())
+                {
+                    return Ok((400, json!({"success":false,"error":error})));
+                }
+            }
+            return surface_result(result, true);
+        }
         if parts.len() == 5 {
             match (method, parts[4]) {
                 ("PATCH", "status") => {
@@ -561,6 +584,7 @@ fn surface_result(result: Result<Value, String>, tab: bool) -> Result<(u16, Valu
                 "no-session",
                 "session-not-running",
                 "zellij-too-old",
+                "herdr-missing",
                 "remote-unreachable",
             ]
             .contains(&reason.as_str()) =>
@@ -686,8 +710,8 @@ fn resize_mobile(
         return Err("터미널 크기가 유효하지 않습니다".into());
     }
     let target = integrations::verify_pane(app, task, pane)?;
-    if target.kind == "zellij" {
-        return Err("zellij-too-old".into());
+    if matches!(target.kind.as_str(), "zellij" | "herdr") {
+        return Err("session-not-running".into());
     }
     let tab = if target.kind == "terminal" {
         pane.into()
@@ -928,7 +952,7 @@ async fn pane_socket(
             }
         }
     }
-    let mut fifo = if target.kind == "tmux" {
+    let mut fifo = if matches!(target.kind.as_str(), "tmux" | "herdr") {
         let target_start = target.clone();
         let pane_start = pane.clone();
         let prepared = tokio::task::spawn_blocking(move || {
@@ -1087,6 +1111,13 @@ mod tests {
         assert_eq!(
             resized_pane_snapshot(&target("terminal"), |_| panic!("must not read")),
             Ok(None)
+        );
+    }
+    #[test]
+    fn missing_herdr_reports_surface_conflict() {
+        assert_eq!(
+            surface_result(Err("herdr-missing".into()), false).unwrap(),
+            (409, json!({"success":false,"reason":"herdr-missing"}))
         );
     }
     #[test]

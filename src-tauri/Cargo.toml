@@ -1,6 +1,6 @@
 [package]
 name = "kanvibe"
-version = "1.5.0"
+version = "1.5.2"
 description = "KanVibe desktop"
 edition = "2021"
 rust-version = "1.90"
@@ -15,6 +15,7 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 tauri = { version = "2", features = ["macos-private-api"] }
 tauri-plugin-opener = "2"
+tauri-plugin-dialog = "2"
 tauri-plugin-notification = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

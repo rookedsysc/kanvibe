@@ -429,6 +429,7 @@ check_single_dep() {
     git)    version=$(git --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1) ;;
     tmux)   version=$(tmux -V 2>/dev/null | grep -oE '[0-9]+\.[0-9]+[a-z]?' | head -1) ;;
     zellij) version=$(zellij --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1) ;;
+    herdr)  version=$(herdr --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1) ;;
     gh)     version=$(gh --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1) ;;
   esac
 
@@ -511,6 +512,11 @@ check_deps() {
       *)    zellij_method="pkg_mgr_missing" ;;
     esac
     check_single_dep "zellij"   "zellij" "optional" ""       "$zellij_method" || true
+  fi
+
+  # Herdr는 Desktop의 기본 세션이라 tmux 유무와 관계없이 확인한다. PATH 밖의 공식 설치 위치도 설치된 것으로 본다
+  if [ ! -x "$HOME/.local/bin/herdr" ]; then
+    check_single_dep "herdr"    "herdr"  "optional" ""       "install_herdr_official" || true
   fi
 
   echo ""
@@ -640,6 +646,16 @@ install_zellij_binary() {
   rm -rf "$tmpdir"
 }
 
+install_herdr_official() {
+  # shell rc를 건드리지 않는 공식 설치 스크립트. 앱의 설치 경로(src-tauri/scripts/install-herdr.sh)와 같은 위치에 둔다
+  local installer
+  installer=$(mktemp)
+  curl -fsSL https://herdr.dev/install.sh -o "$installer" && HERDR_INSTALL_DIR="$HOME/.local/bin" sh "$installer"
+  local install_status=$?
+  rm -f "$installer"
+  return "$install_status"
+}
+
 ## ── 의존성 설치 (공통) ────────────────────────────────────────
 install_single_dep() {
   local name="$1"
@@ -691,7 +707,7 @@ install_single_dep() {
   # Linux apt 전용 설치 함수
   if [ "$method" = "install_node_apt" ] || [ "$method" = "install_docker_apt" ] || \
      [ "$method" = "install_gh_apt" ] || [ "$method" = "install_zellij_binary" ] || \
-     [ "$method" = "install_docker_mac" ]; then
+     [ "$method" = "install_herdr_official" ] || [ "$method" = "install_docker_mac" ]; then
     if $method >> "$LOG_FILE" 2>&1; then
       stop_log
       printf "  ${CHECK} $(msg install_ok "$name")\n"

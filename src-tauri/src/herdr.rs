@@ -105,6 +105,155 @@ pub fn read_tabs(session: &str, host: Option<&str>, shell: Shell) -> Result<Vec<
         .collect())
 }
 
+pub fn mirror_panes(session: &str, host: Option<&str>, shell: Shell) -> Result<Vec<Value>, String> {
+    let result = run(session, &["pane", "list"], host, shell)?;
+    let panes = result["panes"]
+        .as_array()
+        .ok_or("Herdr pane 목록이 올바르지 않습니다.")?;
+    let mut mirrors = Vec::new();
+    for tab in read_tabs(session, host, shell)? {
+        let tab_panes: Vec<_> = panes
+            .iter()
+            .filter(|pane| {
+                pane["tab_id"] == tab["id"]
+                    && !pane["restore_error"]
+                        .as_str()
+                        .is_some_and(|s| !s.is_empty())
+            })
+            .collect();
+        let Some(first) = tab_panes.first() else {
+            continue;
+        };
+        let pane_id = first["pane_id"]
+            .as_str()
+            .ok_or("Herdr pane ID가 없습니다.")?;
+        let result = run(session, &["pane", "layout", "--pane", pane_id], host, shell)?;
+        let layout = &result["layout"];
+        for pane in tab_panes {
+            let pane_id = pane["pane_id"]
+                .as_str()
+                .ok_or("Herdr pane ID가 없습니다.")?;
+            let rect = layout["panes"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .find(|entry| entry["pane_id"] == pane_id)
+                .map(|entry| &entry["rect"]);
+            let zoomed = layout["zoomed"] == true && layout["focused_pane_id"] == pane_id;
+            // process-info는 표시용이라 조회 실패가 살아 있는 pane을 숨기지 않게 한다.
+            let process = run(
+                session,
+                &["pane", "process-info", "--pane", pane_id],
+                host,
+                shell,
+            )
+            .ok()
+            .and_then(|value| {
+                value["process_info"]["foreground_processes"]
+                    .as_array()
+                    .and_then(|items| items.last())
+                    .and_then(|item| item["name"].as_str())
+                    .map(str::to_owned)
+            })
+            .unwrap_or_default();
+            mirrors.push(json!({
+                "id":pane_id,"tabId":tab["id"],"tabName":tab["name"],"command":process,
+                "left":rect.and_then(|r| r["x"].as_u64()).unwrap_or(0),
+                "top":rect.and_then(|r| r["y"].as_u64()).unwrap_or(0),
+                "width":if zoomed {layout["area"]["width"].clone()} else {rect.map(|r| r["width"].clone()).unwrap_or_else(||layout["area"]["width"].clone())},
+                "height":pane["scroll"]["viewport_rows"]
+            }));
+        }
+    }
+    Ok(mirrors)
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct PaneExtent {
+    pub history_rows: u64,
+    pub viewport_rows: u64,
+}
+pub fn pane_extent(
+    session: &str,
+    pane: &str,
+    host: Option<&str>,
+    shell: Shell,
+) -> Result<PaneExtent, String> {
+    let result = run(session, &["pane", "get", pane], host, shell)?;
+    Ok(PaneExtent {
+        history_rows: result["pane"]["scroll"]["max_offset_from_bottom"]
+            .as_u64()
+            .ok_or("Herdr 스크롤 이력이 없습니다.")?,
+        viewport_rows: result["pane"]["scroll"]["viewport_rows"]
+            .as_u64()
+            .ok_or("Herdr 화면 크기가 없습니다.")?,
+    })
+}
+
+pub fn recent_screen_command(session: &str, pane: &str) -> String {
+    command(
+        session,
+        &[
+            "pane", "read", pane, "--source", "recent", "--lines", "2000", "--format", "ansi",
+        ],
+    )
+}
+pub fn observe_command(session: &str, pane: &str, cols: u64, rows: u64) -> String {
+    command(
+        session,
+        &[
+            "terminal",
+            "session",
+            "observe",
+            pane,
+            "--cols",
+            &cols.to_string(),
+            "--rows",
+            &rows.to_string(),
+        ],
+    )
+}
+#[derive(Debug, PartialEq)]
+pub enum ObserveRecord {
+    Frame { full: bool, output: Vec<u8> },
+    Closed,
+}
+pub fn parse_observe_record(line: &str) -> Option<ObserveRecord> {
+    use base64::Engine;
+    let record: Value = serde_json::from_str(line).ok()?;
+    match record["type"].as_str()? {
+        "terminal.closed" => Some(ObserveRecord::Closed),
+        "terminal.frame" => Some(ObserveRecord::Frame {
+            full: record["full"] == true,
+            output: base64::engine::general_purpose::STANDARD
+                .decode(record["bytes"].as_str()?)
+                .ok()?,
+        }),
+        _ => None,
+    }
+}
+pub fn write_pane_command(session: &str, pane: &str, input: &str) -> String {
+    let mut commands = Vec::new();
+    for (index, text) in input.split('\0').enumerate() {
+        if index > 0 {
+            commands.push(command(session, &["pane", "send-keys", pane, "ctrl+space"]));
+        }
+        if !text.is_empty() {
+            commands.push(command(session, &["pane", "send-text", pane, text]));
+        }
+    }
+    commands.join(" && ")
+}
+pub fn pane_shortcut_command(session: &str, pane: &str, action: &str) -> Option<String> {
+    let args = match action {
+        "split-right" => vec!["pane", "split", pane, "--direction", "right", "--no-focus"],
+        "split-down" => vec!["pane", "split", pane, "--direction", "down", "--no-focus"],
+        "toggle-fullscreen" => vec!["pane", "zoom", pane, "--toggle"],
+        _ => return None,
+    };
+    Some(command(session, &args))
+}
+
 fn is_transport_error(error: &str, host: Option<&str>) -> bool {
     host.is_some() && crate::dependencies::is_ssh_transport_error(error)
 }
@@ -687,6 +836,154 @@ mod tests {
                 .map(|c| c.0.clone())
                 .collect()
         }
+    }
+
+    #[test]
+    fn mirror_panes_keep_tab_order_geometry_zoom_and_foreground_process() {
+        for zoomed in [false, true] {
+            let shell = |script: &str, host: Option<&str>, _: Duration| {
+                assert_eq!(host, Some("remote"));
+                let result = if script.contains("'pane' 'list'") {
+                    json!({"panes":[
+                        {"pane_id":"w1:p2","tab_id":"w1:t2","scroll":{"viewport_rows":38}},
+                        {"pane_id":"w1:p1","tab_id":"w1:t1","scroll":{"viewport_rows":38}},
+                        {"pane_id":"w1:p3","tab_id":"w1:t1","scroll":{"viewport_rows":38}},
+                        {"pane_id":"w1:p4","tab_id":"w1:t1","restore_error":"Directory unavailable"}
+                    ]})
+                } else if script.contains("'tab' 'list'") {
+                    json!({"tabs":[{"tab_id":"w1:t1","label":"work"},{"tab_id":"w1:t2","label":"logs"}]})
+                } else if script.contains("'pane' 'layout'") {
+                    json!({"layout":{"area":{"width":120},"focused_pane_id":"w1:p1","zoomed":zoomed,"panes":[
+                        {"pane_id":"w1:p1","rect":{"x":0,"y":0,"width":60}},
+                        {"pane_id":"w1:p3","rect":{"x":60,"y":0,"width":60}},
+                        {"pane_id":"w1:p2","rect":{"x":0,"y":0,"width":120}}
+                    ]}})
+                } else if script.ends_with("'w1:p3'") {
+                    json!({"process_info":{"foreground_processes":[{"name":"shell"},{"name":"vim"}]}})
+                } else if script.ends_with("'w1:p2'") {
+                    return Err("process unavailable".to_owned());
+                } else {
+                    json!({"process_info":{"foreground_processes":[{"name":"zsh"}]}})
+                };
+                Ok(json!({"result":result}).to_string())
+            };
+            assert_eq!(
+                mirror_panes("feature", Some("remote"), &shell).unwrap(),
+                vec![
+                    json!({"id":"w1:p1","tabId":"w1:t1","tabName":"work","command":"zsh","left":0,"top":0,"width":if zoomed {120} else {60},"height":38}),
+                    json!({"id":"w1:p3","tabId":"w1:t1","tabName":"work","command":"vim","left":60,"top":0,"width":60,"height":38}),
+                    json!({"id":"w1:p2","tabId":"w1:t2","tabName":"logs","command":"","left":0,"top":0,"width":120,"height":38}),
+                ]
+            );
+        }
+    }
+    #[test]
+    fn pane_extent_keeps_history_and_native_viewport_rows() {
+        let shell = |script: &str, host: Option<&str>, _: Duration| {
+            assert_eq!(script, command("feature", &["pane", "get", "w1:p1"]));
+            assert_eq!(host, Some("remote"));
+            Ok(json!({"result":{"pane":{"scroll":{"max_offset_from_bottom":1024,"viewport_rows":38}}}}).to_string())
+        };
+        assert_eq!(
+            pane_extent("feature", "w1:p1", Some("remote"), &shell).unwrap(),
+            PaneExtent {
+                history_rows: 1024,
+                viewport_rows: 38
+            }
+        );
+    }
+    #[test]
+    fn observe_records_preserve_ansi_utf8_and_distinguish_full_delta_close() {
+        use base64::Engine;
+        let output = "한글\x1b[?1049h".as_bytes();
+        for full in [false, true] {
+            let record = json!({"type":"terminal.frame","bytes":base64::engine::general_purpose::STANDARD.encode(output),"full":full});
+            assert_eq!(
+                parse_observe_record(&record.to_string()),
+                Some(ObserveRecord::Frame {
+                    full,
+                    output: output.to_vec()
+                })
+            );
+        }
+        assert_eq!(
+            parse_observe_record(r#"{"type":"terminal.closed"}"#),
+            Some(ObserveRecord::Closed)
+        );
+        for invalid in [
+            "not-json",
+            r#"{"type":"terminal.frame","bytes":2}"#,
+            r#"{"type":"terminal.frame","bytes":"%bad"}"#,
+            r#"{"type":"ignored"}"#,
+        ] {
+            assert_eq!(parse_observe_record(invalid), None);
+        }
+    }
+    #[test]
+    fn mobile_pane_commands_keep_literal_input_nul_and_native_observer_size() {
+        let script = write_pane_command("feature", "w1:p1", "--help\0한글\r\x03");
+        assert_eq!(
+            script,
+            [
+                command("feature", &["pane", "send-text", "w1:p1", "--help"]),
+                command("feature", &["pane", "send-keys", "w1:p1", "ctrl+space"]),
+                command("feature", &["pane", "send-text", "w1:p1", "한글\r\x03"])
+            ]
+            .join(" && ")
+        );
+        assert_eq!(write_pane_command("feature", "w1:p1", ""), "");
+        assert_eq!(
+            observe_command("feature", "w1:p1", 132, 38),
+            command(
+                "feature",
+                &["terminal", "session", "observe", "w1:p1", "--cols", "132", "--rows", "38"]
+            )
+        );
+        assert_eq!(
+            recent_screen_command("feature", "w1:p1"),
+            command(
+                "feature",
+                &[
+                    "pane", "read", "w1:p1", "--source", "recent", "--lines", "2000", "--format",
+                    "ansi"
+                ]
+            )
+        );
+        for action in ["scroll-up", "copy-mode", "toggle-floating", "unknown"] {
+            assert_eq!(pane_shortcut_command("feature", "w1:p1", action), None);
+        }
+        assert_eq!(
+            pane_shortcut_command("feature", "w1:p1", "split-right"),
+            Some(command(
+                "feature",
+                &[
+                    "pane",
+                    "split",
+                    "w1:p1",
+                    "--direction",
+                    "right",
+                    "--no-focus"
+                ]
+            ))
+        );
+        assert_eq!(
+            pane_shortcut_command("feature", "w1:p1", "split-down"),
+            Some(command(
+                "feature",
+                &[
+                    "pane",
+                    "split",
+                    "w1:p1",
+                    "--direction",
+                    "down",
+                    "--no-focus"
+                ]
+            ))
+        );
+        assert_eq!(
+            pane_shortcut_command("feature", "w1:p1", "toggle-fullscreen"),
+            Some(command("feature", &["pane", "zoom", "w1:p1", "--toggle"]))
+        );
     }
 
     #[test]

@@ -25,24 +25,26 @@ async function launchKanVibeTauri(options = {}) {
       try { metadata = JSON.parse(fs.readFileSync(metadataPath, "utf8")); break; } catch { await pause(); }
     }
     if (!metadata) throw new Error(`Tauri QA bridge did not start\n${output}`);
-    const evaluate = async (script) => {
+    const evaluate = async (script, windowLabel) => {
       const response = await fetch(`http://127.0.0.1:${metadata.port}/eval`, {
         method: "POST", headers: { Authorization: `Bearer ${metadata.token}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ script }), signal: AbortSignal.timeout(50000),
+        body: JSON.stringify({ script, window: windowLabel }), signal: AbortSignal.timeout(50000),
       });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || `QA HTTP ${response.status}`);
       return result.value;
     };
+    const createPage = (windowLabel) => {
     const page = {
-      evaluate: (fn, arg) => evaluate(`return (${fn.toString()})(${JSON.stringify(arg) ?? "undefined"});`),
+      forWindow: createPage,
+      evaluate: (fn, arg) => evaluate(`return (${fn.toString()})(${JSON.stringify(arg) ?? "undefined"});`, windowLabel),
       async waitForFunction(fn, arg) {
         const until = Date.now() + 30000;
         while (Date.now() < until) { if (await page.evaluate(fn, arg)) return; await pause(); }
         throw new Error(`WebView condition timed out: ${fn}`);
       },
       async screenshot({ path: outputPath }) {
-        const png = await evaluate("return await window.__TAURI_INTERNALS__.invoke('qa_snapshot');");
+        const png = await evaluate("return await window.__TAURI_INTERNALS__.invoke('qa_snapshot');", windowLabel);
         fs.writeFileSync(outputPath, Buffer.from(png, "base64"));
       },
       async exposeFunction(name, fn) {
@@ -56,6 +58,9 @@ async function launchKanVibeTauri(options = {}) {
       },
       async addInitScript(fn) { await page.evaluate(fn); },
     };
+    return page;
+    };
+    const page = createPage("main");
     await page.waitForFunction(() => Boolean(window.kanvibeDesktop));
     return {
       page,

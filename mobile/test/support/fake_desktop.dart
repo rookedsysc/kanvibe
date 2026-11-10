@@ -85,6 +85,7 @@ class FakeDesktopClient implements DesktopClient {
     this.surfaces,
     this.surfacesError,
     this.onCreateTerminalTab,
+    this.onRunTerminalShortcut,
     this.unpairError,
     this.branches = const ['main', 'dev'],
     this.createdTask = const {
@@ -137,6 +138,22 @@ class FakeDesktopClient implements DesktopClient {
   final paneCloseCodes = <String, int>{};
 
   /// pane별로 모바일이 보낸 입력. 어느 pane이 키를 받았는지까지 봐야 입력 대상이 옮겨졌는지 알 수 있다
+  final Future<({TaskSurfaces surfaces, String? screen})> Function()?
+  onRunTerminalShortcut;
+  final shortcutActions = <String>[];
+
+  @override
+  Future<({TaskSurfaces surfaces, String? screen})> runTerminalShortcut(
+    DesktopConnection connection,
+    String taskId,
+    String paneId,
+    String action,
+  ) async {
+    shortcutActions.add(action);
+    if (onRunTerminalShortcut != null) return onRunTerminalShortcut!();
+    return (surfaces: await fetchSurfaces(connection, taskId), screen: null);
+  }
+
   final writtenInput = <String, List<String>>{};
   final resizedPanes = <String, List<({int cols, int rows})>>{};
 

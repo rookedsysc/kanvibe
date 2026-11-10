@@ -1,5 +1,6 @@
 "use client";
 
+import { confirmAction } from "@/desktop/renderer/utils/dialogs";
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { useTranslations } from "next-intl";
 import {
@@ -90,8 +91,8 @@ export default function ProjectRegistryDialog({
     });
   }
 
-  function handleDelete(projectId: string, projectName: string) {
-    if (!confirm(t("deleteConfirm", { name: projectName }))) return;
+  async function handleDelete(projectId: string, projectName: string) {
+    if (!await confirmAction(t("deleteConfirm", { name: projectName }))) return;
 
     startTransition(async () => {
       await deleteProject(projectId);

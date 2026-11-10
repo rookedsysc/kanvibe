@@ -13,7 +13,7 @@
 - Node.js 24.x（参见 `.nvmrc`）
 - Rust 1.90 或更新版本、Cargo 和 [Tauri 平台前置要求](https://v2.tauri.app/start/prerequisites/)
 - pnpm
-- tmux 或 zellij（用于终端功能）
+- Herdr、tmux 或 zellij（用于终端功能）
 
 ### 开始
 

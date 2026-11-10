@@ -1,3 +1,4 @@
+import { confirmAction } from "@/desktop/renderer/utils/dialogs";
 import type { SessionType } from "@/entities/KanbanTask";
 import { getSessionDependencyStatus, installSessionDependency } from "@/desktop/renderer/actions/sessionDependency";
 
@@ -20,7 +21,7 @@ export async function ensureSessionDependencyWithPrompt(
   const target = status.isRemote
     ? tCommon("sessionDependency.remoteTarget", { host: status.sshHost ?? "remote" })
     : tCommon("sessionDependency.localTarget");
-  const shouldInstall = window.confirm(
+  const shouldInstall = await confirmAction(
     tCommon("sessionDependency.installPrompt", {
       tool: toolName,
       target,

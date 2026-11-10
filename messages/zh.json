@@ -32,7 +32,7 @@
     },
     "doneAlert": {
       "title": "移动到完成",
-      "message": "移动到完成状态会保留 worktree、branch 和 tmux session。只有删除任务时才会删除这些资源。",
+      "message": "移动到完成状态会保留 worktree、branch 和终端会话。只有删除任务时才会删除这些资源。",
       "dontAskAgain": "不再提示",
       "confirm": "移动",
       "cancel": "取消"
@@ -323,7 +323,7 @@
     "loadError": "无法加载布局设置。",
     "retry": "重试",
     "title": "面板布局设置",
-    "description": "配置 tmux 会话的面板分割方式和各面板的启动命令。",
+    "description": "配置 Herdr 和 tmux 会话的面板分割方式和各面板的启动命令。",
     "backToBoard": "返回看板",
     "globalDefault": "全局默认值",
     "globalDescription": "未设置项目专属配置时使用的默认布局。",
@@ -477,6 +477,9 @@
       "collapse": "收起变更文件列表"
     },
     "terminalTabs": "终端标签页",
+    "terminalTabCloseConfirm": "关闭此标签页可能会终止正在运行的进程。\n\n当前检测到的进程：{processes}\n后台任务可能不会显示在此列表中。\n\n仍要关闭此标签页吗？\n要关闭整个窗口，请按 {shortcut}。",
+    "terminalTabProcessesUnknown": "无法获取进程信息",
+    "terminalTabCloseCheckFailed": "无法确认要关闭的标签页，标签页未关闭。请稍后重试。",
     "newTerminalTab": "新建标签页",
     "closeTerminalTab": "关闭 {name} 标签页",
     "renameTerminalTab": "重命名标签页",

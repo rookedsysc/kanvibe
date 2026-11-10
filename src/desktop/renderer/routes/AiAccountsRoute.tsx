@@ -1,3 +1,4 @@
+import { confirmAction } from "@/desktop/renderer/utils/dialogs";
 import { useCallback, useEffect, useState } from "react";
 import { useTranslations } from "next-intl";
 import { AiProviderIcon } from "@/components/AiProviderIcon";
@@ -172,7 +173,7 @@ export default function AiAccountsRoute() {
   }, [loadAccounts]);
 
   async function removeAccount(account: AiAccountSummary) {
-    if (!window.confirm(t("removeConfirm", { label: account.label }))) {
+    if (!await confirmAction(t("removeConfirm", { label: account.label }))) {
       return;
     }
 

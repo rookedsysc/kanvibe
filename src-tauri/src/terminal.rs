@@ -977,6 +977,13 @@ fn with_tabs<T>(
     });
     Ok(f(t))
 }
+fn local_tabs(app: &AppHandle, id: &str) -> Result<Value, String> {
+    with_tabs(
+        app,
+        id,
+        |t| json!({"ok":true,"tabs":t.entries.iter().enumerate().map(|(i,(id,name))|json!({"id":id,"nativeIndex":i,"name":name,"isActive":t.active==*id})).collect::<Vec<_>>()}),
+    )
+}
 fn remove_tab(app: &AppHandle, id: &str, tab: &str) {
     let state = app.state::<TerminalState>();
     if let Ok(mut tabs) = state.tabs.lock() {
@@ -994,11 +1001,135 @@ fn remove_tab(app: &AppHandle, id: &str, tab: &str) {
         }
     };
 }
+fn terminal_tab_close_info(
+    target: Result<Value, String>,
+    tab: &str,
+    list_tabs: impl FnOnce(&Value) -> Result<Vec<Value>, String>,
+    processes: impl FnOnce(&Value) -> Result<Option<Vec<String>>, String>,
+) -> Value {
+    let failure = |error: String| json!({"ok":false,"shouldCloseWindow":false,"processNames":null,"error":error});
+    let target = match target {
+        Ok(target) => target,
+        Err(error) => return failure(error),
+    };
+    let kind = field(&target, "sessionType").unwrap_or("");
+    if kind.is_empty() || field(&target, "sessionName").unwrap_or("").is_empty() {
+        return failure("작업에 연결된 세션이 없습니다.".into());
+    }
+    let tabs = match list_tabs(&target) {
+        Ok(tabs) => tabs,
+        Err(error) => return failure(error),
+    };
+    if !tabs.iter().any(|entry| entry["id"] == tab) {
+        return failure("탭을 찾을 수 없습니다.".into());
+    }
+    if kind != "terminal" && tabs.len() == 1 {
+        return json!({"ok":true,"shouldCloseWindow":true,"processNames":null});
+    }
+    // 조회 실패와 빈 목록은 작업이 없다는 증거가 아니므로 렌더러의 알 수 없음 경고를 유지한다.
+    let mut names = Vec::new();
+    for name in processes(&target).ok().flatten().unwrap_or_default() {
+        let name = name.trim();
+        if !name.is_empty() && !names.iter().any(|existing| existing == name) {
+            names.push(name.to_owned());
+        }
+    }
+    let names = if names.is_empty() {
+        Value::Null
+    } else {
+        json!(names)
+    };
+    json!({"ok":true,"shouldCloseWindow":false,"processNames":names})
+}
+
+fn mirror_tab_process_names(
+    target: &Value,
+    tab: &str,
+    shell: crate::herdr::Shell,
+) -> Result<Option<Vec<String>>, String> {
+    let name = field(target, "sessionName").unwrap_or("");
+    let host = field(target, "sshHost");
+    let names = match field(target, "sessionType") {
+        Some("tmux") => {
+            let output = shell(
+                &format!(
+                    "tmux list-panes -s -t {} -F '#{{window_id}}\t#{{pane_current_command}}'",
+                    crate::runtime::quote(name)
+                ),
+                host,
+                std::time::Duration::from_secs(5),
+            )?;
+            output
+                .lines()
+                .filter_map(|line| line.split_once('\t'))
+                .filter(|(tab_id, _)| *tab_id == tab)
+                .map(|(_, command)| command.to_owned())
+                .collect()
+        }
+        Some("herdr") => crate::herdr::mirror_panes(name, host, shell)?
+            .iter()
+            .filter(|pane| pane["tabId"] == tab)
+            .filter_map(|pane| pane["command"].as_str().map(str::to_owned))
+            .collect(),
+        _ => return Ok(None),
+    };
+    Ok(Some(names))
+}
+
+fn local_tab_process_name(app: &AppHandle, task: &str, tab: &str) -> Option<String> {
+    #[cfg(unix)]
+    {
+        let foreground = session(app, task, Some(tab))
+            .ok()?
+            .lock()
+            .ok()?
+            .master
+            .process_group_leader()?;
+        let output =
+            crate::runtime::run_shell(&format!("ps -p {foreground} -o comm="), None).ok()?;
+        let name = Path::new(output.trim()).file_name()?.to_str()?.to_owned();
+        (!name.is_empty()).then_some(name)
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = (app, task, tab);
+        None
+    }
+}
+
 pub fn tabs_dispatch(app: &AppHandle, method: &str, args: Vec<Value>) -> Result<Value, String> {
     let id = args
         .first()
         .and_then(Value::as_str)
         .ok_or("taskId가 필요합니다.")?;
+    if method == "getTerminalTabCloseInfo" {
+        let tab = args.get(1).and_then(Value::as_str).unwrap_or("");
+        return Ok(terminal_tab_close_info(
+            crate::core::dispatch(app, "kanban", "getTaskById", vec![json!(id)]),
+            tab,
+            |target| {
+                let listed = if field(target, "sessionType") == Some("terminal") {
+                    local_tabs(app, id)?
+                } else {
+                    multiplex_tabs(app, "listTerminalTabs", &[json!(id)], target)?
+                };
+                if listed["ok"] != true {
+                    return Err(field(&listed, "error").unwrap_or("터미널 탭 명령 실패").to_owned());
+                }
+                Ok(listed["tabs"].as_array().cloned().unwrap_or_default())
+            },
+            |target| {
+                if field(target, "sessionType") == Some("terminal") {
+                    return Ok(if field(target, "sshHost").is_none() {
+                        local_tab_process_name(app, id, tab).map(|name| vec![name])
+                    } else {
+                        None
+                    });
+                }
+                mirror_tab_process_names(target, tab, &crate::herdr::system_shell)
+            },
+        ));
+    }
     let target = task(app, id)?;
     let Some(kind) = field(&target, "sessionType") else {
         return Ok(json!({"ok":false,"tabs":[],"error":"작업에 연결된 세션이 없습니다."}));
@@ -1021,11 +1152,7 @@ pub fn tabs_dispatch(app: &AppHandle, method: &str, args: Vec<Value>) -> Result<
     }
     let tab = args.get(1).and_then(Value::as_str).unwrap_or("");
     match method {
-        "listTerminalTabs" => with_tabs(
-            app,
-            id,
-            |t| json!({"ok":true,"tabs":t.entries.iter().enumerate().map(|(i,(id,name))|json!({"id":id,"nativeIndex":i,"name":name,"isActive":t.active==*id})).collect::<Vec<_>>()}),
-        ),
+        "listTerminalTabs" => local_tabs(app, id),
         "createTerminalTab" => with_tabs(app, id, |t| {
             let next = format!("{id}-{}", t.next);
             t.next += 1;
@@ -1292,6 +1419,131 @@ fn parse_zellij(output: &str) -> Vec<Value> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn close_info_protects_last_multiplexer_tab_without_reading_processes() {
+        for kind in ["tmux", "zellij", "herdr"] {
+            let target = json!({"sessionType":kind,"sessionName":"session"});
+            let result = terminal_tab_close_info(
+                Ok(target),
+                "tab-1",
+                |_| Ok(vec![json!({"id":"tab-1"})]),
+                |_| panic!("last tab must not inspect or stop processes"),
+            );
+            assert_eq!(
+                result,
+                json!({"ok":true,"shouldCloseWindow":true,"processNames":null})
+            );
+        }
+    }
+    #[test]
+    fn close_info_keeps_local_last_tab_destructive_and_unknown_processes_safe() {
+        let target = json!({"sessionType":"terminal","sessionName":"shell"});
+        for processes in [
+            Ok(Some(vec!["node".into()])),
+            Ok(None),
+            Ok(Some(vec![])),
+            Err("lookup failed".into()),
+        ] {
+            let expected = match &processes {
+                Ok(Some(names)) if !names.is_empty() => json!(names),
+                _ => Value::Null,
+            };
+            let result = terminal_tab_close_info(
+                Ok(target.clone()),
+                "tab-1",
+                |_| Ok(vec![json!({"id":"tab-1"})]),
+                |_| processes,
+            );
+            assert_eq!(
+                result,
+                json!({"ok":true,"shouldCloseWindow":false,"processNames":expected})
+            );
+        }
+    }
+    #[test]
+    fn close_info_rejects_missing_target_tab_and_unreadable_tab_list() {
+        for target in [
+            Err("작업을 찾을 수 없습니다.".into()),
+            Ok(json!({"sessionType":"tmux"})),
+            Ok(Value::Null),
+        ] {
+            let result = terminal_tab_close_info(
+                target,
+                "tab-1",
+                |_| panic!("missing session must not list tabs"),
+                |_| panic!("missing session must not inspect processes"),
+            );
+            assert_eq!(result["ok"], false);
+            assert_eq!(result["shouldCloseWindow"], false);
+            assert!(result["processNames"].is_null());
+        }
+        let target = json!({"sessionType":"tmux","sessionName":"session"});
+        let missing = terminal_tab_close_info(
+            Ok(target.clone()),
+            "missing",
+            |_| Ok(vec![json!({"id":"tab-1"})]),
+            |_| panic!("missing tab must not inspect processes"),
+        );
+        assert_eq!(
+            missing,
+            json!({"ok":false,"shouldCloseWindow":false,"processNames":null,"error":"탭을 찾을 수 없습니다."})
+        );
+        let failed = terminal_tab_close_info(
+            Ok(target),
+            "tab-1",
+            |_| Err("offline".into()),
+            |_| panic!("unreadable tabs must not inspect processes"),
+        );
+        assert_eq!(
+            failed,
+            json!({"ok":false,"shouldCloseWindow":false,"processNames":null,"error":"offline"})
+        );
+    }
+    #[test]
+    fn close_info_trims_and_deduplicates_names_in_pane_order() {
+        let result = terminal_tab_close_info(
+            Ok(json!({"sessionType":"tmux","sessionName":"session"})),
+            "tab-1",
+            |_| Ok(vec![json!({"id":"tab-1"}), json!({"id":"tab-2"})]),
+            |_| {
+                Ok(Some(vec![
+                    " claude ".into(),
+                    "".into(),
+                    "node".into(),
+                    "claude".into(),
+                ]))
+            },
+        );
+        assert_eq!(
+            result,
+            json!({"ok":true,"shouldCloseWindow":false,"processNames":["claude","node"]})
+        );
+    }
+    #[test]
+    fn close_info_reads_only_current_tab_panes_from_the_correct_host() {
+        let target =
+            json!({"sessionType":"tmux","sessionName":"project's session","sshHost":"dev-host"});
+        let names = mirror_tab_process_names(&target, "@1", &|command, host, timeout| {
+            assert_eq!(host, Some("dev-host"));
+            assert_eq!(timeout, std::time::Duration::from_secs(5));
+            assert!(command.starts_with(r"tmux list-panes -s -t 'project'\''s session'"));
+            assert!(command.contains("#{window_id}\t#{pane_current_command}"));
+            Ok("@1\tclaude\n@1\tnode\n@2\tvim\nmalformed".into())
+        })
+        .unwrap();
+        assert_eq!(names, Some(vec!["claude".into(), "node".into()]));
+        for kind in ["zellij", "terminal"] {
+            assert_eq!(
+                mirror_tab_process_names(
+                    &json!({"sessionType":kind,"sessionName":"session"}),
+                    "tab",
+                    &|_, _, _| panic!("unsupported backend must report unknown")
+                ),
+                Ok(None)
+            );
+        }
+    }
+
     #[test]
     fn tmux_ids_and_sparse_indices_are_preserved() {
         let t = parse_tmux("@3\t1\t1\tClaude\n@7\t4\t0\tbuild\n");

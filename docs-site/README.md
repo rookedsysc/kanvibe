@@ -28,6 +28,8 @@ pnpm start
 ## Structure
 
 - `app/[lang]/layout.jsx` configures the shared Nextra docs layout and language switcher.
+- `app/[lang]/docs-navigation.jsx` renders the sidebar menu and marks the page being read with `aria-current`.
+- `app/[lang]/not-found.jsx` renders the localized 404 page inside the shared shell.
 - `app/[lang]/[[...mdxPath]]/page.jsx` renders MDX pages and attaches canonical/hreflang metadata.
 - `app/[lang]/software-application-structured-data.jsx` emits the `SoftwareApplication` JSON-LD on the home page.
 - `app/sitemap.js` and `app/robots.js` generate `/sitemap.xml` and `/robots.txt`.

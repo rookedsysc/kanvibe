@@ -4,12 +4,14 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kanvibe_mobile/src/common/constants/app_theme.dart';
 import 'package:kanvibe_mobile/src/common/providers.dart';
 import 'package:kanvibe_mobile/src/features/task_detail/domain/mirror_pane.dart';
 import 'package:kanvibe_mobile/src/features/task_detail/presentation/widgets/pane_terminal_view.dart';
 import 'package:xterm/xterm.dart' as xterm;
+import 'package:kanvibe_mobile/src/features/task_detail/presentation/widgets/terminal_shortcut_bar.dart';
 
 import '../../../support/fake_desktop.dart';
 
@@ -46,15 +48,17 @@ Future<void> pumpPane(
           data: MediaQuery.of(context).copyWith(textScaler: textScaler),
           child: child!,
         ),
-        home: SizedBox(
-          width: phoneSize.width,
-          height: phoneSize.height,
-          child: PaneTerminalView(
-            canResize: canResize,
-            canRespondToDeviceQueries: canRespondToDeviceQueries,
-            taskId: 'task-1',
-            pane: pane,
-            key: ValueKey(pane.id),
+        home: Material(
+          child: SizedBox(
+            width: phoneSize.width,
+            height: phoneSize.height,
+            child: PaneTerminalView(
+              canResize: canResize,
+              canRespondToDeviceQueries: canRespondToDeviceQueries,
+              taskId: 'task-1',
+              pane: pane,
+              key: ValueKey(pane.id),
+            ),
           ),
         ),
       ),
@@ -205,6 +209,31 @@ void main() {
       expect(scroll.offset, closeTo(bottom, 1));
     });
   }
+
+  testWidgets('Herdr observe 프레임이 이력을 지우지 않고 화면을 그린다', (tester) async {
+    final client = FakeDesktopClient();
+    await pumpPane(tester, _pane, client: client, store: FakeConnectionStore());
+    final stream = client.openedPanes[_pane.id]!;
+
+    final history = List.generate(100, (i) => 'history-$i').join('\r\n');
+    stream.add('\x1b[H\x1b[2J\x1b[3J$history');
+    // 실제 Herdr 0.9.5가 보낸 전체 프레임과 변경 프레임의 모양이다
+    stream.add(
+      '\x1b[?2026h\x1b[?25l\x1b]8;;\x1b\\\x1b[2J\x1b[1;1H\x1b[0;38;5;2;49mframe-row\x1b[0m'
+      '\x1b[2;3H\x1b[?25h\x1b[?2026l\x1b[2;3H\x1b[?25h',
+    );
+    stream.add('\x1b[?2026h\x1b[?25l\x1b[1;7Hdiff\x1b[0m\x1b[2;3H\x1b[?25h\x1b[?2026l');
+    await tester.pumpAndSettle();
+
+    final terminal = mountedTerminal(tester);
+    final lines = terminal.buffer.lines.toList().map((line) => line.getText().trimRight()).toList();
+    final viewportTop = terminal.buffer.scrollBack;
+    expect(lines, contains('history-5'));
+    expect(lines[viewportTop], 'frame-diff');
+    expect(terminal.buffer.cursorY, 1);
+    expect(terminal.buffer.cursorX, 2);
+    expect(client.writtenInput[_pane.id] ?? [], isEmpty);
+  });
 
   testWidgets('화면 덤프가 갱신되어도 읽던 이전 출력을 유지한다', (tester) async {
     final client = FakeDesktopClient();
@@ -1169,5 +1198,113 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(tester.testTextInput.isVisible, isFalse);
+  });
+
+  /// 키 입력 검증에 쓰는 기본 세팅을 모든 세션의 단축키 바에 올려 둔다
+  void putRawKeysOnBar() {
+    final profile = {
+      'enabled': true,
+      'ids': ['ctrl', 'alt', 'escape', 'tab', 'up'],
+      'combos': <Object>[],
+    };
+    FlutterSecureStorage.setMockInitialValues({
+      'kanvibe_terminal_shortcuts_v3': jsonEncode({
+        for (final type in ['terminal', 'tmux', 'zellij']) type: profile,
+      }),
+    });
+  }
+
+  Future<void> tapRawKey(WidgetTester tester, String id) async {
+    final key = find.bySemanticsIdentifier('shortcut-$id');
+    await tester.ensureVisible(key);
+    await tester.pumpAndSettle();
+    await tester.tap(key);
+    await tester.pump();
+  }
+
+  testWidgets(
+    'Ctrl and Alt affect one IME character and preserve keyboard focus',
+    (tester) async {
+      final client = FakeDesktopClient();
+      putRawKeysOnBar();
+      await pumpPane(
+        tester,
+        _pane,
+        client: client,
+        store: FakeConnectionStore(),
+      );
+      final base = await attachSoftKeyboard(tester);
+      await tapRawKey(tester, 'ctrl');
+      await tapRawKey(tester, 'alt');
+      expect(tester.testTextInput.isVisible, isTrue);
+      await sendImeBuffer(tester, base: base, previous: '', next: 'c');
+      await sendImeBuffer(tester, base: base, previous: 'c', next: 'cx');
+      expect(client.writtenInput['%19']?.join(), '\x1b\x03x');
+    },
+  );
+
+  testWidgets('accessory sends Esc Tab and application-mode cursor sequences', (
+    tester,
+  ) async {
+    final client = FakeDesktopClient();
+    putRawKeysOnBar();
+    await pumpPane(tester, _pane, client: client, store: FakeConnectionStore());
+    await attachSoftKeyboard(tester);
+    await tapRawKey(tester, 'escape');
+    await tapRawKey(tester, 'tab');
+    mountedTerminal(tester).write('\x1b[?1h');
+
+    await tapRawKey(tester, 'up');
+    expect(client.writtenInput['%19']?.join(), '\x1b\t\x1bOA');
+  });
+
+  testWidgets('keyboard inset leaves shortcut bar directly above keyboard', (
+    tester,
+  ) async {
+    tester.view.viewInsets = const FakeViewPadding(bottom: 300);
+    addTearDown(tester.view.resetViewInsets);
+    final client = FakeDesktopClient();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          desktopClientProvider.overrideWithValue(client),
+          connectionStoreProvider.overrideWithValue(FakeConnectionStore()),
+        ],
+        child: MaterialApp(
+          home: const Scaffold(
+            body: PaneTerminalView(taskId: 'task-1', pane: _pane),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final barBottom = tester
+        .getBottomRight(find.byType(TerminalShortcutBar))
+        .dy;
+    expect(
+      barBottom,
+      closeTo(
+        tester.view.physicalSize.height / tester.view.devicePixelRatio -
+            300 / tester.view.devicePixelRatio,
+        5,
+      ),
+    );
+    expect(tester.takeException(), isNull);
+  });
+  testWidgets('IME Backspace and Done consume the pending modifier', (
+    tester,
+  ) async {
+    final client = FakeDesktopClient();
+    putRawKeysOnBar();
+    await pumpPane(tester, _pane, client: client, store: FakeConnectionStore());
+    final base = await attachSoftKeyboard(tester);
+    await sendImeBuffer(tester, base: base, previous: '', next: 'a');
+    await tapRawKey(tester, 'alt');
+    await sendImeBuffer(tester, base: base, previous: 'a', next: '');
+    await sendImeBuffer(tester, base: base, previous: '', next: 'b');
+    await tapRawKey(tester, 'ctrl');
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await sendImeBuffer(tester, base: base, previous: 'b', next: 'bc');
+    expect(client.writtenInput['%19']?.join(), 'a\x17b\rc');
   });
 }

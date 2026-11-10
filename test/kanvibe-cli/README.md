@@ -60,6 +60,7 @@ docker run --rm -it kanvibe-cli-bare bash kanvibe.sh start
 - [ ] usage 메시지가 로케일에 맞게 출력되는가
 - [ ] git만 ✓, 나머지(Node.js, pnpm, Docker, tmux, gh)는 ✗로 표시되는가
 - [ ] tmux가 없으므로 zellij가 `!` (optional)로 표시되는가
+- [ ] herdr가 `!` (optional)로 표시되는가 (`~/.local/bin/herdr`가 있으면 출력되지 않는다)
 - [ ] start 시 필수 의존성 누락 에러로 종료되는가
 
 ---

@@ -1,3 +1,4 @@
+import DocsNavigation from './docs-navigation'
 import LanguageSwitcher from './language-switcher'
 import { getDocsDictionary } from '../../lib/docsDictionary.mjs'
 import { resolvePinnedSiteUrl } from '../../lib/docsSite.mjs'
@@ -11,7 +12,7 @@ export const metadata = {
     default: 'KanVibe Docs',
     template: '%s · KanVibe Docs'
   },
-  description: 'KanVibe documentation for installation, quick start, features, settings, and keyboard shortcuts.',
+  description: 'KanVibe Desktop and Mobile guides: installation, pairing, task boards, terminals, notifications, and keyboard shortcuts.',
   applicationName: 'KanVibe Docs',
   generator: 'Nextra',
   icons: {
@@ -23,7 +24,7 @@ export const metadata = {
   },
   openGraph: {
     title: 'KanVibe Docs',
-    description: 'Keyboard-first Kanban workspace for AI coding agents.',
+    description: 'KanVibe Desktop and Mobile documentation: a Kanban workspace for AI coding agents with git worktrees and terminals.',
     siteName: 'KanVibe Docs',
     type: 'website',
     ...(pinnedSiteUrl ? {
@@ -36,10 +37,6 @@ export const metadata = {
       images: ['/branding/og-image.png']
     }
   } : {})
-}
-
-function localizeHref(lang, href) {
-  return href === '/' ? `/${lang}` : `/${lang}${href}`
 }
 
 function KanVibeLogo({ lang, tagline }) {
@@ -65,11 +62,7 @@ export default async function RootLayout({ children, params }) {
           </header>
           <div className="kv-doc-layout">
             <aside className="kv-sidebar" aria-label="Documentation navigation">
-              <nav>
-                {dictionary.nav.map(([href, label]) => (
-                  <a key={href} href={localizeHref(lang, href)}>{label}</a>
-                ))}
-              </nav>
+              <DocsNavigation lang={lang} navItems={dictionary.nav} />
               <a className="kv-repo-link" href="https://github.com/rookedsysc/kanvibe">
                 {dictionary.repo} ↗
               </a>

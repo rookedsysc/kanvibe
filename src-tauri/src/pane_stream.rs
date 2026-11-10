@@ -26,6 +26,7 @@ struct Stream {
     clients: AtomicUsize,
     ended: AtomicBool,
     cleaned: AtomicBool,
+    refresh: AtomicBool,
     ready: Arc<AtomicBool>,
     cleanup: String,
     host: Option<String>,
@@ -55,6 +56,25 @@ pub fn subscribe(target: &MirrorTarget, pane: &str) -> Result<Subscription, Stri
     let registry = REGISTRY
         .get_or_init(|| Arc::new(Registry::default()))
         .clone();
+    if target.kind == "herdr" {
+        let extent = crate::herdr::pane_extent(
+            &target.name,
+            pane,
+            target.host.as_deref(),
+            &crate::herdr::system_shell,
+        )?;
+        return registry.subscribe_source(
+            key,
+            || {
+                Ok((
+                    spawn_herdr_observer(target, pane)?,
+                    String::new(),
+                    target.host.clone(),
+                ))
+            },
+            Some((target.clone(), pane.to_owned(), extent)),
+        );
+    }
     registry.subscribe(key, || {
         let directory = format!("/tmp/kanvibe-pane-{}", uuid::Uuid::new_v4());
         let script = stream_script(pane, &directory);
@@ -70,6 +90,14 @@ impl Registry {
         self: &Arc<Self>,
         key: String,
         spawn: impl FnOnce() -> Result<(Child, String, Option<String>), String>,
+    ) -> Result<Subscription, String> {
+        self.subscribe_source(key, spawn, None)
+    }
+    fn subscribe_source(
+        self: &Arc<Self>,
+        key: String,
+        spawn: impl FnOnce() -> Result<(Child, String, Option<String>), String>,
+        herdr: Option<(MirrorTarget, String, crate::herdr::PaneExtent)>,
     ) -> Result<Subscription, String> {
         let id = self.next_subscriber.fetch_add(1, Ordering::Relaxed);
         let (tx, rx) = mpsc::channel(STREAM_QUEUE_CHUNKS);
@@ -87,6 +115,7 @@ impl Registry {
                     .map_err(|e| e.to_string())?
                     .insert(id, subscriber);
                 existing.clients.fetch_add(1, Ordering::Relaxed);
+                existing.refresh.store(true, Ordering::Release);
                 return Ok(Subscription {
                     registry: Arc::downgrade(self),
                     key,
@@ -109,31 +138,36 @@ impl Registry {
             clients: AtomicUsize::new(1),
             ended: AtomicBool::new(false),
             cleaned: AtomicBool::new(false),
+            refresh: AtomicBool::new(false),
             ready: ready.clone(),
             cleanup,
             host,
         });
         streams.insert(key.clone(), stream.clone());
         let weak = Arc::downgrade(&stream);
-        std::thread::spawn(move || {
-            let mut stdout = stdout;
-            let mut buffer = [0u8; STREAM_CHUNK_BYTES];
-            loop {
-                match stdout.read(&mut buffer) {
-                    Ok(0) | Err(_) => break,
-                    Ok(count) => {
-                        let Some(stream) = weak.upgrade() else { break };
-                        stream.publish(&buffer[..count]);
+        if let Some((target, pane, extent)) = herdr {
+            std::thread::spawn(move || observe_herdr(weak, target, pane, extent, stdout));
+        } else {
+            std::thread::spawn(move || {
+                let mut stdout = stdout;
+                let mut buffer = [0u8; STREAM_CHUNK_BYTES];
+                loop {
+                    match stdout.read(&mut buffer) {
+                        Ok(0) | Err(_) => break,
+                        Ok(count) => {
+                            let Some(stream) = weak.upgrade() else { break };
+                            stream.publish(&buffer[..count]);
+                        }
                     }
                 }
-            }
-            if let Some(stream) = weak.upgrade() {
-                stream.ended.store(true, Ordering::Release);
-                if let Ok(mut subscribers) = stream.subscribers.lock() {
-                    subscribers.clear();
+                if let Some(stream) = weak.upgrade() {
+                    stream.ended.store(true, Ordering::Release);
+                    if let Ok(mut subscribers) = stream.subscribers.lock() {
+                        subscribers.clear();
+                    }
                 }
-            }
-        });
+            });
+        }
         // stderr는 읽어 비워야 SSH 경고가 파이프를 채워 출력을 막지 않는다.
         std::thread::spawn(move || {
             for line in BufReader::new(stderr).lines().map_while(Result::ok) {
@@ -150,6 +184,145 @@ impl Registry {
             output: rx,
             overflow,
         })
+    }
+}
+
+fn spawn_herdr_observer(target: &MirrorTarget, pane: &str) -> Result<Child, String> {
+    let panes = crate::herdr::mirror_panes(
+        &target.name,
+        target.host.as_deref(),
+        &crate::herdr::system_shell,
+    )?;
+    let pane = panes
+        .iter()
+        .find(|entry| entry["id"] == pane)
+        .ok_or("session-not-running")?;
+    let width = pane["width"]
+        .as_u64()
+        .ok_or("Herdr pane 너비가 없습니다.")?;
+    let height = pane["height"]
+        .as_u64()
+        .ok_or("Herdr pane 높이가 없습니다.")?;
+    let command = crate::herdr::observe_command(
+        &target.name,
+        pane["id"].as_str().ok_or("Herdr pane ID가 없습니다.")?,
+        width,
+        height,
+    );
+    stream_command(target.host.as_deref(), &command)
+        .spawn()
+        .map_err(|error| error.to_string())
+}
+
+type ObserverEvent = (u64, Option<crate::herdr::ObserveRecord>);
+fn read_herdr_frames(
+    stdout: impl Read + Send + 'static,
+    epoch: u64,
+    sender: std::sync::mpsc::SyncSender<ObserverEvent>,
+) {
+    std::thread::spawn(move || {
+        for line in BufReader::new(stdout).lines().map_while(Result::ok) {
+            if let Some(record) = crate::herdr::parse_observe_record(&line) {
+                if sender.send((epoch, Some(record))).is_err() {
+                    return;
+                }
+            }
+        }
+        let _ = sender.send((epoch, None));
+    });
+}
+fn observe_herdr(
+    weak: Weak<Stream>,
+    target: MirrorTarget,
+    pane: String,
+    mut extent: crate::herdr::PaneExtent,
+    stdout: impl Read + Send + 'static,
+) {
+    let (sender, receiver) = std::sync::mpsc::sync_channel(STREAM_QUEUE_CHUNKS);
+    let mut epoch = 0;
+    read_herdr_frames(stdout, epoch, sender.clone());
+    // 화면 폴링 간격을 재사용해 출력이 잠잠해진 뒤에만 이력을 읽고 SSH 왕복을 제한한다.
+    let quiet_period = Duration::from_secs(if target.host.is_some() { 3 } else { 1 });
+    let mut quiet_deadline = None;
+    loop {
+        let Some(stream) = weak.upgrade() else { break };
+        if stream.ended.load(Ordering::Acquire) {
+            break;
+        }
+        let mut restart = stream.refresh.swap(false, Ordering::AcqRel);
+        match receiver.recv_timeout(Duration::from_millis(100)) {
+            Ok((record_epoch, record)) if record_epoch == epoch => match record {
+                Some(crate::herdr::ObserveRecord::Frame { full, output }) => {
+                    stream.publish(&output);
+                    if !full {
+                        quiet_deadline = Some(Instant::now() + quiet_period);
+                    }
+                }
+                Some(crate::herdr::ObserveRecord::Closed) | None => {
+                    stream.stop();
+                    break;
+                }
+            },
+            Ok(_) | Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {}
+            Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+                stream.stop();
+                break;
+            }
+        }
+        let result = (|| {
+            if quiet_deadline.is_some_and(|deadline| Instant::now() >= deadline) {
+                quiet_deadline = None;
+                let next = crate::herdr::pane_extent(
+                    &target.name,
+                    &pane,
+                    target.host.as_deref(),
+                    &crate::herdr::system_shell,
+                )?;
+                if next != extent {
+                    extent = next;
+                    let mut child = stream.process.lock().map_err(|error| error.to_string())?;
+                    terminate(&mut child);
+                    drop(child);
+                    if stream.ended.load(Ordering::Acquire) {
+                        return Ok(());
+                    }
+                    stream.publish(
+                        crate::integrations::snapshot_verified(&target, &pane)?.as_bytes(),
+                    );
+                    restart = true;
+                }
+            }
+            if restart && !stream.ended.load(Ordering::Acquire) {
+                let mut child = stream.process.lock().map_err(|error| error.to_string())?;
+                terminate(&mut child);
+                if stream.ended.load(Ordering::Acquire) {
+                    return Ok(());
+                }
+                let mut observer = spawn_herdr_observer(&target, &pane)?;
+                let stdout = observer
+                    .stdout
+                    .take()
+                    .ok_or("Missing Herdr observe stdout")?;
+                let stderr = observer
+                    .stderr
+                    .take()
+                    .ok_or("Missing Herdr observe stderr")?;
+                // SSH의 stderr가 가득 차면 NDJSON 스트림도 멈추므로 별도로 비운다.
+                std::thread::spawn(move || {
+                    let _ = std::io::copy(&mut BufReader::new(stderr), &mut std::io::sink());
+                });
+                *child = observer;
+                epoch += 1;
+                read_herdr_frames(stdout, epoch, sender.clone());
+                quiet_deadline = None;
+            }
+            Ok::<_, String>(())
+        })();
+        if let Err(error) = result {
+            eprintln!("Herdr observe failed: {error}");
+            stream.stop();
+            break;
+        }
     }
 }
 
@@ -380,6 +553,98 @@ mod tests {
             .unwrap()
             .success());
     }
+    #[tokio::test]
+    async fn herdr_frames_deliver_ansi_deltas_and_drop_terminates_observer() {
+        use base64::Engine;
+        let full = serde_json::json!({"type":"terminal.frame","full":true,"bytes":base64::engine::general_purpose::STANDARD.encode("한글\x1b[?1049h")}).to_string();
+        let delta = serde_json::json!({"type":"terminal.frame","bytes":base64::engine::general_purpose::STANDARD.encode("\x1b[2;3Hnext")}).to_string();
+        let registry = Arc::new(Registry::default());
+        let mut process = 0;
+        let mut subscription = registry
+            .subscribe_source(
+                "herdr".into(),
+                || {
+                    let child = fixture_command(&format!(
+                        "printf '%s\\n' {} {}; sleep 30",
+                        crate::runtime::quote(&full),
+                        crate::runtime::quote(&delta)
+                    ));
+                    process = child.id();
+                    Ok((child, String::new(), None))
+                },
+                Some((
+                    MirrorTarget {
+                        kind: "herdr".into(),
+                        name: "test".into(),
+                        host: None,
+                    },
+                    "w1:p1".into(),
+                    crate::herdr::PaneExtent {
+                        history_rows: 0,
+                        viewport_rows: 38,
+                    },
+                )),
+            )
+            .unwrap();
+        let frames = tokio::time::timeout(Duration::from_secs(2), async {
+            vec![
+                subscription.output.recv().await.unwrap(),
+                subscription.output.recv().await.unwrap(),
+            ]
+        })
+        .await
+        .unwrap();
+        assert_eq!(
+            frames,
+            vec!["한글\x1b[?1049h".as_bytes(), "\x1b[2;3Hnext".as_bytes()]
+        );
+        drop(subscription);
+        assert!(registry.streams.lock().unwrap().is_empty());
+        assert!(!Command::new("/bin/kill")
+            .args(["-0", &process.to_string()])
+            .stderr(Stdio::null())
+            .status()
+            .unwrap()
+            .success());
+    }
+    #[tokio::test]
+    async fn herdr_closed_record_ends_subscription_without_waiting_for_process_exit() {
+        let registry = Arc::new(Registry::default());
+        let mut subscription = registry
+            .subscribe_source(
+                "closed-herdr".into(),
+                || {
+                    Ok((
+                        fixture_command("printf '%s\\n' '{\"type\":\"terminal.closed\"}'; sleep 30"),
+                        String::new(),
+                        None,
+                    ))
+                },
+                Some((
+                    MirrorTarget {
+                        kind: "herdr".into(),
+                        name: "test".into(),
+                        host: None,
+                    },
+                    "w1:p1".into(),
+                    crate::herdr::PaneExtent {
+                        history_rows: 0,
+                        viewport_rows: 38,
+                    },
+                )),
+            )
+            .unwrap();
+        assert_eq!(
+            tokio::time::timeout(Duration::from_secs(2), subscription.output.recv())
+                .await
+                .unwrap(),
+            None
+        );
+        assert!(subscription.stream.ended.load(Ordering::Acquire));
+        drop(subscription);
+        assert!(registry.streams.lock().unwrap().is_empty());
+    }
+
     #[tokio::test]
     async fn slow_subscriber_is_bounded_and_does_not_block_other_clients() {
         let registry = Arc::new(Registry::default());

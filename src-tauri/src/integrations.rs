@@ -304,14 +304,13 @@ pub fn mobile_task(app: &AppHandle, id: &str) -> Result<Value, String> {
     }
     Ok(task)
 }
-pub fn mobile_create(app: &AppHandle, draft: &Value) -> Result<Value, String> {
-    let mut draft = draft.clone();
+fn validate_mobile_draft(draft: &Value) -> Result<(), String> {
     for (key, values) in [
         (
             "status",
             vec!["todo", "progress", "pending", "review", "done"],
         ),
-        ("sessionType", vec!["terminal", "tmux", "zellij"]),
+        ("sessionType", vec!["terminal", "tmux", "zellij", "herdr"]),
         ("priority", vec!["low", "medium", "high"]),
     ] {
         if let Some(v) = draft.get(key).filter(|v| !v.is_null()) {
@@ -327,6 +326,11 @@ pub fn mobile_create(app: &AppHandle, draft: &Value) -> Result<Value, String> {
             }
         }
     }
+    Ok(())
+}
+pub fn mobile_create(app: &AppHandle, draft: &Value) -> Result<Value, String> {
+    validate_mobile_draft(draft)?;
+    let mut draft = draft.clone();
     if draft.get("sessionType").is_none() {
         draft["sessionType"] = call(app, "appSettings", "getDefaultSessionType", vec![])?;
     }
@@ -413,9 +417,37 @@ fn surfaces_for_target(app: &AppHandle, id: &str, t: MirrorTarget) -> Result<Val
         let tabs:Vec<_>=items.iter().map(|tab|{let tabid=text(tab,"id");let (cols,rows)=crate::terminal::dimensions(app,id,Some(tabid)).unwrap_or((80,24));json!({"id":tabid,"name":tab["name"],"panes":[{"id":tabid,"tabId":tabid,"tabName":tab["name"],"command":"","left":0,"top":0,"width":cols,"height":rows}]})}).collect();
         return Ok(json!({"taskId":id,"sessionType":t.kind,"canResize":true,"tabs":tabs}));
     }
-    // 모바일 pane 미러는 tmux·zellij만 지원한다. Herdr 세션을 zellij로 오인해 띄우지 않는다.
     if t.kind == "herdr" {
-        return Err("session-not-running".into());
+        let panes = match crate::herdr::mirror_panes(
+            &t.name,
+            t.host.as_deref(),
+            &crate::herdr::system_shell,
+        ) {
+            Ok(panes) => panes,
+            Err(_) => {
+                let dependency = crate::dependencies::dispatch(
+                    "sessionDependency",
+                    "getSessionDependencyStatus",
+                    vec![json!("herdr"), json!(t.host)],
+                )?;
+                if dependency["available"] != true {
+                    return Err("herdr-missing".into());
+                }
+                let result = (|| {
+                    crate::terminal::open(app, "mobile:bootstrap", id, None, 80, 24)
+                        .map_err(|_| "session-not-running".to_string())?;
+                    crate::herdr::mirror_panes(
+                        &t.name,
+                        t.host.as_deref(),
+                        &crate::herdr::system_shell,
+                    )
+                    .map_err(|_| "session-not-running".to_string())
+                })();
+                let _ = crate::terminal::detach(app, "mobile:bootstrap", id, None);
+                result?
+            }
+        };
+        return group_mirror_panes(id, &t, panes);
     }
     let (command, fmt) = if t.kind == "tmux" {
         (format!("tmux list-panes -s -t {} -F '#{{pane_id}}\t#{{window_id}}\t#{{window_name}}\t#{{pane_current_command}}\t#{{pane_left}}\t#{{pane_top}}\t#{{pane_width}}\t#{{pane_height}}'",q(&t.name)),true)
@@ -450,6 +482,9 @@ fn surfaces_for_target(app: &AppHandle, id: &str, t: MirrorTarget) -> Result<Val
     } else {
         serde_json::from_str::<Vec<Value>>(&output).map_err(|_|"zellij-too-old".to_string())?.iter().filter(|p|p["is_plugin"]==false&&p["id"].is_number()).map(|p|json!({"id":format!("terminal_{}",p["id"]),"tabId":p["tab_id"].to_string(),"tabName":p["tab_name"],"command":p.get("terminal_command").unwrap_or(&p["title"]),"left":p["pane_x"],"top":p["pane_y"],"width":p["pane_columns"],"height":p["pane_rows"]})).collect()
     };
+    group_mirror_panes(id, &t, panes)
+}
+fn group_mirror_panes(id: &str, target: &MirrorTarget, panes: Vec<Value>) -> Result<Value, String> {
     if panes.is_empty() {
         return Err("session-not-running".into());
     }
@@ -461,7 +496,7 @@ fn surfaces_for_target(app: &AppHandle, id: &str, t: MirrorTarget) -> Result<Val
             tabs.push(json!({"id":pane["tabId"],"name":pane["tabName"],"panes":[pane]}));
         }
     }
-    Ok(json!({"taskId":id,"sessionType":t.kind,"canResize":t.kind=="tmux","tabs":tabs}))
+    Ok(json!({"taskId":id,"sessionType":target.kind,"canResize":target.kind=="tmux","tabs":tabs}))
 }
 pub fn verify_pane(app: &AppHandle, task: &str, pane: &str) -> Result<MirrorTarget, String> {
     let surfaces = surfaces_for_target(app, task, target(app, task)?)?;
@@ -595,6 +630,11 @@ pub fn snapshot_verified(target: &MirrorTarget, pane: &str) -> Result<String, St
         let output = crate::git::run(&command, target.host.as_deref())?;
         return Ok(tmux_snapshot(output.trim()));
     }
+    if target.kind == "herdr" {
+        let command = crate::herdr::recent_screen_command(&target.name, pane);
+        let output = crate::git::run(&command, target.host.as_deref())?;
+        return Ok(build_screen_redraw(&output, None));
+    }
     if pane.trim_start_matches("terminal_").parse::<u64>().is_err() {
         return Err("session-not-running".into());
     }
@@ -623,6 +663,8 @@ pub fn write_pane_verified(
             .collect::<Vec<_>>()
             .join(" ");
         format!("tmux send-keys -t {} -H {hex}", q(pane))
+    } else if target.kind == "herdr" {
+        crate::herdr::write_pane_command(&target.name, pane, input)
     } else {
         if pane.trim_start_matches("terminal_").parse::<u64>().is_err() {
             return Err("session-not-running".into());
@@ -641,6 +683,135 @@ pub fn write_pane_verified(
     };
     crate::git::run(&command, target.host.as_deref()).map(|_| ())
 }
+fn pane_shortcut_command(
+    kind: &str,
+    session: &str,
+    pane: &str,
+    tab: &str,
+    action: &str,
+) -> Option<String> {
+    let target = q(pane);
+    if kind == "herdr" {
+        return crate::herdr::pane_shortcut_command(session, pane, action);
+    }
+    if kind == "tmux" {
+        return Some(match action {
+            "split-right" => format!("tmux split-window -h -d -t {target}"),
+            "split-down" => format!("tmux split-window -v -d -t {target}"),
+            "toggle-fullscreen" => format!("tmux resize-pane -Z -t {target}"),
+            "copy-mode" => format!("tmux copy-mode -t {target}"),
+            "scroll-up" => {
+                format!("tmux copy-mode -t {target} && tmux send-keys -X -t {target} page-up")
+            }
+            "scroll-down" => {
+                format!("tmux copy-mode -t {target} && tmux send-keys -X -t {target} page-down")
+            }
+            "scroll-bottom" => {
+                format!("tmux copy-mode -t {target} && tmux send-keys -X -t {target} cancel")
+            }
+            _ => return None,
+        });
+    }
+    if kind != "zellij" {
+        return None;
+    }
+    let prefix = format!("zellij --session {} action", q(session));
+    if matches!(action, "split-right" | "split-down") {
+        let direction = if action == "split-right" {
+            "right"
+        } else {
+            "down"
+        };
+        return Some(format!(
+            "{prefix} new-pane --direction {direction} --tab-id {} --no-focus",
+            q(tab)
+        ));
+    }
+    let command = match action {
+        "toggle-fullscreen" => "toggle-fullscreen",
+        "toggle-floating" => "toggle-pane-embed-or-floating",
+        "scroll-up" => "page-scroll-up",
+        "scroll-down" => "page-scroll-down",
+        "scroll-bottom" => "scroll-to-bottom",
+        _ => return None,
+    };
+    Some(format!("{prefix} {command} --pane-id {target}"))
+}
+pub fn mobile_shortcut(
+    app: &AppHandle,
+    task: &str,
+    pane_id: &str,
+    action: &str,
+) -> Result<Value, String> {
+    if pane_shortcut_command("tmux", "", pane_id, "", action).is_none()
+        && pane_shortcut_command("zellij", "", pane_id, "", action).is_none()
+    {
+        return Err("지원하지 않는 단축키입니다".into());
+    }
+    let target = target(app, task)?;
+    if target.kind == "terminal" {
+        return Err("일반 터미널에서는 세션 제어 단축키를 사용할 수 없습니다".into());
+    }
+    let before = surfaces_for_target(app, task, target.clone())?;
+    let panes: Vec<_> = before["tabs"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .flat_map(|tab| tab["panes"].as_array().into_iter().flatten())
+        .collect();
+    let pane = panes
+        .iter()
+        .find(|pane| pane["id"] == pane_id)
+        .ok_or("session-not-running")?;
+    let command = pane_shortcut_command(
+        &target.kind,
+        &target.name,
+        pane_id,
+        text(pane, "tabId"),
+        action,
+    )
+    .ok_or("이 세션에서 지원하지 않는 단축키입니다")?;
+    crate::git::run(&command, target.host.as_deref())?;
+    let mut result = json!({});
+    if target.kind == "tmux" && (action == "copy-mode" || action.starts_with("scroll-")) {
+        // pipe-pane에는 복사 모드 화면이 나오지 않아 해당 화면을 별도로 돌려준다.
+        let capture = if action == "scroll-bottom" {
+            tmux_capture_command(pane_id)
+        } else {
+            format!("tmux capture-pane -peM -t {}", q(pane_id))
+        };
+        result["screen"] = json!(build_screen_redraw(
+            &crate::git::run(&capture, target.host.as_deref())?,
+            None
+        ));
+    }
+    let prior: HashSet<_> = panes
+        .iter()
+        .filter_map(|pane| pane["id"].as_str())
+        .collect();
+    let tab = text(pane, "tabId");
+    let split = matches!(action, "split-right" | "split-down");
+    let deadline = Instant::now() + Duration::from_secs(15);
+    loop {
+        let surfaces = surfaces(app, task)?;
+        let created = surfaces["tabs"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter(|entry| entry["id"] == tab)
+            .flat_map(|entry| entry["panes"].as_array().into_iter().flatten())
+            .any(|pane| !prior.contains(text(pane, "id")));
+        if !split || created {
+            result["surfaces"] = surfaces;
+            return Ok(result);
+        }
+        if Instant::now() >= deadline {
+            return Err("추가한 pane을 찾을 수 없습니다.".into());
+        }
+        std::thread::sleep(Duration::from_millis(500));
+    }
+}
+
 pub fn mobile_tab(app: &AppHandle, id: &str) -> Result<Value, String> {
     let before = surfaces_for_target(app, id, target(app, id)?)?;
     let prior: HashSet<_> = before["tabs"]
@@ -1240,5 +1411,98 @@ mod pane_mirror_regressions {
         let output = String::from_utf8(succeeded.stdout).unwrap();
         assert_eq!(output.lines().count(), 2000);
         assert_eq!(output.lines().next(), Some("line-100"));
+    }
+}
+
+#[cfg(test)]
+mod mobile_pane_regressions {
+    use super::*;
+    #[test]
+    fn mobile_task_creation_accepts_herdr_and_keeps_input_guards() {
+        for kind in ["herdr", "tmux", "zellij", "terminal"] {
+            assert_eq!(
+                validate_mobile_draft(
+                    &json!({"sessionType":kind,"branchName":"feature","baseBranch":"dev"})
+                ),
+                Ok(())
+            );
+        }
+        assert_eq!(
+            validate_mobile_draft(&json!({"sessionType":"invalid"})),
+            Err("잘못된 sessionType 값입니다".into())
+        );
+        assert_eq!(
+            validate_mobile_draft(&json!({"sessionType":3})),
+            Err("잘못된 sessionType 값입니다".into())
+        );
+        assert_eq!(
+            validate_mobile_draft(&json!({"branchName":"-bad"})),
+            Err("브랜치 이름이 올바르지 않습니다".into())
+        );
+    }
+    #[test]
+    fn shortcuts_keep_session_pane_tab_ownership_and_backend_support() {
+        assert_eq!(
+            pane_shortcut_command("tmux", "feature", "%1", "@2", "split-right"),
+            Some("tmux split-window -h -d -t '%1'".into())
+        );
+        assert_eq!(
+            pane_shortcut_command("tmux", "feature", "%1", "@2", "scroll-up"),
+            Some("tmux copy-mode -t '%1' && tmux send-keys -X -t '%1' page-up".into())
+        );
+        assert_eq!(
+            pane_shortcut_command("tmux", "feature", "%1", "@2", "scroll-down"),
+            Some("tmux copy-mode -t '%1' && tmux send-keys -X -t '%1' page-down".into())
+        );
+        assert_eq!(
+            pane_shortcut_command("tmux", "feature", "%1", "@2", "scroll-bottom"),
+            Some("tmux copy-mode -t '%1' && tmux send-keys -X -t '%1' cancel".into())
+        );
+        assert_eq!(
+            pane_shortcut_command("tmux", "feature", "%1", "@2", "copy-mode"),
+            Some("tmux copy-mode -t '%1'".into())
+        );
+        assert_eq!(pane_shortcut_command("zellij", "feature", "terminal_1", "2", "split-down"), Some("zellij --session 'feature' action new-pane --direction down --tab-id '2' --no-focus".into()));
+        assert_eq!(pane_shortcut_command("zellij", "feature", "terminal_1", "2", "toggle-floating"), Some("zellij --session 'feature' action toggle-pane-embed-or-floating --pane-id 'terminal_1'".into()));
+        assert_eq!(
+            pane_shortcut_command("herdr", "feature", "w1:p1", "w1:t1", "split-down"),
+            crate::herdr::pane_shortcut_command("feature", "w1:p1", "split-down")
+        );
+        for kind in ["tmux", "zellij", "herdr", "terminal"] {
+            assert_eq!(
+                pane_shortcut_command(kind, "feature", "%1", "2", "invalid"),
+                None
+            );
+        }
+        assert_eq!(
+            pane_shortcut_command("herdr", "feature", "w1:p1", "w1:t1", "scroll-up"),
+            None
+        );
+        assert_eq!(
+            pane_shortcut_command("zellij", "feature", "terminal_1", "2", "copy-mode"),
+            None
+        );
+    }
+    #[test]
+    fn herdr_surfaces_group_in_tab_order_without_mobile_resize() {
+        let target = MirrorTarget {
+            kind: "herdr".into(),
+            name: "feature".into(),
+            host: None,
+        };
+        let panes = vec![
+            json!({"id":"w1:p1","tabId":"w1:t1","tabName":"work"}),
+            json!({"id":"w1:p2","tabId":"w1:t1","tabName":"work"}),
+            json!({"id":"w1:p3","tabId":"w1:t2","tabName":"logs"}),
+        ];
+        let surfaces = group_mirror_panes("task", &target, panes.clone()).unwrap();
+        assert_eq!(
+            surfaces,
+            json!({"taskId":"task","sessionType":"herdr","canResize":false,"tabs":[{"id":"w1:t1","name":"work","panes":panes[..2]},{"id":"w1:t2","name":"logs","panes":panes[2..]}]})
+        );
+        assert_eq!(
+            group_mirror_panes("task", &target, vec![]),
+            Err("session-not-running".into())
+        );
     }
 }
