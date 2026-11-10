@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 import { runBackgroundTaskSyncNow } from "@/desktop/renderer/actions/backgroundTaskSync";
+import { setBoardViewMode, type BoardViewMode } from "@/desktop/renderer/actions/appSettings";
+import { useRouter } from "@/desktop/renderer/navigation";
 import { useBoardCommands } from "@/desktop/renderer/components/BoardCommandProvider";
 import { requestActiveTerminalFocusAfterUiSettles } from "@/desktop/renderer/utils/terminalFocus";
 import { useEscapeKey } from "@/hooks/useEscapeKey";
@@ -17,6 +19,7 @@ interface CommandItem {
 
 export default function CommandPaletteDialog() {
   const boardCommands = useBoardCommands();
+  const router = useRouter();
   const t = useTranslations("commandPalette");
   const tBoard = useTranslations("board");
   const tc = useTranslations("common");
@@ -55,6 +58,18 @@ export default function CommandPaletteDialog() {
     closeDialog();
   }
 
+  /** 뷰를 저장한 뒤 보드 경로로 간다. 보드 경로는 저장된 뷰를 읽어 칸반이나 워크스페이스를 보여 준다 */
+  function switchBoardView(boardViewMode: BoardViewMode) {
+    closeCommandPalette();
+    void setBoardViewMode(boardViewMode)
+      .catch((error) => {
+        console.error("Failed to save board view mode", error);
+      })
+      .then(() => {
+        router.push("/");
+      });
+  }
+
   function selectStatus(status: TaskStatus) {
     if (hasActiveTaskContext) {
       boardCommands.moveActiveTaskToStatus(status);
@@ -84,6 +99,11 @@ export default function CommandPaletteDialog() {
         });
       }
     }
+
+    items.push(
+      { id: "view:kanban", command: "view kanban", description: t("viewKanbanLabel"), run: () => switchBoardView("kanban") },
+      { id: "view:workspace", command: "view workspace", description: t("viewWorkspaceLabel"), run: () => switchBoardView("workspace") },
+    );
 
     return items;
     // eslint-disable-next-line react-hooks/exhaustive-deps

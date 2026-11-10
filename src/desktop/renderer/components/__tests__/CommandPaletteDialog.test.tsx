@@ -1,6 +1,6 @@
 import { useEffect, type ReactNode } from "react";
-import { fireEvent, render, screen } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { MemoryRouter, useLocation } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { BoardCommandProvider, useBoardCommands } from "@/desktop/renderer/components/BoardCommandProvider";
 import CommandPaletteDialog from "@/desktop/renderer/components/CommandPaletteDialog";
@@ -8,6 +8,7 @@ import { TaskStatus } from "@/entities/KanbanTask";
 
 const mocks = vi.hoisted(() => ({
   runBackgroundTaskSyncNow: vi.fn(),
+  setBoardViewMode: vi.fn(),
 }));
 
 vi.mock("next-intl", () => ({
@@ -19,6 +20,14 @@ vi.mock("next-intl", () => ({
 vi.mock("@/desktop/renderer/actions/backgroundTaskSync", () => ({
   runBackgroundTaskSyncNow: (...args: unknown[]) => mocks.runBackgroundTaskSyncNow(...args),
 }));
+
+vi.mock("@/desktop/renderer/actions/appSettings", () => ({
+  setBoardViewMode: (...args: unknown[]) => mocks.setBoardViewMode(...args),
+}));
+
+function CurrentPathname() {
+  return <div data-testid="current-pathname">{useLocation().pathname}</div>;
+}
 
 function ActiveTaskContextHarness({
   moveTaskToStatus,
@@ -85,6 +94,32 @@ describe("CommandPaletteDialog", () => {
 
     expect(screen.queryByRole("button", { name: /commandPalette\.moveToStatusLabel/ })).toBeNull();
     expect(screen.getByRole("button", { name: /commandPalette\.syncLabel/ })).toBeTruthy();
+  });
+
+  it.each([
+    ["view workspace", "workspace"],
+    ["view kanban", "kanban"],
+  ])("%s 명령을 Enter로 실행하면 보드 뷰를 저장하고 보드 화면으로 이동한다", async (commandText, boardViewMode) => {
+    // Given
+    mocks.setBoardViewMode.mockResolvedValue(undefined);
+    render(
+      <MemoryRouter initialEntries={["/ko/settings"]}>
+        <BoardCommandProvider>
+          <CommandPaletteDialog />
+          <CurrentPathname />
+        </BoardCommandProvider>
+      </MemoryRouter>,
+    );
+    openPalette();
+
+    // When
+    fireEvent.change(getSearchInput(), { target: { value: commandText } });
+    fireEvent.keyDown(getSearchInput(), { key: "Enter" });
+
+    // Then
+    expect(mocks.setBoardViewMode).toHaveBeenCalledExactlyOnceWith(boardViewMode);
+    await waitFor(() => expect(screen.getByTestId("current-pathname").textContent).toBe("/ko"));
+    expect(screen.queryByRole("dialog")).toBeNull();
   });
 
   it("Sync 행을 클릭하면 백그라운드 동기화를 정확히 1회 호출하고 다이얼로그가 닫힌다", async () => {
