@@ -1,5 +1,4 @@
 
-
 export interface BoardUpdatedPayload {
   type: "board-updated";
 }
@@ -19,10 +18,21 @@ export interface HookStatusTargetMissingPayload {
   reason: "task-not-found";
 }
 
+/** task가 쓰는 터미널 세션이 바뀌었다. 이 task를 비추던 화면은 새 세션으로 다시 붙어야 한다 */
+export interface TaskSessionChangedPayload {
+  taskId: string;
+}
+
 export interface TaskHookInstallFailedPayload {
   taskId: string;
   taskTitle: string;
   error: string;
+}
+
+export interface TaskPeerDeletionFailedPayload {
+  taskId: string;
+  taskTitle: string;
+  failedPeerUrls: string[];
 }
 
 export interface TaskPrMergedDetectedPayload {
@@ -76,6 +86,8 @@ export type BoardEventPayload =
   | ({ type: "task-status-changed" } & TaskStatusChangedPayload)
   | ({ type: "hook-status-target-missing" } & HookStatusTargetMissingPayload)
   | ({ type: "task-hook-install-failed" } & TaskHookInstallFailedPayload)
+  | ({ type: "task-session-changed" } & TaskSessionChangedPayload)
+  | ({ type: "task-peer-deletion-failed" } & TaskPeerDeletionFailedPayload)
   | ({ type: "task-pr-merged-detected" } & TaskPrMergedDetectedPayload)
   | ({ type: "task-pr-merged-detected-batch" } & TaskPrMergedDetectedBatchPayload)
   | ({ type: "background-sync-review-needed" } & BackgroundSyncReviewPayload);

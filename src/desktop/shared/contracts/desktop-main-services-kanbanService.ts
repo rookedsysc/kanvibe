@@ -57,3 +57,15 @@ export interface CreateTaskInput {
   projectId?: string;
   priority?: TaskPriority;
 }
+
+export interface SessionTypeChangeTargets {
+  taskCount: number;
+  liveSessionCount: number;
+  /** 새 세션 도구를 확인해야 하는 호스트. null은 로컬이다 */
+  sshHosts: (string | null)[];
+}
+
+export interface SessionTypeChangeResult {
+  changedCount: number;
+  failedCount: number;
+}

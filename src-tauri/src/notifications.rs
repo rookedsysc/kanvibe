@@ -214,6 +214,12 @@ pub fn prepare(payload: &Value, requested_locale: &str) -> Option<Value> {
 mod tests {
     use super::*;
     #[test]
+    fn session_change_and_peer_deletion_events_stay_in_app_only() {
+        for event in ["task-session-changed", "task-peer-deletion-failed"] {
+            assert_eq!(prepare(&json!({"type":event,"taskId":"task"}),"ko"),None);
+        }
+    }
+    #[test]
     fn status_notification_matches_renderer_dedupe_and_locale() {
         let p=prepare(&json!({"type":"task-status-changed","taskId":"t","projectName":"P","branchName":"main","taskTitle":"T","newStatus":"review","description":"D"}),"ko").unwrap();
         assert_eq!(p["body"], "T: review로 변경\nD");

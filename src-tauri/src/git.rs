@@ -66,22 +66,87 @@ fn read_optional(path: &str, host: Option<&str>) -> Result<Option<String>> {
     }
 }
 
-fn remote_write_command(path: &str, executable: bool) -> Result<String> {
+fn remote_write_command(
+    path: &str,
+    executable: bool,
+    expected_size: Option<usize>,
+) -> Result<String> {
     let parent = Path::new(path)
         .parent()
         .ok_or("부모 경로 없음")?
         .to_string_lossy();
     let mode = if executable {
-        "chmod 755 -- \"$temporary\"; "
+        "chmod 755 \"$temporary\"; "
+    } else if private_state_file(path) {
+        "chmod 600 \"$temporary\"; "
     } else {
         ""
     };
-    Ok(format!("set -e; mkdir -p -- {}; destination={}; if [ -L \"$destination\" ]; then destination=$(realpath \"$destination\"); fi; temporary=$(mktemp \"$destination.kanvibe.XXXXXX\"); trap 'rm -f -- \"$temporary\"' EXIT; if [ -f \"$destination\" ]; then cp -p -- \"$destination\" \"$temporary\"; fi; cat > \"$temporary\"; {mode}mv -f -- \"$temporary\" \"$destination\"",quote(&parent),quote(path)))
+    let preserve_mode = if private_state_file(path) {
+        ""
+    } else {
+        "if [ -f \"$destination\" ]; then cp -p -- \"$destination\" \"$temporary\"; fi; "
+    };
+    let size_check = expected_size
+        .map(|size| format!("test \"$(wc -c < \"$temporary\" | tr -d ' ')\" = {size}; "))
+        .unwrap_or_default();
+    Ok(format!("set -e; umask 077; mkdir -p -- {}; destination={}; if [ -L \"$destination\" ]; then destination=$(realpath \"$destination\"); fi; temporary=$(mktemp \"$destination.kanvibe.XXXXXX\"); trap 'rm -f -- \"$temporary\"' EXIT; {preserve_mode}{mode}cat > \"$temporary\"; {size_check}mv -f -- \"$temporary\" \"$destination\"",quote(&parent),quote(path)))
 }
 
-pub fn write(path: &str, content: &str, host: Option<&str>, executable: bool) -> Result<()> {
+fn private_state_file(path: &str) -> bool {
+    Path::new(path)
+        .file_name()
+        .is_some_and(|name| name == "targets.json")
+        && Path::new(path)
+            .parent()
+            .and_then(Path::file_name)
+            .is_some_and(|name| name == ".kanvibe")
+}
+fn state_path_components(path: &str) -> Vec<PathBuf> {
+    let mut current = PathBuf::new();
+    let mut in_state = false;
+    let mut guarded = Vec::new();
+    for part in Path::new(path).components() {
+        current.push(part);
+        if part.as_os_str() == ".kanvibe" {
+            in_state = true;
+        }
+        if in_state {
+            guarded.push(current.clone());
+        }
+    }
+    guarded
+}
+fn state_guard_command(path: &str) -> Option<String> {
+    let paths = state_path_components(path);
+    if paths.is_empty() {
+        return None;
+    }
+    Some(format!("for kanvibe_state_path in {}; do if test -L \"$kanvibe_state_path\"; then printf '%s\\n' '심볼릭 링크인 KanVibe 상태 경로에는 기록할 수 없습니다' >&2; exit 1; fi; done",paths.iter().map(|path|quote(&path.to_string_lossy())).collect::<Vec<_>>().join(" ")))
+}
+fn assert_state_path(path: &str, host: Option<&str>) -> Result<()> {
     if host.is_some() {
-        let command = remote_write_command(path, executable)?;
+        if let Some(command) = state_guard_command(path) {
+            run(&command, host)?;
+        }
+    } else {
+        for path in state_path_components(path) {
+            if std::fs::symlink_metadata(&path)
+                .is_ok_and(|metadata| metadata.file_type().is_symlink())
+            {
+                return Err(format!(
+                    "심볼릭 링크인 KanVibe 상태 경로에는 기록할 수 없습니다: {}",
+                    path.display()
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+pub fn write(path: &str, content: &str, host: Option<&str>, executable: bool) -> Result<()> {
+    assert_state_path(path, host)?;
+    if host.is_some() {
+        let command = remote_write_command(path, executable, Some(content.len()))?;
         run_input(&command, host, Some(content.as_bytes()))?;
     } else {
         let original_path = Path::new(path);
@@ -99,20 +164,47 @@ pub fn write(path: &str, content: &str, host: Option<&str>, executable: bool) ->
             std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
         }
         let temporary = p.with_extension(format!("{}.tmp", uuid::Uuid::new_v4()));
-        std::fs::write(&temporary, content).map_err(|e| e.to_string())?;
-        if let Some(permissions) = permissions {
-            std::fs::set_permissions(&temporary, permissions).map_err(|e| e.to_string())?;
-        }
-        std::fs::rename(&temporary, p).map_err(|e| e.to_string())?;
+        let mut options = std::fs::OpenOptions::new();
+        options.write(true).create_new(true);
         #[cfg(unix)]
-        if executable {
-            use std::os::unix::fs::PermissionsExt;
-            std::fs::set_permissions(p, std::fs::Permissions::from_mode(0o755))
-                .map_err(|e| e.to_string())?;
+        {
+            use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
+            let mode = if executable {
+                0o755
+            } else if private_state_file(path) {
+                0o600
+            } else {
+                permissions
+                    .as_ref()
+                    .map(PermissionsExt::mode)
+                    .unwrap_or(0o666)
+            };
+            options.mode(mode);
         }
+        let updated = (|| {
+            use std::io::Write;
+            let mut file = options
+                .open(&temporary)
+                .map_err(|error| error.to_string())?;
+            if !executable && !private_state_file(path) {
+                if let Some(permissions) = permissions {
+                    file.set_permissions(permissions)
+                        .map_err(|error| error.to_string())?;
+                }
+            }
+            file.write_all(content.as_bytes())
+                .map_err(|error| error.to_string())?;
+            drop(file);
+            std::fs::rename(&temporary, p).map_err(|error| error.to_string())
+        })();
+        if updated.is_err() {
+            let _ = std::fs::remove_file(&temporary);
+        }
+        updated?;
     }
     Ok(())
 }
+
 /// 저장소 쪽 잠금 디렉터리로 여러 프로세스와 SSH client의 읽기·수정·교체를 직렬화한다.
 /// 파일이 없을 때만 빈 내용으로 넘기고, 읽기 실패는 다른 client의 기록을 덮지 않도록 그대로 실패시킨다.
 pub fn update_text(
@@ -128,6 +220,7 @@ pub fn update_text(
     }
 }
 fn update_local_text(path: &str, update: impl FnOnce(&str) -> Result<String>) -> Result<()> {
+    assert_state_path(path,None)?;
     let lock = format!("{path}.lock");
     if let Some(parent) = Path::new(path).parent() {
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
@@ -156,6 +249,7 @@ fn update_remote_text(
     update: impl FnOnce(&str) -> Result<String>,
     run_command: &RemoteCommandRunner<'_>,
 ) -> Result<()> {
+    if let Some(command)=state_guard_command(path){run_command(&command,None)?;}
     let parent = Path::new(path)
         .parent()
         .ok_or("부모 경로 없음")?
@@ -175,7 +269,7 @@ fn update_remote_text(
     )
     .and_then(|content| update(&content))
     .and_then(|next| {
-        run_command(&remote_write_command(path, false)?, Some(next.as_bytes())).map(|_| ())
+        run_command(&remote_write_command(path, false,Some(next.len()))?, Some(next.as_bytes())).map(|_| ())
     });
     let released = run_command(&format!("rmdir -- {lock}"), None).map(|_| ());
     updated.and(released)
@@ -246,12 +340,17 @@ pub fn session_name_for(session_type: &str, repo: &str, branch: &str) -> String 
     let name = session_name(repo, branch);
     if session_type == "herdr" {
         crate::herdr::sanitize_session_name(&name)
+    } else if session_type=="zellij" {
+        String::from_utf16_lossy(&name.encode_utf16().take(60).collect::<Vec<_>>())
     } else {
         name
     }
 }
 pub fn worktree_path(repo: &str, branch: &str) -> String {
     format!("{repo}__worktrees/{}", branch.replace('/', "-"))
+}
+pub fn is_safe_git_ref(value:&str)->bool {
+    !value.is_empty()&&value.as_bytes()[0].is_ascii_alphanumeric()&&!value.contains("..")&&value.bytes().all(|byte|byte.is_ascii_alphanumeric()||b"._/-".contains(&byte))
 }
 pub fn create_worktree(
     project: &Value,
@@ -337,23 +436,48 @@ pub fn persist_task(task: &Value, project: Option<&Value>, metadata: bool) -> Re
             v["priority"] = task["priority"].clone();
         }
     }
-    write(
-        &join(
-            path,
-            if metadata {
-                ".kanvibe/task.json"
-            } else {
-                ".kanvibe/status.json"
-            },
-        ),
-        &format!(
-            "{}\n",
-            serde_json::to_string_pretty(&v).map_err(|e| e.to_string())?
-        ),
-        host,
-        false,
-    )?;
+    let state_path=join(path,if metadata{".kanvibe/task.json"}else{".kanvibe/status.json"});
+    if metadata{
+        update_text(&state_path,host,|content|{
+            let current=parse_json_object(content);
+            if let Some(session)=current.get("session"){v["session"]=session.clone();}
+            serde_json::to_string_pretty(&v).map(|content|format!("{content}\n")).map_err(|error|error.to_string())
+        })?;
+    }else{
+        write(&state_path,&format!("{}\n",serde_json::to_string_pretty(&v).map_err(|error|error.to_string())?),host,false)?;
+    }
     ensure_exclude(path, host)
+}
+
+pub fn persist_session(task: &Value, project: Option<&Value>) -> Result<()> {
+    let kind = text(task, "sessionType");
+    let name = text(task, "sessionName");
+    if kind.is_empty() || name.is_empty() {
+        return Ok(());
+    }
+    let root = project.is_some_and(|project| task["branchName"] == project["defaultBranch"]);
+    let path = task["worktreePath"]
+        .as_str()
+        .filter(|path| !path.is_empty())
+        .or_else(|| {
+            if root {
+                project.and_then(|project| project["repoPath"].as_str())
+            } else {
+                None
+            }
+        });
+    let Some(path) = path else { return Ok(()) };
+    let host = task["sshHost"]
+        .as_str()
+        .or_else(|| project.and_then(|project| project["sshHost"].as_str()));
+    ensure_exclude(path, host)?;
+    update_text(&join(path, ".kanvibe/task.json"), host, |content| {
+        let mut metadata = parse_json_object(content);
+        metadata["schemaVersion"] = json!(1);
+        metadata["session"] = json!({"sessionType":kind,"sessionName":name});
+        metadata["updatedAt"] = json!(database::now());
+        Ok(metadata.to_string())
+    })
 }
 
 pub fn ensure_exclude(path: &str, host: Option<&str>) -> Result<()> {
@@ -1055,28 +1179,79 @@ fn apply_opencode_plugin_registration(
         }
     }
 }
-/// 다른 client가 같은 순간 등록한 대상을 잃지 않도록 잠금 안에서 최신 내용을 읽어 합친다.
-fn register_hook_target(path: &str, url: &str, task_id: &str, host: Option<&str>) -> Result<()> {
-    update_text(&join(path, ".kanvibe/targets.json"), host, |content| {
-        Ok(merge_hook_target(content, url, task_id))
-    })
+fn merge_hook_registration(
+    content: &str,
+    url: &str,
+    task_id: &str,
+    token: &str,
+    client: &str,
+) -> String {
+    merge_hook_target(
+        content,
+        &json!({"url":url,"taskId":task_id,"token":token,"clientId":client}),
+    )
 }
-fn merge_hook_target(content: &str, url: &str, task_id: &str) -> String {
+fn normalize_hook_target(entry: &Value) -> Option<Value> {
+    let url = text(entry, "url").trim().trim_end_matches('/');
+    let task = text(entry, "taskId").trim();
+    if !(url.starts_with("http://") || url.starts_with("https://"))
+        || url.chars().any(char::is_whitespace)
+        || task.is_empty()
+    {
+        return None;
+    }
+    let mut target = json!({"url":url,"taskId":task});
+    let token = text(entry, "token").trim();
+    if !token.is_empty() {
+        target["token"] = json!(token);
+    }
+    let client = text(entry, "clientId");
+    if crate::hook_transport::valid_client_id(client) {
+        target["clientId"] = json!(client);
+    }
+    Some(target)
+}
+fn merge_hook_target(content: &str, target: &Value) -> String {
     let mut state = parse_json_object(content);
-    let mut entries = state["targets"]
+    let Some(target) = normalize_hook_target(target) else {
+        return state.to_string();
+    };
+    let mut seen = std::collections::HashSet::new();
+    let entries = state["targets"]
         .as_array()
-        .cloned()
-        .unwrap_or_default()
         .into_iter()
-        .filter(|v| text(v, "url") != url)
-        .collect::<Vec<_>>();
-    entries.push(json!({"url":url,"taskId":task_id}));
+        .flatten()
+        .filter_map(normalize_hook_target)
+        .filter(|entry| seen.insert(text(entry, "url").to_owned()));
+    let same_client = |entry: &Value| {
+        entry["url"] == target["url"]
+            || (!text(&target, "clientId").is_empty()
+                && (entry["clientId"] == target["clientId"]
+                    || (text(entry, "clientId").is_empty() && entry["taskId"] == target["taskId"])))
+    };
+    let mut inserted = false;
+    let mut next = Vec::new();
+    for entry in entries {
+        if same_client(&entry) {
+            if !inserted {
+                next.push(target.clone());
+                inserted = true;
+            }
+        } else {
+            next.push(entry);
+        }
+    }
+    if !inserted {
+        next.push(target);
+    }
     state["schemaVersion"] = json!(1);
-    state["targets"] = json!(entries);
+    state["targets"] = json!(next);
     state["updatedAt"] = json!(database::now());
     state.to_string()
 }
+
 pub fn install_hooks(
+    db: &Database,
     path: &str,
     task_id: &str,
     host: Option<&str>,
@@ -1084,7 +1259,11 @@ pub fn install_hooks(
 ) -> Result<()> {
     let url = hook_url(host)?;
     ensure_exclude(path, host)?;
-    register_hook_target(path, &url, task_id, host)?;
+    let token=crate::task_targets::build_token(db,task_id)?;
+    let client=crate::core::settings(db,"getOrCreateHookClientId",&[])?.as_str().ok_or("Hook client ID가 없습니다")?.to_owned();
+    update_text(&join(path,".kanvibe/targets.json"),host,|content|Ok(merge_hook_registration(content,&url,task_id,&token,&client)))?;
+    write(&join(path,".kanvibe/task.sh"),crate::task_targets::TASK_CLI_SCRIPT,host,true)?;
+    if let Some(host)=host{crate::hook_transport::ensure(host);}
     for provider in provider
         .map(|s| vec![s])
         .unwrap_or_else(|| vec!["claude", "gemini", "codex", "opencode"])
@@ -1126,7 +1305,8 @@ pub fn install_hooks(
             let filename = format!("kanvibe-{kind}-hook.sh");
             let source = hook_template(provider, kind)
                 .replace("http://KANVIBE_HOOK_HOST:19736", &url)
-                .replace("KANVIBE_TASK_ID", task_id);
+                .replace("KANVIBE_TASK_ID", task_id)
+                .replace("KANVIBE_HOOK_SOCKET_RESOLVER",crate::hook_transport::shell_socket_resolver());
             write(
                 &join(path, &format!(".{provider}/hooks/{filename}")),
                 &source,
@@ -1182,7 +1362,7 @@ pub fn hooks_status(
             .unwrap_or(Value::Null);
     let registered = targets["targets"].as_array().is_some_and(|a| {
         a.iter()
-            .any(|t| text(t, "url") == url && text(t, "taskId") == task_id)
+            .any(|t| text(t, "url") == url && text(t, "taskId") == task_id && !text(t,"token").is_empty() && (host.is_none()||crate::hook_transport::valid_client_id(text(t,"clientId"))))
     });
     let mut state = json!({"installed":false,"hasTaskIdBinding":false,"hasStatusMappings":false,"hasStatusJsonPersistence":false,"hasTargetFanout":false,"hasBoundedNotifyTimeout":false,"hasParallelTargetFanout":false,"hasExpectedHookServerUrl":false,"hasReachableHookServer":false,"boundTaskId":null,"configuredHookServerUrl":null,"expectedHookServerUrl":url,"hasTargetsFile":!targets.is_null(),"hasCurrentTarget":registered,"hasTargetRegistration":registered,"isCurrentTargetRegistered":registered});
     state["hasRegisteredHookTarget"] = json!(registered);
@@ -1259,19 +1439,17 @@ pub fn hooks_status(
             .map(|u| u.to_string())
             .unwrap_or_default();
         // 원격 저장소는 OpenCode 설정 레지스트리를 조회할 수 없으므로 등록 여부를 검증하지 않는다.
-        let plugin_registered = if host.is_some() {
+        if host.is_some() {
             state["hasRegisteredPlugin"] = json!(true);
             state["hasDuplicateKanvibePlugins"] = json!(false);
             state["registeredPluginUrls"] = json!([]);
-            true
         } else {
             apply_opencode_plugin_registration(
                 &mut state,
                 &expected_plugin,
                 opencode_registered_plugin_urls(path),
-            )
+            );
         };
-        all &= plugin_registered;
 
         state["hasPluginEntry"] = json!(source.contains("KanvibePlugin"));
     } else {
@@ -1605,7 +1783,7 @@ mod remote_write_contract_tests {
     fn ssh_write_command_handles_quotes_spaces_and_stdin_without_expansion() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("folder ' name/file $ literal.txt");
-        let command = remote_write_command(path.to_str().unwrap(), false).unwrap();
+        let command = remote_write_command(path.to_str().unwrap(), false,None).unwrap();
         run_input(&command, None, Some("한글 $(echo unsafe)\n'\"".as_bytes())).unwrap();
         assert_eq!(
             std::fs::read_to_string(path).unwrap(),
@@ -1777,11 +1955,7 @@ mod shared_state_concurrency_tests {
             for (index, access) in accesses.into_iter().enumerate() {
                 scope.spawn(move || {
                     update_with(access, target, |content| {
-                        Ok(merge_hook_target(
-                            content,
-                            &format!("http://client-{index}:19736"),
-                            &format!("task-{index}"),
-                        ))
+                        Ok(merge_hook_target(content, &json!({"url":&format!("http://client-{index}:19736"),"taskId":&format!("task-{index}")})))
                     })
                     .unwrap()
                 });
@@ -1867,11 +2041,7 @@ mod shared_state_concurrency_tests {
                     let (target, client) = (&target, &client);
                     scope.spawn(move || {
                         update_local_text(target, |content| {
-                            Ok(merge_hook_target(
-                                content,
-                                &format!("http://client-{client}-{index}"),
-                                &format!("task-{index}"),
-                            ))
+                            Ok(merge_hook_target(content, &json!({"url":&format!("http://client-{client}-{index}"),"taskId":&format!("task-{index}")})))
                         })
                         .unwrap()
                     });
@@ -1937,7 +2107,7 @@ mod shared_state_concurrency_tests {
             let path = dir.path().join(".kanvibe/targets.json");
             let target = path.to_str().unwrap();
             update_with(access, target, |content| {
-                Ok(merge_hook_target(content, "http://initial", "initial"))
+                Ok(merge_hook_target(content, &json!({"url":"http://initial","taskId":"initial"})))
             })
             .unwrap();
             let is_completed = std::sync::atomic::AtomicBool::new(false);
@@ -1954,11 +2124,7 @@ mod shared_state_concurrency_tests {
                     .map(|index| {
                         scope.spawn(move || {
                             update_with(access, target, |content| {
-                                Ok(merge_hook_target(
-                                    content,
-                                    &format!("http://client-{index}"),
-                                    &"x".repeat(100_000),
-                                ))
+                                Ok(merge_hook_target(content, &json!({"url":&format!("http://client-{index}"),"taskId":&"x".repeat(100_000)})))
                             })
                             .unwrap()
                         })
@@ -1980,7 +2146,7 @@ mod shared_state_concurrency_tests {
     #[test]
     fn non_object_shared_state_is_replaced_without_panicking() {
         assert_eq!(
-            serde_json::from_str::<Value>(&merge_hook_target("[1]", "http://a", "t")).unwrap()
+            serde_json::from_str::<Value>(&merge_hook_target("[1]", &json!({"url":"http://a","taskId":"t"}))).unwrap()
                 ["targets"][0]["url"],
             "http://a"
         );
@@ -2549,5 +2715,116 @@ mod dev_behaviour_tests {
             assert!(safe_path(root, "../outside", host).is_err());
             assert!(safe_path(root, "/outside", host).is_err());
         }
+    }
+}
+
+#[cfg(all(test,unix))]
+mod state_security_regressions {
+    use super::*;
+    #[test]
+    fn targets_keep_primary_client_order_and_private_permissions() {
+        use std::os::unix::fs::PermissionsExt;
+        let state = r#"{"targets":[{"clientId":"client-a","taskId":"old-a","token":"old","url":"http://a/"},{"clientId":"client-b","taskId":"b","token":"b-secret","url":"http://b"}]}"#;
+        let updated = merge_hook_registration(state, "http://new-a/", "a", "a-secret", "client-a");
+        let parsed: Value = serde_json::from_str(&updated).unwrap();
+        assert_eq!(
+            parsed["targets"][0],
+            json!({"url":"http://new-a","taskId":"a","token":"a-secret","clientId":"client-a"})
+        );
+        assert_eq!(parsed["targets"][1]["url"], "http://b");
+        let serialized = parsed["targets"][0].to_string();
+        assert!(serialized.find("\"url\"").unwrap() < serialized.find("\"taskId\"").unwrap());
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join(".kanvibe/targets.json");
+        write(path.to_str().unwrap(), &updated, None, false).unwrap();
+        assert_eq!(
+            std::fs::metadata(&path).unwrap().permissions().mode() & 0o777,
+            0o600
+        );
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
+        update_remote_text(
+            path.to_str().unwrap(),
+            |_| Ok(updated.clone()),
+            &|command, input| {
+                assert!(!command.contains("a-secret"));
+                run_input(command, None, input)
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            std::fs::metadata(&path).unwrap().permissions().mode() & 0o777,
+            0o600
+        );
+    }
+    #[test]
+    fn remote_state_guard_refuses_symlinks_and_truncated_stdin_keeps_original() {
+        let parent = tempfile::tempdir().unwrap();
+        let repo = parent.path().join("repo");
+        let outside = parent.path().join("outside");
+        std::fs::create_dir(&repo).unwrap();
+        std::fs::create_dir(&outside).unwrap();
+        std::os::unix::fs::symlink(&outside, repo.join(".kanvibe")).unwrap();
+        let target = repo.join(".kanvibe/targets.json");
+        assert!(update_remote_text(
+            target.to_str().unwrap(),
+            |_| Ok("secret".into()),
+            &|command, input| run_input(command, None, input)
+        )
+        .is_err());
+        assert!(!outside.join("targets.json").exists());
+        let file = outside.join("keep");
+        std::fs::write(&file, "original").unwrap();
+        let command = remote_write_command(file.to_str().unwrap(), false, Some(100)).unwrap();
+        assert!(run_input(&command, None, Some(b"short")).is_err());
+        assert_eq!(std::fs::read_to_string(file).unwrap(), "original");
+    }
+    #[test]
+    fn zellij_names_limit_native_socket_length_and_network_refs_exclude_shell_syntax() {
+        assert_eq!(
+            session_name_for("zellij", "/work/repo", &"x".repeat(100))
+                .encode_utf16()
+                .count(),
+            60
+        );
+        for valid in ["main", "feature/task-1", "release/1.5.3"] {
+            assert!(is_safe_git_ref(valid));
+        }
+        for invalid in ["", "-flag", "../outside", "$(id)", "a`id`", "a b", "a\n"] {
+            assert!(!is_safe_git_ref(invalid));
+        }
+    }
+    #[test]
+    fn state_symlink_directory_cannot_receive_hook_credentials() {
+        let parent = tempfile::tempdir().unwrap();
+        let repo = parent.path().join("repo");
+        let outside = parent.path().join("outside");
+        std::fs::create_dir(&repo).unwrap();
+        std::fs::create_dir(&outside).unwrap();
+        std::os::unix::fs::symlink(&outside, repo.join(".kanvibe")).unwrap();
+        assert!(write(
+            repo.join(".kanvibe/targets.json").to_str().unwrap(),
+            "secret",
+            None,
+            false
+        )
+        .is_err());
+        assert!(!outside.join("targets.json").exists());
+    }
+    #[test]
+    fn state_symlink_file_is_not_overwritten_by_installer() {
+        let parent = tempfile::tempdir().unwrap();
+        let state = parent.path().join(".kanvibe");
+        std::fs::create_dir(&state).unwrap();
+        let victim = parent.path().join("victim");
+        std::fs::write(&victim, "keep").unwrap();
+        std::os::unix::fs::symlink(&victim, state.join("task.sh")).unwrap();
+        assert!(write(
+            state.join("task.sh").to_str().unwrap(),
+            "replace",
+            None,
+            true
+        )
+        .is_err());
+        assert_eq!(std::fs::read_to_string(victim).unwrap(), "keep");
     }
 }

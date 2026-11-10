@@ -221,6 +221,7 @@ brew untap rookedsysc/kanvibe
 - 태스크의 기존 tmux·Zellij·일반 터미널 세션을 엽니다. 폰과 태블릿 모두 탭 하나에 pane 하나를 표시하며, PC로 돌아가지 않고 셸 탭을 추가할 수 있습니다.
 - 출력을 읽고 화면 키보드로 입력합니다. SSH 원격 태스크에서도 사용할 수 있으며, 태스크 생성·상태 변경·정보 확인·연결된 PR 열기를 지원합니다.
 - tmux와 일반 터미널은 모바일 화면에 맞춰 행·열을 조정합니다. 보는 동안 PC의 같은 터미널 크기도 바뀌며, 화면을 떠나면 복원됩니다. Herdr와 Zellij는 스크롤로 읽습니다.
+- 상태 시트에서 태스크를 삭제합니다. 커밋하지 않은 변경이 있으면 한 번 더 확인한 뒤 강제 삭제하며, 삭제는 연결된 데스크탑을 거쳐 다른 데스크탑에도 전파됩니다. 꺼져 있어 전파받지 못한 데스크탑이 있으면 알려 줍니다.
 - 5분 뒤 만료되는 6자리 일회용 코드로 연결합니다. PC를 여러 대 저장하고 연결을 각각 해제할 수 있습니다.
 - 선택한 PC의 알림함에서 읽음 상태를 공유하고 관련 태스크로 이동합니다. 전경 hook 갱신은 WebSocket을 사용하며, 백그라운드 푸시에는 Firebase/APNs 설정과 Desktop 푸시 중계가 필요합니다.
 - 현재 소스 빌드로 사용합니다. Desktop이 실행 중이고 LAN이나 Tailscale 등을 통해 해당 PC 주소에 접속할 수 있어야 합니다. [Mobile 가이드](https://kanvibe.rookedsysc.com/ko/mobile)와 [빌드 안내](../mobile/README.md)를 확인하세요.
@@ -329,6 +330,36 @@ AI 에이전트 Hooks를 통한 태스크 상태 변경이 **운영체제 기본
 |-----------|--------|------|
 | `/api/hooks/start` | POST | 새 태스크 생성 |
 | `/api/hooks/status` | POST | `taskId`와 `status`로 태스크 상태를 변경하며, 대상을 못 찾으면 상태는 바꾸지 않고 데스크톱 알림을 보낸 뒤 `404`를 반환 |
+
+| `/api/hooks/status` | POST | `taskId` + `status`로 태스크 상태를 변경하며, 대상을 못 찾으면 상태는 바꾸지 않고 브라우저 알림만 보낸 뒤 `404`를 반환 |
+| `/api/cli/tasks` | POST | task CLI 태스크 생성. `Authorization: Bearer <task 토큰>` 필요 |
+| `/api/cli/tasks/delete` | POST | task CLI 태스크 삭제. `confirmed: true`가 없으면 `400`, 커밋하지 않은 변경이 있으면 `force` 없이 `409` |
+| `/api/cli/tasks/register` | POST | 다른 데스크탑이 만든 태스크를 이 데스크탑에 등록만 함(worktree를 새로 만들지 않음) |
+
+#### task CLI - 태스크 생성·삭제
+
+hook이 설치된 worktree에는 `.kanvibe/task.sh`가 함께 설치됩니다. 에이전트나 사용자가 터미널(SSH 원격 포함)에서 태스크를 만들거나 지울 수 있습니다. `bash`, `git`, `curl` 7.55 이상이 필요합니다.
+
+```bash
+# 현재 브랜치를 base로 새 태스크(worktree) 생성
+bash .kanvibe/task.sh create --branch feat/new-thing [--title "제목"] [--session-type tmux]
+
+# 같은 프로젝트의 다른 태스크 브랜치를 base로 생성
+bash .kanvibe/task.sh create --branch feat/child --from-task <taskId>
+
+# 현재 태스크 삭제 (--yes 필수, 커밋하지 않은 변경이 있으면 --force가 있어야 삭제)
+bash .kanvibe/task.sh delete --yes [--force]
+
+# 같은 프로젝트의 다른 브랜치 태스크 삭제
+bash .kanvibe/task.sh delete --yes --branch feat/old-thing
+```
+
+- detached HEAD에서는 생성을 거부합니다. 세션 타입은 `--session-type`, base 태스크의 세션 타입, `terminal` 순으로 정합니다.
+- 생성은 요청을 받은 데스크탑 한 곳에서만 실행되고, 같은 프로젝트를 쓰는 다른 데스크탑에는 태스크 등록만 전파됩니다.
+- 삭제는 프로젝트를 쓰는 모든 데스크탑으로 전파되어 한 PC에서만 태스크가 사라지는 일을 막습니다. 보드 GUI와 모바일 앱에서 지울 때도 같은 방식으로 전파됩니다.
+- 꺼져 있던 데스크탑에는 전파되지 않아 태스크가 남습니다. 요청한 데스크탑에서는 그대로 지우고, CLI는 stderr에, 데스크탑은 상단 경고로, 모바일은 하단 알림으로 남은 곳을 알려 줍니다. 그 데스크탑이 켜지면 직접 지워야 합니다.
+- 요청할 데스크탑은 `.kanvibe/targets.json`의 첫 대상이며, `--target-url`로 고를 수 있습니다. 첫 대상에 연결하지 못하면(연결 거부, 응답 없는 꺼진 PC 포함) 다음 대상으로 넘어갑니다. 요청이 전달된 뒤 시간이 다 된 경우에는 중복 실행을 막으려고 넘어가지 않습니다.
+- 인증 토큰은 태스크마다 다르며 `targets.json`(권한 `0600`)에 저장됩니다. 이 기능 이전에 만든 태스크는 hook을 다시 설치해야 토큰이 생깁니다.
 
 ### GitHub 스타일 Diff 뷰
 

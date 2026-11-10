@@ -1,25 +1,66 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:http/http.dart' as http;
+import 'package:http/io_client.dart';
 import 'package:web_socket_channel/io.dart';
 
 import '../../features/board/domain/task_status.dart';
 import '../../features/chat_history/domain/chat_history.dart';
 import '../../features/notifications/domain/inbox_notification.dart';
 import '../../features/notifications/domain/notification_settings.dart';
+import '../../features/task_create/domain/session_type.dart';
 import '../../features/task_detail/domain/mirror_pane.dart';
+import 'desktop_command.dart';
 import 'desktop_connection.dart';
+import 'pinned_http_client.dart';
+
+/// 페어링 결과. 인증서 지문은 다음 요청부터 고정할 값이다
+class PairingResult {
+  const PairingResult({
+    required this.token,
+    required this.certificateFingerprint,
+  });
+
+  final String token;
+  final String certificateFingerprint;
+}
 
 /// 데스크탑의 `/api/mobile/*`와 이야기하는 유일한 통로.
 ///
 /// 페어링만 토큰 없이 호출하고 나머지는 전부 토큰을 실어 보낸다.
-/// 데스크탑에서 `/api/hooks/*`는 인증 없이 열려 있지만 이 클라이언트는 그쪽을 부르지 않는다.
+/// 데스크탑의 `/api/hooks/*`는 hook 전용이라 TLS 포트에는 없고, 이 클라이언트도 그쪽을 부르지 않는다.
 class DesktopClient {
-  DesktopClient({http.Client? httpClient})
-    : _httpClient = httpClient ?? http.Client();
+  DesktopClient({http.Client? httpClient}) : _injectedHttpClient = httpClient;
 
-  final http.Client _httpClient;
+  /// 테스트가 넣는 클라이언트. 있으면 연결과 무관하게 이것을 쓴다
+  final http.Client? _injectedHttpClient;
+  late final http.Client _legacyPlaintextClient = http.Client();
+
+  /// 지문마다 클라이언트를 재사용해 요청마다 TLS 핸드셰이크를 하지 않는다
+  final Map<String, http.Client> _pinnedClients = {};
+
+  /// 연결 식별자별로 지금 열려 있는 상태 소켓. 명령은 이 소켓으로만 나간다
+  final Map<String, _CommandChannel> _commandChannels = {};
+  int _nextRequestNumber = 0;
+
+  http.Client _clientFor(DesktopConnection connection) {
+    final injected = _injectedHttpClient;
+    if (injected != null) return injected;
+
+    final fingerprint = connection.certificateFingerprint;
+    if (fingerprint == null) return _legacyPlaintextClient;
+    return _pinnedClients.putIfAbsent(
+      fingerprint,
+      () => IOClient(createPinnedHttpClient(fingerprint)),
+    );
+  }
+
+  HttpClient? _webSocketClientFor(DesktopConnection connection) {
+    final fingerprint = connection.certificateFingerprint;
+    return fingerprint == null ? null : createPinnedHttpClient(fingerprint);
+  }
 
   /// 사람이 기다려 줄 만한 시간. 넘어가면 주소가 틀렸을 가능성이 더 크다
   static const _requestTimeout = Duration(seconds: 8);
@@ -29,30 +70,50 @@ class DesktopClient {
   /// 데스크탑이 git worktree를 만들고 hooks 파일까지 깔아야 끝나는 요청이라, 조회와 같은 잣대로 재면
   /// 실제로는 만들어지고 있는데 기기만 먼저 포기한다. 그러면 사용자가 다시 눌러 같은 브랜치를 또 치게 된다.
   static const _createTaskTimeout = Duration(seconds: 60);
+
   static const _createTerminalTabTimeout = Duration(seconds: 30);
 
-  /// 화면의 6자리 코드를 토큰으로 바꾼다. 성공하면 그 뒤로 코드는 필요 없다
-  Future<String?> pair({
+  /// 세션 종류 변경은 데스크탑이 hooks를 깔고 새 세션을 연결한 뒤 이전 세션까지 닫아야 끝난다
+  static const _changeSessionTypeTimeout = Duration(seconds: 30);
+
+  /// 화면의 6자리 코드를 토큰으로 바꾼다. 성공하면 그 뒤로 코드는 필요 없다.
+  ///
+  /// 이 요청에서 본 인증서의 지문을 고정한다. 코드를 맞힌 상대가 그 인증서의 주인이므로,
+  /// 페어링이 끝난 뒤에는 다른 인증서로 끼어들 수 없다.
+  Future<PairingResult?> pair({
     required String host,
     required int port,
     required String code,
     required String deviceName,
   }) async {
-    final response = await _httpClient
-        .post(
-          Uri.http('$host:$port', '/api/mobile/pair'),
-          headers: {'Content-Type': 'application/json'},
-          body: jsonEncode({'code': code, 'deviceName': deviceName}),
-        )
-        .timeout(_requestTimeout);
+    String? certificateFingerprint;
+    final pairingClient = IOClient(
+      createFingerprintCapturingHttpClient(
+        (fingerprint) => certificateFingerprint = fingerprint,
+      ),
+    );
+    try {
+      final response = await pairingClient
+          .post(
+            Uri.https('$host:$port', '/api/mobile/pair'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({'code': code, 'deviceName': deviceName}),
+          )
+          .timeout(_requestTimeout);
 
-    if (response.statusCode != 200) {
-      return null;
+      if (response.statusCode != 200) {
+        return null;
+      }
+
+      final body = jsonDecode(response.body) as Map<String, dynamic>;
+      final token = body['token'];
+      final fingerprint = certificateFingerprint;
+      return token is String && fingerprint != null
+          ? PairingResult(token: token, certificateFingerprint: fingerprint)
+          : null;
+    } finally {
+      pairingClient.close();
     }
-
-    final body = jsonDecode(response.body) as Map<String, dynamic>;
-    final token = body['token'];
-    return token is String ? token : null;
   }
 
   /// 이 토큰이 가리키는 기기를 데스크탑의 목록에서도 지운다.
@@ -60,7 +121,7 @@ class DesktopClient {
   /// 기기에서만 지우면 데스크탑은 그 토큰을 계속 통과시키므로, 끊었다는 말이 반쪽이 된다.
   /// 데스크탑은 제시한 토큰의 기기 하나만 지우고, 모르는 토큰에는 401로 답한다.
   Future<void> unpairDevice(DesktopConnection connection) async {
-    final response = await _httpClient
+    final response = await _clientFor(connection)
         .delete(
           connection.buildHttpUri('/api/mobile/device'),
           headers: connection.authorizationHeaders,
@@ -74,7 +135,7 @@ class DesktopClient {
 
   /// 보드 전체를 한 번에 받는다
   Future<Map<String, dynamic>> fetchBoard(DesktopConnection connection) async {
-    final response = await _httpClient
+    final response = await _clientFor(connection)
         .get(
           connection.buildHttpUri('/api/mobile/board'),
           headers: connection.authorizationHeaders,
@@ -95,7 +156,7 @@ class DesktopClient {
     String? query,
     String? cursor,
   }) async {
-    final response = await _httpClient
+    final response = await _clientFor(connection)
         .get(
           connection
               .buildHttpUri('', {
@@ -124,7 +185,7 @@ class DesktopClient {
     ChatSession session, {
     String? cursor,
   }) async {
-    final response = await _httpClient
+    final response = await _clientFor(connection)
         .get(
           connection
               .buildHttpUri('', {'cursor': ?cursor, 'limit': '20'})
@@ -154,7 +215,7 @@ class DesktopClient {
   Future<List<InboxNotification>> fetchNotifications(
     DesktopConnection connection,
   ) async {
-    final response = await _httpClient
+    final response = await _clientFor(connection)
         .get(
           connection.buildHttpUri('/api/mobile/notifications'),
           headers: connection.authorizationHeaders,
@@ -176,7 +237,7 @@ class DesktopClient {
   Future<NotificationSettings> fetchNotificationSettings(
     DesktopConnection connection,
   ) async {
-    final response = await _httpClient
+    final response = await _clientFor(connection)
         .get(
           connection.buildHttpUri('/api/mobile/notification-settings'),
           headers: connection.authorizationHeaders,
@@ -190,7 +251,7 @@ class DesktopClient {
     required bool isEnabled,
     required Set<String> enabledStatuses,
   }) async {
-    final response = await _httpClient
+    final response = await _clientFor(connection)
         .patch(
           connection.buildHttpUri('/api/mobile/notification-settings'),
           headers: {
@@ -227,7 +288,7 @@ class DesktopClient {
     final uri = connection
         .buildHttpUri('/api/mobile/notifications')
         .replace(pathSegments: ['api', 'mobile', 'notifications', id, 'read']);
-    final response = await _httpClient
+    final response = await _clientFor(connection)
         .patch(uri, headers: connection.authorizationHeaders)
         .timeout(_requestTimeout);
     if (response.statusCode != 200) {
@@ -245,7 +306,7 @@ class DesktopClient {
   }
 
   Future<void> markAllNotificationsRead(DesktopConnection connection) async {
-    final response = await _httpClient
+    final response = await _clientFor(connection)
         .post(
           connection.buildHttpUri('/api/mobile/notifications/read-all'),
           headers: connection.authorizationHeaders,
@@ -261,7 +322,7 @@ class DesktopClient {
     DesktopConnection connection,
     String taskId,
   ) async {
-    final response = await _httpClient
+    final response = await _clientFor(connection)
         .get(
           connection.buildHttpUri(
             '/api/mobile/tasks/${Uri.encodeComponent(taskId)}',
@@ -285,7 +346,7 @@ class DesktopClient {
     required String pushToken,
     required String platform,
   }) async {
-    final response = await _httpClient
+    final response = await _clientFor(connection)
         .put(
           connection.buildHttpUri('/api/mobile/notifications'),
           headers: {
@@ -306,7 +367,7 @@ class DesktopClient {
   }
 
   Future<void> unregisterNotifications(DesktopConnection connection) async {
-    final response = await _httpClient
+    final response = await _clientFor(connection)
         .delete(
           connection.buildHttpUri('/api/mobile/notifications'),
           headers: connection.authorizationHeaders,
@@ -324,7 +385,7 @@ class DesktopClient {
     String paneId,
     String action,
   ) async {
-    final response = await _httpClient
+    final response = await _clientFor(connection)
         .post(
           connection
               .buildHttpUri('/')
@@ -361,7 +422,7 @@ class DesktopClient {
     DesktopConnection connection,
     String taskId,
   ) async {
-    final response = await _httpClient
+    final response = await _clientFor(connection)
         .get(
           connection.buildHttpUri(
             '/api/mobile/tasks/${Uri.encodeComponent(taskId)}/surfaces',
@@ -392,7 +453,7 @@ class DesktopClient {
     DesktopConnection connection,
     String taskId,
   ) async {
-    final response = await _httpClient
+    final response = await _clientFor(connection)
         .post(
           connection.buildHttpUri(
             '/api/mobile/tasks/${Uri.encodeComponent(taskId)}/tabs',
@@ -420,7 +481,7 @@ class DesktopClient {
     DesktopConnection connection,
     String projectId,
   ) async {
-    final response = await _httpClient
+    final response = await _clientFor(connection)
         .get(
           connection.buildHttpUri(
             '/api/mobile/projects/${Uri.encodeComponent(projectId)}/branches',
@@ -450,9 +511,8 @@ class DesktopClient {
     String? baseBranch,
     String? description,
     String? priority,
-    required String sessionType,
   }) async {
-    final response = await _httpClient
+    final response = await _clientFor(connection)
         .post(
           connection.buildHttpUri('/api/mobile/tasks'),
           headers: {
@@ -465,7 +525,6 @@ class DesktopClient {
             'baseBranch': baseBranch,
             'description': description,
             'priority': priority,
-            'sessionType': sessionType,
           }),
         )
         .timeout(_createTaskTimeout);
@@ -487,7 +546,7 @@ class DesktopClient {
     String taskId,
     TaskStatus status,
   ) async {
-    final response = await _httpClient
+    final response = await _clientFor(connection)
         .patch(
           connection.buildHttpUri(
             '/api/mobile/tasks/${Uri.encodeComponent(taskId)}/status',
@@ -499,6 +558,59 @@ class DesktopClient {
           body: jsonEncode({'status': status.wireValue}),
         )
         .timeout(_requestTimeout);
+
+    if (response.statusCode != 200) {
+      throw DesktopRequestException(
+        response.statusCode,
+        message: _readErrorMessage(response.body),
+      );
+    }
+  }
+
+  /// 태스크의 기존 세션이 켜져 있는지 묻는다. 켜져 있을 때만 닫을지 물어보기 위해서다
+  Future<bool> fetchTaskSessionAlive(
+    DesktopConnection connection,
+    String taskId,
+  ) async {
+    final response = await _clientFor(connection)
+        .get(
+          connection.buildHttpUri(
+            '/api/mobile/tasks/${Uri.encodeComponent(taskId)}/session-alive',
+          ),
+          headers: connection.authorizationHeaders,
+        )
+        .timeout(_requestTimeout);
+
+    if (response.statusCode != 200) {
+      throw DesktopRequestException(response.statusCode);
+    }
+
+    return (jsonDecode(response.body) as Map<String, dynamic>)['isAlive'] ==
+        true;
+  }
+
+  /// 태스크의 세션 종류를 바꾼다. 실제 전환은 데스크탑이 하고, 기기는 결과 세션을 다시 받아 붙는다
+  Future<void> changeTaskSessionType(
+    DesktopConnection connection,
+    String taskId, {
+    required SessionType sessionType,
+    required bool shouldCloseExistingSession,
+  }) async {
+    final response = await _clientFor(connection)
+        .patch(
+          connection.buildHttpUri(
+            '/api/mobile/tasks/${Uri.encodeComponent(taskId)}/session-type',
+          ),
+          headers: {
+            ...connection.authorizationHeaders,
+            'Content-Type': 'application/json',
+          },
+          body: jsonEncode({
+            'sessionType': sessionType.wireValue,
+            'shouldCloseExistingSession': shouldCloseExistingSession,
+          }),
+        )
+        .timeout(_changeSessionTypeTimeout);
 
     if (response.statusCode != 200) {
       throw DesktopRequestException(
@@ -531,6 +643,7 @@ class DesktopClient {
         'paneId': paneId,
       }),
       headers: connection.authorizationHeaders,
+      customClient: _webSocketClientFor(connection),
     );
 
     return PaneStream(
@@ -551,20 +664,78 @@ class DesktopClient {
       headers: connection.authorizationHeaders,
       pingInterval: const Duration(seconds: 25),
       connectTimeout: _requestTimeout,
+      customClient: _webSocketClientFor(connection),
     );
     // handshake 실패는 events에도 전달된다. 별도 ready Future의 중복 오류만 소비한다.
     channel.ready.ignore();
 
+    final commandChannel = _CommandChannel(channel.sink.add);
+    _commandChannels[connection.id] = commandChannel;
+    void release() {
+      commandChannel.failAll();
+      if (identical(_commandChannels[connection.id], commandChannel)) {
+        _commandChannels.remove(connection.id);
+      }
+    }
+
+    // command-result는 요청한 쪽에만 돌려주고 나머지 이벤트만 구독자에게 흘린다
+    final events = channel.stream
+        .map((event) => jsonDecode(event.toString()) as Map<String, dynamic>)
+        .where(commandChannel.absorbCommandTraffic)
+        .transform(
+          StreamTransformer<
+            Map<String, dynamic>,
+            Map<String, dynamic>
+          >.fromHandlers(
+            handleData: (event, sink) => sink.add(event),
+            handleError: (error, stackTrace, sink) {
+              release();
+              sink.addError(error, stackTrace);
+            },
+            handleDone: (sink) {
+              release();
+              sink.close();
+            },
+          ),
+        );
+
     return DesktopEventStream(
-      events: channel.stream.map(
-        (event) => jsonDecode(event.toString()) as Map<String, dynamic>,
-      ),
-      onClose: channel.sink.close,
+      events: events,
+      onClose: () {
+        release();
+        return channel.sink.close();
+      },
       readCloseCode: () => channel.closeCode,
     );
   }
 
-  void close() => _httpClient.close();
+  /// 열려 있는 상태 소켓으로 명령 한 건을 보내고 응답의 값을 돌려준다.
+  ///
+  /// 소켓이 없으면 아무것도 보내지 않고 [DesktopDisconnectedException]으로 실패한다.
+  /// 데스크탑이 명령을 모르면 [DesktopUpdateRequiredException], 데스크탑이 거절하면 [DesktopCommandFailure]다.
+  Future<Map<String, dynamic>> runCommand(
+    DesktopConnection connection,
+    DesktopCommand command, {
+    Duration? timeout,
+  }) {
+    final commandChannel = _commandChannels[connection.id];
+    if (commandChannel == null) {
+      return Future.error(const DesktopDisconnectedException());
+    }
+    return commandChannel.send(
+      command,
+      requestId: 'cmd-${_nextRequestNumber++}',
+      timeout: timeout ?? command.timeout,
+    );
+  }
+
+  void close() {
+    _injectedHttpClient?.close();
+    _legacyPlaintextClient.close();
+    for (final client in _pinnedClients.values) {
+      client.close();
+    }
+  }
 }
 
 /// 데스크탑이 이 기기를 목록에서 지워 스트림을 끊었을 때의 종료 코드.
@@ -572,6 +743,94 @@ class DesktopClient {
 /// 스트림 실패(4000)와 나누어야 "세션을 못 비춘다"와 "이 기기는 더 이상 연결되어 있지 않다"를 구분할 수 있다.
 /// 서버 쪽 `src-tauri/src/server.rs`가 기기 해제 때 보내는 close code와 같은 값이어야 한다.
 const int deviceUnpairedCloseCode = 4001;
+
+/// 데스크탑이 태스크의 세션 종류를 바꿔 이전 세션 스트림을 끊었을 때의 종료 코드.
+///
+/// 오류가 아니라 새 세션으로 다시 붙으라는 신호다. 서버 쪽 `electron/mobileRoutes.js`의
+/// `TASK_SESSION_CHANGED_CLOSE_CODE`와 같은 값이어야 한다.
+const int taskSessionChangedCloseCode = 4002;
+
+/// `connected` 이벤트가 오기를 기다리는 한도. 넘으면 소켓이 사실상 열리지 않은 것으로 본다
+const _capabilityWait = Duration(seconds: 5);
+
+/// 상태 소켓 하나 위에서 명령을 보내고 응답을 requestId로 짝짓는다
+class _CommandChannel {
+  _CommandChannel(this._send);
+
+  final void Function(String message) _send;
+  final Map<String, Completer<Map<String, dynamic>>> _pending = {};
+
+  /// `connected`가 알린 명령 목록. 목록이 없는 옛 데스크탑은 빈 목록이고, 소켓이 끊기면 null이다
+  final Completer<List<String>?> _supportedCommands = Completer();
+
+  /// 명령 관련 프레임이면 여기서 처리하고 false를 돌려 구독자에게 흘리지 않는다. `connected`는 기록만 하고 흘린다
+  bool absorbCommandTraffic(Map<String, dynamic> event) {
+    final type = event['type'];
+    if (type == 'connected' && !_supportedCommands.isCompleted) {
+      final commands = event['commands'];
+      _supportedCommands.complete(
+        commands is List ? commands.whereType<String>().toList() : const [],
+      );
+    }
+    if (type != 'command-result') return true;
+
+    final requestId = event['requestId'];
+    final pending = requestId is String ? _pending.remove(requestId) : null;
+    pending?.complete(event);
+    return false;
+  }
+
+  Future<Map<String, dynamic>> send(
+    DesktopCommand command, {
+    required String requestId,
+    required Duration timeout,
+  }) async {
+    final supported = await _supportedCommands.future.timeout(
+      _capabilityWait,
+      onTimeout: () => null,
+    );
+    if (supported == null) throw const DesktopDisconnectedException();
+    if (!supported.contains(command.name)) {
+      throw const DesktopUpdateRequiredException();
+    }
+
+    final response = Completer<Map<String, dynamic>>();
+    _pending[requestId] = response;
+    _send(jsonEncode(command.toMessage(requestId)));
+
+    try {
+      final result = await response.future.timeout(timeout);
+      return _readResult(result);
+    } finally {
+      _pending.remove(requestId);
+    }
+  }
+
+  Map<String, dynamic> _readResult(Map<String, dynamic> result) {
+    if (result['ok'] == true) return result;
+
+    final code = result['code'];
+    if (code == 'unsupported-command') {
+      throw const DesktopUpdateRequiredException();
+    }
+    final message = result['error'];
+    throw DesktopCommandFailure(
+      code is String ? code : 'server-error',
+      message is String ? message : '서버 오류',
+    );
+  }
+
+  /// 소켓이 끊기면 기다리던 요청은 결과를 알 수 없으므로 모두 끊김으로 끝낸다
+  void failAll() {
+    if (!_supportedCommands.isCompleted) _supportedCommands.complete(null);
+    for (final response in _pending.values.toList()) {
+      if (!response.isCompleted) {
+        response.completeError(const DesktopDisconnectedException());
+      }
+    }
+    _pending.clear();
+  }
+}
 
 class DesktopEventStream {
   const DesktopEventStream({

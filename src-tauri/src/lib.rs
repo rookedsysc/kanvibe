@@ -4,12 +4,16 @@ mod database;
 mod dependencies;
 mod git;
 mod herdr;
+mod hook_transport;
 mod integrations;
+mod mobile_tls;
 mod notifications;
 #[cfg(debug_assertions)]
 mod qa_bridge;
 mod runtime;
 mod server;
+mod task_cli;
+mod task_targets;
 mod terminal;
 
 use serde_json::Value;
@@ -124,7 +128,10 @@ pub fn run() {
                     let _ = window.set_focus();
                 }
             }
-            tauri::RunEvent::Exit => terminal::shutdown(app),
+            tauri::RunEvent::Exit => {
+                hook_transport::stop();
+                terminal::shutdown(app);
+            }
             _ => {}
         });
 }

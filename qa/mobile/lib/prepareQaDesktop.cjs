@@ -20,6 +20,8 @@ const PROBE_PORT = 19737;
 const FIXTURE_PROJECT_NAME = "kanvibe-qa-fixture";
 const FIXTURE_PROJECT_ID = "00000000-0000-4000-8000-000000000001";
 const FIXTURE_BRANCH = "maestro/fixture";
+const FIXTURE_NO_SESSION_TASK_ID = "00000000-0000-4000-8000-000000000002";
+const FIXTURE_SESSION_TASK_ID = "00000000-0000-4000-8000-000000000003";
 
 /** 플로우가 셀렉터로 그대로 쓰는 값이라 사람이 읽고 옮겨 적을 수 있게 상수로 둔다 */
 const NO_SESSION_TASK_TITLE = "Maestro Fixture NoSession";
@@ -112,20 +114,6 @@ async function waitForDesktop(desktop) {
   throw new Error(`데스크탑이 ${DESKTOP_READY_TIMEOUT_MS}ms 안에 열리지 않았습니다: ${lastError}`);
 }
 
-async function startHookTask(body) {
-  const response = await fetch(`${DESKTOP_API}/api/hooks/start`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-
-  const payload = await response.json();
-  if (!response.ok || !payload.success) {
-    throw new Error(`픽스처 태스크 생성 실패: HTTP ${response.status} ${JSON.stringify(payload)}`);
-  }
-  return payload.data;
-}
-
 /**
  * 프로젝트는 데스크탑 화면에서만 등록할 수 있어 HTTP 경로가 없다. 격리 DB에 직접 한 줄 넣는다.
  *
@@ -141,6 +129,36 @@ function insertFixtureProject(appDataDir, repoPath) {
   ]);
 
   return FIXTURE_PROJECT_ID;
+}
+
+/** 격리 DB에 태스크 한 줄을 넣는다. 태스크를 인증 없이 만드는 HTTP 경로는 없다 */
+function insertFixtureTask(appDataDir, task) {
+  const quoteSqlValue = (value) => (value === null ? "NULL" : `'${String(value).replace(/'/g, "''")}'`);
+  const columns = Object.keys(task).join(", ");
+  const values = Object.values(task).map(quoteSqlValue).join(", ");
+
+  run("sqlite3", [path.join(appDataDir, "kanvibe.db"), `INSERT INTO kanban_tasks (${columns}) VALUES (${values});`]);
+}
+
+/** 세션 있는 태스크는 데스크탑이 만드는 것과 같은 규칙의 worktree와 세션 이름을 직접 갖춘다 */
+function insertFixtureSessionTask(appDataDir, repoPath, projectId) {
+  const worktreePath = buildFixtureWorktreePath(repoPath, FIXTURE_BRANCH);
+  const sessionName = `${path.basename(repoPath)}-${FIXTURE_BRANCH}`.replace(/\//g, "-");
+
+  fs.mkdirSync(path.dirname(worktreePath), { recursive: true });
+  run("git", ["worktree", "add", worktreePath, "-b", FIXTURE_BRANCH, "main"], { cwd: repoPath });
+  insertFixtureTask(appDataDir, {
+    id: FIXTURE_SESSION_TASK_ID,
+    title: SESSION_TASK_TITLE,
+    branch_name: FIXTURE_BRANCH,
+    worktree_path: worktreePath,
+    session_type: "tmux",
+    session_name: sessionName,
+    project_id: projectId,
+    base_branch: "main",
+  });
+
+  return { id: FIXTURE_SESSION_TASK_ID, sessionName };
 }
 
 /**
@@ -362,19 +380,10 @@ async function main() {
   try {
     await waitForDesktop(desktop);
 
-    await startHookTask({ title: NO_SESSION_TASK_TITLE });
+    insertFixtureTask(appDataDir, { id: FIXTURE_NO_SESSION_TASK_ID, title: NO_SESSION_TASK_TITLE });
 
     const projectId = insertFixtureProject(appDataDir, repoPath);
-    const sessionTask = await startHookTask({
-      title: SESSION_TASK_TITLE,
-      branchName: FIXTURE_BRANCH,
-      sessionType: "tmux",
-      projectId,
-    });
-
-    if (!sessionTask.sessionName) {
-      throw new Error("세션 있는 픽스처 태스크에 sessionName이 붙지 않았습니다. 데스크탑 로그를 확인하세요: " + logPath);
-    }
+    const sessionTask = insertFixtureSessionTask(appDataDir, repoPath, projectId);
 
     const worktreePath = buildFixtureWorktreePath(repoPath, FIXTURE_BRANCH);
     commitSourceBranchFixture(worktreePath);

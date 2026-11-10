@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kanvibe_mobile/src/common/network/desktop_client.dart';
 import 'package:kanvibe_mobile/src/features/board/domain/board_project.dart';
-import 'package:kanvibe_mobile/src/features/task_create/domain/session_type.dart';
 import 'package:kanvibe_mobile/src/features/task_create/presentation/create_task_screen.dart';
 
 import '../../../support/fake_desktop.dart';
@@ -20,7 +19,6 @@ const _projects = [
 Future<FakeDesktopClient> pumpCreate(
   WidgetTester tester, {
   List<BoardProject> projects = _projects,
-  SessionType defaultSessionType = SessionType.tmux,
   Object? createError,
 }) async {
   await tester.binding.setSurfaceSize(phoneSize);
@@ -32,10 +30,7 @@ Future<FakeDesktopClient> pumpCreate(
         builder: (context) => TextButton(
           onPressed: () => Navigator.of(context).push(
             MaterialPageRoute<void>(
-              builder: (_) => CreateTaskScreen(
-                projects: projects,
-                defaultSessionType: defaultSessionType,
-              ),
+              builder: (_) => CreateTaskScreen(projects: projects),
             ),
           ),
           child: const Text('열기'),
@@ -74,11 +69,7 @@ void main() {
       );
       await tester.pumpWidget(
         wrapWithApp(
-          CreateTaskScreen(
-            projects: [project],
-            defaultProjectId: project.id,
-            defaultSessionType: SessionType.tmux,
-          ),
+          CreateTaskScreen(projects: [project], defaultProjectId: project.id),
           client: FakeDesktopClient(),
           size: size,
         ),
@@ -95,14 +86,7 @@ void main() {
   testWidgets('데스크탑 생성 창과 같은 칸을 같은 순서로 묻는다', (tester) async {
     await pumpCreate(tester);
 
-    for (final label in [
-      '프로젝트 *',
-      '베이스 브랜치',
-      '브랜치 이름 *',
-      '설명',
-      '우선순위',
-      '세션 타입',
-    ]) {
+    for (final label in ['프로젝트 *', '베이스 브랜치', '브랜치 이름 *', '설명', '우선순위']) {
       expect(find.text(label), findsOneWidget, reason: '$label 칸이 있어야 한다');
     }
   });
@@ -172,37 +156,20 @@ void main() {
       'baseBranch': 'dev',
       'description': '무엇을 하는지',
       'priority': null,
-      'sessionType': 'tmux',
     });
   });
 
-  testWidgets('세션 타입은 데스크탑 설정의 기본값을 골라 둔 채로 보낸다', (tester) async {
-    final client = await pumpCreate(
-      tester,
-      defaultSessionType: SessionType.zellij,
-    );
+  testWidgets('세션 종류는 고르지 않고 보내지도 않아 데스크탑 기본값을 따르게 한다', (tester) async {
+    final client = await pumpCreate(tester);
     await selectProject(tester);
+
+    expect(find.text('세션 타입'), findsNothing);
 
     await tester.enterText(find.byType(TextFormField).first, 'feat/x');
     await tester.tap(find.text('만들기'));
     await tester.pumpAndSettle();
 
-    expect(client.createCalls.single['sessionType'], 'zellij');
-  });
-
-  testWidgets('데스크탑 기본값이 Herdr면 Herdr로 만든다', (tester) async {
-    expect(SessionType.fromWire('herdr'), SessionType.herdr);
-    final client = await pumpCreate(
-      tester,
-      defaultSessionType: SessionType.fromWire('herdr'),
-    );
-    await selectProject(tester);
-
-    await tester.enterText(find.byType(TextFormField).first, 'feat/x');
-    await tester.tap(find.text('만들기'));
-    await tester.pumpAndSettle();
-
-    expect(client.createCalls.single['sessionType'], 'herdr');
+    expect(client.createCalls.single, isNot(contains('sessionType')));
   });
 
   testWidgets('데스크탑이 값을 거절하면 그 사유를 폼에 남긴다', (tester) async {

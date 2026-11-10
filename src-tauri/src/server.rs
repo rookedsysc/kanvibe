@@ -10,11 +10,11 @@ use axum::{
     http::{HeaderMap, Request, StatusCode},
     response::{IntoResponse, Response},
     routing::get,
-    Json, Router,
+    Extension, Json, Router,
 };
 use serde_json::{json, Value};
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     net::{SocketAddr, ToSocketAddrs, UdpSocket},
     sync::{
         atomic::{AtomicBool, AtomicU16, Ordering},
@@ -22,24 +22,18 @@ use std::{
     },
     time::Duration,
 };
-use tauri::{AppHandle, Listener};
+use tauri::{AppHandle, Listener, Manager};
 use tokio::sync::{broadcast, mpsc};
 static PORT: AtomicU16 = AtomicU16::new(0);
 static EVENTS: OnceLock<broadcast::Sender<Value>> = OnceLock::new();
 pub fn broadcast(event: Value) {
     let _ = EVENTS.get_or_init(|| broadcast::channel(256).0).send(event);
 }
+fn hook_port()->u16{
+    match PORT.load(Ordering::Relaxed){0=>if cfg!(debug_assertions){19736}else{9736},port=>port}
+}
 pub fn hook_url(host: Option<&str>) -> Result<String, String> {
-    let port = PORT.load(Ordering::Relaxed);
-    let port = if port == 0 {
-        if cfg!(debug_assertions) {
-            19736
-        } else {
-            9736
-        }
-    } else {
-        port
-    };
+    let port=hook_port();
     let address = if let Some(host) = host {
         let output = std::process::Command::new("ssh")
             .args(["-G", "--", host])
@@ -72,16 +66,115 @@ pub fn hook_url(host: Option<&str>) -> Result<String, String> {
     };
     Ok(format!("http://{address}:{port}"))
 }
+const LAN_IDLE_WINDOW_MS: i64 = 14 * 24 * 60 * 60 * 1000;
+static LAST_LAN_RECORDED: std::sync::atomic::AtomicI64 = std::sync::atomic::AtomicI64::new(0);
+pub fn mobile_tls_port() -> u32 {
+    u32::from(hook_port())+10
+}
+fn lan_bind_host(db: &crate::database::Database, now: i64) -> Result<&'static str, String> {
+    if cfg!(target_os = "windows")
+        || db.setting("lan_plaintext_allowed")?.as_deref() == Some("true")
+    {
+        return Ok("0.0.0.0");
+    }
+    let observed = db
+        .setting("lan_plaintext_observed_since")?
+        .and_then(|value| value.parse::<i64>().ok())
+        .filter(|value| *value > 0);
+    let observed = match observed {
+        Some(value) => value,
+        None => {
+            db.set_setting("lan_plaintext_observed_since", &now.to_string())?;
+            now
+        }
+    };
+    let last = db
+        .setting("lan_plaintext_last_request_at")?
+        .and_then(|value| value.parse::<i64>().ok())
+        .unwrap_or(0);
+    Ok(if now - observed.max(last) >= LAN_IDLE_WINDOW_MS {
+        "127.0.0.1"
+    } else {
+        "0.0.0.0"
+    })
+}
+fn should_record_lan(peer: std::net::IpAddr, path: &str, status: u16) -> bool {
+    !peer.is_loopback()
+        && !matches!(peer,std::net::IpAddr::V6(ip) if ip.to_ipv4_mapped().is_some_and(|ip|ip.is_loopback()))
+        && path != "/api/hooks/health"
+        && status < 400
+}
+fn record_lan(app: &AppHandle, peer: std::net::IpAddr, path: &str, status: u16) {
+    if !should_record_lan(peer, path, status) {
+        return;
+    }
+    let now = chrono::Utc::now().timestamp_millis();
+    let previous = LAST_LAN_RECORDED.load(Ordering::Relaxed);
+    if now - previous < 60 * 60 * 1000
+        || LAST_LAN_RECORDED
+            .compare_exchange(previous, now, Ordering::AcqRel, Ordering::Relaxed)
+            .is_err()
+    {
+        return;
+    }
+    if let Err(error) = app
+        .state::<crate::database::Database>()
+        .set_setting("lan_plaintext_last_request_at", &now.to_string())
+    {
+        eprintln!("LAN plaintext usage record: {error}");
+    }
+}
 pub fn start(app: AppHandle) -> Result<(), String> {
     let port = std::env::var("KANVIBE_HOOK_PORT")
         .ok()
-        .and_then(|s| s.parse::<u16>().ok())
+        .and_then(|value| value.parse::<u16>().ok())
         .unwrap_or(if cfg!(debug_assertions) { 19736 } else { 9736 });
-    let listener = std::net::TcpListener::bind(("0.0.0.0", port))
-        .map_err(|e| format!("Hook server port {port}: {e}"))?;
-    let port = listener.local_addr().map_err(|e| e.to_string())?.port();
     PORT.store(port, Ordering::Relaxed);
-    listener.set_nonblocking(true).map_err(|e| e.to_string())?;
+    let bind = lan_bind_host(
+        &app.state::<crate::database::Database>(),
+        chrono::Utc::now().timestamp_millis(),
+    )
+    .unwrap_or_else(|error| {
+        eprintln!("LAN plaintext check: {error}");
+        "0.0.0.0"
+    });
+    let listener = std::net::TcpListener::bind((bind, port))
+        .and_then(|listener| {
+            listener.set_nonblocking(true)?;
+            Ok(listener)
+        })
+        .map_err(|error| {
+            eprintln!("Hook server port {port}: {error}");
+            error
+        })
+        .ok();
+    if let Some(listener) = &listener {
+        PORT.store(
+            listener
+                .local_addr()
+                .map_err(|error| error.to_string())?
+                .port(),
+            Ordering::Relaxed,
+        );
+        crate::hook_transport::start(app.clone());
+    }
+    let tls_port = mobile_tls_port();
+    let certificate = crate::runtime::database_path(&app).and_then(|path| {
+        crate::mobile_tls::load_or_create(
+            &path
+                .parent()
+                .ok_or("앱 데이터 경로가 없습니다")?
+                .join("mobile-tls"),
+        )
+    });
+    let tls = certificate
+        .and_then(|certificate| {
+            let port=u16::try_from(tls_port).map_err(|_|"모바일 TLS 포트가 유효하지 않습니다".to_string())?;
+            let config = crate::mobile_tls::config(&certificate)?;
+            Ok((port,config))
+        })
+        .map_err(|error| eprintln!("Mobile TLS certificate: {error}"))
+        .ok();
     let status_events = start_status_event_worker(app.clone());
     app.listen("kanvibe:board-event", move |event| {
         let Ok(event) = serde_json::from_str::<Value>(event.payload()) else {
@@ -101,37 +194,98 @@ pub fn start(app: AppHandle) -> Result<(), String> {
             .enable_all()
             .build()
         {
-            Ok(r) => r,
-            Err(e) => {
-                eprintln!("Hook server runtime: {e}");
+            Ok(runtime) => runtime,
+            Err(error) => {
+                eprintln!("Hook server runtime: {error}");
                 return;
             }
         };
         runtime.block_on(async move {
-            let listener = match tokio::net::TcpListener::from_std(listener) {
-                Ok(l) => l,
-                Err(e) => {
-                    eprintln!("Hook listener: {e}");
-                    return;
-                }
-            };
-            let router = Router::new()
-                .route("/api/mobile/stream", get(stream_upgrade))
-                .route("/api/mobile/events", get(events_upgrade))
-                .fallback(endpoint)
-                .with_state(app);
-            if let Err(e) = axum::serve(
-                listener,
-                router.into_make_service_with_connect_info::<SocketAddr>(),
-            )
-            .await
-            {
-                eprintln!("Hook server: {e}");
+            if let Some(listener) = listener {
+                let app = app.clone();
+                tokio::spawn(async move {
+                    let listener = match tokio::net::TcpListener::from_std(listener) {
+                        Ok(listener) => listener,
+                        Err(error) => {
+                            eprintln!("Hook listener: {error}");
+                            return;
+                        }
+                    };
+                    let router = Router::new()
+                        .route("/api/mobile/stream", get(stream_upgrade))
+                        .route("/api/mobile/events", get(events_upgrade))
+                        .fallback(endpoint)
+                        .with_state(app);
+                    if let Err(error) = axum::serve(
+                        listener,
+                        router.into_make_service_with_connect_info::<SocketAddr>(),
+                    )
+                    .await
+                    {
+                        eprintln!("Hook server: {error}");
+                    }
+                });
             }
+            if let Some((tls_port,tls)) = tls {
+                let router = Router::new()
+                    .route("/api/mobile/stream", get(stream_upgrade))
+                    .route("/api/mobile/events", get(events_upgrade))
+                    .fallback(tls_endpoint)
+                    .with_state(app);
+                tokio::spawn(async move {
+                    if let Err(error) =
+                        axum_server::bind_rustls::<SocketAddr>(([0, 0, 0, 0], tls_port).into(), tls)
+                            .serve(router.into_make_service_with_connect_info::<SocketAddr>())
+                            .await
+                    {
+                        eprintln!("Mobile TLS server: {error}");
+                    }
+                });
+            }
+            std::future::pending::<()>().await;
         });
     });
     Ok(())
 }
+#[cfg(unix)]
+pub fn tunnel_router(app: AppHandle, hosts: crate::hook_transport::Hosts) -> Router {
+    Router::new()
+        .fallback(tunnel_endpoint)
+        .layer(Extension(hosts))
+        .with_state(app)
+}
+#[cfg(unix)]
+async fn tunnel_endpoint(
+    State(app): State<AppHandle>,
+    Extension(hosts): Extension<crate::hook_transport::Hosts>,
+    request: Request<Body>,
+) -> Response {
+    let hosts = match hosts.lock() {
+        Ok(hosts) => hosts.clone(),
+        Err(error) => return response(500, json!({"success":false,"error":error.to_string()})),
+    };
+    serve_request(app, request, None, Some(hosts), false).await
+}
+async fn tls_endpoint(
+    State(app): State<AppHandle>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    request: Request<Body>,
+) -> Response {
+    if request.headers().contains_key("origin") {
+        return browser_origin_response();
+    }
+    if !request.uri().path().starts_with("/api/mobile/") {
+        return response(404, json!({"success":false,"error":"Not found"}));
+    }
+    serve_request(app, request, Some(peer), None, false).await
+}
+fn browser_origin_response() -> Response {
+    response(
+        403,
+        json!({"success":false,"error":"브라우저 요청은 허용하지 않습니다"}),
+    )
+}
+
 /// 알림 설정은 DB에서 읽으므로 이벤트 발행자를 막지 않도록 별도 스레드에서 읽고, 큐로 상태 변경 순서를 지킨다.
 fn start_status_event_worker(app: AppHandle) -> std_mpsc::Sender<Value> {
     let (sender, events) = std_mpsc::channel::<Value>();
@@ -154,11 +308,12 @@ fn response(status: u16, value: Value) -> Response {
     )
         .into_response()
 }
-async fn endpoint(
-    State(app): State<AppHandle>,
-    ConnectInfo(peer): ConnectInfo<SocketAddr>,
-    request: Request<Body>,
-) -> Response {
+async fn endpoint(State(app):State<AppHandle>,ConnectInfo(peer):ConnectInfo<SocketAddr>,request:Request<Body>)->Response{
+    serve_request(app,request,Some(peer),None,true).await
+}
+async fn serve_request(app:AppHandle,request:Request<Body>,peer:Option<SocketAddr>,source_hosts:Option<HashSet<String>>,plaintext:bool)->Response{
+    if request.headers().contains_key("origin"){return browser_origin_response()}
+    if source_hosts.is_some()&&request.uri().path().starts_with("/api/mobile/"){return response(404,json!({"success":false,"error":"Not found"}))}
     let method = request.method().as_str().to_owned();
     let path = request.uri().path().to_owned();
     let query = request.uri().query().unwrap_or("").to_owned();
@@ -167,7 +322,7 @@ async fn endpoint(
         .get("authorization")
         .and_then(|h| h.to_str().ok())
         .map(str::to_owned);
-    let body = match to_bytes(request.into_body(), 1024 * 1024).await {
+    let body = match to_bytes(request.into_body(), 64 * 1024).await {
         Ok(b) => b,
         Err(_) => {
             return response(
@@ -176,11 +331,14 @@ async fn endpoint(
             )
         }
     };
+    if method=="POST"&&matches!(path.as_str(),"/api/cli/tasks"|"/api/cli/tasks/delete"|"/api/cli/tasks/register")&&!body.is_empty()&&serde_json::from_slice::<Value>(&body).is_err(){return response(400,json!({"success":false,"error":"JSON 본문을 읽을 수 없습니다"}))}
     let body = match parse_request_body(&method, &path, &body) {
         Some(body) => body,
         None => return response(400, json!({"success":false,"error":"잘못된 요청입니다"})),
     };
-    match tokio::task::spawn_blocking(move || {
+    let response_app=app.clone();
+    let response_path=path.clone();
+    let result=match tokio::task::spawn_blocking(move || {
         handle(
             &app,
             &method,
@@ -188,7 +346,7 @@ async fn endpoint(
             &query,
             auth.as_deref(),
             body,
-            peer.ip().is_loopback(),
+            HookRequestScope{loopback:peer.is_none_or(|peer|peer.ip().is_loopback()),source_hosts:source_hosts.as_ref()},
         )
     })
     .await
@@ -202,7 +360,9 @@ async fn endpoint(
             eprintln!("Hook request panicked: {e}");
             response(500, json!({"success":false,"error":"서버 오류"}))
         }
-    }
+    };
+    if plaintext{if let Some(peer)=peer{record_lan(&response_app,peer.ip(),&response_path,result.status().as_u16());}}
+    result
 }
 const NOTIFICATION_SETTINGS_PATH: &str = "/api/mobile/notification-settings";
 #[derive(Debug, PartialEq)]
@@ -212,6 +372,10 @@ struct RequestBody {
 }
 /// 대부분의 경로는 인증 전에 객체가 아닌 본문을 거절한다. 알림 설정 저장만은 인증과 값 검증 뒤에 응답을 정한다.
 fn parse_request_body(method: &str, path: &str, body: &[u8]) -> Option<RequestBody> {
+    if method=="POST"&&matches!(path,"/api/cli/tasks"|"/api/cli/tasks/delete"|"/api/cli/tasks/register"){
+        let payload=if body.is_empty(){json!({})}else{serde_json::from_slice(body).ok()?};
+        return Some(RequestBody{payload,is_malformed:false});
+    }
     if body.is_empty() {
         return Some(RequestBody {
             payload: Value::Null,
@@ -240,15 +404,37 @@ fn decode(segment: &str) -> Result<String, String> {
         .map(|(_, v)| v.into_owned())
         .ok_or("잘못된 경로입니다".into())
 }
-fn handle(
-    app: &AppHandle,
-    method: &str,
-    path: &str,
-    query: &str,
-    auth: Option<&str>,
-    body: RequestBody,
-    loopback: bool,
-) -> Result<(u16, Value), String> {
+fn mobile_task_draft(payload: &Value) -> Result<Value, String> {
+    let mut draft = json!({});
+    for key in [
+        "projectId",
+        "branchName",
+        "baseBranch",
+        "description",
+        "priority",
+    ] {
+        if let Some(value) = payload[key]
+            .as_str()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            draft[key] = json!(value);
+        }
+    }
+    if draft.get("projectId").is_none() || draft.get("branchName").is_none() {
+        return Err("프로젝트와 브랜치 이름이 필요합니다".into());
+    }
+    Ok(draft)
+}
+fn mobile_input_error(error: &str) -> bool {
+    error.ends_with("값이 올바르지 않습니다")
+        || error.ends_with("에 쓸 수 없는 문자가 있습니다")
+        || error == "프로젝트와 브랜치 이름이 필요합니다"
+}
+
+struct HookRequestScope<'a>{loopback:bool,source_hosts:Option<&'a HashSet<String>>}
+fn handle(app:&AppHandle,method:&str,path:&str,query:&str,auth:Option<&str>,body:RequestBody,scope:HookRequestScope<'_>)->Result<(u16,Value),String>{
+    let HookRequestScope{loopback,source_hosts}=scope;
     let RequestBody {
         payload,
         is_malformed,
@@ -256,17 +442,9 @@ fn handle(
     if method == "GET" && path == "/api/hooks/health" {
         return Ok((200, json!({"success":true})));
     }
-    if method == "POST" && (path == "/api/hooks/start" || path == "/api/hooks/status") {
-        let value = call(
-            app,
-            "hooks",
-            if path.ends_with("/start") {
-                "startHookTask"
-            } else {
-                "updateHookTaskStatus"
-            },
-            vec![payload],
-        )?;
+    if let Some(result)=crate::task_cli::handle(app,method,path,&payload,auth,source_hosts)?{return Ok(result)}
+    if method == "POST" && path == "/api/hooks/status" {
+        let value = call(app,"hooks","updateHookTaskStatus",vec![payload,json!(source_hosts)])?;
         return Ok((value["status"].as_u64().unwrap_or(200) as u16, value));
     }
     if !path.starts_with("/api/mobile/") {
@@ -368,9 +546,11 @@ fn handle(
         ));
     }
     if method == "POST" && path == "/api/mobile/tasks" {
-        return match integrations::mobile_create(app, &payload) {
+        let draft=match mobile_task_draft(&payload){Ok(draft)=>draft,Err(error)=>return Ok((400,json!({"success":false,"error":error})))};
+        return match integrations::mobile_create(app, &draft) {
             Ok(task) => Ok((200, json!({"success":true,"task":task}))),
-            Err(e) => Ok((400, json!({"success":false,"error":e}))),
+            Err(error) if mobile_input_error(&error)=>Ok((400,json!({"success":false,"error":error}))),
+            Err(error)=>Err(error),
         };
     }
     if method == "GET"
@@ -414,6 +594,20 @@ fn handle(
         }
         if parts.len() == 5 {
             match (method, parts[4]) {
+                ("GET","session-alive")=>{
+                    let alive=call(app,"kanban","isTaskSessionAlive",vec![json!(id)])?;
+                    return Ok((200,json!({"success":true,"isAlive":alive})));
+                }
+                ("PATCH","session-type")=>{
+                    if text(&payload,"sessionType").trim().is_empty(){return Ok((400,json!({"success":false,"error":"세션 타입이 필요합니다"})))}
+                    return match integrations::mobile_change_session(app,&id,text(&payload,"sessionType").trim(),payload["shouldCloseExistingSession"]==true){
+                        Ok(task) if task.is_null()=>Ok((404,json!({"success":false,"error":"없는 태스크입니다"}))),
+                        Ok(task)=>Ok((200,json!({"success":true,"task":task}))),
+                        Err(error) if error.starts_with("MobileSessionDependencyMissingError:")=>Ok((409,json!({"success":false,"error":error.trim_start_matches("MobileSessionDependencyMissingError:")}))),
+                        Err(error) if error=="세션 타입 값이 올바르지 않습니다"=>Ok((400,json!({"success":false,"error":error}))),
+                        Err(error)=>Err(error),
+                    };
+                }
                 ("PATCH", "status") => {
                     let status = text(&payload, "status");
                     if !["todo", "progress", "pending", "review", "done"].contains(&status) {
@@ -677,17 +871,52 @@ async fn events_socket(app: AppHandle, mut socket: WebSocket, device: String, au
         close(&mut socket, 4001, "device-unpaired").await;
         return;
     }
-    let _ = socket
+    if socket
         .send(Message::Text(
-            json!({"type":"connected"}).to_string().into(),
+            json!({"type":"connected","commands":integrations::SUPPORTED_MOBILE_COMMANDS})
+                .to_string()
+                .into(),
         ))
-        .await;
+        .await
+        .is_err()
+    {
+        return;
+    }
+    let (completed, mut results) = mpsc::unbounded_channel::<Result<Option<Value>, ()>>();
     let mut ping = tokio::time::interval(Duration::from_secs(30));
     let mut alive = true;
     loop {
-        tokio::select! {event=events.recv()=>match event{Ok(v) if v["type"]=="device-unpaired"=>{if text(&v,"deviceId")==device{close(&mut socket,4001,"device-unpaired").await;break}},Ok(v)=>if socket.send(Message::Text(v.to_string().into())).await.is_err(){break},Err(broadcast::error::RecvError::Lagged(_))=>{let _=socket.send(Message::Text(json!({"type":"board-updated"}).to_string().into())).await;},Err(_)=>break},message=socket.recv()=>match message{Some(Ok(Message::Pong(_)))=>alive=true,Some(Ok(Message::Ping(data)))=>{let _=socket.send(Message::Pong(data)).await;},Some(Ok(Message::Close(_)))|None|Some(Err(_))=>break,_=>{}},_=ping.tick()=>{if !alive{break}alive=false;if socket.send(Message::Ping(vec![].into())).await.is_err(){break}}}
+        tokio::select! {
+            event=events.recv()=>match event{
+                Ok(event) if event["type"]=="device-unpaired"=>{if text(&event,"deviceId")==device{close(&mut socket,4001,"device-unpaired").await;break}},
+                Ok(event)=>if socket.send(Message::Text(event.to_string().into())).await.is_err(){break},
+                Err(broadcast::error::RecvError::Lagged(_))=>{if socket.send(Message::Text(json!({"type":"board-updated"}).to_string().into())).await.is_err(){break}},
+                Err(_)=>break,
+            },
+            result=results.recv()=>match result{
+                Some(Ok(Some(result)))=>{if integrations::authorize(&app,Some(&auth)).ok().flatten().as_deref()!=Some(&device){close(&mut socket,4001,"device-unpaired").await;break}
+                    if socket.send(Message::Text(result.to_string().into())).await.is_err(){break}},
+                Some(Err(()))=>{close(&mut socket,4001,"device-unpaired").await;break},
+                _=>{},
+            },
+            message=socket.recv()=>match message{
+                Some(Ok(Message::Text(raw)))=>{
+                    let app=app.clone();let auth=auth.clone();let device=device.clone();let completed=completed.clone();
+                    tokio::task::spawn_blocking(move||{
+                        let result=if integrations::authorize(&app,Some(&auth)).ok().flatten().as_deref()==Some(&device){Ok(integrations::run_mobile_command(&app,raw.as_bytes()))}else{Err(())};
+                        let _=completed.send(result);
+                    });
+                },
+                Some(Ok(Message::Pong(_)))=>alive=true,
+                Some(Ok(Message::Ping(data)))=>{let _=socket.send(Message::Pong(data)).await;},
+                Some(Ok(Message::Close(_)))|None|Some(Err(_))=>break,
+                _=>{},
+            },
+            _=ping.tick()=>{if !alive{break}alive=false;if socket.send(Message::Ping(vec![].into())).await.is_err(){break}},
+        }
     }
 }
+
 #[derive(Clone)]
 struct Viewport {
     kind: String,
@@ -1001,7 +1230,8 @@ async fn pane_socket(
                     Some(bytes)=>{if fifo_overflow.as_ref().is_some_and(|flag|flag.load(Ordering::Acquire)){close(&mut socket,4000,"slow-consumer").await;break}pending_utf8.extend_from_slice(&bytes);let text=decode_utf8(&mut pending_utf8);if !text.is_empty()&&socket.send(Message::Text(text.into())).await.is_err(){break}},
                     None=>{close(&mut socket,4000,"session-not-running").await;break}
                 }
-            },_=poll.tick(),if target.kind=="zellij"=>{let target=target.clone();let p=pane.clone();match tokio::task::spawn_blocking(move||integrations::snapshot_verified(&target,&p)).await{Ok(Ok(snapshot))=>{if snapshot!=previous{previous=snapshot.clone();if socket.send(Message::Text(snapshot.into())).await.is_err(){break}}},_=>{close(&mut socket,4000,"session-not-running").await;break}}},event=events.recv()=>{if let Ok(event)=event{if event["type"]=="device-unpaired"&&text(&event,"deviceId")==device{close(&mut socket,4001,"device-unpaired").await;break}}},message=socket.recv()=>{match message{Some(Ok(Message::Text(input)))=>{let a=app.clone();let t=task.clone();let p=pane.clone();let input=input.to_string();let target=target.clone();let _=tokio::task::spawn_blocking(move||integrations::write_pane_verified(&a,&t,&p,&input,&target)).await;},Some(Ok(Message::Binary(bytes)))=>{if bytes.len()>256{continue}let Ok(v)=serde_json::from_slice::<Value>(&bytes)else{continue};if v["type"]!="resize"{continue}let (Some(cols),Some(rows))=(v["cols"].as_u64(),v["rows"].as_u64())else{continue};if !(1..=500).contains(&cols)||!(1..=500).contains(&rows){continue}let a=app.clone();let t=task.clone();let p=pane.clone();let c=client.clone();match tokio::task::spawn_blocking(move||resize_mobile(&a,&t,&p,&c,cols as u16,rows as u16)).await{Ok(Ok(Some(snapshot)))=>{if socket.send(Message::Text(snapshot.into())).await.is_err(){break}},Ok(Ok(None))=>{},_=>{close(&mut socket,4000,"resize-failed").await;break}}},Some(Ok(Message::Pong(_)))=>alive=true,Some(Ok(Message::Ping(data)))=>{let _=socket.send(Message::Pong(data)).await;},Some(Ok(Message::Close(_)))|None|Some(Err(_))=>break}},_=ping.tick()=>{if !alive{break}alive=false;if socket.send(Message::Ping(vec![].into())).await.is_err(){break}}}
+            },_=poll.tick(),if target.kind=="zellij"=>{let target=target.clone();let p=pane.clone();match tokio::task::spawn_blocking(move||integrations::snapshot_verified(&target,&p)).await{Ok(Ok(snapshot))=>{if snapshot!=previous{previous=snapshot.clone();if socket.send(Message::Text(snapshot.into())).await.is_err(){break}}},_=>{close(&mut socket,4000,"session-not-running").await;break}}},event=events.recv()=>{if let Ok(event)=event{if event["type"]=="device-unpaired"&&text(&event,"deviceId")==device{close(&mut socket,4001,"device-unpaired").await;break}
+                if event["type"]=="task-session-changed"&&text(&event,"taskId")==task{close(&mut socket,4002,"session-changed").await;break}}},message=socket.recv()=>{match message{Some(Ok(Message::Text(input)))=>{let a=app.clone();let t=task.clone();let p=pane.clone();let input=input.to_string();let target=target.clone();let _=tokio::task::spawn_blocking(move||integrations::write_pane_verified(&a,&t,&p,&input,&target)).await;},Some(Ok(Message::Binary(bytes)))=>{if bytes.len()>256{continue}let Ok(v)=serde_json::from_slice::<Value>(&bytes)else{continue};if v["type"]!="resize"{continue}let (Some(cols),Some(rows))=(v["cols"].as_u64(),v["rows"].as_u64())else{continue};if !(1..=500).contains(&cols)||!(1..=500).contains(&rows){continue}let a=app.clone();let t=task.clone();let p=pane.clone();let c=client.clone();match tokio::task::spawn_blocking(move||resize_mobile(&a,&t,&p,&c,cols as u16,rows as u16)).await{Ok(Ok(Some(snapshot)))=>{if socket.send(Message::Text(snapshot.into())).await.is_err(){break}},Ok(Ok(None))=>{},_=>{close(&mut socket,4000,"resize-failed").await;break}}},Some(Ok(Message::Pong(_)))=>alive=true,Some(Ok(Message::Ping(data)))=>{let _=socket.send(Message::Pong(data)).await;},Some(Ok(Message::Close(_)))|None|Some(Err(_))=>break}},_=ping.tick()=>{if !alive{break}alive=false;if socket.send(Message::Ping(vec![].into())).await.is_err(){break}}}
         }
     }
     if let Some(subscription) = fifo.take() {
@@ -1017,6 +1247,32 @@ async fn pane_socket(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn lan_idle_policy_waits_fourteen_days_and_respects_explicit_opt_in(){
+        let root=tempfile::tempdir().unwrap();let db=crate::database::Database::open(&root.path().join("qa.db")).unwrap();
+        let first=2_000_000_000_i64;
+        assert_eq!(lan_bind_host(&db,first).unwrap(),"0.0.0.0");
+        assert_eq!(lan_bind_host(&db,first+LAN_IDLE_WINDOW_MS-1).unwrap(),"0.0.0.0");
+        assert_eq!(lan_bind_host(&db,first+LAN_IDLE_WINDOW_MS).unwrap(),"127.0.0.1");
+        db.set_setting("lan_plaintext_last_request_at",&(first+LAN_IDLE_WINDOW_MS-1).to_string()).unwrap();
+        assert_eq!(lan_bind_host(&db,first+LAN_IDLE_WINDOW_MS).unwrap(),"0.0.0.0");
+        db.set_setting("lan_plaintext_allowed","true").unwrap();
+        assert_eq!(lan_bind_host(&db,first+LAN_IDLE_WINDOW_MS*3).unwrap(),"0.0.0.0");
+        assert!(!should_record_lan("127.0.0.1".parse().unwrap(),"/api/mobile/board",200));
+        assert!(!should_record_lan("::ffff:127.0.0.1".parse().unwrap(),"/api/mobile/board",200));
+        assert!(!should_record_lan("10.0.0.2".parse().unwrap(),"/api/hooks/health",200));
+        assert!(!should_record_lan("10.0.0.2".parse().unwrap(),"/api/mobile/board",401));
+        assert!(should_record_lan("10.0.0.2".parse().unwrap(),"/api/mobile/board",200));
+    }
+    #[test]
+    fn network_draft_trims_visible_fields_and_cli_preserves_its_json_contract(){
+        assert_eq!(mobile_task_draft(&json!({"projectId":" p ","branchName":" feature ","baseBranch":" main ","description":" text ","priority":" high ","sshHost":"attacker","sessionType":"unknown"})).unwrap(),json!({"projectId":"p","branchName":"feature","baseBranch":"main","description":"text","priority":"high"}));
+        assert_eq!(mobile_task_draft(&json!({"projectId":"p","branchName":"f","priority":3})).unwrap(),json!({"projectId":"p","branchName":"f"}));
+        assert!(mobile_task_draft(&json!({"projectId":"p","branchName":"   "})).is_err());
+        assert_eq!(parse_request_body("POST","/api/cli/tasks",b"").unwrap().payload,json!({}));
+        assert_eq!(parse_request_body("POST","/api/cli/tasks",b"[]").unwrap().payload,json!([]));
+        assert!(parse_request_body("POST","/api/cli/tasks",b"{broken").is_none());
+    }
     #[test]
     fn decode_does_not_turn_plus_into_space() {
         assert_eq!(decode("a%2Fb+c").unwrap(), "a/b+c");

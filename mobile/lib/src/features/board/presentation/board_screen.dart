@@ -11,10 +11,12 @@ import '../../task_detail/presentation/task_detail_screen.dart';
 import '../../connection/presentation/desktop_connections_screen.dart';
 import '../../notifications/presentation/notification_center_screen.dart';
 import '../application/board_project_filter_controller.dart';
+import '../application/task_deletion.dart';
 import '../data/board_snapshot.dart';
 import '../domain/board_task.dart';
 import '../domain/task_status.dart';
 import 'widgets/project_filter_button.dart';
+import 'widgets/task_delete_dialogs.dart';
 
 /// 첫 화면. 태스크를 상태별로 나눠 보여 준다.
 ///
@@ -120,10 +122,7 @@ Future<void> _createTask(BuildContext context, BoardSnapshot board) async {
   final navigator = Navigator.of(context);
   final created = await navigator.push<BoardTask>(
     MaterialPageRoute(
-      builder: (_) => CreateTaskScreen(
-        projects: board.creatableProjects,
-        defaultSessionType: board.defaultSessionType,
-      ),
+      builder: (_) => CreateTaskScreen(projects: board.creatableProjects),
     ),
   );
 
@@ -299,13 +298,72 @@ class _StatusHeading extends StatelessWidget {
   }
 }
 
-class _TaskCard extends StatelessWidget {
+class _TaskCard extends ConsumerWidget {
   const _TaskCard({required this.task, super.key});
 
   final BoardTask task;
 
+  /// 길게 눌러 지운다. 커밋하지 않은 변경이 있으면 상세 화면의 삭제처럼 강제 삭제를 한 번 더 묻는다
+  Future<void> _deleteTask(BuildContext context, WidgetRef ref) async {
+    final connection = ref
+        .read(connectionControllerProvider)
+        .value
+        ?.activeConnection;
+    final client = ref.read(desktopClientProvider);
+    final container = ProviderScope.containerOf(context, listen: false);
+    final messenger = ScaffoldMessenger.of(context);
+    if (connection == null ||
+        !await confirmTaskDeletion(context) ||
+        !context.mounted) {
+      return;
+    }
+
+    var outcome = await requestTaskDeletion(
+      client,
+      connection,
+      task.id,
+      isForced: false,
+    );
+    if (outcome is TaskDeletionNeedsForce) {
+      if (context.mounted &&
+          await confirmForcedTaskDeletion(context) &&
+          context.mounted) {
+        outcome = await requestTaskDeletion(
+          client,
+          connection,
+          task.id,
+          isForced: true,
+        );
+      } else {
+        return;
+      }
+    }
+
+    // 새로고침으로 카드가 사라져도 앱 범위의 보드 갱신과 삭제 결과 안내는 끝낸다.
+    if (!messenger.mounted) {
+      return;
+    }
+    container.invalidate(boardProvider);
+    _announceDeletion(messenger, outcome);
+  }
+
+  void _announceDeletion(
+    ScaffoldMessengerState messenger,
+    TaskDeletionOutcome outcome,
+  ) {
+    final message = switch (outcome) {
+      TaskDeletionSucceeded(:final failedPeerCount) when failedPeerCount > 0 =>
+        '다른 데스크탑 $failedPeerCount곳에는 아직 남아 있습니다. 그 데스크탑이 켜지면 직접 삭제해 주세요.',
+      TaskDeletionFailed(:final message) => message,
+      TaskDeletionSucceeded() || TaskDeletionNeedsForce() => null,
+    };
+    if (message != null) {
+      messenger.showSnackBar(SnackBar(content: Text(message)));
+    }
+  }
+
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     return Material(
       color: AppColors.bgSurface,
       borderRadius: BorderRadius.circular(AppSizes.radiusLg),
@@ -314,6 +372,7 @@ class _TaskCard extends StatelessWidget {
         onTap: () => Navigator.of(context).push(
           MaterialPageRoute<void>(builder: (_) => TaskDetailScreen(task: task)),
         ),
+        onLongPress: () => _deleteTask(context, ref),
         child: Container(
           constraints: const BoxConstraints(minHeight: AppSizes.minTouchTarget),
           padding: const EdgeInsets.all(AppSizes.p12),

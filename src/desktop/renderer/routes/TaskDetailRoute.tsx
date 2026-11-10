@@ -11,7 +11,7 @@ import {
 } from "@hugeicons/core-free-icons";
 import { useTranslations } from "next-intl";
 import { useParams } from "react-router-dom";
-import ConnectTerminalForm from "@/components/ConnectTerminalForm";
+import AutoConnectTerminalSession from "@/components/AutoConnectTerminalSession";
 import CreateTaskModal from "@/components/CreateTaskModal";
 import DeleteTaskButton from "@/components/DeleteTaskButton";
 import DoneStatusButton from "@/components/DoneStatusButton";
@@ -1876,6 +1876,7 @@ function TaskDetailContent({ id }: { id: string }) {
               }}
             >
               <TerminalLoader
+                key={`${state.task.sessionType}:${state.task.sessionName}`}
                 taskId={state.task.id}
                 tabs={state.task.sessionType === SessionType.TERMINAL ? terminalTabs.tabs : undefined}
                 isRemote={Boolean(state.task.sshHost)}
@@ -1885,7 +1886,7 @@ function TaskDetailContent({ id }: { id: string }) {
         ) : (
           <div className="flex-1 flex items-center justify-center border border-dashed border-border-default rounded-lg bg-bg-surface">
             {state.task.projectId ? (
-              <ConnectTerminalForm
+              <AutoConnectTerminalSession
                 taskId={state.task.id}
                 defaultSessionType={state.defaultSessionType}
                 sshHost={state.task.sshHost}

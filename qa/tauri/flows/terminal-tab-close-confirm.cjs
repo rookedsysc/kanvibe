@@ -90,7 +90,7 @@ async function run() {
     assert.equal(registered.success, true, registered.error);
     const projectId = registered.project.id;
     const plainId = await invoke(board, 'kanban', 'getTaskIdByProjectAndBranch', projectId, 'main');
-    assert.equal((await invoke(board, 'kanban', 'connectTerminalSession', plainId, 'terminal')).sessionType, 'terminal');
+    assert.equal((await invoke(board, 'kanban', 'changeTaskSessionType', plainId, 'terminal', true)).sessionType, 'terminal');
     async function openDetail(id) {
       const before = new Set(await windows(board));
       await board.evaluate(id => window.kanvibeDesktop.openInternalRouteInNewWindow(`/ko/task/${id}`), id);

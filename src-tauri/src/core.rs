@@ -4,7 +4,7 @@ use crate::{
 };
 use rusqlite::params;
 use serde_json::{json, Value};
-use std::{collections::HashSet, path::Path};
+use std::{collections::HashSet, path::Path, sync::{Mutex, OnceLock}};
 use tauri::{AppHandle, Emitter, Manager};
 
 const STATUSES: [&str; 5] = ["todo", "progress", "pending", "review", "done"];
@@ -43,6 +43,7 @@ pub fn settings(db: &Database, method: &str, args: &[Value]) -> Result<Value> {
         ),
         ("BackgroundSyncEnabled", "background_sync_enabled", false),
         ("VimModeEnabled", "vim_mode_enabled", true),
+        ("LanPlaintextAllowed", "lan_plaintext_allowed", false),
     ];
     for (name, key, default) in mapping {
         if method == format!("get{name}") {
@@ -69,6 +70,28 @@ pub fn settings(db: &Database, method: &str, args: &[Value]) -> Result<Value> {
         }
     }
     match method {
+        "getOrCreateHookClientId" => {
+            static CLIENT_ID_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+            let _guard = CLIENT_ID_LOCK.get_or_init(|| Mutex::new(())).lock().map_err(|e|e.to_string())?;
+            if let Some(client_id) = db.setting("hook_client_id")?.filter(|v| !v.is_empty()) {
+                return Ok(json!(client_id));
+            }
+            let client_id = database::id();
+            db.set_setting("hook_client_id", &client_id)?;
+            Ok(json!(client_id))
+        }
+        "getOrStartLanPlaintextObservation" => {
+            let observed = db.setting("lan_plaintext_observed_since")?.and_then(|v|v.parse::<i64>().ok()).unwrap_or(0);
+            if observed > 0 { return Ok(json!(observed)); }
+            let now = args.first().and_then(Value::as_i64).unwrap_or(0);
+            db.set_setting("lan_plaintext_observed_since", &now.to_string())?;
+            Ok(json!(now))
+        }
+        "getLanPlaintextLastRequestAt" => Ok(json!(db.setting("lan_plaintext_last_request_at")?.and_then(|v|v.parse::<i64>().ok()).unwrap_or(0))),
+        "setLanPlaintextLastRequestAt" => {
+            db.set_setting("lan_plaintext_last_request_at", &args.first().and_then(Value::as_i64).unwrap_or(0).to_string())?;
+            Ok(Value::Null)
+        }
         "getAppSetting" => Ok(json!(db.setting(arg(args, 0))?)),
         "setAppSetting" => {
             db.set_setting(arg(args, 0), arg(args, 1))?;
@@ -385,12 +408,275 @@ fn create_task(app: &AppHandle, input: &Value) -> Result<Value> {
 fn install_task_hooks(app: &AppHandle, task: &Value, provider: Option<&str>) {
     if let Some(path) = task["worktreePath"].as_str() {
         if let Err(error) =
-            git::install_hooks(path, text(task, "id"), task["sshHost"].as_str(), provider)
+            git::install_hooks(&app.state::<Database>(),path, text(task, "id"), task["sshHost"].as_str(), provider)
         {
             let _=app.emit("kanvibe:board-event",json!({"type":"task-hook-install-failed","taskId":task["id"],"taskTitle":task["title"],"error":error}));
         }
     }
 }
+const TERMINAL_HOOK_INSTALL_PRE_ATTACH_WAIT: std::time::Duration =
+    std::time::Duration::from_millis(1500);
+fn install_hooks_before_terminal_attach(
+    app: &AppHandle,
+    task: &Value,
+    cwd: &str,
+    host: Option<&str>,
+) {
+    let app = app.clone();
+    let mut target = task.clone();
+    target["worktreePath"] = json!(cwd);
+    target["sshHost"] = json!(host);
+    let (finished, waiting) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        install_task_hooks(&app, &target, None);
+        let _ = finished.send(());
+    });
+    // 원격 hooks가 느려도 터미널은 1.5초 뒤 연결하며 설치·실패 알림은 백그라운드 작업이 마친다.
+    let _ = waiting.recv_timeout(TERMINAL_HOOK_INSTALL_PRE_ATTACH_WAIT);
+}
+
+#[derive(Debug, PartialEq)]
+enum SessionAction {
+    Create,
+    Unchanged,
+    Unavailable,
+}
+fn session_action(task: &Value, kind: &str, change: bool) -> SessionAction {
+    let connected = !text(task, "sessionType").is_empty() && !text(task, "sessionName").is_empty();
+    if change {
+        if !connected {
+            return SessionAction::Unavailable;
+        }
+        if text(task, "sessionType") == kind {
+            return SessionAction::Unchanged;
+        }
+    } else {
+        if text(task, "projectId").is_empty() {
+            return SessionAction::Unavailable;
+        }
+        if connected {
+            return SessionAction::Unchanged;
+        }
+    }
+    if text(task, "projectId").is_empty()
+        || (text(task, "branchName").is_empty() && text(task, "baseBranch").is_empty())
+    {
+        SessionAction::Unavailable
+    } else {
+        SessionAction::Create
+    }
+}
+fn session_change_targets(tasks: Vec<Value>, kind: &str) -> Vec<Value> {
+    tasks
+        .into_iter()
+        .filter(|task| {
+            task["sessionName"].is_string()
+                && task["sessionType"].is_string()
+                && text(task, "sessionType") != kind
+                && task["projectId"].is_string()
+        })
+        .collect()
+}
+fn apply_persisted_task_session(task: &mut Value, metadata: &Value) -> bool {
+    let session = &metadata["session"];
+    if !SESSION_TYPES.contains(&text(session, "sessionType"))
+        || text(session, "sessionName").is_empty()
+    {
+        return false;
+    }
+    if task["sessionType"] == session["sessionType"]
+        && task["sessionName"] == session["sessionName"]
+    {
+        return false;
+    }
+    task["sessionType"] = session["sessionType"].clone();
+    task["sessionName"] = session["sessionName"].clone();
+    true
+}
+fn session_changed(app: &AppHandle, id: &str) {
+    let event = json!({"type":"task-session-changed","taskId":id});
+    let _ = app.emit("kanvibe:board-event", &event);
+    crate::server::broadcast(event);
+}
+fn remove_task_session(task: &Value, host: Option<&str>) {
+    let name = text(task, "sessionName");
+    if name.is_empty() {
+        return;
+    }
+    let commands = match text(task, "sessionType") {
+        "tmux" => vec![
+            format!(
+                "tmux kill-session -t {} 2>/dev/null || true",
+                git::quote(name)
+            ),
+            format!(
+                "tmux -L kanvibe kill-session -t {} 2>/dev/null || true",
+                git::quote(name)
+            ),
+        ],
+        "zellij" => vec![
+            format!(
+                "zellij kill-sessions {} 2>/dev/null || true",
+                git::quote(name)
+            ),
+            format!(
+                "zellij delete-session {} 2>/dev/null || true",
+                git::quote(name)
+            ),
+        ],
+        "herdr" => vec![crate::herdr::cleanup_command(name)],
+        _ => Vec::new(),
+    };
+    // 종료됐거나 연결이 끊긴 이전 세션도 새 세션으로의 전환을 취소하지 않는다.
+    for command in commands {
+        let _ = git::run(&command, host);
+    }
+}
+fn create_task_terminal_session(app: &AppHandle, mut task: Value, kind: &str) -> Result<Value> {
+    let db = app.state::<Database>();
+    let Some(project) = project_for_task(&db, &task)? else {
+        return Ok(Value::Null);
+    };
+    let branch = if text(&task, "branchName").is_empty() {
+        text(&task, "baseBranch")
+    } else {
+        text(&task, "branchName")
+    };
+    if branch.is_empty() {
+        return Ok(Value::Null);
+    }
+    let session_name = git::session_name_for(kind, text(&project, "repoPath"), branch);
+    let cwd = if text(&task, "worktreePath").is_empty() {
+        text(&project, "repoPath")
+    } else {
+        text(&task, "worktreePath")
+    }
+    .to_owned();
+    let created = (|| -> Result<Value> {
+        install_hooks_before_terminal_attach(app,&task,&cwd,project["sshHost"].as_str());
+        crate::terminal::prepare_session_layout(
+            app,
+            kind,
+            &cwd,
+            project["sshHost"].as_str(),
+            task["projectId"].as_str(),
+        )?;
+        task["sessionType"] = json!(kind);
+        task["sessionName"] = json!(session_name);
+        task["worktreePath"] = json!(cwd);
+        task["sshHost"] = project["sshHost"].clone();
+        save_task(app, &task, false)
+    })();
+    match created {
+        Ok(task) => Ok(task),
+        Err(error) => {
+            eprintln!("터미널 세션 생성 실패: {error}");
+            Ok(Value::Null)
+        }
+    }
+}
+fn change_task_session_type(
+    app: &AppHandle,
+    id: &str,
+    kind: &str,
+    close_existing: bool,
+    change: bool,
+) -> Result<Value> {
+    if !SESSION_TYPES.contains(&kind) {
+        return Err("유효하지 않은 세션 타입".into());
+    }
+    crate::terminal::with_task_session_mutation(app, id, || {
+        let db = app.state::<Database>();
+        let Some(task) = db.task(id)? else {
+            return Ok(Value::Null);
+        };
+        match session_action(&task, kind, change) {
+            SessionAction::Unchanged => return Ok(task),
+            SessionAction::Unavailable => return Ok(Value::Null),
+            SessionAction::Create => {}
+        }
+        if change {
+            crate::terminal::kill_task(app, id)?;
+        }
+        let changed = create_task_terminal_session(app, task.clone(), kind)?;
+        if changed.is_null() {
+            return Ok(Value::Null);
+        }
+        if change {
+            if close_existing {
+                remove_task_session(&task, task["sshHost"].as_str());
+            }
+            let project = project_for_task(&db, &changed)?;
+            if let Err(error) = git::persist_session(&changed, project.as_ref()) {
+                eprintln!(".kanvibe task 세션 저장 실패: {error}");
+            }
+            session_changed(app, id);
+        }
+        Ok(changed)
+    })
+}
+fn session_alive_with(
+    kind: &str,
+    name: &str,
+    host: Option<&str>,
+    run: &dyn Fn(&str, Option<&str>) -> Result<String>,
+) -> bool {
+    if kind.is_empty() || name.is_empty() {
+        return false;
+    }
+    match kind {
+        "tmux" => {
+            let target = git::quote(name);
+            run(&format!("tmux has-session -t {target} 2>/dev/null && exit 0; tmux -L 'kanvibe' has-session -t {target} 2>/dev/null && exit 0; exit 1"),host).is_ok()
+        }
+        "herdr" => run(&crate::herdr::command(name, &["workspace", "list"]), host).is_ok(),
+        "zellij" => run("zellij list-sessions", host)
+            .ok()
+            .is_some_and(|output| {
+                let ansi = regex::Regex::new("\\x1b\\[[0-9;]*m").unwrap();
+                ansi.replace_all(&output, "")
+                    .lines()
+                    .map(str::trim)
+                    .filter(|line| !line.starts_with("EXITED:"))
+                    .any(|line| line.split_whitespace().next() == Some(name))
+            }),
+        _ => false,
+    }
+}
+fn task_session_alive(task: &Value) -> bool {
+    session_alive_with(
+        text(task, "sessionType"),
+        text(task, "sessionName"),
+        task["sshHost"].as_str(),
+        &git::run,
+    )
+}
+
+const SESSION_TYPE_CHANGE_CONCURRENCY: usize = 4;
+fn map_session_tasks<T: Send>(
+    tasks: &[Value],
+    action: &(impl Fn(&Value) -> Result<T> + Sync),
+) -> Result<Vec<T>> {
+    let mut results = Vec::new();
+    for batch in tasks.chunks(SESSION_TYPE_CHANGE_CONCURRENCY) {
+        std::thread::scope(|scope| {
+            let handles: Vec<_> = batch
+                .iter()
+                .map(|task| scope.spawn(move || action(task)))
+                .collect();
+            for handle in handles {
+                results.push(
+                    handle
+                        .join()
+                        .map_err(|_| "세션 작업이 중단되었습니다".to_string())??,
+                );
+            }
+            Ok::<(), String>(())
+        })?;
+    }
+    Ok(results)
+}
+
 fn cleanup_task(app: &AppHandle, task: &Value) -> Result<()> {
     let db = app.state::<Database>();
     let project = project_for_task(&db, task)?;
@@ -398,32 +684,7 @@ fn cleanup_task(app: &AppHandle, task: &Value) -> Result<()> {
         .as_str()
         .or_else(|| project.as_ref().and_then(|p| p["sshHost"].as_str()));
     crate::terminal::kill_task(app, text(task, "id"))?;
-    if let Some(session) = task["sessionName"].as_str() {
-        match text(task, "sessionType") {
-            "tmux" => {
-                for prefix in ["tmux", "tmux -L kanvibe"] {
-                    let _ = git::run(
-                        &format!("{prefix} kill-session -t {}", git::quote(session)),
-                        host,
-                    );
-                }
-            }
-            "zellij" => {
-                let _ = git::run(
-                    &format!("zellij kill-sessions {}", git::quote(session)),
-                    host,
-                );
-                let _ = git::run(
-                    &format!("zellij delete-session {}", git::quote(session)),
-                    host,
-                );
-            }
-            "herdr" => {
-                let _ = git::run(&crate::herdr::cleanup_command(session), host);
-            }
-            _ => {}
-        }
-    }
+    remove_task_session(task,host);
     if let Some(project) = project.as_ref() {
         let repo = text(project, "repoPath");
         let branch = text(task, "branchName");
@@ -462,18 +723,57 @@ fn cleanup_task(app: &AppHandle, task: &Value) -> Result<()> {
     }
     Ok(())
 }
-fn delete_task(app: &AppHandle, id: &str) -> Result<bool> {
+fn delete_task_across_targets(
+    app: &AppHandle,
+    id: &str,
+    reject_dirty: bool,
+    propagate: bool,
+    notify: bool,
+) -> Result<Value> {
     let db = app.state::<Database>();
     let Some(task) = db.task(id)? else {
-        return Ok(false);
+        return Ok(json!({"isDeleted":false,"peerResults":[]}));
     };
+    let path = text(&task, "worktreePath");
+    let host = task["sshHost"].as_str();
+    if reject_dirty && !path.is_empty() {
+        let quoted = git::quote(path);
+        let changes = git::run(
+            &format!("if [ -d {quoted} ]; then git -C {quoted} status --porcelain; fi"),
+            host,
+        )?;
+        if !changes.trim().is_empty() {
+            return Err(format!(
+                "커밋하지 않은 변경이 있어 삭제하지 않았습니다: {path}"
+            ));
+        }
+    }
+    let peers = if propagate && !path.is_empty() {
+        crate::task_targets::propagate_deletion(path, host)
+    } else {
+        Vec::new()
+    };
+    let failed_urls: Vec<_> = peers
+        .iter()
+        .filter(|peer| peer["isSuccess"] != true)
+        .map(|peer| peer["url"].clone())
+        .collect();
+    if !failed_urls.is_empty() {
+        let _=app.emit("kanvibe:board-event",json!({"type":"task-peer-deletion-failed","taskId":id,"taskTitle":task["title"],"failedPeerUrls":failed_urls}));
+    }
     cleanup_task(app, &task)?;
     db.lock()?
         .execute("DELETE FROM kanban_tasks WHERE id=?1", [id])
         .map_err(|e| e.to_string())?;
-    board_update(app);
-    Ok(true)
+    if notify {
+        board_update(app);
+    }
+    Ok(json!({"isDeleted":true,"peerResults":peers}))
 }
+fn delete_task(app: &AppHandle, id: &str) -> Result<bool> {
+    Ok(delete_task_across_targets(app, id, false, true, true)?["isDeleted"] == true)
+}
+
 fn kanban(app: &AppHandle, method: &str, args: &[Value]) -> Result<Value> {
     let db = app.state::<Database>();
     match method {
@@ -545,6 +845,10 @@ fn kanban(app: &AppHandle, method: &str, args: &[Value]) -> Result<Value> {
             }
         }
         "deleteTask" => Ok(json!(delete_task(app, arg(args, 0))?)),
+        "deleteTaskAcrossTargets" => {
+            let options=args.get(1).unwrap_or(&Value::Null);
+            delete_task_across_targets(app,arg(args,0),options["shouldRejectDirtyWorktree"]==true,options["shouldPropagateToPeers"]==true,true)
+        }
         "deleteTasks" => {
             let mut deleted = Vec::new();
             let mut seen = HashSet::new();
@@ -555,10 +859,15 @@ fn kanban(app: &AppHandle, method: &str, args: &[Value]) -> Result<Value> {
                 .flatten()
                 .filter_map(Value::as_str)
             {
-                if seen.insert(id) && delete_task(app, id)? {
-                    deleted.push(id);
+                if seen.insert(id) {
+                    match delete_task_across_targets(app,id,false,true,false) {
+                        Ok(result) if result["isDeleted"]==true=>deleted.push(id),
+                        Ok(_)=>{},
+                        Err(error)=>{if !deleted.is_empty(){board_update(app);}return Err(error);},
+                    }
                 }
             }
+            if !deleted.is_empty() {board_update(app);}
             Ok(json!(deleted))
         }
         "branchFromTask" => {
@@ -582,34 +891,22 @@ fn kanban(app: &AppHandle, method: &str, args: &[Value]) -> Result<Value> {
             install_task_hooks(app, &saved, None);
             Ok(saved)
         }
-        "connectTerminalSession" => {
-            let Some(mut task) = db.task(arg(args, 0))? else {
-                return Ok(Value::Null);
-            };
-            let Some(project) = project_for_task(&db, &task)? else {
-                return Ok(Value::Null);
-            };
-            let session_type = arg(args, 1);
-            if !SESSION_TYPES.contains(&session_type) {
-                return Err("유효하지 않은 세션 타입".into());
-            }
-            let branch = task["branchName"]
-                .as_str()
-                .or_else(|| task["baseBranch"].as_str())
-                .ok_or("브랜치가 없습니다")?;
-            task["sessionName"] = json!(git::session_name_for(
-                session_type,
-                text(&project, "repoPath"),
-                branch
-            ));
-            task["sessionType"] = json!(session_type);
-            if text(&task, "worktreePath").is_empty() {
-                task["worktreePath"] = project["repoPath"].clone();
-            }
-            task["sshHost"] = project["sshHost"].clone();
-            let saved = save_task(app, &task, false)?;
-            install_task_hooks(app, &saved, None);
-            Ok(saved)
+        "connectTerminalSession"=>change_task_session_type(app,arg(args,0),arg(args,1),false,false),
+        "changeTaskSessionType"=>change_task_session_type(app,arg(args,0),arg(args,1),args.get(2)==Some(&json!(true)),true),
+        "isTaskSessionAlive"=>Ok(json!(db.task(arg(args,0))?.as_ref().is_some_and(task_session_alive))),
+        "getSessionTypeChangeTargets"=>{
+            let targets=session_change_targets(db.tasks()?,arg(args,0));
+            let alive=map_session_tasks(&targets,&|task|Ok(task_session_alive(task)))?;
+            let mut hosts=Vec::new();
+            for task in &targets {let host=task["sshHost"].clone();if !hosts.contains(&host){hosts.push(host);}}
+            Ok(json!({"taskCount":targets.len(),"liveSessionCount":alive.iter().filter(|v|**v).count(),"sshHosts":hosts}))
+        }
+        "changeAllTaskSessionTypes"=>{
+            let kind=arg(args,0);let close=args.get(1)==Some(&json!(true));
+            let targets=session_change_targets(db.tasks()?,kind);
+            let changed=map_session_tasks(&targets,&|task|change_task_session_type(app,text(task,"id"),kind,close,true))?;
+            let count=changed.iter().filter(|task|!task.is_null()).count();
+            Ok(json!({"changedCount":count,"failedCount":targets.len()-count}))
         }
         "updateProjectColor" => {
             let Some(project) = db.project(arg(args, 0))? else {
@@ -791,7 +1088,7 @@ fn project(app: &AppHandle, method: &str, args: &[Value]) -> Result<Value> {
         "scanAndRegisterProjects" => {
             scan_projects(app, arg(args, 0), args.get(1).and_then(Value::as_str))
         }
-        "syncRegisteredProjectWorktrees" => sync_worktrees(app),
+        "syncRegisteredProjectWorktrees" => sync_selected_worktrees(app,args.first().and_then(Value::as_array).cloned()),
         "getTaskAiSessions"
         | "getTaskAiSessionDetail"
         | "getTaskLiveAiSessions"
@@ -990,7 +1287,12 @@ fn shared_state(path: &str, filename: &str, host: Option<&str>) -> Value {
         .unwrap_or(Value::Null)
 }
 fn ensure_root_task(app: &AppHandle, project: &Value) -> Result<(Value, bool)> {
+    let previous=app.state::<Database>().tasks()?.into_iter().find(|task|task["projectId"]==project["id"] && task["branchName"]==project["defaultBranch"]);
     let (task, changed) = reconcile_root_task(&app.state::<Database>(), project)?;
+    if previous.as_ref().is_some_and(|previous|previous["sessionType"]!=task["sessionType"] || previous["sessionName"]!=task["sessionName"]) {
+        crate::terminal::kill_task(app,text(&task,"id"))?;
+        session_changed(app,text(&task,"id"));
+    }
     if changed {
         install_task_hooks(app, &task, None);
     }
@@ -1031,6 +1333,7 @@ fn reconcile_root_task(db: &Database, project: &Value) -> Result<(Value, bool)> 
     if let Some(description) = metadata.get("description") {
         task["description"] = description.clone();
     }
+    apply_persisted_task_session(&mut task,&metadata);
     let project_state = shared_state(root, ".kanvibe/project.json", host);
     if let Some(priority) = project_state.get("priority") {
         task["priority"] = priority.clone();
@@ -1203,7 +1506,7 @@ fn project_hooks(app: &AppHandle, method: &str, args: &[Value]) -> Result<Value>
         .as_str()
         .or_else(|| project.as_ref().and_then(|p| p["sshHost"].as_str()));
     if method.starts_with("install") {
-        match git::install_hooks(root, text(&task, "id"), host, Some(provider)) {
+        match git::install_hooks(&db,root, text(&task, "id"), host, Some(provider)) {
             Ok(_) => Ok(
                 json!({"success":true,"status":git::hooks_status(root,text(&task,"id"),host,provider)?}),
             ),
@@ -1245,6 +1548,12 @@ fn hooks(app: &AppHandle, method: &str, args: &[Value]) -> Result<Value> {
         );
     };
     let project = project_for_task(&db, &task)?;
+    let source_hosts = args.get(1).and_then(Value::as_array).map(|hosts| {
+        hosts.iter().filter_map(Value::as_str).map(str::to_owned).collect::<HashSet<_>>()
+    });
+    if !crate::hook_transport::task_in_scope(&task, project.as_ref(), source_hosts.as_ref()) {
+        return Ok(json!({"success":false,"error":format!("작업을 찾을 수 없습니다: {id}"),"status":404}));
+    }
     let name = project
         .as_ref()
         .map(|p| text(p, "name"))
@@ -1269,27 +1578,20 @@ fn find_alive_branch_session(
     host: Option<&str>,
     run: &dyn Fn(&str, Option<&str>) -> Result<String>,
 ) -> Option<(String, String)> {
-    if run(
-        &format!("tmux has-session -t {}", git::quote(session)),
-        host,
-    )
-    .is_ok()
-    {
+    if session_alive_with("tmux", session, host, run) {
         return Some(("tmux".into(), session.into()));
     }
     let herdr_name = crate::herdr::sanitize_session_name(session);
-    run(
-        &crate::herdr::command(&herdr_name, &["workspace", "list"]),
-        host,
-    )
-    .ok()
-    .map(|_| ("herdr".into(), herdr_name))
+    session_alive_with("herdr", &herdr_name, host, run).then_some(("herdr".into(), herdr_name))
 }
 
 pub fn sync_worktrees(app: &AppHandle) -> Result<Value> {
+    sync_selected_worktrees(app,None)
+}
+fn sync_selected_worktrees(app: &AppHandle, projects: Option<Vec<Value>>) -> Result<Value> {
     let db = app.state::<Database>();
     let mut result = json!({"worktreeTasks":[],"registeredWorktrees":[],"hooksSetup":[],"errors":[],"changed":false});
-    for mut project in db.projects()? {
+    for mut project in projects.unwrap_or(db.projects()?) {
         let synced = (|| -> Result<()> {
             let host = project["sshHost"].as_str().map(str::to_string);
             let host = host.as_deref();
@@ -1343,6 +1645,7 @@ pub fn sync_worktrees(app: &AppHandle) -> Result<Value> {
                     task["status"] = state["status"].clone();
                 }
                 let metadata = shared_state(path, ".kanvibe/task.json", host);
+                let followed_session=existing.is_some() && apply_persisted_task_session(&mut task,&metadata);
                 for key in ["description", "priority"] {
                     if key == "priority" && branch == text(&project, "defaultBranch") {
                         continue;
@@ -1360,8 +1663,12 @@ pub fn sync_worktrees(app: &AppHandle) -> Result<Value> {
                 }
                 if task != original || is_new {
                     let saved = db.save_task(&task)?;
+                    if followed_session {
+                        crate::terminal::kill_task(app,text(&saved,"id"))?;
+                        session_changed(app,text(&saved,"id"));
+                    }
                     git::persist_task(&saved, Some(&project), false)?;
-                    if let Err(error) = git::install_hooks(path, text(&saved, "id"), host, None) {
+                    if let Err(error) = git::install_hooks(&db,path, text(&saved, "id"), host, None) {
                         result["errors"]
                             .as_array_mut()
                             .unwrap()
@@ -1597,6 +1904,133 @@ mod tests {
             "삭제된 task를 다시 넣으면 안 된다"
         );
     }
+    #[test]
+    fn session_alive_checks_legacy_tmux_socket_and_filters_exited_zellij_sessions() {
+        assert!(session_alive_with(
+            "tmux",
+            "session",
+            Some("remote"),
+            &|command, host| {
+                assert_eq!(host, Some("remote"));
+                assert!(command.contains("tmux has-session -t 'session'"));
+                assert!(command.contains("tmux -L 'kanvibe' has-session -t 'session'"));
+                Ok(String::new())
+            }
+        ));
+        for (name, expected) in [("exited", false), ("active", true)] {
+            assert_eq!(
+                session_alive_with("zellij", name, None, &|_, _| Ok(
+                    "EXITED: exited [Created 1h ago]\n\u{1b}[32mactive\u{1b}[0m [Created 1m ago]"
+                        .into()
+                )),
+                expected
+            );
+        }
+    }
+
+    #[test]
+    fn session_changes_preserve_existing_connections_and_same_kind_sessions() {
+        let connected = json!({"projectId":"p","branchName":"feature","sessionType":"tmux","sessionName":"session"});
+        assert_eq!(
+            session_action(&connected, "zellij", false),
+            SessionAction::Unchanged
+        );
+        assert_eq!(
+            session_action(&connected, "tmux", true),
+            SessionAction::Unchanged
+        );
+        assert_eq!(
+            session_action(&connected, "herdr", true),
+            SessionAction::Create
+        );
+        assert_eq!(
+            session_action(
+                &json!({"projectId":"p","branchName":"feature"}),
+                "herdr",
+                true
+            ),
+            SessionAction::Unavailable
+        );
+        assert_eq!(
+            session_action(
+                &json!({"projectId":"p","branchName":"feature"}),
+                "herdr",
+                false
+            ),
+            SessionAction::Create
+        );
+    }
+    #[test]
+    fn bulk_session_targets_include_done_and_exclude_same_kind_or_unlinked_tasks() {
+        let tasks = vec![
+            json!({"id":"done","status":"done","projectId":"p","sessionType":"tmux","sessionName":"one"}),
+            json!({"id":"remote","projectId":"p","sessionType":"herdr","sessionName":"two","sshHost":"remote"}),
+            json!({"id":"same","projectId":"p","sessionType":"zellij","sessionName":"three"}),
+            json!({"id":"no-project","sessionType":"tmux","sessionName":"four"}),
+            json!({"id":"no-session","projectId":"p","sessionType":"tmux"}),
+        ];
+        let targets = session_change_targets(tasks, "zellij");
+        assert_eq!(
+            targets.iter().map(|v| text(v, "id")).collect::<Vec<_>>(),
+            vec!["done", "remote"]
+        );
+    }
+    #[test]
+    fn persisted_session_changes_identity_but_invalid_or_same_identity_does_not() {
+        let mut task = json!({"sessionType":"tmux","sessionName":"old","description":"keep"});
+        for metadata in [
+            json!({}),
+            json!({"session":{"sessionType":"future","sessionName":"x"}}),
+            json!({"session":{"sessionType":"herdr","sessionName":""}}),
+        ] {
+            assert!(!apply_persisted_task_session(&mut task, &metadata));
+        }
+        let metadata = json!({"session":{"sessionType":"herdr","sessionName":"shared"}});
+        assert!(apply_persisted_task_session(&mut task, &metadata));
+        assert_eq!(task["sessionType"], "herdr");
+        assert_eq!(task["sessionName"], "shared");
+        assert_eq!(task["description"], "keep");
+        assert!(!apply_persisted_task_session(&mut task, &metadata));
+    }
+    #[test]
+    fn lan_and_client_identity_settings_persist_with_board_workspace_preference() {
+        let (directory, db) = db();
+        assert_eq!(settings(&db, "getLanPlaintextAllowed", &[]).unwrap(), false);
+        settings(&db, "setLanPlaintextAllowed", &[json!(true)]).unwrap();
+        assert_eq!(
+            settings(&db, "getOrStartLanPlaintextObservation", &[json!(100)]).unwrap(),
+            100
+        );
+        assert_eq!(
+            settings(&db, "getOrStartLanPlaintextObservation", &[json!(200)]).unwrap(),
+            100
+        );
+        let client_id = settings(&db, "getOrCreateHookClientId", &[]).unwrap();
+        assert!(!client_id.as_str().unwrap().is_empty());
+        settings(&db, "setLanPlaintextLastRequestAt", &[json!(300)]).unwrap();
+        settings(
+            &db,
+            "setAppSetting",
+            &[json!("board_view_mode"), json!("workspace")],
+        )
+        .unwrap();
+        drop(db);
+        let db = Database::open(&directory.path().join("app.db")).unwrap();
+        assert_eq!(
+            settings(&db, "getOrCreateHookClientId", &[]).unwrap(),
+            client_id
+        );
+        assert_eq!(settings(&db, "getLanPlaintextAllowed", &[]).unwrap(), true);
+        assert_eq!(
+            settings(&db, "getLanPlaintextLastRequestAt", &[]).unwrap(),
+            300
+        );
+        assert_eq!(
+            settings(&db, "getAppSetting", &[json!("board_view_mode")]).unwrap(),
+            "workspace"
+        );
+    }
+
     #[test]
     fn branch_session_discovery_prefers_tmux_and_recovers_sanitized_herdr() {
         let session = "project-feature/foo";

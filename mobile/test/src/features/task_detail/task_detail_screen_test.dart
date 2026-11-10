@@ -5,10 +5,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kanvibe_mobile/src/common/constants/app_theme.dart';
 import 'package:kanvibe_mobile/src/common/network/desktop_client.dart';
+import 'package:kanvibe_mobile/src/common/network/desktop_command.dart';
 import 'package:kanvibe_mobile/src/common/providers.dart';
 import 'package:kanvibe_mobile/src/features/board/data/board_snapshot.dart';
 import 'package:kanvibe_mobile/src/features/board/domain/board_task.dart';
 import 'package:kanvibe_mobile/src/features/board/domain/task_status.dart';
+import 'package:kanvibe_mobile/src/features/task_create/domain/session_type.dart';
 import 'package:kanvibe_mobile/src/features/task_create/presentation/create_task_screen.dart';
 import 'package:kanvibe_mobile/src/features/task_detail/domain/mirror_pane.dart';
 import 'package:kanvibe_mobile/src/features/task_detail/presentation/task_detail_screen.dart';
@@ -370,7 +372,6 @@ void main() {
       expect(field.controller!.text, isEmpty);
     }
     expect(find.text('고르지 않음'), findsOneWidget);
-    expect(find.text('zellij'), findsOneWidget);
 
     await tester.enterText(find.byType(TextFormField).first, 'feat/child');
     await _submitCreation(tester);
@@ -381,7 +382,6 @@ void main() {
       'baseBranch': 'feat/source',
       'description': '',
       'priority': null,
-      'sessionType': 'zellij',
     });
   });
 
@@ -878,6 +878,627 @@ void main() {
         find.text('Done(으)로 옮기기'),
         findsOneWidget,
         reason: '시트가 열린 채여야 다시 고를 수 있다',
+      );
+    });
+  });
+
+  group('세션 종류 변경', () {
+    const tmuxSurfaces = TaskSurfaces(
+      tabs: [_twoPaneWindow],
+      canResize: true,
+      sessionType: SessionType.tmux,
+    );
+
+    Future<void> chooseZellij(WidgetTester tester) async {
+      await tester.tap(find.byTooltip('세션 종류 바꾸기'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('zellij(으)로 바꾸기'));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('데스크탑이 세션 종류를 바꿔 스트림을 끊으면 오류 없이 새 세션 pane에 다시 붙는다', (
+      tester,
+    ) async {
+      final client = await pumpDetail(
+        tester,
+        size: phoneSize,
+        surfaces: tmuxSurfaces,
+      );
+      client.surfaces = const TaskSurfaces(
+        tabs: [_secondWindow],
+        sessionType: SessionType.zellij,
+      );
+      client.paneCloseCodes['%19'] = taskSessionChangedCloseCode;
+
+      await client.openedPanes['%19']!.close();
+      await tester.pumpAndSettle();
+
+      expect(client.openedPanes.keys, contains('%21'));
+      expect(find.textContaining('연결이 끊겼습니다'), findsNothing);
+      expect(find.textContaining('터미널 스트림에 오류'), findsNothing);
+    });
+
+    testWidgets('새 세션의 pane id가 이전과 같아도 스트림을 새로 연다', (tester) async {
+      final client = await pumpDetail(
+        tester,
+        size: phoneSize,
+        surfaces: tmuxSurfaces,
+      );
+      final previousStream = client.openedPanes['%19']!;
+      client.surfaces = const TaskSurfaces(
+        tabs: [_twoPaneWindow],
+        sessionType: SessionType.zellij,
+      );
+      client.paneCloseCodes['%19'] = taskSessionChangedCloseCode;
+
+      await previousStream.close();
+      await tester.pumpAndSettle();
+
+      expect(client.openedPanes['%19'], isNot(same(previousStream)));
+      expect(find.textContaining('연결이 끊겼습니다'), findsNothing);
+    });
+
+    testWidgets('기존 세션이 켜져 있으면 닫을지 묻고 닫기를 고르면 닫으라고 보낸 뒤 시트를 닫는다', (
+      tester,
+    ) async {
+      final client = await pumpDetail(
+        tester,
+        size: phoneSize,
+        surfaces: tmuxSurfaces,
+      );
+
+      await tester.tap(find.byTooltip('세션 종류 바꾸기'));
+      await tester.pumpAndSettle();
+      expect(find.text('지금은 tmux입니다.'), findsOneWidget);
+      expect(find.text('tmux(으)로 바꾸기'), findsNothing);
+      await tester.tap(find.text('zellij(으)로 바꾸기'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('기존 세션 닫기'), findsOneWidget);
+      await tester.tap(find.text('닫기'));
+      await tester.pumpAndSettle();
+
+      expect(client.sessionTypeChangeCalls.single, (
+        taskId: 'task-1',
+        sessionType: SessionType.zellij,
+        shouldCloseExistingSession: true,
+      ));
+      expect(find.text('지금은 tmux입니다.'), findsNothing);
+    });
+
+    testWidgets('남겨 두기를 고르면 기존 세션을 닫지 않고 바꾼다', (tester) async {
+      final client = await pumpDetail(
+        tester,
+        size: phoneSize,
+        surfaces: tmuxSurfaces,
+      );
+
+      await chooseZellij(tester);
+      await tester.tap(find.text('남겨 두기'));
+      await tester.pumpAndSettle();
+
+      expect(
+        client.sessionTypeChangeCalls.single.shouldCloseExistingSession,
+        isFalse,
+      );
+    });
+
+    testWidgets('기존 세션이 꺼져 있으면 묻지 않고 바꾼다', (tester) async {
+      final client = FakeDesktopClient(surfaces: tmuxSurfaces)
+        ..isTaskSessionAlive = false;
+      await pumpDetail(tester, size: phoneSize, desktopClient: client);
+
+      await chooseZellij(tester);
+
+      expect(find.text('기존 세션 닫기'), findsNothing);
+      expect(client.sessionTypeChangeCalls.single, (
+        taskId: 'task-1',
+        sessionType: SessionType.zellij,
+        shouldCloseExistingSession: false,
+      ));
+    });
+
+    testWidgets('닫기 확인 창을 그냥 닫으면 바꾸지 않고 다시 고를 수 있다', (tester) async {
+      final client = await pumpDetail(
+        tester,
+        size: phoneSize,
+        surfaces: tmuxSurfaces,
+      );
+
+      await chooseZellij(tester);
+      await tester.tapAt(const Offset(5, 5));
+      await tester.pumpAndSettle();
+
+      expect(client.sessionTypeChangeCalls, isEmpty);
+      final retryButton = tester.widget<OutlinedButton>(
+        find.widgetWithText(OutlinedButton, 'zellij(으)로 바꾸기'),
+      );
+      expect(retryButton.onPressed, isNotNull);
+    });
+
+    testWidgets('데스크탑에 새 세션 도구가 없으면 그 사유를 시트에 남긴다', (tester) async {
+      final client = FakeDesktopClient(surfaces: tmuxSurfaces)
+        ..isTaskSessionAlive = false
+        ..sessionTypeChangeError = const DesktopRequestException(
+          409,
+          message: 'zellij이(가) 설치되어 있지 않습니다. 데스크탑에서 설치한 뒤 다시 시도해 주세요.',
+        );
+      await pumpDetail(tester, size: phoneSize, desktopClient: client);
+
+      await chooseZellij(tester);
+
+      expect(find.textContaining('데스크탑에서 설치한 뒤'), findsOneWidget);
+      expect(find.text('지금은 tmux입니다.'), findsOneWidget);
+    });
+  });
+
+  group('삭제', () {
+    /// 삭제가 끝나면 상세 화면이 닫혀 보드로 돌아가야 하므로, 보드 자리에서 상세 화면을 띄운다
+    Future<FakeDesktopClient> pumpDetailFromBoard(
+      WidgetTester tester, {
+      List<Object?> deleteErrors = const [],
+      int failedPeerCount = 0,
+    }) async {
+      await tester.binding.setSurfaceSize(phoneSize);
+      final client = FakeDesktopClient(
+        surfaces: _surfaces,
+        deleteErrors: deleteErrors,
+        failedPeerCount: failedPeerCount,
+      );
+      await tester.pumpWidget(
+        wrapWithApp(
+          Builder(
+            builder: (context) => Scaffold(
+              body: Center(
+                child: TextButton(
+                  onPressed: () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => const TaskDetailScreen(task: _task),
+                    ),
+                  ),
+                  child: const Text('보드'),
+                ),
+              ),
+            ),
+          ),
+          client: client,
+          size: phoneSize,
+        ),
+      );
+      await tester.tap(find.text('보드'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('상태 옮기기'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('삭제'));
+      await tester.pumpAndSettle();
+      return client;
+    }
+
+    testWidgets('상태 시트의 삭제는 한 번 더 묻고, 취소하면 아무것도 지우지 않는다', (tester) async {
+      final client = await pumpDetailFromBoard(tester);
+
+      expect(find.text('이 작업을 삭제하시겠습니까?'), findsOneWidget);
+      await tester.tap(find.text('취소'));
+      await tester.pumpAndSettle();
+
+      expect(client.deleteCalls, isEmpty);
+      expect(find.byType(TaskDetailScreen), findsOneWidget);
+    });
+
+    testWidgets('확인하면 변경을 지키는 기본 삭제를 보내고 보드로 돌아간다', (tester) async {
+      final client = await pumpDetailFromBoard(tester);
+
+      await tester.tap(find.widgetWithText(TextButton, '삭제').last);
+      await tester.pumpAndSettle();
+
+      expect(client.deleteCalls, [(taskId: 'task-1', isForced: false)]);
+      expect(find.byType(TaskDetailScreen), findsNothing);
+      expect(find.text('보드'), findsOneWidget);
+      expect(find.byType(SnackBar), findsNothing);
+    });
+
+    testWidgets('꺼져 있던 다른 데스크탑에는 남았다고 보드에서 알린다', (tester) async {
+      await pumpDetailFromBoard(tester, failedPeerCount: 1);
+
+      await tester.tap(find.widgetWithText(TextButton, '삭제').last);
+      await tester.pumpAndSettle();
+
+      expect(find.byType(TaskDetailScreen), findsNothing);
+      expect(
+        find.text('다른 데스크탑 1곳에는 아직 남아 있습니다. 그 데스크탑이 켜지면 직접 삭제해 주세요.'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('커밋하지 않은 변경 때문에 거절되면 데스크탑처럼 강제 삭제를 고를 수 있다', (tester) async {
+      final client = await pumpDetailFromBoard(
+        tester,
+        deleteErrors: const [
+          DesktopCommandFailure('dirty-worktree', '커밋하지 않은 변경이 있습니다'),
+        ],
+      );
+
+      await tester.tap(find.widgetWithText(TextButton, '삭제').last);
+      await tester.pumpAndSettle();
+      expect(find.text('커밋하지 않은 변경이 있습니다'), findsOneWidget);
+      await tester.tap(find.text('강제 삭제'));
+      await tester.pumpAndSettle();
+
+      expect(client.deleteCalls, [
+        (taskId: 'task-1', isForced: false),
+        (taskId: 'task-1', isForced: true),
+      ]);
+      expect(find.byType(TaskDetailScreen), findsNothing);
+    });
+
+    testWidgets('강제 삭제를 취소하면 시트에 남아 아무것도 더 지우지 않는다', (tester) async {
+      final client = await pumpDetailFromBoard(
+        tester,
+        deleteErrors: const [
+          DesktopCommandFailure('dirty-worktree', '커밋하지 않은 변경이 있습니다'),
+        ],
+      );
+
+      await tester.tap(find.widgetWithText(TextButton, '삭제').last);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('취소'));
+      await tester.pumpAndSettle();
+
+      expect(client.deleteCalls, [(taskId: 'task-1', isForced: false)]);
+      expect(find.byType(TaskDetailScreen), findsOneWidget);
+    });
+
+    testWidgets('그 밖의 실패는 시트를 닫지 않고 데스크탑이 알려 준 사유를 남긴다', (tester) async {
+      await pumpDetailFromBoard(
+        tester,
+        deleteErrors: const [DesktopCommandFailure('server-error', '서버 오류')],
+      );
+
+      await tester.tap(find.widgetWithText(TextButton, '삭제').last);
+      await tester.pumpAndSettle();
+
+      expect(find.text('서버 오류'), findsOneWidget);
+      expect(find.byType(TaskDetailScreen), findsOneWidget);
+    });
+
+    testWidgets('이미 지워진 태스크는 삭제된 것으로 보고 보드로 돌아간다', (tester) async {
+      await pumpDetailFromBoard(
+        tester,
+        deleteErrors: const [
+          DesktopCommandFailure('task-not-found', '없는 태스크입니다'),
+        ],
+      );
+
+      await tester.tap(find.widgetWithText(TextButton, '삭제').last);
+      await tester.pumpAndSettle();
+
+      expect(find.byType(TaskDetailScreen), findsNothing);
+    });
+
+    testWidgets('데스크탑이 명령을 모르면 업데이트 안내를 시트에 남긴다', (tester) async {
+      await pumpDetailFromBoard(
+        tester,
+        deleteErrors: const [DesktopUpdateRequiredException()],
+      );
+
+      await tester.tap(find.widgetWithText(TextButton, '삭제').last);
+      await tester.pumpAndSettle();
+
+      expect(find.text('데스크탑 앱을 업데이트해 주세요'), findsOneWidget);
+      expect(find.byType(TaskDetailScreen), findsOneWidget);
+    });
+
+    testWidgets('연결이 끊겨 있으면 끊김 안내를 시트에 남긴다', (tester) async {
+      await pumpDetailFromBoard(
+        tester,
+        deleteErrors: const [DesktopDisconnectedException()],
+      );
+
+      await tester.tap(find.widgetWithText(TextButton, '삭제').last);
+      await tester.pumpAndSettle();
+
+      expect(find.text('데스크탑과 연결이 끊겼습니다. 연결을 확인해 주세요.'), findsOneWidget);
+      expect(find.byType(TaskDetailScreen), findsOneWidget);
+    });
+  });
+  group('탭 닫기', () {
+    Finder closeButton(String paneId) =>
+        find.bySemanticsIdentifier('close-terminal-tab-$paneId');
+
+    /// 탭 하나가 pane 하나인 목록의 서버 응답 모양
+    Map<String, dynamic> closedResult(List<String> remainingPaneIds) => {
+      'ok': true,
+      'surfaces': {
+        'sessionType': 'tmux',
+        'canResize': true,
+        'tabs': [
+          for (final paneId in remainingPaneIds)
+            {
+              'id': 'tab$paneId',
+              'panes': [
+                {'id': paneId, 'width': 80, 'height': 24, 'command': 'zsh'},
+              ],
+            },
+        ],
+      },
+    };
+
+    Future<FakeDesktopClient> pumpClosable(
+      WidgetTester tester, {
+      required Future<Map<String, dynamic>> Function(DesktopCommand command)
+      onRunCommand,
+      TaskSurfaces surfaces = _surfaces,
+    }) async {
+      final client = FakeDesktopClient(surfaces: surfaces)
+        ..onRunCommand = onRunCommand;
+      await pumpDetail(tester, size: phoneSize, desktopClient: client);
+      return client;
+    }
+
+    String selectedPaneId(WidgetTester tester) =>
+        tester.widget<PaneTerminalView>(find.byType(PaneTerminalView)).pane.id;
+
+    testWidgets('유휴 셸은 확인 없이 닫고 선택은 다음 탭으로 넘어간다', (tester) async {
+      final client = await pumpClosable(
+        tester,
+        onRunCommand: (command) async => command.name == 'get-tab-close-info'
+            ? {'ok': true, 'processNames': <String>[]}
+            : closedResult(['%20', '%21']),
+      );
+
+      await tester.tap(closeButton('%19'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(AlertDialog), findsNothing);
+      expect(client.commandCalls.map((command) => command.name), [
+        'get-tab-close-info',
+        'close-tab',
+      ]);
+      expect(client.commandCalls.last.fields, {
+        'taskId': 'task-1',
+        'paneId': '%19',
+      });
+      expect(selectedPaneId(tester), '%20');
+      expect(closeButton('%19'), findsNothing);
+    });
+
+    testWidgets('선택한 탭을 닫으면 앞 탭이 선택된다', (tester) async {
+      await pumpClosable(
+        tester,
+        onRunCommand: (command) async => command.name == 'get-tab-close-info'
+            ? {'ok': true, 'processNames': <String>[]}
+            : closedResult(['%19', '%21']),
+      );
+      await tester.tap(find.bySemanticsIdentifier('terminal-tab-%20'));
+      await tester.pumpAndSettle();
+      expect(selectedPaneId(tester), '%20');
+
+      await tester.tap(closeButton('%20'));
+      await tester.pumpAndSettle();
+
+      expect(selectedPaneId(tester), '%19');
+    });
+
+    testWidgets('프로세스가 돌고 있으면 이름을 보여 주고, 취소하면 닫지 않는다', (tester) async {
+      final client = await pumpClosable(
+        tester,
+        onRunCommand: (command) async => {
+          'ok': true,
+          'processNames': ['vim'],
+        },
+      );
+
+      await tester.tap(closeButton('%20'));
+      await tester.pumpAndSettle();
+      expect(find.text('vim 실행 중인 탭을 닫으면 종료됩니다'), findsOneWidget);
+      await tester.tap(find.text('취소'));
+      await tester.pumpAndSettle();
+
+      expect(client.commandCalls.map((command) => command.name), [
+        'get-tab-close-info',
+      ]);
+      expect(closeButton('%20'), findsOneWidget);
+    });
+
+    testWidgets('프로세스가 돌고 있어도 확인하면 닫는다', (tester) async {
+      final client = await pumpClosable(
+        tester,
+        onRunCommand: (command) async => command.name == 'get-tab-close-info'
+            ? {
+                'ok': true,
+                'processNames': ['vim'],
+              }
+            : closedResult(['%19', '%21']),
+      );
+
+      await tester.tap(closeButton('%20'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(TextButton, '닫기'));
+      await tester.pumpAndSettle();
+
+      expect(client.commandCalls.map((command) => command.name), [
+        'get-tab-close-info',
+        'close-tab',
+      ]);
+      expect(closeButton('%20'), findsNothing);
+    });
+
+    testWidgets('프로세스 조회가 실패하면 확인을 거친다', (tester) async {
+      final client = await pumpClosable(
+        tester,
+        onRunCommand: (command) async =>
+            throw const DesktopCommandFailure('server-error', '서버 오류'),
+      );
+
+      await tester.tap(closeButton('%20'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(AlertDialog), findsOneWidget);
+      await tester.tap(find.text('취소'));
+      await tester.pumpAndSettle();
+      expect(client.commandCalls.map((command) => command.name), [
+        'get-tab-close-info',
+      ]);
+    });
+
+    testWidgets('탭이 하나뿐이면 닫기 버튼이 눌리지 않는다', (tester) async {
+      final client = await pumpClosable(
+        tester,
+        surfaces: const TaskSurfaces(
+          tabs: [
+            MirrorTab(
+              id: '@10',
+              name: 'kanvibe',
+              panes: [
+                MirrorPane(
+                  id: '%19',
+                  tabId: '@10',
+                  tabName: 'kanvibe',
+                  command: 'zsh',
+                  left: 0,
+                  top: 0,
+                  width: 80,
+                  height: 24,
+                ),
+              ],
+            ),
+          ],
+        ),
+        onRunCommand: (command) async => throw StateError('보내면 안 된다'),
+      );
+
+      await tester.tap(closeButton('%19'), warnIfMissed: false);
+      await tester.pumpAndSettle();
+
+      expect(client.commandCalls, isEmpty);
+      final button = tester.widget<IconButton>(
+        find.descendant(
+          of: closeButton('%19'),
+          matching: find.byType(IconButton),
+        ),
+      );
+      expect(button.onPressed, isNull);
+    });
+
+    testWidgets('닫기 버튼은 최소 터치 크기를 지킨다', (tester) async {
+      await pumpClosable(
+        tester,
+        onRunCommand: (command) async => throw StateError('보내면 안 된다'),
+      );
+
+      final size = tester.getSize(closeButton('%19'));
+
+      expect(size.width, greaterThanOrEqualTo(48));
+      expect(size.height, greaterThanOrEqualTo(48));
+    });
+
+    testWidgets('마지막 탭이라고 거절되면 그 사유를 알리고 탭을 그대로 둔다', (tester) async {
+      await pumpClosable(
+        tester,
+        onRunCommand: (command) async => command.name == 'get-tab-close-info'
+            ? {'ok': true, 'processNames': <String>[]}
+            : throw const DesktopCommandFailure('last-tab', '마지막 탭은 닫을 수 없습니다'),
+      );
+
+      await tester.tap(closeButton('%19'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('마지막 탭은 닫을 수 없습니다'), findsOneWidget);
+      expect(closeButton('%19'), findsOneWidget);
+    });
+
+    testWidgets('이미 닫힌 탭은 성공으로 보고 목록을 다시 받아 안내 없이 끝낸다', (tester) async {
+      await pumpClosable(
+        tester,
+        onRunCommand: (command) async => command.name == 'get-tab-close-info'
+            ? {'ok': true, 'processNames': <String>[]}
+            : throw const DesktopCommandFailure(
+                'pane-not-found',
+                '이미 닫혔거나 이 태스크에 없는 탭입니다',
+              ),
+      );
+
+      await tester.tap(closeButton('%19'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(SnackBar), findsNothing);
+    });
+
+    testWidgets('데스크탑이 명령을 모르면 보내지 않고 업데이트 안내를 띄운다', (tester) async {
+      final client = await pumpClosable(
+        tester,
+        onRunCommand: (command) async =>
+            throw const DesktopUpdateRequiredException(),
+      );
+
+      await tester.tap(closeButton('%19'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('데스크탑 앱을 업데이트해 주세요'), findsOneWidget);
+      expect(find.byType(AlertDialog), findsNothing);
+      expect(client.commandCalls.map((command) => command.name), [
+        'get-tab-close-info',
+      ]);
+    });
+
+    testWidgets('연결이 끊겨 있으면 끊김 안내를 띄운다', (tester) async {
+      await pumpClosable(
+        tester,
+        onRunCommand: (command) async =>
+            throw const DesktopDisconnectedException(),
+      );
+
+      await tester.tap(closeButton('%19'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('데스크탑과 연결이 끊겼습니다. 연결을 확인해 주세요.'), findsOneWidget);
+    });
+
+    testWidgets('닫기 응답을 기다리는 동안 고른 다른 탭을 유지한다', (tester) async {
+      final pending = Completer<Map<String, dynamic>>();
+      await pumpClosable(
+        tester,
+        onRunCommand: (command) => command.name == 'get-tab-close-info'
+            ? Future.value({'ok': true, 'processNames': <String>[]})
+            : pending.future,
+      );
+
+      await tester.tap(closeButton('%19'));
+      await tester.pump();
+      await tester.pump();
+      await tester.ensureVisible(find.text('bash'));
+      await tester.pump();
+      await tester.tap(find.text('bash'));
+      await tester.pump();
+      expect(selectedPaneId(tester), '%21');
+
+      pending.complete(closedResult(['%20', '%21']));
+      await tester.pumpAndSettle();
+
+      expect(selectedPaneId(tester), '%21');
+      expect(closeButton('%19'), findsNothing);
+    });
+
+    testWidgets('닫는 중 반복해 눌러도 닫기 명령은 한 번만 나간다', (tester) async {
+      final pending = Completer<Map<String, dynamic>>();
+      final client = await pumpClosable(
+        tester,
+        onRunCommand: (command) => command.name == 'get-tab-close-info'
+            ? Future.value({'ok': true, 'processNames': <String>[]})
+            : pending.future,
+      );
+
+      await tester.tap(closeButton('%19'));
+      await tester.pump();
+      await tester.pump();
+      await tester.tap(closeButton('%20'));
+      await tester.pump();
+      pending.complete(closedResult(['%20', '%21']));
+      await tester.pumpAndSettle();
+
+      expect(
+        client.commandCalls.where((command) => command.name == 'close-tab'),
+        hasLength(1),
       );
     });
   });

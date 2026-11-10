@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:kanvibe_mobile/src/common/constants/app_theme.dart';
 import 'package:kanvibe_mobile/src/common/network/desktop_client.dart';
+import 'package:kanvibe_mobile/src/common/network/desktop_command.dart';
 import 'package:kanvibe_mobile/src/common/network/desktop_connection.dart';
 import 'package:kanvibe_mobile/src/common/providers.dart';
 import 'package:kanvibe_mobile/src/features/board/domain/task_status.dart';
@@ -13,6 +14,7 @@ import 'package:kanvibe_mobile/src/features/connection/domain/saved_connections.
 import 'package:kanvibe_mobile/src/features/notifications/domain/inbox_notification.dart';
 import 'package:kanvibe_mobile/src/features/notifications/domain/notification_settings.dart';
 import 'package:kanvibe_mobile/src/features/task_detail/domain/mirror_pane.dart';
+import 'package:kanvibe_mobile/src/features/task_create/domain/session_type.dart';
 
 /// 이미 연결된 상태를 흉내 낸다. 화면 검증은 페어링 이후만 다루므로 저장소에 연결이 하나 들어 있다.
 ///
@@ -95,6 +97,8 @@ class FakeDesktopClient implements DesktopClient {
     },
     this.createError,
     this.statusError,
+    this.deleteErrors = const [],
+    this.failedPeerCount = 0,
   });
 
   final Map<String, dynamic> board;
@@ -102,7 +106,9 @@ class FakeDesktopClient implements DesktopClient {
   final Map<String, Map<String, dynamic>> tasksById;
   final Object? boardError;
   final String? pairToken;
-  final TaskSurfaces? surfaces;
+
+  /// 테스트가 도중에 바꿔 끼울 수 있다. 데스크탑이 세션을 바꾼 뒤 다시 받은 pane을 흉내낸다
+  TaskSurfaces? surfaces;
   final Object? surfacesError;
   final Future<({TaskSurfaces surfaces, String paneId})> Function()?
   onCreateTerminalTab;
@@ -113,11 +119,26 @@ class FakeDesktopClient implements DesktopClient {
   final Object? createError;
   final Object? statusError;
 
+  /// 삭제 요청마다 차례로 던질 오류. 칸이 모자라거나 null이면 그 요청은 성공한다
+  final List<Object?> deleteErrors;
+
+  /// 삭제는 됐지만 꺼져 있어 전파받지 못한 다른 데스크탑 수
+  final int failedPeerCount;
+
   /// 데스크탑에 보낸 태스크 초안. 어떤 칸을 실어 보냈는지까지 봐야 데스크탑 생성 창과 같은 요청인지 알 수 있다
   final createCalls = <Map<String, Object?>>[];
 
   /// 옮겨 달라고 보낸 상태. 누른 버튼이 실제로 그 상태를 보내는지 본다
   final statusCalls = <({String taskId, TaskStatus status})>[];
+
+  /// 소켓으로 보낸 모든 명령. 삭제 말고 탭 닫기 조회·종료까지 순서대로 남는다
+  final commandCalls = <DesktopCommand>[];
+
+  /// 삭제가 아닌 명령에 대한 응답. 테스트가 명령마다 값이나 예외를 정한다
+  Future<Map<String, dynamic>> Function(DesktopCommand command)? onRunCommand;
+
+  /// 지워 달라고 보낸 요청. 강제 여부까지 봐야 거절 뒤 강제 삭제로 다시 보냈는지 안다
+  final deleteCalls = <({String taskId, bool isForced})>[];
 
   /// 데스크탑에 끊겠다고 알린 기록. 이미 거절된 토큰으로는 부르지 말아야 해서 호출 여부까지 본다
   final unpairCalls = <DesktopConnection>[];
@@ -275,7 +296,6 @@ class FakeDesktopClient implements DesktopClient {
     String? baseBranch,
     String? description,
     String? priority,
-    required String sessionType,
   }) async {
     createCalls.add({
       'projectId': projectId,
@@ -283,7 +303,6 @@ class FakeDesktopClient implements DesktopClient {
       'baseBranch': baseBranch,
       'description': description,
       'priority': priority,
-      'sessionType': sessionType,
     });
 
     if (createError != null) {
@@ -302,6 +321,69 @@ class FakeDesktopClient implements DesktopClient {
     if (statusError != null) {
       throw statusError!;
     }
+  }
+
+  /// 기존 세션이 켜져 있다고 답할지
+  bool isTaskSessionAlive = true;
+  Object? sessionTypeChangeError;
+
+  /// 바꿔 달라고 보낸 세션 종류와 기존 세션 닫기 여부
+  final sessionTypeChangeCalls =
+      <
+        ({
+          String taskId,
+          SessionType sessionType,
+          bool shouldCloseExistingSession,
+        })
+      >[];
+
+  @override
+  Future<bool> fetchTaskSessionAlive(
+    DesktopConnection connection,
+    String taskId,
+  ) async => isTaskSessionAlive;
+
+  @override
+  Future<void> changeTaskSessionType(
+    DesktopConnection connection,
+    String taskId, {
+    required SessionType sessionType,
+    required bool shouldCloseExistingSession,
+  }) async {
+    sessionTypeChangeCalls.add((
+      taskId: taskId,
+      sessionType: sessionType,
+      shouldCloseExistingSession: shouldCloseExistingSession,
+    ));
+    if (sessionTypeChangeError != null) {
+      throw sessionTypeChangeError!;
+    }
+  }
+
+  @override
+  Future<Map<String, dynamic>> runCommand(
+    DesktopConnection connection,
+    DesktopCommand command, {
+    Duration? timeout,
+  }) async {
+    commandCalls.add(command);
+    if (command.name != 'delete-task') {
+      return onRunCommand!(command);
+    }
+
+    final isForced = command.fields['isForced'] == true;
+    final callIndex = deleteCalls.length;
+    deleteCalls.add((
+      taskId: command.fields['taskId']! as String,
+      isForced: isForced,
+    ));
+    final error = callIndex < deleteErrors.length
+        ? deleteErrors[callIndex]
+        : null;
+    if (error != null) {
+      throw error;
+    }
+    return {'ok': true, 'failedPeerCount': failedPeerCount};
   }
 
   @override
@@ -329,14 +411,20 @@ class FakeDesktopClient implements DesktopClient {
   }
 
   @override
-  Future<String?> pair({
+  Future<PairingResult?> pair({
     required String host,
     required int port,
     required String code,
     required String deviceName,
   }) async {
     pairCalls.add('$host:$port');
-    return pairToken;
+    final token = pairToken;
+    return token == null
+        ? null
+        : PairingResult(
+            token: token,
+            certificateFingerprint: 'fake-fingerprint',
+          );
   }
 
   @override

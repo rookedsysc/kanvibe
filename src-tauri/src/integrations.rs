@@ -305,37 +305,62 @@ pub fn mobile_task(app: &AppHandle, id: &str) -> Result<Value, String> {
     Ok(task)
 }
 fn validate_mobile_draft(draft: &Value) -> Result<(), String> {
-    for (key, values) in [
-        (
-            "status",
-            vec!["todo", "progress", "pending", "review", "done"],
-        ),
-        ("sessionType", vec!["terminal", "tmux", "zellij", "herdr"]),
-        ("priority", vec!["low", "medium", "high"]),
-    ] {
-        if let Some(v) = draft.get(key).filter(|v| !v.is_null()) {
-            if !values.contains(&v.as_str().unwrap_or("")) {
-                return Err(format!("잘못된 {key} 값입니다"));
-            }
-        }
+    match &draft["priority"] {
+        Value::Null | Value::Bool(false) => {},
+        Value::Number(number) if number.as_f64()==Some(0.0) => {},
+        Value::String(priority) if priority.is_empty() || ["low","medium","high"].contains(&priority.as_str()) => {},
+        _ => return Err("우선순위 값이 올바르지 않습니다".into()),
     }
-    for key in ["branchName", "baseBranch"] {
-        if let Some(branch) = draft[key].as_str() {
-            if branch.starts_with('-') || branch.contains(['\r', '\n', '\0']) {
-                return Err("브랜치 이름이 올바르지 않습니다".into());
+    for (key, label) in [
+        ("branchName", "브랜치 이름"),
+        ("baseBranch", "베이스 브랜치"),
+    ] {
+        if let Some(branch) = draft[key].as_str().filter(|branch| !branch.is_empty()) {
+            if !crate::git::is_safe_git_ref(branch) {
+                return Err(format!("{label}에 쓸 수 없는 문자가 있습니다"));
             }
         }
     }
     Ok(())
 }
-pub fn mobile_create(app: &AppHandle, draft: &Value) -> Result<Value, String> {
-    validate_mobile_draft(draft)?;
-    let mut draft = draft.clone();
-    if draft.get("sessionType").is_none() {
-        draft["sessionType"] = call(app, "appSettings", "getDefaultSessionType", vec![])?;
+fn mobile_creation_input(draft: &Value, default_kind: &Value) -> Result<Value, String> {
+    let mut input = json!({"title":draft["branchName"],"branchName":draft["branchName"],"projectId":draft["projectId"],"sessionType":default_kind});
+    for field in ["baseBranch", "description", "priority"] {
+        if let Some(value) = draft.get(field) {
+            input[field] = value.clone();
+        }
     }
-    call(app, "kanban", "createTask", vec![draft])
+    validate_mobile_draft(&input)?;
+    Ok(input)
 }
+pub fn mobile_create(app: &AppHandle, draft: &Value) -> Result<Value, String> {
+    let default_kind = call(app, "appSettings", "getDefaultSessionType", vec![])?;
+    let input = mobile_creation_input(draft, &default_kind)?;
+    let created = call(app, "kanban", "createTask", vec![input])?;
+    if !text(&created, "projectId").is_empty()
+        && !text(&created, "branchName").is_empty()
+        && !text(&created, "worktreePath").is_empty()
+    {
+        if let Some(project) = app
+            .state::<crate::database::Database>()
+            .project(text(&created, "projectId"))?
+        {
+            let peers = crate::task_targets::propagate_registration(
+                text(&project, "repoPath"),
+                text(&created, "branchName"),
+                project["sshHost"].as_str(),
+            );
+            if peers.iter().any(|peer| peer["isSuccess"] != true) {
+                eprintln!(
+                    "[mobile] 다른 데스크탑에 task를 등록하지 못했습니다: {}",
+                    created["id"]
+                );
+            }
+        }
+    }
+    Ok(created)
+}
+
 #[derive(Clone)]
 pub struct MirrorTarget {
     pub kind: String,
@@ -812,6 +837,258 @@ pub fn mobile_shortcut(
     }
 }
 
+pub const SUPPORTED_MOBILE_COMMANDS: [&str; 3] = ["delete-task", "get-tab-close-info", "close-tab"];
+fn command_failure(request_id: &Value, code: &str, message: &str) -> Value {
+    json!({"type":"command-result","requestId":request_id,"ok":false,"code":code,"error":message})
+}
+fn mobile_command_error(request_id: &Value, error: &str) -> Value {
+    let (code, message) = if error.starts_with("커밋하지 않은 변경이 있어 삭제하지 않았습니다:")
+    {
+        ("dirty-worktree", "커밋하지 않은 변경이 있습니다")
+    } else if let Some(message) = error.strip_prefix("PaneNotFoundError:") {
+        ("pane-not-found", message)
+    } else if let Some(message) = error.strip_prefix("LastPaneError:") {
+        ("last-tab", message)
+    } else if error == "task-not-found" {
+        ("task-not-found", "없는 태스크입니다")
+    } else if [
+        "no-session",
+        "session-not-running",
+        "zellij-too-old",
+        "herdr-missing",
+        "remote-unreachable",
+    ]
+    .contains(&error)
+    {
+        ("session-unavailable", "세션을 사용할 수 없습니다")
+    } else {
+        eprintln!("[kanvibe] Mobile command failed: {error}");
+        ("server-error", "서버 오류")
+    };
+    command_failure(request_id, code, message)
+}
+fn run_mobile_command_with(
+    raw: &[u8],
+    execute: impl FnOnce(&str, &Value) -> Result<Value, String>,
+) -> Option<Value> {
+    if raw.len() > 1024 {
+        return None;
+    }
+    let message: Value = serde_json::from_slice(raw).ok()?;
+    if !message.is_object() || message["type"] != "command" {
+        return None;
+    }
+    let id = message["requestId"].as_str()?;
+    if id.is_empty() || id.encode_utf16().count() > 64 {
+        return None;
+    }
+    let request_id = &message["requestId"];
+    let Some(command) = message["command"].as_str() else {
+        return Some(command_failure(
+            request_id,
+            "invalid-command",
+            "명령 형식이 올바르지 않습니다",
+        ));
+    };
+    if !SUPPORTED_MOBILE_COMMANDS.contains(&command) {
+        return Some(command_failure(
+            request_id,
+            "unsupported-command",
+            "이 데스크탑이 지원하지 않는 명령입니다",
+        ));
+    }
+    let required = if command == "delete-task" {
+        &["taskId"][..]
+    } else {
+        &["taskId", "paneId"][..]
+    };
+    if required
+        .iter()
+        .any(|key| message[*key].as_str().is_none_or(str::is_empty))
+        || (command == "delete-task"
+            && message
+                .get("isForced")
+                .is_some_and(|value| !value.is_boolean()))
+    {
+        return Some(command_failure(
+            request_id,
+            "invalid-command",
+            "명령 형식이 올바르지 않습니다",
+        ));
+    }
+    Some(match execute(command, &message) {
+        Ok(payload) => {
+            let mut result = json!({"type":"command-result","requestId":request_id,"ok":true});
+            if let Some(fields) = payload.as_object() {
+                result.as_object_mut().unwrap().extend(fields.clone());
+            }
+            result
+        }
+        Err(error) => mobile_command_error(request_id, &error),
+    })
+}
+pub fn run_mobile_command(app: &AppHandle, raw: &[u8]) -> Option<Value> {
+    run_mobile_command_with(raw, |command, message| match command {
+        "delete-task" => {
+            let result = call(
+                app,
+                "kanban",
+                "deleteTaskAcrossTargets",
+                vec![
+                    message["taskId"].clone(),
+                    json!({"shouldRejectDirtyWorktree":message["isForced"]!=true,"shouldPropagateToPeers":true}),
+                ],
+            )?;
+            if result["isDeleted"] != true {
+                return Err("task-not-found".into());
+            }
+            let failed = result["peerResults"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter(|peer| peer["isSuccess"] != true)
+                .count();
+            Ok(json!({"failedPeerCount":failed}))
+        }
+        "get-tab-close-info" => {
+            mobile_pane_close_info(app, text(message, "taskId"), text(message, "paneId"))
+        }
+        "close-tab" => close_mobile_pane(app, text(message, "taskId"), text(message, "paneId")),
+        _ => unreachable!(),
+    })
+}
+fn surface_panes(surfaces: &Value) -> Vec<&Value> {
+    surfaces["tabs"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .flat_map(|tab| tab["panes"].as_array().into_iter().flatten())
+        .collect()
+}
+fn mobile_pane_for_close<'a>(
+    surfaces: &'a Value,
+    pane_id: &str,
+    should_close: bool,
+) -> Result<&'a Value, String> {
+    let panes = surface_panes(surfaces);
+    let pane = panes
+        .iter()
+        .find(|pane| pane["id"] == pane_id)
+        .copied()
+        .ok_or("PaneNotFoundError:이미 닫혔거나 이 태스크에 없는 탭입니다")?;
+    if should_close && panes.len() == 1 {
+        return Err("LastPaneError:마지막 탭은 닫을 수 없습니다".into());
+    }
+    Ok(pane)
+}
+fn close_pane_command(target: &MirrorTarget, pane: &str) -> String {
+    match target.kind.as_str() {
+        "herdr" => crate::herdr::command(&target.name, &["pane", "close", pane]),
+        "zellij" => format!(
+            "zellij --session {} action close-pane --pane-id {}",
+            q(&target.name),
+            q(pane)
+        ),
+        _ => format!("tmux kill-pane -t {}", q(pane)),
+    }
+}
+pub fn close_mobile_pane(app: &AppHandle, task_id: &str, pane_id: &str) -> Result<Value, String> {
+    surfaces(app, task_id)?;
+    crate::terminal::with_task_session_mutation(app, task_id, || {
+        let target = target(app, task_id)?;
+        let before = surfaces_for_target(app, task_id, target.clone())?;
+        let pane = mobile_pane_for_close(&before, pane_id, true)?;
+        if target.kind == "terminal" {
+            let result = crate::terminal::tabs_dispatch(
+                app,
+                "closeTerminalTab",
+                vec![json!(task_id), pane["tabId"].clone()],
+            )?;
+            if result["ok"] != true {
+                return Err(text(&result, "error").to_owned());
+            }
+        } else {
+            crate::git::run(
+                &close_pane_command(&target, pane_id),
+                target.host.as_deref(),
+            )?;
+        }
+        let deadline = Instant::now() + Duration::from_secs(15);
+        loop {
+            let after = surfaces_for_target(app, task_id, target.clone())?;
+            if !surface_panes(&after)
+                .iter()
+                .any(|pane| pane["id"] == pane_id)
+            {
+                return Ok(json!({"surfaces":after}));
+            }
+            if Instant::now() >= deadline {
+                return Err("탭이 닫히지 않았습니다.".into());
+            }
+            std::thread::sleep(Duration::from_millis(500));
+        }
+    })
+}
+fn mobile_running_process_names(command: Option<&str>) -> Vec<String> {
+    command
+        .filter(|command| {
+            !command.is_empty() && !["sh", "bash", "zsh", "fish", "dash"].contains(command)
+        })
+        .map(|command| vec![command.to_owned()])
+        .unwrap_or_default()
+}
+pub fn mobile_pane_close_info(
+    app: &AppHandle,
+    task_id: &str,
+    pane_id: &str,
+) -> Result<Value, String> {
+    let surfaces = surfaces(app, task_id)?;
+    let pane = mobile_pane_for_close(&surfaces, pane_id, false)?;
+    let local = if surfaces["sessionType"] == "terminal" {
+        crate::terminal::local_tab_process_name(app, task_id, text(pane, "tabId"))
+    } else {
+        None
+    };
+    let command = if surfaces["sessionType"] == "terminal" {
+        local.as_deref()
+    } else {
+        pane["command"].as_str()
+    };
+    Ok(json!({"processNames":mobile_running_process_names(command)}))
+}
+pub fn mobile_change_session(
+    app: &AppHandle,
+    id: &str,
+    kind: &str,
+    close: bool,
+) -> Result<Value, String> {
+    if !["terminal", "tmux", "zellij", "herdr"].contains(&kind) {
+        return Err("세션 타입 값이 올바르지 않습니다".into());
+    }
+    let task = mobile_task(app, id)?;
+    if task.is_null() {
+        return Ok(Value::Null);
+    }
+    let status = crate::dependencies::dispatch(
+        "sessionDependency",
+        "getSessionDependencyStatus",
+        vec![json!(kind), task["sshHost"].clone()],
+    )?;
+    if status["available"] != true && !text(&status, "toolName").is_empty() {
+        return Err(format!("MobileSessionDependencyMissingError:{}이(가) 설치되어 있지 않습니다. 데스크탑에서 설치한 뒤 다시 시도해 주세요.",text(&status,"toolName")));
+    }
+    let changed = call(
+        app,
+        "kanban",
+        "changeTaskSessionType",
+        vec![json!(id), json!(kind), json!(close)],
+    )?;
+    if changed.is_null() {
+        return Err(format!("세션 타입 변경 실패: {id}"));
+    }
+    Ok(changed)
+}
+
 pub fn mobile_tab(app: &AppHandle, id: &str) -> Result<Value, String> {
     let before = surfaces_for_target(app, id, target(app, id)?)?;
     let prior: HashSet<_> = before["tabs"]
@@ -1121,11 +1398,145 @@ pub fn dispatch(
     method: &str,
     args: Vec<Value>,
 ) -> Result<Value, String> {
+    if namespace=="mobileBridge" {
+        match method {
+            "readMobileConnectionSettings"=>{
+                let port=crate::server::mobile_tls_port();
+                return Ok(json!({"mobileTlsPort":port,"isLanPlaintextAllowed":call(app,"appSettings","getLanPlaintextAllowed",vec![])?}));
+            }
+            "updateLanPlaintextAllowed"=>return call(app,"appSettings","setLanPlaintextAllowed",args),
+            _=>{},
+        }
+    }
     match(namespace,method){("mobileBridge","getMobileBoard")=>mobile_board(app),("mobileBridge","startMobilePairing")=>Ok(issue_code()),("mobileBridge","stopMobilePairing")=>{pairing().lock().map_err(|e|e.to_string())?.code=None;Ok(Value::Null)},("mobileBridge","readMobilePairingCode")=>{let p=pairing().lock().map_err(|e|e.to_string())?;Ok(if p.expires>Utc::now().timestamp_millis(){json!(p.code)}else{Value::Null})},("mobileBridge","listPairedMobileDevices")=>Ok(json!(read_devices(app)?.iter().map(|d|json!({"deviceId":d["deviceId"],"deviceName":d["deviceName"],"pairedAt":d["pairedAt"]})).collect::<Vec<_>>())),("mobileBridge","unpairMobileDevice")=>{unpair(app,args.first().and_then(Value::as_str).unwrap_or(""))?;Ok(Value::Null)},("releaseUpdates","checkForReleaseUpdate")=>release_check(app),("releaseUpdates","claimReleaseUpdateVersion")=>{let version=args.first().and_then(Value::as_str).unwrap_or("");Ok(json!(!version.is_empty()&&RELEASE.get_or_init(||Mutex::new(ReleaseState::default())).lock().map_err(|e|e.to_string())?.shown.insert(version.into())))},("backgroundTaskSync","runBackgroundTaskSyncNow")=>sync_now(app),_=>Err(format!("Unknown integration {namespace}.{method}"))}
 }
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn mobile_pane_close_keeps_last_pane_and_foreign_panes_safe() {
+        let single =
+            json!({"tabs":[{"id":"tab","panes":[{"id":"%1","tabId":"tab","command":"zsh"}]}]});
+        assert_eq!(
+            mobile_pane_for_close(&single, "%1", true),
+            Err("LastPaneError:마지막 탭은 닫을 수 없습니다".into())
+        );
+        assert_eq!(
+            mobile_pane_for_close(&single, "%2", true),
+            Err("PaneNotFoundError:이미 닫혔거나 이 태스크에 없는 탭입니다".into())
+        );
+        let multiple = json!({"tabs":[{"id":"tab","panes":[{"id":"%1","tabId":"tab"},{"id":"%2","tabId":"tab"}]}]});
+        assert_eq!(
+            mobile_pane_for_close(&multiple, "%2", true).unwrap()["id"],
+            "%2"
+        );
+        for shell in [
+            None,
+            Some(""),
+            Some("sh"),
+            Some("bash"),
+            Some("zsh"),
+            Some("fish"),
+            Some("dash"),
+        ] {
+            assert!(mobile_running_process_names(shell).is_empty());
+        }
+        assert_eq!(mobile_running_process_names(Some("vim")), vec!["vim"]);
+        let target = |kind: &str| MirrorTarget {
+            kind: kind.into(),
+            name: "session".into(),
+            host: None,
+        };
+        assert_eq!(
+            close_pane_command(&target("tmux"), "%2"),
+            "tmux kill-pane -t '%2'"
+        );
+        assert_eq!(
+            close_pane_command(&target("zellij"), "terminal_2"),
+            "zellij --session 'session' action close-pane --pane-id 'terminal_2'"
+        );
+        assert_eq!(
+            close_pane_command(&target("herdr"), "w1:p2"),
+            crate::herdr::command("session", &["pane", "close", "w1:p2"])
+        );
+    }
+    #[test]
+    fn mobile_commands_ignore_unreplyable_messages_and_validate_request_boundaries() {
+        for raw in [
+            "bad-json",
+            "[]",
+            "null",
+            r#"{"type":"command","requestId":""}"#,
+            r#"{"type":"other","requestId":"a"}"#,
+        ] {
+            assert_eq!(
+                run_mobile_command_with(raw.as_bytes(), |_, _| panic!(
+                    "unreplyable command must not execute"
+                )),
+                None
+            );
+        }
+        let too_long =
+            serde_json::to_vec(&json!({"type":"command","requestId":"x".repeat(65)})).unwrap();
+        assert_eq!(
+            run_mobile_command_with(&too_long, |_, _| panic!(
+                "invalid request ID must not execute"
+            )),
+            None
+        );
+        let unsupported = br#"{"type":"command","requestId":"r","command":"toString"}"#;
+        assert_eq!(
+            run_mobile_command_with(unsupported, |_, _| panic!(
+                "unsupported command must not execute"
+            )),
+            Some(
+                json!({"type":"command-result","requestId":"r","ok":false,"code":"unsupported-command","error":"이 데스크탑이 지원하지 않는 명령입니다"})
+            )
+        );
+        let invalid=br#"{"type":"command","requestId":"r","command":"delete-task","taskId":"x","isForced":"true"}"#;
+        assert_eq!(
+            run_mobile_command_with(invalid, |_, _| panic!(
+                "invalid forced flag must not execute"
+            ))
+            .unwrap()["code"],
+            "invalid-command"
+        );
+    }
+    #[test]
+    fn mobile_commands_correlate_success_and_map_guard_errors_without_leaking_internals() {
+        let raw=br#"{"type":"command","requestId":"r","command":"delete-task","taskId":"x","isForced":true}"#;
+        let success = run_mobile_command_with(raw, |command, message| {
+            assert_eq!(command, "delete-task");
+            assert_eq!(message["taskId"], "x");
+            assert_eq!(message["isForced"], true);
+            Ok(json!({"failedPeerCount":2}))
+        })
+        .unwrap();
+        assert_eq!(
+            success,
+            json!({"type":"command-result","requestId":"r","ok":true,"failedPeerCount":2})
+        );
+        for (error, code) in [
+            (
+                "커밋하지 않은 변경이 있어 삭제하지 않았습니다: /repo",
+                "dirty-worktree",
+            ),
+            (
+                "PaneNotFoundError:이미 닫혔거나 이 태스크에 없는 탭입니다",
+                "pane-not-found",
+            ),
+            ("LastPaneError:마지막 탭은 닫을 수 없습니다", "last-tab"),
+            ("remote-unreachable", "session-unavailable"),
+            ("secret diagnostic detail", "server-error"),
+        ] {
+            let result = run_mobile_command_with(raw, |_, _| Err(error.into())).unwrap();
+            assert_eq!(result["requestId"], "r");
+            assert_eq!(result["ok"], false);
+            assert_eq!(result["code"], code);
+            assert!(!text(&result, "error").contains("diagnostic"));
+        }
+    }
+
     #[test]
     fn disabled_background_sync_waits_without_timer() {
         let interval = Duration::from_secs(60);
@@ -1418,28 +1829,28 @@ mod pane_mirror_regressions {
 mod mobile_pane_regressions {
     use super::*;
     #[test]
-    fn mobile_task_creation_accepts_herdr_and_keeps_input_guards() {
-        for kind in ["herdr", "tmux", "zellij", "terminal"] {
+    fn mobile_task_creation_uses_desktop_session_and_rejects_unsafe_refs() {
+        for submitted in [json!("tmux"), json!("screen"), json!(3)] {
+            let input=mobile_creation_input(&json!({"projectId":"p","branchName":"feature","baseBranch":"dev","sessionType":submitted,"sshHost":"prod"}),&json!("herdr")).unwrap();
+            assert_eq!(input["sessionType"], "herdr");
+            assert_eq!(input["title"], "feature");
+            assert!(input.get("sshHost").is_none());
+        }
+        for branch in ["-bad", "a;id", "$(id)", "../../etc", "a`id`b"] {
             assert_eq!(
-                validate_mobile_draft(
-                    &json!({"sessionType":kind,"branchName":"feature","baseBranch":"dev"})
-                ),
-                Ok(())
+                validate_mobile_draft(&json!({"branchName":branch})),
+                Err("브랜치 이름에 쓸 수 없는 문자가 있습니다".into())
             );
         }
         assert_eq!(
-            validate_mobile_draft(&json!({"sessionType":"invalid"})),
-            Err("잘못된 sessionType 값입니다".into())
+            validate_mobile_draft(&json!({"baseBranch":"main;id"})),
+            Err("베이스 브랜치에 쓸 수 없는 문자가 있습니다".into())
         );
-        assert_eq!(
-            validate_mobile_draft(&json!({"sessionType":3})),
-            Err("잘못된 sessionType 값입니다".into())
-        );
-        assert_eq!(
-            validate_mobile_draft(&json!({"branchName":"-bad"})),
-            Err("브랜치 이름이 올바르지 않습니다".into())
-        );
+        for priority in [json!("urgent"),json!(3),json!(true),json!({})] {
+            assert_eq!(validate_mobile_draft(&json!({"priority":priority})),Err("우선순위 값이 올바르지 않습니다".into()));
+        }
     }
+
     #[test]
     fn shortcuts_keep_session_pane_tab_ownership_and_backend_support() {
         assert_eq!(

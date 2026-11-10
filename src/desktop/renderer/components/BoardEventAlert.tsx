@@ -6,21 +6,16 @@ import type { BoardEventPayload } from "@/desktop/shared/contracts/lib-boardNoti
 
 const AUTO_DISMISS_MS = 5000;
 
-interface HookInstallAlertState {
-  taskId: string;
-  taskTitle: string;
-}
+type AlertableBoardEvent = Extract<BoardEventPayload, { type: "task-hook-install-failed" | "task-peer-deletion-failed" }>;
 
-function isTaskHookInstallFailedEvent(
-  event: BoardEventPayload,
-): event is Extract<BoardEventPayload, { type: "task-hook-install-failed" }> {
-  return event.type === "task-hook-install-failed";
+function isAlertableBoardEvent(event: BoardEventPayload): event is AlertableBoardEvent {
+  return event.type === "task-hook-install-failed" || event.type === "task-peer-deletion-failed";
 }
 
 export default function BoardEventAlert() {
   const t = useTranslations("task");
   const tc = useTranslations("common");
-  const [alert, setAlert] = useState<HookInstallAlertState | null>(null);
+  const [alert, setAlert] = useState<AlertableBoardEvent | null>(null);
   const timeoutRef = useRef<number | null>(null);
 
   useEffect(() => {
@@ -33,17 +28,20 @@ export default function BoardEventAlert() {
 
   useEffect(() => {
     return window.kanvibeDesktop!.onBoardEvent((event: BoardEventPayload) => {
-      if (!isTaskHookInstallFailedEvent(event)) {
+      if (!isAlertableBoardEvent(event)) {
         return;
       }
 
-      setAlert({
-        taskId: event.taskId,
-        taskTitle: event.taskTitle,
-      });
+      setAlert(event);
 
       if (timeoutRef.current !== null) {
         window.clearTimeout(timeoutRef.current);
+        timeoutRef.current = null;
+      }
+
+      // 다른 데스크탑에 남은 task는 사용자가 직접 지워야 하므로, 읽고 닫을 때까지 남긴다
+      if (event.type === "task-peer-deletion-failed") {
+        return;
       }
 
       timeoutRef.current = window.setTimeout(() => {
@@ -66,6 +64,16 @@ export default function BoardEventAlert() {
     return null;
   }
 
+  const alertText = alert.type === "task-hook-install-failed"
+    ? {
+        title: t("createHooksBackgroundFailedTitle"),
+        body: t("createHooksBackgroundFailedBody", { taskTitle: alert.taskTitle }),
+      }
+    : {
+        title: t("peerDeletionFailedTitle"),
+        body: t("peerDeletionFailedBody", { taskTitle: alert.taskTitle, peerUrls: alert.failedPeerUrls.join(", ") }),
+      };
+
   return (
     <div className="pointer-events-none fixed inset-x-0 top-4 z-[700] flex justify-center px-4">
       <div
@@ -75,10 +83,10 @@ export default function BoardEventAlert() {
         <div className="flex items-start gap-3">
           <div className="min-w-0 flex-1">
             <p className="text-sm font-semibold text-status-error">
-              {t("createHooksBackgroundFailedTitle")}
+              {alertText.title}
             </p>
             <p className="mt-1 text-sm text-text-secondary">
-              {t("createHooksBackgroundFailedBody", { taskTitle: alert.taskTitle })}
+              {alertText.body}
             </p>
           </div>
 

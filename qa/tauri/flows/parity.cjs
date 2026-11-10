@@ -8,7 +8,7 @@ async function main() {
   const runDir = path.resolve(process.argv[2] || `qa-results/tauri-${Date.now()}`);
   if (fs.existsSync(path.join(runDir, "app-data"))) throw new Error("Use a fresh QA run directory");
   fs.mkdirSync(runDir, { recursive: true });
-  const repo = path.join(runDir, "repository");
+  const repo = path.join(runDir, `repository-${Date.now()}`);
   fs.mkdirSync(repo);
   const git = (...args) => execFileSync("git", ["-C", repo, ...args], { encoding: "utf8" });
   git("init", "-b", "main"); git("config", "user.name", "KanVibe QA"); git("config", "user.email", "qa@kanvibe.local");
@@ -34,6 +34,7 @@ async function main() {
     const projectId = registered.project.id;
     const task = await invoke("kanban", "createTask", { title: "Native QA task", description: "한글 입력과 UI parity", baseBranch: "main", projectId });
     assert.equal(task.title, "Native QA task");
+    await invoke("kanban", "connectTerminalSession", task.id, "terminal");
     for (const status of ["progress", "pending", "review", "done", "todo"]) {
       const changed = await invoke("kanban", "updateTaskStatus", task.id, status);
       assert.equal(changed.status, status);
@@ -114,6 +115,8 @@ async function main() {
     fs.writeFileSync(path.join(runDir, "result.json"), JSON.stringify({ ok: false, checks, error: error.stack }, null, 2));
     throw error;
   } finally {
+    const remaining = await invoke("kanban", "getTasksByStatus").catch(() => ({ tasks: {} }));
+    for (const entry of Object.values(remaining.tasks).flat()) await invoke("kanban", "deleteTask", entry.id).catch(() => {});
     fs.writeFileSync(path.join(runDir, "runtime.log"), app.output());
     await app.close();
   }

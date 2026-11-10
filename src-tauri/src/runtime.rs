@@ -190,6 +190,7 @@ pub fn run_shell_input(
     let mut cmd = if let Some(host) = host {
         let mut c = Command::new("ssh");
         c.args([
+            "-T",
             "-o",
             "BatchMode=yes",
             "-o",

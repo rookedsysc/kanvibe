@@ -5,16 +5,19 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../../common/constants/app_colors.dart';
 import '../../../common/constants/app_sizes.dart';
 import '../../../common/constants/app_theme.dart';
+import '../../../common/network/desktop_command.dart';
 import '../../../common/providers.dart';
 import '../../board/domain/board_task.dart';
 import '../../board/domain/task_status.dart';
 import '../../chat_history/presentation/chat_history_screen.dart';
 import '../../notifications/application/mobile_notification_controller.dart';
+import '../../task_create/domain/session_type.dart';
 import '../../task_create/presentation/create_task_screen.dart';
 import '../domain/mirror_pane.dart';
 import 'surface_unavailable_message.dart';
 import 'widgets/pane_terminal_view.dart';
 import 'widgets/task_info_sheet.dart';
+import 'widgets/task_session_type_sheet.dart';
 import 'widgets/task_status_sheet.dart';
 import 'widgets/terminal_chrome_header.dart';
 
@@ -72,7 +75,6 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
         MaterialPageRoute(
           builder: (_) => CreateTaskScreen(
             projects: snapshot.creatableProjects,
-            defaultSessionType: snapshot.defaultSessionType,
             defaultProjectId: project.id,
             defaultBaseBranch: _task.branchName?.isNotEmpty == true
                 ? _task.branchName
@@ -109,6 +111,91 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
     }
   }
 
+  /// 닫아도 되는지 정한다. 실행 중인 프로세스가 있거나 조회가 실패하면 사용자에게 한 번 더 묻는다
+  Future<bool> _confirmCloseTab(MirrorPane tab) async {
+    final controller = ref.read(surfacesProvider(_task.id).notifier);
+    final List<String> processNames;
+    try {
+      processNames = await controller.fetchCloseProcesses(tab.id);
+    } on DesktopUpdateRequiredException {
+      _showNotice(desktopUpdateRequiredMessage);
+      return false;
+    } on DesktopDisconnectedException {
+      _showNotice(desktopDisconnectedMessage);
+      return false;
+    } catch (_) {
+      return _askCloseConfirmation(
+        '실행 중인 프로세스를 확인하지 못했습니다. 탭을 닫으면 그 안의 프로세스가 종료됩니다.',
+      );
+    }
+    if (processNames.isEmpty) {
+      return true;
+    }
+    return _askCloseConfirmation(
+      '${processNames.join(', ')} 실행 중인 탭을 닫으면 종료됩니다',
+    );
+  }
+
+  Future<bool> _askCloseConfirmation(String message) async {
+    if (!mounted) return false;
+    final isConfirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: AppColors.bgSurface,
+        title: const Text('탭을 닫을까요?'),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('취소'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            style: TextButton.styleFrom(foregroundColor: AppColors.statusError),
+            child: const Text('닫기'),
+          ),
+        ],
+      ),
+    );
+    return isConfirmed ?? false;
+  }
+
+  /// 누른 탭 하나만 닫는다. 선택한 탭을 닫으면 앞 탭으로, 맨 앞이면 다음 탭으로 옮긴다
+  Future<void> _closeTab(List<MirrorPane> tabs, MirrorPane tab) async {
+    if (!await _confirmCloseTab(tab) || !mounted) {
+      return;
+    }
+
+    final closedIndex = tabs.indexWhere((pane) => pane.id == tab.id);
+    try {
+      final surfaces = await ref
+          .read(surfacesProvider(_task.id).notifier)
+          .closeTab(tab.id);
+      if (!mounted || surfaces == null) return;
+      final isStillSelected = (_selectedPaneId ?? tabs.first.id) == tab.id;
+      if (isStillSelected) {
+        final neighbor = closedIndex > 0
+            ? tabs[closedIndex - 1]
+            : tabs[closedIndex + 1];
+        setState(() => _selectedPaneId = neighbor.id);
+      }
+    } on DesktopCommandFailure catch (failure) {
+      _showNotice(failure.message);
+    } on DesktopUpdateRequiredException {
+      _showNotice(desktopUpdateRequiredMessage);
+    } on DesktopDisconnectedException {
+      _showNotice(desktopDisconnectedMessage);
+    } catch (_) {
+      _showNotice('탭을 닫지 못했습니다. 잠시 뒤 다시 시도해 주세요.');
+    }
+  }
+
+  void _showNotice(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(message)));
+  }
+
   Future<void> _openInfoSheet() => showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
@@ -117,16 +204,45 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
   );
 
   Future<void> _openStatusSheet() async {
-    final movedStatus = await showModalBottomSheet<TaskStatus>(
+    final result = await showModalBottomSheet<TaskStatusSheetResult>(
       context: context,
       backgroundColor: AppColors.bgSurface,
       builder: (_) => TaskStatusSheet(task: _task),
     );
 
-    if (movedStatus != null && mounted) {
-      setState(() => _task = _task.withStatus(movedStatus));
+    if (!mounted) {
+      return;
+    }
+    switch (result) {
+      case TaskStatusMoved(:final status):
+        setState(() => _task = _task.withStatus(status));
+      case TaskDeleted(:final failedPeerCount):
+        // 앱 전체의 messenger에 띄워야 보드로 돌아간 뒤에도 경고가 보인다
+        if (failedPeerCount > 0) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                '다른 데스크탑 $failedPeerCount곳에는 아직 남아 있습니다. 그 데스크탑이 켜지면 직접 삭제해 주세요.',
+              ),
+            ),
+          );
+        }
+        // 지운 태스크의 화면에는 비출 pane이 없으니 보드로 돌아간다
+        Navigator.of(context).pop();
+      case null:
+        break;
     }
   }
+
+  Future<void> _openSessionTypeSheet(SessionType currentSessionType) =>
+      showModalBottomSheet<SessionType>(
+        context: context,
+        backgroundColor: AppColors.bgSurface,
+        builder: (_) => TaskSessionTypeSheet(
+          taskId: _task.id,
+          currentSessionType: currentSessionType,
+        ),
+      );
 
   /// PR은 앱 안에서 열지 않고 브라우저로 넘긴다. 로그인 세션이 이미 거기 있다.
   ///
@@ -198,6 +314,18 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
             icon: const Icon(Icons.swap_horiz),
             tooltip: '상태 옮기기',
           ),
+          Semantics(
+            identifier: 'change-session-type',
+            child: IconButton(
+              onPressed: surfaces.hasValue
+                  ? () => _openSessionTypeSheet(
+                      surfaces.requireValue.surfaces.sessionType,
+                    )
+                  : null,
+              icon: const Icon(Icons.terminal),
+              tooltip: '세션 종류 바꾸기',
+            ),
+          ),
           if (_task.prUrl != null)
             IconButton(
               onPressed: _openPullRequest,
@@ -252,20 +380,28 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
           onSelected: (index) =>
               setState(() => _selectedPaneId = tabs[index].id),
           onCreate: isCreating ? null : _createTerminalTab,
+          // 탭이 하나뿐이면 세션이 끝나 버리므로 닫을 수 없다
+          onClose: isCreating || tabs.length == 1
+              ? null
+              : (tab) => _closeTab(tabs, tab),
         ),
         Expanded(child: _buildSelectedSurface(tabs[selectedIndex], surfaces)),
       ],
     );
   }
 
+  /// 세션 종류가 바뀌면 pane id가 같더라도 다른 세션이므로 pane 화면을 새로 만들어 스트림을 다시 연다
   Widget _buildSelectedSurface(MirrorPane pane, TaskSurfaces surfaces) =>
-      PaneTerminalView(
-        taskId: _task.id,
-        pane: pane,
-        canResize: surfaces.canResize,
-        sessionType: surfaces.sessionType,
-        canRespondToDeviceQueries: surfaces.canRespondToDeviceQueries,
-        key: ValueKey(pane.id),
+      KeyedSubtree(
+        key: ValueKey(surfaces.sessionType),
+        child: PaneTerminalView(
+          taskId: _task.id,
+          pane: pane,
+          canResize: surfaces.canResize,
+          sessionType: surfaces.sessionType,
+          canRespondToDeviceQueries: surfaces.canRespondToDeviceQueries,
+          key: ValueKey(pane.id),
+        ),
       );
 }
 
@@ -275,12 +411,14 @@ class _SurfaceTabBar extends StatelessWidget {
     required this.selectedIndex,
     required this.onSelected,
     required this.onCreate,
+    required this.onClose,
   });
 
   final List<MirrorPane> tabs;
   final int selectedIndex;
   final ValueChanged<int> onSelected;
   final VoidCallback? onCreate;
+  final ValueChanged<MirrorPane>? onClose;
 
   @override
   Widget build(BuildContext context) {
@@ -301,6 +439,7 @@ class _SurfaceTabBar extends StatelessWidget {
                 tab: tabs[index],
                 isSelected: index == selectedIndex,
                 onTap: () => onSelected(index),
+                onClose: onClose == null ? null : () => onClose!(tabs[index]),
               ),
             ),
           ),
@@ -328,11 +467,15 @@ class _SurfaceTabButton extends StatelessWidget {
     required this.tab,
     required this.isSelected,
     required this.onTap,
+    required this.onClose,
   });
 
   final MirrorPane tab;
   final bool isSelected;
   final VoidCallback onTap;
+
+  /// null이면 닫을 수 없는 탭이다
+  final VoidCallback? onClose;
 
   @override
   Widget build(BuildContext context) {
@@ -346,8 +489,9 @@ class _SurfaceTabButton extends StatelessWidget {
         child: Container(
           width: 160,
           alignment: Alignment.center,
-          padding: const EdgeInsets.symmetric(horizontal: AppSizes.p12),
-          decoration: BoxDecoration(
+          padding: const EdgeInsets.only(left: AppSizes.p12),
+          // 밑줄이 높이를 차지하면 닫기 버튼이 최소 터치 크기보다 작아져 위에 덧그린다
+          foregroundDecoration: BoxDecoration(
             border: Border(
               bottom: BorderSide(
                 color: isSelected ? AppColors.brandPrimary : Colors.transparent,
@@ -355,28 +499,49 @@ class _SurfaceTabButton extends StatelessWidget {
               ),
             ),
           ),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.start,
+          child: Row(
             children: [
-              Flexible(
-                child: Text(
-                  tab.command.isEmpty ? tab.id : tab.command,
-                  overflow: TextOverflow.ellipsis,
-                  style: monoStyle(
-                    fontSize: 13,
-                    color: isSelected
-                        ? AppColors.textPrimary
-                        : AppColors.textMuted,
-                    fontWeight: isSelected ? FontWeight.w700 : FontWeight.w400,
-                  ),
+              Expanded(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Flexible(
+                      child: Text(
+                        tab.command.isEmpty ? tab.id : tab.command,
+                        overflow: TextOverflow.ellipsis,
+                        style: monoStyle(
+                          fontSize: 13,
+                          color: isSelected
+                              ? AppColors.textPrimary
+                              : AppColors.textMuted,
+                          fontWeight: isSelected
+                              ? FontWeight.w700
+                              : FontWeight.w400,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      '${tab.tabName} ${tab.id}',
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.labelSmall,
+                    ),
+                  ],
                 ),
               ),
-              const SizedBox(height: 2),
-              Text(
-                '${tab.tabName} ${tab.id}',
-                overflow: TextOverflow.ellipsis,
-                style: Theme.of(context).textTheme.labelSmall,
+              Semantics(
+                identifier: 'close-terminal-tab-${tab.id}',
+                child: IconButton(
+                  onPressed: onClose,
+                  tooltip: '탭 닫기',
+                  iconSize: AppSizes.p16,
+                  constraints: const BoxConstraints.tightFor(
+                    width: AppSizes.minTouchTarget,
+                    height: AppSizes.minTouchTarget,
+                  ),
+                  icon: const Icon(Icons.close),
+                ),
               ),
             ],
           ),

@@ -1,16 +1,25 @@
 const fs = require("node:fs");
 const path = require("node:path");
+const net = require("node:net");
 const { spawn } = require("node:child_process");
 
 async function launchKanVibeTauri(options = {}) {
   const rootDir = options.rootDir || process.cwd();
   const appDataDir = path.resolve(options.appDataDir);
+  const hookPort = options.hookPort || 19736;
+  for (const port of [hookPort, hookPort + 10]) {
+    await new Promise((resolve, reject) => {
+      const server = net.createServer();
+      server.once("error", reject);
+      server.listen(port, "0.0.0.0", () => server.close(error => error ? reject(error) : resolve()));
+    });
+  }
   fs.mkdirSync(appDataDir, { recursive: true });
   const metadataPath = path.join(appDataDir, "qa-bridge.json");
   fs.rmSync(metadataPath, { force: true });
   const child = spawn(options.executablePath || path.join(rootDir, "src-tauri/target/debug/kanvibe"), [], {
     cwd: rootDir,
-    env: { ...(options.env || process.env), KANVIBE_QA_MODE: "1", KANVIBE_APP_DATA_DIR: appDataDir, KANVIBE_DB_PATH: path.join(appDataDir, "kanvibe.db"), KANVIBE_HOOK_PORT: String(options.hookPort || 19736) },
+    env: { ...(options.env || process.env), KANVIBE_QA_MODE: "1", KANVIBE_APP_DATA_DIR: appDataDir, KANVIBE_DB_PATH: path.join(appDataDir, "kanvibe.db"), KANVIBE_HOOK_PORT: String(hookPort) },
     stdio: ["ignore", "pipe", "pipe"],
   });
   let output = "";

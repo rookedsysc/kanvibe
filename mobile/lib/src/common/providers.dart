@@ -5,6 +5,7 @@ import '../features/connection/data/connection_store.dart';
 import '../features/connection/domain/saved_connections.dart';
 import '../features/task_detail/domain/mirror_pane.dart';
 import 'network/desktop_client.dart';
+import 'network/desktop_command.dart';
 import 'network/desktop_connection.dart';
 
 /// 앱 전체가 공유하는 것들.
@@ -47,27 +48,43 @@ class ConnectionController extends AsyncNotifier<SavedConnections> {
     final current = await future;
     if (current.find(id) != null) return ConnectFailure.alreadyPaired;
 
-    final token = await ref
+    final pairing = await ref
         .read(desktopClientProvider)
         .pair(host: host, port: port, code: code, deviceName: 'KanVibe Mobile');
 
-    if (token == null) {
+    if (pairing == null) {
       return ConnectFailure.rejectedCode;
     }
 
     final connection = DesktopConnection(
       host: host,
       port: port,
-      token: token,
+      token: pairing.token,
       name: name.trim(),
+      certificateFingerprint: pairing.certificateFingerprint,
     );
     var added = false;
+    var replacedLegacyConnections = const <DesktopConnection>[];
     await _change((registry) {
       if (registry.find(id) != null) return registry;
       added = true;
-      return registry.add(connection);
+      replacedLegacyConnections = registry.legacyConnectionsOf(host);
+      return registry.replaceLegacyConnections(connection);
     });
+    await _unpairReplacedLegacyConnections(replacedLegacyConnections);
     return added ? null : ConnectFailure.alreadyPaired;
+  }
+
+  /// 같은 PC의 평문 연결은 암호화 연결로 바꾼 뒤에도 남아 있으면 토큰을 계속 평문으로 보낸다.
+  /// 기기 목록에서는 이미 지웠으므로, 데스크탑이 꺼져 있거나 평문 포트가 닫혀 알리지 못해도 연결은 성공으로 둔다.
+  Future<void> _unpairReplacedLegacyConnections(
+    List<DesktopConnection> legacyConnections,
+  ) async {
+    for (final legacyConnection in legacyConnections) {
+      try {
+        await ref.read(desktopClientProvider).unpairDevice(legacyConnection);
+      } catch (_) {}
+    }
   }
 
   /// 현재 PC만 바꾼다. 다른 PC의 페어링 토큰은 그대로 둔다.
@@ -189,13 +206,15 @@ class TaskSurfacesState {
   const TaskSurfacesState(
     this.surfaces, {
     this.isCreating = false,
+    this.isClosing = false,
     this.isRunningShortcut = false,
   });
 
   final TaskSurfaces surfaces;
   final bool isCreating;
+  final bool isClosing;
   final bool isRunningShortcut;
-  bool get isMutating => isCreating || isRunningShortcut;
+  bool get isMutating => isCreating || isClosing || isRunningShortcut;
 }
 
 class TaskSurfacesController extends AsyncNotifier<TaskSurfacesState> {
@@ -295,6 +314,75 @@ class TaskSurfacesController extends AsyncNotifier<TaskSurfacesState> {
         await _forgetRejectedConnection(ref, error, connection);
       }
       rethrow;
+    }
+  }
+
+  /// 탭을 닫기 전에 확인이 필요한지 데스크탑에 묻는다. 빈 목록이면 유휴 셸이라 바로 닫아도 된다.
+  ///
+  /// 조회 실패는 호출한 화면이 "확인을 거치는 쪽"으로 처리하도록 그대로 던진다.
+  Future<List<String>> fetchCloseProcesses(String paneId) async {
+    final connection = (await ref.read(connectionControllerProvider.future))
+        .activeConnection;
+    if (connection == null) {
+      throw const SurfaceUnavailableException(
+        SurfaceUnavailableReason.noSession,
+      );
+    }
+    final result = await ref
+        .read(desktopClientProvider)
+        .runCommand(connection, DesktopCommand.getTabCloseInfo(taskId, paneId));
+    final processNames = result['processNames'];
+    return processNames is List
+        ? processNames.whereType<String>().toList()
+        : [];
+  }
+
+  /// pane 하나를 닫고 갱신된 탭 목록을 상태에 싣는다. 건너뛰었거나 화면이 바뀌었으면 null이다.
+  ///
+  /// 그 사이 이미 닫힌 pane(`pane-not-found`)은 닫으려던 결과와 같으므로 목록만 다시 받아 성공으로 센다.
+  Future<TaskSurfaces?> closeTab(String paneId) async {
+    if (state.isLoading || !state.hasValue || state.requireValue.isMutating) {
+      return null;
+    }
+    final previous = state;
+    final generation = _generation;
+    state = AsyncData(
+      TaskSurfacesState(previous.requireValue.surfaces, isClosing: true),
+    );
+    try {
+      final connection = (await ref.read(connectionControllerProvider.future))
+          .activeConnection;
+      if (connection == null) {
+        throw const SurfaceUnavailableException(
+          SurfaceUnavailableReason.noSession,
+        );
+      }
+      if (!ref.mounted || generation != _generation) return null;
+      final surfaces = await _closePane(connection, paneId);
+      if (!ref.mounted || generation != _generation) return null;
+      state = AsyncData(TaskSurfacesState(surfaces));
+      return surfaces;
+    } catch (_) {
+      if (!ref.mounted || generation != _generation) return null;
+      state = previous;
+      rethrow;
+    }
+  }
+
+  Future<TaskSurfaces> _closePane(
+    DesktopConnection connection,
+    String paneId,
+  ) async {
+    final client = ref.read(desktopClientProvider);
+    try {
+      final result = await client.runCommand(
+        connection,
+        DesktopCommand.closeTab(taskId, paneId),
+      );
+      return TaskSurfaces.fromJson(result['surfaces'] as Map<String, dynamic>);
+    } on DesktopCommandFailure catch (failure) {
+      if (failure.code != 'pane-not-found') rethrow;
+      return client.fetchSurfaces(connection, taskId);
     }
   }
 }

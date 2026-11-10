@@ -38,10 +38,13 @@ printf '%s}\n' "${KANVIBE_TASK_STATE_JSON}" > "${KANVIBE_TASK_STATE_FILE}" 2>/de
 
 KANVIBE_TARGET_ROWS="$(
   if [ -f "${KANVIBE_TARGETS_FILE}" ]; then
-    grep -oE '"(url|taskId)"[[:space:]]*:[[:space:]]*"[^"]*"' "${KANVIBE_TARGETS_FILE}" 2>/dev/null       | awk '
+    grep -oE '"(url|taskId|clientId)"[[:space:]]*:[[:space:]]*"[^"]*"' "${KANVIBE_TARGETS_FILE}" 2>/dev/null       | awk '
+          function emit() { if(u!="" && t!="" && !(u in seen)){ seen[u]=1; print u "\t" t "\t" c } }
           { s=$0; sub(/^"[^"]*"[[:space:]]*:[[:space:]]*"/,"",s); sub(/"$/,"",s) }
-          /^"url"/ { u=s; sub(/\/+$/,"",u); haveUrl=1; next }
-          /^"taskId"/ { if(haveUrl){ if(u!="" && s!="" && !(u in seen)){ seen[u]=1; print u "\t" s } haveUrl=0 } }
+          /^"url"/ { emit(); u=s; sub(/\/+$/,"",u); t=""; c=""; next }
+          /^"taskId"/ { t=s; next }
+          /^"clientId"/ { c=s; next }
+          END { emit() }
         ' 2>/dev/null || true
   else
     printf '%s	%s
@@ -53,13 +56,28 @@ if [ -z "${KANVIBE_TARGET_ROWS}" ]; then
 ' "${KANVIBE_URL%/}" "${TASK_ID}")"
 fi
 
+KANVIBE_HOOK_SOCKET_RESOLVER
+
+kanvibe_post_status() {
+  curl -s --max-time 3 -X POST "$@" --url "${KANVIBE_TARGET_URL%/}/api/hooks/status"     -H "Content-Type: application/json"     -d "{\"taskId\": \"${KANVIBE_TARGET_TASK_ID}\", \"status\": \"progress\"}"
+}
+
 printf '%s
 ' "${KANVIBE_TARGET_ROWS}" | {
-  while IFS="$(printf '\t')" read -r KANVIBE_TARGET_URL KANVIBE_TARGET_TASK_ID; do
+  while IFS="$(printf '\t')" read -r KANVIBE_TARGET_URL KANVIBE_TARGET_TASK_ID KANVIBE_TARGET_CLIENT_ID; do
     if [ -z "${KANVIBE_TARGET_URL}" ] || [ -z "${KANVIBE_TARGET_TASK_ID}" ]; then
       continue
     fi
-    curl -s --max-time 3 -X POST "${KANVIBE_TARGET_URL%/}/api/hooks/status"       -H "Content-Type: application/json"       -d "{\"taskId\": \"${KANVIBE_TARGET_TASK_ID}\", \"status\": \"progress\"}"       > /dev/null 2>&1 &
+    case "${KANVIBE_TARGET_URL}" in
+      http://*|https://*) ;;
+      *) continue ;;
+    esac
+    KANVIBE_TARGET_SOCKET="$(kanvibe_hook_socket "${KANVIBE_TARGET_CLIENT_ID}")"
+    {
+      if [ -z "${KANVIBE_TARGET_SOCKET}" ] || ! kanvibe_post_status --unix-socket "${KANVIBE_TARGET_SOCKET}"; then
+        kanvibe_post_status
+      fi
+    } > /dev/null 2>&1 &
   done
   wait
 }

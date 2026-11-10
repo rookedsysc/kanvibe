@@ -9,7 +9,6 @@ import 'package:kanvibe_mobile/src/common/network/desktop_connection.dart';
 import 'package:kanvibe_mobile/src/common/providers.dart';
 import 'package:kanvibe_mobile/src/features/board/presentation/board_screen.dart';
 import 'package:kanvibe_mobile/src/features/connection/domain/saved_connections.dart';
-import 'package:kanvibe_mobile/src/features/task_create/domain/session_type.dart';
 import 'package:kanvibe_mobile/src/features/task_create/presentation/create_task_screen.dart';
 
 import '../../../support/fake_desktop.dart';
@@ -256,7 +255,6 @@ void main() {
       'remote',
       'other',
     ]);
-    expect(createScreen.defaultSessionType, SessionType.terminal);
   });
 
   testWidgets('PC를 바꾸면 선택이 섞이지 않고 되돌아오면 이전 선택을 복원한다', (tester) async {

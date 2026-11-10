@@ -382,6 +382,40 @@ fn zellij_layout(cwd: &str, layout: &Value) -> String {
     };
     format!("layout {{\n{body}\n}}\n")
 }
+pub fn prepare_session_layout(
+    app: &AppHandle,
+    kind: &str,
+    cwd: &str,
+    host: Option<&str>,
+    project_id: Option<&str>,
+) -> Result<(), String> {
+    if kind != "zellij" {
+        return Ok(());
+    }
+    let layout = crate::core::dispatch(
+        app,
+        "paneLayout",
+        "getEffectivePaneLayout",
+        vec![json!(project_id)],
+    )?;
+    if !layout.is_null() {
+        // Zellij는 연결할 TTY가 생기기 전 레이아웃 파일만 준비하며 파일 실패는 세션 생성을 막지 않는다.
+        if let Err(error) = write_zellij_layout(cwd, host, &layout) {
+            eprintln!("Zellij 레이아웃 파일 생성 실패: {error}");
+        }
+    }
+    Ok(())
+}
+pub fn with_task_session_mutation<T>(
+    app: &AppHandle,
+    id: &str,
+    operation: impl FnOnce() -> Result<T, String>,
+) -> Result<T, String> {
+    app.state::<TerminalState>()
+        .tab_closes
+        .run_exclusive(&format!("task-session:{id}"), operation)?
+}
+
 fn write_zellij_layout(cwd: &str, host: Option<&str>, layout: &Value) -> Result<(), String> {
     let body = zellij_layout(cwd, layout);
     let path = Path::new(cwd).join(".zellij-layout.kdl");
@@ -1076,7 +1110,7 @@ fn mirror_tab_process_names(
     Ok(Some(names))
 }
 
-fn local_tab_process_name(app: &AppHandle, task: &str, tab: &str) -> Option<String> {
+pub fn local_tab_process_name(app: &AppHandle, task: &str, tab: &str) -> Option<String> {
     #[cfg(unix)]
     {
         let foreground = session(app, task, Some(tab))
