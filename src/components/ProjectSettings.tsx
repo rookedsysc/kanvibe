@@ -20,6 +20,7 @@ import type { Project } from "@/entities/Project";
 import { applyThemePreference, notifyThemePreferenceChanged } from "@/desktop/renderer/utils/theme";
 import { useEscapeKey } from "@/hooks/useEscapeKey";
 import SessionTypeOptions from "./SessionTypeOptions";
+import BulkSessionTypeChangeSettings from "./BulkSessionTypeChangeSettings";
 
 const MIN_SYNC_INTERVAL_MINUTES = 1;
 const MAX_SYNC_INTERVAL_MINUTES = 1440;
@@ -349,6 +350,7 @@ export default function ProjectSettings({
               <SessionTypeOptions />
             </select>
           </div>
+          <BulkSessionTypeChangeSettings defaultSessionType={selectedDefaultSessionType} />
         </div>
 
         <MobilePairingSettings />

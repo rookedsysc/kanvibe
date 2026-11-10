@@ -1,5 +1,5 @@
 import path from "path";
-import { TaskStatus } from "@/entities/KanbanTask";
+import { SessionType, TaskStatus } from "@/entities/KanbanTask";
 import { TaskPriority } from "@/entities/TaskPriority";
 import { readTextFile, readTextFiles, updateTextFile, writeTextFile, writeTextFileIfAbsent } from "@/lib/hostFileAccess";
 
@@ -38,7 +38,14 @@ export interface KanvibeTaskDescription {
   schemaVersion: 1;
   description?: string | null;
   priority?: TaskPriority | null;
+  session?: KanvibeTaskSession;
   updatedAt?: string;
+}
+
+/** 데스크탑이 정한 task 터미널 세션. 같은 저장소를 보는 다른 KanVibe가 이 값을 따라 세션을 맞춘다 */
+export interface KanvibeTaskSession {
+  sessionType: SessionType;
+  sessionName: string;
 }
 
 /** 다른 기기의 상태를 한 번에 반영하기 위해 함께 읽는 값들 */
@@ -47,6 +54,7 @@ export interface KanvibeTaskSyncState {
   description: KanvibeTaskDescription | null;
   priority?: TaskPriority | null;
   projectPriority?: TaskPriority | null;
+  session?: KanvibeTaskSession;
 }
 
 export interface KanvibeHookTarget {
@@ -118,6 +126,7 @@ export async function readKanvibeTaskSyncState(
     ...(projectState && Object.hasOwn(projectState, "priority")
       ? { projectPriority: projectState.priority ?? null }
       : {}),
+    ...(taskMetadata?.session ? { session: taskMetadata.session } : {}),
   };
 }
 
@@ -138,9 +147,30 @@ export async function writeKanvibeTaskMetadata(
   task: Pick<KanvibeTaskDescription, "description" | "priority">,
   sshHost?: string | null,
 ): Promise<void> {
-  await writeTextFile(
+  /** 세션 정보는 다른 경로가 기록하므로 설명과 priority를 쓰는 동안 그대로 남긴다 */
+  await updateTextFile(
     getKanvibeTaskDescriptionPath(repoPath, sshHost),
-    buildKanvibeTaskDescriptionContent(task.description, task.priority),
+    (content) => buildKanvibeTaskDescriptionContent(
+      task.description,
+      task.priority,
+      parseKanvibeTaskDescription(content)?.session,
+    ),
+    sshHost,
+  );
+}
+
+/** task 세션 정보를 task.json에 기록한다. 이미 기록된 설명과 priority는 남긴다 */
+export async function writeKanvibeTaskSession(
+  repoPath: string,
+  session: KanvibeTaskSession,
+  sshHost?: string | null,
+): Promise<void> {
+  await updateTextFile(
+    getKanvibeTaskDescriptionPath(repoPath, sshHost),
+    (content) => {
+      const existingMetadata = parseKanvibeTaskDescription(content);
+      return buildKanvibeTaskDescriptionContent(existingMetadata?.description, existingMetadata?.priority, session);
+    },
     sshHost,
   );
 }
@@ -239,11 +269,13 @@ export function buildKanvibeTaskStateContent(
 export function buildKanvibeTaskDescriptionContent(
   description: string | null | undefined,
   priority?: TaskPriority | null,
+  session?: KanvibeTaskSession,
 ): string {
   const payload: KanvibeTaskDescription = {
     schemaVersion: 1,
     ...(description !== undefined ? { description } : {}),
     ...(priority !== undefined ? { priority } : {}),
+    ...(session ? { session } : {}),
     updatedAt: new Date().toISOString(),
   };
 
@@ -311,12 +343,13 @@ export function parseKanvibeTaskDescription(content: string): KanvibeTaskDescrip
   }
 
   try {
-    const parsed = JSON.parse(content) as { description?: unknown; priority?: unknown; updatedAt?: unknown };
+    const parsed = JSON.parse(content) as { description?: unknown; priority?: unknown; session?: unknown; updatedAt?: unknown };
     const hasDescription = Object.hasOwn(parsed, "description")
       && (typeof parsed.description === "string" || parsed.description === null);
     const hasPriority = Object.hasOwn(parsed, "priority")
       && (parsed.priority === null || parseTaskPriority(parsed.priority) !== null);
-    if (!hasDescription && !hasPriority) {
+    const session = parseKanvibeTaskSession(parsed.session);
+    if (!hasDescription && !hasPriority && !session) {
       return null;
     }
 
@@ -324,6 +357,7 @@ export function parseKanvibeTaskDescription(content: string): KanvibeTaskDescrip
       schemaVersion: 1,
       ...(hasDescription ? { description: parsed.description as string | null } : {}),
       ...(hasPriority ? { priority: parsed.priority === null ? null : parseTaskPriority(parsed.priority)! } : {}),
+      ...(session ? { session } : {}),
       ...(isNonEmptyString(parsed.updatedAt) ? { updatedAt: parsed.updatedAt } : {}),
     };
   } catch {
@@ -398,6 +432,21 @@ export function parseTaskPriority(value: unknown): TaskPriority | null {
   }
 
   return Object.values(TaskPriority).includes(value as TaskPriority) ? value as TaskPriority : null;
+}
+
+/** 이 버전이 모르는 세션 타입은 따라갈 수 없으므로 기록이 없는 것으로 본다 */
+function parseKanvibeTaskSession(value: unknown): KanvibeTaskSession | null {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+
+  const { sessionType, sessionName } = value as { sessionType?: unknown; sessionName?: unknown };
+  const isKnownSessionType = Object.values(SessionType).includes(sessionType as SessionType);
+  if (!isKnownSessionType || !isNonEmptyString(sessionName)) {
+    return null;
+  }
+
+  return { sessionType: sessionType as SessionType, sessionName };
 }
 
 function isNonEmptyString(value: unknown): value is string {

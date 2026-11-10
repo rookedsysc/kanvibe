@@ -1875,6 +1875,7 @@ function TaskDetailContent({ id }: { id: string }) {
               }}
             >
               <TerminalLoader
+                key={`${state.task.sessionType}:${state.task.sessionName}`}
                 taskId={state.task.id}
                 tabs={state.task.sessionType === SessionType.TERMINAL ? terminalTabs.tabs : undefined}
                 isRemote={Boolean(state.task.sshHost)}

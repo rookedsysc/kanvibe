@@ -4,12 +4,13 @@ import { getTaskRepository } from "@/lib/database";
 import { KanbanTask, TaskStatus, SessionType } from "@/entities/KanbanTask";
 import type { Project } from "@/entities/Project";
 import { TaskPriority } from "@/entities/TaskPriority";
-import { createWorktreeWithSession, removeWorktreeAndBranch, createSessionWithoutWorktree, removeSessionOnly, formatProjectBranchSessionName } from "@/lib/worktree";
+import { createWorktreeWithSession, removeWorktreeAndBranch, createSessionWithoutWorktree, removeSessionOnly, formatProjectBranchSessionName, isSessionAlive } from "@/lib/worktree";
 import { getProjectRepository } from "@/lib/database";
 import {
   broadcastBoardUpdate,
   broadcastTaskHookInstallFailed,
   broadcastTaskPrMergedDetectedBatch,
+  broadcastTaskSessionChanged,
   type BackgroundSyncFailurePayload,
   type TaskPrMergedDetectedPayload,
 } from "@/lib/boardNotifier";
@@ -22,8 +23,10 @@ import { execGit, pullCurrentBranch, remoteBranchExists, type ExecGitOptions } f
 import { detachSession } from "@/lib/terminal";
 import {
   persistTaskMetadataForTask as persistTaskMetadata,
+  persistTaskSessionForTask as persistTaskSession,
   persistTaskStateForTask as persistTaskState,
 } from "@/desktop/main/services/kanvibeTaskStateService";
+import { mapWithConcurrency } from "@/lib/aiSessions/shared";
 import { persistProjectColorToKanvibeState } from "@/desktop/main/services/kanvibeProjectColorService";
 
 export type TasksByStatus = Record<TaskStatus, KanbanTask[]>;
@@ -943,6 +946,110 @@ export async function connectTerminalSession(
     console.error("터미널 세션 생성 실패:", error);
     return null;
   }
+}
+
+/** 일괄 변경에서 동시에 전환하는 task 수. 원격 호스트에 SSH 명령이 한꺼번에 몰리지 않게 한다 */
+const SESSION_TYPE_CHANGE_CONCURRENCY = 4;
+
+export interface SessionTypeChangeTargets {
+  taskCount: number;
+  liveSessionCount: number;
+  /** 새 세션 도구를 확인해야 하는 호스트. null은 로컬이다 */
+  sshHosts: (string | null)[];
+}
+
+export interface SessionTypeChangeResult {
+  changedCount: number;
+  failedCount: number;
+}
+
+/** task의 현재 터미널 세션이 아직 켜져 있는지 확인한다. 세션 타입을 바꾸기 전에 닫을지 묻는 데 쓴다 */
+export async function isTaskSessionAlive(taskId: string): Promise<boolean> {
+  const repo = await getTaskRepository();
+  const task = await repo.findOneBy({ id: taskId });
+  if (!task?.sessionType || !task.sessionName) {
+    return false;
+  }
+
+  return isSessionAlive(task.sessionType, task.sessionName, task.sshHost);
+}
+
+/**
+ * 이미 세션이 있는 task의 터미널 세션 타입을 바꾼다.
+ * 새 세션 연결에 성공한 뒤에만 기존 세션을 닫아, 전환이 실패해도 작업 중이던 세션은 남는다.
+ * 닫지 않기로 하면 기존 멀티플렉서 세션은 백그라운드에 그대로 두고 KanVibe 연결만 끊는다.
+ */
+export async function changeTaskSessionType(
+  taskId: string,
+  sessionType: SessionType,
+  shouldCloseExistingSession: boolean,
+): Promise<KanbanTask | null> {
+  const repo = await getTaskRepository();
+  const task = await repo.findOneBy({ id: taskId });
+  if (!task?.sessionType || !task.sessionName) {
+    return null;
+  }
+
+  if (task.sessionType === sessionType) {
+    return serialize(task);
+  }
+
+  const previousSession = { sessionType: task.sessionType, sessionName: task.sessionName, sshHost: task.sshHost };
+  detachSession(task.id, "change-session-type");
+
+  const changedTask = await connectTerminalSession(taskId, sessionType);
+  if (!changedTask) {
+    return null;
+  }
+
+  if (shouldCloseExistingSession) {
+    await removeSessionOnly(previousSession.sessionType, previousSession.sessionName, previousSession.sshHost);
+  }
+
+  await persistTaskSession(changedTask);
+  broadcastTaskSessionChanged({ taskId });
+  return changedTask;
+}
+
+/** 일괄 변경 전에 몇 개의 task가 바뀌고 그중 몇 개의 세션이 켜져 있는지 미리 알려 준다 */
+export async function getSessionTypeChangeTargets(sessionType: SessionType): Promise<SessionTypeChangeTargets> {
+  const targetTasks = await findSessionTypeChangeTargetTasks(sessionType);
+  const sessionAliveResults = await mapWithConcurrency(
+    targetTasks,
+    SESSION_TYPE_CHANGE_CONCURRENCY,
+    (task) => isSessionAlive(task.sessionType as SessionType, task.sessionName as string, task.sshHost),
+  );
+  const liveSessionCount = sessionAliveResults.filter(Boolean).length;
+  const sshHosts = [...new Set(targetTasks.map((task) => task.sshHost ?? null))];
+
+  return { taskCount: targetTasks.length, liveSessionCount, sshHosts };
+}
+
+/** 세션이 있는 모든 task(Done 포함)를 같은 세션 타입으로 바꾼다 */
+export async function changeAllTaskSessionTypes(
+  sessionType: SessionType,
+  shouldCloseExistingSessions: boolean,
+): Promise<SessionTypeChangeResult> {
+  const targetTasks = await findSessionTypeChangeTargetTasks(sessionType);
+  const changedTasks = await mapWithConcurrency(
+    targetTasks,
+    SESSION_TYPE_CHANGE_CONCURRENCY,
+    (task) => changeTaskSessionType(task.id, sessionType, shouldCloseExistingSessions),
+  );
+  const changedCount = changedTasks.filter(Boolean).length;
+
+  return { changedCount, failedCount: targetTasks.length - changedCount };
+}
+
+/** 세션을 다시 만들려면 프로젝트가 있어야 하므로 프로젝트 없는 task는 대상에서 뺀다 */
+async function findSessionTypeChangeTargetTasks(sessionType: SessionType): Promise<KanbanTask[]> {
+  const repo = await getTaskRepository();
+  const tasksWithSession = await repo.find({ where: { sessionName: Not(IsNull()) } });
+  return tasksWithSession.filter((task) => (
+    task.sessionType !== null
+    && task.sessionType !== sessionType
+    && task.projectId !== null
+  ));
 }
 
 /**

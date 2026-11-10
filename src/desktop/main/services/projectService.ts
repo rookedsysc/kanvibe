@@ -25,7 +25,9 @@ import path from "path";
 import { computeProjectColor } from "@/lib/projectColor";
 import { DUPLICATE_PROJECT_NAME_ERROR, resolveUniqueProjectName } from "@/lib/projectName";
 import { resolveProjectIconDataUrl } from "@/lib/githubProjectIcon";
-import { broadcastBoardUpdate } from "@/lib/boardNotifier";
+import { broadcastBoardUpdate, broadcastTaskSessionChanged } from "@/lib/boardNotifier";
+import { detachSession } from "@/lib/terminal";
+import type { KanvibeTaskSession } from "@/lib/kanvibeProjectState";
 import { getAvailableHosts as readAvailableHosts } from "@/lib/sshConfig";
 import { getDefaultSessionType } from "@/desktop/main/services/appSettingsService";
 import { installKanvibeHooks, installKanvibeHookProvider, scheduleKanvibeHooksInstall } from "@/lib/kanvibeHooksInstaller";
@@ -59,6 +61,32 @@ async function resolveProjectColor(
 
 function matchesTaskLocation(task: { worktreePath?: string | null; sshHost?: string | null }, expectedPath: string, sshHost?: string | null): boolean {
   return task.worktreePath === expectedPath && (task.sshHost || null) === (sshHost || null);
+}
+
+/**
+ * 다른 KanVibe가 task.json에 남긴 세션이 이 기기의 기록과 다르면 그 세션을 따른다.
+ * 기존 세션을 닫을지는 바꾼 쪽이 이미 정했으므로 여기서는 세션 정보만 맞춘다.
+ */
+function applyPersistedTaskSession(task: KanbanTask, persistedSession: KanvibeTaskSession | undefined): boolean {
+  if (!persistedSession) {
+    return false;
+  }
+
+  const isSameSession = task.sessionType === persistedSession.sessionType
+    && task.sessionName === persistedSession.sessionName;
+  if (isSameSession) {
+    return false;
+  }
+
+  task.sessionType = persistedSession.sessionType;
+  task.sessionName = persistedSession.sessionName;
+  return true;
+}
+
+/** 이전 세션에 붙어 있던 터미널을 끊고, 화면들이 새 세션으로 다시 붙도록 알린다 */
+function reconnectTaskToFollowedSession(taskId: string): void {
+  detachSession(taskId, "follow-shared-task-session");
+  broadcastTaskSessionChanged({ taskId });
 }
 
 /** TypeORM 엔티티를 직렬화 가능한 plain object로 변환한다 */
@@ -317,6 +345,7 @@ async function ensureProjectRootTask(
     status: persistedStatus,
     description: persistedDescription,
     projectPriority: persistedProjectPriority,
+    session: persistedSession,
   } = await readPersistedTaskSyncState(
     expectedDefaultBranchWorktreePath || project.repoPath,
     project.sshHost,
@@ -354,9 +383,18 @@ async function ensureProjectRootTask(
     shouldSaveTask = true;
   }
 
+  const hasFollowedPersistedSession = applyPersistedTaskSession(task, persistedSession);
+  if (hasFollowedPersistedSession) {
+    shouldSaveTask = true;
+  }
+
   if (shouldSaveTask) {
     task = await taskRepo.save(task);
     repaired = true;
+  }
+
+  if (hasFollowedPersistedSession) {
+    reconnectTaskToFollowedSession(task.id);
   }
 
   await persistTaskState(expectedDefaultBranchWorktreePath || project.repoPath, task, project.sshHost);
@@ -742,13 +780,16 @@ async function syncProjectWorktrees(
         status: persistedStatus,
         description: persistedDescription,
         priority: persistedPriority,
+        session: persistedSession,
       } = await readPersistedTaskSyncState(wt.path, project.sshHost, project.repoPath);
       if (existingTask) {
+        const hasFollowedPersistedSession = applyPersistedTaskSession(existingTask, persistedSession);
         const shouldRepairTask = !matchesTaskLocation(existingTask, wt.path, project.sshHost)
           || !existingTask.baseBranch
           || (persistedStatus !== null && existingTask.status !== persistedStatus)
           || (persistedDescription !== null && existingTask.description !== persistedDescription.description)
-          || (persistedPriority !== undefined && existingTask.priority !== persistedPriority);
+          || (persistedPriority !== undefined && existingTask.priority !== persistedPriority)
+          || hasFollowedPersistedSession;
         let taskToPersist = existingTask;
         if (shouldRepairTask) {
           existingTask.worktreePath = wt.path;
@@ -766,6 +807,9 @@ async function syncProjectWorktrees(
           const savedTask = await taskRepo.save(existingTask);
           taskToPersist = savedTask;
           result.changed = true;
+          if (hasFollowedPersistedSession) {
+            reconnectTaskToFollowedSession(savedTask.id);
+          }
           await installSyncedWorktreeHooks(project, wt.path, savedTask.id, wt.branch, result);
         }
         await persistTaskState(wt.path, taskToPersist, project.sshHost);
