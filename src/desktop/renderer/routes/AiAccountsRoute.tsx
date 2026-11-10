@@ -1,3 +1,4 @@
+import { confirmAction } from "@/desktop/renderer/utils/dialogs";
 import { useCallback, useEffect, useState } from "react";
 import { useTranslations } from "next-intl";
 import { AiProviderIcon } from "@/components/AiProviderIcon";
@@ -9,8 +10,8 @@ import {
   listAiAccounts,
   removeAiAccount,
 } from "@/desktop/renderer/actions/aiAccounts";
-import type { AiAccountSummary } from "@/desktop/main/services/aiAccountService";
-import type { AiUsageProvider } from "@/lib/aiUsage/types";
+import type { AiAccountSummary } from "@/desktop/shared/contracts/desktop-main-services-aiAccountService";
+import type { AiUsageProvider } from "@/desktop/shared/contracts/lib-aiUsage-types";
 
 const AI_USAGE_PROVIDERS: AiUsageProvider[] = ["claude", "codex", "gemini"];
 
@@ -172,7 +173,7 @@ export default function AiAccountsRoute() {
   }, [loadAccounts]);
 
   async function removeAccount(account: AiAccountSummary) {
-    if (!window.confirm(t("removeConfirm", { label: account.label }))) {
+    if (!await confirmAction(t("removeConfirm", { label: account.label }))) {
       return;
     }
 

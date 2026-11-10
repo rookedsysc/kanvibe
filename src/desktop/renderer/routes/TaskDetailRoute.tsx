@@ -1,4 +1,5 @@
-import { AI_SESSION_PROVIDER_LABELS, AI_SESSION_PROVIDERS } from "@/lib/aiSessions/providers";
+import { confirmAction, showAlert } from "@/desktop/renderer/utils/dialogs";
+import { AI_SESSION_PROVIDER_LABELS, AI_SESSION_PROVIDERS } from "@/desktop/shared/contracts/lib-aiSessions-providers";
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
@@ -78,7 +79,7 @@ import type {
   AggregatedAiSessionDetail,
   AggregatedAiSessionsResult,
   LiveAiSession,
-} from "@/lib/aiSessions/types";
+} from "@/desktop/shared/contracts/lib-aiSessions-types";
 import { computeProjectColor, getReadableTextColor } from "@/lib/projectColor";
 
 const STATUS_TRANSITIONS = [
@@ -951,7 +952,7 @@ function TaskDetailContent({ id }: { id: string }) {
     }
 
     if (!prUrl) {
-      window.alert(t("pullRequestNotFound"));
+      await showAlert(t("pullRequestNotFound"));
       return;
     }
 
@@ -976,7 +977,7 @@ function TaskDetailContent({ id }: { id: string }) {
     }
 
     if (!opened) {
-      window.alert(t("openInVsCodeFailed"));
+      await showAlert(t("openInVsCodeFailed"));
     }
   }, [t]);
 
@@ -1235,14 +1236,14 @@ function TaskDetailContent({ id }: { id: string }) {
         return;
       }
       if (!info.ok) {
-        window.alert(t("terminalTabCloseCheckFailed"));
+        await showAlert(t("terminalTabCloseCheckFailed"));
         return;
       }
       if (info.shouldCloseWindow) {
         window.kanvibeDesktop?.closeCurrentWindow?.();
         return;
       }
-      const confirmed = window.confirm(t("terminalTabCloseConfirm", {
+      const confirmed = await confirmAction(t("terminalTabCloseConfirm", {
         processes: info.processNames?.join(", ") || t("terminalTabProcessesUnknown"),
         shortcut: formatShortcutForDisplay(shortcutBindings.terminalWindowClose, shortcutPlatform),
       }));
@@ -1254,7 +1255,7 @@ function TaskDetailContent({ id }: { id: string }) {
       }
     } catch {
       if (isTerminalTabClosingRef.current) {
-        window.alert(t("terminalTabCloseCheckFailed"));
+        await showAlert(t("terminalTabCloseCheckFailed"));
       }
     } finally {
       isTerminalTabClosingRef.current = false;

@@ -9,7 +9,7 @@ vi.mock("next-intl", () => ({ useTranslations: () => (key: string) => key }));
 vi.mock("@/desktop/renderer/actions/diff", () => ({ getOriginalFileContent: original, getFileContent: modified, saveFileContent: save }));
 vi.mock("@/components/DiffFileTree", () => ({ default: ({ onSelectFile }: { onSelectFile: (path: string) => void }) => <button onClick={() => onSelectFile("B")}>select B</button> }));
 vi.mock("@/components/DiffMonacoViewer", () => ({ default: ({ filePath, originalContent, modifiedContent }: { filePath: string; originalContent: string; modifiedContent: string }) => <div data-testid="viewer" data-original={originalContent}>{filePath}:{modifiedContent}</div> }));
-vi.mock("@/components/DiffFileEditor", () => ({ default: ({ onSave, content }: { onSave: (content: string) => Promise<void>; content: string }) => {
+vi.mock("@/components/DiffFileEditor", () => ({ default: function MockDiffFileEditor({ onSave, content }: { onSave: (content: string) => Promise<void>; content: string }) {
   const [draft, setDraft] = useState(content);
   return <><input aria-label="draft" value={draft} onChange={(event) => setDraft(event.target.value)} /><button onClick={() => { void onSave("edited"); }}>save {content}</button></>;
 } }));

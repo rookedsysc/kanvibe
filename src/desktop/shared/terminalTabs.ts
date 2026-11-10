@@ -23,7 +23,7 @@ export interface TerminalTabListResult {
 }
 
 /**
- * Electron main이 `before-input-event`에서 가로챈 탭 단축키를 렌더러로 넘길 때 쓰는 명령.
+ * Tauri bridge이 `before-input-event`에서 가로챈 탭 단축키를 렌더러로 넘길 때 쓰는 명령.
  * 터미널이 입력을 먼저 소비하지 않도록 키 판정은 main에서 끝내고 의미만 전달한다.
  */
 export type TerminalTabShortcutCommand =

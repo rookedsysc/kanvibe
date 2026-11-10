@@ -9,7 +9,7 @@ import type {
   AiUsageSnapshot,
   AiUsageWindow,
   AiUsageWindowKind,
-} from "@/lib/aiUsage/types";
+} from "@/desktop/shared/contracts/lib-aiUsage-types";
 
 /** 한도가 가까워지는 구간. 이 위부터는 강조색이 아니라 심각도 색으로 알린다 */
 const HIGH_USAGE_PERCENT = 90;

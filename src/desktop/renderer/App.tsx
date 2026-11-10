@@ -24,7 +24,7 @@ import {
   readShortcutBindings,
 } from "@/desktop/renderer/utils/shortcutBindings";
 import { findShortcutCommandForEvent, resolveTerminalTabCommand } from "@/desktop/shared/shortcutBindings";
-import type { BoardEventPayload } from "@/lib/boardNotifier";
+import type { BoardEventPayload } from "@/desktop/shared/contracts/lib-boardNotifier";
 import type { TerminalTabShortcutCommand } from "@/desktop/shared/terminalTabs";
 
 const BOARD_REFRESH_DEBOUNCE_MS = 250;
@@ -155,7 +155,7 @@ export default function App() {
   /**
    * 창 닫기는 터미널이 없는 화면에서도 동작해야 하므로 라우트가 아니라 여기서 받는다.
    * 나머지 탭 명령은 터미널을 가진 태스크 상세만 의미가 있어 그쪽에서 처리한다.
-   * 다른 단축키와 같이 Electron `before-input-event`와 렌더러 keydown 두 경로를 모두 받는다.
+   * 다른 단축키와 같이 Tauri capture-phase keydown와 렌더러 keydown 두 경로를 모두 받는다.
    */
   useEffect(() => {
     const closeWindowIfRequested = (command: TerminalTabShortcutCommand) => {

@@ -1,3 +1,4 @@
+import { confirmAction } from "@/desktop/renderer/utils/dialogs";
 import { getGitHubCliStatus, installGitHubCli } from "@/desktop/renderer/actions/githubCliDependency";
 
 interface TranslationFn {
@@ -16,7 +17,7 @@ export async function ensureGitHubCliWithPrompt(
   const target = status.isRemote
     ? tCommon("sessionDependency.remoteTarget", { host: status.sshHost ?? "remote" })
     : tCommon("sessionDependency.localTarget");
-  const shouldInstall = window.confirm(
+  const shouldInstall = await confirmAction(
     tCommon("sessionDependency.installPrompt", {
       tool: status.toolName,
       target,

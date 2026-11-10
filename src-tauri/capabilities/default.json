@@ -1,0 +1,1 @@
+{"$schema":"../gen/schemas/desktop-schema.json","identifier":"default","description":"Local KanVibe windows","windows":["main","task-*"],"permissions":["core:default","opener:default","notification:default","dialog:allow-message"]}

@@ -2,8 +2,8 @@ import { invokeDesktop } from "@/desktop/renderer/ipc";
 import type {
   AiAccountMutationResult,
   AiAccountSummary,
-} from "@/desktop/main/services/aiAccountService";
-import type { AiUsageProvider } from "@/lib/aiUsage/types";
+} from "@/desktop/shared/contracts/desktop-main-services-aiAccountService";
+import type { AiUsageProvider } from "@/desktop/shared/contracts/lib-aiUsage-types";
 
 export function listAiAccounts(): Promise<AiAccountSummary[]> {
   return invokeDesktop("aiAccounts", "listAiAccounts");

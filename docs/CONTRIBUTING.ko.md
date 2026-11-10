@@ -11,6 +11,7 @@ KanVibe에 관심을 가져주셔서 감사합니다! 이 가이드가 시작하
 ### 사전 요구사항
 
 - Node.js 24.x (`.nvmrc` 참조)
+- Rust 1.90 이상 + Cargo 및 [Tauri 플랫폼 사전 요구사항](https://v2.tauri.app/start/prerequisites/)
 - pnpm
 - Herdr, tmux 또는 zellij (터미널 기능용)
 
@@ -21,20 +22,16 @@ KanVibe에 관심을 가져주셔서 감사합니다! 이 가이드가 시작하
 git clone https://github.com/rookedsysc/kanvibe.git
 cd kanvibe
 
-# 환경변수 복사
-cp .env.example .env
-
 # 의존성 설치
 pnpm install
 
-# 내장 데이터베이스 준비
-pnpm db:prepare
-
-# 개발 서버 시작
+# 개발 모드로 Tauri 데스크톱 앱 실행
 pnpm dev
 ```
 
-브라우저에서 `http://localhost:4885` 접속.
+`pnpm dev`를 실행하면 네이티브 Tauri 데스크톱 창이 열리고 React 렌더러용 Vite가 실행됩니다. SQLite는 앱 시작 시 자동으로 초기화됩니다.
+
+선택적 런타임 설정은 [.env.example](../.env.example)을 참조하세요. 변수는 데스크톱 앱 프로세스에 명시적으로 전달해야 하며 앱은 `.env`를 자동으로 읽지 않습니다.
 
 ### 릴리스 빌드
 
@@ -42,9 +39,10 @@ pnpm dev
 pnpm dist
 ```
 
-이 명령은 renderer 번들을 빌드하고, 데스크톱 main process를 `build/main`으로 컴파일하고, 번들 seed DB를 생성한 뒤 Electron Builder로 macOS DMG를 패키징합니다.
+`pnpm dist`는 React 렌더러와 Rust 백엔드를 빌드한 뒤 Tauri 데스크톱 설치 파일을 생성합니다.
 
-- macOS 산출물: `dist/KanVibe-${version}.dmg`
+- 데스크톱 설치 파일: `src-tauri/target/release/bundle/`
+- macOS DMG: `src-tauri/target/release/bundle/dmg/`
 - Homebrew cask: `Casks/kanvibe.rb` 갱신
 
 ---
@@ -57,7 +55,8 @@ pnpm dist
    ```bash
    pnpm build    # 빌드 성공
    pnpm check    # 타입 체크 통과
-   pnpm test     # 테스트 통과
+   pnpm test     # React 동작 테스트 통과
+   pnpm test:rust # Rust 서비스·저장소 테스트 통과
    ```
 
 2. **동작하는 스크린샷 또는 GIF를 첨부하세요.** 기능 동작을 시각적으로 증명하지 않은 PR은 머지되지 않습니다.
@@ -66,14 +65,14 @@ pnpm dist
    - TypeScript strict 모드
    - Tailwind CSS v4 + 디자인 토큰 (CSS 변수)
    - next-intl로 모든 사용자 텍스트 처리
-   - 내장 SQLite + TypeORM 데이터 접근
+   - 내장 SQLite + rusqlite 데이터 접근
 
 ### PR 프로세스
 
 1. 저장소를 Fork
 2. `main`에서 feature 브랜치 생성
 3. 변경 사항 작성
-4. 모든 체크 실행 (`pnpm build && pnpm check && pnpm test`)
+4. 모든 체크 실행 (`pnpm build && pnpm check && pnpm test && pnpm test:rust`)
 5. [Conventional Commits](https://www.conventionalcommits.org/) 형식으로 커밋
 6. Push 후 Pull Request 생성
 7. 동작하는 기능의 스크린샷/GIF 첨부
@@ -101,14 +100,14 @@ refactor(scope): 코드 구조 개선
 
 ## 데이터베이스 변경
 
-KanVibe는 내장 SQLite 데이터베이스를 사용합니다. 엔티티 구조를 바꿀 때는 SQLite 부트스트랩 스키마도 함께 갱신해야 합니다:
+네이티브 앱이 시작되면 `src-tauri/src/database.rs`에서 SQLite를 초기화하고 호환성 변경을 적용합니다. 테이블이나 저장 필드를 변경할 때는 이 파일의 스키마와 호환성 마이그레이션을 함께 갱신하고, 기존 사용자 데이터를 보존하는 Rust 마이그레이션 테스트를 추가하세요.
 
 ```bash
-# 번들 seed DB 다시 생성
-pnpm db:prepare
+# Rust 서비스·저장소·스키마 호환성 검증
+pnpm test:rust
 ```
 
-`src/lib/sqliteSchema.ts`와 TypeORM 엔티티를 항상 같이 맞춰 주세요.
+별도의 seed 데이터베이스 생성은 필요하지 않습니다.
 
 ---
 
@@ -119,7 +118,7 @@ pnpm db:prepare
 | 변경 내용 | 업데이트 대상 |
 |-----------|--------------|
 | 기능 또는 UI | `README.md`, `docs/README.ko.md`, `docs/README.zh.md` |
-| 기여 프로세스 | `docs/CONTRIBUTING.md`, `docs/CONTRIBUTING.ko.md`, `docs/CONTRIBUTING.zh.md` |
+| 기여 프로세스 | `CONTRIBUTING.md`, `docs/CONTRIBUTING.ko.md`, `docs/CONTRIBUTING.zh.md` |
 | 환경변수 | `.env.example` + 모든 README 파일 |
 | Hook API | 모든 README 파일 (Hook API 섹션) |
 

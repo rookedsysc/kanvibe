@@ -910,7 +910,7 @@ describe("Board defaultSessionType sync", () => {
 
     expect(secondD.defaultPrevented).toBe(true);
     expect(confirmMock).toHaveBeenCalledWith("deleteConfirm");
-    expect(deleteTask).toHaveBeenCalledWith("task-1");
+    await waitFor(() => expect(deleteTask).toHaveBeenCalledWith("task-1"));
     await waitFor(() => {
       expect(screen.queryByRole("link", { name: "Test Task" })).toBeNull();
     });
@@ -946,7 +946,7 @@ describe("Board defaultSessionType sync", () => {
     fireEvent.keyDown(taskLink, { key: "d" });
 
     expect(confirmMock).toHaveBeenCalledWith("deleteConfirm");
-    expect(deleteTask).toHaveBeenCalledWith("task-1");
+    await waitFor(() => expect(deleteTask).toHaveBeenCalledWith("task-1"));
     expect(screen.getByRole("link", { name: "Test Task" })).toBeTruthy();
 
     resolveDelete(true);
@@ -1037,7 +1037,7 @@ describe("Board defaultSessionType sync", () => {
 
     expect(secondD.defaultPrevented).toBe(true);
     expect(confirmMock).toHaveBeenCalledWith("deleteConfirm");
-    expect(deleteTask).toHaveBeenCalledWith("task-1");
+    await waitFor(() => expect(deleteTask).toHaveBeenCalledWith("task-1"));
     await waitFor(() => {
       expect(screen.queryByRole("link", { name: "Test Task" })).toBeNull();
     });
@@ -1074,7 +1074,7 @@ describe("Board defaultSessionType sync", () => {
     fireEvent.click(await screen.findByRole("button", { name: "delete-task" }));
 
     expect(confirmMock).toHaveBeenCalledWith("deleteConfirm");
-    expect(deleteTask).toHaveBeenCalledWith("task-1");
+    await waitFor(() => expect(deleteTask).toHaveBeenCalledWith("task-1"));
     expect(screen.getByRole("link", { name: "Test Task" })).toBeTruthy();
 
     resolveDelete(true);

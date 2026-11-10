@@ -9,7 +9,7 @@
 
 **Your AI coding work, on one board. Keep it moving from your phone.**
 
-KanVibe is a keyboard-first macOS Kanban workspace for AI coding agents. Run Claude Code, Codex, Gemini CLI, and OpenCode in task workspaces that keep each branch, git worktree, and terminal together. See progress on one Kanban board, then open the same running terminal from your phone or tablet to read output and send the next command.
+KanVibe is a keyboard-first macOS Kanban workspace powered by Tauri for AI coding agents. Run Claude Code, Codex, Gemini CLI, and OpenCode in task workspaces that keep each branch, git worktree, and terminal together. See progress on one Kanban board, then open the same running terminal from your phone or tablet to read output and send the next command.
 
 **[Install Desktop](https://kanvibe.rookedsysc.com/en/installation)** → [Pair your phone](https://kanvibe.rookedsysc.com/en/mobile) · [Documentation](https://kanvibe.rookedsysc.com/en)
 
@@ -185,7 +185,7 @@ Each pane can run a custom command (e.g., `vim`, `htop`, `lazygit`, test runner,
 - Drag & drop task ordering with project colors, priority markers, PR badges, and session labels
 - Multi-project filtering with keyboard search for visible project and task text
 - Done column pagination for long-running projects
-- Real-time WebSocket updates across browser and desktop windows
+- Real-time updates across desktop windows through Tauri IPC; mobile connections use WebSocket
 
 ### Branch-Based Task Workspace
 - Create branch TODOs that automatically prepare a git worktree and terminal session
@@ -196,7 +196,7 @@ Each pane can run a custom command (e.g., `vim`, `htop`, `lazygit`, test runner,
 
 ### Terminal Sessions (tmux / zellij / Herdr)
 - **tmux**, **zellij**, and **Herdr** are supported as terminal multiplexers
-- Browser-based terminal streaming through xterm.js and WebSocket
+- Embedded terminal streaming through xterm.js, Tauri IPC, and the Rust PTY backend
 - SSH remote terminal support that reads `~/.ssh/config`
 - Non-interactive remote SSH commands reuse an app-local ControlMaster socket pool under `~/.kanvibe`, with per-host concurrency capped at 4x available CPU cores
 - Remote terminal attach executes tmux/zellij/Herdr directly over SSH; trusted X11 forwarding (`ssh -Y`) is requested only when local `DISPLAY`, remote `X11Forwarding`, and `xauth` are available
@@ -323,7 +323,7 @@ User answers question (question.replied)        → PROGRESS
 Session idle (session.idle)                     → REVIEW
 ```
 
-OpenCode uses its own [plugin system](https://opencode.ai/docs/plugins/) instead of shell-script hooks. KanVibe generates a TypeScript plugin at `.opencode/plugins/kanvibe-plugin.ts` that subscribes to OpenCode's native event hooks (`message.updated`, `question.asked`, `question.replied`, and `session.idle`) via the `@opencode-ai/plugin` SDK. This means status updates are handled in-process without spawning external shell commands.
+OpenCode uses its own [plugin system](https://opencode.ai/docs/plugins/) instead of shell-script hooks. KanVibe generates a JavaScript plugin at `.opencode/plugins/kanvibe-plugin.js` that subscribes to OpenCode's native event hooks (`message.updated`, `question.asked`, `question.replied`, and `session.idle`) via the `@opencode-ai/plugin` SDK. This means status updates are handled in-process without spawning external shell commands.
 
 All agent hooks are **auto-installed** when you register a project through KanVibe's directory scan or create a task with a worktree. You can also install them individually from the task detail page.
 
@@ -334,30 +334,31 @@ All agent hooks are **auto-installed** when you register a project through KanVi
 | Codex CLI | `.codex/hooks/` | `.codex/config.toml`, `.codex/hooks.json` |
 | OpenCode | `.opencode/plugins/` | Plugin auto-discovery |
 
-#### Browser Notifications
+#### Desktop Notifications
 
-Task status changes via AI Agent Hooks trigger **browser notifications** with project, branch, and status. **Click to jump directly to the task detail page.**
+Task status changes via AI Agent Hooks trigger **native OS notifications** with project, branch, and status. **Click to jump directly to the task detail page.**
 
 - **Real-time alerts** — Instant notifications for task status changes
 - **Background mode** — Notifications work even when KanVibe is not focused
 - **Smart navigation** — Click notification → task detail page (with correct language)
 - **Configurable** — Enable/disable per project and filter by status (PROGRESS, PENDING, REVIEW, DONE)
 
-Setup: Browser will prompt for permission on first visit. Configure filters in **Project Settings** → **Notifications**.
+Setup: Allow KanVibe notifications in your operating system settings. Configure filters in **Project Settings** → **Notifications**.
 
 #### Hook API Endpoints
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/api/hooks/status` | POST | Update task status by `taskId` + `status`; if the target is missing, KanVibe still sends a browser notification and returns `404` without changing status |
+| `/api/hooks/start` | POST | Create a new task |
+| `/api/hooks/status` | POST | Update task status with `taskId` and `status`; if the target is missing, KanVibe sends a desktop notification and returns `404` without changing status |
 
 ### GitHub-style Diff View
 
-Review code changes directly in the browser with a GitHub-style diff viewer. Click the **Diff** badge on the task detail page to see all modified files compared to the base branch.
+Review code changes directly in the desktop app with a GitHub-style diff viewer. Click the **Diff** badge on the task detail page to see all modified files compared to the base branch.
 
 - File tree sidebar with changed file count
 - Inline diff viewer powered by Monaco Editor
-- Edit mode for quick fixes directly in the browser
+- Edit mode for quick fixes directly in the app
 - Viewed file tracking with checkboxes
 
 ### Pane Layout Editor
@@ -371,18 +372,37 @@ Review code changes directly in the browser with a GitHub-style diff viewer. Cli
 
 ---
 
+## Build from source
+
+Install Rust 1.90 or later, Node.js 24, pnpm, and the [Tauri platform prerequisites](https://v2.tauri.app/start/prerequisites/).
+
+```bash
+pnpm install
+pnpm dev          # Open the native Tauri desktop window
+pnpm check
+pnpm test         # React behavior tests
+pnpm test:rust    # Rust services and persistence tests
+pnpm dist         # Native desktop installer
+```
+
+`pnpm dev` opens a native desktop window and runs Vite for the React renderer. `pnpm dist` writes platform installers to `src-tauri/target/release/bundle/`.
+
+React renders the existing UI. Rust owns SQLite, Git/worktrees, PTY/SSH sessions, hooks, AI integrations, and the mobile API. No Node.js runtime is bundled. Existing `kanvibe.db` data is opened with compatible storage mappings; `KANVIBE_APP_DATA_DIR` or `KANVIBE_DB_PATH` can select an isolated data location. Rust initializes the schema and applies compatibility changes on startup in `src-tauri/src/database.rs`; no seed database generation is required.
+
+Runtime options are documented in [.env.example](./.env.example). Pass them explicitly to the desktop app process; the app does not automatically load `.env`. `KANVIBE_HOOK_PORT` selects the hook/mobile API port, which defaults to `19736` in development and `9736` in release builds.
+
 ## Tech Stack
 
 | Category | Technology |
 |----------|------------|
-| Frontend/Backend | Next.js 16 (App Router) + React 19 + TypeScript |
-| Database | SQLite + TypeORM + better-sqlite3 |
+| Frontend/Backend | React 19 + TypeScript (UI) / Tauri 2 + Rust (backend) |
+| Database | SQLite + rusqlite |
 | Styling | Tailwind CSS v4 |
-| Terminal | xterm.js + WebSocket + node-pty |
+| Terminal | xterm.js + Tauri IPC + portable-pty |
 | SSH | system ssh binary |
 | Drag & Drop | @hello-pangea/dnd |
 | i18n | next-intl |
-| Desktop Packaging | Electron + Electron Builder |
+| Desktop Packaging | Tauri 2 + Cargo |
 | Mobile | Flutter + xterm.dart |
 
 ---

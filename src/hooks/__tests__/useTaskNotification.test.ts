@@ -221,7 +221,7 @@ describe("useTaskNotification", () => {
     expect(mockRequestPermission).toHaveBeenCalled();
   });
 
-  it("should use Electron native notification bridge on desktop", async () => {
+  it("should use Tauri native notification bridge on desktop", async () => {
     window.kanvibeDesktop = {
       isDesktop: true,
       showNotification: mockDesktopShowNotification,
@@ -235,7 +235,7 @@ describe("useTaskNotification", () => {
     await act(async () => {
       await result.current.notifyTaskStatusChanged({
         projectName: "kanvibe",
-        branchName: "feat/electron",
+        branchName: "feat/tauri",
         taskTitle: "네이티브 알림",
         description: "OS 알림 테스트",
         newStatus: "review",
@@ -245,7 +245,7 @@ describe("useTaskNotification", () => {
     });
 
     expect(mockDesktopShowNotification).toHaveBeenCalledWith({
-      title: "kanvibe — feat/electron",
+      title: "kanvibe — feat/tauri",
       body: "네이티브 알림: review로 변경\nOS 알림 테스트",
       taskId: "task-desktop",
       locale: "ko",

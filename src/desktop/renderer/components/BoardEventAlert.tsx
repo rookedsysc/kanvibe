@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
-import type { BoardEventPayload } from "@/lib/boardNotifier";
+import type { BoardEventPayload } from "@/desktop/shared/contracts/lib-boardNotifier";
 
 const AUTO_DISMISS_MS = 5000;
 

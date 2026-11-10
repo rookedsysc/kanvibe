@@ -17,7 +17,7 @@ import {
 import ProjectIcon from "@/components/ProjectIcon";
 import { TaskCardLiveSessions } from "@/components/TaskCardLiveSessions";
 import { TaskDiffStatsBadge } from "@/components/TaskDiffStats";
-import type { RunningAgentPane } from "@/lib/aiSessions/types";
+import type { RunningAgentPane } from "@/desktop/shared/contracts/lib-aiSessions-types";
 import type { TaskDiffStats } from "@/desktop/shared/taskDiffStats";
 
 interface ContextMenuPosition {

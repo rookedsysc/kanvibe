@@ -11,6 +11,7 @@
 ### 前置要求
 
 - Node.js 24.x（参见 `.nvmrc`）
+- Rust 1.90 或更新版本、Cargo 和 [Tauri 平台前置要求](https://v2.tauri.app/start/prerequisites/)
 - pnpm
 - Herdr、tmux 或 zellij（用于终端功能）
 
@@ -21,20 +22,16 @@
 git clone https://github.com/rookedsysc/kanvibe.git
 cd kanvibe
 
-# 复制环境变量
-cp .env.example .env
-
 # 安装依赖
 pnpm install
 
-# 准备内置数据库
-pnpm db:prepare
-
-# 启动开发服务器
+# 以开发模式启动 Tauri 桌面应用
 pnpm dev
 ```
 
-在浏览器中打开 `http://localhost:4885`。
+运行 `pnpm dev` 会打开原生 Tauri 桌面窗口，并启动用于 React 渲染器的 Vite。SQLite 会在应用启动时自动初始化。
+
+可选运行时设置请参阅 [.env.example](../.env.example)。请将变量显式传给桌面应用进程；应用不会自动加载 `.env`。
 
 ### 发布构建
 
@@ -42,9 +39,10 @@ pnpm dev
 pnpm dist
 ```
 
-该命令会构建 renderer bundle，将桌面 main process 编译到 `build/main`，生成随包附带的 seed DB，并通过 Electron Builder 打包 macOS DMG。
+`pnpm dist` 会构建 React 渲染器和 Rust 后端，并生成 Tauri 桌面安装包。
 
-- macOS 输出：`dist/KanVibe-${version}.dmg`
+- 桌面安装包：`src-tauri/target/release/bundle/`
+- macOS DMG：`src-tauri/target/release/bundle/dmg/`
 - Homebrew cask：更新 `Casks/kanvibe.rb`
 
 ---
@@ -57,7 +55,8 @@ pnpm dist
    ```bash
    pnpm build    # 构建成功
    pnpm check    # 类型检查通过
-   pnpm test     # 测试通过
+   pnpm test     # React 行为测试通过
+   pnpm test:rust # Rust 服务和持久化测试通过
    ```
 
 2. **附上工作截图或 GIF** 展示您的更改。没有功能运行视觉证据的 PR 将不会被合并。
@@ -66,14 +65,14 @@ pnpm dist
    - TypeScript 严格模式
    - Tailwind CSS v4 + 设计令牌（CSS 变量）
    - next-intl 处理所有面向用户的字符串
-   - 内置 SQLite + TypeORM 数据访问
+   - 内置 SQLite + rusqlite 数据访问
 
 ### PR 流程
 
 1. Fork 仓库
 2. 从 `main` 创建功能分支
 3. 进行更改
-4. 运行所有检查（`pnpm build && pnpm check && pnpm test`）
+4. 运行所有检查（`pnpm build && pnpm check && pnpm test && pnpm test:rust`）
 5. 使用 [Conventional Commits](https://www.conventionalcommits.org/) 格式提交
 6. Push 并创建 Pull Request
 7. 附上功能运行的截图/GIF
@@ -101,14 +100,14 @@ refactor(scope): 代码重构
 
 ## 数据库更改
 
-KanVibe 使用内置 SQLite 数据库。修改实体结构时，也要同步更新 SQLite 引导 schema：
+原生应用启动时，会通过 `src-tauri/src/database.rs` 初始化 SQLite 并应用兼容性更改。修改表或存储字段时，请同步更新此文件中的 schema 和兼容性迁移，保留现有用户数据，并添加 Rust 迁移测试。
 
 ```bash
-# 重新生成随包附带的 seed DB
-pnpm db:prepare
+# 验证 Rust 服务、持久化和 schema 兼容性
+pnpm test:rust
 ```
 
-请始终保持 `src/lib/sqliteSchema.ts` 与 TypeORM 实体定义一致。
+无需单独生成 seed 数据库。
 
 ---
 
@@ -119,7 +118,7 @@ pnpm db:prepare
 | 更改内容 | 需要更新 |
 |----------|----------|
 | 功能或 UI | `README.md`、`docs/README.ko.md`、`docs/README.zh.md` |
-| 贡献流程 | `docs/CONTRIBUTING.md`、`docs/CONTRIBUTING.ko.md`、`docs/CONTRIBUTING.zh.md` |
+| 贡献流程 | `CONTRIBUTING.md`、`docs/CONTRIBUTING.ko.md`、`docs/CONTRIBUTING.zh.md` |
 | 环境变量 | `.env.example` + 所有 README 文件 |
 | Hook API | 所有 README 文件（Hook API 部分） |
 

@@ -1,5 +1,6 @@
 "use client";
 
+import { confirmAction } from "@/desktop/renderer/utils/dialogs";
 import { useState, useCallback, useEffect, useMemo, useRef, useTransition } from "react";
 import { useLocale, useTranslations } from "next-intl";
 import { DragDropContext, type DropResult } from "@hello-pangea/dnd";
@@ -689,7 +690,7 @@ export default function Board({
       pendingTaskDeleteSequenceRef.current = { taskId, timeoutId };
     }
 
-    function handleWindowTaskDeleteSequence(event: KeyboardEvent) {
+    async function handleWindowTaskDeleteSequence(event: KeyboardEvent) {
       const runtime = taskDeleteRuntimeRef.current;
       if (!runtime.vimModeEnabled) return;
 
@@ -724,7 +725,7 @@ export default function Board({
       if (pendingTaskDeleteSequenceRef.current?.taskId === taskId) {
         resetPendingTaskDeleteSequence();
         const task = findTaskById(runtime.displayedTasks, taskId);
-        if (task && confirm(runtime.deleteConfirmMessage)) {
+        if (task && await confirmAction(runtime.deleteConfirmMessage)) {
           void deleteTaskFromBoard(task);
         }
         return;
@@ -945,9 +946,9 @@ export default function Board({
     setContextMenu((prev) => ({ ...prev, isOpen: false }));
   }, [contextMenu.task]);
 
-  const handleDeleteFromCard = useCallback(() => {
+  const handleDeleteFromCard = useCallback(async () => {
     const task = contextMenu.task;
-    if (task && confirm(tt("deleteConfirm"))) {
+    if (task && await confirmAction(tt("deleteConfirm"))) {
       void deleteTaskFromBoard(task);
     }
     handleCloseContextMenu();

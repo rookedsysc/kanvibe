@@ -11,6 +11,7 @@ Thank you for your interest in contributing to KanVibe! This guide will help you
 ### Prerequisites
 
 - Node.js 24.x (see `.nvmrc`)
+- Rust 1.90 or later + Cargo and the [Tauri system prerequisites](https://v2.tauri.app/start/prerequisites/)
 - pnpm
 - Herdr, tmux, or zellij (for terminal features)
 
@@ -21,20 +22,16 @@ Thank you for your interest in contributing to KanVibe! This guide will help you
 git clone https://github.com/rookedsysc/kanvibe.git
 cd kanvibe
 
-# Copy environment variables
-cp .env.example .env
-
 # Install dependencies
 pnpm install
 
-# Prepare embedded database
-pnpm db:prepare
-
-# Start development server
+# Open the Tauri desktop app in development mode
 pnpm dev
 ```
 
-Open `http://localhost:4885` in your browser.
+`pnpm dev` opens the native Tauri desktop window and runs Vite for the React renderer. SQLite is initialized automatically when the app starts.
+
+Optional runtime settings are listed in [.env.example](./.env.example). Pass variables explicitly to the desktop app process; the app does not automatically load `.env`.
 
 ### Release Build
 
@@ -42,9 +39,10 @@ Open `http://localhost:4885` in your browser.
 pnpm dist
 ```
 
-This builds the renderer bundle, compiles the desktop main process into `build/main`, generates the bundled seed database, and packages the macOS DMG through Electron Builder.
+`pnpm dist` builds the React renderer and Rust backend, then packages the desktop app with Tauri.
 
-- macOS output: `dist/KanVibe-${version}.dmg`
+- Desktop installers: `src-tauri/target/release/bundle/`
+- macOS DMG: `src-tauri/target/release/bundle/dmg/`
 - Homebrew cask: update `Casks/kanvibe.rb`
 
 ---
@@ -57,7 +55,8 @@ This builds the renderer bundle, compiles the desktop main process into `build/m
    ```bash
    pnpm build    # Build must succeed
    pnpm check    # Type check must pass
-   pnpm test     # Tests must pass
+   pnpm test     # React behavior tests must pass
+   pnpm test:rust # Rust service and persistence tests must pass
    ```
 
 2. **Include a working screenshot or GIF** demonstrating your change. PRs without visual proof of functionality will not be merged.
@@ -66,14 +65,14 @@ This builds the renderer bundle, compiles the desktop main process into `build/m
    - TypeScript strict mode
    - Tailwind CSS v4 with design tokens (CSS variables)
    - next-intl for all user-facing strings
-   - Embedded SQLite + TypeORM data access
+   - Embedded SQLite + rusqlite data access
 
 ### PR Process
 
 1. Fork the repository
 2. Create a feature branch from `main`
 3. Make your changes
-4. Run all checks (`pnpm build && pnpm check && pnpm test`)
+4. Run all checks (`pnpm build && pnpm check && pnpm test && pnpm test:rust`)
 5. Commit with [Conventional Commits](https://www.conventionalcommits.org/) format
 6. Push and create a Pull Request
 7. Attach a screenshot/GIF of the working feature
@@ -101,14 +100,14 @@ All user-facing strings must be translated. When adding or modifying UI text:
 
 ## Database Changes
 
-KanVibe uses an embedded SQLite database. When you change entity structure, update the SQLite bootstrap schema as well:
+KanVibe initializes SQLite and applies compatibility changes in `src-tauri/src/database.rs` when the native app starts. When changing tables or stored fields, update this schema and its compatibility migrations, preserve existing user rows, and add Rust migration tests.
 
 ```bash
-# Rebuild the bundled seed database
-pnpm db:prepare
+# Verify Rust services, persistence, and schema compatibility
+pnpm test:rust
 ```
 
-Keep `src/lib/sqliteSchema.ts` and the TypeORM entities in sync.
+No seed database generation is required.
 
 ---
 
@@ -119,7 +118,7 @@ When making changes that affect user-facing behavior, update the corresponding d
 | Changed | Update |
 |---------|--------|
 | Features or UI | `README.md`, `docs/README.ko.md`, `docs/README.zh.md` |
-| Contributing process | `docs/CONTRIBUTING.md`, `docs/CONTRIBUTING.ko.md`, `docs/CONTRIBUTING.zh.md` |
+| Contributing process | `CONTRIBUTING.md`, `docs/CONTRIBUTING.ko.md`, `docs/CONTRIBUTING.zh.md` |
 | Environment variables | `.env.example` + all README files |
 | Hook API | All README files (Hook API section) |
 

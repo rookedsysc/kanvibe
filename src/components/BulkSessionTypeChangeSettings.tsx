@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { useTranslations } from "next-intl";
 import { changeAllTaskSessionTypes, getSessionTypeChangeTargets } from "@/desktop/renderer/actions/kanban";
 import { ensureSessionDependencyWithPrompt } from "@/desktop/renderer/utils/sessionDependencyPrompt";
+import { confirmAction } from "@/desktop/renderer/utils/dialogs";
 import type { SessionType } from "@/entities/KanbanTask";
 import SessionTypeOptions from "./SessionTypeOptions";
 
@@ -40,7 +41,7 @@ export default function BulkSessionTypeChangeSettings({ defaultSessionType }: Bu
           return;
         }
 
-        const isChangeConfirmed = window.confirm(t("bulkSessionTypeChangeConfirm", {
+        const isChangeConfirmed = await confirmAction(t("bulkSessionTypeChangeConfirm", {
           count: targets.taskCount,
           sessionType: selectedSessionType,
         }));
@@ -49,7 +50,7 @@ export default function BulkSessionTypeChangeSettings({ defaultSessionType }: Bu
         }
 
         const shouldCloseExistingSessions = targets.liveSessionCount > 0
-          && window.confirm(t("bulkCloseExistingSessionsConfirm", { count: targets.liveSessionCount }));
+          && await confirmAction(t("bulkCloseExistingSessionsConfirm", { count: targets.liveSessionCount }));
         const result = await changeAllTaskSessionTypes(selectedSessionType, shouldCloseExistingSessions);
         setResultMessage(t("bulkSessionTypeChangeResult", {
           changedCount: result.changedCount,

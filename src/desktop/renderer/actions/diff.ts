@@ -1,5 +1,5 @@
 import { invokeDesktop } from "@/desktop/renderer/ipc";
-import type { DiffFile } from "@/desktop/main/services/diffService";
+import type { DiffFile } from "@/desktop/shared/contracts/desktop-main-services-diffService";
 import type { TaskDiffStats } from "@/desktop/shared/taskDiffStats";
 
 export type { DiffFile };

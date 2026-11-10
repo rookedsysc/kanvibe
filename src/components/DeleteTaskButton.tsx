@@ -1,5 +1,6 @@
 "use client";
 
+import { confirmAction } from "@/desktop/renderer/utils/dialogs";
 import { useTranslations } from "next-intl";
 
 interface DeleteTaskButtonProps {
@@ -13,10 +14,9 @@ export default function DeleteTaskButton({
 
   return (
     <form
-      action={deleteAction}
-      onSubmit={(e) => {
-        if (!confirm(t("deleteConfirm"))) {
-          e.preventDefault();
+      action={async () => {
+        if (await confirmAction(t("deleteConfirm"))) {
+          await deleteAction();
         }
       }}
     >

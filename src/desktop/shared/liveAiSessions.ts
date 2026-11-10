@@ -1,4 +1,4 @@
-import type { AgentCallNode, AiSessionProvider, RunningAgentPane } from "@/lib/aiSessions/types";
+import type { AgentCallNode, AiSessionProvider, RunningAgentPane } from "@/desktop/shared/contracts/lib-aiSessions-types";
 
 /**
  * 같은 worktree에서 도는 pane만 남긴다. 하위 디렉터리에서 실행한 에이전트도 그 worktree의 것으로 본다.

@@ -5,6 +5,7 @@ import { useTranslations } from "next-intl";
 import { useRouter } from "@/desktop/renderer/navigation";
 import { changeTaskSessionType, isTaskSessionAlive } from "@/desktop/renderer/actions/kanban";
 import { ensureSessionDependencyWithPrompt } from "@/desktop/renderer/utils/sessionDependencyPrompt";
+import { confirmAction } from "@/desktop/renderer/utils/dialogs";
 import type { SessionType } from "@/entities/KanbanTask";
 import SessionTypeOptions from "./SessionTypeOptions";
 
@@ -37,7 +38,7 @@ export default function SessionTypeEditor({ taskId, currentSessionType, sshHost 
 
         const isExistingSessionAlive = await isTaskSessionAlive(taskId);
         const shouldCloseExistingSession = isExistingSessionAlive
-          && window.confirm(t("closeExistingSessionConfirm", { sessionType: currentSessionType }));
+          && await confirmAction(t("closeExistingSessionConfirm", { sessionType: currentSessionType }));
         const changedTask = await changeTaskSessionType(taskId, nextSessionType, shouldCloseExistingSession);
         if (!changedTask) {
           setError(t("sessionTypeChangeFailed"));

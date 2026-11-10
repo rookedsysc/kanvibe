@@ -8,9 +8,7 @@ import {
   createTerminalTabShortcut,
   formatShortcutForDisplay,
   getShortcutPlatformFromNavigator,
-  isBlockedElectronShortcutInput,
   isBlockedShortcutEvent,
-  matchElectronShortcutInput,
   matchShortcutEvent,
 } from "@/desktop/renderer/utils/keyboardShortcut";
 
@@ -177,70 +175,6 @@ describe("keyboardShortcut", () => {
     })).toBe("linux");
   });
 
-  it("Electron input도 platform별 Mod 조합으로 매칭한다", () => {
-    expect(matchElectronShortcutInput({
-      type: "keyDown",
-      isAutoRepeat: false,
-      key: "n",
-      meta: true,
-      control: false,
-      alt: false,
-      shift: false,
-    }, "Mod+N", "mac")).toBe(true);
-
-    expect(matchElectronShortcutInput({
-      type: "keyDown",
-      isAutoRepeat: false,
-      key: "n",
-      meta: true,
-      control: false,
-      alt: false,
-      shift: false,
-    }, "Mod+N", "linux")).toBe(false);
-  });
-
-  it("Electron 페이지 이동 input도 macOS Cmd와 Linux Ctrl로 매칭한다", () => {
-    expect(matchElectronShortcutInput({
-      type: "keyDown",
-      isAutoRepeat: false,
-      key: "[",
-      meta: true,
-      alt: false,
-      control: false,
-      shift: false,
-    }, SHORTCUTS.pageBack, "mac")).toBe(true);
-
-    expect(matchElectronShortcutInput({
-      type: "keyDown",
-      isAutoRepeat: false,
-      key: "]",
-      meta: true,
-      alt: false,
-      control: false,
-      shift: false,
-    }, SHORTCUTS.pageForward, "mac")).toBe(true);
-
-    expect(matchElectronShortcutInput({
-      type: "keyDown",
-      isAutoRepeat: false,
-      key: "[",
-      alt: false,
-      meta: false,
-      control: true,
-      shift: false,
-    }, SHORTCUTS.pageBack, "linux")).toBe(true);
-
-    expect(matchElectronShortcutInput({
-      type: "keyDown",
-      isAutoRepeat: false,
-      key: "]",
-      alt: false,
-      meta: false,
-      control: true,
-      shift: false,
-    }, SHORTCUTS.pageForward, "linux")).toBe(true);
-  });
-
   it("상세 dock shortcut은 macOS Cmd+숫자와 Linux Ctrl+숫자로 표시하고 매칭한다", () => {
     expect(TASK_DETAIL_DOCK_SHORTCUT_INDEXES).toEqual([1, 2, 3, 4, 5, 6]);
     expect(formatShortcutForDisplay(createTaskDetailDockShortcut(1), "mac")).toBe("Cmd+1");
@@ -286,15 +220,6 @@ describe("keyboardShortcut", () => {
       ctrlKey: true,
       shiftKey: true,
     }), "linux")).toBe(false);
-  });
-
-  it("Electron Cmd/Ctrl+R input도 앱에서 차단할 shortcut으로 판별한다", () => {
-    expect(isBlockedElectronShortcutInput({
-      type: "keyDown",
-      isAutoRepeat: false,
-      key: "r",
-      control: true,
-    }, "linux")).toBe(true);
   });
 
   it("Cmd/Ctrl+R은 사용자 지정 shortcut으로 캡처하지 않는다", () => {

@@ -11,8 +11,9 @@ uv run scripts/generate-brand-assets.py
 | 소비 위치 | 생성 파일 |
 | --- | --- |
 | 데스크톱 보드 헤더 | `public/branding/kanvibe-logo.png` (투명, 1024px 너비) |
-| Electron 창·개발 실행 Dock | `public/branding/app-icon.png` (1024px, 투명 여백과 흰색 타일) |
-| macOS 앱·DMG | `resources/icon.icns` (32–1024px, 16pt@2x 포함) |
+| 원본 앱 아이콘 | `public/branding/app-icon.png` (1024px, 투명 여백과 흰색 타일) |
+| Tauri 창·개발 실행 Dock | `src-tauri/icons/icon.png` (1024px, `public/branding/app-icon.png`와 동일) |
+| macOS 앱·DMG | `src-tauri/icons/icon.icns` (32–1024px, 16pt@2x 포함) |
 | 렌더러 favicon | `public/favicon.png` (64px) |
 | README 라이트·다크 로고 | `public/branding/kanvibe-logo{,-light}.png` (alpha 보존) |
 | 문서 사이트 헤더 | `docs-site/public/branding/kanvibe-logo.png` |
@@ -25,4 +26,4 @@ uv run scripts/generate-brand-assets.py
 
 가로형은 비율을 유지하고 투명 여백만 제거한다. 다크 테마에서는 데스크톱 CSS 반전과 모바일 `AppColors.textPrimary` tint로 대비를 유지한다. iOS는 흰색 정사각형 원본을 OS가 마스킹한다.
 
-Android 전경은 108dp 레이어 중앙의 48dp 영역에 들어가며, 흰 배경과 분리되어 있다. [Android 적응형 아이콘 지침](https://developer.android.com/develop/ui/compose/system/icon_design_adaptive)의 “safe zone of 66x66 dp” 안에 K 모양이 들어가도록 했다. Android 13부터는 동일 전경의 alpha를 monochrome 레이어로 쓴다. [Electron Dock API](https://www.electronjs.org/docs/latest/api/dock)의 `dock.setIcon(image)`로 개발 실행에도 아이콘을 적용한다.
+Android 전경은 108dp 레이어 중앙의 48dp 영역에 들어가며, 흰 배경과 분리되어 있다. [Android 적응형 아이콘 지침](https://developer.android.com/develop/ui/compose/system/icon_design_adaptive)의 “safe zone of 66x66 dp” 안에 K 모양이 들어가도록 했다. Android 13부터는 동일 전경의 alpha를 monochrome 레이어로 쓴다. 데스크톱 창과 번들 아이콘은 `src-tauri/tauri.conf.json`의 `bundle.icon`이 가리키는 `src-tauri/icons/`를 쓴다.

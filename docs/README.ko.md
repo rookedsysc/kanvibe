@@ -9,7 +9,7 @@
 
 **AI 코딩 작업을 한눈에. 휴대폰에서도 이어서.**
 
-KanVibe는 AI 코딩 에이전트를 위한 키보드 중심 macOS 칸반 워크스페이스입니다. Claude Code, Codex, Gemini CLI, OpenCode 작업을 브랜치·git worktree·터미널이 연결된 태스크로 관리하세요. 칸반 보드에서 진행 상황을 파악하고, 휴대폰이나 태블릿에서 PC의 실행 중인 터미널을 열어 출력을 읽고 다음 명령을 입력할 수 있습니다.
+KanVibe는 AI 코딩 에이전트를 위한 Tauri 기반의 키보드 중심 macOS 칸반 워크스페이스입니다. Claude Code, Codex, Gemini CLI, OpenCode 작업을 브랜치·git worktree·터미널이 연결된 태스크로 관리하세요. 칸반 보드에서 진행 상황을 파악하고, 휴대폰이나 태블릿에서 PC의 실행 중인 터미널을 열어 출력을 읽고 다음 명령을 입력할 수 있습니다.
 
 **[Desktop 설치](https://kanvibe.rookedsysc.com/ko/installation)** → [휴대폰 연결](https://kanvibe.rookedsysc.com/ko/mobile) · [문서](https://kanvibe.rookedsysc.com/ko)
 
@@ -175,7 +175,7 @@ brew untap rookedsysc/kanvibe
 - 프로젝트 색상, 우선순위 표시, PR 배지, 세션 라벨을 포함한 드래그 앤 드롭 태스크 정렬
 - 보이는 프로젝트와 태스크 텍스트를 키보드로 검색할 수 있는 다중 프로젝트 필터링
 - 장기 프로젝트를 위한 Done 컬럼 페이지네이션
-- 브라우저와 데스크톱 창 전체에 WebSocket 기반 실시간 업데이트
+- Tauri IPC로 데스크톱 창 사이에 실시간 업데이트 전달; 모바일 연결에는 WebSocket 사용
 
 ### 브랜치 기반 태스크 워크스페이스
 - git worktree와 터미널 세션을 자동으로 준비하는 브랜치 TODO 생성
@@ -186,7 +186,7 @@ brew untap rookedsysc/kanvibe
 
 ### 터미널 세션 (Herdr / tmux / zellij)
 - **Herdr**, **tmux**, **zellij** 모두 터미널 멀티플렉서로 지원
-- xterm.js와 WebSocket 기반 브라우저 터미널 스트리밍
+- xterm.js, Tauri IPC, Rust PTY 백엔드 기반 내장 터미널 스트리밍
 - `~/.ssh/config`를 읽는 SSH 원격 터미널 지원
 - 비대화형 원격 SSH 명령은 `~/.kanvibe` 아래의 앱 전용 ControlMaster 소켓 풀을 재사용하며 host별 동시성을 사용 가능한 CPU 코어 수의 4배까지 제한합니다
 - 원격 터미널 attach는 SSH에서 Herdr/tmux/zellij를 직접 실행하며, 로컬 `DISPLAY`, 원격 `X11Forwarding`, `xauth`가 준비된 경우에만 trusted X11 forwarding(`ssh -Y`)을 요청합니다
@@ -302,7 +302,7 @@ AI 질문 대기 (question.asked)                   → PENDING
 세션 대기 (session.idle)                        → REVIEW
 ```
 
-OpenCode는 셸 스크립트 hooks 대신 자체 [플러그인 시스템](https://opencode.ai/docs/plugins/)을 사용합니다. KanVibe는 `.opencode/plugins/kanvibe-plugin.ts`에 TypeScript 플러그인을 생성하여 `@opencode-ai/plugin` SDK를 통해 OpenCode의 네이티브 이벤트 hooks(`message.updated`, `question.asked`, `question.replied`, `session.idle`)를 구독합니다. 외부 셸 명령을 실행하지 않고 프로세스 내에서 상태 업데이트를 처리합니다.
+OpenCode는 셸 스크립트 hooks 대신 자체 [플러그인 시스템](https://opencode.ai/docs/plugins/)을 사용합니다. KanVibe는 `.opencode/plugins/kanvibe-plugin.js`에 JavaScript 플러그인을 생성하여 `@opencode-ai/plugin` SDK를 통해 OpenCode의 네이티브 이벤트 hooks(`message.updated`, `question.asked`, `question.replied`, `session.idle`)를 구독합니다. 외부 셸 명령을 실행하지 않고 프로세스 내에서 상태 업데이트를 처리합니다.
 
 모든 에이전트 Hook은 KanVibe 디렉터리 스캔으로 프로젝트를 등록하거나 worktree와 함께 태스크를 생성하면 **자동 설치**됩니다. 태스크 상세 페이지에서 개별 설치도 가능합니다.
 
@@ -313,21 +313,24 @@ OpenCode는 셸 스크립트 hooks 대신 자체 [플러그인 시스템](https:
 | Codex CLI | `.codex/hooks/` | `.codex/config.toml`, `.codex/hooks.json` |
 | OpenCode | `.opencode/plugins/` | 플러그인 자동 탐색 |
 
-#### 브라우저 알림
+#### 데스크톱 알림
 
-AI 에이전트 Hooks를 통한 태스크 상태 변경이 **브라우저 알림**으로 전달됩니다. 프로젝트명, 브랜치명, 변경된 상태를 표시하며, **알림을 클릭하면 해당 태스크 상세 페이지로 이동**합니다.
+AI 에이전트 Hooks를 통한 태스크 상태 변경이 **운영체제 기본 알림**으로 전달됩니다. 프로젝트명, 브랜치명, 변경된 상태를 표시하며, **알림을 클릭하면 해당 태스크 상세 페이지로 이동**합니다.
 
 - **실시간 알림** — 태스크 상태 변경 시 즉시 알림 수신
 - **백그라운드 모드** — KanVibe가 포커스되지 않아도 알림 수신
 - **스마트 네비게이션** — 알림 클릭 → 태스크 상세 페이지(현재 언어 유지)
 - **커스터마이징 가능** — 프로젝트별 알림 활성화/비활성화 및 상태별 필터링 지원(PROGRESS, PENDING, REVIEW, DONE)
 
-설정: 최초 접속 시 브라우저 알림 권한을 허용해 주세요. **프로젝트 설정** → **알림**에서 상태별 필터를 조정할 수 있습니다.
+설정: 운영체제 설정에서 KanVibe 알림을 허용해 주세요. **프로젝트 설정** → **알림**에서 상태별 필터를 조정할 수 있습니다.
 
 #### Hook API 엔드포인트
 
 | 엔드포인트 | 메서드 | 설명 |
 |-----------|--------|------|
+| `/api/hooks/start` | POST | 새 태스크 생성 |
+| `/api/hooks/status` | POST | `taskId`와 `status`로 태스크 상태를 변경하며, 대상을 못 찾으면 상태는 바꾸지 않고 데스크톱 알림을 보낸 뒤 `404`를 반환 |
+
 | `/api/hooks/status` | POST | `taskId` + `status`로 태스크 상태를 변경하며, 대상을 못 찾으면 상태는 바꾸지 않고 브라우저 알림만 보낸 뒤 `404`를 반환 |
 | `/api/cli/tasks` | POST | task CLI 태스크 생성. `Authorization: Bearer <task 토큰>` 필요 |
 | `/api/cli/tasks/delete` | POST | task CLI 태스크 삭제. `confirmed: true`가 없으면 `400`, 커밋하지 않은 변경이 있으면 `force` 없이 `409` |
@@ -360,11 +363,11 @@ bash .kanvibe/task.sh delete --yes --branch feat/old-thing
 
 ### GitHub 스타일 Diff 뷰
 
-브라우저에서 GitHub 스타일의 diff 뷰어로 코드 변경사항을 바로 확인할 수 있습니다. 태스크 상세 페이지의 **Diff** 뱃지를 클릭하면 base 브랜치 대비 변경된 모든 파일을 확인할 수 있습니다.
+데스크톱 앱에서 GitHub 스타일의 diff 뷰어로 코드 변경사항을 바로 확인할 수 있습니다. 태스크 상세 페이지의 **Diff** 뱃지를 클릭하면 base 브랜치 대비 변경된 모든 파일을 확인할 수 있습니다.
 
 - 변경 파일 수가 표시되는 파일 트리 사이드바
 - Monaco Editor 기반 인라인 diff 뷰어
-- 브라우저에서 바로 수정 가능한 에딧 모드
+- 앱에서 바로 수정 가능한 에딧 모드
 - 체크박스로 확인한 파일 추적
 
 ### Pane 레이아웃 에디터
@@ -378,18 +381,37 @@ bash .kanvibe/task.sh delete --yes --branch feat/old-thing
 
 ---
 
+## 소스에서 빌드
+
+Rust 1.90 이상, Node.js 24, pnpm과 [Tauri 플랫폼 사전 요구사항](https://v2.tauri.app/start/prerequisites/)을 준비하세요.
+
+```bash
+pnpm install
+pnpm dev          # 네이티브 Tauri 데스크톱 창 실행
+pnpm check
+pnpm test         # React 동작 테스트
+pnpm test:rust    # Rust 서비스·저장소 테스트
+pnpm dist         # 데스크톱 설치 파일 생성
+```
+
+`pnpm dev`를 실행하면 네이티브 데스크톱 창이 열리고 React 렌더러용 Vite가 실행됩니다. `pnpm dist`의 설치 파일은 `src-tauri/target/release/bundle/`에 생성됩니다.
+
+React는 UI를 렌더링하고 Rust는 SQLite, Git/worktree, PTY/SSH 세션, hooks, AI 연동, 모바일 API를 처리합니다. 배포 앱에는 Node.js 런타임을 포함하지 않습니다. 기존 `kanvibe.db`는 호환되는 저장 매핑으로 읽으며, `KANVIBE_APP_DATA_DIR` 또는 `KANVIBE_DB_PATH`로 격리된 데이터 경로를 지정할 수 있습니다. 앱 시작 시 `src-tauri/src/database.rs`에서 스키마를 초기화하고 호환성 변경을 적용하므로 별도의 seed 데이터베이스 생성은 필요하지 않습니다.
+
+런타임 옵션은 [.env.example](../.env.example)을 참조하세요. 데스크톱 앱 프로세스에 명시적으로 전달해야 하며 앱은 `.env`를 자동으로 읽지 않습니다. `KANVIBE_HOOK_PORT`는 hook·모바일 API 포트를 지정하며 기본값은 개발 빌드 `19736`, 릴리스 빌드 `9736`입니다.
+
 ## 기술 스택
 
 | 카테고리 | 기술 |
 |----------|------|
-| Frontend/Backend | Next.js 16 (App Router) + React 19 + TypeScript |
-| Database | SQLite + TypeORM + better-sqlite3 |
+| Frontend/Backend | React 19 + TypeScript (UI) / Tauri 2 + Rust (backend) |
+| Database | SQLite + rusqlite |
 | Styling | Tailwind CSS v4 |
-| Terminal | xterm.js + WebSocket + node-pty |
+| Terminal | xterm.js + Tauri IPC + portable-pty |
 | SSH | system ssh binary |
 | Drag & Drop | @hello-pangea/dnd |
 | i18n | next-intl |
-| Desktop Packaging | Electron + Electron Builder |
+| Desktop Packaging | Tauri 2 + Cargo |
 | Mobile | Flutter + xterm.dart |
 
 ---

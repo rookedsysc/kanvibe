@@ -1,5 +1,5 @@
 import type { DesktopNotificationPayload } from "@/desktop/shared/notifications";
-import type { BackgroundSyncReviewPayload } from "@/lib/boardNotifier";
+import type { BackgroundSyncReviewPayload } from "@/desktop/shared/contracts/lib-boardNotifier";
 
 export type NotificationLocale = "ko" | "en" | "zh";
 

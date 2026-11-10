@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { LiveAiSessionPanel } from "@/desktop/renderer/components/LiveAiSessionPanel";
-import type { LiveAiSession } from "@/lib/aiSessions/types";
+import type { LiveAiSession } from "@/desktop/shared/contracts/lib-aiSessions-types";
 
 vi.mock("next-intl", () => ({
   useTranslations: () => (key: string, values?: Record<string, unknown>) => (

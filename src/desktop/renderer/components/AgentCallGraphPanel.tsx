@@ -3,7 +3,7 @@
 import { useTranslations } from "next-intl";
 import { AiProviderIcon } from "@/components/AiProviderIcon";
 import { flattenAgentCallNodes } from "@/desktop/shared/liveAiSessions";
-import type { AgentCallGraph, AgentCallNode, LiveAiSession } from "@/lib/aiSessions/types";
+import type { AgentCallGraph, AgentCallNode, LiveAiSession } from "@/desktop/shared/contracts/lib-aiSessions-types";
 
 /** 한 행 왼쪽에 그리는 계보 선 조각 */
 type AgentCallGuide = "pipe" | "gap" | "tee" | "elbow";

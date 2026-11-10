@@ -8,7 +8,7 @@ import type {
   SearchableTask,
   SessionTypeChangeResult,
   SessionTypeChangeTargets,
-} from "@/desktop/main/services/kanbanService";
+} from "@/desktop/shared/contracts/desktop-main-services-kanbanService";
 import { invokeDesktop } from "@/desktop/renderer/ipc";
 
 export type {
