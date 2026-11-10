@@ -2,6 +2,7 @@ import type { KanbanTask } from "@/entities/KanbanTask";
 import type { Project } from "@/entities/Project";
 import { TaskPriority } from "@/entities/TaskPriority";
 import type { BoardSortField, BoardSortKey, BoardSortPreference } from "@/desktop/shared/boardSort";
+import type { TaskKindFilter } from "@/desktop/renderer/hooks/useTaskKindFilterParams";
 
 /** 우선순위 오름차순은 "높은 순"이다. 급한 것이 위로 와야 목록이 쓸모 있다 */
 const PRIORITY_ORDER: Record<TaskPriority, number> = {
@@ -25,6 +26,44 @@ export function isProjectRootTask(task: KanbanTask, projectLookup: Map<string, P
 
   const project = projectLookup.get(task.projectId);
   return Boolean(project && !project.isWorktree && task.branchName === project.defaultBranch);
+}
+
+/** 칸반과 워크스페이스가 같은 기준으로 Project/Task 종류를 거르도록 판정을 한곳에 둔다 */
+export function matchesTaskKindFilter(
+  task: KanbanTask,
+  taskKindFilter: TaskKindFilter,
+  projectLookup: Map<string, Project>,
+): boolean {
+  if (taskKindFilter === "all") return true;
+
+  const isRootTask = isProjectRootTask(task, projectLookup);
+  return taskKindFilter === "project" ? isRootTask : !isRootTask;
+}
+
+/** 선택된 메인 프로젝트와 그 worktree 프로젝트의 ID 집합을 만든다. 선택이 없으면 null이라 전체를 보여 준다 */
+export function buildProjectFilterSet(selectedProjectIds: string[], projects: Project[]): Set<string> | null {
+  if (selectedProjectIds.length === 0) return null;
+
+  const matchingIds = new Set<string>();
+
+  for (const id of selectedProjectIds) {
+    const mainProject = projects.find((p) => p.id === id);
+    if (!mainProject) continue;
+
+    matchingIds.add(mainProject.id);
+    for (const p of projects) {
+      if (p.repoPath.startsWith(mainProject.repoPath + "__worktrees")) {
+        matchingIds.add(p.id);
+      }
+    }
+  }
+
+  return matchingIds.size > 0 ? matchingIds : null;
+}
+
+/** 선택한 프로젝트가 없으면(null) 모든 task를 통과시킨다 */
+export function matchesProjectFilter(task: KanbanTask, projectFilterSet: Set<string> | null): boolean {
+  return !projectFilterSet || Boolean(task.projectId && projectFilterSet.has(task.projectId));
 }
 
 /** 프로젝트별 root task의 우선순위를 모은다. 같은 프로젝트의 다른 task가 이 값을 기본값으로 물려받는다 */
