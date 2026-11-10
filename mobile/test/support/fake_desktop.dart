@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:kanvibe_mobile/src/common/constants/app_theme.dart';
 import 'package:kanvibe_mobile/src/common/network/desktop_client.dart';
+import 'package:kanvibe_mobile/src/common/network/desktop_command.dart';
 import 'package:kanvibe_mobile/src/common/network/desktop_connection.dart';
 import 'package:kanvibe_mobile/src/common/providers.dart';
 import 'package:kanvibe_mobile/src/features/board/domain/task_status.dart';
@@ -129,6 +130,12 @@ class FakeDesktopClient implements DesktopClient {
 
   /// 옮겨 달라고 보낸 상태. 누른 버튼이 실제로 그 상태를 보내는지 본다
   final statusCalls = <({String taskId, TaskStatus status})>[];
+
+  /// 소켓으로 보낸 모든 명령. 삭제 말고 탭 닫기 조회·종료까지 순서대로 남는다
+  final commandCalls = <DesktopCommand>[];
+
+  /// 삭제가 아닌 명령에 대한 응답. 테스트가 명령마다 값이나 예외를 정한다
+  Future<Map<String, dynamic>> Function(DesktopCommand command)? onRunCommand;
 
   /// 지워 달라고 보낸 요청. 강제 여부까지 봐야 거절 뒤 강제 삭제로 다시 보냈는지 안다
   final deleteCalls = <({String taskId, bool isForced})>[];
@@ -354,20 +361,29 @@ class FakeDesktopClient implements DesktopClient {
   }
 
   @override
-  Future<int> deleteTask(
+  Future<Map<String, dynamic>> runCommand(
     DesktopConnection connection,
-    String taskId, {
-    required bool isForced,
+    DesktopCommand command, {
+    Duration? timeout,
   }) async {
+    commandCalls.add(command);
+    if (command.name != 'delete-task') {
+      return onRunCommand!(command);
+    }
+
+    final isForced = command.fields['isForced'] == true;
     final callIndex = deleteCalls.length;
-    deleteCalls.add((taskId: taskId, isForced: isForced));
+    deleteCalls.add((
+      taskId: command.fields['taskId']! as String,
+      isForced: isForced,
+    ));
     final error = callIndex < deleteErrors.length
         ? deleteErrors[callIndex]
         : null;
     if (error != null) {
       throw error;
     }
-    return failedPeerCount;
+    return {'ok': true, 'failedPeerCount': failedPeerCount};
   }
 
   @override

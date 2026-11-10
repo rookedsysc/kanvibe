@@ -1,0 +1,51 @@
+# 상태 WebSocket 명령으로 보드의 태스크를 길게 눌러 지우고, 터미널 탭을 닫는다.
+#
+# 카드 삭제는 보드를 데스크탑에서 다시 받아 그리므로, 카드가 사라진 것이 곧 데스크탑이 지웠다는 증거다.
+# 탭 닫기는 앱 화면만으로 단정할 수 없어서 probe가 데스크탑 tmux의 window 수를 확인한다.
+# 새 탭은 유휴 셸이라 확인창 없이 닫힌다. 확인창이 뜨면 이 흐름은 실패해야 한다.
+#
+# 확인창 버튼의 "삭제"는 정규식 전체 일치라 제목 "이 작업을 삭제하시겠습니까?"와 겹치지 않는다.
+appId: ${APP_ID}
+env:
+  DESKTOP_API_FROM_HOST: http://127.0.0.1:19736
+  PROBE_API_FROM_HOST: http://127.0.0.1:19737
+---
+- launchApp:
+    clearState: true
+- setOrientation: PORTRAIT
+- extendedWaitUntil:
+    visible: "데스크탑에 연결"
+    timeout: 90000
+- runFlow: ../subflows/pairs-and-opens-board.yaml
+- longPressOn: "(?s).*Maestro Fixture NoSession.*"
+- extendedWaitUntil:
+    visible: "이 작업을 삭제하시겠습니까?"
+    timeout: 10000
+- takeScreenshot: 20-삭제-확인
+- tapOn: "삭제"
+- extendedWaitUntil:
+    notVisible: "(?s).*Maestro Fixture NoSession.*"
+    timeout: 90000
+- takeScreenshot: 21-삭제-뒤-보드
+- runFlow: ../subflows/opens-session-task-terminal.yaml
+- tapOn:
+    id: create-terminal-tab
+- runScript:
+    file: ../scripts/assert-terminal-tab-created.js
+    env:
+      MARKER: ""
+- extendedWaitUntil:
+    visible:
+      id: terminal-tab-${output.createdPaneId}
+    timeout: 10000
+- takeScreenshot: 22-탭-추가-뒤
+- tapOn:
+    id: close-terminal-tab-${output.createdPaneId}
+- extendedWaitUntil:
+    notVisible:
+      id: terminal-tab-${output.createdPaneId}
+    timeout: 30000
+- assertNotVisible: "탭을 닫을까요?"
+- takeScreenshot: 23-탭-닫힌-뒤
+- runScript:
+    file: ../scripts/assert-terminal-tab-closed.js

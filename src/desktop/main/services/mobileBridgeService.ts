@@ -41,12 +41,15 @@ import {
   type MobilePushSubscription,
 } from "@/lib/mobilePairing";
 import {
+  buildHerdrClosePaneCommand,
   buildHerdrObservePaneCommand,
   buildHerdrPaneShortcutCommand,
   buildHerdrRecentScreenCommand,
   buildHerdrWritePaneCommand,
   buildScreenRedraw,
+  buildTmuxClosePaneCommand,
   buildTmuxPaneShortcutCommand,
+  buildZellijClosePaneCommand,
   buildZellijPaneShortcutCommand,
   buildTmuxCancelPipePaneCommand,
   buildTmuxCapturePaneCommand,
@@ -72,6 +75,8 @@ import { resolveZellijIdTargetingSupport } from "@/lib/terminalTabs";
 import { buildSSHArgs, getKanvibeSSHConnectionHealthOptions, parseSSHConfig } from "@/lib/sshConfig";
 import {
   attachClientToTerminalTab,
+  closeLocalTerminalTab,
+  getLocalTerminalTabProcess,
   getTerminalTabSize,
   listLocalTerminalTabs,
   releaseTerminalTabViewport,
@@ -88,7 +93,7 @@ import { isSessionAlive, quoteForPosixShell } from "@/lib/worktree";
  * 스냅샷과 출력 스트림 조회는 포커스를 바꾸지 않는다. 크기 조정을 지원하는 세션은
  * [claimPaneViewport]가 모바일 연결 수명 동안 크기를 소유하고 마지막 연결이 나가면 복원한다.
  *
- * 태스크와 터미널을 바꾸는 것은 [createMobileTask]와 [updateMobileTaskStatus], [changeMobileTaskSessionType], [deleteMobileTask], [createMobileTerminalTab], 그리고 세션이 아직 없는 태스크를 열 때
+ * 태스크와 터미널을 바꾸는 것은 [createMobileTask]와 [updateMobileTaskStatus], [changeMobileTaskSessionType], [deleteMobileTask], [createMobileTerminalTab], [closeMobilePane], 그리고 세션이 아직 없는 태스크를 열 때
  * 세션을 띄우는 일이다. 태스크 변경은 데스크탑 화면과 같은 `kanbanService`, 탭 생성은 `terminalTabService`를 거치고, 세션은 데스크탑이 태스크를
  * 열 때와 같은 [attachTaskTerminal]을 지난다. 페어링한 기기가 이 머신에 셸 세션을 열 수 있다는 뜻이라
  * 이것들은 [authorizeMobileRequest] 뒤에만 놓이고, 화면에 없는 칸은 받지 않는다.
@@ -110,7 +115,7 @@ const LOCAL_DUMP_INTERVAL_MS = 1_000;
 const REMOTE_DUMP_INTERVAL_MS = 3_000;
 
 /**
- * 세션이나 탭을 띄운 뒤 pane이 나타날 때까지 기다리는 상한과 확인 간격.
+ * 세션이나 탭을 띄우거나 닫은 뒤 pane이 나타나거나 사라질 때까지 기다리는 상한과 확인 간격.
  * zellij와 원격 tmux는 PTY 안에서 비동기로 만들어져 붙는 것만으로는 다 됐는지 알 수 없다.
  */
 const SESSION_START_TIMEOUT_MS = 15_000;
@@ -241,6 +246,101 @@ export async function createMobileTerminalTab(taskId: string): Promise<{ surface
     }
     await new Promise((resolve) => setTimeout(resolve, SESSION_START_POLL_INTERVAL_MS));
   }
+}
+
+/** 이 태스크에 없거나 이미 닫힌 pane. 라우팅이 이름을 보고 `pane-not-found`로 옮기므로 내보내지 않는다 */
+class PaneNotFoundError extends Error {
+  constructor() {
+    super("이미 닫혔거나 이 태스크에 없는 탭입니다");
+    this.name = "PaneNotFoundError";
+  }
+}
+
+/** 세션의 마지막 pane. 이것을 닫으면 세션이 통째로 사라지므로 태스크 삭제와 구분해 막는다 */
+class LastPaneError extends Error {
+  constructor() {
+    super("마지막 탭은 닫을 수 없습니다");
+    this.name = "LastPaneError";
+  }
+}
+
+/** 현재 명령이 이 이름 중 하나면 입력을 기다리는 셸일 뿐이라 닫아도 잃는 작업이 없다 */
+const IDLE_SHELL_COMMANDS = new Set(["sh", "bash", "zsh", "fish", "dash"]);
+
+/**
+ * 태스크별로 pane 종료를 한 줄로 세운다. 두 기기가 마지막 두 pane을 동시에 닫을 때 둘 다 남은 pane이 있다고 보면 세션이 통째로 사라진다.
+ */
+const pendingPaneCloses = new Map<string, Promise<unknown>>();
+
+function listSurfacePanes(surfaces: TaskSurfaces): MirrorPane[] {
+  return surfaces.tabs.flatMap((tab) => tab.panes);
+}
+
+/** 모바일 탭 바의 탭 하나는 pane 하나다. 같은 창의 다른 pane은 그대로 남긴다 */
+export async function closeMobilePane(taskId: string, paneId: string): Promise<{ surfaces: TaskSurfaces }> {
+  const previousClose = (pendingPaneCloses.get(taskId) ?? Promise.resolve()).catch(() => undefined);
+  const closeOperation = previousClose.then(() => closeSessionPane(taskId, paneId));
+  pendingPaneCloses.set(taskId, closeOperation);
+  try {
+    return await closeOperation;
+  } finally {
+    if (pendingPaneCloses.get(taskId) === closeOperation) {
+      pendingPaneCloses.delete(taskId);
+    }
+  }
+}
+
+async function closeSessionPane(taskId: string, paneId: string): Promise<{ surfaces: TaskSurfaces }> {
+  const surfaces = await getTaskSurfaces(taskId);
+  const panes = listSurfacePanes(surfaces);
+  const pane = panes.find((candidate) => candidate.id === paneId);
+  if (!pane) throw new PaneNotFoundError();
+  if (panes.length === 1) throw new LastPaneError();
+
+  const target = await findMirrorSessionTarget(taskId);
+  if (target.sessionType === SessionType.TERMINAL) {
+    closeLocalTerminalTab(taskId, pane.tabId);
+  } else {
+    await runMirrorCommand(buildClosePaneCommand(target, paneId), target.sshHost);
+  }
+
+  return { surfaces: await waitUntilPaneDisappears(taskId, paneId) };
+}
+
+function buildClosePaneCommand(target: MirrorSessionTarget, paneId: string): string {
+  if (target.sessionType === SessionType.HERDR) return buildHerdrClosePaneCommand(target.sessionName, paneId);
+  if (target.sessionType === SessionType.ZELLIJ) return buildZellijClosePaneCommand(target.sessionName, paneId);
+  return buildTmuxClosePaneCommand(paneId);
+}
+
+async function waitUntilPaneDisappears(taskId: string, paneId: string): Promise<TaskSurfaces> {
+  const deadline = Date.now() + SESSION_START_TIMEOUT_MS;
+  while (true) {
+    const surfaces = await getTaskSurfaces(taskId);
+    if (!listSurfacePanes(surfaces).some((pane) => pane.id === paneId)) {
+      return surfaces;
+    }
+    if (Date.now() >= deadline) {
+      throw new Error("탭이 닫히지 않았습니다.");
+    }
+    await new Promise((resolve) => setTimeout(resolve, SESSION_START_POLL_INTERVAL_MS));
+  }
+}
+
+/**
+ * 닫으면 잃을 수 있는 실행 중인 프로세스 이름. 빈 배열이면 확인 없이 닫아도 된다.
+ * 조회에 실패하면 없다고 단정하지 않고 오류를 올려, 호출한 쪽이 확인을 거치게 한다.
+ */
+export async function getMobilePaneCloseInfo(taskId: string, paneId: string): Promise<{ processNames: string[] }> {
+  const surfaces = await getTaskSurfaces(taskId);
+  const pane = listSurfacePanes(surfaces).find((candidate) => candidate.id === paneId);
+  if (!pane) throw new PaneNotFoundError();
+
+  const currentCommand = surfaces.sessionType === SessionType.TERMINAL
+    ? getLocalTerminalTabProcess(taskId, pane.tabId)
+    : pane.command;
+  const isRunningProgram = Boolean(currentCommand) && !IDLE_SHELL_COMMANDS.has(currentCommand as string);
+  return { processNames: isRunningProgram ? [currentCommand as string] : [] };
 }
 
 async function listMirrorPanes(target: MirrorSessionTarget): Promise<MirrorPane[]> {

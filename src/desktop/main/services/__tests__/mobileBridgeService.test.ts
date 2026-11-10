@@ -137,9 +137,11 @@ const {
   authorizeMobileRequest,
   changeMobileTaskSessionType,
   claimPaneViewport,
+  closeMobilePane,
   createMobileTask,
   createMobileTerminalTab,
   deleteMobileTask,
+  getMobilePaneCloseInfo,
   getMobileBoard,
   getMobileAiSessions,
   getMobileAiSessionDetail,
@@ -980,6 +982,126 @@ describe("모바일 터미널 탭 생성", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe("모바일 pane 종료", () => {
+  const FIRST_PANE_LINE = "%19\t@10\tbash\t0\t0\t50\t30\tfirst";
+  const SECOND_PANE_LINE = "%20\t@10\tclaude\t51\t0\t49\t30\tfirst";
+
+  /** 종료 명령을 받은 pane은 이후 목록에서 빠지는 tmux 세션 */
+  function stubTmuxPanes(initialLines: string[]): void {
+    const remainingLines = [...initialLines];
+    findOneByMock.mockResolvedValue(TMUX_TASK);
+    execGitMock.mockImplementation(async (command) => {
+      const killed = command.match(/kill-pane -t '(%\d+)'/);
+      if (killed) {
+        const index = remainingLines.findIndex((line) => line.startsWith(`${killed[1]}\t`));
+        if (index >= 0) remainingLines.splice(index, 1);
+        return "";
+      }
+      return command.includes("list-panes") ? remainingLines.join("\n") : "snapshot";
+    });
+  }
+
+  it("같은 창의 pane 둘 중 지정한 하나만 종료하고 남은 pane 목록을 돌려준다", async () => {
+    stubTmuxPanes([FIRST_PANE_LINE, SECOND_PANE_LINE]);
+
+    const result = await closeMobilePane("task-1", "%20");
+
+    expect(executedCommands().filter((command) => command.includes("kill-pane"))).toEqual(["tmux kill-pane -t '%20'"]);
+    expect(result.surfaces.tabs.map((tab) => tab.panes.map((pane) => pane.id))).toEqual([["%19"]]);
+  });
+
+  it("세션의 유일한 pane은 종료 명령 없이 거절한다", async () => {
+    stubTmuxMirror();
+
+    await expect(closeMobilePane("task-1", "%19")).rejects.toMatchObject({ name: "LastPaneError" });
+
+    expect(executedCommands().filter((command) => command.includes("kill-pane"))).toEqual([]);
+  });
+
+  it("세션에 없는 pane은 다른 세션의 pane이어도 종료 명령 없이 거절한다", async () => {
+    stubTmuxPanes([FIRST_PANE_LINE, SECOND_PANE_LINE]);
+
+    await expect(closeMobilePane("task-1", "%3")).rejects.toMatchObject({ name: "PaneNotFoundError" });
+
+    expect(executedCommands().filter((command) => command.includes("kill-pane"))).toEqual([]);
+  });
+
+  it("두 기기가 마지막 두 pane을 동시에 닫아도 하나만 종료하고 세션은 남긴다", async () => {
+    stubTmuxPanes([FIRST_PANE_LINE, SECOND_PANE_LINE]);
+
+    const results = await Promise.allSettled([closeMobilePane("task-1", "%19"), closeMobilePane("task-1", "%20")]);
+
+    expect(executedCommands().filter((command) => command.includes("kill-pane"))).toHaveLength(1);
+    expect(results.map((result) => result.status).sort()).toEqual(["fulfilled", "rejected"]);
+  });
+
+  it("zellij는 pane id로 지정한 pane만 종료한다", async () => {
+    findOneByMock.mockResolvedValue({ sessionType: SessionType.ZELLIJ, sessionName: "close-zellij", sshHost: null });
+    let isSecondClosed = false;
+    const pane = { id: 1, tab_id: 0, tab_name: "first", is_plugin: false, terminal_command: "zsh", pane_x: 0, pane_y: 0, pane_rows: 24, pane_columns: 80 };
+    execGitMock.mockImplementation(async (command) => {
+      if (command.includes("--version")) return "zellij 0.44.3";
+      if (command.includes("list-sessions")) return "close-zellij [Created 1m ago]";
+      if (command.includes("action close-pane")) {
+        isSecondClosed = true;
+        return "";
+      }
+      if (command.includes("list-panes")) return JSON.stringify(isSecondClosed ? [pane] : [pane, { ...pane, id: 2, tab_id: 1, tab_name: "second" }]);
+      return "";
+    });
+
+    const result = await closeMobilePane("task-zellij", "terminal_2");
+
+    expect(executedCommands().filter((command) => command.includes("close-pane"))).toEqual(["zellij --session 'close-zellij' action close-pane --pane-id 'terminal_2'"]);
+    expect(result.surfaces.tabs).toHaveLength(1);
+  });
+
+  it("일반 터미널은 pane이 곧 탭이라 지정한 탭만 닫는다", async () => {
+    findOneByMock.mockResolvedValue({ id: "close-tab-task", sessionType: SessionType.TERMINAL, sessionName: "close-tab-session", sshHost: null });
+    await createMobileTerminalTab("close-tab-task");
+
+    const result = await closeMobilePane("close-tab-task", "close-tab-task-2");
+
+    expect(result.surfaces.tabs.map((tab) => tab.id)).toEqual(["close-tab-task-1"]);
+    expect(execGitMock).not.toHaveBeenCalled();
+  });
+
+  it("일반 터미널의 유일한 탭은 거절한다", async () => {
+    findOneByMock.mockResolvedValue({ id: "single-tab-task", sessionType: SessionType.TERMINAL, sessionName: "single-tab-session", sshHost: null });
+
+    await expect(closeMobilePane("single-tab-task", "single-tab-task-1")).rejects.toMatchObject({ name: "LastPaneError" });
+  });
+});
+
+describe("모바일 pane 종료 정보", () => {
+  it.each(["sh", "bash", "zsh", "fish", "dash"])("현재 명령이 유휴 셸 %s이면 실행 중인 프로세스가 없다고 알린다", async (shell) => {
+    findOneByMock.mockResolvedValue(TMUX_TASK);
+    execGitMock.mockImplementation(async (command) => command.includes("list-panes") ? `%19\t@10\t${shell}\t0\t0\t80\t24\tfirst` : "snapshot");
+
+    await expect(getMobilePaneCloseInfo("task-1", "%19")).resolves.toEqual({ processNames: [] });
+  });
+
+  it("셸이 아닌 명령이 돌고 있으면 그 이름을 돌려준다", async () => {
+    findOneByMock.mockResolvedValue(TMUX_TASK);
+    execGitMock.mockImplementation(async (command) => command.includes("list-panes") ? "%19\t@10\tvim\t0\t0\t80\t24\tfirst" : "snapshot");
+
+    await expect(getMobilePaneCloseInfo("task-1", "%19")).resolves.toEqual({ processNames: ["vim"] });
+  });
+
+  it("조회가 실패하면 없다고 단정하지 않고 오류를 올린다", async () => {
+    findOneByMock.mockResolvedValue(TMUX_TASK);
+    execGitMock.mockRejectedValue(new Error("tmux unreachable"));
+
+    await expect(getMobilePaneCloseInfo("task-1", "%19")).rejects.toThrow();
+  });
+
+  it("세션에 없는 pane은 조회하지 않고 거절한다", async () => {
+    stubTmuxMirror();
+
+    await expect(getMobilePaneCloseInfo("task-1", "%3")).rejects.toMatchObject({ name: "PaneNotFoundError" });
   });
 });
 
