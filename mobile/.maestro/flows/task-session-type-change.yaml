@@ -1,0 +1,69 @@
+# 세션 종류 변경을 기기에서 확인한다. 격리 desktop fixture(qa/mobile/lib/prepareQaDesktop.cjs)가 필요하고,
+# 데스크탑을 띄운 셸에서 tmux와 zellij를 모두 찾을 수 있어야 한다.
+#
+# 앞 절반은 데스크탑이 세션을 바꿀 때 열린 화면이 스스로 새 세션으로 다시 붙는지 본다. 화면은 아무것도
+# 누르지 않으므로, 시트가 새 종류를 보이면 그것은 4002 종료를 받아 다시 받은 surfaces다.
+# 뒤 절반은 모바일 시트로 되돌리며 기존 세션 닫기 확인을 거치는지 본다.
+appId: ${APP_ID}
+env:
+  DESKTOP_API_FROM_HOST: http://127.0.0.1:19736
+---
+- launchApp:
+    clearState: true
+- setOrientation: PORTRAIT
+- extendedWaitUntil:
+    visible: "데스크탑에 연결"
+    timeout: 90000
+- runFlow: ../subflows/pairs-and-opens-board.yaml
+- runFlow: ../subflows/opens-session-task-terminal.yaml
+- extendedWaitUntil:
+    visible:
+      id: pane-terminal
+    timeout: 20000
+- tapOn:
+    id: change-session-type
+- extendedWaitUntil:
+    visible: "지금은 tmux입니다."
+    timeout: 10000
+- takeScreenshot: 01-변경-전-tmux
+- pressKey: back
+- extendedWaitUntil:
+    notVisible: "지금은 tmux입니다."
+    timeout: 10000
+
+- runScript:
+    file: ../scripts/change-session-type-from-desktop.js
+    env:
+      SESSION_TYPE: zellij
+- extendedWaitUntil:
+    visible:
+      id: pane-terminal
+    timeout: 30000
+- takeScreenshot: 02-데스크탑-변경-후-재연결
+- tapOn:
+    id: change-session-type
+- extendedWaitUntil:
+    visible: "지금은 zellij입니다."
+    timeout: 20000
+- takeScreenshot: 03-재연결-후-zellij
+
+- tapOn: "tmux\\(으\\)로 바꾸기"
+- extendedWaitUntil:
+    visible: "기존 세션 닫기"
+    timeout: 15000
+- takeScreenshot: 04-기존-세션-닫기-확인
+- tapOn: "닫기"
+- extendedWaitUntil:
+    notVisible: "기존 세션 닫기"
+    timeout: 30000
+- extendedWaitUntil:
+    visible:
+      id: pane-terminal
+    timeout: 30000
+- tapOn:
+    id: change-session-type
+- extendedWaitUntil:
+    visible: "지금은 tmux입니다."
+    timeout: 20000
+- takeScreenshot: 05-모바일-변경-후-tmux
+- pressKey: back
