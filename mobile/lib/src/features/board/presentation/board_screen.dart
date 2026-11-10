@@ -309,20 +309,27 @@ class _TaskCard extends ConsumerWidget {
         .read(connectionControllerProvider)
         .value
         ?.activeConnection;
-    if (connection == null || !await confirmTaskDeletion(context)) {
+    final client = ref.read(desktopClientProvider);
+    final container = ProviderScope.containerOf(context, listen: false);
+    final messenger = ScaffoldMessenger.of(context);
+    if (connection == null ||
+        !await confirmTaskDeletion(context) ||
+        !context.mounted) {
       return;
     }
 
     var outcome = await requestTaskDeletion(
-      ref.read(desktopClientProvider),
+      client,
       connection,
       task.id,
       isForced: false,
     );
-    if (outcome is TaskDeletionNeedsForce && context.mounted) {
-      if (await confirmForcedTaskDeletion(context)) {
+    if (outcome is TaskDeletionNeedsForce) {
+      if (context.mounted &&
+          await confirmForcedTaskDeletion(context) &&
+          context.mounted) {
         outcome = await requestTaskDeletion(
-          ref.read(desktopClientProvider),
+          client,
           connection,
           task.id,
           isForced: true,
@@ -332,12 +339,12 @@ class _TaskCard extends ConsumerWidget {
       }
     }
 
-    // 카드가 이미 사라졌어도 보드는 새로 받아야 하고, 안내는 앱 전체 messenger가 보여 준다
-    ref.invalidate(boardProvider);
-    if (!context.mounted) {
+    // 새로고침으로 카드가 사라져도 앱 범위의 보드 갱신과 삭제 결과 안내는 끝낸다.
+    if (!messenger.mounted) {
       return;
     }
-    _announceDeletion(ScaffoldMessenger.of(context), outcome);
+    container.invalidate(boardProvider);
+    _announceDeletion(messenger, outcome);
   }
 
   void _announceDeletion(

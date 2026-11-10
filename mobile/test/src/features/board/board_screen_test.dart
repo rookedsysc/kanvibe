@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kanvibe_mobile/src/common/network/desktop_command.dart';
@@ -201,6 +203,36 @@ void main() {
       );
     });
 
+    testWidgets('삭제 응답 전에 새로고침으로 카드가 사라져도 결과를 알린다', (tester) async {
+      await tester.binding.setSurfaceSize(phoneSize);
+      final board = boardWith();
+      final pending = Completer<Map<String, dynamic>>();
+      final client = _DelayedDeletionClient(board: board, pending: pending);
+      await tester.pumpWidget(
+        wrapWithApp(const BoardScreen(), client: client, size: phoneSize),
+      );
+      await tester.pumpAndSettle();
+      await tester.longPress(find.text('할 일 하나'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(TextButton, '삭제'));
+      await tester.pumpAndSettle();
+
+      (board['tasks'] as Map<String, dynamic>)['todo'] =
+          <Map<String, dynamic>>[];
+      await tester.tap(find.byTooltip('새로고침'));
+      await tester.pumpAndSettle();
+      expect(find.text('할 일 하나'), findsNothing);
+
+      pending.complete({'ok': true, 'failedPeerCount': 2});
+      await tester.pumpAndSettle();
+
+      expect(tester.takeException(), isNull);
+      expect(
+        find.text('다른 데스크탑 2곳에는 아직 남아 있습니다. 그 데스크탑이 켜지면 직접 삭제해 주세요.'),
+        findsOneWidget,
+      );
+    });
+
     testWidgets('커밋하지 않은 변경이 있으면 강제 삭제를 다시 묻고 확인하면 강제로 보낸다', (tester) async {
       final client = await pumpBoard(
         tester,
@@ -274,6 +306,19 @@ void main() {
       expect(find.text('데스크탑과 연결이 끊겼습니다. 연결을 확인해 주세요.'), findsOneWidget);
     });
   });
+}
+
+class _DelayedDeletionClient extends FakeDesktopClient {
+  _DelayedDeletionClient({required super.board, required this.pending});
+
+  final Completer<Map<String, dynamic>> pending;
+
+  @override
+  Future<Map<String, dynamic>> runCommand(
+    connection,
+    DesktopCommand command, {
+    Duration? timeout,
+  }) => pending.future;
 }
 
 class _UnreachableDesktopClient extends FakeDesktopClient {
