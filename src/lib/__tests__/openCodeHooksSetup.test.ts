@@ -294,18 +294,32 @@ export const KanvibePlugin: Plugin = async ({ $ }) => {
       expect(status.hasPlugin).toBe(false);
     });
 
-    it("should return installed: false when OpenCode does not register the plugin", async () => {
+    it("should keep installed true and surface diagnostics when the CLI registry omits the installed plugin", async () => {
       // Given
       const repoPath = tempDir;
-      await setupOpenCodeHooks(repoPath, "task-1", "http://localhost:3000");
+      await setupOpenCodeHooks(repoPath, "task-1", "http://localhost:9736");
       mockGetOpenCodeRegisteredKanvibePluginUrls.mockResolvedValueOnce([]);
 
       // When
-      const status = await getOpenCodeHooksStatus(repoPath);
+      const status = await getOpenCodeHooksStatus(repoPath, "task-1");
 
       // Then
-      expect(status.installed).toBe(false);
+      expect(status.installed).toBe(true);
+      expect(status.hasRegisteredHookTarget).toBe(true);
       expect(status.hasRegisteredPlugin).toBe(false);
+      expect(status.registeredPluginUrls).toEqual([]);
+    });
+
+    it("should keep installed true and surface diagnostics when the CLI registry query fails", async () => {
+      await setupOpenCodeHooks(tempDir, "task-1", "http://localhost:9736");
+      mockGetOpenCodeRegisteredKanvibePluginUrls.mockRejectedValueOnce(new Error("OpenCode timeout"));
+
+      const status = await getOpenCodeHooksStatus(tempDir, "task-1");
+
+      expect(status.installed).toBe(true);
+      expect(status.hasRegisteredHookTarget).toBe(true);
+      expect(status.hasRegisteredPlugin).toBeUndefined();
+      expect(status.pluginRegistrationError).toBe("OpenCode timeout");
     });
 
     it("should keep installed true and surface diagnostics when duplicate kanvibe plugins are registered", async () => {

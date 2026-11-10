@@ -440,8 +440,7 @@ export async function getOpenCodeHooksStatus(
     && hasTargetFanout
     && hasParallelTargetFanout
     && hasMainSessionGuard
-    && hasDuplicateProgressGuard
-    && pluginRegistration.hasRegisteredPlugin === true;
+    && hasDuplicateProgressGuard;
 
   return {
     installed,
