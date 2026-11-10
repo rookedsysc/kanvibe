@@ -22,6 +22,7 @@ let openSockets;
 let unpairedListeners;
 let mobileEventListeners;
 let notificationChangeListeners;
+let sessionChangeWatchers;
 
 /** 헤더마다 다른 기기가 오게 두어야 스트림 하나를 끊는 것이 다른 기기까지 끊는지 가려낼 수 있다 */
 const DEVICE_IDS = { "Bearer good": "device-good", "Bearer second": "device-second" };
@@ -33,6 +34,7 @@ function createBridge(overrides = {}) {
   unpairedListeners = new Set();
   mobileEventListeners = new Set();
   notificationChangeListeners = new Set();
+  sessionChangeWatchers = new Set();
 
   return {
     authorizeMobileRequest: vi.fn(async (header) => DEVICE_IDS[header] ?? null),
@@ -72,6 +74,14 @@ function createBridge(overrides = {}) {
     updateMobileTaskStatus: vi.fn(async () => ({ id: "task-1", status: "review" })),
     deleteMobileTask: vi.fn(async () => ({ failedPeerCount: 0 })),
     getMobileProjectBranches: vi.fn(async () => ["main", "dev"]),
+    changeMobileTaskSessionType: vi.fn(async () => ({ id: "task-1", sessionType: "zellij" })),
+    isMobileTaskSessionAlive: vi.fn(async () => true),
+    watchTaskSessionChange: vi.fn((taskId, onChanged) => {
+      sessionChangeWatchers.add({ taskId, onChanged });
+      return () => sessionChangeWatchers.forEach((watcher) => {
+        if (watcher.onChanged === onChanged) sessionChangeWatchers.delete(watcher);
+      });
+    }),
     ...overrides,
   };
 }
@@ -122,6 +132,11 @@ function request(path, { method = "GET", headers = {}, body } = {}) {
     }
     clientRequest.end();
   });
+}
+
+/** 서비스가 태스크 세션 변경을 알리는 자리. 실제로는 보드 이벤트 `task-session-changed`가 이 신호를 보낸다 */
+function notifyTaskSessionChanged(taskId) {
+  [...sessionChangeWatchers].filter((watcher) => watcher.taskId === taskId).forEach((watcher) => watcher.onChanged());
 }
 
 /** 서비스가 기기 해제를 알리는 자리. 실제로는 `mobileBridgeService`의 두 해제 경로가 이 신호를 보낸다 */
@@ -936,7 +951,7 @@ function inputError(message) {
 }
 
 describe("태스크 생성 경로", () => {
-  const draft = { projectId: "project-1", branchName: "feat/from-mobile", sessionType: "tmux" };
+  const draft = { projectId: "project-1", branchName: "feat/from-mobile" };
 
   function createTask(body, headers = { Authorization: "Bearer good" }) {
     return request("/api/mobile/tasks", { method: "POST", headers, body: JSON.stringify(body) });
@@ -949,6 +964,12 @@ describe("태스크 생성 경로", () => {
     expect(response.body.task).toEqual({ id: "task-1", title: "feat/from-mobile" });
     expect(bridge.createMobileTask).toHaveBeenCalledTimes(1);
     expect(bridge.createMobileTask.mock.calls[0][0]).toMatchObject(draft);
+  });
+
+  it("이전 앱이 세션 타입을 보내도 서비스로 넘기지 않아 데스크탑 기본값을 따르게 한다", async () => {
+    await createTask({ ...draft, sessionType: "tmux" });
+
+    expect(bridge.createMobileTask.mock.calls[0][0]).not.toHaveProperty("sessionType");
   });
 
   it("토큰 없이는 인증 앞단에서 막혀 아무것도 만들지 않는다", async () => {
@@ -1030,6 +1051,99 @@ describe("태스크 상태 이동 경로", () => {
 
     expect(response.status).toBe(400);
     expect(response.body.error).toBe("상태 값이 올바르지 않습니다");
+  });
+});
+
+describe("태스크 세션 타입 변경 경로", () => {
+  function changeSessionType(body, headers = { Authorization: "Bearer good" }) {
+    return request("/api/mobile/tasks/task-1/session-type", { method: "PATCH", headers, body: JSON.stringify(body) });
+  }
+
+  it("세션 타입과 기존 세션 닫기 여부를 서비스로 넘기고 바뀐 태스크를 돌려준다", async () => {
+    const response = await changeSessionType({ sessionType: "zellij", shouldCloseExistingSession: true });
+
+    expect(response.status).toBe(200);
+    expect(response.body.task).toEqual({ id: "task-1", sessionType: "zellij" });
+    expect(bridge.changeMobileTaskSessionType).toHaveBeenCalledWith("task-1", "zellij", true);
+  });
+
+  it("닫기 여부가 참이 아니면 기존 세션을 남기는 쪽으로 넘긴다", async () => {
+    await changeSessionType({ sessionType: "zellij", shouldCloseExistingSession: "yes" });
+
+    expect(bridge.changeMobileTaskSessionType).toHaveBeenCalledWith("task-1", "zellij", false);
+  });
+
+  it("토큰 없이는 인증 앞단에서 막혀 바꾸지 않는다", async () => {
+    expect((await changeSessionType({ sessionType: "zellij" }, {})).status).toBe(401);
+    expect(bridge.changeMobileTaskSessionType).not.toHaveBeenCalled();
+  });
+
+  it("세션 타입이 없으면 서비스를 부르지 않고 400을 준다", async () => {
+    expect((await changeSessionType({ shouldCloseExistingSession: true })).status).toBe(400);
+    expect(bridge.changeMobileTaskSessionType).not.toHaveBeenCalled();
+  });
+
+  it("서비스가 값을 거절하면 400으로 이유를 전한다", async () => {
+    bridge.changeMobileTaskSessionType.mockRejectedValue(inputError("세션 타입 값이 올바르지 않습니다"));
+
+    const response = await changeSessionType({ sessionType: "screen" });
+
+    expect(response.status).toBe(400);
+    expect(response.body.error).toBe("세션 타입 값이 올바르지 않습니다");
+  });
+
+  it("새 세션 도구가 없으면 409로 데스크탑에서 설치하라는 이유를 전한다", async () => {
+    const dependencyError = new Error("zellij이(가) 설치되어 있지 않습니다. 데스크탑에서 설치한 뒤 다시 시도해 주세요.");
+    dependencyError.name = "MobileSessionDependencyMissingError";
+    bridge.changeMobileTaskSessionType.mockRejectedValue(dependencyError);
+
+    const response = await changeSessionType({ sessionType: "zellij" });
+
+    expect(response.status).toBe(409);
+    expect(response.body.error).toContain("데스크탑에서 설치");
+  });
+
+  it("없는 태스크는 404로 답한다", async () => {
+    bridge.changeMobileTaskSessionType.mockResolvedValue(null);
+
+    expect((await changeSessionType({ sessionType: "zellij" })).status).toBe(404);
+    expect(bridge.changeMobileTaskSessionType).toHaveBeenCalledWith("task-1", "zellij", false);
+  });
+
+  it("기존 세션이 켜져 있는지 알려 준다", async () => {
+    bridge.isMobileTaskSessionAlive.mockResolvedValue(false);
+
+    const response = await request("/api/mobile/tasks/task-1/session-alive", { headers: { Authorization: "Bearer good" } });
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({ success: true, isAlive: false });
+    expect(bridge.isMobileTaskSessionAlive).toHaveBeenCalledWith("task-1");
+  });
+});
+
+describe("세션이 바뀐 태스크의 열린 스트림", () => {
+  it("이 태스크의 세션이 바뀌면 세션 변경 코드로 닫아 기기가 새 세션을 다시 받게 한다", async () => {
+    const client = await openPaneStreamClient("Bearer good");
+    await waitFor(() => bridge.subscribeToPane.mock.calls.length === 1);
+
+    const closed = waitForClose(client);
+    notifyTaskSessionChanged("task-1");
+
+    expect(await closed).toEqual({ code: 4002, reason: "session-changed" });
+  });
+
+  it("다른 태스크의 세션 변경에는 닫히지 않고, 닫힌 스트림은 더 이상 지켜보지 않는다", async () => {
+    const client = await openPaneStreamClient("Bearer good");
+    await waitFor(() => bridge.subscribeToPane.mock.calls.length === 1);
+
+    notifyTaskSessionChanged("task-2");
+    await sleep(50);
+    expect(client.readyState).toBe(WebSocket.OPEN);
+
+    const closed = waitForClose(client);
+    client.close();
+    await closed;
+    await waitFor(() => sessionChangeWatchers.size === 0);
   });
 });
 

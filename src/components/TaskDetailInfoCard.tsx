@@ -3,6 +3,7 @@
 import { useTranslations } from "next-intl";
 import type { KanbanTask } from "@/entities/KanbanTask";
 import PriorityEditor from "@/components/PriorityEditor";
+import SessionTypeEditor from "@/components/SessionTypeEditor";
 import { Link } from "@/desktop/renderer/navigation";
 import ProjectColorEditor from "@/components/ProjectColorEditor";
 import { TaskDiffSummary } from "@/components/TaskDiffStats";
@@ -99,9 +100,19 @@ export default function TaskDetailInfoCard({
           {task.sessionType && (
             <div className="flex items-center justify-between gap-2">
               <dt className="text-xs text-text-muted">{t("session")}</dt>
-              <dd className="text-xs bg-tag-session-bg text-tag-session-text px-2 py-0.5 rounded-full">
-                {task.sessionType}
-              </dd>
+              {task.sessionName ? (
+                <dd>
+                  <SessionTypeEditor
+                    taskId={task.id}
+                    currentSessionType={task.sessionType}
+                    sshHost={task.sshHost}
+                  />
+                </dd>
+              ) : (
+                <dd className="text-xs bg-tag-session-bg text-tag-session-text px-2 py-0.5 rounded-full">
+                  {task.sessionType}
+                </dd>
+              )}
             </div>
           )}
           {task.sshHost && (

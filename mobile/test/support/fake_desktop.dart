@@ -13,6 +13,7 @@ import 'package:kanvibe_mobile/src/features/connection/domain/saved_connections.
 import 'package:kanvibe_mobile/src/features/notifications/domain/inbox_notification.dart';
 import 'package:kanvibe_mobile/src/features/notifications/domain/notification_settings.dart';
 import 'package:kanvibe_mobile/src/features/task_detail/domain/mirror_pane.dart';
+import 'package:kanvibe_mobile/src/features/task_create/domain/session_type.dart';
 
 /// 이미 연결된 상태를 흉내 낸다. 화면 검증은 페어링 이후만 다루므로 저장소에 연결이 하나 들어 있다.
 ///
@@ -104,7 +105,9 @@ class FakeDesktopClient implements DesktopClient {
   final Map<String, Map<String, dynamic>> tasksById;
   final Object? boardError;
   final String? pairToken;
-  final TaskSurfaces? surfaces;
+
+  /// 테스트가 도중에 바꿔 끼울 수 있다. 데스크탑이 세션을 바꾼 뒤 다시 받은 pane을 흉내낸다
+  TaskSurfaces? surfaces;
   final Object? surfacesError;
   final Future<({TaskSurfaces surfaces, String paneId})> Function()?
   onCreateTerminalTab;
@@ -286,7 +289,6 @@ class FakeDesktopClient implements DesktopClient {
     String? baseBranch,
     String? description,
     String? priority,
-    required String sessionType,
   }) async {
     createCalls.add({
       'projectId': projectId,
@@ -294,7 +296,6 @@ class FakeDesktopClient implements DesktopClient {
       'baseBranch': baseBranch,
       'description': description,
       'priority': priority,
-      'sessionType': sessionType,
     });
 
     if (createError != null) {
@@ -312,6 +313,43 @@ class FakeDesktopClient implements DesktopClient {
     statusCalls.add((taskId: taskId, status: status));
     if (statusError != null) {
       throw statusError!;
+    }
+  }
+
+  /// 기존 세션이 켜져 있다고 답할지
+  bool isTaskSessionAlive = true;
+  Object? sessionTypeChangeError;
+
+  /// 바꿔 달라고 보낸 세션 종류와 기존 세션 닫기 여부
+  final sessionTypeChangeCalls =
+      <
+        ({
+          String taskId,
+          SessionType sessionType,
+          bool shouldCloseExistingSession,
+        })
+      >[];
+
+  @override
+  Future<bool> fetchTaskSessionAlive(
+    DesktopConnection connection,
+    String taskId,
+  ) async => isTaskSessionAlive;
+
+  @override
+  Future<void> changeTaskSessionType(
+    DesktopConnection connection,
+    String taskId, {
+    required SessionType sessionType,
+    required bool shouldCloseExistingSession,
+  }) async {
+    sessionTypeChangeCalls.add((
+      taskId: taskId,
+      sessionType: sessionType,
+      shouldCloseExistingSession: shouldCloseExistingSession,
+    ));
+    if (sessionTypeChangeError != null) {
+      throw sessionTypeChangeError!;
     }
   }
 

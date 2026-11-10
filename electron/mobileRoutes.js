@@ -23,6 +23,12 @@ const NOTIFICATION_READ_PATH_PATTERN = /^\/api\/mobile\/notifications\/([^/]+)\/
 const DEVICE_UNPAIRED_CLOSE_CODE = 4001;
 
 /**
+ * 데스크탑이 태스크의 세션을 바꿔 이전 세션을 더 비추지 않는 스트림의 종료 코드.
+ * 기기는 이 코드를 받으면 오류를 띄우지 않고 태스크의 pane을 새로 받아 새 세션에 붙는다.
+ */
+const TASK_SESSION_CHANGED_CLOSE_CODE = 4002;
+
+/**
  * 목록에서 기기를 알아보기 위한 이름이라 사람이 읽을 만한 길이면 충분하다.
  * 본문 상한(`httpBody.js`)까지의 문자열이 그대로 저장되면 설정 화면의 항목 하나가 레이아웃을 밀어
  * 그 기기를 끊는 버튼까지 화면 밖으로 보내, 사용자가 지울 수 없는 항목이 된다.
@@ -44,12 +50,14 @@ const PANE_SHORTCUTS_PATH_PATTERN = /^\/api\/mobile\/tasks\/([^/]+)\/panes\/([^/
 const TASK_TABS_PATH_PATTERN = /^\/api\/mobile\/tasks\/([^/]+)\/tabs$/;
 
 /**
- * 데스크탑을 바꾸는 경로. 나머지 모바일 경로와 달리 여기를 지나면 이 머신에 worktree와 터미널 세션이 생기거나 지워진다.
+ * 데스크탑을 바꾸는 경로. 나머지 모바일 경로와 달리 여기를 지나면 이 머신에 worktree와 터미널 세션이 생기거나 바뀌거나 지워진다.
  * 그래서 모두 인증 뒤에 두고, 값 검사는 열거형과 브랜치 이름 규칙을 아는 `mobileBridgeService`가 맡는다.
  */
 const TASKS_PATH = "/api/mobile/tasks";
 const TASK_PATH_PATTERN = /^\/api\/mobile\/tasks\/([^/]+)$/;
 const TASK_STATUS_PATH_PATTERN = /^\/api\/mobile\/tasks\/([^/]+)\/status$/;
+const TASK_SESSION_TYPE_PATH_PATTERN = /^\/api\/mobile\/tasks\/([^/]+)\/session-type$/;
+const TASK_SESSION_ALIVE_PATH_PATTERN = /^\/api\/mobile\/tasks\/([^/]+)\/session-alive$/;
 const AI_SESSIONS_PATH_PATTERN = /^\/api\/mobile\/tasks\/([^/]+)\/ai-sessions(?:\/([^/]+)\/([^/]+))?$/;
 const AI_MESSAGE_ROLES = new Set(["user", "assistant", "tool", "system", "developer", "reasoning", "unknown"]);
 const AI_HISTORY_PAGE_LIMIT = 100;
@@ -188,6 +196,19 @@ async function handleMobileRequest(request, response, { bridge, host, port, isDe
     const statusMatch = requestUrl.pathname.match(TASK_STATUS_PATH_PATTERN);
     if (request.method === "PATCH" && statusMatch) {
       await handleTaskStatusRequest(request, response, bridge, decodeURIComponent(statusMatch[1]));
+      return true;
+    }
+
+    const sessionTypeMatch = requestUrl.pathname.match(TASK_SESSION_TYPE_PATH_PATTERN);
+    if (request.method === "PATCH" && sessionTypeMatch) {
+      await handleTaskSessionTypeRequest(request, response, bridge, decodeURIComponent(sessionTypeMatch[1]));
+      return true;
+    }
+
+    const sessionAliveMatch = requestUrl.pathname.match(TASK_SESSION_ALIVE_PATH_PATTERN);
+    if (request.method === "GET" && sessionAliveMatch) {
+      const isAlive = await bridge.isMobileTaskSessionAlive(decodeURIComponent(sessionAliveMatch[1]));
+      writeJson(response, 200, { success: true, isAlive });
       return true;
     }
 
@@ -351,7 +372,6 @@ async function handleCreateTaskRequest(request, response, bridge) {
     baseBranch: readText(body.baseBranch),
     description: readText(body.description),
     priority: readText(body.priority),
-    sessionType: readText(body.sessionType),
   };
 
   if (!draft.projectId || !draft.branchName) {
@@ -391,6 +411,38 @@ async function handleTaskStatusRequest(request, response, bridge, taskId) {
     writeJson(response, 200, { success: true, task });
   } catch (error) {
     writeTaskWriteFailure(response, error, "Mobile task status request failed");
+  }
+}
+
+/** 태스크의 세션 타입을 바꾼다. 닫기 여부는 기기가 명시적으로 true를 보낼 때만 기존 세션을 닫는다 */
+async function handleTaskSessionTypeRequest(request, response, bridge, taskId) {
+  let body;
+  try {
+    body = await readJsonBody(request);
+  } catch {
+    writeJson(response, 400, { success: false, error: "잘못된 요청입니다" });
+    return;
+  }
+
+  const submittedSessionType = readText(body.sessionType);
+  if (!submittedSessionType) {
+    writeJson(response, 400, { success: false, error: "세션 타입이 필요합니다" });
+    return;
+  }
+
+  try {
+    const task = await bridge.changeMobileTaskSessionType(taskId, submittedSessionType, body.shouldCloseExistingSession === true);
+    if (!task) {
+      writeJson(response, 404, { success: false, error: "없는 태스크입니다" });
+      return;
+    }
+    writeJson(response, 200, { success: true, task });
+  } catch (error) {
+    if (error && error.name === "MobileSessionDependencyMissingError") {
+      writeJson(response, 409, { success: false, error: error.message });
+      return;
+    }
+    writeTaskWriteFailure(response, error, "Mobile task session type request failed");
   }
 }
 
@@ -632,11 +684,15 @@ async function openPaneStream(webSocket, bridge, taskId, paneId, onClosed) {
   let viewport = null;
   let finishSubscribing;
   let writeQueue = new Promise((resolve) => { finishSubscribing = resolve; });
+  const stopWatchingSession = bridge.watchTaskSessionChange(taskId, () => {
+    webSocket.close(TASK_SESSION_CHANGED_CLOSE_CODE, "session-changed");
+  });
 
   /** 구독이 붙기 전에 기기가 나가면 파이프를 걸어 둔 채로 남으므로 곧바로 되돌린다 */
   webSocket.on("close", () => {
     isClosed = true;
     onClosed();
+    stopWatchingSession();
     if (unsubscribe) {
       unsubscribe();
       unsubscribe = null;

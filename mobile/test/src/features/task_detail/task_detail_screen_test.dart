@@ -9,6 +9,7 @@ import 'package:kanvibe_mobile/src/common/providers.dart';
 import 'package:kanvibe_mobile/src/features/board/data/board_snapshot.dart';
 import 'package:kanvibe_mobile/src/features/board/domain/board_task.dart';
 import 'package:kanvibe_mobile/src/features/board/domain/task_status.dart';
+import 'package:kanvibe_mobile/src/features/task_create/domain/session_type.dart';
 import 'package:kanvibe_mobile/src/features/task_create/presentation/create_task_screen.dart';
 import 'package:kanvibe_mobile/src/features/task_detail/domain/mirror_pane.dart';
 import 'package:kanvibe_mobile/src/features/task_detail/presentation/task_detail_screen.dart';
@@ -370,7 +371,6 @@ void main() {
       expect(field.controller!.text, isEmpty);
     }
     expect(find.text('고르지 않음'), findsOneWidget);
-    expect(find.text('zellij'), findsOneWidget);
 
     await tester.enterText(find.byType(TextFormField).first, 'feat/child');
     await _submitCreation(tester);
@@ -381,7 +381,6 @@ void main() {
       'baseBranch': 'feat/source',
       'description': '',
       'priority': null,
-      'sessionType': 'zellij',
     });
   });
 
@@ -881,6 +880,157 @@ void main() {
       );
     });
   });
+
+  group('세션 종류 변경', () {
+    const tmuxSurfaces = TaskSurfaces(
+      tabs: [_twoPaneWindow],
+      canResize: true,
+      sessionType: SessionType.tmux,
+    );
+
+    Future<void> chooseZellij(WidgetTester tester) async {
+      await tester.tap(find.byTooltip('세션 종류 바꾸기'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('zellij(으)로 바꾸기'));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('데스크탑이 세션 종류를 바꿔 스트림을 끊으면 오류 없이 새 세션 pane에 다시 붙는다', (
+      tester,
+    ) async {
+      final client = await pumpDetail(
+        tester,
+        size: phoneSize,
+        surfaces: tmuxSurfaces,
+      );
+      client.surfaces = const TaskSurfaces(
+        tabs: [_secondWindow],
+        sessionType: SessionType.zellij,
+      );
+      client.paneCloseCodes['%19'] = taskSessionChangedCloseCode;
+
+      await client.openedPanes['%19']!.close();
+      await tester.pumpAndSettle();
+
+      expect(client.openedPanes.keys, contains('%21'));
+      expect(find.textContaining('연결이 끊겼습니다'), findsNothing);
+      expect(find.textContaining('터미널 스트림에 오류'), findsNothing);
+    });
+
+    testWidgets('새 세션의 pane id가 이전과 같아도 스트림을 새로 연다', (tester) async {
+      final client = await pumpDetail(
+        tester,
+        size: phoneSize,
+        surfaces: tmuxSurfaces,
+      );
+      final previousStream = client.openedPanes['%19']!;
+      client.surfaces = const TaskSurfaces(
+        tabs: [_twoPaneWindow],
+        sessionType: SessionType.zellij,
+      );
+      client.paneCloseCodes['%19'] = taskSessionChangedCloseCode;
+
+      await previousStream.close();
+      await tester.pumpAndSettle();
+
+      expect(client.openedPanes['%19'], isNot(same(previousStream)));
+      expect(find.textContaining('연결이 끊겼습니다'), findsNothing);
+    });
+
+    testWidgets('기존 세션이 켜져 있으면 닫을지 묻고 닫기를 고르면 닫으라고 보낸 뒤 시트를 닫는다', (
+      tester,
+    ) async {
+      final client = await pumpDetail(
+        tester,
+        size: phoneSize,
+        surfaces: tmuxSurfaces,
+      );
+
+      await tester.tap(find.byTooltip('세션 종류 바꾸기'));
+      await tester.pumpAndSettle();
+      expect(find.text('지금은 tmux입니다.'), findsOneWidget);
+      expect(find.text('tmux(으)로 바꾸기'), findsNothing);
+      await tester.tap(find.text('zellij(으)로 바꾸기'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('기존 세션 닫기'), findsOneWidget);
+      await tester.tap(find.text('닫기'));
+      await tester.pumpAndSettle();
+
+      expect(client.sessionTypeChangeCalls.single, (
+        taskId: 'task-1',
+        sessionType: SessionType.zellij,
+        shouldCloseExistingSession: true,
+      ));
+      expect(find.text('지금은 tmux입니다.'), findsNothing);
+    });
+
+    testWidgets('남겨 두기를 고르면 기존 세션을 닫지 않고 바꾼다', (tester) async {
+      final client = await pumpDetail(
+        tester,
+        size: phoneSize,
+        surfaces: tmuxSurfaces,
+      );
+
+      await chooseZellij(tester);
+      await tester.tap(find.text('남겨 두기'));
+      await tester.pumpAndSettle();
+
+      expect(
+        client.sessionTypeChangeCalls.single.shouldCloseExistingSession,
+        isFalse,
+      );
+    });
+
+    testWidgets('기존 세션이 꺼져 있으면 묻지 않고 바꾼다', (tester) async {
+      final client = FakeDesktopClient(surfaces: tmuxSurfaces)
+        ..isTaskSessionAlive = false;
+      await pumpDetail(tester, size: phoneSize, desktopClient: client);
+
+      await chooseZellij(tester);
+
+      expect(find.text('기존 세션 닫기'), findsNothing);
+      expect(client.sessionTypeChangeCalls.single, (
+        taskId: 'task-1',
+        sessionType: SessionType.zellij,
+        shouldCloseExistingSession: false,
+      ));
+    });
+
+    testWidgets('닫기 확인 창을 그냥 닫으면 바꾸지 않고 다시 고를 수 있다', (tester) async {
+      final client = await pumpDetail(
+        tester,
+        size: phoneSize,
+        surfaces: tmuxSurfaces,
+      );
+
+      await chooseZellij(tester);
+      await tester.tapAt(const Offset(5, 5));
+      await tester.pumpAndSettle();
+
+      expect(client.sessionTypeChangeCalls, isEmpty);
+      final retryButton = tester.widget<OutlinedButton>(
+        find.widgetWithText(OutlinedButton, 'zellij(으)로 바꾸기'),
+      );
+      expect(retryButton.onPressed, isNotNull);
+    });
+
+    testWidgets('데스크탑에 새 세션 도구가 없으면 그 사유를 시트에 남긴다', (tester) async {
+      final client = FakeDesktopClient(surfaces: tmuxSurfaces)
+        ..isTaskSessionAlive = false
+        ..sessionTypeChangeError = const DesktopRequestException(
+          409,
+          message: 'zellij이(가) 설치되어 있지 않습니다. 데스크탑에서 설치한 뒤 다시 시도해 주세요.',
+        );
+      await pumpDetail(tester, size: phoneSize, desktopClient: client);
+
+      await chooseZellij(tester);
+
+      expect(find.textContaining('데스크탑에서 설치한 뒤'), findsOneWidget);
+      expect(find.text('지금은 tmux입니다.'), findsOneWidget);
+    });
+  });
+
   group('삭제', () {
     /// 삭제가 끝나면 상세 화면이 닫혀 보드로 돌아가야 하므로, 보드 자리에서 상세 화면을 띄운다
     Future<FakeDesktopClient> pumpDetailFromBoard(

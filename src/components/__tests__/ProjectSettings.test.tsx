@@ -49,6 +49,10 @@ vi.mock("@/components/FolderSearchInput", () => ({
   default: () => <div data-testid="folder-search-input" />,
 }));
 
+vi.mock("@/components/BulkSessionTypeChangeSettings", () => ({
+  default: () => <div data-testid="bulk-session-type-change-settings" />,
+}));
+
 vi.mock("@/desktop/renderer/actions/project", () => ({
   deleteProject: vi.fn().mockResolvedValue(undefined),
   scanAndRegisterProjects: vi.fn().mockResolvedValue({ registered: [], skipped: [], errors: [], worktreeTasks: [] }),

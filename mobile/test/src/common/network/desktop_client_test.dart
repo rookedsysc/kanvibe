@@ -7,6 +7,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:kanvibe_mobile/src/common/network/desktop_client.dart';
 import 'package:kanvibe_mobile/src/common/network/desktop_connection.dart';
+import 'package:kanvibe_mobile/src/features/task_create/domain/session_type.dart';
 import 'package:kanvibe_mobile/src/features/task_detail/domain/mirror_pane.dart';
 
 const _connection = DesktopConnection(
@@ -369,6 +370,76 @@ void main() {
 
     expect(surfaces.tabs.single.name, 'kanvibe');
   });
+
+  test('세션 종류 변경은 인증 PATCH로 새 종류와 기존 세션 닫기 여부를 보낸다', () async {
+    final client = DesktopClient(
+      httpClient: MockClient((request) async {
+        expect(request.method, 'PATCH');
+        expect(request.url.path, '/api/mobile/tasks/task-1/session-type');
+        expect(request.headers['authorization'], 'Bearer test-token');
+        expect(jsonDecode(request.body), {
+          'sessionType': 'zellij',
+          'shouldCloseExistingSession': true,
+        });
+        return http.Response(jsonEncode({'success': true, 'task': {}}), 200);
+      }),
+    );
+    addTearDown(client.close);
+
+    await client.changeTaskSessionType(
+      _connection,
+      'task-1',
+      sessionType: SessionType.zellij,
+      shouldCloseExistingSession: true,
+    );
+  });
+
+  test('세션 종류 변경을 데스크탑이 거절하면 사유를 담아 던진다', () async {
+    final client = DesktopClient(
+      httpClient: MockClient(
+        (request) async => http.Response.bytes(
+          utf8.encode(
+            jsonEncode({'success': false, 'error': 'zellij이(가) 설치되어 있지 않습니다.'}),
+          ),
+          409,
+          headers: {'content-type': 'application/json; charset=utf-8'},
+        ),
+      ),
+    );
+    addTearDown(client.close);
+
+    await expectLater(
+      client.changeTaskSessionType(
+        _connection,
+        'task-1',
+        sessionType: SessionType.zellij,
+        shouldCloseExistingSession: false,
+      ),
+      throwsA(
+        isA<DesktopRequestException>()
+            .having((error) => error.statusCode, 'statusCode', 409)
+            .having((error) => error.message, 'message', contains('zellij')),
+      ),
+    );
+  });
+
+  test('기존 세션이 켜져 있는지 인증 GET으로 묻는다', () async {
+    final client = DesktopClient(
+      httpClient: MockClient((request) async {
+        expect(request.method, 'GET');
+        expect(request.url.path, '/api/mobile/tasks/task-1/session-alive');
+        expect(request.headers['authorization'], 'Bearer test-token');
+        return http.Response(
+          jsonEncode({'success': true, 'isAlive': true}),
+          200,
+        );
+      }),
+    );
+    addTearDown(client.close);
+
+    expect(await client.fetchTaskSessionAlive(_connection, 'task-1'), isTrue);
+  });
+
   group('태스크 삭제', () {
     test('인증 DELETE를 보내고 강제 삭제일 때만 force를 붙인다', () async {
       final requests = <http.Request>[];

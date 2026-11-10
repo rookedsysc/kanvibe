@@ -69,7 +69,7 @@ export async function deliverBoardEventNotification(
   locale: string,
   options: DesktopNotificationOptions,
 ): Promise<boolean> {
-  if (payload.type === "board-updated") {
+  if (payload.type === "board-updated" || payload.type === "task-session-changed") {
     return false;
   }
 

@@ -31,6 +31,8 @@ const mocks = vi.hoisted(() => ({
   installKanvibeHookProvider: vi.fn(),
   scheduleKanvibeHooksInstall: vi.fn(),
   broadcastBoardUpdate: vi.fn(),
+  broadcastTaskSessionChanged: vi.fn(),
+  detachSession: vi.fn(),
   readTextFile: vi.fn(),
   /** 공유 파일이 없는 저장소가 기본값이라 테스트마다 따로 준비하지 않아도 된다 */
   readTextFiles: vi.fn(async (targetPaths: string[]) => new Map(
@@ -71,6 +73,7 @@ vi.mock("@/entities/KanbanTask", () => ({
     TMUX: "tmux",
     HERDR: "herdr",
     ZELLIJ: "zellij",
+    TERMINAL: "terminal",
   },
 }));
 
@@ -142,6 +145,11 @@ vi.mock("@/lib/githubProjectIcon", () => ({
 
 vi.mock("@/lib/boardNotifier", () => ({
   broadcastBoardUpdate: mocks.broadcastBoardUpdate,
+  broadcastTaskSessionChanged: mocks.broadcastTaskSessionChanged,
+}));
+
+vi.mock("@/lib/terminal", () => ({
+  detachSession: mocks.detachSession,
 }));
 
 vi.mock("@/lib/sshConfig", () => ({
@@ -2961,6 +2969,74 @@ describe("projectService task description sync", () => {
       id: "task-login",
       description: "결제 실패 로그 원인 추적",
     }));
+  });
+
+  it("다른 KanVibe가 task.json에 남긴 세션이 다르면 그 세션을 따르고 이전 터미널 연결을 끊는다", async () => {
+    // Given
+    const save = vi.fn(async (value) => value);
+    mockWorktreeTaskRepository(save);
+    mockSharedTaskFiles({
+      [`${WORKTREE_PATH}/.kanvibe/task.json`]: JSON.stringify({
+        schemaVersion: 1,
+        description: "옛 설명",
+        session: { sessionType: "zellij", sessionName: "api-feature-login" },
+      }),
+    });
+
+    const { syncRegisteredProjectWorktrees } = await import("@/desktop/main/services/projectService");
+
+    // When
+    const result = await syncRegisteredProjectWorktrees();
+
+    // Then
+    expect(result.changed).toBe(true);
+    expect(save).toHaveBeenCalledWith(expect.objectContaining({
+      id: "task-login",
+      sessionType: "zellij",
+      sessionName: "api-feature-login",
+    }));
+    expect(mocks.detachSession).toHaveBeenCalledWith("task-login", "follow-shared-task-session");
+    expect(mocks.broadcastTaskSessionChanged).toHaveBeenCalledWith({ taskId: "task-login" });
+    expect(save.mock.invocationCallOrder[0]).toBeLessThan(mocks.broadcastTaskSessionChanged.mock.invocationCallOrder[0]);
+  });
+
+  it("task.json의 세션이 이미 같으면 저장하지도 연결을 끊지도 않는다", async () => {
+    // Given
+    const save = vi.fn(async (value) => value);
+    mocks.getTaskRepository.mockResolvedValue({
+      findOneBy: vi.fn(async (criteria: { branchName?: string; projectId?: string | null }) => (
+        criteria.branchName === "feature/login"
+          ? {
+              id: "task-login",
+              branchName: "feature/login",
+              projectId: "project-1",
+              baseBranch: "main",
+              worktreePath: WORKTREE_PATH,
+              sshHost: null,
+              description: null,
+              sessionType: "zellij",
+              sessionName: "api-feature-login",
+            }
+          : null
+      )),
+      create: vi.fn((value) => value),
+      save,
+    });
+    mockSharedTaskFiles({
+      [`${WORKTREE_PATH}/.kanvibe/task.json`]: JSON.stringify({
+        session: { sessionType: "zellij", sessionName: "api-feature-login" },
+      }),
+    });
+
+    const { syncRegisteredProjectWorktrees } = await import("@/desktop/main/services/projectService");
+
+    // When
+    await syncRegisteredProjectWorktrees();
+
+    // Then
+    expect(save).not.toHaveBeenCalledWith(expect.objectContaining({ id: "task-login" }));
+    expect(mocks.detachSession).not.toHaveBeenCalled();
+    expect(mocks.broadcastTaskSessionChanged).not.toHaveBeenCalled();
   });
 
   it("task.json이 없으면 DB에 있던 설명을 지우지 않는다", async () => {

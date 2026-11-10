@@ -436,6 +436,61 @@ describe("kanvibeHooksInstaller", () => {
     expect(mockGetOpenCodeHooksStatus).toHaveBeenCalledTimes(1);
   });
 
+  it.each([
+    ["시간 초과", "Command failed: opencode debug config (timed out)"],
+    ["CLI 없음", "spawn opencode ENOENT"],
+  ])("OpenCode 등록 조회 실패(%s)는 hook 설치를 실패로 처리하지 않는다", async (_reason, registrationError) => {
+    // Given
+    mockGetOpenCodeHooksStatus.mockResolvedValue({
+      installed: false,
+      hasPlugin: true,
+      pluginRegistrationError: registrationError,
+      hasTaskIdBinding: true,
+      hasRegisteredHookTarget: true,
+      hasStatusEndpoint: true,
+      hasEventMappings: true,
+      hasMainSessionGuard: true,
+      hasDuplicateProgressGuard: true,
+    });
+
+    const { installKanvibeHookProvider } = await import("@/lib/kanvibeHooksInstaller");
+
+    // When & Then
+    await expect(installKanvibeHookProvider("/repo", "task-1", "openCode", null)).resolves.toBeUndefined();
+    expect(mockSetupOpenCodeHooks).toHaveBeenCalledTimes(1);
+    expect(console.warn).toHaveBeenCalledWith("[hooks] OpenCode verification", expect.objectContaining({
+      failedChecks: ["hasRegisteredPlugin"],
+      pluginRegistrationError: registrationError,
+    }));
+  });
+
+  it("OpenCode 등록 조회가 실패해도 다른 필수 항목이 빠지면 실패를 전파한다", async () => {
+    vi.useFakeTimers();
+
+    try {
+      // Given
+      mockGetOpenCodeHooksStatus.mockResolvedValue({
+        installed: false,
+        hasPlugin: true,
+        hasTaskIdBinding: false,
+        pluginRegistrationError: "spawn opencode ENOENT",
+      });
+
+      const { installKanvibeHookProvider } = await import("@/lib/kanvibeHooksInstaller");
+
+      // When
+      const result = expect(installKanvibeHookProvider("/repo", "task-1", "openCode", null)).rejects.toThrow(
+        "hooks 검증 실패: OpenCode(hasTaskIdBinding)",
+      );
+      await vi.runAllTimersAsync();
+
+      // Then
+      await result;
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("OpenCode 단독 설치는 plugin 파일 검증 실패를 전파한다", async () => {
     vi.useFakeTimers();
 
