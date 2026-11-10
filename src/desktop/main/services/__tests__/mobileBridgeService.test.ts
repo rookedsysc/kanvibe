@@ -20,6 +20,9 @@ const getTaskByIdMock = vi.fn();
 const getTaskAiSessionsMock = vi.fn();
 const getTaskAiSessionDetailMock = vi.fn();
 const attachTaskTerminalMock = vi.fn();
+const changeTaskSessionTypeMock = vi.fn();
+const isTaskSessionAliveMock = vi.fn();
+const getSessionDependencyStatusMock = vi.fn();
 let defaultSessionTypeSetting = SessionType.TMUX;
 
 /** 데스크탑 PTY 대신 세우는 가짜. 테스트가 출력을 흘리고 셸을 끝낼 수 있다 */
@@ -89,7 +92,22 @@ vi.mock("@/desktop/main/services/kanbanService", () => ({
   getTasksByStatus: async () => ({ tasks: {} }),
   createTask: (input: unknown) => createTaskMock(input),
   updateTaskStatus: (taskId: string, status: string) => updateTaskStatusMock(taskId, status),
+  changeTaskSessionType: (...args: unknown[]) => changeTaskSessionTypeMock(...args),
+  isTaskSessionAlive: (taskId: string) => isTaskSessionAliveMock(taskId),
 }));
+
+/** 세션 타입 변경 테스트만 결과를 정하고, 나머지는 실제 확인 경로(execGit mock)를 그대로 지난다 */
+vi.mock("@/lib/remoteSessionDependency", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/remoteSessionDependency")>();
+  return {
+    ...actual,
+    getSessionDependencyStatus: (...args: Parameters<typeof actual.getSessionDependencyStatus>) => (
+      getSessionDependencyStatusMock.getMockImplementation()
+        ? getSessionDependencyStatusMock(...args)
+        : actual.getSessionDependencyStatus(...args)
+    ),
+  };
+});
 vi.mock("@/desktop/main/services/projectService", () => ({
   getAllProjects: async () => [],
   getTaskAiSessions: (...args: unknown[]) => getTaskAiSessionsMock(...args),
@@ -105,8 +123,10 @@ vi.mock("child_process", async (importOriginal) => ({
 const { attachClientToTerminalTab, createLocalTerminalTab, killAllTerminalSessions } = await import("@/lib/terminal");
 const { CallbackTerminalClient } = await import("@/desktop/main/terminalBridge");
 const { createNotification: createDesktopNotification, listNotifications } = await import("@/desktop/main/notificationStore");
+const { broadcastTaskSessionChanged } = await import("@/lib/boardNotifier");
 const {
   authorizeMobileRequest,
+  changeMobileTaskSessionType,
   claimPaneViewport,
   createMobileTask,
   createMobileTerminalTab,
@@ -129,6 +149,7 @@ const {
   pairMobileDevice,
   readMobilePairingCode,
   startMobilePairing,
+  watchTaskSessionChange,
   stopMobilePairing,
   stopAllPaneMirrors,
   subscribeToPane,
@@ -1109,7 +1130,7 @@ describe("모바일 태스크 생성", () => {
   const draft = { projectId: "project-1", branchName: "feat/mobile-create" };
 
   it("브랜치 이름을 제목으로 삼아 데스크탑 생성 경로로 넘긴다", async () => {
-    await createMobileTask({ ...draft, sessionType: "tmux", priority: "high", baseBranch: "main" });
+    await createMobileTask({ ...draft, priority: "high", baseBranch: "main" });
 
     expect(createTaskMock).toHaveBeenCalledWith({
       title: "feat/mobile-create",
@@ -1142,15 +1163,79 @@ describe("모바일 태스크 생성", () => {
     expect(createTaskMock).not.toHaveBeenCalled();
   });
 
-  it("모르는 세션 타입은 조용히 버리지 않고 막는다", async () => {
-    await expect(createMobileTask({ ...draft, sessionType: "screen" })).rejects.toThrow(/세션 타입/);
-    expect(createTaskMock).not.toHaveBeenCalled();
+  it("세션 타입은 기기가 보낸 값과 관계없이 데스크탑 기본 세션 타입을 따른다", async () => {
+    defaultSessionTypeSetting = SessionType.ZELLIJ;
+    try {
+      await createMobileTask({ ...draft, sessionType: "tmux" } as never);
+      await createMobileTask({ ...draft, sessionType: "screen" } as never);
+    } finally {
+      defaultSessionTypeSetting = SessionType.TMUX;
+    }
+
+    expect(createTaskMock).toHaveBeenNthCalledWith(1, expect.objectContaining({ sessionType: "zellij" }));
+    expect(createTaskMock).toHaveBeenNthCalledWith(2, expect.objectContaining({ sessionType: "zellij" }));
   });
 
   it("모바일 화면에 없는 칸은 데스크탑 요청에 실리지 않는다", async () => {
     await createMobileTask({ ...draft, sshHost: "prod-box" } as never);
 
     expect(createTaskMock.mock.calls[0][0]).not.toHaveProperty("sshHost");
+  });
+});
+
+describe("모바일 세션 타입 변경", () => {
+  afterEach(() => {
+    getSessionDependencyStatusMock.mockReset();
+    changeTaskSessionTypeMock.mockReset();
+    getTaskByIdMock.mockReset();
+  });
+
+  beforeEach(() => {
+    getTaskByIdMock.mockResolvedValue({ id: "task-1", sshHost: "build-host", sessionType: "tmux", sessionName: "repo-feat" });
+    getSessionDependencyStatusMock.mockResolvedValue({ available: true, toolName: "zellij" });
+    changeTaskSessionTypeMock.mockResolvedValue({ id: "task-1", sessionType: "zellij", sessionName: "repo-feat" });
+  });
+
+  it("새 세션 도구가 준비되어 있으면 데스크탑 변경 경로로 넘긴다", async () => {
+    const task = await changeMobileTaskSessionType("task-1", "zellij", true);
+
+    expect(getSessionDependencyStatusMock).toHaveBeenCalledWith("zellij", "build-host");
+    expect(changeTaskSessionTypeMock).toHaveBeenCalledWith("task-1", "zellij", true);
+    expect(task).toEqual(expect.objectContaining({ sessionType: "zellij" }));
+  });
+
+  it("새 세션 도구가 없으면 설치하지 않고 이유를 담아 거절한다", async () => {
+    getSessionDependencyStatusMock.mockResolvedValue({ available: false, toolName: "zellij" });
+
+    await expect(changeMobileTaskSessionType("task-1", "zellij", false)).rejects.toMatchObject({
+      name: "MobileSessionDependencyMissingError",
+      message: expect.stringContaining("zellij"),
+    });
+    expect(changeTaskSessionTypeMock).not.toHaveBeenCalled();
+  });
+
+  it("모르는 세션 타입은 막는다", async () => {
+    await expect(changeMobileTaskSessionType("task-1", "screen", false)).rejects.toThrow(/세션 타입/);
+    expect(changeTaskSessionTypeMock).not.toHaveBeenCalled();
+  });
+
+  it("없는 태스크면 null을 돌려준다", async () => {
+    getTaskByIdMock.mockResolvedValue(null);
+
+    await expect(changeMobileTaskSessionType("task-404", "zellij", false)).resolves.toBeNull();
+    expect(changeTaskSessionTypeMock).not.toHaveBeenCalled();
+  });
+
+  it("세션 변경 알림은 지켜보는 태스크의 것만 전달하고 구독을 풀면 더 오지 않는다", async () => {
+    const onChanged = vi.fn();
+    const stopWatching = watchTaskSessionChange("task-1", onChanged);
+
+    broadcastTaskSessionChanged({ taskId: "task-2" });
+    broadcastTaskSessionChanged({ taskId: "task-1" });
+    stopWatching();
+    broadcastTaskSessionChanged({ taskId: "task-1" });
+
+    expect(onChanged).toHaveBeenCalledTimes(1);
   });
 });
 

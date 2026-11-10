@@ -1,6 +1,15 @@
 import { spawn, type ChildProcess } from "child_process";
 import { getAppSetting, getDefaultSessionType, getNotificationSettings, setAppSetting, setNotificationEnabled, setNotificationStatuses } from "@/desktop/main/services/appSettingsService";
-import { connectTerminalSession, createTask, getTaskById, getTasksByStatus, updateTaskStatus } from "@/desktop/main/services/kanbanService";
+import {
+  changeTaskSessionType,
+  connectTerminalSession,
+  createTask,
+  getTaskById,
+  getTasksByStatus,
+  isTaskSessionAlive,
+  updateTaskStatus,
+} from "@/desktop/main/services/kanbanService";
+import { subscribeToBoardEvents } from "@/lib/boardNotifier";
 import { getAllProjects, getProjectBranches, getTaskAiSessions, getTaskAiSessionDetail } from "@/desktop/main/services/projectService";
 import { isAiSessionProvider } from "@/lib/aiSessions/providers";
 import type { AiMessageRole, AiSessionProvider } from "@/lib/aiSessions/types";
@@ -75,7 +84,7 @@ import { isSessionAlive, quoteForPosixShell } from "@/lib/worktree";
  * 스냅샷과 출력 스트림 조회는 포커스를 바꾸지 않는다. 크기 조정을 지원하는 세션은
  * [claimPaneViewport]가 모바일 연결 수명 동안 크기를 소유하고 마지막 연결이 나가면 복원한다.
  *
- * 태스크와 터미널을 바꾸는 것은 [createMobileTask]와 [updateMobileTaskStatus], [createMobileTerminalTab], 그리고 세션이 아직 없는 태스크를 열 때
+ * 태스크와 터미널을 바꾸는 것은 [createMobileTask]와 [updateMobileTaskStatus], [changeMobileTaskSessionType], [createMobileTerminalTab], 그리고 세션이 아직 없는 태스크를 열 때
  * 세션을 띄우는 일이다. 태스크 변경은 데스크탑 화면과 같은 `kanbanService`, 탭 생성은 `terminalTabService`를 거치고, 세션은 데스크탑이 태스크를
  * 열 때와 같은 [attachTaskTerminal]을 지난다. 페어링한 기기가 이 머신에 셸 세션을 열 수 있다는 뜻이라
  * 이것들은 [authorizeMobileRequest] 뒤에만 놓이고, 화면에 없는 칸은 받지 않는다.
@@ -480,8 +489,7 @@ export function onMobileNotificationsChanged(listener: () => void): () => void {
  * 서버 오류가 아니라 요청이 잘못된 것이라 라우팅이 이름을 보고 400으로 옮긴다.
  * 이름으로만 가려내므로 클래스 자체는 이 파일 밖으로 내보내지 않는다 — `serviceRegistry`가 이 모듈을 통째로
  * IPC에 얹기 때문에, 내보내면 화면이 부를 일이 없는 값이 그 표면에 하나 더 얹힌다.
- * 모르는 세션 타입을 조용히 버리면 [createTask]가 worktree 없이 이름만 있는 태스크를 만들어,
- * 기기에는 성공으로 보이고 데스크탑에는 열 수 없는 항목이 남는다.
+ * 세션 타입 변경에서 모르는 값을 조용히 버리면 기기에는 바뀐 것으로 보이고 데스크탑 세션은 그대로 남는다.
  */
 class MobileTaskInputError extends Error {
   constructor(message: string) {
@@ -542,7 +550,6 @@ export interface MobileTaskDraft {
   baseBranch?: string;
   description?: string;
   priority?: string;
-  sessionType?: string;
 }
 
 /**
@@ -559,7 +566,62 @@ export async function createMobileTask(draft: MobileTaskDraft): Promise<KanbanTa
     baseBranch: draft.baseBranch ? readGitRef(draft.baseBranch, "베이스 브랜치") : undefined,
     description: draft.description,
     priority: readEnumValue(Object.values(TaskPriority), draft.priority, "우선순위"),
-    sessionType: readEnumValue(Object.values(SessionType), draft.sessionType, "세션 타입"),
+    /** 세션 종류는 데스크탑이 정한다. 이전 앱이 보낸 값이 있어도 따르지 않는다 */
+    sessionType: await getDefaultSessionType(),
+  });
+}
+
+/**
+ * 새 세션 도구가 없어 바꿀 수 없다. 기기에서는 설치를 진행할 수 없으니 데스크탑에서 설치하라고 안내해야 해서
+ * 입력 오류(400)와 나눠 라우팅이 409로 옮긴다. 이름으로만 가려내는 것은 [MobileTaskInputError]와 같다.
+ */
+class MobileSessionDependencyMissingError extends Error {
+  constructor(toolName: string) {
+    super(`${toolName}이(가) 설치되어 있지 않습니다. 데스크탑에서 설치한 뒤 다시 시도해 주세요.`);
+    this.name = "MobileSessionDependencyMissingError";
+  }
+}
+
+/** 기기에서 세션 타입을 바꾼다. 실제 전환은 데스크탑 경로가 하므로 데스크탑과 같은 세션 정보가 남는다 */
+export async function changeMobileTaskSessionType(
+  taskId: string,
+  submittedSessionType: string,
+  shouldCloseExistingSession: boolean,
+): Promise<KanbanTask | null> {
+  const sessionType = readEnumValue(Object.values(SessionType), submittedSessionType, "세션 타입");
+  if (!sessionType) {
+    throw new MobileTaskInputError("세션 타입 값이 올바르지 않습니다");
+  }
+
+  const task = await getTaskById(taskId);
+  if (!task) {
+    return null;
+  }
+
+  const dependencyStatus = await getSessionDependencyStatus(sessionType, task.sshHost);
+  if (!dependencyStatus.available && dependencyStatus.toolName) {
+    throw new MobileSessionDependencyMissingError(dependencyStatus.toolName);
+  }
+
+  const changedTask = await changeTaskSessionType(taskId, sessionType, shouldCloseExistingSession);
+  if (!changedTask) {
+    throw new Error(`세션 타입 변경 실패: ${taskId}`);
+  }
+
+  return changedTask;
+}
+
+/** 기기가 세션을 닫을지 묻기 전에 기존 세션이 켜져 있는지 확인한다 */
+export function isMobileTaskSessionAlive(taskId: string): Promise<boolean> {
+  return isTaskSessionAlive(taskId);
+}
+
+/** 태스크 세션이 바뀌면 알린다. 이전 세션을 비추던 기기 스트림을 끊어 새 세션으로 다시 붙게 하는 데 쓴다 */
+export function watchTaskSessionChange(taskId: string, onChanged: () => void): () => void {
+  return subscribeToBoardEvents((event) => {
+    if (event.type === "task-session-changed" && event.taskId === taskId) {
+      onChanged();
+    }
   });
 }
 
