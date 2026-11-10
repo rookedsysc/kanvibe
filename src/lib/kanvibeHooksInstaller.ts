@@ -432,6 +432,7 @@ function logHookVerificationStatus(
     registeredPluginUrls: "registeredPluginUrls" in status && Array.isArray(status.registeredPluginUrls)
       ? status.registeredPluginUrls
       : undefined,
+    pluginRegistrationError: getPluginRegistrationError(status),
   };
 
   if (status.installed) {
@@ -444,10 +445,25 @@ function logHookVerificationStatus(
 }
 
 function getHookVerificationFailedChecks(status: KanvibeHookStatus): string[] {
-  return Object.entries(status)
+  const failedChecks = Object.entries(status)
     .filter(([key, value]) => key.startsWith("has") && value === false)
     .filter(([key]) => !NON_BLOCKING_HOOK_STATUS_CHECKS.has(key))
     .map(([key]) => key);
+
+  /**
+   * OpenCode CLI가 없거나 첫 실행의 의존성 설치로 조회가 제한 시간을 넘기면 등록 여부를 알 수 없어
+   * hasRegisteredPlugin이 비어 있다. 이 미확인 상태를 등록 누락과 같은 비차단 항목으로 세어야
+   * 실패 항목 0개인 미설치로 읽혀 task 생성이 막히지 않는다.
+   */
+  if (getPluginRegistrationError(status) && !failedChecks.includes("hasRegisteredPlugin")) {
+    failedChecks.push("hasRegisteredPlugin");
+  }
+
+  return failedChecks;
+}
+
+function getPluginRegistrationError(status: KanvibeHookStatus): string | undefined {
+  return "pluginRegistrationError" in status ? status.pluginRegistrationError : undefined;
 }
 
 function getFatalHookVerificationFailedChecks(
