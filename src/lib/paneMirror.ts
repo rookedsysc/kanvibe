@@ -280,6 +280,59 @@ export function buildZellijListMirrorPanesCommand(sessionName: string): string {
   return `zellij --session ${quoteForPosixShell(sessionName)} action list-panes --json -a`;
 }
 
+export interface ZellijViewportState {
+  tabId: string;
+  cols: number;
+  rows: number;
+  paneCols: number;
+  paneRows: number;
+  viewportCols: number;
+  viewportRows: number;
+  displayCols: number;
+  displayRows: number;
+  floating?: { left: number; top: number };
+}
+
+export function buildZellijReadViewportCommand(sessionName: string): string {
+  return `printf '[' && ${buildZellijListMirrorPanesCommand(sessionName)} && printf ',' && zellij --session ${quoteForPosixShell(sessionName)} action list-tabs --json -a && printf ']'`;
+}
+
+export function buildZellijSelectTabCommand(sessionName: string, tabId: string): string {
+  return `zellij --session ${quoteForPosixShell(sessionName)} action go-to-tab-by-id ${quoteForPosixShell(tabId)}`;
+}
+
+export function buildZellijResizeFloatingPaneCommand(
+  sessionName: string,
+  paneId: string,
+  geometry: { left: number; top: number; cols: number; rows: number },
+): string {
+  return `zellij --session ${quoteForPosixShell(sessionName)} action change-floating-pane-coordinates --pane-id ${quoteForPosixShell(paneId)} --x ${geometry.left} --y ${geometry.top} --width ${geometry.cols} --height ${geometry.rows}`;
+}
+
+export function parseZellijViewportState(output: string, paneId: string): ZellijViewportState | null {
+  try {
+    const [panes, tabs] = JSON.parse(output);
+    if (!Array.isArray(panes) || !Array.isArray(tabs)) return null;
+    const pane = panes.find((entry) => entry?.is_plugin === false && formatZellijPaneId(entry.id) === paneId);
+    const tab = tabs.find((entry) => entry?.tab_id === pane?.tab_id);
+    if (!pane || !tab || !Number.isInteger(tab.tab_id) || tab.tab_id < 0) return null;
+    const state = {
+      cols: pane.pane_content_columns, rows: pane.pane_content_rows,
+      paneCols: pane.pane_columns, paneRows: pane.pane_rows,
+      viewportCols: tab.viewport_columns, viewportRows: tab.viewport_rows,
+      displayCols: tab.display_area_columns, displayRows: tab.display_area_rows,
+    };
+    if (!Object.values(state).every((size) => Number.isInteger(size) && size > 0)) return null;
+    if (pane.is_floating === true) {
+      if (![pane.pane_x, pane.pane_y].every((position) => Number.isInteger(position) && position >= 0)) return null;
+      return { ...state, tabId: String(tab.tab_id), floating: { left: pane.pane_x, top: pane.pane_y } };
+    }
+    return { ...state, tabId: String(tab.tab_id) };
+  } catch {
+    return null;
+  }
+}
+
 interface ZellijPaneJsonEntry {
   id?: unknown;
   is_plugin?: unknown;
@@ -425,13 +478,17 @@ export function buildHerdrObservePaneCommand(sessionName: string, paneId: string
   return buildHerdrCommand(sessionName, ["terminal", "session", "observe", paneId, "--cols", String(cols), "--rows", String(rows)]);
 }
 
+export function buildHerdrControlPaneCommand(sessionName: string, paneId: string, cols: number, rows: number): string {
+  return buildHerdrCommand(sessionName, ["terminal", "session", "control", paneId, "--cols", String(cols), "--rows", String(rows)]);
+}
+
 export type HerdrObserveRecord =
-  | { type: "frame"; isFullScreen: boolean; output: string }
+  | { type: "frame"; isFullScreen: boolean; output: string; width?: number; height?: number }
   | { type: "closed" };
 
 /** observe가 내보내는 NDJSON 한 줄을 읽는다. 모르는 레코드는 null이다 */
 export function parseHerdrObserveRecord(line: string): HerdrObserveRecord | null {
-  let record: { type?: unknown; bytes?: unknown; full?: unknown };
+  let record: { type?: unknown; bytes?: unknown; full?: unknown; width?: unknown; height?: unknown };
   try {
     record = JSON.parse(line);
   } catch {
@@ -443,7 +500,12 @@ export function parseHerdrObserveRecord(line: string): HerdrObserveRecord | null
   if (record.type !== "terminal.frame" || typeof record.bytes !== "string") {
     return null;
   }
-  return { type: "frame", isFullScreen: record.full === true, output: Buffer.from(record.bytes, "base64").toString("utf8") };
+  return {
+    type: "frame",
+    isFullScreen: record.full === true,
+    output: Buffer.from(record.bytes, "base64").toString("utf8"),
+    ...(typeof record.width === "number" && typeof record.height === "number" ? { width: record.width, height: record.height } : {}),
+  };
 }
 
 /**
