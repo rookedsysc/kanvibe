@@ -891,7 +891,7 @@ async function assertWorktreeHasNoUncommittedChanges(worktreePath: string, sshHo
         printf '%s' "$__kanvibe_status_output"
       else
         case "$__kanvibe_status_output" in
-          *"fatal: not a git repository"*) printf '%s' '${invalidWorktreeMarker}' ;;
+          *"fatal: not a git repository"*|*"fatal: gitfile does not point to a valid repository"*) printf '%s' '${invalidWorktreeMarker}' ;;
           *) printf '%s\\n' "$__kanvibe_status_output" >&2; exit "$__kanvibe_status_code" ;;
         esac
       fi

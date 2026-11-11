@@ -1213,6 +1213,26 @@ describe("kanbanService.createTask", () => {
       }
     });
 
+    it.each([
+      "fatal: not a git repository: /missing/gitdir",
+      "fatal: gitfile does not point to a valid repository: /worktree/.git",
+    ])("Git의 저장소 손상 진단을 등록 제거 오류로 구분한다: %s", async (message) => {
+      const directory = await mkdtemp(join(tmpdir(), "kanvibe-git-diagnostic-"));
+      mocks.taskRepo.findOneBy.mockResolvedValue({ ...sharedTask, worktreePath: directory });
+      mocks.execGit.mockImplementation(async (command: string) => (await promisify(execShell)(
+        `git() { printf '%s\\n' '${message}' >&2; return 128; }\n${command}`,
+      )).stdout);
+      const { deleteTaskAcrossTargets } = await import("@/desktop/main/services/kanbanService");
+      try {
+        await expect(deleteTaskAcrossTargets("task-shared", { shouldRejectDirtyWorktree: true, shouldPropagateToPeers: false }))
+          .rejects.toMatchObject({ name: "InvalidWorktreeError" });
+        expect(mocks.taskRepo.remove).not.toHaveBeenCalled();
+        expect(mocks.removeWorktreeAndBranch).not.toHaveBeenCalled();
+      } finally {
+        await rm(directory, { recursive: true, force: true });
+      }
+    });
+
     it.each([false, true])("실제 Git 저장소의 변경사항 보호를 유지한다 dirty=%s", async (isDirty) => {
       const directory = await mkdtemp(join(tmpdir(), "kanvibe-worktree-status-"));
       await promisify(execShell)("git init -q", { cwd: directory });
