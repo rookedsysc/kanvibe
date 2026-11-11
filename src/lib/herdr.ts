@@ -77,7 +77,7 @@ export async function runHerdrCommand<T>(sessionName: string, arguments_: string
     const paneIndex = arguments_.indexOf("--pane");
     const targetId = paneIndex >= 0 ? arguments_[paneIndex + 1] : arguments_[2];
     const workspaceIndex = arguments_.indexOf("--workspace");
-    if ((targetId && /^w\d+:(?:t|p)\d+$/.test(targetId) && !targetId.startsWith(`${workspaceId}:`))
+    if ((targetId && /^w[0-9A-Za-z]+:(?:t|p)[0-9A-Za-z]+$/.test(targetId) && !targetId.startsWith(`${workspaceId}:`))
       || (workspaceIndex >= 0 && arguments_[workspaceIndex + 1] !== workspaceId)) {
       throw new Error("다른 Space의 터미널을 변경할 수 없습니다.");
     }
@@ -183,7 +183,7 @@ function parseWorkspaceMapping(content: string): Record<string, string> {
   if (!content) return {};
   const parsed: unknown = JSON.parse(content);
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)
-    || Object.values(parsed).some((id) => typeof id !== "string" || !/^w\d+$/.test(id))) {
+    || Object.values(parsed).some((id) => typeof id !== "string" || !/^w[0-9A-Za-z]+$/.test(id))) {
     throw new Error("Herdr Space 연결 파일이 올바르지 않습니다.");
   }
   return parsed as Record<string, string>;
