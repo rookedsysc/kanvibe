@@ -68,7 +68,7 @@ open -a KanVibe
 
 ### 1. 快速任务搜索
 
-从任何位置打开任务搜索，按项目或分支名筛选，并无需先回到看板即可直接进入任务工作区。
+从任何位置打开任务搜索，按项目或分支名筛选。在 Worktree 视图中选择结果会保留左右布局，选中并滚动到左侧对应任务，在右侧显示该任务的终端。在 Kanban 视图中则仍然打开任务详情。
 
 <img src="./images/readme/kanvibe-search-shortcut.png" alt="快速任务搜索快捷键" width="100%">
 
@@ -177,6 +177,13 @@ brew untap rookedsysc/kanvibe
 - 面向长期项目的 Done 列分页
 - 跨浏览器和桌面窗口的实时 WebSocket 更新
 
+### Worktree 视图
+
+- 左侧保留任务列表，右侧显示所选任务的终端
+- 使用与 Kanban 卡片相同的项目图标、标题、描述和徽章，省略卡片外边框，分别显示选中状态与键盘焦点
+- 快速搜索结果会在当前视图中选中，包括 DONE 任务以及被当前筛选条件隐藏的任务
+- 在 macOS 上只按下再松开 `Cmd+Option`，Linux 上则使用 `Ctrl+Alt`，即可将焦点移到列表中的所选任务。用 `↑ / ↓` 按显示顺序切换任务，再按 `Enter` 将焦点移到对应终端
+
 ### 基于分支的任务工作区
 - 创建会自动准备 git worktree 和终端会话的分支 TODO
 - 使用看板工具栏上的放大镜扫描对话框注册仓库，并把现有 worktree 分支检测为 TODO 任务
@@ -247,6 +254,9 @@ herdr session attach kanvibe
 | `:move todo\|progress\|pending\|review\|done` | 已聚焦的看板任务卡片 | 无需拖放，将当前聚焦任务移动到目标状态；在命令输入框按 `Tab` 可补全唯一的状态前缀 |
 | `dd` | 已聚焦的看板任务卡片 | 确认后删除当前聚焦任务 |
 | `Cmd/Ctrl+Shift+O` | 全局 | 按分支名或项目名打开快速任务搜索（默认值，可配置） |
+| 只按下再松开 `Cmd+Option` (macOS)、`Ctrl+Alt` (Linux) | Worktree 视图 | 聚焦左侧列表中的所选任务；与其他按键组合时不执行 |
+| `↑ / ↓` | 已聚焦的 Worktree 任务列表 | 选择上一个/下一个任务并切换右侧终端；到达首项/末项时停止 |
+| `Enter` | 已聚焦的 Worktree 任务列表 | 将焦点移到所选任务的终端 |
 | `Cmd/Ctrl+Shift+P` | 看板 | 打开项目筛选下拉框 |
 | `Cmd/Ctrl+Shift+I` | 看板 | 打开通知下拉框 |
 | `Cmd+[` / `Cmd+]` (macOS), `Alt+[` / `Alt+]` (Linux) | 全局 | 在应用历史中后退/前进；没有上一页时后退到看板首页 |

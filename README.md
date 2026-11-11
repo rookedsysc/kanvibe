@@ -68,7 +68,7 @@ open -a KanVibe
 
 ### 1. Quick Task Search
 
-Open task search from anywhere, filter by project or branch name, and jump directly into the task workspace without returning to the board first.
+Open task search from anywhere and filter by project or branch name. In Worktree view, selecting a result keeps the split view open, selects and scrolls to the task on the left, and shows its terminal on the right. In Kanban view, selecting a result opens task detail as before.
 
 <img src="./docs/images/readme/kanvibe-search-shortcut.png" alt="Quick task search shortcut" width="100%">
 
@@ -187,6 +187,13 @@ Each pane can run a custom command (e.g., `vim`, `htop`, `lazygit`, test runner,
 - Done column pagination for long-running projects
 - Real-time WebSocket updates across browser and desktop windows
 
+### Worktree View
+
+- Keep the task list on the left and the selected task's terminal on the right
+- Read the same project icon, title, description, and badges as Kanban cards, without the outer card border; selection and keyboard focus have separate indicators
+- Select a quick-search result in place, including DONE tasks and tasks hidden by the current filters
+- Press and release `Cmd+Option` on macOS or `Ctrl+Alt` on Linux, without another key, to focus the selected task in the list. Use `↑ / ↓` to switch tasks in displayed order and `Enter` to focus the selected task's terminal
+
 ### Branch-Based Task Workspace
 - Create branch TODOs that automatically prepare a git worktree and terminal session
 - Use the board toolbar magnifying-glass scan dialog to register repositories and detect existing worktree branches as TODO tasks
@@ -268,6 +275,9 @@ For an SSH task, connect to that task's SSH host first, then run the command the
 | `:move todo\|progress\|pending\|review\|done` | Focused board task card | Move the focused task to the target status without drag-and-drop; press `Tab` in the command input to autocomplete a unique status prefix |
 | `dd` | Focused board task card | Delete the focused task after confirmation |
 | `Cmd/Ctrl+Shift+O` | Global | Open quick task search by branch or project name (default, configurable) |
+| `Cmd+Option` (macOS), `Ctrl+Alt` (Linux), press and release | Worktree view | Focus the selected task in the left list; does not run when combined with another key |
+| `↑ / ↓` | Focused Worktree task list | Select the previous/next task and show its terminal; stop at the first/last task |
+| `Enter` | Focused Worktree task list | Focus the selected task's terminal |
 | `Cmd/Ctrl+Shift+P` | Board | Open the project filter dropdown |
 | `Cmd/Ctrl+Shift+I` | Board | Open the notifications dropdown |
 | `Cmd+[` / `Cmd+]` (macOS), `Alt+[` / `Alt+]` (Linux) | Global | Navigate back/forward through app history; back falls back to board home when there is no previous page |
