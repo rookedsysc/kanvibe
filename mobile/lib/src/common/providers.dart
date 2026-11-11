@@ -244,6 +244,41 @@ class TaskSurfacesController extends AsyncNotifier<TaskSurfacesState> {
     }
   }
 
+  Future<void> startSession() async {
+    if (state.isLoading || (state.hasValue && state.requireValue.isMutating)) {
+      return;
+    }
+    final generation = _generation;
+    state = const AsyncLoading();
+    try {
+      final connection = (await ref.read(connectionControllerProvider.future))
+          .activeConnection;
+      if (connection == null) {
+        throw const DesktopDisconnectedException();
+      }
+      if (!ref.mounted || generation != _generation) return;
+      final result = await ref
+          .read(desktopClientProvider)
+          .runCommand(connection, DesktopCommand.startSession(taskId));
+      if (!ref.mounted || generation != _generation) return;
+      final surfaces = TaskSurfaces.fromJson(
+        result['surfaces'] as Map<String, dynamic>,
+      );
+      state = AsyncData(TaskSurfacesState(surfaces));
+    } catch (error, stackTrace) {
+      if (!ref.mounted || generation != _generation) return;
+      final reason = error is DesktopCommandFailure
+          ? SurfaceUnavailableReason.fromWire(error.code)
+          : SurfaceUnavailableReason.unknown;
+      state = AsyncError(
+        reason == SurfaceUnavailableReason.unknown
+            ? error
+            : SurfaceUnavailableException(reason),
+        stackTrace,
+      );
+    }
+  }
+
   Future<String?> runShortcut(String paneId, String action) async {
     if (state.isLoading || !state.hasValue || state.requireValue.isMutating) {
       return null;

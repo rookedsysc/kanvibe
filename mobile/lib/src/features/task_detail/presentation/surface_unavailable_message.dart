@@ -8,7 +8,7 @@ String surfaceUnavailableMessage(SurfaceUnavailableReason reason) =>
     switch (reason) {
       SurfaceUnavailableReason.noSession => '이 태스크에는 터미널 세션이 없습니다.',
       SurfaceUnavailableReason.sessionNotRunning =>
-        '세션이 실행 중이 아닙니다. 데스크탑에서 태스크를 열면 세션이 시작됩니다.',
+        '세션이 실행 중이 아닙니다. 다시 시도하면 데스크탑에서 세션을 시작합니다.',
       SurfaceUnavailableReason.zellijTooOld => 'zellij 0.44 이상이 필요합니다.',
       SurfaceUnavailableReason.herdrMissing =>
         'Herdr가 설치되어 있지 않습니다. 데스크탑에서 Herdr 세션을 연결해 설치해 주세요.',

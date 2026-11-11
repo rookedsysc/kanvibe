@@ -56,6 +56,17 @@ const COMMAND_HANDLERS = {
     const { surfaces } = await bridge.closeMobilePane(readNonEmptyString(message.taskId), readNonEmptyString(message.paneId));
     return { surfaces };
   },
+  "start-session": async (bridge, message) => {
+    const taskId = readNonEmptyString(message.taskId);
+    try {
+      return { surfaces: await bridge.getTaskSurfaces(taskId) };
+    } catch (error) {
+      if (error?.name === "SurfaceUnavailableError") {
+        throw new CommandFailure(error.reason, "세션을 시작하지 못했습니다");
+      }
+      throw error;
+    }
+  },
 };
 
 /** 핸들러 표에서 이름을 뽑아 `connected` 이벤트의 기능 목록과 디스패치가 같은 출처를 쓰게 한다 */

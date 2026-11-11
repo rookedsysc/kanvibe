@@ -345,7 +345,17 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
                   reason: error is SurfaceUnavailableException
                       ? error.reason
                       : SurfaceUnavailableReason.unknown,
-                  onRetry: () => ref.invalidate(surfacesProvider(_task.id)),
+                  message: switch (error) {
+                    DesktopUpdateRequiredException() =>
+                      desktopUpdateRequiredMessage,
+                    DesktopDisconnectedException() =>
+                      desktopDisconnectedMessage,
+                    DesktopCommandFailure() => error.message,
+                    _ => null,
+                  },
+                  onRetry: () => ref
+                      .read(surfacesProvider(_task.id).notifier)
+                      .startSession(),
                 ),
                 data: (value) => _buildSurfaces(
                   value.surfaces,
@@ -365,7 +375,8 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
     if (tabs.isEmpty) {
       return _SurfacesUnavailable(
         reason: SurfaceUnavailableReason.sessionNotRunning,
-        onRetry: () => ref.invalidate(surfacesProvider(_task.id)),
+        onRetry: () =>
+            ref.read(surfacesProvider(_task.id).notifier).startSession(),
       );
     }
 
@@ -553,10 +564,15 @@ class _SurfaceTabButton extends StatelessWidget {
 
 /// 세션을 비출 수 없을 때. 빈 터미널 대신 사유와 되돌아갈 길을 준다
 class _SurfacesUnavailable extends StatelessWidget {
-  const _SurfacesUnavailable({required this.reason, required this.onRetry});
+  const _SurfacesUnavailable({
+    required this.reason,
+    required this.onRetry,
+    this.message,
+  });
 
   final SurfaceUnavailableReason reason;
   final VoidCallback onRetry;
+  final String? message;
 
   @override
   Widget build(BuildContext context) {
@@ -567,7 +583,7 @@ class _SurfacesUnavailable extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(
-              surfaceUnavailableMessage(reason),
+              message ?? surfaceUnavailableMessage(reason),
               textAlign: TextAlign.center,
               style: Theme.of(context).textTheme.bodyMedium,
             ),

@@ -522,6 +522,44 @@ void main() {
       expect(opened.events.map((event) => event['type']), ['connected']);
     });
 
+    test('세션 시작 명령은 taskId를 보내고 준비된 surfaces를 받는다', () async {
+      advertisedCommands = ['start-session'];
+      onMessage = (socket, message) {
+        expect(message['command'], 'start-session');
+        expect(message['taskId'], 'task-1');
+        socket.add(
+          jsonEncode({
+            'type': 'command-result',
+            'requestId': message['requestId'],
+            'ok': true,
+            'surfaces': {
+              'sessionType': 'herdr',
+              'tabs': [
+                {
+                  'id': 'w1:t1',
+                  'panes': [
+                    {'id': 'w1:p1'},
+                  ],
+                },
+              ],
+            },
+          }),
+        );
+      };
+      await openStream();
+      final result = await client.runCommand(
+        connection,
+        DesktopCommand.startSession('task-1'),
+      );
+      expect((result['surfaces'] as Map)['sessionType'], 'herdr');
+      expect(
+        ((result['surfaces'] as Map)['tabs'] as List)
+            .single['panes']
+            .single['id'],
+        'w1:p1',
+      );
+    });
+
     test('동시에 보낸 명령은 서로의 응답과 섞이지 않는다', () async {
       final received = <Map<String, dynamic>>[];
       onMessage = (socket, message) {
