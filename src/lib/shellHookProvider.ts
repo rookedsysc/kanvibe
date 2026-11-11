@@ -147,7 +147,7 @@ export async function readShellHookProviderState(options: {
   const scriptPaths = definitions.map((definition) => pathModule.join(hooksDir, definition.fileName));
   const targetsPath = getKanvibeTargetsPath(repoPath, sshHost);
 
-  const files = await readTextFiles([...scriptPaths, ...extraFilePaths, targetsPath], sshHost);
+  const files = await readTextFiles([...scriptPaths, ...extraFilePaths, targetsPath], sshHost, { strictHostKeyChecking: true });
   const scriptFiles = scriptPaths.map((scriptPath) => files.get(scriptPath) ?? emptyFile());
   const scriptContents = scriptFiles.map((file) => file.content);
 

@@ -1,11 +1,14 @@
-import { fireEvent, render, screen } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import TaskQuickSearchDialog from "@/desktop/renderer/components/TaskQuickSearchDialog";
 import TaskWorkspaceRoute from "@/desktop/renderer/routes/TaskWorkspaceRoute";
 import { TaskStatus } from "@/entities/KanbanTask";
 
 const mocks = vi.hoisted(() => ({
   getTasksByStatus: vi.fn(),
+  getTaskById: vi.fn(),
+  getSearchableTasks: vi.fn(),
   getMoreDoneTasks: vi.fn(),
   getAllProjects: vi.fn(),
   getDefaultSessionType: vi.fn(),
@@ -18,6 +21,8 @@ vi.mock("next-intl", () => ({
 
 vi.mock("@/desktop/renderer/actions/kanban", () => ({
   getTasksByStatus: (...args: unknown[]) => mocks.getTasksByStatus(...args),
+  getTaskById: (...args: unknown[]) => mocks.getTaskById(...args),
+  getSearchableTasks: (...args: unknown[]) => mocks.getSearchableTasks(...args),
   getMoreDoneTasks: (...args: unknown[]) => mocks.getMoreDoneTasks(...args),
 }));
 
@@ -66,9 +71,9 @@ function createTask(id: string, title: string, status: TaskStatus, sessionName: 
   };
 }
 
-function renderRoute() {
+function renderRoute(initialEntry = "/ko") {
   render(
-    <MemoryRouter initialEntries={["/ko"]}>
+    <MemoryRouter initialEntries={[initialEntry]}>
       <TaskWorkspaceRoute />
     </MemoryRouter>,
   );
@@ -77,6 +82,7 @@ function renderRoute() {
 describe("TaskWorkspaceRoute", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    Object.defineProperty(Element.prototype, "scrollIntoView", { configurable: true, value: vi.fn() });
     sessionStorage.clear();
     mocks.getTasksByStatus.mockResolvedValue({
       tasks: {
@@ -128,4 +134,46 @@ describe("TaskWorkspaceRoute", () => {
     expect(autoConnect.dataset.sessionType).toBe("zellij");
     expect(screen.queryByTestId("workspace-terminal")).toBeNull();
   });
+  it("검색 query의 task를 선택하고 미로딩 DONE task도 불러와 좌우에 표시한다", async () => {
+    mocks.getTaskById.mockResolvedValue(createTask("old-done", "Old completed task", TaskStatus.DONE, "done-session"));
+    renderRoute("/ko?taskId=old-done");
+    const card = await screen.findByRole("button", { name: /Old completed task/ });
+    expect(card.getAttribute("aria-current")).toBe("true");
+    expect(screen.getByTestId("workspace-terminal").dataset.taskId).toBe("old-done");
+  });
+
+  it("검색으로 불러온 DONE과 더보기 중복 응답은 다음 페이지를 건너뛰지 않는다", async () => {
+    const baseline = await mocks.getTasksByStatus();
+    const firstPage = Array.from({ length: 20 }, (_, index) => createTask(`done-${index}`, `Completed ${index}`, TaskStatus.DONE, "done"));
+    const nextPage = Array.from({ length: 20 }, (_, index) => createTask(`done-${index + 20}`, `Completed ${index + 20}`, TaskStatus.DONE, "done"));
+    mocks.getTasksByStatus.mockResolvedValue({ ...baseline, tasks: { ...baseline.tasks, done: firstPage }, doneTotal: 60 });
+    mocks.getTaskById.mockResolvedValue(createTask("done-59", "Last completed task", TaskStatus.DONE, "done"));
+    mocks.getMoreDoneTasks.mockResolvedValue({ tasks: nextPage, doneTotal: 60 });
+    renderRoute("/ko?taskId=done-59");
+    await screen.findByRole("button", { name: /Last completed task/ });
+    fireEvent.click(screen.getByRole("button", { name: "workspace.loadMoreDone" }));
+    fireEvent.click(screen.getByRole("button", { name: "workspace.loadMoreDone" }));
+    await screen.findByRole("button", { name: /Completed 39/ });
+    expect(mocks.getMoreDoneTasks).toHaveBeenNthCalledWith(1, 20);
+    expect(mocks.getMoreDoneTasks).toHaveBeenNthCalledWith(2, 20);
+    fireEvent.click(screen.getByRole("button", { name: "workspace.loadMoreDone" }));
+    await waitFor(() => expect(mocks.getMoreDoneTasks).toHaveBeenLastCalledWith(40));
+  });
+
+  it("실제 라우터의 검색 선택은 locale을 중복하지 않고 Worktree에 머문다", async () => {
+    mocks.getSearchableTasks.mockResolvedValue([{ ...createTask("billing", "Billing export", TaskStatus.REVIEW, "api-billing"), projectName: "api" }]);
+    render(<MemoryRouter initialEntries={["/ko"]}><Routes>
+      <Route path="/ko" element={<><TaskWorkspaceRoute /><TaskQuickSearchDialog shortcut="Ctrl+K" /></>} />
+      <Route path="*" element={<p>Wrong route</p>} />
+    </Routes></MemoryRouter>);
+    await screen.findByTestId("workspace-terminal");
+    fireEvent.keyDown(window, { key: "k", ctrlKey: true });
+    const input = await screen.findByRole("textbox");
+    await screen.findByText("feat/billing");
+    fireEvent.keyDown(input, { key: "Enter" });
+    await waitFor(() => expect(screen.getByTestId("workspace-terminal").dataset.taskId).toBe("billing"));
+    expect(screen.queryByText("Wrong route")).toBeNull();
+    expect(screen.getByRole("button", { name: /Billing export/ }).getAttribute("aria-current")).toBe("true");
+  });
+
 });

@@ -25,10 +25,12 @@ import path from "path";
 import { computeProjectColor } from "@/lib/projectColor";
 import { DUPLICATE_PROJECT_NAME_ERROR, resolveUniqueProjectName } from "@/lib/projectName";
 import { resolveProjectIconDataUrl } from "@/lib/githubProjectIcon";
-import { broadcastBoardUpdate } from "@/lib/boardNotifier";
+import { broadcastBoardUpdate, broadcastTaskSessionChanged } from "@/lib/boardNotifier";
+import { detachSession } from "@/lib/terminal";
+import type { KanvibeTaskSession } from "@/lib/kanvibeProjectState";
 import { getAvailableHosts as readAvailableHosts } from "@/lib/sshConfig";
 import { getDefaultSessionType } from "@/desktop/main/services/appSettingsService";
-import { installKanvibeHooks, installKanvibeHookProvider, scheduleKanvibeHooksInstall } from "@/lib/kanvibeHooksInstaller";
+import { ensureKanvibeHooksCurrent, installKanvibeHooks, installKanvibeHookProvider, scheduleKanvibeHooksInstall } from "@/lib/kanvibeHooksInstaller";
 import {
   persistTaskStateAtPath as persistTaskState,
   readPersistedTaskStatusAtPath as readPersistedTaskStatus,
@@ -59,6 +61,32 @@ async function resolveProjectColor(
 
 function matchesTaskLocation(task: { worktreePath?: string | null; sshHost?: string | null }, expectedPath: string, sshHost?: string | null): boolean {
   return task.worktreePath === expectedPath && (task.sshHost || null) === (sshHost || null);
+}
+
+/**
+ * 다른 KanVibe가 task.json에 남긴 세션이 이 기기의 기록과 다르면 그 세션을 따른다.
+ * 기존 세션을 닫을지는 바꾼 쪽이 이미 정했으므로 여기서는 세션 정보만 맞춘다.
+ */
+function applyPersistedTaskSession(task: KanbanTask, persistedSession: KanvibeTaskSession | undefined): boolean {
+  if (!persistedSession) {
+    return false;
+  }
+
+  const isSameSession = task.sessionType === persistedSession.sessionType
+    && task.sessionName === persistedSession.sessionName;
+  if (isSameSession) {
+    return false;
+  }
+
+  task.sessionType = persistedSession.sessionType;
+  task.sessionName = persistedSession.sessionName;
+  return true;
+}
+
+/** 이전 세션에 붙어 있던 터미널을 끊고, 화면들이 새 세션으로 다시 붙도록 알린다 */
+function reconnectTaskToFollowedSession(taskId: string): void {
+  detachSession(taskId, "follow-shared-task-session");
+  broadcastTaskSessionChanged({ taskId });
 }
 
 /** TypeORM 엔티티를 직렬화 가능한 plain object로 변환한다 */
@@ -270,20 +298,6 @@ async function getProjectRootTask(projectId: string, defaultBranch: string) {
   return taskRepo.findOneBy({ projectId, branchName: defaultBranch });
 }
 
-async function areProjectRootHooksInstalled(project: Project, taskId: string): Promise<boolean> {
-  const [claudeStatus, geminiStatus, codexStatus, openCodeStatus] = await Promise.all([
-    getClaudeHooksStatus(project.repoPath, taskId, project.sshHost),
-    getGeminiHooksStatus(project.repoPath, taskId, project.sshHost),
-    getCodexHooksStatus(project.repoPath, taskId, project.sshHost),
-    getOpenCodeHooksStatus(project.repoPath, taskId, project.sshHost),
-  ]);
-
-  return claudeStatus.installed
-    && geminiStatus.installed
-    && codexStatus.installed
-    && openCodeStatus.installed;
-}
-
 async function ensureProjectRootTask(
   project: Project,
   options?: {
@@ -317,6 +331,7 @@ async function ensureProjectRootTask(
     status: persistedStatus,
     description: persistedDescription,
     projectPriority: persistedProjectPriority,
+    session: persistedSession,
   } = await readPersistedTaskSyncState(
     expectedDefaultBranchWorktreePath || project.repoPath,
     project.sshHost,
@@ -354,9 +369,18 @@ async function ensureProjectRootTask(
     shouldSaveTask = true;
   }
 
+  const hasFollowedPersistedSession = applyPersistedTaskSession(task, persistedSession);
+  if (hasFollowedPersistedSession) {
+    shouldSaveTask = true;
+  }
+
   if (shouldSaveTask) {
     task = await taskRepo.save(task);
     repaired = true;
+  }
+
+  if (hasFollowedPersistedSession) {
+    reconnectTaskToFollowedSession(task.id);
   }
 
   await persistTaskState(expectedDefaultBranchWorktreePath || project.repoPath, task, project.sshHost);
@@ -365,20 +389,16 @@ async function ensureProjectRootTask(
     return { task, repaired };
   }
 
-  const hasInstalledHooks = await areProjectRootHooksInstalled(project, task.id);
+  try {
+    const hooksRepaired = await ensureKanvibeHooksCurrent(project.repoPath, task.id, project.sshHost);
+    repaired = repaired || hooksRepaired;
+  } catch (error) {
+    if (throwOnHookRepairFailure) {
+      throw error;
+    }
 
-  if (!hasInstalledHooks) {
-    try {
-      await installKanvibeHooks(project.repoPath, task.id, project.sshHost);
-      repaired = true;
-    } catch (error) {
-      if (throwOnHookRepairFailure) {
-        throw error;
-      }
-
-      if (!suppressRemoteConnectionErrorLogging || !isRemoteConnectionError(error)) {
-        console.error(`${project.name} 기본 브랜치 hooks 복구 실패:`, error);
-      }
+    if (!suppressRemoteConnectionErrorLogging || !isRemoteConnectionError(error)) {
+      console.error(`${project.name} 기본 브랜치 hooks 복구 실패:`, error);
     }
   }
 
@@ -701,6 +721,10 @@ async function findAliveBranchSession(
     return { sessionType: SessionType.TMUX, sessionName };
   }
   const herdrSessionName = sanitizeHerdrSessionName(sessionName);
+  const sharedSessionName = `kanvibe:${herdrSessionName}`;
+  if (await isSessionAlive(SessionType.HERDR, sharedSessionName, sshHost)) {
+    return { sessionType: SessionType.HERDR, sessionName: sharedSessionName };
+  }
   if (await isSessionAlive(SessionType.HERDR, herdrSessionName, sshHost)) {
     return { sessionType: SessionType.HERDR, sessionName: herdrSessionName };
   }
@@ -742,13 +766,16 @@ async function syncProjectWorktrees(
         status: persistedStatus,
         description: persistedDescription,
         priority: persistedPriority,
+        session: persistedSession,
       } = await readPersistedTaskSyncState(wt.path, project.sshHost, project.repoPath);
       if (existingTask) {
+        const hasFollowedPersistedSession = applyPersistedTaskSession(existingTask, persistedSession);
         const shouldRepairTask = !matchesTaskLocation(existingTask, wt.path, project.sshHost)
           || !existingTask.baseBranch
           || (persistedStatus !== null && existingTask.status !== persistedStatus)
           || (persistedDescription !== null && existingTask.description !== persistedDescription.description)
-          || (persistedPriority !== undefined && existingTask.priority !== persistedPriority);
+          || (persistedPriority !== undefined && existingTask.priority !== persistedPriority)
+          || hasFollowedPersistedSession;
         let taskToPersist = existingTask;
         if (shouldRepairTask) {
           existingTask.worktreePath = wt.path;
@@ -766,6 +793,9 @@ async function syncProjectWorktrees(
           const savedTask = await taskRepo.save(existingTask);
           taskToPersist = savedTask;
           result.changed = true;
+          if (hasFollowedPersistedSession) {
+            reconnectTaskToFollowedSession(savedTask.id);
+          }
           await installSyncedWorktreeHooks(project, wt.path, savedTask.id, wt.branch, result);
         }
         await persistTaskState(wt.path, taskToPersist, project.sshHost);
@@ -1100,6 +1130,7 @@ export async function getTaskHooksStatus(
   const hookTarget = await resolveTaskHookTarget(task);
   if (!hookTarget) return null;
 
+  await ensureKanvibeHooksCurrent(hookTarget.targetPath, hookTarget.taskId, hookTarget.sshHost);
   return getClaudeHooksStatus(hookTarget.targetPath, hookTarget.taskId, hookTarget.sshHost);
 }
 
@@ -1172,6 +1203,7 @@ export async function getTaskGeminiHooksStatus(
   const hookTarget = await resolveTaskHookTarget(task);
   if (!hookTarget) return null;
 
+  await ensureKanvibeHooksCurrent(hookTarget.targetPath, hookTarget.taskId, hookTarget.sshHost);
   return getGeminiHooksStatus(hookTarget.targetPath, hookTarget.taskId, hookTarget.sshHost);
 }
 
@@ -1241,6 +1273,7 @@ export async function getTaskCodexHooksStatus(
   const hookTarget = await resolveTaskHookTarget(task);
   if (!hookTarget) return null;
 
+  await ensureKanvibeHooksCurrent(hookTarget.targetPath, hookTarget.taskId, hookTarget.sshHost);
   return getCodexHooksStatus(hookTarget.targetPath, hookTarget.taskId, hookTarget.sshHost);
 }
 
@@ -1330,6 +1363,7 @@ export async function getTaskOpenCodeHooksStatus(
   const hookTarget = await resolveTaskHookTarget(task);
   if (!hookTarget) return null;
 
+  await ensureKanvibeHooksCurrent(hookTarget.targetPath, hookTarget.taskId, hookTarget.sshHost);
   return getOpenCodeHooksStatus(hookTarget.targetPath, hookTarget.taskId, hookTarget.sshHost);
 }
 

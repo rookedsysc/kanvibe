@@ -1,5 +1,8 @@
 /* eslint-disable @typescript-eslint/no-require-imports */
 const net = require("node:net");
+const fs = require("node:fs");
+const os = require("node:os");
+const path = require("node:path");
 const { _electron: electron } = require("@playwright/test");
 const electronExecutable = require("electron");
 
@@ -54,6 +57,7 @@ async function resolveCdpPort(options = {}) {
 async function launchKanVibeElectron(options = {}) {
   const rootDir = options.rootDir || process.cwd();
   const cdpPort = await resolveCdpPort(options);
+  const appDataDir = options.appDataDir || fs.mkdtempSync(path.join(os.tmpdir(), "kanvibe-electron-qa-"));
   let app;
 
   try {
@@ -71,7 +75,8 @@ async function launchKanVibeElectron(options = {}) {
         CI: process.env.CI || "1",
         KANVIBE_QA_MODE: "1",
         KANVIBE_QA_OUTPUT_DIR: options.outputDir || "",
-        KANVIBE_APP_DATA_DIR: options.appDataDir || process.env.KANVIBE_APP_DATA_DIR || "",
+        KANVIBE_APP_DATA_DIR: appDataDir,
+        KANVIBE_DB_PATH: path.join(appDataDir, "kanvibe.db"),
         ...(options.rendererUrl ? { KANVIBE_RENDERER_URL: options.rendererUrl } : {}),
       },
       timeout: options.timeoutMs || 45000,

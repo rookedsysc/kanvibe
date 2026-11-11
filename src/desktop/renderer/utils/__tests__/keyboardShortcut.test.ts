@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   SHORTCUTS,
+  createWorkspaceListFocusTracker,
   TASK_DETAIL_DOCK_SHORTCUT_INDEXES,
   TERMINAL_TAB_SHORTCUT_INDEXES,
   captureShortcutFromEvent,
@@ -324,5 +325,36 @@ describe("keyboardShortcut", () => {
     });
 
     expect(captureShortcutFromEvent(event)).toBeNull();
+  });
+});
+
+
+describe("workspace modifier release", () => {
+  it.each(["mac", "linux"] as const)("%s에서 Mod+Alt 단독 release에만 한 번 실행한다", (platform) => {
+    const tracker = createWorkspaceListFocusTracker(platform);
+    const mod = platform === "mac" ? { meta: true } : { control: true };
+    expect(tracker.handleElectronInput({ type: "keyDown", key: "Alt", ...mod, alt: true })).toBe(false);
+    expect(tracker.handleElectronInput({ type: "keyUp", key: "Alt", ...mod, alt: false })).toBe(true);
+    expect(tracker.handleElectronInput({ type: "keyUp", key: platform === "mac" ? "Meta" : "Control" })).toBe(false);
+  });
+
+  it("다른 키를 함께 누르거나 blur reset되면 목록 이동을 취소한다", () => {
+    const tracker = createWorkspaceListFocusTracker("mac");
+    tracker.handleElectronInput({ type: "keyDown", key: "Alt", meta: true, alt: true });
+    tracker.handleElectronInput({ type: "keyDown", key: "1", meta: true, alt: true });
+    expect(tracker.handleElectronInput({ type: "keyUp", key: "Alt", meta: true })).toBe(false);
+    tracker.handleElectronInput({ type: "keyDown", key: "Alt", meta: true, alt: true });
+    tracker.reset();
+    expect(tracker.handleElectronInput({ type: "keyUp", key: "Alt", meta: true })).toBe(false);
+  });
+
+  it("추가 modifier와 조합 중간 release는 실행하지 않고 DOM 입력도 같은 의미로 처리한다", () => {
+    const tracker = createWorkspaceListFocusTracker("mac");
+    tracker.handleKeyboardEvent(new KeyboardEvent("keydown", { key: "Alt", metaKey: true, altKey: true, shiftKey: true }));
+    expect(tracker.handleKeyboardEvent(new KeyboardEvent("keyup", { key: "Shift", metaKey: true, altKey: true }))).toBe(false);
+    expect(tracker.handleKeyboardEvent(new KeyboardEvent("keyup", { key: "Alt", metaKey: true }))).toBe(false);
+    tracker.handleKeyboardEvent(new KeyboardEvent("keyup", { key: "Meta" }));
+    tracker.handleKeyboardEvent(new KeyboardEvent("keydown", { key: "Meta", metaKey: true, altKey: true }));
+    expect(tracker.handleKeyboardEvent(new KeyboardEvent("keyup", { key: "Meta", altKey: true }))).toBe(true);
   });
 });

@@ -7,6 +7,7 @@ import {
   readKanvibeTaskState,
   readKanvibeTaskSyncState,
   writeKanvibeTaskMetadata,
+  writeKanvibeTaskSession,
   writeKanvibeTaskStatus,
 } from "@/lib/kanvibeProjectState";
 
@@ -127,6 +128,39 @@ export async function persistTaskMetadataForTask(task: TaskMetadataTask): Promis
     }
   } catch (error) {
     console.error(".kanvibe task 메타데이터 저장 실패:", {
+      repoPath: resolvedLocation.repoPath,
+      taskId: task.id,
+      sshHost: resolvedLocation.sshHost,
+      error: getErrorMessage(error),
+    });
+  }
+}
+
+type TaskSessionTask = Pick<KanbanTask, "id" | "sessionType" | "sessionName" | "worktreePath" | "sshHost"> & {
+  projectId?: string | null;
+  branchName?: string | null;
+};
+
+/** 데스크탑이 정한 세션을 task.json에 남겨 같은 저장소를 보는 다른 KanVibe가 따라오게 한다 */
+export async function persistTaskSessionForTask(task: TaskSessionTask): Promise<void> {
+  if (!task.sessionType || !task.sessionName) {
+    return;
+  }
+
+  const resolvedLocation = await resolveTaskStateLocation(task);
+  if (!resolvedLocation) {
+    return;
+  }
+
+  try {
+    await ensureKanvibeStateDirectoryExcluded(resolvedLocation.repoPath, resolvedLocation.sshHost);
+    await writeKanvibeTaskSession(
+      resolvedLocation.repoPath,
+      { sessionType: task.sessionType, sessionName: task.sessionName },
+      resolvedLocation.sshHost,
+    );
+  } catch (error) {
+    console.error(".kanvibe task 세션 저장 실패:", {
       repoPath: resolvedLocation.repoPath,
       taskId: task.id,
       sshHost: resolvedLocation.sshHost,

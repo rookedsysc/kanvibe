@@ -9,7 +9,12 @@ import { PaneLayoutType } from "@/entities/PaneLayoutConfig";
 import { buildHerdrCommand, buildHerdrSessionCleanupCommand, sanitizeHerdrSessionName } from "@/lib/worktree";
 import { ensureHerdrSession, listHerdrMirrorPanes, listHerdrRunningAgentPanes, moveHerdrTab, readHerdrTabs } from "@/lib/herdr";
 
-const { execGit, spawn } = vi.hoisted(() => ({ execGit: vi.fn(), spawn: vi.fn() }));
+const { execGit, spawn, readTextFile, updateTextFile } = vi.hoisted(() => ({ execGit: vi.fn(), spawn: vi.fn(), readTextFile: vi.fn(), updateTextFile: vi.fn() }));
+vi.mock("@/lib/hostFileAccess", async (importOriginal) => ({
+  ...await importOriginal<typeof import("@/lib/hostFileAccess")>(),
+  readTextFile,
+  updateTextFile,
+}));
 vi.mock("child_process", async (importOriginal) => ({ ...await importOriginal<typeof import("child_process")>(), spawn }));
 vi.mock("@/lib/sshConfig", async (importOriginal) => ({
   ...await importOriginal<typeof import("@/lib/sshConfig")>(),
@@ -44,6 +49,50 @@ describe("Herdr 세션 이름", () => {
 });
 
 describe("Herdr 부트스트랩", () => {
+  it("로컬 서버를 앱의 프로세스 그룹과 분리하고 셸 환경을 정리한다", async () => {
+    vi.stubEnv("PORT", "4884");
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("KANVIBE_HOOK_PORT", "4885");
+    const server = Object.assign(new EventEmitter(), { unref: vi.fn() });
+    spawn.mockImplementationOnce(() => {
+      queueMicrotask(() => server.emit("spawn"));
+      return server;
+    });
+    execGit.mockRejectedValueOnce(new Error("server not running"))
+      .mockResolvedValue(result({ workspaces: [{ workspace_id: "w1" }] }));
+
+    await ensureHerdrSession("feature", "/work");
+
+    expect(spawn).toHaveBeenCalledWith("/bin/sh", ["-c", `exec ${commandFor(["server"])}`], {
+      detached: true, stdio: "ignore", env: expect.any(Object),
+    });
+    const environment = spawn.mock.calls[0][2].env;
+    expect(environment).not.toHaveProperty("PORT");
+    expect(environment).not.toHaveProperty("NODE_ENV");
+    expect(environment).not.toHaveProperty("KANVIBE_HOOK_PORT");
+    expect(server.unref).toHaveBeenCalledOnce();
+    expect(execGit.mock.calls.map(([command]) => command)).toEqual([
+      commandFor(["workspace", "list"]), commandFor(["workspace", "list"]),
+    ]);
+  });
+  it("로컬 서버 시작 실패를 연결 요청에 전달한다", async () => {
+    const server = new EventEmitter();
+    spawn.mockImplementationOnce(() => {
+      queueMicrotask(() => server.emit("error", new Error("spawn failed")));
+      return server;
+    });
+    execGit.mockRejectedValueOnce(new Error("server not running"));
+    await expect(ensureHerdrSession("feature", "/work")).rejects.toThrow("spawn failed");
+    expect(execGit).toHaveBeenCalledOnce();
+  });
+  it("SSH 서버는 원격 호스트에서 시작하고 준비를 확인한다", async () => {
+    execGit.mockRejectedValueOnce(new Error("server not running"))
+      .mockResolvedValueOnce("")
+      .mockResolvedValueOnce(result({ workspaces: [{ workspace_id: "w1" }] }));
+    await ensureHerdrSession("feature", "/work", null, "remote");
+    expect(spawn).not.toHaveBeenCalled();
+    expect(execGit).toHaveBeenCalledWith(`nohup ${commandFor(["server"])} </dev/null >/dev/null 2>&1 &`, "remote");
+  });
   it("기존 세션에 다시 연결하면 레이아웃과 명령을 재실행하지 않는다", async () => {
     execGit.mockResolvedValue(result({ workspaces: [{ workspace_id: "w1" }] }));
     await ensureHerdrSession("feature", "/work", { layoutType: PaneLayoutType.QUAD, panes: [{ position: 0, command: "do-not-repeat" }] });
@@ -273,5 +322,164 @@ describe("listHerdrMirrorPanes", () => {
       ] });
     });
     expect((await listHerdrMirrorPanes("feature")).map((pane) => pane.id)).toEqual(["w1:p3", "w1:p2"]);
+  });
+});
+
+
+describe("공유 Herdr Spaces", () => {
+  let mapping: Record<string, string>;
+  let spaces: { workspace_id: string; label: string }[];
+  beforeEach(() => {
+    mapping = {};
+    spaces = [];
+    readTextFile.mockImplementation(async () => JSON.stringify(mapping));
+    updateTextFile.mockImplementation(async (_path, update) => { mapping = JSON.parse(await update(JSON.stringify(mapping))); });
+    execGit.mockImplementation(async (command: string) => {
+      if (command.includes("'session' 'list'")) return JSON.stringify({ sessions: [{ name: "kanvibe", running: true, session_dir: "/config/kanvibe", socket_path: "/config/kanvibe/herdr.sock" }] });
+      if (command.includes("'workspace' 'list'")) return result({ workspaces: spaces });
+      if (command.includes("'workspace' 'create'")) {
+        const id = `w${spaces.length + 1}`;
+        spaces.push({ workspace_id: id, label: id });
+        return result({ workspace: { workspace_id: id }, root_pane: { pane_id: `${id}:p1` } });
+      }
+      if (command.includes("'tab' 'list'")) return result({ tabs: [{ tab_id: "w1:t1", number: 1, label: "coding", focused: true }] });
+      return result({});
+    });
+  });
+  it("서로 다른 task를 같은 서버의 Spaces로 만들고 동시 재연결은 중복 생성하지 않는다", async () => {
+    await Promise.all([ensureHerdrSession("kanvibe:task-a", "/work/a"), ensureHerdrSession("kanvibe:task-b", "/work/b"), ensureHerdrSession("kanvibe:task-a", "/work/a")]);
+    expect(spaces).toHaveLength(2);
+    expect(mapping).toEqual({ "task-a": "w1", "task-b": "w2" });
+    expect(execGit.mock.calls.filter(([c]) => c.includes("'workspace' 'create'"))).toHaveLength(2);
+    expect(execGit.mock.calls.every(([c]) => !c.includes("--session 'kanvibe:"))).toBe(true);
+  });
+  it("Space 이름을 바꾼 뒤에도 저장한 ID로 연결하고 시작 명령을 반복하지 않는다", async () => {
+    mapping = { "task-a": "w1" };
+    spaces = [{ workspace_id: "w1", label: "renamed" }];
+    await ensureHerdrSession("kanvibe:task-a", "/work/a", { layoutType: PaneLayoutType.QUAD, panes: [{ position: 0, command: "once" }] });
+    expect(execGit.mock.calls.some(([c]) => c.includes("'workspace' 'create'") || c.includes("'pane' 'send-text'"))).toBe(false);
+    await readHerdrTabs("kanvibe:task-a");
+    expect(execGit.mock.calls.at(-1)?.[0]).toBe(buildHerdrCommand("kanvibe", ["tab", "list", "--workspace", "w1"]));
+  });
+  it("한 task의 탭 mutation으로 다른 task를 선택할 수 없다", async () => {
+    mapping = { "task-a": "w1" };
+    const { runHerdrCommand } = await import("@/lib/herdr");
+    await expect(runHerdrCommand("kanvibe:task-a", ["tab", "close", "w2:t1"])).rejects.toThrow("다른 Space");
+    expect(execGit.mock.calls.some(([c]) => c.includes("'tab' 'close'"))).toBe(false);
+  });
+  it("문자가 포함된 Space ID가 있어도 기존 숫자 ID의 task를 재연결한다", async () => {
+    mapping = { "task-a": "w1", "task-b": "wA" };
+    spaces = [{ workspace_id: "w1", label: "a" }, { workspace_id: "wA", label: "b" }];
+
+    await ensureHerdrSession("kanvibe:task-a", "/work/a");
+    await readHerdrTabs("kanvibe:task-a");
+
+    expect(execGit.mock.calls.at(-1)?.[0]).toBe(buildHerdrCommand("kanvibe", ["tab", "list", "--workspace", "w1"]));
+    expect(execGit.mock.calls.some(([command]) => command.includes("'workspace' 'create'"))).toBe(false);
+    expect(mapping).toEqual({ "task-a": "w1", "task-b": "wA" });
+  });
+  it("새로 발급된 wA Space를 저장한 뒤 다시 연결하고 해당 Space만 정리한다", async () => {
+    mapping = { "task-a": "w1" };
+    spaces = [{ workspace_id: "w1", label: "a" }];
+    const original = execGit.getMockImplementation()!;
+    execGit.mockImplementation(async (...args) => {
+      if (!args[0].includes("'workspace' 'create'")) return original(...args);
+      spaces.push({ workspace_id: "wA", label: "b" });
+      return result({ root_pane: { pane_id: "wA:p1" } });
+    });
+    const { closeHerdrTaskWorkspace, getHerdrWorkspaceId } = await import("@/lib/herdr");
+
+    await ensureHerdrSession("kanvibe:task-b", "/work/b");
+    await expect(getHerdrWorkspaceId("kanvibe:task-b")).resolves.toBe("wA");
+    await ensureHerdrSession("kanvibe:task-b", "/work/b");
+    await readHerdrTabs("kanvibe:task-b");
+    expect(execGit.mock.calls.at(-1)?.[0]).toBe(buildHerdrCommand("kanvibe", ["tab", "list", "--workspace", "wA"]));
+    expect(execGit.mock.calls.filter(([command]) => command.includes("'workspace' 'create'"))).toHaveLength(1);
+
+    await closeHerdrTaskWorkspace("kanvibe:task-b");
+    expect(mapping).toEqual({ "task-a": "w1" });
+    expect(execGit.mock.calls.some(([command]) => command.includes("'workspace' 'close' 'wA'"))).toBe(true);
+    expect(execGit.mock.calls.some(([command]) => command.includes("'workspace' 'close' 'w1'"))).toBe(false);
+  });
+  it.each([
+    ["tab", "close", "wA:t1"],
+    ["tab", "close", "w2:tA"],
+    ["pane", "send-text", "wA:p1", "hello"],
+    ["pane", "send-text", "w2:pA", "hello"],
+    ["pane", "split", "--pane", "wA:pA"],
+  ])("문자 ID에도 다른 Space 접근을 차단한다: %j", async (...args) => {
+    mapping = { "task-a": "w1" };
+    const { runHerdrCommand } = await import("@/lib/herdr");
+
+    await expect(runHerdrCommand("kanvibe:task-a", args)).rejects.toThrow("다른 Space");
+    expect(execGit).not.toHaveBeenCalled();
+  });
+  it("초기 레이아웃 실패는 새 Space만 닫고 공유 서버와 다른 Space를 남긴다", async () => {
+    spaces = [{ workspace_id: "w1", label: "other" }];
+    const original = execGit.getMockImplementation()!;
+    execGit.mockImplementation(async (...args) => args[0].includes("'pane' 'split'") ? Promise.reject(new Error("split failed")) : original(...args));
+    await expect(ensureHerdrSession("kanvibe:task-b", "/work/b", { layoutType: PaneLayoutType.QUAD, panes: [] })).rejects.toThrow("split failed");
+    expect(execGit.mock.calls.some(([c]) => c.includes("'workspace' 'close' 'w2'"))).toBe(true);
+    expect(execGit.mock.calls.some(([c]) => c.includes("'session' 'stop'") || c.includes("'session' 'delete'"))).toBe(false);
+    expect(mapping).toEqual({});
+  });
+  it("task 하나를 닫아도 다른 Space와 공유 서버를 유지한다", async () => {
+    mapping = { "task-a": "w1", "task-b": "w2" };
+    spaces = [{ workspace_id: "w1", label: "a" }, { workspace_id: "w2", label: "b" }];
+    const { closeHerdrTaskWorkspace, isHerdrTaskAlive } = await import("@/lib/herdr");
+    await closeHerdrTaskWorkspace("kanvibe:task-a");
+    expect(mapping).toEqual({ "task-b": "w2" });
+    expect(execGit.mock.calls.some(([c]) => c.includes("'workspace' 'close' 'w1'"))).toBe(true);
+    expect(execGit.mock.calls.some(([c]) => c.includes("'session' 'stop'") || c.includes("'session' 'delete'"))).toBe(false);
+    await expect(isHerdrTaskAlive("kanvibe:task-a")).resolves.toBe(false);
+    await expect(isHerdrTaskAlive("kanvibe:task-b")).resolves.toBe(true);
+  });
+  it("공유 서버가 살아 있어도 해당 task Space가 없으면 세션 없음으로 반환한다", async () => {
+    mapping = { "task-a": "w9" };
+    const { isHerdrTaskAlive } = await import("@/lib/herdr");
+    await expect(isHerdrTaskAlive("kanvibe:task-a")).resolves.toBe(false);
+  });
+  it("네이티브에서 닫힌 Space는 새로 생성하고 연결 ID를 갱신한다", async () => {
+    mapping = { "task-a": "w9" };
+    await ensureHerdrSession("kanvibe:task-a", "/work/a");
+    expect(mapping).toEqual({ "task-a": "w1" });
+    expect(spaces).toHaveLength(1);
+  });
+  it("공유 서버의 모바일 미러는 해당 task Space의 pane만 반환한다", async () => {
+    mapping = { "task-a": "w1", "task-b": "w2" };
+    const original = execGit.getMockImplementation()!;
+    execGit.mockImplementation(async (...args) => {
+      const command = args[0];
+      if (command.includes("'pane' 'list'")) return result({ panes: [
+        { pane_id: "w1:p1", tab_id: "w1:t1", scroll: { viewport_rows: 30 } },
+        { pane_id: "w2:p1", tab_id: "w2:t1", scroll: { viewport_rows: 30 } },
+      ] });
+      if (command.includes("'pane' 'layout'")) return result({ layout: { area: { width: 80 }, panes: [], focused_pane_id: "w1:p1" } });
+      if (command.includes("'pane' 'process-info'")) return result({ process_info: { foreground_processes: [{ name: "zsh" }] } });
+      return original(...args);
+    });
+    expect((await listHerdrMirrorPanes("kanvibe:task-a")).map((pane) => pane.id)).toEqual(["w1:p1"]);
+    expect(execGit.mock.calls.some(([command]) => command.includes("'process-info' '--pane' 'w2:p1'"))).toBe(false);
+  });
+  it("공유 서버의 에이전트는 workspace ID를 task 세션 참조로 돌려준다", async () => {
+    mapping = { "task-a": "w1", "task-b": "w2" };
+    const original = execGit.getMockImplementation()!;
+    execGit.mockImplementation(async (...args) => args[0].includes("'agent' 'list'") ? result({ agents: [
+      { agent: "codex", pane_id: "w1:p1", tab_id: "w1:t1", cwd: "/work/a", agent_status: "working" },
+      { agent: "claude", pane_id: "w2:p1", tab_id: "w2:t1", cwd: "/work/b", agent_status: "working" },
+    ] }) : original(...args));
+    expect((await listHerdrRunningAgentPanes()).map((agent) => agent.sessionName)).toEqual(["kanvibe:task-a", "kanvibe:task-b"]);
+  });
+  it("입력 문자열이나 탭 이름을 다른 Space 식별자로 오인하지 않는다", async () => {
+    mapping = { "task-a": "w1" };
+    const { runHerdrCommand } = await import("@/lib/herdr");
+    await expect(runHerdrCommand("kanvibe:task-a", ["pane", "send-text", "w1:p1", "w2:p1"])).resolves.toBeDefined();
+    await expect(runHerdrCommand("kanvibe:task-a", ["tab", "rename", "w1:t1", "w2:t1"])).resolves.toBeDefined();
+  });
+  it("손상된 mapping을 덮어쓰지 않고 오류를 반환한다", async () => {
+    readTextFile.mockResolvedValue("{broken");
+    await expect(ensureHerdrSession("kanvibe:task-a", "/work/a")).rejects.toThrow();
+    expect(updateTextFile).not.toHaveBeenCalled();
+    expect(execGit.mock.calls.some(([c]) => c.includes("'workspace' 'create'"))).toBe(false);
   });
 });

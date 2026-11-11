@@ -36,25 +36,35 @@ describe("gitExclude remote", () => {
     expect(mockExecGit).not.toHaveBeenCalledWith(
       "git -C '/remote/worktree/task-1' rev-parse --path-format=absolute --git-dir",
       "remote-host",
+      { strictHostKeyChecking: true },
     );
     expect(mockExecGit).toHaveBeenCalledWith(
       "git -C '/remote/worktree/task-1' rev-parse --path-format=absolute --git-common-dir",
       "remote-host",
+      { strictHostKeyChecking: true },
+    );
+    expect(mockReadTextFile).toHaveBeenCalledWith(
+      "/remote/main/.git/info/exclude",
+      "remote-host",
+      { strictHostKeyChecking: true },
     );
     expect(mockWriteTextFile).toHaveBeenCalledWith(
       "/remote/main/.git/info/exclude",
       expect.stringContaining(".codex/config.toml"),
       "remote-host",
+      { strictHostKeyChecking: true },
     );
     expect(mockWriteTextFile).toHaveBeenCalledWith(
       "/remote/main/.git/info/exclude",
       expect.stringContaining(".kanvibe/"),
       "remote-host",
+      { strictHostKeyChecking: true },
     );
     expect(mockWriteTextFile).not.toHaveBeenCalledWith(
       "/remote/main/.git/info/exclude",
       expect.stringContaining(".kanvibe/hooks-targets.json"),
       "remote-host",
+      { strictHostKeyChecking: true },
     );
   });
 });

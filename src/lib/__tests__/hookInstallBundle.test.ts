@@ -1,5 +1,8 @@
 // @vitest-environment node
-import { execFileSync } from "node:child_process";
+import { execFile, execFileSync } from "node:child_process";
+import { mkdtempSync, rmSync } from "node:fs";
+import http from "node:http";
+import path from "node:path";
 import { describe, it, expect, beforeEach } from "vitest";
 import {
   buildHookInstallBootstrapCommand,
@@ -173,6 +176,38 @@ describe("issueHookInstallScript / readHookInstallScript", () => {
 });
 
 describe("buildHookInstallBootstrapCommand", () => {
+  it("원격 설치 소켓이 없으면 응답 가능한 TCP 주소에도 설치 토큰을 보내지 않는다", async () => {
+    const workspace = mkdtempSync("/tmp/kvi-");
+    const ticket = issueHookInstallScript([{
+      filePath: path.join(workspace, "installed.sh"),
+      content: "echo installed\n",
+    }]);
+    const received: string[] = [];
+    const server = http.createServer((request, response) => {
+      received.push(request.url ?? "");
+      response.end(readHookInstallScript(ticket.token));
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const address = server.address() as { port: number };
+
+    try {
+      const command = buildHookInstallBootstrapCommand(
+        `http://127.0.0.1:${address.port}`,
+        ticket,
+        CLIENT_ID,
+      ).replaceAll("/tmp/kv-$(id -u)", workspace);
+      const exitCode = await new Promise<number>((resolve) => {
+        execFile("sh", ["-c", command], { timeout: 5000 }, (error) => resolve(Number(error?.code ?? 0)));
+      });
+
+      expect(received).toEqual([]);
+      expect(exitCode).not.toBe(0);
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+      rmSync(workspace, { recursive: true, force: true });
+    }
+  });
+
   it("should keep the SSH command short instead of carrying the payload", () => {
     // Given
     const ticket = issueHookInstallScript(hookFiles);
@@ -196,7 +231,6 @@ describe("buildHookInstallBootstrapCommand", () => {
     // Then
     expect(command).not.toContain("?token=");
     expect(command).toContain(`-H '${HOOK_INSTALL_TOKEN_HEADER}: ${ticket.token}'`);
-    expect(command).toContain(`--header='${HOOK_INSTALL_TOKEN_HEADER}: ${ticket.token}'`);
   });
 
   it("should keep the SSH command the same size no matter how large the install payload is", () => {
@@ -221,13 +255,12 @@ describe("buildHookInstallBootstrapCommand", () => {
     expect(bulkyCommand.length).toBe(smallCommand.length);
   });
 
-  it("should fall back to wget when curl is missing", () => {
+  it("원격 설치 다운로드는 curl의 Unix 소켓을 사용한다", () => {
     // When
     const command = buildHookInstallBootstrapCommand("http://192.168.0.10:9736", sampleTicket, CLIENT_ID);
 
     // Then
-    expect(command).toContain("curl --connect-timeout 3 --max-time 10 -fsSL");
-    expect(command).toContain("wget --timeout=3 --tries=1 --header=");
+    expect(command).toContain('curl --unix-socket "$__kanvibe_socket" --connect-timeout 3 --max-time 10 -fsSL');
   });
 
   it("should bound the download so an unreachable hook server falls back quickly", () => {
@@ -237,7 +270,6 @@ describe("buildHookInstallBootstrapCommand", () => {
     // Then
     expect(command).toContain("--connect-timeout 3");
     expect(command).toContain("--max-time 10");
-    expect(command).toContain("--tries=1");
   });
 
   it("should download fully before executing so a truncated script never runs", () => {

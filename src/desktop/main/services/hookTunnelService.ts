@@ -5,7 +5,7 @@ import path from "node:path";
 import { IsNull, Not } from "typeorm";
 import { getOrCreateHookClientId } from "@/desktop/main/services/appSettingsService";
 import { execGit } from "@/lib/gitOperations";
-import { buildRemoteHookSocketPrepareCommand } from "@/lib/hookSocketPath";
+import { buildHookSocketFileName, buildRemoteHookSocketPrepareCommand } from "@/lib/hookSocketPath";
 import { getProjectRepository, getTaskRepository } from "@/lib/database";
 import { createLocalShellEnvironment } from "@/lib/shellEnvironment";
 import { buildSSHArgs, parseSSHConfig, type SSHHostConfig } from "@/lib/sshConfig";
@@ -16,7 +16,7 @@ import { buildSSHArgs, parseSSHConfig, type SSHHostConfig } from "@/lib/sshConfi
  * 원격 계정마다 로컬 소켓을 따로 두어, 요청이 어느 호스트에서 왔는지를 소켓만으로 알 수 있게 한다.
  * 같은 원격 계정을 가리키는 SSH 별칭들은 원격 소켓 경로가 같아 터널 하나를 함께 쓴다.
  * 별칭마다 터널을 열면 나중에 연 터널이 앞 터널의 소켓을 지워, 앞 별칭의 요청이 다른 별칭의 요청으로 들어온다.
- * 터널은 HTTP를 대체하는 최적 경로일 뿐이므로 실패해도 원격 스크립트는 HTTP로 넘어간다.
+ * 원격 hook과 CLI는 이 터널이 연결된 동안만 요청을 보낸다.
  */
 const TUNNEL_RECONCILE_INTERVAL_MS = 5 * 60_000;
 const TUNNEL_RECONNECT_MIN_DELAY_MS = 5_000;
@@ -63,6 +63,7 @@ export function buildHookTunnelSSHArgs(
     /** 사용자 설정의 ControlMaster를 타면 터널의 수명이 이 프로세스와 분리된다 */
     "-o", "ControlMaster=no",
     "-o", "ControlPath=none",
+    "-o", "StrictHostKeyChecking=yes",
     "-R", `${remoteSocketPath}:${localSocketPath}`,
     destination,
     /** 앱이 비정상 종료되면 stdin이 닫혀 cat이 끝나고, 그러면 ssh도 함께 끝나 터널이 남지 않는다 */
@@ -87,7 +88,16 @@ async function findSSHHostConfig(sshHost: string): Promise<SSHHostConfig> {
 async function connectHookTunnel(tunnel: HookTunnel): Promise<void> {
   const hostConfig = await findSSHHostConfig(tunnel.connectHost);
   const clientId = await getOrCreateHookClientId();
-  const remoteSocketPath = (await execGit(buildRemoteHookSocketPrepareCommand(clientId), tunnel.connectHost)).trim();
+  const remoteSocketPath = (await execGit(
+    buildRemoteHookSocketPrepareCommand(clientId),
+    tunnel.connectHost,
+    { strictHostKeyChecking: true },
+  )).trim();
+  const socketDirectory = remoteSocketPath.slice(0, remoteSocketPath.lastIndexOf("/"));
+  if (!/^\/tmp\/kv-\d+$/.test(socketDirectory)
+    || remoteSocketPath !== `${socketDirectory}/${buildHookSocketFileName(clientId)}`) {
+    throw new Error("원격 hook 소켓 경로가 설치한 client의 경로와 일치하지 않습니다.");
+  }
   if (tunnel.isClosed) {
     return;
   }
@@ -228,7 +238,7 @@ async function openHookTunnel(sshHost: string): Promise<void> {
 
 /**
  * 원격 task나 원격 프로젝트가 남아 있는 호스트의 터널을 유지한다.
- * 완료한 task도 worktree가 남아 있으면 hook과 CLI가 돌기 때문에 상태로 거르지 않는다. 거르면 그 요청이 평문 HTTP로 나간다.
+ * 완료한 task도 worktree가 남아 있으면 hook과 CLI가 돌기 때문에 상태로 거르지 않는다.
  */
 async function reconcileHookTunnels(): Promise<void> {
   const [remoteTasks, remoteProjects] = await Promise.all([

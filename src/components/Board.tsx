@@ -38,6 +38,7 @@ import {
   sortTasksForBoard,
 } from "@/desktop/renderer/utils/boardTaskSort";
 import { DEFAULT_LOCALE, SUPPORTED_LOCALES } from "@/desktop/renderer/utils/locales";
+import { buildProjectDisplayMap } from "@/desktop/renderer/utils/projectDisplay";
 import { computeProjectColor } from "@/lib/projectColor";
 import type { NotificationCenterButtonHandle } from "./NotificationCenterButton";
 import type { ProjectSelectorHandle } from "./ProjectSelector";
@@ -270,13 +271,6 @@ function buildStatusMoveResult(
   };
 }
 
-/** worktree repoPath에서 메인 프로젝트 경로를 추출한다 */
-function extractMainRepoPath(repoPath: string): string | null {
-  const worktreeIndex = repoPath.indexOf("__worktrees");
-  if (worktreeIndex === -1) return null;
-  return repoPath.slice(0, worktreeIndex);
-}
-
 function openSettingsPage() {
   window.location.hash = `#/${getCurrentBoardLocale()}/settings`;
 }
@@ -377,25 +371,7 @@ export default function Board({
     timeoutId: number;
   } | null>(null);
 
-  const projectDisplayMap = useMemo(() => {
-    const mainProjectsByLocation = new Map(
-      projects.filter((project) => !extractMainRepoPath(project.repoPath)).map((project) => [
-        JSON.stringify([project.sshHost, project.repoPath]), project,
-      ]),
-    );
-    const displayMap = new Map<string, { name: string; groupKey: string; project: Project | undefined }>();
-    for (const project of projects) {
-      const mainPath = extractMainRepoPath(project.repoPath);
-      const groupKey = JSON.stringify([project.sshHost, mainPath ?? project.repoPath]);
-      const mainProject = mainProjectsByLocation.get(groupKey);
-      displayMap.set(project.id, {
-        name: mainProject?.name ?? (mainPath ? mainPath.split("/").pop() || project.name : project.name),
-        groupKey,
-        project: mainProject,
-      });
-    }
-    return displayMap;
-  }, [projects]);
+  const projectDisplayMap = useMemo(() => buildProjectDisplayMap(projects), [projects]);
 
   const projectNameMap = useMemo(() => Object.fromEntries(
     [...projectDisplayMap].map(([id, display]) => [id, display.name]),

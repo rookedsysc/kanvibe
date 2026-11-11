@@ -68,7 +68,7 @@ open -a KanVibe
 
 ### 1. 빠른 태스크 검색
 
-어디서든 태스크 검색을 열고 프로젝트나 브랜치명으로 필터링한 뒤, 보드로 돌아가지 않고 바로 태스크 워크스페이스로 이동합니다.
+어디서든 태스크 검색을 열고 프로젝트나 브랜치명으로 필터링합니다. Worktree 뷰에서 결과를 선택하면 좌우 화면을 유지하면서 왼쪽 목록의 해당 태스크를 선택해 스크롤하고, 오른쪽에 터미널을 표시합니다. 칸반 뷰에서는 기존처럼 태스크 상세 화면을 엽니다.
 
 <img src="./images/readme/kanvibe-search-shortcut.png" alt="빠른 태스크 검색 단축키" width="100%">
 
@@ -177,6 +177,13 @@ brew untap rookedsysc/kanvibe
 - 장기 프로젝트를 위한 Done 컬럼 페이지네이션
 - 브라우저와 데스크톱 창 전체에 WebSocket 기반 실시간 업데이트
 
+### Worktree 뷰
+
+- 왼쪽에 태스크 목록, 오른쪽에 선택한 태스크의 터미널을 함께 표시
+- 칸반 카드와 같은 프로젝트 아이콘·제목·설명·배지를 사용하되 바깥 테두리는 생략하고, 선택 상태와 키보드 포커스는 각각 표시
+- 빠른 검색 결과는 현재 화면 안에서 선택하며, DONE 태스크나 현재 필터에 가려진 태스크도 표시
+- macOS에서는 `Cmd+Option`, Linux에서는 `Ctrl+Alt`만 눌렀다 떼면 목록의 선택한 태스크로 포커스 이동. `↑ / ↓`로 표시 순서에 따라 태스크를 전환하고, `Enter`로 해당 터미널에 포커스 이동
+
 ### 브랜치 기반 태스크 워크스페이스
 - git worktree와 터미널 세션을 자동으로 준비하는 브랜치 TODO 생성
 - 보드 toolbar의 돋보기 스캔 dialog로 저장소를 등록하고 기존 worktree 브랜치를 TODO 태스크로 감지
@@ -192,9 +199,21 @@ brew untap rookedsysc/kanvibe
 - 원격 터미널 attach는 SSH에서 Herdr/tmux/zellij를 직접 실행하며, 로컬 `DISPLAY`, 원격 `X11Forwarding`, `xauth`가 준비된 경우에만 trusted X11 forwarding(`ssh -Y`)을 요청합니다
 - Nerd Font 렌더링 지원
 
-- 저장된 유효한 설정이 없으면 Herdr가 기본값이며, 기존 tmux·zellij·terminal 선택은 유지합니다. 태스크마다 이름 있는 영구 세션을 사용합니다. 세션을 처음 만들 때 설정한 6가지 pane 레이아웃과 pane별 시작 명령을 적용하며, 다시 열면 실행 중인 셸을 이어 씁니다.
-- Herdr 탭은 생성·전환·이름 변경·닫기와 workspace 안에서의 드래그 순서 변경을 지원합니다. KanVibe 창을 닫아도 마지막 탭은 유지하며, 태스크를 삭제하면 해당 이름의 세션을 중지하고 삭제합니다. Herdr의 첫 실행 설정과 개인 설정은 Herdr가 관리합니다.
+- 저장된 유효한 설정이 없으면 Herdr가 기본값이며, 기존 tmux·zellij·terminal 선택은 유지합니다. 새 Herdr 태스크는 호스트별 영구 `kanvibe` 서버를 공유하며, 태스크마다 만든 workspace가 Spaces에 함께 표시됩니다. 처음 열 때 설정한 6가지 pane 레이아웃과 시작 명령을 적용하고, 다시 열면 실행 중인 셸을 이어 씁니다. 기존 독립 세션은 명시적으로 교체할 때까지 유지합니다.
+- Herdr 탭은 생성·전환·이름 변경·닫기와 workspace 안에서의 드래그 순서 변경을 지원합니다. Space와 탭 선택은 해당 태스크 창에만 적용됩니다. KanVibe를 닫아도 마지막 탭은 유지하며, 공유 태스크를 삭제하면 해당 workspace만 닫아 다른 태스크의 작업은 계속 실행됩니다. workspace ID 연결 정보를 Herdr 세션 디렉터리에 저장하므로 Space 이름을 바꿔도 다시 연결됩니다. Herdr의 첫 실행 설정과 개인 설정은 Herdr가 관리합니다.
 - 태스크 생성·브랜치 생성·터미널 연결에서 `herdr`를 선택하면 로컬 또는 선택한 SSH 호스트의 설치 여부를 확인합니다. Herdr가 없으면 설치 안내를 승인해 해당 호스트에서 [공식 설치 프로그램](https://herdr.dev/tui/docs/install/)을 실행할 수 있습니다. `~/.local/bin`에 설치하며 셸 시작 파일은 바꾸지 않습니다. 취소하면 태스크는 변경되지 않습니다. 설치에 실패하면 오류를 확인하고 네트워크 연결과 설치 경로의 쓰기 권한을 점검한 뒤 다시 시도합니다.
+
+#### 외부 터미널에서 같은 Herdr Spaces 열기
+
+KanVibe에서 Herdr 태스크를 연 뒤, 같은 호스트의 Ghostty 등에서 새 터미널을 열고 실행하세요.
+
+```sh
+herdr session attach kanvibe
+```
+
+KanVibe가 공유하는 Herdr 세션에 연결됩니다. **Spaces**에서 해당 태스크의 workspace를 선택하면 실행 중인 셸을 이어 쓸 수 있습니다. Spaces에는 현재 연결된 세션의 workspace만 표시됩니다. 별도 `kanvibe-dev` 세션에 붙으면 `kanvibe` 안의 workspace는 보이지 않습니다. workspace 이름이 똑같이 `kanvibe-dev`여도 서로 다른 대상입니다.
+
+SSH 태스크는 먼저 해당 SSH 호스트에 접속한 뒤 그곳에서 명령을 실행하세요. 기존 독립 세션을 쓰는 태스크는 `kanvibe` 대신 원래 세션 이름으로 연결합니다. 해당 호스트에서 `herdr session list`로 세션 이름을 확인할 수 있습니다.
 
 ### 키보드 중심 조작
 - 어디서든 브랜치명이나 프로젝트명으로 빠른 태스크 검색 열기
@@ -236,6 +255,9 @@ brew untap rookedsysc/kanvibe
 | `:move todo\|progress\|pending\|review\|done` | 포커스된 보드 태스크 카드 | 드래그 없이 포커스된 태스크를 대상 상태로 이동. 명령 입력창에서 `Tab`을 누르면 유일한 상태 prefix를 자동 완성 |
 | `dd` | 포커스된 보드 태스크 카드 | 확인 후 포커스된 태스크 삭제 |
 | `Cmd/Ctrl+Shift+O` | 전역 | 브랜치명/프로젝트명 기준 빠른 태스크 검색 열기(기본값, 변경 가능) |
+| `Cmd+Option` (macOS), `Ctrl+Alt` (Linux) 눌렀다 떼기 | Worktree 뷰 | 왼쪽 목록의 선택한 태스크로 포커스 이동. 다른 키를 함께 누르면 실행하지 않음 |
+| `↑ / ↓` | 포커스된 Worktree 태스크 목록 | 이전/다음 태스크 선택과 오른쪽 터미널 전환. 첫 번째/마지막 태스크에서 정지 |
+| `Enter` | 포커스된 Worktree 태스크 목록 | 선택한 태스크의 터미널로 포커스 이동 |
 | `Cmd/Ctrl+Shift+P` | 보드 | 프로젝트 필터 드롭다운 열기 |
 | `Cmd/Ctrl+Shift+I` | 보드 | 알림 드롭다운 열기 |
 | `Cmd+[` / `Cmd+]` (macOS), `Alt+[` / `Alt+]` (Linux) | 전역 | 앱 히스토리 뒤로/앞으로 이동. 더 뒤로 갈 곳이 없으면 보드 홈으로 이동 |

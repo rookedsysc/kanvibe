@@ -22,6 +22,16 @@ KanVibe Desktop brings task status, branch workspaces, terminals, and agent cont
 - Read project color, priority, PR, and session labels directly from each card.
 - Paginate the DONE column for long-running projects.
 
+## Worktree view
+
+Keep the task list on the left and the selected task's terminal on the right. Cards use the same project icon, title, description, and badges as the Kanban board, without the outer border. The selected task and keyboard focus are indicated separately.
+
+- Selecting a quick-search result keeps Worktree view open, selects and scrolls to that task in the left list, and switches the right terminal. This also works for DONE tasks and tasks hidden by the current filters.
+- Press and release only `Cmd+Option` on macOS or `Ctrl+Alt` on Linux to focus the selected task in the list. Adding another key cancels this focus action.
+- With the list focused, `↑ / ↓` selects the previous/next task in displayed order and switches its terminal. Navigation stops at the first/last task; `Enter` moves focus into the selected task's terminal.
+
+See [shortcuts](/en/shortcuts) for the keyboard reference.
+
 ## Task detail workspace
 
 <figure className="kv-shot">
@@ -47,11 +57,23 @@ Open several terminals inside one task to keep a server, a test run, and an agen
 - While the task info panel is open it overlays the left portion of the tab bar. Click the terminal outside the panel, or press the task info dock button again, to reveal the whole bar.
 - Tabs on Herdr, tmux, and zellij sessions stay **synchronized in both directions** with Herdr tabs, tmux windows, and zellij tabs. A window created outside KanVibe with `tmux new-window` shows up in the tab bar, and clicking a tab moves the multiplexer's active target too.
 - Because KanVibe draws its own tab bar, the tmux status bar and the zellij tab bar are turned off — only for sessions KanVibe creates. tmux is turned off on every reattach, so sessions made before the tab bar shipped get cleaned up too. zellij fixes its layout when the session is created, so it only applies to sessions created after that.
-- Herdr is the default when no valid preference is saved. It uses a persistent named session per task. The six configured pane layouts and per-pane startup commands apply when the session is first created; reopening it keeps running shells.
-- Herdr tabs support creating, selecting, renaming, closing, and drag reordering within a workspace. Closing the KanVibe window keeps the last tab alive; deleting the task stops and deletes its named session. Herdr manages its own first-run setup and personal configuration.
+- Herdr is the default when no valid preference is saved. New Herdr tasks share a persistent `kanvibe` server on each host, with one workspace per task listed under Spaces. The configured pane layout and per-pane startup commands apply when the workspace is first created; reopening it keeps running shells. Existing independent named sessions remain connected until explicitly replaced.
+- Herdr tabs support creating, selecting, renaming, closing, and drag reordering within a workspace. Selecting a Space or tab affects only that task window. Closing the KanVibe window keeps the last tab alive; deleting a shared task closes only its workspace and keeps other tasks running. Herdr manages its own first-run setup and personal configuration.
 - On `terminal` sessions KanVibe runs one shell per tab. Each tab keeps its own scrollback across switches, and the shells stay alive while the app is running.
 
 Key combinations are listed in the terminal tabs section of the [shortcuts](/en/shortcuts) page.
+
+### Open the same Herdr Spaces in an external terminal
+
+After opening a Herdr task in KanVibe, run this in a new Ghostty or other terminal on the same host:
+
+```sh
+herdr session attach kanvibe
+```
+
+This connects to KanVibe's shared Herdr session. Select the task's workspace under **Spaces** to continue working in its running shells. Spaces lists workspaces in the connected session only: a separate session named `kanvibe-dev` does not show the workspaces inside `kanvibe`, even if one of those workspaces is also named `kanvibe-dev`.
+
+For an SSH task, connect to that task's SSH host first, then run the command there. Older tasks that still use independent named sessions need their original session name instead of `kanvibe`; run `herdr session list` on that host to find it.
 
 ## Task-scoped AI chat history
 
@@ -134,7 +156,7 @@ zellij and plain terminal sessions are judged by transcript activity alone, so a
 
 <figure className="kv-shot">
   <img src="/screenshots/quick-search.png" alt="Quick task search dialog" />
-  <figcaption>Search all tasks by branch or project name and jump directly into the task workspace.</figcaption>
+  <figcaption>Search all tasks by branch or project name. In Worktree view, select the task in the left list and show its terminal on the right; in Kanban view, open task detail.</figcaption>
 </figure>
 
 ## Project filters, directory scan, and notifications

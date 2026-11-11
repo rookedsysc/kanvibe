@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
+import { useLocation, useNavigationType, useSearchParams } from "react-router-dom";
 import WorkspaceTaskList from "@/desktop/renderer/components/WorkspaceTaskList";
 import WorkspaceTerminalPane from "@/desktop/renderer/components/WorkspaceTerminalPane";
 import { getDefaultSessionType } from "@/desktop/renderer/actions/appSettings";
-import { getMoreDoneTasks, getTasksByStatus } from "@/desktop/renderer/actions/kanban";
+import { getMoreDoneTasks, getTaskById, getTasksByStatus } from "@/desktop/renderer/actions/kanban";
 import { getAllProjects } from "@/desktop/renderer/actions/project";
 import { useRefreshSignal } from "@/desktop/renderer/utils/refresh";
 import { SessionType, TASK_STATUS_ORDER, TaskStatus, type KanbanTask } from "@/entities/KanbanTask";
@@ -11,6 +12,7 @@ import type { Project } from "@/entities/Project";
 interface WorkspaceData {
   tasks: KanbanTask[];
   doneTotal: number;
+  doneOffset: number;
   projects: Project[];
   defaultSessionType: SessionType;
 }
@@ -36,7 +38,23 @@ function findInitialTaskId(tasks: KanbanTask[]): string | null {
 export default function TaskWorkspaceRoute() {
   const refreshSignal = useRefreshSignal(["all", "board"]);
   const [data, setData] = useState<WorkspaceData | null>(null);
-  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const requestedTaskId = searchParams.get("taskId");
+  const location = useLocation();
+  const navigationType = useNavigationType();
+  const selectionRequestKey = requestedTaskId && navigationType === "PUSH" ? location.key : undefined;
+  const [defaultTaskId, setDefaultTaskId] = useState<string | null>(null);
+  const selectedTaskId = requestedTaskId && data?.tasks.some((task) => task.id === requestedTaskId)
+    ? requestedTaskId
+    : defaultTaskId;
+
+  function selectTask(taskId: string) {
+    setSearchParams((current) => {
+      const next = new URLSearchParams(current);
+      next.set("taskId", taskId);
+      return next;
+    }, { replace: true });
+  }
 
   useEffect(() => {
     document.title = "";
@@ -50,15 +68,15 @@ export default function TaskWorkspaceRoute() {
         if (cancelled) return;
 
         const tasks = TASK_STATUS_ORDER.flatMap((status) => tasksByStatus.tasks[status]);
-        setData({ tasks, doneTotal: tasksByStatus.doneTotal, projects, defaultSessionType });
-        setSelectedTaskId((current) => (
+        setData({ tasks, doneTotal: tasksByStatus.doneTotal, doneOffset: tasksByStatus.tasks[TaskStatus.DONE].length, projects, defaultSessionType });
+        setDefaultTaskId((current) => (
           current && tasks.some((task) => task.id === current) ? current : findInitialTaskId(tasks)
         ));
       })
       .catch((error) => {
         console.error("Failed to load workspace route data:", error);
         if (!cancelled) {
-          setData((current) => current ?? { tasks: [], doneTotal: 0, projects: [], defaultSessionType: SessionType.HERDR });
+          setData((current) => current ?? { tasks: [], doneTotal: 0, doneOffset: 0, projects: [], defaultSessionType: SessionType.HERDR });
         }
       });
 
@@ -66,6 +84,18 @@ export default function TaskWorkspaceRoute() {
       cancelled = true;
     };
   }, [refreshSignal]);
+
+  useEffect(() => {
+    if (!data || !requestedTaskId || data.tasks.some((task) => task.id === requestedTaskId)) return;
+    let cancelled = false;
+    void getTaskById(requestedTaskId).then((task) => {
+      if (cancelled || !task) return;
+      setData((current) => current && !current.tasks.some((loaded) => loaded.id === task.id)
+        ? { ...current, tasks: [...current.tasks, task] }
+        : current);
+    }).catch((error) => console.error("Failed to load selected workspace task:", error));
+    return () => { cancelled = true; };
+  }, [data, requestedTaskId]);
 
   const selectedTask = useMemo(
     () => data?.tasks.find((task) => task.id === selectedTaskId) ?? null,
@@ -76,7 +106,7 @@ export default function TaskWorkspaceRoute() {
     return <div className="h-screen bg-bg-page" data-testid="workspace-route-loading" />;
   }
 
-  const loadedDoneCount = data.tasks.filter((task) => task.status === TaskStatus.DONE).length;
+  const doneOffset = data.doneOffset;
   const selectedProjectName = selectedTask?.projectId
     ? data.projects.find((project) => project.id === selectedTask.projectId)?.name ?? null
     : null;
@@ -89,14 +119,15 @@ export default function TaskWorkspaceRoute() {
   }
 
   function loadMoreDoneTasks() {
-    void getMoreDoneTasks(loadedDoneCount)
+    const requestedOffset = doneOffset;
+    void getMoreDoneTasks(requestedOffset)
       .then(({ tasks: moreDoneTasks, doneTotal }) => {
         setData((current) => {
           if (!current) return current;
 
           const loadedTaskIds = new Set(current.tasks.map((task) => task.id));
           const newDoneTasks = moreDoneTasks.filter((task) => !loadedTaskIds.has(task.id));
-          return { ...current, tasks: [...current.tasks, ...newDoneTasks], doneTotal };
+          return { ...current, tasks: [...current.tasks, ...newDoneTasks], doneOffset: Math.max(current.doneOffset, requestedOffset + moreDoneTasks.length), doneTotal };
         });
       })
       .catch((error) => {
@@ -105,13 +136,14 @@ export default function TaskWorkspaceRoute() {
   }
 
   return (
-    <div className="flex h-screen overflow-hidden bg-bg-page">
+    <div data-workspace-view="true" className="flex h-screen overflow-hidden bg-bg-page">
       <WorkspaceTaskList
         tasks={data.tasks}
         projects={data.projects}
         selectedTaskId={selectedTaskId}
-        onSelectTask={setSelectedTaskId}
-        hasMoreDoneTasks={loadedDoneCount < data.doneTotal}
+        selectionRequestKey={selectionRequestKey}
+        onSelectTask={selectTask}
+        hasMoreDoneTasks={data.doneOffset < data.doneTotal}
         onLoadMoreDoneTasks={loadMoreDoneTasks}
       />
       <WorkspaceTerminalPane

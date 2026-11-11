@@ -4,6 +4,7 @@ import { join } from "path";
 import { tmpdir } from "os";
 import { invalidateOpenCodePluginRegistration } from "../openCodePluginRegistry";
 import { setupOpenCodeHooks, getOpenCodeHooksStatus } from "../openCodeHooksSetup";
+import { HOOK_TRANSPORT_VERSION_MARKER } from "../hookSocketPath";
 
 const { mockGetOpenCodeRegisteredKanvibePluginUrls } = vi.hoisted(() => ({
   mockGetOpenCodeRegisteredKanvibePluginUrls: vi.fn(),
@@ -12,6 +13,12 @@ const { mockGetOpenCodeRegisteredKanvibePluginUrls } = vi.hoisted(() => ({
 vi.mock("@/lib/openCodePluginRegistry", () => ({
   getOpenCodeRegisteredKanvibePluginUrls: mockGetOpenCodeRegisteredKanvibePluginUrls,
   invalidateOpenCodePluginRegistration: vi.fn(),
+}));
+
+vi.mock("@/desktop/main/services/appSettingsService", () => ({
+  getAppSetting: async () => "generator-test-secret",
+  setAppSetting: vi.fn(),
+  getOrCreateHookClientId: async () => "generator-test-client",
 }));
 
 describe("openCodeHooksSetup", () => {
@@ -239,6 +246,18 @@ export const KanvibePlugin: Plugin = async ({ $ }) => {
       ]);
     });
 
+    it("구형 전송 버전 OpenCode plugin은 재설치 대상으로 본다", async () => {
+      await setupOpenCodeHooks(tempDir, "task-1", "http://localhost:3000");
+      const pluginPath = join(tempDir, ".opencode", "plugins", "kanvibe-plugin.ts");
+      const content = await readFile(pluginPath, "utf-8");
+      await writeFile(pluginPath, content.replace(HOOK_TRANSPORT_VERSION_MARKER, ""));
+
+      const status = await getOpenCodeHooksStatus(tempDir, "task-1");
+
+      expect(status.hasTargetFanout).toBe(false);
+      expect(status.installed).toBe(false);
+    });
+
     it("legacy status.md OpenCode plugin은 설치된 것으로 보지 않는다", async () => {
       // Given
       const repoPath = tempDir;
@@ -294,18 +313,32 @@ export const KanvibePlugin: Plugin = async ({ $ }) => {
       expect(status.hasPlugin).toBe(false);
     });
 
-    it("should return installed: false when OpenCode does not register the plugin", async () => {
+    it("should keep installed true and surface diagnostics when the CLI registry omits the installed plugin", async () => {
       // Given
       const repoPath = tempDir;
-      await setupOpenCodeHooks(repoPath, "task-1", "http://localhost:3000");
+      await setupOpenCodeHooks(repoPath, "task-1", "http://localhost:9736");
       mockGetOpenCodeRegisteredKanvibePluginUrls.mockResolvedValueOnce([]);
 
       // When
-      const status = await getOpenCodeHooksStatus(repoPath);
+      const status = await getOpenCodeHooksStatus(repoPath, "task-1");
 
       // Then
-      expect(status.installed).toBe(false);
+      expect(status.installed).toBe(true);
+      expect(status.hasRegisteredHookTarget).toBe(true);
       expect(status.hasRegisteredPlugin).toBe(false);
+      expect(status.registeredPluginUrls).toEqual([]);
+    });
+
+    it("should keep installed true and surface diagnostics when the CLI registry query fails", async () => {
+      await setupOpenCodeHooks(tempDir, "task-1", "http://localhost:9736");
+      mockGetOpenCodeRegisteredKanvibePluginUrls.mockRejectedValueOnce(new Error("OpenCode timeout"));
+
+      const status = await getOpenCodeHooksStatus(tempDir, "task-1");
+
+      expect(status.installed).toBe(true);
+      expect(status.hasRegisteredHookTarget).toBe(true);
+      expect(status.hasRegisteredPlugin).toBeUndefined();
+      expect(status.pluginRegistrationError).toBe("OpenCode timeout");
     });
 
     it("should keep installed true and surface diagnostics when duplicate kanvibe plugins are registered", async () => {

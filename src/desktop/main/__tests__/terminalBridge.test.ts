@@ -3,9 +3,19 @@
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+const mockEnsureKanvibeHooksCurrent = vi.fn<(...args: unknown[]) => Promise<boolean>>(async () => false);
+const mockBroadcastTaskHookInstallFailed = vi.fn();
+vi.mock("@/lib/kanvibeHooksInstaller", () => ({
+  ensureKanvibeHooksCurrent: (...args: unknown[]) => mockEnsureKanvibeHooksCurrent(...args),
+}));
+vi.mock("@/lib/boardNotifier", () => ({
+  broadcastTaskHookInstallFailed: (...args: unknown[]) => mockBroadcastTaskHookInstallFailed(...args),
+}));
+const mockFindProjectBy = vi.fn();
 const mockFindOneBy = vi.fn();
 vi.mock("@/lib/database", () => ({
   getTaskRepository: async () => ({ findOneBy: mockFindOneBy }),
+  getProjectRepository: async () => ({ findOneBy: mockFindProjectBy }),
 }));
 
 const mockParseSSHConfig = vi.fn();
@@ -156,5 +166,50 @@ describe("terminalBridge pending open ownership", () => {
     mockFindOneBy.mockResolvedValue({ sessionType: "terminal", sessionName: "session" });
     await expect(bridge.openTerminal(window, "task", null, 100, 30)).resolves.toEqual({ ok: true });
     bridge.closeWindowTerminals(window.id);
+  });
+});
+
+
+describe("terminalBridge existing remote session migration", () => {
+  beforeEach(() => {
+    vi.resetModules();
+    vi.clearAllMocks();
+    mockEnsureKanvibeHooksCurrent.mockResolvedValue(false);
+    mockFindOneBy.mockResolvedValue({ id: "task-1", sshHost: "app-prod" });
+    mockParseSSHConfig.mockResolvedValue([SSH_CONFIG]);
+  });
+
+  function remoteTask() {
+    return { id: "task-1", title: "existing task", sshHost: "app-prod", worktreePath: "/remote/repo", sessionType: "tmux", sessionName: "existing" } as import("@/entities/KanbanTask").KanbanTask;
+  }
+
+  it("모바일과 데스크톱 공통 attach가 기존 세션을 붙이기 전에 훅을 검사한다", async () => {
+    const bridge = await importBridge();
+    const terminal = await import("@/lib/terminal");
+    const client = new bridge.CallbackTerminalClient(() => {});
+    await bridge.attachTaskTerminal(remoteTask(), null, client);
+    expect(mockEnsureKanvibeHooksCurrent).toHaveBeenCalledWith("/remote/repo", "task-1", "app-prod");
+    expect(mockEnsureKanvibeHooksCurrent.mock.invocationCallOrder[0]).toBeLessThan(vi.mocked(terminal.attachRemoteSession).mock.invocationCallOrder[0]);
+  });
+
+  it("worktree 경로가 없는 기본 브랜치 세션도 프로젝트 경로의 훅을 검사한다", async () => {
+    mockFindProjectBy.mockResolvedValue({ repoPath: "/remote/root" });
+    const bridge = await importBridge();
+    const task = { ...remoteTask(), worktreePath: null, projectId: "project-1" };
+    await bridge.attachTaskTerminal(task, null, new bridge.CallbackTerminalClient(() => {}));
+    expect(mockFindProjectBy).toHaveBeenCalledWith({ id: "project-1" });
+    expect(mockEnsureKanvibeHooksCurrent).toHaveBeenCalledWith("/remote/root", "task-1", "app-prod");
+  });
+
+  it("마이그레이션 실패를 알리고 attach 실패를 반환하며 다음 요청은 재시도한다", async () => {
+    mockEnsureKanvibeHooksCurrent.mockRejectedValueOnce(new Error("hooks write denied"));
+    const bridge = await importBridge();
+    const terminal = await import("@/lib/terminal");
+    const client = new bridge.CallbackTerminalClient(() => {});
+    await expect(bridge.attachTaskTerminal(remoteTask(), null, client)).rejects.toThrow("hooks write denied");
+    expect(mockBroadcastTaskHookInstallFailed).toHaveBeenCalledWith({ taskId: "task-1", taskTitle: "existing task", error: "hooks write denied" });
+    expect(terminal.attachRemoteSession).not.toHaveBeenCalled();
+    await bridge.attachTaskTerminal(remoteTask(), null, client);
+    expect(terminal.attachRemoteSession).toHaveBeenCalledTimes(1);
   });
 });

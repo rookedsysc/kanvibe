@@ -1,9 +1,25 @@
 import type { KanbanTask, TaskStatus } from "@/entities/KanbanTask";
 import type { SessionType } from "@/entities/KanbanTask";
-import type { LoadMoreDoneResponse, TasksByStatus, TasksByStatusWithMeta, CreateTaskInput, SearchableTask } from "@/desktop/main/services/kanbanService";
+import type {
+  LoadMoreDoneResponse,
+  TasksByStatus,
+  TasksByStatusWithMeta,
+  CreateTaskInput,
+  SearchableTask,
+  SessionTypeChangeResult,
+  SessionTypeChangeTargets,
+} from "@/desktop/main/services/kanbanService";
 import { invokeDesktop } from "@/desktop/renderer/ipc";
 
-export type { TasksByStatus, TasksByStatusWithMeta, LoadMoreDoneResponse, CreateTaskInput, SearchableTask };
+export type {
+  TasksByStatus,
+  TasksByStatusWithMeta,
+  LoadMoreDoneResponse,
+  CreateTaskInput,
+  SearchableTask,
+  SessionTypeChangeResult,
+  SessionTypeChangeTargets,
+};
 
 export function getTasksByStatus(): Promise<TasksByStatusWithMeta> {
   return invokeDesktop("kanban", "getTasksByStatus");
@@ -64,6 +80,29 @@ export function branchFromTask(
 
 export function connectTerminalSession(taskId: string, sessionType: SessionType): Promise<KanbanTask | null> {
   return invokeDesktop("kanban", "connectTerminalSession", taskId, sessionType);
+}
+
+export function isTaskSessionAlive(taskId: string): Promise<boolean> {
+  return invokeDesktop("kanban", "isTaskSessionAlive", taskId);
+}
+
+export function changeTaskSessionType(
+  taskId: string,
+  sessionType: SessionType,
+  shouldCloseExistingSession: boolean,
+): Promise<KanbanTask | null> {
+  return invokeDesktop("kanban", "changeTaskSessionType", taskId, sessionType, shouldCloseExistingSession);
+}
+
+export function getSessionTypeChangeTargets(sessionType: SessionType): Promise<SessionTypeChangeTargets> {
+  return invokeDesktop("kanban", "getSessionTypeChangeTargets", sessionType);
+}
+
+export function changeAllTaskSessionTypes(
+  sessionType: SessionType,
+  shouldCloseExistingSessions: boolean,
+): Promise<SessionTypeChangeResult> {
+  return invokeDesktop("kanban", "changeAllTaskSessionTypes", sessionType, shouldCloseExistingSessions);
 }
 
 export function moveTaskToColumn(taskId: string, newStatus: TaskStatus): Promise<void> {

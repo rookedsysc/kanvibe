@@ -2,13 +2,17 @@ import { spawn, type ChildProcess } from "child_process";
 import { getAppSetting, getDefaultSessionType, getLanPlaintextAllowed, getNotificationSettings, setAppSetting, setLanPlaintextAllowed, setNotificationEnabled, setNotificationStatuses } from "@/desktop/main/services/appSettingsService";
 import { getMobileTlsPort } from "@/lib/hookEndpoint";
 import {
+  changeTaskSessionType,
   connectTerminalSession,
   createTask,
   deleteTaskAcrossTargets,
   getTaskById,
   getTasksByStatus,
+  isTaskSessionAlive,
+  removeTaskRegistration,
   updateTaskStatus,
 } from "@/desktop/main/services/kanbanService";
+import { subscribeToBoardEvents } from "@/lib/boardNotifier";
 import { getAllProjects, getProjectBranches, getTaskAiSessions, getTaskAiSessionDetail } from "@/desktop/main/services/projectService";
 import { isAiSessionProvider } from "@/lib/aiSessions/providers";
 import type { AiMessageRole, AiSessionProvider } from "@/lib/aiSessions/types";
@@ -38,12 +42,16 @@ import {
   type MobilePushSubscription,
 } from "@/lib/mobilePairing";
 import {
+  buildHerdrClosePaneCommand,
+  buildHerdrControlPaneCommand,
   buildHerdrObservePaneCommand,
   buildHerdrPaneShortcutCommand,
   buildHerdrRecentScreenCommand,
   buildHerdrWritePaneCommand,
   buildScreenRedraw,
+  buildTmuxClosePaneCommand,
   buildTmuxPaneShortcutCommand,
+  buildZellijClosePaneCommand,
   buildZellijPaneShortcutCommand,
   buildTmuxCancelPipePaneCommand,
   buildTmuxCapturePaneCommand,
@@ -57,22 +65,31 @@ import {
   buildTmuxSendKeysCommand,
   buildZellijDumpPaneCommand,
   buildZellijListMirrorPanesCommand,
+  buildZellijReadViewportCommand,
+  buildZellijSelectTabCommand,
+  buildZellijResizeFloatingPaneCommand,
   buildZellijWritePaneCommand,
   parseHerdrObserveRecord,
   parseTmuxPaneState,
   parseTmuxMirrorPaneList,
   parseTmuxViewportState,
   parseZellijMirrorPaneList,
+  parseZellijViewportState,
   type MirrorPane,
 } from "@/lib/paneMirror";
 import { resolveZellijIdTargetingSupport } from "@/lib/terminalTabs";
 import { buildSSHArgs, getKanvibeSSHConnectionHealthOptions, parseSSHConfig } from "@/lib/sshConfig";
 import {
   attachClientToTerminalTab,
+  closeLocalTerminalTab,
+  getLocalTerminalTabProcess,
   getTerminalTabSize,
+  getTaskTerminalSize,
   listLocalTerminalTabs,
   releaseTerminalTabViewport,
   resizeTerminalTab,
+  resizeTaskTerminalViewport,
+  releaseTaskTerminalViewport,
   writeTerminalTabInput,
 } from "@/lib/terminal";
 import { listHerdrMirrorPanes, readHerdrPaneExtent } from "@/lib/herdr";
@@ -85,7 +102,7 @@ import { isSessionAlive, quoteForPosixShell } from "@/lib/worktree";
  * 스냅샷과 출력 스트림 조회는 포커스를 바꾸지 않는다. 크기 조정을 지원하는 세션은
  * [claimPaneViewport]가 모바일 연결 수명 동안 크기를 소유하고 마지막 연결이 나가면 복원한다.
  *
- * 태스크와 터미널을 바꾸는 것은 [createMobileTask]와 [updateMobileTaskStatus], [deleteMobileTask], [createMobileTerminalTab], 그리고 세션이 아직 없는 태스크를 열 때
+ * 태스크와 터미널을 바꾸는 것은 [createMobileTask]와 [updateMobileTaskStatus], [changeMobileTaskSessionType], [deleteMobileTask], [createMobileTerminalTab], [closeMobilePane], 그리고 세션이 아직 없는 태스크를 열 때
  * 세션을 띄우는 일이다. 태스크 변경은 데스크탑 화면과 같은 `kanbanService`, 탭 생성은 `terminalTabService`를 거치고, 세션은 데스크탑이 태스크를
  * 열 때와 같은 [attachTaskTerminal]을 지난다. 페어링한 기기가 이 머신에 셸 세션을 열 수 있다는 뜻이라
  * 이것들은 [authorizeMobileRequest] 뒤에만 놓이고, 화면에 없는 칸은 받지 않는다.
@@ -98,6 +115,7 @@ import { isSessionAlive, quoteForPosixShell } from "@/lib/worktree";
 
 /** 조회 명령은 짧게 끝나야 모바일 화면이 멈춘 것처럼 보이지 않는다 */
 const MIRROR_COMMAND_TIMEOUT_MS = 5_000;
+const VIEWPORT_SETTLE_POLL_INTERVAL_MS = 50;
 
 /**
  * zellij에는 tmux `pipe-pane`에 해당하는 출력 스트림이 없어 화면을 주기적으로 다시 뜬다.
@@ -107,7 +125,7 @@ const LOCAL_DUMP_INTERVAL_MS = 1_000;
 const REMOTE_DUMP_INTERVAL_MS = 3_000;
 
 /**
- * 세션이나 탭을 띄운 뒤 pane이 나타날 때까지 기다리는 상한과 확인 간격.
+ * 세션이나 탭을 띄우거나 닫은 뒤 pane이 나타나거나 사라질 때까지 기다리는 상한과 확인 간격.
  * zellij와 원격 tmux는 PTY 안에서 비동기로 만들어져 붙는 것만으로는 다 됐는지 알 수 없다.
  */
 const SESSION_START_TIMEOUT_MS = 15_000;
@@ -215,7 +233,7 @@ export async function getTaskSurfaces(taskId: string): Promise<TaskSurfaces> {
     throw new SurfaceUnavailableError("session-not-running");
   }
 
-  return { taskId, sessionType: target.sessionType, canResize: target.sessionType === SessionType.TMUX, tabs: groupPanesIntoTabs(panes) };
+  return { taskId, sessionType: target.sessionType, canResize: true, tabs: groupPanesIntoTabs(panes) };
 }
 
 export async function createMobileTerminalTab(taskId: string): Promise<{ surfaces: TaskSurfaces; paneId: string }> {
@@ -238,6 +256,101 @@ export async function createMobileTerminalTab(taskId: string): Promise<{ surface
     }
     await new Promise((resolve) => setTimeout(resolve, SESSION_START_POLL_INTERVAL_MS));
   }
+}
+
+/** 이 태스크에 없거나 이미 닫힌 pane. 라우팅이 이름을 보고 `pane-not-found`로 옮기므로 내보내지 않는다 */
+class PaneNotFoundError extends Error {
+  constructor() {
+    super("이미 닫혔거나 이 태스크에 없는 탭입니다");
+    this.name = "PaneNotFoundError";
+  }
+}
+
+/** 세션의 마지막 pane. 이것을 닫으면 세션이 통째로 사라지므로 태스크 삭제와 구분해 막는다 */
+class LastPaneError extends Error {
+  constructor() {
+    super("마지막 탭은 닫을 수 없습니다");
+    this.name = "LastPaneError";
+  }
+}
+
+/** 현재 명령이 이 이름 중 하나면 입력을 기다리는 셸일 뿐이라 닫아도 잃는 작업이 없다 */
+const IDLE_SHELL_COMMANDS = new Set(["sh", "bash", "zsh", "fish", "dash"]);
+
+/**
+ * 태스크별로 pane 종료를 한 줄로 세운다. 두 기기가 마지막 두 pane을 동시에 닫을 때 둘 다 남은 pane이 있다고 보면 세션이 통째로 사라진다.
+ */
+const pendingPaneCloses = new Map<string, Promise<unknown>>();
+
+function listSurfacePanes(surfaces: TaskSurfaces): MirrorPane[] {
+  return surfaces.tabs.flatMap((tab) => tab.panes);
+}
+
+/** 모바일 탭 바의 탭 하나는 pane 하나다. 같은 창의 다른 pane은 그대로 남긴다 */
+export async function closeMobilePane(taskId: string, paneId: string): Promise<{ surfaces: TaskSurfaces }> {
+  const previousClose = (pendingPaneCloses.get(taskId) ?? Promise.resolve()).catch(() => undefined);
+  const closeOperation = previousClose.then(() => closeSessionPane(taskId, paneId));
+  pendingPaneCloses.set(taskId, closeOperation);
+  try {
+    return await closeOperation;
+  } finally {
+    if (pendingPaneCloses.get(taskId) === closeOperation) {
+      pendingPaneCloses.delete(taskId);
+    }
+  }
+}
+
+async function closeSessionPane(taskId: string, paneId: string): Promise<{ surfaces: TaskSurfaces }> {
+  const surfaces = await getTaskSurfaces(taskId);
+  const panes = listSurfacePanes(surfaces);
+  const pane = panes.find((candidate) => candidate.id === paneId);
+  if (!pane) throw new PaneNotFoundError();
+  if (panes.length === 1) throw new LastPaneError();
+
+  const target = await findMirrorSessionTarget(taskId);
+  if (target.sessionType === SessionType.TERMINAL) {
+    closeLocalTerminalTab(taskId, pane.tabId);
+  } else {
+    await runMirrorCommand(buildClosePaneCommand(target, paneId), target.sshHost);
+  }
+
+  return { surfaces: await waitUntilPaneDisappears(taskId, paneId) };
+}
+
+function buildClosePaneCommand(target: MirrorSessionTarget, paneId: string): string {
+  if (target.sessionType === SessionType.HERDR) return buildHerdrClosePaneCommand(target.sessionName, paneId);
+  if (target.sessionType === SessionType.ZELLIJ) return buildZellijClosePaneCommand(target.sessionName, paneId);
+  return buildTmuxClosePaneCommand(paneId);
+}
+
+async function waitUntilPaneDisappears(taskId: string, paneId: string): Promise<TaskSurfaces> {
+  const deadline = Date.now() + SESSION_START_TIMEOUT_MS;
+  while (true) {
+    const surfaces = await getTaskSurfaces(taskId);
+    if (!listSurfacePanes(surfaces).some((pane) => pane.id === paneId)) {
+      return surfaces;
+    }
+    if (Date.now() >= deadline) {
+      throw new Error("탭이 닫히지 않았습니다.");
+    }
+    await new Promise((resolve) => setTimeout(resolve, SESSION_START_POLL_INTERVAL_MS));
+  }
+}
+
+/**
+ * 닫으면 잃을 수 있는 실행 중인 프로세스 이름. 빈 배열이면 확인 없이 닫아도 된다.
+ * 조회에 실패하면 없다고 단정하지 않고 오류를 올려, 호출한 쪽이 확인을 거치게 한다.
+ */
+export async function getMobilePaneCloseInfo(taskId: string, paneId: string): Promise<{ processNames: string[] }> {
+  const surfaces = await getTaskSurfaces(taskId);
+  const pane = listSurfacePanes(surfaces).find((candidate) => candidate.id === paneId);
+  if (!pane) throw new PaneNotFoundError();
+
+  const currentCommand = surfaces.sessionType === SessionType.TERMINAL
+    ? getLocalTerminalTabProcess(taskId, pane.tabId)
+    : pane.command;
+  const isRunningProgram = Boolean(currentCommand) && !IDLE_SHELL_COMMANDS.has(currentCommand as string);
+  return { processNames: isRunningProgram ? [currentCommand as string] : [] };
 }
 
 async function listMirrorPanes(target: MirrorSessionTarget): Promise<MirrorPane[]> {
@@ -490,8 +603,7 @@ export function onMobileNotificationsChanged(listener: () => void): () => void {
  * 서버 오류가 아니라 요청이 잘못된 것이라 라우팅이 이름을 보고 400으로 옮긴다.
  * 이름으로만 가려내므로 클래스 자체는 이 파일 밖으로 내보내지 않는다 — `serviceRegistry`가 이 모듈을 통째로
  * IPC에 얹기 때문에, 내보내면 화면이 부를 일이 없는 값이 그 표면에 하나 더 얹힌다.
- * 모르는 세션 타입을 조용히 버리면 [createTask]가 worktree 없이 이름만 있는 태스크를 만들어,
- * 기기에는 성공으로 보이고 데스크탑에는 열 수 없는 항목이 남는다.
+ * 세션 타입 변경에서 모르는 값을 조용히 버리면 기기에는 바뀐 것으로 보이고 데스크탑 세션은 그대로 남는다.
  */
 class MobileTaskInputError extends Error {
   constructor(message: string) {
@@ -541,7 +653,6 @@ export interface MobileTaskDraft {
   baseBranch?: string;
   description?: string;
   priority?: string;
-  sessionType?: string;
 }
 
 /**
@@ -558,10 +669,65 @@ export async function createMobileTask(draft: MobileTaskDraft): Promise<KanbanTa
     baseBranch: draft.baseBranch ? readGitRef(draft.baseBranch, "베이스 브랜치") : undefined,
     description: draft.description,
     priority: readEnumValue(Object.values(TaskPriority), draft.priority, "우선순위"),
-    sessionType: readEnumValue(Object.values(SessionType), draft.sessionType, "세션 타입"),
+    /** 세션 종류는 데스크탑이 정한다. 이전 앱이 보낸 값이 있어도 따르지 않는다 */
+    sessionType: await getDefaultSessionType(),
   });
   await registerMobileTaskOnPeerClients(createdTask);
   return createdTask;
+}
+
+/**
+ * 새 세션 도구가 없어 바꿀 수 없다. 기기에서는 설치를 진행할 수 없으니 데스크탑에서 설치하라고 안내해야 해서
+ * 입력 오류(400)와 나눠 라우팅이 409로 옮긴다. 이름으로만 가려내는 것은 [MobileTaskInputError]와 같다.
+ */
+class MobileSessionDependencyMissingError extends Error {
+  constructor(toolName: string) {
+    super(`${toolName}이(가) 설치되어 있지 않습니다. 데스크탑에서 설치한 뒤 다시 시도해 주세요.`);
+    this.name = "MobileSessionDependencyMissingError";
+  }
+}
+
+/** 기기에서 세션 타입을 바꾼다. 실제 전환은 데스크탑 경로가 하므로 데스크탑과 같은 세션 정보가 남는다 */
+export async function changeMobileTaskSessionType(
+  taskId: string,
+  submittedSessionType: string,
+  shouldCloseExistingSession: boolean,
+): Promise<KanbanTask | null> {
+  const sessionType = readEnumValue(Object.values(SessionType), submittedSessionType, "세션 타입");
+  if (!sessionType) {
+    throw new MobileTaskInputError("세션 타입 값이 올바르지 않습니다");
+  }
+
+  const task = await getTaskById(taskId);
+  if (!task) {
+    return null;
+  }
+
+  const dependencyStatus = await getSessionDependencyStatus(sessionType, task.sshHost);
+  if (!dependencyStatus.available && dependencyStatus.toolName) {
+    throw new MobileSessionDependencyMissingError(dependencyStatus.toolName);
+  }
+
+  const changedTask = await changeTaskSessionType(taskId, sessionType, shouldCloseExistingSession);
+  if (!changedTask) {
+    throw new Error(`세션 타입 변경 실패: ${taskId}`);
+  }
+
+  return changedTask;
+}
+
+/** 기기가 세션을 닫을지 묻기 전에 기존 세션이 켜져 있는지 확인한다 */
+export function isMobileTaskSessionAlive(taskId: string): Promise<boolean> {
+  return isTaskSessionAlive(taskId);
+}
+
+/** 태스크 세션이 바뀌면 알린다. 이전 세션을 비추던 기기 스트림을 끊어 새 세션으로 다시 붙게 하는 데 쓴다 */
+export function watchTaskSessionChange(taskId: string, onChanged: () => void): () => void {
+  return subscribeToBoardEvents((event) => {
+    if (event.type === "task-session-changed" && event.taskId === taskId) {
+      onChanged();
+    }
+  });
 }
 
 /**
@@ -599,6 +765,10 @@ export async function deleteMobileTask(taskId: string, isForced: boolean): Promi
     return null;
   }
   return { failedPeerCount: deletion.peerResults.filter((result) => !result.isSuccess).length };
+}
+
+export async function removeMobileTaskRegistration(taskId: string): Promise<boolean> {
+  return removeTaskRegistration(taskId);
 }
 
 /** 모바일에서 태스크를 다른 상태로 옮긴다. 없는 태스크면 null이 나와 라우팅이 404로 옮긴다 */
@@ -830,6 +1000,7 @@ interface PaneSubscription {
   stop: () => void;
   /** 스트림이 첫 화면을 스스로 보내는 경우에만 있다. 뒤늦게 붙은 구독자가 화면을 받도록 다시 보낸다 */
   resendScreen?: () => void;
+  setViewport?: (size: { cols: number; rows: number } | null) => Promise<void>;
 }
 
 /**
@@ -891,6 +1062,14 @@ async function createPaneViewportDriver(target: MirrorSessionTarget, taskId: str
     };
   }
 
+  if (target.sessionType === SessionType.HERDR) {
+    return createHerdrViewportDriver(target, taskId, pane.id);
+  }
+
+  if (target.sessionType === SessionType.ZELLIJ) {
+    return createZellijViewportDriver(target, taskId, pane.id);
+  }
+
   const state = parseTmuxViewportState(await runMirrorCommand(buildTmuxReadViewportCommand(pane.tabId), target.sshHost));
   return {
     resize: async (paneId, cols, rows) => {
@@ -901,6 +1080,198 @@ async function createPaneViewportDriver(target: MirrorSessionTarget, taskId: str
       await runMirrorCommand(buildTmuxResizeViewportCommand(paneId, geometry, cols, rows), target.sshHost);
     },
     restore: async () => { await runMirrorCommand(buildTmuxRestoreViewportCommand(pane.tabId, state), target.sshHost); },
+  };
+}
+
+async function createZellijViewportDriver(target: MirrorSessionTarget, taskId: string, paneId: string): Promise<PaneViewportDriver> {
+  const readGeometry = async (id: string) => {
+    const output = await runMirrorCommand(buildZellijReadViewportCommand(target.sessionName), target.sshHost);
+    const geometry = parseZellijViewportState(output, id);
+    if (!geometry) throw new Error("Zellij pane 크기를 확인하지 못했습니다.");
+    return geometry;
+  };
+  const floatingOriginals = new Map<string, { left: number; top: number; cols: number; rows: number }>();
+  const initial = await readGeometry(paneId);
+  const original = getTaskTerminalSize(taskId) ?? { cols: initial.displayCols, rows: initial.displayRows };
+  const client = new CallbackTerminalClient(() => {});
+  try {
+    await attachTaskTerminal(await findMirrorTask(taskId), null, client, original.cols, original.rows);
+    if (!getTaskTerminalSize(taskId)) throw new Error("Zellij 터미널 연결이 종료됐습니다.");
+  } catch (error) {
+    client.close();
+    throw error;
+  }
+  return {
+    resize: async (id, cols, rows) => {
+      const selected = await readGeometry(id);
+      await runMirrorCommand(buildZellijSelectTabCommand(target.sessionName, selected.tabId), target.sshHost);
+      const deadline = Date.now() + MIRROR_COMMAND_TIMEOUT_MS;
+      do {
+        const geometry = await readGeometry(id);
+        if (geometry.cols === cols && geometry.rows === rows) {
+          const current = getTaskTerminalSize(taskId);
+          if (!current) throw new Error("Zellij 터미널 연결이 종료됐습니다.");
+          resizeTaskTerminalViewport(taskId, current.cols, current.rows);
+          return;
+        }
+        const outerCols = cols + geometry.paneCols - geometry.cols;
+        const outerRows = rows + geometry.paneRows - geometry.rows;
+        if (geometry.floating && !floatingOriginals.has(id)) {
+          floatingOriginals.set(id, { ...geometry.floating, cols: geometry.paneCols, rows: geometry.paneRows });
+        }
+        const floating = geometry.floating ? floatingOriginals.get(id)! : null;
+        const nextCols = floating
+          ? Math.max(original.cols, floating.left + outerCols + geometry.displayCols - geometry.viewportCols)
+          : Math.round(geometry.viewportCols * outerCols / geometry.paneCols) + geometry.displayCols - geometry.viewportCols;
+        const nextRows = floating
+          ? Math.max(original.rows, floating.top + outerRows + geometry.displayRows - geometry.viewportRows)
+          : Math.round(geometry.viewportRows * outerRows / geometry.paneRows) + geometry.displayRows - geometry.viewportRows;
+        if (![nextCols, nextRows].every((size) => size > 0 && size <= 65535)) {
+          throw new Error("Zellij 분할 배치에서 요청한 크기를 적용할 수 없습니다.");
+        }
+        resizeTaskTerminalViewport(taskId, nextCols, nextRows);
+        if (floating) {
+          await runMirrorCommand(buildZellijResizeFloatingPaneCommand(target.sessionName, id, {
+            left: floating.left, top: floating.top, cols: outerCols, rows: outerRows,
+          }), target.sshHost);
+        }
+        // Zellij가 PTY resize 신호로 배치를 다시 계산한 뒤 실제 content 격자를 확인한다.
+        await new Promise((resolve) => setTimeout(resolve, VIEWPORT_SETTLE_POLL_INTERVAL_MS));
+      } while (Date.now() < deadline);
+      throw new Error("다른 Zellij 클라이언트나 탭 배치가 모바일 크기를 제한하고 있습니다.");
+    },
+    restore: async () => {
+      try {
+        releaseTaskTerminalViewport(taskId, original.cols, original.rows);
+        if (floatingOriginals.size > 0) {
+          await new Promise((resolve) => setTimeout(resolve, VIEWPORT_SETTLE_POLL_INTERVAL_MS));
+          await Promise.all([...floatingOriginals].map(([id, geometry]) =>
+            runMirrorCommand(buildZellijResizeFloatingPaneCommand(target.sessionName, id, geometry), target.sshHost),
+          ));
+        }
+      } finally {
+        client.close();
+      }
+    },
+  };
+}
+
+function createHerdrViewportDriver(target: MirrorSessionTarget, taskId: string, paneId: string): PaneViewportDriver {
+  const key = buildSubscriptionKey(taskId, paneId);
+  let controller: ChildProcess | null = null;
+  let failure: Error | null = null;
+  let pendingFrame: { cols: number; rows: number; resolve: () => void; reject: (error: Error) => void } | null = null;
+
+  const failController = (child: ChildProcess, error: Error) => {
+    if (controller !== child) return;
+    controller = null;
+    failure = error;
+    pendingFrame?.reject(error);
+    stopMirrorProcess(child);
+    const claim = paneSubscriptions.get(key);
+    if (!claim) return;
+    void claim.subscription.then((subscription) => {
+      if (!forgetPaneClaim(key, claim)) return;
+      subscription.stop();
+      const listeners = [...subscription.endListeners];
+      subscription.listeners.clear();
+      subscription.endListeners.clear();
+      listeners.forEach((listener) => listener());
+    }).catch(() => {});
+  };
+
+  const awaitFrame = (child: ChildProcess, cols: number, rows: number, send: () => void) => new Promise<void>((resolve, reject) => {
+    const timer = setTimeout(() => failController(child, new Error("Herdr 터미널 크기 응답이 없습니다.")), MIRROR_COMMAND_TIMEOUT_MS);
+    const finish = (error?: Error) => {
+      clearTimeout(timer);
+      pendingFrame = null;
+      if (error) reject(error);
+      else resolve();
+    };
+    pendingFrame = { cols, rows, resolve: () => finish(), reject: (error) => finish(error) };
+    try {
+      send();
+    } catch (error) {
+      failController(child, error instanceof Error ? error : new Error(String(error)));
+    }
+  });
+
+  const openController = async (cols: number, rows: number) => {
+    const child = await spawnMirrorProcess(buildHerdrControlPaneCommand(target.sessionName, paneId, cols, rows), target.sshHost);
+    controller = child;
+    let partialLine = "";
+    child.stdout?.setEncoding("utf8");
+    child.stdout?.on("data", (chunk: string) => {
+      if (controller !== child) return;
+      const lines = `${partialLine}${chunk}`.split("\n");
+      partialLine = lines.pop() ?? "";
+      for (const line of lines) {
+        const record = parseHerdrObserveRecord(line);
+        if (record?.type === "closed") {
+          failController(child, new Error("Herdr 터미널 제어 연결이 종료됐습니다."));
+          break;
+        }
+        if (record?.type === "frame" && record.isFullScreen &&
+            record.width === pendingFrame?.cols && record.height === pendingFrame?.rows) {
+          pendingFrame?.resolve();
+        }
+      }
+    });
+    child.stderr?.resume();
+    child.on("error", (error) => failController(child, error));
+    child.on("exit", () => failController(child, new Error("Herdr 터미널 제어 프로세스가 종료됐습니다.")));
+    child.stdin?.on("error", (error) => failController(child, error));
+    await awaitFrame(child, cols, rows, () => {});
+  };
+
+  return {
+    resize: async (_paneId, cols, rows) => {
+      if (failure) throw failure;
+      const subscription = await paneSubscriptions.get(key)?.subscription;
+      await subscription?.setViewport?.({ cols, rows });
+      if (!controller) {
+        await openController(cols, rows);
+        return;
+      }
+      const child = controller;
+      await awaitFrame(child, cols, rows, () => {
+        if (!child.stdin) throw new Error("Herdr 터미널 제어 입력이 닫혔습니다.");
+        child.stdin.write(`${JSON.stringify({ type: "terminal.resize", cols, rows })}\n`, (error) => {
+          if (error) failController(child, error);
+        });
+      });
+    },
+    restore: async () => {
+      const child = controller;
+      if (!child) return;
+      controller = null;
+      await new Promise<void>((resolve, reject) => {
+        const finish = (error?: Error) => {
+          clearTimeout(timer);
+          child.off("exit", onExit);
+          child.off("error", onError);
+          child.stdin?.off("error", onError);
+          if (error) {
+            stopMirrorProcess(child);
+            reject(error);
+          } else resolve();
+        };
+        const onExit = () => finish();
+        const onError = (error: Error) => finish(error);
+        const timer = setTimeout(() => finish(new Error("Herdr 터미널 제어 반납 응답이 없습니다.")), MIRROR_COMMAND_TIMEOUT_MS);
+        child.once("exit", onExit);
+        child.once("error", onError);
+        child.stdin?.once("error", onError);
+        try {
+          if (!child.stdin) onError(new Error("Herdr 터미널 제어 입력이 닫혔습니다."));
+          else child.stdin.end(`${JSON.stringify({ type: "terminal.release" })}\n`);
+        } catch (error) {
+          onError(error instanceof Error ? error : new Error(String(error)));
+        }
+      });
+      const subscription = await paneSubscriptions.get(key)?.subscription;
+      await subscription?.setViewport?.(null);
+    },
   };
 }
 
@@ -917,11 +1288,11 @@ export async function claimPaneViewport(taskId: string, paneId: string): Promise
     : await listMirrorPanes(target);
   const pane = panes.find((candidate) => candidate.id === paneId);
   if (paneViewportShutdown) throw new Error("데스크탑이 종료 중입니다.");
-  if (!pane || target.sessionType === SessionType.ZELLIJ || target.sessionType === SessionType.HERDR) {
+  if (!pane) {
     throw new SurfaceUnavailableError("session-not-running");
   }
 
-  const key = buildSubscriptionKey(taskId, target.sessionType === SessionType.TERMINAL ? paneId : pane.tabId);
+  const key = buildSubscriptionKey(taskId, target.sessionType === SessionType.ZELLIJ ? "zellij" : target.sessionType === SessionType.TMUX ? pane.tabId : paneId);
   let group = paneViewports.get(key);
   if (!group) {
     group = { driver: createPaneViewportDriver(target, taskId, pane), pending: Promise.resolve(), clients: new Map() };
@@ -946,7 +1317,7 @@ export async function claimPaneViewport(taskId: string, paneId: string): Promise
       await queuePaneViewport(claimed, async (driver) => {
         if (!claimed.clients.has(id)) return;
         await driver.resize(paneId, cols, rows);
-        if (target.sessionType === SessionType.TMUX) {
+        if (target.sessionType === SessionType.TMUX || target.sessionType === SessionType.ZELLIJ) {
           snapshot = await readPaneSnapshot(target, paneId);
         }
       });
@@ -1273,12 +1644,14 @@ async function startHerdrFrameStream(
   paneId: string,
   broadcast: (chunk: string) => void,
   onDead: () => void,
-): Promise<{ stop: () => void; resendScreen: () => void }> {
+): Promise<Pick<PaneSubscription, "stop" | "resendScreen" | "setViewport">> {
   const quietPeriodMs = target.sshHost ? REMOTE_DUMP_INTERVAL_MS : LOCAL_DUMP_INTERVAL_MS;
   let observer: ChildProcess | null = null;
   let quietTimer: ReturnType<typeof setTimeout> | null = null;
   let isStopped = false;
   let isRefreshing = false;
+  let observerGeneration = 0;
+  let viewportSize: { cols: number; rows: number } | null = null;
   let extent = await readHerdrPaneExtent(target.sessionName, paneId, target.sshHost);
 
   const stopObserver = () => {
@@ -1292,6 +1665,7 @@ async function startHerdrFrameStream(
 
   const stopStream = () => {
     isStopped = true;
+    observerGeneration += 1;
     if (quietTimer) {
       clearTimeout(quietTimer);
     }
@@ -1317,15 +1691,17 @@ async function startHerdrFrameStream(
   };
 
   const startObserver = async () => {
+    const generation = ++observerGeneration;
     const pane = (await listHerdrMirrorPanes(target.sessionName, target.sshHost)).find((candidate) => candidate.id === paneId);
+    if (isStopped || generation !== observerGeneration) return;
     if (!pane) {
       throw new SurfaceUnavailableError("session-not-running");
     }
     const child = await spawnMirrorProcess(
-      buildHerdrObservePaneCommand(target.sessionName, paneId, pane.width, pane.height),
+      buildHerdrObservePaneCommand(target.sessionName, paneId, viewportSize?.cols ?? pane.width, viewportSize?.rows ?? pane.height),
       target.sshHost,
     );
-    if (isStopped) {
+    if (isStopped || generation !== observerGeneration) {
       stopMirrorProcess(child);
       return;
     }
@@ -1400,6 +1776,10 @@ async function startHerdrFrameStream(
 
   return {
     stop: stopStream,
+    setViewport: async (size) => {
+      viewportSize = size;
+      if (!isStopped) await restartObserver();
+    },
     /** 뒤늦게 붙은 구독자에게 전체 화면을 주려면 observe를 새로 띄우는 수밖에 없다. 이미 보던 기기에는 같은 화면이 한 번 더 그려질 뿐이다 */
     resendScreen: () => {
       restartObserver().catch(failOnRestartError);

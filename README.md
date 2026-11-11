@@ -50,6 +50,25 @@ open -a KanVibe
 
 **Mobile terminal compatibility:** `herdr`, `tmux`, `zellij`, and `terminal` sessions are all supported. Herdr sessions keep their original grid and are read by scrolling.
 
+### Development and QA databases
+
+Each runtime uses a separate SQLite database:
+
+| Run | Data directory | Lifetime |
+| --- | --- | --- |
+| Installed KanVibe | Existing Electron `userData` directory | Persistent; production data stays in place |
+| `pnpm dev` / `pnpm desktop:dev` | `<appData>/kanvibe-dev` | Persistent across restarts and worktrees |
+| `pnpm start` | `<appData>/kanvibe-qa` | Persistent across restarts, builds, and worktrees |
+| Installed KanVibe with `--qa` | `<appData>/kanvibe-qa` | Same persistent manual QA database |
+| Automated Electron QA | Run's explicit fixture directory, or a fresh temporary directory | Isolated per run |
+| Vitest / Playwright | Separate temporary test directories | Isolated from application data |
+
+`<appData>` is `~/Library/Application Support` on macOS. The database filename is `kanvibe.db` in each directory. Development and manual QA start with their own database on first launch; existing production data is neither moved nor copied. Subsequent launches reuse those databases and apply the existing schema migrations. A new bundled seed does not replace an existing database, so manual QA can test upgrades against previously created data. Rebuild with `pnpm build` before `pnpm start` when testing a new source version.
+
+To test an installed macOS build with the persistent QA database, run `open -na KanVibe --args --qa`. Close an existing manual QA instance first so both do not use the same QA database concurrently.
+
+An explicit `KANVIBE_APP_DATA_DIR` overrides the desktop data directory; use a distinct directory for each environment. Desktop DB selection follows that directory, ignoring an inherited `KANVIBE_DB_PATH`. Non-desktop database tools retain the `KANVIBE_DB_PATH` override. Automated QA callers should pass `appDataDir` explicitly when they want to reopen a particular fixture; the launcher does not reuse application paths inherited from the parent shell.
+
 ## From your desk to your phone
 
 1. **See what needs attention.** Agent hooks update the board as work moves through progress, waiting, and review.
@@ -68,7 +87,7 @@ open -a KanVibe
 
 ### 1. Quick Task Search
 
-Open task search from anywhere, filter by project or branch name, and jump directly into the task workspace without returning to the board first.
+Open task search from anywhere and filter by project or branch name. In Worktree view, selecting a result keeps the split view open, selects and scrolls to the task on the left, and shows its terminal on the right. In Kanban view, selecting a result opens task detail as before.
 
 <img src="./docs/images/readme/kanvibe-search-shortcut.png" alt="Quick task search shortcut" width="100%">
 
@@ -187,6 +206,13 @@ Each pane can run a custom command (e.g., `vim`, `htop`, `lazygit`, test runner,
 - Done column pagination for long-running projects
 - Real-time WebSocket updates across browser and desktop windows
 
+### Worktree View
+
+- Keep the task list on the left and the selected task's terminal on the right
+- Read the same project icon, title, description, and badges as Kanban cards, without the outer card border; selection and keyboard focus have separate indicators
+- Select a quick-search result in place, including DONE tasks and tasks hidden by the current filters
+- Press and release `Cmd+Option` on macOS or `Ctrl+Alt` on Linux, without another key, to focus the selected task in the list. Use `↑ / ↓` to switch tasks in displayed order and `Enter` to focus the selected task's terminal
+
 ### Branch-Based Task Workspace
 - Create branch TODOs that automatically prepare a git worktree and terminal session
 - Use the board toolbar magnifying-glass scan dialog to register repositories and detect existing worktree branches as TODO tasks
@@ -202,10 +228,22 @@ Each pane can run a custom command (e.g., `vim`, `htop`, `lazygit`, test runner,
 - Remote terminal attach executes tmux/zellij/Herdr directly over SSH; trusted X11 forwarding (`ssh -Y`) is requested only when local `DISPLAY`, remote `X11Forwarding`, and `xauth` are available
 - Nerd Font rendering support
 
-- **Herdr** is the default when no valid session preference is saved. Existing tmux, zellij, and terminal preferences are preserved; choose `terminal` to work without a multiplexer. Herdr uses a persistent named session per task, supports the six configured pane layouts and startup commands, and preserves running shells when you close and reopen a task.
+- **Herdr** is the default when no valid session preference is saved. Existing tmux, zellij, and terminal preferences are preserved; choose `terminal` to work without a multiplexer. New Herdr tasks share a persistent `kanvibe` server on each host, with one workspace per task listed under Spaces. Each task keeps its configured pane layout and startup commands; reopening it reuses its running shells. Existing independent named sessions remain connected until explicitly replaced.
 - Select `herdr` when creating, branching, or connecting a task. If it is missing, KanVibe offers to run the [official installer](https://herdr.dev/tui/docs/install/) on the selected local or SSH host; cancelling leaves the task unchanged. The installer uses `~/.local/bin` without changing shell startup files.
-- Herdr tabs support creating, selecting, renaming, closing, and reordering by stable IDs. Reordering stays within each Herdr workspace. The last tab stays alive when the KanVibe window closes; deleting the task stops and deletes its named session.
+- Herdr tabs support creating, selecting, renaming, closing, and reordering by stable IDs. Reordering stays within each task workspace. Selecting a Space or tab in one task window preserves other task windows. The last tab stays alive when KanVibe closes; deleting a shared task closes only its workspace and keeps other tasks running. Workspace IDs are stored beside the Herdr session so renaming a Space preserves its task connection.
 - Herdr 0.9.5 is the verified version. Its first-run setup and personal configuration remain managed by Herdr. Tab reordering uses its [local socket API](https://herdr.dev/tui/docs/socket-api/); SSH hosts do not need Python or netcat for this operation.
+
+#### Open the same Herdr Spaces in an external terminal
+
+After opening a Herdr task in KanVibe, run this in a new Ghostty or other terminal on the same host:
+
+```sh
+herdr session attach kanvibe
+```
+
+This connects to KanVibe's shared Herdr session. Select the task's workspace under **Spaces** to continue working in its running shells. Spaces lists workspaces in the connected session only: a separate session named `kanvibe-dev` does not show the workspaces inside `kanvibe`, even if one of those workspaces is also named `kanvibe-dev`.
+
+For an SSH task, connect to that task's SSH host first, then run the command there. Older tasks that still use independent named sessions need their original session name instead of `kanvibe`; run `herdr session list` on that host to find it.
 
 ### Live AI Session Tracking
 - Board cards show a per-agent icon and count next to the tmux badge, so you can tell at a glance which agents are running on which task and how many
@@ -256,6 +294,9 @@ Each pane can run a custom command (e.g., `vim`, `htop`, `lazygit`, test runner,
 | `:move todo\|progress\|pending\|review\|done` | Focused board task card | Move the focused task to the target status without drag-and-drop; press `Tab` in the command input to autocomplete a unique status prefix |
 | `dd` | Focused board task card | Delete the focused task after confirmation |
 | `Cmd/Ctrl+Shift+O` | Global | Open quick task search by branch or project name (default, configurable) |
+| `Cmd+Option` (macOS), `Ctrl+Alt` (Linux), press and release | Worktree view | Focus the selected task in the left list; does not run when combined with another key |
+| `↑ / ↓` | Focused Worktree task list | Select the previous/next task and show its terminal; stop at the first/last task |
+| `Enter` | Focused Worktree task list | Focus the selected task's terminal |
 | `Cmd/Ctrl+Shift+P` | Board | Open the project filter dropdown |
 | `Cmd/Ctrl+Shift+I` | Board | Open the notifications dropdown |
 | `Cmd+[` / `Cmd+]` (macOS), `Alt+[` / `Alt+]` (Linux) | Global | Navigate back/forward through app history; back falls back to board home when there is no previous page |

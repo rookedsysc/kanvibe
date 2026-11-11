@@ -403,4 +403,22 @@ describe("TaskQuickSearchDialog", () => {
       expect(mocks.scrollIntoView).toHaveBeenCalledWith({ block: "nearest" });
     });
   });
+  it("Worktree에서 검색 선택은 같은 화면 query로 선택하고 상세창을 탐색하지 않는다", async () => {
+    const workspace = document.createElement("div");
+    workspace.dataset.workspaceView = "true";
+    document.body.append(workspace);
+    try {
+      render(<TaskQuickSearchDialog shortcut="Ctrl+K" />);
+      fireEvent.keyDown(window, { key: "k", ctrlKey: true });
+      await screen.findByText("feat/local-search");
+      const input = screen.getByRole("textbox");
+      fireEvent.change(input, { target: { value: "local-search" } });
+      fireEvent.keyDown(input, { key: "Enter" });
+      await waitFor(() => expect(mocks.push).toHaveBeenCalledWith("/?taskId=task-local"));
+      expect(mocks.focusExistingInternalRoute).not.toHaveBeenCalled();
+    } finally {
+      workspace.remove();
+    }
+  });
+
 });

@@ -18,11 +18,15 @@ const updateTaskStatusMock = vi.fn();
 const getProjectBranchesMock = vi.fn();
 const getTaskByIdMock = vi.fn();
 const deleteTaskAcrossTargetsMock = vi.fn();
+const removeTaskRegistrationMock = vi.fn();
 const findProjectOneByMock = vi.fn();
 const propagateTaskRegistrationToPeersMock = vi.fn();
 const getTaskAiSessionsMock = vi.fn();
 const getTaskAiSessionDetailMock = vi.fn();
 const attachTaskTerminalMock = vi.fn();
+const changeTaskSessionTypeMock = vi.fn();
+const isTaskSessionAliveMock = vi.fn();
+const getSessionDependencyStatusMock = vi.fn();
 let defaultSessionTypeSetting = SessionType.TMUX;
 
 /** 데스크탑 PTY 대신 세우는 가짜. 테스트가 출력을 흘리고 셸을 끝낼 수 있다 */
@@ -97,8 +101,24 @@ vi.mock("@/desktop/main/services/kanbanService", () => ({
   getTasksByStatus: async () => ({ tasks: {} }),
   createTask: (input: unknown) => createTaskMock(input),
   deleteTaskAcrossTargets: (...args: unknown[]) => deleteTaskAcrossTargetsMock(...args),
+  removeTaskRegistration: (...args: unknown[]) => removeTaskRegistrationMock(...args),
   updateTaskStatus: (taskId: string, status: string) => updateTaskStatusMock(taskId, status),
+  changeTaskSessionType: (...args: unknown[]) => changeTaskSessionTypeMock(...args),
+  isTaskSessionAlive: (taskId: string) => isTaskSessionAliveMock(taskId),
 }));
+
+/** 세션 타입 변경 테스트만 결과를 정하고, 나머지는 실제 확인 경로(execGit mock)를 그대로 지난다 */
+vi.mock("@/lib/remoteSessionDependency", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/remoteSessionDependency")>();
+  return {
+    ...actual,
+    getSessionDependencyStatus: (...args: Parameters<typeof actual.getSessionDependencyStatus>) => (
+      getSessionDependencyStatusMock.getMockImplementation()
+        ? getSessionDependencyStatusMock(...args)
+        : actual.getSessionDependencyStatus(...args)
+    ),
+  };
+});
 vi.mock("@/desktop/main/services/projectService", () => ({
   getAllProjects: async () => [],
   getTaskAiSessions: (...args: unknown[]) => getTaskAiSessionsMock(...args),
@@ -114,12 +134,17 @@ vi.mock("child_process", async (importOriginal) => ({
 const { attachClientToTerminalTab, createLocalTerminalTab, killAllTerminalSessions } = await import("@/lib/terminal");
 const { CallbackTerminalClient } = await import("@/desktop/main/terminalBridge");
 const { createNotification: createDesktopNotification, listNotifications } = await import("@/desktop/main/notificationStore");
+const { broadcastTaskSessionChanged } = await import("@/lib/boardNotifier");
 const {
   authorizeMobileRequest,
+  changeMobileTaskSessionType,
   claimPaneViewport,
+  closeMobilePane,
   createMobileTask,
   createMobileTerminalTab,
   deleteMobileTask,
+  removeMobileTaskRegistration,
+  getMobilePaneCloseInfo,
   getMobileBoard,
   getMobileAiSessions,
   getMobileAiSessionDetail,
@@ -139,6 +164,7 @@ const {
   pairMobileDevice,
   readMobilePairingCode,
   startMobilePairing,
+  watchTaskSessionChange,
   stopMobilePairing,
   stopAllPaneMirrors,
   subscribeToPane,
@@ -155,6 +181,174 @@ const TMUX_TASK = { sessionType: SessionType.TMUX, sessionName: "kanvibe-task", 
 const MIRROR_PANE_LINE = "%19\t@10\tbash\t0\t0\t80\t24\tfirst";
 
 describe("모바일 화면 크기", () => {
+  const stubZellijViewport = (floating = false, multipleTabs = false) => {
+    const floatingGeometry = new Map([[1, { left: 30, top: 7, cols: 60, rows: 14 }], [2, { left: 3, top: 2, cols: 40, rows: 12 }]]);
+    const tabSizes = new Map([[0, { cols: 120, rows: 30 }], [1, { cols: 120, rows: 30 }]]);
+    let focusedPane = 1;
+    findOneByMock.mockResolvedValue({ id: "zellij-viewport", sessionType: SessionType.ZELLIJ, sessionName: "zellij-viewport", sshHost: null });
+    execGitMock.mockImplementation(async (command) => {
+      if (command.includes("--version")) return "zellij 0.45.1";
+      if (command.includes("list-sessions")) return "zellij-viewport [Created 1m ago]";
+      if (command.includes("go-to-tab-by-id")) {
+        focusedPane = Number(/go-to-tab-by-id '(\d+)'/.exec(command)![1]) + 1;
+        const pty = spawnedPtys[0];
+        tabSizes.set(focusedPane - 1, { cols: pty?.cols ?? 120, rows: pty?.rows ?? 30 });
+        return "";
+      }
+      if (command.includes("change-floating-pane-coordinates")) {
+        const id = Number(/--pane-id 'terminal_(\d+)'/.exec(command)![1]);
+        const [, left, top, cols, rows] = /--x (\d+) --y (\d+) --width (\d+) --height (\d+)/.exec(command)!;
+        floatingGeometry.set(id, { left: Number(left), top: Number(top), cols: Number(cols), rows: Number(rows) });
+        return "";
+      }
+      const pty = spawnedPtys[0];
+      const cols = pty?.cols ?? 120;
+      const rows = pty?.rows ?? 30;
+      const panes = floating ? [...floatingGeometry].map(([id, geometry]) => ({
+        id, is_plugin: false, is_floating: true, tab_id: 0, pane_x: geometry.left, pane_y: geometry.top,
+        pane_columns: geometry.cols, pane_rows: geometry.rows,
+        pane_content_columns: geometry.cols - 2, pane_content_rows: geometry.rows - 2,
+      })) : (multipleTabs ? [1, 2] : [1]).map((id) => {
+        const size = multipleTabs ? tabSizes.get(id - 1)! : { cols, rows };
+        return { id, is_plugin: false, tab_id: id - 1, pane_x: 0, pane_y: 1,
+          pane_columns: Math.floor(size.cols / 2), pane_rows: size.rows - 2,
+          pane_content_columns: Math.floor(size.cols / 2) - 1, pane_content_rows: size.rows - 3 };
+      });
+      if (command.includes("list-tabs")) return JSON.stringify([panes, (multipleTabs ? [0, 1] : [0]).map((tabId) => {
+        const size = multipleTabs ? tabSizes.get(tabId)! : { cols, rows };
+        return { tab_id: tabId, active: tabId === focusedPane - 1, viewport_columns: size.cols, viewport_rows: size.rows - 2, display_area_columns: size.cols, display_area_rows: size.rows };
+      })]);
+      if (command.includes("list-panes")) return JSON.stringify(panes);
+      return "zellij resized screen";
+    });
+    attachTaskTerminalMock.mockImplementation(async (task, _tabId, client, cols, rows) => {
+      const { attachLocalSession } = await import("@/lib/terminal");
+      await attachLocalSession(task.id, null, task.sessionType, task.sessionName, client, undefined, cols, rows);
+      const pty = spawnedPtys[0];
+      pty.resize.mockImplementation((cols: number, rows: number) => {
+        pty.cols = cols;
+        pty.rows = rows;
+        tabSizes.set(focusedPane - 1, { cols, rows });
+      });
+    });
+    return { focusedPane: () => focusedPane };
+  };
+
+  it("Zellij 분할 pane의 실제 격자를 맞추고 마지막 연결 뒤 PC 격자를 복원한다", async () => {
+    stubZellijViewport();
+    expect((await getTaskSurfaces("zellij-viewport")).canResize).toBe(true);
+    const viewport = await claimPaneViewport("zellij-viewport", "terminal_1");
+    expect(await viewport.resize(44, 70)).toContain("zellij resized screen");
+    expect(spawnedPtys[0].resize).toHaveBeenLastCalledWith(90, 73);
+    await viewport.release();
+    expect(spawnedPtys[0].resize).toHaveBeenLastCalledWith(120, 30);
+    expect(executedCommands()).toContain("zellij --session 'zellij-viewport' action go-to-tab-by-id '0'");
+    expect(executedCommands().some((command) => /fullscreen|override-layout/.test(command))).toBe(false);
+  });
+
+  it("Zellij는 모바일 마지막 요청을 우선하고 남은 연결의 격자로 돌아간다", async () => {
+    stubZellijViewport();
+    const first = await claimPaneViewport("zellij-viewport", "terminal_1");
+    const second = await claimPaneViewport("zellij-viewport", "terminal_1");
+    await first.resize(44, 70);
+    await second.resize(80, 35);
+    expect(spawnedPtys[0].resize).toHaveBeenLastCalledWith(162, 38);
+    await second.release();
+    expect(spawnedPtys[0].resize).toHaveBeenLastCalledWith(90, 73);
+    await first.release();
+    expect(spawnedPtys[0].resize).toHaveBeenLastCalledWith(120, 30);
+    expect(attachTaskTerminalMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("Zellij 다중 탭도 모바일 선택 pane을 PC에서 열고 폰 격자로 맞춘다", async () => {
+    const session = stubZellijViewport(false, true);
+    const surfaces = await getTaskSurfaces("zellij-viewport");
+    expect(surfaces.tabs).toHaveLength(2);
+    expect(surfaces.canResize).toBe(true);
+    const first = await claimPaneViewport("zellij-viewport", "terminal_1");
+    const second = await claimPaneViewport("zellij-viewport", "terminal_2");
+    await first.resize(44, 70);
+    await second.resize(80, 35);
+    expect(session.focusedPane()).toBe(2);
+    expect(spawnedPtys[0].resize).toHaveBeenLastCalledWith(162, 38);
+    await second.release();
+    expect(session.focusedPane()).toBe(1);
+    expect(spawnedPtys[0].resize).toHaveBeenLastCalledWith(90, 73);
+    await first.release();
+    expect(spawnedPtys[0].resize).toHaveBeenLastCalledWith(120, 30);
+  });
+
+  it("이미 같은 격자여도 새로 선택한 Zellij 탭을 PC에서 연다", async () => {
+    const session = stubZellijViewport(false, true);
+    const viewport = await claimPaneViewport("zellij-viewport", "terminal_2");
+    await viewport.resize(59, 27);
+    expect(session.focusedPane()).toBe(2);
+    await viewport.release();
+  });
+
+  it("같은 Zellij 탭을 다시 선택해도 이어서 격자를 조정한다", async () => {
+    const session = stubZellijViewport(false, true);
+    const viewport = await claimPaneViewport("zellij-viewport", "terminal_2");
+    await viewport.resize(59, 27);
+    await viewport.resize(80, 35);
+    expect(session.focusedPane()).toBe(2);
+    expect(spawnedPtys[0].resize).toHaveBeenLastCalledWith(162, 38);
+    expect(executedCommands().filter((command) => command.includes("go-to-tab-by-id"))).toEqual([
+      "zellij --session 'zellij-viewport' action go-to-tab-by-id '1'",
+      "zellij --session 'zellij-viewport' action go-to-tab-by-id '1'",
+    ]);
+    await viewport.release();
+  });
+
+  it("Zellij 탭 전환 실패를 성공으로 처리하지 않고 lease 해제 시 PC 크기를 복원한다", async () => {
+    stubZellijViewport(false, true);
+    const execute = execGitMock.getMockImplementation()!;
+    execGitMock.mockImplementation((command, host) => command.includes("go-to-tab-by-id")
+      ? Promise.reject(new Error("tab closed")) : execute(command, host));
+    const viewport = await claimPaneViewport("zellij-viewport", "terminal_2");
+    await expect(viewport.resize(59, 27)).rejects.toThrow("tab closed");
+    await viewport.release();
+    expect(spawnedPtys[0].resize).toHaveBeenLastCalledWith(120, 30);
+  });
+
+  it("Zellij 고정 floating pane은 정확히 맞추고 연결이 끝나면 좌표와 크기를 복원한다", async () => {
+    stubZellijViewport(true);
+    const first = await claimPaneViewport("zellij-viewport", "terminal_1");
+    const second = await claimPaneViewport("zellij-viewport", "terminal_1");
+    await first.resize(44, 70);
+    expect(spawnedPtys[0].resize).toHaveBeenLastCalledWith(120, 81);
+    await second.resize(80, 24);
+    expect(spawnedPtys[0].resize).toHaveBeenLastCalledWith(120, 35);
+    await second.release();
+    expect(spawnedPtys[0].resize).toHaveBeenLastCalledWith(120, 81);
+    await first.release();
+    expect(spawnedPtys[0].resize).toHaveBeenLastCalledWith(120, 30);
+    expect(executedCommands().filter((command) => command.includes("change-floating-pane-coordinates"))).toEqual([
+      "zellij --session 'zellij-viewport' action change-floating-pane-coordinates --pane-id 'terminal_1' --x 30 --y 7 --width 46 --height 72",
+      "zellij --session 'zellij-viewport' action change-floating-pane-coordinates --pane-id 'terminal_1' --x 30 --y 7 --width 82 --height 26",
+      "zellij --session 'zellij-viewport' action change-floating-pane-coordinates --pane-id 'terminal_1' --x 30 --y 7 --width 46 --height 72",
+      "zellij --session 'zellij-viewport' action change-floating-pane-coordinates --pane-id 'terminal_1' --x 30 --y 7 --width 60 --height 14",
+    ]);
+    expect(executedCommands().some((command) => /fullscreen|override-layout/.test(command))).toBe(false);
+  });
+
+  it("Zellij 여러 floating pane을 번갈아 봐도 마지막에 각 원래 배치를 복원한다", async () => {
+    stubZellijViewport(true);
+    const first = await claimPaneViewport("zellij-viewport", "terminal_1");
+    const second = await claimPaneViewport("zellij-viewport", "terminal_2");
+    await first.resize(44, 70);
+    await second.resize(80, 24);
+    await second.release();
+    const countBeforeFinal = executedCommands().filter((command) => command.includes("change-floating-pane-coordinates")).length;
+    await first.release();
+    const restores = executedCommands().filter((command) => command.includes("change-floating-pane-coordinates")).slice(countBeforeFinal);
+    expect(restores).toEqual([
+      "zellij --session 'zellij-viewport' action change-floating-pane-coordinates --pane-id 'terminal_1' --x 30 --y 7 --width 60 --height 14",
+      "zellij --session 'zellij-viewport' action change-floating-pane-coordinates --pane-id 'terminal_2' --x 3 --y 2 --width 40 --height 12",
+    ]);
+    expect(spawnedPtys[0].resize).toHaveBeenLastCalledWith(120, 30);
+  });
+
   it("tmux는 폰 크기로 바꾸고 마지막 모바일이 나가면 배치와 크기 정책을 복원한다", async () => {
     stubTmuxMirror();
     execGitMock.mockImplementation(async (command) => {
@@ -248,6 +442,7 @@ beforeEach(() => {
   createTaskMock.mockReset();
   createTaskMock.mockResolvedValue({ id: "task-1" });
   deleteTaskAcrossTargetsMock.mockReset();
+  removeTaskRegistrationMock.mockReset();
   findProjectOneByMock.mockReset();
   propagateTaskRegistrationToPeersMock.mockReset();
   propagateTaskRegistrationToPeersMock.mockResolvedValue([]);
@@ -962,6 +1157,126 @@ describe("모바일 터미널 탭 생성", () => {
   });
 });
 
+describe("모바일 pane 종료", () => {
+  const FIRST_PANE_LINE = "%19\t@10\tbash\t0\t0\t50\t30\tfirst";
+  const SECOND_PANE_LINE = "%20\t@10\tclaude\t51\t0\t49\t30\tfirst";
+
+  /** 종료 명령을 받은 pane은 이후 목록에서 빠지는 tmux 세션 */
+  function stubTmuxPanes(initialLines: string[]): void {
+    const remainingLines = [...initialLines];
+    findOneByMock.mockResolvedValue(TMUX_TASK);
+    execGitMock.mockImplementation(async (command) => {
+      const killed = command.match(/kill-pane -t '(%\d+)'/);
+      if (killed) {
+        const index = remainingLines.findIndex((line) => line.startsWith(`${killed[1]}\t`));
+        if (index >= 0) remainingLines.splice(index, 1);
+        return "";
+      }
+      return command.includes("list-panes") ? remainingLines.join("\n") : "snapshot";
+    });
+  }
+
+  it("같은 창의 pane 둘 중 지정한 하나만 종료하고 남은 pane 목록을 돌려준다", async () => {
+    stubTmuxPanes([FIRST_PANE_LINE, SECOND_PANE_LINE]);
+
+    const result = await closeMobilePane("task-1", "%20");
+
+    expect(executedCommands().filter((command) => command.includes("kill-pane"))).toEqual(["tmux kill-pane -t '%20'"]);
+    expect(result.surfaces.tabs.map((tab) => tab.panes.map((pane) => pane.id))).toEqual([["%19"]]);
+  });
+
+  it("세션의 유일한 pane은 종료 명령 없이 거절한다", async () => {
+    stubTmuxMirror();
+
+    await expect(closeMobilePane("task-1", "%19")).rejects.toMatchObject({ name: "LastPaneError" });
+
+    expect(executedCommands().filter((command) => command.includes("kill-pane"))).toEqual([]);
+  });
+
+  it("세션에 없는 pane은 다른 세션의 pane이어도 종료 명령 없이 거절한다", async () => {
+    stubTmuxPanes([FIRST_PANE_LINE, SECOND_PANE_LINE]);
+
+    await expect(closeMobilePane("task-1", "%3")).rejects.toMatchObject({ name: "PaneNotFoundError" });
+
+    expect(executedCommands().filter((command) => command.includes("kill-pane"))).toEqual([]);
+  });
+
+  it("두 기기가 마지막 두 pane을 동시에 닫아도 하나만 종료하고 세션은 남긴다", async () => {
+    stubTmuxPanes([FIRST_PANE_LINE, SECOND_PANE_LINE]);
+
+    const results = await Promise.allSettled([closeMobilePane("task-1", "%19"), closeMobilePane("task-1", "%20")]);
+
+    expect(executedCommands().filter((command) => command.includes("kill-pane"))).toHaveLength(1);
+    expect(results.map((result) => result.status).sort()).toEqual(["fulfilled", "rejected"]);
+  });
+
+  it("zellij는 pane id로 지정한 pane만 종료한다", async () => {
+    findOneByMock.mockResolvedValue({ sessionType: SessionType.ZELLIJ, sessionName: "close-zellij", sshHost: null });
+    let isSecondClosed = false;
+    const pane = { id: 1, tab_id: 0, tab_name: "first", is_plugin: false, terminal_command: "zsh", pane_x: 0, pane_y: 0, pane_rows: 24, pane_columns: 80 };
+    execGitMock.mockImplementation(async (command) => {
+      if (command.includes("--version")) return "zellij 0.44.3";
+      if (command.includes("list-sessions")) return "close-zellij [Created 1m ago]";
+      if (command.includes("action close-pane")) {
+        isSecondClosed = true;
+        return "";
+      }
+      if (command.includes("list-panes")) return JSON.stringify(isSecondClosed ? [pane] : [pane, { ...pane, id: 2, tab_id: 1, tab_name: "second" }]);
+      return "";
+    });
+
+    const result = await closeMobilePane("task-zellij", "terminal_2");
+
+    expect(executedCommands().filter((command) => command.includes("close-pane"))).toEqual(["zellij --session 'close-zellij' action close-pane --pane-id 'terminal_2'"]);
+    expect(result.surfaces.tabs).toHaveLength(1);
+  });
+
+  it("일반 터미널은 pane이 곧 탭이라 지정한 탭만 닫는다", async () => {
+    findOneByMock.mockResolvedValue({ id: "close-tab-task", sessionType: SessionType.TERMINAL, sessionName: "close-tab-session", sshHost: null });
+    await createMobileTerminalTab("close-tab-task");
+
+    const result = await closeMobilePane("close-tab-task", "close-tab-task-2");
+
+    expect(result.surfaces.tabs.map((tab) => tab.id)).toEqual(["close-tab-task-1"]);
+    expect(execGitMock).not.toHaveBeenCalled();
+  });
+
+  it("일반 터미널의 유일한 탭은 거절한다", async () => {
+    findOneByMock.mockResolvedValue({ id: "single-tab-task", sessionType: SessionType.TERMINAL, sessionName: "single-tab-session", sshHost: null });
+
+    await expect(closeMobilePane("single-tab-task", "single-tab-task-1")).rejects.toMatchObject({ name: "LastPaneError" });
+  });
+});
+
+describe("모바일 pane 종료 정보", () => {
+  it.each(["sh", "bash", "zsh", "fish", "dash"])("현재 명령이 유휴 셸 %s이면 실행 중인 프로세스가 없다고 알린다", async (shell) => {
+    findOneByMock.mockResolvedValue(TMUX_TASK);
+    execGitMock.mockImplementation(async (command) => command.includes("list-panes") ? `%19\t@10\t${shell}\t0\t0\t80\t24\tfirst` : "snapshot");
+
+    await expect(getMobilePaneCloseInfo("task-1", "%19")).resolves.toEqual({ processNames: [] });
+  });
+
+  it("셸이 아닌 명령이 돌고 있으면 그 이름을 돌려준다", async () => {
+    findOneByMock.mockResolvedValue(TMUX_TASK);
+    execGitMock.mockImplementation(async (command) => command.includes("list-panes") ? "%19\t@10\tvim\t0\t0\t80\t24\tfirst" : "snapshot");
+
+    await expect(getMobilePaneCloseInfo("task-1", "%19")).resolves.toEqual({ processNames: ["vim"] });
+  });
+
+  it("조회가 실패하면 없다고 단정하지 않고 오류를 올린다", async () => {
+    findOneByMock.mockResolvedValue(TMUX_TASK);
+    execGitMock.mockRejectedValue(new Error("tmux unreachable"));
+
+    await expect(getMobilePaneCloseInfo("task-1", "%19")).rejects.toThrow();
+  });
+
+  it("세션에 없는 pane은 조회하지 않고 거절한다", async () => {
+    stubTmuxMirror();
+
+    await expect(getMobilePaneCloseInfo("task-1", "%3")).rejects.toMatchObject({ name: "PaneNotFoundError" });
+  });
+});
+
 /**
  * tmux pane id는 서버 전역이라 `-t %3`이 세션 경계를 넘는다.
  * 토큰 하나를 가진 기기가 다른 태스크의 pane까지 읽고 쓰는 것을 막아야 한다.
@@ -1123,7 +1438,7 @@ describe("모바일 태스크 생성", () => {
   const draft = { projectId: "project-1", branchName: "feat/mobile-create" };
 
   it("브랜치 이름을 제목으로 삼아 데스크탑 생성 경로로 넘긴다", async () => {
-    await createMobileTask({ ...draft, sessionType: "tmux", priority: "high", baseBranch: "main" });
+    await createMobileTask({ ...draft, priority: "high", baseBranch: "main" });
 
     expect(createTaskMock).toHaveBeenCalledWith({
       title: "feat/mobile-create",
@@ -1181,9 +1496,17 @@ describe("모바일 태스크 생성", () => {
     expect(createTaskMock).not.toHaveBeenCalled();
   });
 
-  it("모르는 세션 타입은 조용히 버리지 않고 막는다", async () => {
-    await expect(createMobileTask({ ...draft, sessionType: "screen" })).rejects.toThrow(/세션 타입/);
-    expect(createTaskMock).not.toHaveBeenCalled();
+  it("세션 타입은 기기가 보낸 값과 관계없이 데스크탑 기본 세션 타입을 따른다", async () => {
+    defaultSessionTypeSetting = SessionType.ZELLIJ;
+    try {
+      await createMobileTask({ ...draft, sessionType: "tmux" } as never);
+      await createMobileTask({ ...draft, sessionType: "screen" } as never);
+    } finally {
+      defaultSessionTypeSetting = SessionType.TMUX;
+    }
+
+    expect(createTaskMock).toHaveBeenNthCalledWith(1, expect.objectContaining({ sessionType: "zellij" }));
+    expect(createTaskMock).toHaveBeenNthCalledWith(2, expect.objectContaining({ sessionType: "zellij" }));
   });
 
   it("모바일 화면에 없는 칸은 데스크탑 요청에 실리지 않는다", async () => {
@@ -1193,8 +1516,69 @@ describe("모바일 태스크 생성", () => {
   });
 });
 
+describe("모바일 세션 타입 변경", () => {
+  afterEach(() => {
+    getSessionDependencyStatusMock.mockReset();
+    changeTaskSessionTypeMock.mockReset();
+    getTaskByIdMock.mockReset();
+  });
+
+  beforeEach(() => {
+    getTaskByIdMock.mockResolvedValue({ id: "task-1", sshHost: "build-host", sessionType: "tmux", sessionName: "repo-feat" });
+    getSessionDependencyStatusMock.mockResolvedValue({ available: true, toolName: "zellij" });
+    changeTaskSessionTypeMock.mockResolvedValue({ id: "task-1", sessionType: "zellij", sessionName: "repo-feat" });
+  });
+
+  it("새 세션 도구가 준비되어 있으면 데스크탑 변경 경로로 넘긴다", async () => {
+    const task = await changeMobileTaskSessionType("task-1", "zellij", true);
+
+    expect(getSessionDependencyStatusMock).toHaveBeenCalledWith("zellij", "build-host");
+    expect(changeTaskSessionTypeMock).toHaveBeenCalledWith("task-1", "zellij", true);
+    expect(task).toEqual(expect.objectContaining({ sessionType: "zellij" }));
+  });
+
+  it("새 세션 도구가 없으면 설치하지 않고 이유를 담아 거절한다", async () => {
+    getSessionDependencyStatusMock.mockResolvedValue({ available: false, toolName: "zellij" });
+
+    await expect(changeMobileTaskSessionType("task-1", "zellij", false)).rejects.toMatchObject({
+      name: "MobileSessionDependencyMissingError",
+      message: expect.stringContaining("zellij"),
+    });
+    expect(changeTaskSessionTypeMock).not.toHaveBeenCalled();
+  });
+
+  it("모르는 세션 타입은 막는다", async () => {
+    await expect(changeMobileTaskSessionType("task-1", "screen", false)).rejects.toThrow(/세션 타입/);
+    expect(changeTaskSessionTypeMock).not.toHaveBeenCalled();
+  });
+
+  it("없는 태스크면 null을 돌려준다", async () => {
+    getTaskByIdMock.mockResolvedValue(null);
+
+    await expect(changeMobileTaskSessionType("task-404", "zellij", false)).resolves.toBeNull();
+    expect(changeTaskSessionTypeMock).not.toHaveBeenCalled();
+  });
+
+  it("세션 변경 알림은 지켜보는 태스크의 것만 전달하고 구독을 풀면 더 오지 않는다", async () => {
+    const onChanged = vi.fn();
+    const stopWatching = watchTaskSessionChange("task-1", onChanged);
+
+    broadcastTaskSessionChanged({ taskId: "task-2" });
+    broadcastTaskSessionChanged({ taskId: "task-1" });
+    stopWatching();
+    broadcastTaskSessionChanged({ taskId: "task-1" });
+
+    expect(onChanged).toHaveBeenCalledTimes(1);
+  });
+});
 
 describe("모바일 태스크 삭제", () => {
+  it("등록 제거는 실제 리소스 삭제 경로로 보내지 않는다", async () => {
+    removeTaskRegistrationMock.mockResolvedValue(true);
+    await expect(removeMobileTaskRegistration("task-1")).resolves.toBe(true);
+    expect(removeTaskRegistrationMock).toHaveBeenCalledWith("task-1");
+    expect(deleteTaskAcrossTargetsMock).not.toHaveBeenCalled();
+  });
   it("기본 삭제는 커밋하지 않은 변경을 거부하고 다른 데스크탑으로 전파하며, 전파하지 못한 데스크탑 수를 돌려준다", async () => {
     deleteTaskAcrossTargetsMock.mockResolvedValue({
       isDeleted: true,
@@ -1712,7 +2096,7 @@ describe("Herdr 세션 미러", () => {
   it("Herdr 태스크의 표면을 Herdr 조회로 만들고 tmux 명령은 실행하지 않는다", async () => {
     const surfaces = await getTaskSurfaces("herdr-task");
 
-    expect(surfaces).toMatchObject({ sessionType: SessionType.HERDR, canResize: false });
+    expect(surfaces).toMatchObject({ sessionType: SessionType.HERDR, canResize: true });
     expect(surfaces.tabs).toEqual([{ id: "w1:t1", name: "work", panes: [expect.objectContaining({ id: "w1:p1", command: "claude", width: 120, height: 38 })] }]);
     expect(executed().filter((command) => command.includes("tmux"))).toEqual([]);
   });
@@ -1759,8 +2143,162 @@ describe("Herdr 세션 미러", () => {
     await expect(executeMobileTerminalShortcut("herdr-task", "w1:p1", "scroll-up")).rejects.toThrow(/지원하지 않는/);
   });
 
-  it("화면 크기 조정은 받지 않는다", async () => {
-    await expect(claimPaneViewport("herdr-task", "w1:p1")).rejects.toMatchObject({ reason: "session-not-running" });
+  const installControllers = (acknowledge = true) => {
+    const controllers: ReturnType<typeof createObserver>[] = [];
+    const observers: ReturnType<typeof createObserver>[] = [];
+    spawnMock.mockImplementation((_shell: string, args: string[]) => {
+      const child = Object.assign(createObserver(), {
+        stdin: Object.assign(new EventEmitter(), { write: vi.fn(), end: vi.fn() }),
+      });
+      const command = args[1];
+      if (!command.includes("'session' 'control'")) {
+        observers.push(child);
+        return child;
+      }
+      controllers.push(child);
+      const acknowledgeSize = (cols: number, rows: number) => child.stdout.emit("data", `${JSON.stringify({
+        type: "terminal.frame", bytes: "", full: true, width: cols, height: rows,
+      })}\n`);
+      const initial = /'--cols' '(\d+)' '--rows' '(\d+)'/.exec(command)!;
+      if (acknowledge) setImmediate(() => acknowledgeSize(Number(initial[1]), Number(initial[2])));
+      child.stdin.write.mockImplementation((line: string, callback?: (error?: Error) => void) => {
+        const message = JSON.parse(line);
+        if (message.type === "terminal.resize" && acknowledge) {
+          queueMicrotask(() => acknowledgeSize(message.cols, message.rows));
+        }
+        callback?.();
+        return true;
+      });
+      child.stdin.end.mockImplementation(() => queueMicrotask(() => child.emit("exit", 0)));
+      return child;
+    });
+    return { controllers, observers };
+  };
+
+  it("모바일 마지막 요청을 한 controller에 적용하고 마지막 해제 때 제어를 반납한다", async () => {
+    const { controllers, observers } = installControllers();
+    const unsubscribe = await subscribeToPane("herdr-task", "w1:p1", () => {}, () => {});
+    const first = await claimPaneViewport("herdr-task", "w1:p1");
+    const second = await claimPaneViewport("herdr-task", "w1:p1");
+    await first.resize(44, 70);
+    await second.resize(80, 24);
+    await second.release();
+
+    expect(controllers).toHaveLength(1);
+    const controller = controllers[0] as ReturnType<typeof createObserver> & { stdin: { write: ReturnType<typeof vi.fn>; end: ReturnType<typeof vi.fn> } };
+    expect(controller.stdin.write.mock.calls.map(([line]) => JSON.parse(line))).toEqual([
+      { type: "terminal.resize", cols: 80, rows: 24 },
+      { type: "terminal.resize", cols: 44, rows: 70 },
+    ]);
+    expect(controller.stdin.end).not.toHaveBeenCalled();
+    expect(observers).toHaveLength(4);
+    expect(spawnMock.mock.calls.map(([, args]) => args[1]).filter((command) => command.includes("'session' 'observe'"))).toEqual([
+      buildHerdrObservePaneCommand("herdr-session", "w1:p1", 120, 38),
+      buildHerdrObservePaneCommand("herdr-session", "w1:p1", 44, 70),
+      buildHerdrObservePaneCommand("herdr-session", "w1:p1", 80, 24),
+      buildHerdrObservePaneCommand("herdr-session", "w1:p1", 44, 70),
+    ]);
+    expect(spawnMock.mock.calls.every(([, args]) => !args[1].includes("takeover"))).toBe(true);
+    await first.release();
+    expect(controller.stdin.end).toHaveBeenCalledWith(`${JSON.stringify({ type: "terminal.release" })}\n`);
+    unsubscribe();
+  });
+
+  it("같은 탭의 서로 다른 pane은 크기 제어와 반납을 공유하지 않는다", async () => {
+    const { controllers } = installControllers();
+    const original = execGitMock.getMockImplementation()!;
+    execGitMock.mockImplementation(async (command, host) => {
+      const output = await original(command, host);
+      if (command !== herdrCommand("pane", "list")) return output;
+      const response = JSON.parse(output);
+      response.result.panes.push({ ...response.result.panes[0], pane_id: "w1:p2" });
+      return JSON.stringify(response);
+    });
+    const first = await claimPaneViewport("herdr-task", "w1:p1");
+    const second = await claimPaneViewport("herdr-task", "w1:p2");
+    await first.resize(44, 70);
+    await second.resize(80, 24);
+    expect(controllers).toHaveLength(2);
+    await first.release();
+    const commands = spawnMock.mock.calls.map(([, args]) => args[1]).filter((command) => command.includes("'session' 'control'"));
+    expect(commands).toHaveLength(2);
+    expect(commands[0]).toContain("'w1:p1'");
+    expect(commands[1]).toContain("'w1:p2'");
+    await second.release();
+  });
+
+  it("크기 ACK가 오지 않으면 제어 프로세스를 정리하고 기다림을 끝낸다", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const { controllers } = installControllers(false);
+    const killSpy = vi.spyOn(process, "kill").mockImplementation(() => true);
+    const viewport = await claimPaneViewport("herdr-task", "w1:p1");
+    const resizing = expect(viewport.resize(44, 70)).rejects.toThrow(/Herdr.*응답/);
+    await vi.waitFor(() => expect(controllers).toHaveLength(1));
+    controllers[0].pid = 4321;
+    await vi.advanceTimersByTimeAsync(5000);
+    await resizing;
+    expect(killSpy).toHaveBeenCalledWith(-4321, "SIGTERM");
+    await viewport.release();
+    killSpy.mockRestore();
+  });
+
+  it("resize는 요청 격자의 전체 프레임을 받은 뒤에만 성공한다", async () => {
+    const { controllers } = installControllers(false);
+    const viewport = await claimPaneViewport("herdr-task", "w1:p1");
+    let finished = false;
+    const resizing = viewport.resize(44, 70).then(() => { finished = true; });
+    await vi.waitFor(() => expect(controllers).toHaveLength(1));
+    const child = controllers[0];
+    child.stdout.emit("data", `${JSON.stringify({ type: "terminal.frame", bytes: "", full: true, width: 120, height: 38 })}\n`);
+    await Promise.resolve();
+    expect(finished).toBe(false);
+    child.stdout.emit("data", `${JSON.stringify({ type: "terminal.frame", bytes: "", full: true, width: 44, height: 70 })}\n`);
+    await resizing;
+    expect(finished).toBe(true);
+    await viewport.release();
+  });
+
+  it("controller가 첫 프레임 대신 closed를 보내면 exit 0이어도 resize를 거절한다", async () => {
+    const { controllers } = installControllers(false);
+    const viewport = await claimPaneViewport("herdr-task", "w1:p1");
+    const resizing = expect(viewport.resize(44, 70)).rejects.toThrow(/Herdr/);
+    await vi.waitFor(() => expect(controllers).toHaveLength(1));
+    controllers[0].stdout.emit("data", `${JSON.stringify({ type: "terminal.closed", reason: "already attached" })}\n`);
+    controllers[0].emit("exit", 0);
+    await resizing;
+    await viewport.release();
+  });
+
+  it("controller가 끊기면 관찰 스트림도 닫아 맞지 않는 격자를 계속 보여주지 않는다", async () => {
+    const { controllers } = installControllers();
+    const onEnd = vi.fn();
+    const unsubscribe = await subscribeToPane("herdr-task", "w1:p1", () => {}, onEnd);
+    const viewport = await claimPaneViewport("herdr-task", "w1:p1");
+    await viewport.resize(44, 70);
+    controllers[0].emit("exit", 1);
+    await vi.waitFor(() => expect(onEnd).toHaveBeenCalledOnce());
+    unsubscribe();
+    await viewport.release();
+  });
+
+  it("이력과 늦은 구독자의 재전송도 현재 모바일 격자를 사용하고 옛 프레임을 버린다", async () => {
+    const { observers } = installControllers();
+    const chunks: string[] = [];
+    const unsubscribe = await subscribeToPane("herdr-task", "w1:p1", (chunk) => chunks.push(chunk), () => {});
+    const viewport = await claimPaneViewport("herdr-task", "w1:p1");
+    await viewport.resize(44, 70);
+    observers[0].stdout.emit("data", frame("stale desktop grid"));
+    expect(chunks).not.toContain("stale desktop grid");
+    historyRows = 5;
+    observers.at(-1)!.stdout.emit("data", frame("new output"));
+    await vi.waitFor(() => expect(observers).toHaveLength(3), { timeout: 2000 });
+    const unsubscribeSecond = await subscribeToPane("herdr-task", "w1:p1", () => {}, () => {});
+    await vi.waitFor(() => expect(observers).toHaveLength(4));
+    const commands = spawnMock.mock.calls.map(([, args]) => args[1]).filter((command) => command.includes("'session' 'observe'"));
+    expect(commands.slice(1)).toEqual(Array(3).fill(buildHerdrObservePaneCommand("herdr-session", "w1:p1", 44, 70)));
+    unsubscribeSecond();
+    unsubscribe();
+    await viewport.release();
   });
 
   it("이력을 먼저 보내고 잘린 NDJSON 줄을 이어 프레임을 전달한다", async () => {

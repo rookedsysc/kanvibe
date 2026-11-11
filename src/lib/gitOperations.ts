@@ -65,6 +65,7 @@ interface RemoteSSHConnectionLease {
 export interface ExecGitOptions {
   timeoutMs?: number;
   maxBufferBytes?: number;
+  strictHostKeyChecking?: boolean;
   /** 원격 명령의 표준 입력으로 보낼 내용. 자격 증명처럼 프로세스 인자에 남으면 안 되는 값을 싣는다. 재시도마다 다시 보낸다 */
   remoteStdin?: string;
 }
@@ -214,7 +215,7 @@ async function execRemote(
     }
 
     const sshArgs = [
-      ...await buildExecSSHArgs(hostConfig, controlMasterShardIndex),
+      ...await buildExecSSHArgs(hostConfig, controlMasterShardIndex, options),
       buildRemoteShellCommand(command),
     ];
 
@@ -555,11 +556,13 @@ function rememberSSHTransportFailure(sshHost: string, error: Error): void {
 async function buildExecSSHArgs(
   hostConfig: SSHHostConfig,
   controlMasterShardIndex: number,
+  options?: ExecGitOptions,
 ): Promise<string[]> {
-  if (process.platform === "win32") {
+  if (process.platform === "win32" || options?.strictHostKeyChecking) {
     return buildSSHArgs(hostConfig, {
       disableTty: true,
       connectionHealth: getKanvibeSSHConnectionHealthOptions(),
+      strictHostKeyChecking: options?.strictHostKeyChecking,
     });
   }
 

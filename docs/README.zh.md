@@ -68,7 +68,7 @@ open -a KanVibe
 
 ### 1. 快速任务搜索
 
-从任何位置打开任务搜索，按项目或分支名筛选，并无需先回到看板即可直接进入任务工作区。
+从任何位置打开任务搜索，按项目或分支名筛选。在 Worktree 视图中选择结果会保留左右布局，选中并滚动到左侧对应任务，在右侧显示该任务的终端。在 Kanban 视图中则仍然打开任务详情。
 
 <img src="./images/readme/kanvibe-search-shortcut.png" alt="快速任务搜索快捷键" width="100%">
 
@@ -177,6 +177,13 @@ brew untap rookedsysc/kanvibe
 - 面向长期项目的 Done 列分页
 - 跨浏览器和桌面窗口的实时 WebSocket 更新
 
+### Worktree 视图
+
+- 左侧保留任务列表，右侧显示所选任务的终端
+- 使用与 Kanban 卡片相同的项目图标、标题、描述和徽章，省略卡片外边框，分别显示选中状态与键盘焦点
+- 快速搜索结果会在当前视图中选中，包括 DONE 任务以及被当前筛选条件隐藏的任务
+- 在 macOS 上只按下再松开 `Cmd+Option`，Linux 上则使用 `Ctrl+Alt`，即可将焦点移到列表中的所选任务。用 `↑ / ↓` 按显示顺序切换任务，再按 `Enter` 将焦点移到对应终端
+
 ### 基于分支的任务工作区
 - 创建会自动准备 git worktree 和终端会话的分支 TODO
 - 使用看板工具栏上的放大镜扫描对话框注册仓库，并把现有 worktree 分支检测为 TODO 任务
@@ -192,9 +199,21 @@ brew untap rookedsysc/kanvibe
 - 远程终端 attach 会通过 SSH 直接执行 Herdr/tmux/zellij；仅在本地 `DISPLAY`、远程 `X11Forwarding` 和 `xauth` 可用时请求 trusted X11 forwarding（`ssh -Y`）
 - Nerd Font 渲染支持
 
-- 未保存有效偏好时默认使用 Herdr，已有的 tmux、zellij、terminal 选择会保留。每个任务使用独立命名的持久会话；首次创建时应用六种 pane 布局和各 pane 的启动命令，再次打开时继续使用运行中的 shell。
-- Herdr 标签页支持创建、切换、重命名、关闭，以及 workspace 内的拖动排序。关闭 KanVibe 窗口会保留最后一个标签页；删除任务时才会停止并删除对应的命名会话。首次运行设置和个人配置由 Herdr 管理。
+- 未保存有效偏好时默认使用 Herdr，已有的 tmux、zellij、terminal 选择会保留。新的 Herdr 任务在每台主机上共享持久的 `kanvibe` 服务，每个任务的 workspace 都显示在 Spaces 中。首次创建时应用配置的 pane 布局和启动命令，再次打开时继续使用运行中的 shell。已有的独立命名会话会保留，直到明确替换。
+- Herdr 标签页支持创建、切换、重命名、关闭，以及 workspace 内的拖动排序。Space 和标签页的选择仅影响对应的任务窗口。关闭 KanVibe 窗口会保留最后一个标签页；删除共享会话中的任务时，只关闭该任务的 workspace，其他任务继续运行。首次运行设置和个人配置由 Herdr 管理。
 - 创建任务、创建分支或连接终端时选择 `herdr`，KanVibe 会检查本机或选定的 SSH 主机。若未安装，确认提示后会在该主机运行[官方安装程序](https://herdr.dev/tui/docs/install/)，安装到 `~/.local/bin`，不修改 shell 启动文件。取消后任务保持不变。安装失败时会显示错误；请检查网络连接和目录写入权限后重试。
+
+#### 在外部终端中打开相同的 Herdr Spaces
+
+在 KanVibe 中打开 Herdr 任务后，在同一主机的 Ghostty 或其他终端中新开一个终端并运行：
+
+```sh
+herdr session attach kanvibe
+```
+
+此命令连接到 KanVibe 共享的 Herdr 会话。在 **Spaces** 中选择任务的 workspace，即可继续使用运行中的 shell。Spaces 只显示当前连接会话中的 workspace：连接到独立的 `kanvibe-dev` 会话时，看不到 `kanvibe` 内的 workspace，即使其中一个 workspace 也叫 `kanvibe-dev`。
+
+对于 SSH 任务，请先连接到该任务的 SSH 主机，再在那里运行命令。仍使用独立命名会话的旧任务，需要将 `kanvibe` 换成原来的会话名；可在该主机运行 `herdr session list` 查看。
 
 ### 键盘优先控制
 - 从任何位置按分支名或项目名打开快速任务搜索
@@ -235,6 +254,9 @@ brew untap rookedsysc/kanvibe
 | `:move todo\|progress\|pending\|review\|done` | 已聚焦的看板任务卡片 | 无需拖放，将当前聚焦任务移动到目标状态；在命令输入框按 `Tab` 可补全唯一的状态前缀 |
 | `dd` | 已聚焦的看板任务卡片 | 确认后删除当前聚焦任务 |
 | `Cmd/Ctrl+Shift+O` | 全局 | 按分支名或项目名打开快速任务搜索（默认值，可配置） |
+| 只按下再松开 `Cmd+Option` (macOS)、`Ctrl+Alt` (Linux) | Worktree 视图 | 聚焦左侧列表中的所选任务；与其他按键组合时不执行 |
+| `↑ / ↓` | 已聚焦的 Worktree 任务列表 | 选择上一个/下一个任务并切换右侧终端；到达首项/末项时停止 |
+| `Enter` | 已聚焦的 Worktree 任务列表 | 将焦点移到所选任务的终端 |
 | `Cmd/Ctrl+Shift+P` | 看板 | 打开项目筛选下拉框 |
 | `Cmd/Ctrl+Shift+I` | 看板 | 打开通知下拉框 |
 | `Cmd+[` / `Cmd+]` (macOS), `Alt+[` / `Alt+]` (Linux) | 全局 | 在应用历史中后退/前进；没有上一页时后退到看板首页 |

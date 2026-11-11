@@ -10,7 +10,9 @@ import '../../features/board/domain/task_status.dart';
 import '../../features/chat_history/domain/chat_history.dart';
 import '../../features/notifications/domain/inbox_notification.dart';
 import '../../features/notifications/domain/notification_settings.dart';
+import '../../features/task_create/domain/session_type.dart';
 import '../../features/task_detail/domain/mirror_pane.dart';
+import 'desktop_command.dart';
 import 'desktop_connection.dart';
 import 'pinned_http_client.dart';
 
@@ -39,6 +41,10 @@ class DesktopClient {
   /// 지문마다 클라이언트를 재사용해 요청마다 TLS 핸드셰이크를 하지 않는다
   final Map<String, http.Client> _pinnedClients = {};
 
+  /// 연결 식별자별로 지금 열려 있는 상태 소켓. 명령은 이 소켓으로만 나간다
+  final Map<String, _CommandChannel> _commandChannels = {};
+  int _nextRequestNumber = 0;
+
   http.Client _clientFor(DesktopConnection connection) {
     final injected = _injectedHttpClient;
     if (injected != null) return injected;
@@ -65,10 +71,10 @@ class DesktopClient {
   /// 실제로는 만들어지고 있는데 기기만 먼저 포기한다. 그러면 사용자가 다시 눌러 같은 브랜치를 또 치게 된다.
   static const _createTaskTimeout = Duration(seconds: 60);
 
-  /// 태스크 삭제도 길게 잡는다. 데스크탑이 worktree·브랜치·세션을 지우고 같은 태스크를 가진 다른 데스크탑에까지
-  /// 전파한 뒤에야 답하므로, 조회 잣대로 재면 지워지는 중인데 기기만 실패로 보게 된다.
-  static const _deleteTaskTimeout = Duration(seconds: 90);
   static const _createTerminalTabTimeout = Duration(seconds: 30);
+
+  /// 세션 종류 변경은 데스크탑이 hooks를 깔고 새 세션을 연결한 뒤 이전 세션까지 닫아야 끝난다
+  static const _changeSessionTypeTimeout = Duration(seconds: 30);
 
   /// 화면의 6자리 코드를 토큰으로 바꾼다. 성공하면 그 뒤로 코드는 필요 없다.
   ///
@@ -505,7 +511,6 @@ class DesktopClient {
     String? baseBranch,
     String? description,
     String? priority,
-    required String sessionType,
   }) async {
     final response = await _clientFor(connection)
         .post(
@@ -520,7 +525,6 @@ class DesktopClient {
             'baseBranch': baseBranch,
             'description': description,
             'priority': priority,
-            'sessionType': sessionType,
           }),
         )
         .timeout(_createTaskTimeout);
@@ -563,24 +567,50 @@ class DesktopClient {
     }
   }
 
-  /// 태스크와 그 worktree·브랜치·세션을 지운다. 연결된 데스크탑이 같은 태스크를 가진 다른 데스크탑에도 전파한다.
-  ///
-  /// 커밋하지 않은 변경이 있으면 데스크탑이 409로 멈춘다. [isForced]로 다시 보내면 그 변경까지 지운다.
-  /// 꺼져 있어 전파받지 못한 다른 데스크탑 수를 돌려준다. 그 데스크탑에는 태스크가 남아 있다.
-  Future<int> deleteTask(
+  /// 태스크의 기존 세션이 켜져 있는지 묻는다. 켜져 있을 때만 닫을지 물어보기 위해서다
+  Future<bool> fetchTaskSessionAlive(
     DesktopConnection connection,
-    String taskId, {
-    required bool isForced,
-  }) async {
+    String taskId,
+  ) async {
     final response = await _clientFor(connection)
-        .delete(
+        .get(
           connection.buildHttpUri(
-            '/api/mobile/tasks/${Uri.encodeComponent(taskId)}',
-            isForced ? const {'force': 'true'} : null,
+            '/api/mobile/tasks/${Uri.encodeComponent(taskId)}/session-alive',
           ),
           headers: connection.authorizationHeaders,
         )
-        .timeout(_deleteTaskTimeout);
+        .timeout(_requestTimeout);
+
+    if (response.statusCode != 200) {
+      throw DesktopRequestException(response.statusCode);
+    }
+
+    return (jsonDecode(response.body) as Map<String, dynamic>)['isAlive'] ==
+        true;
+  }
+
+  /// 태스크의 세션 종류를 바꾼다. 실제 전환은 데스크탑이 하고, 기기는 결과 세션을 다시 받아 붙는다
+  Future<void> changeTaskSessionType(
+    DesktopConnection connection,
+    String taskId, {
+    required SessionType sessionType,
+    required bool shouldCloseExistingSession,
+  }) async {
+    final response = await _clientFor(connection)
+        .patch(
+          connection.buildHttpUri(
+            '/api/mobile/tasks/${Uri.encodeComponent(taskId)}/session-type',
+          ),
+          headers: {
+            ...connection.authorizationHeaders,
+            'Content-Type': 'application/json',
+          },
+          body: jsonEncode({
+            'sessionType': sessionType.wireValue,
+            'shouldCloseExistingSession': shouldCloseExistingSession,
+          }),
+        )
+        .timeout(_changeSessionTypeTimeout);
 
     if (response.statusCode != 200) {
       throw DesktopRequestException(
@@ -588,10 +618,6 @@ class DesktopClient {
         message: _readErrorMessage(response.body),
       );
     }
-
-    final body = jsonDecode(response.body) as Map<String, dynamic>;
-    final failedPeerCount = body['failedPeerCount'];
-    return failedPeerCount is int ? failedPeerCount : 0;
   }
 
   /// 데스크탑이 실어 보낸 거절 사유. 본문이 JSON이 아닐 수도 있어 실패하면 사유 없이 넘어간다
@@ -643,12 +669,63 @@ class DesktopClient {
     // handshake 실패는 events에도 전달된다. 별도 ready Future의 중복 오류만 소비한다.
     channel.ready.ignore();
 
+    final commandChannel = _CommandChannel(channel.sink.add);
+    _commandChannels[connection.id] = commandChannel;
+    void release() {
+      commandChannel.failAll();
+      if (identical(_commandChannels[connection.id], commandChannel)) {
+        _commandChannels.remove(connection.id);
+      }
+    }
+
+    // command-result는 요청한 쪽에만 돌려주고 나머지 이벤트만 구독자에게 흘린다
+    final events = channel.stream
+        .map((event) => jsonDecode(event.toString()) as Map<String, dynamic>)
+        .where(commandChannel.absorbCommandTraffic)
+        .transform(
+          StreamTransformer<
+            Map<String, dynamic>,
+            Map<String, dynamic>
+          >.fromHandlers(
+            handleData: (event, sink) => sink.add(event),
+            handleError: (error, stackTrace, sink) {
+              release();
+              sink.addError(error, stackTrace);
+            },
+            handleDone: (sink) {
+              release();
+              sink.close();
+            },
+          ),
+        );
+
     return DesktopEventStream(
-      events: channel.stream.map(
-        (event) => jsonDecode(event.toString()) as Map<String, dynamic>,
-      ),
-      onClose: channel.sink.close,
+      events: events,
+      onClose: () {
+        release();
+        return channel.sink.close();
+      },
       readCloseCode: () => channel.closeCode,
+    );
+  }
+
+  /// 열려 있는 상태 소켓으로 명령 한 건을 보내고 응답의 값을 돌려준다.
+  ///
+  /// 소켓이 없으면 아무것도 보내지 않고 [DesktopDisconnectedException]으로 실패한다.
+  /// 데스크탑이 명령을 모르면 [DesktopUpdateRequiredException], 데스크탑이 거절하면 [DesktopCommandFailure]다.
+  Future<Map<String, dynamic>> runCommand(
+    DesktopConnection connection,
+    DesktopCommand command, {
+    Duration? timeout,
+  }) {
+    final commandChannel = _commandChannels[connection.id];
+    if (commandChannel == null) {
+      return Future.error(const DesktopDisconnectedException());
+    }
+    return commandChannel.send(
+      command,
+      requestId: 'cmd-${_nextRequestNumber++}',
+      timeout: timeout ?? command.timeout,
     );
   }
 
@@ -666,6 +743,94 @@ class DesktopClient {
 /// 스트림 실패(4000)와 나누어야 "세션을 못 비춘다"와 "이 기기는 더 이상 연결되어 있지 않다"를 구분할 수 있다.
 /// 서버 쪽 `electron/mobileRoutes.js`의 `DEVICE_UNPAIRED_CLOSE_CODE`와 같은 값이어야 한다.
 const int deviceUnpairedCloseCode = 4001;
+
+/// 데스크탑이 태스크의 세션 종류를 바꿔 이전 세션 스트림을 끊었을 때의 종료 코드.
+///
+/// 오류가 아니라 새 세션으로 다시 붙으라는 신호다. 서버 쪽 `electron/mobileRoutes.js`의
+/// `TASK_SESSION_CHANGED_CLOSE_CODE`와 같은 값이어야 한다.
+const int taskSessionChangedCloseCode = 4002;
+
+/// `connected` 이벤트가 오기를 기다리는 한도. 넘으면 소켓이 사실상 열리지 않은 것으로 본다
+const _capabilityWait = Duration(seconds: 5);
+
+/// 상태 소켓 하나 위에서 명령을 보내고 응답을 requestId로 짝짓는다
+class _CommandChannel {
+  _CommandChannel(this._send);
+
+  final void Function(String message) _send;
+  final Map<String, Completer<Map<String, dynamic>>> _pending = {};
+
+  /// `connected`가 알린 명령 목록. 목록이 없는 옛 데스크탑은 빈 목록이고, 소켓이 끊기면 null이다
+  final Completer<List<String>?> _supportedCommands = Completer();
+
+  /// 명령 관련 프레임이면 여기서 처리하고 false를 돌려 구독자에게 흘리지 않는다. `connected`는 기록만 하고 흘린다
+  bool absorbCommandTraffic(Map<String, dynamic> event) {
+    final type = event['type'];
+    if (type == 'connected' && !_supportedCommands.isCompleted) {
+      final commands = event['commands'];
+      _supportedCommands.complete(
+        commands is List ? commands.whereType<String>().toList() : const [],
+      );
+    }
+    if (type != 'command-result') return true;
+
+    final requestId = event['requestId'];
+    final pending = requestId is String ? _pending.remove(requestId) : null;
+    pending?.complete(event);
+    return false;
+  }
+
+  Future<Map<String, dynamic>> send(
+    DesktopCommand command, {
+    required String requestId,
+    required Duration timeout,
+  }) async {
+    final supported = await _supportedCommands.future.timeout(
+      _capabilityWait,
+      onTimeout: () => null,
+    );
+    if (supported == null) throw const DesktopDisconnectedException();
+    if (!supported.contains(command.name)) {
+      throw const DesktopUpdateRequiredException();
+    }
+
+    final response = Completer<Map<String, dynamic>>();
+    _pending[requestId] = response;
+    _send(jsonEncode(command.toMessage(requestId)));
+
+    try {
+      final result = await response.future.timeout(timeout);
+      return _readResult(result);
+    } finally {
+      _pending.remove(requestId);
+    }
+  }
+
+  Map<String, dynamic> _readResult(Map<String, dynamic> result) {
+    if (result['ok'] == true) return result;
+
+    final code = result['code'];
+    if (code == 'unsupported-command') {
+      throw const DesktopUpdateRequiredException();
+    }
+    final message = result['error'];
+    throw DesktopCommandFailure(
+      code is String ? code : 'server-error',
+      message is String ? message : '서버 오류',
+    );
+  }
+
+  /// 소켓이 끊기면 기다리던 요청은 결과를 알 수 없으므로 모두 끊김으로 끝낸다
+  void failAll() {
+    if (!_supportedCommands.isCompleted) _supportedCommands.complete(null);
+    for (final response in _pending.values.toList()) {
+      if (!response.isCompleted) {
+        response.completeError(const DesktopDisconnectedException());
+      }
+    }
+    _pending.clear();
+  }
+}
 
 class DesktopEventStream {
   const DesktopEventStream({

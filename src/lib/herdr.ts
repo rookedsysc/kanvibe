@@ -4,9 +4,11 @@ import { mkdtemp, rm, stat } from "fs/promises";
 import { tmpdir } from "os";
 import path from "path";
 import { setTimeout as delay } from "timers/promises";
+import { PaneLayoutType } from "@/entities/PaneLayoutConfig";
 import { execGit, isSSHTransportError } from "@/lib/gitOperations";
-import { buildHerdrCommand, buildHerdrSessionCleanupCommand, type TmuxPaneLayoutConfig } from "@/lib/worktree";
+import type { TmuxPaneLayoutConfig } from "@/lib/worktree";
 import { buildSSHArgs, getKanvibeSSHConnectionHealthOptions, parseSSHConfig } from "@/lib/sshConfig";
+import { quoteShellArgument, readTextFile, updateTextFile } from "@/lib/hostFileAccess";
 import { createLocalShellEnvironment } from "@/lib/shellEnvironment";
 import type { MirrorPane } from "@/lib/paneMirror";
 import type { TerminalTab } from "@/desktop/shared/terminalTabs";
@@ -15,6 +17,33 @@ import type { AiSessionProvider, RunningAgentPane } from "@/lib/aiSessions/types
 const HERDR_COMMAND_TIMEOUT_MS = 5_000;
 const HERDR_START_TIMEOUT_MS = 30_000;
 const sessionBootstraps = new Map<string, Promise<void>>();
+const sharedBootstraps = new Map<string, Promise<void>>();
+const workspaceMappingPaths = new Map<string, string>();
+
+const HERDR_EXECUTABLE = `"$(command -v herdr || printf '%s' "$HOME/.local/bin/herdr")"`;
+
+export function parseHerdrSessionTarget(sessionName: string): { serverName: string; workspaceKey: string | null } {
+  if (!sessionName.startsWith("kanvibe:")) return { serverName: sessionName, workspaceKey: null };
+  const workspaceKey = sessionName.slice("kanvibe:".length);
+  if (!workspaceKey) throw new Error("Herdr Space 식별자가 비어 있습니다.");
+  return { serverName: "kanvibe", workspaceKey };
+}
+
+export function buildHerdrCommand(sessionName: string, arguments_: string[]): string {
+  const { serverName } = parseHerdrSessionTarget(sessionName);
+  return `env -u HERDR_ENV -u HERDR_SESSION -u HERDR_SOCKET_PATH -u HERDR_CLIENT_SOCKET_PATH -u HERDR_PANE_ID -u HERDR_WORKSPACE_ID -u HERDR_TAB_ID ${HERDR_EXECUTABLE} --session ${quoteShellArgument(serverName)} ${arguments_.map(quoteShellArgument).join(" ")}`;
+}
+
+export function buildHerdrSessionCleanupCommand(sessionName: string): string {
+  if (parseHerdrSessionTarget(sessionName).workspaceKey) throw new Error("공유 Herdr 서버는 task와 함께 종료할 수 없습니다.");
+  return `${buildHerdrCommand(sessionName, ["session", "stop", sessionName])} >/dev/null 2>&1 || true; ${buildHerdrCommand(sessionName, ["session", "delete", sessionName])}`;
+}
+
+export function buildHerdrClientCommand(sessionName: string, socketPath: string): string {
+  const { serverName } = parseHerdrSessionTarget(sessionName);
+  // --session은 client socket override를 무시하므로 이 클라이언트의 env로만 지정한다.
+  return `env -u HERDR_ENV -u HERDR_SOCKET_PATH -u HERDR_PANE_ID -u HERDR_WORKSPACE_ID -u HERDR_TAB_ID HERDR_SESSION=${quoteShellArgument(serverName)} HERDR_CLIENT_SOCKET_PATH=${quoteShellArgument(socketPath)} ${HERDR_EXECUTABLE} client`;
+}
 
 interface HerdrTab {
   tab_id: string;
@@ -27,6 +56,7 @@ interface HerdrSession {
   name: string;
   running: boolean;
   socket_path: string;
+  session_dir?: string;
 }
 
 function readHerdrResult<T>(output: string): T {
@@ -41,6 +71,20 @@ function readHerdrResult<T>(output: string): T {
 }
 
 export async function runHerdrCommand<T>(sessionName: string, arguments_: string[], sshHost?: string | null): Promise<T> {
+  const { workspaceKey } = parseHerdrSessionTarget(sessionName);
+  if (workspaceKey) {
+    const workspaceId = await getHerdrWorkspaceId(sessionName, sshHost);
+    const paneIndex = arguments_.indexOf("--pane");
+    const targetId = paneIndex >= 0 ? arguments_[paneIndex + 1] : arguments_[2];
+    const workspaceIndex = arguments_.indexOf("--workspace");
+    if ((targetId && /^w[0-9A-Za-z]+:(?:t|p)[0-9A-Za-z]+$/.test(targetId) && !targetId.startsWith(`${workspaceId}:`))
+      || (workspaceIndex >= 0 && arguments_[workspaceIndex + 1] !== workspaceId)) {
+      throw new Error("다른 Space의 터미널을 변경할 수 없습니다.");
+    }
+    if (arguments_[0] === "tab" && arguments_[1] === "list" && workspaceIndex < 0) {
+      arguments_ = [...arguments_, "--workspace", workspaceId!];
+    }
+  }
   const output = await execGit(buildHerdrCommand(sessionName, arguments_), sshHost, { timeoutMs: HERDR_COMMAND_TIMEOUT_MS });
   // send-text는 전송 성공 시 본문을 출력하지 않는다.
   if (!output && arguments_[0] === "pane" && arguments_[1] === "send-text") return undefined as T;
@@ -88,8 +132,9 @@ export async function listHerdrMirrorPanes(sessionName: string, sshHost?: string
     runHerdrCommand<{ panes: HerdrPane[] }>(sessionName, ["pane", "list"], sshHost),
     readHerdrTabs(sessionName, sshHost),
   ]);
+  const workspaceId = await getHerdrWorkspaceId(sessionName, sshHost);
   const panesByTab = await Promise.all(tabs.map(async (tab) => {
-    const tabPanes = panes.filter((pane) => pane.tab_id === tab.id && !pane.restore_error);
+    const tabPanes = panes.filter((pane) => pane.tab_id === tab.id && !pane.restore_error && (!workspaceId || pane.pane_id.startsWith(`${workspaceId}:`)));
     if (tabPanes.length === 0) return [];
     const { layout } = await runHerdrCommand<{ layout: HerdrTabLayout }>(sessionName, ["pane", "layout", "--pane", tabPanes[0].pane_id], sshHost);
     return Promise.all(tabPanes.map(async (pane): Promise<MirrorPane> => {
@@ -134,6 +179,73 @@ export async function readHerdrPaneExtent(sessionName: string, paneId: string, s
   return { historyRows: pane.scroll.max_offset_from_bottom, viewportRows: pane.scroll.viewport_rows };
 }
 
+function parseWorkspaceMapping(content: string): Record<string, string> {
+  if (!content) return {};
+  const parsed: unknown = JSON.parse(content);
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)
+    || Object.values(parsed).some((id) => typeof id !== "string" || !/^w[0-9A-Za-z]+$/.test(id))) {
+    throw new Error("Herdr Space 연결 파일이 올바르지 않습니다.");
+  }
+  return parsed as Record<string, string>;
+}
+
+async function getWorkspaceMappingPath(sshHost?: string | null): Promise<string> {
+  const key = sshHost ?? "";
+  const cached = workspaceMappingPaths.get(key);
+  if (cached) return cached;
+  const shared = (await listHerdrSessions(sshHost)).find((session) => session.name === "kanvibe");
+  if (!shared?.session_dir) throw new Error("공유 Herdr 세션 경로를 찾을 수 없습니다.");
+  const mappingPath = path.posix.join(shared.session_dir, "kanvibe-workspaces.json");
+  workspaceMappingPaths.set(key, mappingPath);
+  return mappingPath;
+}
+
+export async function getHerdrWorkspaceId(sessionName: string, sshHost?: string | null): Promise<string | null> {
+  const { workspaceKey } = parseHerdrSessionTarget(sessionName);
+  if (!workspaceKey) return null;
+  const mapping = parseWorkspaceMapping(await readTextFile(await getWorkspaceMappingPath(sshHost), sshHost));
+  if (!Object.hasOwn(mapping, workspaceKey)) throw new Error("task에 연결된 Herdr Space가 없습니다.");
+  return mapping[workspaceKey];
+}
+
+export async function getHerdrClientSocketPath(sessionName: string, sshHost?: string | null): Promise<string> {
+  const { serverName } = parseHerdrSessionTarget(sessionName);
+  const session = (await listHerdrSessions(sshHost)).find((entry) => entry.name === serverName && entry.running);
+  if (!session) throw new Error("Herdr 세션을 찾을 수 없습니다.");
+  return path.posix.join(path.posix.dirname(session.socket_path), "herdr-client.sock");
+}
+
+export async function isHerdrTaskAlive(sessionName: string, sshHost?: string | null): Promise<boolean> {
+  try {
+    const workspaceId = await getHerdrWorkspaceId(sessionName, sshHost);
+    const { workspaces } = await runHerdrCommand<{ workspaces: { workspace_id: string }[] }>(
+      parseHerdrSessionTarget(sessionName).serverName, ["workspace", "list"], sshHost,
+    );
+    return workspaceId === null || workspaces.some((workspace) => workspace.workspace_id === workspaceId);
+  } catch {
+    return false;
+  }
+}
+
+export async function closeHerdrTaskWorkspace(sessionName: string, sshHost?: string | null): Promise<void> {
+  const { serverName, workspaceKey } = parseHerdrSessionTarget(sessionName);
+  if (!workspaceKey) {
+    await execGit(buildHerdrSessionCleanupCommand(sessionName), sshHost, { timeoutMs: HERDR_START_TIMEOUT_MS });
+    return;
+  }
+  const mappingPath = await getWorkspaceMappingPath(sshHost);
+  await updateTextFile(mappingPath, async (content) => {
+    const mapping = parseWorkspaceMapping(content);
+    if (!Object.hasOwn(mapping, workspaceKey)) return content;
+    const { workspaces } = await runHerdrCommand<{ workspaces: { workspace_id: string }[] }>(serverName, ["workspace", "list"], sshHost);
+    if (workspaces.some((workspace) => workspace.workspace_id === mapping[workspaceKey])) {
+      await runHerdrCommand(serverName, ["workspace", "close", mapping[workspaceKey]], sshHost);
+    }
+    delete mapping[workspaceKey];
+    return JSON.stringify(mapping);
+  }, sshHost, 0o600);
+}
+
 export function ensureHerdrSession(
   sessionName: string,
   cwd: string,
@@ -143,22 +255,51 @@ export function ensureHerdrSession(
   const key = JSON.stringify([sshHost ?? null, sessionName]);
   const current = sessionBootstraps.get(key);
   if (current) return current;
-  const bootstrap = bootstrapHerdrSession(sessionName, cwd, layout, sshHost).finally(() => sessionBootstraps.delete(key));
+  const sharedKey = sshHost ?? "";
+  const previous = parseHerdrSessionTarget(sessionName).workspaceKey ? sharedBootstraps.get(sharedKey) : undefined;
+  const bootstrap = (previous ? previous.catch(() => {}).then(() => bootstrapHerdrSession(sessionName, cwd, layout, sshHost))
+    : bootstrapHerdrSession(sessionName, cwd, layout, sshHost)).finally(() => {
+    sessionBootstraps.delete(key);
+    if (sharedBootstraps.get(sharedKey) === bootstrap) sharedBootstraps.delete(sharedKey);
+  });
+  if (parseHerdrSessionTarget(sessionName).workspaceKey) sharedBootstraps.set(sharedKey, bootstrap);
   sessionBootstraps.set(key, bootstrap);
   return bootstrap;
 }
 
+async function startHerdrServer(sessionName: string, sshHost?: string | null): Promise<void> {
+  const command = buildHerdrCommand(sessionName, ["server"]);
+  if (sshHost) {
+    await execGit(`nohup ${command} </dev/null >/dev/null 2>&1 &`, sshHost);
+    return;
+  }
+  // nohup만 쓰면 앱의 프로세스 그룹에 남아 종료 신호를 함께 받는다.
+  await new Promise<void>((resolve, reject) => {
+    const server = spawn("/bin/sh", ["-c", `exec ${command}`], {
+      detached: true,
+      stdio: "ignore",
+      env: createLocalShellEnvironment(),
+    });
+    server.once("error", reject);
+    server.once("spawn", () => {
+      server.unref();
+      resolve();
+    });
+  });
+}
+
 async function bootstrapHerdrSession(sessionName: string, cwd: string, layout?: TmuxPaneLayoutConfig | null, sshHost?: string | null): Promise<void> {
+  const { serverName, workspaceKey } = parseHerdrSessionTarget(sessionName);
   let workspaces: { workspace_id: string }[];
   try {
-    ({ workspaces } = await runHerdrCommand<{ workspaces: { workspace_id: string }[] }>(sessionName, ["workspace", "list"], sshHost));
+    ({ workspaces } = await runHerdrCommand<{ workspaces: { workspace_id: string }[] }>(serverName, ["workspace", "list"], sshHost));
   } catch (error) {
     if (isSSHTransportError(error)) throw error;
-    await execGit(`nohup ${buildHerdrCommand(sessionName, ["server"])} </dev/null >/dev/null 2>&1 &`, sshHost);
+    await startHerdrServer(serverName, sshHost);
     const deadline = Date.now() + HERDR_START_TIMEOUT_MS;
     for (;;) {
       try {
-        ({ workspaces } = await runHerdrCommand<{ workspaces: { workspace_id: string }[] }>(sessionName, ["workspace", "list"], sshHost));
+        ({ workspaces } = await runHerdrCommand<{ workspaces: { workspace_id: string }[] }>(serverName, ["workspace", "list"], sshHost));
         break;
       } catch (startError) {
         if (isSSHTransportError(startError) || Date.now() >= deadline) throw startError;
@@ -166,19 +307,43 @@ async function bootstrapHerdrSession(sessionName: string, cwd: string, layout?: 
       }
     }
   }
-  if (workspaces.length > 0) return;
-  const created = await runHerdrCommand<{ root_pane: { pane_id: string } }>(sessionName, ["workspace", "create", "--cwd", cwd, "--focus"], sshHost);
+  if (!workspaceKey) {
+    if (workspaces.length === 0) await createHerdrWorkspace(serverName, cwd, layout, null, sshHost);
+    return;
+  }
+  const mappingPath = await getWorkspaceMappingPath(sshHost);
+  parseWorkspaceMapping(await readTextFile(mappingPath, sshHost));
+  let createdId: string | undefined;
   try {
-    await applyHerdrLayout(sessionName, created.root_pane.pane_id, cwd, layout, sshHost);
+    await updateTextFile(mappingPath, async (content) => {
+      const mapping = parseWorkspaceMapping(content);
+      const live = await runHerdrCommand<{ workspaces: { workspace_id: string }[] }>(serverName, ["workspace", "list"], sshHost);
+      if (Object.hasOwn(mapping, workspaceKey) && live.workspaces.some((space) => space.workspace_id === mapping[workspaceKey])) return content;
+      createdId = await createHerdrWorkspace(serverName, cwd, layout, workspaceKey, sshHost);
+      return JSON.stringify({ ...mapping, [workspaceKey]: createdId });
+    }, sshHost, 0o600);
   } catch (error) {
-    await execGit(buildHerdrSessionCleanupCommand(sessionName), sshHost, { timeoutMs: HERDR_START_TIMEOUT_MS });
+    if (createdId) await runHerdrCommand(serverName, ["workspace", "close", createdId], sshHost);
+    throw error;
+  }
+}
+
+async function createHerdrWorkspace(serverName: string, cwd: string, layout: TmuxPaneLayoutConfig | null | undefined, workspaceKey: string | null, sshHost?: string | null): Promise<string> {
+  const created = await runHerdrCommand<{ root_pane: { pane_id: string } }>(serverName, ["workspace", "create", "--cwd", cwd,
+    ...(workspaceKey ? ["--label", workspaceKey, "--no-focus"] : ["--focus"])], sshHost);
+  const workspaceId = created.root_pane.pane_id.split(":")[0];
+  try {
+    await applyHerdrLayout(serverName, created.root_pane.pane_id, cwd, layout, sshHost);
+    return workspaceId;
+  } catch (error) {
+    if (workspaceKey) await runHerdrCommand(serverName, ["workspace", "close", workspaceId], sshHost);
+    else await execGit(buildHerdrSessionCleanupCommand(serverName), sshHost, { timeoutMs: HERDR_START_TIMEOUT_MS });
     throw error;
   }
 }
 
 async function applyHerdrLayout(sessionName: string, rootPaneId: string, cwd: string, layout?: TmuxPaneLayoutConfig | null, sshHost?: string | null): Promise<void> {
   if (!layout) return;
-  const { PaneLayoutType } = await import("@/entities/PaneLayoutConfig");
   const split = async (paneId: string, direction: "right" | "down") => {
     const result = await runHerdrCommand<{ pane: { pane_id: string } }>(sessionName, ["pane", "split", paneId, "--direction", direction, "--cwd", cwd], sshHost);
     return result.pane.pane_id;
@@ -253,8 +418,10 @@ function requestHerdrSocket(socketPath: string, method: string, params: Record<s
 }
 
 export async function moveHerdrTab(sessionName: string, tabId: string, targetIndex: number, sshHost?: string | null): Promise<void> {
-  const session = (await listHerdrSessions(sshHost)).find((entry) => entry.name === sessionName && entry.running);
+  const session = (await listHerdrSessions(sshHost)).find((entry) => entry.name === parseHerdrSessionTarget(sessionName).serverName && entry.running);
   if (!session) throw new Error("Herdr 세션을 찾을 수 없습니다.");
+  const workspaceId = await getHerdrWorkspaceId(sessionName, sshHost);
+  if (workspaceId && !tabId.startsWith(`${workspaceId}:`)) throw new Error("다른 Space의 탭을 이동할 수 없습니다.");
   const params = { tab_id: tabId, insert_index: targetIndex };
   if (!sshHost) {
     await requestHerdrSocket(session.socket_path, "tab.move", params);
@@ -298,13 +465,18 @@ export async function listHerdrRunningAgentPanes(sshHost?: string | null): Promi
         runHerdrCommand<{ agents: { agent: string; pane_id: string; tab_id: string; cwd?: string; foreground_cwd?: string; agent_status: string }[] }>(session.name, ["agent", "list"], sshHost),
         readHerdrTabs(session.name, sshHost),
       ]);
-      return result.agents.filter((agent) => providers.has(agent.agent as AiSessionProvider) && (agent.foreground_cwd || agent.cwd)).map((agent) => ({
+      const mapping = session.name === "kanvibe"
+        ? parseWorkspaceMapping(await readTextFile(await getWorkspaceMappingPath(sshHost), sshHost)) : {};
+      return result.agents.filter((agent) => providers.has(agent.agent as AiSessionProvider) && (agent.foreground_cwd || agent.cwd)).map((agent) => {
+        const workspaceKey = Object.entries(mapping).find(([, id]) => agent.pane_id.startsWith(`${id}:`))?.[0];
+        return {
         provider: agent.agent as AiSessionProvider,
         worktreePath: (agent.foreground_cwd || agent.cwd)!,
-        sessionName: session.name,
+        sessionName: workspaceKey ? `kanvibe:${workspaceKey}` : session.name,
         windowId: agent.tab_id,
         windowName: tabs.find((tab) => tab.id === agent.tab_id)?.name ?? agent.tab_id,
-      }));
+        };
+      });
     } catch {
       return [];
     }

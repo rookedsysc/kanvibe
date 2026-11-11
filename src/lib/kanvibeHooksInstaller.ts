@@ -1,9 +1,11 @@
+import { getOrCreateHookClientId } from "@/desktop/main/services/appSettingsService";
+import { HOOK_TRANSPORT_VERSION_MARKER } from "@/lib/hookSocketPath";
 import { invalidateOpenCodePluginRegistration } from "@/lib/openCodePluginRegistry";
 import { readTextFiles } from "@/lib/hostFileAccess";
 import { getHookServerUrl } from "@/lib/hookEndpoint";
 import { writeHookProviderFiles } from "@/lib/hookFileWriter";
 import { registerKanvibeHookTarget } from "@/lib/hookTargetRegistration";
-import { assertKanvibeStatePathsAreNotSymlinks } from "@/lib/kanvibeProjectState";
+import { assertKanvibeStatePathsAreNotSymlinks, getKanvibeTargetsPath, parseKanvibeTargets } from "@/lib/kanvibeProjectState";
 import { buildTaskCliFile, TASK_CLI_FILE_NAME } from "@/lib/taskCliScript";
 import {
   getKanvibeHookProviderModules,
@@ -24,6 +26,7 @@ const NON_BLOCKING_HOOK_STATUS_CHECKS = new Set([
 const OPEN_CODE_NON_BLOCKING_INSTALL_CHECKS = new Set([
   "hasRegisteredPlugin",
 ]);
+const activeHookEnsureJobs = new Map<string, Promise<boolean>>();
 const activeHookInstallJobs = new Map<string, Promise<void>>();
 const activeHookFileInstallJobs = new Map<string, Promise<void>>();
 const scheduledHookInstallJobs = new Map<string, ScheduledHookInstallJob>();
@@ -43,6 +46,60 @@ interface HookInstallCallbacks {
 
 interface ScheduledHookInstallJob {
   callbacks: HookInstallCallbacks[];
+}
+
+/** 현재 설치를 확인하고 구형 파일 또는 현재 client 등록을 복구했다면 true를 반환한다. 검사 실패는 재시도할 수 있도록 던진다. */
+export async function ensureKanvibeHooksCurrent(
+  targetPath: string,
+  taskId: string,
+  sshHost?: string | null,
+): Promise<boolean> {
+  return runDeduplicatedHookInstall(
+    activeHookEnsureJobs,
+    buildHookInstallKey(targetPath, taskId, sshHost, "all"),
+    async () => {
+      if (await inspectKanvibeHooksCurrent(targetPath, taskId, sshHost)) return false;
+      await installKanvibeHooks(targetPath, taskId, sshHost);
+      if (!await inspectKanvibeHooksCurrent(targetPath, taskId, sshHost)) {
+        throw new Error("hooks 검증 실패: 최신 전송 파일 또는 현재 client 등록이 없습니다.");
+      }
+      return true;
+    },
+  );
+}
+
+async function inspectKanvibeHooksCurrent(
+  targetPath: string,
+  taskId: string,
+  sshHost?: string | null,
+): Promise<boolean> {
+  const cliPath = buildTaskCliFile(targetPath, sshHost).filePath;
+  const targetsPath = getKanvibeTargetsPath(targetPath, sshHost);
+  const [statuses, files, clientId] = await Promise.all([
+    Promise.all(getKanvibeHookProviderModules().map(async (providerModule) => ({
+      providerModule,
+      status: await providerModule.getStatus(targetPath, taskId, sshHost),
+    }))),
+    readTextFiles([cliPath, targetsPath], sshHost, { strictHostKeyChecking: true }),
+    getOrCreateHookClientId(),
+  ]);
+  const hasCurrentProviders = statuses.every(({ providerModule, status }) => {
+    const failedChecks = getHookVerificationFailedChecks(status);
+    // 등록의 IP는 재접속 때 바뀔 수 있으므로 현재 client ID로 확인한다.
+    const fileChecks = getFatalHookVerificationFailedChecks(providerModule.label, status, failedChecks)
+      .filter((check) => check !== "hasRegisteredHookTarget" || !sshHost);
+    if (!status.installed && failedChecks.length === 0) {
+      const hasUnavailableConnection = status.hasReachableHookServer === false || status.hasExpectedHookServerUrl === false;
+      if (!hasUnavailableConnection) throw new Error(`${providerModule.label} hooks 검사 결과를 확인할 수 없습니다.`);
+    }
+    return fileChecks.length === 0;
+  });
+  const cliFile = files.get(cliPath);
+  const hasCurrentCli = cliFile?.exists === true && cliFile.content.includes(HOOK_TRANSPORT_VERSION_MARKER);
+  const ownTarget = parseKanvibeTargets(files.get(targetsPath)?.content ?? "").targets
+    .find((target) => target.clientId === clientId && target.taskId === taskId);
+  const hasCurrentTarget = Boolean(ownTarget?.token) && ownTarget?.transport === (sshHost ? "ssh" : "local");
+  return hasCurrentProviders && hasCurrentCli && hasCurrentTarget;
 }
 
 export async function installKanvibeHooks(
@@ -151,11 +208,11 @@ export function scheduleKanvibeHooksVerification(
 }
 
 /** 같은 대상에 대한 설치 요청은 진행 중인 작업을 공유한다 */
-async function runDeduplicatedHookInstall(
-  activeJobs: Map<string, Promise<void>>,
+async function runDeduplicatedHookInstall<T>(
+  activeJobs: Map<string, Promise<T>>,
   installKey: string,
-  startJob: () => Promise<void>,
-): Promise<void> {
+  startJob: () => Promise<T>,
+): Promise<T> {
   const activeJob = activeJobs.get(installKey);
   if (activeJob) {
     return activeJob;
@@ -264,6 +321,7 @@ async function installKanvibeHookFilesOnce(
   const existingFiles = await readTextFiles(
     providerModules.flatMap((providerModule) => providerModule.getInstallInputPaths(targetPath, sshHost)),
     sshHost,
+    { strictHostKeyChecking: true },
   );
 
   const providerWrites = providerModules.map(async (providerModule) => {
@@ -438,6 +496,7 @@ function logHookVerificationStatus(
     registeredPluginUrls: "registeredPluginUrls" in status && Array.isArray(status.registeredPluginUrls)
       ? status.registeredPluginUrls
       : undefined,
+    pluginRegistrationError: getPluginRegistrationError(status),
   };
 
   if (status.installed) {
@@ -450,10 +509,25 @@ function logHookVerificationStatus(
 }
 
 function getHookVerificationFailedChecks(status: KanvibeHookStatus): string[] {
-  return Object.entries(status)
+  const failedChecks = Object.entries(status)
     .filter(([key, value]) => key.startsWith("has") && value === false)
     .filter(([key]) => !NON_BLOCKING_HOOK_STATUS_CHECKS.has(key))
     .map(([key]) => key);
+
+  /**
+   * OpenCode CLI가 없거나 첫 실행의 의존성 설치로 조회가 제한 시간을 넘기면 등록 여부를 알 수 없어
+   * hasRegisteredPlugin이 비어 있다. 이 미확인 상태를 등록 누락과 같은 비차단 항목으로 세어야
+   * 실패 항목 0개인 미설치로 읽혀 task 생성이 막히지 않는다.
+   */
+  if (getPluginRegistrationError(status) && !failedChecks.includes("hasRegisteredPlugin")) {
+    failedChecks.push("hasRegisteredPlugin");
+  }
+
+  return failedChecks;
+}
+
+function getPluginRegistrationError(status: KanvibeHookStatus): string | undefined {
+  return "pluginRegistrationError" in status ? status.pluginRegistrationError : undefined;
 }
 
 function getFatalHookVerificationFailedChecks(

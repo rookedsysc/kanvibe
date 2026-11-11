@@ -18,6 +18,10 @@ vi.mock("@/lib/hookEndpoint", () => ({
   getHookServerPort: (...args: unknown[]) => mockGetHookServerPort(...args),
 }));
 
+vi.mock("@/desktop/main/services/appSettingsService", () => ({
+  getOrCreateHookClientId: async () => "1b9d6bcd-bbfd-4b2d-9b5d-ab8dfbbd4bed",
+}));
+
 describe("hookServerStatus", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -51,6 +55,7 @@ describe("hookServerStatus", () => {
     expect(mockExecGit).toHaveBeenCalledWith(
       expect.stringContaining("http://100.83.96.29:6379/api/hooks/health"),
       "remote-host",
+      { strictHostKeyChecking: true },
     );
   });
 
@@ -66,6 +71,7 @@ describe("hookServerStatus", () => {
     expect(mockExecGit).toHaveBeenCalledWith(
       expect.stringContaining("http://100.83.96.29:9736/api/hooks/health"),
       "remote-host",
+      { strictHostKeyChecking: true },
     );
   });
 
@@ -89,12 +95,13 @@ describe("hookServerStatus", () => {
     expect(result.hasExpectedHookServerUrl).toBe(true);
     expect(result.hasReachableHookServer).toBe(true);
     expect(mockExecGit).toHaveBeenCalledWith(
-      expect.stringContaining("curl -fsS --max-time 2"),
+      expect.stringContaining('curl --unix-socket "$__kanvibe_socket" -fsS --max-time 2'),
       "remote-host",
+      { strictHostKeyChecking: true },
     );
   });
 
-  it("treats remote SSH transport failures as inconclusive instead of uninstalling hooks", async () => {
+  it("SSH 연결 실패를 hook 서버 도달 성공으로 판정하지 않는다", async () => {
     mockGetHookServerUrl.mockResolvedValue("http://10.0.0.4:9736");
     mockExecGit.mockRejectedValueOnce(new Error("remote-host 원격 명령 실패: Connection reset by 100.73.171.123 port 22"));
     const { validateHookServerConfiguration } = await import("@/lib/hookServerStatus");
@@ -102,7 +109,7 @@ describe("hookServerStatus", () => {
     const result = await validateHookServerConfiguration(["http://10.0.0.4:9736"], true, "remote-host");
 
     expect(result.hasExpectedHookServerUrl).toBe(true);
-    expect(result.hasReachableHookServer).toBe(true);
+    expect(result.hasReachableHookServer).toBe(false);
   });
 
   it("treats a local health check failure as not installed", async () => {

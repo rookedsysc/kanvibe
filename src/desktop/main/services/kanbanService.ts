@@ -4,13 +4,14 @@ import { getTaskRepository } from "@/lib/database";
 import { KanbanTask, TaskStatus, SessionType } from "@/entities/KanbanTask";
 import type { Project } from "@/entities/Project";
 import { TaskPriority } from "@/entities/TaskPriority";
-import { createWorktreeWithSession, removeWorktreeAndBranch, createSessionWithoutWorktree, removeSessionOnly, formatProjectBranchSessionName } from "@/lib/worktree";
+import { createWorktreeWithSession, removeWorktreeAndBranch, createSessionWithoutWorktree, removeSessionOnly, formatProjectBranchSessionName, isSessionAlive } from "@/lib/worktree";
 import { getProjectRepository } from "@/lib/database";
 import {
   broadcastBoardUpdate,
   broadcastTaskHookInstallFailed,
   broadcastTaskPeerDeletionFailed,
   broadcastTaskPrMergedDetectedBatch,
+  broadcastTaskSessionChanged,
   type BackgroundSyncFailurePayload,
   type TaskPrMergedDetectedPayload,
 } from "@/lib/boardNotifier";
@@ -23,8 +24,10 @@ import { execGit, pullCurrentBranch, remoteBranchExists, type ExecGitOptions } f
 import { detachSession } from "@/lib/terminal";
 import {
   persistTaskMetadataForTask as persistTaskMetadata,
+  persistTaskSessionForTask as persistTaskSession,
   persistTaskStateForTask as persistTaskState,
 } from "@/desktop/main/services/kanvibeTaskStateService";
+import { mapWithConcurrency } from "@/lib/aiSessions/shared";
 import { persistProjectColorToKanvibeState } from "@/desktop/main/services/kanvibeProjectColorService";
 import {
   propagateTaskDeletionToPeers,
@@ -807,6 +810,24 @@ export class DirtyWorktreeError extends Error {
   }
 }
 
+class InvalidWorktreeError extends Error {
+  constructor() {
+    super("Git 저장소를 찾을 수 없습니다. 파일을 보존하고 태스크 등록만 제거할 수 있습니다.");
+    this.name = "InvalidWorktreeError";
+  }
+}
+
+/** 파일·브랜치·세션과 다른 데스크탑은 그대로 두고 이 데스크탑의 등록만 제거한다. */
+export async function removeTaskRegistration(taskId: string): Promise<boolean> {
+  const repo = await getTaskRepository();
+  const task = await repo.findOneBy({ id: taskId });
+  if (!task) return false;
+
+  await repo.remove(task);
+  broadcastBoardUpdate();
+  return true;
+}
+
 export interface TaskDeletionOptions {
   shouldRejectDirtyWorktree: boolean;
   /** 같은 worktree를 공유하는 다른 client에도 삭제를 전파한다. 전파받은 client는 다시 전파하지 않는다 */
@@ -859,12 +880,28 @@ export async function deleteTaskAcrossTargets(
 
 async function assertWorktreeHasNoUncommittedChanges(worktreePath: string, sshHost: string | null): Promise<void> {
   const quotedWorktreePath = quoteForShell(worktreePath);
+  // SSH 오류 요약이 Git의 stderr를 놓칠 수 있어 실행한 셸에서 실패 원인을 구분한다.
+  const invalidWorktreeMarker = "__KANVIBE_INVALID_WORKTREE__";
   /** 이미 다른 client가 지운 worktree는 잃을 변경이 없으므로 깨끗한 것으로 본다 */
   const uncommittedChanges = await execGit(
-    `if [ -d ${quotedWorktreePath} ]; then git -C ${quotedWorktreePath} status --porcelain; fi`,
+    `if [ -d ${quotedWorktreePath} ]; then
+      __kanvibe_status_output=$(LC_ALL=C git -C ${quotedWorktreePath} status --porcelain 2>&1)
+      __kanvibe_status_code=$?
+      if [ "$__kanvibe_status_code" -eq 0 ]; then
+        printf '%s' "$__kanvibe_status_output"
+      else
+        case "$__kanvibe_status_output" in
+          *"fatal: not a git repository"*|*"fatal: gitfile does not point to a valid repository"*) printf '%s' '${invalidWorktreeMarker}' ;;
+          *) printf '%s\\n' "$__kanvibe_status_output" >&2; exit "$__kanvibe_status_code" ;;
+        esac
+      fi
+    fi`,
     sshHost,
   );
 
+  if (uncommittedChanges.trim() === invalidWorktreeMarker) {
+    throw new InvalidWorktreeError();
+  }
   if (uncommittedChanges.trim()) {
     throw new DirtyWorktreeError(worktreePath);
   }
@@ -991,9 +1028,20 @@ export async function connectTerminalSession(
   const hasExistingSession = Boolean(task.sessionType && task.sessionName);
   if (hasExistingSession) return serialize(task);
 
+  return createTaskTerminalSession(task, sessionType);
+}
+
+/**
+ * task에 새 터미널 세션을 만들어 기록한다. 세션이 이미 있는지는 부른 쪽이 정한다.
+ * 연결은 기존 세션이 있으면 그대로 두고, 세션 타입 변경은 기존 세션을 두고 새 세션을 만들어야 하기 때문이다.
+ */
+async function createTaskTerminalSession(task: KanbanTask, sessionType: SessionType): Promise<KanbanTask | null> {
+  if (!task.projectId) return null;
+
   const branchForSession = task.branchName || task.baseBranch;
   if (!branchForSession) return null;
 
+  const repo = await getTaskRepository();
   const projectRepo = await getProjectRepository();
   const project = await projectRepo.findOneBy({ id: task.projectId });
   if (!project) return null;
@@ -1029,6 +1077,110 @@ export async function connectTerminalSession(
     console.error("터미널 세션 생성 실패:", error);
     return null;
   }
+}
+
+/** 일괄 변경에서 동시에 전환하는 task 수. 원격 호스트에 SSH 명령이 한꺼번에 몰리지 않게 한다 */
+const SESSION_TYPE_CHANGE_CONCURRENCY = 4;
+
+export interface SessionTypeChangeTargets {
+  taskCount: number;
+  liveSessionCount: number;
+  /** 새 세션 도구를 확인해야 하는 호스트. null은 로컬이다 */
+  sshHosts: (string | null)[];
+}
+
+export interface SessionTypeChangeResult {
+  changedCount: number;
+  failedCount: number;
+}
+
+/** task의 현재 터미널 세션이 아직 켜져 있는지 확인한다. 세션 타입을 바꾸기 전에 닫을지 묻는 데 쓴다 */
+export async function isTaskSessionAlive(taskId: string): Promise<boolean> {
+  const repo = await getTaskRepository();
+  const task = await repo.findOneBy({ id: taskId });
+  if (!task?.sessionType || !task.sessionName) {
+    return false;
+  }
+
+  return isSessionAlive(task.sessionType, task.sessionName, task.sshHost);
+}
+
+/**
+ * 이미 세션이 있는 task의 터미널 세션 타입을 바꾼다.
+ * 새 세션 연결에 성공한 뒤에만 기존 세션을 닫아, 전환이 실패해도 작업 중이던 세션은 남는다.
+ * 닫지 않기로 하면 기존 멀티플렉서 세션은 백그라운드에 그대로 두고 KanVibe 연결만 끊는다.
+ */
+export async function changeTaskSessionType(
+  taskId: string,
+  sessionType: SessionType,
+  shouldCloseExistingSession: boolean,
+): Promise<KanbanTask | null> {
+  const repo = await getTaskRepository();
+  const task = await repo.findOneBy({ id: taskId });
+  if (!task?.sessionType || !task.sessionName) {
+    return null;
+  }
+
+  if (task.sessionType === sessionType) {
+    return serialize(task);
+  }
+
+  const previousSession = { sessionType: task.sessionType, sessionName: task.sessionName, sshHost: task.sshHost };
+  detachSession(task.id, "change-session-type");
+
+  const changedTask = await createTaskTerminalSession(task, sessionType);
+  if (!changedTask) {
+    return null;
+  }
+
+  if (shouldCloseExistingSession) {
+    await removeSessionOnly(previousSession.sessionType, previousSession.sessionName, previousSession.sshHost);
+  }
+
+  await persistTaskSession(changedTask);
+  broadcastTaskSessionChanged({ taskId });
+  return changedTask;
+}
+
+/** 일괄 변경 전에 몇 개의 task가 바뀌고 그중 몇 개의 세션이 켜져 있는지 미리 알려 준다 */
+export async function getSessionTypeChangeTargets(sessionType: SessionType): Promise<SessionTypeChangeTargets> {
+  const targetTasks = await findSessionTypeChangeTargetTasks(sessionType);
+  const sessionAliveResults = await mapWithConcurrency(
+    targetTasks,
+    SESSION_TYPE_CHANGE_CONCURRENCY,
+    (task) => isSessionAlive(task.sessionType as SessionType, task.sessionName as string, task.sshHost),
+  );
+  const liveSessionCount = sessionAliveResults.filter(Boolean).length;
+  const sshHosts = [...new Set(targetTasks.map((task) => task.sshHost ?? null))];
+
+  return { taskCount: targetTasks.length, liveSessionCount, sshHosts };
+}
+
+/** 세션이 있는 모든 task(Done 포함)를 같은 세션 타입으로 바꾼다 */
+export async function changeAllTaskSessionTypes(
+  sessionType: SessionType,
+  shouldCloseExistingSessions: boolean,
+): Promise<SessionTypeChangeResult> {
+  const targetTasks = await findSessionTypeChangeTargetTasks(sessionType);
+  const changedTasks = await mapWithConcurrency(
+    targetTasks,
+    SESSION_TYPE_CHANGE_CONCURRENCY,
+    (task) => changeTaskSessionType(task.id, sessionType, shouldCloseExistingSessions),
+  );
+  const changedCount = changedTasks.filter(Boolean).length;
+
+  return { changedCount, failedCount: targetTasks.length - changedCount };
+}
+
+/** 세션을 다시 만들려면 프로젝트가 있어야 하므로 프로젝트 없는 task는 대상에서 뺀다 */
+async function findSessionTypeChangeTargetTasks(sessionType: SessionType): Promise<KanbanTask[]> {
+  const repo = await getTaskRepository();
+  const tasksWithSession = await repo.find({ where: { sessionName: Not(IsNull()) } });
+  return tasksWithSession.filter((task) => (
+    task.sessionType !== null
+    && task.sessionType !== sessionType
+    && task.projectId !== null
+  ));
 }
 
 /**

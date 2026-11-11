@@ -82,6 +82,7 @@ async function getCommonExcludePath(
   const gitCommonDirOutput = await execGit(
     `git -C ${quoteShellArgument(repoPath)} rev-parse --path-format=absolute --git-common-dir`,
     sshHost,
+    { strictHostKeyChecking: true },
   );
 
   const gitCommonDir = resolveAbsoluteGitPath(repoPath, gitCommonDirOutput, pathModule);
@@ -100,13 +101,13 @@ export async function addAiToolPatternsToGitExclude(
   sshHost?: string | null,
 ): Promise<void> {
   const excludePath = await getCommonExcludePath(repoPath, sshHost);
-  const content = await readTextFile(excludePath, sshHost);
+  const content = await readTextFile(excludePath, sshHost, { strictHostKeyChecking: true });
   const nextContent = buildExcludeContent(content);
   if (content === nextContent) {
     return;
   }
 
-  await writeTextFile(excludePath, nextContent, sshHost);
+  await writeTextFile(excludePath, nextContent, sshHost, { strictHostKeyChecking: true });
 }
 
 /**

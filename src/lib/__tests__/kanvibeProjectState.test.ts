@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { TaskStatus } from "@/entities/KanbanTask";
+import { SessionType, TaskStatus } from "@/entities/KanbanTask";
 import { TaskPriority } from "@/entities/TaskPriority";
 
 const { mockReadTextFile, mockReadTextFiles, mockWriteTextFile, mockWriteTextFileIfAbsent } = vi.hoisted(() => ({
@@ -45,6 +45,7 @@ import {
   writeKanvibeProjectColorIfAbsent,
   writeKanvibeProjectPriority,
   writeKanvibeTaskMetadata,
+  writeKanvibeTaskSession,
   writeKanvibeTaskStatus,
 } from "@/lib/kanvibeProjectState";
 
@@ -267,6 +268,15 @@ describe("kanvibeProjectState", () => {
     expect(parseKanvibeTargets("not-json")).toEqual({ schemaVersion: 1, targets: [] });
   });
 
+  it("전송 종류를 보존하고 알 수 없는 전송 종류를 legacy 등록으로 바꾸지 않는다", () => {
+    const targets = [
+      { url: "http://localhost:9736", taskId: "local-task", transport: "local" as const },
+      { url: "http://10.0.0.5:9736", taskId: "remote-task", clientId: "client-a", transport: "ssh" as const },
+    ];
+    expect(parseKanvibeTargets(buildKanvibeTargetsContent(targets)).targets).toEqual(targets);
+    expect(parseKanvibeTargets(JSON.stringify({ targets: [{ ...targets[0], transport: "invalid" }] })).targets).toEqual([]);
+  });
+
   it("같은 task를 보는 다른 client도 알림 대상으로 함께 남긴다", async () => {
     mockReadTextFile.mockResolvedValue(JSON.stringify({
       schemaVersion: 1,
@@ -418,6 +428,65 @@ describe("kanvibeProjectState", () => {
       updatedAt: expect.any(String),
     });
     expect(parseKanvibeTaskDescription(content)?.description).toBeNull();
+  });
+
+  it("세션 정보를 기록할 때 이미 있는 설명과 priority를 남긴다", async () => {
+    mockReadTextFile.mockResolvedValue(buildKanvibeTaskDescriptionContent("결제 로그 추적", TaskPriority.HIGH));
+
+    await writeKanvibeTaskSession("/remote/repo", { sessionType: SessionType.ZELLIJ, sessionName: "repo-feat" }, "build-host");
+
+    expect(mockWriteTextFile).toHaveBeenCalledWith("/remote/repo/.kanvibe/task.json", expect.any(String), "build-host");
+    expect(JSON.parse(getLastWrittenContent())).toEqual({
+      schemaVersion: 1,
+      description: "결제 로그 추적",
+      priority: TaskPriority.HIGH,
+      session: { sessionType: SessionType.ZELLIJ, sessionName: "repo-feat" },
+      updatedAt: expect.any(String),
+    });
+  });
+
+  it("설명을 기록할 때 이미 있는 세션 정보를 남긴다", async () => {
+    mockReadTextFile.mockResolvedValue(buildKanvibeTaskDescriptionContent(
+      undefined,
+      undefined,
+      { sessionType: SessionType.TMUX, sessionName: "repo-feat" },
+    ));
+
+    await writeKanvibeTaskMetadata("/local/repo", { description: "새 설명" });
+
+    expect(JSON.parse(getLastWrittenContent())).toEqual({
+      schemaVersion: 1,
+      description: "새 설명",
+      session: { sessionType: SessionType.TMUX, sessionName: "repo-feat" },
+      updatedAt: expect.any(String),
+    });
+  });
+
+  it("세션 정보만 있는 task.json도 읽고, 모르는 세션 타입이나 빈 이름은 기록 없음으로 본다", () => {
+    expect(parseKanvibeTaskDescription(JSON.stringify({
+      session: { sessionType: "zellij", sessionName: "repo-feat" },
+    }))?.session).toEqual({ sessionType: SessionType.ZELLIJ, sessionName: "repo-feat" });
+    expect(parseKanvibeTaskDescription(JSON.stringify({
+      session: { sessionType: "screen", sessionName: "repo-feat" },
+    }))).toBeNull();
+    expect(parseKanvibeTaskDescription(JSON.stringify({
+      description: "설명",
+      session: { sessionType: "tmux", sessionName: "" },
+    }))?.session).toBeUndefined();
+  });
+
+  it("동기화 상태를 읽을 때 task.json의 세션 정보를 함께 돌려준다", async () => {
+    mockReadTextFiles.mockResolvedValue(new Map([
+      ["/local/repo/.kanvibe/task.json", {
+        exists: true,
+        content: JSON.stringify({ session: { sessionType: "herdr", sessionName: "repo-feat" } }),
+      }],
+    ]));
+
+    const syncState = await readKanvibeTaskSyncState("/local/repo");
+
+    expect(syncState.session).toEqual({ sessionType: SessionType.HERDR, sessionName: "repo-feat" });
+    expect(syncState.description).toBeNull();
   });
 
   it("설명 파일이 없거나 형식이 깨지면 정보 없음으로 본다", () => {

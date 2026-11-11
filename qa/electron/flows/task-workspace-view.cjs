@@ -3,11 +3,13 @@
 const fs = require("node:fs");
 const path = require("node:path");
 const { execFileSync } = require("node:child_process");
+const { expect } = require("@playwright/test");
 const { createQaRun } = require("../lib/report.cjs");
 const { launchKanVibeElectron } = require("../lib/launchElectron.cjs");
 
-const SCOPE = "cmux형 워크스페이스 뷰: 커맨드 팔레트로 칸반↔워크스페이스 전환, 왼쪽 task 리스트 필터, 세션 없는 task 자동 연결, 오른쪽 터미널 전환, 재시작 후 뷰 유지";
+const SCOPE = "워크스페이스 뷰: 칸반↔워크스페이스 전환, 목록 필터, 검색 선택과 좌우 표시 일치, 수식키 단독 목록 포커스, 위아래 선택과 터미널 복귀, 자동 연결, 재시작 후 뷰 유지";
 const PALETTE_SHORTCUT = process.platform === "darwin" ? "Meta+Shift+P" : "Control+Shift+P";
+const TASK_SEARCH_SHORTCUT = process.platform === "darwin" ? "Meta+Shift+O" : "Control+Shift+O";
 
 function parseArgs(argv) {
   const args = {};
@@ -90,7 +92,60 @@ function taskList(page) {
 }
 
 async function listedTitles(page) {
-  return taskList(page).getByTestId("workspace-task-title").allTextContents();
+  return taskList(page).getByRole("heading", { level: 3 }).allTextContents();
+}
+
+
+function taskCard(page, taskId) {
+  return taskList(page).locator(`[data-workspace-task-id="${taskId}"]`);
+}
+
+async function expectSelectedTask(page, task) {
+  await expect(page.locator('[data-workspace-view="true"]')).toBeVisible();
+  await expect(taskList(page).locator('[aria-current="true"]')).toHaveCount(1);
+  await expect(taskCard(page, task.id)).toHaveAttribute("aria-current", "true");
+  await expect(taskCard(page, task.id)).toBeInViewport();
+  await expect(page.getByRole("region", { name: task.title, exact: true })).toBeVisible();
+  await expect.poll(() => {
+    const hash = new URL(page.url()).hash;
+    if (/\/task\//.test(hash)) return "task-detail";
+    return new URLSearchParams(hash.split("?")[1] || "").get("taskId");
+  }).toBe(task.id);
+}
+
+async function searchForTask(page, task) {
+  await page.keyboard.press(TASK_SEARCH_SHORTCUT);
+  const dialog = page.getByRole("dialog");
+  const input = dialog.getByRole("textbox");
+  await input.fill(task.title);
+  await expect(dialog.getByRole("button").filter({ hasText: task.title })).toHaveCount(1);
+  await input.press("Enter");
+  await expect(dialog).toBeHidden();
+  await expectSelectedTask(page, task);
+}
+
+async function sendWorkspaceFocusChord(app, page, withOtherKey = false) {
+  const isMac = process.platform === "darwin";
+  const modKey = isMac ? "Meta" : "Control";
+  const modName = isMac ? "meta" : "control";
+  const events = [
+    { type: "keyDown", keyCode: modKey, modifiers: [modName] },
+    { type: "keyDown", keyCode: "Alt", modifiers: [modName, "alt"] },
+    ...(withOtherKey ? [
+      { type: "keyDown", keyCode: "Right", modifiers: [modName, "alt"] },
+      { type: "keyUp", keyCode: "Right", modifiers: [modName, "alt"] },
+    ] : []),
+    { type: "keyUp", keyCode: "Alt", modifiers: [modName] },
+    { type: "keyUp", keyCode: modKey, modifiers: [] },
+  ];
+  await app.evaluate(({ BrowserWindow }, { url, inputs }) => {
+    const window = BrowserWindow.getAllWindows().find((candidate) => candidate.webContents.getURL() === url);
+    if (!window) throw new Error(`QA BrowserWindow not found: ${url}`);
+    window.focus();
+    for (const input of inputs) window.webContents.sendInputEvent(input);
+  }, { url: page.url(), inputs: events });
+  // main의 before-input-event와 별도로 전송되는 IPC가 렌더러에 반영된 뒤 포커스를 검사한다.
+  await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
 }
 
 async function main() {
@@ -178,6 +233,104 @@ async function main() {
       await page.waitForTimeout(1500);
       await takeScreenshot(page, run, "beta-terminal", screenshots);
       return "terminal header shows beta task";
+    });
+
+    await step(checks, "빠른 검색의 beta 선택은 상세 경로 대신 Worktree 좌우 선택을 갱신한다", async () => {
+      await page.getByRole("searchbox", { name: "제목, 브랜치, 프로젝트 검색" }).fill("");
+      await taskCard(page, seeded.alpha.id).click();
+      await expectSelectedTask(page, seeded.alpha);
+      await searchForTask(page, seeded.beta);
+      await takeScreenshot(page, run, "search-selected-beta-in-workspace", screenshots);
+      return `taskId=${seeded.beta.id}, left aria-current and right terminal header agree; no /task/ route`;
+    });
+
+    await step(checks, "목록 필터가 숨긴 현재 beta도 빠른 검색으로 다시 고르면 왼쪽에 표시된다", async () => {
+      const searchInput = page.getByRole("searchbox", { name: "제목, 브랜치, 프로젝트 검색" });
+      await searchInput.fill("alpha-login");
+      await expect(taskCard(page, seeded.beta.id)).toHaveCount(0);
+      await expect(taskCard(page, seeded.alpha.id)).toBeVisible();
+      await searchForTask(page, seeded.beta);
+      await expect(searchInput).toHaveValue("alpha-login");
+      await takeScreenshot(page, run, "filtered-search-reveals-selected-beta", screenshots);
+      return "beta is revealed and selected while the user's alpha filter remains intact";
+    });
+
+    await step(checks, "터미널에서 Cmd+Option/Ctrl+Alt만 눌렀다 떼면 현재 선택 카드로 포커스가 이동한다", async () => {
+      await page.getByRole("searchbox", { name: "제목, 브랜치, 프로젝트 검색" }).fill("");
+      await expectSelectedTask(page, seeded.beta);
+      const terminalInput = page.getByRole("region", { name: seeded.beta.title, exact: true }).locator(".xterm-helper-textarea");
+      await terminalInput.focus();
+      await expect(terminalInput).toBeFocused();
+      await sendWorkspaceFocusChord(app, page);
+      await expect(taskCard(page, seeded.beta.id)).toBeFocused();
+      await takeScreenshot(page, run, "modifier-release-focuses-selected-card", screenshots);
+      return "Electron BrowserWindow.webContents.sendInputEvent → before-input-event → selected left card focus";
+    });
+
+    await step(checks, "목록 위아래 키는 표시 순서대로 좌우 선택을 바꾸고 양 끝에서 멈춘다", async () => {
+      const cards = await taskList(page).locator("[data-workspace-task-id]").evaluateAll((elements) => elements.map((element) => ({
+        id: element.dataset.workspaceTaskId,
+        title: element.querySelector("h3").textContent,
+      })));
+      if (cards.length < 2) throw new Error(`expected at least two listed tasks, got ${cards.length}`);
+      await taskCard(page, cards[0].id).click();
+      await expectSelectedTask(page, cards[0]);
+      await page.keyboard.press("ArrowUp");
+      await expectSelectedTask(page, cards[0]);
+      await expect(taskCard(page, cards[0].id)).toBeFocused();
+      await page.keyboard.press("ArrowDown");
+      await expectSelectedTask(page, cards[1]);
+      await expect(taskCard(page, cards[1].id)).toBeFocused();
+      await page.keyboard.press("ArrowUp");
+      await expectSelectedTask(page, cards[0]);
+      const last = cards[cards.length - 1];
+      await taskCard(page, last.id).click();
+      await expectSelectedTask(page, last);
+      await page.keyboard.press("ArrowDown");
+      await expectSelectedTask(page, last);
+      await expect(taskCard(page, last.id)).toBeFocused();
+      await takeScreenshot(page, run, "keyboard-selection-and-terminal-header", screenshots);
+      return `${cards.length} listed tasks; up/down changes selected card and terminal header; first/last do not wrap`;
+    });
+
+    await step(checks, "목록 Enter는 터미널로 복귀하고 입력한 셸 명령이 실제 출력된다", async () => {
+      await taskCard(page, seeded.beta.id).click();
+      await expectSelectedTask(page, seeded.beta);
+      const terminalInput = page.getByRole("region", { name: seeded.beta.title, exact: true }).locator(".xterm-helper-textarea");
+      await terminalInput.waitFor({ state: "attached", timeout: 30000 });
+      await expect(taskCard(page, seeded.beta.id)).toBeFocused();
+      await page.keyboard.press("Enter");
+      await expect(terminalInput).toBeFocused();
+      const suffix = run.runId.replace(/[^a-zA-Z0-9]/g, "_");
+      const marker = `WORKSPACE_NAV_${suffix}`;
+      await page.evaluate((taskId) => {
+        window.__workspaceQaTerminalOutput = "";
+        window.__workspaceQaStopTerminalCapture = window.kanvibeDesktop.onTerminalData((event) => {
+          if (event.taskId === taskId) window.__workspaceQaTerminalOutput += event.data;
+        });
+      }, seeded.beta.id);
+      try {
+        await page.keyboard.type(`printf 'WORKSPACE_NAV_%s\\n' '${suffix}'`);
+        await page.keyboard.press("Enter");
+        await expect.poll(() => page.evaluate((expected) => window.__workspaceQaTerminalOutput.includes(expected), marker), { timeout: 15000 }).toBe(true);
+        await takeScreenshot(page, run, "enter-restores-usable-beta-terminal", screenshots);
+      } finally {
+        await page.evaluate(() => {
+          window.__workspaceQaStopTerminalCapture();
+          delete window.__workspaceQaStopTerminalCapture;
+          delete window.__workspaceQaTerminalOutput;
+        });
+      }
+      return `terminal textarea focused and real PTY output contains ${marker}`;
+    });
+
+    await step(checks, "Cmd+Option/Ctrl+Alt에 다른 키를 섞으면 터미널 포커스를 유지한다", async () => {
+      const terminalInput = page.getByRole("region", { name: seeded.beta.title, exact: true }).locator(".xterm-helper-textarea");
+      await expect(terminalInput).toBeFocused();
+      await sendWorkspaceFocusChord(app, page, true);
+      await expect(terminalInput).toBeFocused();
+      await expectSelectedTask(page, seeded.beta);
+      return "modifier chord with Right does not focus the task list";
     });
 
     await step(checks, "상태 칩 복수 선택: todo만 켜면 두 task, done을 더하면 done도 포함", async () => {

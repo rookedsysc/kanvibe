@@ -1,4 +1,4 @@
-import { buildShellHookSocketResolver } from "@/lib/hookSocketPath";
+import { buildShellHookSocketResolver, buildShellHookTransportResolver, HOOK_TRANSPORT_VERSION_MARKER } from "@/lib/hookSocketPath";
 import {
   KANVIBE_GIT_EXCLUDE_MARKER,
   KANVIBE_STATE_DIR_EXCLUDE_PATTERN,
@@ -62,13 +62,17 @@ printf '%s}\\n' "\${KANVIBE_TASK_STATE_JSON}" > "\${KANVIBE_TASK_STATE_FILE}" 2>
 
 KANVIBE_TARGET_ROWS="$(
   if [ -f "\${KANVIBE_TARGETS_FILE}" ]; then
-    grep -oE '"(url|taskId|clientId)"[[:space:]]*:[[:space:]]*"[^"]*"' "\${KANVIBE_TARGETS_FILE}" 2>/dev/null \
+    grep -oE '"(url|taskId|clientId)"[[:space:]]*:[[:space:]]*"[^"]*"|"transport"[[:space:]]*:[[:space:]]*("[^"]*"|[^,}[:space:]]+)|[{}]' "\${KANVIBE_TARGETS_FILE}" 2>/dev/null \
       | awk '
-          function emit() { if(u!="" && t!="" && !(u in seen)){ seen[u]=1; print u "\\t" t "\\t" c } }
+          function emit() { if(u!="" && t!="" && !(u in seen)){ seen[u]=1; print u "\\t" t "\\t" (c=="" ? "_" : c) "\\t" transport } }
+          function clear_target() { u=""; t=""; c=""; transport="" }
+          $0=="{" { clear_target(); next }
+          $0=="}" { emit(); clear_target(); next }
           { s=$0; sub(/^"[^"]*"[[:space:]]*:[[:space:]]*"/,"",s); sub(/"$/,"",s) }
-          /^"url"/ { emit(); u=s; sub(/\\/+$/,"",u); t=""; c=""; next }
+          /^"url"/ { u=s; sub(/\\/+$/,"",u); next }
           /^"taskId"/ { t=s; next }
           /^"clientId"/ { c=s; next }
+          /^"transport"/ { transport=(s=="" ? "invalid" : s); next }
           END { emit() }
         ' 2>/dev/null || true
   else
@@ -80,15 +84,16 @@ if [ -z "\${KANVIBE_TARGET_ROWS}" ]; then
 fi
 
 ${buildShellHookSocketResolver()}
+${buildShellHookTransportResolver()}
 
 kanvibe_post_status() {
-  curl -s --max-time ${HOOK_NOTIFY_TIMEOUT_SECONDS} -X POST "$@" --url "\${KANVIBE_TARGET_URL%/}/api/hooks/status" \
+  curl -fsS --max-time ${HOOK_NOTIFY_TIMEOUT_SECONDS} -X POST "$@" --url "\${KANVIBE_TARGET_URL%/}/api/hooks/status" \
     -H "Content-Type: application/json" \
     -d "{\\"taskId\\": \\"\${KANVIBE_TARGET_TASK_ID}\\", \\"status\\": \\"${status}\\"}"
 }
 
 printf '%s\n' "\${KANVIBE_TARGET_ROWS}" | {
-  while IFS="$(printf '\\t')" read -r KANVIBE_TARGET_URL KANVIBE_TARGET_TASK_ID KANVIBE_TARGET_CLIENT_ID; do
+  while IFS="$(printf '\\t')" read -r KANVIBE_TARGET_URL KANVIBE_TARGET_TASK_ID KANVIBE_TARGET_CLIENT_ID KANVIBE_TARGET_TRANSPORT; do
     if [ -z "\${KANVIBE_TARGET_URL}" ] || [ -z "\${KANVIBE_TARGET_TASK_ID}" ]; then
       continue
     fi
@@ -98,8 +103,12 @@ printf '%s\n' "\${KANVIBE_TARGET_ROWS}" | {
     esac
     KANVIBE_TARGET_SOCKET="$(kanvibe_hook_socket "\${KANVIBE_TARGET_CLIENT_ID}")"
     {
-      if [ -z "\${KANVIBE_TARGET_SOCKET}" ] || ! kanvibe_post_status --unix-socket "\${KANVIBE_TARGET_SOCKET}"; then
+      if kanvibe_hook_uses_local_http "\${KANVIBE_TARGET_URL}" "\${KANVIBE_TARGET_TRANSPORT}"; then
         kanvibe_post_status
+      elif [ -n "\${KANVIBE_TARGET_SOCKET}" ]; then
+        kanvibe_post_status --unix-socket "\${KANVIBE_TARGET_SOCKET}"
+      else
+        false
       fi
     } > /dev/null 2>&1 &
   done
@@ -135,7 +144,8 @@ export function hasShellKanvibeStatusJsonPersistence(content: string): boolean {
 }
 
 export function hasShellKanvibeTargetFanout(content: string): boolean {
-  return content.includes("targets.json")
+  return content.includes(HOOK_TRANSPORT_VERSION_MARKER)
+    && content.includes("targets.json")
     && content.includes("KANVIBE_TARGETS_FILE")
     && content.includes("KANVIBE_TARGET_ROWS")
     && content.includes("KANVIBE_TARGET_URL")

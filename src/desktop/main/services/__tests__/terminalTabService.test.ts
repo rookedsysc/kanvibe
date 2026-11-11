@@ -17,8 +17,16 @@ vi.mock("@/lib/gitOperations", () => ({
 const mockListLocalTerminalTabs = vi.fn((..._args: unknown[]) => [] as unknown[]);
 const mockCreateLocalTerminalTab = vi.fn((..._args: unknown[]) => undefined);
 const mockGetLocalTerminalTabProcess = vi.fn();
+const mockFocusHerdrTaskTab = vi.fn(async (..._args: unknown[]) => {});
+const mockGetHerdrTaskActiveTabId = vi.fn((): string | null => null);
+vi.mock("@/lib/hostFileAccess", async (importOriginal) => ({
+  ...await importOriginal<typeof import("@/lib/hostFileAccess")>(),
+  readTextFile: async () => JSON.stringify({ "task-a": "w1" }),
+}));
 const mockCloseLocalTerminalTab = vi.fn((..._args: unknown[]) => 2);
 vi.mock("@/lib/terminal", () => ({
+  focusHerdrTaskTab: (...args: unknown[]) => mockFocusHerdrTaskTab(...args),
+  getHerdrTaskActiveTabId: () => mockGetHerdrTaskActiveTabId(),
   getLocalTerminalTabProcess: (...args: unknown[]) => mockGetLocalTerminalTabProcess(...args),
   listLocalTerminalTabs: (...args: unknown[]) => mockListLocalTerminalTabs(...args),
   createLocalTerminalTab: (...args: unknown[]) => mockCreateLocalTerminalTab(...args),
@@ -60,6 +68,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   vi.resetModules();
   mockExecGit.mockResolvedValue("");
+  mockGetHerdrTaskActiveTabId.mockReturnValue(null);
 });
 
 describe("탭 목록 조회", () => {
@@ -557,5 +566,40 @@ describe("탭 닫기 전 확인 정보", () => {
       ok: true, shouldCloseWindow: false, processNames: ["node"],
     });
     expect(mockCloseLocalTerminalTab).not.toHaveBeenCalled();
+  });
+});
+
+
+describe("공유 Space 탭 서비스", () => {
+  beforeEach(() => {
+    stubTask({ sessionType: SessionType.HERDR, sessionName: "kanvibe:task-a" });
+    mockExecGit.mockImplementation(async (command: string) => {
+      if (command.includes("'session' 'list'")) return JSON.stringify({ sessions: [{ name: "kanvibe", running: true, session_dir: "/config/kanvibe", socket_path: "/config/kanvibe/herdr.sock" }] });
+      if (command.includes("'tab' 'create'")) return JSON.stringify({ result: { tab: { tab_id: "w1:t3" } } });
+      return JSON.stringify({ result: { tabs: [
+        { tab_id: "w1:t1", label: "one", focused: true }, { tab_id: "w1:t2", label: "two", focused: false },
+      ] } });
+    });
+  });
+  it("활성 탭은 전역 focus 대신 해당 task 클라이언트의 선택을 표시한다", async () => {
+    mockGetHerdrTaskActiveTabId.mockReturnValue("w1:t2");
+    const service = await importService();
+    const result = await service.listTerminalTabs("task-1");
+    expect(result.tabs.map((tab) => tab.isActive)).toEqual([false, true]);
+    expect(findExecutedCommand("'tab' 'list' '--workspace' 'w1'")).toBeDefined();
+  });
+  it("탭 생성과 선택은 전역 focus 없이 task 클라이언트로 전달한다", async () => {
+    const service = await importService();
+    await expect(service.createTerminalTab("task-1")).resolves.toEqual({ ok: true });
+    expect(findExecutedCommand("'--no-focus'")).toBeDefined();
+    expect(mockFocusHerdrTaskTab).toHaveBeenCalledWith("task-1", "w1:t3");
+    await expect(service.selectTerminalTab("task-1", "w1:t2")).resolves.toEqual({ ok: true });
+    expect(mockFocusHerdrTaskTab).toHaveBeenCalledWith("task-1", "w1:t2");
+    expect(findExecutedCommand("'tab' 'focus'")).toBeUndefined();
+  });
+  it("다른 Space의 탭 선택은 클라이언트 명령을 보내지 않고 거절한다", async () => {
+    const service = await importService();
+    await expect(service.selectTerminalTab("task-1", "w2:t1")).resolves.toMatchObject({ ok: false });
+    expect(mockFocusHerdrTaskTab).not.toHaveBeenCalled();
   });
 });

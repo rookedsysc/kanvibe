@@ -1,4 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { exec as execShell } from "node:child_process";
+import { mkdtemp, writeFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { promisify } from "node:util";
 
 const mocks = vi.hoisted(() => ({
   taskRepo: {
@@ -22,6 +27,7 @@ const mocks = vi.hoisted(() => ({
   createSessionWithoutWorktree: vi.fn(),
   removeWorktreeAndBranch: vi.fn(),
   removeSessionOnly: vi.fn(),
+  isSessionAlive: vi.fn(),
   detachSession: vi.fn(),
   installKanvibeHooks: vi.fn(),
   installKanvibeHookFiles: vi.fn(),
@@ -34,6 +40,7 @@ const mocks = vi.hoisted(() => ({
   broadcastTaskHookInstallFailed: vi.fn(),
   broadcastTaskPeerDeletionFailed: vi.fn(),
   broadcastTaskPrMergedDetectedBatch: vi.fn(),
+  broadcastTaskSessionChanged: vi.fn(),
   writeTextFile: vi.fn(),
   readTextFile: vi.fn(),
   propagateTaskDeletionToPeers: vi.fn(),
@@ -59,6 +66,8 @@ vi.mock("@/entities/KanbanTask", () => ({
   SessionType: {
     TMUX: "tmux",
     ZELLIJ: "zellij",
+    HERDR: "herdr",
+    TERMINAL: "terminal",
   },
 }));
 
@@ -71,6 +80,7 @@ vi.mock("@/lib/worktree", () => ({
   removeWorktreeAndBranch: mocks.removeWorktreeAndBranch,
   createSessionWithoutWorktree: mocks.createSessionWithoutWorktree,
   removeSessionOnly: mocks.removeSessionOnly,
+  isSessionAlive: mocks.isSessionAlive,
   formatSessionName: (projectName: string, branchName: string) => `${projectName}-${branchName}`.replace(/\//g, "-"),
   formatProjectBranchSessionName: (projectPath: string, branchName: string) => {
     const projectName = projectPath.split("/").filter(Boolean).at(-1) ?? projectPath;
@@ -94,6 +104,7 @@ vi.mock("@/lib/boardNotifier", () => ({
   broadcastTaskHookInstallFailed: mocks.broadcastTaskHookInstallFailed,
   broadcastTaskPeerDeletionFailed: mocks.broadcastTaskPeerDeletionFailed,
   broadcastTaskPrMergedDetectedBatch: mocks.broadcastTaskPrMergedDetectedBatch,
+  broadcastTaskSessionChanged: mocks.broadcastTaskSessionChanged,
 }));
 
 vi.mock("@/lib/gitOperations", () => ({
@@ -1184,6 +1195,109 @@ describe("kanbanService.createTask", () => {
       expect(mocks.broadcastTaskPeerDeletionFailed).not.toHaveBeenCalled();
     });
 
+    it.each(["missing", "broken"])("%s Git 메타데이터는 등록만 제거할 수 있는 오류로 구분하고 삭제하지 않는다", async (metadata) => {
+      const directory = await mkdtemp(join(tmpdir(), "kanvibe-invalid-worktree-"));
+      await writeFile(join(directory, "keep.txt"), "사용자 파일");
+      if (metadata === "broken") await writeFile(join(directory, ".git"), "gitdir: /nonexistent/kanvibe-gitdir\n");
+      mocks.taskRepo.findOneBy.mockResolvedValue({ ...sharedTask, worktreePath: directory });
+      mocks.execGit.mockImplementation(async (command: string) => (await promisify(execShell)(command)).stdout);
+      const { deleteTaskAcrossTargets } = await import("@/desktop/main/services/kanbanService");
+      try {
+        await expect(deleteTaskAcrossTargets("task-shared", { shouldRejectDirtyWorktree: true, shouldPropagateToPeers: true }))
+          .rejects.toMatchObject({ name: "InvalidWorktreeError" });
+        expect(mocks.taskRepo.remove).not.toHaveBeenCalled();
+        expect(mocks.propagateTaskDeletionToPeers).not.toHaveBeenCalled();
+        expect(mocks.removeWorktreeAndBranch).not.toHaveBeenCalled();
+      } finally {
+        await rm(directory, { recursive: true, force: true });
+      }
+    });
+
+    it.each([
+      "fatal: not a git repository: /missing/gitdir",
+      "fatal: gitfile does not point to a valid repository: /worktree/.git",
+    ])("Git의 저장소 손상 진단을 등록 제거 오류로 구분한다: %s", async (message) => {
+      const directory = await mkdtemp(join(tmpdir(), "kanvibe-git-diagnostic-"));
+      mocks.taskRepo.findOneBy.mockResolvedValue({ ...sharedTask, worktreePath: directory });
+      mocks.execGit.mockImplementation(async (command: string) => (await promisify(execShell)(
+        `git() { printf '%s\\n' '${message}' >&2; return 128; }\n${command}`,
+      )).stdout);
+      const { deleteTaskAcrossTargets } = await import("@/desktop/main/services/kanbanService");
+      try {
+        await expect(deleteTaskAcrossTargets("task-shared", { shouldRejectDirtyWorktree: true, shouldPropagateToPeers: false }))
+          .rejects.toMatchObject({ name: "InvalidWorktreeError" });
+        expect(mocks.taskRepo.remove).not.toHaveBeenCalled();
+        expect(mocks.removeWorktreeAndBranch).not.toHaveBeenCalled();
+      } finally {
+        await rm(directory, { recursive: true, force: true });
+      }
+    });
+
+    it.each([false, true])("실제 Git 저장소의 변경사항 보호를 유지한다 dirty=%s", async (isDirty) => {
+      const directory = await mkdtemp(join(tmpdir(), "kanvibe-worktree-status-"));
+      await promisify(execShell)("git init -q", { cwd: directory });
+      if (isDirty) await writeFile(join(directory, "keep.txt"), "사용자 변경");
+      mocks.taskRepo.findOneBy.mockResolvedValue({ ...sharedTask, worktreePath: directory });
+      mocks.execGit.mockImplementation(async (command: string) => (await promisify(execShell)(command)).stdout);
+      const { deleteTaskAcrossTargets } = await import("@/desktop/main/services/kanbanService");
+      try {
+        const deletion = deleteTaskAcrossTargets("task-shared", { shouldRejectDirtyWorktree: true, shouldPropagateToPeers: false });
+        if (isDirty) {
+          await expect(deletion).rejects.toMatchObject({ name: "DirtyWorktreeError" });
+          expect(mocks.taskRepo.remove).not.toHaveBeenCalled();
+        } else {
+          await expect(deletion).resolves.toEqual({ isDeleted: true, peerResults: [] });
+          expect(mocks.taskRepo.remove).toHaveBeenCalledOnce();
+        }
+      } finally {
+        await rm(directory, { recursive: true, force: true });
+      }
+    });
+
+    it("Git 권한 오류는 저장소 손상으로 바꾸지 않는다", async () => {
+      const directory = await mkdtemp(join(tmpdir(), "kanvibe-permission-status-"));
+      mocks.taskRepo.findOneBy.mockResolvedValue({ ...sharedTask, worktreePath: directory });
+      mocks.execGit.mockImplementation(async (command: string) => (await promisify(execShell)(
+        `git() { printf 'fatal: permission denied\\n' >&2; return 128; }\n${command}`,
+      )).stdout);
+      const { deleteTaskAcrossTargets } = await import("@/desktop/main/services/kanbanService");
+      try {
+        await expect(deleteTaskAcrossTargets("task-shared", { shouldRejectDirtyWorktree: true, shouldPropagateToPeers: false }))
+          .rejects.toThrow("permission denied");
+        expect(mocks.taskRepo.remove).not.toHaveBeenCalled();
+      } finally {
+        await rm(directory, { recursive: true, force: true });
+      }
+    });
+
+    it("등록만 제거하면 원격 검사·파일·브랜치·세션·peer를 건드리지 않는다", async () => {
+      const { removeTaskRegistration } = await import("@/desktop/main/services/kanbanService");
+      await expect(removeTaskRegistration("task-shared")).resolves.toBe(true);
+      expect(mocks.taskRepo.remove).toHaveBeenCalledWith(sharedTask);
+      expect(mocks.broadcastBoardUpdate).toHaveBeenCalledTimes(1);
+      expect(mocks.execGit).not.toHaveBeenCalled();
+      expect(mocks.propagateTaskDeletionToPeers).not.toHaveBeenCalled();
+      expect(mocks.detachSession).not.toHaveBeenCalled();
+      expect(mocks.removeSessionOnly).not.toHaveBeenCalled();
+      expect(mocks.removeWorktreeAndBranch).not.toHaveBeenCalled();
+    });
+
+    it("이미 없는 등록은 다른 리소스를 건드리지 않는다", async () => {
+      mocks.taskRepo.findOneBy.mockResolvedValue(null);
+      const { removeTaskRegistration } = await import("@/desktop/main/services/kanbanService");
+      await expect(removeTaskRegistration("missing")).resolves.toBe(false);
+      expect(mocks.taskRepo.remove).not.toHaveBeenCalled();
+      expect(mocks.broadcastBoardUpdate).not.toHaveBeenCalled();
+    });
+
+    it("SSH 실패는 저장소 손상으로 바꾸거나 삭제하지 않는다", async () => {
+      const failure = new Error("SSH connection refused");
+      mocks.execGit.mockRejectedValue(failure);
+      const { deleteTaskAcrossTargets } = await import("@/desktop/main/services/kanbanService");
+      await expect(deleteTaskAcrossTargets("task-shared", { shouldRejectDirtyWorktree: true, shouldPropagateToPeers: true })).rejects.toBe(failure);
+      expect(mocks.taskRepo.remove).not.toHaveBeenCalled();
+    });
+
     it("커밋하지 않은 변경을 거부하는 삭제는 변경이 있으면 전파·정리·레코드 삭제를 모두 하지 않는다", async () => {
       // Given
       mocks.execGit.mockResolvedValue(" M src/app.ts\n");
@@ -1195,7 +1309,7 @@ describe("kanbanService.createTask", () => {
       // Then
       await expect(deletion).rejects.toBeInstanceOf(DirtyWorktreeError);
       expect(mocks.execGit).toHaveBeenCalledWith(
-        "if [ -d '/remote/repo__worktrees/feat-shared' ]; then git -C '/remote/repo__worktrees/feat-shared' status --porcelain; fi",
+        expect.stringContaining("git -C '/remote/repo__worktrees/feat-shared' status --porcelain"),
         "devbox",
       );
       expect(mocks.propagateTaskDeletionToPeers).not.toHaveBeenCalled();
@@ -3045,4 +3159,150 @@ describe("PR 조회 중 task 변경 보존", () => {
     expect(mocks.taskRepo.save).not.toHaveBeenCalled();
   });
 
+});
+
+describe("kanbanService 세션 타입 변경", () => {
+  const tmuxTask = {
+    id: "task-tmux",
+    title: "결제 실패 추적",
+    projectId: "project-1",
+    branchName: "feat/pay",
+    baseBranch: "main",
+    worktreePath: "/repo__worktrees/feat-pay",
+    sshHost: null,
+    sessionType: "tmux",
+    sessionName: "repo-feat-pay",
+    status: "done",
+  };
+
+  beforeEach(() => {
+    vi.resetModules();
+    vi.clearAllMocks();
+    mocks.projectRepo.findOneBy.mockResolvedValue({
+      id: "project-1",
+      repoPath: "/repo",
+      defaultBranch: "main",
+      sshHost: null,
+    });
+    mocks.installKanvibeHookFiles.mockResolvedValue(undefined);
+    mocks.scheduleKanvibeHooksVerification.mockImplementation(() => {});
+    mocks.removeSessionOnly.mockResolvedValue(undefined);
+    mocks.createSessionWithoutWorktree.mockResolvedValue({ sessionName: "repo-feat-pay-zellij" });
+    mocks.taskRepo.save.mockImplementation(async (value) => value);
+    mocks.readTextFile.mockResolvedValue("");
+    mocks.writeTextFile.mockResolvedValue(undefined);
+    mocks.execGit.mockResolvedValue("");
+  });
+
+  it("기존 세션을 닫기로 하면 이전 tmux 세션을 정리하고 zellij 세션 정보로 바꿔 공유 파일에 남긴다", async () => {
+    // Given
+    mocks.taskRepo.findOneBy.mockImplementation(async () => ({ ...tmuxTask }));
+    const { changeTaskSessionType } = await import("@/desktop/main/services/kanbanService");
+
+    // When
+    const changedTask = await changeTaskSessionType("task-tmux", "zellij" as never, true);
+
+    // Then
+    expect(mocks.detachSession).toHaveBeenCalledWith("task-tmux", "change-session-type");
+    expect(mocks.removeSessionOnly).toHaveBeenCalledWith("tmux", "repo-feat-pay", null);
+    expect(changedTask).toEqual(expect.objectContaining({ sessionType: "zellij", sessionName: "repo-feat-pay-zellij" }));
+    expect(mocks.taskRepo.save).toHaveBeenCalledWith(expect.objectContaining({ sessionType: "zellij", sessionName: "repo-feat-pay-zellij" }));
+    const taskJsonWrite = mocks.writeTextFile.mock.calls.find(([targetPath]) => targetPath === "/repo__worktrees/feat-pay/.kanvibe/task.json");
+    expect(JSON.parse(String(taskJsonWrite?.[1])).session).toEqual({ sessionType: "zellij", sessionName: "repo-feat-pay-zellij" });
+    expect(mocks.broadcastTaskSessionChanged).toHaveBeenCalledWith({ taskId: "task-tmux" });
+  });
+
+  it("기존 세션을 남기기로 하면 연결만 끊고 세션은 정리하지 않은 채 타입을 바꾼다", async () => {
+    // Given
+    mocks.taskRepo.findOneBy.mockImplementation(async () => ({ ...tmuxTask }));
+    const { changeTaskSessionType } = await import("@/desktop/main/services/kanbanService");
+
+    // When
+    const changedTask = await changeTaskSessionType("task-tmux", "zellij" as never, false);
+
+    // Then
+    expect(mocks.detachSession).toHaveBeenCalledWith("task-tmux", "change-session-type");
+    expect(mocks.removeSessionOnly).not.toHaveBeenCalled();
+    expect(changedTask?.sessionType).toBe("zellij");
+  });
+
+  it("이미 같은 세션 타입이면 세션을 건드리지 않고 그대로 돌려준다", async () => {
+    // Given
+    mocks.taskRepo.findOneBy.mockImplementation(async () => ({ ...tmuxTask }));
+    const { changeTaskSessionType } = await import("@/desktop/main/services/kanbanService");
+
+    // When
+    const result = await changeTaskSessionType("task-tmux", "tmux" as never, true);
+
+    // Then
+    expect(result?.sessionName).toBe("repo-feat-pay");
+    expect(mocks.detachSession).not.toHaveBeenCalled();
+    expect(mocks.removeSessionOnly).not.toHaveBeenCalled();
+    expect(mocks.broadcastTaskSessionChanged).not.toHaveBeenCalled();
+  });
+
+  it("세션이 없는 task는 바꿀 세션이 없으므로 null을 돌려준다", async () => {
+    // Given
+    mocks.taskRepo.findOneBy.mockResolvedValue({ ...tmuxTask, sessionType: null, sessionName: null });
+    const { changeTaskSessionType } = await import("@/desktop/main/services/kanbanService");
+
+    // When
+    const result = await changeTaskSessionType("task-tmux", "zellij" as never, true);
+
+    // Then
+    expect(result).toBeNull();
+    expect(mocks.createSessionWithoutWorktree).not.toHaveBeenCalled();
+  });
+
+  it("일괄 변경 대상은 세션이 있고 타입이 다른 task만이며 Done도 포함하고 켜진 세션 수와 호스트를 함께 센다", async () => {
+    // Given
+    mocks.taskRepo.find.mockResolvedValue([
+      { ...tmuxTask, id: "done-tmux", status: "done" },
+      { ...tmuxTask, id: "remote-herdr", sessionType: "herdr", sessionName: "remote", sshHost: "build-host" },
+      { ...tmuxTask, id: "already-zellij", sessionType: "zellij" },
+      { ...tmuxTask, id: "no-project", projectId: null },
+      { ...tmuxTask, id: "no-session-type", sessionType: null },
+    ]);
+    mocks.isSessionAlive.mockImplementation(async (_type: string, sessionName: string) => sessionName === "repo-feat-pay");
+    const { getSessionTypeChangeTargets } = await import("@/desktop/main/services/kanbanService");
+
+    // When
+    const targets = await getSessionTypeChangeTargets("zellij" as never);
+
+    // Then
+    expect(targets).toEqual({ taskCount: 2, liveSessionCount: 1, sshHosts: [null, "build-host"] });
+    expect(mocks.isSessionAlive).toHaveBeenCalledTimes(2);
+  });
+
+  it("일괄 변경은 대상 task를 모두 바꾸고 닫기를 고르면 전환에 성공한 task의 기존 세션만 정리하며 실패 건수를 센다", async () => {
+    // Given
+    mocks.taskRepo.find.mockResolvedValue([
+      { ...tmuxTask, id: "task-a", sessionName: "repo-a" },
+      { ...tmuxTask, id: "task-b", sessionName: "repo-b" },
+      { ...tmuxTask, id: "already-zellij", sessionType: "zellij" },
+    ]);
+    const storedTasks = new Map([
+      ["task-a", { ...tmuxTask, id: "task-a", sessionName: "repo-a" }],
+      ["task-b", { ...tmuxTask, id: "task-b", sessionName: "repo-b" }],
+    ]);
+    mocks.taskRepo.findOneBy.mockImplementation(async ({ id }: { id: string }) => {
+      const storedTask = storedTasks.get(id);
+      return storedTask ? { ...storedTask } : null;
+    });
+    mocks.createSessionWithoutWorktree.mockImplementation(async (projectPath: string, branchName: string) => {
+      if (mocks.createSessionWithoutWorktree.mock.calls.length === 2) {
+        throw new Error("zellij 레이아웃 준비 실패");
+      }
+      return { sessionName: `${branchName}-zellij` };
+    });
+    const { changeAllTaskSessionTypes } = await import("@/desktop/main/services/kanbanService");
+
+    // When
+    const result = await changeAllTaskSessionTypes("zellij" as never, true);
+
+    // Then
+    expect(result).toEqual({ changedCount: 1, failedCount: 1 });
+    expect(mocks.removeSessionOnly).toHaveBeenCalledWith("tmux", "repo-a", null);
+    expect(mocks.removeSessionOnly).toHaveBeenCalledTimes(1);
+  });
 });

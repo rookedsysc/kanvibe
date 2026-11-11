@@ -5,6 +5,7 @@ import { describe, it, expect } from "vitest";
 import { buildHerdrCommand } from "@/lib/worktree";
 import {
   buildHerdrObservePaneCommand,
+  buildHerdrControlPaneCommand,
   buildHerdrPaneShortcutCommand,
   buildHerdrRecentScreenCommand,
   buildHerdrWritePaneCommand,
@@ -12,6 +13,9 @@ import {
   buildScreenRedraw,
   buildTmuxPaneShortcutCommand,
   buildZellijPaneShortcutCommand,
+  buildHerdrClosePaneCommand,
+  buildTmuxClosePaneCommand,
+  buildZellijClosePaneCommand,
   buildTmuxCancelPipePaneCommand,
   buildTmuxCapturePaneCommand,
   buildTmuxPaneStateCommand,
@@ -20,13 +24,58 @@ import {
   buildTmuxSendKeysCommand,
   buildZellijDumpPaneCommand,
   buildZellijListMirrorPanesCommand,
+  buildZellijReadViewportCommand,
+  buildZellijSelectTabCommand,
+  buildZellijResizeFloatingPaneCommand,
   buildZellijWritePaneCommand,
   parseTmuxPaneState,
   parseTmuxMirrorPaneList,
   parseZellijMirrorPaneList,
+  parseZellijViewportState,
 } from "@/lib/paneMirror";
 
 const INJECTION_PANE_ID = "%1'; rm -rf /; '";
+
+describe("Zellij viewport geometry", () => {
+  it("선택한 session과 tab을 명시해 탭을 활성화한다", () => {
+    expect(buildZellijSelectTabCommand("task", "2"))
+      .toBe("zellij --session 'task' action go-to-tab-by-id '2'");
+  });
+  it("floating 좌표와 테두리 포함 크기를 구분해 복원에 사용한다", () => {
+    const output = JSON.stringify([[{ id: 7, is_plugin: false, is_floating: true, tab_id: 0,
+      pane_x: 30, pane_y: 7, pane_columns: 60, pane_rows: 14, pane_content_columns: 58, pane_content_rows: 12 }],
+      [{ tab_id: 0, viewport_columns: 120, viewport_rows: 28, display_area_columns: 120, display_area_rows: 30 }]]);
+    expect(parseZellijViewportState(output, "terminal_7")).toMatchObject({ floating: { left: 30, top: 7 }, paneCols: 60, paneRows: 14 });
+    expect(buildZellijResizeFloatingPaneCommand("task", "terminal_7", { left: 30, top: 7, cols: 46, rows: 72 }))
+      .toBe("zellij --session 'task' action change-floating-pane-coordinates --pane-id 'terminal_7' --x 30 --y 7 --width 46 --height 72");
+  });
+
+  const pane = { id: 7, is_plugin: false, tab_id: 2, pane_columns: 60, pane_rows: 28, pane_content_columns: 59, pane_content_rows: 27 };
+  const tab = { tab_id: 2, viewport_columns: 120, viewport_rows: 28, display_area_columns: 120, display_area_rows: 30 };
+
+  it("선택 pane의 프로그램 격자와 분할·장식 크기를 구분한다", () => {
+    expect(parseZellijViewportState(JSON.stringify([[pane, { ...pane, is_plugin: true }], [tab]]), "terminal_7")).toEqual({
+      tabId: "2",
+      cols: 59, rows: 27, paneCols: 60, paneRows: 28,
+      viewportCols: 120, viewportRows: 28, displayCols: 120, displayRows: 30,
+    });
+  });
+
+  it.each(["bad json", "[]", JSON.stringify([[pane], []]), JSON.stringify([[{ ...pane, pane_content_rows: 0 }], [tab]])])("불완전한 geometry는 크기 변경에 쓰지 않는다: %s", (output) => {
+    expect(parseZellijViewportState(output, "terminal_7")).toBeNull();
+  });
+
+  it("다른 pane의 geometry를 대신 쓰지 않는다", () => {
+    expect(parseZellijViewportState(JSON.stringify([[pane], [tab]]), "terminal_8")).toBeNull();
+  });
+
+  it("세션을 인용하고 pane과 tab JSON을 한 응답으로 읽는다", () => {
+    const command = buildZellijReadViewportCommand("task's session");
+    expect(command).toContain(buildZellijListMirrorPanesCommand("task's session"));
+    expect(command).toContain("action list-tabs --json -a");
+    expect(command).toContain("printf '['");
+  });
+});
 
 describe("tmux pane 목록", () => {
   it("세션 전체 window의 pane을 좌표와 함께 읽는다", () => {
@@ -293,6 +342,28 @@ describe("pane 단축키 명령", () => {
   });
 });
 
+describe("pane 종료 명령", () => {
+  it("tmux는 지정한 pane 하나만 종료한다", () => {
+    expect(buildTmuxClosePaneCommand("%19")).toBe("tmux kill-pane -t '%19'");
+  });
+
+  it("zellij는 포커스 대신 pane id로 지정한다", () => {
+    expect(buildZellijClosePaneCommand("session", "terminal_3"))
+      .toBe("zellij --session 'session' action close-pane --pane-id 'terminal_3'");
+  });
+
+  it("Herdr는 pane close에 pane id를 인자 하나로 넘긴다", () => {
+    expect(buildHerdrClosePaneCommand("session", "w1:p1"))
+      .toBe(buildHerdrCommand("session", ["pane", "close", "w1:p1"]));
+  });
+
+  it("대상 이름의 셸 메타문자를 이스케이프한다", () => {
+    expect(buildTmuxClosePaneCommand(INJECTION_PANE_ID))
+      .toBe(`tmux kill-pane -t ${"'%1'\"'\"'; rm -rf /; '\"'\"''"}`);
+    expect(buildZellijClosePaneCommand("a'b", "terminal_3")).toContain(`--session 'a'\"'\"'b'`);
+  });
+});
+
 describe("Herdr pane 명령", () => {
   const herdr = (...args: string[]) => buildHerdrCommand("session", args);
 
@@ -326,6 +397,16 @@ describe("Herdr pane 명령", () => {
 });
 
 describe("Herdr observe 레코드", () => {
+  it("제어 프레임의 실제 격자를 읽어 resize ACK를 구분한다", () => {
+    expect(parseHerdrObserveRecord(JSON.stringify({ type: "terminal.frame", bytes: "", full: true, width: 44, height: 70 })))
+      .toMatchObject({ type: "frame", width: 44, height: 70 });
+  });
+
+  it("pane 제어 스트림은 명시한 크기로 열고 takeover를 강제하지 않는다", () => {
+    expect(buildHerdrControlPaneCommand("session", "w1:p1", 44, 70))
+      .toBe(buildHerdrCommand("session", ["terminal", "session", "control", "w1:p1", "--cols", "44", "--rows", "70"]));
+  });
+
   it("프레임의 base64를 UTF-8로 풀고 전체 화면 여부를 읽는다", () => {
     const bytes = Buffer.from("\x1b[1;1H한글").toString("base64");
     expect(parseHerdrObserveRecord(JSON.stringify({ type: "terminal.frame", bytes, full: true }))).toEqual({ type: "frame", isFullScreen: true, output: "\x1b[1;1H한글" });

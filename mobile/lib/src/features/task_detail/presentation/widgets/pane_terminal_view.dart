@@ -285,6 +285,12 @@ class _PaneTerminalViewState extends ConsumerState<PaneTerminalView>
       return;
     }
 
+    /// 데스크탑이 세션 종류를 바꿨다. 이 pane은 이전 세션의 것이므로 태스크의 pane을 새로 받아 새 세션에 붙는다
+    if (_stream?.readCloseCode() == taskSessionChangedCloseCode) {
+      ref.invalidate(surfacesProvider(widget.taskId));
+      return;
+    }
+
     if (_failureMessage != null) return;
     _failStream(
       _stream?.readCloseCode() == 4000
