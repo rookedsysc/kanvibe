@@ -192,9 +192,21 @@ brew untap rookedsysc/kanvibe
 - 远程终端 attach 会通过 SSH 直接执行 Herdr/tmux/zellij；仅在本地 `DISPLAY`、远程 `X11Forwarding` 和 `xauth` 可用时请求 trusted X11 forwarding（`ssh -Y`）
 - Nerd Font 渲染支持
 
-- 未保存有效偏好时默认使用 Herdr，已有的 tmux、zellij、terminal 选择会保留。每个任务使用独立命名的持久会话；首次创建时应用六种 pane 布局和各 pane 的启动命令，再次打开时继续使用运行中的 shell。
-- Herdr 标签页支持创建、切换、重命名、关闭，以及 workspace 内的拖动排序。关闭 KanVibe 窗口会保留最后一个标签页；删除任务时才会停止并删除对应的命名会话。首次运行设置和个人配置由 Herdr 管理。
+- 未保存有效偏好时默认使用 Herdr，已有的 tmux、zellij、terminal 选择会保留。新的 Herdr 任务在每台主机上共享持久的 `kanvibe` 服务，每个任务的 workspace 都显示在 Spaces 中。首次创建时应用配置的 pane 布局和启动命令，再次打开时继续使用运行中的 shell。已有的独立命名会话会保留，直到明确替换。
+- Herdr 标签页支持创建、切换、重命名、关闭，以及 workspace 内的拖动排序。Space 和标签页的选择仅影响对应的任务窗口。关闭 KanVibe 窗口会保留最后一个标签页；删除共享会话中的任务时，只关闭该任务的 workspace，其他任务继续运行。首次运行设置和个人配置由 Herdr 管理。
 - 创建任务、创建分支或连接终端时选择 `herdr`，KanVibe 会检查本机或选定的 SSH 主机。若未安装，确认提示后会在该主机运行[官方安装程序](https://herdr.dev/tui/docs/install/)，安装到 `~/.local/bin`，不修改 shell 启动文件。取消后任务保持不变。安装失败时会显示错误；请检查网络连接和目录写入权限后重试。
+
+#### 在外部终端中打开相同的 Herdr Spaces
+
+在 KanVibe 中打开 Herdr 任务后，在同一主机的 Ghostty 或其他终端中新开一个终端并运行：
+
+```sh
+herdr session attach kanvibe
+```
+
+此命令连接到 KanVibe 共享的 Herdr 会话。在 **Spaces** 中选择任务的 workspace，即可继续使用运行中的 shell。Spaces 只显示当前连接会话中的 workspace：连接到独立的 `kanvibe-dev` 会话时，看不到 `kanvibe` 内的 workspace，即使其中一个 workspace 也叫 `kanvibe-dev`。
+
+对于 SSH 任务，请先连接到该任务的 SSH 主机，再在那里运行命令。仍使用独立命名会话的旧任务，需要将 `kanvibe` 换成原来的会话名；可在该主机运行 `herdr session list` 查看。
 
 ### 键盘优先控制
 - 从任何位置按分支名或项目名打开快速任务搜索

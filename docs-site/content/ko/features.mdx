@@ -47,11 +47,23 @@ KanVibe Desktop은 작업 상태, 브랜치별 작업 공간, 터미널, 에이�
 - 작업 정보 패널이 열려 있으면 탭 바 왼쪽 일부를 덮습니다. 패널 밖 터미널을 클릭하거나 dock의 작업 정보 버튼을 다시 눌러 닫으면 탭 바 전체가 드러납니다.
 - Herdr, tmux, zellij 세션의 탭은 각각 Herdr tab, tmux window, zellij tab과 **양방향으로 동기화**됩니다. KanVibe 밖에서 `tmux new-window`로 만든 window도 탭 바에 나타나고, 탭을 클릭하면 멀티플렉서의 활성 대상도 함께 바뀝니다.
 - 멀티플렉서 세션에서는 KanVibe가 자체 탭 바를 그리므로 tmux 상태바와 zellij 탭 바는 KanVibe가 만든 세션에 한해 꺼둡니다. tmux는 세션에 다시 붙을 때마다 꺼주므로 탭 바가 들어오기 전에 만든 세션도 정리됩니다. zellij는 레이아웃이 세션을 만들 때 정해져, 그 뒤에 새로 만든 세션부터 적용됩니다.
-- 저장된 유효한 설정이 없으면 Herdr가 기본값입니다. 태스크마다 이름 있는 영구 세션을 사용합니다. 세션을 처음 만들 때 설정한 6가지 pane 레이아웃과 pane별 시작 명령을 적용하며, 다시 열면 실행 중인 셸을 이어 씁니다.
-- Herdr 탭은 생성·전환·이름 변경·닫기와 workspace 안에서의 드래그 순서 변경을 지원합니다. KanVibe 창을 닫아도 마지막 탭은 유지하며, 태스크를 삭제하면 해당 이름의 세션을 중지하고 삭제합니다. Herdr의 첫 실행 설정과 개인 설정은 Herdr가 관리합니다.
+- 저장된 유효한 설정이 없으면 Herdr가 기본값입니다. 새 Herdr 태스크는 호스트별 영구 `kanvibe` 서버를 공유하며, 태스크마다 만든 workspace가 Spaces에 함께 표시됩니다. workspace를 처음 만들 때 설정한 pane 레이아웃과 pane별 시작 명령을 적용하며, 다시 열면 실행 중인 셸을 이어 씁니다. 기존 독립 세션은 명시적으로 교체할 때까지 유지합니다.
+- Herdr 탭은 생성·전환·이름 변경·닫기와 workspace 안에서의 드래그 순서 변경을 지원합니다. Space와 탭 선택은 해당 태스크 창에만 적용됩니다. KanVibe 창을 닫아도 마지막 탭은 유지하며, 공유 태스크를 삭제하면 해당 workspace만 닫아 다른 태스크의 작업은 계속 실행됩니다. Herdr의 첫 실행 설정과 개인 설정은 Herdr가 관리합니다.
 - `terminal` 세션에서는 KanVibe가 탭마다 셸을 직접 띄웁니다. 탭을 옮겨 다녀도 각 탭의 스크롤백이 유지되고, 앱이 켜져 있는 동안 셸도 살아 있습니다.
 
 키 조합은 [단축키](/ko/shortcuts) 문서의 터미널 탭 절에 정리돼 있습니다.
+
+### 외부 터미널에서 같은 Herdr Spaces 열기
+
+KanVibe에서 Herdr 태스크를 연 뒤, 같은 호스트의 Ghostty 등에서 새 터미널을 열고 실행하세요.
+
+```sh
+herdr session attach kanvibe
+```
+
+KanVibe가 공유하는 Herdr 세션에 연결됩니다. **Spaces**에서 해당 태스크의 workspace를 선택하면 실행 중인 셸을 이어 쓸 수 있습니다. Spaces에는 현재 연결된 세션의 workspace만 표시됩니다. 별도 `kanvibe-dev` 세션에 붙으면 `kanvibe` 안의 workspace는 보이지 않습니다. workspace 이름이 똑같이 `kanvibe-dev`여도 서로 다른 대상입니다.
+
+SSH 태스크는 먼저 해당 SSH 호스트에 접속한 뒤 그곳에서 명령을 실행하세요. 기존 독립 세션을 쓰는 태스크는 `kanvibe` 대신 원래 세션 이름으로 연결합니다. 해당 호스트에서 `herdr session list`로 세션 이름을 확인할 수 있습니다.
 
 ## 태스크별 AI 채팅 히스토리
 
