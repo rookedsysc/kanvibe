@@ -613,6 +613,45 @@ void main() {
       expect(receivedCount, 0);
     });
 
+    test('등록 제거 명령을 모르는 데스크탑에는 일반 삭제를 대신 보내지 않는다', () async {
+      advertisedCommands = ['delete-task'];
+      var receivedCount = 0;
+      onMessage = (socket, message) => receivedCount++;
+      await openStream();
+      await expectLater(
+        client.runCommand(
+          connection,
+          DesktopCommand.removeTaskRegistration('task-1'),
+        ),
+        throwsA(isA<DesktopUpdateRequiredException>()),
+      );
+      expect(receivedCount, 0);
+    });
+
+    test('등록 제거는 파일 삭제 옵션 없는 별도 명령으로 직렬화한다', () async {
+      advertisedCommands = ['remove-task-registration'];
+      Map<String, dynamic>? received;
+      onMessage = (socket, message) {
+        received = message;
+        socket.add(
+          jsonEncode({
+            'type': 'command-result',
+            'requestId': message['requestId'],
+            'ok': true,
+            'failedPeerCount': 0,
+          }),
+        );
+      };
+      await openStream();
+      await client.runCommand(
+        connection,
+        DesktopCommand.removeTaskRegistration('task-1'),
+      );
+      expect(received, containsPair('command', 'remove-task-registration'));
+      expect(received, containsPair('taskId', 'task-1'));
+      expect(received, isNot(contains('isForced')));
+    });
+
     test('commands에 없는 명령은 보내지 않고 업데이트 필요로 실패한다', () async {
       advertisedCommands = ['delete-task'];
       var receivedCount = 0;

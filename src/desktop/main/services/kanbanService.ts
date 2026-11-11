@@ -810,6 +810,24 @@ export class DirtyWorktreeError extends Error {
   }
 }
 
+class InvalidWorktreeError extends Error {
+  constructor() {
+    super("Git 저장소를 찾을 수 없습니다. 파일을 보존하고 태스크 등록만 제거할 수 있습니다.");
+    this.name = "InvalidWorktreeError";
+  }
+}
+
+/** 파일·브랜치·세션과 다른 데스크탑은 그대로 두고 이 데스크탑의 등록만 제거한다. */
+export async function removeTaskRegistration(taskId: string): Promise<boolean> {
+  const repo = await getTaskRepository();
+  const task = await repo.findOneBy({ id: taskId });
+  if (!task) return false;
+
+  await repo.remove(task);
+  broadcastBoardUpdate();
+  return true;
+}
+
 export interface TaskDeletionOptions {
   shouldRejectDirtyWorktree: boolean;
   /** 같은 worktree를 공유하는 다른 client에도 삭제를 전파한다. 전파받은 client는 다시 전파하지 않는다 */
@@ -862,12 +880,28 @@ export async function deleteTaskAcrossTargets(
 
 async function assertWorktreeHasNoUncommittedChanges(worktreePath: string, sshHost: string | null): Promise<void> {
   const quotedWorktreePath = quoteForShell(worktreePath);
+  // SSH 오류 요약이 Git의 stderr를 놓칠 수 있어 실행한 셸에서 실패 원인을 구분한다.
+  const invalidWorktreeMarker = "__KANVIBE_INVALID_WORKTREE__";
   /** 이미 다른 client가 지운 worktree는 잃을 변경이 없으므로 깨끗한 것으로 본다 */
   const uncommittedChanges = await execGit(
-    `if [ -d ${quotedWorktreePath} ]; then git -C ${quotedWorktreePath} status --porcelain; fi`,
+    `if [ -d ${quotedWorktreePath} ]; then
+      __kanvibe_status_output=$(LC_ALL=C git -C ${quotedWorktreePath} status --porcelain 2>&1)
+      __kanvibe_status_code=$?
+      if [ "$__kanvibe_status_code" -eq 0 ]; then
+        printf '%s' "$__kanvibe_status_output"
+      else
+        case "$__kanvibe_status_output" in
+          *"fatal: not a git repository"*) printf '%s' '${invalidWorktreeMarker}' ;;
+          *) printf '%s\\n' "$__kanvibe_status_output" >&2; exit "$__kanvibe_status_code" ;;
+        esac
+      fi
+    fi`,
     sshHost,
   );
 
+  if (uncommittedChanges.trim() === invalidWorktreeMarker) {
+    throw new InvalidWorktreeError();
+  }
   if (uncommittedChanges.trim()) {
     throw new DirtyWorktreeError(worktreePath);
   }

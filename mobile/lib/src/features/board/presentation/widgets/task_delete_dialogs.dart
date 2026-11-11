@@ -19,6 +19,16 @@ Future<bool> confirmForcedTaskDeletion(BuildContext context) =>
       confirmLabel: '강제 삭제',
     );
 
+Future<bool> confirmTaskRegistrationRemoval(BuildContext context) =>
+    _askConfirmation(
+      context,
+      title: '태스크 등록만 제거할까요?',
+      message:
+          'Git 저장소를 찾을 수 없습니다. 이 데스크탑의 태스크 등록만 제거합니다. '
+          '파일·브랜치·세션과 다른 데스크탑의 태스크는 그대로 유지됩니다.',
+      confirmLabel: '등록만 제거',
+    );
+
 Future<bool> _askConfirmation(
   BuildContext context, {
   required String title,

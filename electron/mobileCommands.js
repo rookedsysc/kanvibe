@@ -41,6 +41,13 @@ const COMMAND_HANDLERS = {
     }
     return { failedPeerCount: deletion.failedPeerCount };
   },
+  "remove-task-registration": async (bridge, message) => {
+    const isRemoved = await bridge.removeMobileTaskRegistration(readNonEmptyString(message.taskId));
+    if (!isRemoved) {
+      throw new CommandFailure("task-not-found", "없는 태스크입니다");
+    }
+    return { failedPeerCount: 0 };
+  },
   "get-tab-close-info": async (bridge, message) => {
     const { processNames } = await bridge.getMobilePaneCloseInfo(readNonEmptyString(message.taskId), readNonEmptyString(message.paneId));
     return { processNames };
@@ -88,6 +95,7 @@ function toFailureResult(requestId, error) {
   }
   switch (error?.name) {
     case "DirtyWorktreeError": return failureResult(requestId, "dirty-worktree", "커밋하지 않은 변경이 있습니다");
+    case "InvalidWorktreeError": return failureResult(requestId, "invalid-worktree", error.message);
     case "PaneNotFoundError": return failureResult(requestId, "pane-not-found", error.message);
     case "LastPaneError": return failureResult(requestId, "last-tab", error.message);
     case "SurfaceUnavailableError": return failureResult(requestId, "session-unavailable", "세션을 사용할 수 없습니다");

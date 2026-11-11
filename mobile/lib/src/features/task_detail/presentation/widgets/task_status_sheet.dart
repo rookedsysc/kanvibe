@@ -106,7 +106,10 @@ class _TaskStatusSheetState extends ConsumerState<TaskStatusSheet> {
     }
   }
 
-  Future<void> _delete({required bool isForced}) async {
+  Future<void> _delete({
+    required bool isForced,
+    bool isRegistrationOnly = false,
+  }) async {
     final connection = ref
         .read(connectionControllerProvider)
         .value
@@ -125,6 +128,7 @@ class _TaskStatusSheetState extends ConsumerState<TaskStatusSheet> {
       connection,
       widget.task.id,
       isForced: isForced,
+      isRegistrationOnly: isRegistrationOnly,
     );
     if (!mounted) {
       return;
@@ -136,6 +140,12 @@ class _TaskStatusSheetState extends ConsumerState<TaskStatusSheet> {
       case TaskDeletionNeedsForce():
         setState(() => _isDeleting = false);
         await _confirmForcedDelete();
+      case TaskDeletionNeedsRegistrationRemoval():
+        setState(() => _isDeleting = false);
+        final isConfirmed = await confirmTaskRegistrationRemoval(context);
+        if (isConfirmed && mounted) {
+          await _delete(isForced: false, isRegistrationOnly: true);
+        }
       case TaskDeletionFailed(:final message):
         setState(() {
           _isDeleting = false;

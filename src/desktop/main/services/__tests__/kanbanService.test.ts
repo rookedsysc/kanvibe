@@ -1,4 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { exec as execShell } from "node:child_process";
+import { mkdtemp, writeFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { promisify } from "node:util";
 
 const mocks = vi.hoisted(() => ({
   taskRepo: {
@@ -1190,6 +1195,89 @@ describe("kanbanService.createTask", () => {
       expect(mocks.broadcastTaskPeerDeletionFailed).not.toHaveBeenCalled();
     });
 
+    it.each(["missing", "broken"])("%s Git 메타데이터는 등록만 제거할 수 있는 오류로 구분하고 삭제하지 않는다", async (metadata) => {
+      const directory = await mkdtemp(join(tmpdir(), "kanvibe-invalid-worktree-"));
+      await writeFile(join(directory, "keep.txt"), "사용자 파일");
+      if (metadata === "broken") await writeFile(join(directory, ".git"), "gitdir: /nonexistent/kanvibe-gitdir\n");
+      mocks.taskRepo.findOneBy.mockResolvedValue({ ...sharedTask, worktreePath: directory });
+      mocks.execGit.mockImplementation(async (command: string) => (await promisify(execShell)(command)).stdout);
+      const { deleteTaskAcrossTargets } = await import("@/desktop/main/services/kanbanService");
+      try {
+        await expect(deleteTaskAcrossTargets("task-shared", { shouldRejectDirtyWorktree: true, shouldPropagateToPeers: true }))
+          .rejects.toMatchObject({ name: "InvalidWorktreeError" });
+        expect(mocks.taskRepo.remove).not.toHaveBeenCalled();
+        expect(mocks.propagateTaskDeletionToPeers).not.toHaveBeenCalled();
+        expect(mocks.removeWorktreeAndBranch).not.toHaveBeenCalled();
+      } finally {
+        await rm(directory, { recursive: true, force: true });
+      }
+    });
+
+    it.each([false, true])("실제 Git 저장소의 변경사항 보호를 유지한다 dirty=%s", async (isDirty) => {
+      const directory = await mkdtemp(join(tmpdir(), "kanvibe-worktree-status-"));
+      await promisify(execShell)("git init -q", { cwd: directory });
+      if (isDirty) await writeFile(join(directory, "keep.txt"), "사용자 변경");
+      mocks.taskRepo.findOneBy.mockResolvedValue({ ...sharedTask, worktreePath: directory });
+      mocks.execGit.mockImplementation(async (command: string) => (await promisify(execShell)(command)).stdout);
+      const { deleteTaskAcrossTargets } = await import("@/desktop/main/services/kanbanService");
+      try {
+        const deletion = deleteTaskAcrossTargets("task-shared", { shouldRejectDirtyWorktree: true, shouldPropagateToPeers: false });
+        if (isDirty) {
+          await expect(deletion).rejects.toMatchObject({ name: "DirtyWorktreeError" });
+          expect(mocks.taskRepo.remove).not.toHaveBeenCalled();
+        } else {
+          await expect(deletion).resolves.toEqual({ isDeleted: true, peerResults: [] });
+          expect(mocks.taskRepo.remove).toHaveBeenCalledOnce();
+        }
+      } finally {
+        await rm(directory, { recursive: true, force: true });
+      }
+    });
+
+    it("Git 권한 오류는 저장소 손상으로 바꾸지 않는다", async () => {
+      const directory = await mkdtemp(join(tmpdir(), "kanvibe-permission-status-"));
+      mocks.taskRepo.findOneBy.mockResolvedValue({ ...sharedTask, worktreePath: directory });
+      mocks.execGit.mockImplementation(async (command: string) => (await promisify(execShell)(
+        `git() { printf 'fatal: permission denied\\n' >&2; return 128; }\n${command}`,
+      )).stdout);
+      const { deleteTaskAcrossTargets } = await import("@/desktop/main/services/kanbanService");
+      try {
+        await expect(deleteTaskAcrossTargets("task-shared", { shouldRejectDirtyWorktree: true, shouldPropagateToPeers: false }))
+          .rejects.toThrow("permission denied");
+        expect(mocks.taskRepo.remove).not.toHaveBeenCalled();
+      } finally {
+        await rm(directory, { recursive: true, force: true });
+      }
+    });
+
+    it("등록만 제거하면 원격 검사·파일·브랜치·세션·peer를 건드리지 않는다", async () => {
+      const { removeTaskRegistration } = await import("@/desktop/main/services/kanbanService");
+      await expect(removeTaskRegistration("task-shared")).resolves.toBe(true);
+      expect(mocks.taskRepo.remove).toHaveBeenCalledWith(sharedTask);
+      expect(mocks.broadcastBoardUpdate).toHaveBeenCalledTimes(1);
+      expect(mocks.execGit).not.toHaveBeenCalled();
+      expect(mocks.propagateTaskDeletionToPeers).not.toHaveBeenCalled();
+      expect(mocks.detachSession).not.toHaveBeenCalled();
+      expect(mocks.removeSessionOnly).not.toHaveBeenCalled();
+      expect(mocks.removeWorktreeAndBranch).not.toHaveBeenCalled();
+    });
+
+    it("이미 없는 등록은 다른 리소스를 건드리지 않는다", async () => {
+      mocks.taskRepo.findOneBy.mockResolvedValue(null);
+      const { removeTaskRegistration } = await import("@/desktop/main/services/kanbanService");
+      await expect(removeTaskRegistration("missing")).resolves.toBe(false);
+      expect(mocks.taskRepo.remove).not.toHaveBeenCalled();
+      expect(mocks.broadcastBoardUpdate).not.toHaveBeenCalled();
+    });
+
+    it("SSH 실패는 저장소 손상으로 바꾸거나 삭제하지 않는다", async () => {
+      const failure = new Error("SSH connection refused");
+      mocks.execGit.mockRejectedValue(failure);
+      const { deleteTaskAcrossTargets } = await import("@/desktop/main/services/kanbanService");
+      await expect(deleteTaskAcrossTargets("task-shared", { shouldRejectDirtyWorktree: true, shouldPropagateToPeers: true })).rejects.toBe(failure);
+      expect(mocks.taskRepo.remove).not.toHaveBeenCalled();
+    });
+
     it("커밋하지 않은 변경을 거부하는 삭제는 변경이 있으면 전파·정리·레코드 삭제를 모두 하지 않는다", async () => {
       // Given
       mocks.execGit.mockResolvedValue(" M src/app.ts\n");
@@ -1201,7 +1289,7 @@ describe("kanbanService.createTask", () => {
       // Then
       await expect(deletion).rejects.toBeInstanceOf(DirtyWorktreeError);
       expect(mocks.execGit).toHaveBeenCalledWith(
-        "if [ -d '/remote/repo__worktrees/feat-shared' ]; then git -C '/remote/repo__worktrees/feat-shared' status --porcelain; fi",
+        expect.stringContaining("git -C '/remote/repo__worktrees/feat-shared' status --porcelain"),
         "devbox",
       );
       expect(mocks.propagateTaskDeletionToPeers).not.toHaveBeenCalled();

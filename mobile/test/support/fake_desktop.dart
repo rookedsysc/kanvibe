@@ -139,6 +139,7 @@ class FakeDesktopClient implements DesktopClient {
 
   /// 지워 달라고 보낸 요청. 강제 여부까지 봐야 거절 뒤 강제 삭제로 다시 보냈는지 안다
   final deleteCalls = <({String taskId, bool isForced})>[];
+  final removedRegistrationIds = <String>[];
 
   /// 데스크탑에 끊겠다고 알린 기록. 이미 거절된 토큰으로는 부르지 말아야 해서 호출 여부까지 본다
   final unpairCalls = <DesktopConnection>[];
@@ -367,6 +368,10 @@ class FakeDesktopClient implements DesktopClient {
     Duration? timeout,
   }) async {
     commandCalls.add(command);
+    if (command.name == 'remove-task-registration') {
+      removedRegistrationIds.add(command.fields['taskId']! as String);
+      return {'ok': true, 'failedPeerCount': 0};
+    }
     if (command.name != 'delete-task') {
       return onRunCommand!(command);
     }
