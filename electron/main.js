@@ -677,6 +677,9 @@ function registerNotificationHandlers() {
 }
 
 function attachWindowHandlers(browserWindow) {
+  const { createWorkspaceListFocusTracker, getShortcutPlatformFromProcessPlatform: getWorkspaceShortcutPlatform } = getKeyboardShortcutHelpers();
+  const workspaceListFocusTracker = createWorkspaceListFocusTracker(getWorkspaceShortcutPlatform(process.platform));
+  browserWindow.on("blur", workspaceListFocusTracker.reset);
   browserWindow.webContents.setWindowOpenHandler(({ url }) => {
     const { resolveWindowOpenAction } = getWindowOpenHelpers();
     const windowOpenAction = resolveWindowOpenAction({
@@ -731,7 +734,12 @@ function attachWindowHandlers(browserWindow) {
      * 여기서 가로채면 keydown이 렌더러에 닿지 않아 녹화가 실패하고, 그 조합의 원래 동작만 실행된다.
      */
     if (shortcutCapturingWebContentsIds.has(browserWindow.webContents.id)) {
+      workspaceListFocusTracker.reset();
       return;
+    }
+
+    if (workspaceListFocusTracker.handleElectronInput(input)) {
+      browserWindow.webContents.send("kanvibe:workspace-list-focus-shortcut");
     }
 
     const shortcutCommand = findShortcutCommandForElectronInput(

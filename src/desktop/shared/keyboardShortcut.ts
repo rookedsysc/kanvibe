@@ -29,6 +29,7 @@ const MODIFIER_KEYS = new Set(["Meta", "Control", "Ctrl", "Alt", "Shift"]);
 
 export const SHORTCUTS = {
   taskSearchDefault: "Mod+Shift+O",
+  workspaceTaskListFocus: "Mod+Alt",
   boardNotification: "Mod+Shift+I",
   boardProjectFilter: "Mod+Shift+F",
   commandPalette: "Mod+Shift+P",
@@ -258,6 +259,22 @@ export function formatShortcutForDisplay(shortcut: ShortcutDefinition, platform:
   return displayParts.join("+");
 }
 
+function matchesShortcutModifiers(event: ShortcutInput, modifiers: string[], shortcutPlatform: ShortcutPlatform): boolean {
+  const requiresMod = modifiers.includes("Mod");
+  const requiresMeta = modifiers.includes("Meta");
+  const requiresCtrl = modifiers.includes("Ctrl");
+  const requiresAlt = modifiers.includes("Alt");
+  const requiresShift = modifiers.includes("Shift");
+  const expectedMeta = requiresMeta || (requiresMod && shortcutPlatform === "mac");
+  const expectedCtrl = requiresCtrl || (requiresMod && shortcutPlatform === "linux");
+  const modifierState = getNormalizedModifierState(event);
+
+  return modifierState.metaKey === expectedMeta
+    && modifierState.ctrlKey === expectedCtrl
+    && modifierState.altKey === requiresAlt
+    && modifierState.shiftKey === requiresShift;
+}
+
 export function matchShortcutEvent(
   event: ShortcutInput,
   shortcut: ShortcutDefinition,
@@ -272,19 +289,7 @@ export function matchShortcutEvent(
     return false;
   }
 
-  const requiresMod = modifiers.includes("Mod");
-  const requiresMeta = modifiers.includes("Meta");
-  const requiresCtrl = modifiers.includes("Ctrl");
-  const requiresAlt = modifiers.includes("Alt");
-  const requiresShift = modifiers.includes("Shift");
-  const expectedMeta = requiresMeta || (requiresMod && shortcutPlatform === "mac");
-  const expectedCtrl = requiresCtrl || (requiresMod && shortcutPlatform === "linux");
-  const modifierState = getNormalizedModifierState(event);
-
-  return modifierState.metaKey === expectedMeta
-    && modifierState.ctrlKey === expectedCtrl
-    && modifierState.altKey === requiresAlt
-    && modifierState.shiftKey === requiresShift;
+  return matchesShortcutModifiers(event, modifiers, shortcutPlatform);
 }
 
 export function matchElectronShortcutInput(
@@ -420,4 +425,68 @@ export function captureShortcutFromEvent(
   }
 
   return shortcut;
+}
+
+export function createWorkspaceListFocusTracker(platform: ShortcutPlatformInput) {
+  const shortcutPlatform = normalizeShortcutPlatform(platform);
+  const { modifiers } = normalizeShortcutParts(SHORTCUTS.workspaceTaskListFocus);
+  let armed = false;
+  let cancelled = false;
+
+  function reset() {
+    armed = false;
+    cancelled = false;
+  }
+
+  function handleElectronInput(input: ElectronShortcutInput): boolean {
+    if (input.isAutoRepeat) return false;
+    const key = normalizeEventKey(input.key);
+    const modKey = shortcutPlatform === "mac" ? "Meta" : "Ctrl";
+    const hasExtraModifier = Boolean(input.shift || (shortcutPlatform === "mac" ? input.control : input.meta));
+    if (input.type === "keyDown") {
+      if ((key !== modKey && key !== "Alt") || hasExtraModifier) {
+        cancelled = true;
+        armed = false;
+      } else if (!cancelled && matchesShortcutModifiers({
+        key: input.key,
+        metaKey: Boolean(input.meta),
+        ctrlKey: Boolean(input.control),
+        altKey: Boolean(input.alt),
+        shiftKey: Boolean(input.shift),
+      }, modifiers, shortcutPlatform)) {
+        armed = true;
+      }
+      return false;
+    }
+    if (input.type !== "keyUp") return false;
+
+    const shouldFocus = armed && !cancelled && (key === modKey || key === "Alt");
+    if (shouldFocus) armed = false;
+    const hasHeldModifier = (input.meta && key !== "Meta")
+      || (input.control && key !== "Ctrl")
+      || (input.alt && key !== "Alt")
+      || (input.shift && key !== "Shift");
+    if (!hasHeldModifier) reset();
+    return shouldFocus;
+  }
+
+  return {
+    reset,
+    handleElectronInput,
+    handleKeyboardEvent(event: ShortcutInput & { type: string; repeat?: boolean; isComposing?: boolean }) {
+      if (event.isComposing) {
+        reset();
+        return false;
+      }
+      return handleElectronInput({
+        type: event.type === "keydown" ? "keyDown" : "keyUp",
+        key: event.key,
+        meta: event.metaKey,
+        control: event.ctrlKey,
+        alt: event.altKey,
+        shift: event.shiftKey,
+        isAutoRepeat: event.repeat,
+      });
+    },
+  };
 }
