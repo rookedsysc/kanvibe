@@ -1,7 +1,17 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { useLocale, useTranslations } from "next-intl";
+import { computeProjectColor } from "@/lib/projectColor";
+import { buildProjectDisplayMap } from "@/desktop/renderer/utils/projectDisplay";
+import TaskCardContent from "@/components/TaskCardContent";
+import { useHasBoardShortcutBlocker } from "@/desktop/renderer/components/BoardCommandProvider";
+import { createWorkspaceListFocusTracker, getCurrentShortcutPlatform } from "@/desktop/shared/keyboardShortcut";
+import { isShortcutCaptureActive } from "@/desktop/renderer/utils/shortcutBindings";
+import { requestActiveTerminalFocusAfterUiSettles } from "@/desktop/renderer/utils/terminalFocus";
+import { useRunningAgentPanes } from "@/desktop/renderer/hooks/useLiveAiSessions";
+import { useBoardTaskDiffStats } from "@/desktop/renderer/hooks/useTaskDiffStats";
+import { useUnreadNotificationCountByTask } from "@/desktop/renderer/hooks/useUnreadNotificationCountByTask";
 import BoardSortPicker from "@/components/BoardSortPicker";
 import ProjectSelector from "@/components/ProjectSelector";
 import { useBoardSortPreference } from "@/desktop/renderer/hooks/useBoardSortPreference";
@@ -21,6 +31,7 @@ interface WorkspaceTaskListProps {
   tasks: KanbanTask[];
   projects: Project[];
   selectedTaskId: string | null;
+  selectionRequestKey?: string;
   onSelectTask: (taskId: string) => void;
   hasMoreDoneTasks: boolean;
   onLoadMoreDoneTasks: () => void;
@@ -49,6 +60,7 @@ export default function WorkspaceTaskList({
   tasks,
   projects,
   selectedTaskId,
+  selectionRequestKey,
   onSelectTask,
   hasMoreDoneTasks,
   onLoadMoreDoneTasks,
@@ -57,6 +69,12 @@ export default function WorkspaceTaskList({
   const tBoard = useTranslations("board");
   const tTask = useTranslations("task");
   const locale = useLocale();
+  const listRef = useRef<HTMLUListElement>(null);
+  const [hasListFocus, setHasListFocus] = useState(false);
+  const [hiddenSelectionId, setHiddenSelectionId] = useState<string | null>(null);
+  const hasShortcutBlocker = useHasBoardShortcutBlocker();
+  const runningAgentPanes = useRunningAgentPanes(true);
+  const unreadCountByTask = useUnreadNotificationCountByTask();
   const [searchQuery, setSearchQuery] = useState("");
   /** 비어 있으면 모든 상태를 보여 준다 */
   const [selectedStatuses, setSelectedStatuses] = useState<ReadonlySet<TaskStatus>>(() => new Set());
@@ -67,7 +85,8 @@ export default function WorkspaceTaskList({
   const [selectedProjectIds, setSelectedProjectIds] = useProjectFilterParams(filterableProjectIds);
 
   const projectLookup = useMemo(() => new Map(projects.map((project) => [project.id, project])), [projects]);
-  const projectNameById = useMemo(() => new Map(projects.map((project) => [project.id, project.name])), [projects]);
+  const projectDisplayMap = useMemo(() => buildProjectDisplayMap(projects), [projects]);
+  const projectNameById = useMemo(() => new Map([...projectDisplayMap].map(([id, display]) => [id, display.name])), [projectDisplayMap]);
   const projectFilterSet = useMemo(
     () => buildProjectFilterSet(selectedProjectIds, projects),
     [selectedProjectIds, projects],
@@ -78,7 +97,7 @@ export default function WorkspaceTaskList({
     locale,
   }), [locale, projectLookup, projectNameById, tasks]);
 
-  const listedTasks = useMemo(() => {
+  const filteredTasks = useMemo(() => {
     const normalizedQuery = searchQuery.trim().toLowerCase();
     const visibleStatuses = TASK_STATUS_ORDER.filter((status) => selectedStatuses.size === 0 || selectedStatuses.has(status));
 
@@ -93,7 +112,82 @@ export default function WorkspaceTaskList({
     });
   }, [projectFilterSet, projectLookup, projectNameById, searchQuery, selectedStatuses, sortContext, sortPreference, taskKindFilter, tasks]);
 
+  const listedTasks = useMemo(() => {
+    const selectedTask = tasks.find((task) => task.id === selectedTaskId);
+    return selectedTask && hiddenSelectionId !== selectedTaskId && !filteredTasks.some((task) => task.id === selectedTaskId)
+      ? [selectedTask, ...filteredTasks]
+      : filteredTasks;
+  }, [filteredTasks, hiddenSelectionId, selectedTaskId, tasks]);
+  useEffect(() => {
+    if (selectionRequestKey) setHiddenSelectionId(null);
+  }, [selectionRequestKey]);
+  const hasListedSelection = listedTasks.some((task) => task.id === selectedTaskId);
+  const diffStatsByTaskId = useBoardTaskDiffStats(listedTasks.map((task) => task.id), true);
+
+  useEffect(() => {
+    const selected = Array.from(listRef.current?.querySelectorAll<HTMLElement>("[data-workspace-task-id]") ?? [])
+      .find((card) => card.dataset.workspaceTaskId === selectedTaskId);
+    selected?.scrollIntoView?.({ block: "nearest" });
+  }, [listedTasks, selectedTaskId]);
+
+  useEffect(() => {
+    const tracker = createWorkspaceListFocusTracker(getCurrentShortcutPlatform());
+    const focusSelectedTask = () => {
+      if (hasShortcutBlocker || isShortcutCaptureActive() || document.querySelector('[role="dialog"], [aria-modal="true"]')) return;
+      const cards = Array.from(listRef.current?.querySelectorAll<HTMLElement>("[data-workspace-task-id]") ?? []);
+      const selected = cards.find((card) => card.dataset.workspaceTaskId === selectedTaskId) ?? cards[0];
+      if (selected?.dataset.workspaceTaskId && selected.dataset.workspaceTaskId !== selectedTaskId) {
+        onSelectTask(selected.dataset.workspaceTaskId);
+      }
+      selected?.focus({ preventScroll: true });
+      selected?.scrollIntoView?.({ block: "nearest" });
+    };
+    const unsubscribe = window.kanvibeDesktop?.onWorkspaceListFocusShortcut?.(focusSelectedTask);
+    const handleKey = (event: KeyboardEvent) => {
+      if (hasShortcutBlocker || isShortcutCaptureActive()) {
+        tracker.reset();
+        return;
+      }
+      if (tracker.handleKeyboardEvent(event)) focusSelectedTask();
+    };
+    if (!unsubscribe) {
+      window.addEventListener("keydown", handleKey, true);
+      window.addEventListener("keyup", handleKey, true);
+    }
+    window.addEventListener("blur", tracker.reset);
+    return () => {
+      unsubscribe?.();
+      window.removeEventListener("keydown", handleKey, true);
+      window.removeEventListener("keyup", handleKey, true);
+      window.removeEventListener("blur", tracker.reset);
+    };
+  }, [hasShortcutBlocker, onSelectTask, selectedTaskId]);
+
+  function handleTaskKeyDown(event: ReactKeyboardEvent<HTMLDivElement>, index: number) {
+    if (event.isDefaultPrevented() || event.nativeEvent.isComposing || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+    if (event.key === "Enter") {
+      event.preventDefault();
+      onSelectTask(listedTasks[index].id);
+      setHasListFocus(false);
+      requestActiveTerminalFocusAfterUiSettles();
+      return;
+    }
+    if (event.key === " ") {
+      event.preventDefault();
+      onSelectTask(listedTasks[index].id);
+      return;
+    }
+    if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
+    event.preventDefault();
+    const nextIndex = Math.max(0, Math.min(index + (event.key === "ArrowUp" ? -1 : 1), listedTasks.length - 1));
+    const nextTask = listedTasks[nextIndex];
+    if (!nextTask) return;
+    onSelectTask(nextTask.id);
+    listRef.current?.querySelectorAll<HTMLElement>("[data-workspace-task-id]")[nextIndex]?.focus({ preventScroll: true });
+  }
+
   function toggleStatus(status: TaskStatus) {
+    setHiddenSelectionId(selectedTaskId);
     setSelectedStatuses((current) => {
       const next = new Set(current);
       if (next.has(status)) {
@@ -106,12 +200,19 @@ export default function WorkspaceTaskList({
   }
 
   return (
-    <aside className="flex h-full w-80 shrink-0 flex-col border-r border-border-default bg-bg-surface">
+    <aside
+      data-terminal-focus-blocker={hasListFocus ? "true" : undefined}
+      onFocusCapture={() => setHasListFocus(true)}
+      onBlurCapture={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setHasListFocus(false);
+      }}
+      className="flex h-full w-80 shrink-0 flex-col border-r border-border-default bg-bg-surface"
+    >
       <div className="space-y-2 border-b border-border-default p-3">
         <input
           type="search"
           value={searchQuery}
-          onChange={(event) => setSearchQuery(event.target.value)}
+          onChange={(event) => { setHiddenSelectionId(selectedTaskId); setSearchQuery(event.target.value); }}
           placeholder={t("searchPlaceholder")}
           aria-label={t("searchPlaceholder")}
           className="h-8 w-full rounded-md border border-border-default bg-bg-page px-2.5 text-sm text-text-primary placeholder:text-text-muted focus:border-brand-primary focus:outline-none"
@@ -130,7 +231,7 @@ export default function WorkspaceTaskList({
                   type="button"
                   aria-pressed={isActive}
                   title={tBoard(`taskKindFilter.descriptions.${filter}`)}
-                  onClick={() => setTaskKindFilter(filter)}
+                  onClick={() => { setHiddenSelectionId(selectedTaskId); setTaskKindFilter(filter); }}
                   className={`flex flex-1 items-center justify-center rounded text-xs font-medium transition-colors ${FOCUS_RING_CLASS_NAME} ${
                     isActive
                       ? "bg-brand-primary text-text-inverse"
@@ -142,13 +243,13 @@ export default function WorkspaceTaskList({
               );
             })}
           </div>
-          <BoardSortPicker preference={sortPreference} onChange={setSortPreference} />
+          <BoardSortPicker preference={sortPreference} onChange={(preference) => { setHiddenSelectionId(selectedTaskId); setSortPreference(preference); }} />
         </div>
         <ProjectSelector
           multiple
           projects={filterableProjects}
           selectedProjectIds={selectedProjectIds}
-          onSelectionChange={setSelectedProjectIds}
+          onSelectionChange={(ids) => { setHiddenSelectionId(selectedTaskId); setSelectedProjectIds(ids); }}
           placeholder={tBoard("allProjects")}
           searchPlaceholder={tTask("projectSearch")}
           compact
@@ -177,34 +278,38 @@ export default function WorkspaceTaskList({
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto p-1.5">
-        <ul aria-label={t("taskListLabel")} className="space-y-0.5">
-          {listedTasks.map((task) => {
+        <ul ref={listRef} aria-label={t("taskListLabel")} className="space-y-1.5">
+          {listedTasks.map((task, index) => {
             const isSelected = task.id === selectedTaskId;
-            const projectName = task.projectId ? projectNameById.get(task.projectId) : null;
+            const display = task.projectId ? projectDisplayMap.get(task.projectId) : undefined;
+            const project = display?.project;
+            const isBaseProject = Boolean(task.worktreePath && !task.worktreePath.includes("__worktrees"));
             return (
               <li key={task.id}>
-                <button
-                  type="button"
+                <div
+                  role="button"
+                  tabIndex={isSelected || (!hasListedSelection && index === 0) ? 0 : -1}
                   aria-current={isSelected ? "true" : undefined}
+                  aria-description={tBoard(`columns.${task.status}`)}
+                  data-workspace-task-id={task.id}
                   onClick={() => onSelectTask(task.id)}
-                  className={`flex w-full items-start gap-2.5 rounded-md px-2.5 py-2 text-left transition-colors ${FOCUS_RING_CLASS_NAME} ${
+                  onKeyDown={(event) => handleTaskKeyDown(event, index)}
+                  className={`relative w-full cursor-pointer rounded-md px-2.5 py-2 text-left transition-colors ${FOCUS_RING_CLASS_NAME} ${isBaseProject ? "pr-8" : ""} ${
                     isSelected ? "bg-brand-subtle" : "hover:bg-bg-page"
                   }`}
                 >
-                  <span
-                    aria-hidden="true"
-                    title={tBoard(`columns.${task.status}`)}
-                    className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${STATUS_DOT_CLASS_NAMES[task.status]}`}
+                  <TaskCardContent
+                    task={task}
+                    projectName={display?.name}
+                    projectColor={display ? project?.color || computeProjectColor(display.name) : undefined}
+                    projectIconDataUrl={project?.iconDataUrl}
+                    isBaseProject={isBaseProject}
+                    rootPriorityByProjectId={sortContext.rootPriorityByProjectId}
+                    runningAgentPanes={runningAgentPanes}
+                    unreadNotificationCount={unreadCountByTask[task.id] ?? 0}
+                    diffStats={diffStatsByTaskId[task.id]}
                   />
-                  <span className="min-w-0 flex-1">
-                    <span data-testid="workspace-task-title" className="block truncate text-sm font-medium text-text-primary">
-                      {task.title}
-                    </span>
-                    <span className="block truncate text-xs text-text-muted">
-                      {[projectName, task.branchName].filter(Boolean).join(" · ")}
-                    </span>
-                  </span>
-                </button>
+                </div>
               </li>
             );
           })}

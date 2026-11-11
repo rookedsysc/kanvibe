@@ -330,10 +330,16 @@ export default function TaskQuickSearchDialog({
   }
 
   async function moveToTask(taskId: string) {
-    await navigateToTaskDetail(taskId, {
-      currentLocale: getCurrentLocale(),
-      navigate: router.push,
-    });
+    if (document.querySelector('[data-workspace-view="true"]')) {
+      const searchParams = new URLSearchParams(window.location.hash.split("?")[1] ?? "");
+      searchParams.set("taskId", taskId);
+      router.push(`/?${searchParams}`);
+    } else {
+      await navigateToTaskDetail(taskId, {
+        currentLocale: getCurrentLocale(),
+        navigate: router.push,
+      });
+    }
     closeDialog();
   }
 

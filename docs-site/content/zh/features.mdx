@@ -22,6 +22,16 @@ KanVibe Desktop 将任务状态、分支工作区、终端和代理上下文集�
 - 在卡片上直接查看项目颜色、优先级、PR 与会话标签。
 - DONE 列支持分页，适合长期项目。
 
+## Worktree 视图
+
+左侧保留任务列表，右侧显示所选任务的终端。卡片使用与 Kanban 看板相同的项目图标、标题、描述和徽章，省略外边框，分别显示选中任务与键盘焦点。
+
+- 选择快速搜索结果时会保留 Worktree 视图，选中并滚动到左侧对应任务，同时切换右侧终端。DONE 任务以及被当前筛选条件隐藏的任务也会显示。
+- 在 macOS 上只按下再松开 `Cmd+Option`，Linux 上则使用 `Ctrl+Alt`，即可聚焦列表中的所选任务。若同时使用其他按键，则不执行此焦点操作。
+- 列表获得焦点后，用 `↑ / ↓` 按显示顺序选择上一个/下一个任务并切换终端。到达首项/末项时停止；按 `Enter` 将焦点移到所选任务的终端。
+
+按键说明请参见[快捷键](/zh/shortcuts)文档。
+
 ## 任务详情工作区
 
 <figure className="kv-shot">
@@ -146,7 +156,7 @@ herdr session attach kanvibe
 
 <figure className="kv-shot">
   <img src="/screenshots/quick-search.png" alt="快速任务搜索对话框" />
-  <figcaption>按分支名或项目名搜索全部任务，并直接进入任务工作区。</figcaption>
+  <figcaption>按分支名或项目名搜索全部任务。在 Worktree 视图中，选中左侧任务并在右侧显示终端；在 Kanban 视图中则打开任务详情。</figcaption>
 </figure>
 
 ## 项目过滤、目录扫描与通知

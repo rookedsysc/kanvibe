@@ -1,4 +1,4 @@
-import { execFile } from "child_process";
+import { execFile, spawn } from "child_process";
 import { chmod, mkdir, mkdtemp, readFile, rm, stat, writeFile } from "fs/promises";
 import { tmpdir } from "os";
 import path from "path";
@@ -221,13 +221,15 @@ describe("hostFileAccess.updateTextFile 권한", () => {
   function runRemoteCommandsWithoutChmod(): void {
     mocks.execGit.mockImplementation(async (command: string, _sshHost: string, options?: { remoteStdin?: string }) => {
       const commandWithoutChmod = `umask 022; chmod() { :; }; ${command}`;
-      const child = execFile("sh", ["-c", commandWithoutChmod]);
+      const child = spawn("sh", ["-c", commandWithoutChmod], {
+        stdio: [options?.remoteStdin === undefined ? "ignore" : "pipe", "pipe", "pipe"],
+      });
       const completion = new Promise<string>((resolve, reject) => {
         let stdout = "";
         child.stdout?.on("data", (chunk: string) => { stdout += chunk; });
         child.on("close", (code) => code === 0 ? resolve(stdout) : reject(new Error(`exit ${code}: ${command}`)));
       });
-      child.stdin?.end(options?.remoteStdin ?? "");
+      child.stdin?.end(options?.remoteStdin);
       return completion;
     });
   }

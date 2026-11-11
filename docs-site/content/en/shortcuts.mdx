@@ -20,6 +20,9 @@ KanVibe keeps global, board, and task-detail shortcuts separated so terminal foc
 | --- | --- | --- |
 | `Cmd/Ctrl+F` | Board | Search visible project/task text |
 | `Cmd/Ctrl+Shift+O` | Global | Open quick task search by branch or project name |
+| `Cmd+Option` (macOS), `Ctrl+Alt` (Linux), press and release | Worktree view | Focus the selected task in the left list; does not run when combined with another key |
+| `↑ / ↓` | Focused Worktree task list | Select the previous/next task and show its terminal; stop at the first/last task |
+| `Enter` | Focused Worktree task list | Focus the selected task's terminal |
 | `Cmd/Ctrl+Shift+P` | Board | Open the project filter dropdown |
 | `Cmd/Ctrl+Shift+I` | Board | Open the notifications dropdown |
 | `Cmd+[` / `Cmd+]` (macOS), `Ctrl+[` / `Ctrl+]` (Linux) | Global | Navigate back/forward through app history |
@@ -31,6 +34,12 @@ KanVibe keeps global, board, and task-detail shortcuts separated so terminal foc
 | `↑ / ↓ / Enter / Shift+Enter / Esc` | Quick task search | Move selection, open, open in new window, close |
 | `↑ / ↓ / Enter / Esc` | Project filter | Move selection, toggle, close |
 | `↑ / ↓ / Space / Enter / Esc` | Notifications | Move selection, mark as read, open target, close |
+
+## Worktree list navigation
+
+Press and release only `Cmd+Option` on macOS or `Ctrl+Alt` on Linux to focus the currently selected task in the left list. This runs on release, and does not run if you use another key in the same combination. With the list focused, `↑ / ↓` changes both the selected task and the right terminal; navigation stops at the first/last task. `Enter` moves focus into the selected task's terminal.
+
+In Worktree view, choosing a `Cmd/Ctrl+Shift+O` search result keeps the split view open and reveals the selected task in the left list, including DONE tasks and tasks hidden by the current filters. In Kanban view, choosing a result still opens task detail. `Shift+Enter` in search continues to open task detail in a new window.
 
 ## Terminal tabs
 

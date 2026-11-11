@@ -1,6 +1,7 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { setShortcutCaptureActive } from "@/desktop/renderer/utils/shortcutBindings";
 import WorkspaceTaskList from "@/desktop/renderer/components/WorkspaceTaskList";
 import { TaskStatus, type KanbanTask } from "@/entities/KanbanTask";
 import type { Project } from "@/entities/Project";
@@ -72,7 +73,7 @@ function renderTaskList({
 
 function getListedTaskTitles() {
   const taskList = screen.getByRole("list", { name: "workspace.taskListLabel" });
-  return within(taskList).queryAllByTestId("workspace-task-title").map((title) => title.textContent);
+  return within(taskList).queryAllByRole("heading", { level: 3 }).map((title) => title.textContent);
 }
 
 describe("WorkspaceTaskList", () => {
@@ -190,4 +191,109 @@ describe("WorkspaceTaskList", () => {
     expect(getListedTaskTitles()).toEqual([]);
     expect(screen.getByText("workspace.noMatchingTasks")).toBeTruthy();
   });
+  it("↑↓는 정렬된 표시 순서로 선택하고 경계에서 멈춘다", () => {
+    const onSelectTask = vi.fn();
+    renderTaskList({ onSelectTask, selectedTaskId: "login" });
+    const login = screen.getByRole("button", { name: /Login page/ });
+    act(() => login.focus());
+    fireEvent.keyDown(login, { key: "ArrowDown" });
+    expect(onSelectTask).toHaveBeenLastCalledWith("billing");
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: /Billing export/ }));
+    const first = screen.getByRole("button", { name: /API root/ });
+    fireEvent.keyDown(first, { key: "ArrowUp" });
+    expect(onSelectTask).not.toHaveBeenCalledWith(undefined);
+    expect(document.activeElement).toBe(first);
+  });
+
+  it("목록 Enter는 상세 경로 대신 터미널 포커스를 요청한다", async () => {
+    renderTaskList({ selectedTaskId: "login" });
+    const listener = vi.fn();
+    window.addEventListener("kanvibe:request-terminal-focus", listener);
+    fireEvent.keyDown(screen.getByRole("button", { name: /Login page/ }), { key: "Enter" });
+    await waitFor(() => expect(listener).toHaveBeenCalledTimes(1));
+    window.removeEventListener("kanvibe:request-terminal-focus", listener);
+  });
+
+  it("선택된 작업은 필터 밖이어도 보이고 사용자 검색 변경은 그대로 필터링한다", () => {
+    renderTaskList({ initialEntry: "/ko?projects=project-web", selectedTaskId: "login" });
+    expect(screen.getByRole("button", { name: /Login page/ }).getAttribute("aria-current")).toBe("true");
+    fireEvent.change(screen.getByRole("searchbox"), { target: { value: "no-such-task" } });
+    expect(getListedTaskTitles()).toEqual([]);
+  });
+
+  it("Mod+Alt 단독 release는 선택된 목록 카드에 포커스를 둔다", () => {
+    renderTaskList({ selectedTaskId: "login" });
+    const search = screen.getByRole("searchbox");
+    act(() => search.focus());
+    fireEvent.keyDown(window, { key: "Alt", ctrlKey: true, altKey: true });
+    fireEvent.keyUp(window, { key: "Alt", ctrlKey: true });
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: /Login page/ }));
+  });
+
+  it("같은 작업을 재검색해도 새 검색 요청이면 필터로 숨긴 선택을 다시 보여 준다", () => {
+    const onSelectTask = vi.fn();
+    const props = { tasks: TASKS, projects: PROJECTS, selectedTaskId: "login", onSelectTask, hasMoreDoneTasks: false, onLoadMoreDoneTasks: vi.fn() };
+    const { rerender } = render(<MemoryRouter><WorkspaceTaskList {...props} selectionRequestKey="search-1" /></MemoryRouter>);
+    fireEvent.change(screen.getByRole("searchbox"), { target: { value: "Billing" } });
+    expect(screen.queryByRole("button", { name: /Login page/ })).toBeNull();
+    rerender(<MemoryRouter><WorkspaceTaskList {...props} selectionRequestKey="search-2" /></MemoryRouter>);
+    expect(screen.getByRole("button", { name: /Login page/ }).getAttribute("aria-current")).toBe("true");
+  });
+
+  it("선택이 숨겨져 있으면 목록 포커스 단축키는 첫 표시 작업도 함께 선택한다", () => {
+    const onSelectTask = vi.fn();
+    renderTaskList({ selectedTaskId: "login", onSelectTask });
+    fireEvent.change(screen.getByRole("searchbox"), { target: { value: "Billing" } });
+    const billing = screen.getByRole("button", { name: /Billing export/ });
+    expect(billing.tabIndex).toBe(0);
+    fireEvent.keyDown(window, { key: "Alt", ctrlKey: true, altKey: true });
+    fireEvent.keyUp(window, { key: "Alt", ctrlKey: true });
+    expect(document.activeElement).toBe(billing);
+    expect(onSelectTask).toHaveBeenLastCalledWith("billing");
+  });
+
+  it("색상/아이콘을 저장하지 않은 프로젝트도 Kanban의 이니셜 마커를 표시한다", () => {
+    renderTaskList();
+    expect(within(screen.getByRole("button", { name: /Login page/ })).getByTestId("project-initial-icon").textContent).toBe("a");
+  });
+
+  it("worktree 프로젝트 카드도 메인 프로젝트 이름·아이콘을 사용한다", () => {
+    const projects = [
+      { ...PROJECTS[0], color: "#0064ff", iconDataUrl: "data:image/png;base64,aGVsbG8=" },
+      { ...PROJECTS[0], id: "worktree", name: "api-worktree", repoPath: "/repos/api__worktrees/feature", isWorktree: true },
+    ];
+    const task = createTask({ id: "worktree-task", title: "Worktree task", status: TaskStatus.TODO, projectId: "worktree" });
+    render(<MemoryRouter><WorkspaceTaskList tasks={[task]} projects={projects} selectedTaskId={task.id} onSelectTask={vi.fn()} hasMoreDoneTasks={false} onLoadMoreDoneTasks={vi.fn()} /></MemoryRouter>);
+    const card = screen.getByRole("button", { name: /Worktree task/ });
+    expect(within(card).getByText("api")).toBeTruthy();
+    expect(within(card).getByRole("img", { name: "api icon" }).getAttribute("src")).toBe(projects[0].iconDataUrl);
+  });
+
+  it("Electron 포커스 요청도 모달과 단축키 녹화 중에는 무시한다", () => {
+    let requestFocus = () => {};
+    const previousApi = window.kanvibeDesktop;
+    window.kanvibeDesktop = { onWorkspaceListFocusShortcut: (listener: () => void) => { requestFocus = listener; return () => {}; } } as typeof window.kanvibeDesktop;
+    const dialog = document.createElement("div");
+    dialog.setAttribute("role", "dialog");
+    try {
+      renderTaskList({ selectedTaskId: "login" });
+      const search = screen.getByRole("searchbox");
+      act(() => search.focus());
+      document.body.append(dialog);
+      act(() => requestFocus());
+      expect(document.activeElement).toBe(search);
+      dialog.remove();
+      setShortcutCaptureActive(true);
+      act(() => requestFocus());
+      expect(document.activeElement).toBe(search);
+      setShortcutCaptureActive(false);
+      act(() => requestFocus());
+      expect(document.activeElement).toBe(screen.getByRole("button", { name: /Login page/ }));
+    } finally {
+      dialog.remove();
+      setShortcutCaptureActive(false);
+      window.kanvibeDesktop = previousApi;
+    }
+  });
+
 });
