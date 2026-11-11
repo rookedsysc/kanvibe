@@ -374,8 +374,21 @@ class _TerminalSoftKeyboardState extends State<TerminalSoftKeyboard>
         :final replacedRange,
         :final replacementText,
       ):
-        _pressBackspace(replacedRange.end - replacedRange.start);
-        _typeText(replacementText);
+        // IME는 바뀌지 않은 앞글자까지 조합 범위에 넣어 교체할 수 있다.
+        // 그 앞부분도 지워 보내면 원격 셸에서 단어 전체가 사라졌다 다시 그려진다.
+        final previous = replacedRange
+            .textInside(delta.oldText)
+            .characters
+            .toList();
+        final replacement = replacementText.characters.toList();
+        var commonPrefixLength = 0;
+        while (commonPrefixLength < previous.length &&
+            commonPrefixLength < replacement.length &&
+            previous[commonPrefixLength] == replacement[commonPrefixLength]) {
+          commonPrefixLength += 1;
+        }
+        _pressBackspace(previous.length - commonPrefixLength);
+        _typeText(replacement.skip(commonPrefixLength).join());
       case TextEditingDeltaNonTextUpdate():
         break;
     }

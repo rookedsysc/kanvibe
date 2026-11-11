@@ -150,6 +150,42 @@ Future<void> sendImeBuffer(
   await tester.pump();
 }
 
+Future<void> sendImeReplacement(
+  WidgetTester tester, {
+  required String base,
+  required String previous,
+  required String next,
+  bool composing = true,
+}) async {
+  final setClient = tester.testTextInput.log.lastWhere(
+    (call) => call.method == 'TextInput.setClient',
+  );
+  final clientId = (setClient.arguments as List)[0] as int;
+  final call = MethodCall('TextInputClient.updateEditingStateWithDeltas', [
+    clientId,
+    {
+      'deltas': [
+        {
+          'oldText': '$base$previous',
+          'deltaText': next,
+          'deltaStart': base.length,
+          'deltaEnd': base.length + previous.length,
+          'selectionBase': base.length + next.length,
+          'selectionExtent': base.length + next.length,
+          'composingBase': composing ? base.length : -1,
+          'composingExtent': composing ? base.length + next.length : -1,
+        },
+      ],
+    },
+  ]);
+  await tester.binding.defaultBinaryMessenger.handlePlatformMessage(
+    SystemChannels.textInput.name,
+    SystemChannels.textInput.codec.encodeMethodCall(call),
+    (_) {},
+  );
+  await tester.pump();
+}
+
 void main() {
   for (final mode in [
     (escape: '\x1b[?1006h', up: '\x1b[<64;', down: '\x1b[<65;'),
@@ -1153,6 +1189,63 @@ void main() {
     await sendImeBuffer(tester, base: base, previous: 't', next: 'to');
 
     expect(client.writtenInput['%19']?.join(), 'to');
+  });
+
+  for (final scenario in [
+    (previous: '안녕ㅎ', next: '안녕하', expected: '\x7f하'),
+    (previous: '한글', next: '한그리', expected: '\x7f그리'),
+    (previous: '안녕하', next: '안녕ㅎ', expected: '\x7fㅎ'),
+    (previous: '한', next: '한ㄱ', expected: 'ㄱ'),
+    (previous: 'ㄱ', next: '가', expected: '\x7f가'),
+    (previous: '😀한', next: '😀하', expected: '\x7f하'),
+  ]) {
+    testWidgets(
+      '한국어 IME 교체는 바뀐 끝부분만 전송한다: ${scenario.previous} → ${scenario.next}',
+      (tester) async {
+        final client = FakeDesktopClient();
+        await pumpPane(
+          tester,
+          _pane,
+          client: client,
+          store: FakeConnectionStore(),
+        );
+        final base = await attachSoftKeyboard(tester);
+        await sendImeReplacement(
+          tester,
+          base: base,
+          previous: '',
+          next: scenario.previous,
+        );
+        client.writtenInput['%19']!.clear();
+
+        await sendImeReplacement(
+          tester,
+          base: base,
+          previous: scenario.previous,
+          next: scenario.next,
+        );
+
+        expect(client.writtenInput['%19']!.join(), scenario.expected);
+      },
+    );
+  }
+
+  testWidgets('한국어 IME 확정은 이미 전송한 문자열을 지우거나 재전송하지 않는다', (tester) async {
+    final client = FakeDesktopClient();
+    await pumpPane(tester, _pane, client: client, store: FakeConnectionStore());
+    final base = await attachSoftKeyboard(tester);
+    await sendImeReplacement(tester, base: base, previous: '', next: '한글');
+    client.writtenInput['%19']!.clear();
+
+    await sendImeReplacement(
+      tester,
+      base: base,
+      previous: '한글',
+      next: '한글',
+      composing: false,
+    );
+
+    expect(client.writtenInput['%19'], isEmpty);
   });
 
   /// 지우기는 이제 xterm이 아니라 이 앱의 입력기가 받는다. 글자 수만큼 백스페이스가 나가야 셸이 지운다
