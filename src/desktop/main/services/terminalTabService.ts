@@ -3,6 +3,8 @@ import { SessionType, type KanbanTask } from "@/entities/KanbanTask";
 import { getTaskRepository } from "@/lib/database";
 import { execGit } from "@/lib/gitOperations";
 import {
+  focusHerdrTaskTab,
+  getHerdrTaskActiveTabId,
   closeLocalTerminalTab,
   createLocalTerminalTab,
   getLocalTerminalTabProcess,
@@ -11,6 +13,7 @@ import {
   renameLocalTerminalTab,
   selectLocalTerminalTab,
 } from "@/lib/terminal";
+import { parseHerdrSessionTarget } from "@/lib/worktree";
 import {
   buildTmuxKillWindowCommand,
   buildTmuxListWindowsCommand,
@@ -139,7 +142,9 @@ export async function listTerminalTabs(taskId: string): Promise<TerminalTabListR
   }
 
   try {
-    return { ok: true, tabs: await readTabs(target) };
+    const tabs = await readTabs(target);
+    const activeTabId = target.sessionType === SessionType.HERDR ? getHerdrTaskActiveTabId(taskId) : null;
+    return { ok: true, tabs: activeTabId ? tabs.map((tab) => ({ ...tab, isActive: tab.id === activeTabId })) : tabs };
   } catch (error) {
     return {
       ok: false,
@@ -165,8 +170,10 @@ export async function createTerminalTab(taskId: string): Promise<TerminalTabMuta
       const tabs = await readTabs(target);
       const workspaceId = (tabs.find((tab) => tab.isActive) ?? tabs[0])?.id.split(":")[0];
       if (!workspaceId) throw new Error("Herdr 워크스페이스를 찾을 수 없습니다.");
-      await runHerdrCommand(target.sessionName, ["tab", "create", "--workspace", workspaceId,
-        ...(target.worktreePath ? ["--cwd", target.worktreePath] : []), "--focus"], target.sshHost);
+      const shared = parseHerdrSessionTarget(target.sessionName).workspaceKey !== null;
+      const created = await runHerdrCommand<{ tab: { tab_id: string } }>(target.sessionName, ["tab", "create", "--workspace", workspaceId,
+        ...(target.worktreePath ? ["--cwd", target.worktreePath] : []), shared ? "--no-focus" : "--focus"], target.sshHost);
+      if (shared) await focusHerdrTaskTab(taskId, created.tab.tab_id);
       return { ok: true };
     }
     const createCommand = target.sessionType === SessionType.TMUX
@@ -249,7 +256,12 @@ export async function selectTerminalTab(
     }
 
     if (target.sessionType === SessionType.HERDR) {
-      await runHerdrCommand(target.sessionName, ["tab", "focus", tabId], target.sshHost);
+      if (parseHerdrSessionTarget(target.sessionName).workspaceKey) {
+        if (!(await readTabs(target)).some((tab) => tab.id === tabId)) throw new Error("탭을 찾을 수 없습니다.");
+        await focusHerdrTaskTab(taskId, tabId);
+      } else {
+        await runHerdrCommand(target.sessionName, ["tab", "focus", tabId], target.sshHost);
+      }
       return { ok: true };
     }
 

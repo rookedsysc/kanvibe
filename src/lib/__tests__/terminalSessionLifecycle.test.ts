@@ -5,6 +5,16 @@ import { spawnSync } from "child_process";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { SessionType } from "@/entities/KanbanTask";
 
+const { createHerdrClientProxy } = vi.hoisted(() => ({ createHerdrClientProxy: vi.fn() }));
+vi.mock("@/lib/herdrClientProxy", () => ({ createHerdrClientProxy }));
+vi.mock("@/lib/hostFileAccess", async (importOriginal) => ({
+  ...await importOriginal<typeof import("@/lib/hostFileAccess")>(),
+  readTextFile: async () => JSON.stringify({ "task-a": "w1", "task-b": "w2" }),
+  updateTextFile: async (_path: string, update: (content: string) => string | Promise<string>) => {
+    await update(JSON.stringify({ "task-a": "w1", "task-b": "w2" }));
+  },
+}));
+
 // --- Mocks ---
 
 vi.mock("child_process", async (importOriginal) => {
@@ -511,6 +521,65 @@ describe("attach ownership races", () => {
     oldWs.triggerClose();
     expect(spawnedPtys[1].kill).not.toHaveBeenCalled();
     expect(terminal.getActiveTerminalCount()).toBe(1);
+    terminal.killAllTerminalSessions();
+  });
+});
+
+
+describe("공유 Herdr Space 클라이언트", () => {
+  const config = { host: "host", hostname: "host", port: 22, username: "user", privateKeyPath: "/key" };
+  beforeEach(async () => {
+    const git = await import("@/lib/gitOperations");
+    vi.mocked(git.execGit).mockImplementation(async (command) => command.includes("'session' 'list'")
+      ? JSON.stringify({ sessions: [{ name: "kanvibe", running: true, session_dir: "/config/herdr/sessions/kanvibe", socket_path: "/config/herdr/sessions/kanvibe/herdr.sock" }] })
+      : JSON.stringify({ result: { workspaces: [{ workspace_id: "w1" }, { workspace_id: "w2" }] } }));
+  });
+  it.each([false, true])("공유 Space는 클라이언트 중계를 통해 연결하고 PTY 종료 때 중계도 닫는다 (remote=%s)", async (remote) => {
+    const proxy = { socketPath: "/tmp/proxy/client", request: vi.fn(), getActiveTabId: () => "w1:t1", close: vi.fn(async () => {}) };
+    createHerdrClientProxy.mockResolvedValueOnce(proxy);
+    const terminal = await importTerminalModule();
+    const ws = createMockWs();
+    await (remote
+      ? terminal.attachRemoteSession("task-a", null, "host", SessionType.HERDR, "kanvibe:task-a", ws as never, config, 120, 30, "/work")
+      : terminal.attachLocalSession("task-a", null, SessionType.HERDR, "kanvibe:task-a", ws as never, "/work"));
+    expect(createHerdrClientProxy).toHaveBeenCalledWith(expect.any(String), "w1");
+    expect(spawnCalls[0].args.join(" ")).toContain("HERDR_CLIENT_SOCKET_PATH=");
+    expect(spawnCalls[0].args.join(" ")).not.toContain("--session 'kanvibe'");
+    if (remote) {
+      expect(spawnCalls[0].args).toContain("-L");
+      expect(spawnCalls[0].args).toContain("-R");
+      expect(spawnCalls[0].args).toContain("ExitOnForwardFailure=yes");
+    }
+    terminal.killAllTerminalSessions();
+    expect(proxy.close).toHaveBeenCalledOnce();
+  });
+  it("중계 준비 중 창이 닫히면 소켓을 정리하고 PTY를 만들지 않는다", async () => {
+    const proxy = { socketPath: "/tmp/proxy/client", request: vi.fn(), getActiveTabId: () => null, close: vi.fn(async () => {}) };
+    let ready!: (value: typeof proxy) => void;
+    const preparing = new Promise<void>((resolve) => {
+      createHerdrClientProxy.mockImplementationOnce(() => new Promise((finish) => { ready = finish; resolve(); }));
+    });
+    const terminal = await importTerminalModule();
+    const ws = createMockWs();
+    const attaching = terminal.attachLocalSession("task-a", null, SessionType.HERDR, "kanvibe:task-a", ws as never, "/work");
+    await preparing;
+    ws.readyState = 3;
+    ready(proxy);
+    await attaching;
+    expect(spawnedPtys).toHaveLength(0);
+    expect(proxy.close).toHaveBeenCalledOnce();
+  });
+  it("task A 탭 선택은 A 클라이언트에만 전송하고 B는 그대로 둔다", async () => {
+    const proxyA = { socketPath: "/tmp/a/client", request: vi.fn(async () => {}), getActiveTabId: () => "w1:t1", close: vi.fn(async () => {}) };
+    const proxyB = { ...proxyA, socketPath: "/tmp/b/client", request: vi.fn(async () => {}) };
+    createHerdrClientProxy.mockResolvedValueOnce(proxyA).mockResolvedValueOnce(proxyB);
+    const terminal = await importTerminalModule();
+    await terminal.attachLocalSession("task-a", null, SessionType.HERDR, "kanvibe:task-a", createMockWs() as never, "/work/a");
+    await terminal.attachLocalSession("task-b", null, SessionType.HERDR, "kanvibe:task-b", createMockWs() as never, "/work/b");
+    await terminal.focusHerdrTaskTab("task-a", "w1:t2");
+    expect(proxyA.request).toHaveBeenCalledWith("tab.focus", { tab_id: "w1:t2" });
+    expect(proxyB.request).not.toHaveBeenCalled();
+    await expect(terminal.focusHerdrTaskTab("task-a", "w2:t1")).rejects.toThrow("다른 Space");
     terminal.killAllTerminalSessions();
   });
 });

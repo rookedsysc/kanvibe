@@ -1158,3 +1158,18 @@ describe("createWorktreeWithSession — Zellij KDL layout file persistence", () 
     expect(zellijCalls).toHaveLength(0);
   });
 });
+
+
+describe("Herdr task 세션 참조", () => {
+  it("기존 디렉터리 연결은 공유 Spaces 참조를 반환하고 서버를 미리 띄우지 않는다", async () => {
+    const { createSessionWithoutWorktree } = await import("@/lib/worktree");
+    const result = await createSessionWithoutWorktree("/work/project", "feature/login", SessionType.HERDR);
+    expect(result.sessionName).toBe("kanvibe:project-feature-login");
+  });
+  it("새 worktree도 공유 Spaces 참조를 사용한다", async () => {
+    const { createWorktreeWithSession } = await import("@/lib/worktree");
+    const result = await createWorktreeWithSession("/work/project", "feature/login", "main", SessionType.HERDR);
+    expect(result.sessionName).toBe("kanvibe:project-feature-login");
+    expect(result.worktreePath).toBe("/work/project__worktrees/feature-login");
+  });
+});
