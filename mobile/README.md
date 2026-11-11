@@ -217,7 +217,11 @@ App Store Connect를 조회해 `CFBundleVersion`을 스스로 올리므로 손�
 
 모바일에서 터미널을 보고 있는 동안 PC의 같은 터미널 크기도 바뀐다. 탭을 벗어나거나 앱을 배경으로 보내거나 연결을 닫으면 PC의 크기로 돌아간다. 여러 모바일이 같은 tmux 창이나 terminal을 보고 있다면 마지막으로 크기를 보낸 기기를 우선하고, 그 기기가 나가면 남은 기기의 크기를 적용한다.
 
-tmux는 창 크기 정책과 분할 배치를 함께 보관했다가 마지막 모바일 연결이 끝날 때 복원한다. 포커스는 바꾸지 않는다. 출력은 tmux의 `capture-pane`/`pipe-pane`, Zellij의 pane id를 지정한 `dump-screen`, Herdr의 `pane read`/`terminal session observe`로 읽는다. Herdr는 프로그램 크기를 바꾸지 않고 출력이 잠잠해질 때 늘어난 이력을 다시 받는다. 마우스 모드가 프레임에 없어 스와이프는 항상 화면만 스크롤한다. wire의 text 프레임은 키 입력, binary JSON의 `type: resize`는 크기 조정으로 구분한다. 모바일 화면 맞춤에는 이 기능을 지원하는 데스크탑 빌드도 필요하다.
+tmux는 창 크기 정책과 분할 배치를 함께 보관했다가 마지막 모바일 연결이 끝날 때 복원한다. Herdr는 pane마다 `terminal session control`로 실제 프로그램 크기를 바꾸고, `terminal.release`로 최신 PC 크기에 돌려놓는다. 이미 다른 controller가 제어 중이면 강제로 빼앗지 않는다. 관찰 스트림도 같은 행·열을 사용한다.
+
+Zellij는 모바일에서 선택한 pane의 탭을 PC에서도 활성화한 뒤, KanVibe가 소유한 task 연결의 PTY 크기를 조정한다. pane의 테두리·분할 비율·상태바를 제외한 실제 프로그램 행·열이 맞는지 다시 확인하므로, 여러 탭과 분할 pane도 화면 맞춤을 지원한다. 마지막 모바일 연결이 끝나면 가장 최근 PC 크기를 적용하고 PC 탭은 마지막으로 선택한 탭을 유지한다. floating pane은 절대 행·열로 조정하고 원래 좌표와 크기로 복원한다. 같은 탭에 붙은 다른 클라이언트가 더 작은 화면을 요구하면 Zellij가 크기를 제한할 수 있다.
+
+출력은 tmux의 `capture-pane`/`pipe-pane`, Zellij의 pane id를 지정한 `dump-screen`, Herdr의 `pane read`/`terminal session observe`로 읽는다. Herdr는 출력이 잠잠해질 때 늘어난 이력을 다시 받는다. 마우스 모드가 프레임에 없어 스와이프는 항상 화면만 스크롤한다. wire의 text 프레임은 키 입력, binary JSON의 `type: resize`는 크기 조정으로 구분한다. 모바일 화면 맞춤에는 이 기능을 지원하는 데스크탑 빌드도 필요하다.
 
 터미널의 Powerline/Nerd Font 기호는 [Nerd Fonts Symbols Only v3.5.1](https://github.com/ryanoasis/nerd-fonts/tree/v3.5.1/patched-fonts/NerdFontsSymbolsOnly)을 보조 글꼴로 사용한다. 원본 파일과 MIT 라이선스를 `assets/fonts/`에 포함한다.
 

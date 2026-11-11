@@ -1164,6 +1164,29 @@ export function releaseTerminalTabViewport(taskId: string, tabId: string, cols: 
   resizeTerminalEntry(entry, desktop.cols, desktop.rows);
 }
 
+export function getTaskTerminalSize(taskId: string): { cols: number; rows: number } | null {
+  const entry = activeTerminals.get(buildTerminalKey(taskId, null));
+  if (entry?.sessionType !== SessionType.ZELLIJ) return null;
+  return { cols: entry.pty.cols, rows: entry.pty.rows };
+}
+
+export function resizeTaskTerminalViewport(taskId: string, cols: number, rows: number): void {
+  const entry = activeTerminals.get(buildTerminalKey(taskId, null));
+  if (entry?.sessionType !== SessionType.ZELLIJ) {
+    throw new Error("Zellij 터미널 세션이 실행 중이지 않습니다.");
+  }
+  entry.mobileViewportSize = { cols, rows };
+  resizeTerminalEntry(entry, cols, rows);
+}
+
+export function releaseTaskTerminalViewport(taskId: string, cols: number, rows: number): void {
+  const entry = activeTerminals.get(buildTerminalKey(taskId, null));
+  if (entry?.sessionType !== SessionType.ZELLIJ) return;
+  entry.mobileViewportSize = undefined;
+  const desktop = entry.desktopViewportSize ?? { cols, rows };
+  resizeTerminalEntry(entry, desktop.cols, desktop.rows);
+}
+
 function resizeTerminalEntry(entry: TerminalEntry, cols: number, rows: number): void {
   entry.pty.resize(cols, rows);
   entry.screen?.terminal.resize(cols, rows);

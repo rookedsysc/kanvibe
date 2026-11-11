@@ -48,7 +48,10 @@ vi.mock("node-pty", () => ({
     const ptyStub: SpawnedPtyStub = {
       kill: vi.fn(),
       write: vi.fn(),
-      resize: vi.fn(),
+      resize: vi.fn((cols: number, rows: number) => {
+        ptyStub.cols = cols;
+        ptyStub.rows = rows;
+      }),
       onData: vi.fn(),
       onExit: vi.fn((handler: (exitStatus: { exitCode: number; signal?: number }) => void) => {
         exitHandler = handler;
@@ -110,6 +113,63 @@ beforeEach(() => {
   vi.resetModules();
   spawnedPtys.length = 0;
   spawnCalls.length = 0;
+});
+
+describe("Zellij 모바일 viewport 소유권", () => {
+  it("모바일 크기를 유지하고 마지막에 최신 PC 크기를 복원한다", async () => {
+    const { attachLocalSession, getTaskTerminalSize, resizeTaskTerminalViewport, releaseTaskTerminalViewport } = await importTerminalModule();
+    const desktop = createMockWs();
+    await attachLocalSession("zellij-task", null, SessionType.ZELLIJ, "proj-main", desktop as never, "/work", 120, 30);
+    expect(getTaskTerminalSize("zellij-task")).toEqual({ cols: 120, rows: 30 });
+
+    resizeTaskTerminalViewport("zellij-task", 88, 73);
+    const onMessage = desktop.on.mock.calls.find(([event]) => event === "message")?.[1];
+    onMessage(Buffer.from(`\x01${JSON.stringify({ type: "resize", cols: 100, rows: 40 })}`));
+
+    expect(getTaskTerminalSize("zellij-task")).toEqual({ cols: 88, rows: 73 });
+    expect(spawnedPtys[0].resize.mock.calls).toEqual([[88, 73]]);
+    releaseTaskTerminalViewport("zellij-task", 120, 30);
+    expect(getTaskTerminalSize("zellij-task")).toEqual({ cols: 100, rows: 40 });
+
+    onMessage(Buffer.from(`\x01${JSON.stringify({ type: "resize", cols: 110, rows: 45 })}`));
+    expect(getTaskTerminalSize("zellij-task")).toEqual({ cols: 110, rows: 45 });
+  });
+
+  it("접속 중 PC 변경이 없으면 원래 크기를 복원한다", async () => {
+    const { attachLocalSession, getTaskTerminalSize, resizeTaskTerminalViewport, releaseTaskTerminalViewport } = await importTerminalModule();
+    await attachLocalSession("zellij-task", null, SessionType.ZELLIJ, "proj-main", createMockWs() as never, "/work", 120, 30);
+
+    resizeTaskTerminalViewport("zellij-task", 88, 73);
+    releaseTaskTerminalViewport("zellij-task", 120, 30);
+
+    expect(getTaskTerminalSize("zellij-task")).toEqual({ cols: 120, rows: 30 });
+  });
+
+  it("다른 세션이나 존재하지 않는 PTY는 변경하지 않는다", async () => {
+    const { attachLocalSession, getTaskTerminalSize, resizeTaskTerminalViewport, releaseTaskTerminalViewport } = await importTerminalModule();
+    await attachLocalSession("tmux-task", null, SessionType.TMUX, "proj-main", createMockWs() as never, "/work");
+
+    for (const taskId of ["tmux-task", "missing-task"]) {
+      expect(getTaskTerminalSize(taskId)).toBeNull();
+      expect(() => resizeTaskTerminalViewport(taskId, 88, 73)).toThrow();
+      expect(() => releaseTaskTerminalViewport(taskId, 120, 30)).not.toThrow();
+    }
+    expect(spawnedPtys[0].resize).not.toHaveBeenCalled();
+  });
+
+  it("닫힌 Zellij PTY는 viewport 복원으로 다시 만들지 않는다", async () => {
+    const { attachLocalSession, getTaskTerminalSize, resizeTaskTerminalViewport, releaseTaskTerminalViewport } = await importTerminalModule();
+    const mobile = createMockWs();
+    await attachLocalSession("zellij-task", null, SessionType.ZELLIJ, "proj-main", mobile as never, "/work", 120, 30);
+    resizeTaskTerminalViewport("zellij-task", 88, 73);
+    mobile.triggerClose();
+
+    releaseTaskTerminalViewport("zellij-task", 120, 30);
+
+    expect(getTaskTerminalSize("zellij-task")).toBeNull();
+    expect(spawnedPtys).toHaveLength(1);
+    expect(spawnedPtys[0].resize.mock.calls).toEqual([[88, 73]]);
+  });
 });
 
 describe("세션 타입별 수명", () => {
