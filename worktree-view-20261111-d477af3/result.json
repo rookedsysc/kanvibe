@@ -1,0 +1,138 @@
+{
+  "ok": true,
+  "scope": "워크스페이스 뷰: 칸반↔워크스페이스 전환, 목록 필터, 검색 선택과 좌우 표시 일치, 수식키 단독 목록 포커스, 위아래 선택과 터미널 복귀, 자동 연결, 재시작 후 뷰 유지",
+  "branch": "perf/worktree-view",
+  "commit": "ed0cb3b",
+  "checks": [
+    {
+      "name": "QA 데이터 준비: 프로젝트와 세션 없는 task 2개, 기본 세션 타입 terminal",
+      "ok": true,
+      "detail": "alpha=009583f8-ba4a-4bb7-b428-d8f5b1422084, beta=419baa24-e83a-437c-b7e8-9e555ceeafca"
+    },
+    {
+      "name": "칸반에서 시작하고 팔레트 `view workspace`로 워크스페이스로 전환",
+      "ok": true,
+      "detail": "listed=3"
+    },
+    {
+      "name": "세션 없는 task를 고르면 폼 없이 자동 연결되고 오른쪽에 터미널이 뜬다",
+      "ok": true,
+      "detail": "sessionType=terminal, sessionName=workspace-view-worktree-navigation-publish-main"
+    },
+    {
+      "name": "검색어 필터는 일치하는 task만 남긴다",
+      "ok": true,
+      "detail": "beta-billing-worktree-navigation-publish"
+    },
+    {
+      "name": "다른 task를 고르면 오른쪽 터미널이 그 task로 바뀐다",
+      "ok": true,
+      "detail": "terminal header shows beta task"
+    },
+    {
+      "name": "빠른 검색의 beta 선택은 상세 경로 대신 Worktree 좌우 선택을 갱신한다",
+      "ok": true,
+      "detail": "taskId=419baa24-e83a-437c-b7e8-9e555ceeafca, left aria-current and right terminal header agree; no /task/ route"
+    },
+    {
+      "name": "목록 필터가 숨긴 현재 beta도 빠른 검색으로 다시 고르면 왼쪽에 표시된다",
+      "ok": true,
+      "detail": "beta is revealed and selected while the user's alpha filter remains intact"
+    },
+    {
+      "name": "터미널에서 Cmd+Option/Ctrl+Alt만 눌렀다 떼면 현재 선택 카드로 포커스가 이동한다",
+      "ok": true,
+      "detail": "Electron BrowserWindow.webContents.sendInputEvent → before-input-event → selected left card focus"
+    },
+    {
+      "name": "목록 위아래 키는 표시 순서대로 좌우 선택을 바꾸고 양 끝에서 멈춘다",
+      "ok": true,
+      "detail": "3 listed tasks; up/down changes selected card and terminal header; first/last do not wrap"
+    },
+    {
+      "name": "목록 Enter는 터미널로 복귀하고 입력한 셸 명령이 실제 출력된다",
+      "ok": true,
+      "detail": "terminal textarea focused and real PTY output contains WORKSPACE_NAV_worktree_navigation_publish"
+    },
+    {
+      "name": "Cmd+Option/Ctrl+Alt에 다른 키를 섞으면 터미널 포커스를 유지한다",
+      "ok": true,
+      "detail": "modifier chord with Right does not focus the task list"
+    },
+    {
+      "name": "상태 칩 복수 선택: todo만 켜면 두 task, done을 더하면 done도 포함",
+      "ok": true,
+      "detail": "todoOnly=3, pressed=2"
+    },
+    {
+      "name": "다시 불러와도 워크스페이스 뷰가 유지된다",
+      "ok": true,
+      "detail": "workspace restored from AppSettings"
+    },
+    {
+      "name": "팔레트 `view kanban`으로 칸반으로 돌아간다",
+      "ok": true,
+      "detail": "board cards visible"
+    },
+    {
+      "name": "차단성 콘솔 오류 없음",
+      "ok": true,
+      "detail": "none"
+    }
+  ],
+  "consoleErrors": [],
+  "screenshots": [
+    {
+      "label": "kanban-before-switch",
+      "path": "/Users/rookedsysc/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-worktree-view/qa-results/roky-harness/worktree-navigation/electron-publish/screenshots/01-kanban-before-switch.png"
+    },
+    {
+      "label": "workspace-after-switch",
+      "path": "/Users/rookedsysc/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-worktree-view/qa-results/roky-harness/worktree-navigation/electron-publish/screenshots/02-workspace-after-switch.png"
+    },
+    {
+      "label": "alpha-auto-connected-terminal",
+      "path": "/Users/rookedsysc/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-worktree-view/qa-results/roky-harness/worktree-navigation/electron-publish/screenshots/03-alpha-auto-connected-terminal.png"
+    },
+    {
+      "label": "search-filter-beta",
+      "path": "/Users/rookedsysc/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-worktree-view/qa-results/roky-harness/worktree-navigation/electron-publish/screenshots/04-search-filter-beta.png"
+    },
+    {
+      "label": "beta-terminal",
+      "path": "/Users/rookedsysc/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-worktree-view/qa-results/roky-harness/worktree-navigation/electron-publish/screenshots/05-beta-terminal.png"
+    },
+    {
+      "label": "search-selected-beta-in-workspace",
+      "path": "/Users/rookedsysc/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-worktree-view/qa-results/roky-harness/worktree-navigation/electron-publish/screenshots/06-search-selected-beta-in-workspace.png"
+    },
+    {
+      "label": "filtered-search-reveals-selected-beta",
+      "path": "/Users/rookedsysc/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-worktree-view/qa-results/roky-harness/worktree-navigation/electron-publish/screenshots/07-filtered-search-reveals-selected-beta.png"
+    },
+    {
+      "label": "modifier-release-focuses-selected-card",
+      "path": "/Users/rookedsysc/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-worktree-view/qa-results/roky-harness/worktree-navigation/electron-publish/screenshots/08-modifier-release-focuses-selected-card.png"
+    },
+    {
+      "label": "keyboard-selection-and-terminal-header",
+      "path": "/Users/rookedsysc/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-worktree-view/qa-results/roky-harness/worktree-navigation/electron-publish/screenshots/09-keyboard-selection-and-terminal-header.png"
+    },
+    {
+      "label": "enter-restores-usable-beta-terminal",
+      "path": "/Users/rookedsysc/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-worktree-view/qa-results/roky-harness/worktree-navigation/electron-publish/screenshots/10-enter-restores-usable-beta-terminal.png"
+    },
+    {
+      "label": "status-chips-multi-select",
+      "path": "/Users/rookedsysc/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-worktree-view/qa-results/roky-harness/worktree-navigation/electron-publish/screenshots/11-status-chips-multi-select.png"
+    },
+    {
+      "label": "kanban-after-switch-back",
+      "path": "/Users/rookedsysc/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-worktree-view/qa-results/roky-harness/worktree-navigation/electron-publish/screenshots/12-kanban-after-switch-back.png"
+    }
+  ],
+  "videos": [
+    "/Users/rookedsysc/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-worktree-view/qa-results/roky-harness/worktree-navigation/electron-publish/video/155f4d6152af2387a7c3e841f5b2ccbb.webm"
+  ],
+  "runId": "worktree-navigation-publish"
+}
