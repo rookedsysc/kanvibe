@@ -1,6 +1,8 @@
+import { ensureKanvibeHooksCurrent } from "@/lib/kanvibeHooksInstaller";
+import { broadcastTaskHookInstallFailed } from "@/lib/boardNotifier";
 import { EventEmitter } from "node:events";
 import type { WebContents } from "electron";
-import { getTaskRepository } from "@/lib/database";
+import { getProjectRepository, getTaskRepository } from "@/lib/database";
 import { SessionType, type KanbanTask } from "@/entities/KanbanTask";
 import { attachLocalSession, attachRemoteSession, focusSession } from "@/lib/terminal";
 import { parseSSHConfig, type SSHHostConfig } from "@/lib/sshConfig";
@@ -216,6 +218,26 @@ export async function attachTaskTerminal(
   if (!resolved.ok) {
     client.close(1008, resolved.error);
     throw new Error(resolved.error);
+  }
+
+  let hookTargetPath = task.worktreePath || task.project?.repoPath;
+  if (!hookTargetPath && task.projectId) {
+    const projectRepo = await getProjectRepository();
+    const project = await projectRepo.findOneBy({ id: task.projectId });
+    hookTargetPath = project?.repoPath;
+  }
+  if (hookTargetPath) {
+    try {
+      await ensureKanvibeHooksCurrent(hookTargetPath, task.id, task.sshHost);
+    } catch (error) {
+      broadcastTaskHookInstallFailed({
+        taskId: task.id,
+        taskTitle: task.title,
+        error: error instanceof Error ? error.message : "hooks 설정 실패",
+      });
+      throw error;
+    }
+    if (client.readyState !== client.OPEN) return;
   }
 
   await attachRemoteSession(

@@ -46,7 +46,7 @@ async function writeLocalHookProviderFiles(files: ShellHookProviderFile[]): Prom
 /**
  * 원격 설치는 Hook 서버에서 설치 스크립트를 내려받아 실행하는 경로를 먼저 쓴다.
  * 파일 본문을 SSH 명령줄에 싣지 않아 명령이 짧아지고, 인용 처리에 걸릴 여지가 사라진다.
- * 원격에서 Hook 서버로 오는 경로가 막혀 있으면 기존 SSH 주입 방식으로 물러난다.
+ * 터널 소켓으로 내려받을 수 없으면 검증된 SSH 연결에서 파일을 설치한다.
  */
 async function writeRemoteHookProviderFiles(
   files: ShellHookProviderFile[],
@@ -56,7 +56,7 @@ async function writeRemoteHookProviderFiles(
     await installRemoteHookProviderFilesOverHttp(files, sshHost);
     return;
   } catch (error) {
-    console.warn("[hooks] HTTP 설치 경로 실패, SSH 주입으로 대체합니다", {
+    console.warn("[hooks] 소켓 설치 경로 실패, SSH 주입으로 대체합니다", {
       sshHost,
       error: error instanceof Error ? error.message : String(error),
     });
@@ -83,7 +83,7 @@ async function installRemoteHookProviderFilesOverHttp(
     const output = await execGit(
       buildHookInstallBootstrapCommand(hookServerUrl, installTicket, clientId),
       sshHost,
-      { timeoutMs: REMOTE_HOOK_INSTALL_TIMEOUT_MS },
+      { timeoutMs: REMOTE_HOOK_INSTALL_TIMEOUT_MS, strictHostKeyChecking: true },
     );
 
     if (!output.includes(HOOK_INSTALL_SUCCESS_MARKER)) {
@@ -112,5 +112,5 @@ async function injectRemoteHookProviderFilesOverSsh(
     return parts.join(" && ");
   }).join(" && ");
 
-  await execGit(command, sshHost);
+  await execGit(command, sshHost, { strictHostKeyChecking: true });
 }

@@ -160,6 +160,7 @@ describe("hookService.updateHookTaskStatus", () => {
     expect(mocks.execGit).toHaveBeenCalledWith(
       "git -C '/workspace/api__worktrees/feature-hook-done' rev-parse --path-format=absolute --git-common-dir",
       "remote-host",
+      { strictHostKeyChecking: true },
     );
     expect(mocks.taskRepo.save).toHaveBeenCalledWith(expect.objectContaining({
       id: task.id,

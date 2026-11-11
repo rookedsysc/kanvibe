@@ -268,6 +268,15 @@ describe("kanvibeProjectState", () => {
     expect(parseKanvibeTargets("not-json")).toEqual({ schemaVersion: 1, targets: [] });
   });
 
+  it("전송 종류를 보존하고 알 수 없는 전송 종류를 legacy 등록으로 바꾸지 않는다", () => {
+    const targets = [
+      { url: "http://localhost:9736", taskId: "local-task", transport: "local" as const },
+      { url: "http://10.0.0.5:9736", taskId: "remote-task", clientId: "client-a", transport: "ssh" as const },
+    ];
+    expect(parseKanvibeTargets(buildKanvibeTargetsContent(targets)).targets).toEqual(targets);
+    expect(parseKanvibeTargets(JSON.stringify({ targets: [{ ...targets[0], transport: "invalid" }] })).targets).toEqual([]);
+  });
+
   it("같은 task를 보는 다른 client도 알림 대상으로 함께 남긴다", async () => {
     mockReadTextFile.mockResolvedValue(JSON.stringify({
       schemaVersion: 1,

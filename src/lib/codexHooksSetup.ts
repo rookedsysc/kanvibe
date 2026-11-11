@@ -172,7 +172,7 @@ export async function setupCodexHooks(
 ): Promise<void> {
   const configPath = getCodexConfigPath(repoPath, sshHost);
   const hooksPath = getCodexHooksPath(repoPath, sshHost);
-  const existingFiles = await readTextFiles([configPath, hooksPath], sshHost);
+  const existingFiles = await readTextFiles([configPath, hooksPath], sshHost, { strictHostKeyChecking: true });
 
   await writeHookProviderFiles(
     buildCodexHookFiles(

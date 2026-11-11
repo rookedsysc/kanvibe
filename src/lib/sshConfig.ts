@@ -46,6 +46,7 @@ export function buildSSHArgs(
     trustedX11Forwarding?: boolean;
     connectionReuse?: SSHConnectionReuseOptions;
     connectionHealth?: SSHConnectionHealthOptions;
+    strictHostKeyChecking?: boolean;
   },
 ): string[] {
   const args = [
@@ -69,7 +70,13 @@ export function buildSSHArgs(
     args.push("-T");
   }
 
-  if (options?.connectionReuse) {
+  if (options?.strictHostKeyChecking) {
+    args.push(
+      "-o", "StrictHostKeyChecking=yes",
+      "-o", "ControlMaster=no",
+      "-o", "ControlPath=none",
+    );
+  } else if (options?.connectionReuse) {
     args.push(
       "-o",
       "ControlMaster=auto",

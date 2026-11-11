@@ -27,6 +27,7 @@ const mocks = vi.hoisted(() => ({
   getHookServerUrl: vi.fn(() => "http://localhost:9736"),
   aggregateAiSessions: vi.fn(),
   getAiSessionDetail: vi.fn(),
+  ensureKanvibeHooksCurrent: vi.fn(async () => false),
   installKanvibeHooks: vi.fn(),
   installKanvibeHookProvider: vi.fn(),
   scheduleKanvibeHooksInstall: vi.fn(),
@@ -170,6 +171,7 @@ vi.mock("@/lib/remoteSessionDependency", () => ({
 }));
 
 vi.mock("@/lib/kanvibeHooksInstaller", () => ({
+  ensureKanvibeHooksCurrent: mocks.ensureKanvibeHooksCurrent,
   installKanvibeHooks: mocks.installKanvibeHooks,
   installKanvibeHookProvider: mocks.installKanvibeHookProvider,
   scheduleKanvibeHooksInstall: mocks.scheduleKanvibeHooksInstall,
@@ -970,7 +972,7 @@ describe("projectService local hook installation", () => {
     // Then
     expect(result.success).toBe(true);
     expect(remove).not.toHaveBeenCalled();
-    expect(mocks.installKanvibeHooks).toHaveBeenCalledWith(
+    expect(mocks.ensureKanvibeHooksCurrent).toHaveBeenCalledWith(
       "/workspace/api",
       "task-1",
       null,
@@ -2688,6 +2690,15 @@ describe("projectService remote hook and AI session support", () => {
     mocks.getOpenCodeHooksStatus.mockResolvedValue({ installed: false });
   });
 
+  it("상세 훅 조회의 갱신 실패는 성공 상태로 감추지 않는다", async () => {
+    const task = { id: "task-remote", worktreePath: "/remote/worktree", project: { repoPath: "/remote/repo", sshHost: "remote-host" } };
+    mocks.getTaskRepository.mockResolvedValue({ findOne: vi.fn(async () => task) });
+    mocks.ensureKanvibeHooksCurrent.mockRejectedValueOnce(new Error("inspection unavailable"));
+    const { getTaskHooksStatus } = await import("@/desktop/main/services/projectService");
+    await expect(getTaskHooksStatus(task.id)).rejects.toThrow("inspection unavailable");
+    expect(mocks.getClaudeHooksStatus).not.toHaveBeenCalled();
+  });
+
   it("원격 태스크의 Claude hook 상태도 sshHost 기준으로 조회한다", async () => {
     // Given
     const task = {
@@ -2754,6 +2765,7 @@ describe("projectService remote hook and AI session support", () => {
     await getTaskCodexHooksStatus(task.id);
     await getTaskOpenCodeHooksStatus(task.id);
 
+    expect(mocks.ensureKanvibeHooksCurrent).toHaveBeenCalledWith("/remote/repo", "task-remote", "remote-host");
     expect(mocks.getClaudeHooksStatus).toHaveBeenCalledWith("/remote/repo", "task-remote", "remote-host");
     expect(mocks.getGeminiHooksStatus).toHaveBeenCalledWith("/remote/repo", "task-remote", "remote-host");
     expect(mocks.getCodexHooksStatus).toHaveBeenCalledWith("/remote/repo", "task-remote", "remote-host");

@@ -1,5 +1,5 @@
 import { execFile } from "child_process";
-import { chmod, mkdtemp, readFile, rm, stat, writeFile } from "fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, rm, stat, writeFile } from "fs/promises";
 import { tmpdir } from "os";
 import path from "path";
 import { promisify } from "util";
@@ -10,6 +10,7 @@ const execFileAsync = promisify(execFile);
 const mocks = vi.hoisted(() => ({
   execGit: vi.fn(),
   skipsChmod: false,
+  readError: undefined as NodeJS.ErrnoException | undefined,
 }));
 
 /** 기록 뒤 권한 조정을 건너뛰게 해, 파일이 처음 만들어질 때의 권한을 볼 수 있게 한다 */
@@ -17,7 +18,11 @@ vi.mock("fs/promises", async () => {
   /** 이 환경에서는 importActual("fs/promises")가 빈 모듈을 돌려주므로, 가로채지 않는 node: 경로로 실제 모듈을 읽는다 */
   const actual = await import("node:fs/promises");
   const chmod = async (...args: Parameters<typeof actual.chmod>) => (mocks.skipsChmod ? undefined : actual.chmod(...args));
-  return { ...actual, chmod, default: { ...actual, chmod } };
+  const readFile = async (...args: Parameters<typeof actual.readFile>) => {
+    if (mocks.readError) throw mocks.readError;
+    return actual.readFile(...args);
+  };
+  return { ...actual, chmod, readFile, default: { ...actual, chmod, readFile } };
 });
 
 vi.mock("@/lib/gitOperations", () => ({
@@ -46,6 +51,7 @@ describe("hostFileAccess.readTextFiles", () => {
   beforeEach(async () => {
     tempDir = await mkdtemp(path.join(tmpdir(), "kanvibe-host-files-"));
     mocks.execGit.mockReset();
+    mocks.readError = undefined;
   });
 
   afterEach(async () => {
@@ -113,6 +119,61 @@ describe("hostFileAccess.readTextFiles", () => {
     expect(files.get(missingPath)).toEqual({ exists: false, content: "" });
     expect(files.get(finalFilePath)).toEqual({ exists: true, content: finalContent });
   });
+
+  it("없는 로컬 파일만 missing으로 반환하고 권한 오류는 전파한다", async () => {
+    const { readTextFiles } = await import("@/lib/hostFileAccess");
+    const missingPath = path.join(tempDir, "missing.txt");
+    await expect(readTextFiles([missingPath])).resolves.toEqual(new Map([[missingPath, { exists: false, content: "" }]]));
+    mocks.readError = Object.assign(new Error("permission denied"), { code: "EACCES" });
+    await expect(readTextFiles([missingPath])).rejects.toThrow("permission denied");
+    mocks.readError = undefined;
+  });
+
+  it("로컬 디렉터리 읽기 실패를 파일 부재로 숨기지 않는다", async () => {
+    const { readTextFiles } = await import("@/lib/hostFileAccess");
+    await expect(readTextFiles([tempDir])).rejects.toThrow();
+  });
+
+  it.each([
+    "", "__KANVIBE_FILE_RECORD__\t/remote/a\t1\t@@@\n",
+    "__KANVIBE_FILE_RECORD__\t/remote/a\t1\taGk=\n",
+    "__KANVIBE_FILE_RECORD__\t/remote/a\t2\t\n__KANVIBE_FILE_RECORD__\t/remote/b\t0\t\n",
+  ])("누락되거나 손상된 원격 레코드를 설치 부재로 판정하지 않는다: %s", async (output) => {
+    mocks.execGit.mockResolvedValue(output);
+    const { readTextFiles } = await import("@/lib/hostFileAccess");
+    await expect(readTextFiles(["/remote/a", "/remote/b"], "remote-host")).rejects.toThrow();
+  });
+
+  it("원격 부모 디렉터리를 탐색할 수 없으면 missing으로 숨기지 않는다", async () => {
+    const blockedDirectory = path.join(tempDir, "blocked");
+    await mkdir(blockedDirectory);
+    const filePath = path.join(blockedDirectory, "config.txt");
+    await writeFile(filePath, "current", "utf-8");
+    await chmod(blockedDirectory, 0o000);
+    mocks.execGit.mockImplementation(async (command: string) => {
+      const { stdout } = await execFileAsync("sh", ["-c", command]);
+      return stdout;
+    });
+    try {
+      const { readTextFiles } = await import("@/lib/hostFileAccess");
+      await expect(readTextFiles([filePath], "remote-host")).rejects.toThrow();
+    } finally {
+      await chmod(blockedDirectory, 0o700);
+    }
+  });
+
+  it("실제 원격 shell의 base64 읽기 실패가 성공으로 숨겨지지 않는다", async () => {
+    const filePath = path.join(tempDir, "config.txt");
+    await writeFile(filePath, "current", "utf-8");
+    mocks.execGit.mockImplementation(async (command: string) => {
+      const failFileEncoding = 'base64() { case "$*" in "-w 0 "*) return 42;; *) if [ "$#" -eq 0 ]; then return 42; fi; command base64 "$@";; esac; }; ';
+      const { stdout } = await execFileAsync("sh", ["-c", failFileEncoding + command]);
+      return stdout;
+    });
+    const { readTextFiles } = await import("@/lib/hostFileAccess");
+    await expect(readTextFiles([filePath], "remote-host")).rejects.toThrow();
+  });
+
 });
 
 describe("hostFileAccess.readTextFile", () => {
@@ -360,4 +421,27 @@ describe("hostFileAccess.writeTextFileIfAbsent", () => {
     expect(await readFile(targetPath, "utf8")).toBe("authoritative\n");
   });
 
+});
+
+
+describe("hostFileAccess strict SSH boundaries", () => {
+  beforeEach(() => { mocks.execGit.mockReset(); mocks.readError = undefined; });
+
+  it("hook 파일 읽기와 쓰기는 명시한 strict 옵션을 SSH 경계까지 전달한다", async () => {
+    const files = await import("@/lib/hostFileAccess");
+    mocks.execGit.mockResolvedValue("");
+    const options = { strictHostKeyChecking: true };
+    await files.readTextFile("/remote/config", "remote-host", options);
+    expect(mocks.execGit).toHaveBeenLastCalledWith(expect.any(String), "remote-host", { ...options, maxBufferBytes: 64 * 1024 * 1024 });
+    mocks.execGit.mockResolvedValueOnce("__KANVIBE_FILE_RECORD__\t/remote/config\t0\t\n");
+    await files.readTextFiles(["/remote/config"], "remote-host", options);
+    await files.findSymbolicLinkPath(["/remote/config"], "remote-host", options);
+    await files.writeTextFile("/remote/config", "content", "remote-host", options);
+    await files.updateTextFile("/remote/config", () => "content", "remote-host", 0o600, options);
+    expect(mocks.execGit.mock.calls.length).toBeGreaterThan(6);
+    for (const call of mocks.execGit.mock.calls) {
+      expect(call[2]).toMatchObject(options);
+    }
+    expect(mocks.execGit.mock.calls.some((call) => call[2]?.remoteStdin)).toBe(true);
+  });
 });

@@ -30,7 +30,7 @@ import { detachSession } from "@/lib/terminal";
 import type { KanvibeTaskSession } from "@/lib/kanvibeProjectState";
 import { getAvailableHosts as readAvailableHosts } from "@/lib/sshConfig";
 import { getDefaultSessionType } from "@/desktop/main/services/appSettingsService";
-import { installKanvibeHooks, installKanvibeHookProvider, scheduleKanvibeHooksInstall } from "@/lib/kanvibeHooksInstaller";
+import { ensureKanvibeHooksCurrent, installKanvibeHooks, installKanvibeHookProvider, scheduleKanvibeHooksInstall } from "@/lib/kanvibeHooksInstaller";
 import {
   persistTaskStateAtPath as persistTaskState,
   readPersistedTaskStatusAtPath as readPersistedTaskStatus,
@@ -298,20 +298,6 @@ async function getProjectRootTask(projectId: string, defaultBranch: string) {
   return taskRepo.findOneBy({ projectId, branchName: defaultBranch });
 }
 
-async function areProjectRootHooksInstalled(project: Project, taskId: string): Promise<boolean> {
-  const [claudeStatus, geminiStatus, codexStatus, openCodeStatus] = await Promise.all([
-    getClaudeHooksStatus(project.repoPath, taskId, project.sshHost),
-    getGeminiHooksStatus(project.repoPath, taskId, project.sshHost),
-    getCodexHooksStatus(project.repoPath, taskId, project.sshHost),
-    getOpenCodeHooksStatus(project.repoPath, taskId, project.sshHost),
-  ]);
-
-  return claudeStatus.installed
-    && geminiStatus.installed
-    && codexStatus.installed
-    && openCodeStatus.installed;
-}
-
 async function ensureProjectRootTask(
   project: Project,
   options?: {
@@ -403,20 +389,16 @@ async function ensureProjectRootTask(
     return { task, repaired };
   }
 
-  const hasInstalledHooks = await areProjectRootHooksInstalled(project, task.id);
+  try {
+    const hooksRepaired = await ensureKanvibeHooksCurrent(project.repoPath, task.id, project.sshHost);
+    repaired = repaired || hooksRepaired;
+  } catch (error) {
+    if (throwOnHookRepairFailure) {
+      throw error;
+    }
 
-  if (!hasInstalledHooks) {
-    try {
-      await installKanvibeHooks(project.repoPath, task.id, project.sshHost);
-      repaired = true;
-    } catch (error) {
-      if (throwOnHookRepairFailure) {
-        throw error;
-      }
-
-      if (!suppressRemoteConnectionErrorLogging || !isRemoteConnectionError(error)) {
-        console.error(`${project.name} 기본 브랜치 hooks 복구 실패:`, error);
-      }
+    if (!suppressRemoteConnectionErrorLogging || !isRemoteConnectionError(error)) {
+      console.error(`${project.name} 기본 브랜치 hooks 복구 실패:`, error);
     }
   }
 
@@ -1148,6 +1130,7 @@ export async function getTaskHooksStatus(
   const hookTarget = await resolveTaskHookTarget(task);
   if (!hookTarget) return null;
 
+  await ensureKanvibeHooksCurrent(hookTarget.targetPath, hookTarget.taskId, hookTarget.sshHost);
   return getClaudeHooksStatus(hookTarget.targetPath, hookTarget.taskId, hookTarget.sshHost);
 }
 
@@ -1220,6 +1203,7 @@ export async function getTaskGeminiHooksStatus(
   const hookTarget = await resolveTaskHookTarget(task);
   if (!hookTarget) return null;
 
+  await ensureKanvibeHooksCurrent(hookTarget.targetPath, hookTarget.taskId, hookTarget.sshHost);
   return getGeminiHooksStatus(hookTarget.targetPath, hookTarget.taskId, hookTarget.sshHost);
 }
 
@@ -1289,6 +1273,7 @@ export async function getTaskCodexHooksStatus(
   const hookTarget = await resolveTaskHookTarget(task);
   if (!hookTarget) return null;
 
+  await ensureKanvibeHooksCurrent(hookTarget.targetPath, hookTarget.taskId, hookTarget.sshHost);
   return getCodexHooksStatus(hookTarget.targetPath, hookTarget.taskId, hookTarget.sshHost);
 }
 
@@ -1378,6 +1363,7 @@ export async function getTaskOpenCodeHooksStatus(
   const hookTarget = await resolveTaskHookTarget(task);
   if (!hookTarget) return null;
 
+  await ensureKanvibeHooksCurrent(hookTarget.targetPath, hookTarget.taskId, hookTarget.sshHost);
   return getOpenCodeHooksStatus(hookTarget.targetPath, hookTarget.taskId, hookTarget.sshHost);
 }
 

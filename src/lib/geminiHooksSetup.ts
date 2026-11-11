@@ -123,7 +123,7 @@ export async function setupGeminiHooks(
   sshHost?: string | null,
 ): Promise<void> {
   const settingsPath = getGeminiSettingsPath(repoPath, sshHost);
-  const existingFiles = await readTextFiles([settingsPath], sshHost);
+  const existingFiles = await readTextFiles([settingsPath], sshHost, { strictHostKeyChecking: true });
 
   await writeHookProviderFiles(
     buildGeminiHookFiles(repoPath, taskId, kanvibeUrl, existingFiles.get(settingsPath)?.content ?? "", sshHost),

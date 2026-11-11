@@ -139,7 +139,7 @@ export async function setupClaudeHooks(
   sshHost?: string | null,
 ): Promise<void> {
   const settingsPath = getClaudeSettingsPath(repoPath, sshHost);
-  const existingFiles = await readTextFiles([settingsPath], sshHost);
+  const existingFiles = await readTextFiles([settingsPath], sshHost, { strictHostKeyChecking: true });
 
   await writeHookProviderFiles(
     buildClaudeHookFiles(repoPath, taskId, kanvibeUrl, existingFiles.get(settingsPath)?.content ?? "", sshHost),

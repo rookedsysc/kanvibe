@@ -2,6 +2,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { TextFileReadResult } from "@/lib/hostFileAccess";
 import type { ShellHookProviderFile } from "@/lib/shellHookProvider";
 
+let useRealProviderStatuses = false;
+const mockExecGit = vi.fn();
 const mockInvalidateOpenCodePluginRegistration = vi.fn();
 const mockSetupClaudeHooks = vi.fn();
 const mockSetupGeminiHooks = vi.fn();
@@ -24,25 +26,41 @@ vi.mock("@/lib/openCodePluginRegistry", () => ({
 vi.mock("@/lib/claudeHooksSetup", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/claudeHooksSetup")>()),
   setupClaudeHooks: (...args: unknown[]) => mockSetupClaudeHooks(...args),
-  getClaudeHooksStatus: (...args: unknown[]) => mockGetClaudeHooksStatus(...args),
+  getClaudeHooksStatus: async (...args: Parameters<typeof import("@/lib/claudeHooksSetup").getClaudeHooksStatus>) => useRealProviderStatuses
+    ? (await importOriginal<typeof import("@/lib/claudeHooksSetup")>()).getClaudeHooksStatus(...args)
+    : mockGetClaudeHooksStatus(...args),
 }));
 
 vi.mock("@/lib/geminiHooksSetup", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/geminiHooksSetup")>()),
   setupGeminiHooks: (...args: unknown[]) => mockSetupGeminiHooks(...args),
-  getGeminiHooksStatus: (...args: unknown[]) => mockGetGeminiHooksStatus(...args),
+  getGeminiHooksStatus: async (...args: Parameters<typeof import("@/lib/geminiHooksSetup").getGeminiHooksStatus>) => useRealProviderStatuses
+    ? (await importOriginal<typeof import("@/lib/geminiHooksSetup")>()).getGeminiHooksStatus(...args)
+    : mockGetGeminiHooksStatus(...args),
 }));
 
 vi.mock("@/lib/codexHooksSetup", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/codexHooksSetup")>()),
   setupCodexHooks: (...args: unknown[]) => mockSetupCodexHooks(...args),
-  getCodexHooksStatus: (...args: unknown[]) => mockGetCodexHooksStatus(...args),
+  getCodexHooksStatus: async (...args: Parameters<typeof import("@/lib/codexHooksSetup").getCodexHooksStatus>) => useRealProviderStatuses
+    ? (await importOriginal<typeof import("@/lib/codexHooksSetup")>()).getCodexHooksStatus(...args)
+    : mockGetCodexHooksStatus(...args),
 }));
 
 vi.mock("@/lib/openCodeHooksSetup", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/openCodeHooksSetup")>()),
   setupOpenCodeHooks: (...args: unknown[]) => mockSetupOpenCodeHooks(...args),
-  getOpenCodeHooksStatus: (...args: unknown[]) => mockGetOpenCodeHooksStatus(...args),
+  getOpenCodeHooksStatus: async (...args: Parameters<typeof import("@/lib/openCodeHooksSetup").getOpenCodeHooksStatus>) => useRealProviderStatuses
+    ? (await importOriginal<typeof import("@/lib/openCodeHooksSetup")>()).getOpenCodeHooksStatus(...args)
+    : mockGetOpenCodeHooksStatus(...args),
+}));
+
+vi.mock("@/lib/gitOperations", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/gitOperations")>()),
+  execGit: (...args: unknown[]) => mockExecGit(...args),
+}));
+vi.mock("@/desktop/main/services/appSettingsService", () => ({
+  getOrCreateHookClientId: async () => "own-client",
 }));
 
 vi.mock("@/lib/hookEndpoint", () => ({
@@ -110,6 +128,7 @@ describe("kanvibeHooksInstaller", () => {
   beforeEach(() => {
     vi.resetModules();
     vi.clearAllMocks();
+    mockExecGit.mockResolvedValue("");
     mockSetupClaudeHooks.mockResolvedValue(undefined);
     mockSetupGeminiHooks.mockResolvedValue(undefined);
     mockSetupCodexHooks.mockResolvedValue(undefined);
@@ -195,7 +214,7 @@ describe("kanvibeHooksInstaller", () => {
     expect(getWrittenFilePaths()).toContain("/remote/repo/.claude/settings.json");
   });
 
-  it("기존 설정 파일은 provider별로 나눠 읽지 않고 한 번에 읽는다", async () => {
+  it("기존 설정 파일은 호스트 키를 검증하는 연결에서 한 번에 읽는다", async () => {
     // Given
     const { installKanvibeHooks } = await import("@/lib/kanvibeHooksInstaller");
 
@@ -209,7 +228,7 @@ describe("kanvibeHooksInstaller", () => {
       "/remote/repo/.gemini/settings.json",
       "/remote/repo/.codex/config.toml",
       "/remote/repo/.codex/hooks.json",
-    ], "remote-host");
+    ], "remote-host", { strictHostKeyChecking: true });
   });
 
   it("설치는 제거된 .kanvibe/hooks-targets.json을 읽거나 쓰지 않는다", async () => {
@@ -700,5 +719,129 @@ describe("kanvibeHooksInstaller", () => {
     resolveClaudeVerification({ installed: true });
     await installPromise;
     expect(resolved).toBe(true);
+  });
+});
+
+
+describe("kanvibeHooksInstaller conditional migration", () => {
+  const repoPath = "/remote/repo";
+  const targetsPath = `${repoPath}/.kanvibe/targets.json`;
+  const cliPath = `${repoPath}/.kanvibe/task.sh`;
+  let files: Map<string, TextFileReadResult>;
+
+  beforeEach(async () => {
+    vi.resetModules();
+    vi.clearAllMocks();
+    useRealProviderStatuses = true;
+    files = new Map();
+    mockExecGit.mockResolvedValue("");
+    mockGetHookServerUrl.mockResolvedValue("http://127.0.0.1:9736");
+    mockReadTextFiles.mockImplementation(async (paths: string[]) => new Map(paths.map((filePath) => [
+      filePath, files.get(filePath) ?? { exists: false, content: "" },
+    ])));
+    mockRegisterKanvibeHookTarget.mockImplementation(async () => {
+      const existing = JSON.parse(files.get(targetsPath)?.content ?? '{"targets":[]}');
+      const peers = existing.targets.filter((target: { clientId: string }) => target.clientId !== "own-client" && (target as { url?: string }).url !== "http://127.0.0.1:9736");
+      files.set(targetsPath, { exists: true, content: JSON.stringify({ targets: [...peers, {
+        url: "http://127.0.0.1:9736", taskId: "task-1", token: "token", clientId: "own-client", transport: "ssh",
+      }] }) });
+    });
+    mockWriteHookProviderFiles.mockImplementation(async (writtenFiles: ShellHookProviderFile[]) => {
+      writtenFiles.forEach((file) => files.set(file.filePath, { exists: true, content: file.content }));
+    });
+    const { installKanvibeHooks } = await import("../kanvibeHooksInstaller");
+    await installKanvibeHooks(repoPath, "task-1", "remote-host");
+    vi.clearAllMocks();
+  });
+
+  it("최신 provider와 CLI는 접속을 반복해도 쓰지 않고 파일 변경을 다시 검사한다", async () => {
+    const { ensureKanvibeHooksCurrent } = await import("../kanvibeHooksInstaller");
+    await ensureKanvibeHooksCurrent(repoPath, "task-1", "remote-host");
+    await ensureKanvibeHooksCurrent(repoPath, "task-1", "remote-host");
+    expect(mockWriteHookProviderFiles).not.toHaveBeenCalled();
+    files.set(cliPath, { exists: true, content: "#!/bin/sh\necho legacy" });
+    await ensureKanvibeHooksCurrent(repoPath, "task-1", "remote-host");
+    expect(mockWriteHookProviderFiles).toHaveBeenCalledTimes(HOOK_WRITE_BATCH_COUNT);
+    expect(files.get(cliPath)?.content).toContain("KANVIBE_HOOK_TRANSPORT_VERSION=2");
+  });
+
+  it.each([
+    ".claude/hooks/kanvibe-prompt-hook.sh", ".gemini/hooks/kanvibe-stop-hook.sh",
+    ".codex/hooks/kanvibe-permission-hook.sh", ".opencode/plugins/kanvibe-plugin.ts",
+  ])("구형 provider %s를 최신 전송으로 갱신한다", async (relativePath) => {
+    const filePath = `${repoPath}/${relativePath}`;
+    const content = files.get(filePath)!.content.replaceAll("KANVIBE_HOOK_TRANSPORT_VERSION=2", "KANVIBE_HOOK_TRANSPORT_VERSION=1");
+    files.set(filePath, { exists: true, content });
+    const { ensureKanvibeHooksCurrent } = await import("../kanvibeHooksInstaller");
+    await ensureKanvibeHooksCurrent(repoPath, "task-1", "remote-host");
+    expect(mockWriteHookProviderFiles).toHaveBeenCalledTimes(HOOK_WRITE_BATCH_COUNT);
+    expect(files.get(filePath)?.content).toContain("KANVIBE_HOOK_TRANSPORT_VERSION=2");
+  });
+
+  it.each(["missing", "wrong-transport", "other-client"])("현재 client 등록 %s를 복구하면서 peer를 보존한다", async (scenario) => {
+    const ownTarget = JSON.parse(files.get(targetsPath)!.content).targets[0];
+    const peer = { ...ownTarget, clientId: "peer-client", url: "http://127.0.0.1:9737" };
+    const targets = scenario === "missing" ? [peer] : [peer, {
+      ...ownTarget, ...(scenario === "wrong-transport" ? { transport: "local" } : { clientId: "other-client" }),
+    }];
+    files.set(targetsPath, { exists: true, content: JSON.stringify({ targets }) });
+    const { ensureKanvibeHooksCurrent } = await import("../kanvibeHooksInstaller");
+    await ensureKanvibeHooksCurrent(repoPath, "task-1", "remote-host");
+    expect(mockRegisterKanvibeHookTarget).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(files.get(targetsPath)!.content).targets).toContainEqual(peer);
+  });
+
+  it("원격 client ID와 transport가 맞으면 예전 IP만으로 다시 설치하지 않는다", async () => {
+    const targets = JSON.parse(files.get(targetsPath)!.content).targets;
+    targets[0].url = "http://192.0.2.99:9736";
+    files.set(targetsPath, { exists: true, content: JSON.stringify({ targets }) });
+    const { ensureKanvibeHooksCurrent } = await import("../kanvibeHooksInstaller");
+    await expect(ensureKanvibeHooksCurrent(repoPath, "task-1", "remote-host")).resolves.toBe(false);
+    expect(mockWriteHookProviderFiles).not.toHaveBeenCalled();
+  });
+
+  it("쓰기 API가 성공해도 CLI가 갱신되지 않으면 검증 실패를 반환한다", async () => {
+    files.delete(cliPath);
+    mockWriteHookProviderFiles.mockImplementation(async (writtenFiles: ShellHookProviderFile[]) => {
+      writtenFiles.filter((file) => file.filePath !== cliPath)
+        .forEach((file) => files.set(file.filePath, { exists: true, content: file.content }));
+    });
+    const { ensureKanvibeHooksCurrent } = await import("../kanvibeHooksInstaller");
+    await expect(ensureKanvibeHooksCurrent(repoPath, "task-1", "remote-host")).rejects.toThrow("hooks 검증 실패");
+  });
+
+  it("터널 도달 실패만으로 최신 파일을 다시 쓰지 않는다", async () => {
+    mockExecGit.mockRejectedValue(new Error("SSH disconnected"));
+    const { ensureKanvibeHooksCurrent } = await import("../kanvibeHooksInstaller");
+    await ensureKanvibeHooksCurrent(repoPath, "task-1", "remote-host");
+    expect(mockWriteHookProviderFiles).not.toHaveBeenCalled();
+  });
+
+  it("같은 task의 동시 접속은 검사와 설치를 공유한다", async () => {
+    files.delete(cliPath);
+    const { ensureKanvibeHooksCurrent } = await import("../kanvibeHooksInstaller");
+    await Promise.all(Array.from({ length: 5 }, () => ensureKanvibeHooksCurrent(repoPath, "task-1", "remote-host")));
+    expect(mockRegisterKanvibeHookTarget).toHaveBeenCalledTimes(1);
+    expect(mockWriteHookProviderFiles).toHaveBeenCalledTimes(HOOK_WRITE_BATCH_COUNT);
+  });
+
+  it("검사 실패는 쓰지 않고 실패하며 다음 접속에서 재시도한다", async () => {
+    mockReadTextFiles.mockRejectedValueOnce(new Error("SSH read failed"));
+    const { ensureKanvibeHooksCurrent } = await import("../kanvibeHooksInstaller");
+    await expect(ensureKanvibeHooksCurrent(repoPath, "task-1", "remote-host")).rejects.toThrow("SSH read failed");
+    expect(mockWriteHookProviderFiles).not.toHaveBeenCalled();
+    await expect(ensureKanvibeHooksCurrent(repoPath, "task-1", "remote-host")).resolves.toBeDefined();
+  });
+
+  it("쓰기 실패는 실패로 남고 다음 접속에서 재시도한다", async () => {
+    files.delete(cliPath);
+    mockWriteHookProviderFiles.mockRejectedValue(new Error("write denied"));
+    const { ensureKanvibeHooksCurrent } = await import("../kanvibeHooksInstaller");
+    await expect(ensureKanvibeHooksCurrent(repoPath, "task-1", "remote-host")).rejects.toThrow("write denied");
+    mockWriteHookProviderFiles.mockImplementation(async (writtenFiles: ShellHookProviderFile[]) => {
+      writtenFiles.forEach((file) => files.set(file.filePath, { exists: true, content: file.content }));
+    });
+    await expect(ensureKanvibeHooksCurrent(repoPath, "task-1", "remote-host")).resolves.toBeDefined();
+    expect(files.get(cliPath)?.content).toContain("KANVIBE_HOOK_TRANSPORT_VERSION=2");
   });
 });

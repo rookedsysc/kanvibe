@@ -206,6 +206,32 @@ describe("gitOperations.resolvePathForShell", () => {
     expect(getSpawnedSSHArgs().join(" ")).not.toContain("secret-body");
   });
 
+  it("호스트 키 검증을 요구한 원격 명령은 기존 SSH 연결을 재사용하지 않는다", async () => {
+    const child = createMockSSHProcess();
+    mocks.spawn.mockImplementation(() => {
+      queueMicrotask(() => completeRemoteCommand(child, "ok"));
+      return child;
+    });
+    vi.doMock("@/lib/sshConfig", async (importOriginal) => ({
+      ...(await importOriginal<typeof import("@/lib/sshConfig")>()),
+      parseSSHConfig: vi.fn(async () => [{
+        host: "remote-host",
+        hostname: "example.com",
+        port: 22,
+        username: "tester",
+        privateKeyPath: "/tmp/test-key",
+      }]),
+    }));
+    const { execGit } = await import("@/lib/gitOperations");
+
+    await execGit("printf ok", "remote-host", { strictHostKeyChecking: true });
+
+    expect(getSpawnedSSHArgs()).toContain("StrictHostKeyChecking=yes");
+    expect(getSpawnedSSHArgs()).toContain("ControlMaster=no");
+    expect(getSpawnedSSHArgs()).toContain("ControlPath=none");
+    expect(getSpawnedSSHArgs()).not.toContain("ControlMaster=auto");
+  });
+
   it("원격 명령 실행은 ssh 바이너리와 옵션을 사용한다", async () => {
     // Given
     const spawnedChildren: MockSSHProcess[] = [];
