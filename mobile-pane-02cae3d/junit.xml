@@ -1,0 +1,6 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<testsuites>
+  <testsuite name="Test Suite" device="emulator-5554" tests="1" failures="0" time="144.117" timestamp="2026-11-11T17:39:55">
+    <testcase id="recording-wrapper" name="recording-wrapper" classname="recording-wrapper" file="qa-results/mobile-pane-size/zellij-multitab/native/run03/maestro/recording-wrapper.yaml" time="144.104" timestamp="2026-11-11T17:39:55" status="SUCCESS"/>
+  </testsuite>
+</testsuites>

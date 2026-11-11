@@ -1,0 +1,6 @@
+
+/Users/rookedsysc/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-mobile-screen/src/desktop/main/services/mobileBridgeService.ts
+  557:22  warning  '_sourceRef' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+✖ 1 problem (0 errors, 1 warning)
+
