@@ -25,6 +25,9 @@ export function ensureKanvibeDataDirectory(): string {
 }
 
 export function getRuntimeDatabasePath(): string {
+  if (process.env.KANVIBE_DESKTOP === "true") {
+    return path.join(ensureKanvibeDataDirectory(), "kanvibe.db");
+  }
   return process.env.KANVIBE_DB_PATH ?? path.join(ensureKanvibeDataDirectory(), "kanvibe.db");
 }
 

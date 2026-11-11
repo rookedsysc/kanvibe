@@ -4,6 +4,10 @@
 import { defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
 import path from "path";
+import fs from "node:fs";
+import os from "node:os";
+
+const testAppDataDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "kanvibe-vitest-"));
 
 const nodeTestFiles = [
   "src/desktop/main/**/*.test.ts",
@@ -19,6 +23,11 @@ export default defineConfig({
   test: {
     environment: "jsdom",
     globals: true,
+    env: {
+      KANVIBE_DESKTOP: "",
+      KANVIBE_APP_DATA_DIR: testAppDataDirectory,
+      KANVIBE_DB_PATH: path.join(testAppDataDirectory, "kanvibe.db"),
+    },
     // QA 중에도 앱과 다른 작업이 쓸 CPU·메모리를 남긴다.
     maxWorkers: 2,
     maxConcurrency: 2,
