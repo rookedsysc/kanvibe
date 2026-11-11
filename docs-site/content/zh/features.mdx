@@ -47,11 +47,23 @@ KanVibe Desktop 将任务状态、分支工作区、终端和代理上下文集�
 - 任务信息面板打开时会遮住标签栏左侧的一部分。点击面板外的终端，或再次按 dock 的任务信息按钮将其关闭，即可显示完整标签栏。
 - Herdr、tmux 和 zellij 会话的标签页与 Herdr tab、tmux window、zellij tab **双向同步**。在 KanVibe 之外用 `tmux new-window` 创建的 window 也会出现在标签栏中；点击标签页时，多路复用器的活动对象也会随之切换。
 - 由于 KanVibe 自己绘制标签栏，tmux 状态栏和 zellij 标签栏会被关闭 —— 仅限 KanVibe 创建的会话。tmux 在每次重新连接时都会关闭，因此标签栏上线前创建的会话也会被整理；zellij 的布局在创建会话时就已确定，所以仅对之后新建的会话生效。
-- 未保存有效偏好时默认使用 Herdr。每个任务使用独立命名的持久会话；首次创建时应用六种 pane 布局和各 pane 的启动命令，再次打开时继续使用运行中的 shell。
-- Herdr 标签页支持创建、切换、重命名、关闭，以及 workspace 内的拖动排序。关闭 KanVibe 窗口会保留最后一个标签页；删除任务时才会停止并删除对应的命名会话。首次运行设置和个人配置由 Herdr 管理。
+- 未保存有效偏好时默认使用 Herdr。新的 Herdr 任务在每台主机上共享持久的 `kanvibe` 服务，每个任务的 workspace 都显示在 Spaces 中。首次创建 workspace 时应用配置的 pane 布局和启动命令，再次打开时继续使用运行中的 shell。已有的独立命名会话会保留，直到明确替换。
+- Herdr 标签页支持创建、切换、重命名、关闭，以及 workspace 内的拖动排序。Space 和标签页的选择仅影响对应的任务窗口。关闭 KanVibe 窗口会保留最后一个标签页；删除共享会话中的任务时，只关闭该任务的 workspace，其他任务继续运行。首次运行设置和个人配置由 Herdr 管理。
 - 在 `terminal` 会话中，KanVibe 会为每个标签页单独启动 shell。切换标签页时各自的 scrollback 会保留，且只要应用在运行，shell 就会一直存在。
 
 按键组合请参见[快捷键](/zh/shortcuts)文档的终端标签页一节。
+
+### 在外部终端中打开相同的 Herdr Spaces
+
+在 KanVibe 中打开 Herdr 任务后，在同一主机的 Ghostty 或其他终端中新开一个终端并运行：
+
+```sh
+herdr session attach kanvibe
+```
+
+此命令连接到 KanVibe 共享的 Herdr 会话。在 **Spaces** 中选择任务的 workspace，即可继续使用运行中的 shell。Spaces 只显示当前连接会话中的 workspace：连接到独立的 `kanvibe-dev` 会话时，看不到 `kanvibe` 内的 workspace，即使其中一个 workspace 也叫 `kanvibe-dev`。
+
+对于 SSH 任务，请先连接到该任务的 SSH 主机，再在那里运行命令。仍使用独立命名会话的旧任务，需要将 `kanvibe` 换成原来的会话名；可在该主机运行 `herdr session list` 查看。
 
 ## 任务级 AI 聊天历史
 

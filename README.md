@@ -207,6 +207,18 @@ Each pane can run a custom command (e.g., `vim`, `htop`, `lazygit`, test runner,
 - Herdr tabs support creating, selecting, renaming, closing, and reordering by stable IDs. Reordering stays within each task workspace. Selecting a Space or tab in one task window preserves other task windows. The last tab stays alive when KanVibe closes; deleting a shared task closes only its workspace and keeps other tasks running. Workspace IDs are stored beside the Herdr session so renaming a Space preserves its task connection.
 - Herdr 0.9.5 is the verified version. Its first-run setup and personal configuration remain managed by Herdr. Tab reordering uses its [local socket API](https://herdr.dev/tui/docs/socket-api/); SSH hosts do not need Python or netcat for this operation.
 
+#### Open the same Herdr Spaces in an external terminal
+
+After opening a Herdr task in KanVibe, run this in a new Ghostty or other terminal on the same host:
+
+```sh
+herdr session attach kanvibe
+```
+
+This connects to KanVibe's shared Herdr session. Select the task's workspace under **Spaces** to continue working in its running shells. Spaces lists workspaces in the connected session only: a separate session named `kanvibe-dev` does not show the workspaces inside `kanvibe`, even if one of those workspaces is also named `kanvibe-dev`.
+
+For an SSH task, connect to that task's SSH host first, then run the command there. Older tasks that still use independent named sessions need their original session name instead of `kanvibe`; run `herdr session list` on that host to find it.
+
 ### Live AI Session Tracking
 - Board cards show a per-agent icon and count next to the tmux badge, so you can tell at a glance which agents are running on which task and how many
 - Focus or hover a card to open a session panel that shows what each running session is doing, taken from its most recent AI response, along with the subtasks it is driving as branches hanging off the session; sweeping past cards does not open it

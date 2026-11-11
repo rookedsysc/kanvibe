@@ -196,6 +196,18 @@ brew untap rookedsysc/kanvibe
 - Herdr 탭은 생성·전환·이름 변경·닫기와 workspace 안에서의 드래그 순서 변경을 지원합니다. Space와 탭 선택은 해당 태스크 창에만 적용됩니다. KanVibe를 닫아도 마지막 탭은 유지하며, 공유 태스크를 삭제하면 해당 workspace만 닫아 다른 태스크의 작업은 계속 실행됩니다. workspace ID 연결 정보를 Herdr 세션 디렉터리에 저장하므로 Space 이름을 바꿔도 다시 연결됩니다. Herdr의 첫 실행 설정과 개인 설정은 Herdr가 관리합니다.
 - 태스크 생성·브랜치 생성·터미널 연결에서 `herdr`를 선택하면 로컬 또는 선택한 SSH 호스트의 설치 여부를 확인합니다. Herdr가 없으면 설치 안내를 승인해 해당 호스트에서 [공식 설치 프로그램](https://herdr.dev/tui/docs/install/)을 실행할 수 있습니다. `~/.local/bin`에 설치하며 셸 시작 파일은 바꾸지 않습니다. 취소하면 태스크는 변경되지 않습니다. 설치에 실패하면 오류를 확인하고 네트워크 연결과 설치 경로의 쓰기 권한을 점검한 뒤 다시 시도합니다.
 
+#### 외부 터미널에서 같은 Herdr Spaces 열기
+
+KanVibe에서 Herdr 태스크를 연 뒤, 같은 호스트의 Ghostty 등에서 새 터미널을 열고 실행하세요.
+
+```sh
+herdr session attach kanvibe
+```
+
+KanVibe가 공유하는 Herdr 세션에 연결됩니다. **Spaces**에서 해당 태스크의 workspace를 선택하면 실행 중인 셸을 이어 쓸 수 있습니다. Spaces에는 현재 연결된 세션의 workspace만 표시됩니다. 별도 `kanvibe-dev` 세션에 붙으면 `kanvibe` 안의 workspace는 보이지 않습니다. workspace 이름이 똑같이 `kanvibe-dev`여도 서로 다른 대상입니다.
+
+SSH 태스크는 먼저 해당 SSH 호스트에 접속한 뒤 그곳에서 명령을 실행하세요. 기존 독립 세션을 쓰는 태스크는 `kanvibe` 대신 원래 세션 이름으로 연결합니다. 해당 호스트에서 `herdr session list`로 세션 이름을 확인할 수 있습니다.
+
 ### 키보드 중심 조작
 - 어디서든 브랜치명이나 프로젝트명으로 빠른 태스크 검색 열기
 - 보드를 떠나지 않고 프로젝트 필터링, 알림 확인, 태스크 액션 실행
