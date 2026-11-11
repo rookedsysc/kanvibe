@@ -339,6 +339,21 @@ class _TaskCard extends ConsumerWidget {
       }
     }
 
+    if (outcome is TaskDeletionNeedsRegistrationRemoval) {
+      if (!context.mounted ||
+          !await confirmTaskRegistrationRemoval(context) ||
+          !context.mounted) {
+        return;
+      }
+      outcome = await requestTaskDeletion(
+        client,
+        connection,
+        task.id,
+        isForced: false,
+        isRegistrationOnly: true,
+      );
+    }
+
     // 새로고침으로 카드가 사라져도 앱 범위의 보드 갱신과 삭제 결과 안내는 끝낸다.
     if (!messenger.mounted) {
       return;
@@ -356,6 +371,7 @@ class _TaskCard extends ConsumerWidget {
         '다른 데스크탑 $failedPeerCount곳에는 아직 남아 있습니다. 그 데스크탑이 켜지면 직접 삭제해 주세요.',
       TaskDeletionFailed(:final message) => message,
       TaskDeletionSucceeded() || TaskDeletionNeedsForce() => null,
+      TaskDeletionNeedsRegistrationRemoval() => 'Git 저장소를 찾을 수 없습니다.',
     };
     if (message != null) {
       messenger.showSnackBar(SnackBar(content: Text(message)));

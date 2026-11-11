@@ -13,6 +13,7 @@ beforeEach(() => {
   vi.spyOn(console, "error").mockImplementation(() => {});
   bridge = {
     deleteMobileTask: vi.fn(async () => ({ failedPeerCount: 0 })),
+    removeMobileTaskRegistration: vi.fn(async () => true),
     closeMobilePane: vi.fn(async () => ({ surfaces: { tabs: [] } })),
     getMobilePaneCloseInfo: vi.fn(async () => ({ processNames: [] })),
   };
@@ -23,8 +24,27 @@ function command(fields) {
 }
 
 describe("소켓 명령 검증", () => {
+  it("등록 제거는 별도 명령으로 보내 실제 리소스 삭제를 호출하지 않는다", async () => {
+    const result = await runMobileCommand(bridge, command({ command: "remove-task-registration", taskId: "task-1" }));
+    expect(result).toEqual({ type: "command-result", requestId: "r1", ok: true, failedPeerCount: 0 });
+    expect(bridge.removeMobileTaskRegistration).toHaveBeenCalledWith("task-1");
+    expect(bridge.deleteMobileTask).not.toHaveBeenCalled();
+  });
+
+  it("손상된 worktree는 서버 오류 대신 등록 제거 안내 코드를 보낸다", async () => {
+    bridge.deleteMobileTask.mockRejectedValue(Object.assign(new Error("손상된 저장소"), { name: "InvalidWorktreeError" }));
+    expect(await runMobileCommand(bridge, command({ command: "delete-task", taskId: "task-1" })))
+      .toMatchObject({ ok: false, code: "invalid-worktree" });
+  });
+
+  it("이미 없는 태스크의 등록 제거는 task-not-found로 응답한다", async () => {
+    bridge.removeMobileTaskRegistration.mockResolvedValue(false);
+    expect(await runMobileCommand(bridge, command({ command: "remove-task-registration", taskId: "missing" })))
+      .toMatchObject({ ok: false, code: "task-not-found" });
+    expect(bridge.deleteMobileTask).not.toHaveBeenCalled();
+  });
   it("지원하는 명령 이름을 connected 이벤트와 같은 목록으로 노출한다", () => {
-    expect(SUPPORTED_COMMANDS).toEqual(["delete-task", "get-tab-close-info", "close-tab"]);
+    expect(SUPPORTED_COMMANDS).toEqual(["delete-task", "remove-task-registration", "get-tab-close-info", "close-tab"]);
   });
 
   it.each(["rename-task", "toString", "constructor", "__proto__", ""])("알 수 없는 명령 %j은 지원하지 않는다는 응답을 requestId와 함께 돌려준다", async (name) => {
@@ -39,6 +59,8 @@ describe("소켓 명령 검증", () => {
     ["taskId가 문자열이 아님", { command: "delete-task", taskId: 7 }],
     ["taskId가 빈 문자열", { command: "delete-task", taskId: "" }],
     ["isForced가 boolean이 아님", { command: "delete-task", taskId: "task-1", isForced: "yes" }],
+    ["등록 제거 taskId 누락", { command: "remove-task-registration" }],
+    ["등록 제거 taskId가 빈 문자열", { command: "remove-task-registration", taskId: "" }],
     ["paneId 누락", { command: "close-tab", taskId: "task-1" }],
     ["paneId가 빈 문자열", { command: "close-tab", taskId: "task-1", paneId: "" }],
     ["조회 명령의 paneId 누락", { command: "get-tab-close-info", taskId: "task-1" }],

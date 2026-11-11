@@ -15,6 +15,12 @@ class DesktopCommand {
         'isForced': isForced,
       }, _deleteTaskTimeout);
 
+  /// 파일·브랜치·세션을 보존하고 연결된 데스크탑의 태스크 등록만 제거한다.
+  factory DesktopCommand.removeTaskRegistration(String taskId) =>
+      DesktopCommand._('remove-task-registration', {
+        'taskId': taskId,
+      }, _lookupTimeout);
+
   /// 탭을 닫기 전에 확인이 필요한지 묻는다. 응답의 `processNames`가 비어 있으면 유휴 셸이라 바로 닫아도 된다
   factory DesktopCommand.getTabCloseInfo(String taskId, String paneId) =>
       DesktopCommand._('get-tab-close-info', {

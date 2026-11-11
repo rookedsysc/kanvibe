@@ -20,6 +20,10 @@ class TaskDeletionNeedsForce extends TaskDeletionOutcome {
   const TaskDeletionNeedsForce();
 }
 
+class TaskDeletionNeedsRegistrationRemoval extends TaskDeletionOutcome {
+  const TaskDeletionNeedsRegistrationRemoval();
+}
+
 class TaskDeletionFailed extends TaskDeletionOutcome {
   const TaskDeletionFailed(this.message);
 
@@ -32,11 +36,14 @@ Future<TaskDeletionOutcome> requestTaskDeletion(
   DesktopConnection connection,
   String taskId, {
   required bool isForced,
+  bool isRegistrationOnly = false,
 }) async {
   try {
     final result = await client.runCommand(
       connection,
-      DesktopCommand.deleteTask(taskId, isForced: isForced),
+      isRegistrationOnly
+          ? DesktopCommand.removeTaskRegistration(taskId)
+          : DesktopCommand.deleteTask(taskId, isForced: isForced),
     );
     final failedPeerCount = result['failedPeerCount'];
     return TaskDeletionSucceeded(
@@ -44,7 +51,10 @@ Future<TaskDeletionOutcome> requestTaskDeletion(
     );
   } on DesktopCommandFailure catch (failure) {
     return switch (failure.code) {
-      'dirty-worktree' when !isForced => const TaskDeletionNeedsForce(),
+      'dirty-worktree' when !isForced && !isRegistrationOnly =>
+        const TaskDeletionNeedsForce(),
+      'invalid-worktree' when !isRegistrationOnly =>
+        const TaskDeletionNeedsRegistrationRemoval(),
       'task-not-found' => const TaskDeletionSucceeded(failedPeerCount: 0),
       _ => TaskDeletionFailed(failure.message),
     };

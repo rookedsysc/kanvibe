@@ -18,6 +18,7 @@ const updateTaskStatusMock = vi.fn();
 const getProjectBranchesMock = vi.fn();
 const getTaskByIdMock = vi.fn();
 const deleteTaskAcrossTargetsMock = vi.fn();
+const removeTaskRegistrationMock = vi.fn();
 const findProjectOneByMock = vi.fn();
 const propagateTaskRegistrationToPeersMock = vi.fn();
 const getTaskAiSessionsMock = vi.fn();
@@ -100,6 +101,7 @@ vi.mock("@/desktop/main/services/kanbanService", () => ({
   getTasksByStatus: async () => ({ tasks: {} }),
   createTask: (input: unknown) => createTaskMock(input),
   deleteTaskAcrossTargets: (...args: unknown[]) => deleteTaskAcrossTargetsMock(...args),
+  removeTaskRegistration: (...args: unknown[]) => removeTaskRegistrationMock(...args),
   updateTaskStatus: (taskId: string, status: string) => updateTaskStatusMock(taskId, status),
   changeTaskSessionType: (...args: unknown[]) => changeTaskSessionTypeMock(...args),
   isTaskSessionAlive: (taskId: string) => isTaskSessionAliveMock(taskId),
@@ -141,6 +143,7 @@ const {
   createMobileTask,
   createMobileTerminalTab,
   deleteMobileTask,
+  removeMobileTaskRegistration,
   getMobilePaneCloseInfo,
   getMobileBoard,
   getMobileAiSessions,
@@ -439,6 +442,7 @@ beforeEach(() => {
   createTaskMock.mockReset();
   createTaskMock.mockResolvedValue({ id: "task-1" });
   deleteTaskAcrossTargetsMock.mockReset();
+  removeTaskRegistrationMock.mockReset();
   findProjectOneByMock.mockReset();
   propagateTaskRegistrationToPeersMock.mockReset();
   propagateTaskRegistrationToPeersMock.mockResolvedValue([]);
@@ -1569,6 +1573,12 @@ describe("모바일 세션 타입 변경", () => {
 });
 
 describe("모바일 태스크 삭제", () => {
+  it("등록 제거는 실제 리소스 삭제 경로로 보내지 않는다", async () => {
+    removeTaskRegistrationMock.mockResolvedValue(true);
+    await expect(removeMobileTaskRegistration("task-1")).resolves.toBe(true);
+    expect(removeTaskRegistrationMock).toHaveBeenCalledWith("task-1");
+    expect(deleteTaskAcrossTargetsMock).not.toHaveBeenCalled();
+  });
   it("기본 삭제는 커밋하지 않은 변경을 거부하고 다른 데스크탑으로 전파하며, 전파하지 못한 데스크탑 수를 돌려준다", async () => {
     deleteTaskAcrossTargetsMock.mockResolvedValue({
       isDeleted: true,

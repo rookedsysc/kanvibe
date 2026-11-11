@@ -282,6 +282,41 @@ void main() {
       expect(find.text('할 일 하나'), findsOneWidget);
     });
 
+    testWidgets('깨진 저장소는 확인한 뒤 등록만 제거하고 보드를 갱신한다', (tester) async {
+      final client = await pumpBoard(
+        tester,
+        deleteErrors: const [
+          DesktopCommandFailure('invalid-worktree', 'Git 저장소를 찾을 수 없습니다'),
+        ],
+      );
+      await tester.tap(find.widgetWithText(TextButton, '삭제'));
+      await tester.pumpAndSettle();
+      expect(find.text('태스크 등록만 제거할까요?'), findsOneWidget);
+      expect(client.removedRegistrationIds, isEmpty);
+      final previousFetches = client.boardCalls.length;
+      await tester.tap(find.widgetWithText(TextButton, '등록만 제거'));
+      await tester.pumpAndSettle();
+      expect(client.removedRegistrationIds, ['t1']);
+      expect(client.deleteCalls, [(taskId: 't1', isForced: false)]);
+      expect(client.boardCalls.length, greaterThan(previousFetches));
+    });
+
+    testWidgets('등록 제거를 취소하면 서버에 추가 명령을 보내지 않는다', (tester) async {
+      final client = await pumpBoard(
+        tester,
+        deleteErrors: const [
+          DesktopCommandFailure('invalid-worktree', 'Git 저장소를 찾을 수 없습니다'),
+        ],
+      );
+      await tester.tap(find.widgetWithText(TextButton, '삭제'));
+      await tester.pumpAndSettle();
+      expect(find.text('태스크 등록만 제거할까요?'), findsOneWidget);
+      await tester.tap(find.text('취소'));
+      await tester.pumpAndSettle();
+      expect(client.removedRegistrationIds, isEmpty);
+      expect(find.text('할 일 하나'), findsOneWidget);
+    });
+
     testWidgets('데스크탑이 명령을 모르면 업데이트 안내를 띄운다', (tester) async {
       await pumpBoard(
         tester,

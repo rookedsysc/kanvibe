@@ -9,6 +9,7 @@ import {
   getTaskById,
   getTasksByStatus,
   isTaskSessionAlive,
+  removeTaskRegistration,
   updateTaskStatus,
 } from "@/desktop/main/services/kanbanService";
 import { subscribeToBoardEvents } from "@/lib/boardNotifier";
@@ -764,6 +765,10 @@ export async function deleteMobileTask(taskId: string, isForced: boolean): Promi
     return null;
   }
   return { failedPeerCount: deletion.peerResults.filter((result) => !result.isSuccess).length };
+}
+
+export async function removeMobileTaskRegistration(taskId: string): Promise<boolean> {
+  return removeTaskRegistration(taskId);
 }
 
 /** 모바일에서 태스크를 다른 상태로 옮긴다. 없는 태스크면 null이 나와 라우팅이 404로 옮긴다 */
