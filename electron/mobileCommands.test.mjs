@@ -44,7 +44,7 @@ describe("소켓 명령 검증", () => {
     expect(bridge.deleteMobileTask).not.toHaveBeenCalled();
   });
   it("지원하는 명령 이름을 connected 이벤트와 같은 목록으로 노출한다", () => {
-    expect(SUPPORTED_COMMANDS).toEqual(["delete-task", "remove-task-registration", "get-tab-close-info", "close-tab"]);
+    expect(SUPPORTED_COMMANDS).toEqual(["delete-task", "remove-task-registration", "get-tab-close-info", "close-tab", "start-session"]);
   });
 
   it.each(["rename-task", "toString", "constructor", "__proto__", ""])("알 수 없는 명령 %j은 지원하지 않는다는 응답을 requestId와 함께 돌려준다", async (name) => {

@@ -736,6 +736,76 @@ void main() {
     expect(find.byType(PaneTerminalView), findsNothing);
   });
 
+  testWidgets('재시도는 WS로 세션을 시작하고 반환된 터미널을 표시한다', (tester) async {
+    final started = Completer<Map<String, dynamic>>();
+    final client = FakeDesktopClient(
+      surfacesError: const SurfaceUnavailableException(
+        SurfaceUnavailableReason.sessionNotRunning,
+      ),
+    )..onRunCommand = (command) => started.future;
+    await pumpDetail(tester, size: phoneSize, desktopClient: client);
+
+    await tester.tap(find.text('다시 시도'));
+    await tester.pump();
+    expect(client.commandCalls.single.name, 'start-session');
+    expect(client.commandCalls.single.fields, {'taskId': 'task-1'});
+    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+    expect(find.text('다시 시도'), findsNothing);
+
+    started.complete({
+      'surfaces': {
+        'sessionType': 'herdr',
+        'canResize': true,
+        'tabs': [
+          {
+            'id': 'w1:t1',
+            'name': 'work',
+            'panes': [
+              {
+                'id': 'w1:p1',
+                'tabId': 'w1:t1',
+                'tabName': 'work',
+                'command': 'codex',
+                'left': 0,
+                'top': 0,
+                'width': 80,
+                'height': 24,
+              },
+            ],
+          },
+        ],
+      },
+    });
+    await tester.pumpAndSettle();
+    expect(find.byType(PaneTerminalView), findsOneWidget);
+    expect(client.openedPanes, contains('w1:p1'));
+  });
+
+  for (final failure in <Object>[
+    const DesktopCommandFailure('herdr-missing', '세션을 시작하지 못했습니다'),
+    const DesktopUpdateRequiredException(),
+    const DesktopDisconnectedException(),
+  ]) {
+    testWidgets('세션 재시도 실패 $failure를 안내하고 다시 시도할 수 있다', (tester) async {
+      final client = FakeDesktopClient(
+        surfacesError: const SurfaceUnavailableException(
+          SurfaceUnavailableReason.sessionNotRunning,
+        ),
+      )..onRunCommand = (command) async => throw failure;
+      await pumpDetail(tester, size: phoneSize, desktopClient: client);
+      await tester.tap(find.text('다시 시도'));
+      await tester.pumpAndSettle();
+
+      final expected = switch (failure) {
+        DesktopUpdateRequiredException() => desktopUpdateRequiredMessage,
+        DesktopDisconnectedException() => desktopDisconnectedMessage,
+        _ => 'Herdr가 설치되어 있지 않습니다.',
+      };
+      expect(find.textContaining(expected), findsOneWidget);
+      expect(find.text('다시 시도'), findsOneWidget);
+    });
+  }
+
   testWidgets('원격 호스트에 닿지 못하면 세션이 아니라 연결을 확인하라고 알려 준다', (tester) async {
     await pumpDetail(
       tester,

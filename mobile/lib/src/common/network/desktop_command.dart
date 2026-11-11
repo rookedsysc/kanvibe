@@ -21,6 +21,12 @@ class DesktopCommand {
         'taskId': taskId,
       }, _lookupTimeout);
 
+  factory DesktopCommand.startSession(String taskId) => DesktopCommand._(
+    'start-session',
+    {'taskId': taskId},
+    _startSessionTimeout,
+  );
+
   /// 탭을 닫기 전에 확인이 필요한지 묻는다. 응답의 `processNames`가 비어 있으면 유휴 셸이라 바로 닫아도 된다
   factory DesktopCommand.getTabCloseInfo(String taskId, String paneId) =>
       DesktopCommand._('get-tab-close-info', {
@@ -43,6 +49,8 @@ class DesktopCommand {
 
   /// 데스크탑이 worktree·브랜치·세션을 지우고 다른 데스크탑에까지 전파한 뒤에야 답하므로 조회 잣대로 재지 않는다
   static const _deleteTaskTimeout = Duration(seconds: 90);
+  // 원격 접속과 세션 bootstrap은 일반 조회의 8초 제한보다 오래 걸릴 수 있다.
+  static const _startSessionTimeout = Duration(seconds: 90);
   static const _closeTabTimeout = Duration(seconds: 30);
   static const _lookupTimeout = Duration(seconds: 8);
 

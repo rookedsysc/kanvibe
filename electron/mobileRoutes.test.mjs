@@ -313,7 +313,7 @@ describe("모바일 상태 알림 경로", () => {
     const event = { type: "task-status-changed", eventId: "event-1", taskId: "task-1", title: "kanvibe", body: "review", status: "review", createdAt: "2026-10-23T00:00:00Z" };
     mobileEventListeners.forEach((listener) => { listener({ type: "board-updated" }); listener(event); });
     await waitFor(() => messages.length === 3);
-    expect(messages).toEqual([{ type: "connected", commands: ["delete-task", "remove-task-registration", "get-tab-close-info", "close-tab"] }, { type: "board-updated" }, event]);
+    expect(messages).toEqual([{ type: "connected", commands: ["delete-task", "remove-task-registration", "get-tab-close-info", "close-tab", "start-session"] }, { type: "board-updated" }, event]);
     expect(bridge.subscribeToPane).not.toHaveBeenCalled();
     notifyUnpaired("device-second");
     expect(client.readyState).toBe(WebSocket.OPEN);
@@ -362,10 +362,36 @@ describe("상태 WebSocket 명령", () => {
     return messages.find((message) => message.requestId === requestId);
   }
 
+  it("세션 시작 명령은 준비된 pane을 요청한 소켓에 돌려준다", async () => {
+    const { client, messages } = await connectEvents();
+    const surfaces = { taskId: "task-1", sessionType: "herdr", canResize: true, tabs: [{ id: "w1:t1", panes: [{ id: "w1:p1", command: "codex" }] }] };
+    bridge.getTaskSurfaces.mockResolvedValue(surfaces);
+
+    sendCommand(client, { command: "start-session", taskId: "task-1" });
+
+    expect(await nextResult(messages)).toEqual({ type: "command-result", requestId: "r1", ok: true, surfaces });
+  });
+
+  it.each(["", null, 1])("세션 시작은 잘못된 taskId %s를 거절한다", async (taskId) => {
+    const { client, messages } = await connectEvents();
+    sendCommand(client, { command: "start-session", taskId });
+
+    expect(await nextResult(messages)).toMatchObject({ ok: false, code: "invalid-command" });
+    expect(bridge.getTaskSurfaces).not.toHaveBeenCalled();
+  });
+
+  it.each(["herdr-missing", "remote-unreachable", "session-not-running", "no-session"])("세션 시작 실패 사유 %s를 유지한다", async (reason) => {
+    const { client, messages } = await connectEvents();
+    bridge.getTaskSurfaces.mockRejectedValue(Object.assign(new Error(reason), { name: "SurfaceUnavailableError", reason }));
+    sendCommand(client, { command: "start-session", taskId: "task-1" });
+
+    expect(await nextResult(messages)).toMatchObject({ ok: false, code: reason, error: "세션을 시작하지 못했습니다" });
+  });
+
   it("연결 확인에 지원하는 명령 목록을 싣는다", async () => {
     const { messages } = await connectEvents();
 
-    expect(messages[0]).toEqual({ type: "connected", commands: ["delete-task", "remove-task-registration", "get-tab-close-info", "close-tab"] });
+    expect(messages[0]).toEqual({ type: "connected", commands: ["delete-task", "remove-task-registration", "get-tab-close-info", "close-tab", "start-session"] });
   });
 
   it("삭제 결과는 요청한 소켓에만 돌려주고 다른 기기의 소켓에는 보내지 않는다", async () => {
@@ -546,7 +572,7 @@ describe("모바일 알림함 경로", () => {
     notificationChangeListeners.forEach((listener) => listener());
 
     await waitFor(() => firstMessages.length === 2 && secondMessages.length === 2);
-    expect(firstMessages).toEqual([{ type: "connected", commands: ["delete-task", "remove-task-registration", "get-tab-close-info", "close-tab"] }, { type: "notifications-changed" }]);
+    expect(firstMessages).toEqual([{ type: "connected", commands: ["delete-task", "remove-task-registration", "get-tab-close-info", "close-tab", "start-session"] }, { type: "notifications-changed" }]);
     expect(secondMessages).toEqual(firstMessages);
     first.close();
     second.close();
