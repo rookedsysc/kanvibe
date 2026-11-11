@@ -50,6 +50,25 @@ open -a KanVibe
 
 **Mobile terminal compatibility:** `herdr`, `tmux`, `zellij`, and `terminal` sessions are all supported. Herdr sessions keep their original grid and are read by scrolling.
 
+### Development and QA databases
+
+Each runtime uses a separate SQLite database:
+
+| Run | Data directory | Lifetime |
+| --- | --- | --- |
+| Installed KanVibe | Existing Electron `userData` directory | Persistent; production data stays in place |
+| `pnpm dev` / `pnpm desktop:dev` | `<appData>/kanvibe-dev` | Persistent across restarts and worktrees |
+| `pnpm start` | `<appData>/kanvibe-qa` | Persistent across restarts, builds, and worktrees |
+| Installed KanVibe with `--qa` | `<appData>/kanvibe-qa` | Same persistent manual QA database |
+| Automated Electron QA | Run's explicit fixture directory, or a fresh temporary directory | Isolated per run |
+| Vitest / Playwright | Separate temporary test directories | Isolated from application data |
+
+`<appData>` is `~/Library/Application Support` on macOS. The database filename is `kanvibe.db` in each directory. Development and manual QA start with their own database on first launch; existing production data is neither moved nor copied. Subsequent launches reuse those databases and apply the existing schema migrations. A new bundled seed does not replace an existing database, so manual QA can test upgrades against previously created data. Rebuild with `pnpm build` before `pnpm start` when testing a new source version.
+
+To test an installed macOS build with the persistent QA database, run `open -na KanVibe --args --qa`. Close an existing manual QA instance first so both do not use the same QA database concurrently.
+
+An explicit `KANVIBE_APP_DATA_DIR` overrides the desktop data directory; use a distinct directory for each environment. Desktop DB selection follows that directory, ignoring an inherited `KANVIBE_DB_PATH`. Non-desktop database tools retain the `KANVIBE_DB_PATH` override. Automated QA callers should pass `appDataDir` explicitly when they want to reopen a particular fixture; the launcher does not reuse application paths inherited from the parent shell.
+
 ## From your desk to your phone
 
 1. **See what needs attention.** Agent hooks update the board as work moves through progress, waiting, and review.
