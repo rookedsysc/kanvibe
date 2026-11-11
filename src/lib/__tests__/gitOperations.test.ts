@@ -438,6 +438,103 @@ describe("gitOperations.resolvePathForShell", () => {
     }
   });
 
+  it("cooldown을 해제하면 같은 SSH host의 다음 명령이 다시 SSH 연결을 시도한다", async () => {
+    // Given
+    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    mocks.execFile.mockImplementation((_file: string, _args: string[], _options: unknown, callback: (error: null, result: { stdout: string }) => void) => {
+      callback(null, { stdout: "" });
+    });
+    let isTransportDown = true;
+    mocks.spawn.mockImplementation(() => {
+      const child = createMockSSHProcess();
+      queueMicrotask(() => {
+        if (isTransportDown) {
+          child.writeStderr("Connection reset by 100.99.109.53 port 22\n");
+          child.close(255);
+          return;
+        }
+
+        completeRemoteCommand(child, "attached");
+      });
+      return child;
+    });
+
+    vi.doMock("@/lib/sshConfig", async (importOriginal) => {
+      const actual = await importOriginal<typeof import("@/lib/sshConfig")>();
+      return {
+        ...actual,
+        parseSSHConfig: vi.fn(async () => [{
+          host: "remote-host",
+          hostname: "example.com",
+          port: 2202,
+          username: "tester",
+          privateKeyPath: "/tmp/test-key",
+        }]),
+      };
+    });
+
+    const { execGit, clearRemoteSSHTransportCooldown } = await import("@/lib/gitOperations");
+
+    try {
+      await expect(execGit("background-sync", "remote-host")).rejects.toThrow(/Connection reset/);
+      await expect(execGit("blocked-command", "remote-host")).rejects.toThrow(/최근 SSH transport 실패/);
+      const spawnCountBeforeClear = mocks.spawn.mock.calls.length;
+      isTransportDown = false;
+
+      // When
+      clearRemoteSSHTransportCooldown("remote-host");
+
+      // Then
+      await expect(execGit("terminal-attach", "remote-host")).resolves.toBe("attached");
+      expect(mocks.spawn).toHaveBeenCalledTimes(spawnCountBeforeClear + 1);
+      expect(getSpawnedRemoteCommand(spawnCountBeforeClear)).toContain("terminal-attach");
+    } finally {
+      consoleErrorSpy.mockRestore();
+    }
+  });
+
+  it("실패를 기록하지 않기로 한 원격 명령은 실패해도 오류 로그를 남기지 않는다", async () => {
+    // Given
+    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    mocks.spawn.mockImplementation(() => {
+      const child = createMockSSHProcess();
+      queueMicrotask(() => {
+        child.writeStderr("can't find session: kanvibe-dev\n");
+        completeRemoteCommand(child, "", 1);
+      });
+      return child;
+    });
+
+    vi.doMock("@/lib/sshConfig", async (importOriginal) => {
+      const actual = await importOriginal<typeof import("@/lib/sshConfig")>();
+      return {
+        ...actual,
+        parseSSHConfig: vi.fn(async () => [{
+          host: "remote-host",
+          hostname: "example.com",
+          port: 2202,
+          username: "tester",
+          privateKeyPath: "/tmp/test-key",
+        }]),
+      };
+    });
+
+    const { execGit } = await import("@/lib/gitOperations");
+
+    try {
+      // When
+      await expect(execGit("tmux list-windows -t 'kanvibe-dev'", "remote-host", { shouldLogFailure: false })).rejects.toThrow();
+      const loggedCountAfterQuietCommand = consoleErrorSpy.mock.calls.length;
+      await expect(execGit("tmux list-windows -t 'kanvibe-dev'", "remote-host")).rejects.toThrow();
+
+      // Then
+      expect(loggedCountAfterQuietCommand).toBe(0);
+      expect(consoleErrorSpy).toHaveBeenCalledWith("[remote-ssh] command failed", expect.objectContaining({ sshHost: "remote-host" }));
+    } finally {
+      consoleErrorSpy.mockRestore();
+    }
+  });
+
   it("SSH transport 오류는 3회 안에 성공하면 원격 명령 결과를 반환한다", async () => {
     // Given
     const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
@@ -558,70 +655,11 @@ describe("gitOperations.resolvePathForShell", () => {
     }
   });
 
-  it("기본 SSH host 동시성은 available CPU의 네 배로 제한한다", async () => {
+  it("기본 SSH host 동시성은 available CPU의 두 배로 제한한다", async () => {
     // Given
     const originalConcurrency = process.env.KANVIBE_REMOTE_SSH_HOST_MAX_CONCURRENCY;
     delete process.env.KANVIBE_REMOTE_SSH_HOST_MAX_CONCURRENCY;
     mocks.availableParallelism.mockReturnValue(3);
-    const startedCommands: string[] = [];
-    const pendingChildren: MockSSHProcess[] = [];
-    mocks.spawn.mockImplementation((_file: string, args: string[]) => {
-      const child = createMockSSHProcess();
-      startedCommands.push(args.at(-1) ?? "");
-      pendingChildren.push(child);
-      return child;
-    });
-
-    vi.doMock("@/lib/sshConfig", async (importOriginal) => {
-      const actual = await importOriginal<typeof import("@/lib/sshConfig")>();
-      return {
-        ...actual,
-        parseSSHConfig: vi.fn(async () => [{
-          host: "remote-host",
-          hostname: "example.com",
-          port: 2202,
-          username: "tester",
-          privateKeyPath: "/tmp/test-key",
-        }]),
-      };
-    });
-
-    try {
-      const { execGit } = await import("@/lib/gitOperations");
-
-      // When
-      const commands = Array.from({ length: 13 }, (_, index) => execGit(`command-${index}`, "remote-host"));
-      await new Promise((resolve) => setTimeout(resolve, 0));
-
-      // Then
-      expect(startedCommands).toHaveLength(12);
-      for (let index = 0; index < 12; index += 1) {
-        expect(startedCommands[index]).toContain(`command-${index}`);
-      }
-
-      completeRemoteCommand(pendingChildren.shift()!, "done");
-      await expect(commands[0]).resolves.toBe("done");
-      await new Promise((resolve) => setTimeout(resolve, 0));
-
-      expect(startedCommands).toHaveLength(13);
-      expect(startedCommands[12]).toContain("command-12");
-      for (const [index, command] of commands.slice(1).entries()) {
-        completeRemoteCommand(pendingChildren.shift()!, String(index));
-        await expect(command).resolves.toBe(String(index));
-      }
-    } finally {
-      if (originalConcurrency === undefined) {
-        delete process.env.KANVIBE_REMOTE_SSH_HOST_MAX_CONCURRENCY;
-      } else {
-        process.env.KANVIBE_REMOTE_SSH_HOST_MAX_CONCURRENCY = originalConcurrency;
-      }
-    }
-  });
-
-  it("환경변수로 같은 SSH host의 원격 명령 동시성 제한을 늘릴 수 있다", async () => {
-    // Given
-    const originalConcurrency = process.env.KANVIBE_REMOTE_SSH_HOST_MAX_CONCURRENCY;
-    process.env.KANVIBE_REMOTE_SSH_HOST_MAX_CONCURRENCY = "6";
     const startedCommands: string[] = [];
     const pendingChildren: MockSSHProcess[] = [];
     mocks.spawn.mockImplementation((_file: string, args: string[]) => {
@@ -677,7 +715,67 @@ describe("gitOperations.resolvePathForShell", () => {
     }
   });
 
-  it("환경변수 동시성도 available CPU의 네 배를 넘지 않는다", async () => {
+  it("환경변수로 같은 SSH host의 원격 명령 동시성 제한을 늘릴 수 있다", async () => {
+    // Given
+    const originalConcurrency = process.env.KANVIBE_REMOTE_SSH_HOST_MAX_CONCURRENCY;
+    process.env.KANVIBE_REMOTE_SSH_HOST_MAX_CONCURRENCY = "6";
+    mocks.availableParallelism.mockReturnValue(4);
+    const startedCommands: string[] = [];
+    const pendingChildren: MockSSHProcess[] = [];
+    mocks.spawn.mockImplementation((_file: string, args: string[]) => {
+      const child = createMockSSHProcess();
+      startedCommands.push(args.at(-1) ?? "");
+      pendingChildren.push(child);
+      return child;
+    });
+
+    vi.doMock("@/lib/sshConfig", async (importOriginal) => {
+      const actual = await importOriginal<typeof import("@/lib/sshConfig")>();
+      return {
+        ...actual,
+        parseSSHConfig: vi.fn(async () => [{
+          host: "remote-host",
+          hostname: "example.com",
+          port: 2202,
+          username: "tester",
+          privateKeyPath: "/tmp/test-key",
+        }]),
+      };
+    });
+
+    try {
+      const { execGit } = await import("@/lib/gitOperations");
+
+      // When
+      const commands = Array.from({ length: 7 }, (_, index) => execGit(`command-${index}`, "remote-host"));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      // Then
+      expect(startedCommands).toHaveLength(6);
+      for (let index = 0; index < 6; index += 1) {
+        expect(startedCommands[index]).toContain(`command-${index}`);
+      }
+
+      completeRemoteCommand(pendingChildren.shift()!, "done");
+      await expect(commands[0]).resolves.toBe("done");
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(startedCommands).toHaveLength(7);
+      expect(startedCommands[6]).toContain("command-6");
+      for (const [index, command] of commands.slice(1).entries()) {
+        completeRemoteCommand(pendingChildren.shift()!, String(index));
+        await expect(command).resolves.toBe(String(index));
+      }
+    } finally {
+      if (originalConcurrency === undefined) {
+        delete process.env.KANVIBE_REMOTE_SSH_HOST_MAX_CONCURRENCY;
+      } else {
+        process.env.KANVIBE_REMOTE_SSH_HOST_MAX_CONCURRENCY = originalConcurrency;
+      }
+    }
+  });
+
+  it("환경변수 동시성도 available CPU의 두 배를 넘지 않는다", async () => {
     // Given
     const originalConcurrency = process.env.KANVIBE_REMOTE_SSH_HOST_MAX_CONCURRENCY;
     process.env.KANVIBE_REMOTE_SSH_HOST_MAX_CONCURRENCY = "12";
@@ -709,12 +807,12 @@ describe("gitOperations.resolvePathForShell", () => {
       const { execGit } = await import("@/lib/gitOperations");
 
       // When
-      const commands = Array.from({ length: 9 }, (_, index) => execGit(`command-${index}`, "remote-host"));
+      const commands = Array.from({ length: 5 }, (_, index) => execGit(`command-${index}`, "remote-host"));
       await new Promise((resolve) => setTimeout(resolve, 0));
 
       // Then
-      expect(startedCommands).toHaveLength(8);
-      for (let index = 0; index < 8; index += 1) {
+      expect(startedCommands).toHaveLength(4);
+      for (let index = 0; index < 4; index += 1) {
         expect(startedCommands[index]).toContain(`command-${index}`);
       }
 
@@ -722,8 +820,8 @@ describe("gitOperations.resolvePathForShell", () => {
       await expect(commands[0]).resolves.toBe("done");
       await new Promise((resolve) => setTimeout(resolve, 0));
 
-      expect(startedCommands).toHaveLength(9);
-      expect(startedCommands[8]).toContain("command-8");
+      expect(startedCommands).toHaveLength(5);
+      expect(startedCommands[4]).toContain("command-4");
       for (const [index, command] of commands.slice(1).entries()) {
         completeRemoteCommand(pendingChildren.shift()!, String(index));
         await expect(command).resolves.toBe(String(index));

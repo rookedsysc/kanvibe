@@ -81,8 +81,8 @@ async function findTerminalSessionTarget(taskId: string): Promise<TerminalSessio
   };
 }
 
-function runTabCommand(command: string, sshHost: string | null): Promise<string> {
-  return execGit(command, sshHost, { timeoutMs: TAB_COMMAND_TIMEOUT_MS });
+function runTabCommand(command: string, sshHost: string | null, shouldLogFailure = true): Promise<string> {
+  return execGit(command, sshHost, { timeoutMs: TAB_COMMAND_TIMEOUT_MS, shouldLogFailure });
 }
 
 async function runTabCommands(commands: string[], sshHost: string | null): Promise<void> {
@@ -116,7 +116,8 @@ async function readTabs(target: TerminalSessionTarget): Promise<TerminalTab[]> {
   }
   if (target.sessionType === SessionType.TMUX) {
     return parseTmuxWindowList(
-      await runTabCommand(buildTmuxListWindowsCommand(target.sessionName), target.sshHost),
+      // 탭 바가 주기적으로 조회하므로 세션이 꺼져 있을 때의 실패를 매번 오류 로그로 남기지 않는다.
+      await runTabCommand(buildTmuxListWindowsCommand(target.sessionName), target.sshHost, false),
     );
   }
 
