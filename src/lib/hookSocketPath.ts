@@ -2,12 +2,30 @@
  * 원격 호스트의 hook·CLI가 데스크탑으로 돌아오는 Unix 소켓 터널의 경로 규칙.
  *
  * 소켓 이름은 데스크탑 설치마다 한 번 만드는 client ID로 정한다. URL의 IP로 정하면 PC의 IP가 바뀐 뒤
- * targets.json에 남은 옛 주소로 소켓을 찾지 못해 토큰이 평문 HTTP로 나간다.
+ * targets.json에 남은 옛 주소로 소켓을 찾지 못한다.
  * 데스크탑이 만드는 소켓과 원격 스크립트가 찾는 소켓의 이름이 같아야 하므로 두 쪽의 규칙을 이 파일에 함께 둔다.
  * NFS 공유 홈과 Unix 소켓 경로 길이 제한을 피하려고 홈이 아니라 /tmp 아래에 둔다.
  */
 const HOOK_SOCKET_DIR_SHELL = '/tmp/kv-$(id -u)';
 const HOOK_CLIENT_ID_PATTERN = /^[A-Za-z0-9-]+$/;
+
+export const HOOK_TRANSPORT_VERSION_MARKER = "KANVIBE_HOOK_TRANSPORT_VERSION=2";
+export const HOOK_LOOPBACK_URL_PATTERN = String.raw`^https?://(localhost|127[.]0[.]0[.]1|\[::1\])(:[0-9]+)?/?$`;
+
+/** transport가 없는 구형 등록도 loopback 주소만 TCP를 허용한다. */
+export function buildShellHookTransportResolver(): string {
+  return `# ${HOOK_TRANSPORT_VERSION_MARKER}
+kanvibe_hook_uses_local_http() {
+  case "$2" in
+    ""|local) ;;
+    *) return 1 ;;
+  esac
+  case "$1" in
+    *[![:print:]]*) return 1 ;;
+  esac
+  printf '%s\\n' "$1" | grep -Eiq '${HOOK_LOOPBACK_URL_PATTERN}'
+}`;
+}
 
 /** targets.json은 브랜치 checkout으로 바뀔 수 있으므로 경로 문자가 섞인 ID는 소켓 이름으로 쓰지 않는다 */
 export function isValidHookClientId(clientId: unknown): clientId is string {
@@ -40,7 +58,7 @@ function buildShellTrustedSocketCondition(directoryVariable: string, socketVaria
 
 /**
  * 데스크탑이 원격에 보내는 한 줄짜리 명령(설치 스크립트 내려받기, 상태 확인)에서 쓰는 소켓 경로 대입.
- * 믿을 수 있는 소켓일 때만 경로를 담고, 아니면 빈 값이라 호출부가 HTTP로 넘어간다.
+ * 믿을 수 있는 소켓일 때만 경로를 담고, 아니면 빈 값을 담는다.
  */
 export function buildShellOwnedHookSocketAssignment(variableName: string, clientId: string): string {
   const directoryVariable = `${variableName}_dir`;
@@ -64,6 +82,8 @@ export function buildRemoteHookSocketPrepareCommand(clientId: string): string {
     '[ ! -L "${kanvibe_socket_dir}" ]',
     '[ -O "${kanvibe_socket_dir}" ]',
     'chmod 700 "${kanvibe_socket_dir}"',
+    `[ ! -L "\${kanvibe_socket_dir}/${fileName}" ]`,
+    `{ [ ! -e "\${kanvibe_socket_dir}/${fileName}" ] || { [ -S "\${kanvibe_socket_dir}/${fileName}" ] && [ -O "\${kanvibe_socket_dir}/${fileName}" ]; }; }`,
     `rm -f "\${kanvibe_socket_dir}/${fileName}"`,
     `printf '%s' "\${kanvibe_socket_dir}/${fileName}"`,
   ].join(" && ");
@@ -71,7 +91,7 @@ export function buildRemoteHookSocketPrepareCommand(clientId: string): string {
 
 /**
  * targets.json 항목의 client ID로 터널 소켓 경로를 출력하는 POSIX 셸 함수.
- * ID가 없는 옛 항목이거나 쓸 수 없는 소켓이면 아무것도 출력하지 않아 호출부가 HTTP로 넘어간다.
+ * ID가 없는 옛 항목이거나 쓸 수 없는 소켓이면 아무것도 출력하지 않는다.
  */
 export function buildShellHookSocketResolver(): string {
   return `kanvibe_hook_socket() {

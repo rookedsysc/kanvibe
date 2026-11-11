@@ -28,8 +28,8 @@ const { registerKanvibeHookTarget, verifyHookTargetRegistration } = await import
 const TARGETS_CONTENT = JSON.stringify({
   schemaVersion: 1,
   targets: [
-    { url: "http://127.0.0.1:9736", taskId: "task-local", token: "token-local" },
-    { url: "http://10.0.0.5:9736", taskId: "task-remote", token: "token-remote" },
+    { url: "http://127.0.0.1:9736", taskId: "task-local", token: "token-local", transport: "local" },
+    { url: "http://10.0.0.5:9736", taskId: "task-remote", token: "token-remote", transport: "local" },
   ],
 });
 
@@ -54,12 +54,12 @@ describe("hookTargetRegistration", () => {
     expect(mocks.buildTaskCliToken).toHaveBeenCalledWith("task-1");
     expect(mocks.upsertKanvibeHookTarget).toHaveBeenCalledWith(
       "/repo",
-      { url: "http://127.0.0.1:9736", taskId: "task-1", token: "signed-token", clientId: "client-a" },
+      { url: "http://127.0.0.1:9736", taskId: "task-1", token: "signed-token", clientId: "client-a", transport: "ssh" },
       "remote-host",
     );
   });
 
-  it("원격 등록에 client ID가 없으면 터널 소켓을 찾지 못해 토큰이 평문으로 나가므로 재설치 대상으로 본다", () => {
+  it("원격 등록의 전송 종류나 client ID가 빠지면 재설치 대상으로 본다", () => {
     expect(verifyHookTargetRegistration(TARGETS_CONTENT, "task-remote", "http://10.0.0.5:9736", "remote-host"))
       .toMatchObject({ hasRegisteredHookTarget: false });
     expect(verifyHookTargetRegistration(TARGETS_CONTENT, "task-remote", null, "remote-host"))
@@ -67,10 +67,20 @@ describe("hookTargetRegistration", () => {
 
     const withClientId = JSON.stringify({
       schemaVersion: 1,
-      targets: [{ url: "http://10.0.0.5:9736", taskId: "task-remote", token: "token-remote", clientId: "client-a" }],
+      targets: [{ url: "http://10.0.0.5:9736", taskId: "task-remote", token: "token-remote", clientId: "client-a", transport: "ssh" }],
     });
     expect(verifyHookTargetRegistration(withClientId, "task-remote", "http://10.0.0.5:9736", "remote-host"))
       .toMatchObject({ hasRegisteredHookTarget: true });
+    const legacyTransport = withClientId.replace(',"transport":"ssh"', "");
+    expect(verifyHookTargetRegistration(legacyTransport, "task-remote", "http://10.0.0.5:9736", "remote-host"))
+      .toMatchObject({ hasRegisteredHookTarget: false });
+    expect(verifyHookTargetRegistration(withClientId.replace('"ssh"', '"local"'), "task-remote", "http://10.0.0.5:9736", "remote-host"))
+      .toMatchObject({ hasRegisteredHookTarget: false });
+  });
+
+  it("로컬 등록에도 전송 종류를 기록한다", async () => {
+    await registerKanvibeHookTarget("/repo", "task-1", "http://localhost:9736");
+    expect(mocks.upsertKanvibeHookTarget).toHaveBeenCalledWith("/repo", expect.objectContaining({ transport: "local" }), undefined);
   });
 
   it("CLI 토큰 없이 등록된 예전 설치는 재설치가 필요하도록 미설치로 본다", () => {

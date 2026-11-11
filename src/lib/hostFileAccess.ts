@@ -2,7 +2,7 @@ import { access, chmod, lstat, mkdir, readFile, readdir, rename, rmdir, stat, un
 import { randomUUID } from "crypto";
 import { homedir } from "os";
 import path from "path";
-import { execGit } from "@/lib/gitOperations";
+import { execGit, type ExecGitOptions } from "@/lib/gitOperations";
 
 const remoteHomeDirectoryCache = new Map<string, string>();
 const REMOTE_FILE_RECORD_PREFIX = "__KANVIBE_FILE_RECORD__";
@@ -50,7 +50,7 @@ export async function pathExists(targetPath: string, sshHost?: string | null): P
 }
 
 /** 경로 가운데 심볼릭 링크인 첫 경로를 돌려준다. 없는 경로는 링크가 아니다 */
-export async function findSymbolicLinkPath(targetPaths: string[], sshHost?: string | null): Promise<string | null> {
+export async function findSymbolicLinkPath(targetPaths: string[], sshHost?: string | null, options?: Pick<ExecGitOptions, "strictHostKeyChecking">): Promise<string | null> {
   if (!sshHost) {
     for (const targetPath of targetPaths) {
       const isSymbolicLink = await lstat(targetPath).then((entry) => entry.isSymbolicLink()).catch(() => false);
@@ -65,11 +65,12 @@ export async function findSymbolicLinkPath(targetPaths: string[], sshHost?: stri
   const output = await execGit(
     `for __kanvibe_path in ${quotedPaths}; do if test -L "$__kanvibe_path"; then printf '%s' "$__kanvibe_path"; break; fi; done`,
     sshHost,
+    ...(options ? [options] as const : [] as const),
   );
   return output.trim() || null;
 }
 
-export async function readTextFile(targetPath: string, sshHost?: string | null): Promise<string> {
+export async function readTextFile(targetPath: string, sshHost?: string | null, options?: Pick<ExecGitOptions, "strictHostKeyChecking">): Promise<string> {
   if (!sshHost) {
     try {
       return await readFile(targetPath, "utf-8");
@@ -81,13 +82,14 @@ export async function readTextFile(targetPath: string, sshHost?: string | null):
   return execGit(
     `test -f ${quoteShellArgument(targetPath)} && cat ${quoteShellArgument(targetPath)} || true`,
     sshHost,
-    { maxBufferBytes: REMOTE_TEXT_FILE_MAX_BUFFER_BYTES },
+    { maxBufferBytes: REMOTE_TEXT_FILE_MAX_BUFFER_BYTES, ...options },
   );
 }
 
 export async function readTextFiles(
   targetPaths: string[],
   sshHost?: string | null,
+  options?: Pick<ExecGitOptions, "strictHostKeyChecking">,
 ): Promise<Map<string, TextFileReadResult>> {
   if (targetPaths.length === 0) {
     return new Map();
@@ -97,7 +99,8 @@ export async function readTextFiles(
     const entries: Array<[string, TextFileReadResult]> = await Promise.all(targetPaths.map(async (targetPath) => {
       try {
         return [targetPath, { exists: true, content: await readFile(targetPath, "utf-8") }];
-      } catch {
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
         return [targetPath, { exists: false, content: "" }];
       }
     }));
@@ -105,22 +108,30 @@ export async function readTextFiles(
     return new Map<string, TextFileReadResult>(entries);
   }
 
-  const encodedManifest = encodeRemoteTextFileManifest(targetPaths);
+  const encodedManifest = encodeRemoteTextFileManifest([...new Set(targetPaths)]);
   const command = [
-    `printf '%s' ${quoteShellArgument(encodedManifest)} | (base64 -d 2>/dev/null || base64 -D) | while IFS= read -r __kanvibe_encoded_file || test -n "$__kanvibe_encoded_file"; do`,
-    "test -n \"$__kanvibe_encoded_file\" || continue;",
-    "__kanvibe_file=$(printf '%s' \"$__kanvibe_encoded_file\" | (base64 -d 2>/dev/null || base64 -D));",
-    `printf '%s\\t%s\\t' ${quoteShellArgument(REMOTE_FILE_RECORD_PREFIX)} "$__kanvibe_file";`,
-    "if test -f \"$__kanvibe_file\"; then",
-    "printf '1\\t';",
-    "(base64 -w 0 \"$__kanvibe_file\" 2>/dev/null || base64 < \"$__kanvibe_file\" | tr -d '\\n');",
-    "else",
-    "printf '0\\t';",
-    "fi;",
-    "printf '\\n';",
+    `__kanvibe_manifest=$(printf '%s' ${quoteShellArgument(encodedManifest)} | (base64 -d 2>/dev/null || base64 -D)) || exit $?;`,
+    'printf "%s\\n" "$__kanvibe_manifest" | while IFS= read -r __kanvibe_encoded_file || test -n "$__kanvibe_encoded_file"; do',
+    'test -n "$__kanvibe_encoded_file" || continue;',
+    '__kanvibe_file=$(printf "%s" "$__kanvibe_encoded_file" | (base64 -d 2>/dev/null || base64 -D)) || exit $?;',
+    // 접근 불가한 부모 아래의 파일은 test -e도 false이므로, 부재로 기록하기 전에 탐색 권한을 확인한다.
+    '__kanvibe_parent=$(dirname "$__kanvibe_file") || exit $?;',
+    'while ! test -e "$__kanvibe_parent" && ! test -L "$__kanvibe_parent"; do',
+    '__kanvibe_next_parent=$(dirname "$__kanvibe_parent") || exit $?;',
+    '[ "$__kanvibe_parent" != "$__kanvibe_next_parent" ] || exit 1;',
+    '__kanvibe_parent=$__kanvibe_next_parent; done;',
+    'test -d "$__kanvibe_parent" && test -x "$__kanvibe_parent" || exit 1;',
+    'if test -f "$__kanvibe_file"; then',
+    // 파이프의 마지막 tr 성공이 base64 실패를 가리지 않도록 인코딩 결과부터 확인한다.
+    '__kanvibe_content=$(base64 -w 0 "$__kanvibe_file" 2>/dev/null || base64 < "$__kanvibe_file") || exit $?;',
+    `printf '%s\\t%s\\t1\\t' ${quoteShellArgument(REMOTE_FILE_RECORD_PREFIX)} "$__kanvibe_file";`,
+    'printf "%s" "$__kanvibe_content" | tr -d "\\n";',
+    'elif test -e "$__kanvibe_file" || test -L "$__kanvibe_file"; then exit 1;',
+    `else printf '%s\\t%s\\t0\\t' ${quoteShellArgument(REMOTE_FILE_RECORD_PREFIX)} "$__kanvibe_file"; fi;`,
+    'printf "\\n";',
     "done",
   ].join(" ");
-  const output = await execGit(command, sshHost);
+  const output = await execGit(command, sshHost, ...(options ? [options] as const : [] as const));
 
   return parseRemoteTextFiles(output, targetPaths);
 }
@@ -134,32 +145,28 @@ function parseRemoteTextFiles(
   output: string,
   targetPaths: string[],
 ): Map<string, TextFileReadResult> {
-  const files = new Map<string, TextFileReadResult>(
-    targetPaths.map((targetPath) => [targetPath, { exists: false, content: "" }]),
-  );
-
+  const files = new Map<string, TextFileReadResult>();
+  const expectedPaths = new Set(targetPaths);
   for (const line of output.split("\n")) {
-    if (!line.startsWith(`${REMOTE_FILE_RECORD_PREFIX}\t`)) {
-      continue;
+    if (!line.startsWith(`${REMOTE_FILE_RECORD_PREFIX}\t`)) continue;
+    const fields = line.split("\t");
+    const [, filePath, existsFlag, encodedContent] = fields;
+    if (fields.length !== 4 || !expectedPaths.has(filePath) || files.has(filePath)
+      || (existsFlag !== "0" && existsFlag !== "1")
+      || (existsFlag === "0" && encodedContent !== "")
+      || Buffer.from(encodedContent, "base64").toString("base64") !== encodedContent) {
+      throw new Error("원격 파일 검사 결과가 손상되었습니다.");
     }
-
-    const [, filePath, existsFlag, encodedContent = ""] = line.split("\t");
-    if (!filePath) {
-      continue;
-    }
-
     files.set(filePath, {
       exists: existsFlag === "1",
-      content: existsFlag === "1"
-        ? Buffer.from(encodedContent, "base64").toString("utf-8")
-        : "",
+      content: existsFlag === "1" ? Buffer.from(encodedContent, "base64").toString("utf-8") : "",
     });
   }
-
+  if (files.size !== expectedPaths.size) throw new Error("원격 파일 검사 결과가 누락되었습니다.");
   return files;
 }
 
-export async function writeTextFile(targetPath: string, content: string, sshHost?: string | null): Promise<void> {
+export async function writeTextFile(targetPath: string, content: string, sshHost?: string | null, options?: Pick<ExecGitOptions, "strictHostKeyChecking">): Promise<void> {
   if (!sshHost) {
     await mkdir(path.dirname(targetPath), { recursive: true });
     await writeFile(targetPath, content, "utf-8");
@@ -170,6 +177,7 @@ export async function writeTextFile(targetPath: string, content: string, sshHost
   await execGit(
     `mkdir -p ${quoteShellArgument(path.posix.dirname(targetPath))} && printf '%s' ${quoteShellArgument(encodedContent)} | (base64 -d 2>/dev/null || base64 -D) > ${quoteShellArgument(targetPath)}`,
     sshHost,
+    ...(options ? [options] as const : [] as const),
   );
 }
 
@@ -186,6 +194,7 @@ export async function updateTextFile(
   update: (content: string) => string | Promise<string>,
   sshHost?: string | null,
   mode?: number,
+  options?: Pick<ExecGitOptions, "strictHostKeyChecking">,
 ): Promise<void> {
   const lockPath = `${targetPath}.lock`;
   const temporaryPath = `${targetPath}.${randomUUID()}.tmp`;
@@ -196,7 +205,7 @@ export async function updateTextFile(
       `__kanvibe_attempt=0; while ! mkdir ${quoteShellArgument(lockPath)} 2>/dev/null; do`,
       '__kanvibe_attempt=$((__kanvibe_attempt + 1));',
       'test "$__kanvibe_attempt" -lt 200 || exit 1; sleep 0.05; done',
-    ].join(" "), sshHost);
+    ].join(" "), sshHost, ...(options ? [options] as const : [] as const));
   } else {
     await mkdir(directoryPath, { recursive: true });
     for (let attempt = 0; ; attempt++) {
@@ -214,7 +223,7 @@ export async function updateTextFile(
     let currentContent: string;
     if (sshHost) {
       const quotedPath = quoteShellArgument(targetPath);
-      currentContent = await execGit(`if test -e ${quotedPath}; then cat ${quotedPath}; fi`, sshHost);
+      currentContent = await execGit(`if test -e ${quotedPath}; then cat ${quotedPath}; fi`, sshHost, ...(options ? [options] as const : [] as const));
     } else {
       currentContent = await readFile(targetPath, "utf-8").catch((error: NodeJS.ErrnoException) => {
         if (error.code !== "ENOENT") throw error;
@@ -226,7 +235,7 @@ export async function updateTextFile(
       await execGit(
         buildRemoteStdinPublishCommand(temporaryPath, targetPath, Buffer.byteLength(nextContent), mode),
         sshHost,
-        { remoteStdin: Buffer.from(nextContent, "utf-8").toString("base64") },
+        { remoteStdin: Buffer.from(nextContent, "utf-8").toString("base64"), ...options },
       );
     } else {
       await writeFile(temporaryPath, nextContent, { encoding: "utf-8", flag: "wx", ...(mode !== undefined ? { mode } : {}) });
@@ -237,7 +246,7 @@ export async function updateTextFile(
     }
   } finally {
     if (sshHost) {
-      await execGit(`rm -f ${quoteShellArgument(temporaryPath)}; rmdir ${quoteShellArgument(lockPath)}`, sshHost);
+      await execGit(`rm -f ${quoteShellArgument(temporaryPath)}; rmdir ${quoteShellArgument(lockPath)}`, sshHost, ...(options ? [options] as const : [] as const));
     } else {
       await unlink(temporaryPath).catch((error: NodeJS.ErrnoException) => {
         if (error.code !== "ENOENT") throw error;

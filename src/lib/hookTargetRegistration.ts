@@ -21,7 +21,7 @@ export async function registerKanvibeHookTarget(
   await ensureAiToolPatternsExcluded(repoPath, sshHost);
   const token = await buildTaskCliToken(taskId);
   const clientId = await getOrCreateHookClientId();
-  await upsertKanvibeHookTarget(repoPath, { url: hookServerUrl, taskId, token, clientId }, sshHost);
+  await upsertKanvibeHookTarget(repoPath, { url: hookServerUrl, taskId, token, clientId, transport: sshHost ? "ssh" : "local" }, sshHost);
   if (sshHost) {
     ensureHookTunnel(sshHost);
   }
@@ -50,13 +50,14 @@ export function verifyHookTargetRegistration(
   const registeredTargets = parseKanvibeTargets(targetsContent).targets;
   const registeredTarget = registeredTargets.find((target) => target.taskId === taskId);
   const registeredHookTargetUrl = registeredTarget?.url ?? null;
-  /** 원격 등록에 client ID가 없으면 터널 소켓을 찾지 못해 CLI 토큰이 평문으로 나가므로 재설치 대상으로 본다 */
-  const hasRequiredClientId = (target: { clientId?: string } | undefined) => !sshHost || Boolean(target?.clientId);
+  const hasRequiredTransport = (target: { clientId?: string; transport?: string } | undefined) => (
+    target?.transport === (sshHost ? "ssh" : "local") && (!sshHost || Boolean(target.clientId))
+  );
 
   /** 원격 hook 서버 주소를 확정하지 못한 경우에는 taskId 등록 여부만으로 판정한다 */
   if (!expectedHookServerUrl) {
     return {
-      hasRegisteredHookTarget: Boolean(registeredTarget?.token) && hasRequiredClientId(registeredTarget),
+      hasRegisteredHookTarget: Boolean(registeredTarget?.token) && hasRequiredTransport(registeredTarget),
       registeredHookTargetUrl,
     };
   }
@@ -67,7 +68,7 @@ export function verifyHookTargetRegistration(
     hasRegisteredHookTarget: hasKanvibeHookTarget(targetsContent, {
       url: expectedHookServerUrl,
       taskId,
-    }) && Boolean(ownTarget?.token) && hasRequiredClientId(ownTarget),
+    }) && Boolean(ownTarget?.token) && hasRequiredTransport(ownTarget),
     registeredHookTargetUrl,
   };
 }

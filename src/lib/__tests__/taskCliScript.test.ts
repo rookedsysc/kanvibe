@@ -240,7 +240,7 @@ describe("task CLI script", () => {
     });
 
     it("응답 없는 client는 연결 시간 초과로 보고 다음 client로 넘어간다", async () => {
-      const silentUrl = "http://10.255.255.1:9736";
+      const silentUrl = "http://localhost:9736";
       const reachableClient = await startFakeClient();
       await writeTargets([
         { url: silentUrl, taskId: "task-sleeping", token: "token-sleeping" },
@@ -255,7 +255,7 @@ describe("task CLI script", () => {
     });
 
     it("연결된 뒤 응답을 기다리다 시간이 다 되면 이미 처리됐을 수 있으므로 다른 client로 다시 보내지 않는다", async () => {
-      const slowUrl = "http://10.255.255.1:9736";
+      const slowUrl = "http://localhost:9736";
       const otherClient = await startFakeClient();
       await writeTargets([
         { url: slowUrl, taskId: "task-slow", token: "token-slow" },

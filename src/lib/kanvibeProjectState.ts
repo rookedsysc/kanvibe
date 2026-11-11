@@ -65,6 +65,7 @@ export interface KanvibeHookTarget {
   token?: string;
   /** 원격 hook·CLI가 찾는 이 client의 터널 소켓 이름. IP가 바뀌어도 그대로다 */
   clientId?: string;
+  transport?: "local" | "ssh";
 }
 
 /** targets.json은 task CLI 자격 증명을 담으므로 소유자만 읽게 한다 */
@@ -248,6 +249,7 @@ export async function assertKanvibeStatePathsAreNotSymlinks(
   const symbolicLinkPath = await findSymbolicLinkPath(
     [stateDirectory, ...fileNames.map((fileName) => pathModule.join(stateDirectory, fileName))],
     sshHost,
+    { strictHostKeyChecking: true },
   );
 
   if (symbolicLinkPath) {
@@ -273,6 +275,7 @@ export async function upsertKanvibeHookTarget(
     (content) => buildKanvibeTargetsContent(upsertKanvibeTarget(parseKanvibeTargets(content).targets, target)),
     sshHost,
     TARGETS_FILE_MODE,
+    { strictHostKeyChecking: true },
   );
 }
 
@@ -537,7 +540,7 @@ function normalizeKanvibeTarget(target: unknown): KanvibeHookTarget | null {
 
   const url = normalizeKanvibeTargetUrl(candidate.url);
   const taskId = candidate.taskId.trim();
-  if (!url || !taskId) {
+  if (!url || !taskId || (candidate.transport !== undefined && candidate.transport !== "local" && candidate.transport !== "ssh")) {
     return null;
   }
 
@@ -547,6 +550,7 @@ function normalizeKanvibeTarget(target: unknown): KanvibeHookTarget | null {
     taskId,
     ...(token ? { token } : {}),
     ...(isValidHookClientId(candidate.clientId) ? { clientId: candidate.clientId } : {}),
+    ...(candidate.transport === "local" || candidate.transport === "ssh" ? { transport: candidate.transport } : {}),
   };
 }
 

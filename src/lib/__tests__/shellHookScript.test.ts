@@ -15,6 +15,7 @@ import {
   hasShellKanvibeStatusJsonPersistence,
   hasShellKanvibeTargetFanout,
 } from "@/lib/shellHookScript";
+import { HOOK_TRANSPORT_VERSION_MARKER } from "@/lib/hookSocketPath";
 
 const execFileAsync = promisify(execFile);
 
@@ -117,6 +118,7 @@ describe("shellHookScript", () => {
 
     expect(hasShellKanvibeTargetFanout(updater)).toBe(true);
     expect(hasShellKanvibeTargetFanout(updaterWithoutTargets)).toBe(false);
+    expect(hasShellKanvibeTargetFanout(updater.replace(HOOK_TRANSPORT_VERSION_MARKER, ""))).toBe(false);
   });
 
   it("병렬 fan-out 판정은 순차 curl 루프 hook을 거부한다", () => {
@@ -159,7 +161,7 @@ describe("shellHookScript", () => {
           schemaVersion: 1,
           targets: [
             { url: "http://127.0.0.1:9736/", taskId: "local-task" },
-            { url: "http://10.0.0.5:9736", taskId: "dev-task" },
+            { url: "http://localhost:9737", taskId: "dev-task", transport: "local" },
           ],
         }),
         "utf8",
@@ -251,7 +253,7 @@ describe("shellHookScript", () => {
       })).sort((left, right) => (left.taskId ?? "").localeCompare(right.taskId ?? ""));
 
       expect(deliveries).toEqual([
-        { endpoint: "http://10.0.0.5:9736/api/hooks/status", taskId: "dev-task", status: "review" },
+        { endpoint: "http://localhost:9737/api/hooks/status", taskId: "dev-task", status: "review" },
         { endpoint: "http://127.0.0.1:9736/api/hooks/status", taskId: "local-task", status: "review" },
       ]);
     } finally {
@@ -334,7 +336,7 @@ describe("hook 통보 대상 주소 검증", () => {
         targets: [
           { url: "-K/tmp/evil", taskId: "task-option" },
           { url: "file:///etc/hosts", taskId: "task-file" },
-          { url: "http://10.0.0.2:9736", taskId: "task-http" },
+          { url: "http://localhost:9736", taskId: "task-http", transport: "local" },
         ],
       }));
 
@@ -347,7 +349,7 @@ describe("hook 통보 대상 주소 검증", () => {
       // Then
       const curlLog = await readFile(curlLogPath, "utf-8");
       expect(curlLog.trim().split("\n")).toHaveLength(1);
-      expect(curlLog).toContain("--url http://10.0.0.2:9736/api/hooks/status");
+      expect(curlLog).toContain("--url http://localhost:9736/api/hooks/status");
       expect(curlLog).toContain("task-http");
     } finally {
       await rm(workspaceDir, { recursive: true, force: true });

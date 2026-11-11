@@ -3,6 +3,7 @@ const https = require("node:https");
 const path = require("node:path");
 
 const { rejectBrowserOriginRequest } = require("./browserOriginGuard.js");
+const { rejectRemoteHookRequest } = require("./hookTransportGuard.js");
 const { readJsonBody, writeJson } = require("./httpBody.js");
 const { loadOrCreateMobileTlsCertificate } = require("./mobileTlsCertificate.js");
 
@@ -101,6 +102,10 @@ function createHookServer({ host, port, mobileTlsPort, mobileTlsDirectory, isDev
 
     /** 모바일 경로는 자체 인증을 거치므로 hook 라우팅보다 먼저 가로챈다 */
     if (await handleMobileRequest(request, response, mobileRouteOptions)) {
+      return;
+    }
+
+    if (rejectRemoteHookRequest(request, response)) {
       return;
     }
 

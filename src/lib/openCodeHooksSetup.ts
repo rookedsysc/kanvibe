@@ -14,6 +14,7 @@ import {
 import { getKanvibeTargetsPath } from "@/lib/kanvibeProjectState";
 import { getOpenCodeRegisteredKanvibePluginUrls, invalidateOpenCodePluginRegistration } from "@/lib/openCodePluginRegistry";
 import { resolvePathModule, type ShellHookProviderFile } from "@/lib/shellHookProvider";
+import { HOOK_LOOPBACK_URL_PATTERN, HOOK_TRANSPORT_VERSION_MARKER } from "@/lib/hookSocketPath";
 
 /**
  * OpenCode는 `.opencode/plugins/` 디렉토리에 TypeScript 플러그인을 배치하여 hooks를 등록한다.
@@ -40,6 +41,8 @@ import { fileURLToPath } from "url";
  */
 export const KanvibePlugin: Plugin = async ({ client }) => {
   const KANVIBE_URL = "${kanvibeUrl}";
+  // ${HOOK_TRANSPORT_VERSION_MARKER}
+  const KANVIBE_LOOPBACK_URL = new RegExp(${JSON.stringify(HOOK_LOOPBACK_URL_PATTERN)}, "i");
   const TASK_ID = ${JSON.stringify(taskId)};
   const KANVIBE_REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
   const KANVIBE_STATE_DIR = resolve(KANVIBE_REPO_ROOT, ".kanvibe");
@@ -95,7 +98,7 @@ export const KanvibePlugin: Plugin = async ({ client }) => {
     }
   }
 
-  type KanvibeTarget = { url: string; taskId: string; clientId?: string };
+  type KanvibeTarget = { url: string; taskId: string; clientId?: string; transport?: string };
 
   function normalizeKanvibeUrl(url: string): string {
     return url.trim().replace(/\\/+$/, "");
@@ -125,7 +128,8 @@ export const KanvibePlugin: Plugin = async ({ client }) => {
           ? target.clientId
           : undefined;
         seenUrls.add(url);
-        normalizedTargets.push({ url, taskId, clientId });
+        const transport = target.transport === undefined ? undefined : String(target.transport);
+        normalizedTargets.push({ url, taskId, clientId, transport });
       }
 
       return normalizedTargets.length > 0 ? normalizedTargets : getFallbackKanvibeTarget();
@@ -135,7 +139,6 @@ export const KanvibePlugin: Plugin = async ({ client }) => {
   }
 
   /**
-   * client ID로 이름 붙인 터널 소켓을 찾는다. ID가 없는 옛 항목은 소켓 없이 HTTP로 보낸다.
    * 이 소켓으로 task 정보가 나가므로, 본인 소유이고 0700인 디렉터리 안의 본인 소유 소켓만 쓴다
    */
   function findKanvibeHookSocket(clientId: string | undefined): string | undefined {
@@ -154,30 +157,29 @@ export const KanvibePlugin: Plugin = async ({ client }) => {
   }
 
   async function sendKanvibeStatus(target: KanvibeTarget, status: string, unix?: string): Promise<void> {
-    await fetch(target.url + "/api/hooks/status", {
+    const response = await fetch(target.url + "/api/hooks/status", {
       method: "POST",
+      redirect: "error",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ taskId: target.taskId, status }),
       signal: AbortSignal.timeout(KANVIBE_NOTIFY_TIMEOUT_MS),
       ...(unix ? { unix } : {}),
     } as RequestInit);
+    if (!response.ok) throw new Error("KanVibe hook HTTP " + response.status);
   }
 
-  /** OpenCode가 도는 Bun의 fetch는 unix 옵션으로 소켓에 연결한다. 소켓으로 못 보내면 HTTP로 넘어간다 */
+  /** Bun의 unix 옵션으로 연결하며, 로컬 loopback 등록만 TCP를 허용한다. */
   async function postKanvibeStatus(target: KanvibeTarget, status: string): Promise<void> {
     try {
-      const socketPath = findKanvibeHookSocket(target.clientId);
-      if (socketPath) {
-        try {
-          await sendKanvibeStatus(target, status, socketPath);
-          return;
-        } catch {
-          /* HTTP로 넘어간다 */
-        }
+      if ((target.transport === undefined || target.transport === "local") && KANVIBE_LOOPBACK_URL.test(target.url)) {
+        await sendKanvibeStatus(target, status);
+        return;
       }
-      await sendKanvibeStatus(target, status);
+      const socketPath = findKanvibeHookSocket(target.clientId);
+      if (!socketPath) throw new Error("KanVibe SSH tunnel socket unavailable");
+      await sendKanvibeStatus(target, status, socketPath);
     } catch {
-      /* 네트워크 에러 무시 */
+      /* 훅 연결 실패가 OpenCode의 작업을 중단하지 않게 한다. */
     }
   }
 
@@ -397,7 +399,7 @@ export async function getOpenCodeHooksStatus(
 ): Promise<OpenCodeHooksStatus> {
   const pluginPath = getOpenCodePluginPath(repoPath, sshHost);
   const targetsPath = getKanvibeTargetsPath(repoPath, sshHost);
-  const files = await readTextFiles([pluginPath, targetsPath], sshHost);
+  const files = await readTextFiles([pluginPath, targetsPath], sshHost, { strictHostKeyChecking: true });
   const pluginFile = files.get(pluginPath) ?? { exists: false, content: "" };
   const pluginContent = pluginFile.content;
 
@@ -499,7 +501,8 @@ function hasOpenCodeBoundedNotifyTimeout(pluginContent: string): boolean {
 }
 
 function hasOpenCodeTargetFanout(pluginContent: string): boolean {
-  return pluginContent.includes("targets.json")
+  return pluginContent.includes(HOOK_TRANSPORT_VERSION_MARKER)
+    && pluginContent.includes("targets.json")
     && pluginContent.includes("KANVIBE_TARGETS_FILE")
     && pluginContent.includes("readKanvibeTargets")
     && pluginContent.includes("fanoutKanvibeStatus")

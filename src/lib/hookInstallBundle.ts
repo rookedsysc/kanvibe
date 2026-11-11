@@ -146,19 +146,15 @@ export function buildHookInstallBootstrapCommand(
   const tokenHeader = quoteShellArgument(`${HOOK_INSTALL_TOKEN_HEADER}: ${ticket.token}`);
   const curlOptions = `--connect-timeout ${HOOK_INSTALL_DOWNLOAD_CONNECT_TIMEOUT_SECONDS}`
     + ` --max-time ${HOOK_INSTALL_DOWNLOAD_MAX_TIMEOUT_SECONDS} -fsSL -H ${tokenHeader}`;
-  /** 평문 포트가 닫혀 있어도 설치되도록 터널 소켓을 먼저 시도한다 */
-  const downloadCommands = [
-    `{ [ -n "$__kanvibe_socket" ] && curl --unix-socket "$__kanvibe_socket" ${curlOptions} "$__kanvibe_url" 2>/dev/null; }`,
-    `curl ${curlOptions} "$__kanvibe_url" 2>/dev/null`,
-    `wget --timeout=${HOOK_INSTALL_DOWNLOAD_CONNECT_TIMEOUT_SECONDS} --tries=1 --header=${tokenHeader} -qO- "$__kanvibe_url" 2>/dev/null`,
-  ].join(" || ");
+  const downloadCommand = `curl --unix-socket "$__kanvibe_socket" ${curlOptions} "$__kanvibe_url" 2>/dev/null`;
   const restoredScript = `printf '%s\\n' "$__kanvibe_install_script"`;
 
   /** 내려받기가 중간에 끊긴 스크립트를 실행하지 않도록, 전부 받은 뒤에 sh로 넘긴다 */
   return [
     buildShellOwnedHookSocketAssignment("__kanvibe_socket", clientId),
     `__kanvibe_url=${scriptUrl}`,
-    `__kanvibe_install_script=$(${downloadCommands})`,
+    '[ -n "$__kanvibe_socket" ]',
+    `__kanvibe_install_script=$(${downloadCommand})`,
     `__kanvibe_install_checksum=$(${restoredScript} | { sha256sum 2>/dev/null || shasum -a 256; } | cut -d' ' -f1)`,
     `[ "$__kanvibe_install_checksum" = ${quoteShellArgument(ticket.scriptSha256)} ]`,
     `${restoredScript} | sh`,

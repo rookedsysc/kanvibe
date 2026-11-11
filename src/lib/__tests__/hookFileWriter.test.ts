@@ -63,7 +63,7 @@ describe("writeHookProviderFiles — 원격 설치", () => {
     await writeHookProviderFiles(hookFiles, "remote-host");
 
     // Then
-    expect(mockExecGit.mock.calls[0][2]).toEqual({ timeoutMs: 30_000 });
+    expect(mockExecGit.mock.calls[0][2]).toEqual({ timeoutMs: 30_000, strictHostKeyChecking: true });
   });
 
   it("should revoke the install token once the install finishes", async () => {

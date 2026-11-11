@@ -85,6 +85,7 @@ describe("hookTunnelService", () => {
       "-o", "StreamLocalBindUnlink=yes",
       "-o", "ControlMaster=no",
       "-o", "ControlPath=none",
+      "-o", "StrictHostKeyChecking=yes",
       "-R", "/remote.sock:/local.sock",
       "host-a",
       "cat >/dev/null",
@@ -192,6 +193,21 @@ describe("hookTunnelService", () => {
 
     // Then
     await waitForSpawnCount(1);
+  });
+
+  it("다른 client의 소켓 경로를 준비 결과로 받으면 터널을 열지 않는다", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    mocks.execGit.mockResolvedValue("/tmp/kv-1000/another-client.sock");
+
+    service.startHookTunnels(() => () => undefined);
+    await flushAsync();
+
+    expect(sshProcesses).toEqual([]);
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining("Hook tunnel"),
+      expect.stringContaining("소켓 경로"),
+    );
+    warn.mockRestore();
   });
 
   it("잠자기에서 깨면 살아 있어 보이는 연결을 끊고 곧바로 다시 잇는다", async () => {
