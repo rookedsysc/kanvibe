@@ -99,9 +99,17 @@ async function fixture() {
 async function initialize(setup: Awaited<ReturnType<typeof fixture>>) {
   setup.upstream.write(snapshot());
   const initial = endpointRequest(await setup.sent.next());
-  setup.upstream.write(response(initial.bootId, initial.request.id, { result: { type: "ok" } }));
-  await setup.received.next();
+  await finishInitialization(setup.upstream, setup.received, initial);
   return initial;
+}
+
+async function finishInitialization(upstream: Socket, received: ReturnType<typeof frames>, focus: ReturnType<typeof endpointRequest>) {
+  const marker = response(focus.bootId, "native-ready", { result: { type: "ok" } });
+  upstream.write(response(focus.bootId, focus.request.id, { result: { type: "ok" } }));
+  upstream.write(marker);
+  // snapshot은 focus 응답이 처리되기 전에 전달된다.
+  await received.next();
+  expect(frame(await received.next())).toEqual(marker);
 }
 
 describe("Herdr 클라이언트 endpoint 프록시", () => {
@@ -201,8 +209,7 @@ describe("Herdr 클라이언트 endpoint 프록시", () => {
     const initial = endpointRequest(await setup.sent.next());
     expect(initial.bootId).toBe("boot-2");
     expect(initial.request.method).toBe("workspace.focus");
-    setup.upstream.write(response(initial.bootId, initial.request.id, { result: { type: "ok" } }));
-    await setup.received.next();
+    await finishInitialization(setup.upstream, setup.received, initial);
   });
 
   it("초기 Space 선택 도중 서버가 바뀌어도 새 연결 초기화를 완료한다", async () => {
@@ -274,13 +281,14 @@ describe("Herdr 클라이언트 endpoint 프록시", () => {
     setup.client.destroy();
     const connected = once(setup.server, "connection");
     const client = connect(setup.proxy.socketPath);
+    const received = frames(client);
     cleanups.push(async () => { client.destroy(); });
     const [upstream] = await connected as [Socket];
     const sent = frames(upstream);
     upstream.write(snapshot());
     const initial = endpointRequest(await sent.next());
     expect(initial).toMatchObject({ bootId: "boot-1", request: { method: "workspace.focus", params: { workspace_id: "w1" } } });
-    upstream.write(response(initial.bootId, initial.request.id, { result: { type: "ok" } }));
+    await finishInitialization(upstream, received, initial);
   });
 
   it("종료 시 연결과 소켓 디렉터리를 제거하고 반복 종료를 허용한다", async () => {
