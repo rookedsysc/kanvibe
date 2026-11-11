@@ -111,6 +111,30 @@ async function handleMobileRequest(request, response, { bridge, host, port, isDe
       return true;
     }
 
+    if (request.method === "GET" && requestUrl.pathname === "/api/mobile/directories") {
+      const directories = await bridge.getMobileDirectories(requestUrl.searchParams.get("path") ?? "~");
+      writeJson(response, 200, { success: true, directories });
+      return true;
+    }
+
+    if (request.method === "POST" && requestUrl.pathname === "/api/mobile/projects/scan") {
+      let body;
+      try {
+        body = await readJsonBody(request);
+      } catch {
+        writeJson(response, 400, { success: false, error: "잘못된 요청입니다" });
+        return true;
+      }
+      const rootPath = readText(body?.rootPath);
+      if (!rootPath) {
+        writeJson(response, 400, { success: false, error: "폴더 경로가 필요합니다" });
+        return true;
+      }
+      const result = await bridge.scanMobileProjects(rootPath);
+      writeJson(response, 200, { success: true, result });
+      return true;
+    }
+
     if (["PUT", "DELETE"].includes(request.method) && requestUrl.pathname === NOTIFICATIONS_PATH) {
       await handleNotificationSubscriptionRequest(request, response, bridge);
       return true;

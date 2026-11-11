@@ -45,6 +45,8 @@ function createBridge(overrides = {}) {
     pairMobileDevice: vi.fn(async () => "paired-token"),
     unpairMobileDeviceByToken: vi.fn(async () => true),
     getMobileBoard: vi.fn(async () => ({ columns: [] })),
+    getMobileDirectories: vi.fn(async () => ["Documents", "Projects"]),
+    scanMobileProjects: vi.fn(async () => ({ registered: ["kanvibe"], skipped: [], errors: [], worktreeTasks: [], registeredWorktrees: [], hooksSetup: [] })),
     getMobileTask: vi.fn(async () => ({ id: "task-1", title: "알림 태스크", projectName: "kanvibe" })),
     getMobileNotificationSettings: vi.fn(async () => ({ isEnabled: true, enabledStatuses: ["review"] })),
     updateMobileNotificationSettings: vi.fn(async (settings) => settings),
@@ -1491,4 +1493,62 @@ it("실제 Codex fixture 리더의 목록과 상세가 HTTP 계약으로 이어�
     vi.unstubAllEnvs();
     await rm(home, { recursive: true, force: true });
   }
+});
+
+
+describe("모바일 프로젝트 폴더 등록", () => {
+  const headers = { Authorization: "Bearer good" };
+  const scan = (body, requestHeaders = headers) => request("/api/mobile/projects/scan", {
+    method: "POST", headers: requestHeaders, body: JSON.stringify(body),
+  });
+
+  it("연결된 PC의 홈 폴더부터 하위 폴더 이름을 조회한다", async () => {
+    const response = await request("/api/mobile/directories", { headers });
+    expect(response).toEqual({ status: 200, body: { success: true, directories: ["Documents", "Projects"] } });
+    expect(bridge.getMobileDirectories).toHaveBeenCalledWith("~");
+    await request("/api/mobile/directories?path=%2Fworkspace%2Fspace%20repo", { headers });
+    expect(bridge.getMobileDirectories).toHaveBeenLastCalledWith("/workspace/space repo");
+  });
+
+  it("인증 없이는 폴더 조회와 프로젝트 등록을 모두 막는다", async () => {
+    expect((await request("/api/mobile/directories")).status).toBe(401);
+    expect((await scan({ rootPath: "/workspace" }, {})).status).toBe(401);
+    expect(bridge.getMobileDirectories).not.toHaveBeenCalled();
+    expect(bridge.scanMobileProjects).not.toHaveBeenCalled();
+  });
+
+  it("선택한 폴더만 기존 스캔 서비스에 넘기고 등록 결과를 반환한다", async () => {
+    const response = await scan({ rootPath: "~/Projects", sshHost: "unselected-host" });
+    expect(response.status).toBe(200);
+    expect(response.body.result.registered).toEqual(["kanvibe"]);
+    expect(bridge.scanMobileProjects).toHaveBeenCalledWith("~/Projects");
+  });
+
+  it.each([{}, { rootPath: "" }, { rootPath: "   " }, { rootPath: 42 }, null, []])("등록 경로 없는 본문 %j를 거절한다", async (body) => {
+    expect((await scan(body)).status).toBe(400);
+    expect(bridge.scanMobileProjects).not.toHaveBeenCalled();
+  });
+
+  it("잘못된 JSON은 서비스를 부르지 않고 거절한다", async () => {
+    const response = await request("/api/mobile/projects/scan", { method: "POST", headers, body: "{" });
+    expect(response.status).toBe(400);
+    expect(bridge.scanMobileProjects).not.toHaveBeenCalled();
+  });
+
+  it("이미 등록된 폴더는 재시도해도 skipped 결과를 그대로 보여 준다", async () => {
+    bridge.scanMobileProjects.mockResolvedValue({ registered: [], skipped: ["/workspace/kanvibe"], errors: [], worktreeTasks: [], registeredWorktrees: [], hooksSetup: [] });
+    expect((await scan({ rootPath: "/workspace" })).body.result.skipped).toEqual(["/workspace/kanvibe"]);
+  });
+
+  it("없는 폴더는 서비스가 제공한 안전한 안내로 응답한다", async () => {
+    bridge.getMobileDirectories.mockRejectedValue(inputError("폴더를 찾을 수 없습니다"));
+    const response = await request("/api/mobile/directories?path=%2Fmissing", { headers });
+    expect(response).toEqual({ status: 400, body: { success: false, error: "폴더를 찾을 수 없습니다" } });
+  });
+
+  it("내부 스캔 오류 메시지는 네트워크 응답에서 숨긴다", async () => {
+    bridge.scanMobileProjects.mockRejectedValue(new Error("secret filesystem path"));
+    const response = await scan({ rootPath: "/workspace" });
+    expect(response).toEqual({ status: 500, body: { success: false, error: "서버 오류" } });
+  });
 });

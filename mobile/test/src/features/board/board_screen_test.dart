@@ -26,6 +26,32 @@ Map<String, dynamic> boardWith({
 };
 
 void main() {
+  testWidgets('홈 상단은 알림과 더보기로 줄이고 등록과 새로고침을 메뉴에 둔다', (tester) async {
+    await tester.binding.setSurfaceSize(phoneSize);
+    final client = FakeDesktopClient(board: boardWith());
+    await tester.pumpWidget(
+      wrapWithApp(const BoardScreen(), client: client, size: phoneSize),
+    );
+    await tester.pumpAndSettle();
+    final appBar = find.byType(AppBar);
+    expect(
+      find.descendant(of: appBar, matching: find.byTooltip('프로젝트 필터')),
+      findsNothing,
+    );
+    expect(
+      find.descendant(of: appBar, matching: find.byTooltip('새로고침')),
+      findsNothing,
+    );
+    expect(find.byTooltip('프로젝트 필터'), findsOneWidget);
+    await tester.tap(find.byTooltip('보드 메뉴'));
+    await tester.pumpAndSettle();
+    expect(find.text('프로젝트 등록'), findsOneWidget);
+    final previousCalls = client.boardCalls.length;
+    await tester.tap(find.text('새로고침'));
+    await tester.pumpAndSettle();
+    expect(client.boardCalls.length, greaterThan(previousCalls));
+  });
+
   testWidgets('폰에서는 상태가 세로 구획으로 쌓인다', (tester) async {
     await tester.binding.setSurfaceSize(phoneSize);
     final client = FakeDesktopClient(board: boardWith());
@@ -219,7 +245,9 @@ void main() {
 
       (board['tasks'] as Map<String, dynamic>)['todo'] =
           <Map<String, dynamic>>[];
-      await tester.tap(find.byTooltip('새로고침'));
+      await tester.tap(find.byTooltip('보드 메뉴'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('새로고침'));
       await tester.pumpAndSettle();
       expect(find.text('할 일 하나'), findsNothing);
 

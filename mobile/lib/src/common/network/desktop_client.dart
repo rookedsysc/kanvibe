@@ -7,6 +7,7 @@ import 'package:http/io_client.dart';
 import 'package:web_socket_channel/io.dart';
 
 import '../../features/board/domain/task_status.dart';
+import '../../features/project_registry/data/project_scan_result.dart';
 import '../../features/chat_history/domain/chat_history.dart';
 import '../../features/notifications/domain/inbox_notification.dart';
 import '../../features/notifications/domain/notification_settings.dart';
@@ -474,6 +475,44 @@ class DesktopClient {
       surfaces: TaskSurfaces.fromJson(body['surfaces'] as Map<String, dynamic>),
       paneId: body['paneId'] as String,
     );
+  }
+
+  Future<List<String>> fetchProjectDirectories(
+    DesktopConnection connection,
+    String path,
+  ) async {
+    final response = await _clientFor(connection)
+        .get(
+          connection.buildHttpUri('/api/mobile/directories', {'path': path}),
+          headers: connection.authorizationHeaders,
+        )
+        .timeout(_requestTimeout);
+    if (response.statusCode != 200) {
+      throw DesktopRequestException(response.statusCode);
+    }
+    final body = jsonDecode(response.body) as Map<String, dynamic>;
+    return List<String>.from(body['directories'] as List);
+  }
+
+  Future<ProjectScanResult> scanProjects(
+    DesktopConnection connection,
+    String rootPath,
+  ) async {
+    final response = await _clientFor(connection)
+        .post(
+          connection.buildHttpUri('/api/mobile/projects/scan'),
+          headers: {
+            ...connection.authorizationHeaders,
+            'Content-Type': 'application/json',
+          },
+          body: jsonEncode({'rootPath': rootPath}),
+        )
+        .timeout(_createTaskTimeout);
+    if (response.statusCode != 200) {
+      throw DesktopRequestException(response.statusCode);
+    }
+    final body = jsonDecode(response.body) as Map<String, dynamic>;
+    return ProjectScanResult.fromJson(body['result'] as Map<String, dynamic>);
   }
 
   /// 태스크 생성 화면의 베이스 브랜치 칸을 채운다

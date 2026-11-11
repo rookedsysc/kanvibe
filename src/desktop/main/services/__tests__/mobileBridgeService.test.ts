@@ -2,6 +2,9 @@
  * @vitest-environment node
  */
 import { EventEmitter } from "node:events";
+import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { tmpdir, homedir } from "node:os";
+import path from "node:path";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { SessionType } from "@/entities/KanbanTask";
 import { buildHerdrObservePaneCommand, buildScreenRedraw, buildTmuxCapturePaneCommand } from "@/lib/paneMirror";
@@ -16,6 +19,8 @@ const createTaskMock = vi.fn();
 const connectTerminalSessionMock = vi.fn();
 const updateTaskStatusMock = vi.fn();
 const getProjectBranchesMock = vi.fn();
+const listSubdirectoriesMock = vi.fn();
+const scanAndRegisterProjectsMock = vi.fn();
 const getTaskByIdMock = vi.fn();
 const deleteTaskAcrossTargetsMock = vi.fn();
 const removeTaskRegistrationMock = vi.fn();
@@ -121,6 +126,8 @@ vi.mock("@/lib/remoteSessionDependency", async (importOriginal) => {
 });
 vi.mock("@/desktop/main/services/projectService", () => ({
   getAllProjects: async () => [],
+  listSubdirectories: (...args: unknown[]) => listSubdirectoriesMock(...args),
+  scanAndRegisterProjects: (...args: unknown[]) => scanAndRegisterProjectsMock(...args),
   getTaskAiSessions: (...args: unknown[]) => getTaskAiSessionsMock(...args),
   getTaskAiSessionDetail: (...args: unknown[]) => getTaskAiSessionDetailMock(...args),
   getProjectBranches: (projectId: string) => getProjectBranchesMock(projectId),
@@ -2439,5 +2446,56 @@ describe("Herdr 세션 미러", () => {
     await vi.advanceTimersByTimeAsync(5_000);
 
     expect(spawnMock).toHaveBeenCalledTimes(1);
+  });
+});
+
+
+describe("모바일 프로젝트 폴더 접근", () => {
+  let directory: string;
+
+  beforeEach(async () => {
+    directory = await mkdtemp(path.join(tmpdir(), "kanvibe-project-browse-"));
+    listSubdirectoriesMock.mockReset().mockResolvedValue(["repo"]);
+    scanAndRegisterProjectsMock.mockReset().mockResolvedValue({ registered: ["repo"], skipped: [], errors: [], worktreeTasks: [], registeredWorktrees: [], hooksSetup: [] });
+  });
+
+  afterEach(async () => {
+    await rm(directory, { recursive: true, force: true });
+  });
+
+  it("실제 존재하는 폴더를 검증하고 기존 조회 서비스를 사용한다", async () => {
+    const { getMobileDirectories } = await import("../mobileBridgeService");
+    await mkdir(path.join(directory, "repo"));
+    expect(await getMobileDirectories(directory)).toEqual(["repo"]);
+    expect(listSubdirectoriesMock).toHaveBeenCalledWith(directory);
+  });
+
+  it("홈 축약 경로를 연결된 PC의 홈으로 검증한다", async () => {
+    const { getMobileDirectories } = await import("../mobileBridgeService");
+    await getMobileDirectories("~");
+    expect(listSubdirectoriesMock).toHaveBeenCalledWith(homedir());
+  });
+
+  it.each(["relative/path", "~another/path", "/bad\u0000path", "/bad\npath", ""])(("허용되지 않은 경로 %j는 파일 조회 전에 거절한다"), async (submitted) => {
+    const { getMobileDirectories } = await import("../mobileBridgeService");
+    await expect(getMobileDirectories(submitted)).rejects.toMatchObject({ name: "MobileTaskInputError" });
+    expect(listSubdirectoriesMock).not.toHaveBeenCalled();
+  });
+
+  it("없는 폴더와 일반 파일을 빈 폴더로 숨기지 않는다", async () => {
+    const { getMobileDirectories } = await import("../mobileBridgeService");
+    await writeFile(path.join(directory, "file.txt"), "content");
+    await expect(getMobileDirectories(path.join(directory, "missing"))).rejects.toMatchObject({ name: "MobileTaskInputError" });
+    await expect(getMobileDirectories(path.join(directory, "file.txt"))).rejects.toMatchObject({ name: "MobileTaskInputError" });
+    expect(listSubdirectoriesMock).not.toHaveBeenCalled();
+  });
+
+  it("등록 전에도 폴더를 검증하고 기존 스캔 결과를 보존한다", async () => {
+    const { scanMobileProjects } = await import("../mobileBridgeService");
+    const result = await scanMobileProjects(directory);
+    expect(result.registered).toEqual(["repo"]);
+    expect(scanAndRegisterProjectsMock).toHaveBeenCalledWith(directory);
+    await expect(scanMobileProjects(path.join(directory, "missing"))).rejects.toMatchObject({ name: "MobileTaskInputError" });
+    expect(scanAndRegisterProjectsMock).toHaveBeenCalledTimes(1);
   });
 });

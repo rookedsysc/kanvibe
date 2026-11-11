@@ -24,6 +24,60 @@ DesktopClient clientReplying(int statusCode, String body) => DesktopClient(
 void main() {
   defineTlsPinningTests();
 
+  test('프로젝트 폴더 조회와 등록은 선택한 PC에 인증된 요청을 보낸다', () async {
+    final client = DesktopClient(
+      httpClient: MockClient((request) async {
+        expect(request.headers['authorization'], 'Bearer test-token');
+        if (request.method == 'GET') {
+          expect(request.url.path, '/api/mobile/directories');
+          expect(request.url.queryParameters['path'], '~/한글 폴더');
+          return http.Response(
+            jsonEncode({
+              'success': true,
+              'directories': ['repo'],
+            }),
+            200,
+          );
+        }
+        expect(request.url.path, '/api/mobile/projects/scan');
+        expect(jsonDecode(request.body), {'rootPath': '~/한글 폴더/repo'});
+        return http.Response(
+          jsonEncode({
+            'success': true,
+            'result': {
+              'registered': ['repo'],
+              'skipped': [],
+              'errors': [],
+              'worktreeTasks': [],
+              'registeredWorktrees': [],
+              'hooksSetup': [],
+            },
+          }),
+          200,
+        );
+      }),
+    );
+    expect(await client.fetchProjectDirectories(_connection, '~/한글 폴더'), [
+      'repo',
+    ]);
+    expect(
+      (await client.scanProjects(_connection, '~/한글 폴더/repo')).registered,
+      ['repo'],
+    );
+  });
+
+  test('폴더 조회 및 등록의 HTTP 실패는 HTML을 JSON으로 읽지 않는다', () async {
+    final client = clientReplying(404, '<html>old desktop</html>');
+    await expectLater(
+      client.fetchProjectDirectories(_connection, '~'),
+      throwsA(isA<DesktopRequestException>()),
+    );
+    await expectLater(
+      client.scanProjects(_connection, '~'),
+      throwsA(isA<DesktopRequestException>()),
+    );
+  });
+
   test(
     'terminal shortcut uses authenticated pane-scoped POST and reads screen',
     () async {
