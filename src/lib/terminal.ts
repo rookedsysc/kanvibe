@@ -1,6 +1,10 @@
 import path from "path";
-import { ensureHerdrSession } from "@/lib/herdr";
+import { ensureHerdrSession, getHerdrWorkspaceId, getHerdrClientSocketPath } from "@/lib/herdr";
 import { existsSync } from "fs";
+import { mkdtemp, rm } from "fs/promises";
+import { tmpdir } from "os";
+import { randomUUID } from "crypto";
+import { createHerdrClientProxy } from "@/lib/herdrClientProxy";
 import { SessionType } from "@/entities/KanbanTask";
 import { PaneLayoutType } from "@/entities/PaneLayoutConfig";
 import { execSync } from "child_process";
@@ -10,6 +14,8 @@ import { SerializeAddon } from "@xterm/addon-serialize";
 import { buildSSHArgs, getKanvibeSSHConnectionHealthOptions, hasLocalX11Display } from "@/lib/sshConfig";
 import {
   buildHerdrCommand,
+  buildHerdrClientCommand,
+  parseHerdrSessionTarget,
   buildTmuxHideStatusBarCommand,
   buildTmuxSessionBootstrapCommand,
   buildTmuxUserClipboardDirectiveTestCommand,
@@ -39,6 +45,7 @@ interface TerminalEntry {
   mobileViewportSize?: { cols: number; rows: number };
   /** terminal 세션에만 있다. 멀티플렉서 세션은 멀티플렉서가 화면을 들고 있다 */
   screen?: TerminalScreen;
+  herdrClient?: Awaited<ReturnType<typeof prepareHerdrTaskClient>>;
 }
 
 /**
@@ -267,6 +274,7 @@ function destroyTerminal(terminalKey: string, triggerLabel?: string): void {
   }
   entry.clients.clear();
   entry.screen?.terminal.dispose();
+  void entry.herdrClient?.close().catch((error: unknown) => console.error("Herdr 클라이언트 정리 실패:", error));
 
 }
 
@@ -530,6 +538,53 @@ interface LocalPtySpawnPlan {
   cwd: string;
 }
 
+async function prepareHerdrTaskClient(sessionName: string, sshHost?: string): Promise<{
+  proxy: Awaited<ReturnType<typeof createHerdrClientProxy>>;
+  workspaceId: string;
+  forwardingArgs: string[];
+  clientSocketPath: string;
+  close(): Promise<void>;
+}> {
+  const workspaceId = await getHerdrWorkspaceId(sessionName, sshHost);
+  if (!workspaceId) throw new Error("공유 Herdr Space를 찾을 수 없습니다.");
+  const serverSocketPath = await getHerdrClientSocketPath(sessionName, sshHost);
+  const forwardingDirectory = sshHost ? await mkdtemp(path.join(tmpdir(), "kvhf-")) : null;
+  const upstream = forwardingDirectory ? path.join(forwardingDirectory, "upstream") : serverSocketPath;
+  try {
+    const proxy = await createHerdrClientProxy(upstream, workspaceId);
+    const remoteProxyPath = `/tmp/kvhc-${randomUUID()}.sock`;
+    return {
+      proxy,
+      workspaceId,
+      clientSocketPath: sshHost ? remoteProxyPath : proxy.socketPath,
+      forwardingArgs: sshHost ? [
+        "-o", "ExitOnForwardFailure=yes", "-o", "StreamLocalBindUnlink=yes",
+        "-o", "ControlMaster=no", "-o", "ControlPath=none",
+        "-L", `${upstream}:${serverSocketPath}`, "-R", `${remoteProxyPath}:${proxy.socketPath}`,
+      ] : [],
+      close: async () => {
+        await proxy.close();
+        if (forwardingDirectory) await rm(forwardingDirectory, { recursive: true, force: true });
+      },
+    };
+  } catch (error) {
+    if (forwardingDirectory) await rm(forwardingDirectory, { recursive: true, force: true });
+    throw error;
+  }
+}
+
+export function getHerdrTaskActiveTabId(taskId: string): string | null {
+  return [...activeTerminals.values()].find((entry) => entry.taskId === taskId && entry.herdrClient)?.herdrClient?.proxy.getActiveTabId() ?? null;
+}
+
+export async function focusHerdrTaskTab(taskId: string, tabId: string): Promise<void> {
+  const clients = [...activeTerminals.values()].filter((entry) => entry.taskId === taskId && entry.herdrClient);
+  for (const entry of clients) {
+    if (!tabId.startsWith(`${entry.herdrClient!.workspaceId}:`)) throw new Error("다른 Space의 탭을 선택할 수 없습니다.");
+  }
+  await Promise.all(clients.map((entry) => entry.herdrClient!.proxy.request("tab.focus", { tab_id: tabId })));
+}
+
 /**
  * 세션 타입별로 어떤 프로세스를 띄울지 정한다.
  * tmux는 이미 만들어 둔 세션에 attach하고, zellij는 세션이 없으면 생성까지 겸하며,
@@ -676,6 +731,13 @@ async function spawnLocalSession(
     return;
   }
 
+  const herdrClient = sessionType === SessionType.HERDR && parseHerdrSessionTarget(sessionName).workspaceKey
+    ? await prepareHerdrTaskClient(sessionName) : undefined;
+  if (ws.readyState !== ws.OPEN) {
+    await herdrClient?.close();
+    return;
+  }
+  if (herdrClient) spawnPlan.args = ["-c", `exec ${buildHerdrClientCommand(sessionName, herdrClient.clientSocketPath)}`];
   let ptyProcess: import("node-pty").IPty;
   try {
     ptyProcess = pty.spawn(spawnPlan.shell, spawnPlan.args, {
@@ -686,6 +748,7 @@ async function spawnLocalSession(
       env: terminalEnvironment,
     });
   } catch (error) {
+    await herdrClient?.close();
     console.error("[터미널] PTY spawn 실패:", error);
     ws.close(1011, "터미널 프로세스 생성 실패");
     throw new Error("터미널 프로세스 생성 실패");
@@ -693,7 +756,7 @@ async function spawnLocalSession(
 
   registerTerminalEntry(
     terminalKey,
-    { pty: ptyProcess, clients: new Set([ws]), sessionType, sessionName, taskId, tabId },
+    { pty: ptyProcess, clients: new Set([ws]), sessionType, sessionName, taskId, tabId, herdrClient },
     ws,
     "Local",
   );
@@ -800,6 +863,18 @@ async function spawnRemoteSession(
     return;
   }
 
+  const herdrClient = sessionType === SessionType.HERDR && parseHerdrSessionTarget(sessionName).workspaceKey
+    ? await prepareHerdrTaskClient(sessionName, sshHost) : undefined;
+  if (ws.readyState !== ws.OPEN) {
+    await herdrClient?.close();
+    return;
+  }
+  if (herdrClient) {
+    args.splice(args.length - 2, 0, ...herdrClient.forwardingArgs);
+    const cleanup = `rm -f ${quoteForPosixShell(herdrClient.clientSocketPath)}`;
+    const clientCommand = buildHerdrClientCommand(sessionName, herdrClient.clientSocketPath);
+    args[args.length - 1] = buildRemoteShellCommand(`trap ${quoteForPosixShell(cleanup)} EXIT; ${clientCommand}`);
+  }
   let ptyProcess: import("node-pty").IPty;
   try {
     ptyProcess = pty.spawn("ssh", args, {
@@ -810,6 +885,7 @@ async function spawnRemoteSession(
       env: terminalEnvironment,
     });
   } catch (error) {
+    await herdrClient?.close();
     console.error("[터미널] Remote PTY spawn 실패:", error);
     ws.close(1011, "SSH 연결 실패");
     throw new Error("SSH 연결 실패");
@@ -820,7 +896,7 @@ async function spawnRemoteSession(
 
   registerTerminalEntry(
     terminalKey,
-    { pty: ptyProcess, clients: new Set([ws]), sessionType, sessionName, taskId, tabId },
+    { pty: ptyProcess, clients: new Set([ws]), sessionType, sessionName, taskId, tabId, herdrClient },
     ws,
     "Remote",
   );

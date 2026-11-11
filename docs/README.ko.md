@@ -192,8 +192,8 @@ brew untap rookedsysc/kanvibe
 - 원격 터미널 attach는 SSH에서 Herdr/tmux/zellij를 직접 실행하며, 로컬 `DISPLAY`, 원격 `X11Forwarding`, `xauth`가 준비된 경우에만 trusted X11 forwarding(`ssh -Y`)을 요청합니다
 - Nerd Font 렌더링 지원
 
-- 저장된 유효한 설정이 없으면 Herdr가 기본값이며, 기존 tmux·zellij·terminal 선택은 유지합니다. 태스크마다 이름 있는 영구 세션을 사용합니다. 세션을 처음 만들 때 설정한 6가지 pane 레이아웃과 pane별 시작 명령을 적용하며, 다시 열면 실행 중인 셸을 이어 씁니다.
-- Herdr 탭은 생성·전환·이름 변경·닫기와 workspace 안에서의 드래그 순서 변경을 지원합니다. KanVibe 창을 닫아도 마지막 탭은 유지하며, 태스크를 삭제하면 해당 이름의 세션을 중지하고 삭제합니다. Herdr의 첫 실행 설정과 개인 설정은 Herdr가 관리합니다.
+- 저장된 유효한 설정이 없으면 Herdr가 기본값이며, 기존 tmux·zellij·terminal 선택은 유지합니다. 새 Herdr 태스크는 호스트별 영구 `kanvibe` 서버를 공유하며, 태스크마다 만든 workspace가 Spaces에 함께 표시됩니다. 처음 열 때 설정한 6가지 pane 레이아웃과 시작 명령을 적용하고, 다시 열면 실행 중인 셸을 이어 씁니다. 기존 독립 세션은 명시적으로 교체할 때까지 유지합니다.
+- Herdr 탭은 생성·전환·이름 변경·닫기와 workspace 안에서의 드래그 순서 변경을 지원합니다. Space와 탭 선택은 해당 태스크 창에만 적용됩니다. KanVibe를 닫아도 마지막 탭은 유지하며, 공유 태스크를 삭제하면 해당 workspace만 닫아 다른 태스크의 작업은 계속 실행됩니다. workspace ID 연결 정보를 Herdr 세션 디렉터리에 저장하므로 Space 이름을 바꿔도 다시 연결됩니다. Herdr의 첫 실행 설정과 개인 설정은 Herdr가 관리합니다.
 - 태스크 생성·브랜치 생성·터미널 연결에서 `herdr`를 선택하면 로컬 또는 선택한 SSH 호스트의 설치 여부를 확인합니다. Herdr가 없으면 설치 안내를 승인해 해당 호스트에서 [공식 설치 프로그램](https://herdr.dev/tui/docs/install/)을 실행할 수 있습니다. `~/.local/bin`에 설치하며 셸 시작 파일은 바꾸지 않습니다. 취소하면 태스크는 변경되지 않습니다. 설치에 실패하면 오류를 확인하고 네트워크 연결과 설치 경로의 쓰기 권한을 점검한 뒤 다시 시도합니다.
 
 ### 키보드 중심 조작

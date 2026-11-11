@@ -183,7 +183,7 @@ function buildRemoteUmaskCommand(mode?: number): string {
  */
 export async function updateTextFile(
   targetPath: string,
-  update: (content: string) => string,
+  update: (content: string) => string | Promise<string>,
   sshHost?: string | null,
   mode?: number,
 ): Promise<void> {
@@ -221,7 +221,7 @@ export async function updateTextFile(
         return "";
       });
     }
-    const nextContent = update(currentContent);
+    const nextContent = await update(currentContent);
     if (sshHost) {
       await execGit(
         buildRemoteStdinPublishCommand(temporaryPath, targetPath, Buffer.byteLength(nextContent), mode),

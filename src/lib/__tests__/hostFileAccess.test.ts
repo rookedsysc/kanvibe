@@ -171,6 +171,16 @@ describe("hostFileAccess.updateTextFile 권한", () => {
     });
   }
 
+  it("비동기 갱신이 끝날 때까지 잠금을 유지하고 동시 변경을 모두 보존한다", async () => {
+    const targetPath = path.join(tempDir, "async-map.json");
+    const { updateTextFile } = await import("@/lib/hostFileAccess");
+    await Promise.all(["a", "b"].map((letter) => updateTextFile(targetPath, async (content) => {
+      await Promise.resolve();
+      return content + letter;
+    }, null, 0o600)));
+    expect((await readFile(targetPath, "utf-8")).split("").sort()).toEqual(["a", "b"]);
+  });
+
   it("임시 파일로 교체해도 자격 증명 파일은 처음부터 지정한 권한으로 공개된다", async () => {
     // Given
     mocks.skipsChmod = true;

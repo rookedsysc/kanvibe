@@ -739,6 +739,10 @@ async function findAliveBranchSession(
     return { sessionType: SessionType.TMUX, sessionName };
   }
   const herdrSessionName = sanitizeHerdrSessionName(sessionName);
+  const sharedSessionName = `kanvibe:${herdrSessionName}`;
+  if (await isSessionAlive(SessionType.HERDR, sharedSessionName, sshHost)) {
+    return { sessionType: SessionType.HERDR, sessionName: sharedSessionName };
+  }
   if (await isSessionAlive(SessionType.HERDR, herdrSessionName, sshHost)) {
     return { sessionType: SessionType.HERDR, sessionName: herdrSessionName };
   }

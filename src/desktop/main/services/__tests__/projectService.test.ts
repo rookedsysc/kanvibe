@@ -1472,7 +1472,7 @@ describe("projectService local hook installation", () => {
       },
     ]);
     mocks.formatSessionName.mockReturnValue("repo-feature-login");
-    mocks.isSessionAlive.mockImplementation(async (sessionType: string) => sessionType === "herdr");
+    mocks.isSessionAlive.mockImplementation(async (sessionType: string, name: string) => sessionType === "herdr" && !name.startsWith("kanvibe:"));
 
     mocks.getProjectRepository.mockResolvedValue({
       find: vi.fn().mockResolvedValue([

@@ -4,7 +4,10 @@ import { SessionType } from "@/entities/KanbanTask";
 import { PaneLayoutType, type PaneCommand } from "@/entities/PaneLayoutConfig";
 import { execGit, listWorktrees, resolvePathForShell, type WorktreeInfo } from "@/lib/gitOperations";
 import { writeTextFile } from "@/lib/hostFileAccess";
+import { closeHerdrTaskWorkspace, isHerdrTaskAlive } from "@/lib/herdr";
 import { getEffectivePaneLayout } from "@/desktop/main/services/paneLayoutService";
+
+export { buildHerdrClientCommand, buildHerdrCommand, buildHerdrSessionCleanupCommand, parseHerdrSessionTarget } from "@/lib/herdr";
 
 interface WorktreeSession {
   worktreePath: string;
@@ -51,16 +54,6 @@ export function sanitizeZellijSessionName(sessionName: string): string {
 
 export function quoteForPosixShell(value: string): string {
   return `'${value.replace(/'/g, `'"'"'`)}'`;
-}
-
-const HERDR_EXECUTABLE = `"$(command -v herdr || printf '%s' "$HOME/.local/bin/herdr")"`;
-
-export function buildHerdrCommand(sessionName: string, arguments_: string[]): string {
-  return `env -u HERDR_ENV -u HERDR_SESSION -u HERDR_SOCKET_PATH -u HERDR_PANE_ID -u HERDR_WORKSPACE_ID -u HERDR_TAB_ID ${HERDR_EXECUTABLE} --session ${quoteForPosixShell(sessionName)} ${arguments_.map(quoteForPosixShell).join(" ")}`;
-}
-
-export function buildHerdrSessionCleanupCommand(sessionName: string): string {
-  return `${buildHerdrCommand(sessionName, ["session", "stop", sessionName])} >/dev/null 2>&1 || true; ${buildHerdrCommand(sessionName, ["session", "delete", sessionName])}`;
 }
 
 export function sanitizeHerdrSessionName(sessionName: string): string {
@@ -424,7 +417,7 @@ export async function createWorktreeWithSession(
 ): Promise<WorktreeSession> {
   const worktreePath = buildManagedWorktreePath(projectPath, branchName);
   const rawSessionName = formatProjectBranchSessionName(projectPath, branchName);
-  const sessionName = sessionType === SessionType.HERDR ? sanitizeHerdrSessionName(rawSessionName) : rawSessionName;
+  const sessionName = sessionType === SessionType.HERDR ? `kanvibe:${sanitizeHerdrSessionName(rawSessionName)}` : rawSessionName;
 
   await execGit(
     `git -C ${resolvePathForShell(projectPath, sshHost)} worktree add ${resolvePathForShell(worktreePath, sshHost)} -b ${quoteForPosixShell(branchName)} ${quoteForPosixShell(baseBranch)}`,
@@ -472,7 +465,7 @@ export async function createSessionWithoutWorktree(
   projectId?: string | null,
 ): Promise<{ sessionName: string }> {
   const rawSessionName = formatProjectBranchSessionName(projectPath, branchName);
-  const sessionName = sessionType === SessionType.HERDR ? sanitizeHerdrSessionName(rawSessionName) : rawSessionName;
+  const sessionName = sessionType === SessionType.HERDR ? `kanvibe:${sanitizeHerdrSessionName(rawSessionName)}` : rawSessionName;
 
   /** tmux와 terminal 세션은 이름만 있으면 되고, 실제 생성은 터미널 연결 시점이다 */
   if (sessionType !== SessionType.ZELLIJ) {
@@ -720,7 +713,7 @@ export async function removeSessionOnly(
         sshHost,
       );
     } else if (sessionType === SessionType.HERDR) {
-      await execGit(buildHerdrSessionCleanupCommand(sessionName), sshHost, { timeoutMs: 30_000 });
+      await closeHerdrTaskWorkspace(sessionName, sshHost);
     } else if (sessionType === SessionType.ZELLIJ) {
       await execGit(
         buildZellijSessionCleanupCommand(sessionName, options.throwOnError === true),
@@ -819,8 +812,7 @@ export async function isSessionAlive(
     }
 
     if (sessionType === SessionType.HERDR) {
-      await execGit(buildHerdrCommand(sessionName, ["workspace", "list"]), sshHost);
-      return true;
+      return isHerdrTaskAlive(sessionName, sshHost);
     }
 
     if (sessionType === SessionType.ZELLIJ) {
