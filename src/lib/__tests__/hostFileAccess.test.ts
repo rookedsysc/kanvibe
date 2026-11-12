@@ -428,6 +428,28 @@ describe("hostFileAccess.updateTextFile 권한", () => {
     await expect(stat(`${targetPath}.lock`)).rejects.toMatchObject({ code: "ENOENT" });
   });
 
+  it("원격 잠금 생성이 실패한 직후 다른 작업이 잠금을 풀면 오류 대신 다시 시도한다", async () => {
+    // Given: 첫 잠금 mkdir만 경합에 진 것처럼 실패시키되, 잠금 경로는 이미 풀려 있어 존재하지 않는다
+    const targetPath = path.join(tempDir, "targets.json");
+    const lockPath = `${targetPath}.lock`;
+    const lostRaceMarker = path.join(tempDir, "lost-race");
+    runRemoteCommandsWithoutChmod();
+    const runRemoteCommand = mocks.execGit.getMockImplementation()!;
+    mocks.execGit.mockImplementation((command: string, ...rest: unknown[]) => runRemoteCommand(
+      `mkdir() { if [ "$3" = '${lockPath}' ] && [ ! -e '${lostRaceMarker}' ]; then : > '${lostRaceMarker}'; return 1; fi; command mkdir "$@"; }; ${command}`,
+      ...rest,
+    ));
+    const { updateTextFile } = await import("@/lib/hostFileAccess");
+
+    // When
+    await updateTextFile(targetPath, () => "next", "remote-host", 0o600);
+
+    // Then
+    await expect(readFile(targetPath, "utf-8")).resolves.toBe("next");
+    expect(mocks.execGit).toHaveBeenCalledTimes(2);
+    await expect(stat(lockPath)).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
   it("원격의 현재 내용은 공백과 마지막 줄바꿈을 보존하고 한 SSH transaction으로 갱신한다", async () => {
     const targetPath = path.join(tempDir, "exact.txt");
     await writeFile(targetPath, "  saved\n\n");
