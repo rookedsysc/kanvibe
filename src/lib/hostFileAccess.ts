@@ -6,6 +6,7 @@ import { execGit, type ExecGitOptions } from "@/lib/gitOperations";
 
 const remoteHomeDirectoryCache = new Map<string, string>();
 const REMOTE_FILE_RECORD_PREFIX = "__KANVIBE_FILE_RECORD__";
+const REMOTE_FILE_RECORD_END = "__KANVIBE_FILE_RECORD_END__";
 // AI history JSONL can exceed the general 10 MiB command cap; 64 MiB keeps reads bounded while covering large sessions.
 const REMOTE_TEXT_FILE_MAX_BUFFER_BYTES = 64 * 1024 * 1024;
 
@@ -128,7 +129,8 @@ export async function readTextFiles(
     'printf "%s" "$__kanvibe_content" | tr -d "\\n";',
     'elif test -e "$__kanvibe_file" || test -L "$__kanvibe_file"; then exit 1;',
     `else printf '%s\\t%s\\t0\\t' ${quoteShellArgument(REMOTE_FILE_RECORD_PREFIX)} "$__kanvibe_file"; fi;`,
-    'printf "\\n";',
+    // execGit의 trim()이 빈 내용 필드의 탭까지 지우지 않도록 종료 표식을 붙인다.
+    `printf '\\t%s\\n' ${quoteShellArgument(REMOTE_FILE_RECORD_END)};`,
     "done",
   ].join(" ");
   const output = await execGit(command, sshHost, ...(options ? [options] as const : [] as const));
@@ -150,8 +152,8 @@ function parseRemoteTextFiles(
   for (const line of output.split("\n")) {
     if (!line.startsWith(`${REMOTE_FILE_RECORD_PREFIX}\t`)) continue;
     const fields = line.split("\t");
-    const [, filePath, existsFlag, encodedContent] = fields;
-    if (fields.length !== 4 || !expectedPaths.has(filePath) || files.has(filePath)
+    const [, filePath, existsFlag, encodedContent, recordEnd] = fields;
+    if (fields.length !== 5 || recordEnd !== REMOTE_FILE_RECORD_END || !expectedPaths.has(filePath) || files.has(filePath)
       || (existsFlag !== "0" && existsFlag !== "1")
       || (existsFlag === "0" && encodedContent !== "")
       || Buffer.from(encodedContent, "base64").toString("base64") !== encodedContent) {
