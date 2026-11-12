@@ -14,6 +14,8 @@ const mockGetGeminiHooksStatus = vi.fn();
 const mockGetCodexHooksStatus = vi.fn();
 const mockGetOpenCodeHooksStatus = vi.fn();
 const mockGetHookServerUrl = vi.fn();
+const mockGetHookServerPort = vi.fn(() => 9736);
+const mockGetHookClientId = vi.fn(async () => "own-client");
 const mockRegisterKanvibeHookTarget = vi.fn();
 const mockReadTextFiles = vi.fn();
 const mockWriteHookProviderFiles = vi.fn();
@@ -60,10 +62,11 @@ vi.mock("@/lib/gitOperations", async (importOriginal) => ({
   execGit: (...args: unknown[]) => mockExecGit(...args),
 }));
 vi.mock("@/desktop/main/services/appSettingsService", () => ({
-  getOrCreateHookClientId: async () => "own-client",
+  getOrCreateHookClientId: () => mockGetHookClientId(),
 }));
 
 vi.mock("@/lib/hookEndpoint", () => ({
+  getHookServerPort: () => mockGetHookServerPort(),
   getHookServerUrl: (...args: unknown[]) => mockGetHookServerUrl(...args),
 }));
 
@@ -733,6 +736,8 @@ describe("kanvibeHooksInstaller conditional migration", () => {
     vi.resetModules();
     vi.clearAllMocks();
     useRealProviderStatuses = true;
+    mockGetHookClientId.mockResolvedValue("own-client");
+    mockGetHookServerPort.mockReturnValue(9736);
     files = new Map();
     mockExecGit.mockResolvedValue("");
     mockGetHookServerUrl.mockResolvedValue("http://127.0.0.1:9736");
@@ -763,6 +768,124 @@ describe("kanvibeHooksInstaller conditional migration", () => {
     await ensureKanvibeHooksCurrent(repoPath, "task-1", "remote-host");
     expect(mockWriteHookProviderFiles).toHaveBeenCalledTimes(HOOK_WRITE_BATCH_COUNT);
     expect(files.get(cliPath)?.content).toContain("KANVIBE_HOOK_TRANSPORT_VERSION=2");
+  });
+
+  it("변경 없는 원격 hook은 파일 묶음 한 번만 읽고 provider 재검사를 생략한다", async () => {
+    const { ensureKanvibeHooksCurrent } = await import("../kanvibeHooksInstaller");
+    await ensureKanvibeHooksCurrent(repoPath, "task-1", "remote-host");
+    mockReadTextFiles.mockClear();
+
+    await expect(ensureKanvibeHooksCurrent(repoPath, "task-1", "remote-host")).resolves.toBe(false);
+
+    expect(mockReadTextFiles).toHaveBeenCalledTimes(1);
+    expect(mockReadTextFiles.mock.calls[0][0]).toEqual(expect.arrayContaining([...files.keys()]));
+    expect(mockWriteHookProviderFiles).not.toHaveBeenCalled();
+  });
+
+  it("이전 검증이 성공했어도 provider 파일 삭제를 즉시 발견해 복구한다", async () => {
+    const { ensureKanvibeHooksCurrent } = await import("../kanvibeHooksInstaller");
+    await ensureKanvibeHooksCurrent(repoPath, "task-1", "remote-host");
+    const scriptPath = `${repoPath}/.claude/hooks/kanvibe-prompt-hook.sh`;
+    files.delete(scriptPath);
+
+    await expect(ensureKanvibeHooksCurrent(repoPath, "task-1", "remote-host")).resolves.toBe(true);
+
+    expect(files.get(scriptPath)?.content).toContain("KANVIBE_HOOK_TRANSPORT_VERSION=2");
+    expect(mockWriteHookProviderFiles).toHaveBeenCalledTimes(HOOK_WRITE_BATCH_COUNT);
+  });
+
+  it("검증 결과는 다른 원격 호스트의 검사를 생략하지 않는다", async () => {
+    const { ensureKanvibeHooksCurrent } = await import("../kanvibeHooksInstaller");
+    await ensureKanvibeHooksCurrent(repoPath, "task-1", "remote-host");
+    mockExecGit.mockClear();
+
+    await expect(ensureKanvibeHooksCurrent(repoPath, "task-1", "other-host")).resolves.toBe(false);
+
+    expect(mockExecGit).toHaveBeenCalledWith(expect.any(String), "other-host", expect.any(Object));
+  });
+
+  it("이전 검증이 성공했어도 현재 파일 읽기 실패를 성공으로 돌려주지 않는다", async () => {
+    const { ensureKanvibeHooksCurrent } = await import("../kanvibeHooksInstaller");
+    await ensureKanvibeHooksCurrent(repoPath, "task-1", "remote-host");
+    mockReadTextFiles.mockRejectedValueOnce(new Error("SSH read failed"));
+
+    await expect(ensureKanvibeHooksCurrent(repoPath, "task-1", "remote-host")).rejects.toThrow("SSH read failed");
+    expect(mockWriteHookProviderFiles).not.toHaveBeenCalled();
+  });
+
+  it("검사 도중 파일이 바뀌면 처음 읽은 내용을 검증된 상태로 재사용하지 않는다", async () => {
+    const scriptPath = `${repoPath}/.claude/hooks/kanvibe-prompt-hook.sh`;
+    let firstSnapshot = true;
+    mockReadTextFiles.mockImplementation(async (paths: string[]) => {
+      const snapshot = new Map(paths.map((filePath) => [
+        filePath, files.get(filePath) ?? { exists: false, content: "" },
+      ]));
+      if (firstSnapshot && paths.includes(cliPath)) {
+        firstSnapshot = false;
+        snapshot.set(scriptPath, { exists: false, content: "" });
+      }
+      return snapshot;
+    });
+    const { ensureKanvibeHooksCurrent } = await import("../kanvibeHooksInstaller");
+    await ensureKanvibeHooksCurrent(repoPath, "task-1", "remote-host");
+    files.delete(scriptPath);
+
+    await expect(ensureKanvibeHooksCurrent(repoPath, "task-1", "remote-host")).resolves.toBe(true);
+    expect(files.get(scriptPath)?.content).toContain("KANVIBE_HOOK_TRANSPORT_VERSION=2");
+  });
+
+  it("검증 후 현재 client 등록이 사라지면 peer를 보존하며 다시 등록한다", async () => {
+    const { ensureKanvibeHooksCurrent } = await import("../kanvibeHooksInstaller");
+    await ensureKanvibeHooksCurrent(repoPath, "task-1", "remote-host");
+    const own = JSON.parse(files.get(targetsPath)!.content).targets[0];
+    const peer = { ...own, clientId: "peer-client", url: "http://127.0.0.1:9737" };
+    files.set(targetsPath, { exists: true, content: JSON.stringify({ targets: [peer] }) });
+
+    await expect(ensureKanvibeHooksCurrent(repoPath, "task-1", "remote-host")).resolves.toBe(true);
+    expect(JSON.parse(files.get(targetsPath)!.content).targets).toContainEqual(peer);
+    expect(mockRegisterKanvibeHookTarget).toHaveBeenCalledTimes(1);
+  });
+
+  it("현재 client ID가 바뀌면 이전 client의 검증 성공을 재사용하지 않는다", async () => {
+    const { ensureKanvibeHooksCurrent } = await import("../kanvibeHooksInstaller");
+    await ensureKanvibeHooksCurrent(repoPath, "task-1", "remote-host");
+    mockGetHookClientId.mockResolvedValue("new-client");
+
+    await expect(ensureKanvibeHooksCurrent(repoPath, "task-1", "remote-host")).rejects.toThrow("현재 client 등록이 없습니다");
+    expect(mockRegisterKanvibeHookTarget).toHaveBeenCalledTimes(1);
+  });
+
+  it("다른 task의 등록 누락을 이전 task의 검증으로 감추지 않는다", async () => {
+    const { ensureKanvibeHooksCurrent } = await import("../kanvibeHooksInstaller");
+    await ensureKanvibeHooksCurrent(repoPath, "task-1", "remote-host");
+
+    await expect(ensureKanvibeHooksCurrent(repoPath, "task-2", "remote-host")).rejects.toThrow("hasRegisteredHookTarget");
+    expect(mockRegisterKanvibeHookTarget).toHaveBeenCalled();
+  });
+
+  it("hook 포트가 바뀌면 파일이 같아도 provider 상태를 다시 검사한다", async () => {
+    const { ensureKanvibeHooksCurrent } = await import("../kanvibeHooksInstaller");
+    await ensureKanvibeHooksCurrent(repoPath, "task-1", "remote-host");
+    mockExecGit.mockClear();
+    mockGetHookServerPort.mockReturnValue(19736);
+
+    await expect(ensureKanvibeHooksCurrent(repoPath, "task-1", "remote-host")).resolves.toBe(false);
+    expect(mockExecGit).toHaveBeenCalled();
+  });
+
+  it("로컬 provider 상태는 파일이 같아도 매번 새로 검사한다", async () => {
+    const { ensureKanvibeHooksCurrent } = await import("../kanvibeHooksInstaller");
+    useRealProviderStatuses = false;
+    const target = JSON.parse(files.get(targetsPath)!.content).targets[0];
+    files.set(targetsPath, { exists: true, content: JSON.stringify({ targets: [{ ...target, transport: "local" }] }) });
+    [mockGetClaudeHooksStatus, mockGetGeminiHooksStatus, mockGetCodexHooksStatus, mockGetOpenCodeHooksStatus]
+      .forEach((getStatus) => getStatus.mockResolvedValue({ installed: true }));
+
+    await ensureKanvibeHooksCurrent(repoPath, "task-1");
+    await ensureKanvibeHooksCurrent(repoPath, "task-1");
+
+    expect(mockGetOpenCodeHooksStatus).toHaveBeenCalledTimes(2);
+    expect(mockWriteHookProviderFiles).not.toHaveBeenCalled();
   });
 
   it.each([

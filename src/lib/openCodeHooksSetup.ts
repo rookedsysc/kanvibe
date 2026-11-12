@@ -3,7 +3,7 @@ import {
   KANVIBE_GIT_EXCLUDE_MARKER,
   KANVIBE_STATE_DIR_EXCLUDE_PATTERN,
 } from "@/lib/gitExclude";
-import { readTextFiles } from "@/lib/hostFileAccess";
+import { readTextFiles, type TextFileReadResult } from "@/lib/hostFileAccess";
 import { writeHookProviderFiles } from "@/lib/hookFileWriter";
 import { extractPluginHookServerUrl, validateHookServerConfiguration } from "@/lib/hookServerStatus";
 import {
@@ -396,10 +396,11 @@ export async function getOpenCodeHooksStatus(
   repoPath: string,
   taskId?: string,
   sshHost?: string | null,
+  existingFiles?: Map<string, TextFileReadResult>,
 ): Promise<OpenCodeHooksStatus> {
   const pluginPath = getOpenCodePluginPath(repoPath, sshHost);
   const targetsPath = getKanvibeTargetsPath(repoPath, sshHost);
-  const files = await readTextFiles([pluginPath, targetsPath], sshHost, { strictHostKeyChecking: true });
+  const files = existingFiles ?? await readTextFiles([pluginPath, targetsPath], sshHost, { strictHostKeyChecking: true });
   const pluginFile = files.get(pluginPath) ?? { exists: false, content: "" };
   const pluginContent = pluginFile.content;
 

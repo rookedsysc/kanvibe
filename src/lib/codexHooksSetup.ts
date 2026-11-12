@@ -1,5 +1,5 @@
 import { registerKanvibeHookTarget } from "@/lib/hookTargetRegistration";
-import { readTextFiles } from "@/lib/hostFileAccess";
+import { readTextFiles, type TextFileReadResult } from "@/lib/hostFileAccess";
 import { writeHookProviderFiles } from "@/lib/hookFileWriter";
 import {
   buildCommandHookEntry,
@@ -194,6 +194,7 @@ export async function getCodexHooksStatus(
   repoPath: string,
   taskId?: string,
   sshHost?: string | null,
+  existingFiles?: Map<string, TextFileReadResult>,
 ): Promise<CodexHooksStatus> {
   const configPath = getCodexConfigPath(repoPath, sshHost);
   const hooksPath = getCodexHooksPath(repoPath, sshHost);
@@ -204,6 +205,7 @@ export async function getCodexHooksStatus(
     extraFilePaths: [configPath, hooksPath],
     taskId,
     sshHost,
+    files: existingFiles,
   });
   const [promptScript, permissionScript, preToolScript, stopScript] = state.scriptFiles;
   const hooksFile = state.files.get(hooksPath) ?? { exists: false, content: "" };

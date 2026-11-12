@@ -1,5 +1,5 @@
 import { registerKanvibeHookTarget } from "@/lib/hookTargetRegistration";
-import { readTextFiles } from "@/lib/hostFileAccess";
+import { readTextFiles, type TextFileReadResult } from "@/lib/hostFileAccess";
 import { writeHookProviderFiles } from "@/lib/hookFileWriter";
 import {
   buildCommandHookEntry,
@@ -154,6 +154,7 @@ export async function getClaudeHooksStatus(
   repoPath: string,
   taskId?: string,
   sshHost?: string | null,
+  existingFiles?: Map<string, TextFileReadResult>,
 ): Promise<ClaudeHooksStatus> {
   const settingsPath = getClaudeSettingsPath(repoPath, sshHost);
   const state = await readShellHookProviderState({
@@ -163,6 +164,7 @@ export async function getClaudeHooksStatus(
     extraFilePaths: [settingsPath],
     taskId,
     sshHost,
+    files: existingFiles,
   });
   const [promptScript, stopScript, questionScript] = state.scriptFiles;
   const hasSettingsEntry = hasClaudeSettingsEntry(state.files.get(settingsPath)?.content ?? "");
