@@ -11,6 +11,7 @@ import '../../project_registry/presentation/project_registry_screen.dart';
 import '../../task_detail/presentation/task_detail_screen.dart';
 import '../../connection/presentation/desktop_connections_screen.dart';
 import '../../notifications/presentation/notification_center_screen.dart';
+import '../../notifications/application/notification_inbox_controller.dart';
 import '../application/board_project_filter_controller.dart';
 import '../application/task_deletion.dart';
 import '../data/board_snapshot.dart';
@@ -416,6 +417,11 @@ class _TaskCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final unreadCount = ref.watch(
+      notificationInboxProvider.select(
+        (value) => value.value?.unreadCountForTask(task.id) ?? 0,
+      ),
+    );
     return Material(
       color: AppColors.bgSurface,
       borderRadius: BorderRadius.circular(AppSizes.radiusLg),
@@ -439,11 +445,34 @@ class _TaskCard extends ConsumerWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                task.title,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: Theme.of(context).textTheme.bodyMedium,
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      task.title,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.bodyMedium,
+                    ),
+                  ),
+                  if (unreadCount > 0) ...[
+                    const SizedBox(width: AppSizes.p12),
+                    Semantics(
+                      key: ValueKey('task-unread-${task.id}'),
+                      identifier: 'task-unread-${task.id}',
+                      label: '읽지 않은 알림 $unreadCount개',
+                      excludeSemantics: true,
+                      child: Badge.count(
+                        count: unreadCount,
+                        child: const Icon(
+                          Icons.notifications_outlined,
+                          size: 20,
+                          color: AppColors.statusProgress,
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
               ),
               const SizedBox(height: AppSizes.p8),
               Wrap(
