@@ -3,6 +3,7 @@ import { getTaskRepository } from "@/lib/database";
 import { broadcastBoardUpdate, broadcastHookStatusTargetMissing, broadcastTaskStatusChanged } from "@/lib/boardNotifier";
 import { isTaskReachableFromTunnel } from "@/desktop/main/services/hookTunnelService";
 import { persistTaskStateForTask } from "@/desktop/main/services/kanvibeTaskStateService";
+import { recordPaneChatSessionBinding } from "@/lib/aiSessions/paneChatSessionBindings";
 
 const STATUS_MAP: Record<string, TaskStatus> = {
   todo: TaskStatus.TODO,
@@ -15,6 +16,7 @@ const STATUS_MAP: Record<string, TaskStatus> = {
 export interface HookStatusInput {
   taskId: string;
   status: string;
+  agentSession?: unknown;
 }
 
 /**
@@ -67,6 +69,15 @@ export async function updateHookTaskStatus(input: HookStatusInput, sourceSshHost
   }
 
   const projectName = task.project?.name || task.projectId || "Unknown project";
+  const sshHost = task.sshHost || task.project?.sshHost || null;
+  if (input.agentSession && (!sshHost || sourceSshHosts?.has(sshHost))) {
+    await recordPaneChatSessionBinding({
+      taskId: task.id,
+      worktreePath: task.worktreePath || task.project?.repoPath || null,
+      repoPath: task.project?.repoPath ?? null,
+      sshHost,
+    }, input.agentSession);
+  }
   task.status = taskStatus;
 
   const saved = await taskRepo.save(task);

@@ -2308,6 +2308,19 @@ describe("Herdr 세션 미러", () => {
     await viewport.release();
   });
 
+  it("채팅 조회는 첫 full frame만 반환하고 부분 레코드를 조립한다", async () => {
+    const { readHerdrPaneFrameForChat } = await import("@/desktop/main/services/mobileBridgeService");
+    const observer = createObserver();
+    spawnMock.mockReturnValue(observer);
+    const read = readHerdrPaneFrameForChat("herdr-task", "w1:p1");
+    await vi.waitFor(() => expect(spawnMock).toHaveBeenCalledTimes(1));
+    observer.stdout.emit("data", frame("delta", false));
+    const full = frame("\x1b[3;3H› ", true);
+    observer.stdout.emit("data", full.slice(0, 12));
+    observer.stdout.emit("data", full.slice(12));
+    await expect(read).resolves.toEqual({ output: "\x1b[3;3H› ", width: 120, height: 38 });
+  });
+
   it("이력을 먼저 보내고 잘린 NDJSON 줄을 이어 프레임을 전달한다", async () => {
     const observer = createObserver();
     spawnMock.mockReturnValue(observer);

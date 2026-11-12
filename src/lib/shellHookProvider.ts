@@ -89,7 +89,7 @@ ${headerComments}
 
 KANVIBE_URL="${kanvibeUrl}"
 ${buildShellTaskIdResolver(taskId)}
-${buildShellKanvibeStatusUpdater(definition.status)}
+${buildShellKanvibeStatusUpdater(definition.status, agentLabel === "Claude Code" ? "claude" : agentLabel === "Codex" ? "codex" : undefined)}
 
 ${trailingLines}
 `;

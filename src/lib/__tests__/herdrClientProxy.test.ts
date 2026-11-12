@@ -30,9 +30,9 @@ function paneInput(tag: 13 | 14, target: string): Buffer {
   return frame(Buffer.concat([Buffer.from([tag]), stringBytes(target), Buffer.from([1, 1]), stringBytes("must not reach initial terminal")]));
 }
 
-function snapshot(bootId = "boot-1", workspaceId = "w1", tabId = "w1:t1"): Buffer {
+function snapshot(bootId = "boot-1", workspaceId = "w1", tabId = "w1:t1", paneId = `${workspaceId}:p1`): Buffer {
   return frame(Buffer.concat([Buffer.from([20]), stringBytes("shell.snapshot.v1"), stringBytes(JSON.stringify({
-    boot_id: bootId, focused_workspace_id: workspaceId, focused_tab_id: tabId,
+    boot_id: bootId, focused_workspace_id: workspaceId, focused_tab_id: tabId, focused_pane_id: paneId,
   }))]));
 }
 
@@ -152,6 +152,19 @@ describe("Herdr 클라이언트 endpoint 프록시", () => {
     setup.upstream.write(changed);
     expect(frame(await setup.received.next())).toEqual(changed);
     expect(setup.proxy.getActiveTabId()).toBe("w1:t3");
+  });
+
+  it("이 client가 보고한 workspace 안의 focused pane만 반환한다", async () => {
+    const setup = await fixture();
+    await initialize(setup);
+    expect(setup.proxy.getActivePaneId()).toBe("w1:p1");
+    const selected = snapshot("boot-1", "w1", "w1:t3", "w1:p7");
+    setup.upstream.write(selected);
+    await setup.received.next();
+    expect(setup.proxy.getActivePaneId()).toBe("w1:p7");
+    setup.upstream.write(snapshot("boot-1", "w2", "w2:t1", "w2:p1"));
+    await setup.received.next();
+    expect(setup.proxy.getActivePaneId()).toBeNull();
   });
 
   it("조각난 프레임과 native 응답을 원문 그대로 중계하고 자체 응답만 숨긴다", async () => {
@@ -295,9 +308,11 @@ describe("Herdr 클라이언트 endpoint 프록시", () => {
     const setup = await fixture();
     await initialize(setup);
     const socketPath = setup.proxy.socketPath;
+    expect(setup.proxy.getActivePaneId()).toBe("w1:p1");
     expect((await stat(socketPath)).mode & 0o777).toBe(0o600);
     await setup.proxy.close();
     await setup.proxy.close();
+    expect(setup.proxy.getActivePaneId()).toBeNull();
     await expect(stat(path.dirname(socketPath))).rejects.toMatchObject({ code: "ENOENT" });
     await expect(setup.proxy.request("tab.focus", { tab_id: "w1:t2" })).rejects.toThrow();
   });

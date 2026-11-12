@@ -1290,3 +1290,20 @@ describe("attachRemoteSession — ssh 바이너리 기반 연결", () => {
     expect(mockPtyWrite).not.toHaveBeenCalled();
   });
 });
+
+describe("pane 채팅 plain terminal 화면", () => {
+  beforeEach(() => { vi.clearAllMocks(); vi.resetModules(); });
+  it("색상과 커서 제어 바이트 대신 xterm에 그려진 현재 글자를 반환한다", async () => {
+    const { attachLocalSession, readLocalTerminalTabSnapshot, killAllTerminalSessions } = await import("@/lib/terminal");
+    await attachLocalSession("plain-chat", "plain-tab", SessionType.TERMINAL, "plain-chat", createMockWs(), "/workspace");
+    try {
+      const output = mockPtyOnData.mock.calls.at(-1)?.[0] as (chunk: string) => void;
+      output("\x1b[31mOLD\x1b[0m\r\x1b[2K\x1b[32mSelected model\x1b[0m\r\n› ");
+      await vi.waitFor(() => expect(readLocalTerminalTabSnapshot("plain-chat", "plain-tab")?.inputLine).toBe("› "));
+      const snapshot = readLocalTerminalTabSnapshot("plain-chat", "plain-tab");
+      expect(snapshot?.screen).toBe("Selected model\n›");
+      expect(snapshot?.screen).not.toContain("\x1b");
+      expect(snapshot?.screen).not.toContain("OLD");
+    } finally { killAllTerminalSessions(); }
+  });
+});

@@ -573,6 +573,10 @@ async function prepareHerdrTaskClient(sessionName: string, sshHost?: string): Pr
   }
 }
 
+export function getHerdrTaskActivePaneId(taskId: string): string | null {
+  return [...activeTerminals.values()].find((entry) => entry.taskId === taskId && entry.herdrClient)?.herdrClient?.proxy.getActivePaneId() ?? null;
+}
+
 export function getHerdrTaskActiveTabId(taskId: string): string | null {
   return [...activeTerminals.values()].find((entry) => entry.taskId === taskId && entry.herdrClient)?.herdrClient?.proxy.getActiveTabId() ?? null;
 }
@@ -1124,6 +1128,19 @@ export function attachClientToTerminalTab(taskId: string, tabId: string, ws: Web
   });
   attachClientToEntry(terminalKey, entry, ws);
   return screenUntilNow;
+}
+
+export function readTaskTerminalAttachment(taskId: string): { pid: number; sessionType: SessionType; sessionName: string } | null {
+  const entry = activeTerminals.get(buildTerminalKey(taskId, null));
+  return entry ? { pid: entry.pty.pid, sessionType: entry.sessionType, sessionName: entry.sessionName } : null;
+}
+
+export function readLocalTerminalTabSnapshot(taskId: string, tabId: string): { pid: number; screen: string; inputLine: string | null; cursorColumn: number | null } | null {
+  const entry = activeTerminals.get(buildTerminalKey(taskId, tabId));
+  if (!entry || entry.sessionType !== SessionType.TERMINAL) return null;
+  const buffer = entry.screen?.terminal.buffer.active;
+  const screen = buffer ? Array.from({ length: entry.screen!.terminal.rows }, (_, row) => buffer.getLine(buffer.baseY + row)?.translateToString(true) ?? "").join("\n").trimEnd() : "";
+  return { pid: entry.pty.pid, screen, inputLine: buffer?.getLine(buffer.baseY + buffer.cursorY)?.translateToString(true) ?? null, cursorColumn: buffer?.cursorX ?? null };
 }
 
 /**

@@ -95,7 +95,8 @@ export function sortSessionsDescending(sessions: AggregatedAiSession[]): Aggrega
 }
 
 export function sortMessagesDescending(messages: AggregatedAiMessage[]): AggregatedAiMessage[] {
-  return [...messages].sort((left, right) => {
+  // 같은 시각에도 나중에 추가된 기록을 먼저 반환해야 화면에서 뒤집을 때 원래 대화 순서가 된다.
+  return [...messages].reverse().sort((left, right) => {
     const leftValue = Date.parse(left.timestamp ?? "");
     const rightValue = Date.parse(right.timestamp ?? "");
 

@@ -86,6 +86,7 @@ class HerdrEndpointConnection {
   private queuedInput: Buffer[] = [];
   private queuedInputBytes = 0;
   private activeTabId: string | null = null;
+  private activePaneId: string | null = null;
 
   constructor(private readonly client: Socket, upstreamSocketPath: string, private readonly workspaceId: string) {
     this.upstream = connect(upstreamSocketPath);
@@ -101,6 +102,8 @@ class HerdrEndpointConnection {
   getActiveTabId(): string | null {
     return this.activeTabId;
   }
+
+  getActivePaneId(): string | null { return this.activePaneId; }
 
   request(method: string, params: Record<string, unknown>, initialize = false): Promise<void> {
     if (this.closed) return Promise.reject(new Error("Herdr 클라이언트 연결이 종료됐습니다."));
@@ -185,10 +188,12 @@ class HerdrEndpointConnection {
     return true;
   }
 
-  private receiveSnapshot(snapshot: { boot_id?: unknown; focused_workspace_id?: unknown; focused_tab_id?: unknown }): void {
+  private receiveSnapshot(snapshot: { boot_id?: unknown; focused_workspace_id?: unknown; focused_tab_id?: unknown; focused_pane_id?: unknown }): void {
     if (typeof snapshot.boot_id !== "string" || !snapshot.boot_id) throw new Error("Herdr snapshot에 boot ID가 없습니다.");
     this.activeTabId = snapshot.focused_workspace_id === this.workspaceId && typeof snapshot.focused_tab_id === "string"
       ? snapshot.focused_tab_id : null;
+    this.activePaneId = snapshot.focused_workspace_id === this.workspaceId && typeof snapshot.focused_pane_id === "string"
+      && snapshot.focused_pane_id.startsWith(`${this.workspaceId}:`) ? snapshot.focused_pane_id : null;
     if (this.bootId !== snapshot.boot_id) {
       this.awaitingInitialWorkspace = true;
       this.queuedInput = [];
@@ -218,6 +223,7 @@ class HerdrEndpointConnection {
     if (this.closed) return;
     this.closed = true;
     this.activeTabId = null;
+    this.activePaneId = null;
     for (const id of this.pending.keys()) this.finishRequest(id, error);
     this.queuedInput = [];
     this.client.destroy();
@@ -229,6 +235,7 @@ export async function createHerdrClientProxy(upstreamSocketPath: string, workspa
   socketPath: string;
   request(method: string, params: Record<string, unknown>): Promise<void>;
   getActiveTabId(): string | null;
+  getActivePaneId(): string | null;
   close(): Promise<void>;
 }> {
   const directory = await mkdtemp(path.join(tmpdir(), "kvhc-"));
@@ -254,6 +261,7 @@ export async function createHerdrClientProxy(upstreamSocketPath: string, workspa
     socketPath,
     request: (method, params) => connection?.request(method, params) ?? Promise.reject(new Error("Herdr 클라이언트가 아직 연결되지 않았습니다.")),
     getActiveTabId: () => connection?.getActiveTabId() ?? null,
+    getActivePaneId: () => connection?.getActivePaneId() ?? null,
     close: () => closing ??= (async () => {
       connection?.destroy();
       await new Promise<void>((resolve) => server.close(() => resolve()));

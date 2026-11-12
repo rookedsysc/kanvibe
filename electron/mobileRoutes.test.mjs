@@ -1552,3 +1552,34 @@ describe("모바일 프로젝트 폴더 등록", () => {
     expect(response).toEqual({ status: 500, body: { success: false, error: "서버 오류" } });
   });
 });
+
+describe("현재 pane 채팅 인증 및 대상 경계", () => {
+  const headers = { authorization: "Bearer good", "Content-Type": "application/json" };
+  beforeEach(() => {
+    bridge.getPaneChatSnapshot = vi.fn(async () => ({ taskId: "task-1", paneId: "%3", canSend: true, inputState: "ready", targetToken: "opaque-token" }));
+    bridge.sendPaneChatPrompt = vi.fn(async () => ({ success: true }));
+    bridge.interruptPaneChat = vi.fn(async () => ({ success: true }));
+  });
+  it("인증된 기기는 요청한 정확한 pane 스냅샷을 읽는다", async () => {
+    const result = await request("/api/mobile/tasks/task-1/pane-chat?paneId=%253", { headers });
+    expect(result).toMatchObject({ status: 200, body: { success: true, snapshot: { paneId: "%3", targetToken: "opaque-token" } } });
+    expect(bridge.getPaneChatSnapshot).toHaveBeenCalledWith("task-1", "%3");
+  });
+  it("토큰 없는 기기는 스냅샷과 메시지 전송에 접근할 수 없다", async () => {
+    expect((await request("/api/mobile/tasks/task-1/pane-chat")).status).toBe(401);
+    expect((await request("/api/mobile/tasks/task-1/pane-chat/prompt", { method: "POST", body: JSON.stringify({ targetToken: "opaque-token", text: "Hi" }) })).status).toBe(401);
+    expect(bridge.getPaneChatSnapshot).not.toHaveBeenCalled();
+    expect(bridge.sendPaneChatPrompt).not.toHaveBeenCalled();
+  });
+  it("인증과 대상 토큰을 보존해 메시지를 서비스에 전달한다", async () => {
+    const result = await request("/api/mobile/tasks/task-1/pane-chat/prompt", { method: "POST", headers, body: JSON.stringify({ targetToken: "opaque-token", text: "First\nSecond" }) });
+    expect(result).toEqual({ status: 200, body: { success: true } });
+    expect(bridge.sendPaneChatPrompt).toHaveBeenCalledWith("task-1", "opaque-token", "First\nSecond");
+  });
+  it("대상이 교체되면 충돌을 반환하고 빈 토큰은 거부한다", async () => {
+    bridge.interruptPaneChat.mockRejectedValue(Object.assign(new Error("대상 변경"), { name: "PaneChatTargetChangedError" }));
+    expect(await request("/api/mobile/tasks/task-1/pane-chat/interrupt", { method: "POST", headers, body: JSON.stringify({ targetToken: "stale-token" }) })).toEqual({ status: 409, body: { success: false, error: "대상 변경", reason: "target-changed" } });
+    expect((await request("/api/mobile/tasks/task-1/pane-chat/prompt", { method: "POST", headers, body: JSON.stringify({ text: "Hi" }) })).status).toBe(400);
+    expect(bridge.sendPaneChatPrompt).not.toHaveBeenCalled();
+  });
+});
