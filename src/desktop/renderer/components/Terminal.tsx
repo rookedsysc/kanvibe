@@ -354,7 +354,7 @@ export default function Terminal({ taskId, tabId = null, isHidden = false, isRem
       });
 
       const focusCurrentTerminal = () => {
-        if (hasTerminalFocusBlocker()) {
+        if (isHiddenRef.current || hasTerminalFocusBlocker()) {
           return;
         }
 

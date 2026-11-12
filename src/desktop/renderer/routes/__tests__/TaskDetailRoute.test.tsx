@@ -30,6 +30,7 @@ const mocks = vi.hoisted(() => ({
   getTaskAiSessions: vi.fn(),
   getTaskAiSessionDetail: vi.fn(),
   getTaskLiveAiSessions: vi.fn(),
+  getPaneChatSnapshot: vi.fn(),
   getAllProjects: vi.fn(),
   getSidebarDefaultCollapsed: vi.fn(),
   getSidebarHintDismissed: vi.fn(),
@@ -66,6 +67,14 @@ function createDeferred<T>() {
   });
   return { promise, resolve, reject };
 }
+
+vi.mock("@/desktop/renderer/actions/paneChat", () => ({
+  getPaneChatSnapshot: mocks.getPaneChatSnapshot,
+  sendPaneChatPrompt: vi.fn(),
+  interruptPaneChat: vi.fn(),
+  openPaneChatModelPicker: vi.fn(),
+  sendPaneChatKey: vi.fn(),
+}));
 
 function TaskDetailShortcutBlocker() {
   const boardCommands = useBoardCommands();
@@ -312,6 +321,12 @@ describe("TaskDetailRoute", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.taskId = "task-1";
+    mocks.getPaneChatSnapshot.mockResolvedValue({
+      taskId: "task-1", paneId: "%1", provider: null, targetToken: null, canSend: false,
+      inputState: "unknown", screen: "", reason: "no-foreground-ai-cli",
+      transcript: { status: "unavailable", messages: [], sessionId: null, nextCursor: null },
+      modelPicker: { supported: false, mode: "native-cli" },
+    });
     sessionStorage.clear();
     mocks.getTaskIdByProjectAndBranch.mockResolvedValue(null);
     mocks.getGitDiffFiles.mockResolvedValue([]);
@@ -1410,7 +1425,9 @@ describe("TaskDetailRoute", () => {
       dockShortcutListener?.(3);
     });
 
-    expect(await screen.findByTestId("inline-ai-chat")).toBeTruthy();
+    expect(await screen.findByTestId("pane-chat")).toBeTruthy();
+    expect(mocks.getTaskAiSessions).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "history" }));
     await waitFor(() => {
       expect(mocks.getTaskAiSessions).toHaveBeenCalledWith("task-1", undefined, null, 20);
     });
@@ -1733,6 +1750,7 @@ describe("TaskDetailRoute", () => {
     expect(mocks.getTaskAiSessions).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByRole("button", { name: "aiSessions.inlineChat" }));
+    fireEvent.click(await screen.findByRole("button", { name: "history" }));
 
     expect(await screen.findByTestId("inline-ai-chat")).toBeTruthy();
     await waitFor(() => {
@@ -1758,7 +1776,7 @@ describe("TaskDetailRoute", () => {
       expect(screen.getAllByText("Please fix the UI").length).toBeGreaterThanOrEqual(1);
     });
     expect(screen.getByText("Updated the terminal chat view.")).toBeTruthy();
-    expect(screen.queryByLabelText("terminal input")).toBeNull();
+    expect(screen.getByLabelText("terminal input").closest(".hidden")).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "aiSessions.inlineChat" }));
 
@@ -2288,6 +2306,7 @@ describe("TaskDetailRoute", () => {
     expect(mocks.getTaskAiSessions).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByRole("button", { name: "aiSessions.inlineChat" }));
+    fireEvent.click(await screen.findByRole("button", { name: "history" }));
 
     await waitFor(() => {
       expect(mocks.getTaskAiSessions).toHaveBeenCalledTimes(1);
@@ -2340,6 +2359,7 @@ describe("TaskDetailRoute", () => {
     render(<TaskDetailRoute />);
 
     fireEvent.click(await screen.findByRole("button", { name: "aiSessions.inlineChat" }));
+    fireEvent.click(await screen.findByRole("button", { name: "history" }));
 
     expect(await screen.findByRole("button", { name: /Newest chat/ })).toBeTruthy();
     expect(mocks.getTaskAiSessions).toHaveBeenCalledWith("task-1", undefined, null, 20);
@@ -2395,6 +2415,7 @@ describe("TaskDetailRoute", () => {
     render(<TaskDetailRoute />);
 
     fireEvent.click(await screen.findByRole("button", { name: "aiSessions.inlineChat" }));
+    fireEvent.click(await screen.findByRole("button", { name: "history" }));
     expect(await screen.findByRole("button", { name: /Claude newest/ })).toBeTruthy();
 
     fireEvent.click(screen.getByTestId("ai-session-filter-codex"));
@@ -2422,6 +2443,7 @@ describe("TaskDetailRoute", () => {
     });
     render(<TaskDetailRoute />);
     fireEvent.click(await screen.findByRole("button", { name: "aiSessions.inlineChat" }));
+    fireEvent.click(await screen.findByRole("button", { name: "history" }));
     const session = await screen.findByRole("button", { name: "Hermes New provider chat" });
     const filter = screen.getByTestId("ai-session-filter-hermes");
     expect(filter.textContent).toContain("1");
@@ -2498,6 +2520,7 @@ describe("TaskDetailRoute", () => {
     render(<TaskDetailRoute />);
 
     fireEvent.click(await screen.findByRole("button", { name: "aiSessions.inlineChat" }));
+    fireEvent.click(await screen.findByRole("button", { name: "history" }));
     fireEvent.click(await screen.findByRole("button", { name: /Markdown diagram chat/ }));
 
     expect(await screen.findByRole("heading", { level: 2, name: "작업 요약" })).toBeTruthy();
@@ -2577,6 +2600,7 @@ describe("TaskDetailRoute", () => {
     render(<TaskDetailRoute />);
 
     fireEvent.click(await screen.findByRole("button", { name: "aiSessions.inlineChat" }));
+    fireEvent.click(await screen.findByRole("button", { name: "history" }));
     fireEvent.click(await screen.findByRole("button", { name: /Claude paged chat/ }));
 
     expect(await screen.findByText("Newest answer")).toBeTruthy();
@@ -2665,6 +2689,7 @@ describe("TaskDetailRoute", () => {
     render(<TaskDetailRoute />);
 
     fireEvent.click(await screen.findByRole("button", { name: "aiSessions.inlineChat" }));
+    fireEvent.click(await screen.findByRole("button", { name: "history" }));
     fireEvent.click(await screen.findByRole("button", { name: /Claude filtered chat/ }));
     expect(await screen.findByText("Current assistant answer")).toBeTruthy();
 
@@ -2764,6 +2789,7 @@ describe("TaskDetailRoute", () => {
     render(<TaskDetailRoute />);
 
     fireEvent.click(await screen.findByRole("button", { name: "aiSessions.inlineChat" }));
+    fireEvent.click(await screen.findByRole("button", { name: "history" }));
     fireEvent.click(await screen.findByRole("button", { name: /Claude scrolled chat/ }));
 
     const messagePane = await screen.findByTestId("ai-session-messages");
@@ -2815,6 +2841,7 @@ describe("TaskDetailRoute", () => {
 
     render(<TaskDetailRoute />);
     fireEvent.click(await screen.findByRole("button", { name: "aiSessions.inlineChat" }));
+    fireEvent.click(await screen.findByRole("button", { name: "history" }));
     fireEvent.click(await screen.findByRole("button", { name: /Copy chat/ }));
     fireEvent.click(await screen.findByRole("button", { name: "aiSessions.copyMessage" }));
 
@@ -2858,6 +2885,7 @@ describe("TaskDetailRoute", () => {
     render(<TaskDetailRoute />);
 
     fireEvent.click(await screen.findByRole("button", { name: "aiSessions.inlineChat" }));
+    fireEvent.click(await screen.findByRole("button", { name: "history" }));
 
     expect(await screen.findByTestId("ai-session-list")).toBeTruthy();
     for (const provider of ["gemini", "claude", "opencode", "codex"]) {
@@ -2905,6 +2933,7 @@ describe("TaskDetailRoute", () => {
     render(<TaskDetailRoute />);
 
     fireEvent.click(await screen.findByRole("button", { name: "aiSessions.inlineChat" }));
+    fireEvent.click(await screen.findByRole("button", { name: "history" }));
     await screen.findByTestId("ai-session-list");
 
     fireEvent.click(screen.getByTestId("ai-session-filter-claude"));
@@ -2955,6 +2984,7 @@ describe("TaskDetailRoute", () => {
     render(<TaskDetailRoute />);
 
     fireEvent.click(await screen.findByRole("button", { name: "aiSessions.inlineChat" }));
+    fireEvent.click(await screen.findByRole("button", { name: "history" }));
     const searchInput = screen.getByLabelText("aiSessions.searchLabel");
     fireEvent.change(searchInput, { target: { value: "database migration" } });
     fireEvent.submit(searchInput.closest("form")!);
@@ -3002,6 +3032,7 @@ describe("TaskDetailRoute", () => {
     render(<TaskDetailRoute />);
 
     fireEvent.click(await screen.findByRole("button", { name: "aiSessions.inlineChat" }));
+    fireEvent.click(await screen.findByRole("button", { name: "history" }));
     expect(await screen.findByRole("button", { name: /Initial chat/ })).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "aiSessions.loadMoreSessions" }));
@@ -3091,6 +3122,7 @@ describe("TaskDetailRoute", () => {
     render(<TaskDetailRoute />);
 
     fireEvent.click(await screen.findByRole("button", { name: "aiSessions.inlineChat" }));
+    fireEvent.click(await screen.findByRole("button", { name: "history" }));
     fireEvent.click(await screen.findByRole("button", { name: /Claude answer/ }));
 
     await waitFor(() => {
@@ -3285,6 +3317,7 @@ describe("TaskDetailRoute", () => {
     ] });
     render(<TaskDetailRoute />);
     fireEvent.click(await screen.findByRole("button", { name: "aiSessions.inlineChat" }));
+    fireEvent.click(await screen.findByRole("button", { name: "history" }));
     fireEvent.click(await screen.findByRole("button", { name: "Claude Back history" }));
     expect(await screen.findByText("Saved answer")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "aiSessions.backToHistory" }));
@@ -3309,6 +3342,7 @@ describe("TaskDetailRoute", () => {
     ] });
     render(<TaskDetailRoute />);
     fireEvent.click(await screen.findByRole("button", { name: "aiSessions.inlineChat" }));
+    fireEvent.click(await screen.findByRole("button", { name: "history" }));
     fireEvent.click(await screen.findByRole("button", { name: "Claude Anchor history" }));
     await screen.findByText("Latest answer");
     const pane = screen.getByTestId("ai-session-messages");
@@ -3341,6 +3375,7 @@ describe("TaskDetailRoute", () => {
     ] });
     render(<TaskDetailRoute />);
     fireEvent.click(await screen.findByRole("button", { name: "aiSessions.inlineChat" }));
+    fireEvent.click(await screen.findByRole("button", { name: "history" }));
     fireEvent.click(await screen.findByRole("button", { name: "Claude Disclosure history" }));
     const pane = screen.getByTestId("ai-session-messages");
     await waitFor(() => expect(pane.querySelectorAll("details").length).toBe(2));

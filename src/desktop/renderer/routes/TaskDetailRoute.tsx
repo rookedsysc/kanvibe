@@ -1,3 +1,4 @@
+import { getChatTranscriptRows } from "@/desktop/renderer/utils/chatTranscript";
 import { AI_SESSION_PROVIDER_LABELS, AI_SESSION_PROVIDERS } from "@/lib/aiSessions/providers";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
@@ -34,6 +35,7 @@ import {
 } from "@/desktop/renderer/actions/project";
 import AiUsagePanel from "@/desktop/renderer/components/AiUsagePanel";
 import { AiChatTranscriptMessage } from "@/desktop/renderer/components/AiChatTranscriptMessage";
+import { PaneChatView } from "@/desktop/renderer/components/PaneChatView";
 import {
   useBoardCommands,
   useHasBoardShortcutBlocker,
@@ -90,8 +92,6 @@ const STATUS_TRANSITIONS = [
 const INLINE_CHAT_DETAIL_LIMIT = 40;
 const INLINE_CHAT_SESSION_LIMIT = 20;
 const INLINE_CHAT_NEAR_BOTTOM_PX = 96;
-const CHAT_MESSAGE_HASH_OFFSET = 2166136261;
-const CHAT_MESSAGE_HASH_PRIME = 16777619;
 
 const AGENT_TAG_STYLES: Record<string, string> = {
   claude: "bg-tag-claude-bg text-tag-claude-text",
@@ -100,7 +100,7 @@ const AGENT_TAG_STYLES: Record<string, string> = {
 };
 
 type DetailPanel = "overview" | "status" | "liveSessions" | "usage";
-type MainView = "terminal" | "chat";
+type MainView = "terminal" | "chat" | "history";
 type TaskDetailDockItem = {
   id: TaskDetailDockItemId;
   label: string;
@@ -453,21 +453,7 @@ function InlineAiChatView({ taskId }: { taskId: string }) {
 
     return detail.messages;
   }, [detail?.messages, detail?.sessionId, selectedSessionId]);
-  const displayedMessages = useMemo(() => {
-    const occurrences = new Map<string, number>();
-    // Count from the newest end so fetching older pages keeps existing row instances.
-    return messages.map((message) => {
-      const text = message.fullText || message.text;
-      let hash = CHAT_MESSAGE_HASH_OFFSET;
-      for (let index = 0; index < text.length; index += 1) {
-        hash = Math.imul(hash ^ text.charCodeAt(index), CHAT_MESSAGE_HASH_PRIME);
-      }
-      const identity = `${message.role}:${message.timestamp ?? ""}:${hash >>> 0}`;
-      const occurrence = occurrences.get(identity) ?? 0;
-      occurrences.set(identity, occurrence + 1);
-      return { message, key: `${selectedSessionKey}:${identity}:${occurrence}` };
-    }).reverse();
-  }, [messages, selectedSessionKey]);
+  const displayedMessages = useMemo(() => getChatTranscriptRows(messages, selectedSessionKey), [messages, selectedSessionKey]);
   const error = selectedSession && detailError?.sessionId === selectedSession.id ? detailError.message : null;
   const isDetailLoading = Boolean(selectedSession && detail?.sessionId !== selectedSession.id && !error);
 
@@ -768,7 +754,7 @@ function TaskDetailContent({ id }: { id: string }) {
     taskId: id ?? "",
     sessionType: (state?.task.sessionType as SessionType | undefined) ?? null,
     isRemote: !!state?.task.sshHost,
-    isVisible: hasTerminal && mainView === "terminal",
+    isVisible: hasTerminal && mainView !== "history",
   });
   useMarkTaskNotificationsReadWhenFocused(state?.task.id ?? null);
   const shortcutPlatform = getCurrentShortcutPlatform();
@@ -821,7 +807,7 @@ function TaskDetailContent({ id }: { id: string }) {
 
   const toggleChatView = useCallback(() => {
     setMainView((current) => {
-      const nextView = current === "chat" ? "terminal" : "chat";
+      const nextView = current === "terminal" ? "chat" : "terminal";
       if (nextView === "chat") {
         markDefaultPanelDismissed();
         setActivePanel(null);
@@ -915,7 +901,7 @@ function TaskDetailContent({ id }: { id: string }) {
       {
         id: "chat",
         label: resolveTaskDetailDockLabel(t, "chat"),
-        isActive: mainView === "chat",
+        isActive: mainView !== "terminal",
         renderIcon: () => (
           <HugeiconsIcon
             icon={Chatting01Icon}
@@ -1723,10 +1709,17 @@ function TaskDetailContent({ id }: { id: string }) {
       ) : null}
 
       <main className="ml-14 flex h-full min-w-0 flex-col">
-        {mainView === "chat" ? (
-          <InlineAiChatView taskId={state.task.id} />
-        ) : hasTerminal ? (
-          <div className="flex-1 flex flex-col min-h-0 rounded-lg overflow-hidden shadow-md transition-all duration-200 ease-out">
+        {mainView === "history" ? (
+          <div className="flex min-h-0 flex-1 flex-col">
+            <button type="button" onClick={() => setMainView("chat")} className="self-start rounded-md px-4 py-2 text-xs text-text-brand">← {t("paneChat.currentPane")}</button>
+            <InlineAiChatView taskId={state.task.id} />
+          </div>
+        ) : null}
+        <div className={mainView === "chat" ? "flex min-h-0 flex-1 flex-col" : "hidden"}>
+          <PaneChatView taskId={state.task.id} isVisible={mainView === "chat"} onHistory={() => setMainView("history")} onTerminal={() => { setMainView("terminal"); requestActiveTerminalFocusAfterUiSettles(); }} />
+        </div>
+        {hasTerminal ? (
+          <div className={mainView === "terminal" ? "flex-1 flex flex-col min-h-0 rounded-lg overflow-hidden shadow-md transition-all duration-200 ease-out" : "hidden"}>
             <div className="bg-terminal-chrome flex items-center gap-3 px-4 py-2.5 shrink-0">
               <span
                 data-testid="terminal-task-context"
@@ -1784,11 +1777,12 @@ function TaskDetailContent({ id }: { id: string }) {
                 taskId={state.task.id}
                 tabs={state.task.sessionType === SessionType.TERMINAL ? terminalTabs.tabs : undefined}
                 isRemote={Boolean(state.task.sshHost)}
+                isHidden={mainView !== "terminal"}
               />
             </div>
           </div>
         ) : (
-          <div className="flex-1 flex items-center justify-center border border-dashed border-border-default rounded-lg bg-bg-surface">
+          <div className={mainView === "terminal" ? "flex-1 flex items-center justify-center border border-dashed border-border-default rounded-lg bg-bg-surface" : "hidden"}>
             {state.task.projectId ? (
               <AutoConnectTerminalSession
                 taskId={state.task.id}
