@@ -33,11 +33,22 @@ tags:
 - tapOn: "연결 코드"
 - inputText: "123456"
 - hideKeyboard
+- scrollUntilVisible:
+    element: "연결"
+    direction: DOWN
+    timeout: 10000
 - tapOn: "연결"
 - extendedWaitUntil:
-    visible: "Studio task"
+    visible: "Studio task\\nPrimary"
     timeout: 40000
 - takeScreenshot: 01-studio-board
+- tapOn:
+    id: project-filter
+- tapOn:
+    id: project-filter-option-primary
+- tapOn:
+    id: project-filter-close
+- assertNotVisible: "Studio task secondary\\nSecondary"
 
 - tapOn: "Studio[\\s\\S]*19836"
 - assertVisible: "연결된 PC"
@@ -68,9 +79,18 @@ tags:
     timeout: 10000
 - tapOn: "연결"
 - extendedWaitUntil:
-    visible: "Home task"
+    visible: "Home task\\nPrimary"
     timeout: 40000
 - takeScreenshot: 02-home-board
+- tapOn:
+    id: project-filter
+- tapOn:
+    id: project-filter-option-secondary
+- tapOn:
+    id: project-filter-close
+- assertVisible: "Home task secondary\\nSecondary"
+- assertNotVisible: "Home task\\nPrimary"
+
 
 - tapOn: "Home[\\s\\S]*19837"
 - assertVisible: "2대의 PC"
@@ -92,17 +112,42 @@ tags:
 
 - tapOn: "Office[\\s\\S]*19836"
 - extendedWaitUntil:
-    visible: "Studio task"
+    visible: "Studio task\\nPrimary"
     timeout: 15000
+- assertNotVisible: "Studio task secondary\\nSecondary"
 - takeScreenshot: 03-switched-to-studio
 
 - stopApp
 - launchApp
 - extendedWaitUntil:
-    visible: "Studio task"
+    visible: "Studio task\\nPrimary"
     timeout: 90000
 - tapOn: "Office[\\s\\S]*19836"
 - assertVisible: "2대의 PC"
+- tapOn: "Home[\\s\\S]*19837"
+- extendedWaitUntil:
+    visible: "Home task secondary\\nSecondary"
+    timeout: 15000
+- assertNotVisible: "Home task\\nPrimary"
+- tapOn:
+    id: project-filter
+- tapOn:
+    id: project-filter-all
+- tapOn:
+    id: project-filter-close
+- stopApp
+- launchApp
+- extendedWaitUntil:
+    visible: "Home task\\nPrimary"
+    timeout: 90000
+- assertVisible: "Home task secondary\\nSecondary"
+- tapOn: "Home[\\s\\S]*19837"
+- tapOn: "Office[\\s\\S]*19836"
+- extendedWaitUntil:
+    visible: "Studio task\\nPrimary"
+    timeout: 15000
+- assertNotVisible: "Studio task secondary\\nSecondary"
+- tapOn: "Office[\\s\\S]*19836"
 - tapOn: "Office 삭제"
 - tapOn: "삭제"
 - extendedWaitUntil:
@@ -111,6 +156,6 @@ tags:
 - assertVisible: "Home[\\s\\S]*19837"
 - tapOn: "Home[\\s\\S]*19837"
 - extendedWaitUntil:
-    visible: "Home task"
+    visible: "Home task\\nPrimary"
     timeout: 15000
 - takeScreenshot: 04-restored-and-removed-studio
