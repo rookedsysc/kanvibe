@@ -66,7 +66,7 @@ describe("hostFileAccess.readTextFiles", () => {
     await writeFile(filePath, content, "utf-8");
     mocks.execGit.mockImplementation(async (command: string) => {
       const { stdout } = await execFileAsync("sh", ["-lc", command]);
-      return stdout;
+      return stdout.trim();
     });
     const { readTextFiles } = await import("@/lib/hostFileAccess");
 
@@ -88,7 +88,7 @@ describe("hostFileAccess.readTextFiles", () => {
     await writeFile(filePath, content, "utf-8");
     mocks.execGit.mockImplementation(async (command: string) => {
       const { stdout } = await execFileAsync("sh", ["-lc", wrapLikeRemoteExecGit(command)]);
-      return stdout;
+      return stdout.slice(0, stdout.lastIndexOf("\n__KANVIBE_TEST_REMOTE_COMMAND_EXIT__:")).trim();
     });
     const { readTextFiles } = await import("@/lib/hostFileAccess");
 
@@ -98,6 +98,20 @@ describe("hostFileAccess.readTextFiles", () => {
     // Then
     expect(files.get(filePath)).toEqual({ exists: true, content });
     expect(files.get(missingPath)).toEqual({ exists: false, content: "" });
+  });
+
+  it.each([false, true])("SSH 출력이 trim되어도 단일 파일의 빈 내용을 보존한다: exists=%s", async (exists) => {
+    const filePath = path.join(tempDir, "empty.txt");
+    if (exists) await writeFile(filePath, "", "utf-8");
+    mocks.execGit.mockImplementation(async (command: string) => {
+      const { stdout } = await execFileAsync("sh", ["-lc", command]);
+      return stdout.trim();
+    });
+    const { readTextFiles } = await import("@/lib/hostFileAccess");
+
+    await expect(readTextFiles([filePath], "remote-host")).resolves.toEqual(
+      new Map([[filePath, { exists, content: "" }]]),
+    );
   });
 
   it("원격 파일 묶음 읽기는 manifest 마지막 파일도 누락하지 않는다", async () => {
@@ -135,9 +149,10 @@ describe("hostFileAccess.readTextFiles", () => {
   });
 
   it.each([
-    "", "__KANVIBE_FILE_RECORD__\t/remote/a\t1\t@@@\n",
-    "__KANVIBE_FILE_RECORD__\t/remote/a\t1\taGk=\n",
-    "__KANVIBE_FILE_RECORD__\t/remote/a\t2\t\n__KANVIBE_FILE_RECORD__\t/remote/b\t0\t\n",
+    "", "__KANVIBE_FILE_RECORD__\t/remote/a\t1\t@@@\t__KANVIBE_FILE_RECORD_END__\n",
+    "__KANVIBE_FILE_RECORD__\t/remote/a\t1\taGk=\t__KANVIBE_FILE_RECORD_END__\n",
+    "__KANVIBE_FILE_RECORD__\t/remote/a\t2\t\t__KANVIBE_FILE_RECORD_END__\n__KANVIBE_FILE_RECORD__\t/remote/b\t0\t\t__KANVIBE_FILE_RECORD_END__\n",
+    "__KANVIBE_FILE_RECORD__\t/remote/a\t0\t\tbroken\n__KANVIBE_FILE_RECORD__\t/remote/b\t0\t\t__KANVIBE_FILE_RECORD_END__\n",
   ])("누락되거나 손상된 원격 레코드를 설치 부재로 판정하지 않는다: %s", async (output) => {
     mocks.execGit.mockResolvedValue(output);
     const { readTextFiles } = await import("@/lib/hostFileAccess");
@@ -435,7 +450,7 @@ describe("hostFileAccess strict SSH boundaries", () => {
     const options = { strictHostKeyChecking: true };
     await files.readTextFile("/remote/config", "remote-host", options);
     expect(mocks.execGit).toHaveBeenLastCalledWith(expect.any(String), "remote-host", { ...options, maxBufferBytes: 64 * 1024 * 1024 });
-    mocks.execGit.mockResolvedValueOnce("__KANVIBE_FILE_RECORD__\t/remote/config\t0\t\n");
+    mocks.execGit.mockResolvedValueOnce("__KANVIBE_FILE_RECORD__\t/remote/config\t0\t\t__KANVIBE_FILE_RECORD_END__\n");
     await files.readTextFiles(["/remote/config"], "remote-host", options);
     await files.findSymbolicLinkPath(["/remote/config"], "remote-host", options);
     await files.writeTextFile("/remote/config", "content", "remote-host", options);
