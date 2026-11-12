@@ -94,6 +94,10 @@ class ConnectionController extends AsyncNotifier<SavedConnections> {
     );
   }
 
+  Future<void> rename(String id, String name) async {
+    await _change((registry) => registry.rename(id, name));
+  }
+
   /// 지정한 PC를 데스크탑과 이 기기 양쪽에서 제거한다.
   ///
   /// PC가 꺼져 있어도 로컬 목록에서는 제거하고, 원격 해제 실패 여부를 화면에 돌려준다.
