@@ -71,6 +71,8 @@
     "title": "",
     "newTask": "+ New Task",
     "allProjects": "All Projects",
+    "desktopFilter": "Desktop filter",
+    "allDesktops": "All desktops",
     "taskKindFilter": {
       "label": "Task type filter",
       "options": {

@@ -439,6 +439,24 @@ describe("Board defaultSessionType sync", () => {
     mockWindowFind();
   });
 
+  it("데스크톱 필터는 로컬/SSH 태스크를 구분하고 전체로 복원한다", () => {
+    const tasks = createTaskKindFilterTasks();
+    tasks[TaskStatus.TODO][1].sshHost = "devbox";
+    render(
+      <Board initialTasks={tasks} initialDoneTotal={0} initialDoneLimit={20}
+        sshHosts={["devbox"]} projects={[createProject()]} sidebarDefaultCollapsed={false}
+        doneAlertDismissed={false} notificationSettings={{ isEnabled: true, enabledStatuses: [] }}
+        defaultSessionType={SessionType.TMUX} taskSearchShortcut="Mod+Shift+O" />,
+    );
+    const filter = screen.getByRole("combobox", { name: "desktopFilter" });
+    fireEvent.change(filter, { target: { value: "ssh:devbox" } });
+    expectTaskKindFilterVisibleTasks(["Branch Worktree Task"]);
+    fireEvent.change(filter, { target: { value: "local" } });
+    expectTaskKindFilterVisibleTasks(["Root Project Task", "Plain Task"]);
+    fireEvent.change(filter, { target: { value: "" } });
+    expectTaskKindFilterVisibleTasks(["Root Project Task", "Branch Worktree Task", "Plain Task"]);
+  });
+
   it("defaultSessionType prop이 변경되면 내부 상태와 하위 컴포넌트가 동기화된다", async () => {
     // Given
     const baseProps = {

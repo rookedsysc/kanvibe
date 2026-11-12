@@ -71,6 +71,8 @@
     "title": "",
     "newTask": "+ 새 작업",
     "allProjects": "전체 프로젝트",
+    "desktopFilter": "데스크톱 필터",
+    "allDesktops": "전체 데스크톱",
     "taskKindFilter": {
       "label": "작업 유형 필터",
       "options": {

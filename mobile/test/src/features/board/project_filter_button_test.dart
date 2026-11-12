@@ -101,6 +101,30 @@ Future<void> _closeFilter(WidgetTester tester) async {
 }
 
 void main() {
+  testWidgets('데스크톱 필터를 프로젝트 필터와 함께 적용하고 전체로 복원한다', (tester) async {
+    await tester.pumpWidget(
+      _app(client: FakeDesktopClient(board: _filterBoard())),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(_control('desktop-filter'));
+    await tester.pumpAndSettle();
+    await tester.tap(_control('desktop-filter-ssh-devbox'));
+    await tester.pumpAndSettle();
+    expect(find.text('local 태스크'), findsNothing);
+    expect(find.text('remote 태스크'), findsOneWidget);
+    await _openFilter(tester);
+    await tester.tap(_control('project-filter-option-local'));
+    await _closeFilter(tester);
+    expect(find.text('remote 태스크'), findsNothing);
+    await tester.tap(_control('desktop-filter'));
+    await tester.pumpAndSettle();
+    await tester.tap(_control('desktop-filter-all'));
+    await tester.pumpAndSettle();
+    expect(find.text('local 태스크'), findsOneWidget);
+    expect(find.text('remote 태스크'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('연속 입력은 마지막 fuzzy 검색만 적용하고 보드를 추가 요청하지 않는다', (tester) async {
     final client = FakeDesktopClient(board: _filterBoard());
     await tester.pumpWidget(_app(client: client));

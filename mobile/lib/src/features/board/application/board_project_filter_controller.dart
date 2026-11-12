@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../common/providers.dart';
 import '../data/board_snapshot.dart';
+import 'board_desktop_filter_controller.dart';
 
 final boardProjectFilterProvider =
     NotifierProvider.family<BoardProjectFilterController, Set<String>, String>(
@@ -32,5 +33,9 @@ final filteredBoardProvider = Provider<AsyncValue<BoardSnapshot>>((ref) {
   );
   if (connectionId == null) return board;
   final selected = ref.watch(boardProjectFilterProvider(connectionId));
-  return board.whenData((snapshot) => snapshot.filterByProjectIds(selected));
+  final desktop = ref.watch(boardDesktopFilterProvider(connectionId));
+  return board.whenData(
+    (snapshot) =>
+        snapshot.filterByDesktop(desktop).filterByProjectIds(selected),
+  );
 });
