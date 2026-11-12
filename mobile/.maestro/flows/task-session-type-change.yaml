@@ -20,6 +20,7 @@ env:
     visible:
       id: pane-terminal
     timeout: 20000
+- runFlow: ../subflows/opens-task-menu.yaml
 - tapOn:
     id: change-session-type
 - extendedWaitUntil:
@@ -40,6 +41,7 @@ env:
       id: pane-terminal
     timeout: 30000
 - takeScreenshot: 02-데스크탑-변경-후-재연결
+- runFlow: ../subflows/opens-task-menu.yaml
 - tapOn:
     id: change-session-type
 - extendedWaitUntil:
@@ -60,6 +62,7 @@ env:
     visible:
       id: pane-terminal
     timeout: 30000
+- runFlow: ../subflows/opens-task-menu.yaml
 - tapOn:
     id: change-session-type
 - extendedWaitUntil:

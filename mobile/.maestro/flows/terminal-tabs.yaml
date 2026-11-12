@@ -12,7 +12,7 @@ env:
 - runFlow: ../subflows/pairs-and-opens-board.yaml
 - runFlow: ../subflows/opens-session-task-terminal.yaml
 - assertVisible:
-    id: create-task-from-current
+    id: "task-more|create-task-from-current"
 - assertVisible:
     id: create-terminal-tab
 - assertNotVisible: "출력 수신 중"

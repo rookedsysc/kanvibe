@@ -12,6 +12,7 @@
 # 먼저 단정한 뒤에 보드로 간다. 시트 밖을 누르는 것은 두 플랫폼에서 같게 동작한다.
 appId: ${APP_ID}
 ---
+- runFlow: opens-task-menu.yaml
 - tapOn: "상태 옮기기"
 - extendedWaitUntil:
     visible: 'Progress\(으\)로 옮기기'
@@ -21,6 +22,7 @@ appId: ${APP_ID}
 - extendedWaitUntil:
     notVisible: 'Progress\(으\)로 옮기기'
     timeout: 15000
+- runFlow: opens-task-menu.yaml
 - tapOn: "상태 옮기기"
 - extendedWaitUntil:
     visible: 'Todo\(으\)로 옮기기'

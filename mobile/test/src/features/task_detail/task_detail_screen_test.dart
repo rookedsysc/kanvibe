@@ -10,6 +10,7 @@ import 'package:kanvibe_mobile/src/common/providers.dart';
 import 'package:kanvibe_mobile/src/features/board/data/board_snapshot.dart';
 import 'package:kanvibe_mobile/src/features/board/domain/board_task.dart';
 import 'package:kanvibe_mobile/src/features/board/domain/task_status.dart';
+import 'package:kanvibe_mobile/src/features/chat_history/presentation/chat_history_screen.dart';
 import 'package:kanvibe_mobile/src/features/task_create/domain/session_type.dart';
 import 'package:kanvibe_mobile/src/features/task_create/presentation/create_task_screen.dart';
 import 'package:kanvibe_mobile/src/features/task_detail/domain/mirror_pane.dart';
@@ -207,7 +208,16 @@ Future<FakeDesktopClient> _pumpCreationDetail(
   return client;
 }
 
+Future<void> _showTaskActions(WidgetTester tester) async {
+  if (find.byTooltip('태스크 메뉴').evaluate().isNotEmpty &&
+      find.byType(PopupMenuItem<VoidCallback>).evaluate().isEmpty) {
+    await tester.tap(find.byTooltip('태스크 메뉴'));
+    await tester.pumpAndSettle();
+  }
+}
+
 Future<void> _openCreation(WidgetTester tester) async {
+  await _showTaskActions(tester);
   await tester.tap(find.bySemanticsIdentifier('create-task-from-current'));
   await tester.pumpAndSettle();
 }
@@ -219,6 +229,113 @@ Future<void> _submitCreation(WidgetTester tester) async {
 }
 
 void main() {
+  group('태스크 상단 반응형 액션', () {
+    const taskWithPr = BoardTask(
+      id: 'task-1',
+      title: '모바일 클라이언트',
+      status: TaskStatus.progress,
+      projectName: 'very-long-project-name-긴-프로젝트-이름',
+      branchName: 'feat/source',
+      prUrl: 'https://github.com/example/repo/pull/1',
+    );
+    for (final width in [320.0, 390.0, 767.0, 768.0, 1024.0]) {
+      testWidgets('$width 폭에서 좁은 화면은 메뉴 하나, 넓은 화면은 기존 여섯 액션을 보인다', (
+        tester,
+      ) async {
+        await pumpDetail(tester, size: Size(width, 844), task: taskWithPr);
+        final appBar = tester.widget<AppBar>(find.byType(AppBar));
+        expect(appBar.actions!.length, width < 768 ? 1 : 6);
+        expect(tester.takeException(), isNull);
+        if (width < 768) {
+          expect(
+            find.bySemanticsIdentifier('create-task-from-current'),
+            findsNothing,
+          );
+          await tester.tap(find.byTooltip('태스크 메뉴'));
+          await tester.pumpAndSettle();
+          for (final label in [
+            '새 태스크',
+            '채팅 History',
+            '정보',
+            '상태 옮기기',
+            '세션 종류 바꾸기',
+            'PR 열기',
+          ]) {
+            expect(find.text(label), findsOneWidget);
+          }
+        } else {
+          expect(find.byTooltip('태스크 메뉴'), findsNothing);
+          await _showTaskActions(tester);
+          expect(find.byTooltip('PR 열기'), findsOneWidget);
+          expect(
+            find.bySemanticsIdentifier('create-task-from-current'),
+            findsOneWidget,
+          );
+        }
+      });
+    }
+    testWidgets('좁은 화면의 채팅 메뉴는 현재 태스크의 History로 이동한다', (tester) async {
+      await pumpDetail(tester, size: phoneSize);
+      await _showTaskActions(tester);
+      await tester.tap(find.bySemanticsIdentifier('chat-history'));
+      await tester.pumpAndSettle();
+      expect(find.byType(ChatHistoryScreen), findsOneWidget);
+      expect(
+        tester.widget<ChatHistoryScreen>(find.byType(ChatHistoryScreen)).taskId,
+        _task.id,
+      );
+    });
+    testWidgets('세션을 읽지 못했을 때 메뉴의 세션 종류 변경은 비활성화된다', (tester) async {
+      await pumpDetail(
+        tester,
+        size: phoneSize,
+        surfacesError: const DesktopRequestException(503),
+      );
+      await _showTaskActions(tester);
+      final action = find.ancestor(
+        of: find.bySemanticsIdentifier('change-session-type'),
+        matching: find.byType(PopupMenuItem<VoidCallback>),
+      );
+      expect(
+        tester.widget<PopupMenuItem<VoidCallback>>(action).enabled,
+        isFalse,
+      );
+    });
+    testWidgets('좁은 화면에서 글자를 두 배로 키워도 메뉴 항목이 넘치지 않는다', (tester) async {
+      await tester.binding.setSurfaceSize(const Size(320, 844));
+      await tester.pumpWidget(
+        wrapWithApp(
+          MediaQuery(
+            data: const MediaQueryData(
+              size: Size(320, 844),
+              textScaler: TextScaler.linear(2),
+            ),
+            child: const TaskDetailScreen(task: taskWithPr),
+          ),
+          client: FakeDesktopClient(surfaces: _surfaces),
+          size: const Size(320, 844),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await _showTaskActions(tester);
+      expect(find.text('세션 종류 바꾸기'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+    testWidgets('폴더블 펼침과 접힘에 따라 메뉴와 아이콘이 전환된다', (tester) async {
+      await _pumpCreationDetail(tester, size: const Size(390, 844));
+      expect(find.byTooltip('태스크 메뉴'), findsOneWidget);
+      await tester.binding.setSurfaceSize(const Size(1024, 844));
+      await tester.pumpAndSettle();
+      expect(find.byTooltip('태스크 메뉴'), findsNothing);
+      expect(find.byTooltip('정보'), findsOneWidget);
+      await tester.binding.setSurfaceSize(const Size(390, 844));
+      await tester.pumpAndSettle();
+      expect(find.byTooltip('태스크 메뉴'), findsOneWidget);
+      expect(find.byTooltip('정보'), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+  });
+
   testWidgets('탭 추가는 새 pane을 선택하고 새 셸로 입력을 보낸다', (tester) async {
     final client = FakeDesktopClient(
       surfaces: _surfaces,
@@ -358,6 +475,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    await _showTaskActions(tester);
     final createAction = find.bySemanticsIdentifier('create-task-from-current');
     expect(createAction, findsOneWidget);
     await tester.tap(createAction);
@@ -513,28 +631,24 @@ void main() {
           return pendingBoard.future;
         },
       );
-      final action = find.bySemanticsIdentifier('create-task-from-current');
-
-      await tester.tap(action);
-      await tester.pump();
-      expect(find.byTooltip('불러오는 중…'), findsOneWidget);
-      expect(tester.getSize(action).height, 48);
-      expect(
-        tester
-            .widget<IconButton>(
-              find.descendant(
-                of: action,
-                matching: find.byWidgetPredicate(
-                  (widget) => widget is IconButton,
-                ),
-              ),
-            )
-            .onPressed,
-        isNull,
+      await _showTaskActions(tester);
+      await tester.tap(find.bySemanticsIdentifier('create-task-from-current'));
+      await tester.pumpAndSettle();
+      await _showTaskActions(tester);
+      expect(find.text('불러오는 중…'), findsOneWidget);
+      final pendingAction = find.ancestor(
+        of: find.bySemanticsIdentifier('create-task-from-current'),
+        matching: find.byType(PopupMenuItem<VoidCallback>),
       );
-      await tester.tap(action);
+      expect(
+        tester.widget<PopupMenuItem<VoidCallback>>(pendingAction).enabled,
+        isFalse,
+      );
+      await tester.tap(find.bySemanticsIdentifier('create-task-from-current'));
       await tester.pump();
       expect(loads, 1);
+      await tester.tapAt(const Offset(8, 400));
+      await tester.pumpAndSettle();
 
       pendingBoard.complete(BoardSnapshot.fromJson(_creationBoardJson));
       await tester.pumpAndSettle();
@@ -548,6 +662,7 @@ void main() {
     testWidgets('보드 조회 중 상세를 떠나면 조회가 끝나도 생성 화면을 열지 않는다', (tester) async {
       final pendingBoard = Completer<BoardSnapshot>();
       await _pumpCreationDetail(tester, loadBoard: () => pendingBoard.future);
+      await _showTaskActions(tester);
       await tester.tap(find.bySemanticsIdentifier('create-task-from-current'));
       await tester.pump();
 
@@ -640,8 +755,15 @@ void main() {
             ),
           );
 
+          await _showTaskActions(tester);
           final action = find.bySemanticsIdentifier('create-task-from-current');
-          final bounds = tester.getRect(action);
+          final menuEntry = find.ancestor(
+            of: action,
+            matching: find.byType(PopupMenuItem<VoidCallback>),
+          );
+          final bounds = tester.getRect(
+            menuEntry.evaluate().isEmpty ? action : menuEntry,
+          );
           expect(bounds.height, greaterThanOrEqualTo(48));
           expect(bounds.left, greaterThanOrEqualTo(0));
           expect(bounds.right, lessThanOrEqualTo(size.width));
@@ -652,6 +774,7 @@ void main() {
             ),
             findsOneWidget,
           );
+          await _showTaskActions(tester);
           expect(find.byTooltip('PR 열기'), findsOneWidget);
           expect(tester.takeException(), isNull);
 
@@ -845,8 +968,10 @@ void main() {
   });
 
   group('데스크탑 태스크 화면에서 옮겨 온 것', () {
-    testWidgets('프로젝트 배지와 브랜치 및 새 태스크는 정보 버튼과 같은 AppBar에 있다', (tester) async {
-      await pumpDetail(tester, size: phoneSize);
+    testWidgets('넓은 화면에서 프로젝트 배지와 브랜치 및 새 태스크는 정보 버튼과 같은 AppBar에 있다', (
+      tester,
+    ) async {
+      await pumpDetail(tester, size: tabletSize);
 
       final appBar = find.byType(AppBar);
       for (final target in [
@@ -864,6 +989,7 @@ void main() {
     testWidgets('정보를 누르면 데스크탑 정보 패널과 같은 칸이 열린다', (tester) async {
       await pumpDetail(tester, size: phoneSize);
 
+      await _showTaskActions(tester);
       await tester.tap(find.byTooltip('정보'));
       await tester.pumpAndSettle();
 
@@ -891,6 +1017,7 @@ void main() {
         ),
       );
 
+      await _showTaskActions(tester);
       expect(find.byTooltip('PR 열기'), findsOneWidget);
     });
   });
@@ -899,6 +1026,7 @@ void main() {
     testWidgets('지금 상태는 옮길 후보에서 빠지고 Pending도 나오지 않는다', (tester) async {
       await pumpDetail(tester, size: phoneSize);
 
+      await _showTaskActions(tester);
       await tester.tap(find.byTooltip('상태 옮기기'));
       await tester.pumpAndSettle();
 
@@ -916,6 +1044,7 @@ void main() {
     testWidgets('고른 상태를 데스크탑에 보내고 화면의 태스크도 그 상태가 된다', (tester) async {
       final client = await pumpDetail(tester, size: phoneSize);
 
+      await _showTaskActions(tester);
       await tester.tap(find.byTooltip('상태 옮기기'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Review(으)로 옮기기'));
@@ -925,6 +1054,7 @@ void main() {
       expect(client.statusCalls.single.status, TaskStatus.review);
 
       /// 시트를 다시 열면 이제 Review가 후보에서 빠져 있어야 화면이 새 상태를 든 것이다
+      await _showTaskActions(tester);
       await tester.tap(find.byTooltip('상태 옮기기'));
       await tester.pumpAndSettle();
       expect(find.text('Review(으)로 옮기기'), findsNothing);
@@ -938,6 +1068,7 @@ void main() {
         statusError: const DesktopRequestException(404),
       );
 
+      await _showTaskActions(tester);
       await tester.tap(find.byTooltip('상태 옮기기'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Done(으)로 옮기기'));
@@ -960,6 +1091,7 @@ void main() {
     );
 
     Future<void> chooseZellij(WidgetTester tester) async {
+      await _showTaskActions(tester);
       await tester.tap(find.byTooltip('세션 종류 바꾸기'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('zellij(으)로 바꾸기'));
@@ -1017,6 +1149,7 @@ void main() {
         surfaces: tmuxSurfaces,
       );
 
+      await _showTaskActions(tester);
       await tester.tap(find.byTooltip('세션 종류 바꾸기'));
       await tester.pumpAndSettle();
       expect(find.text('지금은 tmux입니다.'), findsOneWidget);
@@ -1137,6 +1270,7 @@ void main() {
       );
       await tester.tap(find.text('보드'));
       await tester.pumpAndSettle();
+      await _showTaskActions(tester);
       await tester.tap(find.byTooltip('상태 옮기기'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('삭제'));

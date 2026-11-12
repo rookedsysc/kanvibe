@@ -274,3 +274,7 @@ Herdr 세션은 같은 fixture에서 `mobile/.maestro/flows/herdr-terminal.yaml`
 터미널 글자를 길게 누르고 드래그해 범위를 선택한 다음, 오른쪽 위의 **복사**를 누르면 휴대폰 클립보드에 저장한다. 한글과 여러 줄을 함께 복사할 수 있다. 복사 버튼은 선택 중에만 나타나며 터미널 격자 크기를 바꾸지 않는다. 선택과 복사는 `features/task_detail/presentation/widgets/pane_terminal_view.dart`에서 기존 터미널 컨트롤러로 처리한다.
 
 손가락으로 위아래로 밀면 이전 출력과 최신 출력 사이를 스크롤한다. tmux, Zellij, Herdr는 접속 전의 이력도 가져오며 모바일에는 최근 2,000줄까지 보관한다. Zellij 화면이 갱신돼도 선택 중인 글자는 유지하고, 복사하거나 선택을 해제하면 최신 화면을 적용한다. 이력·모드 복원에는 이 기능이 포함된 데스크탑 빌드가 필요하다.
+
+## 태스크 상단 메뉴
+
+앱 표시 폭이 768 미만이면 태스크 상단의 **태스크 메뉴(⋮)**에서 새 태스크, 채팅 History, 정보, 상태 옮기기, 세션 종류 바꾸기, PR 열기를 선택한다. PR 항목은 링크가 있을 때만 나타난다. 768 이상인 태블릿이나 펼친 폴더블에서는 기존 상단 아이콘을 유지한다. 기기 종류가 아니라 실제 사용 가능한 화면 폭을 기준으로 전환하므로 분할 화면·회전·접힘에도 반영된다. 액션 정의와 분기는 `features/task_detail/presentation/task_detail_screen.dart`가 소유하며 기존 동작·상태 provider는 유지한다. Maestro의 `opens-task-menu.yaml`은 좁은 화면에서만 메뉴를 열어 같은 selector를 사용한다.
