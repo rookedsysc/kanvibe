@@ -469,6 +469,13 @@
     "taskNotFound": "작업을 찾을 수 없습니다.",
     "goBack": "뒤로가기",
     "aiSessions": {
+      "history": "대화 기록",
+      "refresh": "새로고침",
+      "retry": "다시 시도",
+      "backToHistory": "대화 기록으로 돌아가기",
+      "messageCount": "메시지 {count}개",
+      "readOnlyHistory": "저장된 대화 기록입니다. 대화를 이어가려면 태스크 터미널을 열어 주세요.",
+      "jumpToLatest": "최신 메시지",
       "title": "AI 세션",
       "inlineChat": "AI 채팅",
       "remoteBadge": "표시할 원격 세션이 없습니다.",

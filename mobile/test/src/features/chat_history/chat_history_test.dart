@@ -12,6 +12,7 @@ import 'package:kanvibe_mobile/src/common/providers.dart';
 import 'package:kanvibe_mobile/src/features/chat_history/application/chat_history_controller.dart';
 import 'package:kanvibe_mobile/src/features/chat_history/domain/chat_history.dart';
 import 'package:kanvibe_mobile/src/features/chat_history/presentation/chat_history_screen.dart';
+import 'package:kanvibe_mobile/src/features/chat_history/presentation/chat_message_tile.dart';
 import 'package:kanvibe_mobile/src/features/connection/domain/saved_connections.dart';
 
 import '../../../support/fake_desktop.dart';
@@ -232,5 +233,195 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('이전 질문'), findsOneWidget);
     expect(find.byTooltip('메시지 복사'), findsNWidgets(2));
+  });
+  testWidgets('도구와 추론은 접어서 보여주고 펼치면 전문과 시간을 읽는다', (tester) async {
+    final client = DesktopClient(
+      httpClient: MockClient(
+        (_) async => jsonResponse({
+          'detail': {
+            'messages': [
+              {
+                'role': 'reasoning',
+                'fullText': '숨겨진 추론 전문',
+                'timestamp': '2026-11-12T09:30:00Z',
+              },
+              {'role': 'tool', 'fullText': '숨겨진 도구 결과'},
+              {'role': 'assistant', 'fullText': '읽을 답변'},
+            ],
+            'nextCursor': null,
+          },
+        }),
+      ),
+    );
+    final container = setup(client);
+    addTearDown(container.dispose);
+    addTearDown(client.close);
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: const MaterialApp(
+          home: ChatMessagesScreen(taskId: 'task', session: session),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('읽을 답변'), findsOneWidget);
+    expect(find.text('숨겨진 추론 전문'), findsNothing);
+    expect(find.text('숨겨진 도구 결과'), findsNothing);
+    await tester.tap(find.text('추론 과정'));
+    await tester.pumpAndSettle();
+    expect(find.text('숨겨진 추론 전문'), findsOneWidget);
+    final localTime = DateTime.parse('2026-11-12T09:30:00Z').toLocal();
+    final timeLabel =
+        '${localTime.hour.toString().padLeft(2, '0')}:${localTime.minute.toString().padLeft(2, '0')}';
+    expect(
+      find.byTooltip(
+        '${localTime.year}. ${localTime.month}. ${localTime.day}. $timeLabel',
+      ),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('넓은 화면은 목록 옆에 대화를 열고 검색 초기화가 서버 검색도 해제한다', (tester) async {
+    tester.view.physicalSize = const Size(1200, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final queries = <String?>[];
+    final client = DesktopClient(
+      httpClient: MockClient((request) async {
+        if (request.url.path.endsWith('ai-sessions')) {
+          queries.add(request.url.queryParameters['query']);
+          return jsonResponse(history());
+        }
+        return jsonResponse({
+          'detail': {
+            'messages': [
+              {'role': 'assistant', 'fullText': '옆에 열린 답변'},
+            ],
+            'nextCursor': null,
+          },
+        });
+      }),
+    );
+    final container = setup(client);
+    addTearDown(container.dispose);
+    addTearDown(client.close);
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: const MaterialApp(home: ChatHistoryScreen(taskId: 'task')),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('고친 대화'));
+    await tester.pumpAndSettle();
+    expect(find.byType(ChatHistoryScreen), findsOneWidget);
+    expect(find.text('옆에 열린 답변'), findsOneWidget);
+    expect(find.byKey(const ValueKey('chat-session-list')), findsOneWidget);
+    await tester.enterText(find.byType(TextField), 'fix');
+    await tester.testTextInput.receiveAction(TextInputAction.search);
+    await tester.pumpAndSettle();
+    expect(queries.last, 'fix');
+    await tester.tap(find.byTooltip('검색 지우기'));
+    await tester.pumpAndSettle();
+    expect(queries.last, isNull);
+    expect(
+      tester.widget<TextField>(find.byType(TextField)).controller!.text,
+      isEmpty,
+    );
+    expect(tester.takeException(), isNull);
+  });
+  testWidgets('좁은 화면과 큰 글씨에서도 코드 전문을 읽고 목록으로 돌아간다', (tester) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final client = DesktopClient(
+      httpClient: MockClient((request) async {
+        if (request.url.path.endsWith('ai-sessions')) {
+          return jsonResponse(history());
+        }
+        return jsonResponse({
+          'detail': {
+            'messages': [
+              {
+                'role': 'assistant',
+                'fullText':
+                    '답변 본문\n```dart\nfinal value = "긴 코드 전문을 그대로 읽습니다";\n```',
+              },
+            ],
+            'nextCursor': null,
+          },
+        });
+      }),
+    );
+    final container = setup(client);
+    addTearDown(container.dispose);
+    addTearDown(client.close);
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          builder: (context, child) => MediaQuery(
+            data: MediaQuery.of(context)
+                .copyWith(textScaler: const TextScaler.linear(2)),
+            child: child!,
+          ),
+          home: const ChatHistoryScreen(taskId: 'task'),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('고친 대화'));
+    await tester.pumpAndSettle();
+    expect(find.text('답변 본문'), findsOneWidget);
+    expect(find.text('final value = "긴 코드 전문을 그대로 읽습니다";'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    expect(find.text('고친 대화'), findsOneWidget);
+    expect(find.byType(TextField), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+  testWidgets('Markdown 제목·강조·코드를 렌더링하고 로컬 파일 링크와 이미지를 열지 않는다', (tester) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: MediaQuery(
+            data: const MediaQueryData(textScaler: TextScaler.linear(2)),
+            child: const SingleChildScrollView(
+              child: Padding(
+                padding: EdgeInsets.all(16),
+                child: ChatMessageTile(
+                  provider: 'codex',
+                  message: ChatMessage(
+                    role: 'assistant',
+                    text: '## 변경 사항\n\n**중요한 결과**\n\n```dart\nfinal result = "아주 긴 한 줄의 코드도 본문 폭을 넘지 않고 스크롤합니다";\n```\n\n[로컬 파일](file:///private/secret.txt)\n\n![로컬 이미지](file:///private/secret.png)',
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('변경 사항'), findsOneWidget);
+    expect(find.text('## 변경 사항'), findsNothing);
+    expect(find.text('중요한 결과'), findsOneWidget);
+    expect(find.text('**중요한 결과**'), findsNothing);
+    expect(find.textContaining('final result'), findsOneWidget);
+    expect(find.byType(Image), findsNothing);
+    expect(find.textContaining('로컬 이미지'), findsOneWidget);
+    await tester.ensureVisible(find.text('로컬 파일'));
+    await tester.tap(find.text('로컬 파일'));
+    await tester.pumpAndSettle();
+    expect(find.text('HTTP 또는 HTTPS 링크만 열 수 있습니다.'), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 }

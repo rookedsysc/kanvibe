@@ -469,6 +469,13 @@
     "taskNotFound": "Task not found.",
     "goBack": "Go back",
     "aiSessions": {
+      "history": "History",
+      "refresh": "Refresh",
+      "retry": "Try again",
+      "backToHistory": "Back to history",
+      "messageCount": "{count} messages",
+      "readOnlyHistory": "Saved conversation. Open the task terminal to continue chatting.",
+      "jumpToLatest": "Latest messages",
       "title": "AI Sessions",
       "inlineChat": "AI Chat",
       "remoteBadge": "No remote sessions to display.",

@@ -4,11 +4,15 @@ class ChatSession {
     required this.provider,
     required this.title,
     this.updatedAt,
+    this.preview,
+    this.messageCount = 0,
   });
   final String id;
   final String provider;
   final String title;
   final DateTime? updatedAt;
+  final String? preview;
+  final int messageCount;
   String get key => '$provider:$id';
 
   factory ChatSession.fromJson(Map<String, dynamic> value) => ChatSession(
@@ -19,6 +23,8 @@ class ChatSession {
         value['firstUserPrompt'] as String? ??
         value['id'] as String,
     updatedAt: DateTime.tryParse(value['updatedAt'] as String? ?? ''),
+    preview: value['firstUserPrompt'] as String?,
+    messageCount: value['messageCount'] as int? ?? 0,
   );
 }
 

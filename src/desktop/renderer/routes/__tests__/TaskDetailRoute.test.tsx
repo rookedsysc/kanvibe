@@ -2516,6 +2516,7 @@ describe("TaskDetailRoute", () => {
     expect(mocks.mermaidInitialize).toHaveBeenCalledWith(expect.objectContaining({
       securityLevel: "strict",
       startOnLoad: false,
+      htmlLabels: false,
       theme: "dark",
     }));
     expect(mocks.mermaidRender.mock.calls[0]?.[0]).toMatch(/^ai-session-mermaid-/);
@@ -3271,4 +3272,88 @@ describe("TaskDetailRoute", () => {
 
     expect(await screen.findByTestId("ai-usage-panel")).toBeTruthy();
   });
+
+  it("대화에서 기록으로 돌아가면 세션 목록을 유지하고 다시 선택할 수 있다", async () => {
+    mocks.getSidebarDefaultCollapsed.mockResolvedValue(true);
+    mocks.getTaskById.mockResolvedValue({ ...notificationReadTargetTask, worktreePath: "/repo" });
+    mocks.getTaskAiSessions.mockResolvedValue({
+      isRemote: false, targetPath: "/repo", repoPath: "/repo", nextCursor: null, sources: [],
+      sessions: [{ id: "back-chat", provider: "claude", title: "Back history", firstUserPrompt: "Request", messageCount: 1 }],
+    });
+    mocks.getTaskAiSessionDetail.mockResolvedValue({ sessionId: "back-chat", provider: "claude", nextCursor: null, messages: [
+      { role: "assistant", timestamp: null, text: "Saved answer", fullText: "Saved answer", isTruncated: false },
+    ] });
+    render(<TaskDetailRoute />);
+    fireEvent.click(await screen.findByRole("button", { name: "aiSessions.inlineChat" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Claude Back history" }));
+    expect(await screen.findByText("Saved answer")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "aiSessions.backToHistory" }));
+    expect(screen.getByRole("button", { name: "Claude Back history" })).toBeTruthy();
+    expect(screen.queryByText("Saved answer")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Claude Back history" }));
+    expect(await screen.findByText("Saved answer")).toBeTruthy();
+  });
+
+  it("이전 메시지를 추가해도 읽던 위치를 보존하며 최신 메시지 버튼으로 돌아간다", async () => {
+    mocks.getSidebarDefaultCollapsed.mockResolvedValue(true);
+    mocks.getTaskById.mockResolvedValue({ ...notificationReadTargetTask, worktreePath: "/repo" });
+    mocks.getTaskAiSessions.mockResolvedValue({
+      isRemote: false, targetPath: "/repo", repoPath: "/repo", nextCursor: null, sources: [],
+      sessions: [{ id: "anchor-chat", provider: "claude", title: "Anchor history", messageCount: 3 }],
+    });
+    mocks.getTaskAiSessionDetail.mockResolvedValueOnce({ sessionId: "anchor-chat", provider: "claude", nextCursor: "older", messages: [
+      { role: "assistant", timestamp: null, text: "Latest answer", fullText: "Latest answer", isTruncated: false },
+      { role: "user", timestamp: null, text: "Current prompt", fullText: "Current prompt", isTruncated: false },
+    ] }).mockResolvedValueOnce({ sessionId: "anchor-chat", provider: "claude", nextCursor: null, messages: [
+      { role: "assistant", timestamp: null, text: "Older answer", fullText: "Older answer", isTruncated: false },
+    ] });
+    render(<TaskDetailRoute />);
+    fireEvent.click(await screen.findByRole("button", { name: "aiSessions.inlineChat" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Claude Anchor history" }));
+    await screen.findByText("Latest answer");
+    const pane = screen.getByTestId("ai-session-messages");
+    Object.defineProperty(pane, "scrollHeight", { configurable: true, get: () => pane.querySelectorAll("article").length * 200 });
+    Object.defineProperty(pane, "clientHeight", { configurable: true, value: 100 });
+    pane.scrollTop = 20;
+    fireEvent.click(screen.getByRole("button", { name: "aiSessions.loadOlderMessages" }));
+    await screen.findByText("Older answer");
+    expect(pane.scrollTop).toBe(220);
+    fireEvent.scroll(pane);
+    const latest = await screen.findByRole("button", { name: /aiSessions.jumpToLatest/ });
+    fireEvent.click(latest);
+    expect(screen.queryByRole("button", { name: /aiSessions.jumpToLatest/ })).toBeNull();
+  });
+
+
+  it("이전 페이지를 추가해도 열어 둔 도구 메시지는 접히지 않고 중복 메시지는 구별한다", async () => {
+    mocks.getSidebarDefaultCollapsed.mockResolvedValue(true);
+    mocks.getTaskById.mockResolvedValue({ ...notificationReadTargetTask, worktreePath: "/repo" });
+    mocks.getTaskAiSessions.mockResolvedValue({
+      isRemote: false, targetPath: "/repo", repoPath: "/repo", nextCursor: null, sources: [],
+      sessions: [{ id: "disclosure-chat", provider: "claude", title: "Disclosure history", messageCount: 4 }],
+    });
+    const repeatedToolMessage = { role: "tool", timestamp: "2026-11-12T03:00:00Z", text: "Repeated tool output", fullText: "Repeated tool output", isTruncated: false };
+    mocks.getTaskAiSessionDetail.mockResolvedValueOnce({ sessionId: "disclosure-chat", provider: "claude", nextCursor: "older", messages: [
+      repeatedToolMessage, repeatedToolMessage,
+    ] }).mockResolvedValueOnce({ sessionId: "disclosure-chat", provider: "claude", nextCursor: null, messages: [
+      repeatedToolMessage,
+      { role: "user", timestamp: null, text: "Oldest prompt", fullText: "Oldest prompt", isTruncated: false },
+    ] });
+    render(<TaskDetailRoute />);
+    fireEvent.click(await screen.findByRole("button", { name: "aiSessions.inlineChat" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Claude Disclosure history" }));
+    const pane = screen.getByTestId("ai-session-messages");
+    await waitFor(() => expect(pane.querySelectorAll("details").length).toBe(2));
+    const latestTool = pane.querySelectorAll("details")[1];
+    fireEvent.click(latestTool.querySelector("summary")!);
+    expect(latestTool.open).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "aiSessions.loadOlderMessages" }));
+    await screen.findByText("Oldest prompt");
+    const disclosures = pane.querySelectorAll("details");
+    expect(disclosures.length).toBe(3);
+    expect(disclosures[2]).toBe(latestTool);
+    expect(disclosures[2].open).toBe(true);
+    expect(disclosures[0].open).toBe(false);
+  });
+
 });

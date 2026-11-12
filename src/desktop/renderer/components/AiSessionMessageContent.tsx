@@ -132,6 +132,8 @@ function MermaidDiagram({ definition, index, isUserMessage }: { definition: stri
         mermaidApi.initialize({
           securityLevel: "strict",
           startOnLoad: false,
+          // SVG text survives sanitization, while HTML foreignObject labels are removed.
+          htmlLabels: false,
           theme: MERMAID_THEME,
         });
         const result = await mermaidApi.render(elementId, definition);
