@@ -22,7 +22,7 @@ class ElectronTerminalClient extends EventEmitter {
    * 첫 mount의 cleanup이 두 번째 mount가 사용 중인 PTY를 죽이지 않도록 보호한다.
    */
   refCount = 1;
-  openPromise?: Promise<{ ok: boolean; error?: string }>;
+  openPromise?: Promise<{ ok: boolean; error?: string; retryAfterMs?: number }>;
 
   constructor(
     private readonly webContents: WebContents,
@@ -230,11 +230,13 @@ export async function attachTaskTerminal(
     try {
       await ensureKanvibeHooksCurrent(hookTargetPath, task.id, task.sshHost);
     } catch (error) {
-      broadcastTaskHookInstallFailed({
-        taskId: task.id,
-        taskTitle: task.title,
-        error: error instanceof Error ? error.message : "hooks 설정 실패",
-      });
+      if (!getTerminalRetryAfterMs(error)) {
+        broadcastTaskHookInstallFailed({
+          taskId: task.id,
+          taskTitle: task.title,
+          error: error instanceof Error ? error.message : "hooks 설정 실패",
+        });
+      }
       throw error;
     }
     if (client.readyState !== client.OPEN) return;
@@ -287,7 +289,7 @@ async function initializeTerminal(
   cols: number,
   rows: number,
   client: ElectronTerminalClient,
-): Promise<{ ok: boolean; error?: string }> {
+): Promise<{ ok: boolean; error?: string; retryAfterMs?: number }> {
   const isClosed = () => client.readyState !== OPEN || webContents.isDestroyed();
   const cancelled = () => {
     client.close();
@@ -307,8 +309,18 @@ async function initializeTerminal(
     return { ok: true };
   } catch (error) {
     client.close(1011, "터미널 연결 실패");
-    return { ok: false, error: error instanceof Error ? error.message : "터미널 연결 실패" };
+    const retryAfterMs = getTerminalRetryAfterMs(error);
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : "터미널 연결 실패",
+      ...(retryAfterMs ? { retryAfterMs } : {}),
+    };
   }
+}
+
+function getTerminalRetryAfterMs(error: unknown): number | undefined {
+  const retryAfterMs = error instanceof Error && "retryAfterMs" in error ? error.retryAfterMs : undefined;
+  return typeof retryAfterMs === "number" && Number.isFinite(retryAfterMs) && retryAfterMs > 0 ? retryAfterMs : undefined;
 }
 
 export function writeTerminal(

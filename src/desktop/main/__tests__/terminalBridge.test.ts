@@ -167,6 +167,24 @@ describe("terminalBridge pending open ownership", () => {
     await expect(bridge.openTerminal(window, "task", null, 100, 30)).resolves.toEqual({ ok: true });
     bridge.closeWindowTerminals(window.id);
   });
+
+  it("forwards the remaining SSH cooldown as a terminal retry hint", async () => {
+    mockFindOneBy.mockRejectedValueOnce(Object.assign(new Error("SSH transport cooldown"), { retryAfterMs: 3200 }));
+    const bridge = await importBridge();
+
+    await expect(bridge.openTerminal(windowStub(), "task", null, 100, 30)).resolves.toEqual({
+      ok: false, error: "SSH transport cooldown", retryAfterMs: 3200,
+    });
+  });
+
+  it.each([undefined, 0, -1, Number.NaN, Number.POSITIVE_INFINITY])("does not retry an invalid hint %s", async (retryAfterMs) => {
+    mockFindOneBy.mockRejectedValueOnce(Object.assign(new Error("permanent failure"), { retryAfterMs }));
+    const bridge = await importBridge();
+
+    await expect(bridge.openTerminal(windowStub(), "task", null, 100, 30)).resolves.toEqual({
+      ok: false, error: "permanent failure",
+    });
+  });
 });
 
 
@@ -211,5 +229,17 @@ describe("terminalBridge existing remote session migration", () => {
     expect(terminal.attachRemoteSession).not.toHaveBeenCalled();
     await bridge.attachTaskTerminal(remoteTask(), null, client);
     expect(terminal.attachRemoteSession).toHaveBeenCalledTimes(1);
+  });
+
+  it("일시적인 SSH 재연결 대기를 hook 설치 실패 알림으로 표시하지 않는다", async () => {
+    mockFindOneBy.mockResolvedValue(remoteTask());
+    mockEnsureKanvibeHooksCurrent.mockRejectedValueOnce(Object.assign(new Error("SSH transport cooldown"), { retryAfterMs: 3200 }));
+    const bridge = await importBridge();
+    const window = { id: 101, isDestroyed: () => false, send: vi.fn() } as unknown as import("electron").WebContents;
+
+    await expect(bridge.openTerminal(window, "task-1", null, 100, 30)).resolves.toEqual({
+      ok: false, error: "SSH transport cooldown", retryAfterMs: 3200,
+    });
+    expect(mockBroadcastTaskHookInstallFailed).not.toHaveBeenCalled();
   });
 });
