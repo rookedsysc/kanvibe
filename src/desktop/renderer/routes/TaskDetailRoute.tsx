@@ -608,23 +608,27 @@ function InlineAiChatView({ taskId }: { taskId: string }) {
             {isHistoryLoading ? <InlineAiChatEmpty compact text={t("aiSessions.loadingDetail")} /> : null}
             {history ? (
               <div data-testid="ai-session-list" className="space-y-1">
-                {filteredSessions.map((session) => (
-                  <button key={getAiSessionKey(session)} type="button"
-                    onClick={() => { shouldScrollToLatestMessageRef.current = true; setSelectedSessionKey(getAiSessionKey(session)); setActiveRoles([]); }}
-                    className={`w-full rounded-lg px-3 py-3 text-left transition-colors focus-visible:outline-2 focus-visible:outline-brand-primary ${selectedSessionKey === getAiSessionKey(session) ? "bg-bg-surface" : "hover:bg-bg-surface/75"}`}
-                    aria-current={selectedSessionKey === getAiSessionKey(session) ? "true" : undefined}
-                    aria-label={`${AI_SESSION_PROVIDER_LABELS[session.provider]} ${session.title ?? session.firstUserPrompt ?? session.id}`}>
-                    <div className="flex items-center gap-2">
-                      <AiSessionProviderIcon provider={session.provider} />
-                      <span className="min-w-0 flex-1 truncate text-sm font-medium text-text-primary">{session.title ?? session.firstUserPrompt ?? session.id}</span>
-                    </div>
-                    {session.firstUserPrompt ? <p className="mt-1.5 line-clamp-2 text-xs leading-5 text-text-secondary">{session.firstUserPrompt}</p> : null}
-                    <div className="mt-2 flex justify-between gap-2 text-xs text-text-muted">
-                      <span>{t("aiSessions.messageCount", { count: session.messageCount })}</span>
-                      {session.updatedAt && Number.isFinite(Date.parse(session.updatedAt)) ? <time dateTime={session.updatedAt}>{new Date(session.updatedAt).toLocaleDateString()}</time> : null}
-                    </div>
-                  </button>
-                ))}
+                {filteredSessions.map((session) => {
+                  const title = session.title ?? session.firstUserPrompt ?? session.id;
+                  const preview = session.firstUserPrompt?.trim();
+                  return (
+                    <button key={getAiSessionKey(session)} type="button"
+                      onClick={() => { shouldScrollToLatestMessageRef.current = true; setSelectedSessionKey(getAiSessionKey(session)); setActiveRoles([]); }}
+                      className={`w-full rounded-lg px-3 py-3 text-left transition-colors focus-visible:outline-2 focus-visible:outline-brand-primary ${selectedSessionKey === getAiSessionKey(session) ? "bg-bg-surface" : "hover:bg-bg-surface/75"}`}
+                      aria-current={selectedSessionKey === getAiSessionKey(session) ? "true" : undefined}
+                      aria-label={`${AI_SESSION_PROVIDER_LABELS[session.provider]} ${title}`}>
+                      <div className="flex items-center gap-2">
+                        <AiSessionProviderIcon provider={session.provider} />
+                        <span className="min-w-0 flex-1 truncate text-sm font-medium text-text-primary">{title}</span>
+                      </div>
+                      {preview && preview !== title.trim() ? <p className="mt-1.5 line-clamp-2 text-xs leading-5 text-text-secondary">{session.firstUserPrompt}</p> : null}
+                      <div className="mt-2 flex justify-between gap-2 text-xs text-text-muted">
+                        <span>{t("aiSessions.messageCount", { count: session.messageCount })}</span>
+                        {session.updatedAt && Number.isFinite(Date.parse(session.updatedAt)) ? <time dateTime={session.updatedAt}>{new Date(session.updatedAt).toLocaleDateString()}</time> : null}
+                      </div>
+                    </button>
+                  );
+                })}
                 {filteredSessions.length === 0 && !isHistoryLoading ? <InlineAiChatEmpty compact text={history.isRemote ? t("aiSessions.remoteBadge") : t("aiSessions.noPreview")} /> : null}
                 {history.nextCursor ? <button type="button" onClick={() => void handleLoadMoreSessions()} disabled={isHistoryLoading}
                   className="w-full rounded-md px-3 py-3 text-xs text-text-secondary hover:bg-bg-surface focus-visible:outline-2 focus-visible:outline-brand-primary disabled:opacity-50">
@@ -655,7 +659,7 @@ function InlineAiChatView({ taskId }: { taskId: string }) {
           ) : null}
           <div ref={messagePaneRef} data-testid="ai-session-messages" className="min-h-0 flex-1 overflow-y-auto px-5 py-6"
             onScroll={(event) => { const pane = event.currentTarget; setShowJumpToLatest(pane.scrollHeight - pane.scrollTop - pane.clientHeight > INLINE_CHAT_NEAR_BOTTOM_PX); }}>
-            <div className="mx-auto w-full max-w-3xl space-y-5">
+            <div className="mx-auto w-full max-w-3xl space-y-2.5">
               {history && !selectedSession ? <InlineAiChatEmpty text={t("aiSessions.selectSession")} /> : null}
               {selectedSession && isDetailLoading ? <InlineAiChatEmpty text={t("aiSessions.loadingDetail")} /> : null}
               {selectedSession && !isDetailLoading && error ? <div role="alert" className="text-center"><InlineAiChatEmpty text={error} /><button type="button" onClick={() => setDetailReloadRevision((value) => value + 1)} className="rounded-md px-3 py-2 text-xs text-text-brand">{t("aiSessions.retry")}</button></div> : null}
@@ -1733,7 +1737,7 @@ function TaskDetailContent({ id }: { id: string }) {
           </div>
         ) : null}
         <div className={mainView === "chat" ? "flex min-h-0 flex-1 flex-col" : "hidden"}>
-          <PaneChatView taskId={state.task.id} isVisible={mainView === "chat"} onHistory={() => setMainView("history")} onTerminal={() => { setMainView("terminal"); requestActiveTerminalFocusAfterUiSettles(); }} />
+          <PaneChatView taskId={state.task.id} taskTitle={state.task.title} paneTabs={terminalTabs.tabs} isVisible={mainView === "chat"} onHistory={() => setMainView("history")} onTerminal={() => { setMainView("terminal"); requestActiveTerminalFocusAfterUiSettles(); }} />
         </div>
         {hasTerminal ? (
           <div className={mainView === "terminal" ? "flex-1 flex flex-col min-h-0 rounded-lg overflow-hidden shadow-md transition-all duration-200 ease-out" : "hidden"}>

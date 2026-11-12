@@ -2316,6 +2316,32 @@ describe("TaskDetailRoute", () => {
     expect(screen.queryByText("aiSessions.loadHistoryHint")).toBeNull();
   });
 
+  it.each([
+    { title: "Same title", prompt: "Same title", hasPreview: false },
+    { title: null, prompt: "Fallback prompt", hasPreview: false },
+    { title: "Different title", prompt: "A distinct first prompt", hasPreview: true },
+    { title: "Trimmed title", prompt: "  Trimmed title  ", hasPreview: false },
+  ])("history는 표시 제목과 다른 첫 입력만 preview로 보여 준다: $title", async ({ title, prompt, hasPreview }) => {
+    mocks.getSidebarDefaultCollapsed.mockResolvedValue(true);
+    mocks.getTaskById.mockResolvedValue({
+      id: "task-1", title: "task title", description: null, branchName: "feat/history-title",
+      baseBranch: "main", prUrl: null, sessionType: null, sessionName: null, sshHost: null,
+      projectId: "project-1", project: { id: "project-1", name: "kanvibe" }, status: "todo",
+      agentType: null, worktreePath: "/repo__worktrees/history-title",
+    });
+    mocks.getTaskAiSessions.mockResolvedValue({
+      isRemote: false, targetPath: "/repo__worktrees/history-title", repoPath: "/repo", sources: [], nextCursor: null,
+      sessions: [{ id: "title-session", provider: "claude", startedAt: null, updatedAt: null,
+        matchedPath: "/repo", matchScope: "worktree", title, firstUserPrompt: prompt, messageCount: 2, sourceRef: "title.jsonl" }],
+    });
+    render(<TaskDetailRoute />);
+    fireEvent.click(await screen.findByRole("button", { name: "aiSessions.inlineChat" }));
+    fireEvent.click(await screen.findByRole("button", { name: "history" }));
+    const row = await screen.findByRole("button", { name: `Claude ${title ?? prompt}` });
+    expect(row.querySelector("p")?.textContent ?? null).toBe(hasPreview ? prompt : null);
+    expect(row.querySelector("span.truncate")?.textContent).toBe(title ?? prompt);
+  });
+
   it("채팅 화면 세션 목록은 최신순 첫 페이지를 받고 다음 페이지를 이어 붙인다", async () => {
     mocks.getSidebarDefaultCollapsed.mockResolvedValue(true);
     mocks.getTaskById.mockResolvedValue({

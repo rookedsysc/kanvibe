@@ -44,6 +44,19 @@ function open() {
 }
 
 describe("current pane chat", () => {
+  it("leads with the task title and only names the exact snapshot pane", async () => {
+    const paneId = "67adc931-cb8d-46da-af83-651880ce17e2";
+    actions.getPaneChatSnapshot.mockResolvedValue({ ...snapshot(), paneId });
+    const view = render(<PaneChatView taskId="task-1" taskTitle="Fix checkout validation" paneTabs={[{ id: paneId, name: "Review API" }]} onHistory={vi.fn()} onTerminal={vi.fn()} />);
+    await screen.findByText("Exact pane response");
+    expect(screen.getByRole("heading", { name: "Fix checkout validation" })).toBeTruthy();
+    expect(screen.getByText("Review API · Codex · 80ce17e2")).toBeTruthy();
+    expect(screen.getByTitle(paneId).getAttribute("aria-label")).toBe(paneId);
+    view.rerender(<PaneChatView taskId="task-1" taskTitle="Fix checkout validation" paneTabs={[{ id: "other-pane", name: "Unrelated pane" }]} onHistory={vi.fn()} onTerminal={vi.fn()} />);
+    expect(screen.queryByText(/Unrelated pane/)).toBeNull();
+    expect(screen.getByText("Codex · 80ce17e2")).toBeTruthy();
+  });
+
   it("waits for a confirmed target before accepting a draft", async () => {
     let resolve!: (value: PaneChatSnapshot) => void;
     actions.getPaneChatSnapshot.mockReturnValue(new Promise((accept) => { resolve = accept; }));

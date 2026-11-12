@@ -45,7 +45,7 @@ class _ChatMessageTileState extends State<ChatMessageTile> {
         : '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
 
     return Padding(
-      padding: const EdgeInsets.only(bottom: AppSizes.p24),
+      padding: const EdgeInsets.only(bottom: AppSizes.p16),
       child: Align(
         alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
         child: FractionallySizedBox(
@@ -64,7 +64,20 @@ class _ChatMessageTileState extends State<ChatMessageTile> {
                       _expanded ? Icons.expand_more : Icons.chevron_right,
                       size: AppSizes.p16,
                     ),
-                    label: Text(label),
+                    label: Row(
+                      children: [
+                        Text(label),
+                        const SizedBox(width: AppSizes.p8),
+                        Expanded(
+                          child: Text(
+                            message.text.trimLeft().split('\n').first,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: Theme.of(context).textTheme.bodySmall,
+                          ),
+                        ),
+                      ],
+                    ),
                     style: TextButton.styleFrom(
                       foregroundColor: AppColors.textSecondary,
                       minimumSize: const Size(0, AppSizes.minTouchTarget),
@@ -72,14 +85,6 @@ class _ChatMessageTileState extends State<ChatMessageTile> {
                         horizontal: AppSizes.p8,
                       ),
                     ),
-                  ),
-                )
-              else
-                Padding(
-                  padding: const EdgeInsets.only(bottom: AppSizes.p8),
-                  child: Text(
-                    label,
-                    style: Theme.of(context).textTheme.bodySmall,
                   ),
                 ),
               if (!isDisclosure || _expanded) ...[
@@ -98,13 +103,25 @@ class _ChatMessageTileState extends State<ChatMessageTile> {
                           ),
                         )
                       : null,
-                  child: _MessageBody(text: message.text, isUser: isUser),
+                  child: Semantics(
+                    label: isUser ? label : null,
+                    child: _MessageBody(text: message.text, isUser: isUser),
+                  ),
                 ),
                 Row(
                   mainAxisAlignment: isUser
                       ? MainAxisAlignment.end
                       : MainAxisAlignment.start,
                   children: [
+                    if (!isUser && !isDisclosure) ...[
+                      Flexible(
+                        child: Text(
+                          label,
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                      ),
+                      const SizedBox(width: AppSizes.p8),
+                    ],
                     if (timeLabel != null)
                       Tooltip(
                         message:
@@ -118,6 +135,10 @@ class _ChatMessageTileState extends State<ChatMessageTile> {
                       tooltip: '메시지 복사',
                       icon: const Icon(Icons.copy_outlined, size: AppSizes.p16),
                       color: AppColors.textSecondary,
+                      constraints: const BoxConstraints(
+                        minWidth: AppSizes.minTouchTarget,
+                        minHeight: AppSizes.minTouchTarget,
+                      ),
                       onPressed: () async {
                         try {
                           await Clipboard.setData(

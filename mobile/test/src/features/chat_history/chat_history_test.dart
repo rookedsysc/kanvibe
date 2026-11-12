@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -9,6 +10,7 @@ import 'package:http/testing.dart';
 import 'package:kanvibe_mobile/src/common/network/desktop_client.dart';
 import 'package:kanvibe_mobile/src/common/network/desktop_connection.dart';
 import 'package:kanvibe_mobile/src/common/providers.dart';
+import 'package:kanvibe_mobile/src/common/constants/app_theme.dart';
 import 'package:kanvibe_mobile/src/features/chat_history/application/chat_history_controller.dart';
 import 'package:kanvibe_mobile/src/features/chat_history/domain/chat_history.dart';
 import 'package:kanvibe_mobile/src/features/chat_history/presentation/chat_history_screen.dart';
@@ -226,6 +228,7 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
+    expect(find.text('대화 기록'), findsOneWidget);
     await tester.tap(find.text('고친 대화'));
     await tester.pumpAndSettle();
     expect(find.text('전체 답변 본문'), findsOneWidget);
@@ -242,10 +245,10 @@ void main() {
             'messages': [
               {
                 'role': 'reasoning',
-                'fullText': '숨겨진 추론 전문',
+                'fullText': '검토할 범위\n\n숨겨진 추론 전문',
                 'timestamp': '2026-11-12T09:30:00Z',
               },
-              {'role': 'tool', 'fullText': '숨겨진 도구 결과'},
+              {'role': 'tool', 'fullText': '검색한 파일\n\n숨겨진 도구 결과'},
               {'role': 'assistant', 'fullText': '읽을 답변'},
             ],
             'nextCursor': null,
@@ -423,5 +426,149 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('HTTP 또는 HTTPS 링크만 열 수 있습니다.'), findsOneWidget);
     expect(tester.takeException(), isNull);
+  });
+  testWidgets('짧은 대화 네 개는 본문 크기와 복사 터치 영역을 유지해 밀도를 높인다', (tester) async {
+    tester.view.physicalSize = const Size(375, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final messages = List.generate(
+      4,
+      (index) => ChatMessage(
+        role: index.isEven ? 'user' : 'assistant',
+        text: index.isEven ? '이 파일을 확인해 주세요.' : '네, 변경 내용을 확인했습니다.',
+        timestamp: DateTime.parse('2026-11-12T09:30:00Z'),
+      ),
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: buildAppTheme(),
+        home: Scaffold(
+          body: SingleChildScrollView(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  for (final message in messages)
+                    ChatMessageTile(message: message, provider: 'codex'),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final height = find
+        .byType(ChatMessageTile)
+        .evaluate()
+        .fold<double>(
+          0,
+          (total, element) =>
+              total + tester.getSize(find.byWidget(element.widget)).height,
+        );
+    debugPrint('ROUND3_FOUR_SHORT_MESSAGES_HEIGHT=$height');
+    expect(height, lessThanOrEqualTo(544 * 0.8));
+    expect(
+      tester
+          .widget<SelectableText>(find.byType(SelectableText).first)
+          .style
+          ?.fontSize,
+      14,
+    );
+    expect(find.byTooltip('메시지 복사'), findsNWidgets(4));
+    for (final element in find.byTooltip('메시지 복사').evaluate()) {
+      final target = tester.getSize(find.byWidget(element.widget));
+      expect(target.width, greaterThanOrEqualTo(48));
+      expect(target.height, greaterThanOrEqualTo(48));
+    }
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('좁은 화면의 도구와 추론 미리보기는 큰 글씨에서도 펼쳐 전문을 복사한다', (tester) async {
+    tester.view.physicalSize = const Size(375, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    const toolText = '검색한 파일과 변경 사항을 확인하는 매우 긴 한 줄 미리보기\n\n원문 도구 결과';
+    const reasoningText = '수정에 앞서 영향 범위를 확인하는 매우 긴 한 줄 미리보기\n\n원문 추론 내용';
+    String? copiedText;
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (call) async {
+        if (call.method == 'Clipboard.setData') {
+          copiedText = (call.arguments as Map)['text'] as String;
+        }
+        return null;
+      },
+    );
+    addTearDown(
+      () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        null,
+      ),
+    );
+    for (final scale in [1.0, 2.0]) {
+      await tester.pumpWidget(
+        MaterialApp(
+          key: ValueKey(scale),
+          theme: buildAppTheme(),
+          builder: (context, child) => MediaQuery(
+            data: MediaQuery.of(context)
+                .copyWith(textScaler: TextScaler.linear(scale)),
+            child: child!,
+          ),
+          home: const Scaffold(
+            body: SingleChildScrollView(
+              child: Padding(
+                padding: EdgeInsets.all(16),
+                child: Column(
+                  children: [
+                    ChatMessageTile(
+                      provider: 'codex',
+                      message: ChatMessage(role: 'tool', text: toolText),
+                    ),
+                    ChatMessageTile(
+                      provider: 'codex',
+                      message: ChatMessage(
+                        role: 'reasoning',
+                        text: reasoningText,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text(toolText.split('\n').first), findsOneWidget);
+      expect(find.text(reasoningText.split('\n').first), findsOneWidget);
+      expect(find.text('원문 도구 결과'), findsNothing);
+      for (final label in ['도구 실행', '추론 과정']) {
+        final button = find.ancestor(
+          of: find.text(label),
+          matching: find.byType(TextButton),
+        );
+        expect(tester.getSize(button).height, greaterThanOrEqualTo(48));
+      }
+      await tester.tap(find.text('도구 실행'));
+      await tester.pumpAndSettle();
+      expect(find.text('원문 도구 결과'), findsOneWidget);
+      await tester.tap(find.byTooltip('메시지 복사'));
+      await tester.pumpAndSettle();
+      expect(copiedText, toolText);
+      await tester.tap(find.text('도구 실행'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('추론 과정'));
+      await tester.pumpAndSettle();
+      expect(find.text('원문 추론 내용'), findsOneWidget);
+      await tester.tap(find.byTooltip('메시지 복사'));
+      await tester.pumpAndSettle();
+      expect(copiedText, reasoningText);
+      expect(tester.takeException(), isNull);
+    }
   });
 }

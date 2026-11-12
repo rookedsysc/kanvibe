@@ -76,12 +76,20 @@ ProviderContainer setup(DesktopClient client) => ProviderContainer(
   ],
 );
 
-Future<void> pumpChat(WidgetTester tester, ProviderContainer container) async {
+Future<void> pumpChat(
+  WidgetTester tester,
+  ProviderContainer container, {
+  TextScaler textScaler = TextScaler.noScaling,
+}) async {
   await tester.pumpWidget(
     UncontrolledProviderScope(
       container: container,
       child: MaterialApp(
         theme: buildAppTheme(),
+        builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(context).copyWith(textScaler: textScaler),
+          child: child!,
+        ),
         home: Scaffold(
           body: SafeArea(
             child: PaneChatView(target: target, onReturnToTerminal: () {}),
@@ -518,6 +526,177 @@ void main() {
     await tester.pump();
   });
 
+  testWidgets('짧은 실제 CLI 선택기는 작은 surface에 키를 모으고 긴 원문은 스크롤한다', (tester) async {
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    var screen =
+        'Select model\n1. fixture-fast\n› 2. fixture-deep\n↑ ↓ choose\nEnter confirm · Esc cancel';
+    final client = DesktopClient(
+      httpClient: MockClient(
+        (request) async => response({
+          'snapshot': snapshotJson(inputState: 'occupied', screen: screen),
+        }),
+      ),
+    );
+    final container = setup(client);
+    addTearDown(container.dispose);
+    addTearDown(client.close);
+    for (final size in const [
+      Size(375, 812),
+      Size(430, 932),
+      Size(812, 375),
+      Size(375, 260),
+    ]) {
+      tester.view.physicalSize = size;
+      await pumpChat(tester, container);
+      if (size.height >= 360) expect(find.text('현재 %19 답변'), findsOneWidget);
+      final rawScroll = find
+          .ancestor(
+            of: find.text(screen),
+            matching: find.byType(SingleChildScrollView),
+          )
+          .first;
+      final rawRect = tester.getRect(rawScroll);
+      expect(rawRect.height, lessThan(size.height * 0.25));
+      final shell = find
+          .ancestor(of: rawScroll, matching: find.byType(Container))
+          .last;
+      if (size.height > size.width) {
+        expect(
+          tester.getSize(shell).height,
+          lessThanOrEqualTo(size.height * 0.45),
+        );
+      }
+      for (final key in ['위', '아래', '왼쪽', '오른쪽', '확인', '취소']) {
+        final rect = tester.getRect(find.byTooltip(key));
+        expect(rect.width, greaterThanOrEqualTo(48));
+        expect(rect.height, greaterThanOrEqualTo(48));
+        expect(rect.bottom, lessThanOrEqualTo(size.height));
+        expect(rect.top, greaterThanOrEqualTo(rawRect.bottom));
+      }
+      expect(tester.takeException(), isNull);
+    }
+    tester.view.physicalSize = const Size(375, 812);
+    await pumpChat(tester, container, textScaler: const TextScaler.linear(1.8));
+    for (final key in ['확인', '취소']) {
+      expect(tester.getRect(find.byTooltip(key)).bottom, lessThan(812));
+    }
+    expect(tester.takeException(), isNull);
+    screen = List.generate(80, (index) => 'actual CLI line $index').join('\n');
+    await container.read(paneChatProvider(target).notifier).refresh();
+    await tester.pumpAndSettle();
+    final rawScroll = find
+        .ancestor(
+          of: find.text(screen),
+          matching: find.byType(SingleChildScrollView),
+        )
+        .first;
+    await tester.drag(rawScroll, const Offset(0, -5000));
+    await tester.pumpAndSettle();
+    final scrollable = find.descendant(
+      of: rawScroll,
+      matching: find.byType(Scrollable),
+    );
+    expect(
+      tester.state<ScrollableState>(scrollable.first).position.pixels,
+      greaterThan(0),
+    );
+    expect(find.text(screen), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox.shrink());
+    container.dispose();
+    await tester.pump();
+  });
+
+  testWidgets('모델·CLI·중단·전송은 입력과 한 shell에 있고 키보드 위에 남는다', (tester) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(375, 812);
+    tester.view.viewPadding = const FakeViewPadding(bottom: 24);
+    tester.view.viewInsets = const FakeViewPadding(bottom: 300);
+    addTearDown(tester.view.reset);
+    final client = DesktopClient(
+      httpClient: MockClient(
+        (request) async => response({'snapshot': snapshotJson()}),
+      ),
+    );
+    final container = setup(client);
+    addTearDown(container.dispose);
+    addTearDown(client.close);
+    await pumpChat(tester, container);
+    await tester.enterText(find.byType(TextField), '키보드 초안');
+    await tester.pumpAndSettle();
+    final shell = find
+        .ancestor(of: find.byType(TextField), matching: find.byType(Container))
+        .first;
+    final shellRect = tester.getRect(shell);
+    for (final control in [
+      find.text('모델'),
+      find.text('CLI'),
+      find.byTooltip('중단'),
+      find.byTooltip('메시지 전송'),
+    ]) {
+      final rect = tester.getRect(control);
+      expect(shellRect.contains(rect.center), isTrue);
+      expect(rect.bottom, lessThanOrEqualTo(512));
+    }
+    final send = tester.widget<IconButton>(
+      find.byWidgetPredicate(
+        (widget) => widget is IconButton && widget.tooltip == '메시지 전송',
+      ),
+    );
+    expect(send.onPressed, isNotNull);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox.shrink());
+    container.dispose();
+    await tester.pump();
+  });
+
+  testWidgets('키보드가 compact 경계를 왕복해도 입력 포커스와 초안을 유지한다', (tester) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(375, 600);
+    addTearDown(tester.view.reset);
+    final client = DesktopClient(
+      httpClient: MockClient(
+        (request) async => response({'snapshot': snapshotJson()}),
+      ),
+    );
+    final container = setup(client);
+    addTearDown(container.dispose);
+    addTearDown(client.close);
+    await pumpChat(tester, container);
+    await tester.enterText(find.byType(TextField), 'preserved draft');
+    await tester.pumpAndSettle();
+    final editable = find.descendant(
+      of: find.byType(TextField),
+      matching: find.byType(EditableText),
+    );
+    final focusNode = tester.widget<EditableText>(editable).focusNode;
+    expect(focusNode.hasFocus, isTrue);
+    expect(tester.testTextInput.isVisible, isTrue);
+    for (final inset in [300.0, 0.0]) {
+      tester.view.viewInsets = FakeViewPadding(bottom: inset);
+      await tester.pumpAndSettle();
+      final input = tester.widget<EditableText>(editable);
+      expect(input.focusNode, same(focusNode));
+      expect(input.focusNode.hasFocus, isTrue);
+      expect(tester.testTextInput.isVisible, isTrue);
+      expect(input.controller.text, 'preserved draft');
+      expect(
+        tester.getRect(find.byTooltip('메시지 전송')).bottom,
+        lessThanOrEqualTo(600 - inset),
+      );
+      expect(tester.takeException(), isNull);
+    }
+    await tester.enterText(find.byType(TextField), 'preserved draft continued');
+    expect(
+      tester.widget<EditableText>(editable).controller.text,
+      'preserved draft continued',
+    );
+    await tester.pumpWidget(const SizedBox.shrink());
+    container.dispose();
+    await tester.pump();
+  });
+
   testWidgets('새 응답이 앞에 추가되어도 펼친 추론은 유지된다', (tester) async {
     var withNewReply = false;
     final client = DesktopClient(
@@ -528,7 +707,7 @@ void main() {
           {
             'role': 'reasoning',
             'timestamp': '2026-11-12T10:00:00Z',
-            'fullText': '읽던 추론 전문',
+            'fullText': '추론 미리보기\n\n읽던 추론 전문',
           },
         ];
         return response({'snapshot': snapshot});
@@ -538,6 +717,8 @@ void main() {
     addTearDown(container.dispose);
     addTearDown(client.close);
     await pumpChat(tester, container);
+    expect(find.text('추론 미리보기'), findsOneWidget);
+    expect(find.text('읽던 추론 전문'), findsNothing);
     await tester.tap(find.text('추론 과정'));
     await tester.pumpAndSettle();
     expect(find.text('읽던 추론 전문'), findsOneWidget);
@@ -550,6 +731,83 @@ void main() {
     container.dispose();
     await tester.pump();
   });
+
+  for (final (name, command, readable) in [
+    ('work', '', 'work'),
+    ('', 'codex', 'codex'),
+    ('', '', 'pane'),
+  ]) {
+    testWidgets('채팅 탭은 중복·빈 이름을 구별하고 정확한 pane과 초안을 유지한다: $readable', (
+      tester,
+    ) async {
+      const ids = ['same-uuid-prefix-0001', 'same-uuid-prefix-0002'];
+      final client = _PaneFixtureClient(
+        surfaces: TaskSurfaces(
+          tabs: [
+            MirrorTab(
+              id: 'tab',
+              name: name,
+              panes: [
+                for (final id in ids)
+                  MirrorPane(
+                    id: id,
+                    tabId: 'tab',
+                    tabName: name,
+                    command: command,
+                    left: 0,
+                    top: 0,
+                    width: 80,
+                    height: 24,
+                  ),
+              ],
+            ),
+          ],
+        ),
+      );
+      await tester.pumpWidget(
+        wrapWithApp(
+          const TaskDetailScreen(
+            task: BoardTask(
+              id: 'task-1',
+              title: '현재 CLI',
+              status: TaskStatus.progress,
+            ),
+          ),
+          client: client,
+          size: phoneSize,
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('채팅', findRichText: true));
+      await tester.pumpAndSettle();
+      expect(find.text('1 · $readable'), findsOneWidget);
+      expect(find.text('2 · $readable'), findsOneWidget);
+      expect(find.text('1 · $readable · codex'), findsOneWidget);
+      expect(find.byTooltip(ids.first), findsWidgets);
+      await tester.enterText(find.byType(TextField).last, 'first pane draft');
+      await tester.tap(find.text('2 · $readable'));
+      await tester.pumpAndSettle();
+      expect(client.readTargets.last.paneId, ids.last);
+      expect(find.text('2 · $readable · codex'), findsOneWidget);
+      expect(
+        tester.widget<TextField>(find.byType(TextField).last).controller!.text,
+        isEmpty,
+      );
+      await tester.tap(find.text('1 · $readable'));
+      await tester.pumpAndSettle();
+      expect(
+        tester.widget<TextField>(find.byType(TextField).last).controller!.text,
+        'first pane draft',
+      );
+      expect(
+        tester.getSize(find.byTooltip('탭 닫기').first).height,
+        greaterThanOrEqualTo(48),
+      );
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
+    });
+  }
 
   testWidgets('선택 pane을 바꾸면 입력을 분리하고 터미널 전환은 원래 스트림을 유지한다', (tester) async {
     tester.view.physicalSize = const Size(390, 844);
@@ -582,7 +840,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(client.resizedPanes['%19']!.length, resizeCount);
     await tester.enterText(find.byType(TextField).last, '첫 pane 초안');
-    await tester.tap(find.text('zsh'));
+    await tester.tap(find.bySemanticsIdentifier('terminal-tab-%20'));
     await tester.pumpAndSettle();
     expect(find.text('현재 %20 답변'), findsOneWidget);
     expect(
@@ -617,7 +875,7 @@ void main() {
     );
     await tester.tap(find.byTooltip('태스크 메뉴'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('채팅 History'));
+    await tester.tap(find.text('대화 기록'));
     await tester.pumpAndSettle();
     final readsInHistory = client.readTargets.length;
     await tester.pump(const Duration(seconds: 3));
@@ -635,39 +893,41 @@ void main() {
 }
 
 class _PaneFixtureClient extends FakeDesktopClient {
-  _PaneFixtureClient()
+  _PaneFixtureClient({TaskSurfaces? surfaces})
     : super(
-        surfaces: const TaskSurfaces(
-          canResize: true,
-          tabs: [
-            MirrorTab(
-              id: '@1',
-              name: 'main',
-              panes: [
-                MirrorPane(
-                  id: '%19',
-                  tabId: '@1',
-                  tabName: 'main',
-                  command: 'codex',
-                  left: 0,
-                  top: 0,
-                  width: 80,
-                  height: 24,
-                ),
-                MirrorPane(
-                  id: '%20',
-                  tabId: '@1',
-                  tabName: 'main',
-                  command: 'zsh',
-                  left: 80,
-                  top: 0,
-                  width: 80,
-                  height: 24,
+        surfaces:
+            surfaces ??
+            const TaskSurfaces(
+              canResize: true,
+              tabs: [
+                MirrorTab(
+                  id: '@1',
+                  name: 'main',
+                  panes: [
+                    MirrorPane(
+                      id: '%19',
+                      tabId: '@1',
+                      tabName: 'main',
+                      command: 'codex',
+                      left: 0,
+                      top: 0,
+                      width: 80,
+                      height: 24,
+                    ),
+                    MirrorPane(
+                      id: '%20',
+                      tabId: '@1',
+                      tabName: 'main',
+                      command: 'zsh',
+                      left: 80,
+                      top: 0,
+                      width: 80,
+                      height: 24,
+                    ),
+                  ],
                 ),
               ],
             ),
-          ],
-        ),
       );
   final readTargets = <PaneChatTarget>[];
 

@@ -48,7 +48,7 @@ class _ChatHistoryScreenState extends ConsumerState<ChatHistoryScreen> {
     );
     final provider = chatHistoryProvider(widget.taskId);
     return Scaffold(
-      appBar: AppBar(title: const Text('채팅 History')),
+      appBar: AppBar(title: const Text('대화 기록')),
       body: SafeArea(
         child: LayoutBuilder(
           builder: (context, constraints) {
