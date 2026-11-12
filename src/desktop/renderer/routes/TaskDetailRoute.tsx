@@ -1,6 +1,6 @@
 import { getChatTranscriptRows } from "@/desktop/renderer/utils/chatTranscript";
 import { AI_SESSION_PROVIDER_LABELS, AI_SESSION_PROVIDERS } from "@/lib/aiSessions/providers";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
   Activity03Icon,
@@ -1192,46 +1192,63 @@ function TaskDetailContent({ id }: { id: string }) {
     }
   }, [closeTerminalTabOrWindow, hasTerminal, mainView, terminalTabs]);
 
-  /** main은 모달·입력 포커스를 모르므로, 렌더러 keydown 경로와 같은 차단 조건을 여기서도 건다 */
+  /**
+   * main은 모달·입력 포커스를 모르므로, 렌더러 keydown 경로와 같은 차단 조건을 여기서도 건다.
+   * 리스너는 한 번만 등록하고 Effect Event로 최신 탭·화면 상태를 읽는다. 상태가 바뀔 때마다
+   * 다시 등록하면 탭이 막 그려진 뒤 재등록 전에 들어온 명령이 이전 상태(활성 탭 없음)로 처리되어 무시된다.
+   */
+  const handleTerminalTabShortcutCommand = useEffectEvent((command: TerminalTabShortcutCommand) => {
+    if (hasShortcutBlocker) {
+      return;
+    }
+
+    runTerminalTabCommand(command);
+  });
+
   useEffect(() => (
     window.kanvibeDesktop?.onTerminalTabShortcut?.((command: TerminalTabShortcutCommand) => {
-      if (hasShortcutBlocker) {
-        return;
-      }
-
-      runTerminalTabCommand(command);
+      handleTerminalTabShortcutCommand(command);
     }) ?? undefined
-  ), [hasShortcutBlocker, runTerminalTabCommand]);
+  // eslint-plugin-react-hooks 5.x는 useEffectEvent를 몰라 의존성으로 요구하지만, Effect Event는 의존성에 넣지 않는다.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  ), []);
 
   /**
    * main의 `before-input-event`가 놓친 입력을 렌더러가 받는 두 번째 경로.
    * 여기서 이벤트를 소비해야 xterm이 같은 키를 셸로 흘려보내지 않는다.
+   * IPC 경로와 같은 이유로 리스너는 한 번만 등록하고 최신 상태는 Effect Event로 읽는다.
    */
+  const handleTerminalTabShortcutKeyDown = useEffectEvent((event: KeyboardEvent) => {
+    if (hasShortcutBlocker) {
+      return;
+    }
+
+    const command = resolveTerminalTabCommand(
+      findShortcutCommandForEvent(shortcutBindings, event, shortcutPlatform),
+      true,
+    );
+    if (!command) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    event.stopImmediatePropagation();
+    runTerminalTabCommand(command);
+  });
+
   useEffect(() => {
     function handleTerminalTabShortcut(event: KeyboardEvent) {
-      if (hasShortcutBlocker) {
-        return;
-      }
-
-      const command = resolveTerminalTabCommand(
-        findShortcutCommandForEvent(shortcutBindings, event, shortcutPlatform),
-        true,
-      );
-      if (!command) {
-        return;
-      }
-
-      event.preventDefault();
-      event.stopPropagation();
-      event.stopImmediatePropagation();
-      runTerminalTabCommand(command);
+      handleTerminalTabShortcutKeyDown(event);
     }
 
     window.addEventListener("keydown", handleTerminalTabShortcut, { capture: true });
     return () => {
       window.removeEventListener("keydown", handleTerminalTabShortcut, { capture: true });
     };
-  }, [hasShortcutBlocker, runTerminalTabCommand, shortcutBindings, shortcutPlatform]);
+  // eslint-plugin-react-hooks 5.x는 useEffectEvent를 몰라 의존성으로 요구하지만, Effect Event는 의존성에 넣지 않는다.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => (
     window.kanvibeDesktop?.onTaskDetailDockShortcut?.((shortcutIndex: number) => {
