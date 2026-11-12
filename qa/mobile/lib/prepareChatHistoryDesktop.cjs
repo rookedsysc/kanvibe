@@ -13,7 +13,11 @@ if (runDirIndex < 0 || !process.argv[runDirIndex + 1]) throw new Error('--run-di
 const runDir = path.resolve(process.argv[runDirIndex + 1]);
 const portIndex = process.argv.indexOf('--port');
 const selectedPort = portIndex >= 0 ? Number(process.argv[portIndex + 1]) : 19738;
-if (!Number.isInteger(selectedPort) || selectedPort < 1024 || selectedPort > 65535) throw new Error('--port must be1024..65535');
+// src/lib/hookEndpoint.ts:getMobileTlsPort derives the mobile TLS listener from hook port + 10.
+const MOBILE_TLS_PORT_OFFSET = 10;
+const MAX_HOOK_PORT = 65535 - MOBILE_TLS_PORT_OFFSET;
+if (!Number.isInteger(selectedPort) || selectedPort < 1024 || selectedPort > MAX_HOOK_PORT) throw new Error(`--port must be1024..${MAX_HOOK_PORT}`);
+const mobileTlsPort = selectedPort + MOBILE_TLS_PORT_OFFSET;
 const labelIndex = process.argv.indexOf('--fixture-label');
 const fixtureLabel = labelIndex >= 0 ? process.argv[labelIndex + 1]?.trim() : '';
 if (labelIndex >= 0 && (!fixtureLabel || !/^[\p{L}\p{N}][\p{L}\p{N} _-]{0,39}$/u.test(fixtureLabel))) throw new Error('--fixture-label must contain1..40 letters, digits, spaces, underscores or hyphens');
@@ -69,6 +73,7 @@ async function main() {
   if (fs.existsSync(path.join(runDir, 'app-data'))) throw new Error('Use a fresh --run-dir');
   fs.mkdirSync(repo, { recursive: true });
   await freePort(selectedPort);
+  await freePort(mobileTlsPort);
   const gatedWorkspace = root;
   const runtimeWorkspace = path.join(runDir, 'runtime-workspace');
   fs.cpSync(root, runtimeWorkspace, { recursive: true, filter: (entry) => entry !== path.join(root, 'node_modules') });
@@ -113,11 +118,11 @@ async function main() {
     const response = await fetch(`${desktopApi}/api/mobile/tasks/${task.id}/ai-sessions?limit=20`, { headers: { Authorization: `Bearer ${paired.token}` } });
     const history = await response.json();
     if (response.status !== 200 || history.history.sessions.length !== 20 || !history.history.nextCursor) throw new Error(`Real History contract failed: ${JSON.stringify(history)}`);
-    fs.writeFileSync(path.join(runDir, 'fixture.json'), JSON.stringify({ taskId: task.id, fixtureLabel, taskTitle, historyPrefix, hermesTitle, rendererUrl, repo, fakeHome, sessionCount: history.history.sessions.length, desktopPort: selectedPort, desktopApi }, null, 2));
+    fs.writeFileSync(path.join(runDir, 'fixture.json'), JSON.stringify({ taskId: task.id, fixtureLabel, taskTitle, historyPrefix, hermesTitle, rendererUrl, repo, fakeHome, sessionCount: history.history.sessions.length, desktopPort: selectedPort, mobileTlsPort, desktopApi }, null, 2));
     fs.writeFileSync(path.join(runDir, 'http-contract.json'), JSON.stringify(history, null, 2));
     const flowDirectory = path.join(__dirname, '../../../mobile/.maestro/flows');
     const flowTemplate = fs.readFileSync(path.join(flowDirectory, 'chat-history.yaml'), 'utf8');
-    const flow = flowTemplate.replace('TASK_TITLE: \"Chat History Fixture\"', `TASK_TITLE: ${JSON.stringify(taskTitle)}`).replace('HISTORY_PREFIX: \"History QA\"', `HISTORY_PREFIX: ${JSON.stringify(historyPrefix)}`).replace('- eraseText: 21', `- eraseText: ${`${historyPrefix} message 59`.length}`).replace('DESKTOP_PORT: "19738"', `DESKTOP_PORT: "${selectedPort}"`).replace('http://127.0.0.1:19738', desktopApi).replace('file: ../scripts/issue-dev-pairing-code.js', `file: ${path.resolve(flowDirectory, '../scripts/issue-dev-pairing-code.js')}`);
+    const flow = flowTemplate.replace('TASK_TITLE: \"Chat History Fixture\"', `TASK_TITLE: ${JSON.stringify(taskTitle)}`).replace('HISTORY_PREFIX: \"History QA\"', `HISTORY_PREFIX: ${JSON.stringify(historyPrefix)}`).replace('DESKTOP_PORT: "19748"', `DESKTOP_PORT: "${mobileTlsPort}"`).replace('http://127.0.0.1:19738', desktopApi).replace('file: ../scripts/issue-dev-pairing-code.js', `file: ${path.resolve(flowDirectory, '../scripts/issue-dev-pairing-code.js')}`);
     fs.writeFileSync(path.join(runDir, 'chat-history.yaml'), flow);
 
     if (process.argv.includes('--desktop-ui')) {

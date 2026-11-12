@@ -2,7 +2,7 @@ appId: ${APP_ID}
 env:
   TASK_TITLE: "Chat History Fixture"
   HISTORY_PREFIX: "History QA"
-  DESKTOP_PORT: "19738"
+  DESKTOP_PORT: "19748"
   DESKTOP_API_FROM_HOST: http://127.0.0.1:19738
 ---
 - launchApp:
@@ -32,6 +32,7 @@ env:
 - scrollUntilVisible:
     element: "연결"
     direction: DOWN
+    timeout: 60000
 - tapOn: "연결"
 - extendedWaitUntil:
     visible: "(?s).*${TASK_TITLE}.*"
@@ -54,10 +55,12 @@ env:
 - scrollUntilVisible:
     element: "대화 더 보기"
     direction: DOWN
+    timeout: 60000
 - tapOn: "대화 더 보기"
 - scrollUntilVisible:
     element: "(?s).*${HISTORY_PREFIX} session 0.*"
     direction: DOWN
+    timeout: 60000
 - assertVisible: "(?s).*${HISTORY_PREFIX} session 0.*"
 - tapOn: "대화 검색"
 - inputText: "session 24"
@@ -95,8 +98,8 @@ env:
 - extendedWaitUntil:
     visible: "채팅 History"
     timeout: 10000
+- tapOn: "검색 지우기"
 - tapOn: "대화 검색"
-- eraseText: 10
 - retry:
     maxRetries: 2
     commands:
@@ -104,12 +107,8 @@ env:
       - tapOn: "(Paste|붙여넣기)"
 - assertVisible: "(?s).*${HISTORY_PREFIX} message 58.*"
 - takeScreenshot: history-native-clipboard-pasted
-- runFlow:
-    when:
-      platform: Android
-    commands:
-      - tapOn: "대화 검색"
-- eraseText: 21
+- tapOn: "검색 지우기"
+- tapOn: "대화 검색"
 - inputText: "session 24"
 - tapOn: "검색"
 - runFlow:
@@ -128,17 +127,21 @@ env:
 - scrollUntilVisible:
     element: "이전 메시지 보기"
     direction: UP
+    timeout: 60000
 - tapOn: "이전 메시지 보기"
 - scrollUntilVisible:
     element: "${HISTORY_PREFIX} message 20"
     direction: UP
+    timeout: 60000
 - scrollUntilVisible:
     element: "이전 메시지 보기"
     direction: UP
+    timeout: 60000
 - tapOn: "이전 메시지 보기"
 - scrollUntilVisible:
     element: "${HISTORY_PREFIX} message 1"
     direction: UP
+    timeout: 60000
 - assertVisible: "${HISTORY_PREFIX} message 1"
 - assertNotVisible: "이전 메시지 보기"
 - takeScreenshot: history-older-messages
