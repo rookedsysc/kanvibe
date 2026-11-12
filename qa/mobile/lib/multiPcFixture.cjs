@@ -1,13 +1,14 @@
 /* eslint-disable @typescript-eslint/no-require-imports */
-const http = require("node:http");
+const https = require("node:https");
+const selfsigned = require("selfsigned");
 
 // 모바일의 저장/전환 여정만 검증하는 두 개의 격리된 PC API.
 // 실제 KanVibe API 계약은 기존 prepareQaDesktop.cjs 여정이 검증한다.
-function startPc(port, title) {
+function startPc(port, title, certificate) {
   const token = `qa-token-${port}`;
   let paired = false;
 
-  const server = http.createServer(async (request, response) => {
+  const server = https.createServer({ key: certificate.private, cert: certificate.cert }, async (request, response) => {
     const json = (status, body) => {
       response.writeHead(status, { "Content-Type": "application/json" });
       response.end(JSON.stringify(body));
@@ -53,7 +54,21 @@ function startPc(port, title) {
   return server;
 }
 
-const servers = [startPc(19836, "Studio task"), startPc(19837, "Home task")];
+const servers = [];
+async function startFixtures() {
+  const certificate = await selfsigned.generate(
+    [{ name: "commonName", value: "localhost" }],
+    { days: 1, algorithm: "sha256" },
+  );
+  servers.push(
+    startPc(19836, "Studio task", certificate),
+    startPc(19837, "Home task", certificate),
+  );
+}
+startFixtures().catch((error) => {
+  console.error(error);
+  process.exitCode = 1;
+});
 function close() {
   for (const server of servers) server.close();
 }
