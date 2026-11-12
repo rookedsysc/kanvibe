@@ -350,13 +350,15 @@ class _TerminalSoftKeyboardState extends State<TerminalSoftKeyboard>
 
   @override
   void updateEditingValueWithDeltas(List<TextEditingDelta> deltas) {
+    if (deltas.isEmpty) return;
+    final previousText = deltas.first.oldText;
     for (final delta in deltas) {
-      _sendToTerminal(delta);
-
       /// 우리가 들고 있던 버퍼가 아니라 IME가 기준으로 삼은 버퍼에 적용한다.
       /// 비우라는 요청을 IME가 아직 반영하지 않았으면 둘이 다르기 때문이다
       _buffer = delta.apply(TextEditingValue(text: delta.oldText));
     }
+
+    _sendToTerminal(previousText, _buffer.text);
 
     if (_buffer.text.length < _emptyBuffer.text.length ||
         _buffer.text.length > _bufferResetLength) {
@@ -364,34 +366,19 @@ class _TerminalSoftKeyboardState extends State<TerminalSoftKeyboard>
     }
   }
 
-  void _sendToTerminal(TextEditingDelta delta) {
-    switch (delta) {
-      case TextEditingDeltaInsertion(:final textInserted):
-        _typeText(textInserted);
-      case TextEditingDeltaDeletion(:final deletedRange):
-        _pressBackspace(deletedRange.end - deletedRange.start);
-      case TextEditingDeltaReplacement(
-        :final replacedRange,
-        :final replacementText,
-      ):
-        // IME는 바뀌지 않은 앞글자까지 조합 범위에 넣어 교체할 수 있다.
-        // 그 앞부분도 지워 보내면 원격 셸에서 단어 전체가 사라졌다 다시 그려진다.
-        final previous = replacedRange
-            .textInside(delta.oldText)
-            .characters
-            .toList();
-        final replacement = replacementText.characters.toList();
-        var commonPrefixLength = 0;
-        while (commonPrefixLength < previous.length &&
-            commonPrefixLength < replacement.length &&
-            previous[commonPrefixLength] == replacement[commonPrefixLength]) {
-          commonPrefixLength += 1;
-        }
-        _pressBackspace(previous.length - commonPrefixLength);
-        _typeText(replacement.skip(commonPrefixLength).join());
-      case TextEditingDeltaNonTextUpdate():
-        break;
+  void _sendToTerminal(String previousText, String nextText) {
+    // iOS 한국어 IME는 한 번의 갱신에 선택·삭제·재삽입을 함께 보낸다.
+    // 중간 삭제를 전송하면 그대로인 앞글자도 지워지므로 최종 버퍼끼리 비교한다.
+    final previous = previousText.characters.toList();
+    final next = nextText.characters.toList();
+    var commonPrefixLength = 0;
+    while (commonPrefixLength < previous.length &&
+        commonPrefixLength < next.length &&
+        previous[commonPrefixLength] == next[commonPrefixLength]) {
+      commonPrefixLength += 1;
     }
+    _pressBackspace(previous.length - commonPrefixLength);
+    _typeText(next.skip(commonPrefixLength).join());
   }
 
   /// 줄바꿈은 글자가 아니라 Enter 키로 보낸다. 셸은 Enter를 받아야 명령을 실행한다

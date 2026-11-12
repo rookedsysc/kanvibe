@@ -1230,6 +1230,74 @@ void main() {
     );
   }
 
+  for (final scenario in [
+    (previous: '안녕ㅎ', intermediate: null, next: '안녕하', expected: '\x7f하'),
+    (previous: '안ㄴ', intermediate: '안', next: '안녀', expected: '\x7f녀'),
+  ]) {
+    testWidgets('iOS 한국어 IME 삭제·삽입 묶음은 최종 변경분만 전송한다: ${scenario.next}', (
+      tester,
+    ) async {
+      final client = FakeDesktopClient();
+      await pumpPane(
+        tester,
+        _pane,
+        client: client,
+        store: FakeConnectionStore(),
+      );
+      final base = await attachSoftKeyboard(tester);
+      final prefix = '${base}echo ';
+      await sendImeBuffer(
+        tester,
+        base: base,
+        previous: '',
+        next: 'echo ${scenario.previous}',
+      );
+      client.writtenInput['%19']!.clear();
+      final deltas = <Map<String, Object>>[];
+      var text = '$prefix${scenario.previous}';
+      void addEdit(int start, int end, String inserted) {
+        final next = start < 0 ? text : text.replaceRange(start, end, inserted);
+        deltas.add({
+          'oldText': text,
+          'deltaText': inserted,
+          'deltaStart': start,
+          'deltaEnd': end,
+          'selectionBase': next.length,
+          'selectionExtent': next.length,
+          'composingBase': -1,
+          'composingExtent': -1,
+        });
+        text = next;
+      }
+
+      if (scenario.intermediate case final intermediate?) {
+        addEdit(-1, -1, '');
+        addEdit(prefix.length, text.length, '');
+        addEdit(prefix.length, prefix.length, intermediate);
+      }
+      addEdit(-1, -1, '');
+      addEdit(prefix.length - 1, text.length, '');
+      addEdit(prefix.length - 1, prefix.length - 1, ' ');
+      addEdit(prefix.length, prefix.length, scenario.next);
+      final setClient = tester.testTextInput.log.lastWhere(
+        (call) => call.method == 'TextInput.setClient',
+      );
+      await tester.binding.defaultBinaryMessenger.handlePlatformMessage(
+        SystemChannels.textInput.name,
+        SystemChannels.textInput.codec.encodeMethodCall(
+          MethodCall('TextInputClient.updateEditingStateWithDeltas', [
+            (setClient.arguments as List)[0],
+            {'deltas': deltas},
+          ]),
+        ),
+        (_) {},
+      );
+      await tester.pump();
+
+      expect(client.writtenInput['%19']!.join(), scenario.expected);
+    });
+  }
+
   testWidgets('한국어 IME 확정은 이미 전송한 문자열을 지우거나 재전송하지 않는다', (tester) async {
     final client = FakeDesktopClient();
     await pumpPane(tester, _pane, client: client, store: FakeConnectionStore());
