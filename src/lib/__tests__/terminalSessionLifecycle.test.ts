@@ -453,6 +453,70 @@ describe("terminal 세션 탭 레지스트리", () => {
   });
 });
 
+describe("Herdr 원격 machine 연결", () => {
+  const config = { host: "host", hostname: "host", port: 22, username: "user", privateKeyPath: "/key" };
+
+  it("원격 서버 준비 후 로컬 machine 등록을 시작하면서 SSH PTY를 연결한다", async () => {
+    const git = await import("@/lib/gitOperations");
+    let finishRegistration!: (output: string) => void;
+    vi.mocked(git.execGit).mockImplementation(async (command, sshHost) => {
+      if (command.includes("'machine' 'list'")) return "[]";
+      if (command.includes("'machine' 'add'")) return new Promise<string>((resolve) => { finishRegistration = resolve; });
+      expect(sshHost).toBe("host");
+      return JSON.stringify({ result: { workspaces: [{ workspace_id: "w1" }] } });
+    });
+    const terminal = await importTerminalModule();
+
+    await terminal.attachRemoteSession("machine-task", null, "host", SessionType.HERDR, "project-task", createMockWs() as never, config, 120, 30, "/work");
+    await vi.waitFor(() => expect(finishRegistration).toBeTypeOf("function"));
+    try {
+      expect(spawnCalls).toHaveLength(1);
+      expect(spawnCalls[0].shell).toBe("ssh");
+      expect(spawnCalls[0].args.at(-1)).toContain("--session");
+      const machineCalls = vi.mocked(git.execGit).mock.calls.filter(([command]) => command.includes("'machine'"));
+      expect(machineCalls).toHaveLength(2);
+      expect(machineCalls.every(([, sshHost]) => sshHost === null)).toBe(true);
+      expect(machineCalls[1][0]).toContain("'add' 'host' '--remote-session' 'project-task'");
+      expect(vi.mocked(git.execGit).mock.calls[0][0]).toContain("'workspace' 'list'");
+    } finally {
+      finishRegistration("");
+    }
+  });
+
+  it.each(["list", "add"])("machine %s 실패에도 원격 PTY를 유지하고 경고한다", async (failedCommand) => {
+    const git = await import("@/lib/gitOperations");
+    const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
+    vi.mocked(git.execGit).mockImplementation(async (command) => {
+      if (command.includes(`'machine' '${failedCommand}'`)) throw new Error("machine unavailable");
+      if (command.includes("'machine' 'list'")) return "[]";
+      return JSON.stringify({ result: { workspaces: [{ workspace_id: "w1" }] } });
+    });
+    const terminal = await importTerminalModule();
+    const ws = createMockWs();
+    try {
+      await terminal.attachRemoteSession("machine-task", null, "host", SessionType.HERDR, "project-task", ws as never, config, 120, 30, "/work");
+
+      await vi.waitFor(() => expect(warning).toHaveBeenCalledWith(expect.stringContaining("host"), expect.objectContaining({ message: "machine unavailable" })));
+      expect(spawnCalls[0].shell).toBe("ssh");
+      expect(terminal.getActiveTerminalCount()).toBe(1);
+      expect(ws.close).not.toHaveBeenCalled();
+    } finally {
+      warning.mockRestore();
+    }
+  });
+
+  it("로컬 Herdr 접속에서는 원격 machine을 조회하지 않는다", async () => {
+    const git = await import("@/lib/gitOperations");
+    vi.mocked(git.execGit).mockResolvedValue(JSON.stringify({ result: { workspaces: [{ workspace_id: "w1" }] } }));
+    const terminal = await importTerminalModule();
+
+    await terminal.attachLocalSession("local-machine-task", null, SessionType.HERDR, "project-task", createMockWs() as never, "/work");
+
+    expect(spawnCalls).toHaveLength(1);
+    expect(vi.mocked(git.execGit).mock.calls.some(([command]) => command.includes("'machine'"))).toBe(false);
+  });
+});
+
 describe("Herdr PTY 수명", () => {
   it.each([false, true])("준비 중 닫힌 %s 원격 클라이언트에는 PTY를 만들지 않는다", async (remote) => {
     const git = await import("@/lib/gitOperations");
