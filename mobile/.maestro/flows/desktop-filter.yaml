@@ -13,9 +13,11 @@ tags:
 - tapOn: "데스크탑 주소"
 - eraseText
 - inputText: "10.0.2.2"
+- hideKeyboard
 - tapOn: "포트"
 - eraseText: 5
 - inputText: "9746"
+- hideKeyboard
 - tapOn: "연결 코드"
 - runScript:
     file: ../scripts/issue-dev-pairing-code.js
