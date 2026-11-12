@@ -19,6 +19,7 @@ const HERDR_START_TIMEOUT_MS = 30_000;
 const sessionBootstraps = new Map<string, Promise<void>>();
 const sharedBootstraps = new Map<string, Promise<void>>();
 const workspaceMappingPaths = new Map<string, string>();
+let remoteMachineRegistration = Promise.resolve();
 
 const HERDR_EXECUTABLE = `"$(command -v herdr || printf '%s' "$HOME/.local/bin/herdr")"`;
 
@@ -265,6 +266,21 @@ export function ensureHerdrSession(
   if (parseHerdrSessionTarget(sessionName).workspaceKey) sharedBootstraps.set(sharedKey, bootstrap);
   sessionBootstraps.set(key, bootstrap);
   return bootstrap;
+}
+
+export function ensureHerdrRemoteMachine(sessionName: string, sshHost: string): Promise<void> {
+  const { serverName } = parseHerdrSessionTarget(sessionName);
+  remoteMachineRegistration = remoteMachineRegistration.catch(() => {}).then(async () => {
+    const machines: { target: string; session: string }[] = JSON.parse(await execGit(
+      buildHerdrCommand(serverName, ["machine", "list", "--json"]), null, { timeoutMs: HERDR_COMMAND_TIMEOUT_MS },
+    ));
+    if (machines.some((machine) => machine.target === sshHost && machine.session === serverName)) return;
+    await execGit(
+      `${buildHerdrCommand(serverName, ["machine", "add", sshHost, "--remote-session", serverName])} </dev/null`,
+      null, { timeoutMs: HERDR_START_TIMEOUT_MS },
+    );
+  });
+  return remoteMachineRegistration;
 }
 
 async function startHerdrServer(sessionName: string, sshHost?: string | null): Promise<void> {
