@@ -32,9 +32,15 @@ function startPc(port, title, certificate) {
     if (request.url === "/api/mobile/board" && request.method === "GET") {
       return json(200, {
         board: {
-          projects: [],
+          projects: [
+            { id: "primary", name: "Primary", repoPath: "/qa/primary" },
+            { id: "secondary", name: "Secondary", repoPath: "/qa/secondary" },
+          ],
           tasks: {
-            todo: [{ id: `qa-${port}`, title, status: "todo" }],
+            todo: [
+              { id: `qa-${port}`, title, status: "todo", projectId: "primary" },
+              { id: `qa-secondary-${port}`, title: `${title} secondary`, status: "todo", projectId: "secondary" },
+            ],
             progress: [], pending: [], review: [], done: [],
           },
         },
