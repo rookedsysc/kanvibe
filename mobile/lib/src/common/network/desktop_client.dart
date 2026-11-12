@@ -11,6 +11,7 @@ import '../../features/project_registry/data/project_scan_result.dart';
 import '../../features/chat_history/domain/chat_history.dart';
 import '../../features/notifications/domain/inbox_notification.dart';
 import '../../features/notifications/domain/notification_settings.dart';
+import '../../features/pane_chat/domain/pane_chat.dart';
 import '../../features/task_create/domain/session_type.dart';
 import '../../features/task_detail/domain/mirror_pane.dart';
 import 'desktop_command.dart';
@@ -211,6 +212,92 @@ class DesktopClient {
       (jsonDecode(response.body) as Map<String, dynamic>)['detail']
           as Map<String, dynamic>,
     );
+  }
+
+  // Foreground-process inspection and exact transcript lookup can each outlast a normal board request.
+  static const _paneChatTimeout = Duration(seconds: 30);
+
+  Future<PaneChatSnapshot> fetchPaneChat(
+    DesktopConnection connection,
+    PaneChatTarget target,
+  ) async {
+    final response = await _clientFor(connection)
+        .get(
+          connection
+              .buildHttpUri('/')
+              .replace(
+                pathSegments: [
+                  'api',
+                  'mobile',
+                  'tasks',
+                  target.taskId,
+                  'pane-chat',
+                ],
+                queryParameters: {'paneId': target.paneId},
+              ),
+          headers: connection.authorizationHeaders,
+        )
+        .timeout(_paneChatTimeout);
+    if (response.statusCode != 200) {
+      throw DesktopRequestException(
+        response.statusCode,
+        message: _readErrorMessage(response.body),
+      );
+    }
+    final body = jsonDecode(response.body) as Map<String, dynamic>;
+    final snapshot = PaneChatSnapshot.fromJson(
+      body['snapshot'] as Map<String, dynamic>,
+    );
+    if (snapshot.taskId != target.taskId ||
+        (snapshot.paneId != null && snapshot.paneId != target.paneId)) {
+      throw const FormatException('선택한 pane과 응답의 대상이 다릅니다.');
+    }
+    return snapshot;
+  }
+
+  Future<void> sendPaneChatAction(
+    DesktopConnection connection,
+    String taskId,
+    String targetToken,
+    PaneChatAction action, {
+    String? text,
+    PaneChatKey? key,
+  }) async {
+    final response = await _clientFor(connection)
+        .post(
+          connection
+              .buildHttpUri('/')
+              .replace(
+                pathSegments: [
+                  'api',
+                  'mobile',
+                  'tasks',
+                  taskId,
+                  'pane-chat',
+                  action.path,
+                ],
+              ),
+          headers: {
+            ...connection.authorizationHeaders,
+            'Content-Type': 'application/json',
+          },
+          body: jsonEncode({
+            'targetToken': targetToken,
+            if (action == PaneChatAction.prompt) 'text': text,
+            if (action == PaneChatAction.key) 'key': key?.name,
+          }),
+        )
+        .timeout(_paneChatTimeout);
+    if (response.statusCode != 200) {
+      throw DesktopRequestException(
+        response.statusCode,
+        message: _readErrorMessage(response.body),
+      );
+    }
+    if ((jsonDecode(response.body) as Map<String, dynamic>)['success'] !=
+        true) {
+      throw const FormatException('CLI가 동작을 수락하지 않았습니다.');
+    }
   }
 
   Future<List<InboxNotification>> fetchNotifications(

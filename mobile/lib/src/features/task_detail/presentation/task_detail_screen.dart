@@ -11,6 +11,7 @@ import '../../board/domain/board_task.dart';
 import '../../board/domain/task_status.dart';
 import '../../chat_history/presentation/chat_history_screen.dart';
 import '../../notifications/application/mobile_notification_controller.dart';
+import '../../pane_chat/presentation/pane_chat_view.dart';
 import '../../task_create/domain/session_type.dart';
 import '../../task_create/presentation/create_task_screen.dart';
 import '../domain/mirror_pane.dart';
@@ -34,6 +35,8 @@ class TaskDetailScreen extends ConsumerStatefulWidget {
 
 class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
   String? _selectedPaneId;
+  bool _chatMode = false;
+  final _chatPaneIds = <String>{};
 
   /// 화면이 들고 있는 태스크. 상태를 옮기면 보드를 다시 받기 전에 여기부터 갈아 끼운다
   late BoardTask _task = widget.task;
@@ -439,13 +442,57 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
         _SurfaceTabBar(
           tabs: tabs,
           selectedIndex: selectedIndex,
-          onSelected: (index) =>
-              setState(() => _selectedPaneId = tabs[index].id),
+          onSelected: (index) => setState(() {
+            _selectedPaneId = tabs[index].id;
+            if (_chatMode) _chatPaneIds.add(tabs[index].id);
+          }),
           onCreate: isCreating ? null : _createTerminalTab,
           // 탭이 하나뿐이면 세션이 끝나 버리므로 닫을 수 없다
           onClose: isCreating || tabs.length == 1
               ? null
               : (tab) => _closeTab(tabs, tab),
+        ),
+        Row(
+          children: [
+            Expanded(
+              child: Semantics(
+                identifier: 'pane-terminal-mode',
+                selected: !_chatMode,
+                child: TextButton.icon(
+                  onPressed: () => setState(() => _chatMode = false),
+                  icon: const Icon(Icons.terminal, size: AppSizes.p16),
+                  label: const Text('터미널'),
+                  style: TextButton.styleFrom(
+                    foregroundColor: !_chatMode
+                        ? AppColors.brandPrimary
+                        : AppColors.textSecondary,
+                  ),
+                ),
+              ),
+            ),
+            Expanded(
+              child: Semantics(
+                identifier: 'pane-chat-mode',
+                selected: _chatMode,
+                child: TextButton.icon(
+                  onPressed: () => setState(() {
+                    _chatMode = true;
+                    _chatPaneIds.add(tabs[selectedIndex].id);
+                  }),
+                  icon: const Icon(
+                    Icons.chat_bubble_outline,
+                    size: AppSizes.p16,
+                  ),
+                  label: const Text('채팅'),
+                  style: TextButton.styleFrom(
+                    foregroundColor: _chatMode
+                        ? AppColors.brandPrimary
+                        : AppColors.textSecondary,
+                  ),
+                ),
+              ),
+            ),
+          ],
         ),
         Expanded(child: _buildSelectedSurface(tabs[selectedIndex], surfaces)),
       ],
@@ -453,18 +500,51 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
   }
 
   /// 세션 종류가 바뀌면 pane id가 같더라도 다른 세션이므로 pane 화면을 새로 만들어 스트림을 다시 연다
-  Widget _buildSelectedSurface(MirrorPane pane, TaskSurfaces surfaces) =>
-      KeyedSubtree(
-        key: ValueKey(surfaces.sessionType),
-        child: PaneTerminalView(
-          taskId: _task.id,
-          pane: pane,
-          canResize: surfaces.canResize,
-          sessionType: surfaces.sessionType,
-          canRespondToDeviceQueries: surfaces.canRespondToDeviceQueries,
-          key: ValueKey(pane.id),
-        ),
-      );
+  Widget _buildSelectedSurface(MirrorPane pane, TaskSurfaces surfaces) {
+    final routeActive = ModalRoute.isCurrentOf(context) ?? true;
+    return KeyedSubtree(
+      key: ValueKey(surfaces.sessionType),
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          ExcludeFocus(
+            excluding: _chatMode || !routeActive,
+            child: Offstage(
+              offstage: _chatMode,
+              child: PaneTerminalView(
+                taskId: _task.id,
+                pane: pane,
+                canResize: surfaces.canResize,
+                sessionType: surfaces.sessionType,
+                canRespondToDeviceQueries: surfaces.canRespondToDeviceQueries,
+                isActive: !_chatMode && routeActive,
+                key: ValueKey(pane.id),
+              ),
+            ),
+          ),
+          for (final chatPane in surfaces.allPanes.where(
+            (entry) => _chatPaneIds.contains(entry.id),
+          ))
+            Offstage(
+              key: ValueKey('pane-chat:${chatPane.id}'),
+              offstage: !_chatMode || chatPane.id != pane.id,
+              child: ExcludeFocus(
+                excluding: !_chatMode || chatPane.id != pane.id || !routeActive,
+                child: TickerMode(
+                  enabled: _chatMode && chatPane.id == pane.id && routeActive,
+                  child: PaneChatView(
+                    target: (taskId: _task.id, paneId: chatPane.id),
+                    isActive:
+                        _chatMode && chatPane.id == pane.id && routeActive,
+                    onReturnToTerminal: () => setState(() => _chatMode = false),
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
 }
 
 class _SurfaceTabBar extends StatelessWidget {

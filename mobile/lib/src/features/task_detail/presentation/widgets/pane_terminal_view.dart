@@ -23,6 +23,7 @@ class PaneTerminalView extends ConsumerStatefulWidget {
     this.canResize = false,
     this.sessionType = SessionType.terminal,
     this.canRespondToDeviceQueries = false,
+    this.isActive = true,
     super.key,
   });
 
@@ -31,6 +32,7 @@ class PaneTerminalView extends ConsumerStatefulWidget {
   final MirrorPane pane;
   final bool canResize;
   final bool canRespondToDeviceQueries;
+  final bool isActive;
 
   @override
   ConsumerState<PaneTerminalView> createState() => _PaneTerminalViewState();
@@ -80,6 +82,7 @@ class _PaneTerminalViewState extends ConsumerState<PaneTerminalView>
     _terminalController.addListener(_applyDeferredRedraw);
 
     _terminal.onOutput = (data) {
+      if (!widget.isActive) return;
       // 멀티플렉서가 응답한 질의 원문도 미러에 남으므로 파싱 중 생긴 자동 응답만 막는다.
       if (_isParsingRemoteOutput && !widget.canRespondToDeviceQueries) return;
       if (_failureMessage == null) _stream?.write(data);
@@ -95,6 +98,10 @@ class _PaneTerminalViewState extends ConsumerState<PaneTerminalView>
   @override
   void didUpdateWidget(PaneTerminalView oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (!oldWidget.isActive && widget.isActive) {
+      _lastSentSize = null;
+      _sendViewport(_terminal.viewWidth, _terminal.viewHeight);
+    }
     if (widget.canResize &&
         (widget.pane.width != oldWidget.pane.width ||
             widget.pane.height != oldWidget.pane.height)) {
@@ -118,6 +125,7 @@ class _PaneTerminalViewState extends ConsumerState<PaneTerminalView>
   void _sendViewport(int cols, int rows) {
     final size = (cols: cols, rows: rows);
     if (!widget.canResize ||
+        !widget.isActive ||
         _stream == null ||
         _isSuspended ||
         _failureMessage != null ||
